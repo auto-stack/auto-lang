@@ -14653,8 +14653,27 @@ fn compare_pngs(
                     // PLAN-526 T37：标题栏右键菜单开/关（chrome 自绘浮层，
                     // 见 virtual_window.rs 菜单层；任意 GlobalPress 已清）。
                     WmCommand::TitleMenuOpen(wid) => {
+                        // PLAN-012：菜单锚点随右键落点——last_cursor（host
+                        // 逻辑坐标）减窗 rect 原点得窗内坐标，经钳制纯函数
+                        // 定面板左上角（窗缘不越界，y 不高于标题条底）。
                         if let Some(host) = state.host.as_mut() {
-                            host.wm.title_menu = Some(wid);
+                            let cursor = host.wm.last_cursor.get();
+                            let rect = host
+                                .wm
+                                .wins
+                                .get(&wid)
+                                .map(|v| *v.rect.borrow())
+                                .unwrap_or(iced::Rectangle {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    width: 0.0,
+                                    height: 0.0,
+                                });
+                            let (x, y) = crate::ui::iced::virtual_window::title_menu_spot(
+                                cursor.x, cursor.y, rect.x, rect.y, rect.width, rect.height,
+                            );
+                            host.wm.title_menu =
+                                Some(crate::ui::session::TitleMenuSpot { wid, x, y });
                         }
                     }
                     WmCommand::TitleMenuClose => {
@@ -14833,6 +14852,22 @@ fn compare_pngs(
                                 if let Some((xs, ys)) = val.split_once(',') {
                                     let x: f32 = xs.parse().unwrap_or(0.0);
                                     let y: f32 = ys.parse().unwrap_or(0.0);
+                                    // PLAN-012：光标坐标喂桌面面 VM（空白菜
+                                    // 单坐标锚数据源）——只写状态不置
+                                    // view_dirty，blank_menu open 翻转才重
+                                    // 建视图读取最新值，零逐帧重建成本。
+                                    if let Some(surface) = state.desktop.desktop_app {
+                                        if let Some(app) = state.apps.get_mut(&surface) {
+                                            let _ = app.component.write_state(
+                                                "__desktop_cursor_x",
+                                                auto_val::Value::Float(x as f64),
+                                            );
+                                            let _ = app.component.write_state(
+                                                "__desktop_cursor_y",
+                                                auto_val::Value::Float(y as f64),
+                                            );
+                                        }
+                                    }
                                     let host_size = state
                                         .host
                                         .as_ref()
@@ -15067,11 +15102,15 @@ fn compare_pngs(
                     crate::ui::iced::broker_surface::broker_client_content(state, wid)
                 {
                     let focused = host.wm.focused == Some(wid);
-                    let title_menu_open = host.wm.title_menu == Some(wid);
+                    let title_menu_pos = host
+                        .wm
+                        .title_menu
+                        .filter(|t| t.wid == wid)
+                        .map(|t| (t.x, t.y));
                     layers.push(crate::ui::iced::virtual_window::virtual_window_element(
                         vwin,
                         focused,
-                        title_menu_open,
+                        title_menu_pos,
                         crate::ui::iced::virtual_window::transparency_alpha_for(
                             &state.desktop.config.transparency,
                         ),
@@ -15108,11 +15147,15 @@ fn compare_pngs(
                 };
                 let client = client.map(move |m| DM::App(app_id, m));
                 let focused = host.wm.focused == Some(wid);
-                let title_menu_open = host.wm.title_menu == Some(wid);
+                let title_menu_pos = host
+                    .wm
+                    .title_menu
+                    .filter(|t| t.wid == wid)
+                    .map(|t| (t.x, t.y));
                 layers.push(crate::ui::iced::virtual_window::virtual_window_element(
                     vwin,
                     focused,
-                    title_menu_open,
+                    title_menu_pos,
                     crate::ui::iced::virtual_window::transparency_alpha_for(
                         &state.desktop.config.transparency,
                     ),

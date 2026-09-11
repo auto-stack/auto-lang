@@ -69,10 +69,16 @@ fn window_radius(maximized: bool) -> iced::border::Radius {
 }
 
 
-/// PLAN-526 T37：标题栏右键菜单面板（窗口 Stack 顶层右上、标题条下方）。
+/// PLAN-526 T37：标题栏右键菜单面板（窗口 Stack 顶层）。
 /// 项：最大化/还原、最小化、关闭（chrome 既有命令）；发送到下/上一分区
 /// （SendFocusedTo 既有热键臂复用）。左键任意按压经 GlobalPress 关菜单。
-fn title_menu_panel(wid: crate::ui::session::Wid) -> Element<'static, DesktopMessage> {
+/// PLAN-012：面板左上角跟随右键落点（`(mx, my)` 窗内坐标，调用侧经
+/// [`title_menu_spot`] 钳制），弃 T37 固定右上（对齐三键）原设计。
+fn title_menu_panel(
+    wid: crate::ui::session::Wid,
+    mx: f32,
+    my: f32,
+) -> Element<'static, DesktopMessage> {
     use iced::Padding;
     let surface = token(crate::ui::style::Color::Surface);
     let border_c = token(crate::ui::style::Color::Border);
@@ -162,19 +168,86 @@ fn title_menu_panel(wid: crate::ui::session::Wid) -> Element<'static, DesktopMes
             },
             ..Default::default()
         });
-    // 定位：标题条下方、右收边 8px（与三键对齐）。
+    // 定位：PLAN-012 跟手——padding left/top = 钳制后的右键落点（窗内
+    // 坐标），Start/Start 对齐使面板左上角即落点（弃 T37 固定右上）。
     iced::widget::container(panel)
         .width(Length::Fill)
         .height(Length::Fill)
         .padding(Padding {
-            top: TITLEBAR_H + 4.0,
-            right: 8.0,
+            top: my,
+            right: 0.0,
             bottom: 0.0,
-            left: 0.0,
+            left: mx,
         })
-        .align_x(Alignment::End)
+        .align_x(Alignment::Start)
         .align_y(Alignment::Start)
         .into()
+}
+
+/// PLAN-012：标题菜单面板尺寸/边距常量（钳制口径；PANEL_H 为 5 项+分隔线
+/// 的估算高度，实机若溢出微调即可）。
+const TITLE_MENU_PANEL_W: f32 = 180.0;
+const TITLE_MENU_PANEL_H: f32 = 168.0;
+const TITLE_MENU_MARGIN: f32 = 8.0;
+
+/// PLAN-012：右键落点（host 窗逻辑坐标）→ 标题菜单面板左上角（窗内坐
+/// 标）。x/y 跟随光标；面板尺寸 + 8px 边距做右/下缘钳制（窗过小
+/// 时不越界），y 不低于标题条底（右键点在标题条上，菜单即其下方展开，
+/// 不遮标题条）。纯函数供单测。
+pub fn title_menu_spot(
+    cx: f32,
+    cy: f32,
+    rx: f32,
+    ry: f32,
+    rw: f32,
+    rh: f32,
+) -> (f32, f32) {
+    let lx = cx - rx;
+    let ly = cy - ry;
+    let x = lx.clamp(
+        TITLE_MENU_MARGIN,
+        (rw - TITLE_MENU_PANEL_W - TITLE_MENU_MARGIN).max(TITLE_MENU_MARGIN),
+    );
+    let y = ly.clamp(
+        TITLEBAR_H,
+        (rh - TITLE_MENU_PANEL_H - TITLE_MENU_MARGIN).max(TITLEBAR_H),
+    );
+    (x, y)
+}
+
+#[cfg(test)]
+mod title_menu_spot_tests {
+    use super::*;
+
+    #[test]
+    fn p012_spot_follows_cursor_inside_window() {
+        // 窗 rect (100, 80) 800×600；落点在窗中部——原样跟随（相对化）。
+        assert_eq!(title_menu_spot(300.0, 200.0, 100.0, 80.0, 800.0, 600.0), (200.0, 120.0));
+    }
+
+    #[test]
+    fn p012_spot_clamps_right_and_bottom_edges() {
+        // 右缘：落点靠右 → 面板左移收进窗内；下缘：y 钳到面板高上限。
+        let (x, y) = title_menu_spot(890.0, 650.0, 100.0, 80.0, 800.0, 600.0);
+        assert_eq!(x, 800.0 - 180.0 - 8.0);
+        assert_eq!(y, 600.0 - 168.0 - 8.0);
+    }
+
+    #[test]
+    fn p012_spot_titlebar_click_drops_below_titlebar() {
+        // 标题条上右键（ly < TITLEBAR_H=36）→ y 钳到标题条底。
+        let (x, y) = title_menu_spot(150.0, 95.0, 100.0, 80.0, 800.0, 600.0);
+        assert_eq!(x, 50.0);
+        assert_eq!(y, TITLEBAR_H);
+    }
+
+    #[test]
+    fn p012_spot_degenerate_window_stays_in_bounds() {
+        // 退化小窗（宽/高小于面板+边距）：钳到下限而非负坐标。
+        let (x, y) = title_menu_spot(0.0, 0.0, 0.0, 0.0, 50.0, 40.0);
+        assert_eq!(x, TITLE_MENU_MARGIN);
+        assert_eq!(y, TITLEBAR_H);
+    }
 }
 /// 语义色快捷访问（跟随 iced_adapter 的 dark/accent thread-local）。
 fn token(c: crate::ui::style::Color) -> Color {
@@ -270,7 +343,7 @@ fn title_button(glyph: &'static str, size: f32, msg: DesktopMessage) -> Element<
 pub fn virtual_window_element<'a>(
     vwin: &VWinState,
     focused: bool,
-    title_menu_open: bool,
+    title_menu_pos: Option<(f32, f32)>,
     t_alpha: f32,
     client: Element<'a, DesktopMessage>,
 ) -> Element<'a, DesktopMessage> {
@@ -428,8 +501,9 @@ pub fn virtual_window_element<'a>(
     // PLAN-526 T37：标题栏右键菜单浮层（窗口 Stack 顶层；chrome 自绘，
     // 不经 .at——标题栏本为 I4 chrome 域）。任意左键按压经 GlobalPress
     // 清 title_menu 关闭（点外部关语义，T29 对齐）。
-    if title_menu_open {
-        layers.push(title_menu_panel(wid));
+    // PLAN-012：面板左上角随右键落点（窗内坐标，钳制见 title_menu_spot）。
+    if let Some((mx, my)) = title_menu_pos {
+        layers.push(title_menu_panel(wid, mx, my));
     }
 
     // 定位包裹：padding 出窗口原点，Start/Start 对齐（Stack 每层布局原点

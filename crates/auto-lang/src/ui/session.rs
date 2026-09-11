@@ -637,7 +637,18 @@ pub struct WmState {
     layout_snapshot: Option<Vec<(Wid, iced::Rectangle)>>,
     /// PLAN-526 T37：标题栏右键菜单开启中的窗口（chrome 自绘浮层；
     /// GlobalPress 任意按压即关——T29 同款"点外部关"语义）。
-    pub title_menu: Option<Wid>,
+    /// PLAN-012：菜单锚点随右键落点（窗内坐标，钳制见
+    /// `virtual_window::title_menu_spot`）。
+    pub title_menu: Option<TitleMenuSpot>,
+}
+
+/// PLAN-012：标题右键菜单锚点——目标窗 + 菜单面板左上角（窗内坐标，
+/// 右键落点经 `virtual_window::title_menu_spot` 钳制后）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TitleMenuSpot {
+    pub wid: Wid,
+    pub x: f32,
+    pub y: f32,
 }
 
 impl WmState {

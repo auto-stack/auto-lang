@@ -43,6 +43,10 @@ widget DesktopSurface {
         var __desktop_hidden str = ""
         var menu_id str = ""
         var blank_menu str = ""
+        // PLAN-012：光标坐标（宿主 __mouse_moved 臂持续写入，只写不置
+        // view_dirty；空白菜单坐标锚数据源——open 翻转重建时读取最新值）。
+        var __desktop_cursor_x float = 0.0
+        var __desktop_cursor_y float = 0.0
     }
 
     view {
@@ -51,9 +55,11 @@ widget DesktopSurface {
         // + oncontextmenu（右键空白菜单；Q6 实测桌面空白无右键闭环）。
         col {
             style: "w-full h-full p-3 ${.__desktop_bg}"
-            // PLAN-526 T36：blank 菜单 popover 化（锚=桌面全域 mouse-area，
-            // Panel snap 钳制回视口；T34：内联面板弃用——挤压布局+双菜单）。
-            popover (open: .blank_menu != "", placement: "bottom-start", ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
+            // PLAN-012：blank 菜单坐标锚（跟随右键落点）——原 widget 锚
+            //（children[0]=全屏 mouse-area）+ bottom-start 使菜单固定桌面
+            // 左下（011 复审 F-R1）。坐标 = 宿主 __mouse_moved 臂持续写入
+            // 的 __desktop_cursor_x/y（只写不置 dirty）；422 P3 坐标锚形态
+            // （027-file-manager 先例），面板内容独占 popover children。
             mouse-area (onclick: .BlankPress, oncontextmenu.prevent: .BlankMenu) {
                 style: "w-full h-full"
             // PLAN-011 T3：mouse_area 命中带=内容盒（iced 侧 style 只落在
@@ -127,6 +133,9 @@ widget DesktopSurface {
             // 此前闭合括号错位使其成为 view 级散落子树，桌面左下角常驻渲染
             // （T36 结构回归；实机截图在案 scratch/p002）。
             }
+            // PLAN-012：坐标锚 popover（open 驱动 + x/y 落点；坐标锚形态
+            // 无锚子件，children 全为面板内容）。
+            popover (open: .blank_menu != "", x: .__desktop_cursor_x, y: .__desktop_cursor_y, ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
             col {
                 style: "w-44 gap-1"
                 button (text: "更换壁纸…", variant: "ghost") {
