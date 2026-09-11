@@ -14675,6 +14675,13 @@ fn compare_pngs(
                             host.wm.title_menu =
                                 Some(crate::ui::session::TitleMenuSpot { wid, x, y });
                         }
+                        // PLAN-012：右键标题栏先聚焦置顶（`focus` = 立即
+                        // z_order 刷新）——非最前窗的菜单层在自身 vwin
+                        // Stack 内，不置顶会被前窗遮挡；右键无 in-flight
+                        // 按钮态，无 T20 press→release diff 风险，故用即时
+                        // focus 而非软聚焦（左键路径仍走 GlobalPress 软
+                        // 聚焦+release 偿还，双击首击即聚焦）。
+                        state.wm_focus(wid);
                     }
                     WmCommand::TitleMenuClose => {
                         if let Some(host) = state.host.as_mut() {
