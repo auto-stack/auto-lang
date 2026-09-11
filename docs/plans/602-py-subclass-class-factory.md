@@ -14,7 +14,7 @@ touched_goals:
   - "GOAL-006"                # Consumer parity：py 子类派生 = torch 全面支持的主台阶（暂定，review 定稿）
 
 affects: [auto-lang/vm, auto-lang/trans, parity]
-current_step: 0
+current_step: 3
 total_steps: 10
 ---
 
@@ -262,14 +262,32 @@ def _auto_subclass(name, base, methods):
 提交本骨架 + .next-id；worktree 禁 junction/symlink；分组需 auto-down
 detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
 
-- [ ] **T-01** 基线：master 提交骨架；建 worktree + auto-down 兄弟；
+- [x] **T-01** 基线：master 提交骨架；建 worktree + auto-down 兄弟；
   构建 auto；记录基线（cargo tt/tv 现状、py_torch_train 单跑快照）。
   验证：构建零错误；两基线输出留痕。
-- [ ] **T-02** 多参回调封送（D1）：run_closure_bridged 泛化 n 参 +
+  [✅ 已完成 2026-09-11] worktree ff 重同步至 6ed8b1e33；auto-down 兄弟
+  对齐 1557a39（起草期已建，detached）；auto(python) 构建零错误；基线：
+  cargo tv 3659/3659 全绿（491 skip）；cargo tt 3875/3879，4 红中
+  a2r_rustc_real_compile_gate + c_abi_003/004 双轨预存红（master 对照一致），
+  ffi_dual_019 并发负载抖动单跑绿；py_torch_train 快照 10/10 三轨 100%。
+- [x] **T-02** 多参回调封送（D1）：run_closure_bridged 泛化 n 参 +
   py_callable 单参路径回归探针。验证：`cargo tv`；单参探针绿。
-- [ ] **T-03** py_subclass VM 臂（D2）：py_ffi 新 native + exec 工厂 +
+  [✅ 已完成 2026-09-11] 签名改收 &PyTuple：arity=vm.closures n_args，
+  不匹配→PyTypeError（期望/实际入文案）；0 参不上栈直呼；逐元素 marshal
+  后 call_closure(n)。py_callable 回调改传全 tuple。注：py_ffi 模块在
+  python 特性门后，tv 档不编译——作用域门=--features python
+  py_ffi::tests 37/37 绿（含改签名后的窗口守卫单测）；单参回归由 p9
+  parity 相位覆盖（T-08 门）。commit e1c94165f。
+- [x] **T-03** py_subclass VM 臂（D2）：py_ffi 新 native + exec 工厂 +
   callbacks setattr；最小 .as 探针（工厂 + 实例化 + forward 标量）。
   验证：`cargo tv`；探针输出正确。
+  [✅ 已完成 2026-09-11] NATIVE_PY_SUBCLASS=481 + py_subclass_impl
+  （exec 模板 + 缩进归一 + 方法名排序确定性）+ 注册三件套（常量/lib.rs
+  register_with_id/codegen 名表+编译期首注册块）。最小探针
+  parity/libs/python/py_torch_subclass/tests/auto/subclass.as VM 轨全链绿：
+  工厂→py_call0 实例化（__init__(k) 正常执行）→py_call forward 经桥回调
+  Auto 闭包 self 句柄+5 封送 → 10+5=15。commit e1c94165f。
+  执行期适配两笔（详见 §10 注记 A/B/C）。
 - [ ] **T-04** a2py 轨（D3）：_auto_subclass helper + 发射臂；探针双轨
   对齐（同 corpus VM vs a2py stdout）。
   验证：`cargo tt`；探针双轨一致。
@@ -330,6 +348,19 @@ num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
    （nn.Linear 调用、参数读取），表达力上限高；若执行期发现句柄封送
    开销不可接受再复议（决策已定，此条留痕供 review 追认）。
 4. **p12 vs 并入 p9**：新套件注册为独立 phase p12（torch 子类专题；原案 p11 与 PLAN-591 uuid_real 冲突，2026-09-11 执行前审计改号，见 §9 审计记录）；
+5. **执行期适配注记（T-02/T-03 实证，2026-09-11）**：
+  A. **PyCFunction 非 descriptor**——计划原案"setattr(cls, name, pycfunc) 后
+  Python 调用时 self 自然作首参传入"不成立（builtin_function_or_method
+  无 __get__，类属性不绑 self，等价 staticmethod）。改为：回调经 exec 模板
+  内联为真 `def m(self,*args)` 包装器（类体内真函数=真绑定），委托 ns 里的
+  `_auto_cb_{i}` PyCFunction——与 a2py 轨 lambda 绑定语义逐面对齐（计划
+  §10-5 漂移风险的预防性消解）。
+  B. **名称改写**——ns 键与类体引用若用 `__双下划线` 前缀会被 Python
+  mangle 成 `_类名__x`（NameError 实证）；定名 `_auto_cb_{i}` 单下划线。
+  C. **use.py 导入绑定语义**——use.py 导入名是"可调用"绑定（裸引用会以
+  0 参调用该 py 对象：`object` 作值 → object() TypeError 实证）；类作值
+  一律走 py_getattr(模块句柄, "类名") 通道（train.as no_grad 同款）。base
+  参数从此通道取句柄。open（T-04 前解决）
    若 review 认为应并入 p9（torch 惯用法），表项迁移零成本。
 5. **a2py helper 与 VM 臂的语义漂移风险**：两侧实现需逐语义对齐
    （exec 模板/setattr 顺序/错误文案）；T-04 探针双轨对齐是闸门，
