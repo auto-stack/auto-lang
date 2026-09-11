@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-611
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: vwin-thumb-swr-titlemenu-outside-close
 author: ["zhaopuming"]
 created_at: 2026-09-11
@@ -143,7 +143,29 @@ miss / TTL 内报新鲜 / 过期续存不删且新鲜度翻转 / invalidate 硬�
 
 ## 复审记录
 
-（待 `/auto-plan:review`；AC-3 实机三判据请复审时向报障用户索取复核结论。）
+### 复审（2026-09-11，报障用户本人终验 + 工件复跑门）
+
+stage: review | plan_id: PLAN-611 | plan_revision: 1 | outcome: **pass** |
+reviewed_commit: auto-lang master `fbfc145bc`（折叠定型态：链 `d3527d811`+
+`2204274e8` + 本计划 `7dea59cd7`）| base_commit: `c55471753` |
+spec_inputs: 无规范增量（空，折叠续录已声明）
+
+- **AC-1 ✓ pass**：`cargo t t2_snapshot` 5/5（含
+  `t2_snapshot_stale_read_keeps_entry`），定型 master 复跑同绿。
+- **AC-2 ✓ pass**：定型复跑门——iced 档 183/184（`dock_pager` 随链转绿，
+  +11 链上测试全过）；全量档 4746/4767，失败集 21=21 与折叠前基线逐一
+  全等；hash-lock 四件全等。
+- **AC-3 ✓ pass（报障用户本人实机终验，2026-09-11）**：① hover 任务栏
+  图标缩略图稳定（原 2s 跳变消失）；② 分区切换后缩略立即出旧图稳定；
+  ③ 标题栏右键菜单外点关闭 OK。
+- **复审加值发现（非阻塞，移交新计划承接）**：标题栏右键菜单弹出位置
+  固定右上（T37 原设计语义）、桌面空白菜单固定左下（011 复审 F-R1 同
+  源）——「菜单跟随鼠标位置」两项移交新计划处理，不阻塞本计划（外点
+  关闭/功能面用户确认 OK）。
+
+findings: 见上加值发现；其余无。
+evidence: 折叠续录节（复跑门数字）+ 用户终验结论（本轮对话实录）。
+next: 归档（archive/）。
 
 ### 折叠续录（2026-09-11，桌面链 os-002→010→011 落地后的定型复跑门）
 
@@ -192,3 +214,11 @@ miss / TTL 内报新鲜 / 过期续存不删且新鲜度翻转 / invalidate 硬�
   定责后回填）。
 - auto-os：PLAN-010/011（popover ondismiss 解耦与命中带根修——本计划缺陷一/
   二的同族前案）、`shell/`（唯一真相源，本计划未触碰）。
+### merge 回执（2026-09-11，五检查点）
+
+prepared ✓（reviewed 基线 fbfc145bc，AC-1..3 全 pass 含用户本人实机终验）|
+landed ✓（本计划交付直接在 master：7dea59cd7，随链折叠定型态含全部改动）|
+ledger_refreshed ✓（autos-desktop-program 桌面域随迁指针无本计划行，归档
+即登记）| archived ✓（git mv docs/plans/archive/）| cleaned ✓（验证用
+lang-611v/auto-down worktree 已 wt-guard 清除，tmp/611-verify 分支删除）。
+加值发现移交：菜单跟随鼠标位置两项 → 新计划（取号见 docs/plans/）。
