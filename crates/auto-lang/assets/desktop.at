@@ -56,10 +56,16 @@ widget DesktopSurface {
             popover (open: .blank_menu != "", placement: "bottom-start", ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
             mouse-area (onclick: .BlankPress, oncontextmenu.prevent: .BlankMenu) {
                 style: "w-full h-full"
+            // PLAN-011 T3：mouse_area 命中带=内容盒（iced 侧 style 只落在
+            // 外层包装 container，对命中几何是 no-op）——本 mouse-area 直接
+            // 包 grid 时命中带仅图标条带高，条带以下全桌面是 BlankPress/
+            // BlankMenu 命中死区（P010-F1 根因，t1_matrix 五配置+格条带
+            // 微测实证 scratch/p011）。内容包 w-full h-full col 使命中带
+            // 随之全屏；锚件（外层包装）几何不变，popover 放置语义不变。
+            col {
+                style: "w-full h-full"
 
-
-
-            // 图标网格（固定网格 v1；列数 8 起步，占位 lucide 图标——
+                // 图标网格（固定网格 v1；列数 8 起步，占位 lucide 图标——
             // pinned 条目自带注册表 icon 优先）。双击 = mouse-area
             // ondblclick（484 mouse-area + iced on_double_click）；右键 =
             // 布局件 oncontextmenu（PLAN-002 B：布局件级右键挂点，格内全域
@@ -114,6 +120,8 @@ widget DesktopSurface {
                         }
                     }
                 }
+            }
+            // PLAN-011 T3：闭合命中带内包 col（见 mouse-area 开标签处注）。
             }
             // PLAN-002：blank 菜单内容归位 popover 标签内（plain[1]=content）—
             // 此前闭合括号错位使其成为 view 级散落子树，桌面左下角常驻渲染
