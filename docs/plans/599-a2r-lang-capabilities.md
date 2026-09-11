@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-599
-status: execution_done                # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: a2r-lang-capabilities
 author: [ZCode]
 created_at: 2026-09-09
@@ -221,3 +221,20 @@ stage: new | PLAN-599 | rev 1 | outcome: pass | next: work
 - capstone 是否含线程命中：默认不含（TermSession 子集无线程面），
   若用户要求四能力全在 capstone 命中，扩展子集含 reader 线程桩——
   执行时按成本自裁记录。
+---
+stage: review | PLAN-599 | rev 1 | **pass(F-1 修复后)** | reviewed_commit=c44c59c52 |
+base=1ed892643 | 同步 master=27d8ab0a5(597 归档后主线,零语义冲突,
+trans/overview 双 bullet 共存) | spec_inputs: guide+overview 在交付内 |
+acceptance: AC-01..05=两道 #[ignore] 实编门复跑 2 passed+real gate
+1 passed(F-1 后);AC-06=套件见下 |
+suites: a2r 326/3(基线三连)、bindgen 6/6、a2c 109/9(基线)、tf 全量
+3487/3488(唯 vue 基线)、tt 全量 3843/3846(vue 基线+cookbook 两例
+merge 竞态伪红隔离全绿+benchmark 负载抖动隔离绿)、tv 2790/2791→
+post-merge 两例=020_dep_traits_generics(master 基线同红,596 在途语料
+随同步进入)、desktop_protocol 68/69(coverage 基线) |
+findings: F-1(已修,c44c59c52)——002/003 裸外来名过 F6 透传,在语料级
+a2r_rustc_real_compile_gate 读作拼写错(E0405 两例意外失败);修=语料补
+use.rs foreign_shape 导入(外来名规范纪律)+本计划门改 rlib+--extern
+策略;F-2(info)benchmark_downcast 全量并行下抖动,隔离绿;F-3(info)
+020 为 596 在途,非本计划面 |
+evidence: 复审会话内重执行;双门+real gate 修复后全绿 | next: merge
