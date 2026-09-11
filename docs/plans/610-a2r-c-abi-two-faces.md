@@ -286,7 +286,11 @@ auto-term 构建产物（只读）。
   [✅ 选型文档=§5 T-10 附录（A 闭包直转证伪/A' 具名 #[export(system)]
   fn 按名传值选定主案/零依赖/B 兜底/C 出轨），探针双证（E0308 反证 +
   A' 正证）；实作按 §10 授权降级 defer（⑥ 对 FnPtr 显式报错在案）]
-- [ ] **T-11** SD 落稿 + 004 §5⑤⑥ 回执 + DEBTS #10 增 610 条；
+- [x] **T-11** SD 落稿 + 004 §5⑤⑥ 回执 + DEBTS #10 增 610 条；
+  [✅ SD-01=a2r-transpiler-guide Implementation Status 增 610 条；SD-02=
+  trans/overview C ABI 双面条目；SD-03=auto-bindgen/project 消费面三后端
+  收口（worktree 内落稿）；auto-term 侧：004 §5⑤⑥ 翻已落地清账 +
+  DEBTS #10 增 ⑤⑥ 清账段（auto-term master 9dc4ad7 后一收据提交）]
 - [ ] **T-12** 收口门禁：a2r 套件 + 三道实编门 + tf/tt/tv +
   bindgen/a2c（基线不变）。
 
