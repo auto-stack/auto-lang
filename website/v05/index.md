@@ -14,7 +14,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
 <HomeHero
   badge="The biggest update yet"
   title=": v0.5 Is Here"
-  description="Auto has grown from a language into a platform: the AutoOS desktop, four flagship apps, scripting for two ecosystems, and Bootstrap² achieved — this time, Auto starts to become itself."
+  description="Dynamic dev with static shipping, decoupled frontends, and Language as OS — three ideas have grown into a platform: the AutoOS desktop, four flagship apps, two-ecosystem scripting, and Bootstrap² achieved. This time, Auto starts to become itself."
   primary-text="Read the Release Notes"
   primary-link="/docs/releases/v0.5"
   secondary-text="Open Playground"
@@ -29,6 +29,54 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   </div>
   <p class="hero-stats-note">From v0.3 to v0.5 (Apr — Sep 2026), the quantified footprint of the Auto platform.</p>
 </HomeHero>
+
+<div class="features-section">
+  <h2 class="section-title">Three Design Philosophies</h2>
+  <p class="section-desc">Dynamic dev, decoupled frontends, Language as OS — every section that follows is evidence.</p>
+  <div class="philosophy-grid">
+    <article class="philosophy-card" style="--ph: #6366f1; --ph2: #38bdf8">
+      <div class="philosophy-icon">🌓</div>
+      <h3 class="philosophy-name">Dynamic Dev, Static Ship</h3>
+      <p class="philosophy-en">One Source · Every Ecosystem</p>
+      <p class="philosophy-tagline">A scripting language while you build, a systems language when you ship — the same source, in every ecosystem.</p>
+      <p class="philosophy-text">Most languages make you choose: scripting gives you instant iteration but leaves performance at the door; systems languages deliver native speed but tax every idea with a compile cycle. Auto refuses to choose. In development, the AutoVM interprets your code — instant startup, hot reload, with REPL and LSP at your side. At release, the same source transpiles to native Rust via a2r (or to C via a2c). And across Auto's whole map, this dynamic-static pairing is the shared design origin of every ecosystem — not just Rust's.</p>
+      <ul class="philosophy-list">
+        <li><strong>A dynamic-static pairing for every ecosystem</strong> — UI development (VM/iced hot-reload preview ↔ transpiled release), embedded MCUs (the VM doubles as the simulator ↔ a2c cross-compiles and flashes), Godot (emit GDScript for in-editor hot tweaks ↔ stitch static C/Rust into the engine), scientific computing (use.py calls PyTorch directly ↔ a2r ships the service). Before entering any ecosystem, two questions must be answered: how does it run dynamically, and how does it ship statically?</li>
+        <li><strong>Hot reload is the soul of the dynamic side</strong> — the value of dynamic mode is more than fast startup: edit without restarting, keep your running state, and see exactly what you just changed. The AutoUI desktop runs dual VM/a2r tracks with hot reload — the moment you save is the moment you see.</li>
+        <li><strong>Consistency guarded by machines</strong> — the parity harness runs every test through AutoVM, transpiled Rust, and native Rust, requiring identical output; 20+ replicated third-party Rust libraries serve as standing regression corpus.</li>
+      </ul>
+      <div class="philosophy-proof"><code>auto run</code> (interpreted) ↔ <code>a2r</code> (native Rust) · dynamic-static across ecosystems · three-backend parity</div>
+    </article>
+
+    <article class="philosophy-card" style="--ph: #14b8a6; --ph2: #6366f1">
+      <div class="philosophy-icon">🔌</div>
+      <h3 class="philosophy-name">Decoupled at Every Layer</h3>
+      <p class="philosophy-en">Frontend Expresses · Backend Delivers</p>
+      <p class="philosophy-tagline">One architectural law from the UI down to the OS kernel — both ends of the seam stay replaceable.</p>
+      <p class="philosophy-text">Decoupling isn't a UI trick — it's the meta-pattern Auto applies at every layer. Outermost is AutoUI: its contract is independent of any host framework, and the same .at switches rendering arms between Vue, iced, ArkTS, and Jetpack Compose. Moving inward, the pattern repeats — all the way up to the operating system itself, where shell and kernel are just another front and back.</p>
+      <ul class="philosophy-list">
+        <li><strong>OS shell ↔ OS kernel, backend swappable</strong> — on Windows, the frontend is the virtual desktop and the backend is the Windows kernel; in the future AutoOS distro, the AutoOS desktop couples directly to a Linux kernel; and the backend can switch to OpenHarmony. Change the kernel, not your apps.</li>
+        <li><strong>One pattern, recurring at every layer</strong> — AutoUI ↔ rendering engines (Vue / iced / ArkTS / Jetpack); the AutoOS app architecture: auto-ui ↔ auto-compositor (RenderQueue, lock-free over shared memory); AutoAI: agents and AI-apps ↔ ai-daemon (LLM resources scheduled centrally).</li>
+        <li><strong>The dividend: one language across the seam</strong> — the AutoDown knowledge base is 411 files and 32K lines of frontend + backend logic in a single .at source, rendering to web and desktop; AutoMusk's five frontend views are generated the same way, verified 148-for-148.</li>
+      </ul>
+      <div class="philosophy-proof">frontend · seam · backend — UI↔renderer / app↔compositor / agent↔daemon / shell↔kernel</div>
+    </article>
+
+    <article class="philosophy-card" style="--ph: #ec4899; --ph2: #a855f7">
+      <div class="philosophy-icon">🖥️</div>
+      <h3 class="philosophy-name">Language as OS</h3>
+      <p class="philosophy-en">LAOS</p>
+      <p class="philosophy-tagline">The language mirrors the OS architecture — every OS module becomes a language-level component.</p>
+      <p class="philosophy-text">An operating system's three duties — sharing, abstraction, and services — are precisely the three questions a language must answer. Auto writes its answers into the language itself: the Task/Msg Actor model is the scheduler; the view/mut/move memory triple is memory management; the io/net/http/fs standard library is the system-call surface; multi-platform rendering arms are the device drivers. One step further: every OS module has two supply routes — implemented by Auto itself, or bridged to an existing implementation — and gets assembled per target platform.</p>
+      <ul class="philosophy-list">
+        <li><strong>Language-level modules, two supply routes</strong> — running on Windows: apps and UI transpile to Rust/iced while the kernel borrows Windows' own capabilities; running on an MCU: apps and UI can transpile to C/LVGL while the kernel becomes an RTOS written in Auto. One language, assembled differently per machine.</li>
+        <li><strong>The shape of an OS is already visible</strong> — the AutoOS virtual desktop is running, and the window manager itself is an AutoUI app (next section); auto-os-config turns the shape of config files into the settings center, automatically.</li>
+        <li><strong>AI compute scheduled like an OS device</strong> — the Client/Daemon architecture already powers AutoAI: ask the system for compute, instead of every app building its own AI stack.</li>
+      </ul>
+      <div class="philosophy-proof">scheduler · memory · syscalls · drivers — each self-implementable, each bridgeable</div>
+    </article>
+  </div>
+</div>
 
 <div class="showcase-wrapper">
   <ShowcaseSection
@@ -149,6 +197,124 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   margin: 0.75rem auto 0;
   font-size: 0.85rem;
   color: hsl(var(--muted-foreground));
+}
+
+.philosophy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.philosophy-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.75rem 1.5rem 1.5rem 1.75rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border) / 0.7);
+  background: hsl(var(--card));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.philosophy-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.1);
+}
+
+.philosophy-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--ph, #6366f1), var(--ph2, #a855f7));
+}
+
+.philosophy-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  background: color-mix(in srgb, var(--ph, #6366f1) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ph, #6366f1) 25%, transparent);
+}
+
+.philosophy-name {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+}
+
+.philosophy-en {
+  margin: -0.5rem 0 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ph, #6366f1);
+}
+
+.philosophy-tagline {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.philosophy-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: hsl(var(--muted-foreground));
+}
+
+.philosophy-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.philosophy-list li {
+  position: relative;
+  padding-left: 1.2rem;
+  font-size: 0.86rem;
+  line-height: 1.65;
+  color: hsl(var(--muted-foreground));
+}
+
+.philosophy-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ph, #6366f1);
+}
+
+.philosophy-list strong {
+  color: hsl(var(--foreground));
+}
+
+.philosophy-proof {
+  margin-top: auto;
+  padding-top: 0.9rem;
+  border-top: 1px dashed hsl(var(--border));
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.76rem;
+  color: var(--ph, #6366f1);
 }
 
 .shot-stack {
