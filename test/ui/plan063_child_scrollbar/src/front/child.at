@@ -1,0 +1,35 @@
+// child.at — PLAN-063 T-04b corpus: minimal CustomScrollbar twin.
+widget Child(scrollTop: f64 = 0, scrollHeight: f64 = 100, clientHeight: f64 = 10) {
+    msg Msg {
+        "update:scrollTop"(f64),
+        SetArmed,
+        Move(f64, f64)
+    }
+
+    model {
+        var dragging int = 0
+        var grab_armed int = 0
+        var grab_offset float = 0
+    }
+
+    view {
+        col {}
+    }
+
+    on {
+        ."update:scrollTop"(v) -> {}
+
+        SetArmed -> {
+            .dragging = 1
+            .grab_armed = 1
+        }
+
+        .Move(x, y) -> {
+            if .dragging == 1 {
+                if .scrollHeight > .clientHeight {
+                    let _ = ."update:scrollTop"(y)
+                }
+            }
+        }
+    }
+}

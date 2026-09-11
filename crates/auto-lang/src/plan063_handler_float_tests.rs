@@ -94,7 +94,33 @@ mod plan063_handler_float_arith {
         );
     }
 
-    /// 参数 float 比较（CustomScrollbar Move 守卫 `.scrollHeight > .clientHeight`
+    /// T-04c：子件 Move → 引号 emit（空体直通声明）→ 父 SetScrollTop——
+    /// demo 自绘滚动条拖拽链的进程内最小同构（MCP 同款 call_widget_handler）。
+    #[test]
+    fn child_move_emits_to_parent_scroll_top() {
+        std::env::set_var("AUTO_DEBUG_EMIT", "1");
+        let rel = "test/ui/plan063_child_scrollbar/src/front/app.at";
+        let manifest = [
+            std::env::var("CARGO_MANIFEST_DIR").ok().map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ].into_iter().flatten().find(|p| p.exists());
+        let Some(manifest) = manifest else { eprintln!("plan063 corpus: SKIPPED"); return };
+        let mut comp = crate::plan370_test_support::build_component_from_app(&manifest).expect("compile corpus");
+        let _ = comp.view_with_debug_gated(false); // render once: seed child props
+        // arm the drag (TrackDown twin)
+        comp.call_widget_handler("Child", "SetArmed", &[]).ok();
+        // demo 同款派发口（on_with_input_for 带 __emit 清算侧）。
+        comp.on_with_input_for("Child", "Movef5.0f160.0", None);
+        for dbg in ["scrollHeight","clientHeight","__emit_msg","dragging","left_top_cmd"] { eprintln!("[DBG] {} = {:?}", dbg, comp.read_state(dbg)); }
+        match comp.read_state("left_top_cmd").expect("read") {
+            Value::Float(v) if v == 160.0 => {}
+            Value::Double(v) if v == 160.0 => {}
+            other => panic!("expected left_top_cmd 160.0 via child emit route, got {other:?}"),
+        }
+    }
+
+        /// 参数 float 比较（CustomScrollbar Move 守卫 `.scrollHeight > .clientHeight`
     /// 同构：参数/实参参与 `>` 比较）——期望真臂可达。
     #[test]
     fn handler_param_float_comparison() {
