@@ -6623,6 +6623,10 @@ mod plan449_style_parity_tests;
 #[cfg(all(test, feature = "ui"))]
 mod plan593_theme_registry_tests;
 
+// Plan 606: Photo gallery thumbnails and fit parity test.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan606_gallery_tests;
+
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]
 mod plan046_obj_natives_tests;

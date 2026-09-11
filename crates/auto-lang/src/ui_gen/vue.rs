@@ -13761,7 +13761,42 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         }
                     }
                 }
-                self.push_style_class(&mut attrs, props);
+                // Plan 606: fit prop -> Tailwind object-{fit} class
+                if let Some(fit_val) = props.get("fit") {
+                    let fit_str = match fit_val {
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.as_str(),
+                        _ => "",
+                    };
+                    let object_class = match fit_str {
+                        "cover" => "object-cover",
+                        "contain" => "object-contain",
+                        "fill" => "object-fill",
+                        "none" => "object-none",
+                        "scale-down" => "object-scale-down",
+                        _ => "",
+                    };
+                    if !object_class.is_empty() {
+                        let mut props_with_fit = props.clone();
+                        let existing = self.get_style_class(props).and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                            _ => None,
+                        });
+                        let combined = match existing {
+                            Some(cls) => format!("{cls} {object_class}"),
+                            None => object_class.to_string(),
+                        };
+                        props_with_fit.insert(
+                            "class".to_string(),
+                            AuraPropValue::Expr(crate::ast::Expr::Str(combined.into())),
+                        );
+                        props_with_fit.remove("style");
+                        self.push_style_class(&mut attrs, &props_with_fit);
+                    } else {
+                        self.push_style_class(&mut attrs, props);
+                    }
+                } else {
+                    self.push_style_class(&mut attrs, props);
+                }
             }
 
             // Plan 484: shadcn chart 族发射臂退役——裸名 bar-chart 等由

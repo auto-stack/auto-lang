@@ -4947,7 +4947,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         data
                     };
                     // Use cached handle to avoid flickering — same URL reuses the same Handle
-                    let inner: iced::Element<'static, M> = if src.ends_with(".svg") || src.contains("/svg") {
+                    let inner: iced::Element<'static, M> = if src.ends_with(".svg") || src.contains("/svg") || src.contains("image/svg+xml") {
                         let handle = get_or_create_svg_handle(&src, data);
                         let mut svg_widget = svg(handle);
                         if let Some(w) = eff_img_w { svg_widget = svg_widget.width(iced::Length::Fixed(w)); }
@@ -5108,6 +5108,21 @@ fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
             "ricepaper" => Some(WALLPAPER_RICEPAPER.to_vec()),
             "inkwash" => Some(WALLPAPER_INKWASH.to_vec()),
             _ => None,
+        }
+    } else if let Some(rest) = url.strip_prefix("data:") {
+        // Plan 606: Data URL support (SVG / PNG / JPEG / WEBP etc.)
+        // Format: data:[<mediatype>][;base64],<data>
+        if let Some(comma_pos) = rest.find(',') {
+            let meta = &rest[..comma_pos];
+            let payload = &rest[comma_pos + 1..];
+            if meta.contains(";base64") {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD.decode(payload.trim()).ok()
+            } else {
+                urlencoding::decode(payload).map(|s| s.into_owned().into_bytes()).ok()
+            }
+        } else {
+            None
         }
     } else if url.starts_with("http://") || url.starts_with("https://") {
         // os-007（P534-D4）：远程图源同步抓取加 3s 超时——此前裸
@@ -20629,6 +20644,23 @@ mod tests {
         registry.publish_ready(ticket.id, ticket.revision, std::sync::Arc::<[u8]>::from([0, 255, 2])).unwrap();
         assert_eq!(load_image_bytes(&uri), Some(vec![0, 255, 2]));
         assert!(load_image_bytes("relative/path.png").is_none(), "ordinary file fallback remains available");
+    }
+
+    #[test]
+    fn plan606_load_image_bytes_data_urls() {
+        // SVG data URL (utf8 / plain)
+        let svg_url = "data:image/svg+xml;utf8,<svg viewBox=\"0 0 10 10\"><circle cx=\"5\" cy=\"5\" r=\"4\"/></svg>";
+        let svg_bytes = load_image_bytes(svg_url).expect("SVG data URL should decode");
+        let svg_text = String::from_utf8(svg_bytes).expect("Valid utf8");
+        assert!(svg_text.contains("<svg") && svg_text.contains("circle"));
+
+        // Base64 data URL (1x1 PNG)
+        let png_b64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        let png_bytes = load_image_bytes(png_b64).expect("PNG base64 data URL should decode");
+        assert_eq!(&png_bytes[0..4], &[0x89, b'P', b'N', b'G']);
+
+        // Malformed data URL without comma
+        assert!(load_image_bytes("data:no-comma").is_none());
     }
 
     /// PLAN-530 步骤5 回归（B 内存崩塌主源）：lucide_svg 同名 icon 必须命中

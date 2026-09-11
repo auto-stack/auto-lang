@@ -1865,7 +1865,7 @@ impl<'a> AuraViewBuilder<'a> {
             "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
                 self.convert_image_surface(props, events, bindings)
             }
-            "img" | "image" | "icon" => self.convert_image_or_icon(props),
+            "img" | "image" | "icon" => self.convert_image_or_icon(props, bindings),
             "progress" => self.convert_progress(props, bindings),
             "spacer" => self.convert_spacer(props),
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
@@ -1876,7 +1876,7 @@ impl<'a> AuraViewBuilder<'a> {
             // avatar 容器转换子件；avatar-image 复用 img 图源臂；
             // avatar-fallback 走文本臂（居中由容器注入）。
             "avatar" => self.convert_avatar(props, children, bindings),
-            "avatar-image" => self.convert_image_or_icon(props),
+            "avatar-image" => self.convert_image_or_icon(props, bindings),
             "avatar-fallback" => self.convert_text_element(
                 "avatar-fallback",
                 props,
@@ -3454,7 +3454,7 @@ impl<'a> AuraViewBuilder<'a> {
             "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
                 self.convert_image_surface(props, events, bindings)
             }
-            "img" | "image" | "icon" => self.convert_image_or_icon(props),
+            "img" | "image" | "icon" => self.convert_image_or_icon(props, bindings),
 
             // Utility widgets
             "progress" => self.convert_progress(props, bindings),
@@ -3467,7 +3467,7 @@ impl<'a> AuraViewBuilder<'a> {
             // avatar 容器转换子件；avatar-image 复用 img 图源臂；
             // avatar-fallback 走文本臂（居中由容器注入）。
             "avatar" => self.convert_avatar(props, children, bindings),
-            "avatar-image" => self.convert_image_or_icon(props),
+            "avatar-image" => self.convert_image_or_icon(props, bindings),
             "avatar-fallback" => self.convert_text_element(
                 "avatar-fallback",
                 props,
@@ -6178,17 +6178,35 @@ let tabs_inner = View::Row {
     fn convert_image_or_icon(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
-
-        let style = self.extract_style(props);
+        let mut style = self.extract_style_with(props, bindings);
+        // Plan 606: fit prop -> StyleClass::ObjectFit
+        if let Some(fit) = self.extract_string_with(props, "fit", bindings) {
+            let class_str = match fit.as_str() {
+                "cover" => "object-cover",
+                "contain" => "object-contain",
+                "fill" => "object-fill",
+                "none" => "object-none",
+                "scale-down" => "object-scale-down",
+                _ => "",
+            };
+            if !class_str.is_empty() {
+                if let Ok(c) = StyleClass::parse_single(class_str) {
+                    let mut s = style.unwrap_or_default();
+                    s.classes.push(c);
+                    style = Some(s);
+                }
+            }
+        }
         // icon: name → "lucide:{name}" synthetic src
-        if let Some(name) = self.extract_string(props, "name") {
+        if let Some(name) = self.extract_string_with(props, "name", bindings) {
             if !name.is_empty() {
                 return View::Image { src: format!("lucide:{}", name), style };
             }
         }
-        // image: src as-is
-        let src = self.extract_string(props, "src").unwrap_or_default();
+        // image: src as-is with loop variable / state bindings support
+        let src = self.extract_string_with(props, "src", bindings).unwrap_or_default();
         View::Image { src, style }
     }
 
@@ -13575,6 +13593,92 @@ mod tests {
             }
             other => panic!("Expected View::Grid, got discriminant {:?}",
                 std::mem::discriminant(&other)),
+        }
+    }
+
+    #[test]
+    fn plan606_for_loop_image_resolves_bindings_and_fit() {
+        let widget = make_test_widget("Gallery", vec![
+            AuraStateDef {
+                name: "items".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: Expr::Str(String::new().into()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+
+        fn item(id: i32, thumb: &str, title: &str) -> Value {
+            let mut o = auto_val::Obj::new();
+            o.set("id", Value::Int(id));
+            o.set("thumb", Value::str(thumb));
+            o.set("title", Value::str(title));
+            Value::Obj(Box::new(o))
+        }
+        bridge.write_state(
+            "items",
+            Value::Array(auto_val::Array::from(vec![
+                item(1, "https://example.com/1.jpg", "Mountain"),
+                item(2, "data:image/svg+xml;utf8,<svg></svg>", "Bridge"),
+            ])),
+        ).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Gallery");
+
+        // grid { for it in .items { image (src: it.thumb, fit: "cover") } }
+        let for_loop = AuraNode::ForLoop {
+            var: "it".to_string(),
+            index: None,
+            iterable: ".items".to_string(),
+            body: vec![AuraNode::Element {
+                tag: "image".to_string(),
+                props: HashMap::from([
+                    (
+                        "src".to_string(),
+                        AuraPropValue::Expr(Expr::Dot(
+                            Box::new(Expr::Ident(".it".into())),
+                            "thumb".into(),
+                        )),
+                    ),
+                    (
+                        "fit".to_string(),
+                        AuraPropValue::Expr(Expr::Str("cover".into())),
+                    ),
+                ]),
+                events: HashMap::new(),
+                children: vec![],
+                span: None,
+                debug_id: None,
+            }],
+            span: None,
+            debug_id: None,
+        };
+        let grid = AuraNode::element("grid")
+            .with_prop("cols", Expr::Int(2))
+            .with_child(for_loop);
+
+        let view = builder.build(&grid);
+        match view {
+            View::Grid { cells, .. } => {
+                assert_eq!(cells.len(), 2, "for over 2 items -> 2 cells");
+                match &cells[0] {
+                    View::Image { src, style } => {
+                        assert_eq!(src, "https://example.com/1.jpg");
+                        let s = style.as_ref().expect("fit: cover -> style");
+                        assert!(
+                            s.classes.iter().any(|c| matches!(c, StyleClass::ObjectFit(crate::ui::style::ObjectFit::Cover))),
+                            "style should have ObjectFit::Cover"
+                        );
+                    }
+                    other => panic!("Expected View::Image, got {:?}", other),
+                }
+                match &cells[1] {
+                    View::Image { src, .. } => {
+                        assert_eq!(src, "data:image/svg+xml;utf8,<svg></svg>");
+                    }
+                    other => panic!("Expected View::Image, got {:?}", other),
+                }
+            }
+            other => panic!("Expected View::Grid, got {:?}", other),
         }
     }
 
