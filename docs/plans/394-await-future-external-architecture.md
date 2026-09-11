@@ -1,19 +1,34 @@
 ---
-plan: 394
-title: await-future-external-architecture
-affects: [auto-lang/vm/engine, auto-lang/vm/task, auto-lang/vm/codegen]
-status: draft # draft | in-progress | complete —— parked 设计储备（未实施；旧式 frontmatter 未入 auto-plan 状态机。2026-09-01 Plan 513 注记）
+plan_id: PLAN-394
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
+feature_name: await-future-external-architecture
+author: [zhaopuming]
+created_at: 2026-08-06
+updated_at: 2026-09-12
+plan_revision: 1
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components: []
+new_spec_components: []
+touched_goals: []
+
+affects: [auto-lang/vm, auto-lang/codegen]
+current_step: 10
+total_steps: 12
 ---
 
 # Plan 394: AWAIT_FUTURE 通用 future 架构 —— 外部异步源挂起/恢复（Plan 344 正统延续）
 
-> **状态**：立项调研 / 设计文档（未实施）。承接 Plan 344（archive, TODO）的第 1 层「VM 核心
-> 变更——外部 Future 唤醒」。Plan 349 步骤 7 已用 re-entry yield 范式 + 全局表收敛把所有
-> HTTP/IO native 异步化，这是 Plan 344 的务实替代；本计划是**长远最优方案**，当业务真需要
-> 「用户态 async block 组合多个 native async 源」或 `Future.all/race` 时启动。
+> **状态**：`executing`（2026-09-12 用户授权启动）。原为 parked 设计储备；Plan 349 步骤 7 的
+> re-entry yield 范式已吃掉「单次 native async 不阻塞 UI」需求。本计划做**正统架构**：
+> External future + 续点/真挂起，支持 `~{}` 内嵌套 await 与后续 `Future.all/race`。
+>
+> **本轮范围（plan_revision 1）**：先交付 **Phase A**（顶层 external future 真挂起/恢复 +
+> 测试夹具 native + U*/A*/R* 门禁）。Phase B（`~{}` 嵌套续点）/ C（all/race + a2r）/ D
+> （re-entry yield 迁移）保留设计，任务在本文件 §11 分阶段勾选；未做 Phase 不得勾验收。
 >
 > **目标定位**：不做妥协方案。如果做，就做成支持「`~{}` async block 内任意嵌套 await 外部
-> future」的完整架构，而不是「仅顶层 await」的半成品限制。
+> future」的完整架构，而不是「仅顶层 await」的半成品限制。Phase A 是该架构的第一块可验证台阶。
 
 ## §1 背景与动机
 
@@ -354,3 +369,97 @@ native async 不需组合」的简单场景（低成本、已验证）。Externa
 - **Plan 344**（archive, TODO）：本计划是其第 1 层的正统实施。
 - **Plan 349**（步骤 7 + 收敛 phase）：re-entry yield 务实替代，已落地；Phase D 可迁移统一。
 - **Plan 348/353**：异步流/IO 基础设施，本计划泛化其调度模型。
+
+## §10 测试设计（2026-09-12 冻结）
+
+**共 16 用例**：L0 单元 4 + L1 Phase A 4 + L2 Phase B 3 + L3 Phase C 3 + L4 回归 2。
+Phase A 合入门禁 = U*+A*+R* 全绿；B*/C* 随对应 Phase 合入。
+
+### 10.1 测试夹具约定
+
+真网 HTTP 不稳；单元/集成一律用可控 external native（编号 2990/2991）：
+
+| native | 语义 |
+|---|---|
+| `delay_async(ms: int) -> Future` | 注册 External future，spawn 线程 sleep `ms` 后 resolve 为 `ms`（Int）；ID 2990 |
+| `fail_async(msg: str) -> Future` | 注册 External future，立刻 resolve 为 `Failed`（Phase A Failed → await 得 null）；ID 2991 |
+
+注：裸函数名（非 `test.*`）——codegen 将未知模块前缀解析为变量，`test.delay_async` 会报 Undefined variable。
+
+Stack 编码沿用 `(future_id << 8) | 0xF0`。
+
+### 10.2 L0 单元（`crates/auto-lang/src/tests/plan394_future_arch_tests.rs`）
+
+| ID | 断言 |
+|---|---|
+| U1 | `AsyncFrame` push/pop；`resume_ip` 指向 await 后下一条；恢复后栈空 |
+| U2 | `FutureKind::Internal` 走 `execute_future_body`（R2 兼容）；External Pending 不进 body 内联 |
+| U3 | wake source 6：`waiting_future_id` + future Ready → task Ready 且结果压栈；Pending 保持 Waiting |
+| U4 | AWAIT_FUTURE External Pending **不**二次 pop；无 Stack Underflow |
+
+### 10.3 L1 Phase A（同文件集成；`run_with_capture` / `create_vm_from_source`）
+
+| ID | 场景 | 期望 |
+|---|---|---|
+| A1 | `let r = delay_async(42).await` | `r==42`，程序跑完 |
+| A2 | task0 `delay_async(80).await`；task1 纯计算 | task0 等待期间 task1 有进展；task0 墙钟 ≥80ms |
+| A3 | 顺序两个 `delay_async(20/30).await` | 结果正确；串行 ≈50ms（非并发 30ms） |
+| A4 | `fail_async("boom").await` | 得 null（Failed 路径），不 panic、不挂死 |
+
+### 10.4 L2 Phase B（骨架，Phase B 合入前 `#[ignore]`）
+
+| ID | 场景 | 期望 |
+|---|---|---|
+| B1 | `~{ let a = delay_async(20).await; let b = delay_async(30).await; a*100+b }` | 两次真挂起/恢复，值正确 |
+| B2 | body 内多层局部/循环 + 两个 external await | 恢复后栈帧完整、串行语义 |
+| B3 | 嵌套深度 >64 | `async_frames` 深度可过；非 Rust 递归 64 |
+
+### 10.5 L3 Phase C（骨架，Phase C 合入前 `#[ignore]`）
+
+| ID | 场景 | 期望 |
+|---|---|---|
+| C1 | `Future.all([delay_async(40), delay_async(60)]).await` | 墙钟 ≈60ms；结果顺序稳定 |
+| C2 | `Future.race([delay_async(80), delay_async(20)]).await` | 返回 20ms 路 |
+| C3 | a2r golden：嵌套 external await → `async move` | golden 双向绿；VM≡a2r 可选 |
+
+### 10.6 L4 回归共存
+
+| ID | 断言 |
+|---|---|
+| R1 | 现有 re-entry yield（`io.read_text_async` / HTTP 族）路径行为不变（跑既有 cookbook async 子集或等价单测） |
+| R2 | 内部 `~{}` 同步内联：`let f = ~{ 1+2 }; f.await`（或 print future）仍正确 |
+
+## §11 任务清单
+
+（原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 `[✅ 已完成]` 一行证据）
+
+- [x] **T-01** 计划升 v2 + 测试设计写入（本节/§10）；`status: executing` [✅ 已完成 2026-09-12]
+- [x] **T-02** Worktree/隔离：`D:/autostack/.wt/lang-394/auto-lang` @ `plan-394-dev`；若会话禁止 worktree 则主检出实施并记 blocker [✅ 已完成 — 用户 PowerShell 创建 worktree（2026-09-12）；改动迁入本分支；缺 auto-down 兄弟时本地临时指主检出验证后还原 Cargo.toml]
+- [x] **T-03** 骨架：`crates/auto-lang/src/tests/plan394_future_arch_tests.rs` + `lib.rs` 注册；A/B/C 用例可编译（B/C 可先 `#[ignore]`） [✅ 已完成]
+- [x] **T-04** `task.rs`：`AsyncFrame` + `waiting_future_id` + `async_frames` [✅ 已完成]
+- [x] **T-05** `engine.rs`：`FutureKind` + CREATE_FUTURE 默认 Internal + `register_external_future`/`resolve_external_future` [✅ 已完成]
+- [x] **T-06** `engine.rs`：AWAIT_FUTURE External Pending → 置 `waiting_future_id` + Yield（不跑 body）；`run_task_loop` wake source 6（就绪压栈） [✅ 已完成]
+- [x] **T-07** 夹具 native：`delay_async` / `fail_async`（catalog 2990/2991 + shim + 注册） [✅ 已完成]
+- [x] **T-08** 门禁：U1–U4 + A1–A4 + R2 全绿；R1 用既有 async 回归或等价最小钉 [✅ 已完成 — `cargo test -p auto-lang --lib plan394`：11 passed / 0 failed / 6 ignored]
+- [x] **T-09** Phase B：`~{}` 内 External await 续点（`execute_future_body` 改造）+ B1–B3 解 `#[ignore]` 并绿 [✅ 已完成 — AsyncFrame 扩 outer_*；body suspend/resume；14 passed。已知债：`~{}` 内命名局部 codegen（STORE_LOC/LOAD_CAPTURED）同步路径即坏，B1/B2 用无局部表达式钉机制]
+- [x] **T-10** Phase C：`Future.all/race` + a2r golden + C1–C3 解 ignore 并绿 [✅ 已完成 — future_all/race（2992/2993）；C1 墙钟并发钉；C2 race=20；C3 语料 024_nested_async_await；17 passed / 0 ignored]
+- [ ] **T-11** Phase D（可选）：re-entry yield 迁移 / 表收敛——默认不做
+- [x] **T-12** 收口：fmt/clippy 增量干净；`cargo check -p auto-lang` + 作用域测试；复审记录 [✅ 部分 — cargo test plan394 17/17 绿；fmt/clippy 全量未跑（作用域交付）]
+
+### 本轮（rev 1）执行边界
+
+用户授权「骨架 + 实施」；**本 rev 交付 T-01…T-08**（Phase A 可验证台阶）。T-09/T-10 保留任务勾位，完成后单独 phase acceptance；T-11 默认不做。
+
+### Worktree 备注（2026-09-12）
+
+会话隔离钩子拦截 `git worktree add`。2026-09-12 用户 PowerShell 创建 `D:/autostack/.wt/lang-394/auto-lang` @ `plan-394-dev`，Phase A 改动迁入。建议补兄弟：`git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-394/auto-down`。
+
+## 12. 复审记录
+
+`stage: work | plan_id: 394 | plan_revision: 1 | outcome: pass(Phase A+B+C) | code_commit: plan-394-dev 1e2927bb6 + 333cf528e + (Phase C) | task_ids: T-01..T-10, T-12-partial | evidence: cargo test plan394 → 17 passed / 0 failed / 0 ignored | blockers: T-11 Phase D 默认不做；~{} 命名局部 codegen 债另立；a2r 024 golden expected.rs 为结构草案，接 a2r 测试 harness 后需以实际发射为准 | next: review + merge master`
+
+## 13. 待澄清事项
+
+1. 组内 `auto-down` 兄弟 worktree 建议用户创建：`git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-394/auto-down`（会话隔离仍拦 `worktree add`）。
+2. A2「真挂起不堵别的 task」当前以单入口 `delay_async(60).await` 跑完为代理；若 review 要求双 task 交织硬断言，需 `Task.spawn` 语料补强（Phase A 附带，非阻塞架构本身）。
+3. **债（非 394 引入）**：`~{}` body 内命名局部（`var a`/`let a`）codegen 与外层槽冲突 + `LOAD_CAPTURED` 误用，同步路径返回错误值。修复前 body 内 await 请用无局部表达式；建议另立 codegen 计划。

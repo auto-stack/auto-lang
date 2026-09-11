@@ -6806,6 +6806,11 @@ mod plan510_pool_tests;
 #[path = "tests/plan608_dispatch_golden_tests.rs"]
 mod plan608_dispatch_golden_tests;
 
+// Plan 394：External future 真挂起架构（Phase A 门禁 + B/C 骨架）。
+#[cfg(test)]
+#[path = "tests/plan394_future_arch_tests.rs"]
+mod plan394_future_arch_tests;
+
 // os-007（origin PLAN-577/P534-D4）：avatar 家族渲染探针。
 #[cfg(test)]
 #[path = "tests/plan577_avatar_tests.rs"]
