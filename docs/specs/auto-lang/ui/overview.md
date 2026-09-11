@@ -193,8 +193,12 @@ Phase 3（style recipe 语言层）见 Design 29 §7。
 value-pinned）；②声明面：pac.at `theme: { extends/mode/colors }` 块解析
 （extends 链深 ≤4 防环、本声明最后胜、mode 沿链最近声明胜，未知 token 编译期
 错误；对象冒号形态），合成体 `decl::compose` 产物 `ComposedTheme` 与 builtin
-同类型，经 auto-man 消费（index.css 双 mode 块装配 + index.html
-`__AUTO_COMPOSED_THEME__` 运行时种子 write-if-unset）；③切换面：VM
+同类型，经 auto-man **双端消费**〔PLAN-609 双端消费对齐〕：vue 腿（index.css
+双 mode 块装配 + index.html `__AUTO_COMPOSED_THEME__` 运行时种子
+write-if-unset）+ VM 腿 boot（`run_vm_ui` 首帧前 `set_theme_composed` 激活
+〔env 种子块之后——声明只换 ACTIVE_THEME 色板槽，不清写 DARK_MODE/
+ACCENT_NAME；优先级链 CLI env > os-config/宿主 > pac.at 声明 > 内置缺省；
+无声明/坏声明回退内置缺省〕）；③切换面：VM
 `set_theme(name)`/`SetThemeName` 动词（ACTIVE_THEME 槽 + THEME_EPOCH 失效回路 +
 desktop_config `theme_name` 持久化 + **boot 读回激活**〔open_desktop 首帧前，
 复审 R1 补〕），vue `applyTheme` 运行时全变量写入（html inline light + `.dark`
@@ -203,13 +207,19 @@ boot 恢复），零 accent 面 app 零注入；④`dark:` 门控与 set_theme(b
 链路正交零回归；⑤accent 降维覆盖层（primary 槽，dark 提亮 +10 双端归一）；
 ⑥债收口 P593-D1..D5 全关（D1 accent 独立投影——81 处使用面有意视觉对齐、
 D3 ui_gen generate_base_css 退役、D5 CLI 双副本 registry 装配）+ **P601-T11
-开放债**（SVG 图形属性 token 通道缺失——图表主题跟随示范面受阻，settings-popover
-等裸名包组件 SFC 化缺口同族并档）。settings 选择器 UI 属 auto-os 资产面移交。
+开放债收窄〔PLAN-609 勘验修正〕**：settings-popover 类 `use` 引用的包组件
+SFC 断链已由 PLAN-609 收口（根因=dep 源死指非发射链缺口，auto-os 镜像
+回退+import/落盘一致性守卫成文）；开放债仅余 SVG 图形属性 token 通道缺失
+——图表主题跟随示范面受阻，charts 裸名 `<div :data>` 占位为 484 M4 有意
+形态（KNOWN-DEBT P601-T11）。settings 选择器 UI 属 auto-os 资产面移交。
 
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
-- `ui_gen/vue.rs:VueGenerator` · `ui_gen/api.rs` · `ui_gen/widget/registry.rs`（widget/chart 契约表）
+- `ui_gen/vue.rs:VueGenerator` · `ui_gen/api.rs` · `ui_gen/widget/registry.rs`（widget/chart 契约表；
+  **PLAN-609 后 use 引用的包组件必须落盘 `components/*.vue` 与 import 发射一致**
+  ——dep 源经 `resolve_dep_os_mirror` 按 resolve_os_top_dir 解析序回退 auto-os 镜像，
+  `auto run` 增量路径 Phase 1c 同步落盘，from_workspace 一致性守卫缺者 strict 硬错/非 strict 告警）
 - `ui/widget_registry.rs` · `ui/render_support.rs` · `ui/event_router.rs` · `ui/aura_view_builder.rs`
 - 桌面线：`ui/session.rs`（DesktopSession/AppSession + WmState/WmCommand/DM::Wm）·
   `ui/iced/virtual_window.rs`（VirtualWindow）· `ui/iced/renderer.rs`（view_desktop_fn/run_dynamic_iced_multi）·
