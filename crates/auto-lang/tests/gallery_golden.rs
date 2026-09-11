@@ -35,6 +35,15 @@ fn collect_at_files(dir: &Path, out: &mut Vec<PathBuf>) {
                 if p.file_name().map_or(false, |n| n == "package.at") {
                     continue;
                 }
+                // PLAN-614:纯 util 模块(tree_util.at——纯 pub fn 无 widget)
+                // 不是组件源,generate_component_from_file 对其报
+                // "No widget or store declarations"。按内容判定,包清单
+                // package.at 同款意图的内容化收编。
+                if let Ok(src) = fs::read_to_string(&p) {
+                    if !src.contains("widget ") {
+                        continue;
+                    }
+                }
                 out.push(p);
             }
         }

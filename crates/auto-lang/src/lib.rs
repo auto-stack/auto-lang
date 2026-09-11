@@ -6821,6 +6821,12 @@ mod plan577_breadcrumb_cycle_tests;
 #[path = "tests/gallery_pages_compile_tests.rs"]
 mod gallery_pages_compile_tests;
 
+// PLAN-614 临时探针:VM 轨模块 fn 对 Obj 嵌套 children/List/bool 参数行为
+// 隔离(tree 组件族 VM 端 first-light 排障;定位后可退役)。
+#[cfg(test)]
+#[path = "tests/p614_tree_vm_probe.rs"]
+mod p614_tree_vm_probe;
+
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]
 mod plan492_m2_tests;

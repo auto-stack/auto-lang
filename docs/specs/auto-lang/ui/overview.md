@@ -78,6 +78,19 @@ resvg 原生栅格化——svg 无 text 约束自此解除）+ hover emphasis/�
 三段式,哨兵 999）+ 边路由 bbox 交点直线 + head/tail 字形（arrow/diamond/circle）+
 line dash/thick。契约见 [design/diagram-components.md](design/diagram-components.md)；
 group 平铺/focus 模型归 Phase 2a，DSL 静态糖归 Phase 3。
+**tree 组件族（plan-614 落地）**：TreeView（通用受控树，Ant Tree/MUI
+RichTreeView 数据轨：nodes 嵌套 record + expanded/selected 受控 +
+on_toggle/on_select 回调契约，PLAN-037 T3 通道 payload=首实参）+ FileTree
+（文件系统树自包含预设：default_expanded 播种、folder/folder-open/扩展名
+图标、badge）+ TreeIcon 有界调色板（vue 轨 icon 字面量名约束的分支式
+真 lucide 发射）。渲染 = flatten-to-rows（显式栈迭代 DFS 拍平成可见行序列，
+纯 Auto 经 Plan 522 use-fn 双端同源）+ pl-4 阶梯缩进（depth>8 钳制，字面量
+随 SFC 转译进 JIT 扫描面）。载体 widgets-gallery components/
+{tree_util,treeview,filetree,tree_icon}.at + treeview/filetree 两页
+（Display 分组，63 Widgets）。VM 轨组件侧纪律成文：纯 fn 列表遍历 while+索引
+（for-in 参数列表零次迭代）、Obj 字面量形状锁定全键书写、同名子组件全画廊
+单实例（P320）、view f-string 禁方法调用；P614-C1（MCP press 子组件行崩溃）
+挂账待引擎立项。契约见 [design/tree-components.md](design/tree-components.md)。
 
 **导航组件线（plan-482 落地，✅ plan-562 退役）**：nav/nav-group/nav-item/nav-link
 族已全部迁移至 sidebar_* 族并退役——仓内 015-notes/018-book-reader/019-video-app +
