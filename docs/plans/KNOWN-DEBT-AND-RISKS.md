@@ -1905,4 +1905,8 @@ Design 29 Phase 1（token 单源化）执行期的证据门裁定与 S1 对账�
   序列期替换，view 重建随 epoch 刷新；vue: 语义名→style 属性 var() 发射），
   属跨管线协议特性，非单计划任务量。附带缺口：vue 腿裸名包组件
   （line-chart 等 484 M4 裸名原语）现发射数据绑定占位 `<div :data=...>`
-  而非 SFC 组件引用。触发条件：主题切换示范面（三主题截图对拍）立项时。
+  而非 SFC 组件引用；**同族并档（601 复审 R3）：`use settings:
+  SettingsPopover` 包组件同缺 SFC 发射**——006-hero-section/015-notes
+  生成 App.vue imports SettingsPopover.vue 不存在，`auto run`（vue 模式）
+  vite 解析断链（复审实机复现；全新 gen 需手工桩方可启动）。触发条件：
+  主题切换示范面（三主题截图对拍）立项时一并收口。
