@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-609
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: theme-capability-closeout（PLAN-601 后续：theme{} 双端消费对齐 + 包组件 SFC 发射修复）
 author: [zhaopuming]
 created_at: 2026-09-11
@@ -273,6 +273,36 @@ charts 异根裁定债记 KNOWN-DEBT P601-T11；T-A 三段 boot 单测 + 双端�
 逐键对拍绿；门禁：日常档红集合 22 与 master 全等、auto-man 279/279、
 theme 面 36/36、fmt 零新增 | blockers: 无（015 后端 panic=8080 AddrInUse
 环境碰撞，非本修复面）| next: review`）
+
+（review 2026-09-11：`stage: review | PLAN-609 r1 | outcome: pass |
+reviewed_commit: 596a871417a28f0af20151e0019dc6cdcbe4f1ae（worktree 干净）
+| base_commit: 1e834db38 | dependency_revisions: auto-down detached
+1557a39（仅构建依赖，零修改）| spec_inputs:
+docs/specs/auto-lang/ui/overview.md（SD-01 落点 line196「经 auto-man
+消费（index.css+运行时种子）」、SD-02 落点 line212 关键入口 ui_gen 行，
+before 均核实）| acceptance_results: AC-01 pass（三段 boot 单测重跑绿：
+合成名上槽/resolve==合成体/mode+accent 不清写；无声明与坏 extends 负例
+绿；theme 面 36/36）| AC-02 pass（plan609_theme_decl_dual_face_same_source
+重跑绿：CSS 逐键携带+VM resolve==CSS 值串解析+覆盖键规范化落位）|
+AC-03 pass（复审重执行：006 删 gen/.auto 全新 auto run——vite ready 零
+Failed to resolve import，root/App.vue/SettingsPopover.vue 三探针 200，
+生成件与 09-02 已知良好件 diff 空；015 三组件 vite transform 全 200）|
+AC-04 pass（charts 异根裁定工件在案 §5+KNOWN-DEBT P601 债务节；
+test_charts_gallery_compiles 绿）| AC-05 pass（复审重跑双侧日常档：
+稳定红核 21 条 diff 空；两侧各现一次互异瞬时单红
+〔plan425@master / ffi_dual_019@worktree〕单跑均过不跨侧复现=资源抖动；
+另 cargo tf 复审档 3506/3506 全绿、auto-man 279/279）| findings:
+R-1 规范注记（非阻断，合并沉淀时处理）——overview.md line205-207
+P601-T11 开放债句「settings-popover 等裸名包组件 SFC 化缺口」应收窄：
+609 实证 settings-popover 断链根因=dep 源死指（本计划已收口），
+开放债仅余 charts 裸名占位（484 M4 有意形态）；R-2 观察项（非阻断）——
+运行 015 邻接测试套/冒烟会以现行 api_gen 输出重写
+examples/rust-workspace/ 入库样例（生成器与入库副本预存漂移），复审期
+已两次还原，建议后续独立小债登记 | evidence: 本记录命令与结果均为复审
+会话独立重执行；同会话复审限制已声明，以工件重建裁决 |
+supersedes_spec_components: []（两笔 SD 均为 overview.md 条目内 modify，
+无 retire/新增组件——空集说明）| new_spec_components: []（同前）|
+touched_goals: [GOAL-007] | next: merge`）
 
 ## 10. 待澄清事项
 
