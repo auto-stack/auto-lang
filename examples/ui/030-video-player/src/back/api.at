@@ -1,0 +1,29 @@
+// api.at — 030-video-player backend API.
+// Video tracks listing and details.
+
+pub type VideoTrack = {
+    id: int
+    title: str
+    file_name: str
+    duration_str: str
+    duration_sec: int
+    resolution: str
+    codec: str
+    size_str: str
+    bg_gradient: str
+    video_url: str
+}
+
+use db
+
+/// GET /api/playlist — list all available video tracks.
+#[api(method = "GET", path = "/api/playlist")]
+pub fn playlist() []VideoTrack {
+    return db.all_tracks()
+}
+
+/// GET /api/track/:id — get a specific track by id.
+#[api(method = "GET", path = "/api/track/:id")]
+pub fn get_track(id int) ?VideoTrack {
+    return db.find_track(id)
+}

@@ -1172,6 +1172,30 @@ impl<'a> Parser<'a> {
         }
 
         // Return Type::User with just the name so generators can use it
+        // Plan 599 (004 S5-4): F6 formalized -- when an unresolved type name
+        // is passed through as a User placeholder, emit a one-time
+        // (process-deduped) warning so typos no longer silently produce
+        // invalid target code; the passthrough semantics itself is unchanged
+        // (foreign names rely on it).
+        {
+            // Opt-in via env: full-corpus runs showed lookup_type is fed many
+            // non-type/lowercase idents and intentional foreign types alike —
+            // default-on would be pure noise. AUTO_WARN_UNRESOLVED_TYPES=1
+            // enables the one-shot deduped warning (dedupe per process).
+            if std::env::var_os("AUTO_WARN_UNRESOLVED_TYPES").is_some() {
+                static WARNED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+                    std::sync::OnceLock::new();
+                let warned = WARNED.get_or_init(Default::default);
+                if let Ok(mut set) = warned.lock() {
+                    if set.insert(name.to_string()) {
+                        eprintln!(
+                            "[type warning] unresolved type name '{}' passed through as opaque",
+                            name
+                        );
+                    }
+                }
+            }
+        }
         shared(Type::User(TypeDecl {
             consts: Vec::new(),
             name: Name::from(name),
@@ -11387,8 +11411,24 @@ impl<'a> Parser<'a> {
                 self.next(); // consume 'dyn'
                 let trait_type = self.parse_type()?;
                 // Use the trait's display name (e.g. "Client")
-                let trait_name = trait_type.unique_name().to_string();
-                let dyn_name = format!("dyn {}", trait_name);
+                let mut dyn_name = format!("dyn {}", trait_type.unique_name());
+                // Plan 599 (004 §5④): `+ Send [+ Sync]` marker-trait bounds —
+                // engine shapes need Box<dyn MasterPty + Send> (the reader-
+                // thread field spelling). Appended verbatim to the spelling.
+                while self.is_kind(TokenKind::Add) {
+                    self.next(); // consume '+'
+                    if !self.is_kind(TokenKind::Ident) {
+                        return Err(SyntaxError::Generic {
+                            message: "dyn trait object: expected trait name after '+'"
+                                .to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                    let bound = self.cur.text.clone();
+                    self.next();
+                    dyn_name.push_str(&format!(" + {}", bound));
+                }
                 Ok(Type::User(TypeDecl {
                     consts: Vec::new(),
                     name: dyn_name.into(),

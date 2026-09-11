@@ -62,6 +62,11 @@ test('T5: 视频卡片点击进入观看页 (/watch/:id URL 变化 + 详情呈�
   expect(body).toContain('CodeMaster')
   expect(body).toMatch(/About this video/i)
   expect(body).toContain('Related Videos')
+
+  // 验证真实 <video> 标签存在且有效绑定首个视频源
+  const video = page.locator('video')
+  await expect(video).toBeVisible()
+  await expect(video).toHaveAttribute('src', /BigBuckBunny\.mp4/)
 })
 
 test('T6: 点赞与播放计数交互 (点击点赞 likes 增加)', async ({ page }) => {

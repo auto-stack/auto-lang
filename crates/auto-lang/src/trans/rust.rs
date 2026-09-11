@@ -8499,9 +8499,13 @@ impl RustTrans {
                         return Ok(());
                     }
                     write!(out, "(")?;
-                    // Add `move` for thread::spawn closures (captured locals need 'static)
+                    // Add `move` for thread::spawn closures (captured locals need 'static).
+                    // Plan 599: skip when the closure already opted in via
+                    // `move (..) => ..` — emitting both produced `move move ||`.
                     if method_name == "spawn"
-                        && call.args.args.first().map_or(false, |a| matches!(a, Arg::Pos(Expr::Closure(_))))
+                        && call.args.args.first().map_or(false, |a| {
+                            matches!(a, Arg::Pos(Expr::Closure(c)) if !c.is_move)
+                        })
                     {
                         write!(out, "move ")?;
                     }
@@ -8744,9 +8748,12 @@ impl RustTrans {
             // Plan 395: explicit generic type args → Rust turbofish
             self.emit_turbofish_args(call, out)?;
             write!(out, "(")?;
-            // Add `move` for thread::spawn closures (captured locals need 'static)
+            // Add `move` for thread::spawn closures (captured locals need 'static).
+            // Plan 599: skip when already `move (..) => ..` (double `move move ||`).
             if obj_is_type_chain && method_name == "spawn"
-                && call.args.args.first().map_or(false, |a| matches!(a, Arg::Pos(Expr::Closure(_))))
+                && call.args.args.first().map_or(false, |a| {
+                    matches!(a, Arg::Pos(Expr::Closure(c)) if !c.is_move)
+                })
             {
                 write!(out, "move ")?;
             }
@@ -15897,6 +15904,13 @@ impl RustTrans {
             }
             if has_taskref_field {
                 writeln!(sink.body, "#[derive(Debug)]")?;
+            } else if has_dyn_field {
+                // Plan 599 (004 §5④): a `dyn Trait` field only derives if the
+                // trait's supertraits provide it — for unconstrained FOREIGN
+                // traits (the engine shape, Box<dyn MasterPty + Send>) even
+                // Clone/Debug fail (E0277). Emit no default derives; explicit
+                // `#[derive(...)]` attrs passthrough covers bounded traits.
+                self.ord_restricted_names.insert(type_decl.name.clone());
             } else {
                 let mut traits = String::from("Clone, Debug");
                 if cmp & Self::D_PE != 0 {

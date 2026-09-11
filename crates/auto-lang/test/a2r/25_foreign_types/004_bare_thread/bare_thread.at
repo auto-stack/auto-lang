@@ -1,0 +1,14 @@
+// Plan 599 (004 §5④-4): bare thread + blocking call — the engine reader-
+// thread shape via std passthrough (A-route, T-01 verdict: zero runtime
+// deps). `thread::spawn(move () => ..)` + join; blocking sleep inside.
+use.rs std::thread
+use.rs std::time::Duration
+
+fn main() {
+    let handle = thread::spawn(move () => {
+        thread::sleep(Duration.from_millis(50))
+        return 41
+    })
+    let v = handle.join().unwrap()
+    print("bare_thread_ok ", v)
+}

@@ -3243,6 +3243,12 @@ export default router
             );
         }
 
+        // Plan 457: Materialize bundled shadcn-vue UI components (button, etc.)
+        self.materialize_ui_components()?;
+
+        // Generate TypeScript API client if api.at exists
+        let _ = crate::api_gen::generate_api(&self.root_dir, "vue");
+
         // Write project files
         write_project_files(
             &self.output_dir,

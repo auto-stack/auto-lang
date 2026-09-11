@@ -1,0 +1,58 @@
+// Plan 599 (004 §5④) capstone: the term.rs-subset round-trip, four foreign
+// capabilities in one corpus (S2 spike shape, extended):
+//   ① foreign generic field  — TermSession.term: FakeTerm<ChannelListener>
+//   ② foreign trait impl     — ext ChannelListener for EventListener /
+//                              ext GridSize for Dimensions (real dispatch:
+//                              the stub core calls back through our impl)
+//   ③ trait-object field     — TermSession.master: Box<dyn FakeMaster + Send>
+//   ④ bare thread            — covered by 004_bare_thread (TermSession subset
+//                              has no thread face; reader-thread shape there)
+// Product vs hand-written oracle: black-box stdout parity (a2r gate test).
+use.rs std::boxed::Box
+use.rs fake_core::{FakeTerm, EventListener, Dimensions, FakeMaster, RealMaster}
+
+type GridSize {
+    cols int
+    rows int
+}
+
+ext GridSize for Dimensions {
+    fn area() int {
+        return .cols * .rows
+    }
+}
+
+enum Damage {
+    Full
+    Lines(List<int>)
+}
+
+type ChannelListener {
+    hits int
+}
+
+ext ChannelListener for EventListener {
+    fn on_event(code int) int {
+        return .hits + code
+    }
+}
+
+type TermSession {
+    term FakeTerm<ChannelListener>
+    size GridSize
+    master Box<dyn FakeMaster + Send>
+}
+
+fn main() {
+    var term = FakeTerm.new(Box.new(ChannelListener { hits: 5 }))
+    let size = GridSize { cols: 80, rows: 24 }
+    let area = size.area()
+    term.feed(3)
+    let drained = term.drained()
+    let echo = term.echo()
+    print("area=", area)
+    print("drained=", drained)
+    print("echo=", echo)
+    let session = TermSession { term: term, size: size, master: Box.new(RealMaster.new()) }
+    print("session_ok ", session.term.echo())
+}

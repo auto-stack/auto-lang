@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-601
-status: reviewed                 # drafting → executing → execution_done → reviewed → archived（re-review pass 2026-09-10）
+status: archived                   # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: theme-declaration-hot-switch（Design 29 Phase 2）
 author: [zhaopuming]
 created_at: 2026-09-09
@@ -247,6 +247,15 @@ f32 常量翻译为 registry 值的派生函数，编辑器色域映射成文）
   [✅ 已完成] 2026-09-10：日常档全量（--no-fail-fast）4726 测 4705 绿 **21 红 = master 基线 22 红 − test_charts_gallery_compiles（本计划修复），集合对拍零新增红**；`cargo tv` 3639/3639 全绿（cb_web_mime 首跑 flake 单测复跑双树绿，在案）；`cargo tf` 3495/3495 全绿；auto-man 274/274 + auto 11/11。门禁注记：`.config/nextest.toml` fail-fast 使裸 `cargo t` 在首失败二进制后取消余量（3523 not run），全量红集合裁定须 `--no-fail-fast`；`cargo test -p auto-man` 会再生成 examples/rust-workspace/015-notes 产物（master 同样漂移，非本计划引入，还原处置）。
 
 ## 9. 复审记录
+
+（merge 2026-09-10：`stage: merge | PLAN-601:r1 | outcome: pass |
+delivery_commit: 70d7319d1@master（merge plan-601-dev no-ff；分支头 fde34a1b8+规范增量 04c6fdd71）|
+prepared: 04c6fdd71（SD-01/02/03 落稿 ui/overview.md+KNOWN-DEBT R3 并档）;landed: 70d7319d1（master 祖先含分支全量,KNOWN-DEBT 两侧保留解冲突）;ledger_refreshed: ui/plans.md 601 行+INDEX 重生幂等（specs.json=运行时台账,无活服务不触,循 604 先例）;archived: docs/plans/archive/601-theme-declaration-hot-switch.md status:archived;cleaned: 见尾注 |
+canonical_spec_paths: docs/specs/auto-lang/ui/overview.md（601 条目/design_tokens 行/code_editor 行）|
+consolidation note: 601 会话合并期间与并行 604 会话在主检出交叠——604 归档件曾被 cccfa462f 误删,由 604 会话 a76fd24b8 自愈;601 计划文件亦曾被 604 合并回退,本次以 2d05e84d9 内容恢复后归档（status 补正链:execution_done→reviewed→archived 全记录在案）|
+next: cleaned 后终态`）
+
+（cleaned 2026-09-10：`checkpoint: cleaned | wt-guard: clean（探针 pnpm node_modules junction 族经守护拦截→cmd rmdir 逐链接+整树不穿透清除后过闸）| worktree: D:/autostack/.wt/lang-601/auto-lang 已移除（树净,gen 缓存件同步清除）| branch: plan-601-dev 已删（was d2cb26e1a,完全包含于 master）| group dir: .wt/lang-601/ 保留（兄弟 auto-down worktree 存续）| 终态: delivered`）
 
 （re-review 2026-09-10·R1 面：`stage: review | PLAN-601 r1 | outcome: pass → reviewed |
 reviewed_commit: fde34a1b8@plan-601-dev（基于 23a5a7d50 + R1 修复,树净）|
