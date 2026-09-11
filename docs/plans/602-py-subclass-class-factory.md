@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-602
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: py-subclass-class-factory
 author: [ZCode]
 created_at: 2026-09-09
@@ -14,7 +14,7 @@ touched_goals:
   - "GOAL-006"                # Consumer parity：py 子类派生 = torch 全面支持的主台阶（暂定，review 定稿）
 
 affects: [auto-lang/vm, auto-lang/trans, parity]
-current_step: 3
+current_step: 9
 total_steps: 10
 ---
 
@@ -316,12 +316,23 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
   [✅ 已完成 2026-09-11] KNOWN-DEBT P539-D4 拆面销账（类工厂 ✅/多线程
   泵 open 归长期 ⑧ 联动）；§7.4 ⑦ 核销注记 + 行尾矛盾表述清理；⑧ 保持
   条件立项原文不动。commit 714fa6656。
-- [ ] **T-08** 回归门禁：cargo tv + tt 全绿（唯预存红）；p5-p9 + p12
+- [x] **T-08** 回归门禁：cargo tv + tt 全绿（唯预存红）；p5-p9 + p12
   相位全绿。
   验证：门禁命令输出留痕。
-- [ ] **T-09** 收口健康检查：探针残留扫描；fmt 增量干净（新代码
+  [✅ 已完成 2026-09-11] cargo tv 3659/3659 全绿（491 skip，零回归）；
+  cargo tt --no-fail-fast 与基线完全同红（a2r_rustc_real_compile_gate +
+  c_abi_003/004 预存 + ffi_dual_019 并发抖动，master 对照在案，零新增）；
+  parity p5(20+13)/p6(5+12+3)/p7(5+5+5+8)/p8(10+8+3+7)/p9(18+10)/p12(4)
+  全部 100% 一致。
+- [x] **T-09** 收口健康检查：探针残留扫描；fmt 增量干净（新代码
   rustfmt 通过，不动既有 fmt 噪音）；库 README/parity-guide 抽查。
   验证：三件套输出留痕。
+  [✅ 已完成 2026-09-11] ①残留扫描：全 diff grep dbg/eprintln/todo/FIXME
+  零命中（调试插桩已全部移除）；②fmt：新增区域干净——唯一告警块=
+  a2py `_auto_subclass` helper 的多行 byte-string 写法，与邻接存量
+  `_auto_may` 同 idiom、被 rustfmt 同等告警，归既有 fmt 噪音档不单独
+  改形（py_ffi.rs 3175 同为存量测试）；③README 已成文（self 首参/
+  n 参 ABI/窗口纪律/Str 方法自包含/base 模块 getattr 惯用法）。
 - [ ] **T-10** fold 前 `cargo tf` 全量门 → 复审记录留痕（review 阶段
   执行，此处置 [ ] 由 review 勾选）。
 
@@ -330,6 +341,21 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
 （起草交接：stage=new | plan_id=PLAN-602 | rev=1 | outcome=pass |
 next=work。范围锚定：W3 类派生 MVP = bridge API + Auto 驱动循环 +
 num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
+
+**work 收口记录（2026-09-11，stage=work | plan_id=PLAN-602 | rev=2 |
+outcome=pass | code_commit=1281f7804（worktree plan-602-dev，基线
+6ed8b1e33）| task_ids=T-01..T-09（T-10 留 review）| blockers=无 |
+next=review（/auto-plan:review，T-10 cargo tf 全量门在其执行）**
+
+执行链：审计改号 p12 → T-01 重同步基线 → T-02 D1 n 参封送（e1c94165f）
+→ T-03 D2 工厂臂（同上）→ T-04 D3 a2py 轨（c78025259）→ T-05 D4 语料
+三轨 4/4（06553c1d6）→ T-06/T-07 契约化+销账（714fa6656）→ T-08/T-09
+门禁+健康检查。验收映射：AC-01（语料 1/2 + py_ffi 单测）、AC-02（语料 1
++ py_call0 实证）、AC-03（语料 2/3）、AC-04（窗口单测守卫 + 重入探针 +
+§7.3 契约节——负面语料改单测钉死的适配见 §10-5A 注记）、AC-05（tv 全绿
+/tt 唯 3 预存红/相位全 100%；tf 留 review）、AC-06（KNOWN-DEBT 拆面 +
+§7.4 ⑦ 核销）。规范增量 SD-01/SD-02 待 merge 沉淀（vm/overview py 桥
+480→481、frontend/overview a2py helper），SD-03 已随 T-06 落地。
 
 **执行前复审审计（2026-09-11，stage=work | rev=2 | 基线 1ed892643..master
 164 提交）**：计划起草于 2026-09-10 00:02，其后 master 前进 164 提交
@@ -365,6 +391,16 @@ num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
    开销不可接受再复议（决策已定，此条留痕供 review 追认）。
 4. **p12 vs 并入 p9**：新套件注册为独立 phase p12（torch 子类专题；原案 p11 与 PLAN-591 uuid_real 冲突，2026-09-11 执行前审计改号，见 §9 审计记录）；
 5. **执行期适配注记（T-02/T-03 实证，2026-09-11）**：
+  D. **closure 内 py_*_may 调用 arg-count 字节错误（存量 codegen 怪癖，
+  语料绕开）**——`py_call_may(x, "m").?` 在主层级 count=2 正常、在闭包
+  体内编译出 count=1（shim 报 "needs at least 2 args, got 1"，CM-DEBUG
+  插桩实证）；语料绕开（闭包内改 py_call0/py_getattr 组合）。**未修**，
+  超本计划范围（s2s/codegen 子系统），建议后续独立小计划；a2py 轨同形
+  无恙（lambda 直译）。本套件四案已按绕开形态三轨一致。
+  E. **`py_call(绑定方法句柄)` 单参形态经 may 化后不支撑**——s2s 把
+  `py_call(handle)` 改写为 `py_call_may(handle).?`（1 参），而
+  py_call_may shim 要求 ≥2 参（obj, method）。语料统一方法名形态
+  （`py_call(sgd, "zero_grad")`）。同族存量面，与 D 同档登记。
   A. **PyCFunction 非 descriptor**——计划原案"setattr(cls, name, pycfunc) 后
   Python 调用时 self 自然作首参传入"不成立（builtin_function_or_method
   无 __get__，类属性不绑 self，等价 staticmethod）。改为：回调经 exec 模板
