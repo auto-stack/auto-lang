@@ -65,8 +65,12 @@ fn stripped() -> &'static Mutex<HashMap<(String, String), Vec<StrippedCall>>> {
 /// （PascalCase），精确匹配 miss 是跨 widget 派发断点的根因（musk
 /// PLAN-059 T2 定案）。widget 名与回调键都折叠：两侧任意侧大小写漂移
 /// 不再丢路由。
+/// PLAN-614 R1: 键下划线剥离——snake 形声明（`on_toggle`）与派发侧
+/// "on"+Pascal 构造键（`onToggle`→`ontoggle`）经小写折叠后仍差一个
+/// `_`，声明式回送全量 miss（树组件 chevron/行点击静默无效实证）。
+/// 折叠时剥离 `_`，`on_toggle`/`onToggle`/`ontoggle` 三形归一。
 fn fold_key(widget: &str, key: &str) -> (String, String) {
-    (widget.to_lowercase(), key.to_lowercase())
+    (widget.to_lowercase(), key.to_lowercase().replace('_', ""))
 }
 
 /// 视图构建期记录一条子→父回调路由（同键后写覆盖）。
@@ -112,8 +116,8 @@ mod tests {
     use super::*;
 
     /// PLAN-533 T1: 路由表键两侧大小写折叠。父模板声明 `onsend`（全小写），
-    /// 派发侧按 "on"+msg 变体名构造 `onSend`（PascalCase）——精确匹配 miss
-    /// 是 musk PLAN-059 T2 定案的跨 widget 派发断点根因。
+    /// 派发侧按 "on"+msg 变体名构造 `onSend`（PascalCase），精确匹配 miss
+    /// 是跨 widget 派发断点的根因（musk PLAN-059 T2 定案）。
     #[test]
     fn route_keys_fold_case_on_both_sides() {
         record_route(
@@ -131,6 +135,44 @@ mod tests {
         assert!(lookup_route("t533widgeta", "ONSEND").is_some());
         // 未声明的回调键不误命中。
         assert!(lookup_route("T533WidgetA", "onCancel").is_none());
+    }
+
+    /// PLAN-614 R1: 键下划线剥离——snake 形声明（`on_toggle`）与派发侧
+    /// "on"+Pascal 构造键（`onToggle`）折叠后差一个 `_`，声明式回送全量
+    /// miss（树组件 chevron/行点击静默无效）。三形归一后命中同一槽位；
+    /// 不同回调键（on_toggle vs on_select）剥离后仍互不误命中。
+    #[test]
+    fn route_keys_strip_underscores() {
+        record_route(
+            "T614Widget",
+            "on_toggle",
+            ParentRoute {
+                parent_widget: "T614Host".into(),
+                handler: "TvToggle".into(),
+                params: vec![],
+            },
+        );
+        record_route(
+            "T614Widget",
+            "on_select",
+            ParentRoute {
+                parent_widget: "T614Host".into(),
+                handler: "TvSelect".into(),
+                params: vec![],
+            },
+        );
+        // 派发侧 "on"+Pascal 构造键（snake 声明）→ 命中。
+        assert!(lookup_route("T614Widget", "onToggle").is_some());
+        assert!(lookup_route("T614Widget", "onSelect").is_some());
+        // 全小写无下划线形同样命中。
+        assert!(lookup_route("t614widget", "ontoggle").is_some());
+        // 键与键不串线。
+        let hit = lookup_route("T614Widget", "onToggle").unwrap();
+        assert_eq!(hit.handler, "TvToggle");
+        let hit2 = lookup_route("T614Widget", "onSelect").unwrap();
+        assert_eq!(hit2.handler, "TvSelect");
+        // 未声明的回调键不误命中。
+        assert!(lookup_route("T614Widget", "onCancel").is_none());
     }
 
     /// PLAN-533 T1: STRIPPED 表键（widget, event）同样两侧折叠——
