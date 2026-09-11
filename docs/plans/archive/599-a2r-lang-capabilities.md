@@ -253,6 +253,8 @@ evidence: 复审会话内重执行;双门+real gate 修复后全绿 | next: merg
   P599-1..6 六节各 +1,file→archive/599-*.md;无关条目保全
 - archived: docs/plans/archive/599-a2r-lang-capabilities.md(git mv)+
   status: archived + completion_kind: delivered
-- cleaned: (待清理执行后回填)
+- cleaned: 双 wt-guard clean(.wt/lang-599/auto-lang + auto-down)→
+  worktree remove×2 + 分支 plan-599-dev(已合,-d 安全)/plan-599-dep 删除 +
+  组目录 .wt/lang-599 空删;worktree list 复核(他组未扰)
 - 移交: auto-term 侧 004 §5④ 回执已在 edfbc6a 入库(与 595/597 同批);
   findings F2(benchmark 抖动)/F3(020=596 在途)info 级在案
