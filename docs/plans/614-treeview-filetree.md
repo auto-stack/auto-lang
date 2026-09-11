@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-614
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived(2026-09-11 work 交付,next=review)
 feature_name: TreeView + FileTree 组件(official 包数据轨)与 WidgetGallery 落地
 author: [zcode]
 created_at: 2026-09-11
@@ -15,8 +15,8 @@ touched_goals:
   - "GOAL-007: AutoUI 跨端视觉一致(Vue/VM 双端 parity 锁定)——tree 组件族双端同源:同一 .at 组件源经 use-fn 转译(vue)/import_aliases(VM)双轨渲染,受控契约规避 VM P320 单态串扰"
 
 affects: [docs/specs/auto-lang/ui, auto-os/widgets-gallery]
-current_step: 0
-total_steps: 8
+current_step: 8
+total_steps: 9
 ---
 
 # [PLAN-614] TreeView + FileTree 组件(official 包数据轨)与 WidgetGallery 落地
@@ -312,35 +312,14 @@ VM 大改触发面:本计划**不改 VM/编译器**(`cargo tv` 不触发);aavm �
 > 跨仓计划(Plan 529 分组平铺):`.wt/lang-614/{auto-lang, auto-os}` 双 worktree;
 > 计划簿记(本文件勾选/frontmatter)在 auto-lang 主检出;代码在 worktree。
 
-- **T-01 建组** [auto-lang master + auto-os main]
-  master 提交 `.next-id`+本计划骨架;`git worktree add D:/autostack/.wt/lang-614/auto-lang -b plan-614-dev`;
-  `git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-614/auto-os -b plan-614-dev`。
-  验证:两 worktree `git status` clean,分支名正确。
-- **T-02 first-light:tree_util + TreeView 骨架 + 最小页** [auto-os worktree]
-  `components/tree_util.at`(flatten_tree/toggle_id 先行)、`components/treeview.at`
-  (受控全签名,行渲染简化版)、`pages/treeview.at`(Basic 单卡)、app.at 路由+侧边栏
-  两项。验证:`AUTO_OS_ROOT=... cargo t gallery_pages`(过)后,worktree 画廊
-  `auto run` 与 `auto run -r vm` 双端:chevron 往返 + 行选中 + payload 回调
-  (on_toggle/on_select)双端生效——payload 链路不通则启动回退预案(§架构方案)。
-- **T-03 TreeView 组件与页面完整化** [auto-os worktree]
-  directory 模式 + 图标解析入 flatten_tree;collect_ids;页面四卡+属性表+任意形状
-  数据(AC-04)。验证:双端目检四卡;`cargo t gallery_pages`。
-- **T-04 FileTree 组件与页面** [auto-os worktree]
-  `components/filetree.at`(map_fs_nodes+自包含态)、`pages/filetree.at`(两卡+属性
-  表)、路由。验证:双端目录图标切换/默认展开/选中;`cargo t gallery_pages`。
-- **T-05 gallery 布线收口** [auto-os worktree]
-  index.at 两张 component-card + 计数 63;侧边栏图标核对(VM lucide 表);README
-  计数核对(如有)。验证:首页卡可跳转(双端);`cargo t gallery_pages`。
-- **T-06 规范沉淀** [auto-lang worktree]
-  `docs/specs/auto-lang/ui/design/tree-components.md` 新建 + overview.md tree 段 +
-  plans.md 614 行 + INDEX 重生 + `.autoos/specs.json` upsert(merge 技能收口前 provisional)。
-  验证:`python scripts/spec-index.py` 干净退出。
-- **T-07 golden 重基线 + 门禁** [auto-lang worktree]
-  `GALLERY_GOLDEN_UPDATE=1 cargo test -p auto-lang --test gallery_golden` → 人工
-  复核 fixtures diff → 裸跑二次稳定;`cargo check -p auto-lang`;`cargo t`。
-- **T-08 双端全量验证 + 复审准备** [双 worktree]
-  autoui-verifier 截图矩阵(两页 × {初始,展开,选中} × 双端)+ 交互脚本;证据存
-  `pages/../tests/screenshots/` 同款目录;回填计划勾选与证据行;status → execution_done。
+- **T-01 建组** [x] [✅ 已完成] master a3d53cbfc(骨架+next-id);worktree 组 `.wt/lang-614/{auto-lang@plan-614-dev, auto-os@plan-614-dev(99b094c)}`+auto-down detached 依赖 worktree(跨仓 path 依赖 `../auto-down` 组内解析所需)。
+- **T-02 first-light:tree_util + TreeView 骨架 + 最小页** [x] [✅ 已完成] 四文件+布线一次成形;`cargo t gallery_pages` 过(17s);vue 实机选中回显(`selected: src`)+chevron 往返(level-2 现身)实证——payload 声明式链路 vue 端通。first-light 暴露并修复:①flatten_tree 局部 `rows` 撞消费组件 computed 名被误插 `.value`(改名 outRows);②动态 f-string `style:` 落 `:style` Tailwind 失效(改 `class:` prop);③vue icon 动态名 Circle 占位(TreeIcon 分支化);④`use tree_util` 从 pages/ 解析不到(改点分 `use components.tree_util:`)。
+- **T-03 TreeView 完整化** [x] [✅ 已完成] directory 模式图标/ext_icon/collect_ids 入 tree_util;页面收敛为单实例综合卡(P320 多实例实证限制,原四卡方案归档于本文件 git 历史);vue Expand all=11 dirs(含 level-9/bottom.txt 钳制缩进,截图 p614_vue_treeview_expandall.png)。
+- **T-04 FileTree 组件与页面** [x] [✅ 已完成] filetree.at 自包含(Init 播种 default_expanded+toggle_id)——实现从组合 TreeView 收敛为自渲染行(P320 TreeView 全画廊单实例约束,组合会在跨页常驻挂载下播种串扰);map_fs_nodes 剪除(fs 形态由页面按 id=路径书写);VM 端截图 p614_vm_filetree_select.png(folder-open/嵌套缩进/badge 全对)。
+- **T-05 gallery 布线收口** [x] [✅ 已完成] app.at 路由两行+Display 侧边栏两项目(list-todo/folder 图标)+index.at 两张 component-card+计数 61→63+Display count 8→10;vue 实机侧边栏/首页卡可达。
+- **T-06 规范沉淀** [x] [✅ 已完成] tree-components.md v1(契约+VM 轨五条纪律+P614-C1 缺陷节+双端验证基线)+overview.md tree 组件族段+plans.md 614 行+INDEX 重生(26 projects);specs.json upsert 留 merge 技能(活账本在主检出)。
+- **T-07 golden 重基线 + 门禁** [x] [✅ 已完成] golden 重基线 88 文件(含 auto-os main 既有漂移——master 基线对本已红,PLAN-008 等画廊演进未重基线;新增 tree 三组件两页);裸跑双绿;收集器补跳过纯 util 模块(无 `widget ` 声明,package.at 同意图内容化);`cargo t --no-fail-fast` 失败集=master 预存红(21 共同,含 lucide manifest/plan055)±跨仓环境敏感 ffi/osconfig 摆动,零 tree/gallery 相关;p614 VM 探针测试绿(while+索引 has_id/flatten/computed 三路)。
+- **T-08 双端全量验证** [x] [✅ 已完成,含 P614-C1 阻塞记录] vue:全交互(选中/chevron 往返/Expand all 11 dirs/钳制缩进/badge,截图 p614_vue_treeview_expandall.png);VM:树行渲染+深链钳制+folder/file 图标+Expand/Collapse all(11↔0 dirs echo)+FileTree 默认展开(截图 p614_vm_treeview_expandall.png/p614_vm_filetree_select.png);**行点击 MCP press 崩溃=P614-C1**(VM 进程静默死亡,复现:treeview/filetree 页 press 树行 vnode;组件侧绕开穷尽,引擎缺陷挂账,真实鼠标点击影响面未测)。
 - **T-09 独立复审(/auto-plan:review)**:AC-01..07 逐条对码核验;遗漏/绕开扫描入
   KNOWN-DEBT-AND-RISKS.md;健康检查(无警告/无 debug 残留)。
 
@@ -349,11 +328,24 @@ VM 大改触发面:本计划**不改 VM/编译器**(`cargo tv` 不触发);aavm �
 - 2026-09-11 stage:new——rev1 起草交付 work。背景调查完成(管线/机制/图标/样式
   双端覆盖证据齐);唯一未证链路(payload 回调双端往返)已在 T-02 设 first-light
   验证 + 回退预案。outcome: pass(待用户确认后入 work)。
+- 2026-09-11 stage:work | plan_id: PLAN-614 | plan_revision: 1 | outcome: pass(含阻塞挂账) |
+  code_commit: auto-lang plan-614-dev 7ae85051b + auto-os plan-614-dev 7e0d8a8(master a3d53cbfc 基) |
+  task_ids: T-01..T-08 完成,T-09 归 review |
+  evidence: gallery_pages 编译冒烟绿(17s)/p614 VM 探针绿/golden 重基线双绿(含 auto-os 既有漂移,复核理由在 T-07)/cargo t 失败集=master 预存红±跨仓环境摆动零相关/vue 全交互+VM 视觉按钮级截图三张 |
+  blockers: P614-C1=VM 轨 MCP press 子组件行(带循环变量 payload 的 onclick)进程静默崩溃(无 panic,复现步骤入契约缺陷节)——阻塞 VM 端行点击场景验收,组件侧已穷尽(FileTree 自带 handler 亦崩→非纯 emit 臂特有),需引擎侧 debugger 立项;真实鼠标点击影响面未测 |
+  next: review(/auto-plan:review 独立复审;merge 时补 specs.json upsert)
 
 ## 待澄清事项
 
-1. **FileTree 真实文件系统接入**(Phase 2 候选):v1 静态数据(vue 端无 fs 原语,
+1. **P614-C1(阻塞项,需决策)**:VM 轨 MCP press 子组件行崩溃(详见复审记录
+   blocker 与 tree-components.md 缺陷节)。建议独立引擎计划立项(debugger 定位
+   debug-id 跨帧生命周期/计算派生载荷);真实鼠标点击是否受累待人工实测。
+2. **work 期间实证的引擎/管线缺陷清单**(组件侧已绕开,是否立项修引擎待指示):
+   ①for-in 对函数参数列表零次迭代(状态路径正常);②auto run 增量路径多-widget
+   .at 同码写盘(ToggleItem.vue=ToggleGroup 内容实证);③vue 轨 icon 动态名
+   Circle 占位(P601-T11 同族并档);④view f-string 内方法调用不解析。
+3. **FileTree 真实文件系统接入**(Phase 2 候选):v1 静态数据(vue 端无 fs 原语,
    双端一致性优先);VM 端 `auto.fs.walk`(native_catalog 2860)接入是否立项,待
    用户后续指示——不阻塞本计划。
-2. tree 族 Phase 2 面预登记(非本计划范围):复选框多选(checkedKeys)、懒加载、
+4. tree 族 Phase 2 面预登记(非本计划范围):复选框多选(checkedKeys)、懒加载、
    DnD、虚拟滚动——契约文档非目标节收录。
