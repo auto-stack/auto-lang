@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-596
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: dep-rust-v2-trait-generic-callback
 author: [ZCode]
 created_at: 2026-09-09
@@ -535,3 +535,16 @@ next: **merge**。
 3. **T5 重入机制选型确认方式**：T-02 spike 产出决策工件后——执行会话自决
    并记录（复审把关），还是回到用户裁定？**建议自决+复审把关**（两候选均
    不越安全边界，属实现选型非范围变更）。
+
+**merge receipt（2026-09-11，PLAN-596:r1）**：`stage: merge` | outcome: **pass** |
+五检查点：**prepared**（reviewed 基线 47bae09a6 + land 期修正 70c1c5dc0；canonical
+Spec 差异=SD-01..04 已随交付分支在档；门禁重跑 28/28+tf 3506/3506）→
+**landed**（三次 master 调和合并零冲突；fast-forward ad347eea9；主检出冒烟
+5/5 绿——期间勘破 v3 键毒化事案并修复，见 land 期修正提交）→
+**ledger_refreshed**（specs.json P596-1..6 六节发布+回读验证；vm/plans.md
+596 行；shim-metadata plans 条；INDEX 再生幂等 26 projects）→
+**archived**（本件 git mv 至 docs/plans/archive/，status: archived）→
+**cleaned**（见下补笔）。canonical Spec 落点：docs/specs/auto-lang/vm/design/ffi.md、
+docs/specs/shim-metadata/project.md、docs/specs/parity/project.md、
+docs/specs/goals.md（GOAL-006）、docs/guides/ffi-usage-guide.md、
+parity/docs/known-divergences.md（DIV-DEP-8/13 fixed+18/19）。
