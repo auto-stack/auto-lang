@@ -961,6 +961,8 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_raise", crate::py_ffi::NATIVE_PY_RAISE);
         // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
         registry.register_with_id("py.py_int", crate::py_ffi::NATIVE_PY_INT);
+        // Plan 602 (D2): Python 类派生工厂（exec 模板 + 回调方法挂载）。
+        registry.register_with_id("py.py_subclass", crate::py_ffi::NATIVE_PY_SUBCLASS);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
