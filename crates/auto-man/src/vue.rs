@@ -7535,6 +7535,80 @@ widget App {
     );
 }
 
+/// PLAN-609 T-A2（AC-02）：theme{} 声明合成体双端同源——同一
+/// ComposedTheme 喂 vue index.css（generate_index_css 文本）与 VM
+/// ACTIVE_THEME 槽（active_theme_rgb），逐键断言：
+/// ①CSS 文本携带合成体每个键（`--var: value;`，light+dark 全量）；
+/// ②VM 对每键的 resolve == 该键 CSS 值串的解析值（两端消费同一数值域）；
+/// ③声明覆盖键以规范化值落位（非基座原值）。
+#[test]
+fn plan609_theme_decl_dual_face_same_source() {
+    use auto_lang::design_tokens::decl;
+    use auto_lang::design_tokens::decl::ThemeDecl;
+
+    let decl = ThemeDecl {
+        name: Some("dual-src".to_string()),
+        extends: Some("stella".to_string()),
+        mode: Some("dark".to_string()),
+        colors: vec![
+            ("primary".to_string(), "#8b5cf6".to_string()),
+            ("background".to_string(), "223 34% 12%".to_string()),
+            ("muted-foreground".to_string(), "216 17% 65%".to_string()),
+        ],
+    };
+    let composed = decl::compose(&decl, &std::collections::BTreeMap::new())
+        .expect("decl compose");
+
+    // VM 面：合成体上槽（thread-local，nextest 每测独立进程隔离）。
+    assert!(
+        auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(
+            composed.clone()
+        )),
+        "合成主题上槽"
+    );
+
+    // ① vue 面：index.css 文本逐键携带——渲染词表 = core+sidebar
+    // （registry::CORE_ORDER/SIDEBAR_ORDER；AutoUI 扩展 4 键 success 等
+    // 为 VM 面承载，CSS 渲染面不含），词表内键 light+dark 全量断言。
+    let css = generate_index_css(Some(&composed));
+    let css_face = |t: auto_lang::ui::style::theme::registry::TokenName| {
+        auto_lang::ui::style::theme::registry::CORE_ORDER.contains(&t)
+            || auto_lang::ui::style::theme::registry::SIDEBAR_ORDER.contains(&t)
+    };
+    for (token, value) in composed.light.iter().chain(composed.dark.iter()) {
+        if !css_face(*token) {
+            continue;
+        }
+        let needle = format!("--{}: {};", token.css_var(), value);
+        assert!(css.contains(&needle), "index.css 缺键: {needle}");
+    }
+
+    // ③ 声明覆盖键以规范化值落位（hex → HSL 串，非基座原值）。
+    let norm = decl::normalize_value("#8b5cf6").expect("声明值合法");
+    assert!(
+        css.contains(&format!("--primary: {};", norm)),
+        "声明覆盖键规范化落位: --primary: {norm};"
+    );
+
+    // ② VM 面逐键：resolve == 该键 CSS 值串解析（两端同一数值域）。
+    for (token, css_value) in &composed.light {
+        assert_eq!(
+            auto_lang::ui::style::theme::active_theme_rgb(*token, false),
+            auto_lang::ui::style::theme::registry::hsl_str_to_rgb(css_value),
+            "light 面 {:?}: VM resolve == CSS 值串",
+            token
+        );
+    }
+    for (token, css_value) in &composed.dark {
+        assert_eq!(
+            auto_lang::ui::style::theme::active_theme_rgb(*token, true),
+            auto_lang::ui::style::theme::registry::hsl_str_to_rgb(css_value),
+            "dark 面 {:?}: VM resolve == CSS 值串",
+            token
+        );
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Plan 515 G3 —— vue 桌面宿主壁纸层（配置注入三档 + scrim 对齐钉）。
