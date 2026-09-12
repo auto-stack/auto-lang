@@ -1385,22 +1385,25 @@ async fn auto_media_scan() -> axum::response::Response {
             .body(axum::body::Body::from("[]"))
             .expect("media scan response is valid");
     };
-    let mut out = String::from("[");
+    let mut out = String::from("{\"entries\":[");
     for (i, e) in index.entries.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
         out.push_str(&format!(
-            "{{\"id\":{},\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{}}}",
+            "{{\"id\":{},\"title\":{},\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"video_url\":\"/api/media/stream/{}\"}}",
             media_json_str(&e.id),
+            media_json_str(auto_lang::ui::media_service::display_title(&e.name)),
             media_json_str(&e.name),
             media_json_str(&e.rel_dir),
             media_json_str(&e.relative_path),
             media_json_str(&e.extension),
-            e.bytes
+            e.bytes,
+            media_json_str(&auto_lang::ui::media_service::human_size(e.bytes)),
+            &e.id
         ));
     }
-    out.push(']');
+    out.push_str("]}");
     axum::response::Response::builder()
         .status(200)
         .header("Content-Type", "application/json")

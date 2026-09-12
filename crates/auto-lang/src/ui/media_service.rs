@@ -303,6 +303,30 @@ pub fn content_range(start: u64, end: u64, file_len: u64) -> String {
     format!("bytes {}-{}/{}", start, end, file_len)
 }
 
+/// Human-readable size for display ("7.3 MB", "5.4 GB").
+pub fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut v = bytes as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < UNITS.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{} {}", bytes, UNITS[0])
+    } else {
+        format!("{:.1} {}", v, UNITS[i])
+    }
+}
+
+/// Display title: the file name without its extension.
+pub fn display_title(name: &str) -> &str {
+    match name.rfind('.') {
+        Some(i) if i > 0 => &name[..i],
+        _ => name,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

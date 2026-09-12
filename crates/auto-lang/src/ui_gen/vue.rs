@@ -3591,7 +3591,11 @@ impl VueGenerator {
             // Plan 132: Check if handler contains API calls (needs async).
             // Plan 053 M5/P5-6: debounced handlers move async/await into the
             // setTimeout callback, so the function itself is synchronous.
-            let is_async = self.handler_has_api_calls(payload) && !is_debounced;
+            // Plan 617 T-06: `Http.get` transpiles to `await (await fetch(..)).json()`,
+            // so a handler whose body awaits must be emitted async. Same heuristic the
+            // module-fn path already uses (`body.contains("await")`).
+            let is_async = (self.handler_has_api_calls(payload) || body.contains("await"))
+                && !is_debounced;
             self.handlers.push((handler_name.clone(), body, is_async));
         }
 
@@ -3833,9 +3837,12 @@ impl VueGenerator {
         // Generate lifecycle hooks from widget.lifecycle
         // .Init → onMounted
         if let Some(init) = widget.lifecycle.iter().find(|l| l.name == "Init") {
-            let is_async = self.handler_has_api_calls(&init.payload);
-            let async_kw = if is_async { "async " } else { "" };
+            // Plan 617 T-06: build the body first so an awaiting `.Init` (e.g. the
+            // /api/media/scan fetch) is emitted `async` instead of producing
+            // "Unexpected reserved word 'await'" from the SFC compiler.
             let body = self.generate_handler_body(&init.payload).unwrap_or_default();
+            let is_async = self.handler_has_api_calls(&init.payload) || body.contains("await");
+            let async_kw = if is_async { "async " } else { "" };
             let indented = Self::indent_body(&body, "  ");
             script.push_str(&format!("onMounted({}() => {{\n{}\n}})\n\n", async_kw, indented));
         }
