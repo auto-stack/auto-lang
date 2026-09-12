@@ -35,6 +35,8 @@
 //       指示条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实）
 //       `__wm_focused_app`（PLAN-012 v1.6：聚焦窗 registry_id 派生串，
 //       "" = 无聚焦/native 聚焦——pinned 图标聚焦底条 + 底色高亮标量判据）
+//       `__wm_notes_visible`（PLAN-012 v1.6：通知面板可见性 "1"/""——
+//       铃铛打开态高亮唯一事实源；指纹 notes 段尾 `:v` 防 miss 刷新）
 //       `__dock_pinned_csv`（PLAN-012 v1.6：",id1,id2," 固定集合派生串
 //       ——dock 窗口条目与固定图标去重合并判据：窗口条目 app 已固定者
 //       不再重复渲染（固定图标+运行点即其唯一代表））
@@ -88,6 +90,9 @@ widget Desktop {
         // 聚焦）——三态底条与聚焦底色高亮的标量判据面（.at 无法跨列表
         // 表达"存在聚焦窗"量词，宿主派生 I9）。
         var __wm_focused_app str = ""
+        // PLAN-012 v1.6：通知面板可见性（"1"/""；宿主 overlay 组件直读
+        // 投影——铃铛打开态高亮唯一事实源，外点/×/Esc 自隐后同步翻转）。
+        var __wm_notes_visible str = ""
         var __wm_meta str = ""
         var __wm_fp str = ""
         var __wm_notes = []            // 协议 v1.2 合同面（dock 不直接消费）
@@ -321,9 +326,16 @@ widget Desktop {
                     // PLAN-526 T18：分区切换器触发 icon（原直列分区条
                     // "1 ×/2 ×/+/⇥" 整组退役——点击开合上方悬浮预览面板，
                     // 热键切换时宿主 transient 置位同面板）。
+                    // PLAN-012 W7：开关型图标两态（面板/窗打开 = 底色常驻
+                    // 高亮 bg-foreground/10 与 hover 同款，关闭 = 透明——
+                    // Win11 flyout 形态；本钮判据 = 本地态 switcher_open）。
                     button (icon: "square-stack") {
                         onclick: .SwitcherToggle
-                        style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        style: if .switcher_open == "1" {
+                            "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                        } else {
+                            "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        }
                     }
                     // PLAN-526 T17：布局钮 lucide 化（文字字形 ▦▤▢ 与
                     // 矢量 icon 的视觉尺寸差不复存在）。
@@ -343,9 +355,15 @@ widget Desktop {
                     // start 档外框。
                     row {
                         style: "items-center gap-0"
+                        // PLAN-012 W7：铃铛两态——判据 = __wm_notes_visible
+                        // 投影（宿主 overlay 直读；外点/×/Esc 关闭路径同步翻转）。
                         button (icon: "bell") {
                             onclick: .NotificationToggle
-                            style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            style: if .__wm_notes_visible == "1" {
+                                "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                            } else {
+                                "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            }
                         }
                         if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
                             text .__wm_notes_unread {
@@ -355,16 +373,28 @@ widget Desktop {
                     }
                     // Plan 487 M4：设置齿轮（v1.4 open_settings 无参动词；
                     // 宿主臂二态翻转——面板可见再点即关）。
+                    // PLAN-012 W7：齿轮两态——判据 = __wm_running 含
+                    // os-config（设置窗在场即高亮；W1 close→hide 落地后
+                    // 隐藏窗被投影排除，语义自洽为"关"）。
                     button (icon: "settings") {
                         onclick: .OpenSettingsPanel
-                        style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        style: if .__wm_running.contains(",os-config,") {
+                            "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                        } else {
+                            "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        }
                     }
                     // PLAN-526 T11：电源键（Q10b——Escape 退出退役后的图形
                     // 退出入口；确认面板 popover 锚定本键，top 落位）。
+                    // PLAN-012 W7：电源钮两态（确认面板开着 = 高亮，本地态）。
                     popover (open: .shutdown_ask == "1", placement: "top", ondismiss: .ShutdownCancel, class: "p-3 border rounded bg-card") {
                         button (icon: "power") {
                             onclick: .ShutdownRequest
-                            style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            style: if .shutdown_ask == "1" {
+                                "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                            } else {
+                                "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            }
                         }
                         col {
                             style: "w-52 gap-2"

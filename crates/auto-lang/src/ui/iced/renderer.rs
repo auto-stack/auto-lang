@@ -11134,11 +11134,16 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         .map(|n| n.id.to_string())
         .unwrap_or_else(|| "0".to_string());
     let notes_unread = state.desktop.notes_unread.get();
+    // PLAN-012 W7 v1.6：通知面板可见性投影（"1"/""；铃铛打开态高亮的
+    // 唯一事实源在宿主 overlay 组件——外点/×/Esc 任意路径自隐后投影
+    // 同步翻转）。指纹并入 notes 段尾 `:v`——visible 翻转即触发重写。
+    let notes_visible = if state.notification_visible() { "1" } else { "" };
     fp.push_str(&format!(
-        "|notes:{}:{}:{};",
+        "|notes:{}:{}:{}:{};",
         notes_snapshot.len(),
         notes_front,
-        notes_unread
+        notes_unread,
+        notes_visible
     ));
     // PLAN-012 W4 v1.6：__dock_pinned_csv 派生串（",id1,id2,"；shell view
     // 条件 `contains` 消费——dock 窗口条目与固定图标去重合并的判据面，
@@ -11177,6 +11182,9 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app
         .component
         .write_state("__wm_notes_unread", auto_val::Value::Str(notes_unread.to_string().into()));
+    let _ = app
+        .component
+        .write_state("__wm_notes_visible", auto_val::Value::str(notes_visible));
     let _ = app
         .component
         .write_state("__dock_pinned_csv", auto_val::Value::str(&pinned_csv));
@@ -22860,6 +22868,48 @@ mod tests {
         // boot 恢复后未读恒 0（会话概念不落盘）。
         restore_notifications(&mut ds);
         assert_eq!(ds.desktop.notes_unread.get(), 0, "boot 恢复未读归零");
+    }
+
+    /// PLAN-012 W7 v1.6：`__wm_notes_visible` 投影——overlay 组件 visible
+    /// 直读（"1"/""）写入 shell 状态 + 指纹 notes 段尾 `:v`（翻转即重写，
+    /// 铃铛打开态高亮数据面）。
+    #[test]
+    fn projection_v16_notes_visible_fingerprint() {
+        let mut ds = t3_session_with_shell();
+        let probe_at = "widget NotifProbe {\n    model { var visible str = \"0\" }\n    view { if .visible == \"1\" { text \"on\" } }\n}\n";
+        let comp = crate::build_dynamic_component(probe_at, None).unwrap();
+        let probe = ds.allocate_app(comp);
+        ds.desktop.notification_app = Some(probe);
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_notes_visible") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), "", "面板隐藏 → 空串"),
+            other => panic!("__wm_notes_visible 读回异常: {other:?}"),
+        }
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("|notes:0:0:0:;"),
+                "指纹 notes 段应含 :v 尾标（关）: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+        // visible 置位 → 指纹变化触发重写 → 投影翻转（铃铛高亮数据面）。
+        if let Some(app) = ds.apps.get_mut(&probe) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        }
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_notes_visible") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), "1", "面板可见 → \"1\""),
+            other => panic!("__wm_notes_visible 读回异常: {other:?}"),
+        }
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("|notes:0:0:0:1;"),
+                "指纹 notes 段 :v 尾标应翻转: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
     }
 
     /// 持久化槽 round-trip：写 10 槽（slot0=MRU front）→ 新会话 boot 读回；
