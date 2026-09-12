@@ -356,6 +356,14 @@ impl SharedState {
         self.state = state;
     }
 
+    /// Replace the declarative keyboard binding registry for a native Rust
+    /// component. Unlike VM mode, Rust mode does not pass through the VM
+    /// renderer's `update` call, so the DevTools wrapper publishes this map
+    /// separately each frame for MCP keyboard actions.
+    pub fn set_key_bindings(&mut self, key_bindings: HashMap<String, String>) {
+        self.key_bindings = key_bindings;
+    }
+
     /// Update the shared state with a new view tree and state values.
     /// Called by the iced thread after each render.
     pub fn update(

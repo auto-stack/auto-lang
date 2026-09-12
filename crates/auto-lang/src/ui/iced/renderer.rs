@@ -20713,6 +20713,7 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
             let mut mcp = mcp_shared.lock().unwrap();
             mcp.set_styled_vtree(snap);
             mcp.set_state(self.inner.state_snapshot());
+            mcp.set_key_bindings(self.inner.key_bindings());
         }
 
         *self.dt.live_vtree.borrow_mut() = Some(tree);
@@ -20816,14 +20817,36 @@ where
             if let Some(rest) = s.strip_prefix("__mcp_action|") {
                 // Event fallback: <widget>.<event>|<value>
                 let mut parts = rest.splitn(2, '|');
-                let _widget_event = parts.next().unwrap_or("");
+                let widget_event = parts.next().unwrap_or("");
                 let input_value = parts.next().filter(|v| !v.is_empty());
 
-                // Best-effort: no typed handler to extract in event mode from the
-                // rust tree — this branch mainly serves as a no-op safety net.
-                // (VM mode dispatches actions via a separate subscription that
-                // converts ActionMessage -> IcedMessage directly.)
-                let _ = input_value;
+                // MCP keyboard fallback (when the Rust component has no
+                // dynamic key_bindings registry entry) arrives as
+                // `key_<name>|<original key>`; route it through the typed
+                // bind resolver used by physical Iced keyboard events.
+                if widget_event.contains(".key_") {
+                    if let Some(key) = input_value {
+                        if let Some(m) = w.inner.key_message(key) {
+                            w.inner.on(m);
+                        }
+                    }
+                } else {
+                    // A declared `bind` is encoded by MCP as the handler name
+                    // (for example `App.MoveLeft`). Resolve that name back to
+                    // the physical key through the component registry, then
+                    // use the same typed message hook as real Iced events.
+                    let event_name = widget_event.rsplit('.').next().unwrap_or(widget_event);
+                    let key = w.inner.key_bindings().iter().find_map(|(key, handler)| {
+                        let handler = handler.trim_start_matches('.');
+                        let handler_name = handler.rsplit('.').next().unwrap_or(handler);
+                        (handler_name == event_name).then(|| key.as_str())
+                    });
+                    if let Some(key) = key {
+                        if let Some(m) = w.inner.key_message(key) {
+                            w.inner.on(m);
+                        }
+                    }
+                }
                 return iced::Task::none();
             }
             apply_debug_event(&mut w.dt, &s);
