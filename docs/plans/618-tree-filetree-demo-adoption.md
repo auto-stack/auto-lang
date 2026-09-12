@@ -161,7 +161,12 @@ total_steps: 8
   的 SQL Console 块)。vue 实证:过滤 cust → customers+idx_orders_customer
   (zap 图标)+Tables 祖先保留、Views 剪除;点击 customers → Table: customers
   数据区切换;层次线 20 条。证据:worktree 3cf6b5276+后续收敛提交。
-- **T-05 018 接入**:阅读页章节树+router.push;双端验证。
+- **T-05 018 接入** [~] [⚠ blocked——阅读页 wiring 触发解析级联(R1-a):
+  package use/computed/ChSelect 三要素任意组合均报 "Expected term, got
+  RBrace"(5563/5588/5959/5984 等锚点,随插入内容漂移);已还原 reading.at
+  至 HEAD,组件拷贝保留。需隔离排查(疑 computed+模块 fn+顶层 use 组合
+  触发解析器缺陷);026 同款结构(computed+use package+模块 fn)编译通过,
+  差异=018 有 use store/back.api 双 use 与 ?Book 可选类型。
 - **T-06 041 接入**:OpenByPath store 动作+左文件树;双端验证。
 - **T-07 规范沉淀**:SD-01/02 落地+INDEX 重生。
 - **T-08 收尾**:cargo t 对齐预存红;四 demo 截图入档;execution_done。
