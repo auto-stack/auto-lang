@@ -22984,7 +22984,19 @@ mod tests {
                 V::Button { .. } => 1,
                 _ => 0,
             };
-            for c in view_children(v) {
+            // PLAN-012 W3/W4：切换器钮入 popover、窗口条目钮入
+            // popover+mouse-area——计数器须随结构钻入，否则漏计。
+            let mut kids = view_children(v);
+            if let V::Popover { anchor, content, .. } = v {
+                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                    kids.push(w.as_ref());
+                }
+                kids.push(content.as_ref());
+            }
+            if let V::MouseArea { content, .. } = v {
+                kids.push(content.as_ref());
+            }
+            for c in kids {
                 n += count_buttons(c);
             }
             n
@@ -23005,7 +23017,9 @@ mod tests {
         });
         assert!(has_reverse, "bottom 缺省根 col 应含 flex-col-reverse（翻转承载）");
         let buttons = count_buttons(&view);
-        assert!(buttons >= 6, "任务栏按钮群应在位（⊞/pinned×3/pager/布局三键/铃铛/齿轮），实得 {buttons}");
+        // PLAN-012 W4：缺省 pinned 置空——任务栏常驻钮 = ⊞/切换器/布局×2/
+        // 铃铛/齿轮/电源 = 7（pinned×3 退役 + 无注入窗口条目）。
+        assert!(buttons >= 7, "任务栏常驻按钮群应在位（缺省无 pinned 后 ≥7），实得 {buttons}");
         assert!(
             !children.is_empty(),
             "根 col 应有子（taskbar 块 + 让位 spacer）"
@@ -25079,7 +25093,8 @@ mod tests {
             "shell.desktop.icons",
             "014-weather,011-calculator".into(),
         );
-        // 默认 dock_pinned 三枚 + custom 两枚（011 重叠去重）→ 4 条目。
+        // PLAN-012 W4：缺省 dock_pinned 置空——custom 两枚（011 重叠去重）
+        // → 2 条目（原"默认三枚 + custom 两枚 → 4"随缺省置空退役）。
         inject_desktop_surface(&mut ds);
         let surface = ds.desktop.desktop_app.unwrap();
         let (mut dbl, mut clk, mut texts) = (0usize, 0usize, Vec::new());
@@ -25088,10 +25103,12 @@ mod tests {
             let (view, _, _) = app.component.view_with_debug_gated(false);
             t496_walk(&view, &mut dbl, &mut clk, &mut texts);
         }
-        assert_eq!(dbl, 4, "每个图标格一枚 mouse-area 双击臂（pinned∪custom 去重后）");
-        // PLAN-526 T10：空白点击自布局件 onclick 迁至根 mouse-area on_press
-        //（兼挂 oncontextmenu 右键臂）——恰一枚 onclick 臂为预期形状。
-        assert_eq!(clk, 1, "desktop.at 根 mouse-area onclick（526 T10 空白点击迁移）");
+
+        assert_eq!(dbl, 2, "每个图标格一枚 mouse-area 双击臂（缺省 pinned 置空后）");
+        // PLAN-526 T10：空白点击自布局件 onclick 迁至根 mouse-area on_press。
+        // PLAN-012 W5：图标格 mouse-area onclick（IconPress 拖拽拾起臂）
+        // ×2 格 + 根 ×1 = 3。
+        assert_eq!(clk, 3, "根 onclick 1 + 图标 IconPress 2（W5 拖拽态机）");
         // PLAN-002 B pilot：图标格布局件右键挂点 + hover 变体类消费
         //（oncontextmenu 自 button 迁至格 col；格上 hover:bg-white/10）。
         let (mut rc, mut hv) = (0usize, 0usize);
@@ -25100,8 +25117,8 @@ mod tests {
             let (view, _, _) = app.component.view_with_debug_gated(false);
             t002_walk_layout_events(&view, &mut rc, &mut hv);
         }
-        assert_eq!(rc, 4, "每格一枚布局件右键臂（oncontextmenu → View::Column::on_right_click）");
-        assert_eq!(hv, 4, "每格一枚 hover: 变体类（布局件 hover 消费面）");
+        assert_eq!(rc, 2, "每格一枚布局件右键臂（oncontextmenu → View::Column::on_right_click）");
+        assert_eq!(hv, 2, "每格一枚 hover: 变体类（布局件 hover 消费面）");
         assert_eq!(
             texts.iter().filter(|t| t.as_str() == "014-weather").count(),
             1,
@@ -25115,7 +25132,7 @@ mod tests {
             let converted = convert_view_messages(view);
             t496_walk_iced(&converted, &mut dbl2, &mut clk2, &mut texts2);
         }
-        assert_eq!(dbl2, 4, "convert_view_messages 后 mouse_area 双击臂存活");
+        assert_eq!(dbl2, 2, "convert_view_messages 后 mouse_area 双击臂存活");
         // 右键菜单：IconMenu 打开 → 三项文本出现；BlankPress 关闭消失。
         {
             let app = ds.apps.get_mut(&surface).unwrap();

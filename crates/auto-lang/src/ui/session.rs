@@ -378,11 +378,12 @@ impl DesktopState {
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
-            dock_pinned: vec![
-                "011-calculator".to_string(),
-                "013-todo".to_string(),
-                "015-notes".to_string(),
-            ],
+            // PLAN-012 W4：缺省 pinned 单源 config 常量（原此处硬编码三枚
+            // 字面量——缺省置空的漏网源，d496 测试实测暴露）。
+            dock_pinned: crate::ui::desktop_config::DEFAULT_DOCK_PINNED
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             config: crate::ui::desktop_config::load(),
             hole_mode: false,
             // PLAN-526 T18：分区切换面板 transient 收起时点（热键切换置位；
