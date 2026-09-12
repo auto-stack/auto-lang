@@ -331,36 +331,6 @@ widget App {
                         TreeView (nodes: .fmNodes, expanded: .fmExpanded, selected: .fmSel, on_toggle: .FmToggle, on_select: .FmSelect, directory: true) {}
                     }
 
-                    col {
-                        style: "gap-1"
-                        text "快速访问" { style: "text-[11px] font-bold text-zinc-500 uppercase tracking-wider px-2 py-1 mb-1" }
-
-                        button (text: "🏠 主目录", variant: "ghost") {
-                            onclick: .NavTo("/root")
-                            style: if .current_path == "/root" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
-                        }
-                        button (text: "📁 文档", variant: "ghost") {
-                            onclick: .NavTo("/root/Documents")
-                            style: if .current_path == "/root/Documents" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
-                        }
-                        button (text: "📥 下载", variant: "ghost") {
-                            onclick: .NavTo("/root/Downloads")
-                            style: if .current_path == "/root/Downloads" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
-                        }
-                        button (text: "🖼️ 图片", variant: "ghost") {
-                            onclick: .NavTo("/root/Pictures")
-                            style: if .current_path == "/root/Pictures" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
-                        }
-                        button (text: "🎵 音乐", variant: "ghost") {
-                            onclick: .NavTo("/root/Music")
-                            style: if .current_path == "/root/Music" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
-                        }
-                        button (text: "🗑️ 回收站", variant: "ghost") {
-                            onclick: .NavTo("/root/Trash")
-                            style: if .current_path == "/root/Trash" { "w-full justify-start h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-100 shadow-sm" } else { "w-full justify-start h-8 px-2.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 rounded-lg transition-colors" }
-                        }
-                    }
-
                     // 存储使用率小部件
                     col {
                         style: "bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3 gap-2"
