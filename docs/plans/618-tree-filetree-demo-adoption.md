@@ -155,11 +155,12 @@ total_steps: 8
   访问按钮组替换为 TreeView(directory 受控);FmSelect → NavTo 联动;use 块
   修正(package use 必须在 widget 内,顶层 parse 报 LBrace 错)。vue 实证:树
   渲染+点击文档文件夹 → root/Documents 列表/面包屑联动(d177b9a44)。
-- **T-04 026 接入** [~] [⚠ 代码完成(3cf6b5276),运行时验证待续] 平铺对象树
-  替换为 TreeView 真树(dbNodesFull 三组 12 对象+badge 行数/DbToggle/DbSelect
-  前缀分发/treeFilter 接 filter_tree+collect_ids 全展开/Init 播种 dbNodes);
-  解析错误(孤儿段)已修;浏览器复核因 Node REPL 会话损坏未完成——下次会话
-  重启 026 vue 服务后复核树渲染/过滤/选中即可。
+- **T-04 026 接入** [x] [✅ 已完成,vue 端实证] 平铺对象树替换为 TreeView
+  真树;dbNodes 改 computed(filter_tree(全量,treeFilter),初始化与过滤合一,
+  免 Init);dbSelId 专用选中字段;use 补 toggle_id;孤儿段清理(替换边界切多
+  的 SQL Console 块)。vue 实证:过滤 cust → customers+idx_orders_customer
+  (zap 图标)+Tables 祖先保留、Views 剪除;点击 customers → Table: customers
+  数据区切换;层次线 20 条。证据:worktree 3cf6b5276+后续收敛提交。
 - **T-05 018 接入**:阅读页章节树+router.push;双端验证。
 - **T-06 041 接入**:OpenByPath store 动作+左文件树;双端验证。
 - **T-07 规范沉淀**:SD-01/02 落地+INDEX 重生。
