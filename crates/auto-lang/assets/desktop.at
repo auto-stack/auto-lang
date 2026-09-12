@@ -30,7 +30,7 @@ widget DesktopSurface {
         // PLAN-012 W5：拖拽态机（press-press 两段式——onclick 即 iced
         // press；按下拾起 → 按到目标卡落下交换；按回原卡 = 取消）。
         IconPress(str),
-        BlankPress,
+        BlankPress, BlankDrop,
         MenuOpen,
         MenuRemove,
         MenuWallpaper,
@@ -71,7 +71,9 @@ widget DesktopSurface {
             // 左下（011 复审 F-R1）。坐标 = 宿主 __mouse_moved 臂持续写入
             // 的 __desktop_cursor_x/y（只写不置 dirty）；422 P3 坐标锚形态
             // （027-file-manager 先例），面板内容独占 popover children。
-            mouse-area (onclick: .BlankPress, oncontextmenu.prevent: .BlankMenu) {
+            // PLAN-012 F2 走查：onmouseup = 拖拽松手落格（宿主全局臂
+            // 读光标算格；drag_id 空时 no-op）。
+            mouse-area (onclick: .BlankPress, onmouseup: .BlankDrop, oncontextmenu.prevent: .BlankMenu) {
                 style: "w-full h-full"
             // PLAN-011 T3：mouse_area 命中带=内容盒（iced 侧 style 只落在
             // 外层包装 container，对命中几何是 no-op）——本 mouse-area 直接
@@ -192,40 +194,19 @@ widget DesktopSurface {
         // 右键图标：开菜单（记录目标条目）。
         .IconMenu(id) -> { .menu_id = id }
 
-        // PLAN-012 W5：拖拽态机——首按拾起；按回原卡取消；按到其他卡 =
-        // 交换换位（追加式 positions 落子 + refresh_desktop_icons 重注入；
-        // storage 持久 = 重启保持）。cells 平行列表下标读（B12 规避）。
+        // PLAN-012 F2 走查：拖拽 = 按下拾起（宿主 drag_start 置位）→
+        // 拖动 → 松手落格（根 mouse-area onmouseup → BlankDrop；宿主全局
+        // __mouse_released 臂兜底）。落格 = 光标格磁吸，占位挤下一空格。
         .IconPress(id) -> {
             if .drag_id == "" {
                 .drag_id = id
-            } else {
-                if .drag_id == id {
-                    .drag_id = ""
-                } else {
-                    var di int = 0 - 1
-                    var ti int = 0 - 1
-                    var i int = 0
-                    while i < .__desktop_cell_ids.len() {
-                        if .__desktop_cell_ids[i] == .drag_id {
-                            di = i
-                        }
-                        if .__desktop_cell_ids[i] == id {
-                            ti = i
-                        }
-                        i = i + 1
-                    }
-                    if di >= 0 {
-                        if ti >= 0 {
-                            var moves str = ""
-                            moves = moves + .drag_id + "=" + .__desktop_cell_cs[di] + ":" + .__desktop_cell_rs[di] + ","
-                            moves = moves + id + "=" + .__desktop_cell_cs[ti] + ":" + .__desktop_cell_rs[ti] + ","
-                            var cur str = storage.get("shell.desktop.positions")
-                            storage.set("shell.desktop.positions", cur + moves)
-                            .__desktop_cmd = "refresh_desktop_icons"
-                        }
-                        .drag_id = ""
-                    }
-                }
+                .__desktop_cmd = "desktop_icon_drag_start	" + id
+            }
+        }
+        .BlankDrop -> {
+            if .drag_id != "" {
+                .__desktop_cmd = "desktop_icon_drop_at	" + .drag_id
+                .drag_id = ""
             }
         }
 

@@ -5597,6 +5597,8 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         // Plan 479 T3：通知面板 kind 图标（success→check / error→x / info 兜底；
         // T1 施工图定案 5）。
         "info" => r#"<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>"#,
+        // PLAN-012 F2：错误通知 ❗（用户裁定——原 x 与右侧关闭钮混淆）。
+        "circle-alert" => r#"<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>"#,
         "command" => r#"<path d="M15 6a3 3 0 1 0-3 3"/><path d="M6 15a3 3 0 1 0 3-3"/><path d="M9 9h6v6H9z"/>"#,
         // Plan 059(块头图标统一):stop/table 导出/重跑/删除/运行中
         "square" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/>"#,
@@ -9095,6 +9097,23 @@ fn execute_open_settings(state: &mut crate::ui::session::DesktopSession) {
             .find(|(_, v)| v.registry_id.as_deref() == Some(OSCONFIG_APP_ID))
             .map(|(wid, v)| (*wid, v.workspace))
         {
+            // PLAN-012 F2（用户裁定）：二态语义补全——窗口在场且可见时
+            // 再拨 = 关闭（走 W1 close→hide 拦截臂，重开瞬时）；隐藏/异
+            // 分区才聚焦拉起。
+            let visible_and_here = host.wm.current_workspace == ws
+                && host
+                    .wm
+                    .wins
+                    .get(&wid)
+                    .map(|v| !v.hidden.get() && !v.minimized.get())
+                    .unwrap_or(false);
+            if visible_and_here {
+                let _ = execute_desktop_commands(
+                    state,
+                    vec![crate::ui::session::DesktopCommand::CloseWindow(wid)],
+                );
+                return;
+            }
             let current = state
                 .host
                 .as_ref()
@@ -9351,6 +9370,17 @@ fn execute_desktop_commands(
             DC::DockUnpin(id) => execute_dock_pin(state, &id, false),
             // PLAN-012 W5：拖拽落子后的格子重注入（storage 已由 shell 写）。
             DC::RefreshDesktopIcons => inject_desktop_surface(state),
+            // PLAN-012 F2 走查：拖拽落格双动词。
+            DC::DesktopIconDrop(dragged, target) => {
+                execute_desktop_icon_drop(state, &dragged, target)
+            }
+            DC::DesktopIconDropAt(dragged, xy) => {
+                execute_desktop_icon_drop_at(state, &dragged, &xy)
+            }
+            // PLAN-012 F2 走查：拖拽开始（宿主置位；__mouse_released 臂落格）。
+            DC::DesktopIconDragStart(id) => {
+                state.desktop.icon_drag = Some(id);
+            }
             DC::SetWallpapersDir(dir) => execute_set_wallpapers_dir(state, &dir),
             // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
             // stale）。
@@ -11031,21 +11061,200 @@ fn load_desktop_positions() -> Vec<(String, (usize, usize))> {
 /// `__desktop_bg`（#hex → "bg-[#hex]" 根 bg 实铺片段；图片路径 → ""，由
 /// 宿主壁纸图层铺底——DSL 无重叠布局）+ `__desktop_hidden`（移除臂
 /// `shell.desktop.hidden` 续写底稿）。boot 期 inject_dock_pinned 邻位。
+/// PLAN-012 F2 走查：拖拽落格目标形态——图标 id（落到其所在格）或像素
+/// 换算后的线性格。
+enum DropTarget {
+    Icon(String),
+    Slot(usize),
+}
+
+/// 图标 id 未命中（竞态：目标已被移除）时的兜底格 = 表尾。
+fn target_slot_default() -> usize {
+    usize::MAX
+}
+
+/// PLAN-012 F2 走查：拖拽落格宿主执行——共用落格计算：dragged → 目标
+/// 线性格；目标被其他图标占据时占位者**挤到下一空格**（行主序先下后右
+/// 列，用户裁定 UX）；重写 `shell.desktop.positions`（全量 last-wins csv）
+/// + `inject_desktop_surface` 重注入。返回是否发生变更。
+fn desktop_icon_apply_drop(
+    state: &mut crate::ui::session::DesktopSession,
+    dragged: &str,
+    target: DropTarget,
+) -> bool {
+    const COLS: usize = 8;
+    let hidden = load_desktop_id_list("shell.desktop.hidden");
+    let customs = load_desktop_id_list("shell.desktop.icons");
+    let visible: Vec<String> = customs.into_iter().filter(|id| !hidden.contains(id)).collect();
+    if !visible.iter().any(|id| id == dragged) {
+        return false;
+    }
+    let positions = load_desktop_positions();
+    let cell_of = |id: &str| -> Option<(usize, usize)> {
+        positions
+            .iter()
+            .rev()
+            .find(|(eid, _)| eid == id)
+            .map(|(_, c)| *c)
+    };
+    // 现行有效占位（无位者按行主序补位——与 desktop_icon_cells 同口径）。
+    let mut taken: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+    let mut cells: Vec<(String, usize)> = Vec::new();
+    for id in &visible {
+        let slot = match cell_of(id) {
+            Some((c, r)) => r * COLS + c,
+            None => {
+                let mut s = 0usize;
+                while taken.contains(&s) {
+                    s += 1;
+                }
+                taken.insert(s);
+                cells.push((id.clone(), s));
+                continue;
+            }
+        };
+        taken.insert(slot);
+        cells.push((id.clone(), slot));
+    }
+    let target_slot = match target {
+        DropTarget::Slot(s) => s,
+        DropTarget::Icon(tid) => cells
+            .iter()
+            .find(|(id, _)| id == &tid)
+            .map(|(_, s)| *s)
+            .unwrap_or_else(|| {
+                // 兜底 = 现有最大格 + 1（追加到表尾，而非 usize::MAX）。
+                cells.iter().map(|(_, s)| *s).max().map_or(0, |m| m + 1)
+            }),
+    };
+    let dragged_slot = cells
+        .iter()
+        .find(|(id, _)| id == dragged)
+        .map(|(_, s)| *s)
+        .unwrap_or(target_slot);
+    // 目标被其他图标占据 → 占位者挤到下一空格（target+1 起行主序）。
+    let occupant = cells
+        .iter()
+        .find(|(id, slot)| *id != dragged && *slot == target_slot)
+        .map(|(id, _)| id.clone());
+    let mut new_cells: Vec<(String, usize)> = cells
+        .into_iter()
+        .map(|(id, slot)| {
+            if id == dragged {
+                (id, target_slot)
+            } else {
+                (id, slot)
+            }
+        })
+        .collect();
+    if let Some(oid) = &occupant {
+        let mut free = target_slot + 1;
+        loop {
+            let taken_by_other = new_cells
+                .iter()
+                .any(|(id, slot)| id != oid && *slot as usize == free);
+            if !taken_by_other {
+                break;
+            }
+            free += 1;
+        }
+        for (id, slot) in new_cells.iter_mut() {
+            if id == oid {
+                *slot = free;
+            }
+        }
+    }
+    // 全量 positions 重写（last-wins csv 直接生成终态，非追加）。
+    let mut csv = String::new();
+    for (id, slot) in &new_cells {
+        let c = slot % COLS;
+        let r = slot / COLS;
+        csv.push_str(&format!("{id}={c}:{r},"));
+    }
+    crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.positions", csv);
+    true
+}
+
+fn execute_desktop_icon_drop(
+    state: &mut crate::ui::session::DesktopSession,
+    dragged: &str,
+    target: String,
+) {
+    let changed = desktop_icon_apply_drop(state, dragged, DropTarget::Icon(target));
+    if changed {
+        inject_desktop_surface(state);
+    }
+    clear_desktop_drag_visual(state);
+}
+
+/// PLAN-012 F2 走查：松手落格（光标形态）——光标取 wm.last_cursor
+/// （desktop 本地坐标），格换算 + 落格 + 清 shell 视觉拖拽态。
+fn execute_desktop_icon_drop_at_cursor(
+    state: &mut crate::ui::session::DesktopSession,
+    dragged: &str,
+) {
+    let (cx, cy) = state
+        .host
+        .as_ref()
+        .map(|h| {
+            let p = h.wm.last_cursor.get();
+            (p.x, p.y)
+        })
+        .unwrap_or((f32::NEG_INFINITY, f32::NEG_INFINITY));
+    execute_desktop_icon_drop_at(state, dragged, &format!("{cx},{cy}"));
+}
+
+fn execute_desktop_icon_drop_at(
+    state: &mut crate::ui::session::DesktopSession,
+    dragged: &str,
+    xy: &str,
+) {
+    // x,y → 线性格换算在闭包内完成（解析失败 = no-op）。
+    // desktop 本地像素 → 格：面根 p-3(12px) + 格 80 + gap 8 → 88px 栅距。
+    let changed = (|| -> Option<bool> {
+        let (xs, ys) = xy.split_once(',')?;
+        let x = xs.trim().parse::<f32>().ok()?;
+        let y = ys.trim().parse::<f32>().ok()?;
+        const ORIGIN: f32 = 12.0;
+        const PITCH: f32 = 88.0;
+        let col = (((x - ORIGIN) / PITCH).floor() as i32).clamp(0, 7) as usize;
+        let row = (((y - ORIGIN) / PITCH).floor() as i32).clamp(0, 96) as usize;
+        Some(desktop_icon_apply_drop(
+            state,
+            dragged,
+            DropTarget::Slot(row * 8 + col),
+        ))
+    })()
+    .unwrap_or(false);
+    if changed {
+        inject_desktop_surface(state);
+    }
+    clear_desktop_drag_visual(state);
+}
+
+/// PLAN-012 F2 走查：清桌面面视觉拖拽态（落格完成后调用）。
+fn clear_desktop_drag_visual(state: &mut crate::ui::session::DesktopSession) {
+    if let Some(surface) = state.desktop.desktop_app {
+        if let Some(app) = state.apps.get_mut(&surface) {
+            let _ = app
+                .component
+                .write_state("drag_id", auto_val::Value::str(""));
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+    }
+}
+
 fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
     let Some(surface) = state.desktop.desktop_app else { return };
     let hidden = load_desktop_id_list("shell.desktop.hidden");
     let customs = load_desktop_id_list("shell.desktop.icons");
-    let mut order: Vec<(String, &str)> = state
-        .desktop
-        .dock_pinned
+    // PLAN-012 F2（用户裁定）：dock 固定与桌面快捷方式**分离**——桌面图标
+    // = 仅自定义列表（shell.desktop.icons − hidden），pinned 不再并入
+    // （固定到任务栏 ≠ 发送到桌面，两件事）。
+    let order: Vec<(String, &str)> = customs
         .iter()
-        .map(|id| (id.clone(), "pinned"))
+        .map(|id| (id.clone(), "custom"))
         .collect();
-    for id in customs {
-        if !order.iter().any(|(x, _)| *x == id) {
-            order.push((id, "custom"));
-        }
-    }
     let entries: Vec<auto_val::Value> = order
         .iter()
         .filter(|(id, _)| !hidden.contains(id))
@@ -15470,6 +15679,15 @@ fn compare_pngs(
                                 .map(|h| h.wm.end_interaction())
                                 .unwrap_or(false)
                             {
+                                return iced::Task::none();
+                            }
+                            // PLAN-012 F2 走查：桌面图标拖拽松手落格——
+                            // 宿主全局臂收尾（mouse_area 离开即失
+                            // is_pressed，跨件 release 不可达）。光标 =
+                            // last_cursor（全局 CursorMoved 持续回写，
+                            // desktop 本地坐标）。
+                            if let Some(dragged) = state.desktop.icon_drag.take() {
+                                execute_desktop_icon_drop_at_cursor(state, &dragged);
                                 return iced::Task::none();
                             }
                         }

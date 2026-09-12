@@ -267,6 +267,9 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// Plan 478 T4：switcher overlay App 的 AppId。首次 Ctrl+Tab 召唤时
     /// 懒挂载（launcher 同型 overlay 槽约定）；独立模式恒 None。
     pub switcher_app: Option<AppId>,
+    /// PLAN-012 F2 走查：进行中的桌面图标拖拽（desktop_icon_drag_start
+    /// 置位；__mouse_released 臂落格清位）。
+    pub icon_drag: Option<String>,
     /// Plan 479 T3：通知中心 overlay App 的 AppId。首次 notes_toggle 召唤时
     /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
     pub notification_app: Option<AppId>,
@@ -372,6 +375,7 @@ impl DesktopState {
             shell_fields: ShellFields::default(),
             launcher_app: None,
             switcher_app: None,
+            icon_drag: None,
             notification_app: None,
             desktop_app: None,
             desktop_wallpaper: DESKTOP_WALLPAPER_DEFAULT.to_string(),
@@ -1292,6 +1296,17 @@ pub enum DesktopCommand {
     /// shell 拖拽落子写 `shell.desktop.positions` 后触发——宿主重读 storage
     /// 重算 __desktop_cells/平行列表，拖拽结果即时可见 + boot 同链）。
     RefreshDesktopIcons,
+    /// PLAN-012 F2 走查（用户裁定 UX）：拖拽落格——落到**目标图标**所在格
+    /// （`desktop_icon_drop	<dragged>	<target>`；target 占位者挤到下一
+    /// 空格，行主序先下后右列）。
+    DesktopIconDrop(String, String),
+    /// PLAN-012 F2 走查：拖拽落格——落到**光标像素**所在格（
+    /// `desktop_icon_drop_at	<dragged>	<x>,<y>`；desktop 本地坐标，
+    /// 空格直落 / 占位同上挤推）。
+    DesktopIconDropAt(String, String),
+    /// PLAN-012 F2 走查：图标拖拽开始（`desktop_icon_drag_start\t<id>`；
+    /// 宿主置 icon_drag，全局 `__mouse_released` 臂松手落格）。
+    DesktopIconDragStart(String),
     /// Plan 540 T3：壁纸目录写动词（`set_wallpapers_dir\t<dir>`；执行臂
     /// config 落盘——scan_wallpapers_dir 与缺省壁纸链共用解析）。
     SetWallpapersDir(String),
@@ -1449,6 +1464,27 @@ impl DesktopCommand {
             DesktopCommand::DockPin(id) => format!("dock_pin{}{}", Self::FIELD_SEP, id),
             DesktopCommand::DockUnpin(id) => format!("dock_unpin{}{}", Self::FIELD_SEP, id),
             DesktopCommand::RefreshDesktopIcons => "refresh_desktop_icons".to_string(),
+            DesktopCommand::DesktopIconDrop(dragged, target) => {
+                format!(
+                    "desktop_icon_drop{}{}{}{}",
+                    Self::FIELD_SEP,
+                    dragged,
+                    Self::FIELD_SEP,
+                    target
+                )
+            }
+            DesktopCommand::DesktopIconDropAt(dragged, xy) => {
+                format!(
+                    "desktop_icon_drop_at{}{}{}{}",
+                    Self::FIELD_SEP,
+                    dragged,
+                    Self::FIELD_SEP,
+                    xy
+                )
+            }
+            DesktopCommand::DesktopIconDragStart(id) => {
+                format!("desktop_icon_drag_start{}{}", Self::FIELD_SEP, id)
+            }
             DesktopCommand::SetWallpapersDir(dir) => {
                 format!("set_wallpapers_dir{}{}", Self::FIELD_SEP, dir)
             }
@@ -1497,6 +1533,44 @@ impl DesktopCommand {
                 // PLAN-012 W5：桌面图标格子重注入（无参动词前置防互吞）。
                 if rec == "refresh_desktop_icons" {
                     return Some(DesktopCommand::RefreshDesktopIcons);
+                }
+                // PLAN-012 F2 走查：拖拽落格双动词（双参记录，二次 split）。
+                // 分隔符双轨：宿主/单测直写 \u{1f}；shell.at 转义 \t。
+                for verb in [
+                    "desktop_icon_drop",
+                    "desktop_icon_drop_at",
+                    "desktop_icon_drag_start",
+                ] {
+                    let sep = format!("{verb}\u{1f}");
+                    let sep_t = format!("{verb}\t");
+                    if rec.starts_with(&sep) || rec.starts_with(&sep_t) {
+                        let rest = &rec[verb.len() + 1..];
+                        // drag_start 单参；drop 双参（第二参缺席 = 空串容忍，
+                        // drop_at 由宿主读 surface 光标态）。
+                        let (dragged, second) = match rest
+                            .split_once([Self::FIELD_SEP, '\t'])
+                        {
+                            Some((d, s)) => (d.to_string(), s.to_string()),
+                            None => (rest.to_string(), String::new()),
+                        };
+                        if dragged.is_empty()
+                            || (verb != "desktop_icon_drag_start"
+                                && second.is_empty())
+                        {
+                            return None;
+                        }
+                        return Some(match verb {
+                            "desktop_icon_drop" => DesktopCommand::DesktopIconDrop(
+                                dragged,
+                                second,
+                            ),
+                            "desktop_icon_drop_at" => DesktopCommand::DesktopIconDropAt(
+                                dragged,
+                                second,
+                            ),
+                            _ => DesktopCommand::DesktopIconDragStart(dragged),
+                        });
+                    }
                 }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {

@@ -110,7 +110,9 @@ widget NotificationCenter {
                                                 icon (name: "check") { style: "h-4 w-4 text-success" }
                                             } else {
                                                 if r.kind == "error" {
-                                                    icon (name: "x") { style: "h-4 w-4 text-error" }
+                                                    // PLAN-012 F2（用户裁定）：错误 ❗
+                                                    // （原 x 与右侧关闭钮混淆）。
+                                                    icon (name: "circle-alert") { style: "h-4 w-4 text-error" }
                                                 } else {
                                                     icon (name: "info") { style: "h-4 w-4 text-muted-foreground" }
                                                 }
