@@ -27,6 +27,9 @@ widget DesktopSurface {
         Init,
         ActivateApp(str),
         IconMenu(str),
+        // PLAN-012 W5：拖拽态机（press-press 两段式——onclick 即 iced
+        // press；按下拾起 → 按到目标卡落下交换；按回原卡 = 取消）。
+        IconPress(str),
         BlankPress,
         MenuOpen,
         MenuRemove,
@@ -41,7 +44,15 @@ widget DesktopSurface {
         var __desktop_bg str = ""
         var __desktop_icons = []
         var __desktop_hidden str = ""
+        // PLAN-012 W5：格子化图标表（宿主注入——拖拽换位渲染面 + 平行
+        // 字符串列表供 handler 下标读，B12 规避）。
+        var __desktop_cells = []
+        var __desktop_cell_ids = []
+        var __desktop_cell_cs = []
+        var __desktop_cell_rs = []
         var menu_id str = ""
+        // PLAN-012 W5：拖拽态（按下拾起的图标 id；"" = 无拖拽）。
+        var drag_id str = ""
         var blank_menu str = ""
         // PLAN-012：光标坐标（宿主 __mouse_moved 臂持续写入，只写不置
         // view_dirty；空白菜单坐标锚数据源——open 翻转重建时读取最新值）。
@@ -85,12 +96,23 @@ widget DesktopSurface {
             // （w-fit iced 轨不支持，class.rs 白名单受限——显式算术宽）。
             grid (cols: 8, gap: 8) {
                 style: "w-[696px]"
-                for e in .__desktop_icons {
-                    mouse-area (ondblclick: .ActivateApp(e.id)) {
+                // PLAN-012 W5：格子表渲染（宿主分配 (c,r) + spacer 填位）——
+                // 拖拽换位后位置持久（shell.desktop.positions，重启保持）。
+                for e in .__desktop_cells {
+                    if e.spacer == "1" {
+                        div { style: "w-20 h-20" }
+                    } else {
+                    mouse-area (ondblclick: .ActivateApp(e.id), onclick: .IconPress(e.id)) {
                         col {
                             // PLAN-002 B pilot：布局件 hover 类消费（此前 row/col
                             // 上的 hover: 静默丢弃——526 Q9①）+ 右键挂点。
-                            style: "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                            // PLAN-012 W5：拖拽拾起态 = 半透明底（拖拽语义反馈；
+                            // 无逐帧跟随幽灵——headless 决策，见工件）。
+                            style: if .drag_id == e.id {
+                                "w-20 h-20 items-center justify-center gap-1 bg-white/20 opacity-50"
+                            } else {
+                                "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                            }
                             oncontextmenu.prevent: .IconMenu(e.id)
             // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标 chip 视觉件，
             // 与任务栏条目右键同款悬浮样式；此前准内联 col 把
@@ -128,6 +150,7 @@ widget DesktopSurface {
                                 style: "text-xs text-foreground truncate w-full text-center"
                             }
                         }
+                    }
                     }
                 }
             }
@@ -168,6 +191,43 @@ widget DesktopSurface {
 
         // 右键图标：开菜单（记录目标条目）。
         .IconMenu(id) -> { .menu_id = id }
+
+        // PLAN-012 W5：拖拽态机——首按拾起；按回原卡取消；按到其他卡 =
+        // 交换换位（追加式 positions 落子 + refresh_desktop_icons 重注入；
+        // storage 持久 = 重启保持）。cells 平行列表下标读（B12 规避）。
+        .IconPress(id) -> {
+            if .drag_id == "" {
+                .drag_id = id
+            } else {
+                if .drag_id == id {
+                    .drag_id = ""
+                } else {
+                    var di int = 0 - 1
+                    var ti int = 0 - 1
+                    var i int = 0
+                    while i < .__desktop_cell_ids.len() {
+                        if .__desktop_cell_ids[i] == .drag_id {
+                            di = i
+                        }
+                        if .__desktop_cell_ids[i] == id {
+                            ti = i
+                        }
+                        i = i + 1
+                    }
+                    if di >= 0 {
+                        if ti >= 0 {
+                            var moves str = ""
+                            moves = moves + .drag_id + "=" + .__desktop_cell_cs[di] + ":" + .__desktop_cell_rs[di] + ","
+                            moves = moves + id + "=" + .__desktop_cell_cs[ti] + ":" + .__desktop_cell_rs[ti] + ","
+                            var cur str = storage.get("shell.desktop.positions")
+                            storage.set("shell.desktop.positions", cur + moves)
+                            .__desktop_cmd = "refresh_desktop_icons"
+                        }
+                        .drag_id = ""
+                    }
+                }
+            }
+        }
 
         // PLAN-526 T10：空白处右键 → 空白菜单态。
         .BlankMenu -> { .blank_menu = "1" }

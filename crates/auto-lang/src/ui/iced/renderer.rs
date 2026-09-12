@@ -9349,6 +9349,8 @@ fn execute_desktop_commands(
             // PLAN-012 W4 协议 v1.6：单枚固定/取消固定。
             DC::DockPin(id) => execute_dock_pin(state, &id, true),
             DC::DockUnpin(id) => execute_dock_pin(state, &id, false),
+            // PLAN-012 W5：拖拽落子后的格子重注入（storage 已由 shell 写）。
+            DC::RefreshDesktopIcons => inject_desktop_surface(state),
             DC::SetWallpapersDir(dir) => execute_set_wallpapers_dir(state, &dir),
             // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
             // stale）。
@@ -10908,6 +10910,120 @@ fn load_desktop_id_list(key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// PLAN-012 W5 T11：桌面图标格子分配——storage `shell.desktop.positions`
+/// （追加式 "id=c,r,..." csv，**last-wins** 解析——shell 落子为追加写）。
+/// 已定位图标占据其 (c,r)；未定位图标按既有 order 行主序填充首个空格；
+/// 输出行主序全格子表（空格 = spacer 占位）。返回 (cells, ids, cs, rs)：
+/// cells = Obj 数组（view 渲染），ids/cs/rs = 平行字符串列表（handler
+/// 下标读——B12 规避，IconDropOn 交换换位数据面）。
+fn desktop_icon_cells(
+    order: &[(String, &str)],
+    hidden: &[String],
+    registry: &[crate::ui::app_registry::AppRegistryEntry],
+) -> (
+    Vec<auto_val::Value>,
+    Vec<String>,
+    Vec<auto_val::Value>,
+    Vec<auto_val::Value>,
+) {
+    const COLS: usize = 8;
+    let visible: Vec<&(String, &str)> =
+        order.iter().filter(|(id, _)| !hidden.contains(id)).collect();
+    let positions = load_desktop_positions();
+    // ① 已定位：last-wins 解析的表中取 (c,r)。
+    let mut placed: Vec<(usize, usize, &&(String, &str))> = Vec::new();
+    let mut free: Vec<&&(String, &str)> = Vec::new();
+    for e in &visible {
+        match positions.iter().rev().find(|(id, _)| *id == e.0) {
+            Some((_, (c, r))) => placed.push((*c, *r, e)),
+            None => free.push(e),
+        }
+    }
+    // ② 未定位：行主序填首个空格（跳过已占位）。
+    let mut taken: std::collections::BTreeSet<usize> = placed
+        .iter()
+        .map(|&(c, r, _)| r * COLS + c)
+        .collect();
+    for e in &free {
+        let mut slot = 0usize;
+        while taken.contains(&slot) {
+            slot += 1;
+        }
+        taken.insert(slot);
+        placed.push((slot % COLS, slot / COLS, e));
+    }
+    // ③ 行主序输出（spacer 填空格）。
+    placed.sort_by_key(|&(c, r, _)| (r, c));
+    let mut cells = Vec::new();
+    let mut ids = Vec::new();
+    let mut cs = Vec::new();
+    let mut rs = Vec::new();
+    let mut cursor = 0usize;
+    for &(c, r, e) in &placed {
+        let linear = r * COLS + c;
+        let id = e.0.clone();
+        let reg = registry.iter().find(|e2| e2.id == id);
+        let icon = reg
+            .map(|e2| e2.icon.clone())
+            .unwrap_or_else(|| "app-window".to_string());
+        let label = reg
+            .map(|e2| e2.title.clone())
+            .unwrap_or_else(|| id.clone());
+        let src = e.1.to_string();
+        let color = crate::ui::app_registry::badge_color_for(&id);
+        while cursor < linear {
+            cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+                ("spacer", auto_val::Value::str("1")),
+                ("c", auto_val::Value::str((cursor % COLS).to_string())),
+                ("r", auto_val::Value::str((cursor / COLS).to_string())),
+            ]))));
+            ids.push(String::new());
+            cs.push(auto_val::Value::str((cursor % COLS).to_string()));
+            rs.push(auto_val::Value::str((cursor / COLS).to_string()));
+            cursor += 1;
+        }
+        cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+            ("id", auto_val::Value::Str(id.clone().into())),
+            ("icon", auto_val::Value::Str(icon.into())),
+            ("label", auto_val::Value::Str(label.into())),
+            ("src", auto_val::Value::Str(src.into())),
+            ("color", auto_val::Value::Str(color.into())),
+            ("c", auto_val::Value::str(c.to_string())),
+            ("r", auto_val::Value::str(r.to_string())),
+        ]))));
+        ids.push(id);
+        cs.push(auto_val::Value::str(c.to_string()));
+        rs.push(auto_val::Value::str(r.to_string()));
+        cursor = linear + 1;
+    }
+    (cells, ids, cs, rs)
+}
+
+/// `shell.desktop.positions` 追加式 csv 解析——"id=c,r" 段（逗号分隔），
+/// 同 id 后写胜（shell 落子为追加写，末段即最新位）。
+fn load_desktop_positions() -> Vec<(String, (usize, usize))> {
+    let raw = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.positions")
+        .unwrap_or_default();
+    let mut out: Vec<(String, (usize, usize))> = Vec::new();
+    for seg in raw.split(',') {
+        let seg = seg.trim();
+        if seg.is_empty() {
+            continue;
+        }
+        let Some((id, pos)) = seg.split_once('=') else {
+            continue;
+        };
+        let Some((c, r)) = pos.split_once(':') else {
+            continue;
+        };
+        if let (Ok(c), Ok(r)) = (c.trim().parse::<usize>(), r.trim().parse::<usize>()) {
+            out.retain(|(existing, _)| existing != id);
+            out.push((id.trim().to_string(), (c, r)));
+        }
+    }
+    out
+}
+
 /// Plan 496 M5：桌面本体投影注入——pinned ∪ 自定义条目合并去重
 /// （pinned 先列，custom 重叠去重接排；hidden 两者通用排除），条目
 /// {id,icon,label,src,color}（icon/label 注册表解析，缺省回退 app-window/id；
@@ -10931,22 +11047,22 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
         }
     }
     let entries: Vec<auto_val::Value> = order
-        .into_iter()
+        .iter()
         .filter(|(id, _)| !hidden.contains(id))
         .map(|(id, src)| {
-            let reg = state.desktop.registry_entries.iter().find(|e| e.id == id);
+            let reg = state.desktop.registry_entries.iter().find(|e| &e.id == id);
             let icon = reg
                 .map(|e| e.icon.clone())
                 .unwrap_or_else(|| "app-window".to_string());
             let label = reg
                 .map(|e| e.title.clone())
                 .unwrap_or_else(|| id.clone());
-            let color = crate::ui::app_registry::badge_color_for(&id);
+            let color = crate::ui::app_registry::badge_color_for(id);
             auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
-                ("id", auto_val::Value::Str(id.into())),
+                ("id", auto_val::Value::Str(id.clone().into())),
                 ("icon", auto_val::Value::Str(icon.into())),
                 ("label", auto_val::Value::Str(label.into())),
-                ("src", auto_val::Value::Str(src.into())),
+                ("src", auto_val::Value::Str((*src).into())),
                 ("color", auto_val::Value::Str(color.into())),
             ])))
         })
@@ -10957,8 +11073,26 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
         String::new()
     };
     let hidden_str = hidden.join(",");
+    // PLAN-012 W5：格子分配（拖拽换位数据面——cells Obj 数组供 view 渲染，
+    // ids/cs/rs 平行字符串列表供 handler 下标读，B12 规避）。
+    let (cells, cell_ids, cell_cs, cell_rs) =
+        desktop_icon_cells(&order, &hidden, &state.desktop.registry_entries);
     let Some(app) = state.apps.get_mut(&surface) else { return };
     let _ = app.component.write_state_vec("__desktop_icons", entries);
+    let _ = app.component.write_state_vec("__desktop_cells", cells);
+    let _ = app.component.write_state_vec(
+        "__desktop_cell_ids",
+        cell_ids
+            .into_iter()
+            .map(|s| auto_val::Value::Str(s.into()))
+            .collect(),
+    );
+    let _ = app
+        .component
+        .write_state_vec("__desktop_cell_cs", cell_cs);
+    let _ = app
+        .component
+        .write_state_vec("__desktop_cell_rs", cell_rs);
     let _ = app.component.write_state("__desktop_bg", auto_val::Value::Str(bg.into()));
     let _ = app.component.write_state(
         "__desktop_hidden",
@@ -23127,6 +23261,96 @@ mod tests {
         // boot 恢复后未读恒 0（会话概念不落盘）。
         restore_notifications(&mut ds);
         assert_eq!(ds.desktop.notes_unread.get(), 0, "boot 恢复未读归零");
+    }
+
+    /// PLAN-012 W5：格子分配单测——positions 定位优先 + 未定位行主序
+    /// 填充 + spacer 填位 + 平行列表同构（ids/cs/rs 等长且下标一致）。
+    #[test]
+    fn w5_desktop_icon_cells_assignment() {
+        // 4 图标，第 2 枚定位 (3,0)，第 4 枚定位 (1,1)。
+        let order = vec![
+            ("a".to_string(), "pinned"),
+            ("b".to_string(), "custom"),
+            ("c".to_string(), "custom"),
+            ("d".to_string(), "custom"),
+        ];
+        let _guard = t2_isolate_storage("w5-cells");
+        let raw = "b=3:0,d=1:1,";
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.positions",
+            raw.to_string(),
+        );
+        let pos = load_desktop_positions();
+        let (cells, ids, cs, rs) = desktop_icon_cells(&order, &[], &[]);
+        eprintln!("[w5-cells] positions={pos:?} ids={ids:?} cs={cs:?} rs={rs:?}");
+        // 行主序：(0,0)=a，(1,0)=spacer，(2,0)=c？——b 占 (3,0)、d 占 (1,1)。
+        // 行主序填充：a→(0,0)，c→(1,0)（b 占 (3,0)），d 定位 (1,1)。
+        let id_of = |i: usize| -> String {
+            match &cells[i] {
+                auto_val::Value::Obj(o) => match o.get("id") {
+                    Some(auto_val::Value::Str(s)) => s.to_string(),
+                    _ => String::new(),
+                },
+                _ => String::new(),
+            }
+        };
+        assert_eq!(cells.len(), ids.len(), "cells 与 ids 等长");
+        assert_eq!(cs.len(), rs.len());
+        assert_eq!(id_of(0), "a", "行主序首个空格 (0,0)");
+        assert_eq!(id_of(1), "c", "跳过 b 的定位格后首个空格 (1,0)");
+        // b 定位 (3,0)：cells 数组紧凑到最后一枚图标——b 前仅 (2,0) 一格
+        // 空缺 → spacer，故 b 落数组下标 3（(c,r)=(3,0) 由 cs/rs 背书）。
+        let bi = ids.iter().position(|x| x == "b").unwrap();
+        assert_eq!(bi, 3, "b 紧跟 (2,0) spacer");
+        let cell_str = |v: &auto_val::Value| -> String {
+            match v {
+                auto_val::Value::Str(x) => x.to_string(),
+                other => other.to_string(),
+            }
+        };
+        assert_eq!(cell_str(&cs[bi]), "3", "b 的列 = 定位值");
+        assert_eq!(cell_str(&rs[bi]), "0", "b 的行 = 定位值");
+        let spacer_at_2 = match &cells[2] {
+            auto_val::Value::Obj(o) => o
+                .get("spacer")
+                .map(|v| {
+                    matches!(v, auto_val::Value::Str(x) if x.to_string() == "1")
+                })
+                .unwrap_or(false),
+            _ => false,
+        };
+        assert!(spacer_at_2, "(2,0) 应为 spacer 填位");
+        let di = ids.iter().position(|x| x == "d").unwrap();
+        assert_eq!(cell_str(&cs[di]), "1", "d 定位列");
+        assert_eq!(cell_str(&rs[di]), "1", "d 定位行");
+    }
+
+    /// PLAN-012 W5：positions 追加式 csv last-wins 解析（同 id 后写胜）。
+    #[test]
+    fn w5_desktop_positions_last_wins() {
+        let _guard = t2_isolate_storage("w5-positions");
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.positions",
+            "a=0:0,b=1:0,a=2:3,".to_string(),
+        );
+        let pos = load_desktop_positions();
+        assert_eq!(pos.len(), 2, "同 id 去重（last-wins）");
+        assert_eq!(pos[0].0, "b");
+        let a = pos.iter().find(|(id, _)| id == "a").unwrap();
+        assert_eq!(a.1, (2, 3), "后写胜");
+    }
+
+    /// PLAN-012 W5：refresh_desktop_icons 无参动词解析。
+    #[test]
+    fn w5_refresh_desktop_icons_verb_parse() {
+        assert_eq!(
+            crate::ui::session::DesktopCommand::parse_records("refresh_desktop_icons"),
+            vec![crate::ui::session::DesktopCommand::RefreshDesktopIcons]
+        );
+        assert_eq!(
+            crate::ui::session::DesktopCommand::RefreshDesktopIcons.encode(),
+            "refresh_desktop_icons"
+        );
     }
 
     /// PLAN-012 W1：os-config close→hide 拦截臂单测——CloseWindow 对

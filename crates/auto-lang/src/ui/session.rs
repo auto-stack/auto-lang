@@ -1287,6 +1287,10 @@ pub enum DesktopCommand {
     /// 全集做 csv 拼接（B12 同族），单枚增删不过 .at。
     DockPin(String),
     DockUnpin(String),
+    /// PLAN-012 W5：桌面图标格子重注入（`refresh_desktop_icons` 无参动词；
+    /// shell 拖拽落子写 `shell.desktop.positions` 后触发——宿主重读 storage
+    /// 重算 __desktop_cells/平行列表，拖拽结果即时可见 + boot 同链）。
+    RefreshDesktopIcons,
     /// Plan 540 T3：壁纸目录写动词（`set_wallpapers_dir\t<dir>`；执行臂
     /// config 落盘——scan_wallpapers_dir 与缺省壁纸链共用解析）。
     SetWallpapersDir(String),
@@ -1443,6 +1447,7 @@ impl DesktopCommand {
             }
             DesktopCommand::DockPin(id) => format!("dock_pin{}{}", Self::FIELD_SEP, id),
             DesktopCommand::DockUnpin(id) => format!("dock_unpin{}{}", Self::FIELD_SEP, id),
+            DesktopCommand::RefreshDesktopIcons => "refresh_desktop_icons".to_string(),
             DesktopCommand::SetWallpapersDir(dir) => {
                 format!("set_wallpapers_dir{}{}", Self::FIELD_SEP, dir)
             }
@@ -1487,6 +1492,10 @@ impl DesktopCommand {
                 // 带参动词互吞）。
                 if rec == "shutdown" {
                     return Some(DesktopCommand::Shutdown);
+                }
+                // PLAN-012 W5：桌面图标格子重注入（无参动词前置防互吞）。
+                if rec == "refresh_desktop_icons" {
+                    return Some(DesktopCommand::RefreshDesktopIcons);
                 }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
