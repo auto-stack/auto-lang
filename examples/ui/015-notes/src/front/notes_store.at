@@ -64,7 +64,7 @@ store NotesStore {
         Init, ReloadNotes, SeedVocab, ApplyFilter, SelectFirstVisible,
         SelectNote(int), NewNote, SaveDraft, FlushDraft, LoadDraft,
         EditTitle(str), EditBody(str),
-        DeleteArmed, DeleteConfirmed, DeleteCancelled, TogglePinActive,
+        DeleteArmed, DeleteConfirmed, DeleteCancelled, TogglePin(int), TogglePinActive,
         SetSearch(str), SelectFolder(str), SelectTag(str), ClearTag,
         TagAdded(str), TagRemoved(str),
         ToggleDarkMode, SetMode(str), SetAccent(str), ToggleSettings
@@ -264,8 +264,16 @@ store NotesStore {
         }
 
         // 置顶落库（旧实现只翻转本地内存，刷新即丢，见 PLAN-616 U7）。
+        // 纯本地翻转（可单测）：pinned 落库由 TogglePinActive 编排。
+        .TogglePin(idx) -> {
+            if idx < .notes.len() {
+                .notes[idx].pinned = !.notes[idx].pinned
+            }
+        }
+
         .TogglePinActive -> {
             if .notes.len() > 0 {
+                .TogglePin(.active_id)
                 toggle_pin(.notes[.active_id].id)
                 .ReloadNotes()
                 .LoadDraft()

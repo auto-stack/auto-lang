@@ -163,11 +163,13 @@ mod plan370_015_behavior_tests {
                 before,
                 after
             );
-            // store.NewNote sets active_id = notes.len() - 1 (the new note).
+            // PLAN-616: store.NewNote 置 active_id = 0 —— db.create_note
+            // 把新笔记**前插**（db.at: "prepend so newest is first"），
+            // 所以「新笔记」恒在表头；旧断言 (len-1) 与数据模型相反。
             assert_eq!(
                 state_str(&dc, "active_id"),
-                (after - 1).to_string(),
-                "active_id should point at the new note"
+                "0",
+                "active_id should point at the new note (prepended at index 0)"
             );
         })
     }
@@ -186,11 +188,14 @@ mod plan370_015_behavior_tests {
                 }
             };
             assert_eq!(state_str(&dc, "active_id"), "0", "precondition: active_id 0");
-            dc.on_with_input(&with_int("SelectNote", 3), None);
+            // PLAN-616: SelectNote 从 App 下移到 NavTree/store（行点击 →
+            // NavTree.SelectNote(k) → store.SelectNote(k)）。用 store 层驱动，
+            // 与 d9 同款（走 store 方法链 codegen 路径）。
+            dc.on_with_input_for("NotesStore", &with_int("SelectNote", 3), None);
             assert_eq!(
                 state_str(&dc, "active_id"),
                 "3",
-                "SelectNote(3) should set active_id=3"
+                "store.SelectNote(3) should set active_id=3"
             );
         })
     }
@@ -208,12 +213,15 @@ mod plan370_015_behavior_tests {
                     return;
                 }
             };
+            // PLAN-616: 作用域筛选从「All/Pinned/Recent 分段控件」改为
+            // 「All/Pinned/文件夹」胶囊；SelectFolder(name) 是唯一入口
+            // （Recent 作用域退役）。
             assert_eq!(state_str(&dc, "active_folder"), "all");
-            dc.on_with_input("SelectPinned", None);
+            dc.on_with_input_for("NotesStore", &with_str("SelectFolder", "pinned"), None);
             assert_eq!(state_str(&dc, "active_folder"), "pinned");
-            dc.on_with_input("SelectRecent", None);
-            assert_eq!(state_str(&dc, "active_folder"), "recent");
-            dc.on_with_input("SelectAll", None);
+            dc.on_with_input_for("NotesStore", &with_str("SelectFolder", "work"), None);
+            assert_eq!(state_str(&dc, "active_folder"), "work");
+            dc.on_with_input_for("NotesStore", &with_str("SelectFolder", "all"), None);
             assert_eq!(state_str(&dc, "active_folder"), "all");
         })
     }
@@ -232,10 +240,10 @@ mod plan370_015_behavior_tests {
                 }
             };
             assert_eq!(state_str(&dc, "active_tag"), "");
-            dc.on_with_input(&with_str("SelectTag", "work"), None);
-            assert_eq!(state_str(&dc, "active_tag"), "work", "SelectTag(work)");
-            dc.on_with_input("ClearTag", None);
-            assert_eq!(state_str(&dc, "active_tag"), "", "ClearTag");
+            dc.on_with_input_for("NotesStore", &with_str("SelectTag", "work"), None);
+            assert_eq!(state_str(&dc, "active_tag"), "work", "store.SelectTag(work)");
+            dc.on_with_input_for("NotesStore", "ClearTag", None);
+            assert_eq!(state_str(&dc, "active_tag"), "", "store.ClearTag");
         })
     }
 
@@ -262,7 +270,10 @@ mod plan370_015_behavior_tests {
                 Value::Bool(b) => b,
                 other => panic!("notes[0].pinned not a bool: {:?}", other),
             };
-            dc.on_with_input("TogglePin", None);
+            // PLAN-616: 本地翻转下沉为 store.TogglePin(idx)（可单测的纯本地
+            // 变更）；App 侧的「置顶当前笔记」是 store.TogglePinActive（本地翻转 +
+            // toggle_pin 落库 + 重载），落库路径由 MCP 场景 T8 覆盖。
+            dc.on_with_input_for("NotesStore", &with_int("TogglePin", 0), None);
             let after = match note_field(&dc, 0, "pinned") {
                 Value::Bool(b) => b,
                 other => panic!("notes[0].pinned not a bool after toggle: {:?}", other),
@@ -291,11 +302,13 @@ mod plan370_015_behavior_tests {
             // PLAN-062 注记: 本测在干净基线(e51bd02a6, stash 后仅 T1 提交)
             // 即红——基线既有红(主检出同红),归 015 语料/行为在途变更,
             // 非 PLAN-062 回归。差分对照口径登记于 docs/plans/062。
-            assert_eq!(state_str(&dc, "dark_mode"), "false", "initial dark_mode");
-            dc.on_with_input("ToggleDarkMode", None);
-            assert_eq!(state_str(&dc, "dark_mode"), "true", "after first toggle");
-            dc.on_with_input("ToggleDarkMode", None);
-            assert_eq!(state_str(&dc, "dark_mode"), "false", "after second toggle");
+            // PLAN-616: pac.at 声明 theme: "dark"（1f7313e93 暗色默认化），
+            // store 初值 true。旧断言初值 false 与声明相反，属基线既有红。
+            assert_eq!(state_str(&dc, "dark_mode"), "true", "initial dark_mode");
+            dc.on_with_input_for("NotesStore", "ToggleDarkMode", None);
+            assert_eq!(state_str(&dc, "dark_mode"), "false", "after first toggle");
+            dc.on_with_input_for("NotesStore", "ToggleDarkMode", None);
+            assert_eq!(state_str(&dc, "dark_mode"), "true", "after second toggle");
         })
     }
 
@@ -330,14 +343,14 @@ mod plan370_015_behavior_tests {
         })
     }
 
-    // ── D10: EditorPanel.Edit fills edit_title/edit_body from note ──────────
-    // The .Edit handler does `.edit_title = .note.title; .edit_body = .note.body`.
-    // This requires .note (a prop holding a raw heap-id Int) to be readable in
-    // the handler, and .note.title/.note.body to deref correctly.
+    // ── D10: 草稿编辑（始终可编辑模型）────────────────────────────────────
+    // PLAN-616: 模态 Edit/Save/Cancel 退役——EditorPanel 直接绑 store 草稿
+    // （draft_title/draft_body），输入即置 dirty，SaveDraft 落库并清 dirty。
+    // 本测驱动 EditorPanel 的 EditTitle/SaveDraft，经 store 方法链写 draft_*。
 
     #[cfg(feature = "ui-interpreter")]
     #[test]
-    fn d10_edit_fills_edit_fields() {
+    fn d10_edit_fills_draft_fields() {
         run_big_stack(|| {
         let mut dc =     match build_015_component() {
                 Some(c) => c,
@@ -346,30 +359,26 @@ mod plan370_015_behavior_tests {
                     return;
                 }
             };
-            // Precondition: editing is false, edit fields empty.
-            assert_eq!(state_str(&dc, "editing"), "false", "initial editing");
-            assert_eq!(state_str(&dc, "edit_title"), "", "initial edit_title");
+            // Precondition: draft is loaded from the active note, not dirty.
+            assert_eq!(state_str(&dc, "dirty"), "false", "initial dirty");
+            assert_eq!(state_str(&dc, "draft_title"), "Welcome", "initial draft_title");
 
-            // The note prop is normally written by ensure_child_state during view
-            // build. In headless mode (no render), simulate it: write notes[0] as
-            // the `note` prop so the handler can read .note.title.
-            let notes = dc.read_state_as_vec("notes").expect("notes");
-            let note0 = notes[0].clone(); // Int(heap_id)
-            if dc.bridge_mut().write_state("note", note0).is_err() {
-                // Field may not exist in state_field_names; add it via ensure_child_state.
-                let mut props = std::collections::HashMap::new();
-                props.insert("note".to_string(), notes[0].clone());
-                dc.bridge_mut().ensure_child_state("EditorPanel", &[], &props);
-            }
+            // EditorPanel.EditTitle(v) → store.EditTitle(v) → draft_title + dirty.
+            dc.on_with_input_for("EditorPanel", &with_str("EditTitle", "MCP Title"), None);
+            assert_eq!(
+                state_str(&dc, "draft_title"),
+                "MCP Title",
+                "draft_title should follow the edit"
+            );
+            assert_eq!(state_str(&dc, "dirty"), "true", "editing should mark dirty");
 
-            // Trigger EditorPanel's .Edit handler.
-            dc.on_with_input_for("EditorPanel", "Edit", None);
+            // EditorPanel.EditBody(v) → store.EditBody(v) → draft_body.
+            dc.on_with_input_for("EditorPanel", &with_str("EditBody", "MCP Body"), None);
+            assert_eq!(state_str(&dc, "draft_body"), "MCP Body", "draft_body");
 
-            // After Edit: editing=true, edit_title=note's title, edit_body=note's body.
-            assert_eq!(state_str(&dc, "editing"), "true", "editing after Edit");
-            let title = state_str(&dc, "edit_title");
-            eprintln!("d10: edit_title after Edit = {:?}", title);
-            assert!(!title.is_empty(), "edit_title should be filled from note.title");
+            // SaveDraft → FlushDraft（落库 + 重载）→ dirty 复位。
+            dc.on_with_input_for("EditorPanel", "SaveDraft", None);
+            assert_eq!(state_str(&dc, "dirty"), "false", "SaveDraft should clear dirty");
         })
     }
 
