@@ -152,12 +152,34 @@ def main():
                 continue
             ratio = im_[axis] / iv[axis]
             print(f"  ink {axis} 比 vm/vue = {ratio:.2f}")
+            # 该图标两端字形版本不同（见 PLAN-619 §8.2②）→ 只报数不判预算。
+            if not (INK_RATIO_MIN <= ratio <= INK_RATIO_MAX):
+                print(f"  （参考：顶栏 notebook 两端字形不同，此项不判预算）")
+    elif budget:
+        print("  （顶栏 notebook ink 未测得；AC-02 由搜索图标判据承担）")
+
+    print("== 图标 ink（搜索行图标，声明 size 14；两端同字形 → AC-02 主判据） ==")
+    # 搜索行图标：行内左侧、输入框之前。用行底色作参考，量 ink bbox。
+    for name, im_, sc in (("vue", vue, 1), ("vm", vm, scale)):
+        row_bg = g(im_, sc, d["ref_col"], d["search_icon_y"])
+        box = ink_bbox(im_, sc, 14, 44, d["search_icon_y"] - 8, d["search_icon_y"] + 8, row_bg)
+        print(f"  {name:4s}: {box}")
+        if name == "vue":
+            icon_vue = box
+        else:
+            icon_vm = box
+    if icon_vue and icon_vm:
+        for axis in ("w", "h"):
+            if icon_vue[axis] <= 0:
+                continue
+            ratio = icon_vm[axis] / icon_vue[axis]
+            print(f"  ink {axis} 比 vm/vue = {ratio:.2f}")
             if budget and not (INK_RATIO_MIN <= ratio <= INK_RATIO_MAX):
                 violations.append(
-                    f"图标 ink {axis} 比 {ratio:.2f} 越界 [{INK_RATIO_MIN},{INK_RATIO_MAX}]（P2）"
+                    f"搜索图标 ink {axis} 比 {ratio:.2f} 越界 [{INK_RATIO_MIN},{INK_RATIO_MAX}]（AC-02）"
                 )
     elif budget:
-        violations.append("图标 ink 未测得（P2 无法判定）")
+        violations.append("搜索图标 ink 未测得（AC-02 无法判定）")
 
     print("== 左缩进（P3 搜索行左边界 / P4 分组标签、便签标题文字） ==")
     # 侧栏卡片色作为带内参考：空白列 x=200 在 y 56..260 上的众数色。

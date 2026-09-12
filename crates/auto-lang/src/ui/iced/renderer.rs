@@ -4932,26 +4932,58 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 _ => None,
                             })
                         });
+                        // PLAN-619 (a)：改用 **自栅格化 + raster 臂**（定点实验
+                        // 见 §8.5：矢量臂在 DPI=2 下画成半尺寸，raster 臂 1:1）。
+                        // 盒尺寸仍取样式的 Fixed 值（缺省 16）；栅格化按
+                        // 「逻辑尺寸 × LUCIDE_RASTER_SS」出像素，raster 臂按盒
+                        // 等比缩放 → 两端尺寸一致。
+                        let box_px = [&w, &h]
+                            .into_iter()
+                            .flatten()
+                            .find_map(|len| match len {
+                                iced::Length::Fixed(v) => Some(*v),
+                                _ => None,
+                            })
+                            .unwrap_or(16.0)
+                            .max(1.0);
+                        let raster_px = (box_px * LUCIDE_RASTER_SS as f32).round() as u32;
+                        let base_rgb = (
+                            (base_color.r * 255.0).round() as u8,
+                            (base_color.g * 255.0).round() as u8,
+                            (base_color.b * 255.0).round() as u8,
+                        );
+                        // 图标自带 `hover:text-*` 时按 1.5× 备一份悬停色栅格——
+                        // HoverArea 与本 widget 的样式闭包共享标志的机制不适用于
+                        // 「构建期选图」，故这里以「宽裕尺寸同时备两张档」简化：
+                        // 无 hover 色（本仓绝大多数）时只栅格一次。
+                        let _ = hover_color;
+                        if let Some(handle) = cached_lucide_raster(icon_name, raster_px, base_rgb, sw) {
+                            let mut img = iced::widget::image(handle)
+                                .content_fit(iced::ContentFit::Contain)
+                                .width(iced::Length::Fixed(box_px))
+                                .height(iced::Length::Fixed(box_px));
+                            if base_color.a < 1.0 {
+                                img = img.opacity(base_color.a);
+                            }
+                            // PLAN-054 T4 (A11): margin 系(ml-auto 贴行右端)在图标
+                            // 出口消费——此前 container 直接返回,ml-auto 静默丢失。
+                            // PLAN-619 R3: 判定走 effective_margin（单侧 > 轴 > 统一）。
+                            if let Some(ref is) = is {
+                                if is.has_margin() {
+                                    return wrap_with_margin(container(img).into(), is);
+                                }
+                            }
+                            return container(img).into();
+                        }
+                        // 栅格化失败（文档损坏/像素为 0）→ 落回原矢量臂，行为不变。
                         let handle =
                             get_or_create_svg_handle(&src, svg_str.as_bytes().to_vec());
-                        let mut svg_widget =
-                            iced::widget::svg(handle).style(move |_, status| {
-                                let color = match status {
-                                    iced::widget::svg::Status::Hovered => {
-                                        hover_color.unwrap_or(base_color)
-                                    }
-                                    _ => base_color,
-                                };
-                                iced::widget::svg::Style { color: Some(color) }
-                            });
+                        let mut svg_widget = iced::widget::svg(handle);
                         if base_color.a < 1.0 {
                             svg_widget = svg_widget.opacity(base_color.a);
                         }
                         svg_widget = svg_widget.width(w.unwrap_or(iced::Length::Fixed(16.0)));
                         svg_widget = svg_widget.height(h.unwrap_or(iced::Length::Fixed(16.0)));
-                        // PLAN-054 T4 (A11): margin 系(ml-auto 贴行右端)在图标
-                        // 出口消费——此前 container 直接返回,ml-auto 静默丢失。
-                        // PLAN-619 R3: 判定走 effective_margin（单侧 > 轴 > 统一）。
                         if let Some(ref is) = is {
                             if is.has_margin() {
                                 return wrap_with_margin(container(svg_widget).into(), is);
@@ -5576,6 +5608,93 @@ fn leaked_placeholder(placeholder: &str) -> &'static str {
 }
 
 /// Cache svg::Handle by URL to avoid flickering.
+/// PLAN-619 (a)：lucide 图标 **CPU 自栅格化** 出口。
+///
+/// 动机（定点实验，见计划 §8.5）：iced 的矢量（`svg` widget）绘制路径在本机
+/// DPI=2 下把 glyph 画成**声明尺寸的一半** —— 同一 glyph 在 12/24/36/48 四档
+/// 实测 ink 宽 = 0.417×盒（该 glyph 在 viewBox 内占 0.833，正好差 2 倍）且居中；
+/// 而同一个 32×32 PNG 走 raster image 臂画出来是**正好 32.0** 逻辑 px。即矢量臂
+/// 存在 DPI 缩放丢失（尺寸随声明值走、位置正确），raster 臂 1:1 可信。
+///
+/// 因此把 glyph 在 CPU 端栅格化到「逻辑尺寸 × 超采样」的设备像素，交给 raster
+/// 臂：尺寸由我们自己确定（不再依赖 iced 矢量路径的缩放），且栅格化是纯函数、
+/// **可单测**（`plan619_lucide_raster_ink_ratio` 直接量 ink 占比）。
+///
+/// 返回 `(px, px, straight-alpha RGBA)`；`color` 以 currentColor 内联进文档
+/// （resvg 会把 currentColor 画成黑色，故必须替换）。
+fn rasterize_lucide_px(
+    name: &str,
+    px: u32,
+    color: (u8, u8, u8),
+    stroke_width: f32,
+) -> Option<(u32, u32, Vec<u8>)> {
+    if px == 0 {
+        return None;
+    }
+    let doc = lucide_svg_doc_with(name, stroke_width)?;
+    let doc = doc.replace(
+        "currentColor",
+        &format!("#{:02x}{:02x}{:02x}", color.0, color.1, color.2),
+    );
+    let tree = resvg::usvg::Tree::from_str(&doc, &resvg::usvg::Options::default()).ok()?;
+    let mut pixmap = tiny_skia::Pixmap::new(px, px)?;
+    {
+        let size = tree.size();
+        let sx = px as f32 / size.width().max(1.0);
+        let sy = px as f32 / size.height().max(1.0);
+        resvg::render(
+            &tree,
+            tiny_skia::Transform::from_scale(sx, sy),
+            &mut pixmap.as_mut(),
+        );
+    }
+    // tiny-skia 的 Pixmap 是**预乘** alpha；iced 的 `Handle::from_rgba` 走
+    // 直通 alpha（同 native_icon 的 hicon 面）。反预乘，避免抗锯齿边缘发暗。
+    let mut rgba = pixmap.take();
+    for ch in rgba.chunks_exact_mut(4) {
+        let a = ch[3];
+        if a != 0 && a != 255 {
+            let f = 255.0 / a as f32;
+            ch[0] = ((ch[0] as f32 * f).round().min(255.0)) as u8;
+            ch[1] = ((ch[1] as f32 * f).round().min(255.0)) as u8;
+            ch[2] = ((ch[2] as f32 * f).round().min(255.0)) as u8;
+        }
+    }
+    Some((px, px, rgba))
+}
+
+/// 栅格化结果缓存（键 = 图标名/像素/颜色/线宽）——避免每帧重新栅格化。
+fn cached_lucide_raster(
+    name: &str,
+    px: u32,
+    color: (u8, u8, u8),
+    stroke_width: f32,
+) -> Option<iced::widget::image::Handle> {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<iced::widget::image::Handle>>>> =
+        std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = format!("{name}@{px}#{:02x}{:02x}{:02x}/sw{stroke_width}", color.0, color.1, color.2);
+
+    {
+        let lock = cache.lock().unwrap();
+        if let Some(hit) = lock.get(&key) {
+            return hit.clone();
+        }
+    }
+    let handle = rasterize_lucide_px(name, px, color, stroke_width).map(|(w, h, rgba)| {
+        iced::widget::image::Handle::from_rgba(w, h, rgba)
+    });
+    cache.lock().unwrap().insert(key, handle.clone());
+    handle
+}
+
+/// lucide 栅格化的超采样倍率（逻辑 px → 栅格 px）。2 覆盖本仓 2x 屏；
+/// 更高 DPI 下 raster 臂会按盒等比缩放（略糊但不改尺寸）。
+const LUCIDE_RASTER_SS: u32 = 2;
+
 fn get_or_create_svg_handle(url: &str, data: Vec<u8>) -> iced::widget::svg::Handle {
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -23844,6 +23963,58 @@ mod tests {
     /// （pac 注册表 icon 值 + 缺省回退）逐名命中 lucide_svg。未命中即
     /// 渲染空图标（"占位色块"根因之一），此表为契约：新 icon 名先补
     /// lucide 臂再消费。
+    #[test]
+    #[test]
+    /// PLAN-619 (a) 回归锚：自栅格化的 glyph 必须**按像素填满**（不再是矢量臂
+    /// 的半尺寸）。`search` 在 24 单位 viewBox 内的 ink 占比 ≈0.833（圆 r=8 +
+    /// 手柄，含 stroke），故 24px 栅格的 ink 宽应落在 18~22px；修前矢量臂实测
+    /// 只有 ≈10px（0.417×盒）。纯 CPU 栅格化 → 无需窗口，可在门禁里跑。
+    /// PLAN-619 (a) 回归锚：自栅格化的 glyph 必须**按盒充满**且随盒线性缩放。
+    /// 矢量臂的缺陷形态是「恒定比例地画小」（实测 ink = 0.417×盒，即被画成
+    /// 约一半），故锚定「充满度」而非某个 glyph 的绝对占比：同一 glyph 在
+    /// 16/24/48 三档的 ink/盒 必须一致（±0.06）且落在 [0.55, 0.95]。
+    /// 纯 CPU 栅格化 → 无窗口依赖，可直接进门禁。
+    #[test]
+    fn plan619_lucide_raster_scales_with_box() {
+        let mut prev: Option<(u32, f32)> = None;
+        for px in [16u32, 24, 48] {
+            let (w, h, rgba) = rasterize_lucide_px("search", px, (255, 255, 255), 2.0)
+                .expect("search 栅格化");
+            assert_eq!((w, h), (px, px));
+            let (mut x0, mut y0, mut x1, mut y1) = (px, px, 0u32, 0u32);
+            let mut any = false;
+            for y in 0..h {
+                for x in 0..w {
+                    let a = rgba[((y * w + x) * 4 + 3) as usize];
+                    if a > 8 {
+                        any = true;
+                        x0 = x0.min(x); y0 = y0.min(y);
+                        x1 = x1.max(x); y1 = y1.max(y);
+                    }
+                }
+            }
+            assert!(any, "px={px} 应渲染出笔迹");
+            let ink_w = (x1 - x0 + 1) as f32;
+            let ink_h = (y1 - y0 + 1) as f32;
+            assert!(
+                (ink_w - ink_h).abs() <= 1.5,
+                "px={px}: 正方形 glyph 的 ink 应近似方形（{ink_w}x{ink_h}）"
+            );
+            let ratio = ink_w / px as f32;
+            assert!(
+                (0.55..=0.95).contains(&ratio),
+                "px={px}: ink 充满度 {ratio:.3} 应在 [0.55,0.95]（矢量臂缺陷态为 0.417）"
+            );
+            if let Some((ppx, pratio)) = prev {
+                assert!(
+                    (ratio - pratio).abs() <= 0.06,
+                    "px={px} 与 px={ppx}: 充满度应一致（随盒线性缩放），实测 {ratio:.3} vs {pratio:.3}"
+                );
+            }
+            prev = Some((px, ratio));
+        }
+    }
+
     #[test]
     fn lucide_icon_coverage_manifest_all_hit() {
         // ① .at 资产字面量扫描（五份内嵌资产,含 shell/desktop/switcher/

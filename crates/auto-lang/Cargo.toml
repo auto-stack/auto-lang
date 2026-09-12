@@ -54,7 +54,7 @@ ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
 # Kept independent of a renderer so services and native renderers share one
 # asset registry without making the default build pull image dependencies.
 image-pipeline = ["dep:image", "dep:kamadak-exif"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard", "dep:resvg", "dep:tiny-skia"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
@@ -192,6 +192,11 @@ rfd = { version = "0.15", optional = true }
 # version-locked with rfd/iced so the handle traits line up).
 raw-window-handle = { version = "0.6", optional = true }
 image = { version = "0.25", optional = true }
+# PLAN-619 (a)：lucide 图标自栅格化（矢量臂在本机 DPI=2 下画成半尺寸，
+# 见计划 §8.5 定点实验）。两者已在依赖图中（经 iced_wgpu），此处只是把
+# 它们显式声明为直接依赖——零新增 crate。
+resvg = { version = "0.45", optional = true }
+tiny-skia = { version = "0.11", optional = true }
 kamadak-exif = { version = "0.6", optional = true }
 # Plan 413: code editor engine. cosmic-text MUST stay on the same minor as
 # iced 0.14.0's pin (0.15) — a second copy would break the Weak<Buffer>
