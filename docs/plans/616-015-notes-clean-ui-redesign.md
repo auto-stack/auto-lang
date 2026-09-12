@@ -513,8 +513,10 @@ col flex-1 min-h-0
   `--mode rust`：见 §9.2 结果。
 
 - [ ] **T-10 Rust 轨（a2r）验证——被域外前置阻断**：`auto run -r rust` + `run_autotest.py --mode rust`。
-  [ ] **未完成**：a2r 生成的 `examples/rust-workspace/015-notes/src/main.rs` 编译失败，实证两处
-  a2r 发射缺陷（「取反 + 下标字段读」残缺表达式 / `[]str` 字段整赋值发射 `.as_str()`）。
+  [ ] **未完成**：a2r 生成的 `examples/rust-workspace/015-notes/src/main.rs` 编译失败（`error: unexpected
+  closing delimiter`），实证两处 a2r 发射缺陷（「取反 + 下标字段读」残缺表达式 / `[]str` 字段整赋值
+  发射 `.as_str()`）；**两次尝试均未绕开**（局部量 hoist 被 a2r 内联回原形态，13:03 重生成后
+  `main.rs:406` 仍残缺）。
   归属为**改动前既有**的域外能力缺口（修复位置在 `crates/auto-lang`，超出本计划授权）。
   详见 §9.3 与复审 finding F-1；解除动作 = 修 a2r 两条发射臂或按 §9.3 的替代数据模型重试。
 
@@ -615,8 +617,11 @@ col flex-1 min-h-0
   `examples/rust-workspace/015-notes/src/main.rs` **编译失败**，实证两处 a2r 发射缺陷：
   1. `notes_store.at` 的 `.notes[idx].pinned = !.notes[idx].pinned` →
      生成 `self.notes[(idx)as usize]["pinned"] = serde_json::json!(!(as usize]["pinned"].as_bool()...))`
-     —— RHS 的接收者被吞掉（残缺表达式）。**本计划已用「先读局部量再取反」绕开**
-     （提交 `1b0c4a477`），但该形态仍是 a2r 的坑。
+     —— RHS 的接收者被吞掉（残缺表达式）。**尝试过绕开但无效**：提交 `1b0c4a477`
+     改为「先读局部量 `var cur bool = .notes[idx].pinned` 再 `= !cur`」，然而
+     **13:03 的 `-r rust` 重生成后 `main.rs:406` 仍是同样的残缺 RHS**——a2r 把该局部量
+     内联回表达式，缺陷照旧（该提交的 message 称「绕开」属**过度声明**，代码本身无害故保留）。
+     → 该形态**未绕开**。
   2. `draft_tags = .notes[.active_id].tags`（`[]str` 字段整赋值）→ 生成
      `self.draft_tags = ...["tags"].as_str()...to_string()`，赋 `String` 给
      `Vec<String>` 字段 —— 类型不符。**未绕开**（绕开要改数据模型：去掉草稿标签镜像、
@@ -663,7 +668,7 @@ col flex-1 min-h-0
 
 | ID | 严重度 | 内容 | 影响 / 处置 |
 |---|---|---|---|
-| F-1 | medium（域外） | a2r 对「取反 + 下标字段读」与「`[]str` 字段整赋值」发射非法 Rust，导致 `examples/rust-workspace/015-notes` 不可构建（证据见 §9.3） | **不阻断本计划**（AC 不含 Rust 轨；且该缺陷改动前即存在）。处置：登记 **P616-D3** 债，建议独立小计划修 a2r 两条发射臂后补跑 `--mode rust`；数据模型侧替代方案见 §9.3。 |
+| F-1 | medium（域外） | a2r 对「取反 + 下标字段读」与「`[]str` 字段整赋值」发射非法 Rust，导致 `examples/rust-workspace/015-notes` 不可构建；局部量 hoist 绕开尝试**无效**（被内联回原形态，13:03 重生成后仍残缺）（证据见 §9.3） | **不阻断本计划**（AC 不含 Rust 轨；且该缺陷改动前即存在）。处置：登记 **P616-D3** 债，建议独立小计划修 a2r 两条发射臂后补跑 `--mode rust`；数据模型侧替代方案见 §9.3。 |
 | F-2 | low | 筛选词表不回收已删除的标签/文件夹（`all_tags`/`all_folders` 只增不减） | 已写进 README「已知限制」；登记 **P616-D1** 债（根治需 `vm/codegen.rs` 支持数组字面量赋值）。 |
 | F-3 | low | store 里「写 `dark_mode` 的 handler 必须以 `ToggleDarkMode`/`SetAccent` 命名」才能拿到生成器 append 的 `applyAccent`——`SetMode` 因此被迫绕行 `ToggleDarkMode` | 已在代码内写明原因；登记 **P616-D2** 债（建议生成器改为按「是否写 dark_mode」判定）。 |
 | F-4 | low | README 布局示意图用 emoji（放大镜/文件夹/齿轮/太阳/时钟/垃圾桶）描画图标，与被去 emoji 化的实际 UI 表述不一致 | 文档插画，不影响运行；若后续要严格自洽可换 ASCII 记号。 |
@@ -685,6 +690,15 @@ col flex-1 min-h-0
 
 - §8 的 T-09 含 `--mode rust` 子项：**未完成**，原因是 F-1（域外前置）。其余 T-01..T-09 全部完成。
   本条**已按未完成如实记录**，未折算为通过；解除动作见 F-1。
+
+#### 勘误（errata，不改变任何 AC 或结论）
+
+- §9.3/F-1/T-10 初稿称 a2r 缺陷 1「已用局部量 hoist 绕开」——**经 13:03 的 `-r rust`
+  重生成复核，该说法不成立**（a2r 把局部量内联回原形态，`main.rs:406` 仍发射残缺 RHS）。
+  已就地改为「两次尝试均未绕开」。该勘误只修正描述准确性，**不影响 AC-01..AC-11 的判定、
+  不影响 pass 结论、不改变任务契约**，故 `plan_revision` 保持 3（按 review skill：勘误/进度/
+  复审记录不递增 revision）；提交 `1b0c4a477` 的 message 仍写着「绕开」，属历史提交信息
+  过度声明，已在 §9.3 标注。
 
 #### 结论
 
