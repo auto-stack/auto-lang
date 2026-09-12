@@ -17,6 +17,12 @@ pub mod component;
 #[cfg(feature = "image-pipeline")]
 pub mod image_pipeline;
 
+// Plan 617 T-05: local media file service (recursive index + HTTP byte-range
+// semantics).  Needs no optional dependency (blake3 is unconditional), so it is
+// ungated like `component` — the generated backend reaches it as
+// `auto_lang::ui::media_service`.
+pub mod media_service;
+
 // Plan 413: cross-platform code editor widget (feature `code-editor`,
 // enabled by default under `ui-iced`).
 #[cfg(feature = "code-editor")]

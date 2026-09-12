@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-618
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # T-01..T-03 完成(vue 端),T-04..T-06 待续
 feature_name: examples/ui 四 demo 接入 TreeView/FileTree 组件(027/026/018/041)
 author: [zcode]
 created_at: 2026-09-12
@@ -15,7 +15,7 @@ touched_goals:
   - "GOAL-007: AutoUI 跨端视觉一致——tree 组件族在四个真实 demo 的双端落地验证"
 
 affects: [examples/ui, docs/specs/auto-lang/ui]
-current_step: 0
+current_step: 4
 total_steps: 8
 ---
 
@@ -145,11 +145,21 @@ total_steps: 8
 - **T-01 worktree 建组**:本计划只动 examples/ui(auto-lang 仓)——裁定
   单仓:仅 auto-lang worktree `.wt/lang-618/auto-lang @ plan-618-dev`
   (骨架已提交 master c4433cde5)。
-- **T-02 filter_tree + 调色板扩充**:tree_util.at 加 filter_tree(while+索引,
-  命中+保祖先);TreeIcon +table/+zap;VM lucide_svg +zap(1 行);探针/单测。
-  验证:child_emit/探针测试绿。
-- **T-03 027 接入**:components 拷贝+左树面板+FmSelect→NavTo;双端验证。
-- **T-04 026 接入**:替换平铺树+filter;双端验证(过滤/选中/数据区切换)。
+- **T-02 filter_tree + 调色板扩充** [x] [✅ 已完成] tree_util.at 加
+  filter_tree(递归+while+索引,命中+保祖先,祖先保留语义探针断言);TreeIcon
+  +table/+zap;VM lucide_svg +zap。**过程发现(挂账)**:①VM 模块 fn 递归可用
+  (fact 120 探针);②VM .lower() 链在「局部 var 派生字段+嵌套帧」返回空串
+  (两步赋值浅帧正常/深帧仍失效)→ v1 大小写敏感 + contains 直链。探针测试
+  p618_filter_tree_probe 全绿。证据:worktree 9ac3c5661 + auto-os b7337b1。
+- **T-03 027 接入** [x] [✅ 已完成,vue 端实证;VM 端待 T-08 补验] 左侧快速
+  访问按钮组替换为 TreeView(directory 受控);FmSelect → NavTo 联动;use 块
+  修正(package use 必须在 widget 内,顶层 parse 报 LBrace 错)。vue 实证:树
+  渲染+点击文档文件夹 → root/Documents 列表/面包屑联动(d177b9a44)。
+- **T-04 026 接入** [~] [⚠ 代码完成(3cf6b5276),运行时验证待续] 平铺对象树
+  替换为 TreeView 真树(dbNodesFull 三组 12 对象+badge 行数/DbToggle/DbSelect
+  前缀分发/treeFilter 接 filter_tree+collect_ids 全展开/Init 播种 dbNodes);
+  解析错误(孤儿段)已修;浏览器复核因 Node REPL 会话损坏未完成——下次会话
+  重启 026 vue 服务后复核树渲染/过滤/选中即可。
 - **T-05 018 接入**:阅读页章节树+router.push;双端验证。
 - **T-06 041 接入**:OpenByPath store 动作+左文件树;双端验证。
 - **T-07 规范沉淀**:SD-01/02 落地+INDEX 重生。
@@ -161,9 +171,19 @@ total_steps: 8
   双端可用性);裁定:041 从 FileTree 改为 TreeView 受控(FileTree v1 不回传
   选中,联动需求使然);026 filter 落 tree_util.filter_tree(页面过滤进阶用法)。
   outcome: pass(待确认后入 work)。next: work。
+- 2026-09-12 stage:work(进行中) | plan_id: PLAN-618 | rev1 | T-01..T-03 完成,
+  T-04..T-06 待续 | 证据:worktree 9ac3c5661(T-02)/d177b9a44(T-03);探针全绿;
+  027 vue 交互实证 | blockers: 无 | next: 继续 T-04..T-06
 
 ## 待澄清事项
 
 1. 018 章节树数据依赖 get_book 返回形状(实现时实测,必要时页面侧适配)。
+2. **P618-1(用户反馈,预存缺陷)**:027 vue 轨 Plan 422 弹层系统(右键菜单/
+   新建弹层/删除确认)内联堆叠渲染在页面底部、常显不消失—— popover open
+   绑定在 vue 生成产物中未生效(改动前首屏截图即有,非 tree 引入)。修复
+   需查 vue.rs popover 发射臂(候选:if 门控包裹弹层内容或 overlay 代码gen),
+   归入 T-04..T-08 期间或独立债务处理。
+3. **P618-2(引擎,挂账)**:.lower() 方法链在「局部 var 派生字段+嵌套帧」
+   返回空串(P618 探针实证);v1 过滤器降级大小写敏感。
 2. VM lucide_svg 补 zap 条目属引擎 1 行微修(先例:PLAN-614 路由键修复);
    若不愿动引擎,索引图标降级为既有 "table"/"terminal"。

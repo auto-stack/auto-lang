@@ -799,6 +799,8 @@ edition = "2021"
 [dependencies]
 axum.workspace = true
 tokio = {{ version = "1", features = ["full"] }}
+# Plan 617 T-05: ReaderStream for byte-range media streaming (no whole-file read).
+tokio-util = {{ version = "0.7", features = ["io"] }}
 serde.workspace = true
 serde_json.workspace = true
 tower-http.workspace = true{}{}{}
@@ -1331,6 +1333,148 @@ const META_JSON_HELPER: &str = r#"fn meta_json(headers: &axum::http::HeaderMap) 
         .replace('"', "\\\"");
     format!("{{\"cookies\":{},\"auth\":\"{}\"}}", cookies, auth)
 }"#;
+
+// Plan 617 T-05: local media file service routes. Deliberately mirrors the
+// `auto_media` precedent above (a hand-written route emitted by the generator),
+// but streams from the filesystem instead of serving the image rendition
+// registry. The index is built once per process via std's OnceLock — no extra
+// dependency — and the byte-range window is streamed through tokio-util so a
+// multi-GB file is never read into memory.
+const MEDIA_SERVICE_HANDLERS: &str = r#"fn media_plain(status: u16, msg: String) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(status)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(axum::body::Body::from(msg))
+        .expect("media plain response is valid")
+}
+
+fn media_json_str(s: &str) -> String {
+    let mut o = String::with_capacity(s.len() + 2);
+    o.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            '\r' => o.push_str("\\r"),
+            '\t' => o.push_str("\\t"),
+            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
+}
+
+static MEDIA_INDEX: std::sync::OnceLock<auto_lang::ui::media_service::MediaIndex> =
+    std::sync::OnceLock::new();
+
+fn media_index() -> Option<&'static auto_lang::ui::media_service::MediaIndex> {
+    let root = auto_lang::ui::media_service::resolve_root(None)?;
+    Some(MEDIA_INDEX.get_or_init(|| {
+        auto_lang::ui::media_service::index_directory(&root).unwrap_or_default()
+    }))
+}
+
+async fn auto_media_scan() -> axum::response::Response {
+    let Some(index) = media_index() else {
+        // No configured root is an honest empty list, not a 500.
+        return axum::response::Response::builder()
+            .status(200)
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from("[]"))
+            .expect("media scan response is valid");
+    };
+    let mut out = String::from("[");
+    for (i, e) in index.entries.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"id\":{},\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{}}}",
+            media_json_str(&e.id),
+            media_json_str(&e.name),
+            media_json_str(&e.rel_dir),
+            media_json_str(&e.relative_path),
+            media_json_str(&e.extension),
+            e.bytes
+        ));
+    }
+    out.push(']');
+    axum::response::Response::builder()
+        .status(200)
+        .header("Content-Type", "application/json")
+        .body(axum::body::Body::from(out))
+        .expect("media scan response is valid")
+}
+
+async fn auto_media_stream(
+    axum::extract::Path(id): axum::extract::Path<String>,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    use auto_lang::ui::media_service as ms;
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    let Some(index) = media_index() else {
+        return media_plain(503, "no media root configured".to_string());
+    };
+    let Some(entry) = ms::find(index, &id) else {
+        return media_plain(404, "unknown media id".to_string());
+    };
+    // Re-join under the index root: the caller only ever supplied a token.
+    let Ok(root) = std::env::var("AUTO_MEDIA_ROOT").map(std::path::PathBuf::from) else {
+        return media_plain(503, "no media root configured".to_string());
+    };
+    let path = ms::entry_path(&root, entry);
+    let Ok(meta) = tokio::fs::metadata(&path).await else {
+        return media_plain(404, "media file missing".to_string());
+    };
+    let len = meta.len();
+    let range = headers
+        .get(axum::http::header::RANGE)
+        .and_then(|v| v.to_str().ok());
+    let plan = ms::parse_range(range, len);
+
+    if plan == ms::StreamPlan::Unsatisfiable {
+        return axum::response::Response::builder()
+            .status(416)
+            .header("Content-Range", format!("bytes */{}", len))
+            .header("Content-Length", "0")
+            .body(axum::body::Body::empty())
+            .expect("media 416 response is valid");
+    }
+
+    let (start, end) = match &plan {
+        ms::StreamPlan::Full => (0u64, len.saturating_sub(1)),
+        ms::StreamPlan::Partial { start, end } => (*start, *end),
+        ms::StreamPlan::Unsatisfiable => unreachable!("handled above"),
+    };
+
+    let mut file = match tokio::fs::File::open(&path).await {
+        Ok(f) => f,
+        Err(_) => return media_plain(404, "media file unreadable".to_string()),
+    };
+    if start > 0 && file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
+        return media_plain(500, "seek failed".to_string());
+    }
+    // Bounded chunks: the whole (possibly multi-GB) file is never resident.
+    let window = file.take(end - start + 1);
+    let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::with_capacity(
+        window,
+        256 * 1024,
+    ));
+
+    let mut builder = axum::response::Response::builder()
+        .status(plan.status())
+        .header("Content-Type", ms::content_type(&entry.extension))
+        .header("Accept-Ranges", "bytes")
+        .header("Content-Length", (end - start + 1).to_string());
+    if let ms::StreamPlan::Partial { start: s, end: e } = plan {
+        builder = builder.header("Content-Range", ms::content_range(s, e, len));
+    }
+    builder.body(body).expect("media stream response is valid")
+}
+"#;
 
 const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
     method: axum::http::Method,
@@ -2354,6 +2498,9 @@ fn generate_main_rs(
     }
     s.push_str(MEDIA_HTTP_HANDLER);
     s.push_str("\n");
+    // Plan 617 T-05: local media service handlers (same emission point).
+    s.push_str(MEDIA_SERVICE_HANDLERS);
+    s.push_str("\n");
     if !db_full_cover {
         // Legacy seed-state path: handlers take State<Db>, main injects the seed.
         let initial_data = generate_initial_data_pub(api_module, db_at_content);
@@ -2382,6 +2529,12 @@ fn generate_main_rs(
         s.push_str("    let app = axum::Router::new()\n");
         s.push_str(&format!("{}\n", routes_str));
         s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
+        s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan))\n");
+        // NOTE: `:id`, not `{id}`. The generated backend crate resolves axum 0.7
+        // (its own workspace lock), where `{id}` is a LITERAL segment and silently
+        // 404s. The pre-existing `__auto/media/{id}/{revision}` route above has
+        // this bug too (Plan 617 T-05 finding).
+        s.push_str("        .route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream))\n");
         s.push_str("        .with_state(data)\n");
         s.push_str("        .layer(cors);\n\n");
     } else {
@@ -2403,6 +2556,12 @@ fn generate_main_rs(
         s.push_str("    let app = axum::Router::new()\n");
         s.push_str(&format!("{}\n", routes_str));
         s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
+        s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan))\n");
+        // NOTE: `:id`, not `{id}`. The generated backend crate resolves axum 0.7
+        // (its own workspace lock), where `{id}` is a LITERAL segment and silently
+        // 404s. The pre-existing `__auto/media/{id}/{revision}` route above has
+        // this bug too (Plan 617 T-05 finding).
+        s.push_str("        .route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream))\n");
         s.push_str("        .layer(cors);\n\n");
     }
     s.push_str("    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();\n");

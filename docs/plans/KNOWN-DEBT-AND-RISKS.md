@@ -2079,3 +2079,15 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   （AUTO_UI_THEME 未设时 vue 侧无 OS 回退）——VM 桌面轨已由
   DesktopConfig.theme_source=system 派生闭环（T-06）；vue 轨首版跟随
   pac/缺省。证据：AUTO_UI_THEME 消费面仅 cmd_tauri/cmd_vue 全局注入。
+
+---
+
+## PLAN-616（015-notes 清爽化重做）遗留
+
+> 关联计划 `archive/616-015-notes-clean-ui-redesign.md`；复审 finding F-1..F-7 与本表对应。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P616-D1 | low | 一致性遗留 | 筛选词表 `all_tags`/`all_folders` 只增不减：删除标签/文件夹后筛选胶囊仍显示（清空重建需要「空数组字面量赋值」，该形态撞 VM codegen 的 `Assignment to complex LHS`） | `examples/ui/015-notes/src/front/notes_store.at`（`.SeedVocab`/`.LoadDraft`）；README「已知限制」；根治需 `crates/auto-lang/src/vm/codegen.rs` |
+| P616-D2 | low | 工具链耦合 | store 里「写 `dark_mode` 的 handler 必须以 `ToggleDarkMode`/`SetAccent` 命名」才能获得生成器 append 的 `applyAccent`（暗色亮度补偿 + `.dark` 元素上的 `--primary` 覆盖）→ `.SetMode` 被迫绕行 `ToggleDarkMode` | `crates/auto-lang/src/ui_gen/vue.rs`（store handler 的 applyAccent append 按 action_name 判定）；`notes_store.at` `.SetMode` |
+| P616-D3 | medium | 域外能力缺口 | a2r 两处发射缺陷阻断 `examples/rust-workspace/015-notes` 编译：①「取反 + 下标字段读」（`!.notes[idx].pinned` → 残缺 RHS `!(as usize][...])`，局部量 hoist 绕开无效——被内联回原形态）；② `[]str` 字段整赋值发射 `.as_str()` 赋给 `Vec<String>`。改动前既有（`git show HEAD:...main.rs` 第 393 行同形态） | 生成物 `examples/rust-workspace/015-notes/src/main.rs:406` 等；计划 §9.3/T-10；建议独立小计划修 a2r 发射臂后补跑 `run_autotest.py --mode rust` |
