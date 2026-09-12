@@ -1,19 +1,19 @@
 ---
 plan_id: PLAN-616
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: 015-notes-clean-ui-redesign
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-12
-plan_revision: 2                 # r2: 放弃 Rust 侧 lucide 字形表改动（改用文本标签 + VM 安全图标集），范围收束到 examples/**
+plan_revision: 3                 # r3: T-07/T-09 补完（验证通过）；r2: 放弃 Rust 侧 lucide 字形表改动（改用文本标签 + VM 安全图标集），范围收束到 examples/**
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []
+new_spec_components: ["docs/specs/auto-lang/ui/overview.md#示例可依赖的-dsl-子集（add）", "docs/specs/auto-lang/ui/overview.md#015-notes-扁平布局示范（modify）", "docs/specs/auto-lang/ui/overview.md#vm-lucide-字形闭集计数（modify）"]
+touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（Vue 与 VM/iced 双端 base styles 与 parity 锁定）", "GOAL-010: 示例应用轨道（examples/ui 应用矩阵）"]
 
 affects: [auto-lang/ui]
-current_step: 6
+current_step: 9
 total_steps: 10
 ---
 
@@ -384,10 +384,10 @@ col flex-1 min-h-0
 | delta_id | add/modify/retire | target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
 | SD-01 | add | `docs/specs/auto-lang/ui/overview.md#dsl-vm-constraints` | 新增「示例可依赖的 DSL 子集」节：列出 §2.3 白名单原语与禁用清单（插值/标量 view fn prop/空数组字面量赋值/视图条件方法调用） | 这些是本计划在真实后端数据上实证的坑，此前散落在债务与踩坑记录里，后续示例会重复踩 | AC-01, AC-07 |
-| SD-02 | modify | `docs/specs/auto-lang/ui/overview.md`（侧栏族示范段） | 015-notes 的示范描述从「卡片化 + nav→sidebar 迁移」更新为「扁平双栏 + 索引表过滤」形态 | 该节以 015-notes 为权威示范，实现变了规范描述必须跟 | AC-01, AC-02 |
-| SD-03 | add | `docs/specs/auto-lang/ui/overview.md`（图标节） | 记录「VM lucide 字形表当前 85 名闭集，缺 `pin`/`pin-off`；015-notes 因此用文本标签承载置顶动作」作为**示例侧已知约束**（不扩表） | 避免后续示例/计划再次尝试用 pin 图标并踩空 | AC-03 |
-| SD-04 | retire | `docs/specs/auto-lang/ui/overview.md`（若存在卡片化 UI 的 015-notes 描述） | 退役 PLAN-360 的「015-notes 卡片化」表述 | 被本计划的扁平布局取代 | AC-01 |
+| SD-02 | modify | `docs/specs/auto-lang/ui/overview.md`（015-notes 示范段：`nav→sidebar 迁移` 叙述 + `573 ui-gallery 按 015-notes 惯用法` 段） | 015-notes 的示范描述从「卡片化 + nav→sidebar 迁移」更新为「扁平双栏 + 索引表过滤 + 始终可编辑」形态；同时退役 PLAN-360 的卡片化表述（原 SD-04 并入本条：规范内无独立的「卡片化」章节可退） | 该文件以 015-notes 为 sidebar 族权威示范，实现变了规范描述必须跟 | AC-01, AC-02 |
+| SD-03 | add | `docs/specs/auto-lang/ui/overview.md`（图标节，现文「VM lucide 84 项闭集」在第 44 行） | 记录「VM lucide 字形表为闭集（**实测 85 名**；规范原文写 84 属计数漂移，本次复核一并校正），缺 `pin`/`pin-off`；015-notes 因此用文本标签承载置顶动作」作为示例侧已知约束（不扩表） | 避免后续示例再次尝试 pin 图标并踩空；顺带校正规范里的计数 | AC-03 |
 | SD-05 | add | `docs/specs/auto-lang/ui/overview.md`（示例依赖节） + `docs/plans/KNOWN-DEBT-AND-RISKS.md` | 记录「015-notes 自带外观面板、退出跨仓 `deps/settings` 依赖」及其副作用（共享 `SettingsPopover` 消费方减一，其 emoji/卡片形态与扁平化目标冲突） | 该 dep 原指向已删除的 `examples/ui/common/settings`（靠 auto-os 回退解析），属悬空依赖 | AC-01 |
+| SD-06 | add | `docs/plans/KNOWN-DEBT-AND-RISKS.md` | 登记本轮实证的三项债：**P616-D1** 筛选词表不回收已删标签/文件夹；**P616-D2** store「写 dark_mode 的 handler 名」与生成器 append applyAccent 的隐式命名耦合；**P616-D3** a2r 对「取反+下标字段读」与「`[]str` 字段整赋值」的发射缺陷 | 三条均为实测发现，需可追踪；D3 阻断 015-notes Rust 轨编译 | AC-09, AC-10 |
 
 无 spec 影响的改动需说明理由：`src/back/**` 与主题系统未动 → 不产生 vm/theme 侧 delta。
 
@@ -484,31 +484,41 @@ col flex-1 min-h-0
 - [x] **T-06 README 与已知限制**：重写 `README.md`。
   [✅ 已完成] 新布局图 / 交互表 / 数据与后端 / 4 条已知限制（词表不回收、纯文本正文、
   文件夹与标签可同名、自带外观面板替换跨仓 dep）/ 源码结构 / 运行与验证命令。
-- [~] **T-07 Rust 测试更新**：`plan370_015_behavior_tests`（d2/d8/d10 期望修正 + 新增草稿用例）、
+- [x] **T-07 Rust 测试更新**：`plan370_015_behavior_tests`（d2/d8/d10 期望修正 + 新增草稿用例）、
   `plan370_store_vm_tests`（空态文案）、`plan367_viewfn_tests`（NavTree 保留校验）、
   insta 快照重基线。验证：`cargo t plan370` + `cargo t ui_snapshots`。
-  [✅ 代码已改 / ⏳ 未验证] 提交 `3d8b212e3`：d2 期望改 `active_id == 0`（新笔记前插）、
+  [✅ 已完成并验证] 提交 `3d8b212e3` + `a8b8026f1`：d2 期望改 `active_id == 0`（新笔记前插）、
   d8 初值改 `true`（pac 暗色默认）、d3/d4/d6 改为 **store 层派发**（`on_with_input_for("NotesStore", …)`，
   因为 SelectNote/SelectFolder/SelectTag 已从 App 下移）、d4 作用域词表换
   `pinned/work/all`（Recent 退役）、d7 本地翻转下沉为可单测的 `store.TogglePin(idx)`、
   d10 重写为草稿模型（EditTitle/EditBody/SaveDraft + dirty）。
-  **未验证原因**：见 §9.2「环境约束」——worktree 无法构建（auto-down 跨仓相对路径），
-  主检出当时被并发的 PLAN-617（030-video-player）工作区占用且其半成品改动导致编译失败
-  （`terminal::iced::widget::Terminal` 缺 `on_input` 字段，与本计划无关）。
-  首次运行（改动前）的基线：`plan370_015_behavior_tests` 11 passed / 7 failed，
-  `plan370_store_vm_tests` 6 passed（含 `snapshot_does_not_show_empty_state`）。
+  **验证方式**（绕开 worktree 的跨仓路径限制）：在工作柄内把 `crates/auto-lang/Cargo.toml`
+  的 `autodown-core` path 临时改为绝对路径 `D:/autostack/auto-down/...`（仅本地验证用，
+  提交前已还原），使 worktree 可构建，且复用主检出的 `target/` 缓存。
+  结果：`plan370_015_behavior_tests` **12/12 绿**（含此前 7 红全清）、
+  `plan370_store_vm_tests` **6/6 绿**、`plan367_viewfn_tests` **6/6 绿**、
+  `--test ui_snapshots` **3/3 绿**（三份快照已重基线：App handlers 13→5 / state 1→2、
+  EditorPanel props 4→0 / state 5→2 / handlers 改名、NavTree props 4→3(msg 回调)）。
 - [x] **T-08 契约与 spec 同步**：重写 `tests/acceptance.atd` + `tests/015-notes.autotest`。
   [✅ 已完成]（契约部分）`acceptance.atd` 整体重写（T1..T13 新语义 + T5c/T2-GROUP 回归条目 +
   「PLAN-616 新增：示例侧 DSL/VM 使用约束」表 + 维护约定补一条）；
   `015-notes.autotest` 重写为 19 条强断言场景（去掉「快照节点数>0」弱断言）。
   [ ] 待办：`docs/specs/auto-lang/ui/overview.md` 的 SD-01..SD-05 落点（属 merge 沉淀阶段）。
-- [~] **T-09 双端验证与截图归档**：`run_autotest.py --mode vm/rust`、playwright 两份 spec 重基线后全绿、
-  双端截图入 `src/front/tests/screenshots/`；`cargo t` 对拍零新增红。
-  [✅ 部分完成] VM 端 19/19 绿；双端截图已归档到（gitignore 的）
-  `src/front/tests/screenshots/{vm_initial,vue_initial}.png`。
-  [ ] 待办：`--mode rust`、playwright 两份 spec 重基线、`cargo t` 对拍（同 §9.2）。
+- [x] **T-09 双端验证与截图归档**（Vue + VM 两臂）：`run_autotest.py --mode vm`、playwright 两份 spec
+  重基线后全绿、双端截图归档、`cargo t`/`cargo tf` 对拍零新增红。（Rust 轨子项拆为 T-10）
+  [✅ 已完成] VM 端 `--mode vm` **19/19 绿**；Vue 端 playwright **18/18 绿**
+  （两份 spec 按新 UI + Plan 601 后的调色板常量重基线）；`cargo t --no-fail-fast`
+  **4778 passed / 27 failed / 109 skipped**，27 项全部归因为**预存/已登记/环境**红
+  （详见下）；双端截图归档到（gitignore 的）`src/front/tests/screenshots/{vm_initial,vue_initial}.png`。
+  `--mode rust`：见 §9.2 结果。
 
-**依赖**：T-01 → T-02/T-03/T-04 → T-05 → T-07/T-08 → T-09。
+- [ ] **T-10 Rust 轨（a2r）验证——被域外前置阻断**：`auto run -r rust` + `run_autotest.py --mode rust`。
+  [ ] **未完成**：a2r 生成的 `examples/rust-workspace/015-notes/src/main.rs` 编译失败，实证两处
+  a2r 发射缺陷（「取反 + 下标字段读」残缺表达式 / `[]str` 字段整赋值发射 `.as_str()`）。
+  归属为**改动前既有**的域外能力缺口（修复位置在 `crates/auto-lang`，超出本计划授权）。
+  详见 §9.3 与复审 finding F-1；解除动作 = 修 a2r 两条发射臂或按 §9.3 的替代数据模型重试。
+
+**依赖**：T-01 → T-02/T-03/T-04 → T-05 → T-07/T-08 → T-09；T-10 待域外前置解除。
 
 > **执行进度（2026-09-12）**：T-01..T-06、T-08（契约部分）完成并落地两个提交
 > （`71378ef24` 实现、`f8cbf9e71` 文档）；T-07 与 T-09 的 Rust 端/playwright 端
@@ -526,53 +536,164 @@ col flex-1 min-h-0
   标签，任务重编号为 T-01..T-09，AC-03/AC-10 与 §3/§6.1 门禁随之收窄（无需 Rust 构建与 VM 核心档）。
 - 需要用户裁决的事项：无（§10 仅列已自决的取舍与其依据）。
 
-### 9.2 /auto-plan:work 执行移交（2026-09-12）
+### 9.2 /auto-plan:work 执行记录（2026-09-12，含 T-07/T-09 补完）
 
-- stage: work | plan_id: PLAN-616 | plan_revision: 2 | outcome: **partial（保持 `executing`）**
-- 实现提交（worktree `D:/autostack/.wt/lang-616/auto-lang`，分支 `plan-616-dev`）：
-  - `71378ef24` feat：app/sidebar/editor/notes_store 重写 + pac.at 去 dep + autotest 重写
-  - `f8cbf9e71` docs：README + acceptance.atd 重写
-- 已验证（证据）：
-  - VM 端 MCP 场景 **19/19 通过**：`run_autotest.py 015-notes.autotest --mode vm`
-    （注意：应用须由同一进程托管启动，见下方 blocker）
-  - 双端视觉：`src/front/tests/screenshots/{vm_initial,vue_initial}.png`
-    （gitignore，故不入库；两端口径一致）
-  - `auto gen` 零 error（仅存量 S001 INFO `text` prop 提示）
-- 过程中的实质修复（超出原设计的实证发现，已回写 §4.2/§5）：
-  1. 缺 `SelectNote/EditTitle/EditBody` handler → 行点击与输入不生效；
-  2. 搜索依赖双向绑定写入时序在 VM 端不可靠 → 改为**事件实参带值**（`SetSearch(q)`）；
-  3. `Pin` 与 `Pinned` 标签互为子串导致寻址歧义（也是真实 UX 歧义）→ 编辑器按钮改 `Pin note`；
-  4. `TogglePinActive` 未刷新草稿镜像 → 按钮态与落库态不一致；
-  5. **merged 模式下 store 与后端共享同一份笔记对象**：`TogglePinActive` 里做
-     「本地预翻转 + `toggle_pin` 落库」会被翻两次（净零，T8 回归）——必须只走
-     `toggle_pin` + `ReloadNotes`，本地翻转只保留为独立的可单测单元 `TogglePin(idx)`。
-- **环境约束（发现即记录，非本计划代码缺陷）**：
-  - worktree 内 `cargo test -p auto-lang --features ui-iced` 无法构建：`autodown-core`
-    是硬编码跨仓相对路径 `../../../auto-down/autodown/packages/engine/rust`
-    （`crates/auto-lang/Cargo.toml:110`），在 worktree 布局下解析到不存在的组内
+- stage: work | plan_id: PLAN-616 | plan_revision: 3 | outcome: **pass（可进 review）**
+- 实现提交（worktree `D:/autostack/.wt/lang-616/auto-lang`，分支 `plan-616-dev`，基点 `3b9eae671`）：
+  | commit | 内容 |
+  |---|---|
+  | `71378ef24` | feat：app/sidebar/editor/notes_store 重写 + pac.at 去 dep + autotest 重写 |
+  | `f8cbf9e71` | docs：README + acceptance.atd 重写 |
+  | `3d8b212e3` | test：plan370 行为测试对齐新模型（d2/d8/d3/d4/d6/d7/d10） |
+  | `a8b8026f1` | test：ui_snapshots 三份快照重基线 + 删过期 .snap.new |
+  | `061da18d0` | fix：TogglePinActive 去掉本地预翻转（merged 模式预翻转净零） |
+  | `ad7266cee` | fix：store 入口 handler 内联 API 调用（Vue 端 async 时序根修）+ 切换落盘后刷新列表 + indigo 色板未选中态丢底色；playwright 两份 spec 重基线 |
+
+- **验证结果（全绿/全归因）**：
+  | 闸门 | 结果 |
+  |---|---|
+  | `run_autotest.py --mode vm` | **19/19 passed** |
+  | `playwright test`（Vue，18 条） | **18/18 passed**（smoke 12 + accent-dark 6） |
+  | `cargo test plan370_015_behavior_tests`（ui-iced） | **12/12 passed** |
+  | `cargo test plan370_store_vm_tests` | **6/6 passed** |
+  | `cargo test plan367_viewfn_tests` | **6/6 passed** |
+  | `cargo test --test ui_snapshots` | **3/3 passed**（已重基线） |
+  | `cargo t --no-fail-fast` | 4805 run / **4778 passed / 27 failed / 109 skipped** |
+
+- **27 项失败归因（零新增红）**：
+  - 5× `tests::ffi_dep_parity_tests::dep_parity_{016,017,018,020,021}` —— **本机验证方式的人为产物**：
+    为让 worktree 可构建而设了 `CARGO_TARGET_DIR`，导致 fixture 自带的 oracle 子工程
+    编译产物落到别处；在各 fixture 目录内 `env -u CARGO_TARGET_DIR cargo build --release`
+    后这 5 项**全部转绿**（实测）。
+  - 12× `ui::layout::tests::{grid_*,master_stack_*,snap_*,usable_rect_*,apply_layout_filters_*}`
+    + 1× `ui::iced::renderer::tests::lucide_icon_coverage_manifest_all_hit`
+    + 1× `plan492_m4_tests::c2_param_msg_declaration_both_tracks_alive`
+    + 1× `ui::aura_view_builder::plan055_strip_html_tests::strips_tags_and_decodes_entities`
+    —— `KNOWN-DEBT-AND-RISKS.md:69`（PLAN-564 基点实证）**已登记的预存红**；
+    其中 `plan370 d8_toggle_dark_mode` 同列该行，本计划已修复（现绿）。
+  - 1× `ui::desktop_protocol::coverage::tests::covered_elements_within_target_set`
+    —— `KNOWN-DEBT-AND-RISKS.md:71`（PLAN-566）登记预存红。
+  - 1× `ui::desktop_protocol::stage3::tests::p508_g2_outproc_arm`
+    —— `KNOWN-DEBT-AND-RISKS.md:855`（P512-3）登记的并发偶红。
+  - 1× `tests::ffi_dual_tests::ffi_dual_019_dep_layout_invariants`
+    —— `KNOWN-DEBT-AND-RISKS.md:2068`（P615-D3）登记的并发偶发。
+  - 1× `ui::iced::renderer::tests::external_config_poll_hot_apply_loopsafe`
+    —— **宿主环境相关**：断言 `DesktopConfig.dark_theme`（`theme_source: "system"`）与
+    本机主题不一致（left false / right true），与 015-notes 无关；建议下一步单独归因。
+  - 结论：**无一项由本计划引入**；且本计划顺带清掉了 `plan370_015_behavior_tests` 的 7 项
+    预存红（d2/d8/d10 + 派发层失配）。
+
+- **本轮补完期间新发现并修复的实质缺陷**（都已回写 §4.2 / §5 / acceptance.atd）：
+  1. **Vue 端 async 时序根缺陷**：生成器只把「body 里出现 await」的 store 方法标成 async，
+     同步方法调用 async 兄弟方法**不会 await** → 搜索在 Vue 端完全不过滤、切笔记落盘后
+     列表不刷新。修法：入口 handler 内联自己的 API 调用（文件头 ⑤ 有完整说明）。
+  2. `SelectFolder/SelectTag/ClearTag/TogglePinActive/SelectNote` 的 flush 缺「重建工作集」，
+     导致落盘后内存列表标题仍是旧值（T5c 场景实证）。
+  3. indigo 色板未选中态丢了 `bg-indigo-500`（共享 recipe 不自带底色）→ 选中其它色后
+     indigo 圆点消失（playwright 诊断实证）。
+  4. playwright 定向陷阱：`getByRole('button', {name:'Delete'})` 会被标题含 "delete" 的
+     笔记行命中 → 必须 `exact: true`。
+
+- **`--mode rust` 结果**：见下方「rust 渲染臂」小节（若未就绪按未完成记录）。
+
+- 环境约束（记录在案，非本计划代码缺陷）：
+  - worktree 内 `cargo test -p auto-lang` 无法直接构建：`autodown-core` 是硬编码跨仓相对
+    路径（`crates/auto-lang/Cargo.toml:110`），在 worktree 布局下解析到不存在的组内
     `D:/autostack/.wt/lang-616/auto-down`，且 auto-down 无 env 覆盖（不同于 auto-os 的
-    `AUTO_OS_ROOT`）。因此 VM 核心档测试只能在主检出跑（或先补 auto-down 解析序）。
-- **Blocker（环境/工具链，非本计划代码缺陷）**：后台启动的 VM 应用会在启动它的 shell
-  调用结束后退出，且端口未释放时 MCP 绑定会失败（`failed to bind 127.0.0.1:9247`,
-  os error 10048），表现为「中途连不上」。规避：用**同一进程托管**应用
-  （`subprocess.Popen` + 内嵌 harness 调用，脚本见执行记录），或端口固定为应用独占。
-  该现象已实测：前台运行 90s 存活（exit=124 超时正常退出），后台启动则在调用结束后消失。
-- 并发观察（重要）：主检出在本次执行期间被并发的 **PLAN-617（030-video-player）** 工作区占用
-  （`docs/plans/617-030-video-player-real-rebuild.md` 出现、`crates/auto-lang/src/ui/terminal/*`
-  被改到编译不过）。因此本计划**不再借主检出跑 Rust 测试**，已 `git checkout --` 还原
-  借用过的路径（仅 `crates/auto-lang/src/plan370_015_behavior_tests.rs` 与
-  `examples/ui/015-notes/**`）。
-- 未完成（移交 review/下一轮，勿视为已验收）：
-  - **T-07 验证**：代码已改（见上），但需在可构建环境复跑 `cargo test -p auto-lang
-    --features ui-iced plan370`；另 `plan367_viewfn_tests`（NavTree 名字保留，预期本就绿）
-    与 `crates/auto-lang/tests/ui_snapshots.rs`（widget 计数/SFC 字节数必然变化，需
-    `INSTA_UPDATE=always` 重基线）；
-  - **T-09 余项**：`--mode rust`、playwright 两份 spec 重基线（现为存量红：📁 断言、
-    `.ProseMirror`、`ocean→blue-500`、暗色 +4% vs Plan 601 的 +10%、Plan 503 前 coral 常量）、
-    `cargo t` 对拍；
-  - **SD-01..SD-05** 落 `docs/specs/...`（属 merge 沉淀阶段）。
-- next: 在 `plan-616-dev` 上补 T-07/T-09 余项 → `cargo t` 零新增红 → 交
-  [auto-plan-review](../.agents/skills/auto-plan-review/SKILL.md)。
+    `AUTO_OS_ROOT`）。本轮以「临时改绝对路径 + 复用主检出 target」绕开，**提交前已还原**。
+    根治建议：为 auto-down 增加与 auto-os 同款的解析序/env 覆盖。
+  - 后台启动的 VM 应用会在启动它的 shell 调用结束后退出；同一端口未释放时 MCP 会
+    `failed to bind`（os error 10048）。规避：用**同一进程托管**应用（`subprocess.Popen`
+    + 内嵌 harness），或显式指定 `--front-port`/MCP 端口。
+  - 主检出在本次执行期间被并发的 PLAN-617/618 工作区占用（`crates/auto-lang/src/ui/terminal/*`
+    等处于半成品态）；本计划已改为只在 worktree 内构建验证。
+
+### 9.3 rust 渲染臂（T-09 余项）——**被域外前置阻断**
+
+- 命令：`auto run -r rust`（a2r Rust UI）+ `run_autotest.py --mode rust`。
+- 结果：**未完成（blocked，非本计划代码缺陷）**。冷编译完成后，a2r 生成的
+  `examples/rust-workspace/015-notes/src/main.rs` **编译失败**，实证两处 a2r 发射缺陷：
+  1. `notes_store.at` 的 `.notes[idx].pinned = !.notes[idx].pinned` →
+     生成 `self.notes[(idx)as usize]["pinned"] = serde_json::json!(!(as usize]["pinned"].as_bool()...))`
+     —— RHS 的接收者被吞掉（残缺表达式）。**本计划已用「先读局部量再取反」绕开**
+     （提交 `1b0c4a477`），但该形态仍是 a2r 的坑。
+  2. `draft_tags = .notes[.active_id].tags`（`[]str` 字段整赋值）→ 生成
+     `self.draft_tags = ...["tags"].as_str()...to_string()`，赋 `String` 给
+     `Vec<String>` 字段 —— 类型不符。**未绕开**（绕开要改数据模型：去掉草稿标签镜像、
+     改为视图直遍历 `.store.notes[.store.active_id].tags`，会牺牲 VM 端遍历可靠性）。
+- 归属判定：两处在**改动前就存在**（`git show HEAD:examples/rust-workspace/015-notes/src/main.rs`
+  第 393 行已含同样的残缺表达式；`draft_tags` 是本计划新增字段，但 a2r 的 `[]str`
+  字段赋值缺陷是既有能力缺口）。修复位置在 `crates/auto-lang`（a2r 发射器）→ **超出
+  本计划授权范围**（§4.4 未授权 `crates/**` 改动）。
+- 阻断的解除动作（建议独立小计划）：修 a2r 的「取反 + 下标字段读」与「`[]str` 字段
+  整赋值」两条发射臂；或按上述数据模型调整去掉草稿标签镜像后重试。
+- 影响：**不影响本计划任何验收标准（AC-01..AC-11 均以 Vue + VM 双端为准）**；
+  仅 `examples/rust-workspace` 的 015-notes 二进制在本轮不可构建。已在 §9.4 记为 finding F-1。
+
+### 9.4 /auto-plan:review 复审（2026-09-12）
+
+`stage: review | plan_id: PLAN-616 | plan_revision: 3 | outcome: pass | reviewed_commit: 1b0c4a477 | base_commit: 3b9eae671 | dependency_revisions: auto-lang@3b9eae671（worktree 分支 plan-616-dev）；auto-down 主检出（未改）| spec_inputs: docs/specs/auto-lang/ui/overview.md（未改动，仅提出 SD-01..SD-06 增量）`
+
+- **独立性声明（限制）**：本次复审与实施在**同一会话**内完成（未另开独立会话/角色）。
+  因此结论**不依赖执行者自述**，而是逐条重跑命令、直接读取代码/生成物/截图重建证据；
+  凡无法复跑的一律标 partial 并写明原因。建议 merge 前由维护者另跑一次独立复审。
+- **基线与洁净度**：worktree `D:/autostack/.wt/lang-616/auto-lang`（`git worktree list` 确认）；
+  实现全部已提交（7 个提交，见 §9.2）；工作柄内 `examples/ui/015-notes/**` 无未提交改动；
+  **验证期的临时改动（`crates/auto-lang/Cargo.toml` 的 autodown-core 绝对路径）已还原**
+  （`git status` 该文件干净、文件内为 `../../../auto-down/...`）。
+  主检出 `docs/plans/attachments/616/` 新增 before/after × Vue/VM 四张截图（可持久化证据）。
+
+#### 验收标准逐条复核（AC IDs → 任务 → 代码 → 证据）
+
+| AC | 判定 | 复核方式与证据 |
+|---|---|---|
+| AC-01 扁平布局（无卡片外壳） | **pass** | `grep -nE "rounded-xl\|shadow-sm" src/front/*.at`：`rounded-xl` **零命中**；`shadow-sm` 仅出现在两处主色按钮 recipe（`app.at:19` primary_btn / `editor.at:21` save_btn）。截图 `attachments/616/{after_vue_initial,after_vm_initial}.png` 双端可见「顶栏 `border-b` + 列表栏 `border-r`」扁平结构。 |
+| AC-02 列表行与分组 | **pass** | 双端截图（Pinned / Notes 分组标签 + 行内「标题+时间」两行）；VM 渲染树快照含 `Pinned`/`Notes` 分组与行文本；autotest T1/T2a/T2b/T2c 强断言行数与分组（VM 19/19）；playwright T2a/T2b/T2c 断言 `button.note-row` 计数（Vue 18/18）。 |
+| AC-03 图标一致性（无 emoji） | **pass** | `src/front/*.at` emoji 正则**零命中**（仅 README 的 ASCII 示意图用 emoji 描画图标，属文档插画，见 F-4）；置顶用文本 `Pin note`/`Unpin`；VM 截图中图标为 lucide 字形而非空白色块。 |
+| AC-04 视觉基线归档 | **pass** | 双端 after 截图 + before 基线四张入库 `docs/plans/attachments/616/`（480KB，git 跟踪，提交 `c855ed3cd`）。 |
+| AC-05 始终可编辑 | **pass** | `editor.at` 无 `Edit` 按钮（`grep 'text "Edit"'` 零命中；`Cancel` 仅出现在删除确认分支）；autotest T5a（输入即 `dirty=true` 且 `Save` 出现）/T5b（Save 落库 + `dirty=false` + 列表行标题同步）VM 绿；playwright `T5a/T5b` 断言 `Save` 仅在改动后可见并以 REST 校验落库。 |
+| AC-06 草稿不丢 | **pass** | autotest T5c（改标题→切笔记→再切回，改动仍在）VM 绿；playwright `T5c` 同场景 + REST 断言。 |
+| AC-07 搜索与标签筛选真实生效 | **pass** | autotest T3（"milk" 命中 Shopping List、清空复原）/T3b（无命空态）/T4（`#home` 过滤）VM 绿；playwright T3/T3b/T4 断言 `button.note-row` 计数。代码侧 `all_tags`/`all_folders` 已是模型字段并由 `.SeedVocab` 从笔记数据派生（旧 `computed all_tags => []` 恒空写法已删）。 |
+| AC-08 置顶持久化 | **pass** | autotest T8（Pin → 按钮变 Unpin → 进 Pinned 分组 → 切筛选重选仍为 Unpin）VM 绿；代码侧 `TogglePinActive` 走 `toggle_pin` API + 重载，无本地预翻转（§9.2 缺陷 5）。 |
+| AC-09 契约同步 | **pass** | `tests/acceptance.atd` 重写（T1..T13 新语义 + T5c/T2-GROUP 回归条目 + 「示例侧 DSL/VM 使用约束」表 + 维护约定增一行）；`tests/015-notes.autotest` 19 条强断言；playwright 两份 spec 全绿（18/18），旧漂移断言（📁、`.ProseMirror`、`ocean→blue-500`、暗色 +4%）全部消除或按 Plan 601 后口径重基线。 |
+| AC-10 无新增回归 | **pass** | `cargo t --no-fail-fast`：4805 run / **4778 passed / 27 failed / 109 skipped**；27 项逐条归因（§9.2）：5 项为本次验证方式的人为产物（撤掉 `CARGO_TARGET_DIR` 后 5/5 转绿，实测）、其余为 `KNOWN-DEBT-AND-RISKS.md` 已登记预存红/并发偶红（行 69/71/855/2068）+ 1 项宿主主题相关。`cargo tf --no-fail-fast`：3534 run / **3533 passed / 1 failed**（唯一红为已登记并发偶发 `ffi_dual_019_dep_layout_invariants`）。**无一项由本计划引入**。 |
+| AC-11 债务清账 | **pass** | `cargo test -p auto-lang --features ui-iced plan370_015_behavior_tests` = **12/12 绿**（改动前为 11 passed / 7 failed，其中 `d2`/`d8` 是 `KNOWN-DEBT` 行 69 记录的预存红，现已修复，`z6` 与派发层失配同时转绿）；`plan370_store_vm_tests` 6/6、`plan367_viewfn_tests` 6/6、`ui_snapshots` 3/3 绿。 |
+
+#### Findings
+
+| ID | 严重度 | 内容 | 影响 / 处置 |
+|---|---|---|---|
+| F-1 | medium（域外） | a2r 对「取反 + 下标字段读」与「`[]str` 字段整赋值」发射非法 Rust，导致 `examples/rust-workspace/015-notes` 不可构建（证据见 §9.3） | **不阻断本计划**（AC 不含 Rust 轨；且该缺陷改动前即存在）。处置：登记 **P616-D3** 债，建议独立小计划修 a2r 两条发射臂后补跑 `--mode rust`；数据模型侧替代方案见 §9.3。 |
+| F-2 | low | 筛选词表不回收已删除的标签/文件夹（`all_tags`/`all_folders` 只增不减） | 已写进 README「已知限制」；登记 **P616-D1** 债（根治需 `vm/codegen.rs` 支持数组字面量赋值）。 |
+| F-3 | low | store 里「写 `dark_mode` 的 handler 必须以 `ToggleDarkMode`/`SetAccent` 命名」才能拿到生成器 append 的 `applyAccent`——`SetMode` 因此被迫绕行 `ToggleDarkMode` | 已在代码内写明原因；登记 **P616-D2** 债（建议生成器改为按「是否写 dark_mode」判定）。 |
+| F-4 | low | README 布局示意图用 emoji（放大镜/文件夹/齿轮/太阳/时钟/垃圾桶）描画图标，与被去 emoji 化的实际 UI 表述不一致 | 文档插画，不影响运行；若后续要严格自洽可换 ASCII 记号。 |
+| F-5 | low | `note-row` 类是为 playwright 加的耦合钩子（应用源码出现测试专用类名） | 已在 `sidebar.at` 注明用途；VM 端解析为未知类静默忽略，无渲染影响。 |
+| F-6 | info | 规范 `docs/specs/auto-lang/ui/overview.md:44` 写「VM lucide 84 项闭集」，实测 `lucide_svg` 为 **85** 名 | 计数漂移，随 SD-03 校正（不单独开债）。 |
+| F-7 | info | 本轮补完期间发现并修复的 4 项实质缺陷（Vue async 时序、flush 后未重建工作集、indigo 色板丢底色、playwright 模糊名字匹配） | 前三项落提交 `ad7266cee`，第四项在测试侧修正；详见 §9.2。 |
+
+#### 规范增量复核（SD-01..SD-06）
+
+- 目标路径存在性：`docs/specs/auto-lang/ui/overview.md` 存在、`docs/plans/KNOWN-DEBT-AND-RISKS.md` 存在；
+  全部为仓内相对路径。
+- 每条 add/modify 描述的是**当前行为与持久决策**（DSL 子集约束、扁平布局示范、lucide 闭集计数、
+  依赖退出、三条债），非执行日记；SD-02 已把原 SD-04（卡片化退役）并入并说明规范内无独立章节可退。
+- 复审**未**改动任何 `docs/specs/` 或账本文件（沉淀留 merge）。
+- frontmatter 定稿：`supersedes_spec_components` 空（规范内无被本计划取代的独立组件，卡片化叙述并入
+  SD-02 的 modify）；`new_spec_components` 记 3 条新增落点；`touched_goals` 记 GOAL-007 + GOAL-010。
+
+#### 未完成事项的明确记录
+
+- §8 的 T-09 含 `--mode rust` 子项：**未完成**，原因是 F-1（域外前置）。其余 T-01..T-09 全部完成。
+  本条**已按未完成如实记录**，未折算为通过；解除动作见 F-1。
+
+#### 结论
+
+- **outcome: pass** —— AC-01..AC-11 全部 pass，规范增量已校验；唯一未完成项（Rust 轨）为域外前置
+  阻断且不影响任何 AC，已登记 finding + 债 + 解除动作。计划转 `reviewed`，进入 merge。
+- 证据可复现命令：`python run_autotest.py 015-notes.autotest --mode vm`（19/19）；
+  playwright（Vue，`NOTES_URL` 指向 dev server）18/18；
+  `cargo test -p auto-lang --features ui-iced plan370_015_behavior_tests`（12/12）；
+  `cargo t --no-fail-fast`；`cargo tf --no-fail-fast`。
 
 ## 10. 待澄清事项
 
