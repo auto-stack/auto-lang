@@ -1264,8 +1264,15 @@ pub enum DesktopCommand {
     /// config 落盘——push_notification 门控直读）。
     SetNotesEnabled(bool),
     /// Plan 540 T3：dock pinned 表写动词（`set_dock_pinned\t<csv>`；执行臂
-    /// config 落盘 + 会话域同步 + shell 投影热同步；空表 = 复位默认三枚）。
+    /// config 落盘 + 会话域同步 + shell 投影热同步。PLAN-012 W4：空表 =
+    /// 空表（缺省三枚语义退役，显式空即空））。
     SetDockPinned(String),
+    /// PLAN-012 W4 协议 v1.6：dock 单枚固定/取消固定（`dock_pin\t<id>` /
+    /// `dock_unpin\t<id>`；执行臂 config.dock_pinned Vec 增删去重 → 落盘 →
+    /// 投影热同步）。窄动词缘由：shell 侧读不到 `__dock_pinned` Obj 数组
+    /// 全集做 csv 拼接（B12 同族），单枚增删不过 .at。
+    DockPin(String),
+    DockUnpin(String),
     /// Plan 540 T3：壁纸目录写动词（`set_wallpapers_dir\t<dir>`；执行臂
     /// config 落盘——scan_wallpapers_dir 与缺省壁纸链共用解析）。
     SetWallpapersDir(String),
@@ -1420,6 +1427,8 @@ impl DesktopCommand {
             DesktopCommand::SetDockPinned(csv) => {
                 format!("set_dock_pinned{}{}", Self::FIELD_SEP, csv)
             }
+            DesktopCommand::DockPin(id) => format!("dock_pin{}{}", Self::FIELD_SEP, id),
+            DesktopCommand::DockUnpin(id) => format!("dock_unpin{}{}", Self::FIELD_SEP, id),
             DesktopCommand::SetWallpapersDir(dir) => {
                 format!("set_wallpapers_dir{}{}", Self::FIELD_SEP, dir)
             }
@@ -1562,6 +1571,14 @@ impl DesktopCommand {
                     },
                     "set_dock_pinned" => {
                         Some(DesktopCommand::SetDockPinned(arg.to_string()))
+                    }
+                    // PLAN-012 W4 协议 v1.6：单枚固定/取消固定（空参跳过；
+                    // dock_pin/dock_unpin 分隔符前全词匹配，无前缀互吞）。
+                    "dock_pin" if !arg.is_empty() => {
+                        Some(DesktopCommand::DockPin(arg.to_string()))
+                    }
+                    "dock_unpin" if !arg.is_empty() => {
+                        Some(DesktopCommand::DockUnpin(arg.to_string()))
                     }
                     "set_wallpapers_dir" => {
                         Some(DesktopCommand::SetWallpapersDir(arg.to_string()))
@@ -5306,6 +5323,32 @@ mod tests {
         );
         // 空 arg 跳过（launch 同款守卫）。
         assert!(DesktopCommand::parse_records("activate\u{1f}").is_empty());
+    }
+
+    /// PLAN-012 W4 协议 v1.6：dock_pin/dock_unpin 编码解析往返（含空参
+    /// 跳过守卫；\u{1f}/\t 分隔符双轨）。
+    #[test]
+    fn dock_pin_unpin_verbs_parse_and_encode() {
+        assert_eq!(
+            DesktopCommand::parse_records("dock_pin\u{1f}011-calculator"),
+            vec![DesktopCommand::DockPin("011-calculator".to_string())]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("dock_unpin\t013-todo"),
+            vec![DesktopCommand::DockUnpin("013-todo".to_string())],
+            "\\t 分隔符双轨等价"
+        );
+        assert_eq!(
+            DesktopCommand::DockPin("015-notes".to_string()).encode(),
+            "dock_pin\u{1f}015-notes"
+        );
+        assert_eq!(
+            DesktopCommand::DockUnpin("015-notes".to_string()).encode(),
+            "dock_unpin\u{1f}015-notes"
+        );
+        // 空 arg 跳过。
+        assert!(DesktopCommand::parse_records("dock_pin\u{1f}").is_empty());
+        assert!(DesktopCommand::parse_records("dock_unpin\u{1f}").is_empty());
     }
 
     #[test]

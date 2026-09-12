@@ -5,7 +5,7 @@
 //
 // 双向接缝（463 T1 §2/§3 定案；Plan 472 T3 formalize 为投影协议 v1，
 // Plan 478 T3 升版 v1.1，Plan 479 T4 升版 v1.2，Plan 486 升版 v1.3，
-// Plan 487 M4 升版 v1.4，Plan 505 B2 升版 v1.5——合同
+// Plan 487 M4 升版 v1.4，Plan 505 B2 升版 v1.5，PLAN-012 升版 v1.6——合同
 // schema/projection-protocol-v1.md——字段表/指纹门控/动词词表）：
 //   出：`__desktop_cmd`（候选 B 命令总线 —— 宿主每周期读+清；记录
 //       "verb\targ"，多条以 "\n" 连接。词表：launch/close/focus/layout/
@@ -17,7 +17,9 @@
 //       open_settings（齿轮）/set_dock_position/set_dock_enabled——
 //       后两者由 settings.at 面板发出，本文件只发 open_settings）+
 //       PLAN-526 增量 win_min（dock 右键菜单最小化）/ shutdown（电源键
-//       确认退出，无参）
+//       确认退出，无参）+ PLAN-012 v1.6 增量 dock_pin/dock_unpin
+//       （单枚固定/取消固定——shell 读不到 __dock_pinned Obj 数组全集
+//       做 csv 手术（B12 同族），单枚增删收口宿主侧）
 //   入：`__wm_wins`（宿主注入 {wid,title,focused,workspace,app,icon} Obj
 //       数组，跨分区全集，dock 运行窗列表源；v1.3 native 槽位条目为五字段
 //       {wid:"N<slot>",title,native,icon,focused}——workspace/app 不适用
@@ -31,16 +33,19 @@
 //       dock 不消费）
 //       `__wm_running`（",id1,id2," 运行中 app 集合派生串，pinned 运行
 //       指示条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实）
+//       `__dock_pinned_csv`（PLAN-012 v1.6：",id1,id2," 固定集合派生串
+//       ——dock 窗口条目与固定图标去重合并判据：窗口条目 app 已固定者
+//       不再重复渲染（固定图标+运行点即其唯一代表））
 //       `__wm_meta`（"layout\tfocused_wid"，布局按钮态）
 //       `__wm_notes`（v1.2：通知历史 {id,kind,msg,at} Obj 数组；合同面，
 //       dock 不直接消费）
 //       `__wm_notes_unread`（v1.2：未读计数串；铃铛 badge 条件消费——
 //       缺省空串不出 badge）
 // dock 数据级配置（协议 v1 §6）：storage 键 shell.dock.pinned / position /
-// enabled，缺席回退 pack 默认（bottom / 启用 / 固定 calculator+todo+notes）。
-// position/enabled 由 Init 读入；pinned 由宿主读键并解析 {id,icon} 注入
-// （图标源 = 注册表，I9）。auto-os-config settings 写手 = shell-track M4；
-// v1 由外部预置键（AUTO_VM_STORAGE_FILE 指向预写 JSON）。
+// enabled。position/enabled 由 Init 读入；pinned 单源 config.dock_pinned
+// （PLAN-012 W4：缺省**空**——默认不放固定项，用户可右键固定任意应用；
+// 由宿主读键并解析 {id,icon} 注入（图标源 = 注册表，I9）。
+// auto-os-config settings 写手 = shell-track M4。
 // 消费者唯一：宿主 renderer 的 DesktopBus 双排空点（462/463 update 壳层）。
 // launcher overlay 槽：SummonLauncher 召唤（464），本文件只发事件。
 widget Desktop {
@@ -62,6 +67,9 @@ widget Desktop {
         // PLAN-010 N6c：菜单态关闭（icon 菜单 MenuClose 同构——popover
         // ondismiss 专用；hover 离开不再兼清菜单，菜单项方可触及）。
         WinMenuClose,
+        // PLAN-012 W4 v1.6：dock 单枚固定/取消固定（pinned 图标右键菜单
+        // 「取消固定」/ 窗口条目右键菜单「固定到任务栏」发出）。
+        DockPin(str), DockUnpin(str),
         // PLAN-526 T11：电源键（shutdown 确认面板三态）。
         ShutdownRequest, ShutdownCancel, ShutdownConfirm,
         // Plan 497 G5：dock/pager hover 预览（shell 内部 UI 态，非总线动词）。
@@ -78,8 +86,12 @@ widget Desktop {
         var __wm_fp str = ""
         var __wm_notes = []            // 协议 v1.2 合同面（dock 不直接消费）
         var __wm_notes_unread str = "" // 协议 v1.2：未读串（badge 条件消费）
-        // __dock_pinned = 宿主注入 {id,icon} Obj 数组（storage shell.dock.pinned
-        // 覆盖 > pack 默认三枚；icon 宿主自注册表解析——.at 无注册表访问权）。
+        // PLAN-012 v1.6：固定集合派生串（宿主注入 ",id1,id2,"）——窗口
+        // 条目与固定图标去重合并判据（Obj 数组字段读失效 B12 同族规避）。
+        var __dock_pinned_csv str = ""
+        // __dock_pinned = 宿主注入 {id,icon} Obj 数组（config.dock_pinned
+        // 单源，PLAN-012 后缺省空；icon 宿主自注册表解析——.at 无注册表
+        // 访问权）。
         var __dock_pinned = []
         var __dock_position str = "bottom"
         var __dock_enabled str = "1"
@@ -141,9 +153,35 @@ widget Desktop {
                     for p in .__dock_pinned {
                         col {
                             style: "items-center"
-                            button (icon: p.icon) {
-                                onclick: .ActivateApp(p.id)
-                                style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            // PLAN-012 W4：pinned 图标右键菜单（win_menu 态
+                            // 复用同一 popover 容器，菜单键 = pinned id）——
+                            // 「取消固定」+ 该 app 逐窗「聚焦/关闭」（Win11
+                            // 跳表形态；最小化延后，见 PLAN-012 非目标）。
+                            popover (open: .win_menu == p.id, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
+                                button (icon: p.icon) {
+                                    onclick: .ActivateApp(p.id)
+                                    oncontextmenu.prevent: .WinMenu(p.id)
+                                    style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                }
+                                col {
+                                    style: "w-40 gap-1"
+                                    button (text: "取消固定", variant: "ghost") {
+                                        onclick: .DockUnpin(p.id)
+                                        style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
+                                    }
+                                    for w in .__wm_wins {
+                                        if w.app == p.id {
+                                            button (text: "聚焦 " + w.title, variant: "ghost") {
+                                                onclick: .WinFocus(w.wid)
+                                                style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left truncate max-w-full"
+                                            }
+                                            button (text: "关闭 " + w.title, variant: "ghost") {
+                                                onclick: .WinClose(w.wid)
+                                                style: "h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left truncate max-w-full"
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             if .__wm_running.contains("," + p.id + ",") {
                                 div { style: "h-1 w-6 rounded-full bg-primary mt-0.5" }
@@ -151,15 +189,21 @@ widget Desktop {
                         }
                     }
                     for w in .__wm_wins {
-                        row {
-                            style: "items-center gap-1"
-                            // v1.3：native 条目（native=="1"）——title 文本
-                            // 按钮（无注册表图标，title 即身份）+ native 动词；
-                            // App 条目走既有图标按钮路径。
-                            // PLAN-526 T8：× 内嵌钮退役（Q5c）——右键菜单
-                            // 承接关闭（popover 与 hover 缩略同容器，win_menu
-                            // 态切换内容）。
-                            if w.native == "1" {
+                        // PLAN-012 W4：dock 单组合并——窗口条目按 native/app
+                        // 分支各自成行；app 条目若其 app 已固定（csv 派生串
+                        // contains 判定，B12 规避）即跳过渲染——固定图标 +
+                        // 运行点 + 右键菜单（逐窗聚焦/关闭）已承载其全部语义
+                        //（原"固定组 + 窗口组"两段循环的重复显示与视觉分隔
+                        // 同步消失）。
+                        if w.native == "1" {
+                            row {
+                                style: "items-center gap-1"
+                                // v1.3：native 条目（native=="1"）——title 文本
+                                // 按钮（无注册表图标，title 即身份）+ native 动词；
+                                // App 条目走既有图标按钮路径。
+                                // PLAN-526 T8：× 内嵌钮退役（Q5c）——右键菜单
+                                // 承接关闭（popover 与 hover 缩略同容器，win_menu
+                                // 态切换内容）。
                                 mouse-area {
                                     popover (open: .win_menu == w.wid, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
                                         button (text: w.title) {
@@ -180,49 +224,63 @@ widget Desktop {
                                         }
                                     }
                                 }
-                            } else {
-                                // Plan 503：激活窗 2px accent 竖条(stella 激活态
-                                // 范式)。Plan 518 G3：格底常驻 accent(bg-primary/15)
-                                // 撤除——格 hover 才出底,accent 只留激活竖条。
-                                if w.focused == "1" {
-                                    div { style: "w-0.5 h-5 rounded-full bg-primary" }
-                                }
-                                // Plan 497 G5：条目 hover 预览（422 popover
-                                // 先例，widget 锚=条目按钮；内容=真缩略，
-                                // miss 由渲染臂 fallback icon 兜底）。
-                                // PLAN-526 T8：open 条件或合 hover/菜单态；
-                                // 锚恒为条目按钮（plain[0]），内容（plain[1]）
-                                // 按菜单态切换缩略/三动作菜单（聚焦/最小化/
-                                // 关闭——Q5c 右键替代内嵌 ×）。
-                                mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverLeave) {
-                                    // PLAN-010 N6c：预览臂加 win_menu=="" 门（菜单
-                                    // 开启期抑制 hover 预览）；ondismiss 改菜单专用
-                                    // 关闭——原 HoverEnd 兼清使菜单被 hover-leave
-                                    // 秒关（菜单项不可达，用户实测）。
-                                    popover (open: (.dock_hover == w.wid && .win_menu == "") || .win_menu == w.wid, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
-                                        button (icon: w.icon) {
-                                            onclick: .WinFocus(w.wid)
-                                            oncontextmenu.prevent: .WinMenu(w.wid)
-                                            style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
-                                        }
-                                        if .win_menu == w.wid {
-                                            col {
-                                                style: "w-36 gap-1"
-                                                button (text: "聚焦", variant: "ghost") {
-                                                    onclick: .WinFocus(w.wid)
-                                                    style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
-                                                }
-                                                button (text: "最小化", variant: "ghost") {
-                                                    onclick: .WinMin(w.wid)
-                                                    style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
-                                                }
-                                                button (text: "关闭", variant: "ghost") {
-                                                    onclick: .WinClose(w.wid)
-                                                    style: "h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left"
-                                                }
+                            }
+                        } else {
+                            if .__dock_pinned_csv.contains("," + w.app + ",") == false {
+                                row {
+                                    style: "items-center gap-1"
+                                    // Plan 503：激活窗 2px accent 竖条(stella 激活态
+                                    // 范式)。Plan 518 G3：格底常驻 accent(bg-primary/15)
+                                    // 撤除——格 hover 才出底,accent 只留激活竖条。
+                                    if w.focused == "1" {
+                                        div { style: "w-0.5 h-5 rounded-full bg-primary" }
+                                    }
+                                    // Plan 497 G5：条目 hover 预览（422 popover
+                                    // 先例，widget 锚=条目按钮；内容=真缩略，
+                                    // miss 由渲染臂 fallback icon 兜底）。
+                                    // PLAN-526 T8：open 条件或合 hover/菜单态；
+                                    // 锚恒为条目按钮（plain[0]），内容（plain[1]）
+                                    // 按菜单态切换缩略/三动作菜单（聚焦/最小化/
+                                    // 关闭——Q5c 右键替代内嵌 ×）。
+                                    // PLAN-012 W4：菜单追加「固定到任务栏」
+                                    // （dock_pin v1.6 动词；仅 registry app 条目
+                                    // ——w.app 空串的 boot 窗不出现该菜单项）。
+                                    mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverLeave) {
+                                        // PLAN-010 N6c：预览臂加 win_menu=="" 门（菜单
+                                        // 开启期抑制 hover 预览）；ondismiss 改菜单专用
+                                        // 关闭——原 HoverEnd 兼清使菜单被 hover-leave
+                                        // 秒关（菜单项不可达，用户实测）。
+                                        popover (open: (.dock_hover == w.wid && .win_menu == "") || .win_menu == w.wid, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
+                                            button (icon: w.icon) {
+                                                onclick: .WinFocus(w.wid)
+                                                oncontextmenu.prevent: .WinMenu(w.wid)
+                                                style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                                             }
-                                        } else {
-                                            window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
+                                            if .win_menu == w.wid {
+                                                col {
+                                                    style: "w-36 gap-1"
+                                                    button (text: "聚焦", variant: "ghost") {
+                                                        onclick: .WinFocus(w.wid)
+                                                        style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
+                                                    }
+                                                    button (text: "最小化", variant: "ghost") {
+                                                        onclick: .WinMin(w.wid)
+                                                        style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
+                                                    }
+                                                    button (text: "关闭", variant: "ghost") {
+                                                        onclick: .WinClose(w.wid)
+                                                        style: "h-8 px-2 text-sm rounded-md bg-transparent text-error hover:bg-primary/10 text-left"
+                                                    }
+                                                    if w.app != "" {
+                                                        button (text: "固定到任务栏", variant: "ghost") {
+                                                            onclick: .DockPin(w.app)
+                                                            style: "h-8 px-2 text-sm rounded-md bg-transparent text-foreground hover:bg-primary/10 text-left"
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
+                                            }
                                         }
                                     }
                                 }
@@ -413,6 +471,10 @@ widget Desktop {
         .OpenSettingsPanel -> { .__desktop_cmd = "open_settings" }
         // PLAN-526 T8：条目右键 → 菜单态（popover open 条件或合 hover）。
         .WinMenu(wid) -> { .win_menu = wid }
+        // PLAN-012 W4 v1.6：单枚固定/取消固定（菜单动作消费即清菜单态；
+        // 持久化与投影热同步在宿主执行臂）。
+        .DockPin(app) -> { .__desktop_cmd = "dock_pin\t" + app; .win_menu = "" }
+        .DockUnpin(app) -> { .__desktop_cmd = "dock_unpin\t" + app; .win_menu = "" }
         // PLAN-526 T11：关机确认三态（确认落 shutdown 无参动词；
         // Escape 退出热键退役——T13——后唯一图形退出入口）。
         .ShutdownRequest -> { .shutdown_ask = "1" }

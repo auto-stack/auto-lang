@@ -13,7 +13,7 @@
 //! desktop {
 //!     dock_position : "bottom"
 //!     dock_enabled : true
-//!     dock_pinned : "011-calculator,013-todo,015-notes"
+//!     dock_pinned : "011-calculator,013-todo"
 //!     wallpaper_path : ""
 //!     wallpapers_dir : ""
 //!     dark_theme : true
@@ -40,8 +40,10 @@ pub const LEGACY_STORAGE_KEYS: [&str; 8] = [
     "shell.notes.enabled",
 ];
 
-/// dock pinned 内置缺省三枚（472 pack 默认同源）。
-pub const DEFAULT_DOCK_PINNED: [&str; 3] = ["011-calculator", "013-todo", "015-notes"];
+/// dock pinned 内置缺省。PLAN-012 W4 裁定：缺省**空**（用户裁定默认不放
+/// calc/todo/notes；"空表回退缺省三枚"语义退役——缺键 = 显式空 = 空表）。
+/// 保留常量供执行臂序列化与测试引用单源。
+pub const DEFAULT_DOCK_PINNED: [&str; 0] = [];
 
 /// 桌面单源配置（字段语义见模块头 schema）。
 #[derive(Debug, Clone, PartialEq)]
@@ -49,7 +51,8 @@ pub struct DesktopConfig {
     /// dock 位置：`"bottom"` | `"top"`（坏值回退 bottom）。
     pub dock_position: String,
     pub dock_enabled: bool,
-    /// dock 固定 app id 表（逗号串序列化；空表回退缺省三枚）。
+    /// dock 固定 app id 表（逗号串序列化。PLAN-012 W4：缺省空；缺键 =
+    /// 显式空 = 空表，不再回退三枚）。
     pub dock_pinned: Vec<String>,
     /// 壁纸原始配置值（"" = 未配置；`#hex` | `builtin:` | 图片路径——
     /// 有效性验证与目录首图回退链在 boot 壁纸解析，本层不验）。
@@ -127,14 +130,13 @@ pub fn parse_config(src: &str) -> DesktopConfig {
         cfg.dock_enabled = v;
     }
     if let Some(v) = f.get("dock_pinned") {
-        let list: Vec<String> = v
+        // PLAN-012 W4：显式值即事实（含纯逗号/空白 = 空表；缺键 = 默认空）
+        // ——不再有"空表回退缺省三枚"分支。
+        cfg.dock_pinned = v
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        if !list.is_empty() {
-            cfg.dock_pinned = list;
-        }
     }
     if let Some(v) = f.get("wallpaper_path") {
         cfg.wallpaper_path = v.clone();
@@ -493,6 +495,28 @@ mod tests {
         assert!(!migrated);
         assert_eq!(cfg.dock_position, "top");
         assert_eq!(cfg.dock_pinned, DesktopConfig::default().dock_pinned);
+    }
+
+    /// PLAN-012 W4：pinned 空表语义三态——缺键 = 空（不再回退缺省三枚）、
+    /// 显式空/纯逗号 = 空、非空 csv = 逐项采纳。
+    #[test]
+    fn dock_pinned_empty_table_semantics() {
+        // 缺键 → 空（Default 缺省已置空）。
+        let (cfg, _) = load_from(Some("desktop {\n    dock_enabled : true\n}\n"), &mut |_| None);
+        assert!(cfg.dock_pinned.is_empty(), "缺键 = 空");
+        // 显式空串（行读侧剥引号后空值跳过 = 缺键同型）与纯逗号 → 空。
+        let (cfg2, _) = load_from(Some("desktop {\n    dock_pinned : \"\"\n}\n"), &mut |_| None);
+        assert!(cfg2.dock_pinned.is_empty(), "显式空串 = 空");
+        let (cfg3, _) = load_from(Some("desktop {\n    dock_pinned : \" , ,\"\n}\n"), &mut |_| None);
+        assert!(cfg3.dock_pinned.is_empty(), "纯逗号 = 空");
+        // 非空 csv 逐项采纳（带空白容错）。
+        let (cfg4, _) = load_from(
+            Some("desktop {\n    dock_pinned : \"011-calculator, 015-notes\"\n}\n"),
+            &mut |_| None,
+        );
+        assert_eq!(cfg4.dock_pinned, vec!["011-calculator", "015-notes"]);
+        // 缺省常量已置空（单源）。
+        assert!(DEFAULT_DOCK_PINNED.is_empty());
     }
 
 

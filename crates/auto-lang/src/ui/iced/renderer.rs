@@ -9154,6 +9154,9 @@ fn execute_desktop_commands(
             DC::SetTransparency(level) => execute_set_transparency(state, &level),
             DC::SetNotesEnabled(on) => execute_set_notes_enabled(state, on),
             DC::SetDockPinned(csv) => execute_set_dock_pinned(state, &csv),
+            // PLAN-012 W4 协议 v1.6：单枚固定/取消固定。
+            DC::DockPin(id) => execute_dock_pin(state, &id, true),
+            DC::DockUnpin(id) => execute_dock_pin(state, &id, false),
             DC::SetWallpapersDir(dir) => execute_set_wallpapers_dir(state, &dir),
             // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
             // stale）。
@@ -9352,25 +9355,43 @@ fn execute_set_notes_enabled(state: &mut crate::ui::session::DesktopSession, on:
 }
 
 /// Plan 540 T3：pinned 写臂——config 落盘 + 会话域同步 + shell 投影热同步
-/// （`inject_dock_pinned` 同格式 {id,icon} 注入；空表 = 复位默认三枚，
-/// 472 load 缺席回退同语义）。
+/// （`inject_dock_pinned` 同格式 {id,icon} 注入。PLAN-012 W4：空表 = 空表
+/// ——缺省三枚回退语义退役，显式空即空，parse/load 同步改）。
 fn execute_set_dock_pinned(state: &mut crate::ui::session::DesktopSession, csv: &str) {
     let list: Vec<String> = csv
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    state.desktop.config.dock_pinned = if list.is_empty() {
-        crate::ui::desktop_config::DEFAULT_DOCK_PINNED
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
-    } else {
-        list
-    };
+    state.desktop.config.dock_pinned = list;
     let _ = crate::ui::desktop_config::save(&state.desktop.config);
     state.desktop.dock_pinned = state.desktop.config.dock_pinned.clone();
     inject_dock_pinned(state);
+}
+
+/// PLAN-012 W4 协议 v1.6：dock 单枚固定/取消固定执行臂——Vec 增删去重
+/// （pin 已在表 = 幂等保持；unpin 不在表 = 幂等跳过）→ config 落盘 →
+/// 会话域同步 + 投影热同步（Obj 数组与 csv 派生面都由同一会话域事实源
+/// 刷新，sync_shell_windows 指纹差分拾取）。
+fn execute_dock_pin(state: &mut crate::ui::session::DesktopSession, id: &str, pin: bool) {
+    if id.is_empty() {
+        return;
+    }
+    let mut list = state.desktop.config.dock_pinned.clone();
+    if pin {
+        if !list.iter().any(|e| e == id) {
+            list.push(id.to_string());
+        }
+    } else if !list.iter().any(|e| e == id) {
+        return;
+    } else {
+        list.retain(|e| e != id);
+    }
+    state.desktop.config.dock_pinned = list;
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
+    state.desktop.dock_pinned = state.desktop.config.dock_pinned.clone();
+    inject_dock_pinned(state);
+    inject_desktop_surface(state);
 }
 
 /// Plan 551 T6:外写热应用轮询——os-config(或任意写方)经 daemon 改
@@ -11109,6 +11130,21 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         notes_front,
         notes_unread
     ));
+    // PLAN-012 W4 v1.6：__dock_pinned_csv 派生串（",id1,id2,"；shell view
+    // 条件 `contains` 消费——dock 窗口条目与固定图标去重合并的判据面，
+    // .at 读不到 `__dock_pinned` Obj 数组字段，B12 同族规避）。指纹尾段
+    // "|pinned:{csv};"——pin/unpin 执行臂改会话域后由指纹差分拾取刷新。
+    let mut pinned_csv = String::from(",");
+    for id in &state.desktop.dock_pinned {
+        pinned_csv.push_str(id);
+        pinned_csv.push(',');
+    }
+    // 指纹段剥前后逗号封边（空表 csv = "," → 段空串）。
+    if pinned_csv.len() > 1 {
+        fp.push_str(&format!("|pinned:{};", &pinned_csv[1..pinned_csv.len() - 1]));
+    } else {
+        fp.push_str("|pinned:;");
+    }
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
         None => return,
@@ -11128,6 +11164,9 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app
         .component
         .write_state("__wm_notes_unread", auto_val::Value::Str(notes_unread.to_string().into()));
+    let _ = app
+        .component
+        .write_state("__dock_pinned_csv", auto_val::Value::str(&pinned_csv));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
 }
@@ -21658,6 +21697,9 @@ mod tests {
         var __wm_mru = []
         var __wm_notes = []
         var __wm_notes_unread str = ""
+        var __wm_running str = ""
+        var __wm_notes_visible str = ""
+        var __dock_pinned_csv str = ""
     }
     view { col { text "shell" } }
 }
@@ -21949,6 +21991,53 @@ mod tests {
         match t3_read(&ds, "__wm_meta") {
             auto_val::Value::Str(s) => assert_ne!(s.to_string(), "sentinel", "槽位变化应触发重写"),
             other => panic!("__wm_meta 读回异常: {other:?}"),
+        }
+    }
+
+    /// PLAN-012 W4 v1.6：`__dock_pinned_csv` 派生投影——",id1,id2," 串
+    /// （shell view `contains` 消费，dock 窗口条目与固定图标去重判据面）
+    /// + 指纹 "|pinned:" 段；会话域 dock_pinned 变更 → 下次同步指纹差分
+    /// 拾取重写（哨兵机制同 v1.3 native 槽位测试）。
+    #[test]
+    fn projection_v16_dock_pinned_csv_and_fingerprint() {
+        let mut ds = t3_session_with_shell();
+        t3_add_win(&mut ds, "Alpha");
+        ds.desktop.dock_pinned = vec!["011-calculator".to_string(), "013-todo".to_string()];
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__dock_pinned_csv") {
+            auto_val::Value::Str(s) => {
+                assert_eq!(s.to_string(), ",011-calculator,013-todo,", "csv 前后逗号封边")
+            }
+            other => panic!("__dock_pinned_csv 读回异常: {other:?}"),
+        }
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("|pinned:011-calculator,013-todo;"),
+                "指纹应含 pinned 段: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+        // 指纹门控：会话域变更（unpin 一枚）→ 指纹变化 → 下次同步重写。
+        let shell = ds.desktop.shell_app.unwrap();
+        ds.apps
+            .get_mut(&shell)
+            .unwrap()
+            .component
+            .write_state("__dock_pinned_csv", auto_val::Value::str("sentinel"))
+            .unwrap();
+        ds.desktop.dock_pinned = vec!["013-todo".to_string()];
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__dock_pinned_csv") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), ",013-todo,", "变更应触发重写"),
+            other => panic!("__dock_pinned_csv 读回异常: {other:?}"),
+        }
+        // 空表 = 单纯 ","（空 csv 串——shell contains 条件天然不命中）。
+        ds.desktop.dock_pinned = Vec::new();
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__dock_pinned_csv") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), ",", "空表 → 逗号哨兵串"),
+            other => panic!("__dock_pinned_csv 读回异常: {other:?}"),
         }
     }
 
@@ -23617,7 +23706,8 @@ mod tests {
     /// Plan 487 M4 步骤5 + Plan 540 T3/T7 → Plan 551 改驾：Dock 动词臂
     /// 直驱（045 面板 handler 随窗退役）——SetDockPosition/SetDockEnabled/
     /// SetDockPinned 执行：热生效（edges 翻转）+ config 落盘 + 会话域
-    /// pinned 同步 + 空值复位默认三枚。
+    /// pinned 同步。PLAN-012 W4：空 csv = 空表（缺省三枚回退退役）+
+    /// DockPin/DockUnpin 单枚增删去重（幂等重复调用无副作用）。
     #[test]
     fn settings_dock_section_dispatch_and_pinned_storage() {
         let path = t2_isolate_storage("487-dock-section");
@@ -23660,12 +23750,50 @@ mod tests {
             ds.desktop.config.dock_pinned,
             "会话域 pinned 同步"
         );
-        // ④ 复位：空值 = 默认三枚（472 load 缺席回退同语义）。
+        // ④ PLAN-012 W4：空值 = 空表（缺省三枚回退语义退役——显式空即空）。
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::SetDockPinned(String::new())],
         );
-        assert_eq!(ds.desktop.config.dock_pinned.len(), 3, "空 csv → 默认三枚");
+        assert!(ds.desktop.config.dock_pinned.is_empty(), "空 csv → 空表");
+
+        // ⑤ PLAN-012 W4 协议 v1.6：dock_pin/dock_unpin 单枚增删去重 +
+        // 落盘 + 会话域同步（幂等：重复 pin/unpin 不在表即无操作）。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::DockPin(
+                "011-calculator".to_string(),
+            )],
+        );
+        assert_eq!(
+            ds.desktop.config.dock_pinned,
+            vec!["011-calculator".to_string()],
+            "dock_pin 入表"
+        );
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![
+                crate::ui::session::DesktopCommand::DockPin("013-todo".to_string()),
+                crate::ui::session::DesktopCommand::DockPin("011-calculator".to_string()),
+                crate::ui::session::DesktopCommand::DockUnpin("038-minesweeper".to_string()),
+            ],
+        );
+        assert_eq!(
+            ds.desktop.config.dock_pinned,
+            vec!["011-calculator".to_string(), "013-todo".to_string()],
+            "重复 pin 去重、unpin 不在表幂等"
+        );
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::DockUnpin(
+                "011-calculator".to_string(),
+            )],
+        );
+        assert_eq!(
+            ds.desktop.config.dock_pinned,
+            vec!["013-todo".to_string()],
+            "dock_unpin 出表"
+        );
 
         let _ = std::fs::remove_file(&path);
     }
