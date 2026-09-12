@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-619
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: 015-notes-vm-vue-parity
 author: [zhaopuming]
 created_at: 2026-09-12
@@ -168,22 +168,32 @@ P1 影响**所有** gallery/示例应用（任何未声明 `theme{}` 的 scaffol
 
 ## 9. 复审记录
 
-### 9.1 /auto-plan:new 起草移交（2026-09-12）
+### 9.1 /auto-plan:new 起草 + 裁决回填（2026-09-12）
 
 - stage: new；Plan ID: PLAN-619；plan_revision: 1。
 - 依据：用户实测 4 项现象 + 本计划 §4.1/§4.2 的像素级复核（`tools/parity_shot_diff.py` 可复跑）。
-- outcome: **blocked**——§10① 的「权威色板」裁决会改变跨示例视觉基线，需用户定夺后再进入 work；
-  其余任务（T-01/T-02/T-04/T-05）在裁决前已可开工（T-03 依赖裁决）。
-- next: 用户裁定 §10① 后 → work（T-01 起）。
+- **用户裁决（2026-09-12）**：
+  - §10① 色板 → **选项 A：scaffold/shadcn 为权威**（VM 的语义解析对未声明 `theme{}` 的 scaffold 类应用
+    与 Vue CSS 同源；桌面 shell/stella 类应用今后显式声明 `theme{}` 或由宿主显式 `set_theme("stella")`）。
+  - §10② icon 尺寸 → **以 `.at` 的 `size:` 为准**（Vue 生成器补 `:size`；VM 按 size 绘制并盒内居中；
+    生成器注入的 `w-5 h-5` 仅作缺省、让位于显式 size）。
+- **关键前置核实（让选项 A 变成小改动）**：`registry::SCAFFOLD.dark` 与 Vue 侧生成的
+  `gen/front/vue/src/assets/index.css` `.dark` 块**逐 token 完全同值**（background `222.2 47% 7%`、
+  card `222.2 47% 10%`、muted `217.2 32.6% 15%`、accent/border `217.2 32.6% 17.5%` …；sidebar 8 键同）。
+  → 修法 = 让「未声明 `theme{}` 的应用」在 VM 端走 `scaffold` 而非 stella。
+- **落点（已定位）**：缺省活动主题硬编码在 `crates/auto-lang/src/ui/style/theme/mod.rs:44`
+  （`registry::builtin("stella")`，注释「缺省 "stella" = VM 轨现行」）；桌面宿主不受影响的前提是
+  `desktop_config.theme_name` 缺省（`desktop_config.rs:83` = `None`）→ 宿主依赖该进程缺省，
+  **因此必须为宿主补显式 stella 激活（或把宿主 config 缺省写为 `Some("stella")`），否则桌面视觉会整体改色**（blast radius 见 §4.3）。
+- outcome: **pass**（裁决已回填，可进入 work）。
+- next: work —— T-01（P3/P4 有界调查，先出决策件）→ T-03（P1，落点已明确）→ T-02（P2）→ T-04/T-05。
 
 ## 10. 待澄清事项
 
-1. **P1 权威色板（必须裁决）**：语义 token 应以哪套色板为准？
-   - **选项 A（推荐）**：**scaffold/shadcn 为权威**——VM 的语义解析对「未声明 `theme{}` 的 scaffold 类应用」
-     与 Vue CSS 同源（改 `active_theme()` 缺省或生成侧对齐）。影响：桌面 shell/stella 类应用需显式声明 `theme{}` 才能保持 stella。
-   - **选项 B**：**stella 为权威**——改 auto-man 的 scaffold `index.css` 模板走 stella 值。影响：Web 侧全部示例/gallery 的
-     视觉基线整体变化（面大），且与 shadcn 组件默认观感脱钩。
-   - **选项 C**：示例侧 `theme{}` 钉住（015-notes 先落地），引擎默认不动、差异长期保留为「已知差异」。
-     代价：每个 scaffold 类应用都要手抄一遍色板，GOAL-007 的「一致」只在小范围成立。
-2. **P2 的 `size` 权威**：以 `.at` 的 `size:` 为准（则 `w-5 h-5` 需让位），还是以 class 为准（则 `size:` 退化）？
-   建议前者（语言层 prop 优先），需在 SD-02 写明。
+1. ~~**P1 权威色板**~~ → **已裁决（2026-09-12）：选项 A，scaffold/shadcn 为权威**。
+   实施注意（衍生约束，不再征询）：桌面宿主必须显式声明 stella 才能保住现有观感——
+   优先做法是把 `desktop_config::DesktopConfig::default().theme_name` 写为 `Some("stella")`
+   （`crates/auto-lang/src/ui/desktop_config.rs:83`），使「宿主 = stella、pac 应用 = scaffold」成为显式规则，
+   并在 SD-01 成文。
+2. ~~**P2 的 `size` 权威**~~ → **已裁决（2026-09-12）：以 `.at` 的 `size:` 为准**；
+   `ui_gen/vue.rs` 的 `w-5 h-5` 降级为缺省（显式 `size:` 时让位），写进 SD-02。
