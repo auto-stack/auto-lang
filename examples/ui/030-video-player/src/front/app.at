@@ -67,22 +67,22 @@ widget App {
         // ---- 播放状态 ----
         var is_playing bool = true
         var current_id int = 1
-        var current_title str = "AutoOS 2026 Keynote & Intro"
-        var current_file str = "01_intro.mp4"
-        var current_video_url str = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-        var current_res str = "1080P"
-        var current_codec str = "H.264"
-        var current_size str = "48 MB"
+        var current_title str = "caelestia"
+        var current_file str = "caelestia.mp4"
+        var current_video_url str = "http://127.0.0.1:8099/stream/1"
+        var current_res str = "—"
+        var current_codec str = "—"
+        var current_size str = "7.3 MB"
         var current_fps str = "60.00 FPS"
         var current_bitrate str = "4.2 Mbps"
         var current_audio str = "AAC Stereo 48kHz"
 
-        var current_time_sec int = 45
-        var total_time_sec int = 225
-        var current_time_str str = "00:45"
-        var total_time_str str = "03:45"
-        var time_display_fmt str = "00:45 / 03:45"
-        var progress_pct int = 20
+        var current_time_sec int = 0
+        var total_time_sec int = 0
+        var current_time_str str = "00:00"
+        var total_time_str str = "00:00"
+        var time_display_fmt str = "00:00 / 00:00"
+        var progress_pct int = 0
 
         var volume int = 80
         var volume_label str = "80%"
@@ -105,66 +105,120 @@ widget App {
         var show_toast bool = true
 
         // ---- 播放列表 (5 项种子视频) ----
+        // ---- 播放列表（由 E:\Video 递归扫描真实得到；T-06）----
+        // 生成物：tests/gen_media_seed.py（T-05 落地后改为运行时扫描）
         var playlist = [
             {
                 id: 1,
-                title: "AutoOS 2026 Keynote & Intro",
-                file_name: "01_intro.mp4",
-                duration_str: "03:45",
-                duration_sec: 225,
-                resolution: "1080P",
-                codec: "H.264",
-                size_str: "48 MB",
-                badge_color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
-                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+                title: "caelestia",
+                file_name: "caelestia.mp4",
+                rel_dir: "",
+                size_str: "7.3 MB",
+                video_url: "http://127.0.0.1:8099/stream/1"
             },
             {
                 id: 2,
-                title: "Kernel & AutoVM Architecture",
-                file_name: "02_architecture.mkv",
-                duration_str: "12:20",
-                duration_sec: 740,
-                resolution: "4K",
-                codec: "HEVC",
-                size_str: "210 MB",
-                badge_color: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
+                title: "Loki.S01E01.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组",
+                file_name: "Loki.S01E01.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4",
+                rel_dir: "TV/Loki",
+                size_str: "2.3 GB",
+                video_url: "http://127.0.0.1:8099/stream/2"
             },
             {
                 id: 3,
-                title: "AutoUI Dual-Backend Engine Demo",
-                file_name: "03_ui_engine.mp4",
-                duration_str: "08:15",
-                duration_sec: 495,
-                resolution: "1080P",
-                codec: "AV1",
-                size_str: "85 MB",
-                badge_color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+                title: "Loki.S01E02.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组v2",
+                file_name: "Loki.S01E02.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组v2.mp4",
+                rel_dir: "TV/Loki",
+                size_str: "2.4 GB",
+                video_url: "http://127.0.0.1:8099/stream/3"
             },
             {
                 id: 4,
-                title: "Fullstack Parity & Toolchain",
-                file_name: "04_workflow.webm",
-                duration_str: "05:30",
-                duration_sec: 330,
-                resolution: "1080P",
-                codec: "VP9",
-                size_str: "62 MB",
-                badge_color: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+                title: "Loki.S01E03.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组",
+                file_name: "Loki.S01E03.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4",
+                rel_dir: "TV/Loki",
+                size_str: "1.8 GB",
+                video_url: "http://127.0.0.1:8099/stream/4"
             },
             {
                 id: 5,
-                title: "AutoOS Ambient Desktop Visuals",
-                file_name: "05_ambient.mp4",
-                duration_str: "01:30",
-                duration_sec: 90,
-                resolution: "720P",
-                codec: "H.264",
-                size_str: "24 MB",
-                badge_color: "bg-rose-500/20 text-rose-400 border-rose-500/30",
-                video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
+                title: "Loki.S01E04.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组",
+                file_name: "Loki.S01E04.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4",
+                rel_dir: "TV/Loki",
+                size_str: "2.2 GB",
+                video_url: "http://127.0.0.1:8099/stream/5"
+            },
+            {
+                id: 6,
+                title: "Loki.S01E05.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组",
+                file_name: "Loki.S01E05.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4",
+                rel_dir: "TV/Loki",
+                size_str: "2.2 GB",
+                video_url: "http://127.0.0.1:8099/stream/6"
+            },
+            {
+                id: 7,
+                title: "Loki.S01E06.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组",
+                file_name: "Loki.S01E06.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4",
+                rel_dir: "TV/Loki",
+                size_str: "2.0 GB",
+                video_url: "http://127.0.0.1:8099/stream/7"
+            },
+            {
+                id: 8,
+                title: "Loki.S02E01.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX",
+                file_name: "Loki.S02E01.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv",
+                rel_dir: "TV/Loki",
+                size_str: "4.3 GB",
+                video_url: "http://127.0.0.1:8099/stream/8"
+            },
+            {
+                id: 9,
+                title: "Loki.S02E02.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX",
+                file_name: "Loki.S02E02.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv",
+                rel_dir: "TV/Loki",
+                size_str: "4.4 GB",
+                video_url: "http://127.0.0.1:8099/stream/9"
+            },
+            {
+                id: 10,
+                title: "Loki.S02E03.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX",
+                file_name: "Loki.S02E03.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv",
+                rel_dir: "TV/Loki",
+                size_str: "5.1 GB",
+                video_url: "http://127.0.0.1:8099/stream/10"
+            },
+            {
+                id: 11,
+                title: "Loki.S02E04.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX",
+                file_name: "Loki.S02E04.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv",
+                rel_dir: "TV/Loki",
+                size_str: "4.5 GB",
+                video_url: "http://127.0.0.1:8099/stream/11"
+            },
+            {
+                id: 12,
+                title: "Loki.S02E05.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX",
+                file_name: "Loki.S02E05.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv",
+                rel_dir: "TV/Loki",
+                size_str: "4.1 GB",
+                video_url: "http://127.0.0.1:8099/stream/12"
+            },
+            {
+                id: 13,
+                title: "Loki.S02E06.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX",
+                file_name: "Loki.S02E06.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv",
+                rel_dir: "TV/Loki",
+                size_str: "5.4 GB",
+                video_url: "http://127.0.0.1:8099/stream/13"
+            },
+            {
+                id: 14,
+                title: "龙猫(蓝光国日粤三音轨中文字幕).My.Neighbor.Totoro.1988.BD-1080p.X264.AAC.3AUDIO.CHS-UUMp4",
+                file_name: "龙猫(蓝光国日粤三音轨中文字幕).My.Neighbor.Totoro.1988.BD-1080p.X264.AAC.3AUDIO.CHS-UUMp4.mp4",
+                rel_dir: "TV",
+                size_str: "1.7 GB",
+                video_url: "http://127.0.0.1:8099/stream/14"
             }
         ]
     }
@@ -295,6 +349,7 @@ widget App {
                         style: "flex-1 w-full min-h-0 items-center justify-center"
                         video {
                             src: .current_video_url
+                        controls: true
                             class: if .aspect_mode == "铺满" { "w-full h-full object-cover" } else { "w-full h-full object-contain" }
                             onclick: .TogglePlay
                         }
@@ -558,14 +613,17 @@ widget App {
 
     on {
         .Init -> {
-            .current_time_str = "00:45"
-            .total_time_str = "03:45"
-            .time_display_fmt = "00:45 / 03:45"
-            .progress_pct = 20
+            // 时长/进度在 loadedmetadata 回灌前一律为 0（T-08），不预设假值
+            .current_time_sec = 0
+            .current_time_str = "00:00"
+            .total_time_sec = 0
+            .total_time_str = "00:00"
+            .time_display_fmt = "00:00 / 00:00"
+            .progress_pct = 0
             .volume = 80
             .volume_label = "80%"
-            .is_playing = true
-            .toast_msg = "已载入: 01_intro.mp4 (1080P 60FPS)"
+            .is_playing = false
+            .toast_msg = "已加载队列: " + .current_file
             .show_toast = true
         }
 
@@ -894,55 +952,24 @@ widget App {
 
         .SelectVideo(id int) -> {
             .current_id = id
-            if id == 1 {
-                .current_title = "AutoOS 2026 Keynote & Intro"
-                .current_file = "01_intro.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                .current_res = "1080P"
-                .current_codec = "H.264"
-                .current_size = "48 MB"
-                .total_time_sec = 225
-                .total_time_str = "03:45"
-            } else if id == 2 {
-                .current_title = "Kernel & AutoVM Architecture"
-                .current_file = "02_architecture.mkv"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
-                .current_res = "4K"
-                .current_codec = "HEVC"
-                .current_size = "210 MB"
-                .total_time_sec = 740
-                .total_time_str = "12:20"
-            } else if id == 3 {
-                .current_title = "AutoUI Dual-Backend Engine Demo"
-                .current_file = "03_ui_engine.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-                .current_res = "1080P"
-                .current_codec = "AV1"
-                .current_size = "85 MB"
-                .total_time_sec = 495
-                .total_time_str = "08:15"
-            } else if id == 4 {
-                .current_title = "Fullstack Parity & Toolchain"
-                .current_file = "04_workflow.webm"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
-                .current_res = "1080P"
-                .current_codec = "VP9"
-                .current_size = "62 MB"
-                .total_time_sec = 330
-                .total_time_str = "05:30"
-            } else {
-                .current_title = "AutoOS Ambient Desktop Visuals"
-                .current_file = "05_ambient.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
-                .current_res = "720P"
-                .current_codec = "H.264"
-                .current_size = "24 MB"
-                .total_time_sec = 90
-                .total_time_str = "01:30"
+            // 从真实队列按 id 取项（不再按 id 硬编码内容）
+            for item in .playlist {
+                if item.id == id {
+                    .current_title = item.title
+                    .current_file = item.file_name
+                    .current_video_url = item.video_url
+                    .current_size = item.size_str
+                }
             }
+            // 时长/分辨率/编码在未解复用前无从得知：一律留空标注，交由
+            // <video> 的 loadedmetadata 回灌（T-08），不再编造。
+            .current_res = "—"
+            .current_codec = "—"
             .current_time_sec = 0
             .current_time_str = "00:00"
-            .time_display_fmt = "00:00 / " + .total_time_str
+            .total_time_sec = 0
+            .total_time_str = "00:00"
+            .time_display_fmt = "00:00 / 00:00"
             .progress_pct = 0
             .is_playing = true
             .toast_msg = "开始播放: " + .current_file
