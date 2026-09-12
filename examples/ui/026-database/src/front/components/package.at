@@ -1,0 +1,4 @@
+name: "official"
+version: "0.1.0"
+namespace: "auto"
+description: "026 database tree components (copied from widgets-gallery, PLAN-618)"
