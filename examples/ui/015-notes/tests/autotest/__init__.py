@@ -204,9 +204,32 @@ class McpAdapter:
             verdict = f"error: {e}"
         self.screenshot_results.append((sid, verdict))
 
+    def wait_ready(self, timeout: float = 180.0) -> bool:
+        """PLAN-619 F-1（验收基建）：等 app **真正就绪**再跑场景。
+
+        历史坑：只等 MCP 端口就开跑时，前序场景会在「空树」上执行——`autoui_state`
+        返回空、`autoui_find` 找不到任何元素，于是整批场景连锁失败（实测 19 场景
+        全灭，而同一时刻手工查询元素全部命中）。判据三条同时成立：rendered 快照
+        含 `tree:`、`autoui_state` 非空、快照里出现 `button`。
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                snap = self._call("autoui_snapshot")
+                state = self._call("autoui_state")
+                if "tree:" in snap and len(state) > 20 and "button" in snap:
+                    return True
+            except Exception:
+                pass
+            time.sleep(1.0)
+        return False
+
     def run_suite(self, suite: Suite) -> list:
         """Execute all scenarios in a suite. Returns list of TestResult."""
         results = []
+        if not self.wait_ready():
+            return [TestResult("T-ready", "等待 app 就绪", "FAIL",
+                               "app 未在超时内就绪（tree/state/button 三判据未同时成立）")]
         for sc in suite.scenarios:
             if self.mode in sc.skip_if_mode:
                 results.append(TestResult(sc.sid, sc.name, "SKIP",
