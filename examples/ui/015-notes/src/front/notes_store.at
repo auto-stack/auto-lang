@@ -17,6 +17,13 @@
 //
 // 4. 草稿常驻 store（draft_*）：切换笔记/筛选/新建前先落盘，避免「编辑中被切走丢内容」，
 //    并让「始终可编辑」不需要模态 Edit/Save 切换。
+//
+// 5. **入口 handler 把 API 调用内联在自身 body 里**（不抽 `ReloadNotes()` / `FlushDraft()`
+//    这类会发请求的兄弟方法再串行调用）。原因：生成器只把「body 里出现 await」的 store
+//    方法标成 async；同步方法调用 async 兄弟方法不会 await（Vue 端），后续同步步骤会先跑
+//    并读到旧数据——实证：搜索在 Vue 端完全不过滤（VM 端 merged 模式调用同步，无此问题，
+//    所以只在 Vue 侧暴露）。纯同步小工具（ApplyFilter / LoadDraft / SelectFirstVisible /
+//    SeedVocab）仍可自由复用。
 
 use back.api: list_notes, create_note, update_note, delete_note, toggle_pin, update_tags, search_notes
 
@@ -61,8 +68,8 @@ store NotesStore {
     }
 
     msg {
-        Init, ReloadNotes, SeedVocab, ApplyFilter, SelectFirstVisible,
-        SelectNote(int), NewNote, SaveDraft, FlushDraft, LoadDraft,
+        Init, SeedVocab, ApplyFilter, LoadDraft, SelectFirstVisible,
+        SelectNote(int), NewNote, SaveDraft,
         EditTitle(str), EditBody(str),
         DeleteArmed, DeleteConfirmed, DeleteCancelled, TogglePin(int), TogglePinActive,
         SetSearch(str), SelectFolder(str), SelectTag(str), ClearTag,
@@ -71,6 +78,7 @@ store NotesStore {
     }
 
     on {
+        // ── 初始化：body 里自带 await（list_notes），后续步骤顺序可靠 ─────────
         .Init -> {
             .search = ""
             .active_folder = "all"
@@ -82,14 +90,7 @@ store NotesStore {
             .ApplyFilter()
         }
 
-        // 搜索时工作集 = 命中集；否则回全量。
-        .ReloadNotes -> {
-            if .search == "" {
-                .notes = list_notes()
-            } else {
-                .notes = search_notes(.search)
-            }
-        }
+        // ── 纯同步工具族（无 API 调用，可被任何 handler 复用）─────────────────
 
         // 标签 / 文件夹词表播种：嵌套 for + 逐项扫描去重（不用 contains，见文件头 ②）。
         .SeedVocab -> {
@@ -161,22 +162,6 @@ store NotesStore {
             .visible_notes = plain
         }
 
-        // 切换作用域后把选中项落到第一条可见笔记，避免「编辑区显示列表外的笔记」。
-        .SelectFirstVisible -> {
-            if .visible_pinned.len() > 0 {
-                .active_id = .visible_pinned[0]
-            } else if .visible_notes.len() > 0 {
-                .active_id = .visible_notes[0]
-            }
-            .LoadDraft()
-        }
-
-        .SelectNote(i) -> {
-            .FlushDraft()
-            .active_id = i
-            .LoadDraft()
-        }
-
         .LoadDraft -> {
             if .notes.len() > 0 {
                 .draft_id = .notes[.active_id].id
@@ -201,19 +186,30 @@ store NotesStore {
             .confirm_delete = false
         }
 
-        // 有未保存改动才回写；回写后按当前搜索条件重建工作集。
-        .FlushDraft -> {
-            if .dirty {
-                update_note(.draft_id, .draft_title, .draft_body)
-                .ReloadNotes()
+        // 切换作用域后把选中项落到第一条可见笔记，避免「编辑区显示列表外的笔记」。
+        .SelectFirstVisible -> {
+            if .visible_pinned.len() > 0 {
+                .active_id = .visible_pinned[0]
+            } else if .visible_notes.len() > 0 {
+                .active_id = .visible_notes[0]
             }
-            .dirty = false
+            .LoadDraft()
         }
 
-        .SaveDraft -> {
-            .FlushDraft()
+        // ── 入口 handler（API 调用内联，见文件头 ⑤）────────────────────────
+
+        .SelectNote(i) -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+            }
+            .dirty = false
+            .active_id = i
             .LoadDraft()
-            .ApplyFilter()
         }
 
         .EditTitle(v) -> {
@@ -226,8 +222,30 @@ store NotesStore {
             .dirty = true
         }
 
+        .SaveDraft -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+            }
+            .dirty = false
+            .LoadDraft()
+            .ApplyFilter()
+        }
+
         .NewNote -> {
-            .FlushDraft()
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+            }
+            .dirty = false
             // 清掉搜索：新笔记标题为空，在有搜索词时不会命中，会导致「新建了却看不见」。
             .search = ""
             var f str = ""
@@ -237,7 +255,7 @@ store NotesStore {
                 }
             }
             create_note("", "", f)
-            .ReloadNotes()
+            .notes = list_notes()
             .active_id = 0
             .LoadDraft()
             .ApplyFilter()
@@ -255,7 +273,11 @@ store NotesStore {
         .DeleteConfirmed -> {
             if .notes.len() > 0 {
                 delete_note(.notes[.active_id].id)
-                .ReloadNotes()
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
                 .active_id = 0
                 .LoadDraft()
                 .ApplyFilter()
@@ -263,7 +285,6 @@ store NotesStore {
             .confirm_delete = false
         }
 
-        // 置顶落库（旧实现只翻转本地内存，刷新即丢，见 PLAN-616 U7）。
         // 纯本地翻转（可单测）：pinned 落库由 TogglePinActive 编排。
         .TogglePin(idx) -> {
             if idx < .notes.len() {
@@ -271,13 +292,21 @@ store NotesStore {
             }
         }
 
+        // 置顶落库（旧实现只翻转本地内存，刷新即丢，见 PLAN-616 U7）。
+        // 不做本地预翻转：merged 模式下 store 与后端共享同一份笔记对象，
+        // 本地翻转会被 toggle_pin 再翻一次（净零）。
         .TogglePinActive -> {
             if .notes.len() > 0 {
-                // 不做本地预翻转：merged 模式下 store 与后端共享同一份笔记对象，
-                // 本地翻转会被 toggle_pin 再翻一次（净零）。落库后 ReloadNotes
-                // 才是唯一事实源。
+                if .dirty {
+                    update_note(.draft_id, .draft_title, .draft_body)
+                    .dirty = false
+                }
                 toggle_pin(.notes[.active_id].id)
-                .ReloadNotes()
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
                 .LoadDraft()
                 .ApplyFilter()
             }
@@ -286,16 +315,36 @@ store NotesStore {
         // 搜索词由输入事件实参显式带入（不依赖双向绑定写入时序——VM 端
         // 程序化输入不回填绑定状态，实证见 PLAN-616 T-05 执行记录）。
         .SetSearch(q) -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .dirty = false
+            }
             .search = q
-            .FlushDraft()
-            .ReloadNotes()
+            if .search == "" {
+                .notes = list_notes()
+            } else {
+                .notes = search_notes(.search)
+            }
             .active_id = 0
             .LoadDraft()
             .ApplyFilter()
         }
 
         .SelectFolder(f) -> {
-            .FlushDraft()
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .dirty = false
+            }
             .active_folder = f
             .active_tag = ""
             .ApplyFilter()
@@ -303,7 +352,15 @@ store NotesStore {
         }
 
         .SelectTag(t) -> {
-            .FlushDraft()
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .dirty = false
+            }
             .active_tag = t
             .active_folder = "all"
             .ApplyFilter()
@@ -311,7 +368,15 @@ store NotesStore {
         }
 
         .ClearTag -> {
-            .FlushDraft()
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .dirty = false
+            }
             .active_tag = ""
             .ApplyFilter()
             .SelectFirstVisible()
@@ -340,7 +405,11 @@ store NotesStore {
                 if dup == false {
                     .all_tags.push(t)
                 }
-                .ReloadNotes()
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
                 .LoadDraft()
                 .ApplyFilter()
             }
@@ -355,7 +424,11 @@ store NotesStore {
                     }
                 }
                 update_tags(.notes[.active_id].id, tl)
-                .ReloadNotes()
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
                 .LoadDraft()
                 .ApplyFilter()
             }
@@ -366,11 +439,18 @@ store NotesStore {
         }
 
         // 显式模式（外观面板的 Dark/Light 两键）——避免「点 Dark 反而切到 Light」。
+        // 真正需要翻转时走 ToggleDarkMode：生成器只给 SetAccent/ToggleDarkMode
+        // 追加 applyAccent（含暗色亮度补偿 + .dark 元素上的 --primary 覆盖），
+        // 直接写 dark_mode 会漏掉主题色重放（T12-DARK 契约）。
         .SetMode(m) -> {
             if m == "dark" {
-                .dark_mode = true
+                if .dark_mode == false {
+                    .ToggleDarkMode()
+                }
             } else {
-                .dark_mode = false
+                if .dark_mode == true {
+                    .ToggleDarkMode()
+                }
             }
         }
 

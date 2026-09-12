@@ -30,7 +30,6 @@ style ghost_btn = "h-7 w-auto border-0 flex items-center gap-1.5 px-2.5 rounded-
 style ghost_btn_on = "h-7 w-auto border-0 flex items-center gap-1.5 px-2.5 rounded-md bg-accent text-foreground transition-colors"
 style seg = "h-7 w-auto border-0 flex-1 items-center justify-center rounded-md bg-transparent text-xs text-muted-foreground hover:text-foreground transition-colors"
 style seg_on = "h-7 w-auto border-0 flex-1 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-medium transition-colors"
-style swatch = "w-5 h-5 border-0 rounded-full p-0"
 style swatch_on = "w-5 h-5 border-0 rounded-full p-0 ring-2 ring-offset-2 ring-offset-background ring-primary"
 
 // 单行笔记条目。view fn 在调用点内联，故可直接引用调用点的循环变量 k
@@ -40,7 +39,9 @@ view fn NoteRow(note: Note, active: bool) {
         sidebar_menu_button {
             active: active
             onclick: .SelectNote(k)
-            style: "h-auto py-1.5"
+            // `note-row` 是给 playwright 场景用的稳定钩子类（VM 端解析为未知类
+            // 静默忽略，不影响渲染）。
+            style: "h-auto py-1.5 note-row"
             col {
                 style: "flex-1 min-w-0 items-start gap-0.5"
                 text note.title { style: "text-sm truncate w-full" }
@@ -183,7 +184,7 @@ widget NavTree(on_toggle_dark_mode: msg, on_set_accent: msg, on_set_mode: msg) {
                         style: "w-auto items-center gap-2.5"
                         button {
                             onclick: .SetAccent("indigo")
-                            style: if .store.accent_color == "indigo" { "w-5 h-5 border-0 rounded-full p-0 bg-indigo-500 ring-2 ring-offset-2 ring-offset-background ring-primary" } else { swatch }
+                            style: if .store.accent_color == "indigo" { "w-5 h-5 border-0 rounded-full p-0 bg-indigo-500 ring-2 ring-offset-2 ring-offset-background ring-primary" } else { "w-5 h-5 border-0 rounded-full p-0 bg-indigo-500" }
                         }
                         button {
                             onclick: .SetAccent("coral")
