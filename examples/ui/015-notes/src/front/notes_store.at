@@ -288,7 +288,10 @@ store NotesStore {
         // 纯本地翻转（可单测）：pinned 落库由 TogglePinActive 编排。
         .TogglePin(idx) -> {
             if idx < .notes.len() {
-                .notes[idx].pinned = !.notes[idx].pinned
+                // 先读进局部量再取反：a2r 对「取反 + 下标字段读」的 RHS 会发射出
+                // 残缺表达式（`!(as usize]["pinned"]...)`，Rust 轨编译失败。
+                var cur bool = .notes[idx].pinned
+                .notes[idx].pinned = !cur
             }
         }
 
