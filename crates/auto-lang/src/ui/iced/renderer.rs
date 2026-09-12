@@ -20981,25 +20981,15 @@ where
         }
         _ => None,
     });
-    // Rust codegen now emits Component::key_bindings/key_message for `bind`.
-    // Rebuild identity when the declared key set changes (e.g. hot reload),
-    // while keeping the event path free of a captured component reference.
-    let mut key_names: Vec<String> = w.inner.key_bindings().into_keys().collect();
-    key_names.sort();
-    let key_filter = key_names.clone();
-    // Use the same event listener as F12/window input.  A filtered raw
-    // subscription would create a second event recipe in Iced 0.14 and can
-    // recurse while the native window is being initialized.
-    let rust_keys = iced::event::listen_with(move |event, status, _window_id| {
-        if matches!(status, iced::event::Status::Captured) {
-            return None;
-        }
-        let key = rust_component_key_string(&event)?;
-        if key_filter.iter().any(|bound| bound == &key) {
-            Some(WrapperMsg::<C>::Debug(format!("__autoui_key|{key}")))
-        } else {
-            None
-        }
+    // Rust codegen now emits Component::key_message for `bind`.  Listen to
+    // ignored keyboard events and defer the component-specific lookup to
+    // `devtools_update`; this keeps the subscription mapper non-capturing,
+    // as required by Iced 0.14, and avoids routing text-input events through
+    // the IME path.
+    let rust_keys = iced::keyboard::listen().map(|event| {
+        let event = iced::Event::Keyboard(event);
+        let key = rust_component_key_string(&event).unwrap_or_default();
+        WrapperMsg::<C>::Debug(format!("__autoui_key|{key}"))
     });
     iced::Subscription::batch(vec![inner, f12, win, mcp, rust_keys])
 }
