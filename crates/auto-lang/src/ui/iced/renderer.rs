@@ -11071,6 +11071,16 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             }
         }
     }
+    // PLAN-012 W7 v1.6：聚焦 app id（聚焦窗 registry_id；"" = 无聚焦或聚焦
+    // 在 native 槽位）——pinned 图标聚焦底条 + 底色高亮的标量判据面（.at
+    // 无法跨列表表达"存在聚焦窗"量词）。fp 不扩段：聚焦变化必经 meta 段
+    // focused_wid 翻转触发重写，本字段随写同步。
+    let focused_app = host
+        .wm
+        .focused
+        .and_then(|wid| host.wm.wins.get(&wid))
+        .and_then(|v| v.registry_id.clone())
+        .unwrap_or_default();
     // Plan 472 T3：workspace 分区投影段（协议 v1 §2.2/§2.3）。
     // Plan 478 T3 v1.1：条目增 `label`（1 基人读标签，宿主投影——避开 .at
     // 字符串算术）；指纹分区段扩展 "{id}:{current},{label};"。
@@ -11161,6 +11171,9 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app.component.write_state_vec("__wm_notes", notes_objs);
     let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
     let _ = app.component.write_state("__wm_running", auto_val::Value::str(&running));
+    let _ = app
+        .component
+        .write_state("__wm_focused_app", auto_val::Value::str(&focused_app));
     let _ = app
         .component
         .write_state("__wm_notes_unread", auto_val::Value::Str(notes_unread.to_string().into()));
@@ -21698,6 +21711,7 @@ mod tests {
         var __wm_notes = []
         var __wm_notes_unread str = ""
         var __wm_running str = ""
+        var __wm_focused_app str = ""
         var __wm_notes_visible str = ""
         var __dock_pinned_csv str = ""
     }
@@ -22001,9 +22015,27 @@ mod tests {
     #[test]
     fn projection_v16_dock_pinned_csv_and_fingerprint() {
         let mut ds = t3_session_with_shell();
-        t3_add_win(&mut ds, "Alpha");
+        let a = t3_add_win(&mut ds, "Alpha");
+        // PLAN-012 W7：聚焦窗挂 registry id → __wm_focused_app 派生读回
+        // （三态底条/高亮标量判据面）。
+        if let Some(v) = ds.host.as_mut().unwrap().wm.wins.get_mut(&a) {
+            v.registry_id = Some("011-calculator".to_string());
+        }
+        t3_add_win(&mut ds, "Beta");
         ds.desktop.dock_pinned = vec!["011-calculator".to_string(), "013-todo".to_string()];
         sync_shell_windows(&mut ds);
+        // 后开窗为焦点（无 registry id）→ focused_app 空。
+        match t3_read(&ds, "__wm_focused_app") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), "", "无 registry 聚焦窗 → 空串"),
+            other => panic!("__wm_focused_app 读回异常: {other:?}"),
+        }
+        // 焦点移回 calculator 窗 → focused_app 派生翻转（fp 经 focused_wid 变化触发重写）。
+        ds.wm_focus(a);
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_focused_app") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), "011-calculator"),
+            other => panic!("__wm_focused_app 读回异常: {other:?}"),
+        }
         match t3_read(&ds, "__dock_pinned_csv") {
             auto_val::Value::Str(s) => {
                 assert_eq!(s.to_string(), ",011-calculator,013-todo,", "csv 前后逗号封边")

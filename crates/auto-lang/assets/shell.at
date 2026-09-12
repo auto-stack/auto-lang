@@ -33,6 +33,8 @@
 //       dock 不消费）
 //       `__wm_running`（",id1,id2," 运行中 app 集合派生串，pinned 运行
 //       指示条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实）
+//       `__wm_focused_app`（PLAN-012 v1.6：聚焦窗 registry_id 派生串，
+//       "" = 无聚焦/native 聚焦——pinned 图标聚焦底条 + 底色高亮标量判据）
 //       `__dock_pinned_csv`（PLAN-012 v1.6：",id1,id2," 固定集合派生串
 //       ——dock 窗口条目与固定图标去重合并判据：窗口条目 app 已固定者
 //       不再重复渲染（固定图标+运行点即其唯一代表））
@@ -82,6 +84,10 @@ widget Desktop {
         var __wm_wins = []
         var __wm_workspaces = []
         var __wm_running str = ""
+        // PLAN-012 v1.6：聚焦 app id（聚焦窗 registry_id，"" = 无聚焦/native
+        // 聚焦）——三态底条与聚焦底色高亮的标量判据面（.at 无法跨列表
+        // 表达"存在聚焦窗"量词，宿主派生 I9）。
+        var __wm_focused_app str = ""
         var __wm_meta str = ""
         var __wm_fp str = ""
         var __wm_notes = []            // 协议 v1.2 合同面（dock 不直接消费）
@@ -157,11 +163,18 @@ widget Desktop {
                             // 复用同一 popover 容器，菜单键 = pinned id）——
                             // 「取消固定」+ 该 app 逐窗「聚焦/关闭」（Win11
                             // 跳表形态；最小化延后，见 PLAN-012 非目标）。
+                            // PLAN-012 W7：聚焦附加底色高亮（与 hover 同款
+                            // bg-foreground/10 常驻——Win11 形态；判据 =
+                            // __wm_focused_app 标量投影）。
                             popover (open: .win_menu == p.id, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
                                 button (icon: p.icon) {
                                     onclick: .ActivateApp(p.id)
                                     oncontextmenu.prevent: .WinMenu(p.id)
-                                    style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                    style: if .__wm_focused_app == p.id {
+                                        "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                    } else {
+                                        "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                    }
                                 }
                                 col {
                                     style: "w-40 gap-1"
@@ -183,8 +196,15 @@ widget Desktop {
                                     }
                                 }
                             }
-                            if .__wm_running.contains("," + p.id + ",") {
+                            // PLAN-012 W7：左侧 app 图标三态底条（Win11 形态
+                            // ——聚焦主色条 / 打开灰条 / 关闭无条；固定未运行
+                            // = 无条，在场即表达）。原恒主色运行点退役。
+                            if .__wm_focused_app == p.id {
                                 div { style: "h-1 w-6 rounded-full bg-primary mt-0.5" }
+                            } else {
+                                if .__wm_running.contains("," + p.id + ",") {
+                                    div { style: "h-1 w-6 rounded-full bg-muted-foreground/60 mt-0.5" }
+                                }
                             }
                         }
                     }
@@ -227,14 +247,11 @@ widget Desktop {
                             }
                         } else {
                             if .__dock_pinned_csv.contains("," + w.app + ",") == false {
-                                row {
-                                    style: "items-center gap-1"
-                                    // Plan 503：激活窗 2px accent 竖条(stella 激活态
-                                    // 范式)。Plan 518 G3：格底常驻 accent(bg-primary/15)
-                                    // 撤除——格 hover 才出底,accent 只留激活竖条。
-                                    if w.focused == "1" {
-                                        div { style: "w-0.5 h-5 rounded-full bg-primary" }
-                                    }
+                                col {
+                                    style: "items-center"
+                                    // PLAN-012 W7：聚焦左竖条退役（实机被感知为
+                                    // "分隔符"）——聚焦语义由底条主色 + 底色高亮
+                                    // 承接（Win11 形态，与 pinned 图标同款三态）。
                                     // Plan 497 G5：条目 hover 预览（422 popover
                                     // 先例，widget 锚=条目按钮；内容=真缩略，
                                     // miss 由渲染臂 fallback icon 兜底）。
@@ -254,7 +271,11 @@ widget Desktop {
                                             button (icon: w.icon) {
                                                 onclick: .WinFocus(w.wid)
                                                 oncontextmenu.prevent: .WinMenu(w.wid)
-                                                style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                                style: if w.focused == "1" {
+                                                    "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                                } else {
+                                                    "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                                }
                                             }
                                             if .win_menu == w.wid {
                                                 col {
@@ -282,6 +303,13 @@ widget Desktop {
                                                 window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
                                             }
                                         }
+                                    }
+                                    // PLAN-012 W7：条目底条——窗口条目必在运行
+                                    //（本组未固定条目），二态即可：聚焦主色 / 非聚焦灰。
+                                    if w.focused == "1" {
+                                        div { style: "h-1 w-6 rounded-full bg-primary mt-0.5" }
+                                    } else {
+                                        div { style: "h-1 w-6 rounded-full bg-muted-foreground/60 mt-0.5" }
                                     }
                                 }
                             }
