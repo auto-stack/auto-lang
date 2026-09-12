@@ -15,5 +15,6 @@ back_port: 8031
 icon: "image"
 title: "Image Viewer"
 category: "media"
+desktop: "true"
 theme: "dark"
 accent: "indigo"
