@@ -152,14 +152,16 @@ def main():
                 continue
             ratio = im_[axis] / iv[axis]
             print(f"  ink {axis} 比 vm/vue = {ratio:.2f}")
-            # 该图标两端字形版本不同（见 PLAN-619 §8.2②）→ 只报数不判预算。
+            # 该图标两端字形数据不同 → 只报数（AC-02 由搜索图标判据承担）。
             if not (INK_RATIO_MIN <= ratio <= INK_RATIO_MAX):
-                print(f"  （参考：顶栏 notebook 两端字形不同，此项不判预算）")
+                print("  （参考：顶栏 notebook 两端字形不同，不判预算）")
     elif budget:
         print("  （顶栏 notebook ink 未测得；AC-02 由搜索图标判据承担）")
 
     print("== 图标 ink（搜索行图标，声明 size 14；两端同字形 → AC-02 主判据） ==")
-    # 搜索行图标：行内左侧、输入框之前。用行底色作参考，量 ink bbox。
+    # 顶栏 notebook 两端**字形数据不同**（本仓内嵌 fragment vs lucide-vue-next@0.312，
+    # 见 PLAN-619 §8.5），故 AC-02 改判同字形的搜索行图标；notebook 只作参考。
+    icon_vue = icon_vm = None
     for name, im_, sc in (("vue", vue, 1), ("vm", vm, scale)):
         row_bg = g(im_, sc, d["ref_col"], d["search_icon_y"])
         box = ink_bbox(im_, sc, 14, 44, d["search_icon_y"] - 8, d["search_icon_y"] + 8, row_bg)
