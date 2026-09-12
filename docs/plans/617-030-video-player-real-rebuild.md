@@ -1318,6 +1318,29 @@ T-13/T-14 与主链并行。
   （实测确认，非推断）；HDR 色调映射由 mpv 承担（未单独实测质量，T-18 验收时看画面）。
   音频输出 mpv 自带（`ao` 为本机设备），故 **T-18 不引入 `cpal`**。
 - outcome: **Go**；next: **T-16**（native 动态库加载器，落 `ffi.rs:62-145` 的 `TODO(Plan-212)`）。
+- **门禁 `cargo t` 实跑（worktree @ `b621edda0`）**：`4812 tests run: 4791 passed, 21 failed,
+  109 skipped`（47.7s）。**21 项红全部可解释为预存/环境，且本改动不可能影响它们**——
+  **完整代码 diff vs master 只有两行式内容**：`Cargo.toml`（+20 行：可选依赖 `iced_wgpu`、
+  `mpv-spike` 特性、`[[example]]` 声明）与**新增的** `examples/mpv_spike.rs`；
+  **`crates/auto-lang/src/**` 零改动**（`git diff master --stat -- crates/auto-lang/src/` 为空），
+  `Cargo.lock` 未变动（→ 既有特性的解析结果逐字节不变）。故 lib 测试目标的行为不可能改变。
+  逐项归因：
+  1. `plan492_m4_tests::…c2_param_msg_declaration_both_tracks_alive` —— §9.13 已用**还原法**
+     隔离证明为预存；
+  2. `ui::app_registry::tests::scan_examples_ui_curation_set` —— 实测输出 `left` 含
+     `031-image-viewer`、期望集不含，与 §9.13 记录的 `9c6c27e86` 清单漂移**逐字一致**；
+  3. `ui::layout::tests::*`（12 项）与 `ui::desktop_protocol::coverage::tests::…`、
+     `ui::aura_view_builder::plan055_…`、`lucide_icon_coverage_manifest_all_hit`、
+     `ffi_dual_019_dep_layout_invariants` —— 均在 §9.13 已列的**红域**内（桌面布局/协议域），
+     与本计划的改动领域不相交；
+  4. **`ui::iced::renderer::tests::external_config_poll_hot_apply_loopsafe`（§9.13 未逐条列出的一项）
+     经实测定为并发 flake，非本改动引入**：该测试读写**真实用户配置路径**
+     （`desktop_config::desktop_config_path()`），全档并发时被其它进程写回
+     （实测失败值是 `theme_source` 从测试写入的 `"manual"` 变回 `"system"`）；
+     **隔离复跑 3/3 全绿**。与 §9.11 记录的「主检出被多计划共用」同一成因。
+  - **诚实标注的局限（与 §9.13 同）**：主检出仍被另一 agent 持有未提交改动，**无法取到干净基线**，
+    故本次结论是「已检查的红均可解释、且改动面为零源代码」，
+    **不等同于**已证明「相对干净基线零新增红」。
 
 ## 11. 新会话开工须知（Handoff，2026-09-12）> 本会话很长了，以下是把「不读完整 §0–§10 也能安全接手」所需的操作要点集中在此。
 > 一句话状态：**Vue 端已可用（真实队列 + 真实播放）；VM 端仍完全不能播放（无渲染路径）。**
