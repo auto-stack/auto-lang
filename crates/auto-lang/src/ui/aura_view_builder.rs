@@ -4859,7 +4859,16 @@ let tabs_inner = View::Row {
                 _ => n.clone(),
             })
             .collect();
-        self.convert_children_passthrough(&rewritten, bindings)
+        // PLAN-012 F2：provider 契约形态 = 弹性填充列（web class
+        // `flex-1 min-h-0 flex flex-col`）——vm 臂必须显式给合列
+        // Height(Fill)：透明 passthrough 丢样式后 provider 无界，内层
+        // sidebar_content 的 Scrollable 拿不到有界高度 → 永不出滚动条，
+        // 矮窗口下侧栏整段溢出裁剪（顶部项消失，用户实机 09-12）。
+        self.convert_children_passthrough_styled(
+            &rewritten,
+            bindings,
+            "h-full w-full flex flex-col",
+        )
     }
 
     /// 透明容器：独子直返，多子合列（provider/menu_item/sub_item 共用）。
@@ -4867,6 +4876,17 @@ let tabs_inner = View::Row {
         &self,
         children: &[AuraNode],
         bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        self.convert_children_passthrough_styled(children, bindings, "")
+    }
+
+    /// 同上带合列样式变体（style 非空时多子合列消费；独子直返不包——
+    /// 调用方需弹性填充时自选）。
+    fn convert_children_passthrough_styled(
+        &self,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        column_style: &str,
     ) -> View<DynamicMessage> {
         let views: Vec<View<DynamicMessage>> = children
             .iter()
@@ -4882,7 +4902,11 @@ let tabs_inner = View::Row {
                 children: views,
                 spacing: 0,
                 padding: 0,
-                style: None,
+                style: if column_style.is_empty() {
+                    None
+                } else {
+                    crate::ui::style::Style::parse(column_style).ok()
+                },
                 onclick: None, on_right_click: None,
             }
         }
