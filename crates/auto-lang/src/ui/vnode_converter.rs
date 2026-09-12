@@ -208,6 +208,9 @@ where
         View::Empty => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 409 §10 续 5: Overlay 在 VNode 转换里降级为 Empty(VM-only 概念)。
         View::Overlay { .. } => (VNodeKind::Text, VNodeProps::Empty),
+        // PLAN-063 T-04d-2: 锚槽为 VM-only 概念,VNode 检视层降级
+        // Text/Empty(同 Overlay/MouseArea)。
+        View::AnchorSlot { .. } => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 484: MouseArea 命中区对 VNode 检视层不可见(事件转发原语,
         // 无内容语义),同 Overlay 降级 Text/Empty。
         View::MouseArea { .. } => (VNodeKind::Text, VNodeProps::Empty),

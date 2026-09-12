@@ -2800,6 +2800,12 @@ impl<'a> AuraViewBuilder<'a> {
             .map(|val| val.as_bool())
             .unwrap_or(false);
         let p063_sk = if sync_anchor { editor_key.map(|s| s.to_string()) } else { None };
+        if sync_anchor {
+            if let Some(field) = self.extract_string_with(props, "sync_anchor_target", bindings) {
+                eprintln!("[P063-SINK] registered");
+                crate::ui::anchor_slot::set_target_sink(Some(field.trim_start_matches('.').to_string()));
+            }
+        }
         let offset = props
             .get("scroll_top")
             .and_then(|v| match v {
@@ -2819,13 +2825,16 @@ impl<'a> AuraViewBuilder<'a> {
             let widget = self.widget_name.clone();
             crate::ui::view::ScrollCallback::new(
                 move |m: crate::ui::view::ScrollMetrics| {
-                    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+                    #[cfg(all(feature = "autodown", feature = "code-editor", feature = "ui-iced"))]
                     if let Some(sk) = &p063_sk {
-                        crate::ui::autodown_editor::core::set_anchor_from_scroll(
+                        if let Some(idx) = crate::ui::autodown_editor::core::set_anchor_from_scroll(
                             sk,
                             m.offset_y as f64,
                             m.viewport_h as f64,
-                        );
+                        ) {
+                            eprintln!("[P063-T] pending={}", idx);
+                            crate::ui::anchor_slot::set_pending_anchor(idx);
+                        }
                     }
                     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
                     if let Some(_sk) = &p063_sk {

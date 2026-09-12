@@ -34,6 +34,9 @@ pub mod clipboard_native;
 // Plan 418 Phase 2: declarative action/binding config (auto-atom).
 pub mod action_config;
 pub mod view;
+// PLAN-063 T-04d-2: 右栏块锚定坐标槽（iced 布局期记录 + 同步目标消费）。
+#[cfg(feature = "ui-iced")]
+pub mod anchor_slot;
 pub mod vnode;
 pub mod vnode_converter;
 pub mod node_converter;

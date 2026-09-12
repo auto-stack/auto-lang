@@ -3895,7 +3895,7 @@ pub fn first_fully_visible_block(rects: &[Rect], scroll_top: f32, client_h: f32)
 }
 
 /// 滚动同步锚块写入（编辑壳 scroll 回调消费；key 未注册返回 false）。
-pub fn set_anchor_from_scroll(key: &str, scroll_top: f64, client_h: f64) -> bool {
+pub fn set_anchor_from_scroll(key: &str, scroll_top: f64, client_h: f64) -> Option<usize> {
     let norm = normalize_payload_key(key);
     let map = registry().lock().unwrap();
     match map.get(&norm) {
@@ -3903,9 +3903,9 @@ pub fn set_anchor_from_scroll(key: &str, scroll_top: f64, client_h: f64) -> bool
             let rects = core.block_rects();
             let idx = first_fully_visible_block(&rects, scroll_top as f32, client_h as f32);
             core.set_anchor_block(idx.map(|i| i as i32).unwrap_or(-1));
-            true
+            idx
         }
-        None => false,
+        None => None,
     }
 }
 

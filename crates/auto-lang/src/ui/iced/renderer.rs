@@ -2292,6 +2292,7 @@ pub(crate) fn drain_pending_scroll_offsets() -> Vec<(String, (f32, f32))> {
         .collect()
 }
 
+
 /// Build a Scrollable around a single pre-built child. Width/height come
 /// from style (preferred) or the legacy numeric fields; id is set when the
 /// caller supplies one (VM path injects the aura id for bounds collection).
@@ -3059,6 +3060,14 @@ fn render_image_surface<M: Clone + Debug + 'static>(
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
+            // PLAN-063 T-04d-2: 锚槽 → 记录布局坐标的委托 wrapper。
+            AbstractView::AnchorSlot { index, child } => {
+                let el = child.into_iced();
+                iced::Element::new(crate::ui::anchor_slot::AnchorSlot {
+                    index: index as usize,
+                    child: el,
+                })
+            }
             AbstractView::Empty => {
                 // Plan 370 (Issue 1): render Empty as a zero-height Space
                 // instead of text(""). A text("") still reserves one line of
@@ -6146,6 +6155,13 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             label,
             on_toggle: on_toggle.map(|m| IcedMessage::from_dynamic(&m)),
             style,
+        },
+
+        // PLAN-063 T-04d-2: 锚槽递归转换 child（缺臂会掉进 _ => Empty——
+        // 右栏整体消失，本计划实测）。
+        AbstractView::AnchorSlot { index, child } => AbstractView::AnchorSlot {
+            index,
+            child: Box::new(convert_view_messages(*child)),
         },
 
         AbstractView::Container {
@@ -14080,6 +14096,15 @@ fn compare_pngs(
             ));
         }
 
+        // PLAN-063 T-04d-2: 块锚定同步目标消费——锚块变化时经注册表把
+        // 「锚块内容 y」写进 sync_anchor_target 指向的状态字段（右栏
+        // offset 绑定写臂既有通路滚动；iced 原生钳制内容边界）。
+        if let Some((field, idx)) = crate::ui::anchor_slot::drain_pending_anchor() {
+            eprintln!("[P063-C] field={field:?} idx={idx}");
+            if let (Some(field), Some(y)) = (field, crate::ui::anchor_slot::content_y(idx)) {
+                let _ = state.component.write_state(&field, auto_val::Value::Float(y as f64));
+            }
+        }
         if !tail_tasks.is_empty() {
             return iced::Task::batch(tail_tasks);
         }
@@ -18569,6 +18594,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Empty => None,
         // Plan 409 §10 续 5: Overlay 本身无 style(base/content 各自带)。
         AbstractView::Overlay { .. } => None,
+        // PLAN-063 T-04d-2: 锚槽无自有样式，读子件。
+        AbstractView::AnchorSlot { child, .. } => extract_view_style(child),
         // Plan 422: Popover 的 chrome 在 content 上(anchor 各自带)。
         AbstractView::Popover { .. } => None,
         // Plan 484: MouseArea 的 style(尺寸/定位类)参与 absolute/z 判定。
@@ -18655,6 +18682,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
     match view {
         AbstractView::Empty => "empty",
         AbstractView::Overlay { .. } => "overlay",
+        AbstractView::AnchorSlot { .. } => "anchor_slot",
         AbstractView::Popover { .. } => "popover",
         AbstractView::MouseArea { .. } => "mouse_area",
         AbstractView::Canvas { .. } => "canvas",
@@ -19347,6 +19375,14 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             }
         }
 
+        // PLAN-063 T-04d-2: 锚槽 → 记录布局坐标的委托 wrapper。
+        AbstractView::AnchorSlot { index, child } => {
+            let el = child.into_iced();
+            iced::Element::new(crate::ui::anchor_slot::AnchorSlot {
+                index: index as usize,
+                child: el,
+            })
+        }
         // Everything else delegates to the unified IntoIcedElement renderer
         _ => {
             let kind = view_kind(&view);

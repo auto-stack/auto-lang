@@ -60,11 +60,22 @@ pub fn render_document_with<M: Clone + std::fmt::Debug + 'static>(
         .iter()
         .enumerate()
         .map(|(i, b)| {
-            wrap_with_ghost(
-                render_block(b, is_final, details_onclick, table_widths, on_col_resize),
-                i,
-                placeholder,
-            )
+            if ANCHOR_SLOTS_ENABLED {
+                View::AnchorSlot {
+                    index: i as u64,
+                    child: Box::new(wrap_with_ghost(
+                        render_block(b, is_final, details_onclick, table_widths, on_col_resize),
+                        i,
+                        placeholder,
+                    )),
+                }
+            } else {
+                wrap_with_ghost(
+                    render_block(b, is_final, details_onclick, table_widths, on_col_resize),
+                    i,
+                    placeholder,
+                )
+            }
         })
         .collect();
     View::Column {
@@ -173,6 +184,8 @@ fn block_key(b: &BlockNode) -> u64 {
 }
 
 /// 流式增量渲染入口（调用方持有缓存；VM 侧按 widget 身份挂注册表）。
+/// PLAN-063 T-04d-2: 逐块锚槽开关（挂起——iced 0.14 树状态问题，转介单 §2b）。
+const ANCHOR_SLOTS_ENABLED: bool = false;
 pub fn render_document_streamed<M: Clone + std::fmt::Debug + 'static>(
     cache: &mut StreamCache<M>,
     src: &str,
@@ -209,6 +222,7 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
     // 值变化自增代数，缓存 clone 旧块的短路在此被击穿。
     let epoch = crate::ui::style::theme::theme_epoch();
     let theme_flip = cache.theme_epoch != epoch;
+    crate::ui::anchor_slot::set_col_spacing(8.0);
     let n = root.children.len();
     let mut children: Vec<View<M>> = Vec::with_capacity(n);
     let mut raw_blocks: Vec<View<M>> = Vec::with_capacity(n);
@@ -234,7 +248,18 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
         };
         // 缓存存裸块（ghost 每帧重建包装，不进缓存——复用判定只看内容键）。
         raw_blocks.push(raw.clone());
-        children.push(wrap_with_ghost(raw, i, placeholder));
+        // PLAN-063 T-04d-2: 逐块锚槽包装（布局期记录块高，块锚定同步目标
+        // 的几何源）。当前挂起：AnchorSlot 委托层在 iced 0.14 树上引发
+        // mouse_area 无状态 downcast panic（转介单 §2b 有完整证据链），
+        // 修复后启用。启用时右栏目标从 v1 比例切块锚定。
+        if ANCHOR_SLOTS_ENABLED {
+            children.push(View::AnchorSlot {
+                index: i as u64,
+                child: Box::new(wrap_with_ghost(raw, i, placeholder)),
+            });
+        } else {
+            children.push(wrap_with_ghost(raw, i, placeholder));
+        }
         keys.push(key);
     }
     cache.blocks = raw_blocks;
@@ -1520,6 +1545,7 @@ mod tests {
         assert!(
             outer.contains("BackgroundColor(Gray(50))"),
             "light-mode mermaid outer must use the light fence chrome, got {outer}"
+
         );
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
         let View::Container { child: h, style: hs, .. } = &parts[0] else { panic!("header") };
