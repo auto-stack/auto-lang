@@ -189,6 +189,102 @@ fn w7_icon_taskbar_button_glyph_centered() {
     }
 }
 
+/// 临时变体诊断（T4-T1）：flex-1 vs mt-auto 顶垫。诊断完成后保留为
+/// 机制对照证据（非门禁——flex1 变体在塌缩根因修复前恒红）。
+#[test]
+#[ignore = "T4-T1 诊断记录：flex-1 顶垫在 iced 轨塌缩（y=0），mt-auto 填充条生效（y=384）——修复采用 mt-auto 路径，本测试保留诊断证据"]
+fn w2_anchor_variant_diagnosis() {
+    for (name, top_style) in [("flex1", "flex-1 w-full"), ("mt-auto", "mt-auto w-full")] {
+        let src = format!(
+            "widget Probe {{\n    model {{ var n int = 0 }}\n    view {{\n        col {{\n            style: \"w-full h-full\"\n            spacer {{ style: \"{top_style}\" }}\n            row {{\n                style: \"w-full\"\n                spacer {{ style: \"flex-1 h-80\" }}\n                col {{\n                    style: \"w-80\"\n                    text `CARDCARD`\n                }}\n                spacer {{ style: \"w-3 h-80\" }}\n            }}\n            spacer {{ style: \"h-16 w-full\" }}\n        }}\n    }}\n}}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        let mut ui = simulator(view.into_iced());
+        let (cx, cy, cw, ch) = bounds_of(&mut ui, "CARDCARD");
+        eprintln!("[w2-variant:{name}] card=({cx},{cy},{cw},{ch})");
+    }
+}
+
+/// PLAN-012 W2 T4 锚定守卫（端到端 .at 管线，修复后结构）：顶垫 mt-auto
+/// 填充条 + 行 items-end 底对齐 + 底垫 h-[60px]（dock 48 + gap 12）——
+/// 卡片必须被下压到视口下半区（贴 dock 上方）。修复前 flex-1 顶垫塌缩
+/// 实测 y=0（实机截图"面板贴顶"复现）；诊断变体留档
+/// w2_anchor_variant_diagnosis（#[ignore]）。
+#[test]
+fn w2_notification_panel_anchor_bottom_right() {
+    let src = concat!(
+        "widget Probe {
+",
+        "    model { var n int = 0 }
+",
+        "    view {
+",
+        "        col {
+",
+        "            style: \"w-full h-full\"
+",
+        "            spacer { style: \"mt-auto w-full\" }
+",
+        "            row {
+",
+        "                style: \"w-full items-end\"
+",
+        "                spacer { style: \"flex-1 w-full\" }
+",
+        "                col {
+",
+        "                    style: \"w-80 bg-card/80 border rounded-xl\"
+",
+        "                    text `CARDCARD`
+",
+        "                }
+",
+        "                spacer { style: \"w-3 h-12\" }
+",
+        "            }
+",
+        "            spacer { style: \"h-[60px] w-full\" }
+",
+        "        }
+",
+        "    }
+",
+        "}
+"
+    );
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("parse");
+    let decl = ast.stmts.iter().find_map(|s| match s {
+        crate::ast::Stmt::WidgetDecl(d) => Some(d),
+        _ => None,
+    }).expect("decl");
+    let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+    let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
+    let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+    let mut ui = simulator(view.into_iced());
+    let (cx, cy, cw, ch) = bounds_of(&mut ui, "CARDCARD");
+    eprintln!("[w2-anchor] card=({cx},{cy},{cw},{ch})");
+    // mt-auto 填充条必须有效下压：卡片进入视口下半区（修复前 y=0 贴顶）。
+    assert!(
+        cy > 400.0,
+        "mt-auto 顶垫应把卡片压到下半区（实际 y={cy}）——塌缩回归守卫"
+    );
+    // 卡片右缘 + 12px 右垫 ≈ 根宽（右推链有效；根宽未知，改由右缘分量
+    // 单调性守卫：x>0 且卡片在右半区）。
+    assert!(cx > 300.0, "卡片应贴右半区（x={cx}）");
+    let _ = (cw, ch);
+}
+
 /// Smoke: a plain row lays out both texts with non-zero bounds and no
 /// overlap. Proves the headless renderer + text-selector plumbing works in
 /// this environment before the bug-matrix assertions rely on it.
