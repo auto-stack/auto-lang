@@ -140,6 +140,10 @@ pub fn apply_layout(
             if v.workspace != wm.current_workspace {
                 return None;
             }
+            // PLAN-012 W1：常驻隐藏窗不占布局槽位（重开几何由聚焦臂还原）。
+            if v.hidden.get() {
+                return None;
+            }
             Some(WindowState {
                 wid: *wid,
                 rect: *v.rect.borrow(),

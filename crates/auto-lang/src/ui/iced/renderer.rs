@@ -9123,6 +9123,44 @@ fn execute_desktop_commands(
             }
             DC::LaunchApp(name) => execute_launch_app(state, &name),
             DC::CloseWindow(wid) => {
+                // PLAN-012 W1：os-config close→hide 拦截臂——设置窗"×"不改
+                // 换成常驻隐藏（hidden 置位：投影/命中/推层全排除，"真关了"
+                // 的感知），组件与编译产物保留 → 重开走 execute_open_settings
+                // 聚焦臂（unhide，零编译零探活）。Q1 定案：方案 a（真 hidden
+                // 字段）——win_min 形态任务栏保留条目且 __wm_running 持续含
+                // os-config，W7 齿轮高亮语义断裂（AC-12）。
+                let is_osconfig = state.host.as_ref().is_some_and(|h| {
+                    h.wm
+                        .wins
+                        .get(&wid)
+                        .and_then(|v| v.registry_id.as_deref())
+                        == Some(OSCONFIG_APP_ID)
+                });
+                if is_osconfig {
+                    if let Some(host) = state.host.as_mut() {
+                        if let Some(v) = host.wm.wins.get(&wid) {
+                            v.hidden.set(true);
+                        }
+                        if host.wm.focused == Some(wid) {
+                            // 焦点让渡：分区栈顶下一窗（同 hit 语义找非隐藏窗）。
+                            let next = host
+                                .wm
+                                .z_order
+                                .iter()
+                                .rev()
+                                .copied()
+                                .find(|w| {
+                                    *w != wid
+                                        && host.wm.wins.get(w).is_some_and(|v| {
+                                            !v.minimized.get() && !v.hidden.get()
+                                        })
+                                });
+                            host.wm.focused = next;
+                        }
+                    }
+                    crate::ui::iced::snapshot::invalidate(wid);
+                    return (false, tasks);
+                }
                 // Plan 497 G3：关闭失效（窗口回收，缩略随撤）。
                 crate::ui::iced::snapshot::invalidate(wid);
                 if let Some(app) = state.wm_remove_win(wid) {
@@ -11012,6 +11050,11 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     }
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
+        // PLAN-012 W1：常驻隐藏窗投影全排除（__wm_wins/pager/指纹/运行集
+        // ——"真关了"感知 + W7 齿轮高亮随 `__wm_running` 回落）。
+        if v.hidden.get() {
+            continue;
+        }
         let focused = host.wm.focused == Some(wid);
         wins.push(projection_win_entry(
             &state.desktop.registry_entries,
@@ -11062,6 +11105,10 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let mut seen: Vec<&str> = Vec::new();
     for &wid in &host.wm.z_order {
         if let Some(v) = host.wm.wins.get(&wid) {
+            // PLAN-012 W1：常驻隐藏窗不入运行集（齿轮高亮语义，AC-12）。
+            if v.hidden.get() {
+                continue;
+            }
             if let Some(id) = v.registry_id.as_deref() {
                 if !seen.contains(&id) {
                     seen.push(id);
@@ -11109,6 +11156,10 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     fp.push('|');
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
         if let Some(v) = host.wm.wins.get(&wid) {
+            // PLAN-012 W1：常驻隐藏窗不进切换器。
+            if v.hidden.get() {
+                continue;
+            }
             let focused = host.wm.focused == Some(wid);
             mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused, ""));
         }
@@ -15261,7 +15312,9 @@ fn compare_pngs(
                 }
                 // PLAN-526 T2：最小化窗不推层（隐藏；任务栏 icon 保留，
                 // WinFocus → focus 即还原）。
-                if vwin.minimized.get() {
+                // PLAN-012 W1：常驻隐藏窗不推层（close→hide；__wm_wins 已
+                // 投影排除——任务栏无条目）。
+                if vwin.minimized.get() || vwin.hidden.get() {
                     continue;
                 }
                 let app_id = vwin.app;
@@ -22868,6 +22921,70 @@ mod tests {
         // boot 恢复后未读恒 0（会话概念不落盘）。
         restore_notifications(&mut ds);
         assert_eq!(ds.desktop.notes_unread.get(), 0, "boot 恢复未读归零");
+    }
+
+    /// PLAN-012 W1：os-config close→hide 拦截臂单测——CloseWindow 对
+    /// os-config 窗改写 hidden（窗存续、apps 保留、投影全排除），focus 臂
+    /// unhide+聚焦（重开 = 纯聚焦臂）；非 os-config 窗照常回收。
+    #[test]
+    fn w1_osconfig_close_hides_and_focus_unhides() {
+        let path = t2_isolate_storage("w1-close-hide");
+        let mut ds = t540_resolver_session();
+
+        // ① launch os-config → 窗在册。
+        let wid = ds.launch_app(OSCONFIG_APP_ID).expect("os-config launch");
+        assert!(ds.host.as_ref().unwrap().wm.wins.contains_key(&wid));
+
+        // ② CloseWindow → hidden 置位，窗与 App 存续。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::CloseWindow(wid)],
+        );
+        let host = ds.host.as_ref().unwrap();
+        let v = host.wm.wins.get(&wid).expect("os-config 窗应存续（hide 非 close）");
+        assert!(v.hidden.get(), "close 应改写为 hidden");
+        assert!(ds.apps.values().any(|_| true), "apps 会话应保留");
+        drop(host);
+
+        // ③ 投影排除：__wm_wins 无条目 + __wm_running 不含 os-config
+        //（W7 齿轮高亮回落，AC-12 语义自洽）。
+        sync_shell_windows(&mut ds);
+        let wins = t3_read_array(&ds, "__wm_wins");
+        assert!(wins.is_empty(), "隐藏窗不应投影 __wm_wins: {wins:?}");
+        match t3_read(&ds, "__wm_running") {
+            auto_val::Value::Str(s) => assert!(
+                !s.to_string().contains(",os-config,"),
+                "隐藏窗不应入运行集: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_running 读回异常: {other:?}"),
+        }
+
+        // ④ 重开（execute_open_settings 聚焦臂）→ unhide + 聚焦。
+        execute_open_settings(&mut ds);
+        let host = ds.host.as_ref().unwrap();
+        let v = host.wm.wins.get(&wid).expect("重开不新开窗（存续）");
+        assert!(!v.hidden.get(), "focus 臂应取消隐藏");
+        assert_eq!(host.wm.focused, Some(wid), "重开应聚焦设置窗");
+        assert_eq!(ds.desktop.config.dock_pinned.len(), 0, "sanity：会话未被污染");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// PLAN-012 W1：非 os-config 窗 close 照常回收（拦截臂不误伤）。
+    #[test]
+    fn w1_non_osconfig_close_still_removes() {
+        let _guard = t2_isolate_storage("w1-plain-close");
+        let mut ds = t540_resolver_session();
+        let wid = ds.launch_app("011-calculator").expect("calculator launch");
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::CloseWindow(wid)],
+        );
+        assert!(
+            !ds.host.as_ref().unwrap().wm.wins.contains_key(&wid),
+            "普通窗 close 应照常移除"
+        );
     }
 
     /// PLAN-012 W7 v1.6：`__wm_notes_visible` 投影——overlay 组件 visible

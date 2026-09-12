@@ -583,6 +583,12 @@ pub struct VWinState {
     pub fit_dirty: Cell<bool>,
     /// PLAN-526 T1：最小化（窗隐藏、任务栏 icon 保留；`focus` 即还原）。
     pub minimized: Cell<bool>,
+    /// PLAN-012 W1：常驻隐藏（os-config close→hide 拦截臂置位）——与
+    /// minimized 的差别：**投影全排除**（__wm_wins/__wm_running/任务栏
+    /// /MRU/命中/推层均不见，"真关了"的感知），组件与编译产物保留，
+    /// `focus` 即取消隐藏+聚焦（重开 = 纯聚焦臂零编译）。minimized 仅
+    /// 隐藏绘制、任务栏保留。
+    pub hidden: Cell<bool>,
     /// PLAN-526 T1：最大化真状态（替代 462 装配层"rect≥98% 桌面"派生判定）。
     pub maximized: Cell<bool>,
     /// PLAN-526 T1：最大化前矩形（还原落点；`toggle_maximize_win` 存取）。
@@ -704,6 +710,7 @@ impl WmState {
                 fit_user_locked: Cell::new(false),
                 fit_dirty: Cell::new(false),
                 minimized: Cell::new(false),
+                hidden: Cell::new(false),
                 maximized: Cell::new(false),
                 restore_rect: RefCell::new(None),
             },
@@ -841,6 +848,10 @@ impl WmState {
             if v.minimized.get() {
                 return None;
             }
+            // PLAN-012 W1：常驻隐藏窗不参与命中（close→hide 语义）。
+            if v.hidden.get() {
+                return None;
+            }
             let r = v.rect.borrow();
             (x >= r.x && y >= r.y && x <= r.x + r.width && y <= r.y + r.height)
                 .then_some(*w)
@@ -971,8 +982,10 @@ impl WmState {
             return;
         }
         // PLAN-526 T1：焦点即还原——任务栏 icon 点击最小化窗 = 取消最小化。
+        // PLAN-012 W1：焦点即取消隐藏（os-config 重开 = 纯聚焦臂）。
         if let Some(v) = self.wins.get(&wid) {
             v.minimized.set(false);
+            v.hidden.set(false);
         }
         self.focused = Some(wid);
         self.z_order.retain(|w| *w != wid);
@@ -999,6 +1012,7 @@ impl WmState {
         }
         if let Some(v) = self.wins.get(&wid) {
             v.minimized.set(false);
+            v.hidden.set(false);
         }
         self.focused = Some(wid);
         self.mru.retain(|w| *w != wid);
