@@ -273,7 +273,9 @@ store NotesStore {
 
         .TogglePinActive -> {
             if .notes.len() > 0 {
-                .TogglePin(.active_id)
+                // 不做本地预翻转：merged 模式下 store 与后端共享同一份笔记对象，
+                // 本地翻转会被 toggle_pin 再翻一次（净零）。落库后 ReloadNotes
+                // 才是唯一事实源。
                 toggle_pin(.notes[.active_id].id)
                 .ReloadNotes()
                 .LoadDraft()
