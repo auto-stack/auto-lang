@@ -737,7 +737,7 @@ col flex-1 min-h-0
 | `landed` | 默认分支 `master` 合并提交 **`df0e0cf6c`**（`--no-ff` 合入 `plan-616-dev`，21 文件 +1522/−1076）；`git merge-base --is-ancestor 4646c6837 HEAD` 通过 → 代码与 canonical Specs 均在 master 上；落地后核对 `overview.md` 三处增补 / `plans.md` 616 行 / `goals.md` GOAL-007+010 / `KNOWN-DEBT` P616-D1..D3 / `examples/ui/015-notes/src/front/{editor,sidebar}.at` 内容均已在 master 工作树 |
 | `ledger_refreshed` | 目标：`D:/autostack/auto-lang/.autoos/specs.json`（本仓 runtime 派生账本，非 git 跟踪）；upsert 项 ID **P616-1..P616-6**（reports/goals/architecture/designs/tests/reviews 各 +1）；`file` 指向 `docs/plans/archive/616-015-notes-clean-ui-redesign.md`，`related:["PLAN-616"]`，`status: published`；离线 read-modify-write + 完整 JSON 校验 + 原子替换，源/后哈希 `9a26c93370053e49` → `08662bef76de5397`；读回校验：六节计数 (78/69/74/68/74/92)、P616 六项齐备。索引再生 `python scripts/spec-index.py`（26 projects；`INDEX.md` 内容无变化，仅换行归一被还原） |
 | `archived` | `git mv docs/plans/616-...md docs/plans/archive/` + `status: archived` + `completion_kind: delivered`（交付型，非 shelved）；本文件路径与 frontmatter 一致、provenance 链接可解析 |
-| `cleaned` | 见 §9.6（清理凭据；先 `wt-guard.sh` 必须 clean） |
+| `cleaned` | ✅ 已核实：①`git worktree remove D:/autostack/.wt/lang-616/auto-lang --force` → `git worktree list` 已无该条目，分支 `plan-616-dev` 已删（was 4646c6837）；②前置 `wt-guard.sh` 经 **7 轮**清理 pnpm junction（`cmd /c rmdir` 逐链只删链接，累计 ~200 条）后报 **`clean — 下无任何 reparse point`**（禁区红线未被触发：未对含链接路径执行任何递归删除）；③组目录 `D:/autostack/.wt/lang-616` 已清除。过程中发现 `-r rust` 尝试遗留的两个孤儿 `cargo run --manifest-path …/lang-616/…/015-notes-back` 进程（13:09 启动）持有目录句柄，已按 PID 终止后删除收尾 |
 
 **未完成项随归档保留**：T-10（Rust a2r 轨）为域外前置阻断（P616-D3），已随债表与 §9.3/F-1 留档，未折算为通过。
 
