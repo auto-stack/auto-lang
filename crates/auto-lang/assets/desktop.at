@@ -79,8 +79,12 @@ widget DesktopSurface {
             // Plan 518 G4③：格 = per-app 徽标色圆角底（哈希分配,数据驱动
             // bg-[ 拼接——"grid grid-cols-" + n 先例）+ 白 glyph（stella
             // 桌面 Notes 徽标同款;单色 lucide "带颜色"正解是容器底色）。
+            // PLAN-012 W5：grid 定宽（8 列 × 80px 格 + 7 × 8px gap =
+            // 696px）——原 w-full 均分整行把格距拉伸到数百 px（用户反馈
+            // "间距过大"根因）；定宽后图标群贴左上、格距 = gap 8px 量级
+            // （w-fit iced 轨不支持，class.rs 白名单受限——显式算术宽）。
             grid (cols: 8, gap: 8) {
-                style: "w-full"
+                style: "w-[696px]"
                 for e in .__desktop_icons {
                     mouse-area (ondblclick: .ActivateApp(e.id)) {
                         col {
