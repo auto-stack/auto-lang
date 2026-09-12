@@ -2091,3 +2091,32 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P616-D1 | low | 一致性遗留 | 筛选词表 `all_tags`/`all_folders` 只增不减：删除标签/文件夹后筛选胶囊仍显示（清空重建需要「空数组字面量赋值」，该形态撞 VM codegen 的 `Assignment to complex LHS`） | `examples/ui/015-notes/src/front/notes_store.at`（`.SeedVocab`/`.LoadDraft`）；README「已知限制」；根治需 `crates/auto-lang/src/vm/codegen.rs` |
 | P616-D2 | low | 工具链耦合 | store 里「写 `dark_mode` 的 handler 必须以 `ToggleDarkMode`/`SetAccent` 命名」才能获得生成器 append 的 `applyAccent`（暗色亮度补偿 + `.dark` 元素上的 `--primary` 覆盖）→ `.SetMode` 被迫绕行 `ToggleDarkMode` | `crates/auto-lang/src/ui_gen/vue.rs`（store handler 的 applyAccent append 按 action_name 判定）；`notes_store.at` `.SetMode` |
 | P616-D3 | medium | 域外能力缺口 | a2r 两处发射缺陷阻断 `examples/rust-workspace/015-notes` 编译：①「取反 + 下标字段读」（`!.notes[idx].pinned` → 残缺 RHS `!(as usize][...])`，局部量 hoist 绕开无效——被内联回原形态）；② `[]str` 字段整赋值发射 `.as_str()` 赋给 `Vec<String>`。改动前既有（`git show HEAD:...main.rs` 第 393 行同形态） | 生成物 `examples/rust-workspace/015-notes/src/main.rs:406` 等；计划 §9.3/T-10；建议独立小计划修 a2r 发射臂后补跑 `run_autotest.py --mode rust` |
+
+---
+
+## PLAN-619（015-notes VM/Vue 双端 parity 收敛）遗留
+
+> 关联计划 `619-015-notes-vm-vue-parity.md`；证据见该计划 §8.2/§8.3。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| ~~P619-D1~~ | ~~high~~ | 跨端一致性 | **已修复（2026-09-12，`d3a44aa6f`）**：真根因是 `lucide_svg()` 表项本身为完整 SVG 文档（`width/height=16`）而又被 `lucide_svg_doc_with` 套进第二层 24×24 `<svg>` → 嵌套 viewport 按 16/24 = 0.667 缩放（即 P2 的「≈12px 盒」）。取内层 markup 重包后双端 ink 比 **1.03/1.03**，AC-02 达标 | 计划 §8.5；`crates/auto-lang/src/ui/iced/renderer.rs::lucide_svg_doc_with`；回归锚 `plan619_lucide_doc_renders_geometric_ink` |
+| P619-D2 | medium | 字形版本漂移 | VM 内嵌 lucide fragment 与 Vue 侧 `lucide-vue-next@0.312` **对同名图标给出不同字形**（`notebook`：VM 为「书脊+两横」book 形，浏览器带 4 条装订刻度）→ 跨端图标对拍先天失真，需按 pin 版本对齐 fragment 集并加「同名同 path」契约测试 | `crates/auto-lang/src/ui/iced/renderer.rs` `lucide_svg()` 表；`crates/auto-man/src/vue.rs` 的 `lucide-vue-next` 版本 pin |
+| P619-D3 | low | 排版基线 | 纵向节奏累计漂移 ≈2px/行：iced 文本默认 `LineHeight::Relative(1.3)` vs Tailwind `text-sm/text-xs` 自带的 20/16px 行高（两端行高不一致 → 行数越多偏得越多；首屏地标仅差 1px 故 PLAN-616/619 均未纳入） | `crates/auto-lang/src/ui/iced/renderer.rs` 文本臂（`line_height` 消费点已存在，缺的是 text-sm/xs → 行高的默认映射） |
+| P619-D4 | low | 契约静默点 | `with_class_prop` 之外仍有 4 处「只读 `class:` 不回落 `style:`」的用户类合并点（本轮已就地补齐 sidebar 族；其余同族调用点若用 `style:` 写仍会丢用户类） | `crates/auto-lang/src/ui/aura_view_builder.rs`（`with_class_prop` 及 2899/5037/5132/5165 附近；建议抽 `user_class_with()` 收敛） || ~~P619-D5~~ | ~~medium~~ | 验收基建失效 | **已修复（2026-09-12，`6aad8ba1f`）**：真因是**就绪竞态**（驱动只等 MCP 端口 → app 未初始化即开跑，前 16 场景在空树上连锁失败），**不是**运行器解析链路失配——`autoui_find` 与 runner 的正则解析均正常。`McpAdapter::wait_ready()`（tree+state+button 三判据）修入 runner 后 19/19 绿。**残余**：`desktop_mcp.py` 有一条 stale 断言（断言顶栏按钮名为 `New`，PLAN-616 已改名 `New note`） | 计划 §8.4/§9.5；`examples/ui/015-notes/tests/autotest/__init__.py` |
+| P619-D6 | low | 跨端一致性 | shadcn 资产自带 `[&>svg]:size-4` 把**组件内**图标钉死 16px、盖过生成器发的 `:size`（普通 div 内的图标不受影响，故 AC-02 判据已达标）；受害面 = 胶囊按钮/侧栏菜单按钮内声明非 16 的图标 | 生成物 `gen/front/vue/src/components/ui/sidebar/SidebarMenuButton.vue` 等 cva 串；修法倾向生成器侧对显式 `size:` 输出带 important 的尺寸类 |
+
+---
+
+## PLAN-617（030-video-player 真实化重做）遗留
+
+> 关联计划 `617-030-video-player-real-rebuild.md`；T-15 门控裁定 **Go**（SW 通道），
+> 实测数字与决策件见该计划 §9.14 与 `docs/design/autoui/030-video-player.md` §4。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P617-D1 | medium | 构建基建 | **打开 `mpv-spike` 特性后编译 lib 的 `--test` 目标会触发 rustc 1.98.0 ICE**（`collect_and_partition_mono_items`，查询栈指向 `ui/mcp_server.rs:1718` 的 iterator chain，**与 spike 代码无关**）；同特性下 `--lib`（rlib）与 `example` 目标均正常。已用 `[[example]] required-features` 绕开，但 **T-16..T-20 的测试都必须避开 lib 测试目标**，否则 CI/本地会撞同一个 ICE。根治需最小复现上报 rustc | `crates/auto-lang/Cargo.toml`（`mpv-spike` 特性与 `[[example]] mpv_spike`）；入口 `crates/auto-lang/examples/mpv_spike.rs` 头部注释 |
+| P617-D2 | medium | 性能长尾 | **上屏通道 C（持久 staging + `copy_buffer_to_texture`）有极稀有长尾**：4K 120 帧中 1 帧 957 ms、1080p 中 3 帧 242 ms（p50/p95/p99 均正常，故不是稳态代价）。T-17 须以 2–3 槽 staging 环（映射中的缓冲不可 submit）+ 单帧丢弃处置，长尾定位是 T-17 的第一件事 | 计划 §9.14；证据 `t15_gate_debug.log`；探针 `crates/auto-lang/examples/mpv_spike.rs` 门控 B |
+| P617-D3 | low | 能力边界 | **mpv 的 SW render 后端用不了零拷贝硬解**（`hwdec=d3d11va` 实测 `hwdec-current: no`，只能用 `d3d11va-copy` 回读）→ 4K 纯软解 RSS 达 ~1 GB、CPU 54.6 ms/帧。缓解：把 `SW_SIZE` 设为视口尺寸而非片源尺寸（4K 降采样后上屏） | 计划 §9.14；design doc §4.6 |
+| P617-D4 | low | 分发/许可 | **libmpv-2.dll 不入库、CI 不依赖**（运行时依赖非构建期依赖，AC-20 已守住），但因此**没有任何发行故事**：本次构件为 LGPLv2.1+（其 ffmpeg 静态内链），若未来要随发行版分发需按 LGPL 提供重链接能力。当前只定义解析序（`AUTO_MPV_LIB` → exe 同目录 → 系统路径）与缺失降级 | design doc §4.8；`mpv_spike.rs::resolve_mpv_library` |
+| P617-D5 | low | 未实测项 | **HDR10 色调映射质量未单独实测**（帧管线只验证了「能实时出帧」，未验证 4K HDR 经 mpv 色调映射后的画面观感）；且 `media_root` 仍未接通 `pac.at`（只认 `AUTO_MEDIA_ROOT` env，§H 记录）。二者都需在 T-18/T-11 验收时补 | 计划 §9.14；design doc §4.2 脚注 |
