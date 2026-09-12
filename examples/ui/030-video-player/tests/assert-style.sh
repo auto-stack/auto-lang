@@ -74,7 +74,17 @@ check_absent AC-01 '(from|via|to)-[a-z]+-'  'gradients from/via/to'  "$FRONT"
 
 echo
 echo "-- AC-02 button discipline --"
-check_count  AC-02 'bg-primary' 'bg-primary occurrences' 4 "$FRONT"
+# Count the PRIMARY CTA recipe, not every bg-primary token: the timeline fill
+# legitimately uses bg-primary as a FILL (4 progress bands), and that is not a
+# button. A primary CTA is "bg-primary text-primary-foreground". Allowance is 2
+# because the single play/pause button is written as an if/else pair (playing /
+# paused) — i.e. one button, two branches. Anything above 2 means a second CTA
+# crept in, which is what PLAN-571 forbids.
+check_count  AC-02 'bg-primary text-primary-foreground' \
+             'primary CTA recipe (2 = one if/else button)' 2 "$FRONT"
+# And a hard guard that no per-accent if-chain came back (the platform already
+# resolves accent through --primary / Color::Primary).
+check_absent AC-02 'accent_color == "' 'per-accent style if-chain' "$FRONT"
 
 echo
 echo "-- AC-04 no emoji in UI strings --"
