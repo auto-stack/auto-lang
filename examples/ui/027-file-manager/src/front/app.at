@@ -8,6 +8,10 @@
 // - 剪贴板：复制 / 剪切 / 粘贴跨目录流
 // - 持久化：storage.get/set 保持视图模式、排序字段、排序方向与隐藏文件状态
 
+// PLAN-618: tree 组件族(official 包拷贝,源自 widgets-gallery 797fbd8+)
+use { package: official from "./components" }
+use components.tree_util: toggle_id
+
 widget App {
     msg {
         Init,
@@ -181,7 +185,25 @@ widget App {
         var next_id int = 20
 
         // 渲染视图模型数组（预置结构使 TypeScript 准确推导字段类型）
-        var files_view = [
+        var fmNodes = [
+        { id: "/root", label: "主目录", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
+            { id: "/root/Documents", label: "文档", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
+                { id: "/root/Documents/项目计划.docx", label: "项目计划.docx", kind: "file", icon: "", is_leaf: false, badge: "", children: [] },
+                { id: "/root/Documents/报告.pdf", label: "报告.pdf", kind: "file", icon: "", is_leaf: false, badge: "", children: [] }
+            ] },
+            { id: "/root/Downloads", label: "下载", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
+                { id: "/root/Downloads/setup.exe", label: "setup.exe", kind: "file", icon: "", is_leaf: false, badge: "", children: [] }
+            ] },
+            { id: "/root/Pictures", label: "图片", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
+                { id: "/root/Pictures/海报.png", label: "海报.png", kind: "file", icon: "", is_leaf: false, badge: "", children: [] }
+            ] },
+            { id: "/root/Music", label: "音乐", kind: "dir", icon: "", is_leaf: false, badge: "", children: [] },
+            { id: "/root/Trash", label: "回收站", kind: "dir", icon: "", is_leaf: false, badge: "", children: [] }
+        ] }
+    ]
+    var fmExpanded = ["/root"]
+    var fmSel = "/root"
+    var files_view = [
             {
                 id: 0,
                 name: "Documents",
@@ -302,6 +324,12 @@ widget App {
                 // ---- 左侧导航栏（快速访问 + 存储占用）----
                 col {
                     style: "w-56 border-r border-zinc-800 bg-zinc-900/40 p-3 flex flex-col justify-between shrink-0"
+
+                    col {
+                        style: "gap-1 flex-1 min-h-0"
+                        text "快速访问" { style: "text-[11px] font-bold text-zinc-500 uppercase tracking-wider px-2 py-1 mb-1" }
+                        TreeView (nodes: .fmNodes, expanded: .fmExpanded, selected: .fmSel, on_toggle: .FmToggle, on_select: .FmSelect, directory: true) {}
+                    }
 
                     col {
                         style: "gap-1"
@@ -675,6 +703,14 @@ widget App {
 
         // ---- 目录导航 ----
         .NavTo(target_path) -> {
+        .FmToggle(id) -> {
+            .fmExpanded = toggle_id(.fmExpanded, id)
+        }
+        .FmSelect(id) -> {
+            .fmSel = id
+            .NavTo(id)
+        }
+
             .current_path = target_path
             .selected_id = -1
             .selected_name = ""
