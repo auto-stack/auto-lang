@@ -45,7 +45,7 @@ front/pages/dialog.at	11535	5ab96c32e9264d7f
 front/pages/donut-chart.at	8014	c9b35c988ed2685a
 front/pages/drawer.at	10915	2bdc6b162c1d7d0e
 front/pages/dropdownmenu.at	12693	48e30501df9ccaac
-front/pages/filetree.at	11108	97e768896cbf4c34
+front/pages/filetree.at	110034	7bb7c996b27d2983
 front/pages/flex.at	32272	88f5a53fad7518f3
 front/pages/flow-diagram.at	14826	a34e64bd7b2ecb1d
 front/pages/form.at	10913	bcad99645200d0f9
@@ -86,4 +86,4 @@ front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	18665	2aae5b01cc2fb0e2
 front/pages/tooltip.at	10398	d385682f0171996d
 front/pages/treeview.at	15785	a627b974080fb0ac
-TOTAL	1663369	d8fc20249445a13b
+TOTAL	1762295	11548363c198a193
