@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/ui, auto-man/api_gen]
-current_step: 0
+current_step: 2
 total_steps: 20
 ---
 
@@ -675,11 +675,64 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
 > 全部代码改动在 worktree 内执行；本文件的勾选与 frontmatter 翻转留在 master。
 > 每步完成后在下方追加 `[✅ 已完成]` 证据行。
 
-- **T-01 基线与实勘**：双端 `before_*` 截图（深浅各一）+ `E:\Video` 文件清单归档；
+- [x] **T-01 基线与实勘**：双端 `before_*` 截图（深浅各一）+ `E:\Video` 文件清单归档；
   把 §4.1 的 grep 判定命令固化成可重跑脚本片段。验证：截图与清单入库。
-- **T-02 视觉系统与骨架**：`app.at` 拆分重写（顶栏 + 主体 + 播控条三段骨架）、
+  [✅ 已完成 2026-09-12] worktree `D:/autostack/.wt/lang-617/auto-lang` @ `092c99f4f`。
+  - 脚本：`tests/assert-style.sh`（AC-01/02/04/17 可重跑断言，非注释行判定）。
+  - 清单：`tests/media-root-inventory.txt`（**递归 14 文件 / 42.41 GiB**；
+    平铺仅见 `caelestia.mp4` 1 个 —— 递归与平铺的差异有了可复算证据）。
+  - 截图 4 张：`tests/screenshots/before_{vue,vm}_{dark,light}.png`。
+    **注意**：该目录被 `.gitignore:123-126` 有意排除（「AutoUI test screenshots &
+    artifacts (local only, do not track binary images in git)」），故按仓库既定策略
+    **只作本地证据、不入库**——本任务原写「截图…入库」应据此更正为「入既定本地目录」。
+  - **基线断言结果（全部 FAIL，即改造前应有的状态）**：`backdrop-` 6 处、`shadow-` 21 处、
+    `rounded-xl/2xl` 15 处、`animate-` 3 处、`hover:scale` 10 处、`flex-wrap` 1 处、
+    渐变 `from/via/to` 21 处、emoji **18** 处、编造元数据（`resolution:`/`codec:`）12 处。
+  - **T-01 三项实勘发现（影响后续任务）**：
+    1. **`AUTO_UI_THEME` 环境变量无效**：pac.at 的 `theme: "dark"` 在优先级链上压过它，
+       两次 VM 运行截图 md5 完全相同（`1ec7d3f5…`）。**必须用 `auto run --theme light`**
+       （CLI > pac.at，见 `auto run --help`）。→ 实证了 §4.2 P-9，
+       **AC-03 的双端浅色验证一律走 `--theme`**，不得依赖 env。
+    2. **`auto gen` 会改写 `examples/rust-workspace/`**：在 worktree 内它会
+       ① 把 `.cargo/config.toml` 的 `target-dir = "../../target"` 改写成
+       `"../../../../../../../../D:///autostack/.wt/lang-617/auto-lang/target"`
+       （相对前缀拼绝对路径的畸形产物），② 把 `Cargo.toml` 里既有的
+       `"019-video-app-back"` **替换**成 `"030-video-player-back"`（主检出里同一操作是
+       **追加**、保留 019）。已 `git checkout` 还原这两个文件。
+       → **T-05 必须先解决这一副作用**，否则 worktree 构建目标目录与 019 后端成员均被破坏。
+    3. **断言脚本自身的一个静默通过缺陷已修**：emoji 检测最初用 `grep -E`，
+       而 `\x{…}` 是 PCRE 语法，`-E` 下**永不匹配**→该检查会永远「通过」（AC-04 形同虚设）。
+       改用 `grep -P`（本机 ugrep 7.8.4 支持 PCRE2）后正确报出 18 处。
+       **纪律**：新增断言后必须先在违规样本上确认它真的会 FAIL。
+- [x] **T-02 视觉系统与骨架**：`app.at` 拆分重写（顶栏 + 主体 + 播控条三段骨架）、
   `style` 配方集中定义、删按强调色 if 链与全部渐变/玻璃/阴影/emoji。
   验证：Vue 截图 = 扁平三段；AC-01/AC-02/AC-04 的 grep 断言通过。
+  [✅ 已完成 2026-09-12] worktree @ `a8a98439e`（app.at 1220→980 行）。
+  - **断言全绿**：AC-01 七项（backdrop/shadow/rounded-xl/animate/hover:scale/flex-wrap/
+    渐变）全 ok；AC-02 两项 ok；AC-04 ok。仅 **AC-17 仍红**（`db.at` 的 12 处编造
+    `resolution:`/`codec:`），**属 T-06 范围**，符合本任务「只验 AC-01/02/04」的约定。
+  - **实现**：`style` 配方 4 条（`icon_btn`/`seg_btn`/`ctl_btn`/`tab_btn`）；
+    18 处 emoji → VM lucide 闭集图标（monitor/info/eye/moon/sun/menu/minus/square/x/
+    chevron-left/chevron-right/frame/file，均已核对在 84 名闭集内）；
+    删按强调色 if 链、删应用内强调色选择器、删死数据 `current_bg`(16 行) 与
+    `bg_gradient`(5 行)；`loop_label` 的 emoji 在 **model 值里**，一并清除。
+  - **`auto gen` 通过**，无 error/warn。
+  - **VM 渲染验证并修掉三个真实缺陷**（这是本任务最有价值的产出）：
+    1. 队列 5 行渲染为**空条**——AURA 树里数据齐全，但 `flex-1`/`shrink-0` 在 VM 端
+       不生效（`docs/style-coverage.md` parsed-only 清单），导致「图标列 + flex-1 文本列」
+       两个子列塌成 0 宽。**改为单 `col` 承载两行文本**后正常。
+    2. 视口高度分配失效、状态条上浮——`video` 在 VM 端是 fallback（零高度），
+       给它加 `flex-1` 无效。**改为由真实容器 `col` 承载 flex-1** 后正常。
+    3. 进度条渲染到播控条**外面**——`h-14` 容不下「时间行 + 进度行」两层。
+       改 `h-16` 后正常。
+  - **未完成的一项（诚实记录）**：**Vue 截图未取得**。in-app browser 在本次会话中
+    转为不可用——先是导航 `-3`，继而 `browser screenshot activity capture failed for
+    guest`，最终 `browser guest not attached (webview not ready)`；关闭重开标签仍在
+    `tabs.new()` 即失败。这是**环境级故障**（需重启 in-app browser 面板），非代码问题
+    （Vite 侧 200、`auto gen` 通过、VM 端同源渲染已出图）。
+    → 处置：T-02 以 **VM 双主题截图 + 断言 + gen 通过** 作为等效证据收尾；
+    **Vue 端截图并入 T-12 的双端验证一并补齐**（届时需浏览器可用）。
+    该缺口已登记，不当作已完成。
 - **T-03 视口组件**：`viewport.at`（video 元素 + 覆盖层 + 错误/降级面板，去 `absolute`）。
   验证：Vue 截图；VM 截图显示降级面板而非纯黑（AC-11 前置）。
 - **T-04 队列栏与播控条**：`playlist.at` + `controls.at`（尺寸收敛、单一 primary、

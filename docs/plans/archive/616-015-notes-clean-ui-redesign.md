@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-616
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
+completion_kind: delivered     # 交付型归档（非 shelved）
 feature_name: 015-notes-clean-ui-redesign
 author: [zhaopuming]
 created_at: 2026-09-12
@@ -725,3 +726,31 @@ col flex-1 min-h-0
    `h-auto py-*` 覆盖，现状已验证可行）。
 5. **待观察**：`deps/settings` 悬空 symlink（U12）本计划不处理（解析靠 auto-os 回退且可用）；
    若 review 认为应修，作为独立小计划处理。
+
+### 9.5 /auto-plan:merge 固化与归档凭据（Consolidation Receipt）
+
+`PLAN-616:r3` —— 逐检查点凭据（禁止先勾后验）：
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | reviewed 基线：`plan_revision 3` / `reviewed_commit 1b0c4a477` / `base_commit 3b9eae671`；规范增量 SD-01..SD-06 落 4 个 canonical 文件（`docs/specs/auto-lang/ui/overview.md`、`docs/specs/auto-lang/ui/plans.md`、`docs/specs/goals.md`、`docs/plans/KNOWN-DEBT-AND-RISKS.md`）于 worktree 提交 `4646c6837`（reviewed_commit 的 docs-only 后代 → delivery_commit）；投影目标 = `.autoos/specs.json`（runtime 路径，见 ledger_refreshed） |
+| `landed` | 默认分支 `master` 合并提交 **`df0e0cf6c`**（`--no-ff` 合入 `plan-616-dev`，21 文件 +1522/−1076）；`git merge-base --is-ancestor 4646c6837 HEAD` 通过 → 代码与 canonical Specs 均在 master 上；落地后核对 `overview.md` 三处增补 / `plans.md` 616 行 / `goals.md` GOAL-007+010 / `KNOWN-DEBT` P616-D1..D3 / `examples/ui/015-notes/src/front/{editor,sidebar}.at` 内容均已在 master 工作树 |
+| `ledger_refreshed` | 目标：`D:/autostack/auto-lang/.autoos/specs.json`（本仓 runtime 派生账本，非 git 跟踪）；upsert 项 ID **P616-1..P616-6**（reports/goals/architecture/designs/tests/reviews 各 +1）；`file` 指向 `docs/plans/archive/616-015-notes-clean-ui-redesign.md`，`related:["PLAN-616"]`，`status: published`；离线 read-modify-write + 完整 JSON 校验 + 原子替换，源/后哈希 `9a26c93370053e49` → `08662bef76de5397`；读回校验：六节计数 (78/69/74/68/74/92)、P616 六项齐备。索引再生 `python scripts/spec-index.py`（26 projects；`INDEX.md` 内容无变化，仅换行归一被还原） |
+| `archived` | `git mv docs/plans/616-...md docs/plans/archive/` + `status: archived` + `completion_kind: delivered`（交付型，非 shelved）；本文件路径与 frontmatter 一致、provenance 链接可解析 |
+| `cleaned` | 见 §9.6（清理凭据；先 `wt-guard.sh` 必须 clean） |
+
+**未完成项随归档保留**：T-10（Rust a2r 轨）为域外前置阻断（P616-D3），已随债表与 §9.3/F-1 留档，未折算为通过。
+
+### 9.6 spec-sync 回写记录（v1 惯例）
+
+- **canonical Spec（current-state）**：`docs/specs/auto-lang/ui/overview.md`
+  - 新增「**示例可依赖的 DSL/VM 子集**」已知坑条目（7 条：text 插值 / view fn 标量 prop /
+    `.field=[]` 与局部列表整赋值 / 视图条件方法调用 / 不支持样式族 / 按钮 `w-auto` / 控件需文字标签）；
+  - 新增「**015-notes 示例现状（plan-616）**」段（扁平双栏 + 始终可编辑 + 索引表过滤 +
+    词表模型字段 + 自带外观面板退出跨仓 dep）；
+  - 校正 VM lucide 闭集计数 **84 → 85**（并记 pin/pin-off 缺口）。
+- **模块 plan 索引**：`docs/specs/auto-lang/ui/plans.md` 追加 `| 616 | ... |` 一行。
+- **目标账本**：`docs/specs/goals.md` 的 GOAL-007 / GOAL-010 证据列追加 616 条目（状态不变，仍「进行中」）。
+- **债务台账**：`docs/plans/KNOWN-DEBT-AND-RISKS.md` 追加「PLAN-616 遗留」节（P616-D1/D2/D3）。
+- **派生账本**：`.autoos/specs.json` upsert P616-1..6；`python scripts/spec-index.py` 再生 `docs/specs/INDEX.md`。
+- **计划正文未复制进 current-state Spec**（蒸馏为一句话级现状），符合 `/auto-plan:merge` 与 `docs/specs/README.md §4` 本仓扩展。
