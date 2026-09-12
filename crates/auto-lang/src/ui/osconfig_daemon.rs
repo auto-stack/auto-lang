@@ -318,6 +318,76 @@ pub fn ensure_ready(url: &str) -> DaemonStatus {
     )
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// PLAN-013 T2：per-name 泛化 ensure——manifest `daemon` 字段驱动的非 autoos
+// daemon（musk/jade-garden 等）。autoos 名不走此段（D4 零回归门：既有链与
+// 测试原样）。健康探针契约固定 `GET /api/health`（[`DaemonIo::ping`] 接口
+// 不变）；轮询循环与 [`ensure_ready_io`] 同构（复制不抽共享——旧函数体
+// 零触碰优先于 DRY）。
+// ─────────────────────────────────────────────────────────────────────────
+
+/// 泛化 daemon 定义（session 层自 manifest `daemon` 字段组装）。
+pub struct GenericDaemon {
+    /// 可读名（Offline 原因与日志用；同 manifest id）。
+    pub name: String,
+    /// API base url（`http://127.0.0.1:<port>`）。
+    pub url: String,
+    /// 二进制绝对路径；`None` = 只探不孵（探不通信即 Offline 有因）。
+    pub bin: Option<PathBuf>,
+    /// App 会话注入 env 键（`<NAME 大写蛇形>_DAEMON = url`）。
+    pub env_key: String,
+    /// spawn 期端口覆盖 env 键（各 daemon 自有约定，如 `JADE_GARDEN_PORT`）。
+    pub env_port_key: String,
+}
+
+/// manifest id → 注入 env 键派生（`auto-musk → AUTO_MUSK_DAEMON`；
+/// `autoos → AUTOOS_DAEMON` 与 [`ENV_DAEMON`] 同构——D3 派生规则对旧名
+/// 恒等，语义单源）。
+pub fn daemon_env_key(name: &str) -> String {
+    format!("{}_DAEMON", name.to_ascii_uppercase().replace('-', "_"))
+}
+
+/// 泛化主流程：检活 → bin 缺席判定 → spawn（env 仅端口覆盖键）→ 就绪轮询
+/// ≤`ready_timeout`（200ms 间隔）。语义与 [`ensure_ready_io`] 一致：已运行
+/// 零打扰复用；Offline 不阻断 launch（调用方记徽标）。
+pub fn ensure_generic_io(
+    def: &GenericDaemon,
+    io: &mut dyn DaemonIo,
+    ready_timeout: std::time::Duration,
+) -> DaemonStatus {
+    if io.ping(&def.url) {
+        return DaemonStatus::Running(def.url.clone());
+    }
+    let Some(path) = &def.bin else {
+        return DaemonStatus::Offline(format!(
+            "daemon `{}` 未配置 bin（apps.manifest daemon.bin 缺席，只探不孵；ping {} 不通）",
+            def.name, def.url
+        ));
+    };
+    let env = vec![(def.env_port_key.clone(), port_of(&def.url).to_string())];
+    if let Err(err) = io.spawn(path, &env) {
+        return DaemonStatus::Offline(format!(
+            "daemon `{}` spawn {} 失败: {err}",
+            def.name,
+            path.display()
+        ));
+    }
+    let deadline = std::time::Instant::now() + ready_timeout;
+    while std::time::Instant::now() < deadline {
+        if io.ping(&def.url) {
+            return DaemonStatus::Running(def.url.clone());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    DaemonStatus::Offline(format!(
+        "daemon `{}` 就绪超时（{}ms 内 ping 不通 {}；{}）",
+        def.name,
+        ready_timeout.as_millis(),
+        def.url,
+        path.display()
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,7 +395,15 @@ mod tests {
 
     fn sibling_fixture() -> PathBuf {
         // 临时相邻仓根：释放 release/auto-os-config-back-server(.exe)。
-        let root = std::env::temp_dir().join("autoui-501-daemon-fixture");
+        // PLAN-013 T2：路径唯一化（进程内原子计数）——固定共享路径在并行
+        // 测试下互相 remove_dir_all 拆台（013 实测：新测试拉大并行窗口后
+        // 间歇性失败子集每轮不同），非生产行为变化。
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "autoui-501-daemon-fixture-{}-{n}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(
             root.join("auto-os-config-back").join("target").join("release"),
@@ -655,5 +733,90 @@ mod tests {
         let url = mini_health_server();
         let mut io = RealDaemonIo::new();
         assert!(io.ping(&url));
+    }
+
+    // ---- PLAN-013 T2：per-name 泛化 ensure ----
+
+    #[test]
+    fn daemon_env_key_derivation_matches_legacy() {
+        // D3 派生规则对旧名恒等——AUTOOS_DAEMON 语义单源。
+        assert_eq!(daemon_env_key("autoos"), ENV_DAEMON);
+        assert_eq!(daemon_env_key("auto-musk"), "AUTO_MUSK_DAEMON");
+        assert_eq!(daemon_env_key("jade-garden"), "JADE_GARDEN_DAEMON");
+    }
+
+    fn generic_def(bin: Option<PathBuf>) -> GenericDaemon {
+        GenericDaemon {
+            name: "auto-musk".to_string(),
+            url: "http://127.0.0.1:17201".to_string(),
+            bin,
+            env_key: daemon_env_key("auto-musk"),
+            env_port_key: "MUSK_BACK_PORT".to_string(),
+        }
+    }
+
+    #[test]
+    fn ensure_generic_reuses_running() {
+        let mut io = FakeIo::new(vec![true]);
+        let st = ensure_generic_io(&generic_def(None), &mut io, std::time::Duration::from_secs(1));
+        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17201".to_string()));
+        assert_eq!(io.ping_calls, 1, "ping 通即复用");
+        assert!(io.spawn_path.is_none(), "已运行零打扰——bin 缺席也不影响");
+    }
+
+    #[test]
+    fn ensure_generic_offline_when_bin_absent() {
+        let mut io = FakeIo::new(vec![false; 5]);
+        let st = ensure_generic_io(&generic_def(None), &mut io, std::time::Duration::from_millis(1));
+        match st {
+            DaemonStatus::Offline(reason) => {
+                assert!(reason.contains("未配置 bin"), "{reason}");
+                assert!(reason.contains("auto-musk"), "原因携带可读名");
+            }
+            other => panic!("应 Offline，实际 {other:?}"),
+        }
+        assert!(io.spawn_path.is_none(), "bin 缺席不 spawn");
+    }
+
+    #[test]
+    fn ensure_generic_spawns_with_port_env() {
+        let mut io = FakeIo::new(vec![false, true]);
+        let def = generic_def(Some(PathBuf::from("D:/os/auto-musk/backend/target/release/musk.exe")));
+        let st = ensure_generic_io(&def, &mut io, std::time::Duration::from_secs(1));
+        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17201".to_string()));
+        assert_eq!(io.spawn_env, vec![("MUSK_BACK_PORT".to_string(), "17201".to_string())],
+            "spawn env = manifest env_port 键 + url 端口");
+    }
+
+    #[test]
+    fn ensure_generic_spawn_failure_is_offline_with_name() {
+        let mut io = FakeIo::new(vec![false; 5]);
+        io.spawn_result = Err("boom".to_string());
+        let st = ensure_generic_io(
+            &generic_def(Some(PathBuf::from("D:/nowhere/musk.exe"))),
+            &mut io,
+            std::time::Duration::from_millis(1),
+        );
+        match st {
+            DaemonStatus::Offline(reason) => {
+                assert!(reason.contains("spawn"), "{reason}");
+                assert!(reason.contains("auto-musk"), "{reason}");
+            }
+            other => panic!("应 Offline，实际 {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ensure_generic_ready_timeout_offline() {
+        let mut io = FakeIo::new(vec![false; 10]);
+        let st = ensure_generic_io(
+            &generic_def(Some(PathBuf::from("D:/nowhere/musk.exe"))),
+            &mut io,
+            std::time::Duration::from_millis(1),
+        );
+        match st {
+            DaemonStatus::Offline(reason) => assert!(reason.contains("就绪超时"), "{reason}"),
+            other => panic!("应 Offline，实际 {other:?}"),
+        }
     }
 }

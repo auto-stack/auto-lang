@@ -2361,12 +2361,20 @@ fn spawn_outproc_child(
         Ok(wid)
     }
 
-    /// Plan 501：daemon 依赖 App（pac `daemon: autoos`）的宿主侧就绪序
+    /// Plan 501：daemon 依赖 App（pac `daemon: <name>`）的宿主侧就绪序
     /// （launch 两形态共用——env 进程级，outproc 子进程 spawn 继承）——
-    /// 检活/spawn/就绪轮询 + AUTOOS_DAEMON env 注入；Offline 不阻断
+    /// 检活/spawn/就绪轮询 + `<NAME>_DAEMON` env 注入；Offline 不阻断
     /// launch，原因记 osconfig_status 供徽标。
+    ///
+    /// PLAN-013 T2：`autoos` 名走既有链（D4 零回归门）；其余名查
+    /// apps.manifest `daemon` 字段（懒读一次，不驻状态）——查无此名
+    /// Offline 有因（含 manifest 未声明情形），同样不阻断。
     fn ensure_daemon_if_declared(&mut self, spec: &LaunchSpec) {
-        if spec.daemon.as_deref() != Some("autoos") {
+        let Some(name) = spec.daemon.as_deref() else {
+            return;
+        };
+        if name != "autoos" {
+            self.ensure_manifest_daemon(name);
             return;
         }
         let status = match &self.desktop.osconfig_daemon_probe {
@@ -2380,6 +2388,55 @@ fn spawn_outproc_child(
                 // 单键短值写，UI 线程唯一写点（stdlib Env.set 同约定）。
                 std::env::set_var(&key, &value);
             }
+        }
+        self.desktop.osconfig_status = status;
+    }
+
+    /// PLAN-013 T2：per-name manifest daemon 就绪序——apps.manifest 条目
+    /// `daemon: { port, bin?, env_port? }` 组装 [`GenericDaemon`] 走泛化链；
+    /// Running 期注入 `<NAME>_DAEMON=<url>`（派生规则见
+    /// [`daemon_env_key`]，`autoos` 名与旧键恒等同构）。
+    fn ensure_manifest_daemon(&mut self, name: &str) {
+        use crate::ui::osconfig_daemon::{daemon_env_key, ensure_generic_io, GenericDaemon};
+        // 解析序内建（resolve_os_manifest_root：AUTO_OS_ROOT env 权威 →
+        // 兄弟 ../auto-os → 主检出 D:/autostack/auto-os）——单次 lookup
+        // 即覆盖 desktop.sh 注入与开发机两形态，无需 session 侧再分臂。
+        let Some((repo_dir, def)) = crate::ui::app_registry::manifest_daemon_lookup(
+            std::path::Path::new(".."),
+            name,
+        )
+        else {
+            self.desktop.osconfig_status = crate::ui::osconfig_daemon::DaemonStatus::Offline(
+                format!("daemon `{name}` 未在 apps.manifest 声明（daemon 字段缺席或条目未登记）"),
+            );
+            return;
+        };
+        let generic = GenericDaemon {
+            name: name.to_string(),
+            url: format!("http://127.0.0.1:{}", def.port),
+            // Windows 平台补全：manifest bin 写平台中性相对路径（不带
+            // .exe），原路径不存在时追加扩展名（CreateProcess 语义对齐）。
+            bin: def.bin.as_deref().map(|rel| {
+                let p = repo_dir.join(rel);
+                if cfg!(windows) && !p.is_file() {
+                    std::path::PathBuf::from(format!("{}.exe", p.display()))
+                } else {
+                    p
+                }
+            }),
+            env_key: daemon_env_key(name),
+            env_port_key: def.env_port.clone().unwrap_or_else(|| {
+                format!("{}_BACK_PORT", daemon_env_key(name).trim_end_matches("_DAEMON"))
+            }),
+        };
+        let status = ensure_generic_io(
+            &generic,
+            &mut crate::ui::osconfig_daemon::RealDaemonIo::new(),
+            std::time::Duration::from_secs(5),
+        );
+        if let crate::ui::osconfig_daemon::DaemonStatus::Running(url) = &status {
+            // 单键短值写，UI 线程唯一写点（同 autoos 臂约定）。
+            std::env::set_var(&generic.env_key, url);
         }
         self.desktop.osconfig_status = status;
     }
@@ -4835,8 +4892,14 @@ mod tests {
 
     // ---- Plan 501：launch 执行臂 daemon 就绪 + env 注入 ----
 
+    /// PLAN-013 T2：ENV_DAEMON 注入断言测试的串行锁——并行下 set/remove
+    /// 竞态（013 实测间歇失败），仅测试稳定性，非生产行为变化。
+    static ENV_DAEMON_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn launch_app_daemon_ready_injects_env() {
+        let _env_serial =
+            ENV_DAEMON_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ds = t4_session_with_resolver();
         // resolver 换 daemon 声明条目；探活注入 Running（测试端口 url）。
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
@@ -4873,6 +4936,8 @@ mod tests {
 
     #[test]
     fn launch_app_daemon_offline_still_launches_without_env() {
+        let _env_serial =
+            ENV_DAEMON_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut ds = t4_session_with_resolver();
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
