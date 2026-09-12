@@ -1307,6 +1307,14 @@ T-13/T-14 与主链并行。
   `selfcheck` 证明缺库走 `Err` 而非 abort，即 AC-20 的降级入口）；
   `Cargo.toml` 新增 `mpv-spike` 特性 + 可选依赖 `iced_wgpu`（**零新增编译单元**——它本就是
   iced 默认渲染器的依赖）与 `[[example]]` 声明。
+- **交付物（worktree 内，`scripts/mpv_spike/`）**：AC-18 的「实时播放能力」与「进程 RSS」
+  两类数字来自 Python ctypes 探针（Rust example 只覆盖每帧渲染/上屏代价），
+  已一并收编入仓以保证可复现：`sw_probe.py`（实时/逐帧/内存，口径见其 README）、
+  `audio_probe.py`（Dolby 音轨实测）、`README.md`（前置/用法/口径说明）。
+  DLL 路径经 `AUTO_MPV_LIB` 覆盖；**`libmpv-2.dll` 本身不入库、CI 不依赖**。
+- **数字对机器负载敏感（如实记录）**：上表取自相对空闲时段。有并发负载时复测同一 4K 场景，
+  `render()` p50 5.7→12.8 ms、CPU 54.6→97.5 ms/帧，**媒体时钟仍 0.999×** ⇒
+  「能否实时」这一判定本身有相当余量。
 - **降级路径已实证**（AC-20 前置）：`Library::new` 对不存在的库返回 `Err`（`LoadLibraryExW failed`），
   解析不出即返回 `None` 交回调用方走今日的诚实占位，**不 panic、不黑屏**。
 - **Vue 端那条「解不了」的音轨在 VM 侧实测可解**（这原是用户要求 VM 播放的主要动机）：
