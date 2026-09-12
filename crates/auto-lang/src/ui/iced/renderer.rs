@@ -8680,7 +8680,15 @@ fn summon_launcher(
     // 注入形态 = 平行字符串列表（Obj 数组的 VM handler 字段读失效——
     // B12 同族，`injected_obj_array_for_field_read` 探针钉死 "0,0"；
     // 字符串列表下标读保真）。ln/lt 预小写由宿主供给。
-    let entries = state.desktop.registry_entries.clone();
+    // PLAN-012 W6：launcher 自身不入列（入册规则同 :11609 发现链镜像），
+    // `launcher_entry` 发现链不受影响（先取 entry 再过滤）。
+    let entries = state
+        .desktop
+        .registry_entries
+        .iter()
+        .filter(|e| !(e.id == "launcher" || e.id.ends_with("-launcher")))
+        .cloned()
+        .collect::<Vec<_>>();
     let mut names: Vec<auto_val::Value> = Vec::new();
     let mut titles: Vec<auto_val::Value> = Vec::new();
     let mut icons: Vec<auto_val::Value> = Vec::new();
@@ -24612,11 +24620,28 @@ mod tests {
             Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
             other => panic!("__focus_input 读回异常: {other:?}"),
         }
-        // 真注册表注入覆盖 mock + ApplyFilter 同步重算（nres = 2）
+        // 真注册表注入覆盖 mock + ApplyFilter 同步重算（nres = 1）。
+        // PLAN-012 W6 fence：注册表含 028-launcher 条目（:11609 发现链
+        // 同源 mock）→ 注入清单必须排除 launcher 自身，召唤链不受影响。
         match app.component.read_state("nres") {
-            Ok(auto_val::Value::Int(n)) => assert_eq!(n, 2, "ApplyFilter 应按注入清单重算"),
+            Ok(auto_val::Value::Int(n)) => assert_eq!(
+                n, 1,
+                "ApplyFilter 应按注入清单重算（launcher 自身已过滤）"
+            ),
             other => panic!("nres 读回异常: {other:?}"),
         }
+        let names = match app.component.read_state("apps_names") {
+            Ok(auto_val::Value::Array(a)) => a.values,
+            Ok(auto_val::Value::VmRef(r)) => {
+                t3_deref_list(app, r.id as u64, "apps_names")
+            }
+            other => panic!("apps_names 读回异常: {other:?}"),
+        };
+        assert_eq!(names.len(), 1, "注入清单应仅剩非 launcher 条目");
+        assert!(
+            !names.iter().any(|v| v.to_string().contains("launcher")),
+            "apps_names 不应含 launcher 自身"
+        );
     }
 
     /// Plan 464 T4 探针：宿主 write_state_vec 注入 Obj 数组后，VM 侧
