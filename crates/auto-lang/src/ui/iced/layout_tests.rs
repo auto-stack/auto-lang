@@ -1907,3 +1907,146 @@ fn button_label_line_box_clamped_to_font_size() {
     assert!(h <= 18.0 * 1.1, "label line box must hug glyphs (~18px), got {h}");
     assert!(h >= 10.0, "label must still render, got {h}");
 }
+
+/// PLAN-012 F2 侧栏压缩探针（临时诊断）：复刻 os-config 侧栏布局链——
+/// row(h-full) > aside(flex-col w-280) > [header(50), provider(h-full
+/// flex-col) > [search 行, Scrollable(flex-1 overflow-auto) > 长按钮列],
+/// picker 尾件]。短根 280×420 量位：provider 有界 ⇔ picker 尾件停在根内；
+/// 首件 Desktop 位贴顶可见。
+#[test]
+fn f2_sidebar_scroll_probe() {
+    let nav_btn = |label: &str| -> View<()> {
+        View::Button {
+            label: String::new(),
+            onclick: (),
+            style: Style::parse("nav-item flex w-full items-start justify-start gap-3 rounded-md px-3 py-[10px] text-sm text-left text-foreground select-none cursor-pointer transition-colors").ok(),
+            on_right_click: None,
+            content: Some(Box::new(View::Column {
+                children: vec![
+                    View::Text {
+                        content: label.to_string(),
+                        style: Style::parse("text-sm").ok(),
+                        selectable: false,
+                    },
+                    View::Text {
+                        content: "description line".to_string(),
+                        style: Style::parse("text-xs").ok(),
+                        selectable: false,
+                    },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+                on_right_click: None,
+            })),
+            disabled: false,
+        }
+    };
+    let picker_text = |label: &str| -> View<()> {
+        View::Text {
+            content: label.to_string(),
+            style: Style::parse("text-sm").ok(),
+            selectable: false,
+        }
+    };
+    // 真实形态：15 长项（含描述双行 ≈80px/项）+ 组，总高远超短根。
+    let scroll_items: Vec<View<()>> = (0..15)
+        .map(|i| {
+            nav_btn(&format!("NAV{} LONG LABEL DESCRIPTION", i * 57 % 100))
+        })
+        .collect();
+    let aside: View<()> = View::Column {
+        children: vec![
+            View::Container {
+                child: Box::new(View::Text {
+                    content: "HEADER".to_string(),
+                    style: Style::parse("text-sm").ok(),
+                    selectable: false,
+                }),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                style: Style::parse("h-[50px] shrink-0").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+            View::Column {
+                children: vec![
+                    View::Container {
+                        child: Box::new(View::Text {
+                            content: "SEARCH".to_string(),
+                            style: Style::parse("text-sm").ok(),
+                            selectable: false,
+                        }),
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
+                        style: Style::parse("px-2 pt-2").ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    },
+                    View::Scrollable {
+                        child: Box::new(View::Column {
+                            children: scroll_items,
+                            spacing: 0,
+                            padding: 0,
+                            style: Style::parse("nav-list flex-1 overflow-auto px-2 pt-2 flex flex-col").ok(),
+                            onclick: None,
+                            on_right_click: None,
+                        }),
+                        width: None,
+                        height: None,
+                        style: Style::parse("flex min-h-0 flex-1 flex-col gap-2 overflow-auto").ok(),
+                        auto_scroll: false,
+                        offset: None,
+                        on_scroll: None,
+                    },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("h-full w-full flex flex-col").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+            View::Text {
+                content: "PICKER".to_string(),
+                style: Style::parse("text-sm shrink-0").ok(),
+                selectable: false,
+            },
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("flex flex-col w-[280px] h-full shrink-0 bg-card border-r border-border").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let root: View<()> = View::Row {
+        children: vec![aside],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("h-full w-full flex flex-row").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = simulator(root.into_iced());
+    let (hx, hy, _hw, _hh) = bounds_of(&mut ui, "HEADER");
+    let (px, py, _pw, _ph) = bounds_of(&mut ui, "PICKER");
+    let (dx, dy, _dw, _dh) = bounds_of(&mut ui, "NAV0 LONG LABEL DESCRIPTION");
+    eprintln!("[f2sb] header=({hx},{hy}) picker=({px},{py}) nav0=({dx},{dy})");
+    // provider 有界 ⇔ PICKER 尾件贴根底（模拟器根 1024×768）。
+    assert!(
+        py <= 760.0,
+        "provider 应被 h-full 有界（PICKER 尾件 y={py} 超出根）——侧栏压缩根因"
+    );
+    // 首项 Desktop 贴顶可见（header 之后）——压缩缺陷形态 = 顶部项被
+    // 裁出可视带（用户实机：只有中段的 System Overview 可见）。
+    assert!(dy > hy && dy < 150.0, "NAV0 应贴顶可见（y={dy}）");
+    // 模拟器根 = 1024×768：PICKER 尾件应贴根底（≤768）——provider 被
+    // h-full 有界（无界形态 = 内容尾 ~1100 超根）。
+    assert!(py <= 760.0, "PICKER 尾件应在根内（y={py}）——provider 未有界");
+}
