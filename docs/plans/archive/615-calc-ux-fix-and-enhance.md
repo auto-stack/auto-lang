@@ -416,3 +416,12 @@ worktree：`D:/autostack/.wt/lang-615/auto-lang` @ `plan-615-dev`（base a4faeb1
 - **merge 落点**：master `d99f293d2`（merge plan-615-dev：实现 a539f3697 + 规范
   cd8fcbfa5；ui/plans.md 尾行 614/615 冲突保双方）。worktree 清理回执见 §9 R1 后
   收据（wt-guard clean → worktree/分支/组目录移除）。
+- **consolidation receipt（PLAN-615:r1）**：`prepared`=cd8fcbfa5（worktree 规范
+  增量 4 文件：vm/ui overview+双 plans.md）→ `landed`=master d99f293d2（冒烟
+  plan615_calc_prog 5/5）→ `ledger_refreshed`=specs.json P615-1..6 upsert（readback
+  6/6）+ spec-index INDEX 再生（26 projects）→ `archived`=5f2e6df05+补齐提交（git mv
+  docs/plans/archive/ + status archived + 本节）→ `cleaned`=wt-guard 双 worktree
+  clean（auto-lang 侧 359 个 pnpm junction 经 cmd rmdir 摘链接后复检 clean——auto
+  build vue 腿副产物，红线规避处置在案；auto-down detached 兄弟原生 clean），
+  worktree×2/分支 plan-615-dev（cd8fcbfa5）/组目录 lang-615 全移除验证（worktree
+  list/branch/.wt 三查全 0）。
