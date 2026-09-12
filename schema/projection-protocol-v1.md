@@ -1,6 +1,8 @@
-# AutoShell 状态投影协议 v1.5（S2 接缝合同）
+# AutoShell 状态投影协议 v1.6（S2 接缝合同）
 
-> **版本**：v1.5（2026-08-31，Plan 505 B2 落码；pager 派生面（≤4 截断 + "+N"）。
+> **版本**：v1.6（2026-09-12，PLAN-012 落码；dock 固定/聚焦/通知可见派生面
+> + 单枚固定与格子重注入动词 + 整桌面预览合同面，详见 §6 v1.6 节）。
+> v1.5（2026-08-31，Plan 505 B2 落码；pager 派生面（≤4 截断 + "+N"）。
 > v1.4（2026-08-30，Plan 487 M4；486 先合占 v1.3，487 按并行协调叠 v1.4）——v1/v1.1/v1.2/v1.3/v1.4 见 §6
 > 变更记录）。双端同
 > 版本：vm 端（auto-lang `ui/iced/renderer.rs::sync_shell_windows`，本版实现
@@ -29,6 +31,9 @@
 | `__wm_running` | str `",id1,id2,"` | 运行中 app id 集合的**派生串**（pinned 运行指示的 view 条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实源；T4 增补） | 宿主写 | v1 |
 | `__wm_notes` | Obj 数组 `{id:str, kind:str, msg:str, at:str}` | **通知历史全量**（MRU 序 front=最新；容量 50 FIFO）。shell 侧为合同面（dock 不直接消费）；通知中心面板 handler 消费走召唤/活更新时的伴随平行字符串列表（`note_ids`/`note_kinds`/`note_msgs`/`note_ats` + `call_handler("RebuildNotes")` 建 handler 自有 rows，B12 规避——`__wm_mru` 同型）。`kind` ∈ success/error/info（约定值，未知宿主侧已兜底）；`at` = 入史时刻 `HH:MM` 本地时间串（宿主投影） | 宿主写 | v1.2 |
 | `__wm_notes_unread` | str | 未读通知计数十进制串（dock 铃铛 badge 条件消费：`!= "0"` 且非空串渲染）；开面板即清零；不落盘——boot 恢复后恒 `"0"` | 宿主写 | v1.2 |
+| `__wm_focused_app` | str | **v1.6** 聚焦窗 registry_id 派生串（"" = 无聚焦或聚焦在 native 槽位）——pinned 图标聚焦底条 + 底色高亮的**标量判据面**（.at 无法跨列表表达"存在聚焦窗"量词，宿主派生保持 I9；聚焦变化必经 meta 段 focused_wid 翻转触发重写，本字段随写同步） | 宿主写 | v1.6 |
+| `__dock_pinned_csv` | str `",id1,id2,"` | **v1.6** 固定集合派生串（前后逗号封边；空表 = 单纯 `","`）——dock 窗口条目与固定图标去重合并判据（app 已固定者不再重复渲染其窗口条目；view 条件 `contains` 消费，Obj 数组字段读 B12 规避——同 `__wm_running` 先例） | 宿主写 | v1.6 |
+| `__wm_notes_visible` | str `"1"/""` | **v1.6** 通知中心面板可见性（宿主 overlay 组件 visible 直读投影；外点/×/Esc 任意关闭路径自隐后同步翻转）——铃铛打开态高亮的唯一事实源；指纹并入 notes 段尾 `:v`（见 §3） | 宿主写 | v1.6 |
 | `__wm_fp` | str | 投影指纹（§3）；shell 不消费，仅门控 | 宿主写 | v1 |
 | `__wm_clock` | str `"HH:MM"` | dock 时钟本地时间串（497 S3）。**非门控字段**：不进 `__wm_fp` 指纹、不走 §3 投影组换装——ServiceTick 帧泵独立注入（分钟变化才写，稳态零重建；本地时钟非驱动事实，避免每分钟全组换装抖动） | 宿主写 | v1.4 内（497） |
 | `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
@@ -44,6 +49,9 @@ Plan 496 M5 的第五面（常驻不召唤，boot 装载挂桌面层 z 槽）。
 | `__desktop_bg` | str | 壁纸色值类片段：`shell.desktop.wallpaper` 为 `#hex` 时注入 `"bg-[#hex]"`（面根 bg 实铺）；图片路径/缺省时注入 `""`（图片壁纸由宿主在面之下推壁纸图层——DSL 无重叠布局，z 序宿主侧兑现） | 宿主写 | v1.4 内（496） |
 | `__desktop_icons` | Obj 数组 `{id:str, icon:str, label:str, src:str}` | 桌面条目 = pinned ∪ 自定义合并去重（pinned 先列；`shell.desktop.icons` 逗号串）再排除 hidden（`shell.desktop.hidden` 逗号串，pinned/custom 通用移除位）。`icon`/`label` 注册表解析（缺省 `app-window`/id）；`src` = `pinned`\|`custom` | 宿主写 | v1.4 内（496） |
 | `__desktop_hidden` | str | 排除 id 逗号串（移除臂续写 `shell.desktop.hidden` 的当前值底稿） | 宿主写 | v1.4 内（496） |
+| `__desktop_cells` | Obj 数组 `{id,icon,label,src,color,c,r,spacer}`（spacer 条目仅 `{spacer:"1",c,r}`） | **v1.6** 格子化图标表——`shell.desktop.positions`（追加式 `"id=c:r,..."` csv，last-wins 解析）定位优先 + 未定位行主序填首个空格 + 空位 spacer 填充；view 渲染消费（handler 消费走下列平行字符串列表，B12 规避）。拖拽落子 = shell 追加写 positions + `refresh_desktop_icons` 触发重注入 | 宿主写 | v1.6 |
+| `__desktop_cell_ids` / `__desktop_cell_cs` / `__desktop_cell_rs` | 平行字符串列表（与 `__desktop_cells` 同序；spacer 格 id = 空串） | **v1.6** 格子平行字符串列表——`IconPress` 拖拽落子的 handler 下标读数据面（按 id 检索 (c,r)，B12 规避——`note_ids` 同型） | 宿主写 | v1.6 |
+| （DSL 合同面）`workspace_preview` | 布局件 `workspace_preview (ws: <分区id>, fallback: <icon>)` | **v1.6** 整桌面等比预览 leaf——宿主渲染臂合成（壁纸 `#hex` 基色底 / 缺省主色占位 → 该分区逐窗 snapshot 按 usable 矩形 Contain 等比贴片；miss = 占位块 + fallback icon 居中 + request_capture 预抓，window_thumbnail 同款 SWR）。**协议零字段增量**：数据面直连 wm 几何 + snapshot 缓存（`iced::workspace_preview` 发布/消费），不入 VM 状态。消费面 = switcher 分区卡 | 宿主渲染 | v1.6 |
 
 ## 3. 更新语义与指纹门控（协议条款）
 
@@ -52,9 +60,11 @@ Plan 496 M5 的第五面（常驻不召唤，boot 装载挂桌面层 z 槽）。
   槽位条目并入同段，`"N{slot}:{focused},"` 同型追加在 App 窗之后——槽位
   增删/瞬时态转 Docked 必翻指纹）+ `"|{__wm_meta}"` +
   `"|"` + 逐分区 `"{id}:{current},{label};"` 串接 + `"|"` + 逐 mru 窗
-  `"{wid};"` 串接 + `"|notes:{len}:{front_id}:{unread};"`（v1.1：分区段扩
-  label、尾接 mru 段；v1.2：尾接 notes 段——len/front_id 双段覆盖容量环绕
-  与 dismiss 组合、unread 独立第三段，任何历史/未读变化必翻其一）。
+  `"{wid};"` 串接 + `"|notes:{len}:{front_id}:{unread}:{visible};"`（v1.1：
+  分区段扩 label、尾接 mru 段；v1.2：尾接 notes 段——len/front_id 双段覆盖
+  容量环绕与 dismiss 组合、unread 独立第三段，任何历史/未读变化必翻其一；
+  **v1.6**：notes 段尾扩 `:v` 可见性位 + 尾接 `"|pinned:{id1,id2};"`
+  固定集合段——pin/unpin 落子与面板开合必翻其一）。
 - **指纹未变 → 整组跳过写**（防每帧 churn，不置 dirty）；**有变 → 整组原子
   换装**（wins/meta/workspaces/mru/fp 全写）+ shell `view_dirty` 置位触发
   重渲染。投影无部分更新。
@@ -91,6 +101,9 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 | `open_settings` | （无参记录） | 设置面板开合（dock 齿轮钮；宿主臂落 `toggle_settings`：懒挂载 → 配置快照注入（cfg_*/pinned_ids/about_*）+ RebuildPinned；**二态翻转**——可见再拨即自隐，Esc 同效。发件面 = shell.at 齿轮） | 487 |
 | `set_dock_position` | `top`/`bottom` | dock 位置**热切换**（I7：几何是驱动事实，settings 面板只是 UI——发件面 = settings.at 位置单选）。宿主臂 `execute_set_dock_position`：storage 键 `shell.dock.position` 写回 → `dock_edges` 键重推导（boot 同函数）→ `apply_layout` relayout + 槽位排水 → shell `__dock_*` 投影热同步 | 487 |
 | `set_dock_enabled` | `1`/`0` | dock 启用开关**热切换**（发件面 = settings.at 开关；`0` = 零预留，位置键保留——重开按原位置恢复）。宿主臂 `execute_set_dock_enabled` 同上三联动，写回键 `shell.dock.enabled`（`"true"/"false"`） | 487 |
+| `dock_pin` | app id | **v1.6** 单枚固定——`config.dock_pinned` Vec 增删去重之增（已在表 = 幂等保持）→ 单源落盘 → `inject_dock_pinned` + `inject_desktop_surface` 双投影热同步（发件面 = shell.at 窗口条目右键菜单「固定到任务栏」）。窄动词缘由：shell 读不到 `__dock_pinned` Obj 数组全集做 csv 手术（B12 同族），单枚增删收口宿主侧 | v1.6 |
+| `dock_unpin` | app id | **v1.6** 单枚取消固定——同上之删（不在表 = 幂等跳过；发件面 = pinned 图标右键菜单「取消固定」） | v1.6 |
+| `refresh_desktop_icons` | （无参记录） | **v1.6** 桌面图标格子重注入——shell 拖拽落子写 `shell.desktop.positions` 后触发，宿主重读 storage 重算 `__desktop_cells`/平行列表（`inject_desktop_surface` 重跑；拖拽结果即时可见 + boot 同链） | v1.6 |
 
 ## 5. 对拍与验收（I8/I9）
 
@@ -109,12 +122,41 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
   （496 I8：真资产 desktop.at → SFC 对拍，ondblclick/@contextmenu 事件面）。
 - 动词编码往返金样：`ui/session.rs` tests `native_dock_verbs_parse_and_
   encode`（dock_native/undock_native + v1.3 focus_native/close_native
-  双形态 arg）。
+  双形态 arg）+ `dock_pin_unpin_verbs_parse_and_encode`（v1.6）+
+  `w5_refresh_desktop_icons_verb_parse`（v1.6）。
+- **v1.6 金样**：`projection_v16_dock_pinned_csv_and_fingerprint`（csv
+  三态 + 指纹 pinned 段 + `__wm_focused_app` 派生翻转）/
+  `projection_v16_notes_visible_fingerprint`（:v 尾标翻转）/
+  `w1_osconfig_close_hides_and_focus_unhides`（close→hide 投影排除全链）/
+  `w5_desktop_icon_cells_assignment` + `w5_desktop_positions_last_wins`
+  （格子分配/持久解析）+ `w8_workspace_preview_materializes_in_popover_for`
+  （合同面物化 fence）+ iced-layout-tests `w2_notification_panel_anchor_*`/
+  `w7_icon_*`（headless 布局探针——面板锚定与字形居中，非投影面但同批）。
 - vue 端（465 后续）按本表实现同版本投影 + 同指纹规则，对拍项登记后
   消费本文件作基线；版本升级 = 文件名/版本号 + 双端同步 + 对拍重跑。
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.6（2026-09-12，PLAN-012）
+
+- **动词**：`dock_pin	<id>` / `dock_unpin	<id>`（单枚固定/取消固定；
+  执行臂 Vec 增删去重 → `desktop_config::save` → 投影热同步）+
+  `refresh_desktop_icons`（无参；桌面图标格子重注入）。
+- **投影面**：`__dock_pinned_csv`（",id1,id2," 去重判据串，指纹尾接
+  `|pinned:` 段）；`__wm_focused_app`（聚焦窗 registry_id 标量串——
+  聚焦判据从窗口条目 `focused` 旗标升级出标量面）；`__wm_notes_visible`
+  （"1"/""，notes 指纹段尾扩 `:v`）。
+- **配置语义**：`dock_pinned` 缺省三枚退役——缺键 = 显式空 = 空表
+  （`DEFAULT_DOCK_PINNED = []`；`set_dock_pinned` 空 csv 不再回退缺省）。
+- **DSL 合同面**：`workspace_preview (ws, fallback)` 布局件（宿主合成，
+  协议零字段增量——SD-02）；桌面本体面增 `__desktop_cells` 格子表与
+  `__desktop_cell_ids/cs/rs` 平行列表（拖拽换位，`shell.desktop.positions`
+  追加式持久）。
+- **隐藏窗语义**（宿主内聚，协议面体现为投影排除）：os-config 窗
+  close→hide（`VWinState.hidden`），常驻隐藏窗不入 `__wm_wins`/运行集/
+  MRU/格子表——"真关了"感知 + 齿轮高亮（`__wm_running` 判据）随投影
+  回落。
 
 ### v1.5（2026-08-31，Plan 505 B2）
 
