@@ -31,6 +31,164 @@ fn bounds_of<M: Clone + std::fmt::Debug>(ui: &mut iced_test::Simulator<'_, M, ic
     (b.x, b.y, b.width, b.height)
 }
 
+/// PLAN-012 W7 T12-T1 探针（headless 版，PLAN-011 t1_matrix 先例）：lucide
+/// `AbstractView::Image` 出口外层 container 若未约束（Svg size_hint 默认
+/// Fill → Container fluid 撑满剩余宽），同行右侧文本会被推到最远端——
+/// svgdoc 路径 :5020 在案同族症状。定案判据 = 文本边界可量化：R 相对 L
+/// 的间距 ≈ 图标盒宽（20px）而非半行宽。
+#[test]
+fn w7_icon_lucide_container_constrained_between_texts() {
+    let view = View::Row {
+        children: vec![
+            styled_view("L"),
+            View::Image {
+                src: "lucide:bell".to_string(),
+                style: Style::parse("w-5 h-5").ok(),
+            },
+            styled_view("R"),
+        ],
+        spacing: 0,
+        padding: 0,
+        style: None,
+                onclick: None, on_right_click: None,
+            };
+    let mut ui = simulator(view.into_iced());
+    let (lx, _ly, lw, _lh) = bounds_of(&mut ui, "L");
+    let (rx, _ry, _rw, _rh) = bounds_of(&mut ui, "R");
+    let gap = rx - (lx + lw);
+    // 守卫：container 若撑满剩余宽，R 被推到远端（gap ≫ 40px）；
+    // 正确形态 = container 收缩到图标盒 20px（gap ≈ 20，留 40px 上界容差）。
+    assert!(
+        gap < 40.0,
+        "lucide icon container 必须收缩到图标盒宽（gap={gap:.1}px，修复前为半行宽量级）"
+    );
+}
+
+/// PLAN-012 W7 T12-T1 探针②（chip 形态，desktop.at:101 真实结构 = col）：
+/// 桌面 chip = 固定 40×40 col（items-center justify-center + rounded 底）
+/// 内嵌 lucide 图标（w-5 h-5）——glyph 应居中于 chip 盒。收集全部
+/// Container bounds：chip 内层图标盒应为 20×20 且位于 chip 中心
+/// （x=y=10），container 未居中即"字形偏左上"根因定案。
+#[test]
+fn w7_icon_lucide_chip_glyph_centered() {
+    let chip: View<()> = View::Column {
+        children: vec![View::Image {
+            src: "lucide:bell".to_string(),
+            style: Style::parse("w-5 h-5").ok(),
+        }],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("h-10 w-10 items-center justify-center rounded-xl").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = simulator(chip.into_iced());
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32, f32)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    struct Sink(std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32, f32)>>>);
+    impl Selector for Sink {
+        type Output = ();
+        fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+            if let Candidate::Container { bounds, .. } = candidate {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((bounds.x, bounds.y, bounds.width, bounds.height));
+            }
+            None
+        }
+        fn description(&self) -> String {
+            "w7-container-sink".into()
+        }
+    }
+    let _ = ui.find(Sink(store.clone()));
+    let boxes = store.lock().unwrap().clone();
+    eprintln!("[w7-chip] containers: {boxes:?}");
+    // 内层图标盒（≈20×20）必须存在且居中于 40×40 chip（x,y ≈ 10）。
+    let inner = boxes
+        .iter()
+        .find(|(_, _, w, h)| (*w - 20.0).abs() < 2.0 && (*h - 20.0).abs() < 2.0)
+        .copied()
+        .unwrap_or_else(|| {
+            panic!(
+                "图标盒应收缩为 20×20（实际 containers: {boxes:?}）——container 被撑大即偏左上根因"
+            )
+        });
+    assert!(
+        (inner.0 - 10.0).abs() < 2.0 && (inner.1 - 10.0).abs() < 2.0,
+        "图标盒应居中 chip（期望 x,y≈10，实际 {:?}）",
+        inner
+    );
+}
+
+/// PLAN-012 W7 T12-T1 探针③（任务栏按钮形态，shell.at 真实结构 =
+/// `button (icon:)` h-10 w-10）：icon-only svg（Fixed 18，随字号档）必须
+/// 居中于按钮盒。收集全部 Candidate bounds（svg 件经 Custom 臂浮出），
+/// 找图标尺寸盒断言其中心 ≈ 按钮中心。
+#[test]
+fn w7_icon_taskbar_button_glyph_centered() {
+    let btn: View<()> = View::Button {
+        label: String::new(),
+        onclick: (),
+        style: Style::parse("h-10 w-10 px-0 text-lg rounded-xl bg-transparent").ok(),
+        on_right_click: None,
+        content: Some(Box::new(View::Image {
+            src: "lucide:bell".to_string(),
+            style: Style::parse("").ok(),
+        })),
+        disabled: false,
+    };
+    let mut ui = simulator(btn.into_iced());
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(&'static str, f32, f32, f32, f32)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    struct Sink(std::sync::Arc<std::sync::Mutex<Vec<(&'static str, f32, f32, f32, f32)>>>);
+    impl Selector for Sink {
+        type Output = ();
+        fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+            let (kind, bounds) = match &candidate {
+                Candidate::Container { bounds, .. } => ("c", *bounds),
+                Candidate::Focusable { bounds, .. } => ("f", *bounds),
+                Candidate::Custom { bounds, .. } => ("x", *bounds),
+                _ => return None,
+            };
+            self.0.lock().unwrap().push((kind, bounds.x, bounds.y, bounds.width, bounds.height));
+            None
+        }
+        fn description(&self) -> String {
+            "w7-button-sink".into()
+        }
+    }
+    let _ = ui.find(Sink(store.clone()));
+    let boxes = store.lock().unwrap().clone();
+    eprintln!("[w7-btn] candidates: {boxes:?}");
+    // 按钮本体（0.14 下 Button 以 Container 臂浮出）40×40；图标盒（≈16×16
+    // svg）中心应 ≈ (20,20)。
+    let btn_box = boxes
+        .iter()
+        .find(|(_, _, _, w, h)| (*w - 40.0).abs() < 2.0 && (*h - 40.0).abs() < 2.0)
+        .copied()
+        .expect("40×40 按钮盒应存在");
+    let icon = boxes
+        .iter()
+        .filter(|(k, _, _, w, h)| *k != "f" && *h < 38.0 && (*w - *h).abs() < 4.0)
+        .copied()
+        .collect::<Vec<_>>();
+    assert!(
+        !icon.is_empty(),
+        "应存在图标尺寸盒（实际 {boxes:?}）"
+    );
+    for (k, x, y, w, h) in icon {
+        let cx = x + w / 2.0;
+        let cy = y + h / 2.0;
+        let bx = btn_box.1 + btn_box.3 / 2.0;
+        let by = btn_box.2 + btn_box.4 / 2.0;
+        assert!(
+            (cx - bx).abs() < 3.0 && (cy - by).abs() < 3.0,
+            "图标盒({k}) 应居中按钮（中心期望≈({bx},{by})，实际 ({cx},{cy})）——全部: {boxes:?}"
+        );
+    }
+}
+
 /// Smoke: a plain row lays out both texts with non-zero bounds and no
 /// overlap. Proves the headless renderer + text-selector plumbing works in
 /// this environment before the bug-matrix assertions rely on it.
