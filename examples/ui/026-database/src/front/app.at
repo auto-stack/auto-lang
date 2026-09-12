@@ -3,7 +3,7 @@
 // 数据库对象树导航 + DataTable 深水区（分页/排序/搜索/类型徽章/万行窗口化）
 // + 表结构（Schema/DDL）+ SQL 控制台（执行/耗时/错误反馈）+ 事务级编辑与提交。
 
-use components.tree_util: filter_tree, collect_ids
+use components.tree_util: filter_tree, collect_ids, toggle_id
 
 widget App {
     use { package: official from "./components" }
@@ -70,7 +70,6 @@ widget App {
                 ] }
             ] }
         ]
-        dbNodes List = []
         dbSelId str = ""
         dbExpanded List = ["db/app", "g/tables", "g/views", "g/indexes"]
 
@@ -203,8 +202,11 @@ widget App {
         ]
     }
 
-    on {
-        .Init -> {
+    computed {
+        dbNodes => filter_tree(.dbNodesFull, .treeFilter)
+    }
+
+    on { -> {
             // 初始化表头与元数据
             .hId = "ID ↑"
             .hCol1 = "Company Name"
@@ -711,14 +713,9 @@ widget App {
             }
         }
 
-        .Init -> {
-            .dbNodes = .dbNodesFull
-        }
-
         .TreeFilterChanged(kw) -> {
             .treeFilter = kw
-            .dbNodes = filter_tree(.dbNodesFull, kw)
-            .dbExpanded = collect_ids(.dbNodes, false)
+            .dbExpanded = collect_ids(filter_tree(.dbNodesFull, kw), false)
         }
 
         .DbToggle(id) -> {
