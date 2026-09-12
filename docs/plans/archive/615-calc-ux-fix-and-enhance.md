@@ -402,3 +402,17 @@ worktree：`D:/autostack/.wt/lang-615/auto-lang` @ `plan-615-dev`（base a4faeb1
 5. DEC 千分位分隔显示；括号配对高亮（表达式行）。
 6. 窗口可调尺寸/最大化布局自适应（现 fit 固定内容尺寸）。
 7. VM handler 运行时错误上屏机制（框架级，惠及全部应用——本计划 W2 的症状面）。
+
+---
+
+## spec-sync 回写记录（v1 惯例，2026-09-12 merge）
+
+- **canonical**：SD-01 → `docs/specs/auto-lang/vm/overview.md` §布尔短路求值语义
+  （plan-615）；SD-02 主题传播链 + SD-03 按钮标签行盒契约 →
+  `docs/specs/auto-lang/ui/overview.md` 现状 615 条。
+- **plans.md 回写**：`vm/plans.md` + `ui/plans.md` 各追加 615 行（✅ reviewed→archived）。
+- **ledger**：`.autoos/specs.json` P615-1..6 六段 upsert（file 指向本归档件，
+  related PLAN-615，status published）+ `scripts/spec-index.py` 再生 INDEX（26 projects）。
+- **merge 落点**：master `d99f293d2`（merge plan-615-dev：实现 a539f3697 + 规范
+  cd8fcbfa5；ui/plans.md 尾行 614/615 冲突保双方）。worktree 清理回执见 §9 R1 后
+  收据（wt-guard clean → worktree/分支/组目录移除）。
