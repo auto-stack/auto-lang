@@ -542,7 +542,10 @@ col flex-1 min-h-0
   1. 缺 `SelectNote/EditTitle/EditBody` handler → 行点击与输入不生效；
   2. 搜索依赖双向绑定写入时序在 VM 端不可靠 → 改为**事件实参带值**（`SetSearch(q)`）；
   3. `Pin` 与 `Pinned` 标签互为子串导致寻址歧义（也是真实 UX 歧义）→ 编辑器按钮改 `Pin note`；
-  4. `TogglePinActive` 未刷新草稿镜像 → 按钮态与落库态不一致。
+  4. `TogglePinActive` 未刷新草稿镜像 → 按钮态与落库态不一致；
+  5. **merged 模式下 store 与后端共享同一份笔记对象**：`TogglePinActive` 里做
+     「本地预翻转 + `toggle_pin` 落库」会被翻两次（净零，T8 回归）——必须只走
+     `toggle_pin` + `ReloadNotes`，本地翻转只保留为独立的可单测单元 `TogglePin(idx)`。
 - **环境约束（发现即记录，非本计划代码缺陷）**：
   - worktree 内 `cargo test -p auto-lang --features ui-iced` 无法构建：`autodown-core`
     是硬编码跨仓相对路径 `../../../auto-down/autodown/packages/engine/rust`
