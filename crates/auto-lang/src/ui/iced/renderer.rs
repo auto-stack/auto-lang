@@ -5426,15 +5426,33 @@ fn lucide_svg_doc(name: &str) -> Option<String> {
 }
 
 fn lucide_svg_doc_with(name: &str, stroke_width: f32) -> Option<String> {
-    let frag = lucide_svg(name)?;
+    let entry = lucide_svg(name)?;
+    // PLAN-619 §8.5（根因定案）：`lucide_svg` 表里的每条**已是完整 SVG 文档**
+    // （`width="16" height="16" viewBox="0 0 24 24"`，见该表头注 "SVG wrapper:
+    // 16x16"）。此前这里把整份文档再套进一层 24×24 的 `<svg>` → **嵌套 viewport**
+    // 使内层按 16/24 = 0.667 缩放，跨端图标 ink 系统性偏小（声明 18px 的图标
+    // 实际只画 ≈12px，正是 PLAN-619 P2 记录的「≈12px 盒」；两端共用此文档，
+    // 故矢量臂与自栅格化臂产物逐像素相同——差距不在 iced 绘制路径）。
+    // 修法：只取内层形状 markup，按目标尺寸重包一层（不再嵌套）。
+    let inner = match entry.find('>') {
+        Some(i) => {
+            let rest = &entry[i + 1..];
+            match rest.rfind("</svg>") {
+                Some(j) => &rest[..j],
+                None => rest,
+            }
+        }
+        None => entry,
+    };
     Some(format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"{stroke_width}\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{frag}</svg>"
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"{stroke_width}\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{inner}</svg>"
     ))
 }
 
 fn lucide_svg(name: &str) -> Option<&'static str> {
-    // SVG wrapper: 16x16, stroke=currentColor, stroke-width=2.
-    // Each entry is the inner elements only.
+    // 每条是**完整 SVG 文档**：width/height=16、viewBox=0 0 24 24、
+    // stroke=currentColor、stroke-width=2（消费方见 `lucide_svg_doc_with`——
+    // 必须取内层 markup 重包，直接嵌套会按 16/24 二次缩放；PLAN-619 §8.5）。
     let elements: &str = match name {
         // Plan 472 T4：dock 消费注册表 icon 名（app-window 为注册表缺省
         // 回退；calculator/bomb/list-checks/notebook 为示例 pack 常用面）。
@@ -23844,6 +23862,44 @@ mod tests {
     /// （pac 注册表 icon 值 + 缺省回退）逐名命中 lucide_svg。未命中即
     /// 渲染空图标（"占位色块"根因之一），此表为契约：新 icon 名先补
     /// lucide 臂再消费。
+    /// PLAN-619（§8.5）回归锚：lucide 文档必须按**几何尺寸**渲染。
+    /// 修前（fragment 未包 `<g>`）usvg 0.45 把 `circle`+`path` 组合画成 viewBox
+    /// 的 0.583，导致跨端图标 ink 系统性偏小（AC-02 的 0.68 主因之一）。
+    /// 断言 = glyph 的 ink 充满度落在几何值 0.833 的邻域（修前必红）。
+    #[test]
+    fn plan619_lucide_doc_renders_geometric_ink() {
+        // 16px 下细线 AA 会吃掉边缘像素（测量阈值敏感）→ 取 24/48 两档。
+        for px in [24u32, 48] {
+            let doc = lucide_svg_doc_with("search", 2.0)
+                .expect("doc")
+                .replace("currentColor", "#ffffff");
+            let tree = resvg::usvg::Tree::from_str(&doc, &resvg::usvg::Options::default())
+                .expect("parse");
+            let mut pm = tiny_skia::Pixmap::new(px, px).expect("pixmap");
+            let ts = tree.size();
+            resvg::render(
+                &tree,
+                tiny_skia::Transform::from_scale(px as f32 / ts.width(), px as f32 / ts.height()),
+                &mut pm.as_mut(),
+            );
+            let buf = pm.take();
+            let (mut a, mut b) = (px, 0u32);
+            for y in 0..px {
+                for x in 0..px {
+                    if buf[((y * px + x) * 4 + 3) as usize] > 2 {
+                        a = a.min(x);
+                        b = b.max(x);
+                    }
+                }
+            }
+            let ratio = (b - a + 1) as f32 / px as f32;
+            assert!(
+                (0.78..=0.95).contains(&ratio),
+                "px={px}: `search` ink 充满度 {ratio:.3} 应为几何值 ≈0.833（<g> 包装修法回归）"
+            );
+        }
+    }
+
     #[test]
     fn lucide_icon_coverage_manifest_all_hit() {
         // ① .at 资产字面量扫描（五份内嵌资产,含 shell/desktop/switcher/
