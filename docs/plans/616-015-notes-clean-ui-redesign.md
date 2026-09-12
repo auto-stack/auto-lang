@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-616
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: 015-notes-clean-ui-redesign
 author: [zhaopuming]
 created_at: 2026-09-12
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 6
 total_steps: 10
 ---
 
