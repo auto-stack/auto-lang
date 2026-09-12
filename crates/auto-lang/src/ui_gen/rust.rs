@@ -1042,6 +1042,40 @@ impl RustGenerator {
         // view() method
         code.push_str(&self.generate_view_method(widget));
 
+        // Plan 005 follow-up: carry the declarative `bind { ... }` map into
+        // standalone Rust/Iced. VM already consumes AuraWidget.key_bindings;
+        // these typed hooks let the Rust runner use the same source contract
+        // without editing generated files or routing through string events.
+        if !widget.key_bindings.is_empty() {
+            let mut bindings: Vec<(&String, &String)> = widget.key_bindings.iter().collect();
+            bindings.sort_by(|a, b| a.0.cmp(b.0));
+            code.push_str("\n    fn key_bindings(&self) -> std::collections::HashMap<String, String> {\n");
+            code.push_str("        let mut bindings = std::collections::HashMap::new();\n");
+            for (key, handler) in &bindings {
+                code.push_str(&format!(
+                    "        bindings.insert({:?}.to_string(), {:?}.to_string());\n",
+                    key, handler,
+                ));
+            }
+            code.push_str("        bindings\n    }\n");
+
+            code.push_str("\n    fn key_message(&self, key: &str) -> Option<Self::Msg> {\n");
+            code.push_str("        match key {\n");
+            for (key, handler) in &bindings {
+                let variant = self.extract_variant_name(handler);
+                let has_unit_variant = self.message_variants.iter().any(|v| {
+                    v.name == variant && v.payload.is_empty()
+                });
+                if has_unit_variant {
+                    code.push_str(&format!(
+                        "            {:?} => Some({}::{}),\n",
+                        key, msg_type, variant,
+                    ));
+                }
+            }
+            code.push_str("            _ => None,\n        }\n    }\n");
+        }
+
         // Plan 371 Task 21: state_snapshot() override — emit only scalar fields
         // (String/i32/i64/u32/u64/f32/f64/bool). Collections and nested components
         // are skipped. Feeds the rust-mode MCP `autoui_state` tool via SharedState.

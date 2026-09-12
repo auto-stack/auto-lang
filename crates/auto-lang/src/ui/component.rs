@@ -42,6 +42,22 @@ pub trait Component: Sized + Debug {
         None
     }
 
+    /// Declarative keyboard bindings exposed by the AutoUI Rust runner.
+    ///
+    /// VM mode reads the same map from the dynamic component.  Keeping the
+    /// hook on the backend-neutral trait lets generated Rust components use
+    /// the identical `bind { "key" -> .Message }` contract.
+    fn key_bindings(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+
+    /// Resolve a bound key to the component's typed message.  The Rust
+    /// runner performs the platform key normalization, then calls this hook
+    /// so generated code remains fully typed and free of string dispatch.
+    fn key_message(&self, _key: &str) -> Option<Self::Msg> {
+        None
+    }
+
     /// Handle messages - Auto's equivalent of `fn on(ev Msg)`
     ///
     /// This is where state mutations happen based on incoming messages.

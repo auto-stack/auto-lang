@@ -20765,6 +20765,16 @@ where
             }
         }
         WrapperMsg::Debug(s) => {
+            // Plan 005 follow-up: standalone Rust components expose the same
+            // declarative key bindings as VM components.  The subscription
+            // below carries only keys declared by the component; resolve the
+            // typed message here so generated code stays backend-neutral.
+            if let Some(key) = s.strip_prefix("__autoui_key|") {
+                if let Some(m) = w.inner.key_message(key) {
+                    w.inner.on(m);
+                }
+                return iced::Task::none();
+            }
             // Plan 371 Task 19: MCP action dispatch (rust mode). Two addressing
             // modes, both resolved against the inner component's typed View tree:
             //
@@ -20875,8 +20885,40 @@ fn extract_handler_from_view<M: Clone + Debug>(
     }
 }
 
+/// Convert an Iced key press to the key spelling used by AutoUI `bind` blocks.
+/// This intentionally mirrors the dynamic VM keyboard path for the named
+/// navigation keys and raw character keys.
+fn rust_component_key_string(event: &iced::Event) -> Option<String> {
+    let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = event else {
+        return None;
+    };
+    match key {
+        iced::keyboard::Key::Named(named) => {
+            let name = match named {
+                iced::keyboard::key::Named::Enter => "Enter",
+                iced::keyboard::key::Named::Escape => "Escape",
+                iced::keyboard::key::Named::Backspace => "Backspace",
+                iced::keyboard::key::Named::Tab => "Tab",
+                iced::keyboard::key::Named::Space => " ",
+                iced::keyboard::key::Named::ArrowUp => "ArrowUp",
+                iced::keyboard::key::Named::ArrowDown => "ArrowDown",
+                iced::keyboard::key::Named::ArrowLeft => "ArrowLeft",
+                iced::keyboard::key::Named::ArrowRight => "ArrowRight",
+                iced::keyboard::key::Named::Delete => "Delete",
+                iced::keyboard::key::Named::Home => "Home",
+                iced::keyboard::key::Named::End => "End",
+                _ => return None,
+            };
+            Some(name.to_string())
+        }
+        iced::keyboard::Key::Character(c) => Some(c.to_string()),
+        _ => None,
+    }
+}
+
 /// iced `subscription` callback for `run_app_devtools`: forwards the inner
-/// component's subscription (lifted to `WrapperMsg`) plus F12 + window events.
+/// component's subscription (lifted to `WrapperMsg`) plus F12, window events,
+/// and declarative Rust component key bindings.
 fn devtools_subscription<C: Component + 'static>(
     w: &DevToolsWrapper<C>,
 ) -> iced::Subscription<WrapperMsg<C>>
@@ -20939,7 +20981,30 @@ where
         }
         _ => None,
     });
-    iced::Subscription::batch(vec![inner, f12, win, mcp])
+    // Rust codegen now emits Component::key_bindings/key_message for `bind`.
+    // Rebuild identity when the declared key set changes (e.g. hot reload),
+    // while keeping the event path free of a captured component reference.
+    let mut key_names: Vec<String> = w.inner.key_bindings().into_keys().collect();
+    key_names.sort();
+    let key_filter = key_names.clone();
+    let rust_keys = iced_futures::subscription::filter_map(
+        ("autoui-rust-keyboard", key_names),
+        move |event: iced_futures::subscription::Event| {
+            let iced_futures::subscription::Event::Interaction { event, status, .. } = event else {
+                return None;
+            };
+            if matches!(status, iced::event::Status::Captured) {
+                return None;
+            }
+            let key = rust_component_key_string(&event)?;
+            if key_filter.iter().any(|bound| bound == &key) {
+                Some(WrapperMsg::<C>::Debug(format!("__autoui_key|{key}")))
+            } else {
+                None
+            }
+        },
+    );
+    iced::Subscription::batch(vec![inner, f12, win, mcp, rust_keys])
 }
 
 /// Plan 407: tick subscription using run_with (avoids generic map const check).
