@@ -961,6 +961,8 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
         registry.register_with_id("py.py_raise", crate::py_ffi::NATIVE_PY_RAISE);
         // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
         registry.register_with_id("py.py_int", crate::py_ffi::NATIVE_PY_INT);
+        // Plan 602 (D2): Python 类派生工厂（exec 模板 + 回调方法挂载）。
+        registry.register_with_id("py.py_subclass", crate::py_ffi::NATIVE_PY_SUBCLASS);
     }
 
     let mut native_interface = crate::vm::native::NativeInterface::new();
@@ -6665,6 +6667,10 @@ mod plan593_theme_registry_tests;
 // Plan 606: Photo gallery thumbnails and fit parity test.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan606_gallery_tests;
+// PLAN-615 T-07: calc 011 Programmer HEX 首光回归（VM 侧逻辑锚）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan615_calc_prog_tests;
+
 
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]
@@ -6826,6 +6832,11 @@ mod plan510_pool_tests;
 #[path = "tests/plan608_dispatch_golden_tests.rs"]
 mod plan608_dispatch_golden_tests;
 
+// Plan 394：External future 真挂起架构（Phase A 门禁 + B/C 骨架）。
+#[cfg(test)]
+#[path = "tests/plan394_future_arch_tests.rs"]
+mod plan394_future_arch_tests;
+
 // os-007（origin PLAN-577/P534-D4）：avatar 家族渲染探针。
 #[cfg(test)]
 #[path = "tests/plan577_avatar_tests.rs"]
@@ -6840,6 +6851,12 @@ mod plan577_breadcrumb_cycle_tests;
 #[cfg(test)]
 #[path = "tests/gallery_pages_compile_tests.rs"]
 mod gallery_pages_compile_tests;
+
+// PLAN-614 临时探针:VM 轨模块 fn 对 Obj 嵌套 children/List/bool 参数行为
+// 隔离(tree 组件族 VM 端 first-light 排障;定位后可退役)。
+#[cfg(test)]
+#[path = "tests/p614_tree_vm_probe.rs"]
+mod p614_tree_vm_probe;
 
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]

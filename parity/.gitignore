@@ -37,3 +37,8 @@ libs/*/tests/rust/c_*_tmp/
 # Plan 461 py_matplotlib: savefig artifacts written by the parity runs.
 libs/*/*/py_matplotlib_tmp/
 libs/*/py_matplotlib_tmp/
+
+# Plan 602: a2py sibling output — `auto trans --path X python` writes X.py
+# next to the .as source inside tests/auto/.
+libs/*/*/tests/auto/*.py
+libs/*/tests/auto/*.py

@@ -58,9 +58,42 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   误判为捕获变量——STORE 落本地槽、LOAD 走捕获环境错位读裸 id；初值先走、
   绑定后生效；嵌套 If/For/Block 语句仍不遍历为存量边界，注释在案）。探针
   载具：闭包 let 块/显式 return/闭包内 py 调用（PLAN-598 cl/iso/v/hd.as）。
+- py 类派生工厂 + 多参回调 ABI（plan-602，P539-D4 交付）：**py 桥扩至
+  481**——`py_subclass(name, base, methods)`（exec 类模板 + 回调挂载：
+  Str 值 = Python 源码方法 exec 内联，缩进归一=非空行统一 +4，方法
+  自包含 import；Closure 值 = 回调方法经类体内真 `def` 包装器委托 ns
+  槽位 `_auto_cb_{i}` PyCFunction——裸 PyCFunction 非 descriptor 不绑
+  self，单下划线前缀避 class body 名称改写，方法名排序保类体确定性；
+  实例化走 py_call0 type call，`__init__` 正常执行）；`run_closure_bridged`
+  回调封送**单参泛化 n 参**（PyTuple 逐元素顺序上栈，arity=闭包 n_args
+  不匹配→TypeError 含期望/实际（单测钉死），0 参不上栈直呼，self 首参
+  句柄约定）；窗口/GIL/重入≥3/生存期契约成文
+  （python-parity-roadmap.md §7.3）；语料 py_torch_subclass 三轨 4/4
+  （parity phase p12）。
 - 未实现：AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions）。
 
 - 退出审计三挂点（plan-575）：`vm/ffi/stdlib.rs` `exit_audit`/`exit_audit_path`/`install_exit_audit_panic_hook`——`Process.exit` shim（site=vm_process_exit）、全局 panic hook（code=101+消息+位置，链式保留既有 hook）、desktop 装配管线 `run_session` 正常返回（site=main_return，实机 shutdown 端到证）三 site 落笔；路径 env `AUTO_DESKTOP_EXIT_LOG`（缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log），写失败静默=零行为变更（G3）；用途=静默退出归因常驻取证面（526 降档🟡 疑外部击杀，真实复现审计指认 site 即重启归因；台账 scratch/p575/ledger.jsonl）。
+## 布尔短路求值语义（plan-615）
+
+`&&`/`||` 为**短路求值**（PLAN-615 T-01 根修；此前 codegen 发射单条急切
+`AND`/`OR` 指令，RHS 无条件求值——`ops.len() > 0 && ops[ops.len() - 1]` 类
+守卫在空容器上触碰越界索引，Plan 550 IndexError 翻转后引爆 calc 011 Equals
+冻结）。契约：
+
+- **求值规则**：`&&` 左臂 falsy 不求值右臂；`||` 左臂 truthy 不求值右臂；
+  嵌套链左结合逐臂短路。**结果恒归一化 bool**（非 JS 的"返回原操作数"——
+  .at 中布尔算符操作数均在 bool 位语境，与 TS/Py/C/Rust/GD 转译后端在
+  bool 域结果一致）。
+- **发射形态**（codegen 二元臂 `Op::And/Op::Or`，PLAN-615）：
+  `[a] DUP JMP_IF_Z/NZ Lshort [b] JMP Lend; Lshort: PUSH_BOOL 占位; Lend:
+  AND/OR`——`JMP_IF_Z/NZ` 弹掉的是 DUP 副本（LHS 本体留栈），短路路径补推
+  真值占位与 LHS 配对进末端 `AND`/`OR` 真值归一，双路径栈平衡；条件位
+  （if/while）与值上下文（赋值/实参）共用同一表达式臂，语义统一。
+- **正交语义**：GET_ELEM 越界 IndexError（plan-550 T05）不受影响——短路
+  使越界索引不可达属守卫语义；合法负索引（Python 式 normalize，-1 尾元素）
+  保持。回归锚：`test/vm/99_short_circuit/`（短路矩阵副作用计数/calc
+  eval_expr 全文/负索引共存三件）+ `plan615_calc_prog_tests`。
+
 ## RC 生命周期协议（plan-604）
 
 Plan 419「copy-on-load 所有权协议」+ PLAN-062 T12 stake 影子账本的**结算语义**单点记载（SD-01；KD-VM1 根因即「struct 字面量经容器写的 stake 结算语义无记载」导致的实现缺口，plan-604 补全）。

@@ -45,6 +45,12 @@
   **`=x.y.z` 精确 pin 纪律**（DIV-DEP-17：caret 漂移至 1.26 → API 移除 →
   wrapper 整包失败）。红面 DIV-DEP-15（a2r parse*/nil 启发式劫持）登记不进
   TAP；DIV-DEP-16（VM EQ 漏 TAG_I64）当场修复。
+- **py 类派生工厂（PLAN-602）**：`libs/python/py_torch_subclass/`——
+  自定义 nn.Module/Dataset 子类 + Auto 回调方法（`py_subclass(481)` exec
+  工厂 + n 参回调 ABI），三方 parity 四案全绿：Module forward 标量
+  （seed0 钉值）/Dataset `__len__`+`__getitem__`/Auto 驱动训练环收敛/
+  重入 ≥3 层探针。**phase p12**（torch 环境门控，同 p8/p9 无网络需求；
+  `use.py` 导入绑 callable——base 类走模块 getattr 惯用法）。
 - 不做：不修复编译器分歧本身（修复在 auto-lang）；不纳入主 workspace（独立 Cargo.toml/lock）。
 
 ## 模块架构

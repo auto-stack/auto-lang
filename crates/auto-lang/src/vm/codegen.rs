@@ -5429,6 +5429,8 @@ impl Codegen {
         const NATIVE_PY_RAISE: u16 = 479;
         // Plan 567 T18 (W3 D4): GIL int() 显式标量提取。
         const NATIVE_PY_INT: u16 = 480;
+        // Plan 602 (D2): py_subclass 类派生工厂。
+        const NATIVE_PY_SUBCLASS: u16 = 481;
         // Insert placeholder entries; the (module, full_path) tuple is unused for
         // dispatch since the native IDs are fixed constants. The qualified lookup
         // below uses the entry's existence to set is_py_ffi_call = true.
@@ -5463,6 +5465,8 @@ impl Codegen {
                 reg.register_with_id("py.py_call_kw_may", NATIVE_PY_CALL_KW_MAY);
                 reg.register_with_id("py.py_raise", NATIVE_PY_RAISE);
                 reg.register_with_id("py.py_int", NATIVE_PY_INT);
+                // Plan 602 (D2): Python 类派生工厂。
+                reg.register_with_id("py.py_subclass", NATIVE_PY_SUBCLASS);
             }
         }
         if !self.py_native_map.contains_key("py_getattr") {
@@ -5516,6 +5520,8 @@ impl Codegen {
             "py_call_kw_may",
             "py_raise",
             "py_int",
+            // Plan 602 (D2): Python 类派生工厂（exec 模板 + 回调挂载，481）。
+            "py_subclass",
         ] {
             if !self.py_native_map.contains_key(builtin) {
                 self.py_native_map.insert(
@@ -7072,6 +7078,36 @@ impl Codegen {
                         unimplemented!("Assignment to complex LHS not supported yet");
                     }
                 } else {
+                    // PLAN-615 T-01: && / || 短路求值发射——RHS 仅在 LHS 真值需要时求值，
+                    // 与全部转译后端一致（TS/Py/C/Rust/GD 均发射原生短路算符）。旧的急切
+                    // `emit(AND/OR)` 让 `ops.len() > 0 && ops[ops.len() - 1]` 类守卫在空栈
+                    // 上也求值 ops[-1]（calc 011 Equals 回归根因，Plan 550 IndexError 引爆）。
+                    // 发射形态（JMP_IF_Z/NZ 弹掉的是 DUP 副本，LHS 本体留栈；末端保留
+                    // AND/OR 真值归一——短路路径 = [falsy LHS, truthy 占位] 归一 false，
+                    // 求值路径 = [a, b]，双路径栈平衡）：
+                    //   a && b:  [a] DUP JMP_IF_Z Lshort [b] JMP Lend
+                    //            Lshort: PUSH_BOOL 1   Lend: AND
+                    //   a || b:  [a] DUP JMP_IF_NZ Lshort [b] JMP Lend
+                    //            Lshort: PUSH_BOOL 0   Lend: OR
+                    if matches!(op, Op::And | Op::Or) {
+                        self.compile_expr(lhs)?;
+                        self.emit(OpCode::DUP);
+                        self.emit(if matches!(op, Op::And) { OpCode::JMP_IF_Z } else { OpCode::JMP_IF_NZ });
+                        let short_jump = self.emit_placeholder_i16();
+                        self.compile_expr(rhs)?;
+                        self.emit(OpCode::JMP);
+                        let end_jump = self.emit_placeholder_i16();
+                        let short_pos = self.code.len();
+                        self.patch_jump_to(short_jump, short_pos);
+                        self.emit(OpCode::PUSH_BOOL);
+                        self.code.push(if matches!(op, Op::And) { 1 } else { 0 });
+                        let end_pos = self.code.len();
+                        self.patch_jump_to(end_jump, end_pos);
+                        self.emit(if matches!(op, Op::And) { OpCode::AND } else { OpCode::OR });
+                        self.last_expr_type = ObjectType::Bool;
+                        return Ok(());
+                    }
+
                     // Plan 073 Stage A.5: Check if this is a float/double operation
                     let mut is_float = self.is_float_operation(lhs, rhs);
                     let mut is_double = self.is_double_operation(lhs, rhs);

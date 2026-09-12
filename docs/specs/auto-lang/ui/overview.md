@@ -78,6 +78,19 @@ resvg 原生栅格化——svg 无 text 约束自此解除）+ hover emphasis/�
 三段式,哨兵 999）+ 边路由 bbox 交点直线 + head/tail 字形（arrow/diamond/circle）+
 line dash/thick。契约见 [design/diagram-components.md](design/diagram-components.md)；
 group 平铺/focus 模型归 Phase 2a，DSL 静态糖归 Phase 3。
+**tree 组件族（plan-614 落地）**：TreeView（通用受控树，Ant Tree/MUI
+RichTreeView 数据轨：nodes 嵌套 record + expanded/selected 受控 +
+on_toggle/on_select 回调契约，PLAN-037 T3 通道 payload=首实参）+ FileTree
+（文件系统树自包含预设：default_expanded 播种、folder/folder-open/扩展名
+图标、badge）+ TreeIcon 有界调色板（vue 轨 icon 字面量名约束的分支式
+真 lucide 发射）。渲染 = flatten-to-rows（显式栈迭代 DFS 拍平成可见行序列，
+纯 Auto 经 Plan 522 use-fn 双端同源）+ pl-4 阶梯缩进（depth>8 钳制，字面量
+随 SFC 转译进 JIT 扫描面）。载体 widgets-gallery components/
+{tree_util,treeview,filetree,tree_icon}.at + treeview/filetree 两页
+（Display 分组，63 Widgets）。VM 轨组件侧纪律成文：纯 fn 列表遍历 while+索引
+（for-in 参数列表零次迭代）、Obj 字面量形状锁定全键书写、同名子组件全画廊
+单实例（P320）、view f-string 禁方法调用；P614-C1（MCP press 子组件行崩溃）
+挂账待引擎立项。契约见 [design/tree-components.md](design/tree-components.md)。
 
 **导航组件线（plan-482 落地，✅ plan-562 退役）**：nav/nav-group/nav-item/nav-link
 族已全部迁移至 sidebar_* 族并退役——仓内 015-notes/018-book-reader/019-video-app +
@@ -215,6 +228,24 @@ SFC 断链已由 PLAN-609 收口（根因=dep 源死指非发射链缺口，auto
 回退+import/落盘一致性守卫成文）；开放债仅余 SVG 图形属性 token 通道缺失
 ——图表主题跟随示范面受阻，charts 裸名 `<div :data>` 占位为 484 M4 有意
 形态（KNOWN-DEBT P601-T11）。settings 选择器 UI 属 auto-os 资产面移交。
+
+**615 calc 修复与增强（按钮行盒/主题传播链 OS 跟随）**：①**按钮标签行盒契约
+（SD-03）**——按钮标签（纯文本/样式路径/hicon+lucide 图标行）行高钳
+`Relative(1.0)`（iced 0.14 文本默认 1.3，额外 leading 全落字形上方，无高度类
+按钮〔shrink 高=行盒高〕字形系统性偏下 ~0.15em）；显式 `leading-*` 类优先；
+高度类按钮 Plan 414 容器居中正交；回归锚
+`layout_tests::button_label_line_box_clamped_to_font_size`。②**主题传播链
+（SD-02）**——OS 系统主题（Windows `AppsUseLightTheme` 注册表，
+`ui/system_theme.rs` reg query 零 feature 耦合，非 Windows 回退 dark）→
+`DesktopConfig.theme_source`（**system 缺省**=`load()` 每次 OS 派生
+`dark_theme`〔含 mtime 外写热应用轮询同链〕；**manual**=设置面板 set_theme
+用户显式切换即置+持久化终结跟随；存量配置文件缺键按 system=即时获得跟随）→
+应用 `dark_mode`（boot 播种〔518 在案〕+ launch 播种缺省臂 + 独立 VM 窗
+`AUTO_UI_THEME` 环境链〔CLI>os-config>pac〕未解析时 OS 回退）；语义 token 类
+（bg-card/bg-muted/bg-primary…）随 set_dark_mode 自动双档，应用级零手工分支。
+③bind 键盘直输：parse_bind_block 零参约束（仅收 `.Name`）——模式感知零参
+Key 处理器族范式（带参 bind 扩展=KNOWN-DEBT P615-D1）；`dom.copy_text` 双端
+剪贴板内建（VM native 2926 复用 418 面/vue navigator.clipboard）。
 
 ## 关键入口
 

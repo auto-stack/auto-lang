@@ -1,0 +1,209 @@
+// PLAN-615 T-02: calc 011 eval_expr 全文转正语料——表达式引擎守卫
+// `ops.len() > 0 && ops[ops.len() - 1] != "("` 在短路语义下空栈不再触碰
+// ops[-1]（VM 实机 Equals 回归根因形态），结果与 Vue 端一致。
+// 代码逐字摘自 examples/ui/011-calculator/src/front/app.at（Plan 403 形态）。
+fn main() {
+    print(eval_expr("2+9"))
+    print(eval_expr("9+2"))
+    print(eval_expr("2*(3+4)"))
+    print(eval_expr("7/2"))
+    print(eval_expr("10/0"))
+    print(eval_expr("2+"))
+    print(eval_expr("-3+5"))
+    print(eval_expr("2^3^2"))
+}
+
+fn eval_expr(input str) str {
+    var nums List<str> = []
+    var ops List<str> = []
+    var i int = 0
+    var n int = input.len()
+    var ok bool = true
+
+    while i < n {
+        var ch str = input.slice(i, i + 1)
+        if ch == " " {
+            i = i + 1
+        }
+        if ch.is_digit() || ch == "." {
+            var j int = i
+            var num_str str = ""
+            while j < n {
+                var c str = input.slice(j, j + 1)
+                if c.is_digit() || c == "." {
+                    num_str = num_str + c
+                    j = j + 1
+                } else {
+                    break
+                }
+            }
+            i = j
+            nums.push(num_str)
+        }
+        else if ch == "(" {
+            ops.push("(")
+            i = i + 1
+        }
+        else if ch == ")" {
+            while ops.len() > 0 && ops[ops.len() - 1] != "(" {
+                ok = apply_top(nums, ops)
+                if !ok {
+                    return "ERROR"
+                }
+            }
+            if ops.len() > 0 {
+                ops.pop()
+            }
+            i = i + 1
+        }
+        else if is_op(ch) {
+            if ch == "-" {
+                var at_start bool = i == 0
+                var prev str = ""
+                if i > 0 {
+                    prev = input.slice(i - 1, i)
+                }
+                if at_start || prev == "(" || is_op(prev) {
+                    var j int = i + 1
+                    var num_str str = "-"
+                    while j < n {
+                        var c str = input.slice(j, j + 1)
+                        if c.is_digit() || c == "." {
+                            num_str = num_str + c
+                            j = j + 1
+                        } else {
+                            break
+                        }
+                    }
+                    if j > i + 1 {
+                        i = j
+                        nums.push(num_str)
+                    } else {
+                        i = i + 1
+                    }
+                } else {
+                    while ops.len() > 0 && ops[ops.len() - 1] != "(" && prec(ops[ops.len() - 1]) >= prec(ch) {
+                        ok = apply_top(nums, ops)
+                        if !ok {
+                            return "ERROR"
+                        }
+                    }
+                    ops.push(ch)
+                    i = i + 1
+                }
+            } else {
+                while ops.len() > 0 && ops[ops.len() - 1] != "(" && prec(ops[ops.len() - 1]) >= prec(ch) {
+                    ok = apply_top(nums, ops)
+                    if !ok {
+                        return "ERROR"
+                    }
+                }
+                ops.push(ch)
+                i = i + 1
+            }
+        }
+        else {
+            i = i + 1
+        }
+    }
+
+    while ops.len() > 0 {
+        if ops[ops.len() - 1] == "(" {
+            ops.pop()
+        } else {
+            ok = apply_top(nums, ops)
+            if !ok {
+                return "ERROR"
+            }
+        }
+    }
+
+    if nums.len() == 1 {
+        return fmt_num(nums[0].to_float())
+    }
+    return "ERROR"
+}
+
+fn apply_top(nums List<str>, ops List<str>) bool {
+    if ops.len() == 0 || nums.len() < 2 {
+        return false
+    }
+    var op str = ops[ops.len() - 1]
+    ops.pop()
+    var b float = nums[nums.len() - 1].to_float()
+    nums.pop()
+    var a float = nums[nums.len() - 1].to_float()
+    nums.pop()
+    var result float = 0.0
+    if op == "+" {
+        result = a + b
+    }
+    if op == "-" {
+        result = a - b
+    }
+    if op == "*" {
+        result = a * b
+    }
+    if op == "/" {
+        if b == 0.0 {
+            return false
+        }
+        result = a / b
+    }
+    if op == "^" {
+        result = math.pow(a, b)
+    }
+    if op == "%" {
+        result = a - b * (a / b)
+    }
+    nums.push(result.to_string())
+    return true
+}
+
+fn prec(op str) int {
+    if op == "+" {
+        return 1
+    }
+    if op == "-" {
+        return 1
+    }
+    if op == "*" {
+        return 2
+    }
+    if op == "/" {
+        return 2
+    }
+    if op == "%" {
+        return 2
+    }
+    if op == "^" {
+        return 3
+    }
+    return 0
+}
+
+fn fmt_num(v float) str {
+    return v.to_string()
+}
+
+fn is_op(ch str) bool {
+    if ch == "+" {
+        return true
+    }
+    if ch == "-" {
+        return true
+    }
+    if ch == "*" {
+        return true
+    }
+    if ch == "/" {
+        return true
+    }
+    if ch == "^" {
+        return true
+    }
+    if ch == "%" {
+        return true
+    }
+    return false
+}

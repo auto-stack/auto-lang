@@ -331,14 +331,44 @@ Plan 539 定案：`*` 保持逐元素语义（torch/numpy 同义），矩阵乘�
 - **成本面**：dunder `__pow__` 路由臂 + 优先级表插入（右结合）。
 - **建议**：可与 `@` 合并同一运算符批计划。
 
-### 7.3 W3 类派生（py_subclass）延期备注
+### 7.3 回调桥窗口/GIL/重入/生存期契约（Plan 602 定稿，2026-09-11）
 
-自定义 `nn.Module`/`Dataset` 需要 Python 侧类工厂（`exec` 生成类 +
-`__len__`/`__getitem__`/`forward` 方法绑回 Auto 回调）。回调桥
-（Plan 539 T21，thread-local 任务槽）已打通单回调通道（map/apply_
-探针实证），但类工厂的方法绑定面 + GIL/生存期约束审查超出 W3 预算，
-**显式延期**——组合式替代（`nn.Sequential`/裸 Linear 栈）已由
-py_torch_train 套件覆盖为金样。见 KNOWN-DEBT P539-D4。
+> 原"W3 类派生延期备注"已交付（[PLAN-602](../../plans/602-py-subclass-class-factory.md)，
+> `py_subclass(481)` 类工厂 + 多参回调封送），原隐式约束升格为成文契约，
+> 供后续 py 桥计划直接引用。
+
+**窗口纪律（executable contract，非注释约定）**：
+- Auto 回调（经 `py_callable`/`py_subclass` 绑定的闭包）只在宿主
+  py_call 族 shim 的 BridgeGuard 窗口内合法——窗口 = thread-local
+  `BRIDGE_TASK`/`BRIDGE_VM` 槽（py_ffi.rs），shim 入口安装/出口清除；
+- 窗口外触发 → `RuntimeError("Auto callback fired outside a host py shim
+  window (unsupported; num_workers=0 only)")`（守卫在 py_ffi 单测钉死；
+  嵌入式解释器里 Python 本就不会在窗口外运行，故语料层无从触发——
+  这是边界声明而非缺口）；
+- 窗口纪律的单线程前提 = T02 约束：num_workers=0、GIL 持有者=VM 线程。
+  DataLoader worker/Python 侧线程主动回调不支持（→ §7.4 ⑧ 后续）。
+
+**多参回调 ABI（Plan 602 D1）**：Python 侧调用参数按 tuple 顺序逐元素
+封送上栈；闭包声明 arity（`Closure::n_args`，类回调首参=self 句柄）
+不匹配 → Python `TypeError`（含期望/实际）；0 参回调（`__len__`）不
+上栈直呼。
+
+**类工厂绑定语义（Plan 602 D2/D3）**：`py_subclass(name, base, methods)`
+——Str 值 = Python 源码方法（exec 内联，缩进归一=非空行统一 +4，方法
+须自包含 import）；Closure 值 = 回调方法，经类体内真 `def` 包装器委托
+ns 槽位 `_auto_cb_{i}` PyCFunction（裸 PyCFunction 非 descriptor 不绑
+self；单下划线前缀避 class body 名称改写）；a2py 轨 `_auto_subclass`
+helper setattr lambda（真函数）——双轨绑定语义同律。
+
+**重入深度（探针钉死）**：Auto→py→回调→py→… 嵌套 shim 链实测 ≥3 层
+（py_torch_subclass 语料 test_reentry_depth3：outer→mid→leaf 三级嵌套
+全链绿）；更高深度未设硬限，栈预算沿 VM 任务栈（AutoTask 256+ 槽），
+更深嵌套按需实测记录。
+
+**生存期**：self/参数句柄走既有 VmRef/RC 纪律（nv_to_value_local 对象
+臂 → `Value::VmRef` → heap 引用计数），无新增机制（602 审计确认）；
+回调内持有的 Python 对象经 `PyObjectHandle` 存活于 VM 堆，GIL 归还后
+不可解引用（既有纪律）。
 
 ### 7.4 PyTorch 后续计划队列（2026-09-04，Plan 539 归档后登记）
 
@@ -356,7 +386,7 @@ py_torch_train 套件覆盖为金样。见 KNOWN-DEBT P539-D4。
 | ④ | Auto 原生 struct 运算符重载 | 539 dunder 路由只服务 `PyObjectHandle`；Auto 自己的 `type T` 上重载 `+ * ==` 需 trait 体系——与 Plan 525 延后的 trait/动态分发同一条语言线，宜合并立项 | 525 非目标清单；W1 dunder 路由为语义对照 |
 | ⑤ | bulk ndarray buffer 封送 | 训练批数据 Auto 侧持有时的必要件（缓冲协议/零拷贝）；539 靠"数据活 Python 侧"约定绕开，批输入规模化后绕不开 | 539 非目标清单；需求驱动 |
 | ⑥ | for-in tuple 解包 | DIV-PY-TUPLE-1：tuple→List 拍平后多变量循环解包在 a2py 侧 unpack 报错，W2 套件用单变量+索引规避；语法级解包或 Auto tuple 值类型二选一 | 539 T07 执行注记；DIV-PY-TUPLE-1 |
-| ⑦ | ~~a2py 语义修补批~~ ✅ 已交付（2026-09-09, [Plan 598](../../plans/archive/598-a2py-semantic-fix-batch.md)）：P539-D3 糖族恒括号纪律七臂（py_call/py_call_may/py_getattr/py_matmul/py_getitem/py_setitem/py_call0——审计较原清单扩容）；DIV-PY-CLOSURE-1 双面清偿（a2py 语句体闭包 set 字面量 → 单表达式块 lambda 化 + 含语句块显式诊断；**VM 侧实勘扩面**——collect_free_vars 块内 let 误判捕获 + 闭包局部帧无预留，双根因修复，闭包内 let/py 调用首次全绿）；p5-p9 全相位 179 case 零回归。句柄裸 id 面的 Python 侧回调消费模型仍归 W3（P539-D4） | KNOWN-DEBT P539-D3 ✅ + DIV-PY-CLOSURE-1 大面 ✅（拆面记账） |
+| ⑦ | ~~a2py 语义修补批~~ ✅ 已交付（2026-09-09, [Plan 598](../../plans/archive/598-a2py-semantic-fix-batch.md)）；其"句柄裸 id 面的 Python 侧回调消费"归 W3 尾巴已由 [PLAN-602](../../plans/602-py-subclass-class-factory.md) 交付（py_subclass 类工厂 + 多参回调 ABI + §7.3 契约化，2026-09-11）✅ 核销：P539-D3 糖族恒括号纪律七臂（py_call/py_call_may/py_getattr/py_matmul/py_getitem/py_setitem/py_call0——审计较原清单扩容）；DIV-PY-CLOSURE-1 双面清偿（a2py 语句体闭包 set 字面量 → 单表达式块 lambda 化 + 含语句块显式诊断；**VM 侧实勘扩面**——collect_free_vars 块内 let 误判捕获 + 闭包局部帧无预留，双根因修复，闭包内 let/py 调用首次全绿）；p5-p9 全相位 179 case 零回归。原"句柄裸 id 面回调消费归 W3（P539-D4）"尾巴已随 602 交付核销（见上） | KNOWN-DEBT P539-D3 ✅ + DIV-PY-CLOSURE-1 大面 ✅ + P539-D4 尾巴 ✅（602 拆面：多线程泵仍 open 归长期） |
 | ⑧ | 条件立项 | GPU/CUDA device 路径验证专项（539 只断言确定性 CPU）；transformers/datasets 上层生态套件（沿用 461/539 三方方法论） | 需求触发 |
 
 ### 7.5 长期方向：Auto→C（libtorch）替代热路径

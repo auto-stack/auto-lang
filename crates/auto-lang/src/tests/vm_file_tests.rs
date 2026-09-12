@@ -844,3 +844,9 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[cfg(feature = "python")]
 #[test] fn test_99_py_dispatch_01_dual_len() { test_vm("99_py_dispatch/01_dual_len").unwrap(); }
 #[test] fn test_99_py_dispatch_02_auto_str_unchanged() { test_vm("99_py_dispatch/02_auto_str_unchanged").unwrap(); }
+// === 99_short_circuit（PLAN-615 T-02：&& / || 短路求值常驻回归）===
+// 真值要求：LHS 已定真值时 RHS 不得求值（副作用计数）、索引守卫空容器可达性
+// 消除（calc 011 Equals 回归根因）、结果归一化 bool、Plan 550 负索引合法语义共存。
+#[test] fn test_99_short_circuit_001_and_or() { test_vm("99_short_circuit/001_and_or_short_circuit").unwrap(); }
+#[test] fn test_99_short_circuit_002_calc_eval_expr() { test_vm("99_short_circuit/002_calc_eval_expr").unwrap(); }
+#[test] fn test_99_short_circuit_003_negative_index_guard() { test_vm("99_short_circuit/003_negative_index_guard").unwrap(); }

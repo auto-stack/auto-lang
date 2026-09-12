@@ -337,6 +337,11 @@ pub const NATIVE_PY_RAISE: u16 = 479;
 /// Plan 567 T18（W3 D4）: `py_int(x)` — GIL int() 显式标量提取（int 承诺
 /// 的用户侧强制通道；对齐 py_float 465 形态）。
 pub const NATIVE_PY_INT: u16 = 480;
+/// Plan 602 (D2): `py_subclass(name, base, methods)` — Python 类派生工厂。
+/// methods 为 Auto 对象字面量：Str 值 = Python 源码方法（exec 内联），
+/// Closure 值 = Auto 回调方法（经桥窗口 n 参回调，self 首参句柄约定）。
+/// 返回类句柄；实例化走 py_call0（Python type call，`__init__` 正常执行）。
+pub const NATIVE_PY_SUBCLASS: u16 = 481;
 /// Plan 539 W2 (T19): `py_float(x)` — explicit scalar extraction
 /// (`float(x)` in GIL). 0-dim tensors and other float-likes stay opaque
 /// handles on return (see the marshal note); this is the honest channel.
@@ -1399,16 +1404,12 @@ impl PyFfiBridge {
                     move |args: &Bound<'_, PyTuple>,
                           _kwargs: Option<&Bound<'_, PyDict>>|
                           -> PyResult<Py<PyAny>> {
-                        let arg = args
-                            .get_item(0)
-                            .map_err(|_| {
-                                pyo3::exceptions::PyRuntimeError::new_err(
-                                    "auto_callback expects at least 1 argument",
-                                )
-                            })?;
+                        // Plan 602 (D1): the full argument tuple goes to the
+                        // bridged closure; arity is checked against the
+                        // closure's declared n_args (TypeError on mismatch).
                         // The GIL is held by the calling C frame; attach is
                         // the 0.29 way to obtain the token without capturing it.
-                        pyo3::Python::attach(|py| run_closure_bridged(py, closure_id, &arg))
+                        pyo3::Python::attach(|py| run_closure_bridged(py, closure_id, args))
                     },
                 )
                 .map_err(|e| VMError::FFI(format!("py_callable construction failed: {}", e)))?;
@@ -1424,6 +1425,17 @@ impl PyFfiBridge {
         };
         self.native_interface
             .register_static(NATIVE_PY_CALLABLE, callable_shim);
+
+        // ---- py_subclass(name, base, methods) -> class handle ----
+        // Plan 602 (D2): Python class factory. Str method values exec inline;
+        // closure values ride the bridge window as n-arg callbacks (self
+        // first). Instantiation goes through py_call0 (type call).
+        let subclass_shim = move |task: &mut AutoTask, vm: &AutoVM| {
+            py_subclass_impl(task, vm)?;
+            Ok::<(), VMError>(())
+        };
+        self.native_interface
+            .register_static(NATIVE_PY_SUBCLASS, subclass_shim);
 
         // ---- py_setattr(obj, attr_name, value) ----
         // Plan 555 T04 (B2 桥半): 属性写通道——obj_set 组合子的 py 臂。
@@ -2014,13 +2026,17 @@ impl Drop for BridgeGuard {
     }
 }
 
-/// Plan 539 W3 (T21): run an Auto closure to completion on the bridged task
-/// and marshal its return value to Python. Returns Err when no bridge window
-/// is active (callback fired outside a host shim — unsupported, T02).
+/// Plan 539 W3 (T21) / Plan 602 (D1): run an Auto closure to completion on
+/// the bridged task and marshal its return value to Python. `args` is the
+/// full Python argument tuple — elements are marshalled onto the VM stack
+/// in order (first param deepest), and the closure's declared arity
+/// (`Closure::n_args`, self-first for class callbacks) must match the
+/// tuple length or Python raises TypeError. Returns Err when no bridge
+/// window is active (callback fired outside a host shim — unsupported, T02).
 fn run_closure_bridged<'py>(
     py: Python<'py>,
     closure_id: u32,
-    arg: &Bound<'py, PyAny>,
+    args: &Bound<'py, pyo3::types::PyTuple>,
 ) -> PyResult<Py<PyAny>> {
     let task_ptr = BRIDGE_TASK.with(|c| c.get());
     let vm_ptr = BRIDGE_VM.with(|c| c.get());
@@ -2034,21 +2050,201 @@ fn run_closure_bridged<'py>(
     let task: &mut AutoTask = unsafe { &mut *task_ptr };
     let vm: &AutoVM = unsafe { &*vm_ptr };
 
-    // Marshal the Python argument onto the VM stack as the closure argument.
-    py_auto_marshal_return(arg, task, vm).map_err(|e| {
-        pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "Auto callback argument marshal failed: {:?}",
-            e
-        ))
-    })?;
+    // Plan 602 (D1): arity = the closure's declared parameter count; a
+    // 0-arg callback (`__len__`) marshals nothing. Unknown closure ids fall
+    // through to call_closure's own invalid-id error.
+    if let Some(closure) = vm.closures.get(&closure_id) {
+        if args.len() != closure.n_args {
+            let expected = closure.n_args;
+            drop(closure);
+            return Err(pyo3::exceptions::PyTypeError::new_err(format!(
+                "Auto callback expects {} argument(s), got {}",
+                expected,
+                args.len()
+            )));
+        }
+    }
 
-    vm.call_closure(task, closure_id, 1)
+    for arg in args.iter() {
+        // Marshal the Python argument onto the VM stack as the closure argument.
+        py_auto_marshal_return(&arg, task, vm).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Auto callback argument marshal failed: {:?}",
+                e
+            ))
+        })?;
+    }
+
+    vm.call_closure(task, closure_id, args.len())
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Auto callback body failed: {:?}", e)))?;
 
     // Marshal the closure's return value back to Python.
     let ret_nv = task.ram.pop_nv();
     let ret_val = nv_to_value_local(ret_nv, vm);
     Ok(value_to_py(&ret_val, py, vm).unbind())
+}
+
+/// Plan 602 (D2): `py_subclass(name, base, methods)` class factory. Builds
+/// a Python class under the current GIL: Str method values are exec'd as
+/// class-body source (indent-normalized to 4 spaces); closure values
+/// (Int closure ids live in the VM closure registry) become callback
+/// methods. Because a bare PyCFunction is not a descriptor (no self
+/// binding as a class attribute), each callback is exposed as a real
+/// `def` wrapper in the class body delegating to a namespaced
+/// `_auto_cb_{i}` PyCFunction (single-underscore prefix: Python name
+/// mangling would rewrite a `__dunder`-style name inside the class body
+/// and break the ns lookup) — the same binding semantics as the a2py
+/// `_auto_subclass` helper's lambdas. First callback parameter is the
+/// instance handle (self-first convention).
+pub(crate) fn py_subclass_impl(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.pending_native_arg_count as usize;
+    if n != 3 {
+        return Err(VMError::FFI(format!(
+            "py_subclass needs 3 args (name, base, methods), got {}",
+            n
+        )));
+    }
+    Python::attach(|py| {
+        // TOS → bottom: methods (object literal), base (handle), name (str).
+        let methods_nv = task.ram.pop_nv();
+        let base_py = pop_auto_py_arg(task, vm, py)?;
+        let name_py = pop_auto_py_arg(task, vm, py)?;
+        let name: String = name_py
+            .extract()
+            .map_err(|e| VMError::FFI(format!("py_subclass class name must be a string: {}", e)))?;
+
+        // Decode the methods object literal from the heap.
+        if !auto_val::is_object(methods_nv) {
+            return Err(VMError::FFI(
+                "py_subclass methods must be an object literal {method: closure|str}".to_string(),
+            ));
+        }
+        let methods_id = auto_val::decode_object(methods_nv) as u64;
+        let entries: Vec<(String, auto_val::Value)> = {
+            let obj = vm
+                .get_heap_object(methods_id)
+                .ok_or_else(|| VMError::FFI("py_subclass methods object not found".to_string()))?;
+            let guard = obj.read().unwrap();
+            let od = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ObjectData>()
+                .ok_or_else(|| {
+                    VMError::FFI("py_subclass methods must be an Auto object literal".to_string())
+                })?;
+            // Sort by method name: ObjectData.fields is a HashMap, and a
+            // deterministic class body keeps the two tracks byte-comparable.
+            let mut out: Vec<(String, auto_val::Value)> = od
+                .fields
+                .iter()
+                .map(|(k, v)| {
+                    let m = match k {
+                        auto_val::ValueKey::Str(s) => s.to_string(),
+                        auto_val::ValueKey::Int(i) => i.to_string(),
+                        auto_val::ValueKey::Bool(b) => b.to_string(),
+                    };
+                    (m, v.clone())
+                })
+                .collect();
+            out.sort_by(|a, b| a.0.cmp(&b.0));
+            out
+        };
+
+        // Split: Str = Python source method body; Int = closure callback.
+        let mut src_methods: Vec<(String, String)> = Vec::new();
+        let mut callbacks: Vec<(String, u32)> = Vec::new();
+        for (m, v) in entries {
+            match v {
+                auto_val::Value::Str(s) => src_methods.push((m, s.to_string())),
+                auto_val::Value::Int(id) => {
+                    if vm.closures.contains_key(&(id as u32)) {
+                        callbacks.push((m, id as u32));
+                    } else {
+                        return Err(VMError::FFI(format!(
+                            "py_subclass method '{}' is Int({}) but no such closure id — methods must be closures or Python source strings",
+                            m, id
+                        )));
+                    }
+                }
+                _ => {
+                    return Err(VMError::FFI(format!(
+                        "py_subclass method '{}' must be a closure or a Python source string",
+                        m
+                    )));
+                }
+            }
+        }
+
+        // Class body: indent-normalized Str methods (uniform +4 on every
+        // non-empty line, so a def at col 0 lands at class-body level and
+        // its 4-space body lands at 8) + def wrappers for the callback
+        // closures (empty body needs a pass placeholder).
+        let mut body = String::new();
+        for (_m, src) in &src_methods {
+            for line in src.lines() {
+                if line.trim().is_empty() {
+                    body.push('\n');
+                } else {
+                    body.push_str("    ");
+                    body.push_str(line);
+                    body.push('\n');
+                }
+            }
+        }
+        for (i, (m, _cid)) in callbacks.iter().enumerate() {
+            body.push_str(&format!(
+                "    def {m}(self, *args):\n        return _auto_cb_{i}(self, *args)\n"
+            ));
+        }
+        if body.is_empty() {
+            body.push_str("    pass\n");
+        }
+        let src = format!("class {}(__base__):\n{}", name, body);
+
+        // Exec namespace: base handle + one PyCFunction per callback.
+        let ns = PyDict::new(py);
+        ns.set_item("__base__", base_py)
+            .map_err(|e| py_exc(py, &e))?;
+        for (i, (_m, cid)) in callbacks.iter().enumerate() {
+            let cid = *cid;
+            let func = pyo3::types::PyCFunction::new_closure(
+                py,
+                None,
+                None,
+                move |args: &Bound<'_, PyTuple>,
+                      _kwargs: Option<&Bound<'_, PyDict>>|
+                      -> PyResult<Py<PyAny>> {
+                    pyo3::Python::attach(|py| run_closure_bridged(py, cid, args))
+                },
+            )
+            .map_err(|e| {
+                VMError::FFI(format!("py_subclass callback construction failed: {}", e))
+            })?;
+            ns.set_item(format!("_auto_cb_{}", i), func)
+                .map_err(|e| py_exc(py, &e))?;
+        }
+
+        let csrc = std::ffi::CString::new(src.clone())
+            .map_err(|e| VMError::FFI(format!("py_subclass source contains NUL: {}", e)))?;
+        py.run(&csrc, Some(&ns), None).map_err(|e| {
+            VMError::FFI(format!(
+                "py_subclass exec failed for class '{}': {:?}",
+                name,
+                py_exc(py, &e)
+            ))
+        })?;
+        let cls = ns
+            .get_item(&name)
+            .map_err(|e| py_exc(py, &e))?
+            .ok_or_else(|| VMError::FFI(format!("py_subclass exec produced no '{}'", name)))?;
+
+        let type_name = safe_type_name(&cls);
+        let owned: Py<PyAny> = cls.clone().unbind();
+        let handle = PyObjectHandle::new(type_name, owned);
+        let id = vm.insert_heap_object(handle);
+        vm.rc_push(task, auto_val::encode_object(id as u32));
+        Ok::<(), VMError>(())
+    })?;
+    Ok(())
 }
 
 /// Pop a single argument from the VM stack and convert to a Python object,
@@ -3157,15 +3353,132 @@ mod tests {
 
         // Outside a host shim window the bridge must refuse (T02 constraint
         // made executable): no task slot installed -> RuntimeError.
+        // Plan 602 (D1): argument face is now the full PyTuple.
         Python::attach(|py| {
-            let arg = py.eval(
-                &std::ffi::CString::new("41").unwrap(),
-                None,
-                None,
-            )
-            .unwrap();
-            let err = run_closure_bridged(py, 0, &arg).unwrap_err();
+            let args = pyo3::types::PyTuple::empty(py);
+            let err = run_closure_bridged(py, 0, &args).unwrap_err();
             assert!(err.to_string().contains("outside a host py shim window"));
+        });
+    }
+
+    #[test]
+    fn test_run_closure_bridged_arity_mismatch_type_error() {
+        // Plan 602 (D1) / review R-602-1: inside a live bridge window, a
+        // callback whose tuple length differs from the closure's declared
+        // n_args raises Python TypeError with expected/actual in the
+        // message — pinned before the closure body would ever run (the
+        // registered closure points at no real bytecode).
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        vm.closures.insert(
+            7,
+            crate::vm::engine::Closure {
+                func_addr: 0,
+                env: std::collections::HashMap::new(),
+                n_args: 2,
+                capture_slots: std::collections::HashMap::new(),
+                param_abs: std::collections::HashMap::new(),
+            },
+        );
+        let _bridge = BridgeGuard::enter(&mut task, &vm);
+        Python::attach(|py| {
+            // Too few: 1 element vs declared 2.
+            let one = pyo3::types::PyTuple::new(py, [41]).unwrap();
+            let err = run_closure_bridged(py, 7, &one).unwrap_err();
+            assert!(
+                err.to_string().contains("expects 2 argument(s), got 1"),
+                "arity mismatch must surface as expected/actual TypeError, got: {}",
+                err
+            );
+            // Too many: 3 elements vs declared 2.
+            let three = pyo3::types::PyTuple::new(py, [1, 2, 3]).unwrap();
+            let err = run_closure_bridged(py, 7, &three).unwrap_err();
+            assert!(err.to_string().contains("expects 2 argument(s), got 3"));
+            // The TypeError channel (not RuntimeError): the mismatch is a
+            // Python-level calling-convention error, distinct from the
+            // window guard's RuntimeError above.
+            let one = pyo3::types::PyTuple::new(py, [41]).unwrap();
+            let err = run_closure_bridged(py, 7, &one).unwrap_err();
+            assert!(err.is_instance_of::<pyo3::exceptions::PyTypeError>(py));
+        });
+    }
+
+    #[test]
+    fn test_py_subclass_factory_str_and_callback_methods() {
+        // Plan 602 (D2): class factory — Str methods exec inline, closure
+        // ids become def-wrapped callbacks, and the class handle round-trips
+        // through the heap. The callback closure is never executed here (no
+        // bridge window); the factory only needs its registry entry.
+        let mut bridge = PyFfiBridge::new().unwrap();
+        bridge.register_object_shims();
+        assert!(
+            bridge.native_interface().get(NATIVE_PY_SUBCLASS).is_some(),
+            "py_subclass"
+        );
+
+        let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(0), 1024);
+        let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
+        vm.closures.insert(
+            7,
+            crate::vm::engine::Closure {
+                func_addr: 0,
+                env: std::collections::HashMap::new(),
+                n_args: 2,
+                capture_slots: std::collections::HashMap::new(),
+                param_abs: std::collections::HashMap::new(),
+            },
+        );
+        // Methods literal: __init__ (Python source) + forward (closure 7).
+        let mut methods = crate::vm::types::ObjectData::new();
+        methods.set(
+            auto_val::ValueKey::Str("__init__".into()),
+            auto_val::Value::Str("def __init__(self):\n    self.v = 41".into()),
+        );
+        methods.set(
+            auto_val::ValueKey::Str("forward".into()),
+            auto_val::Value::Int(7),
+        );
+        let methods_id = vm.insert_heap_object(methods);
+
+        // Push in argument order (arg0 deepest): name, base, methods — so
+        // methods sits at TOS, matching the native calling convention.
+        let name_idx = vm.add_string(b"Probe".to_vec());
+        task.ram.push_nv(auto_val::encode_string(name_idx as u32));
+        Python::attach(|py| {
+            let base = py.eval(c"object", None, None).unwrap();
+            let owned: Py<PyAny> = base.clone().unbind();
+            let h = PyObjectHandle::new("type".to_string(), owned);
+            task.ram
+                .push_nv(auto_val::encode_object(vm.insert_heap_object(h) as u32));
+        });
+        task.ram.push_nv(auto_val::encode_object(methods_id as u32));
+        task.pending_native_arg_count = 3;
+
+        py_subclass_impl(&mut task, &vm).unwrap();
+
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_object(nv), "factory must return a class handle");
+        Python::attach(|py| {
+            let obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
+            let guard = obj.read().unwrap();
+            let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
+            let cls = pyh.obj.clone_ref(py).into_bound(py);
+            // Instantiation runs the Python-source __init__.
+            let inst = cls.call0().unwrap();
+            let v: i32 = inst.getattr("v").unwrap().extract().unwrap();
+            assert_eq!(v, 41);
+            // Callback methods are real defs on the class (self binding).
+            let fwd = cls.getattr("forward").unwrap();
+            assert_eq!(
+                fwd.getattr("__name__").unwrap().extract::<String>().unwrap(),
+                "forward"
+            );
+            assert_eq!(
+                cls.getattr("__name__").unwrap().extract::<String>().unwrap(),
+                "Probe"
+            );
         });
     }
 

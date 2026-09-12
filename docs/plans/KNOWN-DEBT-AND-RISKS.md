@@ -1196,13 +1196,15 @@
   py_setitem/py_call0——审计较原单点扩容；getattr_may/getitem_may 本就安全
   不改）；a2p golden 16_python_std/003_py_call_compound 钉死。套件 grep
   复核零活跃规避点（复合接收者中间变量规避未落在现行 .as 套件）。
-- **P539-D4 py_subclass 类派生延期（计划内预案路径）**：自定义
-  nn.Module/Dataset 需 Python 侧类工厂（exec 生成类 + 方法绑回 Auto
-  回调）。回调桥 T21 已通（thread-local 任务槽，map/apply_ 双探针
-  实证：Auto 闭包经 PyCFunction::new_closure 回投当前任务），
-  但类工厂的方法绑定面 + GIL/生存期约束审查超 W3 预算。组合式
-  替代金样 = py_torch_train（Linear 裸栈 + seed 化收敛）已在案。
-  调研节落 python-parity-roadmap.md §7.3。
+- **P539-D4 py_subclass 类派生延期 ✅ 已交付（PLAN-602，2026-09-11 拆面
+  核销）**：类工厂 + 多参回调 ABI 已由 PLAN-602 交付——`py_subclass`
+  native（481，exec 类模板 + 回调 def 包装器挂载）、回调 ABI 泛化 n 参
+  （tuple 顺序封送、arity 不匹配 TypeError、self 首参句柄）、a2py
+  `_auto_subclass` 同构 helper、语料 py_torch_subclass 三轨 4/4 一致、
+  窗口/GIL/重入/生存期契约成文（python-parity-roadmap.md §7.3）。
+  **拆面记账**：多线程回调泵（DataLoader workers/Python 侧线程主动
+  回调）不在 602 范围，保持 open 归长期（roadmap §7.4 ⑧ 条件立项
+  联动）。原组合式替代金样 py_torch_train 保留为回归面。
 
 ### P569（2026-09-06，Plan 569 执行登记——P539-D2 根治顺带的同族谎言面）
 
@@ -2048,3 +2050,32 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   token 通道示范面另案（601 排除项原文）。回归锚：024-charts vue 面测试
   维持绿。证据：`crates/auto-lang/src/ui_gen/vue.rs` tests
   test_charts_gallery_compiles 注记；601 复审记录 R 系。
+
+## P615 债务（calc-ux-fix-and-enhance，2026-09-12 work 登记待复审确认）
+
+- **P615-D1 [bind 带参消息扩展（框架级）]**：`bind { "key" -> .Handler(arg) }`
+  语法不支持——parse_bind_block 仅收 `.Name` 零参形态（parser.rs:16911），
+  AST KeyBinding 仅 (key, handler) 二元。带参键盘绑定需扩展 parser+KeyBinding
+  +aura extract+VM 动态派发（renderer IcedMessage input_value 通道）+vue
+  codegen 五面。P615 以零参 Key 处理器族 20 枚模式感知路由规避（calc 键盘
+  直输落地，`plan615_calc_prog_tests::calc_prog_key_routing_mode_aware` 守护）。
+  证据：PLAN-615 归档计划 §9 关键执行期发现 5。
+- **P615-D2 [VM handler 运行时错误不上屏]**：动态组件处理器 VM 错误仅落
+  stderr `[VM-HANDLER]` 日志（ui/dynamic.rs:1141），窗口内零反馈——calc
+  W2 症状面（等号冻结无提示）的框架级根治位。P615 应用层已有 .error/.perr
+  显式错误通道兜底；框架级「错误上屏机制」留独立计划。证据：dynamic.rs
+  1141 行；PLAN-615 §非目标。
+- **P615-D3 [ffi_dual_019_dep_layout_invariants 全档并发偶发]**：
+  dep cdylib spawn 计时敏感——`cargo tv`/`cargo tf` 全档并发下偶发红
+  （P615 执行期 2 次），隔离复跑双侧（分支/基线）3-4× 恒绿。非本计划引入
+  （基线同源）。留 flaky 排查（nextest retries 或测试内重试）。
+- **P615-D4 [VM 数值域跨端语义文档化缺口]**：实测三面——`int` 表达式乘法
+  i32 回绕（65536×65536→0）而字面量加法宽（4294967295+1=4294967296）；
+  `int` 状态/局部存储截断 i32；`u64` 局部算术全程精确但经动态组件状态管道
+  （Value::Uint→push_i32）截断。TS 端 number 统一 53-bit 精确——跨端数值
+  语义（尤其位运算与乘法）需 spec 文档化（P615 肢库以存储 <2^17 规避）。
+  证据：PLAN-615 执行期探针 tmp_int/u64 系列（已清理，结论入归档计划 §9）。
+- **P615-D5 [vue 运行时无系统主题通道]**：`prefers-color-scheme` 未接入
+  （AUTO_UI_THEME 未设时 vue 侧无 OS 回退）——VM 桌面轨已由
+  DesktopConfig.theme_source=system 派生闭环（T-06）；vue 轨首版跟随
+  pac/缺省。证据：AUTO_UI_THEME 消费面仅 cmd_tauri/cmd_vue 全局注入。

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-602
-status: reviewed              # drafting → executing → execution_done → reviewed → archived（2026-09-11 复审 pass，见 §9 re-review 记录）
+status: archived              # drafting → executing → execution_done → reviewed → archived（2026-09-11 merge 落地，终态）
 feature_name: py-subclass-class-factory
 author: [ZCode]
 created_at: 2026-09-09
@@ -347,6 +347,22 @@ detached 兄弟仓（nextest autodown-core 解析，同 592/598 先例）。）
 （起草交接：stage=new | plan_id=PLAN-602 | rev=1 | outcome=pass |
 next=work。范围锚定：W3 类派生 MVP = bridge API + Auto 驱动循环 +
 num_workers=0；声明式语法/多线程泵/GPU 显式非目标。）
+
+**merge 收据（2026-09-11，stage=merge | plan_id=PLAN-602 | rev=2 |
+outcome=pass | delivery_commit=075fdbf07（reviewed_commit a51d8e0c0 的
+纯规范文档后代，实现零变化）| 落地 merge=4bc87c6c6）**
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | 规范增量在 worktree 落笔：vm/overview SD-01 条（py 桥 481+n 参 ABI）/frontend/overview SD-02 条（_auto_subclass helper）/vm+frontend plans.md 602 行/parity project p12 段；INDEX 重生（26 projects）；worktree clean；wt-guard clean |
+| `landed` | master merge commit **4bc87c6c6**（16 files，+783/-43）；lib.rs py_subclass 注册/arity 单测在主检出点名核验 + cargo check 零错误；ancestry=plan-602-dev 全量包含 |
+| `ledger_refreshed` | .autoos/specs.json 本地账本 P602-1..6 六节各一条（reports/goals/architecture/designs/tests/reviews，file→本归档路径），原子写入+回读 6/6 验证 |
+| `archived` | git mv → docs/plans/archive/602-py-subclass-class-factory.md + status: archived 终态 |
+| `cleaned` | wt-guard 双 clean（auto-lang+auto-down 兄弟均无 reparse point）→ worktree remove（注册解除）/rm 残留（13G target 锁致首删中断，二次 guard 后直删）/auto-down prune/分支 plan-602-dev 已删/组目录 .wt/lang-602 已移除；双仓 worktree list 复核零残留 |
+
+落地插曲：merge 时 master 存在并发会话的 plan-394 未提交改动（6 文件，
+含 lib.rs）——命名 stash 保全→merge→pop 干净复原（lib.rs hunk 与 602
+注册位相距 ~5800 行，零冲突），plan-394 工作面完整无损。
 
 **re-review 记录（2026-09-11，stage=review | plan_id=PLAN-602 |
 plan_revision=2 | outcome=pass | reviewed_commit=a51d8e0c0（worktree
