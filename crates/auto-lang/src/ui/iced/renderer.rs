@@ -20836,13 +20836,14 @@ where
                     // the physical key through the component registry, then
                     // use the same typed message hook as real Iced events.
                     let event_name = widget_event.rsplit('.').next().unwrap_or(widget_event);
-                    let key = w.inner.key_bindings().iter().find_map(|(key, handler)| {
+                    let bindings = w.inner.key_bindings();
+                    let key = bindings.iter().find_map(|(key, handler)| {
                         let handler = handler.trim_start_matches('.');
                         let handler_name = handler.rsplit('.').next().unwrap_or(handler);
-                        (handler_name == event_name).then(|| key.as_str())
+                        (handler_name == event_name).then(|| key.clone())
                     });
                     if let Some(key) = key {
-                        if let Some(m) = w.inner.key_message(key) {
+                        if let Some(m) = w.inner.key_message(&key) {
                             w.inner.on(m);
                         }
                     }
