@@ -4865,6 +4865,154 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
+            // PLAN-012 W3：整桌面等比预览渲染臂——宿主合成（SD-02）。
+            // 分层 = 壁纸基色底（#hex 直铺 / None → 主色占位）→ 该分区
+            // 逐窗 snapshot tile（Contain 等比贴盒居中；SWR 续帧 + miss
+            // 占位+icon+request_capture 预抓，window_thumbnail 同款纪律）。
+            // tile 定位沿 title_menu 的 padding-left/top 形态（Fill 容器
+            // + 内层 Fixed 内容）。盒尺寸取 style Fixed 宽高（缺省 176×64
+            // ——shell 卡片消费形态），数据缺席 = 纯壁纸底。
+            AbstractView::WorkspacePreview { ws, fallback_icon, style } => {
+                use crate::ui::iced::workspace_preview as wp;
+                let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                let box_w = is
+                    .as_ref()
+                    .and_then(|is| is.width.clone())
+                    .and_then(|w| match w { IcedSize::Fixed(f) => Some(f), _ => None })
+                    .unwrap_or(176.0);
+                let box_h = is
+                    .as_ref()
+                    .and_then(|is| is.height.clone())
+                    .and_then(|h| match h { IcedSize::Fixed(f) => Some(f), _ => None })
+                    .unwrap_or(64.0);
+                let data = wp::current();
+                let border_radius =
+                    is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
+                let mut layers: Vec<iced::Element<'static, M>> = Vec::new();
+                // ① 壁纸基色底（None → 主色占位）。
+                let bg = data
+                    .as_ref()
+                    .and_then(|d| d.wallpaper)
+                    .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                    .or_else(|| {
+                        crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                            &crate::ui::style::Color::Primary,
+                        )
+                        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                    })
+                    .unwrap_or(iced::Color::from_rgb8(0x33, 0x33, 0x44));
+                let bg_style =
+                    move |_t: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(bg)),
+                        ..Default::default()
+                    };
+                layers.push(
+                    iced::widget::container(iced::widget::Space::new())
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill)
+                        .style(bg_style)
+                        .into(),
+                );
+                if let Some(d) = data.as_ref() {
+                    let fallback_icon = if fallback_icon.is_empty() {
+                        "app-window".to_string()
+                    } else {
+                        fallback_icon.clone()
+                    };
+                    if let Some(tiles) = d.workspaces.get(ws.as_str()) {
+                        for t in tiles {
+                            let (tx, ty, tw, th) =
+                                wp::tile_rect(t, d.usable, box_w, box_h);
+                            if tw <= 0.5 || th <= 0.5 {
+                                continue;
+                            }
+                            let wid_opt = Some(t.wid).map(crate::ui::session::Wid);
+                            let snap = wid_opt
+                                .and_then(crate::ui::iced::snapshot::snapshot_window_stale);
+                            let inner: iced::Element<'static, M> = if let Some((snap, fresh)) =
+                                snap
+                            {
+                                if !fresh {
+                                    if let Some(w) = wid_opt {
+                                        crate::ui::iced::snapshot::request_capture(w);
+                                    }
+                                }
+                                iced::widget::image(iced::widget::image::Handle::from_rgba(
+                                    snap.w, snap.h, snap.rgba,
+                                ))
+                                .filter_method(iced::widget::image::FilterMethod::Nearest)
+                                .width(iced::Length::Fixed(tw))
+                                .height(iced::Length::Fixed(th))
+                                .into()
+                            } else {
+                                if let Some(w) = wid_opt {
+                                    crate::ui::iced::snapshot::request_capture(w);
+                                }
+                                // miss = 占位块 + fallback icon 居中。
+                                let ph = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                    &crate::ui::style::Color::Surface,
+                                )
+                                .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                                .unwrap_or(iced::Color::from_rgb8(0x44, 0x44, 0x55));
+                                let icon_src = format!("lucide:{fallback_icon}");
+                                let icon_style = crate::ui::style::Style::parse(
+                                    "w-4 h-4 text-muted-foreground",
+                                )
+                                .ok();
+                                let icon_el = AbstractView::<M>::Image {
+                                    src: icon_src,
+                                    style: icon_style,
+                                }
+                                .into_iced();
+                                iced::widget::container(icon_el)
+                                    .width(iced::Length::Fixed(tw))
+                                    .height(iced::Length::Fixed(th))
+                                    .center_x(iced::Length::Fixed(tw))
+                                    .center_y(iced::Length::Fixed(th))
+                                    .style(move |_t| iced::widget::container::Style {
+                                        background: Some(iced::Background::Color(ph)),
+                                        ..Default::default()
+                                    })
+                                    .into()
+                            };
+                            let (plx, ply) = (tx.max(0.0), ty.max(0.0));
+                            layers.push(
+                                iced::widget::container(inner)
+                                    .width(iced::Length::Fill)
+                                    .height(iced::Length::Fill)
+                                    .padding(iced::Padding {
+                                        top: ply,
+                                        bottom: 0.0,
+                                        left: plx,
+                                        right: 0.0,
+                                    })
+                                    .into(),
+                            );
+                        }
+                    }
+                }
+                let root = iced::widget::stack(layers)
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Shrink);
+                let mut cont = iced::widget::container(root)
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Shrink);
+                if let Some(w) = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length)) {
+                    cont = cont.width(w);
+                }
+                if let Some(h) = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length)) {
+                    cont = cont.height(h);
+                }
+                cont.style(move |_t| iced::widget::container::Style {
+                    border: iced::Border {
+                        radius: border_radius.min(9999.0).into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .into()
+            }
+
             AbstractView::Image { src, style } => {
                 // Plan 515 D1：hicon:<slot> = native 真图标 raster
                 //（window_thumbnail 的 fallback_icon / image 直挂两消费面）。
@@ -6337,6 +6485,12 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // 422/496 MouseArea 同坑第四例)。
         AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
             AbstractView::WindowThumbnail { wid, fallback_icon, style }
+        }
+
+        // PLAN-012 W3：显式臂——A1 fence（缺臂落 Empty 兜底，PLAN-002
+        // 同坑第五例防线）。
+        AbstractView::WorkspacePreview { ws, fallback_icon, style } => {
+            AbstractView::WorkspacePreview { ws, fallback_icon, style }
         }
 
         // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
@@ -11241,6 +11395,40 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         .write_state("__dock_pinned_csv", auto_val::Value::str(&pinned_csv));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
+    // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget——
+    // 协议零字段增量）。usable 区逐窗 tile（常驻隐藏窗排除——与投影
+    // 同裁定），壁纸 #hex 基色；渲染臂直查 snapshot 缓存（SWR）。
+    {
+        let viewport = state.host_viewport();
+        let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
+        let mut per_ws: std::collections::BTreeMap<String, Vec<crate::ui::iced::workspace_preview::PreviewTile>> =
+            Default::default();
+        for &wid in &host.wm.z_order {
+            let Some(v) = host.wm.wins.get(&wid) else { continue };
+            if v.hidden.get() {
+                continue;
+            }
+            let r = v.rect.borrow();
+            per_ws.entry(v.workspace.to_string()).or_default().push(
+                crate::ui::iced::workspace_preview::PreviewTile {
+                    wid: wid.0,
+                    x: r.x - usable.x,
+                    y: r.y - usable.y,
+                    w: r.width,
+                    h: r.height,
+                },
+            );
+        }
+        crate::ui::iced::workspace_preview::publish(
+            crate::ui::iced::workspace_preview::Published {
+                usable: (usable.width, usable.height),
+                wallpaper: crate::ui::iced::workspace_preview::wallpaper_rgb(
+                    &state.desktop.config.wallpaper_path,
+                ),
+                workspaces: per_ws,
+            },
+        );
+    }
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -18772,6 +18960,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Image { style, .. } => style.as_ref(),
         AbstractView::ImageSurface { style, .. } => style.as_ref(),
         AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
+        AbstractView::WorkspacePreview { style, .. } => style.as_ref(),
         AbstractView::Radio { style, .. } => style.as_ref(),
         AbstractView::Select { style, .. } => style.as_ref(),
         AbstractView::Tabs { style, .. } => style.as_ref(),
@@ -18853,6 +19042,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Image { .. } => "image",
         AbstractView::ImageSurface { .. } => "image_surface",
         AbstractView::WindowThumbnail { .. } => "window_thumbnail",
+        AbstractView::WorkspacePreview { .. } => "workspace_preview",
         AbstractView::Radio { .. } => "radio",
         AbstractView::Select { .. } => "select",
         AbstractView::Tabs { .. } => "tabs",
@@ -20152,7 +20342,8 @@ fn view_style_ref<M: Clone + Debug>(view: &AbstractView<M>) -> Option<&Style> {
         | AbstractView::Tabs { style, .. }
         | AbstractView::NavigationRail { style, .. }
         | AbstractView::Image { style, .. }
-        | AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
+        | AbstractView::WindowThumbnail { style, .. }
+        | AbstractView::WorkspacePreview { style, .. } => style.as_ref(),
         _ => None,
     }
 }
@@ -22466,6 +22657,15 @@ mod tests {
             thumbs: &mut usize,
         ) {
             use crate::ui::view::View as V;
+            {
+                let kind = match v {
+                    V::Popover { .. } => "Popover",
+                    V::WorkspacePreview { .. } => "WorkspacePreview",
+                    V::WindowThumbnail { .. } => "Thumb",
+                    _ => ".",
+                };
+                let _ = kind;
+            }
             let extra: Vec<&V<_>> = match v {
                 V::Popover { anchor, content, open, .. } => {
                     if *open { *pops += 1; }
@@ -22477,6 +22677,10 @@ mod tests {
                 }
                 V::MouseArea { content, .. } => vec![content.as_ref()],
                 V::WindowThumbnail { .. } => {
+                    *thumbs += 1;
+                    vec![]
+                }
+                V::WorkspacePreview { .. } => {
                     *thumbs += 1;
                     vec![]
                 }
@@ -22504,9 +22708,11 @@ mod tests {
         // 基线：无 hover——popover 全收起（open 计数 0）；缩略叶为树构建
         // 面（popover content 预构建、open 才走 iced overlay 渲染）：dock
         // 条目 ×2（a/b）。PLAN-526 T18：直列分区条（含 pager hover
-        // popover）退役为切换面板——缩略叶 4→2。
+        // popover）退役为切换面板——缩略叶 4→2。PLAN-012 W3：切换器
+        // popover 化（content 预构建）且每分区卡一枚 workspace_preview
+        // 叶 ×2（pack 默认分区）→ 预构建缩略/预览叶 2→4。
         let (p0, t0) = counts(&ds);
-        assert_eq!((p0, t0), (0, 2), "无 hover 基线零 open、两枚预构建缩略叶（T18 后）");
+        assert_eq!((p0, t0), (0, 4), "无 hover 基线零 open、两缩略+两预览叶");
 
         // dock hover b：b 条目 popover open ×1（缩略叶已在预构建集内）。
         {
@@ -22518,7 +22724,7 @@ mod tests {
         }
         let (p1, t1) = counts(&ds);
         assert_eq!(p1, 1, "dock hover 打开单个 popover");
-        assert_eq!(t1, 2, "缩略叶集不变（open 不增建；T18 后基线 2）");
+        assert_eq!(t1, 4, "缩略/预览叶集不变（open 不增建；W3 后基线 4）");
         // PLAN-010 N6c：hover 离开只清预览态（HoverLeave，原 HoverEnd 退役）。
         {
             let app = ds.apps.get_mut(&shell).unwrap();
@@ -22987,6 +23193,85 @@ mod tests {
         );
     }
 
+    /// PLAN-012 W8 DSL 级 fence：popover content 内 `for` + workspace_preview
+    /// 必须物化为 WorkspacePreview 叶（VM 轨视图构建；切换器分区卡链）。
+    #[test]
+    fn w8_workspace_preview_materializes_in_popover_for() {
+        let src = r#"widget ShellProbe {
+    model {
+        var __wm_workspaces = []
+        var switcher_open str = ""
+    }
+    view {
+        col {
+            popover (open: .switcher_open == "1", placement: "top-end", ondismiss: .SwitcherToggle, class: "p-2 border rounded bg-card") {
+                text `ANCHOR`
+                row {
+                    text `MARKER`
+                    for ws in .__wm_workspaces {
+                        col {
+                            text ws.label
+                            workspace_preview (ws: ws.id, fallback: "app-window") { style: "w-44 h-16 rounded-lg" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    on {
+        .SwitcherToggle -> {}
+    }
+}
+"#;
+        let mut comp = crate::build_dynamic_component(src, None).unwrap();
+        // 注入两分区（sync 同构——宿主 write_state_vec）。
+        let _ = comp.write_state_vec(
+            "__wm_workspaces",
+            vec![
+                auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::str("0")),
+                    ("label", auto_val::Value::str("1")),
+                    ("current", auto_val::Value::str("1")),
+                ]))),
+                auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::str("1")),
+                    ("label", auto_val::Value::str("2")),
+                    ("current", auto_val::Value::str("")),
+                ]))),
+            ],
+        );
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn count(v: &AbstractView<crate::ui::interpreter::DynamicMessage>, wp: &mut usize, cards: &mut usize) {
+            match v {
+                AbstractView::WorkspacePreview { .. } => *wp += 1,
+                AbstractView::Text { content, .. }
+                    if content == "MARKER" || content == "ANCHOR" || content == "1" || content == "2" =>
+                {
+                    *cards += 1
+                }
+                _ => {}
+            }
+            let mut kids = view_children(v);
+            if let AbstractView::Popover { anchor, content, .. } = v {
+                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                    kids.push(w.as_ref());
+                }
+                kids.push(content.as_ref());
+            }
+            if let AbstractView::MouseArea { content, .. } = v {
+                kids.push(content.as_ref());
+            }
+            for c in kids {
+                count(c, wp, cards);
+            }
+        }
+        let (mut wp, mut cards) = (0, 0);
+        count(&view, &mut wp, &mut cards);
+        eprintln!("[w8] previews={wp} cards={cards}");
+        assert_eq!(cards, 4, "for 应物化两分区卡（含 MARKER/ANCHOR 锚点文本）");
+        assert_eq!(wp, 2, "每卡一枚 workspace_preview 叶");
+    }
+
     /// PLAN-012 W7 v1.6：`__wm_notes_visible` 投影——overlay 组件 visible
     /// 直读（"1"/""）写入 shell 状态 + 指纹 notes 段尾 `:v`（翻转即重写，
     /// 铃铛打开态高亮数据面）。
@@ -23210,7 +23495,8 @@ mod tests {
             other => panic!("Obj expected: {other:?}"),
         };
         assert!(
-            fp.contains(&format!("|notes:2:{front_id}:2;")),
+            // PLAN-012 W7 v1.6：notes 段尾扩 `:v`（可见性指纹位，空 = 隐藏）。
+            fp.contains(&format!("|notes:2:{front_id}:2:;")),
             "指纹 notes 段: {fp}"
         );
         // 开面板清零 → 指纹翻 → 未读串归 0（同 len 同 front，仅 unread 段变）。
@@ -25442,6 +25728,31 @@ mod tests {
             }
             _ => panic!(
                 "convert_view_messages dropped the WindowThumbnail (hit the _ => Empty wildcard) — dock hover thumbnail vanishes in VM mode"
+            ),
+        }
+    }
+
+    /// PLAN-002 A1 教训第五例 fence（PLAN-012 W3）：convert_view_messages
+    /// 必须保留 WorkspacePreview——VM 轨切换器分区卡整桌面预览不被 Empty
+    /// 通配符吞掉。
+    #[test]
+    fn test_convert_view_messages_preserves_workspace_preview() {
+        let view: AbstractView<DynamicMessage> = AbstractView::WorkspacePreview {
+            ws: "0".to_string(),
+            fallback_icon: "app-window".to_string(),
+            style: crate::ui::style::Style::parse("w-44 h-16 rounded").ok(),
+        };
+
+        let converted = convert_view_messages(view);
+
+        match converted {
+            AbstractView::WorkspacePreview { ws, fallback_icon, style } => {
+                assert_eq!(ws, "0");
+                assert_eq!(fallback_icon, "app-window");
+                assert!(style.is_some(), "style must survive the bridge");
+            }
+            _ => panic!(
+                "convert_view_messages dropped the WorkspacePreview (hit the _ => Empty wildcard) — 切换器整桌面预览在 VM 轨消失"
             ),
         }
     }

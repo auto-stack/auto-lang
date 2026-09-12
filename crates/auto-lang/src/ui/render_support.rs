@@ -108,6 +108,9 @@ fn get_support_details(tag: &str) -> TagSupport {
         // Plan 497: window_thumbnail —— iced 实现于 renderer 渲染臂(快照
         // 缓存直绘 + fallback icon),Full(P6-3 同上)。
         "window_thumbnail" => TagSupport::full(),
+        // PLAN-012 W3: workspace_preview —— iced 渲染臂(宿主合成 tile 直绘),
+        // Full(P6-3 同 window_thumbnail)。
+        "workspace_preview" => TagSupport::full(),
         "center" => TagSupport::full(),
         "container" | "div" => TagSupport::full(),
 

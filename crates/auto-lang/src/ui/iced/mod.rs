@@ -28,6 +28,8 @@ pub mod native_icon;
 // Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
 pub mod virtual_window;
 pub mod broker_surface;
+// PLAN-012 W3: 整桌面等比预览（workspace_preview 布局件宿主数据面）。
+pub mod workspace_preview;
 // Plan 481: SelectableText 的选区纯逻辑（归一/词界/扩展/清空，全平台单测）。
 pub mod selection;
 // Plan 481: 可选文本 widget（text 的选择/复制变体，advanced Widget）。

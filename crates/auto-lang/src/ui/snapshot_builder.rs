@@ -357,6 +357,18 @@ impl SnapshotBuilder {
                 children: vec![],
             },
 
+            // PLAN-012 W3: 整桌面预览(宿主合成资产;检视面披露 ws 与 fallback)。
+            View::WorkspacePreview { ws, fallback_icon, .. } => UiNode {
+                id,
+                kind: "WorkspacePreview".to_string(),
+                props: vec![
+                    ("ws".to_string(), ws.clone()),
+                    ("fallback".to_string(), fallback_icon.clone()),
+                ],
+                actions: vec![],
+                children: vec![],
+            },
+
             View::Row { children, spacing, padding, .. } => {
                 let child_nodes = Self::traverse_children(children, id_map, path);
                 UiNode {

@@ -1629,6 +1629,11 @@ impl<'a> AuraViewBuilder<'a> {
             "window_thumbnail" => {
                 self.convert_window_thumbnail(props, bindings)
             }
+            // PLAN-012 W3: 整桌面等比预览 leaf（tracked/untracked 双臂镜像，
+            // window_thumbnail 同款 D-GAP 纪律；SD-02 DSL 合同面）。
+            "workspace_preview" => {
+                self.convert_workspace_preview(props, bindings)
+            }
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, children, path, id_map, probe, bindings),
@@ -3036,6 +3041,11 @@ impl<'a> AuraViewBuilder<'a> {
             // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
             "window_thumbnail" => {
                 self.convert_window_thumbnail(props, bindings)
+            }
+            // PLAN-012 W3: 整桌面等比预览 leaf（tracked/untracked 双臂镜像，
+            // window_thumbnail 同款 D-GAP 纪律；SD-02 DSL 合同面）。
+            "workspace_preview" => {
+                self.convert_workspace_preview(props, bindings)
             }
 
             // PLAN-050 T7 (C5): use.web component 声明的图标组件（lucide 集，
@@ -6185,6 +6195,24 @@ let tabs_inner = View::Row {
             .unwrap_or_else(|| "app-window".to_string());
         let style = self.extract_style_with(props, bindings);
         View::WindowThumbnail { wid, fallback_icon, style }
+    }
+
+    /// PLAN-012 W3：整桌面等比预览 leaf（window_thumbnail 同型——宿主
+    /// 合成数据面 `iced::workspace_preview`，协议零字段增量 SD-02）。
+    /// props: ws（分区 id）/ fallback（miss 窗占位 icon，缺省 app-window）。
+    fn convert_workspace_preview(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let ws = self
+            .extract_string_with(props, "ws", bindings)
+            .unwrap_or_default();
+        let fallback_icon = self
+            .extract_string_with(props, "fallback", bindings)
+            .unwrap_or_else(|| "app-window".to_string());
+        let style = self.extract_style_with(props, bindings);
+        View::WorkspacePreview { ws, fallback_icon, style }
     }
 
     fn convert_image_or_icon(

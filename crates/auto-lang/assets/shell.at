@@ -251,7 +251,12 @@ widget Desktop {
                                 }
                             }
                         } else {
-                            if .__dock_pinned_csv.contains("," + w.app + ",") == false {
+                            // PLAN-012 W4：已固定 app 的窗口条目跳过渲染
+                            // （固定图标 + 运行点 + 右键菜单承载其语义）。
+                            // 正向 contains 判定（`== false` 形态在 view 条件
+                            // 语法无先例——实测整分支静默塌缩，勿回退）。
+                            if .__dock_pinned_csv.contains("," + w.app + ",") {
+                            } else {
                                 col {
                                     style: "items-center"
                                     // PLAN-012 W7：聚焦左竖条退役（实机被感知为
@@ -344,41 +349,26 @@ widget Desktop {
                         }
                         row {
                             style: "items-center gap-2 px-1 pb-1"
+                            // PLAN-012 W3：分区卡点击用 mouse-area 承载（绕开
+                            // "popover content 内 for 循环体 button 不物化"的
+                            // VM 模板转换问题——二分定位在案 scratch/p012；
+                            // 卡片边框/高亮样式由 col 条件样式承载）。
                             for ws in .__wm_workspaces {
-                                button {
-                                    onclick: .SetWorkspace(ws.id)
-                                    style: if ws.current == "1" {
-                                        "w-44 p-2 rounded-xl border-2 border-primary bg-card/95 text-foreground hover:bg-foreground/10"
-                                    } else {
-                                        "w-44 p-2 rounded-xl border bg-card/95 text-foreground hover:bg-foreground/10"
-                                    }
+                                mouse-area (onclick: .SetWorkspace(ws.id)) {
                                     col {
-                                        style: "w-full gap-1"
+                                        style: if ws.current == "1" {
+                                            "w-44 p-2 rounded-xl border-2 border-primary bg-card/95 text-foreground hover:bg-foreground/10"
+                                        } else {
+                                            "w-44 p-2 rounded-xl border bg-card/95 text-foreground hover:bg-foreground/10"
+                                        }
                                         text ws.label { style: "text-xs text-muted-foreground" }
-                                        row {
-                                            style: "h-16 w-full items-center justify-center gap-1 bg-background/50 rounded-lg"
-                                            for w in .__wm_wins {
-                                                if w.workspace == ws.id && w.pager == "1" {
-                                                    window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-16 h-10 rounded" }
-                                                }
-                                            }
+                                        workspace_preview (ws: ws.id, fallback: "app-window") {
+                                            style: "w-44 h-16 rounded-lg"
                                         }
                                     }
                                 }
                             }
-                            button {
-                                onclick: .WorkspaceAdd
-                                style: "w-44 p-2 rounded-xl border bg-card/95 text-foreground hover:bg-foreground/10"
-                                col {
-                                    style: "w-full gap-1 items-center"
-                                    row {
-                                        style: "h-16 w-full items-center justify-center bg-background/50 rounded-lg"
-                                        text "+" { style: "text-xl text-muted-foreground" }
-                                    }
-                                    text "新建桌面" { style: "text-xs text-muted-foreground" }
-                                }
-                            }
-                        }
+                                                }
                     }
                     // PLAN-526 T17：布局钮 lucide 化（文字字形 ▦▤▢ 与
                     // 矢量 icon 的视觉尺寸差不复存在）。
