@@ -9,10 +9,10 @@
 // - 持久化：storage.get/set 保持视图模式、排序字段、排序方向与隐藏文件状态
 
 // PLAN-618: tree 组件族(official 包拷贝,源自 widgets-gallery 797fbd8+)
-use { package: official from "./components" }
 use components.tree_util: toggle_id
 
 widget App {
+    use { package: official from "./components" }
     msg {
         Init,
         NavTo(str), GoBack, GoForward, GoUp,
@@ -703,13 +703,6 @@ widget App {
 
         // ---- 目录导航 ----
         .NavTo(target_path) -> {
-        .FmToggle(id) -> {
-            .fmExpanded = toggle_id(.fmExpanded, id)
-        }
-        .FmSelect(id) -> {
-            .fmSel = id
-            .NavTo(id)
-        }
 
             .current_path = target_path
             .selected_id = -1
@@ -829,6 +822,13 @@ widget App {
             } else {
                 .total_size_str = total_bytes.str() + " B"
             }
+        }
+        .FmToggle(id) -> {
+            .fmExpanded = toggle_id(.fmExpanded, id)
+        }
+        .FmSelect(id) -> {
+            .fmSel = id
+            .NavTo(id)
         }
 
         .GoBack -> {
