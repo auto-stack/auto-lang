@@ -5453,6 +5453,8 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         // Plan 059(块头图标统一):stop/table 导出/重跑/删除/运行中
         "square" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/>"#,
         "table" => r#"<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>"#,
+        // PLAN-618 T-02:zap 闪电(026 对象树索引节点;TreeIcon 调色板同步)。
+        "zap" => r#"<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86 0l9.9 10.2a1 1 0 0 1-.78 1.63z"/><path d="M4 10h16"/>"#,
         "rotate-ccw" => r#"<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>"#,
         "trash-2" => r#"<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>"#,
         "loader" => r#"<path d="M21 12a9 9 0 1 1-6.219-8.56"/>"#,
