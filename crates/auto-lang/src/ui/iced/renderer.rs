@@ -20987,23 +20987,20 @@ where
     let mut key_names: Vec<String> = w.inner.key_bindings().into_keys().collect();
     key_names.sort();
     let key_filter = key_names.clone();
-    let rust_keys = iced_futures::subscription::filter_map(
-        ("autoui-rust-keyboard", key_names),
-        move |event: iced_futures::subscription::Event| {
-            let iced_futures::subscription::Event::Interaction { event, status, .. } = event else {
-                return None;
-            };
-            if matches!(status, iced::event::Status::Captured) {
-                return None;
-            }
-            let key = rust_component_key_string(&event)?;
-            if key_filter.iter().any(|bound| bound == &key) {
-                Some(WrapperMsg::<C>::Debug(format!("__autoui_key|{key}")))
-            } else {
-                None
-            }
-        },
-    );
+    // Use the same event listener as F12/window input.  A filtered raw
+    // subscription would create a second event recipe in Iced 0.14 and can
+    // recurse while the native window is being initialized.
+    let rust_keys = iced::event::listen_with(move |event, status, _window_id| {
+        if matches!(status, iced::event::Status::Captured) {
+            return None;
+        }
+        let key = rust_component_key_string(&event)?;
+        if key_filter.iter().any(|bound| bound == &key) {
+            Some(WrapperMsg::<C>::Debug(format!("__autoui_key|{key}")))
+        } else {
+            None
+        }
+    });
     iced::Subscription::batch(vec![inner, f12, win, mcp, rust_keys])
 }
 
