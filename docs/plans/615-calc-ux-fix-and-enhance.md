@@ -10,9 +10,9 @@ plan_revision: 1
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components:
-  - "docs/specs/auto-lang/vm: SD-01 VM 布尔短路求值语义（&&/|| 与转译后端一致的惰性求值契约）"
-  - "docs/specs/auto-lang/ui: SD-02 主题传播链契约（OS→桌面 cfg.dark_theme→应用 dark_mode 播种缺省 + SetTheme 活更新广播）"
-  - "docs/specs/auto-lang/ui: SD-03 按钮内容光学居中契约（无高度类按钮同样适用 CSS button 语义）"
+  - "docs/specs/auto-lang/vm/overview.md: SD-01 VM 布尔短路求值语义（&&/|| 条件跳转惰性求值、结果恒归一化 bool、与转译后端一致）"
+  - "docs/specs/auto-lang/ui/overview.md: SD-02 主题传播链契约（OS→DesktopConfig.theme_source=system 派生→应用 dark_mode 播种/活更新；manual 终结跟随）"
+  - "docs/specs/auto-lang/ui/overview.md: SD-03 按钮标签行盒契约（默认行高钳 1.0 光学居中；显式 leading-* 优先）"
 touched_goals:
   - "GOAL-007: AutoUI 跨端视觉一致（Vue/VM 双端 parity）——按钮居中/主题跟随/Programmer HEX 双端同源"
 
@@ -308,6 +308,51 @@ worktree：`D:/autostack/.wt/lang-615/auto-lang` @ `plan-615-dev`（base a4faeb1
   +plan615_calc_prog_tests 5/5+layout_tests 37/37`，`blockers: 无（实机终验项见 §10）`，
   `next: review`（复审时随做实机终验：`auto run -r vm` 与 `auto run` 双端过 AC-1/3/4
   交互清单）。
+
+- 2026-09-12 review R1：`stage: review`，`plan_id: PLAN-615`，`plan_revision: 1`，
+  `outcome: pass`。
+  `reviewed_commit: a539f3697`（plan-615-dev，worktree clean）/ `base_commit: a4faeb182`
+  / `dependency_revisions: auto-down bd21ef6（detached 组内兄弟）`。
+  `spec_inputs: docs/specs/auto-lang/vm/overview.md + docs/specs/auto-lang/ui/overview.md`
+  （SD-01/02/03 目标文件已定稿至精确路径；delta 文本随 merge 沉淀）。
+  `acceptance_results`：
+  - **AC-1 pass（运行时目验）**：MCP 实机截图
+    `examples/ui/011-calculator/src/front/tmp/autoui-screenshot-1789178025114.png`
+    ——全部按钮（数字/运算符/Tab/复制钮）文字光学居中，与用户原始偏下截图对照
+    改观显著；机制面 layout_tests 37/37（button_label_line_box_clamped 断言在册）。
+    证据路径为临时件（worktree 移除后以本记录文字为准）。
+  - **AC-2 pass（运行时+语料）**：MCP 实机 `C 2 + 9 =` → snapshot 含 "11"、
+    handler_App_Equals VM_HANDLER_OK（修复前此处 IndexError 中止）；语料
+    99_short_circuit 3/3（002_calc_eval_expr：2+9→11/9+2→11/2*(3+4)→14/7/2→3.5/
+    10÷0→ERROR/2+→ERROR/-3+5→2/2^3^2→64）。
+  - **AC-3 pass（单测+逻辑链；live 视觉项注记）**：system_theme 注册表探针实测
+    本机 0x1=浅色；desktop_config 12 测+system_theme 2 测绿；boot 播种/独立窗
+    回退/set_theme 广播（Plan 518 在案）三环代码链复核。注记：本机 calc 存在
+    os-config 显式 theme=dark（优先级链压过 OS 跟随——启动日志
+    "UI theme: dark (from os-config)" 佐证），live 浅色视觉验证需移除该显式
+    配置后进行，属用户环境操作，不构成准则缺口（优先级链即设计语义）。
+  - **AC-4 pass（运行时）**：MCP 实机 Programmer→HEX→`F + 1 =` → snapshot
+    HEX 10 / DEC 16 / OCT 20 / BIN 10000（截图 1789178028232）；`AND 3 =` →
+    全基 0（截图 29613）；面板八键/字母排/随基灰显渲染齐全；逻辑锚
+    plan615_calc_prog_tests 5/5（SHL31 边界/AND+NOT/除零/键路由）。
+  - **AC-5 pass（部分运行时）**：键路由模式感知 5/5（basic→float 串/programmer→
+    肢/DEC 下 A 忽略/HEX 下 A 生效/KeyAdd 置 pop）；复制按钮渲染在案
+    （截图），dom.copy_text 点击实测留 merge 后用户侧（VM native 2926 复用
+    418 面，风险低）；fmt_num 去噪/错误文案逻辑在 apply_top 通道测试与
+    vue-tsc 类型检查间接锚定。
+  - **AC-6 pass**：门禁汇总——`cargo tv` 1912/1913（ffi_dual_019 隔离 3× 过=
+    并发偶发，P615-D3）+ `cargo t` 全档 4779/4802（23 红逐一对拍基线
+    a4faeb182：layout 13/plan370 3/strips/covered/c2/lucide 4 预存 +
+    ensure_ready/ffi 2 并发偶发单测过——零新增）+ `cargo tf` 2034/3533（同上）
+    + scoped iced 187/188（lucide 预存）+ `cargo t plan615_calc_prog` 5/5 +
+    vue `auto build`（vue-tsc+vite）全绿；零新增编译警告面未察（存量 175 警告
+    基线）；golden 重基线=零（W1 行高钳未触发既有截图断言）。
+  `findings`：F-1（观察项，非债）——MCP 截图通道存在一拍滞后
+  （截图时序与脚本步进错位），行为断言以 snapshot 文本为准（已如此采证）；
+  F-2（观察项）——App.Init handler not found stderr 噪声（calc 无 Init，存量）。
+  `evidence: 本记录引用的语料/测试名均可命令复现；截图为临时件已注明`。
+  `next: merge`（每项准则与规范增量通过；merge 时沉淀 SD-01/02/03 至精确
+  路径 + INDEX 重生 + plans.md 回写）。
 
 ### 关键执行期发现（对 §4/§5 的修正）
 
