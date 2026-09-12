@@ -1,61 +1,86 @@
-// app.at — 2-column layout (Plan 360: card-based modern UI).
-// Outer wrapper uses bg-muted/30 to create depth; inner panels are cards.
+// app.at — 015-notes 应用骨架（PLAN-616 清爽化重做）。
+//
+// 布局：扁平双栏 + 顶栏，全部用发丝线（border-b / border-r）分隔，不再有
+// 「悬浮卡片」外壳（PLAN-360 的卡片化视觉决策被本计划取代，主题色能力沿用）。
+//
+// 主题状态说明：主权在 store（applyAccent 的重放逻辑需要 store 持有
+// dark_mode / accent_color），但 Vue 生成器把根元素的 `:class="{ dark: X }"`
+// 绑到 **widget 本地** 的 dark_mode（vue.rs `dark_mode_on_widget` 分支），
+// 所以 App 保留同名镜像，并在切换 handler 里与 store 同步。
 
 use notes_store: NotesStore
 use sidebar: NavTree
 use editor: EditorPanel
-use back.api: delete_note, list_notes
+
+// PLAN-607 style 配方：顶栏按钮两种形态。
+// `w-auto` 必需：VM(iced) 端无显式宽度时按钮按 Fill 参与分配，会把顶栏撑开
+// （SizeValue::Auto → IcedSize::Shrink，见 ui/style/iced_adapter.rs:1306）。
+style icon_btn = "h-8 w-8 border-0 flex items-center justify-center rounded-md bg-transparent text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+style primary_btn = "h-9 w-auto border-0 flex items-center gap-1.5 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors"
 
 widget App {
-    msg { Init, NewNote, NewNoteInFolder(str), SelectNote(int), SearchChanged, TogglePin,
-              DeleteActive, ToggleDarkMode, TagsChanged,
-              SelectAll, SelectPinned, SelectRecent, SelectTag(str), ClearTag }
+    msg { Init, NewNote, ToggleDarkMode, SetMode(str), SetAccent(str), ToggleSettings }
 
     model {
-        var search str = ""
         var dark_mode bool = true
         var accent_color str = "indigo"
     }
 
     view {
         col {
-            style: "w-full h-screen flex-col bg-background p-3 gap-3"
+            style: "w-full h-screen flex-col bg-background text-foreground overflow-hidden"
 
-            // header (卡片化)
+            // ── 顶栏 ─────────────────────────────────────────────────────
             row {
-                style: "items-center justify-between px-5 py-3 bg-card rounded-xl shadow-sm"
+                style: "h-14 shrink-0 items-center justify-between gap-3 px-4 border-b border-border"
                 row {
-                    style: "items-center gap-2"
-                    text "📝" { style: "text-xl" }
-                    h2 "Notes" { style: "text-lg font-bold text-foreground" }
+                    style: "w-auto items-center gap-2"
+                    icon (name: "notebook", size: 18, style: "text-primary")
+                    text "Notes" { style: "text-sm font-semibold tracking-tight" }
                 }
-                button "New" {
-                    onclick: .NewNote
-                    style: "px-4 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors"
+                row {
+                    style: "w-auto items-center gap-1"
+                    button {
+                        onclick: .ToggleDarkMode
+                        style: icon_btn
+                        if .store.dark_mode {
+                            icon (name: "sun", size: 16)
+                        } else {
+                            icon (name: "moon", size: 16)
+                        }
+                    }
+                    button {
+                        onclick: .NewNote
+                        style: primary_btn
+                        icon (name: "plus", size: 15)
+                        text "New note" { style: "text-sm font-medium" }
+                    }
                 }
             }
 
-            // body: NavTree + Editor (卡片化, 间距)
+            // ── 主体：列表栏 + 编辑栏 ────────────────────────────────────
             row {
-                style: "flex-1 gap-3 min-h-0"
+                style: "flex-1 min-h-0"
                 NavTree(
-                    search: .search,
-                    active_folder: .store.active_folder,
-                    active_tag: .store.active_tag,
-                    active_id: .store.active_id
+                    on_toggle_dark_mode: .ToggleDarkMode,
+                    on_set_mode: .SetMode,
+                    on_set_accent: .SetAccent
                 )
                 col {
-                    style: "flex-1 h-full min-h-0"
+                    style: "flex-1 min-h-0"
                     if .store.notes.len() > 0 {
-                        EditorPanel(note: .store.notes[.store.active_id], on_delete: .DeleteActive, on_toggle_pin: .TogglePin, on_tags_changed: .TagsChanged)
+                        EditorPanel()
                     } else {
+                        // 空态：一条笔记都没有（与「筛选无命中」区分开）
                         col {
-                            style: "flex-1 items-center justify-center bg-card rounded-xl shadow-sm"
-                            text "📝" { style: "text-6xl mb-4 opacity-40" }
-                            text "No notes yet" { style: "text-lg text-muted-foreground" }
-                            button "Create your first note" {
+                            style: "flex-1 items-center justify-center gap-3"
+                            icon (name: "notebook", size: 40, style: "text-muted-foreground/40")
+                            text "No notes yet" { style: "text-sm text-muted-foreground" }
+                            button {
                                 onclick: .NewNote
-                                style: "mt-4 px-6 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors"
+                                style: primary_btn
+                                icon (name: "plus", size: 15)
+                                text "Create your first note" { style: "text-sm font-medium" }
                             }
                         }
                     }
@@ -67,23 +92,19 @@ widget App {
     on {
         .Init -> { store.Init() }
         .NewNote -> { store.NewNote() }
-        .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
-        .SelectNote(i) -> { store.active_id = i }
-        .SearchChanged -> { .search = .search }
-        .TogglePin -> { store.TogglePin(store.active_id) }
-        .DeleteActive -> {
-            delete_note(.store.notes[.store.active_id].id)
-            store.notes = list_notes()
-            if .store.notes.len() > 0 {
-                store.active_id = 0
-            }
+        // 双向同步：store 是主题主权（负责 applyAccent），本地镜像驱动根元素 dark class。
+        .ToggleDarkMode -> {
+            store.ToggleDarkMode()
+            .dark_mode = .store.dark_mode
         }
-        .ToggleDarkMode -> { store.ToggleDarkMode() }
-        .TagsChanged -> { store.notes = list_notes() }
-        .SelectAll -> { store.active_folder = "all"; store.active_tag = "" }
-        .SelectPinned -> { store.active_folder = "pinned"; store.active_tag = "" }
-        .SelectRecent -> { store.active_folder = "recent"; store.active_tag = "" }
-        .SelectTag(t) -> { store.active_tag = t }
-        .ClearTag -> { store.active_tag = "" }
+        .SetMode(m) -> {
+            store.SetMode(m)
+            .dark_mode = .store.dark_mode
+        }
+        .SetAccent(name) -> {
+            store.SetAccent(name)
+            .accent_color = .store.accent_color
+        }
+        .ToggleSettings -> { store.ToggleSettings() }
     }
 }
