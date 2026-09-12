@@ -73,6 +73,27 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - 未实现：AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions）。
 
 - 退出审计三挂点（plan-575）：`vm/ffi/stdlib.rs` `exit_audit`/`exit_audit_path`/`install_exit_audit_panic_hook`——`Process.exit` shim（site=vm_process_exit）、全局 panic hook（code=101+消息+位置，链式保留既有 hook）、desktop 装配管线 `run_session` 正常返回（site=main_return，实机 shutdown 端到证）三 site 落笔；路径 env `AUTO_DESKTOP_EXIT_LOG`（缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log），写失败静默=零行为变更（G3）；用途=静默退出归因常驻取证面（526 降档🟡 疑外部击杀，真实复现审计指认 site 即重启归因；台账 scratch/p575/ledger.jsonl）。
+## 布尔短路求值语义（plan-615）
+
+`&&`/`||` 为**短路求值**（PLAN-615 T-01 根修；此前 codegen 发射单条急切
+`AND`/`OR` 指令，RHS 无条件求值——`ops.len() > 0 && ops[ops.len() - 1]` 类
+守卫在空容器上触碰越界索引，Plan 550 IndexError 翻转后引爆 calc 011 Equals
+冻结）。契约：
+
+- **求值规则**：`&&` 左臂 falsy 不求值右臂；`||` 左臂 truthy 不求值右臂；
+  嵌套链左结合逐臂短路。**结果恒归一化 bool**（非 JS 的"返回原操作数"——
+  .at 中布尔算符操作数均在 bool 位语境，与 TS/Py/C/Rust/GD 转译后端在
+  bool 域结果一致）。
+- **发射形态**（codegen 二元臂 `Op::And/Op::Or`，PLAN-615）：
+  `[a] DUP JMP_IF_Z/NZ Lshort [b] JMP Lend; Lshort: PUSH_BOOL 占位; Lend:
+  AND/OR`——`JMP_IF_Z/NZ` 弹掉的是 DUP 副本（LHS 本体留栈），短路路径补推
+  真值占位与 LHS 配对进末端 `AND`/`OR` 真值归一，双路径栈平衡；条件位
+  （if/while）与值上下文（赋值/实参）共用同一表达式臂，语义统一。
+- **正交语义**：GET_ELEM 越界 IndexError（plan-550 T05）不受影响——短路
+  使越界索引不可达属守卫语义；合法负索引（Python 式 normalize，-1 尾元素）
+  保持。回归锚：`test/vm/99_short_circuit/`（短路矩阵副作用计数/calc
+  eval_expr 全文/负索引共存三件）+ `plan615_calc_prog_tests`。
+
 ## RC 生命周期协议（plan-604）
 
 Plan 419「copy-on-load 所有权协议」+ PLAN-062 T12 stake 影子账本的**结算语义**单点记载（SD-01；KD-VM1 根因即「struct 字面量经容器写的 stake 结算语义无记载」导致的实现缺口，plan-604 补全）。

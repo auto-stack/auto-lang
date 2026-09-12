@@ -48,6 +48,8 @@ pub mod handler_codegen;
 pub mod child_emit;
 #[cfg(feature = "ui-iced")]
 pub mod session;
+// PLAN-615 T-06: OS 系统主题读取（深/浅色个人化跟随地基；纯 std 全平台可编译）。
+pub mod system_theme;
 
 // Plan 463 T2：桌面布局引擎（free/grid/master-stack 纯函数 + snap 几何）。
 #[cfg(feature = "ui-iced")]

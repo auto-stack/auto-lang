@@ -1,0 +1,23 @@
+// PLAN-615 T-02: Plan 550 T05 IndexError 语义与短路正交共存——
+// 合法负索引（-1 尾元素，Python 式 normalize）保持合法；真越界仍报错；
+// 短路守卫使带负索引的 RHS 在空容器上不可达。
+fn main() {
+    var xs List<int> = [10, 20, 30]
+    // 合法负索引：-1 尾元素、-2 倒二
+    print(xs[xs.len() - 1])
+    print(xs[xs.len() - 2])
+    // 短路守卫 + 负索引 RHS：非空时求值，空时不可达
+    var guard List<int> = [7]
+    if guard.len() > 0 && guard[guard.len() - 1] == 7 {
+        print("G tail-7")
+    }
+    var empty List<int> = []
+    if empty.len() > 0 && empty[empty.len() - 1] == 7 {
+        print("unreachable")
+    } else {
+        print("E guarded")
+    }
+    // || 同理：第一臂为真即可短路掉索引 RHS
+    var ok bool = guard.len() == 0 || guard[guard.len() - 1] == 7
+    print(f"O: ${ok}")
+}

@@ -3440,6 +3440,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
                                 if let Some(c) = is.text_color { tw = tw.color(c); }
                             }
+                            // PLAN-615 T-03 (W1): 同按钮标签行高钳（图标与文字盒错位同源）。
+                            let has_lh = iced_style.as_ref().is_some_and(|s| s.line_height.is_some() || s.line_height_px.is_some());
+                            if !has_lh {
+                                tw = tw.line_height(iced::widget::text::LineHeight::Relative(1.0));
+                            }
                             iced::widget::row!(icon_el, tw)
                                 .spacing(6)
                                 .align_y(iced::alignment::Vertical::Center)
@@ -3495,6 +3500,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if let Some(ref is) = iced_style {
                             if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
                             if let Some(c) = is.text_color { tw = tw.color(c); }
+                        }
+                        // PLAN-615 T-03 (W1): 同按钮标签行高钳（图标与文字盒错位同源）。
+                        let has_lh = iced_style.as_ref().is_some_and(|s| s.line_height.is_some() || s.line_height_px.is_some());
+                        if !has_lh {
+                            tw = tw.line_height(iced::widget::text::LineHeight::Relative(1.0));
                         }
                         // Icon-only (no text part): return the bare svg - the row with its
                         // spacing(6) adds trailing space after the icon, skewing it ~3px
@@ -3574,6 +3584,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             text_widget = text_widget.color(color);
                         }
                         text_widget = text_widget.font(is.font_weight.as_ref().map_or(default_weight, font_weight_to_iced));
+                        // PLAN-615 T-03 (W1): 按钮标签行盒钳到 1.0 行高——iced 0.14 文本
+                        // 默认 Relative(1.3)，额外 leading 全部落在字形上方，无高度类
+                        // 按钮（shrink 高度 = 行盒高）的字形在按钮内系统性偏下（calc 数字
+                        // 键盘实测 ~0.15em）。行高 1.0 让行盒贴合字形，光学居中恢复；
+                        // 高度类按钮本就经 Plan 414 容器居中，此钳同样消除行盒漂移。
+                        // 用户显式 leading-* 类仍优先（iced_adapter 双轨字段）。
+                        // web 侧 Tailwind text-lg 行高 1.75rem 与 iced 的盒高差是既有
+                        // 双端差异，不在本钳范围（双端按钮高度 parity 另行台账）。
+                        if is.line_height.is_none() && is.line_height_px.is_none() {
+                            text_widget = text_widget.line_height(iced::widget::text::LineHeight::Relative(1.0));
+                        }
                         // Plan 411: text-center/left/right on button labels — wide
                         // buttons (e.g. preview-card tabs) need horizontal alignment.
                         // Unlike the Text arm, ALWAYS Fill the label: is.width is the
@@ -3595,10 +3616,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         text_widget.into()
                     }
                 } else {
-                    let text_widget = text(label.clone())
+                    // PLAN-615 T-03 (W1): 无样式类按钮同钳行高（默认样式路径的偏下同源）。
+                    text(label.clone())
                         .size(font_size_to_f32(&IcedFontSize::Sm))
-                        .font(font_weight_to_iced(&IcedFontWeight::Medium));
-                    text_widget.into()
+                        .font(font_weight_to_iced(&IcedFontWeight::Medium))
+                        .line_height(iced::widget::text::LineHeight::Relative(1.0))
+                        .into()
                 };
 
                 // Plan 309 续篇 II: in inspect-capture mode, render the button
@@ -9279,6 +9302,9 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
     #[cfg(all(feature = "autodown", feature = "code-editor"))]
     crate::ui::autodown_editor::retheme_all_fence_buffers();
     state.desktop.config.dark_theme = dark;
+    // PLAN-615 T-06：用户显式切换即置 manual——终结 theme_source=system 的
+    // OS 跟随派生（boot/外写热应用 load() 不再覆盖此选择）。
+    state.desktop.config.theme_source = "manual".to_string();
     let _ = crate::ui::desktop_config::save(&state.desktop.config);
     // Plan 497 G3 同款：全场快照随撤（窗口缩略按旧主题渲染）。
     crate::ui::iced::snapshot::invalidate_all();
@@ -11229,6 +11255,16 @@ fn run_session(
                 && component.read_state("dark_mode").is_ok()
             {
                 let _ = component.write_state("dark_mode", auto_val::Value::Bool(t == "dark"));
+            }
+        } else {
+            // PLAN-615 T-04：env 链（CLI > os-config > pac.at）未解析任何
+            // theme 值 → OS 系统主题回退（读取失败 None 则维持 App 内置
+            // 缺省）。桌面轨的对应链路在 desktop_config::load 的
+            // theme_source=system 派生（T-06），两轨语义对齐。
+            if let Some(dark) = crate::ui::system_theme::system_prefers_dark() {
+                if component.read_state("dark_mode").is_ok() {
+                    let _ = component.write_state("dark_mode", auto_val::Value::Bool(dark));
+                }
             }
         }
         if let Ok(a) = std::env::var("AUTO_UI_ACCENT") {
@@ -23688,8 +23724,11 @@ mod tests {
         assert!(ds.desktop.config_poll_sampled, "首采样落哨兵");
         assert!(ds.desktop.config_poll_mtime.is_none(), "文件缺席锚 None");
         // ② 外写(模拟 daemon PUT):多字段一次落盘 → 下一 tick 差异应用。
+        // PLAN-615 T-06:主题面外写须伴 theme_source="manual"——system 源
+        // (缺省)在 load() 期从 OS 派生 dark_theme,外写值会被跟随语义覆盖。
         let mut cfg = ds.desktop.config.clone();
         cfg.dark_theme = !cfg.dark_theme;
+        cfg.theme_source = "manual".to_string();
         cfg.dock_pinned = vec!["011-calculator".to_string()];
         cfg.transparency = "high".to_string();
         cfg.wallpapers_dir = r"D:\wallpapers".to_string();
