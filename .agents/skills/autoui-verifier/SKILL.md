@@ -86,6 +86,27 @@ client.screenshot("converter_vm_decimal")
 3. **按钮与前景色**：暗色模式下默认主按钮为浅色底（`239 84% 77%`）+ 深黑字（`#0f172a`），带 `hover:bg-primary/90` 悬停微调。
 4. **计算精度**：浮点/双精度四舍五入值在两端精确一致。
 
+### 步骤 3.5：像素预算对拍探针（PLAN-619 起为常驻门禁）
+双端截图拿到后，先跑入库探针再进入人眼审查——它把「语义面色 / 图标 ink 尺寸 /
+左缩进」三类差异变成可复跑的机器判定（违规退出码 1）：
+
+```bash
+python tools/parity_shot_diff.py <vue.png> <vm.png> --scale 2
+# 仅看数字不判预算：追加 --no-budget
+```
+
+预算（PLAN-619 §6）：
+
+| 维度 | 预算 | 对应现象 |
+|---|---|---|
+| 语义面色（页面/编辑区、侧栏） | 逐通道 ≤2 | 同一语义 token 两端必须同值（VM 缺省主题＝scaffold，与生成的 Vue `index.css` 同源） |
+| 顶栏图标 ink 宽/高比 vm/vue | ∈ [0.9, 1.1] | `icon (size: N)` 两端同盒（VM 消费 `size:`，Vue 发射 `:size`） |
+| 左缩进（搜索行左边界 / 分组标签 / 便签标题） | ≤1px | 容器 `mx-*`/`px-*` 与契约类合并两端同效 |
+
+探针采样点是 015-notes 专用（1280x800 视口坐标）；换布局需同步
+`tools/parity_shot_diff.py` 的 `DEFAULTS`，并在该示例的 acceptance 里登记 T 条目。
+**预算违规 = 回归**，不得以「已知差异」名义放行（AGENTS.md §2 门禁纪律）。
+
 ### 步骤 4：分级门禁与合入规范 (Change-Scoped Gating)
 严格遵循 AGENTS.md 的测试纪律，杜绝无谓测试开销：
 - **纯验证 / 资产 / 计划跟踪任务**：未修改 `crates/` 下 Rust 源码时，**严禁运行 `cargo t` 和 `docs_gen`**，完成双端截图核验与计划矩阵更新后直接合入。
@@ -136,7 +157,14 @@ client.screenshot("converter_vm_decimal")
 8. **文本修饰线与条件状态 (Text Decorations & Conditional Styles)**:
    - [ ] **删除线与下划线 (Line-Through & Underline)**: 已完成待办项、已核销金额等带 `line-through` 的文本是否正确绘制水平穿透线？带 `underline` 的超链接/强调文本是否正确绘制底线？
    - [ ] **可点击文本组件的修饰继承**: 当 `text` 绑定了 `onclick`（在 AST/AURA 中转为 `Button`）时，其内部文本标签是否依然完整继承并渲染了 `line-through`、字号和颜色？
-9. **毛玻璃 backdrop-\*（已知分歧白名单,Plan 518 G8）**:
+9. **数值对拍优先于目视（PLAN-619 常驻）**:
+   - [ ] 双端截图先过 `tools/parity_shot_diff.py`（见 §3 步骤 3.5）；违规即回归。
+   - [ ] 语义面色两端同值（同 token 同色）；**图标尺寸以 `.at` 的 `size:` 为权威**，
+         VM/Vue 同盒（生成器注入的 `w-5 h-5` 只是缺省，显式 size 时让位）。
+   - [ ] 容器左缩进两端一致：`mx-*`/`my-*`/`m-*` 与 per-axis padding 在 VM 端
+         必须折算生效（PLAN-619 前的历史坑：`mx-*` 被整族丢弃、uniform `p-*`
+         盖掉 `py-*`、`h-*` 不落 Text 盒）。
+10. **毛玻璃 backdrop-\*（已知分歧白名单,Plan 518 G8）**:
    - `backdrop-blur-*` / `backdrop-saturate-*` 词汇已声明冻结（共享 parser 识别）,但 **VM/iced 臂视觉 no-op 为既定降级语义**（装饰性降级非错绘,不报错不 not-yet）——双端对拍中含玻璃样式的卡面（如 `examples/capability-tests/p518-glass-sample`,PLAN-552 探针清退迁出）**vue 出真毛玻璃、VM 无模糊属预期分歧,不计为回归**;真 backdrop 渲染挂 RenderQueue（KNOWN-DEBT P518 planned-debt,翻转时移除本条）。玻璃配方另两腿（`bg-white/10` 半透明底 + border）双端均应正常渲染。
 
 ---

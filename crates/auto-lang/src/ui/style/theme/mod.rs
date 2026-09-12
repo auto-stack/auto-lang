@@ -39,13 +39,20 @@ impl ActiveSpec {
 }
 
 thread_local! {
+    // PLAN-619 T-03（用户裁决）：缺省活动主题 = **scaffold**，与 auto-man 为
+    // scaffold 类应用生成的 Vue `index.css`（shadcn 缺省 `.dark` 表）同源。
+    // 此前缺省 "stella" 让任何**未声明 `theme{}`** 的应用在 VM 端系统性偏色
+    // （同一语义 token 两端两套色板 = GOAL-007 跨端视觉一致的正面违例）。
+    // 桌面宿主（stella 观感的唯一持有者）改为在 config 里显式声明
+    // `theme_name: "stella"`——规则成文为「宿主 = stella、pac 应用 = scaffold」。
     static ACTIVE_THEME: std::cell::RefCell<ActiveSpec> =
         std::cell::RefCell::new(ActiveSpec::Builtin(
-            registry::builtin("stella").expect("stella 恒在")
+            registry::builtin("scaffold").expect("scaffold 恒在")
         ));
 }
 
-/// 当前活动主题名（内置名或合成主题名；缺省 "stella" = VM 轨现行）。
+/// 当前活动主题名（内置名或合成主题名；缺省 "scaffold" = Vue 侧 scaffold
+/// 色板同源，见 ACTIVE_THEME 注）。
 pub fn theme_name() -> String {
     ACTIVE_THEME.with(|t| t.borrow().name())
 }
@@ -333,12 +340,41 @@ mod tests {
         resolve_semantic_rgb(&color).expect("semantic color must resolve")
     }
 
+    /// PLAN-619 T-03：轨缺省主题已从 stella 改为 scaffold，故凡断言 stella
+    /// 值的用例必须显式钉住 stella——本文件多数用例的被测面就是 stella 色板。
+    fn pin_stella() {
+        assert!(set_theme("stella"), "stella 恒在");
+    }
+
+    /// PLAN-619 T-03（用户裁决）：轨缺省主题 = scaffold——语义 token 与
+    /// auto-man 为 scaffold 类应用生成的 Vue `index.css` 同源。修前缺省
+    /// stella，任何未声明 `theme{}` 的应用在 VM 端面板底色整体偏色（P1）。
+    /// 桌面宿主的 stella 观感改由 `DesktopConfig::default().theme_name` 显式持有。
+    #[test]
+    fn default_theme_is_scaffold_and_matches_vue_css_tokens() {
+        // 同进程其它用例可能已改过主题（thread-local）→ 幂等回缺省名。
+        // 注：`set_theme` 返回「是否发生变化」，同名时为 false，故不能以它断言。
+        if theme_name() != "scaffold" {
+            set_theme("scaffold");
+        }
+        assert_eq!(theme_name(), "scaffold", "轨缺省主题");
+        set_dark_mode(true);
+        // scaffold `.dark` 表 = Vue index.css `.dark` 块（--background 222.2 47% 7%
+        // → (9,14,26)；--card 222.2 47% 10% → (13,20,37)，浏览器侧为 (14,21,37)，差 1）。
+        assert_eq!(rgb(Color::Background), (9, 14, 26), "页面/编辑区底色");
+        assert_eq!(rgb(Color::Surface), (13, 20, 37), "卡片/侧栏底色");
+        set_dark_mode(true);
+    }
+
     /// Plan 518 T1: 双主题语义值表——light 暖纸 / dark 精修蓝黑(stella 对齐)。
     /// PLAN-601 T-04：活动主题热切换——resolve 全翻转 + epoch 自增 +
     /// 未知名拒绝 + 还原防污染。
     #[test]
     fn theme_switch_flips_resolution_and_bumps_epoch() {
-        assert_eq!(super::theme_name(), "stella");
+        // PLAN-619 T-03：轨缺省 = scaffold（与 scaffold 类应用的 Vue
+        // index.css 同源）；本用例的被测面是切换语义，基线钉 stella。
+        assert_eq!(super::theme_name(), "scaffold");
+        pin_stella();
         super::set_dark_mode(false); // 先定 mode，再取 epoch 基线（dark 翻转也自增）
         let e0 = super::theme_epoch();
         assert!(!super::set_theme("nonsense"), "未知名拒绝");
@@ -364,6 +400,7 @@ mod tests {
 
     #[test]
     fn stella_light_palette() {
+        pin_stella();
         set_dark_mode(false);
         assert_eq!(rgb(Color::Background), (245, 241, 232)); // #f5f1e8 暖纸
         assert_eq!(rgb(Color::Surface), (251, 248, 242)); // #fbf8f2 卡片微浮
@@ -378,6 +415,7 @@ mod tests {
 
     #[test]
     fn stella_dark_palette() {
+        pin_stella();
         set_dark_mode(true);
         assert_eq!(rgb(Color::Background), (20, 26, 41)); // #141a29 深蓝黑
         assert_eq!(rgb(Color::Surface), (26, 34, 53)); // #1a2235 面板
@@ -392,6 +430,7 @@ mod tests {
     /// hsl(4,43%,59%) ≈ #c4706a,权威图实测 #C96B62),不新增 rose 预设。
     #[test]
     fn coral_matches_stella_rose_accent() {
+        pin_stella();
         set_dark_mode(false);
         set_accent_name("coral");
         assert_eq!(rgb(Color::Primary), (195, 111, 105)); // hsl(4,43%,59%) 截断值
@@ -402,6 +441,7 @@ mod tests {
 
     #[test]
     fn border_resolver_consistent_with_border_token() {
+        pin_stella();
         for dark in [false, true] {
             set_dark_mode(dark);
             assert_eq!(resolve_border_rgb(), rgb(Color::Border));

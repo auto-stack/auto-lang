@@ -2105,6 +2105,8 @@ mod tests {
         // Plan 409 §10 回归:bg-background/95 在深色主题下应是语义 Background
         // (Plan 448 对齐批: hsl 222.2 47.4% 7%;Plan 518 stella 重校:
         // dark #141a29 = (20,26,41)),+ alpha≈242,而非 to_rgb8() 拍平出的白色。
+        // PLAN-619 T-03：轨缺省已改 scaffold，本用例断言的是 stella 值 → 钉住。
+        assert!(crate::ui::style::theme::set_theme("stella"), "stella 恒在");
         crate::ui::style::iced_adapter::set_dark_mode(true);
         match StyleClass::parse_single("bg-background/95") {
             Ok(StyleClass::BackgroundColor(Color::Rgba { r, g, b, a })) => {

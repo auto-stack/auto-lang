@@ -1653,3 +1653,178 @@ fn button_label_line_box_clamped_to_font_size() {
     assert!(h <= 18.0 * 1.1, "label line box must hug glyphs (~18px), got {h}");
     assert!(h >= 10.0, "label must still render, got {h}");
 }
+
+// ============================================================================
+// PLAN-619 T-01 夹具 helper（调查期建立，回归门禁复用）
+// ============================================================================
+
+fn col(children: Vec<View<()>>, style: &str) -> View<()> {
+    View::Column {
+        children,
+        spacing: 0,
+        padding: 0,
+        style: crate::ui::style::Style::parse(style).ok(),
+        onclick: None,
+        on_right_click: None,
+    }
+}
+
+fn row(children: Vec<View<()>>, style: &str) -> View<()> {
+    View::Row {
+        children,
+        spacing: 0,
+        padding: 0,
+        style: crate::ui::style::Style::parse(style).ok(),
+        onclick: None,
+        on_right_click: None,
+    }
+}
+
+fn img_lucide(name: &str, style: &str) -> View<()> {
+    View::Image {
+        src: format!("lucide:{name}"),
+        style: crate::ui::style::Style::parse(style).ok(),
+    }
+}
+
+// ============================================================================
+// PLAN-619 回归门禁（T-01 决策件的可复跑形态）
+// ============================================================================
+
+/// PLAN-619 R2：`p-*`(统一) 与 `px-*`/`py-*`(轴) 的覆盖次序 = CSS 语义
+/// （轴胜统一），且与类串书写顺序无关。修前 uniform 命中即 early-return，
+/// `p-2 py-1.5` 的垂直 6px 被 8px 盖掉（VM 便签行高 52 vs Vue 48）。
+#[test]
+fn plan619_axis_padding_overrides_uniform() {
+    for (needle, style, want_x, want_y) in [
+        ("R2_AXIS_Y_THEN_P", "p-2 py-1.5", 8.0, 6.0),
+        ("R2_AXIS_Y_AFTER_P", "py-1.5 p-2", 8.0, 6.0),
+        ("R2_AXIS_X", "p-2 px-2.5", 10.0, 8.0),
+        ("R2_UNIFORM", "p-2", 8.0, 8.0),
+        ("R2_SIDE", "p-2 pt-1 pb-3", 8.0, 4.0), // pt-1 = 4px（赢过 p-2 的 8px）
+    ] {
+        let view = col(vec![col(vec![styled_view(needle)], style)], "w-80 h-full flex flex-col bg-card");
+        let mut ui = simulator(view.into_iced());
+        let (x, y, _w, _h) = bounds_of(&mut ui, needle);
+        assert_eq!(
+            (x, y),
+            (want_x, want_y),
+            "`{style}` 解析：期望 (x,y)=({want_x},{want_y})，实测 ({x},{y})"
+        );
+    }
+}
+
+/// PLAN-619 R1+P4 端到端夹具：照抄 015-notes sidebar 链
+/// （sidebar_content px-2 → sidebar_group p-2 → group_label h-8/px-2 →
+/// menu_button p-2 ⊕ py-1.5），量左右缩进与盒高。
+/// Vue 基准（同链 DOM）：label 文本 24、便签标题 24、label 盒高 32。
+#[test]
+fn plan619_sidebar_chain_insets_match_vue() {
+    let label = || {
+        View::Text {
+            content: "GROUPLABEL".to_string(),
+            style: crate::ui::style::Style::parse(
+                "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium",
+            )
+            .ok(),
+            selectable: false,
+        }
+    };
+    let note_row = |needle: &str| {
+        // 标题自带 `w-full`（015-notes sidebar.at:47 的 `text-sm truncate w-full`）
+        // ——列容器的 `items-center` 因此不会把标记文本居中，量到的 x 就是
+        // 「行盒左界 + p-2」。
+        col(
+            vec![View::Text {
+                content: needle.to_string(),
+                style: crate::ui::style::Style::parse("w-full text-sm").ok(),
+                selectable: false,
+            }],
+            // NoteRow(015-notes sidebar.at:44) ⊕ MENU_BUTTON_BASE，顺序同
+            // with_class_prop 的 `用户类 契约类`。
+            "h-auto py-1.5 flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm",
+        )
+    };
+    let inner = col(
+        vec![
+            label(),
+            col(
+                vec![col(
+                    vec![note_row("NOTETITLE")],
+                    "flex w-full min-w-0 flex-col gap-1",
+                )],
+                "w-full text-sm",
+            ),
+        ],
+        "relative flex w-full min-w-0 flex-col p-2",
+    );
+    let view = col(
+        vec![View::Scrollable {
+            child: Box::new(col(
+                vec![inner],
+                "px-2 pb-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto",
+            )),
+            width: None,
+            height: None,
+            style: crate::ui::style::Style::parse(
+                "px-2 pb-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto",
+            )
+            .ok(),
+            auto_scroll: false,
+            offset: None,
+            on_scroll: None,
+        }],
+        "w-80 h-full flex flex-col bg-card",
+    );
+    let mut ui = simulator(view.into_iced());
+    let (lx, ly, _lw, lh) = bounds_of(&mut ui, "GROUPLABEL");
+    let (nx, ny, _nw, _nh) = bounds_of(&mut ui, "NOTETITLE");
+    eprintln!("[619-chain] label x={lx} y={ly} h={lh}   note x={nx} y={ny}");
+
+    // P4 横向：content(8) + group(8) + label px-2(8) = 24 —— 修前 16。
+    assert_eq!(lx, 24.0, "分组标签左起应为 24（P4：修前 16）");
+    // P4 横向：content(8) + group(8) + button p-2(8) = 24 —— 修前 16。
+    assert_eq!(nx, 24.0, "便签标题左起应为 24（P4：修前 16）");
+    // R3+R4 纵向链：label 盒（h-8=32、items-center）顶 = content 顶(0) +
+    // group p-2(8) → 文本行盒落在 8 + (32-15.6)/2 = 16.2。修前 h-8 不落盒，
+    // 文本停在 8 → 整条列表上移 8px 且与 Vue 的 h-8 盒不同高。
+    let expected_ly = 8.0 + (32.0 - lh) / 2.0;
+    assert!(
+        (ly - expected_ly).abs() <= 0.6,
+        "label 文本 y 期望 ≈{expected_ly}（group p-2 8 + h-8 盒内居中），实测 {ly}"
+    );
+    // R2 纵向链：label 盒底(8+32=40) → 便签行顶 = 40，行内 py-1.5(6) 胜
+    // p-2(8) → 标题 y = 46。修前 uniform p-2 通吃 → 48。
+    let expected_ny = 8.0 + 32.0 + 6.0;
+    assert!(
+        (ny - expected_ny).abs() <= 0.6,
+        "便签标题 y 期望 ≈{expected_ny}（h-8 盒底 + py-1.5），实测 {ny}"
+    );
+}
+
+/// PLAN-619 T-02（P2）：icon 的盒宽由样式宽高决定，`size:` 经 VM 侧折成的
+/// `w-[Npx] h-[Npx]` 必须真正落成 N 像素盒（同 glyph 两端 ink 比 ≥0.9 的
+/// 布局半边）。缺省无 w/h 时仍为渲染器缺省 16px。
+#[test]
+fn plan619_icon_box_follows_style_size() {
+    for (needle, style, want_box) in [
+        ("ICON_SIZED", "w-[18px] h-[18px] text-primary", 18.0),
+        ("ICON_DEFAULT", "text-primary", 16.0),
+    ] {
+        let view = col(
+            vec![row(
+                vec![img_lucide("notebook", style), styled_view(needle)],
+                "w-auto items-center gap-2",
+            )],
+            "w-80 h-full flex flex-col bg-card",
+        );
+        let mut ui = simulator(view.into_iced());
+        let (x, _y, _w, _h) = bounds_of(&mut ui, needle);
+        // 行内 text x = 图标盒宽 + gap-2(8)。
+        assert_eq!(
+            x,
+            want_box + 8.0,
+            "`{style}` 下图标盒宽期望 {want_box}（实测文本 x={x}）"
+        );
+    }
+}

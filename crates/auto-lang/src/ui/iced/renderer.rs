@@ -1141,30 +1141,11 @@ fn effective_spacing(legacy: u16, style: Option<&Style>, horizontal: bool) -> f3
 }
 
 /// Compute iced Padding (per-axis) from style, falling back to legacy u16.
-/// Handles px/py separately from uniform padding.
+/// PLAN-619 R2: 委托 `IcedStyle::effective_padding` —— 单侧 > 轴 > 统一 >
+/// legacy。此前 uniform 命中即 early-return，`p-2 py-1.5` 的 per-axis
+/// 覆盖被整个丢弃（VM 便签行比 Vue 高 4px 的根因）。
 fn iced_padding_from_is(is: &IcedStyle, legacy: u16) -> iced::Padding {
-    // Uniform padding
-    if let Some(p) = is.padding {
-        return iced::Padding::new(p);
-    }
-    // Per-axis or per-side padding
-    let has_per_side = is.padding_top.is_some() || is.padding_bottom.is_some()
-        || is.padding_left.is_some() || is.padding_right.is_some();
-    if has_per_side || is.padding_x.is_some() || is.padding_y.is_some() {
-        let px = is.padding_x.unwrap_or(0.0);
-        let py = is.padding_y.unwrap_or(0.0);
-        let top = is.padding_top.or(if py > 0.0 { Some(py) } else { None }).unwrap_or(0.0);
-        let bottom = is.padding_bottom.or(if py > 0.0 { Some(py) } else { None }).unwrap_or(0.0);
-        let left = is.padding_left.or(if px > 0.0 { Some(px) } else { None }).unwrap_or(0.0);
-        let right = is.padding_right.or(if px > 0.0 { Some(px) } else { None }).unwrap_or(0.0);
-        return iced::Padding {
-            top,
-            bottom,
-            left,
-            right,
-        };
-    }
-    iced::Padding::new(legacy as f32)
+    is.effective_padding(legacy)
 }
 
 fn iced_padding(legacy: u16, style: Option<&Style>) -> iced::Padding {
@@ -1529,15 +1510,16 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
 /// - `mx-auto` (both flags): container fills remaining width, content centered
 /// - `ml-auto` alone: container fills remaining width, content pushed right
 /// - `mr-auto` alone: container fills remaining width, content pushed left
+///
+/// PLAN-619 R3: 四值经 `IcedStyle::effective_margin` 解析（单侧 > 轴 > 统一），
+/// 因此 `mx-*`/`my-*`/`m-*` 与显式单侧同等生效——此前只读单侧字段，
+/// `m-*` 族其余成员全部静默丢失。
 fn wrap_with_margin<M: Clone + Debug + 'static>(
     el: iced::Element<'static, M>,
     is: &IcedStyle,
 ) -> iced::Element<'static, M> {
     use iced::widget::container;
-    let top = is.margin_top.unwrap_or(0.0);
-    let bottom = is.margin_bottom.unwrap_or(0.0);
-    let left = is.margin_left.unwrap_or(0.0);
-    let right = is.margin_right.unwrap_or(0.0);
+    let (top, right, bottom, left) = is.effective_margin();
     let needs_wrap = top != 0.0 || bottom != 0.0 || left != 0.0 || right != 0.0
         || is.margin_left_auto || is.margin_right_auto;
     if !needs_wrap {
@@ -1638,10 +1620,11 @@ fn apply_column_style<M: Clone + Debug + 'static>(
 
     let col_max_width = iced_style.as_ref().and_then(|is| is.max_width);
     let needs_wrap = justify_center || justify_end || has_visual;
-    let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
-    let mb = iced_style.as_ref().and_then(|is| is.margin_bottom).unwrap_or(0.0);
-    let ml = iced_style.as_ref().and_then(|is| is.margin_left).unwrap_or(0.0);
-    let mr = iced_style.as_ref().and_then(|is| is.margin_right).unwrap_or(0.0);
+    // PLAN-619 R3: 单侧 > 轴 > 统一（`mx-*`/`my-*`/`m-*` 此前被丢弃）。
+    let (mt, mr, mb, ml) = iced_style
+        .as_ref()
+        .map(|is| is.effective_margin())
+        .unwrap_or((0.0, 0.0, 0.0, 0.0));
     let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
         || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
 
@@ -1880,10 +1863,11 @@ fn apply_row_style<M: Clone + Debug + 'static>(
     };
 
     // Apply external margin_top/margin_bottom and mx-auto/ml-auto/mr-auto
-    let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
-    let mb = iced_style.as_ref().and_then(|is| is.margin_bottom).unwrap_or(0.0);
-    let ml = iced_style.as_ref().and_then(|is| is.margin_left).unwrap_or(0.0);
-    let mr = iced_style.as_ref().and_then(|is| is.margin_right).unwrap_or(0.0);
+    // PLAN-619 R3: 单侧 > 轴 > 统一（同 apply_column_style）。
+    let (mt, mr, mb, ml) = iced_style
+        .as_ref()
+        .map(|is| is.effective_margin())
+        .unwrap_or((0.0, 0.0, 0.0, 0.0));
     let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
         || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
     if needs_margin_wrap {
@@ -3315,6 +3299,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         .into()
                 } else if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
+                    // PLAN-619 R4: `height`（如 sidebar_group_label 契约的
+                    // `h-8`）此前在这一臂被整条忽略——Text 直接进 iced，盒子
+                    // 高度只剩行盒，分组标签比 Vue 矮 16px 并连带整个列表上移。
+                    // `items-center` 同步折成盒内纵向居中（CSS `display:flex;
+                    // align-items:center` 的行内等价）。
+                    let box_height = iced_style
+                        .height
+                        .as_ref()
+                        .map(iced_length)
+                        .or_else(|| iced_style.min_height.filter(|mh| *mh < 9999.0).map(iced::Length::Fixed));
                     let has_box_style = iced_style.background_color.is_some()
                         || iced_style.border
                         || iced_style.has_border_radius()
@@ -3328,6 +3322,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         || iced_style.padding_right.is_some()
                         || iced_style.max_width.is_some()
                         || iced_style.max_height.is_some()
+                        || box_height.is_some()
                         || iced_style.shadow;
 
                     if has_box_style {
@@ -3341,6 +3336,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                         if let Some(mh) = iced_style.max_height {
                             cont = cont.max_height(mh);
+                        }
+                        if let Some(h) = box_height {
+                            cont = cont.height(h);
+                            if matches!(
+                                iced_style.align_items,
+                                Some(crate::ui::style::iced_adapter::IcedAlign::Center)
+                            ) {
+                                cont = cont.align_y(iced::alignment::Vertical::Center);
+                            }
                         }
                         cont.into()
                     } else {
@@ -4947,13 +4951,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         svg_widget = svg_widget.height(h.unwrap_or(iced::Length::Fixed(16.0)));
                         // PLAN-054 T4 (A11): margin 系(ml-auto 贴行右端)在图标
                         // 出口消费——此前 container 直接返回,ml-auto 静默丢失。
+                        // PLAN-619 R3: 判定走 effective_margin（单侧 > 轴 > 统一）。
                         if let Some(ref is) = is {
-                            if is.margin_left_auto || is.margin_right_auto
-                                || is.margin_left.unwrap_or(0.0) != 0.0
-                                || is.margin_right.unwrap_or(0.0) != 0.0
-                                || is.margin_top.unwrap_or(0.0) != 0.0
-                                || is.margin_bottom.unwrap_or(0.0) != 0.0
-                            {
+                            if is.has_margin() {
                                 return wrap_with_margin(container(svg_widget).into(), is);
                             }
                         }
@@ -23772,8 +23772,8 @@ mod tests {
         ds.open_desktop(iced::window::Id::unique());
         assert_eq!(
             crate::ui::style::theme::theme_name(),
-            "stella",
-            "未知名拒绝保持缺省"
+            "scaffold",
+            "未知名拒绝保持轨缺省（PLAN-619 T-03：scaffold）"
         );
 
         // ② boot:载入结构体≠激活(锚定语义,此时仍缺省);
@@ -23784,7 +23784,7 @@ mod tests {
         let mut ds2 = crate::ui::session::DesktopSession::__test_session();
         assert_eq!(
             crate::ui::style::theme::theme_name(),
-            "stella",
+            "scaffold",
             "载入结构体≠激活(首采样锚定语义)"
         );
         ds2.open_desktop(iced::window::Id::unique());

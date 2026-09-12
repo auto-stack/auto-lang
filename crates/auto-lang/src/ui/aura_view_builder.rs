@@ -2897,6 +2897,7 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> String {
         self.extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
             .unwrap_or_default()
             .split_whitespace()
             .filter(|t| t.starts_with("py-") || t.starts_with("px-") || t.starts_with("p-"))
@@ -5035,6 +5036,7 @@ let tabs_inner = View::Row {
         }
         let user_class = self
             .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
             .unwrap_or_default();
         let class = if user_class.trim().is_empty() {
             sc::GROUP_BASE.to_string()
@@ -5129,7 +5131,10 @@ let tabs_inner = View::Row {
             },
         };
         let mut class = base.to_string();
-        if let Some(user) = self.extract_string_with(props, "class", bindings) {
+        if let Some(user) = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+        {
             if !user.trim().is_empty() {
                 class.push(' ');
                 class.push_str(user.trim());
@@ -5162,7 +5167,10 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_children_text(children, bindings))
             .unwrap_or_default();
         let mut class = crate::ui_gen::sidebar_contract::MENU_BADGE.to_string();
-        if let Some(user) = self.extract_string_with(props, "class", bindings) {
+        if let Some(user) = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+        {
             if !user.trim().is_empty() {
                 class.push(' ');
                 class.push_str(user.trim());
@@ -6214,6 +6222,23 @@ let tabs_inner = View::Row {
         // icon: name → "lucide:{name}" synthetic src
         if let Some(name) = self.extract_string_with(props, "name", bindings) {
             if !name.is_empty() {
+                // PLAN-619 T-02: `size:` 是权威尺寸（用户裁决）。此前这一臂只
+                // 取 class/style 两个键，`size:` 完全没被消费 → VM 图标落渲染
+                // 器缺省 16px，而 Vue 侧固定 w-5 h-5（20px），两端同一 glyph
+                // ink 差 ≈50%。此处按 convert_icon_component 同款把 size 折成
+                // 显式 Width/Height 类，并**前置**注入使显式 `w-*`/`h-*` 仍可
+                // 覆盖（用户类后应用胜出，与 CSS 类优先同序）。
+                let size = self.extract_u16(props, "size").unwrap_or(0);
+                if size > 0 {
+                    let mut s = style.unwrap_or_default();
+                    let mut classes = vec![
+                        StyleClass::Width(SizeValue::Pixels(size as f32)),
+                        StyleClass::Height(SizeValue::Pixels(size as f32)),
+                    ];
+                    classes.append(&mut s.classes);
+                    s.classes = classes;
+                    style = Some(s);
+                }
                 return View::Image { src: format!("lucide:{}", name), style };
             }
         }
@@ -6766,6 +6791,12 @@ let tabs_inner = View::Row {
 
     /// class prop 合并（静态直拼;已有动态绑定串按当前求值拍平——构建期
     /// 一次求值,VM 轨可接受）。
+    ///
+    /// PLAN-619 R1：用户类串同时接受 `class:` 与 `style:` 两个键——DSL 里
+    /// `style:` 是主要写法（本仓示例几乎全用它），旧实现只读 `class:`，于是
+    /// sidebar 契约族的用户类（`sidebar_content (style: "px-2 pb-2")`、
+    /// `sidebar_menu_button { style: "py-1.5 …" }`）被整串静默丢弃，只剩契约
+    /// 基座。其余 8 处样式取值点都是 `.or_else(style)`，此处补齐同一口径。
     fn with_class_prop(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -6774,6 +6805,7 @@ let tabs_inner = View::Row {
     ) -> HashMap<String, AuraPropValue> {
         let existing = self
             .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
             .unwrap_or_default();
         let merged = if existing.is_empty() {
             extra.to_string()
@@ -15418,6 +15450,117 @@ mod tests {
         assert!(classes_contain(&st.classes, sc::MENU_SUB_BUTTON_BASE), "sub 基座缺失");
         assert!(classes_contain(&st.classes, sc::MENU_SUB_BUTTON_SIZE_SM), "sub sm 尺寸缺失");
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PLAN-619 R1 / T-02：sidebar 族用户类合并 + icon size 权威
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// PLAN-619 R1 回归：`sidebar_content (style: "px-2 pb-2")` 的用户类必须
+    /// 与 CONTENT_BASE 契约**同时**生效。旧实现 `with_class_prop` 只读
+    /// `class:` 键，`style:`（DSL 主写法）被整串丢弃——VM 侧栏列表因此少
+    /// 8px 左缩进（P4 的横向那一半）。
+    #[test]
+    fn plan619_sidebar_content_style_prop_keeps_user_classes() {
+        use crate::ui_gen::sidebar_contract as sc;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        for key in ["style", "class"] {
+            let node = AuraNode::element("sidebar_content")
+                .with_prop(key, Expr::Str("px-2 pb-2".into()));
+            match builder.build(&node) {
+                View::Scrollable { style, .. } => {
+                    let classes = style.expect("scroll style").classes;
+                    assert!(
+                        classes_contain(&classes, sc::CONTENT_BASE),
+                        "`{key}:` 下契约基座缺失: {classes:?}"
+                    );
+                    assert!(
+                        classes_contain(&classes, "px-2 pb-2"),
+                        "`{key}:` 下用户类丢失: {classes:?}"
+                    );
+                }
+                other => panic!("sidebar_content 应为 Scrollable,得到 {other:?}"),
+            }
+        }
+    }
+
+    /// PLAN-619 R1 回归：`class:` 与 `style:` 两键在下游等价（同串落位）。
+    #[test]
+    fn plan619_class_and_style_props_are_equivalent() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let classes_of = |key: &str| {
+            let node = AuraNode::element("sidebar_group_label")
+                .with_prop("text", Expr::Str("Pinned".into()))
+                .with_prop(key, Expr::Str("text-xs font-medium".into()));
+            match builder.build(&node) {
+                View::Text { style, .. } => style.expect("label style").classes,
+                other => panic!("sidebar_group_label 应为 Text,得到 {other:?}"),
+            }
+        };
+        assert_eq!(classes_of("class"), classes_of("style"), "两键应同串落位");
+    }
+
+    /// PLAN-619 T-02 回归（用户裁决：`.at` 的 `size:` 是权威）：icon 元素的
+    /// `size` 必须折成显式 Width/Height 类。旧实现只取 name/src，size 不落
+    /// → VM 图标落渲染器缺省 16px，而 Vue 固定 w-5 h-5(20px)，同一 glyph
+    /// 两端 ink 差 ≈50%（P2）。
+    #[test]
+    fn plan619_icon_size_prop_sets_explicit_box() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("search".into()))
+            .with_prop("size", Expr::Int(14))
+            .with_prop("style", Expr::Str("text-muted-foreground".into()));
+        match builder.build(&node) {
+            View::Image { src, style } => {
+                assert_eq!(src, "lucide:search");
+                let classes = style.expect("icon style").classes;
+                assert!(
+                    classes_contain(&classes, "w-[14px] h-[14px]"),
+                    "size 未落盒: {classes:?}"
+                );
+                assert!(
+                    classes_contain(&classes, "text-muted-foreground"),
+                    "icon 的 style: 用户类丢失: {classes:?}"
+                );
+            }
+            other => panic!("icon 应为 Image,得到 {other:?}"),
+        }
+
+        // 显式 w-*/h-* 仍可覆盖 size（用户类后应用胜出，与 CSS 同序）。
+        let over = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("search".into()))
+            .with_prop("size", Expr::Int(14))
+            .with_prop("style", Expr::Str("w-5 h-5".into()));
+        match builder.build(&over) {
+            View::Image { style, .. } => {
+                let classes = style.expect("icon style").classes;
+                // apply_class 后写胜出 → 用户 w-5/h-5 必须排在注入的 size 之后。
+                let last_width = classes
+                    .iter()
+                    .filter_map(|c| match c {
+                        crate::ui::style::StyleClass::Width(v) => Some(*v),
+                        _ => None,
+                    })
+                    .next_back()
+                    .expect("icon 必有宽度");
+                assert_eq!(
+                    last_width,
+                    crate::ui::style::SizeValue::Fixed(5),
+                    "显式 w-5 应排在 size 之后胜出: {classes:?}"
+                );
+            }
+            other => panic!("icon 应为 Image,得到 {other:?}"),
+        }
+    }
+
 }
 
 /// Plan 422 P4: popover 子标签的 tag/children 读取(闭包无法表达返回借用的
@@ -15802,4 +15945,5 @@ mod plan534_side_panel_tests {
             other => panic!("应定位到 Popover,得到 {other:?}"),
         }
     }
+
 }

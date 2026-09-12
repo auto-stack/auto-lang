@@ -5803,16 +5803,45 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     self.lucide_icons.insert(lucide_component.clone());
 
                     let (static_classes, _dynamic_class, _dynamic_style) = self.extract_classes(tag, props);
+                    // PLAN-619 T-02: `.at` 的 `size:` 是权威尺寸（用户裁决）。
+                    // 此前 size 完全不落发射，`icon (size: 18)` 在 Vue 端按标签
+                    // 缺省类 `w-5 h-5`（20px）渲染，与 VM 端各说各话。显式 size
+                    // 时发射 `:size` **并撤掉 w-5 h-5**——Tailwind 的
+                    // width/height 是 CSS 属性，会盖过 lucide 的 width/height
+                    // 表现属性，留着它 size 名义生效实则无效。缺省（无 size:）
+                    // 才回落 w-5 h-5。
+                    let size_attr = match props.get("size") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => {
+                            Some(format!(" :size=\"{}\"", n))
+                        }
+                        Some(AuraPropValue::Expr(expr)) => {
+                            match self.expr_to_vue_bound_value(expr) {
+                                Ok(js) => Some(format!(" :size=\"{}\"", js)),
+                                Err(_) => None,
+                            }
+                        }
+                        _ => None,
+                    };
+                    let static_classes = if size_attr.is_some() {
+                        static_classes
+                            .split_whitespace()
+                            .filter(|t| *t != "w-5" && *t != "h-5")
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    } else {
+                        static_classes
+                    };
                     let class_str = if static_classes.is_empty() {
                         String::new()
                     } else {
                         format!(" class=\"{}\"", static_classes)
                     };
+                    let size_str = size_attr.unwrap_or_default();
 
                     if children.is_empty() {
-                        return Ok(format!("{}<{}{} />\n", ind, lucide_component, class_str));
+                        return Ok(format!("{}<{}{}{} />\n", ind, lucide_component, size_str, class_str));
                     } else {
-                        let mut html = format!("{}<{}{}>\n", ind, lucide_component, class_str);
+                        let mut html = format!("{}<{}{}{}>\n", ind, lucide_component, size_str, class_str);
                         for child in children {
                             html.push_str(&self.node_to_html(child, indent + 1)?);
                         }
@@ -17660,6 +17689,108 @@ widget Counter {
         assert!(sfc.contains("const count = ref<number>(0)"));
         assert!(sfc.contains("<template>"));
         assert!(sfc.contains("<style>"));
+    }
+
+    #[test]
+    fn zzz_probe_icon_size_in_button_child() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget ProbeIcon {
+    view {
+        col {
+            sidebar_provider (class: "w-auto min-h-0 flex") {
+            col {
+                style: "w-80 shrink-0 h-full flex flex-col"
+                row {
+                    style: "shrink-0 gap-1 px-3 pb-1"
+                    button {
+                        style: "h-7 w-auto"
+                        icon (name: "folder", size: 11)
+                        text "work"
+                    }
+                }
+                sidebar_content (style: "px-2 pb-2") {
+                    sidebar_group {
+                        sidebar_group_label { text "Pinned" }
+                        sidebar_group_content {
+                            sidebar_menu {
+                                sidebar_menu_button {
+                                    style: "h-auto py-1.5"
+                                    icon (name: "check", size: 13)
+                                    text "x"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            }
+        }
+    }
+}
+"#,
+        );
+        for line in sfc.lines() {
+            if line.contains("Folder") || line.contains("Check") {
+                eprintln!("[PROBE] {}", line.trim());
+            }
+        }
+    }
+
+    /// PLAN-619 T-02（用户裁决：`.at` 的 `size:` 是权威）：icon 元素带显式
+    /// `size:` 时必须发射 `:size="N"` 并撤掉标签缺省类 `w-5 h-5`——Tailwind
+    /// 的 width/height 是 CSS 属性，会盖过 lucide 的 width/height 表现属性，
+    /// 留着它 `:size` 名义生效实则无效。缺省（无 size:）才回落 w-5 h-5。
+    #[test]
+    fn plan619_icon_size_prop_emits_bound_size() {
+        let sized = gen_sfc_from_widget_src(
+            r#"
+widget IconSized {
+    view {
+        col {
+            icon (name: "search", size: 14, style: "text-muted-foreground")
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sized.contains(":size=\"14\""),
+            "显式 size 必须发射 :size 绑定:
+{sized}"
+        );
+        assert!(
+            !sized.contains("w-5 h-5"),
+            "显式 size 时必须撤掉缺省 w-5 h-5（CSS 会盖过 :size）:
+{sized}"
+        );
+        assert!(
+            sized.contains("text-muted-foreground"),
+            "icon 的用户 style 类应并存:
+{sized}"
+        );
+
+        let defaulted = gen_sfc_from_widget_src(
+            r#"
+widget IconDefault {
+    view {
+        col {
+            icon (name: "search")
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            defaulted.contains(":size=") == false,
+            "无 size 声明时不应发射 :size:
+{defaulted}"
+        );
+        assert!(
+            defaulted.contains("w-5 h-5"),
+            "无 size 声明时回落标签缺省 w-5 h-5:
+{defaulted}"
+        );
     }
 
     /// Widget-level native CSS (`style { ... }` → `AuraWidget.style_css`) is

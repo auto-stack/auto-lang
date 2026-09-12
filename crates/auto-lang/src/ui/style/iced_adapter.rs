@@ -517,6 +517,60 @@ impl IcedStyle {
             || self.border_radius_bl.map_or(false, |r| r > 0.0)
     }
 
+    /// Resolve the four-side padding box (PLAN-619 R2).
+    ///
+    /// Precedence per axis mirrors Tailwind's emitted CSS order — the more
+    /// specific utility always wins regardless of the class attribute order:
+    /// explicit side (`pt-*`) > axis (`px-*`/`py-*`) > uniform (`p-*`) >
+    /// legacy `padding` attribute. The previous early-return on uniform
+    /// padding silently discarded every per-axis override (`p-2 py-1.5`),
+    /// which is what made the VM note rows taller than Vue's.
+    pub fn effective_padding(&self, legacy: u16) -> iced::Padding {
+        let base = self.padding.unwrap_or(legacy as f32);
+        let px = self.padding_x.unwrap_or(base);
+        let py = self.padding_y.unwrap_or(base);
+        iced::Padding {
+            top: self.padding_top.unwrap_or(py),
+            right: self.padding_right.unwrap_or(px),
+            bottom: self.padding_bottom.unwrap_or(py),
+            left: self.padding_left.unwrap_or(px),
+        }
+    }
+
+    /// Resolve the four-side margin box (PLAN-619 R3).
+    ///
+    /// Same precedence ladder as [`Self::effective_padding`]: side > axis >
+    /// uniform. iced has no margin in its layout model, so consumers fold
+    /// this into external padding. Every `m-*` family member reaches here —
+    /// before this existed only the explicit per-side utilities (`mt-*`)
+    /// were read, so `mx-*` / `my-*` / `m-*` were dropped entirely.
+    pub fn effective_margin(&self) -> (f32, f32, f32, f32) {
+        let m = self.margin.unwrap_or(0.0);
+        let mx = self.margin_x.unwrap_or(m);
+        let my = self.margin_y.unwrap_or(m);
+        (
+            self.margin_top.unwrap_or(my),
+            self.margin_right.unwrap_or(mx),
+            self.margin_bottom.unwrap_or(my),
+            self.margin_left.unwrap_or(mx),
+        )
+    }
+
+    /// True when any margin source (uniform / axis / side) contributes or an
+    /// `*-auto` push is declared — the gate for [`Self::effective_margin`]
+    /// consumers before they wrap an element.
+    pub fn has_margin(&self) -> bool {
+        self.margin.is_some()
+            || self.margin_x.is_some()
+            || self.margin_y.is_some()
+            || self.margin_top.is_some()
+            || self.margin_bottom.is_some()
+            || self.margin_left.is_some()
+            || self.margin_right.is_some()
+            || self.margin_left_auto
+            || self.margin_right_auto
+    }
+
     /// Apply a single StyleClass to this IcedStyle
     fn apply_class(&mut self, class: &StyleClass) {
         match class {

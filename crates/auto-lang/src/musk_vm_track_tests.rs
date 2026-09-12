@@ -1920,13 +1920,18 @@ mod musk_vm_track_p054_t4_styles {
     /// rgb(13,21,38)（Plan 448 对齐,两轨一致）。
     /// Plan 518 stella 重校:dark Surface 翻精修蓝黑 #1a2235 = (26,34,53)。
     #[test]
-    fn bg_card_matches_musk_dark_token() {
+    fn bg_card_matches_scaffold_dark_token() {
+        // PLAN-619 T-03：轨缺省色板由 stella 改为 scaffold（与 auto-man 为
+        // scaffold 类应用生成的 Vue `index.css` 同源）。未声明 `theme{}` 的
+        // 应用（含 musk 轨）在 VM 端随之取 scaffold 的 `--card`
+        // （222.2 47% 10% → (13,20,37)）；要保住原 stella 观感需在 pac.at
+        // 显式声明 `theme { name: "stella" }`（桌面宿主即走这条路）。
         let s = Style::parse("bg-card").expect("parse");
         let is = IcedStyle::from_style(&s);
         let c = is.background_color.expect("bg");
-        assert_eq!((c.r * 255.0).round() as u8, 26, "r");
-        assert_eq!((c.g * 255.0).round() as u8, 34, "g");
-        assert_eq!((c.b * 255.0).round() as u8, 53, "b");
+        assert_eq!((c.r * 255.0).round() as u8, 13, "r");
+        assert_eq!((c.g * 255.0).round() as u8, 20, "g");
+        assert_eq!((c.b * 255.0).round() as u8, 37, "b");
     }
 
     /// A11：图标组件 class prop 下传——ml-auto 贴行右端 + muted 着色,

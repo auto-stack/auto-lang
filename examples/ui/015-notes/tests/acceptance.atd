@@ -122,6 +122,26 @@
 - **允许**：favicon 404、第三方非致命警告
 - **禁止**：`view is not available`、`Unhandled error`、`store is not defined`
 
+### T14: 双端像素一致性（VM ↔ Vue）⚠️ 常驻门禁（PLAN-619）
+- **操作**：两端各取一张初始态截图（Vue: `auto run` + Playwright dark 1280x800；
+  VM: `AUTOUI_MCP_PORT=<port> auto run -r vm` + `autoui_screenshot`），然后跑对拍探针：
+  ```bash
+  python tools/parity_shot_diff.py <vue.png> <vm.png> --scale 2
+  ```
+- **期望**（预算内，探针违规时退出码 1）：
+  - 语义面色（页面/编辑区、侧栏）**逐通道 ≤2**（P1：同一语义 token 两端同值）
+  - 顶栏图标 ink 宽高比 vm/vue ∈ **[0.9, 1.1]**（P2：`icon (size: N)` 两端同盒）
+  - 左缩进差 **≤1px**：搜索行左边界（`mx-3`）、分组标签文字、便签标题文字（P3/P4）
+- **契约**：C-PARITY-1
+- **历史教训**：PLAN-616 清爽化重做后两端肉眼可见地不一致（面板底色两套色板、
+  图标 ≈50% 大小、侧栏左缩进少 8~12px）。三类根因各在引擎一处：VM 缺省主题走
+  stella 而非 scaffold 同源表、`icon` 的 `size:` 未被消费、
+  `with_class_prop` 不认 `style:` 键（用户类整串丢弃）、`mx-*` 在外边距消费点缺失、
+  `h-8` 在 Text 臂不落盒。修法与断言见 PLAN-619；回归锚为
+  `layout_tests.rs::plan619_*` 与 `aura_view_builder::tests::plan619_*`。
+- **注意**：探针采样点是 015-notes 专用（1280x800 视口坐标）；换布局需同步
+  `tools/parity_shot_diff.py` 的 `DEFAULTS`。
+
 ---
 
 ## 生成器契约依据汇总
@@ -133,6 +153,7 @@
 | C-ACCENT-1 | accent 写入的 CSS 变量必须覆盖 Tailwind `--primary` 默认 | T12, T12-DARK |
 | **C-DARK-1** | `.dark` class 与 `--primary` inline 修改必须同元素 | **T12-DARK** |
 | C4 | view 引用的 handler 必须在 on 块定义 | T5, T8, T9 |
+| **C-PARITY-1** | 同一 `.at` 在 VM 与 Vue 两端的语义面色/图标尺寸/左缩进落在像素预算内（探针 `tools/parity_shot_diff.py`） | **T14** |
 
 ---
 
@@ -190,3 +211,5 @@
 - 修复 bug 时，加一个**回归测试**条目（如 T12-DARK），标注"历史教训"
 - 新增桌面特性或修复 D-GAP 时，**同步更新 D/D-GAP 条目**
 - 新增 DSL/VM 使用约束时，补进「示例侧 DSL/VM 使用约束」表
+- 改视觉/样式相关代码后，**必须重跑 T14 对拍探针**（`tools/parity_shot_diff.py`），
+  预算违规即视为回归（不是"已知差异"）

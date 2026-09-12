@@ -62,8 +62,14 @@ pub struct DesktopConfig {
     /// 此后 OS 变化不再覆盖）；坏值回退 `"system"`。存量配置文件缺键亦按
     /// `"system"` 处理——现机即时获得 OS 跟随语义。
     pub theme_source: String,
-    /// PLAN-601 T-05：命名主题（registry 内置名；None = 轨缺省 stella）。
-    /// 与 dark_theme 正交——mode 选主题对内 light/dark，theme_name 选色板套。
+    /// PLAN-601 T-05：命名主题（registry 内置名）。与 dark_theme 正交——
+    /// mode 选主题对内 light/dark，theme_name 选色板套。
+    ///
+    /// PLAN-619 T-03（用户裁决）：**缺省写 `Some("stella")`**。轨缺省主题已
+    /// 改为 `scaffold`（与 scaffold 类应用的 Vue index.css 同源），所以
+    /// 「宿主 = stella」必须在此显式声明；`None` 会让桌面 shell 静默跟随
+    /// scaffold，blast radius = 全 gallery + 桌面观感。存量 config 缺键时
+    /// 解析保留本缺省 → 老机子不受影响。
     pub theme_name: Option<String>,
     /// 虚拟窗底色透明度三档：`off` | `low` | `high`（518 G6；坏值回退 off）。
     pub transparency: String,
@@ -80,7 +86,8 @@ impl Default for DesktopConfig {
             wallpapers_dir: String::new(),
             dark_theme: true,
             theme_source: "system".to_string(),
-            theme_name: None,
+            // PLAN-619 T-03：宿主显式持有 stella（轨缺省已改为 scaffold）。
+            theme_name: Some("stella".to_string()),
             transparency: "off".to_string(),
             notes_enabled: true,
         }
@@ -366,14 +373,25 @@ pub fn save_to(path: &std::path::Path, cfg: &DesktopConfig) -> std::io::Result<(
 mod tests {
 
     /// PLAN-601 T-05：theme_name 序列化/解析往返（None 不落盘稳定面）。
+    /// PLAN-619 T-03：缺省改为 `Some("stella")`——轨缺省主题已是 scaffold，
+    /// 宿主必须显式持有 stella，所以缺省值本身就是要落盘的稳定面。
     #[test]
     fn theme_name_roundtrip() {
         let mut cfg = DesktopConfig::default();
-        assert!(cfg.theme_name.is_none());
-        // None：序列化不含键
+        assert_eq!(
+            cfg.theme_name.as_deref(),
+            Some("stella"),
+            "PLAN-619 T-03：宿主缺省显式 stella"
+        );
+        let ser = serialize_config(&cfg);
+        assert!(ser.contains("theme_name : \"stella\""), "{ser}");
+
+        // None：显式空槽 → 不落盘（保留给「跟随轨缺省」的调用方）
+        cfg.theme_name = None;
         let ser = serialize_config(&cfg);
         assert!(!ser.contains("theme_name"), "None 不落盘:
 {ser}");
+
         // Some：落盘且往返
         cfg.theme_name = Some("zinc".to_string());
         let ser = serialize_config(&cfg);
@@ -381,10 +399,15 @@ mod tests {
         let (back, migrated) = load_from(Some(&ser), &mut |_| None);
         assert!(!migrated);
         assert_eq!(back.theme_name.as_deref(), Some("zinc"));
-        // 空串 = 未配置（解析宽容）
+
+        // 空串 = 未配置（解析宽容）→ 保留结构体缺省（宿主 stella）
         let src_bad = ser.replace("theme_name : \"zinc\"", "theme_name : \"\"");
         let (back2, _) = load_from(Some(&src_bad), &mut |_| None);
-        assert!(back2.theme_name.is_none());
+        assert_eq!(back2.theme_name.as_deref(), Some("stella"));
+
+        // 存量 config 缺键（None 传入）→ 同样是宿主缺省 stella，老机子不变色
+        let (back3, _) = load_from(None, &mut |_| None);
+        assert_eq!(back3.theme_name.as_deref(), Some("stella"));
     }
 
     use super::*;
@@ -438,7 +461,10 @@ mod tests {
             wallpapers_dir: String::new(),
             dark_theme: false,
             theme_source: "manual".to_string(),
-            theme_name: None,
+            // PLAN-619 T-03：`None` 不是可持久状态下——存盘省略键、读回落到
+            // 宿主缺省（stella），故往返用例取显式值。None 的归一化语义由
+            // `theme_name_roundtrip` 覆盖。
+            theme_name: Some("stella".to_string()),
             transparency: "high".to_string(),
             notes_enabled: false,
         };

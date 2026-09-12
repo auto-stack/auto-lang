@@ -13,6 +13,9 @@ use crate::ui::style::Color;
 /// 旧实现静态语义色期望表（抄自 theme.rs resolve_semantic_rgb match 臂，
 /// Plan 518 stella 双主题校准值）。Primary 独立断言（accent 驱动）。
 fn assert_static_arms(dark: bool, expected: &[(Color, (u8, u8, u8))]) {
+    // PLAN-619 T-03：本表是 Plan 518 stella 校准值基线，轨缺省改为 scaffold
+    // 后必须显式钉住 stella（被测面是 stella 表本身，不是缺省选择）。
+    assert!(theme::set_theme("stella"), "stella 恒在");
     theme::set_dark_mode(dark);
     for (color, want) in expected {
         assert_eq!(
@@ -74,6 +77,7 @@ fn zero_drift_semantic_table_dark() {
 /// Primary（accent 驱动臂）双态基线：默认 indigo，dark L+10。
 #[test]
 fn zero_drift_primary_indigo() {
+    assert!(theme::set_theme("stella"), "stella 恒在");
     theme::set_accent_name("indigo");
     theme::set_dark_mode(false);
     assert_eq!(theme::resolve_semantic_rgb(&Color::Primary), Some((100, 102, 241)));
@@ -147,6 +151,8 @@ fn t_c_token_css_vars_unique() {
 /// 双 mode 均可解析（= stella 表覆盖投影目标集）；非语义域变体返回 None。
 #[test]
 fn t_c_projection_complete_in_stella() {
+    // PLAN-619 T-03：被测面是 stella 表的完备性 → 显式钉住（轨缺省已改 scaffold）。
+    assert!(theme::set_theme("stella"), "stella 恒在");
     let projected = [
         Color::Secondary, Color::Background, Color::Surface, Color::Muted,
         Color::Error, Color::Warning, Color::Success, Color::Info,
