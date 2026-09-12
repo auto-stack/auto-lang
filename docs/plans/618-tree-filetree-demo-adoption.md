@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-618
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # T-01..T-03 完成(vue 端),T-04..T-06 待续
 feature_name: examples/ui 四 demo 接入 TreeView/FileTree 组件(027/026/018/041)
 author: [zcode]
 created_at: 2026-09-12
@@ -15,7 +15,7 @@ touched_goals:
   - "GOAL-007: AutoUI 跨端视觉一致——tree 组件族在四个真实 demo 的双端落地验证"
 
 affects: [examples/ui, docs/specs/auto-lang/ui]
-current_step: 0
+current_step: 3
 total_steps: 8
 ---
 
@@ -145,10 +145,16 @@ total_steps: 8
 - **T-01 worktree 建组**:本计划只动 examples/ui(auto-lang 仓)——裁定
   单仓:仅 auto-lang worktree `.wt/lang-618/auto-lang @ plan-618-dev`
   (骨架已提交 master c4433cde5)。
-- **T-02 filter_tree + 调色板扩充**:tree_util.at 加 filter_tree(while+索引,
-  命中+保祖先);TreeIcon +table/+zap;VM lucide_svg +zap(1 行);探针/单测。
-  验证:child_emit/探针测试绿。
-- **T-03 027 接入**:components 拷贝+左树面板+FmSelect→NavTo;双端验证。
+- **T-02 filter_tree + 调色板扩充** [x] [✅ 已完成] tree_util.at 加
+  filter_tree(递归+while+索引,命中+保祖先,祖先保留语义探针断言);TreeIcon
+  +table/+zap;VM lucide_svg +zap。**过程发现(挂账)**:①VM 模块 fn 递归可用
+  (fact 120 探针);②VM .lower() 链在「局部 var 派生字段+嵌套帧」返回空串
+  (两步赋值浅帧正常/深帧仍失效)→ v1 大小写敏感 + contains 直链。探针测试
+  p618_filter_tree_probe 全绿。证据:worktree 9ac3c5661 + auto-os b7337b1。
+- **T-03 027 接入** [x] [✅ 已完成,vue 端实证;VM 端待 T-08 补验] 左侧快速
+  访问按钮组替换为 TreeView(directory 受控);FmSelect → NavTo 联动;use 块
+  修正(package use 必须在 widget 内,顶层 parse 报 LBrace 错)。vue 实证:树
+  渲染+点击文档文件夹 → root/Documents 列表/面包屑联动(d177b9a44)。
 - **T-04 026 接入**:替换平铺树+filter;双端验证(过滤/选中/数据区切换)。
 - **T-05 018 接入**:阅读页章节树+router.push;双端验证。
 - **T-06 041 接入**:OpenByPath store 动作+左文件树;双端验证。
@@ -161,6 +167,9 @@ total_steps: 8
   双端可用性);裁定:041 从 FileTree 改为 TreeView 受控(FileTree v1 不回传
   选中,联动需求使然);026 filter 落 tree_util.filter_tree(页面过滤进阶用法)。
   outcome: pass(待确认后入 work)。next: work。
+- 2026-09-12 stage:work(进行中) | plan_id: PLAN-618 | rev1 | T-01..T-03 完成,
+  T-04..T-06 待续 | 证据:worktree 9ac3c5661(T-02)/d177b9a44(T-03);探针全绿;
+  027 vue 交互实证 | blockers: 无 | next: 继续 T-04..T-06
 
 ## 待澄清事项
 
