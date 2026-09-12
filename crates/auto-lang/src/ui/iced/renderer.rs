@@ -24174,13 +24174,10 @@ mod tests {
                 other => panic!("__dock_position 读回异常: {other:?}"),
             }
         }
+        // PLAN-012 W4：缺省 pinned 置空（缺省三枚退役——缺键 = 显式空 =
+        // 空表；用户经右键固定后此处按序出现）。
         let pinned = t3_read_array(&ds, "__dock_pinned");
-        assert_eq!(pinned.len(), 3, "pack 默认 pinned 三枚");
-        let auto_val::Value::Obj(first) = &pinned[0] else { panic!("pinned 条目应为 Obj") };
-        assert_eq!(t3_obj_str(first, "id"), "011-calculator");
-        assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 自注册表解析");
-        let auto_val::Value::Obj(second) = &pinned[1] else { panic!("Obj") };
-        assert_eq!(t3_obj_str(second, "icon"), "app-window", "未登记条目回退 app-window");
+        assert!(pinned.is_empty(), "pack 默认 pinned 应为空（W4 置空），实得 {pinned:?}");
 
         // Plan 478 T5：pager 升格——v1.1 投影形状（含 label/current）注入 +
         // 新消息臂写总线记录（workspace_add / workspace_close\t<n>）。
@@ -24917,7 +24914,7 @@ mod tests {
     desktop_visible: true,
             },
         ];
-        // dock_pinned 默认三枚（t3_session_with_shell 不动 pack 默认）。
+        // PLAN-012 W4：dock_pinned 缺省空（t3_session_with_shell 不动）。
         // storage：custom 014-weather + 重叠 011-calculator；hidden 013-todo。
         crate::vm::ffi::stdlib::storage_host_publish(
             "shell.desktop.icons",
@@ -24934,17 +24931,17 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            vec!["011-calculator", "015-notes", "014-weather"],
-            "pinned 先列（013 hidden 排除）+ custom 去重接排"
+            vec!["014-weather", "011-calculator"],
+            "custom 按 storage 序注入 + 011 重叠去重（缺省 pinned 空后无先列组）"
         );
         let first = t496_val_obj(&entries[0]);
-        assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 注册表解析");
-        assert_eq!(t3_obj_str(first, "label"), "计算器", "label=注册表标题");
-        assert_eq!(t3_obj_str(first, "src"), "pinned");
-        let third = t496_val_obj(&entries[2]);
-        assert_eq!(t3_obj_str(third, "icon"), "app-window", "未登记回退占位图标");
-        assert_eq!(t3_obj_str(third, "label"), "014-weather", "label 回退 id");
-        assert_eq!(t3_obj_str(third, "src"), "custom");
+        assert_eq!(t3_obj_str(first, "icon"), "app-window", "未登记回退占位图标");
+        assert_eq!(t3_obj_str(first, "label"), "014-weather", "label 回退 id");
+        assert_eq!(t3_obj_str(first, "src"), "custom");
+        let second = t496_val_obj(&entries[1]);
+        assert_eq!(t3_obj_str(second, "icon"), "calculator", "icon 注册表解析");
+        assert_eq!(t3_obj_str(second, "label"), "计算器", "label=注册表标题");
+        assert_eq!(t3_obj_str(second, "src"), "custom");
         match t496_read(&ds, "__desktop_bg") {
             auto_val::Value::Str(ref s) => {
                 assert_eq!(s.to_string(), "bg-[#243b55]", "#hex → 根 bg 实铺片段")
