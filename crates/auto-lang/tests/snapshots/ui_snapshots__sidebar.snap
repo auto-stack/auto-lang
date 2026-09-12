@@ -4,22 +4,21 @@ expression: out
 ---
 File: examples/ui/015-notes/src/front/sidebar.at
 Widget count: 1
-Widget: NavTree | props: 4 | state: 0 | handlers: 9 | messages: 1
-  prop: active_folder (StrSlice)
-  prop: active_id (Int)
-  prop: active_tag (StrSlice)
-  prop: search (StrSlice)
-  handler: .NewNote
-  handler: .NewNoteInFolder(f)
-  handler: .SelectAll
+Widget: NavTree | props: 3 | state: 0 | handlers: 9 | messages: 1
+  prop: on_toggle_dark_mode (User(TypeDecl { name: "msg", kind: UserType, parent: None, has: [], specs: [], spec_impls: [], generic_params: [], members: [], delegations: [], methods: [], consts: [], attrs: [], impl_attrs: [], doc: None, is_pub: false }))
+  prop: on_set_accent (User(TypeDecl { name: "msg", kind: UserType, parent: None, has: [], specs: [], spec_impls: [], generic_params: [], members: [], delegations: [], methods: [], consts: [], attrs: [], impl_attrs: [], doc: None, is_pub: false }))
+  prop: on_set_mode (User(TypeDecl { name: "msg", kind: UserType, parent: None, has: [], specs: [], spec_impls: [], generic_params: [], members: [], delegations: [], methods: [], consts: [], attrs: [], impl_attrs: [], doc: None, is_pub: false }))
+  handler: .ClearTag
+  handler: .SearchChanged(q)
+  handler: .SelectFolder(f)
   handler: .SelectNote(i)
-  handler: .SelectPinned
-  handler: .SelectRecent
   handler: .SelectTag(t)
   handler: .SetAccent(name)
+  handler: .SetMode(m)
   handler: .ToggleDarkMode
+  handler: .ToggleSettings
 API imports: []
 Store deps: ["NotesStore"]
 Store composables: 0
-Validation warnings: 1
-SFC 'NavTree': 15528 bytes, has template: true, has script: true, has style: true
+Validation warnings: 15
+SFC 'NavTree': 11632 bytes, has template: true, has script: true, has style: true
