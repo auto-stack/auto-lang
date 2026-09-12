@@ -41,7 +41,7 @@ VM TYPE_CAST_I32 的 Rust `f as i32` 截断语义；浮点目标 JS 原生 f64 �
 
 **029-photo-gallery（plan-537 落地）**：image widget 首个应用级双端示范
 （picsum 固定 seed 网络图源，缩略 cover/查看 contain）；单组件+平行列表
-数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 84 项闭集——
+数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 闭集 85 项（plan-616 复核实测校正；旧文写 84 属计数漂移，仍缺 pin/pin-off）——
 icon 名单受限；P537-D2 语义 grid 的 cols/class 状态绑定不解析——密度
 三臂静态 grid 绕开），详见 KNOWN-DEBT-AND-RISKS.md P537 节。
 
@@ -121,6 +121,21 @@ aliases/backends.iced 四表同步（baseline +52/−13，nav-item 先例）。�
 （rail/trigger/input/skeleton、collapsible=icon 轨道、side 放置）按设计 §3.3
 不做；widgets-gallery sidebar 页 VM 实跑与 Vue 端结构等价对拍证据
 `docs/reports/p561-sidebar-contract-evidence/`。
+
+**015-notes 示例现状（plan-616 清爽化重做，GOAL-007/010）**：示例从「卡片化 + 模态编辑」
+改为**扁平双栏 + 始终可编辑**：顶栏（`border-b`）+ 列表栏（sidebar 族，`border-r`）+ 编辑栏三区用
+发丝线分隔，无 `rounded-xl shadow-sm` 卡片外壳；图标全走 lucide `icon`（置顶用**文本标签**
+`Pin note`/`Unpin`，因 VM 字形闭集无 pin）；筛选为 All/Pinned/文件夹/标签 胶囊（VM 不支持
+`flex-wrap`，作用域与标签分两行）；**过滤下沉 store 产索引表**（`visible_pinned`/`visible_notes`，
+视图只做下标解引用）——视图条件里的方法调用在 VM 端恒假，不能在视图里写 `contains` 过滤；
+草稿常驻 store（切换笔记/筛选/新建前自动落盘，编辑中被切走不丢内容），保存为显式 `Save`
+（仅 dirty 时出现），删除两步确认，置顶经 `toggle_pin` 落库；搜索走后端 `search_notes`
+（大小写不敏感，旧契约的 known-gap 已消除）；标签/文件夹词表由笔记数据派生
+（`all_tags`/`all_folders` 为**模型字段**，旧 `computed all_tags => []` 恒空写法退役）；
+**外观面板由示例自带**（主题/暗色/5 色板），退出跨仓 `deps/settings` 依赖——原 `deps/settings`
+指向已删除的 `examples/ui/common/settings`（靠 auto-os 回退解析的悬空链接）。
+契约与 19 条 MCP 场景见 `examples/ui/015-notes/tests/{acceptance.atd,015-notes.autotest}`；
+双端 evidence 见 `docs/plans/attachments/616/`。
 
 **slot 替换（plan-476 落地）**：VM 轨 widget 插座/填充与 vue 轨语义对齐——调用位
 `slot(name:X){..}`/裸子节点渲染到子 widget outlet，父作用域求值+父事件路由+逐帧重求值；
@@ -290,6 +305,16 @@ widget Counter {
 
 ## 已知坑
 
+- **示例可依赖的 DSL/VM 子集（plan-616 实证；写 `.at` 前先看这条）**：① 文本不要写
+  `text "…${x}…"`（两端都渲染成字面量）→ 用 `text <ref>` / `text <prop.field>`；② `view fn`
+  只传对象 prop + 点路径（标量 prop 在 VM 端不参与文本绑定）；③ **禁用** `.field = []` 与
+  「局部 `[]str`/`[]Note` → 状态字段」整赋值（VM codegen 抛 `Assignment to complex LHS`；
+  需要重建列表时用类型化局部量构建后整体赋值，或 `push` 到状态字段）；④ **视图条件里不写方法调用**
+  （`x.contains(y)` 在 VM 端恒假，`resolve_binding_path` 不支持方法调用）→ 过滤下沉 store 产索引表；
+  ⑤ VM 不支持 `flex-wrap` / `transition-*` / `group-hover:` / 任意 rem 值 / `aspect-*` /
+  `text-transform`；⑥ 按钮无显式宽度会按 Fill 撑开布局，需 `w-auto`；⑦ 需要按 label 寻址的控件
+  （MCP 场景）必须有文字标签——纯图标按钮 `autoui_find` 找不到。完整探针方法与清单见
+  `examples/ui/015-notes/tests/acceptance.atd`「示例侧 DSL/VM 使用约束」节。
 - **测试 storage/管道全局态卫生（Plan 489，P487-2 收敛）**：两条铁律——
   ①凡断言「键缺席回退默认」或落盘链的测试，一律 `t2_isolate_storage` 隔离
   （`AUTO_VM_STORAGE_FILE` 指临时文件；`storage_raw_remove` 只清内存，
