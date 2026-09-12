@@ -69,6 +69,13 @@ ui-dialog = ["dep:rfd", "dep:raw-window-handle"]
 # Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test) —
 # offline bounds assertions for the VM Row/layout bug matrix.
 iced-layout-tests = ["ui-iced", "dep:iced_test"]
+# PLAN-617 T-15: VM 原生播放门控 spike（libmpv DLL 运行时加载 + wgpu 纹理上传
+# 实测）。帧上屏不能走 iced 的图像通道：`Handle::from_rgba` 每帧 mint 新的
+# `Id::unique()`（`Id` 构造器私有，仓外无法复用同一 id），而 iced_wgpu 的 atlas
+# 上限 2048、≥2MB 一律走异步 worker 上传——视频帧流必然踩 renderer.rs:2889 记录
+# 的闪烁路径。故 spike 自持 wgpu 纹理。iced_wgpu 已在 iced 默认特性的依赖图内，
+# 该直接边不引入新的编译单元。仅本地 spike 使用，不参与默认档与 CI。
+mpv-spike = ["ui-iced", "dep:iced_wgpu"]
 # Plan 019 批次七: autodown-core crate 消费（VM markdown/autodown widget 真渲染
 # —— parse_blocks → 面板树 → iced View）。跨仓 path 依赖指向 auto-down 主检出的
 # crate（两仓 plan-019 分支已互联合入：auto-down bd8d16e / auto-lang 1c80b8cf5）。
@@ -184,6 +191,10 @@ iced_futures = { version = "0.14", optional = true }
 # Plan 414 §8.2: headless layout testbench — normal optional dep (Cargo
 # forbids optional dev-deps); only linked when `iced-layout-tests` is on.
 iced_test = { version = "0.14", optional = true }
+# PLAN-617 T-15: 门控 spike 需要直接持有 wgpu 纹理（video 帧流不能走 iced 的
+# Handle/atlas 通道，理由见 feature `mpv-spike` 处注释）。iced_wgpu 本就是 iced
+# 默认渲染器的依赖，此直接边仅为拿到其 `pub use wgpu` 与 primitive::Pipeline。
+iced_wgpu = { version = "0.14", optional = true }
 # Plan 411: preview-card copy button (clipboard) — gated behind ui-iced with the renderer.
 arboard = { version = "3", optional = true }
 # Plan 418: native open/save file dialogs (sync API) behind `ui-dialog`.
@@ -268,6 +279,15 @@ harness = false
 # ============================================================================
 # Examples
 # ============================================================================
+
+[[example]]
+name = "mpv_spike"
+path = "examples/mpv_spike.rs"
+# PLAN-617 T-15 门控 spike：需本机 libmpv-2.dll + GPU + 视频样本，故默认档与
+# CI 一律不编译（`required-features`）。另注：该特性挂在 **lib 的 `--test` 目标**
+# 上会撞 rustc 1.98.0 的 ICE（`collect_and_partition_mono_items`，查询栈指向
+# ui/mcp_server.rs:1718，与 spike 代码无关）；`--lib` 与 example 目标正常。
+required-features = ["mpv-spike"]
 
 [[example]]
 name = "run_vm_test"
