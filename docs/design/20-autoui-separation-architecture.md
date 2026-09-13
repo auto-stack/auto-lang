@@ -277,3 +277,80 @@ pub trait GpuBackend {
 ## 10. 总结
 
 本架构通过 **AutoTree 中间表示、RenderCommand 轻量指令、RenderQueue 无锁通信** 和 **共享宿主 Compositor**，实现了 UI 逻辑与渲染的彻底分离。它兼具声明式开发的便利性与命令式渲染的性能优势，能够以极低的内存代价同时运行上百个应用，为 AutoOS 桌面环境提供了坚实的技术基座。
+
+## 11. 仓库边界时序裁定（2026-09-13 留底）
+
+> 本节与上文正交：§1–§10 讲 AutoUI 内部的**应用/宿主进程分离**，本节讲
+> AutoUI 代码与 auto-lang 仓的**仓界**问题。源自 2026-09-13 拆仓可行性
+> 分析（背景：AutoOS 已于 2026-09-07/08 迁独立仓，AutoUI 是否跟进）。
+> 关联登记：auto-os 侧 PLAN-578「examples/ui 与画廊归属两读」待裁定事项，
+> 留到本议题重开时一并裁定。
+
+### 11.1 裁定
+
+**AutoUI 拆独立仓一事推迟，不设日程；重开前置条件 = VM/Rust 桌面版
+（VM/iced 轨道）稳定。** 近期不动 UI↔语言核心的解耦工程。理由：当下
+双端正处于高速共变期，此时解耦等于逆着开发流做手术；等共变频率自然
+回落后再动，成本低一个量级。
+
+### 11.2 依据（当次实测）
+
+- **足迹**：`crates/auto-lang/src/{ui,ui_gen,aura,a2ui}` 合计约 21.6 万行
+  （巨石 crate 内）+ `packages/` 5 个 npm 包 + `examples/ui` 37 例 +
+  `stdlib/auto` 7 个 UI 域文件（运行时文件系统加载，不嵌入二进制，可整体搬走）。
+- **三处硬耦合**（拆库前必须解开）：
+  1. UI 语法在语言核心——`ast/ui.rs`（1091 行）、`parser.rs` 58 处 WidgetDecl；
+  2. `ui_gen/aura/a2ui` **无条件编译**，被 lib.rs 公共 API（`ui_build` 系列）
+     与 CLI（cmd_ui/cmd_vue）无门控调用；
+  3. VM `native_catalog.rs` 永久登记 UI native ID 段（`auto.term/clipboard/
+     code_editor` 等），`ui/dynamic.rs` 直接持有 `AutoVM` 实例。
+  （反向依赖本身健康：`infer/`、`trans/` 对 UI 零引用；核心→UI 大多已被
+  feature gate + 降级桩驯服，无 UI 构建在 HEAD 是绿的。）
+- **共变频率（决定性）**：近 90 天改 UI 侧提交 1407、VM 侧 509、
+  **同提交跨两侧 245（≈2.7 次/天）**——拆仓后每次都是跨仓协调。
+- **历史**：2026-03 前 `../auto-ui` 独立仓即因「单向深依赖 + path 依赖
+  churn + 转译器必须长进 ui_gen」并入本仓（Plan 045/096/175 有案底），
+  且今天耦合比当时更深而非更浅；AutoOS 迁移时桌面宿主运行时 19.3 万行
+  被定性为**框架能力**、刻意留架（auto-os Design 01 §2）。
+
+### 11.3 submodule 形态裁定：不采用
+
+- 依赖方向 auto-ui→auto-lang 与 submodule「消费者嵌入被依赖方」模型相悖：
+  auto-ui 嵌 auto-lang = path churn 加强版（每次语言演进都要显式 bump 子模块
+  指针再修 breakage，2026-03 死法重现）；auto-lang 嵌 auto-ui = 子模块内
+  crate 只能在挂载点里构建、独立检出即断链，独立仓的意义自我取消。
+- submodule 只解决「相对路径检出」，不解决 cargo 依赖关系；而相对路径
+  检出已有更轻的成文解析序（`env → 兄弟检出 → 主检出`，auto-os 全链验证）。
+- 与本仓 worktree 工作流冲突（子模块 `.git` 指向主仓 `.git/modules` 的
+  相对指针在 worktree 下易断，wt-guard/JUNCTION 红线环境零容忍）。
+  仓系唯一 submodule 先例是 auto-os `apps/kanban`（叶子 App，产品级），
+  不构成框架依赖先例。
+- **若未来拆仓**：按 auto-shell 模式（Plan 330 先例：git-filter-repo 保
+  历史 + 跨仓 path 依赖 + 解析序），不用 submodule。
+
+### 11.4 重开时的路线（推迟但保留）
+
+- **Phase 0**：修门禁回归（见 §11.5 第二条）。
+- **Phase 1（核心工程）**：仓内 crate 化——`ui/ui_gen/aura/a2ui` 拆为
+  workspace 成员 `crates/auto-ui`，分层 `auto-lang（语言核心）→ auto-ui
+  （框架）→ auto-man/CLI（编排）`；lib.rs 编排函数（ui_build 系列/
+  build_dynamic_component/run_file_dynamic_ui）上移；VM native 改注册制
+  （ID 常量留核心、实现由 auto-ui 启动注册）；UI 语法留语言核心、经公共
+  API 消费。保留单仓原子提交。
+- **Phase 2（可并行，低风险）**：边缘资产迁出——`packages/`（npm）、
+  `crates/autoui-skill/`（纯数据）、`docs/design/autoui/`；examples/画廊
+  归属随 PLAN-578 两读裁定。
+- **Phase 3（条件触发，非日程驱动）**：repo 拆分。触发条件：auto-ui
+  crate 化后核心 API 消费面收敛稳定 + 连续数月跨侧共变频率显著下降
+  （较 2.7 次/天降一个数量级）+ 出现第二消费者（第三方/另一语言前端）。
+
+### 11.5 立即有效的护栏（不随推迟而豁免）
+
+1. **新增 UI native/FFI 必须挂 feature cfg + 降级桩**（沿用 `vm/native.rs`
+   既有桩模式）；无 UI 构建（`--no-default-features` / `cargo tv` /
+   CI vm-files 档）保持绿色——这是未来任何拆分唯一能站住的地基，
+   欠账后要花大价钱重新考古。
+2. 当飞 Plan 619 工作树中 `vm/ffi/term_engine.rs` 133/199-230/331 行的
+   **未门控** `crate::ui::terminal` 引用（HEAD 版本无此引用）须在合入前
+   补门控，否则弄红全部无 UI 构建（登记：KNOWN-DEBT-AND-RISKS.md
+   「架构裁定留底」节 ARCH-AUTOUI-GUARD）。
