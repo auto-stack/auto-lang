@@ -350,13 +350,48 @@ T-18 的 `poll()` 一上来就把它触发了。**教训**：「当时测试通�
 `error == 0`，`mpv_error_string(0)` 得到「success」）。现以「哪个源加载失败」为主信息；
 要拿到精确原因需捕获 mpv 日志（`mpv_request_log_messages`）。
 
-### 4.11 尚未接上的那一段（T-19）
+### 4.11 T-19：`video` 提升为可用（接线形状与「差一步」的边界）
 
-通道、blit 管线与 §2.3 契约都已就位（且不依赖任何 iced widget 类型，只为搬进
-`iced_widget::shader::Program` 做准备），但**还没有接进 VM 的 `video` 元素**：
-`render_support.rs:307` 仍是 `fallback`、`element_coverage.rs:449` 仍是 `NotYet`。
-**接线那一步（`video` 支持级别提升 + `schema/aura.at` 的 `backends.iced`）属 T-19**；
-AC-19 的「同一份 app.at 在 VM 端真实播放」由 T-18（契约）+ T-19（接线）合起来满足。
+`video` 的 iced 渲染面落在 `crates/auto-lang/src/ui/mpv/widget.rs`，feature
+**`mpv-widget`**（= `mpv-gpu` + `ui-iced`）。它把 §4.9/§4.10 的两段接成一个
+**自定义 shader widget**：
+
+```text
+Program::draw      → Primitive{ id, 目标尺寸, 本帧下行值 }     （纯数据 → Send+Sync 自然成立）
+Primitive::prepare → [thread_local 取引擎] apply 下行 / poll 上行 → channel.with_frame
+Primitive::draw    → 用管线里那张持久纹理画满 bounds
+```
+
+**引擎为什么住 thread-local**：`Primitive`/`Pipeline` 在 native 上要求
+`Send + Sync`，而 `MpvEngine` 含裸指针、**刻意** `!Send`（`mpv_wait_event` 只允许
+一个线程调用）。故引擎不进 Primitive/Pipeline，而放进由 widget id 索引的线程本地
+注册表——widget 与渲染都在 iced 主线程，正是引擎被创建与使用的线程。
+**万一被换线程调用，表现是「查不到运行时 → 不画」，降级而非 UB。**
+
+接线三层：① `View` 新增 `Video` 变体（与 `ImageSurface` 同形，**不携带消息**——
+上行由渲染面按帧采集，故各后端消息重映射臂平凡）；② `aura_view_builder` 的
+tracked/untracked 两条 dispatch 各有 `video` 臂；③ iced renderer 的 `View::Video` 臂
+（有 feature 走 widget，无 feature 渲染**诚实降级面板**而非黑屏）。
+
+配套状态同步：`schema/aura.at` 的 `iced: fallback → partial` 且 **`props` 由 `[]`
+改为声明**（打开 S001 校验；此前 typo 静默通过）；`render_support.rs` 记 partial 并
+写明三项限制；`element_coverage.rs` 的 `video` **仍为 not-yet**——那张表描述的是
+**queue/投影臂**（`video` 不在 `Coverage::target_set`），理由改成「差投影不差渲染」。
+
+**帧由谁驱动**：iced 只在有重绘时 `prepare`，而视频要持续出帧。widget **不自带定时器**，
+复用应用既有的 tick（`tick_interval_ms()` → `iced::time::every`）。
+**应用不声明 tick，视频就停在首帧**——这条写进了模块文档与规范注记。
+
+**AC-19 还差的那一步**：`crates/auto` 目前没有 `mpv-widget` 特性透传，故默认
+`auto run -r vm` 看到的是降级面板。要在 VM 窗口里真看到画面在动，需补该透传
+（T-20 的特性门控）并让应用声明 tick。**通道就位 ≠ 默认可用**，这一点在计划 §9.18
+里写清楚了，不以「已达成」自居。
+
+### 4.12 尚未接上的那一段
+
+T-19 已把渲染面接上并同步了 schema/规范（见 §4.11）。**仍未接上的是「默认可用」**：
+`crates/auto` 没有 `mpv-widget` 的特性透传，默认 `auto run -r vm` 走诚实降级面板；
+且应用需声明 tick 驱动帧。这两步与 AC-19 的可视验证一并由 T-20 收口。
 
 ---
 

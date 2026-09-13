@@ -5,7 +5,7 @@ feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-12
-plan_revision: 8                 # r8: T-18 完成（§2.3 契约在 mpv 侧落地 + 修掉 T-16 的 wait_event 死循环）；T-19 起接 video 元素
+plan_revision: 9                 # r9: T-19 完成（video 提升为可用：渲染面/接线/schema 同步）；T-20 收特性门控与 CI
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -858,11 +858,32 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
     「同一份 `app.at` 在 VM 端能真实播放」还要 `video` 元素接上通道与契约，
     而 `render_support.rs:307` 目前**仍是 fallback**——那一步是 T-19。
     两处合起来才满足 AC-19；本任务不以「app 里能播」自居。
-- **T-19 `video` 元素支持级别提升**（Go 后）：把 `video` 从 iced `fallback` 提升为
+- [x] **T-19 `video` 元素支持级别提升**（Go 后）：把 `video` 从 iced `fallback` 提升为
   可用（更新 `render_support.rs` 与 `schema/aura.at` 的 `backends.iced`，
   保持「schema 为权威」的既定关系）；若 Go 条件不满足则**不动**，维持 fallback 并
   在规范中记录原因。
   验证：`cargo t` + `cargo test -p auto-lang --test docs_gen`（触及 schema）。
+  [✅ 已完成 2026-09-13] 全文见 **§9.18** 与 design doc **§4.11**。
+  - 交付 `ui/mpv/widget.rs`（`video` 的 iced 渲染面：自定义 shader widget，
+    **引擎放 thread-local** 以规避 Primitive/Pipeline 的 Send+Sync 要求）+
+    新 feature `mpv-widget`；接线三层：`View::Video` 变体（不带消息）、
+    aura `video` 臂（tracked/untracked 各一）、iced renderer 的 `View::Video` 臂
+    （有 feature 走 shader widget，无则渲染**诚实降级面板**而非黑屏）。
+  - **schema 同步**：`backends.iced: fallback → partial`、`category: unknown → media`、
+    **props 由 `[]` 改为声明**（打开 S001 校验，此前 typo 静默通过）；`render_support`
+    → partial 并写明三项真实限制（需运行库 / 需 tick / 浏览器专有属性无对应语义）。
+  - **`element_coverage` 的 `video` 仍为 not-yet**（改的是理由）：该表描述的是
+    **queue/投影臂**，而 `video` 不在 `Coverage::target_set` 里——把渲染能力与投影
+    能力混为一谈会是谎报。理由改为「差投影不差渲染」。
+  - **新增测试抓到真 bug**：`tests/video_contract.rs`（3/3 绿，**不需要 libmpv**）
+    发现我最初用只认字面量的 `extract_bool` 读 `paused`，而作者写的是表达式
+    `paused: .is_playing == false` → 契约字段会静默不生效。已改用 `extract_bool_expr`。
+  - 门禁：`docs_gen` 4/4、`schema_drift` 绿（baseline **3 增 1 删**，删掉的是
+    `render_not_in_vb video`——view builder 现在真有臂）、`cargo t` 零新增红
+    （21 项全在基线集合内）。
+  - **AC-19 未达成，边界见 §9.18**：链条已接到 `View::Video` 与 iced 渲染面，
+    但「VM 窗口里真看到画面在动」还差 (a) `crates/auto` 的 `mpv-widget` 特性透传
+    （T-20 的特性门控）(b) 应用声明 tick 驱动帧。
 - **T-20 特性门控与 CI 保真**（Go 后，**硬要求**）：native 播放必须是**可选 feature**
   （沿用 `ui-iced`/`python` 的既有模式），默认档与 **全部 11 个 `ubuntu-latest` CI 任务
   在不安装 ffmpeg/mpv 的情况下保持全绿**；缺失运行库时走降级路径。
@@ -1581,6 +1602,63 @@ ope.mp4`）。
   AC-19 由 T-18+T-19 合起来满足。
 - outcome: pass；next: **T-19**（把 `video` 从 iced `fallback` 提升为可用：接上
   `channel`/`present`/`contract`，并更新 `schema/aura.at` 的 `backends.iced`）。
+
+### 9.18 T-19 完成——`video` 由 fallback 提升为可用（2026-09-13）
+
+- **交付**：`crates/auto-lang/src/ui/mpv/widget.rs` + 新 feature **`mpv-widget`**
+  （= `mpv-gpu` + `ui-iced`），把 T-16/17/18 的三段接成**一个 iced widget**：
+  `Program::draw → Primitive{id,尺寸,下行值}` / `Primitive::prepare → apply+poll+
+  channel.with_frame` / `Primitive::draw → 用持久纹理画满 bounds`。
+- **非 Send 的 mpv 引擎住 thread-local**：`Primitive`/`Pipeline` 都要求
+  `Send + Sync`（native），而 [`MpvEngine`] 含裸指针、**刻意** `!Send`
+  （T-16 的保守选择：`mpv_wait_event` 只允许一个线程）。解法是引擎**不进**
+  Primitive/Pipeline，放进由 widget id 索引的 thread-local 注册表——widget 与渲染
+  都在 iced 主线程，正是引擎被创建与使用的那个线程。**万一真被换线程调用，
+  表现是「查不到运行时 → 不画」，降级而非 UB。**
+- **接线三层各一处**：
+  1. **`View::Video` 变体**（与 `ImageSurface` 同形）。关键设计：它**不携带任何消息**
+     ——上行事件由渲染面按帧采集、经 `drain_events` 取走，故各后端的消息重映射臂
+     都是平凡的（`map_msg` 原样搬运）。6 处 match 需要加臂，全部是小改动。
+  2. **`aura_view_builder`**：tracked/untracked 两条 dispatch 各加 `video` 臂 +
+     `convert_video`（§2.3「作者面状态值→节点字段」的翻译）。
+  3. **iced `renderer`**：`View::Video` → 有 `mpv-widget` 时建 shader widget
+     （黑底容器 + 随 `style` 的 container 样式）；**没有该 feature 时渲染诚实降级
+     面板**（「本后端未启用原生播放」），而不是留一块黑——静默黑屏正是本计划要消灭的。
+- **schema/规范同步（schema 为权威）**：
+  - `schema/aura.at`：`backends.iced: fallback → partial`、`category: unknown → media`、
+    **`props` 由 `[]` 改为声明**（此前 `props: []` 使 typo 静默通过，见 §4.2 P-3；
+    现在声明了透传属性 + §2.3 契约字段，S001 校验随之生效）；
+  - `render_support.rs`：`video → partial`，ignored 列 `poster/preload/playsinline/
+    autoplay/controls`，note 写明**三项真实限制**（需运行库 / 需 tick 驱动 /
+    浏览器专有属性无对应语义）——**不谎报 full**；
+  - `element_coverage.rs`：**`video` 仍为 not-yet，改的是理由**。该表描述的是
+    **queue/投影臂**（模块文档：`covered` = 投影器有臂），而 `video` 不在
+    `Coverage::target_set()` 里。理由改为「原生播放面已具备，但投影臂未接——
+    差投影不差渲染」。把 iced 渲染能力与投影能力混为一谈会是谎报。
+- **新增测试 `tests/video_contract.rs`（3/3 绿，且不需要 libmpv）**：fixture 走
+  **真实文件解析 → VM bridge → builder**（与 `image_surface_contract.rs` 同一套驱动），
+  断言 `video` 节点确实产出 `View::Video` 且契约映射正确：全量字段映射、
+  缺省值矩阵（默认暂停/满音量/原速/不 seek）、越界夹紧与 `rate<=0 → 1.0`。
+  **它抓到一个真 bug**：我最初用只认字面量的 `extract_bool` 读 `paused`，
+  而作者写的是表达式 `paused: .is_playing == false`——契约字段会**静默不生效**。
+  已改用 `extract_bool_expr`（走 `resolve_expr_to_value`）。
+- **门禁**：`docs_gen` 4/4 绿（先 `DOCS_GEN_UPDATE=1` 再生成 `docs/components/core.md`）；
+  `schema_drift` 绿——baseline 更新**仅 3 增 1 删**：新增
+  `render_not_in_rs Video`、`vb_not_in_rs Video/video`，**消除** `render_not_in_vb video`
+  （view builder 现在真有 `video` 臂），理由即该提交信息；
+  `cargo t` 21 failed 全在基线集合内 → **零新增红**（新测试在独立目标里，不进默认档）。
+- **⚠ AC-19 未达成——边界与剩余两步（必须如实带走）**：本轮把链条接到了
+  `View::Video` 与 iced 渲染面，且这些 impl 都已在**编译期被真实的 iced trait 校验**
+  （我特意用「故意改坏一个方法名」验证过 widget 确实在类型检查范围内）。
+  但「**在 VM 窗口里真的看到画面在动**」还差两步：
+  1. **`crates/auto` 没有 `mpv-widget` 的特性透传** → 默认 `auto run -r vm` 走的是
+     诚实降级面板。要为 VM 构建打开原生播放，必须先补这个透传（**T-20 的特性门控**）。
+  2. **应用需声明 tick**（`tick_interval_ms`）驱动帧，否则停在首帧——已写进 widget
+     模块文档与规范注记，**不是隐藏行为**。
+  故本任务**不以 AC-19 已达成自居**；AC-19 由 T-20 + 应用侧 tick 收口。
+- outcome: pass（T-19 自身的验收 `cargo t` + `docs_gen` 均绿）；next: **T-20**
+  （特性门控与 CI 保真：补 `crates/auto` 的透传、确认 11 个 CI 任务不装媒体包、
+  记录 `AUTO_MPV_LIB` 解析序），并把 AC-19 的可视验证一并收口。
 
 ## 11. 新会话开工须知（Handoff，2026-09-12）
 
