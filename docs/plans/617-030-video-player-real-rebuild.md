@@ -5,7 +5,7 @@ feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-12
-plan_revision: 7                 # r7: T-17 完成（帧上屏通道：持久纹理 + staging 环 + 无闪烁断言）；T-18 起接控制契约
+plan_revision: 8                 # r8: T-18 完成（§2.3 契约在 mpv 侧落地 + 修掉 T-16 的 wait_event 死循环）；T-19 起接 video 元素
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -824,7 +824,7 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   **必须绕开每帧新建 `Handle`**（硬约束，见 §2.5 风险点 2）；
   镜像 `image_pipeline` 的既有形状（票据/rendition、latest-wins 代际门、有界缓存）。
   验证：目标分辨率下实测帧率与无闪烁截图。
-  [✅ 已完成 2026-09-13] worktree @ 见提交；全文见 **§9.16** 与 design doc **§4.9/§4.10**。
+  [✅ 已完成 2026-09-13] worktree @ 见提交；全文见 **§9.16** 与 design doc **§4.9/§4.11**。
   - 交付 `ui/mpv/channel.rs`（持久纹理 + 3 槽 staging 环 + `VideoLatestWins` 代际门
     + 回收超时丢帧策略 + 分类统计）与 `ui/mpv/present.rs`（WGSL 全屏 blit）；
     新 feature **`mpv-gpu`**（与 `mpv-native` 分开：引擎不碰 GPU，故仍可无 GPU 测试）。
@@ -838,10 +838,26 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   - 9 用例全绿（`cargo test --features mpv-gpu --test mpv_channel`）。
   - **未接上的那段**：通道与 blit 都已就位，但**还没接进 VM 的 `video` 元素**
     （`render_support.rs:307` 仍 fallback）——那属 T-18/T-19。
-- **T-18 VM 侧播放控制与契约对齐**（Go 后）：mpv 侧实现 §2.3 的**同一套受控媒体契约**
+- [x] **T-18 VM 侧播放控制与契约对齐**（Go 后）：mpv 侧实现 §2.3 的**同一套受控媒体契约**
   （`paused`/`position`/`volume`/`muted`/`rate` 下行 + 时间/时长/状态上行），
   使 `.at` 应用**无需分叉**即可在两端工作；音频输出由 mpv 承担（不引入 cpal）。
   验证：同一份 `app.at` 在 VM 端能真实播放、seek、调音量。
+  [✅ 已完成 2026-09-13] 全文见 **§9.17** 与 design doc **§4.10/§4.11**。
+  - 交付 `ui/mpv/contract.rs`（`VideoContractDown`/`VideoContractEvent`/`MediaContract`）
+    + 引擎的类型化属性面（`get_f64/get_i64/get_flag/get_string` 与 `set_*`）
+    + `END_FILE` 的 reason 载荷（区分 EOF 与 ERROR）。
+  - 实测（`tests/mpv_contract.rs`，真实 libmpv，**10/10 绿**）：seek 目标 19.77s → **落点 19.77s**；
+    起播后时间前进、暂停后不动；volume/mute/speed 读回校验；EOF → `Ended` 而非 `MediaError`；
+    坏源 → 明确文案；音频实测 `current-ao=wasapi`、`codec=aac`、48k/stereo。
+  - 共享边界定为**作者面的状态值**（`volume` 0..100 而非 0..1），两端各自换算，
+    换算有单一出处并被测试钉住。
+  - **顺带修掉 T-16 的一个真缺陷**：`wait_event` 对 `MPV_EVENT_NONE` 也返回 `Some`
+    （mpv 超时返回的是有效指针而不是 NULL），任何 `while let Some(..)` 抽取循环都会**死循环**。
+    本次被 T-18 的 poll 触发（一次测试被挂死）——已归一成 `None`。
+  - **验证分层的诚实说明**：本任务的验证落在**契约层**（真 mpv、真播放/seek/音量）。
+    「同一份 `app.at` 在 VM 端能真实播放」还要 `video` 元素接上通道与契约，
+    而 `render_support.rs:307` 目前**仍是 fallback**——那一步是 T-19。
+    两处合起来才满足 AC-19；本任务不以「app 里能播」自居。
 - **T-19 `video` 元素支持级别提升**（Go 后）：把 `video` 从 iced `fallback` 提升为
   可用（更新 `render_support.rs` 与 `schema/aura.at` 的 `backends.iced`，
   保持「schema 为权威」的既定关系）；若 Go 条件不满足则**不动**，维持 fallback 并
@@ -1501,6 +1517,70 @@ T-13/T-14 与主链并行。
   `Pipeline`/`Primitive`——`Pipeline::new(device, queue, format)` 恰好交出
   `&wgpu::Device`/`&wgpu::Queue`，`Primitive::render` 交出 `&mut CommandEncoder`
   与 `&TextureView`。**但截至 T-17，`video` 元素仍是 `fallback`**：通道就位 ≠ 已接上。
+
+### 9.17 T-18 完成——§2.3 受控媒体契约在 mpv 侧落地（2026-09-13）
+
+- **交付**：`crates/auto-lang/src/ui/mpv/contract.rs`（`mpv-native` 门控，不需要 GPU），
+  加上引擎的类型化属性面：
+  - `VideoContractDown`：§2.3 的受控下行（`paused`/`position`/`volume`/`muted`/`rate`/`src`）
+  - `VideoContractEvent`：上行回灌（`TimeUpdate`/`LoadedMetadata`/`PlayStateChange`/
+    `Ended`/`MediaError`）
+  - `MediaContract`：**差量** `apply()`（只下发变化字段）+ `poll()`（抽属性与事件、边缘检测）
+  - 引擎新增 `get_f64/get_i64/get_flag/get_string` 与 `set_f64/set_i64/set_flag`，
+    以及 `END_FILE` 的 reason 载荷（区分 `EOF` 与 `ERROR`）。
+- **共享边界的裁定**：契约的共享面是**作者面的状态值**，不是 DOM 语义——
+  `volume` 取 **0..100**（Vue 侧由生成器翻成元素的 0..1，`el.volume = state.volume / 100`；
+  mpv 的 `volume` 本就是 0..100，故 VM 侧是恒等映射）。换算函数
+  `volume_to_element`/`volume_from_element` 留在 `contract.rs` 作为**单一出处**并被测试钉住，
+  避免两端各写一遍后逐渐漂移。
+- **`src` 连数据通路也不需要分叉**：mpv 自带网络栈，`loadfile` 既收本地路径也收
+  `http(s)://`。所以后端给 Vue 的 `/api/media/stream/<id>` 地址在 VM 侧**原样**可用——
+  这是「同一份 `app.at` 两端都能跑」在通路层面成立的原因，不只是属性名对齐。
+- **三处必须写对的细节（都写进了模块文档并被测试守住）**：
+  1. **`position` 的语义是「目标变化时 seek」，不是「与当前播放位置不同就 seek」**。
+     后者会让播放在前进时每帧都触发 seek → 播放被钉死在目标点（表现为「拖完进度条
+     画面再也不动」）。测试 `constant_position_does_not_re_seek_every_frame` 直接钉这条：
+     同一个 `position` 反复 apply 必须 **0 次下发**，且时间照常前进。
+  2. **下行必须差量**：视图每帧重建，无条件全写会与 mpv 自身状态抖动打架。
+  3. **换片与 seek 都让 `generation` 前进**，供 T-17 的 `VideoLatestWins` 把在途旧帧判过期
+     ——否则 seek 后旧帧上屏会盖掉新位置画面。
+- **实测（`tests/mpv_contract.rs`，真实 libmpv，`ao=null` 提供时钟，10/10 绿；缺库时整体 SKIP）**：
+  - **seek**：目标 19.77s → **落点 19.77s**（时长 49.43s），且 `generation` 前进
+  - **起播/暂停**：`PlayStateChange(true)` 回灌 + 时间前进；暂停后 0.6s 内时间不动
+  - **音量/静音/倍速**：`volume`/`mute`/`speed` 读回校验（37/true/1.5 → 100/false/0.5）；
+    `rate=0` 被忽略（0 倍速会冻住播放）；`volume=300` 夹到 100
+  - **`onloadedmetadata` 恰好一次**，且时长等于 mpv 自报的 `duration`
+  - **`onended`**：EOF 回灌 `Ended` 且**不得**报成错误；**`onmediaerror`**：坏源回灌明确文案
+  - **音频由 mpv 承担**：`current-ao=wasapi`、`codec=aac`、`out-params` 48k/stereo；
+    全仓 `Cargo.toml` **无任何音频输出依赖**（grep `cpal|rodio|symphonia|alsa|wasapi` 零命中）
+- **顺带修掉 T-16 的一个真缺陷（重要，值得单独记）**：T-16 的 `wait_event()` 只判了
+  「指针是否为 NULL」，但 **mpv 超时/无事件时返回的是有效指针 + `MPV_EVENT_NONE`**。
+  于是任何 `while let Some(ev) = wait_event(..)` 形式的事件抽取循环都会**死循环**——
+  本次被 T-18 的 `poll()` 第一次调用就触发，一个测试被挂死 7 分钟才被发现。
+  **修复**：在 `wait_event` 内把 `event_id == NONE` 归一为 `None`。
+  这条说明「T-16 当时通过了测试」不等于「T-16 没有缺陷」：T-16 的
+  `wait_first_frame_event` 恰好有 20s 截止兜底，所以那个缺陷在那里不显形。
+- **另一处实测事实（已修 + 登记债务）**：mpv 在 `END_FILE/ERROR` 上**不总是给错误码**——
+  加载不存在的文件时实测 `error == 0`，直接 `mpv_error_string(0)` 会得到 **「success」**
+  这种毫无信息量的文案。现改为以「哪个源加载失败」为主信息
+  （实测文案：`无法播放该媒体（加载或解码失败）：Z:\…
+ope.mp4`）。
+  **要拿到精确原因需要捕获 mpv 日志**（`mpv_request_log_messages` + `LOG_MESSAGE` 事件），
+  登记为债务 P617-D8。
+- **两个我自己在这次写的测试缺陷（记录以免重犯）**：① 起播用例只构造了 `down` 却没
+  `apply` 下去 → mpv 一直是暂停的，观测为空；② `load()` 辅助把 `LoadedMetadata` 在加载期
+  消费掉了，事后再 poll 自然数到 0 次。**`poll` 是「取出即消费」语义**，关心某事件的用例
+  必须从返回值里看——这条已写进 `load()` 的注释。
+- **门禁 `cargo t`**：`21 failed`，**全部落在基线集合内**（19 项稳定红 + 两项已记录的
+  并发 flake `ffi_dual_019`〔P615-D3〕与 `external_config_poll_hot_apply_loopsafe`）
+  → **零新增红**；本任务新增用例在 `required-features` 门控的独立目标里，不进默认档。
+- **⚠ 验证分层的诚实说明（计划内部的次序张力）**：T-18 的任务书写「验证：同一份 `app.at`
+  在 VM 端能真实播放、seek、调音量」，但**那需要 `video` 元素先接上通道与契约**
+  （`render_support.rs:307` 至今仍是 `fallback`）——那一步在 **T-19**。故本任务交付并验证的是
+  **契约层**（真 mpv、真放/seek/音量/事件），**不以「app 里能播」自居**；
+  AC-19 由 T-18+T-19 合起来满足。
+- outcome: pass；next: **T-19**（把 `video` 从 iced `fallback` 提升为可用：接上
+  `channel`/`present`/`contract`，并更新 `schema/aura.at` 的 `backends.iced`）。
 
 ## 11. 新会话开工须知（Handoff，2026-09-12）
 

@@ -306,13 +306,57 @@ mpv SW renderer ──直接写──▶ 持久映射 staging（3 槽环）─�
 端到端帧率含逐帧读回（真实播放器不会做），故是**保守下界**；对照 24 fps 片源，
 1080p 有 10× 以上、4K 有 1.6× 余量。
 
-### 4.10 尚未接上的那一段（T-18/T-19）
+### 4.10 T-18：§2.3 受控媒体契约在 mpv 侧的落地
 
-通道与 blit 管线都已就位且不依赖任何 iced widget 类型（只为 T-19 搬进
+`crates/auto-lang/src/ui/mpv/contract.rs` 把 §2.3 的契约实现到 mpv 上
+（`mpv-native` 门控，不需要 GPU）。**共享边界取「作者面的状态值」**：`volume` 是
+**0..100**（Vue 侧生成器翻成元素的 0..1；mpv 的 `volume` 本就是 0..100，故 VM 侧恒等），
+`position`/时长是 float 秒，`rate` 是倍速 float。换算函数留在 `contract.rs` 作单一出处。
+
+属性映射（全部走 mpv 的**属性**接口，读写对称）：
+
+| 契约字段 | mpv 属性 | 说明 |
+|---|---|---|
+| `paused` | `pause`（flag） | 作者写 `paused: .is_playing == false` |
+| `position` | `time-pos`（double） | 秒；写它就是绝对 seek |
+| `volume` | `volume`（double） | 0..100，与契约同单位 |
+| `muted` | `mute`（flag） | |
+| `rate` | `speed`（double） | `<= 0` 一律忽略（0 倍速会冻住播放） |
+| 上行 `ontimeupdate` | `time-pos` | 变化超 0.25s 才回灌（流量而非精度考虑） |
+| 上行 `onloadedmetadata` | `duration` | 首次可知时**恰好发一次** |
+| 上行 `onplaystatechange` | `pause` | **合成**事件（§2.3 明写它不是原生 DOM 事件），边缘触发 |
+| 上行 `onended` / `onmediaerror` | `END_FILE` 事件的 `reason` | `EOF` → Ended；`ERROR` → MediaError |
+
+**`src` 连数据通路也不需要分叉**：mpv 自带网络栈，`loadfile` 既收本地路径也收
+`http(s)://`，故后端给 Vue 的 `/api/media/stream/<id>` 在 VM 侧原样可用。
+
+**三处必须写对的细节**（都在模块文档与测试里）：① `position` 是「目标变化时 seek」，
+不是「与当前位置不同就 seek」——后者会让播放在前进时每帧触发 seek 从而把播放钉死在
+目标点；② 下行必须差量（视图每帧重建）；③ 换片与 seek 让 `generation` 前进，
+供 T-17 的 `VideoLatestWins` 作废在途旧帧。
+
+**实测**（真实 libmpv，10/10 绿；缺库整体 SKIP）：seek 19.77s → 落点 **19.77s**；
+起播后时间前进、暂停后 0.6s 内不动；`volume/mute/speed` 读回校验；`rate=0` 被忽略、
+`volume=300` 夹到 100；`LoadedMetadata` 恰好一次且等于 mpv 的 `duration`；EOF 回灌 `Ended`
+而不误报错误；音频实测 **`current-ao=wasapi`、`codec=aac`、48k/stereo**，且全仓
+`Cargo.toml` **无任何音频输出依赖**——**音频确实是 mpv 的职责，没有引入 cpal**。
+
+**一处 T-16 遗留缺陷（已修，记录以免重犯）**：`wait_event()` 原先只判「指针是否为 NULL」，
+但 **mpv 超时返回的是有效指针 + `MPV_EVENT_NONE`**，故 `while let Some(ev) = wait_event(..)`
+形式的抽取循环会死循环。T-16 的 `wait_first_frame_event` 恰好有 20s 截止兜底所以没显形，
+T-18 的 `poll()` 一上来就把它触发了。**教训**：「当时测试通过」不等于「没有缺陷」。
+
+**一处限制（登记为债务 P617-D8）**：mpv 在 `END_FILE/ERROR` 上不总是给错误码（实测
+`error == 0`，`mpv_error_string(0)` 得到「success」）。现以「哪个源加载失败」为主信息；
+要拿到精确原因需捕获 mpv 日志（`mpv_request_log_messages`）。
+
+### 4.11 尚未接上的那一段（T-19）
+
+通道、blit 管线与 §2.3 契约都已就位（且不依赖任何 iced widget 类型，只为搬进
 `iced_widget::shader::Program` 做准备），但**还没有接进 VM 的 `video` 元素**：
 `render_support.rs:307` 仍是 `fallback`、`element_coverage.rs:449` 仍是 `NotYet`。
-那一步（受控媒体契约对齐 + 支持级别提升 + `schema/aura.at` 的
-`backends.iced`）属 T-18/T-19。
+**接线那一步（`video` 支持级别提升 + `schema/aura.at` 的 `backends.iced`）属 T-19**；
+AC-19 的「同一份 app.at 在 VM 端真实播放」由 T-18（契约）+ T-19（接线）合起来满足。
 
 ---
 
