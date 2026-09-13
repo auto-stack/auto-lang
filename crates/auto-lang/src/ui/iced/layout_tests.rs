@@ -357,89 +357,67 @@ fn p012_o3_notification_layer_in_stack_anchor() {
     );
 }
 
-/// PLAN-012 O3 端到端复刻探针（真组件链）：notification_center.at 经
-/// build_dynamic_component → visible=1 → RebuildNotes → view 管线（含条件
-/// 根 `if .visible` / mouse-area / 真实类表），装配进 Stack（desktop_root
-/// 同型）量卡片锚定。静态复刻探针（上一测）已证 Stack 本身不塌缩——差异
-/// 必在真实组件链的条件根/包装层。
+/// PLAN-012 O3 终架构探针（真组件链 + 装配锚定）：notification_center.at
+/// 根 = 卡片本体（紧凑 max-h 滚动），锚定与 scrim 在 renderer 装配层
+/// （container Fill×Fill 右下 align + padding——mt-auto/根高类在真实
+/// Stack 子层不可依赖，复验三连贴顶 0 实证后退役）。本探针复刻装配
+/// 锚定，锁定：多条目 = 紧凑有界不越顶；少条目 = 贴底。
 #[test]
-fn p012_o3_notification_real_component_in_stack() {
+fn p012_o3_notification_real_component_assembly_anchor() {
     use iced::Length;
     let src = crate::ui::shell::shell_source("notification_center.at");
-    let stack_assembly = |comp: &crate::ui::dynamic::DynamicComponent| {
+    let build_comp = |rows: usize| -> crate::ui::dynamic::DynamicComponent {
+        let mut comp = crate::build_dynamic_component(src.as_ref(), None).expect("comp");
+        let _ = comp.write_state("visible", auto_val::Value::str("1"));
+        let _ = comp.write_state("__panel_max_h", auto_val::Value::Int(414));
+        let ids: Vec<String> = (1..=rows).map(|i| i.to_string()).collect();
+        for (k, v) in [
+            ("note_ids", ids.clone()),
+            ("note_kinds", vec!["error".to_string(); rows]),
+            ("note_msgs", {
+                let mut m = vec!["CARDCARD".to_string()];
+                m.extend((2..=rows).map(|i| format!("row{i} long message text")));
+                m
+            }),
+            ("note_ats", vec!["now".to_string(); rows]),
+        ] {
+            let vals: Vec<auto_val::Value> = v.into_iter().map(auto_val::Value::str).collect();
+            let _ = comp.write_state_vec(k, vals);
+        }
+        let _ = comp.bridge_mut().call_handler("RebuildNotes", &[]);
+        comp
+    };
+    let anchor = |comp: &crate::ui::dynamic::DynamicComponent| {
         let (view, _ids, _probe) = comp.view_with_debug_gated(false);
-        let bottom = View::Column {
-            children: vec![View::Text {
-                content: "DESK".to_string(),
-                style: Style::parse("w-full h-full").ok(),
-                selectable: false,
-            }],
-            spacing: 0,
-            padding: 0,
-            style: Style::parse("w-full h-full").ok(),
-            onclick: None,
-            on_right_click: None,
-        };
-        let stack = iced::widget::Stack::with_children(vec![
-            bottom.into_iced(),
-            view.into_iced(),
-        ]);
-        let root: iced::Element<
+        let anchored: iced::Element<
             'static,
             crate::ui::interpreter::DynamicMessage,
             iced::Theme,
             iced::Renderer,
-        > = iced::widget::container(stack)
+        > = iced::widget::container(view.into_iced())
             .width(Length::Fill)
             .height(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(iced::Padding {
+                right: 12.0,
+                bottom: 60.0,
+                ..Default::default()
+            })
             .into();
-        let mut ui = simulator(root);
+        let mut ui = simulator(anchored);
         bounds_of(&mut ui, "CARDCARD")
     };
-    // 场景 A（少条目）：2 条 → 卡片贴底锚定。
-    let mut comp = crate::build_dynamic_component(src.as_ref(), None).expect("comp");
-    let _ = comp.write_state("visible", auto_val::Value::str("1"));
-    let _ = comp.write_state("__panel_h", auto_val::Value::Int(744));
-    let _ = comp.write_state("__panel_max_h", auto_val::Value::Int(480));
-    for (k, v) in [
-        ("note_ids", vec!["1", "2"]),
-        ("note_kinds", vec!["info", "info"]),
-        ("note_msgs", vec!["CARDCARD", "row2"]),
-        ("note_ats", vec!["now", "now"]),
-    ] {
-        let vals: Vec<auto_val::Value> = v.into_iter().map(auto_val::Value::str).collect();
-        let _ = comp.write_state_vec(k, vals);
-    }
-    let _ = comp.bridge_mut().call_handler("RebuildNotes", &[]);
-    let (x, y, w, _h) = stack_assembly(&comp);
-    eprintln!("[p012-o3-real-A] card=({x},{y},{w})");
-    assert!(y > 400.0, "少条目卡片应贴底（实际 y={y}）");
-
-    // 场景 B（多条目，实机贴顶复现条件）：8 条 + max_h=480 → 卡片高度有界
-    // （列表滚动），不越过视口顶。
-    let mut comp = crate::build_dynamic_component(src.as_ref(), None).expect("comp");
-    let _ = comp.write_state("visible", auto_val::Value::str("1"));
-    let _ = comp.write_state("__panel_h", auto_val::Value::Int(744));
-    let _ = comp.write_state("__panel_max_h", auto_val::Value::Int(480));
-    let ids: Vec<String> = (1..=8).map(|i| i.to_string()).collect();
-    for (k, v) in [
-        ("note_ids", ids.clone()),
-        ("note_kinds", vec!["error".to_string(); 8]),
-        ("note_msgs", {
-            let mut m = vec!["CARDCARD".to_string()];
-            m.extend((2..=8).map(|i| format!("row{i} long message text for height")));
-            m
-        }),
-        ("note_ats", vec!["now".to_string(); 8]),
-    ] {
-        let vals: Vec<auto_val::Value> = v.into_iter().map(auto_val::Value::str).collect();
-        let _ = comp.write_state_vec(k, vals);
-    }
-    let _ = comp.bridge_mut().call_handler("RebuildNotes", &[]);
-    let (x, y, w, h) = stack_assembly(&comp);
-    eprintln!("[p012-o3-real-B] card=({x},{y},{w},{h})");
+    // 场景 A（多条目 8 条，超 max_h）：紧凑有界 + 右下半区，不越顶。
+    let (x, y, w, h) = anchor(&build_comp(8));
+    eprintln!("[p012-o3-assembly-A] card=({x},{y},{w},{h}) — 根 768，可用底 708");
     assert!(h < 560.0, "多条目卡片应被 max-h 约束（实际 h={h}）");
-    assert!(y > 0.0, "卡片不应越过视口顶（实际 y={y}）");
+    assert!(y + h <= 718.0, "卡片不得越过 dock 垫（底 {}/768，实际 y+h={})", 708, y + h);
+    assert!(y > 100.0, "卡片应有可见顶 gap（实际 y={y}）");
+    // 场景 B（少条目 2 条）：贴底。
+    let (x, y, w, h) = anchor(&build_comp(2));
+    eprintln!("[p012-o3-assembly-B] card=({x},{y},{w},{h})");
+    assert!(y > 400.0, "少条目卡片应贴底（实际 y={y}）");
 }
 
 /// Smoke: a plain row lays out both texts with non-zero bounds and no

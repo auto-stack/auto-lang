@@ -41,15 +41,11 @@ widget NotificationCenter {
         var __desktop_cmd str = ""  // 上行命令总线（dismiss/clear 记录）
         var __wm_notes = []         // 协议 v1.2 合同面（声明不 handler 消费）
         var __wm_notes_unread str = ""  // 协议 v1.2 合同面（badge 源在 shell）
-        // PLAN-012 O3：历史列表最大高（宿主按 视口-dock-gap 注入，px）——
-        // 条目多时卡片高度超视口会把 mt-auto 下压空间吃光（实机贴顶复现：
-        // 6 条 ~110px 条目 ≈ 790px > 744 可用），列表改 max-h 滚动后卡片
-        // 恒有界、贴底锚定在任何条目数下成立。
+        // PLAN-012 O3：历史列表最大高（宿主按视口注入，px，紧凑面板 55%
+        // 档）——条目多时列表滚动，卡片恒为右下角紧凑卡（实机 6 条 ~110px
+        // 条目 ≈ 790px 满高清偿）。锚定与 scrim 在装配层（renderer 通知层
+        // 推臂），.at 内 mt-auto/根高类在真实 Stack 子层不可依赖已退役。
         var __panel_max_h int = 560
-        // PLAN-012 O3：面板根列显式高（视口 - dock，宿主注入）——真实链
-        // 中 Stack 子层 `h-full` 约束传递失效（headless 复刻通过、实机
-        // mt-auto 塌缩），显式像素高使贴底锚定不依赖约束传递。
-        var __panel_h int = 744
 
         // ---- 通知快照（宿主注入平行字符串列表；B12 规避）----
         var note_ids = []
@@ -64,92 +60,84 @@ widget NotificationCenter {
 
     view {
         if .visible == "1" {
-            // ---- 打开态：右下锚定卡片（PLAN-012 W2 重构：mt-auto 下压 +
-            // items-end 底对齐 = 卡片贴 dock 上方；scrim 外点关闭）----
-            mouse-area (onclick: .Close) {
-                style: "w-full h-full"
-                col {
-                    // PLAN-012 O3：显式像素高（__panel_h 宿主注入）——h-full
-                    // 在真实 Stack 子层约束传递失效（见 model 注记）。
-                    style: "w-full h-[752px]"
-                    // 顶部下压：mt-auto 填充条（flex-1 在 iced 轨塌缩——
-                    // T4 探针定案，头注引证）。
-                    spacer { style: "mt-auto w-full" }
-                    row {
-                        style: "w-full items-end"
-                        // 左侧水平右推（行高 = 卡片高，卡片贴底对齐）。
-                        spacer { style: "flex-1 w-full" }
-                        // PLAN-010 N6d：卡片守卫——onclick 幂等动作
-                        // （RebuildNotes 纯重算，launcher ApplyFilter 同款）
-                        // 吞掉卡片空白区点击，不落 scrim。
-                        mouse-area (onclick: .RebuildNotes, style: "w-80") {
-                            col {
-                                // Plan 503：glass 三件套（bg-card/80 + 细边框 + 柔影）
-                                style: "w-full bg-card/80 border rounded-xl shadow-xl overflow-hidden"
+            // ---- 打开态：紧凑卡片（PLAN-012 O3 终解：scrim 上移装配层
+            // ——renderer 通知层推臂 scrim mouse-area（卡片外点击 =
+            // .Close）；贴底机制 = **flex-col-reverse**（shell.at 根同款，
+            // 实机验证可靠）：子元素自底向上堆叠，卡片确定性贴底，不依
+            // 赖 mt-auto/Fill 填充条（真实 Stack 子层不可靠，复验三连贴
+            // 顶 0 实证）与根高类。右垫 mr-3 = 12px 对称档。----
+            col {
+                // 贴底 = justify-end（iced 列 align_y 底对齐——renderer
+                // :1612 needs_v_align 臂，packs 真实链已验证机制），替代
+                // mt-auto 填充条/col-reverse（真实链不可靠）。
+                style: "w-full h-full justify-end"
+                row {
+                    style: "w-full justify-end items-end"
+                    // PLAN-010 N6d：卡片守卫——onclick 幂等动作
+                    // （RebuildNotes 纯重算）吞掉卡片本体内点，不触发
+                    // 装配层 scrim 关闭。
+                    mouse-area (onclick: .RebuildNotes, style: "w-80 mr-3") {
+                        col {
+                            // Plan 503：glass 三件套（bg-card/80 + 细边框 + 柔影）
+                            style: "w-full bg-card/80 border rounded-xl shadow-xl overflow-hidden"
 
-                                // 标题行：通知 + × 关闭 + 全部清除
-                                // （PLAN-012 W2：× 人工关闭路径之一，同一自隐臂）
-                                row {
-                                    style: "flex items-center px-4 py-3 border-b"
-                                    text "通知" { style: "text-foreground text-sm font-semibold" }
-                                    button (icon: "x") {
-                                        onclick: .Close
-                                        style: "ml-auto h-7 w-7 px-0 text-xs text-muted-foreground rounded hover:bg-primary/10"
-                                    }
-                                    button "全部清除" {
-                                        onclick: .ClearAll
-                                        style: "h-7 px-2 text-xs text-muted-foreground rounded hover:bg-primary/10"
+                            // 标题行：通知 + × 关闭 + 全部清除
+                            // （PLAN-012 W2：× 人工关闭路径之一，同一自隐臂）
+                            row {
+                                style: "flex items-center px-4 py-3 border-b"
+                                text "通知" { style: "text-foreground text-sm font-semibold" }
+                                button (icon: "x") {
+                                    onclick: .Close
+                                    style: "ml-auto h-7 w-7 px-0 text-xs text-muted-foreground rounded hover:bg-primary/10"
+                                }
+                                button "全部清除" {
+                                    onclick: .ClearAll
+                                    style: "h-7 px-2 text-xs text-muted-foreground rounded hover:bg-primary/10"
+                                }
+                            }
+
+                            // 历史列表（MRU 序；空态）。PLAN-012 O3：
+                            // max-h + overflow-y-auto（028-launcher T38
+                            // 先例）——条目多时列表滚动，卡片恒为紧凑卡。
+                            col {
+                                style: "w-full max-h-[${.__panel_max_h}px] overflow-y-auto"
+                                if .nrows == 0 {
+                                    col {
+                                        // PLAN-013 W3：补 w-full——容器无宽则收缩
+                                        // 到内容宽，items-center 居中退化无效
+                                        // （用户实机截图：文案贴左）。
+                                        style: "w-full flex flex-col items-center py-8"
+                                        text "暂无通知" { style: "text-muted-foreground text-sm" }
                                     }
                                 }
-
-                                // 历史列表（MRU 序；空态）。PLAN-012 O3：
-                                // max-h + overflow-y-auto（028-launcher T38
-                                // 先例）——条目多时列表滚动，卡片恒有界，
-                                // mt-auto 贴底锚定不被内容高度吃掉。
-                                col {
-                                    style: "w-full max-h-[${.__panel_max_h}px] overflow-y-auto"
-                                    if .nrows == 0 {
-                                        col {
-                                            // PLAN-013 W3：补 w-full——容器无宽则收缩
-                                            // 到内容宽，items-center 居中退化无效
-                                            // （用户实机截图：文案贴左）。
-                                            style: "w-full flex flex-col items-center py-8"
-                                            text "暂无通知" { style: "text-muted-foreground text-sm" }
-                                        }
-                                    }
-                                    for r in .rows {
-                                        row {
-                                            style: "flex items-center gap-3 px-4 py-2 border-b cursor-pointer"
-                                            if r.kind == "success" {
-                                                icon (name: "check") { style: "h-4 w-4 text-success" }
+                                for r in .rows {
+                                    row {
+                                        style: "flex items-center gap-3 px-4 py-2 border-b cursor-pointer"
+                                        if r.kind == "success" {
+                                            icon (name: "check") { style: "h-4 w-4 text-success" }
+                                        } else {
+                                            if r.kind == "error" {
+                                                // PLAN-012 F2（用户裁定）：错误 ❗
+                                                // （原 x 与右侧关闭钮混淆）。
+                                                icon (name: "circle-alert") { style: "h-4 w-4 text-error" }
                                             } else {
-                                                if r.kind == "error" {
-                                                    // PLAN-012 F2（用户裁定）：错误 ❗
-                                                    // （原 x 与右侧关闭钮混淆）。
-                                                    icon (name: "circle-alert") { style: "h-4 w-4 text-error" }
-                                                } else {
-                                                    icon (name: "info") { style: "h-4 w-4 text-muted-foreground" }
-                                                }
+                                                icon (name: "info") { style: "h-4 w-4 text-muted-foreground" }
                                             }
-                                            col {
-                                                style: "flex-1 gap-0"
-                                                text r.msg { style: "text-foreground text-sm" }
-                                                text r.at { style: "text-muted-foreground text-xs" }
-                                            }
-                                            button "×" {
-                                                onclick: .Dismiss(r.id)
-                                                style: "h-7 w-7 px-0 text-xs text-muted-foreground rounded hover:bg-primary/10"
-                                            }
+                                        }
+                                        col {
+                                            style: "flex-1 gap-0"
+                                            text r.msg { style: "text-foreground text-sm" }
+                                            text r.at { style: "text-muted-foreground text-xs" }
+                                        }
+                                        button "×" {
+                                            onclick: .Dismiss(r.id)
+                                            style: "h-7 w-7 px-0 text-xs text-muted-foreground rounded hover:bg-primary/10"
                                         }
                                     }
                                 }
                             }
                         }
-                        // 右垫 12px（与底垫视觉 gap 对称，W2 裁定）。
-                        spacer { style: "w-3 h-12" }
                     }
-                    // 底垫 = dock 48px + 视觉 gap 12px（h-16 旧值让位链见头注）。
-                    spacer { style: "h-[60px] w-full" }
                 }
             }
         } else {

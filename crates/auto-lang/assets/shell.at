@@ -108,6 +108,10 @@ widget Desktop {
         // 原 view 条件 `__wm_running.contains(...)` 方法调用死点，宿主派生
         // 等式消费（W1 close→hide 后隐藏即回落）。
         var __wm_settings_open str = ""
+        // PLAN-012 F2 复验：布局名标量（free/grid/master-stack）——布局钮
+        // 高亮判据（同 host 派生标量 + 等式模式；用户复验：布局切换行为
+        // 正确但钮无高亮态）。
+        var __wm_layout str = "free"
         var __dock_position str = "bottom"
         var __dock_enabled str = "1"
         // Plan 505 B1：任务栏边线类（宿主投影——top→border-b / bottom→
@@ -387,13 +391,24 @@ widget Desktop {
                     }
                     // PLAN-526 T17：布局钮 lucide 化（文字字形 ▦▤▢ 与
                     // 矢量 icon 的视觉尺寸差不复存在）。
+                    // PLAN-012 F2 复验：布局钮两态高亮（__wm_layout 等式）
+                    // ——当前布局 = 主色描边钮亮底；free（手动排布）= 两钮
+                    // 均不亮。用户复验：切换行为正确但无高亮态。
                     button (icon: "layout-grid") {
                         onclick: .LayoutGrid
-                        style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        style: if .__wm_layout == "grid" {
+                            "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                        } else {
+                            "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        }
                     }
                     button (icon: "table") {
                         onclick: .LayoutStack
-                        style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        style: if .__wm_layout == "master-stack" {
+                            "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                        } else {
+                            "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        }
                     }
                     // PLAN-526 T35：Free 布局钮（square）退役——T33 同预设
                     // 再按即回手动排布，独立 Free 钮冗余（用户八轮反馈 #2）。

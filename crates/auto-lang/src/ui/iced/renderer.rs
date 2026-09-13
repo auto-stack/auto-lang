@@ -8802,7 +8802,7 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
             ats.push(auto_val::Value::Str(n.at.clone().into()));
         }
     }
-    let (panel_h, max_h) = panel_geometry(state);
+    let max_h = panel_max_h(state);
     let Some(app) = state.apps.get_mut(&panel) else {
         return;
     };
@@ -8810,9 +8810,6 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
     let _ = app.component.write_state_vec("note_kinds", kinds);
     let _ = app.component.write_state_vec("note_msgs", msgs);
     let _ = app.component.write_state_vec("note_ats", ats);
-    let _ = app
-        .component
-        .write_state("__panel_h", auto_val::Value::Int(panel_h as i32));
     let _ = app
         .component
         .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
@@ -8832,13 +8829,15 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
 ///（实机 6 条 ~110px 条目 ≈ 790px > 744 可用 → 卡片贴顶，用户截图复现；
 /// 首版仅扣 dock+gap 得 728 仍贴顶——扣减须覆盖卡片全部非列表部分）。
 /// 注入点 = 召唤/活更新（resize 开着面板时留旧值，重开生效——v1 可接受）。
-fn panel_geometry(state: &crate::ui::session::DesktopSession) -> (f32, f32) {
+fn panel_max_h(state: &crate::ui::session::DesktopSession) -> f32 {
     let viewport = state.host_viewport();
     let reserved = desktop_dock_edges(&state.desktop.config);
-    let panel_h = (viewport.height - reserved.bottom).max(280.0);
     // 紧凑面板（用户复验 2026-09-13：满高卡+小顶缝感知仍为"贴顶"）——
-    // 列表上限 = 面板高 55%（≈4 条目 + 滚动），卡片恒为右下角紧凑卡。
-    (panel_h, (panel_h * 0.55).clamp(280.0, 560.0))
+    // 列表上限 = 可用高（视口 - dock）55%（≈4 条目 + 滚动），卡片恒为
+    // 右下角紧凑卡；锚定在装配层 container 右下 align（本文件通知层推
+    // 臂），.at 内 mt-auto/根高类在真实 Stack 子层不可依赖（复验三连
+    // 贴顶 0 实证），全部退役。
+    ((viewport.height - reserved.bottom) * 0.55).clamp(280.0, 560.0)
 }
 
 /// Plan 463 T4：执行 DesktopBus 命令序列（T1 报告 §5）。返回 true = 请求
@@ -9119,7 +9118,7 @@ fn toggle_notification_center(
             ats.push(auto_val::Value::Str(n.at.clone().into()));
         }
     }
-    let (panel_h, max_h) = panel_geometry(state);
+    let max_h = panel_max_h(state);
     if let Some(app) = state.apps.get_mut(&panel) {
         let _ = app.component.write_state_vec("note_ids", ids);
         let _ = app.component.write_state_vec("note_kinds", kinds);
@@ -9127,9 +9126,6 @@ fn toggle_notification_center(
         let _ = app.component.write_state_vec("note_ats", ats);
         let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
-        let _ = app
-            .component
-            .write_state("__panel_h", auto_val::Value::Int(panel_h as i32));
         let _ = app
             .component
             .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
@@ -11620,14 +11616,28 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     // 响应式布局读 shell_fields.window_size——层 App 无窗事件可靠喂给
     //（实机 MCP 截图被零尺寸守卫拒死），此处随 tick 镜像宿主 viewport
     //（变化才写，稳态零成本）。借序：须在 host 不可变借用之前。
+    // PLAN-012 O3：镜像面扩至全部特权层字段（launcher/switcher/
+    // notification）——通知面板根高/max-h 类在零尺寸上下文解析失真
+    //（实机 mt-auto/根高塌缩、贴顶复验三连），根因与截图守卫同源。
     {
         let vp = state.host_viewport();
         if let Some(host_mut) = state.host.as_mut() {
-            let ws = host_mut.shell_fields.window_size.get_mut();
-            if (ws.width - vp.width).abs() > f32::EPSILON
-                || (ws.height - vp.height).abs() > f32::EPSILON
-            {
-                *ws = iced::Size::new(vp.width, vp.height);
+            let mut changed = false;
+            for fields in [
+                &mut host_mut.shell_fields.window_size,
+                &mut host_mut.launcher_fields.window_size,
+                &mut host_mut.switcher_fields.window_size,
+                &mut host_mut.notification_fields.window_size,
+            ] {
+                let ws = fields.get_mut();
+                if (ws.width - vp.width).abs() > f32::EPSILON
+                    || (ws.height - vp.height).abs() > f32::EPSILON
+                {
+                    *ws = iced::Size::new(vp.width, vp.height);
+                    changed = true;
+                }
+            }
+            if changed {
                 if let Some(app) = state.apps.get(&shell) {
                     *app.state.view_dirty.borrow_mut() = true;
                 }
@@ -11893,6 +11903,12 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app
         .component
         .write_state("__wm_settings_open", auto_val::Value::str(if settings_open { "1" } else { "" }));
+    // PLAN-012 F2 复验：布局名标量投影——任务栏布局钮（grid/master-stack）
+    // 高亮判据（等式消费；同 __wm_settings_open 模式。布局切换翻 meta 段
+    // → 指纹重写随写同步；free = 两钮均不亮 = 手动排布态）。
+    let _ = app
+        .component
+        .write_state("__wm_layout", auto_val::Value::str(layout_name));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
     // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget——
@@ -16191,8 +16207,21 @@ fn compare_pngs(
             }
             // Plan 479 T3：通知中心 overlay 层（switcher 层邻位顶层；仅
             // visible 时推层——第三枚 overlay 槽，switcher 同款语义）。
+            // PLAN-012 O3 终解（复验三连反馈）：卡片锚定上移装配层——
+            // container Fill×Fill + 右下 align + dock/边距 padding（iced
+            // container align = 全库验证可靠机制），.at 内 mt-auto 填充条
+            // /根高类在真实 Stack 子层不可依赖（复验：compact 卡片顶贴
+            // 0，headless 全链却通过——头模/实机分叉，O1 同族）。外层透
+            // 明 mouse-area = scrim（卡片外点击 → .Close）；卡片整体包
+            // 内层 mouse-area 守卫（on_press = RebuildNotes 幂等，
+            // PLAN-010 N6d 同款——卡片本体内点不关）。
             if state.notification_visible() {
                 let panel_app = state.desktop.notification_app.expect("panel checked");
+                let panel_widget = state
+                    .apps
+                    .get(&panel_app)
+                    .map(|a| a.component.widget_name().to_string())
+                    .unwrap_or_default();
                 let build = || state.split_ref_notification().map(|v| dynamic_view(v, false));
                 let panel_client: iced::Element<'_, IcedMessage> = match
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
@@ -16204,7 +16233,31 @@ fn compare_pngs(
                         desktop_crash_element()
                     }
                 };
-                layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
+                let card = iced::widget::mouse_area(panel_client)
+                    .on_press(IcedMessage {
+                        widget: panel_widget.clone(),
+                        event: "RebuildNotes".into(),
+                        input_value: None,
+                    });
+                let anchored: iced::Element<'_, IcedMessage> = iced::widget::mouse_area(
+                    iced::widget::container(card)
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill)
+                        .align_x(iced::alignment::Horizontal::Right)
+                        .align_y(iced::alignment::Vertical::Bottom)
+                        .padding(iced::Padding {
+                            right: 12.0,
+                            bottom: 60.0,
+                            ..Default::default()
+                        }),
+                )
+                .on_press(IcedMessage {
+                    widget: panel_widget,
+                    event: "Close".into(),
+                    input_value: None,
+                })
+                .into();
+                layers.push(anchored.map(move |m| DM::App(panel_app, m)));
             }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
