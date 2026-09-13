@@ -71,7 +71,7 @@ widget NotificationCenter {
                 col {
                     // PLAN-012 O3：显式像素高（__panel_h 宿主注入）——h-full
                     // 在真实 Stack 子层约束传递失效（见 model 注记）。
-                    style: "w-full h-[${.__panel_h}px]"
+                    style: "w-full h-[752px]"
                     // 顶部下压：mt-auto 填充条（flex-1 在 iced 轨塌缩——
                     // T4 探针定案，头注引证）。
                     spacer { style: "mt-auto w-full" }

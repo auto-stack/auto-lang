@@ -8827,7 +8827,8 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
 /// `h-full`（Fill）约束传递失效（headless 复刻全链通过、实机 mt-auto 填
 /// 充条塌缩——iced 0.14.2 真实进程布局差异，O1 同族），显式像素高不再
 /// 依赖约束传递，mt-auto 贴底在任何环境下成立。list_max_h = panel_h -
-/// 底垫(60) - 标题行(~52) - 余量(12)：条目多时列表滚动，卡片恒有界
+/// 底垫(60) - 顶 gap(24，用户复验：首版 124 扣减顶 gap 仅 ~10px 感知
+/// 贴顶) - 标题行(~52) - 余量(12)：条目多时列表滚动，卡片恒有界
 ///（实机 6 条 ~110px 条目 ≈ 790px > 744 可用 → 卡片贴顶，用户截图复现；
 /// 首版仅扣 dock+gap 得 728 仍贴顶——扣减须覆盖卡片全部非列表部分）。
 /// 注入点 = 召唤/活更新（resize 开着面板时留旧值，重开生效——v1 可接受）。
@@ -8835,7 +8836,7 @@ fn panel_geometry(state: &crate::ui::session::DesktopSession) -> (f32, f32) {
     let viewport = state.host_viewport();
     let reserved = desktop_dock_edges(&state.desktop.config);
     let panel_h = (viewport.height - reserved.bottom).max(280.0);
-    (panel_h, (panel_h - 124.0).clamp(240.0, 800.0))
+    (panel_h, (panel_h - 148.0).clamp(240.0, 800.0))
 }
 
 /// Plan 463 T4：执行 DesktopBus 命令序列（T1 报告 §5）。返回 true = 请求
@@ -15128,6 +15129,23 @@ fn compare_pngs(
                                 }
                             }
                         }
+                        // PLAN-012 F2 走查：命令通道前置——下方 fit/快照
+                        // 臂按单任务语义 `return task`，持续命中（fit 反复
+                        // 待测/快照队列连续）时原本会把臂尾的注入排空 +
+                        // DesktopBus drain 无限饿死（实机确定性复现：首个
+                        // launch 之后的全部 activate 记录静默丢弃 = dock
+                        // 图标点击既不聚焦也不切高亮）。排空先于一切早退；
+                        // 其任务与 fit/快照任务并存时合批（测量/抓取可重
+                        // 入，下一拍重试；命令不可丢）。
+                        apply_desktop_injects(state);
+                        let (drain_exit, mut drain_tasks) =
+                            drain_and_execute_desktop_commands(state);
+                        if drain_exit {
+                            // Plan 505 B5（债 P480-R1）：退出前显式
+                            // 停机 broker serve 线程。
+                            state.shutdown_broker();
+                            return iced::exit();
+                        }
                         // Plan 504：fit 虚拟窗触发——节拍上若有待测量窗且
                         // 单程闸空闲，发起内容测量（宿主树恒在；vwin 首帧
                         // 渲染后锚点即在，回执 __fit_measured 收缩矩形）。
@@ -15155,14 +15173,27 @@ fn compare_pngs(
                             if let Some(hw) = fit_target {
                                 state.desktop.fit_measure_in_flight.set(true);
                                 state.desktop.fit_measure_retries.set(0);
-                                return fit_measure_task(hw);
+                                let fit = fit_measure_task(hw);
+                                return if drain_tasks.is_empty() {
+                                    fit
+                                } else {
+                                    let mut all = std::mem::take(&mut drain_tasks);
+                                    all.push(fit);
+                                    iced::Task::batch(all)
+                                };
                             }
                         }
                         // Plan 497 G3：快照抓取编排——排空渲染臂/召唤面
                         // 攒下的 request_capture 队列，一次整窗 screenshot
                         // 服务全部请求（回调 SnapshotShot 裁剪入缓存）。
                         if let Some(task) = service_snapshot_requests(state) {
-                            return task;
+                            return if drain_tasks.is_empty() {
+                                task
+                            } else {
+                                let mut all = std::mem::take(&mut drain_tasks);
+                                all.push(task);
+                                iced::Task::batch(all)
+                            };
                         }
                         // Plan 480 S3/S4：broker 孵化落地 + 多 client 帧泵
                         // （有在册/排队连接才有成本，零排队两调用皆空转）。
@@ -15176,18 +15207,8 @@ fn compare_pngs(
                             state.attach_pending_remotes();
                         }
                         state.pump_remote_mirrors();
-                        // Plan 505 C：验收通道注入排空（≤400ms 节拍达；
-                        // Bus 记录随后并入下方 drain 同臂执行）。
-                        apply_desktop_injects(state);
-                        let (exit, tasks) = drain_and_execute_desktop_commands(state);
-                        if exit {
-                            // Plan 505 B5（债 P480-R1）：退出前显式
-                            // 停机 broker serve 线程。
-                            state.shutdown_broker();
-                            return iced::exit();
-                        }
-                        if !tasks.is_empty() {
-                            return iced::Task::batch(tasks);
+                        if !drain_tasks.is_empty() {
+                            return iced::Task::batch(drain_tasks);
                         }
                     }
                     // Plan 473 T6 / 505 A 族：原生槽位 WinEventHook 事件批
