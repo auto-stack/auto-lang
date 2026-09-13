@@ -471,6 +471,18 @@ P1 影响**所有** gallery/示例应用（任何未声明 `theme{}` 的 scaffol
 - 过程卫生：本轮起的服务全部关闭；§9.8 遗留的 stale vite（6111，PID 19092，同 worktree gen 目录）一并清除。
 - outcome: **pass**（五条 AC 在合并后基线全部复验）。next: 落地（ff）→ 账本投影 → 归档 → 清理。
 
+### 9.10 整合收据终态（2026-09-14）——`PLAN-619:r1`
+
+| Checkpoint | 状态 | 证据 |
+|---|---|---|
+| `prepared` | ✅ | reconcile #1/#2（§9.7/§9.8，`ef09a3035`/`5241b0771`）+ reconcile #3（§9.9，`504319c82`——617/618 全量并入后三冲突裁定）；SD-01/SD-02 文本随合并基线同步改述（机制描述对齐，契约未变）；frontmatter delta 冻结 |
+| `landed` | ✅ | master ff 至 `52e61074f`（= reviewed 实现面 + 纯文档/收据后代）+ 派生物同步 `c2358b19c`（顺带修复 master 侧 rust-workspace manifest 字面冲突标记 + 幽灵成员）；spec-index 再生 26 projects 无断链 |
+| `ledger_refreshed` | ✅ | `ui/plans.md` 619 行终态（`81cb050f5`）+ `.autoos/specs.json` 运行时投影 **P619-1..6**（六段：reports/goals/architecture/designs/tests/reviews，file 指向本归档路径，读回验证 6 条） |
+| `archived` | ✅ | `git mv → docs/plans/archive/619-015-notes-vm-vue-parity.md` + `status: archived` + `completion_kind: delivered`（`70a822a07`） |
+| `cleaned` | ✅ | 本提交——junction 90 条（pnpm node_modules，`[IO.Directory]::Delete` 非递归逐链）→ **wt-guard clean** → worktree `D:/autostack/.wt/lang-619/auto-lang` 移除 + 分支 `plan-619-dev` 删除（was `c2358b19c`）+ auto-down 兄弟 worktree（detached @ `ad5b1d4`，reconcile #3 为 a2r-actor-tests path 依赖而设）移除 + 组目录 `lang-619` 整组移除验证 |
+
+- 过程注记：①守卫 `head -50` 截断曾掩盖真实链数（90），枚举需去帽复数；②Git Bash 下 `cmd /c` 参数被路径转换吞掉致 rmdir 静默无效（守卫自身同款调用因参数分传幸免），junction 摘除以 PowerShell 非递归删除收口。
+
 ## 10. 待澄清事项
 
 1. ~~**P1 权威色板**~~ → **已裁决（2026-09-12）：选项 A，scaffold/shadcn 为权威**。
