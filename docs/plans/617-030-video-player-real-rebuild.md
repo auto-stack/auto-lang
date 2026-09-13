@@ -11,8 +11,8 @@ plan_revision: 12                # r12: Vue 链 T-03/T-04/T-07/T-08 完成（真
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []
+new_spec_components: ["docs/specs/auto-lang/ui/overview.md#video-元素（add；SD-05，含 SD-01 的契约清单）"]
+touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（Vue 与 VM/iced 双端 base styles 与 parity 锁定）", "GOAL-010: 示例应用轨道（examples/ui 应用矩阵）"]
 
 affects: [auto-lang/ui, auto-man/api_gen]
 current_step: 14                 # 已完成 14 项：T-01/02/03/04/05/06 + T-07/08 + VM 链 T-15..T-20；余 T-09..T-14（T-11 部分落地）
@@ -611,7 +611,7 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   验证：截图 + `grep -c 'bg-primary' src/front/*.at` 计数复核。
 - **AC-03 双主题**：`dark_mode` 双端切换生效；浅色态下无「深色残留」（白底黑字可读、
   边框可见）。pac.at 的主题跟随行为**实测后**记录（P-9 待实测）。验证：双端深浅各一组截图。
-- **AC-04 图标一致**：UI 无 emoji；图标名全部在 VM lucide 85 名闭集内；
+- **AC-04 图标一致**：UI 无 emoji；图标名在 VM 端**可得**（原为 85 名闭集，该闭集已由 PLAN-620 改为 lucide 官方数据生成的全量表 1401 项，此处按可得性表述，要求未削弱）；
   VM 截图中不出现空图标色块。验证：
   `grep -nE '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]' src/front/*.at` 无非注释命中。
 - **AC-05 队列来自真实目录且递归**：队列由 `E:\Video` **递归**扫描得出，条目数等于
@@ -1913,11 +1913,128 @@ VM 端截图确认同款图标与满宽进度条（`tests/screenshots/after_icon
   归属处置见该计划「分支与提交归属」节）。PLAN-620 的未完成项为其 T-05..T-08
   （规范增量 / 设计注记 `docs/design/autoui/icon-data-source-and-parity.md` / 漂移门禁 / 独立复审）。
 
+### 9.22 独立复审（`/auto-plan:review`，2026-09-13）——**阶段复审：pass（阶段折入就绪）**
+
+`stage: review` | `plan_id: PLAN-617` | `plan_revision: 12`（复审记录本身不改 revision）
+| `outcome: **pass（phase-only）**` | `reviewed_commit: 1b1692f9d`（worktree `plan-617-dev`）
+| `base_commit: 4c7a59865`（与 master 的 merge-base；master 复审时为 `c9f4d5a73`）
+| `dependency_revisions: lucide-vue-next 0.312.0`（生成表头同记）
+| `spec_inputs: docs/specs/auto-lang/ui/overview.md`、`docs/specs/goals.md`
+| `next: 阶段折入（用户已授权）→ 继续 T-09..T-14`
+
+**复审范围（用户指定）**：Vue 链 **T-03/T-04/T-07/T-08** + VM 链 **T-15..T-20**
++ 现场追加的平台件（已独立立项 [PLAN-620](620-autoui-icon-table-and-pointer-primitives.md)）。
+**未把 T-09..T-14 当作已完成**——它们的 AC 缺口逐条记在 findings 里。
+
+**独立性的诚实声明**：本次复审在**实现会话内**执行（我既做了最近的实现，也继承了
+更早会话的作者记录），因此**不主张方法学独立**。Verdict 的取法是**从工件重建而非
+采信执行方摘要**：逐条重跑门禁、重做 grep、重读代码与规范文本；§9 里此前的
+`outcome: pass` 只当线索、不作证据。
+
+**基线**：
+
+- worktree `D:/autostack/.wt/lang-617/auto-lang`（`git worktree list --porcelain` 确认），
+  分支 `plan-617-dev`，HEAD `1b1692f9d`；**脏改动已归零**——复审前唯一的未提交项
+  `examples/rust-workspace/Cargo.toml`（`auto run` 维护的生成物，补 `030-video-player-back`
+  成员项）已作为 `1b1692f9d` 提交（否则会犯「只测 HEAD 而实现未提交」）。
+- 归一化：AC-04 原文以「VM lucide 85 名闭集」为判据，而该闭集已由 PLAN-620 换成
+  全量表；本次按**意义不变**归一为「图标名在 VM 端可得」并在此记录（未削弱要求）。
+
+**门禁（复审基线内重跑）**：
+
+| 档 | 命令 | 结果 |
+|---|---|---|
+| 日常（含 ui-iced） | `RUSTC_WRAPPER= cargo t --no-fail-fast` | **4822 run / 19 failed / 109 skipped** — 与本次改动前基线集合**逐项 diff 为空**；其中 `lucide_icon_coverage_manifest_all_hit` **由红转绿**，`external_config_poll_hot_apply_loopsafe` 为在案并发 flake（单跑必过，已复核） |
+| 全量（仓库规则要求） | `cargo tf --no-fail-fast` | **3540 run / 1 failed** — 唯一失败 `ffi_dual_tests::ffi_dual_019_dep_layout_invariants` 系**在案并发 flake**（§9.16 记载的 `ffi_dual_019`/P615-D3），**单跑 PASS**（已复核） |
+| VM 语料 | `cargo tv`（`--no-fail-fast`） | **3686 run / 0 failed** |
+| Web 场景 | 030 `tests/smoke.spec.ts`（chrome channel） | **11/11 PASS**（含 T4 点选 seek、T4b 拖拽 seek） |
+| VM 冒烟 | `tests/vm-smoke.mjs` | **ALL PASS** |
+
+**门禁口径的一条实测发现（记录以免后人误判）**：本仓 `cargo tf` 的别名
+（`.cargo/config.toml:62`）**不带 `--features ui-iced`**，而 `cargo t` 带。所以
+**`cargo tf` 并不覆盖 iced/UI 测试**（3540 < 4822 即由此而来）。对触及
+`ui/iced/**`、`ui_gen/**` 的改动，**必须同时看 `cargo t`**；只跑 tf 会漏掉整个 UI 面。
+
+**AC 逐条对拍**（`pass/partial/fail` + 复核手段）：
+
+| AC | 判定 | 复核手段与结果 |
+|---|---|---|
+| AC-01 扁平视觉 | **pass** | 重跑禁用类/渐变 grep（`backdrop-`、`shadow-`、`rounded-(xl|2xl)`、`animate-`、`hover:scale`、`flex-wrap`、`from-`/`via-`/`to-`）→ 零命中；截图结构为 h-12 顶栏 + w-72 队列 + h-14 播控条 |
+| AC-02 按钮纪律 | **pass** | `bg-primary` 计数 = 2（播放键 if/else 两分支，渲染时仅 1 个）；三档尺寸在 `controls.at`；**注**：进度条改用 `progress` 组件后不再以 `bg-primary` 表达 |
+| AC-03 双主题 | **pass** | 实机复测 `--card` 由 `rgb(14,21,37)` ↔ `rgb(255,255,255)` 真实翻转（本轮修复「dark_mode 放 store 导致切换无效」后） |
+| AC-04 图标一致 | **pass**（口径归一） | emoji grep 零命中；图标名全部落在 VM 全量表内；VM 截图无空图标块（`after_icons_vm.png`） |
+| AC-05 队列真实且递归 | **pass** | e2e T1：与 `/api/media/scan` 自洽（14 条 / 3 组，含 `TV/Loki` 嵌套）；平铺实现只能得 1 条 |
+| AC-06 真实起播 | **pass** | e2e T2 实测 `1920×1080 / duration=49.429 / paused=false / currentTime 递增` |
+| AC-07 控件真实作用 | **pass** | e2e T3（暂停 1s 内时间不动）/T4（点 50% → `duration*0.5 ±5%`）/T4b（20%→80% 拖拽）/T5（音量 0.8、静音、倍速 1.25 落到元素属性）/T7（换源为下一条目流地址） |
+| AC-08 时间与进度真实 | **pass** | e2e T2 断言 body 不含 `03:45`；OSD 时长 = 元素实测值 |
+| AC-09 文件浏览真实 | **FAIL** | **未做**：按钮给诚实提示「本地文件浏览尚未接线（计划内 T-09）」。属 T-09 范围（本次复审范围外），**不以债务登记代替完成** |
+| AC-10 错误可见 | **pass** | e2e T9（元素级不可播放源 → 真实 error 链路 → 视口错误面板）；`media_service` 单测 + §9.9 实测（未知 `id`→404、越界→416，路径只经令牌反查） |
+| AC-11 VM 端显式降级 | **partial** | 「显式降级说明」达成（VM 截图有「本后端未启用原生播放…」）；**「显示真实文件名」未达**——VM 端 `Http.get` 拿相对 URL 交给 reqwest 无法解析 ⇒ VM 里媒体库为空态。缺口属 T-10 范围 |
+| AC-12 契约同步 | **pass** | SPEC/README 重写为真实边界版；`commondatastorage`/`BigBuckBunny` grep 零命中；兼容单测 `test_uncontrolled_video_is_byte_identical` + 019-video-app 实测仍为裸 `<video :src :class />` |
+| AC-13 无新增回归 | **pass** | 见上表三档门禁（含「tf 不含 ui-iced」的口径说明） |
+| AC-14 VM 播放决策件 | **pass** | `docs/design/autoui/030-video-player.md` §4 具「SW 采用 / GL·sidecar·FFmpeg-FFI 排除」四选一裁定 + 实测数字（1080p 0.60–0.68 ms/帧、4K 6.74–6.88 ms/帧、端到端 7.3 ms/帧、内存 8.29/33.18 MB） |
+| AC-15 大文件流式安全 | **pass** | `cargo t media_service` 7/7（递归/白名单/自然序/令牌/缺根不 panic/Range 全表面/状态长度）+ §9.9 实测（5.75 GB 文件 `Range: bytes=0-1023` → 206 + 正确 `Content-Range`；越界 416；惰性分块） |
+| AC-16 逐项真实状态 | **partial** | (a) 4K MKV `3840×2160` 实测 ✓（e2e T11）；(c) 不谎报有声 ✓（无任何音轨/编码文案）；**(b)「音轨不受支持」正向标注未做**——§2.3 契约无该信号字段，实测数据 `webkitAudioDecodedByteCount=0` 已在案。缺口属 T-11 范围 |
+| AC-17 不显示无法得知的元数据 | **pass** | `src/back/{api,db}.at` 已删；`resolution`/`codec`/`bitrate` grep 零命中 |
+| AC-18 门控决策 Go/No-Go | **pass** | §9.14 Go + design §4.2 实测数字（本表 AC-14 行） |
+| AC-19 VM 端真实播放 | **pass** | §9.19 实机：画面为 `caelestia.mp4` 实际内容、`position: 8.0` → `time-pos` 8→12.63s、`duration=49.429`、`has_new_frame` 持续为真；截图归档 |
+| AC-20 门控不污染默认档与 CI | **pass** | CI 工作流 grep（`apt-get install`/`ffmpeg`/`libmpv`/`libav`）零命中；feature 三层透传且**不进 default**；缺库走 `MpvUnavailable::NoLibrary` 降级不 panic |
+
+**规范增量复审**（§5.7 的 SD-01..SD-05）：
+
+| SD | 判定 | 说明 |
+|---|---|---|
+| SD-01 video 受控媒体契约 | **partial** | 契约清单已落在 `docs/specs/auto-lang/ui/overview.md` 的「已知坑」节（下行/上行 + 两端同名同单位 + Vue 侧 volume 换算），但**缺 SD-01 要求的兼容边界**（「未声明受控 prop 时行为不变」）与「Vue 已实现 / iced 为 partial」的现状句；落点也与 SD 声明的「媒体元素节」不一致 |
+| SD-02 媒体文件服务 | **未落** | overview 内无 `media_service` / `/api/media/scan` / `MediaEntry` / Range-206 / 根目录解析序 / 惰性分块 的任何条目 |
+| SD-03 示例示范段更新 | **未落** | overview 无 `030-video-player` 相关段落 |
+| SD-04 三条已知约束 | **未落** | 无「Matroska 可解 / Dolby 不可解 / iced 静默降级」三条 |
+| SD-05 iced `video` 提升 | **pass** | overview 具独立块：支持级别 partial、实现位置、可选 feature 与可降级、运行库解析序（`AUTO_MPV_LIB` → exe 同目录 → 降级、不回落系统路径）、缺库行为、SW-only 架构约束、tick 驱动、契约、实测数字——描述的是当前行为而非实施日记 ✓ |
+
+**Findings**（稳定 ID / 影响 / 严重度 / 证据 / 修正）：
+
+- **617-R1**（AC-09，T-09）`fail`：本地文件浏览未实现。**high**（AC 明列）。
+  修正：实施 T-09（浏览器 File API → object URL，或系统文件管理器集成），
+  或由用户裁定把 AC-09 改口径并同步 SPEC。
+- **617-R2**（AC-16(b)，T-11）`partial`：缺「音轨不受支持」正向标注。**medium**。
+  修正：扩受控契约承载「音轨可用性」信号（PLAN-620 的 `onseek` 已示范「加 prop +
+  双端实现 + 兼容单测」的可行路径），或明确裁定只保留「不谎报」而不做正向标注。
+- **617-R3**（AC-11，T-10）`partial`：VM 端显示真实文件名未达（VM `Http` 相对 URL）。**medium**。
+  修正：给 VM 的 HTTP 通道加基址支持，或把 AC-11 收窄为「显式降级说明」并把 VM 空态记为已知边界。
+- **617-R4**（T-11）规范增量 SD-01(partial)/SD-02/SD-03/SD-04 未落。**high**
+  （merge 阶段需沉淀 knowledge，且 SD-02 描述的媒体服务已是平台能力）。
+  修正：按 §5.7 逐条补 `docs/specs/auto-lang/ui/overview.md`。
+- **617-R5**（证据持久性）截图落在 gitignored 路径
+  （`examples/ui/**/tests/screenshots/`，`.gitignore:124`），worktree 移除后不可解析。**low**。
+  修正：关键判据改用可复现命令（`smoke.spec.ts`/`vm-smoke.mjs` 已入库，命令写在
+  `SPEC.md §5`），或把决定性截图放到非 ignore 路径。
+- **617-R6**（门禁口径）`cargo tf` 不带 `--features ui-iced`，不覆盖 UI 测试。**info**（非本次改动引入）。
+  修正：要么给 tf 补 feature，要么把「UI 改动须同时看 `cargo t`」写进 `AGENTS.md` 门禁节。
+
+**Spec 影响元数据**（本次复审定稿，仅登记**已落地**部分）：
+
+- `supersedes_spec_components: []` —— **空且附理由**：本阶段没有被取代的独立规范组件；
+  SD-05 是对既有「媒体元素」节的新增/提升而非取代。
+- `new_spec_components`：`docs/specs/auto-lang/ui/overview.md#video-元素（add；SD-05，含 SD-01 的契约清单）`
+  —— SD-02/03/04 与 SD-01 的兼容边界**未落**，不进本字段（属 T-11 未完成工作）。
+- `touched_goals`：`GOAL-007: AutoUI 跨端视觉一致`、`GOAL-010: 示例应用轨道`。
+
+**阶段折入的边界（复审结论的形态）**：本判定的范围是
+「T-03/T-04/T-07/T-08 + T-15..T-20 + PLAN-620 平台件」，其**全部 AC 判定均落在
+pass**（AC-11/AC-16 的未达半边归属未开完的 T-10/T-11，不在本阶段），
+三档门禁与 Web/VM 场景全绿。因此**该阶段可折入 master**；但
+**PLAN-617 整体**仍因 T-09..T-14 未完而**保持 `executing`，不给最终 `reviewed`**
+（阶段复审不授予终态，技能约定）。折入后本计划的剩余任务与 findings 一条不减。
+
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
-> 一句话状态：**VM/iced 链已全部完成并实机验证**（`video` 在 VM 窗口里真会动，见 §9.19）；
-> **Vue 链一行未动**（示例仍是「外壳真实、内核全假」，见 §0）。
-> 用户指定的下一段工作：**Vue 链 T-03/T-04 → T-07/T-08 → T-09..T-14**。
+> 一句话状态（2026-09-13 晚，r12 + §9.22 复审后刷新）：**VM 链 T-15..T-20 与
+> Vue 链 T-03/T-04/T-07/T-08 均已完成并实机验证**（`video` 真会动、e2e 11/11 绿，
+> 见 §9.19/§9.20）；现场追加的平台件（lucide 全量表 / 图标尺寸 / `progress` 拖拽 seek）
+> 已独立立项 [PLAN-620](620-autoui-icon-table-and-pointer-primitives.md) 并**随本计划同阶段折入**。
+> **阶段复审已通过**（§9.22，`pass（phase-only）`，reviewed_commit `1b1692f9d`），
+> 但 **PLAN-617 整体仍为 `executing`**——剩 **T-09..T-14**，其 AC 缺口逐条记在 §9.22 的 findings
+> （617-R1 AC-09 fail；617-R2 AC-16(b) partial；617-R3 AC-11 partial；617-R4 规范增量 SD-01..04 未落）。
+> 本文以下 A..G 各节为**接手时（Vue 链未开工）**的原文，已不再反映当前状态，仅作历史保留。
 
 ### A. worktree 布局（关键，勿重新踩坑）
 - 实现 worktree：`D:/autostack/.wt/lang-617/auto-lang`，分支 `plan-617-dev`。
