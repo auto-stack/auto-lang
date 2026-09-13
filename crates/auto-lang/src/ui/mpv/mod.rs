@@ -25,12 +25,24 @@
 //! - [`loader`] —— 运行库解析序 + 符号表（无状态）
 //! - [`frame`] —— 帧目标缓冲（把 mpv 的 64 字节对齐要求编码进类型）
 //! - [`engine`] —— 句柄与 render context 的生命周期（T-16 的核心）
+//! - [`channel`]/[`present`] —— 帧上屏通道与全屏 blit（T-17，feature `mpv-gpu`）
 
 pub mod engine;
 pub mod frame;
 pub mod loader;
 pub mod locale;
 
+// T-17：帧 → GPU 纹理 的通道（需 wgpu，故挂 `mpv-gpu`）。
+#[cfg(feature = "mpv-gpu")]
+pub mod channel;
+#[cfg(feature = "mpv-gpu")]
+pub mod present;
+
 pub use engine::{MpvEngine, MpvEventInfo, MpvUnavailable};
 pub use frame::FrameBuffer;
 pub use loader::{MpvApi, MpvLoadError, MpvSymbols};
+
+#[cfg(feature = "mpv-gpu")]
+pub use channel::{FrameChannelStats, FrameOutcome, VideoFrameChannel, VideoLatestWins};
+#[cfg(feature = "mpv-gpu")]
+pub use present::VideoPresenter;

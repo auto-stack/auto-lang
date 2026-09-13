@@ -29,6 +29,7 @@ pub mod media_service;
 // 后端：见 docs/design/autoui/030-video-player.md §4（T-15 的门控实测与四选一裁定）。
 #[cfg(feature = "mpv-native")]
 pub mod mpv;
+// （帧上屏的那一半 `mpv::channel`/`mpv::present` 由 `mpv-gpu` 单独门控。）
 
 // Plan 413: cross-platform code editor widget (feature `code-editor`,
 // enabled by default under `ui-iced`).
