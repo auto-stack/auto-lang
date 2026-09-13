@@ -42,6 +42,17 @@ pub trait Component: Sized + Debug {
         None
     }
 
+    /// Declarative keyboard bindings emitted from AutoUI `bind` blocks.
+    /// The native Rust runner uses this map together with `key_message`.
+    fn key_bindings(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+
+    /// Resolve a normalized key into the component's typed message.
+    fn key_message(&self, _key: &str) -> Option<Self::Msg> {
+        None
+    }
+
     /// Handle messages - Auto's equivalent of `fn on(ev Msg)`
     ///
     /// This is where state mutations happen based on incoming messages.

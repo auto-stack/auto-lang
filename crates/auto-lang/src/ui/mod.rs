@@ -23,6 +23,10 @@ pub mod image_pipeline;
 // `auto_lang::ui::media_service`.
 pub mod media_service;
 
+// 014 内存哨兵:提交内存自检 + 超限冻结(渲染层 update 入口挂接;
+// AUTO_MEM_LIMIT_MB 阈值,0 = 关闭)。零依赖(直接声明 K32GetProcessMemoryInfo)。
+pub mod mem_guard;
+
 // Plan 413: cross-platform code editor widget (feature `code-editor`,
 // enabled by default under `ui-iced`).
 #[cfg(feature = "code-editor")]

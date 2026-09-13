@@ -26,7 +26,8 @@ pub struct UpdateNoteUpdateTagsInput {
     pub tags: Vec<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
 pub struct SearchNotesQuery {
     pub query: String,
 }

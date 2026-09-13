@@ -944,6 +944,41 @@ fn popover_modal_panel_item_click_publishes_item() {
     assert!(!msgs.contains(&PopMsg::Dismiss), "in-panel click must not dismiss: {msgs:?}");
 }
 
+/// Modal without a trigger: alert-dialog uses an empty anchor in the dynamic
+/// builder. The panel must still be registered in iced's overlay tree.
+#[test]
+fn popover_modal_empty_anchor_places_panel_centered() {
+    let view = View::Column {
+        children: vec![View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(View::Empty)),
+            content: Box::new(View::Container {
+                child: Box::new(styled_view("EMPTYMODAL")),
+                padding: 0,
+                width: Some(200),
+                height: None,
+                center_x: false,
+                center_y: false,
+                onclick: None,
+                on_right_click: None,
+                style: None,
+            }),
+            placement: PopoverPlacement::Modal,
+            open: true,
+            on_dismiss: None,
+        }],
+        spacing: 0,
+        padding: 0,
+        style: None,
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = simulator(view.into_iced());
+    let (px, py, pw, ph) = bounds_of(&mut ui, "EMPTYMODAL");
+    assert!(pw > 0.0 && ph > 0.0, "empty-anchor modal panel must be visible: {pw}x{ph}");
+    assert!((px - 312.0).abs() <= 110.0, "empty-anchor modal must center horizontally: x {px}");
+    assert!((py - 384.0).abs() <= 40.0, "empty-anchor modal must center vertically: y {py}");
+}
+
 /// Modal 语义视图：与 popover_semantics_view 同构，仅 placement 换 Modal。
 fn popover_modal_view() -> View<PopMsg> {
     let panel_item = View::<PopMsg>::Button {

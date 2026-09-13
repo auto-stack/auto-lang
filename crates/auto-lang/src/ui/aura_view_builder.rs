@@ -8691,8 +8691,16 @@ let tabs_inner = View::Row {
             .extract_string_with(props, "key", bindings)
             .or_else(|| self.extract_string_with(props, "id", bindings))
             .unwrap_or_else(|| "term".to_owned());
-        let cols = self.extract_u16(props, "cols").unwrap_or(80);
-        let rows = self.extract_u16(props, "rows").unwrap_or(24);
+        // 014 几何随动:cols/rows 支持动态绑定(`cols: .cols`——resize 回
+        // 流每拍改模型变量),eval_u16_prop 走 bindings 求值(Plan 448 I)。
+        let cols = self
+            .extract_u16(props, "cols")
+            .or_else(|| self.eval_u16_prop(props, "cols", bindings))
+            .unwrap_or(80);
+        let rows = self
+            .extract_u16(props, "rows")
+            .or_else(|| self.eval_u16_prop(props, "rows", bindings))
+            .unwrap_or(24);
 
         let mut lines: Vec<String> = Vec::new();
         if let Some(AuraPropValue::Expr(expr)) = props.get("lines") {
@@ -8720,6 +8728,21 @@ let tabs_inner = View::Row {
             .or_else(|| aura_events_get_base(events, "contextmenu"))
             .or_else(|| aura_events_get_base(events, "onmenu"))
             .map(|event| self.event_to_message(&event.handler));
+        // 014 直键入:oninput 信号位(载荷走 TerminalCore 键入队列,宿主
+        // 引擎泵排空裸写;消息只当触发器——scalar 消息不带载荷)。
+        let on_input = aura_events_get_base(events, "oninput")
+            .or_else(|| aura_events_get_base(events, "input"))
+            .or_else(|| aura_events_get_base(events, "onkey"))
+            .map(|event| self.event_to_message(&event.handler));
+        // 014 光标格:app 每拍从引擎回读喂入(0,0 = 未喂入占位)。
+        let cursor_row = self
+            .extract_u16(props, "cursor_row")
+            .or_else(|| self.eval_u16_prop(props, "cursor_row", bindings))
+            .unwrap_or(0);
+        let cursor_col = self
+            .extract_u16(props, "cursor_col")
+            .or_else(|| self.eval_u16_prop(props, "cursor_col", bindings))
+            .unwrap_or(0);
         View::Terminal {
             key,
             cols,
@@ -8729,6 +8752,9 @@ let tabs_inner = View::Row {
             preedit,
             on_select,
             on_menu,
+            on_input,
+            cursor_row,
+            cursor_col,
             style,
         }
     }

@@ -40,6 +40,9 @@ mod layout_tests;
 // PLAN-010 T8: terminal 组件像素级 headless 自动化(同款 iced_test 管线)。
 #[cfg(all(test, feature = "iced-layout-tests"))]
 mod terminal_pixel_tests;
+// 014 直键入:terminal 键盘捕获 → 键入队列 → on_input 消息的集成轨。
+#[cfg(all(test, feature = "iced-layout-tests"))]
+mod terminal_input_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
 pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_with_title, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_iced_pixels, run_dynamic_desktop, run_dynamic_desktop_with_options, run_dynamic_desktop_fullscreen, DesktopOptions, last_input_text};

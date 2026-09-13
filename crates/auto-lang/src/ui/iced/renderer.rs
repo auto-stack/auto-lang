@@ -4069,10 +4069,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => {
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 crate::ui::terminal::terminal_feed(core, &lines);
                 crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
+                // 014:光标格随帧落注册表(app 从引擎回读喂入;preedit/光标
+                // 层同源)。形状恒 Block;非零才落位——(0,0) 是未喂入哨兵,
+                // 直接设在 core 上的光标(测试/宿主策略)不被覆写。
+                if cursor_row != 0 || cursor_col != 0 {
+                    crate::ui::terminal::terminal_set_cursor(
+                        core,
+                        cursor_row as usize,
+                        cursor_col as usize,
+                        crate::ui::terminal::TermCursorShape::Block,
+                    );
+                }
                 let el: iced::Element<'static, M> = crate::ui::terminal::iced::Terminal {
                     core,
                     key,
@@ -4080,7 +4091,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     preedit: preedit.clone(),
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
-                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::CELL_W + 2.0),
+                    on_input: on_input.clone(),
+                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0),
                     height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0),
                 }
                 .into();
@@ -4399,13 +4411,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
                 use crate::ui::iced::popover::Popover as PopoverWidget;
                 use crate::ui::view::PopoverAnchor;
-                let (anchor_point, anchor_el): (Option<(f32, f32)>, iced::Element<'static, M>) =
+                let (anchor_point, anchor_is_empty, anchor_el): (Option<(f32, f32)>, bool, iced::Element<'static, M>) =
                     match anchor {
-                        PopoverAnchor::Widget(w) => (None, w.into_iced()),
+                        PopoverAnchor::Widget(w) => {
+                            let empty = matches!(&*w, AbstractView::Empty);
+                            (None, empty, w.into_iced())
+                        }
                         // 坐标锚:零尺寸占位(anchor 轨道不影响布局),
                         // 面板定位由 at_point 决定。
                         PopoverAnchor::Point { x, y } => {
-                            (Some((x, y)), iced::widget::Space::new().into())
+                            (Some((x, y)), false, iced::widget::Space::new().into())
                         }
                     };
                 let mut p = PopoverWidget::new(anchor_el, content.into_iced())
@@ -4413,7 +4428,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .open(open)
                     // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
                     // + 面板外点击整吞），alert-dialog 臂专用。
-                    .modal(placement.is_modal_chrome());
+                    .modal(placement.is_modal_chrome())
+                    .anchor_is_empty(anchor_is_empty);
                 if let Some((x, y)) = anchor_point {
                     p = p.at_point(x, y);
                 }
@@ -6344,9 +6360,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
         // (Component → into_iced)与检视占位,VM 动态应用经本转换落
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
-        // menu 二消息经 from_dynamic 映射;行文本原样透传(数据已在
-        // convert_terminal 物化)。
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => {
+        // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
+        // (数据已在 convert_terminal 物化)。
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
             AbstractView::Terminal {
                 key,
                 cols,
@@ -6356,6 +6372,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 preedit,
                 on_select: on_select.map(|m| IcedMessage::from_dynamic(&m)),
                 on_menu: on_menu.map(|m| IcedMessage::from_dynamic(&m)),
+                on_input: on_input.map(|m| IcedMessage::from_dynamic(&m)),
+                cursor_row,
+                cursor_col,
                 style,
             }
         }
@@ -19137,19 +19156,21 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
             use crate::ui::iced::popover::Popover as PopoverWidget;
             use crate::ui::view::PopoverAnchor;
-            let (anchor_point, content_slot, anchor_el): (
+            let (anchor_point, anchor_is_empty, content_slot, anchor_el): (
                 Option<(f32, f32)>,
+                bool,
                 usize,
                 iced::Element<'static, IcedMessage>,
             ) = match anchor {
                 PopoverAnchor::Widget(w) => {
+                    let empty = matches!(&*w, AbstractView::Empty);
                     path.push(0);
                     let el = render_dynamic_view(*w, debug_ctx, path);
                     path.pop();
-                    (None, 1, el)
+                    (None, empty, 1, el)
                 }
                 PopoverAnchor::Point { x, y } => {
-                    (Some((x, y)), 0, iced::widget::Space::new().into())
+                    (Some((x, y)), false, 0, iced::widget::Space::new().into())
                 }
             };
             path.push(content_slot);
@@ -19161,7 +19182,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // PLAN-530 步骤8（W13）+ PLAN-534：Modal（居中）与 Edge*
                 // （贴边，sheet/drawer）放置 = 模态形态（全屏遮罩 + 面板外
                 // 点击整吞），与 into_iced 臂同口径。
-                .modal(placement.is_modal_chrome());
+                .modal(placement.is_modal_chrome())
+                .anchor_is_empty(anchor_is_empty);
             if let Some((x, y)) = anchor_point {
                 p = p.at_point(x, y);
             }
@@ -20269,6 +20291,7 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
             let mut mcp = mcp_shared.lock().unwrap();
             mcp.set_styled_vtree(snap);
             mcp.set_state(self.inner.state_snapshot());
+            mcp.set_key_bindings(self.inner.key_bindings());
         }
 
         *self.dt.live_vtree.borrow_mut() = Some(tree);
@@ -20301,6 +20324,25 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
 
 /// iced `view` callback for `run_app_devtools`.
 fn devtools_view<C: Component + 'static>(w: &DevToolsWrapper<C>) -> iced::Element<'_, WrapperMsg<C>> {
+    // 014 内存哨兵冻结态:整窗告警(消息循环已停,内存不再增长;
+    // 按 F12 退出进程)。
+    if crate::ui::mem_guard::is_frozen() {
+        let mb = crate::ui::mem_guard::peak_mb();
+        let limit = crate::ui::mem_guard::limit();
+        return container(
+            column![
+                text("⚠ 内存超限,已暂停").size(30),
+                text(format!("提交内存峰值 {mb} MB / 阈值 {limit} MB(AUTO_MEM_LIMIT_MB 可调)")).size(16),
+                text("消息循环已冻结,现场保留;按 F12 退出进程。").size(14),
+            ]
+            .spacing(14),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .center_x(iced::Length::Fill)
+        .center_y(iced::Length::Fill)
+        .into();
+    }
     w.view_element()
 }
 
@@ -20312,6 +20354,12 @@ fn devtools_update<C: Component + 'static>(
 where
     C::Msg: Clone + Debug + Send + 'static,
 {
+    // 014 内存哨兵:节流采样(1s);超限冻结后丢弃一切消息——泄漏若由
+    // 消息驱动的热循环产生,立即停摆,不再吞噬内存。
+    crate::ui::mem_guard::sample_and_guard();
+    if crate::ui::mem_guard::is_frozen() {
+        return iced::Task::none();
+    }
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
         WrapperMsg::Debug(ref s) if s == "__tick__" => {
@@ -20321,6 +20369,15 @@ where
             }
         }
         WrapperMsg::Debug(s) => {
+            // AutoUI `bind` events share the same typed dispatch path as VM.
+            // Iced's keyboard::listen already excludes captured text-input
+            // events, so IME composition never reaches this branch.
+            if let Some(key) = s.strip_prefix("__autoui_key|") {
+                if let Some(msg) = w.inner.key_message(key) {
+                    w.inner.on(msg);
+                }
+                return iced::Task::none();
+            }
             // Plan 371 Task 19: MCP action dispatch (rust mode). Two addressing
             // modes, both resolved against the inner component's typed View tree:
             //
@@ -20362,14 +20419,37 @@ where
             if let Some(rest) = s.strip_prefix("__mcp_action|") {
                 // Event fallback: <widget>.<event>|<value>
                 let mut parts = rest.splitn(2, '|');
-                let _widget_event = parts.next().unwrap_or("");
+                let widget_event = parts.next().unwrap_or("");
                 let input_value = parts.next().filter(|v| !v.is_empty());
 
-                // Best-effort: no typed handler to extract in event mode from the
-                // rust tree — this branch mainly serves as a no-op safety net.
-                // (VM mode dispatches actions via a separate subscription that
-                // converts ActionMessage -> IcedMessage directly.)
-                let _ = input_value;
+                // MCP keyboard fallback (when the Rust component has no
+                // dynamic key_bindings registry entry) arrives as
+                // `key_<name>|<original key>`. Re-enter the same typed bind
+                // resolver used by physical Iced keyboard events.
+                if widget_event.contains(".key_") {
+                    if let Some(key) = input_value {
+                        if let Some(m) = w.inner.key_message(key) {
+                            w.inner.on(m);
+                        }
+                    }
+                } else {
+                    // A declared `bind` is encoded by MCP as the handler name
+                    // (for example `App.MoveLeft`). Resolve that name back to
+                    // the physical key through the component registry, then
+                    // use the same typed message hook as real Iced events.
+                    let event_name = widget_event.rsplit('.').next().unwrap_or(widget_event);
+                    let bindings = w.inner.key_bindings();
+                    let key = bindings.iter().find_map(|(key, handler)| {
+                        let handler = handler.trim_start_matches('.');
+                        let handler_name = handler.rsplit('.').next().unwrap_or(handler);
+                        (handler_name == event_name).then(|| key.clone())
+                    });
+                    if let Some(key) = key {
+                        if let Some(m) = w.inner.key_message(&key) {
+                            w.inner.on(m);
+                        }
+                    }
+                }
                 return iced::Task::none();
             }
             apply_debug_event(&mut w.dt, &s);
@@ -20431,8 +20511,38 @@ fn extract_handler_from_view<M: Clone + Debug>(
     }
 }
 
+/// Convert an Iced key press to the spelling used by AutoUI `bind` blocks.
+fn rust_component_key_string(event: &iced::Event) -> Option<String> {
+    let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = event else {
+        return None;
+    };
+    match key {
+        iced::keyboard::Key::Named(named) => {
+            let name = match named {
+                iced::keyboard::key::Named::Enter => "Enter",
+                iced::keyboard::key::Named::Escape => "Escape",
+                iced::keyboard::key::Named::Backspace => "Backspace",
+                iced::keyboard::key::Named::Tab => "Tab",
+                iced::keyboard::key::Named::Space => " ",
+                iced::keyboard::key::Named::ArrowUp => "ArrowUp",
+                iced::keyboard::key::Named::ArrowDown => "ArrowDown",
+                iced::keyboard::key::Named::ArrowLeft => "ArrowLeft",
+                iced::keyboard::key::Named::ArrowRight => "ArrowRight",
+                iced::keyboard::key::Named::Delete => "Delete",
+                iced::keyboard::key::Named::Home => "Home",
+                iced::keyboard::key::Named::End => "End",
+                _ => return None,
+            };
+            Some(name.to_string())
+        }
+        iced::keyboard::Key::Character(c) => Some(c.to_string()),
+        _ => None,
+    }
+}
+
 /// iced `subscription` callback for `run_app_devtools`: forwards the inner
-/// component's subscription (lifted to `WrapperMsg`) plus F12 + window events.
+/// component's subscription (lifted to `WrapperMsg`) plus F12, window events,
+/// and declarative Rust component key bindings.
 fn devtools_subscription<C: Component + 'static>(
     w: &DevToolsWrapper<C>,
 ) -> iced::Subscription<WrapperMsg<C>>
@@ -20478,6 +20588,10 @@ where
                 key,
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)
             ) {
+                // 014 内存哨兵冻结态:F12 = 退出进程(逃生门)。
+                if crate::ui::mem_guard::is_frozen() {
+                    std::process::exit(42);
+                }
                 return Some(WrapperMsg::<C>::Debug(DEBUG_TOGGLE_EVENT.to_string()));
             }
         }
@@ -20495,7 +20609,15 @@ where
         }
         _ => None,
     });
-    iced::Subscription::batch(vec![inner, f12, win, mcp])
+    // Forward ignored key presses. The mapper is deliberately non-capturing
+    // (an Iced 0.14 requirement); component-specific lookup happens in
+    // `devtools_update` through `key_message`.
+    let rust_keys = iced::keyboard::listen().map(|event| {
+        let event = iced::Event::Keyboard(event);
+        let key = rust_component_key_string(&event).unwrap_or_default();
+        WrapperMsg::<C>::Debug(format!("__autoui_key|{key}"))
+    });
+    iced::Subscription::batch(vec![inner, f12, win, mcp, rust_keys])
 }
 
 /// Plan 407: tick subscription using run_with (avoids generic map const check).
@@ -20543,7 +20665,9 @@ where
         iced::Subscription::batch(subs)
     })
     .window_size(startup_window_size())
-    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+    // Plan 411: pac window/title envs(AUTO_VM_WINDOW/AUTO_VM_TITLE)对
+    // rust 轨同语义生效(VM 轨同款读取面);DevTools 面板不受影响。
+    .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
     .font(INTER_FONT_SEMIBOLD)
@@ -20576,8 +20700,24 @@ where
         devtools_update,
         devtools_view,
     )
-    .subscription(devtools_subscription)
-    .window_size(iced::Size::new(1600.0, 900.0))
+    .subscription(move |w| {
+        let mut subs: Vec<iced::Subscription<WrapperMsg<C>>> = vec![devtools_subscription(w)];
+        // Plan 407 + 014 直键入:with-task 启动变体也挂 tick 订阅
+        // (run_app_devtools 同款;此前 async init 应用无 tick——at-app 的
+        // timer 驱动流式刷新/banner 收割全靠它,无按钮后没有别的 tick 源)。
+        if let Some(ms) = w.inner.tick_interval_ms() {
+            if w.inner.tick_msg().is_some() {
+                subs.push(tick_subscription::<C>(std::time::Duration::from_millis(
+                    ms as u64,
+                )));
+            }
+        }
+        iced::Subscription::batch(subs)
+    })
+    .window_size(startup_window_size())
+    // Plan 411: pac window/title envs 对 rust 轨同语义生效(上方
+    // run_app_devtools 同款;原 with-task 变体硬编码 1600×900 且无标题)。
+    .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))
     // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
