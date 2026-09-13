@@ -14100,8 +14100,13 @@ fn compare_pngs(
         // 「锚块内容 y」写进 sync_anchor_target 指向的状态字段（右栏
         // offset 绑定写臂既有通路滚动；iced 原生钳制内容边界）。
         if let Some((field, idx)) = crate::ui::anchor_slot::drain_pending_anchor() {
-            eprintln!("[P063-C] field={field:?} idx={idx}");
-            if let (Some(field), Some(y)) = (field, crate::ui::anchor_slot::content_y(idx)) {
+            let y = crate::ui::anchor_slot::content_y(idx);
+            eprintln!("[P063-C] field={field:?} idx={idx} y={y:?}");
+            // 锚块索引直写（.at 声明 sync_anchor_block，-1 = 未锚定；
+            // ghost_id/ghost_height 同款固定名直写先例）——vm-smoke 组 4
+            // AC-06 断言可观测面。y 未就绪（块未布局）时索引先行登记。
+            let _ = state.component.write_state("sync_anchor_block", auto_val::Value::Int(idx as i32));
+            if let (Some(field), Some(y)) = (field, y) {
                 let _ = state.component.write_state(&field, auto_val::Value::Float(y as f64));
             }
         }

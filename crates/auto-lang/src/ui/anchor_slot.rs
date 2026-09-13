@@ -6,8 +6,12 @@
 //!
 //! 块 0 = 内容原点。锚块索引来自编辑壳 ade 存储（sync_anchor 高亮链同源）。
 
-use iced::{Element, Length, Point, Rectangle, Size, Theme};
+use iced::{Element, Length, Point, Rectangle, Size, Theme, Vector};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+
+/// 一次性 layout 到达追踪（验证期；常驻无害——只打一行）。
+static LAYOUT_SEEN: AtomicBool = AtomicBool::new(false);
 
 /// index → 块高（layout 期写入）。未布局槽 = f32::NAN。
 static SLOT_HEIGHTS: Mutex<Vec<f32>> = Mutex::new(Vec::new());
@@ -112,6 +116,9 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
         // PLAN-063 T-04d-2: 记录块高（高度在子件自身 layout 内即确定，
         // 不依赖父级定位；y 由消费侧按累计+间距计算）。
         record_slot(self.index, node.bounds().height);
+        if !LAYOUT_SEEN.swap(true, Ordering::Relaxed) {
+            eprintln!("[P063-SLOT] layout reached idx={}", self.index);
+        }
         node
     }
 
@@ -126,8 +133,13 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
         shell: &mut iced::advanced::Shell<'_, M>,
         viewport: &Rectangle,
     ) {
+        // iced 0.14 树规范（hover_area 同款）：子件消费自己的树槽
+        // children[0]。传 `tree` 自身会在透明 container（tag/state/children
+        // 全委托 content，update 原树透传）链上把本件树错配给孙代——
+        // column::update 三方 zip 把 children[0]（无状态）配给首个孙件，
+        // mouse_area downcast 即崩（T-04d-2 挂起问题的实证根因）。
         self.child.as_widget_mut().update(
-            tree, event, layout, cursor, renderer, clipboard, shell, viewport,
+            &mut tree.children[0], event, layout, cursor, renderer, clipboard, shell, viewport,
         );
     }
 
@@ -156,6 +168,35 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
     ) -> iced::mouse::Interaction {
         self.child
             .as_widget()
-            .mouse_interaction(tree, layout, cursor, viewport, renderer)
+            .mouse_interaction(&tree.children[0], layout, cursor, viewport, renderer)
+    }
+
+    fn size_hint(&self) -> Size<Length> {
+        self.child.as_widget().size_hint()
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut iced::advanced::widget::Tree,
+        layout: iced::advanced::Layout<'_>,
+        renderer: &iced::Renderer,
+        operation: &mut dyn iced::advanced::widget::Operation,
+    ) {
+        self.child
+            .as_widget_mut()
+            .operate(&mut tree.children[0], layout, renderer, operation);
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut iced::advanced::widget::Tree,
+        layout: iced::advanced::Layout<'b>,
+        renderer: &iced::Renderer,
+        viewport: &Rectangle,
+        translation: iced::Vector,
+    ) -> Option<iced::advanced::overlay::Element<'b, M, Theme, iced::Renderer>> {
+        self.child
+            .as_widget_mut()
+            .overlay(&mut tree.children[0], layout, renderer, viewport, translation)
     }
 }

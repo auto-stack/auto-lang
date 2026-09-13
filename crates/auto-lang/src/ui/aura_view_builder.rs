@@ -2800,11 +2800,13 @@ impl<'a> AuraViewBuilder<'a> {
             .map(|val| val.as_bool())
             .unwrap_or(false);
         let p063_sk = if sync_anchor { editor_key.map(|s| s.to_string()) } else { None };
-        if sync_anchor {
-            if let Some(field) = self.extract_string_with(props, "sync_anchor_target", bindings) {
-                eprintln!("[P063-SINK] registered");
-                crate::ui::anchor_slot::set_target_sink(Some(field.trim_start_matches('.').to_string()));
-            }
+        // PLAN-063 T-04d-2: sink 注册与 sync_anchor 解耦——sync_anchor 是
+        // 左栏编辑器的高亮开关；sync_anchor_target 属右栏 autodown 元素
+        //（锚槽与 scroll_top 写臂所在）。有 target prop 即注册（字段名
+        // 字符串字面量，剥前导点）。
+        if let Some(field) = self.extract_string_with(props, "sync_anchor_target", bindings) {
+            eprintln!("[P063-SINK] registered");
+            crate::ui::anchor_slot::set_target_sink(Some(field.trim_start_matches('.').to_string()));
         }
         let offset = props
             .get("scroll_top")
