@@ -1,10 +1,11 @@
 ---
 plan_id: PLAN-619
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
+completion_kind: delivered
 feature_name: 015-notes-vm-vue-parity
 author: [zhaopuming]
 created_at: 2026-09-12
-updated_at: 2026-09-12
+updated_at: 2026-09-14
 plan_revision: 1
 
 # /auto-plan:review 结束时填写：
