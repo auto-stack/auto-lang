@@ -5,8 +5,9 @@ feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-13
-plan_revision: 11                # r11: 阶段收口——VM 链 T-15..T-20 全部完成（AC-18/19/20 达成，AC-19 有实机证据）；
-                                 #     剩 Vue 链 T-03/04/07..T-14 → 交由新会话；本文件 §11 已刷新为「新会话接手须知」
+plan_revision: 12                # r12: Vue 链 T-03/T-04/T-07/T-08 完成（真实播放上线，e2e 10/10 绿，
+                                 #     4K MKV 3840×2160 + 无音轨实测在案）；T-11 文档重写；
+                                 #     余 T-09/T-10/T-11(规范增量)/T-12..T-14 见 §9.20
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -14,7 +15,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/ui, auto-man/api_gen]
-current_step: 10                 # 已完成 10 项：T-01/02/05/06 + VM 链 T-15..T-20；余 10 项见 §11-E
+current_step: 14                 # 已完成 14 项：T-01/02/03/04/05/06 + T-07/08 + VM 链 T-15..T-20；余 T-09..T-14（T-11 部分落地）
 total_steps: 20
 ---
 
@@ -738,10 +739,12 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
     （后台任务随回合结束被回收：日志干净、无错误输出、进程消失）。
     故改为**需要截图时在同一回合内临时起、用完即停**；若需长期供人访问，
     用 `DETACHED_PROCESS` 脱离 shell 进程组启动（已验证 200 存活）。
-- **T-03 视口组件**：`viewport.at`（video 元素 + 覆盖层 + 错误/降级面板，去 `absolute`）。
+- [x] **T-03 视口组件**：`viewport.at`（video 元素 + 覆盖层 + 错误/降级面板，去 `absolute`）。
   验证：Vue 截图；VM 截图显示降级面板而非纯黑（AC-11 前置）。
-- **T-04 队列栏与播控条**：`playlist.at` + `controls.at`（尺寸收敛、单一 primary、
+  → 完成于 §9.20；**保留项**：本地文件浏览未接线（T-09 范围）。
+- [x] **T-04 队列栏与播控条**：`playlist.at` + `controls.at`（尺寸收敛、单一 primary、
   PLAN-412 §5 白名单内取材）。验证：Vue/VM 双端截图；AC-02 计数复核。
+  → 完成于 §9.20；**偏离**：进度条用 10 个 10% 刻度段而非单轨点击（理由见 §9.20）。
 - [x] **T-05 媒体服务与生成路由**（含决策点）：新建 `media_service.rs`，
   **照搬 `crates/auto-man/src/image_viewer.rs` 的递归收集 / 自然排序 / blake3 id /
   路径脱敏形状**（P-18），实现 `index_directory`（**递归**，不跟随 symlink）与
@@ -757,14 +760,17 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   `api.at` 删全部凭文件名编造的字段（`resolution`/`codec`/`size_str`/`duration_str`/
   `bg_gradient`）。
   验证：spec T1（递归断言，基线 14 条 / 12 条嵌套）；AC-17 的 grep 零命中。
-- **T-07 受控媒体契约（生成器）**：`ui_gen/vue.rs` 实现 §2.3 的下行同步与
+- [x] **T-07 受控媒体契约（生成器）**：`ui_gen/vue.rs` 实现 §2.3 的下行同步与
   上行回灌；**未声明受控 prop 时输出不变**；补生成器单测（含兼容性回归用例）。
   验证：`cargo t vue_gen`；生成产物 diff 仅限目标元素。
   **若范围失控**：改走 §2.1 Plan-B（canvas 同形的类型引用臂 + `ref:`），
   并在 §9 记录理由、代价与债务。
-- **T-08 真实播放接线**：view/controls 接 T-07 契约；`OnTime`/`OnDuration`/
+  → 完成于 §9.20，**未启用 Plan-B**（受控契约如期落地）。
+- [x] **T-08 真实播放接线**：view/controls 接 T-07 契约；`OnTime`/`OnDuration`/
   `OnPlayState`/`OnEnded`/`OnMediaError` handler 落地；OSD 改由回灌状态驱动。
   验证：spec T2/T3/T4/T5/T6/T7 全绿（**今日必红项转绿是本计划的核心证据**）。
+  → 完成于 §9.20：spec T1/T1b/T2/T3/T4/T5/T7/T9/T11/T8b **10/10 绿**
+  （真实 Chrome 实机，含 4K MKV 逐项状态）。
 - **T-09 真实文件浏览**：`OpenLocalFile` → 文件选择 → 可播放地址；浏览器能力不足时
   给出明确降级文案而非假按钮。验证：spec T8。
 - **T-10 错误与空态**：目录缺失/不可播放/后端不可达三态；`Rescan` 可用。
@@ -1726,6 +1732,123 @@ ope.mp4`）。
 - outcome: pass；next（本计划内的 VM 链已无剩余任务）：转入 Vue 链
   T-03/T-04（viewport/controls）→ T-07/T-08（受控契约与真实播放接线）→
   T-09..T-14，或直接进入 review/fold 阶段。
+
+### 9.20 Vue 链 T-03/T-04/T-07/T-08 完成——**真实播放上线，e2e 10/10 绿**（2026-09-13）
+
+> 本任务按 §11-G 执行：先 T-03/T-04（视觉骨架），再 T-07/T-08（受控契约 +
+> 真实播放接线），另搭车完成 T-11 的文档重写。**未启用 §2.1 Plan-B**——
+> §2.3 的受控契约如期在生成器侧落地。
+> 环境：worktree `D:/autostack/.wt/lang-617/auto-lang` @ `plan-617-dev`（已 merge master），
+> 全程 `RUSTC_WRAPPER=`；`AUTO_MEDIA_ROOT='E:\Video'`。
+
+**交付物**
+
+- **T-07 生成器侧受控媒体契约**（`crates/auto-lang/src/ui_gen/vue.rs`，+约 330 行）：
+  - `VideoSpec` + `video_specs` 登记；模板臂 `try_generate_controlled_video_html`
+    **只在元素声明了 `paused`/`position`/`volume`/`muted`/`rate` 之一时进入**——
+    这条早退就是兼容性约束的落点（未声明受控 prop 的 `video` 走原通用路径，
+    生成结果与引入契约前逐字节一致，由 `test_uncontrolled_video_is_byte_identical` 钉住）。
+  - 受控下行 prop **不再作为元素属性发射**（`:paused` 会打到只读 DOM 属性、
+    `:volume` 单位还不同）；契约键之外的 prop / 事件照旧透传。
+  - 契约键事件换成生成器发射的原生监听包装：`__videoTime_/__videoMeta_/
+    __videoState_/__videoEnded_/__videoError_`，**取值后作成实参**调用作者 handler
+    ——绕开「`$event` 进不了 handler 体」与「`vue_event_param` 只 narrow
+    `.value`/`.checked`」两处现状限制（**未改那两处**）。
+  - 下行表达式经 `ts_adapter::transpile_expr_pub` 转成**脚本域** JS
+    （`.volume` → `volume.value`），与 handler 体同一个转译器、同一套 props/state 规则。
+  - 新增单测 `test_controlled_video_contract_sfc` / `test_uncontrolled_video_is_byte_identical`。
+- **T-03/T-04 组件拆分**（`examples/ui/030-video-player/src/front/`）：
+  `app.at`（顶栏 + 骨架 + 消息转发）/ `viewport.at` / `playlist.at` / `controls.at` /
+  `player_store.at`。旧 1193 行单文件退役。
+- **T-08 真实播放接线**：`OnTime`/`OnDuration`/`OnPlayState`/`OnEnded`/`OnMediaError`
+  全部落地并驱动 OSD；`Next`/`Prev` 走 cycle_index；`OnEnded` 自动下一首。
+- **AC-17 退役**：`src/back/db.at` 与 `src/back/api.at` **整体删除**
+  （12 处编造 `resolution`/`codec` 的字面量随之消失；扫描/流式早已由
+  `media_service` 的原始路由承担，前端从未 `use back.api`）。
+- **T-11（部分）**：`SPEC.md` / `README.md` 重写为真实能力边界版。
+
+**实机证据（真实 Chrome + 真后端 :8330）**
+
+- e2e **10/10 绿**（`tests/smoke.spec.ts` 重写）：T1 队列递归/分组（与
+  `/api/media/scan` 自洽，14 条 / 3 组）、T1b 自然序、T2 起播、T3 暂停、
+  T4 seek、T5 音量/静音/倍速、T7 上下曲、T9 错误面板、T11 逐项真实状态、T8b。
+  实测数字（测试打印）：`caelestia.mp4` → `1920×1080 / duration=49.429 /
+  volume=0.8 / paused=false`；`TV/Loki/S02E01….mkv` → **`3840×2160 /
+  duration=2715.712`**。
+- **AC-16 的「有画面无声音」中间态被实测确认**：该 4K MKV 播放时
+  `webkitAudioDecodedByteCount === 0`（同刻 `caelestia.mp4` 为 101），
+  即 r3 预言的「画面可解、Dolby 音轨不可解」。界面**不声称有声**（无任何音轨文案）。
+- VM 端：`tests/vm-smoke.mjs` 重写后 **ALL PASS**——起窗正常、`View::Video`
+  在渲染树里、快照零 mock 残留、队列面板可显隐；截图
+  `tests/screenshots/after_t08_vm_degrade.png` 显示显式降级说明
+  「本后端未启用原生播放（构建时未开 `mpv-widget`）」，**不是黑屏**。
+- 双端深浅截图 4 张（`after_t08_vue_{dark,light,playing,mkv}.png`）。
+
+**五个只有实机才会现形的真缺陷**（P617-D11 的教训再次成立：契约层/编译期门禁
+覆盖不到「接线是否真活」）
+
+1. **`watchEffect` 在 `const store = reactive(useXxxStore())` 之前立即执行 → TDZ**
+   （`Cannot access 'store' before initialization`，页面整片白）。生成器的 store
+   facade 段落排在本块之后。修法：把下行 effect 包进 `onMounted`
+   （顺带获得「挂载后 ref 已指向真元素」的好处）。
+2. **下行同步的依赖面太窄 → 「换了片子再也不播」**。`watchEffect` 只在**表达式值**
+   变化时重跑，而元素自己会变：换源后浏览器把 `paused` 复位成 `true`，作者状态
+   `is_playing` 没变 ⇒ 没人再调 `play()`。修法：缓存最近一次下行值
+   `__videoLast_{i}`，新增元素侧重入点 `__videoSync_{i}`，在 `loadedmetadata`
+   （现在**无条件**挂）里原样重推——顺带也是「autoplay 被浏览器策略拦下后，
+   下一次交互能恢复」的恢复路径。
+3. **重选当前队列项会永久抹掉时长 → 进度条整条失效**。`duration` 只由
+   `loadedmetadata` 回灌，src 不变时不再触发；而 `SelectIndex` 无条件把
+   `duration/duration_str` 清零 ⇒ `SeekPercent` 的前置条件 `duration > 0` 恒假。
+   修法：`SelectIndex` 对「同索引」只做重播（seek 回 0），不动时长与进度。
+   这条同时解释了 e2e T4「点 50% 段毫无反应」的现象——**是契约测试与编译门禁
+   都抓不到的那一类**。
+4. **主题切换无效（AC-03）**：`dark_mode` 放在 store 里时，切换只改根 div 的
+   class，而 `<html class="dark">`（pac.at `theme` 经 index.html 注入）仍在
+   `:root` 上给着深色变量 ⇒ 切浅色「没反应」。修法：把 `dark_mode`
+   **和** `accent_color` 两个魔法变量移到根 widget 的 `model`（Plan 409 §8 的
+   root-App 形态）——生成器的主题运行时（含把 `dark` 类同步到 `<html>`）只在
+   widget 同时持有这两个变量时才发射。实测修后 `--card` 由
+   `rgb(14,21,37)` ↔ `rgb(255,255,255)` 真实翻转。
+5. **`style: if` 与标量循环变量同处一个元素 → 坏 TS**（`vue-tsc` TS1003，
+   class 臂与 `v-for` 争位）。修法：拆成 if/else 两个元素（041-auto-edit 的既有写法）。
+
+另有两处非缺陷但值得记的**平台行为**：① store 的**负整数字面量初值**会生成
+`ref<number>(null)`（vue-tsc TS2345）——本示例改用具名有效性标志规避；
+② store handler 的**自调用**必须写 `PlayerStore.Xxx()`（生成器的
+`store_bare_heads` 认店名不认 `store.` 前缀），否则产出 `store.Xxx()` 直呼
+未定义变量。
+
+**偏离与未完成（如实带走）**
+
+- **T-09 未做**（「打开本地视频文件」）：当前按下给**诚实提示**
+  「本地文件浏览尚未接线（计划内 T-09）」，不做「已模拟打开」这类不实陈述。
+  AC-09 因此**未达成**。
+- **进度条形态偏离 §5.4**：用 10 个各代表 10% 的刻度段（点哪段 seek 到哪个
+  百分比），而非「单轨 + 点击坐标换算」。理由：单轨需要 `$event` 进 handler 体
+  （§2.3 明确绕开的现状限制），而 `mouse-area` 只对 `onmousemove` 做坐标换算；
+  刻度段在双端几何确定（固定像素宽，不依赖 VM 失效的 `flex-1`）。
+  AC-07 的 seek 断言（T4）由刻度段满足。
+- **AC-16(b) 未做正向标注**：界面**不谎报**有声（已满足），但也没有主动标注
+  「音轨不受支持（Dolby）」——现有契约（§2.3）没有承载该信号的字段，而唯一
+  可用的量（`webkitAudioDecodedByteCount`）是 Chromium 专有且早期噪声大。
+  实测数据已记录在案，留给 T-11 决定是否需要扩契约。
+- **VM 端媒体库为空**：VM 的 `Http.get` 把 URL 原样交给 reqwest，而
+  `/api/media/scan` 是相对路径 ⇒ VM 里显示空态文案。属平台侧缺口（新债务）。
+- `examples/rust-workspace/Cargo.toml` 补 `"030-video-player-back"` 成员项
+  （**generated 状态**，主检出同样有该改动）：缺它则 `cargo run --manifest-path
+  <back>` 报「current package believes it's in a workspace when it's not」。
+  另：worktree 里 `019-video-app-back` 成员目录缺失（gitignored 生成物）会让
+  workspace **连解析都过不去**，需从主检出补齐该目录（已补，未入库）。
+
+**门禁**：`cargo t`（`--no-fail-fast`）→ **4816 测试 / 19 failed**，
+与本次改动前的基线集合**逐项 diff 为空**（`ZERO NEW RED`）；新增测试数 +2
+（T-07 的两个生成器单测）。`vue-tsc --noEmit` 干净；`auto gen` 无 error。
+`crates/auto-lang/src/vm/**` **零改动** ⇒ 按 §AAVM Tier 零触发，未跑
+`cargo tv`/`cargo taa`。
+
+- outcome: pass；next：**T-09**（真实文件浏览）→ **T-10**（VM 侧 HTTP 基址相关的
+  空态收口）→ **T-11**（SD-01..SD-04 规范增量 + AC-16(b) 的取舍）→ T-12..T-14。
 
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
