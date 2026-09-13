@@ -43,8 +43,20 @@ use std::thread::ThreadId;
 use super::frame::SwTarget;
 use super::locale;
 use super::loader::{
-    cstring, event_id, render_param, MpvApi, MpvEvent, MpvLoadError, MpvSymbols, ParamList,
+    cstring, event_id, render_param, MpvApi, MpvLoadError, MpvSymbols, ParamList,
 };
+
+/// 一个事件里我们实际要用的字段——`mpv_event` 的**值拷贝**。
+///
+/// 不返回 `&MpvEvent` 的理由见 [`MpvEngine::wait_event`]（指针只活到下一次
+/// `wait_event`，借用出去就会悬垂）。`data` 是各事件特有的负载（如
+/// `END_FILE` 的 reason），T-18 需要时再按事件类型单独转换。
+#[derive(Debug, Clone, Copy)]
+pub struct MpvEventInfo {
+    pub event_id: std::ffi::c_int,
+    pub error: std::ffi::c_int,
+    pub reply_userdata: u64,
+}
 
 /// 引擎不可用的原因。
 ///
@@ -323,15 +335,24 @@ impl MpvEngine {
     /// 阻塞至多 `timeout_secs` 秒取一个事件（`None` = 超时）。
     ///
     /// client.h:1699 —— **同一 handle 同时只允许一个线程**调它。
-    pub fn wait_event(&self, timeout_secs: f64) -> Option<&MpvEvent> {
-        // SAFETY: handle 非空；返回的指针由 mpv 拥有且在下一次 wait_event 前有效，
-        // 故这里的 &MpvEvent 只在「调用方立刻读取」的前提下有意义（本函数即如此）。
+    ///
+    /// 刻意返回**值拷贝**而不是 `&MpvEvent`：mpv 只保证事件指针有效到下一次
+    /// `wait_event()`，若借用出去，调用方完全可以再调一次 `wait_event()`（只需
+    /// `&self`）而让旧引用悬垂。返回拷贝把这个生命周期陷阱从 API 上消掉。
+    pub fn wait_event(&self, timeout_secs: f64) -> Option<MpvEventInfo> {
+        // SAFETY: handle 非空。返回的指针由 mpv 拥有且只在下一次 wait_event 前有效，
+        // 故这里**立即**读完所需字段，不把引用带出函数。
         let ev = unsafe { (self.api.symbols.wait_event)(self.handle, timeout_secs) };
         if ev.is_null() {
             return None;
         }
-        // SAFETY: ev 非空；mpv 保证其生命周期覆盖到下一次 wait_event。
-        Some(unsafe { &*ev })
+        // SAFETY: ev 非空且此刻有效——紧接着就拷贝出来。
+        let ev = unsafe { &*ev };
+        Some(MpvEventInfo {
+            event_id: ev.event_id,
+            error: ev.error,
+            reply_userdata: ev.reply_userdata,
+        })
     }
 
     /// 等到「首个可渲染事件」（`FILE_LOADED` / `VIDEO_RECONFIG`）。

@@ -31,6 +31,6 @@ pub mod frame;
 pub mod loader;
 pub mod locale;
 
-pub use engine::{MpvEngine, MpvUnavailable};
+pub use engine::{MpvEngine, MpvEventInfo, MpvUnavailable};
 pub use frame::FrameBuffer;
 pub use loader::{MpvApi, MpvLoadError, MpvSymbols};
