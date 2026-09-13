@@ -16207,22 +16207,14 @@ fn compare_pngs(
             }
             // Plan 479 T3：通知中心 overlay 层（switcher 层邻位顶层；仅
             // visible 时推层——第三枚 overlay 槽，switcher 同款语义）。
-            // PLAN-012 O3 终解（复验三连反馈）：卡片锚定上移装配层——
-            // container Fill×Fill + 右下 align + dock/边距 padding（iced
-            // container align = 全库验证可靠机制），.at 内 mt-auto 填充条
-            // /根高类在真实 Stack 子层不可依赖（复验：compact 卡片顶贴
-            // 0，headless 全链却通过——头模/实机分叉，O1 同族）。外层透
-            // 明 mouse-area = scrim（卡片外点击 → .Close）；卡片整体包
-            // 内层 mouse-area 守卫（on_press = RebuildNotes 幂等，
-            // PLAN-010 N6d 同款——卡片本体内点不关）。
+            // PLAN-012 O3 终解（复验三连反馈）：锚定与 scrim 回归 .at 内
+            // N6d 模式（scrim 外点关闭 + 卡片守卫，用户走查已验证）+
+            // justify-start 列顶对齐（真实链验证机制——mt-auto 填充条/
+            // col-reverse 在真实 Stack 子层不可依赖，复验三连贴顶 0 实
+            // 证；justify-end 贴 dock 底已实测有效 = 同机制可信）。紧凑
+            // max-h 滚动清偿"满高贴顶"。
             if state.notification_visible() {
-                eprintln!("[p012-layer] notification layer pushed (justify-end build)");
                 let panel_app = state.desktop.notification_app.expect("panel checked");
-                let panel_widget = state
-                    .apps
-                    .get(&panel_app)
-                    .map(|a| a.component.widget_name().to_string())
-                    .unwrap_or_default();
                 let build = || state.split_ref_notification().map(|v| dynamic_view(v, false));
                 let panel_client: iced::Element<'_, IcedMessage> = match
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
@@ -16234,31 +16226,7 @@ fn compare_pngs(
                         desktop_crash_element()
                     }
                 };
-                let card = iced::widget::mouse_area(panel_client)
-                    .on_press(IcedMessage {
-                        widget: panel_widget.clone(),
-                        event: "RebuildNotes".into(),
-                        input_value: None,
-                    });
-                let anchored: iced::Element<'_, IcedMessage> = iced::widget::mouse_area(
-                    iced::widget::container(card)
-                        .width(iced::Length::Fill)
-                        .height(iced::Length::Fill)
-                        .align_x(iced::alignment::Horizontal::Right)
-                        .align_y(iced::alignment::Vertical::Top)
-                        .padding(iced::Padding {
-                            right: 12.0,
-                            top: 12.0,
-                            ..Default::default()
-                        }),
-                )
-                .on_press(IcedMessage {
-                    widget: panel_widget,
-                    event: "Close".into(),
-                    input_value: None,
-                })
-                .into();
-                layers.push(anchored.map(move |m| DM::App(panel_app, m)));
+                layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
             }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
