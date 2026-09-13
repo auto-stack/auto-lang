@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-618
-status: execution_done   # T-01..T-08 全完成;next=review
+status: archived            # 2026-09-13 merge 收口;completion_kind: delivered
+completion_kind: delivered
 feature_name: examples/ui 四 demo 接入 TreeView/FileTree 组件(027/026/018/041)
 author: [zcode]
 created_at: 2026-09-12
@@ -232,6 +233,46 @@ total_steps: 8
   路径+fn 参数/model 同名转译陷阱);P618-1 根修(popover vue 臂重写) |
   blockers: 无 | next: **review**(§9 复审;SD-01/02 spec delta 校验+INDEX/
   specs.json 由 merge 收口)
+- 2026-09-13 stage:review | plan_id: PLAN-618 | plan_revision: 1 |
+  outcome: **pass** | reviewed_commit: 6c2eb81af474403b41a2b5bcf9d8d762754000c7
+  | base_commit: bec57397a（merge-base 与 master）| dependency_revisions:
+  auto-os 组件锚 797fbd8+filter_tree 扩充（四 demo 拷贝 hash 一致性核查通过）|
+  spec_inputs: docs/specs/auto-lang/ui/design/tree-components.md
+  (blob a7c4b473) + docs/specs/auto-lang/ui/plans.md (blob b25eb940);
+  GOAL-007 在册核对（docs/specs/goals.md:16）
+  | **独立性声明**：复审在实现会话内进行（无独立会话授权），结论由工件重建
+  （提交树/diff/测试输出/MCP state_changes/截图），不采信执行摘要。
+  | acceptance_results: AC-01 pass（五件套×4 入库+核心四件 hash 唯一+use
+  正确+双轨编译）｜AC-02 pass（vue+VM state_changes:current_path
+  /root/Documents/crumbs/files_view）｜AC-03 pass（vue 四点+VM
+  过滤/还原/点击 totalRows 91→10+VM 截图）｜AC-04 **pass（附限制注记 F-2）**
+  （018 原生 render 轨=vue 全过；VM 腿因书架卡片 onclick（页面级 for-loop
+  载荷）MCP press 不可寻址无法抵达阅读页——树组件 VM 行为已由
+  041/026/027 三重独立实证，登记 P618-5 观察）｜AC-05 pass（041 VM 原生
+  轨全过）｜AC-06 pass（zap vue 截图+VM 截图双视觉证据+条目在库）｜
+  AC-07 pass（SD-01/02 文本与实际行为核对一致；spec-index 归 merge）｜
+  AC-08 pass（cargo t 24 红归因零新增；**cargo tf 完整跑 3534/3534 全绿**
+  [no-fail-fast]；截图 7 张四 demo 入档）
+  | findings:
+  - F-1（低/外观,非阻塞）：041 components/package.at description 残留
+    "026 database"（拷贝遗留,纯元数据,不影响包名匹配与功能）；merge 时可
+    顺手改或留档。
+  - F-2（低/观察）：AC-04 的 018 VM 直接交互验证缺失——VM 轨书架卡片
+    onclick 不可 MCP 寻址（P614-C1 家族）→ P618-5 持续观察；非 618 回归。
+  - F-3（信息）：ffi_dual_019_dep_layout_invariants 宽跑 flake——tf 截断跑
+    红/完整跑绿（本次全程通过），617 归因集内既有。
+  - F-4（环境,不入计划债）：本机 RUSTC_WRAPPER=sccache 故障（构建随机
+    os error 5），全程禁用绕过。
+  | dirty 路由：worktree 仅存 examples/rust-workspace/Cargo.toml 本地 member
+  换名（gitignored 脚手架环境件）——**不属于计划实现，merge/fold 不得携带**。
+  | evidence: worktree 提交 9ac3c5661/d177b9a44/684620d93/d59cc9871/
+  3539fcd6c/bf77fb30f/6c2eb81af；截图 7 张（各 demo src/front/tests/
+  screenshots/，gitignored——持久凭据以本记录文字化 state_changes 与
+  提交 hash 为准）；vue 模块 288 全绿（cargo t/ui_gen::vue）；tf 3534/3534
+  （RUSTC_WRAPPER= cargo tf --no-fail-fast, 40.2s）；026 VM 截图
+  review_026_vm_tree.png（zap 闪电图标可视）
+  | next: **merge**（INDEX/specs.json 派生台账+KNOWN-DEBT 登记 P618-3/4/5
+  与 F-1 顺手项在 merge 收口）
 
 ## 待澄清事项
 
@@ -255,3 +296,15 @@ total_steps: 8
 2. VM lucide_svg 补 zap 条目属引擎 1 行微修(先例:PLAN-614 路由键修复);
    若不愿动引擎,索引图标降级为既有 "table"/"terminal"。
    ——T-02 已按前项落地(zap 生效,026 vue+VM 双端实证)。
+
+### 9.1 整理收据（consolidation receipt）— PLAN-618:r1
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | reviewed 基线：plan_revision 1 / reviewed_commit 6c2eb81af / base_commit bec57397a；规范增量 SD-01（tree-components.md）+ SD-02（plans.md 618 行）已随 reviewed_commit 入库（blob 冻结 a7c4b473 / b25eb940）；投影目标 = .autoos/specs.json（runtime 路径）；worktree 先行同步 master（318203fd6，plans.md 冲突保 616+618 两行，vue.rs 自动合并 617 async 改动），同步后刷新验证：plan370 12/12 + ui_gen::vue 288/288 全绿 |
+| `landed` | master 合并提交 **6d6089005**（fast-forward 至 worktree 合并提交，amend 恢复规范消息；双亲 7be50486a + 684620d93 线）；git merge-base --is-ancestor 6c2eb81af HEAD 通过 → 代码与 canonical Specs 均在 master；主检出冒烟：cargo check 余 10 错全部位于 vm/ffi/term_engine.rs（619 会话并发 WIP 脏文件，非本计划触面、落地前已存在的编译态）；619 WIP 31 脏文件以 stash push/pop 原样保留（stash f51b6501 已 pop 清空） |
+| `ledger_refreshed` | 目标：D:/autostack/auto-lang/.autoos/specs.json（本仓 runtime 派生账本，非 git 跟踪）；upsert 项 ID **P618-1..P618-6**（reports/goals/architecture/designs/tests/reviews 各 +1：78/69/74/68/74/92 → 79/70/75/69/75/93）；file 指向本归档路径，related:["PLAN-618"]，status: published；离线 read-modify-write + 完整 JSON 校验 + 原子替换，源/后哈希 08662bef76de5397 → 46b455833dc50846；读回校验通过。KNOWN-DEBT 登记 P618-D1..D4（commit 94d167a1）；spec-index.py 重生 INDEX.md 无 diff（SD-01 未触索引字段）。overview 回写免做：delta 未含 overview（tree 段已指向权威契约 tree-components.md，复审 delta 界定合并范围） |
+| `archived` | git mv docs/plans/618-...md → docs/plans/archive/ + status: archived + completion_kind: delivered（交付型）；路径与 frontmatter 一致、provenance 链接可解析 |
+| `cleaned` | ✅ 已核实：①前置 `git diff 318203fd6 master` 仅剩归档 bookkeeping（实现内容全等）→ `git branch -D plan-618-dev`（was 318203fd6；amend 致 hash 变更，内容等价已证）；②`git worktree remove --force` 后 `git worktree list` 无该条目；③前置 wt-guard：pnpm junction 1096 条经 PowerShell 逐链 `cmd /c rmdir` 移除（零穿透）后报 **clean — 下无任何 reparse point**；④组目录 D:/autostack/.wt/lang-618 保留（内含跨仓兄弟 auto-down，按「仅删空组目录」规则不动） |
+
+**F-1 顺手项裁定**：041 components/package.at description 残留 "026 database"（纯元数据）——随归档留档，不单独开修。

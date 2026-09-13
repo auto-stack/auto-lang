@@ -6461,6 +6461,63 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     return Ok(out);
                 }
 
+                // PLAN-618-1 (P618-1): Plan 422 坐标锚 popover 的 vue 臂重写。
+                // 旧臂发 `<Popover v-model:open>`——shadcn-vue 的 PopoverRoot
+                // 是无条件渲染 slot 的 provider,弹层内容因此常显内联堆叠在
+                // 页面文档流里(027 首屏即现,非业务代码问题)。现自绘
+                // overlay:v-if 门控(open 关即卸载)+ backdrop 点击 dismiss
+                // (ondismiss)+ fixed 坐标锚(x/y),与 VM iced 臂(坐标锚
+                // 面板 + 点击外部关闭)语义对齐。terminal 臂同款早退模式,
+                // 不进 shadcn 装配路径(亦不注册 Popover import)。
+                if tag == "popover" {
+                    let open_expr = props.get("open").and_then(|v| match v {
+                        AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr).ok(),
+                        _ => None,
+                    });
+                    let class_str = props
+                        .get("class")
+                        .and_then(|v| self.extract_string_value(v))
+                        .unwrap_or_default();
+                    let xy = match (props.get("x"), props.get("y")) {
+                        (
+                            Some(AuraPropValue::Expr(xe)),
+                            Some(AuraPropValue::Expr(ye)),
+                        ) => {
+                            match (
+                                self.expr_to_vue_bound_value(xe),
+                                self.expr_to_vue_bound_value(ye),
+                            ) {
+                                (Ok(x), Ok(y)) => {
+                                    format!("left: {} + 'px', top: {} + 'px'", x, y)
+                                }
+                                _ => "left: 8px, top: 8px".to_string(),
+                            }
+                        }
+                        _ => "left: 8px, top: 8px".to_string(),
+                    };
+                    let mut out = String::new();
+                    // backdrop:仅当声明 ondismiss 时发射(点击空白处关闭)。
+                    if let Some(ev) = events.get("ondismiss") {
+                        let handler = self.handler_to_function_call(&ev.handler);
+                        self.used_handlers.insert(handler.clone());
+                        out.push_str(&format!(
+                            "<div v-if=\"{}\" class=\"fixed inset-0 z-40\" @click=\"{}\"></div>\n",
+                            open_expr.clone().unwrap_or_else(|| "true".to_string()),
+                            handler
+                        ));
+                    }
+                    let panel_open = open_expr.unwrap_or_else(|| "true".to_string());
+                    out.push_str(&format!(
+                        "<div v-if=\"{}\" class=\"fixed z-50 {}\" :style=\"{{ {} }}\">\n",
+                        panel_open, class_str, xy
+                    ));
+                    for child in children {
+                        out.push_str(&self.node_to_html(child, indent + 1)?);
+                    }
+                    out.push_str("</div>\n");
+                    return Ok(out);
+                }
+
                 // Check if this is a known sub-widget (custom component, not shadcn)
                 // Plan 435 P4:与 map_tag 同源的折叠桥接(kebab↔Pascal;
                 // 内置可解析的 tag 不桥接,builtin 优先)

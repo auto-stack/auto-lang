@@ -1238,14 +1238,17 @@
 
 ### P537（2026-09-04，Plan 537 photo-gallery 执行/复审登记——examples 层实证的基建缺口二则）
 
-- **P537-D1 VM lucide 图标闭集缺口**:`iced/renderer.rs lucide_svg(name)` 为
-  84 项闭集,examples/ui 层 `icon (name:)` 只能消费表内名;计划 537 原拟的
-  images/heart/mountain/building-2/cloud-sun/sparkles 在 lucide-vue-next
-  存在但不在 VM 表（Vue 端正常/VM 端缺渲染=双端不一致）。绕开（已落地）:
-  相册图标 emoji 文本（027 先例）;`icon` 仅用双端表内名（sun/moon/
-  chevron-left/chevron-right）。根治:VM 表按 lucide-vue-next 常用面扩充
-  （或建立单测围栏对齐两端名单）,建议随 widgets 双端 parity 批处理。
-  引用:`crates/auto-lang/src/ui/iced/renderer.rs` lucide_svg;
+- ~~**P537-D1 VM lucide 图标闭集缺口**~~ **已根治（2026-09-13，`7c13643ba`）**：
+  原表是**手工抄**进 `iced/renderer.rs lucide_svg` 的 match（85 项），而 Vue 端用
+  lucide-vue-next 全量包 ⇒ 两端天然分叉，缺名在 VM 端**静默渲染成空盒**。现改为
+  由 `scripts/gen-lucide-table.mjs` 从 lucide 官方数据生成**全量表**
+  （`ui/iced/lucide_generated.rs`，v0.312.0 共 **1401** 个，254 KiB 静态表 + 二分查找），
+  `sidebar`/`file-icon` 两个上游已改名者留遗留别名；基线红
+  `lucide_icon_coverage_manifest_all_hit`（030 的 `icon:"film"`）随之转绿。
+  **遗留**：生成器依赖本地已安装的 lucide-vue-next（不联网），换版本需重跑
+  `node scripts/gen-lucide-table.mjs`；尚未加「表与 Vue 端包版本同步」的漂移门禁。
+  历史绕开法（emoji 文本 / 只用表内名）可退役。
+  引用:`crates/auto-lang/src/ui/iced/lucide_generated.rs`、`scripts/gen-lucide-table.mjs`、
   `examples/ui/029-photo-gallery/SPEC.md` 差异注记 2。
 - **P537-D2 VM 语义 grid 的 cols/class 状态绑定不解析**:`grid { cols: .state }`
   回落 1 列（eval_u16_prop 对 widget 状态引用不解析,unwrap_or(1)）;`class:`
@@ -2126,3 +2129,17 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | ~~P617-D9~~ | ~~high~~ | 未收口能力 | **已收口（2026-09-13，T-20）**：AC-19 达成——`crates/auto` 已补 `mpv-native`/`mpv-gpu`/`mpv-widget` 透传（+ `mpv` 别名，显式开启），验证语料 `test/ui/plan617_video_vm` 实机 1080p 真实播放 + seek 生效（position 8.0 → time-pos 递增到 12.63s），截图 `test/ui/plan617_video_vm/src/front/tests/screenshots/ac19_final.png` | 计划 §9.19 |
 | P617-D10 | **medium** | 架构脆点 | **`convert_view_messages` 的 `_ => Empty` 兜底会静默吃掉新 View 变体**：VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` → `View<IcedMessage>` → `into_iced`，漏加臂的变体在 VM 里恒为 Empty，而 **MCP 快照走 vnode_converter 另一条路，看起来节点仍在树里 → 假绿**。注释里已记 Grid/MouseArea/select 三次同类坑，T-19 的 video 是第四次。**建议**：给该 match 加一个「已知变体全集」的编译期围栏（如变体枚举 + 穷尽 match 的测试），或把兜底改成会报警的 `debug_assert!` | `crates/auto-lang/src/ui/iced/renderer.rs::convert_view_messages`；计划 §9.19 |
 | P617-D11 | low | 测试盲区 | **契约层/编译期测试无法覆盖「接线是否真活」**：T-19 三个缺陷（convert_view_messages 漏臂、widget 没建 render context、忘 `channel.advance`）全部通过了 `cargo t`、`docs_gen`、`video_contract` 三套门禁，只在 T-20 的**实机**验证中现形。**教训**：涉及「新 View 变体要一路走到渲染」的改动，必须有一次真起窗 + 看画面的验证，不能以编译通过 + 契约单测代替 | 计划 §9.19；`test/ui/plan617_video_vm` |
+
+---
+
+## PLAN-618（tree 组件族四 demo 接入）遗留
+
+> 关联计划 `618-tree-filetree-demo-adoption.md`（已归档）；复审 pass @ worktree
+> plan-618-dev 6c2eb81af，landed 6d6089005。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P618-D1 | medium | 引擎语义 | **VM `.lower()` 方法链在「局部 var 派生字段+嵌套帧」返回空串**（P618 递归探针实证）；filter_tree v1 降级大小写敏感 contains 直链规避，引擎修复后可翻转 | 026-database treeFilter 链路；plan §待澄清 P618-2 |
+| P618-D2 | medium | 转译器 | **vue 转译器对「模块 fn 参数名与 model 字段同名」误加 `.value` 拆包**——SFC 运行时 TypeError 整页白屏（018 ch_nodes(chapters) 实证）；规避=参数避开 model 字段名，已入 tree-components.md 陷阱节 | 018 reading.at ch_nodes；契约「⚠ 模块 fn 转译陷阱」 |
+| P618-D3 | low | VM 渲染 | **041 VM 预存怪象（非 tree 引入）**：confirm 弹层 open:false 文案仍渲染页底（与 P618-1 同族、VM popover 臂）+ 状态栏 `${store.line}` 字面量直出 | 041-auto-edit VM 截图 t06；app.at popover/StatusBar |
+| P618-D4 | low | 工具面 | **018 VM 轨书架卡片 onclick（页面级 for-loop 载荷）MCP press 不可寻址**——阅读页经 MCP 不可达，章节树 VM 直接交互验证受限（组件 VM 行为已 041/026/027 三重实证）；P614-C1 家族 | 018 bookshelf.at OpenBook；plan §复审 F-2/P618-5 |

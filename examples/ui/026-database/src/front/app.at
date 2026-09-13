@@ -3,7 +3,10 @@
 // 数据库对象树导航 + DataTable 深水区（分页/排序/搜索/类型徽章/万行窗口化）
 // + 表结构（Schema/DDL）+ SQL 控制台（执行/耗时/错误反馈）+ 事务级编辑与提交。
 
+use components.tree_util: filter_tree, collect_ids, toggle_id
+
 widget App {
+    use { package: official from "./components" }
     msg {
         Init,
         SelectTab(str),
@@ -45,6 +48,30 @@ widget App {
         activeTable str = "customers"   // 当前选中的表名
         activeType str = "table"        // "table" | "view" | "index"
         treeFilter str = ""             // 对象树过滤文本
+        dbNodesFull List = [
+            { id: "db/app", label: "app (SQLite)", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
+                { id: "g/tables", label: "Tables", kind: "dir", icon: "table", is_leaf: false, badge: "7", children: [
+                    { id: "t/customers", label: "customers", kind: "file", icon: "table", is_leaf: false, badge: "91", children: [] },
+                    { id: "t/products", label: "products", kind: "file", icon: "table", is_leaf: false, badge: "77", children: [] },
+                    { id: "t/orders", label: "orders", kind: "file", icon: "table", is_leaf: false, badge: "830", children: [] },
+                    { id: "t/categories", label: "categories", kind: "file", icon: "table", is_leaf: false, badge: "8", children: [] },
+                    { id: "t/employees", label: "employees", kind: "file", icon: "table", is_leaf: false, badge: "9", children: [] },
+                    { id: "t/audit_logs", label: "audit_logs", kind: "file", icon: "table", is_leaf: false, badge: "10k", children: [] },
+                    { id: "t/regions", label: "regions", kind: "file", icon: "table", is_leaf: false, badge: "4", children: [] }
+                ] },
+                { id: "g/views", label: "Views", kind: "dir", icon: "eye", is_leaf: false, badge: "2", children: [
+                    { id: "v/order_summary", label: "order_summary", kind: "file", icon: "eye", is_leaf: false, badge: "", children: [] },
+                    { id: "v/product_catalog", label: "product_catalog", kind: "file", icon: "eye", is_leaf: false, badge: "", children: [] }
+                ] },
+                { id: "g/indexes", label: "Indexes", kind: "dir", icon: "zap", is_leaf: false, badge: "3", children: [
+                    { id: "i/idx_orders_customer", label: "idx_orders_customer", kind: "file", icon: "zap", is_leaf: false, badge: "", children: [] },
+                    { id: "i/idx_products_category", label: "idx_products_category", kind: "file", icon: "zap", is_leaf: false, badge: "", children: [] },
+                    { id: "i/idx_orders_date", label: "idx_orders_date", kind: "file", icon: "zap", is_leaf: false, badge: "", children: [] }
+                ] }
+            ] }
+        ]
+        dbSelId str = ""
+        dbExpanded List = ["db/app", "g/tables", "g/views", "g/indexes"]
 
         // ---- 分页与排序状态 ----
         page int = 1
@@ -175,8 +202,11 @@ widget App {
         ]
     }
 
-    on {
-        .Init -> {
+    computed {
+        dbNodes => filter_tree(.dbNodesFull, .treeFilter)
+    }
+
+    on { -> {
             // 初始化表头与元数据
             .hId = "ID ↑"
             .hCol1 = "Company Name"
@@ -685,6 +715,26 @@ widget App {
 
         .TreeFilterChanged(kw) -> {
             .treeFilter = kw
+            .dbExpanded = collect_ids(filter_tree(.dbNodesFull, kw), false)
+        }
+
+        .DbToggle(id) -> {
+            .dbExpanded = toggle_id(.dbExpanded, id)
+        }
+
+        .DbSelect(id) -> {
+            .dbSelId = id
+            if id.starts_with("t/") {
+                .SelectTable(id.slice(2))
+            } else {
+                if id.starts_with("v/") {
+                    .SelectView(id.slice(2))
+                } else {
+                    if id.starts_with("i/") {
+                        .SelectIndex(id.slice(2))
+                    }
+                }
+            }
         }
 
         .SetSql(query) -> {
@@ -858,9 +908,8 @@ widget App {
 
             // ---- 主工作区（两栏布局：左侧树导航 + 右侧内容） ----
             row (style: "flex-1 min-h-0") {
-                // ---- 左侧对象树导航 ----
+                // ---- 左侧对象树导航(PLAN-618 真树替换平铺按钮) ----
                 col (style: "w-64 border-r bg-card/50 flex flex-col shrink-0") {
-                    // 树搜索框
                     col (style: "p-3 border-b") {
                         input {
                             placeholder: "Filter database objects...",
@@ -869,84 +918,12 @@ widget App {
                             style: "w-full px-2.5 py-1.5 text-xs rounded-md border bg-background focus:ring-1 focus:ring-primary outline-none"
                         }
                     }
-
-                    // 导航树
-                    col (style: "flex-1 overflow-y-auto p-2 gap-3 text-xs") {
-                        // Tables 分组
-                        col (style: "gap-1") {
-                            row (style: "items-center justify-between px-2 py-1 text-muted-foreground font-semibold uppercase tracking-wider text-[10px]") {
-                                text "Tables" {}
-                                text "7" { style: "px-1.5 py-0.5 rounded bg-muted text-[10px]" }
-                            }
-                            button "📄 customers (91)" {
-                                onclick: () => { .SelectTable("customers") },
-                                style: if .activeTable == "customers" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
-                            }
-                            button "📄 products (77)" {
-                                onclick: () => { .SelectTable("products") },
-                                style: if .activeTable == "products" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
-                            }
-                            button "📄 orders (830)" {
-                                onclick: () => { .SelectTable("orders") },
-                                style: if .activeTable == "orders" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
-                            }
-                            button "📄 categories (8)" {
-                                onclick: () => { .SelectTable("categories") },
-                                style: if .activeTable == "categories" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
-                            }
-                            button "📄 employees (9)" {
-                                onclick: () => { .SelectTable("employees") },
-                                style: if .activeTable == "employees" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
-                            }
-                            button "📄 audit_logs (10k)" {
-                                onclick: () => { .SelectTable("audit_logs") },
-                                style: if .activeTable == "audit_logs" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium flex items-center justify-between" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground flex items-center justify-between" }
-                            }
-                        }
-
-                        // Views 分组
-                        col (style: "gap-1") {
-                            row (style: "items-center justify-between px-2 py-1 text-muted-foreground font-semibold uppercase tracking-wider text-[10px]") {
-                                text "Views" {}
-                                text "2" { style: "px-1.5 py-0.5 rounded bg-muted text-[10px]" }
-                            }
-                            button "👁 order_summary" {
-                                onclick: () => { .SelectView("order_summary") },
-                                style: if .activeTable == "order_summary" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground" }
-                            }
-                            button "👁 product_catalog" {
-                                onclick: () => { .SelectView("product_catalog") },
-                                style: if .activeTable == "product_catalog" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground" }
-                            }
-                        }
-
-                        // Indexes 分组
-                        col (style: "gap-1") {
-                            row (style: "items-center justify-between px-2 py-1 text-muted-foreground font-semibold uppercase tracking-wider text-[10px]") {
-                                text "Indexes" {}
-                                text "3" { style: "px-1.5 py-0.5 rounded bg-muted text-[10px]" }
-                            }
-                            button "⚡ idx_orders_customer" {
-                                onclick: () => { .SelectIndex("idx_orders_customer") },
-                                style: if .activeTable == "idx_orders_customer" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground" }
-                            }
-                            button "⚡ idx_products_category" {
-                                onclick: () => { .SelectIndex("idx_products_category") },
-                                style: if .activeTable == "idx_products_category" { "w-full text-left px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground font-medium" } else { "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-accent text-foreground" }
-                            }
-                        }
-
-                        // SQL Console 入口
-                        col (style: "mt-2 pt-2 border-t") {
-                            button "💻 SQL Console" {
-                                onclick: () => { .SelectTab("console") },
-                                style: if .activeTab == "console" { "w-full text-left px-3 py-2 rounded-md bg-primary text-primary-foreground font-semibold flex items-center gap-2" } else { "w-full text-left px-3 py-2 rounded-md border hover:bg-accent text-foreground font-medium flex items-center gap-2" }
-                            }
-                        }
+                    col (style: "flex-1 overflow-y-auto p-2 min-h-0") {
+                        TreeView (nodes: .dbNodes, expanded: .dbExpanded, selected: .dbSelId, on_toggle: .DbToggle, on_select: .DbSelect, directory: true) {}
                     }
                 }
 
-                // ---- 右侧主内容区 ----
+            // ---- 右侧主内容区 ----
                 col (style: "flex-1 flex flex-col min-w-0 bg-background") {
                     // Tab 切换条
                     row (style: "items-center justify-between px-6 pt-3 border-b bg-card/30") {
