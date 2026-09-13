@@ -5,7 +5,7 @@ feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-12
-plan_revision: 6                 # r6: T-16 完成（native 加载器 + 引擎生命周期 + 降级）；T-17 起接帧上屏
+plan_revision: 7                 # r7: T-17 完成（帧上屏通道：持久纹理 + staging 环 + 无闪烁断言）；T-18 起接控制契约
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -820,10 +820,24 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
     `ffi_dual_019` 是 P615-D3 并发 flake 本次恰好通过）；+2 测试数即本次新增用例。
   - **构建环境坑（会立刻咬到下一个人）**：`os error 5` 写 `.d` 失败的真因是
     **sccache 缓存 31G/上限 30G** 导致持续 trim；绕过 `RUSTC_WRAPPER= cargo …`。
-- **T-17 帧上屏通道**（Go 后）：按 T-15 结论实现帧到纹理的通道，
+- [x] **T-17 帧上屏通道**（Go 后）：按 T-15 结论实现帧到纹理的通道，
   **必须绕开每帧新建 `Handle`**（硬约束，见 §2.5 风险点 2）；
   镜像 `image_pipeline` 的既有形状（票据/rendition、latest-wins 代际门、有界缓存）。
   验证：目标分辨率下实测帧率与无闪烁截图。
+  [✅ 已完成 2026-09-13] worktree @ 见提交；全文见 **§9.16** 与 design doc **§4.9/§4.10**。
+  - 交付 `ui/mpv/channel.rs`（持久纹理 + 3 槽 staging 环 + `VideoLatestWins` 代际门
+    + 回收超时丢帧策略 + 分类统计）与 `ui/mpv/present.rs`（WGSL 全屏 blit）；
+    新 feature **`mpv-gpu`**（与 `mpv-native` 分开：引擎不碰 GPU，故仍可无 GPU 测试）。
+  - 实测（真实 libmpv + 真实片源 + 离屏读回）：1080p **258–385 fps**（p50 0.61–0.67 ms）、
+    4K **38.3–38.6 fps**（p50 4.35–4.54 ms）；`textures_created()` 恒为 **1**。
+  - **T-15 的那条长尾在正式通道里复现**：4K 30 帧中 1 帧 **329–336 ms**，
+    被 3 槽环吸收（0 丢帧、0 空白帧，总时长 0.4→0.78 s）→ §4.6 的长尾风险关闭。
+  - 「无闪烁」做成**可证伪断言**（`tests/mpv_channel.rs`）：画面确实上屏 +
+    **内容帧之间不得夹空白帧**（正是 renderer.rs:2889 的闪烁签名）+ 帧签名不恒定
+    （非陈旧帧）+ 纹理数恒 1。
+  - 9 用例全绿（`cargo test --features mpv-gpu --test mpv_channel`）。
+  - **未接上的那段**：通道与 blit 都已就位，但**还没接进 VM 的 `video` 元素**
+    （`render_support.rs:307` 仍 fallback）——那属 T-18/T-19。
 - **T-18 VM 侧播放控制与契约对齐**（Go 后）：mpv 侧实现 §2.3 的**同一套受控媒体契约**
   （`paused`/`position`/`volume`/`muted`/`rate` 下行 + 时间/时长/状态上行），
   使 `.at` 应用**无需分叉**即可在两端工作；音频输出由 mpv 承担（不引入 cpal）。
@@ -1429,6 +1443,64 @@ T-13/T-14 与主链并行。
 - outcome: pass；next: **T-17**（帧上屏通道：持久 staging 环 + `copy_buffer_to_texture`，
   并处置 T-15 记录的长尾）。T-16 已把「帧 → 我们的内存」这一段打通（`FrameBuffer` +
   `render_sw_frame`），T-17 要接的是「我们的内存 → wgpu 纹理」。
+
+### 9.16 T-17 完成——帧上屏通道（持久纹理 + staging 环 + 无闪烁断言）（2026-09-13）
+
+- **交付**：`crates/auto-lang/src/ui/mpv/channel.rs` + `present.rs`，新 feature **`mpv-gpu`**。
+  与 `mpv-native` **分开门控**是有意的：引擎（libmpv+libloading）不碰 GPU，故
+  `mpv-native` 在没有 GPU/无窗口的环境里仍能独立编译与测试；通道与 blit 才要 wgpu。
+  `mpv-spike` 现为 `["mpv-gpu", "ui-iced"]`。
+- **通道形状**（T-15 §4.1 的裁定落地）：
+  `mpv SW renderer →（直接写）持久映射 staging（3 槽环）→ copy_buffer_to_texture → 持久 wgpu 纹理 → 全屏 blit → 目标`。
+- **实现里三条值得记住的结论**：
+  1. **行距取 256 对齐**，一个 stride 同时满足两边：wgpu 的 `copy_buffer_to_texture`
+     要求 `bytes_per_row` 是 256 的倍数，mpv 要求 64 的倍数（256 是 64 的倍数）。
+     实测常用宽度（1920/2560/3840）本就落在 256 上，故无 padding 开销。
+  2. **片元着色器强制 `alpha = 1.0`**：mpv 的 `"rgb0"` 第 4 字节是**未初始化垃圾**
+     （`render.h` 原文 "the '0' component contains uninitialized garbage"）。若当
+     alpha 用，画面会随机变半透明乃至整帧「消失」——**那就是闪烁本身**。
+  3. **背压一律丢帧、不阻塞**：取不到空槽时**定向**回收（只 `poll` 该槽的
+     submission，不串行化整个 GPU），回收带超时（默认 4 ms），**超时即丢帧**。
+     纹理始终保留上一帧内容，故丢帧**不会**产生空白。
+  4. 代际门镜像 `image_pipeline.rs` 的 `MediaLatestWins`（同一 `(generation, seq)`
+     二元组 + `accept_*` 返回 bool 并计丢帧），并比它多一处：**渲染前判一次、
+     上屏前再判一次**——渲染期间用户可能已经 seek。
+- **实测（`tests/mpv_channel.rs`，真实 libmpv + 真实片源 + 离屏读回）**：
+
+  | 通道尺寸 | 源 | 端到端帧率（含逐帧读回） | 上屏代价 p50 / p95 | max（离群） | 丢帧 |
+  |---|---|---|---|---|---|
+  | 1920×1080 | `caelestia.mp4` | **258–385 fps** | **0.61–0.67 / 0.85–0.98 ms** | 6.8–55.4 ms（2/60） | 0 |
+  | 3840×2160 | `Loki.S02E01…4K HEVC HDR` | **38.3–38.6 fps** | **4.35–4.54 / 5.57–5.65 ms** | **329–336 ms（1/30）** | 0 |
+
+  端到端数字含逐帧读回（真实播放器不会做），故是**保守下界**；对照 24 fps 片源，
+  1080p 余量 10× 以上、4K 余量 1.6×。
+- **T-15 的那条长尾在正式通道里复现了**：4K 30 帧中 1 帧 `copy_buffer_to_texture`
+  耗时 **329–336 ms**（T-15 门控 B 量到 957 ms，同一现象）⇒ 它不是 spike 的测量假象。
+  **而 3 槽环把它吸收掉了**：`reclaim_timeout=0`、无丢帧、无空白帧，表现只是那一轮
+  总时长 0.4 s → 0.78 s。这正是选 3 槽（一槽在被 mpv 写、一槽在 GPU 拷贝、一槽空闲）
+  的意义。**§4.6 的长尾风险由此关闭。**
+- **「无闪烁」做成了可证伪断言**（不靠眼看，写在 `tests/mpv_channel.rs`）：
+  逐帧上屏后读回像素，断言 ① 画面确实上了屏（非全黑）；② **没有「内容帧之间夹
+  空白帧」**——这正是 `renderer.rs:2889` 描述的「画面消失又出现」的闪烁签名；
+  ③ 帧签名不恒定（纹理在更新，不是命中缓存后的陈旧帧）；④ 全程
+  `textures_created() == 1`（**纹理只建一次**，结构性反闪烁）。
+- **一个测试设计上的教训（已修正并留痕）**：我最初写「背压必然丢帧」的断言，
+  结果红了——因为小尺寸拷贝毫秒级完成、环根本顶不满，而 T-15 那条长尾是**驱动
+  偶发停顿、无法按需复现**。改成断言**策略与上界**（每次调用只能返回「已提交」或
+  「按策略丢帧」，且总耗时必有界），并额外断言 `reclaim_waits > 0`（证明回收路径
+  确实被走到）。「一定丢帧」那种断言只能靠运气通过，是坏测试。
+- **门禁 `cargo t`**：`4814 run / 4793 passed / 21 failed / 109 skipped`。21 项
+  **全部落在基线集合内**（19 项稳定红 + 两项已记录的并发 flake：
+  `ffi_dual_019_dep_layout_invariants`〔P615-D3〕与
+  `external_config_poll_hot_apply_loopsafe`〔§9.14 实测定为并发 flake，隔离复跑 3/3 绿〕）。
+  测试数仍为 **4814**（本任务新增的用例在 `required-features = ["mpv-gpu"]` 的
+  独立目标里，不进默认档）→ **AC-20 保持**，且零新增红。
+- outcome: pass；next: **T-18**（VM 侧播放控制与 §2.3 受控媒体契约对齐，音频由 mpv 承担）。
+  **交接提醒**：通道与 blit 管线刻意**不依赖任何 iced widget 类型**（只依赖 wgpu），
+  就为了让 T-19 能直接把它搬进 `iced_widget::shader::Program` 的
+  `Pipeline`/`Primitive`——`Pipeline::new(device, queue, format)` 恰好交出
+  `&wgpu::Device`/`&wgpu::Queue`，`Primitive::render` 交出 `&mut CommandEncoder`
+  与 `&TextureView`。**但截至 T-17，`video` 元素仍是 `fallback`**：通道就位 ≠ 已接上。
 
 ## 11. 新会话开工须知（Handoff，2026-09-12）
 
