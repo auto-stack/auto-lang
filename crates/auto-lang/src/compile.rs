@@ -256,6 +256,11 @@ pub struct CompileSession {
 
     compiled_modules: Vec<crate::vm::loader::Module>,
 
+    /// PLAN-013 T1: `#[vm]` (body-less) fn names declared by compiled dep
+    /// modules (e.g. term.vm.at engine shims). Seeded into the root codegen
+    /// so imported bare calls route to the native instead of the stub.
+    pub vm_fn_names: std::collections::HashSet<String>,
+
     /// Plan 346: Generic registries from compiled dependency modules.
     /// These are merged into the main module's generic_registry at link time
     /// so that cross-module generic types (e.g. List<Note> in db.at where Note
@@ -324,6 +329,7 @@ impl Clone for CompileSession {
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
+            vm_fn_names: std::collections::HashSet::new(),
             dep_generic_registry: std::cell::RefCell::new(crate::vm::generic_registry::GenericRegistry::new()),
             dep_object_keys: std::cell::RefCell::new(Vec::new()),
             dep_object_types: std::cell::RefCell::new(Vec::new()),
@@ -378,6 +384,7 @@ impl CompileSession {
             loading_stack: Vec::new(),
 
             compiled_modules: Vec::new(),
+            vm_fn_names: std::collections::HashSet::new(),
             dep_generic_registry: std::cell::RefCell::new(crate::vm::generic_registry::GenericRegistry::new()),
             dep_object_keys: std::cell::RefCell::new(Vec::new()),
             dep_object_types: std::cell::RefCell::new(Vec::new()),
@@ -1775,7 +1782,7 @@ impl CompileSession {
 
     fn compile_module_to_bytecode(
 
-        &self,
+        &mut self,
 
         source: &str,
 
@@ -1878,6 +1885,13 @@ impl CompileSession {
         self.dep_generic_registry.borrow_mut().merge(&codegen.generic_registry);
         self.dep_object_keys.borrow_mut().extend(codegen.object_keys.iter().cloned());
         self.dep_object_types.borrow_mut().extend(codegen.object_types.iter().cloned());
+
+        // PLAN-013 T1: surface this module's `#[vm]` (body-less) fn names so
+        // the root codegen can prefer the declared native over the stub when
+        // an imported bare call would otherwise shadow it (Plan 347 arm).
+        for name in &codegen.vm_fn_names {
+            self.vm_fn_names.insert(name.clone());
+        }
 
         Ok(codegen.finish(module_name))
 

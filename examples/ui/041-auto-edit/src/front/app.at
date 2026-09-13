@@ -25,6 +25,9 @@ use console_panel: ConsolePanel
 use ctx_menu: EditorCtxMenu
 
 widget App {
+    // PLAN-618 T-06: tree 四件组件拷贝分发(package use 必须在 widget 内,
+    // 顶层 parse 报 LBrace 错——027 T-03 同款结论)。
+    use { package: official from "./components" }
     // ---- Plan 451: actions 声明块（原 auto-edit.at，DSL 化）----
     // 三源绑定：shortcut（键盘回退层，DSL onkeydown 之下）、menubar/toolbar
     // （view 中占位标签的配置合成）、MCP 自动化同源。enabled_if/checked_if
@@ -100,59 +103,70 @@ widget App {
                 menubar {}
                 toolbar (style: "ml-auto") {}
             }
-            row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
-                // 激活/非激活双分支保留原形态：view fn 片段的参数化条件
-                // （onclick 实参/条件样式/if 分支）在 vm 视图构建中不求值，
-                // 尚不可用于此（Plan 449 调查结论，见 README）。
-                for i, t in .store.tabs {
-                    if i == .store.tab {
-                        row (style: "items-center bg-[#1C1D24]") {
-                            button (text: t.title, variant: "text") {
-                                onclick: .TabActivate(i)
-                                style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
+            // PLAN-618 T-06: 左文件浏览器树 + 右编辑区双列。tab 条/编辑区
+            // 仍留在根视图(Plan 449 vm 组件边界约束指的是组件子树,容器
+            // 嵌套不受限)。
+            row (style: "flex-1 items-stretch overflow-hidden w-full") {
+                col (style: "w-56 shrink-0 border-r border-border bg-card hidden md:flex flex-col gap-2 p-2 overflow-y-auto") {
+                    text "EXPLORER" { style: "text-[11px] text-zinc-500 px-1 pt-1 tracking-wider" }
+                    TreeView (nodes: .store.tree_nodes, expanded: .store.tree_expanded, selected: .store.tree_sel, on_toggle: .TreeToggle, on_select: .TreeSelect, directory: true) {}
+                }
+                col (style: "flex-1 overflow-hidden") {
+                    row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0") {
+                        // 激活/非激活双分支保留原形态：view fn 片段的参数化条件
+                        // （onclick 实参/条件样式/if 分支）在 vm 视图构建中不求值，
+                        // 尚不可用于此（Plan 449 调查结论，见 README）。
+                        for i, t in .store.tabs {
+                            if i == .store.tab {
+                                row (style: "items-center bg-[#1C1D24]") {
+                                    button (text: t.title, variant: "text") {
+                                        onclick: .TabActivate(i)
+                                        style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
+                                    }
+                                    button (variant: "text") {
+                                        icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
+                                        onclick: .CloseTab(i)
+                                        style: "h-7 w-6 px-0 py-0 mr-2"
+                                    }
+                                }
                             }
-                            button (variant: "text") {
-                                icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
-                                onclick: .CloseTab(i)
-                                style: "h-7 w-6 px-0 py-0 mr-2"
+                            if i != .store.tab {
+                                button (text: t.title, variant: "text") {
+                                    onclick: .TabActivate(i)
+                                    style: "h-8 px-3 text-[12px] text-zinc-500"
+                                }
+                            }
+                        }
+                        button (variant: "text") {
+                            icon (name: "plus", style: "h-3.5 w-3.5 text-zinc-400") {}
+                            onclick: .ActOpen
+                            style: "h-7 w-7 px-0 py-0 ml-1"
+                        }
+                    }
+                    col (style: "h-px w-full bg-border shrink-0")
+
+                    for i, t in .store.tabs {
+                        if t.key == .store.active_key {
+                            code_editor (key: t.key, lang: "auto", style: "flex-1 w-full") {
+                                content: t.src
+                                oninput: .SrcChanged(i)
+                                oncursor: .CursorMoved(i)
+                                oncontextmenu: .EditorCtx
                             }
                         }
                     }
-                    if i != .store.tab {
-                        button (text: t.title, variant: "text") {
-                            onclick: .TabActivate(i)
-                            style: "h-8 px-3 text-[12px] text-zinc-500"
+                    if .store.tab_count == 0 {
+                        col (style: "flex-1 w-full items-center justify-center") {
+                            text "没有打开的文件 — 点击 + 或「文件 → 打开」" {
+                                style: "text-[13px] text-zinc-500"
+                            }
                         }
                     }
-                }
-                button (variant: "text") {
-                    icon (name: "plus", style: "h-3.5 w-3.5 text-zinc-400") {}
-                    onclick: .ActOpen
-                    style: "h-7 w-7 px-0 py-0 ml-1"
-                }
-            }
-            col (style: "h-px w-full bg-border shrink-0")
 
-            for i, t in .store.tabs {
-                if t.key == .store.active_key {
-                    code_editor (key: t.key, lang: "auto", style: "flex-1 w-full") {
-                        content: t.src
-                        oninput: .SrcChanged(i)
-                        oncursor: .CursorMoved(i)
-                        oncontextmenu: .EditorCtx
+                    if .store.console_open {
+                        ConsolePanel()
                     }
                 }
-            }
-            if .store.tab_count == 0 {
-                col (style: "flex-1 w-full items-center justify-center") {
-                    text "没有打开的文件 — 点击 + 或「文件 → 打开」" {
-                        style: "text-[13px] text-zinc-500"
-                    }
-                }
-            }
-
-            if .store.console_open {
-                ConsolePanel()
             }
 
             // Plan 422 P3: 坐标锚弹层 —— 右键编辑器时 EditorCtx(x, y) 记录
@@ -209,5 +223,7 @@ widget App {
         .ActSwitchTab -> { store.ActSwitchTab() }
         .ActFold -> { store.ActFold() }
         .ActAbout -> { store.ActAbout() }
+        .TreeToggle(id) -> { store.TreeToggle(id) }
+        .TreeSelect(id) -> { store.TreeSelect(id) }
     }
 }

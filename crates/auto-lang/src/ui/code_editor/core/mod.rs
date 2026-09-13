@@ -399,6 +399,21 @@ pub fn with_font_system<R>(f: impl FnOnce(&mut FontSystem) -> R) -> R {
     slot.unwrap()
 }
 
+/// 014: 不 panic 变体——回调未安装(真实 iced 后端之外:headless 测试、
+/// 非编辑器渲染路径)返回 None,调用方落近似值。terminal 组件的实测
+/// 字宽走此门(PLAN-009 借道共享 font system,零新依赖)。
+pub fn try_with_font_system<R>(f: impl FnOnce(&mut FontSystem) -> R) -> Option<R> {
+    let call = FONT_SYSTEM_CALL.get().copied()?;
+    let mut slot: Option<R> = None;
+    let mut f = Some(f);
+    (call)(&mut |fs| {
+        if let Some(f) = f.take() {
+            slot = Some(f(fs));
+        }
+    });
+    slot
+}
+
 /// Family for editor body text. `Family::Monospace` goes through
 /// cosmic-text's monospace fallback path, which on Windows picks a font
 /// whose CJK glyphs come out as tofu boxes; a named real font uses the

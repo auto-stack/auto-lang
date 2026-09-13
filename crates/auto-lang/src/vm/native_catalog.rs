@@ -472,6 +472,20 @@ macro_rules! for_each_native {
             (2947, NATIVE_TERM_ENGINE_INTERRUPT, shim_term_interrupt, "auto.term.engine_interrupt"),
             (2948, NATIVE_TERM_ENGINE_IS_EXITED, shim_term_is_exited, "auto.term.engine_is_exited"),
             (2949, NATIVE_TERM_ENGINE_FREE, shim_term_free, "auto.term.engine_free"),
+            // 014 直键入:terminal 键入队列 → 引擎裸写(键盘直键入泵)。
+            (2957, NATIVE_TERM_ENGINE_PUMP_INPUT, shim_term_pump_input, "auto.term.engine_pump_input"),
+            // 014:几何随动 + 光标格(apply_resize 取注册表待定几何;
+            // viewport/cursor 读 glue 采样静态量)。
+            (2958, NATIVE_TERM_ENGINE_CURSOR_ROW, shim_term_cursor_row, "auto.term.engine_cursor_row"),
+            (2959, NATIVE_TERM_ENGINE_CURSOR_COL, shim_term_cursor_col, "auto.term.engine_cursor_col"),
+            (2976, NATIVE_TERM_ENGINE_APPLY_RESIZE, shim_term_apply_resize, "auto.term.engine_apply_resize"),
+            (2977, NATIVE_TERM_ENGINE_VIEWPORT_COLS, shim_term_viewport_cols, "auto.term.engine_viewport_cols"),
+            (2978, NATIVE_TERM_ENGINE_VIEWPORT_ROWS, shim_term_viewport_rows, "auto.term.engine_viewport_rows"),
+            // 014 积压报警回读面(db.at 同源:pending/paused/take-alerts/dropped)。
+            (2979, NATIVE_TERM_ENGINE_BACKLOG_PENDING_MB, shim_term_backlog_pending_mb, "auto.term.engine_backlog_pending_mb"),
+            (2980, NATIVE_TERM_ENGINE_BACKLOG_PAUSED, shim_term_backlog_paused, "auto.term.engine_backlog_paused"),
+            (2981, NATIVE_TERM_ENGINE_BACKLOG_TAKE_ALERTS, shim_term_backlog_take_alerts, "auto.term.engine_backlog_take_alerts"),
+            (2982, NATIVE_TERM_ENGINE_BACKLOG_DROPPED, shim_term_backlog_dropped, "auto.term.engine_backlog_dropped"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -1011,6 +1025,16 @@ macro_rules! for_each_bigvm_native {
             ("auto.term.engine_interrupt", 2947, Int),
             ("auto.term.engine_is_exited", 2948, Bool),
             ("auto.term.engine_free", 2949, Void),
+            ("auto.term.engine_pump_input", 2957, Int),
+            ("auto.term.engine_cursor_row", 2958, Int),
+            ("auto.term.engine_cursor_col", 2959, Int),
+            ("auto.term.engine_apply_resize", 2976, Int),
+            ("auto.term.engine_viewport_cols", 2977, Int),
+            ("auto.term.engine_viewport_rows", 2978, Int),
+            ("auto.term.engine_backlog_pending_mb", 2979, Int),
+            ("auto.term.engine_backlog_paused", 2980, Int),
+            ("auto.term.engine_backlog_take_alerts", 2981, Int),
+            ("auto.term.engine_backlog_dropped", 2982, Int),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -1536,6 +1560,12 @@ macro_rules! for_each_bigvm_native {
             ("io.read_text_async", 2849, Void),
             ("auto.io.write_text_async", 2850, Void),
             ("io.write_text_async", 2850, Void),
+            // Plan 394 Phase A: external-future test fixtures (bare names)
+            ("delay_async", 2990, Void),
+            ("fail_async", 2991, Void),
+            // Plan 394 Phase C: combinators
+            ("future_all", 2992, Void),
+            ("future_race", 2993, Void),
             // === Rust stdlib dispatch (3000) ===
             ("auto.rust_stdlib.dispatch", 3000, Void),
 
@@ -2370,6 +2400,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("io.read_text_async", 2849),
     ("auto.io.write_text_async", 2850),
     ("io.write_text_async", 2850),
+    ("delay_async", 2990),
+    ("fail_async", 2991),
+    ("future_all", 2992),
+    ("future_race", 2993),
     ("auto.rust_stdlib.dispatch", 3000),
     ("sleep", 1202),
     ("parse_sse", 2250),
@@ -2555,6 +2589,16 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_interrupt", 2947),
     ("auto.term.engine_is_exited", 2948),
     ("auto.term.engine_free", 2949),
+    ("auto.term.engine_pump_input", 2957),
+    ("auto.term.engine_cursor_row", 2958),
+    ("auto.term.engine_cursor_col", 2959),
+    ("auto.term.engine_apply_resize", 2976),
+    ("auto.term.engine_viewport_cols", 2977),
+    ("auto.term.engine_viewport_rows", 2978),
+    ("auto.term.engine_backlog_pending_mb", 2979),
+    ("auto.term.engine_backlog_paused", 2980),
+    ("auto.term.engine_backlog_take_alerts", 2981),
+    ("auto.term.engine_backlog_dropped", 2982),
 
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
     ("auto.image.queue", 2960),

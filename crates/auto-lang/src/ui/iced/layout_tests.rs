@@ -944,6 +944,41 @@ fn popover_modal_panel_item_click_publishes_item() {
     assert!(!msgs.contains(&PopMsg::Dismiss), "in-panel click must not dismiss: {msgs:?}");
 }
 
+/// Modal without a trigger: alert-dialog uses an empty anchor in the dynamic
+/// builder. The panel must still be registered in iced's overlay tree.
+#[test]
+fn popover_modal_empty_anchor_places_panel_centered() {
+    let view = View::Column {
+        children: vec![View::Popover {
+            anchor: PopoverAnchor::Widget(Box::new(View::Empty)),
+            content: Box::new(View::Container {
+                child: Box::new(styled_view("EMPTYMODAL")),
+                padding: 0,
+                width: Some(200),
+                height: None,
+                center_x: false,
+                center_y: false,
+                onclick: None,
+                on_right_click: None,
+                style: None,
+            }),
+            placement: PopoverPlacement::Modal,
+            open: true,
+            on_dismiss: None,
+        }],
+        spacing: 0,
+        padding: 0,
+        style: None,
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = simulator(view.into_iced());
+    let (px, py, pw, ph) = bounds_of(&mut ui, "EMPTYMODAL");
+    assert!(pw > 0.0 && ph > 0.0, "empty-anchor modal panel must be visible: {pw}x{ph}");
+    assert!((px - 312.0).abs() <= 110.0, "empty-anchor modal must center horizontally: x {px}");
+    assert!((py - 384.0).abs() <= 40.0, "empty-anchor modal must center vertically: y {py}");
+}
+
 /// Modal 语义视图：与 popover_semantics_view 同构，仅 placement 换 Modal。
 fn popover_modal_view() -> View<PopMsg> {
     let panel_item = View::<PopMsg>::Button {
@@ -1127,7 +1162,7 @@ fn desktop_surface_z_slot_window_covers_icons() {
     let client: iced::Element<'_, crate::ui::session::DesktopMessage> =
         iced::widget::text("WINCLIENT").into();
     let win_el: iced::Element<'static, ()> =
-        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, false, 0.95, client)
+        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, None, 0.95, client)
             .map(|_| ());
 
     // Stack push 序 = view() 装配序（surface 先于虚拟窗 = 底序）。
@@ -1631,4 +1666,25 @@ fn n6d_launcher_mouse_area_wrap_layout_probe() {
     eprintln!("[n6d] (b) 外层 MouseArea: x={x1} w={w1}");
     let (x2, w2, _, _) = n6d_card_bounds(true, true, &mut renderer);
     eprintln!("[n6d] (c) 外层+守卫: x={x2} w={w2}");
+}
+
+/// PLAN-615 T-03 (W1): 按钮标签行盒钳制——`text-lg`（18px、无 leading 类）标签的
+/// 行盒必须贴合字形（≈1.0 行高）。iced 0.14 文本默认 Relative(1.3)，额外 leading
+/// 全落字形上方，无高度类按钮（shrink 高=行盒高）字形在按钮内系统性偏下
+/// （calc 011 数字键盘用户实测）。此断言经 View→into_iced 全管线钉住钳制生效。
+#[test]
+fn button_label_line_box_clamped_to_font_size() {
+    let view = View::Button {
+        label: "7".to_string(),
+        onclick: (),
+        disabled: false,
+        style: crate::ui::style::Style::parse("w-full bg-zinc-700 text-white rounded-lg p-4 text-lg").ok(),
+        on_right_click: None,
+        content: None,
+    };
+    let mut ui = simulator(view.into_iced());
+    let (_x, _y, _w, h) = bounds_of(&mut ui, "7");
+    // text-lg = 18px：钳后行盒 ≈ 18px（615 前为 18 × 1.3 = 23.4px）。
+    assert!(h <= 18.0 * 1.1, "label line box must hug glyphs (~18px), got {h}");
+    assert!(h >= 10.0, "label must still render, got {h}");
 }

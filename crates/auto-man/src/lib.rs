@@ -31,6 +31,7 @@ pub mod builder;
 pub mod cache;
 pub mod dir;
 pub mod scanner;
+pub mod sidecar;
 pub mod target;
 
 // Phase 2B: Package management (completed - depends on Phase 3 & 4)

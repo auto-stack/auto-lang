@@ -3591,7 +3591,11 @@ impl VueGenerator {
             // Plan 132: Check if handler contains API calls (needs async).
             // Plan 053 M5/P5-6: debounced handlers move async/await into the
             // setTimeout callback, so the function itself is synchronous.
-            let is_async = self.handler_has_api_calls(payload) && !is_debounced;
+            // Plan 617 T-06: `Http.get` transpiles to `await (await fetch(..)).json()`,
+            // so a handler whose body awaits must be emitted async. Same heuristic the
+            // module-fn path already uses (`body.contains("await")`).
+            let is_async = (self.handler_has_api_calls(payload) || body.contains("await"))
+                && !is_debounced;
             self.handlers.push((handler_name.clone(), body, is_async));
         }
 
@@ -3833,9 +3837,12 @@ impl VueGenerator {
         // Generate lifecycle hooks from widget.lifecycle
         // .Init → onMounted
         if let Some(init) = widget.lifecycle.iter().find(|l| l.name == "Init") {
-            let is_async = self.handler_has_api_calls(&init.payload);
-            let async_kw = if is_async { "async " } else { "" };
+            // Plan 617 T-06: build the body first so an awaiting `.Init` (e.g. the
+            // /api/media/scan fetch) is emitted `async` instead of producing
+            // "Unexpected reserved word 'await'" from the SFC compiler.
             let body = self.generate_handler_body(&init.payload).unwrap_or_default();
+            let is_async = self.handler_has_api_calls(&init.payload) || body.contains("await");
+            let async_kw = if is_async { "async " } else { "" };
             let indented = Self::indent_body(&body, "  ");
             script.push_str(&format!("onMounted({}() => {{\n{}\n}})\n\n", async_kw, indented));
         }
@@ -5900,6 +5907,80 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     if search {
                         return self.generate_nav_html(props, events, children, indent);
                     }
+                }
+
+                // PLAN-013 T4: terminal 最小只读视口——<pre> 等宽 + v-for 逐行,
+                // 行内容经 Vue 文本插值(HTML 自动转义,引擎输出安全)。
+                // 交互面(选中/回滚 UI/xterm.js 类)属 DEBTS 009 #4 留白,不在本臂。
+                if tag == "terminal" || tag == "Terminal" {
+                    let lines_expr = match props.get("lines") {
+                        Some(AuraPropValue::Expr(expr)) => self.expr_to_vue_bound_value(expr)?,
+                        _ => "[]".to_string(),
+                    };
+                    let mut out = String::new();
+                    out.push_str("<pre class=\"terminal-viewport\" style=\"margin:0;background:#0c0c0c;color:#cccccc;font-family:'Cascadia Mono',Consolas,monospace;font-size:13px;line-height:1.35;padding:8px;white-space:pre;overflow:auto;min-height:10em\">");
+                    out.push_str(&format!(
+                        "<span v-for=\"(line, i) in ({lines_expr})\" :key=\"i\">{{{{ line }}}}&#10;</span>"
+                    ));
+                    out.push_str("</pre>");
+                    return Ok(out);
+                }
+
+                // PLAN-618-1 (P618-1): Plan 422 坐标锚 popover 的 vue 臂重写。
+                // 旧臂发 `<Popover v-model:open>`——shadcn-vue 的 PopoverRoot
+                // 是无条件渲染 slot 的 provider,弹层内容因此常显内联堆叠在
+                // 页面文档流里(027 首屏即现,非业务代码问题)。现自绘
+                // overlay:v-if 门控(open 关即卸载)+ backdrop 点击 dismiss
+                // (ondismiss)+ fixed 坐标锚(x/y),与 VM iced 臂(坐标锚
+                // 面板 + 点击外部关闭)语义对齐。terminal 臂同款早退模式,
+                // 不进 shadcn 装配路径(亦不注册 Popover import)。
+                if tag == "popover" {
+                    let open_expr = props.get("open").and_then(|v| match v {
+                        AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr).ok(),
+                        _ => None,
+                    });
+                    let class_str = props
+                        .get("class")
+                        .and_then(|v| self.extract_string_value(v))
+                        .unwrap_or_default();
+                    let xy = match (props.get("x"), props.get("y")) {
+                        (
+                            Some(AuraPropValue::Expr(xe)),
+                            Some(AuraPropValue::Expr(ye)),
+                        ) => {
+                            match (
+                                self.expr_to_vue_bound_value(xe),
+                                self.expr_to_vue_bound_value(ye),
+                            ) {
+                                (Ok(x), Ok(y)) => {
+                                    format!("left: {} + 'px', top: {} + 'px'", x, y)
+                                }
+                                _ => "left: 8px, top: 8px".to_string(),
+                            }
+                        }
+                        _ => "left: 8px, top: 8px".to_string(),
+                    };
+                    let mut out = String::new();
+                    // backdrop:仅当声明 ondismiss 时发射(点击空白处关闭)。
+                    if let Some(ev) = events.get("ondismiss") {
+                        let handler = self.handler_to_function_call(&ev.handler);
+                        self.used_handlers.insert(handler.clone());
+                        out.push_str(&format!(
+                            "<div v-if=\"{}\" class=\"fixed inset-0 z-40\" @click=\"{}\"></div>\n",
+                            open_expr.clone().unwrap_or_else(|| "true".to_string()),
+                            handler
+                        ));
+                    }
+                    let panel_open = open_expr.unwrap_or_else(|| "true".to_string());
+                    out.push_str(&format!(
+                        "<div v-if=\"{}\" class=\"fixed z-50 {}\" :style=\"{{ {} }}\">\n",
+                        panel_open, class_str, xy
+                    ));
+                    for child in children {
+                        out.push_str(&self.node_to_html(child, indent + 1)?);
+                    }
+                    out.push_str("</div>\n");
+                    return Ok(out);
                 }
 
                 // Check if this is a known sub-widget (custom component, not shadcn)

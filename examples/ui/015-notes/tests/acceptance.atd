@@ -2,131 +2,133 @@
 
 > 本文件是 015-notes 功能测试的 **single source of truth**。
 > 每个 T 条目声明一个验收场景（领域语言），对应的 Playwright 测试在
-> `smoke.spec.ts` / `accent-dark.spec.ts` 里用同一 ID 实现。
+> `smoke.spec.ts` / `accent-dark.spec.ts` 里用同一 ID 实现，
+> MCP 可执行子集在 `015-notes.autotest`（`run_autotest.py` 驱动）。
 >
 > **契约依据**引用 `docs/plans/363-autoui-generation-skill.md` 的
 > generator-contracts.md（C-XXX 编号）。
+>
+> **PLAN-616 重写说明**：本契约随「清爽化重做」整体重写。重点变化——
+> ① 去掉模态编辑（Edit/Save/Cancel 模式）改为**始终可编辑 + 显式保存**；
+> ② 搜索由 known-gap 改为**强断言**；③ 标签筛选由死代码改为**强断言**；
+> ④ 置顶要求**落库**；⑤ 删除要求**两步确认**；⑥ 视图筛选改为
+> All/Pinned/文件夹/标签 胶囊（旧 All/Pinned/Recent 分段控件退役）。
 
 ---
 
 ## 导航类
 
 ### T1: 笔记切换
-- **当** 用户点击侧栏中的 "Shopping List"
-- **那么** 编辑区应显示包含 "Milk" 的内容
-- **且** 不应在控制台出现 Tiptap unmount 错误
-- **契约依据**：C1（组件实例身份）、C6（列表渲染与 key）
+- **操作**：点击列表中的笔记行（如 `Shopping List`）
+- **期望**：编辑区标题与正文切换为该笔记内容
+- **契约**：C1（同名组件 v-if 分支唯一 key）、C6（for 循环 key）
+- **实现**：`NavTree.NoteRow.onclick → store.SelectNote(k)`（k 是索引表元素 = `.notes` 下标）
 
-### T2: View tabs 切换
-- **当** 用户点击 "Pinned" tab
-- **那么** 列表只显示 `pinned == true` 的笔记
-- **当** 用户点击 "Recent" tab
-- **那么** 列表显示全部笔记（无文件夹分组）
-- **当** 用户点击 "All" tab
-- **那么** 列表按 Notes / Work / Personal 文件夹分组
+### T2: 视图筛选（替换旧 View tabs）
+- **操作**：点击筛选胶囊 `All` / `Pinned` / 文件夹名
+- **期望**：`Pinned` 只列置顶笔记（普通列表为空）；`All` 恢复全量且**置顶笔记进
+  `Pinned` 分组**、其余进 `Notes` 分组；文件夹胶囊只列该文件夹下的笔记
+- **实现**：`store.ApplyFilter` 产出 `visible_pinned` / `visible_notes` 索引表
+
+### T2-GROUP: 分组与选中
+- **期望**：选中行使用侧栏契约的 active 底色；`Notes` 分组标签常驻可见
+- **历史**：旧契约用 `📁` emoji 断分组标题（Plan 562 nav→sidebar 迁移后 emoji 消失，
+  断言随之失真）——本契约改为断言**分组标签文本**，不再依赖 emoji
 
 ---
 
 ## 筛选类
 
-### T3: 搜索（当前未实现，标记为 known-gap）
-- **状态**：⚠️ **功能缺失**。搜索框能输入但不过滤列表。
-- **预期**（修复后）：用户输入 "Shopping"，列表只剩标题/正文匹配的笔记。
-- **跟踪**：记录在 015-notes 待办，本契约暂不强制执行。
+### T3: 搜索（原 known-gap，现为强断言）
+- **操作**：在搜索框输入 `milk` → 列表只剩正文命中的 `Shopping List`（**大小写不敏感**），无 `Welcome`
+- **操作**：清空搜索 → 恢复全量列表
+- **实现**：`store.SetSearch(q) → ReloadNotes()`，命中集由后端 `search_notes`
+  （内部 `to_lower`）给出，前端不做逐条比对
 
-### T4: Tag 筛选
-- **当** 用户点击侧栏的 "work" tag 筛选按钮
-- **那么** 列表只显示 `tags` 包含 "work" 的笔记
-- **当** 再次点击同一 tag
-- **那么** 清除筛选，恢复完整列表
+### T3b: 搜索无命中空态
+- **操作**：输入 `zzzzz`
+- **期望**：出现 `No matching notes` 空态（与「一条笔记都没有」的空态区分）
+
+### T4: Tag 筛选（原死代码，现为强断言）
+- **操作**：点击标签胶囊 `#home`
+- **期望**：`active_tag = "home"`，列表只剩带该标签的笔记；点 `All` 清除
+- **实现**：`all_tags` 由 `computed`（恒空）改为**模型字段**，由 `.SeedVocab` 从笔记数据派生
 
 ---
 
 ## 编辑类
 
-### T5: Edit / Save / Cancel 循环
-- **当** 用户点击 "Edit"
-- **那么** 编辑器应显示当前笔记内容（非空）
-- **且** 标题变为可编辑输入框，预填当前标题
-- **当** 用户修改标题后点击 "Save"
-- **那么** 新标题持久化到后端（刷新后仍存在）
-- **当** 用户点击 "Cancel"（未保存）
-- **那么** 返回只读模式，内容保持原样
-- **契约依据**：C1（双 editor v-if 切换必须正确）
+### T5: 始终可编辑 + 显式保存
+- **操作**：直接编辑标题/正文 → 进入未保存态（`dirty = true`，出现 `Save` 与 `Unsaved changes`）
+- **操作**：点击 `Save`（或标题回车）→ 落库并回到已保存态（`dirty = false`，状态回到 `Saved`），列表行标题同步更新
+- **契约**：C4（view 引用的 handler 必须在 on 块定义）
+- **历史**：旧契约是「Edit → Save/Cancel 模态循环」，`Cancel` 丢弃改动；新模型无读/写模式切换
+
+### T5c: 切换笔记自动落盘（回归）
+- **操作**：编辑标题但不保存 → 点击另一条笔记 → 再切回来
+- **期望**：改动仍在（前一条草稿在切换时已自动落库）
+- **历史教训**：旧模态模型下「编辑中切换笔记」会丢草稿，这是本次重做的核心动机之一
 
 ### T6: 创建新笔记
-- **当** 用户点击 header 的 "New" 按钮
-- **那么** 后端应创建一个空笔记
-- **且** 该笔记出现在列表中
-- **状态**：⚠️ 新笔记不自动选中/进入编辑模式（体验瑕疵）
+- **操作**：点击 `New note`
+- **期望**：后端新增一条空笔记，并**自动选中它**（编辑区标题为空、可直接打字）
+- **历史**：旧契约把「新建不自动选中」记为「已接受瑕疵」——本计划修掉
 
-### T7: 删除笔记
-- **当** 用户在编辑区点击 "Delete"
-- **那么** 当前笔记从后端删除
-- **且** 列表更新，编辑区切换到剩余的第一个笔记（如有）
+### T7: 删除需两步确认
+- **操作**：点击 `Delete` → 出现确认（`Delete` / `Cancel`）；点 `Cancel` 不删除
+- **操作**：再次点击 `Delete` 确认 → 笔记被删除，列表少一行
+- **历史**：旧契约是一击即删（无撤销）
 
 ---
 
 ## 元数据类
 
-### T8: Pin 置顶切换
-- **当** 用户在编辑区点击 📌 按钮
-- **那么** 该笔记的 `pinned` 状态切换
-- **且** 在 "Pinned" tab 中相应地出现/消失
+### T8: Pin 置顶（落库）
+- **操作**：点击 `Pin note` → 按钮变为 `Unpin`；`Pinned` 分组出现该笔记
+- **操作**：切换筛选并重新选中该笔记 → 仍显示 `Unpin`（**已落库**，非仅内存翻转）
+- **历史**：旧实现 `TogglePin(idx)` 只翻转本地 `notes[idx].pinned`，刷新即丢
 
-### T9: Tag 添加
-- **当** 用户 hover tag 行并点击 "+ tag"
-- **那么** 出现 tag 名输入框
-- **当** 输入 "testtag" 并点 "✓"
-- **那么** 该 tag 出现在笔记上 + 侧栏筛选区
-- **且** 持久化到后端
+### T9: Tag 增删
+- **操作**：点 `Tag` → 输入标签名 → 回车（或点确认）→ 标签出现在笔记胶囊与筛选胶囊两处并持久化
+- **操作**：点标签胶囊上的 `×` → 标签被移除
+- **已知限制**：筛选胶囊词表不回收「已删除标签」（清空重建受 VM codegen 限制，见 PLAN-616 §10.3）
 
-### T10: 文件夹内新建
-- **当** 用户在 "Work" 文件夹标题旁点击 "+"
-- **那么** 创建一个 `folder == "work"` 的新笔记
-- **状态**：功能存在但未深度验证（依赖 T6 的体验修复）
+### T10: 文件夹作用域下新建
+- **操作**：先选某个文件夹胶囊，再点 `New note`
+- **期望**：新笔记创建在该文件夹下（清空搜索以保证可见）
+- **历史**：旧契约是「文件夹标题旁的 `+` 按钮」；新 UI 无分组级按钮，改为跟随当前作用域
 
 ---
 
 ## 主题类
 
-### T11: Dark mode 切换
-- **当** 用户点击 "🌙 Dark" 按钮
-- **那么** 应用根元素获得 `dark` class
-- **且** body 背景平滑过渡（`transition: background-color`）
-- **当** 再次点击（显示为 "☀ Light"）
-- **那么** 移除 `dark` class，回到亮色
+### T11: Dark / Light 切换
+- **操作**：`Settings` → `Light`；再 `Dark`
+- **期望**：`dark_mode` 状态与根元素 `dark` class 同步翻转
+- **注意**：顶栏图标按钮只做快切；`Settings` 面板的 `Dark`/`Light` 是显式设定（`SetMode`），避免「点 Dark 反而切到 Light」
 
 ### T12: 5 色主题切换（亮色模式）
-- **当** 用户依次点击 indigo / coral / ocean / sage / amber 色板
-- **那么** `<html>` 的 `--primary` CSS 变量依次变为对应 HSL
-- **且** "New" 按钮的背景色实时跟随
-- **且** `localStorage['notes-accent-color']` 保存当前选择
-- **契约依据**：C-ACCENT-1（accent 写入的 CSS 变量必须覆盖 Tailwind 默认）
+- **操作**：依次点击外观面板 5 个色板
+- **期望**：`<html>` 的 `--primary` 变为对应 HSL；`New note` 按钮底色跟随；
+  `localStorage['notes-accent-color']` 记录选择
+- **契约**：C-ACCENT-1
 
 ### T12-DARK: 5 色主题切换（暗色模式）⚠️ 关键回归测试
-- **当** 用户切换到 Dark 模式
-- **且** 依次点击 5 个色板
-- **那么** "New" 按钮的背景色必须跟随（不是暗色模式的默认近白色）
-- **且** 暗色模式下 lightness 应比亮色高 ~4%（对比度补偿）
-- **契约依据**：**C-DARK-1**（`.dark` class 所在元素与 `--primary` inline 修改必须在同一 DOM 元素，否则子元素的 `.dark { --primary }` 规则会覆盖 `<html>` 的继承值）
-- **历史教训**：Plan 360 实施时，applyAccent 把 `--primary` 写到 `<html>`，但 `.dark` class 在 `#app > div` 上，导致暗色模式下 accent 失效。本测试正是为防此类跨层冲突回归而设。
+- **期望**：暗色下 5 色板仍驱动 `New note` 底色（**不回落为近白**）；暗色亮度比亮色高约 +10%（Plan 601 统一值）
+- **契约**：**C-DARK-1**——`.dark` class 元素与 inline `--primary` 写入必须同元素
+- **历史教训**：Plan 360 曾把 `--primary` 写到 `<html>` 而 `.dark` 在 `#app > div` 上
 
 ### T13: 控制台无实质错误
-- **当** 执行上述所有操作时
-- **那么** 浏览器控制台不应出现 JavaScript 错误
-- **允许**：favicon 404、第三方库的非致命警告
-- **禁止**：Tiptap "view is not available"、Vue "Unhandled error"、`store is not defined`
+- **允许**：favicon 404、第三方非致命警告
+- **禁止**：`view is not available`、`Unhandled error`、`store is not defined`
 
 ---
 
 ## 生成器契约依据汇总
 
-本契约引用的生成器契约（详见 Plan 363 的 generator-contracts.md）：
-
 | 契约 ID | 内容 | 关联测试 |
 |---------|------|----------|
-| C1 | 同名组件在 v-if 分支必须获得唯一稳定 key | T1, T5 |
+| C1 | 同名组件在 v-if 分支必须获得唯一稳定 key | T1 |
 | C6 | for 循环列表项自动绑定 key | T1 |
 | C-ACCENT-1 | accent 写入的 CSS 变量必须覆盖 Tailwind `--primary` 默认 | T12, T12-DARK |
 | **C-DARK-1** | `.dark` class 与 `--primary` inline 修改必须同元素 | **T12-DARK** |
@@ -136,105 +138,48 @@
 
 ## 桌面模式行为契约（Plan 370 + Plan 371）
 
-以下 D 条目声明跨平台行为约束。标注了每个平台的支持状态。
-桌面测试由 `desktop_behavior.rs`（Headless）、`desktop_mcp.py`（MCP）、
-`015-notes.autotest`（MCP 场景声明，Plan 371）执行。
+以下 D 条目声明跨平台行为约束。桌面测试由 `desktop_behavior.rs`（Headless）、
+`desktop_mcp.py`（MCP）、`015-notes.autotest`（MCP 场景声明）执行。
 
-### D1: 状态初始化
-- **当** widget 挂载并触发 Init
-- **那么** model 声明的状态字段应全部可读
-- **且** 初始值与 .at 声明一致
-- **平台**: Web ✅ | VM ✅ | Rust ✅
-- **测试**: desktop_behavior.rs D1
-
-### D2: Handler 执行
-- **当** 触发 .Inc handler
-- **那么** count 状态正确递增
-- **平台**: Web ✅ | VM ✅ | Rust ✅
-- **测试**: desktop_behavior.rs D2, desktop_mcp.py T-MCP-3
-
-### D3: 事件参数传递
-- **当** handler 接收字符串参数（如 SetName(n)）
-- **那么** 参数值正确传递到 handler body
-- **平台**: Web ✅ | VM ⚠️（VM string assignment 有 overflow bug） | Rust ✅
-- **测试**: desktop_behavior.rs D3
-
-### D4: 布尔状态切换
-- **当** 触发 .Toggle handler（dark_mode = !dark_mode）
-- **那么** 布尔状态正确翻转
-- **平台**: Web ✅ | VM ✅ | Rust ✅
-- **测试**: desktop_behavior.rs D4
-
-### D5: 条件逻辑
-- **当** handler body 含 if 条件
-- **那么** 条件分支正确执行
-- **平台**: Web ✅ | VM ✅ | Rust ✅
-- **测试**: desktop_behavior.rs D5
-
-### D6: 视图模板完整性
-- **当** widget 构造完成
-- **那么** view_template 生成有效的 AuraNode 树
-- **平台**: Web ✅ | VM ✅ | Rust ✅
-- **测试**: desktop_behavior.rs D6, desktop_mcp.py T-MCP-1
-
-### D7: MCP 交互闭环
-- **当** 通过 MCP 工具 snapshot → click → state 查询
-- **那么** UI 快照正确、点击触发 handler、state 实时更新
-- **平台**: Web ✅（Playwright） | VM ✅（MCP 9247） | Rust ✅（MCP 9247，Plan 371）
-- **测试**: desktop_mcp.py T-MCP-1 到 T-MCP-6, 015-notes.autotest T2a-T12（13 场景全 PASS）
-- **MCP 工具**: autoui_snapshot, autoui_find, autoui_exists, autoui_action, autoui_state, autoui_inspect, autoui_keyboard
-- **Rust 模式限制**: autoui_state 不可用（Component trait 无泛型 state 访问），用 skip_if rust 跳过 state 断言
+### D1: 状态初始化 — Web ✅ / VM ✅ / Rust ✅
+### D2: Handler 执行 — Web ✅ / VM ✅ / Rust ✅
+### D3: 事件参数传递 — Web ✅ / VM ⚠️（历史字符串赋值溢出） / Rust ✅
+### D4: 布尔状态切换 — Web ✅ / VM ✅ / Rust ✅
+### D5: 条件逻辑 — Web ✅ / VM ✅ / Rust ✅
+### D6: 视图模板完整性 — Web ✅ / VM ✅ / Rust ✅
+### D7: MCP 交互闭环 — Web ✅（Playwright）/ VM ✅（MCP）/ Rust ✅（MCP）
+- 工具：`autoui_snapshot, autoui_find, autoui_exists, autoui_action,
+  autoui_state, autoui_inspect, autoui_keyboard, autoui_type, autoui_screenshot`
+- Rust 限制：`autoui_state` 不可用 → `skip_if rust`
 
 ---
 
 ## 桌面模式 known-gap（Plan 370）
 
-以下 D-GAP 条目记录桌面模式的已知限制。这些**不是测试失败**，而是
-平台差异——Web 有但桌面（iced/VM）没有的特性。
+- D-GAP-1 语义 CSS token — ✅ 已修复
+- D-GAP-2 dark mode — ✅ 已修复
+- D-GAP-3 AutoDownEditor（Tiptap 富文本）— ⚠️ 部分修复；**PLAN-616 决定**正文继续用原生
+  `textarea`（纯文本），不引入富文本编辑器
+- D-GAP-4 store composable — ✅ 已修复
+- D-GAP-5 accent 主题色 — ✅ 已修复
 
-### D-GAP-1: 语义 CSS token  ✅ 已修复 (Plan 370/371)
-- **Web**: bg-primary/text-foreground/bg-card/bg-muted/border-border 等生效（CSS 变量）
-- **Desktop VM**: ✅ 已修复。iced adapter 映射 semantic token → Color 枚举
-  (Primary/Background/Surface 等)。dark mode 通过 `set_dark_mode`/`set_accent_name`
-  驱动调色板切换。主题色（indigo/coral/ocean/sage/amber）的 5 个色块全部渲染。
-  - 验证：015-notes.autotest T12（accent_color=indigo）
-- **Desktop Rust**: ⚠️ a2r 生成的代码不使用 semantic token（使用硬编码 RGB）
+---
 
-### D-GAP-2: dark mode  ✅ 已修复 (Plan 370/371)
-- **Web**: `:class="{ dark: store.dark_mode }"` + CSS 变量切换
-- **Desktop VM**: ✅ 已修复。iced renderer 监听 dark_mode 状态切换调色板。
-  - 验证：015-notes.autotest T11/T11b（dark_mode 切换）
-- **Desktop Rust**: ⚠️ DevToolsWrapper 不读 dark_mode 状态
+## PLAN-616 新增：示例侧 DSL/VM 使用约束
 
-### D-GAP-3: AutoDownEditor（Tiptap 富文本）  ⚠️ 部分修复
-- **Web**: `<AutoDownEditor>` 挂载 Tiptap WYSIWYG 编辑器
-- **Desktop VM**: ✅ 已降级为 textarea（plain-text）。`convert_textarea` 接受
-  `content:` prop（alias for `value:`）和 `onupdate` 事件。
-  - 验证：015-notes.autotest T5a-T5e（Edit/Save/Cancel + 输入文字）
-- **Desktop Rust**: ⚠️ a2r 不识别 `autodown_editor`（不在 KNOWN_TAGS）
+本次重做在真实后端数据上实证了一批「VM 端不可用/会 panic」的写法，
+作为**示例可依赖的 DSL 子集**记录（完整清单与探针方法见 PLAN-616 §4.2）：
 
-### D-GAP-4: store composable  ✅ 已修复 (Plan 370)
-- **Web**: `use store: NotesStore` → Vue reactive composable，跨组件共享
-- **Desktop VM**: ✅ 已修复。store 的 state 字段（notes/active_id/active_folder/...）
-  合并进 root widget 的状态对象；store 方法调用（`store.NewNote()`、
-  `store.TogglePin(id)`、`store.SetAccent(name)` 等，含带参）经 codegen rewrite 为
-  `handler_<StoreName>_<Method>` 并在合并 VM 中执行。VmRef 列表字段在 MCP
-  snapshot/state 工具中 materialize 为内联 Array。
-  - 验证：`plan370_store_vm_tests`（数据层：notes=6 种子数据）、
-    `plan370_015_behavior_tests`（D1-D10 handler 行为：NewNote/SelectNote/
-    TogglePin/SetAccent/Edit 等 9 项全绿）、`015-notes.autotest`（13 场景全 PASS）、
-    `desktop_mcp.py`（真实 iced 窗口：点 New → notes 6→7）。
-- **Desktop Rust**: ✅ MCP 已支持（Plan 371 Tasks 11-14）。a2r 生成的 015-notes
-  可通过 MCP 操作（find/action/exists），但 UI 是旧版本（需重新生成以匹配 .at 源码）。
-- ~~NavTree FALLBACK 遗留~~: ✅ 已修复。view fn 片段注册 + 单级 Dot self-ref
-  修复后，NavTree 笔记列表正常渲染（6 条笔记 + 文件夹分组）。
-
-### D-GAP-5: accent 主题色  ✅ 已修复 (Plan 370/371)
-- **Web**: applyAccent 写 CSS 变量 + localStorage 持久化
-- **Desktop VM**: ✅ 已修复。5 个色块（indigo/coral/ocean/sage/amber）全部渲染，
-  点击切换 accent_color 状态。rose/emerald/amber 色系已加入 Tailwind 调色板。
-  - 验证：015-notes.autotest T12（accent_color=indigo）
-- **Desktop Rust**: ⚠️ a2r 生成代码不使用 accent 机制
+| 约束 | 现象 | 替代写法 |
+|---|---|---|
+| `text "…${x}…"` 插值 | 两端都渲染成字面量 | `text <ref>` / `text <prop.field>` |
+| `view fn` 标量 prop 做文本 | VM 端文本节点不渲染 | 只传对象 prop + 点路径（如 `note: Note`） |
+| `.field = []` | VM codegen panic `Assignment to complex LHS` | 用类型化局部量构建后整体赋值 |
+| 局部 `[]str`/`[]Note` → 状态字段 | 同上 panic | 局部 `[]int` 可赋值；或直接 `push` 到状态字段 |
+| 视图条件里的方法调用 `x.contains(y)` | VM 端恒假（`resolve_binding_path` 不支持方法调用） | 过滤下沉到 store 产出**索引表**，视图只解引用 |
+| `flex-wrap` | VM 不支持（降级单行） | 拆成多行容器 |
+| 按钮无显式宽度 | VM 端按 Fill 撑开布局 | 按钮加 `w-auto` |
+| 无文字标签的纯图标按钮 | MCP `autoui_find` 按 label 找不到 | 需要被场景驱动的控件带文字标签 |
 
 ---
 
@@ -244,3 +189,4 @@
 - 新增生成器契约时，在"契约依据汇总"加行，并关联到对应 T
 - 修复 bug 时，加一个**回归测试**条目（如 T12-DARK），标注"历史教训"
 - 新增桌面特性或修复 D-GAP 时，**同步更新 D/D-GAP 条目**
+- 新增 DSL/VM 使用约束时，补进「示例侧 DSL/VM 使用约束」表

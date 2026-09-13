@@ -1,117 +1,139 @@
 /**
- * 015-notes 冒烟测试（Plan 366a）
+ * 015-notes 冒烟测试（PLAN-616 重写）
  *
- * 对应 tests/acceptance.atd 的 T1-T13 契约。
+ * 对应 tests/acceptance.atd 的 T1-T13 契约（清爽化重做后的语义）。
  *
- * 设计原则：
- * - 每个 test 自包含，不依赖前一个 test 的状态
- * - 只读测试（导航/筛选/主题）在前，破坏性测试（Edit/Save/Delete）在后
- * - 破坏性测试自行清理（改回原标题、删临时笔记）
+ * 与旧版的关键差异：
+ * - 笔记行有稳定钩子类 `note-row`（sidebar.at 的 NoteRow），不再用
+ *   `button[class*="rounded-lg"]` 这种会误命中「设置/编辑/删除」的代理选择器
+ * - 正文是原生 `textarea`（无 Tiptap / 无 `.ProseMirror`）
+ * - 编辑是「始终可编辑 + 显式保存」：直接输入 → 出现 Save → 点击落库
+ * - 筛选是 All/Pinned/文件夹/标签 胶囊（无 All/Pinned/Recent 分段控件、无 📁 emoji）
+ * - 搜索真正生效（旧契约是 known-gap / test.skip）
  *
  * 前置条件：dev server + 后端 API 已就绪（auto run）。
  */
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+
+const TITLE = 'input[placeholder="Untitled"]'
+const BODY = 'textarea[placeholder="Start writing..."]'
+const SEARCH = 'input[placeholder="Search notes"]'
+
+const rows = (page: Page) => page.locator('button.note-row')
+const saveBtn = (page: Page) => page.getByRole('button', { name: 'Save' })
+// exact 必需：临时笔记标题里含 "delete" 会撞上模糊名字匹配（strict mode）
+const deleteBtn = (page: Page) => page.getByRole('button', { name: 'Delete', exact: true })
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
-  // 等侧栏 New 按钮出现（说明应用加载完成）
-  await page.locator('button:has-text("New")').waitFor({ timeout: 10000 })
+  await page.getByRole('button', { name: 'New note' }).waitFor({ timeout: 10000 })
   await page.waitForTimeout(800) // 等 store.Init 的 API 调用 + 渲染
 })
 
 // ============================================================================
-// 导航类（只读，无副作用）
+// 导航类（只读）
 // ============================================================================
 
-test('T1: 笔记切换更新编辑区内容', async ({ page }) => {
-  // 找侧栏的笔记按钮（不是 New、不是色板、不是 tag）
-  const noteButtons = page.locator('button[class*="rounded-lg"]')
-  const count = await noteButtons.count()
-  expect(count).toBeGreaterThan(0)
-
-  // 点击最后一个笔记
-  await noteButtons.last().click()
-  await page.waitForTimeout(800) // 等 editor 切换 + Tiptap 挂载
-
-  // 编辑区应该有 ProseMirror（editor 创建成功）
-  // 这是 T1 的核心断言：切换后 Tiptap editor 正确初始化（之前的 bug 是空白）
-  const proseMirror = page.locator('.ProseMirror')
-  if (await proseMirror.count() > 0) {
-    const content = await proseMirror.textContent()
-    // 内容可能为空（某些 seed 笔记 body 为空），但 editor 必须存在
-    expect(proseMirror).toBeVisible()
-  }
+test('T1: 点击列表切换笔记', async ({ page }) => {
+  await rows(page).filter({ hasText: 'Shopping List' }).first().click()
+  await page.waitForTimeout(600)
+  await expect(page.locator(TITLE)).toHaveValue('Shopping List')
+  await expect(page.locator(BODY)).toHaveValue(/Milk/)
 })
 
-test('T2: View tabs — Pinned 无文件夹标题', async ({ page }) => {
-  await page.locator('button:has-text("Pinned")').click()
-  await page.waitForTimeout(300)
-  expect(await page.locator('text=📁').count()).toBe(0)
-})
-
-test('T2: View tabs — All 有文件夹标题', async ({ page }) => {
-  await page.locator('button:has-text("All")').click()
-  await page.waitForTimeout(300)
-  expect(await page.locator('text=📁').count()).toBeGreaterThan(0)
-})
-
-test('T2: View tabs — Recent 显示所有笔记', async ({ page }) => {
-  await page.locator('button:has-text("Recent")').click()
-  await page.waitForTimeout(300)
-  // Recent 不应有文件夹标题（和 Pinned 类似）
-  expect(await page.locator('text=📁').count()).toBe(0)
-})
-
-// T3 搜索 — known-gap（功能未实现）
-test.skip('T3: 搜索（known-gap）', async () => {})
-
-test('T4: Tag 筛选改变笔记列表', async ({ page }) => {
-  // 找 tag 筛选按钮（不是色板、不是 tag pill 上的 ×）
-  const tagFilters = page.locator('button[class*="rounded-full"][class*="bg-muted"]')
-  const tagCount = await tagFilters.count()
-  if (tagCount === 0) return // 没 tag 就跳过
-
-  const beforeNotes = await page.locator('button[class*="rounded-lg"]').count()
-  await tagFilters.first().click()
-  await page.waitForTimeout(400)
-  const afterNotes = await page.locator('button[class*="rounded-lg"]').count()
-  // 筛选后笔记数应 ≤ 筛选前
-  expect(afterNotes).toBeLessThanOrEqual(beforeNotes)
-})
-
-// ============================================================================
-// 主题类（只读状态，但有 localStorage 副作用）
-// ============================================================================
-
-test('T11: Dark mode 切换根元素的 dark class', async ({ page }) => {
-  const root = page.locator('#app > div').first()
-  const beforeDark = await root.evaluate(el => el.className.includes('dark'))
-
-  // 找到 dark/light 切换按钮（文本可能是 🌙 Dark 或 ☀ Light）
-  const toggle = page.locator('button:has-text("Dark"), button:has-text("Light")')
-  await toggle.click()
+test('T2a: Pinned 筛选只剩置顶笔记', async ({ page }) => {
+  await page.getByRole('button', { name: 'Pinned' }).click()
   await page.waitForTimeout(500)
+  await expect(rows(page)).toHaveCount(1)
+  await expect(rows(page).filter({ hasText: 'Welcome' })).toHaveCount(1)
+})
 
-  const afterDark = await root.evaluate(el => el.className.includes('dark'))
-  expect(afterDark).toBe(!beforeDark)
+test('T2b: All 恢复全量（置顶与普通都在列表里）', async ({ page }) => {
+  await page.getByRole('button', { name: 'All' }).click()
+  await page.waitForTimeout(500)
+  await expect(rows(page)).toHaveCount(6) // 6 条种子笔记
+  await expect(rows(page).filter({ hasText: 'Welcome' })).toHaveCount(1)
+  await expect(rows(page).filter({ hasText: 'Quick Ideas' })).toHaveCount(1)
+})
+
+test('T2c: 文件夹筛选（personal）', async ({ page }) => {
+  await page.getByRole('button', { name: 'personal' }).click()
+  await page.waitForTimeout(500)
+  await expect(rows(page)).toHaveCount(2)
+  await expect(rows(page).filter({ hasText: 'Shopping List' })).toHaveCount(1)
+  await expect(rows(page).filter({ hasText: 'Quick Ideas' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'All' }).click()
+})
+
+// ============================================================================
+// 筛选类：搜索（旧契约的 known-gap，现在必须真过滤）
+// ============================================================================
+
+test('T3: 搜索命中且大小写不敏感', async ({ page }) => {
+  await page.locator(SEARCH).fill('milk')
+  await page.waitForTimeout(700)
+  await expect(rows(page)).toHaveCount(1)
+  await expect(rows(page).filter({ hasText: 'Shopping List' })).toHaveCount(1)
+
+  await page.locator(SEARCH).fill('')
+  await page.waitForTimeout(700)
+  await expect(rows(page)).toHaveCount(6)
+})
+
+test('T3b: 搜索无命中显示空态', async ({ page }) => {
+  await page.locator(SEARCH).fill('zzzzz')
+  await page.waitForTimeout(700)
+  await expect(rows(page)).toHaveCount(0)
+  await expect(page.getByText('No matching notes')).toBeVisible()
+  await page.locator(SEARCH).fill('')
+  await page.waitForTimeout(500)
+})
+
+// T4 标签筛选（旧契约里标签行恒空、断言形同虚设）
+test('T4: 标签筛选生效', async ({ page }) => {
+  await page.locator('button').filter({ hasText: /#\s*home/ }).first().click()
+  await page.waitForTimeout(600)
+  await expect(rows(page)).toHaveCount(2)
+  await expect(rows(page).filter({ hasText: 'Shopping List' })).toHaveCount(1)
+  await page.getByRole('button', { name: 'All' }).click()
+  await page.waitForTimeout(400)
+  await expect(rows(page)).toHaveCount(6)
+})
+
+// ============================================================================
+// 主题类
+// ============================================================================
+
+test('T11: 主题切换翻转根元素 dark class', async ({ page }) => {
+  const root = page.locator('#app > div').first()
+  const before = await root.evaluate(el => el.className.includes('dark'))
+
+  await page.getByRole('button', { name: 'Theme' }).click()
+  await page.waitForTimeout(600)
+  const after = await root.evaluate(el => el.className.includes('dark'))
+  expect(after).toBe(!before)
+
+  await page.getByRole('button', { name: 'Theme' }).click() // 复原
+  await page.waitForTimeout(400)
 })
 
 test('T13: 控制台无实质错误', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', err => errors.push(err.message))
 
-  // 触发一批操作
-  await page.locator('button:has-text("Pinned")').click()
+  await page.getByRole('button', { name: 'Pinned' }).click()
   await page.waitForTimeout(200)
-  await page.locator('button:has-text("All")').click()
+  await page.getByRole('button', { name: 'All' }).click()
   await page.waitForTimeout(200)
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.waitForTimeout(200)
+  await page.getByRole('button', { name: 'Light' }).click()
+  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Dark' }).click()
+  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Settings' }).click()
 
-  // 禁止的错误模式（本次会话教训）
-  const forbidden = [
-    'view is not available',
-    'Unhandled error',
-    'store is not defined',
-  ]
+  const forbidden = ['view is not available', 'Unhandled error', 'store is not defined']
   for (const pattern of forbidden) {
     const found = errors.find(e => e.includes(pattern))
     expect(found, `禁止的控制台错误 "${pattern}": ${found}`).toBeUndefined()
@@ -122,99 +144,90 @@ test('T13: 控制台无实质错误', async ({ page }) => {
 // 编辑类（破坏性，放最后；每个 test 自行清理）
 // ============================================================================
 
-test('T5: Edit 显示当前笔记内容', async ({ page }) => {
-  // 先选第一个笔记确保有内容
-  const noteButtons = page.locator('button[class*="rounded-lg"]')
-  if (await noteButtons.count() === 0) return
-  await noteButtons.first().click()
+test('T5a/T5b: 直接编辑 → Save 出现 → 落库', async ({ page }) => {
+  await rows(page).first().click()
   await page.waitForTimeout(500)
-
-  await page.locator('button:has-text("Edit")').click()
-  await page.waitForTimeout(1000) // Tiptap 挂载
-
-  // 标题输入框应有值
-  const titleInput = page.locator('input[placeholder="Note title..."]')
-  await expect(titleInput).toHaveValue(/\S/)
-
-  // ProseMirror editor 应存在且可见
-  await expect(page.locator('.ProseMirror')).toBeVisible()
-
-  // 清理：Cancel
-  await page.locator('button:has-text("Cancel")').click()
-  await page.waitForTimeout(500)
-})
-
-test('T5: Cancel 返回只读模式', async ({ page }) => {
-  const noteButtons = page.locator('button[class*="rounded-lg"]')
-  if (await noteButtons.count() === 0) return
-  await noteButtons.first().click()
-  await page.waitForTimeout(500)
-
-  await page.locator('button:has-text("Edit")').click()
-  await page.waitForTimeout(600)
-  await page.locator('button:has-text("Cancel")').click()
-  await page.waitForTimeout(500)
-
-  await expect(page.locator('button:has-text("Edit")')).toBeVisible()
-})
-
-test('T5: Save 持久化标题修改', async ({ page }) => {
-  const titleInput = page.locator('input[placeholder="Note title..."]')
-
-  // 选第一个笔记（确保存在）
-  const noteButtons = page.locator('button[class*="rounded-lg"]')
-  if (await noteButtons.count() === 0) return
-  await noteButtons.first().click()
-  await page.waitForTimeout(500)
-
-  await page.locator('button:has-text("Edit")').click()
-  await page.waitForTimeout(600)
-
-  const originalTitle = await titleInput.inputValue()
-  expect(originalTitle.length).toBeGreaterThan(0)
+  const original = await page.locator(TITLE).inputValue()
+  expect(original.length).toBeGreaterThan(0)
 
   const suffix = ` [T5-${Date.now()}]`
-  await titleInput.fill(originalTitle + suffix)
-  await page.locator('button:has-text("Save")').click()
-  await page.waitForTimeout(1500)
+  await page.locator(TITLE).fill(original + suffix)
+  await page.waitForTimeout(300)
+  await expect(saveBtn(page)).toBeVisible() // 有改动才出现 Save
 
-  // 通过 API 验证持久化
+  await saveBtn(page).click()
+  await page.waitForTimeout(1500)
   const notes = await (await page.request.get('/api/notes')).json()
   expect(notes.some((n: any) => (n.title || '').includes(suffix))).toBe(true)
 
   // 清理：改回原标题
-  await page.locator('button:has-text("Edit")').click()
-  await page.waitForTimeout(500)
-  await titleInput.fill(originalTitle)
-  await page.locator('button:has-text("Save")').click()
-  await page.waitForTimeout(800)
+  await page.locator(TITLE).fill(original)
+  await page.waitForTimeout(200)
+  await saveBtn(page).click()
+  await page.waitForTimeout(1000)
 })
 
-test('T7: Delete 减少笔记数量', async ({ page }) => {
-  // 通过 API 创建临时笔记（避免 UI 创建的时序问题）
+test('T5c: 切换笔记自动落盘未保存草稿', async ({ page }) => {
+  await rows(page).first().click()
+  await page.waitForTimeout(500)
+  const original = await page.locator(TITLE).inputValue()
+
+  const suffix = ` [T5c-${Date.now()}]`
+  await page.locator(TITLE).fill(original + suffix)
+  await page.waitForTimeout(300)
+  // 不点 Save，直接切到另一条笔记
+  await rows(page).nth(1).click()
+  await page.waitForTimeout(1500)
+
+  const notes = await (await page.request.get('/api/notes')).json()
+  expect(notes.some((n: any) => (n.title || '').includes(suffix))).toBe(true)
+
+  // 清理：切回被改名的笔记并恢复
+  await rows(page).filter({ hasText: suffix }).first().click()
+  await page.waitForTimeout(500)
+  await page.locator(TITLE).fill(original)
+  await page.waitForTimeout(200)
+  await saveBtn(page).click()
+  await page.waitForTimeout(1000)
+  await expect(rows(page).filter({ hasText: suffix })).toHaveCount(0)
+})
+
+test('T6: New note 新建并自动选中空笔记', async ({ page }) => {
+  await page.getByRole('button', { name: 'New note' }).click()
+  await page.waitForTimeout(1200)
+
+  // 自动选中：标题输入框为空（可直接打字）
+  await expect(page.locator(TITLE)).toHaveValue('')
+
+  // 清理：删掉刚新建的笔记
+  await deleteBtn(page).click()
+  await page.waitForTimeout(300)
+  await deleteBtn(page).click()
+  await page.waitForTimeout(1200)
+})
+
+test('T7: 删除需两步确认且真删', async ({ page }) => {
   await page.request.post('/api/notes', {
     data: { title: 'T7-temp-delete', body: 'temp', folder: '' },
   })
-
-  // 重新加载拿到最新列表
   await page.goto('/')
-  await page.locator('button:has-text("New")').waitFor({ timeout: 10000 })
+  await page.getByRole('button', { name: 'New note' }).waitFor({ timeout: 10000 })
   await page.waitForTimeout(800)
 
-  const beforeResp = await page.request.get('/api/notes')
-  const beforeCount = (await beforeResp.json()).length
+  const before = (await (await page.request.get('/api/notes')).json()).length
+  const tempRow = rows(page).filter({ hasText: 'T7-temp-delete' })
+  await expect(tempRow).toHaveCount(1)
+  await tempRow.first().click()
+  await page.waitForTimeout(500)
 
-  // 找到 T7-temp 笔记并选中
-  const tempBtn = page.locator('button:has-text("T7-temp-delete")')
-  if (await tempBtn.count() > 0) {
-    await tempBtn.first().click()
-    await page.waitForTimeout(500)
-  }
+  // 第一步：只出确认，不删
+  await deleteBtn(page).click()
+  await page.waitForTimeout(400)
+  await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+  expect((await (await page.request.get('/api/notes')).json()).length).toBe(before)
 
-  page.on('dialog', d => d.accept())
-  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  // 第二步：确认删除
+  await deleteBtn(page).click()
   await page.waitForTimeout(1500)
-
-  const afterCount = (await (await page.request.get('/api/notes')).json()).length
-  expect(afterCount).toBe(beforeCount - 1)
+  expect((await (await page.request.get('/api/notes')).json()).length).toBe(before - 1)
 })

@@ -1,0 +1,64 @@
+// PLAN-615 T-02: && / || 短路求值语义常驻回归。
+// 真值要求：LHS 已定真值时 RHS 不得求值（副作用计数为零）；索引型 RHS 在
+// 空容器上不得触发 GET_ELEM（Plan 550 IndexError）；短路结果恒归一化 bool。
+fn side(x int) bool {
+    print("SIDE")
+    return true
+}
+
+fn main() {
+    // A: while 条件位索引守卫——空列表上 xs[-1] 不得求值（calc eval_expr 守卫形态）
+    var xs List<int> = []
+    var i int = 0
+    while xs.len() > 0 && xs[xs.len() - 1] != 9 {
+        i = i + 1
+    }
+    print(f"A: ${i}")
+    // B: if 条件位同形
+    if xs.len() > 0 && xs[xs.len() - 1] != 9 {
+        print("B taken")
+    } else {
+        print("B else")
+    }
+    // C: && LHS=false → RHS 副作用不得执行
+    if 1 > 2 && side(1) {
+        print("C taken")
+    } else {
+        print("C else")
+    }
+    // D: && LHS=true → RHS 恰执行一次，循环体执行后收敛
+    var m int = 0
+    while m < 1 && side(2) {
+        m = m + 1
+    }
+    print(f"D: ${m}")
+    // E: || LHS=true → RHS 不得执行
+    if 1 < 2 || side(3) {
+        print("E taken")
+    } else {
+        print("E else")
+    }
+    // F: || LHS=false → RHS 求值路径
+    var n int = 0
+    while n < 1 || side(4) {
+        n = n + 1
+        if n > 3 {
+            break
+        }
+    }
+    print(f"F: ${n}")
+    // G: 链式 a && b && c——末端臂短路可见
+    var k int = 0
+    if 1 < 2 && 2 < 3 && side(5) {
+        k = 1
+    }
+    print(f"G: ${k}")
+    // H: 值上下文——短路结果可赋值且恒归一化 bool
+    var t bool = xs.len() > 0 && xs[xs.len() - 1] == 9
+    var u bool = 1 < 2 || side(6)
+    print(f"H: ${t} ${u}")
+    // I: 归一化结果参与比较（PUSH_BOOL tagged 语义，Plan 318 面）
+    if (1 > 2 && side(7)) == false {
+        print("I norm-false")
+    }
+}

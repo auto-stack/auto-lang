@@ -1347,6 +1347,13 @@ async fn execute_autovm_with_path(
     }
     // Plan 123: Share TypeStore with Parser so Codegen can access registered types/enums
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-013 T1: seed the root codegen with the `#[vm]` fn names declared
+    // by dep modules (e.g. stdlib term.vm.at) — dep modules compile in their
+    // own codegen pass, so the root would otherwise never learn that an
+    // imported bare call (use auto.term: engine_spawn) targets a native.
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
     // PLAN-057 T7：注入源文本——web 内建编译期门禁的 `// vm-safe-allow`
     // 行级豁免需要按 current_source_line 回读原始行。
     codegen.source_text = Some(code.to_string());
@@ -1767,6 +1774,11 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     }
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
+    // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
         matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
     });
@@ -4350,6 +4362,11 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     ctee.transform(&mut ast)?;
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
+    // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
         matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
     });
@@ -4572,6 +4589,11 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     ctee.transform(&mut ast)?;
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
+    // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
         matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
     });
@@ -6645,6 +6667,10 @@ mod plan593_theme_registry_tests;
 // Plan 606: Photo gallery thumbnails and fit parity test.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan606_gallery_tests;
+// PLAN-615 T-07: calc 011 Programmer HEX 首光回归（VM 侧逻辑锚）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan615_calc_prog_tests;
+
 
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]
@@ -6811,6 +6837,11 @@ mod plan510_pool_tests;
 #[path = "tests/plan608_dispatch_golden_tests.rs"]
 mod plan608_dispatch_golden_tests;
 
+// Plan 394：External future 真挂起架构（Phase A 门禁 + B/C 骨架）。
+#[cfg(test)]
+#[path = "tests/plan394_future_arch_tests.rs"]
+mod plan394_future_arch_tests;
+
 // os-007（origin PLAN-577/P534-D4）：avatar 家族渲染探针。
 #[cfg(test)]
 #[path = "tests/plan577_avatar_tests.rs"]
@@ -6825,6 +6856,17 @@ mod plan577_breadcrumb_cycle_tests;
 #[cfg(test)]
 #[path = "tests/gallery_pages_compile_tests.rs"]
 mod gallery_pages_compile_tests;
+
+// PLAN-614 临时探针:VM 轨模块 fn 对 Obj 嵌套 children/List/bool 参数行为
+// 隔离(tree 组件族 VM 端 first-light 排障;定位后可退役)。
+#[cfg(test)]
+#[path = "tests/p614_tree_vm_probe.rs"]
+mod p614_tree_vm_probe;
+
+// PLAN-618 探针:VM 轨模块 fn 递归(filter_tree)能力验证。
+#[cfg(test)]
+#[path = "tests/p618_filter_tree_probe.rs"]
+mod p618_filter_tree_probe;
 
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]

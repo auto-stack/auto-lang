@@ -446,6 +446,20 @@ pub struct Codegen {
     /// fallback).
     auto_modules: std::collections::HashSet<String>,
 
+    /// PLAN-013 T1: names of declared `#[vm]` (body-less) functions.
+    /// A `#[vm]` fn has no bytecode body — the declaration exists only as a
+    /// native-shim signature, so a call to it must never shadow the native
+    /// it declares (see the import_scope arm in the call resolution chain).
+    /// `pub(crate)`: the compile session surfaces dep-module names to the
+    /// root codegen (script path compiles modules separately).
+    pub(crate) vm_fn_names: std::collections::HashSet<String>,
+
+    /// PLAN-013 T1: qualifiers registered from FILE-module uses only
+    /// (`use base64: …` → "base64"). Plan 347 shadow suppression keys on
+    /// this set, not on `auto_modules` — a native-namespace use
+    /// (`use auto.term: …`) must not suppress the very native it imports.
+    file_modules: std::collections::HashSet<String>,
+
     /// Plan 212 Phase 2.2: Maps variable name → opaque crate name
     /// Tracks which variables hold opaque handles (e.g., "re" → "regex")
     /// Set when `let var = OpaqueType.new(...)` is compiled
@@ -616,6 +630,8 @@ impl Codegen {
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
+            vm_fn_names: std::collections::HashSet::new(), // PLAN-013 T1: #[vm] decl names
+            file_modules: std::collections::HashSet::new(), // PLAN-013 T1: file-module qualifiers
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
             source_text: None, // PLAN-057 T7
@@ -987,6 +1003,8 @@ impl Codegen {
             py_return_types: HashMap::new(), // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
+            vm_fn_names: std::collections::HashSet::new(), // PLAN-013 T1: #[vm] decl names
+            file_modules: std::collections::HashSet::new(), // PLAN-013 T1: file-module qualifiers
             opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
             current_source_line: 0, // Plan 199: Source line tracking
             source_text: None, // PLAN-057 T7
@@ -1287,6 +1305,9 @@ impl Codegen {
                 // so the user gets a clear message instead of silent wrong behavior.
                 if matches!(fn_decl.kind, crate::ast::FnKind::VmFunction) {
                     let fn_name_str = fn_decl.name.to_string();
+                    // PLAN-013 T1: record the decl so calls can prefer the
+                    // declared native over the stub (see import_scope arm).
+                    self.vm_fn_names.insert(fn_name_str.clone());
                     vm_debug!("DEBUG: Compiling #[vm] stub for '{}' — will panic at runtime if native not found",
                         fn_name_str
                     );
@@ -4884,6 +4905,12 @@ impl Codegen {
         // is a cross-module call (generates CALL with reloc "db.func").
         if !use_stmt.paths.is_empty() {
             self.auto_modules.insert(use_stmt.paths[0].to_string());
+            // PLAN-013 T1: file-module qualifier (single-path use, e.g.
+            // `use base64`) — the only shape that may shadow a native
+            // namespace of the same name at the import_scope arm.
+            if use_stmt.paths.len() == 1 {
+                self.file_modules.insert(use_stmt.paths[0].to_string());
+            }
         }
         // Plan 347: Also track the import qualifier (last path segment, e.g.
         // "base64" from `use auto.base64`) so native-opaque-module routing can
@@ -7051,6 +7078,36 @@ impl Codegen {
                         unimplemented!("Assignment to complex LHS not supported yet");
                     }
                 } else {
+                    // PLAN-615 T-01: && / || 短路求值发射——RHS 仅在 LHS 真值需要时求值，
+                    // 与全部转译后端一致（TS/Py/C/Rust/GD 均发射原生短路算符）。旧的急切
+                    // `emit(AND/OR)` 让 `ops.len() > 0 && ops[ops.len() - 1]` 类守卫在空栈
+                    // 上也求值 ops[-1]（calc 011 Equals 回归根因，Plan 550 IndexError 引爆）。
+                    // 发射形态（JMP_IF_Z/NZ 弹掉的是 DUP 副本，LHS 本体留栈；末端保留
+                    // AND/OR 真值归一——短路路径 = [falsy LHS, truthy 占位] 归一 false，
+                    // 求值路径 = [a, b]，双路径栈平衡）：
+                    //   a && b:  [a] DUP JMP_IF_Z Lshort [b] JMP Lend
+                    //            Lshort: PUSH_BOOL 1   Lend: AND
+                    //   a || b:  [a] DUP JMP_IF_NZ Lshort [b] JMP Lend
+                    //            Lshort: PUSH_BOOL 0   Lend: OR
+                    if matches!(op, Op::And | Op::Or) {
+                        self.compile_expr(lhs)?;
+                        self.emit(OpCode::DUP);
+                        self.emit(if matches!(op, Op::And) { OpCode::JMP_IF_Z } else { OpCode::JMP_IF_NZ });
+                        let short_jump = self.emit_placeholder_i16();
+                        self.compile_expr(rhs)?;
+                        self.emit(OpCode::JMP);
+                        let end_jump = self.emit_placeholder_i16();
+                        let short_pos = self.code.len();
+                        self.patch_jump_to(short_jump, short_pos);
+                        self.emit(OpCode::PUSH_BOOL);
+                        self.code.push(if matches!(op, Op::And) { 1 } else { 0 });
+                        let end_pos = self.code.len();
+                        self.patch_jump_to(end_jump, end_pos);
+                        self.emit(if matches!(op, Op::And) { OpCode::AND } else { OpCode::OR });
+                        self.last_expr_type = ObjectType::Bool;
+                        return Ok(());
+                    }
+
                     // Plan 073 Stage A.5: Check if this is a float/double operation
                     let mut is_float = self.is_float_operation(lhs, rhs);
                     let mut is_double = self.is_double_operation(lhs, rhs);
@@ -8747,10 +8804,21 @@ impl Codegen {
                             let is_user_auto_module = qualified
                                 .split('.')
                                 .next()
-                                .map(|mod_name| self.auto_modules.contains(mod_name))
+                                .map(|mod_name| self.file_modules.contains(mod_name))
                                 .unwrap_or(false);
                             if is_user_auto_module {
-                                None
+                                // PLAN-013 T1: a `#[vm]` declaration (stdlib
+                                // *.vm.at shim signatures, e.g. term.vm.at via
+                                // `use auto.term: …`) has no bytecode body —
+                                // shadowing it would bind the call to the
+                                // runtime-panic stub instead of the very native
+                                // it declares. Body-ful user-library fns keep
+                                // the Plan 347 shadow priority unchanged.
+                                if self.vm_fn_names.contains(name.as_str()) {
+                                    BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
+                                } else {
+                                    None
+                                }
                             } else {
                                 BIGVM_NATIVES.lock().unwrap().resolve_qualified(qualified)
                             }

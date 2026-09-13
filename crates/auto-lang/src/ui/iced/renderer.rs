@@ -3449,6 +3449,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
                                 if let Some(c) = is.text_color { tw = tw.color(c); }
                             }
+                            // PLAN-615 T-03 (W1): 同按钮标签行高钳（图标与文字盒错位同源）。
+                            let has_lh = iced_style.as_ref().is_some_and(|s| s.line_height.is_some() || s.line_height_px.is_some());
+                            if !has_lh {
+                                tw = tw.line_height(iced::widget::text::LineHeight::Relative(1.0));
+                            }
                             iced::widget::row!(icon_el, tw)
                                 .spacing(6)
                                 .align_y(iced::alignment::Vertical::Center)
@@ -3504,6 +3509,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if let Some(ref is) = iced_style {
                             if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
                             if let Some(c) = is.text_color { tw = tw.color(c); }
+                        }
+                        // PLAN-615 T-03 (W1): 同按钮标签行高钳（图标与文字盒错位同源）。
+                        let has_lh = iced_style.as_ref().is_some_and(|s| s.line_height.is_some() || s.line_height_px.is_some());
+                        if !has_lh {
+                            tw = tw.line_height(iced::widget::text::LineHeight::Relative(1.0));
                         }
                         // Icon-only (no text part): return the bare svg - the row with its
                         // spacing(6) adds trailing space after the icon, skewing it ~3px
@@ -3583,6 +3593,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             text_widget = text_widget.color(color);
                         }
                         text_widget = text_widget.font(is.font_weight.as_ref().map_or(default_weight, font_weight_to_iced));
+                        // PLAN-615 T-03 (W1): 按钮标签行盒钳到 1.0 行高——iced 0.14 文本
+                        // 默认 Relative(1.3)，额外 leading 全部落在字形上方，无高度类
+                        // 按钮（shrink 高度 = 行盒高）的字形在按钮内系统性偏下（calc 数字
+                        // 键盘实测 ~0.15em）。行高 1.0 让行盒贴合字形，光学居中恢复；
+                        // 高度类按钮本就经 Plan 414 容器居中，此钳同样消除行盒漂移。
+                        // 用户显式 leading-* 类仍优先（iced_adapter 双轨字段）。
+                        // web 侧 Tailwind text-lg 行高 1.75rem 与 iced 的盒高差是既有
+                        // 双端差异，不在本钳范围（双端按钮高度 parity 另行台账）。
+                        if is.line_height.is_none() && is.line_height_px.is_none() {
+                            text_widget = text_widget.line_height(iced::widget::text::LineHeight::Relative(1.0));
+                        }
                         // Plan 411: text-center/left/right on button labels — wide
                         // buttons (e.g. preview-card tabs) need horizontal alignment.
                         // Unlike the Text arm, ALWAYS Fill the label: is.width is the
@@ -3604,10 +3625,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         text_widget.into()
                     }
                 } else {
-                    let text_widget = text(label.clone())
+                    // PLAN-615 T-03 (W1): 无样式类按钮同钳行高（默认样式路径的偏下同源）。
+                    text(label.clone())
                         .size(font_size_to_f32(&IcedFontSize::Sm))
-                        .font(font_weight_to_iced(&IcedFontWeight::Medium));
-                    text_widget.into()
+                        .font(font_weight_to_iced(&IcedFontWeight::Medium))
+                        .line_height(iced::widget::text::LineHeight::Relative(1.0))
+                        .into()
                 };
 
                 // Plan 309 续篇 II: in inspect-capture mode, render the button
@@ -4055,10 +4078,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => {
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 crate::ui::terminal::terminal_feed(core, &lines);
                 crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
+                // 014:光标格随帧落注册表(app 从引擎回读喂入;preedit/光标
+                // 层同源)。形状恒 Block;非零才落位——(0,0) 是未喂入哨兵,
+                // 直接设在 core 上的光标(测试/宿主策略)不被覆写。
+                if cursor_row != 0 || cursor_col != 0 {
+                    crate::ui::terminal::terminal_set_cursor(
+                        core,
+                        cursor_row as usize,
+                        cursor_col as usize,
+                        crate::ui::terminal::TermCursorShape::Block,
+                    );
+                }
                 let el: iced::Element<'static, M> = crate::ui::terminal::iced::Terminal {
                     core,
                     key,
@@ -4066,7 +4100,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     preedit: preedit.clone(),
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
-                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::CELL_W + 2.0),
+                    on_input: on_input.clone(),
+                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0),
                     height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0),
                 }
                 .into();
@@ -4385,13 +4420,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
                 use crate::ui::iced::popover::Popover as PopoverWidget;
                 use crate::ui::view::PopoverAnchor;
-                let (anchor_point, anchor_el): (Option<(f32, f32)>, iced::Element<'static, M>) =
+                let (anchor_point, anchor_is_empty, anchor_el): (Option<(f32, f32)>, bool, iced::Element<'static, M>) =
                     match anchor {
-                        PopoverAnchor::Widget(w) => (None, w.into_iced()),
+                        PopoverAnchor::Widget(w) => {
+                            let empty = matches!(&*w, AbstractView::Empty);
+                            (None, empty, w.into_iced())
+                        }
                         // 坐标锚:零尺寸占位(anchor 轨道不影响布局),
                         // 面板定位由 at_point 决定。
                         PopoverAnchor::Point { x, y } => {
-                            (Some((x, y)), iced::widget::Space::new().into())
+                            (Some((x, y)), false, iced::widget::Space::new().into())
                         }
                     };
                 let mut p = PopoverWidget::new(anchor_el, content.into_iced())
@@ -4399,7 +4437,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .open(open)
                     // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
                     // + 面板外点击整吞），alert-dialog 臂专用。
-                    .modal(placement.is_modal_chrome());
+                    .modal(placement.is_modal_chrome())
+                    .anchor_is_empty(anchor_is_empty);
                 if let Some((x, y)) = anchor_point {
                     p = p.at_point(x, y);
                 }
@@ -5439,6 +5478,8 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         // Plan 059(块头图标统一):stop/table 导出/重跑/删除/运行中
         "square" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/>"#,
         "table" => r#"<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>"#,
+        // PLAN-618 T-02:zap 闪电(026 对象树索引节点;TreeIcon 调色板同步)。
+        "zap" => r#"<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86 0l9.9 10.2a1 1 0 0 1-.78 1.63z"/><path d="M4 10h16"/>"#,
         "rotate-ccw" => r#"<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>"#,
         "trash-2" => r#"<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>"#,
         "loader" => r#"<path d="M21 12a9 9 0 1 1-6.219-8.56"/>"#,
@@ -6335,9 +6376,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
         // (Component → into_iced)与检视占位,VM 动态应用经本转换落
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
-        // menu 二消息经 from_dynamic 映射;行文本原样透传(数据已在
-        // convert_terminal 物化)。
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => {
+        // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
+        // (数据已在 convert_terminal 物化)。
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
             AbstractView::Terminal {
                 key,
                 cols,
@@ -6347,6 +6388,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 preedit,
                 on_select: on_select.map(|m| IcedMessage::from_dynamic(&m)),
                 on_menu: on_menu.map(|m| IcedMessage::from_dynamic(&m)),
+                on_input: on_input.map(|m| IcedMessage::from_dynamic(&m)),
+                cursor_row,
+                cursor_col,
                 style,
             }
         }
@@ -8701,6 +8745,9 @@ fn summon_launcher(
         let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
         let _ = app.component.write_state("__focus_input", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("__focus_input_tries", auto_val::Value::Int(0));
         // 宿主写状态不触发 handler——显式重算 ranked/网格行 + 刷 view
         if let Err(err) = app.component.bridge_mut().call_handler("ApplyFilter", &[]) {
             eprintln!("[session] launcher ApplyFilter failed: {err}");
@@ -9292,6 +9339,9 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
     #[cfg(all(feature = "autodown", feature = "code-editor"))]
     crate::ui::autodown_editor::retheme_all_fence_buffers();
     state.desktop.config.dark_theme = dark;
+    // PLAN-615 T-06：用户显式切换即置 manual——终结 theme_source=system 的
+    // OS 跟随派生（boot/外写热应用 load() 不再覆盖此选择）。
+    state.desktop.config.theme_source = "manual".to_string();
     let _ = crate::ui::desktop_config::save(&state.desktop.config);
     // Plan 497 G3 同款：全场快照随撤（窗口缩略按旧主题渲染）。
     crate::ui::iced::snapshot::invalidate_all();
@@ -11242,6 +11292,16 @@ fn run_session(
                 && component.read_state("dark_mode").is_ok()
             {
                 let _ = component.write_state("dark_mode", auto_val::Value::Bool(t == "dark"));
+            }
+        } else {
+            // PLAN-615 T-04：env 链（CLI > os-config > pac.at）未解析任何
+            // theme 值 → OS 系统主题回退（读取失败 None 则维持 App 内置
+            // 缺省）。桌面轨的对应链路在 desktop_config::load 的
+            // theme_source=system 派生（T-06），两轨语义对齐。
+            if let Some(dark) = crate::ui::system_theme::system_prefers_dark() {
+                if component.read_state("dark_mode").is_ok() {
+                    let _ = component.write_state("dark_mode", auto_val::Value::Bool(dark));
+                }
             }
         }
         if let Ok(a) = std::env::var("AUTO_UI_ACCENT") {
@@ -14020,26 +14080,53 @@ fn compare_pngs(
             state.component.read_state("__focus_input"),
             Ok(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         ) {
-            let focus_target = state
-                .app
-                .devtools
-                .input_ids
-                .borrow()
-                .first()
-                .cloned()
-                .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
+            // PLAN-013 W2：登记表对 overlay 挂载面恒空（dynamic_view 组装
+            // 路径不产 input Id，16032 的登记写入会被空集合覆盖）——改为
+            // 消费时即时派生：同步构建当前 app 视图收集 input Id（与
+            // summon 预登记同一 derive_input_id 稳定通道），登记表只作
+            // 回退。
+            let derived = {
+                let (view, _, _) = state.component.view_with_debug_gated(false);
+                let converted = convert_view_messages(view);
+                let mut ids = Vec::new();
+                collect_input_ids(&converted, &mut ids);
+                ids.first().cloned()
+            };
+            let focus_target = derived.unwrap_or_else(|| {
+                state
+                    .app
+                    .devtools
+                    .input_ids
+                    .borrow()
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone())
+            });
             if std::env::var("AUTO_DEBUG_FOCUS").is_ok() {
-                let ids = state.app.devtools.input_ids.borrow();
                 eprintln!(
-                    "[464-FOCUS] __focus_input consumed: registered={}个 target={focus_target:?}",
-                    ids.len()
+                    "[464-FOCUS] __focus_input consumed: derived target={focus_target:?}"
                 );
             }
-            let _ = state.component.write_state("__focus_input", auto_val::Value::str(""));
-            // Plan 483: 目标 = 登记表首个 input 的唯一 Id(取代共享字面量
-            // prompt_input——多 input 视图会被一次全置焦);无 input 时退
-            // 外壳 prompt_input_id 旧语义(此时无匹配 widget,空聚焦)。
             tail_tasks.push(iced::widget::operation::focus(focus_target));
+            // PLAN-013 W2：重试上限——focus 任务与 overlay 入树存在时序
+            // 竞态（首拍可能落空），借 launcher 消息泵周期重试；5 轮后
+            // 放弃清位（期间每次 launcher 消息周期补一次聚焦）。
+            let tries = match state.component.read_state("__focus_input_tries") {
+                Ok(auto_val::Value::Int(n)) => n,
+                _ => 0,
+            };
+            if tries >= 5 {
+                let _ = state
+                    .component
+                    .write_state("__focus_input", auto_val::Value::str(""));
+                let _ = state
+                    .component
+                    .write_state("__focus_input_tries", auto_val::Value::Int(0));
+            } else {
+                let _ = state
+                    .component
+                    .write_state("__focus_input_tries", auto_val::Value::Int(tries + 1));
+            }
         }
 
         // Plan 402: pending window resize。
@@ -18726,6 +18813,10 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
 fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widget::Id>) {
     match view {
         AbstractView::Input { placeholder, on_change, on_submit, width, password, .. } => {
+            // PLAN-013 W2 修正：派生式必须与 render_dynamic_view Input 渲染
+            // 臂（18859 .id(derive_input_id(input_primary...))）严格同式——
+            // (widget,event) 主键优先、None 三元组兜底。此前误改 None 三元
+            // 组与渲染 Id 失配，focus 永不落地（用户实测聚焦丢失）。
             let primary = on_change
                 .as_ref()
                 .map(|m| (m.widget.as_str(), m.event.as_str()))
@@ -18736,6 +18827,18 @@ fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widge
             for child in children {
                 collect_input_ids(child, out);
             }
+        }
+        // PLAN-013 W2：MouseArea/Popover 容器穿透——launcher search input
+        // 包在 scrim mouse-area 内，缺臂使收集器永远到不了它（派生 None →
+        // 回退 prompt_input 死 Id → 不聚焦+无法输入的真根因）。
+        AbstractView::MouseArea { content, .. } => {
+            collect_input_ids(content, out);
+        }
+        AbstractView::Popover { anchor, content, .. } => {
+            if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                collect_input_ids(w, out);
+            }
+            collect_input_ids(content, out);
         }
         AbstractView::Container { child, .. } | AbstractView::Scrollable { child, .. } => {
             collect_input_ids(child, out);
@@ -19086,19 +19189,21 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
             use crate::ui::iced::popover::Popover as PopoverWidget;
             use crate::ui::view::PopoverAnchor;
-            let (anchor_point, content_slot, anchor_el): (
+            let (anchor_point, anchor_is_empty, content_slot, anchor_el): (
                 Option<(f32, f32)>,
+                bool,
                 usize,
                 iced::Element<'static, IcedMessage>,
             ) = match anchor {
                 PopoverAnchor::Widget(w) => {
+                    let empty = matches!(&*w, AbstractView::Empty);
                     path.push(0);
                     let el = render_dynamic_view(*w, debug_ctx, path);
                     path.pop();
-                    (None, 1, el)
+                    (None, empty, 1, el)
                 }
                 PopoverAnchor::Point { x, y } => {
-                    (Some((x, y)), 0, iced::widget::Space::new().into())
+                    (Some((x, y)), false, 0, iced::widget::Space::new().into())
                 }
             };
             path.push(content_slot);
@@ -19110,7 +19215,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // PLAN-530 步骤8（W13）+ PLAN-534：Modal（居中）与 Edge*
                 // （贴边，sheet/drawer）放置 = 模态形态（全屏遮罩 + 面板外
                 // 点击整吞），与 into_iced 臂同口径。
-                .modal(placement.is_modal_chrome());
+                .modal(placement.is_modal_chrome())
+                .anchor_is_empty(anchor_is_empty);
             if let Some((x, y)) = anchor_point {
                 p = p.at_point(x, y);
             }
@@ -19388,6 +19494,51 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 child: el,
             })
         }
+        // PLAN-013 W2：MouseArea 专用臂——此前落 catch-all 泛型转换，其
+        // on_input 接线不带 input_value 载荷：launcher search 等**嵌套在
+        // mouse-area 内**的 input 永远拿不到文本（.SetQ(t) 实参恒空，用户
+        // 实测"聚焦了但打不出字"）。IcedMessage 专用递归渲染保住
+        // on_input → on_with_input_for 的文本载荷。
+        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
+            let inner = render_dynamic_view(*content, debug_ctx, path);
+            let mut ma = mouse_area(inner);
+            if let Some(msg) = on_enter {
+                ma = ma.on_enter(msg);
+            }
+            if let Some(msg) = on_exit {
+                ma = ma.on_exit(msg);
+            }
+            if !inspect_capture_active() {
+                if let Some(msg) = on_double_click {
+                    ma = ma.on_double_click(msg);
+                }
+                if let Some(msg) = on_click {
+                    ma = ma.on_press(msg);
+                }
+                if let Some(msg) = on_context_menu {
+                    ma = ma.on_right_press(msg);
+                }
+                if let Some(msg) = on_release {
+                    ma = ma.on_release(msg);
+                }
+            }
+            let inner: iced::Element<'static, IcedMessage> = ma.into();
+            let wrapped: iced::Element<'static, IcedMessage> =
+                if let Some(handler) = on_move.filter(|_| !inspect_capture_active()) {
+                    let mut pa = crate::ui::iced::pointer_area::PointerArea::new(inner);
+                    if let Some((w, h)) = logical_extent {
+                        pa = pa.extent(w, h);
+                    }
+                    let f = std::sync::Arc::new(move |x: f32, y: f32| handler.call(x, y));
+                    pa.on_move(f).into()
+                } else {
+                    inner
+                };
+            let dbg_props = debug_style_props(style.as_ref());
+            let el = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, None);
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "mouse_area", el, dbg_props, style.as_ref()) } else { el }
+        }
+
         // Everything else delegates to the unified IntoIcedElement renderer
         _ => {
             let kind = view_kind(&view);
@@ -20181,6 +20332,7 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
             let mut mcp = mcp_shared.lock().unwrap();
             mcp.set_styled_vtree(snap);
             mcp.set_state(self.inner.state_snapshot());
+            mcp.set_key_bindings(self.inner.key_bindings());
         }
 
         *self.dt.live_vtree.borrow_mut() = Some(tree);
@@ -20213,6 +20365,25 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
 
 /// iced `view` callback for `run_app_devtools`.
 fn devtools_view<C: Component + 'static>(w: &DevToolsWrapper<C>) -> iced::Element<'_, WrapperMsg<C>> {
+    // 014 内存哨兵冻结态:整窗告警(消息循环已停,内存不再增长;
+    // 按 F12 退出进程)。
+    if crate::ui::mem_guard::is_frozen() {
+        let mb = crate::ui::mem_guard::peak_mb();
+        let limit = crate::ui::mem_guard::limit();
+        return container(
+            column![
+                text("⚠ 内存超限,已暂停").size(30),
+                text(format!("提交内存峰值 {mb} MB / 阈值 {limit} MB(AUTO_MEM_LIMIT_MB 可调)")).size(16),
+                text("消息循环已冻结,现场保留;按 F12 退出进程。").size(14),
+            ]
+            .spacing(14),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .center_x(iced::Length::Fill)
+        .center_y(iced::Length::Fill)
+        .into();
+    }
     w.view_element()
 }
 
@@ -20224,6 +20395,12 @@ fn devtools_update<C: Component + 'static>(
 where
     C::Msg: Clone + Debug + Send + 'static,
 {
+    // 014 内存哨兵:节流采样(1s);超限冻结后丢弃一切消息——泄漏若由
+    // 消息驱动的热循环产生,立即停摆,不再吞噬内存。
+    crate::ui::mem_guard::sample_and_guard();
+    if crate::ui::mem_guard::is_frozen() {
+        return iced::Task::none();
+    }
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
         WrapperMsg::Debug(ref s) if s == "__tick__" => {
@@ -20233,6 +20410,15 @@ where
             }
         }
         WrapperMsg::Debug(s) => {
+            // AutoUI `bind` events share the same typed dispatch path as VM.
+            // Iced's keyboard::listen already excludes captured text-input
+            // events, so IME composition never reaches this branch.
+            if let Some(key) = s.strip_prefix("__autoui_key|") {
+                if let Some(msg) = w.inner.key_message(key) {
+                    w.inner.on(msg);
+                }
+                return iced::Task::none();
+            }
             // Plan 371 Task 19: MCP action dispatch (rust mode). Two addressing
             // modes, both resolved against the inner component's typed View tree:
             //
@@ -20274,14 +20460,37 @@ where
             if let Some(rest) = s.strip_prefix("__mcp_action|") {
                 // Event fallback: <widget>.<event>|<value>
                 let mut parts = rest.splitn(2, '|');
-                let _widget_event = parts.next().unwrap_or("");
+                let widget_event = parts.next().unwrap_or("");
                 let input_value = parts.next().filter(|v| !v.is_empty());
 
-                // Best-effort: no typed handler to extract in event mode from the
-                // rust tree — this branch mainly serves as a no-op safety net.
-                // (VM mode dispatches actions via a separate subscription that
-                // converts ActionMessage -> IcedMessage directly.)
-                let _ = input_value;
+                // MCP keyboard fallback (when the Rust component has no
+                // dynamic key_bindings registry entry) arrives as
+                // `key_<name>|<original key>`. Re-enter the same typed bind
+                // resolver used by physical Iced keyboard events.
+                if widget_event.contains(".key_") {
+                    if let Some(key) = input_value {
+                        if let Some(m) = w.inner.key_message(key) {
+                            w.inner.on(m);
+                        }
+                    }
+                } else {
+                    // A declared `bind` is encoded by MCP as the handler name
+                    // (for example `App.MoveLeft`). Resolve that name back to
+                    // the physical key through the component registry, then
+                    // use the same typed message hook as real Iced events.
+                    let event_name = widget_event.rsplit('.').next().unwrap_or(widget_event);
+                    let bindings = w.inner.key_bindings();
+                    let key = bindings.iter().find_map(|(key, handler)| {
+                        let handler = handler.trim_start_matches('.');
+                        let handler_name = handler.rsplit('.').next().unwrap_or(handler);
+                        (handler_name == event_name).then(|| key.clone())
+                    });
+                    if let Some(key) = key {
+                        if let Some(m) = w.inner.key_message(&key) {
+                            w.inner.on(m);
+                        }
+                    }
+                }
                 return iced::Task::none();
             }
             apply_debug_event(&mut w.dt, &s);
@@ -20343,8 +20552,38 @@ fn extract_handler_from_view<M: Clone + Debug>(
     }
 }
 
+/// Convert an Iced key press to the spelling used by AutoUI `bind` blocks.
+fn rust_component_key_string(event: &iced::Event) -> Option<String> {
+    let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = event else {
+        return None;
+    };
+    match key {
+        iced::keyboard::Key::Named(named) => {
+            let name = match named {
+                iced::keyboard::key::Named::Enter => "Enter",
+                iced::keyboard::key::Named::Escape => "Escape",
+                iced::keyboard::key::Named::Backspace => "Backspace",
+                iced::keyboard::key::Named::Tab => "Tab",
+                iced::keyboard::key::Named::Space => " ",
+                iced::keyboard::key::Named::ArrowUp => "ArrowUp",
+                iced::keyboard::key::Named::ArrowDown => "ArrowDown",
+                iced::keyboard::key::Named::ArrowLeft => "ArrowLeft",
+                iced::keyboard::key::Named::ArrowRight => "ArrowRight",
+                iced::keyboard::key::Named::Delete => "Delete",
+                iced::keyboard::key::Named::Home => "Home",
+                iced::keyboard::key::Named::End => "End",
+                _ => return None,
+            };
+            Some(name.to_string())
+        }
+        iced::keyboard::Key::Character(c) => Some(c.to_string()),
+        _ => None,
+    }
+}
+
 /// iced `subscription` callback for `run_app_devtools`: forwards the inner
-/// component's subscription (lifted to `WrapperMsg`) plus F12 + window events.
+/// component's subscription (lifted to `WrapperMsg`) plus F12, window events,
+/// and declarative Rust component key bindings.
 fn devtools_subscription<C: Component + 'static>(
     w: &DevToolsWrapper<C>,
 ) -> iced::Subscription<WrapperMsg<C>>
@@ -20390,6 +20629,10 @@ where
                 key,
                 iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)
             ) {
+                // 014 内存哨兵冻结态:F12 = 退出进程(逃生门)。
+                if crate::ui::mem_guard::is_frozen() {
+                    std::process::exit(42);
+                }
                 return Some(WrapperMsg::<C>::Debug(DEBUG_TOGGLE_EVENT.to_string()));
             }
         }
@@ -20407,7 +20650,15 @@ where
         }
         _ => None,
     });
-    iced::Subscription::batch(vec![inner, f12, win, mcp])
+    // Forward ignored key presses. The mapper is deliberately non-capturing
+    // (an Iced 0.14 requirement); component-specific lookup happens in
+    // `devtools_update` through `key_message`.
+    let rust_keys = iced::keyboard::listen().map(|event| {
+        let event = iced::Event::Keyboard(event);
+        let key = rust_component_key_string(&event).unwrap_or_default();
+        WrapperMsg::<C>::Debug(format!("__autoui_key|{key}"))
+    });
+    iced::Subscription::batch(vec![inner, f12, win, mcp, rust_keys])
 }
 
 /// Plan 407: tick subscription using run_with (avoids generic map const check).
@@ -20455,7 +20706,9 @@ where
         iced::Subscription::batch(subs)
     })
     .window_size(startup_window_size())
-    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+    // Plan 411: pac window/title envs(AUTO_VM_WINDOW/AUTO_VM_TITLE)对
+    // rust 轨同语义生效(VM 轨同款读取面);DevTools 面板不受影响。
+    .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
     .font(INTER_FONT_SEMIBOLD)
@@ -20488,8 +20741,24 @@ where
         devtools_update,
         devtools_view,
     )
-    .subscription(devtools_subscription)
-    .window_size(iced::Size::new(1600.0, 900.0))
+    .subscription(move |w| {
+        let mut subs: Vec<iced::Subscription<WrapperMsg<C>>> = vec![devtools_subscription(w)];
+        // Plan 407 + 014 直键入:with-task 启动变体也挂 tick 订阅
+        // (run_app_devtools 同款;此前 async init 应用无 tick——at-app 的
+        // timer 驱动流式刷新/banner 收割全靠它,无按钮后没有别的 tick 源)。
+        if let Some(ms) = w.inner.tick_interval_ms() {
+            if w.inner.tick_msg().is_some() {
+                subs.push(tick_subscription::<C>(std::time::Duration::from_millis(
+                    ms as u64,
+                )));
+            }
+        }
+        iced::Subscription::batch(subs)
+    })
+    .window_size(startup_window_size())
+    // Plan 411: pac window/title envs 对 rust 轨同语义生效(上方
+    // run_app_devtools 同款;原 with-task 变体硬编码 1600×900 且无标题)。
+    .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))
     // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
@@ -23638,8 +23907,11 @@ mod tests {
         assert!(ds.desktop.config_poll_sampled, "首采样落哨兵");
         assert!(ds.desktop.config_poll_mtime.is_none(), "文件缺席锚 None");
         // ② 外写(模拟 daemon PUT):多字段一次落盘 → 下一 tick 差异应用。
+        // PLAN-615 T-06:主题面外写须伴 theme_source="manual"——system 源
+        // (缺省)在 load() 期从 OS 派生 dark_theme,外写值会被跟随语义覆盖。
         let mut cfg = ds.desktop.config.clone();
         cfg.dark_theme = !cfg.dark_theme;
+        cfg.theme_source = "manual".to_string();
         cfg.dock_pinned = vec!["011-calculator".to_string()];
         cfg.transparency = "high".to_string();
         cfg.wallpapers_dir = r"D:\wallpapers".to_string();

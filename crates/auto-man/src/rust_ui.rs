@@ -67,6 +67,24 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
         }
     }
 
+    // 014:侧车源(term.rs 等)同样参与指纹——此前侧车更新不触发 regen,
+    // 生成 crate 一直吃旧拷贝(at-app 泵扩面实测踩中)。
+    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    if let Ok(main_meta) = fs::metadata(&main_rs) {
+        if let Ok(main_time) = main_meta.modified() {
+            for (_, source_rel) in &sidecar.modules {
+                let source = project_dir.join(source_rel);
+                if let Ok(at_meta) = fs::metadata(&source) {
+                    if let Ok(at_time) = at_meta.modified() {
+                        if at_time > main_time {
+                            return (false, true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Check if default feature in Cargo.toml matches expected
     if let Ok(content) = fs::read_to_string(&cargo_toml) {
         if !content.contains("default = [\"ui-iced\"]") {
@@ -314,6 +332,20 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     fs::write(&main_rs, &full_code)
         .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
 
+    // PLAN-013 T2: regen 只写 main.rs,侧车 mod 声明须重挂。014 修正:
+    // 模块文件同样以工程源为准重拷(源是唯一真身;此前 regen 免复制,
+    // 侧车源更新后生成 crate 一直吃旧文件,at-app term.rs 泵扩面实测
+    // 踩中)。Cargo.toml 也按 pac 现值重写(exe_name 等 014 配置 regen
+    // 即生效),随后 apply_sidecar_to_crate 重注依赖 + mod 声明。
+    let cargo_toml = generate_cargo_toml(&project_name, project_dir);
+    fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
+        .map_err(|e| format!("Failed to write {}: {}", rust_dir.join("Cargo.toml").display(), e))?;
+
+    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    if !sidecar.is_empty() {
+        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, rust_dir)?;
+    }
+
     Ok(())
 }
 
@@ -440,6 +472,44 @@ pub fn generate_rust_ui(
     let cargo_path = output.join("Cargo.toml");
     fs::write(&cargo_path, &cargo_toml)
         .map_err(|e| format!("Failed to write {}: {}", cargo_path.display(), e))?;
+
+    // PLAN-013 T2: pac.at rust_sidecar 供给(用户 .rs 模块 + Cargo 依赖)。
+    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    if !sidecar.is_empty() {
+        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &output)?;
+        println!(
+            "{}",
+            "  rust_sidecar applied (modules + deps)"
+                .bright_green()
+        );
+    }
+
+    // PLAN-013 T2: __InitLoaded 载荷类型修正——ui_gen 硬编码
+    // Vec<serde_json::Value>(JSON API 客户端世界);merged db 吸收时
+    // init fn 返回具体类型(如 Vec<String>),按 api 契约改写 msg 变体。
+    {
+        let api_module = parse_api_module(project_dir);
+        if let Some(module) = &api_module {
+            if let Some(db) = merged_db_impl(project_dir, module) {
+                if let Ok(main_content) = fs::read_to_string(&main_rs) {
+                    if let Some(init_fn) = extract_init_api_func(&main_content) {
+                        if let Some(ep) = module.endpoints.iter().find(|e| e.fn_name == init_fn) {
+                            if let Some(rust_ty) = merged_scalar_rust_ty(&ep.return_type) {
+                                let rewritten = main_content.replace(
+                                    "__InitLoaded(Vec<serde_json::Value>)",
+                                    &format!("__InitLoaded({rust_ty})"),
+                                );
+                                if rewritten != main_content {
+                                    fs::write(&main_rs, &rewritten)
+                                        .map_err(|e| format!("Failed to rewrite {}: {}", main_rs.display(), e))?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Note: no per-member .cargo/config.toml needed — the workspace-level
     // .cargo/config.toml sets target-dir for all members.
@@ -617,6 +687,98 @@ fn deduplicate_imports(imports: &mut Vec<String>) {
     imports.retain(|s| seen.insert(s.clone()));
 }
 
+/// PLAN-013 T2: merged 模式的 db.at 吸收件(转译码 + 可覆盖的 fn 名集)。
+struct MergedDbImpl {
+    code: String,
+    fns: std::collections::HashSet<String>,
+}
+
+/// 载入并转译 src/back/db.at;含「引用工程外类型面」(crate::types /
+/// super:: 依赖,015-notes 类结构型 db)的转译件不可吸收——避免 front
+/// crate 里悬空引用;此时返回 None,endpoint 落回 JSON CRUD 脚手架。
+fn merged_db_impl(project_dir: &Path, module: &auto_lang::api::ApiModule) -> Option<MergedDbImpl> {
+    let db_file = project_dir.join("src").join("back").join("db.at");
+    let content = std::fs::read_to_string(db_file).ok()?;
+    let _ = module;
+    let db_rs = crate::api_gen::transpile_db_to_rs(&content).ok()?;
+    let rs = crate::api_gen::post_process_db_rs(db_rs);
+    if rs.contains("crate::types") || rs.contains("super::") || rs.contains("crate::api::") {
+        return None;
+    }
+    let fns = crate::api_gen::extract_db_fn_names(&rs);
+    if fns.is_empty() {
+        return None;
+    }
+    Some(MergedDbImpl { code: rs, fns })
+}
+
+/// api.at 类型面的标量子集 → Rust 类型;[]str / List<str> 映射 Vec<String>。
+/// 结构型/未知类型返回 None(endpoint 不可吸收)。
+fn merged_scalar_rust_ty(ty: &str) -> Option<&'static str> {
+    match ty.trim() {
+        "int" | "i64" => Some("i64"),
+        "str" | "String" => Some("String"),
+        "bool" => Some("bool"),
+        "float" | "f32" => Some("f32"),
+        "double" | "f64" => Some("f64"),
+        "void" | "()" => Some("()"),
+        "[]str" | "[]String" | "List<str>" | "List<String>" => Some("Vec<String>"),
+        "[]int" | "List<int>" | "List<i64>" => Some("Vec<i64>"),
+        _ => None,
+    }
+}
+
+/// db 吸收的 endpoint 委托 fn;不可覆盖(无同名 db fn / 非标量面)→ None。
+fn merged_db_delegate(db: &MergedDbImpl, endpoint: &auto_lang::api::ApiEndpoint) -> Option<String> {
+    if !db.fns.contains(endpoint.fn_name.as_str()) {
+        return None;
+    }
+    let mut sig = Vec::new();
+    for p in &endpoint.params {
+        sig.push(format!(
+            "{}: {}",
+            p.name,
+            merged_scalar_rust_ty(&p.ty)?
+        ));
+    }
+    let ret_ty = merged_scalar_rust_ty(&endpoint.return_type)?;
+    let args = endpoint
+        .params
+        .iter()
+        .map(|p| {
+            // a2r str 形参是 &str(String 按引用传);标量按值。
+            if merged_scalar_rust_ty(&p.ty) == Some("String") {
+                format!("&{}", p.name)
+            } else {
+                p.name.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let ret_clause: String;
+    let call;
+    if ret_ty == "i64" {
+        // 014 修正:UI 模型 int 是 i32(collect prop types Type::Int),
+        // db 侧 .at int 转译是 i64——返回面统一降位,否则
+        // `self.x = api_int()` 编不过(at-app 光标/几何回读实测)。
+        ret_clause = " -> i32".to_string();
+        call = format!("db::{}({}) as i32", endpoint.fn_name, args);
+    } else if ret_ty == "()" {
+        ret_clause = String::new();
+        call = format!("db::{}({})", endpoint.fn_name, args);
+    } else {
+        ret_clause = format!(" -> {ret_ty}");
+        call = format!("db::{}({})", endpoint.fn_name, args);
+    };
+    Some(format!(
+        "fn {}({}){} {{\n    {}\n}}\n\n",
+        endpoint.fn_name,
+        sig.join(", "),
+        ret_clause,
+        call
+    ))
+}
+
 /// Generate API client functions for Rust UI.
 /// Parses the API definition from src/back/api.at and generates reqwest HTTP calls (Plan 388 W1: migrated from ureq).
 /// Falls back to heuristic stubs if the API file can't be parsed.
@@ -633,7 +795,7 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
 
     if merged_mode {
         if let Some(module) = &api_module {
-            return generate_merged_api_client(module);
+            return generate_merged_api_client(module, project_dir);
         }
         // Fallback to stubs if no api.at found
         return generate_api_stubs(api_imports);
@@ -1029,9 +1191,23 @@ fn generate_json_initial_data(module: &auto_lang::api::ApiModule) -> String {
 /// Plan 347: Generate in-process API functions for Rust+Rust merged mode.
 /// Instead of HTTP calls, functions operate on a global `static DATA: Mutex<Vec<Value>>`.
 /// Function signatures match the HTTP version so widget call sites don't change.
-fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
+///
+/// PLAN-013 T2: 当 src/back/db.at 存在、可转译、且 endpoint 全部落在
+/// 「db 同名实现 + 标量/[]str 参数返回面」时,把 db 转译件以 `mod db`
+/// 嵌入,endpoint fn 直接委托 `db::<fn>(…)`——merged 模式从此运行
+/// .at 真实现而非 JSON CRUD 脚手架(未覆盖的 endpoint 仍走原脚手架)。
+fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &Path) -> String {
     let mut code = String::new();
     code.push_str("// API functions (auto-generated, in-process merged mode — no HTTP)\n\n");
+
+    let db_impl = merged_db_impl(project_dir, module);
+    if let Some(db) = &db_impl {
+        code.push_str(
+            "\n// PLAN-013 T2: db.at 吸收(转译嵌入)——merged 模式的后端真实现;勿手改\npub mod db {\n#![allow(unused)]\n",
+        );
+        code.push_str(&db.code);
+        code.push_str("\n}\n\n");
+    }
 
     // Generate JSON initial data (not strong-typed structs).
     let initial_items = generate_json_initial_data(module);
@@ -1053,6 +1229,12 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule) -> String {
         let body_params: Vec<_> = endpoint.params.iter()
             .filter(|p| !endpoint.path().contains(&format!(":{}", p.name)))
             .collect();
+
+        // PLAN-013 T2: db 吸收臂——同名 db 实现存在且标量面覆盖 → 委托。
+        if let Some(emit) = db_impl.as_ref().and_then(|db| merged_db_delegate(db, endpoint)) {
+            code.push_str(&emit);
+            continue;
+        }
 
         // Plan 547: the image viewer's merged Rust arm shares the host-owned
         // media control plane with VM instead of manufacturing JSON CRUD
@@ -1586,6 +1768,11 @@ fn wrap_example(project_name: &str, components: &str) -> String {
 
 use auto_lang::ui::{{Component, View}};
 
+// 014 内存哨兵:记账分配器(存活字节 + 大块分配点回溯;超限冻结时
+// 自动落盘分配报告到 %TEMP%/auto-term-mem-report.txt)。
+#[global_allocator]
+static GUARD_ALLOC: auto_lang::ui::mem_guard::GuardAlloc = auto_lang::ui::mem_guard::GuardAlloc;
+
 {cleaned}
 
 fn main() -> auto_lang::ui::AppResult<()> {{
@@ -1710,6 +1897,29 @@ fn parse_pac_name(pac_path: &Path) -> Option<String> {
     None
 }
 
+/// pac.at `exe_name: "..."` — 生成应用的可执行产物名(014 at-app:
+/// `auto-term.exe` 才是正名;缺省 = 包名默认 bin)。合法字符 [A-Za-z0-9_-]。
+fn parse_pac_exe_name(pac_path: &Path) -> Option<String> {
+    let content = fs::read_to_string(pac_path).ok()?;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("exe_name:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
+                let valid = !value.is_empty()
+                    && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+                if valid {
+                    return Some(value.to_string());
+                }
+                eprintln!("⚠ pac.at exe_name '{value}' 含非法字符(允许 [A-Za-z0-9_-]),忽略");
+            }
+        }
+    }
+    None
+}
+
 /// Convert CamelCase to snake_case.
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
@@ -1731,15 +1941,20 @@ fn to_snake_case(s: &str) -> String {
 /// No `[workspace]` section — this project is a member of the shared workspace
 /// at `examples/rust-workspace/`. Dependencies use `workspace = true` to inherit
 /// from the workspace-level `[workspace.dependencies]`.
-pub(crate) fn generate_cargo_toml(project_name: &str, _project_dir: &Path) -> String {
+pub(crate) fn generate_cargo_toml(project_name: &str, project_dir: &Path) -> String {
     let snake_name = to_snake_case(project_name);
+    // 014: pac.at `exe_name` — 显式 `[[bin]]` 控制产物名(包名/工作区成员
+    // 不动;缺省无 [[bin]],产物名 = 包名)。at-app 据此产出 auto-term.exe。
+    let bin_block = parse_pac_exe_name(&project_dir.join("pac.at"))
+        .map(|exe| format!("\n[[bin]]\nname = \"{exe}\"\npath = \"src/main.rs\"\n"))
+        .unwrap_or_default();
 
     format!(
         r#"[package]
 name = "{snake_name}"
 version = "0.1.0"
 edition = "2021"
-
+{bin_block}
 [features]
 ui-gpui = ["auto-lang/ui-gpui"]
 ui-iced = ["auto-lang/ui-iced"]

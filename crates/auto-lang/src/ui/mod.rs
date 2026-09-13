@@ -17,6 +17,16 @@ pub mod component;
 #[cfg(feature = "image-pipeline")]
 pub mod image_pipeline;
 
+// Plan 617 T-05: local media file service (recursive index + HTTP byte-range
+// semantics).  Needs no optional dependency (blake3 is unconditional), so it is
+// ungated like `component` — the generated backend reaches it as
+// `auto_lang::ui::media_service`.
+pub mod media_service;
+
+// 014 内存哨兵:提交内存自检 + 超限冻结(渲染层 update 入口挂接;
+// AUTO_MEM_LIMIT_MB 阈值,0 = 关闭)。零依赖(直接声明 K32GetProcessMemoryInfo)。
+pub mod mem_guard;
+
 // Plan 413: cross-platform code editor widget (feature `code-editor`,
 // enabled by default under `ui-iced`).
 #[cfg(feature = "code-editor")]
@@ -51,6 +61,8 @@ pub mod handler_codegen;
 pub mod child_emit;
 #[cfg(feature = "ui-iced")]
 pub mod session;
+// PLAN-615 T-06: OS 系统主题读取（深/浅色个人化跟随地基；纯 std 全平台可编译）。
+pub mod system_theme;
 
 // Plan 463 T2：桌面布局引擎（free/grid/master-stack 纯函数 + snap 几何）。
 #[cfg(feature = "ui-iced")]

@@ -11,6 +11,8 @@
 //   RemoveAt   —— 关闭 tab 的 remove + 索引修补 + 激活态重算
 //                 （原 CloseTab/ConfirmClose 各持一份，现合一）
 //   SyncCursor —— line/col/sel 三元组读回（原 5 处重复，现 1 处）
+use components.tree_util: toggle_id
+
 store EditorStore {
     model {
         // Plan 420 P1: tabs 数组态 —— 每 tab = {key, title, path, dirty, src}。
@@ -51,6 +53,23 @@ print(add(1, 2))
         // Plan 420 P2: 关闭脏 tab 的确认弹层状态
         var confirm_open bool = false
         var confirm_idx int = -1
+        // PLAN-618 T-06: 左侧文件浏览器树(TreeView 受控——页面持
+        // expanded/selected)。文件节点 id = 演示项目内路径,目录节点 id
+        // 不与任何文件路径重合,TreeSelect 按静态文件表匹配即可区分。
+        var tree_nodes list = [
+            { id: "src", label: "src", children: [
+                { id: "src/app.at", label: "app.at", children: [], kind: "file", icon: "file-text", is_leaf: true, badge: "" },
+                { id: "src/editor_store.at", label: "editor_store.at", children: [], kind: "file", icon: "file-text", is_leaf: true, badge: "" },
+                { id: "src/status_bar.at", label: "status_bar.at", children: [], kind: "file", icon: "file-text", is_leaf: true, badge: "" },
+                { id: "src/console_panel.at", label: "console_panel.at", children: [], kind: "file", icon: "file-text", is_leaf: true, badge: "" },
+                { id: "src/ctx_menu.at", label: "ctx_menu.at", children: [], kind: "file", icon: "file-text", is_leaf: true, badge: "" }
+            ], kind: "dir", icon: "folder", is_leaf: false, badge: "" },
+            { id: "docs", label: "docs", children: [
+                { id: "README.md", label: "README.md", children: [], kind: "file", icon: "file-text", is_leaf: true, badge: "" }
+            ], kind: "dir", icon: "folder", is_leaf: false, badge: "" }
+        ]
+        var tree_expanded list = ["src", "docs"]
+        var tree_sel str = ""
     }
 
     msg {
@@ -61,6 +80,7 @@ print(add(1, 2))
         ActNew, ActOpen, ActSave, ActQuit, ActUndo, ActRedo,
         ActSelectAll, ActCut, ActCopy, ActPaste, ActConsole,
         ActSwitchTab, ActFold, ActAbout,
+        TreeToggle(str), TreeSelect(str),
     }
 
     on {
@@ -337,6 +357,51 @@ print(add(1, 2))
         .ActAbout -> {
             console_log("auto-edit 0.1 — AutoUI playground (plans 413/414/418/420)")
             .console = console_lines()
+        }
+
+        // ---- PLAN-618 T-06: 文件浏览器树 ----
+        .TreeToggle(id) -> {
+            .tree_expanded = toggle_id(.tree_expanded, id)
+        }
+        // 选中文件 → OpenByPath 语义:同路径 tab 已开则激活,否则查静态
+        // 演示文件表构造新 tab(复用 tabs 机制,同 ActOpen 形态——新 key
+        // 生成新 code_editor 实例,content 由 props 传入,无需 set_text)。
+        // 目录 id 不在文件表中,静默忽略(仅高亮)。
+        .TreeSelect(id) -> {
+            .tree_sel = id
+            var i int = 0
+            var found bool = false
+            while i < .tabs.len() {
+                if .tabs[i].path == id {
+                    found = true
+                    store.TabActivate(i)
+                }
+                i = i + 1
+            }
+            if !found {
+                var s str = ""
+                if id == "src/app.at" { s = "// auto-edit 根组件 — 视图组合与 on 薄委托\nwidget App {\n    // ...\n}\n" }
+                if id == "src/editor_store.at" { s = "// 全部状态与业务逻辑(Plan 449 自 app.at 下沉)\nstore EditorStore {\n    // ...\n}\n" }
+                if id == "src/status_bar.at" { s = "// StatusBar 组件(013 形态:读 .store + 直调 store)\n" }
+                if id == "src/console_panel.at" { s = "// ConsolePanel 组件 — 底部控制台面板\n" }
+                if id == "src/ctx_menu.at" { s = "// EditorCtxMenu 组件(右键弹层锚态直读 .store)\n" }
+                if id == "README.md" { s = "# auto-edit\n\nAutoUI 代码编辑器示例 — Plan 413 起,418/420/422/449 渐进增强。\nPLAN-618: 左侧文件浏览器树接入(TreeView 受控)。\n" }
+                if s != "" {
+                    .open_count = .open_count + 1
+                    .tabs.push({key: "tab-" + .open_count.str(), title: file_basename(id), path: id, dirty: false, src: s})
+                    .tab = .tab_count
+                    .tab_count = .tab_count + 1
+                    .active_key = .tabs[.tab].key
+                    .title_active = .tabs[.tab].title
+                    .path_active = id
+                    .src_active = s
+                    .line = 1
+                    .col = 1
+                    .sel = 0
+                    console_log("open: " + id)
+                }
+                .console = console_lines()
+            }
         }
     }
 }

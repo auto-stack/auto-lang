@@ -1111,10 +1111,23 @@ impl Component for DynamicComponent {
     fn on(&mut self, msg: Self::Msg) {
         // Extract event name + any payload args the view builder resolved from
         // loop bindings (e.g. the `cell.date` in `onclick: .SelectDay(cell.date)`).
-        let (event_name, args) = match &msg {
+        let (event_name, mut args) = match &msg {
             DynamicMessage::Typed { event_name, args, .. } => (event_name.clone(), args.clone()),
             DynamicMessage::String(name) => (name.clone(), Vec::new()),
         };
+
+        // PLAN-013 W2：input on_input 文本注入——单参 handler 且 dispatch 空
+        // 实参时，补 INPUT_TEXT 侧通道文本（`.SetQ(t)` 的 t；overlay 挂载面
+        // 此前文本在泛型转换层丢失，search 打字恒无效）。仅"声明 1 参 + 空
+        // 实参 + 通道非空"三条件同时成立才注入，其余调用零影响。
+        if args.is_empty() {
+            let text = crate::ui::iced::renderer::last_input_text();
+            if !text.is_empty()
+                && self.bridge.handler_param_count(&self.widget_name, &event_name) == Some(1)
+            {
+                args.push(auto_val::Value::Str(text.into()));
+            }
+        }
 
         // Execute handler via VM bytecode closure, forwarding payload args so a
         // handler declared `.SelectDay(date) ->` receives them as parameters.

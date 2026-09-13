@@ -1,126 +1,468 @@
-// notes_store.at — SharedStore for notes (Plan 354 Tier 1-4).
-// Client-side cache + state; backend API is the data source.
-// Phase D: added folder/tag filter state + folder/tag actions.
-// Note: folders are hardcoded (a2r doesn't support multi-type CRUD yet).
+// notes_store.at — 015-notes 单一状态源（PLAN-616 清爽化重做）。
+//
+// 设计要点（依据 PLAN-616 §4.2 在真实后端数据上的能力探针）：
+//
+// 1. 筛选一律在 store 里算成「可见索引表」（[]int，指向 .notes 下标），视图只做
+//    索引解引用。原因：视图条件里的方法调用（`if note.tags.contains(x)`）在 VM 端
+//    走 `resolve_binding_path`，该函数只做逐段字段访问、不认识方法调用 → 条件恒假
+//    （PLAN-616 U5；旧实现 sidebar.at 的标签过滤分支从未生效）。
+//
+// 2. 只使用在 VM 上实证可用的原语：[]int 局部量 + push、`idx = idx + 1`、嵌套 for、
+//    字段比较 == / !=、API 调用。**禁用**：`.field = []`、以及把局部 []str/[]Note
+//    赋给状态字段——两者都会撞上 `vm/codegen.rs` 的 "Assignment to complex LHS"
+//    panic（PLAN-616 §4.2）。
+//
+// 3. 搜索借后端 `search_notes`（其内部走 to_lower，故大小写不敏感）直接替换 .notes
+//    工作集，而不是在视图里逐条比对；空查询时回到全量。
+//
+// 4. 草稿常驻 store（draft_*）：切换笔记/筛选/新建前先落盘，避免「编辑中被切走丢内容」，
+//    并让「始终可编辑」不需要模态 Edit/Save 切换。
+//
+// 5. **入口 handler 把 API 调用内联在自身 body 里**（不抽 `ReloadNotes()` / `FlushDraft()`
+//    这类会发请求的兄弟方法再串行调用）。原因：生成器只把「body 里出现 await」的 store
+//    方法标成 async；同步方法调用 async 兄弟方法不会 await（Vue 端），后续同步步骤会先跑
+//    并读到旧数据——实证：搜索在 Vue 端完全不过滤（VM 端 merged 模式调用同步，无此问题，
+//    所以只在 Vue 侧暴露）。纯同步小工具（ApplyFilter / LoadDraft / SelectFirstVisible /
+//    SeedVocab）仍可自由复用。
 
-use back.api: list_notes, create_note, update_note, delete_note, toggle_pin, update_tags
+use back.api: list_notes, create_note, update_note, delete_note, toggle_pin, update_tags, search_notes
 
 store NotesStore {
     model {
+        // 工作集：搜索时是命中集，否则是全量（其余筛选只影响可见索引表）
         var notes []Note = []
         var active_id int = 0
-        var sort_mode str = "updated"
-        var search str = ""
-        var loading bool = false
-        var dark_mode bool = true
 
-        // Phase D: folder/tag navigation state.
-        // active_folder: "all" = no filter, "pinned"/"recent" = shortcut,
-        // or a concrete folder name to filter by note.folder.
+        // 筛选状态：active_folder = "all" | "pinned" | 具体文件夹名
+        var search str = ""
         var active_folder str = "all"
-        // active_tag: "" = no tag filter, otherwise only notes containing it show.
         var active_tag str = ""
 
-        // Plan 360: accent color (indigo | coral | ocean | sage | amber).
-        // Aligned with auto-forge's 5-color palette system.
+        // 可见索引表（见文件头 ①）
+        var visible_pinned []int = []
+        var visible_notes []int = []
+
+        // 标签 / 文件夹词表。模型字段而非 computed：旧写法 `computed all_tags => []` 恒空，
+        // 让筛选区那一行永远渲染成空白占位（PLAN-616 U4）。文件夹同理由笔记数据派生，
+        // 不再在视图里硬编码 Notes/Work/Personal 三组。
+        var all_tags []str = []
+        var all_folders []str = []
+
+        // 草稿（见文件头 ④）
+        var draft_id int = 0
+        var draft_title str = ""
+        var draft_body str = ""
+        var draft_time str = ""
+        var draft_folder str = ""
+        var draft_pinned bool = false
+        // 标签单独镜像一份：视图里 `for t in .store.draft_tags` 比遍历
+        // `.store.notes[.store.active_id].tags` 这种「下标 + 点路径」更可靠。
+        var draft_tags []str = []
+        var dirty bool = false
+        var confirm_delete bool = false
+
+        // 主题（沿用 PLAN-360/458/601 机制：store 持有，负责 applyAccent 重放）
+        var dark_mode bool = true
         var accent_color str = "indigo"
+        var show_settings bool = false
     }
 
-    msg { Init, Refresh, SelectNote(int), NewNote, NewNoteInFolder(str), DeleteNote(int),
-              TogglePin(int), SetSort(str), Search(str),
-              UpdateTags(int), ToggleDarkMode, SetAccent(str),
-              SelectFolder(str), SelectTag(str), MoveNote(int) }
-
-    computed {
-        pinned_notes => .notes.filter(n => n.pinned)
-        all_tags => []
+    msg {
+        Init, SeedVocab, ApplyFilter, LoadDraft, SelectFirstVisible,
+        SelectNote(int), NewNote, SaveDraft,
+        EditTitle(str), EditBody(str),
+        DeleteArmed, DeleteConfirmed, DeleteCancelled, TogglePin(int), TogglePinActive,
+        SetSearch(str), SelectFolder(str), SelectTag(str), ClearTag,
+        TagAdded(str), TagRemoved(str),
+        ToggleDarkMode, SetMode(str), SetAccent(str), ToggleSettings
     }
 
     on {
+        // ── 初始化：body 里自带 await（list_notes），后续步骤顺序可靠 ─────────
         .Init -> {
-            .loading = true
+            .search = ""
+            .active_folder = "all"
+            .active_tag = ""
             .notes = list_notes()
-            .loading = false
+            .SeedVocab()
+            .active_id = 0
+            .LoadDraft()
+            .ApplyFilter()
         }
 
-        .Refresh -> {
-            .notes = list_notes()
+        // ── 纯同步工具族（无 API 调用，可被任何 handler 复用）─────────────────
+
+        // 标签 / 文件夹词表播种：嵌套 for + 逐项扫描去重（不用 contains，见文件头 ②）。
+        .SeedVocab -> {
+            var dup bool = false
+            for n in .notes {
+                for t in n.tags {
+                    dup = false
+                    for e in .all_tags {
+                        if e == t {
+                            dup = true
+                        }
+                    }
+                    if dup == false {
+                        .all_tags.push(t)
+                    }
+                }
+                if n.folder != "" {
+                    dup = false
+                    for e in .all_folders {
+                        if e == n.folder {
+                            dup = true
+                        }
+                    }
+                    if dup == false {
+                        .all_folders.push(n.folder)
+                    }
+                }
+            }
         }
 
-        .SelectNote(id) -> {
-            .active_id = id
+        // 可见索引表：作用域（all / pinned / 具体文件夹）+ 标签两个维度，
+        // 单趟扫描产出两组下标。
+        .ApplyFilter -> {
+            var pinned []int = []
+            var plain []int = []
+            var ok bool = false
+            var idx int = 0
+            for n in .notes {
+                ok = false
+                if .active_folder == "all" {
+                    ok = true
+                } else if .active_folder == "pinned" {
+                    if n.pinned {
+                        ok = true
+                    }
+                } else if n.folder == .active_folder {
+                    ok = true
+                }
+                if ok {
+                    if .active_tag != "" {
+                        ok = false
+                        for t in n.tags {
+                            if t == .active_tag {
+                                ok = true
+                            }
+                        }
+                    }
+                }
+                if ok {
+                    if n.pinned {
+                        pinned.push(idx)
+                    } else {
+                        plain.push(idx)
+                    }
+                }
+                idx = idx + 1
+            }
+            .visible_pinned = pinned
+            .visible_notes = plain
+        }
+
+        .LoadDraft -> {
+            if .notes.len() > 0 {
+                .draft_id = .notes[.active_id].id
+                .draft_title = .notes[.active_id].title
+                .draft_body = .notes[.active_id].body
+                .draft_time = .notes[.active_id].time
+                .draft_folder = .notes[.active_id].folder
+                .draft_pinned = .notes[.active_id].pinned
+                .draft_tags = .notes[.active_id].tags
+            } else {
+                // 无笔记时编辑栏不渲染（App 走空态），这里只清标量字段。
+                // 注意不要写 `.draft_tags = []`——空数组字面量赋值会撞 VM codegen
+                // 的 "Assignment to complex LHS" panic（见文件头 ②）。
+                .draft_id = 0
+                .draft_title = ""
+                .draft_body = ""
+                .draft_time = ""
+                .draft_folder = ""
+                .draft_pinned = false
+            }
+            .dirty = false
+            .confirm_delete = false
+        }
+
+        // 切换作用域后把选中项落到第一条可见笔记，避免「编辑区显示列表外的笔记」。
+        .SelectFirstVisible -> {
+            if .visible_pinned.len() > 0 {
+                .active_id = .visible_pinned[0]
+            } else if .visible_notes.len() > 0 {
+                .active_id = .visible_notes[0]
+            }
+            .LoadDraft()
+        }
+
+        // ── 入口 handler（API 调用内联，见文件头 ⑤）────────────────────────
+
+        .SelectNote(i) -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+            }
+            .dirty = false
+            .active_id = i
+            .LoadDraft()
+        }
+
+        .EditTitle(v) -> {
+            .draft_title = v
+            .dirty = true
+        }
+
+        .EditBody(v) -> {
+            .draft_body = v
+            .dirty = true
+        }
+
+        .SaveDraft -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+            }
+            .dirty = false
+            .LoadDraft()
+            .ApplyFilter()
         }
 
         .NewNote -> {
-            create_note("", "", "")
-            .notes = list_notes()
-            .active_id = 0
-        }
-
-        .NewNoteInFolder(folder) -> {
-            create_note("", "", folder)
-            .notes = list_notes()
-            .active_id = 0
-        }
-
-        .DeleteNote(id) -> {
-            delete_note(id)
-            .notes = list_notes()
-            if .notes.len() > 0 {
-                .active_id = 0
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
             }
+            .dirty = false
+            // 清掉搜索：新笔记标题为空，在有搜索词时不会命中，会导致「新建了却看不见」。
+            .search = ""
+            var f str = ""
+            if .active_folder != "all" {
+                if .active_folder != "pinned" {
+                    f = .active_folder
+                }
+            }
+            create_note("", "", f)
+            .notes = list_notes()
+            .active_id = 0
+            .LoadDraft()
+            .ApplyFilter()
         }
 
+        // 删除改为两步：先武装确认，再确认才真删。
+        .DeleteArmed -> {
+            .confirm_delete = true
+        }
+
+        .DeleteCancelled -> {
+            .confirm_delete = false
+        }
+
+        .DeleteConfirmed -> {
+            if .notes.len() > 0 {
+                delete_note(.notes[.active_id].id)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .active_id = 0
+                .LoadDraft()
+                .ApplyFilter()
+            }
+            .confirm_delete = false
+        }
+
+        // 纯本地翻转（可单测）：pinned 落库由 TogglePinActive 编排。
         .TogglePin(idx) -> {
             if idx < .notes.len() {
-                .notes[idx].pinned = !.notes[idx].pinned
+                // 先读进局部量再取反：a2r 对「取反 + 下标字段读」的 RHS 会发射出
+                // 残缺表达式（`!(as usize]["pinned"]...)`，Rust 轨编译失败。
+                var cur bool = .notes[idx].pinned
+                .notes[idx].pinned = !cur
             }
         }
 
-        .SetSort(mode) -> {
-            .sort_mode = mode
+        // 置顶落库（旧实现只翻转本地内存，刷新即丢，见 PLAN-616 U7）。
+        // 不做本地预翻转：merged 模式下 store 与后端共享同一份笔记对象，
+        // 本地翻转会被 toggle_pin 再翻一次（净零）。
+        .TogglePinActive -> {
+            if .notes.len() > 0 {
+                if .dirty {
+                    update_note(.draft_id, .draft_title, .draft_body)
+                    .dirty = false
+                }
+                toggle_pin(.notes[.active_id].id)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .LoadDraft()
+                .ApplyFilter()
+            }
         }
 
-        .Search(q) -> {
+        // 搜索词由输入事件实参显式带入（不依赖双向绑定写入时序——VM 端
+        // 程序化输入不回填绑定状态，实证见 PLAN-616 T-05 执行记录）。
+        .SetSearch(q) -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .dirty = false
+            }
             .search = q
+            if .search == "" {
+                .notes = list_notes()
+            } else {
+                .notes = search_notes(.search)
+            }
+            .active_id = 0
+            .LoadDraft()
+            .ApplyFilter()
         }
 
-        .UpdateTags(id) -> {
-            .notes = list_notes()
+        .SelectFolder(f) -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .dirty = false
+            }
+            .active_folder = f
+            .active_tag = ""
+            .ApplyFilter()
+            .SelectFirstVisible()
+        }
+
+        .SelectTag(t) -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .dirty = false
+            }
+            .active_tag = t
+            .active_folder = "all"
+            .ApplyFilter()
+            .SelectFirstVisible()
+        }
+
+        .ClearTag -> {
+            if .dirty {
+                update_note(.draft_id, .draft_title, .draft_body)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .dirty = false
+            }
+            .active_tag = ""
+            .ApplyFilter()
+            .SelectFirstVisible()
+        }
+
+        .TagAdded(t) -> {
+            if .notes.len() > 0 {
+                var tl []str = []
+                var exists bool = false
+                for tg in .notes[.active_id].tags {
+                    if tg == t {
+                        exists = true
+                    }
+                    tl.push(tg)
+                }
+                if exists == false {
+                    tl.push(t)
+                }
+                update_tags(.notes[.active_id].id, tl)
+                var dup bool = false
+                for e in .all_tags {
+                    if e == t {
+                        dup = true
+                    }
+                }
+                if dup == false {
+                    .all_tags.push(t)
+                }
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .LoadDraft()
+                .ApplyFilter()
+            }
+        }
+
+        .TagRemoved(t) -> {
+            if .notes.len() > 0 {
+                var tl []str = []
+                for tg in .notes[.active_id].tags {
+                    if tg != t {
+                        tl.push(tg)
+                    }
+                }
+                update_tags(.notes[.active_id].id, tl)
+                if .search == "" {
+                    .notes = list_notes()
+                } else {
+                    .notes = search_notes(.search)
+                }
+                .LoadDraft()
+                .ApplyFilter()
+            }
         }
 
         .ToggleDarkMode -> {
             .dark_mode = !.dark_mode
         }
 
-        // Plan 360: set accent color (name validated by UI palette list).
+        // 显式模式（外观面板的 Dark/Light 两键）——避免「点 Dark 反而切到 Light」。
+        // 真正需要翻转时走 ToggleDarkMode：生成器只给 SetAccent/ToggleDarkMode
+        // 追加 applyAccent（含暗色亮度补偿 + .dark 元素上的 --primary 覆盖），
+        // 直接写 dark_mode 会漏掉主题色重放（T12-DARK 契约）。
+        .SetMode(m) -> {
+            if m == "dark" {
+                if .dark_mode == false {
+                    .ToggleDarkMode()
+                }
+            } else {
+                if .dark_mode == true {
+                    .ToggleDarkMode()
+                }
+            }
+        }
+
         .SetAccent(name) -> {
             .accent_color = name
         }
 
-        // Phase D: set folder filter and clear any active tag so the two
-        // filters don't compete for the same note list.
-        .SelectFolder(folder) -> {
-            .active_folder = folder
-            .active_tag = ""
-        }
-
-        .SelectTag(t) -> {
-            .active_tag = t
-        }
-
-        // Move note to a different folder via update_note (reuses existing API).
-        .MoveNote(id) -> {
-            var note ?Note = None
-            for n in .notes {
-                if n.id == id {
-                    note = Some(n)
-                }
-            }
-            if note != None {
-                update_note(id, note.title, note.body)
-            }
-            .notes = list_notes()
+        .ToggleSettings -> {
+            .show_settings = !.show_settings
         }
     }
 }

@@ -1,171 +1,180 @@
-// editor.at — EditorPanel (Plan 360: card-based modern UI).
-// Card wrapper + modern tag pills + unified button design language.
+// editor.at — EditorPanel 编辑栏（PLAN-616 清爽化重做）。
+//
+// 交互模型变化（相对 PLAN-360 的模态编辑）：
+//   * **始终可编辑**：标题/正文直接绑 store 草稿（draft_title / draft_body），
+//     不再有 Edit / Cancel 模式切换。任何输入置 dirty，Save 按钮此时才出现。
+//   * 标题回车 = 保存（input.onenter）。切换笔记/筛选/新建时 store 会先落盘
+//     未保存草稿（见 notes_store.at FlushDraft），所以「编辑中被切走」不丢内容。
+//   * 删除改两步：先 Arming 出确认，再确认才删。
+//   * 置顶走 store.TogglePinActive（落库），视图只用 draft_pinned 这个镜像字段
+//     决定按钮态——视图条件不写「下标 + 点路径」（VM 端条件求值对复杂路径不可靠）。
+//
+// 文本渲染约定：一律 `text <ref>` / `text <prop.field>`；不用 `"${...}"` 插值
+// （两端都不解析，见 PLAN-616 §4.2）。
 
 use notes_store: NotesStore
-use back.api: update_note, delete_note, toggle_pin, update_tags
 
-widget EditorPanel(note: Note, on_delete: msg, on_toggle_pin: msg, on_tags_changed: msg) {
-    msg { Init, Edit, Save, Cancel, EditBody(str), EditTitle(str), Delete, TogglePin,
-              AddTag, EditTagInput, RemoveTag(str), ShowTagInput }
+// PLAN-607 style 配方：编辑栏按钮族与标签胶囊。
+// `w-auto` 必需：VM 端按钮无显式宽度会按 Fill 撑开（见 app.at 同注）。
+style ghost_btn = "h-8 w-auto border-0 flex items-center gap-1.5 px-2.5 rounded-md bg-transparent text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+style danger_btn = "h-8 w-auto border-0 flex items-center gap-1.5 px-2.5 rounded-md bg-transparent text-xs text-destructive hover:bg-destructive/10 transition-colors"
+style save_btn = "h-8 w-auto border-0 flex items-center gap-1.5 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium shadow-sm hover:bg-primary/90 transition-colors"
+style pill_btn = "h-8 w-auto border-0 flex items-center gap-1.5 px-2.5 rounded-full bg-primary/10 text-xs text-primary font-medium hover:bg-primary/20 transition-colors"
+style tag_pill = "h-6 w-auto border-0 flex items-center gap-1 pl-2 pr-1 rounded-full bg-primary/10"
+
+widget EditorPanel() {
+    msg {
+        EditTitle(str), EditBody(str),
+        ShowTagInput, TagInputChanged(str), AddTag, RemoveTag(str),
+        SaveDraft, TogglePinActive, DeleteArmed, DeleteCancelled, DeleteConfirmed
+    }
 
     model {
-        var editing bool = false
-        var edit_title str = ""
-        var edit_body str = ""
         var tag_input str = ""
         var show_tag_input bool = false
     }
 
     view {
         col {
-            style: "w-full h-full flex-1 flex-col bg-card rounded-xl shadow-sm overflow-hidden min-h-0"
+            style: "h-full flex-1 flex-col min-h-0 bg-background"
 
+            // ── 编辑头：标题 + 状态 + 动作 ───────────────────────────
             col {
-                style: "w-full flex-1 px-8 pt-8 pb-2 overflow-y-auto flex-col"
+                style: "shrink-0 gap-2 px-8 pt-6 pb-3 border-b border-border"
 
-                // Title row with pin toggle (hover to show pin button)
-                if .editing == false {
-                    row {
-                        style: "group items-center gap-2"
-                        text .note.title { style: "text-xl font-bold text-foreground" }
-                        if .note.pinned {
-                            button "📌" {
-                                onclick: .TogglePin
-                                style: "text-base cursor-pointer bg-transparent opacity-100"
-                            }
-                        } else {
-                            button "📌" {
-                                onclick: .TogglePin
-                                style: "text-base cursor-pointer bg-transparent opacity-0 group-hover:opacity-30 hover:opacity-60 transition-opacity"
-                            }
-                        }
-                    }
-                } else {
-                    input { value: .edit_title, oninput: .EditTitle, placeholder: "Note title...", style: "text-xl font-bold text-foreground bg-transparent border-b border-border outline-none w-full focus:border-primary p-1 transition-colors" }
-                }
-                text .note.time { style: "text-xs text-muted-foreground mt-1" }
-
-                // Tags: modern pill design (primary/10 + primary text)
                 row {
-                    style: "group gap-1 mt-2 flex-wrap items-center"
-                    for t in .note.tags {
-                        row {
-                            style: "group/tag items-center rounded-full bg-primary/10 pl-2.5 pr-1"
-                            text t { style: "text-xs text-primary font-medium" }
-                            button "×" {
-                                onclick: .RemoveTag(t)
-                                style: "text-xs text-primary/60 hover:text-destructive w-4 h-4 flex items-center justify-center rounded-full bg-transparent hover:bg-destructive/10 opacity-0 group-hover/tag:opacity-100 transition-opacity ml-0.5"
-                            }
+                    style: "items-center gap-2"
+                    input {
+                        value: .store.draft_title
+                        oninput: .EditTitle
+                        onenter: .SaveDraft
+                        placeholder: "Untitled"
+                        style: "flex-1 text-2xl font-semibold tracking-tight bg-transparent border-0 outline-none text-foreground"
+                    }
+                    if .store.dirty {
+                        text "Unsaved changes" { style: "text-xs text-muted-foreground" }
+                        button {
+                            onclick: .SaveDraft
+                            style: save_btn
+                            icon (name: "check", size: 13)
+                            text "Save" { style: "text-xs font-medium" }
+                        }
+                    } else {
+                        text "Saved" { style: "text-xs text-muted-foreground/70" }
+                    }
+                    if .store.draft_pinned {
+                        button {
+                            onclick: .TogglePinActive
+                            style: pill_btn
+                            text "Unpin" { style: "text-xs" }
+                        }
+                    } else {
+                        button {
+                            onclick: .TogglePinActive
+                            style: ghost_btn
+                            text "Pin note" { style: "text-xs" }
                         }
                     }
-                    if .show_tag_input == false {
-                        button "+ tag" {
-                            onclick: .ShowTagInput
-                            style: "text-xs px-2 py-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-full bg-transparent opacity-0 group-hover:opacity-100 transition-opacity"
+                    if .store.confirm_delete {
+                        button {
+                            onclick: .DeleteCancelled
+                            style: ghost_btn
+                            text "Cancel" { style: "text-xs" }
                         }
-                    }
-                    if .show_tag_input == true {
-                        input { value: .tag_input, oninput: .EditTagInput, placeholder: "tag name...", style: "text-xs px-2.5 py-0.5 border border-border rounded-full w-24 focus:border-primary outline-none bg-background" }
-                        button "✓" {
-                            onclick: .AddTag
-                            style: "text-xs w-5 h-5 flex items-center justify-center bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors"
+                        button {
+                            onclick: .DeleteConfirmed
+                            style: danger_btn
+                            text "Delete" { style: "text-xs font-medium" }
+                        }
+                    } else {
+                        // 带文字标签（不是纯图标）：可发现性 + MCP 场景按 label 可寻。
+                        button {
+                            onclick: .DeleteArmed
+                            style: danger_btn
+                            icon (name: "trash-2", size: 14)
+                            text "Delete" { style: "text-xs" }
                         }
                     }
                 }
 
-                if .editing == true {
-                    textarea {
-                        value: .edit_body
-                        oninput: .EditBody
-                        style: "flex-1 min-h-64 mt-4 p-4 text-sm text-foreground bg-transparent border border-border rounded-lg outline-none resize-none focus:border-primary transition-colors"
+                // 元信息：更新时间 · 所属文件夹
+                row {
+                    style: "items-center gap-1.5"
+                    icon (name: "clock", size: 12, style: "text-muted-foreground")
+                    text .store.draft_time { style: "text-xs text-muted-foreground" }
+                    if .store.draft_folder != "" {
+                        text .store.draft_folder { style: "text-xs text-muted-foreground" }
                     }
-                } else {
-                    col {
-                        style: "flex-1 w-full mt-4"
-                        text .note.body {
-                            style: "text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap select-text"
+                }
+
+                // 标签行
+                row {
+                    style: "items-center gap-1.5"
+                    for t in .store.draft_tags {
+                        row {
+                            style: tag_pill
+                            text t { style: "text-xs text-primary font-medium" }
+                            button {
+                                onclick: .RemoveTag(t)
+                                style: "h-4 w-4 border-0 flex items-center justify-center rounded-full bg-transparent hover:bg-destructive/10"
+                                icon (name: "x", size: 10, style: "text-primary/70")
+                            }
+                        }
+                    }
+                    if .show_tag_input {
+                        input {
+                            value: .tag_input
+                            oninput: .TagInputChanged
+                            onenter: .AddTag
+                            placeholder: "tag name"
+                            style: "h-6 w-28 rounded-full border border-border bg-background px-2 text-xs outline-none text-foreground"
+                        }
+                        button {
+                            onclick: .AddTag
+                            style: "h-6 w-6 border-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                            icon (name: "check", size: 12)
+                        }
+                    } else {
+                        button {
+                            onclick: .ShowTagInput
+                            style: ghost_btn
+                            icon (name: "plus", size: 12)
+                            text "Tag" { style: "text-xs" }
                         }
                     }
                 }
             }
 
-            // Action row: unified button design language
-            row {
-                if .editing == false {
-                    button "Edit" {
-                        onclick: .Edit
-                        style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg shadow-sm hover:bg-primary/90 font-medium transition-colors"
-                    }
-                } else {
-                    row {
-                        style: "gap-2"
-                        button "Save" {
-                            onclick: .Save
-                            style: "px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg shadow-sm hover:bg-primary/90 font-medium transition-colors"
-                        }
-                        button "Cancel" {
-                            onclick: .Cancel
-                            style: "px-4 py-2 text-sm text-muted-foreground hover:bg-accent rounded-lg bg-transparent transition-colors"
-                        }
-                    }
+            // ── 正文：无边框 textarea，阅读栏宽 + 舒适行高 ────────────
+            col {
+                style: "flex-1 min-h-0 px-8 py-4"
+                textarea {
+                    value: .store.draft_body
+                    oninput: .EditBody
+                    placeholder: "Start writing..."
+                    style: "w-full h-full max-w-2xl text-base leading-7 bg-transparent border-0 outline-none resize-none text-foreground"
                 }
-                button "Delete" {
-                    onclick: .Delete
-                    style: "ml-auto px-4 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg bg-transparent transition-colors"
-                }
-                style: "p-4 border-t border-border bg-muted/30"
             }
         }
     }
 
     on {
-        .Init -> {
-            if .note.title == "" {
-                .edit_title = ""
-                .edit_body = ""
-                .editing = true
-            }
-        }
-        .Edit -> {
-            .edit_title = .note.title
-            .edit_body = .note.body
-            .tag_input = ""
-            .editing = true
-        }
-        .Save -> {
-            .note.title = .edit_title
-            .note.body = .edit_body
-            update_note(.note.id, .edit_title, .edit_body)
-            .editing = false
-        }
-        .Cancel -> { .editing = false }
-        .EditBody(md) -> { .edit_body = md }
-        .EditTitle(t) -> { .edit_title = t }
-        .EditTagInput -> { }
+        .EditTitle(v) -> { store.EditTitle(v) }
+        .EditBody(v) -> { store.EditBody(v) }
         .ShowTagInput -> { .show_tag_input = true }
+        .TagInputChanged(v) -> { .tag_input = v }
         .AddTag -> {
             if .tag_input != "" {
-                .note.tags.push(.tag_input)
-                update_tags(.note.id, .note.tags)
+                store.TagAdded(.tag_input)
                 .tag_input = ""
                 .show_tag_input = false
-                on_tags_changed()
             }
         }
-        .RemoveTag(t) -> {
-            var new_tags []str = []
-            for tg in .note.tags {
-                if tg != t {
-                    new_tags.push(tg)
-                }
-            }
-            .note.tags = new_tags
-            update_tags(.note.id, .note.tags)
-            on_tags_changed()
-        }
-        .Delete -> { on_delete() }
-        .TogglePin -> {
-            on_toggle_pin()
-        }
+        .RemoveTag(t) -> { store.TagRemoved(t) }
+        .SaveDraft -> { store.SaveDraft() }
+        .TogglePinActive -> { store.TogglePinActive() }
+        .DeleteArmed -> { store.DeleteArmed() }
+        .DeleteCancelled -> { store.DeleteCancelled() }
+        .DeleteConfirmed -> { store.DeleteConfirmed() }
     }
 }

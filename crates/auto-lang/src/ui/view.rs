@@ -575,6 +575,12 @@ pub enum View<M: Clone + Debug> {
         on_select: Option<M>,
         /// 菜单项动作信号(payload 读 `terminal_menu_item(key)`)。
         on_menu: Option<M>,
+        /// 键入信号(直键入:widget 键盘捕获 → TerminalCore 队列 → 宿主
+        /// 引擎泵裸写 PTY;消息不带载荷,.at 侧 `oninput:` 绑定)。
+        on_input: Option<M>,
+        /// 光标格(app 每拍从引擎回读喂入;0,0 = 未喂入的占位)。
+        cursor_row: u16,
+        cursor_col: u16,
         style: Option<Style>,
     },
 
@@ -2001,7 +2007,7 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
-            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => View::Terminal {
+            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => View::Terminal {
                 key,
                 cols,
                 rows,
@@ -2010,6 +2016,9 @@ impl<M: Clone + Debug> View<M> {
                 preedit,
                 on_select: on_select.map(|m| f(m)),
                 on_menu: on_menu.map(|m| f(m)),
+                on_input: on_input.map(|m| f(m)),
+                cursor_row,
+                cursor_col,
                 style,
             },
             View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {

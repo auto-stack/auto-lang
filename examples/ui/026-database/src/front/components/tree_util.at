@@ -1,0 +1,216 @@
+// components/tree_util.at — tree 组件族纯函数工具(PLAN-614)。
+//
+// flatten_tree: 嵌套树 × 展开态 → 可见行序列。显式栈迭代 DFS(无递归——
+// chart/diagram 族同款纪律),row 记录携带渲染所需一切(缩进/图标/chevron/
+// 状态 class 字面量),组件 view 零逻辑。受控契约:expanded/selected 由
+// 页面持有,本模块只做纯派生,双端(vue 转译进 SFC / VM import_aliases)
+// 同源(Plan 522 路径,calendar_util 先例)。
+//
+// pads 阶梯数组字面量随 use-fn 转译进 SFC 源 → Tailwind JIT 可扫描;
+// VM 侧 class.rs pl-{N} 任意数值。depth>8 钳制 pl-32(任意形状兜底)。
+//
+// ⚠ VM 轨遍历纪律(P614 实证):for-in 对函数参数列表迭代零次(对状态
+// 路径迭代正常)——本模块所有列表遍历一律 while + 索引(索引访问参数
+// 列表已实证正常)。嵌套 children 同式。
+//
+// node schema(数据轨;字段必填全键书写——VM Obj 字面量为形状锁定类型
+// 实例,缺键字段访问=硬错,P614 实证。kind: "dir"|"file"|"" 仅 directory
+// 模式消费;icon 显式指定优先于自动映射):
+// { id: str, label: str, children: List, kind: str, icon: str,
+//   is_leaf: bool, badge: str }
+
+/// 线性成员测试(while+索引;for-in 参数列表 VM 零次迭代,见头注)。
+pub fn has_id(list List, id str) bool {
+    var found bool = false
+    var i int = 0
+    while i < list.len() {
+        if list[i] == id {
+            found = true
+        }
+        i = i + 1
+    }
+    return found
+}
+
+/// 切换 id 在列表中的成员资格(返回新 List,不动输入——受控更新函数式)。
+pub fn toggle_id(list List, id str) List {
+    var out List = []
+    var found bool = false
+    var i int = 0
+    while i < list.len() {
+        if list[i] == id {
+            found = true
+        } else {
+            out.push(list[i])
+        }
+        i = i + 1
+    }
+    if !found {
+        out.push(id)
+    }
+    return out
+}
+
+/// 全部(或仅目录)id 收集——Expand All / Collapse All 用。
+pub fn collect_ids(nodes List, dirs_only bool) List {
+    var out List = []
+    var stack List = []
+    var i int = nodes.len()
+    while i > 0 {
+        i = i - 1
+        stack.push(nodes[i])
+    }
+    while stack.len() > 0 {
+        var top int = stack.len() - 1
+        var nd = stack[top]
+        stack.pop()
+        var kids List = nd.children
+        var is_dir bool = nd.kind == "dir" || kids.len() > 0
+        if !dirs_only {
+            out.push(nd.id)
+        } else {
+            if is_dir {
+                out.push(nd.id)
+            }
+        }
+        var j int = kids.len()
+        while j > 0 {
+            j = j - 1
+            stack.push(kids[j])
+        }
+    }
+    return out
+}
+
+/// 文件名 → 文件图标(lucide 名)。图片族/文本族/其余 file。
+pub fn ext_icon(name str) str {
+    var ic str = "file"
+    if name.ends_with(".png") || name.ends_with(".jpg") || name.ends_with(".jpeg") || name.ends_with(".gif") || name.ends_with(".webp") || name.ends_with(".svg") {
+        ic = "image"
+    } else {
+        if name.ends_with(".at") || name.ends_with(".rs") || name.ends_with(".ts") || name.ends_with(".vue") || name.ends_with(".md") || name.ends_with(".txt") || name.ends_with(".json") || name.ends_with(".toml") || name.ends_with(".css") || name.ends_with(".js") {
+            ic = "file-text"
+        }
+    }
+    return ic
+}
+
+/// 嵌套树 → 可见行序列(跳过未展开子树)。
+/// row = { id, label, depth, has_kids, open, leaf, icon, badge, guides, chev, state }。
+/// guides = 每层缩进单元的线型列表("l"=连续竖线,"n"=断线——父为末子时
+/// 该层线在下行断开,└ 语义;长度 = depth)。缩进由 guides 单元(w-4)承载,
+/// 不再用 pl-N。
+pub fn flatten_tree(nodes List, expanded List, directory bool, selected str) List {
+    var outRows List = []
+    var stack List = []
+    var depths List = []
+    var gstack List = []
+    var lstack List = []
+    var i int = nodes.len()
+    while i > 0 {
+        i = i - 1
+        stack.push(nodes[i])
+        depths.push(0)
+        gstack.push([])
+        lstack.push("l")
+    }
+    while stack.len() > 0 {
+        var top int = stack.len() - 1
+        var nd = stack[top]
+        var d int = depths[top]
+        var g List = gstack[top]
+        var lastMark str = lstack[top]
+        stack.pop()
+        depths.pop()
+        gstack.pop()
+        lstack.pop()
+        var kids List = nd.children
+        var is_leaf bool = nd.is_leaf == true
+        var has_kids bool = false
+        if kids.len() > 0 && !is_leaf {
+            has_kids = true
+        }
+        var open bool = false
+        if has_kids && has_id(expanded, nd.id) {
+            open = true
+        }
+        var ic str = nd.icon
+        if ic == "" && directory {
+            var is_dir bool = nd.kind == "dir" || has_kids
+            if is_dir {
+                if open {
+                    ic = "folder-open"
+                } else {
+                    ic = "folder"
+                }
+            } else {
+                ic = ext_icon(nd.label)
+            }
+        }
+        var chev str = "chevron-right"
+        if open {
+            chev = "chevron-down"
+        }
+        var state str = "hover:bg-accent/50"
+        if selected != "" {
+            if selected == nd.id {
+                state = "bg-accent text-accent-foreground"
+            }
+        }
+        outRows.push({ id: nd.id, label: nd.label, depth: d, has_kids: has_kids, open: open, leaf: !has_kids, icon: ic, badge: nd.badge, guides: g, chev: chev, state: state })
+        if open {
+            // 孩子帧的 guides = 本行 guides + 本层线型(本节点为父的末子?
+            // 末子标记 lastMark=="n" → 孩子在该层断线 "n",否则连续 "l";
+            // 根层 lastMark="" → 不加段)。逐元素显式拷贝,规避 VM List
+            // 赋值的引用/拷贝语义歧义。
+            var j int = kids.len()
+            while j > 0 {
+                j = j - 1
+                var cg List = []
+                var k int = 0
+                while k < g.len() {
+                    cg.push(g[k])
+                    k = k + 1
+                }
+                if lastMark != "" {
+                    if lastMark == "n" {
+                        cg.push("n")
+                    } else {
+                        cg.push("l")
+                    }
+                }
+                var childLast str = "l"
+                if j == 0 {
+                    childLast = "n"
+                }
+                stack.push(kids[j])
+                depths.push(d + 1)
+                gstack.push(cg)
+                lstack.push(childLast)
+            }
+        }
+    }
+    return outRows
+}
+
+
+/// 树过滤:保留命中节点(label 含 kw,大小写不敏感)与其全部祖先。
+/// kw 为空返回全量浅拷贝。递归实现——VM 轨递归能力经 P618 探针验证;
+/// 供搜索框场景:过滤后以 collect_ids(结果, false) 全展开。
+pub fn filter_tree(nodes List, kw str) List {
+    var out List = []
+    var i int = 0
+    while i < nodes.len() {
+        var nd = nodes[i]
+        var fk List = filter_tree(nd.children, kw)
+        // v1 大小写敏感(P618 实证):.lower() 链在 VM 轨沿嵌套帧返回空串
+        // (两步赋值在浅帧正常、深帧仍失效),故 contains 直用原串;引擎修复
+        // 后可恢复不区分大小写。
+        var selfHit bool = kw == "" || nd.label.contains(kw)
+        if selfHit || fk.len() > 0 {
+            out.push({ id: nd.id, label: nd.label, kind: nd.kind, icon: nd.icon, is_leaf: nd.is_leaf, badge: nd.badge, children: fk })
+        }
+        i = i + 1
+    }
+    return out
+}
