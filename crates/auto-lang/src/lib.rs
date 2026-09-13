@@ -6815,6 +6815,11 @@ mod plan503_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan058_engine_gap_tests;
 
+// PLAN-063（auto-down）：handler 参数槽 float 算术/比较坍缩回归锁（T-04b）——
+// call_handler_for/push_value 派发路（demo 同构），与 058 on_with_input 路互补。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan063_handler_float_tests;
+
 // Plan 502 M1: diagram 标签发射——svg <text> 直通(vue 上下文分流 + VM
 // svgdoc 内容序列化)与 overlay 动态 arbitrary 值双轨对照回归。
 #[cfg(test)]

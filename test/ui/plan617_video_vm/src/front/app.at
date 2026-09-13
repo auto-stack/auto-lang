@@ -1,0 +1,42 @@
+// plan617_video_vm — PLAN-617 AC-19 的 VM 端实机验证语料。
+//
+// 目的：证明 **VM/iced 端能用同一份 .at 真实播放本地视频文件**（AC-19）。
+// 三个要素缺一不可：
+//   ① `video` 节点（节点经 §2.3 契约把 paused/volume/rate 下发到播放内核）；
+//   ② `paused: false` —— 契约默认是暂停（绝不默认自动播，见 tests/video_contract.rs）；
+//   ③ `timer { FrameTick (every_ms: 16) }` —— **帧由应用 tick 驱动**：
+//      iced 只在有重绘时调 `Primitive::prepare`，不声明 tick 视频就停在首帧
+//      （见 src/ui/mpv/widget.rs 模块文档）。
+//
+// 播放内核是 libmpv（运行时加载）。构建需开 `auto-lang/mpv-widget`：
+//   cargo run -p auto --features mpv -- run -r vm
+// 缺 libmpv 时走诚实降级面板（AC-11），不会黑屏。
+widget App {
+    msg { FrameTick }
+
+    model {
+        var src str = "E:/Video/caelestia.mp4"
+    }
+
+    timer {
+        FrameTick (every_ms: 16)
+    }
+
+    view {
+        col {
+            style: "w-full h-screen flex-col bg-background"
+            text "PLAN-617 VM 原生播放验证" { style: "h-10 shrink-0 px-4 text-sm" }
+            video {
+                src: .src
+                paused: false
+                position: 8.0
+                volume: 0
+                style: "flex-1 w-full min-h-0"
+            }
+        }
+    }
+
+    on {
+        .FrameTick -> { }
+    }
+}

@@ -56,6 +56,8 @@ where
     /// 坐标锚(contextmenu);None = widget 锚(anchor 元素的 bounds)。
     at_point: Option<(f32, f32)>,
     on_dismiss: Option<Message>,
+    /// True when the modal dialog has no trigger and uses an Empty anchor.
+    anchor_is_empty: bool,
     gap: f32,
     snap_within_viewport: bool,
 }
@@ -77,6 +79,7 @@ where
             modal: false,
             at_point: None,
             on_dismiss: None,
+            anchor_is_empty: false,
             gap: DEFAULT_GAP,
             snap_within_viewport: true,
         }
@@ -100,6 +103,11 @@ where
 
     pub fn on_dismiss(mut self, msg: Message) -> Self {
         self.on_dismiss = Some(msg);
+        self
+    }
+
+    pub fn anchor_is_empty(mut self, empty: bool) -> Self {
+        self.anchor_is_empty = empty;
         self
     }
 
@@ -134,11 +142,23 @@ where
     }
 
     fn size(&self) -> Size<iced::Length> {
-        self.anchor.as_widget().size()
+        if self.placement.is_modal_chrome() && self.anchor_is_empty {
+            // A modal dialog may have an Empty anchor (there is no trigger).
+            // Give the base tree a tiny footprint so iced keeps the widget in
+            // its overlay traversal; Panel::layout performs the real viewport
+            // centering and never uses this size for the dialog surface.
+            Size::new(iced::Length::Fixed(1.0), iced::Length::Fixed(1.0))
+        } else {
+            self.anchor.as_widget().size()
+        }
     }
 
     fn size_hint(&self) -> Size<iced::Length> {
-        self.anchor.as_widget().size_hint()
+        if self.placement.is_modal_chrome() && self.anchor_is_empty {
+            Size::new(iced::Length::Fixed(1.0), iced::Length::Fixed(1.0))
+        } else {
+            self.anchor.as_widget().size_hint()
+        }
     }
 
     fn layout(
@@ -147,11 +167,30 @@ where
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        self.anchor.as_widget_mut().layout(
+        let anchor_layout = self.anchor.as_widget_mut().layout(
             &mut tree.children[0],
             renderer,
             limits,
-        )
+        );
+
+        // An alert-dialog has no trigger, so the builder supplies an Empty
+        // anchor. Iced drops zero-sized flex children before asking them for
+        // overlays, which made the modal panel disappear (or fall back into
+        // normal flow) in VM mode. Keep an invisible one-pixel anchor in the
+        // base tree so the overlay is registered; the panel itself is still
+        // laid out against the full viewport by Panel::layout.
+        if self.placement.is_modal_chrome()
+            && self.anchor_is_empty
+            && anchor_layout.bounds().width <= 0.0
+            && anchor_layout.bounds().height <= 0.0
+        {
+            layout::Node::with_children(
+                Size::new(1.0, 1.0),
+                vec![anchor_layout],
+            )
+        } else {
+            anchor_layout
+        }
     }
 
     fn update(

@@ -14,6 +14,10 @@ render: "vue"
 api: "rust"
 front_port: 3030
 back_port: 8330
+// PLAN-617 T-11（用户 r2 裁定方案 (a)）：媒体根目录进 pac.at，env 可覆盖 ——
+// 解析序 AUTO_MEDIA_ROOT env → 此处 → 无（诚实空库）。生成的媒体服务
+// /api/media/scan 由此扫描（递归，白名单见 ui/media_service.rs）。
+media_root: "E:\\Video"
 icon: "film"
 title: "Video Player"
 category: "media"

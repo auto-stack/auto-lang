@@ -23,6 +23,17 @@ pub mod image_pipeline;
 // `auto_lang::ui::media_service`.
 pub mod media_service;
 
+// PLAN-617 T-16: VM/iced 端原生播放引擎（libmpv DLL 运行时加载）。可选能力，
+// gated behind `mpv-native`：它是**运行时**依赖——没装 mpv 的机器照常编译、照常
+// 过 CI，只是运行期走降级（AC-20）。为什么是 libmpv 而非 ffmpeg FFI、为什么是 SW
+// 后端：见 docs/design/autoui/030-video-player.md §4（T-15 的门控实测与四选一裁定）。
+#[cfg(feature = "mpv-native")]
+pub mod mpv;
+// （帧上屏的那一半 `mpv::channel`/`mpv::present` 由 `mpv-gpu` 单独门控。）
+// 014 内存哨兵:提交内存自检 + 超限冻结(渲染层 update 入口挂接;
+// AUTO_MEM_LIMIT_MB 阈值,0 = 关闭)。零依赖(直接声明 K32GetProcessMemoryInfo)。
+pub mod mem_guard;
+
 // Plan 413: cross-platform code editor widget (feature `code-editor`,
 // enabled by default under `ui-iced`).
 #[cfg(feature = "code-editor")]
@@ -40,6 +51,9 @@ pub mod clipboard_native;
 // Plan 418 Phase 2: declarative action/binding config (auto-atom).
 pub mod action_config;
 pub mod view;
+// PLAN-063 T-04d-2: 右栏块锚定坐标槽（iced 布局期记录 + 同步目标消费）。
+#[cfg(feature = "ui-iced")]
+pub mod anchor_slot;
 pub mod vnode;
 pub mod vnode_converter;
 pub mod node_converter;

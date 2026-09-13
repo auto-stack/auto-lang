@@ -1080,6 +1080,7 @@ P1 extracted from production tables; props TBD
 |------|------|---------|-------------|
 | `value` | `float` | 0 | Progress percentage |
 | `max` | `float` | 100 | Maximum value |
+| `onseek` | `msg_ref` | — | PLAN-617: turns the bar into a seek control. Fires on press AND while dragging (hover alone does not scrub; press-and-hold tracking uses pointer capture on the web). The handler receives ONE float: the horizontal fraction 0..1 inside the bar -- same scale on both backends (VM: iced SeekArea, web: generated pointer wrapper), so authors write `SeekTo(.duration * $0)` without knowing pixels or max. |
 
 ---
 
@@ -2244,9 +2245,9 @@ _props 待声明_
 
 ### `video`
 
-`native_html` · `video` · web: `none` · iced: `fallback` · category: `content`
+`native_html` · `video` · web: `none` · iced: `partial` · category: `media`
 
-P1 extracted from production tables; props TBD
+视频播放：Vue 端为原生 &lt;video&gt;；iced 端为 libmpv 原生命中播放面（PLAN-617）
 
 别名:`Video`
 

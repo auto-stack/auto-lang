@@ -396,9 +396,14 @@ pub(crate) fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
 /// and paths that the a2r transpiler now emits (see rust.rs Plan 396/B3
 /// comment) into the `auto_lang::` form that resolves against our deps.
 fn qualify_a2r_std(mut code: String) -> String {
+    // Protect already-qualified paths, then qualify the remaining bare paths.
+    // This keeps the helper idempotent when a generated fragment already
+    // carries the crate prefix.
+    code = code.replace("auto_lang::a2r_std::", "__AUTO_A2R_STD_QUAL__");
+    code = code.replace("a2r_std::", "auto_lang::a2r_std::");
     code = code.replace("use a2r_std;\n", "use auto_lang::a2r_std;\n");
     code = code.replace("use a2r_std::*;\n", "use auto_lang::a2r_std::*;\n");
-    code = code.replace("a2r_std::", "auto_lang::a2r_std::");
+    code = code.replace("__AUTO_A2R_STD_QUAL__", "auto_lang::a2r_std::");
     code
 }
 
@@ -1377,14 +1382,27 @@ fn media_index() -> Option<&'static auto_lang::ui::media_service::MediaIndex> {
 }
 
 async fn auto_media_scan() -> axum::response::Response {
-    let Some(index) = media_index() else {
+    // PLAN-617 T-10: 三态如实回传 —— 根目录未配置 / 已配置但不存在 /
+    // 正常。`root_missing` 让前端能把「目录不存在」与「目录为空」分开说；
+    // 绝对路径本身不出后端（SD-02 安全边界）。
+    let Some(root) = auto_lang::ui::media_service::resolve_root(None) else {
         // No configured root is an honest empty list, not a 500.
         return axum::response::Response::builder()
             .status(200)
             .header("Content-Type", "application/json")
-            .body(axum::body::Body::from("[]"))
+            .body(axum::body::Body::from("{\"entries\":[],\"root_missing\":false}"))
             .expect("media scan response is valid");
     };
+    if !root.exists() {
+        return axum::response::Response::builder()
+            .status(200)
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from("{\"entries\":[],\"root_missing\":true}"))
+            .expect("media scan response is valid");
+    }
+    let index = MEDIA_INDEX.get_or_init(|| {
+        auto_lang::ui::media_service::index_directory(&root).unwrap_or_default()
+    });
     let mut out = String::from("{\"entries\":[");
     for (i, e) in index.entries.iter().enumerate() {
         if i > 0 {
@@ -1403,7 +1421,7 @@ async fn auto_media_scan() -> axum::response::Response {
             &e.id
         ));
     }
-    out.push_str("]}");
+    out.push_str("],\"root_missing\":false}");
     axum::response::Response::builder()
         .status(200)
         .header("Content-Type", "application/json")

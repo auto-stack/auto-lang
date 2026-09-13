@@ -41,7 +41,7 @@ VM TYPE_CAST_I32 的 Rust `f as i32` 截断语义；浮点目标 JS 原生 f64 �
 
 **029-photo-gallery（plan-537 落地）**：image widget 首个应用级双端示范
 （picsum 固定 seed 网络图源，缩略 cover/查看 contain）；单组件+平行列表
-数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 闭集 85 项（plan-616 复核实测校正；旧文写 84 属计数漂移，仍缺 pin/pin-off）——
+数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 闭集 85 项（**2026-09-13 已根治：改为 lucide 官方数据生成的全量表 1401 项，见 `ui/iced/lucide_generated.rs` + `scripts/gen-lucide-table.mjs`**）——
 icon 名单受限；P537-D2 语义 grid 的 cols/class 状态绑定不解析——密度
 三臂静态 grid 绕开），详见 KNOWN-DEBT-AND-RISKS.md P537 节。
 
@@ -271,11 +271,15 @@ auto-man 生成 Vue CSS 时逐 token 渲染的就是它），未声明 `theme{}`
 规则成文为「宿主 = stella、pac 应用 = scaffold」。②四个根因修复：`with_class_prop` 补
 `style:` 键回落（DSL 主写法此前被整串丢弃）、`IcedStyle::effective_padding/effective_margin`
 统一「单侧 > 轴 > 统一 > legacy」覆盖次序（`mx-*` 整族此前无处消费）、Text 臂补 `height`
-（契约 `h-8` 不落盒）、icon 的 `.at size:` 两端贯通（VM 折 Width/Height、Vue 生成器发
-`:size` 并撤缺省 `w-5 h-5`）。③**根因级文档坑**：`lucide_svg()` 表项本身是完整 SVG 文档
-（`width/height=16` + `viewBox 0 0 24 24`），消费方若再套一层 24×24 `<svg>` 会按 16/24
-二次缩放（跨端 icon ink 系统性偏小 ≈33%，即「声明 18px 实测 ≈12px 盒」）——修法 = 取内层
-markup 重包。④门禁：`tools/parity_shot_diff.py` 预算化（语义面色 ≤2/通道、图标 ink 比
+（契约 `h-8` 不落盒）、icon 的 `.at size:` 两端贯通（合并 PLAN-617 后统一为
+「显式 `w-*`/`h-*`/`size-*` 类 > `size:` > 缺省 20px」双端口径：VM `with_icon_size` 折
+Width/Height，Vue 生成器折内联 `style="width:Npx;height:Npx"` 并撤缺省 `w-5 h-5`）。
+③**根因级文档坑**：lucide 文档构造必须**单层包装 fragment**——PLAN-617 全量表
+（`lucide_generated.rs`，生成自 lucide-vue-next v0.312，1401 项）给出 24×24 内部 markup，
+`lucide_svg_doc_with` 从 fragment 单层包 `<svg>`；若把完整 16×16 文档（如 `lucide_svg`
+的缓存产物）再套一层 24×24 `<svg>`，嵌套 viewport 会按 16/24 二次缩放（跨端 icon ink
+系统性偏小 ≈33%，即「声明 18px 实测 ≈12px 盒」——619 实证根因，617 换表时一度复发，
+由 619 回归锚守住）。④门禁：`tools/parity_shot_diff.py` 预算化（语义面色 ≤2/通道、图标 ink 比
 ∈[0.9,1.1]、左缩进 ≤1px，违规退出码 1）+ 015-notes acceptance **T14/C-PARITY-1** +
 autoui-verifier 技能「步骤 3.5 像素预算对拍」。实机（1280x800）：面色 Δ0/Δ1、图标 ink 比
 1.03/1.03、左缩进 Δ0/Δ1/Δ0；19 MCP + 18 Vue 场景全绿；`cargo t`/`tv` 零新增红。
@@ -321,9 +325,109 @@ widget Counter {
 }
 ```
 
+## 媒体元素与媒体服务（PLAN-617）
+
+### `video` 受控媒体契约（SD-01）
+
+`.at` 作者对 `video` 声明**任一**受控下行 prop（`paused`/`position`/`volume`/`muted`/`rate`）
+即进入受控模式：状态 → 元素属性下行同步，原生媒体事件 → 状态上行回灌。
+
+- **下行**（状态 → 元素；两端同名同单位，与 `ui/mpv/contract.rs` 同形）：
+  `paused`（bool，false → `play()`）、`position`（秒；**目标值变化才 seek**，换片作废）、
+  `volume`（**作者面 0..100**，Vue 生成器翻成元素 0..1）、`muted`（bool）、
+  `rate`（float；≤0 被忽略）。受控 prop **不作为元素属性发射**（`:paused` 会打到
+  只读 DOM 属性、`volume` 单位不同）。
+- **上行**（元素 → 状态）：`ontimeupdate($0: float 秒)`、
+  `onloadedmetadata($0: float 秒)`、`onplaystatechange($0: bool，play/pause 合成)`、
+  `onended`、`onmediaerror($0: str 真实文案)`、`onaudiotrack($0: bool 音轨可用性)`。
+- **`onaudiotrack` 语义（AC-16b）**：仅 Vue/Chromium 发射——元素实际播放超过 1s
+  后读 `webkitAudioDecodedByteCount`（Chromium 专有探针），恒 0 ⇒ `false`
+  （音轨编码无浏览器解码器，如 Dolby Digital Plus），应用**必须如实标注
+  「音轨不支持」且不得假装有声**；探针缺失（非 Chromium）不调用 handler
+  （不主张任何结论）；VM/mpv 端无此事件（mpv 自带 Dolby 解码）。
+- **兼容边界**：未声明任一受控下行 prop 的 `video`，生成结果与引入契约前
+  **逐字节一致**（裸 `<video :src :class />`）；由
+  `test_uncontrolled_video_is_byte_identical` 钉住。
+- **现状**：Vue 端已实现（`ui_gen/vue.rs` 的 `try_generate_controlled_video_html`
+  / `video_script_block`）；iced 端为 **partial**（见「已知坑」的 SD-05 块）。
+
+### 媒体文件服务（SD-02）
+
+`crates/auto-lang/src/ui/media_service.rs` 提供**平台级**本地媒体索引与字节流，
+生成后端经原始路由（`auto_media` 先例）暴露：
+
+- `GET /api/media/scan` → `{entries:[MediaEntry], root_missing}`；
+  `GET/HEAD /api/media/stream/:id` → HTTP Range 字节流
+  （206 + `Accept-Ranges` + `Content-Range`；无 Range → 200；越界/畸形 → 416）。
+- **`MediaEntry` 契约**：`{id, name, rel_dir, relative_path, extension, bytes,
+  size_str, video_url, title}`；`id = blake3(relative_path)` **令牌**——
+  流式端点只按 `id` 反查文件，**绝不接受请求方传入的路径**（杜绝任意文件读取），
+  **绝对路径不出后端**。
+- **递归语义**：`index_directory` 递归遍历媒体根（**不跟随 symlink/junction**，
+  防环），扩展名白名单（`mp4/m4v/webm/mkv/mov/avi`——只是「候选」，真实可播性
+  由解码端决定），组内 `natural_sort_key` 自然排序。
+- **大文件约束**：流式**必须惰性分块**（`ReaderStream`），单文件可到 GB 级，
+  **禁止整文件读入内存**。
+- **根目录解析序**：`AUTO_MEDIA_ROOT` env（显式，优先）→ pac.at `media_root`
+  （`auto run` 仅在 env 未设时注入子进程）→ 无（诚实空库；
+  `root_missing=true` 让前端区分「目录不存在」与「目录为空」）。
+
+### 030-video-player 示范（SD-03）
+
+本仓视频类权威示范的**当前形态**：扁平发丝线布局（h-12 顶栏 + 视口 +
+w-72 队列栏 + h-14 播控条）+ 真实目录队列（递归扫描、按 `rel_dir` 分组）+
+受控 `<video>`（真实起播/暂停/seek/音量/静音/倍速/上下曲）+ 本地文件选择
+（Web 端 File API → object URL）+ 逐项真实播放状态（音轨不可解时主动标注）。
+取代 Plan 542 的「沉浸式大视口 + 预置远程 URL 队列 + 模拟状态」描述。
+
+### 已知约束（SD-04）
+
+1. **iced 端 `video` 降级是有信息的**：未开 `mpv-*` feature 或缺运行库时，
+   渲染面画**诚实降级面板**（说明未启用/无解码能力），不是纯黑也不再静默
+   （默认档）。
+2. **本仓默认档没有任何视频解码依赖**：原生播放是可选 feature（`mpv-native`
+   /`mpv-gpu`/`mpv-widget`），CI 不安装系统媒体包；库缺失走降级不 panic。
+3. **容器可解 ≠ 全部可播（实测）**：Matroska 容器 Chromium **能**解
+   （4K HEVC 画面实测可解，「Chrome 不支持 MKV」是误判）；但 Chromium 的
+   FFmpeg 构建**不含 Dolby Digital Plus (E-AC-3/Atmos) 解码器**，该类文件
+   表现为「有画面无声音」并被判为 video-only（失焦时 `play()` 抛
+   `AbortError`）。**规范要求界面如实标注音轨不可用（onaudiotrack 契约），
+   不得假装有声，也不得把「MKV 播不了」或「所有文件都能播」当默认假设。**
+
 ## 已知坑
 
-- **示例可依赖的 DSL/VM 子集（plan-616 实证；写 `.at` 前先看这条）**：① 文本不要写
+- **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
+  - **支持级别**：`schema/aura.at` 的 `video.backends.iced` 为 **`partial`**
+    （由 `fallback` 提升）。`render_support` 同步为 partial，`ignored` 列
+    `poster/preload/playsinline/autoplay/controls`（浏览器专有语义，iced 端无对应）。
+  - **实现位置**：`crates/auto-lang/src/ui/mpv/`（`engine` 生命周期 / `channel` 帧上屏 /
+    `contract` 受控契约 / `widget` iced 渲染面）。帧通道**不经 iced 的图像/atlas 通道**
+    （`Handle::from_rgba` 每帧新 id、同 id 命中即不再上传、大帧超 `MAX_SYNC_SIZE` 与
+    atlas 2048 上限——那条路必然闪烁），而是自持**持久纹理**、每帧原地更新。
+  - **可选 feature（可降级）**：native 播放挂 `mpv-native` / `mpv-gpu` / `mpv-widget`
+    三层 feature（`auto` 侧有同名透传与 `mpv` 别名）；**默认不开**——打开后任何带
+    `video` 的示例都会真解码并开音频设备，故取显式开启
+    （`cargo build -p auto --features mpv`）。**零构建期原生依赖**：libmpv 只在运行时
+    `LoadLibrary`，因此 11 个 `ubuntu-latest` CI 任务**不需要任何系统媒体包**。
+  - **运行库解析序**：`AUTO_MPV_LIB`（显式文件路径）→ 可执行文件同目录的
+    `libmpv-2.dll` → **都没有即降级**。注意**不回落系统搜索路径**：显式路径给了但
+    文件不存在时直接判为「无库」（否则「路径写错了」会表现成「莫名用了别的版本」）。
+  - **缺失时的行为**：`MpvEngine::new()` 返回 `MpvUnavailable::NoLibrary`，**不 panic、
+    不黑屏**；渲染面改画诚实降级面板（说明未启用/无解码能力）。
+  - **架构约束**：mpv 的 render API **只有 OpenGL 与 Software 两个后端，没有
+    Vulkan/wgpu**；本机 iced 实选 Vulkan，故走 **SW 后端**（帧写进映射内存再
+    `copy_buffer_to_texture` 上屏）。GL 路径经评估不可达——wgpu 不公开外部内存导入。
+  - **帧由谁驱动**：应用需声明 tick（`timer { XxxTick (every_ms: N) }`）驱动重绘，
+    否则画面停在首帧。上行事件（`ontimeupdate` 等）由渲染面按帧采集，应用侧分发
+    见 `ui/mpv/widget.rs`。
+  - **受控媒体契约（§2.3）**：下行 `paused`/`position`/`volume`(0..100)/`muted`/`rate`
+    + 上行 `ontimeupdate`/`onloadedmetadata`/`onplaystatechange`/`onended`/`onmediaerror`
+    （`onaudiotrack` 仅 Vue 端，见「媒体元素与媒体服务」SD-01 节），
+    两端同名同单位（Vue 侧生成器把 `volume` 再翻成元素的 0..1）。
+  - **实测**：VM 实机（`test/ui/plan617_video_vm`）1080p 本地文件真实播放，
+    seek 生效（`position: 8.0` → 播放中 `time-pos` 由 8 递增）；4K 端到端 38 fps、
+    1080p 258–385 fps（含逐帧读回，为保守下界）。
+- - **示例可依赖的 DSL/VM 子集（plan-616 实证；写 `.at` 前先看这条）**：① 文本不要写
   `text "…${x}…"`（两端都渲染成字面量）→ 用 `text <ref>` / `text <prop.field>`；② `view fn`
   只传对象 prop + 点路径（标量 prop 在 VM 端不参与文本绑定）；③ **禁用** `.field = []` 与
   「局部 `[]str`/`[]Note` → 状态字段」整赋值（VM codegen 抛 `Assignment to complex LHS`；
@@ -412,14 +516,19 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
    按 CSS 源码序后者胜（VM 端此前 uniform 命中即 early-return，per-axis 覆盖被丢）；
    margin 同理，且 `m-*`/`mx-*`/`my-*` **整族**必须折算（iced 无 margin，折外部 padding 模拟）
    ——此前只读单侧字段，`mx-3` 等静默丢失（搜索结果行左缩进少 12px 的根因）。
-2. **icon 尺寸权威 = `.at` 的 `size:`**：VM 侧折成显式 Width/Height（显式 `w-*` 仍可覆盖），
-   Vue 生成器发射 `:size` 并把标签缺省类 `w-5 h-5` 让位。**已知残余**：shadcn 资产自带
-   `[&>svg]:size-4` 会把**组件内**（Button/SidebarMenuButton 等）图标钉死 16px、盖过 `:size`
-   ——普通 div 内的图标不受影响（KNOWN-DEBT P619-D6）。
-3. **lucide 图标表项是完整 SVG 文档**：`renderer.rs` 的 `lucide_svg()` 每条为
-   `<svg width="16" height="16" viewBox="0 0 24 24">…</svg>`，消费方必须取内层 markup 按目标
-   尺寸重包（`lucide_svg_doc_with`），**直接嵌套会按 16/24 二次缩放**。回归锚
-   `plan619_lucide_doc_renders_geometric_ink`（纯 CPU 栅格化，断言 ink 充满度 = 几何值 0.833）。
+2. **icon 尺寸权威 = `.at` 的 `size:`，优先级 = 显式 `w-*`/`h-*`/`size-*` 类 > `size:` > 缺省
+   20px**（双端同一套：VM `aura_view_builder::with_icon_size` 折 Width/Height，Vue 生成器折
+   内联 `style="width:Npx;height:Npx"`；块式 `style:` 与动态 class 同入判据——PLAN-617 并轨，
+   PLAN-619 最初的 `:size` 绑定发射由此取代）。**已知残余**：无显式尺寸的**组件内**图标仍被
+   shadcn 资产 `[&>svg]:size-4` 钉死 16px（缺省 `w-5 h-5` 类打不过资产选择器；带显式
+   `size:` 的图标走内联样式、特异性可压过资产 CSS）——普通 div 内的图标不受影响
+   （KNOWN-DEBT P619-D6）。
+3. **lucide 文档构造必须单层包装**：字形真源 = `lucide_generated.rs` 全量 fragment 表
+   （生成自 lucide-vue-next v0.312，1401 项，`lucide_fragment` 二分查找 + sidebar/file-icon
+   两条遗留别名），`lucide_svg_doc_with` 必须从 fragment 按目标尺寸**单层**包装——把完整
+   文档再套一层 24×24 `<svg>` 会按 16/24 二次缩放（619 实证：跨端 ink 偏小 ≈33%；617 换表
+   时该坑复发过一次）。回归锚 `plan619_lucide_doc_renders_geometric_ink`（纯 CPU 栅格化，
+   断言 ink 充满度 = 几何值 0.833）。
 ## 蒸馏来源
 
 - 本模块 spec 于 2026-08-28 由 Plan 471 刷新：蒸馏 437–465 活跃计划 + 4xx 归档计划 + 365–428 早期 UI 计划。

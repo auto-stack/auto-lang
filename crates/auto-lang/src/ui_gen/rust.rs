@@ -1042,6 +1042,37 @@ impl RustGenerator {
         // view() method
         code.push_str(&self.generate_view_method(widget));
 
+        // Carry declarative AutoUI `bind { ... }` entries into standalone
+        // Rust/Iced. The runner resolves the normalized key to a typed msg.
+        if !widget.key_bindings.is_empty() {
+            let mut bindings: Vec<(&String, &String)> = widget.key_bindings.iter().collect();
+            bindings.sort_by(|a, b| a.0.cmp(b.0));
+            code.push_str("\n    fn key_bindings(&self) -> std::collections::HashMap<String, String> {\n");
+            code.push_str("        let mut bindings = std::collections::HashMap::new();\n");
+            for (key, handler) in &bindings {
+                code.push_str(&format!(
+                    "        bindings.insert({:?}.to_string(), {:?}.to_string());\n",
+                    key, handler,
+                ));
+            }
+            code.push_str("        bindings\n    }\n");
+            code.push_str("\n    fn key_message(&self, key: &str) -> Option<Self::Msg> {\n");
+            code.push_str("        match key {\n");
+            for (key, handler) in &bindings {
+                let variant = self.extract_variant_name(handler);
+                let has_unit_variant = self.message_variants.iter().any(|v| {
+                    v.name == variant && v.payload.is_empty()
+                });
+                if has_unit_variant {
+                    code.push_str(&format!(
+                        "            {:?} => Some({}::{}),\n",
+                        key, msg_type, variant,
+                    ));
+                }
+            }
+            code.push_str("            _ => None,\n        }\n    }\n");
+        }
+
         // Plan 371 Task 21: state_snapshot() override — emit only scalar fields
         // (String/i32/i64/u32/u64/f32/f64/bool). Collections and nested components
         // are skipped. Feeds the rust-mode MCP `autoui_state` tool via SharedState.
@@ -2410,6 +2441,8 @@ impl RustGenerator {
                 // PLAN-013 T3: terminal 臂——View::Terminal 真身组件(props-feed
                 // 形态甲)直达发射。key 为状态存储键;cols/rows 字面量或 .field
                 // 绑定;lines 为 Vec<String> 表达式(识别 .field → self.field.clone())。
+                // 014 直键入:oninput 信号位发射(Some(AppMsg::X));载荷走
+                // TerminalCore 键入队列(宿主引擎泵排空),消息不带载荷。
                 if tag == "terminal" {
                     let key = props.get("key")
                         .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
@@ -2418,6 +2451,16 @@ impl RustGenerator {
                         match props.get(name) {
                             Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}u16"),
                             Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
+                            // `.field` 实际解析为 FieldAccess(lines 同款回退);
+                            // 只有 self. 前缀的求值可信,其余落默认。
+                            Some(AuraPropValue::Expr(expr)) => {
+                                let e = self.ast_expr_to_rust(expr);
+                                if e.starts_with("self.") {
+                                    format!("({e}) as u16")
+                                } else {
+                                    format!("{dft}u16")
+                                }
+                            }
                             _ => format!("{dft}u16"),
                         }
                     };
@@ -2437,10 +2480,36 @@ impl RustGenerator {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
                         _ => "0u16".to_string(),
                     };
+                    // 014 光标格:字面量或 .field 绑定(缺省 0,0 = 占位)。
+                    let cursor = |name: &str| -> String {
+                        match props.get(name) {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}u16"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
+                            Some(AuraPropValue::Expr(expr)) => {
+                                let e = self.ast_expr_to_rust(expr);
+                                if e.starts_with("self.") {
+                                    format!("({e}) as u16")
+                                } else {
+                                    "0u16".to_string()
+                                }
+                            }
+                            _ => "0u16".to_string(),
+                        }
+                    };
+                    let on_input = ["oninput", "input", "onkey"]
+                        .iter()
+                        .find_map(|k| events.get(*k))
+                        .map(|h| self.handler_to_rust_direct_msg(&h.handler, &h.params));
+                    let on_input_expr = match on_input {
+                        Some(msg) => format!("Some({msg})"),
+                        None => "None".to_string(),
+                    };
                     return format!(
-                        "View::Terminal {{ key: \"{key}\".to_string(), cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: None, style: None }}",
+                        "View::Terminal {{ key: \"{key}\".to_string(), cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: None, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, style: None }}",
                         geom("cols", 80),
                         geom("rows", 24),
+                        cursor("cursor_row"),
+                        cursor("cursor_col"),
                     );
                 }
 

@@ -67,6 +67,24 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
         }
     }
 
+    // 014:侧车源(term.rs 等)同样参与指纹——此前侧车更新不触发 regen,
+    // 生成 crate 一直吃旧拷贝(at-app 泵扩面实测踩中)。
+    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    if let Ok(main_meta) = fs::metadata(&main_rs) {
+        if let Ok(main_time) = main_meta.modified() {
+            for (_, source_rel) in &sidecar.modules {
+                let source = project_dir.join(source_rel);
+                if let Ok(at_meta) = fs::metadata(&source) {
+                    if let Ok(at_time) = at_meta.modified() {
+                        if at_time > main_time {
+                            return (false, true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Check if default feature in Cargo.toml matches expected
     if let Ok(content) = fs::read_to_string(&cargo_toml) {
         if !content.contains("default = [\"ui-iced\"]") {
@@ -314,25 +332,18 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     fs::write(&main_rs, &full_code)
         .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
 
-    // PLAN-013 T2: regen 只写 main.rs,侧车 mod 声明须重挂(模块文件与
-    // Cargo 依赖未动,免复制)。
+    // PLAN-013 T2: regen 只写 main.rs,侧车 mod 声明须重挂。014 修正:
+    // 模块文件同样以工程源为准重拷(源是唯一真身;此前 regen 免复制,
+    // 侧车源更新后生成 crate 一直吃旧文件,at-app term.rs 泵扩面实测
+    // 踩中)。Cargo.toml 也按 pac 现值重写(exe_name 等 014 配置 regen
+    // 即生效),随后 apply_sidecar_to_crate 重注依赖 + mod 声明。
+    let cargo_toml = generate_cargo_toml(&project_name, project_dir);
+    fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
+        .map_err(|e| format!("Failed to write {}: {}", rust_dir.join("Cargo.toml").display(), e))?;
+
     let sidecar = crate::sidecar::load_sidecar(project_dir);
-    if !sidecar.modules.is_empty() {
-        let mut content = fs::read_to_string(&main_rs).unwrap_or_default();
-        let mut missing = String::new();
-        for (name, _) in &sidecar.modules {
-            let decl = format!("mod {name};");
-            if !content.contains(&decl) {
-                missing.push_str(&decl);
-                missing.push('\n');
-            }
-        }
-        if !missing.is_empty() {
-            content.push_str("\n// rust_sidecar: 用户 .rs 侧车模块声明(PLAN-013 T2;勿手改)\n");
-            content.push_str(&missing);
-            fs::write(&main_rs, content)
-                .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
-        }
+    if !sidecar.is_empty() {
+        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, rust_dir)?;
     }
 
     Ok(())
@@ -744,18 +755,27 @@ fn merged_db_delegate(db: &MergedDbImpl, endpoint: &auto_lang::api::ApiEndpoint)
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let ret_clause = if ret_ty == "()" {
-        String::new()
+    let ret_clause: String;
+    let call;
+    if ret_ty == "i64" {
+        // 014 修正:UI 模型 int 是 i32(collect prop types Type::Int),
+        // db 侧 .at int 转译是 i64——返回面统一降位,否则
+        // `self.x = api_int()` 编不过(at-app 光标/几何回读实测)。
+        ret_clause = " -> i32".to_string();
+        call = format!("db::{}({}) as i32", endpoint.fn_name, args);
+    } else if ret_ty == "()" {
+        ret_clause = String::new();
+        call = format!("db::{}({})", endpoint.fn_name, args);
     } else {
-        format!(" -> {ret_ty}")
+        ret_clause = format!(" -> {ret_ty}");
+        call = format!("db::{}({})", endpoint.fn_name, args);
     };
     Some(format!(
-        "fn {}({}){} {{\n    db::{}({})\n}}\n\n",
+        "fn {}({}){} {{\n    {}\n}}\n\n",
         endpoint.fn_name,
         sig.join(", "),
         ret_clause,
-        endpoint.fn_name,
-        args
+        call
     ))
 }
 
@@ -919,8 +939,16 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     let is_vec = return_type.starts_with("[]");
     let is_option = return_type.starts_with("?");
 
+    // Boolean write results are control-flow values for the UI (for example,
+    // a score save acknowledgement). Keep them typed and wait for the HTTP
+    // response so the Store can distinguish success from a retryable failure.
+    // Other scalar/value writes retain the historical non-blocking placeholder
+    // behavior because they may represent server-assigned IDs.
+    let is_bool = return_type == "bool";
     let (rust_return_type, value_type) = if is_void {
         (String::new(), String::new())
+    } else if is_bool {
+        ("bool".to_string(), "bool".to_string())
     } else if is_vec {
         ("Vec<serde_json::Value>".to_string(), "Vec<serde_json::Value>".to_string())
     } else if is_option {
@@ -1022,6 +1050,13 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
         format!(
             "{}    let body = {};\n    std::thread::spawn(move || {{ let _ = _http_client().{}(&url).json(&body).send(); }});\n",
             url_owned, json_body, method
+        )
+    } else if return_type == "bool" {
+        // Boolean POST/PUT results drive UI state (save success/failure), so
+        // parse the actual server response instead of returning a placeholder.
+        format!(
+            "    _http_client().{}({})\n        .json(&{})\n        .send().ok()\n        .and_then(|r| r.json::<bool>().ok())\n        .unwrap_or_default()\n",
+            method, url_expr, json_body
         )
     } else {
         // Value return (e.g., create_note → serde_json::Value)
@@ -1748,6 +1783,11 @@ fn wrap_example(project_name: &str, components: &str) -> String {
 
 use auto_lang::ui::{{Component, View}};
 
+// 014 内存哨兵:记账分配器(存活字节 + 大块分配点回溯;超限冻结时
+// 自动落盘分配报告到 %TEMP%/auto-term-mem-report.txt)。
+#[global_allocator]
+static GUARD_ALLOC: auto_lang::ui::mem_guard::GuardAlloc = auto_lang::ui::mem_guard::GuardAlloc;
+
 {cleaned}
 
 fn main() -> auto_lang::ui::AppResult<()> {{
@@ -1872,6 +1912,29 @@ fn parse_pac_name(pac_path: &Path) -> Option<String> {
     None
 }
 
+/// pac.at `exe_name: "..."` — 生成应用的可执行产物名(014 at-app:
+/// `auto-term.exe` 才是正名;缺省 = 包名默认 bin)。合法字符 [A-Za-z0-9_-]。
+fn parse_pac_exe_name(pac_path: &Path) -> Option<String> {
+    let content = fs::read_to_string(pac_path).ok()?;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("exe_name:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
+                let valid = !value.is_empty()
+                    && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+                if valid {
+                    return Some(value.to_string());
+                }
+                eprintln!("⚠ pac.at exe_name '{value}' 含非法字符(允许 [A-Za-z0-9_-]),忽略");
+            }
+        }
+    }
+    None
+}
+
 /// Convert CamelCase to snake_case.
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
@@ -1893,15 +1956,20 @@ fn to_snake_case(s: &str) -> String {
 /// No `[workspace]` section — this project is a member of the shared workspace
 /// at `examples/rust-workspace/`. Dependencies use `workspace = true` to inherit
 /// from the workspace-level `[workspace.dependencies]`.
-pub(crate) fn generate_cargo_toml(project_name: &str, _project_dir: &Path) -> String {
+pub(crate) fn generate_cargo_toml(project_name: &str, project_dir: &Path) -> String {
     let snake_name = to_snake_case(project_name);
+    // 014: pac.at `exe_name` — 显式 `[[bin]]` 控制产物名(包名/工作区成员
+    // 不动;缺省无 [[bin]],产物名 = 包名)。at-app 据此产出 auto-term.exe。
+    let bin_block = parse_pac_exe_name(&project_dir.join("pac.at"))
+        .map(|exe| format!("\n[[bin]]\nname = \"{exe}\"\npath = \"src/main.rs\"\n"))
+        .unwrap_or_default();
 
     format!(
         r#"[package]
 name = "{snake_name}"
 version = "0.1.0"
 edition = "2021"
-
+{bin_block}
 [features]
 ui-gpui = ["auto-lang/ui-gpui"]
 ui-iced = ["auto-lang/ui-iced"]
@@ -2124,6 +2192,16 @@ fn compute_target_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
 /// walk up from the project dir to the auto-lang repo root (has
 /// crates/auto-lang), also checking siblings (autostack/ layout).
 fn shared_cargo_target_dir(project_dir: &Path) -> PathBuf {
+    // Respect an explicit caller target. This is required for isolated app
+    // worktrees and CI sandboxes where the framework checkout target is not
+    // writable or must not be shared with another build.
+    if let Ok(raw) = std::env::var("CARGO_TARGET_DIR") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+
     let mut dir = project_dir.to_path_buf();
     for _ in 0..10 {
         if dir.join("crates").join("auto-lang").exists() {
@@ -3253,6 +3331,20 @@ pub struct Timer {
         assert!(blocking.contains("_http_client().post(&url).json(&body).send()"), "blocking POST: {blocking}");
         assert!(blocking.contains("local_result"), "blocking POST must return placeholder: {blocking}");
         assert!(!blocking.contains("ureq"), "blocking POST still emits ureq: {blocking}");
+
+        let bool_result = generate_write_fn_body(
+            "post".into(),
+            "\"http://x\"".into(),
+            &params,
+            false,
+            "bool",
+        );
+        // Boolean results are control-flow values (for example, save
+        // acknowledgements), so the generated client must parse the server
+        // response instead of returning a placeholder from a background task.
+        assert!(bool_result.contains("r.json::<bool>().ok()"), "bool POST must parse response: {bool_result}");
+        assert!(!bool_result.contains("local_result"), "bool POST must not return placeholder: {bool_result}");
+        assert!(!bool_result.contains("std::thread::spawn"), "bool POST must wait for result: {bool_result}");
 
         let del = generate_delete_fn_body("\"http://x/1\"".into());
         assert!(del.contains("_http_client().delete(&url).send()"), "DELETE: {del}");

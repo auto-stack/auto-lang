@@ -69,6 +69,28 @@ ui-dialog = ["dep:rfd", "dep:raw-window-handle"]
 # Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test) —
 # offline bounds assertions for the VM Row/layout bug matrix.
 iced-layout-tests = ["ui-iced", "dep:iced_test"]
+# PLAN-617 T-16: VM/iced 端原生播放引擎（libmpv DLL 运行时加载 + SW render）。
+# **零构建期原生依赖**——`libloading` 本就是本 crate 的常规依赖，DLL 只在运行时
+# 由 `AUTO_MPV_LIB` / exe 同目录解析；没装 mpv 的机器照常编译、照常过 CI，
+# 只是走降级（AC-20）。故这里只挂 `ui`（廉价 marker），不牵 iced。
+# 渲染层对接（帧上屏）见 T-17；`video` 元素支持级别提升见 T-19。
+mpv-native = ["ui"]
+# PLAN-617 T-17: **帧 → GPU 纹理** 的通道（持久纹理 + staging 环 + 全屏 blit 管线）。
+# 与 `mpv-native` 分开：引擎本身不碰 GPU（只有 libmpv + libloading），因此
+# `mpv-native` 能在没有 GPU/无窗口的环境里独立编译与测试。
+# 经 iced_wgpu 取 wgpu，而不是直接依赖 wgpu —— 保证与 iced 渲染器用的是**同一个**
+# wgpu 版本实例（本仓既有做法：iced_widget/iced_futures 同理，见其依赖处注释）。
+# 帧上屏**不能**走 iced 的图像通道：`Handle::from_rgba` 每帧 mint 新的
+# `Id::unique()`（`Id` 构造器私有，仓外无法复用同一 id），同 id 命中缓存即不再上传
+# （只会显示陈旧帧），且真实帧尺寸全部超过 `MAX_SYNC_SIZE`(2MB) 必走异步 worker、
+# 4K 更超过 atlas 的 2048 上限——那条路正是 renderer.rs:2889 记录的闪烁机理。
+mpv-gpu = ["mpv-native", "dep:iced_wgpu"]
+# PLAN-617 T-19: `video` 元素的 iced 渲染面（自定义 shader widget：自持持久纹理，
+# 绕开 Handle/atlas 通道）。比 `mpv-gpu` 高一档，因为要 iced 的 widget/Element 层。
+mpv-widget = ["mpv-gpu", "ui-iced"]
+# PLAN-617 T-15: 门控 spike 探针（可跑，需本机 libmpv + GPU + 视频样本）。
+# 默认档与 CI 均不编译（见其 `[[example]] required-features`）。
+mpv-spike = ["mpv-gpu", "ui-iced"]
 # Plan 019 批次七: autodown-core crate 消费（VM markdown/autodown widget 真渲染
 # —— parse_blocks → 面板树 → iced View）。跨仓 path 依赖指向 auto-down 主检出的
 # crate（两仓 plan-019 分支已互联合入：auto-down bd8d16e / auto-lang 1c80b8cf5）。
@@ -184,6 +206,10 @@ iced_futures = { version = "0.14", optional = true }
 # Plan 414 §8.2: headless layout testbench — normal optional dep (Cargo
 # forbids optional dev-deps); only linked when `iced-layout-tests` is on.
 iced_test = { version = "0.14", optional = true }
+# PLAN-617 T-15: 门控 spike 需要直接持有 wgpu 纹理（video 帧流不能走 iced 的
+# Handle/atlas 通道，理由见 feature `mpv-spike` 处注释）。iced_wgpu 本就是 iced
+# 默认渲染器的依赖，此直接边仅为拿到其 `pub use wgpu` 与 primitive::Pipeline。
+iced_wgpu = { version = "0.14", optional = true }
 # Plan 411: preview-card copy button (clipboard) — gated behind ui-iced with the renderer.
 arboard = { version = "3", optional = true }
 # Plan 418: native open/save file dialogs (sync API) behind `ui-dialog`.
@@ -273,8 +299,44 @@ name = "incremental_transpile_bench"
 harness = false
 
 # ============================================================================
+# Integration tests
+# ============================================================================
+
+[[test]]
+name = "mpv_engine"
+path = "tests/mpv_engine.rs"
+# PLAN-617 T-16: 原生播放引擎的降级与生命周期回归。**必须**是集成测试目标而
+# 不是 lib 单测：该特性挂在 lib 的 `--test` 目标上会触发 rustc ICE（见上方
+# mpv_spike example 的注释 / 债务 P617-D1）。默认档与 CI 不编译（AC-20）。
+required-features = ["mpv-native"]
+
+[[test]]
+name = "mpv_channel"
+path = "tests/mpv_channel.rs"
+# PLAN-617 T-17: 帧上屏通道的实测回归（帧率 / 上屏代价 / 像素级无闪烁 / 背压丢帧）。
+# 需要 `mpv-gpu`（通道要 wgpu）；同为集成目标以避开 lib `--test` 的 rustc ICE。
+# 默认档与 CI 不编译（AC-20）。
+required-features = ["mpv-gpu"]
+
+[[test]]
+name = "mpv_contract"
+path = "tests/mpv_contract.rs"
+# PLAN-617 T-18: 受控媒体契约（§2.3）在 mpv 侧的实测回归——起播/seek/音量/上行事件。
+# 只需 `mpv-native`（不碰 GPU）。默认档与 CI 不编译（AC-20）。
+required-features = ["mpv-native"]
+
+# ============================================================================
 # Examples
 # ============================================================================
+
+[[example]]
+name = "mpv_spike"
+path = "examples/mpv_spike.rs"
+# PLAN-617 T-15 门控 spike：需本机 libmpv-2.dll + GPU + 视频样本，故默认档与
+# CI 一律不编译（`required-features`）。另注：该特性挂在 **lib 的 `--test` 目标**
+# 上会撞 rustc 1.98.0 的 ICE（`collect_and_partition_mono_items`，查询栈指向
+# ui/mcp_server.rs:1718，与 spike 代码无关）；`--lib` 与 example 目标正常。
+required-features = ["mpv-spike"]
 
 [[example]]
 name = "run_vm_test"

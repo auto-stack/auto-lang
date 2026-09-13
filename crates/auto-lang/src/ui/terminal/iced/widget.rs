@@ -31,6 +31,7 @@ use iced::advanced::{
 use iced::advanced::Renderer as _;
 use iced::keyboard::{self, Modifiers};
 use iced::{alignment, Background, Border, Color, Element, Font, Length, Point, Rectangle, Size, Theme, mouse::ScrollDelta};
+use cosmic_text::{Attrs, Family};
 
 use crate::ui::terminal::{
     TermCell, TermColor, TermCursorShape, TermSelectionType, TerminalCore,
@@ -42,12 +43,51 @@ use std::time::{Duration, Instant};
 
 type Para = <iced::Renderer as iced::advanced::text::Renderer>::Paragraph;
 
-/// Cell metrics (fixed monospace approximation; auto-term measured these
-/// from the font via GridMetrics — the component's T5 pipeline may refine).
+/// Cell metrics. CELL_W 是回退近似;真实 advance 由 [`cell_w`] 首帧实测
+/// (行文本段落按字体真实 metrics 排版,网格数学若用近似值,误差随列号
+/// 线性放大——014 实测:8.0 vs Consolas≈8.8,col 15 的光标画到 col 13 的
+/// 字上)。CELL_H 是段落 LineHeight::Absolute 显式值,无漂移。
 pub const CELL_W: f32 = 8.0;
 pub const CELL_H: f32 = 16.0;
 pub const FONT_PX: f32 = 16.0;
 const BORDER: f32 = 1.0;
+
+/// 实测等宽 advance(px/格):把 iced 全局 font system 装为共享源(与
+/// code_editor 同款,幂等——at-app 无编辑器组件,回调此前无人装),给
+/// "MM" 排版取第二字形 x 与第一字形 x 之差(cosmic 0.15 的 LayoutGlyph
+/// 无 x_advance;行文本段落正是按这些 x 定位,差值即真实格距)。
+/// Family::Monospace 与行文本段落的 Font::MONOSPACE 同解析路径。font
+/// system 不可用(headless)时返回 CELL_W 近似且**不缓存**——真实后端
+/// 首帧测得后即恒定。
+pub fn cell_w() -> f32 {
+    static MEASURED: OnceLock<f32> = OnceLock::new();
+    if let Some(w) = MEASURED.get() {
+        return *w;
+    }
+    crate::ui::code_editor::core::set_font_system_call(|with| {
+        let mut guard = iced::advanced::graphics::text::font_system().write().unwrap();
+        with(guard.raw());
+    });
+    let measured = crate::ui::code_editor::core::try_with_font_system(|fs| {
+        let mut line = cosmic_text::BufferLine::new(
+            "MM".to_owned(),
+            cosmic_text::LineEnding::Lf,
+            cosmic_text::AttrsList::new(&Attrs::new().family(Family::Monospace)),
+            cosmic_text::Shaping::Basic,
+        );
+        let laid = line.layout(fs, FONT_PX, None, cosmic_text::Wrap::None, None, 8);
+        let glyphs = laid.first()?.glyphs.as_slice();
+        if glyphs.len() >= 2 {
+            Some(glyphs[1].x - glyphs[0].x)
+        } else {
+            glyphs.first().map(|g| g.w).filter(|w| *w > 1.0)
+        }
+    });
+    match measured.flatten() {
+        Some(w) if w > 1.0 => *MEASURED.get_or_init(|| w),
+        _ => CELL_W,
+    }
+}
 
 const DEFAULT_FG: Color = Color::from_rgb8(0xe8, 0xe8, 0xe8);
 const DEFAULT_BG: Color = Color::from_rgb8(0x06, 0x07, 0x09);
@@ -73,7 +113,8 @@ fn row_caches() -> &'static Mutex<HashMap<String, Vec<Option<RowEntry>>>> {
 }
 
 /// Terminal widget — draws the engine grid carried by `core` and maps
-/// mouse/wheel events onto the selection/scroll/menu state machine.
+/// mouse/wheel/menu events onto the selection/scroll state machine, plus
+/// keyboard capture (focus-gated) → VT byte queue → `on_input` message.
 pub struct Terminal<M> {
     pub core: &'static TerminalCore,
     pub key: String,
@@ -81,6 +122,9 @@ pub struct Terminal<M> {
     pub preedit: Option<String>,
     pub on_select: Option<M>,
     pub on_menu: Option<M>,
+    /// 键入信号:有 handler 时 widget 才捕获键盘(载荷进 TerminalCore
+    /// 队列,宿主引擎泵经 auto.term 排空裸写;消息本身不带载荷)。
+    pub on_input: Option<M>,
     pub width: Length,
     pub height: Length,
 }
@@ -115,6 +159,56 @@ fn menu_item_at(at: (f32, f32), pos: Point) -> Option<usize> {
     Some(((pos.y - rect.y) / CELL_H) as usize)
 }
 
+/// iced KeyPress → VT 输入串(直键入翻译;None = 不产生输入)。语义对齐
+/// auto-term 冻结 oracle `autoterm-ui::key_to_bytes`(Enter→CR、Backspace
+/// →DEL、方向/编辑键→CSI;Ctrl+字母→控制码,Shift 映射自理)。差异:
+/// 无 Ctrl 时优先取平台合成文本 `text`(死键/键盘布局/Shift 符号交给
+/// winit),缺席再落回本表。
+fn key_event_to_vt(key: &keyboard::Key, text: Option<&str>, mods: Modifiers) -> Option<String> {
+    use keyboard::key::Named;
+    if mods.control() {
+        let c = match key {
+            keyboard::Key::Character(s) => s.chars().next()?,
+            _ => return None,
+        };
+        let lower = c.to_ascii_lowercase();
+        if lower.is_ascii_lowercase() {
+            return Some(((lower as u8) - b'a' + 1) as char).map(|c| c.to_string());
+        }
+        return None;
+    }
+    // 平台合成文本优先(可打印/Unicode/Shift 符号;Named 键无 text)。
+    if let Some(t) = text.filter(|t| !t.is_empty()) {
+        if matches!(key, keyboard::Key::Character(_)) {
+            return Some(t.to_owned());
+        }
+    }
+    match key {
+        keyboard::Key::Character(s) => {
+            // text 缺席的回退:取首字符原样(winit 已含 shift 合成)。
+            s.chars().next().map(|c| c.to_string())
+        }
+        keyboard::Key::Named(named) => match named {
+            Named::Enter => Some("\r".into()),
+            Named::Backspace => Some("\u{7f}".into()),
+            Named::Tab => Some("\t".into()),
+            Named::Escape => Some("\u{1b}".into()),
+            Named::ArrowUp => Some("\u{1b}[A".into()),
+            Named::ArrowDown => Some("\u{1b}[B".into()),
+            Named::ArrowRight => Some("\u{1b}[C".into()),
+            Named::ArrowLeft => Some("\u{1b}[D".into()),
+            Named::Home => Some("\u{1b}[H".into()),
+            Named::End => Some("\u{1b}[F".into()),
+            Named::PageUp => Some("\u{1b}[5~".into()),
+            Named::PageDown => Some("\u{1b}[6~".into()),
+            Named::Delete => Some("\u{1b}[3~".into()),
+            Named::Space => Some(" ".into()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 impl<M> Terminal<M> {
     /// Get-or-create the terminal state for `key` (geometry diffed in).
     pub fn new(key: &str, cols: u16, rows: u16) -> Self {
@@ -125,7 +219,8 @@ impl<M> Terminal<M> {
             preedit: None,
             on_select: None,
             on_menu: None,
-            width: Length::Fixed(cols as f32 * CELL_W + 2.0 * BORDER),
+            on_input: None,
+            width: Length::Fixed(cols as f32 * cell_w() + 2.0 * BORDER),
             height: Length::Fixed(rows as f32 * CELL_H + 2.0 * BORDER),
         }
     }
@@ -134,7 +229,7 @@ impl<M> Terminal<M> {
     fn pixel_to_cell(&self, pos: Point, bounds: Rectangle) -> (usize, usize) {
         let cols = self.core.cols.max(1) as usize;
         let rows = self.core.rows.max(1) as usize;
-        let fx = (pos.x - bounds.x - BORDER) / CELL_W;
+        let fx = (pos.x - bounds.x - BORDER) / cell_w();
         let fy = (pos.y - bounds.y - BORDER) / CELL_H;
         let col = (fx.floor() as i32).clamp(0, cols as i32 - 1) as usize;
         let row = (fy.floor() as i32).clamp(0, rows as i32 - 1) as usize;
@@ -148,10 +243,10 @@ impl<M> Terminal<M> {
         let cursor = self.core.cursor();
         let rect = Rectangle::new(
             Point::new(
-                bounds.x + BORDER + cursor.col as f32 * CELL_W,
+                bounds.x + BORDER + cursor.col as f32 * cell_w(),
                 bounds.y + BORDER + cursor.row as f32 * CELL_H,
             ),
-            Size::new(CELL_W, CELL_H),
+            Size::new(cell_w(), CELL_H),
         );
         shell.request_input_method(&input_method::InputMethod::<String>::Enabled {
             cursor: rect,
@@ -180,6 +275,24 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         _renderer: &iced::Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> Node {
+        // 014 几何随动:由可用空间反推网格几何(窗口 resize → 引擎随动)。
+        // 请求落注册表 pending_resize,宿主 apply_resize 泵取走后调引擎
+        // resize 并把新几何回流 .at 模型(View cols/rows 随帧更新,widget
+        // 尺寸随之收敛——本帧仍按当前几何定尺寸)。
+        //
+        // 014 爆炸护栏(19:13 案):退化可用空间(最小化/隐匿窗口的 0 尺寸
+        // → cols 收敛到 1)**不是几何变化**——不发 resize 请求。把 1x1
+        // 灌给引擎会把满滚动历史网格折叠重排成 GB 级瞬态分配(alacritty
+        // shrink_columns 路径,autoterm-core DEBTS #15)。最小化=可见性
+        // 事件,网格逻辑尺寸应保持不变。
+        let max = limits.max();
+        if max.width.is_finite() && max.height.is_finite() {
+            let cols = (((max.width - 2.0 * BORDER) / cell_w()).floor() as u16).max(1);
+            let rows = (((max.height - 2.0 * BORDER) / CELL_H).floor() as u16).max(1);
+            if cols >= 2 {
+                crate::ui::terminal::terminal_request_resize(self.core, cols, rows);
+            }
+        }
         let limits = limits.width(self.width).height(self.height);
         Node::new(limits.resolve(self.width, self.height, Size::default()))
     }
@@ -208,19 +321,48 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         shell: &mut iced::advanced::Shell<'_, M>,
         _viewport: &Rectangle,
     ) {
-        // 任意事件到达即刷新 IME 声明(幂等;auto-term T8 同款)。
-        self.request_ime(shell, layout.bounds());
-
         let state = tree.state.downcast_mut::<TerminalState>();
         let bounds = layout.bounds();
         let core = self.core;
+
+        // 任意事件到达即刷新 IME 声明(幂等;auto-term T8 同款)——聚焦时
+        // 以光标格锚定,未聚焦声明 Disabled(键入归焦点组件)。
+        if state.focused {
+            self.request_ime(shell, layout.bounds());
+        } else {
+            shell.request_input_method(&input_method::InputMethod::<String>::Disabled);
+        }
+
+        // 键入捕获:聚焦(点击过本组件)且菜单未开时,把按键翻译成 VT 串
+        // 入队并上抛 on_input(载荷走 TerminalCore 队列,消息只当触发器)。
+        if state.focused && state.menu_open.is_none() {
+            let payload = match event {
+                iced::Event::Keyboard(keyboard::Event::KeyPressed { key, text, modifiers, .. }) => {
+                    key_event_to_vt(key, text.as_deref(), *modifiers)
+                }
+                // IME 提交(中文等组合串)整串透传;Preedit 由 props 自绘。
+                iced::Event::InputMethod(input_method::Event::Commit(c)) => {
+                    Some(c.to_string())
+                }
+                _ => None,
+            };
+            if let (Some(payload), Some(msg)) = (payload, self.on_input.clone()) {
+                crate::ui::terminal::terminal_push_input(core, &payload);
+                shell.publish(msg);
+            }
+        }
 
         match event {
             iced::Event::Keyboard(keyboard::Event::ModifiersChanged(mods)) => {
                 state.mods = *mods;
             }
             iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                let Some(pos) = cursor.position_over(bounds) else { return };
+                let Some(pos) = cursor.position_over(bounds) else {
+                    // 点在组件外:失焦(键入归他处,标准终端焦点语义)。
+                    state.focused = false;
+                    return;
+                };
+                state.focused = true;
                 // 菜单开着时左键归菜单:命中项→动作,未命中→关闭;一律吞。
                 if let Some(at) = state.menu_open {
                     if let Some(idx) = menu_item_at(at, Point::new(pos.x - bounds.x, pos.y - bounds.y)) {
@@ -362,8 +504,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 renderer.fill_quad(
                     renderer::Quad {
                         bounds: Rectangle::new(
-                            Point::new(bounds.x + start as f32 * CELL_W, line_y),
-                            Size::new((idx - start) as f32 * CELL_W, CELL_H),
+                            Point::new(bounds.x + start as f32 * cell_w(), line_y),
+                            Size::new((idx - start) as f32 * cell_w(), CELL_H),
                         ),
                         ..renderer::Quad::default()
                     },
@@ -393,11 +535,11 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     renderer::Quad {
                         bounds: Rectangle::new(
                             Point::new(
-                                bounds.x + BORDER + col_begin as f32 * CELL_W,
+                                bounds.x + BORDER + col_begin as f32 * cell_w(),
                                 bounds.y + BORDER + row as f32 * CELL_H,
                             ),
                             Size::new(
-                                (col_last - col_begin + 1) as f32 * CELL_W,
+                                (col_last - col_begin + 1) as f32 * cell_w(),
                                 CELL_H,
                             ),
                         ),
@@ -441,12 +583,12 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let cursor = self.core.cursor();
         if cursor.shape != TermCursorShape::Hidden && cursor.on {
             let row = cursor.row as f32 * CELL_H;
-            let col = cursor.col as f32 * CELL_W;
+            let col = cursor.col as f32 * cell_w();
             let (rect, color) = match cursor.shape {
                 TermCursorShape::Block => (
                     Rectangle::new(
                         Point::new(bounds.x + BORDER + col, bounds.y + BORDER + row),
-                        Size::new(CELL_W, CELL_H),
+                        Size::new(cell_w(), CELL_H),
                     ),
                     Color::from_rgba(0.91, 0.91, 0.91, 0.85),
                 ),
@@ -463,7 +605,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                             bounds.x + BORDER + col,
                             bounds.y + BORDER + row + CELL_H - 2.0,
                         ),
-                        Size::new(CELL_W, 2.0),
+                        Size::new(cell_w(), 2.0),
                     ),
                     DEFAULT_FG,
                 ),
@@ -479,8 +621,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         if let Some(preedit) = self.preedit.as_deref().filter(|p| !p.is_empty()) {
             let cursor = self.core.cursor();
             let y = bounds.y + BORDER + cursor.row as f32 * CELL_H;
-            let x = bounds.x + BORDER + cursor.col as f32 * CELL_W;
-            let w = preedit.chars().count() as f32 * CELL_W;
+            let x = bounds.x + BORDER + cursor.col as f32 * cell_w();
+            let w = preedit.chars().count() as f32 * cell_w();
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: Rectangle::new(Point::new(x, y), Size::new(w, CELL_H)),
@@ -496,9 +638,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let offset = self.scroll_offset;
         if offset > 0 {
             let badge = format!("↑{offset}");
-            let badge_w = badge.chars().count() as f32 * CELL_W + CELL_W;
+            let badge_w = badge.chars().count() as f32 * cell_w() + cell_w();
             let bg_bounds = Rectangle::new(
-                Point::new(bounds.x + bounds.width - badge_w - CELL_W, bounds.y),
+                Point::new(bounds.x + bounds.width - badge_w - cell_w(), bounds.y),
                 Size::new(badge_w, CELL_H),
             );
             renderer.fill_quad(
@@ -548,7 +690,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
     }
 }
 
-/// Widget 交互状态(tree state;多击/拖选/菜单)。
+/// Widget 交互状态(tree state;多击/拖选/菜单/键入焦点)。
 #[derive(Default)]
 pub struct TerminalState {
     /// Last drawn content generation (damage seed).
@@ -561,11 +703,59 @@ pub struct TerminalState {
     /// 菜单锚点(组件局部坐标;None=关闭)。
     menu_open: Option<(f32, f32)>,
     hover_item: Option<usize>,
+    /// 键入焦点(点击本组件获得、点击他处失去;键盘捕获的门控)。
+    focused: bool,
 }
 
 impl<'a, M: Clone + std::fmt::Debug + 'static> From<Terminal<M>> for Element<'a, M> {
     fn from(widget: Terminal<M>) -> Self {
         Self::new(widget)
+    }
+}
+
+#[cfg(test)]
+mod key_to_vt_tests {
+    use super::key_event_to_vt;
+    use iced::keyboard::{Key, Modifiers, key::Named};
+
+    fn vt(key: Key, text: Option<&str>, mods: Modifiers) -> Option<String> {
+        key_event_to_vt(&key, text, mods)
+    }
+
+    #[test]
+    fn printable_text_and_named_keys() {
+        assert_eq!(vt(Key::Character("a".into()), Some("a"), Modifiers::default()).as_deref(), Some("a"));
+        // Shift 符号:平台合成文本优先(winit 已合成)。
+        assert_eq!(vt(Key::Character("A".into()), Some("A"), Modifiers::default()).as_deref(), Some("A"));
+        assert_eq!(vt(Key::Named(Named::Enter), None, Modifiers::default()).as_deref(), Some("\r"));
+        assert_eq!(vt(Key::Named(Named::Backspace), None, Modifiers::default()).as_deref(), Some("\u{7f}"));
+        assert_eq!(vt(Key::Named(Named::Tab), None, Modifiers::default()).as_deref(), Some("\t"));
+        assert_eq!(vt(Key::Named(Named::Escape), None, Modifiers::default()).as_deref(), Some("\u{1b}"));
+        assert_eq!(vt(Key::Named(Named::Space), None, Modifiers::default()).as_deref(), Some(" "));
+    }
+
+    #[test]
+    fn navigation_csi_sequences() {
+        assert_eq!(vt(Key::Named(Named::ArrowUp), None, Modifiers::default()).as_deref(), Some("\u{1b}[A"));
+        assert_eq!(vt(Key::Named(Named::ArrowDown), None, Modifiers::default()).as_deref(), Some("\u{1b}[B"));
+        assert_eq!(vt(Key::Named(Named::ArrowRight), None, Modifiers::default()).as_deref(), Some("\u{1b}[C"));
+        assert_eq!(vt(Key::Named(Named::ArrowLeft), None, Modifiers::default()).as_deref(), Some("\u{1b}[D"));
+        assert_eq!(vt(Key::Named(Named::Home), None, Modifiers::default()).as_deref(), Some("\u{1b}[H"));
+        assert_eq!(vt(Key::Named(Named::End), None, Modifiers::default()).as_deref(), Some("\u{1b}[F"));
+        assert_eq!(vt(Key::Named(Named::PageUp), None, Modifiers::default()).as_deref(), Some("\u{1b}[5~"));
+        assert_eq!(vt(Key::Named(Named::PageDown), None, Modifiers::default()).as_deref(), Some("\u{1b}[6~"));
+        assert_eq!(vt(Key::Named(Named::Delete), None, Modifiers::default()).as_deref(), Some("\u{1b}[3~"));
+    }
+
+    #[test]
+    fn ctrl_letters_become_control_codes() {
+        let mut ctrl = Modifiers::default();
+        ctrl |= Modifiers::CTRL;
+        // Ctrl+C = ETX(0x03,中断);Ctrl+D = EOT(0x04,EOF)。
+        assert_eq!(vt(Key::Character("c".into()), Some("c"), ctrl).as_deref(), Some("\u{3}"));
+        assert_eq!(vt(Key::Character("D".into()), Some("D"), ctrl).as_deref(), Some("\u{4}"));
+        // Ctrl+非字母(如 Ctrl+1)不透传。
+        assert_eq!(vt(Key::Character("1".into()), Some("1"), ctrl), None);
     }
 }
 
@@ -599,7 +789,7 @@ fn build_row_paragraph(line: &[TermCell]) -> Para {
     Para::with_spans(Text {
         content: spans.as_slice(),
         // 宽度加一格余量,避免最末字符因舍入被折行
-        bounds: Size::new(line.len() as f32 * CELL_W + CELL_W, CELL_H),
+        bounds: Size::new(line.len() as f32 * cell_w() + cell_w(), CELL_H),
         size: FONT_PX.into(),
         line_height: LineHeight::Absolute(CELL_H.into()),
         font: Font::MONOSPACE,

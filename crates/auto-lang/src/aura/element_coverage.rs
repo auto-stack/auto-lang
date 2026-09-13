@@ -446,7 +446,12 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("tree-item", QueueStatus::NotYet("树形复合——后续专项")),
         ("ul", QueueStatus::Covered),
         ("use", QueueStatus::NotYet("chart/diagram SVG/canvas 独立渲染面（499 已对表：canvas/svgdoc 自有管线）——queue 臂永久 not-yet（T7 裁定）")),
-        ("video", QueueStatus::NotYet("媒体/动态内容——位图帧归 Stage 5 后续（image 占位先例）")),
+        // PLAN-617 T-19: iced 渲染面已提升为可用（`ui/mpv/widget.rs`），
+        // 但**本条描述的是 queue/投影臂**（顶部模块文档：covered = 投影器有臂），
+        // 而 `video` 至今不在 `Coverage::target_set()` 里 → 投影不可上 queue。
+        // 故状态仍是 not-yet，只是理由改成「差投影臂」这个真实缺口
+        // ——把 iced 渲染能力与投影能力混为一谈会是谎报。
+        ("video", QueueStatus::NotYet("原生播放面已具备（PLAN-617 T-19：libmpv→持久纹理→shader widget），但 desktop_protocol 投影臂未接（不在 Coverage::target_set）——差投影不差渲染")),
         ("virtual_window", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("window_thumbnail", QueueStatus::NotYet("媒体/动态内容——位图帧归 Stage 5 后续（image 占位先例）")),
 

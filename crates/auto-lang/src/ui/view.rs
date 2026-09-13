@@ -429,6 +429,14 @@ pub enum View<M: Clone + Debug> {
     /// Empty placeholder
     Empty,
 
+    /// PLAN-063 T-04d-2: 块锚定坐标槽——右栏逐块包装，iced 布局期把块
+    /// 内容 y 写入全局注册表（块 0 = 内容原点），供块锚定同步目标计算。
+    /// VM 轨专用（autodown_render 构造；vue 生成器不产生此变体）。
+    AnchorSlot {
+        index: u64,
+        child: Box<View<M>>,
+    },
+
     /// Text display with optional styling
     Text {
         content: String,
@@ -567,6 +575,12 @@ pub enum View<M: Clone + Debug> {
         on_select: Option<M>,
         /// 菜单项动作信号(payload 读 `terminal_menu_item(key)`)。
         on_menu: Option<M>,
+        /// 键入信号(直键入:widget 键盘捕获 → TerminalCore 队列 → 宿主
+        /// 引擎泵裸写 PTY;消息不带载荷,.at 侧 `oninput:` 绑定)。
+        on_input: Option<M>,
+        /// 光标格(app 每拍从引擎回读喂入;0,0 = 未喂入的占位)。
+        cursor_row: u16,
+        cursor_col: u16,
         style: Option<Style>,
     },
 
@@ -693,6 +707,17 @@ pub enum View<M: Clone + Debug> {
     ProgressBar {
         progress: f32,  // 0.0 to 1.0
         style: Option<Style>,
+        /// **可拖拽进度条**（`onseek` prop）：按下或按住拖动时，把指针在该
+        /// 元素 bounds 内的横向位置换算成 **0..1 的比例**交给这个回调。
+        ///
+        /// 为什么传比例而不是值：VM 侧到这个层次 `value`/`max` 已经被归一成
+        /// 0..1（`convert_progress` 做的），`max` 不再可得；让两端都交比例，
+        /// 作者侧写 `store.SeekTo(.duration * $0)` 即可，尺度不跨端漂移。
+        ///
+        /// 复用 [`PointerMoveHandler`]（mouse-area onmousemove 同型）是为了
+        /// 让消息装配/投影/转换链路零新增分支；只用到第一个实参（比例），
+        /// 第二个恒 0.0。
+        on_seek: Option<PointerMoveHandler<M>>,
     },
 
     /// Accordion (collapsible sections) with optional styling
@@ -763,6 +788,32 @@ pub enum View<M: Clone + Debug> {
         on_wheel: Option<M>,
         on_pan: Option<M>,
         on_double_click: Option<M>,
+        style: Option<Style>,
+    },
+
+    /// PLAN-617 T-19: `video` 元素的 VM 渲染面（§2.3 受控媒体契约的**下行**侧）。
+    ///
+    /// 与 [`View::ImageSurface`] 同形的媒体节点，但帧来源是原生播放引擎
+    /// （libmpv → 持久纹理），不是图片流水线；**上行**（`ontimeupdate` 等）
+    /// 不在此节点上——它由渲染面按帧采集，经
+    /// `auto_lang::ui::mpv::widget::drain_events` 取走，故本变体**不携带任何消息**，
+    /// 各后端的消息重映射臂因此都是平凡的。
+    ///
+    /// `level` 记录本节点实际走的是哪条路（原生播放 / 缺库降级），
+    /// 便于快照与诊断如实反映「这里到底有没有解码能力」。
+    Video {
+        src: String,
+        /// §2.3 受控下行。`paused` 由 `.is_playing == false` 推导，转换在构建器里完成。
+        paused: bool,
+        /// seek 目标（秒）；`None` = 本次不下发位置。
+        position: Option<f64>,
+        /// 0..100（作者面单位，与 mpv 的 `volume` 同刻度）。
+        volume: i32,
+        muted: bool,
+        /// 倍速，1.0 为原速。
+        rate: f64,
+        /// 降级/无障碍用的显示名（真实文件名或标题）。
+        label: String,
         style: Option<Style>,
     },
 
@@ -1654,6 +1705,7 @@ impl<M: Clone + Debug> View<M> {
         View::ProgressBar {
             progress: progress.clamp(0.0, 1.0),
             style: None,
+            on_seek: None,
         }
     }
 
@@ -1673,6 +1725,7 @@ impl<M: Clone + Debug> View<M> {
         View::ProgressBar {
             progress: progress.clamp(0.0, 1.0),
             style: Some(Style::parse(style_str).expect("Invalid style")),
+            on_seek: None,
         }
     }
 
@@ -1865,6 +1918,11 @@ impl<M: Clone + Debug> View<M> {
                 content: Box::new(content.map_msg_with_arc(f)),
                 position,
             },
+            // PLAN-063 T-04d-2: 锚槽递归映射 child（index 不变）。
+            View::AnchorSlot { index, child } => View::AnchorSlot {
+                index,
+                child: Box::new(child.map_msg_with_arc(f)),
+            },
             // Plan 484: MouseArea 递归映射 content + enter/exit 消息。
             // Plan 496 M5: 增 on_double_click 映射。
             // Plan 498 M0: 增 on_click 映射。
@@ -1988,7 +2046,7 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
-            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, style } => View::Terminal {
+            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => View::Terminal {
                 key,
                 cols,
                 rows,
@@ -1997,6 +2055,9 @@ impl<M: Clone + Debug> View<M> {
                 preedit,
                 on_select: on_select.map(|m| f(m)),
                 on_menu: on_menu.map(|m| f(m)),
+                on_input: on_input.map(|m| f(m)),
+                cursor_row,
+                cursor_col,
                 style,
             },
             View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {
@@ -2053,6 +2114,10 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             View::Image { src, style } => View::Image { src, style },
+            // PLAN-617 T-19: Video 不携带消息（上行事件由渲染面按帧采集，
+            // 见 `View::Video` 的文档），故无需重映射，原样搬运。
+            View::Video { src, paused, position, volume, muted, rate, label, style } =>
+                View::Video { src, paused, position, volume, muted, rate, label, style },
             View::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => View::ImageSurface {
                 src,
                 alt,
@@ -2075,7 +2140,18 @@ impl<M: Clone + Debug> View<M> {
             View::WindowThumbnail { wid, fallback_icon, style } => {
                 View::WindowThumbnail { wid, fallback_icon, style }
             }
-            View::ProgressBar { progress, style } => View::ProgressBar { progress, style },
+            // on_seek 是「值 → 消息」的构造器，map 只换消息类型，故按同一
+            // 回调重建（PointerMoveHandler 的闭包对 M 泛型，需包一层）。
+            View::ProgressBar { progress, style, on_seek } => View::ProgressBar {
+                progress,
+                style,
+                on_seek: on_seek.map(|h| {
+                    let f = std::sync::Arc::clone(f);
+                    crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {
+                        f(h.call(x, y))
+                    })
+                }),
+            },
             View::List { items, spacing, style } => View::List {
                 items: items.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 spacing,

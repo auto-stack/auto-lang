@@ -1,0 +1,465 @@
+// player_store.at — 030-video-player 的全部播放状态与业务逻辑（PLAN-617 T-08）。
+//
+// 数据来源：GET /api/media/scan —— 真实递归扫描媒体根目录（crates/auto-lang/
+// src/ui/media_service.rs，T-05 落地），条目字段 id/title/name/rel_dir/
+// relative_path/extension/bytes/size_str/video_url 全部来自后端实测值，
+// 不再有任何凭文件名编造的元数据（分辨率/编码/码率，AC-17）。
+//
+// 契约（与 viewport.at 的受控 <video> 对接，§2.3；与 VM 侧 ui/mpv/contract.rs
+// 同形同名同单位）：
+//   下行 paused/position/volume/muted/rate —— volume 是作者面 0..100，
+//        position 是秒且语义为「目标值变化才 seek」；
+//   上行 OnTime/OnDuration/OnPlayState/OnEnded/OnMediaError。
+//
+// 纪律（041/043 先例）：handler 内做全部计算与文案预拼，模板零方法调用
+// （VM view 不能调函数，Plan 402）；不谎报字段——分辨率/编码/码率在未解复用
+// 前无从得知，故 state 里干脆没有它们。
+// 另：本文件的 handler 不用 `return` 早退、不用 `as` 转型（两者在 UI 语料里
+// 都没有先例），一律用嵌套 if 与浮点运算表达，避免踩未验语义。
+
+/// 秒 → "mm:ss"。math.floor 双端有映射（VM native / TS Math.floor）。
+fn fmt_clock(sec float) str {
+    var s float = sec
+    if s < 0.0 {
+        s = 0.0
+    }
+    var mm float = math.floor(s / 60.0)
+    var ss float = math.floor(s - mm * 60.0)
+    var mm_str str = mm.to_string()
+    if mm < 10.0 {
+        mm_str = "0" + mm_str
+    }
+    var ss_str str = ss.to_string()
+    if ss < 10.0 {
+        ss_str = "0" + ss_str
+    }
+    return mm_str + ":" + ss_str
+}
+
+store PlayerStore {
+    model {
+        // ---- 媒体队列（真实扫描结果；条目为后端 JSON 对象）----
+        var playlist = []
+        var groups []str = []
+        var group_count int = 0
+        var item_count int = 0
+        var queue_summary str = "条目 0 · 分组 0"
+
+        // ---- 当前条目（索引派生；模板只读，不在模板里取下标）----
+        // 初值取 0 而不是 -1：负整数字面量作 store 字段初值时，生成器会产出
+        // `ref<number>(null)`（vue-tsc TS2345）。有效性一律由 has_current 判断。
+        var current_index int = 0
+        var has_current bool = false
+        var current_id str = ""
+        var current_url str = ""
+        var current_title str = "未选择媒体"
+        var current_file str = ""
+        var current_dir str = ""
+        var current_dir_label str = ""
+        var current_size str = ""
+
+        // ---- 受控下行状态（→ <video>）----
+        var is_playing bool = false
+        var seek_target float = 0.0
+        var volume int = 80
+        var volume_label str = "80%"
+        var is_muted bool = false
+        var playback_rate float = 1.0
+        var rate_label str = "1.0x"
+
+        // ---- 上行回灌状态（← <video>）----
+        var current_time float = 0.0
+        var duration float = 0.0
+        var current_time_str str = "00:00"
+        var duration_str str = "00:00"
+        // 进度是**浮点比值**（0..100）。刻意不做 int 转型：`as int` 在 UI 语料
+        // 里没有先例，取值语义不明；阈值比较用浮点同样准确。
+        var progress_pct float = 0.0
+
+        // ---- 错误与空态 ----
+        var media_error str = ""
+        var library_error str = ""
+        // T-10：三态区分 —— 后端不可达（library_error）/ 根目录缺失
+        // （root_missing，由 /api/media/scan 的 root_missing 字段回传）/
+        // 根目录存在但为空。文案见 Load。
+        var root_missing bool = false
+        var status_text str = "正在加载媒体库…"
+
+        // ---- 本地文件（T-09：Web 端 File API；VM 端诚实降级）----
+        // local_pick_ready 由 file_picker.vue 挂载时的 ready 事件置真；
+        // VM 端该组件不渲染，此值恒 false —— 点「打开本地视频文件」得到
+        // 降级文案而不是假动作。pick_seq 是递增计数（不是布尔），连续两次
+        // 点按钮不会因值不变而丢失第二次触发。
+        var local_pick_ready bool = false
+        var pick_seq int = 0
+
+        // ---- 音轨可用性（AC-16b；仅 Vue 端回灌，见 viewport.at）----
+        // 探针是 Chromium 专有的 webkitAudioDecodedByteCount：播放超过 1s
+        // 仍为 0 ⇒ 该文件的音轨编码（如 Dolby Digital Plus）没有浏览器解码器。
+        // 非 Chromium 探针不存在，回灌不会发生，界面不做任何声称。
+        var audio_unsupported bool = false
+
+        // ---- 面板显隐（放在 store 里，子组件才读得到/改得动）----
+        var show_playlist bool = true
+    }
+
+    msg {
+        Load,
+        SelectIndex(int),
+        TogglePlay,
+        SeekTo(float),
+        SeekFraction(float),
+        OnTime(float),
+        OnDuration(float),
+        OnPlayState(bool),
+        OnEnded,
+        OnMediaError(str),
+        VolUp,
+        VolDown,
+        ToggleMute,
+        RateUp,
+        Rescan,
+        Next,
+        Prev,
+        LocalPick,
+        LocalPickReady,
+        LocalPicked(str, str),
+        OnAudioTrack(bool),
+        TogglePlaylist
+    }
+
+    on {
+        // 真实扫描：递归读媒体根（后端 /api/media/scan）。失败是**可见的**空态
+        // 与文案，不是静默黑屏（AC-10）。三态区分（T-10）：
+        //   catch       → 后端不可达；
+        //   root_missing → 配置了根目录但目录不存在（scan 响应字段回传）；
+        //   entries 空   → 根目录存在且可读，但没有白名单内的媒体文件。
+        //
+        // 取 JSON body 的**双端同源配方**（T-10）：`json.to_value(Http.get_json(url))`。
+        // VM 侧 get_json 返回 body 字符串（URL 经 AUTO_HTTP_BASE 基址展开）、
+        // to_value 解析成 Value；Vue 侧 get_json 映射为 fetch().json()、to_value
+        // 为恒等。**不写裸 `Http.get`**——它在 VM 返回响应句柄（Plan 446 E1/E2
+        // 契约，配 .status()/.body() 访问器），不是解析后的 body。
+        .Load -> {
+            try {
+                let data = json.to_value(Http.get_json("/api/media/scan"))
+                .playlist = data.entries ?? []
+                .root_missing = data.root_missing ?? false
+                .library_error = ""
+            } catch {
+                .playlist = []
+                .root_missing = false
+                .library_error = "媒体库读取失败：后端未启动，或媒体根目录未配置（AUTO_MEDIA_ROOT）"
+            }
+            .item_count = .playlist.len()
+
+            // 分组：按 rel_dir 去重，保持扫描顺序（嵌套 for + 逐项扫描，不用
+            // contains —— 015-notes 已验的形态）。
+            .groups = []
+            var dup bool = false
+            for item in .playlist {
+                dup = false
+                for g in .groups {
+                    if g == item.rel_dir {
+                        dup = true
+                    }
+                }
+                if dup == false {
+                    .groups.push(item.rel_dir)
+                }
+            }
+            .group_count = .groups.len()
+            .queue_summary = "条目 " + .item_count.to_string() + " · 分组 " + .group_count.to_string()
+
+            if .item_count > 0 {
+                PlayerStore.SelectIndex(0)
+                .status_text = "媒体库已就绪"
+            } else {
+                .current_index = 0
+                .has_current = false
+                .current_title = "媒体库为空"
+                .current_file = ""
+                .current_dir = ""
+                .current_dir_label = ""
+                .current_size = ""
+                .current_url = ""
+                if .root_missing {
+                    .status_text = "媒体根目录不存在：请检查 AUTO_MEDIA_ROOT 指向的路径"
+                } else {
+                    .status_text = "媒体库为空：媒体根目录下没有可播放的文件"
+                }
+            }
+        }
+
+        // 选片 = 改索引 + 复位 seek/播放/错误。切曲必须复位 seek_target，
+        // 否则上一次的 seek 目标会被当成新片的 seek（生成器侧的 latch 由
+        // src 变化清空，store 这边也保持自洽）。
+        //
+        // **重选当前项 ≠ 换片**：`duration` 只能由 loadedmetadata 回灌，而
+        // src 不变时浏览器不会再发 loadedmetadata。若在这里无条件把
+        // duration/duration_str 清零，点一下已经在播的条目就会把时长永久
+        // 抹掉 —— 连带 SeekPercent（前置条件 duration > 0）再也点不动。
+        // 实测踩到过：点队列里当前项后，进度条整条失效。
+        // 故「同索引」只做重播（seek 回 0），不动时长与进度。
+        .SelectIndex(i int) -> {
+            if i >= 0 {
+                if i < .item_count {
+                    var same bool = false
+                    if .has_current {
+                        if i == .current_index {
+                            same = true
+                        }
+                    }
+                    .current_index = i
+                    .has_current = true
+                    let item = .playlist[i]
+                    .current_id = item.id
+                    .current_url = item.video_url
+                    .current_title = item.title
+                    .current_file = item.name
+                    .current_dir = item.rel_dir
+                    if item.rel_dir == "" {
+                        .current_dir_label = "根目录"
+                    } else {
+                        .current_dir_label = item.rel_dir
+                    }
+                    .current_size = item.size_str
+                    .seek_target = 0.0
+                    .current_time = 0.0
+                    .current_time_str = "00:00"
+                    .media_error = ""
+                    .audio_unsupported = false
+                    .is_playing = true
+                    if same == false {
+                        // 真换片：时长/进度作废，等新片的 loadedmetadata 回灌。
+                        .duration = 0.0
+                        .duration_str = "00:00"
+                        .progress_pct = 0.0
+                    }
+                    .status_text = "正在播放 " + item.name
+                }
+            }
+        }
+
+        .TogglePlay -> {
+            if .has_current {
+                .is_playing = !.is_playing
+                if .is_playing {
+                    .status_text = "正在播放"
+                } else {
+                    .status_text = "已暂停"
+                }
+            }
+        }
+
+        // 契约的 position 是「目标变化才 seek」：写一个新的目标值即可，
+        // 生成器侧的 latch 与本 handler 都不关心元素当前在哪。
+        .SeekTo(t float) -> {
+            if .has_current {
+                var target float = t
+                if target < 0.0 {
+                    target = 0.0
+                }
+                if .duration > 0.0 {
+                    if target > .duration {
+                        target = .duration
+                    }
+                }
+                .seek_target = target
+                .current_time = target
+                .current_time_str = fmt_clock(target)
+                if .duration > 0.0 {
+                    .progress_pct = target / .duration * 100.0
+                }
+            }
+        }
+
+        // 进度条拖拽/点选：两端交的都是 **0..1 的横向比例**（VM 走 iced
+        // SeekArea，Web 走生成器发的指针三包装），故这里换算成秒即可，
+        // 不需要知道条宽或 max。
+        .SeekFraction(f float) -> {
+            if .has_current {
+                if .duration > 0.0 {
+                    var frac float = f
+                    if frac < 0.0 {
+                        frac = 0.0
+                    }
+                    if frac > 1.0 {
+                        frac = 1.0
+                    }
+                    PlayerStore.SeekTo(.duration * frac)
+                    .status_text = "跳转至 " + .current_time_str
+                }
+            }
+        }
+
+        // ---- 上行回灌（<video> → 状态）----
+        .OnTime(t float) -> {
+            .current_time = t
+            .current_time_str = fmt_clock(t)
+            if .duration > 0.0 {
+                .progress_pct = t / .duration * 100.0
+            }
+        }
+
+        // onloadedmetadata 是时长**首次可知**的时刻：此前界面不许显示时长，
+        // 之后显示的是浏览器实测的 duration，而不是任何预置常量（AC-08）。
+        .OnDuration(d float) -> {
+            .duration = d
+            .duration_str = fmt_clock(d)
+            .status_text = "时长 " + fmt_clock(d)
+            if d > 0.0 {
+                .progress_pct = .current_time / d * 100.0
+            }
+        }
+
+        .OnPlayState(playing bool) -> {
+            .is_playing = playing
+            if playing {
+                .status_text = "正在播放"
+            } else {
+                .status_text = "已暂停"
+            }
+        }
+
+        // 放完自动下一首（列表循环语义；末项回卷由 .Next 的 cycle_index 负责）。
+        .OnEnded -> {
+            .is_playing = false
+            .status_text = "播放结束"
+            PlayerStore.Next()
+        }
+
+        .OnMediaError(msg str) -> {
+            .media_error = msg
+            .is_playing = false
+            .status_text = "播放失败"
+        }
+
+        // ---- 音量 / 静音 / 倍速 ----
+        .VolUp -> {
+            .volume = .volume + 5
+            if .volume > 100 {
+                .volume = 100
+            }
+            .volume_label = .volume.to_string() + "%"
+            .is_muted = false
+        }
+
+        .VolDown -> {
+            .volume = .volume - 5
+            if .volume < 0 {
+                .volume = 0
+            }
+            .volume_label = .volume.to_string() + "%"
+            .is_muted = false
+        }
+
+        .ToggleMute -> {
+            .is_muted = !.is_muted
+        }
+
+        // 倍速档位与 §5.4 一致（0.5/0.75/1.0/1.25/1.5/2.0）循环。契约里
+        // rate <= 0 会被生成器忽略，故档位表里没有 0。
+        .RateUp -> {
+            if .playback_rate == 0.5 {
+                .playback_rate = 0.75
+                .rate_label = "0.75x"
+            } else if .playback_rate == 0.75 {
+                .playback_rate = 1.0
+                .rate_label = "1.0x"
+            } else if .playback_rate == 1.0 {
+                .playback_rate = 1.25
+                .rate_label = "1.25x"
+            } else if .playback_rate == 1.25 {
+                .playback_rate = 1.5
+                .rate_label = "1.5x"
+            } else if .playback_rate == 1.5 {
+                .playback_rate = 2.0
+                .rate_label = "2.0x"
+            } else {
+                .playback_rate = 0.5
+                .rate_label = "0.5x"
+            }
+        }
+
+        // 循环语义（cycle_index）：末项再按下一首回到首项。
+        .Next -> {
+            if .item_count > 0 {
+                var n int = .current_index + 1
+                if n >= .item_count {
+                    n = 0
+                }
+                PlayerStore.SelectIndex(n)
+            }
+        }
+
+        .Prev -> {
+            if .item_count > 0 {
+                var n int = .current_index - 1
+                if n < 0 {
+                    n = .item_count - 1
+                }
+                PlayerStore.SelectIndex(n)
+            }
+        }
+
+        .Rescan -> {
+            .status_text = "正在重新扫描媒体库…"
+            PlayerStore.Load()
+        }
+
+        // ---- 本地文件（T-09）----
+        // ready 事件由 file_picker.vue 挂载时发来；VM 端组件不渲染，
+        // local_pick_ready 恒 false → 走诚实降级分支，不做假动作。
+        .LocalPick -> {
+            if .local_pick_ready {
+                .pick_seq = .pick_seq + 1
+                .status_text = "请在文件对话框中选择视频…"
+            } else {
+                .status_text = "本地文件浏览仅 Web 端可用：当前后端无文件选择能力"
+            }
+        }
+
+        .LocalPickReady -> {
+            .local_pick_ready = true
+        }
+
+        // 选中本地文件：object URL 直接当 current_url 用（blob: 是浏览器的
+        // 一等媒体源）。换片语义与 SelectIndex 一致：复位 seek/时长/进度/
+        // 错误/音轨标注；current_id 取队列令牌之外的固定值，队列高亮不误亮。
+        .LocalPicked(url str, name str) -> {
+            .current_id = "local-file"
+            .current_url = url
+            .current_title = name
+            .current_file = name
+            .current_dir = ""
+            .current_dir_label = "本地文件"
+            .current_size = ""
+            .has_current = true
+            .seek_target = 0.0
+            .current_time = 0.0
+            .current_time_str = "00:00"
+            .duration = 0.0
+            .duration_str = "00:00"
+            .progress_pct = 0.0
+            .media_error = ""
+            .audio_unsupported = false
+            .is_playing = true
+            .status_text = "正在播放 " + name
+        }
+
+        // ---- 音轨可用性回灌（AC-16b，仅 Vue/Chromium 会发）----
+        // false = 播放超过 1s 仍解不出任何音频字节 ⇒ 界面明确标注
+        // 「音轨不受支持」，不假装有声；true 什么都不用做（无声不标）。
+        .OnAudioTrack(ok bool) -> {
+            if ok == false {
+                .audio_unsupported = true
+                .status_text = "画面可播，但音轨不受支持（如 Dolby Digital Plus 无浏览器解码器）"
+            }
+        }
+
+        .TogglePlaylist -> {
+            .show_playlist = !.show_playlist
+        }
+    }
+}

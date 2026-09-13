@@ -112,7 +112,7 @@ onMounted(() => {
 <div v-if="menu_id == e.id" class="fixed inset-0 z-40" @click="MenuClose"></div>
 <div v-if="menu_id == e.id" class="fixed z-50 p-1 border rounded bg-card" :style="{ left: 8px, top: 8px }">
                   <div :style="'h-10 w-10 items-center justify-center rounded-xl bg-[' + e.color + ']'" class="flex flex-col">
-                    <Circle class="w-5 h-5 w-5 h-5 text-white" />
+                    <Circle class="w-5 h-5 text-white" />
                   </div>
                   <div class="flex flex-col w-44 gap-1">
                     <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-1-' + (((e as any)?.id ?? e))">打开</Button>

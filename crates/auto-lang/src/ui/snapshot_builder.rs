@@ -78,10 +78,29 @@ impl SnapshotBuilder {
                 children: vec![],
             },
             // Plan 409 §10 续 5: Overlay 在 snapshot 里展示为占位(base/content 不展开)。
+            // PLAN-063 T-04d-2: 锚槽对快照透明——子件原样展开（块容器
+            // 保持 MCP 可见，供锚块位置检视）。
+            View::AnchorSlot { child, .. } => Self::traverse_view(child, id_map, path),
             View::Overlay { .. } => UiNode {
                 id,
                 kind: "Overlay".to_string(),
                 props: vec![],
+                actions: vec![],
+                children: vec![],
+            },
+            // PLAN-617 T-19: video 节点如实上报源与显示名（不谎报「在播」——
+            // 真实播放状态由渲染面/引擎掌握，这里只说「这个节点指向什么」）。
+            View::Video { src, label, paused, volume, muted, rate, .. } => UiNode {
+                id,
+                kind: "Video".to_string(),
+                props: vec![
+                    ("src".to_string(), src.clone()),
+                    ("label".to_string(), label.clone()),
+                    ("paused".to_string(), paused.to_string()),
+                    ("volume".to_string(), volume.to_string()),
+                    ("muted".to_string(), muted.to_string()),
+                    ("rate".to_string(), rate.to_string()),
+                ],
                 actions: vec![],
                 children: vec![],
             },

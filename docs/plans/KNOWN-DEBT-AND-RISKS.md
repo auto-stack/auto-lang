@@ -1238,14 +1238,17 @@
 
 ### P537（2026-09-04，Plan 537 photo-gallery 执行/复审登记——examples 层实证的基建缺口二则）
 
-- **P537-D1 VM lucide 图标闭集缺口**:`iced/renderer.rs lucide_svg(name)` 为
-  84 项闭集,examples/ui 层 `icon (name:)` 只能消费表内名;计划 537 原拟的
-  images/heart/mountain/building-2/cloud-sun/sparkles 在 lucide-vue-next
-  存在但不在 VM 表（Vue 端正常/VM 端缺渲染=双端不一致）。绕开（已落地）:
-  相册图标 emoji 文本（027 先例）;`icon` 仅用双端表内名（sun/moon/
-  chevron-left/chevron-right）。根治:VM 表按 lucide-vue-next 常用面扩充
-  （或建立单测围栏对齐两端名单）,建议随 widgets 双端 parity 批处理。
-  引用:`crates/auto-lang/src/ui/iced/renderer.rs` lucide_svg;
+- ~~**P537-D1 VM lucide 图标闭集缺口**~~ **已根治（2026-09-13，`7c13643ba`）**：
+  原表是**手工抄**进 `iced/renderer.rs lucide_svg` 的 match（85 项），而 Vue 端用
+  lucide-vue-next 全量包 ⇒ 两端天然分叉，缺名在 VM 端**静默渲染成空盒**。现改为
+  由 `scripts/gen-lucide-table.mjs` 从 lucide 官方数据生成**全量表**
+  （`ui/iced/lucide_generated.rs`，v0.312.0 共 **1401** 个，254 KiB 静态表 + 二分查找），
+  `sidebar`/`file-icon` 两个上游已改名者留遗留别名；基线红
+  `lucide_icon_coverage_manifest_all_hit`（030 的 `icon:"film"`）随之转绿。
+  **遗留**：生成器依赖本地已安装的 lucide-vue-next（不联网），换版本需重跑
+  `node scripts/gen-lucide-table.mjs`；尚未加「表与 Vue 端包版本同步」的漂移门禁。
+  历史绕开法（emoji 文本 / 只用表内名）可退役。
+  引用:`crates/auto-lang/src/ui/iced/lucide_generated.rs`、`scripts/gen-lucide-table.mjs`、
   `examples/ui/029-photo-gallery/SPEC.md` 差异注记 2。
 - **P537-D2 VM 语义 grid 的 cols/class 状态绑定不解析**:`grid { cols: .state }`
   回落 1 列（eval_u16_prop 对 widget 状态引用不解析,unwrap_or(1)）;`class:`
@@ -2100,11 +2103,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 
 | 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
 |---|---|---|---|---|
-| ~~P619-D1~~ | ~~high~~ | 跨端一致性 | **已修复（2026-09-12，`d3a44aa6f`）**：真根因是 `lucide_svg()` 表项本身为完整 SVG 文档（`width/height=16`）而又被 `lucide_svg_doc_with` 套进第二层 24×24 `<svg>` → 嵌套 viewport 按 16/24 = 0.667 缩放（即 P2 的「≈12px 盒」）。取内层 markup 重包后双端 ink 比 **1.03/1.03**，AC-02 达标 | 计划 §8.5；`crates/auto-lang/src/ui/iced/renderer.rs::lucide_svg_doc_with`；回归锚 `plan619_lucide_doc_renders_geometric_ink` |
-| P619-D2 | medium | 字形版本漂移 | VM 内嵌 lucide fragment 与 Vue 侧 `lucide-vue-next@0.312` **对同名图标给出不同字形**（`notebook`：VM 为「书脊+两横」book 形，浏览器带 4 条装订刻度）→ 跨端图标对拍先天失真，需按 pin 版本对齐 fragment 集并加「同名同 path」契约测试 | `crates/auto-lang/src/ui/iced/renderer.rs` `lucide_svg()` 表；`crates/auto-man/src/vue.rs` 的 `lucide-vue-next` 版本 pin |
+| ~~P619-D1~~ | ~~high~~ | 跨端一致性 | **已修复（2026-09-12，`d3a44aa6f`；合并 PLAN-617 后机制升级）**：真根因是完整 SVG 文档被 `lucide_svg_doc_with` 套进第二层 24×24 `<svg>` → 嵌套 viewport 按 16/24 = 0.667 缩放（即 P2 的「≈12px 盒」）。619 修法 = 取内层 markup 重包；合并 617 全量表后 `doc_with` 直接消费 `lucide_fragment` 单层包装（同一契约，数据源升为生成的 1401 项全量表）。**注：617 换表时该坑一度复发**（表项仍经 `lucide_svg` 包成 16×16 文档再被 `doc_with` 嵌套），由 619 的回归锚在合并时守住——单层包装契约见 ui/overview.md 已知坑 3 | 计划 §8.5；`crates/auto-lang/src/ui/iced/renderer.rs::lucide_svg_doc_with`；回归锚 `plan619_lucide_doc_renders_geometric_ink` |
+| ~~P619-D2~~ | ~~medium~~ | 字形版本漂移 | **已修复（2026-09-14，PLAN-617 全量表，经 PLAN-619 合并确证）**：VM 字形真源改为 `lucide_generated.rs`——由 `scripts/gen-lucide-table.mjs` 从 `lucide-vue-next v0.312.0` dist 生成的 1401 项全量 fragment 表，两端同名 ⇒ 同字形由构造保证（`notebook` 等不再分叉） | `crates/auto-lang/src/ui/iced/lucide_generated.rs`；`scripts/gen-lucide-table.mjs` |
 | P619-D3 | low | 排版基线 | 纵向节奏累计漂移 ≈2px/行：iced 文本默认 `LineHeight::Relative(1.3)` vs Tailwind `text-sm/text-xs` 自带的 20/16px 行高（两端行高不一致 → 行数越多偏得越多；首屏地标仅差 1px 故 PLAN-616/619 均未纳入） | `crates/auto-lang/src/ui/iced/renderer.rs` 文本臂（`line_height` 消费点已存在，缺的是 text-sm/xs → 行高的默认映射） |
 | P619-D4 | low | 契约静默点 | `with_class_prop` 之外仍有 4 处「只读 `class:` 不回落 `style:`」的用户类合并点（本轮已就地补齐 sidebar 族；其余同族调用点若用 `style:` 写仍会丢用户类） | `crates/auto-lang/src/ui/aura_view_builder.rs`（`with_class_prop` 及 2899/5037/5132/5165 附近；建议抽 `user_class_with()` 收敛） || ~~P619-D5~~ | ~~medium~~ | 验收基建失效 | **已修复（2026-09-12，`6aad8ba1f`）**：真因是**就绪竞态**（驱动只等 MCP 端口 → app 未初始化即开跑，前 16 场景在空树上连锁失败），**不是**运行器解析链路失配——`autoui_find` 与 runner 的正则解析均正常。`McpAdapter::wait_ready()`（tree+state+button 三判据）修入 runner 后 19/19 绿。**残余**：`desktop_mcp.py` 有一条 stale 断言（断言顶栏按钮名为 `New`，PLAN-616 已改名 `New note`） | 计划 §8.4/§9.5；`examples/ui/015-notes/tests/autotest/__init__.py` |
-| P619-D6 | low | 跨端一致性 | shadcn 资产自带 `[&>svg]:size-4` 把**组件内**图标钉死 16px、盖过生成器发的 `:size`（普通 div 内的图标不受影响，故 AC-02 判据已达标）；受害面 = 胶囊按钮/侧栏菜单按钮内声明非 16 的图标 | 生成物 `gen/front/vue/src/components/ui/sidebar/SidebarMenuButton.vue` 等 cva 串；修法倾向生成器侧对显式 `size:` 输出带 important 的尺寸类 |
+| P619-D6 | low | 跨端一致性 | shadcn 资产 `[&>svg]:size-4` 影响**组件内**（Button/SidebarMenuButton 等）图标。**影响面已缩小（PLAN-617 并轨后）**：显式 `size:` 的图标发射内联 `style="width:Npx;height:Npx"`，特异性压过资产 CSS；残余 = **无显式尺寸**的组件内图标——缺省 `w-5 h-5` 类打不过资产选择器、被钉 16px，而 VM 端缺省 20px（普通 div 内的图标不受影响，AC-02 判据已达标） | 生成物 `gen/front/vue/src/components/ui/sidebar/SidebarMenuButton.vue` 等 cva 串；候选修法 = 组件内 icon 缺省也走内联 20px，或生成器对组件内 icon 注入内联缺省 |
 
 ---
 
@@ -2126,6 +2129,10 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | ~~P617-D9~~ | ~~high~~ | 未收口能力 | **已收口（2026-09-13，T-20）**：AC-19 达成——`crates/auto` 已补 `mpv-native`/`mpv-gpu`/`mpv-widget` 透传（+ `mpv` 别名，显式开启），验证语料 `test/ui/plan617_video_vm` 实机 1080p 真实播放 + seek 生效（position 8.0 → time-pos 递增到 12.63s），截图 `test/ui/plan617_video_vm/src/front/tests/screenshots/ac19_final.png` | 计划 §9.19 |
 | P617-D10 | **medium** | 架构脆点 | **`convert_view_messages` 的 `_ => Empty` 兜底会静默吃掉新 View 变体**：VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` → `View<IcedMessage>` → `into_iced`，漏加臂的变体在 VM 里恒为 Empty，而 **MCP 快照走 vnode_converter 另一条路，看起来节点仍在树里 → 假绿**。注释里已记 Grid/MouseArea/select 三次同类坑，T-19 的 video 是第四次。**建议**：给该 match 加一个「已知变体全集」的编译期围栏（如变体枚举 + 穷尽 match 的测试），或把兜底改成会报警的 `debug_assert!` | `crates/auto-lang/src/ui/iced/renderer.rs::convert_view_messages`；计划 §9.19 |
 | P617-D11 | low | 测试盲区 | **契约层/编译期测试无法覆盖「接线是否真活」**：T-19 三个缺陷（convert_view_messages 漏臂、widget 没建 render context、忘 `channel.advance`）全部通过了 `cargo t`、`docs_gen`、`video_contract` 三套门禁，只在 T-20 的**实机**验证中现形。**教训**：涉及「新 View 变体要一路走到渲染」的改动，必须有一次真起窗 + 看画面的验证，不能以编译通过 + 契约单测代替 | 计划 §9.19；`test/ui/plan617_video_vm` |
+| P617-D12 | medium | 双端语义 | **`Http.get` 同名不同义：VM 返回响应句柄（Plan 446 E1/E2/E3 测试钉死的契约），Vue 返回解析后的 body（Plan 028 F8 协议）**——`.at` 作者按 Vue 直觉写 `Http.get(url).field` 在 VM 恒 null（030 媒体库空态的第二根因；第一根因是相对 URL 无基址，已由 `AUTO_HTTP_BASE` 收口）。T-10 曾尝试把 VM 侧改成返回 body，**tv 档 446 测试 5 红即证不可改**，已回退；收编形态 = 双端配方 `json.to_value(Http.get_json(url))`（ts_adapter 补 `get_json`→fetch().json() 与 `json.to_value`→恒等两臂）+ 030 store 落地（e2e/vm-smoke 双端绿）。**风险残留**：auto-musk 等按 Vue 形状用裸 `Http.get` 的仓若上 VM 会踩同一坑（静默空态无诊断）。根治候选：把配方写进平台文档 + 或提供带告警的 lint | `vm/ffi/stdlib.rs shim_http_get` 头注；`ui_gen/ts_adapter.rs` 的 `Http`/`json` 臂；`030-player_store.at::Load`；计划 §9.24 |
+| P617-D13 | low | 探针局限 | **音轨探针（AC-16b）是 Chromium 专有且一次性采样**：`webkitAudioDecodedByteCount` 只在 Chromium 存在（Firefox/Safari 无标注——不谎报但也不正向标注）；判定点在「实际播放 >1s」单一时刻，「真无声轨/极晚出声」的文件可能被误标「音轨不受支持」。e2e 只断言 Chromium 行为（T11 (b)） | `ui_gen/vue.rs video_script_block` 的 `__videoAudio_`；030 SPEC §2.2 onaudiotrack 语义 |
+| P617-D14 | low | 信息量 | **VM 端 `video` 降级面板显示媒体令牌（blake3 hex）而非文件名/大小**：面板由 iced 渲染面直绘，`View::Video` 不携带消息（§4.11/§4.12 的接线裁定），字符串（标题）无法到达渲染面。诚实但粗糙；要显示文件名需给 View::Video 增加展示字段（平台改动），留待后续立项 | `ui/mpv/widget.rs` 降级面板；实测截图 `030 tests/screenshots/after_t11_vm_library.png` |
+| P617-D15 | low | 覆盖面 | **`AUTO_HTTP_BASE` 基址展开只覆盖 get/post/put/delete/patch/get_json/request/auth 臂**；download/upload/stream/SSE 臂的 URL 直通 reqwest（这些原生的使用惯例本就是绝对地址，且无在案用户）。补齐需把 resolve_http_base_url 提到各 spawn/下载入口，属机械活，待有真实需求再做 | `vm/ffi/stdlib.rs resolve_http_base_url` 及其调用点；030 README「不做什么」节 |
 
 ---
 
@@ -2140,3 +2147,15 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P618-D2 | medium | 转译器 | **vue 转译器对「模块 fn 参数名与 model 字段同名」误加 `.value` 拆包**——SFC 运行时 TypeError 整页白屏（018 ch_nodes(chapters) 实证）；规避=参数避开 model 字段名，已入 tree-components.md 陷阱节 | 018 reading.at ch_nodes；契约「⚠ 模块 fn 转译陷阱」 |
 | P618-D3 | low | VM 渲染 | **041 VM 预存怪象（非 tree 引入）**：confirm 弹层 open:false 文案仍渲染页底（与 P618-1 同族、VM popover 臂）+ 状态栏 `${store.line}` 字面量直出 | 041-auto-edit VM 截图 t06；app.at popover/StatusBar |
 | P618-D4 | low | 工具面 | **018 VM 轨书架卡片 onclick（页面级 for-loop 载荷）MCP press 不可寻址**——阅读页经 MCP 不可达，章节树 VM 直接交互验证受限（组件 VM 行为已 041/026/027 三重实证）；P614-C1 家族 | 018 bookshelf.at OpenBook；plan §复审 F-2/P618-5 |
+
+---
+
+## 架构裁定留底（AutoUI 仓界，2026-09-13，非计划关联）
+
+> 源自 2026-09-13 AutoUI 拆仓可行性分析（AutoOS 迁独立仓后的跟进议题）。
+> 完整依据、submodule 裁定与重开路线见 `docs/design/20-autoui-separation-architecture.md` §11。
+
+| 编号 | 严重度 | 类别 | 描述 | 引用 |
+|---|---|---|---|---|
+| ARCH-AUTOUI-REPO | —（裁定留底） | 仓界时序 | **AutoUI 拆独立仓推迟，不设日程；重开前置 = VM/Rust 桌面版（VM/iced 轨道）稳定**。submodule 形态裁定不采用（依赖方向相悖 + 只解决路径检出不解决依赖 + worktree 红线敏感）。重开路线 = 先仓内 crate 化（workspace 成员 `crates/auto-ui`，编排函数上移 + native 注册制），边缘资产可先行，repo 拆分按 auto-shell 模式（Plan 330）且须触发条件（API 收敛/共变衰减/第二消费者）。依据：近 90 天同提交跨 UI/核心两侧 245 次（≈2.7/天）；三处硬耦合（UI 语法在 ast/parser、ui_gen/aura/a2ui 无条件编译、VM native 表烧 UI ID 段）；2026-03 并入史（Plan 045/096/175）。关联 auto-os PLAN-578「examples 归属两读」待裁定 | `docs/design/20-autoui-separation-architecture.md` §11 |
+| ARCH-AUTOUI-GUARD | medium（持续纪律） | 门禁护栏 | **新增 UI native/FFI 必须挂 feature cfg + 降级桩（沿用 `vm/native.rs` 桩模式），无 UI 构建（`--no-default-features`/`cargo tv`/CI vm-files 档）保持绿色**——未来 AutoUI 拆仓唯一能站住的地基，欠账后重新考古代价高。**当飞项**：Plan 619 工作树 `vm/ffi/term_engine.rs` 133/199-230/331 行存在未门控 `crate::ui::terminal` 引用（HEAD 版本无），合入前必须补门控，否则弄红全部无 UI 构建 | `crates/auto-lang/src/vm/ffi/term_engine.rs`；桩模式参照 `crates/auto-lang/src/vm/native.rs`；Design 20 §11.5 |

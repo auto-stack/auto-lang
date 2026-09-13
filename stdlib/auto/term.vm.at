@@ -21,3 +21,39 @@ fn engine_is_exited(handle int) bool
 
 #[vm]
 fn engine_free(handle int) void
+
+/// 014 直键入:排空 terminal 组件键入队列并逐键裸写引擎(无 \r\n 补缀),
+/// 返回泵送键数(iced widget 键盘捕获 → TerminalCore 队列 → 本泵)。
+#[vm]
+fn engine_pump_input(handle int) int
+
+/// 014 光标格:feed 时的引擎光标采样(glue 静态量;未采样为 0)。
+#[vm]
+fn engine_cursor_row(handle int) int
+
+#[vm]
+fn engine_cursor_col(handle int) int
+
+/// 014 几何随动:应用 widget 请求的待定几何并刷新视口静态量
+/// (1=已应用 0=无请求);viewport_* 回读当前几何。
+#[vm]
+fn engine_apply_resize(handle int) int
+
+#[vm]
+fn engine_viewport_cols(handle int) int
+
+#[vm]
+fn engine_viewport_rows(handle int) int
+
+/// 014 积压报警回读面(vm/ffi/term_engine.rs 实现)。
+#[vm]
+fn engine_backlog_pending_mb(handle int) int
+
+#[vm]
+fn engine_backlog_paused(handle int) int
+
+#[vm]
+fn engine_backlog_take_alerts(handle int) int
+
+#[vm]
+fn engine_backlog_dropped(handle int) int

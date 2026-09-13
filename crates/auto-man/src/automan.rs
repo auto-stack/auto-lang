@@ -338,6 +338,14 @@ impl Automan {
         self.pac.window_fit
     }
 
+    /// PLAN-617 T-11: media library root from pac.at `media_root`.
+    /// The generated media service consumes it via the `AUTO_MEDIA_ROOT` env
+    /// (injected by `auto run` only when that env is not already set, so the
+    /// env keeps precedence per the plan's resolution order).
+    pub fn pac_media_root(&self) -> Option<String> {
+        self.pac.media_root.as_ref().map(|t| t.to_string())
+    }
+
     /// VM native window title from pac.at `title: "..."`.
     pub fn pac_window_title(&self) -> Option<String> {
         self.pac.title.as_ref().map(|t| t.to_string())
@@ -1377,6 +1385,10 @@ impl Automan {
         }
 
         let backend = self.resolve_backend()?;
+        // Make the resolved renderer visible to app code. VM's native runner
+        // changes CWD to src/front, so portable file contracts can select a
+        // sandbox-visible relative path while Vue/Rust keep project-root I/O.
+        std::env::set_var("AUTO_RENDER", backend.as_str());
         self.run_backend(&backend, args)
     }
 
@@ -1387,6 +1399,17 @@ impl Automan {
 
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+        // Keep app-relative persistence stable across UI runners. VM native
+        // rendering temporarily changes the process CWD to src/front while
+        // the split backend may still serve requests on another thread; expose
+        // the project root so app contracts can resolve durable files without
+        // depending on that transient CWD.
+        // `canonicalize()` returns an extended Windows path (`\\?\\D:\\...`).
+        // AutoLang's VM file shim accepts ordinary absolute paths but rejects
+        // that prefix on worktree paths, so keep the already-absolute CLI CWD
+        // unchanged when exposing the project root to app code.
+        std::env::set_var("AUTO_PROJECT_DIR", &root_dir);
 
         // Show cache status
         let cache = UICache::load(&root_dir);
@@ -2254,7 +2277,16 @@ impl Automan {
 }
 
 fn home_path() -> AutoPath {
-    dirs::home_dir().unwrap().to_str().unwrap().into()
+    // Windows service/CI identities may not have a shell profile, so the
+    // platform known-folder lookup can return `None`.  Prefer the normal
+    // profile environment variables and finally the current directory rather
+    // than panicking while loading the auto-man index.
+    dirs::home_dir()
+        .or_else(|| env::var_os("USERPROFILE").map(PathBuf::from))
+        .or_else(|| env::var_os("HOME").map(PathBuf::from))
+        .or_else(|| env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."))
+        .into()
 }
 
 /// Like `std::fs::remove_dir_all`, but clears read-only attributes first:

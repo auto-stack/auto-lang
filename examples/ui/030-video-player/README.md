@@ -1,91 +1,85 @@
-# 030-video-player — AutoOS 原生系统视频播放器
+# 030-video-player
 
-AutoOS 默认原生视频播放器（对标 **VLC / PotPlayer / IINA / MPC-HC**）。同一份 AutoUI 源码（`src/front/app.at`）支持 **Vue 模式**（`auto run`）与 **VM / Iced 模式**（`auto run -r vm`）。
+真实可播的本地视频播放器示范（Vue：`auto run`；VM：`auto run -r vm`）。
 
-与流媒体门户应用（`019-video-app`，对标 Bilibili / YouTube）形成清晰的场景区隔：`030-video-player` 专注操作系统本地与网络媒体文件的沉浸式无干扰播放。
+> 本示例在 PLAN-617 里做过一次**真实化重做**：此前是「外壳真实、内核全假」
+> ——`<video>` 从未被播放过、OSD 全是常量、队列是写死的字面量。现在队列来自
+> 后端对媒体根的递归扫描，播放由受控契约驱动真实元素，界面只显示实测值。
 
----
-
-## 核心特性
-
-- **大视口沉浸式画布 (Immersive Viewport)**：
-  - 纯粹无边框视频播放视口，居中大播放状态指示器；
-  - 顶部 HUD 悬浮信息（标题、分辨率 `4K` / `1080P`、编码 `HEVC` / `H.264` / `AV1`、帧率 `60 FPS`、码率）；
-  - 实时操作反馈气泡（Toast，如“快进 +5 秒”、“音量 85%”、“倍速 1.5x”）。
-- **专业级 OSD 悬浮播控条 (On-Screen Display Controls)**：
-  - **交互式进度条 (Timeline Scrubber)**：缓冲条指示、当前时间与总时长（`00:45 / 03:45`）、点击总时长切换为剩余时间（`-03:00`）、快速跳转锚点（`0%` / `25%` / `50%` / `75%`）；
-  - **传输控制**：上一首（`⏮`）、快退 5 秒（`⏪ 5s`）、主播放/暂停（`▶ 播放` / `⏸ 暂停`）、快进 5 秒（`5s ⏩`）、下一首（`⏭`）、停止（`⏹`）；
-  - **音量调节**：静音切换（`🔊` / `🔇`）、音量加减微调（`-` / `+`）、音量数值显示；
-  - **多档倍速**：`0.5x` / `0.75x` / `1.0x` / `1.25x` / `1.5x` / `2.0x` 平滑切换；
-  - **画幅比调节**：`16:9` / `4:3` / `铺满`；
-  - **循环模式**：`🔁 列表循环` / `🔂 单曲循环` / `🔀 随机播放`；
-  - **OSD 显隐控制与全屏切换**。
-- **可折叠右侧播放队列抽屉 (Collapsible Playlist Drawer)**：
-  - 一键展开/收起播放队列（`≡ 列表 (5)`）；
-  - 5 项预置种子视频（4K/1080P/720P），展示视频缩略图、标题、时长、编码与大小；
-  - 高亮当前播放项，点击任意队列项立即切换起播；
-  - 底部“+ 打开本地视频文件 (Open File...)”按钮（模拟联动 `027-file-manager`）。
-- **媒体详细属性弹窗 (Media Properties Modal)**：
-  - 查阅当前视频的容器格式、分辨率、视频编码、音频声道、码率与解码管线信息。
-- **双端主题与风格契约**：
-  - 默认 AutoOS Dark 深色沉浸模式，支持运行时一键切换浅色模式（`🌙 / ☀`）；
-  - 5 种系统强调色（`indigo`、`coral`、`ocean`、`sage`、`amber`）实时切换。
-- **全套键盘快捷键支持**：
-  - `Space` / `K`：播放 / 暂停
-  - `←` / `→`：快退 / 快进 5 秒
-  - `↑` / `↓`：音量 ± 5%
-  - `M`：静音切换
-  - `F`：全屏切换
-  - `P`：展开/折叠右侧播放队列
-  - `[` / `]`：倍速减慢 / 加快
-
----
-
-## 目录架构
-
-```
-examples/ui/030-video-player/
-├── pac.at                 # 工程元配置 (scene: "ui", render: "vue", front_port: 3030)
-├── SPEC.md                # 单真源规约：数据结构、状态字典与交互逻辑
-├── README.md              # 本说明文件
-├── src/
-│   └── front/
-│       └── app.at         # 单文件核心 App widget (视口 + OSD + 抽屉 + 快捷键)
-└── tests/
-    ├── smoke.spec.ts      # Playwright 端到端测试 (Vue 模式)
-    └── vm-smoke.mjs       # AutoUI MCP 自动化测试 (VM / Iced 模式)
-```
-
----
-
-## 运行方式
-
-### 1. Vue 模式（默认浏览器模式）
+## 跑起来
 
 ```bash
-cd examples/ui/030-video-player
-auto run
+# 媒体根已在 pac.at 写死为 E:\Video（用户 r2 裁定方案 (a)）；
+# env 可覆盖：AUTO_MEDIA_ROOT 优先于 pac.at。
+export AUTO_MEDIA_ROOT='E:\Video'     # 可选；Windows: $env:AUTO_MEDIA_ROOT='E:\Video'
+
+auto run          # Vue 模式：真后端（axum）+ Vite
+auto run -r vm    # VM/iced 模式（原生播放需另开 feature，见下）
 ```
 
-浏览器访问 `http://localhost:3030`。
-
-### 2. VM / Iced 模式（原生桌面窗口）
+VM 模式想看到**真实画面**（而不是降级面板）：
 
 ```bash
-cd examples/ui/030-video-player
-auto run -r vm
+cargo build -p auto --features mpv          # 打开 mpv-native/mpv-gpu/mpv-widget
+AUTO_MPV_LIB=<dir-with-libmpv-2.dll> auto run -r vm
 ```
 
----
-
-## 测试验证
+VM 模式想看到**真实媒体库**（队列与 Vue 端同一份数据）——先起生成后端，
+再给 VM 一个 HTTP 基址（T-10 起支持相对 URL 展开）：
 
 ```bash
-cd examples/ui/030-video-player
-
-# 1. 运行 Playwright E2E 测试 (需先执行 auto run 或 auto gen)
-pnpm exec playwright test
-
-# 2. 运行 VM 模式 MCP 自动化测试 (需在 auto run -r vm 运行下)
-node tests/vm-smoke.mjs
+cargo run --manifest-path examples/rust-workspace/030-video-player-back
+AUTO_HTTP_BASE=http://127.0.0.1:8330 auto run -r vm
 ```
+
+未开 mpv feature 或找不到运行库时，视口给出显式降级说明
+（「本后端未启用原生播放」），**不留黑屏**；未设 `AUTO_HTTP_BASE` 时
+媒体库显示诚实空态文案。
+
+## 能做什么（都是真的）
+
+- **队列**：递归扫描媒体根的白名单文件（`mp4/m4v/webm/mkv/mov/avi`），
+  按相对目录分组、组内自然排序（`S01E02` 在 `S01E10` 之前）；
+  条目显示真实文件名与真实字节数。
+- **播放**：`<video>` 真实加载并播放。起播/暂停、seek、音量、静音、倍速、
+  上下曲**全部作用于元素属性**（不是只改界面文字）。
+- **时间/进度**：由 `timeupdate` / `loadedmetadata` 回灌驱动；没有预置常量。
+- **本地文件**（Web 端）：「打开本地视频文件」打开系统文件对话框，
+  选中即用 object URL 播放——不经过后端、不经过队列（T-09）。
+- **音轨标注**：播放超过 1s 仍解不出音频字节（Dolby Digital Plus 等
+  Chromium 无解码器的编码）时，界面**主动**标注「音轨不受支持」（AC-16b）；
+  解得出时不说任何音频信息。
+- **错误可见**：解码/加载失败时视口用错误面板替换纯黑，文案来自 `MediaError`；
+  后端不可达 / 媒体根目录不存在 / 目录为空 三种空态文案各不相同（T-10）。
+- **深浅主题**：顶栏开关真实切换（会同步 `<html>` 的 `dark` 类）。
+
+## 不做什么（如实说明）
+
+- **不显示推不出的元数据**：分辨率/编码/码率在不解复用时无从得知，
+  数据模型里根本没有这些字段。时长/画面尺寸只来自元素回灌。
+- **不声称有声**：Matroska 容器能解，但 Dolby Digital Plus (E-AC-3/Atmos)
+  音轨不被 Chromium 的 FFmpeg 构建支持，那类文件表现为**有画面无声音**
+  ——界面不假装有音频，并按上节的探针实测给出反向标注。
+- **本地文件选择仅 Web 端**：`file_picker.vue` 依赖浏览器 File API；
+  VM/iced 端按钮点击给出「仅 Web 端可用」的降级文案，不做假动作。
+- **VM 端 `AUTO_HTTP_BASE` 覆盖面**：get/post/put/delete/patch/json/request/
+  auth 臂支持相对 URL 按基址展开；download/stream/SSE 臂**未**覆盖
+  （这些原生的 URL 惯例是绝对地址）。
+
+## 验证
+
+```bash
+# 生成器侧契约与兼容性（在仓库根）
+cargo t vue_gen
+
+# Vue 端真实播放 e2e（需先 auto run + AUTO_MEDIA_ROOT）
+cd tests && pnpm install && pnpm exec playwright test
+#   注意：e2e 强制使用本机真实 Chrome（Playwright 自带 Chromium 不带
+#   H.264/AAC，videoWidth 恒为 0），见 tests/playwright.config.ts 注释。
+
+# VM 端诚实降级冒烟
+AUTO_BIN=<path-to-auto> node tests/vm-smoke.mjs
+```
+
+截图（双端、深浅）在 `tests/screenshots/`：
+`after_t08_vue_{dark,light,playing,mkv}.png` 与 `after_t08_vm_degrade.png`。

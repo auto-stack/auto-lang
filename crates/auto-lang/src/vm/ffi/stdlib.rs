@@ -5208,6 +5208,14 @@ pub fn shim_http_internal_error(msg: String) -> i64 {
 /// so the engine's `waiting_http_request_id` IP-rewind works here exactly as
 /// it does for the `*_json` family. On re-entry the args were already popped
 /// on the first call, so we check the pending request BEFORE popping.
+/// PLAN-617 T-10: `Http.get` 的**返回协议是句柄**（Plan 446 E1/E2/E3 的测试
+/// 钉子）：`res.status()/.body()/.header(k)` 访问器建立在 `HTTP_RESPONSES`
+/// 句柄上，不能改成返回 body（那会砸掉已文档化、已测试的契约——本次实测
+/// tv 档 5 红即证）。**双端一致的取 body 形态是 `json.to_value(Http.get_json(url))`**：
+/// VM 侧 get_json 走 spawn_async_http（含 T-10 的相对 URL 基址展开）推 body
+/// 字符串、to_value 解析成 Value（与 #[api] 改写的既有形状同型）；Vue 侧
+/// ts_adapter 把 `Http.get_json` 映射为 fetch().json()、`json.to_value` 映射为
+/// 恒等（Vue 侧已是解析后的对象）。030 的 store 即此写法。
 pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
@@ -5220,7 +5228,7 @@ pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let req_id = alloc_async_id();
-    spawn_async_http_handle("GET".into(), url, None, req_id);
+    spawn_async_http_handle("GET".into(), resolve_http_base_url(&url), None, req_id);
     if let Ok(mut map) = ASYNC_RESULTS.lock() {
         map.insert(req_id, None);
     }
@@ -5313,7 +5321,7 @@ pub fn shim_http_request(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 
     let data = HttpRequestBuilderData {
         method,
-        url,
+        url: resolve_http_base_url(&url), // PLAN-617 T-10: 相对 URL 按基址展开
         headers: vec![],
         body: None,
         timeout_ms: None,
@@ -6574,11 +6582,33 @@ pub(crate) fn async_http_result_ready(request_id: u64) -> bool {
         .unwrap_or(false)
 }
 
+/// PLAN-617 T-10: resolve a **relative** URL (leading `/`) against the base
+/// address given by the `AUTO_HTTP_BASE` env (e.g. `http://127.0.0.1:8330`).
+///
+/// Rationale: a VM UI app and its `#[api]`/media backend live in *different
+/// processes*, so the same `.at` source as the Vue build (`Http.get("/api/...")`
+/// resolved by the page origin there) yields "relative URL without a base" in
+/// reqwest — the app's library pane silently stayed empty (PLAN-617 §9.20).
+/// With the base set, VM mode consumes the identical backend as the browser.
+/// Absolute URLs and the env being unset are passed through unchanged.
+fn resolve_http_base_url(url: &str) -> String {
+    if !url.starts_with('/') {
+        return url.to_string();
+    }
+    if let Ok(base) = std::env::var("AUTO_HTTP_BASE") {
+        let base = base.trim().trim_end_matches('/').to_string();
+        if !base.is_empty() {
+            return format!("{}{}", base, url);
+        }
+    }
+    url.to_string()
+}
+
 /// Helper: spawn an async HTTP request on a dedicated thread.
 /// Result is stored in ASYNC_RESULTS[request_id] as the Body variant.
 fn spawn_async_http(method: String, url: String, body: Option<String>, request_id: u64) {
     std::thread::spawn(move || {
-        let result = simple_http_json(&method, &url, body.as_deref());
+        let result = simple_http_json(&method, &resolve_http_base_url(&url), body.as_deref());
         if let Ok(mut map) = ASYNC_RESULTS.lock() {
             map.insert(request_id, Some(Ok(AsyncResult::Body(result))));
         }
@@ -6798,7 +6828,7 @@ fn spawn_async_http_handle(
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::new();
         let m = method.clone();
-        let u = append_default_queries(&url); // Plan 446 E4: 默认 query 注入
+        let u = append_default_queries(&resolve_http_base_url(&url)); // Plan 446 E4: 默认 query 注入；T-10: 相对 URL 先按基址展开
         let b = body.clone();
         let default_headers = snapshot_default_headers(); // Plan 446 E4
         let result = send_with_retry(
@@ -7038,6 +7068,7 @@ fn spawn_async_http_auth(
     api_key: Option<String>,
     request_id: u64,
 ) {
+    let url = resolve_http_base_url(&url); // PLAN-617 T-10: 相对 URL 按基址展开
     eprintln!("[HTTP_REQ] {} url={} body_len={:?}", method, url, body.as_ref().map(|b| b.len()));
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::new();
@@ -7086,6 +7117,7 @@ fn spawn_async_http_bearer(
     api_key: Option<String>,
     request_id: u64,
 ) {
+    let url = resolve_http_base_url(&url); // PLAN-617 T-10: 相对 URL 按基址展开
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::new();
         let mut builder = match method.as_str() {
@@ -9839,6 +9871,33 @@ pub(crate) fn lock_storage_for_test() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-617 T-10: 相对 URL（`/` 开头）按 `AUTO_HTTP_BASE` 展开为绝对地址；
+    /// 绝对 URL 与未设 env 时原样透传（幂等：展开后的绝对 URL 再过一遍不变）。
+    #[test]
+    fn http_base_url_resolution() {
+        // 绝对 URL 永不改动（env 设不设都一样）。
+        std::env::set_var("AUTO_HTTP_BASE", "http://127.0.0.1:8330");
+        assert_eq!(
+            resolve_http_base_url("http://example.com/api/x"),
+            "http://example.com/api/x"
+        );
+        // 相对 URL + 基址 → 展开；基址尾部斜杠不产生双斜杠。
+        assert_eq!(
+            resolve_http_base_url("/api/media/scan"),
+            "http://127.0.0.1:8330/api/media/scan"
+        );
+        std::env::set_var("AUTO_HTTP_BASE", "http://127.0.0.1:8330/");
+        assert_eq!(
+            resolve_http_base_url("/api/media/scan"),
+            "http://127.0.0.1:8330/api/media/scan"
+        );
+        // env 为空白 → 无基址可用，原样透传（与今日行为一致，交给上层报错）。
+        std::env::set_var("AUTO_HTTP_BASE", "   ");
+        assert_eq!(resolve_http_base_url("/api/x"), "/api/x");
+        std::env::remove_var("AUTO_HTTP_BASE");
+        assert_eq!(resolve_http_base_url("/api/x"), "/api/x");
+    }
 
     /// Plan 524 三态：process.args() = [程序路径] + CLI 透传参数（List 契约，
     /// 对齐 a2r 路径消费形态）；无透传 → 仅程序路径。修复前异端 = join 空格

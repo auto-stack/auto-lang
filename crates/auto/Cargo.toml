@@ -30,3 +30,20 @@ with-file-history = ["auto-lang/with-file-history"]
 # Plan 019 批次八: autodown natives + VM 真渲染（跨仓 crate path，见
 # auto-lang Cargo.toml 注释——合并后按互链说明翻转）。
 autodown = ["auto-lang/autodown"]
+
+# PLAN-617 T-19/T-20: `video` 元素的 VM 原生命中播放面（libmpv DLL 运行时加载）。
+#
+# **为什么不在 default 里**（而 `ui-iced`/`python` 在）：那两个是「开着才对」的
+# 后端选择；本项是**运行期能力**——打开后，任何带 `video` 标签的示例在 VM 端都会
+# 尝试真解码并打开音频设备（例如 019-video-app 的远端 URL 会真去拉流）。
+# 那对别的示例是行为变化，故取**显式开启**。
+#
+# 它**零构建期原生依赖**：libmpv 只在运行时 `LoadLibrary`（见 ui/mpv/loader.rs），
+# 因此开启它不会给 11 个 ubuntu-latest CI 任务带来任何系统包安装要求；
+# 缺运行库时走诚实降级（ui/mpv/engine.rs 的 `MpvUnavailable::NoLibrary`）。
+mpv-native = ["auto-lang/mpv-native"]
+mpv-gpu = ["auto-lang/mpv-gpu"]
+# 打开 VM 端 `video` 真实渲染（含帧上屏通道；需上面两层）。
+mpv-widget = ["auto-lang/mpv-widget"]
+# 便捷别名：一次性打开全部三层（`cargo build -p auto --features mpv`）。
+mpv = ["mpv-native", "mpv-gpu", "mpv-widget"]
