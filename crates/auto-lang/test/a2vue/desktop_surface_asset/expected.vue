@@ -2,7 +2,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Button } from '@/components/ui/button'
-import { Popover } from '@/components/ui/popover'
 
 import { Circle } from 'lucide-vue-next'
 
@@ -56,7 +55,7 @@ function IconMenu(id: any): void {
   emit('IconMenu', id)
 }
 
-function MenuClose(e: any): void {
+function MenuClose(): void {
   menu_id.value = '';
 }
 
@@ -110,28 +109,30 @@ onMounted(() => {
           <div class="grid grid-cols-8 gap-2 w-full">
             <div @dblclick="ActivateApp(e.id)" v-for="e in __desktop_icons" :key="(((e as any)?.id ?? e))">
               <div class="flex flex-col w-20 h-20 items-center justify-center gap-1 hover:bg-white/10" @contextmenu.prevent="IconMenu(e.id)">
-                <Popover class="p-1 border rounded bg-card" @dismiss="MenuClose(e)" :key="'Popover-1-' + (((e as any)?.id ?? e))">
+<div v-if="menu_id == e.id" class="fixed inset-0 z-40" @click="MenuClose"></div>
+<div v-if="menu_id == e.id" class="fixed z-50 p-1 border rounded bg-card" :style="{ left: 8px, top: 8px }">
                   <div :style="'h-10 w-10 items-center justify-center rounded-xl bg-[' + e.color + ']'" class="flex flex-col">
                     <Circle class="w-5 h-5 w-5 h-5 text-white" />
                   </div>
                   <div class="flex flex-col w-44 gap-1">
-                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-2-' + (((e as any)?.id ?? e))">打开</Button>
-                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-3-' + (((e as any)?.id ?? e))">从桌面移除</Button>
-                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-4-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
+                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-1-' + (((e as any)?.id ?? e))">打开</Button>
+                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-2-' + (((e as any)?.id ?? e))">从桌面移除</Button>
+                    <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-3-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
                   </div>
-                </Popover>
+</div>
                 <span class="text-xs text-foreground truncate w-full text-center">{{ e.label }}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <Popover class="p-1 border rounded bg-card" @dismiss="BlankClose" :key="'Popover-5'">
+<div v-if="blank_menu != ''" class="fixed inset-0 z-40" @click="BlankClose"></div>
+<div v-if="blank_menu != ''" class="fixed z-50 p-1 border rounded bg-card" :style="{ left: __desktop_cursor_x + 'px', top: __desktop_cursor_y + 'px' }">
         <div class="flex flex-col w-44 gap-1">
-          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-6'">更换壁纸…</Button>
-          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-7'">显示设置</Button>
+          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-4'">更换壁纸…</Button>
+          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-5'">显示设置</Button>
         </div>
-      </Popover>
+</div>
     </div>
 
 </template>
