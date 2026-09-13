@@ -1877,6 +1877,8 @@ impl<'a> AuraViewBuilder<'a> {
             "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
                 self.convert_image_surface(props, events, bindings)
             }
+            // PLAN-617 T-19: `video` —— 受控媒体契约的 VM 侧节点（原生播放面）。
+            "video" | "Video" => self.convert_video(props, events, bindings),
             "img" | "image" | "icon" => self.convert_image_or_icon(props, bindings),
             "progress" => self.convert_progress(props, bindings),
             "spacer" => self.convert_spacer(props),
@@ -3466,6 +3468,9 @@ impl<'a> AuraViewBuilder<'a> {
             "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
                 self.convert_image_surface(props, events, bindings)
             }
+            // PLAN-617 T-19: `video` —— 受控媒体契约的 VM 侧节点（原生播放面）。
+            // 与 tracked 臂同源；两条路都必须有臂，否则 untracked 语境会退回占位。
+            "video" | "Video" => self.convert_video(props, events, bindings),
             "img" | "image" | "icon" => self.convert_image_or_icon(props, bindings),
 
             // Utility widgets
@@ -6220,6 +6225,65 @@ let tabs_inner = View::Row {
         // image: src as-is with loop variable / state bindings support
         let src = self.extract_string_with(props, "src", bindings).unwrap_or_default();
         View::Image { src, style }
+    }
+
+    /// PLAN-617 T-19: 把 AURA 的 `video` 节点翻成后端中立的 [`View::Video`]。
+    ///
+    /// **契约（§2.3）在这一层做「作者面 → 节点字段」的翻译**，两端一致：
+    /// - `paused` —— 作者写 `paused: .is_playing == false`，此处拿到的是**已求值的
+    ///   bool**（表达式求值在 `extract_bool` 之前完成），故不在这里再取反；
+    /// - `volume` —— 作者面 0..100，原样透传（mpv 同刻度）；
+    /// - `rate` —— 倍速 float，`<= 0` 一律按 1.0（0 倍速会冻住播放）；
+    /// - `position` —— seek 目标（秒），缺省 `None` 表示不下发位置。
+    ///
+    /// **上行**（`ontimeupdate` 等）不在此节点上：由渲染面按帧采集，见
+    /// [`View::Video`] 的文档。
+    fn convert_video(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let src = self
+            .extract_string_with(props, "src", bindings)
+            .unwrap_or_default();
+        let paused = self
+            .extract_bool_expr(props, "paused", bindings)
+            .unwrap_or(true);
+        let position = self.extract_f64_with(props, "position", bindings);
+        let volume = self
+            .extract_f64_with(props, "volume", bindings)
+            .map(|v| v.round().clamp(0.0, 100.0) as i32)
+            .unwrap_or(100);
+        let muted = self
+            .extract_bool_expr(props, "muted", bindings)
+            .unwrap_or(false);
+        let rate = self
+            .extract_f64_with(props, "rate", bindings)
+            .filter(|r| *r > 0.0)
+            .unwrap_or(1.0);
+        // 显示名：优先 title，其次 label，最后退回源路径的末段（降级文案要用真实名字）。
+        let label = self
+            .extract_string_with(props, "title", bindings)
+            .or_else(|| self.extract_string_with(props, "label", bindings))
+            .or_else(|| self.extract_string_with(props, "alt", bindings))
+            .unwrap_or_else(|| {
+                src.rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            });
+        let style = self.extract_style(props);
+        View::Video {
+            src,
+            paused,
+            position,
+            volume,
+            muted,
+            rate,
+            label,
+            style,
+        }
     }
 
     /// Build the backend-neutral ImageSurface node from Aura props/events.

@@ -2152,13 +2152,35 @@ element use {
 
 element video {
     tag: "video"
-    category: "unknown"
+    category: "media"
     tier: "native_html"
     aliases: ["Video"]
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
+    // PLAN-617 T-19: iced 由 fallback 提升为 partial —— 有原生命中播放面
+    // （crates/auto-lang/src/ui/mpv/widget.rs：libmpv → 持久纹理 → shader widget）。
+    // 仍标 partial：原生解码需运行库（libmpv-2.dll）、帧由应用 tick 驱动、
+    // 浏览器专有属性无对应语义（见 props 的 ignored 说明）。
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    // PLAN-617 §2.3 受控媒体契约：**声明 props 会打开 S001 校验**
+    // （此前 props: [] 使 typo 静默通过，见计划 §4.2 P-3）。
+    // 上半段是浏览器侧的透传属性；下半段是 §2.3 的受控契约字段。
+    props: [
+        { name: "src", type: "string", description: "媒体地址（本地路径或 http(s) URL；mpv 自带网络栈，两端通用）" }
+        { name: "controls", type: "bool", default: false, description: "浏览器自带控件（iced 端无对应语义，走 ignored）" }
+        { name: "autoplay", type: "bool", default: false, description: "浏览器自动播放（iced 端无对应语义）" }
+        { name: "loop", type: "bool", default: false, description: "循环播放" }
+        { name: "poster", type: "string", description: "封面图（iced 端暂无对应语义）" }
+        { name: "preload", type: "one_of:none,metadata,auto", default: "metadata", description: "预加载策略（iced 端无对应语义）" }
+        { name: "playsinline", type: "bool", default: true, description: "内联播放（浏览器专有）" }
+        { name: "paused", type: "bool", default: true, description: "受控下行：作者写 paused: .is_playing == false" }
+        { name: "position", type: "float", description: "受控下行：seek 目标（秒）；变化时才下发" }
+        { name: "volume", type: "int", default: 100, description: "受控下行：0..100（与 HTMLMediaElement.volume*100 同刻度）" }
+        { name: "muted", type: "bool", default: false, description: "受控下行：静音" }
+        { name: "rate", type: "float", default: 1, description: "受控下行：倍速；<=0 被忽略（0 倍速会冻住播放）" }
+        { name: "title", type: "string", description: "显示名（降级面板/无障碍用）" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
     allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    description: "视频播放：Vue 端为原生 <video>；iced 端为 libmpv 原生命中播放面（PLAN-617）"
 }
 
 

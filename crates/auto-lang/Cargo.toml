@@ -85,6 +85,9 @@ mpv-native = ["ui"]
 # （只会显示陈旧帧），且真实帧尺寸全部超过 `MAX_SYNC_SIZE`(2MB) 必走异步 worker、
 # 4K 更超过 atlas 的 2048 上限——那条路正是 renderer.rs:2889 记录的闪烁机理。
 mpv-gpu = ["mpv-native", "dep:iced_wgpu"]
+# PLAN-617 T-19: `video` 元素的 iced 渲染面（自定义 shader widget：自持持久纹理，
+# 绕开 Handle/atlas 通道）。比 `mpv-gpu` 高一档，因为要 iced 的 widget/Element 层。
+mpv-widget = ["mpv-gpu", "ui-iced"]
 # PLAN-617 T-15: 门控 spike 探针（可跑，需本机 libmpv + GPU + 视频样本）。
 # 默认档与 CI 均不编译（见其 `[[example]] required-features`）。
 mpv-spike = ["mpv-gpu", "ui-iced"]

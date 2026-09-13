@@ -453,6 +453,19 @@ where
                 selectable: false,
             },
         ),
+        // PLAN-617 T-19: video 在 VNode 检视层是叶子（帧不作结构子树展开），
+        // 标签带上 src 便于 autoui 检视时看出播的是哪个源。
+        View::Video { src, label, .. } => (
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: if label.is_empty() {
+                    format!("[Video] {src}")
+                } else {
+                    format!("[Video] {label}")
+                },
+                selectable: false,
+            },
+        ),
 
         // Plan 497: 窗口缩略对 VNode 检视层是图像资产(像素在宿主缓存,
         // 不进 VM 状态)——同 Image 文本占位。

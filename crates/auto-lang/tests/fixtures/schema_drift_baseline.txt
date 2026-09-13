@@ -128,6 +128,7 @@ parser_not_in_rs	th
 parser_not_in_rs	video
 render_not_in_rs	ImageSurface
 render_not_in_rs	Terminal
+render_not_in_rs	Video
 render_not_in_rs	accordion-content
 render_not_in_rs	accordion-item
 render_not_in_rs	accordion-trigger
@@ -297,7 +298,6 @@ render_not_in_vb	toaster
 render_not_in_vb	toggle
 render_not_in_vb	tooltip
 render_not_in_vb	tr
-render_not_in_vb	video
 render_not_in_vb	virtual_window
 rs_not_in_render	accordion_content
 rs_not_in_render	accordion_item
@@ -766,6 +766,7 @@ vb_not_in_rs	Select
 vb_not_in_rs	Sheet
 vb_not_in_rs	Slot
 vb_not_in_rs	Terminal
+vb_not_in_rs	Video
 vb_not_in_rs	a
 vb_not_in_rs	alert-dialog
 vb_not_in_rs	alert-dialog-action
@@ -932,6 +933,7 @@ vb_not_in_rs	toggle-group-item
 vb_not_in_rs	togglegroup
 vb_not_in_rs	togglegroup-item
 vb_not_in_rs	toolbar
+vb_not_in_rs	video
 vue_mt0_not_in_rs	+
 vue_mt0_not_in_rs	-
 vue_mt0_not_in_rs	Article

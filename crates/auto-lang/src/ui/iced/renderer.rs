@@ -5194,7 +5194,115 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     style,
                 )
             }
+
+            // PLAN-617 T-19: `video` —— 原生播放面。
+            //
+            // 走自定义 shader widget（自持持久纹理、每帧原地更新），**不经过**
+            // iced 的 Handle/atlas 通道——那条路正是 `renderer.rs:2889` 记录的
+            // 闪烁机理（见 Design 30 §4.5）。上行事件由渲染面按帧采集，
+            // 经 `mpv::widget::drain_events` 取走，故本节点不带消息。
+            AbstractView::Video {
+                src,
+                paused,
+                position,
+                volume,
+                muted,
+                rate,
+                label,
+                style,
+            } => render_video(src, paused, position, volume, muted, rate, label, style),
         }
+    }
+}
+
+/// `video` 的渲染面（PLAN-617 T-19）。
+///
+/// **有 `mpv-widget` 时**：建自定义 shader widget，把 T-16/T-17/T-18 的
+/// 引擎 + 帧上屏通道 + 受控契约接上；帧由应用既有的 tick 驱动（见 `mpv::widget`
+/// 模块文档）。
+///
+/// **没有该 feature 时**：保持**诚实降级**——渲染一个带说明的面板而不是黑屏
+/// （AC-10/AC-11：静默黑屏是本计划要消灭的行为）。
+#[allow(clippy::too_many_arguments)]
+fn render_video<M: Clone + Debug + 'static>(
+    src: String,
+    paused: bool,
+    position: Option<f64>,
+    volume: i32,
+    muted: bool,
+    rate: f64,
+    label: String,
+    style: Option<Style>,
+) -> iced::Element<'static, M> {
+    use iced::Length;
+
+    #[cfg(feature = "mpv-widget")]
+    {
+        use crate::ui::mpv::widget::{VideoProgram, VideoWidgetProps};
+        use crate::ui::mpv::VideoContractDown;
+
+        // 尺寸：交给父容器（布局说了算）；widget 自身撑满可用空间。
+        let program = VideoProgram::new(VideoWidgetProps {
+            down: VideoContractDown {
+                paused,
+                position,
+                volume,
+                muted,
+                rate,
+                src: if src.is_empty() { None } else { Some(src.clone()) },
+            },
+            width: 0,
+            height: 0,
+        });
+        let shader = iced::widget::shader::Shader::new(program)
+            .width(Length::Fill)
+            .height(Length::Fill);
+        // 背景给黑底（视频比画面窄时露出的letterbox），与 Vue 端视口一致。
+        let inner: iced::Element<'static, M> = shader.into();
+        let mut surface = iced::widget::container(inner)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color::BLACK)),
+                ..Default::default()
+            });
+        if let Some(style) = style.as_ref() {
+            // 与其它容器臂同源：把 AURA 的 `Style` 翻成 iced 的 container 样式
+            // （背景/边框/圆角），尺寸类由父布局决定（widget 自身 Fill）。
+            let is = IcedStyle::from_style(style);
+            let cs = build_container_style(&is);
+            surface = surface.style(move |_theme| cs.clone());
+            if let Some(ref w) = is.width {
+                surface = surface.width(iced_length(w));
+            }
+            if let Some(ref h) = is.height {
+                surface = surface.height(iced_length(h));
+            }
+        }
+        return surface.into();
+    }
+
+    #[cfg(not(feature = "mpv-widget"))]
+    {
+        let _ = (src, paused, position, volume, muted, rate, style);
+        // 诚实占位：说明本后端没接上原生播放，而不是留一块黑。
+        let text = if label.is_empty() {
+            "视频：本后端未启用原生播放（构建时未开 `mpv-widget`）".to_string()
+        } else {
+            format!("{label}
+本后端未启用原生播放（构建时未开 `mpv-widget`）")
+        };
+        iced::widget::container(iced::widget::text(text).size(13))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(|_theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb(0.06, 0.06, 0.08))),
+                text_color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
+                ..Default::default()
+            })
+            .into()
     }
 }
 
@@ -18641,6 +18749,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::MouseArea { style, .. } => style.as_ref(),
         // PLAN-009 P1: terminal 的 style 参与常规定位/边距判定。
         AbstractView::Terminal { style, .. } => style.as_ref(),
+        // PLAN-617 T-19: video 的 style（尺寸/定位类）参与布线判定。
+        AbstractView::Video { style, .. } => style.as_ref(),
         // Plan 563: Canvas 的 style(尺寸类)同 MouseArea 参与定位判定。
         AbstractView::Canvas { style, .. } => style.as_ref(),
         AbstractView::Text { style, .. } => style.as_ref(),
@@ -18730,6 +18840,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Slider { .. } => "slider",
         AbstractView::ProgressBar { .. } => "progress",
         AbstractView::Image { .. } => "image",
+        AbstractView::Video { .. } => "video",
         AbstractView::ImageSurface { .. } => "image_surface",
         AbstractView::WindowThumbnail { .. } => "window_thumbnail",
         AbstractView::Radio { .. } => "radio",

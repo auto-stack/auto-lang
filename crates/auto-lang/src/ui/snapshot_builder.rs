@@ -85,6 +85,22 @@ impl SnapshotBuilder {
                 actions: vec![],
                 children: vec![],
             },
+            // PLAN-617 T-19: video 节点如实上报源与显示名（不谎报「在播」——
+            // 真实播放状态由渲染面/引擎掌握，这里只说「这个节点指向什么」）。
+            View::Video { src, label, paused, volume, muted, rate, .. } => UiNode {
+                id,
+                kind: "Video".to_string(),
+                props: vec![
+                    ("src".to_string(), src.clone()),
+                    ("label".to_string(), label.clone()),
+                    ("paused".to_string(), paused.to_string()),
+                    ("volume".to_string(), volume.to_string()),
+                    ("muted".to_string(), muted.to_string()),
+                    ("rate".to_string(), rate.to_string()),
+                ],
+                actions: vec![],
+                children: vec![],
+            },
             // Plan 484: MouseArea 命中区在 snapshot 里降级为占位(事件转发
             // 原语,MCP autoui_find 无需看见)。
             View::MouseArea { .. } => UiNode {

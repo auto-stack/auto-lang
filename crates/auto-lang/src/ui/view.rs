@@ -766,6 +766,32 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// PLAN-617 T-19: `video` 元素的 VM 渲染面（§2.3 受控媒体契约的**下行**侧）。
+    ///
+    /// 与 [`View::ImageSurface`] 同形的媒体节点，但帧来源是原生播放引擎
+    /// （libmpv → 持久纹理），不是图片流水线；**上行**（`ontimeupdate` 等）
+    /// 不在此节点上——它由渲染面按帧采集，经
+    /// `auto_lang::ui::mpv::widget::drain_events` 取走，故本变体**不携带任何消息**，
+    /// 各后端的消息重映射臂因此都是平凡的。
+    ///
+    /// `level` 记录本节点实际走的是哪条路（原生播放 / 缺库降级），
+    /// 便于快照与诊断如实反映「这里到底有没有解码能力」。
+    Video {
+        src: String,
+        /// §2.3 受控下行。`paused` 由 `.is_playing == false` 推导，转换在构建器里完成。
+        paused: bool,
+        /// seek 目标（秒）；`None` = 本次不下发位置。
+        position: Option<f64>,
+        /// 0..100（作者面单位，与 mpv 的 `volume` 同刻度）。
+        volume: i32,
+        muted: bool,
+        /// 倍速，1.0 为原速。
+        rate: f64,
+        /// 降级/无障碍用的显示名（真实文件名或标题）。
+        label: String,
+        style: Option<Style>,
+    },
+
     /// Plan 497: per-window live thumbnail — renders the host-side snapshot
     /// cache for `wid` (real downsampled pixels); falls back to
     /// `fallback_icon` (lucide glyph) when no fresh snapshot exists.
@@ -2053,6 +2079,10 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             View::Image { src, style } => View::Image { src, style },
+            // PLAN-617 T-19: Video 不携带消息（上行事件由渲染面按帧采集，
+            // 见 `View::Video` 的文档），故无需重映射，原样搬运。
+            View::Video { src, paused, position, volume, muted, rate, label, style } =>
+                View::Video { src, paused, position, volume, muted, rate, label, style },
             View::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => View::ImageSurface {
                 src,
                 alt,

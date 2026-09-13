@@ -27,6 +27,7 @@
 //! - [`engine`] —— 句柄与 render context 的生命周期（T-16 的核心）
 //! - [`contract`] —— §2.3 受控媒体契约在 mpv 侧的实现（T-18）
 //! - [`channel`]/[`present`] —— 帧上屏通道与全屏 blit（T-17，feature `mpv-gpu`）
+//! - [`widget`] —— `video` 的 iced 渲染面（T-19，feature `mpv-widget`）
 
 pub mod contract;
 pub mod engine;
@@ -39,6 +40,9 @@ pub mod locale;
 pub mod channel;
 #[cfg(feature = "mpv-gpu")]
 pub mod present;
+// T-19：`video` 的 iced 渲染面（需 iced widget 层，故比 mpv-gpu 更高一档门控）。
+#[cfg(feature = "mpv-widget")]
+pub mod widget;
 
 pub use contract::{MediaContract, VideoContractDown, VideoContractEvent};
 pub use engine::{MpvEngine, MpvEventInfo, MpvUnavailable};
@@ -49,3 +53,5 @@ pub use loader::{MpvApi, MpvLoadError, MpvSymbols};
 pub use channel::{FrameChannelStats, FrameOutcome, VideoFrameChannel, VideoLatestWins};
 #[cfg(feature = "mpv-gpu")]
 pub use present::VideoPresenter;
+#[cfg(feature = "mpv-widget")]
+pub use widget::{VideoPrimitive, VideoProgram, VideoWidgetProps};
