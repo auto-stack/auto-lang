@@ -2192,6 +2192,16 @@ fn compute_target_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
 /// walk up from the project dir to the auto-lang repo root (has
 /// crates/auto-lang), also checking siblings (autostack/ layout).
 fn shared_cargo_target_dir(project_dir: &Path) -> PathBuf {
+    // Respect an explicit caller target. This is required for isolated app
+    // worktrees and CI sandboxes where the framework checkout target is not
+    // writable or must not be shared with another build.
+    if let Ok(raw) = std::env::var("CARGO_TARGET_DIR") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+
     let mut dir = project_dir.to_path_buf();
     for _ in 0..10 {
         if dir.join("crates").join("auto-lang").exists() {
