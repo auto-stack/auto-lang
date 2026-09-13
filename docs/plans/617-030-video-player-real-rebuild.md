@@ -1907,8 +1907,11 @@ VM 端截图确认同款图标与满宽进度条（`tests/screenshots/after_icon
 `cargo t`：**19 failed = 基线数**（其中 `lucide_icon_coverage_manifest_all_hit`
 由红转绿；`external_config_poll_hot_apply_loopsafe` 是在案并发 flake，单跑必过）。
 
-- outcome: pass（平台侧）；**流程缺口**：本轮平台改动无独立计划/design 记录，
-  建议后续按需补 `docs/design/autoui/` 一篇（图标数据源与双端一致性口径）。
+- outcome: pass（平台侧）；**流程缺口已补**：这批平台改动已独立立项为
+  **[PLAN-620](620-autoui-icon-table-and-pointer-primitives.md)**
+  （status: executing；代码即本文 §9.21 所述的 `7c13643ba`，仍搭在 `plan-617-dev` 上，
+  归属处置见该计划「分支与提交归属」节）。PLAN-620 的未完成项为其 T-05..T-08
+  （规范增量 / 设计注记 `docs/design/autoui/icon-data-source-and-parity.md` / 漂移门禁 / 独立复审）。
 
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
