@@ -2254,7 +2254,16 @@ impl Automan {
 }
 
 fn home_path() -> AutoPath {
-    dirs::home_dir().unwrap().to_str().unwrap().into()
+    // Windows service/CI identities may not have a shell profile, so the
+    // platform known-folder lookup can return `None`.  Prefer the normal
+    // profile environment variables and finally the current directory rather
+    // than panicking while loading the auto-man index.
+    dirs::home_dir()
+        .or_else(|| env::var_os("USERPROFILE").map(PathBuf::from))
+        .or_else(|| env::var_os("HOME").map(PathBuf::from))
+        .or_else(|| env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."))
+        .into()
 }
 
 /// Like `std::fs::remove_dir_all`, but clears read-only attributes first:
