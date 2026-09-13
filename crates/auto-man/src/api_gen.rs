@@ -396,9 +396,14 @@ pub(crate) fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
 /// and paths that the a2r transpiler now emits (see rust.rs Plan 396/B3
 /// comment) into the `auto_lang::` form that resolves against our deps.
 fn qualify_a2r_std(mut code: String) -> String {
+    // Protect already-qualified paths, then qualify the remaining bare paths.
+    // This keeps the helper idempotent when a generated fragment already
+    // carries the crate prefix.
+    code = code.replace("auto_lang::a2r_std::", "__AUTO_A2R_STD_QUAL__");
+    code = code.replace("a2r_std::", "auto_lang::a2r_std::");
     code = code.replace("use a2r_std;\n", "use auto_lang::a2r_std;\n");
     code = code.replace("use a2r_std::*;\n", "use auto_lang::a2r_std::*;\n");
-    code = code.replace("a2r_std::", "auto_lang::a2r_std::");
+    code = code.replace("__AUTO_A2R_STD_QUAL__", "auto_lang::a2r_std::");
     code
 }
 
