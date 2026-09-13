@@ -1850,6 +1850,66 @@ ope.mp4`）。
 - outcome: pass；next：**T-09**（真实文件浏览）→ **T-10**（VM 侧 HTTP 基址相关的
   空态收口）→ **T-11**（SD-01..SD-04 规范增量 + AC-16(b) 的取舍）→ T-12..T-14。
 
+### 9.21 现场追加：三件平台级修复（图标全量/尺寸口径/progress 拖拽，2026-09-13）
+
+> **范围说明（如实）**：本节记录的是**超出 617 原范围**的平台改动，触发原因是
+> 用户在现场看过 Vue/VM 两端截图后指出「两端观感不一致、没有进度条、播放键是
+> 文字」。当时按用户逐条指示直接实施，**未另开计划**——这是一个流程缺口，
+> 若要按 L2 规范走，应有一份独立 design/plan；此处仅作实况记录与后果交代。
+
+**① lucide 图标集 85 → 1401（根治 P537-D1）**
+
+- 取证：iced/VM 端**没有 lucide 数据源**——字形是手工抄进
+  `renderer.rs::lucide_svg` 的 `match` 表（Plan 472 加 5 条、Plan 618 加 1 条，
+  共 85 条）；Vue 端直接用 `lucide-vue-next` 全量包。缺名在 VM 端
+  `AbstractView::Image` 的 miss 分支返回 `container(text(""))` ⇒
+  **静默空盒**，正是「Vue 有图标、VM 一片空」的根因。
+- 修复：新增 `scripts/gen-lucide-table.mjs`，从 lucide 官方数据（本地已安装的
+  lucide-vue-next，v0.312.0 = **1401** 个图标）生成排序静态表
+  `ui/iced/lucide_generated.rs`（254 KiB）+ 二分查找；替换手抄表。
+  `sidebar`/`file-icon` 是上游已改名者（lucide-vue-next 里已不存在），留遗留别名。
+- 顺带：基线红 `lucide_icon_coverage_manifest_all_hit`（失败原因正是
+  `manifest:030-video-player:film`）**转绿**。
+- 生成器的边：依赖本地已装的包（不联网）→ 换版本需重跑；
+  尚无「表 ↔ Vue 包版本」漂移门禁（登记为遗留）。
+
+**② 图标尺寸口径统一：显式 `w-*`/`h-*` 类 > `size` prop > 默认 20px**
+
+- 现状取证：`size` 是**死参数**——schema 声明 `default: 24`，VM 的 icon 臂
+  （`convert_image_or_icon`）只吃 `class`、不读 `size`；Vue 臂把它丢掉并硬编码
+  `w-5 h-5`。后果有二：同一份 `.at` 两端不一样大；且用户写
+  `class: "h-3 w-3"`（041-auto-edit 就是这么写的）会被 Vue 的硬编码类**静默盖掉**
+  （Tailwind 同权重，靠样式表顺序定胜负）。
+- 修复：两端同一套优先级（VM `with_icon_size` / Vue icon 臂），测试钉住
+  （`test_icon_size_precedence`）。
+- **过程中抓到一个既有 bug**：`icon (…) { style: "w-5 h-5 text-white" }` 这种
+  **块式**样式不在 props 里，判定若只看 props 会重复注入默认类
+  （`w-5 h-5 w-5 h-5 text-white`）——金样
+  `test/a2vue/desktop_surface_asset/expected.vue` 里记录的正是这个重复
+  （说明它不是本次引入，而是被金样固化的旧缺陷）。判定改为取已解析的类集后，
+  金样按机制重生成，diff 恰为一行。
+
+**③ `progress` 支持拖拽 seek（新增 `onseek`，双端）**
+
+- 契约：handler 收 **一个 float = 条内横向比例 0..1**（两端同尺）；
+  按下即 seek、按住拖动持续 seek，**悬停不 scrub**。
+- VM：新 widget `ui/iced/seek_area.rs`（iced 原生 `mouse_area.on_press` 不带坐标，
+  故自持按下态 + 指针捕获）；`View::ProgressBar` 增
+  `on_seek: Option<PointerMoveHandler<M>>`，aura 层按 mouse-area onmousemove 同型装配。
+- Web：生成器发指针三包装（`pointerdown/move/up` + `setPointerCapture`），
+  拖出条外仍跟手。
+- 兼容：未声明 `onseek` 的 `progress` 输出逐字节不变（有测试）。
+- schema 增 `onseek`（`msg_ref`），`docs/components/core.md` 随之重生成。
+
+**验证**：030 播放器改用真图标（play/pause/skip-back/skip-forward/volume-2/volume-x/
+gauge/film）+ `progress`；e2e **11/11 绿**（新增 T4 点选 seek、T4b 20%→80% 拖拽 seek）；
+VM 端截图确认同款图标与满宽进度条（`tests/screenshots/after_icons_vm.png`）。
+`cargo t`：**19 failed = 基线数**（其中 `lucide_icon_coverage_manifest_all_hit`
+由红转绿；`external_config_poll_hot_apply_loopsafe` 是在案并发 flake，单跑必过）。
+
+- outcome: pass（平台侧）；**流程缺口**：本轮平台改动无独立计划/design 记录，
+  建议后续按需补 `docs/design/autoui/` 一篇（图标数据源与双端一致性口径）。
+
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
 > 一句话状态：**VM/iced 链已全部完成并实机验证**（`video` 在 VM 窗口里真会动，见 §9.19）；

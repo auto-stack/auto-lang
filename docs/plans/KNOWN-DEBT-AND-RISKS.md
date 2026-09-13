@@ -1238,14 +1238,17 @@
 
 ### P537（2026-09-04，Plan 537 photo-gallery 执行/复审登记——examples 层实证的基建缺口二则）
 
-- **P537-D1 VM lucide 图标闭集缺口**:`iced/renderer.rs lucide_svg(name)` 为
-  84 项闭集,examples/ui 层 `icon (name:)` 只能消费表内名;计划 537 原拟的
-  images/heart/mountain/building-2/cloud-sun/sparkles 在 lucide-vue-next
-  存在但不在 VM 表（Vue 端正常/VM 端缺渲染=双端不一致）。绕开（已落地）:
-  相册图标 emoji 文本（027 先例）;`icon` 仅用双端表内名（sun/moon/
-  chevron-left/chevron-right）。根治:VM 表按 lucide-vue-next 常用面扩充
-  （或建立单测围栏对齐两端名单）,建议随 widgets 双端 parity 批处理。
-  引用:`crates/auto-lang/src/ui/iced/renderer.rs` lucide_svg;
+- ~~**P537-D1 VM lucide 图标闭集缺口**~~ **已根治（2026-09-13，`7c13643ba`）**：
+  原表是**手工抄**进 `iced/renderer.rs lucide_svg` 的 match（85 项），而 Vue 端用
+  lucide-vue-next 全量包 ⇒ 两端天然分叉，缺名在 VM 端**静默渲染成空盒**。现改为
+  由 `scripts/gen-lucide-table.mjs` 从 lucide 官方数据生成**全量表**
+  （`ui/iced/lucide_generated.rs`，v0.312.0 共 **1401** 个，254 KiB 静态表 + 二分查找），
+  `sidebar`/`file-icon` 两个上游已改名者留遗留别名；基线红
+  `lucide_icon_coverage_manifest_all_hit`（030 的 `icon:"film"`）随之转绿。
+  **遗留**：生成器依赖本地已安装的 lucide-vue-next（不联网），换版本需重跑
+  `node scripts/gen-lucide-table.mjs`；尚未加「表与 Vue 端包版本同步」的漂移门禁。
+  历史绕开法（emoji 文本 / 只用表内名）可退役。
+  引用:`crates/auto-lang/src/ui/iced/lucide_generated.rs`、`scripts/gen-lucide-table.mjs`、
   `examples/ui/029-photo-gallery/SPEC.md` 差异注记 2。
 - **P537-D2 VM 语义 grid 的 cols/class 状态绑定不解析**:`grid { cols: .state }`
   回落 1 列（eval_u16_prop 对 widget 状态引用不解析,unwrap_or(1)）;`class:`

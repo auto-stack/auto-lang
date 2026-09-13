@@ -41,7 +41,7 @@ VM TYPE_CAST_I32 的 Rust `f as i32` 截断语义；浮点目标 JS 原生 f64 �
 
 **029-photo-gallery（plan-537 落地）**：image widget 首个应用级双端示范
 （picsum 固定 seed 网络图源，缩略 cover/查看 contain）；单组件+平行列表
-数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 闭集 85 项（plan-616 复核实测校正；旧文写 84 属计数漂移，仍缺 pin/pin-off）——
+数据流形态第四例。执行期实证两基建缺口（P537-D1 VM lucide 闭集 85 项（**2026-09-13 已根治：改为 lucide 官方数据生成的全量表 1401 项，见 `ui/iced/lucide_generated.rs` + `scripts/gen-lucide-table.mjs`**）——
 icon 名单受限；P537-D2 语义 grid 的 cols/class 状态绑定不解析——密度
 三臂静态 grid 绕开），详见 KNOWN-DEBT-AND-RISKS.md P537 节。
 
