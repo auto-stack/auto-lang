@@ -305,6 +305,6 @@ total_steps: 8
 | `landed` | master 合并提交 **6d6089005**（fast-forward 至 worktree 合并提交，amend 恢复规范消息；双亲 7be50486a + 684620d93 线）；git merge-base --is-ancestor 6c2eb81af HEAD 通过 → 代码与 canonical Specs 均在 master；主检出冒烟：cargo check 余 10 错全部位于 vm/ffi/term_engine.rs（619 会话并发 WIP 脏文件，非本计划触面、落地前已存在的编译态）；619 WIP 31 脏文件以 stash push/pop 原样保留（stash f51b6501 已 pop 清空） |
 | `ledger_refreshed` | 目标：D:/autostack/auto-lang/.autoos/specs.json（本仓 runtime 派生账本，非 git 跟踪）；upsert 项 ID **P618-1..P618-6**（reports/goals/architecture/designs/tests/reviews 各 +1：78/69/74/68/74/92 → 79/70/75/69/75/93）；file 指向本归档路径，related:["PLAN-618"]，status: published；离线 read-modify-write + 完整 JSON 校验 + 原子替换，源/后哈希 08662bef76de5397 → 46b455833dc50846；读回校验通过。KNOWN-DEBT 登记 P618-D1..D4（commit 94d167a1）；spec-index.py 重生 INDEX.md 无 diff（SD-01 未触索引字段）。overview 回写免做：delta 未含 overview（tree 段已指向权威契约 tree-components.md，复审 delta 界定合并范围） |
 | `archived` | git mv docs/plans/618-...md → docs/plans/archive/ + status: archived + completion_kind: delivered（交付型）；路径与 frontmatter 一致、provenance 链接可解析 |
-| `cleaned` | （见下方 cleaned 收据行） |
+| `cleaned` | ✅ 已核实：①前置 `git diff 318203fd6 master` 仅剩归档 bookkeeping（实现内容全等）→ `git branch -D plan-618-dev`（was 318203fd6；amend 致 hash 变更，内容等价已证）；②`git worktree remove --force` 后 `git worktree list` 无该条目；③前置 wt-guard：pnpm junction 1096 条经 PowerShell 逐链 `cmd /c rmdir` 移除（零穿透）后报 **clean — 下无任何 reparse point**；④组目录 D:/autostack/.wt/lang-618 保留（内含跨仓兄弟 auto-down，按「仅删空组目录」规则不动） |
 
 **F-1 顺手项裁定**：041 components/package.at description 残留 "026 database"（纯元数据）——随归档留档，不单独开修。
