@@ -651,6 +651,9 @@ pub struct VueGenerator {
     /// Plan 563: canvas 元素登记(node_to_html 模板臂收集,generate_script
     /// 消费——redraw/pen 包装/全局监听/resize 重绘)。
     canvas_specs: Vec<CanvasSpec>,
+    /// PLAN-617 T-07: 受控 `video` 元素登记（模板臂收集、generate_script
+    /// 消费——下行 apply 函数 + watchEffect + 上行原生监听包装）。
+    video_specs: Vec<VideoSpec>,
     /// Plan 408 P12 §10.4: composable ref 字段标注——`use { composable: useX(refs: [a, b]) }`
     /// → key = local name（"x"），value = 标注为 ref 的字段名集合。script 表达式
     /// 访问这些字段时加 `.value`（composable 返回普通对象时 ref 不自动 unwrap）。
@@ -775,6 +778,39 @@ struct CanvasSpec {
     on_end: Option<String>,
 }
 
+/// PLAN-617 T-07: 受控 `video` 元素登记（模板臂收集、script 臂消费）。
+///
+/// 触发条件：元素**声明了 §2.3 的任一受控下行 prop**（`paused`/`position`/
+/// `volume`/`muted`/`rate`）。未声明时**不进这条臂**，走通用原生元素路径，
+/// 生成结果与引入本契约之前逐字节一致（兼容 019-video-app 等既有示例）。
+///
+/// 契约形状与 `crates/auto-lang/src/ui/mpv/contract.rs`（VM 侧的同一份契约）
+/// 同形同名同单位：`volume` 是作者面 **0..100**，本臂在 JS 里翻成元素的 0..1；
+/// `position` 是**秒**，语义是「目标值变化才 seek」（不是「与当前播放位置不同
+/// 就 seek」——后者会让播放在前进时每帧重 seek，把画面钉死在目标点）。
+#[derive(Debug, Clone, Default)]
+struct VideoSpec {
+    /// 模板 ref 名（`__video_ref_N`，进 template_refs 与真元素类型声明）。
+    ref_name: String,
+    /// 下行字段的**脚本域** JS 表达式（`transpile_expr_pub` 产出，ref 带
+    /// `.value`）。未声明的字段为 `None`，`apply` 实参按默认值兜底。
+    down_paused: Option<String>,
+    down_position: Option<String>,
+    down_volume: Option<String>,
+    down_muted: Option<String>,
+    down_rate: Option<String>,
+    /// `src` 的脚本域表达式。**不是**受控字段（§2.3 明写 `src` 为透传），
+    /// 仅用于「换片即作废上一次 seek 目标」的判定。
+    down_src: Option<String>,
+    /// 上行回灌：契约事件名 → handler 函数名（如 `onOnTime`）。未声明的
+    /// 事件不发射监听器。
+    up_time: Option<String>,
+    up_metadata: Option<String>,
+    up_playstate: Option<String>,
+    up_ended: Option<String>,
+    up_error: Option<String>,
+}
+
 /// Result of evaluating a style/class `if`-branch body.
 /// `Leaf(s)` is a plain string literal → emitted as `'s'`.
 /// `Nested(t)` is an inner if expression → emitted as `(t)` (a ternary).
@@ -862,6 +898,7 @@ impl VueGenerator {
             scroll_auto_scroll: Vec::new(),
             pending_scroll_sentinel: None,
             canvas_specs: Vec::new(),
+            video_specs: Vec::new(),
             ext_components: HashMap::new(),
             ext_import_lines: Vec::new(),
             ext_composables: Vec::new(),
@@ -1213,6 +1250,7 @@ impl VueGenerator {
         self.template_refs.clear();
         self.surface_pans.clear();
         self.canvas_specs.clear();
+        self.video_specs.clear();
         self.ext_components.clear();
         self.ext_import_lines.clear();
         self.ext_composables.clear();
@@ -2571,6 +2609,17 @@ impl VueGenerator {
                 imports.push("onUnmounted");
             }
         }
+        // PLAN-617 T-07: 受控 video 的下行同步用 watchEffect（读下行表达式即
+        // 登记依赖，模板 ref 的挂载赋值也在其依赖里），外层包 onMounted 以
+        // 避开 setup 期的 store facade TDZ（见 video_script_block 注释）。
+        if !self.video_specs.is_empty() {
+            if !imports.contains(&"watchEffect") {
+                imports.push("watchEffect");
+            }
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
+        }
         // Plan 051 C7: timer 块需要 onMounted + onUnmounted（发射点晚于
         // import 语句生成，须在此声明需求）。
         if !widget.timers.is_empty() {
@@ -3060,6 +3109,13 @@ impl VueGenerator {
                     "const {} = ref<HTMLCanvasElement | null>(null)\n",
                     ref_name
                 ));
+            } else if ref_name.starts_with("__video_ref_") {
+                // PLAN-617 T-07: 受控 video 的 ref 同理——`currentTime`/
+                // `playbackRate`/`readyState` 都不在 HTMLElement 上。
+                script.push_str(&format!(
+                    "const {} = ref<HTMLVideoElement | null>(null)\n",
+                    ref_name
+                ));
             } else {
                 script.push_str(&format!("const {} = ref<HTMLElement | null>(null)\n", ref_name));
             }
@@ -3118,6 +3174,16 @@ impl VueGenerator {
             let specs = self.canvas_specs.clone();
             for (i, spec) in specs.iter().enumerate() {
                 script.push_str(&self.canvas_script_block(i, spec));
+                script.push('\n');
+            }
+        }
+
+        // PLAN-617 T-07: 受控 video —— 下行 apply + watchEffect 同步 + 上行
+        // 原生监听包装(§2.3 受控媒体契约的 Vue 侧实现)。
+        if !self.video_specs.is_empty() {
+            let specs = self.video_specs.clone();
+            for (i, spec) in specs.iter().enumerate() {
+                script.push_str(&self.video_script_block(i, spec));
                 script.push('\n');
             }
         }
@@ -4869,6 +4935,313 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         ))
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // PLAN-617 T-07: 受控媒体契约（Vue 端）
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// §2.3 的受控下行字段名。**`src` 不在此列**——它是透传（浏览器原生
+    /// 属性绑定即可），列进来会让一切带 `src` 的 video 都改道，破坏兼容约束。
+    const VIDEO_DOWN_KEYS: [&'static str; 5] = ["paused", "position", "volume", "muted", "rate"];
+
+    /// §2.3 的上行回灌事件名。这些键**不进模板事件表**，改由 script 臂发射的
+    /// 原生监听包装调用（因为 handler 的 `$0` 需要被生成器替换成真实取值，
+    /// 而 `$event` 既进不了 handler 体、`vue_event_param` 也只认 `.value`/
+    /// `.checked` 两种窄化——§2.3 明确要求不改那两处）。
+    const VIDEO_UP_KEYS: [&'static str; 5] = [
+        "ontimeupdate",
+        "onloadedmetadata",
+        "onplaystatechange",
+        "onended",
+        "onmediaerror",
+    ];
+
+    /// 受控 `video` 元素 → 模板 + 登记 [`VideoSpec`]。
+    ///
+    /// 返回 `Ok(None)` 表示**这个元素不受控**（未声明任一 [`Self::VIDEO_DOWN_KEYS`]），
+    /// 调用方继续走通用原生元素路径。这条早退就是兼容性约束的落点：
+    /// 019-video-app 之类「裸 `video { src: ... }`」的生成结果不会经过本函数
+    /// 的任何一行。
+    fn try_generate_controlled_video_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        indent: usize,
+    ) -> GenResult<Option<String>> {
+        if !Self::VIDEO_DOWN_KEYS.iter().any(|k| props.contains_key(*k)) {
+            return Ok(None);
+        }
+        let ind = "  ".repeat(indent);
+
+        // 下行表达式 → **脚本域** JS（`.volume` → `volume.value`）。与 handler
+        // 体走同一个转译器，保证 props/computed/state 三类绑定的取值方式一致。
+        let ctx = self.handler_ts_ctx();
+        let to_script = |expr: &crate::ast::Expr| -> String {
+            let mut out: Vec<u8> = Vec::new();
+            crate::ui_gen::ts_adapter::transpile_expr_pub(expr, &ctx, &mut out);
+            String::from_utf8_lossy(&out).to_string()
+        };
+        let down_of = |key: &str| -> Option<String> {
+            match props.get(key) {
+                Some(AuraPropValue::Expr(expr)) => Some(to_script(expr)),
+                Some(AuraPropValue::StyleBinding(_)) => None,
+                None => None,
+            }
+        };
+
+        let idx = self.video_specs.len();
+        let ref_name = format!("__video_ref_{idx}");
+        if !self.template_refs.contains(&ref_name) {
+            self.template_refs.push(ref_name.clone());
+        }
+
+        // 上行：契约事件键 → handler 函数名。事件键大小写不敏感（`ontimeupdate`
+        // 与 `onTimeUpdate` 同义），与 auto_event_to_vue 的宽进一致。
+        let mut up_call = |key: &str| -> Option<String> {
+            let ev = events
+                .iter()
+                .find(|(k, _)| k.to_ascii_lowercase() == key)?;
+            let name = self.handler_to_function_call(&ev.1.handler);
+            self.used_handlers.insert(name.clone());
+            Some(name)
+        };
+        let up_time = up_call("ontimeupdate");
+        let up_metadata = up_call("onloadedmetadata");
+        let up_playstate = up_call("onplaystatechange");
+        let up_ended = up_call("onended");
+        let up_error = up_call("onmediaerror");
+
+        let down_position = down_of("position");
+        let spec = VideoSpec {
+            ref_name: ref_name.clone(),
+            down_paused: down_of("paused"),
+            down_position: down_position.clone(),
+            down_volume: down_of("volume"),
+            down_muted: down_of("muted"),
+            down_rate: down_of("rate"),
+            down_src: down_of("src"),
+            up_time,
+            up_metadata: up_metadata.clone(),
+            up_playstate,
+            up_ended,
+            up_error,
+        };
+
+        // ── 模板：受控下行 prop 不再作为元素属性发射（`:paused` 会打到元素的
+        //    只读 DOM 属性上，严格模式下直接 TypeError；`volume` 的单位也不同）。
+        //    其余 prop 一律原样透传，语义与通用路径一致。
+        let mut attrs: Vec<String> = vec![format!("ref=\"{ref_name}\"")];
+        let mut sorted_props: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+        sorted_props.sort_by(|a, b| a.0.cmp(b.0));
+        for (key, value) in sorted_props {
+            if Self::VIDEO_DOWN_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+            match value {
+                AuraPropValue::StyleBinding(bindings) => {
+                    attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                }
+                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                    attrs.push(format!(":{}=\"{}\"", key, name));
+                }
+                AuraPropValue::Expr(expr) => {
+                    let value_str = self.bound_value_or_warn(
+                        expr,
+                        &format!("element `video` prop `{}`", key),
+                        "null",
+                    );
+                    attrs.push(format!(":{}=\"{}\"", key, value_str));
+                }
+            }
+        }
+
+        // ── 事件：契约键之外的事件（如 onclick）走通用映射；契约键换成
+        //    生成器发射的原生监听包装。
+        let mut sorted_ev: Vec<(&String, &crate::aura::AuraEvent)> = events.iter().collect();
+        sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+        for (event, aura_event) in sorted_ev {
+            if Self::VIDEO_UP_KEYS.contains(&event.to_ascii_lowercase().as_str()) {
+                continue;
+            }
+            if self.try_register_global_listener(event, aura_event) {
+                continue;
+            }
+            let vue_event = self.auto_event_to_vue(event);
+            let call =
+                self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            self.used_handlers
+                .insert(self.handler_to_function_call(&aura_event.handler));
+            attrs.push(format!("{}=\"{}\"", vue_event, call));
+        }
+        if spec.up_time.is_some() {
+            attrs.push(format!("@timeupdate=\"__videoTime_{idx}\""));
+        }
+        // loadedmetadata 监听器**总是**挂（不再是「作者声明了 onloadedmetadata
+        // 或 position」才挂）：它是元素侧重入点 __videoSync_{i} 的触发处。
+        attrs.push(format!("@loadedmetadata=\"__videoMeta_{idx}\""));
+        if spec.up_playstate.is_some() {
+            attrs.push(format!("@play=\"__videoState_{idx}\""));
+            attrs.push(format!("@pause=\"__videoState_{idx}\""));
+        }
+        if spec.up_ended.is_some() {
+            attrs.push(format!("@ended=\"__videoEnded_{idx}\""));
+        }
+        if spec.up_error.is_some() {
+            attrs.push(format!("@error=\"__videoError_{idx}\""));
+        }
+
+        self.video_specs.push(spec);
+        Ok(Some(format!(
+            "{ind}<video {}></video>\n",
+            attrs.join(" ")
+        )))
+    }
+
+    /// 受控 `video` 的 script 块：下行 apply + watchEffect 下行同步 + 上行
+    /// 原生监听包装。
+    ///
+    /// 四个与 mpv 侧（`ui/mpv/contract.rs`）刻意对齐的语义：
+    /// 1. **`position` 是「目标变化才 seek」**——比对的是上一次下发的*目标*，
+    ///    不是元素的 `currentTime`；后者会在播放前进时每帧重 seek，把画面钉死。
+    /// 2. **换片让 seek 目标作废**（`src` 变化 →  latch 清空），对应 mpv 侧
+    ///    `generation` 前进；否则上一部的 seek 会打到新片上。
+    /// 3. **下行以元素自身状态为基准**（`paused !== el.paused` 等）——元素的
+    ///    布尔属性是权威值，这样「用户用原生控件改变状态 → 上行回灌 → 下行
+    ///    复算」能收敛，而不是互相打架。
+    /// 4. **元素侧的状态变化必须能把下行重新推一次**（`__videoSync_{i}`）。
+    ///    `watchEffect` 只会在**表达式值变化**时重跑，而元素自己会变：换源后
+    ///    浏览器把 `paused` 复位成 `true`，而作者状态 `is_playing` 没变 —— 
+    ///    没有这个重入点，表现就是「换了片子但再也不播」（实测：真实 Chrome
+    ///    里点队列换片后 `paused` 恒 true、`currentTime` 恒 0）。
+    ///    把最近一次的下行值缓存下来，`loadedmetadata` 时原样重推一遍即可；
+    ///    这条也是「用户手势被浏览器 autoplay 策略拦下后，下一次交互能恢复」
+    ///    的恢复路径。
+    fn video_script_block(&self, i: usize, spec: &VideoSpec) -> String {
+        let j = |v: &Option<String>| v.clone().unwrap_or_else(|| "null".to_string());
+        let refn = &spec.ref_name;
+        let mut s = String::new();
+        s.push_str(&format!(
+"// PLAN-617 T-07 受控媒体契约（下行 状态→元素 / 上行 元素→状态）。与
+// crates/auto-lang/src/ui/mpv/contract.rs 同形同名同单位：volume 走作者面
+// 0..100（此处除 100 → 元素 0..1），position 走秒且「目标变化才 seek」。
+let __videoSrc_{i}: string | null = null
+let __videoSeek_{i}: number | null = null
+let __videoPending_{i}: number | null = null
+// 最近一次的下行值快照 —— 供 __videoSync_{i} 在元素侧状态变化时原样重推。
+let __videoLast_{i}: [boolean | null, number | null, number | null, boolean | null, number | null, string | null] = [null, null, null, null, null, null]
+function __videoApply_{i}(paused: boolean | null, position: number | null, volume: number | null, muted: boolean | null, rate: number | null, src: string | null) {{
+  const el = {refn}.value
+  if (!el) return
+  if (src !== __videoSrc_{i}) {{
+    __videoSrc_{i} = src
+    __videoSeek_{i} = null
+    __videoPending_{i} = null
+  }}
+  if (paused !== null && paused !== el.paused) {{
+    if (paused) el.pause()
+    else {{ const p = el.play(); if (p && typeof p.catch === 'function') p.catch(() => {{}}) }}
+  }}
+  if (muted !== null && muted !== el.muted) el.muted = muted
+  if (volume !== null && Number.isFinite(volume)) {{
+    const v = Math.min(Math.max(volume, 0), 100) / 100
+    if (Math.abs(v - el.volume) > 1e-6) el.volume = v
+  }}
+  if (rate !== null && rate > 0 && Math.abs(rate - el.playbackRate) > 1e-6) el.playbackRate = rate
+  if (position !== null && Number.isFinite(position)) {{
+    if (__videoSeek_{i} === null || Math.abs(__videoSeek_{i} - position) > 1e-6) {{
+      __videoSeek_{i} = position
+      if (el.readyState >= 1) el.currentTime = position
+      else __videoPending_{i} = position
+    }}
+  }} else if (position === null) {{
+    __videoSeek_{i} = null
+  }}
+}}
+// 元素侧重入点（见函数文档第 4 条）：把最近一次下行值原样重推。
+function __videoSync_{i}() {{
+  __videoApply_{i}(__videoLast_{i}[0], __videoLast_{i}[1], __videoLast_{i}[2], __videoLast_{i}[3], __videoLast_{i}[4], __videoLast_{i}[5])
+}}
+// 下行同步挂 onMounted：`watchEffect` 会**立即**执行一次回调，而本块在
+// `<script setup>` 里的位置早于 `const store = reactive(useXxxStore())`
+// （生成器的 store facade 段落靠后），setup 期直接求值会命中 TDZ
+// （Cannot access store before initialization）。onMounted 回调在挂载后
+// 执行，此时 ref 已指向真元素、store 已初始化；依赖登记不变。
+onMounted(() => {{
+  watchEffect(() => {{
+    __videoLast_{i} = [{paused}, {position}, {volume}, {muted}, {rate}, {src}]
+    __videoApply_{i}(__videoLast_{i}[0], __videoLast_{i}[1], __videoLast_{i}[2], __videoLast_{i}[3], __videoLast_{i}[4], __videoLast_{i}[5])
+  }})
+}})
+",
+            paused = j(&spec.down_paused),
+            position = j(&spec.down_position),
+            volume = j(&spec.down_volume),
+            muted = j(&spec.down_muted),
+            rate = j(&spec.down_rate),
+            src = j(&spec.down_src),
+        ));
+        // loadedmetadata 的包装**总是**发射（不再只在作者声明了
+        // onloadedmetadata 或 position 时）：它是上面第 4 条的落点。
+        let call = spec
+            .up_metadata
+            .as_ref()
+            .map(|h| format!("  {h}(el.duration)\n"))
+            .unwrap_or_default();
+        s.push_str(&format!(
+"function __videoMeta_{i}(e: Event) {{
+  const el = e.target as HTMLVideoElement
+  if (__videoPending_{i} !== null) {{ const t = __videoPending_{i}; __videoPending_{i} = null; el.currentTime = t }}
+  __videoSync_{i}()
+{call}}}
+"));
+        if spec.up_time.is_some() {
+            let call = spec.up_time.as_ref().unwrap();
+            let mut b = String::new();
+            b.push_str(&format!(
+"function __videoTime_{i}(e: Event) {{
+  const el = e.target as HTMLVideoElement
+  {call}(el.currentTime)
+}}
+"));
+            s.push_str(&b);
+        }
+        if spec.up_playstate.is_some() {
+            let call = spec.up_playstate.as_ref().unwrap();
+            s.push_str(&format!(
+"function __videoState_{i}(e: Event) {{
+  const el = e.target as HTMLVideoElement
+  {call}(!el.paused)
+}}
+"));
+        }
+        if spec.up_ended.is_some() {
+            let call = spec.up_ended.as_ref().unwrap();
+            s.push_str(&format!(
+"function __videoEnded_{i}(_e: Event) {{
+  {call}()
+}}
+"));
+        }
+        if spec.up_error.is_some() {
+            let call = spec.up_error.as_ref().unwrap();
+            s.push_str(&format!(
+"function __videoError_{i}(e: Event) {{
+  const el = e.target as HTMLVideoElement
+  const err = el.error
+  let msg = '媒体加载失败'
+  if (err) {{
+    if (err.code === 1) msg = '媒体加载被中止'
+    else if (err.code === 2) msg = '网络错误：媒体数据读取失败'
+    else if (err.code === 3) msg = '解码失败：该文件的画面或音轨编码不受支持'
+    else if (err.code === 4) msg = '媒体格式不受支持，或媒体源不可用'
+    else msg = '媒体错误（代码 ' + err.code + '）'
+  }}
+  {call}(msg)
+}}
+"));
+        }
+        s
+    }
+
     /// Plan 563: canvas script 块 —— redraw(场景双表 → 2D 绘制,场景
     /// 数据契约的 vue 侧独立映射:逻辑→px extent 缩放/round 线帽拐角/
     /// 单点=直径线宽圆点/eraser=clear 色缺省白——与 iced CanvasPainter
@@ -5839,6 +6212,18 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // 场景契约双表渲染,redraw/pen 包装由 script 臂消费生成)。
                 if tag == "canvas" {
                     return self.generate_canvas_html(props, events, indent);
+                }
+
+                // PLAN-617 T-07: 受控 `video` 元素（§2.3 受控媒体契约）。
+                // **只在声明了受控下行 prop 时**走这条臂；否则返回 None，
+                // 继续走下方通用路径 —— 未声明受控 prop 的 video 生成结果
+                // 与引入契约之前逐字节一致（既有示例零回归）。
+                if tag == "video" || tag == "Video" {
+                    if let Some(html) =
+                        self.try_generate_controlled_video_html(props, events, indent)?
+                    {
+                        return Ok(html);
+                    }
                 }
 
                 // Plan 451 P2: `menubar {}` / `toolbar {}` placeholder tags.
@@ -20374,6 +20759,126 @@ widget Sketch {
         );
         assert!(sfc.contains("PenStart(x, y)"), "penstart 坐标实参调用:\n{sfc}");
         assert!(sfc.contains("ref<HTMLCanvasElement | null>"), "canvas ref 真类型:\n{sfc}");
+    }
+
+    /// PLAN-617 T-07（AC-05..AC-09、AC-12 的生成器侧）：声明了受控下行 prop 的
+    /// `video` → ref + 下行 apply + watchEffect + 上行原生监听包装；契约名与单位
+    /// 和 `ui/mpv/contract.rs` 同形（`volume` 作者面 0..100 → 元素 0..1，
+    /// `position` 秒且「目标变化才 seek」）。
+    #[test]
+    fn test_controlled_video_contract_sfc() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget Player {
+    msg { OnTime(float), OnDuration(float), OnPlayState(bool), OnEnded, OnMediaError(str), TogglePlay }
+    model {
+        var current_url str = "/api/media/stream/a"
+        var is_playing bool = false
+        var seek_target float = 0.0
+        var volume int = 80
+        var is_muted bool = false
+        var playback_rate float = 1.0
+    }
+    on {
+        .OnTime(t) -> { }
+        .OnDuration(d) -> { }
+        .OnPlayState(p) -> { }
+        .OnEnded -> { }
+        .OnMediaError(m) -> { }
+        .TogglePlay -> { .is_playing = !.is_playing }
+    }
+    view {
+        video {
+            src: .current_url
+            controls: false
+            paused: .is_playing == false
+            position: .seek_target
+            volume: .volume
+            muted: .is_muted
+            rate: .playback_rate
+            ontimeupdate: .OnTime($0)
+            onloadedmetadata: .OnDuration($0)
+            onplaystatechange: .OnPlayState($0)
+            onended: .OnEnded
+            onmediaerror: .OnMediaError($0)
+            onclick: .TogglePlay
+        }
+    }
+}
+"##);
+        // 模板：ref + 透传属性在位，受控下行 prop **不得**作为元素属性出现
+        assert!(sfc.contains("<video ref=\"__video_ref_0\""), "受控 video ref:\n{sfc}");
+        assert!(sfc.contains(":src=\"current_url\""), "src 仍为透传绑定:\n{sfc}");
+        assert!(sfc.contains(":controls=\"false\""), "controls 仍为透传绑定:\n{sfc}");
+        assert!(!sfc.contains(":paused="), "受控 prop 不得打到只读 DOM 属性:\n{sfc}");
+        assert!(!sfc.contains(":volume="), "受控 prop 不得打到单位不同的属性:\n{sfc}");
+        // 上行：契约事件换成生成器发射的原生监听包装
+        assert!(sfc.contains("@timeupdate=\"__videoTime_0\""), "timeupdate 包装:\n{sfc}");
+        assert!(sfc.contains("@loadedmetadata=\"__videoMeta_0\""), "loadedmetadata 包装:\n{sfc}");
+        assert!(
+            sfc.contains("function __videoSync_0()"),
+            "元素侧重入点（换源后元素自行 paused=true，必须有重推通道）:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("__videoSync_0()") && sfc.contains("__videoLast_0 = ["),
+            "loadedmetadata 里重推最近一次下行值:\n{sfc}"
+        );
+        assert!(sfc.contains("@play=\"__videoState_0\""), "play 包装:\n{sfc}");
+        assert!(sfc.contains("@pause=\"__videoState_0\""), "pause 包装:\n{sfc}");
+        assert!(sfc.contains("@ended=\"__videoEnded_0\""), "ended 包装:\n{sfc}");
+        assert!(sfc.contains("@error=\"__videoError_0\""), "error 包装:\n{sfc}");
+        // 契约键之外的事件保留通用映射
+        assert!(sfc.contains("@click=\"TogglePlay\""), "onclick 走通用映射:\n{sfc}");
+        // script：ref 真类型 + watchEffect 下行 + 单位换算 + seek 目标语义
+        assert!(sfc.contains("ref<HTMLVideoElement | null>"), "video ref 真类型:\n{sfc}");
+        assert!(sfc.contains("watchEffect(() =>"), "下行 watchEffect:\n{sfc}");
+        assert!(
+            sfc.contains("onMounted(() => {") && sfc.find("onMounted(() => {").unwrap()
+                < sfc.find("watchEffect(() =>").unwrap(),
+            "watchEffect 必须包在 onMounted 内（避开 store facade TDZ）:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("__videoLast_0 = [is_playing.value == false, seek_target.value, volume.value, is_muted.value, playback_rate.value, current_url.value]"),
+            "下行实参取脚本域值:\n{sfc}"
+        );
+        assert!(sfc.contains("/ 100"), "volume 0..100 → 0..1:\n{sfc}");
+        assert!(sfc.contains("__videoSeek_0"), "position 走「目标变化才 seek」latch:\n{sfc}");
+        assert!(sfc.contains("el.currentTime = position"), "seek 落到元素:\n{sfc}");
+        assert!(sfc.contains("OnTime(el.currentTime)"), "上行取真实 currentTime:\n{sfc}");
+        assert!(sfc.contains("OnDuration(el.duration)"), "上行取真实 duration:\n{sfc}");
+        assert!(sfc.contains("OnPlayState(!el.paused)"), "playstate 由元素合成:\n{sfc}");
+        assert!(sfc.contains("OnMediaError(msg)"), "mediaerror 带真实文案:\n{sfc}");
+    }
+
+    /// PLAN-617 T-07 **兼容性约束**（AC-12）：未声明任何受控 prop 的 `video`
+    /// 生成结果必须与引入契约之前逐字节一致（裸 `<video :src :class />`，
+    /// 无 ref、无 watchEffect、无监听包装）。019-video-app 等既有示例靠这条
+    /// 断言防回归。
+    #[test]
+    fn test_uncontrolled_video_is_byte_identical() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget Bare {
+    model {
+        var current_url str = "https://example.invalid/a.mp4"
+    }
+    on {
+        .Noop -> { }
+    }
+    view {
+        video {
+            src: .current_url
+            controls: true
+            class: "w-full"
+        }
+    }
+}
+"##);
+        assert!(
+            sfc.contains("<video class=\"w-full\" :controls=\"true\" :src=\"current_url\" />"),
+            "裸 video 模板:\n{sfc}"
+        );
+        assert!(!sfc.contains("__video_ref_"), "不得凭空多出 ref:\n{sfc}");
+        assert!(!sfc.contains("__videoApply_"), "不得凭空多出下行控制器:\n{sfc}");
+        assert!(!sfc.contains("watchEffect"), "不得凭空多出 watchEffect:\n{sfc}");
     }
 
     /// Plan 482: 非 shadcn 模式（os-config 形态）—— 内联契约标记 + active

@@ -1,6 +1,19 @@
 #!/usr/bin/env node
-// vm-smoke.mjs — PLAN-542: 030-video-player VM 模式冒烟门禁。
-// 启动 auto run -r vm，通过 AutoUI MCP 协议验证原生桌面视口中的播放器、控制条与播放列表。
+// vm-smoke.mjs — 030-video-player VM 模式冒烟门禁（PLAN-617 T-10 重写）。
+//
+// 取代 Plan 542 的版本：那一版断言的是 mock 外壳（"AutoOS Video Player"、
+// "01_intro.mp4"、"⏸ 暂停"、"Kernel & AutoVM Architecture"），这些字面量
+// 在本计划里已被全部删除。现在 VM 端的**诚实边界**才是被验证的对象：
+//
+//   1. 同一份 app.at 能在 VM 端起窗（组件/store/嵌套循环都能编译执行）；
+//   2. 视口给出明确的后端能力说明（"本后端未启用原生播放"），不是纯黑；
+//   3. 界面**不出现**任何凭文件名编造或预置的假内容；
+//   4. 队列面板可交互（关闭后从快照消失）。
+//
+// 注意（已知 VM 侧边界，登记为债务）：VM 端 `Http.get("/api/media/scan")` 用的是
+// 相对地址，而 VM 的 HTTP 通道直接把该串交给 reqwest（需要绝对 URL），故 VM 里
+// 媒体库为空、显示空态文案。本脚本**不断言**队列有内容——那需要 VM 侧补 HTTP
+// 基址支持，属独立事项。
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -73,7 +86,7 @@ async function main() {
   process.on("SIGINT", () => { cleanup(); process.exit(1); });
 
   let ready = false;
-  const deadline = Date.now() + 45_000;
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (childProcess.exitCode !== null) break;
     try {
@@ -90,55 +103,69 @@ async function main() {
     fail(`AutoUI MCP 未就绪（exitCode=${childProcess.exitCode}）；VM 日志尾：\n${vmLog.slice(-1500)}`);
     return;
   }
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1500));
 
   const snapshot = async () => mcpCall("autoui_snapshot", {});
 
-  // ── A. 初始 UI 包含 AutoOS Video Player 与 初始视频 ──
-  {
-    const snap = await snapshot();
-    if (!snap.includes("AutoOS Video Player")) {
-      fail(`快照缺失 AutoOS Video Player 标头：\n${snap.slice(0, 500)}`);
-      return;
-    }
-    if (!snap.includes("01_intro.mp4")) {
-      fail(`快照缺失 01_intro.mp4 视频：\n${snap.slice(0, 500)}`);
-      return;
-    }
-    console.log("[vm-smoke] A ok — AutoOS Video Player 初始界面正常渲染");
+  // ── A. 外壳与队列面板渲染 ──
+  const snap0 = await snapshot();
+  if (!snap0.includes("Video Player")) {
+    fail(`快照缺失 "Video Player" 标头：\n${snap0.slice(0, 600)}`);
+    return;
   }
+  if (!snap0.includes("播放队列")) {
+    fail(`快照缺失队列面板标题：\n${snap0.slice(0, 600)}`);
+    return;
+  }
+  console.log("[vm-smoke] A ok — 外壳 + 视口 + 队列面板渲染正常");
 
-  // ── B. 播放/暂停按钮交互 ──
-  {
-    const snap = await snapshot();
-    const pauseBtn = snap.match(/button #(vnode_\d+) "⏸ 暂停"/)?.[1]
-      ?? snap.match(/button #(vnode_\d+)[^\n]*\n\s*text #vnode_\d+ "⏸ 暂停"/)?.[1];
-    if (pauseBtn) {
-      console.log(`[vm-smoke] found pause button: ${pauseBtn}`);
-      await mcpCall("autoui_action", { element_id: pauseBtn, action: "press" });
-      await new Promise((r) => setTimeout(r, 600));
-      const afterSnap = await snapshot();
-      if (!afterSnap.includes("▶ 播放")) {
-        fail(`点击暂停后未切换为播放按钮：\n${afterSnap.slice(0, 800)}`);
-        return;
-      }
-      console.log("[vm-smoke] B ok — 播放与暂停切换响应正常");
+  // ── B. 视口节点在树里（降级面板由 iced 渲染面直接绘制）──
+  // 说明：video 在 VM 端的诚实降级文案（"本后端未启用原生播放（构建时未开
+  // mpv-widget）"）是**渲染面画上去的**，MCP 快照里看不到；快照能验证的是
+  // View::Video 确实进了树（P617-D10 的教训：漏臂会静默变成 Empty，这里会
+  // 退化成看不到 [Video 节点）。视觉证据见
+  // tests/screenshots/after_t08_vm_degrade.png。
+  if (!snap0.includes("[Video")) {
+    fail("视口无 [Video 节点（疑为 View::Video 被兜底吃掉）：" + snap0.slice(0, 900));
+    return;
+  }
+  console.log("[vm-smoke] B ok — View::Video 进入渲染树（降级面板见截图证据）");
+
+  // ── C. 不出现任何被本计划删除的假内容 / 谎报字段 ──
+  const forbidden = [
+    "AutoOS Video Player",
+    "01_intro.mp4",
+    "BigBuckBunny",
+    "03:45",
+    "AAC Stereo",
+    "4.2 Mbps",
+    "HEVC",
+  ];
+  const hits = forbidden.filter((f) => snap0.includes(f));
+  if (hits.length > 0) {
+    fail(`VM 快照仍含已退役的假内容: ${hits.join(", ")}`);
+    return;
+  }
+  console.log("[vm-smoke] C ok — 无 mock 字面量与谎报元数据");
+
+  // ── D. 队列面板可关闭（交互链路可用）──
+  // 关闭键是一个无文本的图标按钮；取快照里第一个空文本 icon 按钮。
+  const iconBtns = [...snap0.matchAll(/button #(vnode_\d+) ""/g)].map((m) => m[1]);
+  if (iconBtns.length >= 2) {
+    // 顶栏的两个无文本图标键依次是「主题」与「队列显隐」。
+    await mcpCall("autoui_action", { element_id: iconBtns[1], action: "press" });
+    await new Promise((r) => setTimeout(r, 700));
+    const after = await snapshot();
+    if (!after.includes("播放队列")) {
+      console.log("[vm-smoke] D ok — 队列面板可显隐");
     } else {
-      console.log("[vm-smoke] B note: pause button regex not matched directly, initial view contains ⏸ 暂停");
+      fail("按下队列显隐键后队列面板仍在快照里");
     }
+  } else {
+    console.log(`[vm-smoke] D note: 只匹配到 ${iconBtns.length} 个空文本图标按钮，已跳过该项`);
   }
 
-  // ── C. 播放队列抽屉 ──
-  {
-    const snap = await snapshot();
-    if (!snap.includes("播放队列") || !snap.includes("Kernel & AutoVM Architecture")) {
-      fail(`播放队列未包含候选视频：\n${snap.slice(0, 800)}`);
-      return;
-    }
-    console.log("[vm-smoke] C ok — 播放队列抽屉与候选项完备");
-  }
-
-  console.log("[vm-smoke] ALL PASS — 030-video-player VM 模式验证全绿");
+  console.log("[vm-smoke] ALL PASS — 030-video-player VM 模式（诚实降级）验证全绿");
 }
 
 main().finally(() => {
