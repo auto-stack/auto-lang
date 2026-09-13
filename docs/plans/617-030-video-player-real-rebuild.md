@@ -1,11 +1,12 @@
 ---
 plan_id: PLAN-617
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
-updated_at: 2026-09-12
-plan_revision: 10                # r10: T-20 完成（特性门控/CI 保真/SD-05）+ **AC-19 实机收口**（VM 端真实播放）；VM 链 T-15..T-20 全部完成
+updated_at: 2026-09-13
+plan_revision: 11                # r11: 阶段收口——VM 链 T-15..T-20 全部完成（AC-18/19/20 达成，AC-19 有实机证据）；
+                                 #     剩 Vue 链 T-03/04/07..T-14 → 交由新会话；本文件 §11 已刷新为「新会话接手须知」
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -13,7 +14,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/ui, auto-man/api_gen]
-current_step: 3
+current_step: 10                 # 已完成 10 项：T-01/02/05/06 + VM 链 T-15..T-20；余 10 项见 §11-E
 total_steps: 20
 ---
 
@@ -1726,89 +1727,92 @@ ope.mp4`）。
   T-03/T-04（viewport/controls）→ T-07/T-08（受控契约与真实播放接线）→
   T-09..T-14，或直接进入 review/fold 阶段。
 
-## 11. 新会话开工须知（Handoff，2026-09-12）
+## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
-> 本会话很长了，以下是把「不读完整 §0–§10 也能安全接手」所需的操作要点集中在此。
-> 一句话状态：**Vue 端已可用（真实队列 + 真实播放）；VM 端仍完全不能播放（无渲染路径）。**
-> 用户指定的下一焦点：**VM 版能否启动并播放** → **T-15**。
+> 一句话状态：**VM/iced 链已全部完成并实机验证**（`video` 在 VM 窗口里真会动，见 §9.19）；
+> **Vue 链一行未动**（示例仍是「外壳真实、内核全假」，见 §0）。
+> 用户指定的下一段工作：**Vue 链 T-03/T-04 → T-07/T-08 → T-09..T-14**。
 
 ### A. worktree 布局（关键，勿重新踩坑）
 - 实现 worktree：`D:/autostack/.wt/lang-617/auto-lang`，分支 `plan-617-dev`。
 - **兄弟依赖 worktree：`D:/autostack/.wt/lang-617/auto-down`（detached HEAD）——必须存在。**
   缺它则 worktree 内 `cargo` **连 resolve 都过不去**（`crates/auto-lang/Cargo.toml:110` 的
-  `autodown-core` 跨仓 path 依赖解析失败）。修复命令：
+  `autodown-core` 跨仓 path 依赖）。修复：
   `git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-617/auto-down --detach`
 - **红线**：不得用 junction/symlink 代替（Plan 529 事故）；必须是真 worktree。
-- 折入（§9.13）后 `plan-617-dev` 落后 master → **开工前先 `git merge master`**。
+- **开工第一步**：worktree 内 `git status`（应干净）→ **`git merge master`**
+  （本阶段所有文档都提交在 master，worktree 已落后）。
 
-### B. 构建
-- worktree 内**可自洽构建**（已验证 `auto --version` 的 hash 与 worktree HEAD 一致）；增量 **5–13 秒**。
-- **构建前必清孤儿进程**：`auto run -r vm` 被 `terminate()` 时会留子进程占住
-  `target/debug/auto.exe`，导致 `failed to remove file … os error 5`。
-  先 `tasklist | grep auto.exe` → `taskkill //F //PID <pid>`。
-  **注意**：机器上常有**别的计划**的 auto.exe（主检出 / auto-os / lang-618/619）——
-  动手前先按 ExecutablePath 确认归属，别误杀。本计划上一会话就留过一个
-  lang-617 的 `cargo run`（`examples/rust-workspace/030-video-player-back`）+ :8330 后端。
-- **`os error 5` 的另一个（更常见的）真因是 sccache**，不是孤儿进程：
-  `SCCACHE_DIR=D:\autostack\.sccache` 已 **31G** 而 `SCCACHE_CACHE_SIZE=30G` →
-  超限持续 trim → 硬链接/写入竞态 → 一次构建里几十个 crate 同时报
-  `error writing dependencies to …deps\<crate>-<hash>.d: 拒绝访问 (os error 5)`。
-  **判别**：换个全新 target 目录**同样**失败 ⇒ 与 target 状态无关；
-  **绕过**：`RUSTC_WRAPPER= cargo …`（本次 T-16 全部验证在此环境下取得）。
-  根治需清理缓存或调大上限（被多计划共用，未擅自改）。
-- 门禁 `cargo t`。**注意基线是红的且不干净**（§9.13：无法取到干净基线，因为主检出被并发占用）。
-
-### C. 运行
-- `AUTO_MEDIA_ROOT='E:\Video' auto run` → 真后端 :8330 + Vite :3030。
-- **`pac.at media_root` 尚未接通**，只认该环境变量（债务）；未设时 `/api/media/scan`
-  返回 `[]`（诚实空态）而非报错。
-- 后台任务不跨回合存活（§10-15）：要长期可访问须 `DETACHED_PROCESS` 启动。
-
-### D. 提交纪律（重要）
-- **主检出有另一个 agent 在并发写**（本会话期间脏文件 19→41 且仍在涨）。
-- **一律逐文件显式 `git add <path>`；禁用 `git add -A`**；提交前 `git diff` 确认仅含本计划内容。
-- 计划书（勾选/frontmatter/§9.x）**留在 master 主检出**，不要只改 worktree 的副本。
-
-### E. 任务状态
-- **已完成并折入 master `3546f9567`**：T-01、T-02、T-05、T-06。
-- **VM 链已全部完成（T-15..T-20）**：T-15（门控 spike，裁定 Go，§9.14）、
-  T-16（native 加载器 + 引擎生命周期 + 降级，§9.15）、T-17（帧上屏通道，§9.16）、
-  T-18（§2.3 契约在 mpv 侧落地，§9.17）、T-19（`video` 提升为可用，§9.18）、
-  T-20（特性门控 + CI 保真 + **AC-19 实机收口**，§9.19）。
-  **AC-19 已达成**：VM 端 1080p 真实播放 + seek 生效，实机截图见 §9.19。
-- **未完成（Vue 链）**：T-03（`viewport.at` + 有信息降级面板）、T-04（playlist/controls）、
-  T-07（受控媒体契约生成器）、T-08（真实播放接线）、T-09、T-10、T-11、T-12、T-13、T-14。
-- **如何看 VM 端真实播放**（一行）：
+### B. 构建与运行
+- worktree 内可自洽构建；`crates/**` 的活全部在 worktree 闭环。
+- **⚠ `os error 5`（写 `.d` 失败）的真因是 sccache，不是孤儿进程**：
+  `SCCACHE_DIR=D:utostack\.sccache` 已 31G 而 `SCCACHE_CACHE_SIZE=30G` → 超限持续 trim →
+  一次构建里几十个 crate 同时报拒绝访问。**绕过：命令前加 `RUSTC_WRAPPER=`**（本阶段所有
+  验证都在此环境下取得）。判别法：换全新 target 目录**同样**失败 ⇒ 与 target 状态无关。
+- 孤儿进程仍要清：`auto run -r vm` 被 terminate 会留子进程占住 `target/debug/auto.exe`
+  （先 `tasklist` 按 ExecutablePath 确认归属再 `taskkill //F //PID`，机器上有别的计划的 auto.exe）。
+- **看 VM 端真实播放**（VM 链已交付，可当参照）：
   `cargo build -p auto --features mpv` + `AUTO_MPV_LIB` 指向 `libmpv-2.dll`
-  → `auto run -r vm`（语料 `test/ui/plan617_video_vm`）。**默认档不含该 feature**，
-  走诚实降级面板。
+  → `auto run -r vm`（语料 `test/ui/plan617_video_vm`）。**默认档不含该 feature**，走诚实降级面板。
+- Vue 端：`AUTO_MEDIA_ROOT='E:\Video' auto run`（真后端 :8330 + Vite :3030）。
+- 后台任务不跨回合存活：要长期可访问用 `DETACHED_PROCESS`。
 
-### F. T-15 已完成的门控定义与结论（全文见 §9.14 与 design doc §4）
-- 路径与通道：**libmpv DLL 运行时加载；通道 = SW**（软件渲染后端 + 持久 staging buffer →
-  自有 `wgpu::Texture`）。**明确不选 ffmpeg FFI**（理由见 §2.5），**GL 已评估排除**
-  （wgpu 不公开外部内存导入），**sidecar 被 SW 支配**。
-- **已实测（AC-18 满足）**：4K 端到端 7.3 ms/帧（24 fps 预算 17%）；实时播放媒体时钟
-  1080p 0.958× / 4K 0.997×；RSS 150 MB / 493 MB；每帧上屏代价 0.28 ms @1080p / 0.43 ms @4K。
-- **`Handle` 复用问法不成立**（三条源码级证据）→ 帧通道必须绕开 iced 图像系统。
-- **T-16 的起点**：spike 的解析序与 `selfcheck` 降级路径已可复用；
-  `crates/auto-lang/src/ffi.rs:62-145` 的 `TODO(Plan-212)` 是落地位。
-- **T-17 的第一件事**：定位并处置通道 C 的稀有长尾（4K 120 帧中 1 帧 957 ms），
-  用 2–3 槽 staging 环（映射中的缓冲不可提交）+ 单帧丢弃。
-- **spike 复现**：`AUTO_MPV_LIB=<...>\libmpv-2.dll cargo run -p auto-lang
-  --features mpv-spike --example mpv_spike -- all`；**DLL 不入库**，需按 design doc §4.8 自取。
+### C. 提交纪律（重要）
+- **主检出有另一个 agent 在并发写**。一律**逐文件显式 `git add <path>`；禁用 `git add -A`**；
+  提交前 `git diff` 确认仅含本计划内容。
+- 计划书（勾选/frontmatter/§9.x）**留在 master 主检出**，不要只改 worktree 副本。
+- 生成物/截图不入库（`test/ui/**` 的语料自带 `.gitignore`；`examples/**/gen`、截图由根 .gitignore 覆盖）。
 
-### G. 已知坑与债务（细节见对应 §）
-- **axum 参数语法**：生成的 back crate 解析 **axum 0.7**（`examples/rust-workspace` 是独立
-  workspace，有自己的锁）。参数是 **`:id`**，写 `{id}` 会被当字面量**静默 404**；
-  **既有 `/api/__auto/media/{id}/{revision}` 路由正是此 bug**（§9.9）。
-- `NextVideo`/`PrevVideo` **仍是 mock**（10 处硬编码假 URL）→ 属 T-08。
-- `db.at` 未退役 → **AC-17 仍红**。
-- `controls: true` 是 **interim**；应用自身 OSD 尚不驱动播放（T-07/T-08）。
-- 媒体路由**无条件发出**（未按需门控，登记为债务）。
-- 主检出被多计划共用（§9.11）：建议单独立项根治跨仓依赖，或把"新建 worktree 时同时建
-  兄弟 `auto-down`"标准化。
+### D. 任务状态
+- **已完成（10/20）**：T-01、T-02、T-05、T-06（Vue 侧基础）+ **VM 链 T-15..T-20 全部**
+  （门控 spike / 加载器与生命周期 / 帧上屏通道 / §2.3 契约在 mpv 侧 / `video` 提升为可用 /
+  特性门控与 CI 保真）。§9.14–§9.19 逐条有实测记录。
+- **未完成（Vue 链，10 项）**：
+  - **T-03** `viewport.at`：视口 + 受控 `<video>` + 错误/降级面板（去 `absolute`）。
+    → 注意 T-02 已实测的三个 VM 端约束（`flex-1`/`shrink-0` 在 VM 不生效、`video` 在 VM 端
+    零高度、进度条需真实容器承载），见 §9 T-02 条。
+  - **T-04** `playlist.at` + `controls.at`：队列栏按 `rel_dir` 分组；尺寸收敛为 3 档；
+    单一 primary；按 PLAN-412 §5 白名单取材（不用 `absolute`）。
+  - **T-07** 受控媒体契约（**生成器侧**，`ui_gen/vue.rs`）：§2.3 的下行同步 + 上行回灌；
+    **未声明受控 prop 时输出必须与今日逐字节一致**（兼容性约束）；超范围则改走 §2.1 Plan-B
+    （canvas 同形的类型引用臂 + `ref:`）并在 §9 记录理由与债务。
+  - **T-08** 真实播放接线：view/controls 接 T-07 契约；`OnTime/OnDuration/OnPlayState/OnEnded/
+    OnMediaError` 落地；OSD 改由回灌状态驱动（**spec T2..T7 今日必红项转绿是本计划的核心证据**）。
+  - **T-09** 真实文件浏览、**T-10** 错误与空态、**T-11** 契约与文档同步（SPEC.md/README.md）、
+    **T-12** 双端验证与归档、**T-13** VM 播放选型决策件（**大部分已被 VM 链实现并落在
+    design doc §4**，只需按 §4 收编为"决策件"形态）、**T-14** 债务登记。
 
-### H. 本会话结束时的残留（接手前先看清）
-- `:8330` 后端可能仍在运行（`auto run` 的残留子进程）；`:3030` Vite 已随回合结束被回收。
-- worktree 可能有 1 个未提交文件（`auto gen` 产物 / rust-workspace 改动）——
-  **开工前先 `git status` 并处理**，不要直接叠加改动。
+### E. 本阶段留下的"可复用资产"（Vue 链请优先复用，别重新发明）
+1. **`crates/auto-lang/src/ui/mpv/contract.rs` 就是 §2.3 契约在 mpv 侧的完整实现**，
+   含单位裁定（`volume` 共享边界取**作者面 0..100**，Vue 侧生成器再翻成元素 0..1）、
+   `position` 的"目标变化才 seek"语义、代际门（seek/换片 → generation 前进）。
+   **T-07 的生成器应当与它同形**——两端同名同单位，`.at` 源码才不需要分叉。
+2. `docs/design/autoui/030-video-player.md` §4 已是**VM 侧的完整实测结论**（含四选一裁定、
+   GL 为何不可达、为何必须绕开 iced 图像通道），T-13 直接收编即可。
+3. `test/ui/plan617_video_vm/` 是 VM 侧的验证语料样板（`video` + `paused` + `position` + tick）。
+4. `crates/auto-lang/tests/video_contract.rs` 是"`video` 节点 → View 字段"的契约映射测试样板
+   （走真实文件解析 → VM bridge → builder），Vue 侧可照此写生成器断言。
+
+### F. 已知坑与债务（细节见对应 §）
+- **`convert_view_messages` 的 `_ => Empty` 兜底会静默吃掉新 `View` 变体**（债务 P617-D10；
+  已四次踩坑）。凡新增 `View` 变体，**必须**同时加该函数的显式臂——否则 VM 端恒 Empty，
+  而 MCP 快照走 `vnode_converter` 另一条路、看起来节点还在树里（**假绿**）。
+- **测试教训（P617-D11）**：契约层/编译期门禁无法覆盖"接线是否真活"。T-19 的三个缺陷
+  全部通过了 `cargo t`+`docs_gen`+`video_contract`，只在实机现形。**涉及新变体一路走到
+  渲染的改动，必须有一次真起窗看画面的验证。**
+- **`db.at` 未退役 → AC-17 仍红**；`NextVideo`/`PrevVideo` 仍是 mock（10 处假 URL）→ 属 T-08。
+- **`pac.at media_root` 尚未接通**（只认 `AUTO_MEDIA_ROOT` env）→ 属 T-11。
+- `NextVideo` 等 mock、媒体路由无条件发出（未按需门控）等，见 `KNOWN-DEBT-AND-RISKS.md` 的 P617-D1..D11。
+- **axum 参数语法**：生成的 back crate 解析 axum 0.7，参数是 `:id`，写 `{id}` 会**静默 404**
+  （既有 `/api/__auto/media/{id}/{revision}` 正是此 bug）。
+- e2e 纪律：**只允许点 `caelestia.mp4`（7.7 MB）**，其余样本只用于列表渲染与 Range 断言。
+
+### G. 建议的开工顺序
+1. `git merge master`；跑一次 `RUSTC_WRAPPER= cargo t` 确认基线（**21 项预存红，见 §9.14/§9.16 归因**，
+   别把它当自己弄红的）。
+2. T-03 → T-04（视觉骨架收尾，Vue 截图取证）。
+3. **T-07 → T-08**（本链的技术核心；先读 `ui/mpv/contract.rs` 对齐契约形状）。
+4. T-09 → T-10 → T-11 → T-12 → T-13 → T-14。
+5. 或者：若想先把已完成的 VM 链落袋，先跑 `/auto-plan:review` + `/auto-plan:merge`
+   （AC-18/19/20 已有实测证据），再回来做 Vue 链。
+
