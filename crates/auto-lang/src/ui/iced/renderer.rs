@@ -4399,13 +4399,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
                 use crate::ui::iced::popover::Popover as PopoverWidget;
                 use crate::ui::view::PopoverAnchor;
-                let (anchor_point, anchor_el): (Option<(f32, f32)>, iced::Element<'static, M>) =
+                let (anchor_point, anchor_is_empty, anchor_el): (Option<(f32, f32)>, bool, iced::Element<'static, M>) =
                     match anchor {
-                        PopoverAnchor::Widget(w) => (None, w.into_iced()),
+                        PopoverAnchor::Widget(w) => {
+                            let empty = matches!(&*w, AbstractView::Empty);
+                            (None, empty, w.into_iced())
+                        }
                         // 坐标锚:零尺寸占位(anchor 轨道不影响布局),
                         // 面板定位由 at_point 决定。
                         PopoverAnchor::Point { x, y } => {
-                            (Some((x, y)), iced::widget::Space::new().into())
+                            (Some((x, y)), false, iced::widget::Space::new().into())
                         }
                     };
                 let mut p = PopoverWidget::new(anchor_el, content.into_iced())
@@ -4413,7 +4416,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .open(open)
                     // PLAN-530 步骤8（W13）：Modal 放置 = 模态形态（全屏遮罩
                     // + 面板外点击整吞），alert-dialog 臂专用。
-                    .modal(placement.is_modal_chrome());
+                    .modal(placement.is_modal_chrome())
+                    .anchor_is_empty(anchor_is_empty);
                 if let Some((x, y)) = anchor_point {
                     p = p.at_point(x, y);
                 }
@@ -19580,19 +19584,21 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
             use crate::ui::iced::popover::Popover as PopoverWidget;
             use crate::ui::view::PopoverAnchor;
-            let (anchor_point, content_slot, anchor_el): (
+            let (anchor_point, anchor_is_empty, content_slot, anchor_el): (
                 Option<(f32, f32)>,
+                bool,
                 usize,
                 iced::Element<'static, IcedMessage>,
             ) = match anchor {
                 PopoverAnchor::Widget(w) => {
+                    let empty = matches!(&*w, AbstractView::Empty);
                     path.push(0);
                     let el = render_dynamic_view(*w, debug_ctx, path);
                     path.pop();
-                    (None, 1, el)
+                    (None, empty, 1, el)
                 }
                 PopoverAnchor::Point { x, y } => {
-                    (Some((x, y)), 0, iced::widget::Space::new().into())
+                    (Some((x, y)), false, 0, iced::widget::Space::new().into())
                 }
             };
             path.push(content_slot);
@@ -19604,7 +19610,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // PLAN-530 步骤8（W13）+ PLAN-534：Modal（居中）与 Edge*
                 // （贴边，sheet/drawer）放置 = 模态形态（全屏遮罩 + 面板外
                 // 点击整吞），与 into_iced 臂同口径。
-                .modal(placement.is_modal_chrome());
+                .modal(placement.is_modal_chrome())
+                .anchor_is_empty(anchor_is_empty);
             if let Some((x, y)) = anchor_point {
                 p = p.at_point(x, y);
             }
