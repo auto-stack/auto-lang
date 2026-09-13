@@ -1,13 +1,17 @@
 ---
 plan_id: PLAN-617
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-13
-plan_revision: 12                # r12: Vue 链 T-03/T-04/T-07/T-08 完成（真实播放上线，e2e 10/10 绿，
-                                 #     4K MKV 3840×2160 + 无音轨实测在案）；T-11 文档重写；
-                                 #     余 T-09/T-10/T-11(规范增量)/T-12..T-14 见 §9.20
+plan_revision: 13                # r13: T-09..T-14 全部完成（worktree @ 1be320526）——
+                                 #     本地文件浏览/错误空态三态/onaudiotrack 契约/
+                                 #     SD-01..04 落规范/双端验证（t 18=基线零新增红、
+                                 #     tv 3689 绿、e2e 13/13、vm-smoke 双路径）/T-13
+                                 #     决策件收编/T-14 债务 D12..D15。20/20 任务完成；
+                                 #     余 /auto-plan:review → 折入（§9.23 的折入阻塞
+                                 #     与待办仍有效，主检出并发写入未清）
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -15,7 +19,7 @@ new_spec_components: ["docs/specs/auto-lang/ui/overview.md#video-元素（add；
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（Vue 与 VM/iced 双端 base styles 与 parity 锁定）", "GOAL-010: 示例应用轨道（examples/ui 应用矩阵）"]
 
 affects: [auto-lang/ui, auto-man/api_gen]
-current_step: 14                 # 已完成 14 项：T-01/02/03/04/05/06 + T-07/08 + VM 链 T-15..T-20；余 T-09..T-14（T-11 部分落地）
+current_step: 20                 # 20/20 完成（r13）：T-01..T-20 全部落地；待独立复审（/auto-plan:review）
 total_steps: 20
 ---
 
@@ -771,21 +775,84 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   验证：spec T2/T3/T4/T5/T6/T7 全绿（**今日必红项转绿是本计划的核心证据**）。
   → 完成于 §9.20：spec T1/T1b/T2/T3/T4/T5/T7/T9/T11/T8b **10/10 绿**
   （真实 Chrome 实机，含 4K MKV 逐项状态）。
-- **T-09 真实文件浏览**：`OpenLocalFile` → 文件选择 → 可播放地址；浏览器能力不足时
+- [x] **T-09 真实文件浏览**：`OpenLocalFile` → 文件选择 → 可播放地址；浏览器能力不足时
   给出明确降级文案而非假按钮。验证：spec T8。
-- **T-10 错误与空态**：目录缺失/不可播放/后端不可达三态；`Rescan` 可用。
+  [✅ 已完成 2026-09-13] worktree @ `1be320526`，全文见 **§9.24**。
+  - 形态：手写组件 `src/front/file_picker.vue`（`use.web component`，k4 先例，
+    零生成器改动）——隐藏 `<input type="file">` + `trigger` 计数 prop 驱动 +
+    `ready`/`pick` 两 emit（object URL + 文件名由 Vue 按位传给 DSL handler）。
+  - 可见按钮仍是 DSL 的（两端同一颗）：Vue 点击经 `pick_seq` 触发真文件对话框；
+    VM 端组件不渲染（`size: 0` 的 lucide 占位不可见），`local_pick_ready` 恒
+    false → 诚实降级文案。
+  - 实证：e2e T8——`waitForEvent('filechooser')` 选 `caelestia.mp4` →
+    `src` 变 `blob:` → 真实起播 `1920×1080 / paused=false`；界面显示真实文件名
+    与「本地文件」副标题。
+- [x] **T-10 错误与空态**：目录缺失/不可播放/后端不可达三态；`Rescan` 可用。
   验证：spec T9；Rust 单测覆盖越界路径拒绝。
-- **T-11 契约与文档同步**：重写 `SPEC.md`（真实数据契约/状态机）、`README.md`
+  [✅ 已完成 2026-09-13] 同 `1be320526`，全文见 **§9.24**。
+  - VM HTTP 基址：`AUTO_HTTP_BASE` 相对 URL 展开（覆盖
+    get/post/put/delete/patch/get_json/request/auth 臂）+ 纯函数单测。
+  - **重要取证（-D12）**：`Http.get` 在 VM 返回响应句柄是 Plan 446 E1/E2/E3
+    **测试钉死的契约**（尝试改成返回 body → tv 档 5 红，已回退）；收编为
+    **双端配方 `json.to_value(Http.get_json(url))`**（ts_adapter 补
+    `get_json`→fetch().json() 与 `to_value`→恒等两臂），030 store 改写。
+  - `/api/media/scan` 增 `root_missing`（目录缺失 ≠ 空库；绝对路径不出后端）；
+    store 三态文案各异。
+  - `pac.at media_root` 接通（Pac 解析 + automan 访问器 + `auto run` 仅在
+    env 未设时注入子进程；解析序 env → pac.at → 无）——030 pac.at 写
+    `E:\Video`（用户 r2 裁定方案 (a)）。
+  - 实证：vm-smoke 双路径 ALL PASS——设基址时 VM 队列显示**真实数据**
+    （`caelestia`、14 条 · 3 组；截图 `after_t11_vm_library.png`，顶栏真实
+    文件名 + 有信息量的降级面板）；无基址保持诚实空态。e2e T10 断言
+    Rescan 后条目数与后端自洽。
+- [x] **T-11 契约与文档同步**：重写 `SPEC.md`（真实数据契约/状态机）、`README.md`
   （真实能力边界 + VM 限制 + 运行方式 + `AUTO_MEDIA_ROOT` 说明）；落 SD-01..SD-04。
-- **T-12 双端验证与归档**：`cargo t` 零新增红；双端深浅截图入库；
+  [✅ 已完成 2026-09-13] 同 `1be320526`，全文见 **§9.24**。
+  - **AC-16(b) 裁定为「做正向标注」**（617-R2 的修正路径一）：受控契约增
+    `onaudiotrack(bool)`——Chromium 探针 `webkitAudioDecodedByteCount` 在实际
+    播放 >1s 时采样（换片复位、暂停/开头不构成结论、探针缺失不调用 handler）；
+    与 `ontimeupdate` 同元素时并入 `__videoTime_` 链尾（Vue 模板不允许重复
+    `@timeupdate`——e2e 抓到 Duplicate attribute 真缺陷后改链式，附单测）。
+    VM/mpv 端无此事件（mpv 自带 Dolby 解码，无此问题），已写进规范。
+  - SD-01..SD-04 落 `docs/specs/auto-lang/ui/overview.md` 新节「媒体元素与
+    媒体服务」：契约清单 + 兼容边界（逐字节一致）+ 现状句（Vue 已实现 /
+    iced partial）/ MediaEntry 与 Range-206 / 递归与惰性分块 / 根目录解析序 /
+    030 示范段更新 / 三条已知约束（含「容器可解 Dolby 不可解、须如实标注」）。
+  - SPEC/README 重写为真实边界版（配方、VM 后端运行方式、基址覆盖面、
+    能力边界）。
+  - 实证：e2e T11 (b)——4K MKV 真实播放后 `.audio-note` 标注出现
+    （`webkitAudioBytes=0` 实测），caelestia（AAC）无标注（T2 反向断言）。
+- [x] **T-12 双端验证与归档**：`cargo t` 零新增红；双端深浅截图入库；
   VM/MCP 降级态断言；`pnpm test` 全绿或明确列出仍红项与归因。
-- **T-13 VM 播放选型决策件**：把 §4 研究与外部调研（FFmpeg 系 `ffmpeg-the-third`/
+  [✅ 已完成 2026-09-13] 同 `1be320526`，证据见 **§9.24**。
+  - `cargo t --no-fail-fast`：**4835 run / 18 failed = 基线集合**（layout 13 +
+    `c2_param_msg` + `scan_examples_ui_curation_set` + `strip_html` +
+    `covered_elements_within_target_set`；并发 flake 未触发）——**零新增红**；
+    `cargo tv`：**3689/3689 全绿**（回退 446 契约后恢复）；`vue-tsc --noEmit`
+    干净；`cargo t media_service` 7/7、`auto-man` 1 failed = 同一基线。
+  - e2e **13/13 绿**（chrome 真实播放；新增 T8/T10/T11(b)/T2 反向断言）；
+    vm-smoke 双路径 ALL PASS。截图：Vue 深/浅/播放/MKV 音轨标注 4 张 +
+    VM 真实库降级面板 1 张（`tests/screenshots/after_t11_*`，本地证据目录，
+    沿 617-R5 口径判据以可复现命令为准）。
+  - 纪律：`crates/auto-lang/src/vm/**` 本批有改（stdlib.rs HTTP 通道）→ 已跑
+    `cargo tv`（全绿）；`schema/aura.at` 零改动（事件不在 schema props 表）→
+    docs_gen 零触发；AAVM 零触发。
+- [x] **T-13 VM 播放选型决策件**：把 §4 研究与外部调研（FFmpeg 系 `ffmpeg-the-third`/
   `video-rs`/`rsmpeg`、Windows Media Foundation（`windows` crate 已在依赖中）、
   GStreamer、纯 Rust `rust_h264`/`openh264`；`symphonia` 仅有音频）整理为
   `docs/design/autoui/030-video-player.md` §4 的更新，含推荐路径与许可/分发影响、
   以及与 `imagesurface`/`ImageSurface` 的帧流接入点与「每帧新建 `Handle` 会抖动」
   的已知约束（`ui/iced/renderer.rs:2889-2898`）。**不实现**。
-- **T-14 债务登记**：把本计划自决或未解的取舍写入 `docs/plans/KNOWN-DEBT-AND-RISKS.md`。
+  [✅ 已完成 2026-09-13] 同 `1be320526`——**收编形态见 design doc §4.14**：
+  推荐路径（§4.1 四选一 + §4.2 实测数字）、许可与分发（§4.8 LGPLv2.1+、
+  不分发 DLL）、硬约束（§4.5 Handle 抖动机理）、imagesurface 接入点两处
+  （缩略图走 image_pipeline 票据通道；View::Video 与 ImageSurface 同形）、
+  状态（partial + 默认可降级）；§4.13 同步刷新（VM 链与 Vue 链均已收口）。
+- [x] **T-14 债务登记**：把本计划自决或未解的取舍写入 `docs/plans/KNOWN-DEBT-AND-RISKS.md`。
+  [✅ 已完成 2026-09-13] 同 `1be320526`——新增 **P617-D12**（Http.get 双端
+  语义差 + 双端配方收编，medium）、**P617-D13**（音轨探针 Chromium 专有 +
+  单次采样，low）、**P617-D14**（VM 降级面板显示令牌而非文件名，low）、
+  **P617-D15**（AUTO_HTTP_BASE 臂覆盖面，low）。
 
 - [x] **T-15 VM 原生播放门控 spike（Go/No-Go，决策件）**：在 `auto-lang` 内做一个最小 spike：
   用**已在依赖中的 `libloading`** 运行时加载 `libmpv-2.dll`，创建 mpv 句柄，
@@ -2070,16 +2137,65 @@ master 侧（PLAN-618 `9ac3c5661`）保留了**手抄 match 表并往里加了�
 3. 补记折入 SHA 到本节；**不归档、不改 `status`**——PLAN-617 仍 `executing`（T-09..T-14 未完）。
 4. PLAN-620 的平台件随同折入；其「分支与提交归属」节据此收口为选项 (a)。
 
+### 9.24 T-09..T-14 收尾完成——20/20 落地，`execution_done`（2026-09-13）
+
+> 环境：worktree `D:/autostack/.wt/lang-617/auto-lang`（`plan-617-dev`），先
+> `git merge master`（预期冲突仅 renderer.rs 的 lucide 表，按 §9.23 处置取
+> 本分支侧，`zap` 在全量表内实测命中），收尾提交 **`1be320526`**。
+> 全程 `RUSTC_WRAPPER=`（P617-D6 sccache 坑）；`AUTO_MEDIA_ROOT` 未显式设——
+> 顺带实测了 pac.at `media_root` 注入路径（日志 `Media root: E:\Video (from pac.at)`）。
+
+**任务级摘要**（逐条证据已写在 §8 的勾选行内，此处只记跨任务的事实）：
+
+1. **T-09 用既有平台能力闭环**：`use.web component` 手写 SFC（k4 先例）承载
+   File API，可见按钮仍是 DSL 元素——同一份 `.at` 两端各自诚实（Vue 真对话框、
+   VM 降级文案）。`ready` 事件的「能力探测」语义（挂载才置真）让 store 不需要
+   知道自己在哪个后端。
+2. **T-10 抓到并正确处置了一个契约级陷阱**：把 VM `Http.get` 改成返回 body
+   （对齐 Vue 的 Plan 028 F8 协议）导致 tv 档 **Plan 446 E1/E2/E3 五个测试红**
+   ——handle 语义是被测试钉死的平台契约，不是缺陷；**回退**，改以双端配方
+   `json.to_value(Http.get_json(url))` 收编（ts_adapter 补两臂：`get_json`→
+   `fetch().json()`、`to_value`→恒等）。030 的空态根因因此有两个：相对 URL
+   无基址（`AUTO_HTTP_BASE` 收口）+ 句柄语义（配方收口），均已实测闭环
+   （vm-smoke E 块含真实条目；无基址诚实空态）。→ P617-D12。
+3. **T-11 的 e2e 抓到一个生成器真缺陷**：Vue 模板**不允许同一元素两个
+   `@timeupdate`**（Duplicate attribute 编译错，首跑 e2e 13 全倒）——
+   onaudiotrack 探针改为「与 ontimeupdate 同元素时并入 `__videoTime_` 链尾」，
+   补独立单测钉住。AC-16(b) 按 617-R2 修正路径一落地（正向标注），
+   e2e T11 实测 4K MKV 播放后标注出现、AAC 文件无标注。
+4. **pac.at `media_root` 接通**（§11-F 的遗留）：`Pac` 解析 + automan 访问器 +
+   `auto run` 仅 env 未设时注入（解析序 env → pac.at → 无）。顺带把「生成
+   scan 响应带 `root_missing`」补上（目录缺失与空库分开说；绝对路径不出后端）。
+5. **T-12 门禁全表**：`cargo t` 4835/18 failed=基线集合（零新增红）；`cargo tv`
+   3689 全绿（vm/ffi/stdlib.rs 本批有改 → tv 必跑）；`vue-tsc` 干净；
+   e2e **13/13**；vm-smoke 双路径 ALL PASS；`auto gen` 无 error。截图 5 张
+   （Vue 深/浅/播放/MKV 音轨标注 + VM 真实库降级面板）。
+6. **T-13/T-14**：design doc §4.14 决策件收编（+§4.13 刷新）；KNOWN-DEBT
+   P617-D12..D15 登记。
+
+**偏离与如实说明**：
+
+- VM 端「打开本地视频文件」按钮的降级文案依赖 `local_pick_ready` 探测
+  （file_picker.vue 的 `onMounted`→`ready`）——若未来 VM 端给 `use.web
+  component` 换了降级形态（例如渲染成真按钮），该探测需重审。
+- VM 降级面板显示的是媒体令牌而非文件名（P617-D14，诚实但粗糙）。
+- 音轨探针的 Chromium 专有性与单次采样边界（P617-D13）。
+- e2e 的 T8 用 Playwright 的 filechooser 拦截等价「用户选中」，未测真实
+  OS 对话框（无头环境的固有限制）。
+- 本批触碰 `crates/**`（含 vm/ffi）→ `cargo tv` 已跑（3689 绿）；
+  schema 零改动 → docs_gen 零触发；aavm 零触发。
+
+**下一步**：`/auto-plan:review`（独立复审，AC 全表 + findings）→ 折入。
+§9.23 的折入阻塞（主检出并发未提交改动重叠 5 文件）与处置预案仍然有效，
+折入前须先确认主检出干净。**本计划状态翻为 `execution_done`**。
+
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
-> 一句话状态（2026-09-13 晚，r12 + §9.22 复审后刷新）：**VM 链 T-15..T-20 与
-> Vue 链 T-03/T-04/T-07/T-08 均已完成并实机验证**（`video` 真会动、e2e 11/11 绿，
-> 见 §9.19/§9.20）；现场追加的平台件（lucide 全量表 / 图标尺寸 / `progress` 拖拽 seek）
-> 已独立立项 [PLAN-620](620-autoui-icon-table-and-pointer-primitives.md) 并**随本计划同阶段折入**。
-> **阶段复审已通过**（§9.22，`pass（phase-only）`，reviewed_commit `1b1692f9d`），
-> 但 **PLAN-617 整体仍为 `executing`**——剩 **T-09..T-14**，其 AC 缺口逐条记在 §9.22 的 findings
-> （617-R1 AC-09 fail；617-R2 AC-16(b) partial；617-R3 AC-11 partial；617-R4 规范增量 SD-01..04 未落）。
-> 本文以下 A..G 各节为**接手时（Vue 链未开工）**的原文，已不再反映当前状态，仅作历史保留。
+> 一句话状态（2026-09-13 深夜，r13 刷新）：**20/20 任务全部完成**
+> （T-01..T-14 + T-15..T-20），状态 `execution_done`——**待独立复审**
+> （`/auto-plan:review`）→ 折入。最新收尾批（T-09..T-14）见 §9.24
+> （worktree @ `1be320526`）；阶段复审（T-03/04/07/08 + T-15..T-20）已 pass
+> （§9.22）。下方 A..G 各节为**接手时（Vue 链未开工）**的原文，仅作历史保留。
 
 ### A. worktree 布局（关键，勿重新踩坑）
 - 实现 worktree：`D:/autostack/.wt/lang-617/auto-lang`，分支 `plan-617-dev`。
