@@ -5,7 +5,7 @@ feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-12
-plan_revision: 9                 # r9: T-19 完成（video 提升为可用：渲染面/接线/schema 同步）；T-20 收特性门控与 CI
+plan_revision: 10                # r10: T-20 完成（特性门控/CI 保真/SD-05）+ **AC-19 实机收口**（VM 端真实播放）；VM 链 T-15..T-20 全部完成
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -884,11 +884,22 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   - **AC-19 未达成，边界见 §9.18**：链条已接到 `View::Video` 与 iced 渲染面，
     但「VM 窗口里真看到画面在动」还差 (a) `crates/auto` 的 `mpv-widget` 特性透传
     （T-20 的特性门控）(b) 应用声明 tick 驱动帧。
-- **T-20 特性门控与 CI 保真**（Go 后，**硬要求**）：native 播放必须是**可选 feature**
+- [x] **T-20 特性门控与 CI 保真**（Go 后，**硬要求**）：native 播放必须是**可选 feature**
   （沿用 `ui-iced`/`python` 的既有模式），默认档与 **全部 11 个 `ubuntu-latest` CI 任务
   在不安装 ffmpeg/mpv 的情况下保持全绿**；缺失运行库时走降级路径。
   验证：默认档 `cargo t` 干净；CI 配置 diff 中**不出现** apt 安装 ffmpeg/mpv 或
   系统包安装步骤；`AUTO_MPV_LIB` 等解析序文档化。
+  [✅ 已完成 2026-09-13] 全文见 **§9.19**；**AC-19 同时收口**（含实机截图）。
+  - feature 透传：`crates/auto` 增 `mpv-native`/`mpv-gpu`/`mpv-widget` + `mpv` 别名；
+    **刻意不进 default**（打开后任何带 `video` 的示例都会真解码并开音频设备，
+    对别的示例是行为变化）。
+  - CI：`grep -rniE "apt-get install|apt install|ffmpeg|mpv|libav" .github/workflows/`
+    **零命中**；`runs-on:` 统计为 **11 个 ubuntu-latest**（与计划所述一致）；
+    `build-ui-examples.yml` 的 `cargo build -p auto` 在本机实测可通过（1m21s，
+    **无需任何系统媒体包**）。
+  - 解析序与约束落进 spec **SD-05**（`docs/specs/auto-lang/ui/overview.md`）。
+  - **AC-19 收口**：`test/ui/plan617_video_vm` 实机 1080p 真实播放 + seek 生效，
+    截图见 §9.19。
 
 **依赖**：T-01 → T-02/T-03/T-04 → T-05 → T-06 → T-07 → T-08 → T-09/T-10 → T-11 → T-12；
 T-13/T-14 与主链并行。
@@ -1660,6 +1671,61 @@ ope.mp4`）。
   （特性门控与 CI 保真：补 `crates/auto` 的透传、确认 11 个 CI 任务不装媒体包、
   记录 `AUTO_MPV_LIB` 解析序），并把 AC-19 的可视验证一并收口。
 
+### 9.19 T-20 完成 + AC-19 实机收口——两个真 bug 在实机验证中现形（2026-09-13）
+
+- **AC-19 达成（VM 端真实播放，有实机证据）**：新增验证语料
+  `test/ui/plan617_video_vm`（`video` 节点 + `paused: false` + `position: 8.0`
+  + `timer { FrameTick (every_ms: 16) }`）。实机
+  （`cargo build -p auto --features mpv` + `AUTO_MPV_LIB` 指向本机 `libmpv-2.dll`，
+  经 MCP 驱动起窗并截图）：
+  - **画面为 `caelestia.mp4` 的实际内容**（1080p 本地文件）；
+  - **seek 生效**：`position: 8.0` → 播放中 `time-pos` 由 8 递增到 12.63s；
+  - `has_new_frame` 持续为真、`duration=49.429` 已解析、`pause=false`；
+  - 截图（本地、gitignored）：`test/ui/plan617_video_vm/src/front/tests/screenshots/ac19_final.png`。
+- **实机验证抓到三个编译期与契约测试都发现不了的真缺陷**——这是本任务最有价值的产出：
+  1. **`convert_view_messages` 的 `_ => Empty` 兜底把 `video` 节点静默吃掉了。**
+     VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` →
+     `View<IcedMessage>` → `into_iced`；T-19 我只加了 `map_msg_with_arc` 与
+     `into_iced` 的臂，**漏了这一处**，于是播放面在 VM 里恒为 `Empty`。
+     而 MCP 快照走的是 `vnode_converter`（另一条路），所以快照里
+     `[Video] caelestia.mp4` **看起来节点就在树里**——**假绿**。
+     该函数的注释里已经记着 Grid / MouseArea / select 三次同类坑，**这是第四次**。
+     已补显式臂（也再次印证：T-19 当时「编译通过 + 契约测试绿」不足以证明接线是活的）。
+  2. **widget 从没建 mpv render context。** `VideoRuntime::new()` 只建了 handle；
+     没有 context ⇒ `has_new_frame()` 恒假、`render_sw_frame()` 恒报错 ⇒ 画面永不动，
+     而 mpv 侧一切正常（time-pos 在走、duration 已解析）——**正是 `render.h:111`
+     那条「先建 context 再 loadfile」的次序要求被违反了**（T-16 把它写进了引擎文档，
+     却没人替 widget 遵守）。已在运行时初始化时建 context。
+  3. **忘了 `channel.advance(gen, seq)`。** 通道内的 `VideoLatestWins` 只放行与
+     登记值完全一致的组合，不 advance 就每帧被判 `DroppedStale`，纹理停在初始全零
+     ——表现为「**mpv 在播、纹理全黑**」，实机盯了 5 秒黑屏才定位到。
+     已在 `with_frame` 前补 `advance`。
+  附带改进：上屏失败改为**计数 + 首次 `log::warn`**（此前静默丢掉，是上面①③难以定位的原因之一）。
+- **feature 门控（AC-20 的硬要求）**：
+  - `crates/auto` 增 `mpv-native` / `mpv-gpu` / `mpv-widget` 三层透传 + `mpv` 便捷别名；
+    **刻意不进 default**——`ui-iced`/`python` 是「开着才对」的后端选择，而本项是
+    **运行期能力**：打开后任何带 `video` 的示例都会真解码并打开音频设备
+    （019-video-app 的远端 URL 会真去拉流），那对别的示例是行为变化。
+    启用方式一行：`cargo build -p auto --features mpv`。
+  - **CI 保真（实测）**：`grep -rniE "apt-get install|apt install|ffmpeg|mpv|libav"
+    .github/workflows/` → **零命中**；`runs-on:` 统计 **11 个 `ubuntu-latest`**
+    （与计划所述一致）；`build-ui-examples.yml` 里的 `cargo build -p auto`
+    在本机实测 **1m21s 通过且无需任何系统媒体包**（→ 即使开启该 feature 也不给 CI
+    增加系统依赖，因为 libmpv 只在运行时 `LoadLibrary`）。
+  - 缺运行库走降级：`MpvUnavailable::NoLibrary` → 诚实降级面板，不 panic。
+- **spec SD-05 落地**：`docs/specs/auto-lang/ui/overview.md` 新增 `video` 条，登记
+  支持级别（partial）、实现位置、**可选 feature 与可降级**、
+  **运行库解析序（`AUTO_MPV_LIB` → exe 同目录 → 都没有即降级；不回落系统搜索路径）**、
+  缺失行为、「**mpv render API 只有 OpenGL/Software、没有 Vulkan/wgpu，故走 SW**」
+  这一架构约束、帧由 tick 驱动、两端同名的受控契约、以及实测数字。
+- **门禁**：`cargo t` 20 failed（**全在基线集合内** → 零新增红）；`docs_gen` 4/4；
+  `schema_drift` 绿（T-19 的 baseline 变更仍成立）。
+- **VM 链状态**：**T-15 / T-16 / T-17 / T-18 / T-19 / T-20 全部完成**。
+  Vue 链仍有 T-03/T-04/T-07..T-14 未做（见 §11-E），本计划的 VM 部分至此收口。
+- outcome: pass；next（本计划内的 VM 链已无剩余任务）：转入 Vue 链
+  T-03/T-04（viewport/controls）→ T-07/T-08（受控契约与真实播放接线）→
+  T-09..T-14，或直接进入 review/fold 阶段。
+
 ## 11. 新会话开工须知（Handoff，2026-09-12）
 
 > 本会话很长了，以下是把「不读完整 §0–§10 也能安全接手」所需的操作要点集中在此。
@@ -1705,11 +1771,17 @@ ope.mp4`）。
 
 ### E. 任务状态
 - **已完成并折入 master `3546f9567`**：T-01、T-02、T-05、T-06。
-- **已完成**：**T-15（门控 spike，裁定 Go，§9.14）**、**T-16（native 加载器 +
-  引擎生命周期 + 降级，§9.15）**——均已提交（worktree `b621edda0` / `e13e63e59`）。
-- **未完成**：T-03（`viewport.at` + VM 有信息降级面板）、T-04、T-07（受控媒体契约）、
-  T-08、T-09、T-10、T-11、T-12、T-13、T-14、**T-17..T-20**。
-- **VM 链进度**：T-16 ✅ → **T-17（下一步）** → T-18 → T-19 → T-20。
+- **VM 链已全部完成（T-15..T-20）**：T-15（门控 spike，裁定 Go，§9.14）、
+  T-16（native 加载器 + 引擎生命周期 + 降级，§9.15）、T-17（帧上屏通道，§9.16）、
+  T-18（§2.3 契约在 mpv 侧落地，§9.17）、T-19（`video` 提升为可用，§9.18）、
+  T-20（特性门控 + CI 保真 + **AC-19 实机收口**，§9.19）。
+  **AC-19 已达成**：VM 端 1080p 真实播放 + seek 生效，实机截图见 §9.19。
+- **未完成（Vue 链）**：T-03（`viewport.at` + 有信息降级面板）、T-04（playlist/controls）、
+  T-07（受控媒体契约生成器）、T-08（真实播放接线）、T-09、T-10、T-11、T-12、T-13、T-14。
+- **如何看 VM 端真实播放**（一行）：
+  `cargo build -p auto --features mpv` + `AUTO_MPV_LIB` 指向 `libmpv-2.dll`
+  → `auto run -r vm`（语料 `test/ui/plan617_video_vm`）。**默认档不含该 feature**，
+  走诚实降级面板。
 
 ### F. T-15 已完成的门控定义与结论（全文见 §9.14 与 design doc §4）
 - 路径与通道：**libmpv DLL 运行时加载；通道 = SW**（软件渲染后端 + 持久 staging buffer →

@@ -387,11 +387,43 @@ tracked/untracked 两条 dispatch 各有 `video` 臂；③ iced renderer 的 `Vi
 （T-20 的特性门控）并让应用声明 tick。**通道就位 ≠ 默认可用**，这一点在计划 §9.18
 里写清楚了，不以「已达成」自居。
 
-### 4.12 尚未接上的那一段
+### 4.12 T-20：实机收口（AC-19 达成）与它抓到的三个真缺陷
 
-T-19 已把渲染面接上并同步了 schema/规范（见 §4.11）。**仍未接上的是「默认可用」**：
-`crates/auto` 没有 `mpv-widget` 的特性透传，默认 `auto run -r vm` 走诚实降级面板；
-且应用需声明 tick 驱动帧。这两步与 AC-19 的可视验证一并由 T-20 收口。
+`video` 现在**在 VM 窗口里真的会动**：验证语料 `test/ui/plan617_video_vm`
+（`video` + `paused: false` + `position: 8.0` + `timer { FrameTick (every_ms: 16) }`）
+实机 1080p 播放 `caelestia.mp4`，seek 生效（`time-pos` 由 8 递增到 12.63s）。
+启用方式一行：`cargo build -p auto --features mpv`（默认不开，理由见下）。
+
+**三个只有实机才能发现的缺陷**（`cargo t` + `docs_gen` + `video_contract` 三套门禁全绿却依然存在）：
+
+1. **`convert_view_messages` 的 `_ => Empty` 兜底静默吃掉了 `video` 节点。**
+   VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` →
+   `View<IcedMessage>` → `into_iced`。T-19 只加了 `map_msg_with_arc` 与 `into_iced` 的臂，
+   漏了这一处 ⇒ 播放面在 VM 里恒为 `Empty`。而 **MCP 快照走 `vnode_converter` 另一条路**，
+   快照里 `[Video] caelestia.mp4` 看起来「节点就在树里」——**假绿**。
+   该函数的注释里已记 Grid/MouseArea/select 三次同类坑，这是第四次（见债务 P617-D10）。
+2. **widget 从没建 mpv render context** ⇒ `has_new_frame()` 恒假、渲染恒失败，
+   而 mpv 侧一切正常（time-pos 在走、duration 已解析）。正是 `render.h:111`
+   「先建 context 再 loadfile」的次序要求被违反。
+3. **忘了 `channel.advance(gen, seq)`** ⇒ 通道的 `VideoLatestWins` 每帧判 `DroppedStale`，
+   纹理停在初始全零，表现为「mpv 在播、纹理全黑」。
+
+**教训（已登记为债务 P617-D11）**：涉及「新 `View` 变体要一路走到渲染」的改动，
+**必须有一次真起窗看画面的验证**——编译通过 + 契约单测不能替代它。
+本轮三个缺陷全部落在那条缝里。
+
+**feature 门控**：`mpv-native`/`mpv-gpu`/`mpv-widget` 三层（`auto` 侧有同名透传与 `mpv` 别名），
+**默认不开**——打开后任何带 `video` 的示例都会真解码并打开音频设备
+（对 019-video-app 这类示例是行为变化）。**零构建期原生依赖**（运行时 `LoadLibrary`），
+故 11 个 `ubuntu-latest` CI 任务**不需要任何系统媒体包**（实测 `grep` 零命中、
+`cargo build -p auto` 本机 1m21s 通过）。
+
+### 4.13 尚未接上的那一段
+
+**VM 链已全部收口**（T-15..T-20）：`video` 在 VM 端真实播放已实机验证（见 §4.12）。
+仍未接上的是 **Vue 链**（示例侧 T-03/T-04 的视口与播控条、T-07/T-08 的受控契约生成器与
+真实播放接线、T-09..T-14），以及「默认可用」——native 播放**刻意是显式开启的 feature**
+（`--features mpv`），默认走诚实降级面板。
 
 ---
 
