@@ -438,6 +438,38 @@ P1 影响**所有** gallery/示例应用（任何未声明 `theme{}` 的 scaffol
   用户已示意**等 PLAN-617 完成后**再落地。解绑三步同 §9.7（`git merge plan-619-dev` 预期可
   fast-forward：本分支已含 master；随后归档 + wt-guard + 清理）。
 
+### 9.9 解绑落地：reconcile #3 + 全量验证刷新（2026-09-14，/auto-plan:merge 续）
+
+- **阻塞解除确认**：PLAN-617/618 均已并入 master（主检出 37 个在途脏文件清零，仅剩根目录
+  4 个 p618_*.txt 未跟踪杂物，与落地面零交集）。master 自 reconcile #2（`56dbb1283`）前进
+  46 提交（617 代码 `5e6c1005e` + 账本 + 归档收据 + auto-man 修复×3）。
+- **reconcile #3**（合并提交 `504319c82`）：`git merge master` 三冲突，裁定原则 =
+  「617 对同一契约实现了更强机制，取 617；619 独有根因修复保住」：
+  | 冲突 | 裁定 | 依据 |
+  |---|---|---|
+  | `aura_view_builder.rs` icon size 臂 | 取 617 `with_icon_size`（显式 w/h 类 > size > 缺省 20px） | 619 的「size>0 前置注入」是其子集；617 额外覆盖块式 `style:`、动态 class、缺省 20px 双端对齐（619 版缺省时 VM 16 / Vue 20 仍裂） |
+  | `ui_gen/vue.rs` icon 发射 | 取 617 内联 `style="width:Npx;height:Npx"` | 619 的 `:size` 绑定被取代：内联样式特异性压过 shadcn 资产 `[&>svg]:size-*`（顺带缩小 P619-D6 受害面）；生成物实证 `<Search class="text-muted-foreground" style="width:14px;height:14px"/>`；`plan619_icon_size_prop_emits_bound_size` 断言同步改为新契约 |
+  | `renderer.rs` lucide 表 | 取 617 全量生成表（1401 项，lucide-vue-next v0.312 同源） | **根治 P619-D2 字形分叉**（构造级「同名 ⇒ 同字形」）；**但 617 换表时双重嵌套坑（619 §8.5 根因）一度复发**——`lucide_svg` 仍包 16×16 完整文档、`doc_with` 再套 24×24。修法 = `lucide_svg_doc_with` 改为直接消费 `lucide_fragment` **单层包装**（619 回归锚守住该契约） |
+- **基建注记**：617 新增 workspace 成员 `a2r-actor-tests` 的 `autodown-core` path 依赖要求组内
+  兄弟 → 按规约补**真实 worktree** `D:/autostack/.wt/lang-619/auto-down`（detached @ auto-down
+  master `ad5b1d4`，非 junction），随 cleaned 步骤一并移除。
+- **规范同步**：overview.md SD-02 ②③ 改述合并后机制（现状节 + 已知坑节）；KNOWN-DEBT
+  **P619-D2 划掉**（617 根治，本次合并确证）、D1 注记刷新（含「617 换表时复发」事实）、
+  D6 受害面缩小（显式 size 走内联样式已可压过资产 CSS）；frontmatter `new_spec_components`
+  对齐最终口径。契约本身（size 权威、缺省让位、显式类优先）未变——变的是实现机制描述。
+- **验证刷新（全部在 reconcile #3 后基线，私有 `auto619.exe` 防 §8.2③ 二进制污染）**：
+  | 项 | 结果 |
+  |---|---|
+  | `plan619_*` 回归锚 | **8/8 绿**（含改述后的 Vue 断言与几何锚） |
+  | icon/lucide 面 | **26/26 绿**（含 617 自己的 `test_icon_size_precedence`、覆盖率、缓存去重） |
+  | `cargo tv`（no-fail-fast） | 3686 过 / 5 红 = `ffi_dep_parity_*` oracle 缺失（§8.3 在案环境预存）——**零新增** |
+  | `cargo t`（daily，no-fail-fast） | 24 红全部归因：17×`ui::layout::tests`（任务栏高度环境族）+ 5×`ffi_dep_parity` + `c2_param_msg`/`scan_examples`/`strips_tags`/`covered_elements`（master 基线同红，本机复跑实证）+ `external_config_poll_hot_apply_loopsafe`（同窗口 master 连跑 6 次也翻 2 次 = osconfig 环境偶发族，§9.6 在案）——**零新增确定性红** |
+  | 双端探针（**双端新采**，`merge3_vue.png`/`merge3_vm.png` 归档 attachments/619） | **exit 0**：面色 Δ0/Δ1（AC-01）、搜索图标 ink **1.03/1.03**（AC-02）、notebook 参考 **0.98/0.96**（升自 0.89/0.96——617 全量表根治字形分叉的直接证据）、左缩进 Δ0/Δ1/Δ0（AC-03） |
+  | 19 MCP 场景（`--url` 指向自起实例，随机空闲端口） | **19/19 绿** |
+  | 18 Vue playwright 场景（`NOTES_URL` 指向本轮 6112 实例） | **18/18 绿（59.4s）** |
+- 过程卫生：本轮起的服务全部关闭；§9.8 遗留的 stale vite（6111，PID 19092，同 worktree gen 目录）一并清除。
+- outcome: **pass**（五条 AC 在合并后基线全部复验）。next: 落地（ff）→ 账本投影 → 归档 → 清理。
+
 ## 10. 待澄清事项
 
 1. ~~**P1 权威色板**~~ → **已裁决（2026-09-12）：选项 A，scaffold/shadcn 为权威**。
