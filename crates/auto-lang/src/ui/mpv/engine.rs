@@ -56,6 +56,12 @@ pub struct MpvEventInfo {
     pub event_id: std::ffi::c_int,
     pub error: std::ffi::c_int,
     pub reply_userdata: u64,
+    /// 仅 `END_FILE` 有值：结束原因（[`super::loader::end_file_reason`]）。
+    /// 在 `wait_event` 内部立刻解出——`mpv_event.data` 指向的结构体只在下一次
+    /// `wait_event` 之前有效，不能带出函数。
+    pub end_file_reason: Option<std::ffi::c_int>,
+    /// 仅 `END_FILE` 且原因不是 EOF 时才有意义：是否属于「出错」。
+    pub end_file_is_error: bool,
 }
 
 /// 引擎不可用的原因。
@@ -197,6 +203,11 @@ impl MpvEngine {
             api_version,
             created_on: std::thread::current().id(),
         })
+    }
+
+    /// 把 mpv 的错误码翻成它自己的可读文案（事件里的 `error` 字段用）。
+    pub fn error_text(&self, code: std::ffi::c_int) -> String {
+        self.api.error_text(code)
     }
 
     /// `MPV_CLIENT_API_VERSION`（major << 16 | minor）。
@@ -348,10 +359,35 @@ impl MpvEngine {
         }
         // SAFETY: ev 非空且此刻有效——紧接着就拷贝出来。
         let ev = unsafe { &*ev };
+        // **关键**：超时/无事件时 mpv 返回的是**有效指针 + `MPV_EVENT_NONE`**，
+        // 而不是 NULL。若只判空，`while let Some(..)` 形式的事件抽取循环会永远
+        // 拿到 `Some(NONE)` 而**死循环**（T-18 实测踩到：一次 poll 直接把测试挂死）。
+        // 故「无事件」必须在这里归一成 `None`。
+        if ev.event_id == event_id::NONE {
+            return None;
+        }
+        let mut end_file_reason = None;
+        let mut end_file_is_error = false;
+        if ev.event_id == event_id::END_FILE && !ev.data.is_null() {
+            // `mpv_event.data` 在 END_FILE 时指向 `mpv_event_end_file`：
+            // { int reason; int error; int64 playlist_entry_id; ... }
+            #[repr(C)]
+            struct EndFile {
+                reason: std::ffi::c_int,
+                error: std::ffi::c_int,
+            }
+            // SAFETY: 按 client.h 的事件契约，END_FILE 的 data 就是该结构体；
+            // 只读前两个 int，生命周期覆盖本次调用。
+            let ef = unsafe { &*(ev.data as *const EndFile) };
+            end_file_reason = Some(ef.reason);
+            end_file_is_error = ef.reason == super::loader::end_file_reason::ERROR;
+        }
         Some(MpvEventInfo {
             event_id: ev.event_id,
             error: ev.error,
             reply_userdata: ev.reply_userdata,
+            end_file_reason,
+            end_file_is_error,
         })
     }
 
@@ -362,6 +398,7 @@ impl MpvEngine {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(timeout_secs);
         while std::time::Instant::now() < deadline {
             let Some(ev) = self.wait_event(0.05) else {
+                // `wait_event` 已阻塞至多 0.05s；这里不再额外 sleep，直接再等一轮。
                 continue;
             };
             match ev.event_id {
@@ -388,6 +425,153 @@ impl MpvEngine {
             event_id::PROPERTY_CHANGE => "PROPERTY_CHANGE",
             _ => "OTHER",
         }
+    }
+
+    // ───────────────────────── 属性读写（T-18 的受控媒体契约要用） ─────────────────────────
+    //
+    // 一律走 mpv 的**属性**接口而不是命令：属性是 mpv 的规范状态面，读写对称，
+    // 且 `paused`/`volume`/`mute`/`speed`/`time-pos`/`duration` 这些正是 §2.3
+    // 契约里的字段（见 `contract.rs`）。
+
+    /// 读一个 double 属性（`time-pos`/`duration`/`speed`…）。
+    ///
+    /// 属性暂时不可用（例如尚未 loadfile、或该属性此刻无效）返回 `None`——
+    /// **这不是错误**：mpv 对无效属性就是返回错误码。
+    pub fn get_f64(&self, name: &str) -> Option<f64> {
+        let cname = cstring(name).ok()?;
+        let mut out: f64 = 0.0;
+        let rc = unsafe {
+            // SAFETY: handle 非空；out 是栈上 double，符合 DOUBLE 格式要求。
+            (self.api.symbols.get_property)(
+                self.handle,
+                cname.as_ptr(),
+                super::loader::format::DOUBLE,
+                &mut out as *mut f64 as *mut c_void,
+            )
+        };
+        (rc >= 0).then_some(out)
+    }
+
+    /// 读一个 int64 属性。
+    pub fn get_i64(&self, name: &str) -> Option<i64> {
+        let cname = cstring(name).ok()?;
+        let mut out: i64 = 0;
+        let rc = unsafe {
+            // SAFETY: 同上，INT64 需要 int64_t*。
+            (self.api.symbols.get_property)(
+                self.handle,
+                cname.as_ptr(),
+                super::loader::format::INT64,
+                &mut out as *mut i64 as *mut c_void,
+            )
+        };
+        (rc >= 0).then_some(out)
+    }
+
+    /// 读一个 bool 属性（mpv 用 FLAG，底层是 int）。
+    pub fn get_flag(&self, name: &str) -> Option<bool> {
+        let cname = cstring(name).ok()?;
+        let mut out: c_int = 0;
+        let rc = unsafe {
+            // SAFETY: 同上，FLAG 需要 int*。
+            (self.api.symbols.get_property)(
+                self.handle,
+                cname.as_ptr(),
+                super::loader::format::FLAG,
+                &mut out as *mut c_int as *mut c_void,
+            )
+        };
+        (rc >= 0).then_some(out != 0)
+    }
+
+    /// 读一个字符串属性。mpv 分配的字符串在本函数内用 `mpv_free` 释放。
+    pub fn get_string(&self, name: &str) -> Option<String> {
+        let cname = cstring(name).ok()?;
+        // SAFETY: handle 非空；返回的 char* 由 mpv 拥有且必须 free，
+        // 下面立刻拷成 String 再 free，不留悬垂。
+        let p = unsafe { (self.api.symbols.get_property_string)(self.handle, cname.as_ptr()) };
+        if p.is_null() {
+            return None;
+        }
+        // SAFETY: p 非空且以 NUL 结尾（mpv 约定）。
+        let s = unsafe { std::ffi::CStr::from_ptr(p) }
+            .to_string_lossy()
+            .into_owned();
+        // SAFETY: p 确由本次 get_property_string 分配。
+        unsafe { (self.api.symbols.free)(p as *mut c_void) };
+        Some(s)
+    }
+
+    /// 设一个 double 属性。
+    pub fn set_f64(&self, name: &str, value: f64) -> Result<(), String> {
+        let cname = cstring(name)?;
+        let mut v = value;
+        let rc = unsafe {
+            // SAFETY: handle 非空；v 是栈上 double。
+            (self.api.symbols.set_property)(
+                self.handle,
+                cname.as_ptr(),
+                super::loader::format::DOUBLE,
+                &mut v as *mut f64 as *mut c_void,
+            )
+        };
+        if rc < 0 {
+            return Err(format!(
+                "设置 {name}={value} 失败：{}",
+                self.api.error_text(rc)
+            ));
+        }
+        Ok(())
+    }
+
+    /// 设一个 int64 属性。
+    pub fn set_i64(&self, name: &str, value: i64) -> Result<(), String> {
+        let cname = cstring(name)?;
+        let mut v = value;
+        let rc = unsafe {
+            // SAFETY: 同上。
+            (self.api.symbols.set_property)(
+                self.handle,
+                cname.as_ptr(),
+                super::loader::format::INT64,
+                &mut v as *mut i64 as *mut c_void,
+            )
+        };
+        if rc < 0 {
+            return Err(format!(
+                "设置 {name}={value} 失败：{}",
+                self.api.error_text(rc)
+            ));
+        }
+        Ok(())
+    }
+
+    /// 设一个 bool（FLAG，底层 int）。
+    pub fn set_flag(&self, name: &str, value: bool) -> Result<(), String> {
+        let cname = cstring(name)?;
+        let mut v: c_int = if value { 1 } else { 0 };
+        let rc = unsafe {
+            // SAFETY: 同上，FLAG 需要 int*。
+            (self.api.symbols.set_property)(
+                self.handle,
+                cname.as_ptr(),
+                super::loader::format::FLAG,
+                &mut v as *mut c_int as *mut c_void,
+            )
+        };
+        if rc < 0 {
+            return Err(format!(
+                "设置 {name}={value} 失败：{}",
+                self.api.error_text(rc)
+            ));
+        }
+        Ok(())
+    }
+
+    /// `mpv_get_time_us()`：mpv 内部单调递增时钟（微秒）。
+    pub fn time_us(&self) -> i64 {
+        // SAFETY: 无参查询。
+        unsafe { (self.api.symbols.get_time_us)(self.handle) }
     }
 
     /// 运行库是否可用（不构造引擎的廉价探测；渲染层用它决定是否走降级）。

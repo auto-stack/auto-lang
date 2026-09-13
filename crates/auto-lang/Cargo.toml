@@ -308,6 +308,13 @@ path = "tests/mpv_channel.rs"
 # 默认档与 CI 不编译（AC-20）。
 required-features = ["mpv-gpu"]
 
+[[test]]
+name = "mpv_contract"
+path = "tests/mpv_contract.rs"
+# PLAN-617 T-18: 受控媒体契约（§2.3）在 mpv 侧的实测回归——起播/seek/音量/上行事件。
+# 只需 `mpv-native`（不碰 GPU）。默认档与 CI 不编译（AC-20）。
+required-features = ["mpv-native"]
+
 # ============================================================================
 # Examples
 # ============================================================================

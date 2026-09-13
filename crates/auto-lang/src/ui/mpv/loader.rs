@@ -56,6 +56,30 @@ pub struct MpvEvent {
     pub data: *mut c_void,
 }
 
+/// `mpv_format`（client.h）——get/set_property 的数据类型标签。
+pub mod format {
+    pub const NONE: i32 = 0;
+    pub const STRING: i32 = 1;
+    pub const OSD_STRING: i32 = 2;
+    pub const FLAG: i32 = 3;
+    pub const INT64: i32 = 4;
+    pub const DOUBLE: i32 = 5;
+}
+
+/// `mpv_event_end_file.reason`（client.h）——区分「放完了」与「出错」。
+pub mod end_file_reason {
+    /// 正常播放到结尾。
+    pub const EOF: i32 = 0;
+    /// 被显式停止（如我们的 stop 命令）。
+    pub const STOP: i32 = 2;
+    /// core 关闭。
+    pub const QUIT: i32 = 3;
+    /// **加载/解码失败**——这是要回灌成 `onmediaerror` 的那一类。
+    pub const ERROR: i32 = 4;
+    /// 重定向（`--` 内部的 playlist 行为）。
+    pub const REDIRECT: i32 = 5;
+}
+
 /// `mpv_event_id` 的取值（client.h）——本计划用到的子集。
 pub mod event_id {
     pub const NONE: i32 = 0;
@@ -141,6 +165,16 @@ pub struct MpvSymbols {
         unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> c_int,
     /// `mpv_get_property(handle, name, mpv_format, void*)`。
     pub get_property: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_void) -> c_int,
+    /// `mpv_set_property(handle, name, mpv_format, const void*)`。
+    pub set_property: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_void) -> c_int,
+    /// `mpv_get_property_string(handle, name)` —— 返回 mpv 分配的字符串，
+    /// 调用方**必须**用 [`MpvSymbols::free`] 释放。
+    pub get_property_string:
+        unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_char,
+    /// `mpv_free(void*)` —— 释放 mpv 分配的返回值（只用于本模块拿到的指针）。
+    pub free: unsafe extern "C" fn(*mut c_void),
+    /// `mpv_get_time_us(handle)` —— 单调递增的墙钟微秒，用作 A/V 与帧节奏的时基。
+    pub get_time_us: unsafe extern "C" fn(*mut c_void) -> i64,
     pub command: unsafe extern "C" fn(*mut c_void, *const *const c_char) -> c_int,
     pub wait_event: unsafe extern "C" fn(*mut c_void, c_double) -> *mut MpvEvent,
     pub error_string: unsafe extern "C" fn(c_int) -> *const c_char,
@@ -205,6 +239,19 @@ impl MpvApi {
             get_property: sym!(
                 b"mpv_get_property\0",
                 unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_void) -> c_int
+            ),
+            set_property: sym!(
+                b"mpv_set_property\0",
+                unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_void) -> c_int
+            ),
+            get_property_string: sym!(
+                b"mpv_get_property_string\0",
+                unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_char
+            ),
+            free: sym!(b"mpv_free\0", unsafe extern "C" fn(*mut c_void)),
+            get_time_us: sym!(
+                b"mpv_get_time_us\0",
+                unsafe extern "C" fn(*mut c_void) -> i64
             ),
             command: sym!(
                 b"mpv_command\0",

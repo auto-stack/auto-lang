@@ -25,8 +25,10 @@
 //! - [`loader`] —— 运行库解析序 + 符号表（无状态）
 //! - [`frame`] —— 帧目标缓冲（把 mpv 的 64 字节对齐要求编码进类型）
 //! - [`engine`] —— 句柄与 render context 的生命周期（T-16 的核心）
+//! - [`contract`] —— §2.3 受控媒体契约在 mpv 侧的实现（T-18）
 //! - [`channel`]/[`present`] —— 帧上屏通道与全屏 blit（T-17，feature `mpv-gpu`）
 
+pub mod contract;
 pub mod engine;
 pub mod frame;
 pub mod loader;
@@ -38,6 +40,7 @@ pub mod channel;
 #[cfg(feature = "mpv-gpu")]
 pub mod present;
 
+pub use contract::{MediaContract, VideoContractDown, VideoContractEvent};
 pub use engine::{MpvEngine, MpvEventInfo, MpvUnavailable};
 pub use frame::FrameBuffer;
 pub use loader::{MpvApi, MpvLoadError, MpvSymbols};
