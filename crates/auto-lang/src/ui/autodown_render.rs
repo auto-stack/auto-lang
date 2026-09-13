@@ -186,7 +186,7 @@ fn block_key(b: &BlockNode) -> u64 {
 /// 流式增量渲染入口（调用方持有缓存；VM 侧按 widget 身份挂注册表）。
 /// PLAN-063 T-04d-2: 逐块锚槽（树委托修正后启用——update/mouse_interaction
 /// 须传 tree.children[0]，透明 container 链实证）。
-const ANCHOR_SLOTS_ENABLED: bool = false;
+const ANCHOR_SLOTS_ENABLED: bool = true;
 pub fn render_document_streamed<M: Clone + std::fmt::Debug + 'static>(
     cache: &mut StreamCache<M>,
     src: &str,
