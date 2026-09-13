@@ -8836,7 +8836,9 @@ fn panel_geometry(state: &crate::ui::session::DesktopSession) -> (f32, f32) {
     let viewport = state.host_viewport();
     let reserved = desktop_dock_edges(&state.desktop.config);
     let panel_h = (viewport.height - reserved.bottom).max(280.0);
-    (panel_h, (panel_h - 148.0).clamp(240.0, 800.0))
+    // 紧凑面板（用户复验 2026-09-13：满高卡+小顶缝感知仍为"贴顶"）——
+    // 列表上限 = 面板高 55%（≈4 条目 + 滚动），卡片恒为右下角紧凑卡。
+    (panel_h, (panel_h * 0.55).clamp(280.0, 560.0))
 }
 
 /// Plan 463 T4：执行 DesktopBus 命令序列（T1 报告 §5）。返回 true = 请求
