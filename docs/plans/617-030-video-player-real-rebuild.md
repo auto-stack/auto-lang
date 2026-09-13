@@ -5,7 +5,7 @@ feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-12
-plan_revision: 4                 # r4: VM/Rust 原生播放并入（libmpv DLL 运行时加载），T-15 门控 spike + T-16..T-20 仅 Go 后执行
+plan_revision: 5                 # r5: T-15 门控 spike 完成，裁定 Go（SW 通道）；T-16..T-20 转入可执行
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/ui, auto-man/api_gen]
-current_step: 2
+current_step: 3
 total_steps: 20
 ---
 
@@ -725,19 +725,23 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
        给它加 `flex-1` 无效。**改为由真实容器 `col` 承载 flex-1** 后正常。
     3. 进度条渲染到播控条**外面**——`h-14` 容不下「时间行 + 进度行」两层。
        改 `h-16` 后正常。
-  - **未完成的一项（诚实记录）**：**Vue 截图未取得**。in-app browser 在本次会话中
-    转为不可用——先是导航 `-3`，继而 `browser screenshot activity capture failed for
-    guest`，最终 `browser guest not attached (webview not ready)`；关闭重开标签仍在
-    `tabs.new()` 即失败。这是**环境级故障**（需重启 in-app browser 面板），非代码问题
-    （Vite 侧 200、`auto gen` 通过、VM 端同源渲染已出图）。
-    → 处置：T-02 以 **VM 双主题截图 + 断言 + gen 通过** 作为等效证据收尾；
-    **Vue 端截图并入 T-12 的双端验证一并补齐**（届时需浏览器可用）。
-    该缺口已登记，不当作已完成。
+  - **Vue 截图（一度阻塞，已补齐）**：会话中途 in-app browser 转为不可用——导航 `-3`
+    → `browser screenshot activity capture failed for guest` → `browser guest not
+    attached (webview not ready)`，`tabs.new()` 亦失败。浏览器恢复后已补拍，
+    现 **`after_t02_vue_{dark,light}.png` + `after_t02_vm_{dark,light}.png` 四张齐备，
+    双端布局一致**（顶栏 h-12 / 视口 / w-72 队列栏 / 播控条 h-16；队列行有真实
+    标题+大小；图标全部渲染；唯一 primary 为「暂停」；进度条位于播控条内）。
+    双端差异仅在视口内容：Vue 是 `<video>` 的黑色空画面（mock URL 离线）、
+    VM 是 fallback 空容器——两者都由 T-03 的降级面板接管。
+  - **操作纪律（本次新增，已写进 §10-15）**：dev server **不跨回合存活**
+    （后台任务随回合结束被回收：日志干净、无错误输出、进程消失）。
+    故改为**需要截图时在同一回合内临时起、用完即停**；若需长期供人访问，
+    用 `DETACHED_PROCESS` 脱离 shell 进程组启动（已验证 200 存活）。
 - **T-03 视口组件**：`viewport.at`（video 元素 + 覆盖层 + 错误/降级面板，去 `absolute`）。
   验证：Vue 截图；VM 截图显示降级面板而非纯黑（AC-11 前置）。
 - **T-04 队列栏与播控条**：`playlist.at` + `controls.at`（尺寸收敛、单一 primary、
   PLAN-412 §5 白名单内取材）。验证：Vue/VM 双端截图；AC-02 计数复核。
-- **T-05 媒体服务与生成路由**（含决策点）：新建 `media_service.rs`，
+- [x] **T-05 媒体服务与生成路由**（含决策点）：新建 `media_service.rs`，
   **照搬 `crates/auto-man/src/image_viewer.rs` 的递归收集 / 自然排序 / blake3 id /
   路径脱敏形状**（P-18），实现 `index_directory`（**递归**，不跟随 symlink）与
   `stream_response`（`id` 反查 + Range/206 + **惰性分块**，禁整文件读入）；
@@ -776,7 +780,7 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   的已知约束（`ui/iced/renderer.rs:2889-2898`）。**不实现**。
 - **T-14 债务登记**：把本计划自决或未解的取舍写入 `docs/plans/KNOWN-DEBT-AND-RISKS.md`。
 
-- **T-15 VM 原生播放门控 spike（Go/No-Go，决策件）**：在 `auto-lang` 内做一个最小 spike：
+- [x] **T-15 VM 原生播放门控 spike（Go/No-Go，决策件）**：在 `auto-lang` 内做一个最小 spike：
   用**已在依赖中的 `libloading`** 运行时加载 `libmpv-2.dll`，创建 mpv 句柄，
   用 render API 的**软件路径**把一帧 RGBA 送进 iced 视口，并测量
   ① 1080p 与 4K 下可达帧率、② 每帧拷贝耗时与进程内存、③ `Handle` 复用能否消除
@@ -785,6 +789,20 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   「SW / GL / sidecar / 放弃」四选一结论），落入本文件 §9 与
   `docs/design/autoui/030-video-player.md`。**不得**在没有实测数字的情况下给出 Go。
   验证：spike 代码可跑（可临时存在，Go 后转为 T-16 的基础）+ 决策件含数字。
+  [✅ 已完成 2026-09-12] **裁定 Go，通道 = SW**。全文见 **§9.14** 与
+  `docs/design/autoui/030-video-player.md` §4（已按实测重写）。
+  - 交付：`crates/auto-lang/examples/mpv_spike.rs`（`mpv`/`wgpu`/`selfcheck`/`all` 四个子命令，
+    **可跑**）+ `mpv-spike` 特性 + 可选依赖 `iced_wgpu`（零新增编译单元）。
+  - 关键数字：4K 端到端 **7.3 ms/帧**（mpv render 6.8 + 上屏 0.43），24 fps 预算占 17%；
+    实时播放实测媒体时钟 1080p **0.958×** / 4K **0.997×**；RSS 150 MB / 493 MB。
+  - **「Handle 复用消除闪烁」不可表达**：`iced_core::image::Id` 构造器私有 + 稳定 id 命中即
+    不再上传 + 大帧必走异步（`MAX_SYNC_SIZE` 2 MB）+ 4K 装不下 atlas（2048）
+    → 帧通道结构性绕开 iced 图像系统（三条证据见 §9.14）。
+  - **GL 已排除**（wgpu 不公开外部内存导入）；**sidecar 被 SW 支配**。
+  - 两处不利事实如实记录：SW 用不了零拷贝硬解（只能 `d3d11va-copy`）；通道 C 有极稀有长尾
+    （4K 120 帧中 1 帧 957 ms），处置归 T-17。
+  - **附带发现**：`mpv-spike` 特性下 lib 的 `--test` 目标会触发 rustc 1.98.0 ICE
+    （`ui/mcp_server.rs:1718`，与 spike 无关）→ spike 落 example 目标，T-16..T-20 照此避开。
 - **T-16 native 动态库加载器**（Go 后）：把 `crates/auto-lang/src/ffi.rs:62-145` 的
   `TODO(Plan-212)` 落地为真正的 `libloading` 动态库加载；实现 libmpv 句柄
   生命周期、render context 创建/释放顺序（含 `LC_NUMERIC=C` 等 mpv 已知要求）、
@@ -976,3 +994,426 @@ T-13/T-14 与主链并行。
     并首次引入一个可选的原生媒体依赖与一条全新的验证链），
     review 时若认为体量已越过单计划上限，可依 §9.4 的切分点把 VM 链拆为独立的
     617B（Vue 链保持 617A 不变、编号与内容均不改）。
+15. **已自决（T-01/T-02 实操所得）**：dev server 与该环境的后台任务生命周期。
+    实测：后台启动的 `npx vite` 在回合结束后被回收（日志无错误、进程消失、
+    `curl` 转 000）。**纪律**：① 需要 Vue 截图时在本回合内临时启动、验证后即停；
+    ② 需要长期供人访问时用 `DETACHED_PROCESS`（已实测可存活并返回 200）；
+    ③ **不要把「dev server 还开着」写进交付说明**，除非确认它是 detached 启动的。
+### 9.5 T-05/T-06 中途记录（2026-09-12，用户要求"先把播放列表改成真实的"）
+
+- **用户现场反馈**：`localhost:3040` 上"列表和播放的视频实际都是假的，播放不出来"。
+  属实——T-02 完成后队列仍是 T-01 时的 5 条 mock 字面量，`<video>` 也没有起播路径。
+- **T-05 的真实阻塞（重要，影响所有 `crates/**` 任务）**：worktree 内**无法构建 `auto`**。
+  `crates/auto-lang/Cargo.toml:110` 的 `autodown-core = { path = "../../../auto-down/autodown/packages/engine/rust" }`
+  从主检出可解析（`D:/autostack/auto-down/...` 存在），从 worktree 解析为
+  `.wt/lang-617/auto-down/...` → `os error 3`。`--config paths.*` 覆盖对 workspace 成员的
+  path dep 无效。**正统解法（已从 618 的组确认先例）**：在组目录放兄弟 worktree
+  `D:/autostack/.wt/lang-617/auto-down`（618 就是 `.wt/lang-618/auto-down`，**detached HEAD**，
+  无需新分支）。**红线约束**：不得用 junction/symlink（Plan 529 事故），必须真 worktree。
+  **代价**：worktree 各自建 target（实测 `.wt/lang-618` 5.9G、`.wt/os-012` 16G），
+  首次 `cargo build -p auto` 是全量，需独立时段完成。
+- **本轮采取的等效交付**：为不阻塞前端集成，先落 **dev harness** 替代 T-05 的服务端，
+  接口形状与 range 语义与 T-05 一致，便于日后原地替换：
+  - `tests/local-media-server.py`：`/scan`（递归白名单）+ `/stream/<id>`（**206** +
+    `Accept-Ranges` + `Content-Range`，惰性分块 256KB，**不整文件入内存**）+ `/health`；
+    端口 8099（**注**：8788 落在 Windows 排除段 8760-8859，绑定报 WinError 10013，
+    选端口必须先查 `netsh int ipv4 show excludedportrange protocol=tcp`）。
+  - `tests/gen_media_seed.py`：读 `/scan` 把真实条目烘进 `app.at`（**T-06 前端侧内容**，
+    T-05 落地后改为运行时扫描）。
+- **已实证**（非推断）：`/scan` 返回 **14 条**、`rel_dir` 分组 `["", "TV", "TV/Loki"]`、
+  真实大小（7.3 MB / 1.7 GB / 2.3 GB / 4.3 GB…）；`/stream/7` 对 2.2 GB 文件返回
+  **206 Partial Content + Content-Range: bytes 0-1023/2198645361**；浏览器实测
+  `<video>` 载入 `http://127.0.0.1:8099/stream/1`，`readyState=4`、`duration=49.429`、
+  **1920×1080**、无 error，且画面渲染出 `caelestia.mp4` 的真实首帧。
+- **本轮两个自伤缺陷（已修，记录以免重犯）**：
+  1. 用 Python `!r` 生成 `.at` 字符串 → 产出**单引号**，而 `.at` 把单引号当 **char 字面量**
+     → `Lexer(UnterminatedChar)`。必须在生成器里显式双引号 + 转义。
+  2. 写了 `"\u2014"` → `.at` **没有 `\u` 转义**，同样 `UnterminatedChar`。要用字面字符。
+  修好后 `auto gen` 通过（GEN_EXIT=0）。
+- **尚未完成（不当作已完成）**：
+  1. `src/back/db.at` 仍含 12 处编造 `resolution:`/`codec:`，**AC-17 仍红**（前端已不消费，
+     但未退役）。
+  2. `controls: true` 是 **interim**：用户可用浏览器原生控件起播，但应用自己的 OSD
+     仍是 mock（T-07/T-08 用受控契约替换）。
+  3. 布局小疵：视口内容偏下、页面出现左侧滚动条（`h-screen` + 内容溢出），待 T-03/T-04 收拾。
+  4. 头部默认值已改指真实首项，但"改后"截图未重拍（本轮截图是改前那一版）。
+
+### 9.6 VM 端播放能力实测确认（2026-09-12，用户提问后）
+
+- **问题**：Vue 端已能真实播放，VM 端能否播放？后台 ffmpeg 库适配做了没有？
+- **实测（非推断）**：`auto run -r vm --theme dark` + MCP 快照 + 截图，worktree @ `f34d0f944`。
+  - **AURA 渲染树里根本没有视频节点**：全树提及 video/image/surface/media 的 18 处，
+    全部是 lucide 图标的 `[Image]` 占位、`"Video Player"` 文案与一行
+    `onclick: .SelectVideo(item.id)`；**没有 `video` / `imagesurface` / media 节点**。
+  - **截图**：视口区**纯黑**。真实队列（14 条、真实文件名与大小）、头部
+    `caelestia / 7.3 MB`、Toast、`00:00 / 00:00` 时钟**都正常**——因为那些只是数据；
+    唯独**画面没有任何渲染路径**。
+  - 状态条仍写着「已暂停 · 点击视口或按空格播放」，但它**没有可播的东西**。
+  - 证据图：`tests/screenshots/vm_cannot_play_evidence.png`（本地 gitignored）。
+- **结论**：**VM 端不能播放视频**，且这不是本计划的缺陷——`video` 在 iced 侧仍为
+  `render_support.rs:307` 的 fallback、`element_coverage.rs:449` 的 `NotYet`（§4.2 P-11/P-16）。
+- **ffmpeg 适配进度：零。一行都没写。** 且需澄清一个前提——本计划**刻意没有选 ffmpeg FFI**
+  （§2.5 裁定）：它会要求全部 11 个 `ubuntu-latest` CI 任务装 `libav*-dev` + C 工具链，
+  而 A/V 同步、音频输出、HDR 色调映射 ffmpeg 都不提供、仍需自研。计划选的是
+  **libmpv DLL 运行时加载**（`libloading` 已在本仓依赖中，`ffi.rs:62-145` 已有预留位置）。
+- **VM 链各任务状态**：T-13（选型决策件）未做；**T-15（Go/No-Go 门控 spike）未开始**；
+  T-16..T-20 为条件任务、未开始。且 T-15 所需的 spike **也要编译 Rust**，
+  同样受 §9.5 记录的 worktree 构建阻塞（缺兄弟 `auto-down` worktree）影响。
+
+### 9.7 更正：为什么 UI demo 的构建会牵扯 auto-down（用户质疑后查证）
+
+- **用户质疑**：「视频播放器 demo 为什么会需要 auto-down 的 worktree？这俩应该没有依赖关系。」
+  **质疑成立**：030-video-player 自身**零** autodown/markdown 用法（`grep` 为空）。
+- **真实链条**（逐环实证）：
+  1. 要落 T-05/T-07 必须构建 **`auto` 二进制**；
+  2. `crates/auto/Cargo.toml:26` → `default = ["ui-iced", "python", "autodown"]`
+     —— **autodown 在 auto 的默认特性里**（Plan 040 裁定①）；
+  3. `autodown = ["auto-lang/autodown"]` → `crates/auto-lang/Cargo.toml:110`
+     `autodown-core = { path = "../../../auto-down/autodown/packages/engine/rust", optional = true }`；
+  4. 该相对路径从主检出解析为 `D:/autostack/auto-down/...`（存在），
+     从 worktree 解析为 `.wt/lang-617/auto-down/...`（不存在）→
+     `failed to load manifest for dependency autodown-core`。
+- **更正我先前的两处不准确表述**：
+  1. 我上一轮说这份依赖"从没被启用"——**错**。`auto` 的默认特性就启用它。
+  2. 我说"cargo 只是要读 manifest"——方向对但不够准：实测（最小复现）
+     `cargo metadata --no-deps` **通过**、`cargo metadata` 与 `cargo build` **失败**，
+     即失败发生在 **resolve 阶段**；且 `--no-default-features` **也不能规避**
+     （EXIT=101，同样报错），因为 workspace 解析要覆盖所有成员的可能特性选择。
+     **结论：无法用特性开关绕过。**
+- **根因定性**：这是 **Plan 040 的假设 × Plan 529 的布局**之间的缺口，不是 demo 的需求。
+  `crates/auto/Cargo.toml` 自己写着：「autodown 提为 default——auto-down 是旗舰消费方
+  （**path 依赖恒在本机检出**）」——即"构建发生在主检出"这一前提。
+  Plan 529 引入 worktree 布局后，该前提在工作树内不成立。
+- **既有解法（仓库现状）**：`auto-down` 的 worktree 列表显示
+  **618 / os-012 / os-013 / auto-down-063 全部建了兄弟 worktree**，
+  其中 618 用 **detached HEAD**（无需新分支）。故这是仓库的既有惯例解法。
+  **红线**：只能用真 worktree，不得用 junction/symlink（Plan 529 事故）。
+- **三条可选路径**（需用户裁定）：
+  (a) **建兄弟 worktree**（既有惯例；成本 1.2G 检出 + 首次全量构建）；
+  (b) **按 Plan 040 的原假设走**：Rust 侧改动在主检出构建与验证
+      （与"实现只在 worktree"的纪律冲突，但与该 plan 的明文前提一致）；
+  (c) **根治**：让跨仓 path 依赖在两种布局下都可解析（单独立项，属仓库基建）。
+
+### 9.8 裁定：Rust 侧改走主检出（方案 b）—— 用户 2026-09-12 决定
+
+- **用户裁定**：采用 §9.7 的 **(b)** —— `crates/**` 的改动在主检出**编写、构建与验证**；
+  `examples/**` 的改动继续在 worktree `D:/autostack/.wt/lang-617/auto-lang`。
+  **这是对 AGENTS.md「实现只在 worktree」纪律的一次显式、经批准的偏离**，
+  理由是 Plan 040 的明文前提（"path 依赖恒在本机检出" = 构建发生在主检出）
+  与 Plan 529 的 worktree 布局冲突，而该冲突的根治（§9.7 (c)）属独立基建立项。
+- **可行性已实测**：
+  1. 主检出 `cargo metadata` **EXIT=0**（worktree 里同一条命令失败的 resolve 步骤在此通过）；
+  2. `cargo build -p auto` 增量 **33.17s** 完成（`Finished dev profile`）。
+     → **这把 (b) 的成本从"首次全量构建（数十分钟量级）"降到"增量几十秒~数分钟"**，
+     是本决策成立的关键数据；worktree 方案则无法复用该缓存。
+- **实测踩到的坑（务必记住，否则每次构建都会失败）**：
+  `auto run -r vm` 被 `proc.terminate()` 终止时会**留下孤儿子进程**，
+  它持续占用 `target/debug/auto.exe`，导致下一次 `cargo build -p auto` 报
+  `failed to remove file ...\target\debug\auto.exe / 拒绝访问 (os error 5)`。
+  **构建前必须先 `tasklist | grep auto.exe` 并 `taskkill //F //PID <pid>`。**
+  （本次即因此先失败一次，杀掉 PID 25496 后 33s 通过。）
+- **落地方式**：Rust 改动直接落在主检出（即 master 工作树），随本计划一并提交；
+  worktree 分支 `plan-617-dev` 保留 examples 侧改动；折入时两者在 master 汇合。
+
+### 9.9 T-05 完成（2026-09-12，主检出 @ `2763657fb`）
+
+- **交付**：
+  - `crates/auto-lang/src/ui/media_service.rs`（新，429 行）：`index_directory`
+    （**递归**、扩展名白名单、**不跟随 symlink/junction**、MAX_DEPTH=32 兜底）、
+    自然排序（`S01E02` 在 `S01E10` 前）、`blake3(relative_path)` 令牌 id
+    （绝对路径不出后端）、`resolve_root`（explicit → `AUTO_MEDIA_ROOT`）、
+    `parse_range` / `StreamPlan`（200/206/416 语义）、`content_type`、`entry_path`。
+  - `crates/auto-man/src/api_gen.rs`：新增 `MEDIA_SERVICE_HANDLERS` 常量并发出
+    `/api/media/scan`、`/api/media/stream/:id`；生成的 back crate 加
+    `tokio-util`（`io` feature）用于 `ReaderStream` **惰性分块 256KB**；
+    索引用 `std::sync::OnceLock` 每进程建一次（**零新增依赖**）。
+- **验证（全部实机，非推断）**：
+  - `cargo t media_service` → **7 passed / 0 failed**（递归+白名单、自然序+rel_dir、
+    令牌不泄路径、缺根报错不 panic、Range 全表面、状态/长度、content-type）。
+  - `cargo test -p auto-man --lib` → **285 passed / 0 failed**（生成器未回归）。
+  - 生成后端在主检出构建通过（54s 首建 / 2.8s 增量）并实跑：
+    `/api/media/scan` → **14 条**、`rel_dir = ['', 'TV', 'TV/Loki']`、
+    最大 `Loki.S02E06…mkv` = **5,751,764,883 B**；
+    `Range: bytes=0-1023` → **206** + `content-type: video/x-matroska` +
+    `accept-ranges: bytes` + **`content-range: bytes 0-1023/5751764883`**；
+    越界 → **416**；未知 id → **404**。
+- **顺带发现的仓库既有缺陷（重要）**：生成的 back crate 解析 **axum 0.7.9**
+  （`examples/rust-workspace` 是独立 workspace，有自己的锁；主仓是 0.8.9）。
+  axum 0.7 的参数语法是 **`:id`**，写成 `{id}` 会被当**字面量**且**静默 404**。
+  实测对照：静态路由 200 / `/api/media/stream/{id}` 404 / `/api/media/stream/:id` 200。
+  → **既有的 `/api/__auto/media/{id}/{revision}` 路由就是这个 bug，一直 404**
+  （即 Plan 547 的图像 rendition URI 在该形状下取不到文件）。本计划已在自己的路由上
+  改用 `:id` 并在代码注释里标注；**修既有那条路由属独立事项**，登记为债务候选。
+- **T-05 决策点落定**：
+  1. route 发出条件：**无条件发出**（`generate_main_rs` 签名里没有 root_dir，
+     按前端源码判断需要改签名与全部调用点）。代价是多 2 条惰性路由 + 1 行依赖；
+     **登记为债务**（待出现第二个媒体应用时再做按需门控）。
+  2. `tower-http` **不加 `fs` feature**——改用 `tokio-util::io::ReaderStream`，
+     语义更直白且不牵动既有依赖的 feature。
+  3. **不直接复用 `image_viewer.rs`**（它在 `auto-man`，生成的后端 crate 够不着；
+     且它面向 `img` 标签）。改为在 `auto-lang` 内**镜像其形状**实现。
+- **尚未接线**：前端此刻仍指向 Python harness（8099）。切到真后端 =
+  把 `gen_media_seed.py` 的产物换成运行时 `Http.get("/api/media/scan")`，
+  并让 `video_url` 用 `id` 拼 `/api/media/stream/<id>`（属 T-06 收尾）。
+
+### 9.10 裁定回退：恢复 worktree-only（用户 2026-09-12 决定，取代 §9.8）
+
+- **用户裁定**：「我们还是用独立的 worktree 去做修改吧」——**取代 §9.8 的 (b)**。
+  理由（§9.10 的实测观察支撑）：主检出正在被**多计划共用**，
+  未提交改动会产生提交裹挟风险。
+- **落地：按 auto-plan-work 的「Dependency worktree | Same group」建兄弟 worktree**
+  （§9.7 方案 (a)，仓库既有惯例）：
+  - `git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-617/auto-down --detach`
+    （**detached**，无需新分支——`auto-down-dev` 已被 `.wt/auto-down-063` 占用；
+    照 618 先例）；
+  - **关键验证**：worktree 内 `cargo metadata` **EXIT=0** —— §9.5/§9.7 记录的
+    `autodown-core` 跨仓 path 解析失败**已消除**。即 worktree 现在可自洽构建。
+  - **红线遵守**：用的是真 worktree，**没有**用 junction/symlink（Plan 529 事故）。
+- **与已提交工作的关系**：T-05 的 Rust 改动已在 master 提交（`2763657fb`），
+  `git merge master` 已并入 `plan-617-dev`，故 worktree 同时具备示例侧（T-01/02/06）
+  与 Rust 侧（T-05）改动。**此后所有 `crates/**` 改动一律在本 worktree 内编写与构建。**
+- **构建**：worktree 无 target 目录 → 首次为**全量构建**。已以 `DETACHED_PROCESS`
+  脱离 shell 进程组启动（`cargo build -p auto`，pid/日志见会话记录），
+  使其**跨回合存活**（本环境后台 Bash 任务会随回合结束被回收，§10-15）。
+
+### 9.11 观察：主检出已被多计划共用（本次实测，非推测）
+
+- 会话开始时的系统快照显示 `crates/` 下**干净**；会话进行中出现 **19 个脏文件**
+  （`ui/iced/renderer.rs`、`ui/terminal/*`、`vm/native*.rs`、`ui_gen/rust.rs`、
+  `terminal_pixel_*.png` 金标、`auto-man/src/rust_ui.rs` 等），时间戳
+  13:01/13:03/13:24/13:57 均落在本会话窗口内，且有**新增测试文件**
+  `terminal_input_tests.rs` —— 属实质代码改动，非构建产物。
+- 这些改动**不在任何 worktree 中**（`.wt/os-012`、`.wt/os-013` 对应文件干净）。
+- **推断（非证据）**：很可能其它计划也撞上了同一个「worktree 无法构建」的限制，
+  因而同样采取了「Rust 改动落主检出」的变通。**能证明的是"有人直接改了主检出且不在
+  worktree 里"，不能证明是谁或动机。**
+- **风险**：多写者向同一主检出写未提交改动 → **提交裹挟**；枢纽文件
+  （`ui/mod.rs`、`api_gen.rs`、`ui_gen/vue.rs`）尤甚。
+  **本计划纪律**：提交一律**逐文件显式 add** 并先 `git diff` 确认只含本计划内容，
+  **禁用 `git add -A`**。
+- **建议（供决策，不在本计划内实施）**：§9.7 (c) 根治跨仓 path 依赖的价值因此上升；
+  属仓库基建，跨所有计划的开发方式，应单独立项。
+
+### 9.12 状态对账与账目补齐（2026-09-12，用户询问"现在什么状态"后）
+
+- **发现的账目偏差**：`current_step` 与实际不符——§9.5/§9.9/§9.10 的散文记录里
+  T-05 早已完成，但任务勾选未翻转。**本轮补齐：T-05 标 [x]，`current_step: 2 → 3`**
+  （已完整交付的：T-01、T-02、T-05；T-06 为进行中，见下）。
+- **构建阻塞确认解除（决定性验证）**：worktree 内
+  `target/debug/auto.exe --version` → `auto 0.1.0+v0.4.2-402-g31655b73e`，
+  **hash 与 worktree HEAD 一致**，证明该二进制确由 worktree 源码构建。
+  → 「worktree 无法构建」已终结，`crates/**` 的活此后全部在 worktree 内闭环。
+  （副作用记录：本人脚本的 `open(log,"w")` 与 cmd `>>` 抢同一文件导致
+  `BUILD_OK` 标记未写成——**仅在日志里留下 2 行 `另一个程序正在使用此文件`，
+  构建本身成功**。下不为例：完成标记改写到**另一个**文件。）
+- **T-06 实际状态：进行中（半成品，勿当完成）**：
+  - 已做：递归扫描出的 **14 条真实条目**（真实文件名/大小/相对目录）已进队列，
+    浏览器实测可播放（`readyState=4`、`duration=49.429`、1920×1080）。
+  - **未做**：`app.at` 里仍有 **15 处 `127.0.0.1:8099`** —— 队列是
+    `tests/gen_media_seed.py` 把扫描结果**烘死**进源码的，**前端仍挂在 Python
+    harness 上**；T-05 已验证的 Rust 后端（206/`content-range`）**尚未被前端使用**；
+    `db.at` 未退役（AC-17 仍红）。
+  - → 收尾 = 运行时 `Http.get` 取列表 + `video_url` 由后端给出 + 删两个 Python 脚本。
+- **并发态势更新**：主检出 `crates/` 脏文件 **19 → 22**，且主检出 `auto.exe`
+  在 **17:15** 被重写 —— **另一 agent 此刻正在主检出构建**。本人严守逐文件 add。
+- **服务全部离线**（:3040 Vite / :8099 harness / :18080 后端），用户所看 demo 未运行。
+
+### 9.13 阶段 1 折入（2026-09-12，用户要求；master `3546f9567`）
+
+- **折入内容**：`plan-617-dev` → master（`--no-ff`，6 文件 / +513 −614）。
+  覆盖 T-01（基线实勘）、T-02（扁平清爽骨架）、T-05（媒体服务与生成路由）、
+  T-06（前端运行时扫描队列，删 Python 脚手架）。
+- **折入前门禁**：worktree 内 `cargo t --no-fail-fast`。
+  **存在较多红，但经判定均为预存，非本分支引入**：
+  1. `plan492_m4_tests::…c2_param_msg_declaration_both_tracks_alive`
+     —— **以还原法隔离证明**：把本分支唯一的 `vue.rs` 改动 `git checkout master --` 还原后
+     **该测试仍红**；在主检出（无本分支改动）亦红。
+  2. `ui::app_registry::tests::scan_examples_ui_curation_set`
+     —— 断言 `left` 含 `031-image-viewer` 而期望集不含；系 commit `9c6c27e86`
+     （031-image-viewer 进桌面）**未同步该清单**的既有漂移。
+  3. 其余红域（`ui::layout::tests::*` 12+、`aura_view_builder`、`desktop_protocol::coverage`、
+     `lucide_icon_coverage_manifest_all_hit`、`ffi_dual_019_dep_layout_invariants`）
+     与本分支改动**领域不相交**（本分支只动：handler/Init 的 async 生成、媒体路由、
+     新建 media_service）。
+- **诚实标注的局限**：**未能建立「相对 master 的零新增红」这条硬基线**——因为
+  主检出同时被另一 agent 持有 38 个未提交文件，取不到干净基线。故本次折入的结论是
+  「已检查的红均可解释为预存」，**不等同于**已证明零新增红。
+  （计划仍为 `executing`，非终态；最终 review 需在干净基线上重跑门禁。）
+- **并发安全**：折入前后主检出的 38 个脏文件**始终未被我提交或修改**；
+  合并文件与它们**零交集**（折入前已 `comm -12` 核对）。本计划提交一律逐文件显式 `add`。
+- **worktree 保留**：`D:/autostack/.wt/lang-617/auto-lang`（分支 `plan-617-dev`）
+  与兄弟 `D:/autostack/.wt/lang-617/auto-down` **继续保留**用于后续阶段
+  （T-03/04/07..15 与 VM 线）。折入后分支已落后 master，后续开工前需再 `merge master`。
+- **下一阶段焦点（用户指定）**：**VM 版能否启动并播放** → T-15 门控 spike
+  （libmpv DLL 运行时加载；Go/No-Go 必须带实测数字）。
+
+### 9.14 T-15 门控 spike 完成——**裁定 Go**（2026-09-12，实测件）
+
+- **结论：Go，通道 = SW（libmpv 软件渲染后端 + 持久 staging buffer → 自有 `wgpu::Texture`）。**
+  完整决策件（含四选一理由与风险）已写入
+  [`docs/design/autoui/030-video-player.md`](../design/autoui/030-video-player.md) §4。
+  **T-16..T-20 可以开工。**
+- **取得 libmpv（本机原本一无所有）**：下载
+  `shinchiro/mpv-winbuild-cmake` 的 `mpv-dev-x86_64-20260903-git-69e63f425a.7z`
+  （sha256 `fac135c6…80faef`），用 `bsdtar`（libarchive 支持 7z，本机无 7z CLI）解出
+  `libmpv-2.dll`（120 MB，ffmpeg 静态内链）+ `include/` + `libmpv.dll.a`。
+  **不入库、CI 不依赖**（运行时依赖而非构建期依赖）；解析序 = `AUTO_MPV_LIB` → exe 同目录 → 系统路径。
+- **AC-18 的实测数字**（环境：Win11 / RTX 4060 Ti / iced 实选 Vulkan；样本 1080p x264 与 4K HEVC HDR；
+  两个探针**互相独立**：Python ctypes 求实时能力，Rust spike 求每帧代价，同一份 DLL）：
+
+  | 指标 | 1080p | 4K HEVC HDR |
+  |---|---|---|
+  | mpv `render()` per-frame（`ADVANCED_CONTROL` 生产形状） | **0.60–0.68 ms** (p95 0.74–0.95) | **6.74–6.88 ms** (p95 10.4–10.7) |
+  | 吞吐上界（untimed） | 869–989 fps | 90–93 fps |
+  | **实时播放**（`ao=null` 音频时钟） | 23.3 fps / 内容 24 fps，时钟 **0.958×** | 23.6 fps / 内容 24 fps，时钟 **0.997×** |
+  | 进程 RSS（实时） | 150 MB | 493 MB（纯软解峰值 1042 MB） |
+  | CPU | 5.6 ms/帧 | 54.6 ms/帧（`d3d11va-copy`） |
+  | 上屏每帧代价（**采用通道 C**） | **0.28–0.29 ms** p95 0.76–0.82 | **0.41–0.44 ms** p95 0.86–0.98 |
+  | 对照：通道 A 持久纹理 + `write_texture` | 0.67–1.02 ms | 3.87–4.17 ms |
+  | 对照：通道 B 每帧新建纹理（= iced `Handle` 等价） | 1.22–1.27 ms，离群 2/120 | 4.28–4.36 ms，p95 **18.9–19.5 ms**，离群 **8/120** |
+
+  **端到端（4K）≈ 6.8 + 0.43 = 7.3 ms/帧**，占 24 fps 预算 **17%**、60 fps 预算 **44%**。
+  **`--release` 复核**（排除「debug 把 wgpu 代价算高了」的质疑）：门控 A 1080p 0.66 / 4K 6.67 ms
+  （与 debug 一致）；门控 B 通道 C 更好——**0.132 ms @1080p / 0.244 ms @4K**，
+  `map_async+unmap` 0.043 ms；**排序不变**（重活都在预编译的 libmpv 与 GPU 驱动里，不在我们的
+  Rust 代码里）。但**通道 C 的长尾在 release 下同样出现**（4K max 951 ms）⇒ 真实行为，
+  非 debug 产物，T-17 必须处置。
+  证据日志：`t15_gate_debug.log` / `t15_gate_release.log`（本地，含完整输出）。
+- **「Handle 复用能否消除闪烁」的答案是：该问法本身不成立**（这是本轮最有价值的架构发现）。
+  三条源码级证据：① `iced_core::image::Id` 的构造器与字段**全私有**，仓外无法构造
+  「同 id、不同像素」的 Handle；② 每帧新 id 必走 `load_image` 未命中，而同 id 命中即
+  **不再上传**（`cache.rs:94-101`）——两条路都不通；③ 大帧必然走异步慢路径
+  （`MAX_SYNC_SIZE = 2 MB` 而真实帧 8.29/33.18 MB）+ 4K 装不下 atlas（`MAX_SIZE = 2048`）。
+  故帧通道**结构性绕开** iced 的图像系统（自持纹理 + `iced_widget::shader::Program`），
+  闪烁成因随之被移除。**本仓既有的 `cached_media_handle`（P547）对静态图有效，对帧流
+  必然不命中**——那条修复不能直接搬到视频上。
+- **GL 路径已评估并排除**（不是「难」而是「在本仓架构下不可达」）：mpv 的 GL 后端要一个
+  当前 GL 上下文，而 iced 走 Vulkan；两 API 共享纹理需 `VK_KHR_external_memory_win32` +
+  `GL_EXT_memory_object_win32`，而 **wgpu 不公开外部内存导入**（只有 `wgpu-hal` 层
+  `create_texture_from_hal`/`as_hal` 这类 unsafe 接口），且即便写通仍慢于已实测的 SW 通道。
+  sidecar 则被 SW 全面支配（多一次跨进程 33 MB/帧拷贝 + A/V 同步与音频输出要自研）。
+- **两处不利于 SW 的实测事实（如实记录）**：① SW 后端**用不了零拷贝硬解**
+  （`hwdec=d3d11va` 实测 `hwdec-current: no`，只能用 `d3d11va-copy` 回读），4K 纯软解 RSS 达 ~1 GB；
+  ② 通道 C 有**极稀有长尾**（4K 120 帧中 1 帧 957 ms、1080p 中 3 帧 242 ms），T-17 须以 2–3 槽
+  staging 环 + 单帧丢弃处置，长尾定位是 T-17 的第一件事。
+- **一个必须记住的构建期发现（rustc ICE）**：打开 `mpv-spike` 特性后编译 **lib 的 `--test`
+  目标**会触发 rustc 1.98.0 的 ICE（`collect_and_partition_mono_items`，查询栈指向
+  `ui/mcp_server.rs:1718` 的 iterator chain，**与 spike 代码无关**）；同特性下 `--lib`（rlib）
+  与 `example` 目标均正常。故 spike 落为
+  `[[example]] name = "mpv_spike" required-features = ["mpv-spike"]`（默认档/CI 不编译）。
+  **T-16..T-20 的测试须照此避开 lib 测试目标。**
+- **交付物（worktree 内，`crates/auto-lang`）**：
+  `examples/mpv_spike.rs`（可跑：`mpv` / `wgpu` / `selfcheck` / `all` 四个子命令；
+  `selfcheck` 证明缺库走 `Err` 而非 abort，即 AC-20 的降级入口）；
+  `Cargo.toml` 新增 `mpv-spike` 特性 + 可选依赖 `iced_wgpu`（**零新增编译单元**——它本就是
+  iced 默认渲染器的依赖）与 `[[example]]` 声明。
+- **交付物（worktree 内，`scripts/mpv_spike/`）**：AC-18 的「实时播放能力」与「进程 RSS」
+  两类数字来自 Python ctypes 探针（Rust example 只覆盖每帧渲染/上屏代价），
+  已一并收编入仓以保证可复现：`sw_probe.py`（实时/逐帧/内存，口径见其 README）、
+  `audio_probe.py`（Dolby 音轨实测）、`README.md`（前置/用法/口径说明）。
+  DLL 路径经 `AUTO_MPV_LIB` 覆盖；**`libmpv-2.dll` 本身不入库、CI 不依赖**。
+- **数字对机器负载敏感（如实记录）**：上表取自相对空闲时段。有并发负载时复测同一 4K 场景，
+  `render()` p50 5.7→12.8 ms、CPU 54.6→97.5 ms/帧，**媒体时钟仍 0.999×** ⇒
+  「能否实时」这一判定本身有相当余量。
+- **降级路径已实证**（AC-20 前置）：`Library::new` 对不存在的库返回 `Err`（`LoadLibraryExW failed`），
+  解析不出即返回 `None` 交回调用方走今日的诚实占位，**不 panic、不黑屏**。
+- **Vue 端那条「解不了」的音轨在 VM 侧实测可解**（这原是用户要求 VM 播放的主要动机）：
+  单独探针实测（`ao=null`，只读 mpv 自己报告的属性）`Loki.S02E01…mkv` 得到
+  **`audio-codec-name: eac3`**、`audio-params: {"samplerate":48000,"channel-count":6,
+  "channels":"5.1(side)","format":"floatp"}`、`audio-bitrate: 768000`、`aid: 1`、
+  AUDIO_RECONFIG 事件 3 次 —— **即 Chromium 判为 video-only 的那条 Dolby 音轨，
+  libmpv 内链的 ffmpeg 正常解码**。**Atmos 对象元数据如预期坍缩为 5.1**
+  （实测确认，非推断）；HDR 色调映射由 mpv 承担（未单独实测质量，T-18 验收时看画面）。
+  音频输出 mpv 自带（`ao` 为本机设备），故 **T-18 不引入 `cpal`**。
+- outcome: **Go**；next: **T-16**（native 动态库加载器，落 `ffi.rs:62-145` 的 `TODO(Plan-212)`）。
+- **门禁 `cargo t` 实跑（worktree @ `b621edda0`）**：`4812 tests run: 4791 passed, 21 failed,
+  109 skipped`（47.7s）。**21 项红全部可解释为预存/环境，且本改动不可能影响它们**——
+  **完整代码 diff vs master 只有两行式内容**：`Cargo.toml`（+20 行：可选依赖 `iced_wgpu`、
+  `mpv-spike` 特性、`[[example]]` 声明）与**新增的** `examples/mpv_spike.rs`；
+  **`crates/auto-lang/src/**` 零改动**（`git diff master --stat -- crates/auto-lang/src/` 为空），
+  `Cargo.lock` 未变动（→ 既有特性的解析结果逐字节不变）。故 lib 测试目标的行为不可能改变。
+  逐项归因：
+  1. `plan492_m4_tests::…c2_param_msg_declaration_both_tracks_alive` —— §9.13 已用**还原法**
+     隔离证明为预存；
+  2. `ui::app_registry::tests::scan_examples_ui_curation_set` —— 实测输出 `left` 含
+     `031-image-viewer`、期望集不含，与 §9.13 记录的 `9c6c27e86` 清单漂移**逐字一致**；
+  3. `ui::layout::tests::*`（12 项）与 `ui::desktop_protocol::coverage::tests::…`、
+     `ui::aura_view_builder::plan055_…`、`lucide_icon_coverage_manifest_all_hit`、
+     `ffi_dual_019_dep_layout_invariants` —— 均在 §9.13 已列的**红域**内（桌面布局/协议域），
+     与本计划的改动领域不相交；
+  4. **`ui::iced::renderer::tests::external_config_poll_hot_apply_loopsafe`（§9.13 未逐条列出的一项）
+     经实测定为并发 flake，非本改动引入**：该测试读写**真实用户配置路径**
+     （`desktop_config::desktop_config_path()`），全档并发时被其它进程写回
+     （实测失败值是 `theme_source` 从测试写入的 `"manual"` 变回 `"system"`）；
+     **隔离复跑 3/3 全绿**。与 §9.11 记录的「主检出被多计划共用」同一成因。
+  - **诚实标注的局限（与 §9.13 同）**：主检出仍被另一 agent 持有未提交改动，**无法取到干净基线**，
+    故本次结论是「已检查的红均可解释、且改动面为零源代码」，
+    **不等同于**已证明「相对干净基线零新增红」。
+
+## 11. 新会话开工须知（Handoff，2026-09-12）> 本会话很长了，以下是把「不读完整 §0–§10 也能安全接手」所需的操作要点集中在此。
+> 一句话状态：**Vue 端已可用（真实队列 + 真实播放）；VM 端仍完全不能播放（无渲染路径）。**
+> 用户指定的下一焦点：**VM 版能否启动并播放** → **T-15**。
+
+### A. worktree 布局（关键，勿重新踩坑）
+- 实现 worktree：`D:/autostack/.wt/lang-617/auto-lang`，分支 `plan-617-dev`。
+- **兄弟依赖 worktree：`D:/autostack/.wt/lang-617/auto-down`（detached HEAD）——必须存在。**
+  缺它则 worktree 内 `cargo` **连 resolve 都过不去**（`crates/auto-lang/Cargo.toml:110` 的
+  `autodown-core` 跨仓 path 依赖解析失败）。修复命令：
+  `git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-617/auto-down --detach`
+- **红线**：不得用 junction/symlink 代替（Plan 529 事故）；必须是真 worktree。
+- 折入（§9.13）后 `plan-617-dev` 落后 master → **开工前先 `git merge master`**。
+
+### B. 构建
+- worktree 内**可自洽构建**（已验证 `auto --version` 的 hash 与 worktree HEAD 一致）；增量 **5–13 秒**。
+- **构建前必清孤儿进程**：`auto run -r vm` 被 `terminate()` 时会留子进程占住
+  `target/debug/auto.exe`，导致 `failed to remove file … os error 5`。
+  先 `tasklist | grep auto.exe` → `taskkill //F //PID <pid>`。
+- 门禁 `cargo t`。**注意基线是红的且不干净**（§9.13：无法取到干净基线，因为主检出被并发占用）。
+
+### C. 运行
+- `AUTO_MEDIA_ROOT='E:\Video' auto run` → 真后端 :8330 + Vite :3030。
+- **`pac.at media_root` 尚未接通**，只认该环境变量（债务）；未设时 `/api/media/scan`
+  返回 `[]`（诚实空态）而非报错。
+- 后台任务不跨回合存活（§10-15）：要长期可访问须 `DETACHED_PROCESS` 启动。
+
+### D. 提交纪律（重要）
+- **主检出有另一个 agent 在并发写**（本会话期间脏文件 19→41 且仍在涨）。
+- **一律逐文件显式 `git add <path>`；禁用 `git add -A`**；提交前 `git diff` 确认仅含本计划内容。
+- 计划书（勾选/frontmatter/§9.x）**留在 master 主检出**，不要只改 worktree 的副本。
+
+### E. 任务状态
+- **已完成并折入 master `3546f9567`**：T-01、T-02、T-05、T-06。
+- **已完成（worktree 内待折入）**：**T-15（门控 spike，裁定 Go）**——见 §9.14。
+- **未完成**：T-03（`viewport.at` + VM 有信息降级面板）、T-04、T-07（受控媒体契约）、
+  T-08、T-09、T-10、T-11、T-12、T-13、T-14。
+- **VM 链（Go 之后可以开工）**：**T-16 → T-17 → T-18 → T-19 → T-20**。
+
+### F. T-15 已完成的门控定义与结论（全文见 §9.14 与 design doc §4）
+- 路径与通道：**libmpv DLL 运行时加载；通道 = SW**（软件渲染后端 + 持久 staging buffer →
+  自有 `wgpu::Texture`）。**明确不选 ffmpeg FFI**（理由见 §2.5），**GL 已评估排除**
+  （wgpu 不公开外部内存导入），**sidecar 被 SW 支配**。
+- **已实测（AC-18 满足）**：4K 端到端 7.3 ms/帧（24 fps 预算 17%）；实时播放媒体时钟
+  1080p 0.958× / 4K 0.997×；RSS 150 MB / 493 MB；每帧上屏代价 0.28 ms @1080p / 0.43 ms @4K。
+- **`Handle` 复用问法不成立**（三条源码级证据）→ 帧通道必须绕开 iced 图像系统。
+- **T-16 的起点**：spike 的解析序与 `selfcheck` 降级路径已可复用；
+  `crates/auto-lang/src/ffi.rs:62-145` 的 `TODO(Plan-212)` 是落地位。
+- **T-17 的第一件事**：定位并处置通道 C 的稀有长尾（4K 120 帧中 1 帧 957 ms），
+  用 2–3 槽 staging 环（映射中的缓冲不可提交）+ 单帧丢弃。
+- **spike 复现**：`AUTO_MPV_LIB=<...>\libmpv-2.dll cargo run -p auto-lang
+  --features mpv-spike --example mpv_spike -- all`；**DLL 不入库**，需按 design doc §4.8 自取。
+
+### G. 已知坑与债务（细节见对应 §）
+- **axum 参数语法**：生成的 back crate 解析 **axum 0.7**（`examples/rust-workspace` 是独立
+  workspace，有自己的锁）。参数是 **`:id`**，写 `{id}` 会被当字面量**静默 404**；
+  **既有 `/api/__auto/media/{id}/{revision}` 路由正是此 bug**（§9.9）。
+- `NextVideo`/`PrevVideo` **仍是 mock**（10 处硬编码假 URL）→ 属 T-08。
+- `db.at` 未退役 → **AC-17 仍红**。
+- `controls: true` 是 **interim**；应用自身 OSD 尚不驱动播放（T-07/T-08）。
+- 媒体路由**无条件发出**（未按需门控，登记为债务）。
+- 主检出被多计划共用（§9.11）：建议单独立项根治跨仓依赖，或把"新建 worktree 时同时建
+  兄弟 `auto-down`"标准化。
+
+### H. 本会话结束时的残留（接手前先看清）
+- `:8330` 后端可能仍在运行（`auto run` 的残留子进程）；`:3030` Vite 已随回合结束被回收。
+- worktree 可能有 1 个未提交文件（`auto gen` 产物 / rust-workspace 改动）——
+  **开工前先 `git status` 并处理**，不要直接叠加改动。
