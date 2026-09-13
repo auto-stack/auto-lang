@@ -262,6 +262,24 @@ SFC 断链已由 PLAN-609 收口（根因=dep 源死指非发射链缺口，auto
 Key 处理器族范式（带参 bind 扩展=KNOWN-DEBT P615-D1）；`dom.copy_text` 双端
 剪贴板内建（VM native 2926 复用 418 面/vue navigator.clipboard）。
 
+**619 015-notes 双端 parity 收敛（GOAL-007）**：同一份 `.at` 在 VM(iced) 与 Vue 两端
+肉眼可见的四处差异被量化、定位到引擎侧根因并修掉，同时把「双端一致」落成可复跑门禁。
+①**权威色板成文（SD-01）**：`lucide_svg()`…（见下条）之外，VM 语义 token 的缺省解析由
+「隐式 stella 单源」改为 **与生成端 `index.css` 同源的那张表**（`registry::SCAFFOLD`——
+auto-man 生成 Vue CSS 时逐 token 渲染的就是它），未声明 `theme{}` 的应用两端取同一表；
+**桌面宿主必须显式声明 stella**（`DesktopConfig::default().theme_name = Some("stella")`），
+规则成文为「宿主 = stella、pac 应用 = scaffold」。②四个根因修复：`with_class_prop` 补
+`style:` 键回落（DSL 主写法此前被整串丢弃）、`IcedStyle::effective_padding/effective_margin`
+统一「单侧 > 轴 > 统一 > legacy」覆盖次序（`mx-*` 整族此前无处消费）、Text 臂补 `height`
+（契约 `h-8` 不落盒）、icon 的 `.at size:` 两端贯通（VM 折 Width/Height、Vue 生成器发
+`:size` 并撤缺省 `w-5 h-5`）。③**根因级文档坑**：`lucide_svg()` 表项本身是完整 SVG 文档
+（`width/height=16` + `viewBox 0 0 24 24`），消费方若再套一层 24×24 `<svg>` 会按 16/24
+二次缩放（跨端 icon ink 系统性偏小 ≈33%，即「声明 18px 实测 ≈12px 盒」）——修法 = 取内层
+markup 重包。④门禁：`tools/parity_shot_diff.py` 预算化（语义面色 ≤2/通道、图标 ink 比
+∈[0.9,1.1]、左缩进 ≤1px，违规退出码 1）+ 015-notes acceptance **T14/C-PARITY-1** +
+autoui-verifier 技能「步骤 3.5 像素预算对拍」。实机（1280x800）：面色 Δ0/Δ1、图标 ink 比
+1.03/1.03、左缩进 Δ0/Δ1/Δ0；19 MCP + 18 Vue 场景全绿；`cargo t`/`tv` 零新增红。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
@@ -388,6 +406,20 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 
 **573 ui-gallery 左栏 sidebar 族化（GOAL-010/007）**：549 示例画廊左侧导航从手搓 `aside+button+style-if` 迁移 sidebar 族（provider/header 包 pills 筛选器 + scroll(ScrollArea) 包 menu/menu_button(active: 契约)），双行卡片按 015-notes 惯用法（menu_button 内单 col 孩子 + h-auto 覆盖契约 h-8），手搓 active/hover 类串零残留；执行期根修一处约束链缺口——aside 只写 `flex-col` 无 display:flex（Tailwind `flex-col` 不隐含 display）→ provider flex-1 塌缩、ScrollArea 不受约束窗口级滚动，对齐 widgets-gallery `md:flex` 先例补 `flex min-h-0`（**惯用法：aside 外壳挂 sidebar_provider 时必须带 display:flex + min-h-0**）；VM 端结构树/pill press 正常，demo 列表空为预存限制（registry 全系 Vue-only TS extern fn `demos.ts`，master 基线同败）——跨端化留待后续立项。
 
+
+**P619 容器盒模型与图标尺寸两条语言层规则 + 一个文档写法坑（GOAL-007）**：
+1. **padding 覆盖次序 = 单侧 > 轴 > 统一 > legacy**：Tailwind 的 `p-2` 与 `py-1.5` 同时存在时
+   按 CSS 源码序后者胜（VM 端此前 uniform 命中即 early-return，per-axis 覆盖被丢）；
+   margin 同理，且 `m-*`/`mx-*`/`my-*` **整族**必须折算（iced 无 margin，折外部 padding 模拟）
+   ——此前只读单侧字段，`mx-3` 等静默丢失（搜索结果行左缩进少 12px 的根因）。
+2. **icon 尺寸权威 = `.at` 的 `size:`**：VM 侧折成显式 Width/Height（显式 `w-*` 仍可覆盖），
+   Vue 生成器发射 `:size` 并把标签缺省类 `w-5 h-5` 让位。**已知残余**：shadcn 资产自带
+   `[&>svg]:size-4` 会把**组件内**（Button/SidebarMenuButton 等）图标钉死 16px、盖过 `:size`
+   ——普通 div 内的图标不受影响（KNOWN-DEBT P619-D6）。
+3. **lucide 图标表项是完整 SVG 文档**：`renderer.rs` 的 `lucide_svg()` 每条为
+   `<svg width="16" height="16" viewBox="0 0 24 24">…</svg>`，消费方必须取内层 markup 按目标
+   尺寸重包（`lucide_svg_doc_with`），**直接嵌套会按 16/24 二次缩放**。回归锚
+   `plan619_lucide_doc_renders_geometric_ink`（纯 CPU 栅格化，断言 ink 充满度 = 几何值 0.833）。
 ## 蒸馏来源
 
 - 本模块 spec 于 2026-08-28 由 Plan 471 刷新：蒸馏 437–465 活跃计划 + 4xx 归档计划 + 365–428 早期 UI 计划。
