@@ -939,8 +939,16 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     let is_vec = return_type.starts_with("[]");
     let is_option = return_type.starts_with("?");
 
+    // Boolean write results are control-flow values for the UI (for example,
+    // a score save acknowledgement). Keep them typed and wait for the HTTP
+    // response so the Store can distinguish success from a retryable failure.
+    // Other scalar/value writes retain the historical non-blocking placeholder
+    // behavior because they may represent server-assigned IDs.
+    let is_bool = return_type == "bool";
     let (rust_return_type, value_type) = if is_void {
         (String::new(), String::new())
+    } else if is_bool {
+        ("bool".to_string(), "bool".to_string())
     } else if is_vec {
         ("Vec<serde_json::Value>".to_string(), "Vec<serde_json::Value>".to_string())
     } else if is_option {
@@ -1042,6 +1050,13 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
         format!(
             "{}    let body = {};\n    std::thread::spawn(move || {{ let _ = _http_client().{}(&url).json(&body).send(); }});\n",
             url_owned, json_body, method
+        )
+    } else if return_type == "bool" {
+        // Boolean POST/PUT results drive UI state (save success/failure), so
+        // parse the actual server response instead of returning a placeholder.
+        format!(
+            "    _http_client().{}({})\n        .json(&{})\n        .send().ok()\n        .and_then(|r| r.json::<bool>().ok())\n        .unwrap_or_default()\n",
+            method, url_expr, json_body
         )
     } else {
         // Value return (e.g., create_note → serde_json::Value)
@@ -3306,6 +3321,20 @@ pub struct Timer {
         assert!(blocking.contains("_http_client().post(&url).json(&body).send()"), "blocking POST: {blocking}");
         assert!(blocking.contains("local_result"), "blocking POST must return placeholder: {blocking}");
         assert!(!blocking.contains("ureq"), "blocking POST still emits ureq: {blocking}");
+
+        let bool_result = generate_write_fn_body(
+            "post".into(),
+            "\"http://x\"".into(),
+            &params,
+            false,
+            "bool",
+        );
+        // Boolean results are control-flow values (for example, save
+        // acknowledgements), so the generated client must parse the server
+        // response instead of returning a placeholder from a background task.
+        assert!(bool_result.contains("r.json::<bool>().ok()"), "bool POST must parse response: {bool_result}");
+        assert!(!bool_result.contains("local_result"), "bool POST must not return placeholder: {bool_result}");
+        assert!(!bool_result.contains("std::thread::spawn"), "bool POST must wait for result: {bool_result}");
 
         let del = generate_delete_fn_body("\"http://x/1\"".into());
         assert!(del.contains("_http_client().delete(&url).send()"), "DELETE: {del}");
