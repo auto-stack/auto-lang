@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-618
-status: reviewed            # 2026-09-13 复审 pass;next=merge
+status: archived            # 2026-09-13 merge 收口;completion_kind: delivered
+completion_kind: delivered
 feature_name: examples/ui 四 demo 接入 TreeView/FileTree 组件(027/026/018/041)
 author: [zcode]
 created_at: 2026-09-12
@@ -295,3 +296,15 @@ total_steps: 8
 2. VM lucide_svg 补 zap 条目属引擎 1 行微修(先例:PLAN-614 路由键修复);
    若不愿动引擎,索引图标降级为既有 "table"/"terminal"。
    ——T-02 已按前项落地(zap 生效,026 vue+VM 双端实证)。
+
+### 9.1 整理收据（consolidation receipt）— PLAN-618:r1
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | reviewed 基线：plan_revision 1 / reviewed_commit 6c2eb81af / base_commit bec57397a；规范增量 SD-01（tree-components.md）+ SD-02（plans.md 618 行）已随 reviewed_commit 入库（blob 冻结 a7c4b473 / b25eb940）；投影目标 = .autoos/specs.json（runtime 路径）；worktree 先行同步 master（318203fd6，plans.md 冲突保 616+618 两行，vue.rs 自动合并 617 async 改动），同步后刷新验证：plan370 12/12 + ui_gen::vue 288/288 全绿 |
+| `landed` | master 合并提交 **6d6089005**（fast-forward 至 worktree 合并提交，amend 恢复规范消息；双亲 7be50486a + 684620d93 线）；git merge-base --is-ancestor 6c2eb81af HEAD 通过 → 代码与 canonical Specs 均在 master；主检出冒烟：cargo check 余 10 错全部位于 vm/ffi/term_engine.rs（619 会话并发 WIP 脏文件，非本计划触面、落地前已存在的编译态）；619 WIP 31 脏文件以 stash push/pop 原样保留（stash f51b6501 已 pop 清空） |
+| `ledger_refreshed` | 目标：D:/autostack/auto-lang/.autoos/specs.json（本仓 runtime 派生账本，非 git 跟踪）；upsert 项 ID **P618-1..P618-6**（reports/goals/architecture/designs/tests/reviews 各 +1：78/69/74/68/74/92 → 79/70/75/69/75/93）；file 指向本归档路径，related:["PLAN-618"]，status: published；离线 read-modify-write + 完整 JSON 校验 + 原子替换，源/后哈希 08662bef76de5397 → 46b455833dc50846；读回校验通过。KNOWN-DEBT 登记 P618-D1..D4（commit 94d167a1）；spec-index.py 重生 INDEX.md 无 diff（SD-01 未触索引字段）。overview 回写免做：delta 未含 overview（tree 段已指向权威契约 tree-components.md，复审 delta 界定合并范围） |
+| `archived` | git mv docs/plans/618-...md → docs/plans/archive/ + status: archived + completion_kind: delivered（交付型）；路径与 frontmatter 一致、provenance 链接可解析 |
+| `cleaned` | （见下方 cleaned 收据行） |
+
+**F-1 顺手项裁定**：041 components/package.at description 残留 "026 database"（纯元数据）——随归档留档，不单独开修。
