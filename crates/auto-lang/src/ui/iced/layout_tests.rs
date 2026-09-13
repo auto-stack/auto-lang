@@ -357,13 +357,14 @@ fn p012_o3_notification_layer_in_stack_anchor() {
     );
 }
 
-/// PLAN-012 O3 终架构探针（真组件链 + 装配锚定）：notification_center.at
-/// 根 = 卡片本体（紧凑 max-h 滚动），锚定与 scrim 在 renderer 装配层
-/// （container Fill×Fill 右下 align + padding——mt-auto/根高类在真实
-/// Stack 子层不可依赖，复验三连贴顶 0 实证后退役）。本探针复刻装配
-/// 锚定，锁定：多条目 = 紧凑有界不越顶；少条目 = 贴底。
+/// PLAN-012 O3 终架构探针（真组件链 + N6d scrim + justify-start 顶对齐，
+/// 用户裁定右上角）：notification_center.at 根 = scrim mouse-area（Fill×
+/// Fill）> justify-start 列 > 卡片（紧凑 max-h 滚动）。锁定：卡片挂顶
+/// （y≈0，右上下 gap 12 档）+ 多条目 max-h 有界。装配层 align 无从发力
+///（463 T5 注记），锚定必须在 .at 内——本探针守卫该机制不回归。
 #[test]
 fn p012_o3_notification_real_component_assembly_anchor() {
+    use crate::ui::interpreter::DynamicMessage;
     use iced::Length;
     let src = crate::ui::shell::shell_source("notification_center.at");
     let build_comp = |rows: usize| -> crate::ui::dynamic::DynamicComponent {
@@ -387,37 +388,26 @@ fn p012_o3_notification_real_component_assembly_anchor() {
         let _ = comp.bridge_mut().call_handler("RebuildNotes", &[]);
         comp
     };
-    let anchor = |comp: &crate::ui::dynamic::DynamicComponent| {
+    let measure = |comp: &crate::ui::dynamic::DynamicComponent| {
         let (view, _ids, _probe) = comp.view_with_debug_gated(false);
-        let anchored: iced::Element<
+        let root: iced::Element<
             'static,
-            crate::ui::interpreter::DynamicMessage,
+            DynamicMessage,
             iced::Theme,
             iced::Renderer,
-        > = iced::widget::container(view.into_iced())
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding {
-                right: 12.0,
-                bottom: 60.0,
-                ..Default::default()
-            })
-            .into();
-        let mut ui = simulator(anchored);
+        > = view.into_iced();
+        let mut ui = simulator(root);
         bounds_of(&mut ui, "CARDCARD")
     };
-    // 场景 A（多条目 8 条，超 max_h）：紧凑有界 + 右下半区，不越顶。
-    let (x, y, w, h) = anchor(&build_comp(8));
-    eprintln!("[p012-o3-assembly-A] card=({x},{y},{w},{h}) — 根 768，可用底 708");
+    // 场景 A（少条目 2 条）：卡片挂顶（justify-start）。
+    let (x, y, w, h) = measure(&build_comp(2));
+    eprintln!("[p012-o3-A] card=({x},{y},{w},{h}) — 根 768");
+    assert!(y < 100.0, "少条目卡片应挂顶（实际 y={y}）");
+    // 场景 B（多条目 8 条，超 max_h=414）：卡片高度有界 + 不越 dock 线。
+    let (x, y, w, h) = measure(&build_comp(8));
+    eprintln!("[p012-o3-B] card=({x},{y},{w},{h})");
     assert!(h < 560.0, "多条目卡片应被 max-h 约束（实际 h={h}）");
-    assert!(y + h <= 718.0, "卡片不得越过 dock 垫（底 {}/768，实际 y+h={})", 708, y + h);
-    assert!(y > 100.0, "卡片应有可见顶 gap（实际 y={y}）");
-    // 场景 B（少条目 2 条）：贴底。
-    let (x, y, w, h) = anchor(&build_comp(2));
-    eprintln!("[p012-o3-assembly-B] card=({x},{y},{w},{h})");
-    assert!(y > 400.0, "少条目卡片应贴底（实际 y={y}）");
+    assert!(y + h <= 744.0, "卡片不得越过 dock 线 744（实际 y+h={}）", y + h);
 }
 
 /// Smoke: a plain row lays out both texts with non-zero bounds and no
