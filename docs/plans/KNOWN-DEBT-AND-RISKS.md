@@ -2147,3 +2147,15 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P618-D2 | medium | 转译器 | **vue 转译器对「模块 fn 参数名与 model 字段同名」误加 `.value` 拆包**——SFC 运行时 TypeError 整页白屏（018 ch_nodes(chapters) 实证）；规避=参数避开 model 字段名，已入 tree-components.md 陷阱节 | 018 reading.at ch_nodes；契约「⚠ 模块 fn 转译陷阱」 |
 | P618-D3 | low | VM 渲染 | **041 VM 预存怪象（非 tree 引入）**：confirm 弹层 open:false 文案仍渲染页底（与 P618-1 同族、VM popover 臂）+ 状态栏 `${store.line}` 字面量直出 | 041-auto-edit VM 截图 t06；app.at popover/StatusBar |
 | P618-D4 | low | 工具面 | **018 VM 轨书架卡片 onclick（页面级 for-loop 载荷）MCP press 不可寻址**——阅读页经 MCP 不可达，章节树 VM 直接交互验证受限（组件 VM 行为已 041/026/027 三重实证）；P614-C1 家族 | 018 bookshelf.at OpenBook；plan §复审 F-2/P618-5 |
+
+---
+
+## 架构裁定留底（AutoUI 仓界，2026-09-13，非计划关联）
+
+> 源自 2026-09-13 AutoUI 拆仓可行性分析（AutoOS 迁独立仓后的跟进议题）。
+> 完整依据、submodule 裁定与重开路线见 `docs/design/20-autoui-separation-architecture.md` §11。
+
+| 编号 | 严重度 | 类别 | 描述 | 引用 |
+|---|---|---|---|---|
+| ARCH-AUTOUI-REPO | —（裁定留底） | 仓界时序 | **AutoUI 拆独立仓推迟，不设日程；重开前置 = VM/Rust 桌面版（VM/iced 轨道）稳定**。submodule 形态裁定不采用（依赖方向相悖 + 只解决路径检出不解决依赖 + worktree 红线敏感）。重开路线 = 先仓内 crate 化（workspace 成员 `crates/auto-ui`，编排函数上移 + native 注册制），边缘资产可先行，repo 拆分按 auto-shell 模式（Plan 330）且须触发条件（API 收敛/共变衰减/第二消费者）。依据：近 90 天同提交跨 UI/核心两侧 245 次（≈2.7/天）；三处硬耦合（UI 语法在 ast/parser、ui_gen/aura/a2ui 无条件编译、VM native 表烧 UI ID 段）；2026-03 并入史（Plan 045/096/175）。关联 auto-os PLAN-578「examples 归属两读」待裁定 | `docs/design/20-autoui-separation-architecture.md` §11 |
+| ARCH-AUTOUI-GUARD | medium（持续纪律） | 门禁护栏 | **新增 UI native/FFI 必须挂 feature cfg + 降级桩（沿用 `vm/native.rs` 桩模式），无 UI 构建（`--no-default-features`/`cargo tv`/CI vm-files 档）保持绿色**——未来 AutoUI 拆仓唯一能站住的地基，欠账后重新考古代价高。**当飞项**：Plan 619 工作树 `vm/ffi/term_engine.rs` 133/199-230/331 行存在未门控 `crate::ui::terminal` 引用（HEAD 版本无），合入前必须补门控，否则弄红全部无 UI 构建 | `crates/auto-lang/src/vm/ffi/term_engine.rs`；桩模式参照 `crates/auto-lang/src/vm/native.rs`；Design 20 §11.5 |

@@ -30,6 +30,9 @@ pub mod media_service;
 #[cfg(feature = "mpv-native")]
 pub mod mpv;
 // （帧上屏的那一半 `mpv::channel`/`mpv::present` 由 `mpv-gpu` 单独门控。）
+// 014 内存哨兵:提交内存自检 + 超限冻结(渲染层 update 入口挂接;
+// AUTO_MEM_LIMIT_MB 阈值,0 = 关闭)。零依赖(直接声明 K32GetProcessMemoryInfo)。
+pub mod mem_guard;
 
 // Plan 413: cross-platform code editor widget (feature `code-editor`,
 // enabled by default under `ui-iced`).
@@ -48,6 +51,9 @@ pub mod clipboard_native;
 // Plan 418 Phase 2: declarative action/binding config (auto-atom).
 pub mod action_config;
 pub mod view;
+// PLAN-063 T-04d-2: 右栏块锚定坐标槽（iced 布局期记录 + 同步目标消费）。
+#[cfg(feature = "ui-iced")]
+pub mod anchor_slot;
 pub mod vnode;
 pub mod vnode_converter;
 pub mod node_converter;

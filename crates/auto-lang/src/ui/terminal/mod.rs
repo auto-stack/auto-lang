@@ -30,7 +30,7 @@
 //! (无环铁律). ANSI color/cursor surfaces arrive as the local scalar types
 //! below — alacritty types never cross into this crate (零新依赖).
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -176,6 +176,12 @@ pub struct TerminalCore {
     scroll_offset: AtomicU64,
     /// 菜单动作载荷(Some(item) 待 app 读;0=Copy 1=Paste 2=SelectAll)。
     menu_item: Mutex<Option<u8>>,
+    /// 键入队列(widget 键盘捕获翻译成的 VT 字节串,FIFO;宿主引擎泵
+    /// `drain` 取走后裸写 PTY——载荷不经消息,.at 消息只当触发器)。
+    pending_input: Mutex<Vec<String>>,
+    /// 待应用几何(014:widget layout 由可用空间反推的 cols×rows;与
+    /// 当前几何不同才落位,宿主 `apply_resize` 泵取走后调引擎 resize)。
+    pending_resize: Mutex<Option<(u16, u16)>>,
 }
 
 const BLINK_PERIOD_MS: u64 = 530;
@@ -197,6 +203,8 @@ impl TerminalCore {
             selection: Mutex::new(None),
             scroll_offset: AtomicU64::new(0),
             menu_item: Mutex::new(None),
+            pending_input: Mutex::new(Vec::new()),
+            pending_resize: Mutex::new(None),
         }
     }
 
@@ -235,14 +243,15 @@ impl TerminalCore {
     }
 }
 
-static TERMINALS: Mutex<Option<HashMap<String, &'static TerminalCore>>> = Mutex::new(None);
+/// BTreeMap(非 HashMap):`terminal_drain_all_inputs` 的键序要稳定。
+static TERMINALS: Mutex<Option<BTreeMap<String, &'static TerminalCore>>> = Mutex::new(None);
 
 /// Get-or-create the terminal state for `key`, diffing geometry in.
 /// Geometry changes re-register a replacement under the same key, carrying
 /// over the old rows and marking `Full` damage.
 pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
     let mut map = TERMINALS.lock().unwrap();
-    let map = map.get_or_insert_with(HashMap::new);
+    let map = map.get_or_insert_with(BTreeMap::new);
     if let Some(core) = map.get(key) {
         let core: &TerminalCore = core;
         if core.cols != cols || core.rows != rows {
@@ -251,15 +260,25 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
             {
                 let mut fresh_cells = fresh.cells.lock().unwrap();
                 let old_cells = core.cells.lock().unwrap();
-                let n = core.rows as usize;
+                // 收缩几何时按两者较小值拷贝(旧几何可能大于新几何)。
+                let n = (core.rows as usize).min(fresh_cells.len());
                 for (i, row) in old_cells.iter().take(n).enumerate() {
                     fresh_cells[i] = row.clone();
                 }
             }
-            fresh.digests.lock().unwrap().clone_from(&core.digests.lock().unwrap());
+            {
+                let mut fresh_digests = fresh.digests.lock().unwrap();
+                let old_digests = core.digests.lock().unwrap();
+                let n = (core.rows as usize).min(fresh_digests.len());
+                for (i, digest) in old_digests.iter().take(n).enumerate() {
+                    fresh_digests[i] = *digest;
+                }
+            }
             fresh.cursor.lock().unwrap().clone_from(&core.cursor.lock().unwrap());
             *fresh.blink_ms.lock().unwrap() = *core.blink_ms.lock().unwrap();
             *fresh.selection.lock().unwrap() = core.selection.lock().unwrap().clone();
+            *fresh.pending_input.lock().unwrap() = core.pending_input.lock().unwrap().clone();
+            *fresh.pending_resize.lock().unwrap() = *core.pending_resize.lock().unwrap();
             fresh
                 .scroll_offset
                 .store(core.scroll_offset.load(Ordering::Relaxed), Ordering::Relaxed);
@@ -290,18 +309,29 @@ fn row_digest(cells: &[TermCell]) -> u64 {
 /// (padded to `rows`, truncated beyond; text longer than `cols` truncates
 /// by display width). Damage accumulates per changed row; an identical
 /// feed is a no-op (generation + damage untouched — no frame churn).
+///
+/// 014: text feed does **not** reset styling — where the incoming char
+/// equals the existing cell's char, its fg/bg are kept. Styled rows ride
+/// the [`terminal_feed_cells`] sideband (refreshed by the engine glue each
+/// harvest); the per-frame props feed must not wipe them between harvests.
 pub fn terminal_feed(core: &TerminalCore, lines: &[String]) {
+    let existing = core.cells.lock().unwrap().clone();
     let incoming: Vec<Vec<TermCell>> = (0..core.rows as usize)
         .map(|i| {
             let text = lines.get(i).map(String::as_str).unwrap_or("");
+            let prev = existing.get(i);
             let mut cells: Vec<TermCell> = Vec::with_capacity(core.cols as usize);
             let mut width = 0usize;
-            for ch in text.chars() {
+            for (ci, ch) in text.chars().enumerate() {
                 if width >= core.cols as usize {
                     break;
                 }
                 width += char_width(ch);
-                cells.push(TermCell::plain(ch));
+                let styled = prev.and_then(|p| p.get(ci)).filter(|pc| pc.ch == ch);
+                match styled {
+                    Some(pc) => cells.push(TermCell { ch, fg: pc.fg, bg: pc.bg }),
+                    None => cells.push(TermCell::plain(ch)),
+                }
             }
             cells
         })
@@ -325,6 +355,18 @@ pub fn terminal_feed_cells(core: &TerminalCore, row: usize, cells: Vec<TermCell>
     core.generation.fetch_add(1, Ordering::Relaxed);
 }
 
+/// 014: styled sideband feed for the engine-glue pumps — feed one styled
+/// row to **every** registered terminal (the glue runs host-side next to
+/// the renderer but doesn't know the widget's key; single-terminal apps
+/// are the current consumer shape, same as [`terminal_drain_all_inputs`]).
+pub fn terminal_feed_cells_all(row: usize, cells: Vec<TermCell>) {
+    let mut map = TERMINALS.lock().unwrap();
+    let Some(map) = map.as_mut() else { return };
+    for core in map.values() {
+        terminal_feed_cells(core, row, cells.clone());
+    }
+}
+
 /// Consume accumulated damage (iced layer calls once per frame; the
 /// headless tests assert on it directly).
 pub fn terminal_take_damage(core: &TerminalCore) -> TerminalDamage {
@@ -336,7 +378,10 @@ fn apply_cells(core: &TerminalCore, incoming: Vec<Vec<TermCell>>) {
     let mut cells = core.cells.lock().unwrap();
     let mut digests = core.digests.lock().unwrap();
     let mut dirty: Vec<usize> = Vec::new();
-    for (i, mut row) in incoming.into_iter().enumerate() {
+    // 防御:incoming 按 core.rows 构造,但几何替换窗口内 cells/digests
+    // 可能比 core.rows 短(注册表替换与 feed 的交错)——越界即止。
+    let n = incoming.len().min(cells.len()).min(digests.len());
+    for (i, mut row) in incoming.into_iter().take(n).enumerate() {
         row.truncate(core.cols as usize);
         let digest = row_digest(&row);
         if digests[i] != digest {
@@ -559,6 +604,97 @@ pub fn terminal_set_menu_item(core: &TerminalCore, item: u8) {
 /// 菜单动作载荷读取(0=Copy 1=Paste 2=SelectAll)。**读取即取走**(take)。
 pub fn terminal_take_menu_item(core: &TerminalCore) -> Option<u8> {
     core.menu_item.lock().unwrap().take()
+}
+
+// ============================================================================
+// 键入队列(直键入:widget 键盘捕获 → 队列 → 宿主引擎泵裸写 PTY)
+// ============================================================================
+
+/// Queue one keystroke payload (the widget's keyboard capture translates the
+/// iced key event into the VT byte string first). Order preserved (FIFO).
+/// 014: 有界——积压超过 [`INPUT_QUEUE_CAP`] 丢最旧(消费侧停摆时保护
+/// 内存;丢弃计数进 [`terminal_input_dropped`])。
+pub const INPUT_QUEUE_CAP: usize = 4096;
+
+pub fn terminal_push_input(core: &TerminalCore, payload: &str) {
+    if payload.is_empty() {
+        return;
+    }
+    let mut queue = core.pending_input.lock().unwrap();
+    if queue.len() >= INPUT_QUEUE_CAP {
+        queue.remove(0);
+        INPUT_DROPPED.fetch_add(1, Ordering::Relaxed);
+    }
+    queue.push(payload.to_owned());
+}
+
+/// 累计被挤掉的键入条数(消费侧停摆取证)。
+pub fn terminal_input_dropped() -> u64 {
+    INPUT_DROPPED.load(Ordering::Relaxed)
+}
+
+static INPUT_DROPPED: AtomicU64 = AtomicU64::new(0);
+
+/// Drain this terminal's queued keystrokes (oldest first). Empty = None.
+pub fn terminal_drain_input(core: &TerminalCore) -> Option<String> {
+    let mut queue = core.pending_input.lock().unwrap();
+    if queue.is_empty() {
+        None
+    } else {
+        Some(queue.remove(0))
+    }
+}
+
+/// Drain **all** registered terminals' keystroke queues, key order stable
+/// (BTreeMap). The engine pump in the host process calls this after the
+/// `oninput` message: one call flushes every keystroke regardless of which
+/// terminal keyed it (single-terminal apps are the current consumer shape).
+pub fn terminal_drain_all_inputs() -> Vec<String> {
+    let mut map = TERMINALS.lock().unwrap();
+    let Some(map) = map.as_mut() else { return Vec::new() };
+    let mut out = Vec::new();
+    for core in map.values() {
+        out.append(&mut core.pending_input.lock().unwrap());
+    }
+    out
+}
+
+// ============================================================================
+// 几何随动(014:窗口 resize → 引擎 resize → View 几何回流)
+// ============================================================================
+
+/// resize 请求的安全钳位(glue 快照面按每行 512B / 256 行采样)。
+/// 014 爆炸护栏:列数下限 2——1 列几何(最小化/零尺寸产物)会触发引擎侧
+/// 折叠重排病理(满历史网格 → GB 级瞬态分配,19:13 案;责任划分与完整
+/// 链路见 autoterm DEBTS #15)。退化空间=可见性事件,不该进几何通道;
+/// 引擎 TermSession::resize 另有兜底,此处是第一道闸。
+pub const MIN_RESIZE_COLS: u16 = 2;
+pub const MAX_RESIZE_COLS: u16 = 500;
+pub const MAX_RESIZE_ROWS: u16 = 200;
+
+/// Widget layout 由可用空间反推网格几何;与当前几何不同才落位(覆盖
+/// 旧请求——只关心最新值)。
+pub fn terminal_request_resize(core: &TerminalCore, cols: u16, rows: u16) {
+    let cols = cols.clamp(MIN_RESIZE_COLS, MAX_RESIZE_COLS);
+    let rows = rows.clamp(1, MAX_RESIZE_ROWS);
+    if cols == core.cols && rows == core.rows {
+        return;
+    }
+    *core.pending_resize.lock().unwrap() = Some((cols, rows));
+}
+
+/// Take the pending resize request (any terminal; key order stable).
+/// `Some((cols, rows))` = the host engine pump should `resize` and surface
+/// the new geometry back to the app model.
+pub fn terminal_take_any_resize() -> Option<(u16, u16)> {
+    let mut map = TERMINALS.lock().unwrap();
+    let map = map.as_mut()?;
+    for core in map.values() {
+        if let Some(geom) = core.pending_resize.lock().unwrap().take() {
+            return Some(geom);
+        }
+    }
+    None
 }
 
 /// Display width of a character in cells (dependency-free compact table:
@@ -840,6 +976,106 @@ mod tests {
         assert_eq!(terminal_take_menu_item(core), Some(0));
         assert_eq!(terminal_take_menu_item(core), None, "take 后不重放");
         terminal_dispose("t4-menu-1");
+    }
+
+    #[test]
+    fn input_queue_fifo_and_drain_all() {
+        terminal_dispose("t4-in-1");
+        terminal_dispose("t4-in-2");
+        let a = terminal("t4-in-1", 40, 6);
+        let b = terminal("t4-in-2", 40, 6);
+        assert_eq!(terminal_drain_input(a), None, "空队列 drain = None");
+
+        terminal_push_input(a, "a");
+        terminal_push_input(a, "\r");
+        terminal_push_input(a, ""); // 空载荷丢弃
+        terminal_push_input(b, "\u{1b}[A");
+        // FIFO 单端排空。
+        assert_eq!(terminal_drain_input(a).as_deref(), Some("a"));
+        assert_eq!(terminal_drain_input(a).as_deref(), Some("\r"));
+        assert_eq!(terminal_drain_input(a), None);
+
+        // drain_all:两个终端的余量一次取走(键序稳定,单端内 FIFO)。
+        terminal_push_input(a, "x");
+        assert_eq!(terminal_drain_all_inputs(), vec!["x".to_owned(), "\u{1b}[A".to_owned()]);
+        assert_eq!(terminal_drain_all_inputs(), Vec::<String>::new(), "排空后为空");
+        terminal_dispose("t4-in-1");
+        terminal_dispose("t4-in-2");
+    }
+
+    #[test]
+    fn resize_request_pends_and_takes() {
+        terminal_dispose("t4-rs-1");
+        let core = terminal("t4-rs-1", 80, 24);
+        // 与当前几何相同:不落位。
+        terminal_request_resize(core, 80, 24);
+        assert_eq!(terminal_take_any_resize(), None);
+        // 不同:落位并被取走(覆盖旧请求,只留最新)。
+        terminal_request_resize(core, 100, 30);
+        terminal_request_resize(core, 120, 40);
+        assert_eq!(terminal_take_any_resize(), Some((120, 40)));
+        assert_eq!(terminal_take_any_resize(), None, "取走即清");
+        // 钳位(014 护栏:列数下限 2——1 列触发引擎重排病理,DEBTS #15)。
+        terminal_request_resize(core, 0, u16::MAX);
+        assert_eq!(terminal_take_any_resize(), Some((MIN_RESIZE_COLS, MAX_RESIZE_ROWS)));
+        terminal_dispose("t4-rs-1");
+    }
+
+    #[test]
+    fn styled_sideband_survives_text_feed() {
+        // 014 at-app 管线:样式经 feed_cells 旁路(引擎 glue 每拍刷),
+        // props 文本每帧重喂不得擦色;字符变化处落回默认色。
+        terminal_dispose("t5-style-keep");
+        let core = terminal("t5-style-keep", 20, 4);
+        terminal_feed(core, &["hello".into()]);
+        terminal_feed_cells(
+            core,
+            0,
+            vec![
+                TermCell { ch: 'h', fg: TermColor::Indexed(1), bg: TermColor::Default },
+                TermCell { ch: 'e', fg: TermColor::Indexed(2), bg: TermColor::Default },
+                TermCell { ch: 'l', fg: TermColor::Default, bg: TermColor::Indexed(4) },
+                TermCell { ch: 'l', fg: TermColor::Indexed(3), bg: TermColor::Default },
+                TermCell { ch: 'o', fg: TermColor::Indexed(5), bg: TermColor::Default },
+            ],
+        );
+        assert_eq!(terminal_take_damage(core), TerminalDamage::Lines(vec![0]));
+
+        // 同文本 props 重喂:颜色保留、代数不动(无帧间抖动)。
+        let gen = core.generation();
+        terminal_feed(core, &["hello".into()]);
+        let cells = core.row_cells(0).unwrap();
+        assert_eq!(cells[0].fg, TermColor::Indexed(1));
+        assert_eq!(cells[2].bg, TermColor::Indexed(4));
+        assert_eq!(core.generation(), gen, "同文本重喂应零损伤");
+
+        // 文本变化:变化字符落回默认色,未变字符保留。
+        terminal_feed(core, &["hellO".into()]);
+        let cells = core.row_cells(0).unwrap();
+        assert_eq!(cells[4].ch, 'O');
+        assert_eq!(cells[4].fg, TermColor::Default, "变化字符不带旧色");
+        assert_eq!(cells[0].fg, TermColor::Indexed(1), "未变字符保留");
+        terminal_dispose("t5-style-keep");
+    }
+
+    #[test]
+    fn geometry_change_shrink_keeps_consistent_lengths() {
+        // 014 resize 随动实测踩中:digests 经 clone_from 整体换成旧长度,
+        // 增长后 apply_cells 以 digests[i] 越界。收缩/增长都必须保持
+        // cells/digests 与新几何等长。
+        terminal_dispose("t4-geo-shrink");
+        let core = terminal("t4-geo-shrink", 40, 6);
+        terminal_feed(core, &["a".into(), "b".into(), "c".into(), "d".into(), "e".into(), "f".into()]);
+        // 收缩 6 → 3。
+        let core2 = terminal("t4-geo-shrink", 40, 3);
+        assert_eq!(core2.rows, 3);
+        assert_eq!(core2.line(0).as_deref(), Some("a"));
+        assert_eq!(core2.line(2).as_deref(), Some("c"));
+        // 增长 3 → 5(feed 5 行不再越界)。
+        let core3 = terminal("t4-geo-shrink", 40, 5);
+        terminal_feed(core3, &["1".into(), "2".into(), "3".into(), "4".into(), "5".into()]);
+        assert_eq!(core3.line(4).as_deref(), Some("5"));
+        terminal_dispose("t4-geo-shrink");
     }
 
     /// PLAN-009 T2: 最小 `.at` 示例挂载 + headless 断言。

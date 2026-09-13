@@ -50,6 +50,9 @@ fn terminal_view() -> View<()> {
         preedit: None,
         on_select: None,
         on_menu: None,
+        on_input: None,
+        cursor_row: 0,
+        cursor_col: 0,
         style: None,
     }
 }
@@ -82,17 +85,19 @@ impl Selector for BoundsCollector {
     }
 }
 
-/// bounds 非零且等于固定网格几何(cols×CELL_W+2, rows×CELL_H+2)。
+/// bounds 非零且等于固定网格几何(cols×cell_w()+2, rows×CELL_H+2)。
+/// 014:横向用实测 advance——先预热测量(否则首帧布局还是 8.0 近似,
+/// find 看到的 bounds 与 want_w 不同源)。
 #[test]
 fn terminal_pixel_bounds_nonzero_and_exact() {
-    use crate::ui::terminal::iced::{CELL_H, CELL_W};
+    use crate::ui::terminal::iced::{CELL_H, cell_w};
+    let want_w = COLS as f32 * cell_w() + 2.0;
+    let want_h = ROWS as f32 * CELL_H + 2.0;
     feed_baseline();
     let mut ui = simulator(terminal_view().into_iced());
     let store = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let _ = ui.find(BoundsCollector(store.clone()));
     let bounds = store.lock().unwrap().clone();
-    let want_w = COLS as f32 * CELL_W + 2.0;
-    let want_h = ROWS as f32 * CELL_H + 2.0;
     assert!(
         bounds.iter().any(|&(w, h)| (w - want_w).abs() < 0.6 && (h - want_h).abs() < 0.6),
         "terminal 组件 bounds 必须命中 {want_w}x{want_h}(±0.6),实际 {bounds:?}"
@@ -103,6 +108,9 @@ fn terminal_pixel_bounds_nonzero_and_exact() {
 /// 随后的「选中/光标帧与基线不同」断言以此为噪声基线。
 /// `name`: 用例私有金样名——nextest 每用例独立进程,共用路径会互踩。
 fn write_baseline_golden(name: &str) -> std::path::PathBuf {
+    // 预热实测字距:首帧渲染中测量会翻转 cell_w(8.0→实测),两次渲染
+    // 逐字节一致性会因此假失败。
+    let _ = crate::ui::terminal::iced::cell_w();
     feed_baseline();
     let mut ui = simulator(terminal_view().into_iced());
     let snap = ui.snapshot(&iced::Theme::Light).expect("baseline snapshot");

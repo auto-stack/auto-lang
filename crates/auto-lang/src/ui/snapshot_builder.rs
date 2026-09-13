@@ -78,6 +78,9 @@ impl SnapshotBuilder {
                 children: vec![],
             },
             // Plan 409 §10 续 5: Overlay 在 snapshot 里展示为占位(base/content 不展开)。
+            // PLAN-063 T-04d-2: 锚槽对快照透明——子件原样展开（块容器
+            // 保持 MCP 可见，供锚块位置检视）。
+            View::AnchorSlot { child, .. } => Self::traverse_view(child, id_map, path),
             View::Overlay { .. } => UiNode {
                 id,
                 kind: "Overlay".to_string(),

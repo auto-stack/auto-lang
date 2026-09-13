@@ -400,6 +400,21 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         if let Some((rect, color)) = list.focus_frame {
             stroke_rect(renderer, bounds, rect, to_color(color));
         }
+        // PLAN-063 T-04d: 锚块描边高亮——scroll 回调写入的参考块（首个
+        // 完整可见块）。内容坐标系随内容滚动（Scrollable 平移子件边界），
+        // 供对拍观察同步参考。
+        let p063_anchor = self.core.anchor_block();
+        if p063_anchor >= 0 {
+            let p063_rects = self.core.block_rects();
+            if let Some(r) = p063_rects.get(p063_anchor as usize) {
+                stroke_rect(
+                    renderer,
+                    bounds,
+                    Rect { x: r.x, y: r.y, w: r.w, h: r.h },
+                    Color::from_rgba(0.96, 0.62, 0.06, 0.95),
+                );
+            }
+        }
         if let Some(caret) = &list.caret {
             fill_quad(renderer, to_rect(bounds, caret.rect), to_color(caret.color));
         }

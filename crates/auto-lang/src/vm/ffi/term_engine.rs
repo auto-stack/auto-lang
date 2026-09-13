@@ -29,6 +29,9 @@ type SnapMap = std::collections::HashMap<i64, Vec<String>>;
 static SNAPSHOTS: std::sync::LazyLock<Mutex<SnapMap>> =
     std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 static HANDLES: OnceLock<Mutex<std::collections::HashMap<i64, i64>>> = OnceLock::new();
+// 014:光标格与视口几何(glue 侧采样;feed 时随拍刷新,spawn 时落初值)。
+static CURSOR: Mutex<(i64, i64)> = Mutex::new((0, 0));
+static VIEWPORT: Mutex<(i64, i64)> = Mutex::new((0, 0));
 
 fn lib() -> Option<&'static Library> {
     LIB.get_or_init(|| {
@@ -87,6 +90,8 @@ fn engine_spawn(cols: i64, rows: i64) -> i64 {
     let Some(lib) = lib() else {
         return 0;
     };
+    *VIEWPORT.lock().unwrap() = (cols, rows);
+    *CURSOR.lock().unwrap() = (0, 0);
     unsafe {
         let spawn: libloading::Symbol<
             unsafe extern "C" fn(c_int, c_int, *const c_char) -> *mut core::ffi::c_void,
@@ -120,7 +125,36 @@ fn engine_write_line(handle: i64, line: &str) {
     }
 }
 
-/// 收割引擎输出并刷新 glue 侧快照(feed + 损伤行全量重采)。
+/// 014 直键入泵:排空 terminal 组件键入队列(同进程注册表
+/// `ui::terminal`,iced widget 键盘捕获入队),逐键**裸写**引擎(无
+/// \r\n 补缀——VT 串里 Enter 已是 \r、控制码/CSI 原样)。返回泵送键数
+/// (DLL 缺席/句柄无效时队列照样排空丢弃,不回灌)。
+fn engine_pump_input(handle: i64) -> i64 {
+    let keys = drain_pending_keys();
+    let n = keys.len() as i64;
+    if n == 0 {
+        return 0;
+    }
+    let Some(lib) = lib() else { return n };
+    let h = ptr_of(handle);
+    if h.is_null() {
+        return n;
+    }
+    unsafe {
+        let write: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
+        > = lib.get(b"autoterm_engine_write_input\0").expect("autoterm_engine_write_input symbol");
+        for key in &keys {
+            let bytes = key.as_bytes();
+            write(h, bytes.as_ptr(), bytes.len());
+        }
+    }
+    n
+}
+
+/// 收割引擎输出并刷新 glue 侧快照(feed + 损伤行全量重采 + 光标采样 +
+/// 逐格样式旁路:row_style 解码 → terminal_feed_cells_all,ash 彩色
+/// 输出经此上屏)。
 fn engine_feed_snapshot(lib: &Library, h: *mut core::ffi::c_void, handle: i64) {
     unsafe {
         let feed: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
@@ -132,22 +166,101 @@ fn engine_feed_snapshot(lib: &Library, h: *mut core::ffi::c_void, handle: i64) {
         > = lib.get(b"autoterm_engine_take_dirty_rows\0").expect("autoterm_engine_take_dirty_rows symbol");
         let mut rows = [0 as c_int; 64];
         take(h, rows.as_mut_ptr(), 64);
-        // Full(-1)或脏行集都全量重采(行数由 rows 文本直至 -1 决定)。
+        // 光标格随拍采样(可见时刷新;隐藏保持上次值)。
+        let cursor: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void, *mut c_int, *mut c_int) -> c_int,
+        > = lib.get(b"autoterm_engine_cursor\0").expect("autoterm_engine_cursor symbol");
+        let (mut r, mut c) = (0 as c_int, 0 as c_int);
+        if cursor(h, &mut r, &mut c) == 1 {
+            *CURSOR.lock().unwrap() = (r as i64, c as i64);
+        }
+        // Full(-1)或脏行集都全量重采(行数由 rows 文本直至 -1 决定),
+        // 逐行取文本 + 逐格样式,文本进快照、样式走组件旁路。
         let row_text: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut c_char, c_int) -> c_int,
         > = lib.get(b"autoterm_engine_row_text\0").expect("autoterm_engine_row_text symbol");
+        let row_style: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut u32, c_int) -> c_int,
+        > = lib.get(b"autoterm_engine_row_style\0").expect("autoterm_engine_row_style symbol");
         let mut lines = Vec::new();
-        for r in 0..64 {
+        for r in 0..256i32 {
             let mut buf = [0 as c_char; 512];
-            let need = row_text(h, r as c_int, buf.as_mut_ptr(), 512);
+            let need = row_text(h, r, buf.as_mut_ptr(), 512);
             if need < 0 {
                 break;
             }
             let n = (need as usize).saturating_sub(1).min(511);
             let bytes: Vec<u8> = buf[..n].iter().map(|&c| c as u8).collect();
-            lines.push(String::from_utf8_lossy(&bytes).into_owned());
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            // 逐格样式:fg/bg 交错 u32(kind<<24|value),2×cols 容量;
+            // 旁路上屏走 ui 适配层(无 ui 特征时丢弃,文本面不受影响)。
+            let mut styles = [0u32; 1024];
+            let styled = row_style(h, r, styles.as_mut_ptr(), 1024);
+            feed_styled_sideband(r, &text, &styles[..styled.max(0) as usize]);
+            lines.push(text);
         }
         snapshots().insert(handle, lines);
+    }
+}
+
+// ── ui 注册表适配层(F-02:vm/ffi 无 ui 特征编译时优雅降级为 no-op;
+//    报警/泵/几何通道只在与渲染同进程时有意义)──────────────────────
+
+/// 排空 terminal 组件键入队列;无 ui 特征恒空(泵变 no-op)。
+#[cfg(feature = "ui")]
+fn drain_pending_keys() -> Vec<String> {
+    crate::ui::terminal::terminal_drain_all_inputs()
+}
+#[cfg(not(feature = "ui"))]
+fn drain_pending_keys() -> Vec<String> {
+    Vec::new()
+}
+
+/// 取注册表待定几何;无 ui 特征恒 None(apply_resize 变 no-op)。
+#[cfg(feature = "ui")]
+fn take_pending_resize() -> Option<(u16, u16)> {
+    crate::ui::terminal::terminal_take_any_resize()
+}
+#[cfg(not(feature = "ui"))]
+fn take_pending_resize() -> Option<(u16, u16)> {
+    None
+}
+
+/// 逐格样式旁路上屏;无 ui 特征丢弃(快照文本面不受影响)。
+#[cfg(feature = "ui")]
+fn feed_styled_sideband(row: i32, text: &str, styles: &[u32]) {
+    let pairs = styles.len() / 2;
+    let mut cells: Vec<crate::ui::terminal::TermCell> = Vec::with_capacity(pairs);
+    for (ci, ch) in text.chars().enumerate() {
+        if ci >= pairs {
+            break;
+        }
+        cells.push(crate::ui::terminal::TermCell {
+            ch,
+            fg: decode_style_color(styles[ci * 2]),
+            bg: decode_style_color(styles[ci * 2 + 1]),
+        });
+    }
+    if !cells.is_empty() {
+        crate::ui::terminal::terminal_feed_cells_all(row as usize, cells);
+    }
+}
+#[cfg(not(feature = "ui"))]
+fn feed_styled_sideband(_row: i32, _text: &str, _styles: &[u32]) {}
+
+/// FFI 标量色 → 组件色((kind<<24)|value:0=Default 1=Indexed 2=RGB)。
+#[cfg(feature = "ui")]
+fn decode_style_color(v: u32) -> crate::ui::terminal::TermColor {
+    let kind = v >> 24;
+    let value = v & 0x00FF_FFFF;
+    match kind {
+        1 => crate::ui::terminal::TermColor::Indexed(value as u8),
+        2 => crate::ui::terminal::TermColor::Rgb(
+            (value >> 16) as u8,
+            (value >> 8) as u8,
+            value as u8,
+        ),
+        _ => crate::ui::terminal::TermColor::Default,
     }
 }
 
@@ -236,6 +349,175 @@ pub fn shim_term_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
+/// 014 直键入:engine_pump_input(handle) int。
+pub fn shim_term_pump_input(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_pump_input(handle) as i32));
+    Ok(())
+}
+
+// ── 014:几何随动 + 光标格(glue 静态量读写,泵同款管线)────────────
+
+/// 应用注册表里的待定几何:`terminal_take_any_resize()` → 引擎 resize →
+/// VIEWPORT 静态量刷新。返回 1=已应用 0=无请求。
+fn engine_apply_resize(handle: i64) -> i64 {
+    let Some((cols, rows)) = take_pending_resize() else {
+        return 0;
+    };
+    engine_resize(handle, cols as i64, rows as i64);
+    *VIEWPORT.lock().unwrap() = (cols as i64, rows as i64);
+    1
+}
+
+pub fn shim_term_apply_resize(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_apply_resize(handle) as i32));
+    Ok(())
+}
+
+pub fn shim_term_viewport_cols(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let cols = VIEWPORT.lock().unwrap().0;
+    task.ram.push_nv(auto_val::encode_i32(cols as i32));
+    Ok(())
+}
+
+pub fn shim_term_viewport_rows(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let rows = VIEWPORT.lock().unwrap().1;
+    task.ram.push_nv(auto_val::encode_i32(rows as i32));
+    Ok(())
+}
+
+pub fn shim_term_cursor_row(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let row = CURSOR.lock().unwrap().0;
+    task.ram.push_nv(auto_val::encode_i32(row as i32));
+    Ok(())
+}
+
+pub fn shim_term_cursor_col(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let col = CURSOR.lock().unwrap().1;
+    task.ram.push_nv(auto_val::encode_i32(col as i32));
+    Ok(())
+}
+
+// ── 014 积压报警回读面(VM 轨;语义对齐 at-app 侧车 term.rs,db.at 同源)──
+
+/// 告警迟滞态(pending 越过 2MB 置位,回落 512KB 解除;上升沿即报警
+/// 即取走,无累计字段)。
+static BACKLOG_STATE: std::sync::Mutex<(bool, ())> = std::sync::Mutex::new((false, ()));
+const BACKLOG_WARN_BYTES: i32 = 2 * 1024 * 1024;
+const BACKLOG_CLEAR_BYTES: i32 = 512 * 1024;
+
+/// 当前积压 MB(live 采样;句柄无效 = 0)。
+fn engine_backlog_pending_mb(handle: i64) -> i64 {
+    let Some(lib) = lib() else { return 0 };
+    let h = ptr_of(handle);
+    if h.is_null() {
+        return 0;
+    }
+    unsafe {
+        let pending: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
+        > = lib.get(b"autoterm_engine_pending_bytes\0").expect("autoterm_engine_pending_bytes symbol");
+        (pending(h).max(0) as i64) / (1024 * 1024)
+    }
+}
+
+/// reader 是否反压暂停中(1/0;旧 DLL 无此符号 → 0——报警面必须比被
+/// 报警的路径更皮实,侧车同款)。
+fn engine_backlog_paused(handle: i64) -> i64 {
+    let Some(lib) = lib() else { return 0 };
+    let h = ptr_of(handle);
+    if h.is_null() {
+        return 0;
+    }
+    unsafe {
+        let Ok(paused) = (lib.get::<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int>(
+            b"autoterm_engine_backlog_paused\0",
+        )) else {
+            return 0;
+        };
+        paused(h) as i64
+    }
+}
+
+/// 取走自上次调用以来的积压报警次数(0/1,上升沿即取走;内联采样
+/// pending 做迟滞判定——越过 2MB 报警并 stderr 留痕,回落 512KB 解除)。
+fn engine_backlog_take_alerts(handle: i64) -> i64 {
+    let pending = engine_backlog_pending_bytes(handle);
+    let mut st = BACKLOG_STATE.lock().unwrap();
+    let (active, _) = *st;
+    if !active && pending >= BACKLOG_WARN_BYTES {
+        *st = (true, ());
+        drop(st);
+        eprintln!(
+            "[term-backlog] ⚠ reader→drain 积压 {pending} 字节越过告警线 \
+             {BACKLOG_WARN_BYTES}——产出侧洪峰或消费侧停摆"
+        );
+        1
+    } else {
+        if active && pending <= BACKLOG_CLEAR_BYTES {
+            *st = (false, ());
+        }
+        0
+    }
+}
+
+/// 累计环逐出块数(丢帧计数;符号缺席/句柄无效 = 0)。
+fn engine_backlog_dropped(handle: i64) -> i64 {
+    let Some(lib) = lib() else { return 0 };
+    let h = ptr_of(handle);
+    if h.is_null() {
+        return 0;
+    }
+    unsafe {
+        let Ok(dropped) = (lib.get::<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int>(
+            b"autoterm_engine_overflow_count\0",
+        )) else {
+            return 0;
+        };
+        dropped(h).max(0) as i64
+    }
+}
+
+/// 积压字节原始采样(take_alerts 判定用)。
+fn engine_backlog_pending_bytes(handle: i64) -> i32 {
+    let Some(lib) = lib() else { return 0 };
+    let h = ptr_of(handle);
+    if h.is_null() {
+        return 0;
+    }
+    unsafe {
+        let pending: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
+        > = lib.get(b"autoterm_engine_pending_bytes\0").expect("autoterm_engine_pending_bytes symbol");
+        pending(h).max(0)
+    }
+}
+
+pub fn shim_term_backlog_pending_mb(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_backlog_pending_mb(handle) as i32));
+    Ok(())
+}
+
+pub fn shim_term_backlog_paused(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_backlog_paused(handle) as i32));
+    Ok(())
+}
+
+pub fn shim_term_backlog_take_alerts(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_backlog_take_alerts(handle) as i32));
+    Ok(())
+}
+
+pub fn shim_term_backlog_dropped(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_backlog_dropped(handle) as i32));
+    Ok(())
+}
+
 pub fn shim_term_rows(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
     engine_rows(handle)
@@ -267,4 +549,43 @@ pub fn shim_term_free(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
     engine_free(handle);
     Ok(())
+}
+
+// ── 014 泄漏探针:at-app「键入→泵→收割→样式旁路」完整循环的无头压测
+// (隔离 iced;ash 为 shell,外部 powershell 同步采样进程内存)。
+#[cfg(all(test, feature = "ui"))]
+mod ash_leak_probe {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn ash_stream_leak_probe() {
+        // DLL 定位:组内布局(auto-term 仓 target)。
+        std::env::set_var(
+            "AUTOTERM_ENGINE_DLL",
+            r"D:\autostack\auto-term\target\debug\autoterm_core.dll",
+        );
+        let core = crate::ui::terminal::terminal("leak-probe", 100, 30);
+        let handle = engine_spawn(100, 30);
+        assert!(handle != 0, "spawn ash 失败(先 cargo build -p autoterm-core)");
+        std::thread::sleep(Duration::from_millis(1000));
+        engine_rows(handle);
+        println!("probe: ash spawned, start streaming");
+        for i in 0..20000u32 {
+            // 一次键入的完整生命周期:widget 入队 → pump 裸写 → 收割。
+            crate::ui::terminal::terminal_push_input(core, "x");
+            engine_pump_input(handle);
+            engine_rows(handle);
+            if i % 1000 == 0 {
+                let pending_len = crate::ui::terminal::terminal_take_damage(core).dirty_count();
+                println!(
+                    "iter {i}: handles={} snapshots={} pending_dirty={pending_len}",
+                    handles().len(),
+                    snapshots().len(),
+                );
+            }
+        }
+        println!("probe: done 20000 keystroke cycles");
+        std::thread::sleep(Duration::from_millis(500));
+    }
 }

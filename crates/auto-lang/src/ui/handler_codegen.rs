@@ -930,13 +930,19 @@ fn synthesize_emit_bridge_fn(
         ))
     };
     let mut stmts = vec![Stmt::Expr(Expr::Bina(
-        state_dot("__emit_msg"),
+        Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                Name::from("__emit_msg"),
+            )),
         auto_val::Op::Asn,
         Box::new(Expr::Str(auto_val::AutoStr::from(msg))),
     ))];
     if argc >= 1 {
         stmts.push(Stmt::Expr(Expr::Bina(
-            state_dot("__emit_payload"),
+            Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                    Name::from("__emit_payload"),
+                )),
             auto_val::Op::Asn,
             Box::new(Expr::Ident(Name::from("v0"))),
         )));
@@ -1114,6 +1120,34 @@ fn synthesize_handler_fn(
     // Clone + rewrite the body.
     let mut stmts: Vec<Stmt> = body_stmts.to_vec();
     rewrite_state_refs_stmts_with_locals(&mut stmts, state_fields, &mut local_vars);
+    // PLAN-063 T-04b: 空体引号 handler = emit 直通声明——vue 生成器在该空体
+    // 后追加 $emit（demo/custom_scrollbar.at「Emit-only msgs」头注），VM 轨
+    // 同语义：写 __emit_msg/__emit_payload 对，由派发器（on_with_input_for
+    // 尾部）清算路由到父级绑定。此前 VM 编译为字面空体，Plan 398 sibling
+    // 直调（is_handler 令 576-G3 重写臂让位）静默无操作——自绘滚动条
+    // Move → update:scrollTop → SetScrollTop 链死（拖拽失效最后一环，
+    // T-02 f64 修复暴露）。
+    if stmts.is_empty() && (event_pattern.contains(':') || event_pattern.contains('"')) {
+        let msg = event_pattern.replace('"', "").trim_start_matches('.').to_string();
+        stmts.push(Stmt::Expr(Expr::Bina(
+            Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                Name::from("__emit_msg"),
+            )),
+            auto_val::Op::Asn,
+            Box::new(Expr::Str(auto_val::AutoStr::from(msg.as_str()))),
+        )));
+        if let Some(p) = params.get(1) {
+            stmts.push(Stmt::Expr(Expr::Bina(
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                    Name::from("__emit_payload"),
+                )),
+                auto_val::Op::Asn,
+                Box::new(Expr::Ident(Name::from(p.name.as_str()))),
+            )));
+        }
+    }
 
     let body = Body {
         stmts,
@@ -1757,6 +1791,34 @@ fn synthesize_handler_fn_from_decl_with_store(
     // Clone + rewrite the body (Plan 370 D-GAP-4: store context is in thread_local).
     let mut stmts: Vec<Stmt> = body_stmts.to_vec();
     rewrite_state_refs_stmts_with_locals(&mut stmts, state_fields, &mut local_vars);
+    // PLAN-063 T-04b: 空体引号 handler = emit 直通声明——vue 生成器在该空体
+    // 后追加 $emit（demo/custom_scrollbar.at「Emit-only msgs」头注），VM 轨
+    // 同语义：写 __emit_msg/__emit_payload 对，由派发器（on_with_input_for
+    // 尾部）清算路由到父级绑定。此前 VM 编译为字面空体，Plan 398 sibling
+    // 直调（is_handler 令 576-G3 重写臂让位）静默无操作——自绘滚动条
+    // Move → update:scrollTop → SetScrollTop 链死（拖拽失效最后一环，
+    // T-02 f64 修复暴露）。
+    if stmts.is_empty() && (event_pattern.contains(':') || event_pattern.contains('"')) {
+        let msg = event_pattern.replace('"', "").trim_start_matches('.').to_string();
+        stmts.push(Stmt::Expr(Expr::Bina(
+            Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                Name::from("__emit_msg"),
+            )),
+            auto_val::Op::Asn,
+            Box::new(Expr::Str(auto_val::AutoStr::from(msg.as_str()))),
+        )));
+        if let Some(p) = params.get(1) {
+            stmts.push(Stmt::Expr(Expr::Bina(
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                    Name::from("__emit_payload"),
+                )),
+                auto_val::Op::Asn,
+                Box::new(Expr::Ident(Name::from(p.name.as_str()))),
+            )));
+        }
+    }
 
     // Plan 370 D-GAP-4: for child widgets, strip callback prop calls (on_delete,
     // on_tags_changed, etc.) — they're routed by the renderer (DynamicMessage),
