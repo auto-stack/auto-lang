@@ -1396,6 +1396,15 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
+        // Keep app-relative persistence stable across UI runners. VM native
+        // rendering temporarily changes the process CWD to src/front while
+        // the split backend may still serve requests on another thread; expose
+        // the project root so app contracts can resolve durable files without
+        // depending on that transient CWD.
+        if let Ok(project_root) = root_dir.canonicalize() {
+            std::env::set_var("AUTO_PROJECT_DIR", project_root);
+        }
+
         // Show cache status
         let cache = UICache::load(&root_dir);
         if cache.file_count() > 0 {
