@@ -10,10 +10,10 @@
 //   3. 界面**不出现**任何凭文件名编造或预置的假内容；
 //   4. 队列面板可交互（关闭后从快照消失）。
 //
-// 注意（已知 VM 侧边界，登记为债务）：VM 端 `Http.get("/api/media/scan")` 用的是
-// 相对地址，而 VM 的 HTTP 通道直接把该串交给 reqwest（需要绝对 URL），故 VM 里
-// 媒体库为空、显示空态文案。本脚本**不断言**队列有内容——那需要 VM 侧补 HTTP
-// 基址支持，属独立事项。
+// 注意（T-10 起已收口）：VM 端 `Http.get("/api/media/scan")` 是相对地址；
+// 外部设 `AUTO_HTTP_BASE`（指向生成后端）后 VM 与 Vue 消费同一份媒体库，
+// 本脚本的 E 块会在该场景断言真实条目。未设基址时 VM 显示诚实空态文案，
+// 本脚本不断言队列有内容。
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -163,6 +163,26 @@ async function main() {
     }
   } else {
     console.log(`[vm-smoke] D note: 只匹配到 ${iconBtns.length} 个空文本图标按钮，已跳过该项`);
+  }
+
+  // ── E.（可选）AUTO_HTTP_BASE 场景：VM 队列应与 Vue 端同一份真实数据 ──
+  // T-10 起 VM 的 Http 支持相对 URL 按基址展开；外部设好基址并起了生成后端
+  // 时，快照里应出现真实文件名。未设基址时跳过（保持「诚实空态」默认形态）。
+  if (process.env.AUTO_HTTP_BASE) {
+    const scan = await fetch(`${process.env.AUTO_HTTP_BASE.replace(/\/$/, "")}/api/media/scan`);
+    const entries = (await scan.json()).entries ?? [];
+    if (entries.length > 0) {
+      // 队列条目显示的是 title（display_title 裁掉扩展名），不是 name。
+      const firstTitle = entries[0].title || entries[0].name;
+      if (snap0.includes(firstTitle)) {
+        console.log(`[vm-smoke] E ok — VM 队列来自真实后端（含 "${firstTitle}"）`);
+      } else {
+        fail(`AUTO_HTTP_BASE 已设但 VM 快照缺真实条目 "${firstTitle}"；快照头：\n${snap0.slice(0, 900)}`);
+        return;
+      }
+    } else {
+      console.log("[vm-smoke] E note: 后端扫描结果为空，跳过真实数据断言");
+    }
   }
 
   console.log("[vm-smoke] ALL PASS — 030-video-player VM 模式（诚实降级）验证全绿");

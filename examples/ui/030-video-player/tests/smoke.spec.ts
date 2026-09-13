@@ -15,6 +15,7 @@
  *   但断言「嵌套项存在」——平铺实现只能得到 1 条，这是递归与否的判别式）。
  */
 import { test, expect, type Page } from '@playwright/test'
+import path from 'node:path'
 
 async function waitForApp(page: Page) {
   await page.goto('/')
@@ -113,6 +114,9 @@ test('T2 真实起播：videoWidth>0 且 currentTime 递增', async ({ page }) =
 
   const body = await page.locator('body').innerText()
   expect(body, '旧版的烘死常量不再出现').not.toContain('03:45')
+  // AC-16(b) 反面：可解码音轨的文件**不出现**「音轨不受支持」标注
+  // （探针在 currentTime>1s 时回灌 true；无声不标，有声也不标）。
+  await expect(page.locator('.audio-note')).toHaveCount(0)
   console.log('[T2 实测]', JSON.stringify(s))
 })
 
@@ -249,7 +253,52 @@ test('T11 逐项真实状态：4K MKV 只断言实测元数据，不谎报', asy
   expect(body, '不出现凭文件名编造的音轨信息').not.toContain('AAC Stereo')
   console.log('[T11 实测]', JSON.stringify(s), 'rel_dir=', mkv!.rel_dir)
 
+  // (b) AC-16b 正向标注：让文件真实播放超过 1s（探针的判定条件），Chromium
+  // 的 FFmpeg 构建解不出 Dolby Digital Plus —— 实测 webkitAudioDecodedByteCount
+  // 恒 0（§4.1/§9.20），界面必须**主动**标注「音轨不受支持」，不假装有声。
+  await waitUntilPlaying(page)
+  await expect(page.locator('.audio-note')).toBeVisible({ timeout: 30000 })
+  const body2 = await page.locator('body').innerText()
+  expect(body2).toContain('音轨不受支持')
+
   await videoOf(page).evaluate((v) => (v as HTMLVideoElement).pause())
+})
+
+test('T8 本地文件浏览真实：File API → object URL → 元素可播（AC-09）', async ({ page }) => {
+  await waitForApp(page)
+
+  // 点「打开本地视频文件」→ 真文件对话框被打开（Playwright 拦截 chooser，
+  // 等价于用户在其中选中文件）→ change → URL.createObjectURL → 换源。
+  const mediaRoot = process.env.AUTO_MEDIA_ROOT || 'E:\\Video'
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 15000 }),
+    page.locator('.local-pick').click(),
+  ])
+  await chooser.setFiles(path.join(mediaRoot, 'caelestia.mp4'))
+
+  // video 源变为 blob: 地址（不是任何 /api 流），且元素真实起播
+  await expect
+    .poll(async () => (await videoState(page)).src.startsWith('blob:'), { timeout: 15000 })
+    .toBe(true)
+  await waitUntilPlaying(page)
+  const s = await videoState(page)
+  expect(s.videoWidth, '本地文件真实解码').toBeGreaterThan(0)
+
+  // 界面如实显示本地文件名与「本地文件」副标题
+  const body = await page.locator('body').innerText()
+  expect(body).toContain('caelestia.mp4')
+  expect(body).toContain('本地文件')
+  console.log('[T8 实测]', JSON.stringify(s))
+})
+
+test('T10 重新扫描真实生效（Rescan）', async ({ page }) => {
+  await waitForApp(page)
+  const res = await page.request.get('/api/media/scan')
+  const entries: Array<unknown> = (await res.json()).entries
+
+  await page.locator('.rescan-btn').click()
+  await expect(page.getByText('媒体库已就绪').first()).toBeVisible({ timeout: 20000 })
+  await expect(page.locator('.queue-item')).toHaveCount(entries.length)
 })
 
 test('T8b 静态文案：队列管理入口可见', async ({ page }) => {

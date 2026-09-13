@@ -20,7 +20,8 @@ widget Viewport {
         OnDuration(float),
         OnPlayState(bool),
         OnEnded,
-        OnMediaError(str)
+        OnMediaError(str),
+        OnAudioTrack(bool)
     }
 
     view {
@@ -64,6 +65,7 @@ widget Viewport {
                     onplaystatechange: .OnPlayState($0)
                     onended: .OnEnded
                     onmediaerror: .OnMediaError($0)
+                    onaudiotrack: .OnAudioTrack($0)
                 }
 
                 // 错误面板：解码/加载失败时**替换**纯黑，给出真实原因
@@ -82,9 +84,17 @@ widget Viewport {
             }
 
             // ── 状态条：媒体状态 + 实测时长/进度（由回灌驱动，不是常量）──
+            // 音轨标注（AC-16b）：audio_unsupported 只能由 OnAudioTrack(false)
+            // 置真（Chromium 播放 >1s 仍 0 音频字节），是**实测**结论而不是
+            // 凭扩展名的猜测；界面不假装有声，也不反向声称无声。
             row {
                 style: "h-8 items-center justify-center gap-4 px-4"
                 text .store.status_text { style: "text-xs text-zinc-400" }
+                if .store.audio_unsupported {
+                    text "音轨不受支持（Dolby Digital Plus 无浏览器解码器）" {
+                        style: "audio-note text-xs font-medium text-amber-400"
+                    }
+                }
                 if .store.has_current {
                     text "画幅 自适应" { style: "text-xs font-mono text-zinc-500" }
                     text "时长 " + .store.duration_str {
@@ -102,5 +112,6 @@ widget Viewport {
         .OnPlayState(p bool) -> { store.OnPlayState(p) }
         .OnEnded -> { store.OnEnded() }
         .OnMediaError(m str) -> { store.OnMediaError(m) }
+        .OnAudioTrack(ok bool) -> { store.OnAudioTrack(ok) }
     }
 }

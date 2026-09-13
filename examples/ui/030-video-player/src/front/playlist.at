@@ -8,13 +8,22 @@
 // VM 端约束：`flex-1`/`shrink-0` 不生效 —— 每行用单 col 承载文本，不用
 // 「图标列 + flex-1 文本列」的横向切分（那样子列会塌成 0 宽）。不用
 // absolute/fixed；选中态只用语义令牌，不用渐变/阴影/毛玻璃（§2.2）。
+//
+// 本地文件（T-09）：手写组件 file_picker.vue 经 `use.web component` 导入，
+// 是隐藏的 <input type="file"> 包装。可见的仍是下面的 DSL 按钮 —— 两端
+// 同一个按钮：Vue 端点击经 pick_seq 触发真文件对话框；VM 端组件不渲染
+// （size: 0 的 lucide 占位，不可见），local_pick_ready 恒 false，点击得到
+// 诚实降级文案。
 
 use player_store: PlayerStore
+use.web component FilePicker from "src/front/file_picker.vue"
 
 widget Playlist {
     msg {
         SelectIndex(int),
-        LocalPickUnavailable,
+        LocalPick,
+        LocalPickReady,
+        LocalPicked(str, str),
         Rescan,
         TogglePlaylist
     }
@@ -95,19 +104,28 @@ widget Playlist {
                 }
             }
 
-            // ── 底部：本地文件（诚实说明未接线）+ 重新扫描 ──
+            // ── 底部：本地文件（真选择，T-09）+ 重新扫描 + 隐藏 FilePicker ──
             col {
                 style: "w-full p-3 border-t border-border gap-2"
                 button "打开本地视频文件" {
-                    onclick: .LocalPickUnavailable
-                    style: "w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
+                    onclick: .LocalPick
+                    style: "local-pick w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
                 }
                 button "重新扫描媒体库" {
                     onclick: .Rescan
-                    style: "w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
+                    style: "rescan-btn w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
                 }
                 text .store.queue_summary {
                     style: "text-xs text-muted-foreground"
+                }
+                // 隐藏的 File API 包装：size: 0 让 VM 端的 lucide 占位
+                // （"file-picker" 不在表内）不可见；Vue 端它只渲染 display:none
+                // 的 input，trigger 递增驱动对话框，选中经 onpick 回传。
+                FilePicker {
+                    trigger: .store.pick_seq,
+                    size: 0,
+                    onready: .LocalPickReady,
+                    onpick: .LocalPicked
                 }
             }
         }
@@ -115,7 +133,9 @@ widget Playlist {
 
     on {
         .SelectIndex(i int) -> { store.SelectIndex(i) }
-        .LocalPickUnavailable -> { store.LocalPickUnavailable() }
+        .LocalPick -> { store.LocalPick() }
+        .LocalPickReady -> { store.LocalPickReady() }
+        .LocalPicked(url str, name str) -> { store.LocalPicked(url, name) }
         .Rescan -> { store.Rescan() }
         .TogglePlaylist -> { store.TogglePlaylist() }
     }

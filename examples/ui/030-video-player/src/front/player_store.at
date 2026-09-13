@@ -79,7 +79,25 @@ store PlayerStore {
         // ---- 错误与空态 ----
         var media_error str = ""
         var library_error str = ""
+        // T-10：三态区分 —— 后端不可达（library_error）/ 根目录缺失
+        // （root_missing，由 /api/media/scan 的 root_missing 字段回传）/
+        // 根目录存在但为空。文案见 Load。
+        var root_missing bool = false
         var status_text str = "正在加载媒体库…"
+
+        // ---- 本地文件（T-09：Web 端 File API；VM 端诚实降级）----
+        // local_pick_ready 由 file_picker.vue 挂载时的 ready 事件置真；
+        // VM 端该组件不渲染，此值恒 false —— 点「打开本地视频文件」得到
+        // 降级文案而不是假动作。pick_seq 是递增计数（不是布尔），连续两次
+        // 点按钮不会因值不变而丢失第二次触发。
+        var local_pick_ready bool = false
+        var pick_seq int = 0
+
+        // ---- 音轨可用性（AC-16b；仅 Vue 端回灌，见 viewport.at）----
+        // 探针是 Chromium 专有的 webkitAudioDecodedByteCount：播放超过 1s
+        // 仍为 0 ⇒ 该文件的音轨编码（如 Dolby Digital Plus）没有浏览器解码器。
+        // 非 Chromium 探针不存在，回灌不会发生，界面不做任何声称。
+        var audio_unsupported bool = false
 
         // ---- 面板显隐（放在 store 里，子组件才读得到/改得动）----
         var show_playlist bool = true
@@ -103,20 +121,34 @@ store PlayerStore {
         Rescan,
         Next,
         Prev,
-        LocalPickUnavailable,
+        LocalPick,
+        LocalPickReady,
+        LocalPicked(str, str),
+        OnAudioTrack(bool),
         TogglePlaylist
     }
 
     on {
         // 真实扫描：递归读媒体根（后端 /api/media/scan）。失败是**可见的**空态
-        // 与文案，不是静默黑屏（AC-10）。
+        // 与文案，不是静默黑屏（AC-10）。三态区分（T-10）：
+        //   catch       → 后端不可达；
+        //   root_missing → 配置了根目录但目录不存在（scan 响应字段回传）；
+        //   entries 空   → 根目录存在且可读，但没有白名单内的媒体文件。
+        //
+        // 取 JSON body 的**双端同源配方**（T-10）：`json.to_value(Http.get_json(url))`。
+        // VM 侧 get_json 返回 body 字符串（URL 经 AUTO_HTTP_BASE 基址展开）、
+        // to_value 解析成 Value；Vue 侧 get_json 映射为 fetch().json()、to_value
+        // 为恒等。**不写裸 `Http.get`**——它在 VM 返回响应句柄（Plan 446 E1/E2
+        // 契约，配 .status()/.body() 访问器），不是解析后的 body。
         .Load -> {
             try {
-                let data = Http.get("/api/media/scan")
+                let data = json.to_value(Http.get_json("/api/media/scan"))
                 .playlist = data.entries ?? []
+                .root_missing = data.root_missing ?? false
                 .library_error = ""
             } catch {
                 .playlist = []
+                .root_missing = false
                 .library_error = "媒体库读取失败：后端未启动，或媒体根目录未配置（AUTO_MEDIA_ROOT）"
             }
             .item_count = .playlist.len()
@@ -151,7 +183,11 @@ store PlayerStore {
                 .current_dir_label = ""
                 .current_size = ""
                 .current_url = ""
-                .status_text = "媒体库为空：请检查媒体根目录"
+                if .root_missing {
+                    .status_text = "媒体根目录不存在：请检查 AUTO_MEDIA_ROOT 指向的路径"
+                } else {
+                    .status_text = "媒体库为空：媒体根目录下没有可播放的文件"
+                }
             }
         }
 
@@ -192,6 +228,7 @@ store PlayerStore {
                     .current_time = 0.0
                     .current_time_str = "00:00"
                     .media_error = ""
+                    .audio_unsupported = false
                     .is_playing = true
                     if same == false {
                         // 真换片：时长/进度作废，等新片的 loadedmetadata 回灌。
@@ -371,9 +408,54 @@ store PlayerStore {
             PlayerStore.Load()
         }
 
-        // T-09 才接线；在此之前如实说明，不做「已模拟打开」这种不实陈述。
-        .LocalPickUnavailable -> {
-            .status_text = "本地文件浏览尚未接线（计划内 T-09）"
+        // ---- 本地文件（T-09）----
+        // ready 事件由 file_picker.vue 挂载时发来；VM 端组件不渲染，
+        // local_pick_ready 恒 false → 走诚实降级分支，不做假动作。
+        .LocalPick -> {
+            if .local_pick_ready {
+                .pick_seq = .pick_seq + 1
+                .status_text = "请在文件对话框中选择视频…"
+            } else {
+                .status_text = "本地文件浏览仅 Web 端可用：当前后端无文件选择能力"
+            }
+        }
+
+        .LocalPickReady -> {
+            .local_pick_ready = true
+        }
+
+        // 选中本地文件：object URL 直接当 current_url 用（blob: 是浏览器的
+        // 一等媒体源）。换片语义与 SelectIndex 一致：复位 seek/时长/进度/
+        // 错误/音轨标注；current_id 取队列令牌之外的固定值，队列高亮不误亮。
+        .LocalPicked(url str, name str) -> {
+            .current_id = "local-file"
+            .current_url = url
+            .current_title = name
+            .current_file = name
+            .current_dir = ""
+            .current_dir_label = "本地文件"
+            .current_size = ""
+            .has_current = true
+            .seek_target = 0.0
+            .current_time = 0.0
+            .current_time_str = "00:00"
+            .duration = 0.0
+            .duration_str = "00:00"
+            .progress_pct = 0.0
+            .media_error = ""
+            .audio_unsupported = false
+            .is_playing = true
+            .status_text = "正在播放 " + name
+        }
+
+        // ---- 音轨可用性回灌（AC-16b，仅 Vue/Chromium 会发）----
+        // false = 播放超过 1s 仍解不出任何音频字节 ⇒ 界面明确标注
+        // 「音轨不受支持」，不假装有声；true 什么都不用做（无声不标）。
+        .OnAudioTrack(ok bool) -> {
+            if ok == false {
+                .audio_unsupported = true
+                .status_text = "画面可播，但音轨不受支持（如 Dolby Digital Plus 无浏览器解码器）"
+            }
         }
 
         .TogglePlaylist -> {

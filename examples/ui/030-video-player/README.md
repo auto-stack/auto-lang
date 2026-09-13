@@ -9,8 +9,9 @@
 ## 跑起来
 
 ```bash
-# 指向真实媒体根（也可以由 pac.at 的 media_root 提供）
-export AUTO_MEDIA_ROOT='E:\Video'     # Windows: $env:AUTO_MEDIA_ROOT='E:\Video'
+# 媒体根已在 pac.at 写死为 E:\Video（用户 r2 裁定方案 (a)）；
+# env 可覆盖：AUTO_MEDIA_ROOT 优先于 pac.at。
+export AUTO_MEDIA_ROOT='E:\Video'     # 可选；Windows: $env:AUTO_MEDIA_ROOT='E:\Video'
 
 auto run          # Vue 模式：真后端（axum）+ Vite
 auto run -r vm    # VM/iced 模式（原生播放需另开 feature，见下）
@@ -23,8 +24,17 @@ cargo build -p auto --features mpv          # 打开 mpv-native/mpv-gpu/mpv-widg
 AUTO_MPV_LIB=<dir-with-libmpv-2.dll> auto run -r vm
 ```
 
-未开该 feature 或找不到运行库时，视口给出显式降级说明
-（「本后端未启用原生播放」），**不留黑屏**。
+VM 模式想看到**真实媒体库**（队列与 Vue 端同一份数据）——先起生成后端，
+再给 VM 一个 HTTP 基址（T-10 起支持相对 URL 展开）：
+
+```bash
+cargo run --manifest-path examples/rust-workspace/030-video-player-back
+AUTO_HTTP_BASE=http://127.0.0.1:8330 auto run -r vm
+```
+
+未开 mpv feature 或找不到运行库时，视口给出显式降级说明
+（「本后端未启用原生播放」），**不留黑屏**；未设 `AUTO_HTTP_BASE` 时
+媒体库显示诚实空态文案。
 
 ## 能做什么（都是真的）
 
@@ -34,7 +44,13 @@ AUTO_MPV_LIB=<dir-with-libmpv-2.dll> auto run -r vm
 - **播放**：`<video>` 真实加载并播放。起播/暂停、seek、音量、静音、倍速、
   上下曲**全部作用于元素属性**（不是只改界面文字）。
 - **时间/进度**：由 `timeupdate` / `loadedmetadata` 回灌驱动；没有预置常量。
-- **错误可见**：解码/加载失败时视口用错误面板替换纯黑，文案来自 `MediaError`。
+- **本地文件**（Web 端）：「打开本地视频文件」打开系统文件对话框，
+  选中即用 object URL 播放——不经过后端、不经过队列（T-09）。
+- **音轨标注**：播放超过 1s 仍解不出音频字节（Dolby Digital Plus 等
+  Chromium 无解码器的编码）时，界面**主动**标注「音轨不受支持」（AC-16b）；
+  解得出时不说任何音频信息。
+- **错误可见**：解码/加载失败时视口用错误面板替换纯黑，文案来自 `MediaError`；
+  后端不可达 / 媒体根目录不存在 / 目录为空 三种空态文案各不相同（T-10）。
 - **深浅主题**：顶栏开关真实切换（会同步 `<html>` 的 `dark` 类）。
 
 ## 不做什么（如实说明）
@@ -43,11 +59,12 @@ AUTO_MPV_LIB=<dir-with-libmpv-2.dll> auto run -r vm
   数据模型里根本没有这些字段。时长/画面尺寸只来自元素回灌。
 - **不声称有声**：Matroska 容器能解，但 Dolby Digital Plus (E-AC-3/Atmos)
   音轨不被 Chromium 的 FFmpeg 构建支持，那类文件表现为**有画面无声音**
-  ——界面不会假装有音频信息。
-- **「打开本地视频文件」尚未接线**（计划内 T-09）：当前按下会如实提示
-  「本地文件浏览尚未接线」，不做「已模拟打开」这种不实陈述。
-- **VM 端媒体库为空**：VM 的 `Http.get` 需要绝对 URL，而扫描接口是相对路径；
-  VM 因此显示空态。属平台侧缺口（已登记债务）。
+  ——界面不假装有音频，并按上节的探针实测给出反向标注。
+- **本地文件选择仅 Web 端**：`file_picker.vue` 依赖浏览器 File API；
+  VM/iced 端按钮点击给出「仅 Web 端可用」的降级文案，不做假动作。
+- **VM 端 `AUTO_HTTP_BASE` 覆盖面**：get/post/put/delete/patch/json/request/
+  auth 臂支持相对 URL 按基址展开；download/stream/SSE 臂**未**覆盖
+  （这些原生的 URL 惯例是绝对地址）。
 
 ## 验证
 

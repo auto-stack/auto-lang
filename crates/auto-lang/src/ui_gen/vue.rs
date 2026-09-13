@@ -812,6 +812,12 @@ struct VideoSpec {
     up_playstate: Option<String>,
     up_ended: Option<String>,
     up_error: Option<String>,
+    /// PLAN-617 T-11/AC-16(b)：音轨可用性回灌（`onaudiotrack`）。handler 收
+    /// 一个 bool —— `false` = 实际播放超过 1s 仍解不出任何音频字节（Chromium
+    /// 专有探针 `webkitAudioDecodedByteCount`），界面须如实标注「音轨不受
+    /// 支持」；探针不存在（非 Chromium）时**不发射任何结论**（handler 不被
+    /// 调用），VM/mpv 端无此事件（mpv 自带 Dolby 解码，无此问题）。
+    up_audiotrack: Option<String>,
 }
 
 /// Result of evaluating a style/class `if`-branch body.
@@ -4961,12 +4967,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     /// 原生监听包装调用（因为 handler 的 `$0` 需要被生成器替换成真实取值，
     /// 而 `$event` 既进不了 handler 体、`vue_event_param` 也只认 `.value`/
     /// `.checked` 两种窄化——§2.3 明确要求不改那两处）。
-    const VIDEO_UP_KEYS: [&'static str; 5] = [
+    const VIDEO_UP_KEYS: [&'static str; 6] = [
         "ontimeupdate",
         "onloadedmetadata",
         "onplaystatechange",
         "onended",
         "onmediaerror",
+        "onaudiotrack",
     ];
 
     /// 受控 `video` 元素 → 模板 + 登记 [`VideoSpec`]。
@@ -5023,6 +5030,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         let up_playstate = up_call("onplaystatechange");
         let up_ended = up_call("onended");
         let up_error = up_call("onmediaerror");
+        let up_audiotrack = up_call("onaudiotrack");
 
         let down_position = down_of("position");
         let spec = VideoSpec {
@@ -5038,6 +5046,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             up_playstate,
             up_ended,
             up_error,
+            up_audiotrack,
         };
 
         // ── 模板：受控下行 prop 不再作为元素属性发射（`:paused` 会打到元素的
@@ -5088,6 +5097,12 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         }
         if spec.up_time.is_some() {
             attrs.push(format!("@timeupdate=\"__videoTime_{idx}\""));
+        } else if spec.up_audiotrack.is_some() {
+            // 音轨探针也需要 timeupdate 节拍，但 Vue 模板**不允许同一元素出现
+            // 两个 @timeupdate**（Duplicate attribute 编译错，e2e 实测抓到）：
+            // 作者没声明 ontimeupdate 时探针才独占该属性；两者都声明时探针由
+            // __videoTime_ 包装链尾调用（见 video_script_block）。
+            attrs.push(format!("@timeupdate=\"__videoAudio_{idx}\""));
         }
         // loadedmetadata 监听器**总是**挂（不再是「作者声明了 onloadedmetadata
         // 或 position」才挂）：它是元素侧重入点 __videoSync_{i} 的触发处。
@@ -5132,6 +5147,18 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     fn video_script_block(&self, i: usize, spec: &VideoSpec) -> String {
         let j = |v: &Option<String>| v.clone().unwrap_or_else(|| "null".to_string());
         let refn = &spec.ref_name;
+        // 音轨探针（AC-16b）只在声明了 onaudiotrack 时发射声明/复位/包装，
+        // 未声明的受控 video 不多出任何行。
+        let audio_decl = if spec.up_audiotrack.is_some() {
+            format!("let __videoAudioDone_{i} = false\n")
+        } else {
+            String::new()
+        };
+        let audio_reset = if spec.up_audiotrack.is_some() {
+            format!("    __videoAudioDone_{i} = false\n")
+        } else {
+            String::new()
+        };
         let mut s = String::new();
         s.push_str(&format!(
 "// PLAN-617 T-07 受控媒体契约（下行 状态→元素 / 上行 元素→状态）。与
@@ -5140,7 +5167,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
 let __videoSrc_{i}: string | null = null
 let __videoSeek_{i}: number | null = null
 let __videoPending_{i}: number | null = null
-// 最近一次的下行值快照 —— 供 __videoSync_{i} 在元素侧状态变化时原样重推。
+{audio_decl}// 最近一次的下行值快照 —— 供 __videoSync_{i} 在元素侧状态变化时原样重推。
 let __videoLast_{i}: [boolean | null, number | null, number | null, boolean | null, number | null, string | null] = [null, null, null, null, null, null]
 function __videoApply_{i}(paused: boolean | null, position: number | null, volume: number | null, muted: boolean | null, rate: number | null, src: string | null) {{
   const el = {refn}.value
@@ -5149,7 +5176,7 @@ function __videoApply_{i}(paused: boolean | null, position: number | null, volum
     __videoSrc_{i} = src
     __videoSeek_{i} = null
     __videoPending_{i} = null
-  }}
+{audio_reset}  }}
   if (paused !== null && paused !== el.paused) {{
     if (paused) el.pause()
     else {{ const p = el.play(); if (p && typeof p.catch === 'function') p.catch(() => {{}}) }}
@@ -5209,12 +5236,19 @@ onMounted(() => {{
 "));
         if spec.up_time.is_some() {
             let call = spec.up_time.as_ref().unwrap();
+            // onaudiotrack 也声明时：探针作为链尾调用（模板上 timeupdate 属性
+            // 只能出现一次，见 try_generate_controlled_video_html 的注释）。
+            let audio_chain = spec
+                .up_audiotrack
+                .as_ref()
+                .map(|_| format!("  __videoAudio_{i}(e)\n"))
+                .unwrap_or_default();
             let mut b = String::new();
             b.push_str(&format!(
 "function __videoTime_{i}(e: Event) {{
   const el = e.target as HTMLVideoElement
   {call}(el.currentTime)
-}}
+{audio_chain}}}
 "));
             s.push_str(&b);
         }
@@ -5250,6 +5284,24 @@ onMounted(() => {{
     else msg = '媒体错误（代码 ' + err.code + '）'
   }}
   {call}(msg)
+}}
+"));
+        }
+        // PLAN-617 T-11 / AC-16(b)：音轨可用性探针。复用 timeupdate 节拍，
+        // 条件是「实际播放超过 1s」——暂停/开头 1s 内音频字节数天然为 0，
+        // 不构成结论。探针（webkitAudioDecodedByteCount）是 Chromium 专有；
+        // 不存在时不调用 handler（不主张任何结论）。一次性：首个有效样本
+        // 之后不再报告，换片由 __videoApply 的 src 分支复位。
+        if spec.up_audiotrack.is_some() {
+            let call = spec.up_audiotrack.as_ref().unwrap();
+            s.push_str(&format!(
+"function __videoAudio_{i}(e: Event) {{
+  const el = e.target as HTMLVideoElement
+  if (__videoAudioDone_{i} || el.paused || el.currentTime <= 1.0) return
+  __videoAudioDone_{i} = true
+  const probe = (el as unknown as {{ webkitAudioDecodedByteCount?: number }}).webkitAudioDecodedByteCount
+  if (typeof probe !== 'number') return
+  {call}(probe > 0)
 }}
 "));
         }
@@ -21149,6 +21201,113 @@ widget Player {
         assert!(sfc.contains("OnDuration(el.duration)"), "上行取真实 duration:\n{sfc}");
         assert!(sfc.contains("OnPlayState(!el.paused)"), "playstate 由元素合成:\n{sfc}");
         assert!(sfc.contains("OnMediaError(msg)"), "mediaerror 带真实文案:\n{sfc}");
+        // 未声明 onaudiotrack → 音轨探针一行都不发射（AC-16b 的兼容面）
+        assert!(!sfc.contains("__videoAudio_0"), "未声明 onaudiotrack 不得有探针包装:\n{sfc}");
+        assert!(!sfc.contains("__videoAudioDone_0"), "未声明 onaudiotrack 不得有探针状态:\n{sfc}");
+    }
+
+    /// PLAN-617 T-11 / AC-16(b)：声明 `onaudiotrack` 的受控 video → 音轨可用性
+    /// 探针（复用 timeupdate 节拍；播放 >1s 才判定；Chromium 专有探针缺失时
+    /// 不调用 handler；换片复位一次性标志）。
+    #[test]
+    fn test_controlled_video_audio_probe_sfc() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget Player {
+    msg { OnAudioTrack(bool), TogglePlay }
+    model {
+        var current_url str = "/api/media/stream/a"
+        var is_playing bool = false
+        var seek_target float = 0.0
+    }
+    on {
+        .OnAudioTrack(ok) -> { }
+        .TogglePlay -> { .is_playing = !.is_playing }
+    }
+    view {
+        video {
+            src: .current_url
+            paused: .is_playing == false
+            position: .seek_target
+            onaudiotrack: .OnAudioTrack($0)
+        }
+    }
+}
+"##);
+        assert!(
+            sfc.contains("@timeupdate=\"__videoAudio_0\""),
+            "探针挂到 timeupdate 节拍:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("let __videoAudioDone_0 = false"),
+            "一次性标志声明:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("__videoAudioDone_0 = false\n  }"),
+            "换片（src 变化分支）复位标志:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("if (__videoAudioDone_0 || el.paused || el.currentTime <= 1.0) return"),
+            "暂停/前 1s 不构成结论:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("if (typeof probe !== 'number') return"),
+            "非 Chromium（探针缺失）不主张任何结论:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("OnAudioTrack(probe > 0)"),
+            "上行 bool = 实测是否解出音频字节:\n{sfc}"
+        );
+    }
+
+    /// ontimeupdate 与 onaudiotrack **同时**声明：Vue 模板不允许同一元素出现
+    /// 两个 `@timeupdate`（Duplicate attribute 编译错，e2e 实测抓到）——
+    /// 模板只挂 `__videoTime_`，探针由其链尾调用。
+    #[test]
+    fn test_controlled_video_audio_probe_chains_with_time() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget Player {
+    msg { OnTime(float), OnAudioTrack(bool) }
+    model {
+        var current_url str = "/api/media/stream/a"
+        var is_playing bool = false
+        var seek_target float = 0.0
+    }
+    on {
+        .OnTime(t) -> { }
+        .OnAudioTrack(ok) -> { }
+    }
+    view {
+        video {
+            src: .current_url
+            paused: .is_playing == false
+            position: .seek_target
+            ontimeupdate: .OnTime($0)
+            onaudiotrack: .OnAudioTrack($0)
+        }
+    }
+}
+"##);
+        assert_eq!(
+            sfc.matches("@timeupdate=").count(),
+            1,
+            "timeupdate 属性只能出现一次:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@timeupdate=\"__videoTime_0\""),
+            "属性归 ontimeupdate 包装:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("@timeupdate=\"__videoAudio_0\""),
+            "探针不得重复占用模板属性:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("function __videoAudio_0(e: Event)"),
+            "探针函数仍在:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("OnTime(el.currentTime)\n  __videoAudio_0(e)"),
+            "探针由 __videoTime_ 链尾调用:\n{sfc}"
+        );
     }
 
     /// PLAN-617 T-07 **兼容性约束**（AC-12）：未声明任何受控 prop 的 `video`
