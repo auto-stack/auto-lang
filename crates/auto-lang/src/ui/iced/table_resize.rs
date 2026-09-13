@@ -367,7 +367,9 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                            tree: &mut Tree,
                            ci: &mut usize| {
             for cell in cells {
-                if let Some(cl) = child_layouts.get(*ci) {
+                // PLAN-063: tree/layout 双侧对称取值——tree.children 落后于
+                // 布局子件数时（重建竞态）不 panic，缺量降级为该 cell 不转发。
+                if let (Some(cl), true) = (child_layouts.get(*ci), *ci < tree.children.len()) {
                     cell.as_widget_mut().update(
                         &mut tree.children[*ci],
                         event,

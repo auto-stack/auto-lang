@@ -1,0 +1,21 @@
+// app.at — PLAN-063 T-04b corpus: child emit → parent binding, custom
+// scrollbar shape (empty-body quoted handler + Move emitting into it).
+use child: Child
+
+widget App {
+    msg Msg { SetScrollTop(f64) }
+    model {
+        var left_top_cmd float = 0
+        var left_top_view float = 0
+    }
+    view {
+        col {
+            Child (on "update:scrollTop": .SetScrollTop($event))
+        }
+    }
+    on {
+        .SetScrollTop(v) -> {
+            .left_top_cmd = v
+        }
+    }
+}

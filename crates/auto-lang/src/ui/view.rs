@@ -429,6 +429,14 @@ pub enum View<M: Clone + Debug> {
     /// Empty placeholder
     Empty,
 
+    /// PLAN-063 T-04d-2: 块锚定坐标槽——右栏逐块包装，iced 布局期把块
+    /// 内容 y 写入全局注册表（块 0 = 内容原点），供块锚定同步目标计算。
+    /// VM 轨专用（autodown_render 构造；vue 生成器不产生此变体）。
+    AnchorSlot {
+        index: u64,
+        child: Box<View<M>>,
+    },
+
     /// Text display with optional styling
     Text {
         content: String,
@@ -1870,6 +1878,11 @@ impl<M: Clone + Debug> View<M> {
                 base: Box::new(base.map_msg_with_arc(f)),
                 content: Box::new(content.map_msg_with_arc(f)),
                 position,
+            },
+            // PLAN-063 T-04d-2: 锚槽递归映射 child（index 不变）。
+            View::AnchorSlot { index, child } => View::AnchorSlot {
+                index,
+                child: Box::new(child.map_msg_with_arc(f)),
             },
             // Plan 484: MouseArea 递归映射 content + enter/exit 消息。
             // Plan 496 M5: 增 on_double_click 映射。

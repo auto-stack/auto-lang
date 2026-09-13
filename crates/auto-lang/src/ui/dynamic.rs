@@ -1430,7 +1430,6 @@ impl DynamicComponent {
                                 self.dispatch_parent_route(&emit_widget, &pending_msg, &route, payload);
                             }
                             None => {
-                                // 非错：未绑定回调的 emit 不回送（vue 同语义）。
                             }
                         }
                     }

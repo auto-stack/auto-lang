@@ -60,11 +60,22 @@ pub fn render_document_with<M: Clone + std::fmt::Debug + 'static>(
         .iter()
         .enumerate()
         .map(|(i, b)| {
-            wrap_with_ghost(
-                render_block(b, is_final, details_onclick, table_widths, on_col_resize),
-                i,
-                placeholder,
-            )
+            if ANCHOR_SLOTS_ENABLED {
+                View::AnchorSlot {
+                    index: i as u64,
+                    child: Box::new(wrap_with_ghost(
+                        render_block(b, is_final, details_onclick, table_widths, on_col_resize),
+                        i,
+                        placeholder,
+                    )),
+                }
+            } else {
+                wrap_with_ghost(
+                    render_block(b, is_final, details_onclick, table_widths, on_col_resize),
+                    i,
+                    placeholder,
+                )
+            }
         })
         .collect();
     View::Column {
@@ -173,6 +184,9 @@ fn block_key(b: &BlockNode) -> u64 {
 }
 
 /// 流式增量渲染入口（调用方持有缓存；VM 侧按 widget 身份挂注册表）。
+/// PLAN-063 T-04d-2: 逐块锚槽（树委托修正后启用——update/mouse_interaction
+/// 须传 tree.children[0]，透明 container 链实证）。
+const ANCHOR_SLOTS_ENABLED: bool = true;
 pub fn render_document_streamed<M: Clone + std::fmt::Debug + 'static>(
     cache: &mut StreamCache<M>,
     src: &str,
@@ -209,6 +223,7 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
     // 值变化自增代数，缓存 clone 旧块的短路在此被击穿。
     let epoch = crate::ui::style::theme::theme_epoch();
     let theme_flip = cache.theme_epoch != epoch;
+    crate::ui::anchor_slot::set_col_spacing(8.0);
     let n = root.children.len();
     let mut children: Vec<View<M>> = Vec::with_capacity(n);
     let mut raw_blocks: Vec<View<M>> = Vec::with_capacity(n);
@@ -234,7 +249,18 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
         };
         // 缓存存裸块（ghost 每帧重建包装，不进缓存——复用判定只看内容键）。
         raw_blocks.push(raw.clone());
-        children.push(wrap_with_ghost(raw, i, placeholder));
+        // PLAN-063 T-04d-2: 逐块锚槽包装（布局期记录块高，块锚定同步目标
+        // 的几何源）。当前挂起：AnchorSlot 委托层在 iced 0.14 树上引发
+        // mouse_area 无状态 downcast panic（转介单 §2b 有完整证据链），
+        // 修复后启用。启用时右栏目标从 v1 比例切块锚定。
+        if ANCHOR_SLOTS_ENABLED {
+            children.push(View::AnchorSlot {
+                index: i as u64,
+                child: Box::new(wrap_with_ghost(raw, i, placeholder)),
+            });
+        } else {
+            children.push(wrap_with_ghost(raw, i, placeholder));
+        }
         keys.push(key);
     }
     cache.blocks = raw_blocks;
@@ -914,6 +940,22 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
 
 #[cfg(all(test, feature = "autodown"))]
 mod tests {
+    /// ANCHOR_SLOTS_ENABLED=true 时文档列每块外包一层 View::AnchorSlot
+    ///（布局期块高注册载体，PLAN-063 T-04d-2）。结构断言面向块本体——
+    /// 取子件前剥掉包装；包装层自身行为由 content_y 单测与实机链覆盖。
+    fn doc_children<M: Clone + std::fmt::Debug>(doc: View<M>) -> Vec<View<M>> {
+        match doc {
+            View::Column { children, .. } => children
+                .into_iter()
+                .map(|c| match c {
+                    View::AnchorSlot { child, .. } => *child,
+                    other => other,
+                })
+                .collect(),
+            _ => panic!("expected doc column"),
+        }
+    }
+
     use super::*;
 
     fn text_of<M: Clone + std::fmt::Debug>(v: &View<M>) -> String {
@@ -930,9 +972,7 @@ mod tests {
         // 含 indigo-700。
         crate::ui::style::theme::set_dark_mode(false);
         let doc = render_document::<()>("# 标题\n\n世界 **粗** 与 *斜* 和 `码`\n", true);
-        let View::Column { children, .. } = doc else {
-            panic!("expected column")
-        };
+        let children = doc_children(doc);
         assert_eq!(children.len(), 2);
         match &children[0] {
             View::Text { content, style, .. } => {
@@ -974,7 +1014,7 @@ mod tests {
         let src = "甲段。\n\n乙段。\n";
         // 有 props：块 0 前置灰盒。
         let doc = render_document_with::<()>(src, true, None, Some((0, 96.0)), None, None);
-        let View::Column { children, .. } = doc else { panic!("column") };
+        let children = doc_children(doc);
         assert_eq!(children.len(), 2);
         let View::Column { children: wrap, spacing, .. } = &children[0] else {
             panic!("expected ghost wrap column at block 0")
@@ -997,7 +1037,7 @@ mod tests {
 
         // 无 props：无任何包裹。
         let plain = render_document_with::<()>(src, true, None, None, None, None);
-        let View::Column { children, .. } = plain else { panic!("column") };
+        let children = doc_children(plain);
         assert!(
             children.iter().all(|c| matches!(c, View::Text { .. })),
             "no wrap without placeholder: {children:?}"
@@ -1006,7 +1046,7 @@ mod tests {
         // streamed 路径同构（命中块 1）+ 缓存复用不因 ghost 包装抖动。
         let mut cache = StreamCache::<()>::default();
         let s1 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)), None, None);
-        let View::Column { children, .. } = s1 else { panic!("column") };
+        let children = doc_children(s1);
         let View::Column { children: wrap, .. } = &children[1] else {
             panic!("expected ghost wrap column at block 1 (streamed)")
         };
@@ -1055,9 +1095,7 @@ mod tests {
     fn renders_fence_quote_list_ordered_start() {
         let src = "```rust\nfn x() {}\n```\n\n> 引用\n\n3. 三\n4. 四\n";
         let doc = render_document::<()>(src, true);
-        let View::Column { children, .. } = doc else {
-            panic!("expected column")
-        };
+        let children = doc_children(doc);
         assert_eq!(children.len(), 3);
         // fence：圆角容器 > (header + 代码区)
         match &children[0] {
@@ -1110,9 +1148,7 @@ mod tests {
         crate::ui::style::theme::set_dark_mode(false);
         let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
         crate::ui::style::theme::set_dark_mode(true);
-        let View::Column { children, .. } = doc else {
-            panic!("expected column")
-        };
+        let children = doc_children(doc);
         let View::Container { style, child, .. } = &children[0] else {
             panic!("fence outer container")
         };
@@ -1159,9 +1195,7 @@ mod tests {
     #[test]
     fn fence_header_label_vertically_centered() {
         let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
-        let View::Column { children, .. } = doc else {
-            panic!("expected column")
-        };
+        let children = doc_children(doc);
         let View::Container { center_y, child, .. } = &children[0] else {
             panic!("fence outer container")
         };
@@ -1188,9 +1222,7 @@ mod tests {
     fn renders_table_headers_and_rows() {
         let src = "| a | b |\n| --- | --- |\n| 1 | 2 |\n";
         let doc = render_document::<()>(src, true);
-        let View::Column { children, .. } = doc else {
-            panic!("expected column")
-        };
+        let children = doc_children(doc);
         let View::Table { headers, rows, .. } = &children[0] else {
             panic!("table")
         };
@@ -1224,9 +1256,7 @@ mod tests {
             Some(&widths),
             Some(&channel),
         );
-        let View::Column { children, .. } = &doc else {
-            panic!("col")
-        };
+        let children = doc_children(doc.clone());
         let View::Table { col_widths, on_col_resize: Some(cb), .. } = &children[0] else {
             panic!("table with resize channel")
         };
@@ -1239,9 +1269,7 @@ mod tests {
 
         // 态二：无 map 无通道——col_widths None、on_col_resize None（现状）。
         let doc = render_document_with::<()>(src, true, None, None, None, None);
-        let View::Column { children, .. } = &doc else {
-            panic!("col")
-        };
+        let children = doc_children(doc.clone());
         let View::Table { col_widths, on_col_resize, .. } = &children[0] else {
             panic!("table")
         };
@@ -1265,7 +1293,7 @@ mod tests {
         let mut cache = StreamCache::<()>::default();
         // 帧一：无宽度 → col_widths None，gens=1。
         let f1 = render_document_streamed_with(&mut cache, src, true, None, None, None, None);
-        let View::Column { children: c1, .. } = &f1 else { panic!("col") };
+        let c1 = doc_children(f1.clone());
         let View::Table { col_widths: w1, .. } = &c1[0] else { panic!("table") };
         assert!(w1.is_none());
         assert_eq!(cache.gens, vec![1]);
@@ -1273,7 +1301,7 @@ mod tests {
         let mut m = std::collections::HashMap::new();
         m.insert(key, vec![150.0f32]);
         let f2 = render_document_streamed_with(&mut cache, src, true, None, None, Some(&m), None);
-        let View::Column { children: c2, .. } = &f2 else { panic!("col") };
+        let c2 = doc_children(f2.clone());
         let View::Table { col_widths: w2, .. } = &c2[0] else { panic!("table") };
         assert_eq!(w2.as_deref(), Some(&[150.0f32][..]));
         assert_eq!(cache.gens, vec![2], "宽度态变化必须重建（gens 增）");
@@ -1290,9 +1318,7 @@ mod tests {
         let mut widths = std::collections::HashMap::new();
         widths.insert(0xDEADBEEFu64, vec![999.0]);
         let doc = render_document_with::<()>(src, true, None, None, Some(&widths), None);
-        let View::Column { children, .. } = &doc else {
-            panic!("col")
-        };
+        let children = doc_children(doc.clone());
         let View::Table { col_widths, .. } = &children[0] else {
             panic!("table")
         };
@@ -1304,25 +1330,16 @@ mod tests {
         // final=false：段落后的悬挂 "- " 剥离（不闪空项）；final=true：保留。
         // 顶格 "- "（无前置换行）两个模式都保留——与 TS 参考一致
         // （stripDanglingTail 的模式要求换行符前缀）。
-        let View::Column { children: stripped, .. } =
-            render_document::<()>("正文段落\n- ", false)
-        else {
-            panic!("col")
-        };
+        let stripped = doc_children(render_document::<()>("正文段落\n- ", false));
         assert_eq!(stripped.len(), 1); // 悬挂 "\n- " 剥离，只剩段落
         // final=true："- " 不剥，但按 setext 语义成为 H2 下划线（与 TS 参考
         // 一致——crate 金标对拍锁定），同样 1 块（Heading）。
-        let View::Column { children: kept, .. } = render_document::<()>("正文段落\n- ", true)
-        else {
-            panic!("col")
-        };
+        let kept = doc_children(render_document::<()>("正文段落\n- ", true));
         assert_eq!(kept.len(), 1);
         assert!(matches!(kept[0], View::Text { .. }));
         // 流式半截链接：loading 链接渲染为带 href 的着色 span
         let doc = render_document::<()>("去 [文本](https://example.\n", false);
-        let View::Column { children, .. } = doc else {
-            panic!("col")
-        };
+        let children = doc_children(doc);
         let View::Row { children: spans, .. } = &children[0] else {
             panic!("row")
         };
@@ -1344,7 +1361,7 @@ mod tests {
         // 可靠——parser 限制，见 T10 豁免登记；title 走回落断言）
         let src = "$callout(type:\"info\") {\n正文一。\n}\n";
         let doc = render_document::<()>(src, true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         assert_eq!(children.len(), 1);
         let View::Container { style, child, .. } = &children[0] else {
             panic!("callout container")
@@ -1374,7 +1391,7 @@ mod tests {
             "$details(summary:\"折叠说明\") {\n藏起来的正文。\n}\n",
             true,
         );
-        let View::Column { children, .. } = closed else { panic!("col") };
+        let children = doc_children(closed);
         let View::Container { child, style, .. } = &children[0] else {
             panic!("details container")
         };
@@ -1391,7 +1408,7 @@ mod tests {
             "$details(open:true) {\n看得见的正文。\n}\n",
             true,
         );
-        let View::Column { children: oc, .. } = open else { panic!("col") };
+        let oc = doc_children(open);
         let View::Container { child, .. } = &oc[0] else { panic!("container") };
         let View::Column { children: oparts, .. } = child.as_ref() else { panic!("col") };
         assert_eq!(oparts.len(), 2, "展开态 summary + 正文");
@@ -1410,7 +1427,7 @@ mod tests {
             "$details(summary:\"Click to expand\", open:true) {\nHidden body.\n}\n",
             true,
         );
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Container { child, .. } = &children[0] else { panic!("container") };
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
         assert_eq!(parts.len(), 2, "展开态 summary + 正文");
@@ -1442,7 +1459,7 @@ mod tests {
     #[test]
     fn renders_block_embed_panel() {
         let doc = render_document::<()>("$embed(src:\"https://e.com/a\")\n", true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Container { child, style, .. } = &children[0] else {
             panic!("embed container")
         };
@@ -1457,7 +1474,7 @@ mod tests {
     #[test]
     fn renders_task_list_checkbox() {
         let doc = render_document::<()>("- [x] 完成\n- [ ] 待办\n- 普通项\n", true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Column { children: items, .. } = &children[0] else { panic!("list") };
         assert_eq!(items.len(), 3);
         let marker_of = |item: &View<()>| -> (String, bool) {
@@ -1481,7 +1498,7 @@ mod tests {
     #[test]
     fn renders_inline_image() {
         let doc = render_document::<()>("前 ![图](https://e.com/a.png) 后\n", true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Row { children: spans, .. } = &children[0] else { panic!("inline row") };
         assert_eq!(spans.len(), 3, "文本/图/文本 三段");
         match &spans[1] {
@@ -1497,7 +1514,7 @@ mod tests {
     #[test]
     fn renders_degraded_mermaid() {
         let doc = render_document::<()>("```mermaid\ngraph TD; A-->B;\n```\n", true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Container { child, .. } = &children[0] else { panic!("mermaid outer") };
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
         assert_eq!(parts.len(), 2, "header + code");
@@ -1514,12 +1531,13 @@ mod tests {
     fn renders_degraded_mermaid_light_chrome() {
         crate::ui::style::theme::set_dark_mode(false);
         let doc = render_document::<()>("```mermaid\ngraph TD; A-->B;\n```\n", true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Container { child, style, .. } = &children[0] else { panic!("mermaid outer") };
         let outer = format!("{:?}", style.as_ref().map(|s| &s.classes));
         assert!(
             outer.contains("BackgroundColor(Gray(50))"),
             "light-mode mermaid outer must use the light fence chrome, got {outer}"
+
         );
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
         let View::Container { child: h, style: hs, .. } = &parts[0] else { panic!("header") };
@@ -1538,7 +1556,7 @@ mod tests {
     #[test]
     fn renders_degraded_math_block() {
         let doc = render_document::<()>("%{\nE=mc^2\n}%\n", true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Container { child, .. } = &children[0] else { panic!("math outer") };
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
         assert_eq!(parts.len(), 2, "header + body");
@@ -1553,7 +1571,7 @@ mod tests {
     #[test]
     fn renders_degraded_query_block() {
         let doc = render_document::<()>("$query(tags:todo)\n", true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Container { child, .. } = &children[0] else { panic!("query outer") };
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
         assert_eq!(parts.len(), 2, "标签行 + query 体");
@@ -1644,7 +1662,7 @@ mod tests {
 fn x() {}
 ```
 ", true);
-        let View::Column { children, .. } = doc else { panic!("col") };
+        let children = doc_children(doc);
         let View::Container { child, .. } = &children[0] else { panic!("fence outer") };
         let View::Column { children: parts, .. } = child.as_ref() else { panic!("fence body") };
         assert_eq!(parts.len(), 2);

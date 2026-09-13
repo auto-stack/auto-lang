@@ -1762,8 +1762,9 @@ impl<'a> AuraViewBuilder<'a> {
                     // 编辑栏 offset 绑定写入 + onscroll 消息读出。
                     // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
                     // ghost 消息）。
+                    let p063_editor_sk = crate::ui::autodown_editor::storage_key(key.as_str());
                     let (scroll_sync, offset, on_scroll, _details) =
-                        self.autodown_scroll_binding(props, events, bindings);
+                        self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
                     let on_focus = self.autodown_on_focus_binding(events);
                     // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
                     // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
@@ -1815,7 +1816,7 @@ impl<'a> AuraViewBuilder<'a> {
                     let _ = props.get("streaming");
                     let placeholder = self.autodown_placeholder(props, bindings);
                     let (scroll_sync, offset, on_scroll, details_onclick) =
-                        self.autodown_scroll_binding(props, events, bindings);
+                        self.autodown_scroll_binding(props, events, bindings, None);
                     // PLAN-045 T5：列宽状态 + 落定通道（oncolresize）。
                     let table_widths = self.autodown_table_widths(props, bindings);
                     let col_resize = self.autodown_on_col_resize_binding(events);
@@ -2756,6 +2757,7 @@ impl<'a> AuraViewBuilder<'a> {
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
+        editor_key: Option<&str>,
     ) -> (
         bool,
         Option<(f32, f32)>,
@@ -2785,6 +2787,27 @@ impl<'a> AuraViewBuilder<'a> {
         if !scroll_sync {
             return (false, None, None, details_onclick);
         }
+        // PLAN-063 T-04d: sync_anchor——编辑壳锚块高亮开关。开启时 scroll
+        // 回调把「首个完整可见块」索引写入编辑器 core（ade 存储），
+        // DocEditor draw 臂读出描边高亮（仅 autodown+code-editor 双 feature
+        // 下编辑器本体存在）。
+        let sync_anchor = props
+            .get("sync_anchor")
+            .and_then(|v| match v {
+                AuraPropValue::Expr(expr) => self.resolve_expr_to_value(expr, bindings),
+                _ => None,
+            })
+            .map(|val| val.as_bool())
+            .unwrap_or(false);
+        let p063_sk = if sync_anchor { editor_key.map(|s| s.to_string()) } else { None };
+        // PLAN-063 T-04d-2: sink 注册与 sync_anchor 解耦——sync_anchor 是
+        // 左栏编辑器的高亮开关；sync_anchor_target 属右栏 autodown 元素
+        //（锚槽与 scroll_top 写臂所在）。有 target prop 即注册（字段名
+        // 字符串字面量，剥前导点）。
+        if let Some(field) = self.extract_string_with(props, "sync_anchor_target", bindings) {
+            eprintln!("[P063-SINK] registered");
+            crate::ui::anchor_slot::set_target_sink(Some(field.trim_start_matches('.').to_string()));
+        }
         let offset = props
             .get("scroll_top")
             .and_then(|v| match v {
@@ -2803,18 +2826,35 @@ impl<'a> AuraViewBuilder<'a> {
             let handler = extract_handler_name(&ev.handler).to_string();
             let widget = self.widget_name.clone();
             crate::ui::view::ScrollCallback::new(
-                move |m: crate::ui::view::ScrollMetrics| DynamicMessage::Typed {
-                    widget_name: widget.clone(),
-                    event_name: handler.clone(),
-                    // PLAN-043 T6：实参序 (height, client, top)。VM 轨由
-                    // update 层 rust 直写快道消费（renderer.rs T6 拦截——
-                    // 引擎 handler 对 float 实参/算术写入腐坏，DEBTS 登记；
-                    // handler 保留为 vue 契约面）。
-                    args: vec![
-                        Value::Float(m.content_h as f64),
-                        Value::Float(m.viewport_h as f64),
-                        Value::Float(m.offset_y as f64),
-                    ],
+                move |m: crate::ui::view::ScrollMetrics| {
+                    #[cfg(all(feature = "autodown", feature = "code-editor", feature = "ui-iced"))]
+                    if let Some(sk) = &p063_sk {
+                        if let Some(idx) = crate::ui::autodown_editor::core::set_anchor_from_scroll(
+                            sk,
+                            m.offset_y as f64,
+                            m.viewport_h as f64,
+                        ) {
+                            eprintln!("[P063-T] pending={}", idx);
+                            crate::ui::anchor_slot::set_pending_anchor(idx);
+                        }
+                    }
+                    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+                    if let Some(_sk) = &p063_sk {
+                        let _ = _sk;
+                    }
+                    DynamicMessage::Typed {
+                        widget_name: widget.clone(),
+                        event_name: handler.clone(),
+                        // PLAN-043 T6：实参序 (height, client, top)。VM 轨由
+                        // update 层 rust 直写快道消费（renderer.rs T6 拦截——
+                        // 引擎 handler 对 float 实参/算术写入腐坏，DEBTS 登记；
+                        // handler 保留为 vue 契约面）。
+                        args: vec![
+                            Value::Float(m.content_h as f64),
+                            Value::Float(m.viewport_h as f64),
+                            Value::Float(m.offset_y as f64),
+                        ],
+                    }
                 },
             )
         });
@@ -3362,8 +3402,9 @@ impl<'a> AuraViewBuilder<'a> {
                     // 编辑栏 offset 绑定写入 + onscroll 消息读出。
                     // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
                     // ghost 消息）。
+                    let p063_editor_sk = crate::ui::autodown_editor::storage_key(key.as_str());
                     let (scroll_sync, offset, on_scroll, _details) =
-                        self.autodown_scroll_binding(props, events, bindings);
+                        self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
                     let on_focus = self.autodown_on_focus_binding(events);
                     // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
                     // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
@@ -3413,7 +3454,7 @@ impl<'a> AuraViewBuilder<'a> {
                     let _ = props.get("streaming");
                     let placeholder = self.autodown_placeholder(props, bindings);
                     let (scroll_sync, offset, on_scroll, details_onclick) =
-                        self.autodown_scroll_binding(props, events, bindings);
+                        self.autodown_scroll_binding(props, events, bindings, None);
                     // PLAN-045 T5：列宽状态 + 落定通道（oncolresize）。
                     let table_widths = self.autodown_table_widths(props, bindings);
                     let col_resize = self.autodown_on_col_resize_binding(events);

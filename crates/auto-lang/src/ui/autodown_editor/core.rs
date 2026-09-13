@@ -24,7 +24,7 @@
 // License: MIT. 架构参照 cosmic-edit（GPL-3.0，System76）；原始实现。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -506,6 +506,9 @@ pub struct AutodownEditorCore {
     revision: AtomicU64,
     external_dirty: AtomicBool,
     last_used: AtomicU64,
+    /// PLAN-063 T-04d: 滚动同步锚块索引（-1 = 无）。scroll 回调按
+    /// 首个完整可见块判定写入，draw 臂读出描边高亮。
+    anchor_block: AtomicI32,
 }
 
 impl AutodownEditorCore {
@@ -530,6 +533,7 @@ impl AutodownEditorCore {
             emitted_echo: Mutex::new(std::collections::VecDeque::new()),
             layout: Mutex::new(DocLayout { blocks: Vec::new() }),
             revision: AtomicU64::new(0),
+            anchor_block: AtomicI32::new(-1),
             external_dirty: AtomicBool::new(false),
             last_used: AtomicU64::new(0),
         }
@@ -569,6 +573,15 @@ impl AutodownEditorCore {
     /// widget 内部消费 + 单测锚定，不对 DSL 开放查询面。
     pub fn block_rects(&self) -> Vec<Rect> {
         self.layout.lock().unwrap().blocks.iter().map(|b| b.rect).collect()
+    }
+
+    /// PLAN-063 T-04d: 锚块索引读写（scroll 回调写，draw 臂读）。
+    pub fn set_anchor_block(&self, i: i32) {
+        self.anchor_block.store(i, Ordering::Relaxed);
+    }
+
+    pub fn anchor_block(&self) -> i32 {
+        self.anchor_block.load(Ordering::Relaxed)
     }
 
     pub fn revision(&self) -> u64 {
@@ -3866,6 +3879,34 @@ pub fn autodown_editor_text(key: &str) -> Option<String> {
     let norm = normalize_payload_key(key);
     let map = registry().lock().unwrap();
     map.get(&norm).map(|c| c.emit_document())
+}
+
+/// PLAN-063 T-04d: 首个完整可见块（滚动同步锚块判定）。tol = 2px
+/// 容差（对齐后锚块 top=0 仍命中）；无完整块（超高块占满视口）回退
+/// 为与视口顶相交的块。
+pub fn first_fully_visible_block(rects: &[Rect], scroll_top: f32, client_h: f32) -> Option<usize> {
+    let tol = 2.0_f32;
+    for (i, r) in rects.iter().enumerate() {
+        if r.y >= scroll_top - tol && r.y + r.h <= scroll_top + client_h + tol {
+            return Some(i);
+        }
+    }
+    rects.iter().position(|r| r.y + r.h > scroll_top)
+}
+
+/// 滚动同步锚块写入（编辑壳 scroll 回调消费；key 未注册返回 false）。
+pub fn set_anchor_from_scroll(key: &str, scroll_top: f64, client_h: f64) -> Option<usize> {
+    let norm = normalize_payload_key(key);
+    let map = registry().lock().unwrap();
+    match map.get(&norm) {
+        Some(core) => {
+            let rects = core.block_rects();
+            let idx = first_fully_visible_block(&rects, scroll_top as f32, client_h as f32);
+            core.set_anchor_block(idx.map(|i| i as i32).unwrap_or(-1));
+            idx
+        }
+        None => None,
+    }
 }
 
 /// 外部值推送（renderer lowering 用；内部差分 against last_external）。
