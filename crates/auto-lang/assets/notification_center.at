@@ -73,7 +73,7 @@ widget NotificationCenter {
                         style: "w-full justify-end"
                         // PLAN-010 N6d：卡片守卫——onclick 幂等动作
                         // （RebuildNotes 纯重算）吞掉卡片本体内点。
-                        mouse-area (onclick: .RebuildNotes, style: "w-80 mr-3 pt-3") {
+                        mouse-area (onclick: .RebuildNotes, style: "w-80 pt-3 pr-3") {
                             col {
                                 // Plan 503：glass 三件套（bg-card/80 + 细边框 + 柔影）
                                 style: "w-full bg-card/80 border rounded-xl shadow-xl overflow-hidden"
