@@ -2025,6 +2025,51 @@ pass**（AC-11/AC-16 的未达半边归属未开完的 T-10/T-11，不在本阶�
 **PLAN-617 整体**仍因 T-09..T-14 未完而**保持 `executing`，不给最终 `reviewed`**
 （阶段复审不授予终态，技能约定）。折入后本计划的剩余任务与 findings 一条不减。
 
+### 9.23 阶段折入：**被阻塞**与待办（2026-09-13，复审 pass 之后）
+
+用户指示「这批改动和计划 617 一起合并」。执行前取证发现**当前不能安全合并**，
+阻塞与处置如下（结论已可执行，等主检出干净即可落地）：
+
+**① 阻塞：主检出工作区有并发写入的未提交改动，且与本次合并重叠 5 个文件**
+
+`git status --porcelain`（主检出）38 项脏改动；与本分支 `master..plan-617-dev`
+的 93 个改动文件求交，重叠 **5 个**：
+
+```
+crates/auto-lang/src/ui/aura_view_builder.rs
+crates/auto-lang/src/ui/iced/mod.rs
+crates/auto-lang/src/ui/iced/renderer.rs
+crates/auto-lang/src/ui/mod.rs
+crates/auto-lang/src/ui/view.rs
+(+ examples/rust-workspace/Cargo.toml，gitignored 生成物，可忽略)
+```
+
+这 5 个文件的 mtime 是**同一批次**（2026-09-13 18:50:42），且它们在本次会话一开始的
+`git status` 快照里就是脏的 ⇒ **不是本会话产生的**，属并发写入方的在途工作。
+只要它们仍未提交，`git merge plan-617-dev` 会被 git 直接拒绝
+（"local changes would be overwritten"）。**未做任何 stash/discard**——那是别人的在途工作。
+
+**② 内容级冲突只有 1 处，且语义无害（已干跑确认）**
+
+`git merge-tree --write-tree master plan-617-dev` 报 **1 个 CONFLICT**：
+`crates/auto-lang/src/ui/iced/renderer.rs`，冲突体就是 `lucide_svg` 的函数体——
+master 侧（PLAN-618 `9ac3c5661`）保留了**手抄 match 表并往里加了一条 `zap`**，
+而本分支把整张 match 换成了生成的全量表。
+
+**处置：取本分支侧即可**，618 的意图（`zap` 必须能画）由全量表**天然满足**——
+`lucide_generated.rs` 内含 `"zap"`（实测 `grep -c '"zap"' = 1`）。
+故这是「一条臂的增补 vs 整表的替换」的机械冲突，不需要人工设计取舍。
+
+**③ 待办（主检出一旦干净即可执行）**
+
+1. `cd D:/autostack/auto-lang && git merge plan-617-dev`（预期仅 renderer.rs 冲突，
+   按 ② 取本分支侧，删掉冲突标记区域内的旧 match 与 `.our` 标记）。
+2. 合并后立刻跑**至少一档门禁**：`RUSTC_WRAPPER= cargo t --no-fail-fast`
+   （UI 改动的有效档；`cargo tf` 不含 `ui-iced`，见 §9.22 的门禁口径发现），
+   确认 19 = 基线（含 `lucide_icon_coverage_manifest_all_hit` 绿）。
+3. 补记折入 SHA 到本节；**不归档、不改 `status`**——PLAN-617 仍 `executing`（T-09..T-14 未完）。
+4. PLAN-620 的平台件随同折入；其「分支与提交归属」节据此收口为选项 (a)。
+
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
 > 一句话状态（2026-09-13 晚，r12 + §9.22 复审后刷新）：**VM 链 T-15..T-20 与
