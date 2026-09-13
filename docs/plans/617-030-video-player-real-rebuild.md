@@ -5,7 +5,7 @@ feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-12
-plan_revision: 5                 # r5: T-15 门控 spike 完成，裁定 Go（SW 通道）；T-16..T-20 转入可执行
+plan_revision: 6                 # r6: T-16 完成（native 加载器 + 引擎生命周期 + 降级）；T-17 起接帧上屏
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -803,11 +803,23 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
     （4K 120 帧中 1 帧 957 ms），处置归 T-17。
   - **附带发现**：`mpv-spike` 特性下 lib 的 `--test` 目标会触发 rustc 1.98.0 ICE
     （`ui/mcp_server.rs:1718`，与 spike 无关）→ spike 落 example 目标，T-16..T-20 照此避开。
-- **T-16 native 动态库加载器**（Go 后）：把 `crates/auto-lang/src/ffi.rs:62-145` 的
+- [x] **T-16 native 动态库加载器**（Go 后）：把 `crates/auto-lang/src/ffi.rs:62-145` 的
   `TODO(Plan-212)` 落地为真正的 `libloading` 动态库加载；实现 libmpv 句柄
   生命周期、render context 创建/释放顺序（含 `LC_NUMERIC=C` 等 mpv 已知要求）、
   以及**库缺失时的静默降级**（回落到今日的诚实占位，不 panic、不黑屏）。
   验证：`cargo check -p auto-lang`；库缺失路径的单测。
+  [✅ 已完成 2026-09-13] worktree @ `e13e63e59`，全文见 **§9.15**。
+  - 交付 `crates/auto-lang/src/ui/mpv/`（`locale`/`loader`/`engine`/`frame` 四模块，
+    feature `mpv-native`）+ `ffi.rs` 的真实加载路径 + `tests/mpv_engine.rs`（9 用例）。
+  - **销毁顺序钉死在 `Drop`**：`render_context_free` → `terminate_destroy`（render.h:119 记 UB）。
+  - **实测两分支**：有 DLL 时真实生命周期 + 真实渲染一帧进我们的缓冲全绿；
+    无 DLL 时优雅 SKIP、9/9 通过、exit 0。
+  - **实测发现**：`Vec<u8>` 自然对齐只有 1（本机 16），直接交给 mpv 会**静默**掉进
+    「整帧拷贝」慢路径（render.h:393-404 要求 64）→ 已编码为 `FrameBuffer` 类型不变量。
+  - 门禁 `cargo t`：**零新增红**（20 项全在基线集合内；基线 21 项中
+    `ffi_dual_019` 是 P615-D3 并发 flake 本次恰好通过）；+2 测试数即本次新增用例。
+  - **构建环境坑（会立刻咬到下一个人）**：`os error 5` 写 `.d` 失败的真因是
+    **sccache 缓存 31G/上限 30G** 导致持续 trim；绕过 `RUSTC_WRAPPER= cargo …`。
 - **T-17 帧上屏通道**（Go 后）：按 T-15 结论实现帧到纹理的通道，
   **必须绕开每帧新建 `Handle`**（硬约束，见 §2.5 风险点 2）；
   镜像 `image_pipeline` 的既有形状（票据/rendition、latest-wins 代际门、有界缓存）。
@@ -1350,7 +1362,77 @@ T-13/T-14 与主链并行。
     故本次结论是「已检查的红均可解释、且改动面为零源代码」，
     **不等同于**已证明「相对干净基线零新增红」。
 
-## 11. 新会话开工须知（Handoff，2026-09-12）> 本会话很长了，以下是把「不读完整 §0–§10 也能安全接手」所需的操作要点集中在此。
+### 9.15 T-16 完成——native 动态库加载器与 libmpv 引擎生命周期（2026-09-13）
+
+- **交付**（worktree `plan-617-dev` @ `e13e63e59`）：新增 `crates/auto-lang/src/ui/mpv/`
+  （feature **`mpv-native`**，只挂 `ui`、**不牵 iced**，故可独立编译与测试）：
+  - `locale.rs` —— `LC_NUMERIC` 必须是 `"C"`。这不是可选项：`client.h:147` 是硬前提，
+    且同 header 把它列为 `mpv_create()` 返回 NULL 的原因之一（`:479`）。用 **CRT 自己的
+    `setlocale`**（零新增依赖——本仓没有 `libc`），并且**只动 `LC_NUMERIC`**、不用
+    `LC_ALL`（那会连带改掉调用方的其它分类）。LC_NUMERIC 的**数值平台相关**，
+    按 MSVC/ucrt(4) 与 glibc/musl(1) 分别写死并注明依据，不凭印象。
+    为什么要主动做：Rust std 从不调 `setlocale`，但进程内其它 C 库（本仓有 oniguruma、
+    sqlite3）可能调 `LC_ALL` 把它一起改掉。
+  - `loader.rs` —— 解析序（`AUTO_MPV_LIB` → exe 同目录 → 无）与符号表。**显式路径存在
+    才采用，不存在就直接降级为 `None` 而不回落**——否则「路径指错了」会表现为
+    「莫名用了另一个版本的运行库」，比直接降级更难排查。符号在加载期**一次性**解析成
+    裸函数指针（`MpvSymbols`），从而绕开 `libloading::Symbol<'lib, T>` 的生命周期约束。
+  - `engine.rs` —— 句柄与 render context 的生命周期，**本任务的核心**。销毁顺序钉死在
+    `Drop` 里：`mpv_render_context_free()` → `mpv_terminate_destroy()`；反序是 UB
+    （`render.h:119` 原文 "If this doesn't happen, undefined behavior will result"）。
+    另两条同源约束照做：`render.h:111`（**先建 context 再 loadfile**，否则 video 初始化
+    失败或退回自建窗口 VO）与 `:114`（一个 core 同时只允许 1 个 context——重复建返回
+    错误）。「同线程 create/free」只在 API < 1.105 存在（`render.h:96-107`），故按运行时
+    `mpv_client_api_version()` 判断，旧版跨线程释放时打 warning 但**仍按正确顺序释放**
+    （不释放就销毁 core 是 UB，比旧版线程风险更严重）。
+  - `frame.rs` —— 帧目标缓冲，把 mpv 的 **64 字节对齐**要求（`render.h:393-404`）
+    编码进类型。**这条是 T-16 的一个实测发现**：`Vec<u8>` 的自然对齐只有 1
+    （本机实测 16），把 `vec.as_mut_ptr()` 直接交给 mpv 会**静默**掉进「整帧拷贝」慢路径
+    ——T-15 的 spike 里已经踩过一次，所以这次把它变成类型不变量（`FrameBuffer::as_target`
+    是唯一无需 `unsafe` 的入口）。
+- **缺失即降级（AC-20 的落地）**：`MpvEngine::new()` 返回
+  `MpvUnavailable::{NoLibrary | LoadFailed | CreateFailed | InitFailed | RenderContextFailed}`，
+  全程不 panic、不黑屏；`MpvEngine::is_available()` 供渲染层廉价探测以便决定降级。
+  **刻意区分「本机没有运行库」（正常分支）与「显式指定却加载失败」（缺陷）**。
+- **`ffi.rs` 落地 `TODO(Plan-212)` 的加载部分**：`register_c_function` 现在真的
+  `LoadLibrary`，**失败是硬错误而非静默 no-op**（旧实现 `log::info!("Would load ...")`
+  假装成功，问题会在日后以「莫名错误结果」的形式浮现）；新增 `with_library` 作用域访问器
+  （`Symbol` 借用库，无法外传，故用闭包收口）与 `loaded_libraries()`。
+  **明确未做**：任意 C 签名的实参编组仍属 Plan-212 未完成范围，本次**未**随附（已登记债务）。
+  与 `ui/mpv` 的**刻意反差**：那里的缺库是「本机没这个能力」→ 降级；这里的缺库是
+  「有人点名要它」→ 报错。
+- **测试（9 用例，集成目标而非 lib 单测——避开 lib `--test` 的 rustc ICE，见 P617-D1）**：
+  `crates/auto-lang/tests/mpv_engine.rs`。**两分支都实测**：
+  - **有 DLL**：`libmpv: …libmpv-2.dll (client API 2.5)`，真实生命周期（建 context →
+    拒绝重复建 → Drop → 再建）与**真实渲染一帧进我们的缓冲**（320×180，断言渲染后缓冲
+    非全零）全绿；
+  - **无 DLL**（`env -u AUTO_MPV_LIB`）：优雅 SKIP、**9/9 通过、exit 0**、不 panic。
+  解析序的纯函数形式（`resolve_library_with`）让解析用例**不碰进程环境**，避免测试间竞态。
+  `ffi::tests` 更正 2 例 + 新增 1 例：旧用例传 `target/hal.dll`（一个**从不存在的路径**）
+  却断言成功——只因加载当时是 no-op；现改用**必然可加载**的路径（测试可执行文件自身），
+  并新增「不可加载库必须报错且不留半状态（函数未注册 / id 未推进 / 库未记录）」。
+- **门禁 `cargo t`**：`4814 run / 4794 passed / 20 failed / 109 skipped`（55.0s）。
+  基线（§9.14）为 21 项，本次 **20 项且完全落在基线集合内**——差异的那一项
+  `ffi_dual_019_dep_layout_invariants` 是 `KNOWN-DEBT` 记载的 **P615-D3 并发 flake**
+  （本次恰好通过）。测试数 +2 即本次新增的两例。
+  → **零新增红**，且本计划自己的新增用例全绿。
+- **构建环境踩坑（重要，会立刻咬到下一个人）**：`cargo` 报
+  `error writing dependencies to …deps\<crate>-<hash>.d: 拒绝访问 (os error 5)`，
+  一次构建里几十个 crate 同时失败。**逐层排除**：不是权限（我用 shell 手写同名文件成功、
+  手动单跑 rustc `--emit=dep-info,metadata` 到同一目录也成功）、不是沙箱
+  （关掉沙箱同样失败）、不是 target 目录损坏（**换全新 target 目录同样失败**）、
+  不是孤儿进程（已清理上一会话残留的 lang-617 `cargo run` + :8330 后端，无效）。
+  **真因：sccache**。`SCCACHE_DIR=D:\autostack\.sccache` 已 **31 G**，而
+  `SCCACHE_CACHE_SIZE=30 G` → 超出上限、持续 trim，硬链接/写入竞态就表现为 `os error 5`。
+  **绕过**：`RUSTC_WRAPPER= cargo …`（清空 wrapper，本次所有验证均在此环境下取得）。
+  **根治**：清理该缓存目录或调大 `SCCACHE_CACHE_SIZE`——但它被多个计划共用，本计划不擅自改动。
+- outcome: pass；next: **T-17**（帧上屏通道：持久 staging 环 + `copy_buffer_to_texture`，
+  并处置 T-15 记录的长尾）。T-16 已把「帧 → 我们的内存」这一段打通（`FrameBuffer` +
+  `render_sw_frame`），T-17 要接的是「我们的内存 → wgpu 纹理」。
+
+## 11. 新会话开工须知（Handoff，2026-09-12）
+
+> 本会话很长了，以下是把「不读完整 §0–§10 也能安全接手」所需的操作要点集中在此。
 > 一句话状态：**Vue 端已可用（真实队列 + 真实播放）；VM 端仍完全不能播放（无渲染路径）。**
 > 用户指定的下一焦点：**VM 版能否启动并播放** → **T-15**。
 
@@ -1368,6 +1450,16 @@ T-13/T-14 与主链并行。
 - **构建前必清孤儿进程**：`auto run -r vm` 被 `terminate()` 时会留子进程占住
   `target/debug/auto.exe`，导致 `failed to remove file … os error 5`。
   先 `tasklist | grep auto.exe` → `taskkill //F //PID <pid>`。
+  **注意**：机器上常有**别的计划**的 auto.exe（主检出 / auto-os / lang-618/619）——
+  动手前先按 ExecutablePath 确认归属，别误杀。本计划上一会话就留过一个
+  lang-617 的 `cargo run`（`examples/rust-workspace/030-video-player-back`）+ :8330 后端。
+- **`os error 5` 的另一个（更常见的）真因是 sccache**，不是孤儿进程：
+  `SCCACHE_DIR=D:\autostack\.sccache` 已 **31G** 而 `SCCACHE_CACHE_SIZE=30G` →
+  超限持续 trim → 硬链接/写入竞态 → 一次构建里几十个 crate 同时报
+  `error writing dependencies to …deps\<crate>-<hash>.d: 拒绝访问 (os error 5)`。
+  **判别**：换个全新 target 目录**同样**失败 ⇒ 与 target 状态无关；
+  **绕过**：`RUSTC_WRAPPER= cargo …`（本次 T-16 全部验证在此环境下取得）。
+  根治需清理缓存或调大上限（被多计划共用，未擅自改）。
 - 门禁 `cargo t`。**注意基线是红的且不干净**（§9.13：无法取到干净基线，因为主检出被并发占用）。
 
 ### C. 运行
@@ -1383,10 +1475,11 @@ T-13/T-14 与主链并行。
 
 ### E. 任务状态
 - **已完成并折入 master `3546f9567`**：T-01、T-02、T-05、T-06。
-- **已完成（worktree 内待折入）**：**T-15（门控 spike，裁定 Go）**——见 §9.14。
+- **已完成**：**T-15（门控 spike，裁定 Go，§9.14）**、**T-16（native 加载器 +
+  引擎生命周期 + 降级，§9.15）**——均已提交（worktree `b621edda0` / `e13e63e59`）。
 - **未完成**：T-03（`viewport.at` + VM 有信息降级面板）、T-04、T-07（受控媒体契约）、
-  T-08、T-09、T-10、T-11、T-12、T-13、T-14。
-- **VM 链（Go 之后可以开工）**：**T-16 → T-17 → T-18 → T-19 → T-20**。
+  T-08、T-09、T-10、T-11、T-12、T-13、T-14、**T-17..T-20**。
+- **VM 链进度**：T-16 ✅ → **T-17（下一步）** → T-18 → T-19 → T-20。
 
 ### F. T-15 已完成的门控定义与结论（全文见 §9.14 与 design doc §4）
 - 路径与通道：**libmpv DLL 运行时加载；通道 = SW**（软件渲染后端 + 持久 staging buffer →
