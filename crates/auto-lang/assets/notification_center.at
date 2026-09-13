@@ -67,10 +67,10 @@ widget NotificationCenter {
             // 赖 mt-auto/Fill 填充条（真实 Stack 子层不可靠，复验三连贴
             // 顶 0 实证）与根高类。右垫 mr-3 = 12px 对称档。----
             col {
-                // 贴底 = justify-end（iced 列 align_y 底对齐——renderer
-                // :1612 needs_v_align 臂，packs 真实链已验证机制），替代
-                // mt-auto 填充条/col-reverse（真实链不可靠）。
-                style: "w-full h-full justify-end"
+                // 右上锚定（用户裁定 2026-09-14）：justify-start = iced 列
+                // align_y 顶对齐（真实链验证机制——justify-end 贴底已实测
+                // 有效），卡片挂顶 + 装配层 padding 顶/右 12px gap。
+                style: "w-full h-full justify-start"
                 row {
                     style: "w-full justify-end items-end"
                     // PLAN-010 N6d：卡片守卫——onclick 幂等动作

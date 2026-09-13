@@ -16216,6 +16216,7 @@ fn compare_pngs(
             // 内层 mouse-area 守卫（on_press = RebuildNotes 幂等，
             // PLAN-010 N6d 同款——卡片本体内点不关）。
             if state.notification_visible() {
+                eprintln!("[p012-layer] notification layer pushed (justify-end build)");
                 let panel_app = state.desktop.notification_app.expect("panel checked");
                 let panel_widget = state
                     .apps
@@ -16244,10 +16245,10 @@ fn compare_pngs(
                         .width(iced::Length::Fill)
                         .height(iced::Length::Fill)
                         .align_x(iced::alignment::Horizontal::Right)
-                        .align_y(iced::alignment::Vertical::Bottom)
+                        .align_y(iced::alignment::Vertical::Top)
                         .padding(iced::Padding {
                             right: 12.0,
-                            bottom: 60.0,
+                            top: 12.0,
                             ..Default::default()
                         }),
                 )
