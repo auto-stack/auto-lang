@@ -693,6 +693,17 @@ pub enum View<M: Clone + Debug> {
     ProgressBar {
         progress: f32,  // 0.0 to 1.0
         style: Option<Style>,
+        /// **可拖拽进度条**（`onseek` prop）：按下或按住拖动时，把指针在该
+        /// 元素 bounds 内的横向位置换算成 **0..1 的比例**交给这个回调。
+        ///
+        /// 为什么传比例而不是值：VM 侧到这个层次 `value`/`max` 已经被归一成
+        /// 0..1（`convert_progress` 做的），`max` 不再可得；让两端都交比例，
+        /// 作者侧写 `store.SeekTo(.duration * $0)` 即可，尺度不跨端漂移。
+        ///
+        /// 复用 [`PointerMoveHandler`]（mouse-area onmousemove 同型）是为了
+        /// 让消息装配/投影/转换链路零新增分支；只用到第一个实参（比例），
+        /// 第二个恒 0.0。
+        on_seek: Option<PointerMoveHandler<M>>,
     },
 
     /// Accordion (collapsible sections) with optional styling
@@ -1680,6 +1691,7 @@ impl<M: Clone + Debug> View<M> {
         View::ProgressBar {
             progress: progress.clamp(0.0, 1.0),
             style: None,
+            on_seek: None,
         }
     }
 
@@ -1699,6 +1711,7 @@ impl<M: Clone + Debug> View<M> {
         View::ProgressBar {
             progress: progress.clamp(0.0, 1.0),
             style: Some(Style::parse(style_str).expect("Invalid style")),
+            on_seek: None,
         }
     }
 
@@ -2105,7 +2118,18 @@ impl<M: Clone + Debug> View<M> {
             View::WindowThumbnail { wid, fallback_icon, style } => {
                 View::WindowThumbnail { wid, fallback_icon, style }
             }
-            View::ProgressBar { progress, style } => View::ProgressBar { progress, style },
+            // on_seek 是「值 → 消息」的构造器，map 只换消息类型，故按同一
+            // 回调重建（PointerMoveHandler 的闭包对 M 泛型，需包一层）。
+            View::ProgressBar { progress, style, on_seek } => View::ProgressBar {
+                progress,
+                style,
+                on_seek: on_seek.map(|h| {
+                    let f = std::sync::Arc::clone(f);
+                    crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {
+                        f(h.call(x, y))
+                    })
+                }),
+            },
             View::List { items, spacing, style } => View::List {
                 items: items.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 spacing,

@@ -44,8 +44,6 @@ store PlayerStore {
         var group_count int = 0
         var item_count int = 0
         var queue_summary str = "条目 0 · 分组 0"
-        /// 进度条的可点击刻度（百分比）。放在 store 里是因为 view 侧不能造列表。
-        var seek_marks []float = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
 
         // ---- 当前条目（索引派生；模板只读，不在模板里取下标）----
         // 初值取 0 而不是 -1：负整数字面量作 store 字段初值时，生成器会产出
@@ -92,7 +90,7 @@ store PlayerStore {
         SelectIndex(int),
         TogglePlay,
         SeekTo(float),
-        SeekPercent(float),
+        SeekFraction(float),
         OnTime(float),
         OnDuration(float),
         OnPlayState(bool),
@@ -239,10 +237,20 @@ store PlayerStore {
             }
         }
 
-        .SeekPercent(pct float) -> {
+        // 进度条拖拽/点选：两端交的都是 **0..1 的横向比例**（VM 走 iced
+        // SeekArea，Web 走生成器发的指针三包装），故这里换算成秒即可，
+        // 不需要知道条宽或 max。
+        .SeekFraction(f float) -> {
             if .has_current {
                 if .duration > 0.0 {
-                    PlayerStore.SeekTo(.duration * pct / 100.0)
+                    var frac float = f
+                    if frac < 0.0 {
+                        frac = 0.0
+                    }
+                    if frac > 1.0 {
+                        frac = 1.0
+                    }
+                    PlayerStore.SeekTo(.duration * frac)
                     .status_text = "跳转至 " + .current_time_str
                 }
             }

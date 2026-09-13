@@ -46,7 +46,7 @@ widget App {
 
                 row {
                     style: "items-center gap-2"
-                    icon (name: "monitor", size: 18, style: "text-primary")
+                    icon (name: "film", size: 18, style: "text-primary")
                     text "Video Player" { style: "text-sm font-semibold tracking-tight" }
                 }
                 if .store.has_current {

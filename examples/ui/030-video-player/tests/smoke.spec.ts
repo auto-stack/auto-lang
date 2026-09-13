@@ -121,7 +121,7 @@ test('T3 暂停真实作用于元素', async ({ page }) => {
   await selectByTitle(page, 'caelestia')
   await waitUntilPlaying(page)
 
-  await page.getByRole('button', { name: '暂停' }).first().click()
+  await page.locator('.transport-playpause').click()
   await expect.poll(async () => (await videoState(page)).paused, { timeout: 10000 }).toBe(true)
 
   const a = (await videoState(page)).currentTime
@@ -129,21 +129,44 @@ test('T3 暂停真实作用于元素', async ({ page }) => {
   const b = (await videoState(page)).currentTime
   expect(Math.abs(b - a), '暂停后 1s 内时间不动').toBeLessThan(0.25)
 
-  await page.getByRole('button', { name: '播放' }).first().click()
+  await page.locator('.transport-playpause').click()
   await expect.poll(async () => (await videoState(page)).paused, { timeout: 10000 }).toBe(false)
 })
 
-test('T4 seek 真实：点 50% 段 → currentTime 落在 duration*0.5 ±5%', async ({ page }) => {
+test('T4 seek 真实：点进度条中点 → currentTime 落在 duration*0.5 ±5%', async ({ page }) => {
   await waitForApp(page)
   await selectByTitle(page, 'caelestia')
   await waitUntilPlaying(page)
 
-  const segs = page.locator('.seek-seg')
-  await expect(segs).toHaveCount(10)
-  await segs.nth(4).click() // 第 5 段 = 50%
+  // 进度条 = AutoUI `progress` + onseek（本轮新加的双端能力）：
+  // 按下即 seek，按住拖动持续 seek。
+  const bar = page.locator('div:has(> [role="progressbar"])').first()
+  const box = await bar.boundingBox()
+  expect(box, '进度条可见').not.toBeNull()
+  await page.mouse.click(box!.x + box!.width * 0.5, box!.y + box!.height / 2)
 
   const s = await videoState(page)
   const expected = s.duration * 0.5
+  await expect
+    .poll(async () => Math.abs((await videoState(page)).currentTime - expected), { timeout: 10000 })
+    .toBeLessThan(s.duration * 0.05)
+})
+
+test('T4b 拖拽 seek：从 20% 拖到 80%', async ({ page }) => {
+  await waitForApp(page)
+  await selectByTitle(page, 'caelestia')
+  await waitUntilPlaying(page)
+
+  const bar = page.locator('div:has(> [role="progressbar"])').first()
+  const box = (await bar.boundingBox())!
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height / 2, { steps: 5 })
+  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2, { steps: 5 })
+  await page.mouse.up()
+
+  const s = await videoState(page)
+  const expected = s.duration * 0.8
   await expect
     .poll(async () => Math.abs((await videoState(page)).currentTime - expected), { timeout: 10000 })
     .toBeLessThan(s.duration * 0.05)
@@ -156,19 +179,19 @@ test('T5 音量 / 静音 / 倍速真实作用于元素', async ({ page }) => {
 
   // 音量：初始 80 → 元素 0.8（作者面 0..100 的换算）
   expect(Math.abs((await videoState(page)).volume - 0.8)).toBeLessThan(0.02)
-  await page.getByRole('button', { name: '+', exact: true }).click()
+  await page.locator('.vol-up').click()
   await expect
     .poll(async () => (await videoState(page)).volume, { timeout: 10000 })
     .toBeGreaterThan(0.8)
 
   // 静音
-  await page.getByRole('button', { name: '静音' }).click()
+  await page.locator('.vol-mute').click()
   await expect.poll(async () => (await videoState(page)).muted, { timeout: 10000 }).toBe(true)
-  await page.getByRole('button', { name: '静音' }).click()
+  await page.locator('.vol-mute').click()
   await expect.poll(async () => (await videoState(page)).muted, { timeout: 10000 }).toBe(false)
 
   // 倍速：1.0 → 1.25
-  await page.getByRole('button', { name: '1.0x' }).click()
+  await page.locator('.rate-btn').click()
   await expect
     .poll(async () => (await videoState(page)).playbackRate, { timeout: 10000 })
     .toBeCloseTo(1.25, 2)

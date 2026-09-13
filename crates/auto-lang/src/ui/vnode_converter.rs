@@ -1034,6 +1034,7 @@ mod tests {
         let view: View<TestMsg> = View::ProgressBar {
             progress: 0.75,
             style: None,
+            on_seek: None,
         };
 
         let tree = view_to_vtree(view);

@@ -654,6 +654,9 @@ pub struct VueGenerator {
     /// PLAN-617 T-07: 受控 `video` 元素登记（模板臂收集、generate_script
     /// 消费——下行 apply 函数 + watchEffect + 上行原生监听包装）。
     video_specs: Vec<VideoSpec>,
+    /// PLAN-617 后续: 可拖拽进度条登记（`progress` + `onseek`）。存 handler
+    /// 函数名——script 臂据此生成 pointer 三包装（按下/拖动/抬起）。
+    progress_seek_specs: Vec<String>,
     /// Plan 408 P12 §10.4: composable ref 字段标注——`use { composable: useX(refs: [a, b]) }`
     /// → key = local name（"x"），value = 标注为 ref 的字段名集合。script 表达式
     /// 访问这些字段时加 `.value`（composable 返回普通对象时 ref 不自动 unwrap）。
@@ -899,6 +902,7 @@ impl VueGenerator {
             pending_scroll_sentinel: None,
             canvas_specs: Vec::new(),
             video_specs: Vec::new(),
+            progress_seek_specs: Vec::new(),
             ext_components: HashMap::new(),
             ext_import_lines: Vec::new(),
             ext_composables: Vec::new(),
@@ -1251,6 +1255,7 @@ impl VueGenerator {
         self.surface_pans.clear();
         self.canvas_specs.clear();
         self.video_specs.clear();
+        self.progress_seek_specs.clear();
         self.ext_components.clear();
         self.ext_import_lines.clear();
         self.ext_composables.clear();
@@ -3184,6 +3189,15 @@ impl VueGenerator {
             let specs = self.video_specs.clone();
             for (i, spec) in specs.iter().enumerate() {
                 script.push_str(&self.video_script_block(i, spec));
+                script.push('\n');
+            }
+        }
+
+        // PLAN-617 后续：可拖拽进度条的三包装（按下/拖动/抬起）。
+        if !self.progress_seek_specs.is_empty() {
+            let specs = self.progress_seek_specs.clone();
+            for (i, handler) in specs.iter().enumerate() {
+                script.push_str(&self.progress_seek_script_block(i, handler));
                 script.push('\n');
             }
         }
@@ -5242,6 +5256,87 @@ onMounted(() => {{
         s
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // PLAN-617 后续: 可拖拽进度条（`progress` + `onseek`）
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// 可拖拽进度条 → 外层指针包装 + 登记脚本块。
+    ///
+    /// 只在**声明了 `onseek`** 时进入（否则返回 `Ok(None)` 走通用路径，
+    /// 既有 `progress` 输出逐字节不变）。契约：handler 收 **0..1 的横向比例**，
+    /// 与 VM 侧 `View::ProgressBar.on_seek`（`seek_area.rs`）同尺——作者写
+    /// `store.SeekTo(.duration * $0)` 即可，不需要知道像素或 max。
+    fn try_generate_seekable_progress_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        indent: usize,
+    ) -> GenResult<Option<String>> {
+        let Some(ev) = events
+            .iter()
+            .find(|(k, _)| k.to_ascii_lowercase() == "onseek")
+            .map(|(_, v)| v)
+        else {
+            return Ok(None);
+        };
+        let handler = self.handler_to_function_call(&ev.handler);
+        self.used_handlers.insert(handler.clone());
+        let idx = self.progress_seek_specs.len();
+        self.progress_seek_specs.push(handler);
+        let ind = "  ".repeat(indent);
+
+        // 内层就是普通 shadcn Progress（与通用 progress 臂同口径的绑定）。
+        let mut inner: Vec<String> = Vec::new();
+        if let Some(value) = props.get("value") {
+            if let Some(model) = self.extract_state_ref(value) {
+                inner.push(format!(":model-value=\"{}\"", Self::escape_html_attr(&model)));
+            } else if let Some(i) = self.extract_int_value(value) {
+                inner.push(format!(":model-value=\"{}\"", Self::escape_html_attr(&i.to_string())));
+            } else if let AuraPropValue::Expr(expr) = value {
+                if let Ok(expr_str) = self.expr_to_vue_bound_value(expr) {
+                    inner.push(format!(":model-value=\"{}\"", Self::escape_html_attr(&format!("Number({expr_str})"))));
+                }
+            }
+        }
+        if let Some(max) = props.get("max") {
+            let m = self.extract_int_value(max).unwrap_or(100);
+            inner.push(format!(":max=\"{}\"", Self::escape_html_attr(&m.to_string())));
+        }
+        let (classes, _dyn_c, _dyn_s) = self.extract_classes("progress", props);
+        if !classes.is_empty() {
+            inner.push(format!("class=\"{}\"", Self::escape_html_attr(&classes)));
+        }
+        self.shadcn_components_used.insert("Progress".to_string());
+        Ok(Some(format!(
+            "{ind}<div class=\"w-full\" @pointerdown=\"__seekDown_{idx}($event)\" @pointermove=\"__seekMove_{idx}($event)\" @pointerup=\"__seekUp_{idx}($event)\" @pointercancel=\"__seekUp_{idx}($event)\">\n{ind}  <Progress {}/>\n{ind}</div>\n",
+            inner.join(" ")
+        )))
+    }
+
+    /// 可拖拽进度条的 script 块：比例换算 + 按下/拖动/抬起三包装。
+    ///
+    /// 按下即 seek（点哪跳哪）；**按住期间**的移动才继续 seek（悬停不 scrub
+    /// ——与 VM 侧 `seek_area.rs` 的 `pressed` 门控同语义）；指针捕获让拖出
+    /// 条外仍跟手。
+    fn progress_seek_script_block(&self, i: usize, handler: &str) -> String {
+        let mut s = String::new();
+        s.push_str("// PLAN-617: 可拖拽进度条（progress + onseek）。handler 收 0..1 比例。\n");
+        s.push_str(&format!("let __seekDrag_{i} = false\n"));
+        s.push_str(&format!(
+            "function __seekFrac_{i}(e: PointerEvent, el: HTMLElement): number {{\n  const r = el.getBoundingClientRect()\n  if (!(r.width > 0)) return 0\n  return Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1)\n}}\n"
+        ));
+        s.push_str(&format!(
+            "function __seekDown_{i}(e: PointerEvent) {{\n  const el = e.currentTarget as HTMLElement\n  __seekDrag_{i} = true\n  const anyEl = el as any\n  if (typeof anyEl.setPointerCapture === 'function') anyEl.setPointerCapture(e.pointerId)\n  {handler}(__seekFrac_{i}(e, el))\n}}\n"
+        ));
+        s.push_str(&format!(
+            "function __seekMove_{i}(e: PointerEvent) {{\n  if (!__seekDrag_{i}) return\n  const el = e.currentTarget as HTMLElement\n  {handler}(__seekFrac_{i}(e, el))\n}}\n"
+        ));
+        s.push_str(&format!(
+            "function __seekUp_{i}(e: PointerEvent) {{\n  __seekDrag_{i} = false\n  const anyEl = e.currentTarget as any\n  if (typeof anyEl.releasePointerCapture === 'function') {{\n    try {{ anyEl.releasePointerCapture(e.pointerId) }} catch {{}}\n  }}\n}}\n"
+        ));
+        s
+    }
+
     /// Plan 563: canvas script 块 —— redraw(场景双表 → 2D 绘制,场景
     /// 数据契约的 vue 侧独立映射:逻辑→px extent 缩放/round 线帽拐角/
     /// 单点=直径线宽圆点/eraser=clear 色缺省白——与 iced CanvasPainter
@@ -6182,7 +6277,51 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let lucide_component = Self::kebab_to_pascal(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
 
-                    let (static_classes, _dynamic_class, _dynamic_style) = self.extract_classes(tag, props);
+                    let (mut static_classes, _dynamic_class, dynamic_style) = self.extract_classes(tag, props);
+
+                    // 尺寸口径（**与 VM 端 `with_icon_size` 同一套**）：
+                    //   显式 `w-*`/`h-*` 类 > `size` prop > 默认 20px。
+                    // 为什么不能像以前那样无条件塞 `w-5 h-5`：Tailwind 里
+                    // `w-5` 与 `w-3` 同权重，靠样式表顺序定胜负（数字小的在前），
+                    // 于是用户写的 `class: "h-3 w-3"`（041-auto-edit 就是这么写
+                    // 的）会被静默盖成 20px —— 同一个 `.at` 在 VM 上 12px、
+                    // 在 Vue 上 20px。显式类存在时一律不加默认。
+                    // 判据取自**已解析出的类集**而不是原始 `class`/`style` prop：
+                    // `icon (name: …) { style: "w-5 h-5 text-white" }` 这种**块式**
+                    // 样式根本不在 props 里（desktop.at 就是这么写的），只看 props
+                    // 会判成「没有显式尺寸」→ 再塞一份默认类 → Tailwind 里两份
+                    // 同权重类打架（金样 test_a2vue_desktop_surface_asset 抓到过）。
+                    let has_wh_class = static_classes.split_whitespace().any(|c| {
+                        c.starts_with("w-") || c.starts_with("h-") || c.starts_with("size-")
+                    }) || _dynamic_class.is_some();
+                    let size_px = props
+                        .get("size")
+                        .and_then(|v| self.extract_int_value(v))
+                        .filter(|v| *v > 0);
+                    let size_attr = match (has_wh_class, size_px) {
+                        (false, Some(px)) => {
+                            // `size` 是 px 数值，Tailwind 类表达不了任意值 →
+                            // 走内联样式（与 VM 端推入的 Pixels(px) 等价）。
+                            let mut decl = format!("width:{}px;height:{}px", px, px);
+                            if let Some(extra) = dynamic_style.as_deref() {
+                                if !extra.is_empty() {
+                                    decl.push(';');
+                                    decl.push_str(extra);
+                                }
+                            }
+                            format!(" style=\"{}\"", decl)
+                        }
+                        (false, None) => {
+                            if static_classes.is_empty() {
+                                static_classes.push_str("w-5 h-5");
+                            } else {
+                                static_classes.push_str(" w-5 h-5");
+                            }
+                            String::new()
+                        }
+                        // 显式类在，就让类说话（动态 class 同理，无从判定时不越俎代庖）。
+                        (true, _) => String::new(),
+                    };
                     let class_str = if static_classes.is_empty() {
                         String::new()
                     } else {
@@ -6190,9 +6329,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     };
 
                     if children.is_empty() {
-                        return Ok(format!("{}<{}{} />\n", ind, lucide_component, class_str));
+                        return Ok(format!("{}<{}{}{} />\n", ind, lucide_component, class_str, size_attr));
                     } else {
-                        let mut html = format!("{}<{}{}>\n", ind, lucide_component, class_str);
+                        let mut html = format!("{}<{}{}{}>\n", ind, lucide_component, class_str, size_attr);
                         for child in children {
                             html.push_str(&self.node_to_html(child, indent + 1)?);
                         }
@@ -6221,6 +6360,17 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if tag == "video" || tag == "Video" {
                     if let Some(html) =
                         self.try_generate_controlled_video_html(props, events, indent)?
+                    {
+                        return Ok(html);
+                    }
+                }
+
+                // PLAN-617 后续：可拖拽进度条（`progress` + `onseek`）。
+                // 同样只在**声明了 onseek** 时进入——未声明时原样走通用路径，
+                // 既有 `progress { value: … }` 的生成结果逐字节不变。
+                if (tag == "progress" || tag == "Progress") && !events.is_empty() {
+                    if let Some(html) =
+                        self.try_generate_seekable_progress_html(props, events, indent)?
                     {
                         return Ok(html);
                     }
@@ -8820,7 +8970,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
                 // Media
                 "image" => classes.push("max-w-full".to_string()),
-                "icon" => classes.push("w-5 h-5".to_string()),
+                // "icon" 的默认尺寸**不在这里**注入：icon 臂要按
+                // 「显式 w-/h- 类 > size > 默认」决定，无条件塞默认会静默
+                // 盖掉用户显式写的尺寸类（Tailwind 同权重）。见 icon 臂。
 
                 // Utility
                 "divider" => classes.push("shrink-0 bg-border".to_string()),
@@ -18823,6 +18975,99 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
             target_type: crate::ast::Type::Int,
         };
         assert_eq!(gen.expr_to_js(&bin).unwrap(), "Math.trunc((a / b))");
+    }
+
+    /// 图标尺寸口径的**双端一致性锚点**（Vue 侧）。
+    ///
+    /// 规则：显式 `w-*`/`h-*` 类 > `size` prop > 默认 20px（`w-5 h-5`）。
+    /// 与 VM 侧 `aura_view_builder::with_icon_size` 同源；VM 侧的对应断言在
+    /// `musk_vm_track_tests` 之外由本测试的兄弟（`icon_size_matches_vm_rule`
+    /// 的 VM 版）覆盖。
+    ///
+    /// 背景：此前 Vue 端**无条件**注入 `w-5 h-5`，Tailwind 同权重靠样式表顺序
+    /// 定胜负 ⇒ 用户写的 `class: "h-3 w-3"` 被静默盖成 20px，而 VM 端老老实实
+    /// 按 12px 画 —— 同一个 `.at` 两端不一样大。
+    #[test]
+    fn test_icon_size_precedence() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget Icons {
+    model { var dummy bool = false }
+    view {
+        col {
+            icon (name: "play")
+            icon (name: "pause", size: 12)
+            icon (name: "volume-2", class: "h-3 w-3 text-muted-foreground")
+        }
+    }
+}
+"##);
+        // ① 都没有 → 默认 20px（w-5 h-5）
+        assert!(
+            sfc.contains("<Play class=\"w-5 h-5\" />"),
+            "默认尺寸应为 w-5 h-5：\n{sfc}"
+        );
+        // ② 只有 size → px 内联样式，且**不得**再带默认类
+        assert!(
+            sfc.contains("<Pause style=\"width:12px;height:12px\" />"),
+            "size 应落成 px 内联尺寸：\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("<Pause class=\"w-5 h-5\""),
+            "size 生效时不得再注入默认类：\n{sfc}"
+        );
+        // ③ 显式尺寸类 → 原样，不加默认、不加 style（否则又会静默盖掉用户意图）
+        assert!(
+            sfc.contains("<Volume2 class=\"h-3 w-3 text-muted-foreground\" />"),
+            "显式尺寸类应原样输出：\n{sfc}"
+        );
+    }
+
+    /// 可拖拽进度条（`progress` + `onseek`）的生成锚点：
+    /// 外层指针三包装 + 内层仍是 shadcn Progress；**未声明 onseek 时**输出
+    /// 与改动前一致（兼容约束）。
+    #[test]
+    fn test_progress_onseek_wrapper() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget Bar {
+    msg { SeekFraction(float) }
+    model { var pct float = 25.0 }
+    on { .SeekFraction(f) -> { .pct = f } }
+    view {
+        col {
+            progress (value: .pct, max: 100.0, class: "h-2 w-full", onseek: .SeekFraction($0))
+        }
+    }
+}
+"##);
+        assert!(sfc.contains("@pointerdown=\"__seekDown_0($event)\""), "按下包装:
+{sfc}");
+        assert!(sfc.contains("@pointermove=\"__seekMove_0($event)\""), "拖动包装:
+{sfc}");
+        assert!(sfc.contains("@pointerup=\"__seekUp_0($event)\""), "抬起包装:
+{sfc}");
+        assert!(sfc.contains("function __seekFrac_0(e: PointerEvent, el: HTMLElement): number"), "比例换算:
+{sfc}");
+        assert!(sfc.contains("if (!__seekDrag_0) return"), "悬停不 scrub 的按下门控:
+{sfc}");
+        assert!(sfc.contains("SeekFraction(__seekFrac_0(e, el))"), "交比例而非像素:
+{sfc}");
+        assert!(sfc.contains("r.width"), "比例用条自身宽度:
+{sfc}");
+        // 内层仍是普通 Progress 组件
+        assert!(sfc.contains("<Progress :model-value="), "内层 Progress 绑定:
+{sfc}");
+
+        // 兼容性：不带 onseek 的 progress 不产生任何包装
+        let plain = gen_sfc_from_widget_src_shadcn(r##"
+widget Plain {
+    model { var pct float = 10.0 }
+    view { progress (value: .pct, max: 100.0) }
+}
+"##);
+        assert!(!plain.contains("__seekDown_"), "未声明 onseek 不得多出指针包装:
+{plain}");
+        assert!(!plain.contains("__seekFrac_"), "未声明 onseek 不得多出比例函数:
+{plain}");
     }
 
     #[test]
