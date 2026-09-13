@@ -237,7 +237,7 @@ AC-19 的「无闪烁」是可判定的：一旦不再经过 Handle/atlas，闪�
 
 | 风险 | 实测依据 | T-17 的处置 |
 |---|---|---|
-| 通道 C 有**极稀有的长尾**（4K 120 帧里 1 帧 957 ms、1080p 里 3 帧 242 ms） | 门控 B 离群计数；**release 档同样出现**（4K max 951 ms）⇒ 非 debug 产物 | 用 **2–3 槽 staging 环**（避开「映射中的缓冲不可提交」）+ 单帧丢弃策略；长尾定位是 T-17 的第一件事 |
+| ~~通道 C 有极稀有的长尾~~ **已在 T-17 处置**（4K 120 帧里 1 帧 957 ms、1080p 里 3 帧 242 ms；release 档同样出现 ⇒ 非 debug 产物） | 门控 B 离群计数 | **已落地**：**3 槽 staging 环**（避开「映射中的缓冲不可提交」）+ **回收超时即丢帧**。T-17 在正式通道里复现了该长尾（4K 30 帧中 1 帧 **329–336 ms**）并被环吸收（0 丢帧、0 空白帧）。见 §4.9 |
 | 通道 A/B 在**有并发负载时尾部急剧恶化**（release 构建占着 GPU 时实测：A 4K p95 43 ms/12 离群、B 4K p95 217 ms/16 离群；C 仍 p95 0.76 ms） | 同机对照运行 | 进一步支持选 C；但说明上屏通道对 GPU 争用敏感，T-17 需在真实负载下复测 |
 | SW 后端**用不了零拷贝硬解**（只能 `d3d11va-copy`），4K 软解内存可达 ~1 GB | 门控 A（`hwdec-current: no`）与 Python RSS 表 | 目标分辨率下调（4K 降采样到视口尺寸再上屏，`SW_SIZE` 即视口尺寸）可显著降低 `render()` 与内存 |
 | **本机无 mpv/libmpv**，CI 更不能依赖 | 取得构件前实测 | 运行库解析序（`AUTO_MPV_LIB` → exe 同目录 → 系统路径）+ 缺失即降级（`mpv_spike selfcheck` 已证 `Library::new` 返回 `Err` 而非 abort） |
@@ -260,6 +260,170 @@ chain，**与 spike 代码无关**）；同一特性下 `--lib`（rlib）与 `ex
 故 CI 无需安装任何系统媒体包（AC-20）。分发形态与许可影响：libmpv 为 **LGPLv2.1+**
 （本次构件的 ffmpeg 为静态内链，若未来跟随发行版分发需按 LGPL 提供重链接能力）——
 **本计划不分发 DLL**，只定义解析序与降级行为，故该问题留给真正要做发行的那件事。
+
+### 4.9 T-17 落地：帧上屏通道（实测数字与长尾复现）
+
+通道已按 §4.1 的形状实现（`crates/auto-lang/src/ui/mpv/channel.rs` + `present.rs`，
+feature `mpv-gpu`；引擎部分 `mpv-native` 单独门控，不碰 GPU）：
+
+```
+mpv SW renderer ──直接写──▶ 持久映射 staging（3 槽环）──copy_buffer_to_texture──▶ 持久 wgpu 纹理 ──全屏 blit──▶ 目标
+```
+
+**实现里三条值得记住的结论**：
+
+1. **行距取 256 对齐**，一个 stride 同时满足两边：wgpu 的
+   `copy_buffer_to_texture` 要求 `bytes_per_row` 是 `COPY_BYTES_PER_ROW_ALIGNMENT`
+   (256) 的倍数，mpv 要求 64 的倍数（`render.h:393-404`）——256 是 64 的倍数。
+   实测常用宽度（1920/2560/3840 等）本来就落在 256 上，故无 padding 开销。
+2. **片元着色器强制 `alpha = 1.0`**：mpv 的 `"rgb0"` 第 4 字节是**未初始化垃圾**
+   （`render.h` 原文 "the '0' component contains uninitialized garbage"）。若把它当
+   alpha 用，画面会随机变半透明甚至整帧「消失」——**那就是闪烁**本身。
+3. **背压一律丢帧，不阻塞**：取不到空闲槽时定向回收（`poll` 只等**该槽**的
+   submission，不串行化整个 GPU），回收带超时（默认 4 ms），**超时即丢帧**。
+   视频场景里丢一帧远好于冻结界面，且纹理始终保留上一帧内容，故丢帧**不会**
+   产生空白。
+
+**实测（`tests/mpv_channel.rs`，真实 libmpv + 真实片源 + 离屏读回）**：
+
+| 通道尺寸 | 源 | 端到端帧率（含逐帧读回/上屏） | 上屏代价 p50 | p95 | max（离群） | 丢帧 |
+|---|---|---|---|---|---|---|
+| 1920×1080 | `caelestia.mp4` | **258–385 fps** | **0.61–0.67 ms** | 0.85–0.98 ms | 6.8–55.4 ms（2/60） | 0 |
+| 3840×2160 | `Loki.S02E01…4K HEVC HDR` | **38.3–38.6 fps** | **4.35–4.54 ms** | 5.57–5.65 ms | **329–336 ms（1/30）** | 0 |
+
+**那条长尾在正式通道里复现了**：4K 下 30 帧中 1 帧 `copy_buffer_to_texture` 耗时
+**329–336 ms**（T-15 门控 B 量到的是 957 ms，同一现象）。这说明 §4.6 记录的
+长尾不是 spike 的测量假象。**而 3 槽环把它吸收掉了**——`reclaim_timeout=0`、
+无丢帧、无空白帧，表现只是那一轮的总时长从 0.4 s 变成 0.78 s。这正是选 3 槽
+（一槽在被 mpv 写、一槽在 GPU 拷贝、一槽空闲可取）的意义。
+
+**「无闪烁」的可证伪判定**（写在 `tests/mpv_channel.rs` 里，不是靠眼看）：
+逐帧上屏后读回像素，断言 ① 画面确实上了屏（非全黑）；② **没有「内容帧之间夹
+空白帧」**——这正是 `renderer.rs:2889` 描述的「画面消失又出现」的闪烁签名；
+③ 帧签名不恒定（纹理在更新，不是命中缓存后的陈旧帧）；④ 全程
+`textures_created() == 1`（**硬约束：纹理只建一次**，这条是结构性反闪烁）。
+
+端到端帧率含逐帧读回（真实播放器不会做），故是**保守下界**；对照 24 fps 片源，
+1080p 有 10× 以上、4K 有 1.6× 余量。
+
+### 4.10 T-18：§2.3 受控媒体契约在 mpv 侧的落地
+
+`crates/auto-lang/src/ui/mpv/contract.rs` 把 §2.3 的契约实现到 mpv 上
+（`mpv-native` 门控，不需要 GPU）。**共享边界取「作者面的状态值」**：`volume` 是
+**0..100**（Vue 侧生成器翻成元素的 0..1；mpv 的 `volume` 本就是 0..100，故 VM 侧恒等），
+`position`/时长是 float 秒，`rate` 是倍速 float。换算函数留在 `contract.rs` 作单一出处。
+
+属性映射（全部走 mpv 的**属性**接口，读写对称）：
+
+| 契约字段 | mpv 属性 | 说明 |
+|---|---|---|
+| `paused` | `pause`（flag） | 作者写 `paused: .is_playing == false` |
+| `position` | `time-pos`（double） | 秒；写它就是绝对 seek |
+| `volume` | `volume`（double） | 0..100，与契约同单位 |
+| `muted` | `mute`（flag） | |
+| `rate` | `speed`（double） | `<= 0` 一律忽略（0 倍速会冻住播放） |
+| 上行 `ontimeupdate` | `time-pos` | 变化超 0.25s 才回灌（流量而非精度考虑） |
+| 上行 `onloadedmetadata` | `duration` | 首次可知时**恰好发一次** |
+| 上行 `onplaystatechange` | `pause` | **合成**事件（§2.3 明写它不是原生 DOM 事件），边缘触发 |
+| 上行 `onended` / `onmediaerror` | `END_FILE` 事件的 `reason` | `EOF` → Ended；`ERROR` → MediaError |
+
+**`src` 连数据通路也不需要分叉**：mpv 自带网络栈，`loadfile` 既收本地路径也收
+`http(s)://`，故后端给 Vue 的 `/api/media/stream/<id>` 在 VM 侧原样可用。
+
+**三处必须写对的细节**（都在模块文档与测试里）：① `position` 是「目标变化时 seek」，
+不是「与当前位置不同就 seek」——后者会让播放在前进时每帧触发 seek 从而把播放钉死在
+目标点；② 下行必须差量（视图每帧重建）；③ 换片与 seek 让 `generation` 前进，
+供 T-17 的 `VideoLatestWins` 作废在途旧帧。
+
+**实测**（真实 libmpv，10/10 绿；缺库整体 SKIP）：seek 19.77s → 落点 **19.77s**；
+起播后时间前进、暂停后 0.6s 内不动；`volume/mute/speed` 读回校验；`rate=0` 被忽略、
+`volume=300` 夹到 100；`LoadedMetadata` 恰好一次且等于 mpv 的 `duration`；EOF 回灌 `Ended`
+而不误报错误；音频实测 **`current-ao=wasapi`、`codec=aac`、48k/stereo**，且全仓
+`Cargo.toml` **无任何音频输出依赖**——**音频确实是 mpv 的职责，没有引入 cpal**。
+
+**一处 T-16 遗留缺陷（已修，记录以免重犯）**：`wait_event()` 原先只判「指针是否为 NULL」，
+但 **mpv 超时返回的是有效指针 + `MPV_EVENT_NONE`**，故 `while let Some(ev) = wait_event(..)`
+形式的抽取循环会死循环。T-16 的 `wait_first_frame_event` 恰好有 20s 截止兜底所以没显形，
+T-18 的 `poll()` 一上来就把它触发了。**教训**：「当时测试通过」不等于「没有缺陷」。
+
+**一处限制（登记为债务 P617-D8）**：mpv 在 `END_FILE/ERROR` 上不总是给错误码（实测
+`error == 0`，`mpv_error_string(0)` 得到「success」）。现以「哪个源加载失败」为主信息；
+要拿到精确原因需捕获 mpv 日志（`mpv_request_log_messages`）。
+
+### 4.11 T-19：`video` 提升为可用（接线形状与「差一步」的边界）
+
+`video` 的 iced 渲染面落在 `crates/auto-lang/src/ui/mpv/widget.rs`，feature
+**`mpv-widget`**（= `mpv-gpu` + `ui-iced`）。它把 §4.9/§4.10 的两段接成一个
+**自定义 shader widget**：
+
+```text
+Program::draw      → Primitive{ id, 目标尺寸, 本帧下行值 }     （纯数据 → Send+Sync 自然成立）
+Primitive::prepare → [thread_local 取引擎] apply 下行 / poll 上行 → channel.with_frame
+Primitive::draw    → 用管线里那张持久纹理画满 bounds
+```
+
+**引擎为什么住 thread-local**：`Primitive`/`Pipeline` 在 native 上要求
+`Send + Sync`，而 `MpvEngine` 含裸指针、**刻意** `!Send`（`mpv_wait_event` 只允许
+一个线程调用）。故引擎不进 Primitive/Pipeline，而放进由 widget id 索引的线程本地
+注册表——widget 与渲染都在 iced 主线程，正是引擎被创建与使用的线程。
+**万一被换线程调用，表现是「查不到运行时 → 不画」，降级而非 UB。**
+
+接线三层：① `View` 新增 `Video` 变体（与 `ImageSurface` 同形，**不携带消息**——
+上行由渲染面按帧采集，故各后端消息重映射臂平凡）；② `aura_view_builder` 的
+tracked/untracked 两条 dispatch 各有 `video` 臂；③ iced renderer 的 `View::Video` 臂
+（有 feature 走 widget，无 feature 渲染**诚实降级面板**而非黑屏）。
+
+配套状态同步：`schema/aura.at` 的 `iced: fallback → partial` 且 **`props` 由 `[]`
+改为声明**（打开 S001 校验；此前 typo 静默通过）；`render_support.rs` 记 partial 并
+写明三项限制；`element_coverage.rs` 的 `video` **仍为 not-yet**——那张表描述的是
+**queue/投影臂**（`video` 不在 `Coverage::target_set`），理由改成「差投影不差渲染」。
+
+**帧由谁驱动**：iced 只在有重绘时 `prepare`，而视频要持续出帧。widget **不自带定时器**，
+复用应用既有的 tick（`tick_interval_ms()` → `iced::time::every`）。
+**应用不声明 tick，视频就停在首帧**——这条写进了模块文档与规范注记。
+
+**AC-19 还差的那一步**：`crates/auto` 目前没有 `mpv-widget` 特性透传，故默认
+`auto run -r vm` 看到的是降级面板。要在 VM 窗口里真看到画面在动，需补该透传
+（T-20 的特性门控）并让应用声明 tick。**通道就位 ≠ 默认可用**，这一点在计划 §9.18
+里写清楚了，不以「已达成」自居。
+
+### 4.12 T-20：实机收口（AC-19 达成）与它抓到的三个真缺陷
+
+`video` 现在**在 VM 窗口里真的会动**：验证语料 `test/ui/plan617_video_vm`
+（`video` + `paused: false` + `position: 8.0` + `timer { FrameTick (every_ms: 16) }`）
+实机 1080p 播放 `caelestia.mp4`，seek 生效（`time-pos` 由 8 递增到 12.63s）。
+启用方式一行：`cargo build -p auto --features mpv`（默认不开，理由见下）。
+
+**三个只有实机才能发现的缺陷**（`cargo t` + `docs_gen` + `video_contract` 三套门禁全绿却依然存在）：
+
+1. **`convert_view_messages` 的 `_ => Empty` 兜底静默吃掉了 `video` 节点。**
+   VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` →
+   `View<IcedMessage>` → `into_iced`。T-19 只加了 `map_msg_with_arc` 与 `into_iced` 的臂，
+   漏了这一处 ⇒ 播放面在 VM 里恒为 `Empty`。而 **MCP 快照走 `vnode_converter` 另一条路**，
+   快照里 `[Video] caelestia.mp4` 看起来「节点就在树里」——**假绿**。
+   该函数的注释里已记 Grid/MouseArea/select 三次同类坑，这是第四次（见债务 P617-D10）。
+2. **widget 从没建 mpv render context** ⇒ `has_new_frame()` 恒假、渲染恒失败，
+   而 mpv 侧一切正常（time-pos 在走、duration 已解析）。正是 `render.h:111`
+   「先建 context 再 loadfile」的次序要求被违反。
+3. **忘了 `channel.advance(gen, seq)`** ⇒ 通道的 `VideoLatestWins` 每帧判 `DroppedStale`，
+   纹理停在初始全零，表现为「mpv 在播、纹理全黑」。
+
+**教训（已登记为债务 P617-D11）**：涉及「新 `View` 变体要一路走到渲染」的改动，
+**必须有一次真起窗看画面的验证**——编译通过 + 契约单测不能替代它。
+本轮三个缺陷全部落在那条缝里。
+
+**feature 门控**：`mpv-native`/`mpv-gpu`/`mpv-widget` 三层（`auto` 侧有同名透传与 `mpv` 别名），
+**默认不开**——打开后任何带 `video` 的示例都会真解码并打开音频设备
+（对 019-video-app 这类示例是行为变化）。**零构建期原生依赖**（运行时 `LoadLibrary`），
+故 11 个 `ubuntu-latest` CI 任务**不需要任何系统媒体包**（实测 `grep` 零命中、
+`cargo build -p auto` 本机 1m21s 通过）。
+
+### 4.13 尚未接上的那一段
+
+**VM 链已全部收口**（T-15..T-20）：`video` 在 VM 端真实播放已实机验证（见 §4.12）。
+仍未接上的是 **Vue 链**（示例侧 T-03/T-04 的视口与播控条、T-07/T-08 的受控契约生成器与
+真实播放接线、T-09..T-14），以及「默认可用」——native 播放**刻意是显式开启的 feature**
+（`--features mpv`），默认走诚实降级面板。
 
 ---
 

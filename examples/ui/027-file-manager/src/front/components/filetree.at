@@ -1,0 +1,81 @@
+// components/filetree.at — FileTree 组件(PLAN-614)。
+//
+// 文件系统树展示,TreeView 语义的文件系统预设(参考 Ant Design Tree 的
+// directory 形态):fs 形态数据(id=路径的 node schema)自动映射目录/文件
+// 图标(folder/folder-open 按展开态;file 按扩展名),内部持有展开/选中态,
+// 零状态配置开箱即用。
+//
+// 实现注记:v1 直接渲染行(与 TreeView 同款 row 结构)而非组合 TreeView——
+// VM 轨 P320 单态下同名子组件跨页播种共享(全页常驻挂载),TreeView 必须
+// 全画廊单实例,FileTree 自包含独立实现(行视图小面积重复,契约文档收录)。
+// Init 仅挂载期一次(PLAN-536 T3),ftExpanded 从 default_expanded 播种安全。
+//
+// # Usage
+// use { package: official from "../components" }
+// FileTree (nodes: .ftNodes, default_expanded: ["src", "src/components"]) {}
+
+use components.tree_util: flatten_tree, toggle_id
+
+widget FileTree (nodes: List, default_expanded: List = []) {
+    msg { Init, Toggle(str), Select(str) }
+
+    model {
+        ftExpanded List = []
+        ftSelected str = ""
+    }
+
+    on {
+        .Init -> {
+            .ftExpanded = .default_expanded
+        }
+        .Toggle(id) -> {
+            .ftExpanded = toggle_id(.ftExpanded, id)
+        }
+        .Select(id) -> {
+            .ftSelected = id
+        }
+    }
+
+    computed {
+        ftRows => flatten_tree(.nodes, .ftExpanded, true, .ftSelected)
+    }
+
+    view {
+        col (style: "w-full text-sm") {
+            for r in .ftRows {
+                row (style: "items-center") {
+                    for g in r.guides {
+                        if g == "l" {
+                            div (style: "w-4 h-6 flex items-center justify-center") {
+                                div (style: "w-px h-6 bg-border") {}
+                            }
+                        } else {
+                            div (style: "w-4 h-6") {}
+                        }
+                    }
+                    if r.has_kids {
+                        mouse-area (onclick: .Toggle(r.id), style: "w-5 h-5 shrink-0 items-center justify-center cursor-pointer") {
+                            if r.open {
+                                icon (name: "chevron-down", style: "w-3.5 h-3.5 text-muted-foreground") {}
+                            } else {
+                                icon (name: "chevron-right", style: "w-3.5 h-3.5 text-muted-foreground") {}
+                            }
+                        }
+                    } else {
+                        div (style: "w-5 shrink-0") {}
+                    }
+                    row (onclick: .Select(r.id), class: f"flex flex-row flex-1 items-center gap-1.5 py-1 pr-2 rounded-md cursor-pointer ${r.state}") {
+                        if r.icon != "" {
+                            TreeIcon (name: r.icon) {}
+                        }
+                        text r.label { style: "text-sm" }
+                        if r.badge != "" {
+                            text r.badge { style: "ml-auto text-xs text-muted-foreground" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

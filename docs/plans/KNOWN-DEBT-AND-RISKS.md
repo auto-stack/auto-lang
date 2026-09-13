@@ -2118,5 +2118,25 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P617-D1 | medium | 构建基建 | **打开 `mpv-spike` 特性后编译 lib 的 `--test` 目标会触发 rustc 1.98.0 ICE**（`collect_and_partition_mono_items`，查询栈指向 `ui/mcp_server.rs:1718` 的 iterator chain，**与 spike 代码无关**）；同特性下 `--lib`（rlib）与 `example` 目标均正常。已用 `[[example]] required-features` 绕开，但 **T-16..T-20 的测试都必须避开 lib 测试目标**，否则 CI/本地会撞同一个 ICE。根治需最小复现上报 rustc | `crates/auto-lang/Cargo.toml`（`mpv-spike` 特性与 `[[example]] mpv_spike`）；入口 `crates/auto-lang/examples/mpv_spike.rs` 头部注释 |
 | P617-D2 | medium | 性能长尾 | **上屏通道 C（持久 staging + `copy_buffer_to_texture`）有极稀有长尾**：4K 120 帧中 1 帧 957 ms、1080p 中 3 帧 242 ms（p50/p95/p99 均正常，故不是稳态代价）；**`--release` 档同样出现（4K max 951 ms）⇒ 非 debug 产物，是真实行为**。旁证：有并发负载时通道 A/B 尾部急剧恶化（A 4K p95 43 ms/12 离群、B 4K p95 217 ms/16 离群）而 C 仍 p95 0.76 ms——选 C 又多一条依据，但上屏通道对 GPU 争用敏感，需在真实负载下复测。T-17 须以 2–3 槽 staging 环（映射中的缓冲不可 submit）+ 单帧丢弃处置，长尾定位是 T-17 的第一件事 | 计划 §9.14；证据 `t15_gate_debug.log`；探针 `crates/auto-lang/examples/mpv_spike.rs` 门控 B |
 | P617-D3 | low | 能力边界 | **mpv 的 SW render 后端用不了零拷贝硬解**（`hwdec=d3d11va` 实测 `hwdec-current: no`，只能用 `d3d11va-copy` 回读）→ 4K 纯软解 RSS 达 ~1 GB、CPU 54.6 ms/帧。缓解：把 `SW_SIZE` 设为视口尺寸而非片源尺寸（4K 降采样后上屏） | 计划 §9.14；design doc §4.6 |
-| P617-D4 | low | 分发/许可 | **libmpv-2.dll 不入库、CI 不依赖**（运行时依赖非构建期依赖，AC-20 已守住），但因此**没有任何发行故事**：本次构件为 LGPLv2.1+（其 ffmpeg 静态内链），若未来要随发行版分发需按 LGPL 提供重链接能力。当前只定义解析序（`AUTO_MPV_LIB` → exe 同目录 → 系统路径）与缺失降级 | design doc §4.8；`mpv_spike.rs::resolve_mpv_library` |
+| P617-D4 | low | 分发/许可 | **libmpv-2.dll 不入库、CI 不依赖**（运行时依赖非构建期依赖，AC-20 已守住），但因此**没有任何发行故事**：本次构件为 LGPLv2.1+（其 ffmpeg 静态内链），若未来要随发行版分发需按 LGPL 提供重链接能力。当前只定义解析序（`AUTO_MPV_LIB` → exe 同目录 → 系统路径）与缺失降级 | design doc §4.8；`crates/auto-lang/src/ui/mpv/loader.rs::resolve_library` |
 | P617-D5 | low | 未实测项 | **HDR10 色调映射质量未单独实测**（帧管线只验证了「能实时出帧」，未验证 4K HDR 经 mpv 色调映射后的画面观感）；且 `media_root` 仍未接通 `pac.at`（只认 `AUTO_MEDIA_ROOT` env，§H 记录）。二者都需在 T-18/T-11 验收时补 | 计划 §9.14；design doc §4.2 脚注 |
+| P617-D6 | medium | 构建基建 | **sccache 缓存超出上限会让 cargo 构建以 `os error 5` 失败**：`SCCACHE_DIR=D:\autostack\.sccache` 已 31 G 而 `SCCACHE_CACHE_SIZE=30 G` → 超限持续 trim → 硬链接/写入竞态 → 一次构建里几十个 crate 同时报 `error writing dependencies to …deps\<crate>-<hash>.d: 拒绝访问 (os error 5)`。判别法：换全新 target 目录**同样**失败即与 target 状态无关（本次逐层排除了权限/沙箱/孤儿进程/target 损坏四项）。绕过 `RUSTC_WRAPPER= cargo …`；根治需清缓存或调大上限——该缓存被多计划共用，本计划未擅自改动 | 计划 §9.15；handoff §B |
+| P617-D7 | low | 范围缺口 | **Plan-212 的「任意 C 签名的实参编组」仍未实现**：T-16 只把 `ffi.rs` 的**加载**部分落地（真的 `LoadLibrary` + 符号访问），`create_c_shim` 仍是占位（`task.ram.push_i32(0)` + warn）。即「能加载库、能取符号」但「还不能按签名调用」——`CFfiBridge::register_c_function` 的注册簿记与真实调用之间仍有缺口 | `crates/auto-lang/src/ffi.rs::create_c_shim`；该函数上的 `TODO(Plan-212)` 仍在 |
+| P617-D8 | low | 错误文案 | **mpv 在 `END_FILE/ERROR` 上不总是给错误码**：加载不存在的文件实测 `error == 0`，`mpv_error_string(0)` 得到「success」这类无信息量文案。现以「哪个源加载失败」为主信息（`无法播放该媒体（加载或解码失败）：<path>`）；**要拿到精确原因需捕获 mpv 日志**（`mpv_request_log_messages` + `LOG_EVENT_MESSAGE` 事件），未做 | `crates/auto-lang/src/ui/mpv/contract.rs::absorb_event`；计划 §9.17 |
+| ~~P617-D9~~ | ~~high~~ | 未收口能力 | **已收口（2026-09-13，T-20）**：AC-19 达成——`crates/auto` 已补 `mpv-native`/`mpv-gpu`/`mpv-widget` 透传（+ `mpv` 别名，显式开启），验证语料 `test/ui/plan617_video_vm` 实机 1080p 真实播放 + seek 生效（position 8.0 → time-pos 递增到 12.63s），截图 `test/ui/plan617_video_vm/src/front/tests/screenshots/ac19_final.png` | 计划 §9.19 |
+| P617-D10 | **medium** | 架构脆点 | **`convert_view_messages` 的 `_ => Empty` 兜底会静默吃掉新 View 变体**：VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` → `View<IcedMessage>` → `into_iced`，漏加臂的变体在 VM 里恒为 Empty，而 **MCP 快照走 vnode_converter 另一条路，看起来节点仍在树里 → 假绿**。注释里已记 Grid/MouseArea/select 三次同类坑，T-19 的 video 是第四次。**建议**：给该 match 加一个「已知变体全集」的编译期围栏（如变体枚举 + 穷尽 match 的测试），或把兜底改成会报警的 `debug_assert!` | `crates/auto-lang/src/ui/iced/renderer.rs::convert_view_messages`；计划 §9.19 |
+| P617-D11 | low | 测试盲区 | **契约层/编译期测试无法覆盖「接线是否真活」**：T-19 三个缺陷（convert_view_messages 漏臂、widget 没建 render context、忘 `channel.advance`）全部通过了 `cargo t`、`docs_gen`、`video_contract` 三套门禁，只在 T-20 的**实机**验证中现形。**教训**：涉及「新 View 变体要一路走到渲染」的改动，必须有一次真起窗 + 看画面的验证，不能以编译通过 + 契约单测代替 | 计划 §9.19；`test/ui/plan617_video_vm` |
+
+---
+
+## PLAN-618（tree 组件族四 demo 接入）遗留
+
+> 关联计划 `618-tree-filetree-demo-adoption.md`（已归档）；复审 pass @ worktree
+> plan-618-dev 6c2eb81af，landed 6d6089005。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P618-D1 | medium | 引擎语义 | **VM `.lower()` 方法链在「局部 var 派生字段+嵌套帧」返回空串**（P618 递归探针实证）；filter_tree v1 降级大小写敏感 contains 直链规避，引擎修复后可翻转 | 026-database treeFilter 链路；plan §待澄清 P618-2 |
+| P618-D2 | medium | 转译器 | **vue 转译器对「模块 fn 参数名与 model 字段同名」误加 `.value` 拆包**——SFC 运行时 TypeError 整页白屏（018 ch_nodes(chapters) 实证）；规避=参数避开 model 字段名，已入 tree-components.md 陷阱节 | 018 reading.at ch_nodes；契约「⚠ 模块 fn 转译陷阱」 |
+| P618-D3 | low | VM 渲染 | **041 VM 预存怪象（非 tree 引入）**：confirm 弹层 open:false 文案仍渲染页底（与 P618-1 同族、VM popover 臂）+ 状态栏 `${store.line}` 字面量直出 | 041-auto-edit VM 截图 t06；app.at popover/StatusBar |
+| P618-D4 | low | 工具面 | **018 VM 轨书架卡片 onclick（页面级 for-loop 载荷）MCP press 不可寻址**——阅读页经 MCP 不可达，章节树 VM 直接交互验证受限（组件 VM 行为已 041/026/027 三重实证）；P614-C1 家族 | 018 bookshelf.at OpenBook；plan §复审 F-2/P618-5 |

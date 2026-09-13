@@ -6858,6 +6858,11 @@ mod gallery_pages_compile_tests;
 #[path = "tests/p614_tree_vm_probe.rs"]
 mod p614_tree_vm_probe;
 
+// PLAN-618 探针:VM 轨模块 fn 递归(filter_tree)能力验证。
+#[cfg(test)]
+#[path = "tests/p618_filter_tree_probe.rs"]
+mod p618_filter_tree_probe;
+
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]
 mod plan492_m2_tests;

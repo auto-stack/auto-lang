@@ -1,0 +1,70 @@
+// components/treeview.at — TreeView 组件(PLAN-614)。
+//
+// 通用受控树(参考 Ant Design Tree 数据轨 + MUI RichTreeView id 寻址):
+// nodes 嵌套 record 列表,expanded/selected 由页面持有(受控),on_toggle/
+// on_select 回调契约(PLAN-037 T3 通道)。零 model 字段——rows 全 computed
+// 派生,同页多实例无 VM P320 单态串扰。
+//
+// 行命中区设计:chevron 命中区与标签命中区为兄弟节点(嵌套可点击会在
+// vue 事件冒泡下双触发),chevron → Toggle(id),标签区 → Select(id)。
+// 行点击不折叠目录(Ant 语义)。缩进/图标/状态 class 全部由
+// flatten_tree 纯函数派生(row.pad/row.state/row.chev),view 零逻辑。
+//
+// 图标策略(双端实证约束):vue 轨 icon 元素只支持字面量名(动态名落
+// Circle 占位,P601-T11 同族),故 chevron 用双字面量 view 分支、节点
+// 图标经 TreeIcon 有界调色板分支;动态 class 串必须走 class: prop
+// (style: 的 f-string 会被发到 :style,Tailwind 类失效)。
+//
+// # Usage
+// use { package: official from "../components" }
+// TreeView (nodes: .tvNodes, expanded: .tvExpanded, selected: .tvSel,
+//           on_toggle: .TvToggle, on_select: .TvSelect) {}
+
+use tree_util: flatten_tree
+
+widget TreeView (nodes: List, expanded: List = [], selected: str = "", on_toggle: msg, on_select: msg, directory: bool = false) {
+    msg { Toggle(str), Select(str) }
+
+    computed {
+        rows => flatten_tree(.nodes, .expanded, .directory, .selected)
+    }
+
+    view {
+        col (style: "w-full text-sm") {
+            for r in .rows {
+                row (style: "items-center") {
+                    for g in r.guides {
+                        if g == "l" {
+                            div (style: "w-4 h-6 flex items-center justify-center") {
+                                div (style: "w-px h-6 bg-border") {}
+                            }
+                        } else {
+                            div (style: "w-4 h-6") {}
+                        }
+                    }
+                    if r.has_kids {
+                        mouse-area (onclick: .Toggle(r.id), style: "w-5 h-5 shrink-0 items-center justify-center cursor-pointer") {
+                            if r.open {
+                                icon (name: "chevron-down", style: "w-3.5 h-3.5 text-muted-foreground") {}
+                            } else {
+                                icon (name: "chevron-right", style: "w-3.5 h-3.5 text-muted-foreground") {}
+                            }
+                        }
+                    } else {
+                        div (style: "w-5 shrink-0") {}
+                    }
+                    row (onclick: .Select(r.id), class: f"flex flex-row flex-1 items-center gap-1.5 py-1 pr-2 rounded-md cursor-pointer ${r.state}") {
+                        if r.icon != "" {
+                            TreeIcon (name: r.icon) {}
+                        }
+                        text r.label { style: "text-sm" }
+                        if r.badge != "" {
+                            text r.badge { style: "ml-auto text-xs text-muted-foreground" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
