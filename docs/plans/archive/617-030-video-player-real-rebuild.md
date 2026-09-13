@@ -2279,7 +2279,7 @@ PLAN-617 状态翻 `reviewed`，可进入 merge。**折入前置**：§9.23 的�
 | `landed` | **`5e6c1005e`** = master(`af28b48fa`) × `plan-617-dev`(`b0e9fef95`) 的 merge commit；规范/示例/crates 产物全部在位（overview 媒体节 grep 7 命中、media_service/file_picker/design doc 在位）。落地后主检出 `cargo t --no-fail-fast`：4849 run / 23 failed——**归因注记（如实）**：与已验证的 `b0e9fef95` 同内容树在 worktree 为 18=基线；主检出的 +5 溢出发生在**并发 agent 正对同一检出做构建与在途编辑**（697718962/af28b48fa 两提交恰在合并窗口落 master，且 api_gen.rs/automan.rs 此刻仍有其在途未提交改动）期间，属环境竞争污染非内容回归；失败名单复跑被并发构建的 target 文件锁阻塞（gate 进程 0 CPU 等锁），留待锁可用时补跑——若出现基线集合之外的红再立案 |
 | `ledger_refreshed` | `docs/specs/auto-lang/ui/plans.md` 增 617 行（commit `a7fa364f2`，仅提交本计划文件、未触碰并发在途文件）；`docs/specs/INDEX.md` 重生成（内容无差异）；运行时账本 `.autoos/specs.json`（gitignored）原子投影 **P617-1..6**（reports/goals/architecture/designs/tests/reviews 六节，`related: [PLAN-617]`，`file` 指向本归档路径），写前 JSON 校验、`os.replace` 原子替换 |
 | `archived` | `git mv` → `docs/plans/archive/617-030-video-player-real-rebuild.md`，frontmatter `status: archived` + `completion_kind: delivered`（本收据所在提交） |
-| `cleaned` | 见后续提交（worktree/分支/组目录处置，wt-guard 前置） |
+| `cleaned` | 收尾前 `wt-guard` 两轮 clean（worktree 内 370 个 pnpm node_modules junction 逐一 `Delete()` 解链——抽查目标全为同 worktree 内 .pnpm 相对路径，零穿透——后删残余树）；`git worktree remove D:/autostack/.wt/lang-617/auto-lang` + `git branch -d plan-617-dev`（删于 `b0e9fef95`，已含于 5e6c1005e）；兄弟依赖 worktree `lang-617/auto-down`（detached @ `77e8fde`，经 `branch --contains` 验证已折入 auto-down master，PLAN-063 已归档）经 auto-down 仓 `worktree remove` 移除；组目录残留 spike 运行时工件（mpv-runtime/probe/spike，gitignored 可再生，libmpv 获取方式在 design §4.8）删除后 **`D:/autostack/.wt/lang-617` 整组移除**，`git worktree list` 零残留 |
 
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
