@@ -1,21 +1,18 @@
 ---
 plan_id: PLAN-617
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
 updated_at: 2026-09-13
-plan_revision: 13                # r13: T-09..T-14 全部完成（worktree @ 1be320526）——
-                                 #     本地文件浏览/错误空态三态/onaudiotrack 契约/
-                                 #     SD-01..04 落规范/双端验证（t 18=基线零新增红、
-                                 #     tv 3689 绿、e2e 13/13、vm-smoke 双路径）/T-13
-                                 #     决策件收编/T-14 债务 D12..D15。20/20 任务完成；
-                                 #     余 /auto-plan:review → 折入（§9.23 的折入阻塞
-                                 #     与待办仍有效，主检出并发写入未清）
+plan_revision: 13                # r13: T-09..T-14 全部完成（worktree @ 1be320526）；
+                                 #     §9.25 整计划独立复审 pass（tf 3543 绿 / t 18=基线 /
+                                 #     tv 3689 绿 / e2e 13/13 / vm-smoke 双路径）——
+                                 #     status=reviewed，next=merge（折入受 §9.23 阻塞约束）
 
-# /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: ["docs/specs/auto-lang/ui/overview.md#video-元素（add；SD-05，含 SD-01 的契约清单）"]
+# /auto-plan:review 结束时填写（§9.25 定稿）：
+supersedes_spec_components: []   # 空，附理由：本计划对规范全部为 add（SD-01..05 均为新节/新块），无被取代组件
+new_spec_components: ["docs/specs/auto-lang/ui/overview.md#媒体元素与媒体服务（add；SD-01..SD-04）", "docs/specs/auto-lang/ui/overview.md#video-元素（add；SD-05）"]
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（Vue 与 VM/iced 双端 base styles 与 parity 锁定）", "GOAL-010: 示例应用轨道（examples/ui 应用矩阵）"]
 
 affects: [auto-lang/ui, auto-man/api_gen]
@@ -2188,6 +2185,90 @@ master 侧（PLAN-618 `9ac3c5661`）保留了**手抄 match 表并往里加了�
 **下一步**：`/auto-plan:review`（独立复审，AC 全表 + findings）→ 折入。
 §9.23 的折入阻塞（主检出并发未提交改动重叠 5 文件）与处置预案仍然有效，
 折入前须先确认主检出干净。**本计划状态翻为 `execution_done`**。
+
+### 9.25 独立复审（`/auto-plan:review`，2026-09-13）——**pass（整计划，final）**
+
+`stage: review` | `plan_id: PLAN-617` | `plan_revision: 13`（复审记录本身不改 revision）
+| `outcome: **pass**` | `reviewed_commit: 1be320526`（worktree `plan-617-dev`，**工作区干净**）
+| `base_commit: 9250267ab`（与 master 的 merge-base；master 复审时为 `c032edc6e`）
+| `dependency_revisions: lucide-vue-next 0.312.0`、libmpv `mpv-dev-x86_64-20260903-git-69e63f425a`
+| `spec_inputs: docs/specs/auto-lang/ui/overview.md`（@1be320526，sha256 前 16 位 `a8afbac66ee023cf`）、`docs/design/autoui/030-video-player.md`（`47d73ded5e26059a`）、`docs/specs/goals.md`
+| `next: merge（/auto-plan:merge）；折入仍受 §9.23 阻塞约束——主检出并发未提交改动清零后方可执行`
+
+**独立性的诚实声明**：本次复审在**实现会话内**执行（我既做了 T-09..T-14 收尾批，
+也继承了更早会话的作者记录），**不主张方法学独立**。Verdict 从工件重建而非采信
+执行方摘要：全部门禁在本基线**新鲜重跑**、grep 逐条重做、规范文本重读；
+§9.20–§9.24 的 `pass` 只当线索、不作证据。
+
+**复审范围**：整计划（T-01..T-14 + T-15..T-20）。阶段复审（§9.22）已覆盖
+T-03/04/07/08 + T-15..T-20；本轮重点为收尾批 T-09..T-14 与全计划 AC 终判。
+
+**门禁（全部在 `1be320526` 新鲜重跑，`RUSTC_WRAPPER=`）**：
+
+| 档 | 命令 | 结果 |
+|---|---|---|
+| 全量（仓库 review 要求） | `cargo tf --no-fail-fast` | **3543 run / 3543 passed / 0 failed** |
+| 日常（含 ui-iced；tf 不覆盖 UI 面，§9.22 口径发现） | `cargo t --no-fail-fast` | **4835 run / 19 failed 槽 = 18 个唯一测试，逐一比对 = 基线集合**（layout 13 + `c2_param_msg` + `scan_examples_ui_curation_set` + `strip_html` + `covered_elements_within_target_set`）——**零新增红**（`external_config_poll` flake 本轮未触发） |
+| VM 语料（本批改 `vm/ffi/stdlib.rs` → 必跑） | `cargo tv --no-fail-fast` | **3689 run / 0 failed** |
+| 定点 | `cargo t controlled_video` / `cargo t media_service` / `cargo t http_base_url_resolution` | **4/4、7/7、1/1 全绿** |
+| Web 场景 | `playwright test`（chrome，真后端 :8330 + vite） | **13/13 PASS** |
+| VM 冒烟 | `vm-smoke.mjs` 双路径 | 无基址：**ALL PASS**（诚实空态）；`AUTO_HTTP_BASE`：**ALL PASS + E 块真实数据**（含 `caelestia`） |
+| docs_gen / taa / tt / tb | — | **零触发**：`schema/aura.at` 零改动；aavm 文件零触碰；transpiler/book 零触碰 |
+
+**AC 逐条终判**（20/20）：
+
+| AC | 判定 | 复核手段与结果 |
+|---|---|---|
+| AC-01 扁平视觉 | **pass** | `tests/assert-style.sh` 重跑全 ok（backdrop/shadow/rounded-xl/animate/hover:scale/flex-wrap/渐变零命中） |
+| AC-02 按钮纪律 | **pass** | assert-style AC-02 两项 ok（`bg-primary` 计数=2=if/else 一颗；无按强调色 if 链）；三档尺寸在 controls.at |
+| AC-03 双主题 | **pass**（复用+佐证） | §9.20 实机 `--card` 翻转在案；本批 `after_t11_vue_{dark,light}.png` 双态截图生成成功；root-App 持魔法变量（app.at 复读确认）。复用理由：主题代码自 §9.20 实测后未变 |
+| AC-04 图标一致 | **pass** | assert-style emoji 检测（`grep -P`，T-01 修正后口径）ok；VM 全量表 1401 项（PLAN-620） |
+| AC-05 队列真实且递归 | **pass** | e2e T1 与 `/api/media/scan` 自洽 + 嵌套组；`media_root` pac 注入实测（autorun 日志） |
+| AC-06 真实起播 | **pass** | e2e T2：`1920×1080 / paused=false / currentTime 递增` |
+| AC-07 控件真实作用 | **pass** | e2e T3/T4/T4b/T5/T7 |
+| AC-08 时间进度真实 | **pass** | e2e T2 无 `03:45` + OSD=元素实测值 |
+| AC-09 文件浏览真实 | **pass** | **e2e T8（收尾批新增）**：filechooser 选 `caelestia.mp4` → `src` 变 `blob:` → 真实起播 + 文件名/「本地文件」副标题可见。**617-R1 关闭** |
+| AC-10 错误可见 | **pass** | e2e T9 + media_service 7/7 + `root_missing` 三态文案 |
+| AC-11 VM 端显式降级 | **pass** | **vm-smoke E 块**：设基址时 VM 快照含真实条目 `caelestia`；截图 `after_t11_vm_library.png`（顶栏真实文件名 + 降级面板非黑）。**617-R3 关闭**（修法=基座支持+双端配方，非收窄口径） |
+| AC-12 契约同步 | **pass** | mock 残留 grep 零命中；`test_uncontrolled_video_is_byte_identical` 在 4/4 绿内；SPEC/README 为真实边界版 |
+| AC-13 无新增回归 | **pass** | 见上表四档门禁；`schema/aura.at` 零改动 |
+| AC-14 VM 播放决策件 | **pass**（复用） | design doc §4.1 四选一 + §4.2 实测数字 + §4.14 收编。复用理由：收尾批零触碰 `ui/mpv/**`（diff 实证） |
+| AC-15 大文件流式安全 | **pass** | media_service 7/7（Range 全表面）+ §9.9 5.75GB curl 206 实测 |
+| AC-16 逐项真实状态 | **pass** | e2e T11 (a) 3840×2160 / (b) **`.audio-note` 标注出现（webkitAudioBytes=0 实测）** / (c) 无编造声称；T2 反向断言 AAC 无标注。**617-R2 关闭** |
+| AC-17 不显示编造元数据 | **pass** | assert-style AC-17 ok；`resolution/codec/bitrate` grep 零命中 |
+| AC-18 Go/No-Go 决策 | **pass**（复用） | §9.14 Go + §4.2 数字（SW 采用）。复用理由同 AC-14 |
+| AC-19 VM 端真实播放 | **pass**（复用） | §9.19 实机 + §9.22 复审（`test/ui/plan617_video_vm` + 截图）。复用理由同 AC-14 |
+| AC-20 门控不污染 | **pass** | CI workflows grep（apt/ffmpeg/mpv/libav）**零命中**、11×ubuntu-latest、`auto` default features = `ui-iced,python,autodown`（无 mpv）、缺库走 `MpvUnavailable::NoLibrary` |
+
+**规范增量终审**（SD-01..SD-05 全部落点 `docs/specs/auto-lang/ui/overview.md` @1be320526）：
+
+| SD | 判定 | 说明 |
+|---|---|---|
+| SD-01 video 受控契约 | **pass** | 新节「媒体元素与媒体服务 → `video` 受控媒体契约」：下行/上行清单 + **兼容边界（逐字节一致）** + **现状句（Vue 已实现/iced partial）**——§9.22 的 partial 缺口全部补齐 |
+| SD-02 媒体文件服务 | **pass** | 同节：MediaEntry 契约、令牌安全边界、递归不跟随链接、Range-206、惰性分块、根解析序（env→pac.at→无）、`root_missing` |
+| SD-03 示范段更新 | **pass** | 「030-video-player 示范」节取代 Plan 542 描述，写的是当前形态 |
+| SD-04 三条已知约束 | **pass** | 「已知约束」节：①iced 降级有信息 ②默认档零解码依赖 ③容器可解/Dolby 不可解/须如实标注——文本描述持久事实而非执行日记 |
+| SD-05 iced `video` 提升 | **pass** | §9.22 已 pass；本轮 spot-check 无回归，契约行已挂 onaudiotrack 交叉引用 |
+
+**Findings**：本轮**无新增未决 findings**。§9.22 的 617-R1/R2/R3 全部以实现关闭
+（非口径收窄），617-R4（SD 落规范）关闭，617-R5（证据持久性）以「可复现命令为
+判据、截图为本地佐证」的口径维持，617-R6（tf 不含 ui-iced）维持信息级在案。
+已登记债务（P617-D12..D15）经逐条对拍确属**非阻塞改进/能力边界**，非未完成的
+验收项——登记不代替完成的原则未被违反（AC-09/11/16 均以实现达成）。
+
+**Spec 影响元数据（本轮定稿）**：
+
+- `supersedes_spec_components: []` —— 空，附理由：本计划对规范全部为 add
+  （SD-01..05 均为新节/新块），无被取代组件。
+- `new_spec_components`:
+  `docs/specs/auto-lang/ui/overview.md#媒体元素与媒体服务（add；SD-01..SD-04）`、
+  `docs/specs/auto-lang/ui/overview.md#video-元素（add；SD-05，阶段复审已定）`。
+- `touched_goals`: `GOAL-007: AutoUI 跨端视觉一致`、`GOAL-010: 示例应用轨道`。
+
+**结论**：全部 20 个 AC pass（其中 AC-03/14/18/19 为代码未变下的有理由复用），
+规范增量 SD-01..05 全落，三档门禁 + 双端场景全绿。**outcome: pass**——
+PLAN-617 状态翻 `reviewed`，可进入 merge。**折入前置**：§9.23 的主检出并发
+写入阻塞尚未解除，merge 前必须先确认主检出干净。
 
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
