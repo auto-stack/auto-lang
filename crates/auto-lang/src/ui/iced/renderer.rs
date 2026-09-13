@@ -6402,6 +6402,15 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             }
         }
 
+        // PLAN-617 T-19: `video` **必须**显式臂——否则掉进下方 `_ => Empty`
+        // 兜底，VM 动态路径下整个播放面静默消失（与上面 Grid / MouseArea / select
+        // 同一坑：这已经是第四次踩它了）。
+        // 该节点**不携带消息**（上行事件由渲染面按帧采集，见 `View::Video` 文档），
+        // 故这里是平凡的恒等搬运。
+        AbstractView::Video { src, paused, position, volume, muted, rate, label, style } => {
+            AbstractView::Video { src, paused, position, volume, muted, rate, label, style }
+        }
+
         // Plan 319: recurse into Grid cells. MUST be explicit — the `_ => Empty`
         // catch-all below would silently drop the entire grid (the calendar's
         // dates vanished because Grid hit the wildcard).

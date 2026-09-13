@@ -83,12 +83,28 @@ struct VideoRuntime {
 impl VideoRuntime {
     fn new() -> Self {
         match MpvEngine::new() {
-            Ok(engine) => Self {
-                engine: Some(engine),
-                contract: MediaContract::new(),
-                unavailable: None,
-                pending: Vec::new(),
-            },
+            Ok(mut engine) => {
+                // **render context 必须在这里就建**（在第一次 `apply` 触发
+                // loadfile 之前）——`render.h:111`：context 未建时 video 初始化会
+                // 失败或退回自建窗口的 VO；而没有 context，`has_new_frame()`
+                // 恒假、`render_sw_frame()` 恒报错 ⇒ 画面永远不动。
+                // （这个坑是 T-20 实机验证时用诊断打印抓到的：mpv 明明在播
+                //   time-pos 在走、duration 已解析，就是没有帧。）
+                if let Err(e) = engine.create_sw_render_context() {
+                    return Self {
+                        engine: None,
+                        contract: MediaContract::new(),
+                        unavailable: Some(format!("建 SW render context 失败：{e}")),
+                        pending: Vec::new(),
+                    };
+                }
+                Self {
+                    engine: Some(engine),
+                    contract: MediaContract::new(),
+                    unavailable: None,
+                    pending: Vec::new(),
+                }
+            }
             Err(MpvUnavailable::NoLibrary) => Self {
                 engine: None,
                 contract: MediaContract::new(),
@@ -255,8 +271,21 @@ impl iced_wgpu::primitive::Primitive for VideoPrimitive {
                 if let Some(targets) = pipeline.targets.get_mut(&self.id) {
                     let gen = rt.contract.generation();
                     let seq = targets.seq;
+                    // **必须先 advance**：通道内部的 `VideoLatestWins` 门只放行
+                    // 与「当前登记值」完全一致的 (generation, seq)。忘了这一步的
+                    // 表现是每帧都被判为过期帧（DroppedStale）→ 纹理永远停在初始
+                    // 内容（全零=黑），而 mpv 那边完全正常（time-pos 在走）——
+                    // T-20 实机验证时就是这么黑了 5 秒才定位到。
+                    targets.channel.advance(gen, seq);
                     let out = targets.channel.with_frame(gen, seq, |t| engine.render_sw_frame(&t));
                     targets.seq = seq.wrapping_add(1);
+                    // 失败不是常态，但也不能静默：只报第一次，避免每帧刷屏。
+                    if let super::channel::FrameOutcome::RenderFailed(msg) = &out {
+                        if targets.failures == 0 {
+                            log::warn!("video: 上屏失败（后续相同失败不再重复报告）：{msg}");
+                        }
+                        targets.failures += 1;
+                    }
                     targets.last_outcome = Some(out);
                 }
             }
@@ -292,6 +321,8 @@ struct VideoTargets {
     /// 帧序号（配合契约的 generation 喂给 `VideoLatestWins`）。
     seq: u64,
     last_outcome: Option<super::channel::FrameOutcome>,
+    /// 上屏失败计数（只报第一次，避免每帧刷屏）。
+    failures: u64,
 }
 
 /// `video` 的渲染管线。iced 每种 `Primitive` 类型只建一次。
@@ -348,6 +379,7 @@ impl VideoPipeline {
                 bind_group: Some(bind_group),
                 seq: 0,
                 last_outcome: None,
+                failures: 0,
             },
         );
     }

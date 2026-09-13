@@ -305,7 +305,37 @@ widget Counter {
 
 ## 已知坑
 
-- **示例可依赖的 DSL/VM 子集（plan-616 实证；写 `.at` 前先看这条）**：① 文本不要写
+- **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
+  - **支持级别**：`schema/aura.at` 的 `video.backends.iced` 为 **`partial`**
+    （由 `fallback` 提升）。`render_support` 同步为 partial，`ignored` 列
+    `poster/preload/playsinline/autoplay/controls`（浏览器专有语义，iced 端无对应）。
+  - **实现位置**：`crates/auto-lang/src/ui/mpv/`（`engine` 生命周期 / `channel` 帧上屏 /
+    `contract` 受控契约 / `widget` iced 渲染面）。帧通道**不经 iced 的图像/atlas 通道**
+    （`Handle::from_rgba` 每帧新 id、同 id 命中即不再上传、大帧超 `MAX_SYNC_SIZE` 与
+    atlas 2048 上限——那条路必然闪烁），而是自持**持久纹理**、每帧原地更新。
+  - **可选 feature（可降级）**：native 播放挂 `mpv-native` / `mpv-gpu` / `mpv-widget`
+    三层 feature（`auto` 侧有同名透传与 `mpv` 别名）；**默认不开**——打开后任何带
+    `video` 的示例都会真解码并开音频设备，故取显式开启
+    （`cargo build -p auto --features mpv`）。**零构建期原生依赖**：libmpv 只在运行时
+    `LoadLibrary`，因此 11 个 `ubuntu-latest` CI 任务**不需要任何系统媒体包**。
+  - **运行库解析序**：`AUTO_MPV_LIB`（显式文件路径）→ 可执行文件同目录的
+    `libmpv-2.dll` → **都没有即降级**。注意**不回落系统搜索路径**：显式路径给了但
+    文件不存在时直接判为「无库」（否则「路径写错了」会表现成「莫名用了别的版本」）。
+  - **缺失时的行为**：`MpvEngine::new()` 返回 `MpvUnavailable::NoLibrary`，**不 panic、
+    不黑屏**；渲染面改画诚实降级面板（说明未启用/无解码能力）。
+  - **架构约束**：mpv 的 render API **只有 OpenGL 与 Software 两个后端，没有
+    Vulkan/wgpu**；本机 iced 实选 Vulkan，故走 **SW 后端**（帧写进映射内存再
+    `copy_buffer_to_texture` 上屏）。GL 路径经评估不可达——wgpu 不公开外部内存导入。
+  - **帧由谁驱动**：应用需声明 tick（`timer { XxxTick (every_ms: N) }`）驱动重绘，
+    否则画面停在首帧。上行事件（`ontimeupdate` 等）由渲染面按帧采集，应用侧分发
+    见 `ui/mpv/widget.rs`。
+  - **受控媒体契约（§2.3）**：下行 `paused`/`position`/`volume`(0..100)/`muted`/`rate`
+    + 上行 `ontimeupdate`/`onloadedmetadata`/`onplaystatechange`/`onended`/`onmediaerror`，
+    两端同名同单位（Vue 侧生成器把 `volume` 再翻成元素的 0..1）。
+  - **实测**：VM 实机（`test/ui/plan617_video_vm`）1080p 本地文件真实播放，
+    seek 生效（`position: 8.0` → 播放中 `time-pos` 由 8 递增）；4K 端到端 38 fps、
+    1080p 258–385 fps（含逐帧读回，为保守下界）。
+- - **示例可依赖的 DSL/VM 子集（plan-616 实证；写 `.at` 前先看这条）**：① 文本不要写
   `text "…${x}…"`（两端都渲染成字面量）→ 用 `text <ref>` / `text <prop.field>`；② `view fn`
   只传对象 prop + 点路径（标量 prop 在 VM 端不参与文本绑定）；③ **禁用** `.field = []` 与
   「局部 `[]str`/`[]Note` → 状态字段」整赋值（VM codegen 抛 `Assignment to complex LHS`；
