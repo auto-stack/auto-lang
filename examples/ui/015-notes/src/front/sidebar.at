@@ -1,214 +1,243 @@
-// sidebar.at — NavTree widget (Plan 360: card-based modern UI).
-// Plan 367 P2: refactored with view fn + else-if (from 337 lines).
-// Plan 562: nav 族迁移 sidebar 族（nav 退役，设计 sidebar-family-and-nav-retirement
-// §3.4）——搜索行平移为 sidebar_header + 原生 input（VM 端 sidebar_input 不在
-// 561 契约子集，原生 input 双端通吃）；nav-group 分组 → sidebar_group 三件套；
-// nav-item 条目 → sidebar_menu_item + sidebar_menu_button。
+// sidebar.at — NavTree 列表栏（PLAN-616 清爽化重做）。
+//
+// 结构：搜索行 → 筛选胶囊（作用域 + 标签）→ 两组笔记列表（Pinned / Notes）。
+// 去掉了 PLAN-360 的卡片外壳与「All/Pinned/Recent 大分段控件」，也去掉了恒空的
+// 标签行占位（旧 computed all_tags 恒空，见 PLAN-616 U4）。
+//
+// 关键约定（PLAN-616 §4.2 探针）：
+//   * 列表遍历的是 store 算好的**索引表**（visible_pinned / visible_notes，元素是
+//     .notes 下标），因此循环变量 k 本身就是 .notes 下标，可直接作为事件实参
+//     （事件实参只接受 model ref / 循环变量 / 字面量，不接受下标表达式）。
+//   * NoteRow 只传对象 prop（note: Note）+ bool prop；文本内容一律走 `text note.f`
+//     点路径——标量 prop 在 VM 端不参与文本绑定。
+//   * 视图条件里不写方法调用（x.contains(y) 在 VM 端恒假）。
+//   * 不用 flex-wrap（VM 不支持，会降级单行）；胶囊按单行排布。
 
 use notes_store: NotesStore
-use settings: SettingsPopover
 
-// PLAN-607: Declarative style recipes for tab buttons and tag chips
-style tab_btn_active = "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground shadow-sm"
-style tab_btn_inactive = "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground bg-transparent transition-colors"
-style tag_chip_active = "px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium"
-style tag_chip_inactive = "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-accent transition-colors"
+// 设置面板（外观）由本示例自带，不再依赖跨仓共享组件：
+//   * 共享 SettingsPopover 是卡片 + emoji 形态，与本次扁平化目标冲突；
+//   * 原 `deps/settings` 是指向已删除 examples/ui/common/settings 的悬空链接
+//     （PLAN-616 U12），自定义面板让本示例自包含。
+// 主题能力本身仍走既有 store 链路（dark_mode / accent_color + applyAccent）。
 
-// Plan 562: sidebar_menu_button based note entry — hover/active styling comes
-// from the sidebar contract; timestamp renders as a second line inside a
-// single col child (h-auto 覆盖契约 h-8，VM 端单子透传保持竖列)。
-view fn NoteNav(note: Note, active: bool) {
+// PLAN-607 style 配方：筛选胶囊两态与图标按钮。
+// `w-auto` 必需：VM 端按钮无显式宽度会按 Fill 撑开（见 app.at 同注）。
+style chip = "h-7 w-auto flex items-center gap-1 px-2.5 text-xs rounded-full border-0 bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+style chip_on = "h-7 w-auto flex items-center gap-1 px-2.5 text-xs rounded-full border-0 bg-primary/10 text-primary font-medium"
+style icon_btn = "h-6 w-6 border-0 flex items-center justify-center rounded-full bg-transparent text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+style ghost_btn = "h-7 w-auto border-0 flex items-center gap-1.5 px-2.5 rounded-md bg-transparent text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+style ghost_btn_on = "h-7 w-auto border-0 flex items-center gap-1.5 px-2.5 rounded-md bg-accent text-foreground transition-colors"
+style seg = "h-7 w-auto border-0 flex-1 items-center justify-center rounded-md bg-transparent text-xs text-muted-foreground hover:text-foreground transition-colors"
+style seg_on = "h-7 w-auto border-0 flex-1 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-medium transition-colors"
+style swatch_on = "w-5 h-5 border-0 rounded-full p-0 ring-2 ring-offset-2 ring-offset-background ring-primary"
+
+// 单行笔记条目。view fn 在调用点内联，故可直接引用调用点的循环变量 k
+// （与 PLAN-562 迁移后的 NoteNav 同款约定）。
+view fn NoteRow(note: Note, active: bool) {
     sidebar_menu_item {
         sidebar_menu_button {
             active: active
-            onclick: .SelectNote(i)
-            style: "h-auto py-1.5"
+            onclick: .SelectNote(k)
+            // `note-row` 是给 playwright 场景用的稳定钩子类（VM 端解析为未知类
+            // 静默忽略，不影响渲染）。
+            style: "h-auto py-1.5 note-row"
             col {
-                style: "flex-1 min-w-0 items-start"
-                text note.title { style: "text-sm truncate" }
-                text note.time { style: "text-xs text-muted-foreground" }
+                style: "flex-1 min-w-0 items-start gap-0.5"
+                text note.title { style: "text-sm truncate w-full" }
+                text note.time { style: "text-xs text-muted-foreground truncate w-full" }
             }
         }
     }
 }
 
-widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str) {
+widget NavTree(on_toggle_dark_mode: msg, on_set_accent: msg, on_set_mode: msg) {
     msg {
-        SelectAll, SelectPinned, SelectRecent,
-        SelectTag(str), SelectNote(int),
-        NewNote, NewNoteInFolder(str),
-        ToggleDarkMode, SetAccent(str), SearchChanged(str),
-        ToggleSettings
-    }
-
-    model {
-        var show_settings bool = false
+        SelectNote(int), SearchChanged(str), SelectFolder(str), SelectTag(str), ClearTag,
+        ToggleDarkMode, SetMode(str), SetAccent(str), ToggleSettings
     }
 
     view {
-        // Plan 562: provider 上移包裹外壳 col（独子直返，VM 端零布局介入；
-        // class 覆盖 min-h-svh/w-full 默认避免顶破卡片布局）
+        // sidebar_provider 上移包裹外壳 col（独子直返，VM 端零布局介入）。
         sidebar_provider (class: "w-auto min-h-0 flex") {
         col {
-            style: "w-80 bg-card rounded-xl shadow-sm flex flex-col h-full overflow-hidden flex-shrink-0"
+            style: "w-80 shrink-0 h-full flex flex-col overflow-hidden bg-card border-r border-border"
 
-            // View mode tabs — segmented control (a filter, not navigation;
-            // deliberately kept outside the nav family).
+            // ── 搜索行 ───────────────────────────────────────────────
             row {
-                style: "gap-1 m-3 mb-2 p-1 bg-muted rounded-lg"
-                button "All" {
-                    onclick: .SelectAll
-                    style: if .store.active_folder == "all" { tab_btn_active } else { tab_btn_inactive }
-                }
-                button "Pinned" {
-                    onclick: .SelectPinned
-                    style: if .store.active_folder == "pinned" { tab_btn_active } else { tab_btn_inactive }
-                }
-                button "Recent" {
-                    onclick: .SelectRecent
-                    style: if .store.active_folder == "recent" { tab_btn_active } else { tab_btn_inactive }
+                style: "h-9 mx-3 mt-3 mb-2 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-2.5"
+                icon (name: "search", size: 14, style: "text-muted-foreground")
+                input {
+                    value: .store.search
+                    oninput: .SearchChanged
+                    placeholder: "Search notes"
+                    style: "flex-1 text-sm bg-transparent border-0 outline-none"
                 }
             }
 
-            // Plan 562: nav(search:) 容器平移 —— 外壳 col 已承担 w-80 宽度/卡片
-            // 背景，故不用 sidebar root（契约 w-64 与卡片冲突）；搜索行 =
-            // sidebar_header + 原生 input；chips 行与分组进 sidebar_content
-            //（契约自带 flex-1 滚动）。
-            sidebar_header (style: "px-2 pt-2") {
-                    input { value: .search, oninput: .SearchChanged, placeholder: "Search notes...", style: "w-full text-sm px-2.5 py-1.5 rounded-md border border-border bg-background outline-none focus:border-primary transition-colors" }
+            // ── 筛选胶囊：作用域（文件夹）与标签分两行 ────────────────
+            // 两行的理由：① VM 不支持 flex-wrap，单行会被裁掉；
+            // ② 文件夹名与标签名可能同名（种子里就有 work/work），
+            // 用「文件夹图标 vs # 前缀」把两类筛选在视觉上分开。
+            row {
+                style: "shrink-0 gap-1 px-3 pb-1"
+                button "All" {
+                    onclick: .SelectFolder("all")
+                    style: if .store.active_folder == "all" { chip_on } else { chip }
                 }
-                sidebar_content (style: "px-2 pb-2") {
-
-                // Tag filters (chips row as content's first child)
-                row {
-                    style: "flex-wrap gap-1 px-1 mb-1"
-                    for t in .store.all_tags {
-                        button t {
-                            onclick: .SelectTag(t)
-                            style: if .store.active_tag == t { tag_chip_active } else { tag_chip_inactive }
-                        }
+                button "Pinned" {
+                    onclick: .SelectFolder("pinned")
+                    style: if .store.active_folder == "pinned" { chip_on } else { chip }
+                }
+                for f in .store.all_folders {
+                    button {
+                        onclick: .SelectFolder(f)
+                        style: if .store.active_folder == f { chip_on } else { chip }
+                        icon (name: "folder", size: 11)
+                        text f { style: "text-xs" }
                     }
                 }
+            }
+            row {
+                style: "shrink-0 gap-1 px-3 pb-2"
+                for t in .store.all_tags {
+                    button {
+                        onclick: .SelectTag(t)
+                        style: if .store.active_tag == t { chip_on } else { chip }
+                        text "#" { style: "text-xs text-muted-foreground" }
+                        text t { style: "text-xs" }
+                    }
+                }
+                if .store.active_tag != "" {
+                    button {
+                        onclick: .ClearTag
+                        style: icon_btn
+                        icon (name: "x", size: 12)
+                    }
+                }
+            }
 
-                if .store.active_folder == "all" {
-                    sidebar_group {
-                        sidebar_group_label { text "Notes" }
-                        sidebar_group_content {
-                            sidebar_menu {
-                                for i, note in .store.notes {
-                                    if note.folder == "" {
-                                        if .store.active_tag == "" {
-                                            NoteNav(note: note, active: i == .store.active_id)
-                                        } else if note.tags.contains(.store.active_tag) {
-                                            NoteNav(note: note, active: i == .store.active_id)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    sidebar_group {
-                        sidebar_group_label { text "Work" }
-                        sidebar_group_content {
-                            sidebar_menu {
-                                for i, note in .store.notes {
-                                    if note.folder == "work" {
-                                        if .store.active_tag == "" {
-                                            NoteNav(note: note, active: i == .store.active_id)
-                                        } else if note.tags.contains(.store.active_tag) {
-                                            NoteNav(note: note, active: i == .store.active_id)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    sidebar_group {
-                        sidebar_group_label { text "Personal" }
-                        sidebar_group_content {
-                            sidebar_menu {
-                                for i, note in .store.notes {
-                                    if note.folder == "personal" {
-                                        if .store.active_tag == "" {
-                                            NoteNav(note: note, active: i == .store.active_id)
-                                        } else if note.tags.contains(.store.active_tag) {
-                                            NoteNav(note: note, active: i == .store.active_id)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else if .store.active_folder == "pinned" {
+            // ── 笔记列表 ─────────────────────────────────────────────
+            sidebar_content (style: "px-2 pb-2") {
+                if .store.visible_pinned.len() > 0 {
                     sidebar_group {
                         sidebar_group_label { text "Pinned" }
                         sidebar_group_content {
                             sidebar_menu {
-                                for i, note in .store.notes {
-                                    if note.pinned {
-                                        if .store.active_tag == "" {
-                                            NoteNav(note: note, active: i == .store.active_id)
-                                        } else if note.tags.contains(.store.active_tag) {
-                                            NoteNav(note: note, active: i == .store.active_id)
-                                        }
-                                    }
+                                for k in .store.visible_pinned {
+                                    NoteRow(note: .store.notes[k], active: k == .store.active_id)
                                 }
                             }
                         }
                     }
-                } else if .store.active_folder == "recent" {
+                }
+                if .store.visible_notes.len() > 0 {
                     sidebar_group {
-                        sidebar_group_label { text "Recent" }
+                        sidebar_group_label { text "Notes" }
                         sidebar_group_content {
                             sidebar_menu {
-                                for i, note in .store.notes {
-                                    if .store.active_tag == "" {
-                                        NoteNav(note: note, active: i == .store.active_id)
-                                    } else if note.tags.contains(.store.active_tag) {
-                                        NoteNav(note: note, active: i == .store.active_id)
-                                    }
+                                for k in .store.visible_notes {
+                                    NoteRow(note: .store.notes[k], active: k == .store.active_id)
                                 }
                             }
                         }
                     }
                 }
+                if .store.visible_pinned.len() == 0 {
+                    if .store.visible_notes.len() == 0 {
+                        col {
+                            style: "items-center gap-2 py-8"
+                            icon (name: "search", size: 18, style: "text-muted-foreground/50")
+                            text "No matching notes" { style: "text-xs text-muted-foreground" }
+                        }
+                    }
                 }
+            }
 
-            // Settings popup / panel when toggled
-            SettingsPopover(
-                open: .show_settings,
-                dark_mode: .store.dark_mode,
-                accent_color: .store.accent_color,
-                on_close: .ToggleSettings,
-                on_toggle_dark_mode: .ToggleDarkMode,
-                on_set_accent: .SetAccent
-            )
+            // ── 外观面板（扁平内联，非卡片浮层）────────────────────────
+            if .store.show_settings {
+                col {
+                    style: "shrink-0 gap-2 mx-3 mb-2 p-3 rounded-lg border border-border bg-background"
+                    row {
+                        style: "w-auto items-center justify-between"
+                        text "Appearance" { style: "text-xs font-medium text-foreground" }
+                        button {
+                            onclick: .ToggleSettings
+                            style: icon_btn
+                            icon (name: "x", size: 12)
+                        }
+                    }
+                    row {
+                        style: "w-auto items-center gap-1"
+                        button {
+                            onclick: .SetMode("dark")
+                            style: if .store.dark_mode { seg_on } else { seg }
+                            text "Dark" { style: "text-xs" }
+                        }
+                        button {
+                            onclick: .SetMode("light")
+                            style: if .store.dark_mode { seg } else { seg_on }
+                            text "Light" { style: "text-xs" }
+                        }
+                    }
+                    row {
+                        style: "w-auto items-center gap-2.5"
+                        button {
+                            onclick: .SetAccent("indigo")
+                            style: if .store.accent_color == "indigo" { "w-5 h-5 border-0 rounded-full p-0 bg-indigo-500 ring-2 ring-offset-2 ring-offset-background ring-primary" } else { "w-5 h-5 border-0 rounded-full p-0 bg-indigo-500" }
+                        }
+                        button {
+                            onclick: .SetAccent("coral")
+                            style: if .store.accent_color == "coral" { "w-5 h-5 border-0 rounded-full p-0 bg-rose-500 ring-2 ring-offset-2 ring-offset-background ring-primary" } else { "w-5 h-5 border-0 rounded-full p-0 bg-rose-500" }
+                        }
+                        button {
+                            onclick: .SetAccent("ocean")
+                            style: if .store.accent_color == "ocean" { "w-5 h-5 border-0 rounded-full p-0 bg-sky-500 ring-2 ring-offset-2 ring-offset-background ring-primary" } else { "w-5 h-5 border-0 rounded-full p-0 bg-sky-500" }
+                        }
+                        button {
+                            onclick: .SetAccent("sage")
+                            style: if .store.accent_color == "sage" { "w-5 h-5 border-0 rounded-full p-0 bg-emerald-500 ring-2 ring-offset-2 ring-offset-background ring-primary" } else { "w-5 h-5 border-0 rounded-full p-0 bg-emerald-500" }
+                        }
+                        button {
+                            onclick: .SetAccent("amber")
+                            style: if .store.accent_color == "amber" { "w-5 h-5 border-0 rounded-full p-0 bg-amber-500 ring-2 ring-offset-2 ring-offset-background ring-primary" } else { "w-5 h-5 border-0 rounded-full p-0 bg-amber-500" }
+                        }
+                    }
+                }
+            }
 
-            // Footer: Settings button + version
-            separator (orientation: "horizontal") { style: "w-full" }
             row {
-                style: "items-center justify-between p-3"
-                button "⚙ Settings" {
+                style: "w-auto shrink-0 items-center gap-2 px-3 py-2 border-t border-border"
+                button {
                     onclick: .ToggleSettings
-                    style: if .show_settings { "px-2.5 py-1.5 text-xs font-medium rounded-lg bg-accent text-primary transition-colors" } else { "px-2.5 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground bg-transparent transition-colors" }
+                    style: if .store.show_settings { ghost_btn_on } else { ghost_btn }
+                    icon (name: "settings", size: 14)
+                    text "Settings" { style: "text-xs" }
                 }
-                text "v1.0" { style: "text-xs text-muted-foreground/60 mr-1" }
+                button {
+                    onclick: .ToggleDarkMode
+                    style: ghost_btn
+                    if .store.dark_mode {
+                        icon (name: "sun", size: 14)
+                    } else {
+                        icon (name: "moon", size: 14)
+                    }
+                    text "Theme" { style: "text-xs" }
+                }
             }
         }
         }
     }
 
     on {
-        .SelectAll -> { store.active_folder = "all"; store.active_tag = "" }
-        .SelectPinned -> { store.active_folder = "pinned"; store.active_tag = "" }
-        .SelectRecent -> { store.active_folder = "recent"; store.active_tag = "" }
-        .SelectTag(t) -> { store.active_tag = t }
-        .SelectNote(i) -> { store.active_id = i }
-        .NewNote -> { store.NewNote() }
-        .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
-        .ToggleDarkMode -> { store.ToggleDarkMode() }
-        .SetAccent(name) -> { store.SetAccent(name) }
-        .SearchChanged(q) -> { store.Search(q) }
-        .ToggleSettings -> { .show_settings = !.show_settings }
+        .SelectNote(i) -> { store.SelectNote(i) }
+        .SearchChanged(q) -> { store.SetSearch(q) }
+        .SelectFolder(f) -> { store.SelectFolder(f) }
+        .SelectTag(t) -> { store.SelectTag(t) }
+        .ClearTag -> { store.ClearTag() }
+        .ToggleSettings -> { store.ToggleSettings() }
+        .ToggleDarkMode -> { on_toggle_dark_mode() }
+        .SetMode(m) -> { on_set_mode(m) }
+        .SetAccent(name) -> { on_set_accent(name) }
     }
 }

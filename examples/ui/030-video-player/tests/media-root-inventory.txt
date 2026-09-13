@@ -1,0 +1,32 @@
+# Media-root inventory — captured evidence for PLAN-617 T-01
+#
+# This file is GENERATED EVIDENCE, not a fixture. It records what the
+# machine-local media root (E:\Video) contained when the plan was drafted.
+# Tests MUST NOT hardcode these numbers (the directory can change); they
+# assert self-consistency against the scan endpoint plus the presence of
+# at least one NESTED entry (which is what distinguishes recursive from
+# flat scanning — a flat scan sees only 1 file here, a recursive one 14).
+#
+# Captured: 2026-09-12 11:35:19
+# Command:  find E:/Video -type f \( -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.webm' -o -iname '*.mov' -o -iname '*.avi' -o -iname '*.m4v' \)
+
+BYTES          RELATIVE_PATH
+2462439696     TV/Loki/Loki.S01E01.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4
+2605315477     TV/Loki/Loki.S01E02.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组v2.mp4
+1984643705     TV/Loki/Loki.S01E03.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4
+2317597125     TV/Loki/Loki.S01E04.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4
+2367449633     TV/Loki/Loki.S01E05.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4
+2198645361     TV/Loki/Loki.S01E06.中英字幕.WEBrip.AAC.1080p.x264-远鉴字幕组.mp4
+4610098397     TV/Loki/Loki.S02E01.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv
+4776164495     TV/Loki/Loki.S02E02.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv
+5443391224     TV/Loki/Loki.S02E03.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv
+4805150446     TV/Loki/Loki.S02E04.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv
+4398638302     TV/Loki/Loki.S02E05.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv
+5751764883     TV/Loki/Loki.S02E06.2021.2160p.DSNP.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX.mkv
+1810398229     TV/龙猫(蓝光国日粤三音轨中文字幕).My.Neighbor.Totoro.1988.BD-1080p.X264.AAC.3AUDIO.CHS-UUMp4.mp4
+7673805        caelestia.mp4
+
+# totals
+# files=14  bytes=45539370778 (42.41 GiB)
+# top-level files (flat scan would see only these):
+#   caelestia.mp4

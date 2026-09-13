@@ -2079,3 +2079,50 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   （AUTO_UI_THEME 未设时 vue 侧无 OS 回退）——VM 桌面轨已由
   DesktopConfig.theme_source=system 派生闭环（T-06）；vue 轨首版跟随
   pac/缺省。证据：AUTO_UI_THEME 消费面仅 cmd_tauri/cmd_vue 全局注入。
+
+---
+
+## PLAN-616（015-notes 清爽化重做）遗留
+
+> 关联计划 `archive/616-015-notes-clean-ui-redesign.md`；复审 finding F-1..F-7 与本表对应。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P616-D1 | low | 一致性遗留 | 筛选词表 `all_tags`/`all_folders` 只增不减：删除标签/文件夹后筛选胶囊仍显示（清空重建需要「空数组字面量赋值」，该形态撞 VM codegen 的 `Assignment to complex LHS`） | `examples/ui/015-notes/src/front/notes_store.at`（`.SeedVocab`/`.LoadDraft`）；README「已知限制」；根治需 `crates/auto-lang/src/vm/codegen.rs` |
+| P616-D2 | low | 工具链耦合 | store 里「写 `dark_mode` 的 handler 必须以 `ToggleDarkMode`/`SetAccent` 命名」才能获得生成器 append 的 `applyAccent`（暗色亮度补偿 + `.dark` 元素上的 `--primary` 覆盖）→ `.SetMode` 被迫绕行 `ToggleDarkMode` | `crates/auto-lang/src/ui_gen/vue.rs`（store handler 的 applyAccent append 按 action_name 判定）；`notes_store.at` `.SetMode` |
+| P616-D3 | medium | 域外能力缺口 | a2r 两处发射缺陷阻断 `examples/rust-workspace/015-notes` 编译：①「取反 + 下标字段读」（`!.notes[idx].pinned` → 残缺 RHS `!(as usize][...])`，局部量 hoist 绕开无效——被内联回原形态）；② `[]str` 字段整赋值发射 `.as_str()` 赋给 `Vec<String>`。改动前既有（`git show HEAD:...main.rs` 第 393 行同形态） | 生成物 `examples/rust-workspace/015-notes/src/main.rs:406` 等；计划 §9.3/T-10；建议独立小计划修 a2r 发射臂后补跑 `run_autotest.py --mode rust` |
+
+---
+
+## PLAN-619（015-notes VM/Vue 双端 parity 收敛）遗留
+
+> 关联计划 `619-015-notes-vm-vue-parity.md`；证据见该计划 §8.2/§8.3。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| ~~P619-D1~~ | ~~high~~ | 跨端一致性 | **已修复（2026-09-12，`d3a44aa6f`）**：真根因是 `lucide_svg()` 表项本身为完整 SVG 文档（`width/height=16`）而又被 `lucide_svg_doc_with` 套进第二层 24×24 `<svg>` → 嵌套 viewport 按 16/24 = 0.667 缩放（即 P2 的「≈12px 盒」）。取内层 markup 重包后双端 ink 比 **1.03/1.03**，AC-02 达标 | 计划 §8.5；`crates/auto-lang/src/ui/iced/renderer.rs::lucide_svg_doc_with`；回归锚 `plan619_lucide_doc_renders_geometric_ink` |
+| P619-D2 | medium | 字形版本漂移 | VM 内嵌 lucide fragment 与 Vue 侧 `lucide-vue-next@0.312` **对同名图标给出不同字形**（`notebook`：VM 为「书脊+两横」book 形，浏览器带 4 条装订刻度）→ 跨端图标对拍先天失真，需按 pin 版本对齐 fragment 集并加「同名同 path」契约测试 | `crates/auto-lang/src/ui/iced/renderer.rs` `lucide_svg()` 表；`crates/auto-man/src/vue.rs` 的 `lucide-vue-next` 版本 pin |
+| P619-D3 | low | 排版基线 | 纵向节奏累计漂移 ≈2px/行：iced 文本默认 `LineHeight::Relative(1.3)` vs Tailwind `text-sm/text-xs` 自带的 20/16px 行高（两端行高不一致 → 行数越多偏得越多；首屏地标仅差 1px 故 PLAN-616/619 均未纳入） | `crates/auto-lang/src/ui/iced/renderer.rs` 文本臂（`line_height` 消费点已存在，缺的是 text-sm/xs → 行高的默认映射） |
+| P619-D4 | low | 契约静默点 | `with_class_prop` 之外仍有 4 处「只读 `class:` 不回落 `style:`」的用户类合并点（本轮已就地补齐 sidebar 族；其余同族调用点若用 `style:` 写仍会丢用户类） | `crates/auto-lang/src/ui/aura_view_builder.rs`（`with_class_prop` 及 2899/5037/5132/5165 附近；建议抽 `user_class_with()` 收敛） || ~~P619-D5~~ | ~~medium~~ | 验收基建失效 | **已修复（2026-09-12，`6aad8ba1f`）**：真因是**就绪竞态**（驱动只等 MCP 端口 → app 未初始化即开跑，前 16 场景在空树上连锁失败），**不是**运行器解析链路失配——`autoui_find` 与 runner 的正则解析均正常。`McpAdapter::wait_ready()`（tree+state+button 三判据）修入 runner 后 19/19 绿。**残余**：`desktop_mcp.py` 有一条 stale 断言（断言顶栏按钮名为 `New`，PLAN-616 已改名 `New note`） | 计划 §8.4/§9.5；`examples/ui/015-notes/tests/autotest/__init__.py` |
+| P619-D6 | low | 跨端一致性 | shadcn 资产自带 `[&>svg]:size-4` 把**组件内**图标钉死 16px、盖过生成器发的 `:size`（普通 div 内的图标不受影响，故 AC-02 判据已达标）；受害面 = 胶囊按钮/侧栏菜单按钮内声明非 16 的图标 | 生成物 `gen/front/vue/src/components/ui/sidebar/SidebarMenuButton.vue` 等 cva 串；修法倾向生成器侧对显式 `size:` 输出带 important 的尺寸类 |
+
+---
+
+## PLAN-617（030-video-player 真实化重做）遗留
+
+> 关联计划 `617-030-video-player-real-rebuild.md`；T-15 门控裁定 **Go**（SW 通道），
+> 实测数字与决策件见该计划 §9.14 与 `docs/design/autoui/030-video-player.md` §4。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P617-D1 | medium | 构建基建 | **打开 `mpv-spike` 特性后编译 lib 的 `--test` 目标会触发 rustc 1.98.0 ICE**（`collect_and_partition_mono_items`，查询栈指向 `ui/mcp_server.rs:1718` 的 iterator chain，**与 spike 代码无关**）；同特性下 `--lib`（rlib）与 `example` 目标均正常。已用 `[[example]] required-features` 绕开，但 **T-16..T-20 的测试都必须避开 lib 测试目标**，否则 CI/本地会撞同一个 ICE。根治需最小复现上报 rustc | `crates/auto-lang/Cargo.toml`（`mpv-spike` 特性与 `[[example]] mpv_spike`）；入口 `crates/auto-lang/examples/mpv_spike.rs` 头部注释 |
+| P617-D2 | medium | 性能长尾 | **上屏通道 C（持久 staging + `copy_buffer_to_texture`）有极稀有长尾**：4K 120 帧中 1 帧 957 ms、1080p 中 3 帧 242 ms（p50/p95/p99 均正常，故不是稳态代价）；**`--release` 档同样出现（4K max 951 ms）⇒ 非 debug 产物，是真实行为**。旁证：有并发负载时通道 A/B 尾部急剧恶化（A 4K p95 43 ms/12 离群、B 4K p95 217 ms/16 离群）而 C 仍 p95 0.76 ms——选 C 又多一条依据，但上屏通道对 GPU 争用敏感，需在真实负载下复测。T-17 须以 2–3 槽 staging 环（映射中的缓冲不可 submit）+ 单帧丢弃处置，长尾定位是 T-17 的第一件事 | 计划 §9.14；证据 `t15_gate_debug.log`；探针 `crates/auto-lang/examples/mpv_spike.rs` 门控 B |
+| P617-D3 | low | 能力边界 | **mpv 的 SW render 后端用不了零拷贝硬解**（`hwdec=d3d11va` 实测 `hwdec-current: no`，只能用 `d3d11va-copy` 回读）→ 4K 纯软解 RSS 达 ~1 GB、CPU 54.6 ms/帧。缓解：把 `SW_SIZE` 设为视口尺寸而非片源尺寸（4K 降采样后上屏） | 计划 §9.14；design doc §4.6 |
+| P617-D4 | low | 分发/许可 | **libmpv-2.dll 不入库、CI 不依赖**（运行时依赖非构建期依赖，AC-20 已守住），但因此**没有任何发行故事**：本次构件为 LGPLv2.1+（其 ffmpeg 静态内链），若未来要随发行版分发需按 LGPL 提供重链接能力。当前只定义解析序（`AUTO_MPV_LIB` → exe 同目录 → 系统路径）与缺失降级 | design doc §4.8；`crates/auto-lang/src/ui/mpv/loader.rs::resolve_library` |
+| P617-D5 | low | 未实测项 | **HDR10 色调映射质量未单独实测**（帧管线只验证了「能实时出帧」，未验证 4K HDR 经 mpv 色调映射后的画面观感）；且 `media_root` 仍未接通 `pac.at`（只认 `AUTO_MEDIA_ROOT` env，§H 记录）。二者都需在 T-18/T-11 验收时补 | 计划 §9.14；design doc §4.2 脚注 |
+| P617-D6 | medium | 构建基建 | **sccache 缓存超出上限会让 cargo 构建以 `os error 5` 失败**：`SCCACHE_DIR=D:\autostack\.sccache` 已 31 G 而 `SCCACHE_CACHE_SIZE=30 G` → 超限持续 trim → 硬链接/写入竞态 → 一次构建里几十个 crate 同时报 `error writing dependencies to …deps\<crate>-<hash>.d: 拒绝访问 (os error 5)`。判别法：换全新 target 目录**同样**失败即与 target 状态无关（本次逐层排除了权限/沙箱/孤儿进程/target 损坏四项）。绕过 `RUSTC_WRAPPER= cargo …`；根治需清缓存或调大上限——该缓存被多计划共用，本计划未擅自改动 | 计划 §9.15；handoff §B |
+| P617-D7 | low | 范围缺口 | **Plan-212 的「任意 C 签名的实参编组」仍未实现**：T-16 只把 `ffi.rs` 的**加载**部分落地（真的 `LoadLibrary` + 符号访问），`create_c_shim` 仍是占位（`task.ram.push_i32(0)` + warn）。即「能加载库、能取符号」但「还不能按签名调用」——`CFfiBridge::register_c_function` 的注册簿记与真实调用之间仍有缺口 | `crates/auto-lang/src/ffi.rs::create_c_shim`；该函数上的 `TODO(Plan-212)` 仍在 |
+| P617-D8 | low | 错误文案 | **mpv 在 `END_FILE/ERROR` 上不总是给错误码**：加载不存在的文件实测 `error == 0`，`mpv_error_string(0)` 得到「success」这类无信息量文案。现以「哪个源加载失败」为主信息（`无法播放该媒体（加载或解码失败）：<path>`）；**要拿到精确原因需捕获 mpv 日志**（`mpv_request_log_messages` + `LOG_EVENT_MESSAGE` 事件），未做 | `crates/auto-lang/src/ui/mpv/contract.rs::absorb_event`；计划 §9.17 |
+| ~~P617-D9~~ | ~~high~~ | 未收口能力 | **已收口（2026-09-13，T-20）**：AC-19 达成——`crates/auto` 已补 `mpv-native`/`mpv-gpu`/`mpv-widget` 透传（+ `mpv` 别名，显式开启），验证语料 `test/ui/plan617_video_vm` 实机 1080p 真实播放 + seek 生效（position 8.0 → time-pos 递增到 12.63s），截图 `test/ui/plan617_video_vm/src/front/tests/screenshots/ac19_final.png` | 计划 §9.19 |
+| P617-D10 | **medium** | 架构脆点 | **`convert_view_messages` 的 `_ => Empty` 兜底会静默吃掉新 View 变体**：VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` → `View<IcedMessage>` → `into_iced`，漏加臂的变体在 VM 里恒为 Empty，而 **MCP 快照走 vnode_converter 另一条路，看起来节点仍在树里 → 假绿**。注释里已记 Grid/MouseArea/select 三次同类坑，T-19 的 video 是第四次。**建议**：给该 match 加一个「已知变体全集」的编译期围栏（如变体枚举 + 穷尽 match 的测试），或把兜底改成会报警的 `debug_assert!` | `crates/auto-lang/src/ui/iced/renderer.rs::convert_view_messages`；计划 §9.19 |
+| P617-D11 | low | 测试盲区 | **契约层/编译期测试无法覆盖「接线是否真活」**：T-19 三个缺陷（convert_view_messages 漏臂、widget 没建 render context、忘 `channel.advance`）全部通过了 `cargo t`、`docs_gen`、`video_contract` 三套门禁，只在 T-20 的**实机**验证中现形。**教训**：涉及「新 View 变体要一路走到渲染」的改动，必须有一次真起窗 + 看画面的验证，不能以编译通过 + 契约单测代替 | 计划 §9.19；`test/ui/plan617_video_vm` |

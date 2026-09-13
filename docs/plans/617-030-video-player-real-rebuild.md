@@ -1,11 +1,12 @@
 ---
 plan_id: PLAN-617
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
-updated_at: 2026-09-12
-plan_revision: 4                 # r4: VM/Rust 原生播放并入（libmpv DLL 运行时加载），T-15 门控 spike + T-16..T-20 仅 Go 后执行
+updated_at: 2026-09-13
+plan_revision: 11                # r11: 阶段收口——VM 链 T-15..T-20 全部完成（AC-18/19/20 达成，AC-19 有实机证据）；
+                                 #     剩 Vue 链 T-03/04/07..T-14 → 交由新会话；本文件 §11 已刷新为「新会话接手须知」
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -13,7 +14,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/ui, auto-man/api_gen]
-current_step: 0
+current_step: 10                 # 已完成 10 项：T-01/02/05/06 + VM 链 T-15..T-20；余 10 项见 §11-E
 total_steps: 20
 ---
 
@@ -675,16 +676,73 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
 > 全部代码改动在 worktree 内执行；本文件的勾选与 frontmatter 翻转留在 master。
 > 每步完成后在下方追加 `[✅ 已完成]` 证据行。
 
-- **T-01 基线与实勘**：双端 `before_*` 截图（深浅各一）+ `E:\Video` 文件清单归档；
+- [x] **T-01 基线与实勘**：双端 `before_*` 截图（深浅各一）+ `E:\Video` 文件清单归档；
   把 §4.1 的 grep 判定命令固化成可重跑脚本片段。验证：截图与清单入库。
-- **T-02 视觉系统与骨架**：`app.at` 拆分重写（顶栏 + 主体 + 播控条三段骨架）、
+  [✅ 已完成 2026-09-12] worktree `D:/autostack/.wt/lang-617/auto-lang` @ `092c99f4f`。
+  - 脚本：`tests/assert-style.sh`（AC-01/02/04/17 可重跑断言，非注释行判定）。
+  - 清单：`tests/media-root-inventory.txt`（**递归 14 文件 / 42.41 GiB**；
+    平铺仅见 `caelestia.mp4` 1 个 —— 递归与平铺的差异有了可复算证据）。
+  - 截图 4 张：`tests/screenshots/before_{vue,vm}_{dark,light}.png`。
+    **注意**：该目录被 `.gitignore:123-126` 有意排除（「AutoUI test screenshots &
+    artifacts (local only, do not track binary images in git)」），故按仓库既定策略
+    **只作本地证据、不入库**——本任务原写「截图…入库」应据此更正为「入既定本地目录」。
+  - **基线断言结果（全部 FAIL，即改造前应有的状态）**：`backdrop-` 6 处、`shadow-` 21 处、
+    `rounded-xl/2xl` 15 处、`animate-` 3 处、`hover:scale` 10 处、`flex-wrap` 1 处、
+    渐变 `from/via/to` 21 处、emoji **18** 处、编造元数据（`resolution:`/`codec:`）12 处。
+  - **T-01 三项实勘发现（影响后续任务）**：
+    1. **`AUTO_UI_THEME` 环境变量无效**：pac.at 的 `theme: "dark"` 在优先级链上压过它，
+       两次 VM 运行截图 md5 完全相同（`1ec7d3f5…`）。**必须用 `auto run --theme light`**
+       （CLI > pac.at，见 `auto run --help`）。→ 实证了 §4.2 P-9，
+       **AC-03 的双端浅色验证一律走 `--theme`**，不得依赖 env。
+    2. **`auto gen` 会改写 `examples/rust-workspace/`**：在 worktree 内它会
+       ① 把 `.cargo/config.toml` 的 `target-dir = "../../target"` 改写成
+       `"../../../../../../../../D:///autostack/.wt/lang-617/auto-lang/target"`
+       （相对前缀拼绝对路径的畸形产物），② 把 `Cargo.toml` 里既有的
+       `"019-video-app-back"` **替换**成 `"030-video-player-back"`（主检出里同一操作是
+       **追加**、保留 019）。已 `git checkout` 还原这两个文件。
+       → **T-05 必须先解决这一副作用**，否则 worktree 构建目标目录与 019 后端成员均被破坏。
+    3. **断言脚本自身的一个静默通过缺陷已修**：emoji 检测最初用 `grep -E`，
+       而 `\x{…}` 是 PCRE 语法，`-E` 下**永不匹配**→该检查会永远「通过」（AC-04 形同虚设）。
+       改用 `grep -P`（本机 ugrep 7.8.4 支持 PCRE2）后正确报出 18 处。
+       **纪律**：新增断言后必须先在违规样本上确认它真的会 FAIL。
+- [x] **T-02 视觉系统与骨架**：`app.at` 拆分重写（顶栏 + 主体 + 播控条三段骨架）、
   `style` 配方集中定义、删按强调色 if 链与全部渐变/玻璃/阴影/emoji。
   验证：Vue 截图 = 扁平三段；AC-01/AC-02/AC-04 的 grep 断言通过。
+  [✅ 已完成 2026-09-12] worktree @ `a8a98439e`（app.at 1220→980 行）。
+  - **断言全绿**：AC-01 七项（backdrop/shadow/rounded-xl/animate/hover:scale/flex-wrap/
+    渐变）全 ok；AC-02 两项 ok；AC-04 ok。仅 **AC-17 仍红**（`db.at` 的 12 处编造
+    `resolution:`/`codec:`），**属 T-06 范围**，符合本任务「只验 AC-01/02/04」的约定。
+  - **实现**：`style` 配方 4 条（`icon_btn`/`seg_btn`/`ctl_btn`/`tab_btn`）；
+    18 处 emoji → VM lucide 闭集图标（monitor/info/eye/moon/sun/menu/minus/square/x/
+    chevron-left/chevron-right/frame/file，均已核对在 84 名闭集内）；
+    删按强调色 if 链、删应用内强调色选择器、删死数据 `current_bg`(16 行) 与
+    `bg_gradient`(5 行)；`loop_label` 的 emoji 在 **model 值里**，一并清除。
+  - **`auto gen` 通过**，无 error/warn。
+  - **VM 渲染验证并修掉三个真实缺陷**（这是本任务最有价值的产出）：
+    1. 队列 5 行渲染为**空条**——AURA 树里数据齐全，但 `flex-1`/`shrink-0` 在 VM 端
+       不生效（`docs/style-coverage.md` parsed-only 清单），导致「图标列 + flex-1 文本列」
+       两个子列塌成 0 宽。**改为单 `col` 承载两行文本**后正常。
+    2. 视口高度分配失效、状态条上浮——`video` 在 VM 端是 fallback（零高度），
+       给它加 `flex-1` 无效。**改为由真实容器 `col` 承载 flex-1** 后正常。
+    3. 进度条渲染到播控条**外面**——`h-14` 容不下「时间行 + 进度行」两层。
+       改 `h-16` 后正常。
+  - **Vue 截图（一度阻塞，已补齐）**：会话中途 in-app browser 转为不可用——导航 `-3`
+    → `browser screenshot activity capture failed for guest` → `browser guest not
+    attached (webview not ready)`，`tabs.new()` 亦失败。浏览器恢复后已补拍，
+    现 **`after_t02_vue_{dark,light}.png` + `after_t02_vm_{dark,light}.png` 四张齐备，
+    双端布局一致**（顶栏 h-12 / 视口 / w-72 队列栏 / 播控条 h-16；队列行有真实
+    标题+大小；图标全部渲染；唯一 primary 为「暂停」；进度条位于播控条内）。
+    双端差异仅在视口内容：Vue 是 `<video>` 的黑色空画面（mock URL 离线）、
+    VM 是 fallback 空容器——两者都由 T-03 的降级面板接管。
+  - **操作纪律（本次新增，已写进 §10-15）**：dev server **不跨回合存活**
+    （后台任务随回合结束被回收：日志干净、无错误输出、进程消失）。
+    故改为**需要截图时在同一回合内临时起、用完即停**；若需长期供人访问，
+    用 `DETACHED_PROCESS` 脱离 shell 进程组启动（已验证 200 存活）。
 - **T-03 视口组件**：`viewport.at`（video 元素 + 覆盖层 + 错误/降级面板，去 `absolute`）。
   验证：Vue 截图；VM 截图显示降级面板而非纯黑（AC-11 前置）。
 - **T-04 队列栏与播控条**：`playlist.at` + `controls.at`（尺寸收敛、单一 primary、
   PLAN-412 §5 白名单内取材）。验证：Vue/VM 双端截图；AC-02 计数复核。
-- **T-05 媒体服务与生成路由**（含决策点）：新建 `media_service.rs`，
+- [x] **T-05 媒体服务与生成路由**（含决策点）：新建 `media_service.rs`，
   **照搬 `crates/auto-man/src/image_viewer.rs` 的递归收集 / 自然排序 / blake3 id /
   路径脱敏形状**（P-18），实现 `index_directory`（**递归**，不跟随 symlink）与
   `stream_response`（`id` 反查 + Range/206 + **惰性分块**，禁整文件读入）；
@@ -723,7 +781,7 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   的已知约束（`ui/iced/renderer.rs:2889-2898`）。**不实现**。
 - **T-14 债务登记**：把本计划自决或未解的取舍写入 `docs/plans/KNOWN-DEBT-AND-RISKS.md`。
 
-- **T-15 VM 原生播放门控 spike（Go/No-Go，决策件）**：在 `auto-lang` 内做一个最小 spike：
+- [x] **T-15 VM 原生播放门控 spike（Go/No-Go，决策件）**：在 `auto-lang` 内做一个最小 spike：
   用**已在依赖中的 `libloading`** 运行时加载 `libmpv-2.dll`，创建 mpv 句柄，
   用 render API 的**软件路径**把一帧 RGBA 送进 iced 视口，并测量
   ① 1080p 与 4K 下可达帧率、② 每帧拷贝耗时与进程内存、③ `Handle` 复用能否消除
@@ -732,29 +790,117 @@ handler：`Init`（递归扫描）、`SelectIndex(int)`、`TogglePlay`、`SeekTo
   「SW / GL / sidecar / 放弃」四选一结论），落入本文件 §9 与
   `docs/design/autoui/030-video-player.md`。**不得**在没有实测数字的情况下给出 Go。
   验证：spike 代码可跑（可临时存在，Go 后转为 T-16 的基础）+ 决策件含数字。
-- **T-16 native 动态库加载器**（Go 后）：把 `crates/auto-lang/src/ffi.rs:62-145` 的
+  [✅ 已完成 2026-09-12] **裁定 Go，通道 = SW**。全文见 **§9.14** 与
+  `docs/design/autoui/030-video-player.md` §4（已按实测重写）。
+  - 交付：`crates/auto-lang/examples/mpv_spike.rs`（`mpv`/`wgpu`/`selfcheck`/`all` 四个子命令，
+    **可跑**）+ `mpv-spike` 特性 + 可选依赖 `iced_wgpu`（零新增编译单元）。
+  - 关键数字：4K 端到端 **7.3 ms/帧**（mpv render 6.8 + 上屏 0.43），24 fps 预算占 17%；
+    实时播放实测媒体时钟 1080p **0.958×** / 4K **0.997×**；RSS 150 MB / 493 MB。
+  - **「Handle 复用消除闪烁」不可表达**：`iced_core::image::Id` 构造器私有 + 稳定 id 命中即
+    不再上传 + 大帧必走异步（`MAX_SYNC_SIZE` 2 MB）+ 4K 装不下 atlas（2048）
+    → 帧通道结构性绕开 iced 图像系统（三条证据见 §9.14）。
+  - **GL 已排除**（wgpu 不公开外部内存导入）；**sidecar 被 SW 支配**。
+  - 两处不利事实如实记录：SW 用不了零拷贝硬解（只能 `d3d11va-copy`）；通道 C 有极稀有长尾
+    （4K 120 帧中 1 帧 957 ms），处置归 T-17。
+  - **附带发现**：`mpv-spike` 特性下 lib 的 `--test` 目标会触发 rustc 1.98.0 ICE
+    （`ui/mcp_server.rs:1718`，与 spike 无关）→ spike 落 example 目标，T-16..T-20 照此避开。
+- [x] **T-16 native 动态库加载器**（Go 后）：把 `crates/auto-lang/src/ffi.rs:62-145` 的
   `TODO(Plan-212)` 落地为真正的 `libloading` 动态库加载；实现 libmpv 句柄
   生命周期、render context 创建/释放顺序（含 `LC_NUMERIC=C` 等 mpv 已知要求）、
   以及**库缺失时的静默降级**（回落到今日的诚实占位，不 panic、不黑屏）。
   验证：`cargo check -p auto-lang`；库缺失路径的单测。
-- **T-17 帧上屏通道**（Go 后）：按 T-15 结论实现帧到纹理的通道，
+  [✅ 已完成 2026-09-13] worktree @ `e13e63e59`，全文见 **§9.15**。
+  - 交付 `crates/auto-lang/src/ui/mpv/`（`locale`/`loader`/`engine`/`frame` 四模块，
+    feature `mpv-native`）+ `ffi.rs` 的真实加载路径 + `tests/mpv_engine.rs`（9 用例）。
+  - **销毁顺序钉死在 `Drop`**：`render_context_free` → `terminate_destroy`（render.h:119 记 UB）。
+  - **实测两分支**：有 DLL 时真实生命周期 + 真实渲染一帧进我们的缓冲全绿；
+    无 DLL 时优雅 SKIP、9/9 通过、exit 0。
+  - **实测发现**：`Vec<u8>` 自然对齐只有 1（本机 16），直接交给 mpv 会**静默**掉进
+    「整帧拷贝」慢路径（render.h:393-404 要求 64）→ 已编码为 `FrameBuffer` 类型不变量。
+  - 门禁 `cargo t`：**零新增红**（20 项全在基线集合内；基线 21 项中
+    `ffi_dual_019` 是 P615-D3 并发 flake 本次恰好通过）；+2 测试数即本次新增用例。
+  - **构建环境坑（会立刻咬到下一个人）**：`os error 5` 写 `.d` 失败的真因是
+    **sccache 缓存 31G/上限 30G** 导致持续 trim；绕过 `RUSTC_WRAPPER= cargo …`。
+- [x] **T-17 帧上屏通道**（Go 后）：按 T-15 结论实现帧到纹理的通道，
   **必须绕开每帧新建 `Handle`**（硬约束，见 §2.5 风险点 2）；
   镜像 `image_pipeline` 的既有形状（票据/rendition、latest-wins 代际门、有界缓存）。
   验证：目标分辨率下实测帧率与无闪烁截图。
-- **T-18 VM 侧播放控制与契约对齐**（Go 后）：mpv 侧实现 §2.3 的**同一套受控媒体契约**
+  [✅ 已完成 2026-09-13] worktree @ 见提交；全文见 **§9.16** 与 design doc **§4.9/§4.11**。
+  - 交付 `ui/mpv/channel.rs`（持久纹理 + 3 槽 staging 环 + `VideoLatestWins` 代际门
+    + 回收超时丢帧策略 + 分类统计）与 `ui/mpv/present.rs`（WGSL 全屏 blit）；
+    新 feature **`mpv-gpu`**（与 `mpv-native` 分开：引擎不碰 GPU，故仍可无 GPU 测试）。
+  - 实测（真实 libmpv + 真实片源 + 离屏读回）：1080p **258–385 fps**（p50 0.61–0.67 ms）、
+    4K **38.3–38.6 fps**（p50 4.35–4.54 ms）；`textures_created()` 恒为 **1**。
+  - **T-15 的那条长尾在正式通道里复现**：4K 30 帧中 1 帧 **329–336 ms**，
+    被 3 槽环吸收（0 丢帧、0 空白帧，总时长 0.4→0.78 s）→ §4.6 的长尾风险关闭。
+  - 「无闪烁」做成**可证伪断言**（`tests/mpv_channel.rs`）：画面确实上屏 +
+    **内容帧之间不得夹空白帧**（正是 renderer.rs:2889 的闪烁签名）+ 帧签名不恒定
+    （非陈旧帧）+ 纹理数恒 1。
+  - 9 用例全绿（`cargo test --features mpv-gpu --test mpv_channel`）。
+  - **未接上的那段**：通道与 blit 都已就位，但**还没接进 VM 的 `video` 元素**
+    （`render_support.rs:307` 仍 fallback）——那属 T-18/T-19。
+- [x] **T-18 VM 侧播放控制与契约对齐**（Go 后）：mpv 侧实现 §2.3 的**同一套受控媒体契约**
   （`paused`/`position`/`volume`/`muted`/`rate` 下行 + 时间/时长/状态上行），
   使 `.at` 应用**无需分叉**即可在两端工作；音频输出由 mpv 承担（不引入 cpal）。
   验证：同一份 `app.at` 在 VM 端能真实播放、seek、调音量。
-- **T-19 `video` 元素支持级别提升**（Go 后）：把 `video` 从 iced `fallback` 提升为
+  [✅ 已完成 2026-09-13] 全文见 **§9.17** 与 design doc **§4.10/§4.11**。
+  - 交付 `ui/mpv/contract.rs`（`VideoContractDown`/`VideoContractEvent`/`MediaContract`）
+    + 引擎的类型化属性面（`get_f64/get_i64/get_flag/get_string` 与 `set_*`）
+    + `END_FILE` 的 reason 载荷（区分 EOF 与 ERROR）。
+  - 实测（`tests/mpv_contract.rs`，真实 libmpv，**10/10 绿**）：seek 目标 19.77s → **落点 19.77s**；
+    起播后时间前进、暂停后不动；volume/mute/speed 读回校验；EOF → `Ended` 而非 `MediaError`；
+    坏源 → 明确文案；音频实测 `current-ao=wasapi`、`codec=aac`、48k/stereo。
+  - 共享边界定为**作者面的状态值**（`volume` 0..100 而非 0..1），两端各自换算，
+    换算有单一出处并被测试钉住。
+  - **顺带修掉 T-16 的一个真缺陷**：`wait_event` 对 `MPV_EVENT_NONE` 也返回 `Some`
+    （mpv 超时返回的是有效指针而不是 NULL），任何 `while let Some(..)` 抽取循环都会**死循环**。
+    本次被 T-18 的 poll 触发（一次测试被挂死）——已归一成 `None`。
+  - **验证分层的诚实说明**：本任务的验证落在**契约层**（真 mpv、真播放/seek/音量）。
+    「同一份 `app.at` 在 VM 端能真实播放」还要 `video` 元素接上通道与契约，
+    而 `render_support.rs:307` 目前**仍是 fallback**——那一步是 T-19。
+    两处合起来才满足 AC-19；本任务不以「app 里能播」自居。
+- [x] **T-19 `video` 元素支持级别提升**（Go 后）：把 `video` 从 iced `fallback` 提升为
   可用（更新 `render_support.rs` 与 `schema/aura.at` 的 `backends.iced`，
   保持「schema 为权威」的既定关系）；若 Go 条件不满足则**不动**，维持 fallback 并
   在规范中记录原因。
   验证：`cargo t` + `cargo test -p auto-lang --test docs_gen`（触及 schema）。
-- **T-20 特性门控与 CI 保真**（Go 后，**硬要求**）：native 播放必须是**可选 feature**
+  [✅ 已完成 2026-09-13] 全文见 **§9.18** 与 design doc **§4.11**。
+  - 交付 `ui/mpv/widget.rs`（`video` 的 iced 渲染面：自定义 shader widget，
+    **引擎放 thread-local** 以规避 Primitive/Pipeline 的 Send+Sync 要求）+
+    新 feature `mpv-widget`；接线三层：`View::Video` 变体（不带消息）、
+    aura `video` 臂（tracked/untracked 各一）、iced renderer 的 `View::Video` 臂
+    （有 feature 走 shader widget，无则渲染**诚实降级面板**而非黑屏）。
+  - **schema 同步**：`backends.iced: fallback → partial`、`category: unknown → media`、
+    **props 由 `[]` 改为声明**（打开 S001 校验，此前 typo 静默通过）；`render_support`
+    → partial 并写明三项真实限制（需运行库 / 需 tick / 浏览器专有属性无对应语义）。
+  - **`element_coverage` 的 `video` 仍为 not-yet**（改的是理由）：该表描述的是
+    **queue/投影臂**，而 `video` 不在 `Coverage::target_set` 里——把渲染能力与投影
+    能力混为一谈会是谎报。理由改为「差投影不差渲染」。
+  - **新增测试抓到真 bug**：`tests/video_contract.rs`（3/3 绿，**不需要 libmpv**）
+    发现我最初用只认字面量的 `extract_bool` 读 `paused`，而作者写的是表达式
+    `paused: .is_playing == false` → 契约字段会静默不生效。已改用 `extract_bool_expr`。
+  - 门禁：`docs_gen` 4/4、`schema_drift` 绿（baseline **3 增 1 删**，删掉的是
+    `render_not_in_vb video`——view builder 现在真有臂）、`cargo t` 零新增红
+    （21 项全在基线集合内）。
+  - **AC-19 未达成，边界见 §9.18**：链条已接到 `View::Video` 与 iced 渲染面，
+    但「VM 窗口里真看到画面在动」还差 (a) `crates/auto` 的 `mpv-widget` 特性透传
+    （T-20 的特性门控）(b) 应用声明 tick 驱动帧。
+- [x] **T-20 特性门控与 CI 保真**（Go 后，**硬要求**）：native 播放必须是**可选 feature**
   （沿用 `ui-iced`/`python` 的既有模式），默认档与 **全部 11 个 `ubuntu-latest` CI 任务
   在不安装 ffmpeg/mpv 的情况下保持全绿**；缺失运行库时走降级路径。
   验证：默认档 `cargo t` 干净；CI 配置 diff 中**不出现** apt 安装 ffmpeg/mpv 或
   系统包安装步骤；`AUTO_MPV_LIB` 等解析序文档化。
+  [✅ 已完成 2026-09-13] 全文见 **§9.19**；**AC-19 同时收口**（含实机截图）。
+  - feature 透传：`crates/auto` 增 `mpv-native`/`mpv-gpu`/`mpv-widget` + `mpv` 别名；
+    **刻意不进 default**（打开后任何带 `video` 的示例都会真解码并开音频设备，
+    对别的示例是行为变化）。
+  - CI：`grep -rniE "apt-get install|apt install|ffmpeg|mpv|libav" .github/workflows/`
+    **零命中**；`runs-on:` 统计为 **11 个 ubuntu-latest**（与计划所述一致）；
+    `build-ui-examples.yml` 的 `cargo build -p auto` 在本机实测可通过（1m21s，
+    **无需任何系统媒体包**）。
+  - 解析序与约束落进 spec **SD-05**（`docs/specs/auto-lang/ui/overview.md`）。
+  - **AC-19 收口**：`test/ui/plan617_video_vm` 实机 1080p 真实播放 + seek 生效，
+    截图见 §9.19。
 
 **依赖**：T-01 → T-02/T-03/T-04 → T-05 → T-06 → T-07 → T-08 → T-09/T-10 → T-11 → T-12；
 T-13/T-14 与主链并行。
@@ -923,3 +1069,750 @@ T-13/T-14 与主链并行。
     并首次引入一个可选的原生媒体依赖与一条全新的验证链），
     review 时若认为体量已越过单计划上限，可依 §9.4 的切分点把 VM 链拆为独立的
     617B（Vue 链保持 617A 不变、编号与内容均不改）。
+15. **已自决（T-01/T-02 实操所得）**：dev server 与该环境的后台任务生命周期。
+    实测：后台启动的 `npx vite` 在回合结束后被回收（日志无错误、进程消失、
+    `curl` 转 000）。**纪律**：① 需要 Vue 截图时在本回合内临时启动、验证后即停；
+    ② 需要长期供人访问时用 `DETACHED_PROCESS`（已实测可存活并返回 200）；
+    ③ **不要把「dev server 还开着」写进交付说明**，除非确认它是 detached 启动的。
+### 9.5 T-05/T-06 中途记录（2026-09-12，用户要求"先把播放列表改成真实的"）
+
+- **用户现场反馈**：`localhost:3040` 上"列表和播放的视频实际都是假的，播放不出来"。
+  属实——T-02 完成后队列仍是 T-01 时的 5 条 mock 字面量，`<video>` 也没有起播路径。
+- **T-05 的真实阻塞（重要，影响所有 `crates/**` 任务）**：worktree 内**无法构建 `auto`**。
+  `crates/auto-lang/Cargo.toml:110` 的 `autodown-core = { path = "../../../auto-down/autodown/packages/engine/rust" }`
+  从主检出可解析（`D:/autostack/auto-down/...` 存在），从 worktree 解析为
+  `.wt/lang-617/auto-down/...` → `os error 3`。`--config paths.*` 覆盖对 workspace 成员的
+  path dep 无效。**正统解法（已从 618 的组确认先例）**：在组目录放兄弟 worktree
+  `D:/autostack/.wt/lang-617/auto-down`（618 就是 `.wt/lang-618/auto-down`，**detached HEAD**，
+  无需新分支）。**红线约束**：不得用 junction/symlink（Plan 529 事故），必须真 worktree。
+  **代价**：worktree 各自建 target（实测 `.wt/lang-618` 5.9G、`.wt/os-012` 16G），
+  首次 `cargo build -p auto` 是全量，需独立时段完成。
+- **本轮采取的等效交付**：为不阻塞前端集成，先落 **dev harness** 替代 T-05 的服务端，
+  接口形状与 range 语义与 T-05 一致，便于日后原地替换：
+  - `tests/local-media-server.py`：`/scan`（递归白名单）+ `/stream/<id>`（**206** +
+    `Accept-Ranges` + `Content-Range`，惰性分块 256KB，**不整文件入内存**）+ `/health`；
+    端口 8099（**注**：8788 落在 Windows 排除段 8760-8859，绑定报 WinError 10013，
+    选端口必须先查 `netsh int ipv4 show excludedportrange protocol=tcp`）。
+  - `tests/gen_media_seed.py`：读 `/scan` 把真实条目烘进 `app.at`（**T-06 前端侧内容**，
+    T-05 落地后改为运行时扫描）。
+- **已实证**（非推断）：`/scan` 返回 **14 条**、`rel_dir` 分组 `["", "TV", "TV/Loki"]`、
+  真实大小（7.3 MB / 1.7 GB / 2.3 GB / 4.3 GB…）；`/stream/7` 对 2.2 GB 文件返回
+  **206 Partial Content + Content-Range: bytes 0-1023/2198645361**；浏览器实测
+  `<video>` 载入 `http://127.0.0.1:8099/stream/1`，`readyState=4`、`duration=49.429`、
+  **1920×1080**、无 error，且画面渲染出 `caelestia.mp4` 的真实首帧。
+- **本轮两个自伤缺陷（已修，记录以免重犯）**：
+  1. 用 Python `!r` 生成 `.at` 字符串 → 产出**单引号**，而 `.at` 把单引号当 **char 字面量**
+     → `Lexer(UnterminatedChar)`。必须在生成器里显式双引号 + 转义。
+  2. 写了 `"\u2014"` → `.at` **没有 `\u` 转义**，同样 `UnterminatedChar`。要用字面字符。
+  修好后 `auto gen` 通过（GEN_EXIT=0）。
+- **尚未完成（不当作已完成）**：
+  1. `src/back/db.at` 仍含 12 处编造 `resolution:`/`codec:`，**AC-17 仍红**（前端已不消费，
+     但未退役）。
+  2. `controls: true` 是 **interim**：用户可用浏览器原生控件起播，但应用自己的 OSD
+     仍是 mock（T-07/T-08 用受控契约替换）。
+  3. 布局小疵：视口内容偏下、页面出现左侧滚动条（`h-screen` + 内容溢出），待 T-03/T-04 收拾。
+  4. 头部默认值已改指真实首项，但"改后"截图未重拍（本轮截图是改前那一版）。
+
+### 9.6 VM 端播放能力实测确认（2026-09-12，用户提问后）
+
+- **问题**：Vue 端已能真实播放，VM 端能否播放？后台 ffmpeg 库适配做了没有？
+- **实测（非推断）**：`auto run -r vm --theme dark` + MCP 快照 + 截图，worktree @ `f34d0f944`。
+  - **AURA 渲染树里根本没有视频节点**：全树提及 video/image/surface/media 的 18 处，
+    全部是 lucide 图标的 `[Image]` 占位、`"Video Player"` 文案与一行
+    `onclick: .SelectVideo(item.id)`；**没有 `video` / `imagesurface` / media 节点**。
+  - **截图**：视口区**纯黑**。真实队列（14 条、真实文件名与大小）、头部
+    `caelestia / 7.3 MB`、Toast、`00:00 / 00:00` 时钟**都正常**——因为那些只是数据；
+    唯独**画面没有任何渲染路径**。
+  - 状态条仍写着「已暂停 · 点击视口或按空格播放」，但它**没有可播的东西**。
+  - 证据图：`tests/screenshots/vm_cannot_play_evidence.png`（本地 gitignored）。
+- **结论**：**VM 端不能播放视频**，且这不是本计划的缺陷——`video` 在 iced 侧仍为
+  `render_support.rs:307` 的 fallback、`element_coverage.rs:449` 的 `NotYet`（§4.2 P-11/P-16）。
+- **ffmpeg 适配进度：零。一行都没写。** 且需澄清一个前提——本计划**刻意没有选 ffmpeg FFI**
+  （§2.5 裁定）：它会要求全部 11 个 `ubuntu-latest` CI 任务装 `libav*-dev` + C 工具链，
+  而 A/V 同步、音频输出、HDR 色调映射 ffmpeg 都不提供、仍需自研。计划选的是
+  **libmpv DLL 运行时加载**（`libloading` 已在本仓依赖中，`ffi.rs:62-145` 已有预留位置）。
+- **VM 链各任务状态**：T-13（选型决策件）未做；**T-15（Go/No-Go 门控 spike）未开始**；
+  T-16..T-20 为条件任务、未开始。且 T-15 所需的 spike **也要编译 Rust**，
+  同样受 §9.5 记录的 worktree 构建阻塞（缺兄弟 `auto-down` worktree）影响。
+
+### 9.7 更正：为什么 UI demo 的构建会牵扯 auto-down（用户质疑后查证）
+
+- **用户质疑**：「视频播放器 demo 为什么会需要 auto-down 的 worktree？这俩应该没有依赖关系。」
+  **质疑成立**：030-video-player 自身**零** autodown/markdown 用法（`grep` 为空）。
+- **真实链条**（逐环实证）：
+  1. 要落 T-05/T-07 必须构建 **`auto` 二进制**；
+  2. `crates/auto/Cargo.toml:26` → `default = ["ui-iced", "python", "autodown"]`
+     —— **autodown 在 auto 的默认特性里**（Plan 040 裁定①）；
+  3. `autodown = ["auto-lang/autodown"]` → `crates/auto-lang/Cargo.toml:110`
+     `autodown-core = { path = "../../../auto-down/autodown/packages/engine/rust", optional = true }`；
+  4. 该相对路径从主检出解析为 `D:/autostack/auto-down/...`（存在），
+     从 worktree 解析为 `.wt/lang-617/auto-down/...`（不存在）→
+     `failed to load manifest for dependency autodown-core`。
+- **更正我先前的两处不准确表述**：
+  1. 我上一轮说这份依赖"从没被启用"——**错**。`auto` 的默认特性就启用它。
+  2. 我说"cargo 只是要读 manifest"——方向对但不够准：实测（最小复现）
+     `cargo metadata --no-deps` **通过**、`cargo metadata` 与 `cargo build` **失败**，
+     即失败发生在 **resolve 阶段**；且 `--no-default-features` **也不能规避**
+     （EXIT=101，同样报错），因为 workspace 解析要覆盖所有成员的可能特性选择。
+     **结论：无法用特性开关绕过。**
+- **根因定性**：这是 **Plan 040 的假设 × Plan 529 的布局**之间的缺口，不是 demo 的需求。
+  `crates/auto/Cargo.toml` 自己写着：「autodown 提为 default——auto-down 是旗舰消费方
+  （**path 依赖恒在本机检出**）」——即"构建发生在主检出"这一前提。
+  Plan 529 引入 worktree 布局后，该前提在工作树内不成立。
+- **既有解法（仓库现状）**：`auto-down` 的 worktree 列表显示
+  **618 / os-012 / os-013 / auto-down-063 全部建了兄弟 worktree**，
+  其中 618 用 **detached HEAD**（无需新分支）。故这是仓库的既有惯例解法。
+  **红线**：只能用真 worktree，不得用 junction/symlink（Plan 529 事故）。
+- **三条可选路径**（需用户裁定）：
+  (a) **建兄弟 worktree**（既有惯例；成本 1.2G 检出 + 首次全量构建）；
+  (b) **按 Plan 040 的原假设走**：Rust 侧改动在主检出构建与验证
+      （与"实现只在 worktree"的纪律冲突，但与该 plan 的明文前提一致）；
+  (c) **根治**：让跨仓 path 依赖在两种布局下都可解析（单独立项，属仓库基建）。
+
+### 9.8 裁定：Rust 侧改走主检出（方案 b）—— 用户 2026-09-12 决定
+
+- **用户裁定**：采用 §9.7 的 **(b)** —— `crates/**` 的改动在主检出**编写、构建与验证**；
+  `examples/**` 的改动继续在 worktree `D:/autostack/.wt/lang-617/auto-lang`。
+  **这是对 AGENTS.md「实现只在 worktree」纪律的一次显式、经批准的偏离**，
+  理由是 Plan 040 的明文前提（"path 依赖恒在本机检出" = 构建发生在主检出）
+  与 Plan 529 的 worktree 布局冲突，而该冲突的根治（§9.7 (c)）属独立基建立项。
+- **可行性已实测**：
+  1. 主检出 `cargo metadata` **EXIT=0**（worktree 里同一条命令失败的 resolve 步骤在此通过）；
+  2. `cargo build -p auto` 增量 **33.17s** 完成（`Finished dev profile`）。
+     → **这把 (b) 的成本从"首次全量构建（数十分钟量级）"降到"增量几十秒~数分钟"**，
+     是本决策成立的关键数据；worktree 方案则无法复用该缓存。
+- **实测踩到的坑（务必记住，否则每次构建都会失败）**：
+  `auto run -r vm` 被 `proc.terminate()` 终止时会**留下孤儿子进程**，
+  它持续占用 `target/debug/auto.exe`，导致下一次 `cargo build -p auto` 报
+  `failed to remove file ...\target\debug\auto.exe / 拒绝访问 (os error 5)`。
+  **构建前必须先 `tasklist | grep auto.exe` 并 `taskkill //F //PID <pid>`。**
+  （本次即因此先失败一次，杀掉 PID 25496 后 33s 通过。）
+- **落地方式**：Rust 改动直接落在主检出（即 master 工作树），随本计划一并提交；
+  worktree 分支 `plan-617-dev` 保留 examples 侧改动；折入时两者在 master 汇合。
+
+### 9.9 T-05 完成（2026-09-12，主检出 @ `2763657fb`）
+
+- **交付**：
+  - `crates/auto-lang/src/ui/media_service.rs`（新，429 行）：`index_directory`
+    （**递归**、扩展名白名单、**不跟随 symlink/junction**、MAX_DEPTH=32 兜底）、
+    自然排序（`S01E02` 在 `S01E10` 前）、`blake3(relative_path)` 令牌 id
+    （绝对路径不出后端）、`resolve_root`（explicit → `AUTO_MEDIA_ROOT`）、
+    `parse_range` / `StreamPlan`（200/206/416 语义）、`content_type`、`entry_path`。
+  - `crates/auto-man/src/api_gen.rs`：新增 `MEDIA_SERVICE_HANDLERS` 常量并发出
+    `/api/media/scan`、`/api/media/stream/:id`；生成的 back crate 加
+    `tokio-util`（`io` feature）用于 `ReaderStream` **惰性分块 256KB**；
+    索引用 `std::sync::OnceLock` 每进程建一次（**零新增依赖**）。
+- **验证（全部实机，非推断）**：
+  - `cargo t media_service` → **7 passed / 0 failed**（递归+白名单、自然序+rel_dir、
+    令牌不泄路径、缺根报错不 panic、Range 全表面、状态/长度、content-type）。
+  - `cargo test -p auto-man --lib` → **285 passed / 0 failed**（生成器未回归）。
+  - 生成后端在主检出构建通过（54s 首建 / 2.8s 增量）并实跑：
+    `/api/media/scan` → **14 条**、`rel_dir = ['', 'TV', 'TV/Loki']`、
+    最大 `Loki.S02E06…mkv` = **5,751,764,883 B**；
+    `Range: bytes=0-1023` → **206** + `content-type: video/x-matroska` +
+    `accept-ranges: bytes` + **`content-range: bytes 0-1023/5751764883`**；
+    越界 → **416**；未知 id → **404**。
+- **顺带发现的仓库既有缺陷（重要）**：生成的 back crate 解析 **axum 0.7.9**
+  （`examples/rust-workspace` 是独立 workspace，有自己的锁；主仓是 0.8.9）。
+  axum 0.7 的参数语法是 **`:id`**，写成 `{id}` 会被当**字面量**且**静默 404**。
+  实测对照：静态路由 200 / `/api/media/stream/{id}` 404 / `/api/media/stream/:id` 200。
+  → **既有的 `/api/__auto/media/{id}/{revision}` 路由就是这个 bug，一直 404**
+  （即 Plan 547 的图像 rendition URI 在该形状下取不到文件）。本计划已在自己的路由上
+  改用 `:id` 并在代码注释里标注；**修既有那条路由属独立事项**，登记为债务候选。
+- **T-05 决策点落定**：
+  1. route 发出条件：**无条件发出**（`generate_main_rs` 签名里没有 root_dir，
+     按前端源码判断需要改签名与全部调用点）。代价是多 2 条惰性路由 + 1 行依赖；
+     **登记为债务**（待出现第二个媒体应用时再做按需门控）。
+  2. `tower-http` **不加 `fs` feature**——改用 `tokio-util::io::ReaderStream`，
+     语义更直白且不牵动既有依赖的 feature。
+  3. **不直接复用 `image_viewer.rs`**（它在 `auto-man`，生成的后端 crate 够不着；
+     且它面向 `img` 标签）。改为在 `auto-lang` 内**镜像其形状**实现。
+- **尚未接线**：前端此刻仍指向 Python harness（8099）。切到真后端 =
+  把 `gen_media_seed.py` 的产物换成运行时 `Http.get("/api/media/scan")`，
+  并让 `video_url` 用 `id` 拼 `/api/media/stream/<id>`（属 T-06 收尾）。
+
+### 9.10 裁定回退：恢复 worktree-only（用户 2026-09-12 决定，取代 §9.8）
+
+- **用户裁定**：「我们还是用独立的 worktree 去做修改吧」——**取代 §9.8 的 (b)**。
+  理由（§9.10 的实测观察支撑）：主检出正在被**多计划共用**，
+  未提交改动会产生提交裹挟风险。
+- **落地：按 auto-plan-work 的「Dependency worktree | Same group」建兄弟 worktree**
+  （§9.7 方案 (a)，仓库既有惯例）：
+  - `git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-617/auto-down --detach`
+    （**detached**，无需新分支——`auto-down-dev` 已被 `.wt/auto-down-063` 占用；
+    照 618 先例）；
+  - **关键验证**：worktree 内 `cargo metadata` **EXIT=0** —— §9.5/§9.7 记录的
+    `autodown-core` 跨仓 path 解析失败**已消除**。即 worktree 现在可自洽构建。
+  - **红线遵守**：用的是真 worktree，**没有**用 junction/symlink（Plan 529 事故）。
+- **与已提交工作的关系**：T-05 的 Rust 改动已在 master 提交（`2763657fb`），
+  `git merge master` 已并入 `plan-617-dev`，故 worktree 同时具备示例侧（T-01/02/06）
+  与 Rust 侧（T-05）改动。**此后所有 `crates/**` 改动一律在本 worktree 内编写与构建。**
+- **构建**：worktree 无 target 目录 → 首次为**全量构建**。已以 `DETACHED_PROCESS`
+  脱离 shell 进程组启动（`cargo build -p auto`，pid/日志见会话记录），
+  使其**跨回合存活**（本环境后台 Bash 任务会随回合结束被回收，§10-15）。
+
+### 9.11 观察：主检出已被多计划共用（本次实测，非推测）
+
+- 会话开始时的系统快照显示 `crates/` 下**干净**；会话进行中出现 **19 个脏文件**
+  （`ui/iced/renderer.rs`、`ui/terminal/*`、`vm/native*.rs`、`ui_gen/rust.rs`、
+  `terminal_pixel_*.png` 金标、`auto-man/src/rust_ui.rs` 等），时间戳
+  13:01/13:03/13:24/13:57 均落在本会话窗口内，且有**新增测试文件**
+  `terminal_input_tests.rs` —— 属实质代码改动，非构建产物。
+- 这些改动**不在任何 worktree 中**（`.wt/os-012`、`.wt/os-013` 对应文件干净）。
+- **推断（非证据）**：很可能其它计划也撞上了同一个「worktree 无法构建」的限制，
+  因而同样采取了「Rust 改动落主检出」的变通。**能证明的是"有人直接改了主检出且不在
+  worktree 里"，不能证明是谁或动机。**
+- **风险**：多写者向同一主检出写未提交改动 → **提交裹挟**；枢纽文件
+  （`ui/mod.rs`、`api_gen.rs`、`ui_gen/vue.rs`）尤甚。
+  **本计划纪律**：提交一律**逐文件显式 add** 并先 `git diff` 确认只含本计划内容，
+  **禁用 `git add -A`**。
+- **建议（供决策，不在本计划内实施）**：§9.7 (c) 根治跨仓 path 依赖的价值因此上升；
+  属仓库基建，跨所有计划的开发方式，应单独立项。
+
+### 9.12 状态对账与账目补齐（2026-09-12，用户询问"现在什么状态"后）
+
+- **发现的账目偏差**：`current_step` 与实际不符——§9.5/§9.9/§9.10 的散文记录里
+  T-05 早已完成，但任务勾选未翻转。**本轮补齐：T-05 标 [x]，`current_step: 2 → 3`**
+  （已完整交付的：T-01、T-02、T-05；T-06 为进行中，见下）。
+- **构建阻塞确认解除（决定性验证）**：worktree 内
+  `target/debug/auto.exe --version` → `auto 0.1.0+v0.4.2-402-g31655b73e`，
+  **hash 与 worktree HEAD 一致**，证明该二进制确由 worktree 源码构建。
+  → 「worktree 无法构建」已终结，`crates/**` 的活此后全部在 worktree 内闭环。
+  （副作用记录：本人脚本的 `open(log,"w")` 与 cmd `>>` 抢同一文件导致
+  `BUILD_OK` 标记未写成——**仅在日志里留下 2 行 `另一个程序正在使用此文件`，
+  构建本身成功**。下不为例：完成标记改写到**另一个**文件。）
+- **T-06 实际状态：进行中（半成品，勿当完成）**：
+  - 已做：递归扫描出的 **14 条真实条目**（真实文件名/大小/相对目录）已进队列，
+    浏览器实测可播放（`readyState=4`、`duration=49.429`、1920×1080）。
+  - **未做**：`app.at` 里仍有 **15 处 `127.0.0.1:8099`** —— 队列是
+    `tests/gen_media_seed.py` 把扫描结果**烘死**进源码的，**前端仍挂在 Python
+    harness 上**；T-05 已验证的 Rust 后端（206/`content-range`）**尚未被前端使用**；
+    `db.at` 未退役（AC-17 仍红）。
+  - → 收尾 = 运行时 `Http.get` 取列表 + `video_url` 由后端给出 + 删两个 Python 脚本。
+- **并发态势更新**：主检出 `crates/` 脏文件 **19 → 22**，且主检出 `auto.exe`
+  在 **17:15** 被重写 —— **另一 agent 此刻正在主检出构建**。本人严守逐文件 add。
+- **服务全部离线**（:3040 Vite / :8099 harness / :18080 后端），用户所看 demo 未运行。
+
+### 9.13 阶段 1 折入（2026-09-12，用户要求；master `3546f9567`）
+
+- **折入内容**：`plan-617-dev` → master（`--no-ff`，6 文件 / +513 −614）。
+  覆盖 T-01（基线实勘）、T-02（扁平清爽骨架）、T-05（媒体服务与生成路由）、
+  T-06（前端运行时扫描队列，删 Python 脚手架）。
+- **折入前门禁**：worktree 内 `cargo t --no-fail-fast`。
+  **存在较多红，但经判定均为预存，非本分支引入**：
+  1. `plan492_m4_tests::…c2_param_msg_declaration_both_tracks_alive`
+     —— **以还原法隔离证明**：把本分支唯一的 `vue.rs` 改动 `git checkout master --` 还原后
+     **该测试仍红**；在主检出（无本分支改动）亦红。
+  2. `ui::app_registry::tests::scan_examples_ui_curation_set`
+     —— 断言 `left` 含 `031-image-viewer` 而期望集不含；系 commit `9c6c27e86`
+     （031-image-viewer 进桌面）**未同步该清单**的既有漂移。
+  3. 其余红域（`ui::layout::tests::*` 12+、`aura_view_builder`、`desktop_protocol::coverage`、
+     `lucide_icon_coverage_manifest_all_hit`、`ffi_dual_019_dep_layout_invariants`）
+     与本分支改动**领域不相交**（本分支只动：handler/Init 的 async 生成、媒体路由、
+     新建 media_service）。
+- **诚实标注的局限**：**未能建立「相对 master 的零新增红」这条硬基线**——因为
+  主检出同时被另一 agent 持有 38 个未提交文件，取不到干净基线。故本次折入的结论是
+  「已检查的红均可解释为预存」，**不等同于**已证明零新增红。
+  （计划仍为 `executing`，非终态；最终 review 需在干净基线上重跑门禁。）
+- **并发安全**：折入前后主检出的 38 个脏文件**始终未被我提交或修改**；
+  合并文件与它们**零交集**（折入前已 `comm -12` 核对）。本计划提交一律逐文件显式 `add`。
+- **worktree 保留**：`D:/autostack/.wt/lang-617/auto-lang`（分支 `plan-617-dev`）
+  与兄弟 `D:/autostack/.wt/lang-617/auto-down` **继续保留**用于后续阶段
+  （T-03/04/07..15 与 VM 线）。折入后分支已落后 master，后续开工前需再 `merge master`。
+- **下一阶段焦点（用户指定）**：**VM 版能否启动并播放** → T-15 门控 spike
+  （libmpv DLL 运行时加载；Go/No-Go 必须带实测数字）。
+
+### 9.14 T-15 门控 spike 完成——**裁定 Go**（2026-09-12，实测件）
+
+- **结论：Go，通道 = SW（libmpv 软件渲染后端 + 持久 staging buffer → 自有 `wgpu::Texture`）。**
+  完整决策件（含四选一理由与风险）已写入
+  [`docs/design/autoui/030-video-player.md`](../design/autoui/030-video-player.md) §4。
+  **T-16..T-20 可以开工。**
+- **取得 libmpv（本机原本一无所有）**：下载
+  `shinchiro/mpv-winbuild-cmake` 的 `mpv-dev-x86_64-20260903-git-69e63f425a.7z`
+  （sha256 `fac135c6…80faef`），用 `bsdtar`（libarchive 支持 7z，本机无 7z CLI）解出
+  `libmpv-2.dll`（120 MB，ffmpeg 静态内链）+ `include/` + `libmpv.dll.a`。
+  **不入库、CI 不依赖**（运行时依赖而非构建期依赖）；解析序 = `AUTO_MPV_LIB` → exe 同目录 → 系统路径。
+- **AC-18 的实测数字**（环境：Win11 / RTX 4060 Ti / iced 实选 Vulkan；样本 1080p x264 与 4K HEVC HDR；
+  两个探针**互相独立**：Python ctypes 求实时能力，Rust spike 求每帧代价，同一份 DLL）：
+
+  | 指标 | 1080p | 4K HEVC HDR |
+  |---|---|---|
+  | mpv `render()` per-frame（`ADVANCED_CONTROL` 生产形状） | **0.60–0.68 ms** (p95 0.74–0.95) | **6.74–6.88 ms** (p95 10.4–10.7) |
+  | 吞吐上界（untimed） | 869–989 fps | 90–93 fps |
+  | **实时播放**（`ao=null` 音频时钟） | 23.3 fps / 内容 24 fps，时钟 **0.958×** | 23.6 fps / 内容 24 fps，时钟 **0.997×** |
+  | 进程 RSS（实时） | 150 MB | 493 MB（纯软解峰值 1042 MB） |
+  | CPU | 5.6 ms/帧 | 54.6 ms/帧（`d3d11va-copy`） |
+  | 上屏每帧代价（**采用通道 C**） | **0.28–0.29 ms** p95 0.76–0.82 | **0.41–0.44 ms** p95 0.86–0.98 |
+  | 对照：通道 A 持久纹理 + `write_texture` | 0.67–1.02 ms | 3.87–4.17 ms |
+  | 对照：通道 B 每帧新建纹理（= iced `Handle` 等价） | 1.22–1.27 ms，离群 2/120 | 4.28–4.36 ms，p95 **18.9–19.5 ms**，离群 **8/120** |
+
+  **端到端（4K）≈ 6.8 + 0.43 = 7.3 ms/帧**，占 24 fps 预算 **17%**、60 fps 预算 **44%**。
+  **`--release` 复核**（排除「debug 把 wgpu 代价算高了」的质疑）：门控 A 1080p 0.66 / 4K 6.67 ms
+  （与 debug 一致）；门控 B 通道 C 更好——**0.132 ms @1080p / 0.244 ms @4K**，
+  `map_async+unmap` 0.043 ms；**排序不变**（重活都在预编译的 libmpv 与 GPU 驱动里，不在我们的
+  Rust 代码里）。但**通道 C 的长尾在 release 下同样出现**（4K max 951 ms）⇒ 真实行为，
+  非 debug 产物，T-17 必须处置。
+  证据日志：`t15_gate_debug.log` / `t15_gate_release.log`（本地，含完整输出）。
+- **「Handle 复用能否消除闪烁」的答案是：该问法本身不成立**（这是本轮最有价值的架构发现）。
+  三条源码级证据：① `iced_core::image::Id` 的构造器与字段**全私有**，仓外无法构造
+  「同 id、不同像素」的 Handle；② 每帧新 id 必走 `load_image` 未命中，而同 id 命中即
+  **不再上传**（`cache.rs:94-101`）——两条路都不通；③ 大帧必然走异步慢路径
+  （`MAX_SYNC_SIZE = 2 MB` 而真实帧 8.29/33.18 MB）+ 4K 装不下 atlas（`MAX_SIZE = 2048`）。
+  故帧通道**结构性绕开** iced 的图像系统（自持纹理 + `iced_widget::shader::Program`），
+  闪烁成因随之被移除。**本仓既有的 `cached_media_handle`（P547）对静态图有效，对帧流
+  必然不命中**——那条修复不能直接搬到视频上。
+- **GL 路径已评估并排除**（不是「难」而是「在本仓架构下不可达」）：mpv 的 GL 后端要一个
+  当前 GL 上下文，而 iced 走 Vulkan；两 API 共享纹理需 `VK_KHR_external_memory_win32` +
+  `GL_EXT_memory_object_win32`，而 **wgpu 不公开外部内存导入**（只有 `wgpu-hal` 层
+  `create_texture_from_hal`/`as_hal` 这类 unsafe 接口），且即便写通仍慢于已实测的 SW 通道。
+  sidecar 则被 SW 全面支配（多一次跨进程 33 MB/帧拷贝 + A/V 同步与音频输出要自研）。
+- **两处不利于 SW 的实测事实（如实记录）**：① SW 后端**用不了零拷贝硬解**
+  （`hwdec=d3d11va` 实测 `hwdec-current: no`，只能用 `d3d11va-copy` 回读），4K 纯软解 RSS 达 ~1 GB；
+  ② 通道 C 有**极稀有长尾**（4K 120 帧中 1 帧 957 ms、1080p 中 3 帧 242 ms），T-17 须以 2–3 槽
+  staging 环 + 单帧丢弃处置，长尾定位是 T-17 的第一件事。
+- **一个必须记住的构建期发现（rustc ICE）**：打开 `mpv-spike` 特性后编译 **lib 的 `--test`
+  目标**会触发 rustc 1.98.0 的 ICE（`collect_and_partition_mono_items`，查询栈指向
+  `ui/mcp_server.rs:1718` 的 iterator chain，**与 spike 代码无关**）；同特性下 `--lib`（rlib）
+  与 `example` 目标均正常。故 spike 落为
+  `[[example]] name = "mpv_spike" required-features = ["mpv-spike"]`（默认档/CI 不编译）。
+  **T-16..T-20 的测试须照此避开 lib 测试目标。**
+- **交付物（worktree 内，`crates/auto-lang`）**：
+  `examples/mpv_spike.rs`（可跑：`mpv` / `wgpu` / `selfcheck` / `all` 四个子命令；
+  `selfcheck` 证明缺库走 `Err` 而非 abort，即 AC-20 的降级入口）；
+  `Cargo.toml` 新增 `mpv-spike` 特性 + 可选依赖 `iced_wgpu`（**零新增编译单元**——它本就是
+  iced 默认渲染器的依赖）与 `[[example]]` 声明。
+- **交付物（worktree 内，`scripts/mpv_spike/`）**：AC-18 的「实时播放能力」与「进程 RSS」
+  两类数字来自 Python ctypes 探针（Rust example 只覆盖每帧渲染/上屏代价），
+  已一并收编入仓以保证可复现：`sw_probe.py`（实时/逐帧/内存，口径见其 README）、
+  `audio_probe.py`（Dolby 音轨实测）、`README.md`（前置/用法/口径说明）。
+  DLL 路径经 `AUTO_MPV_LIB` 覆盖；**`libmpv-2.dll` 本身不入库、CI 不依赖**。
+- **数字对机器负载敏感（如实记录）**：上表取自相对空闲时段。有并发负载时复测同一 4K 场景，
+  `render()` p50 5.7→12.8 ms、CPU 54.6→97.5 ms/帧，**媒体时钟仍 0.999×** ⇒
+  「能否实时」这一判定本身有相当余量。
+- **降级路径已实证**（AC-20 前置）：`Library::new` 对不存在的库返回 `Err`（`LoadLibraryExW failed`），
+  解析不出即返回 `None` 交回调用方走今日的诚实占位，**不 panic、不黑屏**。
+- **Vue 端那条「解不了」的音轨在 VM 侧实测可解**（这原是用户要求 VM 播放的主要动机）：
+  单独探针实测（`ao=null`，只读 mpv 自己报告的属性）`Loki.S02E01…mkv` 得到
+  **`audio-codec-name: eac3`**、`audio-params: {"samplerate":48000,"channel-count":6,
+  "channels":"5.1(side)","format":"floatp"}`、`audio-bitrate: 768000`、`aid: 1`、
+  AUDIO_RECONFIG 事件 3 次 —— **即 Chromium 判为 video-only 的那条 Dolby 音轨，
+  libmpv 内链的 ffmpeg 正常解码**。**Atmos 对象元数据如预期坍缩为 5.1**
+  （实测确认，非推断）；HDR 色调映射由 mpv 承担（未单独实测质量，T-18 验收时看画面）。
+  音频输出 mpv 自带（`ao` 为本机设备），故 **T-18 不引入 `cpal`**。
+- outcome: **Go**；next: **T-16**（native 动态库加载器，落 `ffi.rs:62-145` 的 `TODO(Plan-212)`）。
+- **门禁 `cargo t` 实跑（worktree @ `b621edda0`）**：`4812 tests run: 4791 passed, 21 failed,
+  109 skipped`（47.7s）。**21 项红全部可解释为预存/环境，且本改动不可能影响它们**——
+  **完整代码 diff vs master 只有两行式内容**：`Cargo.toml`（+20 行：可选依赖 `iced_wgpu`、
+  `mpv-spike` 特性、`[[example]]` 声明）与**新增的** `examples/mpv_spike.rs`；
+  **`crates/auto-lang/src/**` 零改动**（`git diff master --stat -- crates/auto-lang/src/` 为空），
+  `Cargo.lock` 未变动（→ 既有特性的解析结果逐字节不变）。故 lib 测试目标的行为不可能改变。
+  逐项归因：
+  1. `plan492_m4_tests::…c2_param_msg_declaration_both_tracks_alive` —— §9.13 已用**还原法**
+     隔离证明为预存；
+  2. `ui::app_registry::tests::scan_examples_ui_curation_set` —— 实测输出 `left` 含
+     `031-image-viewer`、期望集不含，与 §9.13 记录的 `9c6c27e86` 清单漂移**逐字一致**；
+  3. `ui::layout::tests::*`（12 项）与 `ui::desktop_protocol::coverage::tests::…`、
+     `ui::aura_view_builder::plan055_…`、`lucide_icon_coverage_manifest_all_hit`、
+     `ffi_dual_019_dep_layout_invariants` —— 均在 §9.13 已列的**红域**内（桌面布局/协议域），
+     与本计划的改动领域不相交；
+  4. **`ui::iced::renderer::tests::external_config_poll_hot_apply_loopsafe`（§9.13 未逐条列出的一项）
+     经实测定为并发 flake，非本改动引入**：该测试读写**真实用户配置路径**
+     （`desktop_config::desktop_config_path()`），全档并发时被其它进程写回
+     （实测失败值是 `theme_source` 从测试写入的 `"manual"` 变回 `"system"`）；
+     **隔离复跑 3/3 全绿**。与 §9.11 记录的「主检出被多计划共用」同一成因。
+  - **诚实标注的局限（与 §9.13 同）**：主检出仍被另一 agent 持有未提交改动，**无法取到干净基线**，
+    故本次结论是「已检查的红均可解释、且改动面为零源代码」，
+    **不等同于**已证明「相对干净基线零新增红」。
+
+### 9.15 T-16 完成——native 动态库加载器与 libmpv 引擎生命周期（2026-09-13）
+
+- **交付**（worktree `plan-617-dev` @ `e13e63e59`）：新增 `crates/auto-lang/src/ui/mpv/`
+  （feature **`mpv-native`**，只挂 `ui`、**不牵 iced**，故可独立编译与测试）：
+  - `locale.rs` —— `LC_NUMERIC` 必须是 `"C"`。这不是可选项：`client.h:147` 是硬前提，
+    且同 header 把它列为 `mpv_create()` 返回 NULL 的原因之一（`:479`）。用 **CRT 自己的
+    `setlocale`**（零新增依赖——本仓没有 `libc`），并且**只动 `LC_NUMERIC`**、不用
+    `LC_ALL`（那会连带改掉调用方的其它分类）。LC_NUMERIC 的**数值平台相关**，
+    按 MSVC/ucrt(4) 与 glibc/musl(1) 分别写死并注明依据，不凭印象。
+    为什么要主动做：Rust std 从不调 `setlocale`，但进程内其它 C 库（本仓有 oniguruma、
+    sqlite3）可能调 `LC_ALL` 把它一起改掉。
+  - `loader.rs` —— 解析序（`AUTO_MPV_LIB` → exe 同目录 → 无）与符号表。**显式路径存在
+    才采用，不存在就直接降级为 `None` 而不回落**——否则「路径指错了」会表现为
+    「莫名用了另一个版本的运行库」，比直接降级更难排查。符号在加载期**一次性**解析成
+    裸函数指针（`MpvSymbols`），从而绕开 `libloading::Symbol<'lib, T>` 的生命周期约束。
+  - `engine.rs` —— 句柄与 render context 的生命周期，**本任务的核心**。销毁顺序钉死在
+    `Drop` 里：`mpv_render_context_free()` → `mpv_terminate_destroy()`；反序是 UB
+    （`render.h:119` 原文 "If this doesn't happen, undefined behavior will result"）。
+    另两条同源约束照做：`render.h:111`（**先建 context 再 loadfile**，否则 video 初始化
+    失败或退回自建窗口 VO）与 `:114`（一个 core 同时只允许 1 个 context——重复建返回
+    错误）。「同线程 create/free」只在 API < 1.105 存在（`render.h:96-107`），故按运行时
+    `mpv_client_api_version()` 判断，旧版跨线程释放时打 warning 但**仍按正确顺序释放**
+    （不释放就销毁 core 是 UB，比旧版线程风险更严重）。
+  - `frame.rs` —— 帧目标缓冲，把 mpv 的 **64 字节对齐**要求（`render.h:393-404`）
+    编码进类型。**这条是 T-16 的一个实测发现**：`Vec<u8>` 的自然对齐只有 1
+    （本机实测 16），把 `vec.as_mut_ptr()` 直接交给 mpv 会**静默**掉进「整帧拷贝」慢路径
+    ——T-15 的 spike 里已经踩过一次，所以这次把它变成类型不变量（`FrameBuffer::as_target`
+    是唯一无需 `unsafe` 的入口）。
+- **缺失即降级（AC-20 的落地）**：`MpvEngine::new()` 返回
+  `MpvUnavailable::{NoLibrary | LoadFailed | CreateFailed | InitFailed | RenderContextFailed}`，
+  全程不 panic、不黑屏；`MpvEngine::is_available()` 供渲染层廉价探测以便决定降级。
+  **刻意区分「本机没有运行库」（正常分支）与「显式指定却加载失败」（缺陷）**。
+- **`ffi.rs` 落地 `TODO(Plan-212)` 的加载部分**：`register_c_function` 现在真的
+  `LoadLibrary`，**失败是硬错误而非静默 no-op**（旧实现 `log::info!("Would load ...")`
+  假装成功，问题会在日后以「莫名错误结果」的形式浮现）；新增 `with_library` 作用域访问器
+  （`Symbol` 借用库，无法外传，故用闭包收口）与 `loaded_libraries()`。
+  **明确未做**：任意 C 签名的实参编组仍属 Plan-212 未完成范围，本次**未**随附（已登记债务）。
+  与 `ui/mpv` 的**刻意反差**：那里的缺库是「本机没这个能力」→ 降级；这里的缺库是
+  「有人点名要它」→ 报错。
+- **测试（9 用例，集成目标而非 lib 单测——避开 lib `--test` 的 rustc ICE，见 P617-D1）**：
+  `crates/auto-lang/tests/mpv_engine.rs`。**两分支都实测**：
+  - **有 DLL**：`libmpv: …libmpv-2.dll (client API 2.5)`，真实生命周期（建 context →
+    拒绝重复建 → Drop → 再建）与**真实渲染一帧进我们的缓冲**（320×180，断言渲染后缓冲
+    非全零）全绿；
+  - **无 DLL**（`env -u AUTO_MPV_LIB`）：优雅 SKIP、**9/9 通过、exit 0**、不 panic。
+  解析序的纯函数形式（`resolve_library_with`）让解析用例**不碰进程环境**，避免测试间竞态。
+  `ffi::tests` 更正 2 例 + 新增 1 例：旧用例传 `target/hal.dll`（一个**从不存在的路径**）
+  却断言成功——只因加载当时是 no-op；现改用**必然可加载**的路径（测试可执行文件自身），
+  并新增「不可加载库必须报错且不留半状态（函数未注册 / id 未推进 / 库未记录）」。
+- **门禁 `cargo t`**：`4814 run / 4794 passed / 20 failed / 109 skipped`（55.0s）。
+  基线（§9.14）为 21 项，本次 **20 项且完全落在基线集合内**——差异的那一项
+  `ffi_dual_019_dep_layout_invariants` 是 `KNOWN-DEBT` 记载的 **P615-D3 并发 flake**
+  （本次恰好通过）。测试数 +2 即本次新增的两例。
+  → **零新增红**，且本计划自己的新增用例全绿。
+- **构建环境踩坑（重要，会立刻咬到下一个人）**：`cargo` 报
+  `error writing dependencies to …deps\<crate>-<hash>.d: 拒绝访问 (os error 5)`，
+  一次构建里几十个 crate 同时失败。**逐层排除**：不是权限（我用 shell 手写同名文件成功、
+  手动单跑 rustc `--emit=dep-info,metadata` 到同一目录也成功）、不是沙箱
+  （关掉沙箱同样失败）、不是 target 目录损坏（**换全新 target 目录同样失败**）、
+  不是孤儿进程（已清理上一会话残留的 lang-617 `cargo run` + :8330 后端，无效）。
+  **真因：sccache**。`SCCACHE_DIR=D:\autostack\.sccache` 已 **31 G**，而
+  `SCCACHE_CACHE_SIZE=30 G` → 超出上限、持续 trim，硬链接/写入竞态就表现为 `os error 5`。
+  **绕过**：`RUSTC_WRAPPER= cargo …`（清空 wrapper，本次所有验证均在此环境下取得）。
+  **根治**：清理该缓存目录或调大 `SCCACHE_CACHE_SIZE`——但它被多个计划共用，本计划不擅自改动。
+- outcome: pass；next: **T-17**（帧上屏通道：持久 staging 环 + `copy_buffer_to_texture`，
+  并处置 T-15 记录的长尾）。T-16 已把「帧 → 我们的内存」这一段打通（`FrameBuffer` +
+  `render_sw_frame`），T-17 要接的是「我们的内存 → wgpu 纹理」。
+
+### 9.16 T-17 完成——帧上屏通道（持久纹理 + staging 环 + 无闪烁断言）（2026-09-13）
+
+- **交付**：`crates/auto-lang/src/ui/mpv/channel.rs` + `present.rs`，新 feature **`mpv-gpu`**。
+  与 `mpv-native` **分开门控**是有意的：引擎（libmpv+libloading）不碰 GPU，故
+  `mpv-native` 在没有 GPU/无窗口的环境里仍能独立编译与测试；通道与 blit 才要 wgpu。
+  `mpv-spike` 现为 `["mpv-gpu", "ui-iced"]`。
+- **通道形状**（T-15 §4.1 的裁定落地）：
+  `mpv SW renderer →（直接写）持久映射 staging（3 槽环）→ copy_buffer_to_texture → 持久 wgpu 纹理 → 全屏 blit → 目标`。
+- **实现里三条值得记住的结论**：
+  1. **行距取 256 对齐**，一个 stride 同时满足两边：wgpu 的 `copy_buffer_to_texture`
+     要求 `bytes_per_row` 是 256 的倍数，mpv 要求 64 的倍数（256 是 64 的倍数）。
+     实测常用宽度（1920/2560/3840）本就落在 256 上，故无 padding 开销。
+  2. **片元着色器强制 `alpha = 1.0`**：mpv 的 `"rgb0"` 第 4 字节是**未初始化垃圾**
+     （`render.h` 原文 "the '0' component contains uninitialized garbage"）。若当
+     alpha 用，画面会随机变半透明乃至整帧「消失」——**那就是闪烁本身**。
+  3. **背压一律丢帧、不阻塞**：取不到空槽时**定向**回收（只 `poll` 该槽的
+     submission，不串行化整个 GPU），回收带超时（默认 4 ms），**超时即丢帧**。
+     纹理始终保留上一帧内容，故丢帧**不会**产生空白。
+  4. 代际门镜像 `image_pipeline.rs` 的 `MediaLatestWins`（同一 `(generation, seq)`
+     二元组 + `accept_*` 返回 bool 并计丢帧），并比它多一处：**渲染前判一次、
+     上屏前再判一次**——渲染期间用户可能已经 seek。
+- **实测（`tests/mpv_channel.rs`，真实 libmpv + 真实片源 + 离屏读回）**：
+
+  | 通道尺寸 | 源 | 端到端帧率（含逐帧读回） | 上屏代价 p50 / p95 | max（离群） | 丢帧 |
+  |---|---|---|---|---|---|
+  | 1920×1080 | `caelestia.mp4` | **258–385 fps** | **0.61–0.67 / 0.85–0.98 ms** | 6.8–55.4 ms（2/60） | 0 |
+  | 3840×2160 | `Loki.S02E01…4K HEVC HDR` | **38.3–38.6 fps** | **4.35–4.54 / 5.57–5.65 ms** | **329–336 ms（1/30）** | 0 |
+
+  端到端数字含逐帧读回（真实播放器不会做），故是**保守下界**；对照 24 fps 片源，
+  1080p 余量 10× 以上、4K 余量 1.6×。
+- **T-15 的那条长尾在正式通道里复现了**：4K 30 帧中 1 帧 `copy_buffer_to_texture`
+  耗时 **329–336 ms**（T-15 门控 B 量到 957 ms，同一现象）⇒ 它不是 spike 的测量假象。
+  **而 3 槽环把它吸收掉了**：`reclaim_timeout=0`、无丢帧、无空白帧，表现只是那一轮
+  总时长 0.4 s → 0.78 s。这正是选 3 槽（一槽在被 mpv 写、一槽在 GPU 拷贝、一槽空闲）
+  的意义。**§4.6 的长尾风险由此关闭。**
+- **「无闪烁」做成了可证伪断言**（不靠眼看，写在 `tests/mpv_channel.rs`）：
+  逐帧上屏后读回像素，断言 ① 画面确实上了屏（非全黑）；② **没有「内容帧之间夹
+  空白帧」**——这正是 `renderer.rs:2889` 描述的「画面消失又出现」的闪烁签名；
+  ③ 帧签名不恒定（纹理在更新，不是命中缓存后的陈旧帧）；④ 全程
+  `textures_created() == 1`（**纹理只建一次**，结构性反闪烁）。
+- **一个测试设计上的教训（已修正并留痕）**：我最初写「背压必然丢帧」的断言，
+  结果红了——因为小尺寸拷贝毫秒级完成、环根本顶不满，而 T-15 那条长尾是**驱动
+  偶发停顿、无法按需复现**。改成断言**策略与上界**（每次调用只能返回「已提交」或
+  「按策略丢帧」，且总耗时必有界），并额外断言 `reclaim_waits > 0`（证明回收路径
+  确实被走到）。「一定丢帧」那种断言只能靠运气通过，是坏测试。
+- **门禁 `cargo t`**：`4814 run / 4793 passed / 21 failed / 109 skipped`。21 项
+  **全部落在基线集合内**（19 项稳定红 + 两项已记录的并发 flake：
+  `ffi_dual_019_dep_layout_invariants`〔P615-D3〕与
+  `external_config_poll_hot_apply_loopsafe`〔§9.14 实测定为并发 flake，隔离复跑 3/3 绿〕）。
+  测试数仍为 **4814**（本任务新增的用例在 `required-features = ["mpv-gpu"]` 的
+  独立目标里，不进默认档）→ **AC-20 保持**，且零新增红。
+- outcome: pass；next: **T-18**（VM 侧播放控制与 §2.3 受控媒体契约对齐，音频由 mpv 承担）。
+  **交接提醒**：通道与 blit 管线刻意**不依赖任何 iced widget 类型**（只依赖 wgpu），
+  就为了让 T-19 能直接把它搬进 `iced_widget::shader::Program` 的
+  `Pipeline`/`Primitive`——`Pipeline::new(device, queue, format)` 恰好交出
+  `&wgpu::Device`/`&wgpu::Queue`，`Primitive::render` 交出 `&mut CommandEncoder`
+  与 `&TextureView`。**但截至 T-17，`video` 元素仍是 `fallback`**：通道就位 ≠ 已接上。
+
+### 9.17 T-18 完成——§2.3 受控媒体契约在 mpv 侧落地（2026-09-13）
+
+- **交付**：`crates/auto-lang/src/ui/mpv/contract.rs`（`mpv-native` 门控，不需要 GPU），
+  加上引擎的类型化属性面：
+  - `VideoContractDown`：§2.3 的受控下行（`paused`/`position`/`volume`/`muted`/`rate`/`src`）
+  - `VideoContractEvent`：上行回灌（`TimeUpdate`/`LoadedMetadata`/`PlayStateChange`/
+    `Ended`/`MediaError`）
+  - `MediaContract`：**差量** `apply()`（只下发变化字段）+ `poll()`（抽属性与事件、边缘检测）
+  - 引擎新增 `get_f64/get_i64/get_flag/get_string` 与 `set_f64/set_i64/set_flag`，
+    以及 `END_FILE` 的 reason 载荷（区分 `EOF` 与 `ERROR`）。
+- **共享边界的裁定**：契约的共享面是**作者面的状态值**，不是 DOM 语义——
+  `volume` 取 **0..100**（Vue 侧由生成器翻成元素的 0..1，`el.volume = state.volume / 100`；
+  mpv 的 `volume` 本就是 0..100，故 VM 侧是恒等映射）。换算函数
+  `volume_to_element`/`volume_from_element` 留在 `contract.rs` 作为**单一出处**并被测试钉住，
+  避免两端各写一遍后逐渐漂移。
+- **`src` 连数据通路也不需要分叉**：mpv 自带网络栈，`loadfile` 既收本地路径也收
+  `http(s)://`。所以后端给 Vue 的 `/api/media/stream/<id>` 地址在 VM 侧**原样**可用——
+  这是「同一份 `app.at` 两端都能跑」在通路层面成立的原因，不只是属性名对齐。
+- **三处必须写对的细节（都写进了模块文档并被测试守住）**：
+  1. **`position` 的语义是「目标变化时 seek」，不是「与当前播放位置不同就 seek」**。
+     后者会让播放在前进时每帧都触发 seek → 播放被钉死在目标点（表现为「拖完进度条
+     画面再也不动」）。测试 `constant_position_does_not_re_seek_every_frame` 直接钉这条：
+     同一个 `position` 反复 apply 必须 **0 次下发**，且时间照常前进。
+  2. **下行必须差量**：视图每帧重建，无条件全写会与 mpv 自身状态抖动打架。
+  3. **换片与 seek 都让 `generation` 前进**，供 T-17 的 `VideoLatestWins` 把在途旧帧判过期
+     ——否则 seek 后旧帧上屏会盖掉新位置画面。
+- **实测（`tests/mpv_contract.rs`，真实 libmpv，`ao=null` 提供时钟，10/10 绿；缺库时整体 SKIP）**：
+  - **seek**：目标 19.77s → **落点 19.77s**（时长 49.43s），且 `generation` 前进
+  - **起播/暂停**：`PlayStateChange(true)` 回灌 + 时间前进；暂停后 0.6s 内时间不动
+  - **音量/静音/倍速**：`volume`/`mute`/`speed` 读回校验（37/true/1.5 → 100/false/0.5）；
+    `rate=0` 被忽略（0 倍速会冻住播放）；`volume=300` 夹到 100
+  - **`onloadedmetadata` 恰好一次**，且时长等于 mpv 自报的 `duration`
+  - **`onended`**：EOF 回灌 `Ended` 且**不得**报成错误；**`onmediaerror`**：坏源回灌明确文案
+  - **音频由 mpv 承担**：`current-ao=wasapi`、`codec=aac`、`out-params` 48k/stereo；
+    全仓 `Cargo.toml` **无任何音频输出依赖**（grep `cpal|rodio|symphonia|alsa|wasapi` 零命中）
+- **顺带修掉 T-16 的一个真缺陷（重要，值得单独记）**：T-16 的 `wait_event()` 只判了
+  「指针是否为 NULL」，但 **mpv 超时/无事件时返回的是有效指针 + `MPV_EVENT_NONE`**。
+  于是任何 `while let Some(ev) = wait_event(..)` 形式的事件抽取循环都会**死循环**——
+  本次被 T-18 的 `poll()` 第一次调用就触发，一个测试被挂死 7 分钟才被发现。
+  **修复**：在 `wait_event` 内把 `event_id == NONE` 归一为 `None`。
+  这条说明「T-16 当时通过了测试」不等于「T-16 没有缺陷」：T-16 的
+  `wait_first_frame_event` 恰好有 20s 截止兜底，所以那个缺陷在那里不显形。
+- **另一处实测事实（已修 + 登记债务）**：mpv 在 `END_FILE/ERROR` 上**不总是给错误码**——
+  加载不存在的文件时实测 `error == 0`，直接 `mpv_error_string(0)` 会得到 **「success」**
+  这种毫无信息量的文案。现改为以「哪个源加载失败」为主信息
+  （实测文案：`无法播放该媒体（加载或解码失败）：Z:\…
+ope.mp4`）。
+  **要拿到精确原因需要捕获 mpv 日志**（`mpv_request_log_messages` + `LOG_MESSAGE` 事件），
+  登记为债务 P617-D8。
+- **两个我自己在这次写的测试缺陷（记录以免重犯）**：① 起播用例只构造了 `down` 却没
+  `apply` 下去 → mpv 一直是暂停的，观测为空；② `load()` 辅助把 `LoadedMetadata` 在加载期
+  消费掉了，事后再 poll 自然数到 0 次。**`poll` 是「取出即消费」语义**，关心某事件的用例
+  必须从返回值里看——这条已写进 `load()` 的注释。
+- **门禁 `cargo t`**：`21 failed`，**全部落在基线集合内**（19 项稳定红 + 两项已记录的
+  并发 flake `ffi_dual_019`〔P615-D3〕与 `external_config_poll_hot_apply_loopsafe`）
+  → **零新增红**；本任务新增用例在 `required-features` 门控的独立目标里，不进默认档。
+- **⚠ 验证分层的诚实说明（计划内部的次序张力）**：T-18 的任务书写「验证：同一份 `app.at`
+  在 VM 端能真实播放、seek、调音量」，但**那需要 `video` 元素先接上通道与契约**
+  （`render_support.rs:307` 至今仍是 `fallback`）——那一步在 **T-19**。故本任务交付并验证的是
+  **契约层**（真 mpv、真放/seek/音量/事件），**不以「app 里能播」自居**；
+  AC-19 由 T-18+T-19 合起来满足。
+- outcome: pass；next: **T-19**（把 `video` 从 iced `fallback` 提升为可用：接上
+  `channel`/`present`/`contract`，并更新 `schema/aura.at` 的 `backends.iced`）。
+
+### 9.18 T-19 完成——`video` 由 fallback 提升为可用（2026-09-13）
+
+- **交付**：`crates/auto-lang/src/ui/mpv/widget.rs` + 新 feature **`mpv-widget`**
+  （= `mpv-gpu` + `ui-iced`），把 T-16/17/18 的三段接成**一个 iced widget**：
+  `Program::draw → Primitive{id,尺寸,下行值}` / `Primitive::prepare → apply+poll+
+  channel.with_frame` / `Primitive::draw → 用持久纹理画满 bounds`。
+- **非 Send 的 mpv 引擎住 thread-local**：`Primitive`/`Pipeline` 都要求
+  `Send + Sync`（native），而 [`MpvEngine`] 含裸指针、**刻意** `!Send`
+  （T-16 的保守选择：`mpv_wait_event` 只允许一个线程）。解法是引擎**不进**
+  Primitive/Pipeline，放进由 widget id 索引的 thread-local 注册表——widget 与渲染
+  都在 iced 主线程，正是引擎被创建与使用的那个线程。**万一真被换线程调用，
+  表现是「查不到运行时 → 不画」，降级而非 UB。**
+- **接线三层各一处**：
+  1. **`View::Video` 变体**（与 `ImageSurface` 同形）。关键设计：它**不携带任何消息**
+     ——上行事件由渲染面按帧采集、经 `drain_events` 取走，故各后端的消息重映射臂
+     都是平凡的（`map_msg` 原样搬运）。6 处 match 需要加臂，全部是小改动。
+  2. **`aura_view_builder`**：tracked/untracked 两条 dispatch 各加 `video` 臂 +
+     `convert_video`（§2.3「作者面状态值→节点字段」的翻译）。
+  3. **iced `renderer`**：`View::Video` → 有 `mpv-widget` 时建 shader widget
+     （黑底容器 + 随 `style` 的 container 样式）；**没有该 feature 时渲染诚实降级
+     面板**（「本后端未启用原生播放」），而不是留一块黑——静默黑屏正是本计划要消灭的。
+- **schema/规范同步（schema 为权威）**：
+  - `schema/aura.at`：`backends.iced: fallback → partial`、`category: unknown → media`、
+    **`props` 由 `[]` 改为声明**（此前 `props: []` 使 typo 静默通过，见 §4.2 P-3；
+    现在声明了透传属性 + §2.3 契约字段，S001 校验随之生效）；
+  - `render_support.rs`：`video → partial`，ignored 列 `poster/preload/playsinline/
+    autoplay/controls`，note 写明**三项真实限制**（需运行库 / 需 tick 驱动 /
+    浏览器专有属性无对应语义）——**不谎报 full**；
+  - `element_coverage.rs`：**`video` 仍为 not-yet，改的是理由**。该表描述的是
+    **queue/投影臂**（模块文档：`covered` = 投影器有臂），而 `video` 不在
+    `Coverage::target_set()` 里。理由改为「原生播放面已具备，但投影臂未接——
+    差投影不差渲染」。把 iced 渲染能力与投影能力混为一谈会是谎报。
+- **新增测试 `tests/video_contract.rs`（3/3 绿，且不需要 libmpv）**：fixture 走
+  **真实文件解析 → VM bridge → builder**（与 `image_surface_contract.rs` 同一套驱动），
+  断言 `video` 节点确实产出 `View::Video` 且契约映射正确：全量字段映射、
+  缺省值矩阵（默认暂停/满音量/原速/不 seek）、越界夹紧与 `rate<=0 → 1.0`。
+  **它抓到一个真 bug**：我最初用只认字面量的 `extract_bool` 读 `paused`，
+  而作者写的是表达式 `paused: .is_playing == false`——契约字段会**静默不生效**。
+  已改用 `extract_bool_expr`（走 `resolve_expr_to_value`）。
+- **门禁**：`docs_gen` 4/4 绿（先 `DOCS_GEN_UPDATE=1` 再生成 `docs/components/core.md`）；
+  `schema_drift` 绿——baseline 更新**仅 3 增 1 删**：新增
+  `render_not_in_rs Video`、`vb_not_in_rs Video/video`，**消除** `render_not_in_vb video`
+  （view builder 现在真有 `video` 臂），理由即该提交信息；
+  `cargo t` 21 failed 全在基线集合内 → **零新增红**（新测试在独立目标里，不进默认档）。
+- **⚠ AC-19 未达成——边界与剩余两步（必须如实带走）**：本轮把链条接到了
+  `View::Video` 与 iced 渲染面，且这些 impl 都已在**编译期被真实的 iced trait 校验**
+  （我特意用「故意改坏一个方法名」验证过 widget 确实在类型检查范围内）。
+  但「**在 VM 窗口里真的看到画面在动**」还差两步：
+  1. **`crates/auto` 没有 `mpv-widget` 的特性透传** → 默认 `auto run -r vm` 走的是
+     诚实降级面板。要为 VM 构建打开原生播放，必须先补这个透传（**T-20 的特性门控**）。
+  2. **应用需声明 tick**（`tick_interval_ms`）驱动帧，否则停在首帧——已写进 widget
+     模块文档与规范注记，**不是隐藏行为**。
+  故本任务**不以 AC-19 已达成自居**；AC-19 由 T-20 + 应用侧 tick 收口。
+- outcome: pass（T-19 自身的验收 `cargo t` + `docs_gen` 均绿）；next: **T-20**
+  （特性门控与 CI 保真：补 `crates/auto` 的透传、确认 11 个 CI 任务不装媒体包、
+  记录 `AUTO_MPV_LIB` 解析序），并把 AC-19 的可视验证一并收口。
+
+### 9.19 T-20 完成 + AC-19 实机收口——两个真 bug 在实机验证中现形（2026-09-13）
+
+- **AC-19 达成（VM 端真实播放，有实机证据）**：新增验证语料
+  `test/ui/plan617_video_vm`（`video` 节点 + `paused: false` + `position: 8.0`
+  + `timer { FrameTick (every_ms: 16) }`）。实机
+  （`cargo build -p auto --features mpv` + `AUTO_MPV_LIB` 指向本机 `libmpv-2.dll`，
+  经 MCP 驱动起窗并截图）：
+  - **画面为 `caelestia.mp4` 的实际内容**（1080p 本地文件）；
+  - **seek 生效**：`position: 8.0` → 播放中 `time-pos` 由 8 递增到 12.63s；
+  - `has_new_frame` 持续为真、`duration=49.429` 已解析、`pause=false`；
+  - 截图（本地、gitignored）：`test/ui/plan617_video_vm/src/front/tests/screenshots/ac19_final.png`。
+- **实机验证抓到三个编译期与契约测试都发现不了的真缺陷**——这是本任务最有价值的产出：
+  1. **`convert_view_messages` 的 `_ => Empty` 兜底把 `video` 节点静默吃掉了。**
+     VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` →
+     `View<IcedMessage>` → `into_iced`；T-19 我只加了 `map_msg_with_arc` 与
+     `into_iced` 的臂，**漏了这一处**，于是播放面在 VM 里恒为 `Empty`。
+     而 MCP 快照走的是 `vnode_converter`（另一条路），所以快照里
+     `[Video] caelestia.mp4` **看起来节点就在树里**——**假绿**。
+     该函数的注释里已经记着 Grid / MouseArea / select 三次同类坑，**这是第四次**。
+     已补显式臂（也再次印证：T-19 当时「编译通过 + 契约测试绿」不足以证明接线是活的）。
+  2. **widget 从没建 mpv render context。** `VideoRuntime::new()` 只建了 handle；
+     没有 context ⇒ `has_new_frame()` 恒假、`render_sw_frame()` 恒报错 ⇒ 画面永不动，
+     而 mpv 侧一切正常（time-pos 在走、duration 已解析）——**正是 `render.h:111`
+     那条「先建 context 再 loadfile」的次序要求被违反了**（T-16 把它写进了引擎文档，
+     却没人替 widget 遵守）。已在运行时初始化时建 context。
+  3. **忘了 `channel.advance(gen, seq)`。** 通道内的 `VideoLatestWins` 只放行与
+     登记值完全一致的组合，不 advance 就每帧被判 `DroppedStale`，纹理停在初始全零
+     ——表现为「**mpv 在播、纹理全黑**」，实机盯了 5 秒黑屏才定位到。
+     已在 `with_frame` 前补 `advance`。
+  附带改进：上屏失败改为**计数 + 首次 `log::warn`**（此前静默丢掉，是上面①③难以定位的原因之一）。
+- **feature 门控（AC-20 的硬要求）**：
+  - `crates/auto` 增 `mpv-native` / `mpv-gpu` / `mpv-widget` 三层透传 + `mpv` 便捷别名；
+    **刻意不进 default**——`ui-iced`/`python` 是「开着才对」的后端选择，而本项是
+    **运行期能力**：打开后任何带 `video` 的示例都会真解码并打开音频设备
+    （019-video-app 的远端 URL 会真去拉流），那对别的示例是行为变化。
+    启用方式一行：`cargo build -p auto --features mpv`。
+  - **CI 保真（实测）**：`grep -rniE "apt-get install|apt install|ffmpeg|mpv|libav"
+    .github/workflows/` → **零命中**；`runs-on:` 统计 **11 个 `ubuntu-latest`**
+    （与计划所述一致）；`build-ui-examples.yml` 里的 `cargo build -p auto`
+    在本机实测 **1m21s 通过且无需任何系统媒体包**（→ 即使开启该 feature 也不给 CI
+    增加系统依赖，因为 libmpv 只在运行时 `LoadLibrary`）。
+  - 缺运行库走降级：`MpvUnavailable::NoLibrary` → 诚实降级面板，不 panic。
+- **spec SD-05 落地**：`docs/specs/auto-lang/ui/overview.md` 新增 `video` 条，登记
+  支持级别（partial）、实现位置、**可选 feature 与可降级**、
+  **运行库解析序（`AUTO_MPV_LIB` → exe 同目录 → 都没有即降级；不回落系统搜索路径）**、
+  缺失行为、「**mpv render API 只有 OpenGL/Software、没有 Vulkan/wgpu，故走 SW**」
+  这一架构约束、帧由 tick 驱动、两端同名的受控契约、以及实测数字。
+- **门禁**：`cargo t` 20 failed（**全在基线集合内** → 零新增红）；`docs_gen` 4/4；
+  `schema_drift` 绿（T-19 的 baseline 变更仍成立）。
+- **VM 链状态**：**T-15 / T-16 / T-17 / T-18 / T-19 / T-20 全部完成**。
+  Vue 链仍有 T-03/T-04/T-07..T-14 未做（见 §11-E），本计划的 VM 部分至此收口。
+- outcome: pass；next（本计划内的 VM 链已无剩余任务）：转入 Vue 链
+  T-03/T-04（viewport/controls）→ T-07/T-08（受控契约与真实播放接线）→
+  T-09..T-14，或直接进入 review/fold 阶段。
+
+## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
+
+> 一句话状态：**VM/iced 链已全部完成并实机验证**（`video` 在 VM 窗口里真会动，见 §9.19）；
+> **Vue 链一行未动**（示例仍是「外壳真实、内核全假」，见 §0）。
+> 用户指定的下一段工作：**Vue 链 T-03/T-04 → T-07/T-08 → T-09..T-14**。
+
+### A. worktree 布局（关键，勿重新踩坑）
+- 实现 worktree：`D:/autostack/.wt/lang-617/auto-lang`，分支 `plan-617-dev`。
+- **兄弟依赖 worktree：`D:/autostack/.wt/lang-617/auto-down`（detached HEAD）——必须存在。**
+  缺它则 worktree 内 `cargo` **连 resolve 都过不去**（`crates/auto-lang/Cargo.toml:110` 的
+  `autodown-core` 跨仓 path 依赖）。修复：
+  `git -C D:/autostack/auto-down worktree add D:/autostack/.wt/lang-617/auto-down --detach`
+- **红线**：不得用 junction/symlink 代替（Plan 529 事故）；必须是真 worktree。
+- **开工第一步**：worktree 内 `git status`（应干净）→ **`git merge master`**
+  （本阶段所有文档都提交在 master，worktree 已落后）。
+
+### B. 构建与运行
+- worktree 内可自洽构建；`crates/**` 的活全部在 worktree 闭环。
+- **⚠ `os error 5`（写 `.d` 失败）的真因是 sccache，不是孤儿进程**：
+  `SCCACHE_DIR=D:utostack\.sccache` 已 31G 而 `SCCACHE_CACHE_SIZE=30G` → 超限持续 trim →
+  一次构建里几十个 crate 同时报拒绝访问。**绕过：命令前加 `RUSTC_WRAPPER=`**（本阶段所有
+  验证都在此环境下取得）。判别法：换全新 target 目录**同样**失败 ⇒ 与 target 状态无关。
+- 孤儿进程仍要清：`auto run -r vm` 被 terminate 会留子进程占住 `target/debug/auto.exe`
+  （先 `tasklist` 按 ExecutablePath 确认归属再 `taskkill //F //PID`，机器上有别的计划的 auto.exe）。
+- **看 VM 端真实播放**（VM 链已交付，可当参照）：
+  `cargo build -p auto --features mpv` + `AUTO_MPV_LIB` 指向 `libmpv-2.dll`
+  → `auto run -r vm`（语料 `test/ui/plan617_video_vm`）。**默认档不含该 feature**，走诚实降级面板。
+- Vue 端：`AUTO_MEDIA_ROOT='E:\Video' auto run`（真后端 :8330 + Vite :3030）。
+- 后台任务不跨回合存活：要长期可访问用 `DETACHED_PROCESS`。
+
+### C. 提交纪律（重要）
+- **主检出有另一个 agent 在并发写**。一律**逐文件显式 `git add <path>`；禁用 `git add -A`**；
+  提交前 `git diff` 确认仅含本计划内容。
+- 计划书（勾选/frontmatter/§9.x）**留在 master 主检出**，不要只改 worktree 副本。
+- 生成物/截图不入库（`test/ui/**` 的语料自带 `.gitignore`；`examples/**/gen`、截图由根 .gitignore 覆盖）。
+
+### D. 任务状态
+- **已完成（10/20）**：T-01、T-02、T-05、T-06（Vue 侧基础）+ **VM 链 T-15..T-20 全部**
+  （门控 spike / 加载器与生命周期 / 帧上屏通道 / §2.3 契约在 mpv 侧 / `video` 提升为可用 /
+  特性门控与 CI 保真）。§9.14–§9.19 逐条有实测记录。
+- **未完成（Vue 链，10 项）**：
+  - **T-03** `viewport.at`：视口 + 受控 `<video>` + 错误/降级面板（去 `absolute`）。
+    → 注意 T-02 已实测的三个 VM 端约束（`flex-1`/`shrink-0` 在 VM 不生效、`video` 在 VM 端
+    零高度、进度条需真实容器承载），见 §9 T-02 条。
+  - **T-04** `playlist.at` + `controls.at`：队列栏按 `rel_dir` 分组；尺寸收敛为 3 档；
+    单一 primary；按 PLAN-412 §5 白名单取材（不用 `absolute`）。
+  - **T-07** 受控媒体契约（**生成器侧**，`ui_gen/vue.rs`）：§2.3 的下行同步 + 上行回灌；
+    **未声明受控 prop 时输出必须与今日逐字节一致**（兼容性约束）；超范围则改走 §2.1 Plan-B
+    （canvas 同形的类型引用臂 + `ref:`）并在 §9 记录理由与债务。
+  - **T-08** 真实播放接线：view/controls 接 T-07 契约；`OnTime/OnDuration/OnPlayState/OnEnded/
+    OnMediaError` 落地；OSD 改由回灌状态驱动（**spec T2..T7 今日必红项转绿是本计划的核心证据**）。
+  - **T-09** 真实文件浏览、**T-10** 错误与空态、**T-11** 契约与文档同步（SPEC.md/README.md）、
+    **T-12** 双端验证与归档、**T-13** VM 播放选型决策件（**大部分已被 VM 链实现并落在
+    design doc §4**，只需按 §4 收编为"决策件"形态）、**T-14** 债务登记。
+
+### E. 本阶段留下的"可复用资产"（Vue 链请优先复用，别重新发明）
+1. **`crates/auto-lang/src/ui/mpv/contract.rs` 就是 §2.3 契约在 mpv 侧的完整实现**，
+   含单位裁定（`volume` 共享边界取**作者面 0..100**，Vue 侧生成器再翻成元素 0..1）、
+   `position` 的"目标变化才 seek"语义、代际门（seek/换片 → generation 前进）。
+   **T-07 的生成器应当与它同形**——两端同名同单位，`.at` 源码才不需要分叉。
+2. `docs/design/autoui/030-video-player.md` §4 已是**VM 侧的完整实测结论**（含四选一裁定、
+   GL 为何不可达、为何必须绕开 iced 图像通道），T-13 直接收编即可。
+3. `test/ui/plan617_video_vm/` 是 VM 侧的验证语料样板（`video` + `paused` + `position` + tick）。
+4. `crates/auto-lang/tests/video_contract.rs` 是"`video` 节点 → View 字段"的契约映射测试样板
+   （走真实文件解析 → VM bridge → builder），Vue 侧可照此写生成器断言。
+
+### F. 已知坑与债务（细节见对应 §）
+- **`convert_view_messages` 的 `_ => Empty` 兜底会静默吃掉新 `View` 变体**（债务 P617-D10；
+  已四次踩坑）。凡新增 `View` 变体，**必须**同时加该函数的显式臂——否则 VM 端恒 Empty，
+  而 MCP 快照走 `vnode_converter` 另一条路、看起来节点还在树里（**假绿**）。
+- **测试教训（P617-D11）**：契约层/编译期门禁无法覆盖"接线是否真活"。T-19 的三个缺陷
+  全部通过了 `cargo t`+`docs_gen`+`video_contract`，只在实机现形。**涉及新变体一路走到
+  渲染的改动，必须有一次真起窗看画面的验证。**
+- **`db.at` 未退役 → AC-17 仍红**；`NextVideo`/`PrevVideo` 仍是 mock（10 处假 URL）→ 属 T-08。
+- **`pac.at media_root` 尚未接通**（只认 `AUTO_MEDIA_ROOT` env）→ 属 T-11。
+- `NextVideo` 等 mock、媒体路由无条件发出（未按需门控）等，见 `KNOWN-DEBT-AND-RISKS.md` 的 P617-D1..D11。
+- **axum 参数语法**：生成的 back crate 解析 axum 0.7，参数是 `:id`，写 `{id}` 会**静默 404**
+  （既有 `/api/__auto/media/{id}/{revision}` 正是此 bug）。
+- e2e 纪律：**只允许点 `caelestia.mp4`（7.7 MB）**，其余样本只用于列表渲染与 Range 断言。
+
+### G. 建议的开工顺序
+1. `git merge master`；跑一次 `RUSTC_WRAPPER= cargo t` 确认基线（**21 项预存红，见 §9.14/§9.16 归因**，
+   别把它当自己弄红的）。
+2. T-03 → T-04（视觉骨架收尾，Vue 截图取证）。
+3. **T-07 → T-08**（本链的技术核心；先读 `ui/mpv/contract.rs` 对齐契约形状）。
+4. T-09 → T-10 → T-11 → T-12 → T-13 → T-14。
+5. 或者：若想先把已完成的 VM 链落袋，先跑 `/auto-plan:review` + `/auto-plan:merge`
+   （AC-18/19/20 已有实测证据），再回来做 Vue 链。
+

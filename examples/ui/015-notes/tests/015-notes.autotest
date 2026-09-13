@@ -1,82 +1,161 @@
-# 015-notes.autotest — 桌面 MCP 测试场景声明（VM + Rust）
+# 015-notes.autotest — 桌面 MCP 测试场景（VM + Rust）
 #
-# 从 acceptance.atd 的 T1-T13 派生 MCP 可执行子集。
+# 从 tests/acceptance.atd 的 T1-T13 派生 MCP 可执行子集（PLAN-616 重写）。
 # 用法: python run_autotest.py 015-notes.autotest --mode vm
 #       python run_autotest.py 015-notes.autotest --mode rust
 #
-# 设计原则：每个场景自包含 — 开头用 Cancel/Save 重置到展示态。
+# 设计原则：
+#   * 每个场景自包含 —— 开头清搜索 / 回 All 范围（并关掉可能开着的删除确认）。
+#   * 断言绑定到 store 可观察状态与真实标签，不用「快照节点数 > 0」这类弱断言。
+#   * 可被找到的控件必须有文字标签（纯图标按钮 MCP 按 label 找不到），
+#     因此删除/置顶/设置等控件都带文字。
 
-suite "015-notes 核心流程"
+suite "015-notes 清爽化核心流程"
 
-# ── 导航类 ──────────────────────────────────────────────
+# ── 初始状态 ────────────────────────────────────────────
 
-scenario T2a "Pinned tab 无文件夹标题"
-  when  click_button label="Pinned"
-  then  not_exists text label="📁"
-
-scenario T2b "All tab 有文件夹标题"
-  when  click_button label="All"
-  then  exists text label="📁 Notes"
-
-scenario T2c "Recent tab 无文件夹标题"
-  when  click_button label="Recent"
-  then  not_exists text label="📁"
-
-# ── 编辑类（每个场景自包含，开头重置到展示态）─────────────
-
-scenario T5a "Edit 进入编辑模式"
-  when  click_button label="Cancel"
-  when  click_button label="Edit"
-  then  exists  button label="Save"
-  then  exists  button label="Cancel"
-  then  exists  input  label="Note title"
-
-scenario T5b "Edit 填充当前笔记内容"
-  when  click_button label="Cancel"
-  when  click_button label="Edit"
-  then  inspect input label="Note title" has_value=true
-
-scenario T5c "输入标题文字"
-  when  click_button label="Cancel"
-  when  click_button label="Edit"
-  when  type_text input label="Note title" value="MCP Test Title"
-  then  state field="edit_title" equals="MCP Test Title"
-
-scenario T5d "Cancel 返回只读模式"
-  when  click_button label="Cancel"
-  when  click_button label="Edit"
-  when  click_button label="Cancel"
-  then  exists  button label="Edit"
-
-scenario T5e "Save 退出编辑模式"
-  when  click_button label="Cancel"
-  when  click_button label="Edit"
-  when  type_text input label="Note title" value="Save Test"
-  when  click_button label="Save"
-  then  exists  button label="Edit"
-
-# ── 新建/删除 ────────────────────────────────────────────
-
-scenario T6 "New 创建新笔记"
-  when  click_button label="New"
-  then  snapshot_changed
-
-scenario T7 "Delete 删除当前笔记"
-  when  click_button label="Cancel"
-  when  click_button label="Delete"
-  then  snapshot_changed
-
-# ── 主题类 ──────────────────────────────────────────────
-
-scenario T11 "Dark mode 切换"
-  when  click_button label="Light"
-  when  click_button label="Dark"
+scenario T0 "初始状态：全量 + 首条选中 + 暗色"
+  then  state field="active_folder" equals="all"
+  then  state field="draft_title" equals="Welcome"
   then  state field="dark_mode" equals=true
 
-scenario T11b "Light mode 切换回来"
-  when  click_button label="Dark"
+# ── 导航：切换笔记 ──────────────────────────────────────
+
+scenario T1 "点击列表切换笔记"
+  when  click_button label="Shopping List"
+  then  state field="draft_title" equals="Shopping List"
+  then  state field="draft_body" equals="Milk"
+
+# ── 筛选：作用域 ────────────────────────────────────────
+
+scenario T2a "Pinned 筛选只剩置顶笔记"
+  when  click_button label="Pinned"
+  then  state field="visible_pinned" equals="[0]"
+  then  state field="visible_notes" equals="[]"
+
+scenario T2b "All 恢复全量并按置顶分组"
+  when  click_button label="All"
+  then  state field="visible_pinned" equals="[0]"
+  then  state field="visible_notes" equals="[1, 2, 3, 4, 5]"
+  then  exists text label="Notes"
+
+scenario T2c "文件夹筛选（personal）"
+  when  click_button label="personal"
+  then  state field="visible_notes" equals="[2, 3]"
+  then  state field="visible_pinned" equals="[]"
+  when  click_button label="All"
+
+# ── 筛选：搜索（旧实现是 known-gap，现在必须真过滤）──────
+
+scenario T3 "搜索命中且大小写不敏感"
+  when  click_button label="All"
+  when  type_text input label="Search notes" value="milk"
+  then  state field="search" equals="milk"
+  then  exists button label="Shopping List"
+  then  not_exists button label="Welcome"
+  when  type_text input label="Search notes" value=""
+  then  exists button label="Welcome"
+
+scenario T3b "搜索无命中显示空态"
+  when  type_text input label="Search notes" value="zzzzz"
+  then  exists text label="No matching notes"
+  when  type_text input label="Search notes" value=""
+
+# ── 筛选：标签 ──────────────────────────────────────────
+
+scenario T4 "标签筛选生效"
+  when  click_button label="home"
+  then  state field="active_tag" equals="home"
+  then  state field="visible_notes" equals="[2, 3]"
+  when  click_button label="All"
+  then  state field="active_tag" equals=""
+
+# ── 编辑：始终可编辑 + 显式保存 ─────────────────────────
+
+scenario T5a "直接输入即进入未保存态"
+  when  click_button label="Shopping List"
+  when  type_text input label="Untitled" value="Shopping Draft"
+  then  state field="dirty" equals=true
+  then  exists button label="Save"
+
+scenario T5b "Save 落库并回到已保存态"
+  when  type_text input label="Untitled" value="Shopping Renamed"
+  when  click_button label="Save"
+  then  state field="dirty" equals=false
+  then  state field="draft_title" equals="Shopping Renamed"
+  then  exists button label="Shopping Renamed"
+
+scenario T5c "切换笔记自动落盘上一条草稿"
+  when  click_button label="Shopping Renamed"
+  when  type_text input label="Untitled" value="Auto Flushed"
+  when  click_button label="Welcome"
+  then  exists button label="Auto Flushed"
+  when  click_button label="Auto Flushed"
+  then  state field="draft_title" equals="Auto Flushed"
+  when  type_text input label="Untitled" value="Shopping List"
+  when  click_button label="Save"
+
+# ── 新建：自动选中（修掉旧契约 T6 的「已接受瑕疵」）─────
+
+scenario T6 "New note 新建并自动选中空笔记"
+  when  click_button label="New note"
+  then  inspect input label="Untitled" has_value=false
+  then  state field="dirty" equals=false
+
+# ── 置顶：落库 ──────────────────────────────────────────
+
+scenario T8 "置顶切换并落库"
+  when  click_button label="All"
+  when  click_button label="Shopping List"
+  when  click_button label="Pin note"
+  then  exists button label="Unpin"
+  when  click_button label="Pinned"
+  then  exists button label="Shopping List"
+  then  exists button label="Welcome"
+  when  click_button label="All"
+  when  click_button label="Shopping List"
+  when  click_button label="Unpin"
+  when  click_button label="Pinned"
+  then  not_exists button label="Shopping List"
+  when  click_button label="All"
+
+# ── 标签编辑 ────────────────────────────────────────────
+
+scenario T9 "新增标签并持久化"
+  when  click_button label="All"
+  when  click_button label="Shopping List"
+  when  click_button label="Tag"
+  when  type_text input label="tag name" value="mcp_tag"
+  when  press_key key="Enter"
+  then  exists button label="mcp_tag"
+
+# ── 删除：两步确认 ──────────────────────────────────────
+
+scenario T7 "删除需要确认，Cancel 不删"
+  when  click_button label="All"
+  when  click_button label="Shopping List"
+  when  click_button label="Delete"
+  then  exists  button label="Cancel"
+  when  click_button label="Cancel"
+  then  not_exists button label="Cancel"
+  then  exists button label="Shopping List"
+
+scenario T7b "确认后真删"
+  when  click_button label="Delete"
+  when  click_button label="Delete"
+  then  not_exists button label="Shopping List"
+
+# ── 外观：暗色 + 主题色 ─────────────────────────────────
+
+scenario T11 "Light 切换"
+  when  click_button label="Settings"
   when  click_button label="Light"
   then  state field="dark_mode" equals=false
 
-scenario T12 "主题色 indigo 初始值"
+scenario T11b "Dark 切换回来"
+  when  click_button label="Dark"
+  then  state field="dark_mode" equals=true
+  when  click_button label="Settings"
+
+scenario T12 "主题色初始值"
   then  state field="accent_color" equals="indigo"
