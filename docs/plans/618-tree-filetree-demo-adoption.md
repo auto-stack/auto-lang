@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-618
-status: execution_done   # T-01..T-08 全完成;next=review
+status: reviewed            # 2026-09-13 复审 pass;next=merge
 feature_name: examples/ui 四 demo 接入 TreeView/FileTree 组件(027/026/018/041)
 author: [zcode]
 created_at: 2026-09-12
@@ -232,6 +232,46 @@ total_steps: 8
   路径+fn 参数/model 同名转译陷阱);P618-1 根修(popover vue 臂重写) |
   blockers: 无 | next: **review**(§9 复审;SD-01/02 spec delta 校验+INDEX/
   specs.json 由 merge 收口)
+- 2026-09-13 stage:review | plan_id: PLAN-618 | plan_revision: 1 |
+  outcome: **pass** | reviewed_commit: 6c2eb81af474403b41a2b5bcf9d8d762754000c7
+  | base_commit: bec57397a（merge-base 与 master）| dependency_revisions:
+  auto-os 组件锚 797fbd8+filter_tree 扩充（四 demo 拷贝 hash 一致性核查通过）|
+  spec_inputs: docs/specs/auto-lang/ui/design/tree-components.md
+  (blob a7c4b473) + docs/specs/auto-lang/ui/plans.md (blob b25eb940);
+  GOAL-007 在册核对（docs/specs/goals.md:16）
+  | **独立性声明**：复审在实现会话内进行（无独立会话授权），结论由工件重建
+  （提交树/diff/测试输出/MCP state_changes/截图），不采信执行摘要。
+  | acceptance_results: AC-01 pass（五件套×4 入库+核心四件 hash 唯一+use
+  正确+双轨编译）｜AC-02 pass（vue+VM state_changes:current_path
+  /root/Documents/crumbs/files_view）｜AC-03 pass（vue 四点+VM
+  过滤/还原/点击 totalRows 91→10+VM 截图）｜AC-04 **pass（附限制注记 F-2）**
+  （018 原生 render 轨=vue 全过；VM 腿因书架卡片 onclick（页面级 for-loop
+  载荷）MCP press 不可寻址无法抵达阅读页——树组件 VM 行为已由
+  041/026/027 三重独立实证，登记 P618-5 观察）｜AC-05 pass（041 VM 原生
+  轨全过）｜AC-06 pass（zap vue 截图+VM 截图双视觉证据+条目在库）｜
+  AC-07 pass（SD-01/02 文本与实际行为核对一致；spec-index 归 merge）｜
+  AC-08 pass（cargo t 24 红归因零新增；**cargo tf 完整跑 3534/3534 全绿**
+  [no-fail-fast]；截图 7 张四 demo 入档）
+  | findings:
+  - F-1（低/外观,非阻塞）：041 components/package.at description 残留
+    "026 database"（拷贝遗留,纯元数据,不影响包名匹配与功能）；merge 时可
+    顺手改或留档。
+  - F-2（低/观察）：AC-04 的 018 VM 直接交互验证缺失——VM 轨书架卡片
+    onclick 不可 MCP 寻址（P614-C1 家族）→ P618-5 持续观察；非 618 回归。
+  - F-3（信息）：ffi_dual_019_dep_layout_invariants 宽跑 flake——tf 截断跑
+    红/完整跑绿（本次全程通过），617 归因集内既有。
+  - F-4（环境,不入计划债）：本机 RUSTC_WRAPPER=sccache 故障（构建随机
+    os error 5），全程禁用绕过。
+  | dirty 路由：worktree 仅存 examples/rust-workspace/Cargo.toml 本地 member
+  换名（gitignored 脚手架环境件）——**不属于计划实现，merge/fold 不得携带**。
+  | evidence: worktree 提交 9ac3c5661/d177b9a44/684620d93/d59cc9871/
+  3539fcd6c/bf77fb30f/6c2eb81af；截图 7 张（各 demo src/front/tests/
+  screenshots/，gitignored——持久凭据以本记录文字化 state_changes 与
+  提交 hash 为准）；vue 模块 288 全绿（cargo t/ui_gen::vue）；tf 3534/3534
+  （RUSTC_WRAPPER= cargo tf --no-fail-fast, 40.2s）；026 VM 截图
+  review_026_vm_tree.png（zap 闪电图标可视）
+  | next: **merge**（INDEX/specs.json 派生台账+KNOWN-DEBT 登记 P618-3/4/5
+  与 F-1 顺手项在 merge 收口）
 
 ## 待澄清事项
 
