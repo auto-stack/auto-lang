@@ -120,6 +120,13 @@ where
     M: Clone + std::fmt::Debug,
     F: Fn(&[u16]) -> Option<crate::ui::debug::SourceSpan>,
 {
+    // PLAN-063 T-04d-2: 锚槽对检视层**透传**——以本节点身份直接转换子件
+    //（快照形状与无包装时一致；曾降级空 Text，MCP 渲染面板寻址/文本
+    // 断言全断，vm-smoke 组 4 首屏寻址失败实证）。
+    if let View::AnchorSlot { child, .. } = view {
+        return convert_view_to_vnode_with_path(child, parent_id, path, tree, span_for);
+    }
+
     let id = VNodeId::new(id_from_path(path));
     let (kind, props) = extract_kind_and_props(view);
 
@@ -171,6 +178,11 @@ fn convert_view_to_vnode<M>(
 where
     M: Clone + std::fmt::Debug,
 {
+    // PLAN-063 T-04d-2: 锚槽透传（同 with_path 臂——检视层不见包装节点）。
+    if let View::AnchorSlot { child, .. } = view {
+        return convert_view_to_vnode(child, id, parent_id, tree);
+    }
+
     let (kind, props) = extract_kind_and_props(view);
 
     let mut vnode = VNode::new(id, kind, props).with_label(format!("{}", kind));
@@ -208,8 +220,8 @@ where
         View::Empty => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 409 §10 续 5: Overlay 在 VNode 转换里降级为 Empty(VM-only 概念)。
         View::Overlay { .. } => (VNodeKind::Text, VNodeProps::Empty),
-        // PLAN-063 T-04d-2: 锚槽为 VM-only 概念,VNode 检视层降级
-        // Text/Empty(同 Overlay/MouseArea)。
+        // PLAN-063 T-04d-2: 锚槽在 convert_view_to_vnode* 入口已透传子件，
+        // 此臂不可达（穷尽性兜底）；保持 Empty 形态以防绕行调用面。
         View::AnchorSlot { .. } => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 484: MouseArea 命中区对 VNode 检视层不可见(事件转发原语,
         // 无内容语义),同 Overlay 降级 Text/Empty。
