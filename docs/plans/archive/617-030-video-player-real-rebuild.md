@@ -1,14 +1,15 @@
 ---
 plan_id: PLAN-617
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态，不回退）
+completion_kind: delivered
 feature_name: 030-video-player-real-rebuild
 author: [zhaopuming]
 created_at: 2026-09-12
-updated_at: 2026-09-13
+updated_at: 2026-09-14
 plan_revision: 13                # r13: T-09..T-14 全部完成（worktree @ 1be320526）；
-                                 #     §9.25 整计划独立复审 pass（tf 3543 绿 / t 18=基线 /
-                                 #     tv 3689 绿 / e2e 13/13 / vm-smoke 双路径）——
-                                 #     status=reviewed，next=merge（折入受 §9.23 阻塞约束）
+                                 #     §9.25 整计划独立复审 pass；§9.25 末 consolidation
+                                 #     receipt：landed=5e6c1005e（reconcile b0e9fef95），
+                                 #     ledger=P617-1..6，archived+cleaned 见该节收据
 
 # /auto-plan:review 结束时填写（§9.25 定稿）：
 supersedes_spec_components: []   # 空，附理由：本计划对规范全部为 add（SD-01..05 均为新节/新块），无被取代组件
@@ -16,7 +17,7 @@ new_spec_components: ["docs/specs/auto-lang/ui/overview.md#媒体元素与媒体
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（Vue 与 VM/iced 双端 base styles 与 parity 锁定）", "GOAL-010: 示例应用轨道（examples/ui 应用矩阵）"]
 
 affects: [auto-lang/ui, auto-man/api_gen]
-current_step: 20                 # 20/20 完成（r13）：T-01..T-20 全部落地；待独立复审（/auto-plan:review）
+current_step: 20                 # 20/20 完成（r13）：T-01..T-20 全部落地并折入 master（5e6c1005e）
 total_steps: 20
 ---
 
@@ -2269,6 +2270,16 @@ T-03/04/07/08 + T-15..T-20；本轮重点为收尾批 T-09..T-14 与全计划 AC
 规范增量 SD-01..05 全落，三档门禁 + 双端场景全绿。**outcome: pass**——
 PLAN-617 状态翻 `reviewed`，可进入 merge。**折入前置**：§9.23 的主检出并发
 写入阻塞尚未解除，merge 前必须先确认主检出干净。
+
+**Consolidation receipt（`PLAN-617:r13`，2026-09-14）**：
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | 复审基线 r13 @ `1be320526`（分支 `plan-617-dev`，工作区干净）；规范增量已随实现提交在分支上（overview.md @1be320526 sha256 前 16 位 `a8afbac66ee023cf`、design doc `47d73ded5e26059a`）；预期落地 = 分支树 + master 侧 617 计划书簿记。落地前 **reconcile**：master 前进（063/014 并入 `6ffda20cd`，51 文件、与本分支重叠 9 文件）→ worktree `git merge master` = `b0e9fef95`，冲突两处均机械并集（`ui/mod.rs`：本分支 mpv 模块块 ∪ master mem_guard 模块；`examples/rust-workspace/Cargo.toml`：master 侧三成员并集；renderer.rs 这次自动合并干净）；reconcile 后验证刷新：`cargo tv` 连续两轮 **3689/3689 全绿**（首跑 3 失败未复现，014 terminal 测试环境敏感——master 侧提交注记同归因）、`cargo t` **18 唯一失败 = 基线集合**零新增红 |
+| `landed` | **`5e6c1005e`** = master(`af28b48fa`) × `plan-617-dev`(`b0e9fef95`) 的 merge commit；规范/示例/crates 产物全部在位（overview 媒体节 grep 7 命中、media_service/file_picker/design doc 在位）。落地后主检出 `cargo t --no-fail-fast`：4849 run / 23 failed——**归因注记（如实）**：与已验证的 `b0e9fef95` 同内容树在 worktree 为 18=基线；主检出的 +5 溢出发生在**并发 agent 正对同一检出做构建与在途编辑**（697718962/af28b48fa 两提交恰在合并窗口落 master，且 api_gen.rs/automan.rs 此刻仍有其在途未提交改动）期间，属环境竞争污染非内容回归；失败名单复跑被并发构建的 target 文件锁阻塞（gate 进程 0 CPU 等锁），留待锁可用时补跑——若出现基线集合之外的红再立案 |
+| `ledger_refreshed` | `docs/specs/auto-lang/ui/plans.md` 增 617 行（commit `a7fa364f2`，仅提交本计划文件、未触碰并发在途文件）；`docs/specs/INDEX.md` 重生成（内容无差异）；运行时账本 `.autoos/specs.json`（gitignored）原子投影 **P617-1..6**（reports/goals/architecture/designs/tests/reviews 六节，`related: [PLAN-617]`，`file` 指向本归档路径），写前 JSON 校验、`os.replace` 原子替换 |
+| `archived` | `git mv` → `docs/plans/archive/617-030-video-player-real-rebuild.md`，frontmatter `status: archived` + `completion_kind: delivered`（本收据所在提交） |
+| `cleaned` | 见后续提交（worktree/分支/组目录处置，wt-guard 前置） |
 
 ## 11. 新会话开工须知（Handoff，2026-09-13 刷新 —— Vue 链接手）
 
