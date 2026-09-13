@@ -2126,3 +2126,17 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | ~~P617-D9~~ | ~~high~~ | 未收口能力 | **已收口（2026-09-13，T-20）**：AC-19 达成——`crates/auto` 已补 `mpv-native`/`mpv-gpu`/`mpv-widget` 透传（+ `mpv` 别名，显式开启），验证语料 `test/ui/plan617_video_vm` 实机 1080p 真实播放 + seek 生效（position 8.0 → time-pos 递增到 12.63s），截图 `test/ui/plan617_video_vm/src/front/tests/screenshots/ac19_final.png` | 计划 §9.19 |
 | P617-D10 | **medium** | 架构脆点 | **`convert_view_messages` 的 `_ => Empty` 兜底会静默吃掉新 View 变体**：VM 动态路径是 `View<DynamicMessage>` → `convert_view_messages` → `View<IcedMessage>` → `into_iced`，漏加臂的变体在 VM 里恒为 Empty，而 **MCP 快照走 vnode_converter 另一条路，看起来节点仍在树里 → 假绿**。注释里已记 Grid/MouseArea/select 三次同类坑，T-19 的 video 是第四次。**建议**：给该 match 加一个「已知变体全集」的编译期围栏（如变体枚举 + 穷尽 match 的测试），或把兜底改成会报警的 `debug_assert!` | `crates/auto-lang/src/ui/iced/renderer.rs::convert_view_messages`；计划 §9.19 |
 | P617-D11 | low | 测试盲区 | **契约层/编译期测试无法覆盖「接线是否真活」**：T-19 三个缺陷（convert_view_messages 漏臂、widget 没建 render context、忘 `channel.advance`）全部通过了 `cargo t`、`docs_gen`、`video_contract` 三套门禁，只在 T-20 的**实机**验证中现形。**教训**：涉及「新 View 变体要一路走到渲染」的改动，必须有一次真起窗 + 看画面的验证，不能以编译通过 + 契约单测代替 | 计划 §9.19；`test/ui/plan617_video_vm` |
+
+---
+
+## PLAN-618（tree 组件族四 demo 接入）遗留
+
+> 关联计划 `618-tree-filetree-demo-adoption.md`（已归档）；复审 pass @ worktree
+> plan-618-dev 6c2eb81af，landed 6d6089005。
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P618-D1 | medium | 引擎语义 | **VM `.lower()` 方法链在「局部 var 派生字段+嵌套帧」返回空串**（P618 递归探针实证）；filter_tree v1 降级大小写敏感 contains 直链规避，引擎修复后可翻转 | 026-database treeFilter 链路；plan §待澄清 P618-2 |
+| P618-D2 | medium | 转译器 | **vue 转译器对「模块 fn 参数名与 model 字段同名」误加 `.value` 拆包**——SFC 运行时 TypeError 整页白屏（018 ch_nodes(chapters) 实证）；规避=参数避开 model 字段名，已入 tree-components.md 陷阱节 | 018 reading.at ch_nodes；契约「⚠ 模块 fn 转译陷阱」 |
+| P618-D3 | low | VM 渲染 | **041 VM 预存怪象（非 tree 引入）**：confirm 弹层 open:false 文案仍渲染页底（与 P618-1 同族、VM popover 臂）+ 状态栏 `${store.line}` 字面量直出 | 041-auto-edit VM 截图 t06；app.at popover/StatusBar |
+| P618-D4 | low | 工具面 | **018 VM 轨书架卡片 onclick（页面级 for-loop 载荷）MCP press 不可寻址**——阅读页经 MCP 不可达，章节树 VM 直接交互验证受限（组件 VM 行为已 041/026/027 三重实证）；P614-C1 家族 | 018 bookshelf.at OpenBook；plan §复审 F-2/P618-5 |
