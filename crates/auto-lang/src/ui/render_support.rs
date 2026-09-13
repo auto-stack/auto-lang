@@ -304,9 +304,22 @@ fn get_support_details(tag: &str) -> TagSupport {
         // Plan 547: 后端中立图片面——iced ImageSurface widget 直渲(媒体
         // 票据只查 worker 已发布 rendition,几何/事件齐备)。
         "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => TagSupport::full(),
-        "video" | "audio" | "media" => TagSupport::fallback(
+        // PLAN-617 T-19: `video` 由 fallback 提升为 partial —— iced 端有真实渲染面
+        // （`ui/mpv/widget.rs`：libmpv → 持久纹理 → 自定义 shader widget）。
+        // 仍标 partial 而非 full，因为有三项**真实限制**（不谎报能力）：
+        // ① 原生解码需要运行库（`libmpv-2.dll`），本机没有时走诚实降级面板；
+        // ② 帧由应用既有的 tick 驱动，应用不声明 tick 就停在首帧；
+        // ③ 浏览器专有的透传属性（`poster`/`preload`/`playsinline`/`autoplay`）
+        //    在 iced 端无对应语义，故列入 ignored。
+        // 上行事件（ontimeupdate 等）由渲染面按帧采集，见 `ui/mpv/widget.rs`。
+        "video" | "Video" => TagSupport::partial(
+            &["poster", "preload", "playsinline", "autoplay", "controls"],
+            "原生命中播放面（libmpv）；需运行库与 tick 驱动，缺失时走降级面板",
+        ),
+        // `audio`/`media` 仍无渲染面（本计划不做音频播放，见 §1 N3）。
+        "audio" | "media" => TagSupport::fallback(
             &["src", "controls", "autoplay", "style"],
-            "media component not implemented",
+            "媒体/音频组件未实现（PLAN-617 只做 video）",
         ),
         "skeleton" | "loading" => TagSupport::fallback(
             &["style", "variant"],

@@ -1,0 +1,53 @@
+// PLAN-617 T-19: VM 侧 `video` 节点的受控媒体契约（§2.3「作者面 → 节点字段」的翻译）。
+//
+// 播控矩阵两个 widget 都写同一种来源：
+//   auto video ( src: .src, paused: .is_playing == false, position: .seek, volume: .volume,
+//                muted: .muted, rate: .rate, title: "现场") {}
+widget VideoPlayer {
+    msg { Play }
+
+    model {
+        var src str = "/api/media/stream/abc123"
+        var is_playing bool = true
+        var seek float = 12.5
+        var volume int = 37
+        var muted bool = true
+        var rate float = 1.5
+    }
+
+    view {
+        video {
+            src: .src
+            paused: .is_playing == false
+            position: .seek
+            volume: .volume
+            muted: .muted
+            rate: .rate
+            title: "现场"
+            onclick: .Play
+        }
+    }
+
+    on {
+        .Play -> { }
+    }
+}
+
+// 默认值矩阵：只给 src，其余走契约默认（暂停、满音量、原速、不静音、不下发位置）。
+widget VideoDefaults {
+    msg { Nop }
+
+    model {
+        var src str = "E:\\Video\\caelestia.mp4"
+    }
+
+    view {
+        video {
+            src: .src
+        }
+    }
+
+    on {
+        .Nop -> { }
+    }
+}

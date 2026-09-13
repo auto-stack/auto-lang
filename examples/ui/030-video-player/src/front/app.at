@@ -1,919 +1,115 @@
-// app.at — 030-video-player AutoOS 原生视频播放器（Plan 542）
+// app.at — 030-video-player 根组件（PLAN-617 T-03/T-04：单文件 1193 行拆分为
+// 四个组件 + 一个 store）。
 //
-// 系统级原生视频播放器（对标 VLC / PotPlayer / IINA / MPC-HC）。
-// 沉浸式大视口画布播放 + 自动隐匿 OSD 专业播控条 + 交互式进度寻道 +
-// 多档倍速 + 音量调节与静音 + 画幅切换 + 可折叠播放队列抽屉 + 媒体属性弹窗。
+// 结构（§2.2 视觉语言：发丝线扁平布局，无卡片/阴影/毛玻璃/渐变）：
+//   h-12 顶栏（标题 + 主题 + 队列开关）
+//   中部 row：Viewport（视口，flex-1）+ Playlist（w-72，border-l）
+//   h-14 播控条 Controls（border-t）
 //
-// 双端契约：
-// - dark_mode bool = true
-// - accent_color str = "indigo"
-// - 模板内零方法调用，文案与字段由 handler 预拼准备
+// 状态与业务逻辑全在 player_store.at；三个子组件经 `use player_store` 直读
+// `.store.*`，事件由本组件薄转发（041-auto-edit 的既有形态）。
+// 视图内不出现 emoji（AC-04），图标名限定在 VM lucide 字形表闭集内。
 
-// PLAN-607 declarative style recipes. PLAN-617 §2.2: flat / hairline / three
-// control sizes only (icon 28px, transport 36px, text 36px). Semantic tokens
-// only — no gradients, no glass, no shadows (all VM-unsupported, see
-// docs/style-coverage.md). The ONE primary button per view is the transport
-// play/pause key; everything else is the unspecified (UA-equivalent) variant.
-style icon_btn = "h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-style seg_btn  = "h-7 px-2 items-center justify-center rounded text-xs font-mono text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-style ctl_btn  = "w-9 h-9 items-center justify-center rounded-md bg-muted border border-border text-foreground hover:bg-muted/70 cursor-pointer"
-style tab_btn  = "h-9 px-3 items-center justify-center rounded-md text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+use player_store: PlayerStore
+use viewport: Viewport
+use playlist: Playlist
+use controls: Controls
 
 widget App {
     msg {
         Init,
-        TogglePlay,
-        StepForward,
-        StepBackward,
-        NextVideo,
-        PrevVideo,
-        StopPlayback,
-        SeekPercent(int),
-        VolUp,
-        VolDown,
-        SetVolume(int),
-        ToggleMute,
-        CycleSpeed,
-        SetSpeed(str),
-        ToggleSpeedMenu,
-        TogglePlaylist,
-        ToggleControls,
-        ToggleFullscreen,
-        ToggleAspect,
-        CycleLoopMode,
-        ToggleTimeMode,
-        SelectVideo(str),
-        ToggleInfoModal,
-        DismissToast,
-        OpenLocalDemo,
         ToggleDarkMode,
-        SetAccent(str)
+        TogglePlaylist
     }
 
     model {
-        // ---- 主题契约 ----
+        // 主题两魔法变量放在**根 widget** 而不是 store 里（Plan 409 §8 的
+        // root-App 形态）：生成器的主题运行时（`:class="{dark: ...}"` +
+        // 把 dark 类同步到 `<html>` + applyTheme/applyAccent）只在 widget
+        // 自己持有 `dark_mode` **且**持有 `accent_color` 时才发射。
+        // 放 store 里时，切换只会改根 div 的 class，而 `<html class="dark">`
+        // （pac.at 的 theme 经 index.html 注入）仍然在 :root 上给着深色变量，
+        // 于是「切浅色没反应」——实测就是这个表现。
+        // 界面不再提供强调色选择器（§2.2），但这两个变量名是平台的魔法名，
+        // 必须存在于根 widget 才能拿到主题运行时。
         var dark_mode bool = true
         var accent_color str = "indigo"
-
-        // ---- 强调色列表 ----
-        var accents = [
-            { name: "indigo", dot: "text-indigo-500", bg: "bg-indigo-500" },
-            { name: "coral",  dot: "text-rose-500",   bg: "bg-rose-500" },
-            { name: "ocean",  dot: "text-sky-500",    bg: "bg-sky-500" },
-            { name: "sage",   dot: "text-emerald-500",bg: "bg-emerald-500" },
-            { name: "amber",  dot: "text-amber-500",  bg: "bg-amber-500" }
-        ]
-
-        // ---- 播放状态 ----
-        var is_playing bool = true
-        var current_id str = ""
-        var current_title str = "caelestia"
-        var current_file str = "caelestia.mp4"
-        var current_video_url str = ""
-        var current_res str = "—"
-        var current_codec str = "—"
-        var current_size str = "7.3 MB"
-        var current_fps str = "60.00 FPS"
-        var current_bitrate str = "4.2 Mbps"
-        var current_audio str = "AAC Stereo 48kHz"
-
-        var current_time_sec int = 0
-        var total_time_sec int = 0
-        var current_time_str str = "00:00"
-        var total_time_str str = "00:00"
-        var time_display_fmt str = "00:00 / 00:00"
-        var progress_pct int = 0
-
-        var volume int = 80
-        var volume_label str = "80%"
-        var is_muted bool = false
-        var playback_speed str = "1.0x"
-        var aspect_mode str = "16:9"
-        var loop_mode str = "list"
-        var loop_label str = "列表循环"
-        var time_mode str = "elapsed" // "elapsed" | "remaining"
-
-        // ---- 界面与交互状态 ----
-        var show_playlist bool = true
-        var show_controls bool = true
-        var show_speed_menu bool = false
-        var show_info_modal bool = false
-        var is_fullscreen bool = false
-
-        // ---- 操作反馈 Toast ----
-        var toast_msg str = "准备就绪"
-        var show_toast bool = true
-        var library_error str = ""
-
-        // ---- 播放列表 (5 项种子视频) ----
-        // ---- 播放列表（由 E:\Video 递归扫描真实得到；T-06）----
-        // 生成物：tests/gen_media_seed.py（T-05 落地后改为运行时扫描）
-        // 队列在 Init 时由后端扫描填充（T-06）；此处不再烘死任何条目。
-        // 结构：{ id, title, file_name, rel_dir, size_str, video_url }
-        var playlist = []
     }
 
     view {
         col {
-            style: if .dark_mode {
-                "min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col select-none font-sans"
-            } else {
-                "min-h-screen w-full bg-slate-100 text-slate-900 flex flex-col select-none font-sans"
-            }
+            style: "w-full h-screen flex-col bg-background text-foreground overflow-hidden"
 
-            // ══════════════════════════════════════════════════════════════════════
-            // 1. 顶栏 (Top Bar) — 扁平发丝线，h-12
-            // ══════════════════════════════════════════════════════════════════════
+            // ══ 1. 顶栏 h-12 ══
             row {
-                style: "h-12 shrink-0 items-center gap-3 px-4 border-b border-border bg-card"
+                style: "w-full h-12 items-center gap-3 px-4 border-b border-border bg-card"
 
                 row {
                     style: "items-center gap-2"
-                    icon (name: "monitor", size: 18, style: "text-primary")
+                    icon (name: "film", size: 18, style: "text-primary")
                     text "Video Player" { style: "text-sm font-semibold tracking-tight" }
                 }
-
-                text .current_file {
-                    style: "text-xs text-muted-foreground font-mono truncate max-w-xs hidden md:flex"
+                if .store.has_current {
+                    text .store.current_file {
+                        style: "text-xs text-muted-foreground font-mono"
+                    }
                 }
 
                 col { style: "flex-1" }
 
                 row {
                     style: "items-center gap-1"
-
-                    // 媒体属性弹窗
-                    button {
-                        onclick: .ToggleInfoModal
-                        style: icon_btn
-                        icon (name: "info", size: 16)
-                    }
-                    // OSD 播控条显隐
-                    button {
-                        onclick: .ToggleControls
-                        style: icon_btn
-                        icon (name: "eye", size: 16)
-                    }
                     // 深浅主题
                     if .dark_mode {
                         button {
                             onclick: .ToggleDarkMode
-                            style: icon_btn
-                            icon (name: "moon", size: 16)
+                            style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                            icon (name: "sun", size: 15)
                         }
                     } else {
                         button {
                             onclick: .ToggleDarkMode
-                            style: icon_btn
-                            icon (name: "sun", size: 16)
+                            style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                            icon (name: "moon", size: 15)
                         }
                     }
-                    // 播放队列抽屉
+                    // 队列显隐
                     button {
                         onclick: .TogglePlaylist
-                        style: icon_btn
-                        icon (name: "menu", size: 16)
-                    }
-
-                    // 窗口装饰（--- 最小化 / 全屏 / 停止）
-                    row {
-                        style: "items-center gap-1 ml-2 pl-2 border-l border-border"
-                        button {
-                            style: icon_btn
-                            icon (name: "minus", size: 14)
-                        }
-                        button {
-                            onclick: .ToggleFullscreen
-                            style: icon_btn
-                            icon (name: "square", size: 14)
-                        }
-                        button {
-                            onclick: .StopPlayback
-                            style: icon_btn
-                            icon (name: "x", size: 14)
-                        }
-                    }
-                }
-            }
-            // 操作反馈条（扁平，替代原悬浮 Toast 气泡；不用 absolute/毛玻璃）
-            if .show_toast {
-                row {
-                    style: "h-8 shrink-0 items-center gap-2 px-4 border-b border-border bg-muted"
-                    text .toast_msg { style: "text-xs font-medium truncate" }
-                    col { style: "flex-1" }
-                    button {
-                        onclick: .DismissToast
-                        style: icon_btn
-                        icon (name: "x", size: 12)
+                        style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                        icon (name: "panel-left", size: 15)
                     }
                 }
             }
 
-            // ══════════════════════════════════════════════════════════════════════
-            // 2. 主体区：视频视口 + 右侧播放队列（发丝线分隔，无卡片/无玻璃）
-            // ══════════════════════════════════════════════════════════════════════
+            // ══ 2. 主体：视口 + 队列栏 ══
             row {
-                style: "flex-1 w-full min-h-0 flex-row"
+                style: "w-full flex-1 min-h-0"
 
-                // ──────────────────────────────────────────────────────────────────
-                // 2.1 视频视口 (viewport) —— 上=元信息条 / 中=画面 / 下=状态条
-                //     全部走常规流式布局：不使用 absolute / fixed（VM 端降级）
-                // ──────────────────────────────────────────────────────────────────
                 col {
-                    style: "flex-1 min-w-0 flex-col bg-black"
-
-                    // 元信息条：真实已知字段（文件名/大小/扩展名由后端扫描给出）
-                    row {
-                        style: "h-9 shrink-0 items-center gap-3 px-4"
-                        text .current_title {
-                            style: "text-xs font-medium text-white truncate max-w-sm"
-                        }
-                        col { style: "flex-1" }
-                        text .current_size { style: "text-xs font-mono text-zinc-400" }
-                    }
-
-                    // 画面区：点击切换播放。
-                    // 注意：video 在 VM 端是 fallback（零高度），故必须由真实容器 col
-                    // 承载 flex-1；直接给 video 加 flex-1 会让高度分配失效、状态条上浮。
-                    col {
-                        style: "flex-1 w-full min-h-0 items-center justify-center"
-                        video {
-                            src: .current_video_url
-                        controls: true
-                            class: if .aspect_mode == "铺满" { "w-full h-full object-cover" } else { "w-full h-full object-contain" }
-                            onclick: .TogglePlay
-                        }
-                    }
-
-                    // 状态条：播放状态 + 画幅 + 音频（模拟态；T-08 由 loadedmetadata/timeupdate 回灌）
-                    row {
-                        style: "h-8 shrink-0 items-center justify-center gap-4 px-4"
-                        if .is_playing {
-                            text "正在播放" { style: "text-xs text-zinc-400" }
-                        } else {
-                            text "已暂停 · 点击视口或按空格播放" { style: "text-xs text-zinc-400" }
-                        }
-                        text "画幅 " + .aspect_mode { style: "text-xs font-mono text-zinc-500" }
-                        text "音频 " + .current_audio { style: "text-xs font-mono text-zinc-500" }
-                    }
+                    style: "flex-1 min-w-0 min-h-0"
+                    Viewport()
                 }
-                // ──────────────────────────────────────────────────────────────────
-                // 2.2 播放队列 (playlist) — 扁平列表；无渐变封面 / 无阴影 / 无毛玻璃
-                //     T-04 接入真实扫描结果并按 rel_dir 分组；T-06 换后端数据
-                // ──────────────────────────────────────────────────────────────────
-                if .show_playlist {
-                    col {
-                        style: "w-72 shrink-0 h-full flex-col border-l border-border bg-card min-h-0"
-
-                        row {
-                            style: "h-12 shrink-0 items-center justify-between px-4 border-b border-border"
-                            text "播放队列" { style: "text-sm font-semibold" }
-                            button {
-                                onclick: .TogglePlaylist
-                                style: icon_btn
-                                icon (name: "x", size: 14)
-                            }
-                        }
-
-                        col {
-                            style: "flex-1 min-h-0 overflow-y-auto p-2 gap-1"
-
-                            if .library_error != "" {
-                                text .library_error { style: "text-xs text-destructive p-2" }
-                            }
-
-                            for item in .playlist {
-                                // 扁平列表行：单 col 承载两行文本。
-                                // VM 端 `flex-1`/`shrink-0` 不生效（见 docs/style-coverage.md
-                                // 的 parsed-only 清单），故不用「图标列 + flex-1 文本列」的
-                                // 横向切分——那样两个子列都会塌成 0 宽、行渲染为空条。
-                                col {
-                                    onclick: .SelectVideo(item.id)
-                                    style: if item.id == .current_id {
-                                        "w-full px-3 py-2 rounded-md bg-accent border border-primary/40 gap-0.5 cursor-pointer"
-                                    } else {
-                                        "w-full px-3 py-2 rounded-md border border-transparent hover:bg-muted gap-0.5 cursor-pointer"
-                                    }
-                                    text item.title { style: "text-xs font-medium" }
-                                    text item.size_str { style: "text-xs text-muted-foreground font-mono" }
-                                }
-                            }
-                        }
-
-                        col {
-                            style: "p-3 shrink-0 border-t border-border gap-2"
-                            button "打开本地视频文件" {
-                                onclick: .OpenLocalDemo
-                                style: "w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
-                            }
-                            text "快捷键 空格 / 方向键 / P" { style: "text-xs text-muted-foreground" }
-                        }
-                    }
+                if .store.show_playlist {
+                    Playlist()
                 }
             }
 
-            // ══════════════════════════════════════════════════════════════════════
-            // 3. 播控条 (transport bar) — h-14 发丝线；全视图唯一 primary = 播放/暂停
-            //    进度填充当前仍由模拟 progress_pct 分档驱动，T-08 换真实
-            //    currentTime/duration 回灌。
-            // ══════════════════════════════════════════════════════════════════════
-            if .show_controls {
-                row {
-                    style: "h-16 shrink-0 items-center gap-4 px-4 border-t border-border bg-card"
-
-                    col {
-                        style: "flex-1 min-w-0 gap-1"
-                        row {
-                            style: "items-center gap-2 text-xs font-mono text-muted-foreground"
-                            text .current_time_str {}
-                            text "/" {}
-                            button .total_time_str {
-                                onclick: .ToggleTimeMode
-                                style: "text-xs font-mono text-muted-foreground hover:text-foreground cursor-pointer"
-                            }
-                            col { style: "flex-1" }
-                            text .time_display_fmt {}
-                        }
-                        col {
-                            style: "h-2 w-full rounded-full bg-muted cursor-pointer"
-                            onclick: .StepForward
-                            if .progress_pct >= 75 {
-                                col { style: "h-2 rounded-full bg-primary w-3/4" }
-                            } else if .progress_pct >= 50 {
-                                col { style: "h-2 rounded-full bg-primary w-1/2" }
-                            } else if .progress_pct >= 25 {
-                                col { style: "h-2 rounded-full bg-primary w-1/4" }
-                            } else if .progress_pct > 0 {
-                                col { style: "h-2 rounded-full bg-primary w-1/12" }
-                            }
-                        }
-                    }
-
-                    row {
-                        style: "items-center gap-1 shrink-0"
-                        button {
-                            onclick: .PrevVideo
-                            style: ctl_btn
-                            icon (name: "chevron-left", size: 16)
-                        }
-                        button "-5s" {
-                            onclick: .StepBackward
-                            style: seg_btn
-                        }
-                        if .is_playing {
-                            button "暂停" {
-                                onclick: .TogglePlay
-                                style: "h-9 px-4 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 cursor-pointer"
-                            }
-                        } else {
-                            button "播放" {
-                                onclick: .TogglePlay
-                                style: "h-9 px-4 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 cursor-pointer"
-                            }
-                        }
-                        button "+5s" {
-                            onclick: .StepForward
-                            style: seg_btn
-                        }
-                        button {
-                            onclick: .NextVideo
-                            style: ctl_btn
-                            icon (name: "chevron-right", size: 16)
-                        }
-                        button {
-                            onclick: .StopPlayback
-                            style: ctl_btn
-                            icon (name: "square", size: 14)
-                        }
-                    }
-
-                    row {
-                        style: "items-center gap-1 shrink-0 pl-3 border-l border-border"
-                        button "静音" {
-                            onclick: .ToggleMute
-                            style: seg_btn
-                        }
-                        button "-" {
-                            onclick: .VolDown
-                            style: seg_btn
-                        }
-                        text .volume_label { style: "text-xs font-mono text-muted-foreground w-9 text-center" }
-                        button "+" {
-                            onclick: .VolUp
-                            style: seg_btn
-                        }
-                    }
-
-                    row {
-                        style: "items-center gap-1 shrink-0 pl-3 border-l border-border"
-                        button .loop_label {
-                            onclick: .CycleLoopMode
-                            style: tab_btn
-                        }
-                        button .playback_speed {
-                            onclick: .CycleSpeed
-                            style: seg_btn
-                        }
-                        button .aspect_mode {
-                            onclick: .ToggleAspect
-                            style: tab_btn
-                        }
-                        button {
-                            onclick: .ToggleFullscreen
-                            style: ctl_btn
-                            icon (name: "frame", size: 16)
-                        }
-                    }
-                }
-            }
-
-            // ══════════════════════════════════════════════════════════════════════
-            // 4. 媒体属性弹窗 (media info) — 扁平卡片。注意 VM 端 `fixed` 会降级为
-            //    常规流位置（docs/style-coverage.md），此处不依赖它做遮挡。
-            // ══════════════════════════════════════════════════════════════════════
-            if .show_info_modal {
-                col {
-                    style: "fixed inset-0 bg-black/60 items-center justify-center p-4"
-                    col {
-                        style: "w-full max-w-md bg-card border border-border rounded-lg p-6 gap-4"
-
-                        row {
-                            style: "items-center justify-between pb-3 border-b border-border"
-                            row {
-                                style: "items-center gap-2"
-                                icon (name: "info", size: 16, style: "text-primary")
-                                text "媒体属性" { style: "text-sm font-semibold" }
-                            }
-                            button {
-                                onclick: .ToggleInfoModal
-                                style: icon_btn
-                                icon (name: "x", size: 14)
-                            }
-                        }
-
-                        col {
-                            style: "gap-2 text-xs font-mono"
-                            row {
-                                style: "justify-between py-1 border-b border-border/50"
-                                text "标题" { style: "font-sans text-muted-foreground" }
-                                text .current_title { style: "font-sans truncate max-w-[200px]" }
-                            }
-                            row {
-                                style: "justify-between py-1 border-b border-border/50"
-                                text "文件名" { style: "font-sans text-muted-foreground" }
-                                text .current_file { style: "font-sans truncate max-w-[200px]" }
-                            }
-                            row {
-                                style: "justify-between py-1 border-b border-border/50"
-                                text "分辨率" { style: "font-sans text-muted-foreground" }
-                                text .current_res { style: "text-primary font-bold" }
-                            }
-                            row {
-                                style: "justify-between py-1 border-b border-border/50"
-                                text "编码" { style: "font-sans text-muted-foreground" }
-                                text .current_codec {}
-                            }
-                            row {
-                                style: "justify-between py-1 border-b border-border/50"
-                                text "帧率" { style: "font-sans text-muted-foreground" }
-                                text .current_fps {}
-                            }
-                            row {
-                                style: "justify-between py-1 border-b border-border/50"
-                                text "码率" { style: "font-sans text-muted-foreground" }
-                                text .current_bitrate {}
-                            }
-                            row {
-                                style: "justify-between py-1 border-b border-border/50"
-                                text "音频" { style: "font-sans text-muted-foreground" }
-                                text .current_audio {}
-                            }
-                            row {
-                                style: "justify-between py-1"
-                                text "文件大小" { style: "font-sans text-muted-foreground" }
-                                text .current_size {}
-                            }
-                        }
-
-                        button "关闭" {
-                            onclick: .ToggleInfoModal
-                            style: "w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
-                        }
-                    }
-                }
-            }
+            // ══ 3. 播控条 h-14 ══
+            Controls()
         }
     }
 
     on {
+        // 唯一的根 handler：真实扫描（内建/原生调用只留在根 handler，§5.6）。
         .Init -> {
-            // 真实媒体库来自后端（T-06）：GET /api/media/scan 返回 {entries:[...]}，
-            // 条目由后端递归扫描媒体根目录得到，video_url 亦由后端给出。
-            try {
-                let data = Http.get("/api/media/scan")
-                .playlist = data.entries ?? []
-                .library_error = ""
-            } catch {
-                .library_error = "媒体库读取失败：后端未启动，或媒体根目录未配置"
-            }
-
-            // 默认选中队列首项（DSL 无索引语法，用循环取第一个）
-            .current_id = ""
-            for item in .playlist {
-                if .current_id == "" {
-                    .current_id = item.id
-                    .current_title = item.title
-                    .current_file = item.file_name
-                    .current_video_url = item.video_url
-                    .current_size = item.size_str
-                }
-            }
-
-            // 时长/进度在 loadedmetadata 回灌前一律为 0（T-08），不预设假值
-            .current_time_sec = 0
-            .current_time_str = "00:00"
-            .total_time_sec = 0
-            .total_time_str = "00:00"
-            .time_display_fmt = "00:00 / 00:00"
-            .progress_pct = 0
-            .volume = 80
-            .volume_label = "80%"
-            .is_playing = false
-            // 不依赖 current_file（初次渲染时它可能尚未落定，会显示 "undefined"）
-            .toast_msg = "媒体库已加载"
-            .show_toast = true
+            store.Load()
         }
-
-        .TogglePlay -> {
-            .is_playing = !.is_playing
-            if .is_playing {
-                .toast_msg = "播放"
-            } else {
-                .toast_msg = "暂停"
-            }
-            .show_toast = true
-        }
-
-        .StepForward -> {
-            .current_time_sec = .current_time_sec + 5
-            if .current_time_sec > .total_time_sec {
-                .current_time_sec = .total_time_sec
-            }
-            let min = .current_time_sec / 60
-            let sec = .current_time_sec % 60
-            let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
-            let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
-            .current_time_str = min_str + ":" + sec_str
-            .time_display_fmt = .current_time_str + " / " + .total_time_str
-            .progress_pct = (.current_time_sec * 100) / .total_time_sec
-            .toast_msg = "快进 +5 秒 (" + .current_time_str + ")"
-            .show_toast = true
-        }
-
-        .StepBackward -> {
-            .current_time_sec = .current_time_sec - 5
-            if .current_time_sec < 0 {
-                .current_time_sec = 0
-            }
-            let min = .current_time_sec / 60
-            let sec = .current_time_sec % 60
-            let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
-            let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
-            .current_time_str = min_str + ":" + sec_str
-            .time_display_fmt = .current_time_str + " / " + .total_time_str
-            .progress_pct = (.current_time_sec * 100) / .total_time_sec
-            .toast_msg = "快退 -5 秒 (" + .current_time_str + ")"
-            .show_toast = true
-        }
-
-        .NextVideo -> {
-            .current_id = .current_id + 1
-            if .current_id > 5 {
-                .current_id = 1
-            }
-            if .current_id == 1 {
-                .current_title = "AutoOS 2026 Keynote & Intro"
-                .current_file = "01_intro.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                .current_res = "1080P"
-                .current_codec = "H.264"
-                .current_size = "48 MB"
-                .total_time_sec = 225
-                .total_time_str = "03:45"
-            } else if .current_id == 2 {
-                .current_title = "Kernel & AutoVM Architecture"
-                .current_file = "02_architecture.mkv"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
-                .current_res = "4K"
-                .current_codec = "HEVC"
-                .current_size = "210 MB"
-                .total_time_sec = 740
-                .total_time_str = "12:20"
-            } else if .current_id == 3 {
-                .current_title = "AutoUI Dual-Backend Engine Demo"
-                .current_file = "03_ui_engine.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-                .current_res = "1080P"
-                .current_codec = "AV1"
-                .current_size = "85 MB"
-                .total_time_sec = 495
-                .total_time_str = "08:15"
-            } else if .current_id == 4 {
-                .current_title = "Fullstack Parity & Toolchain"
-                .current_file = "04_workflow.webm"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
-                .current_res = "1080P"
-                .current_codec = "VP9"
-                .current_size = "62 MB"
-                .total_time_sec = 330
-                .total_time_str = "05:30"
-            } else {
-                .current_title = "AutoOS Ambient Desktop Visuals"
-                .current_file = "05_ambient.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
-                .current_res = "720P"
-                .current_codec = "H.264"
-                .current_size = "24 MB"
-                .total_time_sec = 90
-                .total_time_str = "01:30"
-            }
-            .current_time_sec = 0
-            .current_time_str = "00:00"
-            .time_display_fmt = "00:00 / " + .total_time_str
-            .progress_pct = 0
-            .is_playing = true
-            .toast_msg = "播放下一集: " + .current_file
-            .show_toast = true
-        }
-
-        .PrevVideo -> {
-            .current_id = .current_id - 1
-            if .current_id < 1 {
-                .current_id = 5
-            }
-            if .current_id == 1 {
-                .current_title = "AutoOS 2026 Keynote & Intro"
-                .current_file = "01_intro.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                .current_res = "1080P"
-                .current_codec = "H.264"
-                .current_size = "48 MB"
-                .total_time_sec = 225
-                .total_time_str = "03:45"
-            } else if .current_id == 2 {
-                .current_title = "Kernel & AutoVM Architecture"
-                .current_file = "02_architecture.mkv"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
-                .current_res = "4K"
-                .current_codec = "HEVC"
-                .current_size = "210 MB"
-                .total_time_sec = 740
-                .total_time_str = "12:20"
-            } else if .current_id == 3 {
-                .current_title = "AutoUI Dual-Backend Engine Demo"
-                .current_file = "03_ui_engine.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-                .current_res = "1080P"
-                .current_codec = "AV1"
-                .current_size = "85 MB"
-                .total_time_sec = 495
-                .total_time_str = "08:15"
-            } else if .current_id == 4 {
-                .current_title = "Fullstack Parity & Toolchain"
-                .current_file = "04_workflow.webm"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
-                .current_res = "1080P"
-                .current_codec = "VP9"
-                .current_size = "62 MB"
-                .total_time_sec = 330
-                .total_time_str = "05:30"
-            } else {
-                .current_title = "AutoOS Ambient Desktop Visuals"
-                .current_file = "05_ambient.mp4"
-                .current_video_url = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"
-                .current_res = "720P"
-                .current_codec = "H.264"
-                .current_size = "24 MB"
-                .total_time_sec = 90
-                .total_time_str = "01:30"
-            }
-            .current_time_sec = 0
-            .current_time_str = "00:00"
-            .time_display_fmt = "00:00 / " + .total_time_str
-            .progress_pct = 0
-            .is_playing = true
-            .toast_msg = "播放上一集: " + .current_file
-            .show_toast = true
-        }
-
-        .StopPlayback -> {
-            .is_playing = false
-            .current_time_sec = 0
-            .current_time_str = "00:00"
-            .time_display_fmt = "00:00 / " + .total_time_str
-            .progress_pct = 0
-            .toast_msg = "已停止播放"
-            .show_toast = true
-        }
-
-        .SeekPercent(pct int) -> {
-            .progress_pct = pct
-            .current_time_sec = (.total_time_sec * pct) / 100
-            let min = .current_time_sec / 60
-            let sec = .current_time_sec % 60
-            let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
-            let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
-            .current_time_str = min_str + ":" + sec_str
-            .time_display_fmt = .current_time_str + " / " + .total_time_str
-            .toast_msg = "跳转至 " + pct.to_string() + "% (" + .current_time_str + ")"
-            .show_toast = true
-        }
-
-        .VolUp -> {
-            .volume = .volume + 5
-            if .volume > 100 {
-                .volume = 100
-            }
-            .volume_label = .volume.to_string() + "%"
-            .is_muted = false
-            .toast_msg = "音量 " + .volume_label
-            .show_toast = true
-        }
-
-        .VolDown -> {
-            .volume = .volume - 5
-            if .volume < 0 {
-                .volume = 0
-            }
-            .volume_label = .volume.to_string() + "%"
-            .is_muted = false
-            .toast_msg = "音量 " + .volume_label
-            .show_toast = true
-        }
-
-        .SetVolume(vol int) -> {
-            .volume = vol
-            .volume_label = vol.to_string() + "%"
-            .is_muted = false
-            .toast_msg = "音量 " + .volume_label
-            .show_toast = true
-        }
-
-        .ToggleMute -> {
-            .is_muted = !.is_muted
-            if .is_muted {
-                .toast_msg = "已静音"
-            } else {
-                .toast_msg = "取消静音 (" + .volume_label + ")"
-            }
-            .show_toast = true
-        }
-
-        .CycleSpeed -> {
-            if .playback_speed == "1.0x" {
-                .playback_speed = "1.25x"
-            } else if .playback_speed == "1.25x" {
-                .playback_speed = "1.5x"
-            } else if .playback_speed == "1.5x" {
-                .playback_speed = "2.0x"
-            } else if .playback_speed == "2.0x" {
-                .playback_speed = "0.5x"
-            } else if .playback_speed == "0.5x" {
-                .playback_speed = "0.75x"
-            } else {
-                .playback_speed = "1.0x"
-            }
-            .toast_msg = "倍速 " + .playback_speed
-            .show_toast = true
-        }
-
-        .SetSpeed(spd str) -> {
-            .playback_speed = spd
-            .show_speed_menu = false
-            .toast_msg = "倍速 " + spd
-            .show_toast = true
-        }
-
-        .ToggleSpeedMenu -> {
-            .show_speed_menu = !.show_speed_menu
-        }
-
-        .TogglePlaylist -> {
-            .show_playlist = !.show_playlist
-        }
-
-        .ToggleControls -> {
-            .show_controls = !.show_controls
-        }
-
-        .ToggleFullscreen -> {
-            .is_fullscreen = !.is_fullscreen
-            if .is_fullscreen {
-                .toast_msg = "进入全屏视口"
-            } else {
-                .toast_msg = "退出全屏"
-            }
-            .show_toast = true
-        }
-
-        .ToggleAspect -> {
-            if .aspect_mode == "16:9" {
-                .aspect_mode = "4:3"
-            } else if .aspect_mode == "4:3" {
-                .aspect_mode = "铺满"
-            } else {
-                .aspect_mode = "16:9"
-            }
-            .toast_msg = "画幅比例: " + .aspect_mode
-            .show_toast = true
-        }
-
-        .CycleLoopMode -> {
-            if .loop_mode == "list" {
-                .loop_mode = "single"
-                .loop_label = "单曲循环"
-                .toast_msg = "模式: 单曲循环"
-            } else if .loop_mode == "single" {
-                .loop_mode = "shuffle"
-                .loop_label = "随机播放"
-                .toast_msg = "模式: 随机播放"
-            } else {
-                .loop_mode = "list"
-                .loop_label = "列表循环"
-                .toast_msg = "模式: 列表循环"
-            }
-            .show_toast = true
-        }
-
-        .ToggleTimeMode -> {
-            if .time_mode == "elapsed" {
-                .time_mode = "remaining"
-                let rem = .total_time_sec - .current_time_sec
-                let min = rem / 60
-                let sec = rem % 60
-                let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
-                let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
-                .total_time_str = "-" + min_str + ":" + sec_str
-                .toast_msg = "显示剩余时间"
-            } else {
-                .time_mode = "elapsed"
-                let min = .total_time_sec / 60
-                let sec = .total_time_sec % 60
-                let sec_str = if sec < 10 { "0" + sec.to_string() } else { sec.to_string() }
-                let min_str = if min < 10 { "0" + min.to_string() } else { min.to_string() }
-                .total_time_str = min_str + ":" + sec_str
-                .toast_msg = "显示总时长"
-            }
-            .show_toast = true
-        }
-
-        .SelectVideo(id str) -> {
-            .current_id = id
-            // 从真实队列按 id 取项（不再按 id 硬编码内容）
-            for item in .playlist {
-                if item.id == id {
-                    .current_title = item.title
-                    .current_file = item.file_name
-                    .current_video_url = item.video_url
-                    .current_size = item.size_str
-                }
-            }
-            // 时长/分辨率/编码在未解复用前无从得知：一律留空标注，交由
-            // <video> 的 loadedmetadata 回灌（T-08），不再编造。
-            .current_res = "—"
-            .current_codec = "—"
-            .current_time_sec = 0
-            .current_time_str = "00:00"
-            .total_time_sec = 0
-            .total_time_str = "00:00"
-            .time_display_fmt = "00:00 / 00:00"
-            .progress_pct = 0
-            .is_playing = true
-            .toast_msg = "开始播放: " + .current_file
-            .show_toast = true
-        }
-
-        .ToggleInfoModal -> {
-            .show_info_modal = !.show_info_modal
-        }
-
-        .DismissToast -> {
-            .show_toast = false
-        }
-
-        .OpenLocalDemo -> {
-            .toast_msg = "已模拟关联系统文件管理器 (027-file-manager) 打开媒体"
-            .show_toast = true
-        }
-
         .ToggleDarkMode -> {
             .dark_mode = !.dark_mode
         }
-
-        .SetAccent(color str) -> {
-            .accent_color = color
-            .toast_msg = "强调色已设为 " + color
-            .show_toast = true
+        .TogglePlaylist -> {
+            store.TogglePlaylist()
         }
     }
 }

@@ -4629,7 +4629,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::ProgressBar { progress, style } => {
+            AbstractView::ProgressBar { progress, style, on_seek } => {
                 use iced::widget::progress_bar;
                 let (is, height, width, radius) = if let Some(ref s) = style {
                     let is = IcedStyle::from_style(s);
@@ -4665,10 +4665,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     });
 
                 let cont = container(pb).width(width).height(height);
-                if let Some(ref is_ref) = is {
-                    wrap_with_margin(cont.into(), is_ref)
+                // `onseek` 存在时整条进度条变成可点/可拖的 seek 控件：
+                // 按下或按住拖动 → 交 0..1 的横向比例（SeekArea 自己记按下态，
+                // 悬停不 scrub）。没有 `onseek` 时是纯展示条，零行为差异。
+                let seekable: iced::Element<'_, M> = if let Some(handler) = on_seek.clone() {
+                    let f = std::sync::Arc::new(move |frac: f32| handler.call(frac, 0.0));
+                    crate::ui::iced::seek_area::SeekArea::new(cont).on_seek(f).into()
                 } else {
                     cont.into()
+                };
+                if let Some(ref is_ref) = is {
+                    wrap_with_margin(seekable, is_ref)
+                } else {
+                    seekable
                 }
             }
 
@@ -5219,7 +5228,115 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     style,
                 )
             }
+
+            // PLAN-617 T-19: `video` —— 原生播放面。
+            //
+            // 走自定义 shader widget（自持持久纹理、每帧原地更新），**不经过**
+            // iced 的 Handle/atlas 通道——那条路正是 `renderer.rs:2889` 记录的
+            // 闪烁机理（见 Design 30 §4.5）。上行事件由渲染面按帧采集，
+            // 经 `mpv::widget::drain_events` 取走，故本节点不带消息。
+            AbstractView::Video {
+                src,
+                paused,
+                position,
+                volume,
+                muted,
+                rate,
+                label,
+                style,
+            } => render_video(src, paused, position, volume, muted, rate, label, style),
         }
+    }
+}
+
+/// `video` 的渲染面（PLAN-617 T-19）。
+///
+/// **有 `mpv-widget` 时**：建自定义 shader widget，把 T-16/T-17/T-18 的
+/// 引擎 + 帧上屏通道 + 受控契约接上；帧由应用既有的 tick 驱动（见 `mpv::widget`
+/// 模块文档）。
+///
+/// **没有该 feature 时**：保持**诚实降级**——渲染一个带说明的面板而不是黑屏
+/// （AC-10/AC-11：静默黑屏是本计划要消灭的行为）。
+#[allow(clippy::too_many_arguments)]
+fn render_video<M: Clone + Debug + 'static>(
+    src: String,
+    paused: bool,
+    position: Option<f64>,
+    volume: i32,
+    muted: bool,
+    rate: f64,
+    label: String,
+    style: Option<Style>,
+) -> iced::Element<'static, M> {
+    use iced::Length;
+
+    #[cfg(feature = "mpv-widget")]
+    {
+        use crate::ui::mpv::widget::{VideoProgram, VideoWidgetProps};
+        use crate::ui::mpv::VideoContractDown;
+
+        // 尺寸：交给父容器（布局说了算）；widget 自身撑满可用空间。
+        let program = VideoProgram::new(VideoWidgetProps {
+            down: VideoContractDown {
+                paused,
+                position,
+                volume,
+                muted,
+                rate,
+                src: if src.is_empty() { None } else { Some(src.clone()) },
+            },
+            width: 0,
+            height: 0,
+        });
+        let shader = iced::widget::shader::Shader::new(program)
+            .width(Length::Fill)
+            .height(Length::Fill);
+        // 背景给黑底（视频比画面窄时露出的letterbox），与 Vue 端视口一致。
+        let inner: iced::Element<'static, M> = shader.into();
+        let mut surface = iced::widget::container(inner)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color::BLACK)),
+                ..Default::default()
+            });
+        if let Some(style) = style.as_ref() {
+            // 与其它容器臂同源：把 AURA 的 `Style` 翻成 iced 的 container 样式
+            // （背景/边框/圆角），尺寸类由父布局决定（widget 自身 Fill）。
+            let is = IcedStyle::from_style(style);
+            let cs = build_container_style(&is);
+            surface = surface.style(move |_theme| cs.clone());
+            if let Some(ref w) = is.width {
+                surface = surface.width(iced_length(w));
+            }
+            if let Some(ref h) = is.height {
+                surface = surface.height(iced_length(h));
+            }
+        }
+        return surface.into();
+    }
+
+    #[cfg(not(feature = "mpv-widget"))]
+    {
+        let _ = (src, paused, position, volume, muted, rate, style);
+        // 诚实占位：说明本后端没接上原生播放，而不是留一块黑。
+        let text = if label.is_empty() {
+            "视频：本后端未启用原生播放（构建时未开 `mpv-widget`）".to_string()
+        } else {
+            format!("{label}
+本后端未启用原生播放（构建时未开 `mpv-widget`）")
+        };
+        iced::widget::container(iced::widget::text(text).size(13))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(|_theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb(0.06, 0.06, 0.08))),
+                text_color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
+                ..Default::default()
+            })
+            .into()
     }
 }
 
@@ -5458,111 +5575,14 @@ fn lucide_svg_doc_with(name: &str, stroke_width: f32) -> Option<String> {
 }
 
 fn lucide_svg(name: &str) -> Option<&'static str> {
-    // SVG wrapper: 16x16, stroke=currentColor, stroke-width=2.
-    // Each entry is the inner elements only.
-    let elements: &str = match name {
-        // Plan 472 T4：dock 消费注册表 icon 名（app-window 为注册表缺省
-        // 回退；calculator/bomb/list-checks/notebook 为示例 pack 常用面）。
-        "app-window" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M7 6h.01"/><path d="M11 6h.01"/>"#,
-        "calculator" => r#"<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>"#,
-        "bomb" => r#"<circle cx="11" cy="13" r="8"/><path d="M14.35 4.65 16.3 2.7a2.41 2.41 0 0 1 3.4 0l1.6 1.6a2.4 2.4 0 0 1 0 3.4l-1.95 1.95"/><path d="m22 2-1.5 1.5"/>"#,
-        "list-checks" => r#"<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>"#,
-        "notebook" => r#"<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/>"#,
-        "bell" => r#"<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>"#,
-        // PLAN-526 T11：电源键字形（dock 关机键；lucide "power"）。
-        "power" => r#"<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>"#,
-        // Plan 479 T3：通知面板 kind 图标（success→check / error→x / info 兜底；
-        // T1 施工图定案 5）。
-        "info" => r#"<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>"#,
-        "command" => r#"<path d="M15 6a3 3 0 1 0-3 3"/><path d="M6 15a3 3 0 1 0 3-3"/><path d="M9 9h6v6H9z"/>"#,
-        // Plan 059(块头图标统一):stop/table 导出/重跑/删除/运行中
-        "square" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/>"#,
-        "table" => r#"<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>"#,
-        // PLAN-618 T-02:zap 闪电(026 对象树索引节点;TreeIcon 调色板同步)。
-        "zap" => r#"<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86 0l9.9 10.2a1 1 0 0 1-.78 1.63z"/><path d="M4 10h16"/>"#,
-        "rotate-ccw" => r#"<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>"#,
-        "trash-2" => r#"<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>"#,
-        "loader" => r#"<path d="M21 12a9 9 0 1 1-6.219-8.56"/>"#,
-        "image" => r#"<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>"#,
-        "layout-grid" => r#"<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>"#,
-        "menu" => r#"<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>"#,
-        "mouse-pointer-click" => r#"<path d="m9 9 5 12 1.8-5.2L21 14Z"/><path d="M7.2 2.2 8 5.1"/><path d="m5.1 8-2.9-.8"/><path d="M14 4.1 12 6"/><path d="m6 12-1.9 2"/>"#,
-        "navigation" => r#"<polygon points="3 11 22 2 13 21 11 13 3 11"/>"#,
-        "search" => r#"<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>"#,
-        "square-stack" => r#"<path d="M4 10c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2"/><path d="M10 16c-1.1 0-2-.9-2-2v-4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2"/><rect width="8" height="8" x="14" y="14" rx="2"/>"#,
-        "type" => r#"<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>"#,
-        "home" => r#"<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>"#,
-        "settings" => r#"<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>"#,
-        "layers" => r#"<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>"#,
-        "chevron-left" => r#"<path d="m15 18-6-6 6-6"/>"#,
-        "chevron-right" => r#"<path d="m9 18 6-6-6-6"/>"#,
-        // Plan 414 §5.5: auto-edit toolbar (notepad-style)
-        "file-plus" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 12v6"/>"#,
-        "folder-open" => r#"<path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/>"#,
-        "save" => r#"<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>"#,
-        "undo-2" => r#"<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>"#,
-        "redo-2" => r#"<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/>"#,
-        "scissors" => r#"<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>"#,
-        "clipboard" => r#"<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>"#,
-        "chevron-down" => r#"<path d="m6 9 6 6 6-6"/>"#,
-        "chevron-up" => r#"<path d="m18 15-6-6-6 6"/>"#,
-        "arrow-up-down" => r#"<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>"#,
-        "arrow-up" => r#"<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>"#,
-        "arrow-down" => r#"<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>"#,
-        "arrow-right" => r#"<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>"#,
-        "x" => r#"<path d="M18 6 6 18"/><path d="m6 6 12 12"/>"#,
-        // Plan 411: preview-card copy button (lucide "copy": two stacked rects)
-        "copy" => r#"<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>"#,
-        "check" => r#"<path d="M20 6 9 17l-5-5"/>"#,
-        "plus" => r#"<path d="M5 12h14"/><path d="M12 5v14"/>"#,
-        "minus" => r#"<path d="M5 12h14"/>"#,
-        "mail" => r#"<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>"#,
-        "palette" => r#"<circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>"#,
-        "book" => r#"<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>"#,
-        "folder" => r#"<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>"#,
-        // Plan 412 F7: Layout 分组 nav-link/卡片图标
-        "move-horizontal" => r#"<polyline points="18 8 22 12 18 16"/><polyline points="6 8 2 12 6 16"/><line x1="2" x2="22" y1="12" y2="12"/>"#,
-        "align-center" => r#"<line x1="21" x2="3" y1="6" y2="6"/><line x1="17" x2="7" y1="12" y2="12"/><line x1="19" x2="5" y1="18" y2="18"/>"#,
-        "space" => r#"<path d="M22 14v-4"/><path d="M2 14v-4"/><path d="M8 12h8"/><path d="M4 17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1Z"/>"#,
-        "sidebar" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>"#,
-        "ruler" => r#"<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.3 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/>"#,
-        "frame" => r#"<path d="M22 6H2"/><path d="M22 18H2"/><path d="M6 2v20"/><path d="M18 2v20"/>"#,
-        "chevrons-down" => r#"<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/>"#,
-        // Plan 414 §2: auto-edit 状态栏 Console 开关(Zed 式终端图标)
-        "terminal" => r#"<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>"#,
-        "monitor" => r#"<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>"#,
-        // PLAN-050 T7 (C5): musk 图标桥补齐——27 枚 lucide 路径数据取自
-        // musk src/front/lib/icons_data.at（0.460.0 生成物,单一真源对拍），
-        // 消费 aura_view_builder 的图标组件臂（use.web component → lucide:）。
-                "book-open" => r#"<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>"#,
-        "clock" => r#"<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>"#,
-        "copy-check" => r#"<path d="m12 15 2 2 4-4"/><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>"#,
-        "download" => r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>"#,
-        "external-link" => r#"<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>"#,
-        "eye" => r#"<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>"#,
-        "file" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>"#,
-        "file-icon" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>"#,
-        "file-text" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>"#,
-        "folder-input" => r#"<path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10"/><path d="m9 16 3-3-3-3"/>"#,
-        "folder-plus" => r#"<path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>"#,
-        "help-circle" => r#"<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>"#,
-        "inbox" => r#"<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>"#,
-        "info" => r#"<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>"#,
-        "list-todo" => r#"<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>"#,
-        "loader-2" => r#"<path d="M21 12a9 9 0 1 1-6.219-8.56"/>"#,
-        "message-square" => r#"<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>"#,
-        "moon" => r#"<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>"#,
-        "orbit" => r#"<circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M10.4 21.9a10 10 0 0 0 9.941-15.416"/><path d="M13.5 2.1a10 10 0 0 0-9.841 15.416"/>"#,
-        "panel-left" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>"#,
-        "pencil" => r#"<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>"#,
-        "scroll" => r#"<path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>"#,
-        "send" => r#"<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>"#,
-        "sun" => r#"<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>"#,
-        "unlink" => r#"<path d="M15 7h2a5 5 0 0 1 0 10h-2m-6 0H7A5 5 0 0 1 7 7h2"/>"#,
-        "upload-cloud" => r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>"#,
-        "wrench" => r#"<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>"#,
-        _ => return None,
-    };
+    // 字形来自 **lucide 官方数据生成的全量表**（`lucide_generated.rs`，由
+    // `scripts/gen-lucide-table.mjs` 生成，覆盖 lucide-vue-next 的 1401 个图标）。
+    //
+    // 这里是 P537-D1 的根治点：在此之前 iced 端没有 lucide 数据源，表是手工
+    // 抄的 85 条 —— 与 Vue 端的全量包天然分叉，且**缺名在 VM 端静默渲染成
+    // 空盒**（`AbstractView::Image` 的 miss 分支返回 `container(text(""))`），
+    // 表现为「Vue 有图标、VM 一片空」。全量表让「同名 ⇒ 同字形」由构造保证。
+    let elements: &'static str = lucide_fragment(name)?;
     // Use a small static cache to avoid re-formatting.
     // The SVG uses width/height=16 for compact button rendering.
     // PLAN-530 步骤5：按 icon 名去重——旧实现每次调用 Box::leak 一份新串
@@ -5583,6 +5603,24 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
             .into_boxed_str(),
         )
     }))
+}
+
+/// 名字 → 字形内部 markup（24×24 坐标系）。全量表优先，然后是**遗留别名**。
+///
+/// 别名只在「上游改过名、而示例/资产里还用着旧名」时才有意义，且**必须逐条
+/// 有据**：`sidebar` 在 lucide 上游已更名为 `panel-left`，`file-icon` 已并入
+/// `file`——这两个名字在 lucide-vue-next 里已经不存在，而旧的手抄表里有它们，
+/// 所以保留别名以免既有语料在 VM 端忽然变空盒（Vue 端用旧名本来就会 import
+/// 失败，本来就不该再用）。
+fn lucide_fragment(name: &str) -> Option<&'static str> {
+    match super::lucide_generated::lookup(name) {
+        Some(frag) => Some(frag),
+        None => match name {
+            "sidebar" => super::lucide_generated::lookup("panel-left"),
+            "file-icon" => super::lucide_generated::lookup("file"),
+            _ => None,
+        },
+    }
 }
 
 /// PLAN-530 步骤5：placeholder 'static 化的按文本去重缓存——text_editor
@@ -6299,8 +6337,16 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             }),
         },
 
-        AbstractView::ProgressBar { progress, style } => {
-            AbstractView::ProgressBar { progress, style }
+        AbstractView::ProgressBar { progress, style, on_seek } => {
+            AbstractView::ProgressBar {
+                progress,
+                style,
+                on_seek: on_seek.map(|h| {
+                    crate::ui::view::PointerMoveHandler::new(move |x, y| {
+                        IcedMessage::from_dynamic(&h.call(x, y))
+                    })
+                }),
+            }
         }
 
         AbstractView::Image { src, style } => {
@@ -6326,6 +6372,15 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
                 style,
             }
+        }
+
+        // PLAN-617 T-19: `video` **必须**显式臂——否则掉进下方 `_ => Empty`
+        // 兜底，VM 动态路径下整个播放面静默消失（与上面 Grid / MouseArea / select
+        // 同一坑：这已经是第四次踩它了）。
+        // 该节点**不携带消息**（上行事件由渲染面按帧采集，见 `View::Video` 文档），
+        // 故这里是平凡的恒等搬运。
+        AbstractView::Video { src, paused, position, volume, muted, rate, label, style } => {
+            AbstractView::Video { src, paused, position, volume, muted, rate, label, style }
         }
 
         // Plan 319: recurse into Grid cells. MUST be explicit — the `_ => Empty`
@@ -18694,6 +18749,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::MouseArea { style, .. } => style.as_ref(),
         // PLAN-009 P1: terminal 的 style 参与常规定位/边距判定。
         AbstractView::Terminal { style, .. } => style.as_ref(),
+        // PLAN-617 T-19: video 的 style（尺寸/定位类）参与布线判定。
+        AbstractView::Video { style, .. } => style.as_ref(),
         // Plan 563: Canvas 的 style(尺寸类)同 MouseArea 参与定位判定。
         AbstractView::Canvas { style, .. } => style.as_ref(),
         AbstractView::Text { style, .. } => style.as_ref(),
@@ -18784,6 +18841,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Slider { .. } => "slider",
         AbstractView::ProgressBar { .. } => "progress",
         AbstractView::Image { .. } => "image",
+        AbstractView::Video { .. } => "video",
         AbstractView::ImageSurface { .. } => "image_surface",
         AbstractView::WindowThumbnail { .. } => "window_thumbnail",
         AbstractView::Radio { .. } => "radio",

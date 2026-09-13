@@ -1878,8 +1878,10 @@ impl<'a> AuraViewBuilder<'a> {
             "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
                 self.convert_image_surface(props, events, bindings)
             }
+            // PLAN-617 T-19: `video` —— 受控媒体契约的 VM 侧节点（原生播放面）。
+            "video" | "Video" => self.convert_video(props, events, bindings),
             "img" | "image" | "icon" => self.convert_image_or_icon(props, bindings),
-            "progress" => self.convert_progress(props, bindings),
+            "progress" => self.convert_progress(props, events, bindings),
             "spacer" => self.convert_spacer(props),
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
             "square" => self.convert_square(props, children, bindings),
@@ -3507,10 +3509,13 @@ impl<'a> AuraViewBuilder<'a> {
             "imagesurface" | "image-surface" | "image_surface" | "ImageSurface" => {
                 self.convert_image_surface(props, events, bindings)
             }
+            // PLAN-617 T-19: `video` —— 受控媒体契约的 VM 侧节点（原生播放面）。
+            // 与 tracked 臂同源；两条路都必须有臂，否则 untracked 语境会退回占位。
+            "video" | "Video" => self.convert_video(props, events, bindings),
             "img" | "image" | "icon" => self.convert_image_or_icon(props, bindings),
 
             // Utility widgets
-            "progress" => self.convert_progress(props, bindings),
+            "progress" => self.convert_progress(props, events, bindings),
             "spacer" => self.convert_spacer(props),
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
             "square" => self.convert_square(props, children, bindings),
@@ -6255,12 +6260,111 @@ let tabs_inner = View::Row {
         // icon: name → "lucide:{name}" synthetic src
         if let Some(name) = self.extract_string_with(props, "name", bindings) {
             if !name.is_empty() {
+                let style = self.with_icon_size(style, props, bindings);
                 return View::Image { src: format!("lucide:{}", name), style };
             }
         }
         // image: src as-is with loop variable / state bindings support
         let src = self.extract_string_with(props, "src", bindings).unwrap_or_default();
         View::Image { src, style }
+    }
+
+    /// `icon` 的尺寸口径（**两端必须一致**，与 `ui_gen/vue.rs` 的 icon 臂同一套）。
+    ///
+    /// 优先级：**显式 `w-*`/`h-*` 类 > `size` prop > 默认**。
+    ///
+    /// 为什么要有这条：`size` 此前是**死参数**——schema 声明了 `default: "24"`，
+    /// 但 VM 这条臂从来不读它（只吃 `class`），Vue 端也把它丢了并硬编码
+    /// `w-5 h-5`；于是同一个 `icon (name: "x", size: 12)` 两端不一样大，而且
+    /// 谁传了 `class: "h-3 w-3"` 也会被 Vue 的硬编码类**静默盖掉**（Tailwind
+    /// 同权重，靠样式表顺序定胜负）。现在：显式类优先、`size` 次之、都没有才
+    /// 落到共享默认值。
+    fn with_icon_size(
+        &self,
+        style: Option<Style>,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<Style> {
+        /// 与 Vue 端注入的 `w-5 h-5` 对应（Tailwind 间距刻度 × 4px）。
+        const DEFAULT_ICON_PX: f32 = 20.0;
+        let mut s = style.unwrap_or_default();
+        let has_w = s.classes.iter().any(|c| matches!(c, StyleClass::Width(_)));
+        let has_h = s.classes.iter().any(|c| matches!(c, StyleClass::Height(_)));
+        if has_w && has_h {
+            return Some(s);
+        }
+        let px = self
+            .extract_u16(props, "size")
+            .map(|v| v as f32)
+            .filter(|v| *v > 0.0)
+            .unwrap_or(DEFAULT_ICON_PX);
+        if !has_w {
+            s.classes.push(StyleClass::Width(SizeValue::Pixels(px)));
+        }
+        if !has_h {
+            s.classes.push(StyleClass::Height(SizeValue::Pixels(px)));
+        }
+        let _ = bindings;
+        Some(s)
+    }
+
+    /// PLAN-617 T-19: 把 AURA 的 `video` 节点翻成后端中立的 [`View::Video`]。
+    ///
+    /// **契约（§2.3）在这一层做「作者面 → 节点字段」的翻译**，两端一致：
+    /// - `paused` —— 作者写 `paused: .is_playing == false`，此处拿到的是**已求值的
+    ///   bool**（表达式求值在 `extract_bool` 之前完成），故不在这里再取反；
+    /// - `volume` —— 作者面 0..100，原样透传（mpv 同刻度）；
+    /// - `rate` —— 倍速 float，`<= 0` 一律按 1.0（0 倍速会冻住播放）；
+    /// - `position` —— seek 目标（秒），缺省 `None` 表示不下发位置。
+    ///
+    /// **上行**（`ontimeupdate` 等）不在此节点上：由渲染面按帧采集，见
+    /// [`View::Video`] 的文档。
+    fn convert_video(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        _events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let src = self
+            .extract_string_with(props, "src", bindings)
+            .unwrap_or_default();
+        let paused = self
+            .extract_bool_expr(props, "paused", bindings)
+            .unwrap_or(true);
+        let position = self.extract_f64_with(props, "position", bindings);
+        let volume = self
+            .extract_f64_with(props, "volume", bindings)
+            .map(|v| v.round().clamp(0.0, 100.0) as i32)
+            .unwrap_or(100);
+        let muted = self
+            .extract_bool_expr(props, "muted", bindings)
+            .unwrap_or(false);
+        let rate = self
+            .extract_f64_with(props, "rate", bindings)
+            .filter(|r| *r > 0.0)
+            .unwrap_or(1.0);
+        // 显示名：优先 title，其次 label，最后退回源路径的末段（降级文案要用真实名字）。
+        let label = self
+            .extract_string_with(props, "title", bindings)
+            .or_else(|| self.extract_string_with(props, "label", bindings))
+            .or_else(|| self.extract_string_with(props, "alt", bindings))
+            .unwrap_or_else(|| {
+                src.rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            });
+        let style = self.extract_style(props);
+        View::Video {
+            src,
+            paused,
+            position,
+            volume,
+            muted,
+            rate,
+            label,
+            style,
+        }
     }
 
     /// Build the backend-neutral ImageSurface node from Aura props/events.
@@ -6356,6 +6460,7 @@ let tabs_inner = View::Row {
     fn convert_progress(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let style = self.extract_style(props);
@@ -6374,7 +6479,40 @@ let tabs_inner = View::Row {
         View::ProgressBar {
             progress: progress as f32,
             style,
+            on_seek: self.progress_seek_arm(events, bindings),
         }
+    }
+
+    /// `progress` 的 `onseek` 臂 —— 与 mouse-area 的 `onmousemove` 同型
+    /// （`PointerMoveHandler` 把逻辑坐标/比例追加为 Float 实参），只是这里
+    /// 交给作者的是**横向比例 0..1**（第二个实参恒 0.0，进度条是一维的）。
+    ///
+    /// 比例而不是值：到这一层 `value/max` 已经归一，`max` 不再可得；让两端
+    /// 统一交比例，作者写 `store.SeekTo(.duration * $0)` 就不会跨端漂移。
+    fn progress_seek_arm(
+        &self,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        bindings: &Bindings,
+    ) -> Option<crate::ui::view::PointerMoveHandler<DynamicMessage>> {
+        let event = aura_events_get_base(events, "onseek")?;
+        let base = self.event_to_message_with(event, bindings);
+        Some(crate::ui::view::PointerMoveHandler::new(
+            move |fraction: f32, _y: f32| match &base {
+                DynamicMessage::Typed { widget_name, event_name, args } => {
+                    let mut new_args = args.clone();
+                    // 与 mouse_area_move_arm 同规约：+1e-3 分数化，绕开
+                    // auto_val nanbox 整值 float 实参绑定的腐坏路径。
+                    new_args.push(Value::Float(fraction as f64 + 0.001));
+                    new_args.push(Value::Float(0.001));
+                    DynamicMessage::Typed {
+                        widget_name: widget_name.clone(),
+                        event_name: event_name.clone(),
+                        args: new_args,
+                    }
+                }
+                other => other.clone(),
+            },
+        ))
     }
 
     /// Convert a spacer element: fills remaining space in a flex layout.
@@ -15739,6 +15877,44 @@ mod plan534_side_panel_tests {
         let dc = crate::build_dynamic_component(src, None).expect("build component");
         let (view, _, _) = dc.view_with_debug_gated(false);
         view
+    }
+
+    /// PLAN-617 后续：`progress` 的 `onseek` 在 VM 侧的锚点——
+    /// 视图构建必须产出 `on_seek: Some(..)`（缺它则 VM 端进度条不可拖拽，
+    /// 而 Web 端可拖 → 双端行为分叉），且 `value`/`max` 仍归一到 0..1。
+    #[test]
+    fn progress_onseek_builds_seek_handler() {
+        fn find_progress(view: &View<DynamicMessage>) -> Option<(f32, bool)> {
+            match view {
+                View::ProgressBar { progress, on_seek, .. } => Some((*progress, on_seek.is_some())),
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    children.iter().find_map(find_progress)
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => find_progress(child),
+                _ => None,
+            }
+        }
+        let with_seek = build_view(
+            "widget App {
+             msg { Seek(float) }
+             model { pct float = 25.0 }
+             on { .Seek(f) -> { .pct = f } }
+             view { col { progress (value: .pct, max: 100.0, onseek: .Seek($0)) } }
+             }",
+        );
+        let (progress, has_seek) = find_progress(&with_seek).expect("progress 节点");
+        assert!((progress - 0.25).abs() < 1e-4, "value/max 归一 0..1，实得 {progress}");
+        assert!(has_seek, "声明 onseek 后必须挂上 on_seek（否则 VM 端不可拖拽）");
+
+        // 未声明 onseek → 纯展示条，零 handler（兼容约束）
+        let plain = build_view(
+            "widget App {
+             model { pct float = 25.0 }
+             view { col { progress (value: .pct, max: 100.0) } }
+             }",
+        );
+        let (_, plain_seek) = find_progress(&plain).expect("progress 节点");
+        assert!(!plain_seek, "未声明 onseek 不得凭空多出 seek handler");
     }
 
     fn find_popover(view: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {

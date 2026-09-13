@@ -103,6 +103,14 @@ pub struct Pac {
     /// value; "fit" sets this flag and leaves `window` = None).
     pub window_fit: bool,
 
+    /// PLAN-617 T-11: media library root for the generated media service
+    /// (`/api/media/scan` / `/api/media/stream/{id}`), declared as
+    /// `media_root: "E:\Video"` in pac.at. Resolution order per the plan:
+    /// `AUTO_MEDIA_ROOT` env (explicit, wins) -> this field -> nothing
+    /// (honest empty library). `auto run` injects the value into the child
+    /// backend's env only when the env is not already set.
+    pub media_root: Option<AutoStr>,
+
     /// VM native window title, declared as `title: "My App"` in pac.at.
     /// None = renderer default ("Auto - {root widget name}").
     pub title: Option<AutoStr>,
@@ -262,6 +270,13 @@ impl Pac {
         let front_port = front_port.trim().parse::<u16>().ok();
         let back_port = config.root.get_prop("back_port").to_astr();
         let back_port = back_port.trim().parse::<u16>().ok();
+
+        // PLAN-617 T-11: media library root (media_service 解析序的 pac 层)。
+        let media_root_raw = config.root.get_prop("media_root").to_astr();
+        let media_root = {
+            let t = media_root_raw.trim().to_string();
+            if t.is_empty() { None } else { Some(t.into()) }
+        };
 
         // Plan 411: VM startup window size, e.g. `window: "1440x900"`.
         // Accepts "WxH" (or W×H); rejects non-positive/oversized values.
@@ -475,6 +490,7 @@ impl Pac {
             members,
             front_port,
             back_port,
+            media_root,
             window,
             window_fit,
             title,

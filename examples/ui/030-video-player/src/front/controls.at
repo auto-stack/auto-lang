@@ -1,0 +1,129 @@
+// controls.at — OSD 播控条（PLAN-617 T-04 / T-08；后续批重做视觉）。
+//
+// 三段式：左=时间（回灌格式化）+ **可拖拽进度条**，中=传输键，右=音量/倍速。
+//
+// **时间与进度全部由回灌驱动**：`current_time_str`/`duration_str`/`progress_pct`
+// 只由 store 的 OnTime/OnDuration 写（见 player_store.at），没有任何预置常量
+// ——旧版的 "00:45 / 03:45" 是烘死的假值，这里不再存在（AC-08）。
+//
+// 进度条 = AutoUI 的 `progress` 组件 + `onseek`（本轮新加的双端能力）：
+// 按下即 seek（点哪跳哪），按住拖动持续 seek；两端的 handler 都收 **0..1 的
+// 横向比例**（VM 走 iced SeekArea，Web 走生成器发的指针三包装），所以这里写
+// `store.SeekFraction($0)`，由 store 换算成 `.duration * $0`。
+//
+// 图标：全部走 VM lucide 表内名。表已由 `scripts/gen-lucide-table.mjs` 从
+// lucide 官方数据生成（1401 个），媒体传输字形（play/pause/skip-*/volume-*）
+// 因此可用 —— 不再需要拿文字代替图标。
+//
+// 按钮纪律（PLAN-571 / AC-02）：只有 1 个 primary（播放/暂停），其余是未指定
+// 变体或 ghost；尺寸收敛为 3 档 —— icon `w-8 h-7`、传输 `w-9 h-9`、文本
+// `h-9 px-3`。
+
+use player_store: PlayerStore
+
+widget Controls {
+    msg {
+        TogglePlay,
+        SeekFraction(float),
+        VolUp,
+        VolDown,
+        ToggleMute,
+        RateUp,
+        Next,
+        Prev
+    }
+
+    view {
+        row {
+            style: "w-full h-14 items-center gap-4 px-4 border-t border-border bg-card"
+
+            // ── 左：时间 + 可拖拽进度条 ──
+            col {
+                style: "flex-1 min-w-0 gap-1"
+                row {
+                    style: "w-full items-center gap-2 text-xs font-mono text-muted-foreground"
+                    text .store.current_time_str {}
+                    text "/" {}
+                    text .store.duration_str {}
+                    col { style: "flex-1" }
+                    text .store.status_text {}
+                }
+                // 可拖拽进度条：点哪跳哪 + 按住拖动。
+                progress (value: .store.progress_pct, max: 100.0, class: "h-2 w-full",
+                          onseek: .SeekFraction($0))
+            }
+
+            // ── 中：传输键（唯一 primary = 播放/暂停）──
+            row {
+                style: "items-center gap-1"
+                button {
+                    onclick: .Prev
+                    style: "transport-prev w-9 h-9 items-center justify-center rounded-md bg-muted border border-border text-foreground hover:bg-muted/70 cursor-pointer"
+                    icon (name: "skip-back", size: 16)
+                }
+                if .store.is_playing {
+                    button {
+                        onclick: .TogglePlay
+                        style: "transport-playpause w-9 h-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                        icon (name: "pause", size: 16)
+                    }
+                } else {
+                    button {
+                        onclick: .TogglePlay
+                        style: "transport-playpause w-9 h-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                        icon (name: "play", size: 16)
+                    }
+                }
+                button {
+                    onclick: .Next
+                    style: "transport-next w-9 h-9 items-center justify-center rounded-md bg-muted border border-border text-foreground hover:bg-muted/70 cursor-pointer"
+                    icon (name: "skip-forward", size: 16)
+                }
+            }
+
+            // ── 右：音量 + 倍速 ──
+            row {
+                style: "items-center gap-1 pl-3 border-l border-border"
+                button {
+                    onclick: .ToggleMute
+                    style: "vol-mute w-9 h-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                    if .store.is_muted {
+                        icon (name: "volume-x", size: 16)
+                    } else {
+                        icon (name: "volume-2", size: 16)
+                    }
+                }
+                button {
+                    onclick: .VolDown
+                    style: "w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                    icon (name: "minus", size: 14)
+                }
+                text .store.volume_label {
+                    style: "text-xs font-mono text-muted-foreground w-9 text-center"
+                }
+                button {
+                    onclick: .VolUp
+                    style: "vol-up w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                    icon (name: "plus", size: 14)
+                }
+                button {
+                    onclick: .RateUp
+                    style: "rate-btn h-9 px-3 items-center justify-center gap-1 rounded-md text-xs font-mono text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                    icon (name: "gauge", size: 14)
+                    text .store.rate_label {}
+                }
+            }
+        }
+    }
+
+    on {
+        .TogglePlay -> { store.TogglePlay() }
+        .SeekFraction(f float) -> { store.SeekFraction(f) }
+        .VolUp -> { store.VolUp() }
+        .VolDown -> { store.VolDown() }
+        .ToggleMute -> { store.ToggleMute() }
+        .RateUp -> { store.RateUp() }
+        .Next -> { store.Next() }
+        .Prev -> { store.Prev() }
+    }
+}

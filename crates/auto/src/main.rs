@@ -1022,6 +1022,15 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_VM_TITLE", &t);
                 println!("  VM window title: {} (from pac.at)", t);
             }
+            // PLAN-617 T-11: pac.at `media_root` → `AUTO_MEDIA_ROOT` env（媒体
+            // 服务与生成后端从进程 env 读根目录，子进程继承）。解析序是
+            // env → pac.at → 无（诚实空库），故 env 已设时这里不覆盖。
+            if std::env::var_os("AUTO_MEDIA_ROOT").is_none() {
+                if let Some(root) = am.pac_media_root() {
+                    std::env::set_var("AUTO_MEDIA_ROOT", &root);
+                    println!("  Media root: {} (from pac.at)", root);
+                }
+            }
             // Plan 458: UI theme + accent presets. CLI --theme/--accent >
             // pac.at `theme:`/`accent:` > built-in default (dark/indigo,
             // applied by the consumers when these env vars are absent).

@@ -338,6 +338,14 @@ impl Automan {
         self.pac.window_fit
     }
 
+    /// PLAN-617 T-11: media library root from pac.at `media_root`.
+    /// The generated media service consumes it via the `AUTO_MEDIA_ROOT` env
+    /// (injected by `auto run` only when that env is not already set, so the
+    /// env keeps precedence per the plan's resolution order).
+    pub fn pac_media_root(&self) -> Option<String> {
+        self.pac.media_root.as_ref().map(|t| t.to_string())
+    }
+
     /// VM native window title from pac.at `title: "..."`.
     pub fn pac_window_title(&self) -> Option<String> {
         self.pac.title.as_ref().map(|t| t.to_string())

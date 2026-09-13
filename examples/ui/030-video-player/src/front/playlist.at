@@ -1,0 +1,142 @@
+// playlist.at — 右栏播放队列（PLAN-617 T-04）。
+//
+// 队列**不是**字面量：条目全部来自 player_store 的 `/api/media/scan` 扫描结果
+// （真实文件名、相对目录、字节数），并按 rel_dir 分组展示。分组用「外层遍历
+// 分组表 + 内层过滤条目」的形态，因为 VM view 不能调函数、也不能对列表做
+// 分组求值（Plan 402）。
+//
+// VM 端约束：`flex-1`/`shrink-0` 不生效 —— 每行用单 col 承载文本，不用
+// 「图标列 + flex-1 文本列」的横向切分（那样子列会塌成 0 宽）。不用
+// absolute/fixed；选中态只用语义令牌，不用渐变/阴影/毛玻璃（§2.2）。
+//
+// 本地文件（T-09）：手写组件 file_picker.vue 经 `use.web component` 导入，
+// 是隐藏的 <input type="file"> 包装。可见的仍是下面的 DSL 按钮 —— 两端
+// 同一个按钮：Vue 端点击经 pick_seq 触发真文件对话框；VM 端组件不渲染
+// （size: 0 的 lucide 占位，不可见），local_pick_ready 恒 false，点击得到
+// 诚实降级文案。
+
+use player_store: PlayerStore
+use.web component FilePicker from "src/front/file_picker.vue"
+
+widget Playlist {
+    msg {
+        SelectIndex(int),
+        LocalPick,
+        LocalPickReady,
+        LocalPicked(str, str),
+        Rescan,
+        TogglePlaylist
+    }
+
+    view {
+        col {
+            style: "w-72 h-full flex-col border-l border-border bg-card min-h-0"
+
+            // ── 标题栏 h-12（与顶栏同高，发丝线分隔）──
+            row {
+                style: "h-12 items-center justify-between px-4 border-b border-border"
+                row {
+                    style: "items-center gap-2"
+                    icon (name: "list-todo", size: 15, style: "text-muted-foreground")
+                    text "播放队列" { style: "text-sm font-semibold" }
+                }
+                button {
+                    onclick: .TogglePlaylist
+                    style: "w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                    icon (name: "x", size: 14)
+                }
+            }
+
+            // ── 条目区：按 rel_dir 分组 ──
+            col {
+                style: "w-full flex-1 min-h-0 overflow-y-auto p-2 gap-1"
+
+                if .store.library_error != "" {
+                    text .store.library_error {
+                        style: "text-xs text-destructive p-2"
+                    }
+                }
+                if .store.item_count == 0 {
+                    col {
+                        style: "w-full items-center justify-center gap-1 py-6"
+                        text "队列为空" { style: "text-xs font-medium" }
+                        text "检查媒体根目录（AUTO_MEDIA_ROOT）后重新扫描" {
+                            style: "text-xs text-muted-foreground text-center"
+                        }
+                    }
+                }
+
+                for g in .store.groups {
+                    col {
+                        style: "queue-group w-full gap-0.5"
+
+                        row {
+                            style: "h-7 items-center gap-2 px-2"
+                            // 分组标题：根本身用可见文案（空串不能当标题）。
+                            if g == "" {
+                                text "根目录" {
+                                    style: "text-xs font-semibold text-muted-foreground"
+                                }
+                            } else {
+                                text g {
+                                    style: "text-xs font-semibold text-muted-foreground"
+                                }
+                            }
+                        }
+
+                        for i, item in .store.playlist {
+                            if item.rel_dir == g {
+                                col {
+                                    onclick: .SelectIndex(i)
+                                    style: if item.id == .store.current_id {
+                                        "queue-item w-full px-3 py-2 rounded-md bg-accent border border-primary cursor-pointer gap-0.5"
+                                    } else {
+                                        "queue-item w-full px-3 py-2 rounded-md border border-transparent hover:bg-muted cursor-pointer gap-0.5"
+                                    }
+                                    text item.title { style: "text-xs font-medium" }
+                                    text item.size_str {
+                                        style: "text-xs text-muted-foreground font-mono"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 底部：本地文件（真选择，T-09）+ 重新扫描 + 隐藏 FilePicker ──
+            col {
+                style: "w-full p-3 border-t border-border gap-2"
+                button "打开本地视频文件" {
+                    onclick: .LocalPick
+                    style: "local-pick w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
+                }
+                button "重新扫描媒体库" {
+                    onclick: .Rescan
+                    style: "rescan-btn w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
+                }
+                text .store.queue_summary {
+                    style: "text-xs text-muted-foreground"
+                }
+                // 隐藏的 File API 包装：size: 0 让 VM 端的 lucide 占位
+                // （"file-picker" 不在表内）不可见；Vue 端它只渲染 display:none
+                // 的 input，trigger 递增驱动对话框，选中经 onpick 回传。
+                FilePicker {
+                    trigger: .store.pick_seq,
+                    size: 0,
+                    onready: .LocalPickReady,
+                    onpick: .LocalPicked
+                }
+            }
+        }
+    }
+
+    on {
+        .SelectIndex(i int) -> { store.SelectIndex(i) }
+        .LocalPick -> { store.LocalPick() }
+        .LocalPickReady -> { store.LocalPickReady() }
+        .LocalPicked(url str, name str) -> { store.LocalPicked(url, name) }
+        .Rescan -> { store.Rescan() }
+        .TogglePlaylist -> { store.TogglePlaylist() }
+    }
+}

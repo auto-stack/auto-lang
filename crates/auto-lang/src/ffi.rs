@@ -137,15 +137,15 @@ impl CFfiBridge {
             return Ok(id);
         }
 
-        // Load the library (for future libloading support)
+        // Load the library for real (PLAN-617 T-16 landed the Plan-212 load path).
         if !self.libraries.contains_key(library) {
-            // TODO(Plan-212): Implement real C library loading via libloading
-            log::info!("Would load C library from: {}", library_path.display());
-
-            // When libloading is implemented:
-            // let lib = libloading::Library::new(&library_path)
-            //     .map_err(|e| VMError::FFI(format!("Failed to load {}: {}", library_path, e)))?;
-            // self.libraries.insert(library.to_string(), lib);
+            let lib = load_library(&library_path)?;
+            log::info!(
+                "Loaded C library: {} ({})",
+                library,
+                library_path.display()
+            );
+            self.libraries.insert(library.to_string(), lib);
         }
 
         // Create native shim for this C function
@@ -211,6 +211,54 @@ impl CFfiBridge {
     pub fn get_functions(&self) -> &HashMap<(String, String), u16> {
         &self.functions
     }
+
+    /// Run `f` with the loaded library, if it has been loaded.
+    ///
+    /// Scoped on purpose: `libloading::Symbol<'lib, T>` borrows from the
+    /// library, so handing one out would tie callers to a lifetime owned by
+    /// this map. Taking a closure keeps the symbol's use inside the borrow.
+    ///
+    /// PLAN-617 T-16: this is the accessor behind the (still open) Plan-212
+    /// marshaling work — loading is real now, calling arbitrary C signatures
+    /// with converted arguments is not.
+    pub fn with_library<R>(
+        &self,
+        library: &str,
+        f: impl FnOnce(&libloading::Library) -> R,
+    ) -> Option<R> {
+        self.libraries.get(library).map(f)
+    }
+
+    /// Names of libraries that are actually loaded.
+    pub fn loaded_libraries(&self) -> Vec<&str> {
+        self.libraries.keys().map(String::as_str).collect()
+    }
+}
+
+/// Load a dynamic library for the C FFI bridge.
+///
+/// PLAN-617 T-16 replaced the Plan-212 placeholder (`log::info!("Would load
+/// C library from: ...")`, which silently pretended to succeed) with a real
+/// `LoadLibrary`/`dlopen`. A missing or unloadable library is now a **hard
+/// error** the caller sees, instead of a quiet no-op that surfaces later as a
+/// mysterious wrong result.
+///
+/// Note the deliberate contrast with the native-media engine
+/// ([`crate::ui::mpv`]), where an absent runtime library is a *normal*
+/// degradation path rather than an error: there the library is an optional
+/// capability the machine may simply not have; here the library was named
+/// explicitly by a transpiled module, so its absence is a defect.
+pub fn load_library(path: &Path) -> Result<libloading::Library, VMError> {
+    // SAFETY: mapping a dynamic library into the process. Resolving symbols
+    // from it (`with_library`) is the caller's responsibility; each caller
+    // must know the symbol's signature (see the C-transpiled module metadata).
+    unsafe { libloading::Library::new(path) }.map_err(|e| {
+        VMError::FFI(format!(
+            "Failed to load C library '{}': {}",
+            path.display(),
+            e
+        ))
+    })
 }
 
 /// C function signature for FFI
@@ -1198,6 +1246,14 @@ mod tests {
         );
     }
 
+    /// A library path that is guaranteed loadable on every platform: the test
+    /// executable itself. PLAN-617 T-16 made `register_c_function` really load
+    /// the library, so the old `"target/hal.dll"` (which never existed) is no
+    /// longer a valid input — it was only "fine" while loading was a no-op.
+    fn loadable_library_path() -> PathBuf {
+        std::env::current_exe().expect("current_exe")
+    }
+
     #[test]
     fn test_register_c_function() {
         let mut bridge = CFfiBridge::new();
@@ -1205,9 +1261,9 @@ mod tests {
         let sig = CSignature::new().param(CType::Int).returns(CType::Int);
 
         let native_id =
-            bridge.register_c_function("hal", "gpio_init", sig, PathBuf::from("target/hal.dll"));
+            bridge.register_c_function("hal", "gpio_init", sig, loadable_library_path());
 
-        assert!(native_id.is_ok());
+        assert!(native_id.is_ok(), "可加载的库应注册成功：{native_id:?}");
         let id = native_id.unwrap();
         assert_eq!(id, 200);
         assert_eq!(bridge.next_native_id, 201);
@@ -1220,11 +1276,63 @@ mod tests {
         let sig = CSignature::new().param(CType::Int).returns(CType::Int);
 
         let _ = bridge
-            .register_c_function("hal", "gpio_init", sig, PathBuf::from("target/hal.dll"))
+            .register_c_function("hal", "gpio_init", sig, loadable_library_path())
             .unwrap();
 
         assert_eq!(bridge.get_function_id("hal", "gpio_init"), Some(200));
         assert_eq!(bridge.get_function_id("hal", "nonexistent"), None);
+    }
+
+    /// PLAN-617 T-16: the load path is real now, so an unloadable library is a
+    /// **hard error** instead of the old silent no-op that surfaced later as a
+    /// mysterious wrong result. Also asserts the failure leaves no half-state
+    /// (nothing registered, id counter untouched), so a caller can retry after
+    /// fixing the path.
+    #[test]
+    fn test_register_c_function_rejects_unloadable_library() {
+        let mut bridge = CFfiBridge::new();
+        let sig = CSignature::new().param(CType::Int).returns(CType::Int);
+        let bogus = PathBuf::from(if cfg!(windows) {
+            r"Z:\definitely\not\here\hal.dll"
+        } else {
+            "/definitely/not/here/hal.so"
+        });
+
+        let result = bridge.register_c_function("hal", "gpio_init", sig, bogus);
+        assert!(result.is_err(), "不存在的库必须报错，不能像旧实现那样静默成功");
+        // VMError 没有 Display，用 Debug 形态做子串断言即可。
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            msg.contains("hal.dll") || msg.contains("hal.so"),
+            "错误信息里应带上失败的路径，实际：{msg}"
+        );
+
+        // 无半状态：函数未注册、id 计数器未推进、库未记录。
+        assert_eq!(bridge.get_function_id("hal", "gpio_init"), None);
+        assert_eq!(bridge.next_native_id, 200);
+        assert!(bridge.loaded_libraries().is_empty());
+        assert!(bridge.with_library("hal", |_| ()).is_none());
+    }
+
+    /// The scoped accessor only sees libraries that actually loaded.
+    #[test]
+    fn test_with_library_exposes_only_loaded_libraries() {
+        let mut bridge = CFfiBridge::new();
+        assert!(bridge.with_library("hal", |_| ()).is_none());
+
+        let sig = CSignature::new().param(CType::Int).returns(CType::Int);
+        bridge
+            .register_c_function("hal", "gpio_init", sig, loadable_library_path())
+            .unwrap();
+
+        assert_eq!(bridge.loaded_libraries(), vec!["hal"]);
+        assert!(bridge.with_library("hal", |_| ()).is_some());
+        // 第二个函数复用同一已加载库，不得重复加载（map 里仍只有一条）。
+        let sig2 = CSignature::new().returns(CType::Int);
+        bridge
+            .register_c_function("hal", "gpio_read", sig2, loadable_library_path())
+            .unwrap();
+        assert_eq!(bridge.loaded_libraries(), vec!["hal"]);
     }
 
     // =================================================================

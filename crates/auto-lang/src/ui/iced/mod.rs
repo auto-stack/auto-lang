@@ -9,6 +9,9 @@ pub mod popover;
 // Plan 499 M2: 指针移动限频 widget(mouse-area onmousemove 臂承载,
 // 坐标换算 + ≤30Hz 限频 + 量化去重)。
 pub mod pointer_area;
+
+/// `progress` 的 `onseek` 在 iced 端的指针承载（可拖拽进度条）。
+pub mod seek_area;
 // PLAN-002 B: 布局件 hover 态 widget(row/col/div 的 `hover:` 变体类消费;
 // 共享标志 + request_redraw,无 view 重建)。
 pub mod hover_area;
@@ -25,6 +28,9 @@ pub mod table_resize;
 pub mod snapshot;
 // Plan 515 D1: native 窗口真图标（HICON→RGBA）缓存（486 占位清偿）。
 pub mod native_icon;
+
+/// PLAN-617 后续：lucide 全量字形表（由 scripts/gen-lucide-table.mjs 生成，勿手改）。
+mod lucide_generated;
 // Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
 pub mod virtual_window;
 pub mod broker_surface;

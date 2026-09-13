@@ -1,0 +1,117 @@
+// viewport.at — 视频视口（PLAN-617 T-03）：受控 <video> + 状态条 + 错误/降级面板。
+//
+// 受控媒体契约（§2.3）在这里落地：`src` 与 `controls`/`preload`/`playsinline`
+// 是**透传**绑定；`paused`/`position`/`volume`/`muted`/`rate` 是**受控下行**，
+// 由生成器（crates/auto-lang/src/ui_gen/vue.rs T-07）翻成元素属性写入；
+// `ontimeupdate`/`onloadedmetadata`/`onplaystatechange`/`onended`/`onmediaerror`
+// 是**上行回灌**，由生成器发射的原生监听包装取值后调用本组件的 handler。
+// 两端同名同单位：volume 是作者面 0..100，position 是秒。
+//
+// VM 端约束（§11-D / docs/style-coverage.md）：`flex-1` 与 `shrink-0` 在 VM 不
+// 生效，`video` 在 VM 端是零高度 —— 所以画面区由**真实容器 col** 承载高度，
+// 不给 video 自己加 flex-1；布局全走常规流，不用 absolute/fixed。
+
+use player_store: PlayerStore
+
+widget Viewport {
+    msg {
+        TogglePlay,
+        OnTime(float),
+        OnDuration(float),
+        OnPlayState(bool),
+        OnEnded,
+        OnMediaError(str),
+        OnAudioTrack(bool)
+    }
+
+    view {
+        col {
+            style: "w-full h-full flex-col bg-black min-h-0"
+
+            // ── 元信息条：真实扫描字段（文件名 / 相对目录 / 字节数）──
+            row {
+                style: "h-9 items-center gap-3 px-4"
+                text .store.current_title {
+                    style: "text-xs font-medium text-white truncate max-w-sm"
+                }
+                col { style: "flex-1" }
+                if .store.current_dir_label != "" {
+                    text .store.current_dir_label {
+                        style: "text-xs font-mono text-zinc-500"
+                    }
+                }
+                text .store.current_size { style: "text-xs font-mono text-zinc-400" }
+            }
+
+            // ── 画面区：受控 <video> ──
+            // 点击视口切换播放（与播控条的播放/暂停键同义）。
+            col {
+                style: "w-full h-full flex-1 min-h-0 items-center justify-center"
+
+                video {
+                    src: .store.current_url
+                    controls: false
+                    preload: "metadata"
+                    playsinline: true
+                    paused: .store.is_playing == false
+                    position: .store.seek_target
+                    volume: .store.volume
+                    muted: .store.is_muted
+                    rate: .store.playback_rate
+                    class: "w-full h-full object-contain"
+                    onclick: .TogglePlay
+                    ontimeupdate: .OnTime($0)
+                    onloadedmetadata: .OnDuration($0)
+                    onplaystatechange: .OnPlayState($0)
+                    onended: .OnEnded
+                    onmediaerror: .OnMediaError($0)
+                    onaudiotrack: .OnAudioTrack($0)
+                }
+
+                // 错误面板：解码/加载失败时**替换**纯黑，给出真实原因
+                // （AC-10：任何失败都有明确文案，没有静默黑屏）。
+                if .store.media_error != "" {
+                    col {
+                        style: "w-full items-center justify-center gap-2 px-6 py-4"
+                        text "无法播放该文件" {
+                            style: "text-sm font-semibold text-destructive-foreground"
+                        }
+                        text .store.media_error {
+                            style: "text-xs text-zinc-400 text-center"
+                        }
+                    }
+                }
+            }
+
+            // ── 状态条：媒体状态 + 实测时长/进度（由回灌驱动，不是常量）──
+            // 音轨标注（AC-16b）：audio_unsupported 只能由 OnAudioTrack(false)
+            // 置真（Chromium 播放 >1s 仍 0 音频字节），是**实测**结论而不是
+            // 凭扩展名的猜测；界面不假装有声，也不反向声称无声。
+            row {
+                style: "h-8 items-center justify-center gap-4 px-4"
+                text .store.status_text { style: "text-xs text-zinc-400" }
+                if .store.audio_unsupported {
+                    text "音轨不受支持（Dolby Digital Plus 无浏览器解码器）" {
+                        style: "audio-note text-xs font-medium text-amber-400"
+                    }
+                }
+                if .store.has_current {
+                    text "画幅 自适应" { style: "text-xs font-mono text-zinc-500" }
+                    text "时长 " + .store.duration_str {
+                        style: "text-xs font-mono text-zinc-500"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .TogglePlay -> { store.TogglePlay() }
+        .OnTime(t float) -> { store.OnTime(t) }
+        .OnDuration(d float) -> { store.OnDuration(d) }
+        .OnPlayState(p bool) -> { store.OnPlayState(p) }
+        .OnEnded -> { store.OnEnded() }
+        .OnMediaError(m str) -> { store.OnMediaError(m) }
+        .OnAudioTrack(ok bool) -> { store.OnAudioTrack(ok) }
+    }
+}

@@ -1335,7 +1335,11 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             .map(|a| a.get_expr().clone())
                             .collect();
                         match method.as_str() {
-                            "get" if pos_args.len() == 1 => {
+                            // PLAN-617 T-10: `get_json` 与 `get` 同映射——这是
+                            // 「双端一致取 JSON body」配方的 Vue 半边（VM 侧
+                            // auto.http.get_json 返回 body 字符串，配
+                            // json.to_value 解析；见 stdlib.rs shim_http_get 注）。
+                            "get" | "get_json" if pos_args.len() == 1 => {
                                 write!(out, "(await (await fetch(").ok();
                                 transpile_expr(&pos_args[0], ctx, out);
                                 write!(out, ")).json())").ok();
@@ -1975,21 +1979,35 @@ fn try_transpile_builtin_call(
 
     match module {
         // json.parse(x) → JSON.parse(x); json.stringify(x) → JSON.stringify(x)
+        // PLAN-617 T-10: json.to_value(x) → x（恒等）——它是 VM 侧的「JSON 字符串
+        // → Value」原语（auto.json.to_value）；Vue 侧 Http.get/get_json 已返回
+        // 解析后的对象，恒等映射让 `json.to_value(Http.get_json(url))` 成为
+        // 双端同源不分公司配方（030 player_store 即此写法）。
         "json" => {
-            let js_method = match method {
-                "parse" => "parse",
-                "stringify" => "stringify",
-                _ => return false,
-            };
-            write!(out, "JSON.{}(", js_method).ok();
-            for (i, arg) in args.args.iter().enumerate() {
-                if i > 0 {
-                    write!(out, ", ").ok();
+            if method == "to_value" {
+                match args.args.first() {
+                    Some(a) => {
+                        transpile_expr(&a.get_expr().clone(), ctx, out);
+                        true
+                    }
+                    None => false, // 无参的畸形调用走通用路径（错误照常上报）
                 }
-                transpile_expr(&arg.get_expr(), ctx, out);
+            } else {
+                let js_method = match method {
+                    "parse" => "parse",
+                    "stringify" => "stringify",
+                    _ => return false,
+                };
+                write!(out, "JSON.{}(", js_method).ok();
+                for (i, arg) in args.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ").ok();
+                    }
+                    transpile_expr(&arg.get_expr(), ctx, out);
+                }
+                write!(out, ")").ok();
+                true
             }
-            write!(out, ")").ok();
-            true
         }
         // storage.get(x) → (localStorage.getItem(x) ?? ''); storage.set(x, y) → localStorage.setItem(x, y)
         // PLAN-553: getItem 返回 string|null（键缺席为 null）——补 ?? '' 与 VM 侧
