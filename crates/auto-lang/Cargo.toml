@@ -69,13 +69,19 @@ ui-dialog = ["dep:rfd", "dep:raw-window-handle"]
 # Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test) —
 # offline bounds assertions for the VM Row/layout bug matrix.
 iced-layout-tests = ["ui-iced", "dep:iced_test"]
-# PLAN-617 T-15: VM 原生播放门控 spike（libmpv DLL 运行时加载 + wgpu 纹理上传
-# 实测）。帧上屏不能走 iced 的图像通道：`Handle::from_rgba` 每帧 mint 新的
-# `Id::unique()`（`Id` 构造器私有，仓外无法复用同一 id），而 iced_wgpu 的 atlas
-# 上限 2048、≥2MB 一律走异步 worker 上传——视频帧流必然踩 renderer.rs:2889 记录
-# 的闪烁路径。故 spike 自持 wgpu 纹理。iced_wgpu 已在 iced 默认特性的依赖图内，
-# 该直接边不引入新的编译单元。仅本地 spike 使用，不参与默认档与 CI。
-mpv-spike = ["ui-iced", "dep:iced_wgpu"]
+# PLAN-617 T-16: VM/iced 端原生播放引擎（libmpv DLL 运行时加载 + SW render）。
+# **零构建期原生依赖**——`libloading` 本就是本 crate 的常规依赖，DLL 只在运行时
+# 由 `AUTO_MPV_LIB` / exe 同目录解析；没装 mpv 的机器照常编译、照常过 CI，
+# 只是走降级（AC-20）。故这里只挂 `ui`（廉价 marker），不牵 iced。
+# 渲染层对接（帧上屏）见 T-17；`video` 元素支持级别提升见 T-19。
+mpv-native = ["ui"]
+# PLAN-617 T-15: 门控 spike（libmpv 运行时加载 + wgpu 纹理上传实测）。帧上屏不能走
+# iced 的图像通道：`Handle::from_rgba` 每帧 mint 新的 `Id::unique()`（`Id` 构造器
+# 私有，仓外无法复用同一 id），而 iced_wgpu 的 atlas 上限 2048、≥2MB 一律走异步
+# worker 上传——视频帧流必然踩 renderer.rs:2889 记录的闪烁路径。故 spike 自持 wgpu
+# 纹理。iced_wgpu 已在 iced 默认特性的依赖图内，该直接边不引入新的编译单元。
+# 仅本地 spike 使用，不参与默认档与 CI。
+mpv-spike = ["mpv-native", "ui-iced", "dep:iced_wgpu"]
 # Plan 019 批次七: autodown-core crate 消费（VM markdown/autodown widget 真渲染
 # —— parse_blocks → 面板树 → iced View）。跨仓 path 依赖指向 auto-down 主检出的
 # crate（两仓 plan-019 分支已互联合入：auto-down bd8d16e / auto-lang 1c80b8cf5）。
@@ -275,6 +281,18 @@ insta = { version = "1", features = ["yaml"] }
 [[bench]]
 name = "incremental_transpile_bench"
 harness = false
+
+# ============================================================================
+# Integration tests
+# ============================================================================
+
+[[test]]
+name = "mpv_engine"
+path = "tests/mpv_engine.rs"
+# PLAN-617 T-16: 原生播放引擎的降级与生命周期回归。**必须**是集成测试目标而
+# 不是 lib 单测：该特性挂在 lib 的 `--test` 目标上会触发 rustc ICE（见上方
+# mpv_spike example 的注释 / 债务 P617-D1）。默认档与 CI 不编译（AC-20）。
+required-features = ["mpv-native"]
 
 # ============================================================================
 # Examples
