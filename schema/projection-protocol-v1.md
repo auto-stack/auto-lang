@@ -24,19 +24,28 @@
 
 | 字段 | 类型 | 语义 | 权属 | 引入 |
 |---|---|---|---|---|
-| `__wm_wins` | Obj 数组 `{wid:str, title:str, focused:str, workspace:str, app:str, icon:str, native:str, pager:str}` | **全部**虚拟窗（跨 workspace 全集，dock 运行指示消费；可见性由宿主绘制层自过滤）。`focused` = `"1"/""`；`workspace` = 分区下标串；`app` = 注册表 id（boot 窗缺省 `""`）；`icon` = lucide 名（注册表实时查 → 缺省 `"app-window"`）。**v1.3 native 槽位条目**：Docked 原生窗口追加在尾部，字段集 `{wid, title, focused, native, icon}`（workspace/app 不适用省略）——`wid` = `"N<slot_id>"` **独立编码空间**（`N` 前缀 + 十进制槽位 id，与 App wid 的纯数字空间隔离；shell 侧零解析成本区分两类条目）；`native` = `"1"`（App 条目恒空串，分支判据统一）；`focused` 恒空（native 焦点域在 OS 层，WM 不代管）；`icon` 占位 `"app-window"`（HICON 提取为增强候选）。**v1.5 `pager` 旗标**：`"1"` = 本窗属其分区 z_order 前 4（pager 缩略网格≤4 截断消费；溢出窗⊕空串，与 `ws.more` 标签配套——.at 无过滤后截断原语，宿主派生保持 I9；mru/native 条目恒空串） | 宿主写 | v1（native 条目/`native` 字段：v1.3；pager：v1.5） |
+| `__wm_wins` | Obj 数组 `{wid:str, title:str, focused:str, workspace:str, app:str, icon:str, native:str, pager:str, pinned:str, dup_app:str}` | **全部**虚拟窗（跨 workspace 全集，dock 运行指示消费；可见性由宿主绘制层自过滤）。`focused` = `"1"/""`；`workspace` = 分区下标串；`app` = 注册表 id（boot 窗缺省 `""`）；`icon` = lucide 名（注册表实时查 → 缺省 `"app-window"`）。**v1.3 native 槽位条目**：Docked 原生窗口追加在尾部，字段集 `{wid, title, focused, native, icon}`（workspace/app 不适用省略）——`wid` = `"N<slot_id>"` **独立编码空间**（`N` 前缀 + 十进制槽位 id，与 App wid 的纯数字空间隔离；shell 侧零解析成本区分两类条目）；`native` = `"1"`（App 条目恒空串，分支判据统一）；`focused` 恒空（native 焦点域在 OS 层，WM 不代管）；`icon` 占位 `"app-window"`（HICON 提取为增强候选）。**v1.5 `pager` 旗标**：`"1"` = 本窗属其分区 z_order 前 4（pager 缩略网格≤4 截断消费；溢出窗⊕空串，与 `ws.more` 标签配套——.at 无过滤后截断原语，宿主派生保持 I9；mru/native 条目恒空串）。**F2 走查增补 `pinned`/`dup_app`**：`"1"/""`——本窗 app 已固定 / 同 app 已有更前位（z_order 序首见之外）非隐藏窗；dock 条目跳过判据（**等式消费**——原 `__dock_pinned_csv.contains(...)` 为 view 条件方法调用死点恒 false，实机固定图标+运行图标并存实证；`dup_app` 兼承"同类 app 共享一图标"用户裁定；mru 条目恒空串；窗开/关/hide 翻 win 指纹段随写刷新） | 宿主写 | v1（native 条目/`native` 字段：v1.3；pager：v1.5；pinned/dup_app：F2 走查增补） |
 | `__wm_meta` | str `"layout\tfocused_wid"` | 布局名（free/grid/master-stack）+ 焦点窗 wid（无焦点空串） | 宿主写 | v1 |
 | `__wm_workspaces` | Obj 数组 `{id:str, name:str, current:str, label:str, more:str}` | 分区清单；`id` = 下标串；`name` = pack 默认 "Desktop N"（M4 settings 可覆盖）；`current` = `"1"/""`；`label` = 1 基人读标签（= id+1 十进制串；**宿主投影**，避开 .at 字符串算术——pager 按钮文本消费）；**v1.5 `more`**：溢出标签 `"+N"`（分区窗数 >4 时；无溢出/空分区空串——pager 网格≤4 截断配套消费） | 宿主写 | v1（label：v1.1；more：v1.5） |
 | `__wm_mru` | Obj 数组（条目同 `__wm_wins` 六字段） | **当前分区**的窗口按 MRU 序（front = 最近聚焦；退役 Ctrl+Tab 焦点环语义延续——焦点环不跨分区，472 定案）。switcher overlay 专用消费面，dock 消费不受影响。switcher **handler** 侧消费走宿主召唤时的伴随平行字符串列表（`mru_wids`/`mru_titles`/`mru_icons` + `call_handler("RebuildMru")` 建 handler 自有 rows，B12 规避——464 launcher `apps_*`/`ranked` 同型；`__wm_mru` 本体保持合同面对拍形态） | 宿主写 | v1.1 |
-| `__wm_running` | str `",id1,id2,"` | 运行中 app id 集合的**派生串**（pinned 运行指示的 view 条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实源；T4 增补） | 宿主写 | v1 |
+| `__wm_running` | str `",id1,id2,"` | 运行中 app id 集合的**派生串**（.at view 条件无法 `contains` 消费——方法调用死点，O2 实证；保留为对拍/审计面 + handler 侧可用。pinned 灰条判据改 `__dock_pinned` 条目 `running` 字段） | 宿主写 | v1 |
 | `__wm_notes` | Obj 数组 `{id:str, kind:str, msg:str, at:str}` | **通知历史全量**（MRU 序 front=最新；容量 50 FIFO）。shell 侧为合同面（dock 不直接消费）；通知中心面板 handler 消费走召唤/活更新时的伴随平行字符串列表（`note_ids`/`note_kinds`/`note_msgs`/`note_ats` + `call_handler("RebuildNotes")` 建 handler 自有 rows，B12 规避——`__wm_mru` 同型）。`kind` ∈ success/error/info（约定值，未知宿主侧已兜底）；`at` = 入史时刻 `HH:MM` 本地时间串（宿主投影） | 宿主写 | v1.2 |
 | `__wm_notes_unread` | str | 未读通知计数十进制串（dock 铃铛 badge 条件消费：`!= "0"` 且非空串渲染）；开面板即清零；不落盘——boot 恢复后恒 `"0"` | 宿主写 | v1.2 |
 | `__wm_focused_app` | str | **v1.6** 聚焦窗 registry_id 派生串（"" = 无聚焦或聚焦在 native 槽位）——pinned 图标聚焦底条 + 底色高亮的**标量判据面**（.at 无法跨列表表达"存在聚焦窗"量词，宿主派生保持 I9；聚焦变化必经 meta 段 focused_wid 翻转触发重写，本字段随写同步） | 宿主写 | v1.6 |
-| `__dock_pinned_csv` | str `",id1,id2,"` | **v1.6** 固定集合派生串（前后逗号封边；空表 = 单纯 `","`）——dock 窗口条目与固定图标去重合并判据（app 已固定者不再重复渲染其窗口条目；view 条件 `contains` 消费，Obj 数组字段读 B12 规避——同 `__wm_running` 先例） | 宿主写 | v1.6 |
+| `__dock_pinned_csv` | str `",id1,id2,"` | **v1.6** 固定集合派生串（前后逗号封边；空表 = 单纯 `","`）——dock 去重的**原判据面，已被 `__wm_wins.pinned`/`dup_app` 派生字段取代**（view 条件 contains 死点，F2 走查实证）；保留为对拍/审计面 | 宿主写 | v1.6 |
+| `__dock_pinned` | Obj 数组 `{id:str, icon:str, running:str}` | **v1.6** 固定集合（config.dock_pinned 单源；icon 注册表解析缺省 `app-window`）。**F2 走查增补 `running`**：`"1"/""` 该 app 当前有非隐藏运行窗——pinned 图标灰条判据（等式消费）；inject_dock_pinned（pin/unpin 即时臂）与 sync 投影（fp 差分刷新臂，窗开合即刷新）双写者同形幂等 | 宿主写 | v1.6（running：F2 走查增补） |
 | `__wm_notes_visible` | str `"1"/""` | **v1.6** 通知中心面板可见性（宿主 overlay 组件 visible 直读投影；外点/×/Esc 任意关闭路径自隐后同步翻转）——铃铛打开态高亮的唯一事实源；指纹并入 notes 段尾 `:v`（见 §3） | 宿主写 | v1.6 |
+| `__wm_settings_open` | str `"1"/""` | **F2 走查增补** 设置窗在场标量（存在非隐藏 os-config 窗 = "1"；W1 close→hide 后隐藏即回落）——⚙️ 高亮判据（原 `__wm_running.contains(",os-config,")` view 条件方法调用死点，实机探针定性：设置窗在场齿轮仍无高亮）；窗开/关/hide 翻 win 指纹段随写同步 | 宿主写 | F2 走查增补 |
 | `__wm_fp` | str | 投影指纹（§3）；shell 不消费，仅门控 | 宿主写 | v1 |
 | `__wm_clock` | str `"HH:MM"` | dock 时钟本地时间串（497 S3）。**非门控字段**：不进 `__wm_fp` 指纹、不走 §3 投影组换装——ServiceTick 帧泵独立注入（分钟变化才写，稳态零重建；本地时钟非驱动事实，避免每分钟全组换装抖动） | 宿主写 | v1.4 内（497） |
 | `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
+
+### 2.0.1 通知面板接缝字段（`assets/notification_center.at`，召唤/活更新注入）
+
+| 字段 | 类型 | 语义 | 权属 | 引入 |
+|---|---|---|---|---|
+| `__panel_h` | int | **F2 走查增补** 面板根列显式像素高（视口 - dock 预留）——真实链中 Stack 子层 `h-full`（Fill）约束传递失效（headless 全链复刻通过、实机 mt-auto 填充条塌缩，O3 活体 diff 实证），显式像素高使贴底锚定不依赖约束传递；注入点 = 召唤/活更新（resize 开着面板留旧值，重开生效——v1 可接受） | 宿主写 | F2 走查增补 |
+| `__panel_max_h` | int | **F2 走查增补** 历史列表最大高（= `__panel_h` - 底垫 60 - 标题行 ~52 - 余量 12）——条目多时列表 `max-h` 滚动，卡片恒有界（实机 6 条 ~110px 条目 ≈ 790px > 744 可用 → mt-auto 空间归零卡片贴顶，用户截图复现） | 宿主写 | F2 走查增补 |
 
 ### 2.1 桌面本体面字段（`assets/desktop.at`，v1.4 内字段扩展——不升版本段）
 
@@ -137,6 +146,32 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.6（2026-09-13 F2 走查增补，PLAN-012 O1-O3 收口）
+
+- **判据面迁移（view 条件方法调用死点清偿）**：`.at` view 条件求值器
+  （`eval_condition_with_inner`）无方法调用臂——`.contains(...)` 等
+  **静默塌缩恒 false**（T9 发现②实锤升级：实机 dock 固定图标+运行图
+  标并存、pinned 灰条缺失、⚙️ 无高亮三处活体定性）。判据面全部改宿主
+  派生 + 等式消费：
+  - `__wm_wins` 条目增 `pinned`/`dup_app`（"1"/""）——dock 去重 + 同类
+    app 共享一图标（用户裁定）；`__dock_pinned` 条目增 `running`
+    （pinned 灰条）；新标量 `__wm_settings_open`（⚙️ 高亮）。
+  - `__dock_pinned_csv`/`__wm_running` 降级为对拍/审计面（handler 侧
+    contains 仍可用——限制仅 view 条件）。
+- **通知面板几何注入**：`__panel_h`（根列显式像素高）+ `__panel_max_h`
+  （列表 max-h）——条目多时卡片贴顶（6 条 ~110px ≈ 790 > 744 可用，
+  用户截图复现）+ 真实链 Stack 子层 h-full 约束传递失效（headless 全链
+  复刻通过、实机塌缩，O3 活体 diff 实证）双因子清偿。
+- **desktop 模式 primary 锚点迁移**：特权 shell 先于直挂 comps 分配
+  （boot 序调整）+ shell 层 MCP 同步开启——autoui_state/autoui_vtree/
+  截图通道自此观测 shell 投影面（O1"真实链路 bounds 探针"前置条件；
+  旧序 primary = 首个直挂窗，shell 面不可观测）。配套：shell_fields.
+  window_size 随 tick 镜像宿主 viewport（层 App 无窗事件，截图守卫曾
+  拒死 MCP 截图）。
+- **金样增补**：iced-layout-tests `p012_o3_notification_layer_in_stack_
+  anchor`（Stack 装配锚定守卫）+ `p012_o3_notification_real_component_
+  in_stack`（真组件链少条目贴底 + 多条目 max-h 有界双场景）。
 
 ### v1.6（2026-09-12，PLAN-012）
 

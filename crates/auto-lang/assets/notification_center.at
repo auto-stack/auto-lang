@@ -41,6 +41,15 @@ widget NotificationCenter {
         var __desktop_cmd str = ""  // 上行命令总线（dismiss/clear 记录）
         var __wm_notes = []         // 协议 v1.2 合同面（声明不 handler 消费）
         var __wm_notes_unread str = ""  // 协议 v1.2 合同面（badge 源在 shell）
+        // PLAN-012 O3：历史列表最大高（宿主按 视口-dock-gap 注入，px）——
+        // 条目多时卡片高度超视口会把 mt-auto 下压空间吃光（实机贴顶复现：
+        // 6 条 ~110px 条目 ≈ 790px > 744 可用），列表改 max-h 滚动后卡片
+        // 恒有界、贴底锚定在任何条目数下成立。
+        var __panel_max_h int = 560
+        // PLAN-012 O3：面板根列显式高（视口 - dock，宿主注入）——真实链
+        // 中 Stack 子层 `h-full` 约束传递失效（headless 复刻通过、实机
+        // mt-auto 塌缩），显式像素高使贴底锚定不依赖约束传递。
+        var __panel_h int = 744
 
         // ---- 通知快照（宿主注入平行字符串列表；B12 规避）----
         var note_ids = []
@@ -60,7 +69,9 @@ widget NotificationCenter {
             mouse-area (onclick: .Close) {
                 style: "w-full h-full"
                 col {
-                    style: "w-full h-full"
+                    // PLAN-012 O3：显式像素高（__panel_h 宿主注入）——h-full
+                    // 在真实 Stack 子层约束传递失效（见 model 注记）。
+                    style: "w-full h-[${.__panel_h}px]"
                     // 顶部下压：mt-auto 填充条（flex-1 在 iced 轨塌缩——
                     // T4 探针定案，头注引证）。
                     spacer { style: "mt-auto w-full" }
@@ -91,9 +102,12 @@ widget NotificationCenter {
                                     }
                                 }
 
-                                // 历史列表（MRU 序；空态）
+                                // 历史列表（MRU 序；空态）。PLAN-012 O3：
+                                // max-h + overflow-y-auto（028-launcher T38
+                                // 先例）——条目多时列表滚动，卡片恒有界，
+                                // mt-auto 贴底锚定不被内容高度吃掉。
                                 col {
-                                    style: "w-full"
+                                    style: "w-full max-h-[${.__panel_max_h}px] overflow-y-auto"
                                     if .nrows == 0 {
                                         col {
                                             // PLAN-013 W3：补 w-full——容器无宽则收缩

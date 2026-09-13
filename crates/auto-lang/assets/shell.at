@@ -100,10 +100,14 @@ widget Desktop {
         // PLAN-012 v1.6：固定集合派生串（宿主注入 ",id1,id2,"）——窗口
         // 条目与固定图标去重合并判据（Obj 数组字段读失效 B12 同族规避）。
         var __dock_pinned_csv str = ""
-        // __dock_pinned = 宿主注入 {id,icon} Obj 数组（config.dock_pinned
-        // 单源，PLAN-012 后缺省空；icon 宿主自注册表解析——.at 无注册表
-        // 访问权）。
+        // __dock_pinned = 宿主注入 {id,icon,running} Obj 数组（config.
+        // dock_pinned 单源，PLAN-012 后缺省空；icon 宿主自注册表解析——.at
+        // 无注册表访问权；running = 运行窗在场，PLAN-012 O2 灰条判据）。
         var __dock_pinned = []
+        // PLAN-012 O2：⚙️ 高亮判据标量（非隐藏 os-config 窗在场 = "1"）——
+        // 原 view 条件 `__wm_running.contains(...)` 方法调用死点，宿主派生
+        // 等式消费（W1 close→hide 后隐藏即回落）。
+        var __wm_settings_open str = ""
         var __dock_position str = "bottom"
         var __dock_enabled str = "1"
         // Plan 505 B1：任务栏边线类（宿主投影——top→border-b / bottom→
@@ -204,10 +208,15 @@ widget Desktop {
                             // PLAN-012 W7：左侧 app 图标三态底条（Win11 形态
                             // ——聚焦主色条 / 打开灰条 / 关闭无条；固定未运行
                             // = 无条，在场即表达）。原恒主色运行点退役。
+                            // PLAN-012 O2：运行判据 = pinned 条目 `running`
+                            // 宿主派生字段（窗开合随 sync 刷新）——原
+                            // `__wm_running.contains(...)` 为 view 条件方法
+                            // 调用死点（求值器无方法臂，恒 false，实机探针
+                            // 定性：运行中 pinned 图标永无灰条）。
                             if .__wm_focused_app == p.id {
                                 div { style: "h-1 w-6 rounded-full bg-primary mt-0.5" }
                             } else {
-                                if .__wm_running.contains("," + p.id + ",") {
+                                if p.running == "1" {
                                     div { style: "h-1 w-6 rounded-full bg-muted-foreground/60 mt-0.5" }
                                 }
                             }
@@ -253,9 +262,15 @@ widget Desktop {
                         } else {
                             // PLAN-012 W4：已固定 app 的窗口条目跳过渲染
                             // （固定图标 + 运行点 + 右键菜单承载其语义）。
-                            // 正向 contains 判定（`== false` 形态在 view 条件
-                            // 语法无先例——实测整分支静默塌缩，勿回退）。
-                            if .__dock_pinned_csv.contains("," + w.app + ",") {
+                            // PLAN-012 O2 修复：判据改宿主派生字段等式——
+                            // `pinned`=app 已固定、`dup_app`=同 app 已有更前
+                            // 位窗（z_order 首见之外，"同类 app 共享一图标"
+                            // 用户裁定）。原 `__dock_pinned_csv.contains(...)
+                            // 为 view 条件方法调用死点（eval_condition_with
+                            // 无方法臂 → 静默塌缩恒 false，T9 发现②同族；
+                            // 实机 dock 固定图标+运行图标并存实证），勿回退
+                            // 到任何 `.contains(...)` 形态的 view 条件。
+                            if w.pinned == "1" || w.dup_app == "1" {
                             } else {
                                 col {
                                     style: "items-center"
@@ -406,12 +421,14 @@ widget Desktop {
                     }
                     // Plan 487 M4：设置齿轮（v1.4 open_settings 无参动词；
                     // 宿主臂二态翻转——面板可见再点即关）。
-                    // PLAN-012 W7：齿轮两态——判据 = __wm_running 含
-                    // os-config（设置窗在场即高亮；W1 close→hide 落地后
-                    // 隐藏窗被投影排除，语义自洽为"关"）。
+                    // PLAN-012 W7：齿轮两态——判据 = `__wm_settings_open`
+                    // 宿主派生标量（非隐藏 os-config 窗在场即 "1"，W1
+                    // close→hide 落地后隐藏即回落，语义自洽为"关"）。原
+                    // `__wm_running.contains(...)` 为 view 条件方法调用死点
+                    //（O2 实机探针定性：设置窗在场齿轮仍无高亮）。
                     button (icon: "settings") {
                         onclick: .OpenSettingsPanel
-                        style: if .__wm_running.contains(",os-config,") {
+                        style: if .__wm_settings_open == "1" {
                             "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                         } else {
                             "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"

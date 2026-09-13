@@ -285,6 +285,163 @@ fn w2_notification_panel_anchor_bottom_right() {
     let _ = (cw, ch);
 }
 
+/// PLAN-012 O3 复刻探针：通知面板层在 **Stack 装配**（desktop_root 真实
+/// 形态：container Fill×Fill → Stack → [底层(桌面面), 通知层]）中的锚定。
+/// w2_notification_panel_anchor_bottom_right 以面板为 simulator 根，未复刻
+/// Stack；实机（iced 0.14.2）同结构卡片贴顶（diff bbox y=0..798，用户截图
+/// 互证）——本探针复刻 Stack 层叠，锁定塌缩条件并守卫修复。
+#[test]
+fn p012_o3_notification_layer_in_stack_anchor() {
+    use iced::Length;
+    // 底层（桌面面同型）：col w-full h-full。
+    let bottom = View::Column {
+        children: vec![styled_view("DESK")],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full h-full").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    // 通知层（notification_center.at 可见态同构）：mouse-area 透明包装省略
+    //（透明传递不改变量），col w-full h-full > [mt-auto 垫, row > [flex-1
+    // 推条, 卡片(w-80)], h-[60px] 底垫]。
+    let card = View::Column {
+        children: vec![styled_view("CARDCARD")],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-80 bg-card/80 border rounded-xl").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let push = View::Row {
+        children: vec![
+            styled_view("flex-1 w-full"),
+            card,
+            styled_view("w-3 h-12"),
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full items-end").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let panel_col = View::Column {
+        children: vec![
+            styled_view("mt-auto w-full"),
+            push,
+            styled_view("h-[60px] w-full"),
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full h-full").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    // desktop_root 同型装配：container Fill×Fill > Stack[底, …, 顶]。
+    let stack = iced::widget::Stack::with_children(vec![
+        bottom.into_iced(),
+        panel_col.into_iced(),
+    ]);
+    let root: iced::Element<'static, (), iced::Theme, iced::Renderer> =
+        iced::widget::container(stack)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+    let mut ui = simulator(root);
+    let (x, y, w, _h) = bounds_of(&mut ui, "CARDCARD");
+    eprintln!("[p012-o3] card=({x},{y},{w}) — 根高 768 假设下贴底应 y>400");
+    // 贴底锚定守卫（mt-auto 填充条必须有效下压；塌缩即贴顶 y≈0）。
+    assert!(
+        y > 400.0,
+        "Stack 装配下通知卡片应贴底（实际 y={y}，贴顶=mt-auto 填充条在 Stack 子层塌缩）"
+    );
+}
+
+/// PLAN-012 O3 端到端复刻探针（真组件链）：notification_center.at 经
+/// build_dynamic_component → visible=1 → RebuildNotes → view 管线（含条件
+/// 根 `if .visible` / mouse-area / 真实类表），装配进 Stack（desktop_root
+/// 同型）量卡片锚定。静态复刻探针（上一测）已证 Stack 本身不塌缩——差异
+/// 必在真实组件链的条件根/包装层。
+#[test]
+fn p012_o3_notification_real_component_in_stack() {
+    use iced::Length;
+    let src = crate::ui::shell::shell_source("notification_center.at");
+    let stack_assembly = |comp: &crate::ui::dynamic::DynamicComponent| {
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        let bottom = View::Column {
+            children: vec![View::Text {
+                content: "DESK".to_string(),
+                style: Style::parse("w-full h-full").ok(),
+                selectable: false,
+            }],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-full h-full").ok(),
+            onclick: None,
+            on_right_click: None,
+        };
+        let stack = iced::widget::Stack::with_children(vec![
+            bottom.into_iced(),
+            view.into_iced(),
+        ]);
+        let root: iced::Element<
+            'static,
+            crate::ui::interpreter::DynamicMessage,
+            iced::Theme,
+            iced::Renderer,
+        > = iced::widget::container(stack)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+        let mut ui = simulator(root);
+        bounds_of(&mut ui, "CARDCARD")
+    };
+    // 场景 A（少条目）：2 条 → 卡片贴底锚定。
+    let mut comp = crate::build_dynamic_component(src.as_ref(), None).expect("comp");
+    let _ = comp.write_state("visible", auto_val::Value::str("1"));
+    let _ = comp.write_state("__panel_h", auto_val::Value::Int(744));
+    let _ = comp.write_state("__panel_max_h", auto_val::Value::Int(480));
+    for (k, v) in [
+        ("note_ids", vec!["1", "2"]),
+        ("note_kinds", vec!["info", "info"]),
+        ("note_msgs", vec!["CARDCARD", "row2"]),
+        ("note_ats", vec!["now", "now"]),
+    ] {
+        let vals: Vec<auto_val::Value> = v.into_iter().map(auto_val::Value::str).collect();
+        let _ = comp.write_state_vec(k, vals);
+    }
+    let _ = comp.bridge_mut().call_handler("RebuildNotes", &[]);
+    let (x, y, w, _h) = stack_assembly(&comp);
+    eprintln!("[p012-o3-real-A] card=({x},{y},{w})");
+    assert!(y > 400.0, "少条目卡片应贴底（实际 y={y}）");
+
+    // 场景 B（多条目，实机贴顶复现条件）：8 条 + max_h=480 → 卡片高度有界
+    // （列表滚动），不越过视口顶。
+    let mut comp = crate::build_dynamic_component(src.as_ref(), None).expect("comp");
+    let _ = comp.write_state("visible", auto_val::Value::str("1"));
+    let _ = comp.write_state("__panel_h", auto_val::Value::Int(744));
+    let _ = comp.write_state("__panel_max_h", auto_val::Value::Int(480));
+    let ids: Vec<String> = (1..=8).map(|i| i.to_string()).collect();
+    for (k, v) in [
+        ("note_ids", ids.clone()),
+        ("note_kinds", vec!["error".to_string(); 8]),
+        ("note_msgs", {
+            let mut m = vec!["CARDCARD".to_string()];
+            m.extend((2..=8).map(|i| format!("row{i} long message text for height")));
+            m
+        }),
+        ("note_ats", vec!["now".to_string(); 8]),
+    ] {
+        let vals: Vec<auto_val::Value> = v.into_iter().map(auto_val::Value::str).collect();
+        let _ = comp.write_state_vec(k, vals);
+    }
+    let _ = comp.bridge_mut().call_handler("RebuildNotes", &[]);
+    let (x, y, w, h) = stack_assembly(&comp);
+    eprintln!("[p012-o3-real-B] card=({x},{y},{w},{h})");
+    assert!(h < 560.0, "多条目卡片应被 max-h 约束（实际 h={h}）");
+    assert!(y > 0.0, "卡片不应越过视口顶（实际 y={y}）");
+}
+
 /// Smoke: a plain row lays out both texts with non-zero bounds and no
 /// overlap. Proves the headless renderer + text-selector plumbing works in
 /// this environment before the bug-matrix assertions rely on it.
