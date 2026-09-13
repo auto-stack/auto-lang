@@ -8,6 +8,7 @@ members = [
     "015-notes-back",
     "016-calendar",
     "019-video-app-back",
+    "030-video-player-back",
     "auto-musk-back",
     "contact-form",
     "converter",
