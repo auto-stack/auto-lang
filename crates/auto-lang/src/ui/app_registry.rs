@@ -382,6 +382,26 @@ struct OsManifestApp {
     #[serde(default = "os_manifest_default_status")]
     #[allow(dead_code)]
     status: String,
+    /// PLAN-013 T2：per-name daemon 声明（缺席 = 无 daemon 需求；value 见
+    /// [`ManifestDaemon`]）。
+    #[serde(default)]
+    daemon: Option<ManifestDaemon>,
+}
+
+/// PLAN-013 T2：manifest `daemon` 字段 schema——桌面 launch 前置 ensure 链的
+/// per-name 探测/spawn 参数。健康探针契约固定 `GET /api/health`（osconfig
+/// 既有约定，各仓 back 对齐）；`bin` 缺席 = 只探不孵（Offline 有因，不阻断
+/// launch）；`env_port` 缺席 = spawn 期派生 `<NAME 大写蛇形>_BACK_PORT`。
+#[derive(serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct ManifestDaemon {
+    /// daemon API 口（url = `http://127.0.0.1:<port>`）。
+    pub port: u16,
+    /// 仓相对二进制路径（相对 manifest 条目 `repo` 解析后的目录）。
+    #[serde(default)]
+    pub bin: Option<String>,
+    /// spawn 期端口覆盖 env 键（如 `JADE_GARDEN_PORT`）。
+    #[serde(default)]
+    pub env_port: Option<String>,
 }
 
 fn os_manifest_default_kind() -> String {
@@ -412,6 +432,48 @@ struct OsManifestFile {
 /// 故注册为 **extra root 原生挂载**。Design 01 §1-C 的「remote 窗或
 /// extra root」两候选中后者落地；非 AutoUI 纯 web app 的 iframe 嵌入
 /// 列 Stage C 候选（零新概念边界）。
+/// PLAN-013 T2：manifest `daemon` 声明查表——`(id, repo_dir, daemon)` 三元组
+/// （仅带 daemon 字段且声明了 repo 的条目；repo_dir = manifest 根 join 条目
+/// `repo` 相对路径，bin 解析用）。宽容纪律同 [`manifest_repo_roots`]：
+/// 坏 JSON 全跳 + 警告。独立读取不与 `manifest_repo_roots` 共享解析——
+/// launch 期一次性的成本，换零回归面。
+pub fn manifest_daemon_defs(
+    manifest_root: &Path,
+) -> Vec<(String, PathBuf, ManifestDaemon)> {
+    let path = manifest_root.join("apps.manifest");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let parsed: OsManifestFile = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(err) => {
+            eprintln!(
+                "[app-registry] apps.manifest parse failed (daemon lookup skipped): {err}"
+            );
+            return Vec::new();
+        }
+    };
+    parsed
+        .apps
+        .into_iter()
+        .filter_map(|app| {
+            let daemon = app.daemon?;
+            let repo_rel = app.repo?;
+            Some((app.id, manifest_root.join(repo_rel), daemon))
+        })
+        .collect()
+}
+
+/// PLAN-013 T2：launch 期单名查表便捷形态——manifest 根解析 + defs 查找。
+/// `parent` 语义同 [`host_extra_roots`]（宿主 CWD 相对父目录）。
+pub fn manifest_daemon_lookup(parent: &Path, name: &str) -> Option<(PathBuf, ManifestDaemon)> {
+    let root = resolve_os_manifest_root(parent)?;
+    manifest_daemon_defs(&root)
+        .into_iter()
+        .find(|(id, _, _)| id == name)
+        .map(|(_, repo_dir, def)| (repo_dir, def))
+}
+
 pub fn manifest_repo_roots(manifest_root: &Path) -> Vec<(String, PathBuf)> {
     let path = manifest_root.join("apps.manifest");
     let Ok(raw) = std::fs::read_to_string(&path) else {
@@ -1184,5 +1246,81 @@ mod tests {
         assert!(titles.contains(&"Todo"), "titles = {titles:?}");
         assert!(titles.contains(&"AutoEdit"), "titles = {titles:?}");
         assert_eq!(host.wm.focused, Some(crate::ui::session::Wid(3)), "新窗即焦点");
+    }
+
+    // ---- PLAN-013 T2：manifest `daemon` 字段查表 ----
+
+    /// fixture：manifest 根 + 三条目（带 daemon / 带 daemon 缺 repo / 不带
+    /// daemon），返回 (manifest 根, 兄弟探测 parent)。路径唯一化——同
+    /// osconfig_daemon::sibling_fixture 的并行竞态教训（PLAN-013 T2）。
+    fn daemon_manifest_fixture() -> (PathBuf, PathBuf) {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "autoui-013-daemon-manifest-fixture-{}-{n}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let os_root = root.join("auto-os");
+        std::fs::create_dir_all(&os_root).unwrap();
+        std::fs::write(
+            os_root.join("apps.manifest"),
+            r#"{
+  "apps": [
+    { "id": "auto-musk", "repo": "../auto-musk",
+      "daemon": { "port": 17201, "bin": "backend/target/release/musk" } },
+    { "id": "orphan", "daemon": { "port": 17999 } },
+    { "id": "plain", "repo": "../plain" }
+  ]
+}"#,
+        )
+        .unwrap();
+        (os_root, root)
+    }
+
+    #[test]
+    fn manifest_daemon_defs_filters_non_daemon_entries() {
+        let (os_root, root) = daemon_manifest_fixture();
+        let defs = manifest_daemon_defs(&os_root);
+        assert_eq!(defs.len(), 1, "仅带 daemon 且带 repo 的条目入表: {defs:?}");
+        let (id, repo_dir, def) = &defs[0];
+        assert_eq!(id, "auto-musk");
+        assert_eq!(def.port, 17201);
+        assert_eq!(
+            def.bin.as_deref(),
+            Some("backend/target/release/musk"),
+            "bin 缺省 None（只探不孵），env_port 缺省 None（派生键）"
+        );
+        assert_eq!(def.env_port, None);
+        assert_eq!(
+            repo_dir.clone(),
+            os_root.join("../auto-musk"),
+            "repo_dir = manifest 根 join 条目 repo 相对路径"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn manifest_daemon_lookup_via_sibling_probe() {
+        let (os_root, parent) = daemon_manifest_fixture();
+        // 兄弟探测臂（parent/auto-os/apps.manifest）——不触 AUTO_OS_ROOT env
+        //（env 权威臂已有 586 测试钉死先例，此处避免 env 污染并行测试）。
+        let (repo_dir, def) =
+            manifest_daemon_lookup(&parent, "auto-musk").expect("兄弟探测命中");
+        assert_eq!(def.port, 17201);
+        assert_eq!(repo_dir, os_root.join("../auto-musk"));
+        assert!(manifest_daemon_lookup(&parent, "no-such").is_none(), "未声明名 None");
+        assert!(manifest_daemon_lookup(&parent, "plain").is_none(), "无 daemon 字段 None");
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn manifest_daemon_defs_bad_json_returns_empty() {
+        let root = std::env::temp_dir().join("autoui-013-daemon-bad-fixture");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("apps.manifest"), "{ not json").unwrap();
+        assert!(manifest_daemon_defs(&root).is_empty(), "坏 JSON 宽容全跳");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
