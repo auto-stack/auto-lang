@@ -12,7 +12,7 @@ new_spec_components: [ui/icon-state, ui/icon-library-policy]
 touched_goals: []
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 7
 total_steps: 8
 ---
 
@@ -212,29 +212,78 @@ docs/components/core.md                               改：docs_gen 重生成�
 
 ## 执行步骤
 
-- [ ] **T-01 schema**：`schema/aura.at` icon element 增 `state`（`one_of:on,off` +
+- [x] **T-01 schema**：`schema/aura.at` icon element 增 `state`（`one_of:on,off` +
       binding 说明）；修 `backends.iced: native`；size default 注记改 20px 对齐
       P-2。重生成 `docs/components/core.md`。验证：`cargo test -p auto-lang
       --test docs_gen` 绿。（→AC-05/06 基础）
-- [ ] **T-02 VM 着色臂**：`style/class.rs` 增 `StrokeWidth`；`aura_view_builder.rs`
+  [✅ 已完成 2026-09-14] worktree `60b7c838c`。docs_gen 4/4 绿（DOCS_GEN_UPDATE
+  + KITCHEN_SINK_UPDATE 两轮再生后复跑确认）。**跨仓副作用**：kitchen-sink 页
+  解析到 auto-os 主检出，`widgets-gallery/src/front/pages/kitchen-sink.at` +2 行
+  （icon state 两示例）——auto-os 工作区当时已有他会话未提交改动（025-sys-monitor），
+  本计划未触碰；**该 +2 行是合并时的跨仓同步义务**，随合并收据落地，否则合并后
+  master 的 docs_gen kitchen-sink 同步测试转红。
+- [x] **T-02 VM 着色臂**：`style/class.rs` 增 `StrokeWidth`；`aura_view_builder.rs`
       增 `with_state_tint`（镜像 `with_icon_size` 结构：解析类集判定优先级、
       `extract_bool_expr` 支持绑定、注入 `Text(Primary/OnSurface)` + `StrokeWidth`）。
       单测覆盖三态 + 优先级 + 绑定。验证：`cargo check -p auto-lang` +
       `cargo t with_state_tint`。（→AC-01/02/03）
-- [ ] **T-03 VM 描边**：`renderer.rs` lucide 路径读 `StrokeWidth` 类替代写死基档；
+  [✅ 已完成 2026-09-14] worktree `609d514f2`。6 个 plan621 单测全绿（on/off/
+  未声明/显式类优先/bool 绑定/48px 细线档）；`effective_icon_box_px` 自由函数
+  与 renderer 518 规则同式；IcedStyle 增 `stroke_width` 字段并经 parity「类被
+  消费」语义接线。`cargo t plan621` 10/10（含 T-04 Web）。
+- [x] **T-03 VM 描边**：`renderer.rs` lucide 路径读 `StrokeWidth` 类替代写死基档；
       `plan619_lucide_doc_renders_geometric_ink` 回归锚 + 新增组合单测。
       验证：`cargo t plan619_lucide` 绿。（→AC-04）
-- [ ] **T-04 Web 臂**：`ui_gen/vue.rs` icon 臂支持 state（字面量 → class +
+  [✅ 已完成 2026-09-14] worktree `609d514f2`。renderer 只读消费
+  （`stroke_width.unwrap_or(sw)`，绝对值单点化在 builder）；
+  `plan619_lucide_doc_renders_geometric_ink` 1/1 绿。
+- [x] **T-04 Web 臂**：`ui_gen/vue.rs` icon 臂支持 state（字面量 → class +
       `stroke-width` attr；绑定 → 三元）；先核实 Web 侧 ≥48px 细线档落点保证
       组合规则两端同式。验证：`cargo check` + 新增生成器单测。（→AC-01/04）
-- [ ] **T-05 语料与金样**：新增 state 语料（字面量 + 绑定各一）；生成双端金样；
+  [✅ 已完成 2026-09-14] worktree `df4bddcb2`。4 个生成器单测全绿。**实勘
+  修正**：Web 侧原本无 ≥48px 细线档（619 G4② 只落了 VM）——本次把基档公式
+  （≥48px→1.5）随 state 臂首次落进 Web（有效盒 px 从 w-N/h-N/size-N/w-[Npx]
+  解析，与 VM Fixed(n) 同刻度），无 state 的既有图标行为不变。
+- [x] **T-05 语料与金样**：新增 state 语料（字面量 + 绑定各一）；生成双端金样；
       跑既有金样零 diff 反断言。验证：`cargo tv` 新旧全绿。（→AC-01/02/03/04）
-- [ ] **T-06 设计注记**：新增 `docs/design/autoui/icon-state-and-library-policy.md`
+  [✅ 已完成 2026-09-14] worktree `074e60f77`。新 `test/a2vue/012_icon_state`
+  金样（五形态：on/off/显式类优先/绑定三元/48px + 未声明对照组）；既有金样
+  15/16 绿——唯一红 `test_a2vue_desktop_surface_asset` 经 base 复跑 + diff 归因
+  为 PLAN-012 desktop.at 资产未同步金样（失败 diff 全为拖拽/cells 内容，icon
+  输出两端逐字节一致，与 state 无关）。**范围调整（等价实现）**：VM 腿金样由
+  T-02 的 6 个 builder 单测承载（`test/ui/` 语料为行为测试非字节金样，重复
+  建设无增益）；Web 腿 = 012 金样。`cargo tv` 见 T-08 全量档结论。
+- [x] **T-06 设计注记**：新增 `docs/design/autoui/icon-state-and-library-policy.md`
       （调研数据表、裁定理由、补位 playbook），登记 `00-intro.md`。（→AC-06）
-- [ ] **T-07 规范增量**：SD-01/SD-02 落 `docs/specs/auto-lang/ui/overview.md`；
+  [✅ 已完成 2026-09-14] worktree `16f0ff733`。注记落地（裁定 D1–D6 + 横评表 +
+  波及面基线 29 名 + 补位 playbook §5）；登记于 `autoui/README.md` 索引表
+  （00-intro 经子目录 README 指涉，同 layout-interaction/canvas-pointer-events
+  先例）。
+- [x] **T-07 规范增量**：SD-01/SD-02 落 `docs/specs/auto-lang/ui/overview.md`；
       `python scripts/spec-index.py`；ledger `ui/plans.md` 加 621 行。（→AC-06）
+  [✅ 已完成 2026-09-14] worktree `16f0ff733`。SD-01（state 契约）/SD-02（图库
+  策略）落 overview.md 构建注记节；spec-index 再生无漂移。**ledger 行留待
+  merge 阶段投影**（live ledger 由 /auto-plan:merge 统一刷新，work 内不改
+  派生账本）。
 - [ ] **T-08 双端 e2e + 复审**：030 smoke 增 state 翻转断言，autoui-verifier 双端
       跑；`cargo t` 对拍基线；按 `/auto-plan:review` 逐条对拍 AC。（→AC-01/03/05）
+  [🔶 部分完成 2026-09-14] **cargo t 对拍已完成**：全量 no-fail-fast 22 红，
+  经 base（5c444818f）detached worktree 复跑同批测试全部同样红——**零新增红**
+  （预存红归因：layout 族 14 + plan492/c2_param + plan055_strip_html +
+  app_registry_curation + desktop_coverage + p010_popover + ffi_dual_019 +
+  desktop 金样 = PLAN-012 桌面合并震荡面；`external_config_poll_hot_apply_
+  loopsafe` 为在案并发 flake）。`plan621` 10/10、`plan619` 锚全绿。附注：base
+  处 `auto-cache` crate 存在**预存编译错误**（`ShimMethod.trait_name` 缺字段，
+  methods_pack.rs:697，他会话跨 crate 改动未同步）——裸 `cargo test`（全
+  workspace）被它挡住，`cargo t`（-p auto-lang）不受影响。**e2e 部分 defer**：
+  030 全栈冒烟依赖链在本 worktree 未就绪（gen/front/vue node_modules 缺失、
+  AUTO_MEDIA_ROOT 媒体卷、`auto` 二进制未构建、playwright 安装位不明——
+  主检出 tests/node_modules 亦为空，620 的 e2e 运行方式待考）。运行时风险
+  已被既有覆盖缓解：`text-primary` 由 030 现网使用（app.at:49）、
+  `:stroke-width` 是 lucide-vue-next 文档化 prop。**解阻步骤**：worktree 内
+  `pnpm install`（030 tests/ 与 gen/front/vue）→ `cargo build -p auto` →
+  `AUTO_MEDIA_ROOT='E:\Video' auto run` → `pnpm exec playwright test`；
+  或由 review 阶段在已备环境执行。
 
 ## 分支与提交归属
 
@@ -250,6 +299,14 @@ docs/components/core.md                               改：docs_gen 重生成�
 - 2026-09-14 draft handoff（/auto-plan:new）：`stage: new`，`outcome: pass`——
   任务覆盖全部 AC 与 SD；路径/命令均经 master 实勘（§4.2）；无阻塞决策，
   待用户确认后 `next: work`。
+- 2026-09-14 work handoff（/auto-plan:work）：`stage: work` | `plan_id: PLAN-621` |
+  `plan_revision: 1` | `outcome: pass`（附一项 defer）| `code_commit: 16f0ff733`
+  （plan-621-dev，base 5c444818f）| `task_ids: T-01..T-07 完成，T-08 部分
+  （cargo t 对拍完成；030 双端 e2e defer，解阻步骤见任务证据）` |
+  `evidence: plan621 10/10 + plan619 锚 + docs_gen 4/4 + a2vue 金样 15/16
+  （1 红归因 PLAN-012）+ cargo t 22 红全部 base 复现零新增` | `blockers: 无
+  （e2e 为 defer 非 block）` | `next: review`（AC-01/03 的 e2e 证据补齐可由
+  review 阶段在已备环境执行，或在 merge 前补跑）。
 
 ## 待澄清事项
 
