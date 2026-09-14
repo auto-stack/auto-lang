@@ -74,6 +74,31 @@ class AutoUiMcpClient:
         res = self.call("autoui_keyboard", args)
         return res.get("content", [{}])[0].get("text", "")
 
+    def fixture(self, state: dict, trigger: dict = None) -> dict:
+        """Apply a VM-only test fixture and return its applied/error receipt.
+
+        The VM process must be started with AUTOUI_TEST_FIXTURES=1. The server
+        waits for the renderer-thread acknowledgement, so callers do not need
+        to add timing sleeps between fixture setup and the next action.
+        """
+        args = {"schema_version": 1, "state": state}
+        if trigger is not None:
+            args["trigger"] = trigger
+        return self.call("autoui_fixture", args)
+
+    def state(self, fields: list = None) -> str:
+        """Read the current AutoUI state after a fixture or action."""
+        args = {}
+        if fields:
+            args["fields"] = fields
+        res = self.call("autoui_state", args)
+        return res.get("content", [{}])[0].get("text", "")
+
+    def wait_state(self, field: str, timeout_ms: int = 2000) -> str:
+        """Wait for one state field to change using the MCP wait primitive."""
+        res = self.call("autoui_wait", {"field": field, "timeout_ms": timeout_ms})
+        return res.get("content", [{}])[0].get("text", "")
+
     def screenshot(self, name: str, baseline: bool = True, save_path: str = None) -> str:
         args = {"name": name, "baseline": baseline}
         if save_path:

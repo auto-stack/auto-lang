@@ -1,6 +1,7 @@
 # mcp（AutoVM MCP Server）
 
-> **Status**: implemented（plan-265 落地，核心 7 工具可用；sandbox/会话 GC/诊断建议为半完成状态）
+> **Status**: implemented（plan-265 落地；AutoUI HTTP MCP 的 `autoui_fixture` 由
+> plan-623 增量实现，VM-only 且默认关闭）
 
 ## 职责
 
@@ -13,6 +14,22 @@ stdio 上的 JSON-RPC 2.0 创建隔离 VM 会话、执行/校验 Auto 代码、�
 （`crates/auto-lang/src/ui/mcp_server.rs`，plan-278/299/314），它嵌在 iced
 桌面进程里、走 HTTP、操作运行中的 UI，与本模块（操作源代码/VM 会话）是两个
 独立实现，归 ui 模块管。本目录只覆盖 `crates/auto-lang/src/mcp/`。
+
+## AutoUI 测试夹具（Plan 623）
+
+AutoUI MCP 在 `ui/mcp_server.rs` 额外提供 `autoui_fixture`，供 VM 的自动化
+golden 在不增加业务调试控件的情况下写入已声明的运行时字段，并可在写入完成
+后触发现有 handler。工具通过 HTTP JSON-RPC `tools/list`/`tools/call` 暴露，
+但只有进程以 `AUTOUI_TEST_FIXTURES=1` 启动时才会生效；默认返回
+`fixtures_disabled`，不入队也不改状态。
+
+请求固定为 `schema_version: 1` 和非空 `state` 对象，可选
+`trigger: {widget, event, input}`。字段必须已出现在 `autoui_state`，值递归
+支持 JSON 标量、数组和对象，并受请求体、字段数、深度及数组元素数限制。VM
+渲染线程按现有字段形态写回（数组使用专用写入），完成后返回带
+`request_id`、`changed` 和 trigger 名称的 `applied` 回执；校验、写入或等待
+失败返回结构化 `isError`。Rust UI 明确返回 `backend_unsupported`，不会落入
+普通 action 路径。该能力不写持久化存储，也不出现在 app 可见 UI 中。
 
 ## 现状
 

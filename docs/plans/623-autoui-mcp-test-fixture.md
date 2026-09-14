@@ -270,6 +270,12 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 ### 执行进度（2026-09-14）
 
 - [✅ 已完成] T-00：在 `D:/autostack/.wt/lang-623/auto-lang` 完成架构设计文档 `docs/design/autoui/autoui-mcp-test-fixture.md`，并登记 `docs/design/00-intro.md` 与 `docs/design/autoui/README.md`；提交 `1f62ca0df`。协议已裁定使用独立 `ActionTarget::Fixture` + request-id ack，VM/Rust capability 边界与门控已写入设计。
+- [✅ 已完成] T-01：`ActionTarget::Fixture`、`BackendKind`、`FixtureAck` 和有界 request-id 回执表已落到 `ui/mcp_server.rs`；所有 Event/Path 消费 match 已补齐。
+- [✅ 已完成] T-02：`autoui_fixture` 已注册到 `tools/list` 和 dispatch，固定 schema v1、递归转换、字段/大小/深度/数组上限、gate/backend/type 校验及 2 秒 ack 超时已实现；4 个 scoped MCP 单测通过。
+- [✅ 已完成] T-03：VM renderer 在普通 handler 入口前消费 fixture，按标量/数组写回并设置 dirty，可触发既有 handler/timer；Tetris merged 与 no-merge HTTP 实例均完成 1–4 行 golden 注入，回执和 100/300/500/800 分结果一致。
+- [✅ 已完成] T-04：Rust DevTools 路径明确丢弃 Fixture；Rust 原生实例以扩大主线程栈运行后，`autoui_fixture` 返回 `backend_unsupported`，`autoui_state` 仍可用。
+- [✅ 已完成] T-05：`test_vm_mcp.py` 新增 `fixture()`、`state()`、`wait_state()` 客户端辅助；已用 HTTP 调用验证 applied/error 回执。
+- [✅ 已完成] T-06：mcp overview/architecture/plans 规格已沉淀 ADR-07 和 Plan 623 索引；Plan 005 已写入 fixture 移交格式、merged/no-merge 正确命令及 Rust 边界，提交 `9d40544`。
 
 ## 9. 复审记录
 
@@ -288,7 +294,6 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 - VM no-merge 集成测试需要可用的本地 HTTP backend 启动方式；若环境缺失，
   记录为环境阻断，不以 merged 结果代替。
 - 本计划完成前，Plan 005 的 VM fixture golden 保持 blocked。
-
 
 
 
