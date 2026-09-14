@@ -366,3 +366,62 @@ VM `Color` 枚举 ↔ registry 词表全集的投影关系：
 | Plan 458/504/506 优先级链 | 原样继承：CLI > os-config > pac.at > 内置，链尾接 registry 基座 |
 | Plan 527 清单契约 | 原样受益（裁定 1：表示层不变）；词表封闭性未来可加「未注册语义 class」审计钩子 |
 | KNOWN-DEBT P518 架构缝 / P571-D1 | 分别由 §4.5 与 §5.4 承接清偿 |
+
+
+---
+
+## 10. PLAN-631 增补：AutoUI 交互原语与转换缓存（2026-09-15）
+
+> 立项来源：auto-os PLAN-016（file-manager-revamp）实机 finding F-5/F-6/F-7。
+> 本节为 SD-01/SD-02/SD-03 的规范承载。SD-02 原计划指向
+> `schema/projection-protocol-v1.md`——该文件经实勘为 AutoShell `__wm_*`
+> 状态投影合同（§6 = 变更记录），popover 定位非其论域，故三节统一落本档
+> （计划 §4 即以本档为规范承载）。
+
+### 10.1 MouseArea hover 样式对（SD-01）
+
+- **before**：`mouse-area` 元素仅单一样式（`extract_style_with` 基类），
+  `hover:` 变体类被静默丢弃（布局件 row/col/div 已有 hover 机制，
+  mouse-area 没有）。
+- **after**：`mouse-area` 的 class 串支持 `hover:` 前缀变体——解析面
+  沿 `Style::variant_classes`（零新增解析），渲染面镜像布局件臂：
+  声明了 hover 变体即构造 `HoverFlag`（`Arc<AtomicBool>`），容器样式
+  闭包在 base/hover 两套已构建样式间按标志二选一
+  （`layout_style_fn` 同型），内容包 `HoverArea`（内部 enter/exit 翻
+  标志、只发 `request_redraw`）。**零 VM 消息、零视图重建**；无 hover
+  声明 = None，零开销路径不变；`onmouseenter/onmouseleave` 事件臂保留
+  （状态驱动旧用法兼容）。
+- 消费面：027-file-manager 树形折叠箭头（`hover:bg-accent/60`）。
+
+### 10.2 popover at_pointer 定位（SD-02）
+
+- **before**：popover 两定位形态——Widget 锚（trigger/first-child，
+  PLAN-528）与 Point{x,y} 坐标锚（Plan 440）；坐标进 VM 状态（指针
+  移动 = 全量重建，不可行），`.at` 事件不携带坐标（D-1 实证）。
+- **after**：`placement: "pointer"` ——面板 open 翻真时原点 = 渲染器
+  会话记忆的**最近一次指针按下位置**（含右键；左键覆盖场景如 "···"
+  快捷菜单同源，右键事件先于消息派发故记账必已就位）。坐标不进 VM
+  状态、不经消息回路；触发件与面板可分离（单实例菜单挂视图根）。
+  无 x/y 的 pointer popover 由转换器合成原点点锚（渲染期被记账位置
+  取代）；无记账时回退 BottomStart 锚件语义。
+- 机制：`iced/right_press_area.rs` ——窗口根单包装 `PointerPressArea`
+  （纯委托，`ButtonPressed` 事件现场读 cursor 记账，进程级单槽 f32
+  位型存储）；`PopoverPlacement::Pointer`（view.rs）+ 面板锚归一
+  `pointer_panel_anchor`（popover.rs，纯函数有单测）。
+- 边界：跨 App 窗口共享单槽（最近写入即正确锚，桌面多窗竞用同一
+  popover 的场景不存在）；触屏/无指针设备定位语义不做（计划非目标）。
+
+### 10.3 动态视图转换缓存（SD-03）
+
+- **before**：`view_dirty → dynamic_view` 全量重转换路径上每元素每次
+  `Style::parse_reported`（类串逐 token 解析分配）；67 行列表选中帧
+  ~2,640 次 parse ≈ builder 段 80%（debug）。
+- **after**：类串 → Style intern 缓存（`ui/style/mod.rs parse_cache`）：
+  键 = (类串原文, 主题门控槽位)——槽位 6 位 = sm/md/lg/xl/2xl 命中位 +
+  dark 位（parse 输出对这些全局信号只做布尔门控，键由此完备；窗口
+  resize 同断点域内恒命中，跨域新槽）。命中克隆已解析 Style
+  （`Vec<StyleClass>` 浅枚举克隆 ≪ 逐 token 解析）；类串表容量上限
+  4096（超限整体清空兜底）。A/B 开关 `AUTO_STYLE_CACHE=0`（默认开）。
+- 收益（027 67 行选中，debug）：parse p90 13.2 → 1.4ms（~9x）、
+  builder p90 1.6x、整重建 p90 1.6x（15.8 → 9.8ms，已入 <50ms 目标）；
+  opt 档整体差异在噪声内。详见 `docs/plans/evidence/631/profile.md`。
