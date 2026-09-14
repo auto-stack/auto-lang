@@ -3,11 +3,12 @@
 // 预留的桌面层 z 槽（壁纸之上、App 虚拟窗口之下；宿主装配层 Stack 先于
 // 虚拟窗推层即得底序）。
 //
-// 接缝（投影协议 v1.4 内字段扩展——仅字段不增动词，schema/
-// projection-protocol-v1.md）：
+// 接缝（投影协议 v1.7，schema/projection-protocol-v1.md）：
 //   出：`__desktop_cmd`（复用既有动词词表——activate（472 两臂：未运行→
-//       启动 / 运行中→聚焦）+ open_settings（v1.4 齿轮同款——右键菜单
-//       「更换壁纸」跳设置面板）——零新动词）。
+//       启动 / 运行中→聚焦）+ open_settings（v1.4 齿轮同款——「显示设置」）
+//       + PLAN-019 v1.7 增量：wallpaper_pick / wallpaper_close /
+//       wallpaper_browse_dir / wallpaper_nav / wallpaper_preview（壁纸
+//       picker 族，语义宿主收口）+ set_wallpaper（缩略图点选即应用）。
 //   入：`__desktop_bg`（宿主注入：壁纸色值类片段——"#hex" 色值时注入
 //       "bg-[#hex]"（本面根 bg 实铺）；图片路径/缺省时注入 ""（图片壁纸
 //       由宿主在更底层推壁纸图层——DSL 无重叠布局，z 序宿主侧兑现））
@@ -36,7 +37,15 @@ widget DesktopSurface {
         MenuWallpaper,
         // PLAN-526 T10：空白处右键（mouse-area oncontextmenu——布局件
         // 右键臂缺位的替代挂点；菜单态本地门控，IconMenu 同型）。
-        BlankMenu
+        BlankMenu,
+        // PLAN-019 v1.7：壁纸 picker（栅格点选即应用 / 预览二级态 /
+        // 浏览换目录 / 关闭——语义全宿主收口，本面零分支）。
+        PickerApply(str),
+        PickerPreview(str),
+        PickerBack,
+        PickerNav(str),
+        PickerBrowse,
+        PickerDismiss
     }
 
     model {
@@ -58,6 +67,15 @@ widget DesktopSurface {
         // view_dirty；空白菜单坐标锚数据源——open 翻转重建时读取最新值）。
         var __desktop_cursor_x float = 0.0
         var __desktop_cursor_y float = 0.0
+        // PLAN-019 v1.7：壁纸 picker 注入面（协议 v1.7 §2.1——宿主写，
+        // 本面只读消费；wp_paths 平行列表 = handler 侧数据合同面，本面
+        // 消息均闭包带参，无下标读）。
+        var __wp_picker str = ""
+        var __wp_preview str = ""
+        var __wp_dir str = ""
+        var __wp_current str = ""
+        var __wp_items = []
+        var wp_paths = []
     }
 
     view {
@@ -92,10 +110,14 @@ widget DesktopSurface {
             // Plan 518 G4③：格 = per-app 徽标色圆角底（哈希分配,数据驱动
             // bg-[ 拼接——"grid grid-cols-" + n 先例）+ 白 glyph（stella
             // 桌面 Notes 徽标同款;单色 lucide "带颜色"正解是容器底色）。
-            // PLAN-012 W5：grid 定宽（8 列 × 80px 格 + 7 × 8px gap =
-            // 696px）——原 w-full 均分整行把格距拉伸到数百 px（用户反馈
-            // "间距过大"根因）；定宽后图标群贴左上、格距 = gap 8px 量级
-            // （w-fit iced 轨不支持，class.rs 白名单受限——显式算术宽）。
+            // PLAN-012 W5：grid 定宽——原 8 列 × 80px 格 + 7 × 8px gap =
+            // 696px（原 w-full 均分整行把格距拉伸到数百 px 的"间距过大"
+            // 根因）；定宽后图标群贴左上、格距 = gap 8px 量级（w-fit iced
+            // 轨不支持，class.rs 白名单受限——显式算术宽）。
+            // PLAN-019-FU1（用户走查反馈 2026-09-14）：图标默认大一倍——
+            // 格 160px + chip 80px + glyph 40px + label text-sm；定宽重算
+            // 8×160 + 7×8 = 1336px。宿主 drop_at 栅距同步 168px（88→168，
+            // renderer.rs execute_desktop_icon_drop_at ORIGIN/PITCH）。
             grid (cols: 8, gap: 8) {
                 style: "w-[1336px]"
                 // PLAN-012 W5：格子表渲染（宿主分配 (c,r) + spacer 填位）——
@@ -124,8 +146,8 @@ widget DesktopSurface {
                 // （col+icon）——原 iced Button 捕获 press 饿死祖先
                 // mouse-area 的 ondblclick（chip 上双击死区，T30 起存量；
                 // review_ue.log 实录 8 条裸 click 无 ActivateApp）。降级后
-                // 整格 80×80 统一双击+右键（Windows 惯例：图标+文字整块
-                // 可点）；视觉等价（20px glyph=原 text-xl 字号档）。
+                // 整格 160×160 统一双击+右键（Windows 惯例：图标+文字整块
+                // 可点）；PLAN-019-FU1：chip 80px + glyph 40px（原 40/20）。
                 if e.full == "1" {
                     col {
                         // PLAN-018-FU3（用户裁定）：满幅 tile 高亮走边框——
@@ -189,6 +211,85 @@ widget DesktopSurface {
                 }
             }
         }
+            // PLAN-019 v1.7：壁纸选择 carousel 层（坐标锚 popover 浮置——
+            // 负一屏无 App 窗，picker 与图标/真壁纸同屏合成。缩略图单击 =
+            // set_wallpaper 立即应用（真桌面即预览）；「预览」钮进大图
+            // 二级态（←/→ 键导航宿主侧，Esc/返回退栅格）。ondiscard 即
+            // ondismiss（外点/Esc）→ wallpaper_close，归属规则宿主收口）。
+            popover (open: .__wp_picker == "1", x: 40, y: 80, ondismiss: .PickerDismiss, class: "p-4 border rounded-xl bg-card w-[880px] gap-3") {
+                // 头部行：目录展示 + 浏览换目录 + 关闭。
+                row {
+                    style: "w-full items-center gap-2"
+                    icon (name: "image") {
+                        style: "w-4 h-4 text-muted-foreground"
+                    }
+                    text .__wp_dir {
+                        style: "text-xs text-muted-foreground flex-1 truncate"
+                    }
+                    button (text: "浏览…", variant: "ghost") {
+                        onclick: .PickerBrowse
+                        style: "h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10"
+                    }
+                    button (icon: "x", variant: "ghost") {
+                        onclick: .PickerDismiss
+                        style: "h-7 w-7 px-0 rounded-lg text-muted-foreground hover:bg-primary/10"
+                    }
+                }
+                // 双态：栅格（点击即应用）/ 大图预览（‹ › 环绕导航）。
+                if .__wp_preview == "" {
+                    grid (cols: 4, gap: 12) {
+                        for e in .__wp_items {
+                            col {
+                                style: "gap-1"
+                                mouse-area (onclick: .PickerApply(e.path)) {
+                                    col {
+                                        style: if e.path == .__wp_current {
+                                            "w-[196px] h-[110px] rounded-lg border-2 border-primary"
+                                        } else {
+                                            "w-[196px] h-[110px] rounded-lg border-2 border-transparent"
+                                        }
+                                        image (src: e.path, alt: e.name, fit: "cover") {
+                                            style: "w-full h-full rounded-lg"
+                                        }
+                                    }
+                                }
+                                row {
+                                    style: "w-full items-center gap-1"
+                                    text e.name {
+                                        style: "text-[10px] text-muted-foreground flex-1 truncate"
+                                    }
+                                    button (text: "预览", variant: "ghost") {
+                                        onclick: .PickerPreview(e.path)
+                                        style: "h-5 px-2 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    col {
+                        style: "w-full gap-2 items-center"
+                        image (src: .__wp_preview, alt: "preview", fit: "contain") {
+                            style: "w-full h-[440px] rounded-lg bg-black/40"
+                        }
+                        row {
+                            style: "items-center gap-2"
+                            button (icon: "chevron-left", variant: "ghost") {
+                                onclick: .PickerNav("prev")
+                                style: "h-8 w-8 px-0 rounded-lg hover:bg-primary/10"
+                            }
+                            button (text: "返回", variant: "ghost") {
+                                onclick: .PickerBack
+                                style: "h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10"
+                            }
+                            button (icon: "chevron-right", variant: "ghost") {
+                                onclick: .PickerNav("next")
+                                style: "h-8 w-8 px-0 rounded-lg hover:bg-primary/10"
+                            }
+                        }
+                    }
+                }
+            }
     }
     }
 
@@ -235,7 +336,7 @@ widget DesktopSurface {
         // PLAN-526 T10：空白菜单动作（消费即收起；动词同图标菜单臂）。
         .MenuWallpaperBlank -> {
             .blank_menu = ""
-            .__desktop_cmd = "open_settings"
+            .__desktop_cmd = "wallpaper_pick"
         }
         .OpenSettingsBlank -> {
             .blank_menu = ""
@@ -264,11 +365,33 @@ widget DesktopSurface {
             }
         }
 
-        // 菜单：更换壁纸 → open_settings（v1.4 无参动词；面板内外观分区
-        // 手动导航——v1 不做分区直达参数）。
+        // 菜单：更换壁纸 → wallpaper_pick（PLAN-019 v1.7 组合动词 = 借
+        // 负一屏 + 开 picker + 归属簿记宿主收口；open_settings 退役——
+        // 「显示设置」臂仍走旧通道）。
         .MenuWallpaper -> {
             .menu_id = ""
-            .__desktop_cmd = "open_settings"
+            .__desktop_cmd = "wallpaper_pick"
+        }
+
+        // PLAN-019 v1.7：壁纸 picker 消息族（语义宿主收口——本面只发
+        // 总线记录，零本地态）。
+        .PickerApply(path) -> {
+            .__desktop_cmd = "set_wallpaper\t" + path
+        }
+        .PickerPreview(path) -> {
+            .__desktop_cmd = "wallpaper_preview\t" + path
+        }
+        .PickerBack -> {
+            .__desktop_cmd = "wallpaper_preview\t"
+        }
+        .PickerNav(dir) -> {
+            .__desktop_cmd = "wallpaper_nav\t" + dir
+        }
+        .PickerBrowse -> {
+            .__desktop_cmd = "wallpaper_browse_dir"
+        }
+        .PickerDismiss -> {
+            .__desktop_cmd = "wallpaper_close"
         }
     }
 }
