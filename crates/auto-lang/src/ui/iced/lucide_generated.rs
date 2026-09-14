@@ -1415,6 +1415,8 @@ pub(super) static LUCIDE_ICONS: &[(&str, &str)] = &[
     ("zoom-out", r#"<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/>"#),
 ];
 
+pub(super) const LUCIDE_SOURCE_VERSION: &str = "0.312.0";
+
 /// 二分查名。命中返回字形内部 markup（24×24 坐标系，不含 `<svg>` 外壳）。
 pub(super) fn lookup(name: &str) -> Option<&'static str> {
     LUCIDE_ICONS
@@ -1450,5 +1452,56 @@ mod tests {
     #[test]
     fn lookup_misses_are_none() {
         assert!(lookup("definitely-not-a-lucide-icon").is_none());
+    }
+
+    /// PLAN-620 T-07 漂移门禁：表头记录的源版本 ↔ 本地实际安装的
+    /// lucide-vue-next 版本对拍——版本漂移（升包未再生）即红，指路再生命令。
+    /// 本地找不到安装包（CI/纯净 checkout）或生成时版本未知（--src 无 package.json）
+    /// 时跳过；探测根可用 LUCIDE_VUE_NEXT_ROOT 覆盖（仓内 examples 优先）。
+    #[test]
+    fn source_version_matches_installed_package() {
+        if LUCIDE_SOURCE_VERSION == "unknown" {
+            eprintln!("skipped: 生成时未记录源版本");
+            return;
+        }
+        let mut roots = vec![std::path::PathBuf::from("examples")];
+        if let Ok(env_root) = std::env::var("LUCIDE_VUE_NEXT_ROOT") {
+            roots.push(std::path::PathBuf::from(env_root));
+        }
+        let mut installed: Option<String> = None;
+        for root in &roots {
+            for entry in walkdir::WalkDir::new(root)
+                .max_depth(12)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                if entry.file_name().to_string_lossy() != "lucide-vue-next" {
+                    continue;
+                }
+                let pj = entry.path().join("package.json");
+                let Ok(txt) = std::fs::read_to_string(&pj) else { continue };
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                    if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
+                        let better = installed.as_deref().map_or(true, |cur| {
+                            ver > cur
+                        });
+                        if better {
+                            installed = Some(ver.to_string());
+                        }
+                    }
+                }
+            }
+            if installed.is_some() {
+                break;
+            }
+        }
+        let Some(installed) = installed else {
+            eprintln!("skipped: 本地未找到 lucide-vue-next 安装（examples/** 与 LUCIDE_VUE_NEXT_ROOT）");
+            return;
+        };
+        assert_eq!(
+            installed, LUCIDE_SOURCE_VERSION,
+            "图标表与本地 lucide-vue-next 版本漂移——重跑 `node scripts/gen-lucide-table.mjs` 再生字形表",
+        );
     }
 }
