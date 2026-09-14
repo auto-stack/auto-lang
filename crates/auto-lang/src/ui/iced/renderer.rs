@@ -4137,8 +4137,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
+                // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
+                // -1 = 跟随主题,绘制期解析)。
+                core.set_scheme(scheme);
                 crate::ui::terminal::terminal_feed(core, &lines);
                 crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
                 // 014:光标格随帧落注册表(app 从引擎回读喂入;preedit/光标
@@ -4168,15 +4171,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 根容器 bg-background(9,14,26) 即用户可见"浅色带"。涂同色
                 // (终端 DEFAULT_BG)填满可用空间,余量隐形;子件左上对齐,
                 // PAD 贴窗角。016 复审 T-07。
+                // PLAN-018 D10:余量涂色随 scheme 表(light 方案余量同浅底)。
+                let margin_bg = {
+                    let scheme = crate::ui::terminal::terminal_resolve_scheme(core);
+                    let palette = crate::ui::terminal::terminal_effective_palette(scheme);
+                    let v = palette[1];
+                    crate::ui::terminal::iced::rgb_u32(v)
+                };
                 let el: iced::Element<'static, M> = iced::widget::container(el)
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill)
                     .align_x(iced::alignment::Horizontal::Left)
                     .align_y(iced::alignment::Vertical::Top)
-                    .style(|_: &iced::Theme| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(
-                            crate::ui::terminal::iced::DEFAULT_BG,
-                        )),
+                    .style(move |_: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(margin_bg)),
                         ..Default::default()
                     })
                     .into();
@@ -6683,7 +6691,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
         // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
         // (数据已在 convert_terminal 物化)。
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => {
             AbstractView::Terminal {
                 key,
                 cols,
@@ -6696,6 +6704,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 on_input: on_input.map(|m| IcedMessage::from_dynamic(&m)),
                 cursor_row,
                 cursor_col,
+                scheme,
                 style,
             }
         }
@@ -8908,26 +8917,32 @@ fn service_snapshot_requests(
     if wids.is_empty() {
         return None;
     }
-    // 411 零尺寸守卫同款：宿主窗 minimized/pre-layout 时本轮不抓
+    // 411 零尺寸守卫：快照目标 = **host 窗本体**（显式 id，不再用
+    // `window::oldest()`——oldest 可能命中尚未完成尺寸初始化的特权层
+    // 窗口，0×0 surface → `create_texture Dimension X is zero` 硬崩溃，
+    // PLAN-019 走查启动竞态实测）。host 未就绪/尺寸 0 = 本轮不抓
     //（渲染臂冷却队列下轮自然再排）。
+    let Some(host) = state.host.as_ref() else {
+        return None;
+    };
+    let host_window = host.window;
     let host_ok = state
         .windows
-        .values()
-        .any(|w| w.window_size.borrow().width > 0.0 && w.window_size.borrow().height > 0.0);
+        .get(&host_window)
+        .map(|w| {
+            let s = w.window_size.borrow();
+            s.width > 0.0 && s.height > 0.0
+        })
+        .unwrap_or(false);
     if !host_ok {
         return None;
     }
     state.desktop.snapshot_pending_wids.replace(wids);
-    Some(
-        iced::window::oldest().then(move |maybe_id| match maybe_id {
-            Some(id) => iced::window::screenshot(id).map(|ss| {
-                crate::ui::session::DesktopMessage::Desktop(
-                    crate::ui::session::DesktopEvent::SnapshotShot(ss),
-                )
-            }),
-            None => iced::Task::none(),
-        }),
-    )
+    Some(iced::window::screenshot(host_window).map(|ss| {
+        crate::ui::session::DesktopMessage::Desktop(
+            crate::ui::session::DesktopEvent::SnapshotShot(ss),
+        )
+    }))
 }
 
 /// Plan 497 G1：dock 时钟注入——本地 HH:MM（chrono Local），分钟变化才
