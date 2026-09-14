@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-625
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived（rev 3: T-09 占位卡已落地,用户新指令升级 T-10 实装视口）
 feature_name: ui-gallery-vm-usability
 author: [agent]
 created_at: 2026-09-14
 updated_at: 2026-09-14
-plan_revision: 2
+plan_revision: 3
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: [docs/specs/auto-lang/ui/overview.md#573-预存限制注记（VM 列表空留待立项）]
@@ -14,7 +14,7 @@ touched_goals: [GOAL-010, GOAL-007]   # 引用 docs/specs/goals.md 的 GOAL-NNN�
 
 affects: [auto-lang/ui, parity]
 current_step: 9
-total_steps: 9
+total_steps: 10
 ---
 
 # [PLAN-625] ui-gallery-vm-usability
@@ -279,6 +279,10 @@ FN_PROLOG 校验、不再 poisoned。单测：循环体 handler 编译 + 导出�
   归因写入 KNOWN-DEBT 或文档化关账（允许"确认为 wrapper 退出语义，文档化"结案）。
 - **AC-09** AppViewport 有决策有形态：决策 artifact 经用户裁定；v1 按裁定落地
   （形态级验收随决策修订细化）。
+- **AC-10（rev 3）** AppViewport VM 端实装：loadable 且单文件的示例在 VM 端
+  视口区**实时渲染且可交互**——选中即渲染对应子 widget（snapshot 含示例
+  初始状态文本）、示例内按钮点击联动（MCP press 计数变化）、切换 selected_id
+  正确装卸。验证：p625_t10 spike（已绿）+ 扩展到真实语料的 MCP 端到端。
 
 ## 8. 执行步骤
 
@@ -384,6 +388,24 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   剥离,模板 ${} 插值保守保留）。commit 9d5fa4724。
   VM 实证：视口区占位卡完整可见（⚙ AppViewport / app: 002-counter / 提示行,
   截图 p625_vm_t09_final.png）。vue 构建（vite 9.61s 全资产）+ 无 R002 ✓。
+- **T-10** AppViewport VM 端实装（候选 a，rev 3 用户新指令升级：『VM 端（和
+  Rust 端）应该要实现这个 AppViewport 组件』）：
+  - **T-10a [✅ 已完成]** spike：commit c90bbc870——改名示例源
+    （`widget App` → `Demo002Counter`）作为有状态 child widget 编入宿主模块，
+    初始渲染/chrome 共存/selected_id 切换卸载与重实例化全通过
+    （dynamic.rs::p625_t10_spike）。机制定案：child-widget 单模块编译。
+  - **T-10b** 生成器发射：`generate_gallery_host` 对每个 loadable 且单文件
+    的示例，将 `widget App` 改名（`Demo<IdPascal>`）后发射
+    `src/front/demos/<id>.at`；多文件示例（含自有 components/）v1 跳过
+    （按现状列「可交互」徽章但视口降级占位,清单记入 T-10 验收注记）。
+  - **T-10c** 接线：app.at 增 `use` 导入 + 视口区按 selected_id 条件实例化
+    （生成器同步产出条件清单；手写一次,示例增删时同步）；VM 端视口区即
+    真渲染。web 臂影响评估随做：Demo* 子 widget 会被 vue 转译进 SFC
+    （Plan 522）——体积与转译兼容性以构建实测为准,若劣化则评估仅 VM 注入
+    的装载路径。
+  - **T-10d** Rust 臂（--render rust）同型支持调研：转译器对 child widget
+    的支持现状核对,可行则同门落地,不可行则登记差异。
+  → AC-10。
 
 ## 9. 复审记录
 
@@ -412,8 +434,16 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   scoped 检查：cargo t gallery_registry 4/4、r002 6/6、style_parity 绿、
   cargo check 零 error。blockers：无（F-6 根因与渲染器 stretch 缺口已登记
   转 KNOWN-DEBT/独立任务,不阻断本计划）。`next: review`。
+
   附注：AC-07 的 vue 构建实证在本轮补齐（含 R002 修复回归）；AC-09 裁定(b)
   与落地均已闭环。
+
+- **2026-09-14 work round 5（plan_revision 3）**：stage `work`；code commits
+  auto-lang `c90bbc870`（T-10a spike）。用户推翻 v1=b 裁定，指令升级候选 a
+  实装（『VM 端（和 Rust 端）应该要实现这个 AppViewport 组件』）→ 计划修订
+  rev 3：新增 T-10（a/b/c/d 子阶段）+ AC-10，status 回 executing（T-09 占位卡
+  保留为无 VM 形态组件的通用降级，不回退）。T-10a spike 一次通过确立机制。
+  blockers：无；T-10b/c 下一轮实施。`next: work`。
 
 - **2026-09-14 work round 3（仍 plan_revision 2）**：stage `work`；无代码
   commit（纯调查/决策轮）；task_ids T-07、T-08 完成（8/9）。evidence：WER
