@@ -24,6 +24,10 @@ fn default_apps_dir() -> PathBuf {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // PLAN-016 R7：桌面在场标记——App 可用 Env.get 探测自身是否运行在
+    // 虚拟桌面内（如 file-manager 的 open_with / 系统默认程序分流）。
+    // 单 app 窗口（auto run -r vm）不设此变量。
+    std::env::set_var("AUTO_UI_IN_DESKTOP", "1");
     let args: Vec<String> = std::env::args().collect();
     // Plan 463 T3：--fullscreen = borderless 全屏桌面（PLAN-526 T13 起
     // Esc 调试退出退役——退出走 dock 电源键确认面板）。

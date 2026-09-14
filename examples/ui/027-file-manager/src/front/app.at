@@ -80,6 +80,9 @@ widget App {
         var addr_editing bool = false
         // R5：行 hover 高亮（mouseenter/leave 显式驱动）
         var hover_id int = -1
+        // R7：桌面在场标记（宿主 AUTO_UI_IN_DESKTOP）——open_with 仅桌面内可达；
+        // 独立窗口走系统默认程序
+        var in_desktop bool = false
 
         // 选中与重命名
         var selected_id int = -1
@@ -666,6 +669,7 @@ widget App {
             if .home == "" {
                 .home = Env.get("HOME")
             }
+            .in_desktop = Env.get("AUTO_UI_IN_DESKTOP") != ""
 
             // ---- 配置恢复（storage 持久化）----
             let vm = storage.get("fileman.view_mode")
@@ -1061,7 +1065,7 @@ widget App {
                 } else {
                     // PLAN-016 T-09：文件 → 桌面 open_with 关联打开
                     let app str = app_for_ext(r.file_ext)
-                    if app != "" {
+                    if app != "" && .in_desktop {
                         .__desktop_cmd = "open_with	" + app + "	" + r.path
                         toast.success("正在打开: " + r.name)
                     } else {
