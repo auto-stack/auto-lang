@@ -1372,6 +1372,25 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             _ => {}
                         }
                     }
+                    // PLAN-627: 限定名 api 模块调用 `api.X(...)`（模块形态
+                    // `use back.api`）——与裸名形态同发射：head 为
+                    // Ident("api") 且方法 ∈ api 清单时输出 `await X(...)`
+                    //（客户端调用，与 Expr::Ident 臂一致）；清单门防用户
+                    // 自建同名 `api` receiver 误伤。
+                    if matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "api")
+                        && ctx.is_api(method.as_str())
+                    {
+                        write!(out, "await {}", method.as_str()).ok();
+                        write!(out, "(").ok();
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 {
+                                write!(out, ", ").ok();
+                            }
+                            transpile_expr(&arg.get_expr(), ctx, out);
+                        }
+                        write!(out, ")").ok();
+                        return;
+                    }
                     // Plan 012 Batch A (gap 19): the `.remove → .splice` /
                     // `.contains → .includes` mappings apply ONLY to receivers
                     // proven to be arrays (strings too, for `.contains`).
