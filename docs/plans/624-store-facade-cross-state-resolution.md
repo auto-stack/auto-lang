@@ -270,6 +270,15 @@ needs_replan 评估。
   项②（JS value 语义）——P3 设计/任务/验收按实装改写（T-04、AC-3、SD-03
   新增），本阶段证据（腐坏复现、朴素守卫 20 语料误伤、infer 粒度结论）随附
   §4。目标/其余任务/验收不变，属限范围修订。
+- 2026-09-14 work 续（rev 2 裁定②执行）：调和 master（plan066/627/625 并行
+  移动）；**T-04 WIP**（commit 58a8c6595，分支态）——value 语义发射已实装
+  （短路透传 + auto.vm.truthy 2073 归一跳转，NULL 不再误判真值），p3 臂仍红：
+  `||` falsy 路径得 Nil（疑栈/NV 交互，未收敛）；tv 12 失败 = short-circuit
+  契约语料族（语义变更预期，金样待更新）+ 布尔归一依赖面（逐个清点未做）。
+  plan624 套件态：P1×2/P4 绿，P2/P3 红（预期）。**T-04 未完，计划保持
+  `executing`**；续做清单：①`||` falsy 路径缺陷收敛；②tv 12 失败逐个清点
+  （金样更新 or 语义依赖登记）；③plan622/442/340 回归；④P1/P2 沿 622 记录
+  继续。worktree 保留。
 - 2026-09-14 stage:work 阶段收口（/auto-plan:work）：**outcome:
   needs_replan**（T-04 P3 语义三选一待裁决；P1 脏树伪影待排除），计划保持
   `executing`。code commits（plan-624-dev）：3537683f9（T-01 语料矩阵 +
