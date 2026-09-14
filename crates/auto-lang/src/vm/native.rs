@@ -3253,6 +3253,19 @@ pub fn shim_list_find_index(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
+/// auto.vm.truthy(val) -> bool — 语言级真值判定（vm_is_truthy 同口径：
+/// 0 与 NULL 哨兵 i32::MIN+1 为假，其余为真）。PLAN-624 (P3) value 语义
+/// 的 &&/|| 短路发射经它把操作数副本归一为 bool 后跳转，使 NULL 不再被
+/// 裸位测零误判为真值。
+/// Stack: val -> bool(0/1)
+pub fn shim_vm_truthy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _stake = crate::vm::native::StakeGuard::new(vm, 0);
+    let val = crate::vm::native::pop_arg_i32(task);
+    eprintln!("P624SHIM truthy val={} -> {}", val, vm_is_truthy(val));
+    task.ram.push_i32(if vm_is_truthy(val) { 1 } else { 0 });
+    Ok(())
+}
+
 /// List.any(closure) -> bool
 /// Stack: closure_id, list_id -> bool (1/0)
 pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {

@@ -7090,21 +7090,44 @@ impl Codegen {
                     //   a || b:  [a] DUP JMP_IF_NZ Lshort [b] JMP Lend
                     //            Lshort: PUSH_BOOL 0   Lend: OR
                     if matches!(op, Op::And | Op::Or) {
+                        // PLAN-624 (P3, rev 2 裁定②): JS value 语义——短路透传
+                        // 操作数值（`a && b` = a 真值 ? b : a；`a || b` = a 真值
+                        // ? a : b），与 web 轨 TS/JS 对齐，使 .at 惯用法
+                        // `fm && fm.title || fb` 逐字可用。真值判定沿用
+                        // JMP_IF_Z/NZ 的运行时既有口径。此前形态：短路路径
+                        // PUSH_BOOL 占位 + 末端 AND/OR 归一——非布尔操作数被
+                        // 静默写成 true（jade facade 切换实机，DEBTS 064 ⑥）。
+                        // 发射（双路径栈平衡）：
+                        //   a && b:  [a] DUP JMP_IF_Z Lshort  [b] POP  JMP Lend
+                        //            Lshort: (a 留栈即结果)
+                        //   a || b:  [a] DUP JMP_IF_NZ Lshort  [b] POP  JMP Lend
                         self.compile_expr(lhs)?;
                         self.emit(OpCode::DUP);
+                        // PLAN-624 (P3): 副本经 auto.vm.truthy 归一为 bool 后
+                        // 跳转——裸 JMP_IF_Z/NZ 是位测零，NULL 哨兵会被误判
+                        // 真值（jade 链式回退取到 Nil 的根因）。
+                        match crate::vm::native_registry::NATIVE_ID_MAP
+                            .get("auto.vm.truthy")
+                        {
+                            Some(id) => {
+                                eprintln!("P624TRUTHY emit id={}", id);
+                                self.emit(OpCode::CALL_NAT);
+                                self.emit_u16(*id);
+                            }
+                            None => eprintln!("P624TRUTHY MISS — no native id"),
+                        }
                         self.emit(if matches!(op, Op::And) { OpCode::JMP_IF_Z } else { OpCode::JMP_IF_NZ });
                         let short_jump = self.emit_placeholder_i16();
+                        // 真值路径：弃 LHS 留 RHS
                         self.compile_expr(rhs)?;
+                        self.emit(OpCode::POP);
                         self.emit(OpCode::JMP);
                         let end_jump = self.emit_placeholder_i16();
-                        let short_pos = self.code.len();
-                        self.patch_jump_to(short_jump, short_pos);
-                        self.emit(OpCode::PUSH_BOOL);
-                        self.code.push(if matches!(op, Op::And) { 1 } else { 0 });
+                        // 短路路径：LHS 值留栈即为结果；真值路径 JMP 亦汇聚至此
                         let end_pos = self.code.len();
+                        self.patch_jump_to(short_jump, end_pos);
                         self.patch_jump_to(end_jump, end_pos);
-                        self.emit(if matches!(op, Op::And) { OpCode::AND } else { OpCode::OR });
-                        self.last_expr_type = ObjectType::Bool;
+                        self.last_expr_type = self.infer_object_type(rhs.as_ref());
                         return Ok(());
                     }
 

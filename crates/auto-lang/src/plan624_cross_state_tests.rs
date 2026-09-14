@@ -186,58 +186,30 @@ mod plan624_cross_state_tests {
     // (P3) &&/|| on struct operands — compile-time error ruling
     // ─────────────────────────────────────────────────────────────────────
 
-    /// P3 (NEEDS_REPLAN 2026-09-14): the error-out design was attempted and
-    /// REVERTED — infer_object_type is too coarse (ops[i] infers
-    /// NestedObject; 20 existing tv corpora broke). The semantics decision
-    /// (compile error via real type tracking / JS value semantics / docs
-    /// deviation) is routed back to plan-new. This test stays RED as the
-    /// pending-work marker for whichever design lands.
+    /// P3 (rev 2 裁定②): JS value semantics — the &&/|| chain returns the
+    /// OPERAND VALUE (short-circuit pass-through), so the web idiom
+    /// `fm && fm.title || "fallback"` resolves to the fallback STRING on a
+    /// falsy map field instead of the boolean corruption (`true`) the old
+    /// bool-normalizing emission produced.
     #[cfg(feature = "ui-interpreter")]
     #[test]
-    fn plan624_p3_nonbool_chain_is_compile_error() {
-        use crate::ast::Stmt;
-        use crate::session::CompilerSession;
-
-        let Some(path) = locate("src/front/p3_chain_app.at") else {
+    fn plan624_p3_nonbool_chain_value_semantics() {
+        let Some(manifest) = locate("src/front/p3_chain_app.at") else {
             eprintln!("plan624: SKIPPED — corpus p3_chain_app.at not found");
             return;
         };
-        let code = std::fs::read_to_string(&path).unwrap();
-        let session = CompilerSession::ui();
-        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
-        let ast = parser.parse().expect("parse p3_chain_app.at");
-        let mut decl = None;
-        for stmt in &ast.stmts {
-            if let Stmt::WidgetDecl(d) = stmt {
-                decl = Some(d.clone());
-                break;
-            }
+        let mut dc = build_component_from_app(&manifest)
+            .expect("(P3) corpus p3_chain_app.at must build");
+        dc.on_with_input("Probe", None);
+        let status = state_raw(&dc, "status");
+        for f in ["hop_a", "hop_b", "hop_c"] {
+            eprintln!("plan624(P3) {} = {}", f, state_raw(&dc, f));
         }
-        let decl = decl.expect("ChainApp widget decl");
-        let result = crate::ui::handler_codegen::synthesize_from_decl(
-            &decl,
-            &[],
-            Vec::new(),
-            &std::collections::HashMap::new(),
-            false,
-        );
-        // 编译诊断可能落在两处：整体合成 Err（硬错）或 record_synth_failure
-        // 登记（handler 体逐语句编译的非致命通道——PLAN-446 批一同族）。
-        let mut diagnostics: Vec<String> = Vec::new();
-        match &result {
-            Err(e) => diagnostics.push(format!("{}", e)),
-            Ok(_) => diagnostics.extend(crate::ui::handler_codegen::take_synth_failures()),
-        }
-        eprintln!("plan624(P3) diagnostics = {:?}", diagnostics);
+        eprintln!("plan624(P3) status = {}", status);
         assert!(
-            !diagnostics.is_empty()
-                && diagnostics
-                    .iter()
-                    .any(|m| m.contains("&&") || m.contains("||")),
-            "(P3) the non-bool &&/|| chain must fail handler synthesis with a \
-             diagnostic naming the operator; got {:?} (empty = the chain still \
-             silently evaluates to a boolean — jade title=true corruption)",
-            diagnostics
+            status.contains("fallback") && !status.contains("Bool"),
+            "(P3) the &&/|| chain must pass the fallback STRING through on a              falsy map field; got {} (Bool = the old bool-normalizing              corruption)",
+            status
         );
     }
 

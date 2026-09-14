@@ -12,6 +12,9 @@ widget ChainApp {
     model {
         var status str = "boot"
         var pages = []
+        var hop_a str = "unset"
+        var hop_b str = "unset"
+        var hop_c str = "unset"
     }
 
     on {
@@ -21,7 +24,13 @@ widget ChainApp {
 
         .Probe -> {
             var t = .pages[0]
-            .status = t.frontmatter && t.frontmatter.title || "fallback"
+            var a = t.frontmatter
+            .hop_a = a
+            var b = a && a.title
+            .hop_b = b
+            var c = b || "fallback"
+            .hop_c = c
+            .status = c
         }
     }
 
