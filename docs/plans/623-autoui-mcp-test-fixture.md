@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-623
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: autoui-mcp-test-fixture
 author: [codex]
 created_at: 2026-09-14
@@ -10,7 +10,7 @@ plan_revision: 2
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: [auto-lang/mcp/autoui-test-fixture]
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: []             # 无 GOAL-NNN 变更：本计划只增加测试夹具与验收基础设施，不改变产品目标。
 
 affects: [auto-lang/ui, auto-lang/mcp]
 current_step: 7
@@ -287,6 +287,35 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
   `outcome: pass`，`next: work`；下一步为 T-00 设计文档后建立
   `D:/autostack/.wt/lang-623/auto-lang` 执行 worktree。
 
+- 2026-09-14 stage:review | plan_id: PLAN-623 | plan_revision: 2 |
+  outcome: pass | reviewed_commit: `b2a5bee7ae486f50cded6e9d2a88a09d27a1ec5e` |
+  base_commit: `6084ac2e90886d76d2ed390bfaeaefcc5657dd96` |
+  dependency_revisions: `auto-down@67bb508`（组内 detached 基线） |
+  spec_inputs: `docs/design/autoui/autoui-mcp-test-fixture.md`（提交
+  `1f62ca0df`）、`docs/specs/auto-lang/mcp/{overview,architecture,plans}.md`
+  （实现提交 `58b87541d`）；`supersedes_spec_components: []`，
+  `new_spec_components: [auto-lang/mcp/autoui-test-fixture]`，
+  `touched_goals: []`（无产品目标变更）。
+  acceptance_results: AC-01 pass（4 个 `tests_plan623` 单测、真实
+  `tools/list` schema/校验）；AC-02 pass（fixture gate off 返回
+  `fixtures_disabled` 且 score 保持 0）；AC-03 pass（VM HTTP fixture
+  标量/数组写回、request-id applied/error）；AC-04 pass（`App.Tick`
+  写入后触发并返回 trigger）；AC-05 pass（VM merged :9257 与 no-merge
+  :9258 同一 1–4 行 golden，分数 100/300/500/800）；AC-06 pass（Rust
+  :9259 明确返回 `backend_unsupported`，普通 `autoui_state` 可用）；
+  AC-07 pass（Plan 005 已提交可执行移交契约，后续 runner 按该契约复用
+  同一 rules case 数据）。
+  findings: 计划范围内无遗漏、未门控生产路径或临时 UI；`cargo tf` 与
+  `cargo tv` 的完整档在本机均被既有 `ffi::tests::test_rust_ffi_*` 失败
+  提前终止（auto-cache 无法解析 home directory），失败路径不在本次 diff；
+  因此以 scoped MCP/UI 测试和运行时 HTTP golden 作为本计划回归证据。
+  evidence: `cargo check -p auto-lang --features ui-iced` 通过且新增夹具
+  行无编译告警；`cargo test -p auto-lang --features ui-iced
+  tests_plan623 --lib` 4/4；真实 VM merged/no-merge 与 Rust MCP 结果见
+  本节 acceptance_results；工作树在复审前干净。复审在执行上下文中完成，
+  已按提交、基线、规格和运行时结果重建结论，未声称由独立 agent 完成。
+  next: merge after explicit approval；本复审不执行合并。
+
 ## 10. 待澄清事项
 
 - T-01 的实现需按 T-00 设计落地独立 `ActionTarget::Fixture`；若代码勘验发现现有消息边界无法承载 ack，须先记录 needs_replan，不得退化为固定等待。
@@ -295,7 +324,6 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 - VM no-merge 集成测试需要可用的本地 HTTP backend 启动方式；若环境缺失，
   记录为环境阻断，不以 merged 结果代替。
 - 本计划完成前，Plan 005 的 VM fixture golden 保持 blocked。
-
 
 
 
