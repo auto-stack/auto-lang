@@ -2254,8 +2254,13 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
         Some(t) => {
             let widget = t.get("widget").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
             let event = t.get("event").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+            let input = match t.get("input") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(value)) => Some(value.to_string()),
+                Some(_) => return fixture_error("invalid_schema", "trigger.input must be a string or null"),
+            };
             match (widget, event) {
-                (Some(widget), Some(event)) => Some((widget.to_string(), event.to_string(), t.get("input").and_then(|v| v.as_str()).map(str::to_string))),
+                (Some(widget), Some(event)) => Some((widget.to_string(), event.to_string(), input)),
                 _ => return fixture_error("invalid_schema", "trigger requires non-empty widget and event"),
             }
         }
