@@ -2741,7 +2741,7 @@ impl<'a> AuraViewBuilder<'a> {
         props: &HashMap<String, AuraPropValue>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let mut lines = vec![format!("⚙ {}", tag)];
+        let mut lines = vec![format!("⚙ {tag}（Web 端组件）")];
         for key in ["app", "id", "name", "src", "value"] {
             if let Some(v) = self.extract_string_with(props, key, bindings) {
                 if !v.is_empty() {
@@ -2750,7 +2750,7 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
         lines.push(
-            "Web 生态组件 · VM 端不渲染，完整交互请使用 auto run（Vue 端）查看".to_string(),
+            "该内嵌容器为 Web 端组件，VM 端暂不内嵌示例画面；完整交互请使用 auto run（Vue 端）查看".to_string(),
         );
         let mut children: Vec<View<DynamicMessage>> = Vec::new();
         for (i, line) in lines.iter().enumerate() {
