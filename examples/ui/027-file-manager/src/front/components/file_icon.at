@@ -1,0 +1,48 @@
+// components/file_icon.at — FileIcon 文件类型图标(PLAN-016 T-02)。
+//
+/// 按类型/扩展名分支发射字面量 lucide 名(vue 轨 icon 只发射字面量名,
+/// 动态名 → Circle 占位——TreeIcon 同款范式,PLAN-614)。
+/// 调色板:folder/file/file-text/file-code/file-image/file-archive/
+/// file-spreadsheet/file-audio/file-video/file-json(均实名核对于
+/// lucide_generated.rs v0.312.0)。调色板外扩展名回落 file。
+widget FileIcon (is_dir: bool = false, ext: str = "", size: int = 16) {
+    view {
+        if .is_dir {
+            icon (name: "folder", size: .size, style: "shrink-0 text-primary/70") {}
+        } else {
+            if .ext == "md" || .ext == "txt" || .ext == "log" || .ext == "pdf" {
+                icon (name: "file-text", size: .size, style: "shrink-0 text-muted-foreground") {}
+            } else {
+                if .ext == "toml" || .ext == "json" || .ext == "rs" || .ext == "at" || .ext == "js" || .ext == "ts" || .ext == "py" || .ext == "sh" || .ext == "yaml" || .ext == "yml" || .ext == "html" || .ext == "css" || .ext == "env" {
+                    icon (name: "file-code", size: .size, style: "shrink-0 text-muted-foreground") {}
+                } else {
+                    if .ext == "png" || .ext == "jpg" || .ext == "jpeg" || .ext == "gif" || .ext == "webp" || .ext == "bmp" || .ext == "svg" || .ext == "ico" {
+                        icon (name: "file-image", size: .size, style: "shrink-0 text-muted-foreground") {}
+                    } else {
+                        if .ext == "zip" || .ext == "gz" || .ext == "tar" || .ext == "rar" || .ext == "7z" {
+                            icon (name: "file-archive", size: .size, style: "shrink-0 text-muted-foreground") {}
+                        } else {
+                            if .ext == "csv" || .ext == "xlsx" || .ext == "xls" {
+                                icon (name: "file-spreadsheet", size: .size, style: "shrink-0 text-muted-foreground") {}
+                            } else {
+                                if .ext == "mp3" || .ext == "wav" || .ext == "flac" || .ext == "ogg" {
+                                    icon (name: "file-audio", size: .size, style: "shrink-0 text-muted-foreground") {}
+                                } else {
+                                    if .ext == "mp4" || .ext == "mkv" || .ext == "avi" || .ext == "mov" || .ext == "webm" {
+                                        icon (name: "file-video", size: .size, style: "shrink-0 text-muted-foreground") {}
+                                    } else {
+                                        if .ext == "doc" || .ext == "docx" {
+                                            icon (name: "file-text", size: .size, style: "shrink-0 text-muted-foreground") {}
+                                        } else {
+                                            icon (name: "file", size: .size, style: "shrink-0 text-muted-foreground") {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

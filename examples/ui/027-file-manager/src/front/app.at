@@ -1,10 +1,13 @@
-// app.at — 027-file-manager 文件管理器（Plan 440·App 轨道填洞 ④）
+// app.at — 027-file-manager 文件管理器（Plan 440·App 轨道填洞 ④；PLAN-016 现代化）
 //
 // 双栏 Finder/Explorer 形态：
-// - 左侧栏：快速访问（Home/Docs/Downloads/Pictures/Music/Trash）+ 存储占用仪表
+// - 左侧栏：快速访问树（Home/Docs/Downloads/Pictures/Music）
 // - 顶部栏：前进/后退 + 面包屑导航 + 搜索过滤 + 列表/网格视图切换 + 新建/隐藏开关
-// - 内容区：明细列表（表格/可排序列头/内联编辑） vs 图标网格（多彩文件徽章卡片）
-// - 弹层系统（Plan 422）：右键上下文菜单（坐标锚）、删除确认弹层、新建弹层
+// - 内容区：明细列表（表格/可排序列头） vs 图标网格
+// - 弹层（PLAN-016 T-03/T-04）：alert-dialog 模态（新建/重命名/删除确认）
+//   + 锚定 popover 右键菜单（shell dock 菜单同款，不再用固定坐标）+ 框架 toast()
+// - 主题（PLAN-016 T-01）：全语义 token + dark_mode 声明——桌面 SetTheme 回写链
+//   即时换肤（浅色 = stella light token 映射），vue 轨生成器按 dark_mode 绑根 class
 // - 剪贴板：复制 / 剪切 / 粘贴跨目录流
 // - 持久化：storage.get/set 保持视图模式、排序字段、排序方向与隐藏文件状态
 
@@ -19,13 +22,16 @@ widget App {
         SetViewMode(str), SortByName, SortBySize, SortByDate, SortByType, ToggleHidden,
         SetSearch(str), SelectItem(int), OpenItem(int),
         StartRename(int), SetEditName(str), CommitRename, CancelRename,
-        ItemCtx(int, float, float), CtxClose, CtxOpen, CtxRename, CtxCopy, CtxCut, CtxPaste, CtxDelete,
+        ItemCtx(int), CtxClose, CtxOpen, CtxRename, CtxCopy, CtxCut, CtxPaste, CtxDelete,
         NewFolderOpen, NewFileOpen, NewModalClose, SetNewName(str), CommitNew,
-        ConfirmDelete(int), ExecuteDelete, CancelDelete,
-        DismissToast
+        ConfirmDelete(int), ExecuteDelete, CancelDelete
     }
 
     model {
+        // PLAN-016 T-01：主题跟随——桌面切主题时宿主对本变量回写（dark_mode
+        // 回写链），视图全语义 token 随之换肤；vue 轨按本变量绑根 dark class。
+        var dark_mode bool = true
+
         // ---- 浏览与导航状态 ----
         var current_path str = "/root"
         var history = ["/root"]
@@ -46,32 +52,23 @@ widget App {
         var show_hidden_label str = "隐藏项: 关"
         var search_q str = ""
 
-        // 列头指示文本
-        var name_hdr str = "名称 ↑"
-        var size_hdr str = "大小"
-        var date_hdr str = "修改日期"
-        var type_hdr str = "类型"
-
         // 选中与就地编辑
         var selected_id int = -1
         var selected_name str = ""
         var selected_info str = "未选中任何项目"
         var editing_id int = -1
         var edit_name str = ""
+        var rename_open bool = false
 
-        // ---- Plan 422 弹层原语状态 ----
-        // 1. 右键菜单（坐标锚）
-        var ctx_open bool = false
-        var ctx_x float = 0.0
-        var ctx_y float = 0.0
-        var ctx_item_id int = -1
+        // ---- 右键菜单（PLAN-016 T-04：锚定 popover，open 按 ctx_id 匹配行）----
+        var ctx_id int = -1
 
-        // 2. 新建文件/文件夹弹层
+        // ---- 新建文件/文件夹模态（alert-dialog）----
         var new_modal_open bool = false
         var new_modal_type str = "folder"   // "folder" | "file"
         var new_modal_name str = ""
 
-        // 3. 删除确认弹层
+        // ---- 删除确认模态（alert-dialog）----
         var confirm_del_open bool = false
         var confirm_del_id int = -1
         var confirm_del_name str = ""
@@ -83,14 +80,12 @@ widget App {
         var clipboard_name str = ""
         var clipboard_label str = ""
 
-        // ---- 反馈与状态栏 ----
-        var toast_open bool = false
-        var toast_msg str = ""
+        // ---- 状态栏 ----
         var item_count_str str = "0 个项目"
         var total_size_str str = "0 B"
         var has_items bool = true
 
-        // ---- 虚拟文件系统（平行数组驱动）----
+        // ---- 虚拟文件系统（平行数组驱动；PLAN-016 T-05 换真实 FS）----
         var item_ids = [
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
         ]
@@ -174,34 +169,17 @@ widget App {
             false, false, false,
             false, false
         ]
-        var item_colors = [
-            "#f59e0b", "#f59e0b", "#f59e0b", "#f59e0b", "#94a3b8",
-            "#38bdf8", "#a855f7", "#ec4899",
-            "#f59e0b", "#38bdf8", "#10b981", "#38bdf8",
-            "#f59e0b", "#ef4444", "#38bdf8",
-            "#8b5cf6", "#10b981", "#06b6d4",
-            "#ec4899", "#ec4899"
-        ]
         var next_id int = 20
 
-        // 渲染视图模型数组（预置结构使 TypeScript 准确推导字段类型）
-        var fmNodes = [
+    var fmNodes = [
         { id: "/root", label: "主目录", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
-            { id: "/root/Documents", label: "文档", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
-                { id: "/root/Documents/项目计划.docx", label: "项目计划.docx", kind: "file", icon: "", is_leaf: false, badge: "", children: [] },
-                { id: "/root/Documents/报告.pdf", label: "报告.pdf", kind: "file", icon: "", is_leaf: false, badge: "", children: [] }
-            ] },
-            { id: "/root/Downloads", label: "下载", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
-                { id: "/root/Downloads/setup.exe", label: "setup.exe", kind: "file", icon: "", is_leaf: false, badge: "", children: [] }
-            ] },
-            { id: "/root/Pictures", label: "图片", kind: "dir", icon: "", is_leaf: false, badge: "", children: [
-                { id: "/root/Pictures/海报.png", label: "海报.png", kind: "file", icon: "", is_leaf: false, badge: "", children: [] }
-            ] },
-            { id: "/root/Music", label: "音乐", kind: "dir", icon: "", is_leaf: false, badge: "", children: [] },
-            { id: "/root/Trash", label: "回收站", kind: "dir", icon: "", is_leaf: false, badge: "", children: [] }
+            { id: "/root/Documents", label: "文档", kind: "dir", icon: "", is_leaf: false, badge: "", children: [] },
+            { id: "/root/Downloads", label: "下载", kind: "dir", icon: "", is_leaf: false, badge: "", children: [] },
+            { id: "/root/Pictures", label: "图片", kind: "dir", icon: "", is_leaf: false, badge: "", children: [] },
+            { id: "/root/Music", label: "音乐", kind: "dir", icon: "", is_leaf: false, badge: "", children: [] }
         ] }
     ]
-    var fmExpanded = ["/root"]
+    var fmExpanded = ["/root", "/root/Documents"]
     var fmSel = "/root"
     var files_view = [
             {
@@ -214,57 +192,59 @@ widget App {
                 file_ext: "folder",
                 type_name: "文件夹",
                 date: "2026-08-30 11:20",
-                is_hidden: false,
-                color: "#f59e0b"
+                is_hidden: false
             }
         ]
     }
 
     view {
         col {
-            style: "w-full h-screen flex flex-col bg-zinc-950 text-zinc-100 select-none overflow-hidden font-sans"
+            style: "w-full h-screen flex flex-col bg-background text-foreground select-none overflow-hidden font-sans"
 
             // ══════════════════════════════════════════════════════════════
             // 顶部工具栏与路径条
             // ══════════════════════════════════════════════════════════════
             row {
-                style: "h-14 border-b border-zinc-800 px-4 flex items-center justify-between bg-zinc-900/90 shrink-0 gap-3"
+                style: "h-14 border-b border-border px-4 flex items-center justify-between bg-card/90 shrink-0 gap-3"
 
                 // 历史导航与路径面包屑
                 row {
                     style: "items-center gap-1.5 flex-1 min-w-0"
 
-                    // 后退按钮
-                    button (text: "←", variant: "ghost") {
+                    // 后退
+                    button (variant: "ghost") {
                         onclick: .GoBack
-                        style: if .can_back { "h-8 w-8 rounded-lg bg-zinc-800 text-zinc-100 hover:bg-zinc-700 flex items-center justify-center text-sm font-bold" } else { "h-8 w-8 rounded-lg bg-zinc-800/40 text-zinc-600 flex items-center justify-center text-sm font-bold opacity-40" }
+                        style: if .can_back { "h-8 w-8 rounded-lg bg-accent text-foreground hover:bg-accent/70 flex items-center justify-center" } else { "h-8 w-8 rounded-lg bg-accent/40 text-muted-foreground flex items-center justify-center opacity-40" }
+                        icon (name: "arrow-left", size: 16) {}
                     }
 
-                    // 前进按钮
-                    button (text: "→", variant: "ghost") {
+                    // 前进
+                    button (variant: "ghost") {
                         onclick: .GoForward
-                        style: if .can_forward { "h-8 w-8 rounded-lg bg-zinc-800 text-zinc-100 hover:bg-zinc-700 flex items-center justify-center text-sm font-bold" } else { "h-8 w-8 rounded-lg bg-zinc-800/40 text-zinc-600 flex items-center justify-center text-sm font-bold opacity-40" }
+                        style: if .can_forward { "h-8 w-8 rounded-lg bg-accent text-foreground hover:bg-accent/70 flex items-center justify-center" } else { "h-8 w-8 rounded-lg bg-accent/40 text-muted-foreground flex items-center justify-center opacity-40" }
+                        icon (name: "arrow-right", size: 16) {}
                     }
 
-                    // 上一级按钮
-                    button (text: "↑", variant: "ghost") {
+                    // 上一级
+                    button (variant: "ghost") {
                         onclick: .GoUp
-                        style: if .current_path != "/root" { "h-8 w-8 rounded-lg bg-zinc-800 text-zinc-100 hover:bg-zinc-700 flex items-center justify-center text-sm font-bold mr-2" } else { "h-8 w-8 rounded-lg bg-zinc-800/40 text-zinc-600 flex items-center justify-center text-sm font-bold mr-2 opacity-40" }
+                        style: if .current_path != "/root" { "h-8 w-8 rounded-lg bg-accent text-foreground hover:bg-accent/70 flex items-center justify-center mr-2" } else { "h-8 w-8 rounded-lg bg-accent/40 text-muted-foreground flex items-center justify-center mr-2 opacity-40" }
+                        icon (name: "arrow-up", size: 16) {}
                     }
 
                     // 面包屑胶囊条
                     row {
-                        style: "items-center bg-zinc-950/80 border border-zinc-800/80 rounded-lg px-2.5 py-1 gap-1 flex-1 max-w-lg overflow-x-auto"
-                        text "📁" { style: "text-xs mr-1 opacity-70" }
+                        style: "items-center bg-background/80 border border-border rounded-lg px-2.5 py-1 gap-1 flex-1 max-w-md overflow-x-auto"
+                        icon (name: "folder-open", size: 14, style: "mr-1 text-muted-foreground") {}
                         for c in .crumbs {
                             if c.is_last {
-                                text c.name { style: "text-xs font-semibold text-zinc-200 px-1 py-0.5 rounded bg-zinc-800/50" }
+                                text c.name { style: "text-xs font-semibold text-foreground px-1 py-0.5 rounded bg-accent/50" }
                             } else {
                                 button (text: c.name, variant: "ghost") {
                                     onclick: .NavTo(c.path)
-                                    style: "text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/40 px-1.5 py-0.5 rounded transition-colors"
+                                    style: "text-xs text-muted-foreground hover:text-foreground hover:bg-accent/40 px-1.5 py-0.5 rounded transition-colors"
                                 }
-                                text "/" { style: "text-xs text-zinc-600 font-mono" }
+                                text "/" { style: "text-xs text-muted-foreground/50 font-mono" }
                             }
                         }
                     }
@@ -272,45 +252,58 @@ widget App {
 
                 // 右侧操作区：搜索 + 视图切换 + 隐藏开关 + 新建
                 row {
-                    style: "items-center gap-2 shrink-0"
+                    style: "items-center gap-1.5 shrink-0"
 
                     // 搜索框
                     input {
                         value: .search_q
                         oninput: .SetSearch
                         placeholder: "搜索当前目录..."
-                        style: "w-44 text-xs px-3 py-1.5 bg-zinc-950/80 border border-zinc-800 rounded-lg text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-zinc-600"
+                        style: "w-40 text-xs px-3 py-1.5 bg-background/80 border border-border rounded-lg text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
                     }
 
                     // 视图模式切换（List ↔ Grid）
                     row {
-                        style: "bg-zinc-950/80 border border-zinc-800 rounded-lg p-0.5 gap-0.5"
-                        button (text: "≡", variant: "ghost") {
+                        style: "bg-background/80 border border-border rounded-lg p-0.5 gap-0.5"
+                        button (variant: "ghost") {
                             onclick: .SetViewMode("list")
-                            style: if .view_mode == "list" { "h-7 w-7 rounded-md bg-zinc-800 text-zinc-100 font-bold text-xs flex items-center justify-center shadow-sm" } else { "h-7 w-7 rounded-md text-zinc-400 hover:text-zinc-200 text-xs flex items-center justify-center" }
+                            style: if .view_mode == "list" { "h-7 w-7 rounded-md bg-accent text-foreground flex items-center justify-center shadow-sm" } else { "h-7 w-7 rounded-md text-muted-foreground hover:text-foreground flex items-center justify-center" }
+                            icon (name: "align-justify", size: 14) {}
                         }
-                        button (text: "⊞", variant: "ghost") {
+                        button (variant: "ghost") {
                             onclick: .SetViewMode("grid")
-                            style: if .view_mode == "grid" { "h-7 w-7 rounded-md bg-zinc-800 text-zinc-100 font-bold text-xs flex items-center justify-center shadow-sm" } else { "h-7 w-7 rounded-md text-zinc-400 hover:text-zinc-200 text-xs flex items-center justify-center" }
+                            style: if .view_mode == "grid" { "h-7 w-7 rounded-md bg-accent text-foreground flex items-center justify-center shadow-sm" } else { "h-7 w-7 rounded-md text-muted-foreground hover:text-foreground flex items-center justify-center" }
+                            icon (name: "layout-grid", size: 14) {}
                         }
                     }
 
                     // 隐藏文件开关
-                    button (text: .show_hidden_label, variant: "ghost") {
+                    button {
                         onclick: .ToggleHidden
-                        style: if .show_hidden { "text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 text-primary font-medium border border-zinc-700" } else { "text-xs px-2.5 py-1.5 rounded-lg bg-zinc-950/60 text-zinc-400 border border-zinc-800 hover:text-zinc-200" }
+                        style: if .show_hidden { "h-8 px-2.5 rounded-lg bg-accent text-primary font-medium border border-primary/50 flex items-center gap-1.5 whitespace-nowrap shrink-0" } else { "h-8 px-2.5 rounded-lg bg-background/60 text-muted-foreground border border-border hover:text-foreground flex items-center gap-1.5 whitespace-nowrap shrink-0" }
+                        if .show_hidden {
+                            icon (name: "eye", size: 14) {}
+                        } else {
+                            icon (name: "eye-off", size: 14) {}
+                        }
+                        text "隐藏项" { style: "text-xs" }
                     }
 
-                    // 新建文件夹按钮
-                    button (text: "+ 文件夹", variant: "secondary") {
+                    // 新建文件夹按钮（不标 variant——secondary 变体带 icon+text
+                    // 子件时渲染空壳，015-notes 形态 = 无 variant + 显式 style）
+                    button {
                         onclick: .NewFolderOpen
-                        style: "text-xs px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 font-medium border border-zinc-700 shadow-sm"
+                        style: "h-8 px-3 rounded-lg bg-accent text-accent-foreground hover:bg-accent/80 font-medium border border-border shadow-sm flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                        icon (name: "folder-plus", size: 14) {}
+                        text "+ 文件夹" { style: "text-xs" }
                     }
 
                     // 新建文件按钮
-                    button (text: "+ 文件", variant: "default") {
+                    button {
                         onclick: .NewFileOpen
-                        style: "text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 font-medium shadow-sm"
+                        style: "h-8 px-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 font-medium shadow-sm flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                        icon (name: "file-plus", size: 14) {}
+                        text "+ 文件" { style: "text-xs" }
                     }
                 }
             }
@@ -321,37 +314,20 @@ widget App {
             row {
                 style: "flex-1 min-h-0 flex"
 
-                // ---- 左侧导航栏（快速访问 + 存储占用）----
+                // ---- 左侧导航栏（快速访问树）----
                 col {
-                    style: "w-56 border-r border-zinc-800 bg-zinc-900/40 p-3 flex flex-col justify-between shrink-0"
+                    style: "w-56 border-r border-border bg-card/40 p-3 flex flex-col shrink-0"
 
                     col {
                         style: "gap-1 flex-1 min-h-0"
-                        text "快速访问" { style: "text-[11px] font-bold text-zinc-500 uppercase tracking-wider px-2 py-1 mb-1" }
+                        text "快速访问" { style: "text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-2 py-1 mb-1" }
                         TreeView (nodes: .fmNodes, expanded: .fmExpanded, selected: .fmSel, on_toggle: .FmToggle, on_select: .FmSelect, directory: true) {}
-                    }
-
-                    // 存储使用率小部件
-                    col {
-                        style: "bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3 gap-2"
-                        row {
-                            style: "justify-between items-center text-xs"
-                            text "存储空间" { style: "font-semibold text-zinc-300" }
-                            text "42.5 / 128 GB" { style: "text-zinc-500 font-mono text-[11px]" }
-                        }
-                        // 进度条
-                        row {
-                            style: "w-full h-2 bg-zinc-800 rounded-full overflow-hidden"
-                            row {
-                                style: "w-1/3 h-full bg-primary rounded-full"
-                            }
-                        }
                     }
                 }
 
                 // ---- 右侧主要内容区（详细列表 vs 图标网格）----
                 col {
-                    style: "flex-1 bg-zinc-950 flex flex-col min-h-0 overflow-y-auto"
+                    style: "flex-1 bg-background flex flex-col min-h-0 overflow-y-auto"
 
                     // 模式 A：详细列表视图
                     if .view_mode == "list" {
@@ -360,88 +336,153 @@ widget App {
 
                             // 列表表头（可点击排序）
                             row {
-                                style: "h-9 border-b border-zinc-800 px-4 items-center bg-zinc-900/30 text-xs font-medium text-zinc-400 select-none sticky top-0 z-10"
-                                button (text: .name_hdr, variant: "ghost") {
+                                style: "h-9 border-b border-border px-4 items-center bg-card/30 text-xs font-medium text-muted-foreground select-none sticky top-0 z-10"
+                                button (variant: "ghost") {
                                     onclick: .SortByName
-                                    style: "w-1/3 justify-start px-2 text-xs text-zinc-300 hover:text-zinc-100"
+                                    style: "w-1/3 justify-start px-2 text-xs text-foreground/80 hover:text-foreground"
+                                    row {
+                                        style: "items-center gap-1"
+                                        text "名称" { style: "text-xs" }
+                                        if .sort_col == "name" {
+                                            if .sort_dir == "asc" {
+                                                icon (name: "arrow-up", size: 12) {}
+                                            } else {
+                                                icon (name: "arrow-down", size: 12) {}
+                                            }
+                                        }
+                                    }
                                 }
-                                button (text: .size_hdr, variant: "ghost") {
+                                button (variant: "ghost") {
                                     onclick: .SortBySize
-                                    style: "w-28 justify-end px-2 text-xs text-zinc-300 hover:text-zinc-100"
+                                    style: "w-28 justify-end px-2 text-xs text-foreground/80 hover:text-foreground"
+                                    row {
+                                        style: "items-center gap-1"
+                                        text "大小" { style: "text-xs" }
+                                        if .sort_col == "size" {
+                                            if .sort_dir == "asc" {
+                                                icon (name: "arrow-up", size: 12) {}
+                                            } else {
+                                                icon (name: "arrow-down", size: 12) {}
+                                            }
+                                        }
+                                    }
                                 }
-                                button (text: .type_hdr, variant: "ghost") {
+                                button (variant: "ghost") {
                                     onclick: .SortByType
-                                    style: "w-36 justify-start px-4 text-xs text-zinc-300 hover:text-zinc-100"
+                                    style: "w-36 justify-start px-4 text-xs text-foreground/80 hover:text-foreground"
+                                    row {
+                                        style: "items-center gap-1"
+                                        text "类型" { style: "text-xs" }
+                                        if .sort_col == "type" {
+                                            if .sort_dir == "asc" {
+                                                icon (name: "arrow-up", size: 12) {}
+                                            } else {
+                                                icon (name: "arrow-down", size: 12) {}
+                                            }
+                                        }
+                                    }
                                 }
-                                button (text: .date_hdr, variant: "ghost") {
+                                button (variant: "ghost") {
                                     onclick: .SortByDate
-                                    style: "flex-1 justify-start px-2 text-xs text-zinc-300 hover:text-zinc-100"
+                                    style: "flex-1 justify-start px-2 text-xs text-foreground/80 hover:text-foreground"
+                                    row {
+                                        style: "items-center gap-1"
+                                        text "修改日期" { style: "text-xs" }
+                                        if .sort_col == "date" {
+                                            if .sort_dir == "asc" {
+                                                icon (name: "arrow-up", size: 12) {}
+                                            } else {
+                                                icon (name: "arrow-down", size: 12) {}
+                                            }
+                                        }
+                                    }
                                 }
-                                text "操作" { style: "w-20 text-center text-xs text-zinc-500" }
+                                text "操作" { style: "w-16 text-center text-xs text-muted-foreground" }
                             }
 
                             // 列表行项目
                             if .has_items {
                                 col {
-                                    style: "divide-y divide-zinc-900"
+                                    style: "divide-y divide-border"
                                     for item in .files_view {
                                         row {
-                                            style: if item.id == .selected_id { "h-11 px-4 items-center bg-zinc-800/80 border-l-2 border-primary transition-colors cursor-pointer" } else { "h-11 px-4 items-center hover:bg-zinc-900/60 transition-colors cursor-pointer" }
+                                            style: if item.id == .selected_id { "h-11 px-4 items-center bg-accent border-l-2 border-primary transition-colors cursor-pointer" } else { "h-11 px-4 items-center hover:bg-accent/40 transition-colors cursor-pointer" }
 
-                                            // 名称列（图标 + 名称/内联输入）
+                                            // 名称列（图标 + 名称）
                                             row {
                                                 style: "w-1/3 items-center gap-2 px-2 min-w-0"
-                                                if item.is_dir {
-                                                    text "📁" { style: "text-sm shrink-0" }
-                                                } else {
-                                                    text "📄" { style: "text-sm shrink-0" }
-                                                }
-
-                                                if item.id == .editing_id {
-                                                    input {
-                                                        value: .edit_name
-                                                        oninput: .SetEditName
-                                                        onenter: .CommitRename
-                                                        style: "flex-1 text-xs px-2 py-1 bg-zinc-900 border border-primary rounded text-zinc-100 outline-none"
-                                                    }
-                                                    button (text: "✓", variant: "ghost") {
-                                                        onclick: .CommitRename
-                                                        style: "h-6 w-6 text-xs text-emerald-400 font-bold hover:bg-zinc-700 rounded"
-                                                    }
-                                                    button (text: "✕", variant: "ghost") {
-                                                        onclick: .CancelRename
-                                                        style: "h-6 w-6 text-xs text-zinc-400 hover:bg-zinc-700 rounded"
-                                                    }
-                                                } else {
-                                                    button (text: item.name, variant: "ghost") {
-                                                        onclick: .OpenItem(item.id)
-                                                        oncontextmenu: .ItemCtx(item.id, 450.0, 200.0)
-                                                        style: if item.is_hidden { "justify-start text-xs text-zinc-400 font-medium truncate hover:underline" } else { "justify-start text-xs text-zinc-100 font-medium truncate hover:underline" }
-                                                    }
+                                                FileIcon (is_dir: item.is_dir, ext: item.file_ext, size: 16) {}
+                                                button (text: item.name, variant: "ghost") {
+                                                    onclick: .OpenItem(item.id)
+                                                    oncontextmenu.prevent: .ItemCtx(item.id)
+                                                    style: if item.is_hidden { "justify-start text-xs text-muted-foreground font-medium truncate hover:underline" } else { "justify-start text-xs text-foreground font-medium truncate hover:underline" }
                                                 }
                                             }
 
                                             // 大小列
                                             text item.size_str {
-                                                style: "w-28 text-right px-2 text-xs font-mono text-zinc-400"
+                                                style: "w-28 text-right px-2 text-xs font-mono text-muted-foreground"
                                             }
 
                                             // 类型列
                                             text item.type_name {
-                                                style: "w-36 px-4 text-xs text-zinc-400 truncate"
+                                                style: "w-36 px-4 text-xs text-muted-foreground truncate"
                                             }
 
                                             // 修改日期列
                                             text item.date {
-                                                style: "flex-1 px-2 text-xs text-zinc-400 font-mono"
+                                                style: "flex-1 px-2 text-xs text-muted-foreground font-mono"
                                             }
 
-                                            // 快速操作列（右键/操作菜单按钮）
+                                            // 快速操作列（··· 锚定右键菜单）
                                             row {
-                                                style: "w-20 justify-center gap-1"
-                                                button (text: "···", variant: "ghost") {
-                                                    onclick: .ItemCtx(item.id, 500.0, 220.0)
-                                                    style: "h-7 w-7 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md"
+                                                style: "w-16 justify-center"
+                                                button (variant: "ghost") {
+                                                    onclick: .ItemCtx(item.id)
+                                                    style: "h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md flex items-center justify-center"
+                                                    icon (name: "more-horizontal", size: 16) {}
+                                                }
+                                                popover (open: .ctx_id == item.id, placement: "bottom-end", ondismiss: .CtxClose,
+                                                         class: "w-44 p-1.5 rounded-xl border border-border bg-card shadow-xl z-50") {
+                                                    button (variant: "ghost") {
+                                                        onclick: .CtxOpen
+                                                        style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
+                                                        icon (name: "folder-open", size: 14) {}
+                                                        text "打开" { style: "text-xs" }
+                                                    }
+                                                    button (variant: "ghost") {
+                                                        onclick: .CtxRename
+                                                        style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
+                                                        icon (name: "pencil", size: 14) {}
+                                                        text "重命名" { style: "text-xs" }
+                                                    }
+                                                    button (variant: "ghost") {
+                                                        onclick: .CtxCopy
+                                                        style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
+                                                        icon (name: "copy", size: 14) {}
+                                                        text "复制" { style: "text-xs" }
+                                                    }
+                                                    button (variant: "ghost") {
+                                                        onclick: .CtxCut
+                                                        style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
+                                                        icon (name: "scissors", size: 14) {}
+                                                        text "剪切" { style: "text-xs" }
+                                                    }
+                                                    if .clipboard_name != "" {
+                                                        button (variant: "ghost") {
+                                                            onclick: .CtxPaste
+                                                            style: "h-8 w-full justify-start px-3 text-xs text-primary font-semibold hover:bg-accent rounded-md flex items-center gap-2"
+                                                            icon (name: "clipboard", size: 14) {}
+                                                            text "粘贴到此处" { style: "text-xs" }
+                                                        }
+                                                    }
+                                                    col (style: "h-px w-full bg-border my-1")
+                                                    button (variant: "ghost") {
+                                                        onclick: .CtxDelete
+                                                        style: "h-8 w-full justify-start px-3 text-xs text-destructive hover:bg-accent rounded-md flex items-center gap-2"
+                                                        icon (name: "trash-2", size: 14) {}
+                                                        text "删除" { style: "text-xs" }
+                                                    }
                                                 }
                                             }
                                         }
@@ -451,8 +492,8 @@ widget App {
                                 // 空目录占位
                                 col {
                                     style: "flex-1 items-center justify-center p-12 gap-3"
-                                    text "📂" { style: "text-5xl opacity-30" }
-                                    text "此目录为空" { style: "text-sm text-zinc-500 font-medium" }
+                                    icon (name: "folder-open", size: 44, style: "opacity-30 text-muted-foreground") {}
+                                    text "此目录为空" { style: "text-sm text-muted-foreground font-medium" }
                                 }
                             }
                         }
@@ -467,41 +508,64 @@ widget App {
                                     style: "flex-wrap gap-4"
                                     for item in .files_view {
                                         col {
-                                            style: if item.id == .selected_id { "w-36 h-36 bg-zinc-800/90 border-2 border-primary rounded-xl p-3 items-center justify-center gap-2 cursor-pointer shadow-lg hover:bg-zinc-800" } else { "w-36 h-36 bg-zinc-900/50 border border-zinc-800/80 rounded-xl p-3 items-center justify-center gap-2 cursor-pointer hover:bg-zinc-800/60 transition-colors" }
+                                            style: if item.id == .selected_id { "w-36 h-36 bg-accent border-2 border-primary rounded-xl p-3 items-center justify-center gap-2 cursor-pointer shadow-lg" } else { "w-36 h-36 bg-card/60 border border-border rounded-xl p-3 items-center justify-center gap-2 cursor-pointer hover:bg-accent/40 transition-colors" }
 
                                             // 图标
-                                            if item.is_dir {
-                                                text "📁" { style: "text-4xl drop-shadow" }
-                                            } else {
-                                                text "📄" { style: "text-4xl drop-shadow" }
-                                            }
+                                            FileIcon (is_dir: item.is_dir, ext: item.file_ext, size: 40) {}
 
                                             // 名称
-                                            if item.id == .editing_id {
-                                                input {
-                                                    value: .edit_name
-                                                    oninput: .SetEditName
-                                                    onenter: .CommitRename
-                                                    style: "w-full text-xs text-center px-1 py-0.5 bg-zinc-900 border border-primary rounded text-zinc-100 outline-none"
-                                                }
-                                            } else {
-                                                button (text: item.name, variant: "ghost") {
-                                                    onclick: .OpenItem(item.id)
-                                                    oncontextmenu: .ItemCtx(item.id, 450.0, 200.0)
-                                                    style: if item.is_hidden { "text-xs text-zinc-400 font-medium truncate w-full text-center" } else { "text-xs text-zinc-200 font-medium truncate w-full text-center" }
-                                                }
+                                            button (text: item.name, variant: "ghost") {
+                                                onclick: .OpenItem(item.id)
+                                                oncontextmenu.prevent: .ItemCtx(item.id)
+                                                style: if item.is_hidden { "text-xs text-muted-foreground font-medium truncate w-full text-center" } else { "text-xs text-foreground font-medium truncate w-full text-center" }
                                             }
 
                                             // 大小/副标
-                                            text item.size_str { style: "text-[10px] text-zinc-500 font-mono" }
+                                            text item.size_str { style: "text-[10px] text-muted-foreground font-mono" }
+
+                                            // 行内锚定菜单（右键/长按落点）
+                                            popover (open: .ctx_id == item.id, placement: "bottom-start", ondismiss: .CtxClose,
+                                                     class: "w-44 p-1.5 rounded-xl border border-border bg-card shadow-xl z-50") {
+                                                button (variant: "ghost") {
+                                                    onclick: .CtxOpen
+                                                    style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
+                                                    icon (name: "folder-open", size: 14) {}
+                                                    text "打开" { style: "text-xs" }
+                                                }
+                                                button (variant: "ghost") {
+                                                    onclick: .CtxRename
+                                                    style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
+                                                    icon (name: "pencil", size: 14) {}
+                                                    text "重命名" { style: "text-xs" }
+                                                }
+                                                button (variant: "ghost") {
+                                                    onclick: .CtxCopy
+                                                    style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
+                                                    icon (name: "copy", size: 14) {}
+                                                    text "复制" { style: "text-xs" }
+                                                }
+                                                button (variant: "ghost") {
+                                                    onclick: .CtxCut
+                                                    style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
+                                                    icon (name: "scissors", size: 14) {}
+                                                    text "剪切" { style: "text-xs" }
+                                                }
+                                                col (style: "h-px w-full bg-border my-1")
+                                                button (variant: "ghost") {
+                                                    onclick: .CtxDelete
+                                                    style: "h-8 w-full justify-start px-3 text-xs text-destructive hover:bg-accent rounded-md flex items-center gap-2"
+                                                    icon (name: "trash-2", size: 14) {}
+                                                    text "删除" { style: "text-xs" }
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             } else {
                                 col {
                                     style: "flex-1 items-center justify-center p-12 gap-3"
-                                    text "📂" { style: "text-5xl opacity-30" }
-                                    text "此目录为空" { style: "text-sm text-zinc-500 font-medium" }
+                                    icon (name: "folder-open", size: 44, style: "opacity-30 text-muted-foreground") {}
+                                    text "此目录为空" { style: "text-sm text-muted-foreground font-medium" }
                                 }
                             }
                         }
@@ -513,11 +577,11 @@ widget App {
             // 底部状态栏
             // ══════════════════════════════════════════════════════════════
             row {
-                style: "h-9 border-t border-zinc-800 px-4 items-center justify-between text-xs text-zinc-400 bg-zinc-900/80 shrink-0 select-none"
+                style: "h-9 border-t border-border px-4 items-center justify-between text-xs text-muted-foreground bg-card/80 shrink-0 select-none"
                 row {
                     style: "items-center gap-3"
-                    text .item_count_str { style: "font-medium text-zinc-300" }
-                    text "|" { style: "text-zinc-700" }
+                    text .item_count_str { style: "font-medium text-foreground" }
+                    text "|" { style: "text-border" }
                     text .total_size_str { style: "font-mono" }
                 }
 
@@ -531,109 +595,73 @@ widget App {
                             onclick: .CtxPaste
                             style: "text-xs px-2 py-0.5 rounded bg-primary/20 text-primary font-semibold hover:bg-primary/30"
                         }
-                        text "|" { style: "text-zinc-700" }
+                        text "|" { style: "text-border" }
                     }
-                    text .selected_info { style: "text-zinc-300" }
+                    text .selected_info { style: "text-foreground" }
                 }
             }
 
             // ══════════════════════════════════════════════════════════════
-            // Plan 422 弹层原语区域
+            // 模态弹层（PLAN-016 T-03：alert-dialog，025-sys-monitor 形态）
             // ══════════════════════════════════════════════════════════════
 
-            // 1. 右键上下文菜单 Popover
-            popover (open: .ctx_open, x: .ctx_x, y: .ctx_y, ondismiss: .CtxClose,
-                     class: "w-44 bg-zinc-900 border border-zinc-700 shadow-2xl py-1.5 rounded-xl z-50") {
-                button (text: "📂  打开", variant: "ghost") {
-                    onclick: .CtxOpen
-                    style: "h-8 w-full justify-start px-3 text-xs text-zinc-200 hover:bg-zinc-800 rounded-md"
-                }
-                button (text: "✏️  重命名", variant: "ghost") {
-                    onclick: .CtxRename
-                    style: "h-8 w-full justify-start px-3 text-xs text-zinc-200 hover:bg-zinc-800 rounded-md"
-                }
-                button (text: "📄  复制", variant: "ghost") {
-                    onclick: .CtxCopy
-                    style: "h-8 w-full justify-start px-3 text-xs text-zinc-200 hover:bg-zinc-800 rounded-md"
-                }
-                button (text: "✂️  剪切", variant: "ghost") {
-                    onclick: .CtxCut
-                    style: "h-8 w-full justify-start px-3 text-xs text-zinc-200 hover:bg-zinc-800 rounded-md"
-                }
-                if .clipboard_name != "" {
-                    button (text: "📋  粘贴到此处", variant: "ghost") {
-                        onclick: .CtxPaste
-                        style: "h-8 w-full justify-start px-3 text-xs text-primary font-semibold hover:bg-zinc-800 rounded-md"
+            // 1. 新建文件/文件夹
+            alert-dialog (open: .new_modal_open) {
+                alert-dialog-content {
+                    alert-dialog-header {
+                        if .new_modal_type == "folder" {
+                            alert-dialog-title "新建文件夹"
+                            alert-dialog-description "在当前目录下创建一个新的子文件夹"
+                        } else {
+                            alert-dialog-title "新建文件"
+                            alert-dialog-description "在当前目录下创建一个新的空文件"
+                        }
                     }
-                }
-                col (style: "h-px w-full bg-zinc-800 my-1")
-                button (text: "🗑️  删除", variant: "ghost") {
-                    onclick: .CtxDelete
-                    style: "h-8 w-full justify-start px-3 text-xs text-red-400 hover:bg-zinc-800 rounded-md"
-                }
-            }
-
-            // 2. 新建文件/文件夹模态 Popover
-            popover (open: .new_modal_open, x: 380.0, y: 220.0, ondismiss: .NewModalClose,
-                     class: "w-80 bg-zinc-900 border border-zinc-700 shadow-2xl p-5 rounded-2xl z-50") {
-                if .new_modal_type == "folder" {
-                    text "新建文件夹" { style: "text-sm font-bold text-zinc-100 mb-1" }
-                    text "在当前目录下创建一个新的子文件夹" { style: "text-xs text-zinc-400 mb-4" }
-                } else {
-                    text "新建文件" { style: "text-sm font-bold text-zinc-100 mb-1" }
-                    text "在当前目录下创建一个新的空文件" { style: "text-xs text-zinc-400 mb-4" }
-                }
-
-                input {
-                    value: .new_modal_name
-                    oninput: .SetNewName
-                    onenter: .CommitNew
-                    placeholder: "请输入名称..."
-                    style: "w-full text-xs px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-zinc-100 mb-4 outline-none focus:border-primary"
-                }
-
-                row {
-                    style: "justify-end gap-2"
-                    button (text: "取消", variant: "secondary") {
-                        onclick: .NewModalClose
-                        style: "px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    input {
+                        value: .new_modal_name
+                        oninput: .SetNewName
+                        onenter: .CommitNew
+                        placeholder: "请输入名称..."
+                        style: "w-full text-xs px-3 py-2 bg-background border border-border rounded-lg text-foreground mb-1 outline-none focus:border-primary"
                     }
-                    button (text: "创建", variant: "default") {
-                        onclick: .CommitNew
-                        style: "px-4 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
+                    alert-dialog-footer {
+                        alert-dialog-cancel "取消" { onclick: .NewModalClose }
+                        alert-dialog-action "创建" { onclick: .CommitNew }
                     }
                 }
             }
 
-            // 3. 删除确认 Popover
-            popover (open: .confirm_del_open, x: 380.0, y: 230.0, ondismiss: .CancelDelete,
-                     class: "w-80 bg-zinc-900 border border-zinc-700 shadow-2xl p-5 rounded-2xl z-50") {
-                text "确认删除项目？" { style: "text-sm font-bold text-zinc-100 mb-1" }
-                text .confirm_del_desc {
-                    style: "text-xs text-zinc-400 mb-5 leading-relaxed"
-                }
-
-                row {
-                    style: "justify-end gap-2"
-                    button (text: "取消", variant: "secondary") {
-                        onclick: .CancelDelete
-                        style: "px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+            // 2. 重命名
+            alert-dialog (open: .rename_open) {
+                alert-dialog-content {
+                    alert-dialog-header {
+                        alert-dialog-title "重命名"
+                        alert-dialog-description f"将「${.selected_name}」重命名为："
                     }
-                    button (text: "确认删除", variant: "destructive") {
-                        onclick: .ExecuteDelete
-                        style: "px-4 py-1.5 text-xs rounded-lg bg-red-600 text-white hover:bg-red-500 font-medium"
+                    input {
+                        value: .edit_name
+                        oninput: .SetEditName
+                        onenter: .CommitRename
+                        placeholder: "请输入新名称..."
+                        style: "w-full text-xs px-3 py-2 bg-background border border-border rounded-lg text-foreground mb-1 outline-none focus:border-primary"
+                    }
+                    alert-dialog-footer {
+                        alert-dialog-cancel "取消" { onclick: .CancelRename }
+                        alert-dialog-action "重命名" { onclick: .CommitRename }
                     }
                 }
             }
 
-            // 4. 操作成功/错误 Toast
-            if .toast_open {
-                row {
-                    style: "absolute bottom-12 right-6 bg-zinc-800 border border-zinc-700 text-zinc-100 px-4 py-2.5 rounded-xl shadow-2xl items-center gap-3 z-50"
-                    text .toast_msg { style: "text-xs font-medium" }
-                    button (text: "✕", variant: "ghost") {
-                        onclick: .DismissToast
-                        style: "text-xs text-zinc-400 hover:text-zinc-100"
+            // 3. 删除确认
+            alert-dialog (open: .confirm_del_open) {
+                alert-dialog-content {
+                    alert-dialog-header {
+                        alert-dialog-title "确认删除项目？"
+                        alert-dialog-description .confirm_del_desc
+                    }
+                    alert-dialog-footer {
+                        alert-dialog-cancel "取消" { onclick: .CancelDelete }
+                        alert-dialog-action "确认删除" { onclick: .ExecuteDelete }
                     }
                 }
             }
@@ -679,6 +707,7 @@ widget App {
             .selected_name = ""
             .selected_info = "未选中任何项目"
             .editing_id = -1
+            .ctx_id = -1
 
             // 维护历史栈
             if .history_idx < 0 {
@@ -716,13 +745,6 @@ widget App {
                     { name: "Documents", path: "/root/Documents", is_last: false },
                     { name: "Projects", path: "/root/Documents/Projects", is_last: true }
                 ]
-            } else if target_path == "/root/Documents/Projects/auto-lang" {
-                .crumbs = [
-                    { name: "root", path: "/root", is_last: false },
-                    { name: "Documents", path: "/root/Documents", is_last: false },
-                    { name: "Projects", path: "/root/Documents/Projects", is_last: false },
-                    { name: "auto-lang", path: "/root/Documents/Projects/auto-lang", is_last: true }
-                ]
             } else if target_path == "/root/Downloads" {
                 .crumbs = [
                     { name: "root", path: "/root", is_last: false },
@@ -737,11 +759,6 @@ widget App {
                 .crumbs = [
                     { name: "root", path: "/root", is_last: false },
                     { name: "Music", path: "/root/Music", is_last: true }
-                ]
-            } else if target_path == "/root/Trash" {
-                .crumbs = [
-                    { name: "root", path: "/root", is_last: false },
-                    { name: "Trash", path: "/root/Trash", is_last: true }
                 ]
             } else {
                 .crumbs = [
@@ -771,8 +788,7 @@ widget App {
                                 file_ext: .item_file_exts[i],
                                 type_name: .item_types[i],
                                 date: .item_dates[i],
-                                is_hidden: is_hid,
-                                color: .item_colors[i]
+                                is_hidden: is_hid
                             }
                             items.push(item_obj)
                             total_bytes = total_bytes + .item_sizes[i]
@@ -822,9 +838,7 @@ widget App {
         }
 
         .GoUp -> {
-            if .current_path == "/root/Documents/Projects/auto-lang" {
-                .NavTo("/root/Documents/Projects")
-            } else if .current_path == "/root/Documents/Projects" {
+            if .current_path == "/root/Documents/Projects" {
                 .NavTo("/root/Documents")
             } else if .current_path != "/root" {
                 .NavTo("/root")
@@ -844,10 +858,6 @@ widget App {
                 .sort_col = "name"
                 .sort_dir = "asc"
             }
-            .name_hdr = if .sort_dir == "asc" { "名称 ↑" } else { "名称 ↓" }
-            .size_hdr = "大小"
-            .date_hdr = "修改日期"
-            .type_hdr = "类型"
             storage.set("fileman.sort_col", .sort_col)
             storage.set("fileman.sort_dir", .sort_dir)
             .NavTo(.current_path)
@@ -860,10 +870,6 @@ widget App {
                 .sort_col = "size"
                 .sort_dir = "asc"
             }
-            .name_hdr = "名称"
-            .size_hdr = if .sort_dir == "asc" { "大小 ↑" } else { "大小 ↓" }
-            .date_hdr = "修改日期"
-            .type_hdr = "类型"
             storage.set("fileman.sort_col", .sort_col)
             storage.set("fileman.sort_dir", .sort_dir)
             .NavTo(.current_path)
@@ -876,10 +882,6 @@ widget App {
                 .sort_col = "date"
                 .sort_dir = "asc"
             }
-            .name_hdr = "名称"
-            .size_hdr = "大小"
-            .date_hdr = if .sort_dir == "asc" { "修改日期 ↑" } else { "修改日期 ↓" }
-            .type_hdr = "类型"
             storage.set("fileman.sort_col", .sort_col)
             storage.set("fileman.sort_dir", .sort_dir)
             .NavTo(.current_path)
@@ -892,10 +894,6 @@ widget App {
                 .sort_col = "type"
                 .sort_dir = "asc"
             }
-            .name_hdr = "名称"
-            .size_hdr = "大小"
-            .date_hdr = "修改日期"
-            .type_hdr = if .sort_dir == "asc" { "类型 ↑" } else { "类型 ↓" }
             storage.set("fileman.sort_col", .sort_col)
             storage.set("fileman.sort_dir", .sort_dir)
             .NavTo(.current_path)
@@ -948,12 +946,12 @@ widget App {
             if is_folder {
                 .NavTo(target_path)
             } else {
-                .toast_msg = "已打开文件: " + item_n
-                .toast_open = true
+                // PLAN-016 T-09：文件 → 桌面 open-with 关联打开（接线于 T-09）
+                toast("已选择文件: " + item_n + "（关联打开接线于 T-09）")
             }
         }
 
-        // ---- 内联重命名 ----
+        // ---- 重命名（PLAN-016 T-03：alert-dialog 模态）----
         .StartRename(id) -> {
             .editing_id = id
             var i int = 0
@@ -963,6 +961,7 @@ widget App {
                 }
                 i = i + 1
             }
+            .rename_open = true
         }
 
         .SetEditName(name) -> {
@@ -979,86 +978,84 @@ widget App {
                     }
                     i = i + 1
                 }
-                .toast_msg = "已重命名为: " + .edit_name
-                .toast_open = true
+                toast.success("已重命名为: " + .edit_name)
                 .editing_id = -1
+                .rename_open = false
                 .NavTo(.current_path)
             } else {
                 .editing_id = -1
+                .rename_open = false
                 .NavTo(.current_path)
             }
         }
 
         .CancelRename -> {
             .editing_id = -1
-            .NavTo(.current_path)
+            .rename_open = false
         }
 
-        // ---- Plan 422 弹层右键菜单 ----
-        .ItemCtx(id, x, y) -> {
-            .ctx_item_id = id
+        // ---- 右键菜单（锚定 popover）----
+        .ItemCtx(id) -> {
+            .ctx_id = id
             .SelectItem(id)
-            .ctx_x = x
-            .ctx_y = y
-            .ctx_open = true
         }
 
         .CtxClose -> {
-            .ctx_open = false
+            .ctx_id = -1
         }
 
         .CtxOpen -> {
-            .ctx_open = false
-            if .ctx_item_id >= 0 {
-                .OpenItem(.ctx_item_id)
+            let target = .selected_id
+            .ctx_id = -1
+            if target >= 0 {
+                .OpenItem(target)
             }
         }
 
         .CtxRename -> {
-            .ctx_open = false
-            if .ctx_item_id >= 0 {
-                .StartRename(.ctx_item_id)
+            let target = .ctx_id
+            .ctx_id = -1
+            if target >= 0 {
+                .StartRename(target)
             }
         }
 
         .CtxCopy -> {
-            .ctx_open = false
-            if .ctx_item_id >= 0 {
+            .ctx_id = -1
+            if .selected_id >= 0 {
                 .clipboard_op = "copy"
-                .clipboard_id = .ctx_item_id
+                .clipboard_id = .selected_id
                 var i int = 0
                 for i < .item_ids.len() {
-                    if .item_ids[i] == .ctx_item_id {
+                    if .item_ids[i] == .selected_id {
                         .clipboard_name = .item_names[i]
                         .clipboard_label = "已复制: " + .item_names[i]
                     }
                     i = i + 1
                 }
-                .toast_msg = "已复制: " + .clipboard_name
-                .toast_open = true
+                toast("已复制: " + .clipboard_name)
             }
         }
 
         .CtxCut -> {
-            .ctx_open = false
-            if .ctx_item_id >= 0 {
+            .ctx_id = -1
+            if .selected_id >= 0 {
                 .clipboard_op = "cut"
-                .clipboard_id = .ctx_item_id
+                .clipboard_id = .selected_id
                 var i int = 0
                 for i < .item_ids.len() {
-                    if .item_ids[i] == .ctx_item_id {
+                    if .item_ids[i] == .selected_id {
                         .clipboard_name = .item_names[i]
                         .clipboard_label = "已剪切: " + .item_names[i]
                     }
                     i = i + 1
                 }
-                .toast_msg = "已剪切: " + .clipboard_name
-                .toast_open = true
+                toast("已剪切: " + .clipboard_name)
             }
         }
 
         .CtxPaste -> {
-            .ctx_open = false
+            .ctx_id = -1
             if .clipboard_id >= 0 {
                 var src_idx = -1
                 var i int = 0
@@ -1085,27 +1082,26 @@ widget App {
                         .item_types.push(.item_types[src_idx])
                         .item_dates.push("2026-09-02 12:00")
                         .item_hiddens.push(.item_hiddens[src_idx])
-                        .item_colors.push(.item_colors[src_idx])
-                        .toast_msg = "已粘贴创建副本: " + new_name
+                        toast.success("已粘贴创建副本: " + new_name)
                     } else if .clipboard_op == "cut" {
                         .item_parents[src_idx] = .current_path
                         .item_paths[src_idx] = .current_path + "/" + .item_names[src_idx]
-                        .toast_msg = "已移动至此处: " + .clipboard_name
+                        toast.success("已移动至此处: " + .clipboard_name)
                         .clipboard_op = ""
                         .clipboard_id = -1
                         .clipboard_name = ""
                         .clipboard_label = ""
                     }
-                    .toast_open = true
                     .NavTo(.current_path)
                 }
             }
         }
 
         .CtxDelete -> {
-            .ctx_open = false
-            if .ctx_item_id >= 0 {
-                .ConfirmDelete(.ctx_item_id)
+            let target = .ctx_id
+            .ctx_id = -1
+            if target >= 0 {
+                .ConfirmDelete(target)
             }
         }
 
@@ -1146,10 +1142,8 @@ widget App {
                 .item_types.push(if is_dir { "文件夹" } else { "文本文档" })
                 .item_dates.push("2026-09-02 12:00")
                 .item_hiddens.push(false)
-                .item_colors.push(if is_dir { "#f59e0b" } else { "#38bdf8" })
                 .new_modal_open = false
-                .toast_msg = "创建成功: " + .new_modal_name
-                .toast_open = true
+                toast.success("创建成功: " + .new_modal_name)
                 .NavTo(.current_path)
             }
         }
@@ -1193,7 +1187,6 @@ widget App {
                     var new_types = []
                     var new_dates = []
                     var new_hiddens = []
-                    var new_colors = []
 
                     var k int = 0
                     for k < .item_ids.len() {
@@ -1209,7 +1202,6 @@ widget App {
                             new_types.push(.item_types[k])
                             new_dates.push(.item_dates[k])
                             new_hiddens.push(.item_hiddens[k])
-                            new_colors.push(.item_colors[k])
                         }
                         k = k + 1
                     }
@@ -1225,10 +1217,8 @@ widget App {
                     .item_types = new_types
                     .item_dates = new_dates
                     .item_hiddens = new_hiddens
-                    .item_colors = new_colors
 
-                    .toast_msg = "已删除: " + dname
-                    .toast_open = true
+                    toast.success("已删除: " + dname)
                     .selected_id = -1
                     .selected_name = ""
                     .selected_info = "未选中任何项目"
@@ -1242,10 +1232,6 @@ widget App {
         .CancelDelete -> {
             .confirm_del_open = false
             .confirm_del_id = -1
-        }
-
-        .DismissToast -> {
-            .toast_open = false
         }
     }
 }
