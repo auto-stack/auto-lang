@@ -83,3 +83,19 @@ app.at 重新提取 actions + generation bump → 视图重建），实测 50/0 
 OS 用户键位层（`%APPDATA%/auto/keymaps/auto-edit.at`）保持外部文件——那是
 用户偏好覆盖而非 app 代码；app id 由 pac.at 的 `name`（经 `auto run` 注入
 `AUTO_APP_ID`）提供。
+
+## Plan 626 补记（VM 实机验证四修正）
+
+- **状态栏 行:列**：`text "${.store.line}:${.store.col}"` 多段点路径插值由
+  框架修复（aura_view_builder 走条件表达式同款扁平化通道），不可解析时原样
+  保留完整模板（含前导点）。
+- **脏标记**：脏 tab 标题旁 `*`（`if t.dirty`）；关闭脏 tab 与退出/关窗均走
+  标准 `alert-dialog`（PLAN-530 模态族），原固定坐标 confirm popover 退役
+  ——VM 下坐标锚弹层有落回普通流的底层缺陷（债务登记），alert-dialog 无此问题。
+- **窗口 X 拦截**：声明 `.CloseRequest` handler 的应用可拦截 OS 关窗请求
+  （fire 语义同 `.Init`；未声明的应用行为不变）。auto-edit：有脏 tab 弹
+  「取消/不保存退出/保存并退出」，否则直接退出；菜单「退出」共用同一入口。
+- **Explorer 真目录**：`.Init` → `store.LoadWorkspace()`（Init 名保留给根
+  widget 生命周期，store 侧 handler 不得占用）经 `fs.tree(AUTO_PROJECT_DIR, 4)`
+  + `json.to_value` 装载真实目录树，头部显示 workspace 名；树节点 id 为相对
+  路径，点击经 `fs.join` 读盘开文件。启动日志的 "App.Init failed" 随之消失。
