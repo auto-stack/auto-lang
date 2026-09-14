@@ -490,6 +490,12 @@ macro_rules! for_each_native {
             (2980, NATIVE_TERM_ENGINE_BACKLOG_PAUSED, shim_term_backlog_paused, "auto.term.engine_backlog_paused"),
             (2981, NATIVE_TERM_ENGINE_BACKLOG_TAKE_ALERTS, shim_term_backlog_take_alerts, "auto.term.engine_backlog_take_alerts"),
             (2982, NATIVE_TERM_ENGINE_BACKLOG_DROPPED, shim_term_backlog_dropped, "auto.term.engine_backlog_dropped"),
+            // PLAN-018 D5:SpawnSpec(spawn_ex)+ 定向泵三件(per-key 泵面;
+            // 广播/任意旧件保留为兼容面)。
+            (2983, NATIVE_TERM_ENGINE_SPAWN_EX, shim_term_spawn_ex, "auto.term.engine_spawn_ex"),
+            (2984, NATIVE_TERM_ENGINE_ROWS_FOR, shim_term_rows_for, "auto.term.engine_rows_for"),
+            (2985, NATIVE_TERM_ENGINE_PUMP_FOR, shim_term_pump_for, "auto.term.engine_pump_for"),
+            (2986, NATIVE_TERM_ENGINE_APPLY_RESIZE_FOR, shim_term_apply_resize_for, "auto.term.engine_apply_resize_for"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -2609,6 +2615,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_backlog_paused", 2980),
     ("auto.term.engine_backlog_take_alerts", 2981),
     ("auto.term.engine_backlog_dropped", 2982),
+    ("auto.term.engine_spawn_ex", 2983),
+    ("auto.term.engine_rows_for", 2984),
+    ("auto.term.engine_pump_for", 2985),
+    ("auto.term.engine_apply_resize_for", 2986),
 
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
     ("auto.image.queue", 2960),

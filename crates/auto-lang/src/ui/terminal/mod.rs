@@ -294,6 +294,15 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
     core
 }
 
+/// PLAN-018 D4/D5:按 key 取注册表 core(引擎 glue 的定向泵出口:
+/// `drain_inputs_for` / `take_resize_for` 需要柄;缺 key = None,调用方
+/// no-op)。只读不创建——落表权限仍归渲染面 [`terminal`]。
+pub fn terminal_core(key: &str) -> Option<&'static TerminalCore> {
+    let map = TERMINALS.lock().unwrap();
+    let map = map.as_ref()?;
+    map.get(key).copied()
+}
+
 /// Row digest: chars + fg + bg (style-only changes also invalidate).
 fn row_digest(cells: &[TermCell]) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();

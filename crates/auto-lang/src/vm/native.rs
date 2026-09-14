@@ -16,11 +16,14 @@ use crate::vm::autodown_natives::{
 };
 // auto-os Plan 013 T2: AutoTerm 引擎桥 catalog shim(auto.term.*,ID 2943-2949)。
 // 014 直键入:pump_input(2957)+ 几何随动/光标格(2958/2959/2976)。
+// PLAN-018 D5:spawn_ex(2983)+ 定向泵三件 rows_for/pump_for/
+// apply_resize_for(2984-2986)。
 use crate::vm::ffi::term_engine::{
-    shim_term_apply_resize, shim_term_backlog_dropped, shim_term_backlog_paused,
-    shim_term_backlog_pending_mb, shim_term_backlog_take_alerts, shim_term_cursor_col,
-    shim_term_cursor_row, shim_term_free, shim_term_interrupt, shim_term_is_exited,
-    shim_term_pump_input, shim_term_resize, shim_term_rows, shim_term_spawn,
+    shim_term_apply_resize, shim_term_apply_resize_for, shim_term_backlog_dropped,
+    shim_term_backlog_paused, shim_term_backlog_pending_mb, shim_term_backlog_take_alerts,
+    shim_term_cursor_col, shim_term_cursor_row, shim_term_free, shim_term_interrupt,
+    shim_term_is_exited, shim_term_pump_for, shim_term_pump_input, shim_term_resize,
+    shim_term_rows, shim_term_rows_for, shim_term_spawn, shim_term_spawn_ex,
     shim_term_viewport_cols, shim_term_viewport_rows, shim_term_write_line,
 };
 
