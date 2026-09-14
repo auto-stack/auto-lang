@@ -119,12 +119,12 @@ widget DesktopSurface {
             // 8×160 + 7×8 = 1336px。宿主 drop_at 栅距同步 168px（88→168，
             // renderer.rs execute_desktop_icon_drop_at ORIGIN/PITCH）。
             grid (cols: 8, gap: 8) {
-                style: "w-[1336px]"
+                style: "w-[696px]"
                 // PLAN-012 W5：格子表渲染（宿主分配 (c,r) + spacer 填位）——
                 // 拖拽换位后位置持久（shell.desktop.positions，重启保持）。
                 for e in .__desktop_cells {
                     if e.spacer == "1" {
-                        div { style: "w-40 h-40" }
+                        div { style: "w-20 h-20" }
                     } else {
                     mouse-area (ondblclick: .ActivateApp(e.id), onclick: .IconPress(e.id)) {
                         col {
@@ -133,9 +133,9 @@ widget DesktopSurface {
                             // PLAN-012 W5：拖拽拾起态 = 半透明底（拖拽语义反馈；
                             // 无逐帧跟随幽灵——headless 决策，见工件）。
                             style: if .drag_id == e.id {
-                                "w-40 h-40 items-center justify-center gap-1 bg-white/20 opacity-50"
+                                "w-20 h-20 items-center justify-center gap-1 bg-white/20 opacity-50"
                             } else {
-                                "w-40 h-40 items-center justify-center gap-1 hover:bg-white/10"
+                                "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
                             }
                             oncontextmenu.prevent: .IconMenu(e.id)
             // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标 chip 视觉件，
@@ -153,16 +153,16 @@ widget DesktopSurface {
                         // PLAN-018-FU3（用户裁定）：满幅 tile 高亮走边框——
                         // 背景高亮被不透明图标本体挡住不可见；透明边框 +
                         // hover 亮边，待透明底 SVG 时代再回背景高亮。
-                        style: "w-40 h-40 rounded-xl border-2 border-transparent hover:border-white/50"
+                        style: "w-20 h-20 rounded-xl border-2 border-transparent hover:border-white/50"
                         icon (name: e.icon) {
                             style: "w-full h-full"
                         }
                     }
                 } else {
                     col {
-                        style: "h-20 w-20 items-center justify-center rounded-xl bg-[" + e.color + "]"
+                        style: "h-10 w-10 items-center justify-center rounded-xl bg-[" + e.color + "]"
                         icon (name: e.icon) {
-                            style: "w-10 h-10 text-white"
+                            style: "w-5 h-5 text-white"
                         }
                     }
                 }
@@ -183,7 +183,7 @@ widget DesktopSurface {
                                 }
                             }
                             text e.label {
-                                style: "text-sm text-foreground truncate w-full text-center"
+                                style: "text-xs text-foreground truncate w-full text-center"
                             }
                         }
                     }
