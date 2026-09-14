@@ -6806,7 +6806,16 @@ let tabs_inner = View::Row {
                 for item in &menu.items {
                     match item {
                         MenuItem::Separator => {
-                            items.push(self.convert_sep(&HashMap::new(), bindings));
+                            // PLAN-626 T-02: 下拉面板内 sep 必须横向通栏
+                            // （convert_sep 默认 vertical 是 toolbar/行内语义
+                            // ——此前 menubar 从不传 orientation，下拉里渲染
+                            // 成 w-7 盒内短竖线，用户实机反馈）。
+                            let mut sep_props = HashMap::new();
+                            sep_props.insert(
+                                "orientation".to_string(),
+                                AuraPropValue::Expr(Expr::Str("horizontal".into())),
+                            );
+                            items.push(self.convert_sep(&sep_props, bindings));
                         }
                         MenuItem::Action(id) => {
                             let Some(a) = cfg.action_by_id(id) else { continue };
@@ -6866,7 +6875,13 @@ let tabs_inner = View::Row {
                                     event_name: handler,
                                     args: vec![],
                                 },
-                                style: Style::parse("h-7 w-full px-0 py-0").ok(),
+                                // PLAN-626 T-02: 显式 justify-start/text-left 走
+                                // plan050→plan414 让位通道压过按钮 content 容器
+                                // 的 Center 默认——内层 Row 的 w-full/justify-
+                                // between 一旦失效，收缩内容不再被整体居中
+                                // （菜单项文本居中，用户实机反馈）。
+                                style: Style::parse("h-7 w-full px-0 py-0 justify-start text-left")
+                                    .ok(),
                                 on_right_click: None,
                                 content: Some(Box::new(content)),
                             });
@@ -6876,11 +6891,23 @@ let tabs_inner = View::Row {
             }
             // chrome 全部留在面板列自身(bg/border/shadow 走既有 visual
             // wrap);定位交给 popover(overlay 层,不占文档流)。
+            // PLAN-626 T-02: 宽度防线镜像 convert_popover 的 PLAN-526 T27
+            // 注入——menubar 面板不经 convert_popover，width 类若解析失败
+            // 会按块级语义 Fill 撑满宿主宽；w-48→w-44 收窄贴近 shadcn 菜单
+            // 内容宽。
+            let mut panel_style =
+                Style::parse("w-44 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok();
+            if let Some(s) = panel_style.as_mut() {
+                if !s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                    let owned = std::mem::take(s);
+                    *s = owned.add(StyleClass::Width(SizeValue::Auto));
+                }
+            }
             let panel = View::Column {
                 children: items,
                 spacing: 0,
                 padding: 0,
-                style: Style::parse("w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok(),
+                style: panel_style,
             onclick: None, on_right_click: None,
         };
             children.push(View::Popover {
@@ -11918,6 +11945,111 @@ mod tests {
             "unresolvable dotted path must keep the raw template (dots intact); got {:?}",
             view
         );
+    }
+
+    /// PLAN-626 T-02: menubar dropdown synthesis — item buttons carry
+    /// explicit left alignment (justify-start/text-left beat the Plan-414
+    /// Center default), `sep` renders the horizontal full-width hairline
+    /// (not the toolbar vertical box), and the panel column keeps an
+    /// explicit width class (w-44) under the PLAN-526 T27-style guard
+    /// against block-level Fill fallback.
+    #[test]
+    fn plan626_menubar_panel_left_align_horizontal_sep_fixed_width() {
+        use crate::ui::action_config::{
+            extract_actions_from_source, set_dsl_action_config_from_block, set_menubar_open,
+        };
+        let src = concat!(
+            "widget App {\n",
+            "    msg { ActNew, ActOpen }\n",
+            "    actions {\n",
+            "        action (id: \"file.new\",  handler: .ActNew,  title: \"新建\")\n",
+            "        action (id: \"file.open\", handler: .ActOpen, title: \"打开…\")\n",
+            "        menubar {\n",
+            "            menu (id: \"file\", title: \"文件\") {\n",
+            "                item (action: \"file.new\")\n",
+            "                sep\n",
+            "                item (action: \"file.open\")\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "    view { col { menubar {} } }\n",
+            "    on {\n",
+            "        .ActNew -> { }\n",
+            "        .ActOpen -> { }\n",
+            "    }\n",
+            "}\n",
+        );
+        let block = extract_actions_from_source(src).expect("actions block");
+        set_dsl_action_config_from_block(&block, None);
+        set_menubar_open(Some("file".to_string()));
+
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+
+        fn find_popover(v: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {
+            match v {
+                View::Popover { content, .. } => Some(content),
+                View::Column { children, .. }
+                | View::Row { children, .. } => {
+                    children.iter().find_map(find_popover)
+                }
+                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Container { child, .. } => find_popover(child),
+                _ => None,
+            }
+        }
+        let content = find_popover(&view).expect("menubar popover synthesized");
+        let (items, panel_style) = match content {
+            View::Column { children, style, .. } => (children, style),
+            other => panic!("panel must be a Column, got {other:?}"),
+        };
+        assert_eq!(items.len(), 3, "two action items + one sep");
+        // Panel width class survives (w-44 → Fixed(44) units) — the guard
+        // must keep an explicit width so the column never falls back to Fill.
+        let panel_style = panel_style.as_ref().expect("panel style present");
+        assert!(
+            panel_style.classes.iter().any(
+                |c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Fixed(44)))
+            ),
+            "panel must keep explicit w-44 width, got {:?}",
+            panel_style.classes
+        );
+        // Item button: explicit left alignment classes on the button style.
+        match &items[0] {
+            View::Button { style, content, .. } => {
+                let st = style.as_ref().expect("item button style");
+                assert!(
+                    st.classes.iter().any(|c| matches!(c, StyleClass::JustifyStart)),
+                    "item button must carry justify-start, got {:?}",
+                    st.classes
+                );
+                assert!(content.is_some(), "item button must use content row");
+            }
+            other => panic!("item must be a Button, got {other:?}"),
+        }
+        // Sep: horizontal variant renders a bare Column hairline — the
+        // toolbar/vertical variant is a centered Container box.
+        match &items[1] {
+            View::Column { style, .. } => {
+                let st = style.as_ref().expect("sep style");
+                assert!(
+                    st.classes.iter().any(|c| matches!(c, StyleClass::Height(_))),
+                    "horizontal sep must carry its hairline height, got {:?}",
+                    st.classes
+                );
+            }
+            other => panic!("menubar sep must be horizontal Column, got {other:?}"),
+        }
+        set_menubar_open(None);
     }
 
     /// Plan 448 I: grid `cols:` dynamic values. A non-literal expression
