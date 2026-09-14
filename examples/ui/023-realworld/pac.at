@@ -3,6 +3,7 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "RealWorld"
+title_zh: "RealWorld"
 api: "rust"
 front_port: 3023
 back_port: 8023

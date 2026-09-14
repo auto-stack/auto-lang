@@ -23,6 +23,18 @@ use std::sync::RwLock;
 /// 单目录生产形态行为与旧实现一致。
 static TABLES: RwLock<Vec<(PathBuf, HashMap<String, String>)>> = RwLock::new(Vec::new());
 
+/// PLAN-015：展示 locale 判定——AUTO_LOCALE env（缺省 zh）的 zh 前缀命中
+/// （zh/zh-CN/zh_TW 一律中文链），其余设值走 en 链。装载期语义（与
+/// [`load_from_dir`] 同约定）：进程内不热切，env 重启生效。auto-man 侧
+/// （pac_display_title）持有同款私有副本——ui 模块对 auto-man 非默认在编，
+/// 三行惯例不跨 crate 引依赖。
+pub fn locale_prefers_zh() -> bool {
+    std::env::var("AUTO_LOCALE")
+        .unwrap_or_else(|_| "zh".to_string())
+        .to_ascii_lowercase()
+        .starts_with("zh")
+}
+
 /// 装载 `i18n/{lang}.json`（lang = AUTO_LOCALE env，默认 zh）。文件缺失或
 /// 解析失败 = 清空表（回落 key 字面量），保持静默——i18n 缺席不是错误。
 /// musk 的 zh.json 为命名空间嵌套（settings.title → …），平铺成点分 key。

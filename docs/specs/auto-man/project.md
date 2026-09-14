@@ -12,6 +12,29 @@ AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析�
 - 提供 API 代码生成、Tauri 后端生成、VSCode 扩展生成等代码生成器。
 - 不做：不实现语言编译（auto-lang）；不实现通用代码模板引擎（auto-gen）；缓存存储在 auto-cache。
 
+## pac.at 四名称契约（PLAN-015）
+
+每个 AutoUI app 在 pac.at 声明四个名称，展示名与工程标识解绑：
+
+| 字段 | 语义 | 约束与消费 |
+|---|---|---|
+| `name` | 工程标识（kebab-case），永不承担展示职责 | rust 轨包名/exe 缺省名（snake_case）；os-config 配置查找键 `apps/<name>/config.at`（Plan 504 S7）；注册表条目 `name`。改名即破坏配置/查找键——不轻易动 |
+| `exe_name` | rust 轨（a2r）exe 产物名 | 唯一消费点 `rust_ui::generate_cargo_toml`：写显式 `[[bin]]`；合法字符 `[A-Za-z0-9_-]`，非法告警忽略；缺省 = 包名；regen 按 pac 现值重写（Plan 014，auto-term 样板）。vue/VM 轨无 exe，字段无操作 |
+| `title` | **英文展示名** | 桌面注册表/窗口标题/document.title 的 en 链事实源；兜底链 `title → name → 目录名` |
+| `title_zh` | **中文展示名**（自由文本） | zh locale 优先取用；缺席/空白回落 `title`（两 locale 输出一致，零配置零回归） |
+
+**展示名解析链（locale 臂）**：`AUTO_LOCALE` env（缺省 zh；zh 前缀命中 =
+中文链，装载期定 locale、进程内不热切）。zh = `title_zh → title → name →
+目录名`；en = `title → name → 目录名`。消费点：注册表
+`AppRegistryEntry::display_title`（auto-lang `ui/app_registry`，launcher/
+桌面格/LaunchSpec 填充）、VM 窗标题 `Automan::pac_display_title`（→
+`AUTO_VM_TITLE`）、vue document.title（`vue::parse_pac_display_title`）。
+
+**边界**：apps.manifest 不承载展示名（条目 = id/repo/kind/ports/status/
+daemon；PLAN-015 起 `name` 键退役）——同一 app 的名称只在 pac.at 一处声明。
+i18n/{lang}.json 是应用内内容文案机制，与 app 元数据名称无关；展示名不走
+嵌套对象/外部文件（注册表保持平铺 `key: value` 行读解析）。
+
 ## 模块架构
 
 ```mermaid

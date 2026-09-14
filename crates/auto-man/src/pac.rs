@@ -115,6 +115,11 @@ pub struct Pac {
     /// None = renderer default ("Auto - {root widget name}").
     pub title: Option<AutoStr>,
 
+    /// PLAN-015：中文展示名，declared as `title_zh: "计算器"` in pac.at。
+    /// AUTO_LOCALE（缺省 zh）下 VM 窗标题优先取本值（`pac_display_title`）；
+    /// None/blank = 回落 `title`（两 locale 输出一致，零配置零回归）。
+    pub title_zh: Option<AutoStr>,
+
     /// Plan 463: desktop registry icon (lucide name), declared as
     /// `icon: "calculator"` in pac.at. None = registry falls back to
     /// `"app-window"` (R10 桌面注册表消费；本结构侧仅承载声明).
@@ -305,6 +310,12 @@ impl Pac {
         let title_trimmed = title.trim().to_string();
         let title = (!title_trimmed.is_empty()).then(|| AutoStr::from(title_trimmed));
 
+        // PLAN-015: Chinese display title, e.g. `title_zh: "计算器"`.
+        // Absent/blank → None (display_title falls back to `title`).
+        let title_zh = config.root.get_prop("title_zh").to_astr();
+        let title_zh_trimmed = title_zh.trim().to_string();
+        let title_zh = (!title_zh_trimmed.is_empty()).then(|| AutoStr::from(title_zh_trimmed));
+
         // Plan 463: desktop registry icon/category, e.g. `icon: "calculator"`,
         // `category: "tool"`. Absent/blank → None (registry falls back to
         // "app-window" / "app"; see auto-lang ui::app_registry).
@@ -494,6 +505,7 @@ impl Pac {
             window,
             window_fit,
             title,
+            title_zh,
             icon,
             category,
             theme,
@@ -506,6 +518,22 @@ impl Pac {
             default_classes,
             is_update: false,
         }
+    }
+
+    /// PLAN-015：展示标题纯判定（locale 显式入参，env 包装在
+    /// `Automan::pac_display_title`）——zh 且 `title_zh:` 非空取之，否则
+    /// 回落 `title`；无 title 声明 = None。
+    pub fn display_title_in(&self, prefers_zh: bool) -> Option<String> {
+        let title = self.title.as_ref().map(|t| t.to_string())?;
+        if prefers_zh {
+            if let Some(zh) = self.title_zh.as_ref() {
+                let zh = zh.trim();
+                if !zh.is_empty() {
+                    return Some(zh.to_string());
+                }
+            }
+        }
+        Some(title)
     }
 
     pub fn transpile_autot(&mut self) -> AutoResult<()> {
@@ -1861,6 +1889,34 @@ impl fmt::Display for Pac {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-015：pac.at `title_zh:` 中文展示名解析 + 展示标题 locale 链。
+    #[test]
+    fn test_title_zh_parsing_and_display_chain() {
+        let pac = Pac::new(AutoConfig::new(
+            "name: \"x\"\ntitle: \"Calculator\"\ntitle_zh: \"计算器\"\n",
+        )
+        .unwrap());
+        assert_eq!(pac.title_zh.as_deref(), Some("计算器"));
+        // zh 链优先 title_zh；en 链恒 title；title_zh 不影响 en 输出。
+        assert_eq!(pac.display_title_in(true).as_deref(), Some("计算器"));
+        assert_eq!(pac.display_title_in(false).as_deref(), Some("Calculator"));
+
+        // 缺席 title_zh：两 locale 输出一致（零配置零回归）。
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\ntitle: \"Clock\"\n").unwrap());
+        assert!(pac.title_zh.is_none());
+        assert_eq!(pac.display_title_in(true).as_deref(), Some("Clock"));
+        assert_eq!(pac.display_title_in(false).as_deref(), Some("Clock"));
+
+        // 空白 title_zh 视同缺席；无 title 声明 = None（渲染器回落根部件名）。
+        let pac = Pac::new(
+            AutoConfig::new("name: \"x\"\ntitle: \"Paint\"\ntitle_zh: \"  \"\n").unwrap(),
+        );
+        assert!(pac.title_zh.is_none(), "空白 = 缺席");
+        assert_eq!(pac.display_title_in(true).as_deref(), Some("Paint"));
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
+        assert_eq!(pac.display_title_in(true), None);
+    }
 
     /// Plan 500：pac.at `desktop_render:` 三态声明解析（缺省 None = auto；
     /// 与 Plan 276 `render:` 前端后端字段正交不互踩）。
