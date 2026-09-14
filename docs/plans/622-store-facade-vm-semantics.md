@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-622
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: store-facade-vm-semantics
 author: [zhaopuming]
 created_at: 2026-09-14
@@ -155,7 +155,12 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
 
 | delta | add/modify | 目标 | before/after | rationale |
 | --- | --- | --- | --- | --- |
-| SD-01 | add | docs/specs/auto-lang/ui/store-facade-semantics | before：442 只证 Init/msg 派发/视图初读；after：五消费位语义契约钉死（handler 读、视图响应回读、store 内 api 改写、模型数组变异、lambda 捕获） | facade 形态成为 29-widget 迁移既定目标形态前的语义冻结 |
+| SD-01 | add | docs/specs/auto-lang/ui/overview.md「store facade 消费位语义」节 | before：442 只证 Init/msg 派发/视图初读；after：五消费位语义契约钉死（handler 读、带参派发、视图响应回读、store 内 api 340 面、splice 2071 变异原语——插入形变体 v1 不设注记） | facade 形态成为 29-widget 迁移既定目标形态前的语义冻结 |
+| SD-02 | add（执行期新增，复审定稿） | docs/specs/auto-lang/ui/overview.md「闭包捕获编址契约」节 | before：捕获槽位=裸 scope idx（fss=0 语料恰好相等未暴露）；after：与 emit_store_loc 同源编址（local=idx-fss-n_args、参数域 real=idx-fss + 0x8000）+ `self` 特判捕获 __state | e1/e2 修复的持久语义面；防回归契约 |
+
+> 复审定稿注记（rev 1→2）：SD-02 为执行期新增的规范面（e 修复的持久契约），
+> SD-01 落点由独立文件校正为 ui/overview.md 内节（对齐 621 惯例）。目标、任务、
+> 验收标准不变——增量枚举与落点按实际实现定稿。
 
 ## 测试设计
 
@@ -254,6 +259,28 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
   钉死"，记录于执行进度节）。AC-2 cargo tv 3691/3691；AC-3 构造性零扰动
   （发射器未动）；AC-4 强形态达成（AUTO_EXE 跨仓 14/14）；AC-5 落账完成。
   工作树保留待 review/merge（D:/autostack/.wt/lang-622/{auto-lang,auto-down}）。
+- 2026-09-14 stage:review（/auto-plan:review，rev 2 定稿）：**outcome: pass**，
+  状态 execution_done → reviewed。复审与实现同会话（无独立会话授权），按规程
+  以工件重建立论：全部门检独立重跑，不采信 work 阶段摘要。
+  - 基线：worktree `D:/autostack/.wt/lang-622/auto-lang` @ HEAD 050f54ee7
+    （branch plan-622-dev），base 23cc46055，依赖 auto-down 组兄弟 @ 67bb508；
+    入场发现 worktree 一处 CRLF 幻影改动（handler_codegen.rs 内容零差异），
+    已还原，提交面干净。
+  - diff 面（23cc46055..050f54ee7，11 文件 +748/−8）：vm/codegen.rs（捕获
+    编址 + self 特判）/ vm/native.rs + native_catalog.rs（splice 2071）/
+    lib.rs（模块注册）/ plan370_test_support.rs（split builder）/ 语料四件 +
+    测试 / spec overview.md。**trans/ui_gen/docs_gen 零触及 → AC-3 构造性成立**。
+  - AC 复现：AC-1 plan622 复跑 8/8（红阶段证据锚 81f0a348d 提交序在案）；
+    AC-2 cargo tv 3691/3691（--no-fail-fast）；AC-3 见上；AC-4 vm-smoke
+    AUTO_EXE 复跑两次全绿（16 ✓ 断言行）；AC-5 spec 节在库且为持久语义表述。
+  - **F-01（低，非阻断，master 预存）**：`docs_gen kitchen_sink_page_in_sync`
+    失败——kitchen-sink.at 与 schema 不同步；主检出（未改动）同报，修复口令
+    `KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen`，属
+    master 线族文档再生，不在本计划域。tf 记录 3544/3545，唯一失败即此。
+  - **F-02（info，master 预存）**：`plan050_void_stub_reads_as_none_in_computed`
+    并行序 flake（主检出 4/4 复现、单独跑恒绿），非本计划引入。
+  - 验证口径：tf 3544/3545（唯一失败 F-01）；tv 3691/3691；plan340 11/11；
+    plan622 8/8；vm-smoke 全臂。审阅人：ZCode 会话（同会话复审限制已声明）。
 
 ## 待澄清事项
 
