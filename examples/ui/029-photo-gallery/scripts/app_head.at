@@ -1,0 +1,224 @@
+// app.at — 029-photo-gallery 现代相册（Plan 628）
+//
+// 移动端/平板风格真实图库：
+// 1. 真实相册数据源：直连 C:\Users\zhaop\Pictures\ 真实照片与屏幕截图
+// 2. 真实缩略图与原图呈现：秒开高清本地缩略图 + 全屏无损原画直接渲染
+// 3. 平板/手机端 UI/UX：取消生硬的左侧 PC 侧栏，采用沉浸式分段导航栏 + 纯净无边框照片网格 + 悬浮胶囊控制条
+
+widget App {
+    msg {
+        Init,
+        SelectAlbum(str), SetSearch(str), ApplyFilter,
+        ToggleSort, SetDensity(int),
+        OpenPhoto(int), PrevPhoto, NextPhoto, BackToGrid,
+        ToggleFav(int),
+        ToggleDark, SetAccent(str)
+    }
+
+    model {
+        // ---- 主题契约变量 ----
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+
+        // ---- 视图形态 ----
+        var mode str = "grid"               // "grid" | "view"
+
+        // ---- 过滤 / 排序 / 密度 ----
+        var album str = "all"               // all | photos | screenshots | favorites
+        var search_q str = ""
+        var sort_dir str = "desc"           // "desc"=最新在前 | "asc"
+        var sort_label str = "最新 ↓"
+        var density int = 3                 // 网格列数：2 | 3 | 4
+
+        // ---- 真实照片种子列表（68 张，来自 C:\Users\zhaop\Pictures）----
+        var p_ids = [
+            1, 2, 3, 4,
+            5, 6, 7, 8,
+            9, 10, 11, 12,
+            13, 14, 15, 16,
+            17, 18, 19, 20,
+            21, 22, 23, 24,
+            25, 26, 27, 28,
+            29, 30, 31, 32,
+            33, 34, 35, 36,
+            37, 38, 39, 40,
+            41, 42, 43, 44,
+            45, 46, 47, 48,
+            49, 50, 51, 52,
+            53, 54, 55, 56,
+            57, 58, 59, 60,
+            61, 62, 63, 64,
+            65, 66, 67, 68
+        ]
+        var p_titles = [
+            "000042", "2016-08-26", "DzleXs_rMnlhN1bbZs…", "Screenshot_2026-03…",
+            "u=1685612231,35676…", "yanxingshuyuan.com", "yanxingshuyuan", "反面",
+            "微信图片_20200408101954", "微信图片_20200703131319", "微信图片_20200703131618", "微信图片_20210204124322",
+            "微信图片_20210204124332", "微信图片_2021020412481…", "微信图片_20210204124813", "微信图片_20210204125222",
+            "微信图片_20210307104209", "微信图片_20210314162739", "微信图片_20210729113331", "微信图片_20210729113338",
+            "微信图片_20210729113343", "微信图片_20210729113430", "微信图片_20210729113454", "微信图片_20210729113521",
+            "微信图片_20211009203649", "微信图片_20211009203700", "微信图片_20211009203707", "微信图片_20211009203710",
+            "微信图片_20211009203713", "微信图片_20211009203718", "微信图片_20211009203754", "微信图片_20211009203756",
+            "微信图片_20211009203758", "微信图片_20211009203800", "微信图片_20211009203801", "微信图片_20211009203805",
+            "微信图片_20211104093124", "微信图片_20231009211841", "微信图片_20231117165017", "微信图片_20231123215724",
+            "微信图片_20231129095642", "微信图片_20240222201547", "微信图片_20240222203109", "微信截图_20210314162757",
+            "微信截图_20210314162811", "微信截图_20210314162824", "微信截图_20210314162844", "微信截图_20210314162939",
+            "微信截图_20210314163237", "正面", "流程图", "赵若妍照片 - 副本",
+            "赵若妍照片", "屏幕截图 2026-09-04 23…", "屏幕截图 2026-09-03 09…", "屏幕截图 2026-09-02 09…",
+            "屏幕截图 2026-09-01 21…", "屏幕截图 2026-09-01 21…", "屏幕截图 2026-09-01 21…", "屏幕截图 2026-09-01 18…",
+            "屏幕截图 2026-09-01 17…", "屏幕截图 2026-09-01 15…", "屏幕截图 2026-09-01 15…", "屏幕截图 2026-09-01 15…",
+            "屏幕截图 2026-09-01 14…", "屏幕截图 2026-09-01 13…", "屏幕截图 2026-09-01 13…", "屏幕截图 2026-09-01 13…"
+        ]
+        var p_tls = [
+            "000042", "2016-08-26", "dzlexs_rmnlhn1bbzs…", "screenshot_2026-03…",
+            "u=1685612231,35676…", "yanxingshuyuan.com", "yanxingshuyuan", "反面",
+            "微信图片_20200408101954", "微信图片_20200703131319", "微信图片_20200703131618", "微信图片_20210204124322",
+            "微信图片_20210204124332", "微信图片_2021020412481…", "微信图片_20210204124813", "微信图片_20210204125222",
+            "微信图片_20210307104209", "微信图片_20210314162739", "微信图片_20210729113331", "微信图片_20210729113338",
+            "微信图片_20210729113343", "微信图片_20210729113430", "微信图片_20210729113454", "微信图片_20210729113521",
+            "微信图片_20211009203649", "微信图片_20211009203700", "微信图片_20211009203707", "微信图片_20211009203710",
+            "微信图片_20211009203713", "微信图片_20211009203718", "微信图片_20211009203754", "微信图片_20211009203756",
+            "微信图片_20211009203758", "微信图片_20211009203800", "微信图片_20211009203801", "微信图片_20211009203805",
+            "微信图片_20211104093124", "微信图片_20231009211841", "微信图片_20231117165017", "微信图片_20231123215724",
+            "微信图片_20231129095642", "微信图片_20240222201547", "微信图片_20240222203109", "微信截图_20210314162757",
+            "微信截图_20210314162811", "微信截图_20210314162824", "微信截图_20210314162844", "微信截图_20210314162939",
+            "微信截图_20210314163237", "正面", "流程图", "赵若妍照片 - 副本",
+            "赵若妍照片", "屏幕截图 2026-09-04 23…", "屏幕截图 2026-09-03 09…", "屏幕截图 2026-09-02 09…",
+            "屏幕截图 2026-09-01 21…", "屏幕截图 2026-09-01 21…", "屏幕截图 2026-09-01 21…", "屏幕截图 2026-09-01 18…",
+            "屏幕截图 2026-09-01 17…", "屏幕截图 2026-09-01 15…", "屏幕截图 2026-09-01 15…", "屏幕截图 2026-09-01 15…",
+            "屏幕截图 2026-09-01 14…", "屏幕截图 2026-09-01 13…", "屏幕截图 2026-09-01 13…", "屏幕截图 2026-09-01 13…"
+        ]
+        var p_albums = [
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "photos", "photos", "photos",
+            "photos", "screenshots", "screenshots", "screenshots",
+            "screenshots", "screenshots", "screenshots", "screenshots",
+            "screenshots", "screenshots", "screenshots", "screenshots",
+            "screenshots", "screenshots", "screenshots", "screenshots"
+        ]
+        var p_dates = [
+            "2019-01-16", "2018-12-25", "2020-03-18", "2026-03-21",
+            "2020-09-14", "2021-02-04", "2021-02-04", "2021-02-04",
+            "2020-04-08", "2020-07-03", "2020-07-03", "2021-02-04",
+            "2021-02-04", "2021-07-29", "2021-07-29", "2021-02-04",
+            "2021-03-07", "2021-03-14", "2021-07-29", "2021-07-29",
+            "2021-07-29", "2021-07-29", "2021-07-29", "2021-07-29",
+            "2021-10-09", "2021-10-09", "2021-10-09", "2021-10-09",
+            "2021-10-09", "2021-10-09", "2021-10-09", "2021-10-09",
+            "2021-10-09", "2021-10-09", "2021-10-09", "2021-10-09",
+            "2021-11-04", "2023-10-09", "2023-11-17", "2023-11-23",
+            "2023-11-29", "2024-02-22", "2024-02-22", "2021-03-14",
+            "2021-03-14", "2021-03-14", "2021-03-14", "2021-03-14",
+            "2021-03-14", "2021-02-04", "2022-08-15", "2022-09-14",
+            "2021-06-17", "2026-09-04", "2026-09-03", "2026-09-02",
+            "2026-09-01", "2026-09-01", "2026-09-01", "2026-09-01",
+            "2026-09-01", "2026-09-01", "2026-09-01", "2026-09-01",
+            "2026-09-01", "2026-09-01", "2026-09-01", "2026-09-01"
+        ]
+        var p_keys = [
+            20190116, 20181225, 20200318, 20260321,
+            20200914, 20210204, 20210204, 20210204,
+            20200408, 20200703, 20200703, 20210204,
+            20210204, 20210729, 20210729, 20210204,
+            20210307, 20210314, 20210729, 20210729,
+            20210729, 20210729, 20210729, 20210729,
+            20211009, 20211009, 20211009, 20211009,
+            20211009, 20211009, 20211009, 20211009,
+            20211009, 20211009, 20211009, 20211009,
+            20211104, 20231009, 20231117, 20231123,
+            20231129, 20240222, 20240222, 20210314,
+            20210314, 20210314, 20210314, 20210314,
+            20210314, 20210204, 20220815, 20220914,
+            20210617, 20260904, 20260903, 20260902,
+            20260901, 20260901, 20260901, 20260901,
+            20260901, 20260901, 20260901, 20260901,
+            20260901, 20260901, 20260901, 20260901
+        ]
+        var p_favs = [
+            true, false, true, false,
+            false, true, false, false,
+            true, false, false, false,
+            true, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false
+        ]
+        var p_fulls = [
+            "C:/Users/zhaop/Pictures/000042.jpg", "C:/Users/zhaop/Pictures/2016-08-26.jpeg", "C:/Users/zhaop/Pictures/DzleXs_rMnlhN1bbZsDtzwFVQOBP5KN3h_CUhR26uFY.jpg", "C:/Users/zhaop/Pictures/Screenshot_2026-03-21T105421.png",
+            "C:/Users/zhaop/Pictures/u=1685612231,3567664266&fm=26&gp=0.jpg", "C:/Users/zhaop/Pictures/yanxingshuyuan.com.png", "C:/Users/zhaop/Pictures/yanxingshuyuan.jpg", "C:/Users/zhaop/Pictures/反面.jpg",
+            "C:/Users/zhaop/Pictures/微信图片_20200408101954.jpg", "C:/Users/zhaop/Pictures/微信图片_20200703131319.jpg", "C:/Users/zhaop/Pictures/微信图片_20200703131618.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124322.jpg",
+            "C:/Users/zhaop/Pictures/微信图片_20210204124332.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124813 (1).jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124813.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204125222.jpg",
+            "C:/Users/zhaop/Pictures/微信图片_20210307104209.jpg", "C:/Users/zhaop/Pictures/微信图片_20210314162739.png", "C:/Users/zhaop/Pictures/微信图片_20210729113331.jpg", "C:/Users/zhaop/Pictures/微信图片_20210729113338.jpg",
+            "C:/Users/zhaop/Pictures/微信图片_20210729113343.jpg", "C:/Users/zhaop/Pictures/微信图片_20210729113430.png", "C:/Users/zhaop/Pictures/微信图片_20210729113454.png", "C:/Users/zhaop/Pictures/微信图片_20210729113521.png",
+            "C:/Users/zhaop/Pictures/微信图片_20211009203649.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203700.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203707.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203710.jpg",
+            "C:/Users/zhaop/Pictures/微信图片_20211009203713.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203718.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203754.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203756.jpg",
+            "C:/Users/zhaop/Pictures/微信图片_20211009203758.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203800.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203801.jpg", "C:/Users/zhaop/Pictures/微信图片_20211009203805.jpg",
+            "C:/Users/zhaop/Pictures/微信图片_20211104093124.png", "C:/Users/zhaop/Pictures/微信图片_20231009211841.jpg", "C:/Users/zhaop/Pictures/微信图片_20231117165017.jpg", "C:/Users/zhaop/Pictures/微信图片_20231123215724.jpg",
+            "C:/Users/zhaop/Pictures/微信图片_20231129095642.jpg", "C:/Users/zhaop/Pictures/微信图片_20240222201547.jpg", "C:/Users/zhaop/Pictures/微信图片_20240222203109.png", "C:/Users/zhaop/Pictures/微信截图_20210314162757.png",
+            "C:/Users/zhaop/Pictures/微信截图_20210314162811.png", "C:/Users/zhaop/Pictures/微信截图_20210314162824.png", "C:/Users/zhaop/Pictures/微信截图_20210314162844.png", "C:/Users/zhaop/Pictures/微信截图_20210314162939.png",
+            "C:/Users/zhaop/Pictures/微信截图_20210314163237.png", "C:/Users/zhaop/Pictures/正面.jpg", "C:/Users/zhaop/Pictures/流程图.png", "C:/Users/zhaop/Pictures/赵若妍照片 - 副本.JPG",
+            "C:/Users/zhaop/Pictures/赵若妍照片.JPG", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-04 231501.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-03 090359.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-02 094211.png",
+            "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 211909.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 211529.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 210448.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 180732.png",
+            "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 175845.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 152621.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 151228.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 151021.png",
+            "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 145556.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 133533.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 133523.png", "C:/Users/zhaop/Pictures/Screenshots/屏幕截图 2026-09-01 132528.png"
+        ]
+        var p_metas = [
+            "2409×3614 · 3383KB · 2019-01-16", "1449×2576 · 3426KB · 2018-12-25", "1200×2803 · 453KB · 2020-03-18", "1320×2856 · 283KB · 2026-03-21",
+            "347×499 · 38KB · 2020-09-14", "1184×1794 · 450KB · 2021-02-04", "768×1164 · 353KB · 2021-02-04", "1207×792 · 385KB · 2021-02-04",
+            "602×602 · 217KB · 2020-04-08", "660×1002 · 63KB · 2020-07-03", "680×951 · 58KB · 2020-07-03", "2622×1693 · 1185KB · 2021-02-04",
+            "2540×1665 · 1380KB · 2021-02-04", "1662×1080 · 193KB · 2021-07-29", "1662×1080 · 193KB · 2021-07-29", "1120×840 · 243KB · 2021-02-04",
+            "1080×1440 · 103KB · 2021-03-07", "1841×1009 · 68KB · 2021-03-14", "4000×3000 · 1759KB · 2021-07-29", "4000×3000 · 2139KB · 2021-07-29",
+            "4000×3000 · 2007KB · 2021-07-29", "1119×827 · 1005KB · 2021-07-29", "1120×814 · 1188KB · 2021-07-29", "1028×779 · 1021KB · 2021-07-29",
+            "4624×2608 · 4593KB · 2021-10-09", "4624×2608 · 4544KB · 2021-10-09", "4624×2608 · 3926KB · 2021-10-09", "4624×2608 · 3573KB · 2021-10-09",
+            "4624×2608 · 3991KB · 2021-10-09", "4624×2608 · 3481KB · 2021-10-09", "2608×4624 · 4518KB · 2021-10-09", "2608×4624 · 4375KB · 2021-10-09",
+            "2608×4624 · 4622KB · 2021-10-09", "3468×4624 · 3272KB · 2021-10-09", "3468×4624 · 3155KB · 2021-10-09", "3468×4624 · 3489KB · 2021-10-09",
+            "327×676 · 289KB · 2021-11-04", "768×1024 · 229KB · 2023-10-09", "1280×1706 · 247KB · 2023-11-17", "1280×1704 · 254KB · 2023-11-23",
+            "3072×4096 · 4085KB · 2023-11-29", "4096×4096 · 7494KB · 2024-02-22", "1548×1461 · 1414KB · 2024-02-22", "1841×1009 · 99KB · 2021-03-14",
+            "1841×1009 · 184KB · 2021-03-14", "1841×1009 · 72KB · 2021-03-14", "1841×1009 · 100KB · 2021-03-14", "1841×1009 · 98KB · 2021-03-14",
+            "1841×1009 · 68KB · 2021-03-14", "1311×847 · 345KB · 2021-02-04", "689×598 · 44KB · 2022-08-15", "260×320 · 38KB · 2022-09-14",
+            "990×1440 · 677KB · 2021-06-17", "3814×2397 · 912KB · 2026-09-04", "830×409 · 49KB · 2026-09-03", "1889×245 · 18KB · 2026-09-02",
+            "654×814 · 55KB · 2026-09-01", "482×992 · 55KB · 2026-09-01", "2540×1678 · 324KB · 2026-09-01", "697×295 · 25KB · 2026-09-01",
+            "1761×589 · 110KB · 2026-09-01", "837×1007 · 761KB · 2026-09-01", "2390×1494 · 1241KB · 2026-09-01", "2779×1801 · 266KB · 2026-09-01",
+            "2758×1776 · 256KB · 2026-09-01", "2556×1606 · 291KB · 2026-09-01", "3819×2128 · 383KB · 2026-09-01", "2560×1664 · 302KB · 2026-09-01"
+        ]
+        var p_thumbs = [
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_002.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_003.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_004.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_005.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_006.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_007.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_008.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_009.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_010.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_011.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_012.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_013.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_014.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_015.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_016.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_017.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_018.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_019.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_020.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_021.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_022.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_023.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_024.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_025.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_026.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_027.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_028.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_029.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_030.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_031.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_032.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_033.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_034.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_035.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_036.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_037.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_038.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_039.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_040.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_041.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_042.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_043.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_044.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_045.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_046.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_047.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_048.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_049.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_050.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_051.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_052.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_053.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_054.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_055.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_056.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_057.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_058.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_059.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_060.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_061.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_062.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_063.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_064.jpg",
+            "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_065.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_066.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_067.jpg", "D:/autostack/.wt/lang-628/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_068.jpg"
+        ]
+
