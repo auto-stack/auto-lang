@@ -3044,6 +3044,14 @@ fn render_image_surface<M: Clone + Debug + 'static>(
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
+            // PLAN-066: 原生外部组件（Element 通道）——查 NativeWidgetRegistry
+            // 的 iced Element factory 表。本计划未注册任何 factory（首个后端
+            // 原生件落地时建表消费，提案 066 §3.2），零高 Space 防御臂与
+            // Empty 同款（不占布局位）。
+            AbstractView::Custom { .. } => iced::widget::Space::new()
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Fixed(0.0))
+                .into(),
             // PLAN-063 T-04d-2: 锚槽 → 记录布局坐标的委托 wrapper。
             AbstractView::AnchorSlot { index, child } => {
                 let el = child.into_iced();
@@ -19848,6 +19856,8 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
 fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<&Style> {
     match view {
         AbstractView::Empty => None,
+        // PLAN-066: Custom 自带 style（与内置变体同待遇）。
+        AbstractView::Custom { style, .. } => style.as_ref(),
         // Plan 409 §10 续 5: Overlay 本身无 style(base/content 各自带)。
         AbstractView::Overlay { .. } => None,
         // PLAN-063 T-04d-2: 锚槽无自有样式，读子件。
@@ -19940,6 +19950,8 @@ fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> b
 fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str {
     match view {
         AbstractView::Empty => "empty",
+        // PLAN-066: 原生外部组件 hover 前缀（快照 kind 是注册名本体）。
+        AbstractView::Custom { .. } => "custom",
         AbstractView::Overlay { .. } => "overlay",
         AbstractView::AnchorSlot { .. } => "anchor_slot",
         AbstractView::Popover { .. } => "popover",

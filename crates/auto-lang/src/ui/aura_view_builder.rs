@@ -112,6 +112,10 @@ pub struct AuraViewBuilder<'a> {
     /// Optional widget registry for child widget rendering
     widget_registry: Option<&'a crate::ui::widget_registry::WidgetRegistry>,
 
+    /// PLAN-066: 原生外部组件注册表（NativeWidgetRegistry）。缺省=进程级
+    /// global（feature 门控内置注册）；测试经 with_native_registry 注入。
+    native_registry: Option<&'a crate::ui::native_widget::NativeWidgetRegistry>,
+
     /// Plan 318: imported declarations shared with child widgets.
     import_stmts: Option<&'a [crate::ast::Stmt]>,
 
@@ -265,6 +269,7 @@ impl<'a> AuraViewBuilder<'a> {
             bridge,
             widget_name: widget_name.to_string(),
             widget_registry: None,
+            native_registry: Some(crate::ui::native_widget::global()),
             import_stmts: None,
             override_state_obj_id: None,
             routes: None,
@@ -286,6 +291,7 @@ impl<'a> AuraViewBuilder<'a> {
             bridge,
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
+            native_registry: Some(crate::ui::native_widget::global()),
             import_stmts: None,
             override_state_obj_id: None,
             routes: None,
@@ -311,6 +317,7 @@ impl<'a> AuraViewBuilder<'a> {
             bridge,
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
+            native_registry: Some(crate::ui::native_widget::global()),
             import_stmts: Some(import_stmts),
             override_state_obj_id: None,
             routes: None,
@@ -320,6 +327,16 @@ impl<'a> AuraViewBuilder<'a> {
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
         }
+    }
+
+    /// PLAN-066: 注入自有 NativeWidgetRegistry（测试隔离面；生产构造器缺省
+    /// 绑定进程级 global）。
+    pub fn with_native_registry(
+        mut self,
+        registry: &'a crate::ui::native_widget::NativeWidgetRegistry,
+    ) -> Self {
+        self.native_registry = Some(registry);
+        self
     }
 
     /// Plan 401/VM-routing: attach the root widget's route table so `outlet`
@@ -1729,68 +1746,12 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-009 P1: native terminal component(auto-term 引擎网格)。
             "terminal" | "Terminal" => self.convert_terminal(props, events, bindings),
-            // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
-            // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
-            "autodown_editor" | "autodowneditor" => {
-                #[cfg(all(feature = "autodown", feature = "code-editor"))]
-                {
-                    let key = self
-                        .extract_string_with(props, "key", bindings)
-                        .or_else(|| self.extract_string_with(props, "id", bindings))
-                        .unwrap_or_else(|| "doc".to_owned());
-                    let value = self
-                        .extract_string_with(props, "content", bindings)
-                        .or_else(|| self.extract_string_with(props, "value", bindings))
-                        .unwrap_or_default();
-                    let is_final = props
-                        .get("final")
-                        .map(|v| match v {
-                            AuraPropValue::Expr(expr) => {
-                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
-                            }
-                            _ => None,
-                        })
-                        .flatten()
-                        .unwrap_or(true);
-                    let on_change = aura_events_get_base(events, "oninput")
-                        .or_else(|| aura_events_get_base(events, "input"))
-                        .or_else(|| aura_events_get_base(events, "onchange"))
-                        .or_else(|| aura_events_get_base(events, "change"))
-                        .map(|event| self.event_to_message(&event.handler));
-                    let style = self.extract_style_with(props, bindings);
-                    // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
-                    // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
-                    // 忽略」豁免摘除）。
-                    let placeholder = self.extract_string_with(props, "placeholder", bindings);
-                    // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
-                    //（DocEditor 全内容高、外滚）外包 View::Scrollable，
-                    // 编辑栏 offset 绑定写入 + onscroll 消息读出。
-                    // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
-                    // ghost 消息）。
-                    let p063_editor_sk = crate::ui::autodown_editor::storage_key(key.as_str());
-                    let (scroll_sync, offset, on_scroll, _details) =
-                        self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
-                    let on_focus = self.autodown_on_focus_binding(events);
-                    // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
-                    // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
-                    // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
-                    // 到内容全高（外滚）。编辑壳自身样式保留在内层。
-                    if scroll_sync {
-                        return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
-                            width: None,
-                            height: None,
-                            style: Style::parse("w-full h-full").ok(),
-                            auto_scroll: false,
-                            offset,
-                            on_scroll,
-                        };
-                    }
-                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style };
-                }
-                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
-                self.convert_textarea(props, events, bindings)
-            }
+            // Plan 019 批次九拆分（PLAN-066 T2 迁出）：`autodown_editor` 别名
+            // 走可编辑文档编辑器——原硬编码臂迁经 NativeWidgetRegistry 派发
+            // （native_widget::global 注册，案 a sugar：factory 仍产
+            // View::AutodownEditor，快照 kind 与断言面零改动）。臂体见
+            // convert_autodown_editor_native；无 feature 时 global 注册
+            // convert_textarea 降级（D-GAP-3 链保持）。
 
             // Plan 019 批次七: markdown/autodown → 只读真渲染（autodown-core
             // parse_blocks → 面板树 → View）。无 feature 时维持 D-GAP-3
@@ -1956,6 +1917,11 @@ impl<'a> AuraViewBuilder<'a> {
                 // 避免落 fallback 产生占位噪音。
                 if tag == "toast-provider" || tag == "toast_provider" || tag == "toaster" {
                     return View::Empty;
+                }
+                // PLAN-066: 原生外部组件注册表——内置臂穷尽后、.at AuraWidget
+                // 前查（原生优先语义保持，提案 066 §3.3）。命中即接管。
+                if let Some(nv) = self.native_widget_view(tag, props, events, children, bindings) {
+                    return nv;
                 }
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
@@ -3016,6 +2982,134 @@ impl<'a> AuraViewBuilder<'a> {
         })
     }
 
+    /// PLAN-066 T2: `autodown_editor` 转换体——原两站点硬编码字符串臂
+    /// （"autodown_editor" | "autodowneditor"，臂体逐字节相同）的公共提取，
+    /// 经 NativeWidgetRegistry 派发（native_widget::global 注册；案 a
+    /// sugar：内部仍产 View::AutodownEditor，快照 kind 与 vm-smoke 断言面
+    /// 零改动）。门控同原臂；无 feature 时 global 注册 convert_textarea
+    /// 降级（D-GAP-3 链保持）。
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    pub(crate) fn convert_autodown_editor_native(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let key = self
+            .extract_string_with(props, "key", bindings)
+            .or_else(|| self.extract_string_with(props, "id", bindings))
+            .unwrap_or_else(|| "doc".to_owned());
+        let value = self
+            .extract_string_with(props, "content", bindings)
+            .or_else(|| self.extract_string_with(props, "value", bindings))
+            .unwrap_or_default();
+        let is_final = props
+            .get("final")
+            .map(|v| match v {
+                AuraPropValue::Expr(expr) => {
+                    self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
+                }
+                _ => None,
+            })
+            .flatten()
+            .unwrap_or(true);
+        let on_change = aura_events_get_base(events, "oninput")
+            .or_else(|| aura_events_get_base(events, "input"))
+            .or_else(|| aura_events_get_base(events, "onchange"))
+            .or_else(|| aura_events_get_base(events, "change"))
+            .map(|event| self.event_to_message(&event.handler));
+        let style = self.extract_style_with(props, bindings);
+        // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
+        // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
+        // 忽略」豁免摘除）。
+        let placeholder = self.extract_string_with(props, "placeholder", bindings);
+        // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
+        //（DocEditor 全内容高、外滚）外包 View::Scrollable，
+        // 编辑栏 offset 绑定写入 + onscroll 消息读出。
+        // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
+        // ghost 消息）。
+        let p063_editor_sk = crate::ui::autodown_editor::storage_key(key.as_str());
+        let (scroll_sync, offset, on_scroll, _details) =
+            self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
+        let on_focus = self.autodown_on_focus_binding(events);
+        // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
+        // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
+        // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
+        // 到内容全高（外滚）。编辑壳自身样式保留在内层。
+        if scroll_sync {
+            return View::Scrollable {
+                child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
+                width: None,
+                height: None,
+                style: Style::parse("w-full h-full").ok(),
+                auto_scroll: false,
+                offset,
+                on_scroll,
+            };
+        }
+        View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }
+    }
+
+    /// PLAN-066: 原生外部组件注册表派发——内置臂穷尽后、.at AuraWidget 前查
+    /// （原生优先语义保持；提案 066 §3.3 派发序）。registry 字段缺席回落进
+    /// 程级 global（feature 门控注册；测试经 with_native_registry 注入自有
+    /// 实例隔离）。View 工厂命中=直接产 View；Element 入口命中=产
+    /// View::Custom（name+props 明文透传，排序保快照确定性）；工厂返回
+    /// None=放弃接手，继续后续派发链。
+    fn native_widget_view(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> Option<View<DynamicMessage>> {
+        let registry = match self.native_registry {
+            Some(r) => r,
+            None => crate::ui::native_widget::global(),
+        };
+        let entry = registry.lookup(tag)?;
+        match entry {
+            crate::ui::native_widget::NativeWidgetEntry::View(factory) => {
+                let ctx = crate::ui::native_widget::NativeCtx {
+                    builder: self,
+                    tag,
+                    props,
+                    events,
+                    children,
+                    bindings,
+                };
+                factory(&ctx)
+            }
+            crate::ui::native_widget::NativeWidgetEntry::Element => {
+                // Element 通道：Expr 属性经 resolve→display，StyleBinding 跳过
+                // （样式走 style 面）。HashMap 迭代序不定——按键排序保快照
+                // 确定性（MCP 断言面依赖）。
+                let mut resolved: Vec<(String, String)> = props
+                    .iter()
+                    .filter_map(|(k, v)| match v {
+                        AuraPropValue::Expr(expr) => self
+                            .resolve_expr_to_value(expr, bindings)
+                            .map(|val| (k.clone(), value_to_display_string(&val))),
+                        AuraPropValue::StyleBinding(_) => None,
+                    })
+                    .collect();
+                resolved.sort();
+                let mut evs: Vec<(String, DynamicMessage)> = events
+                    .iter()
+                    .map(|(k, ev)| (k.clone(), self.event_to_message(&ev.handler)))
+                    .collect();
+                evs.sort_by(|a, b| a.0.cmp(&b.0));
+                Some(View::Custom {
+                    name: tag.to_string(),
+                    props: resolved,
+                    events: evs,
+                    style: self.extract_style_with(props, bindings),
+                })
+            }
+        }
+    }
+
     fn convert_element(
         &self,
         tag: &str,
@@ -3377,68 +3471,12 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-009 P1: native terminal component(auto-term 引擎网格)。
             "terminal" | "Terminal" => self.convert_terminal(props, events, bindings),
-            // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
-            // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
-            "autodown_editor" | "autodowneditor" => {
-                #[cfg(all(feature = "autodown", feature = "code-editor"))]
-                {
-                    let key = self
-                        .extract_string_with(props, "key", bindings)
-                        .or_else(|| self.extract_string_with(props, "id", bindings))
-                        .unwrap_or_else(|| "doc".to_owned());
-                    let value = self
-                        .extract_string_with(props, "content", bindings)
-                        .or_else(|| self.extract_string_with(props, "value", bindings))
-                        .unwrap_or_default();
-                    let is_final = props
-                        .get("final")
-                        .map(|v| match v {
-                            AuraPropValue::Expr(expr) => {
-                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
-                            }
-                            _ => None,
-                        })
-                        .flatten()
-                        .unwrap_or(true);
-                    let on_change = aura_events_get_base(events, "oninput")
-                        .or_else(|| aura_events_get_base(events, "input"))
-                        .or_else(|| aura_events_get_base(events, "onchange"))
-                        .or_else(|| aura_events_get_base(events, "change"))
-                        .map(|event| self.event_to_message(&event.handler));
-                    let style = self.extract_style_with(props, bindings);
-                    // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
-                    // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
-                    // 忽略」豁免摘除）。
-                    let placeholder = self.extract_string_with(props, "placeholder", bindings);
-                    // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
-                    //（DocEditor 全内容高、外滚）外包 View::Scrollable，
-                    // 编辑栏 offset 绑定写入 + onscroll 消息读出。
-                    // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
-                    // ghost 消息）。
-                    let p063_editor_sk = crate::ui::autodown_editor::storage_key(key.as_str());
-                    let (scroll_sync, offset, on_scroll, _details) =
-                        self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
-                    let on_focus = self.autodown_on_focus_binding(events);
-                    // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
-                    // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
-                    // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
-                    // 到内容全高（外滚）。编辑壳自身样式保留在内层。
-                    if scroll_sync {
-                        return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
-                            width: None,
-                            height: None,
-                            style: Style::parse("w-full h-full").ok(),
-                            auto_scroll: false,
-                            offset,
-                            on_scroll,
-                        };
-                    }
-                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style };
-                }
-                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
-                self.convert_textarea(props, events, bindings)
-            }
+            // Plan 019 批次九拆分（PLAN-066 T2 迁出）：`autodown_editor` 别名
+            // 走可编辑文档编辑器——原硬编码臂迁经 NativeWidgetRegistry 派发
+            // （native_widget::global 注册，案 a sugar：factory 仍产
+            // View::AutodownEditor，快照 kind 与断言面零改动）。臂体见
+            // convert_autodown_editor_native；无 feature 时 global 注册
+            // convert_textarea 降级（D-GAP-3 链保持）。
 
             // Plan 019 批次七: markdown/autodown → 只读真渲染（autodown-core
             // parse_blocks → 面板树 → View）。无 feature 时维持 D-GAP-3
@@ -4188,6 +4226,11 @@ let tabs_inner = View::Row {
                         )).ok(),
                         on_right_click: None,
                     };
+                }
+                // PLAN-066: 原生外部组件注册表——内置臂穷尽后、.at AuraWidget
+                // 前查（原生优先语义保持，提案 066 §3.3）。命中即接管。
+                if let Some(nv) = self.native_widget_view(tag, props, events, children, bindings) {
+                    return nv;
                 }
                 // Check if this tag matches a registered child widget
                 if let Some(registry) = self.widget_registry {
@@ -5661,6 +5704,7 @@ let tabs_inner = View::Row {
             bridge: self.bridge,
             widget_name: child_widget.name.clone(),
             widget_registry: self.widget_registry,
+            native_registry: self.native_registry,
             import_stmts: self.import_stmts,
             override_state_obj_id: Some(child_state_id),
             routes: None,
@@ -5718,6 +5762,7 @@ let tabs_inner = View::Row {
             bridge: self.bridge,
             widget_name: child_widget.name.clone(),
             widget_registry: self.widget_registry,
+            native_registry: self.native_registry,
             import_stmts: self.import_stmts,
             override_state_obj_id: Some(child_state_id),
             routes: None,
@@ -8876,7 +8921,9 @@ let tabs_inner = View::Row {
         }
     }
 
-    fn convert_textarea(
+    /// PLAN-066: pub(crate)——native_widget global 的无 feature 降级注册
+    /// （"autodown_editor" → textarea，D-GAP-3 链经注册表保持）也经本方法。
+    pub(crate) fn convert_textarea(
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
