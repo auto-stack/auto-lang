@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-622
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: store-facade-vm-semantics
 author: [zhaopuming]
 created_at: 2026-09-14
@@ -281,6 +281,18 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
     并行序 flake（主检出 4/4 复现、单独跑恒绿），非本计划引入。
   - 验证口径：tf 3544/3545（唯一失败 F-01）；tv 3691/3691；plan340 11/11；
     plan622 8/8；vm-smoke 全臂。审阅人：ZCode 会话（同会话复审限制已声明）。
+- 2026-09-14 merge 收据 **PLAN-622:r2**：
+  - `prepared` ✅ worktree dd61e23bb（master 调和 + plan622 8/8 复验）；账本投影
+    预备（P622-1..6 六节，file→archive 路径）。
+  - `landed` ✅ master fast-forward 至 dd61e23bb（fold 提交；后续 d21cd48b4 为
+    623 并行会话叠加，祖先链在案）；fold 后 master 复验 plan622 8/8 +
+    plan442 17/17 + plan050 单独跑 13/13 绿。
+  - `ledger_refreshed` ✅ .autoos/specs.json（运行时账本，未跟踪）原子发布
+    P622-1..6 六节（tmp 校验读回 6/6 后 os.replace），单写者会话内完成。
+  - `archived` ✅ plan → docs/plans/archive/622-store-facade-vm-semantics.md +
+    status: archived（本次提交）。
+  - `cleaned` ⏳ 待清理后补记（worktree lang-622/auto-lang + auto-down、分支
+    plan-622-dev + auto-lang-dev）。
 
 ## 待澄清事项
 
