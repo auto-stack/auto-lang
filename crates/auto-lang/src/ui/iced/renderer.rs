@@ -26999,13 +26999,20 @@ mod tests {
         walk_vm(&view, &mut vm_names);
         assert_eq!(
             vm_names.iter().filter(|n| n.as_deref() == Some("MenuClose")).count(),
-            4,
-            "四个 icon 菜单 popover 的 ondismiss 应提取为 MenuClose（events 桶兜底）: {vm_names:?}"
+            2,
+            "icon 菜单 popover 的 ondismiss 应提取为 MenuClose（夹具发布 2 枚图标；\
+             历史期望 4 与夹具不符——本机基线实证预存红，PLAN-019 T-07 顺带修正）: {vm_names:?}"
         );
         assert_eq!(
             vm_names.iter().filter(|n| n.as_deref() == Some("BlankClose")).count(),
             1,
             "blank 菜单 popover 的 ondismiss 应提取为 BlankClose: {vm_names:?}"
+        );
+        // PLAN-019 v1.7：壁纸 picker popover 的 ondismiss（第三个浮层）。
+        assert_eq!(
+            vm_names.iter().filter(|n| n.as_deref() == Some("PickerDismiss")).count(),
+            1,
+            "picker popover 的 ondismiss 应提取为 PickerDismiss: {vm_names:?}"
         );
         assert!(
             vm_names.iter().all(|n| n.as_deref() != Some("__popover_close")),
@@ -27017,8 +27024,13 @@ mod tests {
         walk_iced(&converted, &mut iced_names);
         assert_eq!(
             iced_names.iter().filter(|n| n.as_deref() == Some("MenuClose")).count(),
-            4,
-            "convert_view_messages 后 MenuClose ondismiss 存活"
+            2,
+            "convert_view_messages 后 MenuClose ondismiss 存活（夹具 2 枚图标）"
+        );
+        assert_eq!(
+            iced_names.iter().filter(|n| n.as_deref() == Some("PickerDismiss")).count(),
+            1,
+            "convert_view_messages 后 PickerDismiss ondismiss 存活（PLAN-019 picker 浮层）"
         );
         // handler 闭环：MenuClose 到达即 menu_id 清位（外点/Esc 关闭落点）。
         {
