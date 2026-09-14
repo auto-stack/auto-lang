@@ -1640,7 +1640,7 @@ DesktopMessage 与 WrapperMsg<C> 不兼容,需泛型版)。VM 轨正常(bind 表
 由 run_dynamic 填)。绕法(本批已落):031 工具栏 ◀/▶ 无参按钮(MCP
 press 可达)+ n/p 键(VM 轨)。修复随 rust 轨键盘接线独立小计划。
 
-**P573-D1｜ui-gallery registry 数据源 Vue-only（VM 端列表空,低）**
+**P573-D1｜ui-gallery registry 数据源 Vue-only（VM 端列表空,低）——✅ 已清偿（PLAN-625 T-01/T-02，2026-09-15）**：registry 双产物（TS+registry.at）跨端化落地，VM 端列表/标题/描述/教程/源码全通；下述原始描述保留作历史。
 `examples/ui-gallery/src/front/app.at:4` 的 demo 数据源
 （`filterDemosBy`/`getDemoTitle`/`getDemoDesc` 等 8 件）全部是 TS extern fn
 （`src/front/utils/demos.ts`），VM/iced 端无从执行——`filteredDemos` 恒空，
@@ -2178,3 +2178,15 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 |---|---|---|---|---|
 | ARCH-AUTOUI-REPO | —（裁定留底） | 仓界时序 | **AutoUI 拆独立仓推迟，不设日程；重开前置 = VM/Rust 桌面版（VM/iced 轨道）稳定**。submodule 形态裁定不采用（依赖方向相悖 + 只解决路径检出不解决依赖 + worktree 红线敏感）。重开路线 = 先仓内 crate 化（workspace 成员 `crates/auto-ui`，编排函数上移 + native 注册制），边缘资产可先行，repo 拆分按 auto-shell 模式（Plan 330）且须触发条件（API 收敛/共变衰减/第二消费者）。依据：近 90 天同提交跨 UI/核心两侧 245 次（≈2.7/天）；三处硬耦合（UI 语法在 ast/parser、ui_gen/aura/a2ui 无条件编译、VM native 表烧 UI ID 段）；2026-03 并入史（Plan 045/096/175）。关联 auto-os PLAN-578「examples 归属两读」待裁定 | `docs/design/20-autoui-separation-architecture.md` §11 |
 | ARCH-AUTOUI-GUARD | medium（持续纪律） | 门禁护栏 | **新增 UI native/FFI 必须挂 feature cfg + 降级桩（沿用 `vm/native.rs` 桩模式），无 UI 构建（`--no-default-features`/`cargo tv`/CI vm-files 档）保持绿色**——未来 AutoUI 拆仓唯一能站住的地基，欠账后重新考古代价高。**当飞项**：Plan 619 工作树 `vm/ffi/term_engine.rs` 133/199-230/331 行存在未门控 `crate::ui::terminal` 引用（HEAD 版本无），合入前必须补门控，否则弄红全部无 UI 构建 | `crates/auto-lang/src/vm/ffi/term_engine.rs`；桩模式参照 `crates/auto-lang/src/vm/native.rs`；Design 20 §11.5 |
+
+## P625 债务（ui-gallery-vm-usability，2026-09-15 复审登记）
+
+| 编号 | 严重度 | 类别 | 描述 | 引用 |
+|---|---|---|---|---|
+| P625-D1 | medium | 进程稳定性 | **VM UI 进程 AppHang 静默退出**：UI 线程停止泵消息 >5s（WER AppHangB1 ×2 实证，16:07/16:14）后进程被外部结束（exit 1/127，无 panic）。死亡窗口随机（deps 扫描期/GPU 初始化后/MCP 运行数分钟后），心跳失败刷屏持续到日志末行=事件循环挂起判定前仍存活。阻塞点候选=大树 MCP snapshot 序列化占 UI 线程/日志 I/O 洪水（每 2s 3 行心跳失败 WARN）。根因定位需挂起期线程转储（procdump/wpr）。缓解：MCP 起后立即快取证据、避免反复全量快照大树；可选=应用定义 no-op `__mcp_heartbeat` handler 消除刷屏。B 类（worktree deps 扫描期静默终止，无 WER）另见 plan625 §8 T-07 | `docs/plans/625-ui-gallery-vm-usability.md` §8 T-07；WER 事件 16:07:48/16:14:54 |
+| P625-D2 | low | 渲染语义 | **iced Row 交叉轴无 CSS stretch 语义**：aside 无显式高度类时 provider 的 `h-full` 塌缩 0×0（整子树"树在/分发正常/像素无"——ui-gallery 侧栏 33 项实证）。惯用法补全：aside 外壳挂 sidebar_provider 带 `display:flex + min-h-0 + h-full` 三件。哨兵测试 `p625_uigallery_sidebar_pills_visible` 双形态钉住（无高度类=0×0；未来渲染器补 stretch 语义时翻转该断言） | `crates/auto-lang/src/ui/iced/layout_tests.rs`；ui-gallery app.at aside |
+| P625-D3 | low | 编译器能力 | **handler 合成不支持 lambda 捕获 for 循环变量**（`Undefined variable: demo` → poisoned export）。惯用法绕行=循环体事件用 msg 带参形式（`onclick: .SelectDemo(demo.id)`，027 `OpenItem(item.id)` 同型——循环变量分发期求值）。通用捕获能力（合成时注入循环变量为形参）待独立立项 | `crates/auto-lang/src/ui/handler_codegen.rs`；ui-gallery app.at SelectDemo |
+| P625-D4 | low | 转译器 | **Rust 臂（--render rust）未支持 Plan 522 模块 use**：ui-gallery rust 臂 cargo 编译 17 错（E0425 `filter_demos` not found 等）——`use registry:` 模块导入的转译发射缺失；`.vm.at` 适配链亦为 VM 加载器专属（ext_stubs 为 VM 渲染目标实现）。Rust 臂 AppViewport/模块导入实装需转译器侧工作,独立计划 | `crates/auto-lang/src/trans/`；ui-gallery app.at `use registry:` |
+| P625-D5 | info | 覆盖范围 | **VM live 视口集=自包含示例 14/20**：多文件（自有 components/）与模块 use 示例 v1 降级占位卡（跳过清单启动日志上报：006/010/011/016/026/027）。扩展=生成器随行拷贝示例模块树+路径重写,独立评估 | `crates/auto-man/src/vue.rs` emit_gallery_vm_demos 过滤条件 |
+| F-R1 | info | 环境归属 | **docs_gen kitchen_sink worktree 红**：worktree 基于 d2f983d63,widgets-gallery fixture 已被 master 侧 9ffab6f6/776f4ba2 同步——基线陈旧 artifact（主检出 PASS;PLAN-625 diff 不触 docs_gen/schema）。随 worktree merge master 已消解大半,残余属共享检出的解析路径差异 | `crates/auto-lang/tests/docs_gen.rs:378` |
+| F-R2 | info | 环境归属 | **plan606 test_029_photo_gallery 红**：并行会话 plan628-photo-gallery-v2 在途重构破坏（主检出脏文件+628 计划在案;主检出与 worktree 合并态均红）——归 plan628 域,非 PLAN-625 | `crates/auto-lang/src/tests/plan606_gallery_tests.rs` |

@@ -1901,7 +1901,15 @@ impl<'a> AuraViewBuilder<'a> {
                     .and_then(|r| r.get(tag))
                     .is_none() =>
             {
-                self.convert_icon_component(tag, props, bindings)
+                // PLAN-625 T-09(b): 非 icon 的 web-ecosystem 组件不再画 lucide
+                // glyph 占位（组件 ≠ 图标;ui-gallery AppViewport 实证=空盒无
+                // 信息）——降级为可读占位卡（组件名 + Web 专属提示）。
+                // 含 "icon" 的 tag 保持 glyph 路径（图标组件向后兼容）。
+                if tag.contains("icon") {
+                    self.convert_icon_component(tag, props, bindings)
+                } else {
+                    self.convert_web_component_placeholder(tag, props, bindings)
+                }
             }
 
             // Child widget lookup or fallback.
@@ -2696,6 +2704,54 @@ impl<'a> AuraViewBuilder<'a> {
     /// PLAN-054 T4 (A11): `class` prop 下传——musk 会话卡 "N 条" 行
     /// `Info { size: 11, class: "text-muted-foreground shrink-0 ml-auto" }`
     /// 的 ml-auto/着色此前整串丢弃,图标紧跟文本而非贴行右端。
+    /// PLAN-625 T-09(b): web-ecosystem 组件的 VM 降级占位卡——组件名 +
+    /// Web 专属提示 + 尽力展示首个字符串型 prop 值（如 AppViewport 的
+    /// `app: .selected_id`）。零交互、纯可读，Vue 臂不受影响。
+    fn convert_web_component_placeholder(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let mut lines = vec![format!("⚙ {tag}（Web 端组件）")];
+        for key in ["app", "id", "name", "src", "value"] {
+            if let Some(v) = self.extract_string_with(props, key, bindings) {
+                if !v.is_empty() {
+                    lines.push(format!("{key}: {v}"));
+                }
+            }
+        }
+        lines.push(
+            "该内嵌容器为 Web 端组件，VM 端暂不内嵌示例画面；完整交互请使用 auto run（Vue 端）查看".to_string(),
+        );
+        let mut children: Vec<View<DynamicMessage>> = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            let cls = if i == 0 {
+                "text-xs font-mono text-muted-foreground"
+            } else if i == lines.len() - 1 {
+                "text-[11px] text-muted-foreground/80"
+            } else {
+                "text-[11px] font-mono text-muted-foreground/70"
+            };
+            children.push(View::Text {
+                style: Style::parse(cls).ok(),
+                content: line.clone(),
+                selectable: false,
+            });
+        }
+        View::Column {
+            children,
+            spacing: 4,
+            padding: 0,
+            style: Style::parse(
+                "w-full rounded-lg border border-border/60 bg-muted/30 items-center justify-center gap-1 p-3",
+            )
+            .ok(),
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
     fn convert_icon_component(
         &self,
         tag: &str,
@@ -3204,7 +3260,15 @@ impl<'a> AuraViewBuilder<'a> {
                     .and_then(|r| r.get(tag))
                     .is_none() =>
             {
-                self.convert_icon_component(tag, props, bindings)
+                // PLAN-625 T-09(b): 非 icon 的 web-ecosystem 组件不再画 lucide
+                // glyph 占位（组件 ≠ 图标;ui-gallery AppViewport 实证=空盒无
+                // 信息）——降级为可读占位卡（组件名 + Web 专属提示）。
+                // 含 "icon" 的 tag 保持 glyph 路径（图标组件向后兼容）。
+                if tag.contains("icon") {
+                    self.convert_icon_component(tag, props, bindings)
+                } else {
+                    self.convert_web_component_placeholder(tag, props, bindings)
+                }
             }
 
             // Core element widgets
