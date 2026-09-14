@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-626
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-edit-vm-polish
 author: [agent]
 created_at: 2026-09-14
@@ -165,6 +165,7 @@ worktree：`D:/autostack/.wt/lang-626/auto-lang`（branch `plan-626-dev`）；�
 ## 9. 复审记录
 
 - 2026-09-14 draft handoff：`stage: new`，PLAN-626 rev1。背景调查四项根因全部代码级定位（见 §4），SD-01..04 与 AC-01..07 齐备，任务覆盖全部 AC。`outcome: pass`，`next: work`（用户已授权分析与实施连续执行）。
+- 2026-09-14 review：`stage: review | plan_id: PLAN-626 | plan_revision: 2 | outcome: pass | reviewed_commit: ac6f9cbb0 (plan-626-dev) | base_commit: f1b64d1a1 | spec_inputs: SD-01..04（合并时沉淀 docs/specs/auto-lang/ui+vm） | acceptance_results: AC-01..10 全 PASS（插值/星号+alert-dialog/menubar 三处/Explorer 真树/滚动三症/滚动条拖拽死锁+样式/矩阵 48/2） | findings: F-1 ffi_dual_019 全量并行缓存竞窗（基线绿/独立绿/尖端调度位移显形）→ 630 复审修复（ffi-dual 串行组），非本计划代码回归 | evidence: cargo tf 3551/3551 + cargo tv 3697/3697（630 顶端覆盖全叠放）+ 单测 plan626_×3 + 实机截图/MCP 探针 | next: merge。
 - 2026-09-14 revision handoff（rev2 补记 T-10）：滚动条样式对齐官方（用户追问后按推荐路径"只统一样式"执行），新增 AC-10，`current_step` 9→10。
 滚动条拖拽死锁（Mutex 重入）+ 拖拽归一，新增 AC-09，`current_step` 8→9；既有授权范围。
 用户实机回归新增 T-08（滚轮三症同根修复），新增 AC-08，`current_step` 7→8；既有授权范围（用户直接报障的缺陷修复），无目标/预算变化。
