@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-620
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
+completion_kind: delivered
 feature_name: autoui-icon-table-and-pointer-primitives
 author: [zhaopuming]
 created_at: 2026-09-13
@@ -266,3 +267,13 @@ crates/auto-lang/test/a2vue/desktop_surface_asset/expected.vue  改：金样重�
   `@iconify-json/*`）共同覆盖，CI 化待 CI 面立项。
 - `stage: review | plan_id: PLAN-620 | plan_revision: 1 | outcome: pass |
   reviewed_commit: e31be5a80（plan-620-dev） | next: merge+archive`
+
+## 合并收据（PLAN-620:r1，2026-09-14）
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | 收尾批 worktree `plan-620-dev` @ `e31be5a80`（scoped lucide 9/9 + spec-index 再生）；落地代码在案 `7c13643ba` ∈ master |
+| `landed` | `9715d857c`（master ff，收尾批五文件：生成器硬化/产物再生/设计注记/README/overview ⑦⑧）；方案 (a) 现状合入已裁定 |
+| `ledger_refreshed` | `ui/plans.md` 620 行 + `.autoos/specs.json`（运行时态未跟踪）投影 **P620-1..4**（reports/architecture/designs/reviews，读回验证）+ INDEX 再生 |
+| `archived` | `git mv → docs/plans/archive/620-autoui-icon-table-and-pointer-primitives.md` + `status: archived` + `completion_kind: delivered` |
+| `cleaned` | worktree `.wt/lang-620/{auto-lang,auto-down}` guard clean 后移除，分支 `plan-620-dev` 删除，组目录按空删除 |
