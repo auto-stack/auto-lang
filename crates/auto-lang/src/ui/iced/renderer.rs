@@ -5106,6 +5106,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         matches!(len, iced::Length::Fixed(v) if *v >= 48.0)
                     });
                     let sw = if large { 1.5 } else { 2.0 };
+                    // PLAN-621: icon state=on 的激活加重——builder 已按
+                    // 「基档 + 0.5」算好绝对值放进 StrokeWidth 类，此处只读
+                    // 不加工；无该类时保持既有基档（零扰动）。
+                    let sw = is.as_ref().and_then(|s| s.stroke_width).unwrap_or(sw);
                     if let Some(svg_str) = lucide_svg_doc_with(icon_name, sw) {
                         // Plan 409 §10 组 C → 2026-08-21 方案 A(ash-gui hover):
                         // 画时着色 —— svg::Style.color 由 iced 光栅化器把不透明
