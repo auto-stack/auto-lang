@@ -68,7 +68,8 @@ Plan 496 M5 的第五面（常驻不召唤，boot 装载挂桌面层 z 槽）。
 | `__wp_picker` | str `"1"/""` | **v1.7** 壁纸选择 carousel 可见性（PLAN-019；desktop.at 全屏层条件渲染唯一事实源）。开合簿记在宿主（`picker_open` + `picker_return_on_close`——`wallpaper_pick`/`wallpaper_close` 组合臂单点维护，.at 侧零分支）；随写置 dirty | 宿主写 | v1.7 |
 | `__wp_dir` | str | **v1.7** 当前壁纸目录（picker 头部展示；`wallpapers_dir` 解析链当前值——config → env `AUTO_DESKTOP_WALLPAPERS_DIR` → 探测目录） | 宿主写 | v1.7 |
 | `__wp_current` | str | **v1.7** 当前壁纸路径（boot 壁纸解析值——`#hex`/`builtin:`/图片路径；picker 缩略图高亮的**等式判据面**；`set_wallpaper` 臂随写） | 宿主写 | v1.7 |
-| `__wp_items` | Obj 数组 `{name:str}` | **v1.7** 候选壁纸清单（`scan_wallpapers_dir` 供源——jpg/jpeg/png 文件名升序；view for 渲染消费）。handler 侧下标读 path 走伴随平行字符串列表 `wp_paths`（与 items 同序；B12 规避——`note_ids`/`cell_ids` 同型），picker open/目录变更时全量重注入 | 宿主写 | v1.7 |
+| `__wp_items` | Obj 数组 `{name:str}` | **v1.7** 候选壁纸清单（`scan_wallpapers_dir` 供源——jpg/jpeg/png 文件名升序；view for 渲染消费，闭包参数可直取 `path`——`IconPress(e.id)` 同型）。handler 侧下标读走伴随平行字符串列表 `wp_paths`（与 items 同序；B12 规避），picker open/目录变更/点选后全量重注入 | 宿主写 | v1.7 |
+| `__wp_preview` | str | **v1.7** 大图预览态游标（"" = 栅格态；非空 = 候选下标十进制串）。宿主持有（`picker_preview` 簿记投影）——`wallpaper_nav` 移动，`wallpaper_close`/目录变更复位；desktop.at 双态渲染判据 | 宿主写 | v1.7 |
 
 ## 3. 更新语义与指纹门控（协议条款）
 
@@ -126,6 +127,7 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 | `wallpaper_pick` | （无参记录） | **v1.7** 更换壁纸组合入口 = `show_desktop` 幂等臂 → `picker_open=1` → `picker_return_on_close = (到达前 current != showdesk_ws)`（**归属规则单点**：谁切屏谁负责切回——他分区进入组合调用 = 自动返回；负一屏自入 = 关闭只关 picker 不代管返回）→ `__wp_*` 五面注入。发件面 = desktop.at 图标/空白右键菜单「更换壁纸…」 | v1.7 |
 | `wallpaper_close` | （无参记录） | **v1.7** 关闭 picker——`picker_open=0` → 若 `picker_return_on_close` 则走 `showdesk_return` 臂（origin 消费后清零）。发件面 = desktop.at picker 关闭钮/遮罩/Esc 栅格态 | v1.7 |
 | `wallpaper_browse_dir` | （无参记录） | **v1.7** 弹原生目录对话框（rfd `pick_folder`，`ui-dialog` feature）——选定后走 `SetWallpapersDir` 同一执行臂（目录写路径单一：config 落盘 + mtime 热轮询）+ `__wp_items`/`__wp_dir` 重注入。发件面 = desktop.at picker 头部「浏览…」 | v1.7 |
+| `wallpaper_nav` | `prev`/`next` | **v1.7** picker 导航（宿主按态分派）——预览态 = 大图游标环绕移动（`__wp_preview` 随写）；栅格态 = flip 对比轮换并**立即应用**（游标环绕 + `set_wallpaper` 同链，`__wp_current` 随写）。坏值/关态跳过。数学生宿主的缘由：.at 无列表下标算术（B12 族） | v1.7 |
 
 ## 5. 对拍与验收（I8/I9）
 
@@ -169,11 +171,12 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
   （防新窗开在负一屏）。§2 +`__wm_showdesk` 标量（sliver toggle 判据）。
   与 Win11「显示桌面」语义对齐，实现不用最小化（多分区机制天然保留窗口现场）。
 - **壁纸选择 carousel**：§4 +`wallpaper_pick`/`wallpaper_close`/
-  `wallpaper_browse_dir` 三动词——组合簿记 `picker_return_on_close` 在宿主
-  单点裁决（**归属规则：谁切屏谁负责切回**）；§2.1 +`__wp_picker`/
-  `__wp_dir`/`__wp_current`/`__wp_items`（+`wp_paths` 平行字符串列表，B12
-  规避）。候选供源复用 `scan_wallpapers_dir`；选壁纸/换目录复用既有
-  `set_wallpaper`/`set_wallpapers_dir` 热生效通道，零新写路径。
+  `wallpaper_browse_dir`/`wallpaper_nav` 四动词——组合簿记
+  `picker_return_on_close` 在宿主单点裁决（**归属规则：谁切屏谁负责切回**）；
+  §2.1 +`__wp_picker`/`__wp_preview`/`__wp_dir`/`__wp_current`/`__wp_items`
+  （+`wp_paths` 平行字符串列表，B12 规避）。候选供源复用
+  `scan_wallpapers_dir`；选壁纸/换目录复用既有 `set_wallpaper`/
+  `set_wallpapers_dir` 热生效通道，零新写路径。
 - **vue 端注记**：本版实现方 = vm 端（renderer.rs）；vue 端沿 v1.6 先例，
   按本文档后续对拍（负一屏 = 分区过滤 + 保留分区；picker = 注入面 + 组合臂
   语义一致即可，UI 形态自定）。
