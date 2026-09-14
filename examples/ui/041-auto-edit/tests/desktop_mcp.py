@@ -672,13 +672,15 @@ def run_tests(mcp_url, proc):
             # 10.3 hot reload: append an action + a T10 menu INSIDE the root
             # block (auto-atom rejects trailing nodes after the closing brace),
             # reload via the MCP tool, expect it in the next snapshot.
+            # PLAN-630 T-03: 菜单已迁移声明式组件（不随 actions 热重载），
+            # toolbar 仍为 actions 合成 → 热重载锚移到 toolbar。
             modified = config_backup.replace(
                 "    actions {\n",
                 "    actions {\n        action (id: \"help.t10\", handler: .ActAbout, title: \"T10 重载项\")\n",
                 1,
             ).replace(
-                "        menubar {\n",
-                "        menubar {\n            menu (id: \"t10menu\", title: \"T10\") { item (action: \"help.t10\") }\n",
+                "        toolbar {\n",
+                "        toolbar {\n            item (action: \"help.t10\")\n",
                 1,
             )
             assert "help.t10" in modified, "app.at actions-block anchors not found"
@@ -694,9 +696,16 @@ def run_tests(mcp_url, proc):
                     if '"T10"' in mcp10.snapshot():
                         t10_seen = True
                         break
-                open_menu(mcp10, [snap10], "T10")
-                item = find_button_by_text(mcp10.snapshot(), "T10 重载项")
-                result.check("T10 hot-reloaded menu item appears", item is not None,
+                # toolbar 合成按钮以 title 文本可寻址（无 icon 的 action 直
+                # 出 title）；ActAbout 现有多个入口，取 T10 专属文本按钮。
+                item = None
+                for _ in range(6):
+                    time.sleep(1)
+                    m_btn = re.search(r'button #(\w+) "T10 重载项"', mcp10.snapshot())
+                    if m_btn:
+                        item = m_btn.group(1)
+                        break
+                result.check("T10 hot-reloaded toolbar item appears", item is not None,
                              "item not in snapshot after reload")
                 if item:
                     mcp10.click(item)

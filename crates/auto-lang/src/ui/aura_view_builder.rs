@@ -1871,7 +1871,13 @@ impl<'a> AuraViewBuilder<'a> {
             // (capture_debug=false)时 record_event 早退,零开销。
             "menubar" => {
                 let p = path.clone();
-                self.convert_menubar(props, bindings, Some((&p, probe)))
+                // PLAN-630 T-01: 有子节点 = 声明式组件族；空标签 = actions
+                // DSL 合成（向后兼容，T10 热重载锚不受影响）。
+                if !children.is_empty() {
+                    self.convert_menubar_component(props, children, bindings, Some((&p, probe)))
+                } else {
+                    self.convert_menubar(props, bindings, Some((&p, probe)))
+                }
             }
             "toolbar" => {
                 let p = path.clone();
@@ -6791,6 +6797,295 @@ let tabs_inner = View::Row {
     /// BottomStart = 左缘对齐),估位偏移与 2000px catch 一并退役 —— 按钮文
     /// 字任意宽度不再错位,点击捕获由 overlay 语义承担。popover 结构每帧
     /// 恒定(open 驱动面板显隐),view diff 稳定。
+    /// PLAN-630 T-01: shared menu-item presentation — the actions-DSL
+    /// synthesis AND the declarative menubar component both lower to this:
+    /// [leading slot (check/action icon/blank) + title] packed left |
+    /// [shortcut] packed right (right-aligned text). 626 T-02 的
+    /// justify-start/text-left 让位与 629 T-06 的两组布局在此收口。
+    fn menu_item_button_view(
+        &self,
+        title: &str,
+        icon: Option<String>,
+        shortcut: Option<String>,
+        checked: bool,
+        enabled: bool,
+        onclick: DynamicMessage,
+    ) -> View<DynamicMessage> {
+        let leading: View<DynamicMessage> = if checked {
+            View::Image {
+                src: "lucide:check".to_string(),
+                style: Style::parse("w-4 h-4 text-zinc-200 shrink-0").ok(),
+            }
+        } else if let Some(icon) = icon.filter(|i| !i.is_empty()) {
+            View::Image {
+                src: format!("lucide:{icon}"),
+                style: Style::parse("w-4 h-4 text-zinc-300 shrink-0").ok(),
+            }
+        } else {
+            View::Text {
+                content: String::new(),
+                style: Style::parse("w-4 h-4 shrink-0").ok(),
+                selectable: false,
+            }
+        };
+        let left_group = View::Row {
+            children: vec![
+                leading,
+                View::Text {
+                    content: title.to_string(),
+                    style: Style::parse("text-[12px] text-zinc-200").ok(),
+                    selectable: false,
+                },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("items-center gap-2").ok(),
+            onclick: None,
+            on_right_click: None,
+        };
+        let shortcut_text = View::Text {
+            content: shortcut.unwrap_or_default(),
+            style: Style::parse("text-[11px] text-zinc-500 w-14 text-right").ok(),
+            selectable: false,
+        };
+        View::Button {
+            disabled: !enabled,
+            label: title.to_string(),
+            onclick,
+            // PLAN-626 T-02: 显式 justify-start/text-left 走 plan050→plan414
+            // 让位通道压过按钮 content 容器的 Center 默认。
+            style: Style::parse("h-7 w-full px-0 py-0 justify-start text-left").ok(),
+            on_right_click: None,
+            content: Some(Box::new(View::Row {
+                children: vec![left_group, shortcut_text],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("w-full justify-between items-center gap-2 px-2").ok(),
+                onclick: None,
+                on_right_click: None,
+            })),
+        }
+    }
+
+    /// PLAN-630 T-01: declarative menubar component family (shadcn
+    /// Menubar 语义的 VM lowering) —
+    /// `menubar { menubar-menu (value) { menubar-trigger "文件"
+    ///   menubar-content { menubar-item (title, icon, shortcut)
+    ///     { onclick } menubar-separator
+    ///     menubar-checkbox-item (title, checked) { onclick } } } }`.
+    /// 触发/开合/定位走公共 Popover 原语（BottomStart + MENUBAR_OPEN
+    /// 注册表，与 actions 合成同机制）；菜单项 presentation 共享
+    /// [`Self::menu_item_button_view`]。
+    fn convert_menubar_component(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        path: Option<(&[usize], &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+
+        let (base_vec, mut probe_mut): (Option<Vec<usize>>, Option<&mut BuildProbe>) =
+            match path {
+                Some((b, p)) => (Some(b.to_vec()), Some(p)),
+                None => (None, None),
+            };
+        macro_rules! record {
+            ($($idx:expr),* => $handler:expr) => {
+                if let (Some(base), Some(probe)) = (&base_vec, probe_mut.as_deref_mut()) {
+                    let mut child = base.clone();
+                    $(child.push($idx);)*
+                    let p: Vec<u16> = child.iter().map(|&x| x as u16).collect();
+                    probe.record_event(&p, "onclick", $handler);
+                }
+            };
+        }
+
+        fn node_tag(n: &AuraNode) -> Option<&str> {
+            match n {
+                AuraNode::Element { tag, .. } => Some(tag.as_str()),
+                _ => None,
+            }
+        }
+        fn node_children(n: &AuraNode) -> &[AuraNode] {
+            match n {
+                AuraNode::Element { children, .. } => children,
+                _ => &[],
+            }
+        }
+        fn node_text(n: &AuraNode) -> Option<String> {
+            match n {
+                AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+                _ => None,
+            }
+        }
+        fn node_props(n: &AuraNode) -> Option<&HashMap<String, AuraPropValue>> {
+            match n {
+                AuraNode::Element { props, .. } => Some(props),
+                _ => None,
+            }
+        }
+
+        let open = crate::ui::action_config::menubar_open();
+        let mut children_out: Vec<View<DynamicMessage>> = Vec::new();
+        let mut menu_index = 0usize;
+        for menu_node in children {
+            let Some(tag) = node_tag(menu_node) else { continue };
+            let tag_lc = tag.replace('_', "-");
+            if tag_lc != "menubar-menu" {
+                continue;
+            }
+            let menu_id = node_props(menu_node)
+                .and_then(|mp| self.extract_string_with(mp, "value", bindings))
+                .unwrap_or_else(|| format!("menu-{menu_index}"));
+            menu_index += 1;
+            let (trigger_title, content_nodes) = {
+                let mut title = String::new();
+                let mut content: &[AuraNode] = &[];
+                for kid in node_children(menu_node) {
+                    match node_tag(kid).unwrap_or("").replace('_', "-").as_str() {
+                        "menubar-trigger" => {
+                            title = node_props(kid)
+                                .and_then(|kp| self.extract_string_with(kp, "text", bindings))
+                                .or_else(|| node_children(kid).iter().find_map(node_text))
+                                .unwrap_or_default();
+                        }
+                        "menubar-content" => content = node_children(kid),
+                        _ => {}
+                    }
+                }
+                (title, content)
+            };
+
+            let is_open = open.as_deref() == Some(menu_id.as_str());
+            record!(children_out.len(), 0 => &format!(r#"__menubar_toggle("{}")"#, menu_id));
+            let trigger = View::Button {
+                disabled: false,
+                label: trigger_title.clone(),
+                onclick: DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__menubar_toggle".to_string(),
+                    args: vec![Value::str(menu_id.as_str())],
+                },
+                style: Style::parse(&format!(
+                    "h-7 px-3 text-[12px] {}",
+                    if is_open { "text-zinc-100" } else { "mr-1 text-zinc-300" }
+                ))
+                .ok(),
+                on_right_click: None,
+                content: None,
+            };
+
+            let mut items: Vec<View<DynamicMessage>> = Vec::new();
+            if is_open {
+                for (item_idx, item_node) in content_nodes.iter().enumerate() {
+                    let Some(itag) = node_tag(item_node) else { continue };
+                    let itag = itag.replace('_', "-");
+                    let Some((iprops, ievents, ikids)) = (match item_node {
+                        AuraNode::Element { props, events, children, .. } => {
+                            Some((props, events, children))
+                        }
+                        _ => None,
+                    }) else {
+                        continue;
+                    };
+                    match itag.as_str() {
+                        "menubar-separator" => {
+                            let mut sep_props = HashMap::new();
+                            sep_props.insert(
+                                "orientation".to_string(),
+                                AuraPropValue::Expr(Expr::Str("horizontal".into())),
+                            );
+                            items.push(self.convert_sep(&sep_props, bindings));
+                        }
+                        "menubar-item" | "menubar-checkbox-item" => {
+                            let is_checkbox = itag == "menubar-checkbox-item";
+                            let title = self
+                                .extract_string_with(iprops, "title", bindings)
+                                .or_else(|| ikids.iter().find_map(node_text))
+                                .unwrap_or_default();
+                            let icon = self.extract_string_with(iprops, "icon", bindings);
+                            let shortcut = self.extract_string_with(iprops, "shortcut", bindings);
+                            let checked = if is_checkbox {
+                                self.extract_string_with(iprops, "checked", bindings)
+                                    .map(|c| self.eval_condition_with(&c, bindings))
+                                    .unwrap_or(false)
+                            } else {
+                                false
+                            };
+                            let enabled = self
+                                .extract_string_with(iprops, "enabled", bindings)
+                                .map(|e| self.eval_condition_with(&e, bindings))
+                                .unwrap_or(true);
+                            let onclick = ievents
+                                .get("onclick")
+                                .or_else(|| aura_events_get_base(ievents, "onclick"))
+                                .map(|ev| self.event_to_message_with(ev, bindings));
+                            let Some(onclick) = onclick else { continue };
+                            record!(children_out.len(), 1, item_idx => &format!(
+                                "__menubar_item({:?})", title
+                            ));
+                            items.push(self.menu_item_button_view(
+                                &title,
+                                icon,
+                                shortcut,
+                                checked,
+                                enabled,
+                                onclick,
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            let mut panel_style =
+                Style::parse("w-44 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok();
+            if let Some(st) = panel_style.as_mut() {
+                if !st.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                    let owned = std::mem::take(st);
+                    *st = owned.add(StyleClass::Width(SizeValue::Auto));
+                }
+            }
+            let panel = View::Column {
+                children: items,
+                spacing: 0,
+                padding: 0,
+                style: panel_style,
+                onclick: None,
+                on_right_click: None,
+            };
+            children_out.push(View::Popover {
+                anchor: PopoverAnchor::Widget(Box::new(trigger)),
+                content: Box::new(panel),
+                placement: PopoverPlacement::BottomStart,
+                open: is_open,
+                on_dismiss: Some(DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__menubar_close".to_string(),
+                    args: vec![],
+                }),
+            });
+        }
+
+        let user = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .unwrap_or_default();
+        View::Row {
+            children: children_out,
+            spacing: 0,
+            padding: 0,
+            style: if user.is_empty() {
+                None
+            } else {
+                Style::parse(&user).ok()
+            },
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
     fn convert_menubar(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -6897,73 +7192,19 @@ let tabs_inner = View::Row {
                             // 改两组：[槽+title] | [shortcut]，Between 只在
                             // 组间插撑杆 → 左组贴左、快捷键贴右。
                             const LEADING_EMPTY: &str = "w-4 h-4 shrink-0";
-                            let leading: View<DynamicMessage> = if checked {
-                                View::Image {
-                                    src: "lucide:check".to_string(),
-                                    style: Style::parse("w-4 h-4 text-zinc-200 shrink-0").ok(),
-                                }
-                            } else if let Some(icon) = a.icon.as_deref().filter(|i| !i.is_empty()) {
-                                View::Image {
-                                    src: format!("lucide:{icon}"),
-                                    style: Style::parse("w-4 h-4 text-zinc-300 shrink-0").ok(),
-                                }
-                            } else {
-                                View::Text {
-                                    content: String::new(),
-                                    style: Style::parse(LEADING_EMPTY).ok(),
-                                    selectable: false,
-                                }
+                            let onclick = DynamicMessage::Typed {
+                                widget_name: self.widget_name.clone(),
+                                event_name: handler,
+                                args: vec![],
                             };
-                            let left_group = View::Row {
-                                children: vec![
-                                    leading,
-                                    View::Text {
-                                        content: a.title.clone(),
-                                        style: Style::parse("text-[12px] text-zinc-200").ok(),
-                                        selectable: false,
-                                    },
-                                ],
-                                spacing: 0,
-                                padding: 0,
-                                style: Style::parse("items-center gap-2").ok(),
-            onclick: None, on_right_click: None,
-        };
-                            let content = View::Row {
-                                children: vec![
-                                    left_group,
-                                    View::Text {
-                                        content: a.shortcut.clone().unwrap_or_default(),
-                                        style: Style::parse(
-                                            "text-[11px] text-zinc-500 w-14 text-right",
-                                        )
-                                        .ok(),
-                                        selectable: false,
-                                    },
-                                ],
-                                spacing: 0,
-                                padding: 0,
-                                style: Style::parse("w-full justify-between items-center gap-2 px-2")
-                                    .ok(),
-            onclick: None, on_right_click: None,
-        };
-                            items.push(View::Button {
-                                disabled: !enabled,
-                                label: a.title.clone(),
-                                onclick: DynamicMessage::Typed {
-                                    widget_name: self.widget_name.clone(),
-                                    event_name: handler,
-                                    args: vec![],
-                                },
-                                // PLAN-626 T-02: 显式 justify-start/text-left 走
-                                // plan050→plan414 让位通道压过按钮 content 容器
-                                // 的 Center 默认——内层 Row 的 w-full/justify-
-                                // between 一旦失效，收缩内容不再被整体居中
-                                // （菜单项文本居中，用户实机反馈）。
-                                style: Style::parse("h-7 w-full px-0 py-0 justify-start text-left")
-                                    .ok(),
-                                on_right_click: None,
-                                content: Some(Box::new(content)),
-                            });
+                            items.push(self.menu_item_button_view(
+                                &a.title,
+                                a.icon.clone(),
+                                a.shortcut.clone(),
+                                checked,
+                                enabled,
+                                onclick,
+                            ));
                         }
                     }
                 }
@@ -12133,6 +12374,134 @@ mod tests {
         set_menubar_open(None);
     }
 
+    /// PLAN-630 T-01: declarative menubar component family — items carry
+    /// icon/shortcut/checked (expression-driven), separators render
+    /// horizontal, and the checked expression flips with state.
+    #[test]
+    fn plan630_declarative_menubar_component() {
+        let src = concat!(
+            "widget App {\n",
+            "    model { var console_open bool = false }\n",
+            "    view {\n",
+            "        col {\n",
+            "            menubar {\n",
+            "                menubar-menu (value: \"view\") {\n",
+            "                    menubar-trigger \"视图\"\n",
+            "                    menubar-content {\n",
+            "                        menubar-checkbox-item (title: \"切换 Console\", checked: .console_open) { onclick: .ActConsole }\n",
+            "                        menubar-separator\n",
+            "                        menubar-item (title: \"全选\", shortcut: \"Ctrl+A\") { onclick: .ActSelectAll }\n",
+            "                    }\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "    on { .ActConsole -> { } .ActSelectAll -> { } }\n",
+            "}\n",
+        );
+        use crate::ui::action_config::set_menubar_open;
+        set_menubar_open(Some("view".to_string()));
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+
+        fn find_popover(v: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {
+            match v {
+                View::Popover { content, .. } => Some(content),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    children.iter().find_map(find_popover)
+                }
+                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Container { child, .. } => find_popover(child),
+                _ => None,
+            }
+        }
+        let content = find_popover(&view).expect("declarative menubar popover");
+        let (items, panel_style) = match content {
+            View::Column { children, style, .. } => (children, style),
+            other => panic!("panel must be a Column, got {other:?}"),
+        };
+        // checkbox item + separator + plain item
+        assert_eq!(items.len(), 3, "menu items count");
+        assert!(
+            panel_style
+                .as_ref()
+                .unwrap()
+                .classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Fixed(44)))),
+            "panel width class"
+        );
+        // Item 0: checkbox item with icon-free leading (unchecked → blank),
+        // title 切换 Console.
+        match &items[0] {
+            View::Button { label, content: Some(inner), .. } => {
+                assert_eq!(label, "切换 Console");
+                match inner.as_ref() {
+                    View::Row { children, .. } => {
+                        assert_eq!(children.len(), 2, "left group + shortcut");
+                    }
+                    other => panic!("item content row, got {other:?}"),
+                }
+            }
+            other => panic!("checkbox item must be a Button, got {other:?}"),
+        }
+        // Item 1: separator — horizontal hairline Column.
+        match &items[1] {
+            View::Column { style, .. } => {
+                assert!(
+                    style.as_ref().unwrap().classes.iter()
+                        .any(|c| matches!(c, StyleClass::Height(_))),
+                    "separator horizontal"
+                );
+            }
+            other => panic!("separator must be a Column, got {other:?}"),
+        }
+        // Item 2: plain item with shortcut.
+        match &items[2] {
+            View::Button { label, .. } => assert_eq!(label, "全选"),
+            other => panic!("plain item must be a Button, got {other:?}"),
+        }
+
+        // Checked expression flips with state: rebuild after writing true.
+        set_menubar_open(Some("view".to_string()));
+        let mut bridge2 = VmBridge::new(&widget).unwrap();
+        bridge2.write_state("console_open", auto_val::Value::Bool(true)).unwrap();
+        let builder2 = AuraViewBuilder::new(&bridge2, "App");
+        let (view2, _id_map2, _probe2) = builder2.build_with_debug(&widget.view_tree);
+        let content2 = find_popover(&view2).expect("popover after state flip");
+        match content2 {
+            View::Column { children, .. } => match &children[0] {
+                View::Button { content: Some(inner), .. } => match inner.as_ref() {
+                    View::Row { children, .. } => match &children[0] {
+                        // left group row
+                        View::Row { children, .. } => match &children[0] {
+                            View::Image { src, .. } => {
+                                assert!(
+                                    src.contains("lucide:check"),
+                                    "checked slot shows check, got {src}"
+                                );
+                            }
+                            other => panic!("leading must be check image, got {other:?}"),
+                        },
+                        other => panic!("left group, got {other:?}"),
+                    },
+                    other => panic!("row, got {other:?}"),
+                },
+                other => panic!("button, got {other:?}"),
+            },
+            other => panic!("panel, got {other:?}"),
+        }
+    }
+
     /// Plan 448 I: grid `cols:` dynamic values. A non-literal expression
     /// evaluates per rebuild through the state resolver (the same cycle
     /// style props ride); literals keep the zero-eval `extract_u16` path;
@@ -12927,6 +13296,7 @@ mod tests {
             }
             other => panic!("expected AutodownEditor variant"),
         }
+        set_menubar_open(None);
     }
     /// D-GAP-4: an if/else body spliced into a row records each spliced node
     /// at its own RESULTING slot — not all at the conditional's index (which

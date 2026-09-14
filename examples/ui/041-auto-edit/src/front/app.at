@@ -55,33 +55,6 @@ widget App {
         action (id: "view.fold",       handler: .ActFold,       title: "折叠切换")
         action (id: "help.about",      handler: .ActAbout,      title: "关于 auto-edit")
 
-        menubar {
-            menu (id: "file", title: "文件") {
-                item (action: "file.new")
-                item (action: "file.open")
-                item (action: "file.save")
-                sep
-                item (action: "file.quit")
-            }
-            menu (id: "edit", title: "编辑") {
-                item (action: "edit.undo")
-                item (action: "edit.redo")
-                sep
-                item (action: "edit.cut")
-                item (action: "edit.copy")
-                item (action: "edit.paste")
-                item (action: "edit.select-all")
-            }
-            menu (id: "view", title: "视图") {
-                item (action: "view.console")
-                item (action: "view.switch-tab")
-                item (action: "view.fold")
-            }
-            menu (id: "help", title: "帮助") {
-                item (action: "help.about")
-            }
-        }
-
         toolbar {
             item (action: "file.new")
             item (action: "file.open")
@@ -100,7 +73,47 @@ widget App {
         col (style: "h-full w-full") {
 
             row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0 px-2") {
-                menubar {}
+                // PLAN-630 T-03: 声明式可复用 menubar 组件族（迁移自 actions
+                // DSL 占位合成；actions 块保留 shortcut 三源绑定）。VM=Popover
+                // 原语 lowering；Vue=shadcn Menubar。
+                menubar (class: "items-center") {
+                    menubar-menu (value: "file") {
+                        menubar-trigger "文件"
+                        menubar-content {
+                            menubar-item (title: "新建", icon: "file-plus", shortcut: "Ctrl+N") { onclick: .ActNew }
+                            menubar-item (title: "打开…", icon: "folder-open", shortcut: "Ctrl+O") { onclick: .ActOpen }
+                            menubar-item (title: "保存", icon: "save", shortcut: "Ctrl+S", enabled: .store.tab_count > 0) { onclick: .ActSave }
+                            menubar-separator
+                            menubar-item (title: "退出", icon: "log-out", shortcut: "Alt+F4") { onclick: .ActQuit }
+                        }
+                    }
+                    menubar-menu (value: "edit") {
+                        menubar-trigger "编辑"
+                        menubar-content {
+                            menubar-item (title: "撤销", icon: "undo-2", shortcut: "Ctrl+Z") { onclick: .ActUndo }
+                            menubar-item (title: "重做", icon: "redo-2", shortcut: "Ctrl+Y") { onclick: .ActRedo }
+                            menubar-separator
+                            menubar-item (title: "剪切", icon: "scissors") { onclick: .ActCut }
+                            menubar-item (title: "复制", icon: "copy") { onclick: .ActCopy }
+                            menubar-item (title: "粘贴", icon: "clipboard") { onclick: .ActPaste }
+                            menubar-item (title: "全选", shortcut: "Ctrl+A") { onclick: .ActSelectAll }
+                        }
+                    }
+                    menubar-menu (value: "view") {
+                        menubar-trigger "视图"
+                        menubar-content {
+                            menubar-checkbox-item (title: "切换 Console", icon: "terminal", checked: .store.console_open, shortcut: "Ctrl+J") { onclick: .ActConsole }
+                            menubar-item (title: "切换 Tab", shortcut: "Ctrl+D") { onclick: .ActSwitchTab }
+                            menubar-item (title: "折叠切换", icon: "chevrons-down-up") { onclick: .ActFold }
+                        }
+                    }
+                    menubar-menu (value: "help") {
+                        menubar-trigger "帮助"
+                        menubar-content {
+                            menubar-item (title: "关于 auto-edit", icon: "info") { onclick: .ActAbout }
+                        }
+                    }
+                }
                 toolbar (style: "ml-auto") {}
             }
             // PLAN-618 T-06: 左文件浏览器树 + 右编辑区双列。tab 条/编辑区
