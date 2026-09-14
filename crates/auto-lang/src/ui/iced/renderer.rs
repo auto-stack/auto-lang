@@ -3429,12 +3429,27 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let end = label.find('\u{EE02}').unwrap_or(label.len());
                     let icon_name = &label[3..end.min(label.len())];
                     let text_label = &label[end.saturating_add(3).min(label.len())..];
-                    // Plan 515 D1：hicon:<slot> = native 真图标（raster——
-                    // 486 占位清偿；14px 与邻位 lucide 图标同档）。
-                    if let Some(icon) = crate::ui::iced::native_icon::parse_field(icon_name) {
-                        let handle = iced::widget::image::Handle::from_rgba(
-                            icon.w, icon.h, icon.rgba,
-                        );
+                    // PLAN-018：iconfile:<stem> = 双主题位图文件（回退链首位
+                    // iconfile → hicon → lucide）。Plan 515 D1：hicon:<slot> =
+                    // native 真图标（raster——486 占位清偿；14px 与邻位 lucide
+                    // 图标同档）。两 raster 源合流同一元素臂。
+                    let raster_icon: Option<iced::widget::image::Handle> = {
+                        if let Some(handle) = crate::ui::iced::icon_file::load(
+                            icon_name,
+                            crate::ui::style::theme::dark_mode(),
+                        ) {
+                            Some(handle)
+                        } else {
+                            crate::ui::iced::native_icon::parse_field(icon_name).map(
+                                |icon| {
+                                    iced::widget::image::Handle::from_rgba(
+                                        icon.w, icon.h, icon.rgba,
+                                    )
+                                },
+                            )
+                        }
+                    };
+                    if let Some(handle) = raster_icon {
                         // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
                         // 回退 14px（462 档）——大框小图实测反馈闭环。
                         let icon_px = iced_style
@@ -5092,11 +5107,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Image { src, style } => {
+                // PLAN-018：iconfile:<stem> = 双主题位图（回退链首位）。
                 // Plan 515 D1：hicon:<slot> = native 真图标 raster
                 //（window_thumbnail 的 fallback_icon / image 直挂两消费面）。
-                if let Some(icon) = crate::ui::iced::native_icon::parse_field(&src) {
-                    let handle =
-                        iced::widget::image::Handle::from_rgba(icon.w, icon.h, icon.rgba);
+                let raster_icon: Option<iced::widget::image::Handle> = {
+                    if let Some(handle) =
+                        crate::ui::iced::icon_file::load(&src, crate::ui::style::theme::dark_mode())
+                    {
+                        Some(handle)
+                    } else {
+                        crate::ui::iced::native_icon::parse_field(&src).map(|icon| {
+                            iced::widget::image::Handle::from_rgba(icon.w, icon.h, icon.rgba)
+                        })
+                    }
+                };
+                if let Some(handle) = raster_icon {
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                     let mut img = iced::widget::image(handle);
                     if let Some(ref is) = is {
@@ -11616,7 +11641,7 @@ fn desktop_icon_cells(
             .map(|e2| e2.icon.clone())
             .unwrap_or_else(|| "app-window".to_string());
         let label = reg
-            .map(|e2| e2.title.clone())
+            .map(|e2| e2.display_title().to_string())
             .unwrap_or_else(|| id.clone());
         let src = e.1.to_string();
         let color = crate::ui::app_registry::badge_color_for(&id);
@@ -11636,6 +11661,9 @@ fn desktop_icon_cells(
         cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(id.clone().into())),
             ("icon", auto_val::Value::Str(icon.into())),
+            // 满幅 tile 渲染旗标（"1" = 图标铺满格子、无 badge 色底框；
+            // lucide 字标应用保持色块 chip + 白 glyph——用户裁定「保留
+            // 原图圆角板、外框不要」）。
             ("full", auto_val::Value::str(full)),
             ("label", auto_val::Value::Str(label.into())),
             ("src", auto_val::Value::Str(src.into())),
@@ -13003,7 +13031,7 @@ fn compare_pngs(
                     // 不受策展限制）；展示清单（registry_entries：launcher/
                     // 图标格/dock 消费）过滤为策展集（pac `desktop:` 字段；
                     // 主根缺省 false=opt-in，外部自含根缺省 true=opt-out）。
-                    let curated: Vec<_> = full
+                    let mut curated: Vec<_> = full
                         .iter()
                         .filter(|e| e.desktop_visible)
                         .cloned()
@@ -13050,6 +13078,13 @@ fn compare_pngs(
                     // 入口匹配：id "launcher" 或 "-launcher" 结尾（441 预订
                     // 028-launcher；459 回退形态同名规则）。
                     // PLAN-552：快照换 curated（028 属 C 档，字段加齐后无回归）。
+                    // PLAN-018：桌面图标位图接线——读 auto-os assets/icons/
+                    // mapping.json 把命中 id 的 icon 改写 iconfile:<stem>，
+                    // 并注入渲染臂资产根（缺席 = 原样 lucide，零回归）。
+                    if let Some(root) = crate::ui::iced::icon_file::icon_root() {
+                        crate::ui::iced::icon_file::apply_icon_mapping(&mut curated, &root);
+                        std::env::set_var("AUTO_OS_ICON_ROOT", &root);
+                    }
                     session.desktop.registry_entries = curated;
                     // PLAN-526 T6：boot 直挂窗注册表对齐——回填 registry_id
                     // 并 armed `window: "fit"`（计算器等直挂 App 窗随内容

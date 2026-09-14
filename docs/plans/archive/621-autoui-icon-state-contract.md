@@ -1,14 +1,16 @@
 ---
 plan_id: PLAN-621
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived             # drafting → executing → execution_done → reviewed → archived（终态）
+completion_kind: delivered
 feature_name: autoui-icon-state-contract
 author: [zhaopuming]
 created_at: 2026-09-14
 updated_at: 2026-09-14
+plan_revision: 1
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []       # 复审终值：SD-01/SD-02 均为既有 ui/overview.md 的条目增补，无新 spec 文档/被取代组件
+new_spec_components: []       # 复审终值：SD-01/SD-02 均为既有 ui/overview.md 的条目增补（⑤⑥ 段），无新 spec 文档/被取代组件
 touched_goals: []             # goals.md 无 ui/icon 相关 GOAL ID 可挂
 
 affects: [auto-lang/ui]
@@ -379,6 +381,26 @@ docs/components/core.md                               改：docs_gen 重生成�
     待他会话提交后，在 master 重跑 `git merge plan-621-dev`；若 master 进一步
     前进则先在 worktree 重入和解（重跑 scoped 验证）。
   - `ledger_refreshed` / `archived` / `cleaned`：待 landed 后依序执行。
+- 2026-09-14 merge 收据终态（恢复后回填）：`PLAN-621:r1` | `outcome: pass`
+  - **`landed` ✅（外部完成、本会话实证）**：并发清扫线在清理 lang-621 组前已
+    将 `plan-621-dev` 落地——`15dfe1a11 ∈ master` 祖先（merge-base 实证），
+    master 内容抽查全量在位：schema `state` prop（aura.at:723）、
+    `with_state_tint`（aura_view_builder.rs:6329）、SD-01/02（overview.md
+    ⑤⑥ 段）、012 金样、设计注记、smoke T-STATE、vm-smoke F 块。
+    worktree/分支/组目录已被同一清扫移除（`git worktree list` 无
+    lang-621、`plan-621-dev` 分支不存在、组目录缺席）。
+  - `ledger_refreshed` ✅：`.autoos/specs.json`（运行时态、未跟踪）投影
+    **P621-1..5**（reports/architecture/designs/tests/reviews，file 指向本
+    归档路径，读回验证 5 条）+ `ui/plans.md` 621 行（插于 619/627 之间）+
+    `python scripts/spec-index.py` 再生（26 projects，INDEX 无内容漂移）。
+  - `archived` ✅：`git mv → docs/plans/archive/621-autoui-icon-state-contract.md`
+    + `status: archived` + `completion_kind: delivered`。
+  - `cleaned` ✅（外部清扫、缺席实证）：`.wt/lang-621/` 组目录已删（含本计划
+    的 detached auto-down 兄弟）；auto-down 仓的 worktree 注册残留已
+    `git worktree prune` 清偿。
+  - 备注：master 活动区 `620-autoui-examples-upgrade.md`（纲领计划，🟢 完成
+    待归档）与 `ui/plans.md` 的 620 行亦缺——属 PLAN-620 自己的收尾义务，
+    不在本计划范围，移交时向用户提示。
 
 ## 待澄清事项
 

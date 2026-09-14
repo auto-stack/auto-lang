@@ -538,12 +538,29 @@ pub fn generate_rust_ui(
 }
 
 /// Extract API function names from `use back.api: fn1, fn2, ...` statements.
-fn extract_api_imports_from_ast(ast: &auto_lang::ast::Code) -> Vec<String> {
+/// PLAN-627: 模块形态 `use back.api`（无符号清单）自 api.at 契约枚举
+/// （`auto_lang::config::api_contract_fn_names_for_front`，与 ui_gen/api.rs
+/// 双写同源语义）。
+fn extract_api_imports_from_ast(
+    ast: &auto_lang::ast::Code,
+    at_path: &Path,
+) -> Vec<String> {
     let mut imports = Vec::new();
+    let mut module_form = false;
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::Use(ref use_stmt) = stmt {
             if is_api_use(use_stmt) {
+                if use_stmt.items.is_empty() {
+                    module_form = true;
+                }
                 imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    if module_form {
+        for name in auto_lang::config::api_contract_fn_names_for_front(at_path) {
+            if !imports.contains(&name) {
+                imports.push(name);
             }
         }
     }
@@ -589,7 +606,7 @@ fn compile_at_file(
     let mut generator = RustGenerator::new();
 
     // Extract API imports from `use back.api: ...` statements
-    let api_imports = extract_api_imports_from_ast(&ast);
+    let api_imports = extract_api_imports_from_ast(&ast, at_path);
 
     // Plan 374 Task 1: Register view fn fragments BEFORE extracting widgets.
     auto_lang::aura::extract::clear_view_fragments();

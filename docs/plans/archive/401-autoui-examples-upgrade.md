@@ -1,6 +1,18 @@
+---
+plan_id: PLAN-401
+status: archived              # drafting → executing → execution_done → reviewed → archived（终态）
+completion_kind: delivered
+feature_name: autoui-examples-upgrade
+author: [zhaopuming]
+created_at: 2026-08-09
+updated_at: 2026-09-14
+plan_revision: 1              # legacy 规格化：本计划先于 v2 frontmatter/状态机建立，无过程状态史；完成证据=各子计划归档（402/403/404/405 等）与本文件头部的收尾核查记录（2026-08-20 核查、2026-09-09 收尾）
+
+---
+
 # Plan 401: AutoUI 示例升级 — 018-027 从单文件玩具到完整 App
 
-> **状态（2026-08-20 核查；2026-09-06 收尾）**: 🟢 全部完成（待归档）。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018-027 示例升级已全线告竣（018/022/023/019/020/021 均升级为完整 App，024 转 gallery，025 清理，026/027 迁入 capability-tests），纲领计划目标已 100% 达成。
+> **状态（2026-08-20 核查；2026-09-06 收尾；2026-09-14 归档）**: 🟢 全部完成，已归档。**401 为纲领计划**（定义标准 + 维护进度总表），每个示例的具体实现拆分为独立子计划。018-027 示例升级已全线告竣（018/022/023/019/020/021 均升级为完整 App，024 转 gallery，025 清理，026/027 迁入 capability-tests），纲领计划目标已 100% 达成。
 > **分支**: 各示例独立分支 `plan401/0NN-xxx`（018 已合并 master）。
 > **动机**: 计划 399 §后续第 166 行"继续升级 018-027 为正规 App"。调研结论：016-027 全部是单文件静态玩具（无后端、散装变量、no-op handler），与 015-notes / 017-chat（完整 App + 后端 + playwright）差一个量级。本计划逐个把它们升级为对标生产级应用的完整示例。
 > **与 Plan 399 的关系**: 399 是 codegen 基建（SSE 多事件 / a2r 根治 / 混合状态硬检查）；本计划是**纯示例升级**，不引入新 codegen 基建（升级过程中发现的 codegen bug 单独修复并在此记录）。
@@ -127,3 +139,13 @@ examples/ui/018-book-reader/
 | `plan-519-dev` | 019 视频播放器升级：双端(Vue+VM) + 5色主题/暗色 + 强类型Rust后端 + Playwright 10/10 + VM smoke | 019 |
 | `plan-520-dev` | 020 音乐播放器升级：播放控制 + 搜索过滤 + 收藏持久化 + Playwright 6/6 全绿 | 020 |
 | `plan-521-dev` | 021 博客阅读器升级：3 路由(首页/详情/发布) + 强类型 Rust 后端 + Playwright 7/7 + 干净态双轮复跑全绿 | 021 |
+
+## 合并收据（PLAN-401:r1 legacy 收口，2026-09-14）
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | 纲领目标 100% 达成（本文件头部收尾核查：018/022/023/019/020/021 完整 App 化、024 转 gallery、025 清理、026/027 迁 capability-tests）；实现载体=各子计划（402/403/404/405 等均已归档，`ls docs/plans/archive/ | grep ^40` 在案） |
+| `landed` | 交付物（示例升级）已长期在 master——018-027 现网形态即本纲领产出；无独立落地提交（纲领性计划，产出分散于各子计划的落地提交） |
+| `ledger_refreshed` | `ui/plans.md` 401 行（本次）+ `.autoos/specs.json` 投影 P401-1（运行时态） |
+| `archived` | `git mv → docs/plans/archive/401-autoui-examples-upgrade.md` + frontmatter 规格化（status: archived + completion_kind: delivered + legacy 注记） |
+| `cleaned` | 无遗留工作树/分支（各子计划 worktree 早已各自收口） |

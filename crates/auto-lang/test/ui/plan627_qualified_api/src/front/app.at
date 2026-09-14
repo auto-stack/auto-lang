@@ -1,0 +1,31 @@
+// app.at — PLAN-627 corpus front：模块形态 `use back.api`（无符号清单）
+// + 限定名调用 `api.X()`。
+//
+// 背景（auto-term PLAN-017 T-02 实证）：裸导入形态在 merged VM/桌面动态
+// 编译下 #[api] 调用进 PLAN-053 no-op 桩；限定名是唯一进程内可达形态。
+// vue 发射臂（Case 3 方法名路由）与 rust 发射臂（PLAN-627 改写）须对此
+// 形态按裸名同发射；抽取侧由 api.at 契约枚举产出清单。
+
+use back.api
+
+widget App {
+    msg { Init }
+
+    model {
+        var lines List<str> = []
+        var cols int = 80
+    }
+
+    on {
+        .Init -> {
+            .lines = api.get_lines()
+            .cols = api.term_cols()
+        }
+    }
+
+    view {
+        col {
+            text "term" {}
+        }
+    }
+}
