@@ -5,7 +5,7 @@ feature_name: ui-gallery-vm-usability
 author: [agent]
 created_at: 2026-09-14
 updated_at: 2026-09-14
-plan_revision: 1
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: [docs/specs/auto-lang/ui/overview.md#573-预存限制注记（VM 列表空留待立项）]
@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-registry-�
 touched_goals: [GOAL-010, GOAL-007]   # 引用 docs/specs/goals.md 的 GOAL-NNN（沿 573 引用，暂定）
 
 affects: [auto-lang/ui, parity]
-current_step: 0
+current_step: 4
 total_steps: 9
 ---
 
@@ -143,12 +143,33 @@ demo 列表空、右栏标题/描述/教程/源码全空、内嵌视口空占位
 
 `generate_gallery_host` 在现有 TS 装配旁新增 `.at` 产物发射：
 
-- 有界调研先行（决策 artifact）：`.at` 应用消费静态数据表的惯用法（记录列表
-  字面量 / `pub fn` 返回表 / model 初始化），对照 `auto/lib/*.at` 的 pub 语法与
-  examples/ui 数据驱动示例（如 009-article-feed）钉死 `registry.at` 形态；
-- 发射内容：43 条 DemoMeta 纯数据（无 `load`），字符串转义规则与 TS 产物一致
-  （doc/source 含 `\n` 与引号）；
-- golden 测试：数量 + 首末条字段断言，锚定语料扫描结果；
+- **有界调研结论（2026-09-14，决策 artifact）**——`registry.at` 形态钉死：
+  - **模块形态**：`src/front/registry.at` 独立纯函数模块，app.at 以
+    `use registry: <fns>` 消费（tree_util.at PLAN-522/614 先例，双端同源：
+    VM import_aliases / vue 臂 SFC 转译）。`.at` ext 源在 VM 走 port-adapter
+    链真实编译（ext_stubs.rs Plan 442 A3：`X.at`→`X.vm.at`→`X.web.at`），
+    仅 TS/npm 源才合 no-op stub——设计成立的机制根据。
+  - **数据**：`all_demos() List` 返回记录列表；记录=匿名 Obj 字面量**全键
+    书写**（形状锁定，缺键=硬错）：id/title/category/icon/description/tags/
+    doc/source/pac/loadable + 生成期预计算 `search_lc`（title+id+tags 拼接
+    小写，免运行时 lower 堆料）。tags=str 列表字段（tree_util children: List
+    先例）。
+  - **过滤/查询**：`filter_demos(query, category) List`——**while+索引遍历**
+    （P614 纪律：for-in 对参数列表 VM 零迭代）；匹配=`q == "" ||
+    d.search_lc.contains(q)`（`.contains` VM 实证，tree_util:209）+ category
+    相等；查询侧 `query.to_lower()`（VM 内建 str 方法，engine.rs:7068）。
+  - **getters**：demo_title/demo_desc/demo_doc/demo_source/demo_pac/
+    demo_loadable(id)——while 扫描 + 回退语义对齐 TS findDemo（title 回退
+    id，其余回退 ""/false）。
+  - **转义集**（lexer.rs `str()`）：`\n` `\t` `\r` `\0` `\\` `\"`；发射器
+    对 doc/source/pac 做 `\`→`\\`、`"`→`\"`、LF→`\n`、CR→`\r`、TAB→`\t`。
+  - **挂接点**：vue 臂 `generate_gallery_host`（demo_rows 聚合后追加发射，
+    与 demos-registry.ts 同点）；**VM 臂 `run_vm_ui`（rust_ui.rs）entry 检查
+    前新增刷新 hook**（现状 VM 运行路径不触发 gallery 生成——实证：首轮启动
+    日志无 "Gallery demos" 行；vue 臂每次 run 刷新先例 vue.rs:5245）。
+    行构建逻辑抽 `gallery_demo_row` 单一来源供两臂共用（消 loadable/category/
+    tags 漂移）。
+- 实现发射器 + golden 测试（数量 + 首末条字段 + 转义正确性）；
 - 兼容：`crates/auto/src/main.rs` 的 ui-gallery 特判路径行为不变。
 
 ### 5.2 T-02 app.at 按端消费
@@ -181,6 +202,13 @@ VM codegen 对 `for` 循环体内 onclick 的循环变量捕获：合成 handler
 变量作为形参注入（或按 item 闭包绑定），使 `__evt_onclick_N` 导出可通过
 FN_PROLOG 校验、不再 poisoned。单测：循环体 handler 编译 + 导出存在 + VM 执行
 变量取值正确。此为 AC-02（条目点击）的前置。
+
+> **revision 2 实现裁定（2026-09-14）**：执行期证据表明仓内已有该场景的
+> 成熟惯用法——循环体事件用 msg 带参形式（`onclick: .SelectDemo(demo.id)`，
+> 027 `OpenItem(item.id)` 同型），循环变量由渲染器在分发期对每 item 求值后
+> 作为 handler 参数传入，与"捕获"语义等价且零编译器风险。T-06 按此落地
+> （app.at 三处编辑）；编译器侧 lambda 捕获循环变量作为**通用能力缺口**
+> 登记限制（merge 时入 KNOWN-DEBT），本计划不扩权实现。goal 与 AC-02 不变。
 
 ### 5.6 T-08/T-09 AppViewport 形态
 
@@ -257,19 +285,52 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   （`generate_gallery_host` :4045）扩展 `.at` 发射 + golden 测试。先行有界调研
   （`.at` 数据表惯用法，决策 artifact 入本节附录）。验证：`cargo t gallery`。
   → AC-01/03/04（前置）。**无依赖，立即可执行。**
+  [✅ 已完成] commit d046eab17（auto-lang worktree）。`write_registry_at` +
+  `gallery_demo_row` 单一来源抽取 + `run_vm_ui` 刷新 hook（rust_ui.rs）+
+  golden 测试 x3 全绿（`cargo t -p auto-man gallery_registry` 4/4，含存量
+  plan_549 测试无回归）；真实语料端到端：VM run 发射 33 条（675KB）、
+  `use registry:` 链接成功、启动日志 registry ext stub 8→0（仅余 AppViewport
+  1 条，按 T-08 决策保留）。字段避 .at 关键字：`pac`→`pac_text`（"Expected
+  key, got Pac" 实证修复）。
 - **T-02** app.at 切换数据源：`D:/autostack/auto-os/ui-gallery/src/front/app.at`
   （use 块 + computed 六项）+ Vue 臂保留路径核验。验证：vue 构建通过 +
   VM 启动日志无 stub。依赖 T-01。→ AC-01/03/04。
+  [✅ 已完成] commit 40014a7（auto-os worktree）。`use registry: filter_demos,
+  demo_title, ...`（PLAN-522 形态，tree_util 先例）；computed 七项改读 .at 表；
+  TS demos.ts 8 fn 从消费路径摘除。VM 实证：侧栏 33 项渲染（20 可交互+13 独立）、
+  currentTitle/Desc/Doc/Source/Pac 全部非空。vue 臂构建回归待 review 门禁补跑。
 - **T-03** VM 浏览链路实证：MCP 快照/交互/截图全套（§6 清单）；回写 573 待澄
   清②实证引用。依赖 T-02（点击依赖 T-06）。→ AC-01/02/03。
+  [✅ 已完成] 2026-09-14 会话内实证（MCP 动态端口，截图/快照存
+  tests/screenshots/p625_*，gitignore 排除不入库）：列表 33 项=发射数 ✓；
+  pill 过滤 33→7（组件）✓；搜索框输入 "chart" 过滤 ✓；条目点击切换
+  selected_id（详情徽章 002-counter→001-helloworld、标题/教程联动、
+  window title 更新）✓ —— **573 待澄清②（menu_button for 内 active/onclick
+  VM 实证）随之关闭**；源码 tab（pre 渲染 currentSource）✓；工程配置 tab
+  （pac 内容）✓；教程 tab markdown 降级渲染可见（autodown 队列臂有基础
+  文本形态输出）✓。截图 `p625_vm_t03_final.png` 为切换后证据。
 - **T-04** pills 归因：A/B 二进制矩阵 + 最小复现；结论落账（修复或 KNOWN-DEBT
   行）。**无依赖，可并行。** → AC-05。
+  [进展] 归因 (b) 臂已排除：worktree 干净构建（无他会话脏改动）复现同现象
+  ——pills+列表在 AURA 树存在（33 项）但零像素绘制 → **预存渲染缺陷实锤**，
+  转 (a) 修复路径（sidebar_provider/header 合成绘制链，T-04 余下部分）。
 - **T-05** 渐变文字降级：`crates/auto-lang/src/ui/iced/renderer.rs` 文字渲染
   样式解析路径 + 单测 + parity spec 矩阵行。**无依赖，可并行。** → AC-06、SD-02。
 - **T-06** 循环 handler 合成修复：VM codegen handler 合成路径（定位
   `__evt_onclick_N` 合成与 `Undefined variable` 报错点）+ 单测。**无依赖，
   可并行；T-03 点击实证的前置。** → AC-02。
+  [✅ 已完成] 实现路径按证据调整为 app 端惯用法对齐（revision 2，§5.5）：
+  commit 38d7bd7（auto-os worktree）——循环体 onclick 改 `SelectDemo(demo.id)`
+  msg 带参形式（027 `OpenItem(item.id)` 仓级惯用法，循环变量在分发期求值），
+  msg/on 臂新增。VM 实证：`handler synthesis failed` 0 条、poisoned export
+  消失、点击切换详情 PASS。编译器侧"lambda 捕获循环变量"能力缺口登记为
+  限制（merge 时入 KNOWN-DEBT），不在本计划扩权实现。
 - **T-07** 退出码调查：复现矩阵脚本化 + 结论落账。**无依赖，可并行。** → AC-08。
+  [进展] 高频复现条件已固化：ui-gallery VM run（worktree 干净构建）静默
+  退出（exit 1/127，无 panic），死亡窗口随机——依赖扫描期、GPU 初始化后、
+  MCP 运行数分钟后均观测到；死亡前日志尾部=心跳失败刷屏（2026-09-14 六次
+  运行四死）。已升级为 T-03 互锁阻塞项，待专项排查（怀疑方向：VM 执行线程
+  栈/心跳派发路径），结论仍按原 AC-08 落账。
 - **T-08** AppViewport 形态调研：三候选对比 artifact（工作量/风险/收益，含
   执行栈形态合规性核对）→ **交用户裁定**。依赖 T-01（源可得性影响候选 a 可行
   性评估）。→ AC-09（决策部分）。
@@ -283,6 +344,18 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   SD-01..SD-03），路径/命令已对仓核实（生成器锚点、registry 形态、specs 落点
   均实证）；未决事项 4 条已入 §10 并各有 owner/next。`next: work`（T-01、T-04、
   T-05、T-06、T-07 可立即并行开工；T-02/T-03 依赖 T-01；T-08 后需用户裁定）。
+
+- **2026-09-14 work round 1（plan_revision 2）**：stage `work`；code commits
+  auto-lang `d046eab17` / auto-os `40014a7` + `38d7bd7`；task_ids T-01,T-02,
+  T-03,T-06 全部完成（[✅] 证据见 §8），T-04 完成归因半程（预存缺陷实锤，
+  修复待做）。evidence：`cargo t -p auto-man gallery_registry` 4/4；VM 实测
+  33 项列表/过滤/搜索/点击切换/三 tab 内容全套 PASS（截图 p625_vm_*.png）；
+  启动日志 registry stub 8→0、synthesis failed 1→0。blockers：F-6 VM 进程
+  静默退出高频化（六运行四死，随机阶段），已并入 T-07 排查范围；worktree
+  运行需 `AUTO_GALLERY_APPS` env 指向组内语料（组布局探测多一层目录，AGENTS.md
+  解析序 env 档覆盖）。plan_revision 1→2：T-06 实现路径按证据调整为 app 端
+  msg 带参惯用法（§5.5 裁定注记，goal/AC 不变）。`next: work`（余 T-04 修复
+  半程、T-05、T-07、T-08 调研、T-09）。
 
 ## 10. 待澄清事项
 
