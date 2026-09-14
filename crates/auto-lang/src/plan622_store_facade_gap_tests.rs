@@ -236,7 +236,14 @@ mod plan622_store_facade_gap_tests {
         // 2. Point the 340 rewrite at the mock and build in split mode.
         let old_backend = std::env::var("AUTO_BACKEND").ok();
         std::env::set_var("AUTO_BACKEND", format!("http://127.0.0.1:{}", port));
-        let build = build_app("src/front/app.at");
+        let Some(manifest) = locate_corpus("src/front/app.at") else {
+            eprintln!("plan622: SKIPPED — corpus app.at not found");
+            return;
+        };
+        let build = crate::plan370_test_support::build_component_from_app_mode(
+            &manifest,
+            true,
+        );
         let mut dc = match build {
             Some(c) => c,
             None => {
@@ -267,7 +274,11 @@ mod plan622_store_facade_gap_tests {
         server.join().ok();
 
         let hit = captured.lock().unwrap().clone();
-        eprintln!("plan622(c-runtime) captured request = {:?}", hit);
+        let save_result = state_raw(&dc, "save_result");
+        eprintln!(
+            "plan622(c-runtime) captured request = {:?}; save_result = {}",
+            hit, save_result
+        );
         assert!(
             hit.as_deref().map(|l| l.contains("POST /api/notes/save")).unwrap_or(false),
             "(c-runtime) the store-module #[api] call must reach the backend \

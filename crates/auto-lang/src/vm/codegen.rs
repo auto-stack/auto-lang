@@ -13088,6 +13088,16 @@ impl Codegen {
             // Try to look up the variable in current scope
             if let Some(var_index) = self.lookup_var(var_name) {
                 self.emit_load_loc(var_index);
+            } else if var_name == "self" && self.lookup_var("__state").is_some() {
+                // PLAN-622 (e2): `self` inside a closure body is the enclosing
+                // handler's state object. The handler frame holds it as the
+                // `__state` param (slot 0), which is not visible under the
+                // name "self" — the capture previously degraded to CONST_0 and
+                // every `self.field` read inside the closure resolved nil
+                // (comparators silently missed). Capture the state value by
+                // env (slot metadata stays 0xFFFF) under the name "self".
+                let state_idx = self.lookup_var("__state").unwrap();
+                self.emit_load_loc(state_idx);
             } else {
                 // Variable not found - emit 0 as fallback
                 self.emit(OpCode::CONST_0);
@@ -13115,14 +13125,25 @@ impl Codegen {
             let var_idx = self.add_string(var_name);
             self.code.extend_from_slice(&var_idx.to_le_bytes());
             // Plan 385: emit the variable's local slot offset (relative to bp+1)
-            // Plan 454 E5a: 函数参数域打 0x8000 旗标(idx < 当前 fn n_args),
-            // 运行期按 bp-(n_args-idx+1) 负向寻址解析为绝对槽位。
-            let is_param_slot = self
-                .lookup_var(var_name)
-                .map(|idx| (idx as usize) < self.current_fn_n_args)
-                .unwrap_or(false);
+            // Plan 454 E5a: 函数参数域打 0x8000 旗标,运行期按 bp-(n_args-real+1)
+            // 负向寻址解析为绝对槽位。
+            // PLAN-622 (e1): 槽位换算必须与 emit_store_loc/emit_load_loc 的
+            // 编址一致 —— local_index = idx - fn_scope_start - n_args、参数域
+            // real = idx - fn_scope_start。此前用裸 scope idx(含全局/参数域
+            // 偏移)直接当槽位,widget handler(fn_scope_start=1)里捕获的局部
+            // 变量差一位:by-ref 读到相邻槽的垃圾,还遮蔽了正确的 env 值,
+            // 闭包比较恒不命中。fss=0 的旧语料两者恰好相等,故 385/454 未爆。
             let slot_offset = self.lookup_var(var_name)
-                .map(|idx| if is_param_slot { 0x8000u16 | (idx as u16 & 0x3FFF) } else { idx as u16 })
+                .map(|idx| {
+                    let fss = self.fn_scope_start;
+                    let n_args = self.current_fn_n_args;
+                    if idx >= fss && idx < fss.saturating_add(n_args) {
+                        // parameter domain — real = relative param index
+                        0x8000u16 | (((idx - fss) as usize) as u16 & 0x3FFF)
+                    } else {
+                        idx.saturating_sub(fss).saturating_sub(n_args) as u16
+                    }
+                })
                 .unwrap_or(0xFFFF); // 0xFFFF = no slot (fallback to env)
             // Plan 419/454 E5a: 记录 by-ref 捕获槽,块尾释放跳过。
             // 0x8000 旗标 = 函数参数域(运行期负向寻址),既不进释放组,
