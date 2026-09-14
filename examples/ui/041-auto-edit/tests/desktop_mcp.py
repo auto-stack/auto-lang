@@ -613,7 +613,9 @@ def run_tests(mcp_url, proc):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         # Plan 451: 动作配置 DSL 化——热重载对象改为 app.at 的 actions 块
         config_file = os.path.join(PROJECT, "src", "front", "app.at")
-        config_backup = open(config_file, encoding="utf-8").read()
+        # newline="": Windows 文本模式会把换行译成 CRLF 回写,残留会让下一轮
+        # 实例的 DSL 解析退化(菜单项快照匹配全挂,矩阵自毒循环)。
+        config_backup = open(config_file, encoding="utf-8", newline="").read()
         try:
             t10_url = f"http://127.0.0.1:{t10_port}/mcp"
             assert wait_for_server(t10_url, 30), "T10 server never up"
@@ -680,7 +682,7 @@ def run_tests(mcp_url, proc):
                 1,
             )
             assert "help.t10" in modified, "app.at actions-block anchors not found"
-            with open(config_file, "w", encoding="utf-8") as f:
+            with open(config_file, "w", encoding="utf-8", newline="") as f:
                 f.write(modified)
             try:
                 mcp10.call("action_config_reload")
@@ -703,7 +705,7 @@ def run_tests(mcp_url, proc):
                                  "auto-edit 0.1" in (state_str(mcp10.state("console"), "console") or ""),
                                  "no about line")
             finally:
-                with open(config_file, "w", encoding="utf-8") as f:
+                with open(config_file, "w", encoding="utf-8", newline="") as f:
                     f.write(config_backup)
                 mcp10.call("action_config_reload")  # restore effective config
         finally:
