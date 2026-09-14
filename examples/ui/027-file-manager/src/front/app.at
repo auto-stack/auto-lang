@@ -497,15 +497,6 @@ widget App {
                                                         icon (name: "scissors", size: 14) {}
                                                         text "剪切" { style: "text-xs" }
                                                     }
-                                                    if .clipboard_name != "" {
-                                                        button (variant: "ghost") {
-                                                            onclick: .CtxPaste
-                                                            style: "h-8 w-full justify-start px-3 text-xs text-primary font-semibold hover:bg-accent rounded-md flex items-center gap-2"
-                                                            icon (name: "clipboard", size: 14) {}
-                                                            text "粘贴到此处" { style: "text-xs" }
-                                                        }
-                                                    }
-                                                    col (style: "h-px w-full bg-border my-1")
                                                     button (variant: "ghost") {
                                                         onclick: .CtxDelete
                                                         style: "h-8 w-full justify-start px-3 text-xs text-destructive hover:bg-accent rounded-md flex items-center gap-2"
