@@ -12,8 +12,8 @@ new_spec_components: [auto-lang/ui (code_editor 寄宿公共 scroller 集成契�
 touched_goals: []
 
 affects: [auto-lang/ui, autoui-skill]
-current_step: 4
-total_steps: 4
+current_step: 6
+total_steps: 6
 ---
 
 # [PLAN-629] editor-common-scroller
@@ -138,7 +138,12 @@ worktree：`D:/autostack/.wt/lang-629/auto-lang`（branch `plan-629-dev`，基�
 - **T-04** [示例/验证] 实机全路径（滚轮/拖拽/键盘跟随/折叠/右键/IME）+ 矩阵扩展 + README 更新。依赖 T-03。
 - 依赖链：T-01→T-02→T-03→T-04。
 
-### 执行证据（2026-09-14）
+### 执行证据（2026-09-14，续——用户实机回归第二轮）
+
+- **T-05** ✅ commit 607748e66：用户报告拖动后行号/gutter 不随内容滚动——gutter 栅格缓存新鲜度只比宽/高/revision，纯滚动三者不变 → 命中陈旧栅格（潜伏 bug，626 修好滚动后显形）。修复：新鲜度纳入内容标记（首行号+y bits+条数）。code_editor 46/46 绿。
+- **T-06** ✅ commit（menubar 菜单项）：用户报告菜单弹窗过宽左空、要求左对齐+每项带 icon——旧结构 [check][title][shortcut] 三子 justify-between 的弹性撑杆把 title 推到中部；改两组 [前导槽+title] | [shortcut]（Between 只插组间撑杆 → 左组贴左、快捷键右贴右对齐），前导槽=勾选(checked)或 action 声明的 lucide icon（用户要求）。
+- 另：矩阵 T8 已适配退出脏检查语义（同步 626 worktree）。
+
 
 - **T-01** ✅ commit 284f325d9：content_height 用 fresh_fold_map（折叠切换即时反映，不等 render——T-01 有界验证结论：有界验证形态 (b) 采用；sync_external_scroll 粗定位 line=offset/lh + vertical 余量再 shape_until_scroll 归一，形态 (a) 每趟只前进一行 O(N)×遍数大文件跳转会卡）；caret_offset_y 直接计算（fold 投影），**不依赖上次渲染的 layout 记录**（初版设计缺陷：光标跟随恰恰发生在光标不在视口内时，渲染记录不存在）；registry getter `code_editor_caret_offset_y`。测试 plan629_content_height_external_scroll_and_caret 绿（高度/绝对偏移/底端钳制/折叠收缩/caret 五断言）+ core 19/19。
 - **T-02** ✅ commit 591f6153d：hosted 模式（size/layout 内容高度上报；draw 视口切片 + 原点 y+offset 内容系阴影变量统一平移；滚轮让渡守卫；右键锚视口换算；键盘/IME 光标跟随 → core 请求标记；高度变化 → request_redraw 触发运行时 view 重建重排——iced 0.14 Shell 无布局失效 API，消息/重绘即失效通道）。core 46/46 回归绿。
@@ -147,7 +152,8 @@ worktree：`D:/autostack/.wt/lang-629/auto-lang`（branch `plan-629-dev`，基�
 
 ## 9. 复审记录
 
-- 2026-09-14 work handoff：`stage: work | plan_id: PLAN-629 | plan_revision: 1 | outcome: pass | code_commit: f4b77192b (branch plan-629-dev, base plan-626-dev@3b85a0357 叠放) | task_ids: T-01..T-04 全完成 | evidence: 各任务行 + 实机截图（正文渲染/官方滚动行为）+ 矩阵 48/2 | blockers: 无 | next: review。
+- 2026-09-14 revision（rev1 续，用户实机回归两轮）：新增 T-05（gutter 滚动冻结）/T-06（菜单项对齐+icon），current_step 4→6；仍 execution_done。
+`stage: work | plan_id: PLAN-629 | plan_revision: 1 | outcome: pass | code_commit: f4b77192b (branch plan-629-dev, base plan-626-dev@3b85a0357 叠放) | task_ids: T-01..T-04 全完成 | evidence: 各任务行 + 实机截图（正文渲染/官方滚动行为）+ 矩阵 48/2 | blockers: 无 | next: review。
 `stage: new`，PLAN-629 rev1。用户裁定明确（引语见 §4），集成契约三机制（外部偏移同步/内容高度上报/scroll_to 跟随）均有 iced 0.14 现成通道与 renderer 先例。`outcome: pass`，`next: work`（用户指令即授权）。
 
 ## 10. 待澄清事项
