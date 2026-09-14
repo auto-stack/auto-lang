@@ -28,6 +28,8 @@ pub mod table_resize;
 pub mod snapshot;
 // Plan 515 D1: native 窗口真图标（HICON→RGBA）缓存（486 占位清偿）。
 pub mod native_icon;
+// PLAN-018: iconfile:<stem> 双主题位图图标后端（回退链 iconfile→hicon→lucide）。
+pub mod icon_file;
 
 /// PLAN-617 后续：lucide 全量字形表（由 scripts/gen-lucide-table.mjs 生成，勿手改）。
 mod lucide_generated;

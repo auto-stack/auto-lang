@@ -443,6 +443,9 @@ pub struct VueGenerator {
 
     /// Lucide icon components used (for import collection)
     lucide_icons: HashSet<String>,
+    /// PLAN-018：iconfile 双主题位图 <img> 出现过 → generate_style 追加
+    /// 浅/深切换规则（宿主根 .dark class；无该机制宿主恒浅表——优雅降级）。
+    iconfile_theme_css: bool,
 
     /// Tailwind classes for wrapper
     wrapper_classes: String,
@@ -854,6 +857,7 @@ impl VueGenerator {
             has_emit: false,
             component_refs: Vec::new(),
             lucide_icons: HashSet::new(),
+            iconfile_theme_css: false,
             wrapper_classes: String::new(),
             mode: VueMode::Plain,
             default_classes: true,
@@ -4859,6 +4863,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         }
 
         style.push_str("/* Component styles */\n");
+        // PLAN-018: iconfile 双主题位图切换（浅表常显；宿主根 .dark 时换深表）
+        if self.iconfile_theme_css {
+            style.push_str("/* PLAN-018 iconfile dual-theme bitmap switch */\n");
+            style.push_str(".app-icon-dark { display: none; }\n");
+            style.push_str(".dark .app-icon-light { display: none; }\n");
+            style.push_str(".dark .app-icon-dark { display: inline-block; }\n");
+        }
         style
     }
 
@@ -6326,6 +6337,44 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let icon_name = props.get("name")
                         .and_then(|v| self.extract_string_value(v))
                         .unwrap_or("circle");
+                    // PLAN-018：iconfile:<stem> → 双主题位图 <img> 对（浅表
+                    // 常显，深表由宿主根 .dark class 切换；生成器登记
+                    // iconfile_theme_css 追加 SFC 切换规则）。stem 白名单同
+                    // iced icon_file::parse_field（[A-Za-z0-9_-]）。
+                    if let Some(stem) = icon_name.strip_prefix("iconfile:") {
+                        if !stem.is_empty()
+                            && stem
+                                .bytes()
+                                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                        {
+                            self.iconfile_theme_css = true;
+                            let (mut static_classes, _dc, _ds) = self.extract_classes(tag, props);
+                            let size_px = props
+                                .get("size")
+                                .and_then(|v| self.extract_int_value(v))
+                                .filter(|v| *v > 0);
+                            let dim = if static_classes.split_whitespace().any(|c| {
+                                c.starts_with("w-") || c.starts_with("h-") || c.starts_with("size-")
+                            }) {
+                                String::new()
+                            } else {
+                                let px = size_px.unwrap_or(20);
+                                format!(" width=\"{}\" height=\"{}\"", px, px)
+                            };
+                            let base_cls = if static_classes.is_empty() {
+                                String::new()
+                            } else {
+                                format!("{} ", static_classes)
+                            };
+                            return Ok(format!(
+                                "{ind}<img src=\"/icons/light/{stem}.png\" class=\"{base_cls} app-icon-light\"{dim} />\n{ind}<img src=\"/icons/dark/{stem}.png\" class=\"{base_cls} app-icon-dark\"{dim} />\n",
+                                ind = ind,
+                                stem = stem,
+                                base_cls = base_cls.trim_end(),
+                                dim = dim,
+                            ));
+                        }
+                    }
                     let lucide_component = Self::kebab_to_pascal(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
 
@@ -21342,6 +21391,38 @@ widget App {
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
         let mut gen = VueGenerator::new();
         gen.generate(&widget).expect("generate SFC")
+    }
+
+    /// PLAN-018：`icon (name: "iconfile:system-monitor")` → 双主题位图
+    /// <img> 对（浅表常显 + 深表 .dark 切换）+ SFC 追加切换规则；
+    /// 纯 lucide 名照旧推导组件不受影响。
+    #[test]
+    fn plan018_iconfile_dual_theme_bitmap() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget IconProbe {
+    view {
+        col {
+            icon (name: "iconfile:system-monitor", size: 44)
+            icon (name: "calculator")
+        }
+    }
+}
+"#);
+        assert!(sfc.contains("src=\"/icons/light/system-monitor.png\""), "浅表 img: {sfc}");
+        assert!(sfc.contains("src=\"/icons/dark/system-monitor.png\""), "深表 img: {sfc}");
+        assert!(
+            sfc.contains("app-icon-light") && sfc.contains("app-icon-dark"),
+            "主题切换类: {sfc}"
+        );
+        assert!(
+            sfc.contains(".dark .app-icon-light { display: none; }"),
+            "SFC 切换规则: {sfc}"
+        );
+        assert!(
+            !sfc.contains("iconfile:system-monitor\n") || !sfc.contains("<Iconfile"),
+            "iconfile 前缀不得泄入 Lucide 推导: {sfc}"
+        );
+        assert!(sfc.contains("<Calculator"), "lucide 组件照旧: {sfc}");
     }
 
     /// Same as gen_sfc_from_widget_src, but in shadcn-vue mode (real widgets
