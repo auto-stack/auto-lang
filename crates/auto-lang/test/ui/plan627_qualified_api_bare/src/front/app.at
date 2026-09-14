@@ -1,0 +1,28 @@
+// app.at — PLAN-627 corpus front：裸名符号形态对照组（R627-F4 金样基线）。
+//
+// 与 ../plan627_qualified_api/src/front/app.at 逐点同构（use 形态与调用
+// head 除外）——金样对拍断言两形态全产物字节一致（vue SFC / rust 输出）。
+
+use back.api: get_lines, term_cols
+
+widget App {
+    msg { Init }
+
+    model {
+        var lines List<str> = []
+        var cols int = 80
+    }
+
+    on {
+        .Init -> {
+            .lines = get_lines()
+            .cols = term_cols()
+        }
+    }
+
+    view {
+        col {
+            text "term" {}
+        }
+    }
+}

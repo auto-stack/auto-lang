@@ -10256,6 +10256,19 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         if api_fns.contains(&call_name.as_str()) {
                             used.insert(call_name.clone());
                         }
+                    } else if let Expr::Dot(obj, method) = call.name.as_ref() {
+                        // PLAN-627 (R627-F1): qualified head `api.X(...)` —
+                        // register X (same list gate as the bare name) so the
+                        // SFC emits the `@/lib/api` import header; without
+                        // this the module-form component references the
+                        // client fn without importing it (TS2304).
+                        if let Expr::Ident(obj_name) = obj.as_ref() {
+                            if obj_name.as_str() == "api"
+                                && api_fns.contains(&method.as_str())
+                            {
+                                used.insert(method.as_str().to_string());
+                            }
+                        }
                     }
                     // Recurse into args
                     for arg in &call.args.args {

@@ -1820,8 +1820,25 @@ impl RustGenerator {
                     }
                     // Left side: Expr::Dot(Ident("self"), Name("field"))
                     let state_var = extract_dot_self_field(left);
-                    // Right side: Expr::Call(...)
-                    let fn_name = extract_call_name(right);
+                    // Right side: Expr::Call(...). PLAN-627 (R627-F2): a
+                    // qualified head `api.X(...)` unwraps to X when X is in
+                    // the import list, so async-Init takes the same
+                    // __InitLoaded shape (byte-for-byte) as the bare name.
+                    let fn_name = extract_call_name(right).or_else(|| match right.as_ref() {
+                        crate::ast::Expr::Call(call) => match call.name.as_ref() {
+                            crate::ast::Expr::Dot(obj, method) => {
+                                if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "api")
+                                    && api_imports.iter().any(|f| f == method.as_str())
+                                {
+                                    Some(method.as_str().to_string())
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    });
                     if let (Some(var), Some(func)) = (state_var, fn_name) {
                         if api_imports.iter().any(|api| api == &func) {
                             self.init_api_info = Some(InitApiInfo {
