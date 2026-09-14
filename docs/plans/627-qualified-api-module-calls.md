@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-627
-status: execution_done               # drafting → executing → execution_done → reviewed → archived（修复轮 7ad387ec3 复完成，R2 待复审）
+status: reviewed               # drafting → executing → execution_done → reviewed → archived（R2 复审 pass，2026-09-14）
 feature_name: qualified-api-module-calls
 author: [zcode-session]
 created_at: 2026-09-14
@@ -319,5 +319,41 @@ task_ids: T-2（F1）/ T-3（F2）/ T-4（门档复跑）/ T-5（vue 重取证�
   在。完整起页仍受 master 预存 `i18n_lookup` 红（axum back 编译错）遮
   蔽，属跨仓既存基线阻塞、非本支引入。
 - **next**：execution_done → `/auto-plan:review`（R2）。
+
+### R2 — 2026-09-14，outcome: **pass**
+
+```
+stage: review | plan_id: PLAN-627 | plan_revision: 1 | outcome: pass
+reviewed_commit: 6f6b84567（worktree plan-627-dev 树净；语义基线
+  7ad387ec3 + fmt-only 测试文件收口增量）
+base_commit: 778458c02 | dependency_revisions: auto-term @ 4960bb2（不变）
+spec_inputs: 规范增量节（R2 修订认收，待 merge 沉淀）
+```
+
+**独立性声明**：R2 与修复轮同会话执行——按规约不复采信执行摘要，结论
+全部从工件重构：重读 `7ad387ec3`+`6f6b84567` 实际 diff、复审基线重跑
+门档、以**入册金样**（非临时探针）为字节一致性常设证据。
+
+**验收结果**：
+
+| AC | 结果 | 证据（R2 复现） |
+|---|---|---|
+| AC-1 | **pass** | `module_form_extraction_enumerates_contract` 绿（#[api] 门锚 plain_helper）；vue 金样断言两形态 detected_api_imports 相等 |
+| AC-2 | **pass** | F1 根修入册金样 `vue_qualified_module_form_byte_matches_bare` 绿——全 SFC 字节一致 + import 头显式钉；真实 auto-term app SFC 探针（记录于 T-2 修复轮注）：15 契约 fn 枚举、7 被调 fn usage-driven 入头、await 调用点全在 |
+| AC-3 | **pass** | 原契约维持（未走改契约路线）；入册金样 `rust_qualified_byte_matches_bare_init_and_handler` 绿——单语句 Init `__InitLoaded` 形态字节一致 + 普通 handler 两面字节一致 |
+| AC-4 | **pass** | `cargo tf` 3555/3555 绿于 7ad387ec3（净档一轮）；6f6b84567 为 fmt-only 测试文件增量（plan627 5/5 复验绿）；touched 区零新警告 |
+| AC-5 | **pass**（基线阻塞在案） | rust 构建绿 + vm-merged 零桩告警 + MCP state = auto-term e2054f0/e3095ec 提交链证据；vue 半边 F1 失效面已封（SFC 级实证见 AC-2）——完整起页受 master 预存 `i18n_lookup` axum back 编译错遮蔽，**形态无关**（裸名基线同阻）、非本支引入、跨仓在案，out of scope |
+
+**R1 发现闭合核对**：F1 根修+金样 ✓；F2 根修（原契约）+金样 ✓；F3
+015-notes 漂移还原 ✓；F4 两金样入语料常设化 ✓；F5 规范增量节+设计表
+注记+frontmatter path#anchor 化 ✓。
+
+**非阻塞观察**：R2 门档复跑期间 `ffi_dual_019` 两红一挂——归因**在册
+预存债务 P615-D3**（dep cdylib spawn 计时敏感全档并发偶发，隔离复跑
+恒绿，621-F-2 已定案非消费者计划回归），与本支零因果面；挂死表现为同族
+新分支，观察已补记 KNOWN-DEBT（含 nextest per-test timeout 排查建议）。
+
+**Next**：pass → `/auto-plan:merge`（沉淀规范增量 + 归档 + worktree
+清理）。复审未发布 canon、未动 ledger。
 
 ## 待澄清事项
