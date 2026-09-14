@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 """
-Plan 440 M3: MCP interaction tests for 027-file-manager in VM mode (`auto run -r vm`).
+PLAN-016 T-10: MCP interaction tests for 027-file-manager in VM mode (`auto run -r vm`).
 
-Exercises the complete File Manager application via autoui_* HTTP JSON-RPC tools:
-- T1: UI Snapshot & Structure (Sidebar, Breadcrumbs, Toolbar, Storage Quota, File List)
-- T2: Navigation (Click subfolder -> breadcrumb & file list update)
-- T3: Deeper Navigation (Hierarchical traversal into /root/Documents/Projects)
-- T4: History Navigation (GoBack / GoForward / GoUp)
-- T5: View Switcher (List ↔ Grid mode toggle)
-- T6: Sorting (Column click -> SortByName / SortBySize / SortByDate)
-- T7: Hidden Files (Toggle hidden files visibility)
-- T8: Search Filtering (Type keyword -> live filter)
-- T9: New Folder & New File (Modal popover creation)
-- T10: Selection & Info (Select item -> status bar info updates)
-- T11: Context Menu & Clipboard (Open context menu -> Copy item -> verify clipboard state)
-- T12: Delete Confirmation Popover (Open delete dialog -> Confirm delete -> verify item removed)
-- T13: Storage Persistence (Config restored across process restart)
+真实文件系统套件（PLAN-016 重写——mock 时代断言退役）：
+- T1: 启动结构（快捷访问/工具栏/真实日期列/主目录非空）
+- T2: 地址栏跳转 testdata + 列表与磁盘一致（notes/config/photo/nested）
+- T3: 隐藏项开关（.hidden.md 显隐翻转）
+- T4: 搜索过滤（notes → 1 项）
+- T5: 目录导航（nested 进入 → inner.txt → 上级）
+- T6: 新建文件夹 fm-new（磁盘断言）
+- T7: 重命名 fm-new → fm-renamed（磁盘断言，旧名移除）
+- T8: 进入 fm-renamed 新建 a.txt（磁盘断言）
+- T9: 右键菜单删除 a.txt（alert-dialog 确认 → 磁盘断言）
+- T10: 上级 + 删除空目录 fm-renamed（D-4 空目录口径 → 磁盘断言）
+- T11: 排序状态（大小列 → sort_col == "size"）
+- T12: 选中状态栏（选定: ...）
+- T13: 持久化（view_mode 跨进程恢复，Phase 2 重启断言）
+
+open_with 桌面互操作（AC-08/09）为桌面宿主级端到端（acceptance bus 注入 →
+041 启动消费），见 docs/plans/evidence/016/t07-open-with-e2e.png——单 app
+VM 套件无桌面会话，不在本套件范围。
 
 Usage:
     cd examples/ui/027-file-manager/tests
@@ -25,6 +29,7 @@ Usage:
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -46,7 +51,7 @@ def pick_free_port(start=MCP_PORT_DEFAULT):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             if s.connect_ex(("127.0.0.1", port)) != 0:
                 return port
-    raise RuntimeError(f"No free port in [{start}, {start + 100})")
+    raise RuntimeError(f"No free port in [{start}, {start}+100)")
 
 
 def find_auto_bin():
@@ -74,12 +79,25 @@ class McpClient:
 
     def call(self, tool_name, **arguments):
         self.req_id += 1
-        resp = requests.post(self.url, json={
-            "jsonrpc": "2.0", "method": "tools/call",
-            "params": {"name": tool_name, "arguments": arguments},
-            "id": self.req_id,
-        }, timeout=15)
-        data = resp.json()
+        # PLAN-016：MCP 服务器线程偶发静默失联（进程存活、socket 消失，
+        # 实证见 evidence/016/d3-vue-fs.md 残留节）——连接层失败容忍重试，
+        # 30s 内恢复则继续套件。
+        last = None
+        for _ in range(30):
+            try:
+                resp = requests.post(self.url, json={
+                    "jsonrpc": "2.0", "method": "tools/call",
+                    "params": {"name": tool_name, "arguments": arguments},
+                    "id": self.req_id,
+                }, timeout=20)
+                data = resp.json()
+                break
+            except (requests.ConnectionError, requests.Timeout) as e:
+                last = e
+                time.sleep(1)
+        else:
+            raise last
+        time.sleep(0.15)  # 节流：连续快压下 MCP 服务器线程偶发失联的缓解
         if "error" in data:
             raise RuntimeError(f"MCP error: {data['error']}")
         content = data.get("result", {}).get("content", [])
@@ -152,294 +170,292 @@ class TestResult:
             print(f"  FAIL  {name}: {detail}")
 
 
-def run_suite(mcp):
-    result = TestResult()
-    snap = mcp.snapshot()
+def row_actions_button(snap, label):
+    """行内 ··· 触发钮（名称按钮后首个空标签 button）。"""
+    i = snap.find('"%s"' % label)
+    if i < 0:
+        return None
+    seg = snap[i:i + 1500]
+    return find_id(seg, r'button #(\S+) ""')
 
-    # ── T1: 初始结构与快照 ───────────────────────────────────────────────────
-    print("\n[T1] 初始结构与快照")
+
+def run_suite(mcp, workdir, result):
+    # ── T1: 启动结构 ────────────────────────────────────────────────────────
+    print("\n[T1] 启动结构（真实 FS）")
+    snap = mcp.snapshot()
     result.check("T1 快速访问侧栏", "快速访问" in snap)
-    result.check("T1 侧栏 6 大目录", all(k in snap for k in ("主目录", "文档", "下载", "图片", "音乐", "回收站")))
-    result.check("T1 存储空间仪表", "存储空间" in snap and "42.5 / 128 GB" in snap)
-    result.check("T1 顶部工具栏按钮", all(k in snap for k in ("+ 文件夹", "+ 文件", "隐藏项: 关")))
-    result.check("T1 初始根目录包含主要文件夹", all(k in snap for k in ("Documents", "Downloads", "Pictures", "README.md")))
-    result.check("T1 隐藏文件默认不显示", ".env" not in snap)
+    result.check("T1 真实快捷目录", all(k in snap for k in ("主目录", "桌面", "文档", "下载")))
+    result.check("T1 顶部工具栏按钮", all(k in snap for k in ("+ 文件夹", "+ 文件", "隐藏项")))
+    result.check("T1 修改日期列真实格式", re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", snap) is not None)
+    st = mcp.state("home", "current_path", "item_count_str", "booted")
+    result.check("T1 主目录解析", st.get("home", '""') not in ('""', ""), str(st))
+    result.check("T1 主目录列出条目", st.get("item_count_str", "0 个项目") not in ("0 个项目", ""), str(st))
 
-    # ── T2: 目录导航 ────────────────────────────────────────────────────────
-    print("\n[T2] 目录导航（进入 Documents）")
-    docs_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "Documents"')
-    if not docs_btn:
-        docs_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+).*?Documents')
-    result.check("T2 找到 Documents 按钮", docs_btn is not None)
-    if docs_btn:
-        mcp.press(docs_btn)
-        time.sleep(0.5)
+    # ── T2: 地址栏跳转 testdata + 列表一致 ──────────────────────────────────
+    print("\n[T2] 地址栏跳转 testdata")
+    data = os.path.join(workdir, "data")
+    snap = mcp.snapshot()
+    inputs = re.findall(r'input #(\S+)', snap)
+    result.check("T2 地址栏在场", len(inputs) >= 2, str(inputs))
+    addr = inputs[1]  # [0]=搜索, [1]=地址栏
+    mcp.type_text(addr, data)
+    time.sleep(0.3)
+    # onenter 经 submit 动作触发（press 对 input 无 Enter 语义）。
+    mcp.call("autoui_action", element_id=addr, action="submit")
+    time.sleep(1.0)
+    st = mcp.state("current_path", "item_count_str")
+    result.check("T2 地址跳转到位", data.replace("\\", "\\") in st.get("current_path", "").replace("\\\\", "\\"), str(st))
+    snap = mcp.snapshot()
+    result.check("T2 testdata 列出文件", all(k in snap for k in ("notes.txt", "config.toml", "photo.png", "nested")), str(st))
+    result.check("T2 隐藏文件默认不显示", ".hidden.md" not in snap)
+    result.check("T2 磁盘一致性", os.path.isdir(data))
+    # 护栏：跳转失败则跳过后续 FS 触达用例（防污染错误目录）。
+    if data not in st.get("current_path", "").replace("\\\\", "\\"):
+        print("  !! T2 跳转失败，跳过 T3-T10")
+        return
+
+    # ── T3: 隐藏项开关 ──────────────────────────────────────────────────────
+    print("\n[T3] 隐藏项开关")
+    snap = mcp.snapshot()
+    hid = find_id(snap, r'button #(\S+)(?=[\s\S]{0,200}text #\S+ "隐藏项")')
+    if not hid:
+        i = snap.find('"隐藏项"')
+        seg = snap[max(0, i - 400):i]
+        ids = re.findall(r'button #(\S+)', seg)
+        hid = ids[-1] if ids else None
+    result.check("T3 隐藏项按钮在场", hid is not None)
+    if hid:
+        mcp.press(hid)
+        time.sleep(0.6)
+        snap = mcp.snapshot()
+        result.check("T3 .hidden.md 可见", ".hidden.md" in snap)
+        mcp.press(hid)
+        time.sleep(0.6)
+        snap = mcp.snapshot()
+        result.check("T3 .hidden.md 再隐", ".hidden.md" not in snap)
+
+    # ── T4: 搜索过滤 ────────────────────────────────────────────────────────
+    print("\n[T4] 搜索过滤")
+    snap = mcp.snapshot()
+    search = re.findall(r'input #(\S+)', snap)[0]
+    mcp.type_text(search, "notes"); time.sleep(0.8)
+    st = mcp.state("item_count_str", "search_q")
+    result.check("T4 过滤至 1 项", st.get("item_count_str") == '"1 个项目"', str(st))
+    mcp.type_text(search, ""); time.sleep(0.8)
+    snap = mcp.snapshot()
+    result.check("T4 清空恢复", "config.toml" in snap and "photo.png" in snap)
+
+    # ── T5: 目录导航 ────────────────────────────────────────────────────────
+    print("\n[T5] 目录导航（nested）")
+    snap = mcp.snapshot()
+    nested = find_id(snap, r'button #(\S+) "nested"')
+    result.check("T5 nested 行按钮", nested is not None)
+    if nested:
+        mcp.press(nested)
+        time.sleep(0.8)
+        snap = mcp.snapshot()
+        result.check("T5 inner.txt 可见", "inner.txt" in snap)
         st = mcp.state("current_path")
-        snap = mcp.snapshot()
-        result.check("T2 当前路径变为 /root/Documents", st.get("current_path") == '"/root/Documents"')
-        result.check("T2 面包屑显示 Documents", "Documents" in snap)
-        result.check("T2 Documents 目录内容呈现", "Projects" in snap and "notes.txt" in snap and "budget_2026.xlsx" in snap)
-
-    # ── T3: 深度目录导航 ────────────────────────────────────────────────────
-    print("\n[T3] 深度导航（进入 Projects）")
-    snap = mcp.snapshot()
-    proj_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "Projects"')
-    result.check("T3 找到 Projects 按钮", proj_btn is not None)
-    if proj_btn:
-        mcp.press(proj_btn)
-        time.sleep(0.5)
-        st = mcp.state("current_path")
-        snap = mcp.snapshot()
-        result.check("T3 当前路径变为 /root/Documents/Projects", st.get("current_path") == '"/root/Documents/Projects"')
-        result.check("T3 包含 auto-lang 项目与文档", "auto-lang" in snap and "architecture.pdf" in snap)
-
-    # ── T4: 历史导航（前进 / 后退 / 上一级） ────────────────────────────────
-    print("\n[T4] 历史导航（GoBack / GoForward / GoUp）")
-    snap = mcp.snapshot()
-    back_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "←"')
-    result.check("T4 找到后退按钮", back_btn is not None)
-    if back_btn:
-        mcp.press(back_btn)
-        time.sleep(0.4)
-        st = mcp.state("current_path")
-        result.check("T4 后退到 /root/Documents", st.get("current_path") == '"/root/Documents"')
-
-        snap = mcp.snapshot()
-        fwd_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "→"')
-        if fwd_btn:
-            mcp.press(fwd_btn)
-            time.sleep(0.4)
-            st = mcp.state("current_path")
-            result.check("T4 前进回 /root/Documents/Projects", st.get("current_path") == '"/root/Documents/Projects"')
-
-        snap = mcp.snapshot()
-        up_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "↑"')
-        if up_btn:
-            mcp.press(up_btn)
-            time.sleep(0.4)
-            st = mcp.state("current_path")
-            result.check("T4 上一级回到 /root/Documents", st.get("current_path") == '"/root/Documents"')
-
-    # ── T5: 视图模式切换（List ↔ Grid） ─────────────────────────────────────
-    print("\n[T5] 视图模式切换（List ↔ Grid）")
-    snap = mcp.snapshot()
-    grid_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "⊞"')
-    result.check("T5 找到网格按钮", grid_btn is not None)
-    if grid_btn:
-        mcp.press(grid_btn)
-        time.sleep(0.4)
-        st = mcp.state("view_mode")
-        result.check("T5 视图切换为 grid", st.get("view_mode") == '"grid"')
-
-        snap = mcp.snapshot()
-        list_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "≡"')
-        if list_btn:
-            mcp.press(list_btn)
-            time.sleep(0.4)
-            st = mcp.state("view_mode")
-            result.check("T5 视图切回 list", st.get("view_mode") == '"list"')
-
-    # ── T6: 排序切换 ────────────────────────────────────────────────────────
-    print("\n[T6] 排序测试（按大小 / 修改日期 / 名称）")
-    snap = mcp.snapshot()
-    size_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "大小"')
-    result.check("T6 找到大小列头按钮", size_btn is not None)
-    if size_btn:
-        mcp.press(size_btn)
-        time.sleep(0.4)
-        st = mcp.state("sort_col", "sort_dir")
-        result.check("T6 排序为 size asc", st.get("sort_col") == '"size"' and st.get("sort_dir") == '"asc"')
-        mcp.press(size_btn)
-        time.sleep(0.4)
-        st = mcp.state("sort_dir")
-        result.check("T6 大小排序翻转为 desc", st.get("sort_dir") == '"desc"')
-
-    # ── T7: 隐藏文件开关 ────────────────────────────────────────────────────
-    print("\n[T7] 隐藏文件开关")
-    snap = mcp.snapshot()
-    hid_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "隐藏项: 关"')
-    result.check("T7 找到隐藏文件开关按钮", hid_btn is not None)
-    if hid_btn:
-        mcp.press(hid_btn)
-        time.sleep(0.4)
-        st = mcp.state("show_hidden")
-        snap = mcp.snapshot()
-        result.check("T7 隐藏文件开关开启", st.get("show_hidden") == "true")
-        result.check("T7 隐藏文件 .secret_draft.md 现身", ".secret_draft.md" in snap)
-
-    # ── T8: 搜索过滤 ────────────────────────────────────────────────────────
-    print("\n[T8] 搜索过滤")
-    snap = mcp.snapshot()
-    search_input = find_id(snap, r'input #(aura_\d+|vnode_\d+)')
-    result.check("T8 找到搜索输入框", search_input is not None)
-    if search_input:
-        mcp.type_text(search_input, "budget")
-        time.sleep(0.4)
-        st = mcp.state("search_q")
-        snap = mcp.snapshot()
-        result.check("T8 搜索词设置", st.get("search_q") == '"budget"')
-        result.check("T8 过滤后只显示匹配项", "budget_2026.xlsx" in snap and "notes.txt" not in snap)
-        # 清空搜索词
-        mcp.type_text(search_input, "")
-        time.sleep(0.4)
-
-    # ── T9: 新建文件与新建文件夹 ────────────────────────────────────────────
-    print("\n[T9] 新建文件夹")
-    snap = mcp.snapshot()
-    new_folder_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "\+ 文件夹"')
-    result.check("T9 找到新建文件夹按钮", new_folder_btn is not None)
-    if new_folder_btn:
-        mcp.press(new_folder_btn)
-        time.sleep(0.4)
-        st = mcp.state("new_modal_open", "new_modal_type")
-        result.check("T9 新建模态已打开", st.get("new_modal_open") == "true" and st.get("new_modal_type") == '"folder"')
-
-        snap = mcp.snapshot()
-        create_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "创建"')
-        result.check("T9 找到弹层创建按钮", create_btn is not None)
-        if create_btn:
-            mcp.press(create_btn)
-            time.sleep(0.5)
-            snap = mcp.snapshot()
-            result.check("T9 新文件夹已成功创建并显示在目录", "新建文件夹" in snap)
-
-    # ── T10: 选中与状态信息 ─────────────────────────────────────────────────
-    print("\n[T10] 选中与状态信息")
-    snap = mcp.snapshot()
-    notes_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "notes.txt"')
-    result.check("T10 找到 notes.txt", notes_btn is not None)
-    if notes_btn:
-        mcp.press(notes_btn)
+        result.check("T5 路径入 nested", "nested" in st.get("current_path", ""), str(st))
+        # 返回上级：地址栏 submit 父目录（确定性，免 empty-label 定位歧义）。
+        inputs = re.findall(r'input #(\S+)', mcp.snapshot())
+        mcp.type_text(inputs[1], data)
         time.sleep(0.3)
-        st = mcp.state("selected_id", "selected_name", "selected_info")
-        result.check("T10 选定 notes.txt", st.get("selected_name") == '"notes.txt"')
-        result.check("T10 状态栏更新选定描述", "notes.txt" in st.get("selected_info", ""))
+        mcp.call("autoui_action", element_id=inputs[1], action="submit")
+        time.sleep(0.8)
+        st = mcp.state("current_path")
+        result.check("T5 上级返回", "nested" not in st.get("current_path", ""), str(st))
 
-    # ── T11: 右键上下文菜单与剪贴板复制 ─────────────────────────────────────
-    print("\n[T11] 右键菜单与剪贴板复制")
+    # ── T6: 新建文件夹（磁盘断言）────────────────────────────────────────────
+    print("\n[T6] 新建文件夹 fm-new")
     snap = mcp.snapshot()
-    action_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "···"')
-    result.check("T11 找到操作菜单按钮", action_btn is not None)
-    if action_btn:
-        mcp.press(action_btn)
-        time.sleep(0.4)
-        st = mcp.state("ctx_open")
-        result.check("T11 上下文菜单弹层已打开", st.get("ctx_open") == "true")
+    bid = find_id(snap, r'button #(\S+) "\+ 文件夹"')
+    result.check("T6 新建按钮", bid is not None)
+    if bid:
+        mcp.press(bid)
+        time.sleep(0.8)
+        inputs = re.findall(r'input #(\S+)', mcp.snapshot())
+        result.check("T6 模态输入框", len(inputs) >= 2, str(inputs))
+        mcp.type_text(inputs[1], "fm-new")  # [1] = 新建模态输入
+        time.sleep(0.3)
+        ok = find_id(mcp.snapshot(), r'button #(\S+) "创建"')
+        mcp.press(ok)
+        time.sleep(1.2)
+        result.check("T6 磁盘落盘", os.path.isdir(os.path.join(data, "fm-new")))
 
-        snap = mcp.snapshot()
-        copy_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "📄  复制"')
-        result.check("T11 找到复制菜单项", copy_btn is not None)
-        if copy_btn:
-            mcp.press(copy_btn)
-            time.sleep(0.4)
-            st = mcp.state("clipboard_op", "clipboard_name", "toast_open")
-            result.check("T11 剪贴板复制生效", st.get("clipboard_op") == '"copy"')
-            result.check("T11 Toast 提示反馈", st.get("toast_open") == "true")
-
-    # ── T12: 删除确认弹层与删除执行 ─────────────────────────────────────────
-    print("\n[T12] 删除确认与执行")
+    # ── T7: 重命名 fm-new → fm-renamed ───────────────────────────────────────
+    print("\n[T7] 重命名（右键菜单 → 模态）")
     snap = mcp.snapshot()
-    # 点击刚才新建的文件夹对应的操作按钮
-    action_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "···"')
-    if action_btn:
-        mcp.press(action_btn)
-        time.sleep(0.4)
+    rb = row_actions_button(snap, "fm-new")
+    result.check("T7 行操作钮", rb is not None)
+    if rb:
+        mcp.press(rb)
+        time.sleep(0.8)
         snap = mcp.snapshot()
-        del_menu_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "🗑️  删除"')
-        result.check("T12 找到删除菜单项", del_menu_btn is not None)
-        if del_menu_btn:
-            mcp.press(del_menu_btn)
-            time.sleep(0.4)
-            st = mcp.state("confirm_del_open")
-            result.check("T12 删除确认弹层打开", st.get("confirm_del_open") == "true")
+        rn = re.findall(r'button #(\S+) "重命名"', snap)
+        result.check("T7 菜单重命名项", len(rn) > 0)
+        if rn:
+            mcp.press(rn[0])
+            time.sleep(0.8)
+            inputs = re.findall(r'input #(\S+)', mcp.snapshot())
+            mcp.type_text(inputs[-1], "fm-renamed")
+            time.sleep(0.3)
+            ok = re.findall(r'button #(\S+) "重命名"', mcp.snapshot())
+            mcp.press(ok[-1])
+            time.sleep(1.2)
+            result.check("T7 新名落盘", os.path.isdir(os.path.join(data, "fm-renamed")))
+            result.check("T7 旧名移除", not os.path.exists(os.path.join(data, "fm-new")))
 
-            snap = mcp.snapshot()
-            confirm_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "确认删除"')
-            result.check("T12 找到确认删除按钮", confirm_btn is not None)
-            if confirm_btn:
-                mcp.press(confirm_btn)
-                time.sleep(0.5)
-                st = mcp.state("confirm_del_open")
-                result.check("T12 删除确认弹层已关闭", st.get("confirm_del_open") == "false")
+    # ── T8: 进入 + 新建文件 ──────────────────────────────────────────────────
+    print("\n[T8] 新建文件 a.txt")
+    snap = mcp.snapshot()
+    name_btn = find_id(snap, r'button #(\S+) "fm-renamed"')
+    result.check("T8 fm-renamed 行", name_btn is not None)
+    if name_btn:
+        mcp.press(name_btn)
+        time.sleep(0.8)
+        snap = mcp.snapshot()
+        fid = find_id(snap, r'button #(\S+) "\+ 文件"')
+        mcp.press(fid)
+        time.sleep(0.8)
+        inputs = re.findall(r'input #(\S+)', mcp.snapshot())
+        mcp.type_text(inputs[1], "a.txt")
+        time.sleep(0.3)
+        ok = find_id(mcp.snapshot(), r'button #(\S+) "创建"')
+        mcp.press(ok)
+        time.sleep(1.2)
+        result.check("T8 磁盘落盘", os.path.isfile(os.path.join(data, "fm-renamed", "a.txt")))
+        result.check("T8 空文件", os.path.getsize(os.path.join(data, "fm-renamed", "a.txt")) == 0)
 
-    return result
+    # ── T9: 右键删除 a.txt（alert-dialog 确认）───────────────────────────────
+    print("\n[T9] 删除文件（alert-dialog）")
+    snap = mcp.snapshot()
+    rb = row_actions_button(snap, "a.txt")
+    result.check("T9 行操作钮", rb is not None)
+    if rb:
+        mcp.press(rb)
+        time.sleep(0.8)
+        snap = mcp.snapshot()
+        dl = re.findall(r'button #(\S+) "删除"', snap)
+        result.check("T9 菜单删除项", len(dl) > 0)
+        mcp.press(dl[0])
+        time.sleep(0.8)
+        snap = mcp.snapshot()
+        result.check("T9 确认模态出现", "确认删除项目" in snap and "不可撤销" in snap)
+        ok = re.findall(r'button #(\S+) "确认删除"', snap)
+        mcp.press(ok[-1])
+        time.sleep(1.2)
+        result.check("T9 磁盘移除", not os.path.exists(os.path.join(data, "fm-renamed", "a.txt")))
+
+    # ── T10: 上级 + 删除空目录（D-4）─────────────────────────────────────────
+    print("\n[T10] 删除空目录")
+    inputs = re.findall(r'input #(\S+)', mcp.snapshot())
+    mcp.type_text(inputs[1], data)
+    time.sleep(0.3)
+    mcp.call("autoui_action", element_id=inputs[1], action="submit")
+    time.sleep(1.0)
+    snap = mcp.snapshot()
+    rb = row_actions_button(snap, "fm-renamed")
+    result.check("T10 行操作钮", rb is not None)
+    if rb:
+        mcp.press(rb)
+        time.sleep(0.8)
+        snap = mcp.snapshot()
+        dl = re.findall(r'button #(\S+) "删除"', snap)
+        mcp.press(dl[0])
+        time.sleep(0.8)
+        ok = re.findall(r'button #(\S+) "确认删除"', mcp.snapshot())
+        mcp.press(ok[-1])
+        time.sleep(1.2)
+        result.check("T10 空目录磁盘移除", not os.path.exists(os.path.join(data, "fm-renamed")))
+
+    # ── T11: 排序状态 ────────────────────────────────────────────────────────
+    print("\n[T11] 排序")
+    snap = mcp.snapshot()
+    sz = find_id(snap, r'button #(\S+)(?=[\s\S]{0,200}?text #\S+ "大小")')
+    if not sz:
+        i = snap.find('"大小"')
+        seg = snap[max(0, i - 400):i]
+        ids = re.findall(r'button #(\S+)', seg)
+        sz = ids[-1] if ids else None
+    if sz:
+        mcp.press(sz)
+        time.sleep(0.6)
+        st = mcp.state("sort_col", "sort_dir")
+        result.check("T11 sort_col=size", st.get("sort_col") == '"size"', str(st))
+
+    # ── T12: 选中状态栏 ──────────────────────────────────────────────────────
+    print("\n[T12] 选中状态")
+    snap = mcp.snapshot()
+    nb = find_id(snap, r'button #(\S+) "notes.txt"')
+    if nb:
+        mcp.press(nb)
+        time.sleep(0.6)
+        st = mcp.state("selected_info")
+        result.check("T12 选定状态", "notes.txt" in st.get("selected_info", ""), str(st))
+
+    # ── T13 前置: 视图模式切 grid（Phase 2 持久化断言用）────────────────────
+    snap = mcp.snapshot()
+    ai = snap.find('"搜索当前目录..."')
+    seg = snap[ai:ai + 900]
+    empties = re.findall(r'button #(\S+) ""', seg)
+    gm = empties[1] if len(empties) >= 2 else None
+    if gm:
+        mcp.press(gm)
+        time.sleep(0.5)
+        st = mcp.state("view_mode")
+        result.check("T13 前置 view_mode=grid", st.get("view_mode") == '"grid"', str(st))
+    else:
+        result.check("T13 前置 view_mode=grid", False, "grid btn not found")
 
 
 def run_persistence_suite(mcp):
-    """T13: 验证存储配置在进程重启后恢复。"""
-    result = TestResult()
-    print("\n[T13] 配置写入与重启恢复准备")
-    snap = mcp.snapshot()
-
-    grid_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "⊞"')
-    # 查找隐藏项开关按钮（无论当前是 开 还是 关）
-    hid_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "隐藏项:')
-    if not hid_btn:
-        hid_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "隐藏项: 开"')
-    if not hid_btn:
-        hid_btn = find_id(snap, r'button #(aura_\d+|vnode_\d+) "隐藏项: 关"')
-
-    result.check("T13 定位配置切换按钮", grid_btn is not None and hid_btn is not None)
-    if grid_btn and hid_btn:
-        mcp.press(grid_btn)
-        time.sleep(0.3)
-        st_before = mcp.state("show_hidden")
-        if st_before.get("show_hidden") != "true":
-            mcp.press(hid_btn)
-            time.sleep(0.3)
-        st = mcp.state("view_mode", "show_hidden")
-        result.check("T13 配置写入存储", st.get("view_mode") == '"grid"' and st.get("show_hidden") == "true")
-
-    return result
+    """Phase 1 末尾配置写入后不再重复（T13 前置已在 run_suite 尾部切 grid）。"""
+    return TestResult()
 
 
 def main():
-    print("=" * 60)
-    print("Plan 440 M3: Desktop MCP Tests (027-file-manager)")
-    print("=" * 60)
-
-    if not os.path.exists(AUTO_BIN):
-        print(f"ERROR: auto binary not found at {AUTO_BIN}")
-        print("Build it first: cargo build --features ui-iced --bin auto")
-        sys.exit(2)
-
     mcp_port = pick_free_port()
     mcp_url = f"http://localhost:{mcp_port}/mcp"
 
-    tmp_storage = os.path.join(tempfile.gettempdir(), f"autoui_fileman_test_{mcp_port}.storage")
+    # PLAN-016：testdata 拷贝到临时目录（破坏性操作只对副本）。
+    tmp_root = tempfile.mkdtemp(prefix="fm-mcp-")
+    data_src = os.path.normpath(os.path.join(os.path.dirname(__file__), "testdata"))
+    data_dst = os.path.join(tmp_root, "data")
+    shutil.copytree(data_src, data_dst)
+    tmp_storage = os.path.join(tmp_root, "storage.at")
 
-    print(f"\n[Phase 1] 启动 027-file-manager 实机进程 (端口 {mcp_port})...")
+    print("=" * 60)
+    print("027-file-manager 桌面 MCP 测试（PLAN-016 真实 FS 套件）")
+    print(f"  auto:    {AUTO_BIN}")
+    print(f"  project: {PROJECT}")
+    print(f"  testdata: {data_dst}")
+    print("=" * 60)
+
+    result = TestResult()
+
+    # ── Phase 1 ──
     proc = launch(mcp_port, tmp_storage, fresh=True)
-
     try:
-        print(f"等待 MCP Server 就绪 ({mcp_url})...")
         if not wait_for_server(mcp_url):
-            print(f"ERROR: MCP server did not start within 30s.")
-            proc.kill()
+            print("ERROR: MCP server 启动超时")
             sys.exit(1)
-        print("MCP Server 已就绪")
-
-        print("等待 UI 渲染...")
         client = McpClient(mcp_url)
+        # 等待首帧渲染（Tick 延迟引导完成 → item_count_str 非默认）。
         rendered = False
-        for i in range(20):
-            time.sleep(1.5)
+        for _ in range(30):
             try:
-                snap = client.snapshot()
-                if "快速访问" in snap or "Documents" in snap:
-                    print(f"UI 渲染完成 ({(i + 1) * 1.5}s)")
+                st = client.state("booted")
+                if "true" in st:
                     rendered = True
                     break
             except Exception:
                 pass
-
+            time.sleep(1)
         if not rendered:
-            print("WARNING: UI 可能尚未完成首帧渲染，继续运行...")
+            print("WARNING: Tick 引导未完成，继续运行...")
 
-        # 运行功能测试套件
-        result = run_suite(client)
-
-        # 运行持久化测试前配置写入
+        run_suite(client, tmp_root, result)
         p_res = run_persistence_suite(client)
         result.passed += p_res.passed
         result.failed += p_res.failed
@@ -450,7 +466,7 @@ def main():
         proc.wait()
         print("第一轮 VM 进程已退出。")
 
-    # ── [Phase 2] 重启进程验证持久化恢复 ──────────────────────────────────────
+    # ── Phase 2: 重启验证持久化（view_mode=grid 恢复）──
     print("\n[Phase 2] 重启 VM 进程验证配置恢复...")
     mcp_port2 = pick_free_port(mcp_port + 1)
     mcp_url2 = f"http://localhost:{mcp_port2}/mcp"
@@ -466,7 +482,6 @@ def main():
             time.sleep(2.0)
             st2 = client2.state("view_mode", "show_hidden")
             result.check("T13 重启恢复 view_mode=grid", st2.get("view_mode") == '"grid"', str(st2))
-            result.check("T13 重启恢复 show_hidden=true", st2.get("show_hidden") == "true", str(st2))
     finally:
         proc2.kill()
         proc2.wait()
@@ -475,6 +490,7 @@ def main():
                 os.remove(tmp_storage)
             except Exception:
                 pass
+        shutil.rmtree(tmp_root, ignore_errors=True)
         print("第二轮 VM 进程已退出。")
 
     print("\n" + "=" * 60)

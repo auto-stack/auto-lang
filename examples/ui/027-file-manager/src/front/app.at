@@ -24,7 +24,7 @@ widget App {
         Init, Tick,
         NavTo(str), GoBack, GoForward, GoUp,
         SetViewMode(str), SortByName, SortBySize, SortByDate, SortByType, ToggleHidden,
-        SetSearch(str), SelectItem(int), OpenItem(int),
+        SetSearch(str), SetAddr(str), AddrGo, SelectItem(int), OpenItem(int),
         StartRename(int), SetEditName(str), CommitRename, CancelRename,
         ItemCtx(int), CtxClose, CtxOpen, CtxRename, CtxCopy, CtxCut, CtxPaste, CtxDelete,
         NewFolderOpen, NewFileOpen, NewModalClose, SetNewName(str), CommitNew,
@@ -45,6 +45,7 @@ widget App {
         // 宿主 GPU/surface 初始化偶发竞态挂起）。
         var interval int = 250
         var booted bool = false
+        var tick_count int = 0               // 启动临界窗错峰（前 20 tick 空转）
 
         // ---- 真实文件系统导航状态（T-05）----
         var home str = ""                   // Env USERPROFILE/HOME，Init 解析
@@ -66,6 +67,7 @@ widget App {
         var sort_dir str = "asc"            // "asc" | "desc"
         var show_hidden bool = false
         var search_q str = ""
+        var addr str = ""                    // 地址栏（PLAN-016 T-05：可编辑回车跳转）""
 
         // 选中与重命名
         var selected_id int = -1
@@ -183,6 +185,15 @@ widget App {
                         oninput: .SetSearch
                         placeholder: "搜索当前目录..."
                         style: "w-40 text-xs px-3 py-1.5 bg-background/80 border border-border rounded-lg text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
+                    }
+
+                    // 地址栏（回车跳转；T-05）
+                    input {
+                        value: .addr
+                        oninput: .SetAddr
+                        onenter: .AddrGo
+                        placeholder: "输入路径回车跳转..."
+                        style: "w-52 text-xs px-3 py-1.5 bg-background/60 border border-border rounded-lg text-muted-foreground font-mono outline-none focus:border-primary focus:text-foreground"
                     }
 
                     // 视图模式切换（List ↔ Grid）
@@ -639,8 +650,11 @@ widget App {
         }
 
         // ---- 延迟引导（首个 Tick；重 FS 活不在 Init 临界区内）----
+        // （interval 为启动期提取字段不可运行期改写——门控走 booted 布尔，
+        // 引导后 Tick 空转开销可忽略。）
         .Tick -> {
-            if !.booted {
+            .tick_count = .tick_count + 1
+            if !.booted && .tick_count > 20 {
                 .booted = true
                 if .home != "" {
                     .quick.push({ path: .home, label: "主目录", is_home: true })
@@ -677,6 +691,7 @@ widget App {
                     var names = json.parse(fs.read_dir(can))
 
                     .current_path = can
+                    .addr = can
                     .selected_id = -1
                     .selected_name = ""
                     .selected_info = "未选中任何项目"
@@ -993,6 +1008,17 @@ widget App {
         .SetSearch(q) -> {
             .search_q = q
             .NavTo(.current_path)
+        }
+
+        // ---- 地址栏（T-05：可编辑回车跳转）----
+        .SetAddr(v) -> {
+            .addr = v
+        }
+
+        .AddrGo -> {
+            if .addr != "" {
+                .NavTo(.addr)
+            }
         }
 
         // ---- 选中与打开 ----
