@@ -11338,6 +11338,8 @@ fn desktop_icon_cells(
             .unwrap_or_else(|| id.clone());
         let src = e.1.to_string();
         let color = crate::ui::app_registry::badge_color_for(&id);
+        // PLAN-018-FU2：iconfile（真位图资产）= 满幅 tile 渲染旗标。
+        let full = if icon.starts_with("iconfile:") { "1" } else { "" };
         while cursor < linear {
             cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("spacer", auto_val::Value::str("1")),
@@ -11352,6 +11354,10 @@ fn desktop_icon_cells(
         cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(id.clone().into())),
             ("icon", auto_val::Value::Str(icon.into())),
+            // 满幅 tile 渲染旗标（"1" = 图标铺满格子、无 badge 色底框；
+            // lucide 字标应用保持色块 chip + 白 glyph——用户裁定「保留
+            // 原图圆角板、外框不要」）。
+            ("full", auto_val::Value::str(full)),
             ("label", auto_val::Value::Str(label.into())),
             ("src", auto_val::Value::Str(src.into())),
             ("color", auto_val::Value::Str(color.into())),

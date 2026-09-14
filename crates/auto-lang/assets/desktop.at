@@ -97,12 +97,12 @@ widget DesktopSurface {
             // "间距过大"根因）；定宽后图标群贴左上、格距 = gap 8px 量级
             // （w-fit iced 轨不支持，class.rs 白名单受限——显式算术宽）。
             grid (cols: 8, gap: 8) {
-                style: "w-[696px]"
+                style: "w-[1336px]"
                 // PLAN-012 W5：格子表渲染（宿主分配 (c,r) + spacer 填位）——
                 // 拖拽换位后位置持久（shell.desktop.positions，重启保持）。
                 for e in .__desktop_cells {
                     if e.spacer == "1" {
-                        div { style: "w-20 h-20" }
+                        div { style: "w-40 h-40" }
                     } else {
                     mouse-area (ondblclick: .ActivateApp(e.id), onclick: .IconPress(e.id)) {
                         col {
@@ -111,9 +111,9 @@ widget DesktopSurface {
                             // PLAN-012 W5：拖拽拾起态 = 半透明底（拖拽语义反馈；
                             // 无逐帧跟随幽灵——headless 决策，见工件）。
                             style: if .drag_id == e.id {
-                                "w-20 h-20 items-center justify-center gap-1 bg-white/20 opacity-50"
+                                "w-40 h-40 items-center justify-center gap-1 bg-white/20 opacity-50"
                             } else {
-                                "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                                "w-40 h-40 items-center justify-center gap-1 hover:bg-white/10"
                             }
                             oncontextmenu.prevent: .IconMenu(e.id)
             // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标 chip 视觉件，
@@ -126,10 +126,16 @@ widget DesktopSurface {
                 // review_ue.log 实录 8 条裸 click 无 ActivateApp）。降级后
                 // 整格 80×80 统一双击+右键（Windows 惯例：图标+文字整块
                 // 可点）；视觉等价（20px glyph=原 text-xl 字号档）。
-                col {
-                    style: "h-10 w-10 items-center justify-center rounded-xl bg-[" + e.color + "]"
+                if e.full == "1" {
                     icon (name: e.icon) {
-                        style: "w-5 h-5 text-white"
+                        style: "w-40 h-40"
+                    }
+                } else {
+                    col {
+                        style: "h-20 w-20 items-center justify-center rounded-xl bg-[" + e.color + "]"
+                        icon (name: e.icon) {
+                            style: "w-10 h-10 text-white"
+                        }
                     }
                 }
                                 col {
@@ -149,7 +155,7 @@ widget DesktopSurface {
                                 }
                             }
                             text e.label {
-                                style: "text-xs text-foreground truncate w-full text-center"
+                                style: "text-sm text-foreground truncate w-full text-center"
                             }
                         }
                     }
