@@ -8790,11 +8790,13 @@ fn summon_launcher(
     let mut colors: Vec<auto_val::Value> = Vec::new();
     for e in &entries {
         names.push(auto_val::Value::Str(e.id.clone().into()));
-        titles.push(auto_val::Value::Str(e.title.clone().into()));
+        // PLAN-015：展示名走 locale 解析链（zh=title_zh→title…）；搜索
+        // 文本同源（display 后 lowercase；id 小写键 lns 仍在，中英两可搜）。
+        titles.push(auto_val::Value::Str(e.display_title().to_string().into()));
         icons.push(auto_val::Value::Str(e.icon.clone().into()));
         cats.push(auto_val::Value::Str(e.category.clone().into()));
         lns.push(auto_val::Value::Str(e.id.to_lowercase().into()));
-        lts.push(auto_val::Value::Str(e.title.to_lowercase().into()));
+        lts.push(auto_val::Value::Str(e.display_title().to_lowercase().into()));
         colors.push(auto_val::Value::Str(launcher_brand_color(&e.id).into()));
     }
     if let Some(app) = state.apps.get_mut(&launcher) {
@@ -10818,7 +10820,7 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
                 .map(|e| e.icon.clone())
                 .unwrap_or_else(|| "app-window".to_string());
             let label = reg
-                .map(|e| e.title.clone())
+                .map(|e| e.display_title().to_string())
                 .unwrap_or_else(|| id.clone());
             let color = crate::ui::app_registry::badge_color_for(&id);
             auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
@@ -11685,7 +11687,7 @@ fn compare_pngs(
                                     Some(crate::ui::session::LaunchSpec {
                                         code,
                                         source_path: Some(e.entry.to_string_lossy().to_string()),
-                                        title: Some(e.title.clone()),
+                                        title: Some(e.display_title().to_string()),
                                         name: e.name.clone(),
                                         daemon: e.daemon.clone(),
                                         back_root: e.back_root.clone(),
@@ -21966,7 +21968,7 @@ mod tests {
                 Some(crate::ui::session::LaunchSpec {
                     code: std::fs::read_to_string(&e.entry).ok()?,
                     source_path: Some(e.entry.to_string_lossy().to_string()),
-                    title: Some(e.title.clone()),
+                    title: Some(e.display_title().to_string()),
                     name: e.name.clone(),
                     fit: e.fit,
                     daemon: None,
@@ -22280,6 +22282,7 @@ mod tests {
         ds.desktop.registry_entries = vec![AppRegistryEntry {
             id: "011-calculator".to_string(),
             title: "calculator".to_string(),
+            title_zh: None,
             name: None,
             icon: "calculator".to_string(),
             category: "tool".to_string(),
@@ -23588,6 +23591,7 @@ mod tests {
         ds.desktop.registry_entries = vec![crate::ui::app_registry::AppRegistryEntry {
             id: "011-calculator".to_string(),
             title: "calculator".to_string(),
+            title_zh: None,
             name: None,
             icon: "calculator".to_string(),
             category: "tool".to_string(),
@@ -24328,6 +24332,7 @@ mod tests {
             crate::ui::app_registry::AppRegistryEntry {
                 id: "011-calculator".into(),
                 title: "计算器".into(),
+                title_zh: None,
                 name: None,
                 icon: "calculator".into(),
                 category: "app".into(),
@@ -24341,6 +24346,7 @@ mod tests {
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
                 title: "便签".into(),
+                title_zh: None,
                 name: None,
                 icon: "sticky-note".into(),
                 category: "app".into(),
@@ -24870,6 +24876,7 @@ mod tests {
         let entry = |id: &str, title: &str| AppRegistryEntry {
             id: id.to_string(),
             title: title.to_string(),
+            title_zh: None,
             name: None,
             icon: "app-window".to_string(),
             category: "app".to_string(),

@@ -3441,4 +3441,33 @@ pub struct Timer {
         assert!(toml.contains("\"gzip\""), "missing gzip feature: [{}]", toml);
         assert!(toml.contains("\"brotli\""), "missing brotli feature: [{}]", toml);
     }
+
+    #[test]
+    fn test_plan015_title_zh_never_enters_cargo_toml() {
+        // PLAN-015 反向钉：展示名字段（title_zh）与产物名解耦——pac 只声明
+        // title/title_zh 时不得生成 [[bin]]（产物名仍走包名缺省链）；
+        // exe_name 声明臂行为不变（Plan 014）。
+        let tmp = std::env::temp_dir().join("plan015-title-zh-cargo-probe");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(
+            tmp.join("pac.at"),
+            "name: \"calc\"\ntitle: \"Calculator\"\ntitle_zh: \"计算器\"\n",
+        )
+        .unwrap();
+        let toml = generate_cargo_toml("calc", &tmp);
+        assert!(!toml.contains("[[bin]]"), "title_zh 不得触发 [[bin]]: [{}]", toml);
+        std::fs::write(
+            tmp.join("pac.at"),
+            "name: \"calc\"\ntitle_zh: \"计算器\"\nexe_name: \"auto-term\"\n",
+        )
+        .unwrap();
+        let toml = generate_cargo_toml("calc", &tmp);
+        assert!(
+            toml.contains("[[bin]]\nname = \"auto-term\""),
+            "exe_name 显式臂不变: [{}]",
+            toml
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

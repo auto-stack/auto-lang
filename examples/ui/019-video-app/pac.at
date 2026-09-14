@@ -3,6 +3,7 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "Video App"
+title_zh: "视频应用"
 api: "rust"
 front_port: 3019
 back_port: 8019

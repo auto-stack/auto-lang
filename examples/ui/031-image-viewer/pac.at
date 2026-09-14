@@ -14,6 +14,7 @@ front_port: 3031
 back_port: 8031
 icon: "image"
 title: "Image Viewer"
+title_zh: "图片查看器"
 category: "media"
 desktop: "true"
 theme: "dark"
