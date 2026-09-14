@@ -15210,9 +15210,35 @@ fn compare_pngs(
                     }
                     DesktopEvent::WindowUnfocused(id) => {
                         // 仅当失焦者正是当前焦点时清空（防多窗口事件乱序误清）。
-                        let mut f = state.focused_window.borrow_mut();
-                        if *f == Some(id) {
-                            *f = None;
+                        let was_focused = {
+                            let mut f = state.focused_window.borrow_mut();
+                            if *f == Some(id) {
+                                *f = None;
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        // App-level blur is opt-in: only dispatch when the
+                        // component actually declares a `Blur` handler. This
+                        // keeps the desktop shell and existing apps unchanged
+                        // while giving native games a real focus-loss hook.
+                        if was_focused {
+                            if let Some(app_id) = state.app_of_window(&id) {
+                                let handles_blur = state
+                                    .apps
+                                    .get(&app_id)
+                                    .map(|app| app.component.bridge().has_handler("Blur"))
+                                    .unwrap_or(false);
+                                if handles_blur {
+                                    let blur = IcedMessage {
+                                        widget: String::new(),
+                                        event: "Blur".to_string(),
+                                        input_value: None,
+                                    };
+                                    return dispatch_app(state, app_id, blur);
+                                }
+                            }
                         }
                     }
                     // Plan 462：desktop 帧泵 —— 空更新，仅驱动 view 重算
