@@ -5,7 +5,7 @@ feature_name: autoui-mcp-test-fixture
 author: [codex]
 created_at: 2026-09-14
 updated_at: 2026-09-14
-plan_revision: 1
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -193,7 +193,7 @@ MCP HTTP /mcp
 | --- | --- | --- | --- | --- | --- |
 | SD-01 | add | `docs/specs/auto-lang/mcp/overview.md` | before：AutoUI MCP 只有用户动作/观测工具；after：增加 gated `autoui_fixture` 的 VM-only v1 契约、ack 和限制 | 让测试夹具成为可复用框架能力且默认关闭 | AC-01, AC-02, AC-03 |
 | SD-02 | add | `docs/specs/auto-lang/mcp/architecture.md` | before：ActionMessage 只有 Event/Path；after：Fixture 作为独立目标通过同一 MCP→iced 队列传递，Rust 路径拒绝 | 避免把测试语义伪装成普通点击并冻结边界 | AC-02, AC-04 |
-| SD-03 | add | `docs/design/autoui-mcp-test-fixture.md` | 记录请求 schema、限制、ack 时序、merged/no-merge 约束与 Tetris 移交 | L2 级协议变更需要单独设计依据 | AC-01..AC-06 |
+| SD-03 | add | `docs/design/autoui/autoui-mcp-test-fixture.md` | 记录请求 schema、限制、ack 时序、merged/no-merge 约束与 Tetris 移交 | L2 级协议变更需要单独设计依据 | AC-01..AC-06 |
 
 ### 5.2 协议与执行
 
@@ -258,7 +258,7 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 
 | ID | 任务 | 文件/操作 | 验证 | 关联 |
 | --- | --- | --- | --- | --- |
-| T-00 | 架构设计先行 | 新建 `docs/design/autoui-mcp-test-fixture.md`，注册 `docs/design/00-intro.md`；记录 API、门控、ack、VM/Rust 边界 | 设计文档自洽、无未决协议分歧 | SD-03 |
+| T-00 | 架构设计先行 | 新建 `docs/design/autoui/autoui-mcp-test-fixture.md`，注册 `docs/design/00-intro.md`；记录 API、门控、ack、VM/Rust 边界 | 设计文档自洽、无未决协议分歧 | SD-03 |
 | T-01 | 夹具协议建模 | `ui/mcp_server.rs` / `ui/mcp_types.rs`：Fixture target/request id、schema、错误结构；更新所有 Event/Path match | `cargo check -p auto-lang`；scoped MCP tests | AC-01, AC-06 |
 | T-02 | MCP 工具入口 | `tool_definitions`、`dispatch_tool_static`、`tool_fixture`；实现 env/backend gate、字段和大小校验、有界 ack 等待 | gate/schema/unknown/type 单测 | AC-01, AC-02 |
 | T-03 | VM 消费与写回 | `iced/renderer.rs`：poll、fixture decode、标量/数组写入、dirty、trigger、ack；共享递归 JSON→AutoValue | fixture app merged/no-merge integration | AC-03, AC-04, AC-05 |
@@ -269,7 +269,7 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 
 ## 9. 复审记录
 
-- 2026-09-14 stage:new（/auto-plan:new，rev 1）：基于
+- 2026-09-14 stage:new（/auto-plan:new，rev 1；路径修正后 rev 2）：基于
   `ui/mcp_server.rs`、`ui/iced/renderer.rs`、`ui/dynamic.rs`、
   `ui/session.rs` 与 mcp/ui specs 实勘，确认现有动作队列和状态写回能力，
   确认缺口是“测试夹具协议 + VM 消费 + 完成 ack”，而非 Tetris UI 设计。
@@ -285,4 +285,5 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 - VM no-merge 集成测试需要可用的本地 HTTP backend 启动方式；若环境缺失，
   记录为环境阻断，不以 merged 结果代替。
 - 本计划完成前，Plan 005 的 VM fixture golden 保持 blocked。
+
 
