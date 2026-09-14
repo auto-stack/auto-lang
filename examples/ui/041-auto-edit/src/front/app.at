@@ -109,6 +109,7 @@ widget App {
             row (style: "flex-1 items-stretch overflow-hidden w-full") {
                 col (style: "w-56 shrink-0 border-r border-border bg-card hidden md:flex flex-col gap-2 p-2 overflow-y-auto") {
                     text "EXPLORER" { style: "text-[11px] text-zinc-500 px-1 pt-1 tracking-wider" }
+                    text .store.ws_name { style: "text-[11px] text-zinc-400 px-1 pb-1" }
                     TreeView (nodes: .store.tree_nodes, expanded: .store.tree_expanded, selected: .store.tree_sel, on_toggle: .TreeToggle, on_select: .TreeSelect, directory: true) {}
                 }
                 col (style: "flex-1 overflow-hidden") {
@@ -225,5 +226,10 @@ widget App {
         .ActAbout -> { store.ActAbout() }
         .TreeToggle(id) -> { store.TreeToggle(id) }
         .TreeSelect(id) -> { store.TreeSelect(id) }
+        .Init -> { store.LoadWorkspace() }
+        .CloseRequest -> { store.CloseRequest() }
+        .QuitDiscard -> { store.QuitDiscard() }
+        .QuitSaveClose -> { store.QuitSaveClose() }
+        .QuitConfirmCancel -> { store.QuitConfirmCancel() }
     }
 }
