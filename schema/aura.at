@@ -715,11 +715,12 @@ element icon {
     category: "media"
     tier: "builtin_widget"
     aliases: ["Icon"]
-    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    backends: { web: "native", iced: "native", gpui: "unknown" }
     props: [
         { name: "name", type: "string", required: true, description: "Icon name" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-        { name: "size", type: "int", default: "24", description: "Icon size in pixels" }
+        { name: "size", type: "int", default: "20", description: "Icon size in pixels (default 20px = w-5 h-5, both backends; Plan 620)" }
+        { name: "state", type: "one_of:on,off", description: "On/off state semantics (Plan 621): on -> primary tint + heavier stroke, off -> muted-foreground dim; literal or bool binding; explicit text-* class takes precedence" }
     ]
     allows_children: false
     description: "Icon display"

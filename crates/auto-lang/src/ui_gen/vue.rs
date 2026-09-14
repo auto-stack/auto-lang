@@ -6374,6 +6374,94 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         // 显式类在，就让类说话（动态 class 同理，无从判定时不越俎代庖）。
                         (true, _) => String::new(),
                     };
+
+                    // PLAN-621: state 契约（**与 VM `with_state_tint` 同规则**）：
+                    //   on → text-primary + stroke-width 基档+0.5；off →
+                    //   text-muted-foreground；显式 text-* 类在场 → 颜色交给
+                    //   作者（描边照常）；未声明 → 零改动（G3）。字面量走静态
+                    //   class/attr，bool 绑定走 `:class`/`:stroke-width` 三元
+                    //   （undefined 使 Vue 移除 attr = 不加重）。
+                    // 描边基档与 VM renderer 同式：有效盒 ≥48px → 1.5，否则
+                    // 2.0。有效盒 px：size prop 直读；显式类从 w-N/h-N（N×4px，
+                    // 与 VM Fixed(n) 同刻度）/size-N/w-[Npx] 取尾款，判不出
+                    // → 20 默认盒。
+                    let mut state_attr = String::new();
+                    if let Some(state_prop) = props.get("state") {
+                        let has_text_class = static_classes.split_whitespace().any(|c| c.starts_with("text-"))
+                            || _dynamic_class
+                                .as_deref()
+                                .map(|d| d.contains("text-"))
+                                .unwrap_or(false);
+                        let eff_px = size_px.map(|v| v as f32).unwrap_or_else(|| {
+                            static_classes
+                                .split_whitespace()
+                                .filter_map(|c| {
+                                    c.strip_prefix("w-[")
+                                        .and_then(|r| r.strip_suffix("px]"))
+                                        .and_then(|n| n.parse::<f32>().ok())
+                                        .or_else(|| {
+                                            c.strip_prefix("w-")
+                                                .and_then(|n| n.parse::<u16>().ok())
+                                                .map(|n| n as f32 * 4.0)
+                                        })
+                                        .or_else(|| {
+                                            c.strip_prefix("h-[")
+                                                .and_then(|r| r.strip_suffix("px]"))
+                                                .and_then(|n| n.parse::<f32>().ok())
+                                        })
+                                        .or_else(|| {
+                                            c.strip_prefix("h-")
+                                                .and_then(|n| n.parse::<u16>().ok())
+                                                .map(|n| n as f32 * 4.0)
+                                        })
+                                        .or_else(|| {
+                                            c.strip_prefix("size-")
+                                                .and_then(|n| n.parse::<u16>().ok())
+                                                .map(|n| n as f32 * 4.0)
+                                        })
+                                })
+                                .fold(20.0_f32, f32::max)
+                        });
+                        let base = if eff_px >= 48.0 { 1.5 } else { 2.0 };
+                        let heavy = base + 0.5;
+                        match self.extract_string_value(state_prop) {
+                            Some("on") => {
+                                if !has_text_class {
+                                    if static_classes.is_empty() {
+                                        static_classes.push_str("text-primary");
+                                    } else {
+                                        static_classes.push_str(" text-primary");
+                                    }
+                                }
+                                state_attr = format!(" :stroke-width=\"{}\"", heavy);
+                            }
+                            Some("off") => {
+                                if !has_text_class {
+                                    if static_classes.is_empty() {
+                                        static_classes.push_str("text-muted-foreground");
+                                    } else {
+                                        static_classes.push_str(" text-muted-foreground");
+                                    }
+                                }
+                            }
+                            _ => {
+                                // bool/变量绑定 → 三元动态发射。
+                                let js = match state_prop {
+                                    AuraPropValue::Expr(expr) => self
+                                        .bound_value_or_warn(expr, "icon state", "false"),
+                                    _ => "false".to_string(),
+                                };
+                                if !has_text_class {
+                                    state_attr = format!(
+                                        " :class=\"{} ? 'text-primary' : 'text-muted-foreground'\"",
+                                        js
+                                    );
+                                }
+                                state_attr
+                                    .push_str(&format!(" :stroke-width=\"{} ? {} : undefined\"", js, heavy));
+                            }
+                        }
+                    }
                     let class_str = if static_classes.is_empty() {
                         String::new()
                     } else {
@@ -6381,9 +6469,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     };
 
                     if children.is_empty() {
-                        return Ok(format!("{}<{}{}{} />\n", ind, lucide_component, class_str, size_attr));
+                        return Ok(format!("{}<{}{}{}{} />\n", ind, lucide_component, class_str, size_attr, state_attr));
                     } else {
-                        let mut html = format!("{}<{}{}{}>\n", ind, lucide_component, class_str, size_attr);
+                        let mut html = format!("{}<{}{}{}{}>\n", ind, lucide_component, class_str, size_attr, state_attr);
                         for child in children {
                             html.push_str(&self.node_to_html(child, indent + 1)?);
                         }
@@ -18434,6 +18522,146 @@ widget IconDefault {
         );
     }
 
+    /// PLAN-621（T-04）: icon state 契约 Web 臂——字面量 on/off、显式
+    /// text-* 优先、bool 绑定三元、未声明零改动、48px 细线基档。
+    #[test]
+    fn plan621_icon_state_literal_on_off() {
+        let on = gen_sfc_from_widget_src(
+            r#"
+widget IconStateOn {
+    view {
+        col {
+            icon (name: "bell", state: "on")
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            on.contains("text-primary"),
+            "state:on 应发射 text-primary:\n{on}"
+        );
+        assert!(
+            on.contains(":stroke-width=\"2.5\""),
+            "state:on 应发射描边加重 2.5（默认 20px 盒基档 2.0+0.5）:\n{on}"
+        );
+        assert!(
+            !on.contains("text-muted-foreground"),
+            "state:on 不应带 off 色:\n{on}"
+        );
+
+        let off = gen_sfc_from_widget_src(
+            r#"
+widget IconStateOff {
+    view {
+        col {
+            icon (name: "bell", state: "off")
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            off.contains("text-muted-foreground"),
+            "state:off 应发射 muted dim:\n{off}"
+        );
+        assert!(
+            !off.contains(":stroke-width"),
+            "state:off 不应加重:\n{off}"
+        );
+    }
+
+    /// 显式 text-* 类在场：颜色归作者，描边加重照常（与 VM 同规则）。
+    #[test]
+    fn plan621_icon_state_explicit_text_class_wins() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget IconStateExplicit {
+    view {
+        col {
+            icon (name: "bell", state: "on", style: "text-red-500")
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("text-red-500"),
+            "作者色必须保留:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("text-primary"),
+            "显式 text-* 在场时不得注入 state 色:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":stroke-width=\"2.5\""),
+            "描边加重应照常生效:\n{sfc}"
+        );
+    }
+
+    /// bool/变量绑定 → `:class` 三元 + `:stroke-width` 三元（false →
+    /// undefined → Vue 移除 attr）。
+    #[test]
+    fn plan621_icon_state_binding_ternary() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget IconStateBound {
+    model { liked bool = false }
+    view {
+        col {
+            icon (name: "heart", state: .liked)
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("'text-primary' : 'text-muted-foreground'"),
+            "绑定应发射三元 class:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":stroke-width=") && sfc.contains("undefined"),
+            "绑定应发射三元描边（false → undefined）:\n{sfc}"
+        );
+    }
+
+    /// 未声明 state → 零改动（G3）；48px 盒加重走细线基档 1.5+0.5=2.0。
+    #[test]
+    fn plan621_icon_state_undeclared_zero_diff_and_48px() {
+        let none = gen_sfc_from_widget_src(
+            r#"
+widget IconStateNone {
+    view {
+        col {
+            icon (name: "search")
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            !none.contains(":stroke-width") && !none.contains("text-primary")
+                && !none.contains("text-muted-foreground"),
+            "未声明 state 时输出必须与既有形态逐字节一致:\n{none}"
+        );
+
+        let large = gen_sfc_from_widget_src(
+            r#"
+widget IconStateLarge {
+    view {
+        col {
+            icon (name: "zap", size: 48, state: "on")
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            large.contains(":stroke-width=\"2\""),
+            "48px 盒加重应为 1.5+0.5=2.0（细线基档，与 VM 同式）:\n{large}"
+        );
+    }
+
     /// Widget-level native CSS (`style { ... }` → `AuraWidget.style_css`) is
     /// emitted verbatim into a dedicated `<style scoped>` block.
     #[test]
@@ -26989,6 +27217,14 @@ widget ClickZone {
     #[test]
     fn test_a2vue_icon_child() {
         test_a2vue("006_icon_child").expect("a2vue icon_child golden mismatch");
+    }
+
+    /// PLAN-621: icon state 契约双端金样（Web 腿）——五种形态见
+    /// `test/a2vue/012_icon_state/input.at` 头注；VM 腿由
+    /// `aura_view_builder` 的 6 个 plan621 单测覆盖。
+    #[test]
+    fn test_a2vue_icon_state() {
+        test_a2vue("012_icon_state").expect("a2vue icon_state golden mismatch");
     }
 
     /// Plan 408: `component fn` → independent Vue SFC synthesis.

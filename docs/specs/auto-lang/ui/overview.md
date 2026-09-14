@@ -284,6 +284,23 @@ Width/Height，Vue 生成器折内联 `style="width:Npx;height:Npx"` 并撤缺�
 autoui-verifier 技能「步骤 3.5 像素预算对拍」。实机（1280x800）：面色 Δ0/Δ1、图标 ink 比
 1.03/1.03、左缩进 Δ0/Δ1/Δ0；19 MCP + 18 Vue 场景全绿；`cargo t`/`tv` 零新增红。
 
+⑤**icon `state` 契约（PLAN-621，SD-01）**：`icon` 元素增 `state` prop（`"on"`/`"off"`
+字面量或 bool 绑定）——on 注入 `text-primary`（**运行时 accent 预设主色**：
+`resolve_semantic_rgb` 对 `Color::Primary` 专臂查 `registry::accent_hsl`，dark L+10
+双端统一；token `accent` 是 hover 高亮面非强调色族，不可用）+ 描边加重基档+0.5
+（`StyleClass::StrokeWidth` 承载绝对值，builder `with_state_tint` 单点计算，renderer
+lucide 路径只读消费；基档与 Plan 518 G4② 同式 ≥48px→1.5 否则 2.0）；off 注入
+`text-muted-foreground`（`Color::OnSurface` 双盘 dim）；未声明零注入（输出逐字节
+不变，既有金样零扰动）。优先级「显式 `text-*` 类 > state > 继承」镜像尺寸口径。
+亮度型 on/off（显著 vs dim）对色盲安全，色相型不可用（WCAG 仅靠色相禁令）。
+适用面仅独立 `icon` 元素（button/nav-item 内嵌 icon 的 active 语义独立存在）。
+门禁：`plan621` 10 测（VM 6 + Web 4）+ `test/a2vue/012_icon_state` 金样（五形态）。
+⑥**图库策略（PLAN-621，SD-02）**：lucide 为 AutoUI 主力图库（fill 变体官方不做，
+满/空双态由 ⑤ 的 state 契约承载）；品牌图标/真填充需求走 IconifyJSON 补位管线
+（`set:name` 双段名 + `@iconify-json/*` 锁版本离线可复现），playbook 与调研数据见
+[icon-state-and-library-policy](../../../design/autoui/icon-state-and-library-policy.md)，
+不整体迁移（Remix 同名交集 0 + 反向缺名，波及面基线 29 名）。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
