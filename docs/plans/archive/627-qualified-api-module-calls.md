@@ -1,8 +1,9 @@
 ---
 plan_id: PLAN-627
-status: reviewed               # drafting → executing → execution_done → reviewed → archived（R2 复审 pass，2026-09-14）
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态；2026-09-14 merge 3b2f7cf56）
 feature_name: qualified-api-module-calls
 author: [zcode-session]
+archived_at: 2026-09-14
 created_at: 2026-09-14
 updated_at: 2026-09-14
 
@@ -357,3 +358,34 @@ spec_inputs: 规范增量节（R2 修订认收，待 merge 沉淀）
 清理）。复审未发布 canon、未动 ledger。
 
 ## 待澄清事项
+
+
+### 合并收据（PLAN-627:r1，2026-09-14）
+
+```
+stage: merge | plan_id: PLAN-627 | plan_revision: 1 | outcome: pass
+completion_kind: delivered
+```
+
+| Checkpoint | Evidence |
+|---|---|
+| `prepared` | 复审基线 R2 pass（reviewed_commit 6f6b84567，语义基线 7ad387ec3）；规范增量冻结节（add：ui/overview「api 模块形态与限定名调用」）；投影目标 ui/overview.md+ui/plans.md+ledger P627-1..6 |
+| `landed` | worktree 沉淀 f7b2a4dde → master merge **3b2f7cf56**（祖先链 3b2f7cf56→f7b2a4dde→6f6b84567→7ad387ec3→d424a31dd→778458c02）；overview.md 与 master 新落 PLAN-018 icon 节冲突，和解=双方保留（icon 节前、627 节后、已知坑继后）；master 烟测 plan627 5/5 绿 |
+| `ledger_refreshed` | `.autoos/specs.json` runtime 数据原子 upsert P627-1..6（六节，file=本归档路径，status published，回读校验过）；`docs/specs/INDEX.md` 经 scripts/spec-index.py 再生（26 projects）并入库；module 回写=ui/overview.md 新节+ui/plans.md 627 行（f7b2a4dde 随 merge 入 master） |
+| `archived` | `docs/plans/archive/627-qualified-api-module-calls.md`（git mv），frontmatter status: archived |
+| `cleaned` | （cleanup 后回填） |
+
+锚点规整注记：声明锚 `#api-模块形态与限定名调用` → 实际标题
+`## api 模块形态与限定名调用（PLAN-627）`（沿用本文件族 （PLAN-NNN）
+标题惯例），slug = `#api-模块形态与限定名调用plan-627`。
+
+### spec-sync 回写记录
+
+- `docs/specs/auto-lang/ui/overview.md`：新增「## api 模块形态与限定名
+  调用（PLAN-627）」四条规则（模块形态抽取等价/限定名发射逐字节等价/
+  清单门守卫/VM 语义不变），置于 store facade（622）与 icon 协议族
+  （018）之后、已知坑之前。
+- `docs/specs/auto-lang/ui/plans.md`：追加 627 行。
+- `docs/specs/INDEX.md`：spec-index.py 再生。
+- `.autoos/specs.json`：P627-1..6 upsert（runtime 数据，未入库——本仓
+  惯例，仅 tmp2 误跟踪在案）。
