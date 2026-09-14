@@ -471,6 +471,30 @@ shell 注入 → 渲染臂按前缀分发。三个后端 + 占位，按回退链
   （宿主根 `.dark` class；无该机制宿主恒浅表）。
 - **stem 白名单** `[A-Za-z0-9_-]`（拼路径前拒收穿越/杂字符）。
 
+## api 模块形态与限定名调用（PLAN-627）
+
+`use back.api` 两形态与限定名调用的发射契约（rust/vue 两发射器对称；
+VM/桌面动态编译路径不在其列——qualified 直落本地字节码为既有行为）：
+
+1. **模块形态抽取**：`use back.api`（无符号清单）与符号形态
+   （`use back.api: a, b`）等价——函数清单自 `resolve_back_api` 定位契约
+   文件的 `#[api]` 注解 fn 枚举（plain pub fn 不入清单；契约缺席/解析
+   失败宽容降级空清单）。消费点为 `ui_gen/api.rs` 与 `auto-man/rust_ui.rs`
+   抽取双写；布局寻得支持 `<root>/app.at` 与 `<root>/src/front/*.at`
+   向上三层，外部后端 `back: { project }` 形态不支持（现网消费者均为
+   符号形态，按需再补）。
+2. **限定名发射等价**：`api.X()`（X ∈ 清单）在 rust/vue 两发射器与裸名
+   `X()` 产物逐字节一致——vue：`await X(...)` 客户端调用 + SFC 头
+   usage-driven `import { … } from '@/lib/api'`；a2r：裸名调用 + 单语句
+   `.Init` async-Init 同走 `__InitLoaded` 形态。金样
+   `plan627_qualified_api_tests`（模块 vs 裸名全产物对拍，含清单门与
+   `__InitLoaded` 形态锚）。
+3. **清单门守卫**：清单外 `api.` head 原样透传（防用户自建同名 `api`
+   对象误伤）。
+4. **VM 语义不变**：裸名 merged no-op 桩语义维持（PLAN-053，plan622
+   守卫在案）；限定名直落本地字节码为 merged 进程内唯一可达形态
+   （auto-term PLAN-017 实证）。
+
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：

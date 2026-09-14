@@ -548,7 +548,7 @@ pub fn generate_component_from_file(
 
     // Auto-detect or use overrides
     let api_imports = opts.api_imports_override.unwrap_or_else(|| {
-        extract_api_imports_from_ast(&ast)
+        extract_api_imports_from_ast(&ast, Some(&at_path))
     });
     let mut store_deps = opts.store_deps_override.unwrap_or_else(|| {
         extract_store_imports_from_ast(&ast)
@@ -968,12 +968,31 @@ pub fn generate_component_from_file(
 }
 
 // Re-export helper functions from super (used by generate_component_from_file)
-fn extract_api_imports_from_ast(ast: &crate::ast::Code) -> Vec<String> {
+fn extract_api_imports_from_ast(
+    ast: &crate::ast::Code,
+    front_at: Option<&std::path::Path>,
+) -> Vec<String> {
     let mut imports = Vec::new();
+    let mut module_form = false;
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::Use(ref use_stmt) = stmt {
             if is_api_use_stmt(use_stmt) {
+                if use_stmt.items.is_empty() {
+                    // PLAN-627: 模块形态 `use back.api`（无符号清单）——
+                    // 函数名自 api.at 契约枚举（vue 发射臂 Case 3 对限定名
+                    // `api.X()` 已按方法名路由，缺的只是这份清单）。
+                    module_form = true;
+                }
                 imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    if module_form {
+        if let Some(path) = front_at {
+            for name in crate::config::api_contract_fn_names_for_front(path) {
+                if !imports.contains(&name) {
+                    imports.push(name);
+                }
             }
         }
     }

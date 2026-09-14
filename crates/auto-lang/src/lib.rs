@@ -6631,6 +6631,11 @@ mod plan442_store_facade_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan622_store_facade_gap_tests;
 
+// PLAN-627: qualified api-module-call corpus（模块形态 use back.api +
+// 限定名 api.X()：抽取/vue 发射/rust 发射三面）。
+#[cfg(test)]
+mod plan627_qualified_api_tests;
+
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;
