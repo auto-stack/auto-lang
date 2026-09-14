@@ -5798,6 +5798,9 @@ fn lucide_fragment(name: &str) -> Option<&'static str> {
         None => match name {
             "sidebar" => super::lucide_generated::lookup("panel-left"),
             "file-icon" => super::lucide_generated::lookup("file"),
+            // PLAN-012 F2：lucide 官方改名别名（v0.313+ 新名 → 本表旧名）——
+            // circle-alert = alert-circle（错误通知 ❗ 用，os-012 F10）。
+            "circle-alert" => super::lucide_generated::lookup("alert-circle"),
             _ => None,
         },
     }
