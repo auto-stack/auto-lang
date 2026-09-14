@@ -1,0 +1,82 @@
+// app.at — PLAN-622 red corpus (a/b/c/d): named-store facade consumption.
+//
+// Mirrors the jade-garden tabs facade migration shape (`use store: Tabs`):
+// store fields merge into root state, widget handlers dispatch store msgs
+// and read store fields, view binds store fields. The 442 corpus proved the
+// musk legacy form (`store.`-prefixed reads against a store literally named
+// "store"); this corpus pins the named-store forms jade's migration needs,
+// including the reference-mutation shape (store array object mutated through
+// a retrieved reference — the tabs_store .Open pattern).
+//
+// Gap arms (see plan622_store_facade_gap_tests.rs):
+//   (a) .ProbeRead / .ProbeNested — bare-field reads of store state in a
+//       widget handler (jade T-05 observed sentinels)
+//   (b) view bindings `text .count` / `for p in .pages { text p.body }` —
+//       must follow store-msg mutation (jade T-05 observed frozen views)
+//   (d) .Splice — widget-model array splice must write back (observed no-op)
+//   (c) .StoreSave → store.Save() → #[api] save_note — runtime arm with
+//       api_over_http=true + AUTO_BACKEND mock (plus compile-level checks in
+//       the test file)
+
+use store: CounterStore
+
+widget App {
+    msg { Init, ProbeRead, ProbeNested, Bump, GrowFive, Touch, Splice, StoreSave }
+
+    model {
+        var status str = "boot"
+        var probe_count int = 0
+        var probe_body str = ""
+        var items = ["a", "b", "c"]
+    }
+
+    on {
+        .Init -> {
+            store.Init()
+            .status = "ready"
+        }
+
+        .ProbeRead -> {
+            .probe_count = .count
+        }
+
+        .ProbeNested -> {
+            .probe_body = .pages[0].body
+        }
+
+        .Bump -> {
+            store.Bump()
+        }
+
+        .GrowFive -> {
+            store.Grow({ by: 5 })
+        }
+
+        .Touch -> {
+            store.Touch()
+        }
+
+        .Splice -> {
+            .items.splice(0, 1)
+        }
+
+        .StoreSave -> {
+            store.Save()
+        }
+    }
+
+    view {
+        col {
+            text .status
+            text .probe_count
+            text .count
+            text store.count
+            for p in .pages {
+                text p.body
+            }
+            for it in .items {
+                text it
+            }
+        }
+    }
+}

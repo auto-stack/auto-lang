@@ -1,0 +1,57 @@
+// counter_store.at — PLAN-622 red corpus store file.
+//
+// Named StoreDecl consumed via the `use store: CounterStore` facade form
+// (file located by the snake_case convention, lib.rs find_store_decl_files).
+//
+// Arms:
+// - Init seeds count = 41 so the handler-read sentinel (0) is distinguishable
+//   from the seeded value.
+// - Touch is the jade tabs_store .Open shape: find an object in a store
+//   array, MUTATE it through the retrieved reference (`hit.body = ...`), and
+//   mirror into a scalar. The write-through-reference and the downstream
+//   reads (widget handler / view) are where jade T-05 observed sentinels and
+//   frozen views.
+// - Save calls an #[api] contract fn from INSIDE the store module — the (c)
+//   arm: the 340 api_over_http rewrite must apply to store-module handler
+//   bodies in split mode, not only to widget handlers.
+
+use back.api: save_note
+
+store CounterStore {
+    model {
+        var count int = 0
+        var save_result str = ""
+        var pages = []
+        var open_note str = ""
+    }
+
+    msg { Init, Bump, Grow, Touch, Save }
+
+    on {
+        .Init -> {
+            .count = 41
+            .pages.push({ title: "A", body: "x" })
+        }
+
+        .Bump -> {
+            .count = .count + 1
+        }
+
+        .Grow(args) -> {
+            .count = .count + args.by
+        }
+
+        .Touch -> {
+            var hit = .pages.find(p => p.title == "A")
+            if hit != null {
+                hit.body = "mutated"
+                .open_note = hit.body
+            }
+        }
+
+        .Save -> {
+            var res = save_note(.count)
+            .save_result = res
+        }
+    }
+}
