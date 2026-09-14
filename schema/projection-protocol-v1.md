@@ -1,6 +1,9 @@
-# AutoShell 状态投影协议 v1.6（S2 接缝合同）
+# AutoShell 状态投影协议 v1.7（S2 接缝合同）
 
-> **版本**：v1.6（2026-09-12，PLAN-012 落码；dock 固定/聚焦/通知可见派生面
+> **版本**：v1.7（2026-09-14，auto-os PLAN-019 落码；负一屏显示桌面（保留
+> 分区 + origin 往返）与壁纸选择 carousel（pick/close 组合簿记 + 候选注入面），
+> 详见 §6 v1.7 节）。
+> v1.6（2026-09-12，PLAN-012 落码；dock 固定/聚焦/通知可见派生面
 > + 单枚固定与格子重注入动词 + 整桌面预览合同面，详见 §6 v1.6 节）。
 > v1.5（2026-08-31，Plan 505 B2 落码；pager 派生面（≤4 截断 + "+N"）。
 > v1.4（2026-08-30，Plan 487 M4；486 先合占 v1.3，487 按并行协调叠 v1.4）——v1/v1.1/v1.2/v1.3/v1.4 见 §6
@@ -38,6 +41,7 @@
 | `__wm_settings_open` | str `"1"/""` | **F2 走查增补** 设置窗在场标量（存在非隐藏 os-config 窗 = "1"；W1 close→hide 后隐藏即回落）——⚙️ 高亮判据（原 `__wm_running.contains(",os-config,")` view 条件方法调用死点，实机探针定性：设置窗在场齿轮仍无高亮）；窗开/关/hide 翻 win 指纹段随写同步 | 宿主写 | F2 走查增补 |
 | `__wm_fp` | str | 投影指纹（§3）；shell 不消费，仅门控 | 宿主写 | v1 |
 | `__wm_clock` | str `"HH:MM"` | dock 时钟本地时间串（497 S3）。**非门控字段**：不进 `__wm_fp` 指纹、不走 §3 投影组换装——ServiceTick 帧泵独立注入（分钟变化才写，稳态零重建；本地时钟非驱动事实，避免每分钟全组换装抖动） | 宿主写 | v1.4 内（497） |
+| `__wm_showdesk` | str `"1"/""` | **v1.7** 当前分区 = 负一屏（保留空分区，PLAN-019）——任务栏 sliver 两态高亮与 toggle 判据（`"1"` = 点击发 `showdesk_return`，`""` = 发 `show_desktop`；等式消费）。负一屏簿记（origin/picker 簿记）在宿主 WmState，不投影 | 宿主写 | v1.7 |
 | `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
 
 ### 2.0.1 通知面板接缝字段（`assets/notification_center.at`，召唤/活更新注入）
@@ -61,6 +65,10 @@ Plan 496 M5 的第五面（常驻不召唤，boot 装载挂桌面层 z 槽）。
 | `__desktop_cells` | Obj 数组 `{id,icon,label,src,color,c,r,spacer}`（spacer 条目仅 `{spacer:"1",c,r}`） | **v1.6** 格子化图标表——`shell.desktop.positions`（追加式 `"id=c:r,..."` csv，last-wins 解析）定位优先 + 未定位行主序填首个空格 + 空位 spacer 填充；view 渲染消费（handler 消费走下列平行字符串列表，B12 规避）。拖拽落子 = shell 追加写 positions + `refresh_desktop_icons` 触发重注入 | 宿主写 | v1.6 |
 | `__desktop_cell_ids` / `__desktop_cell_cs` / `__desktop_cell_rs` | 平行字符串列表（与 `__desktop_cells` 同序；spacer 格 id = 空串） | **v1.6** 格子平行字符串列表——`IconPress` 拖拽落子的 handler 下标读数据面（按 id 检索 (c,r)，B12 规避——`note_ids` 同型） | 宿主写 | v1.6 |
 | （DSL 合同面）`workspace_preview` | 布局件 `workspace_preview (ws: <分区id>, fallback: <icon>)` | **v1.6** 整桌面等比预览 leaf——宿主渲染臂合成（壁纸 `#hex` 基色底 / 缺省主色占位 → 该分区逐窗 snapshot 按 usable 矩形 Contain 等比贴片；miss = 占位块 + fallback icon 居中 + request_capture 预抓，window_thumbnail 同款 SWR）。**协议零字段增量**：数据面直连 wm 几何 + snapshot 缓存（`iced::workspace_preview` 发布/消费），不入 VM 状态。消费面 = switcher 分区卡 | 宿主渲染 | v1.6 |
+| `__wp_picker` | str `"1"/""` | **v1.7** 壁纸选择 carousel 可见性（PLAN-019；desktop.at 全屏层条件渲染唯一事实源）。开合簿记在宿主（`picker_open` + `picker_return_on_close`——`wallpaper_pick`/`wallpaper_close` 组合臂单点维护，.at 侧零分支）；随写置 dirty | 宿主写 | v1.7 |
+| `__wp_dir` | str | **v1.7** 当前壁纸目录（picker 头部展示；`wallpapers_dir` 解析链当前值——config → env `AUTO_DESKTOP_WALLPAPERS_DIR` → 探测目录） | 宿主写 | v1.7 |
+| `__wp_current` | str | **v1.7** 当前壁纸路径（boot 壁纸解析值——`#hex`/`builtin:`/图片路径；picker 缩略图高亮的**等式判据面**；`set_wallpaper` 臂随写） | 宿主写 | v1.7 |
+| `__wp_items` | Obj 数组 `{name:str}` | **v1.7** 候选壁纸清单（`scan_wallpapers_dir` 供源——jpg/jpeg/png 文件名升序；view for 渲染消费）。handler 侧下标读 path 走伴随平行字符串列表 `wp_paths`（与 items 同序；B12 规避——`note_ids`/`cell_ids` 同型），picker open/目录变更时全量重注入 | 宿主写 | v1.7 |
 
 ## 3. 更新语义与指纹门控（协议条款）
 
@@ -113,6 +121,11 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 | `dock_pin` | app id | **v1.6** 单枚固定——`config.dock_pinned` Vec 增删去重之增（已在表 = 幂等保持）→ 单源落盘 → `inject_dock_pinned` + `inject_desktop_surface` 双投影热同步（发件面 = shell.at 窗口条目右键菜单「固定到任务栏」）。窄动词缘由：shell 读不到 `__dock_pinned` Obj 数组全集做 csv 手术（B12 同族），单枚增删收口宿主侧 | v1.6 |
 | `dock_unpin` | app id | **v1.6** 单枚取消固定——同上之删（不在表 = 幂等跳过；发件面 = pinned 图标右键菜单「取消固定」） | v1.6 |
 | `refresh_desktop_icons` | （无参记录） | **v1.6** 桌面图标格子重注入——shell 拖拽落子写 `shell.desktop.positions` 后触发，宿主重读 storage 重算 `__desktop_cells`/平行列表（`inject_desktop_surface` 重跑；拖拽结果即时可见 + boot 同链） | v1.6 |
+| `show_desktop` | （无参记录） | **v1.7** 显示桌面（负一屏）——切换到宿主保留的空分区（懒建：首次到达 `add_workspace` 并记录 `showdesk_ws`）；`showdesk_origin` 记录进入前 current（current 已是负一屏则**不覆盖**——幂等）。发件面 = shell.at 任务栏右缘 sliver | v1.7 |
+| `showdesk_return` | （无参记录） | **v1.7** 返回 origin 分区——picker 若开着先关（簿记幂等清零）→ current = `showdesk_origin` → origin 清零。发件面 = sliver 再点（`__wm_showdesk == "1"` 臂） | v1.7 |
+| `wallpaper_pick` | （无参记录） | **v1.7** 更换壁纸组合入口 = `show_desktop` 幂等臂 → `picker_open=1` → `picker_return_on_close = (到达前 current != showdesk_ws)`（**归属规则单点**：谁切屏谁负责切回——他分区进入组合调用 = 自动返回；负一屏自入 = 关闭只关 picker 不代管返回）→ `__wp_*` 五面注入。发件面 = desktop.at 图标/空白右键菜单「更换壁纸…」 | v1.7 |
+| `wallpaper_close` | （无参记录） | **v1.7** 关闭 picker——`picker_open=0` → 若 `picker_return_on_close` 则走 `showdesk_return` 臂（origin 消费后清零）。发件面 = desktop.at picker 关闭钮/遮罩/Esc 栅格态 | v1.7 |
+| `wallpaper_browse_dir` | （无参记录） | **v1.7** 弹原生目录对话框（rfd `pick_folder`，`ui-dialog` feature）——选定后走 `SetWallpapersDir` 同一执行臂（目录写路径单一：config 落盘 + mtime 热轮询）+ `__wp_items`/`__wp_dir` 重注入。发件面 = desktop.at picker 头部「浏览…」 | v1.7 |
 
 ## 5. 对拍与验收（I8/I9）
 
@@ -146,6 +159,24 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.7（2026-09-14，auto-os PLAN-019）
+
+- **负一屏显示桌面**：§4 +`show_desktop`/`showdesk_return` 两动词——宿主保留
+  空分区（懒建）+ origin 簿记往返；排除规则（非动词增量，宿主行为约定）：
+  `__wm_workspaces` 投影过滤负一屏、`workspace_next` 环切跳过、
+  `workspace_close`/`send_to` 目标拒绝、`activate` 在负一屏先 return 再启动
+  （防新窗开在负一屏）。§2 +`__wm_showdesk` 标量（sliver toggle 判据）。
+  与 Win11「显示桌面」语义对齐，实现不用最小化（多分区机制天然保留窗口现场）。
+- **壁纸选择 carousel**：§4 +`wallpaper_pick`/`wallpaper_close`/
+  `wallpaper_browse_dir` 三动词——组合簿记 `picker_return_on_close` 在宿主
+  单点裁决（**归属规则：谁切屏谁负责切回**）；§2.1 +`__wp_picker`/
+  `__wp_dir`/`__wp_current`/`__wp_items`（+`wp_paths` 平行字符串列表，B12
+  规避）。候选供源复用 `scan_wallpapers_dir`；选壁纸/换目录复用既有
+  `set_wallpaper`/`set_wallpapers_dir` 热生效通道，零新写路径。
+- **vue 端注记**：本版实现方 = vm 端（renderer.rs）；vue 端沿 v1.6 先例，
+  按本文档后续对拍（负一屏 = 分区过滤 + 保留分区；picker = 注入面 + 组合臂
+  语义一致即可，UI 形态自定）。
 
 ### v1.6（2026-09-13 F2 走查增补，PLAN-012 O1-O3 收口）
 
