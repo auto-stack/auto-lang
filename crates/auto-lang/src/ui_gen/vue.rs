@@ -6427,13 +6427,21 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         match self.extract_string_value(state_prop) {
                             Some("on") => {
                                 if !has_text_class {
-                                    static_classes.push_str(" text-primary");
+                                    if static_classes.is_empty() {
+                                        static_classes.push_str("text-primary");
+                                    } else {
+                                        static_classes.push_str(" text-primary");
+                                    }
                                 }
                                 state_attr = format!(" :stroke-width=\"{}\"", heavy);
                             }
                             Some("off") => {
                                 if !has_text_class {
-                                    static_classes.push_str(" text-muted-foreground");
+                                    if static_classes.is_empty() {
+                                        static_classes.push_str("text-muted-foreground");
+                                    } else {
+                                        static_classes.push_str(" text-muted-foreground");
+                                    }
                                 }
                             }
                             _ => {
@@ -27197,6 +27205,14 @@ widget ClickZone {
     #[test]
     fn test_a2vue_icon_child() {
         test_a2vue("006_icon_child").expect("a2vue icon_child golden mismatch");
+    }
+
+    /// PLAN-621: icon state 契约双端金样（Web 腿）——五种形态见
+    /// `test/a2vue/012_icon_state/input.at` 头注；VM 腿由
+    /// `aura_view_builder` 的 6 个 plan621 单测覆盖。
+    #[test]
+    fn test_a2vue_icon_state() {
+        test_a2vue("012_icon_state").expect("a2vue icon_state golden mismatch");
     }
 
     /// Plan 408: `component fn` → independent Vue SFC synthesis.
