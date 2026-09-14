@@ -31,6 +31,385 @@ fn bounds_of<M: Clone + std::fmt::Debug>(ui: &mut iced_test::Simulator<'_, M, ic
     (b.x, b.y, b.width, b.height)
 }
 
+/// PLAN-012 W7 T12-T1 探针（headless 版，PLAN-011 t1_matrix 先例）：lucide
+/// `AbstractView::Image` 出口外层 container 若未约束（Svg size_hint 默认
+/// Fill → Container fluid 撑满剩余宽），同行右侧文本会被推到最远端——
+/// svgdoc 路径 :5020 在案同族症状。定案判据 = 文本边界可量化：R 相对 L
+/// 的间距 ≈ 图标盒宽（20px）而非半行宽。
+#[test]
+fn w7_icon_lucide_container_constrained_between_texts() {
+    let view = View::Row {
+        children: vec![
+            styled_view("L"),
+            View::Image {
+                src: "lucide:bell".to_string(),
+                style: Style::parse("w-5 h-5").ok(),
+            },
+            styled_view("R"),
+        ],
+        spacing: 0,
+        padding: 0,
+        style: None,
+                onclick: None, on_right_click: None,
+            };
+    let mut ui = simulator(view.into_iced());
+    let (lx, _ly, lw, _lh) = bounds_of(&mut ui, "L");
+    let (rx, _ry, _rw, _rh) = bounds_of(&mut ui, "R");
+    let gap = rx - (lx + lw);
+    // 守卫：container 若撑满剩余宽，R 被推到远端（gap ≫ 40px）；
+    // 正确形态 = container 收缩到图标盒 20px（gap ≈ 20，留 40px 上界容差）。
+    assert!(
+        gap < 40.0,
+        "lucide icon container 必须收缩到图标盒宽（gap={gap:.1}px，修复前为半行宽量级）"
+    );
+}
+
+/// PLAN-012 W7 T12-T1 探针②（chip 形态，desktop.at:101 真实结构 = col）：
+/// 桌面 chip = 固定 40×40 col（items-center justify-center + rounded 底）
+/// 内嵌 lucide 图标（w-5 h-5）——glyph 应居中于 chip 盒。收集全部
+/// Container bounds：chip 内层图标盒应为 20×20 且位于 chip 中心
+/// （x=y=10），container 未居中即"字形偏左上"根因定案。
+#[test]
+fn w7_icon_lucide_chip_glyph_centered() {
+    let chip: View<()> = View::Column {
+        children: vec![View::Image {
+            src: "lucide:bell".to_string(),
+            style: Style::parse("w-5 h-5").ok(),
+        }],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("h-10 w-10 items-center justify-center rounded-xl").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = simulator(chip.into_iced());
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32, f32)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    struct Sink(std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32, f32)>>>);
+    impl Selector for Sink {
+        type Output = ();
+        fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+            if let Candidate::Container { bounds, .. } = candidate {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((bounds.x, bounds.y, bounds.width, bounds.height));
+            }
+            None
+        }
+        fn description(&self) -> String {
+            "w7-container-sink".into()
+        }
+    }
+    let _ = ui.find(Sink(store.clone()));
+    let boxes = store.lock().unwrap().clone();
+    eprintln!("[w7-chip] containers: {boxes:?}");
+    // 内层图标盒（≈20×20）必须存在且居中于 40×40 chip（x,y ≈ 10）。
+    let inner = boxes
+        .iter()
+        .find(|(_, _, w, h)| (*w - 20.0).abs() < 2.0 && (*h - 20.0).abs() < 2.0)
+        .copied()
+        .unwrap_or_else(|| {
+            panic!(
+                "图标盒应收缩为 20×20（实际 containers: {boxes:?}）——container 被撑大即偏左上根因"
+            )
+        });
+    assert!(
+        (inner.0 - 10.0).abs() < 2.0 && (inner.1 - 10.0).abs() < 2.0,
+        "图标盒应居中 chip（期望 x,y≈10，实际 {:?}）",
+        inner
+    );
+}
+
+/// PLAN-012 W7 T12-T1 探针③（任务栏按钮形态，shell.at 真实结构 =
+/// `button (icon:)` h-10 w-10）：icon-only svg（Fixed 18，随字号档）必须
+/// 居中于按钮盒。收集全部 Candidate bounds（svg 件经 Custom 臂浮出），
+/// 找图标尺寸盒断言其中心 ≈ 按钮中心。
+#[test]
+fn w7_icon_taskbar_button_glyph_centered() {
+    let btn: View<()> = View::Button {
+        label: String::new(),
+        onclick: (),
+        style: Style::parse("h-10 w-10 px-0 text-lg rounded-xl bg-transparent").ok(),
+        on_right_click: None,
+        content: Some(Box::new(View::Image {
+            src: "lucide:bell".to_string(),
+            style: Style::parse("").ok(),
+        })),
+        disabled: false,
+    };
+    let mut ui = simulator(btn.into_iced());
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(&'static str, f32, f32, f32, f32)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    struct Sink(std::sync::Arc<std::sync::Mutex<Vec<(&'static str, f32, f32, f32, f32)>>>);
+    impl Selector for Sink {
+        type Output = ();
+        fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+            let (kind, bounds) = match &candidate {
+                Candidate::Container { bounds, .. } => ("c", *bounds),
+                Candidate::Focusable { bounds, .. } => ("f", *bounds),
+                Candidate::Custom { bounds, .. } => ("x", *bounds),
+                _ => return None,
+            };
+            self.0.lock().unwrap().push((kind, bounds.x, bounds.y, bounds.width, bounds.height));
+            None
+        }
+        fn description(&self) -> String {
+            "w7-button-sink".into()
+        }
+    }
+    let _ = ui.find(Sink(store.clone()));
+    let boxes = store.lock().unwrap().clone();
+    eprintln!("[w7-btn] candidates: {boxes:?}");
+    // 按钮本体（0.14 下 Button 以 Container 臂浮出）40×40；图标盒（≈16×16
+    // svg）中心应 ≈ (20,20)。
+    let btn_box = boxes
+        .iter()
+        .find(|(_, _, _, w, h)| (*w - 40.0).abs() < 2.0 && (*h - 40.0).abs() < 2.0)
+        .copied()
+        .expect("40×40 按钮盒应存在");
+    let icon = boxes
+        .iter()
+        .filter(|(k, _, _, w, h)| *k != "f" && *h < 38.0 && (*w - *h).abs() < 4.0)
+        .copied()
+        .collect::<Vec<_>>();
+    assert!(
+        !icon.is_empty(),
+        "应存在图标尺寸盒（实际 {boxes:?}）"
+    );
+    for (k, x, y, w, h) in icon {
+        let cx = x + w / 2.0;
+        let cy = y + h / 2.0;
+        let bx = btn_box.1 + btn_box.3 / 2.0;
+        let by = btn_box.2 + btn_box.4 / 2.0;
+        assert!(
+            (cx - bx).abs() < 3.0 && (cy - by).abs() < 3.0,
+            "图标盒({k}) 应居中按钮（中心期望≈({bx},{by})，实际 ({cx},{cy})）——全部: {boxes:?}"
+        );
+    }
+}
+
+/// 临时变体诊断（T4-T1）：flex-1 vs mt-auto 顶垫。诊断完成后保留为
+/// 机制对照证据（非门禁——flex1 变体在塌缩根因修复前恒红）。
+#[test]
+#[ignore = "T4-T1 诊断记录：flex-1 顶垫在 iced 轨塌缩（y=0），mt-auto 填充条生效（y=384）——修复采用 mt-auto 路径，本测试保留诊断证据"]
+fn w2_anchor_variant_diagnosis() {
+    for (name, top_style) in [("flex1", "flex-1 w-full"), ("mt-auto", "mt-auto w-full")] {
+        let src = format!(
+            "widget Probe {{\n    model {{ var n int = 0 }}\n    view {{\n        col {{\n            style: \"w-full h-full\"\n            spacer {{ style: \"{top_style}\" }}\n            row {{\n                style: \"w-full\"\n                spacer {{ style: \"flex-1 h-80\" }}\n                col {{\n                    style: \"w-80\"\n                    text `CARDCARD`\n                }}\n                spacer {{ style: \"w-3 h-80\" }}\n            }}\n            spacer {{ style: \"h-16 w-full\" }}\n        }}\n    }}\n}}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        let mut ui = simulator(view.into_iced());
+        let (cx, cy, cw, ch) = bounds_of(&mut ui, "CARDCARD");
+        eprintln!("[w2-variant:{name}] card=({cx},{cy},{cw},{ch})");
+    }
+}
+
+/// PLAN-012 W2 T4 锚定守卫（端到端 .at 管线，修复后结构）：顶垫 mt-auto
+/// 填充条 + 行 items-end 底对齐 + 底垫 h-[60px]（dock 48 + gap 12）——
+/// 卡片必须被下压到视口下半区（贴 dock 上方）。修复前 flex-1 顶垫塌缩
+/// 实测 y=0（实机截图"面板贴顶"复现）；诊断变体留档
+/// w2_anchor_variant_diagnosis（#[ignore]）。
+#[test]
+fn w2_notification_panel_anchor_bottom_right() {
+    let src = concat!(
+        "widget Probe {
+",
+        "    model { var n int = 0 }
+",
+        "    view {
+",
+        "        col {
+",
+        "            style: \"w-full h-full\"
+",
+        "            spacer { style: \"mt-auto w-full\" }
+",
+        "            row {
+",
+        "                style: \"w-full items-end\"
+",
+        "                spacer { style: \"flex-1 w-full\" }
+",
+        "                col {
+",
+        "                    style: \"w-80 bg-card/80 border rounded-xl\"
+",
+        "                    text `CARDCARD`
+",
+        "                }
+",
+        "                spacer { style: \"w-3 h-12\" }
+",
+        "            }
+",
+        "            spacer { style: \"h-[60px] w-full\" }
+",
+        "        }
+",
+        "    }
+",
+        "}
+"
+    );
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("parse");
+    let decl = ast.stmts.iter().find_map(|s| match s {
+        crate::ast::Stmt::WidgetDecl(d) => Some(d),
+        _ => None,
+    }).expect("decl");
+    let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+    let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
+    let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+    let mut ui = simulator(view.into_iced());
+    let (cx, cy, cw, ch) = bounds_of(&mut ui, "CARDCARD");
+    eprintln!("[w2-anchor] card=({cx},{cy},{cw},{ch})");
+    // mt-auto 填充条必须有效下压：卡片进入视口下半区（修复前 y=0 贴顶）。
+    assert!(
+        cy > 400.0,
+        "mt-auto 顶垫应把卡片压到下半区（实际 y={cy}）——塌缩回归守卫"
+    );
+    // 卡片右缘 + 12px 右垫 ≈ 根宽（右推链有效；根宽未知，改由右缘分量
+    // 单调性守卫：x>0 且卡片在右半区）。
+    assert!(cx > 300.0, "卡片应贴右半区（x={cx}）");
+    let _ = (cw, ch);
+}
+
+/// PLAN-012 O3 复刻探针：通知面板层在 **Stack 装配**（desktop_root 真实
+/// 形态：container Fill×Fill → Stack → [底层(桌面面), 通知层]）中的锚定。
+/// w2_notification_panel_anchor_bottom_right 以面板为 simulator 根，未复刻
+/// Stack；实机（iced 0.14.2）同结构卡片贴顶（diff bbox y=0..798，用户截图
+/// 互证）——本探针复刻 Stack 层叠，锁定塌缩条件并守卫修复。
+#[test]
+fn p012_o3_notification_layer_in_stack_anchor() {
+    use iced::Length;
+    // 底层（桌面面同型）：col w-full h-full。
+    let bottom = View::Column {
+        children: vec![styled_view("DESK")],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full h-full").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    // 通知层（notification_center.at 可见态同构）：mouse-area 透明包装省略
+    //（透明传递不改变量），col w-full h-full > [mt-auto 垫, row > [flex-1
+    // 推条, 卡片(w-80)], h-[60px] 底垫]。
+    let card = View::Column {
+        children: vec![styled_view("CARDCARD")],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-80 bg-card/80 border rounded-xl").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let push = View::Row {
+        children: vec![
+            styled_view("flex-1 w-full"),
+            card,
+            styled_view("w-3 h-12"),
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full items-end").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let panel_col = View::Column {
+        children: vec![
+            styled_view("mt-auto w-full"),
+            push,
+            styled_view("h-[60px] w-full"),
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full h-full").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    // desktop_root 同型装配：container Fill×Fill > Stack[底, …, 顶]。
+    let stack = iced::widget::Stack::with_children(vec![
+        bottom.into_iced(),
+        panel_col.into_iced(),
+    ]);
+    let root: iced::Element<'static, (), iced::Theme, iced::Renderer> =
+        iced::widget::container(stack)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+    let mut ui = simulator(root);
+    let (x, y, w, _h) = bounds_of(&mut ui, "CARDCARD");
+    eprintln!("[p012-o3] card=({x},{y},{w}) — 根高 768 假设下贴底应 y>400");
+    // 贴底锚定守卫（mt-auto 填充条必须有效下压；塌缩即贴顶 y≈0）。
+    assert!(
+        y > 400.0,
+        "Stack 装配下通知卡片应贴底（实际 y={y}，贴顶=mt-auto 填充条在 Stack 子层塌缩）"
+    );
+}
+
+/// PLAN-012 O3 终架构探针（真组件链 + N6d scrim + justify-start 顶对齐，
+/// 用户裁定右上角）：notification_center.at 根 = scrim mouse-area（Fill×
+/// Fill）> justify-start 列 > 卡片（紧凑 max-h 滚动）。锁定：卡片挂顶
+/// （y≈0，右上下 gap 12 档）+ 多条目 max-h 有界。装配层 align 无从发力
+///（463 T5 注记），锚定必须在 .at 内——本探针守卫该机制不回归。
+#[test]
+fn p012_o3_notification_real_component_assembly_anchor() {
+    use crate::ui::interpreter::DynamicMessage;
+    use iced::Length;
+    let src = crate::ui::shell::shell_source("notification_center.at");
+    let build_comp = |rows: usize| -> crate::ui::dynamic::DynamicComponent {
+        let mut comp = crate::build_dynamic_component(src.as_ref(), None).expect("comp");
+        let _ = comp.write_state("visible", auto_val::Value::str("1"));
+        let _ = comp.write_state("__panel_max_h", auto_val::Value::Int(414));
+        let ids: Vec<String> = (1..=rows).map(|i| i.to_string()).collect();
+        for (k, v) in [
+            ("note_ids", ids.clone()),
+            ("note_kinds", vec!["error".to_string(); rows]),
+            ("note_msgs", {
+                let mut m = vec!["CARDCARD".to_string()];
+                m.extend((2..=rows).map(|i| format!("row{i} long message text")));
+                m
+            }),
+            ("note_ats", vec!["now".to_string(); rows]),
+        ] {
+            let vals: Vec<auto_val::Value> = v.into_iter().map(auto_val::Value::str).collect();
+            let _ = comp.write_state_vec(k, vals);
+        }
+        let _ = comp.bridge_mut().call_handler("RebuildNotes", &[]);
+        comp
+    };
+    let measure = |comp: &crate::ui::dynamic::DynamicComponent| {
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        let root: iced::Element<
+            'static,
+            DynamicMessage,
+            iced::Theme,
+            iced::Renderer,
+        > = view.into_iced();
+        let mut ui = simulator(root);
+        bounds_of(&mut ui, "CARDCARD")
+    };
+    // 场景 A（少条目 2 条）：卡片挂顶（justify-start）。
+    let (x, y, w, h) = measure(&build_comp(2));
+    eprintln!("[p012-o3-A] card=({x},{y},{w},{h}) — 根 768");
+    assert!(y < 100.0, "少条目卡片应挂顶（实际 y={y}）");
+    // 场景 B（多条目 8 条，超 max_h=414）：卡片高度有界 + 不越 dock 线。
+    let (x, y, w, h) = measure(&build_comp(8));
+    eprintln!("[p012-o3-B] card=({x},{y},{w},{h})");
+    assert!(h < 560.0, "多条目卡片应被 max-h 约束（实际 h={h}）");
+    assert!(y + h <= 744.0, "卡片不得越过 dock 线 744（实际 y+h={}）", y + h);
+}
+
 /// Smoke: a plain row lays out both texts with non-zero bounds and no
 /// overlap. Proves the headless renderer + text-selector plumbing works in
 /// this environment before the bug-matrix assertions rely on it.
@@ -1862,4 +2241,145 @@ fn plan619_icon_box_follows_style_size() {
             "`{style}` 下图标盒宽期望 {want_box}（实测文本 x={x}）"
         );
     }
+/// PLAN-012 F2 侧栏压缩探针（临时诊断）：复刻 os-config 侧栏布局链——
+/// row(h-full) > aside(flex-col w-280) > [header(50), provider(h-full
+/// flex-col) > [search 行, Scrollable(flex-1 overflow-auto) > 长按钮列],
+/// picker 尾件]。短根 280×420 量位：provider 有界 ⇔ picker 尾件停在根内；
+/// 首件 Desktop 位贴顶可见。
+#[test]
+fn f2_sidebar_scroll_probe() {
+    let nav_btn = |label: &str| -> View<()> {
+        View::Button {
+            label: String::new(),
+            onclick: (),
+            style: Style::parse("nav-item flex w-full items-start justify-start gap-3 rounded-md px-3 py-[10px] text-sm text-left text-foreground select-none cursor-pointer transition-colors").ok(),
+            on_right_click: None,
+            content: Some(Box::new(View::Column {
+                children: vec![
+                    View::Text {
+                        content: label.to_string(),
+                        style: Style::parse("text-sm").ok(),
+                        selectable: false,
+                    },
+                    View::Text {
+                        content: "description line".to_string(),
+                        style: Style::parse("text-xs").ok(),
+                        selectable: false,
+                    },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+                on_right_click: None,
+            })),
+            disabled: false,
+        }
+    };
+    let picker_text = |label: &str| -> View<()> {
+        View::Text {
+            content: label.to_string(),
+            style: Style::parse("text-sm").ok(),
+            selectable: false,
+        }
+    };
+    // 真实形态：15 长项（含描述双行 ≈80px/项）+ 组，总高远超短根。
+    let scroll_items: Vec<View<()>> = (0..15)
+        .map(|i| {
+            nav_btn(&format!("NAV{} LONG LABEL DESCRIPTION", i * 57 % 100))
+        })
+        .collect();
+    let aside: View<()> = View::Column {
+        children: vec![
+            View::Container {
+                child: Box::new(View::Text {
+                    content: "HEADER".to_string(),
+                    style: Style::parse("text-sm").ok(),
+                    selectable: false,
+                }),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                style: Style::parse("h-[50px] shrink-0").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+            View::Column {
+                children: vec![
+                    View::Container {
+                        child: Box::new(View::Text {
+                            content: "SEARCH".to_string(),
+                            style: Style::parse("text-sm").ok(),
+                            selectable: false,
+                        }),
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
+                        style: Style::parse("px-2 pt-2").ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    },
+                    View::Scrollable {
+                        child: Box::new(View::Column {
+                            children: scroll_items,
+                            spacing: 0,
+                            padding: 0,
+                            style: Style::parse("nav-list flex-1 overflow-auto px-2 pt-2 flex flex-col").ok(),
+                            onclick: None,
+                            on_right_click: None,
+                        }),
+                        width: None,
+                        height: None,
+                        style: Style::parse("flex min-h-0 flex-1 flex-col gap-2 overflow-auto").ok(),
+                        auto_scroll: false,
+                        offset: None,
+                        on_scroll: None,
+                    },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("h-full w-full flex flex-col").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+            View::Text {
+                content: "PICKER".to_string(),
+                style: Style::parse("text-sm shrink-0").ok(),
+                selectable: false,
+            },
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("flex flex-col w-[280px] h-full shrink-0 bg-card border-r border-border").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let root: View<()> = View::Row {
+        children: vec![aside],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("h-full w-full flex flex-row").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = simulator(root.into_iced());
+    let (hx, hy, _hw, _hh) = bounds_of(&mut ui, "HEADER");
+    let (px, py, _pw, _ph) = bounds_of(&mut ui, "PICKER");
+    let (dx, dy, _dw, _dh) = bounds_of(&mut ui, "NAV0 LONG LABEL DESCRIPTION");
+    eprintln!("[f2sb] header=({hx},{hy}) picker=({px},{py}) nav0=({dx},{dy})");
+    // provider 有界 ⇔ PICKER 尾件贴根底（模拟器根 1024×768）。
+    assert!(
+        py <= 760.0,
+        "provider 应被 h-full 有界（PICKER 尾件 y={py} 超出根）——侧栏压缩根因"
+    );
+    // 首项 Desktop 贴顶可见（header 之后）——压缩缺陷形态 = 顶部项被
+    // 裁出可视带（用户实机：只有中段的 System Overview 可见）。
+    assert!(dy > hy && dy < 150.0, "NAV0 应贴顶可见（y={dy}）");
+    // 模拟器根 = 1024×768：PICKER 尾件应贴根底（≤768）——provider 被
+    // h-full 有界（无界形态 = 内容尾 ~1100 超根）。
+    assert!(py <= 760.0, "PICKER 尾件应在根内（y={py}）——provider 未有界");
 }

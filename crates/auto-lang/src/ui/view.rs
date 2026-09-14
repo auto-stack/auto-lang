@@ -827,6 +827,18 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// PLAN-012 W3: whole-desktop proportional preview — host composited
+    /// leaf (wallpaper base + that workspace's windows as snapshot tiles by
+    /// their layout rects; miss = placeholder + fallback icon). Data side
+    /// connects to wm + snapshot cache via `iced::workspace_preview`
+    /// (protocol zero field increment, SD-02). **convert_view_messages 显式
+    /// 臂随行**——PLAN-002 A1 教训（缺臂落 Empty 兜底）。
+    WorkspacePreview {
+        ws: String,
+        fallback_icon: String,
+        style: Option<Style>,
+    },
+
     /// CSS-Grid-like layout: `cols` equal-width columns. Decomposed into a
     /// column-of-rows at render time by the shared generic `build_grid`
     /// (Plan 319). This is the SINGLE source of truth for grid
@@ -2139,6 +2151,10 @@ impl<M: Clone + Debug> View<M> {
             },
             View::WindowThumbnail { wid, fallback_icon, style } => {
                 View::WindowThumbnail { wid, fallback_icon, style }
+            }
+            // PLAN-012 W3：显式臂（A1 fence——缺臂落 Empty 兜底）。
+            View::WorkspacePreview { ws, fallback_icon, style } => {
+                View::WorkspacePreview { ws, fallback_icon, style }
             }
             // on_seek 是「值 → 消息」的构造器，map 只换消息类型，故按同一
             // 回调重建（PointerMoveHandler 的闭包对 M 泛型，需包一层）。

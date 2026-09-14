@@ -3446,7 +3446,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             .width(iced::Length::Fixed(icon_px))
                             .height(iced::Length::Fixed(icon_px));
                         if text_label.is_empty() {
-                            icon_el.into()
+                            // PLAN-012 O1：icon-only 内容盒居中——iced 0.14 button
+                            // 布局 = layout::padded 后 content **左上放置**（无
+                            // center；iced_widget-0.14.2 button.rs layout/draw
+                            // 实读），固定尺寸按钮（dock h-10 w-10 等）的图标
+                            // 随主题 padding 偏左上（实机像素实测 dx=-2.7/
+                            // dy=-3.0 逻辑 px，与 padding=8 → 内容盒 24×24 推
+                            // 算精确吻合；headless 探针主题 padding 异值故未
+                            // 复现）。Fill×Fill + 双向 center 在固定盒内居中，
+                            // auto-size 盒退化为原尺寸（Shrink 语境 Fill=子尺
+                            // 寸）no-op。hicon 臂与 lucide 臂同修。
+                            iced::widget::container(icon_el)
+                                .width(iced::Length::Fill)
+                                .height(iced::Length::Fill)
+                                .center_x(iced::Length::Fill)
+                                .center_y(iced::Length::Fill)
+                                .into()
                         } else {
                             let mut tw = text(text_label.to_string());
                             if let Some(ref is) = iced_style {
@@ -3519,11 +3534,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if !has_lh {
                             tw = tw.line_height(iced::widget::text::LineHeight::Relative(1.0));
                         }
-                        // Icon-only (no text part): return the bare svg - the row with its
-                        // spacing(6) adds trailing space after the icon, skewing it ~3px
-                        // left of center inside square buttons (Plan 414 R14).
+                        // Icon-only (no text part): center the svg in the
+                        // button's content box — iced 0.14 button places content
+                        // top-left (no centering); fixed-size buttons showed the
+                        // icon offset up-left by the theme padding (PLAN-012 O1
+                        // 实机像素实测与机制推断互证，见 hicon 臂同款注释)。
+                        // Fill container centers in fixed boxes; no-op in
+                        // auto-size (Shrink) buttons.
                         if text_label.is_empty() {
-                            icon_el.into()
+                            iced::widget::container(icon_el)
+                                .width(iced::Length::Fill)
+                                .height(iced::Length::Fill)
+                                .center_x(iced::Length::Fill)
+                                .center_y(iced::Length::Fill)
+                                .into()
                         } else {
                             iced::widget::row!(icon_el, tw)
                                 .spacing(6)
@@ -4901,6 +4925,154 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     .into_iced()
                 }
+            }
+
+            // PLAN-012 W3：整桌面等比预览渲染臂——宿主合成（SD-02）。
+            // 分层 = 壁纸基色底（#hex 直铺 / None → 主色占位）→ 该分区
+            // 逐窗 snapshot tile（Contain 等比贴盒居中；SWR 续帧 + miss
+            // 占位+icon+request_capture 预抓，window_thumbnail 同款纪律）。
+            // tile 定位沿 title_menu 的 padding-left/top 形态（Fill 容器
+            // + 内层 Fixed 内容）。盒尺寸取 style Fixed 宽高（缺省 176×64
+            // ——shell 卡片消费形态），数据缺席 = 纯壁纸底。
+            AbstractView::WorkspacePreview { ws, fallback_icon, style } => {
+                use crate::ui::iced::workspace_preview as wp;
+                let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                let box_w = is
+                    .as_ref()
+                    .and_then(|is| is.width.clone())
+                    .and_then(|w| match w { IcedSize::Fixed(f) => Some(f), _ => None })
+                    .unwrap_or(176.0);
+                let box_h = is
+                    .as_ref()
+                    .and_then(|is| is.height.clone())
+                    .and_then(|h| match h { IcedSize::Fixed(f) => Some(f), _ => None })
+                    .unwrap_or(64.0);
+                let data = wp::current();
+                let border_radius =
+                    is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
+                let mut layers: Vec<iced::Element<'static, M>> = Vec::new();
+                // ① 壁纸基色底（None → 主色占位）。
+                let bg = data
+                    .as_ref()
+                    .and_then(|d| d.wallpaper)
+                    .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                    .or_else(|| {
+                        crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                            &crate::ui::style::Color::Primary,
+                        )
+                        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                    })
+                    .unwrap_or(iced::Color::from_rgb8(0x33, 0x33, 0x44));
+                let bg_style =
+                    move |_t: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(bg)),
+                        ..Default::default()
+                    };
+                layers.push(
+                    iced::widget::container(iced::widget::Space::new())
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill)
+                        .style(bg_style)
+                        .into(),
+                );
+                if let Some(d) = data.as_ref() {
+                    let fallback_icon = if fallback_icon.is_empty() {
+                        "app-window".to_string()
+                    } else {
+                        fallback_icon.clone()
+                    };
+                    if let Some(tiles) = d.workspaces.get(ws.as_str()) {
+                        for t in tiles {
+                            let (tx, ty, tw, th) =
+                                wp::tile_rect(t, d.usable, box_w, box_h);
+                            if tw <= 0.5 || th <= 0.5 {
+                                continue;
+                            }
+                            let wid_opt = Some(t.wid).map(crate::ui::session::Wid);
+                            let snap = wid_opt
+                                .and_then(crate::ui::iced::snapshot::snapshot_window_stale);
+                            let inner: iced::Element<'static, M> = if let Some((snap, fresh)) =
+                                snap
+                            {
+                                if !fresh {
+                                    if let Some(w) = wid_opt {
+                                        crate::ui::iced::snapshot::request_capture(w);
+                                    }
+                                }
+                                iced::widget::image(iced::widget::image::Handle::from_rgba(
+                                    snap.w, snap.h, snap.rgba,
+                                ))
+                                .filter_method(iced::widget::image::FilterMethod::Nearest)
+                                .width(iced::Length::Fixed(tw))
+                                .height(iced::Length::Fixed(th))
+                                .into()
+                            } else {
+                                if let Some(w) = wid_opt {
+                                    crate::ui::iced::snapshot::request_capture(w);
+                                }
+                                // miss = 占位块 + fallback icon 居中。
+                                let ph = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                    &crate::ui::style::Color::Surface,
+                                )
+                                .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                                .unwrap_or(iced::Color::from_rgb8(0x44, 0x44, 0x55));
+                                let icon_src = format!("lucide:{fallback_icon}");
+                                let icon_style = crate::ui::style::Style::parse(
+                                    "w-4 h-4 text-muted-foreground",
+                                )
+                                .ok();
+                                let icon_el = AbstractView::<M>::Image {
+                                    src: icon_src,
+                                    style: icon_style,
+                                }
+                                .into_iced();
+                                iced::widget::container(icon_el)
+                                    .width(iced::Length::Fixed(tw))
+                                    .height(iced::Length::Fixed(th))
+                                    .center_x(iced::Length::Fixed(tw))
+                                    .center_y(iced::Length::Fixed(th))
+                                    .style(move |_t| iced::widget::container::Style {
+                                        background: Some(iced::Background::Color(ph)),
+                                        ..Default::default()
+                                    })
+                                    .into()
+                            };
+                            let (plx, ply) = (tx.max(0.0), ty.max(0.0));
+                            layers.push(
+                                iced::widget::container(inner)
+                                    .width(iced::Length::Fill)
+                                    .height(iced::Length::Fill)
+                                    .padding(iced::Padding {
+                                        top: ply,
+                                        bottom: 0.0,
+                                        left: plx,
+                                        right: 0.0,
+                                    })
+                                    .into(),
+                            );
+                        }
+                    }
+                }
+                let root = iced::widget::stack(layers)
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Shrink);
+                let mut cont = iced::widget::container(root)
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Shrink);
+                if let Some(w) = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length)) {
+                    cont = cont.width(w);
+                }
+                if let Some(h) = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length)) {
+                    cont = cont.height(h);
+                }
+                cont.style(move |_t| iced::widget::container::Style {
+                    border: iced::Border {
+                        radius: border_radius.min(9999.0).into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .into()
             }
 
             AbstractView::Image { src, style } => {
@@ -6434,6 +6606,12 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // 422/496 MouseArea 同坑第四例)。
         AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
             AbstractView::WindowThumbnail { wid, fallback_icon, style }
+        }
+
+        // PLAN-012 W3：显式臂——A1 fence（缺臂落 Empty 兜底，PLAN-002
+        // 同坑第五例防线）。
+        AbstractView::WorkspacePreview { ws, fallback_icon, style } => {
+            AbstractView::WorkspacePreview { ws, fallback_icon, style }
         }
 
         // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
@@ -8722,6 +8900,7 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
             ats.push(auto_val::Value::Str(n.at.clone().into()));
         }
     }
+    let max_h = panel_max_h(state);
     let Some(app) = state.apps.get_mut(&panel) else {
         return;
     };
@@ -8729,10 +8908,34 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
     let _ = app.component.write_state_vec("note_kinds", kinds);
     let _ = app.component.write_state_vec("note_msgs", msgs);
     let _ = app.component.write_state_vec("note_ats", ats);
+    let _ = app
+        .component
+        .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
     if let Err(err) = app.component.bridge_mut().call_handler("RebuildNotes", &[]) {
         eprintln!("[session] notification RebuildNotes failed: {err}");
     }
     *app.state.view_dirty.borrow_mut() = true;
+}
+
+/// PLAN-012 O3：通知面板几何注入（px）——`(panel_h, list_max_h)`。
+/// panel_h = 面板根列显式高（视口 - dock 预留）：真实链中 Stack 子层的
+/// `h-full`（Fill）约束传递失效（headless 复刻全链通过、实机 mt-auto 填
+/// 充条塌缩——iced 0.14.2 真实进程布局差异，O1 同族），显式像素高不再
+/// 依赖约束传递，mt-auto 贴底在任何环境下成立。list_max_h = panel_h -
+/// 底垫(60) - 顶 gap(24，用户复验：首版 124 扣减顶 gap 仅 ~10px 感知
+/// 贴顶) - 标题行(~52) - 余量(12)：条目多时列表滚动，卡片恒有界
+///（实机 6 条 ~110px 条目 ≈ 790px > 744 可用 → 卡片贴顶，用户截图复现；
+/// 首版仅扣 dock+gap 得 728 仍贴顶——扣减须覆盖卡片全部非列表部分）。
+/// 注入点 = 召唤/活更新（resize 开着面板时留旧值，重开生效——v1 可接受）。
+fn panel_max_h(state: &crate::ui::session::DesktopSession) -> f32 {
+    let viewport = state.host_viewport();
+    let reserved = desktop_dock_edges(&state.desktop.config);
+    // 紧凑面板（用户复验 2026-09-13：满高卡+小顶缝感知仍为"贴顶"）——
+    // 列表上限 = 可用高（视口 - dock）55%（≈4 条目 + 滚动），卡片恒为
+    // 右下角紧凑卡；锚定在装配层 container 右下 align（本文件通知层推
+    // 臂），.at 内 mt-auto/根高类在真实 Stack 子层不可依赖（复验三连
+    // 贴顶 0 实证），全部退役。
+    ((viewport.height - reserved.bottom) * 0.55).clamp(280.0, 560.0)
 }
 
 /// Plan 463 T4：执行 DesktopBus 命令序列（T1 报告 §5）。返回 true = 请求
@@ -8780,7 +8983,15 @@ fn summon_launcher(
     // 注入形态 = 平行字符串列表（Obj 数组的 VM handler 字段读失效——
     // B12 同族，`injected_obj_array_for_field_read` 探针钉死 "0,0"；
     // 字符串列表下标读保真）。ln/lt 预小写由宿主供给。
-    let entries = state.desktop.registry_entries.clone();
+    // PLAN-012 W6：launcher 自身不入列（入册规则同 :11609 发现链镜像），
+    // `launcher_entry` 发现链不受影响（先取 entry 再过滤）。
+    let entries = state
+        .desktop
+        .registry_entries
+        .iter()
+        .filter(|e| !(e.id == "launcher" || e.id.ends_with("-launcher")))
+        .cloned()
+        .collect::<Vec<_>>();
     let mut names: Vec<auto_val::Value> = Vec::new();
     let mut titles: Vec<auto_val::Value> = Vec::new();
     let mut icons: Vec<auto_val::Value> = Vec::new();
@@ -8931,7 +9142,14 @@ fn summon_switcher(
             .map(|e| e.icon.clone())
             .unwrap_or_else(|| "app-window".to_string());
         icons.push(auto_val::Value::Str(icon.into()));
-        mru_objs.push(projection_win_entry(&state.desktop.registry_entries, v, focused, ""));
+        mru_objs.push(projection_win_entry(
+            &state.desktop.registry_entries,
+            v,
+            focused,
+            "",
+            false,
+            false,
+        ));
     }
     if let Some(app) = state.apps.get_mut(&switcher) {
         let _ = app.component.write_state_vec("mru_wids", wids);
@@ -8998,6 +9216,7 @@ fn toggle_notification_center(
             ats.push(auto_val::Value::Str(n.at.clone().into()));
         }
     }
+    let max_h = panel_max_h(state);
     if let Some(app) = state.apps.get_mut(&panel) {
         let _ = app.component.write_state_vec("note_ids", ids);
         let _ = app.component.write_state_vec("note_kinds", kinds);
@@ -9005,6 +9224,9 @@ fn toggle_notification_center(
         let _ = app.component.write_state_vec("note_ats", ats);
         let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
         // 宿主写状态不触发 handler——显式重建 rows + 刷 view。
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildNotes", &[]) {
             eprintln!("[session] notification RebuildNotes failed: {err}");
@@ -9033,6 +9255,23 @@ fn execute_open_settings(state: &mut crate::ui::session::DesktopSession) {
             .find(|(_, v)| v.registry_id.as_deref() == Some(OSCONFIG_APP_ID))
             .map(|(wid, v)| (*wid, v.workspace))
         {
+            // PLAN-012 F2（用户裁定）：二态语义补全——窗口在场且可见时
+            // 再拨 = 关闭（走 W1 close→hide 拦截臂，重开瞬时）；隐藏/异
+            // 分区才聚焦拉起。
+            let visible_and_here = host.wm.current_workspace == ws
+                && host
+                    .wm
+                    .wins
+                    .get(&wid)
+                    .map(|v| !v.hidden.get() && !v.minimized.get())
+                    .unwrap_or(false);
+            if visible_and_here {
+                let _ = execute_desktop_commands(
+                    state,
+                    vec![crate::ui::session::DesktopCommand::CloseWindow(wid)],
+                );
+                return;
+            }
             let current = state
                 .host
                 .as_ref()
@@ -9215,6 +9454,44 @@ fn execute_desktop_commands(
             }
             DC::LaunchApp(name) => execute_launch_app(state, &name),
             DC::CloseWindow(wid) => {
+                // PLAN-012 W1：os-config close→hide 拦截臂——设置窗"×"不改
+                // 换成常驻隐藏（hidden 置位：投影/命中/推层全排除，"真关了"
+                // 的感知），组件与编译产物保留 → 重开走 execute_open_settings
+                // 聚焦臂（unhide，零编译零探活）。Q1 定案：方案 a（真 hidden
+                // 字段）——win_min 形态任务栏保留条目且 __wm_running 持续含
+                // os-config，W7 齿轮高亮语义断裂（AC-12）。
+                let is_osconfig = state.host.as_ref().is_some_and(|h| {
+                    h.wm
+                        .wins
+                        .get(&wid)
+                        .and_then(|v| v.registry_id.as_deref())
+                        == Some(OSCONFIG_APP_ID)
+                });
+                if is_osconfig {
+                    if let Some(host) = state.host.as_mut() {
+                        if let Some(v) = host.wm.wins.get(&wid) {
+                            v.hidden.set(true);
+                        }
+                        if host.wm.focused == Some(wid) {
+                            // 焦点让渡：分区栈顶下一窗（同 hit 语义找非隐藏窗）。
+                            let next = host
+                                .wm
+                                .z_order
+                                .iter()
+                                .rev()
+                                .copied()
+                                .find(|w| {
+                                    *w != wid
+                                        && host.wm.wins.get(w).is_some_and(|v| {
+                                            !v.minimized.get() && !v.hidden.get()
+                                        })
+                                });
+                            host.wm.focused = next;
+                        }
+                    }
+                    crate::ui::iced::snapshot::invalidate(wid);
+                    return (false, tasks);
+                }
                 // Plan 497 G3：关闭失效（窗口回收，缩略随撤）。
                 crate::ui::iced::snapshot::invalidate(wid);
                 if let Some(app) = state.wm_remove_win(wid) {
@@ -9246,6 +9523,22 @@ fn execute_desktop_commands(
             DC::SetTransparency(level) => execute_set_transparency(state, &level),
             DC::SetNotesEnabled(on) => execute_set_notes_enabled(state, on),
             DC::SetDockPinned(csv) => execute_set_dock_pinned(state, &csv),
+            // PLAN-012 W4 协议 v1.6：单枚固定/取消固定。
+            DC::DockPin(id) => execute_dock_pin(state, &id, true),
+            DC::DockUnpin(id) => execute_dock_pin(state, &id, false),
+            // PLAN-012 W5：拖拽落子后的格子重注入（storage 已由 shell 写）。
+            DC::RefreshDesktopIcons => inject_desktop_surface(state),
+            // PLAN-012 F2 走查：拖拽落格双动词。
+            DC::DesktopIconDrop(dragged, target) => {
+                execute_desktop_icon_drop(state, &dragged, target)
+            }
+            DC::DesktopIconDropAt(dragged, xy) => {
+                execute_desktop_icon_drop_at(state, &dragged, &xy)
+            }
+            // PLAN-012 F2 走查：拖拽开始（宿主置位；__mouse_released 臂落格）。
+            DC::DesktopIconDragStart(id) => {
+                state.desktop.icon_drag = Some(id);
+            }
             DC::SetWallpapersDir(dir) => execute_set_wallpapers_dir(state, &dir),
             // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
             // stale）。
@@ -9444,25 +9737,43 @@ fn execute_set_notes_enabled(state: &mut crate::ui::session::DesktopSession, on:
 }
 
 /// Plan 540 T3：pinned 写臂——config 落盘 + 会话域同步 + shell 投影热同步
-/// （`inject_dock_pinned` 同格式 {id,icon} 注入；空表 = 复位默认三枚，
-/// 472 load 缺席回退同语义）。
+/// （`inject_dock_pinned` 同格式 {id,icon} 注入。PLAN-012 W4：空表 = 空表
+/// ——缺省三枚回退语义退役，显式空即空，parse/load 同步改）。
 fn execute_set_dock_pinned(state: &mut crate::ui::session::DesktopSession, csv: &str) {
     let list: Vec<String> = csv
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
-    state.desktop.config.dock_pinned = if list.is_empty() {
-        crate::ui::desktop_config::DEFAULT_DOCK_PINNED
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
-    } else {
-        list
-    };
+    state.desktop.config.dock_pinned = list;
     let _ = crate::ui::desktop_config::save(&state.desktop.config);
     state.desktop.dock_pinned = state.desktop.config.dock_pinned.clone();
     inject_dock_pinned(state);
+}
+
+/// PLAN-012 W4 协议 v1.6：dock 单枚固定/取消固定执行臂——Vec 增删去重
+/// （pin 已在表 = 幂等保持；unpin 不在表 = 幂等跳过）→ config 落盘 →
+/// 会话域同步 + 投影热同步（Obj 数组与 csv 派生面都由同一会话域事实源
+/// 刷新，sync_shell_windows 指纹差分拾取）。
+fn execute_dock_pin(state: &mut crate::ui::session::DesktopSession, id: &str, pin: bool) {
+    if id.is_empty() {
+        return;
+    }
+    let mut list = state.desktop.config.dock_pinned.clone();
+    if pin {
+        if !list.iter().any(|e| e == id) {
+            list.push(id.to_string());
+        }
+    } else if !list.iter().any(|e| e == id) {
+        return;
+    } else {
+        list.retain(|e| e != id);
+    }
+    state.desktop.config.dock_pinned = list;
+    let _ = crate::ui::desktop_config::save(&state.desktop.config);
+    state.desktop.dock_pinned = state.desktop.config.dock_pinned.clone();
+    inject_dock_pinned(state);
+    inject_desktop_surface(state);
 }
 
 /// Plan 551 T6:外写热应用轮询——os-config(或任意写方)经 daemon 改
@@ -10684,9 +10995,14 @@ fn load_hotkey_overrides() -> Vec<(String, String)> {
 /// Plan 472 T5：把 pinned 表解析为 {id,icon} Obj 数组注入 shell
 /// `__dock_pinned`（icon 自注册表实时查，缺省回退 "app-window"）。boot 期
 /// registry scan 之后调用；pinned 未运行条目也入列（dock 固定区常驻）。
-fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
-    let Some(shell) = state.desktop.shell_app else { return };
-    let pinned: Vec<auto_val::Value> = state
+/// PLAN-012 O2：`__dock_pinned` 条目构建（{id,icon,running}）——
+/// `running` = 该 app 当前有非隐藏运行窗（"1"/""），pinned 图标灰条判据
+/// （原 shell 侧 `__wm_running.contains(...)` 为 view 条件方法调用死点，
+/// O2 实机探针定性）。inject_dock_pinned（pin/unpin 即时臂）与
+/// sync_shell_windows（fp 差分刷新臂，窗开合即刷新）共用本构建，两写者
+/// 同形幂等。
+fn dock_pinned_objs(state: &crate::ui::session::DesktopSession) -> Vec<auto_val::Value> {
+    state
         .desktop
         .dock_pinned
         .iter()
@@ -10698,12 +11014,27 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
                 .find(|e| &e.id == id)
                 .map(|e| e.icon.clone())
                 .unwrap_or_else(|| "app-window".to_string());
+            let running = state
+                .host
+                .as_ref()
+                .map(|host| {
+                    host.wm.wins.values().any(|v| {
+                        !v.hidden.get() && v.registry_id.as_deref() == Some(id.as_str())
+                    })
+                })
+                .unwrap_or(false);
             auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("id", auto_val::Value::Str(id.clone().into())),
                 ("icon", auto_val::Value::Str(icon.into())),
+                ("running", auto_val::Value::Str(if running { "1" } else { "".into() }.into())),
             ])))
         })
-        .collect();
+        .collect()
+}
+
+fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
+    let Some(shell) = state.desktop.shell_app else { return };
+    let pinned = dock_pinned_objs(state);
     let Some(app) = state.apps.get_mut(&shell) else { return };
     let _ = app.component.write_state_vec("__dock_pinned", pinned);
     *app.state.view_dirty.borrow_mut() = true;
@@ -10787,6 +11118,120 @@ fn load_desktop_id_list(key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// PLAN-012 W5 T11：桌面图标格子分配——storage `shell.desktop.positions`
+/// （追加式 "id=c,r,..." csv，**last-wins** 解析——shell 落子为追加写）。
+/// 已定位图标占据其 (c,r)；未定位图标按既有 order 行主序填充首个空格；
+/// 输出行主序全格子表（空格 = spacer 占位）。返回 (cells, ids, cs, rs)：
+/// cells = Obj 数组（view 渲染），ids/cs/rs = 平行字符串列表（handler
+/// 下标读——B12 规避，IconDropOn 交换换位数据面）。
+fn desktop_icon_cells(
+    order: &[(String, &str)],
+    hidden: &[String],
+    registry: &[crate::ui::app_registry::AppRegistryEntry],
+) -> (
+    Vec<auto_val::Value>,
+    Vec<String>,
+    Vec<auto_val::Value>,
+    Vec<auto_val::Value>,
+) {
+    const COLS: usize = 8;
+    let visible: Vec<&(String, &str)> =
+        order.iter().filter(|(id, _)| !hidden.contains(id)).collect();
+    let positions = load_desktop_positions();
+    // ① 已定位：last-wins 解析的表中取 (c,r)。
+    let mut placed: Vec<(usize, usize, &&(String, &str))> = Vec::new();
+    let mut free: Vec<&&(String, &str)> = Vec::new();
+    for e in &visible {
+        match positions.iter().rev().find(|(id, _)| *id == e.0) {
+            Some((_, (c, r))) => placed.push((*c, *r, e)),
+            None => free.push(e),
+        }
+    }
+    // ② 未定位：行主序填首个空格（跳过已占位）。
+    let mut taken: std::collections::BTreeSet<usize> = placed
+        .iter()
+        .map(|&(c, r, _)| r * COLS + c)
+        .collect();
+    for e in &free {
+        let mut slot = 0usize;
+        while taken.contains(&slot) {
+            slot += 1;
+        }
+        taken.insert(slot);
+        placed.push((slot % COLS, slot / COLS, e));
+    }
+    // ③ 行主序输出（spacer 填空格）。
+    placed.sort_by_key(|&(c, r, _)| (r, c));
+    let mut cells = Vec::new();
+    let mut ids = Vec::new();
+    let mut cs = Vec::new();
+    let mut rs = Vec::new();
+    let mut cursor = 0usize;
+    for &(c, r, e) in &placed {
+        let linear = r * COLS + c;
+        let id = e.0.clone();
+        let reg = registry.iter().find(|e2| e2.id == id);
+        let icon = reg
+            .map(|e2| e2.icon.clone())
+            .unwrap_or_else(|| "app-window".to_string());
+        let label = reg
+            .map(|e2| e2.title.clone())
+            .unwrap_or_else(|| id.clone());
+        let src = e.1.to_string();
+        let color = crate::ui::app_registry::badge_color_for(&id);
+        while cursor < linear {
+            cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+                ("spacer", auto_val::Value::str("1")),
+                ("c", auto_val::Value::str((cursor % COLS).to_string())),
+                ("r", auto_val::Value::str((cursor / COLS).to_string())),
+            ]))));
+            ids.push(String::new());
+            cs.push(auto_val::Value::str((cursor % COLS).to_string()));
+            rs.push(auto_val::Value::str((cursor / COLS).to_string()));
+            cursor += 1;
+        }
+        cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+            ("id", auto_val::Value::Str(id.clone().into())),
+            ("icon", auto_val::Value::Str(icon.into())),
+            ("label", auto_val::Value::Str(label.into())),
+            ("src", auto_val::Value::Str(src.into())),
+            ("color", auto_val::Value::Str(color.into())),
+            ("c", auto_val::Value::str(c.to_string())),
+            ("r", auto_val::Value::str(r.to_string())),
+        ]))));
+        ids.push(id);
+        cs.push(auto_val::Value::str(c.to_string()));
+        rs.push(auto_val::Value::str(r.to_string()));
+        cursor = linear + 1;
+    }
+    (cells, ids, cs, rs)
+}
+
+/// `shell.desktop.positions` 追加式 csv 解析——"id=c,r" 段（逗号分隔），
+/// 同 id 后写胜（shell 落子为追加写，末段即最新位）。
+fn load_desktop_positions() -> Vec<(String, (usize, usize))> {
+    let raw = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.positions")
+        .unwrap_or_default();
+    let mut out: Vec<(String, (usize, usize))> = Vec::new();
+    for seg in raw.split(',') {
+        let seg = seg.trim();
+        if seg.is_empty() {
+            continue;
+        }
+        let Some((id, pos)) = seg.split_once('=') else {
+            continue;
+        };
+        let Some((c, r)) = pos.split_once(':') else {
+            continue;
+        };
+        if let (Ok(c), Ok(r)) = (c.trim().parse::<usize>(), r.trim().parse::<usize>()) {
+            out.retain(|(existing, _)| existing != id);
+            out.push((id.trim().to_string(), (c, r)));
+        }
+    }
+    out
+}
+
 /// Plan 496 M5：桌面本体投影注入——pinned ∪ 自定义条目合并去重
 /// （pinned 先列，custom 重叠去重接排；hidden 两者通用排除），条目
 /// {id,icon,label,src,color}（icon/label 注册表解析，缺省回退 app-window/id；
@@ -10794,38 +11239,217 @@ fn load_desktop_id_list(key: &str) -> Vec<String> {
 /// `__desktop_bg`（#hex → "bg-[#hex]" 根 bg 实铺片段；图片路径 → ""，由
 /// 宿主壁纸图层铺底——DSL 无重叠布局）+ `__desktop_hidden`（移除臂
 /// `shell.desktop.hidden` 续写底稿）。boot 期 inject_dock_pinned 邻位。
+/// PLAN-012 F2 走查：拖拽落格目标形态——图标 id（落到其所在格）或像素
+/// 换算后的线性格。
+enum DropTarget {
+    Icon(String),
+    Slot(usize),
+}
+
+/// 图标 id 未命中（竞态：目标已被移除）时的兜底格 = 表尾。
+fn target_slot_default() -> usize {
+    usize::MAX
+}
+
+/// PLAN-012 F2 走查：拖拽落格宿主执行——共用落格计算：dragged → 目标
+/// 线性格；目标被其他图标占据时占位者**挤到下一空格**（行主序先下后右
+/// 列，用户裁定 UX）；重写 `shell.desktop.positions`（全量 last-wins csv）
+/// + `inject_desktop_surface` 重注入。返回是否发生变更。
+fn desktop_icon_apply_drop(
+    state: &mut crate::ui::session::DesktopSession,
+    dragged: &str,
+    target: DropTarget,
+) -> bool {
+    const COLS: usize = 8;
+    let hidden = load_desktop_id_list("shell.desktop.hidden");
+    let customs = load_desktop_id_list("shell.desktop.icons");
+    let visible: Vec<String> = customs.into_iter().filter(|id| !hidden.contains(id)).collect();
+    if !visible.iter().any(|id| id == dragged) {
+        return false;
+    }
+    let positions = load_desktop_positions();
+    let cell_of = |id: &str| -> Option<(usize, usize)> {
+        positions
+            .iter()
+            .rev()
+            .find(|(eid, _)| eid == id)
+            .map(|(_, c)| *c)
+    };
+    // 现行有效占位（无位者按行主序补位——与 desktop_icon_cells 同口径）。
+    let mut taken: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+    let mut cells: Vec<(String, usize)> = Vec::new();
+    for id in &visible {
+        let slot = match cell_of(id) {
+            Some((c, r)) => r * COLS + c,
+            None => {
+                let mut s = 0usize;
+                while taken.contains(&s) {
+                    s += 1;
+                }
+                taken.insert(s);
+                cells.push((id.clone(), s));
+                continue;
+            }
+        };
+        taken.insert(slot);
+        cells.push((id.clone(), slot));
+    }
+    let target_slot = match target {
+        DropTarget::Slot(s) => s,
+        DropTarget::Icon(tid) => cells
+            .iter()
+            .find(|(id, _)| id == &tid)
+            .map(|(_, s)| *s)
+            .unwrap_or_else(|| {
+                // 兜底 = 现有最大格 + 1（追加到表尾，而非 usize::MAX）。
+                cells.iter().map(|(_, s)| *s).max().map_or(0, |m| m + 1)
+            }),
+    };
+    let dragged_slot = cells
+        .iter()
+        .find(|(id, _)| id == dragged)
+        .map(|(_, s)| *s)
+        .unwrap_or(target_slot);
+    // 目标被其他图标占据 → 占位者挤到下一空格（target+1 起行主序）。
+    let occupant = cells
+        .iter()
+        .find(|(id, slot)| *id != dragged && *slot == target_slot)
+        .map(|(id, _)| id.clone());
+    let mut new_cells: Vec<(String, usize)> = cells
+        .into_iter()
+        .map(|(id, slot)| {
+            if id == dragged {
+                (id, target_slot)
+            } else {
+                (id, slot)
+            }
+        })
+        .collect();
+    if let Some(oid) = &occupant {
+        let mut free = target_slot + 1;
+        loop {
+            let taken_by_other = new_cells
+                .iter()
+                .any(|(id, slot)| id != oid && *slot as usize == free);
+            if !taken_by_other {
+                break;
+            }
+            free += 1;
+        }
+        for (id, slot) in new_cells.iter_mut() {
+            if id == oid {
+                *slot = free;
+            }
+        }
+    }
+    // 全量 positions 重写（last-wins csv 直接生成终态，非追加）。
+    let mut csv = String::new();
+    for (id, slot) in &new_cells {
+        let c = slot % COLS;
+        let r = slot / COLS;
+        csv.push_str(&format!("{id}={c}:{r},"));
+    }
+    crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.positions", csv);
+    true
+}
+
+fn execute_desktop_icon_drop(
+    state: &mut crate::ui::session::DesktopSession,
+    dragged: &str,
+    target: String,
+) {
+    let changed = desktop_icon_apply_drop(state, dragged, DropTarget::Icon(target));
+    if changed {
+        inject_desktop_surface(state);
+    }
+    clear_desktop_drag_visual(state);
+}
+
+/// PLAN-012 F2 走查：松手落格（光标形态）——光标取 wm.last_cursor
+/// （desktop 本地坐标），格换算 + 落格 + 清 shell 视觉拖拽态。
+fn execute_desktop_icon_drop_at_cursor(
+    state: &mut crate::ui::session::DesktopSession,
+    dragged: &str,
+) {
+    let (cx, cy) = state
+        .host
+        .as_ref()
+        .map(|h| {
+            let p = h.wm.last_cursor.get();
+            (p.x, p.y)
+        })
+        .unwrap_or((f32::NEG_INFINITY, f32::NEG_INFINITY));
+    execute_desktop_icon_drop_at(state, dragged, &format!("{cx},{cy}"));
+}
+
+fn execute_desktop_icon_drop_at(
+    state: &mut crate::ui::session::DesktopSession,
+    dragged: &str,
+    xy: &str,
+) {
+    // x,y → 线性格换算在闭包内完成（解析失败 = no-op）。
+    // desktop 本地像素 → 格：面根 p-3(12px) + 格 80 + gap 8 → 88px 栅距。
+    let changed = (|| -> Option<bool> {
+        let (xs, ys) = xy.split_once(',')?;
+        let x = xs.trim().parse::<f32>().ok()?;
+        let y = ys.trim().parse::<f32>().ok()?;
+        const ORIGIN: f32 = 12.0;
+        const PITCH: f32 = 88.0;
+        let col = (((x - ORIGIN) / PITCH).floor() as i32).clamp(0, 7) as usize;
+        let row = (((y - ORIGIN) / PITCH).floor() as i32).clamp(0, 96) as usize;
+        Some(desktop_icon_apply_drop(
+            state,
+            dragged,
+            DropTarget::Slot(row * 8 + col),
+        ))
+    })()
+    .unwrap_or(false);
+    if changed {
+        inject_desktop_surface(state);
+    }
+    clear_desktop_drag_visual(state);
+}
+
+/// PLAN-012 F2 走查：清桌面面视觉拖拽态（落格完成后调用）。
+fn clear_desktop_drag_visual(state: &mut crate::ui::session::DesktopSession) {
+    if let Some(surface) = state.desktop.desktop_app {
+        if let Some(app) = state.apps.get_mut(&surface) {
+            let _ = app
+                .component
+                .write_state("drag_id", auto_val::Value::str(""));
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+    }
+}
+
 fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
     let Some(surface) = state.desktop.desktop_app else { return };
     let hidden = load_desktop_id_list("shell.desktop.hidden");
     let customs = load_desktop_id_list("shell.desktop.icons");
-    let mut order: Vec<(String, &str)> = state
-        .desktop
-        .dock_pinned
+    // PLAN-012 F2（用户裁定）：dock 固定与桌面快捷方式**分离**——桌面图标
+    // = 仅自定义列表（shell.desktop.icons − hidden），pinned 不再并入
+    // （固定到任务栏 ≠ 发送到桌面，两件事）。
+    let order: Vec<(String, &str)> = customs
         .iter()
-        .map(|id| (id.clone(), "pinned"))
+        .map(|id| (id.clone(), "custom"))
         .collect();
-    for id in customs {
-        if !order.iter().any(|(x, _)| *x == id) {
-            order.push((id, "custom"));
-        }
-    }
     let entries: Vec<auto_val::Value> = order
-        .into_iter()
+        .iter()
         .filter(|(id, _)| !hidden.contains(id))
         .map(|(id, src)| {
-            let reg = state.desktop.registry_entries.iter().find(|e| e.id == id);
+            let reg = state.desktop.registry_entries.iter().find(|e| &e.id == id);
             let icon = reg
                 .map(|e| e.icon.clone())
                 .unwrap_or_else(|| "app-window".to_string());
             let label = reg
                 .map(|e| e.title.clone())
                 .unwrap_or_else(|| id.clone());
-            let color = crate::ui::app_registry::badge_color_for(&id);
+            let color = crate::ui::app_registry::badge_color_for(id);
             auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
-                ("id", auto_val::Value::Str(id.into())),
+                ("id", auto_val::Value::Str(id.clone().into())),
                 ("icon", auto_val::Value::Str(icon.into())),
                 ("label", auto_val::Value::Str(label.into())),
-                ("src", auto_val::Value::Str(src.into())),
+                ("src", auto_val::Value::Str((*src).into())),
                 ("color", auto_val::Value::Str(color.into())),
             ])))
         })
@@ -10836,8 +11460,26 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
         String::new()
     };
     let hidden_str = hidden.join(",");
+    // PLAN-012 W5：格子分配（拖拽换位数据面——cells Obj 数组供 view 渲染，
+    // ids/cs/rs 平行字符串列表供 handler 下标读，B12 规避）。
+    let (cells, cell_ids, cell_cs, cell_rs) =
+        desktop_icon_cells(&order, &hidden, &state.desktop.registry_entries);
     let Some(app) = state.apps.get_mut(&surface) else { return };
     let _ = app.component.write_state_vec("__desktop_icons", entries);
+    let _ = app.component.write_state_vec("__desktop_cells", cells);
+    let _ = app.component.write_state_vec(
+        "__desktop_cell_ids",
+        cell_ids
+            .into_iter()
+            .map(|s| auto_val::Value::Str(s.into()))
+            .collect(),
+    );
+    let _ = app
+        .component
+        .write_state_vec("__desktop_cell_cs", cell_cs);
+    let _ = app
+        .component
+        .write_state_vec("__desktop_cell_rs", cell_rs);
     let _ = app.component.write_state("__desktop_bg", auto_val::Value::Str(bg.into()));
     let _ = app.component.write_state(
         "__desktop_hidden",
@@ -10899,11 +11541,17 @@ fn desktop_wallpaper_scrim<M: 'static>() -> iced::Element<'static, M> {
 /// entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与条件渲染
 /// 都走字符串语义（dashboard/041 对象列表同型）。icon 自注册表实时查
 /// （registry_entries 唯一事实源；未登记/无条目回退 "app-window"）。
+/// PLAN-012 O2：`pinned`/`dup_app` 宿主派生判据面（"1"/""）——dock 去重
+/// 与"同类 app 共享一图标"在 .at view 条件侧无 `contains`/聚合原语
+///（eval_condition_with 方法调用臂缺失，T9 发现②同族：静默塌缩恒 false，
+/// 实机 dock 双图标实证），故由宿主单点派生、shell 等式消费。
 fn projection_win_entry(
     registry_entries: &[crate::ui::app_registry::AppRegistryEntry],
     v: &crate::ui::session::VWinState,
     focused: bool,
     pager: &str,
+    pinned: bool,
+    dup_app: bool,
 ) -> auto_val::Value {
     let icon = v
         .registry_id
@@ -10923,6 +11571,10 @@ fn projection_win_entry(
         // Plan 505 B2 v1.5：pager 派生面——本窗是否属其分区缩略前 4
         //（"1"/""；mru/native 条目恒 ""，判据统一不缺字段）。
         ("pager", auto_val::Value::Str(pager.into())),
+        // PLAN-012 O2：本窗 app 已固定 / 同 app 已有更前位窗（z_order 序
+        // 首见之外）——dock 条目跳过判据（.at 等式消费）。
+        ("pinned", auto_val::Value::Str(if pinned { "1" } else { "".into() }.into())),
+        ("dup_app", auto_val::Value::Str(if dup_app { "1" } else { "".into() }.into())),
     ])))
 }
 
@@ -11058,6 +11710,38 @@ fn boot_entry_matches(src_norm: &str, entry_norm: &str) -> bool {
 /// "N{slot}:{focused},"。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
+    // PLAN-012 O1：primary=特权 shell（boot 分配序）后，MCP 截图守卫与
+    // 响应式布局读 shell_fields.window_size——层 App 无窗事件可靠喂给
+    //（实机 MCP 截图被零尺寸守卫拒死），此处随 tick 镜像宿主 viewport
+    //（变化才写，稳态零成本）。借序：须在 host 不可变借用之前。
+    // PLAN-012 O3：镜像面扩至全部特权层字段（launcher/switcher/
+    // notification）——通知面板根高/max-h 类在零尺寸上下文解析失真
+    //（实机 mt-auto/根高塌缩、贴顶复验三连），根因与截图守卫同源。
+    {
+        let vp = state.host_viewport();
+        if let Some(host_mut) = state.host.as_mut() {
+            let mut changed = false;
+            for fields in [
+                &mut host_mut.shell_fields.window_size,
+                &mut host_mut.launcher_fields.window_size,
+                &mut host_mut.switcher_fields.window_size,
+                &mut host_mut.notification_fields.window_size,
+            ] {
+                let ws = fields.get_mut();
+                if (ws.width - vp.width).abs() > f32::EPSILON
+                    || (ws.height - vp.height).abs() > f32::EPSILON
+                {
+                    *ws = iced::Size::new(vp.width, vp.height);
+                    changed = true;
+                }
+            }
+            if changed {
+                if let Some(app) = state.apps.get(&shell) {
+                    *app.state.view_dirty.borrow_mut() = true;
+                }
+            }
+        }
+    }
     let Some(host) = state.host.as_ref() else { return };
     let mut fp = String::new();
     let mut wins: Vec<auto_val::Value> = Vec::new();
@@ -11068,6 +11752,8 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     // 函数（逐窗 workspace 已入指纹），指纹不需扩段。
     let mut pager_shown = std::collections::HashSet::new();
     let mut ws_more: Vec<String> = vec![String::new(); host.wm.workspaces.len()];
+    // PLAN-012 O2：同 app 首见追踪（z_order 序；dup_app 派生源）。
+    let mut seen_apps: std::collections::HashSet<String> = Default::default();
     {
         let mut per_ws: std::collections::HashMap<usize, usize> = Default::default();
         for &wid in &host.wm.z_order {
@@ -11083,12 +11769,31 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     }
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
+        // PLAN-012 W1：常驻隐藏窗投影全排除（__wm_wins/pager/指纹/运行集
+        // ——"真关了"感知 + W7 齿轮高亮随 `__wm_running` 回落）。
+        if v.hidden.get() {
+            continue;
+        }
         let focused = host.wm.focused == Some(wid);
+        // PLAN-012 O2：dock 去重判据宿主派生——pinned = 本窗 app 在固定
+        // 集；dup_app = 同 app 已有更前位（z_order 序首见之外）非隐藏窗。
+        // shell 侧 view 条件无 contains/聚合原语（O2 实机双图标根因），
+        // 等式消费此二字段。"同类 app 共享一图标"（用户裁定）由 dup_app
+        // 承接：非固定多窗仅首见窗出条目。
+        let (pinned_flag, dup_flag) = match v.registry_id.as_deref() {
+            Some(id) => (
+                state.desktop.dock_pinned.iter().any(|p| p == id),
+                !seen_apps.insert(id.to_string()),
+            ),
+            None => (false, false),
+        };
         wins.push(projection_win_entry(
             &state.desktop.registry_entries,
             v,
             focused,
             if pager_shown.contains(&wid) { "1" } else { "" },
+            pinned_flag,
+            dup_flag,
         ));
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
@@ -11133,6 +11838,10 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let mut seen: Vec<&str> = Vec::new();
     for &wid in &host.wm.z_order {
         if let Some(v) = host.wm.wins.get(&wid) {
+            // PLAN-012 W1：常驻隐藏窗不入运行集（齿轮高亮语义，AC-12）。
+            if v.hidden.get() {
+                continue;
+            }
             if let Some(id) = v.registry_id.as_deref() {
                 if !seen.contains(&id) {
                     seen.push(id);
@@ -11142,6 +11851,26 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             }
         }
     }
+    // PLAN-012 W7 v1.6：聚焦 app id（聚焦窗 registry_id；"" = 无聚焦或聚焦
+    // 在 native 槽位）——pinned 图标聚焦底条 + 底色高亮的标量判据面（.at
+    // 无法跨列表表达"存在聚焦窗"量词）。fp 不扩段：聚焦变化必经 meta 段
+    // focused_wid 翻转触发重写，本字段随写同步。
+    let focused_app = host
+        .wm
+        .focused
+        .and_then(|wid| host.wm.wins.get(&wid))
+        .and_then(|v| v.registry_id.clone())
+        .unwrap_or_default();
+    // PLAN-012 O2：⚙️ 高亮判据标量（存在非隐藏 os-config 窗 = "1"）——
+    // 原 shell 侧 `__wm_running.contains(",os-config,")` 为 view 条件方法
+    // 调用死点（O2 实机探针定性：设置窗在场齿轮仍无高亮）。窗开/关/hide
+    // 均翻 win 指纹段，本标量随写同步。语义同 __wm_running 的 os-config
+    // 成员（hidden 排除互证）。
+    let settings_open = host
+        .wm
+        .wins
+        .values()
+        .any(|v| !v.hidden.get() && v.registry_id.as_deref() == Some(OSCONFIG_APP_ID));
     // Plan 472 T3：workspace 分区投影段（协议 v1 §2.2/§2.3）。
     // Plan 478 T3 v1.1：条目增 `label`（1 基人读标签，宿主投影——避开 .at
     // 字符串算术）；指纹分区段扩展 "{id}:{current},{label};"。
@@ -11170,8 +11899,21 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     fp.push('|');
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
         if let Some(v) = host.wm.wins.get(&wid) {
+            // PLAN-012 W1：常驻隐藏窗不进切换器。
+            if v.hidden.get() {
+                continue;
+            }
             let focused = host.wm.focused == Some(wid);
-            mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused, ""));
+            // mru 条目非 dock 消费面：pinned/dup_app 判据恒空（switcher 无
+            // 此语义，字段不缺——投影判据面统一约定）。
+            mru.push(projection_win_entry(
+                &state.desktop.registry_entries,
+                v,
+                focused,
+                "",
+                false,
+                false,
+            ));
         }
         fp.push_str(&format!("{};", wid.0));
     }
@@ -11195,12 +11937,36 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         .map(|n| n.id.to_string())
         .unwrap_or_else(|| "0".to_string());
     let notes_unread = state.desktop.notes_unread.get();
+    // PLAN-012 W7 v1.6：通知面板可见性投影（"1"/""；铃铛打开态高亮的
+    // 唯一事实源在宿主 overlay 组件——外点/×/Esc 任意路径自隐后投影
+    // 同步翻转）。指纹并入 notes 段尾 `:v`——visible 翻转即触发重写。
+    let notes_visible = if state.notification_visible() { "1" } else { "" };
     fp.push_str(&format!(
-        "|notes:{}:{}:{};",
+        "|notes:{}:{}:{}:{};",
         notes_snapshot.len(),
         notes_front,
-        notes_unread
+        notes_unread,
+        notes_visible
     ));
+    // PLAN-012 W4 v1.6：__dock_pinned_csv 派生串（",id1,id2,"；shell view
+    // 条件 `contains` 消费——dock 窗口条目与固定图标去重合并的判据面，
+    // .at 读不到 `__dock_pinned` Obj 数组字段，B12 同族规避）。指纹尾段
+    // "|pinned:{csv};"——pin/unpin 执行臂改会话域后由指纹差分拾取刷新。
+    let mut pinned_csv = String::from(",");
+    for id in &state.desktop.dock_pinned {
+        pinned_csv.push_str(id);
+        pinned_csv.push(',');
+    }
+    // 指纹段剥前后逗号封边（空表 csv = "," → 段空串）。
+    if pinned_csv.len() > 1 {
+        fp.push_str(&format!("|pinned:{};", &pinned_csv[1..pinned_csv.len() - 1]));
+    } else {
+        fp.push_str("|pinned:;");
+    }
+    // PLAN-012 O2：__dock_pinned 随 fp 差分刷新（running 字段跟窗开合；
+    // inject_dock_pinned 为 pin/unpin 即时臂，两写者同形幂等）。
+    // 借序：构建须在 apps.get_mut 借用期之前。
+    let dock_pinned = dock_pinned_objs(state);
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
         None => return,
@@ -11219,9 +11985,64 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app.component.write_state("__wm_running", auto_val::Value::str(&running));
     let _ = app
         .component
+        .write_state("__wm_focused_app", auto_val::Value::str(&focused_app));
+    let _ = app
+        .component
         .write_state("__wm_notes_unread", auto_val::Value::Str(notes_unread.to_string().into()));
+    let _ = app
+        .component
+        .write_state("__wm_notes_visible", auto_val::Value::str(notes_visible));
+    let _ = app
+        .component
+        .write_state("__dock_pinned_csv", auto_val::Value::str(&pinned_csv));
+    let _ = app
+        .component
+        .write_state_vec("__dock_pinned", dock_pinned);
+    let _ = app
+        .component
+        .write_state("__wm_settings_open", auto_val::Value::str(if settings_open { "1" } else { "" }));
+    // PLAN-012 F2 复验：布局名标量投影——任务栏布局钮（grid/master-stack）
+    // 高亮判据（等式消费；同 __wm_settings_open 模式。布局切换翻 meta 段
+    // → 指纹重写随写同步；free = 两钮均不亮 = 手动排布态）。
+    let _ = app
+        .component
+        .write_state("__wm_layout", auto_val::Value::str(layout_name));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
+    // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget——
+    // 协议零字段增量）。usable 区逐窗 tile（常驻隐藏窗排除——与投影
+    // 同裁定），壁纸 #hex 基色；渲染臂直查 snapshot 缓存（SWR）。
+    {
+        let viewport = state.host_viewport();
+        let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
+        let mut per_ws: std::collections::BTreeMap<String, Vec<crate::ui::iced::workspace_preview::PreviewTile>> =
+            Default::default();
+        for &wid in &host.wm.z_order {
+            let Some(v) = host.wm.wins.get(&wid) else { continue };
+            if v.hidden.get() {
+                continue;
+            }
+            let r = v.rect.borrow();
+            per_ws.entry(v.workspace.to_string()).or_default().push(
+                crate::ui::iced::workspace_preview::PreviewTile {
+                    wid: wid.0,
+                    x: r.x - usable.x,
+                    y: r.y - usable.y,
+                    w: r.width,
+                    h: r.height,
+                },
+            );
+        }
+        crate::ui::iced::workspace_preview::publish(
+            crate::ui::iced::workspace_preview::Published {
+                usable: (usable.width, usable.height),
+                wallpaper: crate::ui::iced::workspace_preview::wallpaper_rgb(
+                    &state.desktop.config.wallpaper_path,
+                ),
+                workspaces: per_ws,
+            },
+        );
+    }
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -11558,39 +12379,13 @@ fn compare_pngs(
                 }
                 let (win_id, open_task) = iced::window::open(settings);
                 session.open_desktop(win_id);
-                let mut entries: Vec<(crate::ui::session::AppId, String)> = Vec::new();
-                for comp in comps {
-                    let app_id = session.allocate_app(comp);
-                    let title = session
-                        .apps
-                        .get(&app_id)
-                        .map(|a| a.component.widget_name().to_string())
-                        .unwrap_or_default();
-                    entries.push((app_id, title));
-                }
-                // 注册表宿主条目：app = primary（app_of_window / MCP / toast
-                // 等"单 App 语义"锚点在 desktop 模式仍指向 primary，T8 冻结）。
-                let primary = session.primary_app().expect("desktop boot has apps");
-                session.register_window(win_id, primary, host_size);
-                for (i, (app_id, title)) in entries.into_iter().enumerate() {
-                    let rect = iced::Rectangle::new(
-                        iced::Point::new(80.0 + 48.0 * i as f32, 80.0 + 48.0 * i as f32),
-                        iced::Size::new(
-                            (host_size.width * 0.6).max(360.0),
-                            (host_size.height * 0.6).max(280.0),
-                        ),
-                    );
-                    session.wm_add_win(app_id, title, rect);
-                }
-                // Plan 472 T4：dock 数据级配置（shell.dock.* storage 键）→
-                // 布局预留边；缺席回退 pack 默认 bottom/48。v1 boot 读一次。
-                session.desktop.dock_edges = desktop_dock_edges(&session.desktop.config);
-                // Plan 494：真洞模式位（`shell.native.hole` storage >
-                // DesktopOptions 程序位取或；缺席 = off）。
-                session.desktop.hole_mode = opts.hole_mode || load_native_hole_mode();
-                // Plan 479 T5：通知历史 boot 恢复（storage 定长槽
-                // shell.notes.0..9 读回会话域——I9 单一事实，桌面模式限定）。
-                restore_notifications(&mut session);
+                // PLAN-012 O1：特权 App 先于直挂 comps 分配——desktop 模式的
+                // "单 App 语义"锚点（primary = BTreeMap 首 App，app_of_window /
+                // MCP 快照同步 / toast 等）此前落在首个直挂窗（如 459 探针、
+                // calculator），MCP 验收通道（autoui_state/autoui_vtree）因此
+                // 只见直挂 App，shell 投影面（__wm_wins 等）与任务栏几何不可
+                // 观测——O1"真实链路 bounds 探针"被此阻断。shell 装载失败时
+                // 依 桌面面 → 首个直挂 comp 顺次回退（语义不变，锚点仍唯一）。
                 // Plan 463 T5：shell 特权 App —— 进程内编译装载（R1/R8
                 // 首落）。装载失败不阻断桌面（无任务栏的退化桌面，stderr 可见）。
                 match crate::ui::shell::build_shell_component() {
@@ -11612,6 +12407,40 @@ fn compare_pngs(
                         eprintln!("[session] desktop surface load failed (desktop continues): {err}")
                     }
                 }
+                let mut entries: Vec<(crate::ui::session::AppId, String)> = Vec::new();
+                for comp in comps {
+                    let app_id = session.allocate_app(comp);
+                    let title = session
+                        .apps
+                        .get(&app_id)
+                        .map(|a| a.component.widget_name().to_string())
+                        .unwrap_or_default();
+                    entries.push((app_id, title));
+                }
+                // 注册表宿主条目：app = primary（app_of_window / MCP / toast
+                // 等"单 App 语义"锚点在 desktop 模式仍指向 primary，T8 冻结；
+                // PLAN-012 O1 起 primary = 特权 shell——见上方分配序注记）。
+                let primary = session.primary_app().expect("desktop boot has apps");
+                session.register_window(win_id, primary, host_size);
+                for (i, (app_id, title)) in entries.into_iter().enumerate() {
+                    let rect = iced::Rectangle::new(
+                        iced::Point::new(80.0 + 48.0 * i as f32, 80.0 + 48.0 * i as f32),
+                        iced::Size::new(
+                            (host_size.width * 0.6).max(360.0),
+                            (host_size.height * 0.6).max(280.0),
+                        ),
+                    );
+                    session.wm_add_win(app_id, title, rect);
+                }
+                // Plan 472 T4：dock 数据级配置（shell.dock.* storage 键）→
+                // 布局预留边；缺席回退 pack 默认 bottom/48。v1 boot 读一次。
+                session.desktop.dock_edges = desktop_dock_edges(&session.desktop.config);
+                // Plan 494：真洞模式位（`shell.native.hole` storage >
+                // DesktopOptions 程序位取或；缺席 = off）。
+                session.desktop.hole_mode = opts.hole_mode || load_native_hole_mode();
+                // Plan 479 T5：通知历史 boot 恢复（storage 定长槽
+                // shell.notes.0..9 读回会话域——I9 单一事实，桌面模式限定）。
+                restore_notifications(&mut session);
                 // Plan 463 T7：应用注册表 —— 扫描 apps_dir 装配 LaunchApp
                 // 解析器。boot 不过滤 render：声明 `render:"vue"` 的 App 多数
                 // vm 兼容（011-calculator 即桌面 demo 常客），声明的 render
@@ -14430,6 +15259,23 @@ fn compare_pngs(
                                 }
                             }
                         }
+                        // PLAN-012 F2 走查：命令通道前置——下方 fit/快照
+                        // 臂按单任务语义 `return task`，持续命中（fit 反复
+                        // 待测/快照队列连续）时原本会把臂尾的注入排空 +
+                        // DesktopBus drain 无限饿死（实机确定性复现：首个
+                        // launch 之后的全部 activate 记录静默丢弃 = dock
+                        // 图标点击既不聚焦也不切高亮）。排空先于一切早退；
+                        // 其任务与 fit/快照任务并存时合批（测量/抓取可重
+                        // 入，下一拍重试；命令不可丢）。
+                        apply_desktop_injects(state);
+                        let (drain_exit, mut drain_tasks) =
+                            drain_and_execute_desktop_commands(state);
+                        if drain_exit {
+                            // Plan 505 B5（债 P480-R1）：退出前显式
+                            // 停机 broker serve 线程。
+                            state.shutdown_broker();
+                            return iced::exit();
+                        }
                         // Plan 504：fit 虚拟窗触发——节拍上若有待测量窗且
                         // 单程闸空闲，发起内容测量（宿主树恒在；vwin 首帧
                         // 渲染后锚点即在，回执 __fit_measured 收缩矩形）。
@@ -14457,14 +15303,27 @@ fn compare_pngs(
                             if let Some(hw) = fit_target {
                                 state.desktop.fit_measure_in_flight.set(true);
                                 state.desktop.fit_measure_retries.set(0);
-                                return fit_measure_task(hw);
+                                let fit = fit_measure_task(hw);
+                                return if drain_tasks.is_empty() {
+                                    fit
+                                } else {
+                                    let mut all = std::mem::take(&mut drain_tasks);
+                                    all.push(fit);
+                                    iced::Task::batch(all)
+                                };
                             }
                         }
                         // Plan 497 G3：快照抓取编排——排空渲染臂/召唤面
                         // 攒下的 request_capture 队列，一次整窗 screenshot
                         // 服务全部请求（回调 SnapshotShot 裁剪入缓存）。
                         if let Some(task) = service_snapshot_requests(state) {
-                            return task;
+                            return if drain_tasks.is_empty() {
+                                task
+                            } else {
+                                let mut all = std::mem::take(&mut drain_tasks);
+                                all.push(task);
+                                iced::Task::batch(all)
+                            };
                         }
                         // Plan 480 S3/S4：broker 孵化落地 + 多 client 帧泵
                         // （有在册/排队连接才有成本，零排队两调用皆空转）。
@@ -14478,18 +15337,8 @@ fn compare_pngs(
                             state.attach_pending_remotes();
                         }
                         state.pump_remote_mirrors();
-                        // Plan 505 C：验收通道注入排空（≤400ms 节拍达；
-                        // Bus 记录随后并入下方 drain 同臂执行）。
-                        apply_desktop_injects(state);
-                        let (exit, tasks) = drain_and_execute_desktop_commands(state);
-                        if exit {
-                            // Plan 505 B5（债 P480-R1）：退出前显式
-                            // 停机 broker serve 线程。
-                            state.shutdown_broker();
-                            return iced::exit();
-                        }
-                        if !tasks.is_empty() {
-                            return iced::Task::batch(tasks);
+                        if !drain_tasks.is_empty() {
+                            return iced::Task::batch(drain_tasks);
                         }
                     }
                     // Plan 473 T6 / 505 A 族：原生槽位 WinEventHook 事件批
@@ -15145,6 +15994,15 @@ fn compare_pngs(
                             {
                                 return iced::Task::none();
                             }
+                            // PLAN-012 F2 走查：桌面图标拖拽松手落格——
+                            // 宿主全局臂收尾（mouse_area 离开即失
+                            // is_pressed，跨件 release 不可达）。光标 =
+                            // last_cursor（全局 CursorMoved 持续回写，
+                            // desktop 本地坐标）。
+                            if let Some(dragged) = state.desktop.icon_drag.take() {
+                                execute_desktop_icon_drop_at_cursor(state, &dragged);
+                                return iced::Task::none();
+                            }
                         }
                         _ => {}
                     }
@@ -15307,7 +16165,9 @@ fn compare_pngs(
                 }
                 // PLAN-526 T2：最小化窗不推层（隐藏；任务栏 icon 保留，
                 // WinFocus → focus 即还原）。
-                if vwin.minimized.get() {
+                // PLAN-012 W1：常驻隐藏窗不推层（close→hide；__wm_wins 已
+                // 投影排除——任务栏无条目）。
+                if vwin.minimized.get() || vwin.hidden.get() {
                     continue;
                 }
                 let app_id = vwin.app;
@@ -15404,7 +16264,12 @@ fn compare_pngs(
             // 消费 DM::Desktop(SummonLauncher)）；v1 无消费者，不推空层。
             if state.desktop.shell_app.is_some() {
                 let shell_app = state.desktop.shell_app.expect("shell checked");
-                let build = || state.split_ref_shell().map(|v| dynamic_view(v, false));
+                // PLAN-012 O1：primary = 特权 shell（boot 分配序，见 boot 注
+                // 记）——MCP 快照同步（autoui_state/autoui_vtree/bounds）随
+                // shell 层开启；旧序 primary=首个直挂窗，shell 面不可观测。
+                let shell_sync = state.primary_app() == Some(shell_app);
+                let build =
+                    || state.split_ref_shell().map(|v| dynamic_view(v, shell_sync));
                 let shell_client: iced::Element<'_, IcedMessage> = match
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
                 {
@@ -15454,6 +16319,12 @@ fn compare_pngs(
             }
             // Plan 479 T3：通知中心 overlay 层（switcher 层邻位顶层；仅
             // visible 时推层——第三枚 overlay 槽，switcher 同款语义）。
+            // PLAN-012 O3 终解（复验三连反馈）：锚定与 scrim 回归 .at 内
+            // N6d 模式（scrim 外点关闭 + 卡片守卫，用户走查已验证）+
+            // justify-start 列顶对齐（真实链验证机制——mt-auto 填充条/
+            // col-reverse 在真实 Stack 子层不可依赖，复验三连贴顶 0 实
+            // 证；justify-end 贴 dock 底已实测有效 = 同机制可信）。紧凑
+            // max-h 滚动清偿"满高贴顶"。
             if state.notification_visible() {
                 let panel_app = state.desktop.notification_app.expect("panel checked");
                 let build = || state.split_ref_notification().map(|v| dynamic_view(v, false));
@@ -18776,6 +19647,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Image { style, .. } => style.as_ref(),
         AbstractView::ImageSurface { style, .. } => style.as_ref(),
         AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
+        AbstractView::WorkspacePreview { style, .. } => style.as_ref(),
         AbstractView::Radio { style, .. } => style.as_ref(),
         AbstractView::Select { style, .. } => style.as_ref(),
         AbstractView::Tabs { style, .. } => style.as_ref(),
@@ -18859,6 +19731,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Video { .. } => "video",
         AbstractView::ImageSurface { .. } => "image_surface",
         AbstractView::WindowThumbnail { .. } => "window_thumbnail",
+        AbstractView::WorkspacePreview { .. } => "workspace_preview",
         AbstractView::Radio { .. } => "radio",
         AbstractView::Select { .. } => "select",
         AbstractView::Tabs { .. } => "tabs",
@@ -20169,7 +21042,8 @@ fn view_style_ref<M: Clone + Debug>(view: &AbstractView<M>) -> Option<&Style> {
         | AbstractView::Tabs { style, .. }
         | AbstractView::NavigationRail { style, .. }
         | AbstractView::Image { style, .. }
-        | AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
+        | AbstractView::WindowThumbnail { style, .. }
+        | AbstractView::WorkspacePreview { style, .. } => style.as_ref(),
         _ => None,
     }
 }
@@ -21906,6 +22780,10 @@ mod tests {
         var __wm_mru = []
         var __wm_notes = []
         var __wm_notes_unread str = ""
+        var __wm_running str = ""
+        var __wm_focused_app str = ""
+        var __wm_notes_visible str = ""
+        var __dock_pinned_csv str = ""
     }
     view { col { text "shell" } }
 }
@@ -22197,6 +23075,71 @@ mod tests {
         match t3_read(&ds, "__wm_meta") {
             auto_val::Value::Str(s) => assert_ne!(s.to_string(), "sentinel", "槽位变化应触发重写"),
             other => panic!("__wm_meta 读回异常: {other:?}"),
+        }
+    }
+
+    /// PLAN-012 W4 v1.6：`__dock_pinned_csv` 派生投影——",id1,id2," 串
+    /// （shell view `contains` 消费，dock 窗口条目与固定图标去重判据面）
+    /// + 指纹 "|pinned:" 段；会话域 dock_pinned 变更 → 下次同步指纹差分
+    /// 拾取重写（哨兵机制同 v1.3 native 槽位测试）。
+    #[test]
+    fn projection_v16_dock_pinned_csv_and_fingerprint() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        // PLAN-012 W7：聚焦窗挂 registry id → __wm_focused_app 派生读回
+        // （三态底条/高亮标量判据面）。
+        if let Some(v) = ds.host.as_mut().unwrap().wm.wins.get_mut(&a) {
+            v.registry_id = Some("011-calculator".to_string());
+        }
+        t3_add_win(&mut ds, "Beta");
+        ds.desktop.dock_pinned = vec!["011-calculator".to_string(), "013-todo".to_string()];
+        sync_shell_windows(&mut ds);
+        // 后开窗为焦点（无 registry id）→ focused_app 空。
+        match t3_read(&ds, "__wm_focused_app") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), "", "无 registry 聚焦窗 → 空串"),
+            other => panic!("__wm_focused_app 读回异常: {other:?}"),
+        }
+        // 焦点移回 calculator 窗 → focused_app 派生翻转（fp 经 focused_wid 变化触发重写）。
+        ds.wm_focus(a);
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_focused_app") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), "011-calculator"),
+            other => panic!("__wm_focused_app 读回异常: {other:?}"),
+        }
+        match t3_read(&ds, "__dock_pinned_csv") {
+            auto_val::Value::Str(s) => {
+                assert_eq!(s.to_string(), ",011-calculator,013-todo,", "csv 前后逗号封边")
+            }
+            other => panic!("__dock_pinned_csv 读回异常: {other:?}"),
+        }
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("|pinned:011-calculator,013-todo;"),
+                "指纹应含 pinned 段: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+        // 指纹门控：会话域变更（unpin 一枚）→ 指纹变化 → 下次同步重写。
+        let shell = ds.desktop.shell_app.unwrap();
+        ds.apps
+            .get_mut(&shell)
+            .unwrap()
+            .component
+            .write_state("__dock_pinned_csv", auto_val::Value::str("sentinel"))
+            .unwrap();
+        ds.desktop.dock_pinned = vec!["013-todo".to_string()];
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__dock_pinned_csv") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), ",013-todo,", "变更应触发重写"),
+            other => panic!("__dock_pinned_csv 读回异常: {other:?}"),
+        }
+        // 空表 = 单纯 ","（空 csv 串——shell contains 条件天然不命中）。
+        ds.desktop.dock_pinned = Vec::new();
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__dock_pinned_csv") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), ",", "空表 → 逗号哨兵串"),
+            other => panic!("__dock_pinned_csv 读回异常: {other:?}"),
         }
     }
 
@@ -22532,6 +23475,15 @@ mod tests {
             thumbs: &mut usize,
         ) {
             use crate::ui::view::View as V;
+            {
+                let kind = match v {
+                    V::Popover { .. } => "Popover",
+                    V::WorkspacePreview { .. } => "WorkspacePreview",
+                    V::WindowThumbnail { .. } => "Thumb",
+                    _ => ".",
+                };
+                let _ = kind;
+            }
             let extra: Vec<&V<_>> = match v {
                 V::Popover { anchor, content, open, .. } => {
                     if *open { *pops += 1; }
@@ -22543,6 +23495,10 @@ mod tests {
                 }
                 V::MouseArea { content, .. } => vec![content.as_ref()],
                 V::WindowThumbnail { .. } => {
+                    *thumbs += 1;
+                    vec![]
+                }
+                V::WorkspacePreview { .. } => {
                     *thumbs += 1;
                     vec![]
                 }
@@ -22570,9 +23526,11 @@ mod tests {
         // 基线：无 hover——popover 全收起（open 计数 0）；缩略叶为树构建
         // 面（popover content 预构建、open 才走 iced overlay 渲染）：dock
         // 条目 ×2（a/b）。PLAN-526 T18：直列分区条（含 pager hover
-        // popover）退役为切换面板——缩略叶 4→2。
+        // popover）退役为切换面板——缩略叶 4→2。PLAN-012 W3：切换器
+        // popover 化（content 预构建）且每分区卡一枚 workspace_preview
+        // 叶 ×2（pack 默认分区）→ 预构建缩略/预览叶 2→4。
         let (p0, t0) = counts(&ds);
-        assert_eq!((p0, t0), (0, 2), "无 hover 基线零 open、两枚预构建缩略叶（T18 后）");
+        assert_eq!((p0, t0), (0, 4), "无 hover 基线零 open、两缩略+两预览叶");
 
         // dock hover b：b 条目 popover open ×1（缩略叶已在预构建集内）。
         {
@@ -22584,7 +23542,7 @@ mod tests {
         }
         let (p1, t1) = counts(&ds);
         assert_eq!(p1, 1, "dock hover 打开单个 popover");
-        assert_eq!(t1, 2, "缩略叶集不变（open 不增建；T18 后基线 2）");
+        assert_eq!(t1, 4, "缩略/预览叶集不变（open 不增建；W3 后基线 4）");
         // PLAN-010 N6c：hover 离开只清预览态（HoverLeave，原 HoverEnd 退役）。
         {
             let app = ds.apps.get_mut(&shell).unwrap();
@@ -22710,7 +23668,19 @@ mod tests {
                 V::Button { .. } => 1,
                 _ => 0,
             };
-            for c in view_children(v) {
+            // PLAN-012 W3/W4：切换器钮入 popover、窗口条目钮入
+            // popover+mouse-area——计数器须随结构钻入，否则漏计。
+            let mut kids = view_children(v);
+            if let V::Popover { anchor, content, .. } = v {
+                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                    kids.push(w.as_ref());
+                }
+                kids.push(content.as_ref());
+            }
+            if let V::MouseArea { content, .. } = v {
+                kids.push(content.as_ref());
+            }
+            for c in kids {
                 n += count_buttons(c);
             }
             n
@@ -22731,7 +23701,9 @@ mod tests {
         });
         assert!(has_reverse, "bottom 缺省根 col 应含 flex-col-reverse（翻转承载）");
         let buttons = count_buttons(&view);
-        assert!(buttons >= 6, "任务栏按钮群应在位（⊞/pinned×3/pager/布局三键/铃铛/齿轮），实得 {buttons}");
+        // PLAN-012 W4：缺省 pinned 置空——任务栏常驻钮 = ⊞/切换器/布局×2/
+        // 铃铛/齿轮/电源 = 7（pinned×3 退役 + 无注入窗口条目）。
+        assert!(buttons >= 7, "任务栏常驻按钮群应在位（缺省无 pinned 后 ≥7），实得 {buttons}");
         assert!(
             !children.is_empty(),
             "根 col 应有子（taskbar 块 + 让位 spacer）"
@@ -22989,6 +23961,281 @@ mod tests {
         assert_eq!(ds.desktop.notes_unread.get(), 0, "boot 恢复未读归零");
     }
 
+    /// PLAN-012 W5：格子分配单测——positions 定位优先 + 未定位行主序
+    /// 填充 + spacer 填位 + 平行列表同构（ids/cs/rs 等长且下标一致）。
+    #[test]
+    fn w5_desktop_icon_cells_assignment() {
+        // 4 图标，第 2 枚定位 (3,0)，第 4 枚定位 (1,1)。
+        let order = vec![
+            ("a".to_string(), "pinned"),
+            ("b".to_string(), "custom"),
+            ("c".to_string(), "custom"),
+            ("d".to_string(), "custom"),
+        ];
+        let _guard = t2_isolate_storage("w5-cells");
+        let raw = "b=3:0,d=1:1,";
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.positions",
+            raw.to_string(),
+        );
+        let pos = load_desktop_positions();
+        let (cells, ids, cs, rs) = desktop_icon_cells(&order, &[], &[]);
+        eprintln!("[w5-cells] positions={pos:?} ids={ids:?} cs={cs:?} rs={rs:?}");
+        // 行主序：(0,0)=a，(1,0)=spacer，(2,0)=c？——b 占 (3,0)、d 占 (1,1)。
+        // 行主序填充：a→(0,0)，c→(1,0)（b 占 (3,0)），d 定位 (1,1)。
+        let id_of = |i: usize| -> String {
+            match &cells[i] {
+                auto_val::Value::Obj(o) => match o.get("id") {
+                    Some(auto_val::Value::Str(s)) => s.to_string(),
+                    _ => String::new(),
+                },
+                _ => String::new(),
+            }
+        };
+        assert_eq!(cells.len(), ids.len(), "cells 与 ids 等长");
+        assert_eq!(cs.len(), rs.len());
+        assert_eq!(id_of(0), "a", "行主序首个空格 (0,0)");
+        assert_eq!(id_of(1), "c", "跳过 b 的定位格后首个空格 (1,0)");
+        // b 定位 (3,0)：cells 数组紧凑到最后一枚图标——b 前仅 (2,0) 一格
+        // 空缺 → spacer，故 b 落数组下标 3（(c,r)=(3,0) 由 cs/rs 背书）。
+        let bi = ids.iter().position(|x| x == "b").unwrap();
+        assert_eq!(bi, 3, "b 紧跟 (2,0) spacer");
+        let cell_str = |v: &auto_val::Value| -> String {
+            match v {
+                auto_val::Value::Str(x) => x.to_string(),
+                other => other.to_string(),
+            }
+        };
+        assert_eq!(cell_str(&cs[bi]), "3", "b 的列 = 定位值");
+        assert_eq!(cell_str(&rs[bi]), "0", "b 的行 = 定位值");
+        let spacer_at_2 = match &cells[2] {
+            auto_val::Value::Obj(o) => o
+                .get("spacer")
+                .map(|v| {
+                    matches!(v, auto_val::Value::Str(x) if x.to_string() == "1")
+                })
+                .unwrap_or(false),
+            _ => false,
+        };
+        assert!(spacer_at_2, "(2,0) 应为 spacer 填位");
+        let di = ids.iter().position(|x| x == "d").unwrap();
+        assert_eq!(cell_str(&cs[di]), "1", "d 定位列");
+        assert_eq!(cell_str(&rs[di]), "1", "d 定位行");
+    }
+
+    /// PLAN-012 W5：positions 追加式 csv last-wins 解析（同 id 后写胜）。
+    #[test]
+    fn w5_desktop_positions_last_wins() {
+        let _guard = t2_isolate_storage("w5-positions");
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.positions",
+            "a=0:0,b=1:0,a=2:3,".to_string(),
+        );
+        let pos = load_desktop_positions();
+        assert_eq!(pos.len(), 2, "同 id 去重（last-wins）");
+        assert_eq!(pos[0].0, "b");
+        let a = pos.iter().find(|(id, _)| id == "a").unwrap();
+        assert_eq!(a.1, (2, 3), "后写胜");
+    }
+
+    /// PLAN-012 W5：refresh_desktop_icons 无参动词解析。
+    #[test]
+    fn w5_refresh_desktop_icons_verb_parse() {
+        assert_eq!(
+            crate::ui::session::DesktopCommand::parse_records("refresh_desktop_icons"),
+            vec![crate::ui::session::DesktopCommand::RefreshDesktopIcons]
+        );
+        assert_eq!(
+            crate::ui::session::DesktopCommand::RefreshDesktopIcons.encode(),
+            "refresh_desktop_icons"
+        );
+    }
+
+    /// PLAN-012 W1：os-config close→hide 拦截臂单测——CloseWindow 对
+    /// os-config 窗改写 hidden（窗存续、apps 保留、投影全排除），focus 臂
+    /// unhide+聚焦（重开 = 纯聚焦臂）；非 os-config 窗照常回收。
+    #[test]
+    fn w1_osconfig_close_hides_and_focus_unhides() {
+        let path = t2_isolate_storage("w1-close-hide");
+        let mut ds = t540_resolver_session();
+
+        // ① launch os-config → 窗在册。
+        let wid = ds.launch_app(OSCONFIG_APP_ID).expect("os-config launch");
+        assert!(ds.host.as_ref().unwrap().wm.wins.contains_key(&wid));
+
+        // ② CloseWindow → hidden 置位，窗与 App 存续。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::CloseWindow(wid)],
+        );
+        let host = ds.host.as_ref().unwrap();
+        let v = host.wm.wins.get(&wid).expect("os-config 窗应存续（hide 非 close）");
+        assert!(v.hidden.get(), "close 应改写为 hidden");
+        assert!(ds.apps.values().any(|_| true), "apps 会话应保留");
+        drop(host);
+
+        // ③ 投影排除：__wm_wins 无条目 + __wm_running 不含 os-config
+        //（W7 齿轮高亮回落，AC-12 语义自洽）。
+        sync_shell_windows(&mut ds);
+        let wins = t3_read_array(&ds, "__wm_wins");
+        assert!(wins.is_empty(), "隐藏窗不应投影 __wm_wins: {wins:?}");
+        match t3_read(&ds, "__wm_running") {
+            auto_val::Value::Str(s) => assert!(
+                !s.to_string().contains(",os-config,"),
+                "隐藏窗不应入运行集: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_running 读回异常: {other:?}"),
+        }
+
+        // ④ 重开（execute_open_settings 聚焦臂）→ unhide + 聚焦。
+        execute_open_settings(&mut ds);
+        let host = ds.host.as_ref().unwrap();
+        let v = host.wm.wins.get(&wid).expect("重开不新开窗（存续）");
+        assert!(!v.hidden.get(), "focus 臂应取消隐藏");
+        assert_eq!(host.wm.focused, Some(wid), "重开应聚焦设置窗");
+        assert_eq!(ds.desktop.config.dock_pinned.len(), 0, "sanity：会话未被污染");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// PLAN-012 W1：非 os-config 窗 close 照常回收（拦截臂不误伤）。
+    #[test]
+    fn w1_non_osconfig_close_still_removes() {
+        let _guard = t2_isolate_storage("w1-plain-close");
+        let mut ds = t540_resolver_session();
+        let wid = ds.launch_app("011-calculator").expect("calculator launch");
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::CloseWindow(wid)],
+        );
+        assert!(
+            !ds.host.as_ref().unwrap().wm.wins.contains_key(&wid),
+            "普通窗 close 应照常移除"
+        );
+    }
+
+    /// PLAN-012 W8 DSL 级 fence：popover content 内 `for` + workspace_preview
+    /// 必须物化为 WorkspacePreview 叶（VM 轨视图构建；切换器分区卡链）。
+    #[test]
+    fn w8_workspace_preview_materializes_in_popover_for() {
+        let src = r#"widget ShellProbe {
+    model {
+        var __wm_workspaces = []
+        var switcher_open str = ""
+    }
+    view {
+        col {
+            popover (open: .switcher_open == "1", placement: "top-end", ondismiss: .SwitcherToggle, class: "p-2 border rounded bg-card") {
+                text `ANCHOR`
+                row {
+                    text `MARKER`
+                    for ws in .__wm_workspaces {
+                        col {
+                            text ws.label
+                            workspace_preview (ws: ws.id, fallback: "app-window") { style: "w-44 h-16 rounded-lg" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    on {
+        .SwitcherToggle -> {}
+    }
+}
+"#;
+        let mut comp = crate::build_dynamic_component(src, None).unwrap();
+        // 注入两分区（sync 同构——宿主 write_state_vec）。
+        let _ = comp.write_state_vec(
+            "__wm_workspaces",
+            vec![
+                auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::str("0")),
+                    ("label", auto_val::Value::str("1")),
+                    ("current", auto_val::Value::str("1")),
+                ]))),
+                auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::str("1")),
+                    ("label", auto_val::Value::str("2")),
+                    ("current", auto_val::Value::str("")),
+                ]))),
+            ],
+        );
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn count(v: &AbstractView<crate::ui::interpreter::DynamicMessage>, wp: &mut usize, cards: &mut usize) {
+            match v {
+                AbstractView::WorkspacePreview { .. } => *wp += 1,
+                AbstractView::Text { content, .. }
+                    if content == "MARKER" || content == "ANCHOR" || content == "1" || content == "2" =>
+                {
+                    *cards += 1
+                }
+                _ => {}
+            }
+            let mut kids = view_children(v);
+            if let AbstractView::Popover { anchor, content, .. } = v {
+                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                    kids.push(w.as_ref());
+                }
+                kids.push(content.as_ref());
+            }
+            if let AbstractView::MouseArea { content, .. } = v {
+                kids.push(content.as_ref());
+            }
+            for c in kids {
+                count(c, wp, cards);
+            }
+        }
+        let (mut wp, mut cards) = (0, 0);
+        count(&view, &mut wp, &mut cards);
+        eprintln!("[w8] previews={wp} cards={cards}");
+        assert_eq!(cards, 4, "for 应物化两分区卡（含 MARKER/ANCHOR 锚点文本）");
+        assert_eq!(wp, 2, "每卡一枚 workspace_preview 叶");
+    }
+
+    /// PLAN-012 W7 v1.6：`__wm_notes_visible` 投影——overlay 组件 visible
+    /// 直读（"1"/""）写入 shell 状态 + 指纹 notes 段尾 `:v`（翻转即重写，
+    /// 铃铛打开态高亮数据面）。
+    #[test]
+    fn projection_v16_notes_visible_fingerprint() {
+        let mut ds = t3_session_with_shell();
+        let probe_at = "widget NotifProbe {\n    model { var visible str = \"0\" }\n    view { if .visible == \"1\" { text \"on\" } }\n}\n";
+        let comp = crate::build_dynamic_component(probe_at, None).unwrap();
+        let probe = ds.allocate_app(comp);
+        ds.desktop.notification_app = Some(probe);
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_notes_visible") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), "", "面板隐藏 → 空串"),
+            other => panic!("__wm_notes_visible 读回异常: {other:?}"),
+        }
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("|notes:0:0:0:;"),
+                "指纹 notes 段应含 :v 尾标（关）: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+        // visible 置位 → 指纹变化触发重写 → 投影翻转（铃铛高亮数据面）。
+        if let Some(app) = ds.apps.get_mut(&probe) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        }
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_notes_visible") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), "1", "面板可见 → \"1\""),
+            other => panic!("__wm_notes_visible 读回异常: {other:?}"),
+        }
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("|notes:0:0:0:1;"),
+                "指纹 notes 段 :v 尾标应翻转: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+    }
+
     /// 持久化槽 round-trip：写 10 槽（slot0=MRU front）→ 新会话 boot 读回；
     /// 坏槽跳过；超 10 条截断只落前 10。
     #[test]
@@ -23170,7 +24417,8 @@ mod tests {
             other => panic!("Obj expected: {other:?}"),
         };
         assert!(
-            fp.contains(&format!("|notes:2:{front_id}:2;")),
+            // PLAN-012 W7 v1.6：notes 段尾扩 `:v`（可见性指纹位，空 = 隐藏）。
+            fp.contains(&format!("|notes:2:{front_id}:2:;")),
             "指纹 notes 段: {fp}"
         );
         // 开面板清零 → 指纹翻 → 未读串归 0（同 len 同 front，仅 unread 段变）。
@@ -23610,13 +24858,10 @@ mod tests {
                 other => panic!("__dock_position 读回异常: {other:?}"),
             }
         }
+        // PLAN-012 W4：缺省 pinned 置空（缺省三枚退役——缺键 = 显式空 =
+        // 空表；用户经右键固定后此处按序出现）。
         let pinned = t3_read_array(&ds, "__dock_pinned");
-        assert_eq!(pinned.len(), 3, "pack 默认 pinned 三枚");
-        let auto_val::Value::Obj(first) = &pinned[0] else { panic!("pinned 条目应为 Obj") };
-        assert_eq!(t3_obj_str(first, "id"), "011-calculator");
-        assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 自注册表解析");
-        let auto_val::Value::Obj(second) = &pinned[1] else { panic!("Obj") };
-        assert_eq!(t3_obj_str(second, "icon"), "app-window", "未登记条目回退 app-window");
+        assert!(pinned.is_empty(), "pack 默认 pinned 应为空（W4 置空），实得 {pinned:?}");
 
         // Plan 478 T5：pager 升格——v1.1 投影形状（含 label/current）注入 +
         // 新消息臂写总线记录（workspace_add / workspace_close\t<n>）。
@@ -23865,7 +25110,8 @@ mod tests {
     /// Plan 487 M4 步骤5 + Plan 540 T3/T7 → Plan 551 改驾：Dock 动词臂
     /// 直驱（045 面板 handler 随窗退役）——SetDockPosition/SetDockEnabled/
     /// SetDockPinned 执行：热生效（edges 翻转）+ config 落盘 + 会话域
-    /// pinned 同步 + 空值复位默认三枚。
+    /// pinned 同步。PLAN-012 W4：空 csv = 空表（缺省三枚回退退役）+
+    /// DockPin/DockUnpin 单枚增删去重（幂等重复调用无副作用）。
     #[test]
     fn settings_dock_section_dispatch_and_pinned_storage() {
         let path = t2_isolate_storage("487-dock-section");
@@ -23908,12 +25154,50 @@ mod tests {
             ds.desktop.config.dock_pinned,
             "会话域 pinned 同步"
         );
-        // ④ 复位：空值 = 默认三枚（472 load 缺席回退同语义）。
+        // ④ PLAN-012 W4：空值 = 空表（缺省三枚回退语义退役——显式空即空）。
         let _ = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::SetDockPinned(String::new())],
         );
-        assert_eq!(ds.desktop.config.dock_pinned.len(), 3, "空 csv → 默认三枚");
+        assert!(ds.desktop.config.dock_pinned.is_empty(), "空 csv → 空表");
+
+        // ⑤ PLAN-012 W4 协议 v1.6：dock_pin/dock_unpin 单枚增删去重 +
+        // 落盘 + 会话域同步（幂等：重复 pin/unpin 不在表即无操作）。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::DockPin(
+                "011-calculator".to_string(),
+            )],
+        );
+        assert_eq!(
+            ds.desktop.config.dock_pinned,
+            vec!["011-calculator".to_string()],
+            "dock_pin 入表"
+        );
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![
+                crate::ui::session::DesktopCommand::DockPin("013-todo".to_string()),
+                crate::ui::session::DesktopCommand::DockPin("011-calculator".to_string()),
+                crate::ui::session::DesktopCommand::DockUnpin("038-minesweeper".to_string()),
+            ],
+        );
+        assert_eq!(
+            ds.desktop.config.dock_pinned,
+            vec!["011-calculator".to_string(), "013-todo".to_string()],
+            "重复 pin 去重、unpin 不在表幂等"
+        );
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::DockUnpin(
+                "011-calculator".to_string(),
+            )],
+        );
+        assert_eq!(
+            ds.desktop.config.dock_pinned,
+            vec!["013-todo".to_string()],
+            "dock_unpin 出表"
+        );
 
         let _ = std::fs::remove_file(&path);
     }
@@ -24352,7 +25636,7 @@ mod tests {
     desktop_visible: true,
             },
         ];
-        // dock_pinned 默认三枚（t3_session_with_shell 不动 pack 默认）。
+        // PLAN-012 W4：dock_pinned 缺省空（t3_session_with_shell 不动）。
         // storage：custom 014-weather + 重叠 011-calculator；hidden 013-todo。
         crate::vm::ffi::stdlib::storage_host_publish(
             "shell.desktop.icons",
@@ -24369,17 +25653,17 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            vec!["011-calculator", "015-notes", "014-weather"],
-            "pinned 先列（013 hidden 排除）+ custom 去重接排"
+            vec!["014-weather", "011-calculator"],
+            "custom 按 storage 序注入 + 011 重叠去重（缺省 pinned 空后无先列组）"
         );
         let first = t496_val_obj(&entries[0]);
-        assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 注册表解析");
-        assert_eq!(t3_obj_str(first, "label"), "计算器", "label=注册表标题");
-        assert_eq!(t3_obj_str(first, "src"), "pinned");
-        let third = t496_val_obj(&entries[2]);
-        assert_eq!(t3_obj_str(third, "icon"), "app-window", "未登记回退占位图标");
-        assert_eq!(t3_obj_str(third, "label"), "014-weather", "label 回退 id");
-        assert_eq!(t3_obj_str(third, "src"), "custom");
+        assert_eq!(t3_obj_str(first, "icon"), "app-window", "未登记回退占位图标");
+        assert_eq!(t3_obj_str(first, "label"), "014-weather", "label 回退 id");
+        assert_eq!(t3_obj_str(first, "src"), "custom");
+        let second = t496_val_obj(&entries[1]);
+        assert_eq!(t3_obj_str(second, "icon"), "calculator", "icon 注册表解析");
+        assert_eq!(t3_obj_str(second, "label"), "计算器", "label=注册表标题");
+        assert_eq!(t3_obj_str(second, "src"), "custom");
         match t496_read(&ds, "__desktop_bg") {
             auto_val::Value::Str(ref s) => {
                 assert_eq!(s.to_string(), "bg-[#243b55]", "#hex → 根 bg 实铺片段")
@@ -24528,7 +25812,8 @@ mod tests {
             "shell.desktop.icons",
             "014-weather,011-calculator".into(),
         );
-        // 默认 dock_pinned 三枚 + custom 两枚（011 重叠去重）→ 4 条目。
+        // PLAN-012 W4：缺省 dock_pinned 置空——custom 两枚（011 重叠去重）
+        // → 2 条目（原"默认三枚 + custom 两枚 → 4"随缺省置空退役）。
         inject_desktop_surface(&mut ds);
         let surface = ds.desktop.desktop_app.unwrap();
         let (mut dbl, mut clk, mut texts) = (0usize, 0usize, Vec::new());
@@ -24537,10 +25822,12 @@ mod tests {
             let (view, _, _) = app.component.view_with_debug_gated(false);
             t496_walk(&view, &mut dbl, &mut clk, &mut texts);
         }
-        assert_eq!(dbl, 4, "每个图标格一枚 mouse-area 双击臂（pinned∪custom 去重后）");
-        // PLAN-526 T10：空白点击自布局件 onclick 迁至根 mouse-area on_press
-        //（兼挂 oncontextmenu 右键臂）——恰一枚 onclick 臂为预期形状。
-        assert_eq!(clk, 1, "desktop.at 根 mouse-area onclick（526 T10 空白点击迁移）");
+
+        assert_eq!(dbl, 2, "每个图标格一枚 mouse-area 双击臂（缺省 pinned 置空后）");
+        // PLAN-526 T10：空白点击自布局件 onclick 迁至根 mouse-area on_press。
+        // PLAN-012 W5：图标格 mouse-area onclick（IconPress 拖拽拾起臂）
+        // ×2 格 + 根 ×1 = 3。
+        assert_eq!(clk, 3, "根 onclick 1 + 图标 IconPress 2（W5 拖拽态机）");
         // PLAN-002 B pilot：图标格布局件右键挂点 + hover 变体类消费
         //（oncontextmenu 自 button 迁至格 col；格上 hover:bg-white/10）。
         let (mut rc, mut hv) = (0usize, 0usize);
@@ -24549,8 +25836,8 @@ mod tests {
             let (view, _, _) = app.component.view_with_debug_gated(false);
             t002_walk_layout_events(&view, &mut rc, &mut hv);
         }
-        assert_eq!(rc, 4, "每格一枚布局件右键臂（oncontextmenu → View::Column::on_right_click）");
-        assert_eq!(hv, 4, "每格一枚 hover: 变体类（布局件 hover 消费面）");
+        assert_eq!(rc, 2, "每格一枚布局件右键臂（oncontextmenu → View::Column::on_right_click）");
+        assert_eq!(hv, 2, "每格一枚 hover: 变体类（布局件 hover 消费面）");
         assert_eq!(
             texts.iter().filter(|t| t.as_str() == "014-weather").count(),
             1,
@@ -24564,7 +25851,7 @@ mod tests {
             let converted = convert_view_messages(view);
             t496_walk_iced(&converted, &mut dbl2, &mut clk2, &mut texts2);
         }
-        assert_eq!(dbl2, 4, "convert_view_messages 后 mouse_area 双击臂存活");
+        assert_eq!(dbl2, 2, "convert_view_messages 后 mouse_area 双击臂存活");
         // 右键菜单：IconMenu 打开 → 三项文本出现；BlankPress 关闭消失。
         {
             let app = ds.apps.get_mut(&surface).unwrap();
@@ -24906,11 +26193,28 @@ mod tests {
             Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
             other => panic!("__focus_input 读回异常: {other:?}"),
         }
-        // 真注册表注入覆盖 mock + ApplyFilter 同步重算（nres = 2）
+        // 真注册表注入覆盖 mock + ApplyFilter 同步重算（nres = 1）。
+        // PLAN-012 W6 fence：注册表含 028-launcher 条目（:11609 发现链
+        // 同源 mock）→ 注入清单必须排除 launcher 自身，召唤链不受影响。
         match app.component.read_state("nres") {
-            Ok(auto_val::Value::Int(n)) => assert_eq!(n, 2, "ApplyFilter 应按注入清单重算"),
+            Ok(auto_val::Value::Int(n)) => assert_eq!(
+                n, 1,
+                "ApplyFilter 应按注入清单重算（launcher 自身已过滤）"
+            ),
             other => panic!("nres 读回异常: {other:?}"),
         }
+        let names = match app.component.read_state("apps_names") {
+            Ok(auto_val::Value::Array(a)) => a.values,
+            Ok(auto_val::Value::VmRef(r)) => {
+                t3_deref_list(app, r.id as u64, "apps_names")
+            }
+            other => panic!("apps_names 读回异常: {other:?}"),
+        };
+        assert_eq!(names.len(), 1, "注入清单应仅剩非 launcher 条目");
+        assert!(
+            !names.iter().any(|v| v.to_string().contains("launcher")),
+            "apps_names 不应含 launcher 自身"
+        );
     }
 
     /// Plan 464 T4 探针：宿主 write_state_vec 注入 Obj 数组后，VM 侧
@@ -25384,6 +26688,31 @@ mod tests {
             }
             _ => panic!(
                 "convert_view_messages dropped the WindowThumbnail (hit the _ => Empty wildcard) — dock hover thumbnail vanishes in VM mode"
+            ),
+        }
+    }
+
+    /// PLAN-002 A1 教训第五例 fence（PLAN-012 W3）：convert_view_messages
+    /// 必须保留 WorkspacePreview——VM 轨切换器分区卡整桌面预览不被 Empty
+    /// 通配符吞掉。
+    #[test]
+    fn test_convert_view_messages_preserves_workspace_preview() {
+        let view: AbstractView<DynamicMessage> = AbstractView::WorkspacePreview {
+            ws: "0".to_string(),
+            fallback_icon: "app-window".to_string(),
+            style: crate::ui::style::Style::parse("w-44 h-16 rounded").ok(),
+        };
+
+        let converted = convert_view_messages(view);
+
+        match converted {
+            AbstractView::WorkspacePreview { ws, fallback_icon, style } => {
+                assert_eq!(ws, "0");
+                assert_eq!(fallback_icon, "app-window");
+                assert!(style.is_some(), "style must survive the bridge");
+            }
+            _ => panic!(
+                "convert_view_messages dropped the WorkspacePreview (hit the _ => Empty wildcard) — 切换器整桌面预览在 VM 轨消失"
             ),
         }
     }

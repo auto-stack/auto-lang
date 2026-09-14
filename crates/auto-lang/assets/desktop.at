@@ -27,7 +27,10 @@ widget DesktopSurface {
         Init,
         ActivateApp(str),
         IconMenu(str),
-        BlankPress,
+        // PLAN-012 W5：拖拽态机（press-press 两段式——onclick 即 iced
+        // press；按下拾起 → 按到目标卡落下交换；按回原卡 = 取消）。
+        IconPress(str),
+        BlankPress, BlankDrop,
         MenuOpen,
         MenuRemove,
         MenuWallpaper,
@@ -41,7 +44,15 @@ widget DesktopSurface {
         var __desktop_bg str = ""
         var __desktop_icons = []
         var __desktop_hidden str = ""
+        // PLAN-012 W5：格子化图标表（宿主注入——拖拽换位渲染面 + 平行
+        // 字符串列表供 handler 下标读，B12 规避）。
+        var __desktop_cells = []
+        var __desktop_cell_ids = []
+        var __desktop_cell_cs = []
+        var __desktop_cell_rs = []
         var menu_id str = ""
+        // PLAN-012 W5：拖拽态（按下拾起的图标 id；"" = 无拖拽）。
+        var drag_id str = ""
         var blank_menu str = ""
         // PLAN-012：光标坐标（宿主 __mouse_moved 臂持续写入，只写不置
         // view_dirty；空白菜单坐标锚数据源——open 翻转重建时读取最新值）。
@@ -60,7 +71,9 @@ widget DesktopSurface {
             // 左下（011 复审 F-R1）。坐标 = 宿主 __mouse_moved 臂持续写入
             // 的 __desktop_cursor_x/y（只写不置 dirty）；422 P3 坐标锚形态
             // （027-file-manager 先例），面板内容独占 popover children。
-            mouse-area (onclick: .BlankPress, oncontextmenu.prevent: .BlankMenu) {
+            // PLAN-012 F2 走查：onmouseup = 拖拽松手落格（宿主全局臂
+            // 读光标算格；drag_id 空时 no-op）。
+            mouse-area (onclick: .BlankPress, onmouseup: .BlankDrop, oncontextmenu.prevent: .BlankMenu) {
                 style: "w-full h-full"
             // PLAN-011 T3：mouse_area 命中带=内容盒（iced 侧 style 只落在
             // 外层包装 container，对命中几何是 no-op）——本 mouse-area 直接
@@ -79,14 +92,29 @@ widget DesktopSurface {
             // Plan 518 G4③：格 = per-app 徽标色圆角底（哈希分配,数据驱动
             // bg-[ 拼接——"grid grid-cols-" + n 先例）+ 白 glyph（stella
             // 桌面 Notes 徽标同款;单色 lucide "带颜色"正解是容器底色）。
+            // PLAN-012 W5：grid 定宽（8 列 × 80px 格 + 7 × 8px gap =
+            // 696px）——原 w-full 均分整行把格距拉伸到数百 px（用户反馈
+            // "间距过大"根因）；定宽后图标群贴左上、格距 = gap 8px 量级
+            // （w-fit iced 轨不支持，class.rs 白名单受限——显式算术宽）。
             grid (cols: 8, gap: 8) {
-                style: "w-full"
-                for e in .__desktop_icons {
-                    mouse-area (ondblclick: .ActivateApp(e.id)) {
+                style: "w-[696px]"
+                // PLAN-012 W5：格子表渲染（宿主分配 (c,r) + spacer 填位）——
+                // 拖拽换位后位置持久（shell.desktop.positions，重启保持）。
+                for e in .__desktop_cells {
+                    if e.spacer == "1" {
+                        div { style: "w-20 h-20" }
+                    } else {
+                    mouse-area (ondblclick: .ActivateApp(e.id), onclick: .IconPress(e.id)) {
                         col {
                             // PLAN-002 B pilot：布局件 hover 类消费（此前 row/col
                             // 上的 hover: 静默丢弃——526 Q9①）+ 右键挂点。
-                            style: "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                            // PLAN-012 W5：拖拽拾起态 = 半透明底（拖拽语义反馈；
+                            // 无逐帧跟随幽灵——headless 决策，见工件）。
+                            style: if .drag_id == e.id {
+                                "w-20 h-20 items-center justify-center gap-1 bg-white/20 opacity-50"
+                            } else {
+                                "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                            }
                             oncontextmenu.prevent: .IconMenu(e.id)
             // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标 chip 视觉件，
             // 与任务栏条目右键同款悬浮样式；此前准内联 col 把
@@ -124,6 +152,7 @@ widget DesktopSurface {
                                 style: "text-xs text-foreground truncate w-full text-center"
                             }
                         }
+                    }
                     }
                 }
             }
@@ -164,6 +193,22 @@ widget DesktopSurface {
 
         // 右键图标：开菜单（记录目标条目）。
         .IconMenu(id) -> { .menu_id = id }
+
+        // PLAN-012 F2 走查：拖拽 = 按下拾起（宿主 drag_start 置位）→
+        // 拖动 → 松手落格（根 mouse-area onmouseup → BlankDrop；宿主全局
+        // __mouse_released 臂兜底）。落格 = 光标格磁吸，占位挤下一空格。
+        .IconPress(id) -> {
+            if .drag_id == "" {
+                .drag_id = id
+                .__desktop_cmd = "desktop_icon_drag_start	" + id
+            }
+        }
+        .BlankDrop -> {
+            if .drag_id != "" {
+                .__desktop_cmd = "desktop_icon_drop_at	" + .drag_id
+                .drag_id = ""
+            }
+        }
 
         // PLAN-526 T10：空白处右键 → 空白菜单态。
         .BlankMenu -> { .blank_menu = "1" }

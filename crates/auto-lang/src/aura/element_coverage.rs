@@ -454,6 +454,7 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("video", QueueStatus::NotYet("原生播放面已具备（PLAN-617 T-19：libmpv→持久纹理→shader widget），但 desktop_protocol 投影臂未接（不在 Coverage::target_set）——差投影不差渲染")),
         ("virtual_window", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("window_thumbnail", QueueStatus::NotYet("媒体/动态内容——位图帧归 Stage 5 后续（image 占位先例）")),
+        ("workspace_preview", QueueStatus::NotYet("PLAN-012 W3——iced 宿主合成臂已落（shell pack 特权组件），Vue 轨待桌面 Vue shell 形态定案")),
 
     ]
 }
