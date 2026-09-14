@@ -68,7 +68,6 @@ pub struct CodeEditor<'a, M> {
     on_change: Option<Box<dyn Fn() -> M + 'a>>,
     on_cursor: Option<Box<dyn Fn() -> M + 'a>>,
     on_context_menu: Option<Box<dyn Fn(Option<(f32, f32)>) -> M + 'a>>,
-    on_scroll_to_caret: Option<Box<dyn Fn() -> M + 'a>>,
     /// PLAN-629 T-02: hosted-in-common-scroller mode — the scroller owns
     /// the scrollbar UI + wheel; the editor reports content height, renders
     /// the visible slice and asks for follow-scrolls.
@@ -86,7 +85,6 @@ impl<'a, M: Clone> CodeEditor<'a, M> {
             on_change: None,
             on_cursor: None,
             on_context_menu: None,
-            on_scroll_to_caret: None,
             hosted: false,
             width: Length::Fill,
             height: Length::Fill,
@@ -119,13 +117,6 @@ impl<'a, M: Clone> CodeEditor<'a, M> {
     /// reports content height and renders only the visible slice.
     pub fn hosted(mut self) -> Self {
         self.hosted = true;
-        self
-    }
-
-    /// Fires (hosted mode) on keyboard/IME caret moves that may need a
-    /// follow-scroll; payload target via `code_editor_caret_offset_y(key)`.
-    pub fn on_scroll_to_caret(mut self, f: impl Fn() -> M + 'a) -> Self {
-        self.on_scroll_to_caret = Some(Box::new(f));
         self
     }
 
@@ -425,27 +416,25 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         self.publish(&out, shell, publish_origin);
 
         if self.hosted {
-            // 光标跟随: keyboard/IME caret moves publish the follow-scroll
-            // command (session arm → operation::scroll_to). Mouse clicks
-            // land inside the visible slice — no jump needed.
+            // 光标跟随: keyboard/IME caret moves off-viewport queue a
+            // follow-scroll request on the core; the session funnel drains
+            // it into `operation::scroll_to` the SAME message pass
+            // (M-free channel — the editor path is M-generic).
             if out.cursor_changed && keyboard_origin {
-                if let Some(f) = &self.on_scroll_to_caret {
-                    shell.publish(f());
+                if let Some(caret_y) = self.core.caret_offset_y() {
+                    let target = (caret_y - 2.0 * self.core.config_line_height()).max(0.0);
+                    self.core.request_caret_follow(target);
                 }
             }
             // 高度上报: fold toggles change the projected content height.
-            // iced Shell has no layout-invalidation API — a published message
-            // → view rebuild → re-layout is this runtime's invalidation
-            // channel (scroller re-measures 比例/位置 then).
+            // iced Shell has no layout-invalidation API — a redraw request
+            // makes the runtime re-view → re-layout (scroller re-measures
+            // 比例/位置 then).
             let state = tree.state.downcast_ref::<WidgetState>();
             let h = self.core.content_height();
             if (h - state.last_content_height.get()).abs() > 0.5 {
                 state.last_content_height.set(h);
-                if let Some(f) = &self.on_scroll_to_caret {
-                    shell.publish(f());
-                } else {
-                    shell.request_redraw();
-                }
+                shell.request_redraw();
             }
         }
     }
