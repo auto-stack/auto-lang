@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-622
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: store-facade-vm-semantics
 author: [zhaopuming]
 created_at: 2026-09-14
