@@ -14,6 +14,7 @@
 // - 持久化：storage.get/set 保持视图模式、排序字段、排序方向与隐藏文件状态
 
 use components.fs_util: format_size, type_label, hidden_name, fmt_date, app_for_ext
+use auto.process
 use auto.fs
 use auto.file
 use auto.json
@@ -77,6 +78,8 @@ widget App {
         var search_q str = ""
         var addr str = ""                    // 地址编辑值（Phase 2：点击面包屑区进入编辑态）
         var addr_editing bool = false
+        // R5：行 hover 高亮（mouseenter/leave 显式驱动）
+        var hover_id int = -1
 
         // 选中与重命名
         var selected_id int = -1
@@ -424,9 +427,9 @@ widget App {
                                         // 整行高亮
                                         row {
                                             style: "h-11 items-center"
-                                            mouse-area (onclick: .SelectItem(item.id), ondblclick: .OpenItem(item.id), oncontextmenu.prevent: .ItemCtx(item.id), style: if item.id == .selected_id { "flex-1 h-11 px-4 items-center bg-accent border-l-2 border-primary" } else { "flex-1 h-11 px-4 items-center hover:bg-accent/40" }) {
+                                            mouse-area (onclick: .SelectItem(item.id), ondblclick: .OpenItem(item.id), oncontextmenu.prevent: .ItemCtx(item.id), onmouseenter: .RowHover(item.id), onmouseleave: .RowLeave, style: if item.id == .selected_id { "flex-1 h-11 px-4 items-center bg-accent border-l-2 border-primary" } else { if .hover_id == item.id { "flex-1 h-11 px-4 items-center bg-accent/30" } else { "flex-1 h-11 px-4 items-center" } }) {
                                                 row {
-                                                    style: "items-center w-full"
+                                                    style: "h-full items-center w-full"
 
                                                 // 名称列（图标 + 名称）
                                                 row {
@@ -456,14 +459,20 @@ widget App {
                                             // mouse-area 子树，closed 态内容会泄漏参与布局）
                                             row {
                                                 style: "w-16 h-11 items-center justify-center"
-                                                button (variant: "ghost") {
-                                                    onclick: .ItemCtx(item.id)
-                                                    oncontextmenu.prevent: .ItemCtx(item.id)
-                                                    style: "h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md flex items-center justify-center"
-                                                    icon (name: "more-horizontal", size: 16) {}
-                                                }
                                                 popover (open: .ctx_id == item.id, placement: "bottom-end", ondismiss: .CtxClose,
                                                          class: "w-44 p-1.5 rounded-xl border border-border bg-card shadow-xl z-50") {
+                                                    // R5-2：first-child = 锚件就地渲染不进菜单
+                                                    //（"打开"消失 + 菜单锚错位根因）——
+                                                    // trigger/content 子标签强制拆分
+                                                    popover-trigger {
+                                                        button (variant: "ghost") {
+                                                            onclick: .ItemCtx(item.id)
+                                                            oncontextmenu.prevent: .ItemCtx(item.id)
+                                                            style: "h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md flex items-center justify-center"
+                                                            icon (name: "more-horizontal", size: 16) {}
+                                                        }
+                                                    }
+                                                    popover-content {
                                                     button (variant: "ghost") {
                                                         onclick: .CtxOpen
                                                         style: "h-8 w-full justify-start px-3 text-xs text-foreground hover:bg-accent rounded-md flex items-center gap-2"
@@ -502,6 +511,7 @@ widget App {
                                                         style: "h-8 w-full justify-start px-3 text-xs text-destructive hover:bg-accent rounded-md flex items-center gap-2"
                                                         icon (name: "trash-2", size: 14) {}
                                                         text "删除" { style: "text-xs" }
+                                                    }
                                                     }
                                                 }
                                             }
@@ -1064,7 +1074,9 @@ widget App {
                         .__desktop_cmd = "open_with	" + app + "	" + r.path
                         toast.success("正在打开: " + r.name)
                     } else {
-                        toast.error("没有关联应用可打开 ." + r.file_ext + " 文件")
+                        // R5：无关联 → 系统默认程序（cmd start 关联 verb）
+                        process.spawn(["cmd", "/c", "start", "", r.path])
+                        toast("已调用系统默认程序打开: " + r.name)
                     }
                 }
             }
@@ -1295,6 +1307,15 @@ widget App {
             .confirm_del_open = false
             .confirm_del_id = -1
             .confirm_del_path = ""
+        }
+
+        // ---- R5：行 hover 高亮驱动 ----
+        .RowHover(id) -> {
+            .hover_id = id
+        }
+
+        .RowLeave -> {
+            .hover_id = -1
         }
 
         // ---- R4-T21：Enter 打开选中项（弹层/编辑态守卫）----
