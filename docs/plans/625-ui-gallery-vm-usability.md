@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-625
-status: executing              # drafting → executing → execution_done → reviewed → archived（rev 3: T-09 占位卡已落地,用户新指令升级 T-10 实装视口）
+status: execution_done         # drafting → executing → execution_done → reviewed → archived（rev 3: T-10 全落,VM 视口实装交付）
 feature_name: ui-gallery-vm-usability
 author: [agent]
 created_at: 2026-09-14
@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-registry-�
 touched_goals: [GOAL-010, GOAL-007]   # 引用 docs/specs/goals.md 的 GOAL-NNN（沿 573 引用，暂定）
 
 affects: [auto-lang/ui, parity]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -408,8 +408,12 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
     Component 臂,嵌套 .at component 随装注册,fn/.ts 沿旧路 stub）；
     AppViewport.vm.at 内 use.web 导入 Demo* 子 widget 并按 `.app` 条件
     实例化。**web 臂零影响**（.vm.at 仅 VM 链装载,vue 构建实测 ✓）。
-  - **T-10d** Rust 臂（--render rust）同型支持调研：转译器对 child widget
-    的支持现状核对,可行则同门落地,不可行则登记差异。
+  - **T-10d [✅ 已完成]** Rust 臂（--render rust）同型支持调研：实测探针
+    ——ui-gallery rust 臂 cargo 编译 17 错（E0425 `filter_demos` not found
+    等）——转译器连 Plan 522 模块 use（`use registry:`）尚未支持，
+    `.vm.at` 适配链亦为 VM 加载器专属（ext_stubs 为 VM 渲染目标实现）。
+    → 登记差异：Rust 臂实装需转译器侧模块 use + child widget 支持 =
+    独立计划（merge 时入 KNOWN-DEBT）。VM 臂交付本计划全部用户价值。
   → AC-10。
   [✅ T-10b/c 端到端实证] 2026-09-14：VM 运行视口区**实时渲染
   002-counter**（Counter: 0 + 三按钮），MCP 点击 "+" ×2 → "Counter: 2"
@@ -462,8 +466,15 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   PASS；14 VM-live + 6 跳过上报；vue 构建 15.26s ✓。过程中修复:发射器
   分支 if/else-if 括号链、widget 声明行首判定（002-counter 注释误触）、
   模块 use 过滤（016/026 link 致命实证）。
+
   `next: work`（T-10d）或 `review`（T-10d 可独立后补,主体已闭环——交用户
   选择）。
+
+- **2026-09-14 work round 7（仍 plan_revision 3）**：stage `work`；无代码
+  commit（T-10d 纯调研）；task_ids T-10d 完成（**10/10 全落**）。evidence：
+  rust 臂实测 17 编译错（模块 use 未支持）——结论=VM 专属实装,Rust 臂转
+  独立计划。status 回 execution_done。scoped 检查已过（本轮无代码改动）。
+  blockers：无。`next: review`。
 
 - **2026-09-14 work round 3（仍 plan_revision 2）**：stage `work`；无代码
   commit（纯调查/决策轮）；task_ids T-07、T-08 完成（8/9）。evidence：WER
