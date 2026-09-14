@@ -1080,7 +1080,6 @@ P1 extracted from production tables; props TBD
 |------|------|---------|-------------|
 | `value` | `float` | 0 | Progress percentage |
 | `max` | `float` | 100 | Maximum value |
-| `onseek` | `msg_ref` | — | PLAN-617: turns the bar into a seek control. Fires on press AND while dragging (hover alone does not scrub; press-and-hold tracking uses pointer capture on the web). The handler receives ONE float: the horizontal fraction 0..1 inside the bar -- same scale on both backends (VM: iced SeekArea, web: generated pointer wrapper), so authors write `SeekTo(.duration * $0)` without knowing pixels or max. |
 
 ---
 
@@ -1680,6 +1679,20 @@ Per-window live thumbnail (host snapshot pixels, renderer-side asset channel)
 
 ---
 
+### `workspace_preview`
+
+`builtin_widget` · `workspace_preview` · web: `none` · iced: `full` · category: `display`
+
+Whole-desktop proportional preview (host-composited tiles, PLAN-012 W3)
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `ws` | `string` | — | Workspace id to preview (host wm publish; PLAN-012) |
+| `fallback` | `string` | app-window | Lucide icon for snapshot-miss windows |
+| `class` | `union: string|class_binding` | — | Box classes (w-/h- define the Contain fit box) |
+
+---
+
 ## 原生直通(native_html)
 
 ### `+`
@@ -1714,7 +1727,7 @@ _props 待声明_
 
 ### `audio`
 
-`native_html` · `audio` · web: `none` · iced: `fallback` · category: `content`
+`native_html` · `audio` · web: `native` · iced: `fallback` · category: `content`
 
 P1 extracted from production tables; props TBD
 
@@ -2245,9 +2258,9 @@ _props 待声明_
 
 ### `video`
 
-`native_html` · `video` · web: `none` · iced: `partial` · category: `media`
+`native_html` · `video` · web: `native` · iced: `partial` · category: `content`
 
-视频播放：Vue 端为原生 &lt;video&gt;；iced 端为 libmpv 原生命中播放面（PLAN-617）
+P1 extracted from production tables; props TBD
 
 别名:`Video`
 

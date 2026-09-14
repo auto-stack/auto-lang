@@ -68,6 +68,11 @@ const DOC_EXCLUDE: &[&str] = &[
     // 家族主页面（sidebar 页含 sub 按钮 nesting 说明；sheet 页含 close 钮）。
     "sidebarmenusubbutton",
     "sheetclose",
+    // PLAN-012 W3：workspace_preview = 宿主合成整桌面预览（web: none，
+    // iced 宿主层贴片渲染，gallery 页无法呈现）；契约文档化于
+    // schema/projection-protocol-v1.md §2.1（DSL 合同面）+ PLAN-012 §5。
+    // （存折叠形——fence 以 fold 探测，多词名须无连写。）
+    "workspacepreview",
     // Plan 497:每窗口真缩略(桌面 shell 专用消费面——switcher 行/dock
     // hover/pager 分区;单 App gallery 无虚拟窗可缩略,恒 fallback 形态,
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +

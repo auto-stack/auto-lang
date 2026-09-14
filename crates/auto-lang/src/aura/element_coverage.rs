@@ -261,7 +261,7 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("nav", QueueStatus::Covered),
         // os-007（534 滞留清偿）：全量再生成后真名登记（regen 连字符/Pascal
         // 命名——旧下划线孪生行随之退役）。
-        ("nav-destination", QueueStatus::NotConsumed("同 NavDestination（regen 元素真名，os-007）")),
+        ("NavDestination", QueueStatus::NotConsumed("同 nav-destination（regen 元素真名，os-007 登记/012 schema 再生改名）")),
         ("nav-group", QueueStatus::NotYet("复合导航族——后续专项（Stage 6 路由/远程端消费）")),
         ("nav-item", QueueStatus::NotYet("复合导航族——后续专项（Stage 6 路由/远程端消费）")),
         ("nav-link", QueueStatus::NotYet("复合导航族——后续专项（Stage 6 路由/远程端消费）")),
@@ -378,7 +378,7 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("slider", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("slot", QueueStatus::NotYet("长尾——按需升格（登记即过，未登记即红）")),
         ("small", QueueStatus::Covered),
-        ("swiper", QueueStatus::NotConsumed("同 Swiper（regen 元素真名，os-007）")),
+        ("Swiper", QueueStatus::NotConsumed("同 swiper（regen 元素真名，os-007 登记/012 schema 再生改名）")),
         ("sonner", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("spacer", QueueStatus::Covered),
         ("spinner", QueueStatus::NotYet("overlay 弹层族——块流静态帧不可保真，待弹层支持（Stage 6+）")),
