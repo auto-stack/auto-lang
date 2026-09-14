@@ -50,7 +50,13 @@ type Para = <iced::Renderer as iced::advanced::text::Renderer>::Paragraph;
 pub const CELL_W: f32 = 8.0;
 pub const CELL_H: f32 = 16.0;
 pub const FONT_PX: f32 = 16.0;
-const BORDER: f32 = 1.0;
+/// 内容四周内缩(用户裁定 2026-09-14:文字不贴边,上下左右各 4px;
+/// 取代旧的 1px 边框内缩——组件自绘边框已撤,双层边框不再)。
+pub const PAD: f32 = 4.0;
+/// 底部两角圆角半径,对齐虚拟窗口窗框 WIN_RADIUS(virtual_window.rs
+/// PLAN-002 N5 四角全圆档)——终端全幅底色方角会探出圆角窗框,圆角化
+/// 后适配虚拟桌面;独立 OS 窗口形态下仅表现为内容自带圆角,无害。
+const BOTTOM_RADIUS: f32 = 16.0;
 
 /// 实测等宽 advance(px/格):把 iced 全局 font system 装为共享源(与
 /// code_editor 同款,幂等——at-app 无编辑器组件,回调此前无人装),给
@@ -90,7 +96,10 @@ pub fn cell_w() -> f32 {
 }
 
 const DEFAULT_FG: Color = Color::from_rgb8(0xe8, 0xe8, 0xe8);
-const DEFAULT_BG: Color = Color::from_rgb8(0x06, 0x07, 0x09);
+/// 终端默认底色(近黑)。pub:renderer 侧 View::Terminal 臂用它涂满
+/// 固定尺寸组件外的客户区余量(右/底 ≤ 一格宽/一行高),否则露出
+/// 根容器 bg-background(9,14,26) 形成用户可见的"浅色带"。
+pub const DEFAULT_BG: Color = Color::from_rgb8(0x06, 0x07, 0x09);
 
 const MENU_ITEMS: [&str; 3] = ["Copy", "Paste", "Select All"];
 const MENU_ITEM_W: f32 = 80.0;
@@ -220,8 +229,8 @@ impl<M> Terminal<M> {
             on_select: None,
             on_menu: None,
             on_input: None,
-            width: Length::Fixed(cols as f32 * cell_w() + 2.0 * BORDER),
-            height: Length::Fixed(rows as f32 * CELL_H + 2.0 * BORDER),
+            width: Length::Fixed(cols as f32 * cell_w() + 2.0 * PAD),
+            height: Length::Fixed(rows as f32 * CELL_H + 2.0 * PAD),
         }
     }
 
@@ -229,8 +238,8 @@ impl<M> Terminal<M> {
     fn pixel_to_cell(&self, pos: Point, bounds: Rectangle) -> (usize, usize) {
         let cols = self.core.cols.max(1) as usize;
         let rows = self.core.rows.max(1) as usize;
-        let fx = (pos.x - bounds.x - BORDER) / cell_w();
-        let fy = (pos.y - bounds.y - BORDER) / CELL_H;
+        let fx = (pos.x - bounds.x - PAD) / cell_w();
+        let fy = (pos.y - bounds.y - PAD) / CELL_H;
         let col = (fx.floor() as i32).clamp(0, cols as i32 - 1) as usize;
         let row = (fy.floor() as i32).clamp(0, rows as i32 - 1) as usize;
         (row, col)
@@ -243,8 +252,8 @@ impl<M> Terminal<M> {
         let cursor = self.core.cursor();
         let rect = Rectangle::new(
             Point::new(
-                bounds.x + BORDER + cursor.col as f32 * cell_w(),
-                bounds.y + BORDER + cursor.row as f32 * CELL_H,
+                bounds.x + PAD + cursor.col as f32 * cell_w(),
+                bounds.y + PAD + cursor.row as f32 * CELL_H,
             ),
             Size::new(cell_w(), CELL_H),
         );
@@ -287,8 +296,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // 事件,网格逻辑尺寸应保持不变。
         let max = limits.max();
         if max.width.is_finite() && max.height.is_finite() {
-            let cols = (((max.width - 2.0 * BORDER) / cell_w()).floor() as u16).max(1);
-            let rows = (((max.height - 2.0 * BORDER) / CELL_H).floor() as u16).max(1);
+            let cols = (((max.width - 2.0 * PAD) / cell_w()).floor() as u16).max(1);
+            let rows = (((max.height - 2.0 * PAD) / CELL_H).floor() as u16).max(1);
             if cols >= 2 {
                 crate::ui::terminal::terminal_request_resize(self.core, cols, rows);
             }
@@ -460,23 +469,22 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let bounds = layout.bounds();
         let state = tree.state.downcast_ref::<TerminalState>();
 
-        renderer.fill_quad(
-            renderer::Quad { bounds, ..renderer::Quad::default() },
-            Background::Color(DEFAULT_BG),
-        );
-        // Placeholder frame: an empty grid still shows its border + geometry
-        // (T2 占位矩形语义,空网格时即整体外观)。
+        // 全幅底色:底部两角随窗框圆角(适配虚拟桌面;顶部归 chrome 不圆)。
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
                 border: Border {
-                    color: Color::from_rgb(0.25, 0.28, 0.32),
-                    width: BORDER.into(),
-                    radius: 0.0.into(),
+                    color: Color::TRANSPARENT,
+                    width: 0.0.into(),
+                    radius: iced::border::Radius {
+                        bottom_left: BOTTOM_RADIUS,
+                        bottom_right: BOTTOM_RADIUS,
+                        ..Default::default()
+                    },
                 },
                 ..renderer::Quad::default()
             },
-            Background::Color(Color::TRANSPARENT),
+            Background::Color(DEFAULT_BG),
         );
 
         let (cells, digests) = self.core.snapshot();
@@ -484,9 +492,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             return;
         }
 
-        // 背景层:非默认 bg 的 run(每帧 emit;无形状成本)。
+        // 背景层:非默认 bg 的 run(每帧 emit;无形状成本;PAD 内缩——
+        // 此前 x/y 均缺内缩,色块相对文本错位 1px)。
         for (y, line) in cells.iter().enumerate() {
-            let line_y = bounds.y + y as f32 * CELL_H;
+            let line_y = bounds.y + PAD + y as f32 * CELL_H;
             if line_y > bounds.y + bounds.height {
                 break;
             }
@@ -504,7 +513,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 renderer.fill_quad(
                     renderer::Quad {
                         bounds: Rectangle::new(
-                            Point::new(bounds.x + start as f32 * cell_w(), line_y),
+                            Point::new(bounds.x + PAD + start as f32 * cell_w(), line_y),
                             Size::new((idx - start) as f32 * cell_w(), CELL_H),
                         ),
                         ..renderer::Quad::default()
@@ -535,8 +544,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     renderer::Quad {
                         bounds: Rectangle::new(
                             Point::new(
-                                bounds.x + BORDER + col_begin as f32 * cell_w(),
-                                bounds.y + BORDER + row as f32 * CELL_H,
+                                bounds.x + PAD + col_begin as f32 * cell_w(),
+                                bounds.y + PAD + row as f32 * CELL_H,
                             ),
                             Size::new(
                                 (col_last - col_begin + 1) as f32 * cell_w(),
@@ -558,7 +567,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             cache.resize_with(cells.len(), || None);
         }
         for (y, line) in cells.iter().enumerate() {
-            let line_y = bounds.y + y as f32 * CELL_H;
+            let line_y = bounds.y + PAD + y as f32 * CELL_H;
             if line_y > bounds.y + bounds.height {
                 break;
             }
@@ -571,7 +580,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             if let Some(entry) = cache[y].as_ref() {
                 renderer.fill_paragraph(
                     &entry.para,
-                    Point::new(bounds.x + BORDER, line_y),
+                    Point::new(bounds.x + PAD, line_y),
                     DEFAULT_FG,
                     bounds,
                 );
@@ -587,14 +596,14 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             let (rect, color) = match cursor.shape {
                 TermCursorShape::Block => (
                     Rectangle::new(
-                        Point::new(bounds.x + BORDER + col, bounds.y + BORDER + row),
+                        Point::new(bounds.x + PAD + col, bounds.y + PAD + row),
                         Size::new(cell_w(), CELL_H),
                     ),
                     Color::from_rgba(0.91, 0.91, 0.91, 0.85),
                 ),
                 TermCursorShape::Beam => (
                     Rectangle::new(
-                        Point::new(bounds.x + BORDER + col, bounds.y + BORDER + row),
+                        Point::new(bounds.x + PAD + col, bounds.y + PAD + row),
                         Size::new(2.0, CELL_H),
                     ),
                     DEFAULT_FG,
@@ -602,8 +611,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 TermCursorShape::Underline => (
                     Rectangle::new(
                         Point::new(
-                            bounds.x + BORDER + col,
-                            bounds.y + BORDER + row + CELL_H - 2.0,
+                            bounds.x + PAD + col,
+                            bounds.y + PAD + row + CELL_H - 2.0,
                         ),
                         Size::new(cell_w(), 2.0),
                     ),
@@ -620,8 +629,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // preedit 自绘覆盖层(#11 绕行):光标格锚定,下划线标记组合串。
         if let Some(preedit) = self.preedit.as_deref().filter(|p| !p.is_empty()) {
             let cursor = self.core.cursor();
-            let y = bounds.y + BORDER + cursor.row as f32 * CELL_H;
-            let x = bounds.x + BORDER + cursor.col as f32 * cell_w();
+            let y = bounds.y + PAD + cursor.row as f32 * CELL_H;
+            let x = bounds.x + PAD + cursor.col as f32 * cell_w();
             let w = preedit.chars().count() as f32 * cell_w();
             renderer.fill_quad(
                 renderer::Quad {

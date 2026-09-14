@@ -3,8 +3,8 @@
 //! 选中态 / 光标块)。
 //!
 //! 断言面:
-//! 1. bounds 非零且等于 cols×CELL_W + 2 / rows×CELL_H + 2(widget 经
-//!    `operate` 向 selector 暴露 bounds——canvas 型 widget 缺省不可见);
+//! 1. bounds 非零且等于 cols×CELL_W + 2×PAD / rows×CELL_H + 2×PAD(widget
+//!    经 `operate` 向 selector 暴露 bounds——canvas 型 widget 缺省不可见);
 //! 2. 选中态与基线帧像素不同(高亮层进入渲染产物);
 //! 3. 光标块与基线帧像素不同。
 //!
@@ -85,14 +85,14 @@ impl Selector for BoundsCollector {
     }
 }
 
-/// bounds 非零且等于固定网格几何(cols×cell_w()+2, rows×CELL_H+2)。
+/// bounds 非零且等于固定网格几何(cols×cell_w()+2×PAD, rows×CELL_H+2×PAD)。
 /// 014:横向用实测 advance——先预热测量(否则首帧布局还是 8.0 近似,
 /// find 看到的 bounds 与 want_w 不同源)。
 #[test]
 fn terminal_pixel_bounds_nonzero_and_exact() {
-    use crate::ui::terminal::iced::{CELL_H, cell_w};
-    let want_w = COLS as f32 * cell_w() + 2.0;
-    let want_h = ROWS as f32 * CELL_H + 2.0;
+    use crate::ui::terminal::iced::{CELL_H, PAD, cell_w};
+    let want_w = COLS as f32 * cell_w() + 2.0 * PAD;
+    let want_h = ROWS as f32 * CELL_H + 2.0 * PAD;
     feed_baseline();
     let mut ui = simulator(terminal_view().into_iced());
     let store = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));

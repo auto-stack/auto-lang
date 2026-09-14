@@ -4129,10 +4129,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
                     on_input: on_input.clone(),
-                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0),
-                    height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0),
+                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0 * crate::ui::terminal::iced::PAD),
+                    height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0 * crate::ui::terminal::iced::PAD),
                 }
                 .into();
+                // 固定网格尺寸 ≠ 客户区:右/底余量(≤一格宽/一行高)若露出
+                // 根容器 bg-background(9,14,26) 即用户可见"浅色带"。涂同色
+                // (终端 DEFAULT_BG)填满可用空间,余量隐形;子件左上对齐,
+                // PAD 贴窗角。016 复审 T-07。
+                let el: iced::Element<'static, M> = iced::widget::container(el)
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Left)
+                    .align_y(iced::alignment::Vertical::Top)
+                    .style(|_: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(
+                            crate::ui::terminal::iced::DEFAULT_BG,
+                        )),
+                        ..Default::default()
+                    })
+                    .into();
                 if let Some(ref s) = style {
                     let is = IcedStyle::from_style(s);
                     wrap_with_margin(el, &is)
