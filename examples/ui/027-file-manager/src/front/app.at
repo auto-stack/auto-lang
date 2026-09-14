@@ -429,7 +429,7 @@ widget App {
                                             style: "h-11 items-center"
                                             mouse-area (onclick: .SelectItem(item.id), ondblclick: .OpenItem(item.id), oncontextmenu.prevent: .ItemCtx(item.id), onmouseenter: .RowHover(item.id), onmouseleave: .RowLeave, style: if item.id == .selected_id { "flex-1 h-11 px-4 items-center bg-accent border-l-2 border-primary" } else { if .hover_id == item.id { "flex-1 h-11 px-4 items-center bg-accent/30" } else { "flex-1 h-11 px-4 items-center" } }) {
                                                 row {
-                                                    style: "h-full items-center w-full"
+                                                    style: "h-11 items-center w-full"
 
                                                 // 名称列（图标 + 名称）
                                                 row {
