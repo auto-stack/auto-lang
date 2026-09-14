@@ -16424,6 +16424,13 @@ fn fit_aware_root(
                     .height(iced::Length::Shrink)
                     .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
             )
+            // The fit wrapper is an internal measurement surface. Keep its
+            // vertical scrolling behavior for natural-height measurement, but
+            // do not expose a scrollbar while the window is settling on its
+            // intrinsic size.
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::hidden(),
+            ))
             .width(iced::Length::Shrink)
             .height(iced::Length::Shrink),
         )
