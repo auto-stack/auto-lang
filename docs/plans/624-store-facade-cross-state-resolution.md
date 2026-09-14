@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-624
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: store-facade-cross-state-resolution
 author: [zhaopuming]
 created_at: 2026-09-14
-updated_at: 2026-09-14
+updated_at: 2026-09-15
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: [ui/store-facade-cross-state]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 0
+current_step: 6
 total_steps: 6
 ---
 
@@ -185,8 +185,9 @@ needs_replan 评估。
 
 | delta | add/modify | 目标 | before/after | rationale | AC |
 | --- | --- | --- | --- | --- | --- |
-| SD-01 | modify | docs/specs/auto-lang/ui/overview.md「store facade 消费位语义」节 | before：五消费位契约（PLAN-622 SD-01）；after：增补「跨状态字段读」消费位（handler 直读 store 字段/嵌套字段/?str 双态）+ `&&`/`||` 非布尔编译期报错裁定 | facade 形态启用的语义冻结补完 | AC-01..04 |
+| SD-01 | modify | docs/specs/auto-lang/ui/overview.md「store facade 消费位语义」节 | before：五消费位契约（PLAN-622 SD-01）；after：增补「跨状态字段读」消费位（handler 直读 store 字段/嵌套字段/?str 双态）+ `&&`/`||` 短路值语义（rev 2 裁定②——落地改写，原文「编译期报错」作废） | facade 形态启用的语义冻结补完 | AC-01..04 |
 | SD-02 | add | docs/specs/auto-lang/ui/overview.md 同节内「列表原生面增补」注记 | before：无 find_index；after：auto.list.find_index（谓词/语义与 find 对齐，返回索引） | P4 消费面 | AC-04 |
+| SD-03 | add（执行期新增） | 同节「闭包激活帧协议」 | before：无闭包帧契约；after：闭包激活入 call_stack 恰一帧、RET 弹恰一帧（帧协议对闭包闭合） | jade P2 面真因契约化（T-03 执行期发现） | AC-02 |
 
 ## 测试设计
 
@@ -250,6 +251,45 @@ needs_replan 评估。
   值，中等）；③文档偏差登记（现状 + 禁用指引，零成本）。P3 红测保留为
   pending 标记（plan624_p3，当前 FAILED 属预期）。
 
+### 执行进度（2026-09-15 work 会话二，自 58a8c6595 续）
+
+续做清单四项全部收敛，T-01..T-06 全数完成：
+
+- [✅ 已完成] T-04 ①（commit dbb3c3f9b）：`||` falsy 路径缺陷收敛——
+  WIP 发射的 POP 在 RHS 编译**之后**，弹掉的是 RHS 本体，真值路径恒返回
+  LHS（`falsy || fb` 得 Nil 即此）；修正为 POP 前置。同 commit 撤销
+  WIP 的 truthy 原生 2073：JMP_IF_Z/NZ 本就是 Plan 406 nv_truthy 标签
+  优先判定面（null/哨兵假），raw-i32 归一反而丢 NV 栈签且 sp 中性
+  CALL_NAT 不结算 DUP 副本 stake。p3 臂绿（hop_c=Str("fallback")）。
+- [✅ 已完成] T-04 ②：tv 12 失败逐个清点——**全数系坏发射伪影**：修正
+  后 tv 全量 3706/3706 绿，纯布尔用法值语义与布尔归一值相等，无金样更新、
+  无语义依赖登记。存量 `.at` 语料 `&&`/`||` 用法 335 处扫描清点均为
+  纯布尔面（AC-3 存量影响面清点在案）。
+- [✅ 已完成] T-02/T-03 ④（commit 37585e4be）：P2 崩溃根因修复——
+  **真因与 ?str 编码无关**：`call_closure` 方法与 `CALL_CLOSURE` 码激活
+  闭包不入 call_stack 帧，闭包体 RET 无条件弹一帧=弹走外层函数的帧；
+  store handler 内 `find(λ)` 后 store RET 弹空栈不恢复，最深被调帧的
+  current_fn_n_args（=2）泄漏进 0 参 widget handler（需 1），`__state`
+  参数寻址越界走 NULL 守卫 → SET_FIELD 收 NULL 哨兵 0x80000001 →
+  "Invalid object ID: 0xFFFFFFFF80000001"（= jade ?str 面实机错误原文）。
+  带参 handler（OpenPage n_args=2）泄漏值恰等自身故不可见——语料
+  OpenPage 臂绿而 Edit 臂红的分叉由此解释。修复：两路闭包激活推
+  CallFrame（RET 协议闭合），方法 Err/Terminated/AwaitFuture 出口手动
+  退帧。P2 臂全流程绿（SetBody 落账 + ?str 跨状态读 + find + dirty/
+  edited 断言）；P1 双模臂绿（P1 最小语料本就未复现，T-01 结论维持；
+  SD-03 帧协议顺带覆盖 jade 实机 P1/P2 面的候选机制，干净树重放归
+  AC-6 merge 门）。
+- [✅ 已完成] T-06（commit 2d47174dc）：回归 + spec 落账 + 移交——
+  tv 3706/3706 + tf 3560/3560 + plan622 8/8 + plan442 17/17 + plan340
+  11/11 + plan624 5/5 全绿；SD-01/02/03 delta 落 worktree
+  docs/specs/auto-lang/ui/overview.md（canonical 落账归 merge）。
+  **跨仓移交材料（AC-6）**：jade 侧 facade 切换复跑用 vm-smoke
+  AUTO_EXE 直指本计划构建产物（plan-624-dev @ 2d47174dc）全臂绿为
+  merge 前置门；facade 正式切换属 jade 侧（非本计划）。
+
+- [✅ 已完成] T-02/T-03/T-04/T-06 全部收口（会话一已完成 T-01/T-05），
+  AC-1..5、AC-7 在案；AC-6 为 merge 前置跨仓门（jade 侧执行）。
+
 ## 分支与提交归属
 
 - worktree：`D:/autostack/.wt/lang-624/auto-lang`（分组平铺，Plan 529），分支
@@ -287,6 +327,19 @@ needs_replan 评估。
   `D:/autostack/.wt/lang-624/{auto-lang,auto-down}`。next: new（P3 语义
   裁定的 bounded revision，随附 P1 排除计划）；unblock 后 work 续
   T-02/T-03。
+- 2026-09-15 stage:work 收口（/auto-plan:work，rev 2，自 58a8c6595 续）：
+  **outcome: pass**，状态 `execution_done`，next: review。code commits
+  （plan-624-dev）：58a8c6595（T-04 WIP）→ dbb3c3f9b（T-04 收口：POP
+  前置 + truthy 2073 撤销；tv 3706/3706 绿，12 失败系坏发射伪影无需金样
+  更新）→ 37585e4be（T-02/T-03：闭包激活入 call_stack 帧——P2
+  "Invalid object ID 0x80000001" 真因修复，与 ?str 编码无关；plan624
+  5/5 绿）→ 2d47174dc（T-06：SD-01/02/03 delta 落 worktree overview）。
+  回归：tv 3706/3706 + tf 3560/3560 + plan622 8/8 + plan442 17/17 +
+  plan340 11/11 全绿。task_ids：T-01..T-06 全数完成（AC-1..5、AC-7
+  在案；AC-6 = merge 前置跨仓门，jade 侧 vm-smoke AUTO_EXE 直指
+  plan-624-dev @ 2d47174dc）。blockers：无。依赖 worktree
+  `lang-624/auto-down`（auto-lang-dev @ 140775f）clean 未动。worktree
+  保留待 review/merge。
 
 ## 待澄清事项
 
