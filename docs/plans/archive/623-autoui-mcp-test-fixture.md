@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-623
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
+completion_kind: delivered
 feature_name: autoui-mcp-test-fixture
 author: [codex]
 created_at: 2026-09-14
@@ -315,6 +316,18 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
   本节 acceptance_results；工作树在复审前干净。复审在执行上下文中完成，
   已按提交、基线、规格和运行时结果重建结论，未声称由独立 agent 完成。
   next: merge after explicit approval；本复审不执行合并。
+
+
+- 2026-09-14 stage:merge | plan_id: PLAN-623 | plan_revision: 2 |
+  outcome: pass | delivery_commit: 06f03ffc9 (master merge of reviewed
+  implementation; git merge-base --is-ancestor 8594b956e HEAD verified) |
+  canonical_specs: docs/design/autoui/autoui-mcp-test-fixture.md,
+  docs/specs/auto-lang/mcp/{overview,architecture,plans}.md,
+  docs/design/{00-intro.md,autoui/README.md} |
+  ledger: .autoos/specs.json P623-1..P623-6 (runtime projection, one item per
+  reports/goals/architecture/designs/tests/reviews section; read-back verified) |
+  archive: docs/plans/archive/623-autoui-mcp-test-fixture.md |
+  cleanup: pending worktree guard/removal receipt.
 
 ## 10. 待澄清事项
 
