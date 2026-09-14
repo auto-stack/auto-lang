@@ -259,6 +259,9 @@ pub struct RustTrans {
     // Plan 151: Global variables (top-level var declarations)
     // Tracks global variables that need Lazy<Mutex<T>> wrapper
     global_vars: HashSet<AutoStr>,
+    /// PLAN-018: 全局 var 的声明类型(recv_is_list_like 全局 List 接收者
+    /// 识别用——全局 List 的 .get(i)/.set(i,v) 需与局部同款索引改写)。
+    global_var_types: HashMap<AutoStr, Type>,
     /// Plan 523 H5: 任一全局走了非字面量初始化（保留 once_cell Lazy 形态）
     /// ——决定产物头是否仍需 once_cell 导入。Phase 2 登记期置位。
     global_lazy_used: bool,
@@ -506,6 +509,7 @@ impl RustTrans {
             enum_tuple_field_types: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            global_var_types: HashMap::new(),
             global_lazy_used: false,
             in_fn_body: false,
             function_names: HashSet::new(),
@@ -605,6 +609,7 @@ impl RustTrans {
             enum_tuple_field_types: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            global_var_types: HashMap::new(),
             global_lazy_used: false,
             in_fn_body: false,
             function_names: HashSet::new(),
@@ -816,6 +821,12 @@ impl RustTrans {
     /// Register a global variable (top-level var declaration)
     pub fn register_global_var(&mut self, name: AutoStr) {
         self.global_vars.insert(name);
+    }
+
+    /// PLAN-018: register with declared type(全局 List 接收者识别)。
+    pub fn register_global_var_typed(&mut self, name: AutoStr, ty: Type) {
+        self.global_vars.insert(name.clone());
+        self.global_var_types.insert(name, ty);
     }
 
     /// Check if a variable is a global variable
@@ -1457,6 +1468,21 @@ impl RustTrans {
         }
         write!(out, ".collect::<String>()")?;
         Ok(())
+    }
+
+    /// PLAN-018: List 元素非 Copy(str 系)时索引改写后置 .clone()
+    /// (`return G[i]` / `let x = G[i]` 的 String 移出即 E0507;int/bool
+    /// 元素 Copy 不加,维持既有金样)。
+    fn list_elem_needs_index_clone(&self, object: &Expr) -> bool {
+        let ty = match object {
+            Expr::Ident(name) => self
+                .global_var_types
+                .get(name.as_str())
+                .or_else(|| self.local_var_types.get(name.as_str()))
+                .cloned(),
+            _ => None,
+        };
+        matches!(ty, Some(Type::List(inner)) if matches!(inner.as_ref(), Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit))
     }
 
     /// Write a return expression with automatic .to_string() coercion when needed.
@@ -2315,6 +2341,12 @@ impl RustTrans {
     /// .get 方法形由 Vec::get/HashMap::get 各自正确分派)。
     fn recv_is_list_like(&self, object: &Expr) -> bool {
         if let Expr::Ident(name) = object {
+            // PLAN-018: 全局 var List(Array 同款)——.get(i)/.set(i,v)
+            // 索引改写须覆盖全局接收者(`(*G.lock().unwrap())[(i) as usize]`),
+            // 否则落回 Vec::get(Option/i64 实参 E0277)。
+            if let Some(ty) = self.global_var_types.get(name.as_str()) {
+                return matches!(ty, Type::List(_) | Type::Array(_));
+            }
             self.local_var_types.get(name.as_str())
                 .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
                 .unwrap_or(false)
@@ -2651,7 +2683,11 @@ impl RustTrans {
                 // read-only `*` never conflicts.
                 if self.is_global_var(name) {
                     let static_name = self.global_var_static_name(name);
-                    write!(out, "*{}.lock().unwrap()", static_name)
+                    // PLAN-018: 括号绑定解引用范围。裸 `*G.lock().unwrap()`
+                    // 后接方法/字段时整链被解引用(`*…len()` = deref usize,
+                    // E0614);括号后方法作用于 MutexGuard 的 Deref 目标
+                    // (Vec/i64),标量读/算术/转型语义不变。
+                    write!(out, "(*{}.lock().unwrap())", static_name)
                 } else if self.is_write_captured(name.as_str()) {
                     // Plan 419 §4.5: 写捕获绑定是 Rc<RefCell<T>> —— 读走
                     // .borrow(),赋值 LHS(assign_lhs_depth>0)走 .borrow_mut()。
@@ -8128,6 +8164,9 @@ impl RustTrans {
                             self.expr(a, out)?;
                         }
                         write!(out, ") as usize]")?;
+                        if self.list_elem_needs_index_clone(object) {
+                            write!(out, ".clone()")?;
+                        }
                         return Ok(());
                     }
                 }
@@ -9549,6 +9588,11 @@ impl RustTrans {
                         // move,复用即 E0382;与 List 同列。
                         .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
                         .unwrap_or(false)
+                        // PLAN-018: 全局 List 读作 owned 实参同 move
+                        // (E0507 cannot move out of MutexGuard)——同款克隆。
+                        || self.global_var_types.get(name.as_str())
+                            .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
+                            .unwrap_or(false)
                 } else { false };
             // Plan 016 Phase 4: a field-read (`s.marks`, `node.attrs`, `a.sel`)
             // passed to a by-value OWNED param (Vec/struct/enum/Map — anything
@@ -22775,7 +22819,7 @@ impl Trans for RustTrans {
                     || matches!(store.kind, StoreKind::Const)
                 {
                     if matches!(store.kind, StoreKind::Var) || matches!(store.kind, StoreKind::Shared) {
-                        self.register_global_var(store.name.clone());
+                        self.register_global_var_typed(store.name.clone(), store.ty.clone());
                         // Plan 523 H5: 非字面量初始化的全局保留 Lazy 形态。
                         if !Self::global_store_is_const_init(store) {
                             self.global_lazy_used = true;
