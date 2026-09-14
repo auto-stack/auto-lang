@@ -4162,12 +4162,23 @@ export default router
         // 树而非 gen/:VM 编译 app.at 的 `use registry:` 从源码树解析)。与
         // TS 产物同点发射,双产物单一来源(gallery_demo_row)。
         write_registry_at(&self.root_dir.join("src").join("front"), &demo_rows)?;
+        // PLAN-625 T-10b: loadable 单文件示例 → 改名子 widget 源 + 视口适配器。
+        let (vm_live, vm_skipped) =
+            emit_gallery_vm_demos(&apps_dir, &demo_rows, &self.root_dir.join("src").join("gallery"))?;
+        if !vm_skipped.is_empty() {
+            println!(
+                "  {} Gallery VM demos skipped (multi-file/form): {}",
+                "⚠".bright_yellow(),
+                vm_skipped.join(", ")
+            );
+        }
 
         println!(
-            "  {} Gallery host: src/demos-registry.ts ({} demos, {} loadable)",
+            "  {} Gallery host: src/demos-registry.ts ({} demos, {} loadable, {} VM-live)",
             "✓".bright_green(),
             demo_rows.len(),
-            demo_rows.iter().filter(|r| r.loadable).count()
+            demo_rows.iter().filter(|r| r.loadable).count(),
+            vm_live
         );
         Ok(())
     }
@@ -5685,6 +5696,112 @@ pub fn refresh_gallery_registry(project_dir: &Path) -> AutoResult<usize> {
     }
     write_registry_at(&project_dir.join("src").join("front"), &rows)?;
     Ok(rows.len())
+}
+
+/// PLAN-625 T-10b: loadable 单文件示例 → 改名子 widget 源
+/// （`src/gallery/demos/<id>.at`，`widget App` → `widget Demo<Pascal>` 防跨
+/// 示例撞名）+ `src/gallery/AppViewport.vm.at` 条件适配器（VM 视口按 app
+/// prop 即 selected_id 实例化对应子 widget，实装候选 a——用户裁定）。
+/// web 臂不经此文件（AppViewport.vue 动态挂载不变）；VM 臂经
+/// ext_stubs 的 `.vue`→同名 `.vm.at` 探测装载（PLAN-051 C4 widget 注册流）。
+/// 单文件判定：仅一个 `widget ` 声明、无 `.at` 导入路径（多文件示例 v1
+/// 跳过，跳过清单随返回值上报）。
+pub fn emit_gallery_vm_demos(
+    apps_dir: &Path,
+    rows: &[GalleryDemoRow],
+    gallery_dir: &Path,
+) -> AutoResult<(usize, Vec<String>)> {
+    let _ = apps_dir; // 行构建期已读 source;此处保留参数对称(gallery_apps_dir 解析在上游)
+    let demos_dir = gallery_dir.join("demos");
+    let _ = fs::remove_dir_all(&demos_dir);
+    fs::create_dir_all(&demos_dir).map_err(|e| format!("demos mkdir: {}", e))?;
+
+    let mut imports = String::new();
+    let mut branches = String::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let mut emitted = 0usize;
+    for r in rows {
+        if !r.loadable {
+            continue;
+        }
+        let source = &r.source;
+        // widget 声明判定按行首匹配（注释中的 "widget " 字样不算——002-counter
+        // 的 Plan 506 注释曾误触);多声明(宿主+工具 widget 同文件)v1 跳过。
+        let widget_decls = source
+            .lines()
+            .filter(|l| l.trim_start().starts_with("widget "))
+            .count();
+        // 模块级 use(Plan 522 形态,如 `use prog_util: pcur_fmt`/`use store:`)
+        // 指向示例自有模块——拷贝后无法解析 → link 致命(016/026 实证)。
+        // v1 仅发射自包含示例;use.web/use { ext 形态不受影响(桩降级)。
+        let has_module_use = source.lines().any(|l| {
+            let t = l.trim_start();
+            t.starts_with("use ") && !t.starts_with("use {")
+        });
+        let has_at_import = source.contains(".at\"") || source.contains(".at')");
+        if widget_decls != 1 || has_at_import || has_module_use {
+            skipped.push(r.id.clone());
+            continue;
+        }
+        let Some(pos) = source.find("widget App") else {
+            skipped.push(r.id.clone());
+            continue;
+        };
+        // "widget App" 之后须紧邻空白或 {（防误替 source 深处字样）
+        let after = source[pos + "widget App".len()..].trim_start();
+        if !after.starts_with('{') {
+            skipped.push(format!("{}(widget App 形态不符)", r.id));
+            continue;
+        }
+        let pascal = demo_widget_name(&r.id);
+        let renamed = format!(
+            "{}widget {}{}",
+            &source[..pos],
+            pascal,
+            &source[pos + "widget App".len()..]
+        );
+        let fname = format!("{}.at", r.id);
+        fs::write(demos_dir.join(&fname), &renamed)
+            .map_err(|e| format!("write demos/{fname}: {}", e))?;
+        imports.push_str(&format!(
+            "use.web component {pascal} from \"src/gallery/demos/{fname}\"\n"
+        ));
+        // if/else-if 链:首分支 if,后续 } else if(分支体不闭合,由链尾统一收口)
+        let kw = if branches.is_empty() { "if" } else { "} else if" };
+        branches.push_str(&format!(
+            "            {} .app == \"{}\" {{\n                {} {{}}\n",
+            kw, r.id, pascal
+        ));
+        emitted += 1;
+    }
+
+    let mut vm_at = String::with_capacity(2048 + imports.len());
+    vm_at.push_str(
+        "// src/gallery/AppViewport.vm.at — PLAN-625 T-10 生成产物(勿手改)\n// AppViewport 的 VM 形态:按 app prop(=selected_id)条件实例化 Demo* 子\n// widget,实时渲染示例。web 臂不经此文件(AppViewport.vue 动态挂载不变)。\n// 重新生成:auto build / auto run(generate_gallery_host)。\n\n",
+    );
+    vm_at.push_str(&imports);
+    vm_at.push_str("\nwidget AppViewport(app: str, reloadKey: int, viewportMode: str) {\n    view {\n        col {\n            style: \"w-full h-full min-h-[360px] flex flex-col\"\n");
+    vm_at.push_str(&branches);
+    vm_at.push_str(
+            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-2\"\n                    text \"该示例暂无 VM 内嵌形态\" { style: \"text-xs text-muted-foreground\" }\n                    text \"完整交互请使用 auto run（Vue 端）查看\" { style: \"text-xs text-muted-foreground/80\" }\n                }\n            }\n        }\n    }\n}\n",
+    );
+    fs::write(gallery_dir.join("AppViewport.vm.at"), vm_at)
+        .map_err(|e| format!("write AppViewport.vm.at: {}", e))?;
+    Ok((emitted, skipped))
+}
+
+/// PLAN-625 T-10b: 示例 id → 子 widget 唯一名（`002-counter` →
+/// `Demo002Counter`；非字母数字分段 capitalize 拼接）。
+pub fn demo_widget_name(id: &str) -> String {
+    let mut out = String::from("Demo");
+    for seg in id.split(|c: char| !c.is_ascii_alphanumeric()) {
+        let mut chars = seg.chars();
+        if let Some(first) = chars.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    out
 }
 
 /// PLAN-625: 单条 demo 元数据行 + loadable 判定(单一来源)——vue 臂
@@ -8179,6 +8296,88 @@ mod gallery_registry_at_tests {
             .find(|l| l.contains("search_lc") && l.contains("001-helloworld"))
             .unwrap();
         assert!(rec.contains("第二行"), "record stays single-line: {rec}");
+    }
+
+    fn vm_demo_row(id: &str, loadable: bool, source: &str) -> GalleryDemoRow {
+        GalleryDemoRow {
+            id: id.into(),
+            title: id.into(),
+            category: "01-basic".into(),
+            icon: "sparkles".into(),
+            description: "d".into(),
+            tags: vec!["AutoUI".into()],
+            doc: String::new(),
+            source: source.into(),
+            pac: String::new(),
+            loadable,
+        }
+    }
+
+    /// PLAN-625 T-10b: 发射器——改名子 widget 源 + AppViewport.vm.at 条件接线。
+    #[test]
+    fn test_emit_gallery_vm_demos_renames_and_wires() {
+        let dir = tempfile::tempdir().unwrap();
+        let gallery = dir.path().join("gallery");
+        let rows = vec![
+            vm_demo_row(
+                "002-counter",
+                true,
+                "widget App {
+    model {
+        var count int = 0
+    }
+    view {
+        center {
+            text \"hi\"
+        }
+    }
+}",
+            ),
+            vm_demo_row("024-charts", false, "widget App {
+}"),
+        ];
+        let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1, "non-loadable must be skipped silently");
+        assert!(skipped.is_empty(), "skipped only tracks loadable-but-malformed");
+
+        let demo_src = std::fs::read_to_string(gallery.join("demos").join("002-counter.at")).unwrap();
+        assert!(demo_src.contains("widget Demo002Counter {"), "renamed decl");
+        assert!(!demo_src.contains("widget App"), "original name replaced");
+
+        let vm_at = std::fs::read_to_string(gallery.join("AppViewport.vm.at")).unwrap();
+        for needle in [
+            "use.web component Demo002Counter from \"src/gallery/demos/002-counter.at\"",
+            "widget AppViewport(app: str, reloadKey: int, viewportMode: str)",
+            "if .app == \"002-counter\" {",
+            "Demo002Counter {}",
+            "该示例暂无 VM 内嵌形态",
+        ] {
+            assert!(vm_at.contains(needle), "missing `{needle}`");
+        }
+        assert!(!gallery.join("demos").join("024-charts.at").exists(), "non-loadable not emitted");
+    }
+
+    /// 多 widget 声明(工具 widget 同文件)的示例 v1 跳过,不入 live 集。
+    #[test]
+    fn test_emit_gallery_vm_demos_skips_multi_widget() {
+        let dir = tempfile::tempdir().unwrap();
+        let rows = vec![vm_demo_row(
+            "009-x",
+            true,
+            "widget App {
+    view {
+        text \"a\"
+    }
+}
+widget Helper {
+    view {
+        text \"b\"
+    }
+}",
+        )];
+        let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &dir.path().join("gallery")).unwrap();
+        assert_eq!(emitted, 0);
+        assert_eq!(skipped, vec!["009-x".to_string()]);
     }
 
     #[test]
