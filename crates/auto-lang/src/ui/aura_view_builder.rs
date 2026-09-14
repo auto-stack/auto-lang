@@ -6317,14 +6317,26 @@ let tabs_inner = View::Row {
                 }
             }
         }
-        // icon: name → "lucide:{name}" synthetic src
+        // icon: name → 图标 src。PLAN-018：带协议前缀的值（iconfile:/hicon:
+        // /lucide:）原样透传（iconfile 位图后端/协议族回退链依赖前缀 intact
+        // ——此前无条件 "lucide:" 前缀把 iconfile: 值扭曲成
+        // "lucide:iconfile:x"，两后端都不识别→图标空白）；裸名 →
+        // "lucide:{name}" synthetic src（既有语义不变）。
         if let Some(name) = self.extract_string_with(props, "name", bindings) {
             if !name.is_empty() {
                 let style = self.with_icon_size(style, props, bindings);
                 // PLAN-621: state 契约——on/off 注入语义色与激活描边（见
                 // with_state_tint 契约注释）；未声明零扰动。
                 let style = self.with_state_tint(style, props, bindings);
-                return View::Image { src: format!("lucide:{}", name), style };
+                let src = if name.starts_with("iconfile:")
+                    || name.starts_with("hicon:")
+                    || name.starts_with("lucide:")
+                {
+                    name
+                } else {
+                    format!("lucide:{}", name)
+                };
+                return View::Image { src, style };
             }
         }
         // image: src as-is with loop variable / state bindings support
