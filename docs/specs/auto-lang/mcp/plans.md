@@ -15,3 +15,4 @@
 | 299 | autoui-mcp-v2 | ✅ 已完成（Phase 1-3） | archive/ | AutoUI MCP V2 协议全面改进 |
 | 314 | autoui-mcp-styled-vtree | ✅ COMPLETED | archive/ | `autoui_vtree`：实时 VTree→Atom（1:1 + 盒模型），解耦 F12 门控，确立主感知信道 |
 | 446 | vm-backend-os-config-field-report | ✅ Archived | archive/ | AutoUI MCP 通道五批加固:消歧显式报错/HTTP natives 真值/builder 同步 drain/json.parse 物化+双态/渲染层 U1-U7(截图冻结根修=textarea >64KB 降级预览;快照回退自标识) |
+| 623 | autoui-mcp-test-fixture | 🔄 Executing | — | AutoUI MCP 增加默认关闭的 VM-only `autoui_fixture`，递归状态写入、request-id ack、trigger 与 merged/no-merge 测试移交 |

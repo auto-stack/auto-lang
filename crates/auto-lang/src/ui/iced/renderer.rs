@@ -7271,12 +7271,121 @@ fn poll_mcp_actions() -> Option<IcedMessage> {
                     Some(IcedMessage { widget, event, input_value: action.value })
                 }
                 crate::ui::mcp_server::ActionTarget::Path { .. } => None,
+                crate::ui::mcp_server::ActionTarget::Fixture { request_id } => {
+                    let payload = action.value.unwrap_or_default();
+                    Some(IcedMessage {
+                        widget: String::new(),
+                        event: format!("__mcp_fixture|{}|{}", request_id, payload),
+                        input_value: None,
+                    })
+                }
             },
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
         }
     } else {
         None
+    }
+}
+
+/// Apply one test-only state fixture on the VM/iced thread. The MCP server
+/// performs the cheap schema checks before enqueueing; this second check keeps
+/// the renderer safe if a queued payload is malformed or stale.
+fn apply_mcp_fixture(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    payload: &str,
+) -> crate::ui::mcp_server::FixtureAck {
+    let root: serde_json::Value = match serde_json::from_str(payload) {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "invalid_schema".to_string(),
+                message: format!("fixture payload is not valid JSON: {error}"),
+            }
+        }
+    };
+    let state_obj = match root.get("state").and_then(|value| value.as_object()) {
+        Some(map) if !map.is_empty() => map,
+        _ => {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "invalid_schema".to_string(),
+                message: "fixture state must be a non-empty object".to_string(),
+            }
+        }
+    };
+
+    let mut prepared = Vec::with_capacity(state_obj.len());
+    let mut array_items = 0usize;
+    for (field, raw) in state_obj {
+        let existing = match component.read_state(field) {
+            Ok(value) => value,
+            Err(error) => {
+                return crate::ui::mcp_server::FixtureAck::Error {
+                    code: "unknown_field".to_string(),
+                    message: format!("state field '{field}' is not available: {error}"),
+                }
+            }
+        };
+        let incoming = match crate::ui::mcp_server::fixture_json_to_value(raw, 0, &mut array_items) {
+            Ok(value) => value,
+            Err(error) => {
+                return crate::ui::mcp_server::FixtureAck::Error {
+                    code: "invalid_schema".to_string(),
+                    message: format!("field '{field}': {error}"),
+                }
+            }
+        };
+        if !crate::ui::mcp_server::fixture_value_compatible(&existing, &incoming) {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "type_mismatch".to_string(),
+                message: format!(
+                    "field '{field}' is {}, request is {}",
+                    crate::ui::mcp_server::fixture_value_kind(&existing),
+                    crate::ui::mcp_server::fixture_value_kind(&incoming)
+                ),
+            };
+        }
+        prepared.push((field.clone(), incoming));
+    }
+
+    let mut changed = Vec::with_capacity(prepared.len());
+    for (field, value) in prepared {
+        let result = match value {
+            auto_val::Value::Array(array) => component.write_state_vec(&field, array.values),
+            value => component.write_state(&field, value),
+        };
+        if let Err(error) = result {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "write_failed".to_string(),
+                message: format!("field '{field}': {error}"),
+            };
+        }
+        changed.push(field);
+    }
+    changed.sort();
+
+    let trigger = root.get("trigger").and_then(|value| value.as_object()).map(|trigger| {
+        let widget = trigger.get("widget").and_then(|value| value.as_str()).unwrap_or_default();
+        let event = trigger.get("event").and_then(|value| value.as_str()).unwrap_or_default();
+        let input = trigger.get("input").and_then(|value| value.as_str()).map(str::to_string);
+        (widget.to_string(), event.to_string(), input)
+    });
+    if let Some((widget, event, input)) = trigger.as_ref() {
+        if widget.is_empty() || event.is_empty() {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "invalid_schema".to_string(),
+                message: "trigger requires non-empty widget and event".to_string(),
+            };
+        }
+        if component.is_timer_entry(widget, event) {
+            component.fire_timer(widget, event);
+        } else {
+            component.on_with_input_for(widget, event, input.clone());
+        }
+    }
+    crate::ui::mcp_server::FixtureAck::Applied {
+        changed,
+        trigger: trigger.map(|(widget, event, _)| format!("{widget}.{event}")),
     }
 }
 
@@ -12345,6 +12454,10 @@ fn compare_pngs(
         widget_name.clone(),
         crate::ui::mcp_server::mcp_port(),
     );
+    mcp_shared
+        .lock()
+        .unwrap()
+        .set_backend_kind(crate::ui::mcp_server::BackendKind::Vm);
     // Store the action receiver in a global for the subscription to poll
     {
         let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
@@ -12688,6 +12801,27 @@ fn compare_pngs(
         };
         if !msg.event.starts_with("__") {
             eprintln!("[UI_EVENT] widget={:?} event={:?} input_val={:?}", msg.widget, msg.event, msg.input_value);
+        }
+        // PLAN-623: test-only VM fixture channel. It is deliberately handled
+        // before normal event dispatch so a fixture can seed state and then
+        // trigger an existing handler in the same update turn. The MCP tool
+        // gates this path with AUTOUI_TEST_FIXTURES=1 and the VM capability;
+        // malformed direct messages are acknowledged as errors and never fall
+        // through to an app handler.
+        if let Some(raw) = msg.event.strip_prefix("__mcp_fixture|") {
+            let Some((id_raw, payload)) = raw.split_once('|') else {
+                return iced::Task::none();
+            };
+            let Ok(request_id) = id_raw.parse::<u64>() else {
+                return iced::Task::none();
+            };
+            let mcp_shared = state.desktop.mcp_shared.clone();
+            let ack = apply_mcp_fixture(&mut state.component, payload);
+            *state.app.view_dirty.borrow_mut() = true;
+            if let Some(mcp_shared) = mcp_shared {
+                mcp_shared.lock().unwrap().finish_fixture(request_id, ack);
+            }
+            return iced::Task::none();
         }
         // PLAN-058（auto-down）：043 T6 滚动同步 rust 直写快道退役——
         // VM handler 对 float 实参绑定与算术写入的引擎腐坏（nanbox 整值
@@ -20937,6 +21071,10 @@ impl Default for DevToolsState {
         let widget_name = "App".to_string();
         let (mcp_shared, mcp_action_rx) =
             crate::ui::mcp_server::start_mcp_server(widget_name.clone(), port);
+        mcp_shared
+            .lock()
+            .unwrap()
+            .set_backend_kind(crate::ui::mcp_server::BackendKind::Rust);
         // Store the action receiver in the global for devtools_subscription to drain
         {
             let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
@@ -21611,6 +21749,11 @@ where
                         crate::ui::mcp_server::ActionTarget::Path { path } => {
                             let path_str = path.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",");
                             format!("__mcp_action_path|{}|{}|{}", path_str, action.action, value_str)
+                        }
+                        crate::ui::mcp_server::ActionTarget::Fixture { .. } => {
+                            // VM-only test fixtures are rejected by the MCP
+                            // tool before reaching the Rust DevTools path.
+                            return None;
                         }
                     };
                     Some(WrapperMsg::<C>::Debug(payload))

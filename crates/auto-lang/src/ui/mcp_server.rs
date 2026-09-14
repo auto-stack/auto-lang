@@ -165,6 +165,12 @@ pub struct SharedState {
     /// Real-time styled VTree snapshot (Plan 314). Copied each frame by the
     /// iced renderer when F12 is open or MCP is active.
     styled_vtree: Option<StyledNodeSnapshot>,
+    /// Backend capability used by test-only MCP fixtures. Set by the renderer
+    /// at startup so Rust mode can reject VM state injection explicitly.
+    backend_kind: BackendKind,
+    /// Monotonic ids and completion receipts for test-only fixture requests.
+    fixture_next_id: u64,
+    fixture_acks: HashMap<u64, FixtureAck>,
     /// Pending screenshot request from MCP thread (Plan 285).
     screenshot_request: Option<ScreenshotRequest>,
     /// EDGE-01: key bindings (including element-attribute onkeydown.*) for
@@ -233,6 +239,23 @@ pub struct ActionMessage {
 pub enum ActionTarget {
     Event { widget: String, event: String },
     Path { path: Vec<u16> },
+    /// Test-only VM state injection. The JSON payload is carried in
+    /// `ActionMessage.value`; the renderer acknowledges `request_id` after
+    /// applying it on the iced thread.
+    Fixture { request_id: u64 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendKind {
+    Unknown,
+    Vm,
+    Rust,
+}
+
+#[derive(Debug, Clone)]
+pub enum FixtureAck {
+    Applied { changed: Vec<String>, trigger: Option<String> },
+    Error { code: String, message: String },
 }
 
 impl SharedState {
@@ -248,6 +271,9 @@ impl SharedState {
             window_size: None,
             layout_bounds: HashMap::new(),
             styled_vtree: None,
+            backend_kind: BackendKind::Unknown,
+            fixture_next_id: 1,
+            fixture_acks: HashMap::new(),
             screenshot_request: None,
             key_bindings: HashMap::new(),
             last_activity_ms: std::sync::atomic::AtomicU64::new(0),
@@ -293,6 +319,35 @@ impl SharedState {
             Some(tx) => tx.send(msg).map_err(|e| format!("Channel send error: {}", e)),
             None => Err("No action channel available".to_string()),
         }
+    }
+
+    pub fn set_backend_kind(&mut self, kind: BackendKind) {
+        self.backend_kind = kind;
+    }
+
+    pub fn backend_kind(&self) -> BackendKind {
+        self.backend_kind
+    }
+
+    pub fn next_fixture_id(&mut self) -> u64 {
+        let id = self.fixture_next_id;
+        self.fixture_next_id = self.fixture_next_id.saturating_add(1);
+        id
+    }
+
+    pub fn finish_fixture(&mut self, request_id: u64, ack: FixtureAck) {
+        // Keep a bounded receipt cache so a stalled MCP client cannot grow the
+        // process indefinitely. The newest 64 receipts are enough for polling.
+        self.fixture_acks.insert(request_id, ack);
+        if self.fixture_acks.len() > 64 {
+            if let Some(oldest) = self.fixture_acks.keys().min().copied() {
+                self.fixture_acks.remove(&oldest);
+            }
+        }
+    }
+
+    pub fn take_fixture_ack(&mut self, request_id: u64) -> Option<FixtureAck> {
+        self.fixture_acks.remove(&request_id)
     }
 
     /// Set the window size (Plan 281).
@@ -702,6 +757,41 @@ fn tool_definitions() -> Vec<serde_json::Value> {
             }
         }),
         json!({
+            "name": "autoui_fixture",
+            "title": "Apply Test Fixture",
+            "description": "Apply a deterministic runtime state fixture to the VM for automated tests. Disabled unless AUTOUI_TEST_FIXTURES=1. VM-only; does not add UI controls or persist state. Optionally dispatches an existing handler after the state write and waits for an applied/error acknowledgement.",
+            "inputSchema": {
+                "type": "object",
+                "required": ["schema_version", "state"],
+                "properties": {
+                    "schema_version": { "type": "integer", "const": 1 },
+                    "state": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "additionalProperties": true,
+                        "description": "Existing AutoUI state fields and their JSON values"
+                    },
+                    "trigger": {
+                        "type": "object",
+                        "properties": {
+                            "widget": { "type": "string" },
+                            "event": { "type": "string" },
+                            "input": { "type": ["string", "null"] }
+                        },
+                        "required": ["widget", "event"],
+                        "additionalProperties": false
+                    }
+                },
+                "additionalProperties": false
+            },
+            "annotations": {
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
+        json!({
             // Plan 423 P4: 配置热重载工具 —— 改 auto-edit.at 后无需重启。
             "name": "action_config_reload",
             "title": "Reload Action Config",
@@ -1014,6 +1104,7 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_check" => tool_check(shared, args),
         "autoui_screenshot" => tool_screenshot(shared, args),
         "autoui_state" => tool_state(shared, args),
+        "autoui_fixture" => tool_fixture(shared, args),
         "autoui_wait" => tool_wait(shared, args),
         "action_config_reload" => tool_action_config_reload(),
         "autoui_type" => tool_type(shared, args),
@@ -2043,6 +2134,198 @@ fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
     text_result(out)
 }
 
+// ── Tool: autoui_fixture (PLAN-623) ────────────────────────────────────────
+
+const FIXTURE_MAX_BYTES: usize = 1024 * 1024;
+const FIXTURE_MAX_FIELDS: usize = 256;
+const FIXTURE_MAX_DEPTH: usize = 16;
+const FIXTURE_MAX_ARRAY_ITEMS: usize = 16 * 1024;
+const FIXTURE_ACK_TIMEOUT_MS: u64 = 2_000;
+
+fn fixture_error(code: &str, message: impl Into<String>) -> serde_json::Value {
+    error_result(format!("{}: {}", code, message.into()))
+}
+
+pub(crate) fn fixture_json_to_value(v: &serde_json::Value, depth: usize, array_items: &mut usize)
+    -> Result<auto_val::Value, String>
+{
+    if depth > FIXTURE_MAX_DEPTH {
+        return Err(format!("fixture nesting exceeds {} levels", FIXTURE_MAX_DEPTH));
+    }
+    match v {
+        serde_json::Value::Null => Ok(auto_val::Value::Null),
+        serde_json::Value::Bool(b) => Ok(auto_val::Value::Bool(*b)),
+        serde_json::Value::String(s) => Ok(auto_val::Value::str(s)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                let i = i32::try_from(i).map_err(|_| "integer outside i32 range".to_string())?;
+                Ok(auto_val::Value::Int(i))
+            } else {
+                let f = n.as_f64().ok_or_else(|| "invalid JSON number".to_string())?;
+                if !f.is_finite() {
+                    return Err("fixture float must be finite".to_string());
+                }
+                Ok(auto_val::Value::Float(f))
+            }
+        }
+        serde_json::Value::Array(items) => {
+            *array_items = array_items.saturating_add(items.len());
+            if *array_items > FIXTURE_MAX_ARRAY_ITEMS {
+                return Err(format!("fixture arrays exceed {} total items", FIXTURE_MAX_ARRAY_ITEMS));
+            }
+            let values = items
+                .iter()
+                .map(|item| fixture_json_to_value(item, depth + 1, array_items))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(auto_val::Value::Array(auto_val::Array { values }))
+        }
+        serde_json::Value::Object(map) => {
+            let mut obj = auto_val::Obj::new();
+            for (key, value) in map {
+                obj.set(key.clone(), fixture_json_to_value(value, depth + 1, array_items)?);
+            }
+            Ok(auto_val::Value::Obj(Box::new(obj)))
+        }
+    }
+}
+
+pub(crate) fn fixture_value_kind(v: &auto_val::Value) -> &'static str {
+    match v {
+        auto_val::Value::Byte(_)
+        | auto_val::Value::Int(_)
+        | auto_val::Value::Uint(_)
+        | auto_val::Value::USize(_)
+        | auto_val::Value::I8(_)
+        | auto_val::Value::U8(_)
+        | auto_val::Value::I64(_) => "int",
+        auto_val::Value::Float(_) | auto_val::Value::Double(_) => "float",
+        auto_val::Value::Bool(_) => "bool",
+        auto_val::Value::Str(_)
+        | auto_val::Value::String(_)
+        | auto_val::Value::StrSlice(_)
+        | auto_val::Value::CStr(_)
+        | auto_val::Value::Char(_) => "str",
+        auto_val::Value::Array(_) | auto_val::Value::Block(_) => "list",
+        auto_val::Value::Obj(_) => "object",
+        auto_val::Value::Null | auto_val::Value::Nil => "null",
+        auto_val::Value::VmRef(_) | auto_val::Value::ValueRef(_) => "reference",
+        _ => "other",
+    }
+}
+
+pub(crate) fn fixture_value_compatible(existing: &auto_val::Value, incoming: &auto_val::Value) -> bool {
+    let incoming_kind = fixture_value_kind(incoming);
+    match fixture_value_kind(existing) {
+        "int" => incoming_kind == "int",
+        "float" => incoming_kind == "int" || incoming_kind == "float",
+        "bool" => incoming_kind == "bool",
+        "str" => incoming_kind == "str",
+        "list" | "reference" => incoming_kind == "list",
+        "object" => incoming_kind == "object",
+        "null" => incoming_kind == "null",
+        _ => false,
+    }
+}
+
+fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    if std::env::var("AUTOUI_TEST_FIXTURES").ok().as_deref() != Some("1") {
+        return fixture_error("fixtures_disabled", "set AUTOUI_TEST_FIXTURES=1 for test-only state injection");
+    }
+    let payload_bytes = match serde_json::to_vec(&args) {
+        Ok(bytes) => bytes,
+        Err(e) => return fixture_error("invalid_schema", format!("cannot encode request: {e}")),
+    };
+    if payload_bytes.len() > FIXTURE_MAX_BYTES {
+        return fixture_error("invalid_schema", format!("request exceeds {} bytes", FIXTURE_MAX_BYTES));
+    }
+    if args.get("schema_version").and_then(|v| v.as_i64()) != Some(1) {
+        return fixture_error("invalid_schema", "schema_version must be 1");
+    }
+    let state_obj = match args.get("state").and_then(|v| v.as_object()) {
+        Some(map) if !map.is_empty() => map,
+        _ => return fixture_error("invalid_schema", "state must be a non-empty object"),
+    };
+    if state_obj.len() > FIXTURE_MAX_FIELDS {
+        return fixture_error("invalid_schema", format!("state has more than {} fields", FIXTURE_MAX_FIELDS));
+    }
+    let trigger = args.get("trigger").and_then(|v| v.as_object());
+    let trigger_data = match trigger {
+        None => None,
+        Some(t) => {
+            let widget = t.get("widget").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+            let event = t.get("event").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+            let input = match t.get("input") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(value)) => Some(value.to_string()),
+                Some(_) => return fixture_error("invalid_schema", "trigger.input must be a string or null"),
+            };
+            match (widget, event) {
+                (Some(widget), Some(event)) => Some((widget.to_string(), event.to_string(), input)),
+                _ => return fixture_error("invalid_schema", "trigger requires non-empty widget and event"),
+            }
+        }
+    };
+
+    let request_id = {
+        let mut shared = shared_handle.lock().unwrap();
+        match shared.backend_kind() {
+            BackendKind::Vm => {}
+            BackendKind::Rust => return fixture_error("backend_unsupported", "autoui_fixture is VM-only"),
+            BackendKind::Unknown => return fixture_error("backend_unsupported", "renderer backend capability is not ready"),
+        }
+        let mut array_items = 0usize;
+        for (field, raw) in state_obj {
+            let existing = match shared.state.get(field) {
+                Some(value) => value,
+                None => return fixture_error("unknown_field", format!("state field '{field}' is not available")),
+            };
+            let incoming = match fixture_json_to_value(raw, 0, &mut array_items) {
+                Ok(value) => value,
+                Err(e) => return fixture_error("invalid_schema", format!("field '{field}': {e}")),
+            };
+            if !fixture_value_compatible(existing, &incoming) {
+                return fixture_error("type_mismatch", format!("field '{field}' is {}, request is {}", fixture_value_kind(existing), fixture_value_kind(&incoming)));
+            }
+        }
+        let request_id = shared.next_fixture_id();
+        let payload = json!({
+            "state": state_obj,
+            "trigger": trigger_data.as_ref().map(|(widget, event, input)| json!({
+                "widget": widget,
+                "event": event,
+                "input": input,
+            })),
+        }).to_string();
+        if let Err(e) = shared.send_action(ActionMessage {
+            target: ActionTarget::Fixture { request_id },
+            action: UiActionType::Press,
+            value: Some(payload.clone()),
+        }) {
+            return fixture_error("queue_failed", e);
+        }
+        request_id
+    };
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(FIXTURE_ACK_TIMEOUT_MS);
+    loop {
+        if let Some(ack) = shared_handle.lock().unwrap().take_fixture_ack(request_id) {
+            return match ack {
+                FixtureAck::Applied { changed, trigger } => json!({
+                    "status": "applied",
+                    "request_id": request_id,
+                    "changed": changed,
+                    "trigger": trigger,
+                }),
+                FixtureAck::Error { code, message } => fixture_error(&code, message),
+            };
+        }
+        if std::time::Instant::now() >= deadline {
+            return fixture_error("ack_timeout", format!("request {request_id} was not applied within {}ms", FIXTURE_ACK_TIMEOUT_MS));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 // ── Tool: action_config_reload (Plan 423 P4) ──
 
 fn tool_action_config_reload() -> serde_json::Value {
@@ -3038,6 +3321,7 @@ fn execute_action_vnode(
     let handler_label = match &msg.target {
         ActionTarget::Event { widget, event } => format!("{}.{}", widget, event),
         ActionTarget::Path { path } => format!("<path {:?}>", path),
+        ActionTarget::Fixture { request_id } => format!("<fixture {}>", request_id),
     };
     shared.send_action(msg)?;
 
@@ -4080,5 +4364,65 @@ mod tests_plan057 {
         // 空名（编辑壳无 on_change）形态保持 4 段——拦截臂跳过发布仅走 core。
         let n = editor_synthesis_payload("ade:demo", "", "", "enter");
         assert_eq!(n.split(sep).count(), 4);
+    }
+}
+
+/// PLAN-623: test-only fixture protocol invariants that do not require a
+/// running renderer.  End-to-end VM acknowledgement is covered by the
+/// autoui-verifier harness; these tests keep the wire contract and conversion
+/// rules stable at the framework boundary.
+#[cfg(test)]
+mod tests_plan623 {
+    use super::*;
+
+    #[test]
+    fn fixture_json_conversion_preserves_nested_values() {
+        let input = json!({
+            "board": [[0, 1], [2, 3]],
+            "active": true,
+            "label": "tetris",
+            "score": 42,
+            "ratio": 1.5,
+            "empty": null,
+        });
+        let mut array_items = 0;
+        let value = fixture_json_to_value(&input, 0, &mut array_items).expect("fixture conversion");
+        assert_eq!(fixture_value_kind(&value), "object");
+        assert_eq!(array_items, 6);
+    }
+
+    #[test]
+    fn fixture_compatibility_rejects_shape_changes() {
+        let scalar = auto_val::Value::Int(1);
+        let list = auto_val::Value::Array(auto_val::Array {
+            values: vec![auto_val::Value::Int(1)],
+        });
+        assert!(fixture_value_compatible(&scalar, &auto_val::Value::Int(2)));
+        assert!(!fixture_value_compatible(&scalar, &list));
+        assert!(fixture_value_compatible(&list, &list));
+        assert!(!fixture_value_compatible(&list, &scalar));
+    }
+
+    #[test]
+    fn fixture_tool_definition_is_vm_gated_and_versioned() {
+        let definition = tool_definitions()
+            .into_iter()
+            .find(|tool| tool.get("name").and_then(|v| v.as_str()) == Some("autoui_fixture"))
+            .expect("autoui_fixture tool definition");
+        assert_eq!(definition["inputSchema"]["properties"]["schema_version"]["const"], 1);
+        assert_eq!(definition["inputSchema"]["properties"]["state"]["type"], "object");
+        assert_eq!(definition["annotations"]["readOnlyHint"], false);
+        assert_eq!(definition["annotations"]["destructiveHint"], false);
+    }
+
+    #[test]
+    fn fixture_limits_reject_excessive_nesting() {
+        let mut value = json!(0);
+        for _ in 0..(FIXTURE_MAX_DEPTH + 1) {
+            value = json!([value]);
+        }
+        let mut array_items = 0;
+        let error = fixture_json_to_value(&value, 0, &mut array_items).expect_err("depth limit");
+        assert!(error.contains("nesting"));
     }
 }
