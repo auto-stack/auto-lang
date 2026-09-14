@@ -1,117 +1,53 @@
-// app.at — 029-photo-gallery 现代相册（Plan 628）
-//
-// 移动端/平板风格真实图库：
-// 1. 真实相册数据源：直连 C:/Users/zhaop/Pictures/ 真实照片与屏幕截图
-// 2. 真实缩略图与原图呈现：秒开高清本地缩略图 + 全屏无损原画直接渲染
-// 3. 平板/手机端 UI/UX：取消生硬的左侧 PC 侧栏，采用沉浸式分段导航栏 + 纯净无边框照片网格 + 悬浮胶囊控制条
+import json
 
-widget App {
-    msg {
-        Init,
-        SelectAlbum(str), SetSearch(str), ApplyFilter,
-        ToggleSort, SetDensity(int),
-        OpenPhoto(int), PrevPhoto, NextPhoto, BackToGrid,
-        ToggleFav(int),
-        ToggleDark, SetAccent(str)
-    }
+head_file = r"D:\autostack\.wt\lang-628\auto-lang\examples\ui\029-photo-gallery\scripts\app_head.at"
+out_file = r"D:\autostack\auto-lang\examples\ui\029-photo-gallery\src\front\app.at"
 
-    model {
-        // ---- 主题契约变量 ----
-        var dark_mode bool = true
-        var accent_color str = "indigo"
+with open(head_file, "r", encoding="utf-8") as f:
+    code = f.read()
 
-        // ---- 视图形态 ----
-        var mode str = "grid"               // "grid" | "view"
+# Only keep first 24 items in app_head.at to match the proven fast scale
+def slice_arrays(text, limit=24):
+    lines = text.splitlines()
+    out_lines = []
+    in_arr = False
+    arr_lines = []
+    for l in lines:
+        if " = [" in l and "var p_" in l:
+            in_arr = True
+            out_lines.append(l)
+            arr_lines = []
+        elif in_arr:
+            if l.strip() == "]":
+                in_arr = False
+                raw = " ".join(arr_lines)
+                items = json.loads("[" + raw + "]")
+                sliced = items[:limit]
+                # format 4 per line
+                for i in range(0, len(sliced), 4):
+                    chunk = sliced[i:i+4]
+                    formatted_chunk = []
+                    for x in chunk:
+                        if isinstance(x, str):
+                            formatted_chunk.append(json.dumps(x, ensure_ascii=False))
+                        elif isinstance(x, bool):
+                            formatted_chunk.append("true" if x else "false")
+                        else:
+                            formatted_chunk.append(str(x))
+                    row_s = ", ".join(formatted_chunk)
+                    if i + 4 < len(sliced):
+                        row_s += ","
+                    out_lines.append("            " + row_s)
+                out_lines.append("        ]")
+            else:
+                arr_lines.append(l.strip())
+        else:
+            out_lines.append(l)
+    return "\n".join(out_lines)
 
-        // ---- 过滤 / 排序 / 密度 ----
-        var album str = "all"               // all | photos | screenshots | favorites
-        var search_q str = ""
-        var sort_dir str = "desc"           // "desc"=最新在前 | "asc"
-        var sort_label str = "最新 ↓"
-        var density int = 3                 // 网格列数：2 | 3 | 4
+code = slice_arrays(code, 24)
 
-        // ---- 真实照片种子列表（68 张，来自 C:\Users\zhaop\Pictures）----
-        var p_ids = [
-            1, 2, 3, 4,
-            5, 6, 7, 8,
-            9, 10, 11, 12,
-            13, 14, 15, 16,
-            17, 18, 19, 20,
-            21, 22, 23, 24
-        ]
-        var p_titles = [
-            "000042", "2016-08-26", "DzleXs_rMnlhN1bbZs…", "Screenshot_2026-03…",
-            "u=1685612231,35676…", "yanxingshuyuan.com", "yanxingshuyuan", "反面",
-            "微信图片_20200408101954", "微信图片_20200703131319", "微信图片_20200703131618", "微信图片_20210204124322",
-            "微信图片_20210204124332", "微信图片_2021020412481…", "微信图片_20210204124813", "微信图片_20210204125222",
-            "微信图片_20210307104209", "微信图片_20210314162739", "微信图片_20210729113331", "微信图片_20210729113338",
-            "微信图片_20210729113343", "微信图片_20210729113430", "微信图片_20210729113454", "微信图片_20210729113521"
-        ]
-        var p_tls = [
-            "000042", "2016-08-26", "dzlexs_rmnlhn1bbzs…", "screenshot_2026-03…",
-            "u=1685612231,35676…", "yanxingshuyuan.com", "yanxingshuyuan", "反面",
-            "微信图片_20200408101954", "微信图片_20200703131319", "微信图片_20200703131618", "微信图片_20210204124322",
-            "微信图片_20210204124332", "微信图片_2021020412481…", "微信图片_20210204124813", "微信图片_20210204125222",
-            "微信图片_20210307104209", "微信图片_20210314162739", "微信图片_20210729113331", "微信图片_20210729113338",
-            "微信图片_20210729113343", "微信图片_20210729113430", "微信图片_20210729113454", "微信图片_20210729113521"
-        ]
-        var p_albums = [
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos",
-            "photos", "photos", "photos", "photos"
-        ]
-        var p_dates = [
-            "2019-01-16", "2018-12-25", "2020-03-18", "2026-03-21",
-            "2020-09-14", "2021-02-04", "2021-02-04", "2021-02-04",
-            "2020-04-08", "2020-07-03", "2020-07-03", "2021-02-04",
-            "2021-02-04", "2021-07-29", "2021-07-29", "2021-02-04",
-            "2021-03-07", "2021-03-14", "2021-07-29", "2021-07-29",
-            "2021-07-29", "2021-07-29", "2021-07-29", "2021-07-29"
-        ]
-        var p_keys = [
-            20190116, 20181225, 20200318, 20260321,
-            20200914, 20210204, 20210204, 20210204,
-            20200408, 20200703, 20200703, 20210204,
-            20210204, 20210729, 20210729, 20210204,
-            20210307, 20210314, 20210729, 20210729,
-            20210729, 20210729, 20210729, 20210729
-        ]
-        var p_favs = [
-            true, false, true, false,
-            false, true, false, false,
-            true, false, false, false,
-            true, false, false, false,
-            false, false, false, false,
-            false, false, false, false
-        ]
-        var p_fulls = [
-            "C:/Users/zhaop/Pictures/000042.jpg", "C:/Users/zhaop/Pictures/2016-08-26.jpeg", "C:/Users/zhaop/Pictures/DzleXs_rMnlhN1bbZsDtzwFVQOBP5KN3h_CUhR26uFY.jpg", "C:/Users/zhaop/Pictures/Screenshot_2026-03-21T105421.png",
-            "C:/Users/zhaop/Pictures/u=1685612231,3567664266&fm=26&gp=0.jpg", "C:/Users/zhaop/Pictures/yanxingshuyuan.com.png", "C:/Users/zhaop/Pictures/yanxingshuyuan.jpg", "C:/Users/zhaop/Pictures/反面.jpg",
-            "C:/Users/zhaop/Pictures/微信图片_20200408101954.jpg", "C:/Users/zhaop/Pictures/微信图片_20200703131319.jpg", "C:/Users/zhaop/Pictures/微信图片_20200703131618.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124322.jpg",
-            "C:/Users/zhaop/Pictures/微信图片_20210204124332.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124813 (1).jpg", "C:/Users/zhaop/Pictures/微信图片_20210204124813.jpg", "C:/Users/zhaop/Pictures/微信图片_20210204125222.jpg",
-            "C:/Users/zhaop/Pictures/微信图片_20210307104209.jpg", "C:/Users/zhaop/Pictures/微信图片_20210314162739.png", "C:/Users/zhaop/Pictures/微信图片_20210729113331.jpg", "C:/Users/zhaop/Pictures/微信图片_20210729113338.jpg",
-            "C:/Users/zhaop/Pictures/微信图片_20210729113343.jpg", "C:/Users/zhaop/Pictures/微信图片_20210729113430.png", "C:/Users/zhaop/Pictures/微信图片_20210729113454.png", "C:/Users/zhaop/Pictures/微信图片_20210729113521.png"
-        ]
-        var p_metas = [
-            "2409×3614 · 3383KB · 2019-01-16", "1449×2576 · 3426KB · 2018-12-25", "1200×2803 · 453KB · 2020-03-18", "1320×2856 · 283KB · 2026-03-21",
-            "347×499 · 38KB · 2020-09-14", "1184×1794 · 450KB · 2021-02-04", "768×1164 · 353KB · 2021-02-04", "1207×792 · 385KB · 2021-02-04",
-            "602×602 · 217KB · 2020-04-08", "660×1002 · 63KB · 2020-07-03", "680×951 · 58KB · 2020-07-03", "2622×1693 · 1185KB · 2021-02-04",
-            "2540×1665 · 1380KB · 2021-02-04", "1662×1080 · 193KB · 2021-07-29", "1662×1080 · 193KB · 2021-07-29", "1120×840 · 243KB · 2021-02-04",
-            "1080×1440 · 103KB · 2021-03-07", "1841×1009 · 68KB · 2021-03-14", "4000×3000 · 1759KB · 2021-07-29", "4000×3000 · 2139KB · 2021-07-29",
-            "4000×3000 · 2007KB · 2021-07-29", "1119×827 · 1005KB · 2021-07-29", "1120×814 · 1188KB · 2021-07-29", "1028×779 · 1021KB · 2021-07-29"
-        ]
-        var p_thumbs = [
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_002.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_003.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_004.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_005.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_006.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_007.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_008.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_009.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_010.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_011.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_012.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_013.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_014.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_015.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_016.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_017.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_018.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_019.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_020.jpg",
-            "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_021.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_022.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_023.jpg", "D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_024.jpg"
-        ]
-
+tail = '''
         // ---- 主列表与视图列表 ----
         var photos = [
             {
@@ -224,7 +160,6 @@ widget App {
                             input {
                                 value: .search_q
                                 oninput: .SetSearch
-                                onchange: .SetSearch
                                 placeholder: "🔍 搜索照片…"
                                 style: "w-44 h-8 text-xs px-3 bg-background border border-border/80 rounded-lg outline-none placeholder:text-muted-foreground focus:border-primary"
                             }
@@ -268,7 +203,7 @@ widget App {
                     row {
                         style: "h-8 shrink-0 items-center justify-between px-6 bg-muted/20 border-b border-border/40"
                         text .view_label { style: "text-xs text-muted-foreground" }
-                        text "源目录: C:/Users/zhaop/Pictures/" { style: "text-[11px] text-muted-foreground/60" }
+                        text "源目录: C:\\Users\\zhaop\\Pictures\\" { style: "text-[11px] text-muted-foreground/60" }
                     }
 
                     // 照片网格区 (无缝现代网格设计，纯净呈现图片主体)
@@ -686,3 +621,9 @@ widget App {
         .SetAccent(name) -> { .accent_color = name }
     }
 }
+'''
+
+with open(out_file, "w", encoding="utf-8") as f:
+    f.write(code + tail)
+
+print("Successfully wrote 24-photo real gallery app.at!")
