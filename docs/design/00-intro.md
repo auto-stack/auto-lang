@@ -119,6 +119,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
   ——**L8 留架历史文档（归档不回改）；新增桌面程序设计一律落 auto-os
   `docs/design/`**（Stage B P-5 指针登记，2026-09-07；首例即 auto-os Design 01
   Stage B 迁移定案，资产去向见 [docs/plans/INDEX.md](../plans/INDEX.md)）
+- [`autoui/autoui-mcp-test-fixture`](autoui/autoui-mcp-test-fixture.md)（AutoUI MCP 测试夹具协议，Plan 623）
 - [`blocks/`](blocks/blocks-first-class.md)（4 篇）：blocks-first-class(原17) 为 Blocks 层主设计，
   配套 agent-generation-workflow / block-package-format / datasource-convention
 
@@ -198,3 +199,4 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 - **查现状/关键代码入口**：去 [docs/specs/](../specs/overview.md)（本目录存意图，specs 存现状）。
 - **查某次改动的来龙去脉**：去 [docs/plans/](../plans/archive/plans-status-audit-2026-08-20.md)（最新全量审计；2026-09-01 起由 [Plan 513](../plans/513-repo-integration-cleanup.md) 接任）。
 - **新增设计文档**：按"归位规则"节先定性再落位，写完在本索引登记。
+

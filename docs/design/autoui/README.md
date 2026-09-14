@@ -20,6 +20,8 @@
 | [image-viewer-pipeline](image-viewer-pipeline.md) | — | 全栈 Auto Image Viewer：后端媒体管线、三运行形态与高性能原生显示契约 | 547（implemented，待独立复审） |
 | [sidebar-family-and-nav-retirement](sidebar-family-and-nav-retirement.md) | — | sidebar_* 族按 shadcn 1:1 做实（桌面模式）→ VM 契约子集 → 迁移退役 nav-group/nav-item | 设计完成（建议拆 3 plan，§4） |
 | [025-gap-enumeration](025-gap-enumeration.md) | 16a | 025 示例差距枚举（历史记录） | 345 |
+| [autoui-mcp-test-fixture](autoui-mcp-test-fixture.md) | — | AutoUI MCP 测试夹具协议（VM 状态注入与 request-id ack） | 623 |
 
 > \* 原 `25-a2ui-composer-analysis.md`。注：该文档已归位本目录为 `desktop-shell.md`（Design 25，曾用名 AutoShell），
 > 届时 25 号一并封存。
+
