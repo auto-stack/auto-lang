@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-627
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done               # drafting → executing → execution_done → reviewed → archived
 feature_name: qualified-api-module-calls
 author: [zcode-session]
 created_at: 2026-09-14
@@ -12,7 +12,7 @@ new_spec_components: [ui/api-qualified-calls]
 touched_goals: []
 
 affects: [auto-lang/ui, auto-lang/interpreter]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -117,13 +117,30 @@ api.at 枚举实现复用既有解析（`auto-man/src/api_gen.rs` 读契约的
 
 ## 执行步骤
 
-- **T-1** 抽取侧双写（#1/#2）+ fixture 单测（AC-1）。
-- **T-2** vue 发射臂（#3）+ 金样对拍单测（AC-2）。
-- **T-3** a2r 发射臂（#4）+ 金样对拍单测（AC-3）。
-- **T-4** 门档：`cargo check -p auto-lang` + 作用域测试（发射面金样
-  模块）+ tv 若触及 vm 语料（预期不触）。AC-4。
-- **T-5** 跨仓端到端（auto-term app/ 切限定名，三轨+桌面复验）。AC-5。
-  （T-5 在 auto-term 017 会话执行，证据回链本计划。）
+- **T-1** 抽取侧双写（#1/#2）+ fixture 单测（AC-1）。`[✅ 已完成]` commit
+  d424a31dd（worktree plan-627-dev）：config.rs `api_contract_fn_names[_for_front]`
+  契约枚举助手 + ui_gen/api.rs / auto-man/rust_ui.rs 模块形态分支；
+  `module_form_extraction_enumerates_contract` 绿（#[api] 门：plain pub fn
+  不入清单）。
+- **T-2** vue 发射臂（#3）+ 金样对拍单测（AC-2）。`[✅ 已完成]` 同提交：
+  handler 体真身路径 = ts_adapter Dot-method 臂新增 Ident(api)+清单门 →
+  `await X(...)`（Http 接收者特判同款；expr_to_js Case3 为 view 面既有
+  臂）；`vue_qualified_call_emits_bare` 绿（generate_component_from_file
+  端到端：抽取清单进 detected_api_imports + await 裸名 + 头消除）。
+- **T-3** a2r 发射臂（#4）+ 金样对拍单测（AC-3）。`[✅ 已完成]` 同提交：
+  RustGenerator 增 api_imports 字段（generate_rust 装载）+ Expr::Call
+  qualified head 改写臂（清单门，unknown head 原样透传守卫）；
+  `rust_qualified_call_emits_bare_and_guards_unknown_heads` 绿。
+- **T-4** 门档。`[✅ 已完成]` 同提交：cargo check 双 crate 绿；ts_adapter
+  16 / transpile 13 / rust_track 1 / plan627 3 绿；auto-man 287/288
+  （plan609 预存红，stash 复证）；a2ts 金样 #[ignore] 慢档构造性零影响
+  （仅新增分支，裸名语料不触）。AC-4。
+- **T-5** 跨仓端到端（auto-term 限定名形态三轨）。`[✅ 已完成]` 2026-09-14
+  017 会话：worktree CLI `auto build -r rust` Finished 零错（auto-term.exe
+  重建）；`auto run -r vm` merged 零桩告警 + MCP state 实证（几何 84×29/
+  光标 (3,15)/29 行收割）；vue 轨 axum back `i18n_lookup` 编译错 = master
+  预存红（主检出 CLI 同错复证，非本支引入）。AC-5（vue 半边受预存红遮蔽，
+  api 客户端生成 ✓）。
 
 ## 复审记录
 
