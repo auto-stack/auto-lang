@@ -110,17 +110,21 @@ widget DesktopSurface {
             // Plan 518 G4③：格 = per-app 徽标色圆角底（哈希分配,数据驱动
             // bg-[ 拼接——"grid grid-cols-" + n 先例）+ 白 glyph（stella
             // 桌面 Notes 徽标同款;单色 lucide "带颜色"正解是容器底色）。
-            // PLAN-012 W5：grid 定宽（8 列 × 80px 格 + 7 × 8px gap =
-            // 696px）——原 w-full 均分整行把格距拉伸到数百 px（用户反馈
-            // "间距过大"根因）；定宽后图标群贴左上、格距 = gap 8px 量级
-            // （w-fit iced 轨不支持，class.rs 白名单受限——显式算术宽）。
+            // PLAN-012 W5：grid 定宽——原 8 列 × 80px 格 + 7 × 8px gap =
+            // 696px（原 w-full 均分整行把格距拉伸到数百 px 的"间距过大"
+            // 根因）；定宽后图标群贴左上、格距 = gap 8px 量级（w-fit iced
+            // 轨不支持，class.rs 白名单受限——显式算术宽）。
+            // PLAN-019-FU1（用户走查反馈 2026-09-14）：图标默认大一倍——
+            // 格 160px + chip 80px + glyph 40px + label text-sm；定宽重算
+            // 8×160 + 7×8 = 1336px。宿主 drop_at 栅距同步 168px（88→168，
+            // renderer.rs execute_desktop_icon_drop_at ORIGIN/PITCH）。
             grid (cols: 8, gap: 8) {
-                style: "w-[696px]"
+                style: "w-[1336px]"
                 // PLAN-012 W5：格子表渲染（宿主分配 (c,r) + spacer 填位）——
                 // 拖拽换位后位置持久（shell.desktop.positions，重启保持）。
                 for e in .__desktop_cells {
                     if e.spacer == "1" {
-                        div { style: "w-20 h-20" }
+                        div { style: "w-40 h-40" }
                     } else {
                     mouse-area (ondblclick: .ActivateApp(e.id), onclick: .IconPress(e.id)) {
                         col {
@@ -129,9 +133,9 @@ widget DesktopSurface {
                             // PLAN-012 W5：拖拽拾起态 = 半透明底（拖拽语义反馈；
                             // 无逐帧跟随幽灵——headless 决策，见工件）。
                             style: if .drag_id == e.id {
-                                "w-20 h-20 items-center justify-center gap-1 bg-white/20 opacity-50"
+                                "w-40 h-40 items-center justify-center gap-1 bg-white/20 opacity-50"
                             } else {
-                                "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                                "w-40 h-40 items-center justify-center gap-1 hover:bg-white/10"
                             }
                             oncontextmenu.prevent: .IconMenu(e.id)
             // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标 chip 视觉件，
@@ -142,12 +146,12 @@ widget DesktopSurface {
                 // （col+icon）——原 iced Button 捕获 press 饿死祖先
                 // mouse-area 的 ondblclick（chip 上双击死区，T30 起存量；
                 // review_ue.log 实录 8 条裸 click 无 ActivateApp）。降级后
-                // 整格 80×80 统一双击+右键（Windows 惯例：图标+文字整块
-                // 可点）；视觉等价（20px glyph=原 text-xl 字号档）。
+                // 整格 160×160 统一双击+右键（Windows 惯例：图标+文字整块
+                // 可点）；PLAN-019-FU1：chip 80px + glyph 40px（原 40/20）。
                 col {
-                    style: "h-10 w-10 items-center justify-center rounded-xl bg-[" + e.color + "]"
+                    style: "h-20 w-20 items-center justify-center rounded-xl bg-[" + e.color + "]"
                     icon (name: e.icon) {
-                        style: "w-5 h-5 text-white"
+                        style: "w-10 h-10 text-white"
                     }
                 }
                                 col {
@@ -167,7 +171,7 @@ widget DesktopSurface {
                                 }
                             }
                             text e.label {
-                                style: "text-xs text-foreground truncate w-full text-center"
+                                style: "text-sm text-foreground truncate w-full text-center"
                             }
                         }
                     }

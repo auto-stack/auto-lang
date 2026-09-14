@@ -11883,13 +11883,14 @@ fn execute_desktop_icon_drop_at(
     xy: &str,
 ) {
     // x,y → 线性格换算在闭包内完成（解析失败 = no-op）。
-    // desktop 本地像素 → 格：面根 p-3(12px) + 格 80 + gap 8 → 88px 栅距。
+    // desktop 本地像素 → 格：面根 p-3(12px) + 格 + gap → 栅距。
+    // PLAN-019-FU1（用户走查反馈）：图标翻倍（格 160 + gap 8）→ 168px。
     let changed = (|| -> Option<bool> {
         let (xs, ys) = xy.split_once(',')?;
         let x = xs.trim().parse::<f32>().ok()?;
         let y = ys.trim().parse::<f32>().ok()?;
         const ORIGIN: f32 = 12.0;
-        const PITCH: f32 = 88.0;
+        const PITCH: f32 = 168.0;
         let col = (((x - ORIGIN) / PITCH).floor() as i32).clamp(0, 7) as usize;
         let row = (((y - ORIGIN) / PITCH).floor() as i32).clamp(0, 96) as usize;
         Some(desktop_icon_apply_drop(
