@@ -445,6 +445,32 @@ handler 的 `__state` 状态对象（此前 CONST_0，`self.field` 全部静默 
 守卫语料：`plan622_a/a2/a3/b`（facade 读/派发/视图跟随）、
 `plan622_e1/e2`（捕获两形态）。
 
+## icon 字符串协议族（PLAN-018）
+
+icon 通道是**字符串协议**：pac `icon:` → 注册表 `AppRegistryEntry.icon` →
+shell 注入 → 渲染臂按前缀分发。三个后端 + 占位，按回退链求值：
+
+| 前缀 | 后端 | 实现 |
+|---|---|---|
+| `iconfile:<stem>` | 双主题位图文件 | `iced/icon_file.rs`：`{root}/{light,dark}/<stem>.png` → `Handle::from_bytes`，(stem,dark) 键全局缓存（失败占位防重试） |
+| `hicon:<slot>` | native 窗口真图标 | `iced/native_icon.rs`（Plan 515 D1，HICON→RGBA） |
+| `lucide:<name>` / 裸名 | 内嵌 SVG 静态资源 | `lucide_svg_doc` 族 |
+
+- **回退链**：`iconfile:` → `hicon:` → `lucide:` → 占位。任一级未命中
+  （前缀不符 / 资产根缺席 / 文件缺失 / 提取失败）即下沉下一级——纯 lucide
+  名的 app 渲染路径恒不变（零回归边界）。
+- **资产根解析序**：`AUTO_OS_ICON_ROOT` env（桌面 boot 注入）→
+  `AUTO_OS_ROOT/assets/icons` → 缺席。资产与映射表（`mapping.json`，
+  registry id → stem）归 auto-os `assets/icons/`（PLAN-018 SD-02）；切片
+  工具 `auto-os scripts/slice_icons.py --verify` 再生成。
+- **主题**：dark 位取进程级 `theme::dark_mode()`（boot 期 `set_dark_mode`，
+  PLAN-615 链）→ 选 `{dark,light}` 子目录。
+- **接线**：桌面 boot 注册表快照组装后 `apply_icon_mapping` 把命中 id 的
+  `entry.icon` 改写为 `iconfile:<stem>`（未映射原样），同时注入
+  `AUTO_OS_ICON_ROOT`。vue 轨同前缀 → 双 `<img>` 对 + SFC 三行切换规则
+  （宿主根 `.dark` class；无该机制宿主恒浅表）。
+- **stem 白名单** `[A-Za-z0-9_-]`（拼路径前拒收穿越/杂字符）。
+
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
