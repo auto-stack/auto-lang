@@ -86,11 +86,13 @@ mod plan066_native_widget_tests {
     // T1 Element 通道：注册表 Element 入口 → View::Custom
     // ─────────────────────────────────────────────────────────────────────
 
-    /// 探针名仅测试构建注册（native_widget.rs cfg(test) 块）；props 经
-    /// resolve→display 明文透传，按键排序。
+    /// 探针名经测试钩子进程内登记（native_widget::test_register_element，
+    /// 首次 global() 前生效；生产源面与 schema 漂移围栏 P1 不见测试名）；
+    /// props 经 resolve→display 明文透传，按键排序。
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn plan066_element_entry_produces_custom_view() {
+        crate::ui::native_widget::test_register_element("plan066_element_probe");
         let mut dc = match build_app("src/front/app.at") {
             Some(c) => c,
             None => {

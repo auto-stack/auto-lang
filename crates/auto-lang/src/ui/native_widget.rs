@@ -152,6 +152,10 @@ fn fold_name(s: &str) -> String {
 
 static GLOBAL: OnceLock<NativeWidgetRegistry> = OnceLock::new();
 
+/// PLAN-066 测试面：测试进程内追加登记的 Element 探针名（cfg(test) 专有）。
+#[cfg(test)]
+static TEST_EXTRA_ELEMENTS: OnceLock<std::sync::Mutex<Vec<String>>> = OnceLock::new();
+
 /// 进程级内置注册表：feature 门控的原生组件在此登记（builder 字段缺席时的
 /// 兜底源；测试经 `AuraViewBuilder` 的 native_registry 字段注入自有实例）。
 pub fn global() -> &'static NativeWidgetRegistry {
@@ -186,12 +190,26 @@ fn register_builtin_entries() -> NativeWidgetRegistry {
         });
     }
     #[cfg(test)]
+    for name in TEST_EXTRA_ELEMENTS
+        .get_or_init(|| std::sync::Mutex::new(Vec::new()))
+        .lock()
+        .unwrap()
+        .iter()
     {
-        // PLAN-066 T1 语料探针：Element 通道（仅测试构建注册；nextest 每测
-        // 独立进程，无跨测泄漏面）。
-        reg.register_element("plan066_element_probe");
+        // 测试探针名经 test_register_element 进程内登记（不落生产源面，
+        // schema 漂移围栏 P1 不见）。
+        reg.register_element(name);
     }
     reg
+}
+
+/// PLAN-066 测试面：corpus 测试进程内、首次 [`global()`] 前登记测试探针名
+/// （nextest 每测独立进程，无跨测泄漏；生产构建无此面，schema 漂移围栏的
+/// 源扫描因此不见测试名）。
+#[cfg(test)]
+pub fn test_register_element(name: &str) {
+    let m = TEST_EXTRA_ELEMENTS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    m.lock().unwrap().push(name.to_string());
 }
 
 #[cfg(test)]
