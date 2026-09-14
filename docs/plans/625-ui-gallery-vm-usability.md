@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-registry-�
 touched_goals: [GOAL-010, GOAL-007]   # 引用 docs/specs/goals.md 的 GOAL-NNN（沿 573 引用，暂定）
 
 affects: [auto-lang/ui, parity]
-current_step: 4
+current_step: 6
 total_steps: 9
 ---
 
@@ -314,8 +314,22 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   [进展] 归因 (b) 臂已排除：worktree 干净构建（无他会话脏改动）复现同现象
   ——pills+列表在 AURA 树存在（33 项）但零像素绘制 → **预存渲染缺陷实锤**，
   转 (a) 修复路径（sidebar_provider/header 合成绘制链，T-04 余下部分）。
+  [✅ 已完成] headless 精确定位+修复：layout_tests 新增
+  `p625_uigallery_sidebar_pills_visible` 双形态守卫——无高度类 pills 0×0
+  复现（Row 交叉轴无 CSS stretch 语义,渲染器缺口哨兵）+ `h-full` 修复形态
+  正尺寸断言；app.at aside 补 `h-full`（os-config/015-notes 惯用法）后
+  VM 实测 pills+33 项列表+选中态全部可见（截图 p625_vm_t04_fixed.png）。
+  commits：auto-lang layout 守卫、auto-os 4824dc7。
+  另：`desktop_surface_z_slot_window_covers_icons` layout 测试存量红与本
+  计划无关（stash 基线同败，他会话 desktop/terminal 在途领域）。
 - **T-05** 渐变文字降级：`crates/auto-lang/src/ui/iced/renderer.rs` 文字渲染
   样式解析路径 + 单测 + parity spec 矩阵行。**无依赖，可并行。** → AC-06、SD-02。
+  [✅ 已完成] commit 7536f8dd0。`BgClipText` 变体+解析臂（先于 bg-{color} 块，
+  否则 "clip-text" 先撞色解析不可达）+ IcedStyle `gradient_clip_text` 标记 +
+  text-transparent 清空回落继承色 + 渲染容器臂抑制渐变底盒；顺带修复
+  from-/via-/to- 语义色回落（`from-primary`/`to-primary/60` 原先不可映射，
+  parse_color_with_alpha 自带 /N alpha 与主题解析）。单测 x2 + style_parity
+  绿；VM 实测顶栏 "AutoUI Gallery" 可读（截图 p625_vm_t05_final.png）。
 - **T-06** 循环 handler 合成修复：VM codegen handler 合成路径（定位
   `__evt_onclick_N` 合成与 `Undefined variable` 报错点）+ 单测。**无依赖，
   可并行；T-03 点击实证的前置。** → AC-02。
@@ -356,6 +370,15 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   解析序 env 档覆盖）。plan_revision 1→2：T-06 实现路径按证据调整为 app 端
   msg 带参惯用法（§5.5 裁定注记，goal/AC 不变）。`next: work`（余 T-04 修复
   半程、T-05、T-07、T-08 调研、T-09）。
+
+- **2026-09-14 work round 2（仍 plan_revision 2）**：stage `work`；code commits
+  auto-lang `7536f8dd0`（T-05 + T-04 layout 守卫）/ auto-os `4824dc7`（T-04
+  app 修复）；task_ids T-04、T-05 完成（6/9）。evidence：layout 双形态守卫
+  0×0 哨兵 + 正尺寸断言；VM 实测侧栏 pills/列表/选中态可见、顶栏标题可读
+  （截图 p625_vm_t04_fixed / p625_vm_t05_final）。blockers：F-6 静默退出
+  持续（本轮再 +2 例，死亡随机）；`desktop_surface_z_slot` layout 存量红
+  （stash 基线同败，他会话领域，不阻断）。`next: work`（余 T-07、T-08 调研
+  需用户裁定、T-09；T-07 建议优先——它威胁一切 VM 实证的可复现性）。
 
 ## 10. 待澄清事项
 
