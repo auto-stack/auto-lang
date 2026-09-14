@@ -1237,7 +1237,7 @@ impl CodeEditorCore {
             if sb.contains(super::draw::Pt::new(x, y)) {
                 let grab_offset = (y - sb.y).clamp(0.0, sb.h);
                 *self.drag.lock().unwrap() = Drag::ScrollbarV { grab_offset };
-                self.drag_scrollbar_v(y);
+                self.drag_scrollbar_v(font_system, y);
                 return out.captured();
             }
         }
@@ -1245,7 +1245,7 @@ impl CodeEditorCore {
             if sb.contains(super::draw::Pt::new(x, y)) {
                 let grab_offset = (x - sb.x).clamp(0.0, sb.w);
                 *self.drag.lock().unwrap() = Drag::ScrollbarH { grab_offset };
-                self.drag_scrollbar_h(x);
+                self.drag_scrollbar_h(font_system, x);
                 return out.captured();
             }
         }
@@ -1336,7 +1336,12 @@ impl CodeEditorCore {
 
     fn handle_mouse_move(&self, font_system: &mut FontSystem, x: f32, y: f32) -> CoreOutput {
         let info = self.layout_info.lock().unwrap().clone();
-        match *self.drag.lock().unwrap() {
+        // PLAN-626 rev2 T-09: clone the drag state out — the match scrutinee
+        // temporary held the `drag` mutex across the whole match body, and
+        // drag_scrollbar_v/h re-lock it → guaranteed self-deadlock on the
+        // first mouse move of any scrollbar drag ("not responding").
+        let drag = *self.drag.lock().unwrap();
+        match drag {
             Drag::None => CoreOutput::default(),
             Drag::Buffer => {
                 // Auto-scroll when dragging past the visible edges.
@@ -1374,18 +1379,18 @@ impl CodeEditorCore {
                     .captured()
             }
             Drag::ScrollbarV { .. } => {
-                self.drag_scrollbar_v(y);
+                self.drag_scrollbar_v(font_system, y);
                 CoreOutput { request_redraw: true, ..CoreOutput::default() }.captured()
             }
             Drag::ScrollbarH { .. } => {
-                self.drag_scrollbar_h(x);
+                self.drag_scrollbar_h(font_system, x);
                 CoreOutput { request_redraw: true, ..CoreOutput::default() }.captured()
             }
         }
     }
 
     /// Map a vertical scrollbar drag to a buffer scroll line.
-    fn drag_scrollbar_v(&self, y: f32) {
+    fn drag_scrollbar_v(&self, font_system: &mut FontSystem, y: f32) {
         let info = self.layout_info.lock().unwrap().clone();
         let grab = match *self.drag.lock().unwrap() {
             Drag::ScrollbarV { grab_offset } => grab_offset,
@@ -1406,12 +1411,20 @@ impl CodeEditorCore {
         editor.with_buffer_mut(|b| {
             let mut scroll = b.scroll();
             scroll.line = line;
+            // PLAN-626 rev2 T-09: drag lands the target line at the viewport
+            // top — zero the intra-line offset, then shape + normalize so the
+            // next frame's layout_runs always sees shaped lines. Previously
+            // the stale vertical + unshaped target line made layout_runs end
+            // early (first_visible_line stuck at usize::MAX → NaN scrollbar
+            // geometry → frozen frame loop while dragging).
+            scroll.vertical = 0.0;
             b.set_scroll(scroll);
+            b.shape_until_scroll(font_system, false);
         });
     }
 
     /// Map a horizontal scrollbar drag to a horizontal pixel scroll.
-    fn drag_scrollbar_h(&self, x: f32) {
+    fn drag_scrollbar_h(&self, _font_system: &mut FontSystem, x: f32) {
         let info = self.layout_info.lock().unwrap().clone();
         let grab = match *self.drag.lock().unwrap() {
             Drag::ScrollbarH { grab_offset } => grab_offset,
@@ -2063,6 +2076,72 @@ let beta = alpha + 2;
         assert_eq!(top.vertical, 0.0, "top clamp");
         let out = with_font_system(|fs| core.handle_wheel(fs, 0.0, 3.0, false));
         assert!(!out.request_redraw, "at-top wheel must not request a repaint");
+    }
+
+    /// PLAN-626 rev2 T-09: scrollbar drag — pressing the thumb then moving
+    /// must land shaped, normalized scroll (vertical zeroed, target lines
+    /// shaped) so the next frame's layout_runs never degenerates (the old
+    /// path left first_visible_line at usize::MAX → NaN scrollbar geometry →
+    /// frozen drag).
+    #[test]
+    fn plan626_scrollbar_drag_lands_shaped_normalized_scroll() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-wheel-drag");
+        code_editor_dispose(&key);
+        let core = code_editor(&key, &CodeEditorConfig::default());
+        let line_count = 60usize;
+        let text = (0..line_count)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("
+");
+        with_font_system(|fs| core.set_text(&text, fs));
+
+        // A render pass populates layout_info (scrollbar rects, visible
+        // lines) exactly like the iced draw path does.
+        with_font_system(|fs| {
+            crate::ui::code_editor::core::render::render(&core, fs, 300.0, 200.0, None);
+        });
+        let sb = core
+            .layout_info
+            .lock()
+            .unwrap()
+            .scrollbar_v
+            .clone()
+            .expect("v scrollbar after render");
+
+        // Press on the thumb, then drag well below it.
+        let grab_y = sb.y + sb.h / 2.0;
+        with_font_system(|fs| {
+            core.handle_mouse_press(fs, EditorButton::Left, sb.x + 1.0, grab_y);
+        });
+        let drag_y = sb.y + sb.h * 4.0;
+        with_font_system(|fs| core.handle_mouse_move(fs, sb.x + 1.0, drag_y));
+
+        let (line, vertical) = with_font_system(|fs| {
+            let editor = core.editor_lock();
+            editor.with_buffer(|b| {
+                let s = b.scroll();
+                (s.line, s.vertical)
+            })
+        });
+        assert!(line > 0, "dragging down must advance scroll.line, got {line}");
+        assert!(
+            vertical.abs() < line_count as f32 * 100.0,
+            "vertical must stay normalized, got {vertical}"
+        );
+
+        // The next frame must be sane: finite scrollbar geometry.
+        let list = with_font_system(|fs| {
+            crate::ui::code_editor::core::render::render(&core, fs, 300.0, 200.0, None)
+        });
+        let sb2 = list.scrollbar_v.expect("scrollbar present after drag");
+        assert!(
+            sb2.thumb.x.is_finite() && sb2.thumb.y.is_finite(),
+            "scrollbar geometry must stay finite after drag: {:?}",
+            sb2.thumb
+        );
     }
 
     /// Test font-system callback: one process-wide FontSystem behind a
