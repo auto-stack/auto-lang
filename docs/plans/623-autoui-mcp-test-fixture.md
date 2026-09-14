@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-623
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: autoui-mcp-test-fixture
 author: [codex]
 created_at: 2026-09-14
@@ -285,5 +285,7 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 - VM no-merge 集成测试需要可用的本地 HTTP backend 启动方式；若环境缺失，
   记录为环境阻断，不以 merged 结果代替。
 - 本计划完成前，Plan 005 的 VM fixture golden 保持 blocked。
+
+
 
 
