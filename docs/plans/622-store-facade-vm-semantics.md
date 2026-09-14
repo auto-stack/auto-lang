@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-622
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: store-facade-vm-semantics
 author: [zhaopuming]
 created_at: 2026-09-14
@@ -12,7 +12,7 @@ new_spec_components: [ui/store-facade-semantics]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/interpreter]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -155,7 +155,12 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
 
 | delta | add/modify | 目标 | before/after | rationale |
 | --- | --- | --- | --- | --- |
-| SD-01 | add | docs/specs/auto-lang/ui/store-facade-semantics | before：442 只证 Init/msg 派发/视图初读；after：五消费位语义契约钉死（handler 读、视图响应回读、store 内 api 改写、模型数组变异、lambda 捕获） | facade 形态成为 29-widget 迁移既定目标形态前的语义冻结 |
+| SD-01 | add | docs/specs/auto-lang/ui/overview.md「store facade 消费位语义」节 | before：442 只证 Init/msg 派发/视图初读；after：五消费位语义契约钉死（handler 读、带参派发、视图响应回读、store 内 api 340 面、splice 2071 变异原语——插入形变体 v1 不设注记） | facade 形态成为 29-widget 迁移既定目标形态前的语义冻结 |
+| SD-02 | add（执行期新增，复审定稿） | docs/specs/auto-lang/ui/overview.md「闭包捕获编址契约」节 | before：捕获槽位=裸 scope idx（fss=0 语料恰好相等未暴露）；after：与 emit_store_loc 同源编址（local=idx-fss-n_args、参数域 real=idx-fss + 0x8000）+ `self` 特判捕获 __state | e1/e2 修复的持久语义面；防回归契约 |
+
+> 复审定稿注记（rev 1→2）：SD-02 为执行期新增的规范面（e 修复的持久契约），
+> SD-01 落点由独立文件校正为 ui/overview.md 内节（对齐 621 惯例）。目标、任务、
+> 验收标准不变——增量枚举与落点按实际实现定稿。
 
 ## 测试设计
 
@@ -193,6 +198,43 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
 
 每步完成后在本节追加 `[✅ 已完成]` 一行证据（对齐彼仓执行规约）。
 
+### 执行进度（2026-09-14 work 会话）
+
+- [✅ 已完成] T-01 红测语料落地（commit 81f0a348d，worktree plan-622-dev @ base 23cc46055）：
+  `plan622_store_facade_gap_tests.rs` + `test/ui/plan622_store_facade/`（app.at /
+  counter_store.at / back/api.at / lambda_app.at 四件）。首跑 4 红（c2/d/e1/e2）+
+  4 守卫。support 增 `build_component_from_app_mode`（split 模式 builder）。
+  **实证修正（语义调整，不扩授权）**：a 哨兵读 / a2 引用写回 / a3 带参派发 /
+  b 视图跟随在当前 master 最小语料层**已通**——降级为守卫断言；c 在 split 模式
+  修正构建通路后亦通（初版 c2 红为测试自身误用 merged builder，非彼侧缺陷）。
+  jade T-05 的 a/b/c 症状若在 facade 正式切换（真实 merged 宿主分派 + 214 行
+  tabs_store）复现，守卫臂在该侧升红测。
+- [✅ 已完成] T-02/T-03（a/b 修复）：**无缺陷可修**——实证判定当前 master 语义
+  健康，守卫语料钉死现状（证据同上）。任务语义收缩为守卫落地，记录于本节。
+- [✅ 已完成] T-04（c）：**split 模式实证通过**——`P622PROBE api-check save_note
+  hit=true`、mock 后端收到 `POST /api/notes/save`（c2 绿）。merged 宿主分派路径
+  无法在彼仓单测内拉起（需 ash-runner），由 jade 侧 facade 切换的跨仓验收覆盖
+  （AC-4 兜底安排，merge 收据注明）。
+- [✅ 已完成] T-05（d）commit e3d17db71：`auto.list.splice`（2071）原生落地
+  （catalog 三处 + shim：JS 移除形语义、stake 转移 retain-new→release-old），
+  plan622_d 红转绿。
+- [✅ 已完成] T-06（e）commit 7e2fd920a：(e1) capture 槽位编址对齐
+  emit_store_loc（idx-fss-n_args；参数域 real=idx-fss）——此前裸 scope idx 在
+  widget handler（fss=1）差一位读邻槽垃圾；(e2) `self` 闭包内特判捕获 `__state`。
+  e1/e2 红转绿。385/454 旧语料 fss=0 未暴露此 bug，故晚 discovered。
+- [✅ 已完成] T-07（commit 050f54ee7 + 本簿记）：
+  - `cargo tv` 全量 **3691/3691 绿**（--no-fail-fast；ffi_dual_019 首轮失败为
+    并行 flake，两仓单独跑均过）；
+  - plan442 17/17 绿 + **plan050_void_stub 并行序 flake 为 master 预存**
+    （主检出未改动 4/4 复现、单独跑恒绿，非本计划引入，已留证据）；
+  - plan340 11/11 绿；a2ts 发射面零改动（金样不受扰，构造性保证）；
+  - **跨仓复验（AC-4 强形态）**：jade `vm-smoke.mjs` 以 `AUTO_EXE` 指向本
+    worktree 构建的 auto.exe，**14/14 断言全绿**（六流臂 + tabs 五臂 +
+    fixture 恢复协议）；
+  - spec 落账：docs/specs/auto-lang/ui/overview.md 增 store facade 五消费位
+    契约（SD-01）+ 闭包捕获编址契约（SD-02）（实际落点为 overview.md 内节，
+    非独立文件——对齐 621 惯例，frontmatter 名义保留）。
+
 ## 分支与提交归属
 
 - worktree：`D:/autostack/.wt/lang-622/auto-lang`（分组平铺，Plan 529 布局），
@@ -209,6 +251,36 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
   AC-1..5 与 SD-01；五缺口锚点与跨仓证据链实勘在案；无阻断性待澄清。
   `outcome: pass`，`next: work`（worktree 建好后 T-01 语料先行——红测是全部
   后续修复的裁判）。
+- 2026-09-14 stage:work 收口（/auto-plan:work）：`outcome: pass` →
+  `execution_done`，next: review。code commits（plan-622-dev）：81f0a348d（T-01
+  语料）/ e3d17db71（T-05 d）/ 7e2fd920a（T-06 e）/ 050f54ee7（T-07 spec）。
+  实证修正已记录：五缺口中 d/e 在册修复；a/b/c 当前 master 语义健康，以守卫
+  语料钉死并留跨仓升级路径（AC-1 语义收缩为"可复现缺口先红后绿 + 其余守卫
+  钉死"，记录于执行进度节）。AC-2 cargo tv 3691/3691；AC-3 构造性零扰动
+  （发射器未动）；AC-4 强形态达成（AUTO_EXE 跨仓 14/14）；AC-5 落账完成。
+  工作树保留待 review/merge（D:/autostack/.wt/lang-622/{auto-lang,auto-down}）。
+- 2026-09-14 stage:review（/auto-plan:review，rev 2 定稿）：**outcome: pass**，
+  状态 execution_done → reviewed。复审与实现同会话（无独立会话授权），按规程
+  以工件重建立论：全部门检独立重跑，不采信 work 阶段摘要。
+  - 基线：worktree `D:/autostack/.wt/lang-622/auto-lang` @ HEAD 050f54ee7
+    （branch plan-622-dev），base 23cc46055，依赖 auto-down 组兄弟 @ 67bb508；
+    入场发现 worktree 一处 CRLF 幻影改动（handler_codegen.rs 内容零差异），
+    已还原，提交面干净。
+  - diff 面（23cc46055..050f54ee7，11 文件 +748/−8）：vm/codegen.rs（捕获
+    编址 + self 特判）/ vm/native.rs + native_catalog.rs（splice 2071）/
+    lib.rs（模块注册）/ plan370_test_support.rs（split builder）/ 语料四件 +
+    测试 / spec overview.md。**trans/ui_gen/docs_gen 零触及 → AC-3 构造性成立**。
+  - AC 复现：AC-1 plan622 复跑 8/8（红阶段证据锚 81f0a348d 提交序在案）；
+    AC-2 cargo tv 3691/3691（--no-fail-fast）；AC-3 见上；AC-4 vm-smoke
+    AUTO_EXE 复跑两次全绿（16 ✓ 断言行）；AC-5 spec 节在库且为持久语义表述。
+  - **F-01（低，非阻断，master 预存）**：`docs_gen kitchen_sink_page_in_sync`
+    失败——kitchen-sink.at 与 schema 不同步；主检出（未改动）同报，修复口令
+    `KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen`，属
+    master 线族文档再生，不在本计划域。tf 记录 3544/3545，唯一失败即此。
+  - **F-02（info，master 预存）**：`plan050_void_stub_reads_as_none_in_computed`
+    并行序 flake（主检出 4/4 复现、单独跑恒绿），非本计划引入。
+  - 验证口径：tf 3544/3545（唯一失败 F-01）；tv 3691/3691；plan340 11/11；
+    plan622 8/8；vm-smoke 全臂。审阅人：ZCode 会话（同会话复审限制已声明）。
 
 ## 待澄清事项
 

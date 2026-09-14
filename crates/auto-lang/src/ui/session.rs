@@ -267,6 +267,9 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// Plan 478 T4：switcher overlay App 的 AppId。首次 Ctrl+Tab 召唤时
     /// 懒挂载（launcher 同型 overlay 槽约定）；独立模式恒 None。
     pub switcher_app: Option<AppId>,
+    /// PLAN-012 F2 走查：进行中的桌面图标拖拽（desktop_icon_drag_start
+    /// 置位；__mouse_released 臂落格清位）。
+    pub icon_drag: Option<String>,
     /// Plan 479 T3：通知中心 overlay App 的 AppId。首次 notes_toggle 召唤时
     /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
     pub notification_app: Option<AppId>,
@@ -372,17 +375,19 @@ impl DesktopState {
             shell_fields: ShellFields::default(),
             launcher_app: None,
             switcher_app: None,
+            icon_drag: None,
             notification_app: None,
             desktop_app: None,
             desktop_wallpaper: DESKTOP_WALLPAPER_DEFAULT.to_string(),
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
-            dock_pinned: vec![
-                "011-calculator".to_string(),
-                "013-todo".to_string(),
-                "015-notes".to_string(),
-            ],
+            // PLAN-012 W4：缺省 pinned 单源 config 常量（原此处硬编码三枚
+            // 字面量——缺省置空的漏网源，d496 测试实测暴露）。
+            dock_pinned: crate::ui::desktop_config::DEFAULT_DOCK_PINNED
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             config: crate::ui::desktop_config::load(),
             hole_mode: false,
             // PLAN-526 T18：分区切换面板 transient 收起时点（热键切换置位；
@@ -583,6 +588,12 @@ pub struct VWinState {
     pub fit_dirty: Cell<bool>,
     /// PLAN-526 T1：最小化（窗隐藏、任务栏 icon 保留；`focus` 即还原）。
     pub minimized: Cell<bool>,
+    /// PLAN-012 W1：常驻隐藏（os-config close→hide 拦截臂置位）——与
+    /// minimized 的差别：**投影全排除**（__wm_wins/__wm_running/任务栏
+    /// /MRU/命中/推层均不见，"真关了"的感知），组件与编译产物保留，
+    /// `focus` 即取消隐藏+聚焦（重开 = 纯聚焦臂零编译）。minimized 仅
+    /// 隐藏绘制、任务栏保留。
+    pub hidden: Cell<bool>,
     /// PLAN-526 T1：最大化真状态（替代 462 装配层"rect≥98% 桌面"派生判定）。
     pub maximized: Cell<bool>,
     /// PLAN-526 T1：最大化前矩形（还原落点；`toggle_maximize_win` 存取）。
@@ -704,6 +715,7 @@ impl WmState {
                 fit_user_locked: Cell::new(false),
                 fit_dirty: Cell::new(false),
                 minimized: Cell::new(false),
+                hidden: Cell::new(false),
                 maximized: Cell::new(false),
                 restore_rect: RefCell::new(None),
             },
@@ -841,6 +853,10 @@ impl WmState {
             if v.minimized.get() {
                 return None;
             }
+            // PLAN-012 W1：常驻隐藏窗不参与命中（close→hide 语义）。
+            if v.hidden.get() {
+                return None;
+            }
             let r = v.rect.borrow();
             (x >= r.x && y >= r.y && x <= r.x + r.width && y <= r.y + r.height)
                 .then_some(*w)
@@ -971,8 +987,10 @@ impl WmState {
             return;
         }
         // PLAN-526 T1：焦点即还原——任务栏 icon 点击最小化窗 = 取消最小化。
+        // PLAN-012 W1：焦点即取消隐藏（os-config 重开 = 纯聚焦臂）。
         if let Some(v) = self.wins.get(&wid) {
             v.minimized.set(false);
+            v.hidden.set(false);
         }
         self.focused = Some(wid);
         self.z_order.retain(|w| *w != wid);
@@ -999,6 +1017,7 @@ impl WmState {
         }
         if let Some(v) = self.wins.get(&wid) {
             v.minimized.set(false);
+            v.hidden.set(false);
         }
         self.focused = Some(wid);
         self.mru.retain(|w| *w != wid);
@@ -1264,8 +1283,30 @@ pub enum DesktopCommand {
     /// config 落盘——push_notification 门控直读）。
     SetNotesEnabled(bool),
     /// Plan 540 T3：dock pinned 表写动词（`set_dock_pinned\t<csv>`；执行臂
-    /// config 落盘 + 会话域同步 + shell 投影热同步；空表 = 复位默认三枚）。
+    /// config 落盘 + 会话域同步 + shell 投影热同步。PLAN-012 W4：空表 =
+    /// 空表（缺省三枚语义退役，显式空即空））。
     SetDockPinned(String),
+    /// PLAN-012 W4 协议 v1.6：dock 单枚固定/取消固定（`dock_pin\t<id>` /
+    /// `dock_unpin\t<id>`；执行臂 config.dock_pinned Vec 增删去重 → 落盘 →
+    /// 投影热同步）。窄动词缘由：shell 侧读不到 `__dock_pinned` Obj 数组
+    /// 全集做 csv 拼接（B12 同族），单枚增删不过 .at。
+    DockPin(String),
+    DockUnpin(String),
+    /// PLAN-012 W5：桌面图标格子重注入（`refresh_desktop_icons` 无参动词；
+    /// shell 拖拽落子写 `shell.desktop.positions` 后触发——宿主重读 storage
+    /// 重算 __desktop_cells/平行列表，拖拽结果即时可见 + boot 同链）。
+    RefreshDesktopIcons,
+    /// PLAN-012 F2 走查（用户裁定 UX）：拖拽落格——落到**目标图标**所在格
+    /// （`desktop_icon_drop	<dragged>	<target>`；target 占位者挤到下一
+    /// 空格，行主序先下后右列）。
+    DesktopIconDrop(String, String),
+    /// PLAN-012 F2 走查：拖拽落格——落到**光标像素**所在格（
+    /// `desktop_icon_drop_at	<dragged>	<x>,<y>`；desktop 本地坐标，
+    /// 空格直落 / 占位同上挤推）。
+    DesktopIconDropAt(String, String),
+    /// PLAN-012 F2 走查：图标拖拽开始（`desktop_icon_drag_start\t<id>`；
+    /// 宿主置 icon_drag，全局 `__mouse_released` 臂松手落格）。
+    DesktopIconDragStart(String),
     /// Plan 540 T3：壁纸目录写动词（`set_wallpapers_dir\t<dir>`；执行臂
     /// config 落盘——scan_wallpapers_dir 与缺省壁纸链共用解析）。
     SetWallpapersDir(String),
@@ -1420,6 +1461,30 @@ impl DesktopCommand {
             DesktopCommand::SetDockPinned(csv) => {
                 format!("set_dock_pinned{}{}", Self::FIELD_SEP, csv)
             }
+            DesktopCommand::DockPin(id) => format!("dock_pin{}{}", Self::FIELD_SEP, id),
+            DesktopCommand::DockUnpin(id) => format!("dock_unpin{}{}", Self::FIELD_SEP, id),
+            DesktopCommand::RefreshDesktopIcons => "refresh_desktop_icons".to_string(),
+            DesktopCommand::DesktopIconDrop(dragged, target) => {
+                format!(
+                    "desktop_icon_drop{}{}{}{}",
+                    Self::FIELD_SEP,
+                    dragged,
+                    Self::FIELD_SEP,
+                    target
+                )
+            }
+            DesktopCommand::DesktopIconDropAt(dragged, xy) => {
+                format!(
+                    "desktop_icon_drop_at{}{}{}{}",
+                    Self::FIELD_SEP,
+                    dragged,
+                    Self::FIELD_SEP,
+                    xy
+                )
+            }
+            DesktopCommand::DesktopIconDragStart(id) => {
+                format!("desktop_icon_drag_start{}{}", Self::FIELD_SEP, id)
+            }
             DesktopCommand::SetWallpapersDir(dir) => {
                 format!("set_wallpapers_dir{}{}", Self::FIELD_SEP, dir)
             }
@@ -1464,6 +1529,48 @@ impl DesktopCommand {
                 // 带参动词互吞）。
                 if rec == "shutdown" {
                     return Some(DesktopCommand::Shutdown);
+                }
+                // PLAN-012 W5：桌面图标格子重注入（无参动词前置防互吞）。
+                if rec == "refresh_desktop_icons" {
+                    return Some(DesktopCommand::RefreshDesktopIcons);
+                }
+                // PLAN-012 F2 走查：拖拽落格双动词（双参记录，二次 split）。
+                // 分隔符双轨：宿主/单测直写 \u{1f}；shell.at 转义 \t。
+                for verb in [
+                    "desktop_icon_drop",
+                    "desktop_icon_drop_at",
+                    "desktop_icon_drag_start",
+                ] {
+                    let sep = format!("{verb}\u{1f}");
+                    let sep_t = format!("{verb}\t");
+                    if rec.starts_with(&sep) || rec.starts_with(&sep_t) {
+                        let rest = &rec[verb.len() + 1..];
+                        // drag_start 单参；drop 双参（第二参缺席 = 空串容忍，
+                        // drop_at 由宿主读 surface 光标态）。
+                        let (dragged, second) = match rest
+                            .split_once([Self::FIELD_SEP, '\t'])
+                        {
+                            Some((d, s)) => (d.to_string(), s.to_string()),
+                            None => (rest.to_string(), String::new()),
+                        };
+                        if dragged.is_empty()
+                            || (verb != "desktop_icon_drag_start"
+                                && second.is_empty())
+                        {
+                            return None;
+                        }
+                        return Some(match verb {
+                            "desktop_icon_drop" => DesktopCommand::DesktopIconDrop(
+                                dragged,
+                                second,
+                            ),
+                            "desktop_icon_drop_at" => DesktopCommand::DesktopIconDropAt(
+                                dragged,
+                                second,
+                            ),
+                            _ => DesktopCommand::DesktopIconDragStart(dragged),
+                        });
+                    }
                 }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
@@ -1562,6 +1669,14 @@ impl DesktopCommand {
                     },
                     "set_dock_pinned" => {
                         Some(DesktopCommand::SetDockPinned(arg.to_string()))
+                    }
+                    // PLAN-012 W4 协议 v1.6：单枚固定/取消固定（空参跳过；
+                    // dock_pin/dock_unpin 分隔符前全词匹配，无前缀互吞）。
+                    "dock_pin" if !arg.is_empty() => {
+                        Some(DesktopCommand::DockPin(arg.to_string()))
+                    }
+                    "dock_unpin" if !arg.is_empty() => {
+                        Some(DesktopCommand::DockUnpin(arg.to_string()))
                     }
                     "set_wallpapers_dir" => {
                         Some(DesktopCommand::SetWallpapersDir(arg.to_string()))
@@ -5371,6 +5486,32 @@ mod tests {
         );
         // 空 arg 跳过（launch 同款守卫）。
         assert!(DesktopCommand::parse_records("activate\u{1f}").is_empty());
+    }
+
+    /// PLAN-012 W4 协议 v1.6：dock_pin/dock_unpin 编码解析往返（含空参
+    /// 跳过守卫；\u{1f}/\t 分隔符双轨）。
+    #[test]
+    fn dock_pin_unpin_verbs_parse_and_encode() {
+        assert_eq!(
+            DesktopCommand::parse_records("dock_pin\u{1f}011-calculator"),
+            vec![DesktopCommand::DockPin("011-calculator".to_string())]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("dock_unpin\t013-todo"),
+            vec![DesktopCommand::DockUnpin("013-todo".to_string())],
+            "\\t 分隔符双轨等价"
+        );
+        assert_eq!(
+            DesktopCommand::DockPin("015-notes".to_string()).encode(),
+            "dock_pin\u{1f}015-notes"
+        );
+        assert_eq!(
+            DesktopCommand::DockUnpin("015-notes".to_string()).encode(),
+            "dock_unpin\u{1f}015-notes"
+        );
+        // 空 arg 跳过。
+        assert!(DesktopCommand::parse_records("dock_pin\u{1f}").is_empty());
+        assert!(DesktopCommand::parse_records("dock_unpin\u{1f}").is_empty());
     }
 
     #[test]
