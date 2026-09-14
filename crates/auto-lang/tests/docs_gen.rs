@@ -359,10 +359,19 @@ fn core_reference_in_sync() {
             )
         });
     assert_eq!(
-        committed, generated,
+        normalize_lf(&committed),
+        generated,
         "docs/components/core.md 与 schema 不同步 —— 再生成:\n\
          DOCS_GEN_UPDATE=1 cargo test -p auto-lang --test docs_gen"
     );
+}
+
+/// PLAN-622 F-01: Windows 检出态（autocrlf）会让 golden 工作树文件带 CRLF，
+/// `fs::read_to_string` 不归一 —— 与生成端（LF）逐字节比对即间歇性假红
+/// （检出后必红，UPDATE 写回 LF 后转绿、git 零 diff，极难归因）。
+/// 比对前统一换行；UPDATE 写入仍为 LF（仓库 blob 态不变）。
+fn normalize_lf(s: &str) -> String {
+    s.replace("\r\n", "\n")
 }
 
 #[test]
@@ -387,7 +396,8 @@ KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen"
         )
     });
     assert_eq!(
-        committed, generated,
+        normalize_lf(&committed),
+        generated,
         "kitchen-sink.at 与 schema 不同步 —— 再生成:
 KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen"
     );

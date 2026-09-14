@@ -13,10 +13,15 @@
 //! 定 locale，env 重启生效；登记 PLAN-050 待澄清。
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
-static TABLE: RwLock<Option<HashMap<String, String>>> = RwLock::new(None);
+/// PLAN-622 F-02: 按目录累积的 i18n 表（旧实现是进程级单表，load_from_dir
+/// 整表替换——并行测试里 B corpus 的装载会把 A corpus 正在断言的键冲掉，
+/// `settings.title` 裸键间歇性漏出）。目录为身份：同目录重载原地替换（保留
+/// 生产"重载覆盖"语义），新目录追加；lookup 逆序（后载优先）确定性命中。
+/// 单目录生产形态行为与旧实现一致。
+static TABLES: RwLock<Vec<(PathBuf, HashMap<String, String>)>> = RwLock::new(Vec::new());
 
 /// 装载 `i18n/{lang}.json`（lang = AUTO_LOCALE env，默认 zh）。文件缺失或
 /// 解析失败 = 清空表（回落 key 字面量），保持静默——i18n 缺席不是错误。
@@ -24,14 +29,19 @@ static TABLE: RwLock<Option<HashMap<String, String>>> = RwLock::new(None);
 pub fn load_from_dir(base_dir: &Path) {
     let lang = std::env::var("AUTO_LOCALE").unwrap_or_else(|_| "zh".to_string());
     let path = base_dir.join("i18n").join(format!("{lang}.json"));
-    let raw = std::fs::read_to_string(&path).ok().and_then(|raw| {
+    let table = std::fs::read_to_string(&path).ok().and_then(|raw| {
         let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
         let mut map = HashMap::new();
         flatten("", &value, &mut map);
         Some(map)
-    });
-    if let Ok(mut guard) = TABLE.write() {
-        *guard = raw;
+    }).unwrap_or_default();
+    let dir = base_dir.canonicalize().unwrap_or_else(|_| base_dir.to_path_buf());
+    if let Ok(mut guard) = TABLES.write() {
+        if let Some(slot) = guard.iter_mut().find(|(d, _)| *d == dir) {
+            slot.1 = table;
+        } else {
+            guard.push((dir, table));
+        }
     }
 }
 
@@ -90,11 +100,14 @@ pub fn substitute_params(template: &str, params: &[(String, String)]) -> String 
 }
 
 pub fn lookup(key: &str) -> Option<String> {
-    TABLE
-        .read()
-        .ok()
-        .and_then(|guard| guard.as_ref().and_then(|m| m.get(key).cloned()))
-        .map(|msg| unescape_literals(&msg))
+    let guard = TABLES.read().ok()?;
+    // 后载目录优先（确定性）——镜像旧整表替换的"后载覆盖"语义。
+    for (_, table) in guard.iter().rev() {
+        if let Some(msg) = table.get(key) {
+            return Some(unescape_literals(msg));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
