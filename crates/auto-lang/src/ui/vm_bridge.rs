@@ -2055,6 +2055,39 @@ mod tests {
         }
     }
 
+    /// PLAN-626 T-03: CloseRequest 生命周期 handler 的存在性探测与直调。
+    /// 声明了 `.CloseRequest` 的 widget 必须被 has_handler 命中（namespaced
+    /// 导出），未声明的必须 miss——渲染器关窗臂据此决定拦截还是默认关窗。
+    #[test]
+    fn plan626_has_handler_close_request_lifecycle() {
+        use crate::aura::LogicPayload;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let mut widget = make_test_widget("CloseProbe", vec![]);
+        let handler_src = r#"
+            console_log("close requested")
+        "#;
+        let mut parser = Parser::from(handler_src).with_session(CompilerSession::ui());
+        let ast = parser.parse().expect("parse handler");
+        widget
+            .handlers
+            .insert(".CloseRequest".to_string(), LogicPayload::AstStmts(ast.stmts));
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        assert!(
+            bridge.has_handler("CloseRequest"),
+            "declared lifecycle handler must be found (namespaced export)"
+        );
+        assert!(
+            !bridge.has_handler("NoSuchLifecycle"),
+            "undeclared handler must be absent"
+        );
+        // Fire path: CloseRequest dispatches like a regular handler.
+        let mut bridge2 = VmBridge::new(&widget).expect("bridge2");
+        bridge2
+            .call_handler("CloseRequest", &[])
+            .expect("CloseRequest dispatch");
+    }
+
     #[test]
     fn plan423_p5_runaway_guard_halts_unbounded_growth() {
         use crate::aura::LogicPayload;

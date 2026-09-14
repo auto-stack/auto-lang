@@ -9455,7 +9455,7 @@ fn execute_open_settings(state: &mut crate::ui::session::DesktopSession) {
 }
 /// PLAN-526 T14：壁纸目录扫描（jpg/png 枚举 → {name,path,src} Obj 数组）。
 /// 键缺席/非目录/空目录 = 空表（面板显示引导文案）。load_desktop_id_list
-/// 同型的宿主派生面——.at 无 read_dir 原语，目录枚举保持宿主侧（I9）。
+/// 同型的宿主派生面（I9）。注：.at 侧自 2026-08-22 起已有 fs.read_dir/fs.walk/fs.tree（2866/2860/2875），此处宿主侧枚举系历史实现，非能力缺失。
 fn scan_wallpapers_dir(cfg: &crate::ui::desktop_config::DesktopConfig) -> Vec<auto_val::Value> {
     let Some(dir) = wallpapers_dir_or_default(cfg) else {
         return Vec::new();
@@ -16310,8 +16310,30 @@ fn compare_pngs(
                     }
                 }
                 // 关窗请求：产 window::close（Closed 事件随后走注册表清理 +
-                // 空则退出；不该由 App 分派管线处理）。
+                // 空则退出）。PLAN-626 T-03: 声明 CloseRequest 生命周期
+                // handler 的应用可拦截（fire 语义同 Init 直调先例）——有
+                // 未保存状态的编辑器先弹确认层，由 handler 决定后续；未
+                // 声明行为不变（向后兼容）。
                 if m.event == "__window_close_request" {
+                    let close_declared = state
+                        .app_of_window(&win)
+                        .and_then(|app_id| {
+                            state.apps.get(&app_id).map(|a| {
+                                (app_id, a.component.has_lifecycle_handler("CloseRequest"))
+                            })
+                        });
+                    if let Some((app_id, true)) = close_declared {
+                        if let Some(app) = state.apps.get_mut(&app_id) {
+                            if let Err(e) = app.component.fire_close_request() {
+                                eprintln!(
+                                    "[VM-HANDLER] {}.CloseRequest failed: {e}",
+                                    app.component.widget_name()
+                                );
+                            }
+                            *app.state.view_dirty.borrow_mut() = true;
+                        }
+                        return iced::Task::none();
+                    }
                     return iced::window::close::<crate::ui::session::DesktopMessage>(win);
                 }
                 match state.app_of_window(&win) {

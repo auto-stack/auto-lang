@@ -291,7 +291,9 @@ fn dark_body(ar: f32, ag: f32, ab: f32, bg: Rgba, fg: Rgba) -> CodeEditorTheme {
         // seamless columns; the old darker wash broke the illusion).
         gutter_background: bg,
         gutter_foreground: muted,
-        scrollbar: fg.mix(bg, 0.65),
+        // PLAN-626 rev2 T-10: 官方滚动条同款 vue 风格 thumb（半透明白 +
+        // 圆角 3，track 透明）——对齐 iced renderer scrollbar_style()。
+        scrollbar: Rgba::new(0.9, 0.9, 0.9, 0.3),
         scrollbar_active: Rgba::rgb(ar, ag, ab).mix(bg, 0.2),
         syntax: SyntaxPalette {
             keyword: Rgba::rgb(ar * 0.75 + 0.25, ag, ab),
@@ -320,7 +322,8 @@ fn light_body(ar: f32, ag: f32, ab: f32, bg: Rgba, fg: Rgba) -> CodeEditorTheme 
         // Plan 414 §5.3: same as dark — gutter matches the editor bg.
         gutter_background: bg,
         gutter_foreground: muted,
-        scrollbar: fg.mix(bg, 0.55),
+        // PLAN-626 rev2 T-10: 同官方滚动条（半透明白 thumb）。
+        scrollbar: Rgba::new(0.9, 0.9, 0.9, 0.3),
         scrollbar_active: Rgba::rgb(ar, ag, ab).mix(bg, 0.25),
         syntax: SyntaxPalette {
             keyword: Rgba::rgb(ar, ag, ab),

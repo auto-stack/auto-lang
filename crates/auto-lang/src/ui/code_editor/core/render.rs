@@ -369,7 +369,10 @@ pub fn render(
         // clamp(min>max) 曾 panic 打死桌面进程——min=8.0/max=-2.5 实录）。
         let track_h = (viewport_h - SCROLLBAR_THICKNESS - 2.0).max(1.0);
         let thumb_h = scrollbar_thumb(track_h, viewport_h * (visible_lines.max(1) as f32 / total_effective as f32));
-        let frac = if visible_lines > 0 {
+        // PLAN-626 rev2 T-09: with no visible runs (degenerate frame),
+        // first_visible_line stays usize::MAX — feeding it to the frac
+        // produced inf/NaN scrollbar geometry that froze the drag loop.
+        let frac = if visible_lines > 0 && first_visible_line != usize::MAX {
             (first_visible_line as f32) / (total_effective as f32)
         } else {
             0.0

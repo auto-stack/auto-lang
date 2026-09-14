@@ -109,6 +109,7 @@ widget App {
             row (style: "flex-1 items-stretch overflow-hidden w-full") {
                 col (style: "w-56 shrink-0 border-r border-border bg-card hidden md:flex flex-col gap-2 p-2 overflow-y-auto") {
                     text "EXPLORER" { style: "text-[11px] text-zinc-500 px-1 pt-1 tracking-wider" }
+                    text .store.ws_name { style: "text-[11px] text-zinc-400 px-1 pb-1" }
                     TreeView (nodes: .store.tree_nodes, expanded: .store.tree_expanded, selected: .store.tree_sel, on_toggle: .TreeToggle, on_select: .TreeSelect, directory: true) {}
                 }
                 col (style: "flex-1 overflow-hidden") {
@@ -123,6 +124,9 @@ widget App {
                                         onclick: .TabActivate(i)
                                         style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
                                     }
+                                    if t.dirty {
+                                        text "*" { style: "text-[12px] text-amber-400 mr-1" }
+                                    }
                                     button (variant: "text") {
                                         icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
                                         onclick: .CloseTab(i)
@@ -131,9 +135,14 @@ widget App {
                                 }
                             }
                             if i != .store.tab {
-                                button (text: t.title, variant: "text") {
-                                    onclick: .TabActivate(i)
-                                    style: "h-8 px-3 text-[12px] text-zinc-500"
+                                row (style: "items-center") {
+                                    button (text: t.title, variant: "text") {
+                                        onclick: .TabActivate(i)
+                                        style: "h-8 px-3 text-[12px] text-zinc-500"
+                                    }
+                                    if t.dirty {
+                                        text "*" { style: "text-[12px] text-amber-400 mr-1" }
+                                    }
                                 }
                             }
                         }
@@ -173,19 +182,33 @@ widget App {
             // 落点并置开；面板本体在 ctx_menu.at 组件。
             EditorCtxMenu()
 
-            // Plan 420 P2: 关闭脏 tab 的确认弹层(固定落点,坐标锚)。
-            popover (open: .store.confirm_open, x: 420.0, y: 260.0, ondismiss: .ConfirmCancel,
-                     class: "w-64 bg-[#16171B] border border-zinc-700 shadow-md py-2 px-3") {
-                text "有未保存的修改" { style: "text-[13px] text-zinc-100 py-1" }
-                text "关闭前要保存吗?" { style: "text-[12px] text-zinc-400 pb-2" }
-                row (style: "gap-2 justify-end") {
-                    button (text: "直接关闭", variant: "text") {
-                        onclick: .ConfirmClose
-                        style: "h-7 px-2 text-[12px] text-zinc-300"
+            // Plan 626 T-06: 关闭脏 tab 的确认改标准 alert-dialog(PLAN-530
+            // 模态族,取代原固定坐标 popover——VM 下曾落回普通流渲染错位)。
+            alert-dialog (open: .store.confirm_open) {
+                alert-dialog-content {
+                    alert-dialog-header {
+                        alert-dialog-title "有未保存的修改"
+                        alert-dialog-description "关闭前要保存吗?"
                     }
-                    button (text: "取消", variant: "text") {
-                        onclick: .ConfirmCancel
-                        style: "h-7 px-2 text-[12px] text-zinc-400"
+                    alert-dialog-footer {
+                        alert-dialog-cancel "取消" { onclick: .ConfirmCancel }
+                        alert-dialog-action "直接关闭" { onclick: .ConfirmClose }
+                    }
+                }
+            }
+
+            // Plan 626 T-06: 退出/关窗确认(窗口 X 经 CloseRequest 拦截与
+            // 菜单「退出」共用入口;有脏 tab 时弹出)。
+            alert-dialog (open: .store.quit_confirm_open) {
+                alert-dialog-content {
+                    alert-dialog-header {
+                        alert-dialog-title "有未保存的修改"
+                        alert-dialog-description "退出前要保存吗?"
+                    }
+                    alert-dialog-footer {
+                        alert-dialog-cancel "取消" { onclick: .QuitConfirmCancel }
+                        alert-dialog-action "不保存退出" { onclick: .QuitDiscard }
+                        alert-dialog-action "保存并退出" { onclick: .QuitSaveClose }
                     }
                 }
             }
@@ -225,5 +248,10 @@ widget App {
         .ActAbout -> { store.ActAbout() }
         .TreeToggle(id) -> { store.TreeToggle(id) }
         .TreeSelect(id) -> { store.TreeSelect(id) }
+        .Init -> { store.LoadWorkspace() }
+        .CloseRequest -> { store.CloseRequest() }
+        .QuitDiscard -> { store.QuitDiscard() }
+        .QuitSaveClose -> { store.QuitSaveClose() }
+        .QuitConfirmCancel -> { store.QuitConfirmCancel() }
     }
 }
