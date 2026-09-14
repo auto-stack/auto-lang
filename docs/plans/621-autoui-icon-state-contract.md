@@ -71,8 +71,17 @@ token 落点（**全部复用既有基建，零新增颜色设施**）：
 
 | 语义 | token | VM 侧 | Web 侧 |
 |---|---|---|---|
-| on | `primary` | `Color::Primary`（style/color.rs:112，Plan 601 双盘） | `text-primary`（`--primary`，dark 变体自动） |
+| on | `primary` | `Color::Primary`（**运行时 accent 预设驱动**，见下） | `text-primary`（`--primary`，dark 变体自动） |
 | off | `muted-foreground` | `Color::OnSurface`（style/color.rs:123，双盘 dim） | `text-muted-foreground` |
+
+**`primary` 与 `accent` 的关系（2026-09-14 用户问询后实勘定案）**：仓库里
+`Color::Primary` 的色相**由当前 accent 预设运行时驱动**——`theme/mod.rs::resolve_semantic_rgb`
+对 Primary 有专门臂，查 `design_tokens/registry.rs::accent_hsl`（indigo/coral/ocean/
+sage/amber 五预设，dark 下 L+10 双端统一，PLAN-601 D2）。即「primary = accent 预设
+的主色」，正是预期语义。而 token `accent`（`Color::Accent` / shadcn `--accent`）是
+**另一个东西**：交互高亮 surface（hover 浅色底，scaffold light = hsl(210 40% 96.1%)
+近白），不是强调色族——Plan 601 T-08 从 Secondary 拆出的独立 role。故 state:on
+用 `primary` 是唯一正确落点，`accent` token 语义不符（近白不可辨）。
 
 「关」态选 `muted-foreground` 而非字面近背景色/`opacity-40`：语义 token 双盘自动、
 可见性有保底（shadcn 惯例的 dim 灰），且亮度型区分对色盲安全（裁定记录进设计注记）。
@@ -244,9 +253,11 @@ docs/components/core.md                               改：docs_gen 重生成�
 
 ## 待澄清事项
 
-1. **on 态主色选 `primary` 还是 `accent`**：现按 primary（语义色「主强调」），
-   accent 是交互高亮面（Plan 601 拆出的 hover 面），语义不同。执行 T-02 时如
-   发现示例观感冲突再提请裁定。
+1. ~~**on 态主色选 `primary` 还是 `accent`**~~ **已裁定（2026-09-14，用户问询触发
+   实勘）**：用 `primary`。实勘定案：`Color::Primary` 运行时由 accent 预设驱动
+  （`resolve_semantic_rgb` Primary 专臂 → `registry::accent_hsl`），即「accent 预设
+   的主色」；token `accent` 是 shadcn hover 高亮面（scaffold light 近白 96.1%
+   亮度），用于 state:on 会不可辨。详表见 §2.1。
 2. **off 态 token**：`muted-foreground`（裁定倾向）vs `opacity-40`。前者双盘
    token 化更系统；若作者侧已有 text 色继承场景的兼容问题，T-02 实勘后回退到
    opacity 方案（需两端同值）。
