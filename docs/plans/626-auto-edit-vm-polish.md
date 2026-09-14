@@ -12,8 +12,8 @@ new_spec_components: [auto-lang/ui (插值/MenuBar 视觉契约/CloseRequest 生
 touched_goals: []
 
 affects: [auto-lang/ui, auto-lang/vm, autoui-skill]
-current_step: 9
-total_steps: 9
+current_step: 10
+total_steps: 10
 ---
 
 # [PLAN-626] auto-edit-vm-polish
@@ -137,6 +137,7 @@ total_steps: 9
 - **AC-04**：有脏 tab 时点窗口 X / 菜单「退出」弹 alert-dialog（三键：保存并关闭/直接关闭/取消），无脏 tab 时直接退出；未声明 CloseRequest 的其他示例（如 002-counter）窗口 X 行为不变。验证：实机 + 回归运行一个未声明示例。
 - **AC-05**：Explorer 显示 `AUTO_PROJECT_DIR` 真实目录树（含 src/*.at、docs、pac.at、README.md 等），头部显示 workspace 名，点击文件节点打开真实内容；启动日志无 `App.Init failed`。验证：实机 + fs.tree 单测。
 - **AC-06**：Vue 模式（`auto run`）示例无回归（插值正常、alert-dialog 正常、menubar 正常）。验证：autoui-verifier 双端跑一遍。
+- **AC-10**（rev2 新增）：编辑器滚动条视觉与官方滚动条一致（半透明 thumb、圆角、透明轨道）。验证：实机对照 + code_editor 45/45 回归。
 - **AC-09**（rev2 新增）：编辑器滚动条可用鼠标拖拽到任意位置不卡死（拖拽落点即所见内容）。验证：plan626_scrollbar_drag 单测 + 实机。
 - **AC-08**（rev2 新增）：编辑器滚轮方向正确（向下滚动查看下方内容）；可滚动到文件最末行（底端钳制）；大文件连续滚动不失去响应。验证：plan626_wheel 单测（方向/钳制/边界三断言）+ 实机。
 - **AC-07**：`cargo check -p auto-lang` 零警告；触及模块的 scoped `cargo t` 全绿；本计划不改编译器/VM 执行语义核心（fs.tree 为新增内建白名单项），不触发 `cargo tv`/`taa` 全量档（Category B 门禁：check + 模块级测试）。
@@ -159,11 +160,13 @@ worktree：`D:/autostack/.wt/lang-626/auto-lang`（branch `plan-626-dev`）；�
   - README 补 Plan 626 边界注记（5b7cd5f6a）。
 - **T-08** [框架|用户实机回归|→AC-08 新增] ✅ [已完成] commit 8c9176110：用户实机验证发现 code_editor 滚轮三症（方向反/滚不到底/多次滚动后未响应），同根——handle_wheel 直传 `dy * line_height` 给 `Action::Scroll`：winit 滚轮向下 y 为负（方向反）；上游 Action::Scroll 只累加不归一（scroll.line 恒 0，每帧 layout_runs 全文件行走，T-05 打开真实大文件后滚轮风暴拖垮事件循环=未响应；上下游无钳制，越过底/顶内容滚丢=滚不到底）。修复：方向取负；滚后 `shape_until_scroll` 归一并钳进有效区间；边界 no-op 免重绘。测试 plan626_wheel_direction_clamps_at_bottom_and_noops_at_boundary 绿（方向/底端钳制/边界免重绘三断言）+ code_editor::core 17/17 回归绿。
 - **T-09** [框架|用户实机回归|→AC-09 新增] ✅ [已完成] commit 158ffe8cf：用户实机验证发现滚动条**拖拽即卡死**——`handle_mouse_move` 的 `match *self.drag.lock()` 把 Mutex 临时守卫活到整个 match 体结束，`drag_scrollbar_v/h` 内部重入同锁 = 首次移动必然自锁死（std Mutex 不可重入；单测挂死实证，CPU 归零阻塞）。修复：克隆 Drag 状态后再匹配。同轮补齐拖拽路径与滚轮同口径：落点清 `vertical` + `shape_until_scroll` 归一（旧路径残留 vertical + 目标行未 shape → layout_runs 早停 → first_visible_line 停在 usize::MAX → NaN 滚动条几何），render 护栏 usize::MAX 不进 frac。测试 plan626_scrollbar_drag_lands_shaped_normalized_scroll 绿（该测试在修复前即挂死=回归实证）+ code_editor::core 18/18 回归绿。**架构答复**（用户问）：编辑器滚动条非 AutoUI scroller 组件，系 Plan 413 定制 cosmic-text 引擎自绘（样式/行为手搓）；统一到标准 scroller 属架构级改造，记 P626-D4 债务候选。
+- **T-10** [框架|样式|→AC-10 新增] ✅ [已完成] commit 3b85a0357：用户追问滚动条是否官方组件——按用户未答选项时的推荐路径执行"只统一样式"：thumb 换官方 vue 风格半透明白 rgba(0.9,0.9,0.9,0.3)（镜像 iced renderer scrollbar_style，Plan 409 §10）+ 3px 圆角，双主题统一；行为（拖拽/钳制）T-08/T-09 已修。组件级统一（抽共享组件或官方 scroller 包裹）仍留 P626-D4。
 
 ## 9. 复审记录
 
 - 2026-09-14 draft handoff：`stage: new`，PLAN-626 rev1。背景调查四项根因全部代码级定位（见 §4），SD-01..04 与 AC-01..07 齐备，任务覆盖全部 AC。`outcome: pass`，`next: work`（用户已授权分析与实施连续执行）。
-- 2026-09-14 revision handoff（rev2 补记 T-09）：滚动条拖拽死锁（Mutex 重入）+ 拖拽归一，新增 AC-09，`current_step` 8→9；既有授权范围。
+- 2026-09-14 revision handoff（rev2 补记 T-10）：滚动条样式对齐官方（用户追问后按推荐路径"只统一样式"执行），新增 AC-10，`current_step` 9→10。
+滚动条拖拽死锁（Mutex 重入）+ 拖拽归一，新增 AC-09，`current_step` 8→9；既有授权范围。
 用户实机回归新增 T-08（滚轮三症同根修复），新增 AC-08，`current_step` 7→8；既有授权范围（用户直接报障的缺陷修复），无目标/预算变化。
 - 2026-09-14 work handoff（rev2 补记）：`stage: work | plan_id: PLAN-626 | plan_revision: 1 | outcome: pass（rev2 续执行后仍 execution_done，见上） | code_commit: 5b7cd5f6a (branch plan-626-dev, base f1b64d1a1) | task_ids: T-01..T-07 全完成 | evidence: 各任务行 + 实机日志 auto-edit-626.log（App.Init failed=0、快照 1:1 无字面量、ws_dir/ws_name 就位）| blockers: 无（矩阵复跑受并行会话干扰已归因记录，证据以首轮干净跑为准）| next: review。
 - 依赖注记：worktree 组内补了 auto-down 只读兄弟 worktree（detached 67bb508，路径解析用，未改动其内容），merge 后随组清理。
