@@ -6889,30 +6889,52 @@ let tabs_inner = View::Row {
                             let enabled = a.enabled_if.as_deref()
                                 .map(|cond| self.eval_condition_with(cond, bindings))
                                 .unwrap_or(true);
-                            let check_slot: View<DynamicMessage> = if checked {
+                            // PLAN-629 T-06: 前导槽 = 勾选（checked 时）或
+                            // action 声明的 lucide icon（用户要求每项带
+                            // icon）；title 紧贴前导槽左对齐——旧结构
+                            // [check][title][shortcut] 三子 justify-between
+                            // 的弹性撑杆把 title 推到面板中部（左大半空）。
+                            // 改两组：[槽+title] | [shortcut]，Between 只在
+                            // 组间插撑杆 → 左组贴左、快捷键贴右。
+                            const LEADING_EMPTY: &str = "w-4 h-4 shrink-0";
+                            let leading: View<DynamicMessage> = if checked {
                                 View::Image {
                                     src: "lucide:check".to_string(),
-                                    style: Style::parse("h-3 w-3 text-zinc-200 shrink-0").ok(),
+                                    style: Style::parse("w-4 h-4 text-zinc-200 shrink-0").ok(),
+                                }
+                            } else if let Some(icon) = a.icon.as_deref().filter(|i| !i.is_empty()) {
+                                View::Image {
+                                    src: format!("lucide:{icon}"),
+                                    style: Style::parse("w-4 h-4 text-zinc-300 shrink-0").ok(),
                                 }
                             } else {
                                 View::Text {
                                     content: String::new(),
-                                    style: Style::parse("w-4 h-3 shrink-0").ok(),
+                                    style: Style::parse(LEADING_EMPTY).ok(),
                                     selectable: false,
                                 }
                             };
-                            let content = View::Row {
+                            let left_group = View::Row {
                                 children: vec![
-                                    check_slot,
+                                    leading,
                                     View::Text {
                                         content: a.title.clone(),
                                         style: Style::parse("text-[12px] text-zinc-200").ok(),
                                         selectable: false,
                                     },
+                                ],
+                                spacing: 0,
+                                padding: 0,
+                                style: Style::parse("items-center gap-2").ok(),
+            onclick: None, on_right_click: None,
+        };
+                            let content = View::Row {
+                                children: vec![
+                                    left_group,
                                     View::Text {
                                         content: a.shortcut.clone().unwrap_or_default(),
                                         style: Style::parse(
-                                            "text-[11px] text-zinc-500 ml-auto w-14",
+                                            "text-[11px] text-zinc-500 w-14 text-right",
                                         )
                                         .ok(),
                                         selectable: false,

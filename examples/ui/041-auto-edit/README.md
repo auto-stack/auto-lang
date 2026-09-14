@@ -99,3 +99,16 @@ OS 用户键位层（`%APPDATA%/auto/keymaps/auto-edit.at`）保持外部文件�
   widget 生命周期，store 侧 handler 不得占用）经 `fs.tree(AUTO_PROJECT_DIR, 4)`
   + `json.to_value` 装载真实目录树，头部显示 workspace 名；树节点 id 为相对
   路径，点击经 `fs.join` 读盘开文件。启动日志的 "App.Init failed" 随之消失。
+
+## Plan 629 补记（寄宿公共 scroller）
+
+编辑器滚动条**改用 AutoUI 公共 scroller**（官方 `scrollable`，vue 风格滚动条自动
+生效），自绘滚动条与内部滚轮路径退役（headless/单测保留，`AUTO_EDITOR_NO_SCROLLER=1`
+可临时关闭寄宿）。集成契约三机制：
+
+- **高度上报**：折叠展开即内容高度变化 → 编辑器重排 → scroller 更新滚动范围与
+  thumb 比例（`CodeEditorCore::content_height`，实时 fold 投影）。
+- **偏移同步**：滚动偏移由 scroller 持有；编辑器 draw 每帧用 viewport 切片做
+  虚拟化渲染（只 shape 可见行，`sync_external_scroll` 粗定位+归一）。
+- **光标跟随**：键盘/IME 移动光标出视口 → core 请求标记 → 会话漏斗
+  （dispatch_app 尾部）转 `operation::scroll_to`（同拍生效）。

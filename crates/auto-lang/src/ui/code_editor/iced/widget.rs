@@ -68,6 +68,10 @@ pub struct CodeEditor<'a, M> {
     on_change: Option<Box<dyn Fn() -> M + 'a>>,
     on_cursor: Option<Box<dyn Fn() -> M + 'a>>,
     on_context_menu: Option<Box<dyn Fn(Option<(f32, f32)>) -> M + 'a>>,
+    /// PLAN-629 T-02: hosted-in-common-scroller mode — the scroller owns
+    /// the scrollbar UI + wheel; the editor reports content height, renders
+    /// the visible slice and asks for follow-scrolls.
+    hosted: bool,
     width: Length,
     height: Length,
 }
@@ -81,6 +85,7 @@ impl<'a, M: Clone> CodeEditor<'a, M> {
             on_change: None,
             on_cursor: None,
             on_context_menu: None,
+            hosted: false,
             width: Length::Fill,
             height: Length::Fill,
         }
@@ -103,6 +108,15 @@ impl<'a, M: Clone> CodeEditor<'a, M> {
     /// buttons (`None`, used to close an open menu).
     pub fn on_context_menu(mut self, f: impl Fn(Option<(f32, f32)>) -> M + 'a) -> Self {
         self.on_context_menu = Some(Box::new(f));
+        self
+    }
+
+    /// PLAN-629 T-02: hosted-in-scroller mode — pairs with wrapping this
+    /// widget in the common `scrollable` (renderer does it in
+    /// `build_code_editor_generic`). Wheel goes to the scroller; the editor
+    /// reports content height and renders only the visible slice.
+    pub fn hosted(mut self) -> Self {
+        self.hosted = true;
         self
     }
 
@@ -195,6 +209,9 @@ impl<'a, M: Clone> CodeEditor<'a, M> {
 /// thread (draw), behind a RefCell because draw receives `&Tree`.
 struct WidgetState {
     gutter: RefCell<GutterCache>,
+    /// PLAN-629 T-02: last synced content height (hosted mode) — layout
+    /// invalidation fires when the fold projection changes it.
+    last_content_height: std::cell::Cell<f32>,
 }
 
 impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
@@ -205,11 +222,18 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
     fn state(&self) -> iced::advanced::widget::tree::State {
         iced::advanced::widget::tree::State::new(WidgetState {
             gutter: RefCell::new(GutterCache::default()),
+            last_content_height: std::cell::Cell::new(0.0),
         })
     }
 
     fn size(&self) -> Size<Length> {
-        Size::new(self.width, self.height)
+        if self.hosted {
+            // Content height drives the scroller's scroll range + thumb
+            // ratio (高度上报).
+            Size::new(self.width, Length::Fixed(self.core.content_height().max(1.0)))
+        } else {
+            Size::new(self.width, self.height)
+        }
     }
 
     fn layout(
@@ -221,26 +245,46 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         // Plan 418 修复:经 limits.resolve 按 Fill 语义解析尺寸,而不是无条件
         // 取 limits.max() —— 后者在父约束宽松时让编辑器布局覆盖全窗,
         // 配合 update 的鼠标处理把兄弟控件的点击全部吞掉。
-        let size = limits.resolve(
-            iced::Length::Fill,
-            iced::Length::Fill,
-            limits.max(),
-        );
+        // PLAN-629 T-02: hosted mode reports the fold-aware content height
+        // (the scroller passes unbounded height limits so Fixed survives).
+        let height = if self.hosted {
+            Length::Fixed(self.core.content_height().max(1.0))
+        } else {
+            iced::Length::Fill
+        };
+        let size = limits.resolve(self.width, height, limits.max());
         Node::new(size)
     }
 
     fn update(
         &mut self,
-        _tree: &mut Tree,
+        tree: &mut Tree,
         event: &Event,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         _renderer: &iced::Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, M>,
-        _viewport: &Rectangle,
+        viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
+        // PLAN-629 T-02: hosted mode — the visible slice starts `offset`
+        // pixels into the content (scrollable hands us a translated cursor,
+        // so mouse locals stay content-space; only viewport-space consumers
+        // need the offset).
+        let hosted_offset = if self.hosted {
+            (viewport.y - bounds.y).max(0.0)
+        } else {
+            0.0
+        };
+        if self.hosted
+            && matches!(event, Event::Mouse(mouse::Event::WheelScrolled { .. }))
+        {
+            // 滚轮让渡：the common scroller owns wheel scrolling; never
+            // double-handle (its own update captures the event before the
+            // child sees it — this guard keeps that contract explicit).
+            return;
+        }
 
         // Keep the syntect highlight theme in sync with the semantic theme
         // source (no-op when unchanged).
@@ -348,6 +392,8 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         };
 
         let Some(input) = input else { return };
+        let keyboard_origin =
+            matches!(event, Event::Keyboard(_) | Event::InputMethod(_));
 
         let out = crate::ui::code_editor::core::with_font_system(|fs| {
             let mut clipboard_adapter = IcedClipboard { inner: clipboard };
@@ -360,7 +406,37 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         if out.captured {
             shell.capture_event();
         }
-        self.publish(&out, shell, bounds.position());
+        // Context-menu anchors live in VIEWPORT space (root-view popover) —
+        // hosted mode subtracts the content offset.
+        let publish_origin = if self.hosted {
+            Point::new(bounds.x, bounds.y - hosted_offset)
+        } else {
+            bounds.position()
+        };
+        self.publish(&out, shell, publish_origin);
+
+        if self.hosted {
+            // 光标跟随: keyboard/IME caret moves off-viewport queue a
+            // follow-scroll request on the core; the session funnel drains
+            // it into `operation::scroll_to` the SAME message pass
+            // (M-free channel — the editor path is M-generic).
+            if out.cursor_changed && keyboard_origin {
+                if let Some(caret_y) = self.core.caret_offset_y() {
+                    let target = (caret_y - 2.0 * self.core.config_line_height()).max(0.0);
+                    self.core.request_caret_follow(target);
+                }
+            }
+            // 高度上报: fold toggles change the projected content height.
+            // iced Shell has no layout-invalidation API — a redraw request
+            // makes the runtime re-view → re-layout (scroller re-measures
+            // 比例/位置 then).
+            let state = tree.state.downcast_ref::<WidgetState>();
+            let h = self.core.content_height();
+            if (h - state.last_content_height.get()).abs() > 0.5 {
+                state.last_content_height.set(h);
+                shell.request_redraw();
+            }
+        }
     }
 
     fn draw(
@@ -371,10 +447,31 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         _style: &renderer::Style,
         layout: Layout<'_>,
         _cursor: mouse::Cursor,
-        _viewport: &Rectangle,
+        viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
         let state = tree.state.downcast_ref::<WidgetState>();
+
+        // PLAN-629 T-02: hosted mode — the visible slice starts `offset`
+        // pixels into the content; the scroller pre-translates the renderer,
+        // so shifting our draw origin by +offset paints content space. Only
+        // the visible `visible_h` pixels get shaped (虚拟化保持).
+        let hosted_offset = if self.hosted {
+            (viewport.y - bounds.y).max(0.0)
+        } else {
+            0.0
+        };
+        let visible_h = if self.hosted {
+            viewport.height.min(bounds.height)
+        } else {
+            bounds.height
+        };
+        // Shadowed bounds shift every to_rect/origin below into content
+        // space (hosted); identical to bounds otherwise.
+        let bounds = Rectangle {
+            y: bounds.y + hosted_offset,
+            ..bounds
+        };
 
         // Theme sync also guards draw-only paths (e.g. the very first frame
         // before any event reached update).
@@ -384,11 +481,17 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         // Render (shape + geometry) and the gutter raster share one font
         // system guard — single short critical section.
         let list = crate::ui::code_editor::core::with_font_system(|fs| {
+            if self.hosted {
+                // Double-guard the offset sync (the scroller's on_scroll is
+                // the primary channel; draw covers first frames / missed
+                // callbacks). Normalizes + shapes only the visible band.
+                self.core.sync_external_scroll(fs, hosted_offset);
+            }
             let list = crate::ui::code_editor::core::render::render(
                 self.core,
                 fs,
                 bounds.width,
-                bounds.height,
+                visible_h,
                 None,
             );
             if let Some(section) = &list.gutter {
@@ -488,11 +591,15 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
 
         // PLAN-626 rev2 T-10: official-scrollbar look — 3px rounded thumb
         // (mirrors iced renderer scrollbar_style()).
-        if let Some(sb) = &list.scrollbar_v {
-            fill_quad_rounded(renderer, to_rect(bounds, sb.thumb), to_color(sb.color), 3.0);
-        }
-        if let Some(sb) = &list.scrollbar_h {
-            fill_quad_rounded(renderer, to_rect(bounds, sb.thumb), to_color(sb.color), 3.0);
+        // PLAN-629 T-02: hosted mode — the COMMON scroller draws its own
+        // scrollbar; ours stays retired to avoid double scrollbars.
+        if !self.hosted {
+            if let Some(sb) = &list.scrollbar_v {
+                fill_quad_rounded(renderer, to_rect(bounds, sb.thumb), to_color(sb.color), 3.0);
+            }
+            if let Some(sb) = &list.scrollbar_h {
+                fill_quad_rounded(renderer, to_rect(bounds, sb.thumb), to_color(sb.color), 3.0);
+            }
         }
     }
 

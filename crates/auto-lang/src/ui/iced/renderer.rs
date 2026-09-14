@@ -13183,6 +13183,19 @@ fn compare_pngs(
         // PLAN-043 T6: MCP scroll action 直落——scrollable 无 VM handler，
         // 合成事件 __mcp_scroll 在此拦截（input_value = "element_id␟y"），
         // 直接发 iced scroll_to 写目标滚动位。
+        // PLAN-629 T-03: 光标跟随——键盘/IME 把光标移出可见带时，编辑器发
+        // 本命令；会话读 caret 内容 y 换算目标偏移（caret 置视口上沿下一行）。
+        if msg.event == "__editor_scroll_to_caret" {
+            let key = &msg.widget;
+            if let Some(caret_y) = crate::ui::code_editor::code_editor_caret_offset_y(key) {
+                let target = (caret_y - 24.0).max(0.0);
+                return iced::widget::operation::scroll_to(
+                    iced::widget::Id::from(format!("editor-scroll-{key}")),
+                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target },
+                );
+            }
+            return iced::Task::none();
+        }
         if msg.event == "__mcp_scroll" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
             if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
@@ -19871,6 +19884,20 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
     if let Some(msg) = on_context_menu {
         widget = widget.on_context_menu(move |_| msg.clone());
     }
+
+    // PLAN-629 T-03: 寄宿公共 scroller（M 无关契约——draw 每帧偏移同步 +
+    // dispatch_app 尾部排水光标跟随，见 render_dynamic_view 同款包裹）。
+    if std::env::var("AUTO_EDITOR_NO_SCROLLER").as_deref() != Ok("1") {
+        widget = widget.hosted();
+        let scroller = iced::widget::scrollable(widget)
+            .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
+            .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                scrollbar_style()
+            })
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill);
+        return scroller.into();
+    }
     widget.into()
 }
 
@@ -20629,8 +20656,25 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 });
             }
 
-            let el: iced::Element<'static, IcedMessage> = widget.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            // PLAN-629 T-03: 寄宿公共 scroller（VM 轨主路径）——滚动条 UI/
+            // 交互由官方 scrollable 承担（scrollbar_style vue 风格），编辑器
+            // 只做虚拟化渲染。契约 M 无关：draw 每帧偏移同步；光标跟随经
+            // core 标记由 dispatch_app 尾部排水成 scroll_to 任务。
+            if std::env::var("AUTO_EDITOR_NO_SCROLLER").as_deref() != Ok("1") {
+                widget = widget.hosted();
+                let scroller = iced::widget::scrollable(widget)
+                    .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
+                    .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                        scrollbar_style()
+                    })
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill);
+                let el: iced::Element<'static, IcedMessage> = scroller.into();
+                if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            } else {
+                let el: iced::Element<'static, IcedMessage> = widget.into();
+                if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            }
         }
 
         // Plan 019 Phase 3: autodown doc editor (VM path) — on_change 发布携带
