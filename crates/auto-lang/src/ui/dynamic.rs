@@ -1248,6 +1248,25 @@ impl DynamicComponent {
         }
     }
 
+    /// PLAN-626 T-03: CloseRequest 生命周期探测（namespaced/legacy 双查，
+    /// 同 call_handler 的查找口径，不调用）。渲染器关窗臂据此把 OS
+    /// CloseRequested 转为应用 handler 分派；未声明的应用行为不变。
+    pub fn has_lifecycle_handler(&self, event: &str) -> bool {
+        self.bridge.has_handler(event)
+    }
+
+    /// PLAN-626 T-03: fire CloseRequest——语义同 fire_init 的 handler 直调
+    /// （成功置 dirty 触发重建）。确认弹层/退出动作由应用 handler 自行
+    /// 驱动（如脏检查后弹 alert-dialog 或 Process.exit）。
+    pub fn fire_close_request(&mut self) -> Result<(), String> {
+        self.bridge
+            .call_handler("CloseRequest", &[])
+            .map(|_| {
+                self.dirty = true;
+            })
+            .map_err(|e| e.to_string())
+    }
+
     /// Handle an event with an optional input text value.
     ///
     /// When `input_value` is `Some(text)`, looks up the associated state field

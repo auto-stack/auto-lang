@@ -16264,8 +16264,30 @@ fn compare_pngs(
                     }
                 }
                 // 关窗请求：产 window::close（Closed 事件随后走注册表清理 +
-                // 空则退出；不该由 App 分派管线处理）。
+                // 空则退出）。PLAN-626 T-03: 声明 CloseRequest 生命周期
+                // handler 的应用可拦截（fire 语义同 Init 直调先例）——有
+                // 未保存状态的编辑器先弹确认层，由 handler 决定后续；未
+                // 声明行为不变（向后兼容）。
                 if m.event == "__window_close_request" {
+                    let close_declared = state
+                        .app_of_window(&win)
+                        .and_then(|app_id| {
+                            state.apps.get(&app_id).map(|a| {
+                                (app_id, a.component.has_lifecycle_handler("CloseRequest"))
+                            })
+                        });
+                    if let Some((app_id, true)) = close_declared {
+                        if let Some(app) = state.apps.get_mut(&app_id) {
+                            if let Err(e) = app.component.fire_close_request() {
+                                eprintln!(
+                                    "[VM-HANDLER] {}.CloseRequest failed: {e}",
+                                    app.component.widget_name()
+                                );
+                            }
+                            *app.state.view_dirty.borrow_mut() = true;
+                        }
+                        return iced::Task::none();
+                    }
                     return iced::window::close::<crate::ui::session::DesktopMessage>(win);
                 }
                 match state.app_of_window(&win) {
