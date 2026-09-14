@@ -9341,8 +9341,13 @@ pub fn shim_rc_assert_unique(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path_idx = task.ram.pop_str_idx() as u32;
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+    // PLAN-016 T-05：剥 Windows 扩展长度前缀 \\\\?\\（canonicalize 原样返回，
+    // 面包屑/地址栏/拼接面不消费该形态）。
     let canonical = std::fs::canonicalize(&path)
-        .map(|p| p.to_string_lossy().to_string())
+        .map(|p| {
+            let s = p.to_string_lossy().to_string();
+            s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+        })
         .unwrap_or(path);
     let str_idx = vm.add_string(canonical.into_bytes());
     vm.rc_push_str_idx(task, str_idx as usize);
