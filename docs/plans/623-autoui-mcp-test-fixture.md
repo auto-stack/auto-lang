@@ -13,7 +13,7 @@ new_spec_components: [auto-lang/mcp/autoui-test-fixture]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/mcp]
-current_step: 0
+current_step: 1
 total_steps: 7
 ---
 
@@ -267,6 +267,10 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 | T-06 | 规范沉淀与 Plan 005 移交 | 更新 `docs/specs/auto-lang/mcp/overview.md`、`architecture.md`、`plans.md`；在 auto-os Plan 005 写入调用契约与命令 | spec-index/lint；移交文档可执行 | SD-01, SD-02, AC-07 |
 | T-07 | 复审门 | 在 lang-623 worktree 独立重跑验收，检查未门控路径、debug UI、协议回归和 worktree 红线 | review 记录 outcome pass/blocked | AC-01..AC-07 |
 
+### 执行进度（2026-09-14）
+
+- [✅ 已完成] T-00：在 `D:/autostack/.wt/lang-623/auto-lang` 完成架构设计文档 `docs/design/autoui/autoui-mcp-test-fixture.md`，并登记 `docs/design/00-intro.md` 与 `docs/design/autoui/README.md`；提交 `1f62ca0df`。协议已裁定使用独立 `ActionTarget::Fixture` + request-id ack，VM/Rust capability 边界与门控已写入设计。
+
 ## 9. 复审记录
 
 - 2026-09-14 stage:new（/auto-plan:new，rev 1；路径修正后 rev 2）：基于
@@ -278,13 +282,15 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 
 ## 10. 待澄清事项
 
-- T-01 在设计文档中需要最终裁定 Fixture 是否直接扩展 `ActionTarget`，
-  还是采用独立 fixture channel；必须保留 request-id ack，不能退化为固定等待。
+- T-01 的实现需按 T-00 设计落地独立 `ActionTarget::Fixture`；若代码勘验发现现有消息边界无法承载 ack，须先记录 needs_replan，不得退化为固定等待。
 - 多 App 桌面场景下是否要求请求携带 app/session id；单 App Tetris 可先用当前
   MCP 会话，但协议应为后续多 App 留出字段。
 - VM no-merge 集成测试需要可用的本地 HTTP backend 启动方式；若环境缺失，
   记录为环境阻断，不以 merged 结果代替。
 - 本计划完成前，Plan 005 的 VM fixture golden 保持 blocked。
+
+
+
 
 
 
