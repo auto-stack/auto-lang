@@ -1484,6 +1484,76 @@ impl CodeEditorCore {
         self.revision.fetch_add(1, Ordering::Relaxed);
     }
 
+    // ── PLAN-629 T-01: hosted-scroller integration ─────────────────────
+    // The widget lives inside the COMMON AutoUI scroller (Plan 629): the
+    // scroller owns the scrollbar UI + wheel handling; the editor owns
+    // virtualized rendering. Three contract pieces:
+    //   content_height      → 高度上报（scroller 更新滚动范围/thumb 比例）
+    //   sync_external_scroll → scroller offset → 内部 scroll（归一化复用
+    //                          PLAN-626 T-08 的 shape_until_scroll 机制）
+    //   caret_offset_y       → 光标跟随（scroll_to 命令的目标位）
+
+    /// Fold-aware content height: effective visible line count × line
+    /// height. Backed by the last render's fold map; before any render it
+    /// degrades to the full line count. The scroller re-measures whenever
+    /// this changes (folds toggling → request_layout → 高度变化通知).
+    pub fn content_height(&self) -> f32 {
+        let total = self.editor_lock().with_buffer(|b| b.lines.len()).max(1);
+        // Fresh fold map (not the last render's snapshot): folds toggle in
+        // update — the height report must be current by the time the next
+        // layout pass queries it, one frame earlier than a render would be.
+        let hidden = self.fresh_fold_map().hidden_count();
+        let effective = total.saturating_sub(hidden).max(1);
+        let line_height = self.config.lock().unwrap().line_height();
+        effective as f32 * line_height
+    }
+
+    /// Sync the editor's internal scroll to an ABSOLUTE content-space pixel
+    /// offset (the hosted scroller is the source of truth). Form (b) from
+    /// the plan's bounded verification: coarse line pre-position first
+    /// (uniform line height), then `shape_until_scroll` fixes the residual
+    /// and clamps both ends. Form (a) — raw vertical + normalize — advances
+    /// one line per pass (O(N) scan each) and janks deep thumb jumps on
+    /// large files.
+    pub fn sync_external_scroll(&self, font_system: &mut FontSystem, offset_y: f32) {
+        let config = self.config.lock().unwrap().clone();
+        let offset = offset_y.max(0.0);
+        let lh = config.line_height().max(1.0);
+        let mut editor = self.editor_lock();
+        editor.with_buffer_mut(|b| {
+            let coarse = ((offset / lh) as usize).min(b.lines.len().saturating_sub(1));
+            let residual = offset - coarse as f32 * lh;
+            let mut scroll = b.scroll();
+            if scroll.line == coarse && (scroll.vertical - residual).abs() < 1.0 {
+                return; // already converged (idempotent per frame)
+            }
+            scroll.line = coarse;
+            scroll.vertical = residual;
+            b.set_scroll(scroll);
+            b.shape_until_scroll(font_system, false);
+        });
+    }
+
+    /// Caret top in content space — the scroll-to-caret command target.
+    /// Computed directly (fold projection over the uniform line-height grid)
+    /// instead of reading the last render's layout record: the caret is
+    /// usually OFF-viewport when a follow-scroll is needed, so a render-
+    /// derived value would not exist. Wrap mode under-estimates by prior
+    /// wrapped rows (uniform-height approximation; auto-edit ships wrap off).
+    pub fn caret_offset_y(&self) -> Option<f32> {
+        let map = self.fresh_fold_map();
+        let editor = self.editor_lock();
+        let cursor = editor.cursor();
+        if map.is_hidden(cursor.line) {
+            // P4 auto-expand reveals it on the next input; nothing sane to
+            // scroll to while still hidden.
+            return None;
+        }
+        let line_height = self.config.lock().unwrap().line_height();
+        Some(map.project_y(cursor.line, cursor.line as f32 * line_height))
+    }
+
+
     // ── Plan 418: programmatic actions (menu/toolbar handlers) ──────────
     // Same semantics as the Ctrl+Z/Y/A/C/X/V arms of handle_key, callable
     // from VM handler natives via the registry functions below. The OS
@@ -1631,6 +1701,14 @@ pub fn code_editor_text(key: &str) -> Option<String> {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
     map.get(&key).map(|core| core.text())
+}
+
+/// PLAN-629 T-01: caret top in content space (hosted-scroller scroll-to-
+/// caret command target). None = unknown editor or no layout record yet.
+pub fn code_editor_caret_offset_y(key: &str) -> Option<f32> {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    map.get(&key).and_then(|core| core.caret_offset_y())
 }
 
 /// Read the cursor position of an editor: (line 0-based, char column,
@@ -2076,6 +2154,84 @@ let beta = alpha + 2;
         assert_eq!(top.vertical, 0.0, "top clamp");
         let out = with_font_system(|fs| core.handle_wheel(fs, 0.0, 3.0, false));
         assert!(!out.request_redraw, "at-top wheel must not request a repaint");
+    }
+
+    /// PLAN-629 T-01: hosted-scroller contract — content height reporting,
+    /// absolute-offset sync (coarse line + normalize), bottom clamping,
+    /// fold shrink, and the caret offset readback.
+    #[test]
+    fn plan629_content_height_external_scroll_and_caret() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-scroller-sync");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig::default();
+        let line_height = config.line_height();
+        let core = code_editor(&key, &config);
+        let text = "fn f() {
+    a
+    b
+    c
+}
+"
+            .to_string()
+            + &(5..60).map(|i| format!("fill {i}")).collect::<Vec<_>>().join("
+").as_str();
+        with_font_system(|fs| core.set_text(&text, fs));
+        with_font_system(|fs| {
+            let mut editor = core.editor_lock();
+            editor.with_buffer_mut(|b| b.set_size(fs, Some(300.0), Some(200.0)));
+        });
+
+        // Height report: 60 lines, nothing folded.
+        let h0 = core.content_height();
+        assert!((h0 - 60.0 * line_height).abs() < 1.0, "content height, got {h0}");
+
+        // Absolute-offset sync lands the viewport near the request.
+        with_font_system(|fs| core.sync_external_scroll(fs, 300.0));
+        let abs = with_font_system(|fs| {
+            let editor = core.editor_lock();
+            editor.with_buffer(|b| {
+                let s = b.scroll();
+                s.line as f32 * line_height + s.vertical
+            })
+        });
+        assert!((abs - 300.0).abs() <= line_height, "absolute offset ≈ request, got {abs}");
+
+        // Clamps past the bottom: content_height - viewport_h.
+        with_font_system(|fs| core.sync_external_scroll(fs, 100_000.0));
+        let abs_bottom = with_font_system(|fs| {
+            let editor = core.editor_lock();
+            editor.with_buffer(|b| {
+                let s = b.scroll();
+                s.line as f32 * line_height + s.vertical
+            })
+        });
+        let want = (h0 - 200.0).max(0.0);
+        assert!((abs_bottom - want).abs() <= 2.0 * line_height, "bottom clamp ≈ {want}, got {abs_bottom}");
+
+        // Folding the fn block hides its 4-line body (lines 1-4 — the `…`
+        // marker rides on the opener line), shrinking the height by 4 lines.
+        core.fold_toggle(0);
+        let h1 = core.content_height();
+        assert!(
+            (h1 - (h0 - 4.0 * line_height)).abs() < 1.0,
+            "fold shrink: {h0} -> {h1}"
+        );
+
+        // Caret readback: computed directly, no render dependency — the
+        // caret sits on line 0 (the visible fold opener), content y 0.
+        let caret = core.caret_offset_y();
+        assert!(
+            matches!(caret, Some(y) if y.abs() < line_height),
+            "caret offset at line 0 ≈ 0, got {caret:?}"
+        );
+        // Registry getter mirrors it.
+        assert_eq!(
+            code_editor_caret_offset_y(&key),
+            core.caret_offset_y(),
+            "registry getter matches core"
+        );
     }
 
     /// PLAN-626 rev2 T-09: scrollbar drag — pressing the thumb then moving
