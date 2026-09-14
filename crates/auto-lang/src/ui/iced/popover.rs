@@ -339,6 +339,24 @@ fn panel_is_degenerate(content: Size, children: &[Size]) -> bool {
     !children.is_empty() && children.iter().all(|s| s.width <= 0.0 || s.height <= 0.0)
 }
 
+/// PLAN-631 F-7: placement "pointer" 面板锚归一——有记账位置时面板原点 =
+/// 最近一次指针按下位置（零尺寸锚）；未记录时回退 BottomStart 锚件语义。
+/// 纯函数便于单测（pointer_placement_tests）。
+fn pointer_panel_anchor(
+    placement: PopoverPlacement,
+    position: Point,
+    anchor_bounds: Rectangle,
+) -> (PopoverPlacement, Point, Rectangle) {
+    if placement == PopoverPlacement::Pointer {
+        match crate::ui::iced::right_press_area::last_pointer_press() {
+            Some(p) => (PopoverPlacement::Pointer, p, Rectangle::new(p, Size::ZERO)),
+            None => (PopoverPlacement::BottomStart, position, anchor_bounds),
+        }
+    } else {
+        (placement, position, anchor_bounds)
+    }
+}
+
 /// open 时置顶的面板 overlay 元素。
 struct Panel<'a, 'b, Message>
 where
@@ -377,6 +395,10 @@ where
             ),
             None => (self.anchor_position, self.anchor_bounds),
         };
+        // PLAN-631 F-7: placement "pointer" 面板锚归一（纯函数，单测在
+        // pointer_placement_tests）。
+        let (placement, position, anchor_bounds) =
+            pointer_panel_anchor(self.placement, position, anchor_bounds);
 
         let content_layout = self.content.as_widget_mut().layout(
             self.tree,
@@ -387,7 +409,7 @@ where
                 // placement 几何保证，内容超视口被钳制），不随 snap 开关放宽。
                 if self.snap_within_viewport
                     || matches!(
-                        self.placement,
+                        placement,
                         PopoverPlacement::EdgeLeft
                             | PopoverPlacement::EdgeRight
                             | PopoverPlacement::EdgeTop
@@ -407,7 +429,7 @@ where
         let x_center = position.x + (anchor_bounds.width - size.width) / 2.0;
         let y_center = position.y + (anchor_bounds.height - size.height) / 2.0;
 
-        let mut panel_bounds = match self.placement {
+        let mut panel_bounds = match placement {
             PopoverPlacement::Bottom => Rectangle::new(
                 Point::new(x_center, position.y + anchor_bounds.height + self.gap),
                 size,
@@ -476,11 +498,14 @@ where
                 ),
                 Size::new(viewport.width, size.height),
             ),
+            // PLAN-631 F-7: 指针定位（上方归一化已把 position 置为右键指针
+            // 位置、锚取零尺寸矩形）——面板左上角即指针（Win11 菜单形态）。
+            PopoverPlacement::Pointer => Rectangle::new(position, size),
         };
 
         // Modal 居中 / Edge 贴边即终位，不做越界翻转/钳制（面板尺寸被
         // viewport 上限钳制后天然在视口内）。
-        if self.snap_within_viewport && !self.placement.is_modal_chrome() {
+        if self.snap_within_viewport && !placement.is_modal_chrome() {
             // PLAN-528 W9 续:越界翻转(垂直)——下方放不下且上方放得下时翻到
             // 锚上方,反之亦然。x 规则 Bottom/Top 共用,翻转只改 y;剩余越界
             // 交给下方 snap 钳制。
@@ -519,7 +544,7 @@ where
         // 面板），content 子节点锚在面板原点（贴边面板内容从缘起排）；其余
         // 放置仍是内容尺寸节点。
         let node_size = if matches!(
-            self.placement,
+            placement,
             PopoverPlacement::EdgeLeft
                 | PopoverPlacement::EdgeRight
                 | PopoverPlacement::EdgeTop
@@ -537,7 +562,7 @@ where
             eprintln!(
                 "[popover-debug] placement={:?} at_point={:?} anchor_bounds={:?} content={size:?} \
                  hint={hint:?} panel={panel_bounds:?}",
-                self.placement,
+                placement,
                 self.at_point,
                 self.anchor_bounds,
             );
@@ -778,5 +803,34 @@ mod tests {
             Size::new(184.0, 112.0),
             &[Size::new(0.0, 0.0), Size::new(40.0, 24.0)]
         ));
+    }
+
+    /// PLAN-631 F-7: pointer 面板锚归一——有记账 → 原点 = 记账位置 +
+    /// 零尺寸锚;无记账 → 回退 BottomStart 锚件语义。
+    #[test]
+    fn pointer_panel_anchor_uses_recorded_position() {
+        let _guard = crate::ui::iced::right_press_area::test_support::slot_lock();
+        let p = Point::new(155.5, 88.25);
+        crate::ui::iced::right_press_area::note_pointer_press(p.x, p.y);
+        let anchor_at = Point::new(40.0, 40.0);
+        let anchor_bounds = Rectangle::new(anchor_at, Size::new(80.0, 24.0));
+        let (placement, origin, bounds) =
+            pointer_panel_anchor(PopoverPlacement::Pointer, anchor_at, anchor_bounds);
+        assert_eq!(placement, PopoverPlacement::Pointer);
+        assert_eq!(origin, p, "面板原点 = 最近按下位置");
+        assert_eq!(bounds.size(), Size::ZERO, "指针锚取零尺寸矩形");
+    }
+
+    #[test]
+    fn pointer_panel_anchor_falls_back_to_anchor_semantics() {
+        let _guard = crate::ui::iced::right_press_area::test_support::slot_lock();
+        crate::ui::iced::right_press_area::clear_pointer_press();
+        let anchor_at = Point::new(40.0, 40.0);
+        let anchor_bounds = Rectangle::new(anchor_at, Size::new(80.0, 24.0));
+        let (placement, origin, bounds) =
+            pointer_panel_anchor(PopoverPlacement::Pointer, anchor_at, anchor_bounds);
+        assert_eq!(placement, PopoverPlacement::BottomStart, "回退 BottomStart");
+        assert_eq!(origin, anchor_at);
+        assert_eq!(bounds, anchor_bounds);
     }
 }
