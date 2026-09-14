@@ -93,6 +93,9 @@ pub struct IcedStyle {
     pub gradient_from_pos: Option<f32>,
     pub gradient_via_pos: Option<f32>,
     pub gradient_to_pos: Option<f32>,
+    /// PLAN-625 T-05: `bg-clip-text` 渐变裁剪文字标记——适配器消费:文字回落
+    /// 继承可读色(text-transparent 不生效)、渲染器抑制渐变背景盒。
+    pub gradient_clip_text: bool,
 
     // Plan 527 T4: ring(focus 环模拟,渲染层分期消费)
     pub ring_width: Option<f32>,
@@ -439,10 +442,21 @@ impl IcedStyle {
             rotate: None,
             // Visibility
             hidden: false,
+            // PLAN-625 T-05: 渐变裁剪文字标记(见同名字段注)
+            gradient_clip_text: false,
         };
 
         for class in &style.classes {
             iced_style.apply_class(class);
+        }
+
+        // PLAN-625 T-05: bg-clip-text + text-transparent 组合降级——iced 无
+        // 文字填充渐变,透明文字叠渐变底 = 不可读色块(ui-gallery 顶栏实证);
+        // 文字色清空回落继承可读色,渐变背景盒由渲染容器臂抑制。
+        if iced_style.gradient_clip_text
+            && iced_style.text_color.map_or(false, |c| c.a == 0.0)
+        {
+            iced_style.text_color = None;
         }
 
         // Plan 370 (Issue 1): post-process flex-1 height. During per-class
@@ -657,6 +671,9 @@ impl IcedStyle {
             }
             StyleClass::BgGradient(dir) => {
                 self.gradient_dir = Some(*dir);
+            }
+            StyleClass::BgClipText => {
+                self.gradient_clip_text = true;
             }
             StyleClass::GradientFrom(color) => {
                 self.gradient_from = Some(convert_color(color));
@@ -1407,6 +1424,30 @@ mod tests {
         let iced_style = IcedStyle::from_style(&style);
 
         assert_eq!(iced_style.padding, Some(16.0));
+    }
+
+    /// PLAN-625 T-05: bg-clip-text + text-transparent + 渐变 → 文字回落
+    /// 继承色(text_color 清空),渐变字段保留供渲染容器臂抑制判据。
+    #[test]
+    fn test_clip_text_degrades_transparent_text() {
+        let style = Style::parse(
+            "text-lg font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent",
+        )
+        .unwrap();
+        let is = IcedStyle::from_style(&style);
+        assert!(is.gradient_clip_text, "clip flag set");
+        assert!(is.gradient_from.is_some() && is.gradient_to.is_some(), "gradient kept (renderer suppresses box)");
+        assert!(is.text_color.is_none(), "transparent text color cleared to inherit");
+    }
+
+    /// PLAN-625 T-05 反向守卫:无 bg-clip-text 时 text-transparent 仍生效
+    /// (渐变按钮等合法透明文字场景不受降级波及)。
+    #[test]
+    fn test_transparent_text_without_clip_untouched() {
+        let style = Style::parse("bg-gradient-to-r from-primary to-primary/60 text-transparent").unwrap();
+        let is = IcedStyle::from_style(&style);
+        assert!(!is.gradient_clip_text);
+        assert!(is.text_color.map_or(false, |c| c.a == 0.0), "transparent kept");
     }
 
     #[test]

@@ -170,6 +170,9 @@ pub enum StyleClass {
 
     /// Gradient direction marker: bg-gradient-to-{dir}
     BgGradient(GradientDir),
+    /// PLAN-625 T-05: `bg-clip-text` 渐变裁剪文字——iced 无文字填充渐变,
+    /// 适配器按声明式降级消费(文字回落可读继承色、渐变底抑制)。
+    BgClipText,
 
     /// Gradient start color: from-{color}
     GradientFrom(Color),
@@ -920,6 +923,11 @@ impl StyleClass {
         // ========== Colors (L1) ==========
 
         // Parse background: bg-{color}
+        // PLAN-625 T-05: bg-clip-text 必须先于 bg-{color} 前缀块判定
+        //("clip-text" 不是合法色名,先进色解析即 Err 不可达)。
+        if class == "bg-clip-text" {
+            return Ok(StyleClass::BgClipText);
+        }
         if let Some(color_name) = class.strip_prefix("bg-") {
             // Handle gradient markers
             let dir = match color_name {
@@ -974,6 +982,11 @@ impl StyleClass {
                 }
             }
             if let Ok(color) = Color::from_tailwind(color_name).or_else(|_| Color::from_hex(color_name)) {
+                return Ok(StyleClass::GradientTo(color));
+            }
+            // PLAN-625 T-05: 语义色回落(to-primary/60 等主题 token 色),
+            // parse_color_with_alpha 自带 /N alpha 与主题解析。
+            if let Ok(color) = parse_color_with_alpha(color_name, None) {
                 return Ok(StyleClass::GradientTo(color));
             }
         }

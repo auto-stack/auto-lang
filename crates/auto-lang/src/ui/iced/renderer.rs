@@ -1200,7 +1200,15 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
         iced::Shadow::default()
     };
     // Build background: use gradient if both from/to colors present, else solid
-    let background = if is.gradient_from.is_some() && is.gradient_to.is_some() {
+    let background = if is.gradient_clip_text
+        && is.gradient_from.is_some()
+        && is.gradient_to.is_some()
+    {
+        // PLAN-625 T-05: 渐变裁剪文字降级——渐变仅填充文字(CSS bg-clip:text),
+        // iced 无对应能力;按底盒绘制会形成透明文字+实心渐变块,整体抑制,
+        // 文字回落继承色(from_style 臂已清 transparent text_color)。
+        None
+    } else if is.gradient_from.is_some() && is.gradient_to.is_some() {
         let from = is.gradient_from.unwrap();
         let to = is.gradient_to.unwrap();
         let angle = match is.gradient_dir {
