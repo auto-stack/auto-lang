@@ -291,8 +291,10 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
     P622-1..6 六节（tmp 校验读回 6/6 后 os.replace），单写者会话内完成。
   - `archived` ✅ plan → docs/plans/archive/622-store-facade-vm-semantics.md +
     status: archived（本次提交）。
-  - `cleaned` ⏳ 待清理后补记（worktree lang-622/auto-lang + auto-down、分支
-    plan-622-dev + auto-lang-dev）。
+  - `cleaned` ✅ 双 worktree guard clean（auto-lang/auto-down）→ worktree 移除
+    + 分支删除（plan-622-dev @ dd61e23bb / auto-lang-dev @ 67bb508）→ 空组目录
+    D:/autostack/.wt/lang-622/ 移除。master 祖先链验证 dd61e23bb ∈ master，
+    archive 路径 docs/plans/archive/622-store-facade-vm-semantics.md @ 6618331a0。
 
 ## 待澄清事项
 
