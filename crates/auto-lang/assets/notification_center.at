@@ -11,13 +11,11 @@
 // renderer toasts.retain 在案）——两者不再混谈。若后续需要"闲置自动
 // 收起"，走新需求（storage 开关 + ServiceTick 计时）。
 //
-// 锚定（PLAN-012 W2 T4 定案，scratch/p012 同族探针在 auto-lang
-// layout_tests::w2_notification_panel_anchor_bottom_right）：顶部
-// `flex-1` spacer 在 iced 轨塌缩（端到端 .at 管线实测 y=0，实机截图
-// 互证）→ 改 `mt-auto` 填充条路径（Plan-050 已验证机制，实测 y=384
-// 下压生效）；行内 h-80 垫高退役 + items-end 底对齐 → 卡片紧贴 dock
-// 上方；右距 w-3 = 底垫视觉 gap 12px 对称（底垫 h-[60px] = dock 48 +
-// gap 12）。
+// 锚定（PLAN-012 O3 终解，用户裁定右上角）：scrim 外点关闭（N6d）+
+// justify-start 列顶对齐 + 卡片紧凑（max-h 滚动）+ 顶/右 12px 对称
+// gap。历史：mt-auto 填充条/flex-1/根高类在真实 Stack 子层不可依赖
+// （headless 通过而实机塌缩 = 头模/实机分叉，复验三连贴顶 0 实证）
+// ——锚定与 scrim 均不得回退到根填充条方案。
 //
 // 接缝（协议 v1.2，schema/projection-protocol-v1.md）：
 //   出：`__desktop_cmd`（`notes_dismiss\t<id>` 逐条删 / `notes_clear` 全清；
