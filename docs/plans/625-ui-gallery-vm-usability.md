@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-registry-�
 touched_goals: [GOAL-010, GOAL-007]   # 引用 docs/specs/goals.md 的 GOAL-NNN（沿 573 引用，暂定）
 
 affects: [auto-lang/ui, parity]
-current_step: 6
+current_step: 8
 total_steps: 9
 ---
 
@@ -212,9 +212,21 @@ FN_PROLOG 校验、不再 poisoned。单测：循环体 handler 编译 + 导出�
 
 ### 5.6 T-08/T-09 AppViewport 形态
 
-决策 artifact 对比三候选（§2）：渲染保真度、工作量、风险（进程内编译栈深度
-——注意 AGENTS.md 双重解释器路径裁定：重型路径避免 run_with_capture 形态）。
-用户裁定后 v1 落地；若裁定触发目标/验收语义变化，按 Revisions 规则先修订本
+**决策 artifact（2026-09-14 调研结论，三候选对比）**：
+
+| 候选 | 形态 | 工作量 | 风险 | 保真度 |
+|---|---|---|---|---|
+| a | 进程内子应用渲染：registry 表 loadable 示例的 .at 源以**子 widget** 编入同一 VM 模块（`VmBridge::new_with_children` + `registry.register` 既有机制，dynamic.rs:281/2234），按 selected_id 切换实例可见性 | 大：33 个完整 widget（model/msg/on/view）编译进单模块；prop 线程/状态隔离/命名冲突/尺寸约束（fit 窗语义）逐个处理 | 中高：F-6 挂起放大器（树规模 ×33）；编译期与内存成本 | 最高（真交互） |
+| b | 元数据卡 + web 专属提示：视口区渲染 title/desc/可交互徽章 + "完整交互请 \`auto run\` 查看"说明卡（样式复用现有卡片链） | 小（纯 app.at 视图改动） | 零 | 低（无实境） |
+| c | 静态截图栅格：33 示例截图由生成器归档，视口区按 selected_id 显示 | 中：截图管线（生成/刷新机制/仓库体积）+ 生成器扩展 | 中：截图随语料漂移需常刷新；仓库增重 | 中（所见非所交互） |
+
+**附带核对**：候选 a 不触碰双重解释器裁定红线（走既有 child-widget 单模块
+编译，非 run_with_capture 形态），但树规模放大与 F-6 挂起存在可疑相关，
+建议 T-07 根因先行或至少先验证 33-widget 模块稳定性。
+**建议**：v1 = b（立即可做、零风险、AC-09 即达成），a 作为后续独立计划
+（依赖 F-6 根因清偿）。
+
+用户裁定后 T-09 落地 v1；若裁定触发目标/验收语义变化，按 Revisions 规则先修订本
 合同再执行。
 
 ### 规范增量
@@ -340,14 +352,27 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   消失、点击切换详情 PASS。编译器侧"lambda 捕获循环变量"能力缺口登记为
   限制（merge 时入 KNOWN-DEBT），不在本计划扩权实现。
 - **T-07** 退出码调查：复现矩阵脚本化 + 结论落账。**无依赖，可并行。** → AC-08。
-  [进展] 高频复现条件已固化：ui-gallery VM run（worktree 干净构建）静默
-  退出（exit 1/127，无 panic），死亡窗口随机——依赖扫描期、GPU 初始化后、
-  MCP 运行数分钟后均观测到；死亡前日志尾部=心跳失败刷屏（2026-09-14 六次
-  运行四死）。已升级为 T-03 互锁阻塞项，待专项排查（怀疑方向：VM 执行线程
-  栈/心跳派发路径），结论仍按原 AC-08 落账。
+  [✅ 已完成] 结论落账（2026-09-14，证据=Windows 事件日志 + 六次受控运行）：
+  **非崩溃**（WER 无 crash 记录），实为两类终态——
+  - **A 类｜窗口期挂起（AppHangB1）**：事件日志 16:07:48/16:14:54 两条
+    `auto.exe AppHangB1`（UI 线程停止泵消息 >5s），与两轮验证运行时间窗
+    精确吻合；挂起后进程被外部结束（用户/任务管理器/WER）→ exit 1/127。
+    心跳刷屏持续到日志末行 = 事件循环在挂起判定前仍存活，阻塞点候选=
+    大树 MCP snapshot 序列化占 UI 线程 / 日志 I/O 洪水（每 2s 3 行心跳
+    失败 WARN）。缓解已实践：MCP 起来后立即快取证据、避免反复全量快照
+    大树；可选缓解=应用定义 no-op `__mcp_heartbeat` handler 消除刷屏。
+    根因定位需挂起期线程转储（procdump/wpr）——独立小任务。
+  - **B 类｜deps 扫描期静默终止（worktree 场景特有）**：worktree 运行时
+    am 层把画廊语料全量当依赖目标扫描（12 轮 Downloading deps，10+ 个
+    demo pac），扫描中途静默终止、无 WER、exit 127。主检出运行无此扫描
+    （deps 一次过）——am 层触发点未定位（AutoCache 新项目冷启动嫌疑），
+    不阻断主检出/用户常规流。AC-08 以"文档化关账"结案，挂起根因转
+    KNOWN-DEBT（merge 时登记）。
 - **T-08** AppViewport 形态调研：三候选对比 artifact（工作量/风险/收益，含
   执行栈形态合规性核对）→ **交用户裁定**。依赖 T-01（源可得性影响候选 a 可行
   性评估）。→ AC-09（决策部分）。
+  [✅ 已完成] 决策 artifact 入 §5.6（2026-09-14）——三候选对比 + 建议 b，
+  待用户裁定后 T-09 落地。
 - **T-09** AppViewport v1 落地：按裁定实施；若触发合同语义变化先修订本计划。
   依赖 T-08 + 用户裁定。→ AC-09（落地部分）。
 
@@ -370,6 +395,13 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   解析序 env 档覆盖）。plan_revision 1→2：T-06 实现路径按证据调整为 app 端
   msg 带参惯用法（§5.5 裁定注记，goal/AC 不变）。`next: work`（余 T-04 修复
   半程、T-05、T-07、T-08 调研、T-09）。
+
+- **2026-09-14 work round 3（仍 plan_revision 2）**：stage `work`；无代码
+  commit（纯调查/决策轮）；task_ids T-07、T-08 完成（8/9）。evidence：WER
+  AppHangB1 ×2（16:07/16:14）+ 不打扰运行复现死亡（排除 MCP 轮询触发）+
+  worktree deps 全语料扫描观测；T-08 三候选 artifact（§5.6）含 child-widget
+  既有机制核对。blockers：T-09 等用户裁定（建议 b）；F-6 根因转独立任务。
+  `next: work`（T-09 待裁定）+ 决策请求。
 
 - **2026-09-14 work round 2（仍 plan_revision 2）**：stage `work`；code commits
   auto-lang `7536f8dd0`（T-05 + T-04 layout 守卫）/ auto-os `4824dc7`（T-04
