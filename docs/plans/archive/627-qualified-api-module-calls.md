@@ -373,7 +373,7 @@ completion_kind: delivered
 | `landed` | worktree 沉淀 f7b2a4dde → master merge **3b2f7cf56**（祖先链 3b2f7cf56→f7b2a4dde→6f6b84567→7ad387ec3→d424a31dd→778458c02）；overview.md 与 master 新落 PLAN-018 icon 节冲突，和解=双方保留（icon 节前、627 节后、已知坑继后）；master 烟测 plan627 5/5 绿 |
 | `ledger_refreshed` | `.autoos/specs.json` runtime 数据原子 upsert P627-1..6（六节，file=本归档路径，status published，回读校验过）；`docs/specs/INDEX.md` 经 scripts/spec-index.py 再生（26 projects）并入库；module 回写=ui/overview.md 新节+ui/plans.md 627 行（f7b2a4dde 随 merge 入 master） |
 | `archived` | `docs/plans/archive/627-qualified-api-module-calls.md`（git mv），frontmatter status: archived |
-| `cleaned` | （cleanup 后回填） |
+| `cleaned` | wt-guard clean（无 reparse point）→ worktree D:/.wt/lang-627/auto-lang 已移除、plan-627-dev 已删（f7b2a4dde 全数在 master 祖先链）；组目录 .wt/lang-627/ 保留（兄弟 auto-down 在驻） |
 
 锚点规整注记：声明锚 `#api-模块形态与限定名调用` → 实际标题
 `## api 模块形态与限定名调用（PLAN-627）`（沿用本文件族 （PLAN-NNN）
