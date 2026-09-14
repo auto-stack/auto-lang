@@ -529,7 +529,11 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
     published（回读验证）；ui/plans.md 625 行；INDEX.md 再生（26 projects,
     无条目级变化）。
   - `archived` ✅：本文件 git mv → docs/plans/archive/ + status: archived。
-  - `cleaned`：待 wt-guard 后填写。
+  - `cleaned` ✅：wt-guard 三处（auto-lang clean / auto-os 首次拦截=构建
+    产物 reparse point[gen node_modules pnpm 链接+deps/settings 物化]，
+    按 prescribed `cmd /c rmdir` 只删链接后复检 clean / auto-down clean）；
+    worktree ×3 移除、plan-625-dev 分支双仓删除（auto-os 侧先落地
+    7173df8 再删）、组目录 `.wt/lang-625/` 移除确认。
   - 附注：worktree 运行需 `AUTO_GALLERY_APPS` env（组布局探测多一层，
     AGENTS.md 解析序 env 档）；AppViewport no-op stub WARN 化妆残留
     （F-R3）随本归档记录在案。
