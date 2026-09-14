@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-625
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-gallery-vm-usability
 author: [agent]
 created_at: 2026-09-14
@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-registry-�
 touched_goals: [GOAL-010, GOAL-007]   # 引用 docs/specs/goals.md 的 GOAL-NNN（沿 573 引用，暂定）
 
 affects: [auto-lang/ui, parity]
-current_step: 8
+current_step: 9
 total_steps: 9
 ---
 
@@ -375,6 +375,15 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   待用户裁定后 T-09 落地。
 - **T-09** AppViewport v1 落地：按裁定实施；若触发合同语义变化先修订本计划。
   依赖 T-08 + 用户裁定。→ AC-09（落地部分）。
+  [✅ 已完成] 用户裁定 b（2026-09-14 AskUserQuestion）。落地形态比原设想更
+  通用：AppViewport 图标占位根因=aura_view_builder imported-组件 fallback
+  无条件画 lucide glyph（aura_view_builder.rs:1928/3117 双臂）——改为非 icon
+  web 组件降级可读占位卡（组件名 + prop 尽力展示 + Web 专属提示，含 "icon"
+  的 tag 保持兼容）；实施中顺修 R002 校验器字符串误判（registry.at 内嵌
+  33 份示例源码 11 处 "store." 字面量误杀 vue 构建——blank_string_literals
+  剥离,模板 ${} 插值保守保留）。commit 9d5fa4724。
+  VM 实证：视口区占位卡完整可见（⚙ AppViewport / app: 002-counter / 提示行,
+  截图 p625_vm_t09_final.png）。vue 构建（vite 9.61s 全资产）+ 无 R002 ✓。
 
 ## 9. 复审记录
 
@@ -395,6 +404,16 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   解析序 env 档覆盖）。plan_revision 1→2：T-06 实现路径按证据调整为 app 端
   msg 带参惯用法（§5.5 裁定注记，goal/AC 不变）。`next: work`（余 T-04 修复
   半程、T-05、T-07、T-08 调研、T-09）。
+
+- **2026-09-14 work round 4（仍 plan_revision 2）**：stage `work`；code
+  commits auto-lang `9d5fa4724`；task_ids T-09 完成（**9/9 全落**）。
+  evidence：用户裁定 b；VM 截图占位卡实证；vue 构建 vite 9.61s 全资产 +
+  R002 归零；layout 48/49（唯一红=存量 desktop_surface_z_slot,与本计划无关）。
+  scoped 检查：cargo t gallery_registry 4/4、r002 6/6、style_parity 绿、
+  cargo check 零 error。blockers：无（F-6 根因与渲染器 stretch 缺口已登记
+  转 KNOWN-DEBT/独立任务,不阻断本计划）。`next: review`。
+  附注：AC-07 的 vue 构建实证在本轮补齐（含 R002 修复回归）；AC-09 裁定(b)
+  与落地均已闭环。
 
 - **2026-09-14 work round 3（仍 plan_revision 2）**：stage `work`；无代码
   commit（纯调查/决策轮）；task_ids T-07、T-08 完成（8/9）。evidence：WER
