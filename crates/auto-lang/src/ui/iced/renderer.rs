@@ -8922,26 +8922,32 @@ fn service_snapshot_requests(
     if wids.is_empty() {
         return None;
     }
-    // 411 零尺寸守卫同款：宿主窗 minimized/pre-layout 时本轮不抓
+    // 411 零尺寸守卫：快照目标 = **host 窗本体**（显式 id，不再用
+    // `window::oldest()`——oldest 可能命中尚未完成尺寸初始化的特权层
+    // 窗口，0×0 surface → `create_texture Dimension X is zero` 硬崩溃，
+    // PLAN-019 走查启动竞态实测）。host 未就绪/尺寸 0 = 本轮不抓
     //（渲染臂冷却队列下轮自然再排）。
+    let Some(host) = state.host.as_ref() else {
+        return None;
+    };
+    let host_window = host.window;
     let host_ok = state
         .windows
-        .values()
-        .any(|w| w.window_size.borrow().width > 0.0 && w.window_size.borrow().height > 0.0);
+        .get(&host_window)
+        .map(|w| {
+            let s = w.window_size.borrow();
+            s.width > 0.0 && s.height > 0.0
+        })
+        .unwrap_or(false);
     if !host_ok {
         return None;
     }
     state.desktop.snapshot_pending_wids.replace(wids);
-    Some(
-        iced::window::oldest().then(move |maybe_id| match maybe_id {
-            Some(id) => iced::window::screenshot(id).map(|ss| {
-                crate::ui::session::DesktopMessage::Desktop(
-                    crate::ui::session::DesktopEvent::SnapshotShot(ss),
-                )
-            }),
-            None => iced::Task::none(),
-        }),
-    )
+    Some(iced::window::screenshot(host_window).map(|ss| {
+        crate::ui::session::DesktopMessage::Desktop(
+            crate::ui::session::DesktopEvent::SnapshotShot(ss),
+        )
+    }))
 }
 
 /// Plan 497 G1：dock 时钟注入——本地 HH:MM（chrono Local），分钟变化才
