@@ -276,7 +276,7 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 - [✅ 已完成] T-04：Rust DevTools 路径明确丢弃 Fixture；Rust 原生实例以扩大主线程栈运行后，`autoui_fixture` 返回 `backend_unsupported`，`autoui_state` 仍可用。
 - [✅ 已完成] T-05：`test_vm_mcp.py` 新增 `fixture()`、`state()`、`wait_state()` 客户端辅助；已用 HTTP 调用验证 applied/error 回执。
 - [✅ 已完成] T-06：mcp overview/architecture/plans 规格已沉淀 ADR-07 和 Plan 623 索引；Plan 005 已写入 fixture 移交格式、merged/no-merge 正确命令及 Rust 边界，提交 `9d40544`。
-- [✅ 已完成] T-07：独立验收完成。`cargo check -p auto-lang` 通过；`cargo test -p auto-lang --features ui-iced tests_plan623 --lib` 为 4/4；真实 Tetris VM merged/no-merge MCP 均完成 fixture applied、trigger 和 1–4 行分数 golden，门控关闭返回 `fixtures_disabled` 且 score 保持 0；Rust 原生 MCP 返回 `backend_unsupported`。工作树无未提交改动，提交 `58b87541d`。
+- [✅ 已完成] T-07：独立验收完成。`cargo check -p auto-lang` 通过；`cargo test -p auto-lang --features ui-iced tests_plan623 --lib` 为 4/4；真实 Tetris VM merged/no-merge MCP 均完成 fixture applied、trigger 和 1–4 行分数 golden，门控关闭返回 `fixtures_disabled` 且 score 保持 0；Rust 原生 MCP 返回 `backend_unsupported`。工作树无未提交改动，提交 `432a53b2c`。
 
 ## 9. 复审记录
 
@@ -295,7 +295,6 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 - VM no-merge 集成测试需要可用的本地 HTTP backend 启动方式；若环境缺失，
   记录为环境阻断，不以 merged 结果代替。
 - 本计划完成前，Plan 005 的 VM fixture golden 保持 blocked。
-
 
 
 
