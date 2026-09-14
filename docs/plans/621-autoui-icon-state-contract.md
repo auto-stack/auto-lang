@@ -8,8 +8,8 @@ updated_at: 2026-09-14
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: [ui/icon-state, ui/icon-library-policy]
-touched_goals: []
+new_spec_components: []       # 复审终值：SD-01/SD-02 均为既有 ui/overview.md 的条目增补，无新 spec 文档/被取代组件
+touched_goals: []             # goals.md 无 ui/icon 相关 GOAL ID 可挂
 
 affects: [auto-lang/ui]
 current_step: 7
@@ -268,11 +268,13 @@ docs/components/core.md                               改：docs_gen 重生成�
 - [ ] **T-08 双端 e2e + 复审**：030 smoke 增 state 翻转断言，autoui-verifier 双端
       跑；`cargo t` 对拍基线；按 `/auto-plan:review` 逐条对拍 AC。（→AC-01/03/05）
   [🔶 部分完成 2026-09-14] **cargo t 对拍已完成**：全量 no-fail-fast 22 红，
-  经 base（5c444818f）detached worktree 复跑同批测试全部同样红——**零新增红**
-  （预存红归因：layout 族 14 + plan492/c2_param + plan055_strip_html +
-  app_registry_curation + desktop_coverage + p010_popover + ffi_dual_019 +
-  desktop 金样 = PLAN-012 桌面合并震荡面；`external_config_poll_hot_apply_
-  loopsafe` 为在案并发 flake）。`plan621` 10/10、`plan619` 锚全绿。附注：base
+  其中 21 个经 base（5c444818f）detached worktree 复跑同样红；`ffi_dual_019`
+  初次归因证据不足（采样截断），复审阶段补实为**预存并发 flaky**（base 全量
+  tv 亦偶发，错误形态一致——auto-cache 方法包缓存跨进程竞态，详见 §9 F-2）。
+  **零新增红成立**。其余预存红归因：layout 族 14 + plan492/c2_param +
+  plan055_strip_html + app_registry_curation + desktop_coverage + p010_popover
+  + desktop 金样 = PLAN-012 桌面合并震荡面；`external_config_poll_hot_apply_
+  loopsafe` 为在案并发 flake。`plan621` 10/10、`plan619` 锚全绿。附注：base
   处 `auto-cache` crate 存在**预存编译错误**（`ShimMethod.trait_name` 缺字段，
   methods_pack.rs:697，他会话跨 crate 改动未同步）——裸 `cargo test`（全
   workspace）被它挡住，`cargo t`（-p auto-lang）不受影响。**e2e 部分 defer**：
@@ -283,7 +285,8 @@ docs/components/core.md                               改：docs_gen 重生成�
   `:stroke-width` 是 lucide-vue-next 文档化 prop。**解阻步骤**：worktree 内
   `pnpm install`（030 tests/ 与 gen/front/vue）→ `cargo build -p auto` →
   `AUTO_MEDIA_ROOT='E:\Video' auto run` → `pnpm exec playwright test`；
-  或由 review 阶段在已备环境执行。
+  或由 review 阶段在已备环境执行。【复审 F-1 裁定：AC-01/03 的 e2e 半证据
+  必须补齐（needs_fix），本任务重开待修】
 
 ## 分支与提交归属
 
@@ -307,6 +310,47 @@ docs/components/core.md                               改：docs_gen 重生成�
   （1 红归因 PLAN-012）+ cargo t 22 红全部 base 复现零新增` | `blockers: 无
   （e2e 为 defer 非 block）` | `next: review`（AC-01/03 的 e2e 证据补齐可由
   review 阶段在已备环境执行，或在 merge 前补跑）。
+- 2026-09-14 review（/auto-plan:review）：`stage: review` | `plan_id: PLAN-621` |
+  `plan_revision: 1` | `outcome: needs_fix` | `reviewed_commit: 16f0ff733` |
+  `base_commit: 5c444818f` | `dependency_revisions: auto-down 67bb508 (detached)` |
+  `spec_inputs: docs/specs/auto-lang/ui/overview.md（SD-01/SD-02 增补段落）、
+  docs/design/autoui/icon-state-and-library-policy.md（新注记）` |
+  **独立性声明**：复审即实现会话，裁定全部从工件重建（关键测试在 reviewed
+  commit 重跑），未采信执行摘要。
+
+  **AC 逐条对拍**（重跑于 reviewed commit）：
+
+  | AC | 结果 | 证据 |
+  |---|---|---|
+  | AC-01 state 双端一致 | **partial** | `plan621` 10/10 PASS（重跑）；`012_icon_state` 金样五形态在案（Bell on=primary+2.5 / off=muted / 显式类保留 / Heart 三元 / Zap 48px=2）；**e2e 截图半证据缺失**（T-08 defer） |
+  | AC-02 优先级+零扰动 | **pass** | `plan621_explicit_text_class_wins_*`（VM+Web）PASS；未声明零 diff 单测 PASS；既有 a2vue 金样 15/16（唯一红 PLAN-012 归因经 base 复跑坐实） |
+  | AC-03 绑定响应式 | **partial** | `plan621_state_bool_binding` + 金样三元行 PASS；**e2e 翻转断言缺失** |
+  | AC-04 描边加重 | **pass** | VM `StrokeWidth=Some(2.5)` 适配器消费断言 + 48px→2.0 两端同值（VM 单测 + 金样 `:stroke-width="2"`）；`plan619_lucide_doc_renders_geometric_ink` PASS |
+  | AC-05 零新增回归 | **pass** | `cargo t` no-fail-fast 22 红 + `cargo tv` 全量 3694/3696（2 红）——**全部在 base 复现**（见 findings F-2）；docs_gen 4/4；schema_drift PASS（重跑） |
+  | AC-06 策略成文 | **pass** | 设计注记 + autoui/README 索引行 + SD-01/SD-02 落 overview.md + spec-index 再生无漂移（工件在案） |
+
+  **findings**：
+  - **F-1（blocking，→AC-01/AC-03）**：e2e 运行时证据缺失——AC-01/AC-03 的
+    验证方法各含 e2e 半（截图对拍/翻转断言），T-08 defer 后未补。修法：work
+    阶段按 T-08 解阻步骤补 030 双端 state 冒烟（加 state 图标 + smoke 断言，
+    autoui-verifier 双端跑），或以等价轻量运行时验证替代（须覆盖「浏览器渲染
+    text-primary + stroke-width attr 生效」与「VM 端 state 翻转重绘」两点）。
+  - **F-2（nonblocking，已定案非本计划回归）**：`ffi_dual_019_dep_layout_invariants`
+    为**预存并发 flaky**——auto-cache 方法包缓存跨进程竞态（异 features 变体
+    陈旧 pack 复用：wide 拿 26474836480≠5000000000，正是对抗②设计的错误形态）。
+    全量档采样：分支 2 挂、base 2 次采样 1 挂（错误形态一致）；分支隔离 4/4 过、
+    ffi_dual 分组 3/3 过。工作阶段「22 红全部 base 复现」的簿记当时对该项证据
+    不足（采样被截断），本复审补实。建议记 KNOWN-DEBT 候选（auto-cache 域，
+    超出本计划范围）。
+  - **SD 审查**：SD-01/SD-02 文本与实测行为一致（优先级/token/描边公式与测试
+    断言逐条对应）；frontmatter 终值 `supersedes_spec_components: []`、
+    `new_spec_components: []`——两条 SD 均为既有 `docs/specs/auto-lang/ui/
+    overview.md` 的条目增补，无新 spec 文档、无被取代组件；`touched_goals: []`
+    （ goals.md 无 ui/icon 相关 GOAL ID 可挂）。work 阶段草填的
+    `new_spec_components: [ui/icon-state, ui/icon-library-policy]` 非真实
+    组件路径，本次订正。
+
+  `next: work`（仅修 F-1；F-2 转债务记录不动代码）。
 
 ## 待澄清事项
 
