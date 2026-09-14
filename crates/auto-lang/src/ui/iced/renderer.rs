@@ -9906,6 +9906,18 @@ fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool)
 /// 回退）+ 快照全撤。壁纸层 view 每帧重建读该字段，下一帧即生效
 /// （518 G1 set_theme 同链先例）。
 fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &str) {
+    // PLAN-019 T-06：布局随壁纸切换——先把**旧壁纸**的现行布局快照落其
+    // 布局键（旧壁纸无键控语境 = 布局本就在缺省底稿，跳过），再切换。
+    {
+        let old_key = current_wallpaper_layout_key(state);
+        if let Some(old_key) = old_key {
+            let snapshot = load_desktop_positions_for(Some(&old_key));
+            crate::vm::ffi::stdlib::storage_host_publish(
+                &old_key,
+                serialize_positions(&snapshot),
+            );
+        }
+    }
     state.desktop.config.wallpaper_path = path.to_string();
     let _ = crate::ui::desktop_config::save(&state.desktop.config);
     state.desktop.desktop_wallpaper = load_desktop_wallpaper(&state.desktop.config);
@@ -9926,6 +9938,9 @@ fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &
     if state.host.as_ref().is_some_and(|h| h.wm.picker_open) {
         inject_wallpaper_picker(state);
     }
+    // PLAN-019 T-06：格子表按新壁纸布局键重注入（缺席回退缺省底稿）——
+    // 布局随壁纸即时切换（负一屏 flip 对比 = 所见即所得）。
+    inject_desktop_surface(state);
 }
 
 /// PLAN-019 v1.7：显示桌面（负一屏）——簿记在 [`WmState::show_desktop`]
@@ -11552,6 +11567,7 @@ fn desktop_icon_cells(
     order: &[(String, &str)],
     hidden: &[String],
     registry: &[crate::ui::app_registry::AppRegistryEntry],
+    layout_key: Option<&str>,
 ) -> (
     Vec<auto_val::Value>,
     Vec<String>,
@@ -11561,7 +11577,8 @@ fn desktop_icon_cells(
     const COLS: usize = 8;
     let visible: Vec<&(String, &str)> =
         order.iter().filter(|(id, _)| !hidden.contains(id)).collect();
-    let positions = load_desktop_positions();
+    // PLAN-019 T-06：布局键控读（当前壁纸键 → 缺席回退缺省底稿）。
+    let positions = load_desktop_positions_for(layout_key);
     // ① 已定位：last-wins 解析的表中取 (c,r)。
     let mut placed: Vec<(usize, usize, &&(String, &str))> = Vec::new();
     let mut free: Vec<&&(String, &str)> = Vec::new();
@@ -11634,8 +11651,22 @@ fn desktop_icon_cells(
 /// `shell.desktop.positions` 追加式 csv 解析——"id=c,r" 段（逗号分隔），
 /// 同 id 后写胜（shell 落子为追加写，末段即最新位）。
 fn load_desktop_positions() -> Vec<(String, (usize, usize))> {
-    let raw = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.positions")
+    load_desktop_positions_for(None)
+}
+
+/// PLAN-019 T-06：壁纸布局键控读——`key` = Some(壁纸布局键) 时优先读该键
+/// （缺席回退缺省底稿 `shell.desktop.positions`——首次切到该壁纸继承默认
+/// 摆布）；None = 缺省底稿直读（#hex/builtin 壁纸无布局语境）。
+fn load_desktop_positions_for(key: Option<&str>) -> Vec<(String, (usize, usize))> {
+    let raw = key
+        .and_then(|k| crate::vm::ffi::stdlib::storage_host_read(k))
+        .or_else(|| crate::vm::ffi::stdlib::storage_host_read("shell.desktop.positions"))
         .unwrap_or_default();
+    parse_positions_csv(&raw)
+}
+
+/// 位置 csv 解析核心（`load_desktop_positions_for` 的解析体）。
+fn parse_positions_csv(raw: &str) -> Vec<(String, (usize, usize))> {
     let mut out: Vec<(String, (usize, usize))> = Vec::new();
     for seg in raw.split(',') {
         let seg = seg.trim();
@@ -11654,6 +11685,42 @@ fn load_desktop_positions() -> Vec<(String, (usize, usize))> {
         }
     }
     out
+}
+
+/// 位置表 → 全量 csv（"id=c:r," 逗号封尾；apply_drop 终态重写共用）。
+fn serialize_positions(positions: &[(String, (usize, usize))]) -> String {
+    let mut csv = String::new();
+    for (id, (c, r)) in positions {
+        csv.push_str(&format!("{id}={c}:{r},"));
+    }
+    csv
+}
+
+/// PLAN-019 T-06：壁纸布局键——归一化路径（`\`→`/` + ASCII 小写折叠）
+/// 的 FNV-1a 64 位十六进制。归一化规则（SD-03 spec 定案）：Windows 路径
+/// 大小写/分隔符差异不影响键控；非 ASCII 不折叠（NTFS 大小写折叠仅 ASCII
+/// 等价）。`#hex`/`builtin:` 无布局语境 → 调用方不产键。
+fn wallpaper_layout_key(wallpaper: &str) -> String {
+    let norm: String = wallpaper
+        .trim()
+        .chars()
+        .map(|c| if c == '\\' { '/' } else { c.to_ascii_lowercase() })
+        .collect();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in norm.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("shell.desktop.positions.wp/{hash:016x}")
+}
+
+/// 当前壁纸的布局键（None = 壁纸缺省/色值/内置——布局走缺省底稿）。
+fn current_wallpaper_layout_key(state: &crate::ui::session::DesktopSession) -> Option<String> {
+    let wp = state.desktop.desktop_wallpaper.as_str();
+    if wp.is_empty() || wp.starts_with('#') || wp.starts_with("builtin:") {
+        return None;
+    }
+    Some(wallpaper_layout_key(wp))
 }
 
 /// Plan 496 M5：桌面本体投影注入——pinned ∪ 自定义条目合并去重
@@ -11691,7 +11758,9 @@ fn desktop_icon_apply_drop(
     if !visible.iter().any(|id| id == dragged) {
         return false;
     }
-    let positions = load_desktop_positions();
+    // PLAN-019 T-06：键控读（当前壁纸键 → 回退缺省底稿）。
+    let positions =
+        load_desktop_positions_for(current_wallpaper_layout_key(state).as_deref());
     let cell_of = |id: &str| -> Option<(usize, usize)> {
         positions
             .iter()
@@ -11767,13 +11836,15 @@ fn desktop_icon_apply_drop(
         }
     }
     // 全量 positions 重写（last-wins csv 直接生成终态，非追加）。
-    let mut csv = String::new();
-    for (id, slot) in &new_cells {
-        let c = slot % COLS;
-        let r = slot / COLS;
-        csv.push_str(&format!("{id}={c}:{r},"));
-    }
-    crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.positions", csv);
+    // PLAN-019 T-06：写当前壁纸键（键控壁纸）；缺省壁纸（#hex/builtin）
+    // 落缺省底稿键。
+    let positions: Vec<(String, (usize, usize))> = new_cells
+        .iter()
+        .map(|(id, slot)| (id.clone(), (slot % COLS, slot / COLS)))
+        .collect();
+    let write_key = current_wallpaper_layout_key(state)
+        .unwrap_or_else(|| "shell.desktop.positions".to_string());
+    crate::vm::ffi::stdlib::storage_host_publish(&write_key, serialize_positions(&positions));
     true
 }
 
@@ -11886,8 +11957,14 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
     let hidden_str = hidden.join(",");
     // PLAN-012 W5：格子分配（拖拽换位数据面——cells Obj 数组供 view 渲染，
     // ids/cs/rs 平行字符串列表供 handler 下标读，B12 规避）。
-    let (cells, cell_ids, cell_cs, cell_rs) =
-        desktop_icon_cells(&order, &hidden, &state.desktop.registry_entries);
+    // PLAN-019 T-06：布局键控——当前壁纸键优先（切换壁纸布局跟随）。
+    let layout_key = current_wallpaper_layout_key(state);
+    let (cells, cell_ids, cell_cs, cell_rs) = desktop_icon_cells(
+        &order,
+        &hidden,
+        &state.desktop.registry_entries,
+        layout_key.as_deref(),
+    );
     let Some(app) = state.apps.get_mut(&surface) else { return };
     let _ = app.component.write_state_vec("__desktop_icons", entries);
     let _ = app.component.write_state_vec("__desktop_cells", cells);
@@ -24487,7 +24564,7 @@ mod tests {
             raw.to_string(),
         );
         let pos = load_desktop_positions();
-        let (cells, ids, cs, rs) = desktop_icon_cells(&order, &[], &[]);
+        let (cells, ids, cs, rs) = desktop_icon_cells(&order, &[], &[], None);
         eprintln!("[w5-cells] positions={pos:?} ids={ids:?} cs={cs:?} rs={rs:?}");
         // 行主序：(0,0)=a，(1,0)=spacer，(2,0)=c？——b 占 (3,0)、d 占 (1,1)。
         // 行主序填充：a→(0,0)，c→(1,0)（b 占 (3,0)），d 定位 (1,1)。
@@ -25382,6 +25459,87 @@ mod tests {
         let host = ds.host.as_ref().unwrap();
         assert!(!host.wm.picker_open, "栅格 Esc 关闭 picker");
         assert!(!host.wm.on_showdesk(), "return_on_close → 自动返回");
+    }
+
+    /// PLAN-019 T-06：布局键——归一化（`\`→`/` + ASCII 小写折叠）稳定、
+    /// 异路径异键；#hex/builtin/空 无布局语境（None）；csv roundtrip。
+    #[test]
+    fn wallpaper_layout_key_and_csv_roundtrip() {
+        let a1 = wallpaper_layout_key("D:\\Down\\stella-os\\Wallpapers\\raiden.JPG");
+        let a2 = wallpaper_layout_key("d:/down/stella-os/wallpapers/raiden.jpg");
+        assert_eq!(a1, a2, "大小写/分隔符归一");
+        assert!(a1.starts_with("shell.desktop.positions.wp/"));
+        assert_ne!(
+            a1,
+            wallpaper_layout_key("d:/down/stella-os/wallpapers/room.jpg"),
+            "异路径异键"
+        );
+        let positions = vec![
+            ("011-calculator".to_string(), (1usize, 2usize)),
+            ("015-notes".to_string(), (0usize, 0usize)),
+        ];
+        let back = parse_positions_csv(&serialize_positions(&positions));
+        assert_eq!(back, positions, "csv roundtrip");
+        // 无布局语境壁纸。
+        assert!(current_wallpaper_layout_key_for("#243b55").is_none());
+        assert!(current_wallpaper_layout_key_for("builtin:ricepaper").is_none());
+        assert!(current_wallpaper_layout_key_for("").is_none());
+        assert!(current_wallpaper_layout_key_for("D:/x/wp.jpg").is_some());
+    }
+
+    fn current_wallpaper_layout_key_for(wp: &str) -> Option<String> {
+        if wp.is_empty() || wp.starts_with('#') || wp.starts_with("builtin:") {
+            return None;
+        }
+        Some(wallpaper_layout_key(wp))
+    }
+
+    /// PLAN-019 T-06：布局随壁纸迁移（AC-08）——壁纸 A 键控摆布与壁纸 B
+    /// 互不覆盖；切回 A 布局恢复；缺省底稿回退（新壁纸首次继承默认）。
+    #[test]
+    fn wallpaper_layout_memory_migration() {
+        let _guard = t2_isolate_storage("wp-layout");
+        let mut ds = t3_session_with_shell();
+        // 壁纸 A/B 布局键（真文件不必在——键控层与 storage 层直驱）。
+        let key_a = wallpaper_layout_key("D:/wp/a.jpg");
+        let key_b = wallpaper_layout_key("D:/wp/b.jpg");
+        // A：calc 摆 (0,0)；B：calc 摆 (3,3)。
+        crate::vm::ffi::stdlib::storage_host_publish(
+            &key_a,
+            "011-calculator=0:0,".to_string(),
+        );
+        crate::vm::ffi::stdlib::storage_host_publish(
+            &key_b,
+            "011-calculator=3:3,".to_string(),
+        );
+        // 键控读各自命中。
+        let la = load_desktop_positions_for(Some(&key_a));
+        let lb = load_desktop_positions_for(Some(&key_b));
+        assert_eq!(la, vec![("011-calculator".to_string(), (0usize, 0usize))]);
+        assert_eq!(lb, vec![("011-calculator".to_string(), (3usize, 3usize))]);
+        // C 键缺席 → 回退缺省底稿（首次切到该壁纸继承默认摆布）。
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.positions",
+            "011-calculator=5:1,".to_string(),
+        );
+        let key_c = wallpaper_layout_key("D:/wp/c.jpg");
+        let lc = load_desktop_positions_for(Some(&key_c));
+        assert_eq!(
+            lc,
+            vec![("011-calculator".to_string(), (5usize, 1usize))],
+            "缺席键回退缺省底稿"
+        );
+        // 迁移快照语义：effective 布局写回键（即使缺席键也固化当前摆布）。
+        let snapshot = load_desktop_positions_for(Some(&key_c));
+        crate::vm::ffi::stdlib::storage_host_publish(
+            &key_c,
+            serialize_positions(&snapshot),
+        );
+        assert_eq!(
+            load_desktop_positions_for(Some(&key_c)),
+            lc,
+            "快照幂等固化"
+        );
     }
 
     // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----
