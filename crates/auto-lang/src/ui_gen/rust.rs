@@ -2529,8 +2529,17 @@ impl RustGenerator {
                         Some(msg) => format!("Some({msg})"),
                         None => "None".to_string(),
                     };
+                    // PLAN-018 D10:scheme prop(Int 字面量或 .field 绑定;
+                    // 缺省 -1 = 跟随桌面主题)。
+                    let scheme = match props.get("scheme") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}i32"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
+                            format!("self.{} as i32", id.as_str())
+                        }
+                        _ => "-1i32".to_string(),
+                    };
                     return format!(
-                        "View::Terminal {{ key: \"{key}\".to_string(), cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: None, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, style: None }}",
+                        "View::Terminal {{ key: \"{key}\".to_string(), cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: None, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, scheme: {scheme}, style: None }}",
                         geom("cols", 80),
                         geom("rows", 24),
                         cursor("cursor_row"),

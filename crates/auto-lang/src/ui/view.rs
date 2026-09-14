@@ -581,6 +581,9 @@ pub enum View<M: Clone + Debug> {
         /// 光标格(app 每拍从引擎回读喂入;0,0 = 未喂入的占位)。
         cursor_row: u16,
         cursor_col: u16,
+        /// PLAN-018 D10:配色方案(id;缺省 -1 = 跟随桌面主题 dark→0/
+        /// light→1;≥0 显式覆盖,scheme 表见 ui::terminal palette 面)。
+        scheme: i32,
         style: Option<Style>,
     },
 
@@ -2080,7 +2083,7 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
-            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => View::Terminal {
+            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => View::Terminal {
                 key,
                 cols,
                 rows,
@@ -2092,6 +2095,7 @@ impl<M: Clone + Debug> View<M> {
                 on_input: on_input.map(|m| f(m)),
                 cursor_row,
                 cursor_col,
+                scheme,
                 style,
             },
             View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {

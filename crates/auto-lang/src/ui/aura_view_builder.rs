@@ -9461,6 +9461,12 @@ let tabs_inner = View::Row {
             .extract_u16(props, "cursor_col")
             .or_else(|| self.eval_u16_prop(props, "cursor_col", bindings))
             .unwrap_or(0);
+        // PLAN-018 D10:配色方案 prop(int;缺省 -1 = 跟随桌面主题)。字面量
+        // 或 state 绑定求值(scheme 随主题切换的重挂场景)。
+        let scheme = self
+            .extract_i32_prop(props, "scheme")
+            .or_else(|| self.eval_i32_prop(props, "scheme", bindings))
+            .unwrap_or(crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME);
         View::Terminal {
             key,
             cols,
@@ -9473,6 +9479,7 @@ let tabs_inner = View::Row {
             on_input,
             cursor_row,
             cursor_col,
+            scheme,
             style,
         }
     }
@@ -11517,6 +11524,35 @@ let tabs_inner = View::Row {
     }
 
     /// Extract a u16 property from AuraNode props.
+    /// PLAN-018 D10:int(scheme)字面量提取(负值合法:哨兵 -1 跟随主题)。
+    fn extract_i32_prop(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+    ) -> Option<i32> {
+        match props.get(key)? {
+            AuraPropValue::Expr(expr) => match expr {
+                Expr::Int(i) => Some(*i),
+                _ => None,
+            },
+            AuraPropValue::StyleBinding(_) => None,
+        }
+    }
+
+    /// PLAN-018 D10:scheme 的 bindings 求值形态(`scheme: .scheme`)。
+    fn eval_i32_prop(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> Option<i32> {
+        let AuraPropValue::Expr(expr) = props.get(key)? else {
+            return None;
+        };
+        let val = self.resolve_expr_to_value(expr, bindings)?;
+        Some(val.as_int())
+    }
+
     fn extract_u16(
         &self,
         props: &HashMap<String, AuraPropValue>,

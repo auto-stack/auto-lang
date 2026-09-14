@@ -46,6 +46,43 @@ fn set_geom(map: &Mutex<GeomMap>, handle: i64, v: (i64, i64)) {
     map.lock().unwrap().insert(handle, v);
 }
 
+/// PLAN-018 D10:引擎 scheme 表装载(进程一次;FFI `palette_color` 纯
+/// 查询 → ui 注册表缓存覆盖内置回退表)。旧 DLL 无符号 = 静默保留内置
+/// (报警面同款皮实语义)。无 ui 特征无消费者,跳过。
+fn load_palettes_once(lib: &Library) {
+    #[cfg(feature = "ui")]
+    {
+        static LOADED: OnceLock<()> = OnceLock::new();
+        LOADED.get_or_init(|| unsafe {
+            let Ok(color) = lib.get::<unsafe extern "C" fn(c_int, c_int, c_int) -> u32>(
+                b"autoterm_engine_palette_color\0",
+            ) else {
+                return;
+            };
+            for scheme in [0i32, 1] {
+                let mut table = [0u32; crate::ui::terminal::TERMINAL_PALETTE_SLOTS];
+                let mut ok = true;
+                for slot in 0..18i32 {
+                    let is_fg = if slot == 0 { 1 } else { 0 };
+                    let v = color(scheme, slot, is_fg);
+                    if v == 0xFFFF_FFFF {
+                        ok = false;
+                        break;
+                    }
+                    table[slot as usize] = v;
+                }
+                if ok {
+                    crate::ui::terminal::terminal_palette_load(scheme, table);
+                }
+            }
+        });
+    }
+    #[cfg(not(feature = "ui"))]
+    {
+        let _ = lib;
+    }
+}
+
 fn lib() -> Option<&'static Library> {
     LIB.get_or_init(|| {
         // 解析顺序:env → 宿主 exe 同目录(003 §5)→ exe 祖先 target/
@@ -66,7 +103,10 @@ fn lib() -> Option<&'static Library> {
         let found = candidates.into_iter().find(|p| p.is_file());
         match found {
             Some(path) => match unsafe { Library::new(&path) } {
-                Ok(l) => Some(l),
+                Ok(l) => {
+                    load_palettes_once(&l);
+                    Some(l)
+                }
                 Err(e) => {
                     eprintln!("[term-engine] autoterm_core.dll 加载失败({path:?}): {e}");
                     None

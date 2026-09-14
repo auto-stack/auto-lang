@@ -48,6 +48,7 @@ fn terminal_view() -> View<()> {
         lines: fixed_lines(),
         scroll_offset: 0,
         preedit: None,
+        scheme: crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME,
         on_select: None,
         on_menu: None,
         on_input: None,
