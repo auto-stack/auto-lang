@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-625
-status: execution_done         # drafting → executing → execution_done → reviewed → archived（rev 3: T-10 全落,VM 视口实装交付）
+status: reviewed               # drafting → executing → execution_done → reviewed → archived（rev 3 复审 pass:VM 视口实装交付,待 merge）
 feature_name: ui-gallery-vm-usability
 author: [agent]
 created_at: 2026-09-14
@@ -450,6 +450,43 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
 
   附注：AC-07 的 vue 构建实证在本轮补齐（含 R002 修复回归）；AC-09 裁定(b)
   与落地均已闭环。
+
+- **2026-09-15 review（plan_revision 3）**：stage `review`；plan_id PLAN-625；
+  outcome `pass`；reviewed_commit=auto-lang worktree `1f72bb532`（merge master
+  fd893e25f 同步后,含 T-10b 补提交 51604e36d）+ auto-os worktree `94ff92e`；
+  base_commit=d2f983d63（worktree 创建点）;dependency_revisions=auto-os
+  plan-625-dev 94ff92e / widgets-gallery 共享检出（另会话有 025 在途脏文件,
+  与本计划无关）。
+  **复审局限声明**：与实现同会话复审（无独立会话可用）——裁定以工件重建:
+  cargo tf 3548 测试重跑、scoped 三组重跑绑定 reviewed commit、12 张证据
+  截图 + 快照逐一核验（固化于 docs/reports/p625-evidence/,8 件）。
+  acceptance_results：AC-01 PASS（33 项列表+过滤+搜索,MCP 快照/skip 清单）；
+  AC-02 PASS（点击切换详情+573 待澄清②关闭）；AC-03 PASS（三 tab 非空）；
+  AC-04 PASS（registry 8 stub→0,余 1 条 AppViewport 为 T-10 适配器旁路
+  化妆性残留,F-R3）；AC-05 PASS（pills 可见+归因落账+h-full 守卫测试）；
+  AC-06 PASS（标题可读,SD-02 矩阵行随 merge 沉淀）；AC-07 PASS（vue 构建
+  vite 9.61s/15.26s 全资产+R002 归零+style_parity 绿）；AC-08 PASS（两类
+  终态结论+WER 实证,文档化关账）；AC-09 PASS（裁定 b 落地）；AC-10 PASS
+  （14 自包含示例 VM 实时渲染+交互联动 PASS,6 模块 use 示例降级占位上报）。
+  findings（均非阻断）：
+  - F-R1（info）docs_gen kitchen_sink worktree 红：基线陈旧 fixture 同步
+    问题（worktree 基于 d2f983d63,master 侧 9ffab6f6/776f4ba2 已同步
+    fixture；主检出 PASS、本计划 diff 不触 docs_gen/schema）→ 随本合并
+    re-sync 已带入 master 侧状态,残余差异属共享 widgets-gallery 检出解析
+    路径,转 master 域。
+  - F-R2（info）plan606 test_029_photo_gallery 主检出同样红：并行会话
+    plan628-photo-gallery-v2 在途重构破坏（029 脏文件+628 计划在案）,
+    非本计划回归。
+  - F-R3（info）AppViewport 的 no-op stub WARN 在适配器注册后仍打印
+    （加载期告警,无功能影响）——可选清理,随 merge 记 KNOWN-DEBT。
+  evidence：docs/reports/p625-evidence/（8 件固化）+ 本计划 §8 各任务
+  [✅] 行内证据 + cargo tf 3547/3548（唯一红=F-R1）+ scoped
+  gallery 17/17、r002 6/6、p625_t10 1/1、style_parity 绿。
+  spec_inputs：SD-01/02/03 文本与实现一致（复审核对）,canonical 沉淀随
+  merge 执行；本证据包冻结 SD 表=本文件提交版（01f66ef29 之后的
+  1261da79c/8bc546996 及本次 review 提交）。
+  next：`merge`（auto-plan:merge——沉淀 SD-01/02/03 至 canonical specs +
+  KNOWN-DEBT 登记 F-R1/F-R2 归属、F-R3、P573-D1 清偿、T-10d Rust 臂差异）。
 
 - **2026-09-14 work round 5（plan_revision 3）**：stage `work`；code commits
   auto-lang `c90bbc870`（T-10a spike）。用户推翻 v1=b 裁定，指令升级候选 a
