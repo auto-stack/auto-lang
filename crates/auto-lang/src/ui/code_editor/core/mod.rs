@@ -1438,6 +1438,7 @@ impl CodeEditorCore {
     ) -> CoreOutput {
         let config = self.config.lock().unwrap().clone();
         let mut editor = self.editor_lock();
+        let before = editor.with_buffer(|b| b.scroll());
         if (shift && dx == 0.0) || dx != 0.0 {
             // Shift+wheel (or horizontal wheel) → horizontal scroll.
             let amount = if dx != 0.0 { dx } else { dy };
@@ -1447,7 +1448,21 @@ impl CodeEditorCore {
                 b.set_scroll(scroll);
             });
         } else {
-            editor.action(font_system, Action::Scroll { pixels: dy * config.line_height() });
+            // PLAN-626 rev2 T-08: winit 滚轮向下 y 为负，而 cosmic-text 的
+            // scroll.vertical 向下增大——取负对齐（此前方向反直觉）。
+            // Action::Scroll 只累加不归一：scroll.line 停在 0，每帧
+            // layout_runs 从头全文件行走，大文件（T-05 起打开真实仓库
+            // 文件）滚轮风暴拖垮事件循环 = 窗口"未响应"；且上下游都不
+            // 钳制，越过底/顶后内容滚丢、永远停不住。滚轮后立即
+            // shape_until_scroll 归一 scroll.line 并钳进有效区间。
+            let pixels = -dy * config.line_height();
+            editor.action(font_system, Action::Scroll { pixels });
+            editor.with_buffer_mut(|b| b.shape_until_scroll(font_system, false));
+        }
+        let after = editor.with_buffer(|b| b.scroll());
+        if before == after {
+            // Scroll position unchanged (already at a boundary): no repaint.
+            return CoreOutput::default();
         }
         CoreOutput { request_redraw: true, ..CoreOutput::default() }
     }
@@ -1980,6 +1995,75 @@ let beta = alpha + 2;
 
     // Uses the crate-shared registry test lock (see REGISTRY_TEST_LOCK
     // at the core module level).
+
+    /// PLAN-626 rev2 T-08: wheel semantics — winit's wheel-down y is
+    /// negative and must scroll DOWN (cosmic-text scroll.vertical grows
+    /// downwards); hammering past the bottom must clamp (shape_until_scroll
+    /// normalizes scroll.line instead of accumulating an unbounded vertical,
+    /// which used to walk the whole file per frame = "not responding" on
+    /// large files); wheel at a boundary is a no-op without repaint.
+    #[test]
+    fn plan626_wheel_direction_clamps_at_bottom_and_noops_at_boundary() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-wheel-clamp");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig::default();
+        let line_height = config.line_height();
+        let core = code_editor(&key, &config);
+        let line_count = 60usize;
+        let text = (0..line_count)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        with_font_system(|fs| core.set_text(&text, fs));
+        // Simulate the iced draw-path sizing (render normally does this).
+        with_font_system(|fs| {
+            let mut editor = core.editor_lock();
+            editor.with_buffer_mut(|b| b.set_size(fs, Some(300.0), Some(200.0)));
+        });
+        let scroll_of = || {
+            with_font_system(|fs| {
+                let editor = core.editor_lock();
+                editor.with_buffer(|b| b.scroll())
+            })
+        };
+
+        // 1) Wheel DOWN (winit y negative) scrolls down.
+        with_font_system(|fs| core.handle_wheel(fs, 0.0, -3.0, false));
+        let after_down = scroll_of();
+        assert!(
+            after_down.line > 0 || after_down.vertical > 0.0,
+            "wheel down must scroll down, got {after_down:?}"
+        );
+
+        // 2) Hammering far past the bottom clamps and stays stable.
+        for _ in 0..60 {
+            with_font_system(|fs| core.handle_wheel(fs, 0.0, -3.0, false));
+        }
+        let bottom = scroll_of();
+        let viewport_lines = (200.0 / line_height).floor().max(1.0);
+        assert!(
+            bottom.line as f32 + viewport_lines >= line_count as f32 - 1.0,
+            "bottom must be reachable: scroll {bottom:?} vs {line_count} lines"
+        );
+        let out = with_font_system(|fs| core.handle_wheel(fs, 0.0, -3.0, false));
+        assert_eq!(scroll_of(), bottom, "clamped at bottom: no further movement");
+        assert!(
+            !out.request_redraw,
+            "at-boundary wheel must not request a repaint"
+        );
+
+        // 3) Wheel UP past the top clamps back to line 0 / vertical 0.
+        for _ in 0..80 {
+            with_font_system(|fs| core.handle_wheel(fs, 0.0, 3.0, false));
+        }
+        let top = scroll_of();
+        assert_eq!(top.line, 0, "top clamp");
+        assert_eq!(top.vertical, 0.0, "top clamp");
+        let out = with_font_system(|fs| core.handle_wheel(fs, 0.0, 3.0, false));
+        assert!(!out.request_redraw, "at-top wheel must not request a repaint");
+    }
 
     /// Test font-system callback: one process-wide FontSystem behind a
     /// RwLock, mirroring the iced adapter's install.
