@@ -300,6 +300,9 @@ pub struct CodeEditorCore {
     /// Plan 428 P1: the fold map computed by the last render (regions +
     /// merged hidden ranges). Hit testing and the gutter read this.
     fold_map: Mutex<Arc<fold::FoldMap>>,
+    /// PLAN-629 T-03: pending follow-scroll target (content-space y), set
+    /// by the widget on keyboard/IME caret moves; drained by dispatch_app.
+    caret_follow: Mutex<Option<f32>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -479,6 +482,7 @@ impl CodeEditorCore {
             gutter_width_cache: Mutex::new((0, 0.0)),
             folds: Mutex::new(BTreeSet::new()),
             fold_map: Mutex::new(Arc::new(fold::FoldMap::default())),
+            caret_follow: Mutex::new(None),
         };
         this.apply_config_locked(&config, font_system);
         this
@@ -1540,6 +1544,22 @@ impl CodeEditorCore {
     /// usually OFF-viewport when a follow-scroll is needed, so a render-
     /// derived value would not exist. Wrap mode under-estimates by prior
     /// wrapped rows (uniform-height approximation; auto-edit ships wrap off).
+    /// Queue a follow-scroll to `target_y` (content-space offset). The
+    /// session funnel drains it the same message pass (scroll_to task).
+    pub fn request_caret_follow(&self, target_y: f32) {
+        *self.caret_follow.lock().unwrap() = Some(target_y);
+    }
+
+    /// Drain the pending follow-scroll request, if any.
+    pub fn take_caret_follow(&self) -> Option<f32> {
+        self.caret_follow.lock().unwrap().take()
+    }
+
+    /// Line height from the active config (hosted follow-scroll math).
+    pub fn config_line_height(&self) -> f32 {
+        self.config.lock().unwrap().line_height()
+    }
+
     pub fn caret_offset_y(&self) -> Option<f32> {
         let map = self.fresh_fold_map();
         let editor = self.editor_lock();
@@ -1709,6 +1729,20 @@ pub fn code_editor_caret_offset_y(key: &str) -> Option<f32> {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
     map.get(&key).and_then(|core| core.caret_offset_y())
+}
+
+/// PLAN-629 T-03: drain pending follow-scroll requests from ALL editors —
+/// (key, content-space target offset) pairs; the session funnel turns them
+/// into `operation::scroll_to` tasks targeting `editor-scroll-<key>`.
+pub fn code_editor_drain_caret_follows() -> Vec<(String, f32)> {
+    let map = CODE_EDITORS.lock().unwrap();
+    let mut out = Vec::new();
+    for (key, core) in map.iter() {
+        if let Some(y) = core.take_caret_follow() {
+            out.push((key.clone(), y));
+        }
+    }
+    out
 }
 
 /// Read the cursor position of an editor: (line 0-based, char column,

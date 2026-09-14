@@ -743,14 +743,29 @@ def run_tests(mcp_url, proc):
     else:
         print("  NOTE  AUTO_OPEN_PATH not set; skipping T11")
 
-    print("\nT8: ActQuit (menu item)")
+    print()
+    print("T8: ActQuit (menu item)")
     open_menu(mcp, snap_cache, "文件")
     item = find_button_by_text(snap_cache[0], "退出")
     if item:
-        # ActQuit runs Process.exit(0): the process may die before the HTTP
-        # response completes — a dropped connection here IS the success path.
+        # ActQuit（PLAN-626 T-06 起）带脏检查：有脏 tab 先弹退出确认
+        # alert-dialog。T6 的键入/撤销序列会遗留 dirty tab —— 确认层出现时
+        # 走「不保存退出」(QuitDiscard) 完成退出。Process.exit(0) 可能在
+        # HTTP 响应完成前杀进程——连接被断即成功路径（异常吞掉）。
         try:
             mcp.click(item)
+        except (requests.ConnectionError, requests.Timeout):
+            pass
+        try:
+            for _ in range(4):
+                snap_cache[0] = mcp.snapshot()
+                discard = find_button_by_text(snap_cache[0], "不保存退出")
+                if proc.poll() is not None:
+                    break
+                if discard:
+                    mcp.click(discard)
+                    break
+                time.sleep(0.3)
         except (requests.ConnectionError, requests.Timeout):
             pass
         for _ in range(10):
