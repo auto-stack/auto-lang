@@ -327,7 +327,7 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
   ledger: .autoos/specs.json P623-1..P623-6 (runtime projection, one item per
   reports/goals/architecture/designs/tests/reviews section; read-back verified) |
   archive: docs/plans/archive/623-autoui-mcp-test-fixture.md |
-  cleanup: pending worktree guard/removal receipt.
+  cleanup: guard clean (Git Bash wt-guard exit=0); D:/autostack/.wt/lang-623-merge/auto-lang removed; branch merge/plan-623 deleted.
 
 ## 10. 待澄清事项
 
@@ -337,6 +337,7 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 - VM no-merge 集成测试需要可用的本地 HTTP backend 启动方式；若环境缺失，
   记录为环境阻断，不以 merged 结果代替。
 - 本计划完成前，Plan 005 的 VM fixture golden 保持 blocked。
+
 
 
 
