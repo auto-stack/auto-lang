@@ -1,0 +1,45 @@
+// p2_app.at — PLAN-624 red corpus (P2): ?str store field read in a map
+// literal arg from a widget handler. The jade Edit arm crashed here with
+// Invalid object ID (0x80000001 sign-extension) — the ?str value encoding
+// crossing the state-object boundary. Isolated root file (own store copy
+// with ?str active_path) so the P2 crash cannot mask the P1 arms.
+
+use store: OptStore
+use back.api: read_wiki
+
+widget OptApp {
+    msg { OpenPage(str), Edit }
+
+    model {
+        var status str = "boot"
+        var view_dirty bool = false
+        var probe_path str = "unread"
+    }
+
+    on {
+        .OpenPage(path) -> {
+            OptStore.Open({ path: path, title: "" })
+            .status = "opened"
+        }
+
+        .Edit -> {
+            OptStore.SetBody({ path: "Hello World.ad", body: "typed" })
+            .status = "dispatch-ok"
+            .probe_path = .active_path
+            .status = "read-ok"
+            var t = .tabs.find(tt => tt.path == .active_path)
+            if t != null {
+                .view_dirty = t.dirty
+                .status = "edited"
+            }
+        }
+    }
+
+    view {
+        col {
+            text .status
+            text .active_path
+            text .probe_path
+        }
+    }
+}

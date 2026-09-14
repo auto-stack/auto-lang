@@ -1,0 +1,28 @@
+// p4_app.at — PLAN-624 red corpus (P4): list find_index. Before the native
+// lands the call silently no-ops (idx stays sentinel); after it returns the
+// first matching index. Mirrors the jade `findIndex(t => t.path == path)`
+// usage.
+
+widget FindApp {
+    msg { Probe }
+
+    model {
+        var status str = "boot"
+        var nums = [7, 8, 9]
+        var idx int = -99
+    }
+
+    on {
+        .Probe -> {
+            .idx = .nums.find_index(n => n == 8)
+            .status = "probed"
+        }
+    }
+
+    view {
+        col {
+            text .status
+            text .idx
+        }
+    }
+}

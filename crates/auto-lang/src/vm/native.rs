@@ -3205,6 +3205,51 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+/// List.find_index(closure) -> int — first matching index, or -1 on miss.
+/// PLAN-624 (P4): jade `findIndex(t => t.path == path)` 用法；此前列表原生面
+/// 无 find_index，调用静默失效。栈：list_id, closure_id -> index(i32)。
+pub fn shim_list_find_index(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: genuine ListData<i32>
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for (i, elem) in elements.iter().enumerate() {
+            push_tagged_value_rc(vm, task, *elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let found = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
+            if vm_is_truthy(found) {
+                task.ram.push_i32(i as i32);
+                return Ok(());
+            }
+        }
+        task.ram.push_i32(-1);
+        return Ok(());
+    }
+
+    // Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for (i, elem) in elements.iter().enumerate() {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let found = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
+        if vm_is_truthy(found) {
+            task.ram.push_i32(i as i32);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(-1);
+    Ok(())
+}
+
 /// List.any(closure) -> bool
 /// Stack: closure_id, list_id -> bool (1/0)
 pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {

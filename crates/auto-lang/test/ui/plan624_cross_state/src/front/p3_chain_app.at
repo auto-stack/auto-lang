@@ -1,0 +1,33 @@
+// p3_chain_app.at — PLAN-624 red corpus (P3): JS-idiom &&/|| chains on
+// struct operands. On the VM these evaluate as BOOLEAN logic — the jade
+// title read back as literal `true`. Agreed ruling: non-bool operands of
+// &&/|| must be a compile-time error (forces the explicit null-guard
+// form); this corpus must FAIL handler synthesis with that diagnostic.
+
+use store: ChainStore
+
+widget ChainApp {
+    msg { Probe }
+
+    model {
+        var status str = "boot"
+        var pages = []
+    }
+
+    on {
+        .Init -> {
+            .pages.push({ title: "A", body: "x" })
+        }
+
+        .Probe -> {
+            var t = .pages[0]
+            .status = t.frontmatter && t.frontmatter.title || "fallback"
+        }
+    }
+
+    view {
+        col {
+            text .status
+        }
+    }
+}
