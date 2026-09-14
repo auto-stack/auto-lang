@@ -2150,6 +2150,20 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 
 ---
 
+## PLAN-626（auto-edit VM 实机验证四修正）遗留
+
+> 关联计划 `626-auto-edit-vm-polish.md`（执行完毕待复审）；worktree plan-626-dev
+> 5b7cd5f6a。P618-D3 的两个症状在本计划闭环/绕开，框架底层缺陷仍留一臂：
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P626-D1 | medium | VM 渲染 | **坐标锚 popover（x/y 锚、Empty anchor）在 VM 下有落回普通流的形态**——confirm 弹层文案曾渲染页底（P618-D3 前半）。本计划示例侧改用 alert-dialog（模态族）绕开；**底层缺陷仍在**：非模态坐标锚弹层的 overlay 遍历剔除/1px 隐形锚防线未覆盖全部形态，其他以 popover 坐标锚做弹层的应用仍会踩 | aura_view_builder convert_popover 坐标锚臂（≈7763-7785）；renderer.rs 4475 一带；plan626 §4 P2 调查 |
+| P626-D2 | low | 测试基建 | **desktop_mcp.py 矩阵对并行会话无隔离**：实例 MCP 端口取空闲但窗口/进程可被同机其他会话的 taskkill/窗口操作误杀（复跑期间多轮中断，应用日志无 panic/退出痕迹）。已修其中的 T10 热重载 CRLF 回写自毒（newline=''），进程级隔离未做 | 041-auto-edit tests/desktop_mcp.py；P626 §8 T-07 证据 |
+| P626-D3 | low | VM 渲染 | **P618-D3 后半（状态栏 `${store.line}` 字面量直出）已由本计划修复**（插值多段点路径 + 失败保点回退），P618-D3 条目可在下次整理时标注半闭环 | aura_view_builder resolve_literal_interpolation_with；plan626 T-01 |
+| P626-D4 | medium | 架构 | **code_editor 滚动条是 Plan 413 定制引擎自绘（非 AutoUI scroller 组件）**——样式/行为与官方组件不一致（用户实机提出）；拖拽死锁与滚轮钳制已在 P626 修复，但自绘滚动条与标准 scroller 的长期统一（或抽公共滚动条组件）属架构级改造，待真实需求立项 | code_editor/core/mod.rs drag_scrollbar_*；code_editor/core/render.rs scrollbars 节；plan626 rev2 T-09 |
+
+---
+
 ## 架构裁定留底（AutoUI 仓界，2026-09-13，非计划关联）
 
 > 源自 2026-09-13 AutoUI 拆仓可行性分析（AutoOS 迁独立仓后的跟进议题）。
