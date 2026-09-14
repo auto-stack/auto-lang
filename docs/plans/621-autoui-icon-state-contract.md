@@ -363,6 +363,22 @@ docs/components/core.md                               改：docs_gen 重生成�
   autoui_vtree（预存结构行为，影响 VM 端样式断言可达性，债务候选）` |
   `evidence: 见 T-08 勾选块（7e37420dd）；plan621 10/10 + test_a2vue 25/26
   最终 HEAD 复跑` | `next: merge`。
+- 2026-09-14 merge 收据（/auto-plan:merge）：`PLAN-621:r1` | `outcome: blocked
+  （仅 landed 检查点，publication-only blocker）`
+  - `prepared` ✅：worktree 内先和解 master（e0c404f57，零冲突并入
+    PLAN-622/桌面线 21 提交）→ 和解合并提交 `15dfe1a11` = delivery commit；
+    和解后 scoped 刷新 27/27（含 desktop 金样——他会话已在 master 修复）
+    + docs_gen 4/4（跨仓 kitchen-sink 再生后）。
+  - 跨仓同步义务 ✅ 已关闭：auto-os `ee043b8` 提交
+    `widgets-gallery/src/front/pages/kitchen-sink.at`（icon state 两示例行，
+    基准=本分支 schema）。
+  - `landed` ⏸ **blocked**：主检出 master 存在**他会话未提交的进行中改动**
+    （`ui/iced/renderer.rs`、`layout_tests.rs`、`terminal_pixel_tests.rs`、
+    `terminal/iced/{mod,widget}.rs`、terminal_pixel PNG），`git merge
+    plan-621-dev` 拒绝覆盖脏文件（正确保护）。轮询 2 分钟未清。**恢复动作**：
+    待他会话提交后，在 master 重跑 `git merge plan-621-dev`；若 master 进一步
+    前进则先在 worktree 重入和解（重跑 scoped 验证）。
+  - `ledger_refreshed` / `archived` / `cleaned`：待 landed 后依序执行。
 
 ## 待澄清事项
 
