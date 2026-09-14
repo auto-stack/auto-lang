@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-626
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-edit-vm-polish
 author: [agent]
 created_at: 2026-09-14
