@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-625
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-gallery-vm-usability
 author: [agent]
 created_at: 2026-09-14
@@ -244,6 +244,14 @@ FN_PROLOG 校验、不再 poisoned。单测：循环体 handler 编译 + 导出�
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成]
 一行证据）
+
+**执行布局（2026-09-14 work 起run 登记）**：auto-lang worktree
+`D:/autostack/.wt/lang-625/auto-lang`（branch `plan-625-dev`，base
+d2f983d63=计划提交）；auto-os 兄弟 worktree
+`D:/autostack/.wt/lang-625/auto-os`（branch `plan-625-dev`，base
+48ae6da）；auto-os 主检出另有他会话在途脏文件（apps/025-sys-monitor），
+不在本计划范围、不触碰。跨仓解析靠组内兄弟 `../auto-lang` 命中 worktree
+（禁 junction/symlink）。
 
 - **T-01** 生成器双产物：`crates/auto-lang/crates/auto-man/src/vue.rs`
   （`generate_gallery_host` :4045）扩展 `.at` 发射 + golden 测试。先行有界调研
