@@ -161,7 +161,9 @@ fn vue_qualified_module_form_byte_matches_bare() {
     );
     // 显式钉住 import 头存在（失败时诊断信息更直接）。
     assert!(
-        qualified.vue_code.contains("import { get_lines, term_cols } from '@/lib/api'"),
+        qualified
+            .vue_code
+            .contains("import { get_lines, term_cols } from '@/lib/api'"),
         "module-form SFC must emit the api client import:\n{}",
         qualified.vue_code
     );
@@ -213,8 +215,14 @@ widget App {{
     }
 
     // 形态一：单语句 async-Init（R627-F2 修复点）。
-    let init_qualified = gen(".Init -> {\n            .lines = {HEAD}\n        }", "api.get_lines()");
-    let init_bare = gen(".Init -> {\n            .lines = {HEAD}\n        }", "get_lines()");
+    let init_qualified = gen(
+        ".Init -> {\n            .lines = {HEAD}\n        }",
+        "api.get_lines()",
+    );
+    let init_bare = gen(
+        ".Init -> {\n            .lines = {HEAD}\n        }",
+        "get_lines()",
+    );
     assert_eq!(
         init_qualified, init_bare,
         "single-statement async-Init must be byte-identical across forms:\n--- qualified ---\n{}\n--- bare ---\n{}",
@@ -226,11 +234,16 @@ widget App {{
     );
 
     // 形态二：普通 handler 赋值（无 async-Init 改写路径）。
-    let save_qualified = gen(".Save -> {\n            .lines = {HEAD}\n        }", "api.get_lines()");
-    let save_bare = gen(".Save -> {\n            .lines = {HEAD}\n        }", "get_lines()");
+    let save_qualified = gen(
+        ".Save -> {\n            .lines = {HEAD}\n        }",
+        "api.get_lines()",
+    );
+    let save_bare = gen(
+        ".Save -> {\n            .lines = {HEAD}\n        }",
+        "get_lines()",
+    );
     assert_eq!(
         save_qualified, save_bare,
         "plain handler must be byte-identical across forms"
     );
 }
-
