@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-621
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: autoui-icon-state-contract
 author: [zhaopuming]
 created_at: 2026-09-14
@@ -12,7 +12,7 @@ new_spec_components: []       # 复审终值：SD-01/SD-02 均为既有 ui/overv
 touched_goals: []             # goals.md 无 ui/icon 相关 GOAL ID 可挂
 
 affects: [auto-lang/ui]
-current_step: 7
+current_step: 8
 total_steps: 8
 ---
 
@@ -265,28 +265,25 @@ docs/components/core.md                               改：docs_gen 重生成�
   策略）落 overview.md 构建注记节；spec-index 再生无漂移。**ledger 行留待
   merge 阶段投影**（live ledger 由 /auto-plan:merge 统一刷新，work 内不改
   派生账本）。
-- [ ] **T-08 双端 e2e + 复审**：030 smoke 增 state 翻转断言，autoui-verifier 双端
+- [x] **T-08 双端 e2e + 复审**：030 smoke 增 state 翻转断言，autoui-verifier 双端
       跑；`cargo t` 对拍基线；按 `/auto-plan:review` 逐条对拍 AC。（→AC-01/03/05）
-  [🔶 部分完成 2026-09-14] **cargo t 对拍已完成**：全量 no-fail-fast 22 红，
-  其中 21 个经 base（5c444818f）detached worktree 复跑同样红；`ffi_dual_019`
-  初次归因证据不足（采样截断），复审阶段补实为**预存并发 flaky**（base 全量
-  tv 亦偶发，错误形态一致——auto-cache 方法包缓存跨进程竞态，详见 §9 F-2）。
-  **零新增红成立**。其余预存红归因：layout 族 14 + plan492/c2_param +
-  plan055_strip_html + app_registry_curation + desktop_coverage + p010_popover
-  + desktop 金样 = PLAN-012 桌面合并震荡面；`external_config_poll_hot_apply_
-  loopsafe` 为在案并发 flake。`plan621` 10/10、`plan619` 锚全绿。附注：base
-  处 `auto-cache` crate 存在**预存编译错误**（`ShimMethod.trait_name` 缺字段，
-  methods_pack.rs:697，他会话跨 crate 改动未同步）——裸 `cargo test`（全
-  workspace）被它挡住，`cargo t`（-p auto-lang）不受影响。**e2e 部分 defer**：
-  030 全栈冒烟依赖链在本 worktree 未就绪（gen/front/vue node_modules 缺失、
-  AUTO_MEDIA_ROOT 媒体卷、`auto` 二进制未构建、playwright 安装位不明——
-  主检出 tests/node_modules 亦为空，620 的 e2e 运行方式待考）。运行时风险
-  已被既有覆盖缓解：`text-primary` 由 030 现网使用（app.at:49）、
-  `:stroke-width` 是 lucide-vue-next 文档化 prop。**解阻步骤**：worktree 内
-  `pnpm install`（030 tests/ 与 gen/front/vue）→ `cargo build -p auto` →
-  `AUTO_MEDIA_ROOT='E:\Video' auto run` → `pnpm exec playwright test`；
-  或由 review 阶段在已备环境执行。【复审 F-1 裁定：AC-01/03 的 e2e 半证据
-  必须补齐（needs_fix），本任务重开待修】
+  [✅ 已完成 2026-09-14（F-1 修复后）] worktree `7e37420dd`。**双端运行时证据
+  齐备**：①Web 腿——030 `app.at` 队列键绑 `state: .store.show_playlist`，
+  `smoke.spec.ts` T-STATE 真实 Chrome 通过：初始 `text-primary` +
+  `stroke-width="2.5"` → 点击 `text-muted-foreground` + attr 移除 → 再点还原；
+  生成面核验 `:class` 三元 + `:stroke-width` 三元发射；T8b/T10 无回归。
+  ②VM 腿——`vm-smoke.mjs` F 块：`autoui_state` 的 `show_playlist` 随按键
+  反应式翻转；vtree 类断言按预存结构行为条件跳过（按钮内嵌图标不落
+  vtree——row 内图标在树而按钮内不在，live 探测实证）；尽力截图存档
+  `tests/screenshots/030-e2e-state-after-toggle.png`。③基线——`cargo t`
+  22 红 + `cargo tv` 3694/3696 的红全部 base 复现（21 直接 + F-2 flake
+  补实）；最终 HEAD 复跑 25/26（1 红同前归因）。tests 锁
+  `@playwright/test@1.63.0`。**e2e 口径注记**：Web 腿运行于临时 stub 媒体
+  API（8330 只服务 scan；本次 `auto run` 未自启 Rust 后端，疑 rust-workspace
+  成员注册问题——KNOWN-DEBT 候选），T-STATE 不涉播放断言；播放链证据沿用
+  617/620 在案记录。
+  【历史：本任务曾 🔶 部分（cargo t 对拍完成 + e2e defer），复审 F-1 裁定
+  needs_fix 后于修复循环 1/3 内补齐，证据如上】
 
 ## 分支与提交归属
 
@@ -351,6 +348,21 @@ docs/components/core.md                               改：docs_gen 重生成�
     组件路径，本次订正。
 
   `next: work`（仅修 F-1；F-2 转债务记录不动代码）。
+- 2026-09-14 re-review（/auto-plan:review，修复循环 1/3 后）：`stage: review` |
+  `plan_id: PLAN-621` | `plan_revision: 1` | `outcome: pass` |
+  `reviewed_commit: 7e37420dd`（plan-621-dev）| `base_commit: 5c444818f` |
+  `dependency_revisions: auto-down 67bb508 (detached)` | `spec_inputs: 同前
+  （SD-01/SD-02 已落 overview.md，注记已登记；本轮无 spec 文本变更）` |
+  `acceptance_results: AC-01 pass（Web T-STATE 真实 Chrome 三段断言 +
+  VM autoui_state 翻转 + 截图存档；F-1 半证据补齐）、AC-02 pass、AC-03 pass
+  （绑定三元 + T-STATE 点击往返）、AC-04 pass、AC-05 pass（22 红 + tv
+  3694/3696 全部 base 复现，F-2 补实）、AC-06 pass` | `findings: F-1 已关闭
+  （7e37420dd）；F-2 已定案预存 flaky 并转 KNOWN-DEBT 候选（auto-cache 域）；
+  新增观察两条非阻塞项——(a) `auto run` 未自启 030 的 Rust 后端（8330），
+  本次以 stub 提供扫描端点，后端自启链待查（债务候选）；(b) 按钮内嵌图标不进
+  autoui_vtree（预存结构行为，影响 VM 端样式断言可达性，债务候选）` |
+  `evidence: 见 T-08 勾选块（7e37420dd）；plan621 10/10 + test_a2vue 25/26
+  最终 HEAD 复跑` | `next: merge`。
 
 ## 待澄清事项
 
