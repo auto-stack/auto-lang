@@ -22370,6 +22370,54 @@ widget L {
     /// `menubar {}` 占位标签 → shadcn Menubar 组件树（trigger 文本/sep/
     /// 条件转译），无 actions 时保持原行为。
     #[test]
+    /// PLAN-630 T-02: declarative menubar component family → shadcn
+    /// Menubar tree (tags route through the generic shadcn element path
+    /// with the menubar_* prop arms).
+    #[test]
+    fn plan630_declarative_menubar_generates_shadcn_tree() {
+        let src = concat!(
+            "widget App {\n",
+            "    model { var console_open bool = false }\n",
+            "    view {\n",
+            "        col {\n",
+            "            menubar {\n",
+            "                menubar-menu (value: \"view\") {\n",
+            "                    menubar-trigger \"视图\"\n",
+            "                    menubar-content {\n",
+            "                        menubar-checkbox-item (title: \"切换 Console\", checked: .console_open) { onclick: .ActConsole }\n",
+            "                        menubar-separator\n",
+            "                        menubar-item (title: \"全选\", shortcut: \"Ctrl+A\") { onclick: .ActSelectAll }\n",
+            "                    }\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "    on { .ActConsole -> { } .ActSelectAll -> { } }\n",
+            "}\n",
+        );
+        let sfc = gen_sfc_from_widget_src_shadcn(src);
+        assert!(
+            sfc.contains("Menubar"),
+            "menubar component present:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("切换 Console"),
+            "checkbox item title present:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("全选"),
+            "plain item title present:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("ActConsole") && sfc.contains("ActSelectAll"),
+            "onclick handlers wired:\n{}",
+            sfc
+        );
+    }
+
     fn test_actions_menubar_synthesis() {
         let sfc = gen_sfc_from_widget_src_shadcn(ACTIONS_SRC);
         assert!(
