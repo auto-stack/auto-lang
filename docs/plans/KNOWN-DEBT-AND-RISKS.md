@@ -2072,6 +2072,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   dep cdylib spawn 计时敏感——`cargo tv`/`cargo tf` 全档并发下偶发红
   （P615 执行期 2 次），隔离复跑双侧（分支/基线）3-4× 恒绿。非本计划引入
   （基线同源）。留 flaky 排查（nextest retries 或测试内重试）。
+  **2026-09-14 补充观察（PLAN-627 R2 复审）**：同日全档 4 轮采样 =
+  绿 2 / 红 2（3.4-3.9s 快败，错误形态同 621-F-2）；另观测 1 次**挂死
+  新表现**——nextest 进程 10min+ 零进展零输出（RSS 恒定），kill 后恢复；
+  疑同族竞态的挂起分支。持续高负载时段频度上升，排查时建议含超时护栏
+  （nextest per-test timeout）候选。
 - **P615-D4 [VM 数值域跨端语义文档化缺口]**：实测三面——`int` 表达式乘法
   i32 回绕（65536×65536→0）而字面量加法宽（4294967295+1=4294967296）；
   `int` 状态/局部存储截断 i32；`u64` 局部算术全程精确但经动态组件状态管道
@@ -2147,6 +2152,20 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P618-D2 | medium | 转译器 | **vue 转译器对「模块 fn 参数名与 model 字段同名」误加 `.value` 拆包**——SFC 运行时 TypeError 整页白屏（018 ch_nodes(chapters) 实证）；规避=参数避开 model 字段名，已入 tree-components.md 陷阱节 | 018 reading.at ch_nodes；契约「⚠ 模块 fn 转译陷阱」 |
 | P618-D3 | low | VM 渲染 | **041 VM 预存怪象（非 tree 引入）**：confirm 弹层 open:false 文案仍渲染页底（与 P618-1 同族、VM popover 臂）+ 状态栏 `${store.line}` 字面量直出 | 041-auto-edit VM 截图 t06；app.at popover/StatusBar |
 | P618-D4 | low | 工具面 | **018 VM 轨书架卡片 onclick（页面级 for-loop 载荷）MCP press 不可寻址**——阅读页经 MCP 不可达，章节树 VM 直接交互验证受限（组件 VM 行为已 041/026/027 三重实证）；P614-C1 家族 | 018 bookshelf.at OpenBook；plan §复审 F-2/P618-5 |
+
+---
+
+## PLAN-626（auto-edit VM 实机验证四修正）遗留
+
+> 关联计划 `626-auto-edit-vm-polish.md`（执行完毕待复审）；worktree plan-626-dev
+> 5b7cd5f6a。P618-D3 的两个症状在本计划闭环/绕开，框架底层缺陷仍留一臂：
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P626-D1 | medium | VM 渲染 | **坐标锚 popover（x/y 锚、Empty anchor）在 VM 下有落回普通流的形态**——confirm 弹层文案曾渲染页底（P618-D3 前半）。本计划示例侧改用 alert-dialog（模态族）绕开；**底层缺陷仍在**：非模态坐标锚弹层的 overlay 遍历剔除/1px 隐形锚防线未覆盖全部形态，其他以 popover 坐标锚做弹层的应用仍会踩 | aura_view_builder convert_popover 坐标锚臂（≈7763-7785）；renderer.rs 4475 一带；plan626 §4 P2 调查 |
+| P626-D2 | low | 测试基建 | **desktop_mcp.py 矩阵对并行会话无隔离**：实例 MCP 端口取空闲但窗口/进程可被同机其他会话的 taskkill/窗口操作误杀（复跑期间多轮中断，应用日志无 panic/退出痕迹）。已修其中的 T10 热重载 CRLF 回写自毒（newline=''），进程级隔离未做 | 041-auto-edit tests/desktop_mcp.py；P626 §8 T-07 证据 |
+| P626-D3 | low | VM 渲染 | **P618-D3 后半（状态栏 `${store.line}` 字面量直出）已由本计划修复**（插值多段点路径 + 失败保点回退），P618-D3 条目可在下次整理时标注半闭环 | aura_view_builder resolve_literal_interpolation_with；plan626 T-01 |
+| P626-D4 | medium | 架构 | **code_editor 滚动条是 Plan 413 定制引擎自绘（非 AutoUI scroller 组件）**——样式/行为与官方组件不一致（用户实机提出）；拖拽死锁与滚轮钳制已在 P626 修复，但自绘滚动条与标准 scroller 的长期统一（或抽公共滚动条组件）属架构级改造，待真实需求立项 | code_editor/core/mod.rs drag_scrollbar_*；code_editor/core/render.rs scrollbars 节；plan626 rev2 T-09 |
 
 ---
 

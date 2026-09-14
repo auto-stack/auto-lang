@@ -135,7 +135,19 @@ function main() {
     if (argv[i] === "--src") srcDir = argv[++i];
   }
   if (srcDir) {
-    version = "explicit --src";
+    // PLAN-620 T-07：--src 模式也尽量向上找 lucide-vue-next/package.json 取
+    // 版本（srcDir 惯例是 <pkg>/dist/esm/icons）——否则产物版本记 "unknown"，
+    // 漂移门禁只能跳过。
+    let probe = path.resolve(srcDir);
+    for (let i = 0; i < 6 && probe !== path.parse(probe).root; i++) {
+      if (path.basename(probe) === "lucide-vue-next") {
+        try {
+          version = JSON.parse(fs.readFileSync(path.join(probe, "package.json"), "utf8")).version;
+        } catch {}
+        break;
+      }
+      probe = path.dirname(probe);
+    }
   } else {
     const hit = discoverSource();
     if (!hit) {
@@ -198,6 +210,9 @@ function main() {
   }
   lines.push("];");
   lines.push("");
+  // PLAN-620 T-07：机器可读的源版本——漂移门禁对拍用（"unknown" 时测试自跳过）。
+  lines.push(`pub(super) const LUCIDE_SOURCE_VERSION: &str = "${version}";`);
+  lines.push("");
   lines.push("/// 二分查名。命中返回字形内部 markup（24×24 坐标系，不含 `<svg>` 外壳）。");
   lines.push("pub(super) fn lookup(name: &str) -> Option<&'static str> {");
   lines.push("    LUCIDE_ICONS");
@@ -233,6 +248,57 @@ function main() {
   lines.push("    #[test]");
   lines.push("    fn lookup_misses_are_none() {");
   lines.push("        assert!(lookup(\"definitely-not-a-lucide-icon\").is_none());");
+  lines.push("    }");
+  lines.push("");
+  lines.push("    /// PLAN-620 T-07 漂移门禁：表头记录的源版本 ↔ 本地实际安装的");
+  lines.push("    /// lucide-vue-next 版本对拍——版本漂移（升包未再生）即红，指路再生命令。");
+  lines.push("    /// 本地找不到安装包（CI/纯净 checkout）或生成时版本未知（--src 无 package.json）");
+  lines.push("    /// 时跳过；探测根可用 LUCIDE_VUE_NEXT_ROOT 覆盖（仓内 examples 优先）。");
+  lines.push("    #[test]");
+  lines.push("    fn source_version_matches_installed_package() {");
+  lines.push("        if LUCIDE_SOURCE_VERSION == \"unknown\" {");
+  lines.push("            eprintln!(\"skipped: 生成时未记录源版本\");");
+  lines.push("            return;");
+  lines.push("        }");
+  lines.push("        let mut roots = vec![std::path::PathBuf::from(\"examples\")];");
+  lines.push("        if let Ok(env_root) = std::env::var(\"LUCIDE_VUE_NEXT_ROOT\") {");
+  lines.push("            roots.push(std::path::PathBuf::from(env_root));");
+  lines.push("        }");
+  lines.push("        let mut installed: Option<String> = None;");
+  lines.push("        for root in &roots {");
+  lines.push("            for entry in walkdir::WalkDir::new(root)");
+  lines.push("                .max_depth(12)");
+  lines.push("                .into_iter()");
+  lines.push("                .filter_map(|e| e.ok())");
+  lines.push("            {");
+  lines.push("                if entry.file_name().to_string_lossy() != \"lucide-vue-next\" {");
+  lines.push("                    continue;");
+  lines.push("                }");
+  lines.push("                let pj = entry.path().join(\"package.json\");");
+  lines.push("                let Ok(txt) = std::fs::read_to_string(&pj) else { continue };");
+  lines.push("                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {");
+  lines.push("                    if let Some(ver) = v.get(\"version\").and_then(|x| x.as_str()) {");
+  lines.push("                        let better = installed.as_deref().map_or(true, |cur| {");
+  lines.push("                            ver > cur");
+  lines.push("                        });");
+  lines.push("                        if better {");
+  lines.push("                            installed = Some(ver.to_string());");
+  lines.push("                        }");
+  lines.push("                    }");
+  lines.push("                }");
+  lines.push("            }");
+  lines.push("            if installed.is_some() {");
+  lines.push("                break;");
+  lines.push("            }");
+  lines.push("        }");
+  lines.push("        let Some(installed) = installed else {");
+  lines.push("            eprintln!(\"skipped: 本地未找到 lucide-vue-next 安装（examples/** 与 LUCIDE_VUE_NEXT_ROOT）\");");
+  lines.push("            return;");
+  lines.push("        };");
+  lines.push("        assert_eq!(");
+  lines.push("            installed, LUCIDE_SOURCE_VERSION,");
+  lines.push("            \"图标表与本地 lucide-vue-next 版本漂移——重跑 `node scripts/gen-lucide-table.mjs` 再生字形表\",");
+  lines.push("        );");
   lines.push("    }");
   lines.push("}");
   lines.push("");

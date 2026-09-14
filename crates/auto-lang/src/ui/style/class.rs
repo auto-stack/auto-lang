@@ -413,6 +413,12 @@ pub enum StyleClass {
     /// Opacity: opacity-{0-100} - L3
     Opacity(u8),
 
+    /// PLAN-621: SVG 描边宽（icon state 契约的激活加重通道）——不开放作者
+    /// class 字面量，仅由 aura_view_builder 的 state 臂按「基档 + 0.5」算好
+    /// 绝对值注入；renderer lucide 路径只读不加工（组合逻辑单点化在 builder）。
+    /// Web 侧不经此类：vue.rs icon 臂直接读 state prop 发射 stroke-width attr。
+    StrokeWidth(f32),
+
     // ========== Position (L3 Advanced) ==========
     /// Position: relative - L3
     Relative,

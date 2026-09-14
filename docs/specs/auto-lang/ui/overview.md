@@ -284,6 +284,42 @@ Width/Height，Vue 生成器折内联 `style="width:Npx;height:Npx"` 并撤缺�
 autoui-verifier 技能「步骤 3.5 像素预算对拍」。实机（1280x800）：面色 Δ0/Δ1、图标 ink 比
 1.03/1.03、左缩进 Δ0/Δ1/Δ0；19 MCP + 18 Vue 场景全绿；`cargo t`/`tv` 零新增红。
 
+⑤**icon `state` 契约（PLAN-621，SD-01）**：`icon` 元素增 `state` prop（`"on"`/`"off"`
+字面量或 bool 绑定）——on 注入 `text-primary`（**运行时 accent 预设主色**：
+`resolve_semantic_rgb` 对 `Color::Primary` 专臂查 `registry::accent_hsl`，dark L+10
+双端统一；token `accent` 是 hover 高亮面非强调色族，不可用）+ 描边加重基档+0.5
+（`StyleClass::StrokeWidth` 承载绝对值，builder `with_state_tint` 单点计算，renderer
+lucide 路径只读消费；基档与 Plan 518 G4② 同式 ≥48px→1.5 否则 2.0）；off 注入
+`text-muted-foreground`（`Color::OnSurface` 双盘 dim）；未声明零注入（输出逐字节
+不变，既有金样零扰动）。优先级「显式 `text-*` 类 > state > 继承」镜像尺寸口径。
+亮度型 on/off（显著 vs dim）对色盲安全，色相型不可用（WCAG 仅靠色相禁令）。
+适用面仅独立 `icon` 元素（button/nav-item 内嵌 icon 的 active 语义独立存在）。
+门禁：`plan621` 10 测（VM 6 + Web 4）+ `test/a2vue/012_icon_state` 金样（五形态）。
+⑥**图库策略（PLAN-621，SD-02）**：lucide 为 AutoUI 主力图库（fill 变体官方不做，
+满/空双态由 ⑤ 的 state 契约承载）；品牌图标/真填充需求走 IconifyJSON 补位管线
+（`set:name` 双段名 + `@iconify-json/*` 锁版本离线可复现），playbook 与调研数据见
+[icon-state-and-library-policy](../../../design/autoui/icon-state-and-library-policy.md)，
+不整体迁移（Remix 同名交集 0 + 反向缺名，波及面基线 29 名）。
+⑦**progress `onseek` 契约（PLAN-620）**：`progress (value:, max:, onseek: .H($0))`
+双端可拖拽 seek——handler 收**条内横向比例 0..1**（作者写 `SeekTo(.duration * $0)`
+无须知道像素或 max）；按下即 seek、**按住期间的移动**才继续 seek（悬停不 scrub）；
+VM 侧新 widget `ui/iced/seek_area.rs`（iced `mouse_area.on_press` 不带坐标，由
+`SeekArea` 自持按下态并在事件现场换算比例，拖动用绝对坐标防拖出条外断流），
+`View::ProgressBar.on_seek` 复用 `PointerMoveHandler` 装配；Web 侧生成器输出
+pointer 三包装（`setPointerCapture`，拖出条外仍跟手，判据取 `e.currentTarget`）；
+与 `PointerArea`（Plan 499，坐标流原语）刻意分离——比例语义不塞坐标契约。**兼容
+锚**：未声明 `onseek` 的 `progress` 输出逐字节不变（测试反断言在案）。
+⑧**图标数据源与生成器（PLAN-620）**：VM 端 lucide 字形由
+`scripts/gen-lucide-table.mjs` 从本地已安装的 lucide-vue-next（离线、幂等、零新
+依赖）生成全量表 `ui/iced/lucide_generated.rs`（当前 1401 条/24×24 markup），
+`lucide_svg` 查表 + 遗留别名（`sidebar`→已更名、`file-icon`→已并入）；重跑
+`node scripts/gen-lucide-table.mjs`（自动发现 `examples/**` 已装包，`--src` 可显式
+并向上探测版本）。**防漂移门禁**：产物内嵌 `LUCIDE_SOURCE_VERSION` 常量 +
+`source_version_matches_installed_package` 对拍测试（升包未再生即红并指路重生，
+找不到安装包/版本未知时跳过）。口径细节见
+[icon-data-source-and-parity](../../../design/autoui/icon-data-source-and-parity.md)。
+尺寸口径见 ⑤ 与 617/619 段（显式类 > `size:` > 默认 20px），此处不重复。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
@@ -427,6 +463,56 @@ env 值（此前 385/454 语料 fss=0 未暴露）。`self` 在闭包体内特�
 handler 的 `__state` 状态对象（此前 CONST_0，`self.field` 全部静默 nil）。
 守卫语料：`plan622_a/a2/a3/b`（facade 读/派发/视图跟随）、
 `plan622_e1/e2`（捕获两形态）。
+
+## icon 字符串协议族（PLAN-018）
+
+icon 通道是**字符串协议**：pac `icon:` → 注册表 `AppRegistryEntry.icon` →
+shell 注入 → 渲染臂按前缀分发。三个后端 + 占位，按回退链求值：
+
+| 前缀 | 后端 | 实现 |
+|---|---|---|
+| `iconfile:<stem>` | 双主题位图文件 | `iced/icon_file.rs`：`{root}/{light,dark}/<stem>.png` → `Handle::from_bytes`，(stem,dark) 键全局缓存（失败占位防重试） |
+| `hicon:<slot>` | native 窗口真图标 | `iced/native_icon.rs`（Plan 515 D1，HICON→RGBA） |
+| `lucide:<name>` / 裸名 | 内嵌 SVG 静态资源 | `lucide_svg_doc` 族 |
+
+- **回退链**：`iconfile:` → `hicon:` → `lucide:` → 占位。任一级未命中
+  （前缀不符 / 资产根缺席 / 文件缺失 / 提取失败）即下沉下一级——纯 lucide
+  名的 app 渲染路径恒不变（零回归边界）。
+- **资产根解析序**：`AUTO_OS_ICON_ROOT` env（桌面 boot 注入）→
+  `AUTO_OS_ROOT/assets/icons` → 缺席。资产与映射表（`mapping.json`，
+  registry id → stem）归 auto-os `assets/icons/`（PLAN-018 SD-02）；切片
+  工具 `auto-os scripts/slice_icons.py --verify` 再生成。
+- **主题**：dark 位取进程级 `theme::dark_mode()`（boot 期 `set_dark_mode`，
+  PLAN-615 链）→ 选 `{dark,light}` 子目录。
+- **接线**：桌面 boot 注册表快照组装后 `apply_icon_mapping` 把命中 id 的
+  `entry.icon` 改写为 `iconfile:<stem>`（未映射原样），同时注入
+  `AUTO_OS_ICON_ROOT`。vue 轨同前缀 → 双 `<img>` 对 + SFC 三行切换规则
+  （宿主根 `.dark` class；无该机制宿主恒浅表）。
+- **stem 白名单** `[A-Za-z0-9_-]`（拼路径前拒收穿越/杂字符）。
+
+## api 模块形态与限定名调用（PLAN-627）
+
+`use back.api` 两形态与限定名调用的发射契约（rust/vue 两发射器对称；
+VM/桌面动态编译路径不在其列——qualified 直落本地字节码为既有行为）：
+
+1. **模块形态抽取**：`use back.api`（无符号清单）与符号形态
+   （`use back.api: a, b`）等价——函数清单自 `resolve_back_api` 定位契约
+   文件的 `#[api]` 注解 fn 枚举（plain pub fn 不入清单；契约缺席/解析
+   失败宽容降级空清单）。消费点为 `ui_gen/api.rs` 与 `auto-man/rust_ui.rs`
+   抽取双写；布局寻得支持 `<root>/app.at` 与 `<root>/src/front/*.at`
+   向上三层，外部后端 `back: { project }` 形态不支持（现网消费者均为
+   符号形态，按需再补）。
+2. **限定名发射等价**：`api.X()`（X ∈ 清单）在 rust/vue 两发射器与裸名
+   `X()` 产物逐字节一致——vue：`await X(...)` 客户端调用 + SFC 头
+   usage-driven `import { … } from '@/lib/api'`；a2r：裸名调用 + 单语句
+   `.Init` async-Init 同走 `__InitLoaded` 形态。金样
+   `plan627_qualified_api_tests`（模块 vs 裸名全产物对拍，含清单门与
+   `__InitLoaded` 形态锚）。
+3. **清单门守卫**：清单外 `api.` head 原样透传（防用户自建同名 `api`
+   对象误伤）。
+4. **VM 语义不变**：裸名 merged no-op 桩语义维持（PLAN-053，plan622
+   守卫在案）；限定名直落本地字节码为 merged 进程内唯一可达形态
+   （auto-term PLAN-017 实证）。
 
 ## 已知坑
 

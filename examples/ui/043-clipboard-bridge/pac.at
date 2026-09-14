@@ -5,3 +5,4 @@ scene: "ui"
 render: "vm"
 front_port: 4043
 title: "ClipboardBridge"
+title_zh: "剪贴板桥"

@@ -307,3 +307,29 @@ test('T8b 静态文案：队列管理入口可见', async ({ page }) => {
   expect(body).toContain('播放队列')
   expect(body).toContain('重新扫描媒体库')
 })
+
+test('T-STATE 图标 state 契约随队列显隐翻转（PLAN-621）', async ({ page }) => {
+  await waitForApp(page)
+  // 队列显隐键的 panel-left 图标绑定 state: .store.show_playlist：
+  //   on  → text-primary + :stroke-width="2.5"（基档 2.0 + 0.5，默认 20px 盒）
+  //   off → text-muted-foreground，描边回落（undefined → Vue 移除 attr）
+  const toggle = page
+    .locator('button')
+    .filter({ has: page.locator('svg.lucide-panel-left-icon') })
+    .first()
+  const icon = page.locator('svg.lucide-panel-left-icon').first()
+
+  // 初始 show_playlist = true → on 态
+  await expect(icon).toHaveClass(/text-primary/, { timeout: 15000 })
+  expect(await icon.getAttribute('stroke-width')).toBe('2.5')
+
+  // 关队列 → off 态：类翻转 + stroke-width attr 被移除
+  await toggle.click()
+  await expect(icon).toHaveClass(/text-muted-foreground/, { timeout: 15000 })
+  expect(await icon.getAttribute('stroke-width')).toBeNull()
+
+  // 再开 → 回到 on 态
+  await toggle.click()
+  await expect(icon).toHaveClass(/text-primary/, { timeout: 15000 })
+  expect(await icon.getAttribute('stroke-width')).toBe('2.5')
+})

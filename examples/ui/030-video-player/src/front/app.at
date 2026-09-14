@@ -77,7 +77,9 @@ widget App {
                     button {
                         onclick: .TogglePlaylist
                         style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-                        icon (name: "panel-left", size: 15)
+                        // PLAN-621 e2e：state 绑定随 .store.show_playlist 翻转
+                        // （on=primary+加重描边 / off=muted），Web/VM 双端同源。
+                        icon (name: "panel-left", size: 15, state: .store.show_playlist)
                     }
                 }
             }

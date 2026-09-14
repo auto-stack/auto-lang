@@ -22,6 +22,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::ui::i18n_lookup::locale_prefers_zh;
+
 /// 一个可启动 App 的注册表条目（R10 最小面）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct AppRegistryEntry {
@@ -29,6 +31,9 @@ pub struct AppRegistryEntry {
     pub id: String,
     /// 显示标题（pac `title:` → `name:` → 目录名）。
     pub title: String,
+    /// PLAN-015：中文展示名（pac `title_zh:`；None = zh locale 回落
+    /// `title`）。展示名与工程标识（id/name）解绑的第二语言面。
+    pub title_zh: Option<String>,
     /// Plan 504 S7：pac `name:`（os-config 应用配置查找键
     /// `apps/<name>/config.at`；None = 无 pac name 声明）。
     pub name: Option<String>,
@@ -76,6 +81,24 @@ fn normalize_opens(raw: &str) -> Vec<String> {
 pub struct ScanOptions {
     /// render 过滤：Some("vm") = 只保留该 render 声明；None = 全收。
     pub render: Option<String>,
+}
+
+impl AppRegistryEntry {
+    /// PLAN-015：展示名解析链（AUTO_LOCALE，缺省 zh）——zh 取 `title_zh →
+    /// title`，en 取 `title`（title 字段已是 pac title→name→目录名兜底产物，
+    /// 链路在此之上不断）。未声明 title_zh 时两 locale 输出一致（零配置
+    /// 零回归）。
+    pub fn display_title(&self) -> &str {
+        self.display_title_in(locale_prefers_zh())
+    }
+
+    /// 纯判定形态（locale 显式入参）——单测与宿主注入侧用，env 无关。
+    pub fn display_title_in(&self, prefers_zh: bool) -> &str {
+        match (prefers_zh, self.title_zh.as_deref()) {
+            (true, Some(zh)) if !zh.trim().is_empty() => zh,
+            _ => &self.title,
+        }
+    }
 }
 
 /// 扫描 `dir` 下一级子目录，产出可启动 App 清单（目录名字典序）。
@@ -133,6 +156,7 @@ fn entry_for_dir(
     Some(AppRegistryEntry {
         id,
         title,
+        title_zh: fields.get("title_zh").cloned(),
         name: fields.get("name").cloned(),
         icon: fields.get("icon").cloned().unwrap_or_else(|| "app-window".to_string()),
         category: fields.get("category").cloned().unwrap_or_else(|| "app".to_string()),
@@ -384,12 +408,11 @@ pub use crate::os_paths::resolve_os_top_dir;
 
 /// auto-os `apps.manifest` 条目（Stage B P-3 定稿 schema；宽容读取——
 /// 未知字段忽略，缺省 kind=repo / status=active，坏条目跳过不阻断启动）。
+/// PLAN-015：`name` 字段退役——展示名唯一事实源在 pac.at（title/title_zh），
+/// manifest 回归纯机器登记（id/repo/kind/ports/status/daemon）。
 #[derive(serde::Deserialize)]
 struct OsManifestApp {
     id: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    name: Option<String>,
     #[serde(default)]
     repo: Option<String>,
     #[serde(default = "os_manifest_default_kind")]
@@ -672,6 +695,10 @@ mod tests {
             "027-file-manager",
             "029-photo-gallery",
             "030-video-player",
+            // 9c6c27e86（2026-09-12）：031-image-viewer 进桌面（auto-os 整理批
+            // 裁定，与 029 互补成对）——pac desktop:"true" 已落但 want 漏更，
+            // master 既有红；PLAN-015 T6 按断言语义补齐（C 档 16→17）。
+            "031-image-viewer",
             // PLAN-553：031-paint 上架（C 档 19→20；像素画板，desktop: true）。
             "031-paint",
             "041-auto-edit",
@@ -681,7 +708,7 @@ mod tests {
         ];
         assert_eq!(
             curated, want,
-            "策展集（desktop_visible）应恰为 C 档 16 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出/PLAN-008 022-kanban 退策展）"
+            "策展集（desktop_visible）应恰为 C 档 17 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出/PLAN-008 022-kanban 退策展/9c6c27e86 增 031-image-viewer——PLAN-015 补 want）"
         );
     }
 
@@ -1198,6 +1225,37 @@ mod tests {
         assert_eq!(a.category, "tool");
         let b = apps.iter().find(|a| a.id == "bare-app").unwrap();
         assert_eq!(b.entry, back_dir.join("src").join("front").join("app.at"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn scan_temp_dir_title_zh_and_display_chain() {
+        // PLAN-015：title_zh 装配 + display_title_in 两链 + 缺席回落。
+        let root = std::env::temp_dir().join("autoui-015-registry-title-zh");
+        let _ = std::fs::remove_dir_all(&root);
+        let d = root.join("calc");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(
+            d.join("pac.at"),
+            "name: \"calculator\"\ntitle: \"Calculator\"\ntitle_zh: \"计算器\"\nrender: \"vm\"\n",
+        )
+        .unwrap();
+        std::fs::write(d.join("app.at"), "widget A {}").unwrap();
+        // 裸 title（无 zh 声明）目录：两 locale 输出一致。
+        let e = root.join("clock");
+        std::fs::create_dir_all(&e).unwrap();
+        std::fs::write(e.join("pac.at"), "name: \"stopwatch\"\ntitle: \"Clock\"\n").unwrap();
+        std::fs::write(e.join("app.at"), "widget B {}").unwrap();
+
+        let apps = scan_apps(&root, &ScanOptions::default());
+        let calc = apps.iter().find(|a| a.id == "calc").unwrap();
+        assert_eq!(calc.title_zh.as_deref(), Some("计算器"));
+        assert_eq!(calc.display_title_in(true), "计算器");
+        assert_eq!(calc.display_title_in(false), "Calculator");
+        let clock = apps.iter().find(|a| a.id == "clock").unwrap();
+        assert_eq!(clock.title_zh, None);
+        assert_eq!(clock.display_title_in(true), "Clock");
+        assert_eq!(clock.display_title_in(false), "Clock");
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -4,6 +4,7 @@ scene: "ui"
 render: "vue"
 icon: "calculator"
 title: "Calculator"
+title_zh: "计算器"
 # PLAN-615 T-04：theme 显式键移除——跟随主题链（CLI > os-config > OS 系统
 # 主题；桌面轨经 config.dark_theme 派生）。显式值会以 pac.at 优先级压过
 # OS 跟随，深浅双主题需求下不声明。

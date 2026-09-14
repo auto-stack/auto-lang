@@ -5,5 +5,6 @@ scene: "ui"
 render: "vm"
 front_port: 4041
 title: "AutoEdit"
+title_zh: "编辑器"
 desktop: "true"
 opens: ".txt,.md,.at,.au,.rs,.json,.toml,.yaml,.yml,.log,.py,.js,.ts,.html,.css,.csv"

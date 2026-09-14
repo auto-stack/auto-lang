@@ -3429,12 +3429,27 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let end = label.find('\u{EE02}').unwrap_or(label.len());
                     let icon_name = &label[3..end.min(label.len())];
                     let text_label = &label[end.saturating_add(3).min(label.len())..];
-                    // Plan 515 D1：hicon:<slot> = native 真图标（raster——
-                    // 486 占位清偿；14px 与邻位 lucide 图标同档）。
-                    if let Some(icon) = crate::ui::iced::native_icon::parse_field(icon_name) {
-                        let handle = iced::widget::image::Handle::from_rgba(
-                            icon.w, icon.h, icon.rgba,
-                        );
+                    // PLAN-018：iconfile:<stem> = 双主题位图文件（回退链首位
+                    // iconfile → hicon → lucide）。Plan 515 D1：hicon:<slot> =
+                    // native 真图标（raster——486 占位清偿；14px 与邻位 lucide
+                    // 图标同档）。两 raster 源合流同一元素臂。
+                    let raster_icon: Option<iced::widget::image::Handle> = {
+                        if let Some(handle) = crate::ui::iced::icon_file::load(
+                            icon_name,
+                            crate::ui::style::theme::dark_mode(),
+                        ) {
+                            Some(handle)
+                        } else {
+                            crate::ui::iced::native_icon::parse_field(icon_name).map(
+                                |icon| {
+                                    iced::widget::image::Handle::from_rgba(
+                                        icon.w, icon.h, icon.rgba,
+                                    )
+                                },
+                            )
+                        }
+                    };
+                    if let Some(handle) = raster_icon {
                         // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
                         // 回退 14px（462 档）——大框小图实测反馈闭环。
                         let icon_px = iced_style
@@ -4129,10 +4144,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
                     on_input: on_input.clone(),
-                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0),
-                    height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0),
+                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0 * crate::ui::terminal::iced::PAD),
+                    height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0 * crate::ui::terminal::iced::PAD),
                 }
                 .into();
+                // 固定网格尺寸 ≠ 客户区:右/底余量(≤一格宽/一行高)若露出
+                // 根容器 bg-background(9,14,26) 即用户可见"浅色带"。涂同色
+                // (终端 DEFAULT_BG)填满可用空间,余量隐形;子件左上对齐,
+                // PAD 贴窗角。016 复审 T-07。
+                let el: iced::Element<'static, M> = iced::widget::container(el)
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Left)
+                    .align_y(iced::alignment::Vertical::Top)
+                    .style(|_: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(
+                            crate::ui::terminal::iced::DEFAULT_BG,
+                        )),
+                        ..Default::default()
+                    })
+                    .into();
                 if let Some(ref s) = style {
                     let is = IcedStyle::from_style(s);
                     wrap_with_margin(el, &is)
@@ -5076,11 +5107,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Image { src, style } => {
+                // PLAN-018：iconfile:<stem> = 双主题位图（回退链首位）。
                 // Plan 515 D1：hicon:<slot> = native 真图标 raster
                 //（window_thumbnail 的 fallback_icon / image 直挂两消费面）。
-                if let Some(icon) = crate::ui::iced::native_icon::parse_field(&src) {
-                    let handle =
-                        iced::widget::image::Handle::from_rgba(icon.w, icon.h, icon.rgba);
+                let raster_icon: Option<iced::widget::image::Handle> = {
+                    if let Some(handle) =
+                        crate::ui::iced::icon_file::load(&src, crate::ui::style::theme::dark_mode())
+                    {
+                        Some(handle)
+                    } else {
+                        crate::ui::iced::native_icon::parse_field(&src).map(|icon| {
+                            iced::widget::image::Handle::from_rgba(icon.w, icon.h, icon.rgba)
+                        })
+                    }
+                };
+                if let Some(handle) = raster_icon {
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                     let mut img = iced::widget::image(handle);
                     if let Some(ref is) = is {
@@ -5106,6 +5147,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         matches!(len, iced::Length::Fixed(v) if *v >= 48.0)
                     });
                     let sw = if large { 1.5 } else { 2.0 };
+                    // PLAN-621: icon state=on 的激活加重——builder 已按
+                    // 「基档 + 0.5」算好绝对值放进 StrokeWidth 类，此处只读
+                    // 不加工；无该类时保持既有基档（零扰动）。
+                    let sw = is.as_ref().and_then(|s| s.stroke_width).unwrap_or(sw);
                     if let Some(svg_str) = lucide_svg_doc_with(icon_name, sw) {
                         // Plan 409 §10 组 C → 2026-08-21 方案 A(ash-gui hover):
                         // 画时着色 —— svg::Style.color 由 iced 光栅化器把不透明
@@ -7251,12 +7296,121 @@ fn poll_mcp_actions() -> Option<IcedMessage> {
                     Some(IcedMessage { widget, event, input_value: action.value })
                 }
                 crate::ui::mcp_server::ActionTarget::Path { .. } => None,
+                crate::ui::mcp_server::ActionTarget::Fixture { request_id } => {
+                    let payload = action.value.unwrap_or_default();
+                    Some(IcedMessage {
+                        widget: String::new(),
+                        event: format!("__mcp_fixture|{}|{}", request_id, payload),
+                        input_value: None,
+                    })
+                }
             },
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
         }
     } else {
         None
+    }
+}
+
+/// Apply one test-only state fixture on the VM/iced thread. The MCP server
+/// performs the cheap schema checks before enqueueing; this second check keeps
+/// the renderer safe if a queued payload is malformed or stale.
+fn apply_mcp_fixture(
+    component: &mut crate::ui::dynamic::DynamicComponent,
+    payload: &str,
+) -> crate::ui::mcp_server::FixtureAck {
+    let root: serde_json::Value = match serde_json::from_str(payload) {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "invalid_schema".to_string(),
+                message: format!("fixture payload is not valid JSON: {error}"),
+            }
+        }
+    };
+    let state_obj = match root.get("state").and_then(|value| value.as_object()) {
+        Some(map) if !map.is_empty() => map,
+        _ => {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "invalid_schema".to_string(),
+                message: "fixture state must be a non-empty object".to_string(),
+            }
+        }
+    };
+
+    let mut prepared = Vec::with_capacity(state_obj.len());
+    let mut array_items = 0usize;
+    for (field, raw) in state_obj {
+        let existing = match component.read_state(field) {
+            Ok(value) => value,
+            Err(error) => {
+                return crate::ui::mcp_server::FixtureAck::Error {
+                    code: "unknown_field".to_string(),
+                    message: format!("state field '{field}' is not available: {error}"),
+                }
+            }
+        };
+        let incoming = match crate::ui::mcp_server::fixture_json_to_value(raw, 0, &mut array_items) {
+            Ok(value) => value,
+            Err(error) => {
+                return crate::ui::mcp_server::FixtureAck::Error {
+                    code: "invalid_schema".to_string(),
+                    message: format!("field '{field}': {error}"),
+                }
+            }
+        };
+        if !crate::ui::mcp_server::fixture_value_compatible(&existing, &incoming) {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "type_mismatch".to_string(),
+                message: format!(
+                    "field '{field}' is {}, request is {}",
+                    crate::ui::mcp_server::fixture_value_kind(&existing),
+                    crate::ui::mcp_server::fixture_value_kind(&incoming)
+                ),
+            };
+        }
+        prepared.push((field.clone(), incoming));
+    }
+
+    let mut changed = Vec::with_capacity(prepared.len());
+    for (field, value) in prepared {
+        let result = match value {
+            auto_val::Value::Array(array) => component.write_state_vec(&field, array.values),
+            value => component.write_state(&field, value),
+        };
+        if let Err(error) = result {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "write_failed".to_string(),
+                message: format!("field '{field}': {error}"),
+            };
+        }
+        changed.push(field);
+    }
+    changed.sort();
+
+    let trigger = root.get("trigger").and_then(|value| value.as_object()).map(|trigger| {
+        let widget = trigger.get("widget").and_then(|value| value.as_str()).unwrap_or_default();
+        let event = trigger.get("event").and_then(|value| value.as_str()).unwrap_or_default();
+        let input = trigger.get("input").and_then(|value| value.as_str()).map(str::to_string);
+        (widget.to_string(), event.to_string(), input)
+    });
+    if let Some((widget, event, input)) = trigger.as_ref() {
+        if widget.is_empty() || event.is_empty() {
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "invalid_schema".to_string(),
+                message: "trigger requires non-empty widget and event".to_string(),
+            };
+        }
+        if component.is_timer_entry(widget, event) {
+            component.fire_timer(widget, event);
+        } else {
+            component.on_with_input_for(widget, event, input.clone());
+        }
+    }
+    crate::ui::mcp_server::FixtureAck::Applied {
+        changed,
+        trigger: trigger.map(|(widget, event, _)| format!("{widget}.{event}")),
     }
 }
 
@@ -9004,11 +9158,13 @@ fn summon_launcher(
     let mut colors: Vec<auto_val::Value> = Vec::new();
     for e in &entries {
         names.push(auto_val::Value::Str(e.id.clone().into()));
-        titles.push(auto_val::Value::Str(e.title.clone().into()));
+        // PLAN-015：展示名走 locale 解析链（zh=title_zh→title…）；搜索
+        // 文本同源（display 后 lowercase；id 小写键 lns 仍在，中英两可搜）。
+        titles.push(auto_val::Value::Str(e.display_title().to_string().into()));
         icons.push(auto_val::Value::Str(e.icon.clone().into()));
         cats.push(auto_val::Value::Str(e.category.clone().into()));
         lns.push(auto_val::Value::Str(e.id.to_lowercase().into()));
-        lts.push(auto_val::Value::Str(e.title.to_lowercase().into()));
+        lts.push(auto_val::Value::Str(e.display_title().to_lowercase().into()));
         colors.push(auto_val::Value::Str(launcher_brand_color(&e.id).into()));
     }
     if let Some(app) = state.apps.get_mut(&launcher) {
@@ -11283,10 +11439,12 @@ fn desktop_icon_cells(
             .map(|e2| e2.icon.clone())
             .unwrap_or_else(|| "app-window".to_string());
         let label = reg
-            .map(|e2| e2.title.clone())
+            .map(|e2| e2.display_title().to_string())
             .unwrap_or_else(|| id.clone());
         let src = e.1.to_string();
         let color = crate::ui::app_registry::badge_color_for(&id);
+        // PLAN-018-FU2：iconfile（真位图资产）= 满幅 tile 渲染旗标。
+        let full = if icon.starts_with("iconfile:") { "1" } else { "" };
         while cursor < linear {
             cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("spacer", auto_val::Value::str("1")),
@@ -11301,6 +11459,10 @@ fn desktop_icon_cells(
         cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(id.clone().into())),
             ("icon", auto_val::Value::Str(icon.into())),
+            // 满幅 tile 渲染旗标（"1" = 图标铺满格子、无 badge 色底框；
+            // lucide 字标应用保持色块 chip + 白 glyph——用户裁定「保留
+            // 原图圆角板、外框不要」）。
+            ("full", auto_val::Value::str(full)),
             ("label", auto_val::Value::Str(label.into())),
             ("src", auto_val::Value::Str(src.into())),
             ("color", auto_val::Value::Str(color.into())),
@@ -11550,7 +11712,7 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
                 .map(|e| e.icon.clone())
                 .unwrap_or_else(|| "app-window".to_string());
             let label = reg
-                .map(|e| e.title.clone())
+                .map(|e| e.display_title().to_string())
                 .unwrap_or_else(|| id.clone());
             let color = crate::ui::app_registry::badge_color_for(id);
             auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
@@ -12428,6 +12590,10 @@ fn compare_pngs(
         widget_name.clone(),
         crate::ui::mcp_server::mcp_port(),
     );
+    mcp_shared
+        .lock()
+        .unwrap()
+        .set_backend_kind(crate::ui::mcp_server::BackendKind::Vm);
     // Store the action receiver in a global for the subscription to poll
     {
         let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
@@ -12587,7 +12753,7 @@ fn compare_pngs(
                     // 不受策展限制）；展示清单（registry_entries：launcher/
                     // 图标格/dock 消费）过滤为策展集（pac `desktop:` 字段；
                     // 主根缺省 false=opt-in，外部自含根缺省 true=opt-out）。
-                    let curated: Vec<_> = full
+                    let mut curated: Vec<_> = full
                         .iter()
                         .filter(|e| e.desktop_visible)
                         .cloned()
@@ -12622,7 +12788,7 @@ fn compare_pngs(
                                     Some(crate::ui::session::LaunchSpec {
                                         code,
                                         source_path: Some(e.entry.to_string_lossy().to_string()),
-                                        title: Some(e.title.clone()),
+                                        title: Some(e.display_title().to_string()),
                                         name: e.name.clone(),
                                         daemon: e.daemon.clone(),
                                         back_root: e.back_root.clone(),
@@ -12635,6 +12801,13 @@ fn compare_pngs(
                     // 入口匹配：id "launcher" 或 "-launcher" 结尾（441 预订
                     // 028-launcher；459 回退形态同名规则）。
                     // PLAN-552：快照换 curated（028 属 C 档，字段加齐后无回归）。
+                    // PLAN-018：桌面图标位图接线——读 auto-os assets/icons/
+                    // mapping.json 把命中 id 的 icon 改写 iconfile:<stem>，
+                    // 并注入渲染臂资产根（缺席 = 原样 lucide，零回归）。
+                    if let Some(root) = crate::ui::iced::icon_file::icon_root() {
+                        crate::ui::iced::icon_file::apply_icon_mapping(&mut curated, &root);
+                        std::env::set_var("AUTO_OS_ICON_ROOT", &root);
+                    }
                     session.desktop.registry_entries = curated;
                     // PLAN-526 T6：boot 直挂窗注册表对齐——回填 registry_id
                     // 并 armed `window: "fit"`（计算器等直挂 App 窗随内容
@@ -12772,6 +12945,27 @@ fn compare_pngs(
         };
         if !msg.event.starts_with("__") {
             eprintln!("[UI_EVENT] widget={:?} event={:?} input_val={:?}", msg.widget, msg.event, msg.input_value);
+        }
+        // PLAN-623: test-only VM fixture channel. It is deliberately handled
+        // before normal event dispatch so a fixture can seed state and then
+        // trigger an existing handler in the same update turn. The MCP tool
+        // gates this path with AUTOUI_TEST_FIXTURES=1 and the VM capability;
+        // malformed direct messages are acknowledged as errors and never fall
+        // through to an app handler.
+        if let Some(raw) = msg.event.strip_prefix("__mcp_fixture|") {
+            let Some((id_raw, payload)) = raw.split_once('|') else {
+                return iced::Task::none();
+            };
+            let Ok(request_id) = id_raw.parse::<u64>() else {
+                return iced::Task::none();
+            };
+            let mcp_shared = state.desktop.mcp_shared.clone();
+            let ack = apply_mcp_fixture(&mut state.component, payload);
+            *state.app.view_dirty.borrow_mut() = true;
+            if let Some(mcp_shared) = mcp_shared {
+                mcp_shared.lock().unwrap().finish_fixture(request_id, ack);
+            }
+            return iced::Task::none();
         }
         // PLAN-058（auto-down）：043 T6 滚动同步 rust 直写快道退役——
         // VM handler 对 float 实参绑定与算术写入的引擎腐坏（nanbox 整值
@@ -21021,6 +21215,10 @@ impl Default for DevToolsState {
         let widget_name = "App".to_string();
         let (mcp_shared, mcp_action_rx) =
             crate::ui::mcp_server::start_mcp_server(widget_name.clone(), port);
+        mcp_shared
+            .lock()
+            .unwrap()
+            .set_backend_kind(crate::ui::mcp_server::BackendKind::Rust);
         // Store the action receiver in the global for devtools_subscription to drain
         {
             let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
@@ -21695,6 +21893,11 @@ where
                         crate::ui::mcp_server::ActionTarget::Path { path } => {
                             let path_str = path.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",");
                             format!("__mcp_action_path|{}|{}|{}", path_str, action.action, value_str)
+                        }
+                        crate::ui::mcp_server::ActionTarget::Fixture { .. } => {
+                            // VM-only test fixtures are rejected by the MCP
+                            // tool before reaching the Rust DevTools path.
+                            return None;
                         }
                     };
                     Some(WrapperMsg::<C>::Debug(payload))
@@ -22979,7 +23182,7 @@ mod tests {
                 Some(crate::ui::session::LaunchSpec {
                     code: std::fs::read_to_string(&e.entry).ok()?,
                     source_path: Some(e.entry.to_string_lossy().to_string()),
-                    title: Some(e.title.clone()),
+                    title: Some(e.display_title().to_string()),
                     name: e.name.clone(),
                     fit: e.fit,
                     daemon: None,
@@ -23358,6 +23561,7 @@ mod tests {
         ds.desktop.registry_entries = vec![AppRegistryEntry {
             id: "011-calculator".to_string(),
             title: "calculator".to_string(),
+            title_zh: None,
             name: None,
             icon: "calculator".to_string(),
             category: "tool".to_string(),
@@ -24971,6 +25175,7 @@ mod tests {
         ds.desktop.registry_entries = vec![crate::ui::app_registry::AppRegistryEntry {
             id: "011-calculator".to_string(),
             title: "calculator".to_string(),
+            title_zh: None,
             name: None,
             icon: "calculator".to_string(),
             category: "tool".to_string(),
@@ -25747,6 +25952,7 @@ mod tests {
             crate::ui::app_registry::AppRegistryEntry {
                 id: "011-calculator".into(),
                 title: "计算器".into(),
+                title_zh: None,
                 name: None,
                 icon: "calculator".into(),
                 category: "app".into(),
@@ -25760,6 +25966,7 @@ mod tests {
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
                 title: "便签".into(),
+                title_zh: None,
                 name: None,
                 icon: "sticky-note".into(),
                 category: "app".into(),
@@ -26292,6 +26499,7 @@ mod tests {
         let entry = |id: &str, title: &str| AppRegistryEntry {
             id: id.to_string(),
             title: title.to_string(),
+            title_zh: None,
             name: None,
             icon: "app-window".to_string(),
             category: "app".to_string(),

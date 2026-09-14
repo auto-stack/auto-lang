@@ -1016,9 +1016,10 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_VM_WINDOW", "fit");
                 println!("  VM window size: fit (content-measured, from pac.at)");
             }
-            // VM native window title from pac.at `title: "..."`, same env
-            // injection path as AUTO_VM_WINDOW above.
-            if let Some(t) = am.pac_window_title() {
+            // VM native window title from pac.at, same env injection path as
+            // AUTO_VM_WINDOW above. PLAN-015: locale-aware — AUTO_LOCALE
+            // (default zh) prefers `title_zh:` when declared, else `title:`.
+            if let Some(t) = am.pac_display_title() {
                 std::env::set_var("AUTO_VM_TITLE", &t);
                 println!("  VM window title: {} (from pac.at)", t);
             }

@@ -2241,6 +2241,8 @@ fn plan619_icon_box_follows_style_size() {
             "`{style}` 下图标盒宽期望 {want_box}（实测文本 x={x}）"
         );
     }
+}
+
 /// PLAN-012 F2 侧栏压缩探针（临时诊断）：复刻 os-config 侧栏布局链——
 /// row(h-full) > aside(flex-col w-280) > [header(50), provider(h-full
 /// flex-col) > [search 行, Scrollable(flex-1 overflow-auto) > 长按钮列],

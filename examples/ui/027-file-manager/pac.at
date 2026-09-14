@@ -14,6 +14,7 @@ render: "vue"
 front_port: 4027
 icon: "folder"
 title: "File Manager"
+title_zh: "文件管理器"
 category: "system"
 desktop: "true"
 theme: "dark"

@@ -9457,11 +9457,21 @@ pub fn shim_fs_metadata(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let metadata = std::fs::metadata(&path)
         .map_err(|e| VMError::RuntimeError(format!("metadata failed: {}: {}", path, e)))?;
+    // PLAN-016 T-05：补 modified（epoch 秒；1970 前/取值失败 = -1，.at 侧
+    // fmt_date 以 "--" 呈现）——修改日期列为文件管理器基本列，metadata
+    // JSON 原仅 len/is_dir/is_file/readonly。
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(-1);
     let json = serde_json::json!({
         "len": metadata.len(),
         "is_dir": metadata.is_dir(),
         "is_file": metadata.is_file(),
         "readonly": metadata.permissions().readonly(),
+        "modified": modified,
     });
     let result = serde_json::to_string(&json)
         .map_err(|e| VMError::RuntimeError(format!("metadata json: {}", e)))?;

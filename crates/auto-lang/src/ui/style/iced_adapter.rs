@@ -102,6 +102,10 @@ pub struct IcedStyle {
     // Plan 527 T4: object-fit(Image ContentFit 消费面)
     pub object_fit: Option<crate::ui::style::ObjectFit>,
 
+    /// PLAN-621: icon state 契约的描边加重（绝对值，builder 算好）——仅
+    /// renderer 的 lucide 路径消费，其余视图忽略。
+    pub stroke_width: Option<f32>,
+
     // Plan 527 T4: 彩色阴影(渲染层分期消费,默认半透明黑)
     pub shadow_color: Option<iced::Color>,
 
@@ -364,6 +368,7 @@ impl IcedStyle {
             ring_color: None,
             ring_inset: false,
             object_fit: None,
+            stroke_width: None,
             shadow_color: None,
             width: None,
             height: None,
@@ -692,6 +697,11 @@ impl IcedStyle {
             }
             StyleClass::ObjectFit(fit) => {
                 self.object_fit = Some(*fit);
+            }
+            // PLAN-621: icon state 激活加重（绝对值直读；parity 审计语义 =
+            // 「类被消费」——字段被置即非 default）。
+            StyleClass::StrokeWidth(w) => {
+                self.stroke_width = Some(*w);
             }
             StyleClass::ShadowColor(color) => {
                 self.shadow_color = Some(convert_color(color));

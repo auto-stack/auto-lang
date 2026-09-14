@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-623
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
+completion_kind: delivered
 feature_name: autoui-mcp-test-fixture
 author: [codex]
 created_at: 2026-09-14
@@ -10,10 +11,10 @@ plan_revision: 2
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: [auto-lang/mcp/autoui-test-fixture]
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: []             # 无 GOAL-NNN 变更：本计划只增加测试夹具与验收基础设施，不改变产品目标。
 
 affects: [auto-lang/ui, auto-lang/mcp]
-current_step: 1
+current_step: 7
 total_steps: 7
 ---
 
@@ -270,6 +271,13 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 ### 执行进度（2026-09-14）
 
 - [✅ 已完成] T-00：在 `D:/autostack/.wt/lang-623/auto-lang` 完成架构设计文档 `docs/design/autoui/autoui-mcp-test-fixture.md`，并登记 `docs/design/00-intro.md` 与 `docs/design/autoui/README.md`；提交 `1f62ca0df`。协议已裁定使用独立 `ActionTarget::Fixture` + request-id ack，VM/Rust capability 边界与门控已写入设计。
+- [✅ 已完成] T-01：`ActionTarget::Fixture`、`BackendKind`、`FixtureAck` 和有界 request-id 回执表已落到 `ui/mcp_server.rs`；所有 Event/Path 消费 match 已补齐。
+- [✅ 已完成] T-02：`autoui_fixture` 已注册到 `tools/list` 和 dispatch，固定 schema v1、递归转换、字段/大小/深度/数组上限、gate/backend/type 校验及 2 秒 ack 超时已实现；4 个 scoped MCP 单测通过。
+- [✅ 已完成] T-03：VM renderer 在普通 handler 入口前消费 fixture，按标量/数组写回并设置 dirty，可触发既有 handler/timer；Tetris merged 与 no-merge HTTP 实例均完成 1–4 行 golden 注入，回执和 100/300/500/800 分结果一致。
+- [✅ 已完成] T-04：Rust DevTools 路径明确丢弃 Fixture；Rust 原生实例以扩大主线程栈运行后，`autoui_fixture` 返回 `backend_unsupported`，`autoui_state` 仍可用。
+- [✅ 已完成] T-05：`test_vm_mcp.py` 新增 `fixture()`、`state()`、`wait_state()` 客户端辅助；已用 HTTP 调用验证 applied/error 回执。
+- [✅ 已完成] T-06：mcp overview/architecture/plans 规格已沉淀 ADR-07 和 Plan 623 索引；Plan 005 已写入 fixture 移交格式、merged/no-merge 正确命令及 Rust 边界，提交 `9d40544`。
+- [✅ 已完成] T-07：独立验收完成。`cargo check -p auto-lang` 通过；`cargo test -p auto-lang --features ui-iced tests_plan623 --lib` 为 4/4；真实 Tetris VM merged/no-merge MCP 均完成 fixture applied、trigger 和 1–4 行分数 golden，门控关闭返回 `fixtures_disabled` 且 score 保持 0；Rust 原生 MCP 返回 `backend_unsupported`。工作树无未提交改动，提交 `432a53b2c`。
 
 ## 9. 复审记录
 
@@ -280,6 +288,47 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
   `outcome: pass`，`next: work`；下一步为 T-00 设计文档后建立
   `D:/autostack/.wt/lang-623/auto-lang` 执行 worktree。
 
+- 2026-09-14 stage:review | plan_id: PLAN-623 | plan_revision: 2 |
+  outcome: pass | reviewed_commit: `b2a5bee7ae486f50cded6e9d2a88a09d27a1ec5e` |
+  base_commit: `6084ac2e90886d76d2ed390bfaeaefcc5657dd96` |
+  dependency_revisions: `auto-down@67bb508`（组内 detached 基线） |
+  spec_inputs: `docs/design/autoui/autoui-mcp-test-fixture.md`（提交
+  `1f62ca0df`）、`docs/specs/auto-lang/mcp/{overview,architecture,plans}.md`
+  （实现提交 `58b87541d`）；`supersedes_spec_components: []`，
+  `new_spec_components: [auto-lang/mcp/autoui-test-fixture]`，
+  `touched_goals: []`（无产品目标变更）。
+  acceptance_results: AC-01 pass（4 个 `tests_plan623` 单测、真实
+  `tools/list` schema/校验）；AC-02 pass（fixture gate off 返回
+  `fixtures_disabled` 且 score 保持 0）；AC-03 pass（VM HTTP fixture
+  标量/数组写回、request-id applied/error）；AC-04 pass（`App.Tick`
+  写入后触发并返回 trigger）；AC-05 pass（VM merged :9257 与 no-merge
+  :9258 同一 1–4 行 golden，分数 100/300/500/800）；AC-06 pass（Rust
+  :9259 明确返回 `backend_unsupported`，普通 `autoui_state` 可用）；
+  AC-07 pass（Plan 005 已提交可执行移交契约，后续 runner 按该契约复用
+  同一 rules case 数据）。
+  findings: 计划范围内无遗漏、未门控生产路径或临时 UI；`cargo tf` 与
+  `cargo tv` 的完整档在本机均被既有 `ffi::tests::test_rust_ffi_*` 失败
+  提前终止（auto-cache 无法解析 home directory），失败路径不在本次 diff；
+  因此以 scoped MCP/UI 测试和运行时 HTTP golden 作为本计划回归证据。
+  evidence: `cargo check -p auto-lang --features ui-iced` 通过且新增夹具
+  行无编译告警；`cargo test -p auto-lang --features ui-iced
+  tests_plan623 --lib` 4/4；真实 VM merged/no-merge 与 Rust MCP 结果见
+  本节 acceptance_results；工作树在复审前干净。复审在执行上下文中完成，
+  已按提交、基线、规格和运行时结果重建结论，未声称由独立 agent 完成。
+  next: merge after explicit approval；本复审不执行合并。
+
+
+- 2026-09-14 stage:merge | plan_id: PLAN-623 | plan_revision: 2 |
+  outcome: pass | delivery_commit: 06f03ffc9 (master merge of reviewed
+  implementation; git merge-base --is-ancestor 8594b956e HEAD verified) |
+  canonical_specs: docs/design/autoui/autoui-mcp-test-fixture.md,
+  docs/specs/auto-lang/mcp/{overview,architecture,plans}.md,
+  docs/design/{00-intro.md,autoui/README.md} |
+  ledger: .autoos/specs.json P623-1..P623-6 (runtime projection, one item per
+  reports/goals/architecture/designs/tests/reviews section; read-back verified) |
+  archive: docs/plans/archive/623-autoui-mcp-test-fixture.md |
+  cleanup: guard clean (Git Bash wt-guard exit=0); D:/autostack/.wt/lang-623-merge/auto-lang removed; branch merge/plan-623 deleted.
+
 ## 10. 待澄清事项
 
 - T-01 的实现需按 T-00 设计落地独立 `ActionTarget::Fixture`；若代码勘验发现现有消息边界无法承载 ack，须先记录 needs_replan，不得退化为固定等待。
@@ -288,9 +337,6 @@ Plan 005 在本计划完成后增加 VM golden runner，使用同一份 case 数
 - VM no-merge 集成测试需要可用的本地 HTTP backend 启动方式；若环境缺失，
   记录为环境阻断，不以 merged 结果代替。
 - 本计划完成前，Plan 005 的 VM fixture golden 保持 blocked。
-
-
-
 
 
 

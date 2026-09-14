@@ -165,6 +165,62 @@ async function main() {
     console.log(`[vm-smoke] D note: 只匹配到 ${iconBtns.length} 个空文本图标按钮，已跳过该项`);
   }
 
+  // ── F. icon state 契约（PLAN-621）——队列键的 state 绑定随点击反应式翻转 ──
+  // app.at: icon (name: "panel-left", state: .store.show_playlist)。
+  // VM 运行时证据三层：
+  //   ①autoui_state 的 show_playlist 随按键翻转（绑定源活性，AC-03）；
+  //   ②条件检查：vtree 里按钮内嵌图标不落树（按钮自绘内容，预存结构行为），
+  //     但若窗口可见且 [Image] 节点可量测，则断言其着色类随态翻转（AC-01）；
+  //   ③尽力截图 on/off 两态存档（窗口最小化时 MCP 会跳过，记 note 不失败）。
+  if (iconBtns.length >= 2) {
+    const stateVal = (s, k) => s.match(new RegExp(k + ": \\S+"))?.[0];
+    let st = await mcpCall("autoui_state", {});
+    const before = stateVal(st, "show_playlist");
+    // D 块已按过一次：此时应为 false；无论初值，按一次必须翻转。
+    await mcpCall("autoui_action", { element_id: iconBtns[1], action: "press" });
+    await new Promise((r) => setTimeout(r, 700));
+    st = await mcpCall("autoui_state", {});
+    const after1 = stateVal(st, "show_playlist");
+    if (before && after1 && before !== after1) {
+      console.log(`[vm-smoke] F ok — show_playlist 反应式翻转 ${before} → ${after1}`);
+    } else {
+      fail(`state 翻转异常: before=${before} after=${after1}`);
+      return;
+    }
+    // 条件 vtree 类检查（窗口可见且节点可量测时才有意义）。
+    const vtree = await mcpCall("autoui_vtree", {});
+    const imgNodes = vtree.match(/text vnode_\d+ \{content: "\[Image\]"[^}]*?class: "([^"]*)"/g) ?? [];
+    const stateCls = imgNodes.map((n) => n.match(/class: "([^"]*)"/)?.[1] ?? "");
+    const hasPrimary = stateCls.some((c) => c.includes("text-primary"));
+    const hasMuted = stateCls.some((c) => c.includes("text-muted-foreground"));
+    if (hasPrimary || hasMuted) {
+      const expectOn = after1 === "true (bool)";
+      const cls = stateCls.find((c) => c.includes("text-primary") || c.includes("text-muted-foreground"));
+      const flipped = expectOn ? cls.includes("text-primary") : cls.includes("text-muted-foreground");
+      if (flipped) {
+        console.log(`[vm-smoke] F ok — vtree 图标着色类随态正确（${after1} → ${cls}）`);
+      } else {
+        fail(`vtree 图标着色类与状态不符: show_playlist=${after1} class=${cls}`);
+        return;
+      }
+    } else {
+      console.log("[vm-smoke] F note: vtree 无 [Image] 着色类节点（按钮内嵌图标不落树/窗口未布局），类断言跳过——着色通道由 plan621 单测与 Web T-STATE 覆盖");
+    }
+    // 尽力截图（窗口最小化时 MCP 跳过，仅记录）。
+    // 注意：baseline 保存只 create_dir_all(tests/screenshots) 本身，name 不带子目录。
+    const shot = await mcpCall("autoui_screenshot", { name: "030-e2e-state-after-toggle", baseline: true });
+    if (shot.includes("Screenshot skipped") || shot.includes("Error")) {
+      console.log(`[vm-smoke] F note: 截图跳过（${shot.slice(0, 80)}）`);
+    } else {
+      console.log("[vm-smoke] F ok — 截图已存 tests/screenshots/030/e2e_state_after_toggle.png");
+    }
+    // 复位（按回 D 之前的可见性，避免影响后续/复跑）。
+    await mcpCall("autoui_action", { element_id: iconBtns[1], action: "press" });
+    await new Promise((r) => setTimeout(r, 500));
+  } else {
+    console.log("[vm-smoke] F note: 无图标按钮可驱动，已跳过");
+  }
+
   // ── E.（可选）AUTO_HTTP_BASE 场景：VM 队列应与 Vue 端同一份真实数据 ──
   // T-10 起 VM 的 Http 支持相对 URL 按基址展开；外部设好基址并起了生成后端
   // 时，快照里应出现真实文件名。未设基址时跳过（保持「诚实空态」默认形态）。

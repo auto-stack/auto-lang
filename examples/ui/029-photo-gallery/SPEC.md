@@ -1,36 +1,37 @@
-# SPEC — 029-photo-gallery（Plan 537）
+# SPEC — 029-photo-gallery（Plan 628）
 
-> Purpose: 图库——macOS 相册风图片浏览器。侧边栏相册导航 + 搜索/排序/
-> 网格密度工具栏 + 响应式缩略图网格 + 大图查看器（上一张/下一张/收藏）。
-> **Frontend-only，无后端；图片源为 picsum.photos 固定 seed 网络 URL。**
+> Purpose: 图库——现代移动/平板风照片浏览器。顶部沉浸式分段导航栏 + 搜索/排序/
+> 网格密度工具栏 + 无边框真实照片流网格 + 悬浮胶囊大图查看器（上一张/下一张/收藏）。
+> **真实数据源：直连用户真实目录 `C:\Users\zhaop\Pictures\` 本地照片与截图。**
+> 真实预览图：预构建轻量 JPEG 高清缩略图（~11KB/张，秒级加载），大图查看器直显无损本地原画。
 > 主题：AutoOS Dark/indigo 默认；root 声明 `dark_mode` bool /
-> `accent_color` str 契约变量（变量名即双端契约，006 先例），工具栏可
-> 运行时切换（moon/sun icon + 五色点 coral/ocean/sage/amber/indigo）。
+> `accent_color` str 契约变量（变量名即双端契约），工具栏可运行时切换。
 >
-> 本文件按 T5 与 `src/front/app.at` 实际行为逐条对照定稿（2026-09-04）。
+> 本文件按 Plan 628 现代平板图库与 `src/front/app.at` 实际行为逐条对照定稿（2026-09-14）。
 
 ## 形态
 
 单文件单组件（025/027/028 形态）：全部状态内聚 `src/front/app.at` 的 App
 根 widget，无 routes/store 子组件/模块级 fn。网格 ↔ 查看器两视图由
-`var mode str`（"grid" | "view"）全页条件切换（028 overlay 门控同款），
-不走路由。
+`var mode str`（"grid" | "view"）全页条件切换，不走路由。取消旧版 macOS
+三段式生硬侧边栏，采用现代移动/平板级 Edge-to-edge 沉浸式相册布局。
 
 ## 数据形状
 
-### 种子平行列表（唯一真源，handler 按下标读，027/028 实证形态）
+### 真实照片种子平行列表（唯一真源，handler 按下标读）
 
 | 列表 | 类型 | 内容 |
 |---|---|---|
 | `p_ids` | int ×24 | 1..24 |
-| `p_seeds` | str ×24 | "gal-01".."gal-24" |
-| `p_titles` | str ×24 | 中文标题（晨雾山谷/夜色天桥/落日余晖/…，按相册主题命名） |
-| `p_tls` | str ×24 | 预小写标题（搜索域；中文与原串相同，028 预小写平行列表同思路） |
-| `p_albums` | str ×24 | nature/city/sky/abstract 各 6（轮转排布） |
-| `p_dates` | str ×24 | "YYYY-MM-DD"（2026-05..08，两两互异） |
-| `p_keys` | int ×24 | YYYYMMDD 整数排序键（**排序不用 str 比较**——028 规避浮点/宽度差的整数判定同思路） |
-| `p_favs` | bool ×24 | 预置收藏 id 3 / 8 / 15 / 21（共 4 张） |
-| `p_thumbs` | str ×24 | 24 张主题匹配的内联 SVG Data URLs（Plan 606 缩略图增强，0ms 离线确定性渲染） |
+| `p_titles` | str ×24 | 真实图片文件名（000042、反面、微信图片_20210204124813…） |
+| `p_tls` | str ×24 | 预小写标题（搜索域；大小写不敏感搜索匹配） |
+| `p_albums` | str ×24 | all / photos / screenshots / favorites 真实相册分类 |
+| `p_dates` | str ×24 | "YYYY-MM-DD"（从图片 EXIF/文件真实 mtime 提取） |
+| `p_keys` | int ×24 | YYYYMMDD 整数排序键（字典序即时间序的整数化，支持最新/最早秒级切换） |
+| `p_favs` | bool ×24 | 收藏布尔值（支持点击心形动态收藏/取消并全局联动） |
+| `p_fulls` | str ×24 | 真实大图绝对路径（`C:/Users/zhaop/Pictures/xxx.jpg`，全屏无损原画呈现） |
+| `p_metas` | str ×24 | 预格式化元数据（宽×高 · 文件大小KB · 拍摄日期） |
+| `p_thumbs` | str ×24 | 本地高质量轻量缩略图绝对路径（`.../thumbnails/thumb_NNN.jpg`，秒开无延迟） |
 
 ### handler 构建的列表
 
@@ -87,17 +88,18 @@ AURA 无 stopPropagation 原语。落地：**开图点击区与收藏按钮是�
 卡片 col 内：图片区 button（开图）+ 信息行（标题 button 开图 + ♡/❤
 button 收藏）。互不嵌套，无冒泡问题。
 
-## 图片源与降级（Plan 606 缩略图增强）
+## 图片源与真实本地呈现（Plan 628 移动/平板图库重塑）
 
-- **缩略图**：24 张独立主题定制的内联 SVG Data URLs（`data:image/svg+xml;utf8,...`），
-  按四大相册（自然、城市、天空、抽象）色彩与构图精细设计，0ms 秒开、零外部网络/CDN 依赖。
-  VM 端由 Iced `renderer.rs` 的 `load_image_bytes` 自动识别 `data:image/svg+xml`
-  并路由至 `get_or_create_svg_handle` 矢量栅格化；Vue 端由浏览器原生 `<img :src>` 渲染。
-- **大图查看器**：`https://picsum.photos/seed/gal-{NN}/1600/1200`。点击卡片进入大图查看器
-  加载高分辨率网络大图。
-- **缩放裁切与渲染**：缩略图网格采用 `fit: "cover"`（VM 映射至 `StyleClass::ObjectFit(Cover)`，
-  Vue 生成 `object-cover`），查看器大图采用 `fit: "contain"`（双端完美对齐）。
-- **离线降级**：缩略图完全内嵌保真 100% 离线可用；大图离线时 VM 提供首字母色块兜底，Vue 提供 alt 文本。
+- **真实目录与缩略图流水线**：
+  - 数据源直连用户真实目录 `C:\Users\zhaop\Pictures\`（包含照片与屏幕截图）。
+  - 通过 `scripts/prepare_gallery.py` 离线预构建高质量轻量 JPEG 缩略图（260px，~11KB/张，存放在 `src/front/thumbnails/`）。
+  - 缩略图路径使用绝对路径文件直引（如 `D:/autostack/auto-lang/examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg`），VM Iced 原生支持加载本地绝对路径，0ms 秒开渲染。
+- **全屏原画查看器**：
+  - 点击任何卡片直接开启查看器，大图直接加载无损本地原画 `C:/Users/zhaop/Pictures/xxx.jpg`。
+  - 原画无网络依赖，支持大图原始高分辨率（如 2409×3614、4000×3000 等）在视口内以 `fit: "contain"` 完美完整呈现。
+- **缩放裁切与渲染**：
+  - 缩略图网格采用 `fit: "cover"`（充满卡片视图比例，保持纯净利落）。
+  - 查看器大图采用 `fit: "contain"`（双端完美对齐，无畸变）。
 
 ## 双端差异注记
 
