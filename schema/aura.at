@@ -1610,6 +1610,20 @@ element window_thumbnail {
     description: "Per-window live thumbnail (host snapshot pixels, renderer-side asset channel)"
 }
 
+element workspace_preview {
+    tag: "workspace_preview"
+    category: "display"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "ws", type: "string", description: "Workspace id to preview (host wm publish; PLAN-012)" }
+        { name: "fallback", type: "string", default: "app-window", description: "Lucide icon for snapshot-miss windows" }
+        { name: "class", type: "union:string,class_binding", description: "Box classes (w-/h- define the Contain fit box)" }
+    ]
+    allows_children: false
+    description: "Whole-desktop proportional preview (host-composited tiles, PLAN-012 W3)"
+}
+
 
 // ============ tier: native_html ============
 
@@ -1648,7 +1662,7 @@ element audio {
     category: "unknown"
     tier: "native_html"
     aliases: ["Audio"]
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    backends: { web: "native", iced: "fallback", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -2155,7 +2169,7 @@ element video {
     category: "unknown"
     tier: "native_html"
     aliases: ["Video"]
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    backends: { web: "native", iced: "fallback", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -2194,6 +2208,16 @@ element Change {
     description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
+element NavDestination {
+    tag: "NavDestination"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element SettingsPanel {
     tag: "SettingsPanel"
     category: "unknown"
@@ -2202,6 +2226,16 @@ element SettingsPanel {
     props: []
     allows_children: true
     description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element Swiper {
+    tag: "Swiper"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element area-chart {
@@ -4060,17 +4094,6 @@ element native_select {
     description: "Native HTML select"
 }
 
-element nav-destination {
-    tag: "nav-destination"
-    category: "unknown"
-    tier: "web_component"
-    aliases: ["NavDestination"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
-}
-
 element nav_menu {
     tag: "nav_menu"
     category: "navigation"
@@ -5002,17 +5025,6 @@ element stepper_trigger {
     ]
     allows_children: true
     description: "Stepper trigger"
-}
-
-element swiper {
-    tag: "swiper"
-    category: "unknown"
-    tier: "web_component"
-    aliases: ["Swiper"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element switch {

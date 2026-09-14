@@ -1679,6 +1679,20 @@ Per-window live thumbnail (host snapshot pixels, renderer-side asset channel)
 
 ---
 
+### `workspace_preview`
+
+`builtin_widget` · `workspace_preview` · web: `none` · iced: `full` · category: `display`
+
+Whole-desktop proportional preview (host-composited tiles, PLAN-012 W3)
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `ws` | `string` | — | Workspace id to preview (host wm publish; PLAN-012) |
+| `fallback` | `string` | app-window | Lucide icon for snapshot-miss windows |
+| `class` | `union: string|class_binding` | — | Box classes (w-/h- define the Contain fit box) |
+
+---
+
 ## 原生直通(native_html)
 
 ### `+`
@@ -1713,7 +1727,7 @@ _props 待声明_
 
 ### `audio`
 
-`native_html` · `audio` · web: `none` · iced: `fallback` · category: `content`
+`native_html` · `audio` · web: `native` · iced: `fallback` · category: `content`
 
 P1 extracted from production tables; props TBD
 
@@ -2244,7 +2258,7 @@ _props 待声明_
 
 ### `video`
 
-`native_html` · `video` · web: `none` · iced: `fallback` · category: `content`
+`native_html` · `video` · web: `native` · iced: `fallback` · category: `content`
 
 P1 extracted from production tables; props TBD
 
