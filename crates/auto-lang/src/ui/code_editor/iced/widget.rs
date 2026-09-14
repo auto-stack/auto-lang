@@ -486,11 +486,13 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
             fill_quad(renderer, to_rect(bounds, preedit.underline), to_color(preedit.color));
         }
 
+        // PLAN-626 rev2 T-10: official-scrollbar look — 3px rounded thumb
+        // (mirrors iced renderer scrollbar_style()).
         if let Some(sb) = &list.scrollbar_v {
-            fill_quad(renderer, to_rect(bounds, sb.thumb), to_color(sb.color));
+            fill_quad_rounded(renderer, to_rect(bounds, sb.thumb), to_color(sb.color), 3.0);
         }
         if let Some(sb) = &list.scrollbar_h {
-            fill_quad(renderer, to_rect(bounds, sb.thumb), to_color(sb.color));
+            fill_quad_rounded(renderer, to_rect(bounds, sb.thumb), to_color(sb.color), 3.0);
         }
     }
 
@@ -532,6 +534,25 @@ fn fill_quad(renderer: &mut iced::Renderer, rect: Rectangle, color: Color) {
     renderer.fill_quad(
         renderer::Quad {
             bounds: rect,
+            ..renderer::Quad::default()
+        },
+        Background::Color(color),
+    );
+}
+
+fn fill_quad_rounded(
+    renderer: &mut iced::Renderer,
+    rect: Rectangle,
+    color: Color,
+    radius: f32,
+) {
+    renderer.fill_quad(
+        renderer::Quad {
+            bounds: rect,
+            border: iced::Border {
+                radius: (radius).into(),
+                ..iced::Border::default()
+            },
             ..renderer::Quad::default()
         },
         Background::Color(color),
