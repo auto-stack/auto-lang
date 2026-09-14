@@ -283,6 +283,9 @@ FN_PROLOG 校验、不再 poisoned。单测：循环体 handler 编译 + 导出�
   视口区**实时渲染且可交互**——选中即渲染对应子 widget（snapshot 含示例
   初始状态文本）、示例内按钮点击联动（MCP press 计数变化）、切换 selected_id
   正确装卸。验证：p625_t10 spike（已绿）+ 扩展到真实语料的 MCP 端到端。
+  [✅ 已达成] spike 全绿 + 真实语料端到端（002-counter 实时渲染/交互联动
+  PASS;14 个自包含示例 live;6 个模块 use 示例 v1 降级占位并在跳过清单
+  上报）。
 
 ## 8. 执行步骤
 
@@ -394,18 +397,24 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
     （`widget App` → `Demo002Counter`）作为有状态 child widget 编入宿主模块，
     初始渲染/chrome 共存/selected_id 切换卸载与重实例化全通过
     （dynamic.rs::p625_t10_spike）。机制定案：child-widget 单模块编译。
-  - **T-10b** 生成器发射：`generate_gallery_host` 对每个 loadable 且单文件
-    的示例，将 `widget App` 改名（`Demo<IdPascal>`）后发射
-    `src/front/demos/<id>.at`；多文件示例（含自有 components/）v1 跳过
-    （按现状列「可交互」徽章但视口降级占位,清单记入 T-10 验收注记）。
-  - **T-10c** 接线：app.at 增 `use` 导入 + 视口区按 selected_id 条件实例化
-    （生成器同步产出条件清单；手写一次,示例增删时同步）；VM 端视口区即
-    真渲染。web 臂影响评估随做：Demo* 子 widget 会被 vue 转译进 SFC
-    （Plan 522）——体积与转译兼容性以构建实测为准,若劣化则评估仅 VM 注入
-    的装载路径。
+  - **T-10b [✅ 已完成]** 生成器发射：`emit_gallery_vm_demos`
+    （vue.rs，generate_gallery_host 调用）——loadable 且**自包含**（单
+    widget 声明按行首判定、无 .at 导入、无模块级 use）的示例，将
+    `widget App` 改名（`Demo<Pascal>`）后发射 `src/gallery/demos/<id>.at` +
+    `src/gallery/AppViewport.vm.at` 条件适配器；多文件/模块 use 示例跳过
+    并上报（016/026 link 致命实证后收紧）。golden 测试 x2。
+  - **T-10c [✅ 已完成]** 接线：app.at **零改动**——`.vue` 导入路径不变，
+    auto-lang ext 链新增 `.vue`→同名 `.vm.at` 探测（ext_stubs.rs
+    Component 臂,嵌套 .at component 随装注册,fn/.ts 沿旧路 stub）；
+    AppViewport.vm.at 内 use.web 导入 Demo* 子 widget 并按 `.app` 条件
+    实例化。**web 臂零影响**（.vm.at 仅 VM 链装载,vue 构建实测 ✓）。
   - **T-10d** Rust 臂（--render rust）同型支持调研：转译器对 child widget
     的支持现状核对,可行则同门落地,不可行则登记差异。
   → AC-10。
+  [✅ T-10b/c 端到端实证] 2026-09-14：VM 运行视口区**实时渲染
+  002-counter**（Counter: 0 + 三按钮），MCP 点击 "+" ×2 → "Counter: 2"
+  联动（截图 p625_vm_t10_live_final / p625_vm_t10_interactive）；
+  20→14 VM-live（模块 use 过滤后）；vue 构建 15.26s ✓。
 
 ## 9. 复审记录
 
@@ -444,6 +453,17 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   rev 3：新增 T-10（a/b/c/d 子阶段）+ AC-10，status 回 executing（T-09 占位卡
   保留为无 VM 形态组件的通用降级，不回退）。T-10a spike 一次通过确立机制。
   blockers：无；T-10b/c 下一轮实施。`next: work`。
+
+- **2026-09-14 work round 6（仍 plan_revision 3）**：stage `work`；code
+  commits auto-lang `44ea8209f`（ext 链 .vm.at 探测+嵌套装载+措辞）、
+  auto-os `94ff92e`（生成产物 20 子 widget 源+适配器）；task_ids T-10b、
+  T-10c 完成（**10 任务中 9.5 落地,余 T-10d Rust 臂调研**）。evidence：
+  VM 实测视口实时渲染 002-counter 且 MCP 点击 + ×2 → Counter: 2 联动
+  PASS；14 VM-live + 6 跳过上报；vue 构建 15.26s ✓。过程中修复:发射器
+  分支 if/else-if 括号链、widget 声明行首判定（002-counter 注释误触）、
+  模块 use 过滤（016/026 link 致命实证）。
+  `next: work`（T-10d）或 `review`（T-10d 可独立后补,主体已闭环——交用户
+  选择）。
 
 - **2026-09-14 work round 3（仍 plan_revision 2）**：stage `work`；无代码
   commit（纯调查/决策轮）；task_ids T-07、T-08 完成（8/9）。evidence：WER
