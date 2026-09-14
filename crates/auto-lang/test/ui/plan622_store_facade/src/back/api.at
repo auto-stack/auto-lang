@@ -1,0 +1,12 @@
+// api.at — PLAN-622 red corpus contract module (the (c) arm).
+//
+// Minimal #[api] fn called from INSIDE counter_store.at's Save handler.
+// In split mode (api_over_http) the call must be rewritten to the HTTP
+// native; before the fix the store module's handler keeps a plain CALL
+// reloc that resolves to this in-module stub body — the call "succeeds"
+// without ever reaching the backend (jade T-05: 静默执行 stub，不落盘).
+
+#[api(method = "POST", path = "/api/notes/save")]
+pub fn save_note(count int) str {
+    return "saved"
+}

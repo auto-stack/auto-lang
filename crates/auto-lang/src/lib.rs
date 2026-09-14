@@ -6627,6 +6627,10 @@ mod plan370_store_vm_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_store_facade_tests;
 
+// PLAN-622: named-store facade consumption-gap red corpus (a-e).
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan622_store_facade_gap_tests;
+
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;

@@ -101,6 +101,7 @@ macro_rules! for_each_native {
             (2066, NATIVE_LIST_REDUCE, shim_list_reduce, "auto.list.reduce"),
             (2067, NATIVE_LIST_SORT, shim_list_sort, "auto.list.sort"),
             (2068, NATIVE_LIST_SORT_BY, shim_list_sort_by, "auto.list.sort_by"),
+            (2071, NATIVE_LIST_SPLICE, shim_list_splice, "auto.list.splice"),
             (2080, NATIVE_LIST_JOIN, shim_list_join, "auto.list.join"),
             // === Plan 046 (auto-musk T2): dynamic-receiver (obj) family ===
             (2090, NATIVE_OBJ_KEYS, shim_obj_keys, "auto.obj.keys"),
@@ -798,6 +799,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.list.set", 107, Void),
             ("auto.list.insert", 108, Void),
             ("auto.list.remove", 109, Void),
+            ("auto.list.splice", 2071, List),
             // PLAN-057 T6：Array.isArray 静态名/ID（shim 由 engine 覆盖块绑定，
             // 沿 auto.json.parse 惯例——rust_fn 宏不适配 raw-nv 分派）。
             ("auto.list.is_array", 1919, Bool),
@@ -1829,6 +1831,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.list.set", 107),
     ("auto.list.insert", 108),
     ("auto.list.remove", 109),
+    ("auto.list.splice", 2071),
     ("auto.list.drop", 110),
     // PLAN-057 T6: Array.isArray（shim 由 engine 覆盖块绑定）。双行别名：
     // resolve 的 canonical 化保留方法名大小写——"Array.isArray" 规整为

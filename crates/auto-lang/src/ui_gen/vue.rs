@@ -6609,7 +6609,19 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // (ondismiss)+ fixed 坐标锚(x/y),与 VM iced 臂(坐标锚
                 // 面板 + 点击外部关闭)语义对齐。terminal 臂同款早退模式,
                 // 不进 shadcn 装配路径(亦不注册 Popover import)。
-                if tag == "popover" {
+                // auto-musk 修正(2026-09-14):臂加形态判别——只吃坐标锚定
+                // 形态(声明 open/x/y/ondismiss 任一);shadcn 嵌套形态
+                // (popover-trigger/content 子节点,无上述 props)原样落空走
+                // map_tag 装配。此前无判别时该臂吞掉一切 popover,shadcn
+                // 三件套被包进无 PopoverRoot 的 fixed 空壳——触发器/弹层
+                // 双双不渲染(auto-musk workspace_selector 实证),且坐标
+                // 缺省回退发非法 JS `left: 8px`(字面量后跟标识符)。
+                if tag == "popover"
+                    && (props.contains_key("open")
+                        || props.contains_key("x")
+                        || props.contains_key("y")
+                        || events.contains_key("ondismiss"))
+                {
                     let open_expr = props.get("open").and_then(|v| match v {
                         AuraPropValue::Expr(expr) => self.expr_to_vue_bound_value(expr).ok(),
                         _ => None,
@@ -6630,10 +6642,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                 (Ok(x), Ok(y)) => {
                                     format!("left: {} + 'px', top: {} + 'px'", x, y)
                                 }
-                                _ => "left: 8px, top: 8px".to_string(),
+                                _ => "left: '8px', top: '8px'".to_string(),
                             }
                         }
-                        _ => "left: 8px, top: 8px".to_string(),
+                        _ => "left: '8px', top: '8px'".to_string(),
                     };
                     let mut out = String::new();
                     // backdrop:仅当声明 ondismiss 时发射(点击空白处关闭)。

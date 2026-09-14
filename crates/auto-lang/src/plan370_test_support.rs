@@ -97,6 +97,16 @@ pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent>
 /// examples/ (e.g. test/ui corpora).
 #[cfg(feature = "ui-interpreter")]
 pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicComponent> {
+    build_component_from_app_mode(manifest, false)
+}
+
+/// PLAN-622: split-mode variant (`api_over_http = true`) so corpus tests can
+/// assert the Plan 340 rewrite through the full production-shaped build path.
+#[cfg(feature = "ui-interpreter")]
+pub(crate) fn build_component_from_app_mode(
+    manifest: &Path,
+    api_over_http: bool,
+) -> Option<DynamicComponent> {
     let base_dir = manifest.parent().unwrap_or(Path::new(".")).to_path_buf();
     // PLAN-050 T9: 与生产 build_dynamic_component 同款 i18n 查表装载。
     crate::ui::i18n_lookup::load_from_dir(&base_dir);
@@ -390,7 +400,7 @@ pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicCompone
         registry,
         import_stmts,
         &import_aliases,
-        false, // merged VM mode (api_over_http = false)
+        api_over_http, // PLAN-622: false = merged VM mode, true = split (340 rewrite)
     )
     .unwrap();
     comp.fire_init();
