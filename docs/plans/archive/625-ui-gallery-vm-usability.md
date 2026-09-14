@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-625
-status: reviewed               # drafting → executing → execution_done → reviewed → archived（rev 3 复审 pass:VM 视口实装交付,待 merge）
+status: archived               # drafting → executing → execution_done → reviewed → archived（rev 3 复审 pass → merge 落地归档）
 feature_name: ui-gallery-vm-usability
 author: [agent]
 created_at: 2026-09-14
@@ -512,6 +512,27 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   rust 臂实测 17 编译错（模块 use 未支持）——结论=VM 专属实装,Rust 臂转
   独立计划。status 回 execution_done。scoped 检查已过（本轮无代码改动）。
   blockers：无。`next: review`。
+
+- **2026-09-15 merge（PLAN-625:r3）consolidation receipt**：stage `merge`；
+  outcome `pass`。
+  - `prepared` ✅：reviewed 基线（rev 3；reviewed_commit=worktree
+    auto-lang `1f72bb532`/auto-os `94ff92e`）；canonical diff=SD-01/02/03
+    （SD-02 目标修正记录：降级矩阵实际载体=ui/overview.md 625 段，
+    parity/project.md 系三方对拍域非视觉对拍）+ KNOWN-DEBT（P573-D1
+    清偿标记 + P625-D1..D5 + F-R1..R3）；projection targets=.autoos/
+    specs.json（reviews/reports）+ ui/plans.md；delivery commit=8a5a5211f
+    （merge plan-625-dev ∈ master 祖先）+51604e36d（T-10b 补提交）。
+  - `landed` ✅：master merge 8a5a5211f（plan-625-dev 全部提交 ∈ master
+    祖先）；smoke=cargo check 0 错 + gallery_registry 6/6 + r002 6/6 +
+    p625_t10 1/1。
+  - `ledger_refreshed` ✅：.autoos/specs.json P625-1(reports)/P625-2(reviews)
+    published（回读验证）；ui/plans.md 625 行；INDEX.md 再生（26 projects,
+    无条目级变化）。
+  - `archived` ✅：本文件 git mv → docs/plans/archive/ + status: archived。
+  - `cleaned`：待 wt-guard 后填写。
+  - 附注：worktree 运行需 `AUTO_GALLERY_APPS` env（组布局探测多一层，
+    AGENTS.md 解析序 env 档）；AppViewport no-op stub WARN 化妆残留
+    （F-R3）随本归档记录在案。
 
 - **2026-09-14 work round 3（仍 plan_revision 2）**：stage `work`；无代码
   commit（纯调查/决策轮）；task_ids T-07、T-08 完成（8/9）。evidence：WER
