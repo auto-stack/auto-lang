@@ -18,6 +18,10 @@ default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_
 mem-xl = { max-threads = 1 }
 mem-lg = { max-threads = 1 }
 mem-md = { max-threads = 2 }
+# PLAN-630 复审 F-1:ffi_dual 族共享 auto-cache（018/019 同 fixture 异
+# features 的 pack 有竞窗），并行重叠时 wide 变体读到窄包（610590388736
+# ≠ 5000000000 实录）。串行组隔离。
+ffi-dual = { max-threads = 1 }
 
 # 名单与档位数据:.config/test-mem-weights.md(单一事实来源)。
 # 新增重测试三步登记:测量(scripts/measure_test_mem.py) → 权重表定级
@@ -33,3 +37,7 @@ test-group = "mem-lg"
 [[profile.default.overrides]]
 filter = "test(test_aavm2_goldens_check) or test(test_aavm2_a2r_main_dump_print) or test(test_aavm2_a2r_corpus_rustc) or test(test_aavm2_002_hello_compile)"
 test-group = "mem-md"
+
+[[profile.default.overrides]]
+filter = "test(ffi_dual)"
+test-group = "ffi-dual"

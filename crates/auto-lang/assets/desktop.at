@@ -126,10 +126,22 @@ widget DesktopSurface {
                 // review_ue.log 实录 8 条裸 click 无 ActivateApp）。降级后
                 // 整格 80×80 统一双击+右键（Windows 惯例：图标+文字整块
                 // 可点）；视觉等价（20px glyph=原 text-xl 字号档）。
-                col {
-                    style: "h-10 w-10 items-center justify-center rounded-xl bg-[" + e.color + "]"
-                    icon (name: e.icon) {
-                        style: "w-5 h-5 text-white"
+                if e.full == "1" {
+                    col {
+                        // PLAN-018-FU3（用户裁定）：满幅 tile 高亮走边框——
+                        // 背景高亮被不透明图标本体挡住不可见；透明边框 +
+                        // hover 亮边，待透明底 SVG 时代再回背景高亮。
+                        style: "w-20 h-20 rounded-xl border-2 border-transparent hover:border-white/50"
+                        icon (name: e.icon) {
+                            style: "w-full h-full"
+                        }
+                    }
+                } else {
+                    col {
+                        style: "h-10 w-10 items-center justify-center rounded-xl bg-[" + e.color + "]"
+                        icon (name: e.icon) {
+                            style: "w-5 h-5 text-white"
+                        }
                     }
                 }
                                 col {

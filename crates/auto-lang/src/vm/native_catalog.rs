@@ -448,6 +448,9 @@ macro_rules! for_each_native {
             // 登记、白名单(for_each_bigvm_native/NATIVE_ID_ENTRIES)缺失,VM 模式
             // 下 widget/back 模块调用报 Undefined symbol —— 一并补齐。
             (2866, NATIVE_FS_READ_DIR, shim_fs_read_dir, "auto.fs.read_dir"),
+            // Plan 626 T-04:嵌套目录树 JSON(参数 str,int;返回 str;
+            // 2875 取 random 段 2870-2874 与 2880 之间的空档,防撞号重演)。
+            (2875, NATIVE_FS_TREE, shim_fs_tree, "auto.fs.tree"),
             // Plan 060:merged 模式 shell 执行提交(api.at 契约归一的传输件)。
             (2867, NATIVE_SHELL_EXEC_SUBMIT, shim_shell_exec_submit, "auto.shell.exec_submit"),
             // Plan 060 M2:builtin 直发(语义在 .at 提交侧算好)。
@@ -488,6 +491,12 @@ macro_rules! for_each_native {
             (2980, NATIVE_TERM_ENGINE_BACKLOG_PAUSED, shim_term_backlog_paused, "auto.term.engine_backlog_paused"),
             (2981, NATIVE_TERM_ENGINE_BACKLOG_TAKE_ALERTS, shim_term_backlog_take_alerts, "auto.term.engine_backlog_take_alerts"),
             (2982, NATIVE_TERM_ENGINE_BACKLOG_DROPPED, shim_term_backlog_dropped, "auto.term.engine_backlog_dropped"),
+            // PLAN-018 D5:SpawnSpec(spawn_ex)+ 定向泵三件(per-key 泵面;
+            // 广播/任意旧件保留为兼容面)。
+            (2983, NATIVE_TERM_ENGINE_SPAWN_EX, shim_term_spawn_ex, "auto.term.engine_spawn_ex"),
+            (2984, NATIVE_TERM_ENGINE_ROWS_FOR, shim_term_rows_for, "auto.term.engine_rows_for"),
+            (2985, NATIVE_TERM_ENGINE_PUMP_FOR, shim_term_pump_for, "auto.term.engine_pump_for"),
+            (2986, NATIVE_TERM_ENGINE_APPLY_RESIZE_FOR, shim_term_apply_resize_for, "auto.term.engine_apply_resize_for"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -1012,6 +1021,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.fs.join", 2865, String),
             // 2026-08-22:read_dir 白名单补登记(ash-gui cd 目录补全用)。
             ("auto.fs.read_dir", 2866, String),
+            // Plan 626 T-04:嵌套目录树 JSON(TreeView 节点 schema 直配)。
+            ("auto.fs.tree", 2875, String),
             // Plan 060:merged 模式 shell 执行提交(参数 int,str,str;返回 void)。
             ("auto.shell.exec_submit", 2867, Void),
             ("auto.shell.emit_result", 2868, Void),
@@ -2579,6 +2590,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.fs.parent", 2864),
     ("auto.fs.join", 2865),
     ("auto.fs.read_dir", 2866),
+    // Plan 626 T-04:嵌套目录树 JSON。
+    ("auto.fs.tree", 2875),
     ("auto.shell.exec_submit", 2867),
     ("auto.shell.emit_result", 2868),
     ("auto.shell.emit_show", 2869),
@@ -2605,6 +2618,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_backlog_paused", 2980),
     ("auto.term.engine_backlog_take_alerts", 2981),
     ("auto.term.engine_backlog_dropped", 2982),
+    ("auto.term.engine_spawn_ex", 2983),
+    ("auto.term.engine_rows_for", 2984),
+    ("auto.term.engine_pump_for", 2985),
+    ("auto.term.engine_apply_resize_for", 2986),
 
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
     ("auto.image.queue", 2960),

@@ -509,6 +509,11 @@ pub struct AutodownEditorCore {
     /// PLAN-063 T-04d: 滚动同步锚块索引（-1 = 无）。scroll 回调按
     /// 首个完整可见块判定写入，draw 臂读出描边高亮。
     anchor_block: AtomicI32,
+    /// PLAN-066 T3: 流式进行中（is_final=false）。stream→edit v1 对齐 TS
+    /// 裁定（engine ARCHITECTURE §6）：流式中编辑面只读（handle_input 全
+    /// 门控 + 尾部状态条横幅），final 解锁。sync_external 写，读出经
+    /// streaming()。
+    streaming: AtomicBool,
 }
 
 impl AutodownEditorCore {
@@ -536,6 +541,7 @@ impl AutodownEditorCore {
             anchor_block: AtomicI32::new(-1),
             external_dirty: AtomicBool::new(false),
             last_used: AtomicU64::new(0),
+            streaming: AtomicBool::new(false),
         }
     }
 
@@ -596,11 +602,22 @@ impl AutodownEditorCore {
         self.external_dirty.swap(false, Ordering::AcqRel)
     }
 
+    /// PLAN-066 T3: 流式态读出（编辑面只读门 + 状态条横幅的单一事实源）。
+    pub fn streaming(&self) -> bool {
+        self.streaming.load(Ordering::Acquire)
+    }
+
     /// 外部值同步（renderer lowering 每次构建调用）。与上次外部值相同则
     /// 零操作——用户编辑导致的 content 回显不会清掉进行中的光标/焦点；
     /// 真变化（或首次）才整体重建块表。返回是否发生了重建。
+    ///
+    /// PLAN-066 T3: `is_final` 真消费（原"恒按 final"豁免摘除）——
+    /// ①流式位写入（编辑面只读门 + 状态条）；②重建解析带真实 flag（
+    /// parse_blocks final=false：未闭合方言块安全降级、开放 fence loading
+    /// 标记——与只读轨同一单源语义）。流式位先于差分快路写：内容不变但
+    /// final 翻转（生成收尾无新字符）也要解锁。
     pub fn sync_external(&self, content: &str, is_final: bool) -> bool {
-        let _ = is_final; // 流式加载面板语义属只读轨；编辑器恒按 final 处理
+        self.streaming.store(!is_final, Ordering::Release);
         {
             let last = self.last_external.lock().unwrap();
             if last.as_deref() == Some(content) {
@@ -632,13 +649,21 @@ impl AutodownEditorCore {
             *self.last_external.lock().unwrap() = Some(content.to_owned());
             return false;
         }
-        crate::ui::code_editor::core::with_font_system(|fs| self.rebuild(content, fs))
+        crate::ui::code_editor::core::with_font_system(|fs| self.rebuild_with(content, fs, is_final))
     }
 
-    /// 强制重建（MCP 编程路径等绕过差分时）。
+    /// 强制重建（MCP 编程路径等绕过差分时）。解析恒按 final（编辑模型
+    /// 全量闭合面）。
     pub fn rebuild(&self, content: &str, font_system: &mut FontSystem) -> bool {
+        self.rebuild_with(content, font_system, true)
+    }
+
+    /// PLAN-066 T3: 重建本体——`parse_final` 直通 parse_blocks（外部同步
+    /// 传真实 is_final：流式期未闭合块走单源降级语义；MCP 强制路径传
+    /// true 保持原行为）。
+    fn rebuild_with(&self, content: &str, font_system: &mut FontSystem, parse_final: bool) -> bool {
         *self.last_external.lock().unwrap() = Some(content.to_owned());
-        let root = autodown_core::markdown_parser::parse_blocks(content, true);
+        let root = autodown_core::markdown_parser::parse_blocks(content, parse_final);
         let mut segs: Vec<Seg> = Vec::new();
         let mut blocks: Vec<BlockBuf> = Vec::new();
         build_walk(&root.children.iter().collect::<Vec<_>>(), &mut segs, &mut blocks, font_system);
@@ -726,6 +751,12 @@ impl AutodownEditorCore {
         // PLAN-041 T4 readonly 门控：只读视图实例不路由任何输入——键盘/
         // IME/鼠标全放行（不捕获、不建 undo、无光标状态；编辑机器零活动）。
         if self.is_view_instance() {
+            return DocOutput::default();
+        }
+        // PLAN-066 T3: 流式只读门（stream→edit v1 对齐 TS 裁定：流式中编辑
+        // 面只读，final 自动解锁）。全输入面早退——不捕获、不建 undo、无
+        // 光标/选区活动；sync_external 不经此口，外部推流不受影响。
+        if self.streaming() {
             return DocOutput::default();
         }
         match input {
@@ -2063,6 +2094,34 @@ impl AutodownEditorCore {
         }
         drop(blocks);
 
+        // PLAN-066 T3: 流式状态条（内容尾）——fill 条 + 文案 run，高度计入
+        // DocFrame.height。视图实例（只读 fence 轨）不渲染：那是只读轨自己
+        // 的 032 loading 语义，不是编辑壳状态。
+        let mut banner_h = 0.0;
+        if self.streaming() && !view_inst {
+            const BAR_PAD: f32 = 4.0;
+            const BAR_H: f32 = 22.0;
+            let top = (y - BLOCK_GAP).max(0.0) + BAR_PAD;
+            list.fills.push((
+                Rect::new(0.0, top, viewport_w, BAR_H),
+                Rgba { r: 0.35, g: 0.55, b: 1.0, a: 0.16 },
+            ));
+            list.runs.push(DocRun {
+                text: "流式生成中…（只读，完成后解锁）".to_owned(),
+                x: 6.0,
+                y: top + 3.0,
+                size: BODY_SIZE,
+                line_height: BODY_SIZE * LINE_H_PARA,
+                color: Rgba { r: 0.55, g: 0.7, b: 1.0, a: 0.92 },
+                bold: false,
+                italic: false,
+                mono: false,
+                strike: false,
+                underline: false,
+            });
+            banner_h = BAR_H + BAR_PAD;
+        }
+
         if let Some(fi) = focus {
             if let Some(lay) = layouts.get(fi).copied().flatten() {
                 list.focus_frame = Some((lay.rect, frame_color));
@@ -2070,7 +2129,7 @@ impl AutodownEditorCore {
         }
         *self.layout.lock().unwrap() =
             DocLayout { blocks: layouts.into_iter().map(|l| l.expect("render covers every block")).collect() };
-        DocFrame { list, height: (y - BLOCK_GAP).max(0.0) }
+        DocFrame { list, height: (y - BLOCK_GAP).max(0.0) + banner_h }
     }
 }
 
@@ -5883,4 +5942,99 @@ fn main() { let s = \"hi\"; }
         assert!(out.contains("$details(summary:\"展开\")"), "details 往返：{out:?}");
         assert!(out.contains("藏文。"), "details 内容往返：{out:?}");
     }
+
+// ── PLAN-066 T3: stream→edit v1（流式只读门 + parse flag 直通 + 状态条）──
+// TS 裁定对齐：engine ARCHITECTURE §6「BlockEditCtx.readonly = streaming—
+// 流式进行中编辑面只读，流结束自动解锁」。原生面 = core 流式位 + handle_input
+// 全门控 + 尾部状态条；parse flag 直通 parse_blocks（032 单源语义）。
+
+/// 流式位往返：is_final=false 置位、true 解锁；内容不变仅翻 final 也解锁
+/// （流式位先于差分快路写——生成收尾无新字符的帧也要解锁）。
+#[test]
+fn plan066_streaming_flag_round_trip() {
+    let c = core_for("p66s", "# 标题\n\n段落。");
+    assert!(!c.streaming());
+    assert!(c.sync_external("# 标题\n\n段落一。", false), "streaming push rebuilds");
+    assert!(c.streaming());
+    assert!(!c.sync_external("# 标题\n\n段落一。", true), "same-content final: no rebuild");
+    assert!(!c.streaming(), "final flip unlocks even without rebuild");
+}
+
+/// 流式只读门：streaming 中按键全哑（不核入不改文本），final 解锁后同键
+/// 入核。
+#[test]
+fn plan066_streaming_gates_input_until_final() {
+    let c = core_for("p66g", "abc");
+    assert!(c.sync_external("abc2", false));
+    assert!(c.streaming());
+    *c.focus.lock().unwrap() = Some(0);
+    let out = press(c, EditorKey::Char('x'));
+    assert!(!out.request_redraw, "streaming: key inert");
+    assert!(
+        c.emit_document().starts_with("abc2"),
+        "no mutation while streaming: {:?}",
+        c.emit_document()
+    );
+    assert!(!c.sync_external("abc2", true));
+    let _ = press(c, EditorKey::End);
+    let _ = press(c, EditorKey::Char('x'));
+    assert!(
+        c.emit_document().starts_with("abc2x"),
+        "unlocked: key lands: {:?}",
+        c.emit_document()
+    );
+}
+
+/// parse flag 直通重建：流式期悬空列表标记被单源剥离（emit 无列表项行），
+/// final 解析产出列表项（emit 带 `- ` 行）——parse_blocks 的 final 语义
+/// （032 行构造即刻完整 / loading 标记）经编辑臂 rebuild 生效。
+#[test]
+fn plan066_parse_final_flag_reaches_rebuild() {
+    let c = core_for("p66f", "seed");
+    assert!(c.sync_external("abc\n\n- ", false));
+    assert!(
+        !c.emit_document().contains("\n- "),
+        "streaming: dangling list-marker tail stripped: {:?}",
+        c.emit_document()
+    );
+    run_fs(|fs| {
+        c.rebuild_with("abc\n\n- ", fs, true);
+    });
+    assert!(
+        c.emit_document().contains("\n- "),
+        "final: list item materialized: {:?}",
+        c.emit_document()
+    );
+}
+
+/// 状态条：streaming 中 render_frame 尾部横幅在册（fill 条 + 文案 run）且
+/// 高度计入 DocFrame.height；final 帧无横幅。
+#[test]
+fn plan066_streaming_banner_in_draw_list() {
+    let c = core_for("p66b", "正文。");
+    let f0 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+    assert!(!c.streaming());
+    assert!(
+        f0.list.runs.iter().all(|r| !r.text.contains("流式生成中")),
+        "final frame: no banner"
+    );
+    assert!(c.sync_external("正文更新。", false));
+    assert!(c.streaming());
+    let f1 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+    assert!(
+        f1.list.runs.iter().any(|r| r.text.contains("流式生成中")),
+        "banner run present: {:?}",
+        f1.list.runs.iter().map(|r| &r.text).collect::<Vec<_>>()
+    );
+    assert!(
+        f1.list.fills.iter().any(|(r, _)| r.h >= 20.0),
+        "banner strip fill present"
+    );
+    assert!(
+        f1.height > f0.height + 20.0,
+        "banner height accounted: stream={} final={}",
+        f1.height,
+        f0.height
+    );
+}
 }

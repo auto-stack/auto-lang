@@ -2385,3 +2385,118 @@ fn f2_sidebar_scroll_probe() {
     // h-full 有界（无界形态 = 内容尾 ~1100 超根）。
     assert!(py <= 760.0, "PICKER 尾件应在根内（y={py}）——provider 未有界");
 }
+
+/// PLAN-625 T-04 复现探针：ui-gallery 侧栏链（aside `w-72 …` **无显式高度类**
+/// + provider `h-full w-full flex flex-col`）。假设：aside 高度无来源时
+/// （Row 交叉轴若不做 CSS stretch），provider 的 h-full 失去解析基准 →
+/// 子树零尺寸 → pills/列表在树中存在但零像素绘制（VM 实机 2026-09-14：
+/// 33 项在 AURA 树、列亮度扫描 0 内容，对照 os-config f2 探针的 aside 显式
+/// `h-full` 可用形态）。
+#[test]
+fn p625_uigallery_sidebar_pills_visible() {
+    fn pill(label: &'static str, style: &str) -> View<()> {
+        View::Button {
+            label: String::new(),
+            onclick: (),
+            style: Style::parse(style).ok(),
+            on_right_click: None,
+            content: Some(Box::new(View::Text {
+                content: label.to_string(),
+                style: Style::parse("text-xs").ok(),
+                selectable: false,
+            })),
+            disabled: false,
+        }
+    }
+    // app.at: aside(w-72 …) > sidebar_provider 合并列(h-full w-full flex
+    // flex-col) > [sidebar_header(px-3 pt-4) > pills row, scroll(flex-1 …)]
+    fn aside_with(height_class: &str) -> View<()> {
+        View::Column {
+            children: vec![View::Column {
+                children: vec![
+                    View::Column {
+                        children: vec![View::Row {
+                            children: vec![
+                                pill("全部", "px-2.5 py-1 rounded-full bg-primary text-primary-foreground font-semibold"),
+                                pill("基础", "px-2.5 py-1 rounded-full hover:bg-muted text-muted-foreground"),
+                            ],
+                            spacing: 0,
+                            padding: 0,
+                            style: Style::parse("gap-1 pb-2 border-b border-border/50 text-xs").ok(),
+                            onclick: None,
+                            on_right_click: None,
+                        }],
+                        spacing: 0,
+                        padding: 0,
+                        style: Style::parse("px-3 pt-4").ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    },
+                    View::Scrollable {
+                        child: Box::new(View::Column {
+                            children: vec![],
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                            on_right_click: None,
+                        }),
+                        width: None,
+                        height: None,
+                        style: Style::parse("flex-1 min-h-0 px-3 py-4").ok(),
+                        auto_scroll: false,
+                        offset: None,
+                        on_scroll: None,
+                    },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("h-full w-full flex flex-col").ok(),
+                onclick: None,
+                on_right_click: None,
+            }],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(&format!(
+                "w-72 {height_class} border-r border-border bg-card/40 flex flex-col shrink-0 min-h-0"
+            ))
+            .ok(),
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+    fn root_with(aside: View<()>) -> View<()> {
+        View::Column {
+            children: vec![
+                styled_view("HEADER"),
+                View::Row {
+                    children: vec![aside, styled_view("MAIN")],
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse("flex-1 overflow-hidden").ok(),
+                    onclick: None,
+                    on_right_click: None,
+                },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-full h-screen bg-background text-foreground flex-col").ok(),
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
+    // 修复形态（h-full，os-config/015-notes 惯用法）：pills 正尺寸可见。
+    let mut ui = simulator(root_with(aside_with("h-full")).into_iced());
+    let (x, y, w, h) = bounds_of(&mut ui, "全部");
+    eprintln!("[p625][h-full] pill 全部 bounds=({x},{y},{w},{h})");
+    assert!(w > 0.0 && h > 0.0, "h-full 形态 pill 必须可见（实测 {w}x{h}）");
+
+    // 缺陷形态（无高度类）钉住渲染器缺口：provider h-full 塌缩 → 0×0
+    // （Row 交叉轴无 CSS stretch 语义;若未来渲染器补 stretch 语义,本断言
+    // 应同步翻转为正尺寸——KNOWN-DEBT P625-T04）。
+    let mut ui = simulator(root_with(aside_with("")).into_iced());
+    let (x2, _y2, w2, h2) = bounds_of(&mut ui, "全部");
+    eprintln!("[p625][no-height] pill 全部 bounds=({x2},,{w2}x{h2})");
+    assert_eq!((w2, h2), (0.0, 0.0), "无高度类形态应保持 0×0（渲染器缺口哨兵）");
+}

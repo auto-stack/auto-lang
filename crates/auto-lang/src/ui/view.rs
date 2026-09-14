@@ -614,6 +614,21 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,  // ✅ NEW: Unified styling support
     },
 
+    /// PLAN-066: 原生外部组件透传变体（NativeWidgetEntry::Element 通道）。
+    /// 派发期由 NativeWidgetRegistry 命中 Element 入口时产出，name+props 明
+    /// 文透传（快照 kind=name，MCP 断言面保明；刻意不用 Box<dyn>——Clone/
+    /// Debug 与快照可枚举是硬约束），iced renderer 在 lowering 期查注册表
+    /// 取 Element factory。本计划无 Element factory 注册，renderer 落防御臂。
+    Custom {
+        /// 注册名（NativeWidgetRegistry 键，快照 kind）。
+        name: String,
+        /// 已解析属性透传（值经 builder 显示化；快照 props 原样在场）。
+        props: Vec<(String, String)>,
+        /// 事件→消息（派发期经 event_to_message 解析，与内置变体同源）。
+        events: Vec<(String, M)>,
+        style: Option<Style>,
+    },
+
     /// Container wrapper for styling and layout
     Container {
         child: Box<View<M>>,
@@ -1924,6 +1939,13 @@ impl<M: Clone + Debug> View<M> {
     {
         match self {
             View::Empty => View::Empty,
+            // PLAN-066: Custom 事件消息同源映射（name/props/style 原样透传）。
+            View::Custom { name, props, events, style } => View::Custom {
+                name,
+                props,
+                events: events.into_iter().map(|(n, m)| (n, f(m))).collect(),
+                style,
+            },
             // Plan 409 §10 续 5: Overlay 递归映射 base + content 的 message。
             View::Overlay { base, content, position } => View::Overlay {
                 base: Box::new(base.map_msg_with_arc(f)),

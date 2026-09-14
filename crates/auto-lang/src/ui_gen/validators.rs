@@ -299,16 +299,102 @@ fn find_attr_value(attrs: &str, name: &str) -> Option<String> {
 /// R002: script 引用了 `store.X` 但没有 `import { useXStore }`。
 ///
 /// 本次会话 store_deps 丢失的症状：生成的 .vue 里直接 `store.notes` 但没 import store。
+/// PLAN-625 T-05 跟进修复：把 JS/TS 源里的字符串/模板字面量内容替换为
+/// 空白（保留引号定界与换行位置）。背景：R002 的裸 `store\.w+` 正则会把
+/// **字符串内容里的** "store.x"（演示示例源码/教程文本内嵌）误判为 store
+/// 引用——ui-gallery registry 表内嵌 33 份示例源码，构建被 R002 误杀
+/// （2026-09-14 实证，11 处命中全在字面量内）。模板串 `${...}` 插值段
+/// 保留原样（其中可能是真实代码）。
+fn blank_string_literals(script: &str) -> String {
+    let mut out = String::with_capacity(script.len());
+    let mut chars = script.chars().peekable();
+    let mut in_str: Option<char> = None;
+    let mut escaped = false;
+    let mut interp_depth: usize = 0; // 模板串 ${ } 插值深度
+    while let Some(c) = chars.next() {
+        if interp_depth > 0 {
+            match c {
+                '{' => {
+                    interp_depth += 1;
+                    out.push(c);
+                }
+                '}' => {
+                    interp_depth -= 1;
+                    out.push(c);
+                }
+                _ => out.push(c),
+            }
+            continue;
+        }
+        match in_str {
+            Some('`') => {
+                if escaped {
+                    escaped = false;
+                    out.push(' ');
+                } else if c == '\\' {
+                    escaped = true;
+                    out.push(' ');
+                } else if c == '$' && chars.peek() == Some(&'{') {
+                    chars.next();
+                    interp_depth += 1;
+                    out.push('$');
+                    out.push('{');
+                } else if c == '`' {
+                    in_str = None;
+                    out.push('`');
+                } else {
+                    out.push(if c == '\n' { '\n' } else { ' ' });
+                }
+            }
+            Some(q) => {
+                if escaped {
+                    escaped = false;
+                    out.push(' ');
+                } else if c == '\\' {
+                    escaped = true;
+                    out.push(' ');
+                } else if c == q {
+                    in_str = None;
+                    out.push(q);
+                } else {
+                    out.push(if c == '\n' { '\n' } else { ' ' });
+                }
+            }
+            None => {
+                if c == '"' || c == '\'' || c == '`' {
+                    in_str = Some(c);
+                    out.push(c);
+                } else if c == '/' && chars.peek() == Some(&'/') {
+                    out.push('/');
+                    out.push('/');
+                    while let Some(nc) = chars.next() {
+                        if nc == '\n' {
+                            out.push('\n');
+                            break;
+                        }
+                        out.push(' ');
+                    }
+                } else {
+                    out.push(c);
+                }
+            }
+        }
+    }
+    out
+}
+
 fn r002_store_usage_without_import(
     sfc: &str,
     widget: &str,
     _ctx: &ValidationContext,
 ) -> Vec<ValidationWarning> {
-    // 在 script 段找 `store\.\w+` 引用
+    // 在 script 段找 `store\.\w+` 引用（先剥离字符串字面量——字面量内容
+    // 里的 "store.x" 是数据不是代码，PLAN-625 实证误杀内嵌示例源码的构建）
     let script = extract_script(sfc);
     if script.is_empty() {
         return vec![];
     }
+    let script = blank_string_literals(&script);
 
     let store_usage_re = regex_lite(r"\bstore\.([a-zA-Z_]\w*)");
     let mut uses_store = false;
@@ -1036,6 +1122,32 @@ fn levenshtein(a: &[u8], b: &[u8]) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// PLAN-625 T-05 跟进：字符串字面量里的 "store.x" 不触发 R002。
+    #[test]
+    fn r002_ignores_store_refs_inside_string_literals() {
+        let sfc = "<script setup>\nconst body = \"call store.notes before render\";\nconst code = 'store.Load()';\nconst note = \"日志: store.Load 已执行\";\n</script>\n<template/>";
+        let warnings = r002_store_usage_without_import(sfc, "W", &ValidationContext::default());
+        assert!(warnings.is_empty(), "literal store refs must not fire R002: {warnings:?}");
+    }
+
+    /// 模板串 ${} 插值段保守不剥离（真实组件里那是真 store 用法）——
+    /// 仍触发 R002（故意用例，记录既定口径）。
+    #[test]
+    fn r002_template_interpolation_conservatively_flagged() {
+        let sfc = "<script setup>\nconst tpl = `total ${store.notes.length}`;\n</script>\n<template/>";
+        let warnings = r002_store_usage_without_import(sfc, "W", &ValidationContext::default());
+        assert!(!warnings.is_empty(), "interpolation is conservatively flagged");
+    }
+
+    /// 真实代码引用 store.X（字面量外）仍触发 R002。
+    #[test]
+    fn r002_still_fires_on_real_store_usage() {
+        let sfc = "<script setup>\nconst a = store.notes;\n</script>\n<template/>";
+        let warnings = r002_store_usage_without_import(sfc, "W", &ValidationContext::default());
+        assert!(!warnings.is_empty(), "real store usage must fire R002");
+    }
     use super::*;
 
     fn make_sfc(template: &str, script: &str) -> String {

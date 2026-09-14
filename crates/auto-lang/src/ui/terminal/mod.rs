@@ -294,6 +294,15 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
     core
 }
 
+/// PLAN-018 D4/D5:按 key 取注册表 core(引擎 glue 的定向泵出口:
+/// `drain_inputs_for` / `take_resize_for` 需要柄;缺 key = None,调用方
+/// no-op)。只读不创建——落表权限仍归渲染面 [`terminal`]。
+pub fn terminal_core(key: &str) -> Option<&'static TerminalCore> {
+    let map = TERMINALS.lock().unwrap();
+    let map = map.as_ref()?;
+    map.get(key).copied()
+}
+
 /// Row digest: chars + fg + bg (style-only changes also invalidate).
 fn row_digest(cells: &[TermCell]) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -364,6 +373,17 @@ pub fn terminal_feed_cells_all(row: usize, cells: Vec<TermCell>) {
     let Some(map) = map.as_mut() else { return };
     for core in map.values() {
         terminal_feed_cells(core, row, cells.clone());
+    }
+}
+
+/// PLAN-018 D4 per-key 定向投喂:styled sideband 只喂 `key` 对应的
+/// terminal(缺 key = no-op)。多 Pane 各 Pane 各 key,广播退役为兼容面
+/// (广播三件原样保留,其余消费者零扰)。
+pub fn terminal_feed_cells_for(key: &str, row: usize, cells: Vec<TermCell>) {
+    let map = TERMINALS.lock().unwrap();
+    let Some(map) = map.as_ref() else { return };
+    if let Some(core) = map.get(key) {
+        terminal_feed_cells(core, row, cells);
     }
 }
 
@@ -659,6 +679,13 @@ pub fn terminal_drain_all_inputs() -> Vec<String> {
     out
 }
 
+/// PLAN-018 D4 定向排空:只取 `core` 自己的键入队列(FIFO 整段取走;
+/// 其他 terminal 的队列不受扰)——焦点 Pane 全量泵的载荷出口。
+pub fn terminal_drain_inputs_for(core: &TerminalCore) -> Vec<String> {
+    let mut queue = core.pending_input.lock().unwrap();
+    std::mem::take(&mut *queue)
+}
+
 // ============================================================================
 // 几何随动(014:窗口 resize → 引擎 resize → View 几何回流)
 // ============================================================================
@@ -695,6 +722,13 @@ pub fn terminal_take_any_resize() -> Option<(u16, u16)> {
         }
     }
     None
+}
+
+/// PLAN-018 D4 定向几何出口:只取 `core` 自己的待定几何请求(广播/任意
+/// 语义的 `terminal_take_any_resize` 退役为兼容面)——多 Pane 请求互不
+/// 串线,焦点 Pane 的 resize 请求由其宿主泵定向消费。
+pub fn terminal_take_resize_for(core: &TerminalCore) -> Option<(u16, u16)> {
+    core.pending_resize.lock().unwrap().take()
 }
 
 /// Display width of a character in cells (dependency-free compact table:
@@ -1019,6 +1053,57 @@ mod tests {
         terminal_request_resize(core, 0, u16::MAX);
         assert_eq!(terminal_take_any_resize(), Some((MIN_RESIZE_COLS, MAX_RESIZE_ROWS)));
         terminal_dispose("t4-rs-1");
+    }
+
+    // ==== PLAN-018 D4:per-key 定向泵(多 key 互不取走;缺 key no-op)====
+
+    #[test]
+    fn per_key_feed_cells_is_directional() {
+        terminal_dispose("p18-feed-a");
+        terminal_dispose("p18-feed-b");
+        let a = terminal("p18-feed-a", 20, 4);
+        let _b = terminal("p18-feed-b", 20, 4);
+        let cells = vec![TermCell { ch: 'x', fg: TermColor::Indexed(1), bg: TermColor::Default }];
+
+        // 缺 key:no-op(不 panic、不投喂任何端)。
+        terminal_feed_cells_for("p18-missing", 0, cells.clone());
+        assert_eq!(a.line(0).as_deref(), Some(""), "缺 key 喂养不得落到任何端");
+        assert_eq!(terminal_take_damage(a), TerminalDamage::None);
+
+        // 命中 key:只喂它,另一端不动。
+        terminal_feed_cells_for("p18-feed-a", 0, cells);
+        assert_eq!(a.line(0).as_deref(), Some("x"));
+        assert_eq!(a.row_cells(0).unwrap()[0].fg, TermColor::Indexed(1));
+        assert_eq!(terminal_take_damage(a), TerminalDamage::Lines(vec![0]));
+        let _ = _b;
+        terminal_dispose("p18-feed-a");
+        terminal_dispose("p18-feed-b");
+    }
+
+    #[test]
+    fn per_key_drain_and_resize_are_directional() {
+        terminal_dispose("p18-pump-a");
+        terminal_dispose("p18-pump-b");
+        let a = terminal("p18-pump-a", 20, 4);
+        let b = terminal("p18-pump-b", 20, 4);
+
+        // 键入:A 两键、B 一键——定向排空各取各的,互不串。
+        terminal_push_input(a, "a1");
+        terminal_push_input(a, "a2");
+        terminal_push_input(b, "b1");
+        assert_eq!(terminal_drain_inputs_for(a), vec!["a1".to_owned(), "a2".to_owned()]);
+        assert_eq!(terminal_drain_inputs_for(a), Vec::<String>::new(), "排空即净");
+        assert_eq!(terminal_drain_inputs_for(b), vec!["b1".to_owned()], "A 的排空不得带走 B 的载荷");
+        // 广播旧件兼容面仍在(此处两端皆空 → 空)。
+        assert_eq!(terminal_drain_all_inputs(), Vec::<String>::new());
+
+        // 几何:A 落请求,定向取只动 A,B 的 None 不受扰。
+        terminal_request_resize(a, 60, 20);
+        assert_eq!(terminal_take_resize_for(b), None, "A 的请求不得被 B 的定向泵取走");
+        assert_eq!(terminal_take_resize_for(a), Some((60, 20)));
+        assert_eq!(terminal_take_resize_for(a), None, "取走即清");
+        terminal_dispose("p18-pump-a");
+        terminal_dispose("p18-pump-b");
     }
 
     #[test]

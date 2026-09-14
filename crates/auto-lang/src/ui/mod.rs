@@ -166,6 +166,12 @@ pub mod dynamic;
 #[cfg(feature = "ui-interpreter")]
 pub mod widget_registry;
 
+// PLAN-066: 原生组件外部注册 SPI（NativeWidgetRegistry + View::Custom 派发
+// 通道）。跟随 ui-interpreter 门控——消费方（aura_view_builder 派发 /
+// iced renderer lowering）都在其内。
+#[cfg(feature = "ui-interpreter")]
+pub mod native_widget;
+
 #[cfg(feature = "ui-interpreter")]
 pub mod state_migration;
 

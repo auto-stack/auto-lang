@@ -139,9 +139,16 @@ onMounted(() => {
                   <div :class="(drag_id == e.id ? 'w-20 h-20 items-center justify-center gap-1 bg-white/20 opacity-50' : 'w-20 h-20 items-center justify-center gap-1 hover:bg-white/10')" class="flex flex-col" @contextmenu.prevent="IconMenu(e.id)">
 <div v-if="menu_id == e.id" class="fixed inset-0 z-40" @click="MenuClose"></div>
 <div v-if="menu_id == e.id" class="fixed z-50 p-1 border rounded bg-card" :style="{ left: '8px', top: '8px' }">
-                      <div :style="'h-10 w-10 items-center justify-center rounded-xl bg-[' + e.color + ']'" class="flex flex-col">
-                        <Circle class="w-5 h-5 text-white" />
-                      </div>
+                      <template v-if="e.full == '1'">
+                        <div class="flex flex-col w-20 h-20 rounded-xl border-2 border-transparent hover:border-white/50">
+                          <Circle class="w-full h-full" />
+                        </div>
+                      </template>
+                      <template v-else>
+                        <div :style="'h-10 w-10 items-center justify-center rounded-xl bg-[' + e.color + ']'" class="flex flex-col">
+                          <Circle class="w-5 h-5 text-white" />
+                        </div>
+                      </template>
                       <div class="flex flex-col w-44 gap-1">
                         <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-1-' + (((e as any)?.id ?? e))">打开</Button>
                         <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-2-' + (((e as any)?.id ?? e))">从桌面移除</Button>

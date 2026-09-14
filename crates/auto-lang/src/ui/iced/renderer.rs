@@ -1200,7 +1200,15 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
         iced::Shadow::default()
     };
     // Build background: use gradient if both from/to colors present, else solid
-    let background = if is.gradient_from.is_some() && is.gradient_to.is_some() {
+    let background = if is.gradient_clip_text
+        && is.gradient_from.is_some()
+        && is.gradient_to.is_some()
+    {
+        // PLAN-625 T-05: 渐变裁剪文字降级——渐变仅填充文字(CSS bg-clip:text),
+        // iced 无对应能力;按底盒绘制会形成透明文字+实心渐变块,整体抑制,
+        // 文字回落继承色(from_style 臂已清 transparent text_color)。
+        None
+    } else if is.gradient_from.is_some() && is.gradient_to.is_some() {
         let from = is.gradient_from.unwrap();
         let to = is.gradient_to.unwrap();
         let angle = match is.gradient_dir {
@@ -3044,6 +3052,14 @@ fn render_image_surface<M: Clone + Debug + 'static>(
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
+            // PLAN-066: 原生外部组件（Element 通道）——查 NativeWidgetRegistry
+            // 的 iced Element factory 表。本计划未注册任何 factory（首个后端
+            // 原生件落地时建表消费，提案 066 §3.2），零高 Space 防御臂与
+            // Empty 同款（不占布局位）。
+            AbstractView::Custom { .. } => iced::widget::Space::new()
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Fixed(0.0))
+                .into(),
             // PLAN-063 T-04d-2: 锚槽 → 记录布局坐标的委托 wrapper。
             AbstractView::AnchorSlot { index, child } => {
                 let el = child.into_iced();
@@ -9447,7 +9463,7 @@ fn execute_open_settings(state: &mut crate::ui::session::DesktopSession) {
 }
 /// PLAN-526 T14：壁纸目录扫描（jpg/png 枚举 → {name,path,src} Obj 数组）。
 /// 键缺席/非目录/空目录 = 空表（面板显示引导文案）。load_desktop_id_list
-/// 同型的宿主派生面——.at 无 read_dir 原语，目录枚举保持宿主侧（I9）。
+/// 同型的宿主派生面（I9）。注：.at 侧自 2026-08-22 起已有 fs.read_dir/fs.walk/fs.tree（2866/2860/2875），此处宿主侧枚举系历史实现，非能力缺失。
 fn scan_wallpapers_dir(cfg: &crate::ui::desktop_config::DesktopConfig) -> Vec<auto_val::Value> {
     let Some(dir) = wallpapers_dir_or_default(cfg) else {
         return Vec::new();
@@ -11338,6 +11354,8 @@ fn desktop_icon_cells(
             .unwrap_or_else(|| id.clone());
         let src = e.1.to_string();
         let color = crate::ui::app_registry::badge_color_for(&id);
+        // PLAN-018-FU2：iconfile（真位图资产）= 满幅 tile 渲染旗标。
+        let full = if icon.starts_with("iconfile:") { "1" } else { "" };
         while cursor < linear {
             cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("spacer", auto_val::Value::str("1")),
@@ -11352,6 +11370,10 @@ fn desktop_icon_cells(
         cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(id.clone().into())),
             ("icon", auto_val::Value::Str(icon.into())),
+            // 满幅 tile 渲染旗标（"1" = 图标铺满格子、无 badge 色底框；
+            // lucide 字标应用保持色块 chip + 白 glyph——用户裁定「保留
+            // 原图圆角板、外框不要」）。
+            ("full", auto_val::Value::str(full)),
             ("label", auto_val::Value::Str(label.into())),
             ("src", auto_val::Value::Str(src.into())),
             ("color", auto_val::Value::Str(color.into())),
@@ -13169,6 +13191,19 @@ fn compare_pngs(
         // PLAN-043 T6: MCP scroll action 直落——scrollable 无 VM handler，
         // 合成事件 __mcp_scroll 在此拦截（input_value = "element_id␟y"），
         // 直接发 iced scroll_to 写目标滚动位。
+        // PLAN-629 T-03: 光标跟随——键盘/IME 把光标移出可见带时，编辑器发
+        // 本命令；会话读 caret 内容 y 换算目标偏移（caret 置视口上沿下一行）。
+        if msg.event == "__editor_scroll_to_caret" {
+            let key = &msg.widget;
+            if let Some(caret_y) = crate::ui::code_editor::code_editor_caret_offset_y(key) {
+                let target = (caret_y - 24.0).max(0.0);
+                return iced::widget::operation::scroll_to(
+                    iced::widget::Id::from(format!("editor-scroll-{key}")),
+                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target },
+                );
+            }
+            return iced::Task::none();
+        }
         if msg.event == "__mcp_scroll" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
             if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
@@ -16296,8 +16331,30 @@ fn compare_pngs(
                     }
                 }
                 // 关窗请求：产 window::close（Closed 事件随后走注册表清理 +
-                // 空则退出；不该由 App 分派管线处理）。
+                // 空则退出）。PLAN-626 T-03: 声明 CloseRequest 生命周期
+                // handler 的应用可拦截（fire 语义同 Init 直调先例）——有
+                // 未保存状态的编辑器先弹确认层，由 handler 决定后续；未
+                // 声明行为不变（向后兼容）。
                 if m.event == "__window_close_request" {
+                    let close_declared = state
+                        .app_of_window(&win)
+                        .and_then(|app_id| {
+                            state.apps.get(&app_id).map(|a| {
+                                (app_id, a.component.has_lifecycle_handler("CloseRequest"))
+                            })
+                        });
+                    if let Some((app_id, true)) = close_declared {
+                        if let Some(app) = state.apps.get_mut(&app_id) {
+                            if let Err(e) = app.component.fire_close_request() {
+                                eprintln!(
+                                    "[VM-HANDLER] {}.CloseRequest failed: {e}",
+                                    app.component.widget_name()
+                                );
+                            }
+                            *app.state.view_dirty.borrow_mut() = true;
+                        }
+                        return iced::Task::none();
+                    }
                     return iced::window::close::<crate::ui::session::DesktopMessage>(win);
                 }
                 match state.app_of_window(&win) {
@@ -19835,6 +19892,20 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
     if let Some(msg) = on_context_menu {
         widget = widget.on_context_menu(move |_| msg.clone());
     }
+
+    // PLAN-629 T-03: 寄宿公共 scroller（M 无关契约——draw 每帧偏移同步 +
+    // dispatch_app 尾部排水光标跟随，见 render_dynamic_view 同款包裹）。
+    if std::env::var("AUTO_EDITOR_NO_SCROLLER").as_deref() != Ok("1") {
+        widget = widget.hosted();
+        let scroller = iced::widget::scrollable(widget)
+            .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
+            .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                scrollbar_style()
+            })
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill);
+        return scroller.into();
+    }
     widget.into()
 }
 
@@ -19842,6 +19913,8 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
 fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<&Style> {
     match view {
         AbstractView::Empty => None,
+        // PLAN-066: Custom 自带 style（与内置变体同待遇）。
+        AbstractView::Custom { style, .. } => style.as_ref(),
         // Plan 409 §10 续 5: Overlay 本身无 style(base/content 各自带)。
         AbstractView::Overlay { .. } => None,
         // PLAN-063 T-04d-2: 锚槽无自有样式，读子件。
@@ -19934,6 +20007,8 @@ fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> b
 fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str {
     match view {
         AbstractView::Empty => "empty",
+        // PLAN-066: 原生外部组件 hover 前缀（快照 kind 是注册名本体）。
+        AbstractView::Custom { .. } => "custom",
         AbstractView::Overlay { .. } => "overlay",
         AbstractView::AnchorSlot { .. } => "anchor_slot",
         AbstractView::Popover { .. } => "popover",
@@ -20589,8 +20664,25 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 });
             }
 
-            let el: iced::Element<'static, IcedMessage> = widget.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            // PLAN-629 T-03: 寄宿公共 scroller（VM 轨主路径）——滚动条 UI/
+            // 交互由官方 scrollable 承担（scrollbar_style vue 风格），编辑器
+            // 只做虚拟化渲染。契约 M 无关：draw 每帧偏移同步；光标跟随经
+            // core 标记由 dispatch_app 尾部排水成 scroll_to 任务。
+            if std::env::var("AUTO_EDITOR_NO_SCROLLER").as_deref() != Ok("1") {
+                widget = widget.hosted();
+                let scroller = iced::widget::scrollable(widget)
+                    .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
+                    .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                        scrollbar_style()
+                    })
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill);
+                let el: iced::Element<'static, IcedMessage> = scroller.into();
+                if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            } else {
+                let el: iced::Element<'static, IcedMessage> = widget.into();
+                if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            }
         }
 
         // Plan 019 Phase 3: autodown doc editor (VM path) — on_change 发布携带

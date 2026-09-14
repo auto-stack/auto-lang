@@ -29,7 +29,7 @@ total_steps: 6
 | --- | --- | --- |
 | P1 | **合并单态跨状态字段读（核心）** | widget handler 读 store 字段，GET_FIELD 解析到 widget 自身状态类型 → `RuntimeError("Field 'active_path' not found on type instance App_State")`（crash in handler_App_OpenFile ip=0x10b4）——tab 条/编辑区全链不可用 |
 | P2 | `?str` 跨状态读 | `RuntimeError("Invalid object ID: 18446744071562067969")`（= 0x80000001 符号扩展，?str 值编码跨状态对象边界损坏） |
-| P3 | `&&`/`||` 非布尔操作数 | VM 上按布尔逻辑求值——web JS 惯用法链 `title = fm && fm.title || fallback` 把 title 写成 `true`（jade 实机读回 bool） |
+| P3 | `&&`/`||` 非布尔操作数 | VM 上按布尔逻辑求值——web JS 惯用法链 `title = fm && fm.title || fallback` 把 title 写成 `true`（jade 实机读回 bool）。**裁定（用户 2026-09-14，rev 2）：实装 JS value 语义**——短路返回操作数值，VM/web 语义对齐 |
 | P4 | `findIndex` 缺席 | 列表原生面无 find_index（有 find 无 find_index），调用静默失效 |
 
 P1/P2 为 facade 形态启用的**硬前置**（P022/064 系整改的延续）；P3 需语义裁定
@@ -49,8 +49,9 @@ widget handler 跨状态读 `.count` **通过**，而 jade 真实 app（root 并
   map 字面量参数表达式内读取）解析到 store 状态值——红测先红后绿。
 - **G2 P2 修复**：`?str`（Option）store 字段跨状态读不崩、值正确（None/Some
   双态断言）。
-- **G3 P3 语义裁定落地**：非布尔操作数 `&&`/`||` 的行为定死并成文（默认：
-  编译期报错 + 语料钉死；备选 value 语义需在裁决工件中记录否决理由）。
+- **G3 P3 value 语义落地**：`&&`/`||` 实装 JS 语义（短路透传操作数值：
+  `a && b` = a 真值 ? b : a；`a || b` = a 真值 ? a : b；真值定义沿用运行时
+  既有 truthy）——web 惯用法在 VM 轨原样可用，纯布尔用法行为不变。
 - **G4 P4 修复**：`auto.list.find_index` 原生落地（返回首命中索引 / -1），
   静默失效转可用。
 - **G5 既有语料零回归**：tv 全量 + tf（预存 F-01 docs_gen 漂移除外——
@@ -121,6 +122,16 @@ needs_replan 评估。
 每面按「最小复现语料 → 修复方向假设 → 转绿断言」推进；病因假设执行期证实或
 证伪，证伪按等价实现内裁定记录。
 
+### P3 语义证据（rev 2 附，2026-09-14 work 会话）
+
+- 腐坏复现：plan624_cross_state/p3_chain_app.at——`t.frontmatter &&
+  t.frontmatter.title || "fallback"` 求值为 Bool（静默腐坏）。
+- error-out 朴素设计已证伪：`infer_object_type` 粒度不足（`ops[i]` 实为
+  int 推断 NestedObject），编译期守卫误伤 20 个存量 tv 语料，已回退
+  （守卫 diff 未保留；tv 3702/3702 恢复绿）。
+- 结论：报错路线依赖真类型追踪（infer/ 接线，工作量与风险最大），否决；
+  value 语义（②）用户批准实装。
+
 ### T-01 有界调查：语料-vs-真实 app 解析分叉点
 
 四维度矩阵逐项二分（back.api 并用 / store 定位通道 / 派发后读取 / 模型规模），
@@ -146,14 +157,22 @@ needs_replan 评估。
   搬运。若 P1 修复走 child-state 寻址，本面可能随之消解——随 T-01 结论
   同步裁定，独立断言钉死。
 
-### P3 `&&`/`||` 非布尔操作数语义
+### P3 `&&`/`||` value 语义（rev 2 裁定：用户批准选项②）
 
-- 复现：`title = fm && fm.title || fallback`（fm 为 map）→ title = true。
-- 默认裁定：codegen Bina 臂对非 Bool 操作数的 `&&`/`||` **编译期报错**
-  （报错信息指引显式空值守卫形态）；web 轨 TS 语义不受影响（发射器不动）。
-  备选（value 语义/short-circuit 透传）在裁决工件中记录否决理由后方可翻案。
-- 注意：既有 .at 语料/corpus 中若有 `&&` 于 bool 之外的用法，属存量暴露面——
-  逐个确认语义等价改写或登记。
+- 语义定义：`a && b` ≡ a 真值 ? b : a；`a || b` ≡ a 真值 ? a : b——与
+  web 轨 TS/JS 对齐。真值判定沿用运行时既有 truthy（JMP_IF_Z/NZ 同一
+  判定面），None/""/0/空列表 falsy。
+- 实装（compile_expr 的 &&/|| 短路臂与 eager AND/OR 臂两处统一）：
+  ```
+  a && b:  [a] DUP JMP_IF_Z Lshort  [b] POP  JMP Lend   Lshort: (a 留栈)
+  a || b:  [a] DUP JMP_IF_NZ Lshort  [b] POP  JMP Lend   Lshort: (a 留栈)
+  ```
+  即短路路径留 LHS 本体、求值路径 POP 掉 LHS 留 RHS——双路径栈平衡，
+  末端 AND/OR 归一化发射移除（不再 PUSH_BOOL 占位）。last_expr_type 取
+  RHS 推断类型。
+- 存量影响面：依赖布尔归一结果的 `x = a && b` 用法（非布尔 a/b）行为
+  改变——以 tv 全量语料扫描清点，逐个确认属"应被修复的腐坏"而非语义
+  依赖；发现语义依赖则该处登记并评估。
 
 ### P4 `auto.list.find_index` 原生
 
@@ -188,7 +207,7 @@ needs_replan 评估。
 | --- | --- | --- | --- |
 | AC-1 | P1 红转绿：跨状态字段读红测先红后绿 | `cargo test -p auto-lang --features ui-iced plan624` | 修复前 Field not found 红、修复后绿；差异结论入档 |
 | AC-2 | P2 红转绿：?str 双态断言 | 同上 | None/Some 双态读值正确，不崩 |
-| AC-3 | P3 裁定落地：非布尔 &&/\|\| 编译期报错 | 报错语料 + 存量扫描清点 | 非布尔操作数报错（含指引文案）；bool 用法不受扰 |
+| AC-3 | P3 value 语义落地：`&&`/`\|\|` 短路透传操作数值 | p3 语料构建 + Probe 断言 | 链式回退求值得 fallback 字符串（Str，非 Bool）；纯布尔用法行为不变；存量影响面清点在案 |
 | AC-4 | P4 find_index 可用 | find_index 语料 | 命中返回下标 / 未命中 -1 |
 | AC-5 | 零回归 | cargo tv 全量 + cargo tf + plan442/340/622 | 全绿（F-01 收敛后无预存例外） |
 | AC-6 | 跨仓验收 | jade vm-smoke（AUTO_EXE） | 全臂绿；facade 切换由 jade 侧落地（不在本计划） |
@@ -201,11 +220,35 @@ needs_replan 评估。
 | T-01 | 有界调查：复现形态定位 + 红测语料 | `plan624_cross_state_tests.rs`（新）+ `test/ui/plan624_cross_state/`（新）；四维度矩阵二分 | 红测稳定复现（或按详细设计转 needs_replan） |
 | T-02 | P1 修复 | `vm/engine.rs` GET_FIELD 回退 / `ui/handler_codegen.rs` 合成期重写（按 T-01 裁决） | P1 臂转绿；622 守卫臂全绿 |
 | T-03 | P2 修复 | ?str 编码搬运（随 T-02 结论定位） | P2 臂转绿 |
-| T-04 | P3 语义落地 | `vm/codegen.rs` Bina 臂报错 + 存量扫描清点 | 报错语料绿；存量清点在案 |
+| T-04 | P3 value 语义实装 | `vm/codegen.rs` 短路臂/eager 臂统一透传发射 + 存量扫描清点 | p3 臂绿（Str 回退值）；tv 全量清点在案 |
 | T-05 | P4 find_index 原生 | native_catalog 三表 + `native.rs` shim | find_index 臂绿 |
 | T-06 | 全量回归 + spec 落账 + 跨仓移交 | tv/tf/定向套件；overview.md SD-01/SD-02；vm-smoke 移交材料 | AC-1..7 全过 |
 
 每步完成后在本节追加 `[✅ 已完成]` 一行证据（对齐彼仓执行规约）。
+
+### 执行进度（2026-09-14 work 会话一）
+
+- [✅ 已完成] T-01 有界调查 phase 1（commit 3537683f9，worktree
+  plan-624-dev @ base 8aeb8150e）：语料 `plan624_cross_state` 七件 +
+  测试 5 臂。实证矩阵：**P2 复现**（`?str` store 字段的 SetBody 派发崩
+  Invalid object ID 0x80000001 符号扩展；与 app 形态无关，店 handler 体
+  即崩）；**P3 复现**（&&/|| 非布尔链静默布尔化，synthesis 无诊断）；
+  **P4 复现**（find_index 静默 Nil）；**P1 未复现**（open+find+mirror
+  形态 split/merged 双绿——多 handler 并存/mock 后端/`.split` 前置逐项
+  排除）。
+- [✅ 已完成] T-05（P4）commit 3537683f9：`auto.list.find_index`（2072）
+  原生落地（谓词闭包消费镜像 find 2063；命中下标/未命中 -1），红转绿。
+- **T-02/T-03（P1/P2）**：未完成，带精确诊断挂起——P2 病灶收窄至
+  「店 handler 读自家 `?str` 字段（含 lambda 形态）」；P1 在最小语料
+  不复现，且崩溃轮 exe 为 623/625 会话脏树构建（`551-ge0c404f57-dirty`/
+  `623-g061b86622-dirty`）——**脏产物伪影待排除**（干净树重放 facade
+  切换为准）。
+- **T-04（P3）needs_replan**：error-out 设计已实装并**证伪回退**——
+  `infer_object_type` 粒度不足（`ops[i]` 实为 int 推断 NestedObject，
+  20 个存量 tv 语料误伤）。语义三选一需裁决：①真类型追踪后报错（infer/
+  子系统接线，工作量最大）；②JS value 语义实装（AND/OR 短路透传操作数
+  值，中等）；③文档偏差登记（现状 + 禁用指引，零成本）。P3 红测保留为
+  pending 标记（plan624_p3，当前 FAILED 属预期）。
 
 ## 分支与提交归属
 
@@ -223,6 +266,18 @@ needs_replan 评估。
   AC-1..7 与 SD-01/02；四面锚点与跨仓证据链实勘在案。`outcome: pass`，
   `next: work`（worktree 建好后 T-01 有界调查先行——红测形态是全部修复的
   裁判；若穷尽不复现即转 needs_replan）。
+- 2026-09-14 bounded revision（/auto-plan:new，rev 1→2）：用户裁定 P3 选
+  项②（JS value 语义）——P3 设计/任务/验收按实装改写（T-04、AC-3、SD-03
+  新增），本阶段证据（腐坏复现、朴素守卫 20 语料误伤、infer 粒度结论）随附
+  §4。目标/其余任务/验收不变，属限范围修订。
+- 2026-09-14 stage:work 阶段收口（/auto-plan:work）：**outcome:
+  needs_replan**（T-04 P3 语义三选一待裁决；P1 脏树伪影待排除），计划保持
+  `executing`。code commits（plan-624-dev）：3537683f9（T-01 语料矩阵 +
+  T-05 find_index 2072）。已交付：P4 修复绿、P2/P3 红测与病灶收窄、P1 五维
+  排除记录。tv 3702/3702 绿（守卫回退后）。worktree 保留：
+  `D:/autostack/.wt/lang-624/{auto-lang,auto-down}`。next: new（P3 语义
+  裁定的 bounded revision，随附 P1 排除计划）；unblock 后 work 续
+  T-02/T-03。
 
 ## 待澄清事项
 

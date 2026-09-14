@@ -6635,6 +6635,11 @@ mod plan622_store_facade_gap_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan624_cross_state_tests;
 
+// PLAN-066: 原生组件外部注册 SPI 语料（autodown_editor 迁移等价 + Element
+// 通道 View::Custom + 未注册名保形）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan066_native_widget_tests;
+
 // PLAN-627: qualified api-module-call corpus（模块形态 use back.api +
 // 限定名 api.X()：抽取/vue 发射/rust 发射三面）。
 #[cfg(test)]

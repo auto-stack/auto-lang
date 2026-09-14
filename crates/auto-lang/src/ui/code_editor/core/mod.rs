@@ -300,6 +300,9 @@ pub struct CodeEditorCore {
     /// Plan 428 P1: the fold map computed by the last render (regions +
     /// merged hidden ranges). Hit testing and the gutter read this.
     fold_map: Mutex<Arc<fold::FoldMap>>,
+    /// PLAN-629 T-03: pending follow-scroll target (content-space y), set
+    /// by the widget on keyboard/IME caret moves; drained by dispatch_app.
+    caret_follow: Mutex<Option<f32>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -479,6 +482,7 @@ impl CodeEditorCore {
             gutter_width_cache: Mutex::new((0, 0.0)),
             folds: Mutex::new(BTreeSet::new()),
             fold_map: Mutex::new(Arc::new(fold::FoldMap::default())),
+            caret_follow: Mutex::new(None),
         };
         this.apply_config_locked(&config, font_system);
         this
@@ -1237,7 +1241,7 @@ impl CodeEditorCore {
             if sb.contains(super::draw::Pt::new(x, y)) {
                 let grab_offset = (y - sb.y).clamp(0.0, sb.h);
                 *self.drag.lock().unwrap() = Drag::ScrollbarV { grab_offset };
-                self.drag_scrollbar_v(y);
+                self.drag_scrollbar_v(font_system, y);
                 return out.captured();
             }
         }
@@ -1245,7 +1249,7 @@ impl CodeEditorCore {
             if sb.contains(super::draw::Pt::new(x, y)) {
                 let grab_offset = (x - sb.x).clamp(0.0, sb.w);
                 *self.drag.lock().unwrap() = Drag::ScrollbarH { grab_offset };
-                self.drag_scrollbar_h(x);
+                self.drag_scrollbar_h(font_system, x);
                 return out.captured();
             }
         }
@@ -1336,7 +1340,12 @@ impl CodeEditorCore {
 
     fn handle_mouse_move(&self, font_system: &mut FontSystem, x: f32, y: f32) -> CoreOutput {
         let info = self.layout_info.lock().unwrap().clone();
-        match *self.drag.lock().unwrap() {
+        // PLAN-626 rev2 T-09: clone the drag state out — the match scrutinee
+        // temporary held the `drag` mutex across the whole match body, and
+        // drag_scrollbar_v/h re-lock it → guaranteed self-deadlock on the
+        // first mouse move of any scrollbar drag ("not responding").
+        let drag = *self.drag.lock().unwrap();
+        match drag {
             Drag::None => CoreOutput::default(),
             Drag::Buffer => {
                 // Auto-scroll when dragging past the visible edges.
@@ -1374,18 +1383,18 @@ impl CodeEditorCore {
                     .captured()
             }
             Drag::ScrollbarV { .. } => {
-                self.drag_scrollbar_v(y);
+                self.drag_scrollbar_v(font_system, y);
                 CoreOutput { request_redraw: true, ..CoreOutput::default() }.captured()
             }
             Drag::ScrollbarH { .. } => {
-                self.drag_scrollbar_h(x);
+                self.drag_scrollbar_h(font_system, x);
                 CoreOutput { request_redraw: true, ..CoreOutput::default() }.captured()
             }
         }
     }
 
     /// Map a vertical scrollbar drag to a buffer scroll line.
-    fn drag_scrollbar_v(&self, y: f32) {
+    fn drag_scrollbar_v(&self, font_system: &mut FontSystem, y: f32) {
         let info = self.layout_info.lock().unwrap().clone();
         let grab = match *self.drag.lock().unwrap() {
             Drag::ScrollbarV { grab_offset } => grab_offset,
@@ -1406,12 +1415,20 @@ impl CodeEditorCore {
         editor.with_buffer_mut(|b| {
             let mut scroll = b.scroll();
             scroll.line = line;
+            // PLAN-626 rev2 T-09: drag lands the target line at the viewport
+            // top — zero the intra-line offset, then shape + normalize so the
+            // next frame's layout_runs always sees shaped lines. Previously
+            // the stale vertical + unshaped target line made layout_runs end
+            // early (first_visible_line stuck at usize::MAX → NaN scrollbar
+            // geometry → frozen frame loop while dragging).
+            scroll.vertical = 0.0;
             b.set_scroll(scroll);
+            b.shape_until_scroll(font_system, false);
         });
     }
 
     /// Map a horizontal scrollbar drag to a horizontal pixel scroll.
-    fn drag_scrollbar_h(&self, x: f32) {
+    fn drag_scrollbar_h(&self, _font_system: &mut FontSystem, x: f32) {
         let info = self.layout_info.lock().unwrap().clone();
         let grab = match *self.drag.lock().unwrap() {
             Drag::ScrollbarH { grab_offset } => grab_offset,
@@ -1438,6 +1455,7 @@ impl CodeEditorCore {
     ) -> CoreOutput {
         let config = self.config.lock().unwrap().clone();
         let mut editor = self.editor_lock();
+        let before = editor.with_buffer(|b| b.scroll());
         if (shift && dx == 0.0) || dx != 0.0 {
             // Shift+wheel (or horizontal wheel) → horizontal scroll.
             let amount = if dx != 0.0 { dx } else { dy };
@@ -1447,7 +1465,21 @@ impl CodeEditorCore {
                 b.set_scroll(scroll);
             });
         } else {
-            editor.action(font_system, Action::Scroll { pixels: dy * config.line_height() });
+            // PLAN-626 rev2 T-08: winit 滚轮向下 y 为负，而 cosmic-text 的
+            // scroll.vertical 向下增大——取负对齐（此前方向反直觉）。
+            // Action::Scroll 只累加不归一：scroll.line 停在 0，每帧
+            // layout_runs 从头全文件行走，大文件（T-05 起打开真实仓库
+            // 文件）滚轮风暴拖垮事件循环 = 窗口"未响应"；且上下游都不
+            // 钳制，越过底/顶后内容滚丢、永远停不住。滚轮后立即
+            // shape_until_scroll 归一 scroll.line 并钳进有效区间。
+            let pixels = -dy * config.line_height();
+            editor.action(font_system, Action::Scroll { pixels });
+            editor.with_buffer_mut(|b| b.shape_until_scroll(font_system, false));
+        }
+        let after = editor.with_buffer(|b| b.scroll());
+        if before == after {
+            // Scroll position unchanged (already at a boundary): no repaint.
+            return CoreOutput::default();
         }
         CoreOutput { request_redraw: true, ..CoreOutput::default() }
     }
@@ -1455,6 +1487,92 @@ impl CodeEditorCore {
     fn bump_after_edit(&self) {
         self.revision.fetch_add(1, Ordering::Relaxed);
     }
+
+    // ── PLAN-629 T-01: hosted-scroller integration ─────────────────────
+    // The widget lives inside the COMMON AutoUI scroller (Plan 629): the
+    // scroller owns the scrollbar UI + wheel handling; the editor owns
+    // virtualized rendering. Three contract pieces:
+    //   content_height      → 高度上报（scroller 更新滚动范围/thumb 比例）
+    //   sync_external_scroll → scroller offset → 内部 scroll（归一化复用
+    //                          PLAN-626 T-08 的 shape_until_scroll 机制）
+    //   caret_offset_y       → 光标跟随（scroll_to 命令的目标位）
+
+    /// Fold-aware content height: effective visible line count × line
+    /// height. Backed by the last render's fold map; before any render it
+    /// degrades to the full line count. The scroller re-measures whenever
+    /// this changes (folds toggling → request_layout → 高度变化通知).
+    pub fn content_height(&self) -> f32 {
+        let total = self.editor_lock().with_buffer(|b| b.lines.len()).max(1);
+        // Fresh fold map (not the last render's snapshot): folds toggle in
+        // update — the height report must be current by the time the next
+        // layout pass queries it, one frame earlier than a render would be.
+        let hidden = self.fresh_fold_map().hidden_count();
+        let effective = total.saturating_sub(hidden).max(1);
+        let line_height = self.config.lock().unwrap().line_height();
+        effective as f32 * line_height
+    }
+
+    /// Sync the editor's internal scroll to an ABSOLUTE content-space pixel
+    /// offset (the hosted scroller is the source of truth). Form (b) from
+    /// the plan's bounded verification: coarse line pre-position first
+    /// (uniform line height), then `shape_until_scroll` fixes the residual
+    /// and clamps both ends. Form (a) — raw vertical + normalize — advances
+    /// one line per pass (O(N) scan each) and janks deep thumb jumps on
+    /// large files.
+    pub fn sync_external_scroll(&self, font_system: &mut FontSystem, offset_y: f32) {
+        let config = self.config.lock().unwrap().clone();
+        let offset = offset_y.max(0.0);
+        let lh = config.line_height().max(1.0);
+        let mut editor = self.editor_lock();
+        editor.with_buffer_mut(|b| {
+            let coarse = ((offset / lh) as usize).min(b.lines.len().saturating_sub(1));
+            let residual = offset - coarse as f32 * lh;
+            let mut scroll = b.scroll();
+            if scroll.line == coarse && (scroll.vertical - residual).abs() < 1.0 {
+                return; // already converged (idempotent per frame)
+            }
+            scroll.line = coarse;
+            scroll.vertical = residual;
+            b.set_scroll(scroll);
+            b.shape_until_scroll(font_system, false);
+        });
+    }
+
+    /// Caret top in content space — the scroll-to-caret command target.
+    /// Computed directly (fold projection over the uniform line-height grid)
+    /// instead of reading the last render's layout record: the caret is
+    /// usually OFF-viewport when a follow-scroll is needed, so a render-
+    /// derived value would not exist. Wrap mode under-estimates by prior
+    /// wrapped rows (uniform-height approximation; auto-edit ships wrap off).
+    /// Queue a follow-scroll to `target_y` (content-space offset). The
+    /// session funnel drains it the same message pass (scroll_to task).
+    pub fn request_caret_follow(&self, target_y: f32) {
+        *self.caret_follow.lock().unwrap() = Some(target_y);
+    }
+
+    /// Drain the pending follow-scroll request, if any.
+    pub fn take_caret_follow(&self) -> Option<f32> {
+        self.caret_follow.lock().unwrap().take()
+    }
+
+    /// Line height from the active config (hosted follow-scroll math).
+    pub fn config_line_height(&self) -> f32 {
+        self.config.lock().unwrap().line_height()
+    }
+
+    pub fn caret_offset_y(&self) -> Option<f32> {
+        let map = self.fresh_fold_map();
+        let editor = self.editor_lock();
+        let cursor = editor.cursor();
+        if map.is_hidden(cursor.line) {
+            // P4 auto-expand reveals it on the next input; nothing sane to
+            // scroll to while still hidden.
+            return None;
+        }
+        let line_height = self.config.lock().unwrap().line_height();
+        Some(map.project_y(cursor.line, cursor.line as f32 * line_height))
+    }
+
 
     // ── Plan 418: programmatic actions (menu/toolbar handlers) ──────────
     // Same semantics as the Ctrl+Z/Y/A/C/X/V arms of handle_key, callable
@@ -1603,6 +1721,28 @@ pub fn code_editor_text(key: &str) -> Option<String> {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
     map.get(&key).map(|core| core.text())
+}
+
+/// PLAN-629 T-01: caret top in content space (hosted-scroller scroll-to-
+/// caret command target). None = unknown editor or no layout record yet.
+pub fn code_editor_caret_offset_y(key: &str) -> Option<f32> {
+    let key = normalize_payload_key(key);
+    let map = CODE_EDITORS.lock().unwrap();
+    map.get(&key).and_then(|core| core.caret_offset_y())
+}
+
+/// PLAN-629 T-03: drain pending follow-scroll requests from ALL editors —
+/// (key, content-space target offset) pairs; the session funnel turns them
+/// into `operation::scroll_to` tasks targeting `editor-scroll-<key>`.
+pub fn code_editor_drain_caret_follows() -> Vec<(String, f32)> {
+    let map = CODE_EDITORS.lock().unwrap();
+    let mut out = Vec::new();
+    for (key, core) in map.iter() {
+        if let Some(y) = core.take_caret_follow() {
+            out.push((key.clone(), y));
+        }
+    }
+    out
 }
 
 /// Read the cursor position of an editor: (line 0-based, char column,
@@ -1980,6 +2120,219 @@ let beta = alpha + 2;
 
     // Uses the crate-shared registry test lock (see REGISTRY_TEST_LOCK
     // at the core module level).
+
+    /// PLAN-626 rev2 T-08: wheel semantics — winit's wheel-down y is
+    /// negative and must scroll DOWN (cosmic-text scroll.vertical grows
+    /// downwards); hammering past the bottom must clamp (shape_until_scroll
+    /// normalizes scroll.line instead of accumulating an unbounded vertical,
+    /// which used to walk the whole file per frame = "not responding" on
+    /// large files); wheel at a boundary is a no-op without repaint.
+    #[test]
+    fn plan626_wheel_direction_clamps_at_bottom_and_noops_at_boundary() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-wheel-clamp");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig::default();
+        let line_height = config.line_height();
+        let core = code_editor(&key, &config);
+        let line_count = 60usize;
+        let text = (0..line_count)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        with_font_system(|fs| core.set_text(&text, fs));
+        // Simulate the iced draw-path sizing (render normally does this).
+        with_font_system(|fs| {
+            let mut editor = core.editor_lock();
+            editor.with_buffer_mut(|b| b.set_size(fs, Some(300.0), Some(200.0)));
+        });
+        let scroll_of = || {
+            with_font_system(|fs| {
+                let editor = core.editor_lock();
+                editor.with_buffer(|b| b.scroll())
+            })
+        };
+
+        // 1) Wheel DOWN (winit y negative) scrolls down.
+        with_font_system(|fs| core.handle_wheel(fs, 0.0, -3.0, false));
+        let after_down = scroll_of();
+        assert!(
+            after_down.line > 0 || after_down.vertical > 0.0,
+            "wheel down must scroll down, got {after_down:?}"
+        );
+
+        // 2) Hammering far past the bottom clamps and stays stable.
+        for _ in 0..60 {
+            with_font_system(|fs| core.handle_wheel(fs, 0.0, -3.0, false));
+        }
+        let bottom = scroll_of();
+        let viewport_lines = (200.0 / line_height).floor().max(1.0);
+        assert!(
+            bottom.line as f32 + viewport_lines >= line_count as f32 - 1.0,
+            "bottom must be reachable: scroll {bottom:?} vs {line_count} lines"
+        );
+        let out = with_font_system(|fs| core.handle_wheel(fs, 0.0, -3.0, false));
+        assert_eq!(scroll_of(), bottom, "clamped at bottom: no further movement");
+        assert!(
+            !out.request_redraw,
+            "at-boundary wheel must not request a repaint"
+        );
+
+        // 3) Wheel UP past the top clamps back to line 0 / vertical 0.
+        for _ in 0..80 {
+            with_font_system(|fs| core.handle_wheel(fs, 0.0, 3.0, false));
+        }
+        let top = scroll_of();
+        assert_eq!(top.line, 0, "top clamp");
+        assert_eq!(top.vertical, 0.0, "top clamp");
+        let out = with_font_system(|fs| core.handle_wheel(fs, 0.0, 3.0, false));
+        assert!(!out.request_redraw, "at-top wheel must not request a repaint");
+    }
+
+    /// PLAN-629 T-01: hosted-scroller contract — content height reporting,
+    /// absolute-offset sync (coarse line + normalize), bottom clamping,
+    /// fold shrink, and the caret offset readback.
+    #[test]
+    fn plan629_content_height_external_scroll_and_caret() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-scroller-sync");
+        code_editor_dispose(&key);
+        let config = CodeEditorConfig::default();
+        let line_height = config.line_height();
+        let core = code_editor(&key, &config);
+        let text = "fn f() {
+    a
+    b
+    c
+}
+"
+            .to_string()
+            + &(5..60).map(|i| format!("fill {i}")).collect::<Vec<_>>().join("
+").as_str();
+        with_font_system(|fs| core.set_text(&text, fs));
+        with_font_system(|fs| {
+            let mut editor = core.editor_lock();
+            editor.with_buffer_mut(|b| b.set_size(fs, Some(300.0), Some(200.0)));
+        });
+
+        // Height report: 60 lines, nothing folded.
+        let h0 = core.content_height();
+        assert!((h0 - 60.0 * line_height).abs() < 1.0, "content height, got {h0}");
+
+        // Absolute-offset sync lands the viewport near the request.
+        with_font_system(|fs| core.sync_external_scroll(fs, 300.0));
+        let abs = with_font_system(|fs| {
+            let editor = core.editor_lock();
+            editor.with_buffer(|b| {
+                let s = b.scroll();
+                s.line as f32 * line_height + s.vertical
+            })
+        });
+        assert!((abs - 300.0).abs() <= line_height, "absolute offset ≈ request, got {abs}");
+
+        // Clamps past the bottom: content_height - viewport_h.
+        with_font_system(|fs| core.sync_external_scroll(fs, 100_000.0));
+        let abs_bottom = with_font_system(|fs| {
+            let editor = core.editor_lock();
+            editor.with_buffer(|b| {
+                let s = b.scroll();
+                s.line as f32 * line_height + s.vertical
+            })
+        });
+        let want = (h0 - 200.0).max(0.0);
+        assert!((abs_bottom - want).abs() <= 2.0 * line_height, "bottom clamp ≈ {want}, got {abs_bottom}");
+
+        // Folding the fn block hides its 4-line body (lines 1-4 — the `…`
+        // marker rides on the opener line), shrinking the height by 4 lines.
+        core.fold_toggle(0);
+        let h1 = core.content_height();
+        assert!(
+            (h1 - (h0 - 4.0 * line_height)).abs() < 1.0,
+            "fold shrink: {h0} -> {h1}"
+        );
+
+        // Caret readback: computed directly, no render dependency — the
+        // caret sits on line 0 (the visible fold opener), content y 0.
+        let caret = core.caret_offset_y();
+        assert!(
+            matches!(caret, Some(y) if y.abs() < line_height),
+            "caret offset at line 0 ≈ 0, got {caret:?}"
+        );
+        // Registry getter mirrors it.
+        assert_eq!(
+            code_editor_caret_offset_y(&key),
+            core.caret_offset_y(),
+            "registry getter matches core"
+        );
+    }
+
+    /// PLAN-626 rev2 T-09: scrollbar drag — pressing the thumb then moving
+    /// must land shaped, normalized scroll (vertical zeroed, target lines
+    /// shaped) so the next frame's layout_runs never degenerates (the old
+    /// path left first_visible_line at usize::MAX → NaN scrollbar geometry →
+    /// frozen drag).
+    #[test]
+    fn plan626_scrollbar_drag_lands_shaped_normalized_scroll() {
+        let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
+        set_font_system_call(test_font_system);
+        let key = storage_key("test-wheel-drag");
+        code_editor_dispose(&key);
+        let core = code_editor(&key, &CodeEditorConfig::default());
+        let line_count = 60usize;
+        let text = (0..line_count)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("
+");
+        with_font_system(|fs| core.set_text(&text, fs));
+
+        // A render pass populates layout_info (scrollbar rects, visible
+        // lines) exactly like the iced draw path does.
+        with_font_system(|fs| {
+            crate::ui::code_editor::core::render::render(&core, fs, 300.0, 200.0, None);
+        });
+        let sb = core
+            .layout_info
+            .lock()
+            .unwrap()
+            .scrollbar_v
+            .clone()
+            .expect("v scrollbar after render");
+
+        // Press on the thumb, then drag well below it.
+        let grab_y = sb.y + sb.h / 2.0;
+        with_font_system(|fs| {
+            core.handle_mouse_press(fs, EditorButton::Left, sb.x + 1.0, grab_y);
+        });
+        let drag_y = sb.y + sb.h * 4.0;
+        with_font_system(|fs| core.handle_mouse_move(fs, sb.x + 1.0, drag_y));
+
+        let (line, vertical) = with_font_system(|fs| {
+            let editor = core.editor_lock();
+            editor.with_buffer(|b| {
+                let s = b.scroll();
+                (s.line, s.vertical)
+            })
+        });
+        assert!(line > 0, "dragging down must advance scroll.line, got {line}");
+        assert!(
+            vertical.abs() < line_count as f32 * 100.0,
+            "vertical must stay normalized, got {vertical}"
+        );
+
+        // The next frame must be sane: finite scrollbar geometry.
+        let list = with_font_system(|fs| {
+            crate::ui::code_editor::core::render::render(&core, fs, 300.0, 200.0, None)
+        });
+        let sb2 = list.scrollbar_v.expect("scrollbar present after drag");
+        assert!(
+            sb2.thumb.x.is_finite() && sb2.thumb.y.is_finite(),
+            "scrollbar geometry must stay finite after drag: {:?}",
+            sb2.thumb
+        );
+    }
 
     /// Test font-system callback: one process-wide FontSystem behind a
     /// RwLock, mirroring the iced adapter's install.

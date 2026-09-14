@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-620
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
+completion_kind: delivered
 feature_name: autoui-icon-table-and-pointer-primitives
 author: [zhaopuming]
 created_at: 2026-09-13
@@ -12,7 +13,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-lang/ui]
-current_step: 4                 # T-01..T-04 已落地（代码在 plan-617-dev @ 7c13643ba）；余 T-05..T-08
+current_step: 8                 # T-01..T-04（617 现场落地）+ T-05..T-08（2026-09-14 收尾批，worktree plan-620-dev @ e31be5a80）
 total_steps: 8
 ---
 
@@ -200,15 +201,15 @@ crates/auto-lang/test/a2vue/desktop_surface_asset/expected.vue  改：金样重�
   `progress_seek_script_block`；schema 加 `onseek`；重生成 `docs/components/core.md`。
 - [x] **T-04 示例与端到端验证**：030 改用真图标 + `progress(onseek:)`；e2e 增 T4/T4b；
   VM 冒烟与截图。验证：11/11 绿 + VM 截图 `tests/screenshots/after_icons_vm.png`。
-- [ ] **T-05 规范增量（SD）**：在 `docs/specs/auto-lang/ui/overview.md` 落三条：
+- [x] **T-05 规范增量（SD）**：在 `docs/specs/auto-lang/ui/overview.md` 落三条：
   ① `icon` 的尺寸口径与「名字即字形」语义；② `progress.onseek` 契约（比例 0..1、
   按下/拖动语义、未声明时不变）；③ 图标数据源与生成器（含重跑方式）。
   现状：只把「P537-D1 已根治」一句回写进了 overview，**契约条目未补**。
-- [ ] **T-06 设计注记**：新增 `docs/design/autoui/icon-data-source-and-parity.md`
+- [x] **T-06 设计注记**：新增 `docs/design/autoui/icon-data-source-and-parity.md`
   （数据源、生成器、双端一致性口径、为何不引 crate、遗留别名），登记进 `00-intro.md`。
-- [ ] **T-07 漂移门禁**：给生成器加「表头版本 ↔ 本地包版本」一致性检查，
+- [x] **T-07 漂移门禁**：给生成器加「表头版本 ↔ 本地包版本」一致性检查，
   并在 `cargo t` 里加一条对拍或告警。
-- [ ] **T-08 独立复审**：按 `/auto-plan:review` 逐条对拍 AC（含本文件勾选的复核）。
+- [x] **T-08 独立复审**：按 `/auto-plan:review` 逐条对拍 AC（含本文件勾选的复核）。
 
 ## 分支与提交归属（**需要处理**）
 
@@ -225,7 +226,7 @@ crates/auto-lang/test/a2vue/desktop_surface_asset/expected.vue  改：金样重�
 
 ## 复审记录
 
-（待 T-08 执行；届时逐条填 AC 证据与抽查结论）
+
 
 ## 待澄清事项
 
@@ -238,3 +239,41 @@ crates/auto-lang/test/a2vue/desktop_surface_asset/expected.vue  改：金样重�
    （替代方案：只保留使用面 + 生成时按需裁剪。倾向保留全量——那是「两端一致」的保证。）
 4. **生成器的数据源**：目前依赖本地已装包。是否要在 CI 里固定 lucide 版本
    （例如把必要字段抽成仓库内 JSON）以彻底离线可复现？
+
+## 复审记录（T-08，2026-09-14）
+
+- **独立性说明**：落地代码（T-01..T-04）由 PLAN-617 会话实现，本复审会话非实现方，
+  从工件重建裁定；收尾批（T-05..T-07）由本会话实施，已声明该限制并逐条以测试
+  与产物实证。
+- **分支归属裁定**：采纳本文件推荐方案 (a)「现状合入」——代码已随 PLAN-617 折入
+  master（`7c13643ba` ∈ master 祖先），示例与平台经 030 的 `.at` 单向耦合，拆分
+  会使两分支均无法独立构建验证。本收尾批（T-05..T-07）在独立 worktree
+  `plan-620-dev`（@ `e31be5a80`）完成。
+- **AC 逐条对拍**（master 复跑，worktree e31be5a80）：
+
+  | AC | 结果 | 证据 |
+  |---|---|---|
+  | AC-01 图标可得性一致 | **pass** | `lucide_icon_coverage_manifest_all_hit` PASS（基线红→绿的证据在案 2026-09-13）；`lucide_generated` 自检 9/9（表有序/非空/代表名命中/miss=None） |
+  | AC-02 尺寸口径单一 | **pass** | `test_icon_size_precedence` PASS；双端口径成文于 617/619 段与 ⑤ |
+  | AC-03 进度条可拖拽 | **pass** | `progress_onseek_builds_seek_handler` + `test_progress_onseek_wrapper` PASS；030 e2e T4/T4b 11/11 现场证据在案（2026-09-13） |
+  | AC-04 兼容（未声明逐字节不变） | **pass** | `test_progress_onseek_wrapper` 反向断言 PASS；产物再生 diff 纯增量（表体逐字节不变）实证 |
+  | AC-05 零新增回归 | **pass** | PLAN-621 复审档全量对拍在案（22 红 + tv 3694/3696 全部 base 复现）；本批 delta=文档+生成器+产物+测试，scoped 全绿（lucide 9/9） |
+  | AC-06 口径成文 | **pass**（本次达成） | `docs/design/autoui/icon-data-source-and-parity.md` 落地并登记 autoui/README；overview ⑦（onseek 契约）/⑧（数据源与生成器）补齐，尺寸口径引用既有段不重复 |
+  | AC-07 防漂移门禁 | **pass**（本次达成） | `LUCIDE_SOURCE_VERSION` 常量 + `source_version_matches_installed_package` 三态验证（正路径真比较/伪造 9.9.9 即红指路再生/缺包与 unknown 跳过）；生成器 `--src` 向上探测 package.json 版本 |
+
+- **遗留与移交**：待澄清①（比例型原语抽象）按「第三消费者出现再合并」维持不抽；
+  ②（slider 去向）未动，维持现状待后续立项；③（254KiB 全量表）裁定保留（设计
+  注记 §4）；④（CI 固定版本）由漂移门禁 + PLAN-621 补位 playbook（锁版本
+  `@iconify-json/*`）共同覆盖，CI 化待 CI 面立项。
+- `stage: review | plan_id: PLAN-620 | plan_revision: 1 | outcome: pass |
+  reviewed_commit: e31be5a80（plan-620-dev） | next: merge+archive`
+
+## 合并收据（PLAN-620:r1，2026-09-14）
+
+| 检查点 | 证据 |
+|---|---|
+| `prepared` | 收尾批 worktree `plan-620-dev` @ `e31be5a80`（scoped lucide 9/9 + spec-index 再生）；落地代码在案 `7c13643ba` ∈ master |
+| `landed` | `9715d857c`（master ff，收尾批五文件：生成器硬化/产物再生/设计注记/README/overview ⑦⑧）；方案 (a) 现状合入已裁定 |
+| `ledger_refreshed` | `ui/plans.md` 620 行 + `.autoos/specs.json`（运行时态未跟踪）投影 **P620-1..4**（reports/architecture/designs/reviews，读回验证）+ INDEX 再生 |
+| `archived` | `git mv → docs/plans/archive/620-autoui-icon-table-and-pointer-primitives.md` + `status: archived` + `completion_kind: delivered` |
+| `cleaned` | worktree `.wt/lang-620/{auto-lang,auto-down}` guard clean 后移除，分支 `plan-620-dev` 删除，组目录按空删除 |

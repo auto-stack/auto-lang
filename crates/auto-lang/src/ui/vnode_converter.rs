@@ -297,6 +297,28 @@ where
             },
         ),
 
+        // PLAN-066: 原生外部组件检视面——Text 占位带 name+props（headless
+        // 断言据此识别 custom 节点；真渲染在 iced lowering 期查注册表）。
+        View::Custom { name, props, .. } => (
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: if props.is_empty() {
+                    format!("custom name={}", name)
+                } else {
+                    format!(
+                        "custom name={} {}",
+                        name,
+                        props
+                            .iter()
+                            .map(|(k, v)| format!("{}={}", k, v))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
+                },
+                selectable: false,
+            },
+        ),
+
         // PLAN-009 P1: terminal 组件——检视层暴露为带几何标签的 Text
         // 占位(headless 断言据此识别 terminal 节点;真渲染在 iced 侧)。
         View::Terminal { key, cols, rows, lines, .. } => (

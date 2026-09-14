@@ -1248,6 +1248,25 @@ impl DynamicComponent {
         }
     }
 
+    /// PLAN-626 T-03: CloseRequest 生命周期探测（namespaced/legacy 双查，
+    /// 同 call_handler 的查找口径，不调用）。渲染器关窗臂据此把 OS
+    /// CloseRequested 转为应用 handler 分派；未声明的应用行为不变。
+    pub fn has_lifecycle_handler(&self, event: &str) -> bool {
+        self.bridge.has_handler(event)
+    }
+
+    /// PLAN-626 T-03: fire CloseRequest——语义同 fire_init 的 handler 直调
+    /// （成功置 dirty 触发重建）。确认弹层/退出动作由应用 handler 自行
+    /// 驱动（如脏检查后弹 alert-dialog 或 Process.exit）。
+    pub fn fire_close_request(&mut self) -> Result<(), String> {
+        self.bridge
+            .call_handler("CloseRequest", &[])
+            .map(|_| {
+                self.dirty = true;
+            })
+            .map_err(|e| e.to_string())
+    }
+
     /// Handle an event with an optional input text value.
     ///
     /// When `input_value` is `Some(text)`, looks up the associated state field
@@ -3496,5 +3515,118 @@ mod tests {
             other => panic!("touched 应为 float，实得 {:?}", other),
         };
         assert!((touched - 2.0).abs() < 1e-6, "吻合派发应执行，实得 {}", touched);
+    }
+}
+
+// ============================================================================
+// PLAN-625 T-10a spike: renamed demo as stateful child widget.
+// 验证候选 a 核心机制——示例源码 `widget App` 改唯一名后作为 child widget
+// 编入宿主模块，宿主按 selected_id 条件实例化；子 widget 自带 model/msg/on
+// 独立存活（002-counter 源改写自 examples/ui/002-counter）。
+// ============================================================================
+
+#[cfg(test)]
+mod p625_t10_spike {
+    use crate::parser::Parser;
+    use crate::ui::view::View;
+
+    const HOST: &str = r#"
+widget GalleryHost {
+    model {
+        var selected_id str = "002-counter"
+    }
+    view {
+        col {
+            text "GALLERY-CHROME"
+            if .selected_id == "002-counter" {
+                Demo002Counter {}
+            } else {
+                text "no-demo"
+            }
+        }
+    }
+}
+"#;
+
+    const DEMO_002_COUNTER_RENAMED: &str = r#"
+widget Demo002Counter {
+    model {
+        var count int = 0
+    }
+    view {
+        center {
+            text `Counter: ${.count}`
+            row {
+                button "-" { onclick: () => {.count -= 1} }
+                button "Reset" { onclick: () => {.count = 0} }
+                button "+" { onclick: () => {.count += 1} }
+            }
+        }
+    }
+}
+"#;
+
+    fn count_text_nodes(view: &View<crate::ui::interpreter::DynamicMessage>, label: &str) -> usize {
+        match view {
+            View::Text { content, .. } => usize::from(content == label),
+            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Container { child, .. } => count_text_nodes(child, label),
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn p625_t10_renamed_demo_child_renders() {
+        let src = format!("{HOST}\n{DEMO_002_COUNTER_RENAMED}");
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse host+demo");
+        let mut root_decl = None;
+        let mut child_decls = Vec::new();
+        for st in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = st {
+                if d.name.as_str() == "GalleryHost" {
+                    root_decl = Some(d.clone());
+                } else {
+                    child_decls.push(d.clone());
+                }
+            }
+        }
+        let root_decl = root_decl.expect("GalleryHost decl");
+        assert_eq!(child_decls.len(), 1, "renamed demo decl collected");
+        let widget = crate::aura::extract_widget_from_decl(&root_decl).expect("extract host");
+        let child_widget =
+            crate::aura::extract_widget_from_decl(&child_decls[0]).expect("extract demo child");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child_widget);
+
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &root_decl,
+            &child_decls,
+            &widget,
+            registry,
+            Vec::new(),
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component with demo child");
+
+        // selected_id 默认 002-counter → Demo002Counter 分支实例化，
+        // 子 widget model 默认值渲染出初始计数文案。
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        let hits = count_text_nodes(&view, "Counter: 0");
+        assert!(hits > 0, "demo child must render its initial state (Counter: 0)");
+        // 宿主 chrome 与子 widget 内容同树共存。
+        assert!(count_text_nodes(&view, "GALLERY-CHROME") > 0, "host chrome intact");
+
+        // 切换 selected_id → 条件分支翻转，demo 分支卸载。
+        let _ = comp.write_state("selected_id", auto_val::Value::str("015-notes"));
+        let (view2, _, _) = comp.view_with_debug_gated(false);
+        assert!(count_text_nodes(&view2, "Counter: 0") == 0, "demo branch unloaded after switch");
+        assert!(count_text_nodes(&view2, "no-demo") > 0, "else branch rendered");
+        let _ = comp.write_state("selected_id", auto_val::Value::str("002-counter"));
+        let (view3, _, _) = comp.view_with_debug_gated(false);
+        assert!(count_text_nodes(&view3, "Counter: 0") > 0, "demo branch re-instantiates on switch-back");
     }
 }

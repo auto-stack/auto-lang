@@ -16,11 +16,14 @@ use crate::vm::autodown_natives::{
 };
 // auto-os Plan 013 T2: AutoTerm 引擎桥 catalog shim(auto.term.*,ID 2943-2949)。
 // 014 直键入:pump_input(2957)+ 几何随动/光标格(2958/2959/2976)。
+// PLAN-018 D5:spawn_ex(2983)+ 定向泵三件 rows_for/pump_for/
+// apply_resize_for(2984-2986)。
 use crate::vm::ffi::term_engine::{
-    shim_term_apply_resize, shim_term_backlog_dropped, shim_term_backlog_paused,
-    shim_term_backlog_pending_mb, shim_term_backlog_take_alerts, shim_term_cursor_col,
-    shim_term_cursor_row, shim_term_free, shim_term_interrupt, shim_term_is_exited,
-    shim_term_pump_input, shim_term_resize, shim_term_rows, shim_term_spawn,
+    shim_term_apply_resize, shim_term_apply_resize_for, shim_term_backlog_dropped,
+    shim_term_backlog_paused, shim_term_backlog_pending_mb, shim_term_backlog_take_alerts,
+    shim_term_cursor_col, shim_term_cursor_row, shim_term_free, shim_term_interrupt,
+    shim_term_is_exited, shim_term_pump_for, shim_term_pump_input, shim_term_resize,
+    shim_term_rows, shim_term_rows_for, shim_term_spawn, shim_term_spawn_ex,
     shim_term_viewport_cols, shim_term_viewport_rows, shim_term_write_line,
 };
 
@@ -9490,6 +9493,92 @@ fn walkdir_all(dir: &str) -> Result<Vec<String>, std::io::Error> {
     Ok(result)
 }
 
+// --- FS tree (2875) — Plan 626 T-04 ---
+
+/// Skip-list for `fs.tree`: VCS/build/dependency noise + dotfiles.
+fn fs_tree_skipped(name: &str) -> bool {
+    matches!(
+        name,
+        ".git" | "target" | "build" | "node_modules" | "gen" | "dist" | "__pycache__"
+    ) || name.starts_with('.')
+}
+
+/// Recursive tree builder emitting nested JSON (no trailing separators).
+/// `depth` counts levels BELOW `dir` still to descend (0 = emit nothing).
+fn fs_tree_walk(dir: &std::path::Path, root: &std::path::Path, depth: usize, out: &mut String) {
+    let mut entries: Vec<std::fs::DirEntry> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+        Err(_) => return,
+    };
+    // Dirs first, then case-insensitive name order — stable tree shape.
+    entries.sort_by_key(|e| {
+        let is_dir = e.path().is_dir();
+        (!is_dir, e.file_name().to_string_lossy().to_lowercase())
+    });
+    for entry in entries {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if fs_tree_skipped(&name) {
+            continue;
+        }
+        let path = entry.path();
+        let is_dir = path.is_dir();
+        // id = '/'-separated path relative to root — the TreeView node id
+        // convention (apps rejoin it onto the workspace root to read files).
+        let rel = path
+            .strip_prefix(root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| name.clone());
+        let id = serde_json::to_string(&rel).unwrap_or_else(|_| "\"\"".into());
+        let label =
+            serde_json::to_string(&name).unwrap_or_else(|_| "\"\"".into());
+        if !out.is_empty() {
+            out.push(',');
+        }
+        if is_dir && depth > 1 {
+            let mut children = String::new();
+            fs_tree_walk(&path, root, depth - 1, &mut children);
+            out.push_str(&format!(
+                "{{\"id\":{},\"label\":{},\"children\":[{}],\"kind\":\"dir\",\"icon\":\"folder\",\"is_leaf\":false,\"badge\":\"\"}}",
+                id, label, children
+            ));
+        } else if is_dir {
+            out.push_str(&format!(
+                "{{\"id\":{},\"label\":{},\"children\":[],\"kind\":\"dir\",\"icon\":\"folder\",\"is_leaf\":false,\"badge\":\"\"}}",
+                id, label
+            ));
+        } else {
+            out.push_str(&format!(
+                "{{\"id\":{},\"label\":{},\"children\":[],\"kind\":\"file\",\"icon\":\"file-text\",\"is_leaf\":true,\"badge\":\"\"}}",
+                id, label
+            ));
+        }
+    }
+}
+
+/// Recursive directory tree as nested JSON aligned with the TreeView node
+/// schema: `{id,label,children,kind,icon,is_leaf,badge}`. `id` is the path
+/// relative to `root` ('/'-separated); VCS/build noise and dotfiles are
+/// skipped; `max_depth` caps recursion (1 = root entries only).
+/// Stack: str_idx(root), int(max_depth) -> str_idx (JSON)
+pub fn shim_fs_tree(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (max_depth) first, then root.
+    let max_depth = crate::vm::native::pop_arg_i32(task).clamp(1, 8) as usize;
+    let root = pop_string_arg(task, vm);
+    let root_path = std::path::PathBuf::from(&root);
+    let mut buf = String::new();
+    if root_path.is_dir() {
+        fs_tree_walk(&root_path, &root_path, max_depth, &mut buf);
+    }
+    let json = if buf.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", buf)
+    };
+    let str_idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
 /// Get file metadata as JSON string.
 /// Stack: str_idx(path) -> str_idx (JSON with len, is_dir, is_file, readonly)
 pub fn shim_fs_metadata(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -9813,6 +9902,64 @@ fn get_datetime_timestamp(vm: &AutoVM, handle: u64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Plan 626 T-04: fs.tree nested JSON builder ─────────────────────
+    #[test]
+    fn plan626_fs_tree_nested_json_schema_and_order() {
+        let tmp = std::env::temp_dir().join(format!("auto_lang_fs_tree_{}", std::process::id()));
+        let src = tmp.join("ws");
+        let _ = std::fs::remove_dir_all(&src);
+        std::fs::create_dir_all(src.join("b_dir")).unwrap();
+        std::fs::create_dir_all(src.join("a_dir").join("nested")).unwrap();
+        std::fs::write(src.join("z.txt"), "z").unwrap();
+        std::fs::write(src.join("a_dir").join("f.at"), "fn main() {}").unwrap();
+        std::fs::write(src.join("a_dir").join("nested").join("deep.md"), "# d").unwrap();
+        std::fs::create_dir_all(src.join(".git")).unwrap();
+        std::fs::write(src.join(".git").join("HEAD"), "ref").unwrap();
+        std::fs::create_dir_all(src.join("target")).unwrap();
+
+        let mut buf = String::new();
+        fs_tree_walk(&src, &src, 3, &mut buf);
+        let json = format!("[{}]", buf);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+
+        // Dirs first, then case-insensitive name order: a_dir, b_dir, z.txt.
+        let items = parsed.as_array().expect("root array");
+        assert_eq!(items.len(), 3, "dotfiles/build noise skipped: {json}");
+        assert_eq!(items[0]["label"], "a_dir");
+        assert_eq!(items[1]["label"], "b_dir");
+        assert_eq!(items[2]["label"], "z.txt");
+        // Node schema fields (TreeView direct-fit).
+        assert_eq!(items[0]["kind"], "dir");
+        assert_eq!(items[0]["icon"], "folder");
+        assert_eq!(items[0]["is_leaf"], false);
+        assert_eq!(items[2]["kind"], "file");
+        assert_eq!(items[2]["icon"], "file-text");
+        assert_eq!(items[2]["is_leaf"], true);
+        // ids are '/'-separated paths relative to root.
+        assert_eq!(items[0]["id"], "a_dir");
+        assert_eq!(items[2]["id"], "z.txt");
+        // Nested children carry relative ids too.
+        let a_children = items[0]["children"].as_array().unwrap();
+        assert_eq!(a_children.len(), 2, "f.at + nested: {json}");
+        assert_eq!(a_children[0]["id"], "a_dir/nested");
+        assert_eq!(a_children[1]["id"], "a_dir/f.at");
+        let deep = a_children[0]["children"].as_array().unwrap();
+        assert_eq!(deep[0]["id"], "a_dir/nested/deep.md");
+
+        // max_depth caps recursion: depth 1 = root entries only.
+        let mut shallow = String::new();
+        fs_tree_walk(&src, &src, 1, &mut shallow);
+        let parsed_shallow: serde_json::Value =
+            serde_json::from_str(&format!("[{}]", shallow)).unwrap();
+        let dir0 = &parsed_shallow.as_array().unwrap()[0];
+        assert_eq!(dir0["label"], "a_dir");
+        assert!(
+            dir0["children"].as_array().unwrap().is_empty(),
+            "depth-1 dirs stay collapsed"
+        );
+        let _ = std::fs::remove_dir_all(&src);
+    }
 
     #[test]
     fn test_resolve_direct_lookup() {

@@ -1,0 +1,58 @@
+// PLAN-018 T-03: VM 轨 auto.term shim 冒烟——SpawnSpec(spawn_ex)+
+// 定向泵三件(rows_for/pump_for/apply_resize_for)。
+// 运行(PATH 含 autoterm_core.dll):
+//   PATH=/d/autostack/auto-term/target/debug:$PATH auto spawn_ex_pumps_vm.at
+// 口径(597 VFACE 同款):观察见证 + 明确 OK/FAIL 字样,exit 0/1。
+//
+// 控制流守约(597 §9 两缺陷规避):调用不内联于 if 条件位(先赋值再
+// 比较)、循环计数器只在体尾自增。
+use auto.term: engine_spawn_ex, engine_rows_for, engine_pump_for, engine_apply_resize_for, engine_free
+
+fn main() {
+    // —— argv 生效:argv 透传的 echo 回显进入网格(cmd /c echo <marker>)——
+    var h = engine_spawn_ex("cmd", ["/c", "echo", "spawnex_arg_ok"], "", 80, 24)
+    if h == 0 {
+        print("SPAWNEX_FAIL spawn=0")
+        return
+    }
+    var rows = engine_rows_for(h, "probe-no-such-key")
+    var seen = 0
+    var i = 0
+    for i < 200 && seen == 0 {
+        rows = engine_rows_for(h, "probe-no-such-key")
+        var n = rows.len()
+        var j = 0
+        while j < n {
+            if rows.get(j).contains("spawnex_arg_ok") {
+                seen = 1
+            }
+            j = j + 1
+        }
+        if seen == 0 {
+            Time.sleep_ms(50)
+        }
+        i = i + 1
+    }
+    if seen == 0 {
+        print("SPAWNEX_FAIL argv marker missing")
+        engine_free(h)
+        return
+    }
+
+    // —— 定向泵缺 key no-op:pump/apply_resize 对不存在 key = 0 且不 panic——
+    var pumped = engine_pump_for(h, "probe-no-such-key")
+    var resized = engine_apply_resize_for(h, "probe-no-such-key")
+    if pumped != 0 {
+        print("SPAWNEX_FAIL pump_for(missing key) != 0")
+        engine_free(h)
+        return
+    }
+    if resized != 0 {
+        print("SPAWNEX_FAIL apply_resize_for(missing key) != 0")
+        engine_free(h)
+        return
+    }
+
+    engine_free(h)
+    print("SPAWNEX_OK")
+}

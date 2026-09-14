@@ -300,6 +300,25 @@ lucide 路径只读消费；基档与 Plan 518 G4② 同式 ≥48px→1.5 否则
 （`set:name` 双段名 + `@iconify-json/*` 锁版本离线可复现），playbook 与调研数据见
 [icon-state-and-library-policy](../../../design/autoui/icon-state-and-library-policy.md)，
 不整体迁移（Remix 同名交集 0 + 反向缺名，波及面基线 29 名）。
+⑦**progress `onseek` 契约（PLAN-620）**：`progress (value:, max:, onseek: .H($0))`
+双端可拖拽 seek——handler 收**条内横向比例 0..1**（作者写 `SeekTo(.duration * $0)`
+无须知道像素或 max）；按下即 seek、**按住期间的移动**才继续 seek（悬停不 scrub）；
+VM 侧新 widget `ui/iced/seek_area.rs`（iced `mouse_area.on_press` 不带坐标，由
+`SeekArea` 自持按下态并在事件现场换算比例，拖动用绝对坐标防拖出条外断流），
+`View::ProgressBar.on_seek` 复用 `PointerMoveHandler` 装配；Web 侧生成器输出
+pointer 三包装（`setPointerCapture`，拖出条外仍跟手，判据取 `e.currentTarget`）；
+与 `PointerArea`（Plan 499，坐标流原语）刻意分离——比例语义不塞坐标契约。**兼容
+锚**：未声明 `onseek` 的 `progress` 输出逐字节不变（测试反断言在案）。
+⑧**图标数据源与生成器（PLAN-620）**：VM 端 lucide 字形由
+`scripts/gen-lucide-table.mjs` 从本地已安装的 lucide-vue-next（离线、幂等、零新
+依赖）生成全量表 `ui/iced/lucide_generated.rs`（当前 1401 条/24×24 markup），
+`lucide_svg` 查表 + 遗留别名（`sidebar`→已更名、`file-icon`→已并入）；重跑
+`node scripts/gen-lucide-table.mjs`（自动发现 `examples/**` 已装包，`--src` 可显式
+并向上探测版本）。**防漂移门禁**：产物内嵌 `LUCIDE_SOURCE_VERSION` 常量 +
+`source_version_matches_installed_package` 对拍测试（升包未再生即红并指路重生，
+找不到安装包/版本未知时跳过）。口径细节见
+[icon-data-source-and-parity](../../../design/autoui/icon-data-source-and-parity.md)。
+尺寸口径见 ⑤ 与 617/619 段（显式类 > `size:` > 默认 20px），此处不重复。
 
 ## 关键入口
 
@@ -609,7 +628,7 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 
 **559 vue 双端嵌入债并案已落地（GOAL-007/009 收尾面）**：W2 四件上收——①`vue_event_param` 单点收窄 `$event.target.{value,checked}`（gen 树 TS2339/18047 清零）②store 组合式跨 store 限定调用 facade 化（`AuraStore.sibling_stores` + 组合式发 sibling 导入/reactive facade 常量 + ts_adapter `store_bare_heads` 自限定裸发——vm A1 契约）③项目供给 TS 粘合安装 `install_project_api_glue`（契约抽取零端点=实现式 back/api.at 时 src/back/api.ts 孪生装入 gen lib/api.ts+dist；os-config 首试点：孪生真源签入 auto/src/back/api.ts，regen.sh 镜像 host）④`use back.api` 排除出 Plan 522 use-fn 拉取（TS2440/TS2304 根修）。W3 desktop-host api-client 守卫放开（gen 粘合/项目孪生择先，run 内先到先得+每次覆写防陈旧属主）+`desktop_extra_app_roots`（默认探测 `../auto-os-config/auto`，id=os-config 与 vm `extra_roots_from` 对齐，`AUTO_DESKTOP_APPS_EXTRA` 可覆）。W4 Taskbar ⚙️（emit settings，registry 在场性门控）+宿主 `launchSettings` 聚焦-或-启动（vm 551 T2 对齐）。W6 通用编辑器字段级挂载（`entryAtW`×2——vm merged 真源 auto-os-config-back/api.at 同步，漏改即 launch 不可用——+ConfigEditor `widgets` prop（Modules.active_widgets 装载一次零额外 HTTP）+wallpaper_picker 渲染分支；drop-in 夹具 p559-fixture 双端实证点选落盘）。W7 `autoui_desktop` handler 增 (app,widget) 子组件定位维度（`DesktopInject::Handler.widget` + `DynamicComponent.call_widget_handler` namespaced 派发 onclick 同管线——Plan 320 单 VM 统一态恒根 state id）+验收场景 p559（Pick→config.at 断言→已应用，幂等基线 PUT 重置）。对拍 Desktop 页双端三 shots（顶部标签/外观壁纸卡/Settings 卡同源）。门禁 tf 3426/3427（唯一红=charts 存量甄别）+desktop_protocol ui-iced 120/120+auto-man 245/245。债 P559-D1 证伪（AUTO_HTTP_PROXY 实际透传正常——404 系陈旧 vite 占港+auto-increment 漂移假象）/P559-D2 regen.sh 两族已上游化 sed 已清；P559-1..6 台账。
 
-**573 ui-gallery 左栏 sidebar 族化（GOAL-010/007）**：549 示例画廊左侧导航从手搓 `aside+button+style-if` 迁移 sidebar 族（provider/header 包 pills 筛选器 + scroll(ScrollArea) 包 menu/menu_button(active: 契约)），双行卡片按 015-notes 惯用法（menu_button 内单 col 孩子 + h-auto 覆盖契约 h-8），手搓 active/hover 类串零残留；执行期根修一处约束链缺口——aside 只写 `flex-col` 无 display:flex（Tailwind `flex-col` 不隐含 display）→ provider flex-1 塌缩、ScrollArea 不受约束窗口级滚动，对齐 widgets-gallery `md:flex` 先例补 `flex min-h-0`（**惯用法：aside 外壳挂 sidebar_provider 时必须带 display:flex + min-h-0**）；VM 端结构树/pill press 正常，demo 列表空为预存限制（registry 全系 Vue-only TS extern fn `demos.ts`，master 基线同败）——跨端化留待后续立项。
+**573 ui-gallery 左栏 sidebar 族化（GOAL-010/007）**：549 示例画廊左侧导航从手搓 `aside+button+style-if` 迁移 sidebar 族（provider/header 包 pills 筛选器 + scroll(ScrollArea) 包 menu/menu_button(active: 契约)），双行卡片按 015-notes 惯用法（menu_button 内单 col 孩子 + h-auto 覆盖契约 h-8），手搓 active/hover 类串零残留；执行期根修一处约束链缺口——aside 只写 `flex-col` 无 display:flex（Tailwind `flex-col` 不隐含 display）→ provider flex-1 塌缩、ScrollArea 不受约束窗口级滚动，对齐 widgets-gallery `md:flex` 先例补 `flex min-h-0`（**惯用法：aside 外壳挂 sidebar_provider 时必须带 display:flex + min-h-0**）；VM 端结构树/pill press 正常，demo 列表空为预存限制（registry 全系 Vue-only TS extern fn `demos.ts`，master 基线同败）——跨端化留待后续立项。**625 ui-gallery VM 视口实装（registry 双产物跨端化 + AppViewport VM 形态，清偿 573 待澄清①②与 P573-D1）**：`generate_gallery_host` 升级双产物——TS registry（web 臂，含 `load` 动态导入，不变）+ `src/front/registry.at`（VM 臂纯数据表：id/title/category/icon/description/tags/doc/source/pac_text/loadable + 生成期预计算 `search_lc` 小写搜索堆料；字段避 `.at` 关键字 `pac`→`pac_text`），app.at 以 `use registry: filter_demos, demo_title…` 消费（tree_util PLAN-522/614 双端同源先例），`filteredDemos`/标题/描述/教程/源码七项 computed 全部 VM 可执行；`run_vm_ui` 增 registry 刷新 hook（vue 臂每次 run 刷 generate_gallery_host 先例）。**侧栏 aside 惯用法扩全（T-04）**：aside 外壳挂 sidebar_provider 必须带 `display:flex + min-h-0 + h-full` 三件——缺显式高度时 provider 的 `h-full` 在 iced 布局塌缩 0×0（Row 交叉轴无 CSS stretch 语义），整子树"树在/像素无"（headless 守卫 `p625_uigallery_sidebar_pills_visible` 双形态钉住：无高度类=0×0 哨兵 + h-full=正尺寸）。**`bg-clip-text` 渐变裁剪文字降级（T-05，声明式）**：iced 无文字填充渐变——`BgClipText` 标记 + text-transparent 清空回落继承可读色 + 渐变底盒抑制；from-/via-/to- 补语义色回落（`from-primary`/`to-primary/60` 原不可映射，`parse_color_with_alpha` 自带 /N 与主题解析）。**循环体事件惯用法定案（T-06）**：for 内 onclick 用 msg 带参形式（`onclick: .SelectDemo(demo.id)`，027 `OpenItem(item.id)` 同型——循环变量分发期求值）；lambda 捕获循环变量为 handler 合成不支持形态（编译器能力缺口，见 KNOWN-DEBT）。**R002 校验器字符串剥离**：`store.` 引用检测前经 `blank_string_literals` 剥离字符串/模板字面量（registry 内嵌示例源码 11 处字面量 "store.x" 曾误杀构建；模板 `${}` 插值保守保留）。**AppViewport VM 实装（T-10，ext 链收口）**：`.vue` Component 导入探测同名 `.vm.at` 适配器（ext_stubs Component 臂——嵌套 `.at` component 随装随注册，fn/.ts 沿旧路 stub）；`AppViewport.vm.at`（生成产物）内 `use.web component Demo<Pascal> from "src/gallery/demos/<id>.at"` 导入改名子 widget 源并按 `.app` 条件实例化；发射过滤=loadable 且自包含（单 `widget ` 行首声明、无 .at 导入、无模块级 use——模块 use 指向示例自有模块，拷贝后 link 致命 016/026 实证，v1 跳过上报）。**实证**：VM 端侧栏 33 项渲染、分类/搜索过滤、条目点击切换详情、三 tab 内容非空、视口实时渲染 002-counter 且按钮交互联动（MCP 点 "+" ×2 → Counter: 2）；vue 构建 vite 全资产绿。**差异登记**：Rust 臂（--render rust）转译器对 Plan 522 模块 use 未支持（E0425 实测）+ .vm.at 适配链为 VM 加载器专属——Rust 臂实装转独立计划；VM 进程 AppHang 静默退出两类终态结论见 KNOWN-DEBT P625-D1。
 
 
 **P619 容器盒模型与图标尺寸两条语言层规则 + 一个文档写法坑（GOAL-007）**：
