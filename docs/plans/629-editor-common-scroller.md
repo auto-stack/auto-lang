@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-629
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: editor-common-scroller
 author: [agent]
 created_at: 2026-09-14
@@ -12,7 +12,7 @@ new_spec_components: [auto-lang/ui (code_editor 寄宿公共 scroller 集成契�
 touched_goals: []
 
 affects: [auto-lang/ui, autoui-skill]
-current_step: 0
+current_step: 4
 total_steps: 4
 ---
 
@@ -138,9 +138,17 @@ worktree：`D:/autostack/.wt/lang-629/auto-lang`（branch `plan-629-dev`，基�
 - **T-04** [示例/验证] 实机全路径（滚轮/拖拽/键盘跟随/折叠/右键/IME）+ 矩阵扩展 + README 更新。依赖 T-03。
 - 依赖链：T-01→T-02→T-03→T-04。
 
+### 执行证据（2026-09-14）
+
+- **T-01** ✅ commit 284f325d9：content_height 用 fresh_fold_map（折叠切换即时反映，不等 render——T-01 有界验证结论：有界验证形态 (b) 采用；sync_external_scroll 粗定位 line=offset/lh + vertical 余量再 shape_until_scroll 归一，形态 (a) 每趟只前进一行 O(N)×遍数大文件跳转会卡）；caret_offset_y 直接计算（fold 投影），**不依赖上次渲染的 layout 记录**（初版设计缺陷：光标跟随恰恰发生在光标不在视口内时，渲染记录不存在）；registry getter `code_editor_caret_offset_y`。测试 plan629_content_height_external_scroll_and_caret 绿（高度/绝对偏移/底端钳制/折叠收缩/caret 五断言）+ core 19/19。
+- **T-02** ✅ commit 591f6153d：hosted 模式（size/layout 内容高度上报；draw 视口切片 + 原点 y+offset 内容系阴影变量统一平移；滚轮让渡守卫；右键锚视口换算；键盘/IME 光标跟随 → core 请求标记；高度变化 → request_redraw 触发运行时 view 重建重排——iced 0.14 Shell 无布局失效 API，消息/重绘即失效通道）。core 46/46 回归绿。
+- **T-03** ✅ commit f4b77192b：**双构造点**包裹——build_code_editor_generic（DSL/into_iced 轨，M 泛型保持）与 render_dynamic_view CodeEditor 臂（VM 主路径，IcedMessage 具体）；scrollable 官方样式 `.id(editor-scroll-<key>)`；`AUTO_EDITOR_NO_SCROLLER=1` 逃生开关。光标跟随改 M 无关通道：core 请求标记 + dispatch_app 尾部排水成 scroll_to 任务（on_scroll 回调与自定义消息均需 M 具体化，泛型路径不可行——设计偏差记录）。
+- **T-04** ✅ 矩阵 48/2（626 同口径：仅 2 个存量快照失败）；矩阵 T8 适配新退出语义（脏 tab 确认层 → 不保存退出）——该修复属 626 语义变更的测试滞后，已同步 626 worktree（其矩阵 48/2）。截图实证：正文/行:列 1:1/Explorer 真树/短文件无滚动条（官方行为）。README 注记：见示例 README Plan 629 节（T-04 附带）。
+
 ## 9. 复审记录
 
-- 2026-09-14 draft handoff：`stage: new`，PLAN-629 rev1。用户裁定明确（引语见 §4），集成契约三机制（外部偏移同步/内容高度上报/scroll_to 跟随）均有 iced 0.14 现成通道与 renderer 先例。`outcome: pass`，`next: work`（用户指令即授权）。
+- 2026-09-14 work handoff：`stage: work | plan_id: PLAN-629 | plan_revision: 1 | outcome: pass | code_commit: f4b77192b (branch plan-629-dev, base plan-626-dev@3b85a0357 叠放) | task_ids: T-01..T-04 全完成 | evidence: 各任务行 + 实机截图（正文渲染/官方滚动行为）+ 矩阵 48/2 | blockers: 无 | next: review。
+`stage: new`，PLAN-629 rev1。用户裁定明确（引语见 §4），集成契约三机制（外部偏移同步/内容高度上报/scroll_to 跟随）均有 iced 0.14 现成通道与 renderer 先例。`outcome: pass`，`next: work`（用户指令即授权）。
 
 ## 10. 待澄清事项
 
