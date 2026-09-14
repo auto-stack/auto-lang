@@ -464,6 +464,42 @@ handler 的 `__state` 状态对象（此前 CONST_0，`self.field` 全部静默 
 守卫语料：`plan622_a/a2/a3/b`（facade 读/派发/视图跟随）、
 `plan622_e1/e2`（捕获两形态）。
 
+## store facade 跨状态与短路语义（PLAN-624）
+
+### 跨状态字段读消费位增补（SD-01）
+
+PLAN-622 五消费位契约的增补（语料：`plan624_cross_state_tests` +
+`test/ui/plan624_cross_state/`；split/merged 双模守卫）：
+
+6. **跨状态字段读**：widget handler 内直读 store 字段（含嵌套对象字段、
+   map 字面量实参表达式内读取、`?str` 双态——None 读回 nil 不崩、Some
+   读回值本体）→ 读得 store 当前值。jade 实机「0 参 handler 派发带 λ 的
+   store msg 后读写全断（Invalid object ID）」的真因在闭包帧协议
+   （见下 SD-03），与 `?str` 编码无关。
+7. **列表原生面增补（SD-02）**：`auto.list.find_index(λ)`（2072）——
+   谓词消费与 find（2063）对齐，返回首命中下标，未命中 -1（此前静默
+   失效求值为 Nil）。
+
+### `&&`/`||` 短路值语义（SD-01 附，PLAN-624 rev 2 用户裁定②）
+
+`a && b` ≡ a 真值 ? b : a；`a || b` ≡ a 真值 ? a : b——与 web 轨 TS/JS
+对齐，`.at` 惯用法 `fm && fm.title || fallback` 逐字可用（falsy 链值透传
+fallback 本体，不再静默布尔归一写成 `true`）。真值判定沿用 JMP_IF_Z/NZ
+既有判定面（Plan 406 nv_truthy：tagged bool 权威、null/0/哨兵假）。
+纯布尔用法值不变；存量 .at 语料 335 处 `&&`/`||` 用法清点均为纯布尔面
+（tv 全量 3706/3706 绿证零语义依赖）。
+
+### 闭包激活帧协议（SD-03，执行期新增）
+
+闭包激活（`call_closure` 方法与 `CALL_CLOSURE` 码两路）必须入 call_stack
+恰好一帧，闭包体末端 RET 弹恰好一帧——CALL 帧协议对闭包闭合。违反形态
+（激活不入帧）下闭包 RET 偷走**外层函数**的帧：call_stack 错位使最深被调
+帧的 `current_fn_n_args` 泄漏进外层，参数寻址（`0x80+idx` 负偏移）越界走
+NULL 守卫——0 参 widget handler 派发带 λ 的 store msg 后读 `__state`
+即得 NULL 哨兵（SET_FIELD "Invalid object ID: 0xFFFFFFFF80000001"，
+jade facade 切换实机 P2 面真因）。带参 handler 的泄漏值恰等自身故不可见；
+守卫语料须覆盖「0 参 handler × store λ 派发」组合（plan624 p2 臂）。
+
 ## icon 字符串协议族（PLAN-018）
 
 icon 通道是**字符串协议**：pac `icon:` → 注册表 `AppRegistryEntry.icon` →
