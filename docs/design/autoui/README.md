@@ -20,6 +20,7 @@
 | [image-viewer-pipeline](image-viewer-pipeline.md) | — | 全栈 Auto Image Viewer：后端媒体管线、三运行形态与高性能原生显示契约 | 547（implemented，待独立复审） |
 | [sidebar-family-and-nav-retirement](sidebar-family-and-nav-retirement.md) | — | sidebar_* 族按 shadcn 1:1 做实（桌面模式）→ VM 契约子集 → 迁移退役 nav-group/nav-item | 设计完成（建议拆 3 plan，§4） |
 | [icon-state-and-library-policy](icon-state-and-library-policy.md) | — | 图标 state 契约（on/off 颜色+描边模拟满/空）与图库策略裁定（lucide 主力不迁移 + IconifyJSON 补位 playbook） | 621 |
+| [icon-data-source-and-parity](icon-data-source-and-parity.md) | — | 图标数据源与生成器（lucide 全量表/离线重跑/版本漂移门禁）与双端一致性口径（几何/尺寸/颜色/描边） | 620 |
 | [025-gap-enumeration](025-gap-enumeration.md) | 16a | 025 示例差距枚举（历史记录） | 345 |
 | [autoui-mcp-test-fixture](autoui-mcp-test-fixture.md) | — | AutoUI MCP 测试夹具协议（VM 状态注入与 request-id ack） | 623 |
 
