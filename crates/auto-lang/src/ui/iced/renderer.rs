@@ -9422,7 +9422,7 @@ fn execute_open_settings(state: &mut crate::ui::session::DesktopSession) {
 }
 /// PLAN-526 T14：壁纸目录扫描（jpg/png 枚举 → {name,path,src} Obj 数组）。
 /// 键缺席/非目录/空目录 = 空表（面板显示引导文案）。load_desktop_id_list
-/// 同型的宿主派生面——.at 无 read_dir 原语，目录枚举保持宿主侧（I9）。
+/// 同型的宿主派生面（I9）。注：.at 侧自 2026-08-22 起已有 fs.read_dir/fs.walk/fs.tree（2866/2860/2875），此处宿主侧枚举系历史实现，非能力缺失。
 fn scan_wallpapers_dir(cfg: &crate::ui::desktop_config::DesktopConfig) -> Vec<auto_val::Value> {
     let Some(dir) = wallpapers_dir_or_default(cfg) else {
         return Vec::new();
