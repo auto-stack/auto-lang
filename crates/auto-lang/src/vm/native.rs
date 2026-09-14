@@ -2810,6 +2810,103 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
+/// List.splice(list_id, start, count) -> removed List
+/// PLAN-622 (d): JS Array.splice removal form — removes `count` elements at
+/// `start` (negative start counts from the end; both clamped) and returns
+/// them as a NEW list. Element stakes transfer from the source container to
+/// the returned one (retain-into-new before release-from-old). The insertion
+/// variant of JS splice is intentionally not in v1 — callers compose with
+/// insert; noted in the ui/store-facade-semantics spec.
+/// Stack: list_id, start, count -> removed_list_id
+pub fn shim_list_splice(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let count = crate::vm::native::pop_arg_i32(task).max(0) as usize;
+    let start_raw = crate::vm::native::pop_arg_i32(task);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
+
+    // Removed elements, encoded per source-list representation.
+    let mut removed_i32: Option<Vec<i32>> = None;
+    let mut removed_val: Option<Vec<auto_val::Value>> = None;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            let len = list.elems.len();
+            let start = normalize_splice_start(start_raw, len);
+            let end = (start + count).min(len);
+            if start < end {
+                removed_i32 = Some(list.elems.drain(start..end).collect());
+            }
+        } else if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            let len = list.elems.len();
+            let start = normalize_splice_start(start_raw, len);
+            let end = (start + count).min(len);
+            if start < end {
+                removed_val = Some(list.elems.drain(start..end).collect());
+            }
+        }
+    }
+
+    // Build the removed list with transferred stakes: retain into the new
+    // container first (insert semantics), then release the old container's
+    // stake (remove semantics). JS-parity: no elements removed still returns
+    // a fresh (empty) list.
+    let removed_id: u64 = if let Some(items) = removed_i32 {
+        let mut out: ListData<i32> = ListData::with_capacity(items.len());
+        for v in &items {
+            list_i32_elem_retain(vm, *v);
+        }
+        out.elems = items.clone();
+        let id = vm.insert_heap_object(out);
+        for v in &items {
+            list_i32_elem_release(vm, *v);
+        }
+        id
+    } else if let Some(items) = removed_val {
+        let mut out: ListData<Value> = ListData::with_capacity(items.len());
+        for v in &items {
+            match v {
+                Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                    vm.rc_retain_id(*i as u64);
+                }
+                _ => {}
+            }
+        }
+        out.elems = items.clone();
+        let id = vm.insert_heap_object(out);
+        for v in &items {
+            match v {
+                Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                    vm.rc_release_id(*i as u64);
+                }
+                _ => {}
+            }
+        }
+        id
+    } else {
+        vm.insert_heap_object(ListData::<i32>::new())
+    };
+
+    vm.rc_push_id(task, removed_id);
+    Ok(())
+}
+
+/// JS Array.splice start normalization: negative counts from the end,
+/// everything clamps into [0, len].
+#[inline]
+fn normalize_splice_start(start_raw: i32, len: usize) -> usize {
+    if start_raw < 0 {
+        len.saturating_sub((-start_raw) as usize)
+    } else {
+        (start_raw as usize).min(len)
+    }
+}
+
 /// Drop/free the list.
 /// Stack: list_id -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry

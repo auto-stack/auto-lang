@@ -68,6 +68,11 @@ const DOC_EXCLUDE: &[&str] = &[
     // 家族主页面（sidebar 页含 sub 按钮 nesting 说明；sheet 页含 close 钮）。
     "sidebarmenusubbutton",
     "sheetclose",
+    // PLAN-012 W3：workspace_preview = 宿主合成整桌面预览（web: none，
+    // iced 宿主层贴片渲染，gallery 页无法呈现）；契约文档化于
+    // schema/projection-protocol-v1.md §2.1（DSL 合同面）+ PLAN-012 §5。
+    // （存折叠形——fence 以 fold 探测，多词名须无连写。）
+    "workspacepreview",
     // Plan 497:每窗口真缩略(桌面 shell 专用消费面——switcher 行/dock
     // hover/pager 分区;单 App gallery 无虚拟窗可缩略,恒 fallback 形态,
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +
@@ -354,10 +359,19 @@ fn core_reference_in_sync() {
             )
         });
     assert_eq!(
-        committed, generated,
+        normalize_lf(&committed),
+        generated,
         "docs/components/core.md 与 schema 不同步 —— 再生成:\n\
          DOCS_GEN_UPDATE=1 cargo test -p auto-lang --test docs_gen"
     );
+}
+
+/// PLAN-622 F-01: Windows 检出态（autocrlf）会让 golden 工作树文件带 CRLF，
+/// `fs::read_to_string` 不归一 —— 与生成端（LF）逐字节比对即间歇性假红
+/// （检出后必红，UPDATE 写回 LF 后转绿、git 零 diff，极难归因）。
+/// 比对前统一换行；UPDATE 写入仍为 LF（仓库 blob 态不变）。
+fn normalize_lf(s: &str) -> String {
+    s.replace("\r\n", "\n")
 }
 
 #[test]
@@ -382,7 +396,8 @@ KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen"
         )
     });
     assert_eq!(
-        committed, generated,
+        normalize_lf(&committed),
+        generated,
         "kitchen-sink.at 与 schema 不同步 —— 再生成:
 KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen"
     );

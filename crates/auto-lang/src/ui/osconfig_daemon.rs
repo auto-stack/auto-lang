@@ -179,7 +179,10 @@ pub struct RealDaemonIo;
 
 impl DaemonIo for RealDaemonIo {
     fn ping(&mut self, url: &str) -> bool {
-        tcp_ping(url, std::time::Duration::from_secs(2))
+        // PLAN-012 W1 T2：2s → 250ms——loopback connect 250ms 足够（daemon
+        // 恒本地）；首 ping 快失败消除 UI 线程 2s 阻塞窗。spawn 后就绪轮询
+        // 语义不变（每拍快失败，直至 ready_timeout 截止）。
+        tcp_ping(url, std::time::Duration::from_millis(250))
     }
 
     fn spawn(&mut self, path: &Path, env: &[(String, String)]) -> Result<(), String> {
@@ -534,6 +537,22 @@ mod tests {
         assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17701".to_string()));
         assert_eq!(io.ping_calls, 1, "ping 通即复用");
         assert!(io.spawn_path.is_none(), "已运行 daemon 零打扰——不 spawn");
+    }
+
+    /// PLAN-012 W1 T2：RealDaemonIo 首 ping 快失败参数化——未监听端口
+    /// 上 ping 必须在 250ms 档超时（实测墙钟 <1s，即 UI 线程阻塞上限），
+    /// Offline 语义不变（false）。
+    #[test]
+    fn real_daemon_ping_short_timeout_fast_fail() {
+        let started = std::time::Instant::now();
+        let ok = RealDaemonIo::new().ping("http://127.0.0.1:9");
+        let elapsed = started.elapsed();
+        // 端口 9（discard）默认无监听 → connect 快失败；墙钟须远小于旧 2s 档。
+        assert!(!ok, "无监听端口应 ping 不通");
+        assert!(
+            elapsed < std::time::Duration::from_millis(1000),
+            "首 ping 应 ≤250ms 档快失败（实测 {elapsed:?}）"
+        );
     }
 
     /// Plan 505 B4（债 P501-1）：which_in 纯逻辑——目录序首命中、全空 None。

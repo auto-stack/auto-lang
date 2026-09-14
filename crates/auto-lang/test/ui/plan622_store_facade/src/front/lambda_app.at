@@ -1,0 +1,45 @@
+// lambda_app.at — PLAN-622 red corpus (e): lambda capture semantics in
+// widget handlers. Kept in a SEPARATE root file so a compile-level failure
+// of the e1 form cannot poison the a/b/c/d arms built from app.at.
+//
+// (e1) .FindLocal — lambda captures a handler-LOCAL var (`want`): observed
+//      "undefined variable" compile error (msg-param capture works, local
+//      capture does not).
+// (e2) .FindSelf — lambda compares against a self field (`.want`): observed
+//      runtime silent failure (find yields null, handler no-ops).
+
+widget LambdaApp {
+    msg { FindLocal, FindSelf }
+
+    model {
+        var status str = "boot"
+        var items = ["a", "b", "c"]
+        var want str = "b"
+    }
+
+    on {
+        .FindLocal -> {
+            var want = "b"
+            var hit = .items.find(it => it == want)
+            if hit != null {
+                .status = "hit-" + hit
+            }
+        }
+
+        .FindSelf -> {
+            var hit = .items.find(it => it == .want)
+            if hit != null {
+                .status = "self-" + hit
+            }
+        }
+    }
+
+    view {
+        col {
+            text .status
+            for it in .items {
+                text it
+            }
+        }
+    }
+}

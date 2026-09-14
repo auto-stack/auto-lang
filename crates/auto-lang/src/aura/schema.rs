@@ -2545,6 +2545,21 @@ impl AuraSchema {
             description: "Per-window live thumbnail (host snapshot pixels, renderer-side asset channel)",
         });
 
+        // PLAN-012 W3 (SD-02): 整桌面等比预览 leaf——宿主合成（壁纸底 +
+        // 逐窗快照按布局矩形贴片），像素资产在宿主（workspace_preview
+        // 发布面 + snapshot 缓存），协议零字段增量。
+        elements.insert("workspace_preview", ElementDef {
+            tag: "workspace_preview",
+            category: ElementCategory::Display,
+            props: vec![
+                PropDef { name: "ws", type_: PropType::String, required: false, default: None, description: "Workspace id to preview (host wm publish; PLAN-012)" },
+                PropDef { name: "fallback", type_: PropType::String, required: false, default: Some("app-window"), description: "Lucide icon for snapshot-miss windows" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "Box classes (w-/h- define the Contain fit box)" },
+            ],
+            allows_children: false,
+            description: "Whole-desktop proportional preview (host-composited tiles, PLAN-012 W3)",
+        });
+
         elements.insert("menubar_content", ElementDef {
             tag: "menubar_content",
             category: ElementCategory::Navigation,

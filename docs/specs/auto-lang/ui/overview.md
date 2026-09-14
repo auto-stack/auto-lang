@@ -394,6 +394,40 @@ w-72 队列栏 + h-14 播控条）+ 真实目录队列（递归扫描、按 `rel
    `AbortError`）。**规范要求界面如实标注音轨不可用（onaudiotrack 契约），
    不得假装有声，也不得把「MKV 播不了」或「所有文件都能播」当默认假设。**
 
+## store facade 消费位语义（PLAN-622）
+
+### 五消费位契约（SD-01）
+
+`store Name { ... }` + `use store: Name` facade（web 轨发射 Pinia，VM 轨原生解释）
+的 VM 侧消费位语义钉死如下（语料：`plan622_store_facade_gap_tests` +
+`test/ui/plan622_store_facade/`；实证基线 auto-lang master @ plan-622-dev）：
+
+1. **handler 读**：widget handler 内按裸字段名读已合并的 store 字段（标量、
+   嵌套对象字段）→ 读得 store 当前值（442 的 `store.`-前缀 musk 形态之外，
+   裸名形态同义）。
+2. **跨 facade 带参 msg 派发**：`store.Msg({key: v})` 单 map 载荷派发 → store
+   handler 以 `args.key` 收参执行（载荷单类型约束不变）。
+3. **视图响应回读**：视图绑定 store 字段（裸名与前缀两形态）→ store msg 变异
+   后快照/重渲染跟随新值。
+4. **store 内 #[api] 调用**：store handler 体内的契约 fn 调用与 widget handler
+   同一 340 面——split 模式（api_over_http=true，AUTO_BACKEND）改写为 HTTP，
+   merged 模式走宿主分派；不再落入模块内 stub 体。
+5. **变异原语**：`List.splice(start, count)`（2071）——JS 移除形语义（负 start
+   自尾计数、双向钳制、返回移除元素的新列表；元素 stake 由源容器转移到返回
+   列表）。JS splice 的插入形变体 v1 不设，调用方以 insert 组合（规格注记，
+   需要时另案扩参）。
+
+### 闭包捕获编址契约（SD-02）
+
+`compile_closure` 的捕获槽位元数据与 `emit_store_loc`/`emit_load_loc` 的编址
+**同源**：local 域 `slot = idx - fn_scope_start - n_args`、参数域打 0x8000 旗标
+（`real = idx - fn_scope_start`，运行期负向寻址）。禁用裸 scope idx 当槽位
+——widget handler（fn_scope_start=1）内两者差一位，by-ref 读邻槽垃圾且遮蔽
+env 值（此前 385/454 语料 fss=0 未暴露）。`self` 在闭包体内特判捕获所在
+handler 的 `__state` 状态对象（此前 CONST_0，`self.field` 全部静默 nil）。
+守卫语料：`plan622_a/a2/a3/b`（facade 读/派发/视图跟随）、
+`plan622_e1/e2`（捕获两形态）。
+
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：

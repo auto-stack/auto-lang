@@ -491,6 +491,15 @@ where
                 selectable: false,
             },
         ),
+
+        // PLAN-012 W3: 整桌面预览同 Image 资产文本占位（像素在宿主）。
+        View::WorkspacePreview { .. } => (
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "[WorkspacePreview]".to_string(),
+                selectable: false,
+            },
+        ),
     }
 }
 

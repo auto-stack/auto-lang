@@ -3664,6 +3664,23 @@ fn build_dynamic_component_inner(
         let base_dir = std::path::Path::new(file_path)
             .parent()
             .unwrap_or(std::path::Path::new("."));
+        // PLAN-012 F2：`use` 兄弟模块解析的**仓根回退基**——source path 为
+        // 仓根相对形态（ui_desktop 直挂窗：`examples/ui/...`）且 CWD ≠ 仓根
+        // 时（desktop.ps1 iced 轨 CWD=os 根），CWD 相对解析永不命中，
+        // `use prog_util` 链接死（Undefined symbol——桌面 boot 直挂计算器
+        // 实测）。回退基 = 语言仓根（编译期锚，CWD 无关；主检出/worktree
+        // 构建各自自洽）。首基（CWD 相对）优先，回退基仅在前者 miss 时参与。
+        let mut base_dirs: Vec<std::path::PathBuf> = vec![base_dir.to_path_buf()];
+        let lang_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .map(|p| p.to_path_buf());
+        if let Some(root) = &lang_root {
+            let fb = root.join(base_dir);
+            if !base_dirs.contains(&fb) {
+                base_dirs.push(fb);
+            }
+        }
 
         for use_stmt in &use_stmts {
             // Skip non-module imports (c, rust, py)
@@ -3674,7 +3691,15 @@ fn build_dynamic_component_inner(
             // filesystem path: `back.api` → `back/api.at`, `calendar_util` →
             // `calendar_util.at`. Per the module rules (CLAUDE.md) a module is
             // either `{path}.at` or `{path}/mod.at`; try both.
-            let module_path = match resolve_use_module(base_dir, use_stmt) {
+            // PLAN-012 F2：逐基尝试（CWD 相对首基优先，仓根回退基兜底）。
+            let mut module_path = UseModuleResolution::None;
+            for base in &base_dirs {
+                module_path = resolve_use_module(base, use_stmt);
+                if !matches!(module_path, UseModuleResolution::None) {
+                    break;
+                }
+            }
+            let module_path = match module_path {
                 UseModuleResolution::Module(p) => p,
                 UseModuleResolution::StoreFiles(found) => {
                     // Plan 442 A2 (store facade): legacy `use store: Name` uses
@@ -6601,6 +6626,10 @@ mod plan370_store_vm_tests;
 // Plan 442 A2: legacy `use store: X` facade regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_store_facade_tests;
+
+// PLAN-622: named-store facade consumption-gap red corpus (a-e).
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan622_store_facade_gap_tests;
 
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
