@@ -6,3 +6,4 @@ render: "vm"
 front_port: 4041
 title: "AutoEdit"
 desktop: "true"
+opens: ".txt,.md,.at,.au,.rs,.json,.toml,.yaml,.yml,.log,.py,.js,.ts,.html,.css,.csv"

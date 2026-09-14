@@ -49,6 +49,10 @@ widget App {
         var fit_mode str = "contain"
         var is_fullscreen bool = false
         var revision int = 0
+        // PLAN-016 T-08：桌面 open_with 接收面（host write_state 写路径，
+        // SettleTick 消费一次；open_consumed 防重放）。
+        var auto_open_path str = ""
+        var auto_open_consumed str = "__none__"
         var thumbnails = [
             { id: 0, name: "No images", src: "" }
         ]
@@ -280,6 +284,30 @@ widget App {
         .Pan -> { .offset_x = .offset_x + 8.0; .offset_y = .offset_y + 4.0 }
         .DoubleClick -> { .fit_mode = "one-to-one"; .zoom = 1.0 }
         .SettleTick -> {
+            // PLAN-016 T-08：桌面 open_with 消费臂——路径来自宿主执行臂
+            // write_state（未运行启动 / 已运行聚焦），同 OpenFile 流程打开。
+            if .auto_open_path != "" {
+                if .auto_open_path != .auto_open_consumed {
+                    .auto_open_consumed = .auto_open_path
+                    let p str = .auto_open_path
+                    .auto_open_path = ""
+                    .view_state = "loading"
+                    .status = "Reading image metadata…"
+                    if .session_id != "" {
+                        let _closed = close_session(.session_id)
+                    }
+                    let session = open_file(p)
+                    .session_id = session
+                    .media_src = current_uri(session)
+                    .media_alt = p
+                    .selected_name = p
+                    .selected_path = ""
+                    .image_count = 1
+                    .thumbnails = [{ id: 0, name: p, src: "" }]
+                    .selected_index = 0
+                    .revision = .revision + 1
+                }
+            }
             if .view_state == "loading" {
                 if .session_id != "" {
                     .media_src = current_uri(.session_id)

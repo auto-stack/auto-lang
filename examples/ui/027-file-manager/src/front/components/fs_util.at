@@ -105,3 +105,16 @@ pub fn fmt_date(t int) str {
     }
     return y.str() + "-" + pad2(m) + "-" + pad2(d) + " " + pad2(hh) + ":" + pad2(mm)
 }
+
+/// PLAN-016 T-09：扩展名 → 桌面 open_with 关联（v1 静态表——注册表
+/// `opens:` 投影面落地前，027 内置默认关联；与 041/031 pac.at opens
+/// 声明保持同源，host 执行臂仍按注册表校验）。无关联返回 ""。
+pub fn app_for_ext(ext str) str {
+    if ext == "txt" || ext == "md" || ext == "log" || ext == "at" || ext == "rs" || ext == "toml" || ext == "json" || ext == "yaml" || ext == "yml" || ext == "py" || ext == "js" || ext == "ts" || ext == "html" || ext == "css" || ext == "csv" {
+        return "041-auto-edit"
+    }
+    if ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" || ext == "gif" || ext == "bmp" || ext == "svg" || ext == "ico" {
+        return "031-image-viewer"
+    }
+    return ""
+}

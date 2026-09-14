@@ -1,7 +1,7 @@
-# AutoShell 状态投影协议 v1.6（S2 接缝合同）
+# AutoShell 状态投影协议 v1.7（S2 接缝合同）
 
-> **版本**：v1.6（2026-09-12，PLAN-012 落码；dock 固定/聚焦/通知可见派生面
-> + 单枚固定与格子重注入动词 + 整桌面预览合同面，详见 §6 v1.6 节）。
+> **版本**：v1.7（2026-09-14，PLAN-016 落码；`open_with` 打开文件动词——
+> 普通注册表窗上行排空面 + pac `opens:` 关联校验面，详见 §6 v1.7 节）。
 > v1.5（2026-08-31，Plan 505 B2 落码；pager 派生面（≤4 截断 + "+N"）。
 > v1.4（2026-08-30，Plan 487 M4；486 先合占 v1.3，487 按并行协调叠 v1.4）——v1/v1.1/v1.2/v1.3/v1.4 见 §6
 > 变更记录）。双端同
@@ -38,7 +38,7 @@
 | `__wm_settings_open` | str `"1"/""` | **F2 走查增补** 设置窗在场标量（存在非隐藏 os-config 窗 = "1"；W1 close→hide 后隐藏即回落）——⚙️ 高亮判据（原 `__wm_running.contains(",os-config,")` view 条件方法调用死点，实机探针定性：设置窗在场齿轮仍无高亮）；窗开/关/hide 翻 win 指纹段随写同步 | 宿主写 | F2 走查增补 |
 | `__wm_fp` | str | 投影指纹（§3）；shell 不消费，仅门控 | 宿主写 | v1 |
 | `__wm_clock` | str `"HH:MM"` | dock 时钟本地时间串（497 S3）。**非门控字段**：不进 `__wm_fp` 指纹、不走 §3 投影组换装——ServiceTick 帧泵独立注入（分钟变化才写，稳态零重建；本地时钟非驱动事实，避免每分钟全组换装抖动） | 宿主写 | v1.4 内（497） |
-| `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
+| `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清**。**v1.7 发件面扩宽**：普通注册表窗联合排空（pump 全窗 drain；特权四窗原有专属排空保留，二次空读无害）——`open_with` 首个普通窗动词（027 文件管理器发件） | shell 写（v1.7 起：普通注册表窗亦可） | v1（发件面扩宽：v1.7） |
 
 ### 2.0.1 通知面板接缝字段（`assets/notification_center.at`，召唤/活更新注入）
 
@@ -113,6 +113,8 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 | `dock_pin` | app id | **v1.6** 单枚固定——`config.dock_pinned` Vec 增删去重之增（已在表 = 幂等保持）→ 单源落盘 → `inject_dock_pinned` + `inject_desktop_surface` 双投影热同步（发件面 = shell.at 窗口条目右键菜单「固定到任务栏」）。窄动词缘由：shell 读不到 `__dock_pinned` Obj 数组全集做 csv 手术（B12 同族），单枚增删收口宿主侧 | v1.6 |
 | `dock_unpin` | app id | **v1.6** 单枚取消固定——同上之删（不在表 = 幂等跳过；发件面 = pinned 图标右键菜单「取消固定」） | v1.6 |
 | `refresh_desktop_icons` | （无参记录） | **v1.6** 桌面图标格子重注入——shell 拖拽落子写 `shell.desktop.positions` 后触发，宿主重读 storage 重算 `__desktop_cells`/平行列表（`inject_desktop_surface` 重跑；拖拽结果即时可见 + boot 同链） | v1.6 |
+| `open_with` | app id、绝对路径 | **v1.7** 用注册表 App 打开文件——执行臂：注册表校验（未知 app 拒绝；pac `opens:` 声明面非空且未含目标扩展名即拒，toast 反馈）→ 未运行 launch 后向目标 App state 写 `auto_open_path` / 已运行聚焦 + 同款写入 → 目标 App Tick 消费（041-auto-edit `ConsumeOpen`、031-image-viewer SettleTick 消费臂为首批接收面；未声明 `auto_open_path` 的 App 写入静默无效 = capability 自声明）。约束：**path 单行**（记录层按 `
+` 切分，notify msg 同款）；发件面 = 027 双击/右键打开（PLAN-016） | v1.7 |
 
 ## 5. 对拍与验收（I8/I9）
 
@@ -146,6 +148,19 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.7（2026-09-14，PLAN-016）
+
+- **新动词 `open_with`（app id、绝对路径）**：桌面级文件打开互操作。执行臂
+  （renderer `execute_open_with`）三段——注册表校验（`opens:` 声明面）、
+  未运行 `launch_app` 后 boot 态写入、已运行聚焦 + 写入；投递面 = 目标 App
+  state `auto_open_path`（capability 自声明：未声明写入无效）+ Tick 消费。
+- **`__desktop_cmd` 发件面扩宽**：pump 联合排空从特权四窗扩展到全部注册表
+  窗——普通 App（027 文件管理器）获得上行命令能力；动词面仍受 §4 词表
+  白名单约束（未知动词跳过不 panic 前向兼容不变）。
+- **pac `opens:` 关联键**：`AppRegistryEntry.opens`/`LaunchSpec.opens`
+  （小写带点规范化）——关联解析唯一事实源（契约见
+  `docs/specs/auto-man/project.md` PLAN-016 节）。
 
 ### v1.6（2026-09-13 F2 走查增补，PLAN-012 O1-O3 收口）
 

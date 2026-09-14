@@ -13,7 +13,7 @@
 //   （PLAN-016 crates 扩展；旧宿主二进制该列显示 "--"）
 // - 持久化：storage.get/set 保持视图模式、排序字段、排序方向与隐藏文件状态
 
-use components.fs_util: format_size, type_label, hidden_name, fmt_date
+use components.fs_util: format_size, type_label, hidden_name, fmt_date, app_for_ext
 use auto.fs
 use auto.file
 use auto.json
@@ -32,6 +32,9 @@ widget App {
     }
 
     model {
+        // PLAN-016 T-09：桌面命令总线上行（shell 同款状态面——宿主每周期
+        // 读+清；v1.7 起普通注册表窗联合排空，open_with 可达）。
+        var __desktop_cmd str = ""
         // PLAN-016 T-01：主题跟随——桌面切主题时宿主对本变量回写（dark_mode
         // 回写链），视图全语义 token 随之换肤；vue 轨按本变量绑根 dark class。
         var dark_mode bool = true
@@ -1010,8 +1013,14 @@ widget App {
                 if r.is_dir {
                     .NavTo(r.path)
                 } else {
-                    // PLAN-016 T-09：文件 → 桌面 open_with 关联打开（接线于 T-09）
-                    toast("已选择文件: " + r.name + "（关联打开接线于 T-09）")
+                    // PLAN-016 T-09：文件 → 桌面 open_with 关联打开
+                    let app str = app_for_ext(r.file_ext)
+                    if app != "" {
+                        .__desktop_cmd = "open_with	" + app + "	" + r.path
+                        toast.success("正在打开: " + r.name)
+                    } else {
+                        toast.error("没有关联应用可打开 ." + r.file_ext + " 文件")
+                    }
                 }
             }
         }
