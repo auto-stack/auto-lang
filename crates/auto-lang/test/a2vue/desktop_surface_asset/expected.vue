@@ -24,6 +24,9 @@ const __wp_preview = ref<string>('')
 const __wp_dir = ref<string>('')
 const __wp_current = ref<string>('')
 const __wp_items = ref<any[]>([])
+const __wp_visible = ref<any[]>([])
+const __wp_x = ref<number>(0)
+const __wp_y = ref<number>(0)
 const wp_paths = ref<any[]>([])
 
 const emit = defineEmits<{
@@ -219,7 +222,7 @@ onMounted(() => {
         </div>
 </div>
 <div v-if="__wp_picker == '1'" class="fixed inset-0 z-40" @click="PickerDismiss"></div>
-<div v-if="__wp_picker == '1'" class="fixed z-50 p-4 border rounded-xl bg-card w-[880px] gap-3" :style="{ left: 40 + 'px', top: 80 + 'px' }">
+<div v-if="__wp_picker == '1'" class="fixed z-50 p-4 border rounded-xl bg-card w-[720px] gap-3" :style="{ left: __wp_x + 'px', top: __wp_y + 'px' }">
         <div class="flex flex-row w-full items-center gap-2">
           <Image class="w-4 h-4 text-muted-foreground" />
           <span class="text-xs text-muted-foreground flex-1 truncate">{{ __wp_dir }}</span>
@@ -228,28 +231,32 @@ onMounted(() => {
             <X class="h-4 w-4" />          </Button>
         </div>
         <template v-if="__wp_preview == ''">
-          <div class="grid grid-cols-4 gap-3">
-            <div class="flex flex-col gap-1" v-for="e in __wp_items" :key="(((e as any)?.id ?? e))">
+          <div class="flex flex-row w-full items-center gap-2">
+            <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-8'">
+              <ChevronLeft class="h-4 w-4" />            </Button>
+            <div class="flex flex-col gap-1" v-for="e in __wp_visible" :key="(((e as any)?.id ?? e))">
               <div @click="PickerApply(e.path)">
-                <div :class="(e.path == __wp_current ? 'w-[196px] h-[110px] rounded-lg border-2 border-primary' : 'w-[196px] h-[110px] rounded-lg border-2 border-transparent')" class="flex flex-col">
+                <div :class="(e.path == __wp_current ? 'w-[120px] h-[68px] rounded-lg border-2 border-primary' : 'w-[120px] h-[68px] rounded-lg border-2 border-transparent')" class="flex flex-col">
                   <img :src="e.path" :alt="e.name" class="w-full h-full rounded-lg object-cover" />
                 </div>
               </div>
-              <div class="flex flex-row w-full items-center gap-1">
-                <span class="text-[10px] text-muted-foreground flex-1 truncate">{{ e.name }}</span>
-                <Button variant="ghost" class="h-5 px-2 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="PickerPreview(e.path)" :key="'Button-8-' + (((e as any)?.id ?? e))">预览</Button>
+              <div class="flex flex-row w-[120px] items-center justify-between">
+                <span class="text-[10px] text-muted-foreground truncate">{{ e.name }}</span>
+                <Button variant="ghost" class="h-5 px-1 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="PickerPreview(e.path)" :key="'Button-9-' + (((e as any)?.id ?? e))">预览</Button>
               </div>
             </div>
+            <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-10'">
+              <ChevronRight class="h-4 w-4" />            </Button>
           </div>
         </template>
         <template v-else>
           <div class="flex flex-col w-full gap-2 items-center">
             <img :src="__wp_preview" alt="preview" class="w-full h-[440px] rounded-lg bg-black/40 object-contain" />
             <div class="flex flex-row items-center gap-2">
-              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-9'">
+              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-11'">
                 <ChevronLeft class="h-4 w-4" />              </Button>
-              <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBack" :key="'Button-10'">返回</Button>
-              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-11'">
+              <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBack" :key="'Button-12'">返回</Button>
+              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-13'">
                 <ChevronRight class="h-4 w-4" />              </Button>
             </div>
           </div>

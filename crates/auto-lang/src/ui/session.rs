@@ -641,8 +641,9 @@ pub struct WmState {
     /// PLAN-019 v1.7：picker 大图预览游标（None = 栅格态；Some = 下标）。
     /// 宿主持有——.at 无列表下标算术（B12 族），‹›/←→ 导航在宿主收口。
     pub picker_preview: Option<usize>,
-    /// PLAN-019 v1.7：栅格态 flip 轮换游标（←/→ 逐张应用；点选同步）。
-    pub picker_cursor: Option<usize>,
+    /// PLAN-019-FU7：carousel 滑动窗口起点（可见 5 枚的起始下标；‹›/←→
+    /// 滑窗、点选应用不动窗——用户裁定「一次只显示四五个候选」）。
+    pub picker_win: usize,
     /// PLAN-019 v1.7：picker 候选路径缓存（inject_wallpaper_picker 时与
     /// `__wp_items` 同源刷新；wallpaper_nav 数学区数据面）。
     pub picker_paths: Vec<String>,
@@ -705,7 +706,7 @@ impl WmState {
             picker_open: false,
             picker_return_on_close: false,
             picker_preview: None,
-            picker_cursor: None,
+            picker_win: 0,
             picker_paths: Vec::new(),
             native_slots: BTreeMap::new(),
             next_native_slot_id: 0,

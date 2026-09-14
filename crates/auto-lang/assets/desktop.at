@@ -75,6 +75,9 @@ widget DesktopSurface {
         var __wp_dir str = ""
         var __wp_current str = ""
         var __wp_items = []
+        var __wp_visible = []
+        var __wp_x float = 0.0
+        var __wp_y float = 0.0
         var wp_paths = []
     }
 
@@ -216,7 +219,7 @@ widget DesktopSurface {
             // set_wallpaper 立即应用（真桌面即预览）；「预览」钮进大图
             // 二级态（←/→ 键导航宿主侧，Esc/返回退栅格）。ondiscard 即
             // ondismiss（外点/Esc）→ wallpaper_close，归属规则宿主收口）。
-            popover (open: .__wp_picker == "1", x: 40, y: 80, ondismiss: .PickerDismiss, class: "p-4 border rounded-xl bg-card w-[880px] gap-3") {
+            popover (open: .__wp_picker == "1", x: .__wp_x, y: .__wp_y, ondismiss: .PickerDismiss, class: "p-4 border rounded-xl bg-card w-[720px] gap-3") {
                 // 头部行：目录展示 + 浏览换目录 + 关闭。
                 row {
                     style: "w-full items-center gap-2"
@@ -237,16 +240,23 @@ widget DesktopSurface {
                 }
                 // 双态：栅格（点击即应用）/ 大图预览（‹ › 环绕导航）。
                 if .__wp_preview == "" {
-                    grid (cols: 4, gap: 12) {
-                        for e in .__wp_items {
+                    // FU7：横向 carousel——滑窗只显 5 枚（宿主切片注入
+                    // __wp_visible），‹›/←→ 滑窗、点选即应用。
+                    row {
+                        style: "w-full items-center gap-2"
+                        button (icon: "chevron-left", variant: "ghost") {
+                            onclick: .PickerNav("prev")
+                            style: "h-8 w-8 px-0 rounded-lg hover:bg-primary/10"
+                        }
+                        for e in .__wp_visible {
                             col {
                                 style: "gap-1"
                                 mouse-area (onclick: .PickerApply(e.path)) {
                                     col {
                                         style: if e.path == .__wp_current {
-                                            "w-[196px] h-[110px] rounded-lg border-2 border-primary"
+                                            "w-[120px] h-[68px] rounded-lg border-2 border-primary"
                                         } else {
-                                            "w-[196px] h-[110px] rounded-lg border-2 border-transparent"
+                                            "w-[120px] h-[68px] rounded-lg border-2 border-transparent"
                                         }
                                         image (src: e.path, alt: e.name, fit: "cover") {
                                             style: "w-full h-full rounded-lg"
@@ -254,16 +264,20 @@ widget DesktopSurface {
                                     }
                                 }
                                 row {
-                                    style: "w-full items-center gap-1"
+                                    style: "w-[120px] items-center justify-between"
                                     text e.name {
-                                        style: "text-[10px] text-muted-foreground flex-1 truncate"
+                                        style: "text-[10px] text-muted-foreground truncate"
                                     }
                                     button (text: "预览", variant: "ghost") {
                                         onclick: .PickerPreview(e.path)
-                                        style: "h-5 px-2 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
+                                        style: "h-5 px-1 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                                     }
                                 }
                             }
+                        }
+                        button (icon: "chevron-right", variant: "ghost") {
+                            onclick: .PickerNav("next")
+                            style: "h-8 w-8 px-0 rounded-lg hover:bg-primary/10"
                         }
                     }
                 } else {

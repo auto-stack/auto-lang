@@ -68,7 +68,9 @@ Plan 496 M5 的第五面（常驻不召唤，boot 装载挂桌面层 z 槽）。
 | `__wp_picker` | str `"1"/""` | **v1.7** 壁纸选择 carousel 可见性（PLAN-019；desktop.at 全屏层条件渲染唯一事实源）。开合簿记在宿主（`picker_open` + `picker_return_on_close`——`wallpaper_pick`/`wallpaper_close` 组合臂单点维护，.at 侧零分支）；随写置 dirty | 宿主写 | v1.7 |
 | `__wp_dir` | str | **v1.7** 当前壁纸目录（picker 头部展示；`wallpapers_dir` 解析链当前值——config → env `AUTO_DESKTOP_WALLPAPERS_DIR` → 探测目录） | 宿主写 | v1.7 |
 | `__wp_current` | str | **v1.7** 当前壁纸路径（boot 壁纸解析值——`#hex`/`builtin:`/图片路径；picker 缩略图高亮的**等式判据面**；`set_wallpaper` 臂随写） | 宿主写 | v1.7 |
-| `__wp_items` | Obj 数组 `{name:str}` | **v1.7** 候选壁纸清单（`scan_wallpapers_dir` 供源——jpg/jpeg/png 文件名升序；view for 渲染消费，闭包参数可直取 `path`——`IconPress(e.id)` 同型）。handler 侧下标读走伴随平行字符串列表 `wp_paths`（与 items 同序；B12 规避），picker open/目录变更/点选后全量重注入 | 宿主写 | v1.7 |
+| `__wp_items` | Obj 数组 `{name:str}` | **v1.7** 候选壁纸清单全量合同面（`scan_wallpapers_dir` 供源——jpg/jpeg/png 文件名升序）。渲染消费走 `__wp_visible` 滑窗切片（FU7）；handler 侧下标读走伴随平行字符串列表 `wp_paths`（与 items 同序；B12 规避），picker open/目录变更/点选后全量重注入 | 宿主写 | v1.7 |
+| `__wp_visible` | Obj 数组 `{name:str,path:str,src:str}` | **v1.7** carousel 可见窗口切片（`picker_win` 起 5 枚；`__wp_items` 同构元素）——desktop.at 缩略栅格渲染面；`wallpaper_nav` 滑窗后随写 | 宿主写 | v1.7 |
+| `__wp_x` / `__wp_y` | float | **v1.7** picker 面板锚点坐标（宿主按可用区算好注入：水平居中、贴任务栏留 8px——.at 无算术）。坐标锚 popover 消费 | 宿主写 | v1.7 |
 | `__wp_preview` | str | **v1.7** 大图预览态（"" = 栅格态；非空 = 预览图**路径**——视图零算术直渲染）。宿主持有（`picker_preview` 游标簿记投影，路径自 `picker_paths` 解析）——`wallpaper_preview`/`wallpaper_nav` 移动，`wallpaper_close`/目录变更复位；desktop.at 双态渲染判据 | 宿主写 | v1.7 |
 
 ## 3. 更新语义与指纹门控（协议条款）
@@ -127,7 +129,7 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 | `wallpaper_pick` | （无参记录） | **v1.7** 更换壁纸组合入口 = `show_desktop` 幂等臂 → `picker_open=1` → `picker_return_on_close = (到达前 current != showdesk_ws)`（**归属规则单点**：谁切屏谁负责切回——他分区进入组合调用 = 自动返回；负一屏自入 = 关闭只关 picker 不代管返回）→ `__wp_*` 五面注入。发件面 = desktop.at 图标/空白右键菜单「更换壁纸…」 | v1.7 |
 | `wallpaper_close` | （无参记录） | **v1.7** 关闭 picker——`picker_open=0` → 若 `picker_return_on_close` 则走 `showdesk_return` 臂（origin 消费后清零）。发件面 = desktop.at picker 关闭钮/遮罩/Esc 栅格态 | v1.7 |
 | `wallpaper_browse_dir` | （无参记录） | **v1.7** 弹原生目录对话框（rfd `pick_folder`，`ui-dialog` feature）——选定后走 `SetWallpapersDir` 同一执行臂（目录写路径单一：config 落盘 + mtime 热轮询）+ `__wp_items`/`__wp_dir` 重注入。发件面 = desktop.at picker 头部「浏览…」 | v1.7 |
-| `wallpaper_nav` | `prev`/`next` | **v1.7** picker 导航（宿主按态分派）——预览态 = 大图游标环绕移动（`__wp_preview` 随写）；栅格态 = flip 对比轮换并**立即应用**（游标环绕 + `set_wallpaper` 同链，`__wp_current` 随写）。坏值/关态跳过。数学生宿主的缘由：.at 无列表下标算术（B12 族） | v1.7 |
+| `wallpaper_nav` | `prev`/`next` | **v1.7** picker 导航（宿主按态分派；FU7 语义修订）——预览态 = 大图游标环绕移动（`__wp_preview` 随写）；栅格态 = **carousel 滑窗**（`picker_win` 可见 5 枚窗口起点的 ±1 滑动 + `__wp_visible` 重注入；端点 clamp）。导航不应用——点选缩略图才应用。数学生宿主的缘由：.at 无列表下标/算术（B12 族） | v1.7 |
 | `wallpaper_preview` | 图片路径（空参 = 退栅格） | **v1.7** 大图预览进出——带参按 path 反查游标进入预览（缺席/关态 no-op）；空参退栅格态。`__wp_preview` 载荷 = 预览图路径（.at 零算术直渲染）。发件面 = desktop.at 缩略图「预览」钮 / 预览态「返回」钮 | v1.7 |
 
 ## 5. 对拍与验收（I8/I9）

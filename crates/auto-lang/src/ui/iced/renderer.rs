@@ -9955,17 +9955,6 @@ fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &
     crate::ui::iced::snapshot::invalidate_all();
     // PLAN-019 v1.7：picker 开着时点选/轮换 = flip 游标同步（后续 ←/→
     // 从这张继续）；__wp_current 随写刷新（高亮判据面）。
-    let cursor_hit = state.host.as_ref().and_then(|h| {
-        h.wm
-            .picker_paths
-            .iter()
-            .position(|p| p == path)
-    });
-    if let Some(ix) = cursor_hit {
-        if let Some(host) = state.host.as_mut() {
-            host.wm.picker_cursor = Some(ix);
-        }
-    }
     if state.host.as_ref().is_some_and(|h| h.wm.picker_open) {
         inject_wallpaper_picker(state);
     }
@@ -10009,6 +9998,19 @@ fn execute_wallpaper_pick(state: &mut crate::ui::session::DesktopSession) {
     }
     PICKER_KEYS_OPEN.store(true, std::sync::atomic::Ordering::Relaxed);
     inject_wallpaper_picker(state);
+    // FU7：滑窗对齐当前壁纸（可见 5 枚窗口容纳当前项居中偏左）。
+    let cur_ix = state.host.as_ref().and_then(|h| {
+        h.wm
+            .picker_paths
+            .iter()
+            .position(|p| *p == state.desktop.desktop_wallpaper)
+    });
+    if let Some(ix) = cur_ix {
+        if let Some(host) = state.host.as_mut() {
+            let len = host.wm.picker_paths.len();
+            host.wm.picker_win = ix.saturating_sub(2).min(len.saturating_sub(5.min(len)));
+        }
+    }
 }
 
 /// PLAN-019 v1.7：关闭 picker——簿记清零；return_on_close 分支走
@@ -10104,21 +10106,18 @@ fn execute_wallpaper_nav(state: &mut crate::ui::session::DesktopSession, dir: &s
         return;
     }
     let step: isize = if dir == "next" { 1 } else { -1 };
-    let mut apply_path: Option<String> = None;
     {
         let host = state.host.as_mut().unwrap();
         if let Some(ix) = host.wm.picker_preview {
+            // 预览态：大图游标环绕移动。
             host.wm.picker_preview =
                 Some((ix as isize + step).rem_euclid(len as isize) as usize);
         } else {
-            let cur = host.wm.picker_cursor.unwrap_or(0);
-            let next = ((cur as isize + step).rem_euclid(len as isize)) as usize;
-            host.wm.picker_cursor = Some(next);
-            apply_path = Some(host.wm.picker_paths[next].clone());
+            // FU7：栅格态 = carousel 滑窗（导航只滑窗不应用；点选才应用）。
+            let max_win = len.saturating_sub(5) as isize;
+            let w = (host.wm.picker_win as isize + step).clamp(0, max_win);
+            host.wm.picker_win = w as usize;
         }
-    }
-    if let Some(path) = apply_path {
-        execute_set_wallpaper(state, &path);
     }
     inject_wallpaper_picker(state);
 }
@@ -10162,16 +10161,34 @@ fn inject_wallpaper_picker(state: &mut crate::ui::session::DesktopSession) {
     {
         let host = state.host.as_mut().unwrap();
         host.wm.picker_paths = paths.clone();
-        if host.wm.picker_cursor.is_none() && !paths.is_empty() {
-            // 首开游标对齐当前壁纸（flip 从它开始）。
-            host.wm.picker_cursor = paths.iter().position(|p| *p == current);
-        }
     }
+    // FU7：carousel 滑窗切片（可见 5 枚）+ 面板锚点（底部居中、贴
+    // 任务栏留 8px；宿主算好坐标注入——.at 无算术）。
+    let win = state.host.as_ref().map(|h| h.wm.picker_win).unwrap_or(0);
+    let visible: Vec<auto_val::Value> = items
+        .iter()
+        .skip(win)
+        .take(5)
+        .cloned()
+        .collect();
+    let viewport = state.host_viewport();
+    let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
+    let panel_w = 720.0_f32;
+    let panel_h = 190.0_f32;
+    let wp_x = usable.x + ((usable.width - panel_w).max(0.0)) / 2.0;
+    let wp_y = usable.y + usable.height - panel_h - 8.0;
     let Some(app) = state.apps.get_mut(&surface) else { return };
     let _ = app
         .component
         .write_state("__wp_picker", auto_val::Value::str(if open { "1" } else { "" }));
     let _ = app.component.write_state("__wp_preview", auto_val::Value::str(&preview));
+    let _ = app
+        .component
+        .write_state("__wp_x", auto_val::Value::Float(wp_x as f64));
+    let _ = app
+        .component
+        .write_state("__wp_y", auto_val::Value::Float(wp_y as f64));
+    let _ = app.component.write_state_vec("__wp_visible", visible);
     let _ = app.component.write_state("__wp_dir", auto_val::Value::str(&dir));
     let _ = app
         .component
@@ -10328,7 +10345,7 @@ fn execute_set_wallpapers_dir(state: &mut crate::ui::session::DesktopSession, di
     if state.host.as_ref().is_some_and(|h| h.wm.picker_open) {
         if let Some(host) = state.host.as_mut() {
             host.wm.picker_preview = None;
-            host.wm.picker_cursor = None;
+            host.wm.picker_win = 0;
         }
         inject_wallpaper_picker(state);
     }
@@ -25431,39 +25448,45 @@ mod tests {
         {
             let host = ds.host.as_mut().unwrap();
             host.wm.picker_open = true;
-            host.wm.picker_paths = vec!["a.jpg".into(), "b.jpg".into(), "c.jpg".into()];
-            host.wm.picker_cursor = Some(0);
+            // 7 枚候选 > 5 枚窗口：FU7 滑窗语义可测。
+            host.wm.picker_paths = vec![
+                "a.jpg".into(), "b.jpg".into(), "c.jpg".into(),
+                "d.jpg".into(), "e.jpg".into(), "f.jpg".into(), "g.jpg".into(),
+            ];
+            host.wm.picker_win = 0;
         }
 
-        // 栅格态 next：游标推进 + 应用（config.wallpaper_path 原始值）。
+        // 栅格态 next：滑窗推进（FU7 起导航不应用——点选才应用）。
         let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
         {
             let host = ds.host.as_ref().unwrap();
-            assert_eq!(host.wm.picker_cursor, Some(1));
-            assert_eq!(ds.desktop.config.wallpaper_path, "b.jpg", "flip 立即应用");
+            assert_eq!(host.wm.picker_win, 1, "滑窗推进");
+            assert_eq!(ds.desktop.config.wallpaper_path, "", "导航不应用");
         }
-        // 环绕：2 → next → 0。
+        // 上边界 clamp：推到 len-5=2 后不再前进。
         let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
         let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
-        assert_eq!(ds.host.as_ref().unwrap().wm.picker_cursor, Some(0));
-        assert_eq!(ds.desktop.config.wallpaper_path, "a.jpg");
+        let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
+        assert_eq!(ds.host.as_ref().unwrap().wm.picker_win, 2, "滑窗右界 clamp");
+        let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("prev".into())]);
+        assert_eq!(ds.host.as_ref().unwrap().wm.picker_win, 1, "prev 回退");
 
         // 预览态：游标环绕移动，不触发应用。
         ds.host.as_mut().unwrap().wm.picker_preview = Some(2);
         let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
         {
             let host = ds.host.as_ref().unwrap();
-            assert_eq!(host.wm.picker_preview, Some(0), "预览游标环绕");
-            assert_eq!(ds.desktop.config.wallpaper_path, "a.jpg", "预览导航不应用");
+            assert_eq!(host.wm.picker_preview, Some(3), "预览游标推进");
         }
-        let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("prev".into())]);
-        assert_eq!(ds.host.as_ref().unwrap().wm.picker_preview, Some(2), "prev 环绕回尾");
+        // 环绕：尾 → next → 0。
+        ds.host.as_mut().unwrap().wm.picker_preview = Some(6);
+        let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
+        assert_eq!(ds.host.as_ref().unwrap().wm.picker_preview, Some(0), "预览尾环绕回首");
 
         // picker 关 = no-op。
         ds.host.as_mut().unwrap().wm.picker_open = false;
         let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
-        assert_eq!(ds.host.as_ref().unwrap().wm.picker_preview, Some(2), "关态导航 no-op");
-        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(ds.host.as_ref().unwrap().wm.picker_preview, Some(0), "关态导航 no-op");
     }
 
     /// Esc 链 update 臂（AC-05）：预览态 → 回栅格；栅格态 → 关闭（归属
