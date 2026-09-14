@@ -11334,7 +11334,7 @@ fn desktop_icon_cells(
             .map(|e2| e2.icon.clone())
             .unwrap_or_else(|| "app-window".to_string());
         let label = reg
-            .map(|e2| e2.title.clone())
+            .map(|e2| e2.display_title().to_string())
             .unwrap_or_else(|| id.clone());
         let src = e.1.to_string();
         let color = crate::ui::app_registry::badge_color_for(&id);
