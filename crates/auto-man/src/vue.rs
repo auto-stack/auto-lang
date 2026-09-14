@@ -1615,9 +1615,34 @@ fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
 /// PLAN-063 Phase B T13 (KD 061 D28): pac.at 可选 `title:` 字段——
 /// document.title 展示名(回退 name;name 是包标识不宜作展示标题)。
 fn parse_pac_title(content: &str) -> Option<String> {
+    parse_pac_scalar(content, "title")
+}
+
+/// PLAN-015：展示名 locale 链（document.title）——AUTO_LOCALE（缺省 zh）
+/// 且声明 `title_zh:` 时取中文，否则 `title:`。行级解析与 [`parse_pac_title`]
+/// 同族；AUTO_LOCALE 惯例与 auto-lang i18n_lookup 同款（本 crate 私有副本）。
+fn parse_pac_display_title(content: &str) -> Option<String> {
+    let prefers_zh = std::env::var("AUTO_LOCALE")
+        .unwrap_or_else(|_| "zh".to_string())
+        .to_ascii_lowercase()
+        .starts_with("zh");
+    parse_pac_display_title_in(content, prefers_zh)
+}
+
+/// 纯判定形态（locale 显式入参）——单测用，env 无关。
+fn parse_pac_display_title_in(content: &str, prefers_zh: bool) -> Option<String> {
+    if prefers_zh {
+        if let Some(zh) = parse_pac_scalar(content, "title_zh") {
+            return Some(zh);
+        }
+    }
+    parse_pac_title(content)
+}
+
+fn parse_pac_scalar(content: &str, key: &str) -> Option<String> {
     for line in content.lines() {
         let line = line.trim();
-        if line.starts_with("title:") {
+        if line.starts_with(&format!("{key}:")) {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
                 let value = value.trim_end_matches(',');
@@ -2405,7 +2430,8 @@ export default router
         let name = parse_pac_name(&pac_content)
             .unwrap_or_else(|| "aura-app".to_string());
         // PLAN-063 Phase B T13 (KD 061 D28): 展示名 title 可选透传。
-        let index_title = parse_pac_title(&pac_content);
+        // PLAN-015：locale 链——AUTO_LOCALE=zh（缺省）优先 title_zh。
+        let index_title = parse_pac_display_title(&pac_content);
 
         // Plan 013: shadcn-vue mapping toggle (`shadcn: off` in pac.at).
         let shadcn = parse_shadcn(&pac_content);
@@ -3956,7 +3982,8 @@ export default router
                 .map_err(|e| format!("Failed to create {}: {}", app_dir.display(), e))?;
             fs::write(app_dir.join("App.vue"), &vp.app_vue_code)
                 .map_err(|e| format!("Failed to write {}/App.vue: {}", app_dir.display(), e))?;
-            registry_rows.push((e.id.clone(), e.title.clone(), e.icon.clone(), e.category.clone()));
+            // PLAN-015：注册表行展示名走 locale 链（zh=title_zh→title…）。
+            registry_rows.push((e.id.clone(), e.display_title().to_string(), e.icon.clone(), e.category.clone()));
         }
 
         // App-referenced shadcn components are absent from the host's own
@@ -5847,7 +5874,8 @@ fn gallery_demo_row(
     else if e.id.contains("converter") { tags.extend(vec!["Binding".into(), "7GUIs".into()]); }
     else { tags.push("AutoUI".into()); }
 
-    let desc = if !e.title.is_empty() { e.title.clone() } else { e.id.clone() };
+    // PLAN-015: 展示名走 locale 链。
+    let desc = if !e.title.is_empty() { e.display_title().to_string() } else { e.id.clone() };
 
     let vp = match VueProject::from_workspace(&app_root) {
         Ok(v) => Some(v),
@@ -5881,7 +5909,8 @@ fn gallery_demo_row(
     (
         GalleryDemoRow {
             id: e.id.clone(),
-            title: e.title.clone(),
+            // PLAN-015: 画廊行展示名走 locale 链(zh=title_zh→title)。
+            title: e.display_title().to_string(),
             category,
             icon: e.icon.clone(),
             description: desc,
@@ -6614,6 +6643,24 @@ title: \"Auto Musk\"
         assert!(html.contains("<title>Auto Musk</title>"));
         let fallback = generate_index_html("auto-musk", None, None);
         assert!(fallback.contains("<title>auto-musk</title>"));
+    }
+
+    /// PLAN-015：document.title locale 链——zh（缺省 locale）优先 title_zh，
+    /// en 恒 title；title_zh 缺席两 locale 一致。
+    #[test]
+    fn pac_display_title_locale_chain() {
+        let pac = "name: \"x\"
+title: \"Calculator\"
+title_zh: \"计算器\"
+";
+        assert_eq!(parse_pac_display_title_in(pac, true).as_deref(), Some("计算器"));
+        assert_eq!(parse_pac_display_title_in(pac, false).as_deref(), Some("Calculator"));
+        let no_zh = "name: \"x\"
+title: \"Clock\"
+";
+        assert_eq!(parse_pac_display_title_in(no_zh, true).as_deref(), Some("Clock"));
+        assert_eq!(parse_pac_display_title_in(no_zh, false).as_deref(), Some("Clock"));
+        assert_eq!(parse_pac_display_title_in("name: \"x\"", true), None);
     }
 
     /// PLAN-063 Phase B T12 (KD 061 D27): ext 手写 .vue 的 ui 家族导入

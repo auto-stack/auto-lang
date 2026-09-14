@@ -20,6 +20,7 @@ back_port: 8330
 media_root: "E:\\Video"
 icon: "film"
 title: "Video Player"
+title_zh: "视频播放器"
 category: "media"
 desktop: "true"
 theme: "dark"

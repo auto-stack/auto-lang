@@ -18,5 +18,6 @@ render: "vue"
 front_port: 4029
 icon: "image"
 title: "Photo Gallery"
+title_zh: "照片图库"
 category: "media"
 desktop: "true"

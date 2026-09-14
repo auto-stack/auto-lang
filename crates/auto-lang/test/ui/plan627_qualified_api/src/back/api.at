@@ -1,0 +1,19 @@
+// api.at — PLAN-627 corpus contract module.
+//
+// 模块形态 `use back.api`（无符号清单）的函数名枚举数据源：两个 #[api]
+// 端点 + 一个 plain pub fn（不得泄漏进清单——#[api] 是唯一门）。
+
+#[api(method = "POST", path = "/api/term/tick")]
+pub fn get_lines() []str {
+    return ["banner"]
+}
+
+#[api(method = "GET", path = "/api/term/cols")]
+pub fn term_cols() int {
+    return 80
+}
+
+/// 非 #[api] 的普通 pub fn——枚举门外的守卫锚。
+pub fn plain_helper() int {
+    return 7
+}

@@ -10,5 +10,6 @@ description: "Charts playground - edit series, switch chart type, watch geometry
 scene: "ui"
 render: "vue"
 title: "Charts"
+title_zh: "图表"
 front_port: 4024
 desktop: "true"

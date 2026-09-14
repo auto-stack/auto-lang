@@ -738,7 +738,7 @@ _props 待声明_
 
 ### `icon`
 
-`builtin_widget` · `icon` · web: `native` · iced: `unknown` · category: `media`
+`builtin_widget` · `icon` · web: `native` · iced: `native` · category: `media`
 
 Icon display
 
@@ -748,7 +748,8 @@ Icon display
 |------|------|---------|-------------|
 | `name` | `string` | — | Icon name |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
-| `size` | `int` | 24 | Icon size in pixels |
+| `size` | `int` | 20 | Icon size in pixels (default 20px = w-5 h-5, both backends; Plan 620) |
+| `state` | `one_of: on|off` | — | On/off state semantics (Plan 621): on -&gt; primary tint + heavier stroke, off -&gt; muted-foreground dim; literal or bool binding; explicit text-* class takes precedence |
 
 ---
 

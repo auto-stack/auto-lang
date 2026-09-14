@@ -6381,11 +6381,26 @@ let tabs_inner = View::Row {
                 }
             }
         }
-        // icon: name → "lucide:{name}" synthetic src
+        // icon: name → 图标 src。PLAN-018：带协议前缀的值（iconfile:/hicon:
+        // /lucide:）原样透传（iconfile 位图后端/协议族回退链依赖前缀 intact
+        // ——此前无条件 "lucide:" 前缀把 iconfile: 值扭曲成
+        // "lucide:iconfile:x"，两后端都不识别→图标空白）；裸名 →
+        // "lucide:{name}" synthetic src（既有语义不变）。
         if let Some(name) = self.extract_string_with(props, "name", bindings) {
             if !name.is_empty() {
                 let style = self.with_icon_size(style, props, bindings);
-                return View::Image { src: format!("lucide:{}", name), style };
+                // PLAN-621: state 契约——on/off 注入语义色与激活描边（见
+                // with_state_tint 契约注释）；未声明零扰动。
+                let style = self.with_state_tint(style, props, bindings);
+                let src = if name.starts_with("iconfile:")
+                    || name.starts_with("hicon:")
+                    || name.starts_with("lucide:")
+                {
+                    name
+                } else {
+                    format!("lucide:{}", name)
+                };
+                return View::Image { src, style };
             }
         }
         // image: src as-is with loop variable / state bindings support
@@ -6429,6 +6444,62 @@ let tabs_inner = View::Row {
             s.classes.push(StyleClass::Height(SizeValue::Pixels(px)));
         }
         let _ = bindings;
+        Some(s)
+    }
+
+    /// `icon` 的 state 契约（PLAN-621，**两端同规则**，Web 侧同式实现在
+    /// `ui_gen/vue.rs` 的 icon 臂）。
+    ///
+    /// - `state: "on"`（或 bool 绑定求值 true）→ 注入
+    ///   `TextColor(Primary)`（**运行时 accent 预设主色**，theme::
+    ///   resolve_semantic_rgb 的 Primary 专臂）+ `StrokeWidth(基档 + 0.5)`
+    ///   激活加重（lucide 描边技法独有的非颜色线索）；
+    /// - `state: "off"`（或 false）→ 注入 `TextColor(OnSurface)`
+    ///   （= muted-foreground dim，双盘 token）；
+    /// - 未声明/未知值 → 原样返回（**零扰动**，既有金样不得 diff）。
+    ///
+    /// 优先级（镜像 [`Self::with_icon_size`] 的「显式作者意图优先」）：类集
+    /// 已有 `text-*` → 不注入颜色（描边无作者字面通道，照常生效）。
+    ///
+    /// 描边基档公式与 renderer lucide 路径同式（Plan 518 G4②）：有效盒
+    /// ≥48px → 1.5，否则 2.0；**绝对值在此算好**，renderer 只读不加工。
+    fn with_state_tint(
+        &self,
+        style: Option<Style>,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<Style> {
+        // 字面量 "on"/"off" 先行（extract_string_with 对 bool 绑定会解析成
+        // "true"/"false"，不命中即落 bool 通道），bool 绑定（.liked）走
+        // extract_bool_expr（Expr::Bool 直读 / 变量经 resolve 求值）。
+        let state: Option<bool> = match self.extract_string_with(props, "state", bindings).as_deref()
+        {
+            Some("on") => Some(true),
+            Some("off") => Some(false),
+            _ => self.extract_bool_expr(props, "state", bindings),
+        };
+        let on = match state {
+            Some(v) => v,
+            None => return style,
+        };
+        let mut s = style.unwrap_or_default();
+        let has_text = s
+            .classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::TextColor(_)));
+        if !has_text {
+            let color = if on {
+                crate::ui::style::Color::Primary
+            } else {
+                crate::ui::style::Color::OnSurface
+            };
+            s.classes.push(StyleClass::TextColor(color));
+        }
+        if on {
+            let px = effective_icon_box_px(&s);
+            let base = if px >= 48.0 { 1.5 } else { 2.0 };
+            s.classes.push(StyleClass::StrokeWidth(base + 0.5));
+        }
         Some(s)
     }
 
@@ -11241,6 +11312,27 @@ fn imported_components_registry() -> Option<std::collections::HashSet<String>> {
 
 /// PLAN-050 T7 (C5): PascalCase 图标名 → lucide kebab-case（MessageSquare →
 /// message-square;Loader2/Trash2 → loader-2/trash-2,数字段前也加连字符）。
+/// PLAN-621: icon 的有效盒 px（w/h 取大者）——描边基档判 ≥48px 细线用，
+/// 与 renderer 的 Plan 518 G4② 规则同式。`Fixed(n)` = Tailwind 间距刻度
+/// n×4px（P-10），`Pixels(p)` 直读，百分比/缺省 → 20px 默认盒。
+fn effective_icon_box_px(s: &Style) -> f32 {
+    const DEFAULT_ICON_PX: f32 = 20.0;
+    let px_of = |v: &SizeValue| match v {
+        SizeValue::Fixed(n) => *n as f32 * 4.0,
+        SizeValue::Pixels(p) => *p,
+        _ => DEFAULT_ICON_PX,
+    };
+    let mut px = DEFAULT_ICON_PX;
+    for c in &s.classes {
+        match c {
+            StyleClass::Width(v) => px = px.max(px_of(v)),
+            StyleClass::Height(v) => px = px.max(px_of(v)),
+            _ => {}
+        }
+    }
+    px
+}
+
 fn pascal_to_kebab_icon(name: &str) -> String {
     let mut out = String::with_capacity(name.len() + 4);
     for (i, ch) in name.chars().enumerate() {
@@ -15859,6 +15951,167 @@ mod tests {
                     last_width,
                     crate::ui::style::SizeValue::Fixed(5),
                     "显式 w-5 应排在 size 之后胜出: {classes:?}"
+                );
+            }
+            other => panic!("icon 应为 Image,得到 {other:?}"),
+        }
+    }
+
+    // ===== PLAN-621: icon state 契约（T-02）=====
+
+    /// state:"on" → primary 色 + 描边加重基档+0.5（默认 20px 盒 → 2.5）；
+    /// IcedStyle 适配器必须消费 StrokeWidth（parity 审计「类被消费」语义）。
+    #[test]
+    fn plan621_state_on_injects_primary_and_stroke() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("bell".into()))
+            .with_prop("state", Expr::Str("on".into()));
+        match builder.build(&node) {
+            View::Image { style, .. } => {
+                let s = style.as_ref().expect("icon style");
+                let classes = &s.classes;
+                assert!(
+                    classes_contain(classes, "text-primary"),
+                    "state:on 未注入 primary 色: {classes:?}"
+                );
+                assert!(
+                    classes.iter()
+                        .any(|c| matches!(c, crate::ui::style::StyleClass::StrokeWidth(w) if (*w - 2.5).abs() < f32::EPSILON)),
+                    "state:on 未注入描边加重 2.5: {classes:?}"
+                );
+                let is = crate::ui::style::IcedStyle::from_style(s);
+                assert_eq!(is.stroke_width, Some(2.5), "适配器必须消费 StrokeWidth");
+                assert!(
+                    is.text_color.is_some(),
+                    "primary 语义色必须解析为具体 iced 色（accent 预设驱动）"
+                );
+            }
+            other => panic!("icon 应为 Image,得到 {other:?}"),
+        }
+    }
+
+    /// state:"off" → muted-foreground dim（OnSurface），不加重。
+    #[test]
+    fn plan621_state_off_injects_muted_no_stroke() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("bell".into()))
+            .with_prop("state", Expr::Str("off".into()));
+        match builder.build(&node) {
+            View::Image { style, .. } => {
+                let classes = style.expect("icon style").classes;
+                assert!(
+                    classes_contain(&classes, "text-muted-foreground"),
+                    "state:off 未注入 muted dim: {classes:?}"
+                );
+                assert!(
+                    classes.iter()
+                        .all(|c| !matches!(c, crate::ui::style::StyleClass::StrokeWidth(_))),
+                    "state:off 不得加重: {classes:?}"
+                );
+            }
+            other => panic!("icon 应为 Image,得到 {other:?}"),
+        }
+    }
+
+    /// 未声明 state → 零扰动（G3）：不得出现任何注入色/描边类。
+    #[test]
+    fn plan621_state_undeclared_zero_diff() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("search".into()))
+            .with_prop("size", Expr::Int(14));
+        match builder.build(&node) {
+            View::Image { style, .. } => {
+                let classes = style.expect("icon style").classes;
+                assert!(
+                    classes.iter().all(|c| !matches!(
+                        c,
+                        crate::ui::style::StyleClass::TextColor(_)
+                            | crate::ui::style::StyleClass::StrokeWidth(_)
+                    )),
+                    "未声明 state 时不得注入颜色/描边: {classes:?}"
+                );
+            }
+            other => panic!("icon 应为 Image,得到 {other:?}"),
+        }
+    }
+
+    /// 显式 text-* 类优先于 state 色（镜像尺寸口径的「作者意图优先」）；
+    /// 描边加重无作者字面通道，照常生效。
+    #[test]
+    fn plan621_explicit_text_class_wins_color_stroke_still_applies() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("bell".into()))
+            .with_prop("state", Expr::Str("on".into()))
+            .with_prop("style", Expr::Str("text-red-500".into()));
+        match builder.build(&node) {
+            View::Image { style, .. } => {
+                let classes = style.expect("icon style").classes;
+                let text_colors = classes
+                    .iter()
+                    .filter(|c| matches!(c, crate::ui::style::StyleClass::TextColor(_)))
+                    .count();
+                assert_eq!(text_colors, 1, "state 不得追加第二色: {classes:?}");
+                assert!(
+                    classes_contain(&classes, "text-red-500"),
+                    "作者色必须保留: {classes:?}"
+                );
+                assert!(
+                    classes.iter()
+                        .any(|c| matches!(c, crate::ui::style::StyleClass::StrokeWidth(w) if (*w - 2.5).abs() < f32::EPSILON)),
+                    "描边加重应照常生效: {classes:?}"
+                );
+            }
+            other => panic!("icon 应为 Image,得到 {other:?}"),
+        }
+    }
+
+    /// bool 绑定形态：`state: true`（Expr::Bool 直读，与 .flag 求值同通道）。
+    #[test]
+    fn plan621_state_bool_binding() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("heart".into()))
+            .with_prop("state", Expr::Bool(true));
+        match builder.build(&node) {
+            View::Image { style, .. } => {
+                let classes = style.expect("icon style").classes;
+                assert!(classes_contain(&classes, "text-primary"), "{classes:?}");
+            }
+            other => panic!("icon 应为 Image,得到 {other:?}"),
+        }
+    }
+
+    /// ≥48px 盒走细线基档（1.5），加重 = 1.5+0.5 = 2.0（renderer 同式）。
+    #[test]
+    fn plan621_state_on_48px_thin_base_plus_half() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("zap".into()))
+            .with_prop("size", Expr::Int(48))
+            .with_prop("state", Expr::Str("on".into()));
+        match builder.build(&node) {
+            View::Image { style, .. } => {
+                let classes = style.expect("icon style").classes;
+                assert!(
+                    classes.iter()
+                        .any(|c| matches!(c, crate::ui::style::StyleClass::StrokeWidth(w) if (*w - 2.0).abs() < f32::EPSILON)),
+                    "48px 盒加重应为 1.5+0.5=2.0: {classes:?}"
                 );
             }
             other => panic!("icon 应为 Image,得到 {other:?}"),

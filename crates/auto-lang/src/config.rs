@@ -354,6 +354,46 @@ pub fn resolve_back_api(project_dir: &Path) -> Option<std::path::PathBuf> {
     api.is_file().then_some(api)
 }
 
+/// PLAN-627: 模块形态 `use back.api`（无符号清单）的函数名枚举——读
+/// [`resolve_back_api`] 定位的契约文件，收集 `#[api]` 注解 fn 名。契约
+/// 缺席/解析失败返回空（solo 或残缺工程静默降级，宽容读取纪律）。
+pub fn api_contract_fn_names(project_dir: &Path) -> Vec<String> {
+    let Some(api_path) = resolve_back_api(project_dir) else {
+        return Vec::new();
+    };
+    let Ok(code) = std::fs::read_to_string(&api_path) else {
+        return Vec::new();
+    };
+    let Ok(ast) = crate::Parser::from(code.as_str()).parse() else {
+        return Vec::new();
+    };
+    ast.stmts
+        .iter()
+        .filter_map(|stmt| match stmt {
+            crate::ast::Stmt::Fn(f) if f.api_attrs.is_some() => Some(f.name.to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// PLAN-627: 前端 .at 路径形态的 [`api_contract_fn_names`]——兼容两种
+/// 布局（`<root>/app.at` 与 `<root>/src/front/*.at`），向上至多三层寻
+/// `src/back/api.at` 命中层为工程根（外部后端 `back: { project }` 形态
+/// 的模块形态枚举暂不支持——现网消费者均为符号形态，按需再补）。
+pub fn api_contract_fn_names_for_front(front_at: &Path) -> Vec<String> {
+    let mut ancestor = front_at.parent();
+    for _ in 0..3 {
+        let Some(dir) = ancestor else { break };
+        if dir.join("src").join("back").join("api.at").is_file()
+            || dir.join("back").join("api.at").is_file()
+        {
+            return api_contract_fn_names(dir);
+        }
+        ancestor = dir.parent();
+    }
+    Vec::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

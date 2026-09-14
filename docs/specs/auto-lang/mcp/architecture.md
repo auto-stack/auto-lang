@@ -20,7 +20,8 @@ graph TD
     Daemon["autovm_daemon.rs（plan-269）<br/>auto serve / auto req"] -.复用.-> SMgr
     CLI["crates/auto main.rs<br/>auto mcp 子命令"] --> Srv
 
-    UiMcp["ui/mcp_server.rs（AutoUI MCP，另一模块）<br/>iced 进程内 HTTP server"] -.并列关系，无代码依赖.- Srv
+    UiMcp["ui/mcp_server.rs（AutoUI MCP）<br/>iced 进程内 HTTP server"] -.并列关系，无代码依赖.- Srv
+    Fixture["autoui_fixture<br/>gate + request-id ack<br/>VM renderer only"] --> UiMcp
 ```
 
 外部依赖仅 `serde`/`serde_json`；协议为手写最小实现，不依赖 rmcp 等框架
@@ -122,4 +123,20 @@ graph TD
     ——plan-311 P2-B-3，schema 降级省略）
 - 后果：正面——结构/布局/样式主信道确立，截图降为像素级次信道；
   不变量"未测量字段即省略、永不报错"写进工具契约。
+- 状态：active
+
+### ADR-07: AutoUI 测试夹具走独立目标，VM-only 且必须显式门控
+
+- 日期 / 来源：2026-09-14 / plan-623。
+- 决策：`autoui_fixture` 使用独立的 `ActionTarget::Fixture` 和 request-id
+  回执，经已有 AutoUI MCP → iced 队列在 VM 线程写入状态；由
+  `AUTOUI_TEST_FIXTURES=1` 显式开启。Rust renderer 直接返回不支持。
+- 备选：
+  - A 复用 `autoui_action` 传入特殊事件（否决：会把测试语义伪装成业务动作，
+    无法区分普通 handler 失败与夹具写入失败）；
+  - B 在 app 中加入调试按钮（否决：污染生产 UI 和业务 action 面）；
+  - C 只提供固定 sleep/截图（否决：无法验证写入完成时序和数组字段）。
+- 后果：正面——golden 可等待应用线程的明确 ack，merged/no-merge 共用
+  同一请求格式，生产默认零暴露；负面——VM 测试进程必须显式设置环境变量，
+  Rust 仍需通过业务 handler 或生成器级 golden 验证。
 - 状态：active

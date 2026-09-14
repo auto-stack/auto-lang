@@ -113,7 +113,7 @@
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
 | auto-cli | active | 5 | [auto-cli/project.md](auto-cli/project.md) |
-| auto-man | active | 11 | [auto-man/project.md](auto-man/project.md) |
+| auto-man | active | 16 | [auto-man/project.md](auto-man/project.md) |
 | auto-gen | active | 6 | [auto-gen/project.md](auto-gen/project.md) |
 | auto-lsp | active | 9 | [auto-lsp/project.md](auto-lsp/project.md) |
 | auto-vm | active | 2 | [auto-vm/project.md](auto-vm/project.md) |
@@ -138,6 +138,11 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
+| 字段 | 语义 | 约束与消费 |
+| `name` | 工程标识（kebab-case），永不承担展示职责 | rust 轨包名/exe 缺省名（snake_case）；os-config 配置查找键 `apps/<name>/config.at`（Plan 504 S7）；注册表条目 `name`。改名即破坏配置/查找键——不轻易动 |
+| `exe_name` | rust 轨（a2r）exe 产物名 | 唯一消费点 `rust_ui::generate_cargo_toml`：写显式 `[[bin]]`；合法字符 `[A-Za-z0-9_-]`，非法告警忽略；缺省 = 包名；regen 按 pac 现值重写（Plan 014，auto-term 样板）。vue/VM 轨无 exe，字段无操作 |
+| `title` | **英文展示名** | 桌面注册表/窗口标题/document.title 的 en 链事实源；兜底链 `title → name → 目录名` |
+| `title_zh` | **中文展示名**（自由文本） | zh locale 优先取用；缺席/空白回落 `title`（两 locale 输出一致，零配置零回归） |
 | automan | 核心编排：命令分发、工程上下文 | active |
 | pac | pac.at 包定义解析与模型 | active |
 | resolver | 依赖解析（ModuleResolver trait 实现） | active |

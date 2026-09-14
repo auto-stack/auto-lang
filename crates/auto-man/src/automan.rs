@@ -19,6 +19,16 @@ use std::path::{Path, PathBuf};
 // Plan 082: AutoCache integration
 use auto_cache::{ArtifactType, AutoManCache};
 
+/// PLAN-015：AUTO_LOCALE（缺省 zh）zh 前缀命中判定——与 auto-lang
+/// `ui::i18n_lookup::locale_prefers_zh` 同款惯例的本地副本（ui 模块对
+/// auto-man 非默认在编，三行约定不跨 crate 引依赖）。
+fn locale_prefers_zh() -> bool {
+    env::var("AUTO_LOCALE")
+        .unwrap_or_else(|_| "zh".to_string())
+        .to_ascii_lowercase()
+        .starts_with("zh")
+}
+
 pub struct Automan {
     pac: Pac,
     index_store: IndexStore,
@@ -349,6 +359,14 @@ impl Automan {
     /// VM native window title from pac.at `title: "..."`.
     pub fn pac_window_title(&self) -> Option<String> {
         self.pac.title.as_ref().map(|t| t.to_string())
+    }
+
+    /// PLAN-015：VM 窗展示标题——AUTO_LOCALE（缺省 zh）zh 链优先 pac
+    /// `title_zh:`，否则回落 `title`；en 链恒 `title`。未声明 title_zh 时
+    /// 两 locale 输出一致（零配置零回归）。纯判定在
+    /// [`Pac::display_title_in`]，此处只做 env 读取。
+    pub fn pac_display_title(&self) -> Option<String> {
+        self.pac.display_title_in(locale_prefers_zh())
     }
 
     /// Plan 458: UI theme preference from pac.at `theme: "dark"|"light"`.

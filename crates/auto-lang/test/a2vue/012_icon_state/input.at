@@ -1,0 +1,20 @@
+// a2vue golden case 012 — icon state 契约（PLAN-621，T-05 双端金样 Web 腿）。
+// 覆盖五种形态（与 VM 端 with_state_tint 的 6 个单测一一对应）：
+//   1. 字面量 state: "on"  → text-primary + :stroke-width="2.5"（默认 20px 盒）
+//   2. 字面量 state: "off" → text-muted-foreground，无描边加重
+//   3. 显式 text-* 类在场   → 颜色归作者（text-red-500 保留），描边照常
+//   4. bool 绑定 state: .liked → :class 三元 + :stroke-width 三元（false→undefined）
+//   5. 未声明 state        → 输出与既有形态零 diff（G3 对照组）
+widget IconStateShowcase {
+    model { liked bool = false }
+    view {
+        col {
+            icon (name: "bell", state: "on")
+            icon (name: "bell", state: "off")
+            icon (name: "bell", state: "on", style: "text-red-500")
+            icon (name: "heart", state: .liked)
+            icon (name: "zap", size: 48, state: "on")
+            icon (name: "search")
+        }
+    }
+}

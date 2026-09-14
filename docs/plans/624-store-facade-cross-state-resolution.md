@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-624
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: store-facade-cross-state-resolution
 author: [zhaopuming]
 created_at: 2026-09-14
@@ -207,6 +207,30 @@ needs_replan 评估。
 
 每步完成后在本节追加 `[✅ 已完成]` 一行证据（对齐彼仓执行规约）。
 
+### 执行进度（2026-09-14 work 会话一）
+
+- [✅ 已完成] T-01 有界调查 phase 1（commit 3537683f9，worktree
+  plan-624-dev @ base 8aeb8150e）：语料 `plan624_cross_state` 七件 +
+  测试 5 臂。实证矩阵：**P2 复现**（`?str` store 字段的 SetBody 派发崩
+  Invalid object ID 0x80000001 符号扩展；与 app 形态无关，店 handler 体
+  即崩）；**P3 复现**（&&/|| 非布尔链静默布尔化，synthesis 无诊断）；
+  **P4 复现**（find_index 静默 Nil）；**P1 未复现**（open+find+mirror
+  形态 split/merged 双绿——多 handler 并存/mock 后端/`.split` 前置逐项
+  排除）。
+- [✅ 已完成] T-05（P4）commit 3537683f9：`auto.list.find_index`（2072）
+  原生落地（谓词闭包消费镜像 find 2063；命中下标/未命中 -1），红转绿。
+- **T-02/T-03（P1/P2）**：未完成，带精确诊断挂起——P2 病灶收窄至
+  「店 handler 读自家 `?str` 字段（含 lambda 形态）」；P1 在最小语料
+  不复现，且崩溃轮 exe 为 623/625 会话脏树构建（`551-ge0c404f57-dirty`/
+  `623-g061b86622-dirty`）——**脏产物伪影待排除**（干净树重放 facade
+  切换为准）。
+- **T-04（P3）needs_replan**：error-out 设计已实装并**证伪回退**——
+  `infer_object_type` 粒度不足（`ops[i]` 实为 int 推断 NestedObject，
+  20 个存量 tv 语料误伤）。语义三选一需裁决：①真类型追踪后报错（infer/
+  子系统接线，工作量最大）；②JS value 语义实装（AND/OR 短路透传操作数
+  值，中等）；③文档偏差登记（现状 + 禁用指引，零成本）。P3 红测保留为
+  pending 标记（plan624_p3，当前 FAILED 属预期）。
+
 ## 分支与提交归属
 
 - worktree：`D:/autostack/.wt/lang-624/auto-lang`（分组平铺，Plan 529），分支
@@ -223,6 +247,14 @@ needs_replan 评估。
   AC-1..7 与 SD-01/02；四面锚点与跨仓证据链实勘在案。`outcome: pass`，
   `next: work`（worktree 建好后 T-01 有界调查先行——红测形态是全部修复的
   裁判；若穷尽不复现即转 needs_replan）。
+- 2026-09-14 stage:work 阶段收口（/auto-plan:work）：**outcome:
+  needs_replan**（T-04 P3 语义三选一待裁决；P1 脏树伪影待排除），计划保持
+  `executing`。code commits（plan-624-dev）：3537683f9（T-01 语料矩阵 +
+  T-05 find_index 2072）。已交付：P4 修复绿、P2/P3 红测与病灶收窄、P1 五维
+  排除记录。tv 3702/3702 绿（守卫回退后）。worktree 保留：
+  `D:/autostack/.wt/lang-624/{auto-lang,auto-down}`。next: new（P3 语义
+  裁定的 bounded revision，随附 P1 排除计划）；unblock 后 work 续
+  T-02/T-03。
 
 ## 待澄清事项
 

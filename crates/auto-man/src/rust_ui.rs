@@ -538,12 +538,29 @@ pub fn generate_rust_ui(
 }
 
 /// Extract API function names from `use back.api: fn1, fn2, ...` statements.
-fn extract_api_imports_from_ast(ast: &auto_lang::ast::Code) -> Vec<String> {
+/// PLAN-627: 模块形态 `use back.api`（无符号清单）自 api.at 契约枚举
+/// （`auto_lang::config::api_contract_fn_names_for_front`，与 ui_gen/api.rs
+/// 双写同源语义）。
+fn extract_api_imports_from_ast(
+    ast: &auto_lang::ast::Code,
+    at_path: &Path,
+) -> Vec<String> {
     let mut imports = Vec::new();
+    let mut module_form = false;
     for stmt in &ast.stmts {
         if let auto_lang::ast::Stmt::Use(ref use_stmt) = stmt {
             if is_api_use(use_stmt) {
+                if use_stmt.items.is_empty() {
+                    module_form = true;
+                }
                 imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    if module_form {
+        for name in auto_lang::config::api_contract_fn_names_for_front(at_path) {
+            if !imports.contains(&name) {
+                imports.push(name);
             }
         }
     }
@@ -589,7 +606,7 @@ fn compile_at_file(
     let mut generator = RustGenerator::new();
 
     // Extract API imports from `use back.api: ...` statements
-    let api_imports = extract_api_imports_from_ast(&ast);
+    let api_imports = extract_api_imports_from_ast(&ast, at_path);
 
     // Plan 374 Task 1: Register view fn fragments BEFORE extracting widgets.
     auto_lang::aura::extract::clear_view_fragments();
@@ -3455,5 +3472,34 @@ pub struct Timer {
         assert!(toml.contains("\"cookies\""), "missing cookies feature: [{}]", toml);
         assert!(toml.contains("\"gzip\""), "missing gzip feature: [{}]", toml);
         assert!(toml.contains("\"brotli\""), "missing brotli feature: [{}]", toml);
+    }
+
+    #[test]
+    fn test_plan015_title_zh_never_enters_cargo_toml() {
+        // PLAN-015 反向钉：展示名字段（title_zh）与产物名解耦——pac 只声明
+        // title/title_zh 时不得生成 [[bin]]（产物名仍走包名缺省链）；
+        // exe_name 声明臂行为不变（Plan 014）。
+        let tmp = std::env::temp_dir().join("plan015-title-zh-cargo-probe");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(
+            tmp.join("pac.at"),
+            "name: \"calc\"\ntitle: \"Calculator\"\ntitle_zh: \"计算器\"\n",
+        )
+        .unwrap();
+        let toml = generate_cargo_toml("calc", &tmp);
+        assert!(!toml.contains("[[bin]]"), "title_zh 不得触发 [[bin]]: [{}]", toml);
+        std::fs::write(
+            tmp.join("pac.at"),
+            "name: \"calc\"\ntitle_zh: \"计算器\"\nexe_name: \"auto-term\"\n",
+        )
+        .unwrap();
+        let toml = generate_cargo_toml("calc", &tmp);
+        assert!(
+            toml.contains("[[bin]]\nname = \"auto-term\""),
+            "exe_name 显式臂不变: [{}]",
+            toml
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

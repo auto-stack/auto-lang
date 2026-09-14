@@ -73,6 +73,11 @@ pub struct RustGenerator {
     /// Current widget name
     current_widget: Option<String>,
 
+    /// PLAN-627: 当前 widget 的 `#[api]` 函数名清单（use back.api 两形态
+    /// 抽取）——限定名调用 `api.X(...)` 的改写门（head 方法名 ∈ 此清单
+    /// 才落裸名发射，防用户同名对象误伤）。
+    api_imports: Vec<String>,
+
     /// Collected message variants
     message_variants: Vec<AuraMsgVariant>,
 
@@ -169,6 +174,7 @@ impl RustGenerator {
     pub fn new() -> Self {
         Self {
             current_widget: None,
+            api_imports: Vec::new(),
             message_variants: Vec::new(),
             needs_imports: true,
             indent: 0,
@@ -439,6 +445,8 @@ impl RustGenerator {
     /// Generate complete Rust code from AuraWidget
     pub fn generate_rust(&mut self, widget: &AuraWidget) -> GenResult<String> {
         self.current_widget = Some(widget.name.clone());
+        // PLAN-627: 限定名 api.X() 改写门数据（reset 不清——widget 级装载）。
+        self.api_imports = widget.api_imports.clone();
         self.reset();
 
         // Plan 436 T1(决策 1-A):setup 前导槽是 a2vue 语义(script setup
@@ -1812,8 +1820,25 @@ impl RustGenerator {
                     }
                     // Left side: Expr::Dot(Ident("self"), Name("field"))
                     let state_var = extract_dot_self_field(left);
-                    // Right side: Expr::Call(...)
-                    let fn_name = extract_call_name(right);
+                    // Right side: Expr::Call(...). PLAN-627 (R627-F2): a
+                    // qualified head `api.X(...)` unwraps to X when X is in
+                    // the import list, so async-Init takes the same
+                    // __InitLoaded shape (byte-for-byte) as the bare name.
+                    let fn_name = extract_call_name(right).or_else(|| match right.as_ref() {
+                        crate::ast::Expr::Call(call) => match call.name.as_ref() {
+                            crate::ast::Expr::Dot(obj, method) => {
+                                if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "api")
+                                    && api_imports.iter().any(|f| f == method.as_str())
+                                {
+                                    Some(method.as_str().to_string())
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    });
                     if let (Some(var), Some(func)) = (state_var, fn_name) {
                         if api_imports.iter().any(|api| api == &func) {
                             self.init_api_info = Some(InitApiInfo {
@@ -5654,6 +5679,20 @@ impl RustGenerator {
                     }
                     } // close if !method.contains('.')
                 } // close if fn_name.starts_with("store.")
+                // PLAN-627: 限定名 `api.X(...)`（模块形态 `use back.api`）——
+                // head 为 Ident("api") 且方法名 ∈ 当前 widget 的 api 清单时按
+                // 裸名同发射（命中文件级生成的 api 桩/merged 吸收 fn；清单门
+                // 防用户自建同名 `api` 对象误伤）。
+                if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
+                    if let crate::ast::Expr::Ident(obj_name) = obj.as_ref() {
+                        if obj_name.as_str() == "api"
+                            && self.api_imports.iter().any(|f| f == method.as_str())
+                        {
+                            let args_str = self.rust_call_args_with_clone(call).join(", ");
+                            return format!("{}({})", method.as_str(), args_str);
+                        }
+                    }
+                }
                 let args: Vec<String> = self.rust_call_args_with_clone(call);
                 match fn_name.as_str() {
                     "print" => {

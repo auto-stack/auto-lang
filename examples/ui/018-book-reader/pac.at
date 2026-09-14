@@ -3,6 +3,7 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "Book Reader"
+title_zh: "图书阅读器"
 api: "rust"
 front_port: 3018
 back_port: 8018

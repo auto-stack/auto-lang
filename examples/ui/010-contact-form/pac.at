@@ -3,6 +3,7 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 title: "Contact Form"
+title_zh: "联系表单"
 theme: "dark"
 accent: "indigo"
 
