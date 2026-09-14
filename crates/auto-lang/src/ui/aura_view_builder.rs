@@ -10399,11 +10399,36 @@ let tabs_inner = View::Row {
                 }
                 if end < len && bytes[end] == b'}' {
                     let field_name = &s[start + 3..end];
-                    // Validate field name is alphanumeric/underscore
-                    if !field_name.is_empty() && field_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        let full_pattern = s[start..end + 1].to_string();
-                        let value = self.read_state_as_string_with(field_name, bindings);
-                        replacements.push((full_pattern, value));
+                    // PLAN-626 T-01: allow multi-segment dotted paths
+                    // (`${.store.line}`). Previously single-segment only — a
+                    // dotted name failed this validation and the raw
+                    // `${.store.line}` stayed visible (auto-edit statusbar).
+                    let seg_ok = |seg: &str| {
+                        !seg.is_empty() && seg.chars().all(|c| c.is_alphanumeric() || c == '_')
+                    };
+                    let segments: Vec<&str> = field_name.split('.').collect();
+                    if !field_name.is_empty() && segments.iter().all(|seg| seg_ok(seg)) {
+                        let resolved = if segments.len() == 1 {
+                            Some(self.read_state_as_string_with(field_name, bindings))
+                        } else {
+                            // Multi-segment: rebuild the AST chain (rooted at
+                            // "." like the parser's dot_item) and ride the
+                            // same resolver conditions use — `.store.X`
+                            // flattens to a root-state read there (D-GAP-4).
+                            let mut expr = Expr::Ident(".".to_string().into());
+                            for seg in &segments {
+                                expr = Expr::Dot(Box::new(expr), seg.to_string().into());
+                            }
+                            self.resolve_expr_to_value(&expr, bindings)
+                                .map(|v| value_to_display_string(&v))
+                        };
+                        if let Some(value) = resolved {
+                            let full_pattern = s[start..end + 1].to_string();
+                            replacements.push((full_pattern, value));
+                        }
+                        // Unresolvable multi-segment path: leave the raw
+                        // `${.a.b}` in place (dots intact) instead of
+                        // splicing a stripped placeholder.
                     }
                 }
                 i = end + 1;
@@ -11833,6 +11858,65 @@ mod tests {
             builder.eval_computed("labeled", &Bindings::new()),
             Some(Value::Str("n!".into())),
             "expression computed unchanged"
+        );
+    }
+
+    /// PLAN-626 T-01: literal-text `${.store.field}` multi-segment
+    /// interpolation rides the same resolver conditions use — `.store.X`
+    /// flattens to a root-state read, so the auto-edit statusbar shows real
+    /// values instead of the raw template. An unresolvable path keeps the
+    /// raw template text (leading dots intact, no stripped placeholder).
+    #[test]
+    fn plan626_literal_interpolation_multi_segment_dot_path() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "widget App {\n",
+            "    model {\n",
+            "        var line int = 3\n",
+            "        var col int = 9\n",
+            "    }\n",
+            "    view { col { text \"${.store.line}:${.store.col}\" {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+        assert!(
+            view_contains_text(&view, "3:9"),
+            "multi-segment interpolation must resolve from state; got {:?}",
+            view
+        );
+
+        // Unresolvable dotted path: raw template preserved with dots.
+        let src = concat!(
+            "widget App {\n",
+            "    model { var line int = 3 }\n",
+            "    view { col { text \"${.store.nope}\" {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+        assert!(
+            view_contains_text(&view, "${.store.nope}"),
+            "unresolvable dotted path must keep the raw template (dots intact); got {:?}",
+            view
         );
     }
 
