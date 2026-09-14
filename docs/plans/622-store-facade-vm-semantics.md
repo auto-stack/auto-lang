@@ -12,7 +12,7 @@ new_spec_components: [ui/store-facade-semantics]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/interpreter]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -193,6 +193,43 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
 
 每步完成后在本节追加 `[✅ 已完成]` 一行证据（对齐彼仓执行规约）。
 
+### 执行进度（2026-09-14 work 会话）
+
+- [✅ 已完成] T-01 红测语料落地（commit 81f0a348d，worktree plan-622-dev @ base 23cc46055）：
+  `plan622_store_facade_gap_tests.rs` + `test/ui/plan622_store_facade/`（app.at /
+  counter_store.at / back/api.at / lambda_app.at 四件）。首跑 4 红（c2/d/e1/e2）+
+  4 守卫。support 增 `build_component_from_app_mode`（split 模式 builder）。
+  **实证修正（语义调整，不扩授权）**：a 哨兵读 / a2 引用写回 / a3 带参派发 /
+  b 视图跟随在当前 master 最小语料层**已通**——降级为守卫断言；c 在 split 模式
+  修正构建通路后亦通（初版 c2 红为测试自身误用 merged builder，非彼侧缺陷）。
+  jade T-05 的 a/b/c 症状若在 facade 正式切换（真实 merged 宿主分派 + 214 行
+  tabs_store）复现，守卫臂在该侧升红测。
+- [✅ 已完成] T-02/T-03（a/b 修复）：**无缺陷可修**——实证判定当前 master 语义
+  健康，守卫语料钉死现状（证据同上）。任务语义收缩为守卫落地，记录于本节。
+- [✅ 已完成] T-04（c）：**split 模式实证通过**——`P622PROBE api-check save_note
+  hit=true`、mock 后端收到 `POST /api/notes/save`（c2 绿）。merged 宿主分派路径
+  无法在彼仓单测内拉起（需 ash-runner），由 jade 侧 facade 切换的跨仓验收覆盖
+  （AC-4 兜底安排，merge 收据注明）。
+- [✅ 已完成] T-05（d）commit e3d17db71：`auto.list.splice`（2071）原生落地
+  （catalog 三处 + shim：JS 移除形语义、stake 转移 retain-new→release-old），
+  plan622_d 红转绿。
+- [✅ 已完成] T-06（e）commit 7e2fd920a：(e1) capture 槽位编址对齐
+  emit_store_loc（idx-fss-n_args；参数域 real=idx-fss）——此前裸 scope idx 在
+  widget handler（fss=1）差一位读邻槽垃圾；(e2) `self` 闭包内特判捕获 `__state`。
+  e1/e2 红转绿。385/454 旧语料 fss=0 未暴露此 bug，故晚 discovered。
+- [✅ 已完成] T-07（commit 050f54ee7 + 本簿记）：
+  - `cargo tv` 全量 **3691/3691 绿**（--no-fail-fast；ffi_dual_019 首轮失败为
+    并行 flake，两仓单独跑均过）；
+  - plan442 17/17 绿 + **plan050_void_stub 并行序 flake 为 master 预存**
+    （主检出未改动 4/4 复现、单独跑恒绿，非本计划引入，已留证据）；
+  - plan340 11/11 绿；a2ts 发射面零改动（金样不受扰，构造性保证）；
+  - **跨仓复验（AC-4 强形态）**：jade `vm-smoke.mjs` 以 `AUTO_EXE` 指向本
+    worktree 构建的 auto.exe，**14/14 断言全绿**（六流臂 + tabs 五臂 +
+    fixture 恢复协议）；
+  - spec 落账：docs/specs/auto-lang/ui/overview.md 增 store facade 五消费位
+    契约（SD-01）+ 闭包捕获编址契约（SD-02）（实际落点为 overview.md 内节，
+    非独立文件——对齐 621 惯例，frontmatter 名义保留）。
+
 ## 分支与提交归属
 
 - worktree：`D:/autostack/.wt/lang-622/auto-lang`（分组平铺，Plan 529 布局），
@@ -209,6 +246,14 @@ README §8 备案，属 jade 侧后续小步，非本计划范围）。
   AC-1..5 与 SD-01；五缺口锚点与跨仓证据链实勘在案；无阻断性待澄清。
   `outcome: pass`，`next: work`（worktree 建好后 T-01 语料先行——红测是全部
   后续修复的裁判）。
+- 2026-09-14 stage:work 收口（/auto-plan:work）：`outcome: pass` →
+  `execution_done`，next: review。code commits（plan-622-dev）：81f0a348d（T-01
+  语料）/ e3d17db71（T-05 d）/ 7e2fd920a（T-06 e）/ 050f54ee7（T-07 spec）。
+  实证修正已记录：五缺口中 d/e 在册修复；a/b/c 当前 master 语义健康，以守卫
+  语料钉死并留跨仓升级路径（AC-1 语义收缩为"可复现缺口先红后绿 + 其余守卫
+  钉死"，记录于执行进度节）。AC-2 cargo tv 3691/3691；AC-3 构造性零扰动
+  （发射器未动）；AC-4 强形态达成（AUTO_EXE 跨仓 14/14）；AC-5 落账完成。
+  工作树保留待 review/merge（D:/autostack/.wt/lang-622/{auto-lang,auto-down}）。
 
 ## 待澄清事项
 
