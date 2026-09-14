@@ -112,3 +112,27 @@ OS 用户键位层（`%APPDATA%/auto/keymaps/auto-edit.at`）保持外部文件�
   虚拟化渲染（只 shape 可见行，`sync_external_scroll` 粗定位+归一）。
 - **光标跟随**：键盘/IME 移动光标出视口 → core 请求标记 → 会话漏斗
   （dispatch_app 尾部）转 `operation::scroll_to`（同拍生效）。
+
+## Plan 630 补记（声明式可复用 menubar 组件族）
+
+菜单改用**声明式 menubar 组件族**（不依赖 actions DSL 合成）：
+
+```at
+menubar {
+    menubar-menu (value: "file") {
+        menubar-trigger "文件"
+        menubar-content {
+            menubar-item (title: "新建", icon: "file-plus", shortcut: "Ctrl+N") { onclick: .ActNew }
+            menubar-separator
+            menubar-checkbox-item (title: "切换 Console", checked: .console_open) { onclick: .ActConsole }
+        }
+    }
+}
+```
+
+- VM 端 lowering 到公共 Popover 原语（BottomStart + MENUBAR_OPEN 开合注册表）；
+  Vue 端直出 shadcn Menubar 组件树——两端同语义。
+- item 支持 `title/icon/shortcut`、`checked`/`enabled` 表达式（实时求值）与
+  `onclick`；`menubar-separator` 横向通栏。
+- `menubar {}` **空标签**保持原 actions DSL 合成语义（向后兼容）；actions 块
+  仍负责快捷键三源绑定。
