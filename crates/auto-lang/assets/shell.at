@@ -163,7 +163,7 @@ widget Desktop {
                     // 视觉尺寸差即三轮反馈"icon 本体大小不一致"根因。
                     button (icon: "layout-grid") {
                         onclick: .SummonLauncher
-                        style: "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        style: "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                     }
                     // Plan 503：dock 图标格 48px rounded-xl(stella 签名)。
                     // Plan 518 G3：格常驻透明(hover 才出格,rounded-xl 保留),
@@ -184,9 +184,9 @@ widget Desktop {
                                     onclick: .ActivateApp(p.id)
                                     oncontextmenu.prevent: .WinMenu(p.id)
                                     style: if .__wm_focused_app == p.id {
-                                        "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                        "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                                     } else {
-                                        "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                        "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                                     }
                                 }
                                 col {
@@ -301,9 +301,9 @@ widget Desktop {
                                                 onclick: .WinFocus(w.wid)
                                                 oncontextmenu.prevent: .WinMenu(w.wid)
                                                 style: if w.focused == "1" {
-                                                    "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                                    "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                                                 } else {
-                                                    "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                                    "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                                                 }
                                             }
                                             if .win_menu == w.wid {
@@ -361,9 +361,9 @@ widget Desktop {
                         button (icon: "square-stack") {
                             onclick: .SwitcherToggle
                             style: if .switcher_open == "1" {
-                                "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                             } else {
-                                "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                             }
                         }
                         row {
@@ -397,17 +397,17 @@ widget Desktop {
                     button (icon: "layout-grid") {
                         onclick: .LayoutGrid
                         style: if .__wm_layout == "grid" {
-                            "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                            "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                         } else {
-                            "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                         }
                     }
                     button (icon: "table") {
                         onclick: .LayoutStack
                         style: if .__wm_layout == "master-stack" {
-                            "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                            "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                         } else {
-                            "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                         }
                     }
                     // PLAN-526 T35：Free 布局钮（square）退役——T33 同预设
@@ -423,9 +423,9 @@ widget Desktop {
                         button (icon: "bell") {
                             onclick: .NotificationToggle
                             style: if .__wm_notes_visible == "1" {
-                                "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                             } else {
-                                "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                             }
                         }
                         if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
@@ -444,9 +444,9 @@ widget Desktop {
                     button (icon: "settings") {
                         onclick: .OpenSettingsPanel
                         style: if .__wm_settings_open == "1" {
-                            "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                            "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                         } else {
-                            "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                         }
                     }
                     // PLAN-526 T11：电源键（Q10b——Escape 退出退役后的图形
@@ -456,9 +456,9 @@ widget Desktop {
                         button (icon: "power") {
                             onclick: .ShutdownRequest
                             style: if .shutdown_ask == "1" {
-                                "h-10 w-10 px-0 text-lg rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
                             } else {
-                                "h-10 w-10 px-0 text-lg rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
                             }
                         }
                         col {

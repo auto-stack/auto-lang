@@ -300,6 +300,25 @@ lucide 路径只读消费；基档与 Plan 518 G4② 同式 ≥48px→1.5 否则
 （`set:name` 双段名 + `@iconify-json/*` 锁版本离线可复现），playbook 与调研数据见
 [icon-state-and-library-policy](../../../design/autoui/icon-state-and-library-policy.md)，
 不整体迁移（Remix 同名交集 0 + 反向缺名，波及面基线 29 名）。
+⑦**progress `onseek` 契约（PLAN-620）**：`progress (value:, max:, onseek: .H($0))`
+双端可拖拽 seek——handler 收**条内横向比例 0..1**（作者写 `SeekTo(.duration * $0)`
+无须知道像素或 max）；按下即 seek、**按住期间的移动**才继续 seek（悬停不 scrub）；
+VM 侧新 widget `ui/iced/seek_area.rs`（iced `mouse_area.on_press` 不带坐标，由
+`SeekArea` 自持按下态并在事件现场换算比例，拖动用绝对坐标防拖出条外断流），
+`View::ProgressBar.on_seek` 复用 `PointerMoveHandler` 装配；Web 侧生成器输出
+pointer 三包装（`setPointerCapture`，拖出条外仍跟手，判据取 `e.currentTarget`）；
+与 `PointerArea`（Plan 499，坐标流原语）刻意分离——比例语义不塞坐标契约。**兼容
+锚**：未声明 `onseek` 的 `progress` 输出逐字节不变（测试反断言在案）。
+⑧**图标数据源与生成器（PLAN-620）**：VM 端 lucide 字形由
+`scripts/gen-lucide-table.mjs` 从本地已安装的 lucide-vue-next（离线、幂等、零新
+依赖）生成全量表 `ui/iced/lucide_generated.rs`（当前 1401 条/24×24 markup），
+`lucide_svg` 查表 + 遗留别名（`sidebar`→已更名、`file-icon`→已并入）；重跑
+`node scripts/gen-lucide-table.mjs`（自动发现 `examples/**` 已装包，`--src` 可显式
+并向上探测版本）。**防漂移门禁**：产物内嵌 `LUCIDE_SOURCE_VERSION` 常量 +
+`source_version_matches_installed_package` 对拍测试（升包未再生即红并指路重生，
+找不到安装包/版本未知时跳过）。口径细节见
+[icon-data-source-and-parity](../../../design/autoui/icon-data-source-and-parity.md)。
+尺寸口径见 ⑤ 与 617/619 段（显式类 > `size:` > 默认 20px），此处不重复。
 
 ## 关键入口
 

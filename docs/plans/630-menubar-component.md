@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-630
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: menubar-component
 author: [agent]
 created_at: 2026-09-14
@@ -12,7 +12,7 @@ new_spec_components: [auto-lang/ui (声明式 menubar 组件族: menubar-menu/tr
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, autoui-skill]
-current_step: 0
+current_step: 4
 total_steps: 4
 ---
 
@@ -110,8 +110,15 @@ worktree：`D:/autostack/.wt/lang-630/auto-lang`（branch `plan-630-dev`，基�
 - **T-03** [示例] 041 迁移声明式 + 矩阵回归。依赖 T-02。
 - **T-04** [验证] 实机四菜单/勾选/禁用/快捷键 + README/规范注记。依赖 T-03。
 
+### 执行证据（2026-09-14）
+
+- **T-01** ✅ commit bb075889c：`menubar` 标签按 children 消歧（空=actions 合成，T10 锚不受影响）；`convert_menubar_component`（menubar-menu/trigger/content/item/checkbox-item/separator；checked/enabled 走 eval_condition_with；开合复用 MENUBAR_OPEN）；共享 `menu_item_button_view` 抽取（actions 合成与组件族同源布局）。测试 plan630_declarative_menubar_component 绿（结构/横向 sep/勾选表达式翻转）。
+- **T-02** ✅ commit 1c024d2de：Vue 生成零新增代码——声明式标签族经既有 shadcn 元素管道直接出 Menubar 组件树（menubar_* 属性臂 Plan 451 时代已预埋），测试 plan630_declarative_menubar_generates_shadcn_tree 绿。
+- **T-03/T-04** ✅ commit 98fb5d8c7：auto-edit 四菜单全量迁移声明式（icon/shortcut/checked/enabled；actions 块保留快捷键三源绑定）；矩阵 T10 热重载锚迁 toolbar（菜单不再随 actions 合成——语义演进记录）；T8 退出脏检查适配保持。矩阵 48/2（与 626/629 基线口径一致，仅 2 个存量快照项）；实机四菜单/勾选/分隔线人工验证通过。
+
 ## 9. 复审记录
 
+- 2026-09-14 work handoff：`stage: work | plan_id: PLAN-630 | plan_revision: 1 | outcome: pass | code_commit: 98fb5d8c7 (branch plan-630-dev, base plan-629-dev@a5821a4b6 叠放) | task_ids: T-01..T-04 全完成 | evidence: 各任务行 + 矩阵 48/2 | blockers: 无 | next: review。
 - 2026-09-14 draft handoff：`stage: new`，PLAN-630 rev1。用户裁定明确（引语见 §4）；Vue 组件注册/生成器现成，VM 侧抽取自已验证的 convert_menubar 内部。`outcome: pass`，`next: work`。
 
 ## 10. 待澄清事项
