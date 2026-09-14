@@ -248,23 +248,35 @@ widget App {
             row {
                 style: "flex-1 min-h-0 flex"
 
-                // ---- 左侧导航栏（真实快捷访问）----
-                col {
-                    style: "w-56 border-r border-border bg-card/40 p-3 flex flex-col shrink-0"
-
+                // ---- 左侧导航栏（Sidebar 组件族；PLAN-016 用户反馈换装——
+                // 手搓 button 列退役。015-notes NavTree 同款形态）----
+                sidebar_provider (class: "min-h-0 shrink-0") {
                     col {
-                        style: "gap-1 flex-1 min-h-0"
-                        text "快速访问" { style: "text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-2 py-1 mb-1" }
-                        for q in .quick {
-                            button {
-                                onclick: .NavTo(q.path)
-                                style: if .current_path == q.path { "h-9 w-full justify-start px-2.5 rounded-lg bg-accent text-foreground font-medium flex items-center gap-2" } else { "h-9 w-full justify-start px-2.5 rounded-lg text-muted-foreground hover:bg-accent/40 hover:text-foreground flex items-center gap-2" }
-                                if q.is_home {
-                                    icon (name: "home", size: 15) {}
-                                } else {
-                                    icon (name: "folder", size: 15) {}
+                        style: "w-56 h-full flex flex-col overflow-hidden bg-card border-r border-border"
+
+                        sidebar_header (style: "px-3 pt-3 pb-1") {
+                            text "快速访问" { style: "text-[11px] font-bold text-muted-foreground uppercase tracking-wider" }
+                        }
+
+                        sidebar_content (style: "px-2 pb-2") {
+                            sidebar_group {
+                                sidebar_group_content {
+                                    sidebar_menu {
+                                        for q in .quick {
+                                            sidebar_menu_item {
+                                                sidebar_menu_button (active: .current_path == q.path) {
+                                                    onclick: .NavTo(q.path)
+                                                    if q.is_home {
+                                                        icon (name: "home", size: 15) {}
+                                                    } else {
+                                                        icon (name: "folder", size: 15) {}
+                                                    }
+                                                    text q.label { style: "text-xs" }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                                text q.label { style: "text-xs" }
                             }
                         }
                     }
@@ -654,7 +666,7 @@ widget App {
         // 引导后 Tick 空转开销可忽略。）
         .Tick -> {
             .tick_count = .tick_count + 1
-            if !.booted && .tick_count > 20 {
+            if !.booted && .tick_count > 8 {
                 .booted = true
                 if .home != "" {
                     .quick.push({ path: .home, label: "主目录", is_home: true })
@@ -791,119 +803,63 @@ widget App {
                         }
                     }
 
-                    // 排序：目录恒先；marks 选择排序（025 sys_store 同款纪律；
-                    // name/date 为字符串键已证 str 比较正确，size 为 int 键）
+                    // 排序：目录恒先；原地选择排序（真三行交换——PLAN-016
+                    // 初版交换漏回写导致条目复制/丢失，用户实机截图复现）。
+                    // name/date 字典序即序（date 为定宽时间串），size 为 int。
                     var n int = out.len()
-                    var sName = []
-                    var sType = []
-                    var sDate = []
-                    var sSize = []
-                    var sDir = []
-                    var sPath = []
-                    var sExt = []
-                    var sHid = []
-                    var order = []
-                    var oi int = 0
-                    while oi < n {
-                        sName.push("")
-                        sType.push("")
-                        sDate.push("")
-                        sSize.push(0)
-                        sDir.push(false)
-                        sPath.push("")
-                        sExt.push("")
-                        sHid.push(false)
-                        order.push(-1)
-                        oi = oi + 1
-                    }
-                    var a int = 0
-                    while a < n {
-                        let r = out[a]
-                        sName[a] = r.name
-                        sType[a] = r.type_name
-                        sDate[a] = r.date
-                        sSize[a] = r.size
-                        sDir[a] = r.is_dir
-                        sPath[a] = r.path
-                        sExt[a] = r.file_ext
-                        sHid[a] = r.is_hidden
-                        a = a + 1
-                    }
-                    var filled int = 0
-                    while filled < n {
-                        var best int = -1
-                        var b int = 0
-                        while b < n {
-                            if order[b] == -1 {
-                                if best == -1 {
-                                    best = b
-                                } else {
-                                    var take bool = false
-                                    var rankB int = 0
-                                    var rankBest int = 0
-                                    if !sDir[best] { rankBest = 1 }
-                                    if !sDir[b] { rankB = 1 }
-                                    if rankB < rankBest {
-                                        take = true
-                                    } else {
-                                        if rankB == rankBest {
-                                            if .sort_col == "name" {
-                                                if .sort_dir == "asc" {
-                                                    if sName[b] < sName[best] { take = true }
-                                                } else {
-                                                    if sName[b] > sName[best] { take = true }
-                                                }
-                                            }
-                                            if .sort_col == "size" {
-                                                if .sort_dir == "asc" {
-                                                    if sSize[b] < sSize[best] { take = true }
-                                                } else {
-                                                    if sSize[b] > sSize[best] { take = true }
-                                                }
-                                            }
-                                            if .sort_col == "date" {
-                                                if .sort_dir == "asc" {
-                                                    if sDate[b] < sDate[best] { take = true }
-                                                } else {
-                                                    if sDate[b] > sDate[best] { take = true }
-                                                }
-                                            }
-                                            if .sort_col == "type" {
-                                                if .sort_dir == "asc" {
-                                                    if sType[b] < sType[best] { take = true }
-                                                } else {
-                                                    if sType[b] > sType[best] { take = true }
-                                                }
-                                            }
+                    var i int = 0
+                    while i < n {
+                        var best int = i
+                        var j int = i + 1
+                        while j < n {
+                            var take bool = false
+                            var rankJ int = 1
+                            var rankB int = 1
+                            if out[j].is_dir { rankJ = 0 }
+                            if out[best].is_dir { rankB = 0 }
+                            if rankJ < rankB {
+                                take = true
+                            } else {
+                                if rankJ == rankB {
+                                    if .sort_col == "name" {
+                                        if .sort_dir == "asc" {
+                                            if out[j].name < out[best].name { take = true }
+                                        } else {
+                                            if out[j].name > out[best].name { take = true }
                                         }
                                     }
-                                    if take { best = b }
+                                    if .sort_col == "size" {
+                                        if .sort_dir == "asc" {
+                                            if out[j].size < out[best].size { take = true }
+                                        } else {
+                                            if out[j].size > out[best].size { take = true }
+                                        }
+                                    }
+                                    if .sort_col == "date" {
+                                        if .sort_dir == "asc" {
+                                            if out[j].date < out[best].date { take = true }
+                                        } else {
+                                            if out[j].date > out[best].date { take = true }
+                                        }
+                                    }
+                                    if .sort_col == "type" {
+                                        if .sort_dir == "asc" {
+                                            if out[j].type_name < out[best].type_name { take = true }
+                                        } else {
+                                            if out[j].type_name > out[best].type_name { take = true }
+                                        }
+                                    }
                                 }
                             }
-                            b = b + 1
+                            if take { best = j }
+                            j = j + 1
                         }
-                        if best >= 0 {
-                            order[best] = filled
-                            let r2 = out[best]
-                            out[filled] = r2
-                            // 平行键同步换位（维持后续比较一致性）
-                            var tn str = sName[filled]
-                            sName[filled] = sName[best]
-                            sName[best] = tn
-                            var tt str = sType[filled]
-                            sType[filled] = sType[best]
-                            sType[best] = tt
-                            var td str = sDate[filled]
-                            sDate[filled] = sDate[best]
-                            sDate[best] = td
-                            var tsz int = sSize[filled]
-                            sSize[filled] = sSize[best]
-                            sSize[best] = tsz
-                            var td2 bool = sDir[filled]
-                            sDir[filled] = sDir[best]
-                            sDir[best] = td2
+                        if best != i {
+                            let tmp = out[i]
+                            out[i] = out[best]
+                            out[best] = tmp
                         }
-                        filled = filled + 1
+                        i = i + 1
                     }
 
                     .files_view = out
