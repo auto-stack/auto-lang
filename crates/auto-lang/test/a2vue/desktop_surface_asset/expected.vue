@@ -140,7 +140,9 @@ onMounted(() => {
 <div v-if="menu_id == e.id" class="fixed inset-0 z-40" @click="MenuClose"></div>
 <div v-if="menu_id == e.id" class="fixed z-50 p-1 border rounded bg-card" :style="{ left: '8px', top: '8px' }">
                       <template v-if="e.full == '1'">
-                        <Circle class="w-40 h-40" />
+                        <div class="flex flex-col w-40 h-40 rounded-xl border-2 border-transparent hover:border-white/50">
+                          <Circle class="w-full h-full" />
+                        </div>
                       </template>
                       <template v-else>
                         <div :style="'h-20 w-20 items-center justify-center rounded-xl bg-[' + e.color + ']'" class="flex flex-col">
