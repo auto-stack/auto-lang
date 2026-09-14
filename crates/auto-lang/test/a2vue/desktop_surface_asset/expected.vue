@@ -27,6 +27,7 @@ const emit = defineEmits<{
   IconMenu: [string]
   IconPress: [string]
   BlankPress: []
+  BlankDrop: []
   MenuOpen: []
   MenuRemove: []
   MenuWallpaper: []
@@ -41,6 +42,14 @@ function ActivateApp(app: any): void {
 
 function BlankClose(): void {
   blank_menu.value = '';
+}
+
+function BlankDrop(): void {
+  if (drag_id.value != '') {__desktop_cmd.value = 'desktop_icon_drop_at\t' + drag_id.value;
+  drag_id.value = '';
+  }
+
+  emit('BlankDrop')
 }
 
 function BlankMenu(): void {
@@ -64,22 +73,8 @@ function IconMenu(id: any): void {
 
 function IconPress(id: any): void {
   if (drag_id.value == '') {drag_id.value = id;
-  } else {if (drag_id.value == id) {drag_id.value = '';
-  } else {let di: number = 0 - 1;
-  let ti: number = 0 - 1;
-  let i: number = 0;
-  while (i < __desktop_cell_ids.value.length) {if (__desktop_cell_ids.value[i] == drag_id.value) {di = i;
-  }if (__desktop_cell_ids.value[i] == id) {ti = i;
-  }i = i + 1;
+  __desktop_cmd.value = 'desktop_icon_drag_start\t' + id;
   }
-  if (di >= 0) {if (ti >= 0) {let moves: string = '';
-  moves = moves + drag_id.value + '=' + __desktop_cell_cs.value[di] + ':' + __desktop_cell_rs.value[di] + ',';
-  moves = moves + id + '=' + __desktop_cell_cs.value[ti] + ':' + __desktop_cell_rs.value[ti] + ',';
-  let cur: string = (localStorage.getItem('shell.desktop.positions') ?? '');
-  localStorage.setItem('shell.desktop.positions', cur + moves);
-  __desktop_cmd.value = 'refresh_desktop_icons';
-  }drag_id.value = '';
-  }}}
 
   emit('IconPress', id)
 }
@@ -133,7 +128,7 @@ onMounted(() => {
 
 <template>
     <div :class="'w-full h-full p-3' + __desktop_bg" class="flex flex-col w-full h-full p-3">
-      <div class="w-full h-full" @click="BlankPress" @contextmenu.prevent="BlankMenu">
+      <div class="w-full h-full" @click="BlankPress" @contextmenu.prevent="BlankMenu" @mouseup="BlankDrop">
         <div class="flex flex-col w-full h-full">
           <div class="grid grid-cols-8 gap-2 w-[696px]">
             <div v-for="(e, __for_idx) in __desktop_cells" :key="__for_idx">
