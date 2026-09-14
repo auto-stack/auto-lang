@@ -78,7 +78,10 @@ widget Desktop {
         ShutdownRequest, ShutdownCancel, ShutdownConfirm,
         // Plan 497 G5：dock/pager hover 预览（shell 内部 UI 态，非总线动词）。
         // PLAN-010 N6c：HoverEnd 退役拆分——HoverLeave 只清预览态。
-        HoverWin(str), HoverLeave, HoverWs(str), HoverWsEnd
+        HoverWin(str), HoverLeave, HoverWs(str), HoverWsEnd,
+        // PLAN-019 v1.7：显示桌面 sliver（任务栏右缘细条——Win11 惯例；
+        // toggle 判据 __wm_showdesk 宿主投影，本面零分支直发）。
+        ShowDesktopToggle, SliverHover, SliverUnhover
     }
 
     model {
@@ -108,6 +111,9 @@ widget Desktop {
         // 原 view 条件 `__wm_running.contains(...)` 方法调用死点，宿主派生
         // 等式消费（W1 close→hide 后隐藏即回落）。
         var __wm_settings_open str = ""
+        // PLAN-019 v1.7：当前分区 = 负一屏（"1"/""；宿主投影）——sliver
+        // toggle 判据（"1" = 发 showdesk_return，"" = 发 show_desktop）。
+        var __wm_showdesk str = ""
         // PLAN-012 F2 复验：布局名标量（free/grid/master-stack）——布局钮
         // 高亮判据（同 host 派生标量 + 等式模式；用户复验：布局切换行为
         // 正确但钮无高亮态）。
@@ -126,6 +132,8 @@ widget Desktop {
         // 域）。dock_hover = 预览中窗口 wid；ws_hover = 预览中分区 id。
         var dock_hover str = ""
         var ws_hover str = ""
+        // PLAN-019 v1.7：sliver hover 态（显示桌面细条高亮）。
+        var sliver_hover str = ""
         // PLAN-526 T8：右键菜单态（命中条目 wid；hover 复用同一 popover
         // 容器——open 条件或合，内容按本态切换缩略/菜单）。
         var win_menu str = ""
@@ -487,6 +495,16 @@ widget Desktop {
                     text .__wm_clock {
                         style: "text-xs text-muted-foreground px-2 tabular-nums"
                     }
+                    // PLAN-019 v1.7：显示桌面 sliver（任务栏最右缘细条——
+                    // Win11 惯例；负一屏时高亮提示 toggle 语义。v1 hover
+                    // 底色 + 分隔线，文字 tooltip 作 stretch）。
+                    mouse-area (onclick: .ShowDesktopToggle, onmouseenter: .SliverHover, onmouseleave: .SliverUnhover) {
+                        style: if .sliver_hover == "1" {
+                            "w-3 h-10 border-l border-border bg-foreground/10"
+                        } else {
+                            "w-3 h-10 border-l border-border"
+                        }
+                    }
                 }
             }
             // PLAN-526 T18：分区切换悬浮预览面板 → PLAN-012 W3 已迁入任务栏
@@ -571,5 +589,16 @@ widget Desktop {
         .WinMenuClose -> { .win_menu = "" }
         .HoverWs(id) -> { .ws_hover = id }
         .HoverWsEnd -> { .ws_hover = "" }
+        // PLAN-019 v1.7：显示桌面 sliver（toggle 判据 = __wm_showdesk
+        // 宿主投影等式；负一屏上开 picker 时返回臂幂等先关 picker）。
+        .ShowDesktopToggle -> {
+            if .__wm_showdesk == "1" {
+                .__desktop_cmd = "showdesk_return"
+            } else {
+                .__desktop_cmd = "show_desktop"
+            }
+        }
+        .SliverHover -> { .sliver_hover = "1" }
+        .SliverUnhover -> { .sliver_hover = "" }
     }
 }

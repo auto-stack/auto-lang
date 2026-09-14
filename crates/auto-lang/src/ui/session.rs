@@ -1420,6 +1420,9 @@ pub enum DesktopCommand {
     /// 态分派——栅格态 = flip 轮换并立即应用，预览态 = 大图游标移动。
     /// .at 无列表下标算术，导航数学生宿主侧）。
     WallpaperNav(String),
+    /// PLAN-019 v1.7：进入/退出大图预览（`wallpaper_preview\t<path>`；
+    /// 空参 = 退回栅格态。宿主按 path 反查游标——.at 无下标算术）。
+    WallpaperPreview(String),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -1607,6 +1610,9 @@ impl DesktopCommand {
             DesktopCommand::WallpaperNav(dir) => {
                 format!("wallpaper_nav{}{}", Self::FIELD_SEP, dir)
             }
+            DesktopCommand::WallpaperPreview(path) => {
+                format!("wallpaper_preview{}{}", Self::FIELD_SEP, path)
+            }
         }
     }
 
@@ -1679,6 +1685,11 @@ impl DesktopCommand {
                         }
                         _ => None,
                     };
+                }
+                // PLAN-019 v1.7：预览进出（空参 = 退栅格态；带参 = 按 path
+                // 反查游标，缺席 no-op）。
+                if verb == "wallpaper_preview" {
+                    return Some(DesktopCommand::WallpaperPreview(arg.to_string()));
                 }
                 // PLAN-012 F2 走查：拖拽落格双动词（双参记录，二次 split）。
                 // 分隔符双轨：宿主/单测直写 \u{1f}；shell.at 转义 \t。
@@ -2094,6 +2105,13 @@ pub enum DesktopEvent {
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
     SummonSwitcher,
+    /// PLAN-019 v1.7：picker 键盘导航（picker 开时 ←/→ 消费；订阅层
+    /// PICKER_KEYS_OPEN 原子门控——负一屏无文本焦点窗，吞键无副作用）。
+    /// dir ∈ "prev"/"next"，同落 [`DesktopCommand::WallpaperNav`] 执行体。
+    WallpaperKeyNav(&'static str),
+    /// PLAN-019 v1.7：picker Esc 链——预览态回栅格态；栅格态关闭（按
+    /// `picker_return_on_close` 簿记决定是否自动返回 origin）。
+    WallpaperKeyEscape,
     /// Plan 488：拖出会话完成（STA 线程 DoDragDrop 返回 → 本事件；effect ∈
     /// copy/move/link/none）。App 事件注入（on_dnd_finished）在步骤 6 接线。
     DndFinished {

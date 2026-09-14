@@ -8333,6 +8333,12 @@ fn keyboard_subscription_ext(
     )
 }
 
+/// PLAN-019 v1.7：picker 键盘门控（订阅闭包无会话状态访问——原子量桥接：
+/// execute_wallpaper_pick 置位、close/return 复位。picker 开时 ←/→/Esc 消费
+/// 为 picker 导航；负一屏无文本焦点窗，吞键无副作用。关态不拦截，App 文本
+/// 编辑不受影响）。
+static PICKER_KEYS_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Plan 463 T3/T6：桌面级热键订阅（单份，按宿主窗过滤；App 焦点无关，
 /// R12 桌面层路由的键盘半边）。
 /// Plan 490 T2：逐臂硬编码布尔式退役，改查 `HotkeyTable`（键位数据级
@@ -8356,11 +8362,35 @@ fn desktop_hotkey_subscription(
             else {
                 return None;
             };
+            // PLAN-019 v1.7：picker 键臂前置（门控见 PICKER_KEYS_OPEN）——
+            // 优先于热键表，关态完全穿透。
+            if PICKER_KEYS_OPEN.load(std::sync::atomic::Ordering::Relaxed) {
+                if let Some(msg) = picker_key_message(&key) {
+                    return Some(msg);
+                }
+            }
             // Plan 490 T2：逐臂硬编码退役，改查 HotkeyTable（含 488 T7
             // Ctrl+V→NativePaste 臂——热键域协调条款收编入 shell.keys.paste）。
             desktop_hotkey_message(&hotkeys, &modifiers, &key)
         },
     )
+}
+
+/// PLAN-019 v1.7：picker 键 → 消息的纯函数（订阅闭包可测化内核，
+/// desktop_hotkey_message 同型）。←/→ = 导航，Esc = 逐级退回链；其余
+/// 键 None（穿透热键表）。
+fn picker_key_message(
+    key: &iced::keyboard::Key,
+) -> Option<crate::ui::session::DesktopMessage> {
+    use crate::ui::session::DesktopEvent as DE;
+    use crate::ui::session::DesktopMessage as DM;
+    use iced::keyboard::{key::Named, Key};
+    match key {
+        Key::Named(Named::ArrowLeft) => Some(DM::Desktop(DE::WallpaperKeyNav("prev"))),
+        Key::Named(Named::ArrowRight) => Some(DM::Desktop(DE::WallpaperKeyNav("next"))),
+        Key::Named(Named::Escape) => Some(DM::Desktop(DE::WallpaperKeyEscape)),
+        _ => None,
+    }
 }
 
 /// Plan 490 T2：桌面热键 → DesktopMessage 的表驱动纯函数（订阅闭包的
@@ -9684,6 +9714,7 @@ fn execute_desktop_commands(
             DC::WallpaperClose => execute_wallpaper_close(state),
             DC::WallpaperBrowseDir => execute_wallpaper_browse_dir(state),
             DC::WallpaperNav(dir) => execute_wallpaper_nav(state, &dir),
+            DC::WallpaperPreview(path) => execute_wallpaper_preview(state, &path),
             // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
             // stale）。
             DC::SetLayout(mode) => {
@@ -9915,6 +9946,7 @@ fn execute_showdesk_return(state: &mut crate::ui::session::DesktopSession) {
         host.wm.picker_return_on_close = false;
         host.wm.showdesk_return();
     }
+    PICKER_KEYS_OPEN.store(false, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// PLAN-019 v1.7：更换壁纸组合臂 = show_desktop 幂等 + picker 开 + 归属
@@ -9929,6 +9961,7 @@ fn execute_wallpaper_pick(state: &mut crate::ui::session::DesktopSession) {
         host.wm.picker_open = true;
         host.wm.picker_return_on_close = !was_on_showdesk;
     }
+    PICKER_KEYS_OPEN.store(true, std::sync::atomic::Ordering::Relaxed);
     inject_wallpaper_picker(state);
 }
 
@@ -9946,10 +9979,56 @@ fn execute_wallpaper_close(state: &mut crate::ui::session::DesktopSession) {
         host.wm.picker_return_on_close = false;
         host.wm.picker_preview = None;
     }
+    PICKER_KEYS_OPEN.store(false, std::sync::atomic::Ordering::Relaxed);
     inject_wallpaper_picker(state);
     if should_return {
         execute_showdesk_return(state);
     }
+}
+
+/// PLAN-019 v1.7：picker Esc 逐级退回链（update 臂薄壳直调；AC-05）——
+/// 预览态回栅格态（picker 保持开）；栅格态关闭（[`execute_wallpaper_close`]
+/// 按归属簿记决定是否自动返回 origin）。
+fn execute_wallpaper_escape(state: &mut crate::ui::session::DesktopSession) {
+    let preview_open = state
+        .host
+        .as_ref()
+        .is_some_and(|h| h.wm.picker_preview.is_some());
+    if preview_open {
+        if let Some(host) = state.host.as_mut() {
+            host.wm.picker_preview = None;
+        }
+        inject_wallpaper_picker(state);
+    } else {
+        execute_wallpaper_close(state);
+    }
+}
+
+/// PLAN-019 v1.7：预览进出臂——空参 = 退栅格态；带参 = 按 path 反查
+/// 游标进入大图预览（缺席/关态 no-op）。`__wp_preview` 注入载荷即路径
+/// （.at 零算术直渲染）。
+fn execute_wallpaper_preview(state: &mut crate::ui::session::DesktopSession, path: &str) {
+    if !state.host.as_ref().is_some_and(|h| h.wm.picker_open) {
+        return;
+    }
+    if path.is_empty() {
+        if let Some(host) = state.host.as_mut() {
+            host.wm.picker_preview = None;
+        }
+    } else {
+        let hit = state.host.as_ref().and_then(|h| {
+            h.wm.picker_paths.iter().position(|p| p == path)
+        });
+        match hit {
+            Some(ix) => {
+                if let Some(host) = state.host.as_mut() {
+                    host.wm.picker_preview = Some(ix);
+                }
+            }
+            None => return,
+        }
+    }
+    inject_wallpaper_picker(state);
 }
 
 /// PLAN-019 v1.7：目录浏览臂——原生 pick_folder 对话框（rfd；宿主进程
@@ -9969,8 +10048,7 @@ fn execute_wallpaper_browse_dir(state: &mut crate::ui::session::DesktopSession) 
 /// PLAN-019 v1.7：picker 导航臂（.at 无列表下标算术，导航数学宿主收口
 /// ——B12 族）。预览态 = 大图游标环绕移动；栅格态 = flip 对比轮换并
 /// 立即应用（cursor 同步走 [`execute_set_wallpaper`]）。
-fn execute_wallpaper_nav(state: &mut crate::ui::session::DesktopSession, dir: &str) {
-    let open = state.host.as_ref().is_some_and(|h| h.wm.picker_open);
+fn execute_wallpaper_nav(state: &mut crate::ui::session::DesktopSession, dir: &str) {    let open = state.host.as_ref().is_some_and(|h| h.wm.picker_open);
     let len = state
         .host
         .as_ref()
@@ -10020,11 +10098,19 @@ fn inject_wallpaper_picker(state: &mut crate::ui::session::DesktopSession) {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let current = state.desktop.desktop_wallpaper.clone();
+    // __wp_preview 载荷 = 预览图路径（"" = 栅格态）——.at 零算术直渲染
+    // （无列表下标原语）；下标簿记仍宿主持有（nav 数学区）。
     let preview = state
         .host
         .as_ref()
         .and_then(|h| h.wm.picker_preview)
-        .map(|ix| ix.to_string())
+        .and_then(|ix| {
+            state
+                .host
+                .as_ref()
+                .map(|h| h.wm.picker_paths.get(ix).cloned())
+                .unwrap_or(None)
+        })
         .unwrap_or_default();
     let open = state.host.as_ref().is_some_and(|h| h.wm.picker_open);
     {
@@ -15896,8 +15982,15 @@ fn compare_pngs(
                     // CALL_HANDLER_FOR_NOT_FOUND 钉死），按住 Ctrl 连按
                     // Tab 的推进全部静默失败；箭头走 switcher 自 bind
                     // （handler_Switcher_Advance）故有效。
-                    DesktopEvent::SummonSwitcher => {
-                        // PLAN-013 W1 诊断:每按记录 visible/sel 前值——区分
+                    // PLAN-019 v1.7：picker 键盘导航（订阅层门控产出；同落
+                    // wallpaper_nav 执行体——栅格态 flip 应用/预览态游标）。
+                    DesktopEvent::WallpaperKeyNav(dir) => {
+                        execute_wallpaper_nav(state, dir);
+                    }
+                    // PLAN-019 v1.7：picker Esc 链——预览态回栅格；栅格态
+                    // 关闭（close 臂按归属簿记决定是否自动返回）。
+                    DesktopEvent::WallpaperKeyEscape => execute_wallpaper_escape(state),
+                    DesktopEvent::SummonSwitcher => {                        // PLAN-013 W1 诊断:每按记录 visible/sel 前值——区分
                         // 「重召唤复位」与「推进失败」两种病灶。
                         if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
                             let dbg = state.desktop.switcher_app
@@ -25251,6 +25344,46 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// Esc 链 update 臂（AC-05）：预览态 → 回栅格；栅格态 → 关闭（归属
+    /// 簿记决定是否返回）。picker_key_message 纯函数键面映射。
+    #[test]
+    fn wallpaper_escape_chain_and_keymap() {
+        use crate::ui::session::DesktopEvent as DE;
+        use iced::keyboard::{key::Named, Key};
+
+        // 键面映射：←/→/Esc 命中，其他键穿透。
+        assert!(matches!(
+            picker_key_message(&Key::Named(Named::ArrowLeft)),
+            Some(crate::ui::session::DesktopMessage::Desktop(DE::WallpaperKeyNav("prev")))
+        ));
+        assert!(matches!(
+            picker_key_message(&Key::Named(Named::ArrowRight)),
+            Some(crate::ui::session::DesktopMessage::Desktop(DE::WallpaperKeyNav("next")))
+        ));
+        assert!(matches!(
+            picker_key_message(&Key::Named(Named::Escape)),
+            Some(crate::ui::session::DesktopMessage::Desktop(DE::WallpaperKeyEscape))
+        ));
+        assert!(picker_key_message(&Key::Named(Named::Enter)).is_none());
+
+        // Esc 链：预览态回栅格（picker 保持开）。
+        let mut ds = t3_session_with_shell();
+        ds.host.as_mut().unwrap().wm.picker_open = true;
+        ds.host.as_mut().unwrap().wm.picker_preview = Some(1);
+        execute_wallpaper_escape(&mut ds);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert!(host.wm.picker_open, "预览 Esc 只回栅格");
+            assert_eq!(host.wm.picker_preview, None, "预览态清零");
+        }
+        // 栅格态 Esc：关闭 + return_on_close → 回 origin。
+        ds.host.as_mut().unwrap().wm.picker_return_on_close = true;
+        execute_wallpaper_escape(&mut ds);
+        let host = ds.host.as_ref().unwrap();
+        assert!(!host.wm.picker_open, "栅格 Esc 关闭 picker");
+        assert!(!host.wm.on_showdesk(), "return_on_close → 自动返回");
+    }
+
     // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----
 
     /// activate：未运行 → launch（带 registry_id 回填）；运行中 → 聚焦不新增窗。
@@ -26594,7 +26727,9 @@ mod tests {
         }
         match t496_read(&ds, "__desktop_cmd") {
             auto_val::Value::Str(ref s) => {
-                assert_eq!(s.to_string(), "open_settings", "更换壁纸入口 → open_settings")
+                // PLAN-019 v1.7：更换壁纸入口改发组合动词（借负一屏 + 开
+                // picker + 归属簿记宿主收口；open_settings 仅存「显示设置」臂）。
+                assert_eq!(s.to_string(), "wallpaper_pick", "更换壁纸入口 → wallpaper_pick")
             }
             other => panic!("__desktop_cmd（wallpaper）异常: {other:?}"),
         }
