@@ -16169,10 +16169,13 @@ pub use auto_cabi_kit::*;"#
                             return Ok(()); // skip: functions already in merged file
                         }
                         // Module already declared via mod X; at file header.
-                        // use X (bare, no items) means "import all from this module"
-                        // → generate use crate::X::*;
+                        // Plan 545: use X (bare, no items) = namespace-only —
+                        // import the module name itself (Rust 2018 style); flat
+                        // glob requires explicit `use X: *` (wildcard arm above
+                        // at the shared emitter). Qualified `X.foo()` resolves
+                        // through the namespace import.
                         self.glob_imported_modules.insert(mod_name.to_string());
-                        write!(out, "{}use crate::{}::*;", pub_kw, mod_name)?;
+                        write!(out, "{}use crate::{};", pub_kw, mod_name)?;
                         return Ok(());
                     }
                 }

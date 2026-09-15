@@ -3553,8 +3553,9 @@ fn register_transitive_widgets_inner(
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
                         // 只注册 use 子句明确要的(或通配的),且 registry 还没有的
+                        // Plan 545: bare `use mod` 不再视为通配——widget/store
+                        // 具名可见须 `use mod: Name` 或 `use mod: *` 显式 opt-in
                         if (use_stmt.is_wildcard
-                            || use_stmt.items.is_empty()
                             || use_stmt.items.iter().any(|s| s == &child_widget.name))
                             && registry.get(&child_widget.name).is_none()
                         {
@@ -3764,7 +3765,6 @@ fn build_dynamic_component_inner(
                         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                             if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
                                 if use_stmt.is_wildcard
-                                    || use_stmt.items.is_empty()
                                     || use_stmt.items.iter().any(|s| s == &child_widget.name)
                                 {
                                     // PR-3b Step 4: collect the child WidgetDecl
@@ -3787,7 +3787,6 @@ fn build_dynamic_component_inner(
                             // renders an empty list.
                             let name = store_decl.name.clone();
                             if use_stmt.is_wildcard
-                                || use_stmt.items.is_empty()
                                 || use_stmt.items.iter().any(|s| *s == name.as_str())
                             {
                                 child_decls.push(crate::ast::ui::WidgetDecl {
