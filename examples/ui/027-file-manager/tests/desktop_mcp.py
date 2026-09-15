@@ -170,9 +170,13 @@ class McpClient:
         out = []
         # 按钮类节点带 label:，input 节点带 placeholder:（find 工具对二者
         # 同做子串匹配）——两种字段形态都收（与 type_into 修正同根因）。
+        # PUA 哨兵剥离（U+E000-F8FF）：tooltip/title 按钮标签带哨兵前缀
+        # （PLAN-631 hover/tooltip 面），须剥离后比对（exact 否则恒零命中）。
         pat = rf'{kind} vnode_(\d+) \{{(?:label|placeholder): "([^"]*)"'
         for m in re.finditer(pat, text):
-            if label in m.group(2):
+            clean = re.sub("[\ue000-\uf8ff]", "", m.group(2))
+            hit = (clean == label) if exact else (label in clean)
+            if hit:
                 out.append(m.group(1))
         return out
 
