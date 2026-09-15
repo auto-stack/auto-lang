@@ -584,6 +584,32 @@ parse 输出完备（responsive/dark 门控只做布尔比较），窗口 resize
 13.2→1.4ms（~9x）、整重建 15.8→9.8ms；opt 档噪声内。结构 diffing 评估：
 不立项（行级 memo 为第一候选，触发门槛见 evidence diffing-eval.md）。
 
+## terminal iced 绘制契约与像素门禁（PLAN-634）
+
+> 契约全文 = docs/specs/widgets/terminal-iced-draw.md（canonical）；
+> 归因全文 = docs/plans/evidence/634/pixel-golden-drift-attribution.md。
+
+### draw 期段落强引用规则
+
+iced wgpu `fill_paragraph` 排队 `Arc::downgrade` 弱引用，flush `upgrade()`
+失败**静默丢弃**——draw 闭包内局部段落 fill 后析构，文字必不进像素产物
+（quad 值拷贝不受影响，表现为"底色块在、字没有"）。三处范式（terminal
+widget.rs）：行文本 `ROW_CACHES`（digest 门控）、菜单标签 `MENU_PARAS`
+（静态串 OnceLock）、badge/preedit `PLAIN_PARAS`（键 (text,width)，封顶
+64 溢出清空）。不变式：强引用存活到 flush；guard 持有跨越 fill 调用；
+动态键缓存只许封顶清空、不许悬垂。a2r 侧同族规则（语句位置块尾恒补
+`;`）见 a2r-std/project.md（#18 E0308 实证）。
+
+### 像素金样环境契约
+
+headless 像素产物字节面绑定三张环境敏感牌：wgpu 适配器/后端枚举
+（`Renderer::name()` 恒 `"wgpu"`，后端翻转不换金样后缀）、MSAA×4 合成、
+系统字体栅格（cosmic-text fontdb）。漂移=环境态翻转非代码（015 同日晨绿
+午后红跨树复红 + 634 三后端探针零漂移互证）。门禁语义：硬断言=墨水占比
+/同进程双渲染字节一致/层容差差分（阈值按金样实测标定，分离度 ≥2×）；
+金样留档+审计制（超 5% 预算仅告警）。像素/可见性测试一律 nextest 跑
+（裸 cargo test 单进程共享注册表/静态缓存会互踩——634 实证）。
+
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
