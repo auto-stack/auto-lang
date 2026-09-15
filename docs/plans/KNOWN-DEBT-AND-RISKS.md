@@ -246,6 +246,8 @@
 
 ---
 
+| 631 | DSL 事件扩展：mouse-area 滚轮事件 | `mouse-area` 元素无滚轮事件（`on_wheel`/横向滚动增量）——iced `mouse_area` 本身不暴露 scroll，DSL 事件面仅 click/dblclick/contextmenu/enter/exit/move/up。首例消费面：auto-os PLAN-019 壁纸 carousel 候选条滚轮横滑（现以 ‹› 按钮 + ←/→ 键滑窗替代，`picker_win` 滑窗语义已就位，接入 wheel 后仅需把事件映射到 `WallpaperNav`）。实现面 = DSL 事件解析 + `View::MouseArea` 增臂 + iced scroll 映射；归 autoui-interaction-primitives 族（631 F-5 MouseArea hover 同族，本条为其后续候选 finding）。 | `aura_view_builder.rs` mouse-area 事件面；auto-os `shell/desktop.at` picker 块；`docs/plans/631-autoui-interaction-primitives.md` |
+
 ## ⏸ 延期（finish-plan 登记的未竟项，Type=延期）
 
 | 计划 | 类别 | 严重度 | 描述 | 根因/理由 | 引用 | 登记日 |
