@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-545
-status: reviewed                # R2 pass（2026-09-15）；下一站 merge
+status: archived               # R2 pass → 2026-09-15 merge c65b176a5
 feature_name: use-namespace-semantics
 author: [zhaopuming]
 created_at: 2026-09-04
@@ -507,3 +507,23 @@ next: /auto-plan:review
    aavm 语料无"bare use + 裸名"golden 锚定，不受冲击；但 aavm 自身 bare 语义若仍为平铺，
    收紧后与宿主分叉——收尾时探针确认并登记 KNOWN-DEBT（或对齐后续另立 plan），
    不阻塞本 plan。
+
+### 合并收据（PLAN-545:r1，2026-09-15）
+
+```
+stage: merge | plan_id: PLAN-545 | plan_revision: 1 | outcome: pass
+completion_kind: delivered
+```
+
+| Checkpoint | Evidence |
+|---|---|
+| `prepared` | 复审基线 R2 pass（reviewed_commit 866772379）；spec 增量冻结节=module-resolution「导入语义（Plan 545）」（F1 措辞已对齐已验证行为）；docs-only 后裔 5f90f59c7（frontend/plans.md 545 行 + KNOWN-DEBT P545-D1/D2/D3 登记 + INDEX 复核无内容变化）核验后任 delivery_commit（实现/依赖零触碰） |
+| `landed` | master merge **c65b176a5**（祖先链 c65b176a5→5f90f59c7→866772379→aa09c75c6→…→d74f34e50；此前 master 91c19d025 保留在链）。并发会话 WIP（8 文件）stash 过渡、非重叠 hunk 完好恢复。烟测：use_semantics 7/7 + docs_gen 4/4（首跑 9 错为并发写入瞬态，复跑全绿） |
+| `ledger_refreshed` | `.autoos/specs.json` 原子 upsert P545-1..6（六 section 各一，file=本归档路径，status published，回读校验 6/6）；INDEX.md 经 spec-index.py 再生无内容变化（project.md 未触） |
+| `archived` | `docs/plans/archive/545-use-namespace-semantics.md`（git mv），frontmatter status: archived |
+| `cleaned` | 见下方 cleaned 补记 |
+
+**合并注记**：wt-guard 首跑拦截——vue 双端验证遗留 pnpm node_modules 386 个
+junction（未跟踪运行期产物）；按守卫指引逐个 `cmd /c rmdir`（仅删链接）+
+清 node_modules 残余后 guard clean 复验。教训入档：worktree 内跑 vue 端
+验证后须先清 node_modules 再过闸门。
