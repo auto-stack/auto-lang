@@ -185,9 +185,11 @@ App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口
 - **宿主孵化分流**：注册表 pac `desktop_exe:` 声明（相对 App 根）>
   rust-workspace 约定路径（`<root>/rust-workspace/<dir>/target/
   {release,debug}/<exe>.exe`，exe 名先 pac `name:` 蛇形后目录名）>
-  缺席 = 现行 `auto` re-exec 解释臂（零变化）。native spawn 参数面与
-  解释态同形（无 `run` 子命令、不注入 `AUTO_386_APP_ROOT`）；stdio
-  静默。`PROTOCOL_VERSION` 维持 1（本节零 wire 变体——纯客户端臂泛化）。
+  缺席 = 现行 `auto` re-exec 解释臂（零变化）。路由触发：全局
+  process_model = outproc **或**发现命中编译 exe（"exe App 天然 outproc"
+  ——inproc 缺省下同样走孵化链，纯解释 spec 不受影响）。native spawn
+  参数面与解释态同形（无 `run` 子命令、不注入 `AUTO_386_APP_ROOT`）；
+  stdio 静默。`PROTOCOL_VERSION` 维持 1（本节零 wire 变体——纯客户端臂泛化）。
 - **v1.6 已知边界**（随注非静默）：L3 `StateSnapshot` 注入 native
   not-yet（typed 组件无字段写回路径）；键盘/滚轮/右键不路由（覆盖集无
   input 族）；门后动态分支遭遇未覆盖变体 = 占位盒 + `uncovered_seen`
