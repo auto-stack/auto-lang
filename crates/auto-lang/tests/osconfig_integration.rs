@@ -227,7 +227,8 @@ fn osconfig_full_chain_launch_modules_and_persist() {
             fit: false,
             daemon: daemon_decl.clone(),
             back_root: Some(back_root.clone()),
-        })
+        exe: None,
+        render_decl: None,    })
     }));
     let probe_url = url.clone();
     ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(move || {

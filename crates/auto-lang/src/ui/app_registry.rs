@@ -52,6 +52,13 @@ pub struct AppRegistryEntry {
     /// Plan 501：依赖的守护进程声明（pac `daemon:`，如 `autoos`——launch 期
     /// 宿主确保对应 daemon 就绪并注入 env；None = 无依赖）。
     pub daemon: Option<String>,
+    /// Plan 020 T-06：编译 exe 声明（pac `desktop_exe:`，相对 App 根——
+    /// a2r `auto build -r rust` 产物）。None = 无声明（launch 期按
+    /// rust-workspace 约定路径兜底扫描，仍无 = 解释态 outproc 臂）。
+    pub desktop_exe: Option<String>,
+    /// Plan 020 T-07：帧模式声明（pac `desktop_render:`——native exe spawn
+    /// 时透传 `--autodesk-render=<v>`；None = 生成 gate auto 裁决）。
+    pub desktop_render: Option<String>,
     /// Plan 501：外部后端项目根（pac `back: { project: "…" }` 声明，相对
     /// pac.at 所在的 App 根解析的绝对路径——`back.*` 模块链接式契约的
     /// 解析根，Plan 061；os-config 形态：本地 `src/back/api.at` 为残缺
@@ -162,6 +169,8 @@ fn entry_for_dir(
         entry,
         render,
         daemon: fields.get("daemon").cloned(),
+        desktop_exe: fields.get("desktop_exe").cloned(),
+        desktop_render: fields.get("desktop_render").cloned(),
         back_root: parse_pac_back_project(pac.as_deref().unwrap_or(""))
             .map(|rel| dir.join(rel)),
         fit: fields
@@ -1257,6 +1266,42 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Plan 020 T-06：pac `desktop_exe:` 声明入册（native exe 发现序第一环
+    /// 的注册表面；None = 无声明，launch 期走约定路径兜底）。
+    #[test]
+    fn scan_picks_up_desktop_exe_declaration() {
+        let root = std::env::temp_dir().join("autoui-020-registry-desktop-exe");
+        let _ = std::fs::remove_dir_all(&root);
+        let d = root.join("native-app");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(
+            d.join("pac.at"),
+            "name: \"native-app\"
+title: \"Native\"
+render: \"rust\"
+desktop_exe: \"target/release/native-app.exe\"
+",
+        )
+        .unwrap();
+        std::fs::write(d.join("app.at"), "widget N {}").unwrap();
+        let e = root.join("plain-app");
+        std::fs::create_dir_all(&e).unwrap();
+        std::fs::write(e.join("pac.at"), "name: \"plain\"
+").unwrap();
+        std::fs::write(e.join("app.at"), "widget P {}").unwrap();
+
+        let apps = scan_apps(&root, &ScanOptions::default());
+        let native = apps.iter().find(|a| a.id == "native-app").unwrap();
+        assert_eq!(
+            native.desktop_exe.as_deref(),
+            Some("target/release/native-app.exe"),
+            "desktop_exe 声明入册（相对 App 根原值）"
+        );
+        let plain = apps.iter().find(|a| a.id == "plain-app").unwrap();
+        assert_eq!(plain.desktop_exe, None, "无声明 = None");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // ---- Plan 463 T8：注册表 × LaunchApp 会话级端到端（真实仓库 examples/ui；
     // 验收 §5.1「≥3 个不同 App 启动」的无头等价——UI 半边（launcher/任务栏
     // 点击）随 464。boot 同款 resolver 构造见 renderer boot 注册表段）----
@@ -1280,7 +1325,8 @@ mod tests {
                         daemon: None,
                         back_root: None,
                         fit: false,
-                    })
+        exe: None,
+        render_decl: None,    })
                 })
             })
         };

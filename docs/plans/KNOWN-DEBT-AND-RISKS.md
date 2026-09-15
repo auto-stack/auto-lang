@@ -2219,3 +2219,25 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   预登记路径工作，本断裂面在 `use auto.X` 显式模块加载。修复位：
   parse_module_to_type_store 的 Parser 对 `#[vm]` 接口声明的接受面。
   证据：PLAN-545 R1 F2、探针错误文本内联（"Expected LBrace found #"）。
+
+## 2026-09-15 增补（PLAN-632 执行裁定）
+
+- **P632-D1 [宿主根件无 Init 的 fire_init 兜底告警（预存，定性无关）]**：
+  `App.Init failed (state may be unpopulated): handler not found: Init` 在
+  standalone（006/016 examples）与内嵌（ui-gallery VM）同样出现——是
+  fire_init 对根件无 `.Init` 声明时的一律兜底告警，与组件/store 桥接机制
+  无关（T-01 对照实验判定：standalone 016 store 桥接全通、告警同在）。
+  语义提示词（"state may be unpopulated"）对 store 型宿主有真实含义
+  （store→child 播种依赖根件 Init 或模型默认），但画廊宿主不消费该路径。
+  缓解候选：根件无 Init 声明时静默/降为 debug 级；或画廊 app.at 补 no-op
+  Init。收益仅日志卫生，另立微计划处理。证据：PLAN-632 T-01/T-05、
+  `target/p632/t01-*-proc.log`。
+
+## P020 债务（rust-desktop-exe-compositor，2026-09-15 work 登记）
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P020-D1 | medium | 架构 | **双投影器并存（AppProjector 解释态 / NativeProjector native）**——块流布局 walker ~150 行语义镜像重复（layout_view_block/layout_view_node vs layout_block/layout_node），样式双轨（字符串解析 vs typed StyleClass 适配）。统一方向 = 解释态投影器改写为 View 基（AuraViewBuilder 已产 View，双轨归一），待 native 覆盖集爬坡后立项 | desktop_protocol/client_runtime.rs layout_*；desktop_protocol/native_projector.rs |
+| P020-D2 | low | 协议边界 | **native queue 臂键盘/滚轮/右键不路由、L3 StateSnapshot 注入 not-yet**（v1.6 边界随注）——input 族入覆盖集时同步补路由臂；StateSnapshot 融合态迁移需 typed 组件字段写回通道另立 | native_projector.rs on_input/on_control；desktop-protocol-v1.md §1.6 边界 |
+| P020-D3 | low | 生成器 | **async-init App 经孵化臂以 default() 态起**（初始化 API 加载不接协议 client 面）——超覆盖 App 的孵化形态缺省 auto→independent 可绕开，queue 档显式声明 async-init App 时启动态为空，待需要时立项 | rust_ui.rs wrap_example native_client_gate 随注 |
+| P020-D4 | low | 测试基建 | **桌面画布↔屏幕变换未文档化，OS 级点击自动化未打通**（DPI 2x + canvas 缩放系数非恒定——ui_desktop 真机冒烟三次坐标假设均未命中窗内按钮）；窗内点击/× 关闭的 GUI 级自动化待 acceptance channel 增 pointer verb（现仅 bus/handler），期间点击闭环/回收由协议级 p020_native_exe_arm 承载 | mcp_server.rs autoui_desktop；scripts/smoke-020-native-exe.sh（os 仓）随注 |

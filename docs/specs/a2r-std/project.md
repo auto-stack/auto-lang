@@ -50,6 +50,21 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
   `12_specs/008_arc_dyn_spec` 回归实证）。无碰撞名（如 ping/del/exists/
   exec/query）可仿 SqliteDb 用独立守卫臂。
 
+## rust 发射器语句发射规则（Plan 634 T-03）
+
+发射器在 `crates/auto-lang/src/ui_gen/rust.rs`（`ast_stmt_to_rust` /
+`join_stmt_block`）。
+
+- **语句位置块尾恒补 `;`，仅表达式位置（值块）可省**：Aura 源无分号惯例，
+  join 后块尾语句天然成为 Rust 块的尾表达式——值返回调用落进语句位置块尾
+  （handler 臂 / if 分支 / for 体 / 裸块）即 rustc E0308（auto-term DEBTS
+  #18 实证：`if cond { api.fn() }`）。`join_stmt_block` 统一在块尾补一枚
+  `;`（Comment/EmptyLine 除外），取代旧"仅 let 补分号"特判。
+- 值消费位置不受影响：`ast_expr_to_rust` 的 If/Block 臂（style 条件值、
+  computed 块的尾表达式）保持无分号尾值发射。
+- 语料：`src/plan634_block_tail_semi_tests.rs`（发射文本断言 + `#[ignore]`
+  rustc 整件实编）。
+
 ## 手抄副本签名比对（KNOWN-DEBT 396 半收偿）
 
 `crates/auto-lang/src/tests/a2r_std_signature_parity.rs`：逐对比较

@@ -276,7 +276,8 @@ mod tests {
                 fit: false,
                 daemon: None,
                 back_root: None,
-            })
+        exe: None,
+        render_decl: None,    })
         }));
         session.desktop.process_model = ProcessModel::Outproc;
         let pipe_for_spawn = broker_pipe.clone();
@@ -607,7 +608,7 @@ mod host_body {
                     source_path: Some(path),
                     title: Some(name.clone()),
                     ..Default::default()
-                },
+    },
             ));
         }
         session.desktop.app_resolver = Some(Arc::new(move |name: &str| {
@@ -616,7 +617,7 @@ mod host_body {
                 source_path: s.source_path.clone(),
                 title: s.title.clone(),
                 ..Default::default()
-            })
+    })
         }));
         // outproc 生产 spawner：真 auto.exe + 测试隔离 broker 管道名。
         let exe = auto_exe();

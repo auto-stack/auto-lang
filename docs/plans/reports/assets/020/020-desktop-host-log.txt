@@ -1,0 +1,66 @@
+[VM-HANDLER] DualApp.Init failed (state may be unpopulated): handler not found: Init
+[VM-HANDLER] App.Init failed (state may be unpopulated): handler not found: Init
+AutoUI MCP: listening on http://127.0.0.1:9437
+[CALL_HANDLER] widget=Desktop event_name=Init fn_name=handler_Desktop_Init args=[]
+[CALL_HANDLER] widget=DesktopSurface event_name=Init fn_name=handler_DesktopSurface_Init args=[]
+[app-registry] apps.manifest entry `kanban` skipped: ..\auto-os\../auto-kanban has no pac.at
+[app-registry] apps.manifest entry `auto-musk` skipped: ..\auto-os\../auto-musk has no pac.at
+[app-registry] apps.manifest entry `jade-garden` skipped: ..\auto-os\../auto-down/jade-garden/front/auto has no pac.at
+[app-registry] apps.manifest entry `auto-term` skipped: ..\auto-os\../auto-term/app has no pac.at
+[session] app registry: 8 entries (8 desktop-visible) from D:/autostack/.wt/lang-020/scratch020
+AutoUI MCP: first state sync in view()
+[session] launch_app(outproc-native) 002-counter
+[session] launch_app(outproc-native) 002-counter <- D:/autostack/.wt/lang-020/auto-lang/target/debug/counter.exe
+[VM-HANDLER] App.Init failed (state may be unpopulated): handler not found: Init
+[autodesk-broker] [render] 002-counter: auto -> independent (coverage downgrade)
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports
+[VM-HANDLER] Desktop.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat
+[VM-HANDLER] Desktop.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat

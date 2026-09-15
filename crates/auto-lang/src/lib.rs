@@ -2946,6 +2946,28 @@ pub(crate) fn resolve_use_module(
     if use_stmt.module == "store" && !use_stmt.items.is_empty() {
         return UseModuleResolution::StoreFiles(find_store_decl_files(base_dir, &use_stmt.items));
     }
+    // PLAN-632 F2: dep 目录 item 命名文件探测——`use settings: SettingsPopover`
+    // → `deps/settings/settings_popover.at`。此前 dep 目录候选只认
+    // `{dep}.at`/`mod.at`/`app.at`,item 命名的组件文件永不命中,组件实例
+    // 在 VM 渲染目标整体缺席(006 实证)。探测走 resolve_module_path 的
+    // dotted-module 形态(`{dep}.{item_snake}` 的 sub 臂已含
+    // `deps/{dep}/{sub}.at` 平铺候选),deps 走查/pac.at path dep 零重复。
+    // item 优先 snake_case(PascalCase 组件 ↔ 文件命名惯例,与
+    // find_store_decl_files 同款);裸 item 兜底。
+    if !use_stmt.items.is_empty() {
+        for item in &use_stmt.items {
+            let mut cands = vec![store_name_snake(item)];
+            if *cands.last().unwrap() != *item {
+                cands.push(item.clone());
+            }
+            for cand in cands {
+                let dotted = format!("{}.{}", use_stmt.module, cand);
+                if let Some(p) = resolve_module_path(base_dir, &dotted) {
+                    return UseModuleResolution::Module(p);
+                }
+            }
+        }
+    }
     UseModuleResolution::None
 }
 
@@ -3071,6 +3093,85 @@ pub(crate) fn load_ext_imports_for_vm(
         }
     }
 
+    // PLAN-632 F3: 已装载模块自身 use 链上的 widget 注册。根 use 环的
+    // register_transitive_widgets 只覆盖根文件;use.web demo 适配器
+    // （AppViewport.vm.at → Demo*.at）自带的 `use <mod>: Component`
+    // （006 的 SettingsPopover）此前从不进 registry/child_decls——
+    // 组件实例在 VM 渲染目标渲染 Empty/缺席。扫 visited 全集（与上方
+    // use.web 收集同集、同重解析模式），按各文件 use items 显式名单
+    // 注册 widget 声明进 ext_widget_decls（调用方统一入
+    // registry+child_decls，handler 随之编译进单 VM）。P545 语义：
+    // 仅具名 items / 显式通配可见，bare use 不触发。
+    {
+        let mut swept: std::collections::HashSet<String> = ext_widget_decls
+            .iter()
+            .map(|wd| wd.name.to_string())
+            .collect();
+        for wd in all_child_decls {
+            swept.insert(wd.name.to_string());
+        }
+        swept.insert(root_decl.name.to_string());
+        for path in visited.iter() {
+            if path.extension().and_then(|e| e.to_str()) != Some("at") {
+                continue;
+            }
+            let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+            let Ok(mod_ast) = parser.parse() else { continue };
+            let mod_dir = path
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            for use_stmt in crate::use_scanner::scan_use_statements(&code) {
+                if use_stmt.is_c_import || use_stmt.is_rust_import {
+                    continue;
+                }
+                if !(use_stmt.is_wildcard || !use_stmt.items.is_empty()) {
+                    continue;
+                }
+                // F2 增强后的解析（dep item 文件命中同路）。
+                let module_path = match resolve_use_module(&mod_dir, &use_stmt) {
+                    UseModuleResolution::Module(p) => p,
+                    _ => continue,
+                };
+                // PLAN-632 F4: 已装载模块 use 链的符号别名——裸名 → 模块限定名
+                // （与根 use 环 lib.rs 别名位同规则）。此前别名只对根文件 use
+                // 填充：demo 作为 ext 适配器装载时其 `use calendar_util:
+                // month_name` 无别名 → 视图 computed 体 `month_name(...)`
+                // call_vm_fn 裸名查 exports miss（fn 实为
+                // `calendar_util.month_name`）→ 求值失败回退 raw `${}`。
+                // or_insert：根环别名（先填）优先。
+                {
+                    let qualifier = use_stmt.module.split('.').last().unwrap_or(&use_stmt.module);
+                    for item in &use_stmt.items {
+                        import_aliases
+                            .entry(item.clone())
+                            .or_insert_with(|| format!("{}.{}", qualifier, item));
+                    }
+                }
+                let Ok(module_code) = std::fs::read_to_string(&module_path) else { continue };
+                let mod_session = crate::session::CompilerSession::ui();
+                let mut mod_parser =
+                    crate::Parser::from(module_code.as_str()).with_session(mod_session);
+                let Ok(target_ast) = mod_parser.parse() else { continue };
+                for stmt in &target_ast.stmts {
+                    if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                        if swept.contains(decl.name.as_str()) {
+                            continue;
+                        }
+                        if use_stmt.is_wildcard
+                            || use_stmt.items.iter().any(|s| s == &decl.name.as_str())
+                        {
+                            swept.insert(decl.name.to_string());
+                            ext_widget_decls.push(decl.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if !crate::ui::ext_stubs::ext_stubs_enabled() {
         return Ok(());
     }
@@ -3134,6 +3235,33 @@ fn store_name_snake(name: &str) -> String {
         }
     }
     out
+}
+
+/// StoreDecl → view-less child WidgetDecl（store-as-child：store 与子件
+/// 同构、仅缺视图——统一根态模型并入 + handler 编译进单 VM 都走 child
+/// 通道）。PLAN-632 F1 抽出公共转换体，供 ext 装载后的补转换位使用。
+fn store_decl_as_widget_decl(
+    store_decl: &crate::ast::ui::StoreDecl,
+) -> crate::ast::ui::WidgetDecl {
+    crate::ast::ui::WidgetDecl {
+        name: store_decl.name.clone(),
+        messages: store_decl.messages.clone(),
+        model: store_decl.model.clone(),
+        computed: store_decl.computed.clone(),
+        view: None,
+        on: store_decl.on.clone(),
+        bind: None,
+        props: Vec::new(),
+        routes: None,
+        lifecycle: Vec::new(),
+        style: None,
+        ext_imports: Vec::new(),
+        watch: Vec::new(),
+        expose: Vec::new(),
+        setup: None,
+        actions: None,
+        timer: store_decl.timer.clone(),
+    }
 }
 
 /// Plan 442 A2 (store facade): the legacy `use store: Name` form uses the
@@ -3567,10 +3695,14 @@ fn register_transitive_widgets_inner(
             for stmt in &sub_ast.stmts {
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
-                        // 只注册 use 子句明确要的(或通配的),且 registry 还没有的
-                        // Plan 545: bare `use mod` 不再视为通配——widget/store
-                        // 具名可见须 `use mod: Name` 或 `use mod: *` 显式 opt-in
+                        // 只注册 use 子句明确要的(或通配/裸装载的),且 registry
+                        // 还没有的。PLAN-545 回归修复（069 收口转介收回）：
+                        // bare `use mod` 的组件发现语义恢复（items.is_empty()
+                        // 臂）——545 的"bare=命名空间"针对 fn 符号冲突面；
+                        // UI 子件码道收紧后裸 use 孙件 handler 不再合成
+                        // （同 demo CustomScrollbar 断裂）。
                         if (use_stmt.is_wildcard
+                            || use_stmt.items.is_empty()
                             || use_stmt.items.iter().any(|s| s == &child_widget.name))
                             && registry.get(&child_widget.name).is_none()
                         {
@@ -3798,7 +3930,17 @@ fn build_dynamic_component_inner(
                     for stmt in &mod_ast.stmts {
                         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                             if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                // PLAN-545 回归修复（069 收口转介收回）：bare
+                                // use 的**组件发现**语义恢复——`use custom_scrollbar`
+                                //（无 items 无通配）装载该模块的子件。545 的
+                                // "bare=命名空间"裁定针对 fn 符号冲突面
+                                // （compile.rs/linker），此处是 UI 子件收集码道；
+                                // 收紧时连带删掉 items.is_empty() 臂令裸 use 子件
+                                // 的 handler 不再合成（handler_<Child>_* 导出
+                                // 缺席→运行时派发全灭，demo CustomScrollbar
+                                // 拖拽死——vm-smoke 组 4(d) 实证）。
                                 if use_stmt.is_wildcard
+                                    || use_stmt.items.is_empty()
                                     || use_stmt.items.iter().any(|s| s == &child_widget.name)
                                 {
                                     // PR-3b Step 4: collect the child WidgetDecl
@@ -3820,7 +3962,10 @@ fn build_dynamic_component_inner(
                             // like `.notes = list_notes()` silently no-op and the view
                             // renders an empty list.
                             let name = store_decl.name.clone();
+                            // 069 同款回归修复：bare use 亦装载 store（组件
+                            // 发现语义，见上方 WidgetDecl 臂注）。
                             if use_stmt.is_wildcard
+                                || use_stmt.items.is_empty()
                                 || use_stmt.items.iter().any(|s| *s == name.as_str())
                             {
                                 child_decls.push(crate::ast::ui::WidgetDecl {
@@ -4211,6 +4356,27 @@ fn build_dynamic_component_inner(
             if let Ok(w) = crate::aura::extract_widget_from_decl(wd) {
                 all_child_decls.push(wd.clone());
                 registry.register(w);
+            }
+        }
+        // PLAN-632 F1: 装载顺序缺陷收口——use.web demo 适配器链带来的
+        // StoreDecl 在 load_ext_imports_for_vm 内才进 import_stmts，晚于
+        // 上方 store→child 转换位（Plan 370 D-GAP-4 / 多 store fix：根
+        // AST + 当时的 import_stmts）。晚到的 store（016 的 CalendarStore
+        // 经 Demo*.at 适配器链）错过转换 → model 不并入统一根态、handler
+        // 不编译（synthesize 的 all_decls 只含 decl+child_decls）→
+        // `.store.*` 全落空 + `store.X()` 派发失联。此处按名去重补转换。
+        {
+            let known: std::collections::HashSet<String> = all_child_decls
+                .iter()
+                .map(|d| d.name.to_string())
+                .collect();
+            for stmt in &import_stmts {
+                if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+                    let sname = store_decl.name.to_string();
+                    if !known.contains(&sname) {
+                        all_child_decls.push(store_decl_as_widget_decl(store_decl));
+                    }
+                }
             }
         }
     }
@@ -6704,6 +6870,10 @@ mod plan066_native_widget_tests;
 #[cfg(test)]
 mod plan627_qualified_api_tests;
 
+// PLAN-634 T-03: a2r 语句位置块尾分号语料（auto-term DEBTS #18 根修）。
+#[cfg(test)]
+mod plan634_block_tail_semi_tests;
+
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;
@@ -6990,5 +7160,11 @@ mod plan492_m5_tests;
 // computed+helper 链)。
 #[cfg(test)]
 mod musk_vm_track_tests;
+
+// PLAN-632: 画廊内嵌 demo 的模块组件桥接（store 装配顺序 + dep item
+// 文件解析 + 适配器链 widget 注册）回归。
+#[cfg(all(test, feature = "ui-iced"))]
+#[path = "tests/plan632_demo_bridge_tests.rs"]
+mod plan632_demo_bridge_tests;
 
 

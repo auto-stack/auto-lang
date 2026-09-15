@@ -442,7 +442,8 @@ mod tests {
                     fit: false,
                     daemon: None,
                     back_root: None,
-                })
+        exe: None,
+        render_decl: None,    })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
@@ -773,7 +774,8 @@ mod tests {
                     fit: false,
                     daemon: None,
                     back_root: None,
-                })
+        exe: None,
+        render_decl: None,    })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
@@ -942,7 +944,8 @@ mod tests {
                         daemon: None,
                         back_root: None,
                         fit: false,
-                    })
+        exe: None,
+        render_decl: None,    })
                 } else {
                     None
                 }
@@ -1488,7 +1491,8 @@ mod tests {
                         daemon: None,
                         back_root: None,
                         fit: false,
-                    })
+        exe: None,
+        render_decl: None,    })
                 } else {
                     None
                 }
@@ -1649,7 +1653,8 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+        render_decl: None,    })
         }));
     }
 
@@ -1912,6 +1917,447 @@ mod tests {
             g2_stats_line("outproc", samples);
         }
         // 收尾：Close 全部 → child 退出；残留 kill 兜底。
+        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
+            session
+                .broker_clients
+                .values_mut()
+                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+                .collect();
+        for (pipe, close) in closes {
+            if let Some(close) = close {
+                if let Some(c) = session.broker_clients.get_mut(&pipe) {
+                    let _ = c.end.send(&close);
+                }
+            }
+        }
+        for _ in 0..200 {
+            session.pump_broker_clients();
+            if session.apps.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// Plan 020 T-07 —— native exe 全链 e2e（`AUTO_DESKTOP_E2E=1` 实机档）：
+    /// a2r 编译 exe（T-05 scratch counter）经 T-06 **生产分流原样**
+    /// （`LaunchSpec.exe` → `outproc_native_exe` 发现 → `spawn_exe_child`，
+    /// 不注入 spawner——与生产唯一差异 = broker 管道名隔离）孵化 → Active →
+    /// native View 投影命令帧入宿主合成 → 协议点击 → 状态递增新帧 →
+    /// 宿主 Close → 子进程退出码 0 → kill 方向 EOF 回收（AC-02/03/05）。
+    /// 载体定位：env `AUTO_020_NATIVE_EXE` / `AUTO_020_NATIVE_APP_DIR`
+    /// （缺省 = lang-020 worktree scratch 产物——a2r 产物不入仓，缺载体
+    /// 即跳过）。
+    #[test]
+    fn p020_native_exe_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let exe = std::env::var("AUTO_020_NATIVE_EXE").unwrap_or_else(|_| {
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/debug/counter.exe").to_string()
+        });
+        let app_dir = std::path::PathBuf::from(
+            std::env::var("AUTO_020_NATIVE_APP_DIR").unwrap_or_else(|_| {
+                concat!(env!("CARGO_MANIFEST_DIR"), "/../../../scratch020/002-counter").to_string()
+            }),
+        );
+        let source = app_dir.join("src").join("front").join("app.at");
+        if !std::path::Path::new(&exe).is_file() || !source.is_file() {
+            eprintln!("[p020] skip: native 载体缺席（exe={exe} app_dir={}）", app_dir.display());
+            return;
+        }
+        let code = std::fs::read_to_string(&source).expect("read counter source");
+
+        use crate::ui::session::ProcessModel;
+        let broker_pipe = format!("autodesk-broker-020-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        // 注册表 resolver：spec.exe = 编译产物（发现序第一环走真）。
+        let exe_for_resolver = exe.clone();
+        let source_for_resolver = source.to_string_lossy().to_string();
+        let code_for_resolver = code.clone();
+        session.desktop.app_resolver =
+            Some(std::sync::Arc::new(move |name: &str| {
+                (name == "002-counter").then(|| LaunchSpec {
+                    code: code_for_resolver.clone(),
+                    source_path: Some(source_for_resolver.clone()),
+                    title: Some("Counter".to_string()),
+                    name: Some("counter".to_string()),
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: Some(std::path::PathBuf::from(&exe_for_resolver)),
+                    // queue 档显式申明（AC-03 全链）——生产链同参：pac
+                    // `desktop_render: "queue"` → spawn `--autodesk-render=queue`。
+                    render_decl: Some("queue".to_string()),
+                })
+            }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        let launch = |session: &mut DesktopSession| -> (Wid, std::vec::Vec<DrawOp>) {
+            let t0 = std::time::Instant::now();
+            let wid = session.launch_app("002-counter").expect("native exe launch");
+            let attach_ms = t0.elapsed().as_secs_f64() * 1000.0;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            loop {
+                session.pump_broker_clients();
+                let frame = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.wid == Some(wid))
+                    .and_then(|c| c.composed())
+                    .filter(|l| !l.ops.is_empty());
+                if let Some(list) = frame {
+                    println!("AUTO020-NATIVE attach_ms={attach_ms:.1} ops={}", list.ops.len());
+                    return (wid, list.ops.clone());
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "首帧超时 clients={} states={:?} modes={:?}",
+                    session.broker_clients.len(),
+                    session.broker_clients.values().map(|c| c.endpoint.state).collect::<Vec<_>>(),
+                    session.broker_clients.values().map(|c| c.endpoint.frame_mode).collect::<Vec<_>>(),
+                );
+                std::thread::yield_now();
+            }
+        };
+
+        // —— AC-02/03：孵化（子进程 = 该 exe）+ native View 投影帧入宿主。
+        let (wid0, ops0) = launch(&mut session);
+        place_window(&mut session, wid0, 0);
+        // 子进程身份（代码流证据）：spawner 未注入 → 分流唯一入口 =
+        // `outproc_native_exe` 发现命中 counter.exe → `spawn_exe_child` 臂
+        // （auto re-exec 臂仅在发现 MISS 时可达——发现序单测已钉边界）。
+        let resolver_spec = (session.desktop.app_resolver.as_ref().unwrap())("002-counter")
+            .expect("resolver spec");
+        let discovered =
+            DesktopSession::outproc_native_exe(&resolver_spec).expect("native exe discovered");
+        assert!(
+            discovered.ends_with("counter.exe"),
+            "发现序应命中编译产物 exe: {discovered:?}"
+        );
+        assert!(
+            ops0.iter().any(|op| matches!(op, DrawOp::Text { text, .. } if text == "Counter: 0")),
+            "native 投影帧已合成: {ops0:?}"
+        );
+        // 命令帧语义（queue 臂）：Welcome 模式位 = Commands（像素臂才是
+        // Pixels）——经 broker 孵化记录定档断言。
+        let client0 = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid0))
+            .expect("client0");
+        assert_eq!(
+            client0.endpoint.frame_mode,
+            crate::ui::desktop_protocol::message::FrameMode::Commands,
+            "counter 级 native auto 档下走 queue（显式降级观测 = 覆盖门拒绝面）"
+        );
+
+        // —— 交互闭环：点 "+"（帧内按钮 Quad = Text "+" 前驱 op）→ Counter: 1。
+        let plus_rect = {
+            let mut prev_quad = None;
+            for op in &ops0 {
+                match op {
+                    DrawOp::Quad { rect, .. } => prev_quad = Some(*rect),
+                    DrawOp::Text { text, .. } if text == "+" => break,
+                    _ => {}
+                }
+            }
+            prev_quad.expect("按钮 Quad 先于其标签")
+        };
+        let origin0 = session
+            .host
+            .as_ref()
+            .and_then(|h| h.wm.wins.get(&wid0))
+            .map(|v| {
+                let r = *v.rect.borrow();
+                (r.x, r.y)
+            })
+            .expect("wid0 窗原点");
+        assert!(
+            session.broker_pointer_down(
+                origin0.0 + plus_rect.x + plus_rect.w / 2.0,
+                origin0.1 + plus_rect.y + plus_rect.h / 2.0,
+                crate::ui::desktop_protocol::message::MouseButton::Left,
+            ),
+            "点击路由"
+        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            session.pump_broker_clients();
+            let hit = session
+                .broker_clients
+                .values()
+                .find(|c| c.wid == Some(wid0))
+                .and_then(|c| c.composed())
+                .is_some_and(|list| {
+                    list.ops.iter().any(|op| {
+                        matches!(op, DrawOp::Text { text, .. } if *text == "Counter: 1")
+                    })
+                });
+            if hit {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "点击后帧超时");
+            std::thread::yield_now();
+        }
+        println!("AUTO020-NATIVE click-through PASS (Counter: 0 -> 1)");
+
+        // —— AC-05 kill 方向：第二实例 → kill 子进程 → 宿主 EOF 回收。
+        let (wid1, _) = launch(&mut session);
+        place_window(&mut session, wid1, 1);
+        assert_ne!(wid0, wid1);
+        let kid = session.desktop.outproc_children.last_mut().unwrap();
+        let _ = kid.kill();
+        let _ = kid.wait();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            session.pump_broker_clients();
+            let reclaimed = !session.host.as_ref().unwrap().wm.wins.contains_key(&wid1)
+                && !session.broker_clients.values().any(|c| c.wid == Some(wid1));
+            if reclaimed {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "kill 回收超时");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        println!("AUTO020-NATIVE kill-reclaim PASS (wid={wid1:?})");
+
+        // —— AC-05 Close 方向：宿主 Close → 子进程退出码 0 → 窗回收。
+        let (pipe0, close) = {
+            let c = session
+                .broker_clients
+                .values_mut()
+                .find(|c| c.wid == Some(wid0))
+                .expect("client0 alive");
+            (c.pipe.clone(), c.endpoint.close().ok())
+        };
+        if let Some(close) = close {
+            if let Some(c) = session.broker_clients.get_mut(&pipe0) {
+                let _ = c.end.send(&close);
+            }
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut exit_code = None;
+        loop {
+            session.pump_broker_clients();
+            let gone = !session.host.as_ref().unwrap().wm.wins.contains_key(&wid0)
+                && !session.broker_clients.values().any(|c| c.wid == Some(wid0));
+            if let Some(child) = session.desktop.outproc_children.first_mut() {
+                if let Ok(Some(status)) = child.try_wait() {
+                    exit_code = Some(status.code());
+                }
+            }
+            if gone && exit_code.is_some() {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "Close 回收超时");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(exit_code, Some(Some(0)), "Close → 子进程干净退出（退出码 0）");
+        println!("AUTO020-NATIVE close-recycle PASS (exit=0)");
+
+        // 兜底清理（第二实例 child 已 wait；首实例已退出）。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// Plan 020 T-08 —— native exe 度量臂（`AUTO_DESKTOP_E2E=1` + 载体在册
+    /// 才跑）：N=1/3/5 阶梯 launch（同一编译 exe 五实例——同 App 边际，
+    /// 与 508 五不同 App 口径的差异随注报告）+ 宿主/子进程 Private/WS 双
+    /// 口径采样（K32GetProcessMemoryInfo，480 先例）+ launch→attach/
+    /// 首帧时延 + 点击交互时延。输出行 `AUTO020-METRICS-*`，
+    /// 报告 = docs/plans/reports/020-rust-exe-compositor-metrics.md。
+    #[test]
+    fn p020_metrics_native_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let exe = std::env::var("AUTO_020_NATIVE_EXE").unwrap_or_else(|_| {
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/debug/counter.exe").to_string()
+        });
+        let app_dir = std::path::PathBuf::from(
+            std::env::var("AUTO_020_NATIVE_APP_DIR").unwrap_or_else(|_| {
+                concat!(env!("CARGO_MANIFEST_DIR"), "/../../../scratch020/002-counter").to_string()
+            }),
+        );
+        let source = app_dir.join("src").join("front").join("app.at");
+        if !std::path::Path::new(&exe).is_file() || !source.is_file() {
+            eprintln!("[p020-metrics] skip: native 载体缺席");
+            return;
+        }
+        let code = std::fs::read_to_string(&source).expect("read counter source");
+
+        use crate::ui::session::ProcessModel;
+        let broker_pipe = format!("autodesk-broker-020m-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        let exe_for_resolver = exe.clone();
+        let source_for_resolver = source.to_string_lossy().to_string();
+        let code_for_resolver = code.clone();
+        session.desktop.app_resolver =
+            Some(std::sync::Arc::new(move |name: &str| {
+                (name == "002-counter").then(|| LaunchSpec {
+                    code: code_for_resolver.clone(),
+                    source_path: Some(source_for_resolver.clone()),
+                    title: Some("Counter".to_string()),
+                    name: Some("counter".to_string()),
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: Some(std::path::PathBuf::from(&exe_for_resolver)),
+                    render_decl: Some("queue".to_string()),
+                })
+            }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        let base = sample_process_memory(std::process::id()).expect("采样");
+        println!(
+            "AUTO020-METRICS-MEM stage=base host_private={}B host_ws={}B",
+            base.private_bytes, base.working_set
+        );
+        let mut launched = 0usize;
+        for want in [1usize, 3, 5] {
+            for _ in launched..want {
+                let t0 = std::time::Instant::now();
+                let wid = session.launch_app("002-counter").expect("launch");
+                let attach_ms = t0.elapsed().as_secs_f64() * 1000.0;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+                loop {
+                    session.pump_broker_clients();
+                    let got = session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.wid == Some(wid))
+                        .and_then(|c| c.composed())
+                        .is_some_and(|l| !l.ops.is_empty());
+                    if got {
+                        break;
+                    }
+                    assert!(std::time::Instant::now() < deadline, "首帧超时");
+                    std::thread::yield_now();
+                }
+                println!(
+                    "AUTO020-METRICS-LAUNCH stage=N{want} attach_ms={attach_ms:.1} firstframe_ms={:.1}",
+                    t0.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+            launched = want;
+            let wids: Vec<Wid> = session
+                .broker_clients
+                .values()
+                .filter_map(|c| c.wid)
+                .collect();
+            for (i, wid) in wids.into_iter().enumerate() {
+                place_window(&mut session, wid, i);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1200));
+            session.pump_broker_clients();
+            let host = sample_process_memory(std::process::id()).expect("采样");
+            let kids = sample_children_total(&session.desktop.outproc_children).expect("采样");
+            println!(
+                "AUTO020-METRICS-MEM stage=N{want} children={} host_private={}B host_ws={}B children_private={}B ({:.2}MiB) children_ws={}B ({:.2}MiB)",
+                session.desktop.outproc_children.len(),
+                host.private_bytes,
+                host.working_set,
+                kids.private_bytes,
+                kids.private_bytes as f64 / 1048576.0,
+                kids.working_set,
+                kids.working_set as f64 / 1048576.0
+            );
+        }
+        // 点击交互时延（预热 3 + 采样 20；窗 0 的 "+" 按钮）。
+        {
+            let wid0 = session
+                .broker_clients
+                .values()
+                .find_map(|c| c.wid)
+                .expect("client");
+            let ops0 = session
+                .broker_clients
+                .values()
+                .find_map(|c| c.composed().map(|l| l.ops.clone()))
+                .expect("composed");
+            let plus_rect = {
+                let mut prev_quad = None;
+                for op in &ops0 {
+                    match op {
+                        DrawOp::Quad { rect, .. } => prev_quad = Some(*rect),
+                        DrawOp::Text { text, .. } if text == "+" => break,
+                        _ => {}
+                    }
+                }
+                prev_quad.expect("按钮 Quad")
+            };
+            let origin = session
+                .host
+                .as_ref()
+                .and_then(|h| h.wm.wins.get(&wid0))
+                .map(|v| {
+                    let r = *v.rect.borrow();
+                    (r.x, r.y)
+                })
+                .expect("窗原点");
+            let mut samples = Vec::new();
+            let mut k = 0i64;
+            for i in 0..23 {
+                let t0 = std::time::Instant::now();
+                assert!(session.broker_pointer_down(
+                    origin.0 + plus_rect.x + plus_rect.w / 2.0,
+                    origin.1 + plus_rect.y + plus_rect.h / 2.0,
+                    crate::ui::desktop_protocol::message::MouseButton::Left,
+                ));
+                let want_text = format!("Counter: {}", k + 1);
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                loop {
+                    session.pump_broker_clients();
+                    let hit = session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.wid == Some(wid0))
+                        .and_then(|c| c.composed())
+                        .is_some_and(|list| {
+                            list.ops.iter().any(|op| matches!(op,
+                                DrawOp::Text { text, .. } if *text == want_text))
+                        });
+                    if hit {
+                        break;
+                    }
+                    assert!(std::time::Instant::now() < deadline, "点击帧超时");
+                    std::thread::yield_now();
+                }
+                k += 1;
+                if i >= 3 {
+                    samples.push(t0.elapsed().as_secs_f64() * 1000.0);
+                }
+            }
+            g2_stats_line("native-exe-queue", samples);
+        }
+        // 收尾：Close 全部 + kill 兜底。
         let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
             session
                 .broker_clients

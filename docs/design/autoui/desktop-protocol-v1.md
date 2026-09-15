@@ -161,6 +161,41 @@ App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口
   远程消费面零破坏），bold/italic 档产 `TextStyled`。宿主 `fill_text` /
   TS `fillText` 按 weight/italic 产视觉差分（507-1 typography 收口）。
 
+## 1.6 v1.6 增量（编译 exe 一等客户端——Component seam 双投影器，Plan 020）
+
+- **客户端臂泛型化**：协议客户端入口自解释态 `DynamicComponent` 泛化到
+  `Component` seam——a2r 编译产物（`auto build -r rust` 的独立 exe）经
+  孵化参数（`--autodesk-incubate` / `--autodesk-client=` /
+  `--autodesk-render=`）作为一等客户端接入 compositor。双投影器并存：
+  `AppProjector`（解释态 AuraNode，零改动）+ `NativeProjector<C>`（新，
+  `View<C::Msg>` 运行期投影——策略 B：prop/handler/条件/插值在 view()
+  构建期已物化，投影器即 `View` 的协议后端；命中表
+  `Vec<(WRect, C::Msg)>` 物化消息 clone 派发）。`FrameSource` 追加缺省
+  空方法 `poll_tick`（泵空拍对账；native 侧 = `tick_interval_ms` 到期
+  派发 `tick_msg`）。
+- **native 覆盖集与缺省臂**：`Coverage::native_queue_set()` = text/
+  button + col/row/container/list + 布局样式子集（与解释态 target_set
+  分表——native 渲染面更窄，爬坡随投影器扩臂同步扩表）。三态裁决：
+  显式 `queue` 遇 not-yet = **拒绝退出留痕**（缺项清单即载荷，禁静默
+  错绘）；**native `auto` 缺省 = independent**（queue 覆盖爬坡前的安全
+  缺省，降级观测行留痕——与解释态 auto 语义并列，本节裁定入册）；
+  `independent` 直通（隐藏窗自渲 + screenshot，v1.3 臂复用）。pac
+  `desktop_render:` 声明由宿主 spawn 侧透传 `--autodesk-render=`（生成物
+  无 pac 位置感知）。
+- **宿主孵化分流**：注册表 pac `desktop_exe:` 声明（相对 App 根）>
+  rust-workspace 约定路径（`<root>/rust-workspace/<dir>/target/
+  {release,debug}/<exe>.exe`，exe 名先 pac `name:` 蛇形后目录名）>
+  缺席 = 现行 `auto` re-exec 解释臂（零变化）。路由触发：全局
+  process_model = outproc **或**发现命中编译 exe（"exe App 天然 outproc"
+  ——inproc 缺省下同样走孵化链，纯解释 spec 不受影响）。native spawn
+  参数面与解释态同形（无 `run` 子命令、不注入 `AUTO_386_APP_ROOT`）；
+  stdio 静默。`PROTOCOL_VERSION` 维持 1（本节零 wire 变体——纯客户端臂泛化）。
+- **v1.6 已知边界**（随注非静默）：L3 `StateSnapshot` 注入 native
+  not-yet（typed 组件无字段写回路径）；键盘/滚轮/右键不路由（覆盖集无
+  input 族）；门后动态分支遭遇未覆盖变体 = 占位盒 + `uncovered_seen`
+  留痕。度量：queue 臂边际 ≈2.42 MiB/App（508 解释 outproc 6.48 的
+  ≈2.7×），见 `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
+
 ## 2. Wire Format（信封）
 
 小端。头部 12 字节定长：

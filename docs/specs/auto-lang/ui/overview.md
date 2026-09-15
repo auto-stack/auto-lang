@@ -25,6 +25,15 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
+## 现状（2026-09-15）
+
+**编译 exe 桌面客户端面（PLAN-020，provisional）**：desktop_protocol 客户端
+臂自解释态 `DynamicComponent` 泛化到 `Component` seam——a2r 编译 exe 经
+`NativeProjector<C>`（View 运行期投影）作 compositor 一等客户端，native
+覆盖集与 `auto`=independent 缺省裁定、宿主 `desktop_exe:` 孵化分流随册。
+权威正文 = `docs/design/autoui/desktop-protocol-v1.md` §1.6（本节仅指针，
+不重复）；度量 = `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
+
 ## 现状（2026-09-11）
 
 **声明式样式配方语言层（plan-607 落地，Design 29 Phase 3，GOAL-007）**：
@@ -584,6 +593,32 @@ parse 输出完备（responsive/dark 门控只做布尔比较），窗口 resize
 13.2→1.4ms（~9x）、整重建 15.8→9.8ms；opt 档噪声内。结构 diffing 评估：
 不立项（行级 memo 为第一候选，触发门槛见 evidence diffing-eval.md）。
 
+## terminal iced 绘制契约与像素门禁（PLAN-634）
+
+> 契约全文 = docs/specs/widgets/terminal-iced-draw.md（canonical）；
+> 归因全文 = docs/plans/evidence/634/pixel-golden-drift-attribution.md。
+
+### draw 期段落强引用规则
+
+iced wgpu `fill_paragraph` 排队 `Arc::downgrade` 弱引用，flush `upgrade()`
+失败**静默丢弃**——draw 闭包内局部段落 fill 后析构，文字必不进像素产物
+（quad 值拷贝不受影响，表现为"底色块在、字没有"）。三处范式（terminal
+widget.rs）：行文本 `ROW_CACHES`（digest 门控）、菜单标签 `MENU_PARAS`
+（静态串 OnceLock）、badge/preedit `PLAIN_PARAS`（键 (text,width)，封顶
+64 溢出清空）。不变式：强引用存活到 flush；guard 持有跨越 fill 调用；
+动态键缓存只许封顶清空、不许悬垂。a2r 侧同族规则（语句位置块尾恒补
+`;`）见 a2r-std/project.md（#18 E0308 实证）。
+
+### 像素金样环境契约
+
+headless 像素产物字节面绑定三张环境敏感牌：wgpu 适配器/后端枚举
+（`Renderer::name()` 恒 `"wgpu"`，后端翻转不换金样后缀）、MSAA×4 合成、
+系统字体栅格（cosmic-text fontdb）。漂移=环境态翻转非代码（015 同日晨绿
+午后红跨树复红 + 634 三后端探针零漂移互证）。门禁语义：硬断言=墨水占比
+/同进程双渲染字节一致/层容差差分（阈值按金样实测标定，分离度 ≥2×）；
+金样留档+审计制（超 5% 预算仅告警）。像素/可见性测试一律 nextest 跑
+（裸 cargo test 单进程共享注册表/静态缓存会互踩——634 实证）。
+
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
@@ -729,3 +764,5 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 **571 button 缺省 variant 一等化（GOAL-007，Design 22 §1.2/§3 修订）**：`button` 缺省从"primary 填充别名"升一等 `default` variant——UA stylesheet 显式等价物（Web 裸 `<button>` 有浏览器预填兜底，VM(iced) 无此层，故以 variant 表显式承载）：中性填充 `bg-muted` + `border-border` 发丝描边（dark 下 muted 对 background 对比度 ~1.15:1，纯填充不可辨）；`primary`（+行为语义 `submit`）为显式醒目 CTA 档；`secondary` 深一档纯填充无边框（"有边框"归 outline 专属），token 与 muted 分档（dark slate-700 #334155 / light 暖灰 #e3ddd1）。单源 `ui/style/variants.rs`（VM 臂 convert_button 与 rust codegen 臂 with_button_preset 共用；preset 前置、user class 后类胜；动态 class 不注入无回归；ui feature 门控）——Vue 侧三源（ui_gen cva 模板、auto-man 烘焙资产 button/index.ts〔PLAN-457 烘焙补丁先例〕、auto CLI 内嵌模板）与 CSS 变量层（auto-man generate_index_css 等）逐源互锁测试锚定，复审首轮 fail 抓出 CSS 变量层第三源未分档（T10 收敛）。顺修 web 端 `variant:"primary"` 落空（cva 无 primary 键）。specs.json P571-1..6；债：iced `Color::Accent` 无解析臂（ghost/outline `hover:bg-accent` VM no-op）、Vue cva 多真源维护面（互锁已防漂移）。
 
 **P011 mouse_area 命中带=内容盒（KNOWN-DEBT 候选：转换器级尺寸类语义）**：iced `mouse_area` 无自带 width/height，命中带=其内容盒；DSL `mouse-area` 的显式尺寸类（w-full/h-full/w-N/h-N）由转换臂（renderer.rs MouseArea 双臂）落在**外层包装 container** 上，对命中几何是 no-op——需要大命中带时必须让**内容件自身 Fill**。P010-F1 先例：desktop.at 空白菜单 popover（T36）以全桌面 mouse-area 为锚件，锚的命中带仅图标网格条带高，条带以下全桌面为 BlankPress/BlankMenu 命中死区（levitate/悬垂假设经 AUTO_STACK_PROBE 五配置矩阵+格条带几何微测证伪；修复=内容包 `w-full h-full` col，锚件几何/popover 放置语义/视觉零变化，auto-os `46a07cf`）。同族规则：P007-1"shrink 上下文（Popover 锚/行内）Fill 解析零高"。转换器级根治（style 尺寸类进 mouse_area 命中带）波及全 app 命中面，登记 KNOWN-DEBT 候选（PLAN-011 SD-01）。
+
+**632 画廊内嵌 demo 模块组件桥接（ADR-20，清偿 625"6 模块 use 降级"中的组件/store 族）**：T-01 standalone 对照实验修订两处预设——016 store 桥接 standalone 全通（store→child 转换+模型并根+计算属性全绿），内嵌降级根因=use.web 适配器链（Demo*.at）携带的 StoreDecl 在 load_ext_imports_for_vm 才进 import_stmts、晚于 store→child 转换位——ext 装载后按名去重补转换（F1）；006 双缺口=dep 目录 item 命名文件（settings_popover.at）解析永不命中（F2：resolve_use_module dotted-module 探测，`deps/{dep}/{item_snake}.at` 候选复用，snake_case 优先）+适配器模块 use 链 widget 从不注册（F3：扫 visited 按显式 items 注册进 registry/child_decls，P545 bare use 不触发）；F4=适配器链符号别名补齐（视图 computed 内 `month_name(...)` 裸名查 exports miss → raw 模板回退根因；or_insert 根环优先）。**实证**：006 弹层开合（settings_open 状态断言+截图）、016 June/42 格填充网格/Selected 点击更新、002/003/011 回归巡检——内嵌 MCP 10/10 双轮（实现期+复审期）；plan632_demo_bridge_tests 5 测（T-02 红→绿）；tv 3715/3715、tf 3568/3569（唯一红=P615-D3 预存并发抖动，隔离恒绿）。**债**：P632-D1 App.Init 兜底告警（宿主根件无 Init 的既有形态）；006 standalone 的 deps/settings 空目录为 vue 臂 dep 管线产物缺口（环境面，非运行时范围）。

@@ -30,6 +30,8 @@ pub mod codec;
 #[cfg(feature = "ui-iced")]
 pub mod broker;
 #[cfg(feature = "ui-iced")]
+pub mod client_entry;
+#[cfg(feature = "ui-iced")]
 pub mod client_runtime;
 #[cfg(feature = "ui-iced")]
 pub mod coverage;
@@ -48,6 +50,8 @@ pub mod loopback;
 #[cfg(feature = "ui-iced")]
 pub mod message;
 #[cfg(feature = "ui-iced")]
+pub mod native_projector;
+#[cfg(feature = "ui-iced")]
 pub mod pixels;
 #[cfg(feature = "ui-iced")]
 pub mod remote;
@@ -64,6 +68,7 @@ pub const PROTOCOL_VERSION: u16 = 1;
 
 pub use codec::{CodecError, Channel};
 pub use endpoint::{AppEndpoint, FrameSource, HostEndpoint, HostAction, HostState, ProtocolError};
+pub use native_projector::NativeProjector;
 pub use host::{ProtocolHost, SurfaceStore};
 pub use loopback::{loopback_pair, LoopbackEnd};
 pub use transport::{Transport, TransportError};

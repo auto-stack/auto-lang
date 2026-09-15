@@ -1,0 +1,7 @@
+// PLAN-019 回归金样:模块级全局 List 的 .set(idx, v)(db.at 形态)必须
+// 发射 Mutex 守卫上的索引赋值,而非 Vec::insert(右移腐坏)。
+var roots List<int> = []
+
+fn replace_at(ridx int, nid int) {
+    roots.set(ridx, nid)
+}
