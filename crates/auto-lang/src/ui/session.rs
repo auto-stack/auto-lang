@@ -1787,6 +1787,11 @@ pub struct LaunchSpec {
     /// 绝对路径——`back.*` 模块链接式契约解析根，Plan 061；None = 无）。
     /// boot 期 resolver 自条目目录解析填入。
     pub back_root: Option<std::path::PathBuf>,
+    /// Plan 020 T-06：编译 exe 声明（pac `desktop_exe:` 相对 App 根解析的
+    /// 路径——a2r `auto build -r rust` 产物；None = 无声明）。launch 期
+    /// 发现序 = 此声明 > rust-workspace 约定路径扫描（`outproc_native_exe`）；
+    /// 两者皆无 = 现行解释态 outproc 臂（I1 零变化）。
+    pub exe: Option<std::path::PathBuf>,
 }
 
 impl Default for LaunchSpec {
@@ -1799,6 +1804,7 @@ impl Default for LaunchSpec {
             fit: false,
             daemon: None,
             back_root: None,
+            exe: None,
         }
     }
 }
@@ -2332,6 +2338,71 @@ fn outproc_child_identity(
     )
 }
 
+/// Plan 020 T-06：native exe 发现序（待澄清②定案：pac 声明为主 + 约定
+/// 路径兜底）——①`LaunchSpec.exe`（pac `desktop_exe:`，resolver 装配期已
+/// 相对 App 根解析；声明即信，缺失在 spawn 臂报错——"声明了但未构建"
+/// 走 toast，不静默回退解释臂）→ ②rust-workspace 约定路径扫描：
+/// `<app-root>/rust-workspace/<dir>/target/{release,debug}/<exe>.exe`
+/// （exe 名先 pac `name:` 蛇形、后目录名——scratch counter 实测生成物 =
+/// 蛇形包名）。两者皆无 → None = 现行解释态 outproc 臂。
+fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf> {
+    if spec.exe.is_some() {
+        return spec.exe.clone();
+    }
+    let dir = spec
+        .source_path
+        .as_deref()
+        .and_then(|p| std::path::Path::new(p).ancestors().nth(3))?;
+    let root = dir.parent()?;
+    let dir_name = dir.file_name()?.to_string_lossy().to_string();
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(name) = &spec.name {
+        let snake: String = name
+            .chars()
+            .map(|c| if c == '-' || c == ' ' { '_' } else { c.to_ascii_lowercase() })
+            .collect();
+        candidates.push(snake);
+    }
+    candidates.push(dir_name.clone());
+    for build in ["release", "debug"] {
+        for exe_name in &candidates {
+            let candidate = root
+                .join("rust-workspace")
+                .join(&dir_name)
+                .join("target")
+                .join(build)
+                .join(format!("{exe_name}.exe"));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Plan 020 T-06：native exe 子进程 spawn——a2r 编译产物自带孵化参数解析
+/// （T-05 生成 main gate）：无 `run` 子命令、不注入 `AUTO_386_APP_ROOT`
+/// 解释根；参数面与解释态同形（`--app386=<dir>` 在 native 侧为 Hello
+/// app_name 覆盖——宿主认领按目录名匹配同源）。NEXTEST_* 剥除同款。
+fn spawn_exe_child(
+    exe: &std::path::Path,
+    child_name: &str,
+    broker_pipe: &str,
+) -> std::io::Result<std::process::Child> {
+    let mut cmd = std::process::Command::new(exe);
+    cmd.args([
+        "--autodesk-incubate",
+        &format!("--app386={child_name}"),
+        &format!("--autodesk-broker={broker_pipe}"),
+    ]);
+    for (key, _) in std::env::vars() {
+        if key.starts_with("NEXTEST_") {
+            cmd.env_remove(&key);
+        }
+    }
+    cmd.spawn()
+}
+
 /// Plan 508 G1：outproc 子进程本体定位——宿主即 `auto` 二进制
 /// （`auto run --desktop`）时用 current_exe；其他宿主（ui_desktop 验收/
 /// 实机宿主）取同目录的 auto 兄弟二进制（target/{debug,release}/ 共存
@@ -2581,10 +2652,20 @@ fn spawn_outproc_child(
             .broker_pipe
             .clone()
             .unwrap_or_else(|| crate::ui::desktop_protocol::broker::BROKER_PIPE.to_string());
+        // Plan 020 T-06：spawn 分流——测试注入 spawner > native exe 臂
+        //（`outproc_native_exe` 发现序命中）> 现行 auto re-exec 臂（零变化）。
+        let native_exe = Self::outproc_native_exe(&spec);
         let child = match self.desktop.outproc_spawner.clone() {
             Some(spawn) => spawn(&child_name).map_err(|e| format!("spawn outproc child: {e}"))?,
-            None => Self::spawn_outproc_child(&child_name, app_root.as_deref(), &broker_pipe)
-                .map_err(|e| format!("spawn outproc child: {e}"))?,
+            None => match native_exe.as_deref() {
+                Some(exe) => {
+                    eprintln!("[session] launch_app(outproc-native) {name} <- {}", exe.display());
+                    Self::spawn_exe_child(exe, &child_name, &broker_pipe)
+                        .map_err(|e| format!("spawn outproc child: {e}"))?
+                }
+                None => Self::spawn_outproc_child(&child_name, app_root.as_deref(), &broker_pipe)
+                    .map_err(|e| format!("spawn outproc child: {e}"))?,
+            },
         };
         self.desktop.outproc_children.push(child);
         // 等受理（子进程 spawn + connect，冷启可达数秒）→ attach 到 Active
@@ -4691,7 +4772,8 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+    })
         }));
         ds
     }
@@ -4720,7 +4802,8 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: true,
-            })
+        exe: None,
+    })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
         let host = ds.host.as_ref().unwrap();
@@ -4760,7 +4843,8 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+    })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
         let app = ds.host.as_ref().unwrap().wm.wins[&wid].app;
@@ -4798,6 +4882,77 @@ mod tests {
         assert_eq!(ProcessModel::from_storage(Some("outproc")), ProcessModel::Outproc);
         assert_eq!(ProcessModel::from_storage(Some("  outproc ")), ProcessModel::Outproc);
         assert_eq!(ProcessModel::from_storage(Some("bogus")), ProcessModel::Inproc);
+    }
+
+    /// Plan 020 T-06：native exe 发现序单测——pac `desktop_exe:` 声明 >
+    /// rust-workspace 约定路径（release > debug；exe 名 pac name 蛇形 >
+    /// 目录名）；两者皆无 → None（解释态 outproc 臂）。
+    #[test]
+    fn native_exe_discovery_order() {
+        let root = std::env::temp_dir().join("plan020-native-exe-disc");
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("002-counter");
+        std::fs::create_dir_all(dir.join("src").join("front")).unwrap();
+        let app_at = dir.join("src").join("front").join("app.at");
+        std::fs::write(&app_at, "widget App {}").unwrap();
+        let ws = root.join("rust-workspace").join("002-counter");
+        for build in ["release", "debug"] {
+            std::fs::create_dir_all(ws.join("target").join(build)).unwrap();
+            std::fs::write(
+                ws.join("target").join(build).join("counter.exe"),
+                b"MZ",
+            )
+            .unwrap();
+        }
+        let spec = |exe: Option<std::path::PathBuf>| LaunchSpec {
+            code: String::new(),
+            source_path: Some(app_at.to_string_lossy().to_string()),
+            name: Some("counter".to_string()),
+            exe,
+            ..Default::default()
+        };
+
+        // ① pac 声明即信（路径甚至不必存在——缺失在 spawn 臂报错）。
+        let declared = root.join("custom").join("elsewhere.exe");
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec(Some(declared.clone()))).as_ref(),
+            Some(&declared),
+            "pac 声明优先于约定路径"
+        );
+
+        // ② 约定路径：release 先于 debug；exe 名 = pac name 蛇形。
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec(None)).as_ref(),
+            Some(&ws.join("target").join("release").join("counter.exe")),
+        );
+
+        // ③ release 缺产物 → debug 档。
+        std::fs::remove_file(ws.join("target").join("release").join("counter.exe")).unwrap();
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec(None)).as_ref(),
+            Some(&ws.join("target").join("debug").join("counter.exe")),
+        );
+
+        // ④ 蛇形名缺席 → 目录名兜底。
+        std::fs::remove_file(ws.join("target").join("debug").join("counter.exe")).unwrap();
+        std::fs::write(ws.join("target").join("debug").join("002-counter.exe"), b"MZ").unwrap();
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec(None)).as_ref(),
+            Some(&ws.join("target").join("debug").join("002-counter.exe")),
+        );
+
+        // ⑤ 全缺 → None（解释态 outproc 臂）；无 source_path 亦 None。
+        std::fs::remove_file(ws.join("target").join("debug").join("002-counter.exe")).unwrap();
+        assert_eq!(DesktopSession::outproc_native_exe(&spec(None)), None);
+        let inline = LaunchSpec {
+            code: String::new(),
+            source_path: None,
+            name: Some("counter".to_string()),
+            exe: None,
+            ..Default::default()
+        };
+        assert_eq!(DesktopSession::outproc_native_exe(&inline), None, "内联 spec 无发现面");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Plan 508 G1：outproc 臂子进程体（re-exec）——env 注入时走 broker
@@ -4842,7 +4997,8 @@ mod tests {
                 fit: false,
                 daemon: None,
                 back_root: None,
-            })
+        exe: None,
+    })
         }));
         ds.desktop.process_model = ProcessModel::Outproc;
         // spawn 钩子注入：re-exec 测试体（生产 = spawn_outproc_child）。
@@ -5026,7 +5182,8 @@ mod tests {
                 daemon: Some("autoos".to_string()),
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+    })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
             crate::ui::osconfig_daemon::DaemonStatus::Running(
@@ -5063,7 +5220,8 @@ mod tests {
                 daemon: Some("autoos".to_string()),
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+    })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
             crate::ui::osconfig_daemon::DaemonStatus::Offline("就绪超时".to_string())

@@ -430,7 +430,8 @@ mod tests {
                         daemon: None,
                         back_root: None,
                         fit: false,
-                    })
+        exe: None,
+    })
                 } else {
                     None
                 }

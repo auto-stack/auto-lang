@@ -442,7 +442,8 @@ mod tests {
                     fit: false,
                     daemon: None,
                     back_root: None,
-                })
+        exe: None,
+    })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
@@ -773,7 +774,8 @@ mod tests {
                     fit: false,
                     daemon: None,
                     back_root: None,
-                })
+        exe: None,
+    })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
@@ -942,7 +944,8 @@ mod tests {
                         daemon: None,
                         back_root: None,
                         fit: false,
-                    })
+        exe: None,
+    })
                 } else {
                     None
                 }
@@ -1488,7 +1491,8 @@ mod tests {
                         daemon: None,
                         back_root: None,
                         fit: false,
-                    })
+        exe: None,
+    })
                 } else {
                     None
                 }
@@ -1649,7 +1653,8 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+    })
         }));
     }
 

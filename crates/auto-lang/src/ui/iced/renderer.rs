@@ -12719,6 +12719,18 @@ fn compare_pngs(
                                     let code = std::fs::read_to_string(&e.entry).ok()?;
                                     // Plan 501：外部后端根（注册表扫描期已解析为
                                     // 绝对路径；坏路径 launch 臂 is_dir 兜底跳过）。
+                                    // Plan 020 T-06：pac `desktop_exe:` 相对 App 根
+                                    // 解析（`<dir>/src/front/app.at` 剥三层得 App 根）；
+                                    // 缺席 = None（launch 期约定路径兜底扫描）。
+                                    let app_dir = std::path::Path::new(&e.entry)
+                                        .ancestors()
+                                        .nth(3)
+                                        .map(|d| d.to_path_buf());
+                                    let exe = e
+                                        .desktop_exe
+                                        .as_deref()
+                                        .zip(app_dir.as_ref())
+                                        .map(|(rel, dir)| dir.join(rel));
                                     Some(crate::ui::session::LaunchSpec {
                                         code,
                                         source_path: Some(e.entry.to_string_lossy().to_string()),
@@ -12727,6 +12739,7 @@ fn compare_pngs(
                                         daemon: e.daemon.clone(),
                                         back_root: e.back_root.clone(),
                                         fit: e.fit,
+                                        exe,
                                     })
                                 })
                         }));
@@ -23546,7 +23559,8 @@ mod tests {
                         fit: false,
                         daemon: Some("autoos".to_string()),
                         back_root: None,
-                    });
+        exe: None,
+    });
                 }
                 let e = apps.iter().find(|a| a.id == name)?;
                 Some(crate::ui::session::LaunchSpec {
@@ -23557,7 +23571,8 @@ mod tests {
                     fit: e.fit,
                     daemon: None,
                     back_root: None,
-                })
+        exe: None,
+    })
             })
         });
         ds
@@ -23941,7 +23956,8 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        }];
+        desktop_exe: None,
+    }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
@@ -23952,7 +23968,8 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+    })
             }));
         ds.launch_app("011-calculator").expect("launch");
         sync_shell_windows(&mut ds);
@@ -25306,7 +25323,8 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+    })
             }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
@@ -25350,7 +25368,8 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+    })
             }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
@@ -25555,7 +25574,8 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        }];
+        desktop_exe: None,
+    }];
         inject_dock_pinned(&mut ds);
         {
             let app = ds.apps.get(&id).unwrap();
@@ -26332,7 +26352,8 @@ mod tests {
     back_root: None,
     fit: false,
     desktop_visible: true,
-            },
+        desktop_exe: None,
+    },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
                 title: "便签".into(),
@@ -26346,7 +26367,8 @@ mod tests {
     back_root: None,
     fit: false,
     desktop_visible: true,
-            },
+        desktop_exe: None,
+    },
         ];
         // PLAN-012 W4：dock_pinned 缺省空（t3_session_with_shell 不动）。
         // storage：custom 014-weather + 重叠 011-calculator；hidden 013-todo。
@@ -26879,7 +26901,8 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        };
+        desktop_exe: None,
+    };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();
         ds.open_desktop(iced::window::Id::unique());
