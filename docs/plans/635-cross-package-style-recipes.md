@@ -16,7 +16,7 @@ new_spec_components:
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象）"]
 
 affects: [auto-lang/parser, auto-lang/ui, auto-lang/aura, auto-man]
-current_step: 0
+current_step: 1
 total_steps: 8
 ---
 
@@ -261,6 +261,29 @@ dep "<name>" 或加入 workspace members」提示。pac.at 读取沿用既有文
   - 探明 use 符号导入的解析器侧符号类别接线点（样式符号是否需要 parse_use_items
     之外的扩展）。
   - 验证：探针结论回填本档（含 file:line 锚点）。
+  - [✅ 已完成 2026-09-15] 三探针结论（master 检出实勘）：
+    **P1 门控爆炸半径=受控文件零破坏**。已声明 3 例（006/010/016 pac.at
+    `dep settings { path: "../common/settings" }`——裸名形态，非 `dep "settings"`
+    引号形态，grep 模式须两者都扫）；未声明 `deps/` junction 共 4 例
+    （011/015/019/ui-gallery）**全部为失效残留**：011 的 `use prog_util` 本地
+    src/front/prog_util.at 直探命中、015 无任何跨包 use、019 有本地
+    src/front/settings.at（直探优先于 deps/）、ui-gallery 源码无 use 语句；
+    其余 `use settings` 消费面（book-reader/k1/039）均为本地 pages/settings.at、
+    settings_card.at 模块而非依赖。硬门控落地后残留 junction 变惰性，无需删除
+    （未受控本地状态不触碰）。
+    **P2 Vue 生产链挂点=auto-man 零改动**。vue.rs:2494 每_widget 调
+    `auto_lang::ui_build_shadcn_with_widgets(path, None)`（含 deps/* 的 widget
+    文件同路），链条 `ui_build_shadcn_with_widgets(6116) → _and_stores(6139) →
+    ui_build_shadcn(5922，含 5949 注册点)`；VM 轨 `build_dynamic_component_inner
+    (3583，含 3609 注册点)`；`ui_build(5796，含 5832 注册点)` 为通用兜底。三处
+    注册点同调 `load_and_validate_style_recipes(&ast.stmts)`——**跨包注册改造
+    收敛为该单函数**（内部 clear_style_recipes 先清后注，recipe.rs:116——导入
+    注册必须整合进同一函数避免被清）。D3 的「auto-man 预注册」不再需要，
+    T-04 相应收缩为「三入口接线 + Vue 轨回归」。
+    **P3 use 符号接线=parser 零改动**。`parse_use_items`（parser.rs:6523）产
+    纯名字列表，符号类别无关；recipe 按名蹭用即可。命名导入非 pub 检查在
+    收集依赖模块 stmts 时与 use items 求交实现；撞名检测放注册层（需给
+    StyleRecipe 加来源标记）。
 - **T-02 语言面收集与门控**：
   - `lib.rs` collect_module_imports 增加 StyleRecipeDecl 收集臂（D2：pub 门控、
     dedup、撞名检查）；
