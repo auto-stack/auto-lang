@@ -5906,6 +5906,24 @@ pub fn emit_gallery_vm_demos(
                 }
                 _ => back_ok = false,
             }
+            // 已知不受支持的 backend 形态（§5 失败模式：降级回静态面板并告警，
+            // 不得拖垮宿主）——① native 命名空间后端（`use auto.*`：宿主侧
+            // image/fs 面在 VM 臂无内嵌等价物）；② SSE/异步流签名
+            // （`~Stream`/`~Promise`）。v1 全栈档仅收纯 .at 内存后端
+            // （013/015 族）。
+            for (m, c) in back_modules.iter() {
+                let unsupported = c.lines().any(|l| l.trim_start().starts_with("use auto."))
+                    || c.contains("~Stream")
+                    || c.contains("~Promise");
+                if unsupported {
+                    println!(
+                        "  {} gallery demo `{}`: back module `{m}` uses native-ns/stream backend — not embeddable yet, static panel",
+                        "⚠".bright_yellow(),
+                        r.id
+                    );
+                    back_ok = false;
+                }
+            }
             // 改写映射：原始模块路径 → `<ns>_<mod>`（`.` 折叠 `_`，与
             // resolve_module_path 的 rel 同形）；种子别名形式（back.api）
             // 指向与其 canonical（api）同一目标。
@@ -5924,7 +5942,7 @@ pub fn emit_gallery_vm_demos(
             // back 内容改写 + 解析探针（改写后：防改写损伤/语法坏源上发射面）。
             let mut rewritten: Vec<(String, String)> = Vec::with_capacity(back_modules.len());
             for (m, c) in back_modules.iter() {
-                let rc = rewrite_use_modules(c, &renames);
+                let rc = qualify_native_ns_receivers(&rewrite_use_modules(c, &renames));
                 let mut parser = auto_lang::Parser::from(rc.as_str())
                     .with_session(auto_lang::session::CompilerSession::core());
                 if let Err(e) = parser.parse() {
@@ -5944,12 +5962,12 @@ pub fn emit_gallery_vm_demos(
                 skipped.push(format!("{}(back 链不可内嵌)", r.id));
                 continue;
             }
-            source_rw = rewrite_use_modules(source, &renames);
+            source_rw = qualify_native_ns_receivers(&rewrite_use_modules(source, &renames));
             let mut ns_modules: std::collections::BTreeMap<String, String> = Default::default();
             for (m, c) in row_modules {
                 ns_modules.insert(
                     renames.get(&m).cloned().unwrap_or_else(|| m.clone()),
-                    rewrite_use_modules(&c, &renames),
+                    qualify_native_ns_receivers(&rewrite_use_modules(&c, &renames)),
                 );
             }
             row_modules = ns_modules;
@@ -5959,7 +5977,31 @@ pub fn emit_gallery_vm_demos(
                 row_modules.insert(key, c);
             }
         }
-        let emit_source: &str = if r.fullstack { &source_rw } else { source };
+        // PLAN-633: store 接收者限定——画廊宿主 VM 编译单元汇集全部 demo
+        // store，泛型 `store.` 接收者在多 store 下 plan-446 A1 歧义硬错。
+        // 对带 store 的内嵌 demo（纯前端 016 与全栈 013/015/017 同律）统一
+        // 改写真名限定形态。
+        let store_names = scan_store_decls(
+            std::iter::once(source)
+                .chain(row_modules.values())
+                .cloned(),
+        );
+        if store_names.len() == 1 {
+            let base = if r.fullstack {
+                source_rw.clone()
+            } else {
+                source.clone()
+            };
+            source_rw = store_qualify_source(&base, &store_names);
+            for (_, c) in row_modules.iter_mut() {
+                *c = store_qualify_source(c, &store_names);
+            }
+        }
+        let emit_source: &str = if r.fullstack || store_names.len() == 1 {
+            &source_rw
+        } else {
+            source
+        };
         for (m, c) in &row_modules {
             module_files.entry(m.clone()).or_insert_with(|| c.clone());
             let target = demos_dir.join(m.replace('.', "/")).with_extension("at");
@@ -6049,15 +6091,48 @@ fn demo_ns_prefix(id: &str) -> String {
 /// PLAN-633: 全栈 demo 发射源的 `use` 改写（逐行，仅动行首 use 的模块
 /// token，其余字节原样保留）：模块路径命中 renames（原始路径 →
 /// `<ns>_<mod>` 唯一 stem）即原地换名，链外引用（内建/dep 型）不动。
-/// 改写后 use 末段=文件 stem，import_aliases/CALL reloc/全局前缀随之对齐。
+/// 非 use 行同步改写命名空间接收者（`use db` + `db.all_todos()` 形态——
+/// use 换名后接收者失绑返回 None，Init 链静默断）。改写后 use 末段=文件
+/// stem，import_aliases/CALL reloc/全局前缀随之对齐。
 fn rewrite_use_modules(
     source: &str,
     renames: &std::collections::BTreeMap<String, String>,
 ) -> String {
     let mut out = String::with_capacity(source.len() + 64);
+    // PLAN-633: item 导入清单——`use <mod>: f1, f2` 的调用点改写为
+    // `<mod_new>.f1(` 限定形式。内嵌合成里裸 #[api] 调用点不可达
+    // （合成层终结），点式经 is_auto_module_call 走 CALL reloc 直达
+    // 扁平编译体（db 链同律实证）。
+    let mut item_fns: Vec<(String, String)> = Vec::new();
     for l in source.lines() {
         let t = l.trim_start();
-        let mut replaced = false;
+        if t.starts_with("use ") {
+            let rest = &t[4..];
+            if !rest.starts_with('{') && !rest.starts_with('.') {
+                let (m, items) = match rest.find(':') {
+                    Some(ci) => (
+                        rest[..ci]
+                            .split(|c: char| c == ':' || c.is_whitespace())
+                            .next()
+                            .unwrap_or("")
+                            .to_string(),
+                        rest[ci + 1..].to_string(),
+                    ),
+                    None => (String::new(), String::new()),
+                };
+                if let Some(new_m) = renames.get(m.as_str()) {
+                    for it in items.split(',') {
+                        let it = it.trim();
+                        if !it.is_empty() {
+                            item_fns.push((it.to_string(), new_m.clone()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for l in source.lines() {
+        let t = l.trim_start();
         if t.starts_with("use ") {
             let rest = &t[4..];
             if !rest.starts_with('{') && !rest.starts_with('.') {
@@ -6071,16 +6146,164 @@ fn rewrite_use_modules(
                     out.push_str(new_m);
                     out.push_str(&l[indent + idx + m.len()..]);
                     out.push('\n');
-                    replaced = true;
+                    continue;
+                }
+            }
+            out.push_str(l);
+            out.push('\n');
+            continue;
+        }
+        // PLAN-633: item 导入的调用点限定——`list_todos(` →
+        // `d013todo_api.list_todos(`（ident 边界，防 use 行/后缀误改）。
+        let mut line = l.to_string();
+        for (fn_name, m_new) in &item_fns {
+            let pat = format!("{fn_name}(");
+            let mut rewritten = String::with_capacity(line.len() + 32);
+            let mut last = 0;
+            for (idx, _) in line.match_indices(&pat) {
+                let boundary_ok = idx == 0 || {
+                    let prev = line[..idx].chars().next_back().unwrap();
+                    !(prev.is_ascii_alphanumeric() || prev == '_' || prev == '.')
+                };
+                if boundary_ok {
+                    rewritten.push_str(&line[last..idx]);
+                    rewritten.push_str(m_new);
+                    rewritten.push('.');
+                    last = idx;
+                }
+            }
+            rewritten.push_str(&line[last..]);
+            line = rewritten;
+        }
+        // 接收者改写：`<old>.` → `<new>.`（ident 边界；前置 `.`/ident/_
+        // 不改——`auto.image.` 已限定形态与 `my_store.` 的 `store.` 后缀
+        // 均不被误改）。
+        for (old, new) in renames {
+            let pat = format!("{old}.");
+            let mut rewritten = String::with_capacity(line.len() + 32);
+            let mut last = 0;
+            for (idx, _) in line.match_indices(&pat) {
+                let boundary_ok = idx == 0 || {
+                    let prev = line[..idx].chars().next_back().unwrap();
+                    !(prev.is_ascii_alphanumeric() || prev == '_' || prev == '.')
+                };
+                if boundary_ok {
+                    rewritten.push_str(&line[last..idx]);
+                    rewritten.push_str(new);
+                    rewritten.push('.');
+                    last = idx + pat.len();
+                }
+            }
+            rewritten.push_str(&line[last..]);
+            line = rewritten;
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+/// PLAN-633: 全栈发射面原生命名空间接收者全限定。`use auto.image` 之下的
+/// `image.open_session(...)` 两段调用会被 Plan 347 的 auto_modules 注册抢
+/// 路由成交叉模块 reloc（宿主链接期 Undefined）；把接收者改写为全限定
+/// `auto.image.open_session(...)` 后走 native 目录直命（is_native 命中，
+/// 与 011 `dom.copy_text`→`auto.clipboard.set_text` 同律）。`use auto.X`
+/// 行保留（绑定 X 标识）。已带 `auto.` 前缀/成员访问（前置 `.`）不改。
+fn qualify_native_ns_receivers(source: &str) -> String {
+    let ns_list: Vec<String> = source
+        .lines()
+        .filter_map(|l| {
+            let t = l.trim_start();
+            t.strip_prefix("use auto.")
+                .map(|rest| {
+                    rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                        .next()
+                        .unwrap_or("")
+                        .to_string()
+                })
+                .filter(|s| !s.is_empty())
+        })
+        .collect();
+    if ns_list.is_empty() {
+        return source.to_string();
+    }
+    let mut out = String::with_capacity(source.len() + 64);
+    for l in source.lines() {
+        let mut line = l.to_string();
+        for ns in &ns_list {
+            let pat = format!("{ns}.");
+            let mut qualified = String::with_capacity(line.len() + 32);
+            let mut last = 0;
+            for (idx, _) in line.match_indices(&pat) {
+                let boundary_ok = idx == 0 || {
+                    let prev = line[..idx].chars().next_back().unwrap();
+                    !(prev.is_ascii_alphanumeric() || prev == '_' || prev == '.')
+                };
+                if boundary_ok {
+                    qualified.push_str(&line[last..idx]);
+                    qualified.push_str("auto.");
+                    qualified.push_str(&pat);
+                    last = idx + pat.len();
+                }
+            }
+            qualified.push_str(&line[last..]);
+            line = qualified;
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+/// PLAN-633: 内嵌 demo 的 store 接收者限定。画廊宿主 VM 编译单元汇集全部
+/// demo 的 store（TodoStore/CalendarStore/NotesStore/…），demo 源里的泛型
+/// 接收者 `store.Method()` 在多 store 下触发 plan-446 A1 歧义硬错（宿主
+/// 启动即致命）；`.store.field` 同理依赖 `store` 别名的单点注册。发射时把
+/// `store.`（含 `.store.`）统一改写为真名限定 `TodoStore.`——qualified 调
+/// 用经 alias 表直定位（handler_codegen plan-446 A1 sanctioned 形态），
+/// 不做方法名匹配。仅当该 demo 恰好声明一个 store 时改写（0/≥2 个保持
+/// 原样：前者无 store 可指，后者 `store.` 语义本就歧义）。
+fn store_qualify_source(source: &str, store_names: &[String]) -> String {
+    if store_names.len() != 1 {
+        return source.to_string();
+    }
+    let name = &store_names[0];
+    let mut out = String::with_capacity(source.len() + 32);
+    let mut last = 0;
+    for (idx, _) in source.match_indices("store.") {
+        let boundary_ok = idx == 0 || {
+            let prev = source[..idx].chars().next_back().unwrap();
+            !(prev.is_ascii_alphanumeric() || prev == '_')
+        };
+        if boundary_ok {
+            out.push_str(&source[last..idx]);
+            out.push_str(name);
+            out.push('.');
+            last = idx + "store.".len();
+        }
+    }
+    out.push_str(&source[last..]);
+    out
+}
+
+/// 扫描 demo 发射面（demo 源 + front 模块内容）中的 `store <Name> {` 声明。
+fn scan_store_decls(sources: impl Iterator<Item = String>) -> Vec<String> {
+    let mut names = Vec::new();
+    for content in sources {
+        for l in content.lines() {
+            let t = l.trim_start();
+            if let Some(rest) = t.strip_prefix("store ") {
+                let name = rest
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .next()
+                    .unwrap_or("");
+                if !name.is_empty() && !names.contains(&name.to_string()) {
+                    names.push(name.to_string());
                 }
             }
         }
-        if !replaced {
-            out.push_str(l);
-            out.push('\n');
-        }
     }
-    out
+    names
 }
 
 /// PLAN-633: back 链传递闭包收集（键=规范化裸名，值=文件内容）。
@@ -8890,7 +9113,7 @@ widget Helper {
 
         let rows = vec![fullstack_demo_row(
             "013-x",
-            "use my_store: MyStore\n\nwidget App {\n    view {\n        text \"hi\"\n    }\n}\n",
+            "use my_store: MyStore\n\nwidget App {\n    view {\n        text f\"${.store.items.len()}\"\n    }\n    on {\n        .Init -> {\n            store.Init()\n        }\n    }\n}\n",
         )];
         let gallery = dir.path().join("src").join("gallery");
         let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
@@ -8899,13 +9122,18 @@ widget Helper {
 
         let demos = gallery.join("demos");
         let ns = "d013x";
-        // demo 本体：use 改写 + widget 改名
+        // demo 本体：use 改写 + widget 改名 + store 接收者限定
         let demo_src = fs::read_to_string(demos.join("013-x.at")).unwrap();
         assert!(demo_src.contains("widget Demo013X {"), "renamed decl");
         assert!(
             !demo_src.contains("use back."),
             "no raw back use may remain: {demo_src}"
         );
+        assert!(
+            demo_src.contains("MyStore.Init()") && demo_src.contains(".MyStore.items"),
+            "store receiver qualified to real name: {demo_src}"
+        );
+        assert!(!demo_src.contains("store.Init()"), "generic receiver gone");
         // front 模块：`use back.api:` → `use <ns>_api:`（改写后级联发射）
         let store_src = fs::read_to_string(demos.join(format!("{ns}_my_store.at"))).unwrap();
         assert!(
