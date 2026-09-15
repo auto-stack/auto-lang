@@ -6793,6 +6793,10 @@ mod plan066_native_widget_tests;
 #[cfg(test)]
 mod plan627_qualified_api_tests;
 
+// PLAN-634 T-03: a2r 语句位置块尾分号语料（auto-term DEBTS #18 根修）。
+#[cfg(test)]
+mod plan634_block_tail_semi_tests;
+
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;

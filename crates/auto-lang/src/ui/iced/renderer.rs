@@ -3449,10 +3449,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     // iconfile → hicon → lucide）。Plan 515 D1：hicon:<slot> =
                     // native 真图标（raster——486 占位清偿；14px 与邻位 lucide
                     // 图标同档）。两 raster 源合流同一元素臂。
+                    // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
+                    // 回退 14px（462 档）——大框小图实测反馈闭环。
+                    // PLAN-018-FU7：iconfile 按显示档装载（512 直挂经无
+                    // mipmap 的 Linear min_filter 缩 ~28× 硬边——见
+                    // icon_file::load_sized 注）。
+                    let icon_px = iced_style
+                        .as_ref()
+                        .and_then(|is| is.font_size.as_ref())
+                        .map(font_size_to_f32)
+                        .unwrap_or(14.0);
                     let raster_icon: Option<iced::widget::image::Handle> = {
-                        if let Some(handle) = crate::ui::iced::icon_file::load(
+                        if let Some(handle) = crate::ui::iced::icon_file::load_sized(
                             icon_name,
                             crate::ui::style::theme::dark_mode(),
+                            icon_px,
                         ) {
                             Some(handle)
                         } else {
@@ -3466,13 +3477,6 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                     };
                     if let Some(handle) = raster_icon {
-                        // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
-                        // 回退 14px（462 档）——大框小图实测反馈闭环。
-                        let icon_px = iced_style
-                            .as_ref()
-                            .and_then(|is| is.font_size.as_ref())
-                            .map(font_size_to_f32)
-                            .unwrap_or(14.0);
                         let icon_el = iced::widget::image(handle)
                             .width(iced::Length::Fixed(icon_px))
                             .height(iced::Length::Fixed(icon_px));
@@ -4137,7 +4141,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => {
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
                 // -1 = 跟随主题,绘制期解析)。
@@ -4163,6 +4167,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
                     on_input: on_input.clone(),
+                    shortcuts: shortcuts.clone(),
                     width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0 * crate::ui::terminal::iced::PAD),
                     height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0 * crate::ui::terminal::iced::PAD),
                 }
@@ -5142,10 +5147,25 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // PLAN-018：iconfile:<stem> = 双主题位图（回退链首位）。
                 // Plan 515 D1：hicon:<slot> = native 真图标 raster
                 //（window_thumbnail 的 fallback_icon / image 直挂两消费面）。
+                // PLAN-018-FU7：显式 Fixed 宽/高 → 按显示档装载；无显式
+                // 尺寸档 → 512 原生档（回退链同源）。
+                let style_for_px = style.as_ref().map(IcedStyle::from_style);
+                let display_px = match (
+                    style_for_px.as_ref().and_then(|s| s.width.as_ref()),
+                    style_for_px.as_ref().and_then(|s| s.height.as_ref()),
+                ) {
+                    (Some(IcedSize::Fixed(w)), _) => Some(*w),
+                    (_, Some(IcedSize::Fixed(h))) => Some(*h),
+                    _ => None,
+                };
                 let raster_icon: Option<iced::widget::image::Handle> = {
-                    if let Some(handle) =
-                        crate::ui::iced::icon_file::load(&src, crate::ui::style::theme::dark_mode())
-                    {
+                    let dark = crate::ui::style::theme::dark_mode();
+                    let iconfile = display_px
+                        .and_then(|px| {
+                            crate::ui::iced::icon_file::load_sized(&src, dark, px)
+                        })
+                        .or_else(|| crate::ui::iced::icon_file::load(&src, dark));
+                    if let Some(handle) = iconfile {
                         Some(handle)
                     } else {
                         crate::ui::iced::native_icon::parse_field(&src).map(|icon| {
@@ -6699,7 +6719,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
         // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
         // (数据已在 convert_terminal 物化)。
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => {
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
             AbstractView::Terminal {
                 key,
                 cols,
@@ -6713,6 +6733,10 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 cursor_row,
                 cursor_col,
                 scheme,
+                shortcuts: shortcuts
+                    .iter()
+                    .map(|(k, m)| (k.clone(), IcedMessage::from_dynamic(m)))
+                    .collect(),
                 style,
             }
         }

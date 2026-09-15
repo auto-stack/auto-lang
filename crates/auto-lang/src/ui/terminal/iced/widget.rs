@@ -144,6 +144,10 @@ pub struct Terminal<M> {
     /// 键入信号:有 handler 时 widget 才捕获键盘(载荷进 TerminalCore
     /// 队列,宿主引擎泵经 auto.term 排空裸写;消息本身不带载荷)。
     pub on_input: Option<M>,
+    /// PLAN-019 D4:应用级捷径表(规范化键名 → 消息)。命中 → 发消息
+    /// (不落 VT 队列、不触发 on_input);未命中 → 原样 key_event_to_vt
+    /// (AC-04 未命中零变)。空表 = 零开销直通。
+    pub shortcuts: Vec<(String, M)>,
     pub width: Length,
     pub height: Length,
 }
@@ -228,7 +232,66 @@ fn key_event_to_vt(key: &keyboard::Key, text: Option<&str>, mods: Modifiers) -> 
     }
 }
 
-impl<M> Terminal<M> {
+/// PLAN-019 D4:键盘事件 → 捷径表规范名("ctrl.shift.e" 族;命名沿
+/// Textarea key_press_to_binding_name 的 ctrl./alt./shift. 前缀约定)。
+/// 差异:字符键 shift 恒前缀 + 小写化 —— Ctrl+Shift+E 在平台合成字符
+/// 大小写不定(winit 'E'/'e'),规范化后恒 "ctrl.shift.e" 不漂移。
+/// 裸字符(无修饰)返回小写名 —— 表由应用声明,空表零扰。
+fn terminal_key_binding_name(key: &keyboard::Key, mods: Modifiers) -> String {
+    use keyboard::key::Named;
+    let base = match key {
+        keyboard::Key::Character(s) => {
+            let c = s.chars().next().unwrap_or(' ');
+            if c == ' ' {
+                return String::new();
+            }
+            c.to_ascii_lowercase().to_string()
+        }
+        keyboard::Key::Named(named) => match named {
+            Named::Tab => "tab",
+            Named::ArrowUp => "up",
+            Named::ArrowDown => "down",
+            Named::ArrowLeft => "left",
+            Named::ArrowRight => "right",
+            Named::Enter => "enter",
+            Named::Escape => "escape",
+            Named::Home => "home",
+            Named::End => "end",
+            Named::Delete => "delete",
+            Named::Backspace => "backspace",
+            Named::PageUp => "pageup",
+            Named::PageDown => "pagedown",
+            Named::Space => "space",
+            _ => return String::new(),
+        }
+        .to_string(),
+        _ => return String::new(),
+    };
+    let mut name = String::new();
+    if mods.control() {
+        name.push_str("ctrl.");
+    }
+    if mods.alt() {
+        name.push_str("alt.");
+    }
+    if mods.shift() {
+        name.push_str("shift.");
+    }
+    name + &base
+}
+
+impl<M: Clone> Terminal<M> {
+    /// 捷径表命中判定(纯函数;update 拦截面调用;空表 O(1) 直通)。
+    fn shortcut_hit(&self, name: &str) -> Option<M> {
+        if self.shortcuts.is_empty() {
+            return None;
+        }
+        self.shortcuts
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, m)| m.clone())
+    }
+
     /// Get-or-create the terminal state for `key` (geometry diffed in).
     pub fn new(key: &str, cols: u16, rows: u16) -> Self {
         Self {
@@ -239,6 +302,7 @@ impl<M> Terminal<M> {
             on_select: None,
             on_menu: None,
             on_input: None,
+            shortcuts: Vec::new(),
             width: Length::Fixed(cols as f32 * cell_w() + 2.0 * PAD),
             height: Length::Fixed(rows as f32 * CELL_H + 2.0 * PAD),
         }
@@ -372,6 +436,19 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // 键入捕获:聚焦(点击过本组件)且菜单未开时,把按键翻译成 VT 串
         // 入队并上抛 on_input(载荷走 TerminalCore 队列,消息只当触发器)。
         if state.focused && state.menu_open.is_none() {
+            // PLAN-019 D4:捷径表前置拦截 —— 命中即吞(发捷径消息,不落
+            // VT 队列、不触发 on_input,双通道都断);未命中原样落 VT
+            // (终端内程序不受扰;裸 Ctrl+C/Z 等零变)。IME 提交串非
+            // Keyboard 事件,天然不经本面。
+            if let iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
+                let name = terminal_key_binding_name(key, *modifiers);
+                if !name.is_empty() {
+                    if let Some(msg) = self.shortcut_hit(&name) {
+                        shell.publish(msg);
+                        return;
+                    }
+                }
+            }
             let payload = match event {
                 iced::Event::Keyboard(keyboard::Event::KeyPressed { key, text, modifiers, .. }) => {
                     key_event_to_vt(key, text.as_deref(), *modifiers)
@@ -681,11 +758,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     bounds: Rectangle::new(Point::new(x, y), Size::new(w, CELL_H)),
                     ..renderer::Quad::default()
                 },
-                Background::Color(Color::from_rgba(0.2, 0.3, 0.45, 0.9)),
-            );
-            let para = plain_para(preedit, w);
-            renderer.fill_paragraph(&para, Point::new(x, y), pal_fg, bounds);
-        }
+            Background::Color(Color::from_rgba(0.2, 0.3, 0.45, 0.9)),
+        );
+        fill_cached_para(renderer, preedit, w, Point::new(x, y), pal_fg, bounds);
+    }
 
         // 滚动偏移 badge(offset > 0 时右上角指示;auto-term 同款)。
         let offset = self.scroll_offset;
@@ -700,8 +776,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 renderer::Quad { bounds: bg_bounds, ..renderer::Quad::default() },
                 Background::Color(pal_bg),
             );
-            let para = plain_para(&badge, badge_w);
-            renderer.fill_paragraph(&para, bg_bounds.position(), pal_fg, bounds);
+            fill_cached_para(renderer, &badge, badge_w, bg_bounds.position(), pal_fg, bounds);
         }
 
         // 菜单层:右键打开的 Copy/Paste/Select All/Interrupt 浮层,悬停项反色。
@@ -828,6 +903,78 @@ mod key_to_vt_tests {
         // Ctrl+非字母(如 Ctrl+1)不透传。
         assert_eq!(vt(Key::Character("1".into()), Some("1"), ctrl), None);
     }
+
+    // ── PLAN-019 D4:捷径表命名 + 命中判定 ──────────────────────────
+
+    use super::terminal_key_binding_name;
+    use iced::Length;
+
+    fn name(key: Key, mods: Modifiers) -> String {
+        terminal_key_binding_name(&key, mods)
+    }
+
+    fn mods(ctrl: bool, alt: bool, shift: bool) -> Modifiers {
+        let mut m = Modifiers::default();
+        if ctrl {
+            m |= Modifiers::CTRL;
+        }
+        if alt {
+            m |= Modifiers::ALT;
+        }
+        if shift {
+            m |= Modifiers::SHIFT;
+        }
+        m
+    }
+
+    #[test]
+    fn terminal_key_binding_names_wt_style() {
+        // WT 风格组合键:大小写合成漂移吸收(Ctrl+Shift+E → 'E'/'e' 恒同名)。
+        assert_eq!(name(Key::Character("E".into()), mods(true, false, true)), "ctrl.shift.e");
+        assert_eq!(name(Key::Character("e".into()), mods(true, false, true)), "ctrl.shift.e");
+        assert_eq!(name(Key::Character("W".into()), mods(true, false, true)), "ctrl.shift.w");
+        assert_eq!(name(Key::Named(Named::Tab), mods(true, false, true)), "ctrl.shift.tab");
+        assert_eq!(name(Key::Named(Named::ArrowLeft), mods(true, false, true)), "ctrl.shift.left");
+        assert_eq!(name(Key::Named(Named::ArrowRight), mods(true, false, true)), "ctrl.shift.right");
+        assert_eq!(name(Key::Named(Named::ArrowUp), mods(true, false, true)), "ctrl.shift.up");
+        assert_eq!(name(Key::Named(Named::ArrowDown), mods(true, false, true)), "ctrl.shift.down");
+        // 裸控制码不进捷径命名冲突面:Ctrl+C → "ctrl.c"(表未声明即不命中)。
+        assert_eq!(name(Key::Character("c".into()), mods(true, false, false)), "ctrl.c");
+        // 修饰全无的普通字符照常命名(表声明才拦截)。
+        assert_eq!(name(Key::Character("a".into()), Modifiers::default()), "a");
+    }
+
+    #[test]
+    fn terminal_shortcut_hit_table_semantics() {
+        use super::Terminal;
+        let t = Terminal::<u8> {
+            core: crate::ui::terminal::terminal("shortcut-hit-test", 80, 24),
+            key: "shortcut-hit-test".to_string(),
+            scroll_offset: 0,
+            preedit: None,
+            on_select: None,
+            on_menu: None,
+            on_input: None,
+            shortcuts: vec![
+                ("ctrl.shift.t".to_string(), 1u8),
+                ("ctrl.shift.e".to_string(), 2u8),
+            ],
+            width: Length::Fixed(0.0),
+            height: Length::Fixed(0.0),
+        };
+        // 命中 → 消息。
+        assert_eq!(t.shortcut_hit("ctrl.shift.t"), Some(1u8));
+        assert_eq!(t.shortcut_hit("ctrl.shift.e"), Some(2u8));
+        // 未命中(裸 Ctrl+C/普通字符)→ None,原样落 VT。
+        assert_eq!(t.shortcut_hit("ctrl.c"), None);
+        assert_eq!(t.shortcut_hit("a"), None);
+        // 空表直通。
+        let empty = Terminal::<u8> {
+            shortcuts: Vec::new(),
+            ..t
+        };
+        assert_eq!(empty.shortcut_hit("ctrl.shift.t"), None);
+    }
 }
 
 /// run 聚合:同前景色的连续 cell 合并为一个 span,前景色烘焙进
@@ -900,6 +1047,40 @@ fn plain_para(text: &str, width: f32) -> Para {
         shaping: Shaping::Basic,
         wrapping: Wrapping::None,
     })
+}
+
+/// badge/preedit 纯文本段落缓存(强引用静态存活;PLAN-634 T-02,菜单标签
+/// MENU_PARAS 同族根修)。根因同 015 R015-F1:iced wgpu 渲染层
+/// fill_paragraph 排队的是 `paragraph.downgrade()` 弱引用,flush 时
+/// upgrade 失败即静默丢弃——draw 内局部段落 fill 后析构,文字必然消失
+/// (quad 为值拷贝不受影响)。与菜单标签(静态串,OnceLock 一次建)不同,
+/// badge/preedit 内容动态——键 (text,width),容量封顶溢出即清空:滚动
+/// 偏移/IME 组合串是短瞬态值,重建只是一次小区段 shaping,不值得 LRU。
+/// 不变式:条目只增(封顶清空除外),fill 持有的强引用活在静态缓存,
+/// flush 时 upgrade 恒成功,无悬垂。
+static PLAIN_PARAS: OnceLock<Mutex<HashMap<(String, u32), Para>>> = OnceLock::new();
+
+/// 封顶容量:badge 偏移值 + preedit 组合串的活跃集合远小于此。
+const PLAIN_PARAS_CAP: usize = 64;
+
+/// 从静态缓存取段落并 fill(强引用存活到 flush;guard 在 fill 排队后才
+/// 析构——row 缓存同款纪律)。
+fn fill_cached_para(
+    renderer: &mut iced::Renderer,
+    text: &str,
+    width: f32,
+    position: Point,
+    color: Color,
+    clip_bounds: Rectangle,
+) {
+    let map = PLAIN_PARAS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = map.lock().unwrap();
+    if guard.len() >= PLAIN_PARAS_CAP {
+        guard.clear();
+    }
+    let key = (text.to_owned(), width.to_bits());
+    let para = guard.entry(key).or_insert_with(|| plain_para(text, width));
+    renderer.fill_paragraph(para, position, color, clip_bounds);
 }
 
 /// IME 聚焦后英文起步重试(AUTO_IME_TRACE=1 时 stderr 留痕,随宿主

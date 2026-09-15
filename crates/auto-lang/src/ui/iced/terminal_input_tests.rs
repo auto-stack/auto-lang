@@ -32,6 +32,7 @@ fn terminal_view() -> View<KeyMsg> {
         scroll_offset: 0,
         preedit: None,
         scheme: crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME,
+        shortcuts: Vec::new(),
         on_select: None,
         on_menu: None,
         on_input: Some(KeyMsg::KeyIn),

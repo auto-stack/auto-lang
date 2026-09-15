@@ -245,7 +245,7 @@
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
 | auto-playground | active | 8 | [auto-playground/project.md](auto-playground/project.md) |
-| widgets | active | 3 | [widgets/project.md](widgets/project.md) |
+| widgets | active | 4 | [widgets/project.md](widgets/project.md) |
 | forge-ui | active | 4 | [forge-ui/project.md](forge-ui/project.md) |
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
 | playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
@@ -275,6 +275,7 @@
 | registry | 生成的 Vue3 组件原语（10 个 widget 目录） | active |
 | cli | `npx @auto-ui/widgets add/list` 命令 | active |
 | styles | Tailwind 配置与预编译 CSS 构建（build-styles.cjs / src/input.css） | active |
+| terminal-iced-draw | terminal iced widget 绘制期契约（draw 段落强引用规则 + 像素金样环境契约；auto-lang 侧,Plan 634） | active |
 
 </details>
 
