@@ -390,7 +390,12 @@ next: merge（/auto-plan:merge）`
   零差异）。
 - `archived`：`git mv` → `docs/plans/archive/631-autoui-interaction-
   primitives.md`，frontmatter `status: archived`（本提交）。
-- `cleaned`：见下补记。
+- `cleaned`：✅（2026-09-15）——两 worktree 移除前 wt-guard 双 clean
+  （auto-lang + auto-down 兄弟，无 reparse point）；auto-lang worktree
+  内唯一未跟踪文件为复审探针失败尝试的废截图（已弃，交付证据
+  ctx_menu_open_fallback.png 已随档入库）；`plan-631-dev` 分支删除
+  （was 39dd77b48，merge-base --is-ancestor 落地核验）；组目录
+  `.wt/lang-631/` 已空移除；`git worktree list` 零 lang-631 残留。
 
 ## 10. 待澄清事项
 
