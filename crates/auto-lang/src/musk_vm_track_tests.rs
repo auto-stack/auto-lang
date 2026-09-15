@@ -3958,3 +3958,34 @@ mod musk_vm_track_p066_2_regex_fence {
         assert!(out.contains("123"), "expected 123 (elements intact), got: [{}]", out);
     }
 }
+
+/// PLAN-066 T-12（F-W1）：i18n.t VM 静态路由回归锁。
+mod musk_vm_track_p066_3_i18n_route {
+    use crate::run_with_capture;
+
+    /// 合成作用域内 `i18n.t(key)`——接收者 i18n 不编译为实例变量
+    /// （composable facade 声明，组件级 `let i18n = useI18n()` 不进
+    /// 合成体）。回归面=codegen 第二处 is_static_method 白名单漏
+    /// "i18n"，致 receiver Ident("i18n") 走实例编译 → Undefined
+    /// variable → WikiNav_dropText/MentionInput 标签 computed 导出
+    /// 毒化。锁面为编译毒化消除；运行期查表（i18n_lookup）随 ui
+    /// 构建，非 ui 的 shim 缺席回退不属本锁。
+    #[test]
+    fn i18n_t_dot_call_not_poisoned_as_undefined_variable() {
+        let code = "fn main() {\n    print(i18n.t(\"wiki.dropHere\"))\n}";
+        match run_with_capture(code) {
+            Ok((_, stdout)) => {
+                eprintln!("[P066-3] i18n.t ok => [{}]", stdout);
+            }
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                eprintln!("[P066-3] i18n.t err => {}", msg);
+                assert!(
+                    !msg.contains("Undefined variable: i18n"),
+                    "i18n.t receiver compiled as instance variable (T-12 regression): {}",
+                    msg
+                );
+            }
+        }
+    }
+}

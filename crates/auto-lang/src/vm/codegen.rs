@@ -9064,7 +9064,15 @@ impl Codegen {
                                     // 吃到 [占位 0, 结果] 而非 [a, 结果]——首轮
                                     // "正确"纯属 a=0 巧合；m12/m16/kanban
                                     // source_root 同族）。
-                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math" | "sys" | "file"
+                                    // PLAN-066 T-12（F-W1）：i18n 补入——静态分支
+                                    // 已路由 i18n.t→auto.i18n.t（id2460 惰性注册
+                                    // 必解析成功），但本表漏项使 receiver Ident
+                                    // ("i18n") 仍走实例编译→Undefined variable→
+                                    // computed 导出毒化（WikiNav_dropText/
+                                    // MentionInput 标签×2 实证）。i18n 在合成
+                                    // 作用域无绑定（composable facade，063），
+                                    // 永远不该编译 receiver。
+                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math" | "sys" | "file" | "i18n"
                                         | "Array" | "Object" | "JSON" | "Math" | "Date")
                                         || self.is_type_name_heuristic(obj_name)
                                         || self.is_type(obj_name)
