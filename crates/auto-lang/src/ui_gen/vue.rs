@@ -27375,6 +27375,15 @@ widget ClickZone {
         test_a2vue("012_icon_state").expect("a2vue icon_state golden mismatch");
     }
 
+    /// os-config OS-015/016: select 双形态选项 + value/label 契约（Web 腿）——
+    /// `test/a2vue/013_select_children/input.at` 头注；VM 腿缺陷
+    /// （convert_select 循环选项漏收等）由 examples/select_demo.at + 上游
+    /// 修复计划覆盖。
+    #[test]
+    fn test_a2vue_select_children() {
+        test_a2vue("013_select_children").expect("a2vue select_children golden mismatch");
+    }
+
     /// Plan 408: `component fn` → independent Vue SFC synthesis.
     ///
     /// `component fn Card(title str)` must be synthesized to its own Card.vue
