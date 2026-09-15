@@ -1844,6 +1844,14 @@ pub struct HostCtx {
     pub desktop_fields: ShellFields,
 }
 
+impl Drop for DesktopSession {
+    fn drop(&mut self) {
+        // KD-062 滞留脸根修（见 shutdown_outproc_children 文档）：会话
+        // 消亡（含全部 iced::exit() 面）统一收割 outproc 子进程。
+        self.shutdown_outproc_children();
+    }
+}
+
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
 /// 459：多 App 多 OS 窗口（iced::daemon，每窗口渲染各自 AppSession）。
 pub struct DesktopSession {
@@ -2672,6 +2680,22 @@ fn spawn_outproc_child(
             // 唤醒：连上即关的探测连接（500ms 超时兜底——serve 线程可能
             // 恰在两次 serve_once 间隙，连接失败无碍旗标退出）。
             let _ = crate::ui::desktop_protocol::transport::connect(pipe, 500);
+        }
+    }
+
+    /// PLAN-066 T-03（KD-062）：会话消亡时统一收割 outproc 子进程。
+    /// Rust `Child` Drop 既不 kill 也不 wait——此前生产路径只在测试里
+    /// drain(kill)，会话结束即与子进程失联：子 auto.exe（Plan 508
+    /// `--autodesk-incubate` re-exec，release ~66MB 档）存活过桌面会话=
+    /// KNOWN-DEBT KD-062「MCP snapshot ~66MB 子 auto 进程不退」的真身；
+    /// ~43MB 瞬态=broker attach 失败自退的同族。收割入口挂
+    /// [`DesktopSession::drop`] 兜底而非散布在各 iced::exit() 点：run()
+    /// 返回时 state 必经 Drop，协议失败等未显式停机的退出面同样覆盖；
+    /// 先行 drain 的测试路径 Drop 见空 vec 无操作。
+    pub fn shutdown_outproc_children(&mut self) {
+        for mut child in self.desktop.outproc_children.drain(..) {
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
 
@@ -5698,6 +5722,44 @@ mod tests {
         ds.wm_set_layout(crate::ui::layout::LayoutMode::Free);
         let host = ds.host.as_ref().unwrap();
         assert!(host.wm.pending_native_geometry.is_empty(), "free 模式槽位恒等");
+    }
+
+    // ---- PLAN-066 T-03（KD-062）：会话消亡收割 outproc 子进程 ----
+
+    /// 回归锁：DesktopSession Drop 必须 kill+wait 全部 outproc 子进程。
+    /// Rust `Child` Drop 不杀不 wait——滞留子 auto.exe（~66MB 档）即
+    /// KNOWN-DEBT KD-062「MCP snapshot 拉起子 auto 进程不退」真身。
+    #[test]
+    fn session_drop_reaps_outproc_children() {
+        let mut ds = DesktopSession::empty(None);
+        // 长命子进程打桩：Windows ping（无外部依赖，30s 远超测试窗）。
+        let mut child = std::process::Command::new("ping")
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn long-lived probe child");
+        let pid = child.id();
+        ds.desktop.outproc_children.push(child);
+
+        drop(ds);
+
+        let probe = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ 'ALIVE' }} else {{ 'GONE' }}"
+                ),
+            ])
+            .output()
+            .expect("probe child pid");
+        let out = String::from_utf8_lossy(&probe.stdout).to_string();
+        assert!(
+            out.contains("GONE"),
+            "outproc child pid {pid} must be reaped on session drop, got: {}",
+            out.trim()
+        );
     }
 
     // ---- Plan 486 T1：拖入手势会话字段（NativeDragOver 消息面）----
