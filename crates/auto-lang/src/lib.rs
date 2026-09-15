@@ -3680,10 +3680,14 @@ fn register_transitive_widgets_inner(
             for stmt in &sub_ast.stmts {
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
-                        // 只注册 use 子句明确要的(或通配的),且 registry 还没有的
-                        // Plan 545: bare `use mod` 不再视为通配——widget/store
-                        // 具名可见须 `use mod: Name` 或 `use mod: *` 显式 opt-in
+                        // 只注册 use 子句明确要的(或通配/裸装载的),且 registry
+                        // 还没有的。PLAN-545 回归修复（069 收口转介收回）：
+                        // bare `use mod` 的组件发现语义恢复（items.is_empty()
+                        // 臂）——545 的"bare=命名空间"针对 fn 符号冲突面；
+                        // UI 子件码道收紧后裸 use 孙件 handler 不再合成
+                        // （同 demo CustomScrollbar 断裂）。
                         if (use_stmt.is_wildcard
+                            || use_stmt.items.is_empty()
                             || use_stmt.items.iter().any(|s| s == &child_widget.name))
                             && registry.get(&child_widget.name).is_none()
                         {
@@ -3892,7 +3896,17 @@ fn build_dynamic_component_inner(
                     for stmt in &mod_ast.stmts {
                         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                             if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                // PLAN-545 回归修复（069 收口转介收回）：bare
+                                // use 的**组件发现**语义恢复——`use custom_scrollbar`
+                                //（无 items 无通配）装载该模块的子件。545 的
+                                // "bare=命名空间"裁定针对 fn 符号冲突面
+                                // （compile.rs/linker），此处是 UI 子件收集码道；
+                                // 收紧时连带删掉 items.is_empty() 臂令裸 use 子件
+                                // 的 handler 不再合成（handler_<Child>_* 导出
+                                // 缺席→运行时派发全灭，demo CustomScrollbar
+                                // 拖拽死——vm-smoke 组 4(d) 实证）。
                                 if use_stmt.is_wildcard
+                                    || use_stmt.items.is_empty()
                                     || use_stmt.items.iter().any(|s| s == &child_widget.name)
                                 {
                                     // PR-3b Step 4: collect the child WidgetDecl
@@ -3914,7 +3928,10 @@ fn build_dynamic_component_inner(
                             // like `.notes = list_notes()` silently no-op and the view
                             // renders an empty list.
                             let name = store_decl.name.clone();
+                            // 069 同款回归修复：bare use 亦装载 store（组件
+                            // 发现语义，见上方 WidgetDecl 臂注）。
                             if use_stmt.is_wildcard
+                                || use_stmt.items.is_empty()
                                 || use_stmt.items.iter().any(|s| *s == name.as_str())
                             {
                                 child_decls.push(crate::ast::ui::WidgetDecl {
