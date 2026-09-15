@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-545
-status: executing              # R1 needs_fix：任务 11 重开（F1 文档措辞）
+status: reviewed                # R2 pass（2026-09-15）；下一站 merge
 feature_name: use-namespace-semantics
 author: [zhaopuming]
 created_at: 2026-09-04
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/parser, auto-lang/compiler, auto-lang/vm, auto-lang/trans, auto-lang/module-system]
-current_step: 11
+current_step: 12
 total_steps: 12
 ---
 
@@ -316,14 +316,14 @@ use/TypeStore 语义交界的全面排查（归档 621 文件 + 在途计划 gre
     completion.rs `items.is_empty()` 为补全结果空检查（非 use 语义）。goto-def/
     补全按模块路径解析，无裸平铺假设——零改动。全量 LSP 冒烟未单独跑
     （语义面无改动的构造性结论）。
-11. [ ] 文档更新 10-language-syntax.md + specs 回写；`cargo test -p auto-lang --test docs_gen`。
+11. [x] 文档更新 10-language-syntax.md + specs 回写；`cargo test -p auto-lang --test docs_gen`。
     `[🔁 R545-F1 复审退回 2026-09-15]` use 节与 spec 增量对 `db.Note` 限定类型
     访问超诺（语法层预存拒绝，R1 探针实证）——重开本任务，修两处措辞为行为
     精确形态（限定函数访问 ✓；类型引用须具名导入），docs_gen 复跑。
-    `[✅ 已完成 2026-09-15]` commit aa09c75c6：10-language-syntax.md use 节改写
-    （命名空间语义五条：bare=命名空间/`: *`=显式全量+冲突检测/具名遮蔽/传递
-    隔离/迁移示例）；module-resolution spec 增「导入语义（Plan 545）」节
-    （worktree 内准备，merge 时发布）。`docs_gen` 4/4 绿。
+    `[✅ 修复轮 866772379 复完成]` 10-language-syntax.md 示例注释+命名空间
+    语义条、module-resolution spec 导入语义节——`db.Note{}` 类型位标注
+    "语法层未支持（R1 探针实证 545 前后同拒），类型须具名导入"；残余超诺
+    扫描清零；`docs_gen` 4/4 复跑绿。
 12. [x] 全量门禁 `cargo t` → `cargo tf`，复审记录。
    `[✅ 已完成 2026-09-15]` 门禁全量：`cargo t --no-fail-fast` 4913 绿/25 红
    （**全部预存**——stash 基线同款 diff 在案；icon×2 亦 stash 复证预存）；
@@ -337,6 +337,48 @@ use/TypeStore 语义交界的全面排查（归档 621 文件 + 在途计划 gre
    Ideas 种子数据），dev server 探活后停，零改动回归双端全过。
 
 ## 复审记录
+
+### R2 前置 — 修复轮 work 记录（2026-09-15）
+
+```
+stage: work | plan_id: PLAN-545 | plan_revision: 1 | outcome: pass
+code_commit: 866772379（worktree plan-545-dev；base aa09c75c6）
+task_ids: 11（R545-F1）；F2/F3 为债候选不阻塞
+```
+
+- F1 根修：`docs/design/10-language-syntax.md`（示例注释 + 命名空间语义条）
+  与 `docs/specs/.../module-resolution.md` 导入语义节——`db.Note` 限定类型
+  访问改为行为精确表述（限定**函数**调用可用；类型引用不经命名空间，
+  `db.Note {}` 类型位为语法层未支持形态，类型须具名导入 `use db: Note`）。
+- 复跑：`docs_gen` 4/4 绿；残余超诺扫描清零（仅修正后否定语境在）。
+
+### R2 — 2026-09-15，outcome: **pass**
+
+```
+stage: review | plan_id: PLAN-545 | plan_revision: 1 | outcome: pass
+reviewed_commit: 866772379（worktree plan-545-dev 树净）
+base_commit: d74f34e50 | dependency_revisions: auto-down @ 7ee32538（不变）
+spec_inputs: 修正后 spec 增量（module-resolution#导入语义，F1 措辞已对齐
+  已验证行为；frontmatter supersedes/new/touched 终值有效）
+```
+
+**独立性声明**：R2 与修复轮同会话——结论从工件重构：复读 866772379 实际
+diff（docs-only 2 文件 10+/5-，语义代码零触碰）、残余超诺扫描、docs_gen 复跑。
+
+**验收结果**：
+
+| AC | 结果 | 证据（R2） |
+|---|---|---|
+| AC-1..AC-6 | **pass** | R1 证据复用——**复用理由**：aa09c75c6→866772379 diff 为 2 个文档文件，语义代码/测试/依赖零变化（diffstat 复核） |
+| AC-7 | **pass** | F1 根修：文档与 spec 措辞对齐已验证行为（限定函数访问 ✓ / 类型须具名导入，含语法层未支持注记）；`docs_gen` 4/4；残余 `db.Note` 扫描仅剩否定语境 |
+
+**R1 发现闭合核对**：F1 根修+复跑 ✓；F2（AC-5 行为载体预存断裂）/F3（测试
+条目 5）维持债候选（merge 时 KNOWN-DEBT 登记裁定）；卫生项（wip 标题）记档
+不重写历史。
+
+**Next**：pass → `/auto-plan:merge`（沉淀 spec 增量 + 归档 + worktree 清理；
+KNOWN-DEBT 登记三项：传递 wildcard merge 维持、host↔aavm bare 分叉、
+stdlib `use auto.*` 模块加载解析不兼容（R545-F2 载体断裂根因））。
 
 ### R1 — 2026-09-15，outcome: **needs_fix**
 
