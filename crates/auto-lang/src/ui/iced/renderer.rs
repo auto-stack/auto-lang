@@ -4141,7 +4141,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => {
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
                 // -1 = 跟随主题,绘制期解析)。
@@ -4167,6 +4167,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
                     on_input: on_input.clone(),
+                    shortcuts: shortcuts.clone(),
                     width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0 * crate::ui::terminal::iced::PAD),
                     height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0 * crate::ui::terminal::iced::PAD),
                 }
@@ -6718,7 +6719,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
         // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
         // (数据已在 convert_terminal 物化)。
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => {
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
             AbstractView::Terminal {
                 key,
                 cols,
@@ -6732,6 +6733,10 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 cursor_row,
                 cursor_col,
                 scheme,
+                shortcuts: shortcuts
+                    .iter()
+                    .map(|(k, m)| (k.clone(), IcedMessage::from_dynamic(m)))
+                    .collect(),
                 style,
             }
         }

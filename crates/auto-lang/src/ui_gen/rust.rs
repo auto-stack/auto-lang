@@ -2470,9 +2470,28 @@ impl RustGenerator {
                 // 014 直键入:oninput 信号位发射(Some(AppMsg::X));载荷走
                 // TerminalCore 键入队列(宿主引擎泵排空),消息不带载荷。
                 if tag == "terminal" {
-                    let key = props.get("key")
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
-                        .unwrap_or_else(|| "main".to_string());
+                    // PLAN-019 T-00 勘定:key 支持 .field 动态绑定(多 Pane
+                    // 槽位键 "pane-<id>" 随 Tab/分屏切换;T-B 布局消费面必需,
+                    // VM 臂 extract_string_with(bindings) 既有同语义)。字面量
+                    // 原样;Ident → self.field 克隆(lines 臂同款);其余回落
+                    // "main"。
+                    let key_expr = match props.get("key") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => format!("\"{s}\".to_string()"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
+                            format!("self.{}.clone()", id.as_str())
+                        }
+                        Some(AuraPropValue::Expr(expr)) => {
+                            // `.field` 实际解析为 FieldAccess(lines 同款回退);
+                            // 只有 self. 前缀的求值可信,其余落 "main"。
+                            let e = self.ast_expr_to_rust(expr);
+                            if e.starts_with("self.") {
+                                format!("{e}.clone()")
+                            } else {
+                                "\"main\".to_string()".to_string()
+                            }
+                        }
+                        _ => "\"main\".to_string()".to_string(),
+                    };
                     let geom = |name: &str, dft: u16| -> String {
                         match props.get(name) {
                             Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}u16"),
@@ -2551,12 +2570,33 @@ impl RustGenerator {
                         }
                         _ => "-1i32".to_string(),
                     };
+                    // PLAN-019 D4:应用级捷径表 —— onkeydown.<键名> 事件收集
+                    // (VM 臂 convert_terminal 收集器同款语义;规范化键名沿
+                    // terminal_key_binding_name:ctrl./alt./shift. 前缀小写)。
+                    let mut shortcut_pairs: Vec<String> = Vec::new();
+                    for (ek, h) in events.iter() {
+                        if let Some(rest) = ek.strip_prefix("onkeydown.") {
+                            let norm = rest
+                                .split('.')
+                                .filter(|seg| {
+                                    !matches!(*seg, "prevent" | "stop" | "exact" | "capture" | "self" | "once")
+                                })
+                                .collect::<Vec<_>>()
+                                .join(".")
+                                .to_lowercase();
+                            if !norm.is_empty() {
+                                let msg = self.handler_to_rust_direct_msg(&h.handler, &h.params);
+                                shortcut_pairs.push(format!("(\"{norm}\".to_string(), {msg})"));
+                            }
+                        }
+                    }
                     return format!(
-                        "View::Terminal {{ key: \"{key}\".to_string(), cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: {on_menu_expr}, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, scheme: {scheme}, style: None }}",
+                        "View::Terminal {{ key: {key_expr}, cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: {on_menu_expr}, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, scheme: {scheme}, shortcuts: vec![{}], style: None }}",
                         geom("cols", 80),
                         geom("rows", 24),
                         cursor("cursor_row"),
                         cursor("cursor_col"),
+                        shortcut_pairs.join(", "),
                     );
                 }
 
@@ -3246,6 +3286,17 @@ impl RustGenerator {
                     // Add children — use .children() for for-loops (which produce Vec<View>),
                     // .child() for single views
                     for child in children {
+                        // PLAN-019 T-00 勘定:row 直属 for 摊平(Plan 407 grid
+                        // 先例推广)——ForLoop 的 col 包装会令 row 内按钮纵向
+                        // 堆叠;横向 spread 才是 row 语义(VM 臂 convert_row
+                        // Plan 047 既有同款)。col 臂不动防扰存量。
+                        if tag == "row" {
+                            if matches!(child, AuraNode::ForLoop { .. }) {
+                                let map_expr = self.generate_for_loop_cells(child);
+                                builder = format!("{}.children({}.collect::<Vec<_>>())", builder, map_expr);
+                                continue;
+                            }
+                        }
                         // Plan 374: ForLoop now produces a single View (wrapped in col().children)
                         // so always use .child() regardless of node type.
                         let child_code = self.generate_view_tree(child);
@@ -7908,6 +7959,121 @@ widget TermApp {{
         assert!(
             without_menu.contains("on_menu: None"),
             "无 onmenu 时保持 None(缺省零扰):\n{without_menu}"
+        );
+    }
+
+    /// PLAN-019 D4 金样:terminal `onkeydown.<键名>` 事件 →
+    /// `shortcuts: vec![("<键名>", AppMsg)]`(应用级捷径表;命中拦截/
+    /// 未命中透传的表来源);同样钉死 key 动态绑定(`key: .field` →
+    /// self.field 克隆,T-B 槽位键形态)。
+    #[test]
+    fn terminal_onkeydown_emits_shortcuts_and_dynamic_key() {
+        let gen_one = || {
+            let src = r#"
+widget TermApp {
+    msg { Init, Tick, KeyIn, Shortcut(int) }
+
+    model {
+        var lines List<str> = []
+        var slotkey str = "pane-1"
+    }
+
+    on {
+        .Init -> {
+            .lines = []
+        }
+    }
+
+    view {
+        terminal {
+            key: .slotkey
+            cols: 80
+            rows: 24
+            lines: .lines
+            oninput: .KeyIn
+            onkeydown.ctrl.shift.t: .Shortcut(1)
+            onkeydown.ctrl.shift.e: .Shortcut(2)
+        }
+    }
+}
+"#;
+            let session = crate::session::CompilerSession::ui().with_backend("rust");
+            let mut parser = crate::Parser::from(src).with_session(session);
+            let ast = parser.parse().expect("parse");
+            let decl = ast
+                .stmts
+                .iter()
+                .find_map(|s| match s {
+                    crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                    _ => None,
+                })
+                .expect("widget decl");
+            let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+            let mut gen = RustGenerator::new();
+            gen.generate_rust(&widget).expect("generate rust")
+        };
+
+        let code = gen_one();
+        assert!(
+            code.contains("shortcuts: vec!["),
+            "onkeydown 声明必须发射 shortcuts 表:\n{code}"
+        );
+        assert!(
+            code.contains("\"ctrl.shift.t\".to_string()"),
+            "规范化键名必须原样入表:\n{code}"
+        );
+        assert!(
+            code.contains("self.slotkey.clone()"),
+            "key 动态绑定必须发射 self.field 克隆(T-B 槽位键):\n{code}"
+        );
+    }
+
+    /// PLAN-019 T-00 使能:row 直属 for 摊平 —— `.children(<map>.collect())`
+    /// 批量加,而非 ForLoop 的 col 包装单子(纵向堆叠缺陷);VM 臂
+    /// convert_row Plan 047 既有同款语义,本样钉死 rust 发射臂对齐。
+    #[test]
+    fn row_direct_for_flattens_to_children_bulk_add() {
+        let src = r#"
+widget TabBar {
+    msg { TabActivate(int) }
+
+    model {
+        var labels List<str> = ["a", "b"]
+    }
+
+    view {
+        row {
+            for i, label in .labels {
+                button (text: label) {
+                    onclick: .TabActivate(i)
+                }
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).expect("generate");
+
+        assert!(
+            code.contains("View::row().children("),
+            "row 直属 for 必须摊平为 children 批量加:\n{code}"
+        );
+        assert!(
+            !code.contains("View::row().child(View::col().children("),
+            "row 内不得再出现 for 的 col 包装单子:\n{code}"
         );
     }
 }

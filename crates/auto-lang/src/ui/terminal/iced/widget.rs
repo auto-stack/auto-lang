@@ -144,6 +144,10 @@ pub struct Terminal<M> {
     /// 键入信号:有 handler 时 widget 才捕获键盘(载荷进 TerminalCore
     /// 队列,宿主引擎泵经 auto.term 排空裸写;消息本身不带载荷)。
     pub on_input: Option<M>,
+    /// PLAN-019 D4:应用级捷径表(规范化键名 → 消息)。命中 → 发消息
+    /// (不落 VT 队列、不触发 on_input);未命中 → 原样 key_event_to_vt
+    /// (AC-04 未命中零变)。空表 = 零开销直通。
+    pub shortcuts: Vec<(String, M)>,
     pub width: Length,
     pub height: Length,
 }
@@ -228,7 +232,66 @@ fn key_event_to_vt(key: &keyboard::Key, text: Option<&str>, mods: Modifiers) -> 
     }
 }
 
-impl<M> Terminal<M> {
+/// PLAN-019 D4:键盘事件 → 捷径表规范名("ctrl.shift.e" 族;命名沿
+/// Textarea key_press_to_binding_name 的 ctrl./alt./shift. 前缀约定)。
+/// 差异:字符键 shift 恒前缀 + 小写化 —— Ctrl+Shift+E 在平台合成字符
+/// 大小写不定(winit 'E'/'e'),规范化后恒 "ctrl.shift.e" 不漂移。
+/// 裸字符(无修饰)返回小写名 —— 表由应用声明,空表零扰。
+fn terminal_key_binding_name(key: &keyboard::Key, mods: Modifiers) -> String {
+    use keyboard::key::Named;
+    let base = match key {
+        keyboard::Key::Character(s) => {
+            let c = s.chars().next().unwrap_or(' ');
+            if c == ' ' {
+                return String::new();
+            }
+            c.to_ascii_lowercase().to_string()
+        }
+        keyboard::Key::Named(named) => match named {
+            Named::Tab => "tab",
+            Named::ArrowUp => "up",
+            Named::ArrowDown => "down",
+            Named::ArrowLeft => "left",
+            Named::ArrowRight => "right",
+            Named::Enter => "enter",
+            Named::Escape => "escape",
+            Named::Home => "home",
+            Named::End => "end",
+            Named::Delete => "delete",
+            Named::Backspace => "backspace",
+            Named::PageUp => "pageup",
+            Named::PageDown => "pagedown",
+            Named::Space => "space",
+            _ => return String::new(),
+        }
+        .to_string(),
+        _ => return String::new(),
+    };
+    let mut name = String::new();
+    if mods.control() {
+        name.push_str("ctrl.");
+    }
+    if mods.alt() {
+        name.push_str("alt.");
+    }
+    if mods.shift() {
+        name.push_str("shift.");
+    }
+    name + &base
+}
+
+impl<M: Clone> Terminal<M> {
+    /// 捷径表命中判定(纯函数;update 拦截面调用;空表 O(1) 直通)。
+    fn shortcut_hit(&self, name: &str) -> Option<M> {
+        if self.shortcuts.is_empty() {
+            return None;
+        }
+        self.shortcuts
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, m)| m.clone())
+    }
+
     /// Get-or-create the terminal state for `key` (geometry diffed in).
     pub fn new(key: &str, cols: u16, rows: u16) -> Self {
         Self {
@@ -239,6 +302,7 @@ impl<M> Terminal<M> {
             on_select: None,
             on_menu: None,
             on_input: None,
+            shortcuts: Vec::new(),
             width: Length::Fixed(cols as f32 * cell_w() + 2.0 * PAD),
             height: Length::Fixed(rows as f32 * CELL_H + 2.0 * PAD),
         }
@@ -372,6 +436,19 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // 键入捕获:聚焦(点击过本组件)且菜单未开时,把按键翻译成 VT 串
         // 入队并上抛 on_input(载荷走 TerminalCore 队列,消息只当触发器)。
         if state.focused && state.menu_open.is_none() {
+            // PLAN-019 D4:捷径表前置拦截 —— 命中即吞(发捷径消息,不落
+            // VT 队列、不触发 on_input,双通道都断);未命中原样落 VT
+            // (终端内程序不受扰;裸 Ctrl+C/Z 等零变)。IME 提交串非
+            // Keyboard 事件,天然不经本面。
+            if let iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
+                let name = terminal_key_binding_name(key, *modifiers);
+                if !name.is_empty() {
+                    if let Some(msg) = self.shortcut_hit(&name) {
+                        shell.publish(msg);
+                        return;
+                    }
+                }
+            }
             let payload = match event {
                 iced::Event::Keyboard(keyboard::Event::KeyPressed { key, text, modifiers, .. }) => {
                     key_event_to_vt(key, text.as_deref(), *modifiers)
@@ -825,6 +902,78 @@ mod key_to_vt_tests {
         assert_eq!(vt(Key::Character("D".into()), Some("D"), ctrl).as_deref(), Some("\u{4}"));
         // Ctrl+非字母(如 Ctrl+1)不透传。
         assert_eq!(vt(Key::Character("1".into()), Some("1"), ctrl), None);
+    }
+
+    // ── PLAN-019 D4:捷径表命名 + 命中判定 ──────────────────────────
+
+    use super::terminal_key_binding_name;
+    use iced::Length;
+
+    fn name(key: Key, mods: Modifiers) -> String {
+        terminal_key_binding_name(&key, mods)
+    }
+
+    fn mods(ctrl: bool, alt: bool, shift: bool) -> Modifiers {
+        let mut m = Modifiers::default();
+        if ctrl {
+            m |= Modifiers::CTRL;
+        }
+        if alt {
+            m |= Modifiers::ALT;
+        }
+        if shift {
+            m |= Modifiers::SHIFT;
+        }
+        m
+    }
+
+    #[test]
+    fn terminal_key_binding_names_wt_style() {
+        // WT 风格组合键:大小写合成漂移吸收(Ctrl+Shift+E → 'E'/'e' 恒同名)。
+        assert_eq!(name(Key::Character("E".into()), mods(true, false, true)), "ctrl.shift.e");
+        assert_eq!(name(Key::Character("e".into()), mods(true, false, true)), "ctrl.shift.e");
+        assert_eq!(name(Key::Character("W".into()), mods(true, false, true)), "ctrl.shift.w");
+        assert_eq!(name(Key::Named(Named::Tab), mods(true, false, true)), "ctrl.shift.tab");
+        assert_eq!(name(Key::Named(Named::ArrowLeft), mods(true, false, true)), "ctrl.shift.left");
+        assert_eq!(name(Key::Named(Named::ArrowRight), mods(true, false, true)), "ctrl.shift.right");
+        assert_eq!(name(Key::Named(Named::ArrowUp), mods(true, false, true)), "ctrl.shift.up");
+        assert_eq!(name(Key::Named(Named::ArrowDown), mods(true, false, true)), "ctrl.shift.down");
+        // 裸控制码不进捷径命名冲突面:Ctrl+C → "ctrl.c"(表未声明即不命中)。
+        assert_eq!(name(Key::Character("c".into()), mods(true, false, false)), "ctrl.c");
+        // 修饰全无的普通字符照常命名(表声明才拦截)。
+        assert_eq!(name(Key::Character("a".into()), Modifiers::default()), "a");
+    }
+
+    #[test]
+    fn terminal_shortcut_hit_table_semantics() {
+        use super::Terminal;
+        let t = Terminal::<u8> {
+            core: crate::ui::terminal::terminal("shortcut-hit-test", 80, 24),
+            key: "shortcut-hit-test".to_string(),
+            scroll_offset: 0,
+            preedit: None,
+            on_select: None,
+            on_menu: None,
+            on_input: None,
+            shortcuts: vec![
+                ("ctrl.shift.t".to_string(), 1u8),
+                ("ctrl.shift.e".to_string(), 2u8),
+            ],
+            width: Length::Fixed(0.0),
+            height: Length::Fixed(0.0),
+        };
+        // 命中 → 消息。
+        assert_eq!(t.shortcut_hit("ctrl.shift.t"), Some(1u8));
+        assert_eq!(t.shortcut_hit("ctrl.shift.e"), Some(2u8));
+        // 未命中(裸 Ctrl+C/普通字符)→ None,原样落 VT。
+        assert_eq!(t.shortcut_hit("ctrl.c"), None);
+        assert_eq!(t.shortcut_hit("a"), None);
+        // 空表直通。
+        let empty = Terminal::<u8> {
+            shortcuts: Vec::new(),
+            ..t
+        };
+        assert_eq!(empty.shortcut_hit("ctrl.shift.t"), None);
     }
 }
 

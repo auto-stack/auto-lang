@@ -9494,6 +9494,26 @@ let tabs_inner = View::Row {
             .extract_i32_prop(props, "scheme")
             .or_else(|| self.eval_i32_prop(props, "scheme", bindings))
             .unwrap_or(crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME);
+        // PLAN-019 D4:应用级捷径表 —— onkeydown.<键名> 事件收集(Textarea
+        // Plan 057 收集器同款:剥前缀与 prevent/stop/exact/capture/self/once
+        // 修饰段,小写规范化;实参经 event_to_message_with 烘焙)。命中发
+        // 消息不落 VT 队列,未命中原样透传(terminal_key_binding_name 命名)。
+        let mut shortcuts: Vec<(String, DynamicMessage)> = Vec::new();
+        for (ev_key, ev) in events.iter() {
+            if let Some(rest) = ev_key.strip_prefix("onkeydown.") {
+                let norm = rest
+                    .split('.')
+                    .filter(|seg| {
+                        !matches!(*seg, "prevent" | "stop" | "exact" | "capture" | "self" | "once")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(".")
+                    .to_lowercase();
+                if !norm.is_empty() {
+                    shortcuts.push((norm, self.event_to_message_with(ev, bindings)));
+                }
+            }
+        }
         View::Terminal {
             key,
             cols,
@@ -9507,6 +9527,7 @@ let tabs_inner = View::Row {
             cursor_row,
             cursor_col,
             scheme,
+            shortcuts,
             style,
         }
     }

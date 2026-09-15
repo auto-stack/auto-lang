@@ -72,6 +72,7 @@ fn terminal_view() -> View<()> {
         scroll_offset: 0,
         preedit: None,
         scheme: crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME,
+        shortcuts: Vec::new(),
         on_select: None,
         on_menu: None,
         on_input: None,
