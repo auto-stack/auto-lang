@@ -25,6 +25,15 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
+## 现状（2026-09-15）
+
+**编译 exe 桌面客户端面（PLAN-020，provisional）**：desktop_protocol 客户端
+臂自解释态 `DynamicComponent` 泛化到 `Component` seam——a2r 编译 exe 经
+`NativeProjector<C>`（View 运行期投影）作 compositor 一等客户端，native
+覆盖集与 `auto`=independent 缺省裁定、宿主 `desktop_exe:` 孵化分流随册。
+权威正文 = `docs/design/autoui/desktop-protocol-v1.md` §1.6（本节仅指针，
+不重复）；度量 = `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
+
 ## 现状（2026-09-11）
 
 **声明式样式配方语言层（plan-607 落地，Design 29 Phase 3，GOAL-007）**：
