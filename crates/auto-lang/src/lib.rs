@@ -3589,6 +3589,21 @@ fn build_dynamic_component_inner(
     use crate::ui::dynamic::DynamicComponent;
     use crate::ui::widget_registry::WidgetRegistry;
 
+    // PLAN-635: pre-register use-imported recipes BEFORE the parse — the
+    // parser's symbol checker accepts `style: <name>` idents only when the
+    // recipe is in the live registry.
+    let recipe_imports = match path {
+        Some(p) => {
+            let base_dir = std::path::Path::new(p)
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, code)
+                .map_err(|e| e.to_string())?
+        }
+        None => Vec::new(),
+    };
+
     // 1. Parse with UI scenario (or override if provided — PR-6)
     let session = override_scenario
         .cloned()
@@ -3605,9 +3620,13 @@ fn build_dynamic_component_inner(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut root_decl: Option<crate::ast::WidgetDecl> = None;
     let mut widget = None;
     for stmt in &ast.stmts {
@@ -5814,6 +5833,15 @@ pub fn ui_build(
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
+    // PLAN-635: pre-register use-imported recipes before the parse (parser
+    // symbol-checker hook), then replay after the parse.
+    let base_dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+        .map_err(|e| e.to_string())?;
+
     // Parse with scenario
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session.clone());
@@ -5828,9 +5856,13 @@ pub fn ui_build(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
@@ -5930,6 +5962,15 @@ pub fn ui_build_shadcn(
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
+    // PLAN-635: pre-register use-imported recipes before the parse (parser
+    // symbol-checker hook), then replay after the parse.
+    let base_dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+        .map_err(|e| e.to_string())?;
+
     // Parse with UI scenario
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(code.as_str());
@@ -5945,9 +5986,13 @@ pub fn ui_build_shadcn(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {

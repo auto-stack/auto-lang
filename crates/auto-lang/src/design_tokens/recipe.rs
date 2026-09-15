@@ -11,7 +11,7 @@
 //! ```
 
 use crate::ast::ui::{StyleRecipeDecl, StyleRecipeParam};
-use crate::ast::{Arg, Expr, Name};
+use crate::ast::{Arg, Expr};
 use auto_val::Op;
 use std::collections::{HashMap, HashSet};
 
@@ -23,6 +23,9 @@ pub struct StyleRecipe {
     pub body: Expr,
     pub is_pub: bool,
     pub doc: Option<String>,
+    /// PLAN-635: module the recipe was imported from (dotted use path);
+    /// None = declared in the compilation unit's own statements.
+    pub source_module: Option<String>,
 }
 
 /// Errors occurring during style recipe analysis or expansion.
@@ -44,6 +47,22 @@ pub enum StyleRecipeError {
     },
     CircularReference(Vec<String>),
     InvalidExpression(String),
+    /// PLAN-635: a named use imports a recipe that is not `pub` in its module.
+    ImportNotPub {
+        recipe: String,
+        module: String,
+    },
+    /// PLAN-635: the same recipe name is declared by two different sources.
+    RecipeNameCollision {
+        name: String,
+        first: String,
+        second: String,
+    },
+    /// PLAN-635: a use-imported module failed to parse.
+    ImportModuleParse {
+        module: String,
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for StyleRecipeError {
@@ -66,6 +85,23 @@ impl std::fmt::Display for StyleRecipeError {
             }
             StyleRecipeError::InvalidExpression(msg) => {
                 write!(f, "Invalid style recipe expression: {}", msg)
+            }
+            StyleRecipeError::ImportNotPub { recipe, module } => {
+                write!(
+                    f,
+                    "Style recipe '{}' in module '{}' is not pub — add `pub` to export it for use-import",
+                    recipe, module
+                )
+            }
+            StyleRecipeError::RecipeNameCollision { name, first, second } => {
+                write!(
+                    f,
+                    "Style recipe '{}' is defined in both {} and {} — rename one or import explicitly",
+                    name, first, second
+                )
+            }
+            StyleRecipeError::ImportModuleParse { module, detail } => {
+                write!(f, "Failed to parse use-imported module '{}': {}", module, detail)
             }
         }
     }
@@ -90,10 +126,46 @@ pub fn register_style_recipe(decl: &StyleRecipeDecl) {
         body: decl.body.clone(),
         is_pub: decl.is_pub,
         doc: decl.doc.as_ref().map(|d| d.as_str().to_string()),
+        source_module: None,
     };
     REGISTRY.with(|r| {
         r.borrow_mut().insert(decl.name.as_str().to_string(), recipe);
     });
+}
+
+/// PLAN-635: register a recipe with collision checking against already
+/// registered sources. Same-name registrations from different sources are a
+/// hard error (mirrors the use-system's dual-source diagnostics); re-register
+/// from the same source is a benign no-op (dedup by (source, name)).
+fn register_style_recipe_checked(
+    decl: &StyleRecipeDecl,
+    source: Option<&str>,
+) -> Result<(), StyleRecipeError> {
+    let name = decl.name.as_str().to_string();
+    if let Some(existing) = get_style_recipe(&name) {
+        let same_source = existing.source_module.as_deref() == source;
+        if !same_source {
+            return Err(StyleRecipeError::RecipeNameCollision {
+                name,
+                first: existing
+                    .source_module
+                    .unwrap_or_else(|| "the local module".to_string()),
+                second: source.unwrap_or("the local module").to_string(),
+            });
+        }
+    }
+    let recipe = StyleRecipe {
+        name,
+        params: decl.params.clone(),
+        body: decl.body.clone(),
+        is_pub: decl.is_pub,
+        doc: decl.doc.as_ref().map(|d| d.as_str().to_string()),
+        source_module: source.map(|s| s.to_string()),
+    };
+    REGISTRY.with(|r| {
+        r.borrow_mut().insert(decl.name.as_str().to_string(), recipe);
+    });
+    Ok(())
 }
 
 /// Look up a style recipe by name.
@@ -126,6 +198,161 @@ pub fn load_and_validate_style_recipes(stmts: &[crate::ast::Stmt]) -> Result<Vec
         warnings.extend(lint_check_recipe(&recipe));
     }
     Ok(warnings)
+}
+
+/// PLAN-635: collect and pre-register style recipes imported through `use`.
+///
+/// Call BEFORE parsing the host file: the parser's symbol checker accepts a
+/// bare `style: <name>` identifier only when the recipe is in the live
+/// registry (parser-side hook), so imported recipes must be registered ahead
+/// of the host parse. Scans the host source's `use` statements (named or
+/// wildcard imports only — bare namespace imports stay unreachable, matching
+/// the use-system contract), resolves each module, parses it, and registers
+/// its exported (`pub`) recipes with source tracking. The imported module's
+/// own use imports are followed transitively (visited set guards cycles).
+///
+/// Returns the collected imports; pass them to
+/// [`load_and_validate_style_recipes_with_imports`] after the host parse for
+/// the controlled re-registration (the parser live-registers host-local
+/// `style` decls during the parse, so the final pass clears and replays in
+/// source-tagged order).
+///
+/// Parse failures of imported modules are tolerated with a warning (a module
+/// may legitimately parse under a different scenario, e.g. a back/ module on
+/// the core grammar); its recipes are then simply unavailable, and a host
+/// reference surfaces as the parser's own undefined-name diagnostic.
+pub fn prepare_style_recipe_imports(
+    base_dir: &std::path::Path,
+    code: &str,
+) -> Result<Vec<(StyleRecipeDecl, String)>, StyleRecipeError> {
+    let mut imports: Vec<(StyleRecipeDecl, String)> = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    let uses = crate::use_scanner::scan_use_statements(code);
+    collect_style_recipe_imports(base_dir, &uses, &mut visited, &mut imports)?;
+
+    clear_style_recipes();
+    for (decl, module) in &imports {
+        register_style_recipe_checked(decl, Some(module))?;
+    }
+    Ok(imports)
+}
+
+/// PLAN-635: final import-aware registration after the host parse.
+///
+/// Replays the imports collected by [`prepare_style_recipe_imports`] (clears
+/// the parser-polluted registry first), registers the host's own recipes
+/// (source = local), and validates the combined set. Shared by the VM track
+/// and the Vue track so both backends expand cross-package recipes from one
+/// registration path.
+pub fn load_and_validate_style_recipes_with_imports(
+    imports: &[(StyleRecipeDecl, String)],
+    stmts: &[crate::ast::Stmt],
+) -> Result<Vec<String>, StyleRecipeError> {
+    clear_style_recipes();
+    for (decl, module) in imports {
+        register_style_recipe_checked(decl, Some(module))?;
+    }
+    for stmt in stmts {
+        if let crate::ast::Stmt::StyleRecipeDecl(r) = stmt {
+            register_style_recipe_checked(r, None)?;
+        }
+    }
+    validate_style_recipes()?;
+
+    let mut warnings = Vec::new();
+    for recipe in all_style_recipes() {
+        warnings.extend(lint_check_recipe(&recipe));
+    }
+    Ok(warnings)
+}
+
+/// Collect pub recipes reachable through these scanned use statements.
+/// Named items that match a non-pub recipe are a hard error; items that match
+/// no recipe in the module are ignored (use items are category-agnostic —
+/// they may name widgets/fns/stores).
+fn collect_style_recipe_imports(
+    base_dir: &std::path::Path,
+    uses: &[crate::use_scanner::UseStatement],
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+    imports: &mut Vec<(StyleRecipeDecl, String)>,
+) -> Result<(), StyleRecipeError> {
+    for u in uses {
+        if u.is_c_import || u.is_rust_import || u.is_python_import {
+            continue;
+        }
+        // Bare namespace imports (`use db`) do not bring symbols into scope.
+        if u.items.is_empty() && !u.is_wildcard {
+            continue;
+        }
+        let module = u.module.clone();
+        let Some(module_path) = crate::resolve_module_path(base_dir, &module) else {
+            // Module not resolvable from here (may be a facade/external form);
+            // its recipes are simply not importable — undefined references
+            // surface at desugar time as in the single-unit v1.
+            continue;
+        };
+        let canon = module_path
+            .canonicalize()
+            .unwrap_or_else(|_| module_path.clone());
+        if !visited.insert(canon.clone()) {
+            continue;
+        }
+        let code = std::fs::read_to_string(&module_path).map_err(|e| StyleRecipeError::ImportModuleParse {
+            module: module.clone(),
+            detail: format!("read failed: {}", e),
+        })?;
+        // Same scenario heuristic as collect_module_imports: back/ modules are
+        // core-scenario, everything else UI.
+        let session = if module_path
+            .components()
+            .any(|c| c.as_os_str() == "back")
+        {
+            crate::session::CompilerSession::core()
+        } else {
+            crate::session::CompilerSession::ui()
+        };
+        let mut parser = crate::parser::Parser::from(code.as_str()).with_session(session);
+        let module_ast = match parser.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                log::warn!(
+                    "style recipe import: module '{}' failed to parse (recipes unavailable): {:?}",
+                    module,
+                    e
+                );
+                continue;
+            }
+        };
+
+        // Collect recipes per import form.
+        for mstmt in &module_ast.stmts {
+            if let crate::ast::Stmt::StyleRecipeDecl(r) = mstmt {
+                if u.is_wildcard {
+                    if r.is_pub {
+                        imports.push((r.clone(), module.clone()));
+                    }
+                } else if u.items.iter().any(|it| it == r.name.as_str()) {
+                    if !r.is_pub {
+                        return Err(StyleRecipeError::ImportNotPub {
+                            recipe: r.name.as_str().to_string(),
+                            module: module.clone(),
+                        });
+                    }
+                    imports.push((r.clone(), module.clone()));
+                }
+            }
+        }
+
+        // Transitive: the imported module's own use imports contribute their
+        // recipes too (e.g. common.styles re-exporting base tokens).
+        let module_uses = crate::use_scanner::scan_use_statements(&code);
+        let module_dir = module_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .to_path_buf();
+        collect_style_recipe_imports(&module_dir, &module_uses, visited, imports)?;
+    }
+    Ok(())
 }
 
 // ============================================================================
@@ -977,6 +1204,170 @@ mod tests {
         assert!(sfc.contains("bg-destructive px-4 py-2 rounded-full"), "Vue output should contain desugared pill: {}", sfc);
         // And should NOT contain the raw recipe identifier
         assert!(!sfc.contains("card_base"), "Vue output should not contain raw recipe symbol 'card_base': {}", sfc);
+    }
+    // ========================================================================
+    // PLAN-635: cross-package style recipe imports (use symbol form)
+    // ========================================================================
+
+    fn plan635_source(base: &std::path::Path, file: &str) -> String {
+        std::fs::read_to_string(base.join(file)).unwrap()
+    }
+
+    fn plan635_load(base: &std::path::Path) -> crate::ast::Code {
+        let code = plan635_source(base, "app.at");
+        let imports = prepare_style_recipe_imports(base, &code).unwrap();
+        let mut p = Parser::from(code.as_str()).with_session(CompilerSession::ui());
+        let ast = p.parse().unwrap();
+        load_and_validate_style_recipes_with_imports(&imports, &ast.stmts).unwrap();
+        ast
+    }
+
+    fn plan635_load_err(base: &std::path::Path) -> StyleRecipeError {
+        let code = plan635_source(base, "app.at");
+        match prepare_style_recipe_imports(base, &code) {
+            Err(e) => e,
+            Ok(imports) => {
+                let mut p = Parser::from(code.as_str()).with_session(CompilerSession::ui());
+                let ast = p.parse().unwrap();
+                load_and_validate_style_recipes_with_imports(&imports, &ast.stmts).unwrap_err()
+            }
+        }
+    }
+
+    #[test]
+    fn test_plan635_named_import_registers_and_desugars() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        std::fs::write(base.join("styles.at"), r#"
+            pub style pill = "rounded-full px-4 py-2"
+        "#).unwrap();
+        std::fs::write(base.join("app.at"), r#"
+            use styles: pill
+            style local_btn = pill
+        "#).unwrap();
+        let ast = plan635_load(base);
+
+        let pill = get_style_recipe("pill").expect("imported pub recipe registered");
+        assert_eq!(pill.source_module.as_deref(), Some("styles"));
+        assert_eq!(pill.is_pub, true);
+
+        // Desugar: string interpolation of the imported recipe expands inline.
+        let expanded = desugar_style_expr(&crate::ast::Expr::Str("{pill} mt-2".into())).unwrap();
+        match expanded {
+            crate::ast::Expr::Str(s) => {
+                assert!(s.as_str().contains("rounded-full"), "imported recipe expanded: {}", s.as_str())
+            }
+            other => panic!("expected folded string, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_plan635_named_import_non_pub_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        std::fs::write(base.join("styles.at"), r#"
+            style internal_only = "hidden"
+        "#).unwrap();
+        std::fs::write(base.join("app.at"), "use styles: internal_only").unwrap();
+        let err = plan635_load_err(base);
+        assert!(err.to_string().contains("not pub"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_plan635_name_collision_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        std::fs::write(base.join("styles.at"), r#"
+            pub style pill = "rounded-full"
+        "#).unwrap();
+        std::fs::write(base.join("app.at"), r#"
+            use styles: pill
+            style pill = "local-pill"
+        "#).unwrap();
+        let err = plan635_load_err(base);
+        assert!(err.to_string().contains("defined in both"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_plan635_wildcard_imports_pub_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        std::fs::write(base.join("styles.at"), r#"
+            pub style pub_chip = "rounded-full"
+            style internal_only = "hidden"
+        "#).unwrap();
+        std::fs::write(base.join("app.at"), "use styles: *").unwrap();
+        let ast = plan635_load(base);
+        assert!(has_style_recipe("pub_chip"), "pub recipe imported by wildcard");
+        assert!(!has_style_recipe("internal_only"), "non-pub recipe stays private");
+    }
+
+    #[test]
+    fn test_plan635_transitive_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        std::fs::write(base.join("tokens.at"), r#"
+            pub style base_border = "border border-border"
+        "#).unwrap();
+        std::fs::write(base.join("styles.at"), r#"
+            use tokens: base_border
+            pub style card = "{base_border} bg-card rounded-xl"
+        "#).unwrap();
+        std::fs::write(base.join("app.at"), "use styles: card").unwrap();
+        let ast = plan635_load(base);
+        assert!(has_style_recipe("base_border"), "transitive import registered");
+
+        let expanded = desugar_style_expr(&crate::ast::Expr::Str("{card}".into())).unwrap();
+        match expanded {
+            crate::ast::Expr::Str(s) => {
+                assert!(s.as_str().contains("border-border"), "transitive expansion: {}", s.as_str());
+                assert!(s.as_str().contains("bg-card"), "own body expansion: {}", s.as_str());
+            }
+            other => panic!("expected folded string, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_plan635_vue_chain_expands_imported_recipe() {
+        // PLAN-635 T-04: production Vue chain (ui_build_shadcn -> generate_
+        // component_from_file) must expand imported recipes — same
+        // registration path as the VM track.
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        std::fs::write(base.join("styles.at"), r#"
+            pub style pill = "rounded-full px-4 py-2 shadow-sm"
+        "#).unwrap();
+        std::fs::write(base.join("app.at"), r#"
+            use styles: pill
+            widget App {
+                view {
+                    col { style: pill
+                        text "demo"
+                    }
+                }
+            }
+        "#).unwrap();
+        let sfc = crate::ui_build_shadcn(
+            base.join("app.at").to_str().unwrap(),
+            None,
+        ).unwrap();
+        assert!(sfc.contains("rounded-full px-4 py-2 shadow-sm"),
+            "SFC should contain imported recipe classes: {}", sfc);
+    }
+
+    #[test]
+    fn test_plan635_cross_package_deps_layout() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let dep_front = base.join("deps").join("common").join("src").join("front");
+        std::fs::create_dir_all(&dep_front).unwrap();
+        std::fs::write(dep_front.join("styles.at"), r#"
+            pub style pill = "rounded-full shadow-sm"
+        "#).unwrap();
+        std::fs::write(base.join("app.at"), "use common.styles: pill").unwrap();
+        let ast = plan635_load(base);
+        let pill = get_style_recipe("pill").expect("deps/<name> layout resolves");
+        assert_eq!(pill.source_module.as_deref(), Some("common.styles"));
     }
 }
 
