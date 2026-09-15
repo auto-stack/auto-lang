@@ -43,8 +43,10 @@
 
 use 语句的**符号可见性**语义（区别于上文的路径解析机制）：
 
-- bare `use db`：仅引入模块命名空间——限定访问 `db.load()` / `db.Note` 可用，
+- bare `use db`：仅引入模块命名空间——限定**函数**调用 `db.load()` 可用，
   裸名 `load()` 是带提示的编译错误（提示 `db.load` 或 `use db: *`）。
+  类型引用不经命名空间（`db.Note {}` 类型位为语法层未支持形态，R1 探针
+  实证 545 前后同拒）——类型须具名导入（`use db: Note`）。
   平铺通路的三层收紧：TypeStore 不 merge（compile.rs load_module_inner bare 分支）、
   Linker dep 模块 exports 仅限定注册（`db#load` + 点分别名 `db.load`，入口模块
   独占裸名——add_entry_module）、native/widget 注册不视为通配

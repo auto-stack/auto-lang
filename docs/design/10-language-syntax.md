@@ -177,7 +177,8 @@ Auto code is organized in three tiers:
 **Import examples:**
 ```auto
 use db              // namespace import: brings in the module name `db`;
-                    // symbols are accessed qualified: db.load(), db.Note
+                    // qualified function calls work: db.load()
+                    // (types are NOT namespace-reachable — use db: Note)
 use db: load, save  // specific symbols (usable bare: load(), save())
 use db: *           // explicit flat import: ALL pub symbols usable bare
 use super.db        // ../db.at   (path rules unchanged)
@@ -185,9 +186,11 @@ use pac.db          // package root search (path rules unchanged)
 ```
 
 **Namespace semantics (Plan 545, Rust-2018 style):**
-- Bare `use db` imports the module *namespace* only — `db.load()` works;
-  bare `load()` is a compile error with a hint suggesting `db.load` or
-  `use db: *`.
+- Bare `use db` imports the module *namespace* only — qualified **function**
+  calls `db.load()` work; bare `load()` is a compile error with a hint
+  suggesting `db.load` or `use db: *`. Type references are NOT reachable
+  through the namespace (`db.Note {}` in type position is not valid syntax —
+  import types by name: `use db: Note`).
 - Flat (glob) import is an explicit decision: `use db: *` makes all `pub`
   symbols visible bare, and detects conflicts — the same name from two
   modules with different definitions is a compile error naming both modules
