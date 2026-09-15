@@ -1213,13 +1213,12 @@ mod tests {
         std::fs::read_to_string(base.join(file)).unwrap()
     }
 
-    fn plan635_load(base: &std::path::Path) -> crate::ast::Code {
+    fn plan635_load(base: &std::path::Path) {
         let code = plan635_source(base, "app.at");
         let imports = prepare_style_recipe_imports(base, &code).unwrap();
         let mut p = Parser::from(code.as_str()).with_session(CompilerSession::ui());
         let ast = p.parse().unwrap();
         load_and_validate_style_recipes_with_imports(&imports, &ast.stmts).unwrap();
-        ast
     }
 
     fn plan635_load_err(base: &std::path::Path) -> StyleRecipeError {
@@ -1245,7 +1244,7 @@ mod tests {
             use styles: pill
             style local_btn = pill
         "#).unwrap();
-        let ast = plan635_load(base);
+        plan635_load(base);
 
         let pill = get_style_recipe("pill").expect("imported pub recipe registered");
         assert_eq!(pill.source_module.as_deref(), Some("styles"));
@@ -1297,7 +1296,7 @@ mod tests {
             style internal_only = "hidden"
         "#).unwrap();
         std::fs::write(base.join("app.at"), "use styles: *").unwrap();
-        let ast = plan635_load(base);
+        plan635_load(base);
         assert!(has_style_recipe("pub_chip"), "pub recipe imported by wildcard");
         assert!(!has_style_recipe("internal_only"), "non-pub recipe stays private");
     }
@@ -1314,7 +1313,7 @@ mod tests {
             pub style card = "{base_border} bg-card rounded-xl"
         "#).unwrap();
         std::fs::write(base.join("app.at"), "use styles: card").unwrap();
-        let ast = plan635_load(base);
+        plan635_load(base);
         assert!(has_style_recipe("base_border"), "transitive import registered");
 
         let expanded = desugar_style_expr(&crate::ast::Expr::Str("{card}".into())).unwrap();
@@ -1407,7 +1406,7 @@ dep common {
 }
 ").unwrap();
         std::fs::write(base.join("app.at"), "use common.styles: pill").unwrap();
-        let ast = plan635_load(base);
+        plan635_load(base);
         let pill = get_style_recipe("pill").expect("deps/<name> layout resolves");
         assert_eq!(pill.source_module.as_deref(), Some("common.styles"));
     }
