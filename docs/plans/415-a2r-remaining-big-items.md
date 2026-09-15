@@ -115,7 +115,7 @@
 - `work | PLAN-415-B2 | 漂移核查后基线 | pass(B2 子项) | 4e02c0de3(plan-fix/415b2-redis, worktree D:/autostack/.wt/lang-415b2/auto-lang) | B2 | 证据: a2r-std 13/13+golden 29_redis 2/2+两金样真 rustc 实编 0 错×2+比对环 9 对全绿(redis 零允许清单)+tt 红集=4 已知预存+tf 3561/3562(ffi_dual_019 同负载基线同败实证环境性)+auto-ai 四 crate 0 错 | 无阻塞 | next: review`
 - **B2 要点**: redis 0.27 纯 Rust 同步 API（计划担心的 build 脚本/平台风险实测不存在）；本机无 Redis→无服务器哨兵测试×2 无条件真跑+活体 roundtrip 挂 AUTO_TEST_REDIS_URL 守卫；redis-rs Connection &mut self→Auto 侧 var 绑定（let mut）约定。
 - **B2 复审记录**: `review | PLAN-415-B2 | 同基线 | pass(B2 子项相位) | reviewed_commit=4e02c0de3 | base=15654a7f8 | findings: F-B2-01(info,活体测试环境守卫)/F-B2-02(info,var 绑定约定文档化)/F-B2-03(info,碰撞名守卫模式:ping|del|exists 独立臂+get/set 嵌入既有臂顶——前置新臂遮蔽 List 索引化/Map insert 改写,arc_dyn_spec 回归实测坐实后修复复绿) | 门禁: 验证电池全部于最终提交态新鲜执行(独立会话限制声明同 B1) | next: merge`
-- **B2 执行中回归教训（已修复并入档）**: 首版把 get/set 守卫写成前置 match 新臂，遮蔽既有臂（ golden 漂移 ），基线对照定位后改嵌臂内——B1 模板的独立守卫臂仅适用于**无碰撞方法名**，此边界已写入守卫注释与 spec。
+- **B2 执行中回归教训（已修复并入档）**: 首版把 get/set 守卫写成前置 match 新臂，遮蔽既有臂（`12_specs/008_arc_dyn_spec` golden 漂移为 `insert(n.clone(), …)`），基线对照定位后改嵌臂内——B1 模板的独立守卫臂仅适用于**无碰撞方法名**，此边界已写入守卫注释与 spec。
 
 ### 复审记录（B1，2026-09-15）
 
