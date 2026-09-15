@@ -104,6 +104,11 @@
 **C** 待虚拟桌面计划(Plan 455)给出新信号后重做 go/no-go。每项合并后
 回填 242 tracker 对应行 + 本文档勾选。
 
+
+## 3.5 执行记录（work 交接）
+
+- `2026-09-15 | PLAN-415-B1 | 漂移核查后基线 | pass(B1 子项) | 7b7063f6b(plan-fix/415b-sqlite, worktree D:/autostack/.wt/lang-415b/auto-lang) | B1 | 证据: a2r-std 10/10+golden 28_sqlite 2/2+两金样真 rustc 实编 exit 0+cargo tt 零新增(基线对照实证 2 预存红)+auto-ai 四 crate retranspile check=0 错且再生成 diff 与基线 CLI 一致+396 骑乘项签名比对环 8 对全绿 | 无阻塞 | next: B1 走 /auto-plan:review(独立复审)后合并;B2 Redis 后续独立开工'
+
 ## 3. 验证矩阵
 
 | 子项 | 单测/golden | 跨仓环 | 实机 |
