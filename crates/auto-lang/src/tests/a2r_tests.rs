@@ -1177,6 +1177,10 @@ fn test_16_interop_021_path_dep() {
 #[test] fn test_28_sqlite_001_basic() { test_a2r("28_sqlite/001_basic").unwrap(); }
 #[test] fn test_28_sqlite_002_advanced() { test_a2r("28_sqlite/002_advanced").unwrap(); }
 
+// === 29_redis: redis stdlib module (Plan 415-B2) ===
+#[test] fn test_29_redis_001_basic() { test_a2r("29_redis/001_basic").unwrap(); }
+#[test] fn test_29_redis_002_advanced() { test_a2r("29_redis/002_advanced").unwrap(); }
+
 // === 18_pure_rust: Pure Rust output (no a2r_std dependency) ===
 
 #[test] fn test_19_pure_rust_001_pure() { test_a2r("18_pure_rust/001_pure").unwrap(); }

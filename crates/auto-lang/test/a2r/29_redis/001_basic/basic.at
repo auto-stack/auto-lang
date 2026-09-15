@@ -1,0 +1,15 @@
+// Plan 415-B2: redis stdlib module basic path — open, ping, set, get, del, exists.
+// var binding: redis connection ops take &mut self (var → let mut).
+use redis
+
+fn main() {
+    var r RedisClient = redis.open("redis://127.0.0.1:6379")
+    let alive bool = r.ping()
+    r.set("greeting", "hello")
+    let v str = r.get("greeting")
+    print(v)
+    let n int = r.del("greeting")
+    print(n)
+    let has bool = r.exists("greeting")
+    print(has)
+}
