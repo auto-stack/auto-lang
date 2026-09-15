@@ -5123,6 +5123,69 @@ mod tests {
         assert!(!c.slash_menu_visible(), "rebuild 关层");
     }
 
+    /// T-02：渲染几何——menu 段 23 项、几何快照与绘制同源、帧高容纳浮层
+    /// （空文档内容矮，浮层下溢段计入 DocFrame.height）。
+    #[test]
+    fn slash_menu_render_geometry_and_height() {
+        let c = core_empty("sl9");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('/'));
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let menu = frame.list.slash_menu.clone().expect("menu drawn");
+        assert_eq!(menu.items.len(), 23);
+        assert_eq!(menu.selected, 0);
+        assert_eq!(menu.items[0].title, "Text");
+        assert_eq!(menu.items[1].title, "Heading 1");
+        let (rect, items) = c.slash_geom.lock().unwrap().clone().expect("geom cached");
+        assert_eq!(rect, menu.rect);
+        assert_eq!(items.len(), 23);
+        assert_eq!(items[0].0, 0, "空 query 过滤集 = 全 manifest 序");
+        assert!(frame.height >= menu.rect.y + menu.rect.h - 0.5, "帧高容纳浮层");
+        // 次帧（无渲染也）命中可用——几何缓存单源。
+        let second = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert_eq!(second.list.slash_menu.as_ref().map(|m| m.rect), Some(menu.rect));
+    }
+
+    /// T-02：点选执行——首项几何中心命中 → Heading 1 迁移 + 关层。
+    #[test]
+    fn slash_menu_hit_select_executes() {
+        let c = core_empty("sl10");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('/'));
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (_, items) = c.slash_geom.lock().unwrap().clone().expect("geom");
+        let (idx, r) = items[1]; // Heading 1（idx 0 = Text 对段落是 no-op）
+        assert_eq!(idx, 1);
+        let out = run_fs(|fs| c.slash_mouse_press(fs, r.x + r.w / 2.0, r.y + r.h / 2.0)).unwrap();
+        assert!(out.text_changed, "{out:?}");
+        assert!(!c.slash_menu_visible(), "点选后关层");
+        assert_eq!(c.emit_document(), "# ");
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(1));
+    }
+
+    /// T-02：层外点击关闭且不落文档；层内空白区（pad 带）点击零操作不关。
+    #[test]
+    fn slash_menu_click_outside_closes_inside_gap_noop() {
+        let c = core_for("sl11", "甲段。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('/'));
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (rect, _) = c.slash_geom.lock().unwrap().clone().expect("geom");
+        // 层外（下方远处）。
+        let out = run_fs(|fs| c.slash_mouse_press(fs, rect.x + 1.0, rect.y + rect.h + 40.0)).unwrap();
+        assert!(out.captured, "层外点击捕获（不落文档命中链）");
+        assert!(!out.text_changed, "层外点击零文档效果");
+        assert!(!c.slash_menu_visible());
+        assert_eq!(c.emit_document(), "甲段。");
+        // 层内 pad 带（背景区，无项）。
+        press(c, EditorKey::Char('/'));
+        run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (rect, _) = c.slash_geom.lock().unwrap().clone().expect("geom");
+        let out = run_fs(|fs| c.slash_mouse_press(fs, rect.x + 1.0, rect.y + 1.0)).unwrap();
+        assert!(out.captured);
+        assert!(c.slash_menu_visible(), "层内空白不关层");
+    }
+
     // ── PLAN-048 T6：undo/redo 面 ───────────────────────────────────────
 
     /// 打字 undo/redo 往返钉死（cosmic 逐叶记账，passthrough 逐动作
