@@ -704,9 +704,21 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             renderer.fill_paragraph(&para, bg_bounds.position(), pal_fg, bounds);
         }
 
-        // 菜单层:右键打开的 Copy/Paste/Select All 浮层,悬停项反色。
+        // 菜单层:右键打开的 Copy/Paste/Select All/Interrupt 浮层,悬停项反色。
+        // 浮层自绘 chrome(底/框/字)固定深底亮字,**不得**用主题跟随的
+        // pal_fg——light 桌面主题下 pal_fg=深灰,深字深板不可见(015 实测)。
         if let Some(at) = state.menu_open {
             let rect = menu_rect(at);
+            let menu_fg = Color::from_rgb(0.87, 0.87, 0.87);
+            static TRACE: OnceLock<bool> = OnceLock::new();
+            let trace = *TRACE.get_or_init(|| {
+                std::env::var("AUTO_IME_TRACE").map(|v| v == "1").unwrap_or(false)
+            });
+            if trace {
+                eprintln!(
+                    "[menu-draw] at={at:?} rect={rect:?} bounds={bounds:?} fg={menu_fg:?}"
+                );
+            }
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: rect,
@@ -732,10 +744,13 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     );
                 }
                 let para = plain_para(label, MENU_ITEM_W);
+                if trace {
+                    eprintln!("[menu-draw] label {i} '{label}' pos={:?} para={:?}", item_rect.position(), para.min_bounds());
+                }
                 renderer.fill_paragraph(
                     &para,
                     item_rect.position(),
-                    pal_fg,
+                    menu_fg,
                     bounds,
                 );
             }
