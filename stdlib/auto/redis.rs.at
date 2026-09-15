@@ -1,0 +1,64 @@
+/// Rust implementation of Redis client operations
+/// Backs `crates/a2r-std/src/redis.rs` (redis-rs, sync API) — Plan 415-B2.
+///
+/// Auto-side source of truth for the hand-copied a2r-std module (KNOWN-DEBT
+/// 396 manual-copy pattern): keep the signatures below in sync with the Rust
+/// copy. The 396 signature-parity test checks name/arity alignment.
+
+/// The most recent error message recorded by this module ("" if none)
+#[rs]
+pub fn last_error() str {
+    return LAST_ERROR.lock().unwrap().clone()
+}
+
+/// Open a connection to a Redis server; on failure the handle keeps no
+/// connection and later calls report failure sentinels
+#[rs]
+pub fn open(addr str) RedisClient {
+    return match redis::Client::open(addr).and_then(|c| c.get_connection()) {
+        Ok(con) => RedisClient { con: Some(con) },
+        Err(e) => { record(e); RedisClient { con: None } }
+    }
+}
+
+/// PING the server; false when not connected or on error
+#[rs]
+pub fn RedisClient.ping(self RedisClient) bool {
+    return match self.con_mut() { Some(con) => do_ping(con), None => false }
+}
+
+/// Set a string key; true on success
+#[rs]
+pub fn RedisClient.set(self RedisClient, key str, val str) bool {
+    return match self.con_mut() {
+        Some(con) => match con.set(key, val) { Ok(()) => true, Err(e) => { record(e); false } },
+        None => false
+    }
+}
+
+/// Get a string value; "" when missing or on failure
+#[rs]
+pub fn RedisClient.get(self RedisClient, key str) str {
+    return match self.con_mut() {
+        Some(con) => match con.get(key) { Ok(v) => v, Err(e) => { record(e); String::new() } },
+        None => String::new()
+    }
+}
+
+/// Delete a key; number removed, or -1 on failure
+#[rs]
+pub fn RedisClient.del(self RedisClient, key str) int {
+    return match self.con_mut() {
+        Some(con) => match con.del(key) { Ok(n) => n as i64, Err(e) => { record(e); -1 } },
+        None => -1
+    }
+}
+
+/// Check whether a key exists; false when missing or on failure
+#[rs]
+pub fn RedisClient.exists(self RedisClient, key str) bool {
+    return match self.con_mut() {
+        Some(con) => match con.exists(key) { Ok(b) => b, Err(e) => { record(e); false } },
+        None => false
+    }
+}

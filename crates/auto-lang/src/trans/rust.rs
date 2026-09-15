@@ -1937,6 +1937,13 @@ impl RustTrans {
             return "a2r_std::sqlite::SqliteDb".to_string();
         }
 
+        // Plan 415-B2: the redis module's client handle, same rationale as
+        // SqliteDb above (distinct name, fully-qualified a2r-std mapping).
+        if name == "RedisClient" {
+            self.a2r_std_used.set(true);
+            return "a2r_std::redis::RedisClient".to_string();
+        }
+
         // Merge mode: all types are in one file, skip crate:: prefix
         if self.merge_mode {
             if let Some(dot_pos) = name.rfind('.') {
@@ -5853,6 +5860,22 @@ impl RustTrans {
                             }
                             _ => {}
                         },
+                        // Plan 415-B2: redis module-level functions, mirroring
+                        // the sqlite arm (open takes &str; last_error nullary).
+                        "redis" => match method.as_str() {
+                            "open" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::redis::open(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "last_error" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::redis::last_error()")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
                         "fs" => match method.as_str() {
                             "read_to_string" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
@@ -6914,6 +6937,26 @@ impl RustTrans {
                 // list.get(i) -> list[i as usize].clone() for Auto List only
                 // Rust Vec/HashMap .get() falls through to generic method call handler
                 "get" => {
+                    // Plan 415-B2: RedisClient.get(key) → a2r-std inherent
+                    // method (&str borrow, sqlite exec precedent). Guarded
+                    // inside this arm — a preceding arm would shadow the
+                    // List-indexing logic below.
+                    if call.args.args.len() == 1 {
+                        let is_redis = if let Expr::Ident(name) = object.as_ref() {
+                            self.local_var_types.get(name)
+                                .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
+                                .unwrap_or(false)
+                        } else { false };
+                        if is_redis {
+                            self.a2r_std_used.set(true);
+                            self.expr(object, out)?;
+                            write!(out, ".get(")?;
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
                     if call.args.args.len() == 1 {
                         if let Some(Arg::Pos(arg)) = call.args.args.first() {
                             // Plan 433 A1: resolve List-typed locals/params AND
@@ -7062,6 +7105,33 @@ impl RustTrans {
                         return Ok(());
                     }
                     // Not a SqliteDb — fall through to the generic path.
+                }
+                // Plan 415-B2: redis client methods with NON-colliding names
+                // get their own arm. `get`/`set` collide with pre-existing
+                // arms of this match (List indexing / Map::insert rewrite
+                // live inside those arm bodies) — a preceding arm here would
+                // shadow them, so their RedisClient guards are embedded at
+                // the top of the existing `"get"`/`"set"` arms instead.
+                // The receiver must be a `var` binding: redis-rs connection
+                // ops take &mut self, mirrored by Auto var → `let mut`.
+                "ping" | "del" | "exists" => {
+                    let is_redis = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
+                            .unwrap_or(false)
+                    } else { false };
+                    if is_redis {
+                        self.a2r_std_used.set(true);
+                        self.expr(object, out)?;
+                        write!(out, ".{}(", method_name)?;
+                        if method_name != "ping" {
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // Not a RedisClient — fall through to the generic path.
                 }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
@@ -7421,6 +7491,29 @@ impl RustTrans {
                     return Ok(());
                 }
                 "set" => {
+                    // Plan 415-B2: RedisClient.set(key, val) → a2r-std
+                    // inherent method (both args &str borrows). Guarded
+                    // inside this arm — a preceding arm would shadow the
+                    // List/Map handling below.
+                    if call.args.args.len() == 2 {
+                        let is_redis = if let Expr::Ident(name) = object.as_ref() {
+                            self.local_var_types.get(name)
+                                .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
+                                .unwrap_or(false)
+                        } else { false };
+                        if is_redis {
+                            self.a2r_std_used.set(true);
+                            self.expr(object, out)?;
+                            write!(out, ".set(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                if let Arg::Pos(Expr::Ident(_)) = arg { write!(out, "&")?; }
+                                if let Arg::Pos(a) = arg { self.expr_as_str(a, out)?; }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
                     // Plan 433 A1: list.set(i, v) -> list[i as usize] = v for
                     // Auto List receivers (in-place element write). The HashMap
                     // insert rewrite below shifts Vec elements instead of
@@ -7938,6 +8031,19 @@ impl RustTrans {
                     }
                     ("sqlite", "last_error") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
+                        return Ok(());
+                    }
+                    // Plan 415-B2: redis module fns on the Dot-path dispatch
+                    // (mirrors the sqlite arms; open takes &str).
+                    ("redis", "open") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::redis::open(")?;
+                        if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("redis", "last_error") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::redis::last_error()")?;
                         return Ok(());
                     }
                     ("Map", "new") => {
@@ -16322,7 +16428,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "sqlite" => {
+                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", rest)
                             }
@@ -16344,7 +16450,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "sqlite" => {
+                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", mod_name)
                             }
@@ -16357,7 +16463,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "sqlite"
+                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis"
                         );
                         if is_stdlib {
                             self.a2r_std_used.set(true);
