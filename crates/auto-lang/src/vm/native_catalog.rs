@@ -496,6 +496,9 @@ macro_rules! for_each_native {
             (2984, NATIVE_TERM_ENGINE_ROWS_FOR, shim_term_rows_for, "auto.term.engine_rows_for"),
             (2985, NATIVE_TERM_ENGINE_PUMP_FOR, shim_term_pump_for, "auto.term.engine_pump_for"),
             (2986, NATIVE_TERM_ENGINE_APPLY_RESIZE_FOR, shim_term_apply_resize_for, "auto.term.engine_apply_resize_for"),
+            // PLAN-015 D4:菜单动作载荷(0=Copy 1=Paste 2=SelectAll
+            // 3=Interrupt;-1=无载荷;注册表任意端)。
+            (2987, NATIVE_TERM_ENGINE_MENU_TAKE, shim_term_menu_take, "auto.term.engine_menu_take"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -2619,6 +2622,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_rows_for", 2984),
     ("auto.term.engine_pump_for", 2985),
     ("auto.term.engine_apply_resize_for", 2986),
+    ("auto.term.engine_menu_take", 2987),
 
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
     ("auto.image.queue", 2960),
