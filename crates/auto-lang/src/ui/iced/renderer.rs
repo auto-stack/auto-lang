@@ -4433,7 +4433,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     } else {
                         inner
                     };
-                build_container(
+                // PLAN-631 F-5：mouse-area hover 样式对——`hover:` 变体类经
+                // HoverArea + 共享标志零重建翻转（镜像布局件臂；无声明 =
+                // None，零开销路径不变）。
+                let hover = layout_hover_flag(style.as_ref());
+                let built = build_container(
                     wrapped,
                     0,
                     None,
@@ -4442,8 +4446,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     false,
                     style.as_ref(),
                     None,
-                    None,
-                )
+                    hover.clone(),
+                );
+                match hover {
+                    Some(flag) => crate::ui::iced::hover_area::HoverArea::new(built, flag).into(),
+                    None => built,
+                }
             }
 
             // Plan 563: 状态驱动画布 —— CanvasPainter(canvas::Program 直绘,
@@ -17269,6 +17277,11 @@ fn dynamic_view_impl(
         *state.app.devtools.needs_bounds.borrow_mut() = true;
     }
 
+    // PLAN-631 T-01：剖析计时——builder（模板→AbstractView 转换）与
+    // render（AbstractView→iced Element）两段耗时随 `[P631-PROFILE]` 行
+    // 逐重建帧吐出（P631_PROFILE=1 启用；Style::parse 计数见 ui::style::profile）。
+    let p631_profile = crate::ui::style::profile::enabled();
+    let p631_t_builder = p631_profile.then(std::time::Instant::now);
     let (converted, debug_id_map) = if dirty {
         // Full rebuild: construct AbstractView from template, cache the result.
         // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
@@ -17331,6 +17344,9 @@ fn dynamic_view_impl(
             (converted, debug_id_map)
         }
     };
+    let p631_builder_us = p631_t_builder
+        .as_ref()
+        .map(|t0| t0.elapsed().as_micros() as u64);
 
     // Plan 307 Task 5: build a live VTree once per frame for the DevTools inspector.
     // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
@@ -17394,7 +17410,23 @@ fn dynamic_view_impl(
     }
 
     let mut path = Vec::new();
+    let p631_t_render = p631_profile.then(std::time::Instant::now);
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref(), &mut path);
+    if p631_profile {
+        let (calls, nanos) = crate::ui::style::profile::take();
+        let builder_ms = p631_builder_us.unwrap_or(0) as f64 / 1000.0;
+        let render_ms = p631_t_render
+            .map(|t0| t0.elapsed().as_micros() as u64)
+            .unwrap_or(0) as f64
+            / 1000.0;
+        eprintln!(
+            "[P631-PROFILE] rebuild builder_ms={:.2} render_ms={:.2} style_parse_calls={} style_parse_ms={:.2}",
+            builder_ms,
+            render_ms,
+            calls,
+            nanos as f64 / 1_000_000.0
+        );
+    }
 
     // Plan 412 续(toast 修正 3):toast 的消费/入队/到期 Task 都在 update
     // (&mut)完成;dynamic_view 只按 DynamicState.toasts 渲染恒定双层
@@ -17546,6 +17578,11 @@ fn dynamic_view_impl(
             }
         }
     }
+
+    // PLAN-631 F-7: 指针按下记忆根包装——placement "pointer" 的锚源(窗口
+    // 根单包装,纯委托,ButtonPressed 事件现场记账;见 ui::iced::right_press_area)。
+    let result: iced::Element<'static, IcedMessage> =
+        crate::ui::iced::right_press_area::PointerPressArea::new(result).into();
 
     // Cache the Element for reuse on next non-dirty frame, then take and return.
     // view_dirty was already cleared above.
@@ -20805,7 +20842,14 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     inner
                 };
             let dbg_props = debug_style_props(style.as_ref());
-            let el = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, None);
+            // PLAN-631 F-5：mouse-area hover 样式对（镜像 into_iced 臂与
+            // 布局件臂——HoverArea + 共享标志，零 VM 消息零重建）。
+            let hover = layout_hover_flag(style.as_ref());
+            let built = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, hover.clone());
+            let el = match hover {
+                Some(flag) => crate::ui::iced::hover_area::HoverArea::new(built, flag).into(),
+                None => built,
+            };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "mouse_area", el, dbg_props, style.as_ref()) } else { el }
         }
 

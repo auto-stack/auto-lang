@@ -33,6 +33,120 @@ pub use parser::StyleParser;
 pub use crate::design_tokens::recipe;
 pub use crate::design_tokens::recipe::*;
 
+/// PLAN-631 T-01：转换剖析计数面——`Style::parse_reported` 调用数/累计耗时
+/// 的进程级累计器。`P631_PROFILE=1` 时启用（否则单次 relaxed 读，恒零采集
+/// 开销）；renderer 的 view 重建臂逐次 `take()` 随 `[P631-PROFILE]` 行吐出，
+/// T-03 缓存前后对比（AC-05/06）以此为准。
+pub mod profile {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::OnceLock;
+
+    static CALLS: AtomicU64 = AtomicU64::new(0);
+    static NANOS: AtomicU64 = AtomicU64::new(0);
+
+    fn enabled_unlocked() -> bool {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        *ENABLED.get_or_init(|| std::env::var("P631_PROFILE").as_deref() == Ok("1"))
+    }
+
+    /// 当前进程是否启用剖析采集（renderer 侧同键复用）。
+    pub fn enabled() -> bool {
+        enabled_unlocked()
+    }
+
+    /// 采集一次 parse 耗时（未启用时零成本返回）。
+    pub fn record_parse(nanos: u64) {
+        if enabled_unlocked() {
+            CALLS.fetch_add(1, Ordering::Relaxed);
+            NANOS.fetch_add(nanos, Ordering::Relaxed);
+        }
+    }
+
+    /// 取走累计值（逐重建帧吐出后清零）。
+    pub fn take() -> (u64, u64) {
+        (
+            CALLS.swap(0, Ordering::Relaxed),
+            NANOS.swap(0, Ordering::Relaxed),
+        )
+    }
+}
+
+/// PLAN-631 T-03：类串→Style intern 缓存存储面。
+///
+/// 键 = (类串原文, 主题门控槽位)。槽位 = 5 个 responsive 断点命中位 +
+/// dark 态位（parse 输出对这些全局信号只做布尔门控——槽位相同则输出相同，
+/// 键由此完备；窗口 resize 同断点域内恒命中，跨域新槽）。
+///
+/// 结构：类串 → 64 槽表（按需分配项），命中路径零字符串分配
+/// （`HashMap::get(&str)` 借用查找 + 槽位下标）。类串表容量上限 4096，
+/// 超限整体清空（模板类串词表有限，上限仅为病态调用面兜底）。
+mod parse_cache {
+    use super::{theme, Breakpoint, Style};
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+
+    type Entry = (Style, Vec<String>);
+    const SLOTS: usize = 64;
+    const CLASS_CAP: usize = 4096;
+
+    type Table = Mutex<HashMap<String, Box<[Option<Arc<Entry>>; SLOTS]>>>;
+
+    fn table() -> &'static Table {
+        static TABLE: OnceLock<Table> = OnceLock::new();
+        TABLE.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    /// 当前主题门控槽位：bit0..4 = sm/md/lg/xl/2xl 命中，bit5 = dark。
+    fn slot() -> usize {
+        let width = theme::window_width();
+        let mut s = 0usize;
+        for (i, bp) in [
+            ("sm", Breakpoint::Sm),
+            ("md", Breakpoint::Md),
+            ("lg", Breakpoint::Lg),
+            ("xl", Breakpoint::Xl),
+            ("2xl", Breakpoint::Xxl),
+        ]
+        .iter()
+        .enumerate()
+        {
+            if width >= bp.1.min_width() {
+                s |= 1 << i;
+            }
+        }
+        if theme::dark_mode() {
+            s |= 1 << 5;
+        }
+        s
+    }
+
+    pub fn get(input: &str) -> Option<Arc<Entry>> {
+        if !enabled() {
+            return None;
+        }
+        let guard = table().lock().expect("style parse cache poisoned");
+        guard.get(input).and_then(|slots| slots[slot()].clone())
+    }
+
+    pub fn put(input: &str, parsed: &Entry) {
+        let mut guard = table().lock().expect("style parse cache poisoned");
+        if guard.len() >= CLASS_CAP && !guard.contains_key(input) {
+            guard.clear();
+        }
+        let slots = guard
+            .entry(input.to_string())
+            .or_insert_with(|| Box::new(std::array::from_fn(|_| None)));
+        slots[slot()] = Some(Arc::new((parsed.0.clone(), parsed.1.clone())));
+    }
+
+    /// 缓存开关（默认开；`AUTO_STYLE_CACHE=0` 关——AC-05 前后对比的
+    /// A/B 面单一二进制切换，剖析/诊断同用）。
+    pub fn enabled() -> bool {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        *ENABLED.get_or_init(|| std::env::var("AUTO_STYLE_CACHE").as_deref() != Ok("0"))
+    }
+}
+
 // Backend adapters (only compile when the respective backend is enabled)
 #[cfg(feature = "ui-gpui")]
 pub mod gpui_adapter;
@@ -141,9 +255,8 @@ pub struct Style {
 }
 
 impl Style {
-    /// 取指定变体的类列表(按声明序)。
-    pub fn variant_slice(&self, variant: Variant) -> Vec<StyleClass> {
-        self.variant_classes
+/// 取指定变体的类列表(按声明序)。
+    pub fn variant_slice(&self, variant: Variant) -> Vec<StyleClass> {        self.variant_classes
             .iter()
             .filter(|(v, _)| *v == variant)
             .map(|(_, c)| c.clone())
@@ -173,6 +286,37 @@ impl Style {
     /// 命中断点进 base(Plan 409 md+ 语义升级为真实断点),未命中仅登记
     /// variant_classes(可见不静默;窗口 resize 触发 view 重建→重解析生效)。
     pub fn parse_reported(input: &str) -> (Self, Vec<String>) {
+        // PLAN-631 T-01：P631_PROFILE=1 时采集单次 parse 耗时（剖析门控，
+        // 关闭时仅一次 relaxed 读）。
+        let __p631_t0 = profile::enabled().then(std::time::Instant::now);
+        // PLAN-631 T-03：类串→Style intern 缓存（剖析 T-01 定位的热区：
+        // 67 行列表单次重建 ~2600 次 parse、占 builder ~70-80%）。命中时
+        // 克隆已解析 Style（Vec<StyleClass> 浅枚举克隆 ≪ 逐 token 解析）。
+        //
+        // 键完备性：parse 输出 = f(input, 断点布尔向量, dark_mode)——
+        // responsive/dark 门控只做与固定阈值的比较，故键取 (类串, 5 断点
+        // 命中位 + dark) 六位槽位；窗口 resize 在同一断点域内恒命中，跨域
+        // 产生新槽。槽位族上限 64，二级表项按需分配。
+        if parse_cache::enabled() {
+            if let Some(hit) = parse_cache::get(input) {
+                if let (Some(t0), true) = (__p631_t0, profile::enabled()) {
+                    profile::record_parse(t0.elapsed().as_nanos() as u64);
+                }
+                return (hit.0.clone(), hit.1.clone());
+            }
+        }
+        let parsed = Self::parse_reported_uncached(input);
+        if let (Some(t0), true) = (__p631_t0, profile::enabled()) {
+            profile::record_parse(t0.elapsed().as_nanos() as u64);
+        }
+        if parse_cache::enabled() {
+            parse_cache::put(input, &parsed);
+        }
+        parsed
+    }
+
+    /// PLAN-631 T-03：parse_reported 的原实现（intern 缓存未命中路径）。
+    fn parse_reported_uncached(input: &str) -> (Self, Vec<String>) {
         let mut classes = Vec::new();
         let mut hover_classes = Vec::new();
         let mut variant_classes: Vec<(Variant, StyleClass)> = Vec::new();
