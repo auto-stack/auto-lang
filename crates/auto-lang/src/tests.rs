@@ -53,6 +53,7 @@ mod test_generic_simple;
 mod test_let_generic;
 mod vm_functions_tests;
 mod vm_json_float_read_tests; // Plan 474: __json_object 浮点字段 Dot 读回归（plan011④）
+mod use_semantics_tests; // Plan 545: use 命名空间语义（bare=命名空间 / : * = 显式全量）
 // vm_tests and autovm_tests merged - Plan 118
 // autovm_tests removed - tests consolidated into vm_tests
 mod vm_tests;

@@ -1535,7 +1535,7 @@ async fn execute_autovm_with_path(
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {
@@ -1815,7 +1815,7 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         crate::error::AutoError::Msg(e.message.clone())
@@ -4436,7 +4436,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {
@@ -4663,7 +4663,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {
