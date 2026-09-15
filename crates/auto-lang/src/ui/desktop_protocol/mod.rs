@@ -30,6 +30,8 @@ pub mod codec;
 #[cfg(feature = "ui-iced")]
 pub mod broker;
 #[cfg(feature = "ui-iced")]
+pub mod client_entry;
+#[cfg(feature = "ui-iced")]
 pub mod client_runtime;
 #[cfg(feature = "ui-iced")]
 pub mod coverage;
