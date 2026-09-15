@@ -5186,6 +5186,151 @@ mod tests {
         assert!(c.slash_menu_visible(), "层内空白不关层");
     }
 
+    /// T-03：A 层 kind 迁移——Heading→Text 保文保光标；对段落 Text 为
+    /// no-op（false）；段落→Heading 1..6 ATX emit 形态。
+    #[test]
+    fn slash_ops_kind_migration_preserves_text_and_caret() {
+        let c = core_for("slo1", "# 标题文\n");
+        assert_eq!(c.block_kind_of(0), LeafKind::Heading(1));
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        assert!(run_fs(|fs| c.slash_execute(fs, 0)), "Text 迁移");
+        assert_eq!(c.block_kind_of(0), LeafKind::Paragraph);
+        assert_eq!(c.emit_document(), "标题文");
+        // 光标驻原字节位（迁移后续打接尾）。
+        press(c, EditorKey::Char('X'));
+        assert_eq!(c.emit_document(), "标题文X");
+        // 对已 Paragraph 的 Text = no-op。
+        assert!(!run_fs(|fs| c.slash_execute(fs, 0)));
+        // 段落 → Heading 1..6。
+        for level in 1..=6i64 {
+            let key = format!("sloh{level}");
+            let h = core_for(&key, "正文\n");
+            *h.focus.lock().unwrap() = Some(0);
+            assert!(run_fs(|fs| h.slash_execute(fs, level as usize)), "H{level}");
+            assert_eq!(h.block_kind_of(0), LeafKind::Heading(level));
+            assert_eq!(h.emit_document(), format!("{} 正文", "#".repeat(level as usize)));
+        }
+    }
+
+    /// T-03：A/B 层 wrap 与 fence 族 emit + reparse 往返保形。
+    #[test]
+    fn slash_ops_wrap_family_emit_roundtrip() {
+        // Bullet。
+        let c = core_for("slo2", "事项\n");
+        *c.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| c.slash_execute(fs, 7)));
+        assert_eq!(c.emit_document(), "- 事项");
+        // Ordered（B 层——输入规则面未接线，仅菜单路径提供）。
+        let o = core_for("slo3", "第一步\n");
+        *o.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| o.slash_execute(fs, 8)));
+        assert_eq!(o.emit_document(), "1. 第一步");
+        let doc = o.emit_document();
+        run_fs(|fs| o.rebuild(&doc, fs));
+        assert_eq!(o.emit_document(), doc, "ordered reparse 往返");
+        // Quote。
+        let q = core_for("slo4", "引用文\n");
+        *q.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| q.slash_execute(fs, 9)));
+        assert_eq!(q.emit_document(), "> 引用文");
+        // CodeBlock。
+        let b = core_for("slo5", "let a = 1;\n");
+        *b.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| b.slash_execute(fs, 10)));
+        assert_eq!(b.block_kind_of(0), LeafKind::Fence);
+        assert_eq!(b.emit_document(), "```\nlet a = 1;\n```");
+    }
+
+    /// T-03：B 层文本插入族 8 项——光标处前缀插入（空段即文档形态）。
+    #[test]
+    fn slash_ops_insert_text_family() {
+        let cases: [usize; 8] = [11, 12, 13, 14, 15, 16, 17, 18];
+        let expects = ["- TODO ", "- DOING ", "- DONE ", "- NOW ", "- LATER ", "[#A] ", "[#B] ", "[#C] "];
+        for (i, &idx) in cases.iter().enumerate() {
+            let key = format!("slot{i}");
+            let c = core_empty(&key);
+            *c.focus.lock().unwrap() = Some(0);
+            assert!(run_fs(|fs| c.slash_execute(fs, idx)), "idx {idx}");
+            assert_eq!(c.emit_document(), expects[i]);
+        }
+    }
+
+    /// T-03：嵌套宿主 wrap——引用内段落 Bullet（replace_leaf_seg 递归定位）。
+    #[test]
+    fn slash_ops_wrap_inside_quote() {
+        let c = core_for("slo6", "> 引内\n");
+        let order = {
+            let segs = c.segs.lock().unwrap();
+            let mut o = Vec::new();
+            dfs_leaf_order(&segs, &mut o);
+            o
+        };
+        *c.focus.lock().unwrap() = Some(order[0]);
+        assert!(run_fs(|fs| c.slash_execute(fs, 7)));
+        assert_eq!(c.emit_document(), "> - 引内");
+    }
+
+    /// T-04：Divider——焦点叶后插 ThematicBreak Raw 段 + reparse 往返。
+    #[test]
+    fn slash_ops_divider_inserts_after_focus() {
+        let c = core_for("slt1", "甲段。\n\n乙段。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| c.slash_execute(fs, 19)));
+        assert_eq!(c.emit_document(), "甲段。\n\n---\n\n乙段。");
+        let doc = c.emit_document();
+        run_fs(|fs| c.rebuild(&doc, fs));
+        assert_eq!(c.emit_document(), doc, "divider reparse 往返");
+    }
+
+    /// T-04：Table 3×3 骨架——9 新 cell 叶、焦点迁表头首 cell、空表 emit、
+    /// reparse 往返保形。
+    #[test]
+    fn slash_ops_table_skeleton_focus_and_emit() {
+        let c = core_for("slt2", "表前\n");
+        let before = c.block_count();
+        *c.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| c.slash_execute(fs, 20)));
+        assert_eq!(c.block_count(), before + 9, "9 个新 cell 叶");
+        assert_eq!(c.focused_block(), Some(before), "焦点迁表头首 cell");
+        let doc = c.emit_document();
+        assert_eq!(
+            doc,
+            "表前\n\n|  |  |  |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |",
+            "焦点叶保留 + 空表管道行（3 行含 header + 分隔行）"
+        );
+        run_fs(|fs| c.rebuild(&doc, fs));
+        assert_eq!(c.emit_document(), doc, "table reparse 往返");
+    }
+
+    /// T-04：Callout/Details wrap emit（attr 形态与 parser 消费同源）+ 往返。
+    #[test]
+    fn slash_ops_callout_details_wrap() {
+        let c = core_for("slt3", "提示内容\n");
+        *c.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| c.slash_execute(fs, 21)));
+        assert_eq!(c.emit_document(), "$callout(type:\"note\", title:\"Note\") {\n提示内容\n}");
+        let doc = c.emit_document();
+        run_fs(|fs| c.rebuild(&doc, fs));
+        assert_eq!(c.emit_document(), doc, "callout reparse 往返");
+        let d = core_for("slt4", "折叠内容\n");
+        *d.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| d.slash_execute(fs, 22)));
+        assert_eq!(d.emit_document(), "$details(summary:\"Details\") {\n折叠内容\n}");
+    }
+
+    /// T-04：结构操作不入 undo（PLAN-048 T6 裁定口径）——命令后 Ctrl+Z
+    /// 零文档效果。
+    #[test]
+    fn slash_structural_ops_not_in_undo() {
+        let c = core_for("slt5", "标题\n");
+        *c.focus.lock().unwrap() = Some(0);
+        assert!(run_fs(|fs| c.slash_execute(fs, 1)));
+        assert_eq!(c.emit_document(), "# 标题");
+        ctrl(c, 'z');
+        assert_eq!(c.emit_document(), "# 标题", "kind 迁移不入 undo 栈");
+    }
+
     // ── PLAN-048 T6：undo/redo 面 ───────────────────────────────────────
 
     /// 打字 undo/redo 往返钉死（cosmic 逐叶记账，passthrough 逐动作
