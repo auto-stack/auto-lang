@@ -36,8 +36,13 @@
 
 ### 415-C GPUI a2r UI generator（242 #15,预估 ≥1 周,⭐⭐⭐⭐⭐）
 
-- **现状**: `ui/gpui/` 已有 renderer 骨架(Plan 365 的 Image 占位/Grid
-  分解已知限制),但 a2r(ui 生成器侧)完全未接。
+- **现状**（2026-09-15 刷新）: GPUI renderer 骨架已迁移至
+  `crates/auto-lang/src/ui/gpui/`（auto_render/renderer/vnode_entity
+  + style/gpui_adapter,合计 ~3.8k 行）,以 `ui-gpui` feature 门控
+  （gpui 0.2.2 + gpui-component 0.5.0）,19 个 `examples/ui_*.rs`
+  支持 `--features ui-gpui` 运行。Plan 365 已知限制仍在
+  （`View::Image` → `[img: src]` 文本占位、`View::Grid` 行列分解
+  无原生 grid,KNOWN-DEBT 365 条目在案）。a2r(ui 生成器侧)仍完全未接。
 - **前置决策**: GPUI 依赖重(wgpu 全家桶已在 iced 路径),先决条件是
   Plan 386 的启动条件式评估("≥3 个 COSMIC app 跑通")是否放宽;
   建议先出 1 天 spike(AURA → GPUI 映射层 PoC)再定 go/no-go。
