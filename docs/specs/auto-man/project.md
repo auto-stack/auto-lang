@@ -35,6 +35,24 @@ daemon；PLAN-015 起 `name` 键退役）——同一 app 的名称只在 pac.at
 i18n/{lang}.json 是应用内内容文案机制，与 app 元数据名称无关；展示名不走
 嵌套对象/外部文件（注册表保持平铺 `key: value` 行读解析）。
 
+## pac.at opens 文件关联键（PLAN-016）
+
+桌面互操作动词 `open_with`（协议 v1.7，schema/projection-protocol-v1.md
+§6）的关联声明面。app 在 pac.at 平铺声明可打开的扩展名集合：
+
+```
+opens: ".txt,.md,.at,.json"
+```
+
+- 值 = 逗号分隔扩展名列表；规范化为小写、带点前缀、剥空白
+  （`normalize_opens`）；未声明 = 空集 = 不参与关联校验（`open_with`
+  对其放行）。
+- 注册表解析：`parse_pac_fields` → `AppRegistryEntry.opens: Vec<String>`
+  （crates/auto-lang/src/ui/app_registry.rs），投影与 LaunchSpec 同源。
+- 宿主消费：`execute_open_with` 执行臂校验——目标扩展名非空且不在
+  声明集 → 拒绝并 toast；未声明 app id → 未知应用拒绝。
+- 与 PLAN-015 四名称契约正交：同为平铺 `key: value` 行读键，互不依赖。
+
 ## 模块架构
 
 ```mermaid
