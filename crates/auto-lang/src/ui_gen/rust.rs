@@ -1324,7 +1324,8 @@ impl RustGenerator {
                         String::new()
                     };
                     let body_redundant = field_names.iter().all(|f| {
-                        let b = body.trim();
+                        // T-03 后 handler 块尾恒补 `;`,先剥掉再比对。
+                        let b = body.trim().trim_end_matches(';');
                         b == format!("self.{} = self.{}", f, f)
                             || b == format!("self.{} = {}", f, payload_name)
                             || b == format!("self.{} = {}.to_string()", f, payload_name)
@@ -4800,10 +4801,8 @@ impl RustGenerator {
     fn generate_handler_body(&self, payload: &LogicPayload) -> String {
         let raw = match payload {
             LogicPayload::AstStmts(stmts) => {
-                let bodies: Vec<String> = stmts.iter()
-                    .map(|s| self.ast_stmt_to_rust(s))
-                    .collect();
-                bodies.join(";\n                ")
+                // handler 臂块 = 语句位置:块尾恒补 `;`(PLAN-634 T-03)。
+                self.join_stmt_block(stmts, ";\n                ")
             }
             LogicPayload::Bytecode(_) => {
                 "// bytecode handler".to_string()
@@ -5003,7 +5002,34 @@ impl RustGenerator {
         result
     }
 
+    /// 语句位置块发射(PLAN-634 T-03/#18 根修):join 后把**块尾语句恒补
+    /// `;`**。Aura 源无分号惯例,块尾语句原本成为 Rust 块的尾表达式——
+    /// 值返回调用落进 if 块尾即 `if c { api_fn() }` → rustc E0308
+    /// (auto-term #18 实证);`let` 块尾同理(旧特判只补了 let,此处一并
+    /// 取代)。值消费位置(表达式块,`ast_expr_to_rust` 的 If/Block 臂)
+    /// 不走本函数,尾表达式语义不受影响。
+    fn join_stmt_block(&self, stmts: &[crate::ast::Stmt], sep: &str) -> String {
+        let bodies: Vec<String> = stmts
+            .iter()
+            .map(|s| self.ast_stmt_to_rust(s))
+            .collect();
+        let mut joined = bodies.join(sep);
+        if let Some(last) = stmts.last() {
+            let emitted = !matches!(
+                last,
+                crate::ast::Stmt::Comment(_) | crate::ast::Stmt::EmptyLine(_)
+            );
+            if emitted && !joined.trim().is_empty() {
+                joined.push(';');
+            }
+        }
+        joined
+    }
+
     /// Convert a crate::ast::Stmt to Rust code (for on-handler bodies)
+    ///
+    /// 语句转换不带尾分号——块尾是否补 `;` 由 [`Self::join_stmt_block`]
+    /// 按"语句位置/表达式位置"统一裁定(PLAN-634 T-03)。
     fn ast_stmt_to_rust(&self, stmt: &crate::ast::Stmt) -> String {
         match stmt {
             crate::ast::Stmt::Store(store) => {
@@ -5097,26 +5123,9 @@ impl RustGenerator {
                 let mut parts = Vec::new();
                 for (i, branch) in if_stmt.branches.iter().enumerate() {
                     let cond = self.ast_expr_to_rust(&branch.cond);
-                    let body: Vec<String> = branch.body.stmts.iter()
-                        .map(|s| self.ast_stmt_to_rust(s))
-                        .collect();
-                    let mut body_str = body.join("; ");
-                    // A Rust `let` declaration requires a trailing semicolon
-                    // even when it is the last statement in an `if` arm.
-                    // Aura statements intentionally omit semicolons, so add
-                    // the terminator only for generated local bindings.
-                    if branch.body.stmts.last().map(|stmt| matches!(
-                        stmt,
-                        crate::ast::Stmt::Store(store)
-                            if matches!(
-                                store.kind,
-                                crate::ast::StoreKind::Let
-                                    | crate::ast::StoreKind::Const
-                                    | crate::ast::StoreKind::Var
-                            )
-                    )).unwrap_or(false) {
-                        body_str.push(';');
-                    }
+                    // 分支体 = 语句位置:块尾恒补 `;`(#18:值调用块尾缺分号
+                    // → E0308;旧 let 特判由 join_stmt_block 取代)。
+                    let body_str = self.join_stmt_block(&branch.body.stmts, "; ");
                     if i == 0 {
                         parts.push(format!("if {} {{ {} }}", cond, body_str));
                     } else {
@@ -5124,31 +5133,14 @@ impl RustGenerator {
                     }
                 }
                 if let Some(else_body) = &if_stmt.else_ {
-                    let body: Vec<String> = else_body.stmts.iter()
-                        .map(|s| self.ast_stmt_to_rust(s))
-                        .collect();
-                    let mut body_str = body.join("; ");
-                    if else_body.stmts.last().map(|stmt| matches!(
-                        stmt,
-                        crate::ast::Stmt::Store(store)
-                            if matches!(
-                                store.kind,
-                                crate::ast::StoreKind::Let
-                                    | crate::ast::StoreKind::Const
-                                    | crate::ast::StoreKind::Var
-                            )
-                    )).unwrap_or(false) {
-                        body_str.push(';');
-                    }
+                    let body_str = self.join_stmt_block(&else_body.stmts, "; ");
                     parts.push(format!("else {{ {} }}", body_str));
                 }
                 parts.join(" ")
             }
             crate::ast::Stmt::For(for_stmt) => {
-                let body_stmts: Vec<String> = for_stmt.body.stmts.iter()
-                    .map(|s| self.ast_stmt_to_rust(s))
-                    .collect();
-                let body_str = body_stmts.join("; ");
+                // 循环体 = 语句位置:块尾恒补 `;`(join_stmt_block 统一规则)。
+                let body_str = self.join_stmt_block(&for_stmt.body.stmts, "; ");
                 match &for_stmt.iter {
                     crate::ast::Iter::Named(name) => {
                         // for todo in .todos { ... } → for todo in self.todos.iter() { ... }
@@ -5197,10 +5189,8 @@ impl RustGenerator {
                 }
             }
             crate::ast::Stmt::Block(body) => {
-                let stmts: Vec<String> = body.stmts.iter()
-                    .map(|s| self.ast_stmt_to_rust(s))
-                    .collect();
-                format!("{{ {} }}", stmts.join("; "))
+                // 裸块语句 = 语句位置:块尾恒补 `;`(join_stmt_block)。
+                format!("{{ {} }}", self.join_stmt_block(&body.stmts, "; "))
             }
             crate::ast::Stmt::Comment(_) => String::new(),
             crate::ast::Stmt::EmptyLine(_) => String::new(),
