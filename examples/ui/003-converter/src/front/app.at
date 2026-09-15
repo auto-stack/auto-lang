@@ -8,7 +8,9 @@ widget App {
     // pac `window: "fit"` 窗口随内容收缩。
     view {
         col {
-            style: "max-w-md p-8 bg-card border rounded-2xl shadow-sm mx-4"
+            // mx-auto: 画廊视口内居中卡片(iced 端 Fill+max-w 不参与父级
+            // items-center,须自带 auto 边距;fit 窗口下 auto 边距自然归零)
+            style: "max-w-md p-8 bg-card border rounded-2xl shadow-sm mx-auto"
 
             text "Temperature Converter" {
                 style: "text-2xl font-bold text-primary text-center mb-6"

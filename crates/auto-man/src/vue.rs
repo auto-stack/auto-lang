@@ -5722,6 +5722,18 @@ pub fn refresh_gallery_registry(project_dir: &Path) -> AutoResult<usize> {
         rows.push(gallery_demo_row(&apps_dir, e).0);
     }
     write_registry_at(&project_dir.join("src").join("front"), &rows)?;
+    // T-10b 产物（demos/*.at + AppViewport.vm.at）与 registry.at 同源同刷：
+    // VM 臂此前只刷 registry,语料演进后视口适配器停留旧版（vue 臂 run 才
+    // 会重写）——双臂产物漂移,用户可见（视口 frame 缺失类回归）。
+    let (_vm_live, vm_skipped) =
+        emit_gallery_vm_demos(&apps_dir, &rows, &project_dir.join("src").join("gallery"))?;
+    if !vm_skipped.is_empty() {
+        println!(
+            "  {} Gallery VM demos skipped (multi-file/form): {}",
+            "⚠".bright_yellow(),
+            vm_skipped.join(", ")
+        );
+    }
     Ok(rows.len())
 }
 
@@ -5731,17 +5743,80 @@ pub fn refresh_gallery_registry(project_dir: &Path) -> AutoResult<usize> {
 /// prop 即 selected_id 实例化对应子 widget，实装候选 a——用户裁定）。
 /// web 臂不经此文件（AppViewport.vue 动态挂载不变）；VM 臂经
 /// ext_stubs 的 `.vue`→同名 `.vm.at` 探测装载（PLAN-051 C4 widget 注册流）。
-/// 单文件判定：仅一个 `widget ` 声明、无 `.at` 导入路径（多文件示例 v1
-/// 跳过，跳过清单随返回值上报）。
+/// 单文件判定：仅一个 `widget ` 声明、无 `.at` 导入路径；自有模块级联
+/// 发射（`use <mod>:` → demos/ 相邻拷贝,见 collect_own_modules），dep 型
+/// （deps/<name> 已物化）项目级解析放行,缺文件/同名异容仍跳过（清单随
+/// 返回值上报）。
 pub fn emit_gallery_vm_demos(
     apps_dir: &Path,
     rows: &[GalleryDemoRow],
     gallery_dir: &Path,
 ) -> AutoResult<(usize, Vec<String>)> {
-    let _ = apps_dir; // 行构建期已读 source;此处保留参数对称(gallery_apps_dir 解析在上游)
     let demos_dir = gallery_dir.join("demos");
     let _ = fs::remove_dir_all(&demos_dir);
     fs::create_dir_all(&demos_dir).map_err(|e| format!("demos mkdir: {}", e))?;
+
+    let deps_dir = gallery_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|root| root.join("deps"));
+
+    // 递归收集 source 的自有模块文件内容。找不到文件的模块（如 016 的
+    // `use datetime`——声明未调用的幽灵引用/内建命名空间）容错跳过不阻断:
+    // 编译期由 ext-stub 宽松降级兜底;文件存在则随 demo 相邻发射。
+    fn collect_own_modules(
+        source: &str,
+        app_dir: &Path,
+        deps_dir: Option<&Path>,
+        collected: &mut std::collections::BTreeMap<String, String>,
+    ) {
+        for l in source.lines() {
+            let t = l.trim_start();
+            if !t.starts_with("use ") {
+                continue;
+            }
+            let rest = &t[4..];
+            if rest.starts_with('{') || rest.starts_with('.') {
+                continue;
+            }
+            let m = rest
+                .split(|c: char| c == ':' || c.is_whitespace())
+                .next()
+                .unwrap_or("");
+            if m.is_empty() {
+                continue;
+            }
+            if deps_dir
+                .is_some_and(|d| d.join(m.split('.').next().unwrap_or(m)).is_dir())
+            {
+                continue;
+            }
+            if collected.contains_key(m) {
+                continue;
+            }
+            let rel = m.replace('.', "/");
+            let mut found = None;
+            for cand in [
+                app_dir.join(&rel).with_extension("at"),
+                app_dir.join(&rel).join("mod.at"),
+            ] {
+                if cand.is_file() {
+                    found = Some(cand);
+                    break;
+                }
+            }
+            let Some(p) = found else {
+                println!("  {} gallery module `{m}` not found — tolerated (stub degradation)", "⚠".bright_yellow());
+                continue;
+            };
+            let content = fs::read_to_string(&p).unwrap_or_default();
+            collected.insert(m.to_string(), content.clone());
+            collect_own_modules(&content, app_dir, deps_dir, collected);
+        }
+    }
+
+    // 跨示例共享的自有模块文件表（同名异容 → 冲突,跳过后来者）
+    let mut module_files: std::collections::BTreeMap<String, String> = Default::default();
 
     let mut imports = String::new();
     let mut branches = String::new();
@@ -5753,22 +5828,33 @@ pub fn emit_gallery_vm_demos(
         }
         let source = &r.source;
         // widget 声明判定按行首匹配（注释中的 "widget " 字样不算——002-counter
-        // 的 Plan 506 注释曾误触);多声明(宿主+工具 widget 同文件)v1 跳过。
+        // 的 Plan 506 注释曾误触);多声明(宿主+工具 widget 同文件)跳过。
         let widget_decls = source
             .lines()
             .filter(|l| l.trim_start().starts_with("widget "))
             .count();
-        // 模块级 use(Plan 522 形态,如 `use prog_util: pcur_fmt`/`use store:`)
-        // 指向示例自有模块——拷贝后无法解析 → link 致命(016/026 实证)。
-        // v1 仅发射自包含示例;use.web/use { ext 形态不受影响(桩降级)。
-        let has_module_use = source.lines().any(|l| {
-            let t = l.trim_start();
-            t.starts_with("use ") && !t.starts_with("use {")
-        });
         let has_at_import = source.contains(".at\"") || source.contains(".at')");
-        if widget_decls != 1 || has_at_import || has_module_use {
+
+        // 自有模块收集（跨示例冲突检测：同名模块内容不同 → 跳过后来者）
+        let mut row_modules: std::collections::BTreeMap<String, String> = Default::default();
+        let app_dir = apps_dir.join(&r.id).join("src").join("front");
+        collect_own_modules(source, &app_dir, deps_dir.as_deref(), &mut row_modules);
+        let modules_conflict = row_modules.iter().any(|(m, c)| {
+            module_files
+                .get(m)
+                .is_some_and(|prev| prev != c)
+        });
+        if widget_decls != 1 || has_at_import || modules_conflict {
             skipped.push(r.id.clone());
             continue;
+        }
+        for (m, c) in &row_modules {
+            module_files.entry(m.clone()).or_insert_with(|| c.clone());
+            let target = demos_dir.join(m.replace('.', "/")).with_extension("at");
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|e| format!("demos mkdir: {}", e))?;
+            }
+            fs::write(&target, c).map_err(|e| format!("write demos/{m}: {}", e))?;
         }
         let Some(pos) = source.find("widget App") else {
             skipped.push(r.id.clone());
@@ -5806,11 +5892,15 @@ pub fn emit_gallery_vm_demos(
     vm_at.push_str(
         "// src/gallery/AppViewport.vm.at — PLAN-625 T-10 生成产物(勿手改)\n// AppViewport 的 VM 形态:按 app prop(=selected_id)条件实例化 Demo* 子\n// widget,实时渲染示例。web 臂不经此文件(AppViewport.vue 动态挂载不变)。\n// 重新生成:auto build / auto run(generate_gallery_host)。\n\n",
     );
+    // 视口 frame 对齐 AppViewport.vue 的 viewportStyle 三态（full=100%×720 /
+    // desktop=1024×720 / tablet=768×1024,均 rounded-xl 边框 + max-w-full）：
+    // 外层 wrapper 居中定宽 frame,frame 内才是 demo 分支（否则桌面/平板
+    // 档只剩工具栏高亮、视口本体无尺寸变化——用户可见回归）。
     vm_at.push_str(&imports);
-    vm_at.push_str("\nwidget AppViewport(app: str, reloadKey: int, viewportMode: str) {\n    view {\n        col {\n            style: \"w-full h-full min-h-[360px] flex flex-col\"\n");
+    vm_at.push_str("\nwidget AppViewport(app: str, reloadKey: int, viewportMode: str) {\n    view {\n        col {\n            style: \"w-full flex flex-col items-center\"\n            col {\n                style: if .viewportMode == \"desktop\" { \"w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else if .viewportMode == \"tablet\" { \"w-[768px] max-w-full h-[1024px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else { \"w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" }\n");
     vm_at.push_str(&branches);
     vm_at.push_str(
-            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-2\"\n                    text \"该示例暂无 VM 内嵌形态\" { style: \"text-xs text-muted-foreground\" }\n                    text \"完整交互请使用 auto run（Vue 端）查看\" { style: \"text-xs text-muted-foreground/80\" }\n                }\n            }\n        }\n    }\n}\n",
+            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-2\"\n                    text \"该示例暂无 VM 内嵌形态\" { style: \"text-xs text-muted-foreground\" }\n                    text \"完整交互请使用 auto run（Vue 端）查看\" { style: \"text-xs text-muted-foreground/80\" }\n                }\n            }\n            }\n        }\n    }\n}\n",
     );
     fs::write(gallery_dir.join("AppViewport.vm.at"), vm_at)
         .map_err(|e| format!("write AppViewport.vm.at: {}", e))?;
@@ -8398,6 +8488,16 @@ mod gallery_registry_at_tests {
             "if .app == \"002-counter\" {",
             "Demo002Counter {}",
             "该示例暂无 VM 内嵌形态",
+            // 视口 frame 三态(对齐 AppViewport.vue viewportStyle;缺失=桌面/
+            // 平板档无尺寸变化)
+            "if .viewportMode == \"desktop\"",
+            "else if .viewportMode == \"tablet\"",
+            "w-[1024px] max-w-full h-[720px]",
+            "w-[768px] max-w-full h-[1024px]",
+            // demo 根 col 在 iced 端 shrink 包裹（vue 端 flex 子项默认
+            // stretch）——frame 须自带 items-center/justify-center 才有
+            // 默认水平+垂直居中
+            "overflow-hidden bg-background flex flex-col items-center justify-center",
         ] {
             assert!(vm_at.contains(needle), "missing `{needle}`");
         }
@@ -8425,6 +8525,58 @@ widget Helper {
         let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &dir.path().join("gallery")).unwrap();
         assert_eq!(emitted, 0);
         assert_eq!(skipped, vec!["009-x".to_string()]);
+    }
+
+    /// 依赖型模块 use(`use settings: ...`,宿主 deps/<name> 已物化)放行;
+    /// 无 deps 物化时同源仍跳过(006-hero-section 诉求)。
+    #[test]
+    fn test_emit_gallery_vm_demos_allows_dep_module_use() {
+        let source = "use settings: SettingsPopover\n\nwidget App {\n    view {\n        text \"hi\"\n    }\n}\n";
+        let rows = vec![vm_demo_row("006-hero-section", true, source)];
+
+        // 项目结构 <tmp>/deps/settings + <tmp>/src/gallery:dep 已物化 → 放行
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("proj");
+        fs::create_dir_all(project.join("deps").join("settings")).unwrap();
+        let gallery = project.join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1, "dep-backed module use must be emitted");
+        assert!(skipped.is_empty());
+        assert!(gallery.join("demos").join("006-hero-section.at").exists());
+
+        // 无 deps 物化:settings 缺文件 → 容错放行(编译期桩降级兜底),
+        // 不再跳过——幽灵/未调用模块引用不应阻断内嵌形态
+        let dir2 = tempfile::tempdir().unwrap();
+        let gallery2 = dir2.path().join("src").join("gallery");
+        let (emitted2, skipped2) = emit_gallery_vm_demos(Path::new(""), &rows, &gallery2).unwrap();
+        assert_eq!(emitted2, 1, "missing module file is tolerated");
+        assert!(skipped2.is_empty());
+    }
+
+    /// 示例自有模块（`use prog_util:`）级联发射:模块 .at 相邻拷贝进
+    /// demos/,demo 本体放行(011-calculator 诉求)。
+    #[test]
+    fn test_emit_gallery_vm_demos_copies_own_modules() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let app_dir = apps.join("011-x").join("src").join("front");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(
+            app_dir.join("prog_util.at"),
+            "fn pdouble(n int) int {\n    n * 2\n}\n",
+        )
+        .unwrap();
+        let rows = vec![vm_demo_row(
+            "011-x",
+            true,
+            "use prog_util: pdouble\n\nwidget App {\n    view {\n        text \"hi\"\n    }\n}\n",
+        )];
+        let gallery = dir.path().join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1, "own-module demo must be emitted");
+        assert!(skipped.is_empty());
+        assert!(gallery.join("demos").join("011-x.at").exists());
+        assert!(gallery.join("demos").join("prog_util.at").exists());
     }
 
     #[test]

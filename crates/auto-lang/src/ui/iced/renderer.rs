@@ -9753,8 +9753,37 @@ fn execute_desktop_commands(
                 execute_desktop_icon_drop_at(state, &dragged, &xy)
             }
             // PLAN-012 F2 走查：拖拽开始（宿主置位；__mouse_released 臂落格）。
+            // 2026-09-15：附拾起起点光标 + drag_icon（拖拽幽灵坐标锚
+            // popover 数据面）；移动超阈值前两路落格动词都拒落（点击语义）。
             DC::DesktopIconDragStart(id) => {
-                state.desktop.icon_drag = Some(id);
+                let origin = state
+                    .host
+                    .as_ref()
+                    .map(|h| {
+                        let p = h.wm.last_cursor.get();
+                        (p.x, p.y)
+                    })
+                    .unwrap_or((f32::NEG_INFINITY, f32::NEG_INFINITY));
+                if let Some(surface) = state.desktop.desktop_app {
+                    if let Some(app) = state.apps.get_mut(&surface) {
+                        let icon = state
+                            .desktop
+                            .registry_entries
+                            .iter()
+                            .find(|e| e.id == *id)
+                            .map(|e| e.icon.clone())
+                            .unwrap_or_else(|| "app-window".to_string());
+                        let _ = app
+                            .component
+                            .write_state("drag_icon", auto_val::Value::Str(icon.into()));
+                        let _ = app.component.write_state("drop_c", auto_val::Value::str(""));
+                        let _ = app.component.write_state("drop_r", auto_val::Value::str(""));
+                        let _ = app.component.write_state("drag_moved", auto_val::Value::str(""));
+                        *app.state.view_dirty.borrow_mut() = true;
+                    }
+                }
+                state.desktop.icon_drag = Some((id, origin));
+                state.desktop.icon_drag_moved = false;
             }
             DC::SetWallpapersDir(dir) => execute_set_wallpapers_dir(state, &dir),
             // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
@@ -11345,6 +11374,7 @@ fn desktop_icon_cells(
     order: &[(String, &str)],
     hidden: &[String],
     registry: &[crate::ui::app_registry::AppRegistryEntry],
+    rows: usize,
 ) -> (
     Vec<auto_val::Value>,
     Vec<String>,
@@ -11364,18 +11394,26 @@ fn desktop_icon_cells(
             None => free.push(e),
         }
     }
-    // ② 未定位：行主序填首个空格（跳过已占位）。
+    // ② 未定位：**列主序**填首个空格（2026-09-15 用户裁定——纵向优先，
+    // 左列自上而下占满后再排下一列；跳过已占位）。rows 下限保证容量。
+    let rows = rows.max((visible.len() + COLS - 1) / COLS).max(1);
     let mut taken: std::collections::BTreeSet<usize> = placed
         .iter()
         .map(|&(c, r, _)| r * COLS + c)
         .collect();
     for e in &free {
-        let mut slot = 0usize;
-        while taken.contains(&slot) {
-            slot += 1;
+        let mut k = 0usize;
+        loop {
+            // 列主序序数 k → (c, r) = (k / rows, k % rows)。
+            let (c, r) = (k / rows, k % rows);
+            let linear = r * COLS + c;
+            if !taken.contains(&linear) {
+                taken.insert(linear);
+                placed.push((c, r, e));
+                break;
+            }
+            k += 1;
         }
-        taken.insert(slot);
-        placed.push((slot % COLS, slot / COLS, e));
     }
     // ③ 行主序输出（spacer 填空格）。
     placed.sort_by_key(|&(c, r, _)| (r, c));
@@ -11610,16 +11648,24 @@ fn execute_desktop_icon_drop_at(
     dragged: &str,
     xy: &str,
 ) {
+    // 2026-09-15：未超位移阈值 = 点击——两路落格动词统一拒落（兜底
+    // __mouse_released 臂已拦，此处覆盖 BlankDrop 路径），只清视觉态。
+    if !state.desktop.icon_drag_moved {
+        clear_desktop_drag_visual(state);
+        return;
+    }
     // x,y → 线性格换算在闭包内完成（解析失败 = no-op）。
-    // desktop 本地像素 → 格：面根 p-3(12px) + 格 80 + gap 8 → 88px 栅距。
+    // desktop 本地像素 → 格：面根 p-3(12px)；横向 80px 格宽 + gap 8 =
+    // 88px 栅距；纵向 72px 格（图标 48px + 标题回归）+ gap 8 = 80px 栅距。
     let changed = (|| -> Option<bool> {
         let (xs, ys) = xy.split_once(',')?;
         let x = xs.trim().parse::<f32>().ok()?;
         let y = ys.trim().parse::<f32>().ok()?;
         const ORIGIN: f32 = 12.0;
-        const PITCH: f32 = 88.0;
-        let col = (((x - ORIGIN) / PITCH).floor() as i32).clamp(0, 7) as usize;
-        let row = (((y - ORIGIN) / PITCH).floor() as i32).clamp(0, 96) as usize;
+        const XPITCH: f32 = 88.0;
+        const YPITCH: f32 = 80.0;
+        let col = (((x - ORIGIN) / XPITCH).floor() as i32).clamp(0, 7) as usize;
+        let row = (((y - ORIGIN) / YPITCH).floor() as i32).clamp(0, 96) as usize;
         Some(desktop_icon_apply_drop(
             state,
             dragged,
@@ -11635,14 +11681,64 @@ fn execute_desktop_icon_drop_at(
 
 /// PLAN-012 F2 走查：清桌面面视觉拖拽态（落格完成后调用）。
 fn clear_desktop_drag_visual(state: &mut crate::ui::session::DesktopSession) {
+    state.desktop.icon_drag_moved = false;
     if let Some(surface) = state.desktop.desktop_app {
         if let Some(app) = state.apps.get_mut(&surface) {
             let _ = app
                 .component
                 .write_state("drag_id", auto_val::Value::str(""));
+            // 2026-09-15：落点高亮/幽灵数据面同步清零。
+            let _ = app.component.write_state("drop_c", auto_val::Value::str(""));
+            let _ = app.component.write_state("drop_r", auto_val::Value::str(""));
+            let _ = app.component.write_state("drag_icon", auto_val::Value::str(""));
+            let _ = app.component.write_state("drag_moved", auto_val::Value::str(""));
             *app.state.view_dirty.borrow_mut() = true;
         }
     }
+}
+
+/// 2026-09-15：壁纸亮度判定——#hex 直算 luma；图片壁纸解码缩 32×32 求
+/// 平均亮度（<128 = 暗）。结果按路径缓存（inject 在拖拽落格等时机高频
+/// 重入，解码不可重复）。判定失败（解码失败/未知形态）= 亮（前景色兜底）。
+fn desktop_wallpaper_dark(wallpaper: &str) -> bool {
+    if let Some(hex) = wallpaper.strip_prefix('#') {
+        if hex.len() == 6 {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                u8::from_str_radix(&hex[0..2], 16),
+                u8::from_str_radix(&hex[2..4], 16),
+                u8::from_str_radix(&hex[4..6], 16),
+            ) {
+                // Rec.601 luma（u8 溢出防护用 u16 中间量）。
+                let luma = (r as u16 * 299 + g as u16 * 587 + b as u16 * 114) / 1000;
+                return luma < 128;
+            }
+        }
+        return false;
+    }
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    fn cache() -> &'static Mutex<HashMap<String, bool>> {
+        static CACHE: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+        CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+    if let Some(hit) = cache().lock().ok().and_then(|c| c.get(wallpaper).copied()) {
+        return hit;
+    }
+    let dark = load_image_bytes(wallpaper)
+        .and_then(|data| image::load_from_memory(&data).ok())
+        .map(|img| {
+            let img = img.thumbnail(32, 32).to_rgb8();
+            let n = img.pixels().len().max(1) as u32;
+            let sum: u32 = img.pixels().map(|p| {
+                (p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000
+            }).sum();
+            sum / n < 128
+        })
+        .unwrap_or(false);
+    if let Ok(mut c) = cache().lock() {
+        c.insert(wallpaper.to_string(), dark);
+    }
+    dark
 }
 
 fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
@@ -11685,8 +11781,17 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
     let hidden_str = hidden.join(",");
     // PLAN-012 W5：格子分配（拖拽换位数据面——cells Obj 数组供 view 渲染，
     // ids/cs/rs 平行字符串列表供 handler 下标读，B12 规避）。
+    // 2026-09-15：rows 随视口高度（80px 行距 = 72px 格 + gap 8，扣任务栏
+    // 预留）——列主序默认排布的纵向上限。
+    let rows = {
+        let viewport = state.host_viewport();
+        let reserved = desktop_dock_edges(&state.desktop.config);
+        (((viewport.height - reserved.top - reserved.bottom) / 80.0).floor()
+            as usize)
+            .clamp(4, 24)
+    };
     let (cells, cell_ids, cell_cs, cell_rs) =
-        desktop_icon_cells(&order, &hidden, &state.desktop.registry_entries);
+        desktop_icon_cells(&order, &hidden, &state.desktop.registry_entries, rows);
     let Some(app) = state.apps.get_mut(&surface) else { return };
     let _ = app.component.write_state_vec("__desktop_icons", entries);
     let _ = app.component.write_state_vec("__desktop_cells", cells);
@@ -11704,6 +11809,16 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
         .component
         .write_state_vec("__desktop_cell_rs", cell_rs);
     let _ = app.component.write_state("__desktop_bg", auto_val::Value::Str(bg.into()));
+    // 2026-09-15：壁纸亮度 → 标签配色旗标（暗壁纸白字，否则语义前景色）
+    // ——text-foreground 随主题不随壁纸，深色壁纸上黑字不可读。
+    let _ = app.component.write_state(
+        "__desktop_label_dark",
+        auto_val::Value::str(if desktop_wallpaper_dark(&state.desktop.desktop_wallpaper) {
+            "1"
+        } else {
+            "0"
+        }),
+    );
     let _ = app.component.write_state(
         "__desktop_hidden",
         auto_val::Value::Str(hidden_str.into()),
@@ -12232,14 +12347,21 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         .write_state("__wm_layout", auto_val::Value::str(layout_name));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
-    // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget——
-    // 协议零字段增量）。usable 区逐窗 tile（常驻隐藏窗排除——与投影
-    // 同裁定），壁纸 #hex 基色；渲染臂直查 snapshot 缓存（SWR）。
-    {
-        let viewport = state.host_viewport();
-        let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
-        let mut per_ws: std::collections::BTreeMap<String, Vec<crate::ui::iced::workspace_preview::PreviewTile>> =
-            Default::default();
+    // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget）。
+    // 2026-09-15：抽独立 fn——切换预览面板开着时 400ms 节拍直发（快照
+    // 补抓后的下一拍即可见）；sync 指纹未变时也保持预览数据新鲜。
+    publish_workspace_previews(state);
+}
+
+/// 2026-09-15：workspace_preview 数据发布（原 sync_shell_windows 内联块）。
+/// usable 区逐窗 tile（常驻隐藏窗排除），壁纸 #hex 基色；渲染臂直查
+/// snapshot 缓存（SWR）。
+fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
+    let viewport = state.host_viewport();
+    let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
+    let mut per_ws: std::collections::BTreeMap<String, Vec<crate::ui::iced::workspace_preview::PreviewTile>> =
+        Default::default();
+    if let Some(host) = state.host.as_ref() {
         for &wid in &host.wm.z_order {
             let Some(v) = host.wm.wins.get(&wid) else { continue };
             if v.hidden.get() {
@@ -12256,16 +12378,21 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
                 },
             );
         }
-        crate::ui::iced::workspace_preview::publish(
-            crate::ui::iced::workspace_preview::Published {
-                usable: (usable.width, usable.height),
-                wallpaper: crate::ui::iced::workspace_preview::wallpaper_rgb(
-                    &state.desktop.config.wallpaper_path,
-                ),
-                workspaces: per_ws,
-            },
-        );
     }
+    eprintln!(
+        "[ws-preview] publish: {} ws entries, tiles per-ws {:?}",
+        per_ws.len(),
+        per_ws.iter().map(|(k, v)| (k.as_str(), v.len())).collect::<Vec<_>>()
+    );
+    crate::ui::iced::workspace_preview::publish(
+        crate::ui::iced::workspace_preview::Published {
+            usable: (usable.width, usable.height),
+            wallpaper: crate::ui::iced::workspace_preview::wallpaper_rgb(
+                &state.desktop.config.wallpaper_path,
+            ),
+            workspaces: per_ws,
+        },
+    );
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -15520,6 +15647,38 @@ fn compare_pngs(
                         // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
                         // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
                         update_shell_clock(state);
+                        // 2026-09-15：切换预览面板开着时——逐可见窗补抓快照
+                        // + 置 shell 重建。快照异步入缓存后原本无人触发重建，
+                        // 预览恒为空壁纸底（用户实测截图）；400ms 节拍内小
+                        // 视图重建成本可控，面板收起（switcher_open="0"）即停。
+                        if let Some(shell) = state.desktop.shell_app {
+                            let open = state
+                                .apps
+                                .get(&shell)
+                                .and_then(|a| a.component.read_state("switcher_open").ok())
+                                .map(|v| v.to_string().contains('1'))
+                                .unwrap_or(false);
+                            if open {
+                                eprintln!("[ws-preview] tick refresh: shell view dirty");
+                                if let Some(host) = state.host.as_ref() {
+                                    for &wid in &host.wm.z_order {
+                                        let visible = host
+                                            .wm
+                                            .wins
+            .get(&wid)
+                                            .map(|v| !v.hidden.get())
+                                            .unwrap_or(false);
+                                        if visible {
+                                            crate::ui::iced::snapshot::request_capture(wid);
+                                        }
+                                    }
+                                }
+                                publish_workspace_previews(state);
+                                if let Some(app) = state.apps.get_mut(&shell) {
+                                    *app.state.view_dirty.borrow_mut() = true;
+                                }
+                            }
+                        }
                         // Plan 551 T6:外写热应用轮询(os-config 经 daemon 改
                         // config.at → 宿主 400ms 节拍感知 → 差异应用)。
                         poll_external_config(state);
@@ -16216,6 +16375,21 @@ fn compare_pngs(
                                     // 单坐标锚数据源）——只写状态不置
                                     // view_dirty，blank_menu open 翻转才重
                                     // 建视图读取最新值，零逐帧重建成本。
+                                    // 2026-09-15：拖拽进行中——超阈值即置
+                                    // moved 旗标（两路落格动词的门），并把
+                                    // 光标所在格回写 drop_c/drop_r（落点格
+                                    // 高亮数据面）；置 view_dirty 让坐标锚
+                                    // 幽灵 popover 跟随（拖拽结束即恢复零
+                                    // 逐帧重建）。
+                                    let mut drag_active = false;
+                                    if let Some((_, (ox, oy))) = &state.desktop.icon_drag {
+                                        let dist =
+                                            ((x - ox).powi(2) + (y - oy).powi(2)).sqrt();
+                                        if dist >= 6.0 {
+                                            state.desktop.icon_drag_moved = true;
+                                            drag_active = true;
+                                        }
+                                    }
                                     if let Some(surface) = state.desktop.desktop_app {
                                         if let Some(app) = state.apps.get_mut(&surface) {
                                             let _ = app.component.write_state(
@@ -16226,6 +16400,32 @@ fn compare_pngs(
                                                 "__desktop_cursor_y",
                                                 auto_val::Value::Float(y as f64),
                                             );
+                                            if drag_active {
+                                                // 与 execute_desktop_icon_drop_at
+                                                // 同一套栅格换算（12px 面内边距 +
+                                                // 88/80px 栅距）。
+                                                let col = (((x - 12.0) / 88.0).floor()
+                                                    as i32)
+                                                    .clamp(0, 7);
+                                                let row = (((y - 12.0) / 80.0).floor()
+                                                    as i32)
+                                                    .clamp(0, 96);
+                                                let _ = app.component.write_state(
+                                                    "drop_c",
+                                                    auto_val::Value::str(col.to_string()),
+                                                );
+                                                let _ = app.component.write_state(
+                                                    "drop_r",
+                                                    auto_val::Value::Str(row.to_string().into()),
+                                                );
+                                                // 2026-09-15：幽灵 popover 开门条件
+                                                // （drag_id 按下即置位，点击会闪副本
+                                                // ——改用 drag_moved 门，真拖起来才显示）。
+                                                let _ = app
+                                                    .component
+                                                    .write_state("drag_moved", auto_val::Value::str("1"));
+                                                *app.state.view_dirty.borrow_mut() = true;
+                                            }
                                         }
                                     }
                                     let host_size = state
@@ -16293,8 +16493,16 @@ fn compare_pngs(
                             // is_pressed，跨件 release 不可达）。光标 =
                             // last_cursor（全局 CursorMoved 持续回写，
                             // desktop 本地坐标）。
-                            if let Some(dragged) = state.desktop.icon_drag.take() {
-                                execute_desktop_icon_drop_at_cursor(state, &dragged);
+                            if let Some((dragged, _origin)) =
+                                state.desktop.icon_drag.take()
+                            {
+                                // 2026-09-15：未超位移阈值 = 点击——原样落回
+                                // （只清视觉态），不再误落光标格。
+                                if state.desktop.icon_drag_moved {
+                                    execute_desktop_icon_drop_at_cursor(state, &dragged);
+                                } else {
+                                    clear_desktop_drag_visual(state);
+                                }
                                 return iced::Task::none();
                             }
                         }
@@ -24376,10 +24584,12 @@ mod tests {
             raw.to_string(),
         );
         let pos = load_desktop_positions();
-        let (cells, ids, cs, rs) = desktop_icon_cells(&order, &[], &[]);
+        // 2026-09-15：未定位图标改**列主序**填充（rows=8；纵向优先——左列
+        // 自上而下占满再排下一列）。
+        let (cells, ids, cs, rs) = desktop_icon_cells(&order, &[], &[], 8);
         eprintln!("[w5-cells] positions={pos:?} ids={ids:?} cs={cs:?} rs={rs:?}");
-        // 行主序：(0,0)=a，(1,0)=spacer，(2,0)=c？——b 占 (3,0)、d 占 (1,1)。
-        // 行主序填充：a→(0,0)，c→(1,0)（b 占 (3,0)），d 定位 (1,1)。
+        // b 占 (3,0)、d 占 (1,1)。列主序填充：a→k=0→(0,0)，c→k=1→(0,1)
+        // （线性格 8 未被占）。
         let id_of = |i: usize| -> String {
             match &cells[i] {
                 auto_val::Value::Obj(o) => match o.get("id") {
@@ -24391,21 +24601,21 @@ mod tests {
         };
         assert_eq!(cells.len(), ids.len(), "cells 与 ids 等长");
         assert_eq!(cs.len(), rs.len());
-        assert_eq!(id_of(0), "a", "行主序首个空格 (0,0)");
-        assert_eq!(id_of(1), "c", "跳过 b 的定位格后首个空格 (1,0)");
-        // b 定位 (3,0)：cells 数组紧凑到最后一枚图标——b 前仅 (2,0) 一格
-        // 空缺 → spacer，故 b 落数组下标 3（(c,r)=(3,0) 由 cs/rs 背书）。
-        let bi = ids.iter().position(|x| x == "b").unwrap();
-        assert_eq!(bi, 3, "b 紧跟 (2,0) spacer");
+        assert_eq!(id_of(0), "a", "列主序首格 (0,0)");
+        // 行主序输出：(0,1) = 线性下标 8。
+        assert_eq!(id_of(8), "c", "列主序次格 (0,1) → 行主序下标 8");
         let cell_str = |v: &auto_val::Value| -> String {
             match v {
                 auto_val::Value::Str(x) => x.to_string(),
                 other => other.to_string(),
             }
         };
+        // b 定位 (3,0) → 行主序下标 3；其前 (1,0)(2,0) 为 spacer。
+        let bi = ids.iter().position(|x| x == "b").unwrap();
+        assert_eq!(bi, 3, "b 在行主序下标 3");
         assert_eq!(cell_str(&cs[bi]), "3", "b 的列 = 定位值");
         assert_eq!(cell_str(&rs[bi]), "0", "b 的行 = 定位值");
-        let spacer_at_2 = match &cells[2] {
+        let spacer_at_1 = match &cells[1] {
             auto_val::Value::Obj(o) => o
                 .get("spacer")
                 .map(|v| {
@@ -24414,7 +24624,7 @@ mod tests {
                 .unwrap_or(false),
             _ => false,
         };
-        assert!(spacer_at_2, "(2,0) 应为 spacer 填位");
+        assert!(spacer_at_1, "(1,0) 应为 spacer 填位");
         let di = ids.iter().position(|x| x == "d").unwrap();
         assert_eq!(cell_str(&cs[di]), "1", "d 定位列");
         assert_eq!(cell_str(&rs[di]), "1", "d 定位行");

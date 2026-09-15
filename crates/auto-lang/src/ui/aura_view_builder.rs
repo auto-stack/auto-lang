@@ -5642,7 +5642,13 @@ let tabs_inner = View::Row {
     /// 渲染期补发一次(每渲染帧重放)。handler 缺失(HandlerNotFound)静默
     /// —— namespaced 导出不存在 = 该子组件没有 Init,常态;其余错误记
     /// warn 不中断渲染。
-    fn fire_child_init_if_any(&self, child_widget: &crate::aura::AuraWidget, state_obj_id: u64) {
+    fn fire_child_init_if_any(
+        &self,
+        child_widget: &crate::aura::AuraWidget,
+        state_obj_id: u64,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) {
         // Init 在提取期被移入 lifecycle 向量(extract.rs),不在 handlers 表。
         let has_init = child_widget
             .lifecycle
@@ -5656,7 +5662,16 @@ let tabs_inner = View::Row {
         // Init(ForgeStore.Init→LoadSessionList)随帧重入(musk 单会话期
         // 1.6 万+次实录);props 仍每帧重播种(ensure_child_state),派生值
         // 响应沿 vue 语义归 watch/computed。
-        if !self.bridge.child_init_first_mount(&child_widget.name) {
+        // os-config 016: 挂载身份 = 组件名 + 调用点 `key:` prop(可解析时)
+        // ——对齐 vue 的按 key 重挂载语义:同名子件 key 变化(含切回先前
+        // key)即重发 Init,否则子件继续渲染上一个 key 的数据体。无 key
+        // 调用点身份即组件名,每帧不变,536 防重放语义不变。
+        let init_identity = self
+            .extract_string_with(props, "key", bindings)
+            .filter(|k| !k.is_empty())
+            .map(|k| format!("{}#{}", child_widget.name, k))
+            .unwrap_or_else(|| child_widget.name.clone());
+        if !self.bridge.child_init_should_fire(&child_widget.name, &init_identity) {
             return;
         }
         if let Err(e) = self
@@ -5764,7 +5779,7 @@ let tabs_inner = View::Row {
         // onMounted 正常,跨轨语义缺口)。统一 state 架构下逐实例顺序
         // props → Init → build,每个渲染帧重放:纯派生 Init 幂等;副作用
         // 型子组件 Init 会在每次脏重建时重放(v1 近似,债务在案)。
-        self.fire_child_init_if_any(child_widget, child_state_id);
+        self.fire_child_init_if_any(child_widget, child_state_id, props, bindings);
 
         // Build a child view builder using the SAME bridge but with
         // override_state_obj_id pointing to the child's state object.
@@ -5825,7 +5840,7 @@ let tabs_inner = View::Row {
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
         // (tracked 双胎保持同一渲染语义)。
-        self.fire_child_init_if_any(child_widget, child_state_id);
+        self.fire_child_init_if_any(child_widget, child_state_id, props, bindings);
 
         // Plan 476: slot_fills 透传(untracked 双胎同款语义)。
         let child_builder = AuraViewBuilder {

@@ -1,6 +1,15 @@
 # Plan 415: a2r 剩余大件拆粒度实施（242 tracker 收尾批）
 
-> **状态**: 🟡 A/D 已收口；**B1 ✅（2026-09-15 落地于 `plan-fix/415b-sqlite`，待 review）**；B2/E 真待办——E 需基于 Plan 610 重定方案，C 前置决策改锚虚拟桌面（2026-09-15 漂移核查与预检结论详见各节括注与 §2）
+> **状态**: ✅ 终态 archived（2026-09-15）——A/B1/B2/D/E 五子项全部收口；C（GPUI 生成器）**回交 242 tracker #15**（外部信号门控,触发时另立计划）
+>
+> **归档收据（2026-09-15）**:
+> - A `HashMap::from`（2026-08-22,`c1127a589`/合并 `9c678a037`）
+> - B1 SQLite stdlib 三层+发射映射+golden 28_sqlite+396 骑乘项签名比对环（2026-09-15,`7b7063f6b`/合并 `85d8949f0`,review `534b97cdd`）
+> - B2 Redis stdlib（redis 0.27 同步 API,碰撞名嵌臂守卫模式）（`4e02c0de3`/合并 `b7ef75066`,review `9a919adbe`）
+> - D 自举 Phase 2/E（Plan 433 代收口,2026-08-24）
+> - E 重定方案成文+E-1 memmap 去桩（dep 轨全链实证:编译+运行）+E-2 dep cc 重定性+E-3 对账（`30d552677`/合并 `0326241b5`,review `86e37e0ed`）
+> - 规范沉淀: docs/specs/a2r-std/project.md（sqlite/redis 模块节+碰撞名守卫模式+396 比对环）;242 #2/#10/#17 刷 Done,#15 回交
+> - 余债移交: Plan 223 三段式死臂（KNOWN-DEBT 415-B1）/`let mut` 解析宽松性（415 计划 E 节记录,待独立小修）
 > **来源**: Plan 242（a2r 功能差距 tracker,持续维护不归档）剩余未做项;审计判定"均为大件,独立立项"
 > **前置核查**: #8 闭包推断根因已由 audit-A6 修复（`c2bd1d0c`,golden 004_closure_infer）,不在本计划范围
 
