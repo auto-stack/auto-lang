@@ -2219,3 +2219,16 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   预登记路径工作，本断裂面在 `use auto.X` 显式模块加载。修复位：
   parse_module_to_type_store 的 Parser 对 `#[vm]` 接口声明的接受面。
   证据：PLAN-545 R1 F2、探针错误文本内联（"Expected LBrace found #"）。
+
+## 2026-09-15 增补（PLAN-632 执行裁定）
+
+- **P632-D1 [宿主根件无 Init 的 fire_init 兜底告警（预存，定性无关）]**：
+  `App.Init failed (state may be unpopulated): handler not found: Init` 在
+  standalone（006/016 examples）与内嵌（ui-gallery VM）同样出现——是
+  fire_init 对根件无 `.Init` 声明时的一律兜底告警，与组件/store 桥接机制
+  无关（T-01 对照实验判定：standalone 016 store 桥接全通、告警同在）。
+  语义提示词（"state may be unpopulated"）对 store 型宿主有真实含义
+  （store→child 播种依赖根件 Init 或模型默认），但画廊宿主不消费该路径。
+  缓解候选：根件无 Init 声明时静默/降为 debug 级；或画廊 app.at 补 no-op
+  Init。收益仅日志卫生，另立微计划处理。证据：PLAN-632 T-01/T-05、
+  `target/p632/t01-*-proc.log`。
