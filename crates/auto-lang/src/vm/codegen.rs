@@ -7868,7 +7868,14 @@ impl Codegen {
                                 // instead of module call. Without the global_vars check, an
                                 // uppercase-named global (e.g. `H0`) is misclassified as a static
                                 // type reference. See Plan 347 (sha2 global-var bitop bug).
-                                let is_local_var = self.var_types.contains_key(obj_name.as_ref())
+                                // PLAN-066 T-12（F-W1）：i18n 单例排除在局部
+                                // 变量判定外——合成作用域无 i18n 绑定（组件级
+                                // `let i18n = useI18n()` 不进合成体），实例路径
+                                // 编译接收者报 Undefined variable 毒化导出；
+                                // 静态模块路由 → P240 ("i18n","t") → auto.i18n.t
+                                // （PLAN-050 C7 查表）。
+                                let is_local_var = obj_name.as_str() != "i18n"
+                                    && (self.var_types.contains_key(obj_name.as_ref())
                                     || self.global_vars.contains(obj_name.as_ref())
                                     || self.lookup_var(obj_name.as_str()).is_some()
                                     // Plan 348 E1: an imported value name (e.g.
@@ -7876,8 +7883,9 @@ impl Codegen {
                                     // call like `MAX.to(str)` must treat MAX as
                                     // an instance (load the global) rather than a
                                     // static type reference.
-                                    || self.import_scope.contains_key(obj_name.as_ref());
-                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi" | "storage" | "host");
+                                    || self.import_scope.contains_key(obj_name.as_ref()));
+                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi" | "storage" | "host" | "i18n");
+                                vm_debug!("DEBUG: Dot Ident static-check: obj={}, is_local_var={}, is_stdlib_module={}", obj_name, is_local_var, is_stdlib_module);
                                 if !is_local_var && (is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
@@ -7911,7 +7919,17 @@ impl Codegen {
                                         }
                                     } else {
                                         // Static method call: Type.method
-                                        Some(format!("{}.{}", obj_name, method))
+                                        // PLAN-066 T-12（F-W1）：i18n 单例 →
+                                        // auto.i18n.t 原生查表（i18n_lookup，
+                                        // PLAN-050 C7）。此 inner func_name
+                                        // 走静态 native 发射通道。
+                                        if obj_name.as_str() == "i18n"
+                                            && method.as_str() == "t"
+                                        {
+                                            Some("auto.i18n.t".to_string())
+                                        } else {
+                                            Some(format!("{}.{}", obj_name, method))
+                                        }
                                     }
                                 } else {
                                     // Instance method call: obj.method
@@ -8465,6 +8483,14 @@ impl Codegen {
                             ("Object", "values") => Some("auto.obj.values".to_string()),
                             ("shell", "exec") => Some("auto.sys.exec".to_string()),
                             ("regex", "match") => Some("auto.regex.match".to_string()),
+                            // PLAN-066 T-12（F-W1）：i18n.t VM 查表路由——
+                            // 合成作用域无 i18n 绑定，不路由则接收者编译报
+                            // Undefined variable 毒化导出（shim 接
+                            // i18n_lookup 查表，PLAN-050 C7）。ui 门控：
+                            // i18n_lookup 随 ui 模块裁剪，非 ui 构建保持
+                            // 旧行为（Undefined variable → 毒化）。
+                            #[cfg(feature = "ui-iced")]
+                            ("i18n", "t") => Some("auto.i18n.t".to_string()),
                             // URL module → opaque heap object shims
                             ("url", "parse") => Some("auto.url_opaque.parse".to_string()),
                             ("url", "encode") => Some("auto.url.encode".to_string()),

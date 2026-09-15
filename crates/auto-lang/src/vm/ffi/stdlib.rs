@@ -6407,6 +6407,24 @@ fn push_regex_match_list(
     Ok(())
 }
 
+/// PLAN-066 T-12（F-W1）：`i18n.t(key)` VM 轨查表——接 PLAN-050 C7 的
+/// i18n_lookup 注册表（front 根目录 i18n/{lang}.json，AUTO_LOCALE 装载；
+/// 查不中回落 key 本身）。此前 computed/handler 合成体的 `i18n.t(...)`
+/// 无路由：`i18n` 标识符在合成作用域未绑定（组件级
+/// `let i18n = useI18n()` 不进合成体）→ codegen "Undefined variable:
+/// i18n" → computed 导出毒化 → App link failed 启动 exit 1（KD-066
+/// F-W1）。codegen P240 map ("i18n","t") 路由至此，接收者不再编译。
+/// 入参 CALL_NAT 约定（自顶向下）：[key]。
+#[cfg(feature = "ui-iced")]
+pub fn shim_i18n_t(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let out = crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key.clone());
+    VMConvertible::push_to_stack(&out, task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
 /// PLAN-053 P-053-6: `Regex.replace(text, pattern, replacement, flags)` —
 /// web 生态静态形态（对齐 musk forge_helpers.ts 的 Regex 工具：flags 含 "g"
 /// 全局替换，否则只替换首处）。入参按 CALL_NAT 约定（自顶向下）：
@@ -8200,6 +8218,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // PLAN-053 P-053-6: web 生态静态形态（CALL_SPEC Regex.replace/test 路由）。
     natives.register_shim_by_name("auto.regex.replace", shim_regex_replace);
     natives.register_shim_by_name("auto.regex.test", shim_regex_test);
+    #[cfg(feature = "ui-iced")]
+    natives.register_shim_by_name("auto.i18n.t", shim_i18n_t);
 
     // Task system (manual shim — VM access for event loop)
     natives.register_shim_by_name("auto.task_system.run", shim_task_system_run);
