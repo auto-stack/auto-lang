@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-624
-status: reviewed                # drafting → executing → execution_done → reviewed → archived（终态前最后一站；merge 见 auto-plan-merge）
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态；merge 收据 PLAN-624:r2 见 §9）
 feature_name: store-facade-cross-state-resolution
 author: [zhaopuming]
 created_at: 2026-09-14
@@ -431,6 +431,32 @@ needs_replan 评估。
   p2_app.at + p4_app.at）。
   **next: merge**（AC-6 jade vm-smoke AUTO_EXE 全臂绿为 merge 前置门；
   canonical spec 落账与 ledger 刷新随 merge）。
+- 2026-09-15 merge 收据 **PLAN-624:r2**：
+  - `prepared` ✅ fold master 入 plan-624-dev（merge 141ed2c4d，无冲突；
+    master 侧 22 commits 含 PLAN-018/015 线）+ fold 后刷新验证 plan624
+    5/5、plan622 8/8、tv 3707/3707、tf 3561/3561；账本投影预备
+    （P624-1..6 六节镜像 622 schema，staged 校验读回过）。
+  - **AC-6 前置门 ✅**：jade vm-smoke（AUTO_EXE=worktree 构建
+    auto 0.1.0+v0.4.2-715-g141ed2c4d）**split PASS + merged PASS**
+    （各 15✓ 断言行，fixture 前后哈希一致）。排障实录：facade WIP 形态
+    首跑红 =彼仓 tabs_store.at 模型**缺 active_path 声明**（622 转写
+    遗失——注释在、声明行失），SET_FIELD 严格臂报
+    "Field 'active_path' not found on type instance App_State"；
+    彼仓 WIP 内一行声明修复（`var active_path str = ""`，未提交，归
+    jade 侧）后 smoke 全绿。已提交（workaround）形态双模 PASS 证
+    本计划零跨仓回归；facade 形态排除 VM 缺陷后仅余彼仓字段契约
+    未对齐（active_* → view_* 改名未同步 smoke），归 jade 侧落地。
+  - `landed` ✅ master merge `0b5a23d08`（Merge branch 'plan-624-dev'；
+    落地瞬间 master 已再前进至 c240fb216——PLAN-015 D4 engine_menu_take
+    shim，自动合并成功）+ 落地后主检出复验 plan624 5/5、plan622 8/8、
+    plan442 17/17、plan340 11/11、tv 3707/3707、tf 3561/3561 全绿；
+    overview.md「PLAN-624」节在 master 在案。
+  - `ledger_refreshed` ✅ .autoos/specs.json（运行时账本，未跟踪）原子
+    发布 P624-1..6 六节（staged→os.replace；发布前基线一致性校验过——
+    剥离 P624 项后与当前账本逐字节等价；读回 6/6，总 518 items）。
+  - `archived` ✅ plan → docs/plans/archive/624-store-facade-cross-state-
+    resolution.md + status: archived（本次提交）。
+  - `cleaned` ⏳ 待执行（guard→双 worktree/分支/组目录移除后补记）。
 
 ## 待澄清事项
 
