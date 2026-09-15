@@ -3788,3 +3788,73 @@ mod probe_rc_leak_soak {
         }
     }
 }
+
+/// PLAN-066 T-04（auto-musk PLAN-066 上游根修）：`__json_object` 字符串字段读
+/// 污染——JSON.parse 产物的字符串字段读取返回类型名 `"str"`（KD-057①，
+/// wl_probe21 实证：`j.kind → "str"`、字面量 `{type:"x"}.type → 空`），
+/// musk 问卷卡 `questionnaireFor` 的 `json.type` 判定失效的最后堵点。
+/// 本模块以脚本级真实 codegen+执行链锁定读返值本体语义。
+#[cfg(test)]
+mod musk_vm_track_p066_1_json_string_read {
+    use crate::run_with_capture;
+
+    fn run_code(code: &str) -> String {
+        match run_with_capture(code) {
+            Ok((_, stdout)) => stdout,
+            Err(e) => panic!("run failed: {:?}", e),
+        }
+    }
+
+    /// wl_probe21 主形态：JSON.parse 对象的字符串字段读取返值本体（非类型名）。
+    #[test]
+    fn json_parse_string_field_reads_value() {
+        let out = run_code(
+            r#"fn main() {
+    let j = JSON.parse("{\"type\": \"questionnaire\", \"kind\": \"x\"}")
+    print(j.kind)
+}"#,
+        );
+        eprintln!("[P066-1] j.kind => [{}]", out);
+        assert!(out.contains("x"), "expected x, got: [{}]", out);
+        assert!(!out.contains("str"), "type name leak, got: [{}]", out);
+    }
+
+    /// 同对象 `type` 键（musk questionnaireFor 的现场判定键）。
+    #[test]
+    fn json_parse_type_key_reads_value() {
+        let out = run_code(
+            r#"fn main() {
+    let j = JSON.parse("{\"type\": \"questionnaire\", \"kind\": \"x\"}")
+    print(j.type)
+}"#,
+        );
+        eprintln!("[P066-1] j.type => [{}]", out);
+        assert!(out.contains("questionnaire"), "expected questionnaire, got: [{}]", out);
+    }
+
+    /// 字面量 obj 的 `type` 键（KD-057①：读取为空）。
+    #[test]
+    fn literal_type_key_reads_value() {
+        let out = run_code(
+            r#"fn main() {
+    let lit = { type: "lit-type", kind: "lit-kind" }
+    print(lit.type)
+}"#,
+        );
+        eprintln!("[P066-1] lit.type => [{}]", out);
+        assert!(out.contains("lit-type"), "expected lit-type, got: [{}]", out);
+    }
+
+    /// 对照组：字面量 `kind` 键读取本就正常（KD-057① 在案），钉住防回归。
+    #[test]
+    fn literal_kind_key_control() {
+        let out = run_code(
+            r#"fn main() {
+    let lit = { type: "lit-type", kind: "lit-kind" }
+    print(lit.kind)
+}"#,
+        );
+        eprintln!("[P066-1] lit.kind => [{}]", out);
+        assert!(out.contains("lit-kind"), "expected lit-kind, got: [{}]", out);
+    }
+}

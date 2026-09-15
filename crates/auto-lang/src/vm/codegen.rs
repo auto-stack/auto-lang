@@ -6310,23 +6310,77 @@ impl Codegen {
                 }
 
                 // Check if this is the .type property - returns type name as string
+                // PLAN-066 T-04（KD-057① 根修，auto-musk PLAN-066 上游消费）：
+                // typeof 语义仅保留原始类型接收者。对象接收者（User/
+                // GenericInstance/obj 字面量/JSON 产物等动态值）一律落普通
+                // 字段访问通道——与 web 轨 a2ts 纯属性访问同语义。此前对
+                // field=="type" 无条件抢占为编译期类型名 LOAD_STR：任何名为
+                // type 的字段读取在 VM 轨恒返回接收者推断型名（JSON.parse
+                // 推断型 str → j.type == "str"），musk questionnaireFor 的
+                // json.type 判定、forge_store 的 ev.type 分派等约 90 处字段
+                // 比较恒假。M3 语料门（corpus_m3 t01/t03/t05/t06）的 .type
+                // 接收者均为原始类型字面量/原始型 fn 返回/数组元素，本守卫
+                // 下语义不变。
                 if field.as_str() == "type" {
-                    // Get the type of the object expression using infer module
                     let ty = self.infer_expr_type(obj);
-                    // Get type name as string
-                    let type_name = ty.unique_name();
-                    // Add to string pool
-                    let type_bytes = type_name.to_string().into_bytes();
-                    let str_idx = self.strings.len() as u32;
-                    self.strings.push(type_bytes);
-                    // Emit LOAD_STR instruction
-                    self.emit(OpCode::LOAD_STR);
-                    self.code.extend_from_slice(&str_idx.to_le_bytes());
-                    self.last_expr_type = ObjectType::String;
-                    vm_debug!("DEBUG: .type property: obj={:?}, type_name={}",
-                        obj, type_name
-                    );
-                    return Ok(());
+                    // 诊断口（沿 AUTO_DEBUG_GETFIELD 先例，env 门控零行为变更）。
+                    if std::env::var_os("AUTO_DEBUG_TYPEPROP").is_some() {
+                        let prim = match &ty {
+                            Type::StrFixed(n) => *n > 0,
+                            Type::Byte
+                            | Type::Int
+                            | Type::Uint
+                            | Type::USize
+                            | Type::I64
+                            | Type::U64
+                            | Type::Float
+                            | Type::Double
+                            | Type::Bool
+                            | Type::Char
+                            | Type::CStrLit
+                            | Type::StrSlice
+                            | Type::StrOwned => true,
+                            _ => false,
+                        };
+                        eprintln!("[TYPEPROP] obj={:?} ty={:?} prim={}", obj, ty, prim);
+                    }
+                    // StrFixed(0) 是动态值推断哨兵（真实 str 字面量推断带长度
+                    // 的 StrFixed(n)，n=len；Plan 212 注记在案 StrFixed(0) 曾
+                    // 为错误推断源）——排除之，落字段访问通道。
+                    let is_primitive_receiver = match &ty {
+                        Type::StrFixed(n) => *n > 0,
+                        Type::Byte
+                        | Type::Int
+                        | Type::Uint
+                        | Type::USize
+                        | Type::I64
+                        | Type::U64
+                        | Type::Float
+                        | Type::Double
+                        | Type::Bool
+                        | Type::Char
+                        | Type::CStrLit
+                        | Type::StrSlice
+                        | Type::StrOwned => true,
+                        _ => false,
+                    };
+                    if is_primitive_receiver {
+                        // Get type name as string
+                        let type_name = ty.unique_name();
+                        // Add to string pool
+                        let type_bytes = type_name.to_string().into_bytes();
+                        let str_idx = self.strings.len() as u32;
+                        self.strings.push(type_bytes);
+                        // Emit LOAD_STR instruction
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&str_idx.to_le_bytes());
+                        self.last_expr_type = ObjectType::String;
+                        vm_debug!("DEBUG: .type property: obj={:?}, type_name={}",
+                            obj, type_name
+                        );
+                        return Ok(());
+                    }
+                    // 对象/未知接收者：不抢占，落下方字段访问通道（GET_FIELD）。
                 }
 
                 // Plan 087 Phase 3: Check if this is field access on a user-defined type instance
