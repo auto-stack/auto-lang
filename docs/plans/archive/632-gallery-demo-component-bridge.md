@@ -123,4 +123,4 @@ Rust（auto-lang vm/ui 桥接、auto-man 发射器）；.at 语料；验证走 c
   - **landed**：master FF→`5f4b5c1b3`（含 `9669d5174` 实现 + `f4730b837` 同步 + `5f4b5c1b3` 沉淀）；合入后主检出 cargo check 零错 + plan632 5/5 冒烟绿；他线并发 WIP（renderer.rs/vue.rs/rust_ui.rs/634 文档）零卷入。
   - **ledger_refreshed**：`.autoos/specs.json` 原子 upsert P632-1..6（reports/goals/architecture/designs/tests/reviews 六节，file→archive 路径）+ `scripts/spec-index.py` 重生成 INDEX.md（26 projects）+ ui/plans.md 632 行 + ui/overview.md 沉淀叙事（均随 delivery 提交）。
   - **archived**：`docs/plans/archive/632-gallery-demo-component-bridge.md`，status: archived，completion_kind: delivered。
-  - **cleaned**：见下方补记（guard 收据）。
+  - **cleaned**：wt-guard 双 clean（auto-lang worktree + auto-down 兄弟，均"无任何 reparse point"）→ 双 worktree 移除 → `plan-632-dev` 删除（was `5f4b5c1b3`，已含于 master）→ 组目录 `.wt/lang-632/` 清空移除，`git worktree list` 零 632 残留（2026-09-15）。
