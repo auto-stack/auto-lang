@@ -2192,3 +2192,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P625-D5 | info | 覆盖范围 | **VM live 视口集=自包含示例 14/20**：多文件（自有 components/）与模块 use 示例 v1 降级占位卡（跳过清单启动日志上报：006/010/011/016/026/027）。扩展=生成器随行拷贝示例模块树+路径重写,独立评估 | `crates/auto-man/src/vue.rs` emit_gallery_vm_demos 过滤条件 |
 | F-R1 | info | 环境归属 | **docs_gen kitchen_sink worktree 红**：worktree 基于 d2f983d63,widgets-gallery fixture 已被 master 侧 9ffab6f6/776f4ba2 同步——基线陈旧 artifact（主检出 PASS;PLAN-625 diff 不触 docs_gen/schema）。随 worktree merge master 已消解大半,残余属共享检出的解析路径差异 | `crates/auto-lang/tests/docs_gen.rs:378` |
 | F-R2 | info | 环境归属 | **plan606 test_029_photo_gallery 红**：并行会话 plan628-photo-gallery-v2 在途重构破坏（主检出脏文件+628 计划在案;主检出与 worktree 合并态均红）——归 plan628 域,非 PLAN-625 | `crates/auto-lang/src/tests/plan606_gallery_tests.rs` |
+
+## P020 债务（rust-desktop-exe-compositor，2026-09-15 work 登记）
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P020-D1 | medium | 架构 | **双投影器并存（AppProjector 解释态 / NativeProjector native）**——块流布局 walker ~150 行语义镜像重复（layout_view_block/layout_view_node vs layout_block/layout_node），样式双轨（字符串解析 vs typed StyleClass 适配）。统一方向 = 解释态投影器改写为 View 基（AuraViewBuilder 已产 View，双轨归一），待 native 覆盖集爬坡后立项 | desktop_protocol/client_runtime.rs layout_*；desktop_protocol/native_projector.rs |
+| P020-D2 | low | 协议边界 | **native queue 臂键盘/滚轮/右键不路由、L3 StateSnapshot 注入 not-yet**（v1.6 边界随注）——input 族入覆盖集时同步补路由臂；StateSnapshot 融合态迁移需 typed 组件字段写回通道另立 | native_projector.rs on_input/on_control；desktop-protocol-v1.md §1.6 边界 |
+| P020-D3 | low | 生成器 | **async-init App 经孵化臂以 default() 态起**（初始化 API 加载不接协议 client 面）——超覆盖 App 的孵化形态缺省 auto→independent 可绕开，queue 档显式声明 async-init App 时启动态为空，待需要时立项 | rust_ui.rs wrap_example native_client_gate 随注 |
