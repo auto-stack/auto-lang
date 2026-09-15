@@ -1,8 +1,8 @@
 // App.at - Main app entry point with bottom tab navigation
 
-use QuickStartPage
-use CourseLearning
-use KnowledgeMap
+use QuickStartPage: QuickStartPage
+use CourseLearning: CourseLearning
+use KnowledgeMap: KnowledgeMap
 
 /// Main app with bottom tab navigation
 widget App {

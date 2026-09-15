@@ -27,6 +27,11 @@ fn canonical(path str) str
 #[vm]
 fn ext(path str) str
 
+/// Get file modification time as epoch seconds (PLAN-016 T-05).
+/// Returns -1 on failure or if the mtime predates 1970.
+#[vm]
+fn mtime(path str) int
+
 /// Get filename stem (e.g., "doc" from "doc.txt").
 #[vm]
 fn stem(path str) str

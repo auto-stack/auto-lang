@@ -1,0 +1,110 @@
+// tab_store.at — PLAN-624 red corpus store (str-sentinel active_path).
+//
+// Mirrors the jade desktop tabs_store.at facade copy (post-PLAN-622 form):
+// tabs array of maps, str active_path sentinel, module fn strip_ext,
+// try/catch read, find + reference mutation, write_wiki contract call.
+
+use back.api: read_wiki, write_wiki
+
+fn strip_ext(path str, ext str) str {
+    var n = path.length
+    var m = ext.length
+    if n >= m {
+        var tail = path.slice(n - m, n)
+        if tail == ext {
+            return path.slice(0, n - m)
+        }
+    }
+    return path
+}
+
+store TabStore {
+    model {
+        var tabs Array<str> = []
+        var active_path str = ""
+    }
+
+    msg Msg { Open(map), SetBody(map), Save(str), Close(str) }
+
+    on {
+        .Open(args) -> {
+            var path = args.path
+            var existing = .tabs.find(t => t.path == path)
+            if existing != null {
+                .active_path = path
+                if existing.loaded == false {
+                    var doc2 = None
+                    try {
+                        doc2 = read_wiki(path)
+                    } catch (e) {
+                        doc2 = None
+                    }
+                    if doc2 != null && existing.loaded == false {
+                        existing.body = doc2.body
+                        existing.loaded = true
+                    }
+                    if doc2 == null {
+                        existing.loaded = true
+                    }
+                }
+            }
+            if existing == null {
+                .tabs.push({ path: path, title: strip_ext(path, ".ad"), body: "", originalBody: "", frontmatter: {}, dirty: false, loaded: false })
+                .active_path = path
+                var doc = None
+                try {
+                    doc = read_wiki(path)
+                } catch (e) {
+                    doc = None
+                }
+                var tab = .tabs.find(t => t.path == path)
+                if tab != null && doc != null && tab.loaded == false {
+                    tab.body = doc.body
+                    tab.loaded = true
+                }
+                if tab != null && doc == null {
+                    tab.loaded = true
+                }
+            }
+        }
+
+        .SetBody(args) -> {
+            var tab = .tabs.find(t => t.path == .active_path)
+            if tab != null {
+                tab.body = args.body
+                tab.dirty = tab.body != tab.originalBody
+            }
+        }
+
+        .Close(path) -> {
+            var i = 0
+            var idx = -1
+            for t in .tabs {
+                if t.path == path && idx == -1 {
+                    idx = i
+                }
+                i = i + 1
+            }
+            if idx != -1 {
+                .tabs.splice(idx, 1)
+                if .active_path == path {
+                    if .tabs.len() > 0 {
+                        .active_path = .tabs[0].path
+                    }
+                    if .tabs.len() == 0 {
+                        .active_path = ""
+                    }
+                }
+            }
+        }
+
+        .Save(path) -> {
+            var tab = .tabs.find(t => t.path == path)
+            if tab != null && tab.loaded {
+                var saved = write_wiki(path, tab.frontmatter, tab.body)
+                tab.body = saved.body
+                tab.dirty = false
+            }
+        }
+    }
+}

@@ -1,6 +1,6 @@
 // KnowledgeMap.at - Knowledge Map tab content
 
-use KnowledgeMapContent
+use KnowledgeMapContent: KnowledgeMapContent
 
 /// Knowledge map page with navigation to learning sections
 widget KnowledgeMap {

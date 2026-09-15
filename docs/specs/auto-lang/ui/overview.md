@@ -473,6 +473,42 @@ handler 的 `__state` 状态对象（此前 CONST_0，`self.field` 全部静默 
 守卫语料：`plan622_a/a2/a3/b`（facade 读/派发/视图跟随）、
 `plan622_e1/e2`（捕获两形态）。
 
+## store facade 跨状态与短路语义（PLAN-624）
+
+### 跨状态字段读消费位增补（SD-01）
+
+PLAN-622 五消费位契约的增补（语料：`plan624_cross_state_tests` +
+`test/ui/plan624_cross_state/`；split/merged 双模守卫）：
+
+6. **跨状态字段读**：widget handler 内直读 store 字段（含嵌套对象字段、
+   map 字面量实参表达式内读取、`?str` 双态——None 读回 nil 不崩、Some
+   读回值本体）→ 读得 store 当前值。jade 实机「0 参 handler 派发带 λ 的
+   store msg 后读写全断（Invalid object ID）」的真因在闭包帧协议
+   （见下 SD-03），与 `?str` 编码无关。
+7. **列表原生面增补（SD-02）**：`auto.list.find_index(λ)`（2072）——
+   谓词消费与 find（2063）对齐，返回首命中下标，未命中 -1（此前静默
+   失效求值为 Nil）。
+
+### `&&`/`||` 短路值语义（SD-01 附，PLAN-624 rev 2 用户裁定②）
+
+`a && b` ≡ a 真值 ? b : a；`a || b` ≡ a 真值 ? a : b——与 web 轨 TS/JS
+对齐，`.at` 惯用法 `fm && fm.title || fallback` 逐字可用（falsy 链值透传
+fallback 本体，不再静默布尔归一写成 `true`）。真值判定沿用 JMP_IF_Z/NZ
+既有判定面（Plan 406 nv_truthy：tagged bool 权威、null/0/哨兵假）。
+纯布尔用法值不变；存量 .at 语料 335 处 `&&`/`||` 用法清点均为纯布尔面
+（tv 全量 3706/3706 绿证零语义依赖）。
+
+### 闭包激活帧协议（SD-03，执行期新增）
+
+闭包激活（`call_closure` 方法与 `CALL_CLOSURE` 码两路）必须入 call_stack
+恰好一帧，闭包体末端 RET 弹恰好一帧——CALL 帧协议对闭包闭合。违反形态
+（激活不入帧）下闭包 RET 偷走**外层函数**的帧：call_stack 错位使最深被调
+帧的 `current_fn_n_args` 泄漏进外层，参数寻址（`0x80+idx` 负偏移）越界走
+NULL 守卫——0 参 widget handler 派发带 λ 的 store msg 后读 `__state`
+即得 NULL 哨兵（SET_FIELD "Invalid object ID: 0xFFFFFFFF80000001"，
+jade facade 切换实机 P2 面真因）。带参 handler 的泄漏值恰等自身故不可见；
+守卫语料须覆盖「0 参 handler × store λ 派发」组合（plan624 p2 臂）。
+
 ## icon 字符串协议族（PLAN-018）
 
 icon 通道是**字符串协议**：pac `icon:` → 注册表 `AppRegistryEntry.icon` →
@@ -556,6 +592,32 @@ parse 输出完备（responsive/dark 门控只做布尔比较），窗口 resize
 帧吐 `[P631-PROFILE]` 行）。量化（027 67 行选中，debug）：parse p90
 13.2→1.4ms（~9x）、整重建 15.8→9.8ms；opt 档噪声内。结构 diffing 评估：
 不立项（行级 memo 为第一候选，触发门槛见 evidence diffing-eval.md）。
+
+## terminal iced 绘制契约与像素门禁（PLAN-634）
+
+> 契约全文 = docs/specs/widgets/terminal-iced-draw.md（canonical）；
+> 归因全文 = docs/plans/evidence/634/pixel-golden-drift-attribution.md。
+
+### draw 期段落强引用规则
+
+iced wgpu `fill_paragraph` 排队 `Arc::downgrade` 弱引用，flush `upgrade()`
+失败**静默丢弃**——draw 闭包内局部段落 fill 后析构，文字必不进像素产物
+（quad 值拷贝不受影响，表现为"底色块在、字没有"）。三处范式（terminal
+widget.rs）：行文本 `ROW_CACHES`（digest 门控）、菜单标签 `MENU_PARAS`
+（静态串 OnceLock）、badge/preedit `PLAIN_PARAS`（键 (text,width)，封顶
+64 溢出清空）。不变式：强引用存活到 flush；guard 持有跨越 fill 调用；
+动态键缓存只许封顶清空、不许悬垂。a2r 侧同族规则（语句位置块尾恒补
+`;`）见 a2r-std/project.md（#18 E0308 实证）。
+
+### 像素金样环境契约
+
+headless 像素产物字节面绑定三张环境敏感牌：wgpu 适配器/后端枚举
+（`Renderer::name()` 恒 `"wgpu"`，后端翻转不换金样后缀）、MSAA×4 合成、
+系统字体栅格（cosmic-text fontdb）。漂移=环境态翻转非代码（015 同日晨绿
+午后红跨树复红 + 634 三后端探针零漂移互证）。门禁语义：硬断言=墨水占比
+/同进程双渲染字节一致/层容差差分（阈值按金样实测标定，分离度 ≥2×）；
+金样留档+审计制（超 5% 预算仅告警）。像素/可见性测试一律 nextest 跑
+（裸 cargo test 单进程共享注册表/静态缓存会互踩——634 实证）。
 
 ## 已知坑
 
@@ -702,3 +764,5 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 **571 button 缺省 variant 一等化（GOAL-007，Design 22 §1.2/§3 修订）**：`button` 缺省从"primary 填充别名"升一等 `default` variant——UA stylesheet 显式等价物（Web 裸 `<button>` 有浏览器预填兜底，VM(iced) 无此层，故以 variant 表显式承载）：中性填充 `bg-muted` + `border-border` 发丝描边（dark 下 muted 对 background 对比度 ~1.15:1，纯填充不可辨）；`primary`（+行为语义 `submit`）为显式醒目 CTA 档；`secondary` 深一档纯填充无边框（"有边框"归 outline 专属），token 与 muted 分档（dark slate-700 #334155 / light 暖灰 #e3ddd1）。单源 `ui/style/variants.rs`（VM 臂 convert_button 与 rust codegen 臂 with_button_preset 共用；preset 前置、user class 后类胜；动态 class 不注入无回归；ui feature 门控）——Vue 侧三源（ui_gen cva 模板、auto-man 烘焙资产 button/index.ts〔PLAN-457 烘焙补丁先例〕、auto CLI 内嵌模板）与 CSS 变量层（auto-man generate_index_css 等）逐源互锁测试锚定，复审首轮 fail 抓出 CSS 变量层第三源未分档（T10 收敛）。顺修 web 端 `variant:"primary"` 落空（cva 无 primary 键）。specs.json P571-1..6；债：iced `Color::Accent` 无解析臂（ghost/outline `hover:bg-accent` VM no-op）、Vue cva 多真源维护面（互锁已防漂移）。
 
 **P011 mouse_area 命中带=内容盒（KNOWN-DEBT 候选：转换器级尺寸类语义）**：iced `mouse_area` 无自带 width/height，命中带=其内容盒；DSL `mouse-area` 的显式尺寸类（w-full/h-full/w-N/h-N）由转换臂（renderer.rs MouseArea 双臂）落在**外层包装 container** 上，对命中几何是 no-op——需要大命中带时必须让**内容件自身 Fill**。P010-F1 先例：desktop.at 空白菜单 popover（T36）以全桌面 mouse-area 为锚件，锚的命中带仅图标网格条带高，条带以下全桌面为 BlankPress/BlankMenu 命中死区（levitate/悬垂假设经 AUTO_STACK_PROBE 五配置矩阵+格条带几何微测证伪；修复=内容包 `w-full h-full` col，锚件几何/popover 放置语义/视觉零变化，auto-os `46a07cf`）。同族规则：P007-1"shrink 上下文（Popover 锚/行内）Fill 解析零高"。转换器级根治（style 尺寸类进 mouse_area 命中带）波及全 app 命中面，登记 KNOWN-DEBT 候选（PLAN-011 SD-01）。
+
+**632 画廊内嵌 demo 模块组件桥接（ADR-20，清偿 625"6 模块 use 降级"中的组件/store 族）**：T-01 standalone 对照实验修订两处预设——016 store 桥接 standalone 全通（store→child 转换+模型并根+计算属性全绿），内嵌降级根因=use.web 适配器链（Demo*.at）携带的 StoreDecl 在 load_ext_imports_for_vm 才进 import_stmts、晚于 store→child 转换位——ext 装载后按名去重补转换（F1）；006 双缺口=dep 目录 item 命名文件（settings_popover.at）解析永不命中（F2：resolve_use_module dotted-module 探测，`deps/{dep}/{item_snake}.at` 候选复用，snake_case 优先）+适配器模块 use 链 widget 从不注册（F3：扫 visited 按显式 items 注册进 registry/child_decls，P545 bare use 不触发）；F4=适配器链符号别名补齐（视图 computed 内 `month_name(...)` 裸名查 exports miss → raw 模板回退根因；or_insert 根环优先）。**实证**：006 弹层开合（settings_open 状态断言+截图）、016 June/42 格填充网格/Selected 点击更新、002/003/011 回归巡检——内嵌 MCP 10/10 双轮（实现期+复审期）；plan632_demo_bridge_tests 5 测（T-02 红→绿）；tv 3715/3715、tf 3568/3569（唯一红=P615-D3 预存并发抖动，隔离恒绿）。**债**：P632-D1 App.Init 兜底告警（宿主根件无 Init 的既有形态）；006 standalone 的 deps/settings 空目录为 vue 臂 dep 管线产物缺口（环境面，非运行时范围）。

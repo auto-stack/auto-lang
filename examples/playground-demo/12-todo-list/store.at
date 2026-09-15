@@ -1,7 +1,7 @@
 // store.at — TodoStore manages the todo item list (use todo):
 // creating the store and adding items. Item completion and listing
 // are driven from main.at, which can read/write item fields directly.
-use todo
+use todo: Todo, new_todo
 
 pub type TodoStore {
     items List<Todo>

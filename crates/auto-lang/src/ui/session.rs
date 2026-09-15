@@ -268,8 +268,14 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// 懒挂载（launcher 同型 overlay 槽约定）；独立模式恒 None。
     pub switcher_app: Option<AppId>,
     /// PLAN-012 F2 走查：进行中的桌面图标拖拽（desktop_icon_drag_start
-    /// 置位；__mouse_released 臂落格清位）。
-    pub icon_drag: Option<String>,
+    /// 置位；__mouse_released 臂落格清位）。2026-09-15：附拾起起点光标
+    /// （desktop 本地坐标）——松手位移 < 阈值视为点击原样落回，杜绝
+    /// "点图标旁空隙即跳格"误拖。
+    pub icon_drag: Option<(String, (f32, f32))>,
+    /// 2026-09-15：本次拖拽是否已超过位移阈值（6px）——未超 = 点击，
+    /// 两路落格动词（__mouse_released 兜底臂 + BlankDrop desktop_icon_drop_at）
+    /// 都拒落，只清视觉态。
+    pub icon_drag_moved: bool,
     /// Plan 479 T3：通知中心 overlay App 的 AppId。首次 notes_toggle 召唤时
     /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
     pub notification_app: Option<AppId>,
@@ -376,6 +382,7 @@ impl DesktopState {
             launcher_app: None,
             switcher_app: None,
             icon_drag: None,
+            icon_drag_moved: false,
             notification_app: None,
             desktop_app: None,
             desktop_wallpaper: DESKTOP_WALLPAPER_DEFAULT.to_string(),

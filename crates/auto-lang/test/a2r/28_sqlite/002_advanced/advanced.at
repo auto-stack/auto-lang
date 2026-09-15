@@ -1,0 +1,13 @@
+// Plan 415-B1: sqlite module qualified-import form + multi-statement batch
+// exec + last_error sentinel. Calls use the bare 2-segment form
+// (sqlite.open): the 3-segment auto.sqlite.* dispatch arm is dead for the
+// current parse shape (pre-existing, affects auto.env.get too — see
+// KNOWN-DEBT 415-B1 entry).
+use auto.sqlite
+
+fn main() {
+    let db SqliteDb = sqlite.open("notes_415b.db")
+    db.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES ('first')")
+    let err str = sqlite.last_error()
+    print(err)
+}

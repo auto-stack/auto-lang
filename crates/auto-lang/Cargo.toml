@@ -294,6 +294,10 @@ criterion = "0.5"
 tempfile = "3"
 insta = { version = "1", features = ["yaml"] }
 
+# PLAN-634 T-01：terminal 像素金样稳健比对（容差像素差分）。版本随
+# iced_test（其 matches_image 即用 png 落盘/读盘），不新增编译单元。
+png = "0.18"
+
 [[bench]]
 name = "incremental_transpile_bench"
 harness = false

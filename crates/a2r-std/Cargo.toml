@@ -13,3 +13,10 @@ ureq = { version = "2", features = ["tls"] }
 # (Cargo.toml:56) and gives rt/sync/macros/time in one feature set.
 tokio = { workspace = true, features = ["full"] }
 sysinfo = { workspace = true }
+# Plan 415-B1: SQLite backend for the `sqlite` stdlib module. `bundled`
+# compiles SQLite from source (same pin as auto-cache), no system lib
+# needed on Windows/MSVC.
+rusqlite = { version = "0.30", features = ["bundled"] }
+# Plan 415-B2: Redis client for the `redis` stdlib module. Default features
+# are the pure-Rust sync API (no C deps, no tokio) — Windows/MSVC safe.
+redis = "0.27"

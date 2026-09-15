@@ -75,3 +75,8 @@ fn engine_pump_for(handle int, key str) int
 /// PLAN-018 D5 定向几何泵:只消费 `key` terminal 的待定 resize 请求。
 #[vm]
 fn engine_apply_resize_for(handle int, key str) int
+
+/// PLAN-015 D4 菜单动作载荷:terminal 右键菜单命中项(0=Copy 1=Paste
+/// 2=SelectAll 3=Interrupt;-1=无载荷;注册表任意端)。
+#[vm]
+fn engine_menu_take() int

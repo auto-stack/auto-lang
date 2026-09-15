@@ -1,6 +1,6 @@
 // MapData.at - Knowledge map data
 
-use Types
+use Types: Section
 
 let sections Section[] = [
     {

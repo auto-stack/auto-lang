@@ -1,0 +1,11 @@
+// Plan 415-B2: redis module qualified-import form + last_error sentinel +
+// ident args (borrow path). Calls use the 2-segment form (3-segment
+// auto.redis.* is dead-arm limited, same as sqlite — KNOWN-DEBT 415-B1).
+use auto.redis
+
+fn main() {
+    let addr str = "redis://127.0.0.1:6379/1"
+    var r RedisClient = redis.open(addr)
+    let err str = redis.last_error()
+    print(err)
+}
