@@ -311,7 +311,7 @@ impl VmBridge {
 
         // 2. Link (single module → no cross-module relocation).
         let mut linker = Linker::new();
-        linker.add_module(module);
+        linker.add_entry_module(module);
         let (code, exports) = linker.link().map_err(|e| VmBridgeError::InvalidState(
             format!("link failed for '{}': {}", widget_name, e)
         ))?;
@@ -411,7 +411,7 @@ impl VmBridge {
 
         // 2. Link (single module → no cross-module relocation).
         let mut linker = Linker::new();
-        linker.add_module(module);
+        linker.add_entry_module(module);
         let (code, exports) = linker.link().map_err(|e| VmBridgeError::InvalidState(
             format!("link failed for '{}': {}", widget_name, e)
         ))?;

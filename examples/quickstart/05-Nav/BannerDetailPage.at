@@ -1,6 +1,6 @@
 // BannerDetailPage.at - Banner detail page with WebView
 
-use BannerClass
+use BannerClass: BannerClass
 
 /// Banner detail page with WebView
 widget BannerDetailPage {

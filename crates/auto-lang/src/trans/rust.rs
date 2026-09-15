@@ -16358,10 +16358,13 @@ pub use auto_cabi_kit::*;"#
                             return Ok(()); // skip: functions already in merged file
                         }
                         // Module already declared via mod X; at file header.
-                        // use X (bare, no items) means "import all from this module"
-                        // → generate use crate::X::*;
+                        // Plan 545: use X (bare, no items) = namespace-only —
+                        // import the module name itself (Rust 2018 style); flat
+                        // glob requires explicit `use X: *` (wildcard arm above
+                        // at the shared emitter). Qualified `X.foo()` resolves
+                        // through the namespace import.
                         self.glob_imported_modules.insert(mod_name.to_string());
-                        write!(out, "{}use crate::{}::*;", pub_kw, mod_name)?;
+                        write!(out, "{}use crate::{};", pub_kw, mod_name)?;
                         return Ok(());
                     }
                 }
@@ -16483,8 +16486,11 @@ pub use auto_cabi_kit::*;"#
                     } else if !use_stmt.items.is_empty() {
                         write!(out, "{}use {}::{{{}}};", pub_kw, rust_path, use_stmt.items.join(", "))?;
                     } else if is_multi_file_bare {
-                        // In multi-file mode, bare import → wildcard
-                        write!(out, "{}use {}::*;", pub_kw, rust_path)?;
+                        // Plan 545: bare module import = namespace-only —
+                        // `use super::X;` / `use crate::X;` brings the module
+                        // name in scope for qualified `X::foo()` paths; flat
+                        // glob requires explicit `use X: *` (wildcard arm).
+                        write!(out, "{}use {};", pub_kw, rust_path)?;
                     } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty() || self.is_dir_module) {
                         // Multi-segment super:: path in directory module context.
                         // Only add wildcard if the last segment is a known module name,

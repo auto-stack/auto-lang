@@ -1,6 +1,6 @@
 // shapes.at — circle and rectangle data types plus area/perimeter
 // functions built on top of the utils helpers (use utils).
-use utils
+use utils: pi, square, perimeter_of
 
 pub type Circle {
     radius float

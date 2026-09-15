@@ -1,5 +1,6 @@
 // main.at — todo list demo: add items, complete one, list them all.
-use store
+use store: new_store, add_item, count_items
+use todo: status_text
 
 let store = new_store()
 store.next_id = add_item(store.items, store.next_id, "Buy milk")

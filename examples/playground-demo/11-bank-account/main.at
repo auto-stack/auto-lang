@@ -1,6 +1,6 @@
 // main.at — bank account demo: open an account, deposit, withdraw,
 // and attempt an overdraw to trigger the insufficient-funds error.
-use account
+use account: Account, new_account, deposit, withdraw
 
 let acc = new_account("Alice", 100)
 print(f"Opened account for $acc.owner with balance $acc.balance")
