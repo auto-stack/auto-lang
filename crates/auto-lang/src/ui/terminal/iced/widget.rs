@@ -17,8 +17,9 @@
 //   on_select (payload: `terminal_selected_text(key)`);
 // - wheel: core scroll offset ±3 lines/notch, publishes on_scroll
 //   (payload: `terminal_scroll_offset(key)`), badge draws offset > 0;
-// - right click: opens the Copy/Paste/SelectAll menu (drawn overlay), item
-//   hit on left press publishes on_menu (payload `terminal_take_menu_item`);
+// - right click: opens the Copy/Paste/SelectAll/Interrupt menu (drawn
+//   overlay), item hit on left press publishes on_menu (payload
+//   `terminal_take_menu_item`/`_any`; 3=Interrupt → host term_interrupt);
 // - IME: over-the-spot declaration kept for winit cursor-area anchoring,
 //   preedit string self-drawn at the cursor cell (#11 workaround).
 
@@ -103,7 +104,12 @@ const DEFAULT_FG: Color = Color::from_rgb8(0xe8, 0xe8, 0xe8);
 /// [`crate::ui::terminal::terminal_effective_palette`] scheme 表解析。
 pub const DEFAULT_BG: Color = Color::from_rgb8(0x06, 0x07, 0x09);
 
-const MENU_ITEMS: [&str; 3] = ["Copy", "Paste", "Select All"];
+// PLAN-015 D1:第 4 项 "Interrupt"(载荷 3)——显式中断入口(014 直键入
+// 收口删了 Ctrl+C 按钮后 term_interrupt 失去调用者)。命中臂零改动:
+// 统一落载荷(set_menu_item)+发 on_menu 消息,载荷语义归宿主
+// (0/1/2=Copy/Paste/Select All 暂忽略;3=Interrupt → term_interrupt)。
+// 菜单宽/高由 len() 驱动自动适配(menu_rect/draw 同源)。
+const MENU_ITEMS: [&str; 4] = ["Copy", "Paste", "Select All", "Interrupt"];
 const MENU_ITEM_W: f32 = 80.0;
 const MULTI_CLICK_WINDOW: Duration = Duration::from_millis(500);
 const WHEEL_LINES_PER_NOTCH: i32 = 3;

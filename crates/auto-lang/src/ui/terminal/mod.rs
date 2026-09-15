@@ -637,9 +637,25 @@ pub fn terminal_set_menu_item(core: &TerminalCore, item: u8) {
     *core.menu_item.lock().unwrap() = Some(item);
 }
 
-/// 菜单动作载荷读取(0=Copy 1=Paste 2=SelectAll)。**读取即取走**(take)。
+/// 菜单动作载荷读取(0=Copy 1=Paste 2=SelectAll 3=Interrupt/PLAN-015 D1)。
+/// **读取即取走**(take)。
 pub fn terminal_take_menu_item(core: &TerminalCore) -> Option<u8> {
     core.menu_item.lock().unwrap().take()
+}
+
+/// PLAN-015 D2:registry 级菜单载荷取走(任意 terminal;BTreeMap 键序
+/// 稳定,首个 Some 即返,镜像 [`terminal_take_any_resize`])——宿主泵
+/// 模式无 core 引用侧的载荷出口(at-app db.term_menu_take 消费;单
+/// Pane 应用为当前消费形态,多 Pane 定向化留 Mux 后续)。
+pub fn terminal_take_menu_item_any() -> Option<u8> {
+    let mut map = TERMINALS.lock().unwrap();
+    let map = map.as_mut()?;
+    for core in map.values() {
+        if let Some(item) = core.menu_item.lock().unwrap().take() {
+            return Some(item);
+        }
+    }
+    None
 }
 
 // ============================================================================
@@ -1100,6 +1116,30 @@ mod tests {
         assert_eq!(terminal_take_menu_item(core), Some(0));
         assert_eq!(terminal_take_menu_item(core), None, "take 后不重放");
         terminal_dispose("t4-menu-1");
+    }
+
+    /// PLAN-015 D2:registry 级菜单载荷取走——多终端取走语义(BTreeMap
+    /// 键序稳定,首个 Some 即返;取走即清;注册但无载荷 = None)。
+    #[test]
+    fn menu_item_any_takes_across_terminals() {
+        terminal_dispose("p015-menu-1");
+        terminal_dispose("p015-menu-2");
+        assert_eq!(terminal_take_menu_item_any(), None, "无载荷 = None");
+        let a = terminal("p015-menu-1", 40, 6);
+        let b = terminal("p015-menu-2", 40, 6);
+        assert_eq!(terminal_take_menu_item_any(), None, "注册但无载荷 = None");
+        // 单端载荷:跨键可取(宿主泵模式无 core 引用)。
+        terminal_set_menu_item(b, 3); // Interrupt
+        assert_eq!(terminal_take_menu_item_any(), Some(3));
+        assert_eq!(terminal_take_menu_item_any(), None, "取走即清");
+        // 双端载荷:键序稳定先取 a(p015-menu-1 < p015-menu-2)。
+        terminal_set_menu_item(a, 0);
+        terminal_set_menu_item(b, 3);
+        assert_eq!(terminal_take_menu_item_any(), Some(0), "键序稳定,先 a");
+        assert_eq!(terminal_take_menu_item_any(), Some(3));
+        assert_eq!(terminal_take_menu_item_any(), None);
+        terminal_dispose("p015-menu-1");
+        terminal_dispose("p015-menu-2");
     }
 
     #[test]
