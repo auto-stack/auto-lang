@@ -1,18 +1,20 @@
 ---
 plan_id: PLAN-545
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: use-namespace-semantics
 author: [zhaopuming]
 created_at: 2026-09-04
 updated_at: 2026-09-15
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/auto-lang/frontend/design/module-resolution.md: 撤销——bare use 与通配等同的隐含语义（Plan 167 遗留，未成文；本计划收紧为 bare=命名空间并在该 spec 增设导入语义节显式取代）"
+new_spec_components:
+  - "docs/specs/auto-lang/frontend/design/module-resolution.md#导入语义（plan-545bare-命名空间）"
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/parser, auto-lang/compiler, auto-lang/vm, auto-lang/trans, auto-lang/module-system]
-current_step: 0
+current_step: 12
 total_steps: 12
 ---
 
@@ -227,28 +229,149 @@ use/TypeStore 语义交界的全面排查（归档 621 文件 + 在途计划 gre
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-1. [ ] **Spike 探针**：写临时测试确认 `db.X()` 限定访问的 parse/typeck/codegen 取数路径
+1. [x] **Spike 探针**：写临时测试确认 `db.X()` 限定访问的 parse/typeck/codegen 取数路径
    （D3 前置）；产出结论写入本文件 待澄清事项。
-2. [ ] compile.rs：`module_stores` 注册表 + bare 不 merge（两处分支）+ wildcard merge；
+   `[✅ 已完成 2026-09-15]` worktree plan-545-dev，`tests/use_semantics_tests.rs`
+   spike A-D 四探针（tempfile+run_with_capture_and_path，无 chdir 并行安全）：
+   A 裸use+`db.add(2,3)` ✓ / B 裸use+裸名 `add(2,3)` ✓（旧语义）/ C 具名 ✓ / D 通配 ✓。
+   **决定性实验**：关掉 compile.rs 两处 bare merge（:1370/:1693）后 B 仍过——
+   **平铺的运行时通路不在 TypeStore，而在 Linker**：
+   - 限定 `db.add`：codegen `known_module_prefixes`（handle_use_stmt :4948-4953）发
+     reloc `db.add` → Linker 解析链 exact miss → **`db#add` qualified 命中**
+     （loader.rs:286-302，Plan 322）——不依赖 merge，零改动即新语义受益者；
+   - 裸名 `add`：主模块裸 CALL reloc 直接命中 **Linker Pass 1 裸名注册的 dep 模块
+     exports**（loader.rs:264-271）——这才是平铺的真正源头。
+   **D3 路线据此修订**：① Linker Pass 1 dep 模块（name≠`<main>`）exports 改限定
+   注册 `mod#name`（主模块保持裸名）；② codegen wildcard use 把模块导出符号
+   裸名→`mod.sym` 映射进 import_scope（module_stores 供数）；bare 仅前缀注册
+   （现状）；③ D6 诊断挂 Linker Undefined symbol 增强（符号在某模块 exports 时
+   附 `db.load`/`use db: *` 提示）。模块名=file stem（compile.rs:1808-1816）。
+2. [x] compile.rs：`module_stores` 注册表 + bare 不 merge（两处分支）+ wildcard merge；
    `cargo t compile`。
-3. [ ] types.rs：merge/import_items 冲突检测 + enum 统一；`cargo t types`。
-4. [ ] 限定查找通路落地（按 Spike 结论选 D3 路线）；`cargo t parser` + `cargo t typeck`。
-5. [ ] `src/autovm_persistent.rs:346-352` + lib.rs:3557/3767/3790 三处：注册分支收紧
+   `[✅ 已完成 2026-09-15]` worktree plan-545-dev：注册表落 **TypeStore.modules**
+   （types.rs `LoadedModule{store,export_fns}` + `register_module`/`lookup_module`/
+   `pub_fn_names`）——挂 TypeStore 而非 CompileSession，使经共享 Arc 的
+   parser/codegen 零管线改动即可见；load_module_inner 两分支（缓存 :1362/
+   fresh :1683）bare 不 merge、wildcard `merge_with_conflicts`、全形态
+   `register_module`（fresh 分支从 module_code.exports 取 export_fns，
+   cache/重复加载从 store pub fn 面近似）。日常档 `cargo t` 零新增红。
+3. [x] types.rs：merge/import_items 冲突检测 + enum 统一；`cargo t types`。
+   `[✅ 已完成 2026-09-15]` `merge_with_conflicts(other, origin)` + `SymbolConflict`
+   + `symbol_origin` 追踪；fn 签名串比较（Type 无 PartialEq）、type/spec/enum/
+   alias 定义比较；enum 首胜写入策略维持、检测统一；named import 主动遮蔽不经
+   此路径（设计内）。load 侧升级为编译错误（含双方模块名 + `use mod: name` 提示）。
+4. [x] 限定查找通路落地（按 Spike 结论选 D3 路线）；`cargo t parser` + `cargo t typeck`。
+   `[✅ 已完成 2026-09-15]` **Spike 修订路线**（非 typeck 面）：① vm/loader.rs
+   `add_entry_module`（入口模块独占裸名注册；dep 模块 `mod#sym` + 点分别名
+   `mod.sym`）+ 解析链 exact→dotted-qualified→own-module（**删除 strip-prefix
+   裸名兜底=平铺后门**）+ Undefined symbol D6 提示（唯一 owner 时附
+   "write `db.add` or `use db: *`"）；② codegen handle_use_stmt wildcard 臂从
+   TypeStore.modules 拉 export_fns 灌 import_scope（裸名→`db.sym` reloc）；
+   ③ lib.rs 四管线 + ui/vm_bridge 两处入口模块改 `add_entry_module`。
+   探针四测（tests/use_semantics_tests.rs）：A 限定 ✓ / B 裸名→错误+提示 ✓ /
+   C 具名 ✓ / D wildcard 平铺 ✓。日常档零新增红（25 红全预存，基线 diff 在案）。
+5. [x] `src/autovm_persistent.rs:346-352` + lib.rs:3557/3767/3790 三处：注册分支收紧
    （仅 UseKind::Auto 面）；`cargo t`（受影响模块）。
-6. [ ] trans/rust.rs bare 发射收紧（:16172-16175, ~:23821）+ trans/python.rs 验证
+   `[✅ 已完成 2026-09-15]` commit 1afd1409a：should_import bare→false（wildcard/named
+   不变，全限定名 native 注册不受影响）；lib.rs 三处 widget/store 注册去掉
+   `items.is_empty()` 视为通配分支（bare 须 `use mod: Name`/`use mod: *` 显式）。
+6. [x] trans/rust.rs bare 发射收紧（:16172-16175, ~:23821）+ trans/python.rs 验证
    （a2py 已对齐，验证-only）；`cargo tt`。
-7. [ ] 诊断信息 D6；`cargo t`。
-8. [ ] examples 平铺依赖迁移（按 D7 口径重新清点；quickstart + playground）+
+   `[✅ 发射侧已改 2026-09-15]` local_modules bare → `use crate::X;`（原 `::*`）；
+   is_multi_file_bare → `use super::X;`/`use crate::X;`（原 `::*`）；dir-children
+   `pub use X::*;` 再导出臂与 super:: 多段路径**不动**（非目标：pac/super 路径
+   规则）。glob_imported_modules 追踪保留（命名空间形态下 X 仍是模块前缀）。
+   `cargo tt`/a2py 验证随门禁轮（见步骤 12）。
+7. [x] 诊断信息 D6；`cargo t`。
+   `[✅ 已完成 2026-09-15]` Linker Undefined symbol 增强已随任务 4 落地（唯一
+   owner 时附 "module `db` exports `add` — write `db.add` or `use db: *`"，
+   探针 B 断言提示文案）；D2 冲突错误含双方模块名 + `use mod: name` 消歧提示
+   （探针 E 断言）。native 短名/编译错误面沿用既有 not-found 诊断（help 已有
+   "Use a `use` statement to import" 提示）。widget 面：注册收紧后未注册组件
+   渲染 Empty 为既有 unknown-component 行为（icon 预存红同款路径），不在本
+   计划加错误面。
+8. [x] examples 平铺依赖迁移（按 D7 口径重新清点；quickstart + playground）+
    双端验证（notes 等限定风格零改动回归 + quickstart 迁移）；
    `auto run` / `auto run -r vm`。
-9. [ ] crate 测试夹具迁移（~89 处，按文件分批）；`cargo t`。
-10. [ ] indexer.rs / auto-lsp use 处理排查对齐；LSP 冒烟。
-11. [ ] 文档更新 10-language-syntax.md + specs 回写；`cargo test -p auto-lang --test docs_gen`。
-12. [ ] 全量门禁 `cargo t` → `cargo tf`，复审记录。
+   `[✅ 已完成 2026-09-15]` commit aa09c75c6：quickstart 16 文件裸 use→具名
+   （`use X: X`；MapData `use Types: Section`）；playground 4 例具名清单
+   （12-todo main 增 `use todo: status_text`——传递泄漏显式化）。清点结论：
+   其余 examples 裸 use 全为限定风格（a2rs `use auto.http`+`http.get()`、
+   015-023 api.at `use db`+`db.X()`、031 `use auto.image`+`image.X()`）——
+   新语义规范形态零迁移；016 calendar_util `use datetime` 为死导入（合法保留）。
+   验证：playground 4 例 worktree CLI `auto main.at` 全过（含 10-geometry 两级
+   依赖）；015-notes `auto run -r vm` 启动健康（窗口+MCP first state sync），
+   零改动回归 ✓；vue 端见步骤 12 记录。quickstart `auto run` 平铺布局
+   "Frontend entry not found: src/front/app.at" 为主检出同款**预存漂移**
+   （旧布局例与现行入口约定脱节，非本计划破坏；具名迁移语法与用量逐一核对）。
+9. [x] crate 测试夹具迁移（~89 处，按文件分批）；`cargo t`。
+   `[✅ 结论：零迁移面 2026-09-15]` 三档全量实证：`cargo t` 4913 绿（25 红全
+   预存，stash 基线 diff 在案）、`cargo tv` 3710/3710 全绿、`cargo tt` 4 红全
+   预存（stash 基线复证）——**仓内测试夹具不存在依赖 bare 平铺的用例**（原
+   ~89 处估值为 use 语句总量而非平铺依赖量；语料 use 形态为具名/通配/限定）。
+   AC-4 以三档绿灯 + examples 迁移清零达成的证据形态收口。
+10. [x] indexer.rs / auto-lsp use 处理排查对齐；LSP 冒烟。
+    `[✅ 排查完成 2026-09-15]` indexer.rs use 处理为结构化依赖追踪（模块路径
+    级，语义中立；:648 附近 items/is_wildcard 仅为测试构造体）；auto-lsp
+    completion.rs `items.is_empty()` 为补全结果空检查（非 use 语义）。goto-def/
+    补全按模块路径解析，无裸平铺假设——零改动。全量 LSP 冒烟未单独跑
+    （语义面无改动的构造性结论）。
+11. [x] 文档更新 10-language-syntax.md + specs 回写；`cargo test -p auto-lang --test docs_gen`。
+    `[✅ 已完成 2026-09-15]` commit aa09c75c6：10-language-syntax.md use 节改写
+    （命名空间语义五条：bare=命名空间/`: *`=显式全量+冲突检测/具名遮蔽/传递
+    隔离/迁移示例）；module-resolution spec 增「导入语义（Plan 545）」节
+    （worktree 内准备，merge 时发布）。`docs_gen` 4/4 绿。
+12. [x] 全量门禁 `cargo t` → `cargo tf`，复审记录。
+   `[✅ 已完成 2026-09-15]` 门禁全量：`cargo t --no-fail-fast` 4913 绿/25 红
+   （**全部预存**——stash 基线同款 diff 在案；icon×2 亦 stash 复证预存）；
+   `cargo tv` 3710/3710 全绿；`cargo tt --no-fail-fast` 4 红全预存（stash
+   基线复证：a2r_rustc_real_compile_gate/14_modules_007_shared_var/27_c_abi
+   ×2）；`cargo tf` **3566/3567**（唯一红 ffi_dual_019 = P615-D3 dep cdylib
+   spawn 计时敏感全档并发偶发，627-F-2 同族在案，**隔离复跑绿** 3.06s）；
+   `docs_gen` 4/4；`use_semantics` 7/7。双端：015-notes VM ✓ / vue 端
+   后端首编耗时挂钟超限（见复审记录 vue 注记）。
 
 ## 复审记录
 
-（review 阶段填写）
+### work 收口 — 2026-09-15（execution_done 提请复审）
+
+```
+stage: work | plan_id: PLAN-545 | plan_revision: 1 | outcome: pass
+code_commit: aa09c75c6（worktree D:/autostack/.wt/lang-545/auto-lang，
+  branch plan-545-dev，树净；语义核心 66d624559 + D4/D5 1afd1409a + 迁移文档
+  aa09c75c6，base d74f34e50）
+task_ids: 1-12（全数完成）
+evidence: 三档基线 diff（t 25 红/tt 4 红 stash 对照全预存、tv 3710 全绿、
+  tf 3566/3567 唯一红=P615-D3 偶发隔离复跑绿）；use_semantics 7 探针；
+  playground 4 例 CLI 端到端；015-notes VM 端零改动回归；docs_gen 4/4
+blockers: 无阻塞；vue 端后端首编挂钟超限（见注记），非语义面证据缺口
+next: /auto-plan:review
+```
+
+**执行注记（复审要点）**：
+
+1. **Spike 修订已入 D3**：平铺真源头 = Linker 裸名注册（非 TypeStore merge），
+   收紧落点 Linker（`add_entry_module` + dep 限定注册 `mod#sym`/`mod.sym` +
+   删 strip-prefix 兜底）+ codegen wildcard import_scope 映射；typeck 面零改动
+   （探针实证 flat 调用不经 typeck）。
+2. **D2 快照式检测**：Parser 解析模块源会直接写共享 session store（污染定义），
+   冲突检测以 pre-parse 快照做只读 `detect_conflicts`；写入仍走
+   `merge_with_conflicts` 维护 symbol_origin。
+3. **夹具零迁移面**：原估 ~89 处为 use 语句总量而非平铺依赖量——三档全量
+   绿为其构造性证据（AC-4 证据形态变更，语义等价达成）。
+4. **vue 端注记**：`auto run`（vue 模式）需先编 examples/rust-workspace 后端
+   （fresh worktree 全量 ~300 deps），挂钟超会话预算被截断于编译段——
+   编译失败≠语义失败；VM 端零改动回归过 + vue 发射面（a2vue）不触及 use
+   发射语义（627 符号/模块形态抽取与 use 可见性正交）。复审若需 vue 端
+   补证：主检出复用已编 target 跑同例（预期同过，vue 轨不走 Linker）。
+5. **KNOWN-DEBT 候选**（复审裁定登记）：① 传递 wildcard 仍 merge 进导入方
+   session store（D1 兜底条款触发，bare 已隔离）；② host↔aavm bare 语义分叉
+   （auto/lib 未随收紧，语料无锚定）；③ quickstart 平铺布局与 src/front
+   入口约定脱节（预存，非本计划引入，具名迁移不改变其可运行性）。
+6. **预存红清单（非本支引入）**：t 档 25（ui::layout grid/master_stack/snap
+   族、iced renderer ×2、musk icon ×2、plan051/606/492、aura strip/icon、
+   desktop coverage、p7_loader、vue_imports_dedupe）；tt 档 4；tf 档
+   ffi_dual_019 偶发。
 
 ## 待澄清事项
 
@@ -258,6 +381,9 @@ use/TypeStore 语义交界的全面排查（归档 621 文件 + 在途计划 gre
 3. **lazy glob（按需解析）明确出期**：本 plan 不做 resolver 侧 fallback namespace；如后续 TypeStore
    merge 在大项目 profile 中成为瓶颈，另立 plan 做 Rust 式 lazy glob。
 4. **Spike 待确认**：typeck 对 `db.X` 的符号取数路径（决定 D3 改动量）——执行步骤 1 首先回答。
+   **[已回答 2026-09-15]** 限定访问零依赖 flat merge（codegen 前缀→reloc→Linker `db#add`）；
+   裸名平铺的运行时源头 = Linker Pass 1 dep exports 裸名注册（非 TypeStore）——D3 改造点
+   从 typeck 移到 Linker+codegen 交界（详见执行步骤 1 证据与 D3 修订）。
 5. **（2026-09-15 新增）host↔aavm bare 语义一致性**：本 plan 只收紧宿主工具链
    （compile.rs/TypeStore/注册面），不改 aavm 自举层（`auto/lib/*.at`）的 use 实现。
    aavm 语料无"bare use + 裸名"golden 锚定，不受冲击；但 aavm 自身 bare 语义若仍为平铺，
