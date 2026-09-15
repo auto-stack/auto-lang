@@ -84,7 +84,7 @@
   纯 Auto 闭环(Auto 版 a2r 转译器,五向)→ Plan 434 余力项。
 - **依赖**: ~~415-A/B 落地后再评估~~(A 已落地;B/C 不阻塞)。
 
-### 415-E dep cc + memmap2 FFI（242 #17,预估 2-3 天）— 🔄 已重定（2026-09-15 方案件,见下;执行时按重定面另立小计划）
+### 415-E dep cc + memmap2 FFI（242 #17,预估 2-3 天）— ✅ 已收口（2026-09-15,E-1 落地 `30d552677` 分支 `plan-fix/415e-memmap` + E-2/E-3 文档级收口;方案件见下）
 
 - **现状**: Plan 240 Phase 13 交接 4 个 cookbook stub。
 - **入口（原文,已过时）**: ~~build-time codegen(`build.rs` + cc 编译 C 桥)+ memmap2 FFI 声明~~
@@ -138,6 +138,15 @@
 
 - `2026-09-15 | PLAN-415-B1 | 漂移核查后基线 | pass(B1 子项) | 7b7063f6b(plan-fix/415b-sqlite, worktree D:/autostack/.wt/lang-415b/auto-lang) | B1 | 证据: a2r-std 10/10+golden 28_sqlite 2/2+两金样真 rustc 实编 exit 0+cargo tt 零新增(基线对照实证 2 预存红)+auto-ai 四 crate retranspile check=0 错且再生成 diff 与基线 CLI 一致+396 骑乘项签名比对环 8 对全绿 | 无阻塞 | next: B1 走 /auto-plan:review(独立复审)后合并;B2 Redis 后续独立开工'
 
+
+### 执行与复审记录（E，2026-09-15）
+
+- `work | PLAN-415-E1 | 重定方案基线 | pass(E 子项相位) | 30d552677(plan-fix/415e-memmap, worktree D:/autostack/.wt/lang-415e/auto-lang) | E-1 | 证据: golden 1/1+真 cargo 编译零错+真运行输出 len:4/first:42(匿名 mmap 真创建写读)+tt 红集=4 已知预存(len 强转零参收窄零回归)+tf 3569/3569+auto-ai 四 crate 0 错 | 无阻塞 | next: review→merge`
+- **E-1 要点**: 路线 A（dep 轨）实证可行——`dep memmap2` + `use.rs memmap2::MmapOptions`；file-backed Mmap::map 为 unsafe,匿名 MmapMut（map_anon）为安全入口;`.unwrap()` 透传;`var` 为 Auto 可变绑定正语法。
+- **E-1 发射器修复**: `.len` as i64 强转收窄为零参形态（带参 = builder setter 返 Self,强转会断链;双站点=Bina 死路径+Dot 活路径,B2 教训重演印证);语料内双形态覆盖（.len(4) setter / mmap.len() 长度读）。
+- **E-2 ✅**: "dep cc" 重定性为非 Auto 侧（重定方案节）;**E-3 ✅**: 242 #17 表行已刷 Done + Phase 13 对账结论入行。
+- **债务候选（E-1 附带发现）**: `let mut X = ...` 被解析为 name="mut"/type=X 的注解 let（CLI 全类型ck路径 undefined variable 实证）——宽松接受而非报错,产物为 r#mut 坏输出;Auto 正语法=var。宜 parser 报错收紧,独立小修。
+- **E 复审记录**: `review | PLAN-415-E | 重定方案基线 | pass(E 子项相位;415 余 C 挂起) | reviewed_commit=30d552677 | base=862fb7a53 | findings: F-E-01(info,file-backed Mmap::map unsafe 越 Auto 安全面,注记于语料;VM 轨无 mmap native 未注册 VM 档——旧裸文件桩本就 VM 孤儿) | 门禁: 验证电池于最终提交态新鲜执行(同会话限制声明同 B1/B2) | next: merge`
 
 ### 执行与复审记录（B2，2026-09-15）
 
