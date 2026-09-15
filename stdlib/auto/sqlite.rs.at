@@ -1,0 +1,58 @@
+/// Rust implementation of SQLite operations
+/// Backs `crates/a2r-std/src/sqlite.rs` (rusqlite, bundled feature) — Plan 415-B1.
+///
+/// This file is the Auto-side source of truth for the hand-copied a2r-std
+/// module (KNOWN-DEBT 396 manual-copy pattern): keep the signatures below in
+/// sync with the Rust copy. The 396 signature-parity test checks name/arity
+/// alignment between the two.
+
+/// The most recent error message recorded by this module ("" if none)
+#[rs]
+pub fn last_error() str {
+    return LAST_ERROR.lock().unwrap().clone()
+}
+
+/// Open (or create) a SQLite database file; falls back to an in-memory
+/// database on failure and records the error for last_error()
+#[rs]
+pub fn open(path str) SqliteDb {
+    return match rusqlite::Connection::open(path) {
+        Ok(conn) => SqliteDb { conn },
+        Err(e) => {
+            LAST_ERROR.lock().unwrap().replace(format!("sqlite open failed: {}", e));
+            SqliteDb { conn: rusqlite::Connection::open_in_memory().unwrap() }
+        }
+    }
+}
+
+/// Execute a SQL statement; rows affected, or -1 on failure.
+/// Multi-statement scripts and row-returning statements (run via exec)
+/// report 0 on success.
+#[rs]
+pub fn SqliteDb.exec(self SqliteDb, sql str) int {
+    return match self.conn.execute(sql, []) {
+        Ok(n) => n as i64,
+        Err(rusqlite::Error::MultipleStatement)
+        | Err(rusqlite::Error::ExecuteReturnedResults) => match self.conn.execute_batch(sql) {
+            Ok(()) => 0,
+            Err(e) => { record(e); -1 }
+        },
+        Err(e) => { record(e); -1 }
+    }
+}
+
+/// Run a SELECT query; every cell as a string (NULL -> "", BLOB -> "<N bytes>").
+/// Empty list on failure.
+#[rs]
+pub fn SqliteDb.query(self SqliteDb, sql str) List<List<str>> {
+    return match self.conn.prepare(sql) {
+        Ok(mut stmt) => { /* row walk, cell_to_string per column */ }
+        Err(e) => { record(e); Vec::new() }
+    }
+}
+
+/// Rowid of the most recent successful INSERT on this connection (0 if none)
+#[rs]
+pub fn SqliteDb.last_insert_rowid(self SqliteDb) int {
+    return self.conn.last_insert_rowid()
+}

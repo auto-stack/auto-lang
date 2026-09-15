@@ -346,6 +346,17 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // 以光标格锚定,未聚焦声明 Disabled(键入归焦点组件)。
         if state.focused {
             self.request_ime(shell, layout.bounds());
+            // PLAN-015 附带修复(用户 2026-09-15 实测:AutoTerm 聚焦即
+            // 中文输入,其他应用默认英文):聚焦点击置 pending,下一个
+            // update(通常 50ms timer tick,此时上一帧 draw 已应用
+            // Enabled→ImmAssociateContextEx(IACE_DEFAULT) 重关联,微软
+            // 拼音新上下文恒回中文母语模式——"默认英文"系统设置只在
+            // 会话初始化生效)把转换模式拉回字母数字。一次性:用户
+            // Shift 切中文不受扰(003 §4.1 终端 ASCII 起步语义)。
+            if state.ime_force_pending {
+                state.ime_force_pending = false;
+                ime_force_alphanumeric();
+            }
         } else {
             shell.request_input_method(&input_method::InputMethod::<String>::Disabled);
         }
@@ -380,6 +391,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     return;
                 };
                 state.focused = true;
+                // IME 英文起步:pending 置位,下一 update 消费(本帧 draw
+                // 才应用 Enabled 关联,届时新上下文回中文——两拍强制)。
+                state.ime_force_pending = true;
                 // 菜单开着时左键归菜单:命中项→动作,未命中→关闭;一律吞。
                 if let Some(at) = state.menu_open {
                     if let Some(idx) = menu_item_at(at, Point::new(pos.x - bounds.x, pos.y - bounds.y)) {
@@ -728,6 +742,9 @@ pub struct TerminalState {
     pub generation: u64,
     mods: Modifiers,
     dragging: bool,
+    /// IME 英文起步两拍强制的 pending 位(聚焦点击置位,下一 update
+    /// 消费并强制 ALPHANUMERIC;见 update 内 request_ime 块注记)。
+    ime_force_pending: bool,
     last_click_at: Option<Instant>,
     last_count: u8,
     last_cell: Option<(usize, usize)>,
@@ -845,6 +862,45 @@ fn plain_para(text: &str, width: f32) -> Para {
         wrapping: Wrapping::None,
     })
 }
+
+/// IME 重开时把输入上下文转换模式强制回字母数字(英文起步;用户 Shift
+/// 可切回中文)。仅 Windows;零新依赖(手写 imm32/user32 FFI,autoterm-ctrlc
+/// 同款纪律)。上下文取本线程活动窗(iced 单线程 UI,聚焦即本窗);
+/// 拿不到(HIMC 空/非活动)静默跳过——尽力而为,绝不 panic。
+#[cfg(windows)]
+fn ime_force_alphanumeric() {
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetActiveWindow() -> isize;
+        fn GetForegroundWindow() -> isize;
+    }
+    #[link(name = "imm32")]
+    extern "system" {
+        fn ImmGetContext(hwnd: isize) -> isize;
+        fn ImmReleaseContext(hwnd: isize, himc: isize) -> i32;
+        fn ImmSetConversionStatus(himc: isize, conversion: u32, sentence: u32) -> i32;
+    }
+    const IME_CMODE_ALPHANUMERIC: u32 = 0x0000;
+    const IME_SMODE_NONE: u32 = 0x0000;
+    unsafe {
+        let hwnd = {
+            let active = GetActiveWindow();
+            if active != 0 { active } else { GetForegroundWindow() }
+        };
+        if hwnd == 0 {
+            return;
+        }
+        let himc = ImmGetContext(hwnd);
+        if himc == 0 {
+            return;
+        }
+        ImmSetConversionStatus(himc, IME_CMODE_ALPHANUMERIC, IME_SMODE_NONE);
+        ImmReleaseContext(hwnd, himc);
+    }
+}
+
+#[cfg(not(windows))]
+fn ime_force_alphanumeric() {}
 
 /// Run-merge color comparison (fg/bg direct equality on the scalar palette).
 fn same_color(a: TermColor, b: TermColor) -> bool {

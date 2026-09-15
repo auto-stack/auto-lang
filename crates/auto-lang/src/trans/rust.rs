@@ -1927,6 +1927,16 @@ impl RustTrans {
             return "a2r_std::StringBuilder".to_string();
         }
 
+        // Plan 415-B1: the sqlite module's opaque connection handle. The
+        // distinct `SqliteDb` name (not `Db`) avoids hijacking user structs;
+        // map it to the a2r-std rusqlite wrapper, fully-qualified so it
+        // resolves without the glob `use a2r_std::*` import (StringBuilder
+        // precedent above).
+        if name == "SqliteDb" {
+            self.a2r_std_used.set(true);
+            return "a2r_std::sqlite::SqliteDb".to_string();
+        }
+
         // Merge mode: all types are in one file, skip crate:: prefix
         if self.merge_mode {
             if let Some(dot_pos) = name.rfind('.') {
@@ -5621,6 +5631,19 @@ impl RustTrans {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::io::read_line()")?;
                                     return Ok(());
                                 }
+                                // Plan 415-B1: auto.sqlite.* mirrors the bare
+                                // `sqlite.*` dispatch (open takes &str).
+                                ("sqlite", "open") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
+                                    if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("sqlite", "last_error") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
+                                    return Ok(());
+                                }
                                 ("env", "set") => {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
@@ -5809,6 +5832,23 @@ impl RustTrans {
                                     self.arg(arg, out)?;
                                 }
                                 write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        // Plan 415-B1: sqlite module-level functions. `open`
+                        // takes &str — borrow bare-ident String args (fs
+                        // read_text precedent); `last_error` is nullary.
+                        "sqlite" => match method.as_str() {
+                            "open" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "last_error" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
                                 return Ok(());
                             }
                             _ => {}
@@ -6993,6 +7033,36 @@ impl RustTrans {
                     }
                     // Not a StringBuilder — fall through to the generic remap.
                 }
+                // Plan 415-B1: sqlite handle methods. The a2r-std
+                // `SqliteDb` wrapper exposes inherent methods with the same
+                // names as the Auto surface, so emit the receiver-typed call
+                // directly (bypassing the generic method path, which may
+                // rewrite Auto-declared `SqliteDb.*` methods into module
+                // free functions). `exec` takes the sql as &str.
+                "exec" | "query" | "last_insert_rowid" => {
+                    let is_sqlitedb = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "SqliteDb"))
+                            .unwrap_or(false)
+                    } else { false };
+                    if is_sqlitedb {
+                        self.a2r_std_used.set(true);
+                        self.expr(object, out)?;
+                        write!(out, ".{}(", method_name)?;
+                        if method_name == "exec" {
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        } else {
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // Not a SqliteDb — fall through to the generic path.
+                }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
                 "char_at" => {
@@ -7855,6 +7925,19 @@ impl RustTrans {
                     }
                     ("io", "read_line") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::io::read_line()")?;
+                        return Ok(());
+                    }
+                    // Plan 415-B1: sqlite module fns on the Dot-path dispatch
+                    // (mirrors the Bina-path arms; open takes &str).
+                    ("sqlite", "open") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
+                        if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("sqlite", "last_error") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
                         return Ok(());
                     }
                     ("Map", "new") => {
@@ -16239,7 +16322,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" => {
+                            | "process" | "sys" | "sse" | "may" | "sqlite" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", rest)
                             }
@@ -16261,7 +16344,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" => {
+                            | "process" | "sys" | "sse" | "may" | "sqlite" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", mod_name)
                             }
@@ -16274,7 +16357,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may"
+                            | "process" | "sys" | "sse" | "may" | "sqlite"
                         );
                         if is_stdlib {
                             self.a2r_std_used.set(true);

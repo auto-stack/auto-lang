@@ -1,0 +1,36 @@
+/// SQLite module - embedded SQL database
+///
+/// Interface layer (declarations only). The a2r (Auto-to-Rust) path binds
+/// these calls to `a2r_std::sqlite` (rusqlite, bundled feature) — Plan 415-B1.
+/// The AutoVM path has no native implementation yet; VM programs must not
+/// call into this module until a VM backend lands (415-B2 follow-up scope).
+
+/// Opaque handle to an open SQLite database connection.
+/// The connection is closed automatically when the handle goes out of
+/// scope (RAII) — there is no explicit close in the Auto surface.
+type SqliteDb
+
+/// Open (or create) a SQLite database file.
+/// On failure, falls back to an in-memory database and records the error
+/// for `sqlite.last_error()` — never panics (VM-parity sentinel style).
+/// Example: let db SqliteDb = sqlite.open("app.db")
+pub fn open(path str) SqliteDb;
+
+/// Execute a SQL statement (DDL or DML, no rows returned).
+/// Returns the number of rows affected, or -1 on failure.
+/// Multi-statement scripts are allowed and report 0 on success.
+/// Example: db.exec("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT)")
+pub fn SqliteDb.exec(self SqliteDb, sql str) int;
+
+/// Run a SELECT query; every cell of every row is returned as a string
+/// (NULL → "", BLOB → "<N bytes>"). Returns an empty list on failure.
+/// Example: let rows List<List<str>> = db.query("SELECT id, name FROM cats")
+pub fn SqliteDb.query(self SqliteDb, sql str) List<List<str>>;
+
+/// Rowid of the most recent successful INSERT on this connection (0 if none).
+/// Example: let id int = db.last_insert_rowid()
+pub fn SqliteDb.last_insert_rowid(self SqliteDb) int;
+
+/// The most recent error message recorded by this module ("" if none).
+/// Example: sqlite.last_error()
+pub fn last_error() str;

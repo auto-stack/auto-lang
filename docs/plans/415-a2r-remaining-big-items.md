@@ -109,6 +109,16 @@
 
 - `2026-09-15 | PLAN-415-B1 | 漂移核查后基线 | pass(B1 子项) | 7b7063f6b(plan-fix/415b-sqlite, worktree D:/autostack/.wt/lang-415b/auto-lang) | B1 | 证据: a2r-std 10/10+golden 28_sqlite 2/2+两金样真 rustc 实编 exit 0+cargo tt 零新增(基线对照实证 2 预存红)+auto-ai 四 crate retranspile check=0 错且再生成 diff 与基线 CLI 一致+396 骑乘项签名比对环 8 对全绿 | 无阻塞 | next: B1 走 /auto-plan:review(独立复审)后合并;B2 Redis 后续独立开工'
 
+
+### 复审记录（B1，2026-09-15）
+
+- `review | PLAN-415-B1 | 漂移核查+回填版 | **pass**（B1 子项相位；计划整体保持 tracker 态，B2/E/C 待办）| reviewed_commit=7b7063f6b | base=b0e603501 | deps: auto-down 7ee3253（组内 detached，只读）| spec_inputs: docs/specs/a2r-std/project.md`
+- **验收映射**: AC-B1-1 stdlib 声明（sqlite.at+sqlite.rs.at）✓ / AC-B1-2 发射映射（rust.rs 四处+golden 2/2）✓ / AC-B1-3 a2r-std 契约测试（10/10，真 SQLite roundtrip+失败哨兵）✓ / AC-B1-4 跨仓环（最终提交 CLI 4×0 错，auto-ai 还原干净）✓ / AC-B1-5 golden 新用例（28_sqlite ×2，最终态 rlib 真 rustc 实编 0 错×2）✓ / AC-B1-6 396 骑乘项（签名比对 8 对全绿）✓
+- **findings**: F-01（low）验证矩阵 B 行 cookbook demo 实机列由契约测试（真 SQLite 执行）+golden rustc 实编等价覆盖——cookbook stub 真实化需 VM 侧 native sqlite（超 B1 a2r-only 范围，留 B2/后续）；F-02（info）open 内存回退内 expect 为不可达路径（哨兵 API 面无错误类型可返）；F-03（info）sqlite.rs.at #[rs] 体为示意层（env.rs.at 先例同），真实现居 a2r-std，396 比对环保守卫名/元数。
+- **门禁证据**: cargo tf 3562/3562（首轮 3 红经单跑全绿+基线同红判 KNOWN-DEBT 447-① 负载偶发）；cargo tt 4 红全基线同红（007_shared_var+27_c_abi 003/004+rustc 实编门——PLAN-018 T-05 发射改动后 golden 未再生的存量债，非本分支引入）；master b0e603501 后续演进与本分支触碰面零重叠。
+- **规范增量提案**（merge 时落）: new_spec_components=docs/specs/a2r-std/project.md（+sqlite 模块行 rusqlite bundled/哨兵错误约定 + 396 签名比对环节选）；supersedes=无；touched_goals=GOAL-003。
+- **next**: merge（用户已授权全流程）。
+
 ## 3. 验证矩阵
 
 | 子项 | 单测/golden | 跨仓环 | 实机 |
