@@ -10,11 +10,15 @@ widget FindApp {
         var status str = "boot"
         var nums = [7, 8, 9]
         var idx int = -99
+        var idx_miss int = -99
     }
 
     on {
         .Probe -> {
             .idx = .nums.find_index(n => n == 8)
+            // F-02: miss path — 42 is absent, must land -1 (sentinel -99
+            // would mean the call silently no-op'd).
+            .idx_miss = .nums.find_index(n => n == 42)
             .status = "probed"
         }
     }
@@ -23,6 +27,7 @@ widget FindApp {
         col {
             text .status
             text .idx
+            text .idx_miss
         }
     }
 }

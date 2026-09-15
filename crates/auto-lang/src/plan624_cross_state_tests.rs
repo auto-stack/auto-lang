@@ -166,6 +166,26 @@ mod plan624_cross_state_tests {
         };
         let mut dc = build_component_from_app(&manifest)
             .expect("(P2) corpus p2_app.at must build");
+
+        // F-01: None-state ?str cross-state read — dispatched BEFORE any
+        // Open, so .active_path is still None. The read must not crash and
+        // the value must land in the ?str model field (nil form).
+        dc.on_with_input("ProbeNone", None);
+        let probe_none = state_raw(&dc, "probe_none");
+        let status_none = state_raw(&dc, "status");
+        eprintln!("plan624(P2/F-01) probe_none={} status={}", probe_none, status_none);
+        assert!(
+            status_none.contains("probed-none")
+                && probe_none.contains("Nil")
+                && !probe_none.contains("READ_ERR"),
+            "(P2/F-01) reading the store's ?str field in the None state must \
+             not crash and must land nil in the ?str model field; got \
+             probe_none={} status={} (Invalid-object-ID crash or a READ_ERR \
+             means the None-state cross-state read broke)",
+            probe_none,
+            status_none
+        );
+
         dc.on_with_input("OpenPage", Some("Hello World.ad".to_string()));
         dc.on_with_input("Edit", None);
         let dirty = state_raw(&dc, "view_dirty");
@@ -228,14 +248,25 @@ mod plan624_cross_state_tests {
             .expect("(P4) corpus p4_app.at must build");
         dc.on_with_input("Probe", None);
         let idx = state_raw(&dc, "idx");
+        let idx_miss = state_raw(&dc, "idx_miss");
         let status = state_raw(&dc, "status");
-        eprintln!("plan624(P4) idx={} status={}", idx, status);
+        eprintln!("plan624(P4) idx={} idx_miss={} status={}", idx, idx_miss, status);
         assert!(
             idx.contains("1") && status.contains("probed"),
             "(P4) find_index(n => n == 8) on [7, 8, 9] must return 1; \
              got idx={} (sentinel means the call silently no-ops — no \
              native)",
             idx
+        );
+        // F-02: miss path — 42 is absent, must land -1 (the -99 sentinel
+        // would mean the call silently no-op'd; "-99" does not contain
+        // "-1", so this assertion also discriminates the no-op case).
+        assert!(
+            idx_miss.contains("-1"),
+            "(P4/F-02) find_index(n => n == 42) on [7, 8, 9] must return -1 \
+             on miss; got idx_miss={} (sentinel -99 means the call silently \
+             no-op'd)",
+            idx_miss
         );
     }
 }

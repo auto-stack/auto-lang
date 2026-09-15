@@ -8,22 +8,35 @@ use store: OptStore
 use back.api: read_wiki
 
 widget OptApp {
-    msg { OpenPage(str), Edit }
+    msg { ProbeNone, OpenPage(str), Edit }
 
     model {
         var status str = "boot"
         var view_dirty bool = false
         var probe_path str = "unread"
+        var probe_none ?str = None
     }
 
     on {
+        // F-01: ?str cross-state read in the None state (dispatched before
+        // any Open — active_path is still None here). The read must not
+        // crash and the value must land in the ?str model field.
+        .ProbeNone -> {
+            .probe_none = .active_path
+            .status = "probed-none"
+        }
+
         .OpenPage(path) -> {
             OptStore.Open({ path: path, title: "" })
             .status = "opened"
         }
 
         .Edit -> {
-            OptStore.SetBody({ path: "Hello World.ad", body: "typed" })
+            // F-03: jade's original crash shape — the map-literal argument
+            // itself carries the cross-state read (.active_path), not a
+            // literal. After Open the value is "Hello World.ad", so the
+            // find below must still match.
+            OptStore.SetBody({ path: .active_path, body: "typed" })
             .status = "dispatch-ok"
             .probe_path = .active_path
             .status = "read-ok"
