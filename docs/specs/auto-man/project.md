@@ -12,6 +12,28 @@ AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析�
 - 提供 API 代码生成、Tauri 后端生成、VSCode 扩展生成等代码生成器。
 - 不做：不实现语言编译（auto-lang）；不实现通用代码模板引擎（auto-gen）；缓存存储在 auto-cache。
 
+## 依赖解析声明门控（PLAN-635，pnpm 式严格隔离）
+
+`.at` 语言层 `use <dep>.<module>` 的跨包模块解析（`auto-lang` 侧
+`resolve_module_path` walk-up 探测）实行**声明门控**：
+
+- `deps/<name>` 目录仅在工程（或祖先目录）pac.at 中声明了同名 `dep` 时可达
+  （`dep "<name>" { path: ... }` 引号形态与 `dep <name> { path: ... }` 裸名
+  形态均认，词边界检查防 `settings` 误匹配 `settings_v2`）。
+- `scene: "workspace"` 工程的 `members: [...]` 成员目录与 `deps/<name>` 同权
+  解析（member 表项末路径段匹配依赖名）。
+- 物化但未声明的 `deps/<name>`（幽灵依赖）阻断解析，stderr 输出修复指引
+  （声明 dep 或加入 members）；junction 失效残留因此惰性化，无需清理。
+- pac.at 本地 path 依赖（`dep "<name>" { path: ... }`）按声明天然过门控，
+  解析候选序列与 deps/ 一致（src/front → src → 根）。
+- pac.lock：本地 path 依赖入锁（记录 resolved path，git commit 可选——path
+  即复现锚）；`verify()` 对无 commit 条目校验物化路径存在性。锁文件保持
+  TOML 文本可 diff。
+
+**边界**：auto-lang 不依赖 auto-man crate——pac.at 声明读取为文本扫描
+（auto-lang 内实现）；auto-man 物化（junction/symlink/worktree，Plan 475）
+与该门控正交互补。
+
 ## pac.at 四名称契约（PLAN-015）
 
 每个 AutoUI app 在 pac.at 声明四个名称，展示名与工程标识解绑：
