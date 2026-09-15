@@ -15,9 +15,6 @@ widget App {
     model {
         var projection_len int = -1
         var done_snapshot str = ""
-        // 对照臂：只数 .messages（无元素域读取）——区分「store 列表在
-        // computed/handler 上下文不可达」vs「元素域读取恒空」。
-        var count_len int = -1
     }
 
     computed {
@@ -32,37 +29,24 @@ widget App {
             }
             return out
         }
-        msgCount => {
-            var out = []
-            for m in .messages {
-                out.push(m)
-            }
-            return out.len()
-        }
-        firstContent => {
-            for m in .messages {
-                return (m.content ?? "NILFIELD")
-            }
-            return "EMPTYLIST"
-        }
     }
 
     on {
         .Init -> {
         }
 
-        // 运行期灌数（贴 musk 实际用法：数据来自运行期 #[api] 回填，非 Init）。
+        // 运行期灌数（贴 musk 实际用法：数据来自运行期 #[api] 快照整写）。
         .Seed -> {
-            FilterStore.Append("user", "2+2等于几")
-            FilterStore.Append("assistant", "2+2等于4")
-            FilterStore.Append("user", "你好世界")
+            FilterStore.SetAll([
+                { role: "user", content: "2+2等于几" },
+                { role: "assistant", content: "2+2等于4" },
+                { role: "user", content: "你好世界" }
+            ])
             FilterStore.SetSearch("2+2")
         }
 
         .Search(q) -> {
             FilterStore.SetSearch(q)
-            .count_len = .msgCount
-            .done_snapshot = .firstContent
             var proj = .filteredMessages
             .projection_len = proj.len()
         }

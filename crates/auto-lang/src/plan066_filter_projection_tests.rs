@@ -40,16 +40,7 @@ mod plan066_filter_projection_tests {
         dc.on_with_input("Seed", None);
         dc.on_with_input("Search", Some("2+2".to_string()));
         let hit = dc.read_state("projection_len");
-        let count = dc.read_state("count_len");
-        let msgs = dc.read_state("messages");
-        let msgs_vec = dc.read_state_as_vec("messages");
-        let search = dc.read_state("chat_search");
-        let dbg = dc.read_state("dbg_after_append");
-        let msgs_prefixed = dc.read_state("FilterStore.messages");
-        let first = dc.read_state("done_snapshot");
-        eprintln!(
-            "plan066(PA/{tag}) hit={hit:?} count_len={count:?} messages={msgs:?} msgs_vec={msgs_vec:?} chat_search={search:?} dbg_after_append={dbg:?} firstContent={first:?} FilterStore.messages={msgs_prefixed:?}"
-        );
+        eprintln!("plan066(PA/{tag}) hit={hit:?}");
         let hit = hit.expect("projection_len readable");
         assert!(
             hit == auto_val::Value::Int(2),
@@ -73,15 +64,17 @@ mod plan066_filter_projection_tests {
         );
     }
 
-    /// 红相锁定（2026-09-15，T-06 进行中）：055-4⑥ 现代真身已隔离为单行
-    /// 复现——合成 fn（computed/handler）内 `for m in <store 列表> {
-    /// out.push(m) }` 对循环变量 VmRef 本体的 push 静默 no-op（列表恒空）；
-    /// push 字面量/push 元素域读值（m.content）皆正常、循环迭代与元素域读
-    /// 取皆正常。根修（List push 的 VmRef 实参通道，plan419/rc 族）落地后
-    /// 移除 `#[ignore]`，断言投影命中 2/清空 3/miss 0。
+    /// 红相锁定（2026-09-15，T-06 进行中）：055-4⑥ 现代真身=**隐藏
+    /// computed fn 返回新建列表时，返回边界未接管堆份额**——filteredMessages
+    /// （返回 `out` 列表）交付死 id，调用方 `.len()` 恒 0；同 handler 内
+    /// msgCount（同过滤逻辑但返回 `out.len()`，Int）=1、firstContent（返回
+    /// 元素域读串）正常、push(VmRef) 本体经 shim 正常（--ignored 实测
+    /// elem_is_obj=true 正确入列）。根修面=VM CALL/RET 对合成 fn 返回堆
+    /// 值的 stake 接管（PLAN-062 T12 call_vm_fn takeover / T-05 shim 配平
+    /// 的用户 fn 返回路径同族缺口）。落地后移除 `#[ignore]`，断言投影
+    /// 命中 2/清空 3/miss 0。
     #[cfg(feature = "ui-interpreter")]
     #[test]
-    #[ignore = "PLAN-066 T-06 红相：合成 fn 内 push(循环变量 VmRef) no-op（根修后解除）"]
     fn plan066_pa_computed_filter_over_store_list() {
         let Some(manifest) = locate("src/front/app.at") else {
             eprintln!("plan066: SKIPPED — corpus app.at not found");

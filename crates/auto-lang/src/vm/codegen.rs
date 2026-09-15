@@ -9943,7 +9943,14 @@ impl Codegen {
                     // by reference (documented C2-probe semantics — musk backend
                     // corpus's User/AgentMode/Profession/SpecsDocument.clone).
                     return Ok(());
-                                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
+                                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static))
+                    // PLAN-066 T-06（055-4⑥ 现代真身）：未注册的 str.* 方法
+                    // （includes/startsWith/trim…）走 CALL_SPEC 运行时按堆标签
+                    // 分发——引擎 str 臂已实现该族。此前解析失败落 extern
+                    // no-op 桩（Nil→if 恒假），musk filteredMessages 的
+                    // includes 过滤恒假即此；t3_filter 脚本层另一分发路故绿。
+                    || func_name.as_deref().map_or(false, |f| f.starts_with("str.") || f.starts_with("auto.str."))
+                {
                     // Plan 249: Transparent unwrap for opaque handle values.
                     // If this is .unwrap()/.expect() on an opaque Rust crate value,
                     // skip CALL_SPEC — the receiver (inner call result) is already a valid handle.

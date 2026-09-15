@@ -13,12 +13,18 @@ store FilterStore {
         var dbg_after_append int = -1
     }
 
-    msg Msg { Append(str, str), SetSearch(str), MarkDone, ClearWindow }
+    msg Msg { Append(str, str), SetAll(str), SetSearch(str), MarkDone, ClearWindow }
 
     on {
         .Append(role, content) -> {
             .messages = [{ role: role, content: content }]
             .dbg_after_append = .messages.len()
+        }
+
+        // T-06 Face A 注记：读改写 concat（.messages = .messages + [..]）
+        // 在 VM 轨静默失效（另一独立脸），此处以整写绕行（musk 生产同款）。
+        .SetAll(json) -> {
+            .messages = json
         }
 
         .SetSearch(q) -> {

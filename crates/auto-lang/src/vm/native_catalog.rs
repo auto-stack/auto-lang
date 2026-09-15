@@ -1473,6 +1473,9 @@ macro_rules! for_each_bigvm_native {
             // === I18N (2460) — PLAN-066 T-12 (F-W1) ===
             ("auto.i18n.t", 2460, String),
 
+            // === STR INSTANCE METHODS (2461..) — PLAN-066 T-06 (055-4⑥) ===
+            ("auto.str.includes", 2461, Bool),
+
             // === System (2420-2430) ===
             ("auto.sys.exec", 2420, Void),
             ("auto.fs.is_binary", 2430, Void),
@@ -2320,6 +2323,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.regex.test", 2403),
     ("auto.regex.match", 2410),
     ("auto.i18n.t", 2460),
+    ("auto.str.includes", 2461),
     ("auto.sys.exec", 2420),
     ("auto.sys.cpu_usage", 2421),
     ("auto.sys.cpu_count", 2422),

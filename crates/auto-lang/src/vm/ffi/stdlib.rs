@@ -6425,6 +6425,21 @@ pub fn shim_i18n_t(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+/// PLAN-066 T-06（055-4⑥ 现代真身）：`str.includes(pat)` 字符串包含判定。
+/// 实例方法 CALL_NAT 约定（自顶向下）：[pat, receiver]。此前合成 fn 内
+/// `str.includes` 无 native 注册且不达引擎 CALL_SPEC str 臂 → 静默 no-op
+/// 桩（恒 Nil → if 恒假），musk filteredMessages 的 includes 过滤投影恒
+/// 0 条（聊天搜索/画布投影脸）；t3_filter 脚本层另一分发路故绿。
+pub fn shim_str_includes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let pat = String::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let receiver = String::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    VMConvertible::push_to_stack(&receiver.contains(&pat), task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
 /// PLAN-053 P-053-6: `Regex.replace(text, pattern, replacement, flags)` —
 /// web 生态静态形态（对齐 musk forge_helpers.ts 的 Regex 工具：flags 含 "g"
 /// 全局替换，否则只替换首处）。入参按 CALL_NAT 约定（自顶向下）：
@@ -8220,6 +8235,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.regex.test", shim_regex_test);
     #[cfg(feature = "ui-iced")]
     natives.register_shim_by_name("auto.i18n.t", shim_i18n_t);
+    // PLAN-066 T-06：str.includes 字符串包含（实例方法 CALL_NAT：[pat,
+    // receiver]；register_shim_by_name 动态 id，沿 http_stream 先例）。
+    natives.register_shim_by_name("auto.str.includes", shim_str_includes);
 
     // Task system (manual shim — VM access for event loop)
     natives.register_shim_by_name("auto.task_system.run", shim_task_system_run);
