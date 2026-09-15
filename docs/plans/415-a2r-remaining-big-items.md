@@ -1,6 +1,6 @@
 # Plan 415: a2r 剩余大件拆粒度实施（242 tracker 收尾批）
 
-> **状态**: 🟡 A/D 已收口——A ✅（2026-08-22 落地，golden 006_map_literal）/ D ✅（2026-08-24 Plan 433 收口）；B/C/E 真待办（2026-09-01 Plan 513 C 组刷新；**2026-09-15 漂移核查**：B 前提复核成立可直接续做，E 被 Plan 610 部分取代需重定方案，C 前置决策改锚虚拟桌面——详见各节括注与 §2）
+> **状态**: 🟡 A/D 已收口；**B1 ✅（2026-09-15 落地于 `plan-fix/415b-sqlite`，待 review）**；B2/E 真待办——E 需基于 Plan 610 重定方案，C 前置决策改锚虚拟桌面（2026-09-15 漂移核查与预检结论详见各节括注与 §2）
 > **来源**: Plan 242（a2r 功能差距 tracker,持续维护不归档）剩余未做项;审计判定"均为大件,独立立项"
 > **前置核查**: #8 闭包推断根因已由 audit-A6 修复（`c2bd1d0c`,golden 004_closure_infer）,不在本计划范围
 
@@ -23,7 +23,20 @@
   a2r golden 新用例。
 - **验收**: golden 双向通过 + auto-ai 重生成零 diff。
 
-### 415-B Redis/SQLite a2rs backend stdlib（242 #10,预估 3-5 天）
+### 415-B Redis/SQLite a2rs backend stdlib（242 #10,预估 3-5 天）— B1 ✅ 已落地（2026-09-15，`plan-fix/415b-sqlite` 分支 `7b7063f6b`，待 review）；B2 Redis 真待办
+
+- **B1 落地内容**: `stdlib/auto/sqlite.at` 接口层（`SqliteDb` 句柄 + open/exec/query/
+  last_insert_rowid/last_error，哨兵错误约定）+ `sqlite.rs.at` #[rs] 层；
+  `crates/a2r-std/src/sqlite.rs`（rusqlite 0.30 bundled，open 失败内存回退 +
+  ExecuteReturnedResults/MultipleStatement 批回退）+ 契约测试 ×2；
+  `trans/rust.rs` 发射映射（类型映射/双站点分派/方法守卫臂/use 三清单）；
+  golden `28_sqlite` ×2（2 段式全链经真 rustc 实编零错）。
+- **B1 验证**: a2r-std 10/10 绿；cargo tt 零新增失败（007/rustc 门预存红经
+  `master-baseline` 基线 worktree 实证）；auto-ai 四 crate retranspile +
+  cargo check 零错，再生成 diff 与基线 CLI 完全一致（零影响实证）。
+- **B1 范围裁定**: 3 段式 `auto.sqlite.*` 调用受 Plan 223 预存死臂限制
+  （`auto.env.get` 同样字面发射不可编译，探针实证）→ 语料收窄为 2 段式，
+  死臂登记 KNOWN-DEBT 415-B1 条目。
 
 - **现状**: Plan 121 交接的 6 个 cookbook DB stub + Plan 240 Phase 10 交接
   4 stub,均为 VM 侧占位;a2r 路径无对应发射。
@@ -38,6 +51,12 @@
   无破坏性重构);KNOWN-DEBT 396 仅修了 time.rs 单点(i32→i64,8164e93a9),
   通用签名比对环仍开放,骑乘项仍待做。可直接续做;开工前轻量预检
   Plan 121/240 交接 stub 清单是否仍为最新基线。
+- **[2026-09-15 预检实测]**(B1 开工前): ①stub 清单过时——实际
+  `test/cookbook/database/` 为 sqlite 3 + postgres 3（计划未提 postgres），
+  全部 STUB_PRINT/STUB_LIST 模拟态、不调用任何 API（不构成 API 需求来源）；
+  ②rusqlite 实际消费方是 `crates/auto-cache`（bundled 0.30），非计划所写
+  auto-man；③396 骑乘项已随 B1 收偿——签名比对环
+  `a2r_std_signature_parity` 落地（8 对全绿，遗留漂移入显式允许清单）。
 
 ### 415-C GPUI a2r UI generator（242 #15,预估 ≥1 周,⭐⭐⭐⭐⭐）
 
