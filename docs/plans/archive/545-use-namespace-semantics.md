@@ -527,3 +527,18 @@ completion_kind: delivered
 junction（未跟踪运行期产物）；按守卫指引逐个 `cmd /c rmdir`（仅删链接）+
 清 node_modules 残余后 guard clean 复验。教训入档：worktree 内跑 vue 端
 验证后须先清 node_modules 再过闸门。
+
+**cleaned 补记（2026-09-15）**：双 worktree 复验 guard clean（auto-lang
+5f90f59c7 树净/分支全量在 master 祖先链；auto-down 7ee32538 detached 零改动）
+→ `git worktree remove` 双仓各移除 + `git branch -d plan-545-dev`
+（was 5f90f59c7）→ 组目录 `.wt/lang-545/` 移除验证（rmdir 成功）。
+
+### spec-sync 回写记录
+
+- `docs/specs/auto-lang/frontend/design/module-resolution.md`：新增「导入语义
+  （Plan 545：bare = 命名空间）」节（随 merge c65b176a5 入 master）。
+- `docs/specs/auto-lang/frontend/plans.md`：追加 545 行。
+- `docs/plans/KNOWN-DEBT-AND-RISKS.md`：P545-D1（传递 wildcard 维持）/
+  D2（host↔aavm bare 分叉）/D3（stdlib use auto.* 模块加载解析不兼容预存）。
+- `.autoos/specs.json`：P545-1..6 upsert（runtime 数据，未入库——本仓惯例）。
+- `docs/specs/INDEX.md`：spec-index.py 再生无内容变化（project.md 未触）。
