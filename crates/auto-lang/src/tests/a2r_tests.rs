@@ -1173,6 +1173,10 @@ fn test_16_interop_021_path_dep() {
 // Plan 349: http.download / http.upload / http.download_resume a2r parity.
 #[test] fn test_18_rust_std_011_http_download_upload() { test_a2r("17_rust_std/011_http_download_upload").unwrap(); }
 
+// === 28_sqlite: sqlite stdlib module (Plan 415-B1) ===
+#[test] fn test_28_sqlite_001_basic() { test_a2r("28_sqlite/001_basic").unwrap(); }
+#[test] fn test_28_sqlite_002_advanced() { test_a2r("28_sqlite/002_advanced").unwrap(); }
+
 // === 18_pure_rust: Pure Rust output (no a2r_std dependency) ===
 
 #[test] fn test_19_pure_rust_001_pure() { test_a2r("18_pure_rust/001_pure").unwrap(); }

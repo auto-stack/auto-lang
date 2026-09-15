@@ -1,0 +1,15 @@
+// Plan 415-B1: sqlite stdlib module basic path — open, exec, last_insert_rowid, query
+use sqlite
+
+fn main() {
+    let db SqliteDb = sqlite.open("cats_415b.db")
+    let n int = db.exec("CREATE TABLE IF NOT EXISTS cats (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+    db.exec("INSERT INTO cats (name) VALUES ('Michi')")
+    let rid int = db.last_insert_rowid()
+    print(rid)
+    let rows List<List<str>> = db.query("SELECT id, name FROM cats ORDER BY id")
+    for row in rows {
+        print(row[0])
+        print(row[1])
+    }
+}
