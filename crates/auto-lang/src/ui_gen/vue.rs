@@ -2657,7 +2657,13 @@ impl VueGenerator {
             if !imports.contains(&"onMounted") {
                 imports.push("onMounted");
             }
-            imports.push("onUnmounted");
+            // PLAN-018 F-1 修复:守卫补齐——timer 块臂(上方)已推过
+            // onUnmounted 时(every_ms 计时器两臂同触),无守卫重推产出
+            // `import { …, onUnmounted, onUnmounted }`(vue/compiler-sfc
+            // 重复声明,App.vue 编译炸;auto-term 实测)。
+            if !imports.contains(&"onUnmounted") {
+                imports.push("onUnmounted");
+            }
             // If there's a 'running' state var, timer is gated by watch()
             let has_running = widget.state_vars.iter().any(|s| s.name == "running");
             // If elapsed + time_display/ms_display exist, watch formats the display
