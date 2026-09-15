@@ -6813,7 +6813,13 @@ impl RustTrans {
 
                     // Simple name-remap table
                     // .len()/.length() returns usize, cast to i32 for Auto's int
-                    let needs_i32_cast_1 = matches!(method_name.as_str(), "len" | "length");
+                    // Plan 415-E1: the int cast only holds for the ZERO-ARG
+                    // collection-length form. A `.len(n)` WITH an argument is a
+                    // foreign builder setter (e.g. memmap2 MmapOptions::len)
+                    // returning Self — casting that to i64 breaks the chain
+                    // (`(opts.len(4) as i64).map_anon()` does not compile).
+                    let needs_i32_cast_1 = matches!(method_name.as_str(), "len" | "length")
+                        && call.args.args.is_empty();
                     let rust_method = match method_name.as_str() {
                         // String methods
                         "to_lower" | "lower" => Some("to_lowercase"),
@@ -8245,7 +8251,12 @@ impl RustTrans {
             }
 
             // .len() and .length() return usize in Rust, cast to i32 for Auto's int
-            let needs_i32_cast = matches!(method_name.as_str(), "len" | "length");
+            // Plan 415-E1: zero-arg form only — `.len(n)` WITH an argument is a
+            // foreign builder setter (memmap2 MmapOptions::len) returning Self;
+            // casting that to i64 breaks the method chain. (Mirror of the
+            // Bina-path flag above.)
+            let needs_i32_cast = matches!(method_name.as_str(), "len" | "length")
+                && call.args.args.is_empty();
 
             // For "contains", choose between str::contains and map::contains_key
             // Only use contains_key when we KNOW the object is a Map.
