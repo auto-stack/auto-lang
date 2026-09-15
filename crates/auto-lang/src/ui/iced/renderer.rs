@@ -3449,10 +3449,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     // iconfile → hicon → lucide）。Plan 515 D1：hicon:<slot> =
                     // native 真图标（raster——486 占位清偿；14px 与邻位 lucide
                     // 图标同档）。两 raster 源合流同一元素臂。
+                    // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
+                    // 回退 14px（462 档）——大框小图实测反馈闭环。
+                    // PLAN-018-FU7：iconfile 按显示档装载（512 直挂经无
+                    // mipmap 的 Linear min_filter 缩 ~28× 硬边——见
+                    // icon_file::load_sized 注）。
+                    let icon_px = iced_style
+                        .as_ref()
+                        .and_then(|is| is.font_size.as_ref())
+                        .map(font_size_to_f32)
+                        .unwrap_or(14.0);
                     let raster_icon: Option<iced::widget::image::Handle> = {
-                        if let Some(handle) = crate::ui::iced::icon_file::load(
+                        if let Some(handle) = crate::ui::iced::icon_file::load_sized(
                             icon_name,
                             crate::ui::style::theme::dark_mode(),
+                            icon_px,
                         ) {
                             Some(handle)
                         } else {
@@ -3466,13 +3477,6 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                     };
                     if let Some(handle) = raster_icon {
-                        // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
-                        // 回退 14px（462 档）——大框小图实测反馈闭环。
-                        let icon_px = iced_style
-                            .as_ref()
-                            .and_then(|is| is.font_size.as_ref())
-                            .map(font_size_to_f32)
-                            .unwrap_or(14.0);
                         let icon_el = iced::widget::image(handle)
                             .width(iced::Length::Fixed(icon_px))
                             .height(iced::Length::Fixed(icon_px));
@@ -5142,10 +5146,25 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // PLAN-018：iconfile:<stem> = 双主题位图（回退链首位）。
                 // Plan 515 D1：hicon:<slot> = native 真图标 raster
                 //（window_thumbnail 的 fallback_icon / image 直挂两消费面）。
+                // PLAN-018-FU7：显式 Fixed 宽/高 → 按显示档装载；无显式
+                // 尺寸档 → 512 原生档（回退链同源）。
+                let style_for_px = style.as_ref().map(IcedStyle::from_style);
+                let display_px = match (
+                    style_for_px.as_ref().and_then(|s| s.width.as_ref()),
+                    style_for_px.as_ref().and_then(|s| s.height.as_ref()),
+                ) {
+                    (Some(IcedSize::Fixed(w)), _) => Some(*w),
+                    (_, Some(IcedSize::Fixed(h))) => Some(*h),
+                    _ => None,
+                };
                 let raster_icon: Option<iced::widget::image::Handle> = {
-                    if let Some(handle) =
-                        crate::ui::iced::icon_file::load(&src, crate::ui::style::theme::dark_mode())
-                    {
+                    let dark = crate::ui::style::theme::dark_mode();
+                    let iconfile = display_px
+                        .and_then(|px| {
+                            crate::ui::iced::icon_file::load_sized(&src, dark, px)
+                        })
+                        .or_else(|| crate::ui::iced::icon_file::load(&src, dark));
+                    if let Some(handle) = iconfile {
                         Some(handle)
                     } else {
                         crate::ui::iced::native_icon::parse_field(&src).map(|icon| {
