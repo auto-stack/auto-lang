@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-545
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: executing              # R1 needs_fix：任务 11 重开（F1 文档措辞）
 feature_name: use-namespace-semantics
 author: [zhaopuming]
 created_at: 2026-09-04
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/parser, auto-lang/compiler, auto-lang/vm, auto-lang/trans, auto-lang/module-system]
-current_step: 12
+current_step: 11
 total_steps: 12
 ---
 
@@ -316,7 +316,10 @@ use/TypeStore 语义交界的全面排查（归档 621 文件 + 在途计划 gre
     completion.rs `items.is_empty()` 为补全结果空检查（非 use 语义）。goto-def/
     补全按模块路径解析，无裸平铺假设——零改动。全量 LSP 冒烟未单独跑
     （语义面无改动的构造性结论）。
-11. [x] 文档更新 10-language-syntax.md + specs 回写；`cargo test -p auto-lang --test docs_gen`。
+11. [ ] 文档更新 10-language-syntax.md + specs 回写；`cargo test -p auto-lang --test docs_gen`。
+    `[🔁 R545-F1 复审退回 2026-09-15]` use 节与 spec 增量对 `db.Note` 限定类型
+    访问超诺（语法层预存拒绝，R1 探针实证）——重开本任务，修两处措辞为行为
+    精确形态（限定函数访问 ✓；类型引用须具名导入），docs_gen 复跑。
     `[✅ 已完成 2026-09-15]` commit aa09c75c6：10-language-syntax.md use 节改写
     （命名空间语义五条：bare=命名空间/`: *`=显式全量+冲突检测/具名遮蔽/传递
     隔离/迁移示例）；module-resolution spec 增「导入语义（Plan 545）」节
@@ -334,6 +337,78 @@ use/TypeStore 语义交界的全面排查（归档 621 文件 + 在途计划 gre
    Ideas 种子数据），dev server 探活后停，零改动回归双端全过。
 
 ## 复审记录
+
+### R1 — 2026-09-15，outcome: **needs_fix**
+
+```
+stage: review | plan_id: PLAN-545 | plan_revision: 1（frontmatter 无显式
+  revision 字段，按初始 rev 1 规整）
+reviewed_commit: aa09c75c60818bbfd7062e9338c20da1a3446051（worktree
+  D:/autostack/.wt/lang-545/auto-lang，branch plan-545-dev，树净复验）
+base_commit: d74f34e5060b1152368d8fa8498490057f873193（merge-base master）
+dependency_revisions: auto-down 兄弟仓 @ 7ee32538（detached，零改动，
+  仅 workspace 解析用途）
+spec_inputs: frontmatter 提案 supersedes=module-resolution 隐含 bare≡通配
+  / new=module-resolution#导入语义；worktree 已备 spec 增量文本（见 F1）
+```
+
+**独立性声明**：R1 与执行轮同会话——不复采信执行摘要，全部结论从工件重构：
+重读全量 diff（loader/types/compile/codegen/lib/trans/autovm_persistent +
+examples + docs）、复审基线重跑门档、**独立探针**（scratch 测试 4 项，跑毕即删，
+树还原净 aa09c75c6 复验）取证执行轮未覆盖的三面（wildcard 类型/枚举等价、
+限定类型构造、native 注册行为）。
+
+**复审基线门档复跑**（aa09c75c6 树净）：`use_semantics` 7/7；`cargo tv`
+**3713/3713 全绿**（较执行轮 +3 = e/f/g 三测入档）；`cargo tt --no-fail-fast`
+3926 绿/4 红（4 红为执行轮 stash 基线在案预存，本会话直证）；`cargo tf`
+3566/3567（ffi_dual_019 = P615-D3 偶发，隔离复跑绿 3.06s 在案）；`docs_gen`
+4/4。双端证据复用执行轮（同提交未变）：015-notes VM（窗口+MCP sync）+
+vue（front 200 + /api/notes JSON）+ a2r bare 发射 CLI 抽查
+（`use crate::helpers;` 无 glob）。
+
+**验收结果**：
+
+| AC | 结果 | 证据（R1 复现） |
+|---|---|---|
+| AC-1 裸名报错+提示/限定可用 | **pass** | 探针 A/B：`db.add(2,3)` ✓、裸名错误含 `db.add`/`use db: *` 提示 ✓；**限定类型构造为语法层预存拒绝**（见 F1 注记，非 545 回归——探针实证 "Expected node name" parse error，master 同款） |
+| AC-2 `: *` 与旧 bare 逐项等价 | **pass** | 函数面：探针 D ✓；类型面：R1 探针 wildcard 裸 `Note{}` 构造 ✓；枚举面：R1 探针 wildcard 裸 `Color::Red` 解析成功（打印判别值 0，无错运行）✓；spec/泛型/别名面：TypeStore merge_with_conflicts 全表合并（代码路径审查） |
+| AC-3 同名冲突编译错误 | **pass** | 探针 E（异定义报错含双模块名）/ F（同定义 re-export 不报）✓；快照式检测（parser 污染规避）diff 复核 ✓ |
+| AC-4 平铺依赖迁移清零 | **pass** | examples 复核：quickstart 16 文件具名（名实一致抽查 CourseLearning/KnowledgeMapContent ✓）、playground 4 例具名清单、其余裸 use 全限定风格（a2rs/015-023/031）；夹具零迁移面 = 三档全量绿构造性证据 |
+| AC-5 native 注册与 wildcard 一致 | **pass（方法注记）** | 代码路径审查：should_import 三分支（bare→false/wildcard→true/named∈items）+ 全限定名 native 走 native_catalog 预登记（与 use 无关）。**行为级测试载体预存断裂**（见 F2）：`use auto.str` 全管线模块加载在 master CLI 同错（stdlib `#[vm]` 接口语法 vs compile.rs 模块解析），非 545 因果 |
+| AC-6 a2r 不发 glob + 双端 | **pass** | CLI 抽查 `use crate::helpers;`（无 `::*`）✓；015-notes 双端（VM+vue）零改动回归 ✓ |
+| AC-7 语法文档与新语义一致 | **fail** | F1：文档与 spec 增量均声称 bare 下 "`db.Note` 可用"——限定类型构造为语法层**从未支持**形态（探针 parse error 实证），表述超诺致文档与实际语义不一致 |
+
+**Findings**：
+
+- **R545-F1（P2，AC-7/任务 11）**：`docs/design/10-language-syntax.md` use 节
+  （"db.load(), db.Note"）与 worktree spec 增量（"限定访问 db.load() / db.Note
+  可用"）对限定**类型**访问超诺——`db.Note {}` 在类型位置被语法层拒绝
+  （"Expected node name, got Dot(Ident(db), Note)"，545 前后同款，master 无关
+  变更同样拒绝）。命名空间语义的真实形态：限定**函数**调用 `db.load()` ✓；
+  类型引用须具名导入（`use db: Note`）。修法：两处措辞改为行为精确形态
+  （db.Note 限定类型构造标注为"语法层未支持，类型须具名导入"）——纯文档
+  修正，不动语义契约（plan_revision 维持 1）。
+- **R545-F2（P3，非阻塞·债候选）**：AC-5 行为级测试载体预存不可用——
+  `use auto.str` 经 compile.rs 模块加载解析 stdlib str.at 的 `#[vm]` 接口声明
+  即失败（master CLI 同错复现，/tmp 探针在案；两份 stdlib 字节一致排除环境
+  分叉）。545 的注册语义以确定性代码路径审查判 pass；行为级金样待 stdlib
+  模块加载修复后另补（登记 KNOWN-DEBT 候选，超出本计划范围）。
+- **R545-F3（P3，非阻塞）**：测试设计条目 5（native 短名/限定名行为断言）与
+  条目 2 的 spec/泛型/别名面子项未以独立测试落地（类型/枚举面由 R1 探针补证
+  后删除；执行轮未入册）。接受现状（R1 探针结论已内联本记录），不要求补测
+  ——wildcard 全表合并在 tt/tv 语料中已有间接覆盖。
+- 卫生项：任务 5 提交标题 "wip(545)"（1afd1409a）——内容为正式 D4/D5 实现，
+  标题风格瑕疵，不重写历史，后续提交避免。
+
+**证据可持久性**：探针已删（树净复验）；关键错误文本内联本记录；复现命令：
+`cargo t use_semantics`、`cargo tv`、`cargo tt`、`cargo tf`（worktree
+plan-545-dev @ aa09c75c6）；db.Note 语法拒绝复现：tempfile fixture +
+`run_with_capture_and_path`（探针源码形态见 F1 描述）。
+
+**Next**：needs_fix → `/auto-plan:work` 于 worktree 修复 F1（两处文档措辞，
+纯 docs 修正）；修复后 `cargo test -p auto-lang --test docs_gen` 复跑 +
+R2 复审。plan 状态回 `executing`（任务 11 重开，current_step 11；其余任务
+维持完成，F2/F3 为债候选不阻塞）。
 
 ### work 收口 — 2026-09-15（execution_done 提请复审）
 
