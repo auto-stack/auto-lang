@@ -1,6 +1,6 @@
 // main.at — geometry demo: areas and perimeters.
 // Uses shapes, which itself uses utils (two-level module dependency).
-use shapes
+use shapes: Circle, Rect, circle_area, circle_perimeter, rect_area, rect_perimeter
 
 let c = Circle(3.0)
 let radius = c.radius

@@ -154,6 +154,32 @@ pub struct TypeStore {
 
     /// Enum 声明：enum 名 -> EnumDecl
     enum_decls: HashMap<AutoStr, Rc<EnumDecl>>,
+
+    /// Plan 545: 已加载 auto 模块注册表——模块名 → 该模块的符号表与导出函数名。
+    /// bare `use db`（命名空间形态）下限定查找/诊断提示消费；`use db: *` 时
+    /// codegen 据 export_fns 建立裸名 → `db.sym` 的 import_scope 映射。
+    pub modules: HashMap<String, LoadedModule>,
+
+    /// Plan 545 D2: 符号来源追踪——符号名 → 来源模块（"<main>" 表示主模块）。
+    /// 仅 merge_with_conflicts 维护；wildcard 平铺同名冲突检测的数据面。
+    symbol_origin: HashMap<String, String>,
+}
+
+/// Plan 545: 一个已加载 auto 模块的会话侧登记项。
+#[derive(Debug, Clone)]
+pub struct LoadedModule {
+    /// 该模块自己的符号表（限定类型查找用）
+    pub store: TypeStore,
+    /// 该模块导出的函数名（bytecode exports 键，供 wildcard 平铺映射）
+    pub export_fns: Vec<String>,
+}
+
+/// Plan 545 D2: wildcard 合并的符号冲突（同名、来源不同、定义不同）。
+#[derive(Debug, Clone)]
+pub struct SymbolConflict {
+    pub symbol: String,
+    pub existing_origin: String,
+    pub incoming_origin: String,
 }
 
 impl TypeStore {
@@ -168,7 +194,29 @@ impl TypeStore {
             enum_decls: HashMap::new(),
             rust_types: HashSet::new(),
             rust_type_paths: HashMap::new(),
+            modules: HashMap::new(),
+            symbol_origin: HashMap::new(),
         }
+    }
+
+    /// Plan 545: 登记一个已加载的 auto 模块（load 完成后总是调用，
+    /// 与 use 形态无关——bare/wildcard/named 都需要限定查找可见）。
+    pub fn register_module(&mut self, name: &str, store: TypeStore, export_fns: Vec<String>) {
+        self.modules.insert(name.to_string(), LoadedModule { store, export_fns });
+    }
+
+    /// Plan 545: 限定查找——`db.X` 的类型/函数信息从模块自己的符号表取。
+    pub fn lookup_module(&self, name: &str) -> Option<&LoadedModule> {
+        self.modules.get(name)
+    }
+
+    /// Plan 545: 该 store 的 pub fn 名集合（模块登记时无 bytecode exports 的
+    /// 近似来源——wildcard 平铺映射允许超集，映射不存在的名字不会被调用到）。
+    pub fn pub_fn_names(&self) -> Vec<String> {
+        self.fn_decls.values()
+            .filter(|f| f.is_pub)
+            .map(|f| f.name.to_string())
+            .collect()
     }
 
     /// 注册类型声明
@@ -548,8 +596,7 @@ impl TypeStore {
     ///
     /// 只导入指定的项，而不是全部符号。
     /// 用于 `use module: item1, item2` 形式的导入。
-    pub fn import_items(&mut self, other: &TypeStore, items: &[String]) {
-        for item in items {
+    pub fn import_items(&mut self, other: &TypeStore, items: &[String]) {        for item in items {
             let item_name = AutoStr::from(item.as_str());
             let item_name_key = Name::from(item.as_str());
 
@@ -578,6 +625,127 @@ impl TypeStore {
                 self.type_aliases.insert(item_name.clone(), target.clone());
             }
         }
+    }
+
+    /// Plan 545 D2: 带来源追踪与冲突检测的合并（wildcard `use mod: *` 路径）。
+    ///
+    /// 与 [`TypeStore::merge`] 写入策略逐表一致（enum 首胜、其余末胜），额外：
+    /// 目标已有同名符号、来源模块不同、且定义不同 → 收集为冲突返回。
+    /// 同名同定义（如 re-export）不报；显式 named import 的主动遮蔽不经过此
+    /// 路径（import_items），与 Rust `use` 语义一致。
+    pub fn merge_with_conflicts(
+        &mut self,
+        other: &TypeStore,
+        origin: &str,
+    ) -> Vec<SymbolConflict> {
+        let conflicts = self.detect_conflicts(other, origin);
+        // 逐表写入（enum 首胜、其余末胜——与 merge 一致）+ 来源登记
+        for (name, decl) in &other.fn_decls {
+            self.fn_decls.insert(name.clone(), decl.clone());
+            self.symbol_origin.insert(name.to_string(), origin.to_string());
+        }
+        for (name, decl) in &other.type_decls {
+            self.type_decls.insert(name.clone(), decl.clone());
+            self.symbol_origin.insert(name.to_string(), origin.to_string());
+        }
+        for (name, decl) in &other.spec_decls {
+            self.spec_decls.insert(name.clone(), decl.clone());
+            self.symbol_origin.insert(name.to_string(), origin.to_string());
+        }
+        for (name, decl) in &other.enum_decls {
+            if !self.enum_decls.contains_key(name) {
+                self.enum_decls.insert(name.clone(), decl.clone());
+                self.symbol_origin.insert(name.to_string(), origin.to_string());
+            }
+        }
+        for (name, template) in &other.generic_templates {
+            self.generic_templates.insert(name.clone(), template.clone());
+            self.symbol_origin.insert(name.to_string(), origin.to_string());
+        }
+        for (alias, target) in &other.type_aliases {
+            self.type_aliases.insert(alias.clone(), target.clone());
+            self.symbol_origin.insert(alias.to_string(), origin.to_string());
+        }
+        conflicts
+    }
+
+    /// Plan 545 D2: 只读冲突检测（不写入）——调用方以"解析前快照"调用，
+    /// 规避 Parser 解析模块源时直接写共享 store 造成的定义污染
+    /// （parser 会把被解析模块自己的 decl 先写进 session store，
+    /// 使 live-store 比较退化为"自己比自己"而漏报）。
+    pub fn detect_conflicts(
+        &self,
+        other: &TypeStore,
+        origin: &str,
+    ) -> Vec<SymbolConflict> {
+        let mut conflicts = Vec::new();
+        let main_origin = "<main>";
+
+        // 同名、异源（未登记者视为 "<main>"）、异定义 → 冲突
+        let mk_conflict = |symbol: &str,
+         existing_debug: &str,
+         incoming_debug: &str,
+         existing_origin_map: &HashMap<String, String>|
+         -> Option<SymbolConflict> {
+            let existing_origin = existing_origin_map
+                .get(symbol)
+                .cloned()
+                .unwrap_or_else(|| main_origin.to_string());
+            if existing_origin != origin && existing_debug != incoming_debug {
+                Some(SymbolConflict {
+                    symbol: symbol.to_string(),
+                    existing_origin,
+                    incoming_origin: origin.to_string(),
+                })
+            } else {
+                None
+            }
+        };
+
+        for (name, decl) in &other.fn_decls {
+            if let Some(existing) = self.fn_decls.get(name) {
+                if let Some(c) = mk_conflict(name.as_str(), &format!("{existing:?}"), &format!("{decl:?}"), &self.symbol_origin) {
+                    conflicts.push(c);
+                }
+            }
+        }
+        for (name, decl) in &other.type_decls {
+            if let Some(existing) = self.type_decls.get(name) {
+                // Rc 同指 ⇒ Debug 必相等；纯 Debug 比较覆盖两种情形
+                if let Some(c) = mk_conflict(name.as_str(), &format!("{existing:?}"), &format!("{decl:?}"), &self.symbol_origin) {
+                    conflicts.push(c);
+                }
+            }
+        }
+        for (name, decl) in &other.spec_decls {
+            if let Some(existing) = self.spec_decls.get(name) {
+                if let Some(c) = mk_conflict(name.as_str(), &format!("{existing:?}"), &format!("{decl:?}"), &self.symbol_origin) {
+                    conflicts.push(c);
+                }
+            }
+        }
+        for (name, decl) in &other.enum_decls {
+            if let Some(existing) = self.enum_decls.get(name) {
+                if let Some(c) = mk_conflict(name.as_str(), &format!("{existing:?}"), &format!("{decl:?}"), &self.symbol_origin) {
+                    conflicts.push(c);
+                }
+            }
+        }
+        for (name, template) in &other.generic_templates {
+            if let Some(existing) = self.generic_templates.get(name) {
+                if let Some(c) = mk_conflict(name.as_str(), &format!("{existing:?}"), &format!("{template:?}"), &self.symbol_origin) {
+                    conflicts.push(c);
+                }
+            }
+        }
+        for (alias, target) in &other.type_aliases {
+            if let Some(existing) = self.type_aliases.get(alias) {
+                if let Some(c) = mk_conflict(alias.as_str(), existing.as_str(), target.as_str(), &self.symbol_origin) {
+                    conflicts.push(c);
+                }
+            }
+        }
+        conflicts
     }
 }
 

@@ -4950,6 +4950,23 @@ impl Codegen {
             // so Dot(Dot(Ident("types"), ...), ...) can be recognized as qualified access
             let module_name = module_path.split('.').last().unwrap_or(&module_path);
             self.known_module_prefixes.insert(module_name.to_string());
+            // Plan 545: `use db: *` — explicit flat import. Map every exported
+            // fn of the module to its qualified reloc name (`db.add`) so bare
+            // calls bind module-qualified in the linker (dep-module exports
+            // no longer register bare names). bare `use db` (not wildcard)
+            // stops here: namespace-only, bare names must NOT resolve.
+            if use_stmt.is_wildcard {
+                if let Ok(ts) = self.type_store.read() {
+                    if let Some(loaded) = ts.lookup_module(module_name) {
+                        for fn_name in &loaded.export_fns {
+                            self.import_scope.insert(
+                                fn_name.clone(),
+                                format!("{}.{}", module_name, fn_name),
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 

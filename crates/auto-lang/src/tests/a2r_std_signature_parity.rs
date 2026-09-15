@@ -179,6 +179,17 @@ fn pairs() -> Vec<(&'static str, PairOpt)> {
                 allow_only_rs: &[],
             },
         ),
+        (
+            "redis.rs.at",
+            PairOpt {
+                rs_mod: "redis",
+                implicit_self: false,
+                qualified_methods: true,
+                renames: &[],
+                allow_only_at: &[],
+                allow_only_rs: &[],
+            },
+        ),
     ]
 }
 

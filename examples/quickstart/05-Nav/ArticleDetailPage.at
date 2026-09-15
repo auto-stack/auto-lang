@@ -1,6 +1,6 @@
 // ArticleDetailPage.at - Article detail page with WebView
 
-use ArticleClass
+use ArticleClass: ArticleClass
 
 /// Article detail page with back navigation and WebView
 widget ArticleDetailPage {

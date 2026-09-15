@@ -1177,6 +1177,10 @@ fn test_16_interop_021_path_dep() {
 #[test] fn test_28_sqlite_001_basic() { test_a2r("28_sqlite/001_basic").unwrap(); }
 #[test] fn test_28_sqlite_002_advanced() { test_a2r("28_sqlite/002_advanced").unwrap(); }
 
+// === 29_redis: redis stdlib module (Plan 415-B2) ===
+#[test] fn test_29_redis_001_basic() { test_a2r("29_redis/001_basic").unwrap(); }
+#[test] fn test_29_redis_002_advanced() { test_a2r("29_redis/002_advanced").unwrap(); }
+
 // === 18_pure_rust: Pure Rust output (no a2r_std dependency) ===
 
 #[test] fn test_19_pure_rust_001_pure() { test_a2r("18_pure_rust/001_pure").unwrap(); }
@@ -1587,6 +1591,9 @@ fn test_312_codegen_collects_api_routes() {
 
 // -- cookbook/safety --
 #[test] fn test_cookbook_safety_001_heapless() { test_cookbook("safety/001_heapless").unwrap(); }
+// Plan 415-E1: de-stubbed to the real memmap2 crate (dep track); VM tier not
+// registered (no VM mmap native — the old bare-file stub was VM-orphaned).
+#[test] fn test_cookbook_safety_001_memmap() { test_cookbook("safety/001_memmap").unwrap(); }
 
 // -- cookbook/science/mathematics/complex_numbers --
 #[test] fn test_cookbook_science_mathematics_complex_numbers_003_math_functions() { test_cookbook("science/mathematics/complex_numbers/003_math_functions").unwrap(); }

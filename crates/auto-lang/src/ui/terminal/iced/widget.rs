@@ -111,6 +111,8 @@ pub const DEFAULT_BG: Color = Color::from_rgb8(0x06, 0x07, 0x09);
 // 菜单宽/高由 len() 驱动自动适配(menu_rect/draw 同源)。
 const MENU_ITEMS: [&str; 4] = ["Copy", "Paste", "Select All", "Interrupt"];
 const MENU_ITEM_W: f32 = 80.0;
+/// IME 英文起步重试上限(update tick 数;~20×50ms ≈ 1s,兜底防泄漏)。
+const IME_FORCE_TICKS: u8 = 20;
 const MULTI_CLICK_WINDOW: Duration = Duration::from_millis(500);
 const WHEEL_LINES_PER_NOTCH: i32 = 3;
 
@@ -347,15 +349,21 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         if state.focused {
             self.request_ime(shell, layout.bounds());
             // PLAN-015 附带修复(用户 2026-09-15 实测:AutoTerm 聚焦即
-            // 中文输入,其他应用默认英文):聚焦点击置 pending,下一个
-            // update(通常 50ms timer tick,此时上一帧 draw 已应用
-            // Enabled→ImmAssociateContextEx(IACE_DEFAULT) 重关联,微软
-            // 拼音新上下文恒回中文母语模式——"默认英文"系统设置只在
-            // 会话初始化生效)把转换模式拉回字母数字。一次性:用户
+            // 中文输入,其他应用默认英文):聚焦点击置 pending,**重试制**
+            // 把 IME 转换模式拉回字母数字。首版一次性消费实测翻车——
+            // Enabled→ImmAssociateContextEx 关联经 winit 线程执行器异步
+            // 入队,点击后首个 tick 常早于关联落地(ImmGetContext=NULL,
+            // 实测 trace "no himc"),空跑后中文母语(0x611)贯穿整个输入。
+            // 失败不清位,续到强制落地(读回 ALPHANUMERIC)为止;20 tick
+            // (~1s)兜底防泄漏。一次性语义保留:落地后不再扰,用户
             // Shift 切中文不受扰(003 §4.1 终端 ASCII 起步语义)。
-            if state.ime_force_pending {
-                state.ime_force_pending = false;
-                ime_force_alphanumeric();
+            if state.ime_force_pending > 0 {
+                let landed = ime_force_alphanumeric();
+                if landed || state.ime_force_pending == 1 {
+                    state.ime_force_pending = 0;
+                } else {
+                    state.ime_force_pending -= 1;
+                }
             }
         } else {
             shell.request_input_method(&input_method::InputMethod::<String>::Disabled);
@@ -391,9 +399,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     return;
                 };
                 state.focused = true;
-                // IME 英文起步:pending 置位,下一 update 消费(本帧 draw
-                // 才应用 Enabled 关联,届时新上下文回中文——两拍强制)。
-                state.ime_force_pending = true;
+                // IME 英文起步:pending 置位(重试制),update 顶部逐 tick
+                // 消费直到上下文可查且强制落地(两拍竞态见 request_ime 块注记)。
+                state.ime_force_pending = IME_FORCE_TICKS;
                 // 菜单开着时左键归菜单:命中项→动作,未命中→关闭;一律吞。
                 if let Some(at) = state.menu_open {
                     if let Some(idx) = menu_item_at(at, Point::new(pos.x - bounds.x, pos.y - bounds.y)) {
@@ -696,9 +704,21 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             renderer.fill_paragraph(&para, bg_bounds.position(), pal_fg, bounds);
         }
 
-        // 菜单层:右键打开的 Copy/Paste/Select All 浮层,悬停项反色。
+        // 菜单层:右键打开的 Copy/Paste/Select All/Interrupt 浮层,悬停项反色。
+        // 浮层自绘 chrome(底/框/字)固定深底亮字,**不得**用主题跟随的
+        // pal_fg——light 桌面主题下 pal_fg=深灰,深字深板不可见(015 实测)。
         if let Some(at) = state.menu_open {
             let rect = menu_rect(at);
+            let menu_fg = Color::from_rgb(0.87, 0.87, 0.87);
+            static TRACE: OnceLock<bool> = OnceLock::new();
+            let trace = *TRACE.get_or_init(|| {
+                std::env::var("AUTO_IME_TRACE").map(|v| v == "1").unwrap_or(false)
+            });
+            if trace {
+                eprintln!(
+                    "[menu-draw] at={at:?} rect={rect:?} bounds={bounds:?} fg={menu_fg:?}"
+                );
+            }
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: rect,
@@ -724,10 +744,13 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     );
                 }
                 let para = plain_para(label, MENU_ITEM_W);
+                if trace {
+                    eprintln!("[menu-draw] label {i} '{label}' pos={:?} para={:?}", item_rect.position(), para.min_bounds());
+                }
                 renderer.fill_paragraph(
                     &para,
                     item_rect.position(),
-                    pal_fg,
+                    menu_fg,
                     bounds,
                 );
             }
@@ -742,9 +765,9 @@ pub struct TerminalState {
     pub generation: u64,
     mods: Modifiers,
     dragging: bool,
-    /// IME 英文起步两拍强制的 pending 位(聚焦点击置位,下一 update
-    /// 消费并强制 ALPHANUMERIC;见 update 内 request_ime 块注记)。
-    ime_force_pending: bool,
+    /// IME 英文起步重试 pending(聚焦点击置位,update 顶部逐 tick 消费;
+    /// 上下文可查且强制落地或 20 tick 兜底归零。见 request_ime 块注记)。
+    ime_force_pending: u8,
     last_click_at: Option<Instant>,
     last_count: u8,
     last_cell: Option<(usize, usize)>,
@@ -863,44 +886,87 @@ fn plain_para(text: &str, width: f32) -> Para {
     })
 }
 
-/// IME 重开时把输入上下文转换模式强制回字母数字(英文起步;用户 Shift
-/// 可切回中文)。仅 Windows;零新依赖(手写 imm32/user32 FFI,autoterm-ctrlc
-/// 同款纪律)。上下文取本线程活动窗(iced 单线程 UI,聚焦即本窗);
-/// 拿不到(HIMC 空/非活动)静默跳过——尽力而为,绝不 panic。
+/// IME 聚焦后英文起步重试(AUTO_IME_TRACE=1 时 stderr 留痕,随宿主
+/// stderr 落盘可审计)。返回 false=尚未落地(调用方续重试);true=已英文。
+///
+/// 实测定性(2026-09-15 trace 三轮):现代微软拼音是 TSF IME,权威模式在
+/// TSF 侧,IMM32 转换状态只是兼容影子——ImmSetConversionStatus 写入
+/// 读回 0x0 后,TSF 周期同步又把 NATIVE 回写(实测 0x481→0x0→回 0x1),
+/// 单靠 IMM32 必输。故 NATIVE 时主武器=合成 Shift 键(走 IME 自身
+/// EN/CN 切换键事件管线,与用户手按 Shift 同路径,权威且粘住),
+/// IMM32 写入仅作影子同步辅助;落地与否由下一 tick 复读取信。
+/// NATIVE 才动手(已英文不动);20 tick 兜底。
 #[cfg(windows)]
-fn ime_force_alphanumeric() {
+fn ime_force_alphanumeric() -> bool {
+    static TRACE: OnceLock<bool> = OnceLock::new();
+    let trace = *TRACE.get_or_init(|| {
+        std::env::var("AUTO_IME_TRACE").map(|v| v == "1").unwrap_or(false)
+    });
+
     #[link(name = "user32")]
     extern "system" {
         fn GetActiveWindow() -> isize;
         fn GetForegroundWindow() -> isize;
+        fn keybd_event(bvk: u8, bscan: u8, dwflags: u32, dwextrainfo: usize);
     }
     #[link(name = "imm32")]
     extern "system" {
         fn ImmGetContext(hwnd: isize) -> isize;
         fn ImmReleaseContext(hwnd: isize, himc: isize) -> i32;
+        fn ImmGetConversionStatus(
+            himc: isize,
+            lpconversion: *mut u32,
+            lpsentence: *mut u32,
+        ) -> i32;
         fn ImmSetConversionStatus(himc: isize, conversion: u32, sentence: u32) -> i32;
     }
-    const IME_CMODE_ALPHANUMERIC: u32 = 0x0000;
-    const IME_SMODE_NONE: u32 = 0x0000;
+    const IME_CMODE_NATIVE: u32 = 0x0001;
+    const VK_SHIFT: u8 = 0x10;
+    const KEYEVENTF_KEYUP: u32 = 0x0002;
+
     unsafe {
         let hwnd = {
             let active = GetActiveWindow();
             if active != 0 { active } else { GetForegroundWindow() }
         };
         if hwnd == 0 {
-            return;
+            if trace { eprintln!("[ime-trace] no hwnd"); }
+            return false;
         }
         let himc = ImmGetContext(hwnd);
         if himc == 0 {
-            return;
+            // 关联尚未落地(winit 异步入队)——调用方续重试。
+            if trace { eprintln!("[ime-trace] no himc (hwnd={hwnd:#x}), retry"); }
+            return false;
         }
-        ImmSetConversionStatus(himc, IME_CMODE_ALPHANUMERIC, IME_SMODE_NONE);
+        let mut mode: u32 = 0;
+        let mut sentence: u32 = 0;
+        ImmGetConversionStatus(himc, &mut mode, &mut sentence);
+        if mode & IME_CMODE_NATIVE == 0 {
+            if trace {
+                eprintln!("[ime-trace] already alphanumeric (mode={mode:#x})");
+            }
+            ImmReleaseContext(hwnd, himc);
+            return true;
+        }
+        // 主武器:合成 Shift(IME 自身 EN/CN 切换,TSF 权威,粘住);
+        // 辅助:IMM32 影子同步。本轮不宣布落地——下一 tick 复读取信
+        // (TSF 周期回写 NATIVE 的竞态由重试循环吸收)。
+        ImmSetConversionStatus(himc, 0x0000, 0);
+        keybd_event(VK_SHIFT, 0, 0, 0);
+        keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
+        if trace {
+            eprintln!("[ime-trace] native mode {mode:#x} → shift toggle sent (hwnd={hwnd:#x})");
+        }
         ImmReleaseContext(hwnd, himc);
+        false
     }
 }
 
 #[cfg(not(windows))]
-fn ime_force_alphanumeric() {}
+fn ime_force_alphanumeric() -> bool {
+    true
+}
 
 /// Run-merge color comparison (fg/bg direct equality on the scalar palette).
 fn same_color(a: TermColor, b: TermColor) -> bool {

@@ -1535,7 +1535,7 @@ async fn execute_autovm_with_path(
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {
@@ -1815,7 +1815,7 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         crate::error::AutoError::Msg(e.message.clone())
@@ -3553,8 +3553,9 @@ fn register_transitive_widgets_inner(
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
                         // 只注册 use 子句明确要的(或通配的),且 registry 还没有的
+                        // Plan 545: bare `use mod` 不再视为通配——widget/store
+                        // 具名可见须 `use mod: Name` 或 `use mod: *` 显式 opt-in
                         if (use_stmt.is_wildcard
-                            || use_stmt.items.is_empty()
                             || use_stmt.items.iter().any(|s| s == &child_widget.name))
                             && registry.get(&child_widget.name).is_none()
                         {
@@ -3764,7 +3765,6 @@ fn build_dynamic_component_inner(
                         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                             if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
                                 if use_stmt.is_wildcard
-                                    || use_stmt.items.is_empty()
                                     || use_stmt.items.iter().any(|s| s == &child_widget.name)
                                 {
                                     // PR-3b Step 4: collect the child WidgetDecl
@@ -3787,7 +3787,6 @@ fn build_dynamic_component_inner(
                             // renders an empty list.
                             let name = store_decl.name.clone();
                             if use_stmt.is_wildcard
-                                || use_stmt.items.is_empty()
                                 || use_stmt.items.iter().any(|s| *s == name.as_str())
                             {
                                 child_decls.push(crate::ast::ui::WidgetDecl {
@@ -4437,7 +4436,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {
@@ -4664,7 +4663,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {

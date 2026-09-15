@@ -233,14 +233,24 @@ impl std::fmt::Display for LinkError {
 
 impl std::error::Error for LinkError {}
 
+/// Plan 545 D6: extract the module name from a `mod#sym` qualified symbol key.
+fn module_owner_name(qualified: &str) -> &str {
+    qualified.split('#').next().unwrap_or(qualified)
+}
+
 pub struct Linker {
     pub modules: Vec<Module>,
+    /// Plan 545: index of the entry (main) module. Entry-module exports
+    /// register under their bare names (local calls, runtime dispatch);
+    /// dependency-module exports register module-qualified only.
+    entry_index: Option<usize>,
 }
 
 impl Linker {
     pub fn new() -> Self {
         Self {
             modules: Vec::new(),
+            entry_index: None,
         }
     }
 
@@ -248,26 +258,45 @@ impl Linker {
         self.modules.push(module);
     }
 
+    /// Plan 545: add the entry (main) module. Its exports are the only ones
+    /// registered unqualified — bare-name relocs inside the entry module and
+    /// runtime `call_fn_by_name` dispatch resolve against them.
+    pub fn add_entry_module(&mut self, module: Module) {
+        self.entry_index = Some(self.modules.len());
+        self.modules.push(module);
+    }
+
     pub fn link(&self) -> Result<(Vec<u8>, HashMap<String, u32>), LinkError> {
         let mut final_code = Vec::new();
         let mut global_symbols = HashMap::new(); // Name -> Absolute Address in final_code
 
-        // Pass 1: Layout code and build symbol table
+        // Pass 1: Layout code and build symbol table.
+        // Plan 545 use-namespace semantics: dependency modules register their
+        // exports module-qualified (`mod#sym`, plus dotted alias `mod.sym` for
+        // runtime `call_fn_by_name` qualified dispatch); only the entry module
+        // keeps bare-name registration. This removes the implicit flat-import
+        // channel: a bare-name reloc from the entry module no longer binds to
+        // a dependency export unless an explicit import (named items or
+        // `use mod: *` → import_scope mapping) qualified it.
         let mut current_offset = 0;
         // Map module index -> start offset
         let mut module_offsets = Vec::new();
 
-        for module in &self.modules {
+        for (idx, module) in self.modules.iter().enumerate() {
             module_offsets.push(current_offset);
 
-            // Register exports
+            let is_entry = self.entry_index == Some(idx);
             for (sym_name, sym_offset) in &module.exports {
-                if global_symbols.contains_key(sym_name) {
-                    // Duplicate symbol — use module-qualified name instead
-                    let qualified = format!("{}#{}", module.name, sym_name);
-                    global_symbols.insert(qualified, current_offset + sym_offset);
+                let abs = current_offset + sym_offset;
+                if is_entry {
+                    global_symbols.insert(sym_name.clone(), abs);
                 } else {
-                    global_symbols.insert(sym_name.clone(), current_offset + sym_offset);
+                    global_symbols.insert(format!("{}#{}", module.name, sym_name), abs);
+                    // Dotted alias: qualified runtime dispatch
+                    // (`call_fn_by_name("api.get_notes")`) and reloc exact hits.
+                    if !sym_name.contains('#') && !sym_name.contains('.') {
+                        global_symbols.insert(format!("{}.{}", module.name, sym_name), abs);
+                    }
                 }
             }
 
@@ -280,9 +309,10 @@ impl Linker {
             let mut mod_code = module.code.clone();
 
             for reloc in &module.relocs {
-                // Find symbol. Plan 317 Phase B: after module flattening,
-                // "db.all_notes" should resolve to the "all_notes" export.
-                // Try exact match first, then strip module prefix and retry.
+                // Find symbol. Plan 317 Phase B: qualified relocs like
+                // "db.all_notes" exact-hit the dotted alias registered in
+                // Pass 1 (Plan 545); module#name is kept as the canonical
+                // qualified key for `#`-shaped symbols and legacy relocs.
                 let target_addr = global_symbols.get(&reloc.symbol_name)
                     .copied()
                     // Plan 322: try module#name qualified lookup for dotted symbols.
@@ -300,21 +330,37 @@ impl Linker {
                             None
                         }
                     })
-                    // Fallback: strip prefix, try unqualified name.
+                    // Plan 545: own-module qualified fallback — a dependency
+                    // module's intra-module call relocs stay bare (`add`),
+                    // but its exports are registered `mod#sym`; bind them
+                    // back to the module's own definition.
                     .or_else(|| {
-                        reloc.symbol_name.split('.').last().and_then(|stripped| {
-                            if stripped != reloc.symbol_name {
-                                global_symbols.get(stripped).copied()
-                            } else {
-                                None
-                            }
-                        })
+                        global_symbols.get(&format!("{}#{}", module.name, reloc.symbol_name)).copied()
                     })
                     .ok_or_else(|| {
+                        // Plan 545 D6: bare name unresolved but exported by a
+                        // dependency module → suggest the qualified form.
+                        let hint = {
+                            let bare = reloc.symbol_name.rsplit('.').next().unwrap_or("");
+                            let owners: Vec<&String> = global_symbols.keys()
+                                .filter(|k| k.ends_with(&format!("#{bare}")))
+                                .collect();
+                            match owners.len() {
+                                1 => {
+                                    let owner = module_owner_name(owners[0]);
+                                    Some(format!(
+                                        " (module `{}` exports `{}` — write `{}.{}` or `use {}: *`)",
+                                        owner, bare, owner, bare, owner
+                                    ))
+                                }
+                                _ => None,
+                            }
+                        };
                         LinkError {
                             message: format!(
-                                "Undefined symbol: {} in module {}",
-                                reloc.symbol_name, module.name
+                                "Undefined symbol: {} in module {}{}",
+                                reloc.symbol_name, module.name,
+                                hint.unwrap_or_default()
                             ),
                             symbol: reloc.symbol_name.clone(),
                             module: module.name.clone(),

@@ -1,8 +1,8 @@
 // QuickStartPage.at - Quick Start tab content
 
-use Banner
-use EnablementView
-use TutorialView
+use Banner: Banner
+use EnablementView: EnablementView
+use TutorialView: TutorialView
 
 /// Quick start page with Banner, Grid, and List
 widget QuickStartPage {

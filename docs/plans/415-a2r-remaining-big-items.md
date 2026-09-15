@@ -23,7 +23,7 @@
   a2r golden 新用例。
 - **验收**: golden 双向通过 + auto-ai 重生成零 diff。
 
-### 415-B Redis/SQLite a2rs backend stdlib（242 #10,预估 3-5 天）— B1 ✅ 已落地（2026-09-15，`plan-fix/415b-sqlite` 分支 `7b7063f6b`，待 review）；B2 Redis 真待办
+### 415-B Redis/SQLite a2rs backend stdlib（242 #10,预估 3-5 天）— B1 ✅ + B2 ✅ 均已落地合并（2026-09-15；B1 `7b7063f6b`→合并 `85d8949f0`，B2 `4e02c0de3` 分支 `plan-fix/415b2-redis`）——**B 子项整体收口**
 
 - **B1 落地内容**: `stdlib/auto/sqlite.at` 接口层（`SqliteDb` 句柄 + open/exec/query/
   last_insert_rowid/last_error，哨兵错误约定）+ `sqlite.rs.at` #[rs] 层；
@@ -84,31 +84,76 @@
   纯 Auto 闭环(Auto 版 a2r 转译器,五向)→ Plan 434 余力项。
 - **依赖**: ~~415-A/B 落地后再评估~~(A 已落地;B/C 不阻塞)。
 
-### 415-E dep cc + memmap2 FFI（242 #17,预估 2-3 天）
+### 415-E dep cc + memmap2 FFI（242 #17,预估 2-3 天）— ✅ 已收口（2026-09-15,E-1 落地 `30d552677` 分支 `plan-fix/415e-memmap` + E-2/E-3 文档级收口;方案件见下）
 
 - **现状**: Plan 240 Phase 13 交接 4 个 cookbook stub。
-- **入口**: build-time codegen(`build.rs` + cc 编译 C 桥)+ memmap2
-  FFI 声明;Windows/MSVC 工具链验证是主要风险点。
-- **[2026-09-15 漂移核查]**: ⚠️ 原方案被 Plan 610(已归档,a2r C ABI
-  两形态)部分取代——610 已建成 manifest IR(auto-bindgen link 字段)/
-  `use.c` 静动态双形态/`#[export]` cdylib 导出/auto_cabi_kit 指针桥,
-  且经 597 驱动器实编实证。不建议按原文手搭独立 build.rs+cc 路径,应先
-  出一页基于 610 机制的重定方案,避免两套 FFI 路径并存。另:cc/memmap2
-  已作为传递依赖进入 Cargo.lock,"需引入"前提已松动。
+- **入口（原文,已过时）**: ~~build-time codegen(`build.rs` + cc 编译 C 桥)+ memmap2 FFI 声明~~
+- **[2026-09-15 漂移核查]**: ⚠️ 被 Plan 610 部分取代（详见下）。
+
+#### 415-E 重定方案（2026-09-15,设计件——三输入面核验后成文,执行另立）
+
+**原方案双重过时的证据**:
+1. **C 桥消费**: Plan 610（已归档）建成 `use.c` S/D 双形态 + manifest 共享 IR
+   （auto-bindgen `link: static|dynamic` 字段）+ auto_cabi_kit 指针桥,经 597
+   驱动器实编三闭环实证（金样 `27_c_abi/003_use_c_static`:manifest →
+   `#[link]` extern 块 + 安全包装,全部 unsafe 居生成模块内）。手搭独立
+   build.rs+cc 路径 = 两套 FFI 路径并存,裁定不做。
+2. **Rust crate 消费**: Plan 591(V1)+596(V2) dep 轨已建成——`dep <crate>` +
+   `use.rs <crate>::<Type>` 语法（语料 `17_rust_std/010_regex` 在案）,430
+   shim 管线 + trait 白名单转发/泛型实例化/回调 adapter。memmap2 是纯
+   Rust crate,本就不该走 FFI 桥。
+3. **前提松动**: cc/memmap2 已为传递依赖;Phase 13 "4 文件" 经核查仅剩
+   **1 个模拟桩**（`safety/001_memmap.at`,STUB_PRINT 形态）——001_heapless
+   已带 expected.rs 非桩,余 2 个 240 归档未列名、仓库不可定位。
+
+**重定后的 E = 三个小件**:
+- **E-1（主件,预估 0.5-1 天）**: 去桩 `safety/001_memmap.at`。
+  - 路线 A（首选）: `dep memmap2` + `use.rs memmap2::Mmap`（591/596 轨）;
+    前置探针 = memmap2 的 shim 覆盖率（596 skip-hit-rate 方法论,p594 报告）。
+  - 路线 B（兜底,shim 面不足时）: a2r-std::memmap 模块（B1/B2 模板成熟,
+    ~半天）。
+  - VM 轨: 无 mmap native,cookbook VM 档维持模拟态或按 ffi_dep_parity
+    三轨先例裁定（执行时定）。
+- **E-2（重定性件,文档级）**: "dep cc"（消费需 C 编译的 crate）定为**非
+  Auto 侧工作**——a2r 产物 Cargo harness 依赖该 crate 时 Cargo 传递处理
+  cc,Auto 零感知。唯一残留场景"从 C 源现场编译再链接"= 610 D 形态未来
+  扩展（harness build.rs + cc）,登记可选 follow-up,无在案需求驱动。
+- **E-3（对账件,文档级）**: 242 #17 表行刷新 + Phase 13 清单对账
+  （1 桩 + 1 已去桩 + 2 不可定位,按单桩收口）。
+
+**验收（E-1 路线 A）**: 001_memmap.at 去桩（真 Mmap 调用）+ a2r golden 绿
++ rustc 实编门（外部依赖按 003 先例跳过或 harness 实编）。
+**风险**: memmap2 shim 覆盖不足 → 路线 A 成本升 → 路线 B 兜底。
 
 ## 2. 执行顺序建议
 
 ~~A（最小、独立）→ E → B1 → B2；C/D 各自 spike 后重估~~
-**2026-09-15 漂移核查后调整**: **B1 → B2**（前提复核成立,当前最新鲜、
-最自包含的下一步）→ **E** 先出基于 Plan 610 机制的重定方案再排期 →
-**C** 待虚拟桌面计划(Plan 455)给出新信号后重做 go/no-go。每项合并后
-回填 242 tracker 对应行 + 本文档勾选。
+**2026-09-15 漂移核查后调整**: ~~B1 → B2~~ ✅（B1+B2 已落地合并,B 子项
+收口）→ **E** ✅ 重定方案已成文（见 415-E 节,执行=三小件另立计划,E-1
+半天~1 天）→ **C** 待虚拟桌面计划(Plan 455)给出新信号后重做 go/no-go。
+每项合并后回填 242 tracker 对应行 + 本文档勾选。
 
 
 ## 3.5 执行记录（work 交接）
 
 - `2026-09-15 | PLAN-415-B1 | 漂移核查后基线 | pass(B1 子项) | 7b7063f6b(plan-fix/415b-sqlite, worktree D:/autostack/.wt/lang-415b/auto-lang) | B1 | 证据: a2r-std 10/10+golden 28_sqlite 2/2+两金样真 rustc 实编 exit 0+cargo tt 零新增(基线对照实证 2 预存红)+auto-ai 四 crate retranspile check=0 错且再生成 diff 与基线 CLI 一致+396 骑乘项签名比对环 8 对全绿 | 无阻塞 | next: B1 走 /auto-plan:review(独立复审)后合并;B2 Redis 后续独立开工'
 
+
+### 执行与复审记录（E，2026-09-15）
+
+- `work | PLAN-415-E1 | 重定方案基线 | pass(E 子项相位) | 30d552677(plan-fix/415e-memmap, worktree D:/autostack/.wt/lang-415e/auto-lang) | E-1 | 证据: golden 1/1+真 cargo 编译零错+真运行输出 len:4/first:42(匿名 mmap 真创建写读)+tt 红集=4 已知预存(len 强转零参收窄零回归)+tf 3569/3569+auto-ai 四 crate 0 错 | 无阻塞 | next: review→merge`
+- **E-1 要点**: 路线 A（dep 轨）实证可行——`dep memmap2` + `use.rs memmap2::MmapOptions`；file-backed Mmap::map 为 unsafe,匿名 MmapMut（map_anon）为安全入口;`.unwrap()` 透传;`var` 为 Auto 可变绑定正语法。
+- **E-1 发射器修复**: `.len` as i64 强转收窄为零参形态（带参 = builder setter 返 Self,强转会断链;双站点=Bina 死路径+Dot 活路径,B2 教训重演印证);语料内双形态覆盖（.len(4) setter / mmap.len() 长度读）。
+- **E-2 ✅**: "dep cc" 重定性为非 Auto 侧（重定方案节）;**E-3 ✅**: 242 #17 表行已刷 Done + Phase 13 对账结论入行。
+- **债务候选（E-1 附带发现）**: `let mut X = ...` 被解析为 name="mut"/type=X 的注解 let（CLI 全类型ck路径 undefined variable 实证）——宽松接受而非报错,产物为 r#mut 坏输出;Auto 正语法=var。宜 parser 报错收紧,独立小修。
+- **E 复审记录**: `review | PLAN-415-E | 重定方案基线 | pass(E 子项相位;415 余 C 挂起) | reviewed_commit=30d552677 | base=862fb7a53 | findings: F-E-01(info,file-backed Mmap::map unsafe 越 Auto 安全面,注记于语料;VM 轨无 mmap native 未注册 VM 档——旧裸文件桩本就 VM 孤儿) | 门禁: 验证电池于最终提交态新鲜执行(同会话限制声明同 B1/B2) | next: merge`
+
+### 执行与复审记录（B2，2026-09-15）
+
+- `work | PLAN-415-B2 | 漂移核查后基线 | pass(B2 子项) | 4e02c0de3(plan-fix/415b2-redis, worktree D:/autostack/.wt/lang-415b2/auto-lang) | B2 | 证据: a2r-std 13/13+golden 29_redis 2/2+两金样真 rustc 实编 0 错×2+比对环 9 对全绿(redis 零允许清单)+tt 红集=4 已知预存+tf 3561/3562(ffi_dual_019 同负载基线同败实证环境性)+auto-ai 四 crate 0 错 | 无阻塞 | next: review`
+- **B2 要点**: redis 0.27 纯 Rust 同步 API（计划担心的 build 脚本/平台风险实测不存在）；本机无 Redis→无服务器哨兵测试×2 无条件真跑+活体 roundtrip 挂 AUTO_TEST_REDIS_URL 守卫；redis-rs Connection &mut self→Auto 侧 var 绑定（let mut）约定。
+- **B2 复审记录**: `review | PLAN-415-B2 | 同基线 | pass(B2 子项相位) | reviewed_commit=4e02c0de3 | base=15654a7f8 | findings: F-B2-01(info,活体测试环境守卫)/F-B2-02(info,var 绑定约定文档化)/F-B2-03(info,碰撞名守卫模式:ping|del|exists 独立臂+get/set 嵌入既有臂顶——前置新臂遮蔽 List 索引化/Map insert 改写,arc_dyn_spec 回归实测坐实后修复复绿) | 门禁: 验证电池全部于最终提交态新鲜执行(独立会话限制声明同 B1) | next: merge`
+- **B2 执行中回归教训（已修复并入档）**: 首版把 get/set 守卫写成前置 match 新臂，遮蔽既有臂（`12_specs/008_arc_dyn_spec` golden 漂移为 `insert(n.clone(), …)`），基线对照定位后改嵌臂内——B1 模板的独立守卫臂仅适用于**无碰撞方法名**，此边界已写入守卫注释与 spec。
 
 ### 复审记录（B1，2026-09-15）
 

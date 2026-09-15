@@ -10,7 +10,7 @@
 | auto-lang（语言核心） | active | 9 | [auto-lang/project.md](auto-lang/project.md) |
 | auto-val | active | 7 | [auto-val/project.md](auto-val/project.md) |
 | auto-atom | active | 3 | [auto-atom/project.md](auto-atom/project.md) |
-| a2r-std | active | 6 | [a2r-std/project.md](a2r-std/project.md) |
+| a2r-std | active | 7 | [a2r-std/project.md](a2r-std/project.md) |
 | stdlib | active | 8 | [stdlib/project.md](stdlib/project.md) |
 | aavm | experimental | 11 | [aavm/project.md](aavm/project.md) |
 
@@ -64,6 +64,7 @@
 | http | HTTP 客户端（ureq） | active |
 | fs / env / math / time | 文件系统、环境、数学、时间 | active |
 | sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
+| redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
 
 </details>
 

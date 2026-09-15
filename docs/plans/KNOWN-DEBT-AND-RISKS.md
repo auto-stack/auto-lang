@@ -2193,3 +2193,26 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P625-D5 | info | 覆盖范围 | **VM live 视口集=自包含示例 14/20**：多文件（自有 components/）与模块 use 示例 v1 降级占位卡（跳过清单启动日志上报：006/010/011/016/026/027）。扩展=生成器随行拷贝示例模块树+路径重写,独立评估 | `crates/auto-man/src/vue.rs` emit_gallery_vm_demos 过滤条件 |
 | F-R1 | info | 环境归属 | **docs_gen kitchen_sink worktree 红**：worktree 基于 d2f983d63,widgets-gallery fixture 已被 master 侧 9ffab6f6/776f4ba2 同步——基线陈旧 artifact（主检出 PASS;PLAN-625 diff 不触 docs_gen/schema）。随 worktree merge master 已消解大半,残余属共享检出的解析路径差异 | `crates/auto-lang/tests/docs_gen.rs:378` |
 | F-R2 | info | 环境归属 | **plan606 test_029_photo_gallery 红**：并行会话 plan628-photo-gallery-v2 在途重构破坏（主检出脏文件+628 计划在案;主检出与 worktree 合并态均红）——归 plan628 域,非 PLAN-625 | `crates/auto-lang/src/tests/plan606_gallery_tests.rs` |
+
+## 2026-09-15 增补（Plan 545 复审裁定）
+
+- **P545-D1 [传递 wildcard merge 维持现状]**：bare use 的传递隔离已落地
+  （递归 resolve_uses 走同一 bare 不 merge 分支，探针 G 断言）；但被导入
+  模块自己的 **wildcard** use（`use X: *`）仍 merge 进导入方 session store
+  （D1 兜底条款：解析上下文耦合过深时降级维持）。显式 opt-in 面的传递
+  语义留待有实例痛点时收紧。证据：PLAN-545 待澄清 #1/#5、spec 导入语义节
+  例外注记。
+- **P545-D2 [host↔aavm bare use 语义分叉]**：Plan 545 只收紧宿主工具链
+  （compile.rs/TypeStore/Linker/注册面），aavm 自举层（auto/lib/*.at）的
+  use 实现未随动。aavm 语料无"bare use + 裸名"golden 锚定（corpus_use 仅
+  002 限定风格）不受冲击；分叉本身待 aavm 侧对齐（另立计划）。证据：
+  PLAN-545 待澄清 #5、R1 记录。
+- **P545-D3 [stdlib `use auto.*` 全管线模块加载解析不兼容（预存）]**：
+  `use auto.str` 等经 compile.rs load_module_inner→parse_module_to_type_store
+  解析 stdlib `.at` 的 `#[vm]` 接口声明（`#[vm] fn repeat(n int) str` 无体
+  形态）即多错失败——**master 同错复现**（CLI 直证，两份 stdlib 字节一致
+  排除环境分叉），非 545 引入。后果：AC-5 行为级测试载体断裂（R545-F2，
+  545 注册语义以代码路径审查判 pass）；stdlib natives 实际经 native_catalog
+  预登记路径工作，本断裂面在 `use auto.X` 显式模块加载。修复位：
+  parse_module_to_type_store 的 Parser 对 `#[vm]` 接口声明的接受面。
+  证据：PLAN-545 R1 F2、探针错误文本内联（"Expected LBrace found #"）。
