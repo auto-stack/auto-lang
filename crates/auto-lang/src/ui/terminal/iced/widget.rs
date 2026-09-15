@@ -743,7 +743,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                         Background::Color(Color::from_rgb(0.25, 0.35, 0.55)),
                     );
                 }
-                let para = plain_para(label, MENU_ITEM_W);
+                let para = &menu_paras()[i];
                 if trace {
                     eprintln!("[menu-draw] label {i} '{label}' pos={:?} para={:?}", item_rect.position(), para.min_bounds());
                 }
@@ -868,6 +868,22 @@ fn build_row_paragraph(line: &[TermCell], palette: &[u32; 18]) -> Para {
         align_y: alignment::Vertical::Top,
         shaping: Shaping::Basic,
         wrapping: Wrapping::None,
+    })
+}
+
+/// 菜单标签段落缓存(强引用静态存活)。根因(015 R015-F1 实证):iced
+/// wgpu 渲染层 fill_paragraph 排队的是 `paragraph.downgrade()` 弱引用,
+/// flush 时 upgrade 失败即**静默丢弃**——draw 内局部段落 fill 后析构,
+/// 文字必然消失(quad 为值拷贝不受影响;行文本因 RowEntry 静态缓存
+/// 强引用存活而正常)。标签是静态串,一次建入静态缓存即可。
+static MENU_PARAS: OnceLock<Vec<Para>> = OnceLock::new();
+
+fn menu_paras() -> &'static [Para] {
+    MENU_PARAS.get_or_init(|| {
+        MENU_ITEMS
+            .iter()
+            .map(|label| plain_para(label, MENU_ITEM_W))
+            .collect()
     })
 }
 
