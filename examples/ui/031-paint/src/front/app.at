@@ -65,7 +65,9 @@ widget App {
 
     view {
         col {
-            style: "w-full max-w-2xl bg-card border rounded-2xl shadow-2xl p-4 gap-3"
+            // mx-auto: Fill+max-w 子项不参与父级 items-center(iced 端),
+            // auto 边距负责在画廊视口内水平居中
+            style: "w-full max-w-2xl bg-card border rounded-2xl shadow-2xl p-4 gap-3 mx-auto"
 
             // ---- 标题 + 工具行 ----
             row {

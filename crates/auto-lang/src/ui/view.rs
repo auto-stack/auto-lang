@@ -584,6 +584,11 @@ pub enum View<M: Clone + Debug> {
         /// PLAN-018 D10:配色方案(id;缺省 -1 = 跟随桌面主题 dark→0/
         /// light→1;≥0 显式覆盖,scheme 表见 ui::terminal palette 面)。
         scheme: i32,
+        /// PLAN-019 D4:应用级捷径表(规范化键名 → 消息;Terminal 键盘
+        /// 路径前置拦截——命中发消息不落 VT 队列,未命中原样透传)。
+        /// .at 面 = `onkeydown.<键名>: .Msg` 事件(Textarea keydown 同款
+        /// 收集);rust/vm 轨承诺,vue 声明透传不实现。
+        shortcuts: Vec<(String, M)>,
         style: Option<Style>,
     },
 
@@ -2088,7 +2093,7 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
-            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => View::Terminal {
+            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => View::Terminal {
                 key,
                 cols,
                 rows,
@@ -2101,6 +2106,7 @@ impl<M: Clone + Debug> View<M> {
                 cursor_row,
                 cursor_col,
                 scheme,
+                shortcuts: shortcuts.into_iter().map(|(k, m)| (k, f(m))).collect(),
                 style,
             },
             View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {

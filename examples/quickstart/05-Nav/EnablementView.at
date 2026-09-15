@@ -1,6 +1,6 @@
 // EnablementView.at - Grid section with horizontal scrolling cards
 
-use EnablementItem
+use EnablementItem: EnablementItem
 
 /// Enablement section with horizontal scrolling grid
 widget EnablementView {

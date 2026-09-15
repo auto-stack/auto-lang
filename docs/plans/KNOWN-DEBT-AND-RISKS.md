@@ -42,8 +42,12 @@
 | 377 | TYPE_CAST_U64 | engine.rs:2690 的 TYPE_CAST_U64 用 `push_u64(v as u32 as u64)`，值 < 2^32 安全，但未走 heap-aware 路径。 | `vm/engine.rs:2690` |
 | 340 | reduce init_val 类型 | shim_list_reduce 的 Value path 中 init_val 仍是 `pop_i32()`（而非 `pop_nv()`+`nv_to_value`）。若 reduce 初始值是 struct/str 会丢类型。常见用例（init=0/""）不受影响。 | `vm/native.rs shim_list_reduce` |
 | 399 | api_gen 后处理兜底 | `post_process_db_rs` 保留 5 类后处理兜底（i32→i64 之外的：去 deref 正则、str→String、`id: *NEXTID as i64` 替换、use 路径映射、strip_collection_new），代码自注 "workarounds, not redundant"——a2r 根治回归面广，正则方案为永久设计。 | `auto-man/src/api_gen.rs:331` 起 |
-| 396 | 一致性遗漏 | a2r-std/src/*.rs 是 stdlib/auto/*.rs.at 的手抄副本，无生成/校验环——time.rs 曾漂移到 i32（§2.6 教训：stdlib 声明 i64）。建议后续由 stdlib 生成或加 CI 签名比对。 | `crates/a2r-std/src/time.rs` vs `stdlib/auto/time.rs.at` |
+| 396 | 一致性遗漏 | ~~a2r-std/src/*.rs 是 stdlib/auto/*.rs.at 的手抄副本，无生成/校验环~~ ✅ 半收偿(2026-09-15,Plan 415-B1 骑乘项)：签名比对环 `a2r_std_signature_parity` 落地(crates/auto-lang/src/tests/a2r_std_signature_parity.rs,8 对全绿——名称集+元数,含 json 分派改名表/list 隐式 self 归一,遗留漂移入显式允许清单)。未做部分：参数/返回**类型**比对(Auto→Rust 类型映射不可机械反转,如 int↔i32/i64)与生成路线,仍属 396 原始债面。 | `crates/auto-lang/src/tests/a2r_std_signature_parity.rs`;time.rs i32 漂移已修(8164e93a9) |
 | 396 | 绕道残留 | auto-ai 两处 sed 仍在（agent tier.rs `Some(m.clone())` 属 Plan 020、SOUL const `&str` 属 Plan 016 可选项）——396 §2 范围内 sed 已全部毕业，这两条按计划归属留在原计划。 | `auto-ai crates/auto-ai-agent/retranspile.sh:82` |
+| 415-B1 | 预存死臂(新实证) | Plan 223 三段式模块调用分派臂(`auto.env.get`/`auto.X.Y(...)`)对当前解析形状不命中——415-B1 探针实证 `auto.env.get("HOME")` 与 `auto.sqlite.open(...)` 均字面发射 `auto::env::get`(Rust 不可编译,E0433 类),落入通用 `::` 拼接路径;既有 corpus 无 3 段式覆盖故长期潜伏。415-B1 范围裁定:sqlite 语料收窄为 2 段式(`sqlite.open`,全链含真 rustc 实编零错)。修复需先定位 call.name 的实际解析形状(疑右结合嵌套)再复活分派臂,波及面=env/io/fs 既有分派,宜独立小计划。 | `trans/rust.rs` Plan 223 块(auto_name=="auto" match);复现:golden 002_advanced 早期形态(415b worktree 探针) |
+| 415-C | 未来项(用户裁定 2026-09-15) | GPUI a2r UI 生成器**延后**:门控信号已核(2026-09-15)——虚拟桌面 M0-M4 全线交付(452/453/459/462/463/464/465,2026-08-26~29)但渲染路线双轨定型(VM 轨 iced+Web 轨 Vue,路线 B 渲染叶子=RenderCommand,386 复活承载),GPUI 不在关键路径,现投入=无需求驱动。骨架保留(crates/auto-lang/src/ui/gpui/ ~3.8k 行+ui-gpui feature+19 examples;365 条目 Image 占位/Grid 分解限制仍在)。**重启条件**:GPUI 生态特定需求出现,或路线 B 渲染叶子变更。 | `docs/plans/archive/415-a2r-remaining-big-items.md` C 节(现状刷新版);auto-os `docs/plans/autos-desktop-program.md` 台账;242 #15 行 |
+| 415-E1 | 解析宽松性 | `let mut X = ...` 被 parser 静默解析为 name="mut"/type=X 的注解 let——415-E1 CLI 探针实证(全类型ck路径 undefined variable;转译路径产物 `let r#mut: X` 坏输出)。Auto 可变绑定正语法=`var`。收紧方向:parser 对 `let mut` 直接报错(与 417-E2 uninit var 收紧同族)。 | `parser.rs` let/var 声明;复现:`echo 'let mut m = 1' 类 .at` + `auto trans --path f.at rust` |
+| 018-T05 | 存量 golden 过期(a2r) | PLAN-018 T-05 发射改动(全局读解引用加括号 `73ac6edd8` 等)后 golden 未再生:①`14_modules/007_shared_var`(*APP_NAME.lock() 括号化漂移);②`27_c_abi/003/004` 文本 golden;③rustc 实编门 3 unexpected(024_nested_async_await 解析错误+27_c_abi/003 E0425 等)。415 三轮基线对照实证为预存(b0e603501/15654a7f8 纯净基线同败,非 415 各分支引入)。修复=逐例 bless 再生或根因修+门禁红归因清账。 | `crates/auto-lang/test/a2r/14_modules/007_shared_var/`+`27_c_abi/`+`a2r_rustc_real_compile_gate`;基线证据:415 归档件 B1/B2/E 复审记录 |
 | 417-E2 | a2r 后处理盲重写 | `fix_vec_i32_index` Pattern 2 把任意 `xxx.get(i)`（参数名 ∈ int_like 名单：i/j/k/idx/n/...）正则重写为 `xxx[i as usize]`，不看 receiver 类型——用户类型若有 `.get(int)` 方法且局部变量名不在 hash_map_names 白名单，产物编坏（E0608）。E2 parity wrapper 以变量名 `data`（白名单内）规避；根治需让该启发式感知类型。 | `trans/rust.rs fix_vec_i32_index` Pattern 2 |
 | 432 | SET_ELEM 栈序 quick-fix | 数组下标赋值编译为 rhs→arr→idx→`set.elem`（value 展栈底），源自 codegen.rs ~5954 的注释自述"quick fix"（原想 SWAP/ROTATE 未做）。操作数顺序反直觉且有 40 行困惑注释，理想为自然序编译或引入 ROTATE。v2 侧已镜像此序（divergences.md M4 扩语料节）。 | `vm/codegen.rs` SET_ELEM 发射段 |
 | 432 | .len() 发射依赖运行时注册表 | `.len()` 走 ARRAY_LEN 还是 CALL_NAT 取决于 BIGVM_NATIVES 全局注册表内容（str.len 已注册 → CALL_NAT；未注册类型 → ARRAY_LEN 兜底，codegen.rs 7217-7229）。字节码发射应是 AST+类型表的纯函数，全局注册表状态使其不可静态复现（v2 侧只能按"接收者==Array"闸镜像主路径）。 | `vm/codegen.rs` 7177/7222 |
@@ -2192,3 +2196,39 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P625-D5 | info | 覆盖范围 | **VM live 视口集=自包含示例 14/20**：多文件（自有 components/）与模块 use 示例 v1 降级占位卡（跳过清单启动日志上报：006/010/011/016/026/027）。扩展=生成器随行拷贝示例模块树+路径重写,独立评估 | `crates/auto-man/src/vue.rs` emit_gallery_vm_demos 过滤条件 |
 | F-R1 | info | 环境归属 | **docs_gen kitchen_sink worktree 红**：worktree 基于 d2f983d63,widgets-gallery fixture 已被 master 侧 9ffab6f6/776f4ba2 同步——基线陈旧 artifact（主检出 PASS;PLAN-625 diff 不触 docs_gen/schema）。随 worktree merge master 已消解大半,残余属共享检出的解析路径差异 | `crates/auto-lang/tests/docs_gen.rs:378` |
 | F-R2 | info | 环境归属 | **plan606 test_029_photo_gallery 红**：并行会话 plan628-photo-gallery-v2 在途重构破坏（主检出脏文件+628 计划在案;主检出与 worktree 合并态均红）——归 plan628 域,非 PLAN-625 | `crates/auto-lang/src/tests/plan606_gallery_tests.rs` |
+
+## 2026-09-15 增补（Plan 545 复审裁定）
+
+- **P545-D1 [传递 wildcard merge 维持现状]**：bare use 的传递隔离已落地
+  （递归 resolve_uses 走同一 bare 不 merge 分支，探针 G 断言）；但被导入
+  模块自己的 **wildcard** use（`use X: *`）仍 merge 进导入方 session store
+  （D1 兜底条款：解析上下文耦合过深时降级维持）。显式 opt-in 面的传递
+  语义留待有实例痛点时收紧。证据：PLAN-545 待澄清 #1/#5、spec 导入语义节
+  例外注记。
+- **P545-D2 [host↔aavm bare use 语义分叉]**：Plan 545 只收紧宿主工具链
+  （compile.rs/TypeStore/Linker/注册面），aavm 自举层（auto/lib/*.at）的
+  use 实现未随动。aavm 语料无"bare use + 裸名"golden 锚定（corpus_use 仅
+  002 限定风格）不受冲击；分叉本身待 aavm 侧对齐（另立计划）。证据：
+  PLAN-545 待澄清 #5、R1 记录。
+- **P545-D3 [stdlib `use auto.*` 全管线模块加载解析不兼容（预存）]**：
+  `use auto.str` 等经 compile.rs load_module_inner→parse_module_to_type_store
+  解析 stdlib `.at` 的 `#[vm]` 接口声明（`#[vm] fn repeat(n int) str` 无体
+  形态）即多错失败——**master 同错复现**（CLI 直证，两份 stdlib 字节一致
+  排除环境分叉），非 545 引入。后果：AC-5 行为级测试载体断裂（R545-F2，
+  545 注册语义以代码路径审查判 pass）；stdlib natives 实际经 native_catalog
+  预登记路径工作，本断裂面在 `use auto.X` 显式模块加载。修复位：
+  parse_module_to_type_store 的 Parser 对 `#[vm]` 接口声明的接受面。
+  证据：PLAN-545 R1 F2、探针错误文本内联（"Expected LBrace found #"）。
+
+## 2026-09-15 增补（PLAN-632 执行裁定）
+
+- **P632-D1 [宿主根件无 Init 的 fire_init 兜底告警（预存，定性无关）]**：
+  `App.Init failed (state may be unpopulated): handler not found: Init` 在
+  standalone（006/016 examples）与内嵌（ui-gallery VM）同样出现——是
+  fire_init 对根件无 `.Init` 声明时的一律兜底告警，与组件/store 桥接机制
+  无关（T-01 对照实验判定：standalone 016 store 桥接全通、告警同在）。
+  语义提示词（"state may be unpopulated"）对 store 型宿主有真实含义
+  （store→child 播种依赖根件 Init 或模型默认），但画廊宿主不消费该路径。
+  缓解候选：根件无 Init 声明时静默/降为 debug 级；或画廊 app.at 补 no-op
+  Init。收益仅日志卫生，另立微计划处理。证据：PLAN-632 T-01/T-05、
+  `target/p632/t01-*-proc.log`。

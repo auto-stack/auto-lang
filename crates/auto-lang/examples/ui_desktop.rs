@@ -11,7 +11,9 @@ use auto_lang::ui::iced::{run_dynamic_desktop_fullscreen, run_dynamic_desktop_wi
 use std::path::PathBuf;
 
 // PLAN-552：459-dual-app 探针迁 examples/capability-tests/（深度 ../../../ 不变）。
-const APP_A: &str = include_str!("../../../examples/capability-tests/459-dual-app/app.at");
+// 2026-09-15 用户裁定：459 双窗口 demo 的 boot 直挂窗退役——验收遗留，普通
+// 桌面每次启动都带 demo 窗（任务栏还得靠 app-window 兜底图标）；双窗隔离
+// 验收跑专用 example `ui_dual_app`（同一源，进程内双 OS 窗）。
 const APP_B: &str = include_str!("../../../examples/ui/011-calculator/src/front/app.at");
 
 /// 默认注册表目录：仓库 examples/ui（相对 crate 编译期定位，CWD 无关）。
@@ -38,21 +40,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // PLAN-526 T6：传源路径（仓库根相对）——boot 直挂组件可按 source
     // path 后缀对齐注册表条目（回填 registry_id + armed `window: "fit"`）。
-    let comp_a = auto_lang::build_dynamic_component(
-        APP_A,
-        Some("examples/capability-tests/459-dual-app/app.at"),
-    )?;
-    let comp_b = auto_lang::build_dynamic_component(
-        APP_B,
-        Some("examples/ui/011-calculator/src/front/app.at"),
-    );
     // PLAN-013 实测（2026-09-12）：master 859c31710 起 011-calculator 多文件
     // 聚装断链（`link failed: Undefined symbol: pcur_fmt`——prog_util.at 符号
     // 未入 VM 表，boot 直挂零容错直接崩进程）。验收宿主降级容错：boot 直挂
     // 组件装载失败 → 警告 + 剩余组件启动（桌面注册表/launch 不受影响）。
     // 回归根因归 PLAN-615 线排查，修复后本容错自然静默。
-    let mut comps = vec![comp_a];
-    match comp_b {
+    let mut comps = Vec::new();
+    match auto_lang::build_dynamic_component(
+        APP_B,
+        Some("examples/ui/011-calculator/src/front/app.at"),
+    ) {
         Ok(cb) => comps.push(cb),
         Err(e) => eprintln!(
             "[ui_desktop] boot 直挂组件 011-calculator 装载失败，降级跳过（回归见 PLAN-615）: {e}"

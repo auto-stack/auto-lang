@@ -102,6 +102,7 @@ macro_rules! for_each_native {
             (2067, NATIVE_LIST_SORT, shim_list_sort, "auto.list.sort"),
             (2068, NATIVE_LIST_SORT_BY, shim_list_sort_by, "auto.list.sort_by"),
             (2071, NATIVE_LIST_SPLICE, shim_list_splice, "auto.list.splice"),
+            (2072, NATIVE_LIST_FIND_INDEX, shim_list_find_index, "auto.list.find_index"),
             (2080, NATIVE_LIST_JOIN, shim_list_join, "auto.list.join"),
             // === Plan 046 (auto-musk T2): dynamic-receiver (obj) family ===
             (2090, NATIVE_OBJ_KEYS, shim_obj_keys, "auto.obj.keys"),
@@ -496,6 +497,9 @@ macro_rules! for_each_native {
             (2984, NATIVE_TERM_ENGINE_ROWS_FOR, shim_term_rows_for, "auto.term.engine_rows_for"),
             (2985, NATIVE_TERM_ENGINE_PUMP_FOR, shim_term_pump_for, "auto.term.engine_pump_for"),
             (2986, NATIVE_TERM_ENGINE_APPLY_RESIZE_FOR, shim_term_apply_resize_for, "auto.term.engine_apply_resize_for"),
+            // PLAN-015 D4:菜单动作载荷(0=Copy 1=Paste 2=SelectAll
+            // 3=Interrupt;-1=无载荷;注册表任意端)。
+            (2987, NATIVE_TERM_ENGINE_MENU_TAKE, shim_term_menu_take, "auto.term.engine_menu_take"),
             (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
@@ -809,6 +813,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.list.insert", 108, Void),
             ("auto.list.remove", 109, Void),
             ("auto.list.splice", 2071, List),
+            ("auto.list.find_index", 2072, Void),
             // PLAN-057 T6：Array.isArray 静态名/ID（shim 由 engine 覆盖块绑定，
             // 沿 auto.json.parse 惯例——rust_fn 宏不适配 raw-nv 分派）。
             ("auto.list.is_array", 1919, Bool),
@@ -1846,6 +1851,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.list.insert", 108),
     ("auto.list.remove", 109),
     ("auto.list.splice", 2071),
+    ("auto.list.find_index", 2072),
     ("auto.list.drop", 110),
     // PLAN-057 T6: Array.isArray（shim 由 engine 覆盖块绑定）。双行别名：
     // resolve 的 canonical 化保留方法名大小写——"Array.isArray" 规整为
@@ -2623,6 +2629,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_rows_for", 2984),
     ("auto.term.engine_pump_for", 2985),
     ("auto.term.engine_apply_resize_for", 2986),
+    ("auto.term.engine_menu_take", 2987),
 
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
     ("auto.image.queue", 2960),

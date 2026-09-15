@@ -22,9 +22,10 @@ use crate::vm::ffi::term_engine::{
     shim_term_apply_resize, shim_term_apply_resize_for, shim_term_backlog_dropped,
     shim_term_backlog_paused, shim_term_backlog_pending_mb, shim_term_backlog_take_alerts,
     shim_term_cursor_col, shim_term_cursor_row, shim_term_free, shim_term_interrupt,
-    shim_term_is_exited, shim_term_pump_for, shim_term_pump_input, shim_term_resize,
-    shim_term_rows, shim_term_rows_for, shim_term_spawn, shim_term_spawn_ex,
-    shim_term_viewport_cols, shim_term_viewport_rows, shim_term_write_line,
+    shim_term_is_exited, shim_term_menu_take, shim_term_pump_for, shim_term_pump_input,
+    shim_term_resize, shim_term_rows, shim_term_rows_for, shim_term_spawn,
+    shim_term_spawn_ex, shim_term_viewport_cols, shim_term_viewport_rows,
+    shim_term_write_line,
 };
 
 /// Decode a tagged string index from a NanoValue popped from the stack.
@@ -3205,6 +3206,51 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     }
     // Plan 446 批四 D4: miss = 语言层 None（同上 fast-path 注记）。
     task.ram.push_nv(auto_val::encode_null());
+    Ok(())
+}
+
+/// List.find_index(closure) -> int — first matching index, or -1 on miss.
+/// PLAN-624 (P4): jade `findIndex(t => t.path == path)` 用法；此前列表原生面
+/// 无 find_index，调用静默失效。栈：list_id, closure_id -> index(i32)。
+pub fn shim_list_find_index(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: genuine ListData<i32>
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for (i, elem) in elements.iter().enumerate() {
+            push_tagged_value_rc(vm, task, *elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let found = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
+            if vm_is_truthy(found) {
+                task.ram.push_i32(i as i32);
+                return Ok(());
+            }
+        }
+        task.ram.push_i32(-1);
+        return Ok(());
+    }
+
+    // Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for (i, elem) in elements.iter().enumerate() {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let found = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
+        if vm_is_truthy(found) {
+            task.ram.push_i32(i as i32);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(-1);
     Ok(())
 }
 

@@ -380,6 +380,17 @@ fn take_pending_resize_for(_key: &str) -> Option<(u16, u16)> {
     None
 }
 
+/// PLAN-015 D4:菜单动作载荷(注册表任意端,BTreeMap 键序);无 ui
+/// 特征恒 None。
+#[cfg(feature = "ui")]
+fn take_menu_item_any() -> Option<u8> {
+    crate::ui::terminal::terminal_take_menu_item_any()
+}
+#[cfg(not(feature = "ui"))]
+fn take_menu_item_any() -> Option<u8> {
+    None
+}
+
 /// 逐格样式旁路上屏;无 ui 特征丢弃(快照文本面不受影响)。
 /// `sideband` = 广播(旧 rows)/按 key 定向(D5 rows_for)。
 #[cfg(feature = "ui")]
@@ -599,6 +610,17 @@ pub fn shim_term_apply_resize_for(task: &mut AutoTask, vm: &AutoVM) -> Result<()
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
     task.ram.push_nv(auto_val::encode_i32(engine_apply_resize_for(handle, &key) as i32));
+    Ok(())
+}
+
+/// PLAN-015 D4:engine_menu_take() int——菜单动作载荷(0=Copy 1=Paste
+/// 2=SelectAll 3=Interrupt;-1=无载荷;注册表任意端,BTreeMap 键序)。
+fn engine_menu_take() -> i64 {
+    take_menu_item_any().map(i64::from).unwrap_or(-1)
+}
+
+pub fn shim_term_menu_take(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_nv(auto_val::encode_i32(engine_menu_take() as i32));
     Ok(())
 }
 

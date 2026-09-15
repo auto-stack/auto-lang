@@ -13,6 +13,8 @@ pub mod json;
 pub mod list;
 pub mod math;
 pub mod process;
+pub mod redis;
+pub mod sqlite;
 pub mod sys;
 pub mod str;
 pub mod string_builder;
