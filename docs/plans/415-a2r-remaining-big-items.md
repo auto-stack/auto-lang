@@ -84,25 +84,54 @@
   纯 Auto 闭环(Auto 版 a2r 转译器,五向)→ Plan 434 余力项。
 - **依赖**: ~~415-A/B 落地后再评估~~(A 已落地;B/C 不阻塞)。
 
-### 415-E dep cc + memmap2 FFI（242 #17,预估 2-3 天）
+### 415-E dep cc + memmap2 FFI（242 #17,预估 2-3 天）— 🔄 已重定（2026-09-15 方案件,见下;执行时按重定面另立小计划）
 
 - **现状**: Plan 240 Phase 13 交接 4 个 cookbook stub。
-- **入口**: build-time codegen(`build.rs` + cc 编译 C 桥)+ memmap2
-  FFI 声明;Windows/MSVC 工具链验证是主要风险点。
-- **[2026-09-15 漂移核查]**: ⚠️ 原方案被 Plan 610(已归档,a2r C ABI
-  两形态)部分取代——610 已建成 manifest IR(auto-bindgen link 字段)/
-  `use.c` 静动态双形态/`#[export]` cdylib 导出/auto_cabi_kit 指针桥,
-  且经 597 驱动器实编实证。不建议按原文手搭独立 build.rs+cc 路径,应先
-  出一页基于 610 机制的重定方案,避免两套 FFI 路径并存。另:cc/memmap2
-  已作为传递依赖进入 Cargo.lock,"需引入"前提已松动。
+- **入口（原文,已过时）**: ~~build-time codegen(`build.rs` + cc 编译 C 桥)+ memmap2 FFI 声明~~
+- **[2026-09-15 漂移核查]**: ⚠️ 被 Plan 610 部分取代（详见下）。
+
+#### 415-E 重定方案（2026-09-15,设计件——三输入面核验后成文,执行另立）
+
+**原方案双重过时的证据**:
+1. **C 桥消费**: Plan 610（已归档）建成 `use.c` S/D 双形态 + manifest 共享 IR
+   （auto-bindgen `link: static|dynamic` 字段）+ auto_cabi_kit 指针桥,经 597
+   驱动器实编三闭环实证（金样 `27_c_abi/003_use_c_static`:manifest →
+   `#[link]` extern 块 + 安全包装,全部 unsafe 居生成模块内）。手搭独立
+   build.rs+cc 路径 = 两套 FFI 路径并存,裁定不做。
+2. **Rust crate 消费**: Plan 591(V1)+596(V2) dep 轨已建成——`dep <crate>` +
+   `use.rs <crate>::<Type>` 语法（语料 `17_rust_std/010_regex` 在案）,430
+   shim 管线 + trait 白名单转发/泛型实例化/回调 adapter。memmap2 是纯
+   Rust crate,本就不该走 FFI 桥。
+3. **前提松动**: cc/memmap2 已为传递依赖;Phase 13 "4 文件" 经核查仅剩
+   **1 个模拟桩**（`safety/001_memmap.at`,STUB_PRINT 形态）——001_heapless
+   已带 expected.rs 非桩,余 2 个 240 归档未列名、仓库不可定位。
+
+**重定后的 E = 三个小件**:
+- **E-1（主件,预估 0.5-1 天）**: 去桩 `safety/001_memmap.at`。
+  - 路线 A（首选）: `dep memmap2` + `use.rs memmap2::Mmap`（591/596 轨）;
+    前置探针 = memmap2 的 shim 覆盖率（596 skip-hit-rate 方法论,p594 报告）。
+  - 路线 B（兜底,shim 面不足时）: a2r-std::memmap 模块（B1/B2 模板成熟,
+    ~半天）。
+  - VM 轨: 无 mmap native,cookbook VM 档维持模拟态或按 ffi_dep_parity
+    三轨先例裁定（执行时定）。
+- **E-2（重定性件,文档级）**: "dep cc"（消费需 C 编译的 crate）定为**非
+  Auto 侧工作**——a2r 产物 Cargo harness 依赖该 crate 时 Cargo 传递处理
+  cc,Auto 零感知。唯一残留场景"从 C 源现场编译再链接"= 610 D 形态未来
+  扩展（harness build.rs + cc）,登记可选 follow-up,无在案需求驱动。
+- **E-3（对账件,文档级）**: 242 #17 表行刷新 + Phase 13 清单对账
+  （1 桩 + 1 已去桩 + 2 不可定位,按单桩收口）。
+
+**验收（E-1 路线 A）**: 001_memmap.at 去桩（真 Mmap 调用）+ a2r golden 绿
++ rustc 实编门（外部依赖按 003 先例跳过或 harness 实编）。
+**风险**: memmap2 shim 覆盖不足 → 路线 A 成本升 → 路线 B 兜底。
 
 ## 2. 执行顺序建议
 
 ~~A（最小、独立）→ E → B1 → B2；C/D 各自 spike 后重估~~
-**2026-09-15 漂移核查后调整**: **B1 → B2**（前提复核成立,当前最新鲜、
-最自包含的下一步）→ **E** 先出基于 Plan 610 机制的重定方案再排期 →
-**C** 待虚拟桌面计划(Plan 455)给出新信号后重做 go/no-go。每项合并后
-回填 242 tracker 对应行 + 本文档勾选。
+**2026-09-15 漂移核查后调整**: ~~B1 → B2~~ ✅（B1+B2 已落地合并,B 子项
+收口）→ **E** ✅ 重定方案已成文（见 415-E 节,执行=三小件另立计划,E-1
+半天~1 天）→ **C** 待虚拟桌面计划(Plan 455)给出新信号后重做 go/no-go。
+每项合并后回填 242 tracker 对应行 + 本文档勾选。
 
 
 ## 3.5 执行记录（work 交接）
