@@ -1,0 +1,40 @@
+// store.at — PLAN-066 T-06 red corpus store: musk ForgeStore 缩样。
+// 列表状态（[]Value，元素为堆对象）+ 搜索键 + done 旗标；Append/SetSearch
+// 供消费侧驱动；MarkDone→ClearWindow 自调链复刻 musk OnStreamEvent→
+// .StopStream() 的跨模块调用帧 SET_FIELD 自清形态（P536-D2 面）。
+
+store FilterStore {
+    model {
+        var messages []Value = []
+        var chat_search str = ""
+        var done bool = false
+        // T-06 诊断臂：Append 写后即读（区分「写后立即可见、任务结束丢失」
+        // vs「写后即丢」）。
+        var dbg_after_append int = -1
+    }
+
+    msg Msg { Append(str, str), SetSearch(str), MarkDone, ClearWindow }
+
+    on {
+        .Append(role, content) -> {
+            .messages = [{ role: role, content: content }]
+            .dbg_after_append = .messages.len()
+        }
+
+        .SetSearch(q) -> {
+            .chat_search = q
+        }
+
+        .MarkDone -> {
+            .done = true
+            // P536-D2 面：本帧内跨模块调用（同 store 自调同形）——
+            // ClearWindow 体内的 SET_FIELD 必须达共享根态（055 期 musk
+            // done 臂「本臂自清」绕行所规避的原缺陷）。
+            FilterStore.ClearWindow()
+        }
+
+        .ClearWindow -> {
+            .done = false
+        }
+    }
+}
