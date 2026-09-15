@@ -56,6 +56,9 @@ pub struct AppRegistryEntry {
     /// a2r `auto build -r rust` 产物）。None = 无声明（launch 期按
     /// rust-workspace 约定路径兜底扫描，仍无 = 解释态 outproc 臂）。
     pub desktop_exe: Option<String>,
+    /// Plan 020 T-07：帧模式声明（pac `desktop_render:`——native exe spawn
+    /// 时透传 `--autodesk-render=<v>`；None = 生成 gate auto 裁决）。
+    pub desktop_render: Option<String>,
     /// Plan 501：外部后端项目根（pac `back: { project: "…" }` 声明，相对
     /// pac.at 所在的 App 根解析的绝对路径——`back.*` 模块链接式契约的
     /// 解析根，Plan 061；os-config 形态：本地 `src/back/api.at` 为残缺
@@ -167,6 +170,7 @@ fn entry_for_dir(
         render,
         daemon: fields.get("daemon").cloned(),
         desktop_exe: fields.get("desktop_exe").cloned(),
+        desktop_render: fields.get("desktop_render").cloned(),
         back_root: parse_pac_back_project(pac.as_deref().unwrap_or(""))
             .map(|rel| dir.join(rel)),
         fit: fields
@@ -1322,7 +1326,7 @@ desktop_exe: \"target/release/native-app.exe\"
                         back_root: None,
                         fit: false,
         exe: None,
-    })
+        render_decl: None,    })
                 })
             })
         };

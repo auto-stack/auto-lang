@@ -1792,6 +1792,11 @@ pub struct LaunchSpec {
     /// 发现序 = 此声明 > rust-workspace 约定路径扫描（`outproc_native_exe`）；
     /// 两者皆无 = 现行解释态 outproc 臂（I1 零变化）。
     pub exe: Option<std::path::PathBuf>,
+    /// Plan 020 T-07：pac `desktop_render:` 透传（native exe spawn 时下发
+    /// `--autodesk-render=<v>`——queue 档显式申明；None = 生成 gate auto
+    /// 裁决（v1 缺省 independent，待澄清③））。解释态臂不消费（其裁决
+    /// 链在 cmd_autodesk 壳内同参读取）。
+    pub render_decl: Option<String>,
 }
 
 impl Default for LaunchSpec {
@@ -1805,6 +1810,7 @@ impl Default for LaunchSpec {
             daemon: None,
             back_root: None,
             exe: None,
+            render_decl: None,
         }
     }
 }
@@ -2345,7 +2351,7 @@ fn outproc_child_identity(
 /// `<app-root>/rust-workspace/<dir>/target/{release,debug}/<exe>.exe`
 /// （exe 名先 pac `name:` 蛇形、后目录名——scratch counter 实测生成物 =
 /// 蛇形包名）。两者皆无 → None = 现行解释态 outproc 臂。
-fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf> {
+pub(crate) fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf> {
     if spec.exe.is_some() {
         return spec.exe.clone();
     }
@@ -2388,6 +2394,7 @@ fn spawn_exe_child(
     exe: &std::path::Path,
     child_name: &str,
     broker_pipe: &str,
+    render: Option<&str>,
 ) -> std::io::Result<std::process::Child> {
     let mut cmd = std::process::Command::new(exe);
     cmd.args([
@@ -2395,6 +2402,15 @@ fn spawn_exe_child(
         &format!("--app386={child_name}"),
         &format!("--autodesk-broker={broker_pipe}"),
     ]);
+    // pac `desktop_render:` 透传（queue 档显式下发；None = 生成 gate auto
+    // 裁决——v1 缺省 independent，待澄清③）。stdio 静默（p508 注入
+    // spawner 同款——子进程输出/句柄不挂宿主管道）。
+    if let Some(v) = render {
+        cmd.arg(format!("--autodesk-render={v}"));
+    }
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     for (key, _) in std::env::vars() {
         if key.starts_with("NEXTEST_") {
             cmd.env_remove(&key);
@@ -2660,8 +2676,13 @@ fn spawn_outproc_child(
             None => match native_exe.as_deref() {
                 Some(exe) => {
                     eprintln!("[session] launch_app(outproc-native) {name} <- {}", exe.display());
-                    Self::spawn_exe_child(exe, &child_name, &broker_pipe)
-                        .map_err(|e| format!("spawn outproc child: {e}"))?
+                    Self::spawn_exe_child(
+                        exe,
+                        &child_name,
+                        &broker_pipe,
+                        spec.render_decl.as_deref(),
+                    )
+                    .map_err(|e| format!("spawn outproc child: {e}"))?
                 }
                 None => Self::spawn_outproc_child(&child_name, app_root.as_deref(), &broker_pipe)
                     .map_err(|e| format!("spawn outproc child: {e}"))?,
@@ -2873,7 +2894,23 @@ fn spawn_outproc_child(
             }
         }
         for pipe in dead {
-            clients.remove(&pipe);
+            // Plan 020 T-07（AC-05 kill 方向）：client 断连死亡（EOF/编码
+            // 错——kill 子进程路径，ExitRequest 不可达）→ 窗回收与 Close
+            // 语义对称（462 wm_remove_win + App 槽移除 + 表面释放；无
+            // BufferRelease 回发——管道已死）。
+            let Some(mut client) = clients.remove(&pipe) else {
+                continue;
+            };
+            if let Some(wid) = client.wid {
+                let app_id = self.wm_remove_win(wid);
+                if let Some(app_id) = app_id {
+                    self.apps.remove(&app_id);
+                }
+                if let Some(surface) = client.wid_surface.remove(&wid.0) {
+                    client.shm.remove(&surface);
+                    client.surfaces.release(surface);
+                }
+            }
         }
         self.broker_clients = clients;
     }
@@ -4773,7 +4810,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
-    })
+        render_decl: None,    })
         }));
         ds
     }
@@ -4803,7 +4840,7 @@ mod tests {
                 back_root: None,
                 fit: true,
         exe: None,
-    })
+        render_decl: None,    })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
         let host = ds.host.as_ref().unwrap();
@@ -4844,7 +4881,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
-    })
+        render_decl: None,    })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
         let app = ds.host.as_ref().unwrap().wm.wins[&wid].app;
@@ -4949,7 +4986,7 @@ mod tests {
             source_path: None,
             name: Some("counter".to_string()),
             exe: None,
-            ..Default::default()
+            render_decl: None,            ..Default::default()
         };
         assert_eq!(DesktopSession::outproc_native_exe(&inline), None, "内联 spec 无发现面");
         let _ = std::fs::remove_dir_all(&root);
@@ -4998,7 +5035,7 @@ mod tests {
                 daemon: None,
                 back_root: None,
         exe: None,
-    })
+        render_decl: None,    })
         }));
         ds.desktop.process_model = ProcessModel::Outproc;
         // spawn 钩子注入：re-exec 测试体（生产 = spawn_outproc_child）。
@@ -5183,7 +5220,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
-    })
+        render_decl: None,    })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
             crate::ui::osconfig_daemon::DaemonStatus::Running(
@@ -5221,7 +5258,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
-    })
+        render_decl: None,    })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
             crate::ui::osconfig_daemon::DaemonStatus::Offline("就绪超时".to_string())

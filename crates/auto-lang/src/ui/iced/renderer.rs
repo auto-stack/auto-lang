@@ -12740,6 +12740,7 @@ fn compare_pngs(
                                         back_root: e.back_root.clone(),
                                         fit: e.fit,
                                         exe,
+                                        render_decl: e.desktop_render.clone(),
                                     })
                                 })
                         }));
@@ -23560,7 +23561,7 @@ mod tests {
                         daemon: Some("autoos".to_string()),
                         back_root: None,
         exe: None,
-    });
+        render_decl: None,    });
                 }
                 let e = apps.iter().find(|a| a.id == name)?;
                 Some(crate::ui::session::LaunchSpec {
@@ -23572,7 +23573,7 @@ mod tests {
                     daemon: None,
                     back_root: None,
         exe: None,
-    })
+        render_decl: None,    })
             })
         });
         ds
@@ -23957,6 +23958,7 @@ mod tests {
             fit: false,
             desktop_visible: true,
         desktop_exe: None,
+        desktop_render: None,
     }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
@@ -23969,7 +23971,7 @@ mod tests {
                     back_root: None,
                     fit: false,
         exe: None,
-    })
+        render_decl: None,    })
             }));
         ds.launch_app("011-calculator").expect("launch");
         sync_shell_windows(&mut ds);
@@ -25324,7 +25326,7 @@ mod tests {
                     back_root: None,
                     fit: false,
         exe: None,
-    })
+        render_decl: None,    })
             }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
@@ -25369,7 +25371,7 @@ mod tests {
                     back_root: None,
                     fit: false,
         exe: None,
-    })
+        render_decl: None,    })
             }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
@@ -25575,6 +25577,7 @@ mod tests {
             fit: false,
             desktop_visible: true,
         desktop_exe: None,
+        desktop_render: None,
     }];
         inject_dock_pinned(&mut ds);
         {
@@ -26353,6 +26356,7 @@ mod tests {
     fit: false,
     desktop_visible: true,
         desktop_exe: None,
+        desktop_render: None,
     },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
@@ -26368,6 +26372,7 @@ mod tests {
     fit: false,
     desktop_visible: true,
         desktop_exe: None,
+        desktop_render: None,
     },
         ];
         // PLAN-012 W4：dock_pinned 缺省空（t3_session_with_shell 不动）。
@@ -26902,6 +26907,7 @@ mod tests {
             fit: false,
             desktop_visible: true,
         desktop_exe: None,
+        desktop_render: None,
     };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();

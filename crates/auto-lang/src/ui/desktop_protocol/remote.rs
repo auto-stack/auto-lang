@@ -277,7 +277,7 @@ mod tests {
                 daemon: None,
                 back_root: None,
         exe: None,
-    })
+        render_decl: None,    })
         }));
         session.desktop.process_model = ProcessModel::Outproc;
         let pipe_for_spawn = broker_pipe.clone();

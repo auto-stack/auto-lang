@@ -431,7 +431,7 @@ mod tests {
                         back_root: None,
                         fit: false,
         exe: None,
-    })
+        render_decl: None,    })
                 } else {
                     None
                 }
