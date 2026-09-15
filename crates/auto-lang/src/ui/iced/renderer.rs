@@ -10328,6 +10328,17 @@ fn apply_external_config_diff(
         state.desktop.desktop_wallpaper = load_desktop_wallpaper(&state.desktop.config);
         crate::ui::iced::snapshot::invalidate_all();
     }
+    if cfg.wallpaper_request != old.wallpaper_request {
+        // PLAN-019-FU8：os-config 设置面「切换壁纸」请求通道——config.at
+        // wallpaper_request 值变化(非空)即触发一次 wallpaper_pick 组合臂
+        // (与桌面右键「更换壁纸…」同链：show_desktop 幂等 + picker 开 +
+        // return_on_close 归属单点)。值由设置面交替("1"/"2")，宿主只认
+        // 变化、不清值(config.at 单写方仍是 daemon/设置面)。
+        state.desktop.config.wallpaper_request = cfg.wallpaper_request.clone();
+        if !cfg.wallpaper_request.is_empty() {
+            execute_wallpaper_pick(state);
+        }
+    }
     state.desktop.config.wallpapers_dir = cfg.wallpapers_dir.clone();
     state.desktop.config.transparency = cfg.transparency.clone();
     state.desktop.config.notes_enabled = cfg.notes_enabled;
@@ -25430,6 +25441,47 @@ mod tests {
             assert!(!host.wm.picker_open);
             assert!(host.wm.on_showdesk(), "自入关闭留在负一屏（AC-04）");
         }
+    }
+
+    /// PLAN-019-FU8：os-config 设置面「切换壁纸」请求通道——config 差分
+    /// wallpaper_request 值变化(非空) = wallpaper_pick 组合（同
+    /// DC::WallpaperPick：切负一屏 + picker 开 + 代管返回）；同值重放不
+    /// 触发；交替新值再触发。
+    #[test]
+    fn wallpaper_request_diff_triggers_pick() {
+        use crate::ui::session::DesktopCommand as DC;
+        let mut ds = t3_session_with_shell();
+        let _ = t3_add_win(&mut ds, "Alpha");
+
+        // 变化 + 非空 → 组合触发。
+        let mut cfg = ds.desktop.config.clone();
+        cfg.wallpaper_request = "1".to_string();
+        apply_external_config_diff(&mut ds, &cfg);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert!(host.wm.picker_open, "request 变化 → picker 开");
+            assert!(host.wm.picker_return_on_close, "组合语义 = 代管返回");
+            assert!(host.wm.on_showdesk(), "切到负一屏");
+        }
+
+        // 同值重放（宿主已记账）→ 无副作用。
+        let same = cfg.clone();
+        apply_external_config_diff(&mut ds, &same);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert!(host.wm.picker_open);
+            assert!(host.wm.on_showdesk());
+        }
+
+        // 关闭后同值仍不触发；交替新值再触发。
+        let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperClose]);
+        assert!(!ds.host.as_ref().unwrap().wm.picker_open);
+        let same2 = cfg.clone();
+        apply_external_config_diff(&mut ds, &same2);
+        assert!(!ds.host.as_ref().unwrap().wm.picker_open, "同值不触发");
+        cfg.wallpaper_request = "2".to_string();
+        apply_external_config_diff(&mut ds, &cfg);
+        assert!(ds.host.as_ref().unwrap().wm.picker_open, "交替新值再触发");
     }
 
     /// 导航数学（宿主收口）：栅格态 flip 轮换并应用（游标环绕）；预览态
