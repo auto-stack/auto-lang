@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-634
-status: reviewed
+status: archived
 feature_name: 015 遗留三账清偿——像素金样环境漂移归因修复 + badge/preedit WeakParagraph 同族根修 + a2r 块尾分号
 author: [zcode-session]
 created_at: 2026-09-15T12:00:00Z
-updated_at: 2026-09-15T19:20:00Z
+updated_at: 2026-09-15T20:10:00Z
 plan_revision: 1
 current_step: 3
 total_steps: 3
@@ -224,6 +224,27 @@ simulator)、cosmic-text 字体管线、a2r/ui_gen 语句发射器。
   新增警告,crate 警告积压为预存) · 独立性注记:复审与实施同会话,
   判定经基点伪证重建(差异/命令/复跑),非仅采信 work 记录 ·
   next:/auto-plan:merge。
+
+### 9.1 merge 收据（PLAN-634:r1，2026-09-15）
+
+- `prepared`：reviewed 基线 `38a917f5f`（rev 1；依赖 auto-down sibling
+  `3adc930ca` detached=其 master 未动）；canonical diff=SD-01/02 新件
+  widgets/terminal-iced-draw.md+SD-03 a2r-std/project.md 语句发射节
+  （已在分支提交 38a917f5f 内，sha256 冻结见 review 记录）；投影目标 =
+  ui/overview + ui/plans.md + .autoos/specs.json P634-1..6。
+- `landed`：master 并行推进仅 docs 簿记（PLAN-635 簿记 + 636 立项骨架，
+  crates/ 零变化）→ 先并入分支 `2ca36e50a` 后模块树回写
+  `d5f5d6d7f`（reviewed_commit 纯文档后裔——overview/plans.md 两文件，
+  实现/依赖零变化）→ master FF 落地；合入后 `cargo check -p auto-lang
+  --features ui-iced` 冒烟绿（256 预存警告零错误）。
+- `ledger_refreshed`：`.autoos/specs.json` upsert P634-1..6（六节，
+  读回验证 6/6，P545 哨兵位次保持）；`scripts/spec-index.py` 再产
+  INDEX.md（26 projects，落地后再跑零差异）。
+- `archived`：`git mv` → `docs/plans/archive/634-terminal-draw-weakpara-
+  pixel-a2r-semi.md`，frontmatter `status: archived`（本提交）。
+- 落地特记：并行会话 PLAN-019-D4 WIP（terminal shortcuts，与交付面
+  重叠 3 文件）经 `git stash push`（3 文件限定）保真 → FF 落地 →
+  `stash pop` 零冲突复原；WIP 现为工作树未提交态，归属其会话处置。
 
 ## 10. 待澄清事项
 
