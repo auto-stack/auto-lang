@@ -4100,82 +4100,21 @@ export default router
         let mut demo_rows: Vec<GalleryDemoRow> = Vec::new();
 
         for e in &entries {
-            let app_root = apps_dir.join(&e.id);
-            let doc = fs::read_to_string(app_root.join("tutorial.ad"))
-                .or_else(|_| fs::read_to_string(app_root.join("README.md")))
-                .or_else(|_| fs::read_to_string(app_root.join("SPEC.md")))
-                .unwrap_or_default();
-            let source = fs::read_to_string(app_root.join("src").join("front").join("app.at"))
-                .or_else(|_| fs::read_to_string(app_root.join("app.at")))
-                .unwrap_or_default();
-            let pac = fs::read_to_string(app_root.join("pac.at")).unwrap_or_default();
-
-            let category = if e.id.starts_with("001") || e.id.starts_with("002") || e.id.starts_with("003") || e.id.starts_with("004") || e.id.starts_with("005") || e.id.starts_with("006") {
-                "01-basic".to_string()
-            } else if e.id.starts_with("007") || e.id.starts_with("008") || e.id.starts_with("009") || e.id.starts_with("010") || e.id.starts_with("011") || e.id.starts_with("012") || e.id.starts_with("016") {
-                "02-components".to_string()
-            } else if e.id.starts_with("013") || e.id.starts_with("014") || e.id.starts_with("015") || e.id.starts_with("017") || e.id.starts_with("018") || e.id.starts_with("019") || e.id.starts_with("020") || e.id.starts_with("021") || e.id.starts_with("022") || e.id.starts_with("023") || e.id.starts_with("031") {
-                "03-apps".to_string()
-            } else {
-                "04-systems".to_string()
+            let (row, vp_opt) = gallery_demo_row(&apps_dir, e);
+            let Some(vp) = vp_opt else {
+                demo_rows.push(row);
+                continue;
             };
 
-            let mut tags: Vec<String> = Vec::new();
-            if e.id.contains("counter") { tags.extend(vec!["Elm".into(), "State".into(), "Lambda".into()]); }
-            else if e.id.contains("todo") { tags.extend(vec!["TodoMVC".into(), "Filter".into(), "CRUD".into()]); }
-            else if e.id.contains("chart") { tags.extend(vec!["Data".into(), "SVG".into(), "Animation".into()]); }
-            else if e.id.contains("calculator") { tags.extend(vec!["Grid".into(), "Math".into()]); }
-            else if e.id.contains("weather") { tags.extend(vec!["Dashboard".into(), "Cards".into()]); }
-            else if e.id.contains("notes") { tags.extend(vec!["Fullstack".into(), "Markdown".into(), "Sidebar".into()]); }
-            else if e.id.contains("chat") { tags.extend(vec!["Chat".into(), "Scroll".into(), "Avatars".into()]); }
-            else if e.id.contains("kanban") { tags.extend(vec!["DnD".into(), "Columns".into(), "Cards".into()]); }
-            else if e.id.contains("photo") { tags.extend(vec!["Images".into(), "Gallery".into(), "Modal".into()]); }
-            else if e.id.contains("mine") { tags.extend(vec!["Game".into(), "Grid".into(), "Timer".into()]); }
-            else if e.id.contains("login") { tags.extend(vec!["Form".into(), "Validation".into()]); }
-            else if e.id.contains("converter") { tags.extend(vec!["Binding".into(), "7GUIs".into()]); }
-            else { tags.push("AutoUI".into()); }
-
-            // PLAN-015：画廊行展示名走 locale 链。
-            let desc = if !e.title.is_empty() { e.display_title().to_string() } else { e.id.clone() };
-
-            let vp = match VueProject::from_workspace(&app_root) {
-                Ok(v) => v,
-                Err(err) => {
-                    println!("  {} demo {} skipped: {}", "⚠".bright_yellow(), e.id, err);
-                    demo_rows.push(GalleryDemoRow {
-                        id: e.id.clone(),
-                        title: e.display_title().to_string(),
-                        category,
-                        icon: e.icon.clone(),
-                        description: desc,
-                        tags,
-                        doc,
-                        source,
-                        pac,
-                        loadable: false,
-                    });
-                    continue;
+            if row.loadable {
+                let mut corpus = vp.app_vue_code.clone();
+                for (_, _, code, _) in &vp.components {
+                    corpus.push_str(code);
                 }
-            };
+                for (_, code) in &vp.store_files {
+                    corpus.push_str(code);
+                }
 
-            let mut corpus = vp.app_vue_code.clone();
-            for (_, _, code, _) in &vp.components {
-                corpus.push_str(code);
-            }
-            for (_, code) in &vp.store_files {
-                corpus.push_str(code);
-            }
-
-            let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
-            let is_loadable = !is_vm_only
-                && !corpus.contains("@/lib/api")
-                && !corpus.contains("from '@/api")
-                && !vp.has_routes
-                && !corpus.contains("@/ext/")
-                && !corpus.contains("@/locales/")
-                && !vp.i18n.enabled;
-
-            if is_loadable {
                 app_corpus_total.push_str(&corpus);
 
                 for (filename, code) in &vp.store_files {
@@ -4219,18 +4158,7 @@ export default router
                 }
             }
 
-            demo_rows.push(GalleryDemoRow {
-                id: e.id.clone(),
-                title: e.display_title().to_string(),
-                category,
-                icon: e.icon.clone(),
-                description: desc,
-                tags,
-                doc,
-                source,
-                pac,
-                loadable: is_loadable,
-            });
+            demo_rows.push(row);
         }
 
         if !shadcn_needed.is_empty() {
@@ -4257,11 +4185,27 @@ export default router
         )
         .map_err(|e| format!("Failed to write demos-registry.ts: {}", e))?;
 
+        // PLAN-625: registry.at —— VM 臂产物(src/front/registry.at,项目源码
+        // 树而非 gen/:VM 编译 app.at 的 `use registry:` 从源码树解析)。与
+        // TS 产物同点发射,双产物单一来源(gallery_demo_row)。
+        write_registry_at(&self.root_dir.join("src").join("front"), &demo_rows)?;
+        // PLAN-625 T-10b: loadable 单文件示例 → 改名子 widget 源 + 视口适配器。
+        let (vm_live, vm_skipped) =
+            emit_gallery_vm_demos(&apps_dir, &demo_rows, &self.root_dir.join("src").join("gallery"))?;
+        if !vm_skipped.is_empty() {
+            println!(
+                "  {} Gallery VM demos skipped (multi-file/form): {}",
+                "⚠".bright_yellow(),
+                vm_skipped.join(", ")
+            );
+        }
+
         println!(
-            "  {} Gallery host: src/demos-registry.ts ({} demos, {} loadable)",
+            "  {} Gallery host: src/demos-registry.ts ({} demos, {} loadable, {} VM-live)",
             "✓".bright_green(),
             demo_rows.len(),
-            demo_rows.iter().filter(|r| r.loadable).count()
+            demo_rows.iter().filter(|r| r.loadable).count(),
+            vm_live
         );
         Ok(())
     }
@@ -5612,6 +5556,462 @@ fn gallery_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
         root_dir.display()
     )
     .into())
+}
+
+/// PLAN-625: `.at` 字符串字面量转义(escape 集=lexer.rs `str()`:
+/// `\n` `\t` `\r` `\0` `\\` `\"`;其余反斜杠序列原样透传,故只转已知集)。
+fn at_str_lit(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// PLAN-625: registry.at 发射器——画廊 registry 的 VM 臂产物(.at 静态表,
+/// `src/front/registry.at`),与 demos-registry.ts(web 臂, gen/front/vue/src)
+/// 同语料同点发射,双产物单一来源。app.at 以 `use registry: <fns>` 消费;
+/// 形态契约=PLAN-625 §5.1 决策 artifact(tree_util.at PLAN-522/614 先例:
+/// 双端同源 VM import_aliases / vue SFC 转译;P614 纪律:参数列表遍历
+/// while+索引,Obj 字面量全键书写)。
+pub fn write_registry_at(front_dir: &Path, rows: &[GalleryDemoRow]) -> AutoResult<()> {
+    let mut out = String::with_capacity(8192 + rows.len() * 512);
+    out.push_str(
+        "// src/front/registry.at — PLAN-625 gallery registry(生成产物,勿手改)\n// 由 auto-man generate_gallery_host / refresh_gallery_registry 从画廊语料\n// (examples/ui)全量覆写,同 demos-registry.ts 的 web 臂先例。\n// 双端同源:VM 臂 import_aliases 真实编译 / vue 臂 SFC 转译\n// (tree_util.at PLAN-522/614 先例)。\n// ⚠ VM 轨纪律(P614):参数列表遍历一律 while+索引(for-in 参数列表零迭代);\n//   Obj 字面量全键书写(形状锁定,缺键字段访问=硬错)。\n// 记录 schema(app.at `for demo in .filteredDemos` 的字段访问契约):\n//   { id, title, category, icon, description, tags(List), doc, source,\n//     pac_text, loadable, search_lc }  // pac 是 .at 关键字,字段避名 pac_text\n// search_lc = (title + id + tags) 生成期预转小写拼接(搜索堆料;查询侧用\n// 内建 .to_lower(),engine.rs str 方法表)。\n\n",
+    );
+    out.push_str("pub fn all_demos() List {\n    return [\n");
+    for r in rows {
+        let search_lc = format!(
+            "{} {} {}",
+            r.title.to_lowercase(),
+            r.id.to_lowercase(),
+            r.tags
+                .iter()
+                .map(|t| t.to_lowercase())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let tags = r
+            .tags
+            .iter()
+            .map(|t| at_str_lit(t))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!(
+            "        {{ id: {}, title: {}, category: {}, icon: {}, description: {}, tags: [{}], doc: {}, source: {}, pac_text: {}, loadable: {}, search_lc: {} }},\n",
+            at_str_lit(&r.id),
+            at_str_lit(&r.title),
+            at_str_lit(&r.category),
+            at_str_lit(&r.icon),
+            at_str_lit(&r.description),
+            tags,
+            at_str_lit(&r.doc),
+            at_str_lit(&r.source),
+            at_str_lit(&r.pac),
+            r.loadable,
+            at_str_lit(&search_lc),
+        ));
+    }
+    out.push_str("    ]\n}\n\n");
+    out.push_str(
+        r#"pub fn filter_demos(query str, category str) List {
+    var out List = []
+    var demos List = all_demos()
+    var q str = query.to_lower()
+    var i int = 0
+    while i < demos.len() {
+        var d = demos[i]
+        var cat_ok bool = category == "all" || d.category == category
+        var q_ok bool = q.len() == 0 || d.search_lc.contains(q)
+        if cat_ok && q_ok {
+            out.push(d)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+pub fn demo_title(id str) str {
+    return demo_field_str(id, "title", id)
+}
+
+pub fn demo_description(id str) str {
+    return demo_field_str(id, "description", "")
+}
+
+pub fn demo_doc(id str) str {
+    return demo_field_str(id, "doc", "")
+}
+
+pub fn demo_source(id str) str {
+    return demo_field_str(id, "source", "")
+}
+
+pub fn demo_pac(id str) str {
+    return demo_field_str(id, "pac", "")
+}
+
+pub fn demo_loadable(id str) bool {
+    var demos List = all_demos()
+    var i int = 0
+    while i < demos.len() {
+        if demos[i].id == id {
+            return demos[i].loadable
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// 缺省回退语义对齐 TS findDemo 桥(demos.ts):未命中时 str 字段回退
+// provided 兜底(title 回退 id,其余回退空串)。
+pub fn demo_field_str(id str, field str, fallback str) str {
+    var demos List = all_demos()
+    var i int = 0
+    while i < demos.len() {
+        if demos[i].id == id {
+            if field == "title" {
+                return demos[i].title
+            }
+            if field == "description" {
+                return demos[i].description
+            }
+            if field == "doc" {
+                return demos[i].doc
+            }
+            if field == "source" {
+                return demos[i].source
+            }
+            if field == "pac" {
+                return demos[i].pac_text
+            }
+        }
+        i = i + 1
+    }
+    return fallback
+}
+"#,
+    );
+    fs::create_dir_all(front_dir).map_err(|e| format!("registry.at mkdir: {}", e))?;
+    fs::write(front_dir.join("registry.at"), out)
+        .map_err(|e| format!("Failed to write registry.at: {}", e))?;
+    Ok(())
+}
+
+/// PLAN-625: VM 臂 registry 刷新入口——`run_vm_ui`(rust_ui.rs)在编译
+/// app.at 前调用。vue 臂 run/build 每次 run 都刷 generate_gallery_host
+/// (vue.rs run_vue_project 先例),VM 臂此前不产任何 registry,app.at 的
+/// `use registry:` 产物将无从解析。返回发射条数供启动日志。
+pub fn refresh_gallery_registry(project_dir: &Path) -> AutoResult<usize> {
+    let apps_dir = gallery_apps_dir(project_dir)?;
+    let entries = auto_lang::ui::app_registry::scan_apps(
+        &apps_dir,
+        &auto_lang::ui::app_registry::ScanOptions::default(),
+    );
+    let mut rows = Vec::with_capacity(entries.len());
+    for e in &entries {
+        rows.push(gallery_demo_row(&apps_dir, e).0);
+    }
+    write_registry_at(&project_dir.join("src").join("front"), &rows)?;
+    // T-10b 产物（demos/*.at + AppViewport.vm.at）与 registry.at 同源同刷：
+    // VM 臂此前只刷 registry,语料演进后视口适配器停留旧版（vue 臂 run 才
+    // 会重写）——双臂产物漂移,用户可见（视口 frame 缺失类回归）。
+    let (_vm_live, vm_skipped) =
+        emit_gallery_vm_demos(&apps_dir, &rows, &project_dir.join("src").join("gallery"))?;
+    if !vm_skipped.is_empty() {
+        println!(
+            "  {} Gallery VM demos skipped (multi-file/form): {}",
+            "⚠".bright_yellow(),
+            vm_skipped.join(", ")
+        );
+    }
+    Ok(rows.len())
+}
+
+/// PLAN-625 T-10b: loadable 单文件示例 → 改名子 widget 源
+/// （`src/gallery/demos/<id>.at`，`widget App` → `widget Demo<Pascal>` 防跨
+/// 示例撞名）+ `src/gallery/AppViewport.vm.at` 条件适配器（VM 视口按 app
+/// prop 即 selected_id 实例化对应子 widget，实装候选 a——用户裁定）。
+/// web 臂不经此文件（AppViewport.vue 动态挂载不变）；VM 臂经
+/// ext_stubs 的 `.vue`→同名 `.vm.at` 探测装载（PLAN-051 C4 widget 注册流）。
+/// 单文件判定：仅一个 `widget ` 声明、无 `.at` 导入路径；自有模块级联
+/// 发射（`use <mod>:` → demos/ 相邻拷贝,见 collect_own_modules），dep 型
+/// （deps/<name> 已物化）项目级解析放行,缺文件/同名异容仍跳过（清单随
+/// 返回值上报）。
+pub fn emit_gallery_vm_demos(
+    apps_dir: &Path,
+    rows: &[GalleryDemoRow],
+    gallery_dir: &Path,
+) -> AutoResult<(usize, Vec<String>)> {
+    let demos_dir = gallery_dir.join("demos");
+    let _ = fs::remove_dir_all(&demos_dir);
+    fs::create_dir_all(&demos_dir).map_err(|e| format!("demos mkdir: {}", e))?;
+
+    let deps_dir = gallery_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|root| root.join("deps"));
+
+    // 递归收集 source 的自有模块文件内容。找不到文件的模块（如 016 的
+    // `use datetime`——声明未调用的幽灵引用/内建命名空间）容错跳过不阻断:
+    // 编译期由 ext-stub 宽松降级兜底;文件存在则随 demo 相邻发射。
+    fn collect_own_modules(
+        source: &str,
+        app_dir: &Path,
+        deps_dir: Option<&Path>,
+        collected: &mut std::collections::BTreeMap<String, String>,
+    ) {
+        for l in source.lines() {
+            let t = l.trim_start();
+            if !t.starts_with("use ") {
+                continue;
+            }
+            let rest = &t[4..];
+            if rest.starts_with('{') || rest.starts_with('.') {
+                continue;
+            }
+            let m = rest
+                .split(|c: char| c == ':' || c.is_whitespace())
+                .next()
+                .unwrap_or("");
+            if m.is_empty() {
+                continue;
+            }
+            if deps_dir
+                .is_some_and(|d| d.join(m.split('.').next().unwrap_or(m)).is_dir())
+            {
+                continue;
+            }
+            if collected.contains_key(m) {
+                continue;
+            }
+            let rel = m.replace('.', "/");
+            let mut found = None;
+            for cand in [
+                app_dir.join(&rel).with_extension("at"),
+                app_dir.join(&rel).join("mod.at"),
+            ] {
+                if cand.is_file() {
+                    found = Some(cand);
+                    break;
+                }
+            }
+            let Some(p) = found else {
+                println!("  {} gallery module `{m}` not found — tolerated (stub degradation)", "⚠".bright_yellow());
+                continue;
+            };
+            let content = fs::read_to_string(&p).unwrap_or_default();
+            collected.insert(m.to_string(), content.clone());
+            collect_own_modules(&content, app_dir, deps_dir, collected);
+        }
+    }
+
+    // 跨示例共享的自有模块文件表（同名异容 → 冲突,跳过后来者）
+    let mut module_files: std::collections::BTreeMap<String, String> = Default::default();
+
+    let mut imports = String::new();
+    let mut branches = String::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let mut emitted = 0usize;
+    for r in rows {
+        if !r.loadable {
+            continue;
+        }
+        let source = &r.source;
+        // widget 声明判定按行首匹配（注释中的 "widget " 字样不算——002-counter
+        // 的 Plan 506 注释曾误触);多声明(宿主+工具 widget 同文件)跳过。
+        let widget_decls = source
+            .lines()
+            .filter(|l| l.trim_start().starts_with("widget "))
+            .count();
+        let has_at_import = source.contains(".at\"") || source.contains(".at')");
+
+        // 自有模块收集（跨示例冲突检测：同名模块内容不同 → 跳过后来者）
+        let mut row_modules: std::collections::BTreeMap<String, String> = Default::default();
+        let app_dir = apps_dir.join(&r.id).join("src").join("front");
+        collect_own_modules(source, &app_dir, deps_dir.as_deref(), &mut row_modules);
+        let modules_conflict = row_modules.iter().any(|(m, c)| {
+            module_files
+                .get(m)
+                .is_some_and(|prev| prev != c)
+        });
+        if widget_decls != 1 || has_at_import || modules_conflict {
+            skipped.push(r.id.clone());
+            continue;
+        }
+        for (m, c) in &row_modules {
+            module_files.entry(m.clone()).or_insert_with(|| c.clone());
+            let target = demos_dir.join(m.replace('.', "/")).with_extension("at");
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|e| format!("demos mkdir: {}", e))?;
+            }
+            fs::write(&target, c).map_err(|e| format!("write demos/{m}: {}", e))?;
+        }
+        let Some(pos) = source.find("widget App") else {
+            skipped.push(r.id.clone());
+            continue;
+        };
+        // "widget App" 之后须紧邻空白或 {（防误替 source 深处字样）
+        let after = source[pos + "widget App".len()..].trim_start();
+        if !after.starts_with('{') {
+            skipped.push(format!("{}(widget App 形态不符)", r.id));
+            continue;
+        }
+        let pascal = demo_widget_name(&r.id);
+        let renamed = format!(
+            "{}widget {}{}",
+            &source[..pos],
+            pascal,
+            &source[pos + "widget App".len()..]
+        );
+        let fname = format!("{}.at", r.id);
+        fs::write(demos_dir.join(&fname), &renamed)
+            .map_err(|e| format!("write demos/{fname}: {}", e))?;
+        imports.push_str(&format!(
+            "use.web component {pascal} from \"src/gallery/demos/{fname}\"\n"
+        ));
+        // if/else-if 链:首分支 if,后续 } else if(分支体不闭合,由链尾统一收口)
+        let kw = if branches.is_empty() { "if" } else { "} else if" };
+        branches.push_str(&format!(
+            "            {} .app == \"{}\" {{\n                {} {{}}\n",
+            kw, r.id, pascal
+        ));
+        emitted += 1;
+    }
+
+    let mut vm_at = String::with_capacity(2048 + imports.len());
+    vm_at.push_str(
+        "// src/gallery/AppViewport.vm.at — PLAN-625 T-10 生成产物(勿手改)\n// AppViewport 的 VM 形态:按 app prop(=selected_id)条件实例化 Demo* 子\n// widget,实时渲染示例。web 臂不经此文件(AppViewport.vue 动态挂载不变)。\n// 重新生成:auto build / auto run(generate_gallery_host)。\n\n",
+    );
+    // 视口 frame 对齐 AppViewport.vue 的 viewportStyle 三态（full=100%×720 /
+    // desktop=1024×720 / tablet=768×1024,均 rounded-xl 边框 + max-w-full）：
+    // 外层 wrapper 居中定宽 frame,frame 内才是 demo 分支（否则桌面/平板
+    // 档只剩工具栏高亮、视口本体无尺寸变化——用户可见回归）。
+    vm_at.push_str(&imports);
+    vm_at.push_str("\nwidget AppViewport(app: str, reloadKey: int, viewportMode: str) {\n    view {\n        col {\n            style: \"w-full flex flex-col items-center\"\n            col {\n                style: if .viewportMode == \"desktop\" { \"w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else if .viewportMode == \"tablet\" { \"w-[768px] max-w-full h-[1024px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else { \"w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" }\n");
+    vm_at.push_str(&branches);
+    vm_at.push_str(
+            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-2\"\n                    text \"该示例暂无 VM 内嵌形态\" { style: \"text-xs text-muted-foreground\" }\n                    text \"完整交互请使用 auto run（Vue 端）查看\" { style: \"text-xs text-muted-foreground/80\" }\n                }\n            }\n            }\n        }\n    }\n}\n",
+    );
+    fs::write(gallery_dir.join("AppViewport.vm.at"), vm_at)
+        .map_err(|e| format!("write AppViewport.vm.at: {}", e))?;
+    Ok((emitted, skipped))
+}
+
+/// PLAN-625 T-10b: 示例 id → 子 widget 唯一名（`002-counter` →
+/// `Demo002Counter`；非字母数字分段 capitalize 拼接）。
+pub fn demo_widget_name(id: &str) -> String {
+    let mut out = String::from("Demo");
+    for seg in id.split(|c: char| !c.is_ascii_alphanumeric()) {
+        let mut chars = seg.chars();
+        if let Some(first) = chars.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    out
+}
+
+/// PLAN-625: 单条 demo 元数据行 + loadable 判定(单一来源)——vue 臂
+/// generate_gallery_host 与 VM 臂 refresh_gallery_registry 共用,消
+/// category/tags/loadable 双处漂移。返回 (row, vp);vp=None 表示
+/// from_workspace 失败(web 装配跳过臂,row.loadable=false)。
+fn gallery_demo_row(
+    apps_dir: &Path,
+    e: &auto_lang::ui::app_registry::AppRegistryEntry,
+) -> (GalleryDemoRow, Option<VueProject>) {
+    let app_root = apps_dir.join(&e.id);
+    let doc = fs::read_to_string(app_root.join("tutorial.ad"))
+        .or_else(|_| fs::read_to_string(app_root.join("README.md")))
+        .or_else(|_| fs::read_to_string(app_root.join("SPEC.md")))
+        .unwrap_or_default();
+    let source = fs::read_to_string(app_root.join("src").join("front").join("app.at"))
+        .or_else(|_| fs::read_to_string(app_root.join("app.at")))
+        .unwrap_or_default();
+    let pac = fs::read_to_string(app_root.join("pac.at")).unwrap_or_default();
+
+    let category = if e.id.starts_with("001") || e.id.starts_with("002") || e.id.starts_with("003") || e.id.starts_with("004") || e.id.starts_with("005") || e.id.starts_with("006") {
+        "01-basic".to_string()
+    } else if e.id.starts_with("007") || e.id.starts_with("008") || e.id.starts_with("009") || e.id.starts_with("010") || e.id.starts_with("011") || e.id.starts_with("012") || e.id.starts_with("016") {
+        "02-components".to_string()
+    } else if e.id.starts_with("013") || e.id.starts_with("014") || e.id.starts_with("015") || e.id.starts_with("017") || e.id.starts_with("018") || e.id.starts_with("019") || e.id.starts_with("020") || e.id.starts_with("021") || e.id.starts_with("022") || e.id.starts_with("023") || e.id.starts_with("031") {
+        "03-apps".to_string()
+    } else {
+        "04-systems".to_string()
+    };
+
+    let mut tags: Vec<String> = Vec::new();
+    if e.id.contains("counter") { tags.extend(vec!["Elm".into(), "State".into(), "Lambda".into()]); }
+    else if e.id.contains("todo") { tags.extend(vec!["TodoMVC".into(), "Filter".into(), "CRUD".into()]); }
+    else if e.id.contains("chart") { tags.extend(vec!["Data".into(), "SVG".into(), "Animation".into()]); }
+    else if e.id.contains("calculator") { tags.extend(vec!["Grid".into(), "Math".into()]); }
+    else if e.id.contains("weather") { tags.extend(vec!["Dashboard".into(), "Cards".into()]); }
+    else if e.id.contains("notes") { tags.extend(vec!["Fullstack".into(), "Markdown".into(), "Sidebar".into()]); }
+    else if e.id.contains("chat") { tags.extend(vec!["Chat".into(), "Scroll".into(), "Avatars".into()]); }
+    else if e.id.contains("kanban") { tags.extend(vec!["DnD".into(), "Columns".into(), "Cards".into()]); }
+    else if e.id.contains("photo") { tags.extend(vec!["Images".into(), "Gallery".into(), "Modal".into()]); }
+    else if e.id.contains("mine") { tags.extend(vec!["Game".into(), "Grid".into(), "Timer".into()]); }
+    else if e.id.contains("login") { tags.extend(vec!["Form".into(), "Validation".into()]); }
+    else if e.id.contains("converter") { tags.extend(vec!["Binding".into(), "7GUIs".into()]); }
+    else { tags.push("AutoUI".into()); }
+
+    // PLAN-015: 展示名走 locale 链。
+    let desc = if !e.title.is_empty() { e.display_title().to_string() } else { e.id.clone() };
+
+    let vp = match VueProject::from_workspace(&app_root) {
+        Ok(v) => Some(v),
+        Err(err) => {
+            println!("  {} demo {} skipped: {}", "⚠".bright_yellow(), e.id, err);
+            None
+        }
+    };
+
+    let loadable = match &vp {
+        Some(vp) => {
+            let mut corpus = vp.app_vue_code.clone();
+            for (_, _, code, _) in &vp.components {
+                corpus.push_str(code);
+            }
+            for (_, code) in &vp.store_files {
+                corpus.push_str(code);
+            }
+            let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
+            !is_vm_only
+                && !corpus.contains("@/lib/api")
+                && !corpus.contains("from '@/api")
+                && !vp.has_routes
+                && !corpus.contains("@/ext/")
+                && !corpus.contains("@/locales/")
+                && !vp.i18n.enabled
+        }
+        None => false,
+    };
+
+    (
+        GalleryDemoRow {
+            id: e.id.clone(),
+            // PLAN-015: 画廊行展示名走 locale 链(zh=title_zh→title)。
+            title: e.display_title().to_string(),
+            category,
+            icon: e.icon.clone(),
+            description: desc,
+            tags,
+            doc,
+            source,
+            pac,
+            loadable,
+        },
+        vp,
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -7954,5 +8354,243 @@ mod plan601_theme_declaration_tests {
 
         let none = super::generate_index_html("demo", None, None);
         assert!(!none.contains("__AUTO_COMPOSED_THEME__"), "缺省零注入: {none}");
+    }
+}
+
+#[cfg(test)]
+mod gallery_registry_at_tests {
+    use super::*;
+
+    fn fixture_rows() -> Vec<GalleryDemoRow> {
+        vec![
+            GalleryDemoRow {
+                id: "001-helloworld".into(),
+                title: "001 Hello World".into(),
+                category: "01-basic".into(),
+                icon: "sparkles".into(),
+                description: "最简静态文本示例".into(),
+                tags: vec!["Basic".into(), "Text".into()],
+                doc: "# 001-helloworld\n\n含 \"引号\" 与 `反引号` 与反斜杠 \\\n第二行".into(),
+                source: "widget App {\n    view {\n        center {\n            text \"Hello\"\n        }\n    }\n}".into(),
+                pac: "name: \"001-helloworld\"".into(),
+                loadable: true,
+            },
+            GalleryDemoRow {
+                id: "024-charts".into(),
+                title: "024 Charts".into(),
+                category: "04-systems".into(),
+                icon: "chart".into(),
+                description: "charts".into(),
+                tags: vec!["Data".into()],
+                doc: String::new(),
+                source: String::new(),
+                pac: String::new(),
+                loadable: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_registry_at_emits_records_and_helpers() {
+        let dir = tempfile::tempdir().unwrap();
+        let front = dir.path().join("front");
+        write_registry_at(&front, &fixture_rows()).unwrap();
+        let text = std::fs::read_to_string(front.join("registry.at")).unwrap();
+
+        // 记录数:每条 row 恰好一个 id: 字段字面量
+        assert_eq!(text.matches("id: \"").count(), 2, "record count");
+        // getter/filter 样板齐全
+        for needle in [
+            "pub fn all_demos() List",
+            "pub fn filter_demos(query str, category str) List",
+            "pub fn demo_title(id str) str",
+            "pub fn demo_description(id str) str",
+            "pub fn demo_doc(id str) str",
+            "pub fn demo_source(id str) str",
+            "pub fn demo_pac(id str) str",
+            "pub fn demo_loadable(id str) bool",
+            "while i < demos.len()",
+            ".search_lc.contains(q)",
+            "query.to_lower()",
+        ] {
+            assert!(text.contains(needle), "missing `{needle}`");
+        }
+    }
+
+    #[test]
+    fn test_registry_at_escapes_specials() {
+        let dir = tempfile::tempdir().unwrap();
+        write_registry_at(&dir.path().join("front"), &fixture_rows()).unwrap();
+        let text = std::fs::read_to_string(dir.path().join("front").join("registry.at")).unwrap();
+
+        // doc 里的换行/引号/反斜杠必须转义(lexer.rs str() 转义集);记录是
+        // 单行字面量——裸换行会把记录截断,内容丢进后续行。
+        assert!(text.contains("\\n第二行"), "doc newline escaped");
+        assert!(text.contains("\\\"引号\\\""), "doc quotes escaped");
+        assert!(text.contains("\\\\"), "doc backslash escaped");
+        let rec = text
+            .lines()
+            .find(|l| l.contains("search_lc") && l.contains("001-helloworld"))
+            .unwrap();
+        assert!(rec.contains("第二行"), "record stays single-line: {rec}");
+    }
+
+    fn vm_demo_row(id: &str, loadable: bool, source: &str) -> GalleryDemoRow {
+        GalleryDemoRow {
+            id: id.into(),
+            title: id.into(),
+            category: "01-basic".into(),
+            icon: "sparkles".into(),
+            description: "d".into(),
+            tags: vec!["AutoUI".into()],
+            doc: String::new(),
+            source: source.into(),
+            pac: String::new(),
+            loadable,
+        }
+    }
+
+    /// PLAN-625 T-10b: 发射器——改名子 widget 源 + AppViewport.vm.at 条件接线。
+    #[test]
+    fn test_emit_gallery_vm_demos_renames_and_wires() {
+        let dir = tempfile::tempdir().unwrap();
+        let gallery = dir.path().join("gallery");
+        let rows = vec![
+            vm_demo_row(
+                "002-counter",
+                true,
+                "widget App {
+    model {
+        var count int = 0
+    }
+    view {
+        center {
+            text \"hi\"
+        }
+    }
+}",
+            ),
+            vm_demo_row("024-charts", false, "widget App {
+}"),
+        ];
+        let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1, "non-loadable must be skipped silently");
+        assert!(skipped.is_empty(), "skipped only tracks loadable-but-malformed");
+
+        let demo_src = std::fs::read_to_string(gallery.join("demos").join("002-counter.at")).unwrap();
+        assert!(demo_src.contains("widget Demo002Counter {"), "renamed decl");
+        assert!(!demo_src.contains("widget App"), "original name replaced");
+
+        let vm_at = std::fs::read_to_string(gallery.join("AppViewport.vm.at")).unwrap();
+        for needle in [
+            "use.web component Demo002Counter from \"src/gallery/demos/002-counter.at\"",
+            "widget AppViewport(app: str, reloadKey: int, viewportMode: str)",
+            "if .app == \"002-counter\" {",
+            "Demo002Counter {}",
+            "该示例暂无 VM 内嵌形态",
+            // 视口 frame 三态(对齐 AppViewport.vue viewportStyle;缺失=桌面/
+            // 平板档无尺寸变化)
+            "if .viewportMode == \"desktop\"",
+            "else if .viewportMode == \"tablet\"",
+            "w-[1024px] max-w-full h-[720px]",
+            "w-[768px] max-w-full h-[1024px]",
+            // demo 根 col 在 iced 端 shrink 包裹（vue 端 flex 子项默认
+            // stretch）——frame 须自带 items-center/justify-center 才有
+            // 默认水平+垂直居中
+            "overflow-hidden bg-background flex flex-col items-center justify-center",
+        ] {
+            assert!(vm_at.contains(needle), "missing `{needle}`");
+        }
+        assert!(!gallery.join("demos").join("024-charts.at").exists(), "non-loadable not emitted");
+    }
+
+    /// 多 widget 声明(工具 widget 同文件)的示例 v1 跳过,不入 live 集。
+    #[test]
+    fn test_emit_gallery_vm_demos_skips_multi_widget() {
+        let dir = tempfile::tempdir().unwrap();
+        let rows = vec![vm_demo_row(
+            "009-x",
+            true,
+            "widget App {
+    view {
+        text \"a\"
+    }
+}
+widget Helper {
+    view {
+        text \"b\"
+    }
+}",
+        )];
+        let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &dir.path().join("gallery")).unwrap();
+        assert_eq!(emitted, 0);
+        assert_eq!(skipped, vec!["009-x".to_string()]);
+    }
+
+    /// 依赖型模块 use(`use settings: ...`,宿主 deps/<name> 已物化)放行;
+    /// 无 deps 物化时同源仍跳过(006-hero-section 诉求)。
+    #[test]
+    fn test_emit_gallery_vm_demos_allows_dep_module_use() {
+        let source = "use settings: SettingsPopover\n\nwidget App {\n    view {\n        text \"hi\"\n    }\n}\n";
+        let rows = vec![vm_demo_row("006-hero-section", true, source)];
+
+        // 项目结构 <tmp>/deps/settings + <tmp>/src/gallery:dep 已物化 → 放行
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("proj");
+        fs::create_dir_all(project.join("deps").join("settings")).unwrap();
+        let gallery = project.join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1, "dep-backed module use must be emitted");
+        assert!(skipped.is_empty());
+        assert!(gallery.join("demos").join("006-hero-section.at").exists());
+
+        // 无 deps 物化:settings 缺文件 → 容错放行(编译期桩降级兜底),
+        // 不再跳过——幽灵/未调用模块引用不应阻断内嵌形态
+        let dir2 = tempfile::tempdir().unwrap();
+        let gallery2 = dir2.path().join("src").join("gallery");
+        let (emitted2, skipped2) = emit_gallery_vm_demos(Path::new(""), &rows, &gallery2).unwrap();
+        assert_eq!(emitted2, 1, "missing module file is tolerated");
+        assert!(skipped2.is_empty());
+    }
+
+    /// 示例自有模块（`use prog_util:`）级联发射:模块 .at 相邻拷贝进
+    /// demos/,demo 本体放行(011-calculator 诉求)。
+    #[test]
+    fn test_emit_gallery_vm_demos_copies_own_modules() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let app_dir = apps.join("011-x").join("src").join("front");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(
+            app_dir.join("prog_util.at"),
+            "fn pdouble(n int) int {\n    n * 2\n}\n",
+        )
+        .unwrap();
+        let rows = vec![vm_demo_row(
+            "011-x",
+            true,
+            "use prog_util: pdouble\n\nwidget App {\n    view {\n        text \"hi\"\n    }\n}\n",
+        )];
+        let gallery = dir.path().join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1, "own-module demo must be emitted");
+        assert!(skipped.is_empty());
+        assert!(gallery.join("demos").join("011-x.at").exists());
+        assert!(gallery.join("demos").join("prog_util.at").exists());
+    }
+
+    #[test]
+    fn test_registry_at_search_lc_lowercased() {
+        let dir = tempfile::tempdir().unwrap();
+        write_registry_at(&dir.path().join("front"), &fixture_rows()).unwrap();
+        let text = std::fs::read_to_string(dir.path().join("front").join("registry.at")).unwrap();
+        let line = text
+            .lines()
+            .find(|l| l.contains("001-helloworld") && l.contains("search_lc"))
+            .unwrap();
+        assert!(
+            line.contains("search_lc: \"001 hello world 001-helloworld basic text\""),
+            "search_lc lowercased concat: {line}"
+        );
     }
 }

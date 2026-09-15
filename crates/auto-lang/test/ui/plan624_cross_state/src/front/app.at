@@ -1,0 +1,93 @@
+// app.at — PLAN-624 red corpus (P1): jade facade shape, str-sentinel store.
+//
+// Replicates the jade-garden facade-switch shape that crashed on the real
+// window: root uses a store + contract fns; widget handler DISPATCHES a
+// store msg with a map literal, then reads store fields (`.tabs.find`,
+// mirror writes). Expected on the fixed VM: no Field-not-found crash, the
+// mirror fields carry the store state.
+//
+// Split-mode arm (api_over_http = true): jade vm-smoke runs split; the
+// read_wiki stub is rewritten to HTTP — with no backend the catch arm maps
+// doc to None (loaded=true, empty body), which still exercises the crash
+// shape (jade crashed regardless of doc content).
+
+use store: TabStore
+use back.api: read_wiki, get_backlinks
+
+widget App {
+    msg { Init, OpenPage(str), Edit, Save, CloseTab, SwitchTab(str) }
+
+    model {
+        var status str = "boot"
+        var view_title str = ""
+        var view_body str = ""
+        var view_dirty bool = false
+    }
+
+    on {
+        .Init -> {
+            .status = "ready"
+        }
+
+        .OpenPage(path) -> {
+            var parts = path.split(".ad")
+            var seg_count = parts.len()
+            if seg_count == 1 {
+                path = f"${path}.ad"
+            }
+            TabStore.Open({ path: path, title: "" })
+            var t = .tabs.find(tt => tt.path == path)
+            if t != null {
+                .view_title = t.title
+                .view_body = t.body
+                .view_dirty = t.dirty
+            }
+            var bl = get_backlinks(.view_title)
+            .status = "opened"
+        }
+
+        // P2 shape: map-literal arg carrying a cross-state ?str read — the
+        // jade Edit arm crashed here with Invalid object ID (p2 variant).
+        .Edit -> {
+            TabStore.SetBody({ path: .active_path, body: .view_body })
+            var t = .tabs.find(tt => tt.path == .active_path)
+            if t != null {
+                .view_dirty = t.dirty
+            }
+            .status = "edited"
+        }
+
+        // 以下三个 handler 仅编译（不执行）——检验「持有 .active_path 读写
+        // 的 handler 并存」是否毒化 OpenPage 的状态解析（合成期假设）。
+        .Save -> {
+            TabStore.Save(.active_path)
+            .status = "saved"
+        }
+
+        .CloseTab -> {
+            TabStore.Close(.active_path)
+            .status = "closed"
+        }
+
+        .SwitchTab(path) -> {
+            TabStore.Open({ path: path, title: "" })
+            var t = .tabs.find(tt => tt.path == path)
+            if t != null {
+                .view_title = t.title
+                .view_body = t.body
+                .view_dirty = t.dirty
+            }
+            .status = "switched"
+        }
+    }
+
+    view {
+        col {
+            text .status
+            text .view_title
+            for t in .tabs {
+                text t.title
+            }
+        }
+    }
+}

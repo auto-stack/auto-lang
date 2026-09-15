@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-630
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: menubar-component
 author: [agent]
 created_at: 2026-09-14
@@ -118,6 +118,7 @@ worktree：`D:/autostack/.wt/lang-630/auto-lang`（branch `plan-630-dev`，基�
 
 ## 9. 复审记录
 
+- 2026-09-14 review：`stage: review | plan_id: PLAN-630 | plan_revision: 1 | outcome: pass | reviewed_commit: a91417643 + c3dbc80bf (plan-630-dev) | base_commit: plan-629-dev@ef2238aaf | spec_inputs: SD-01（声明式组件族） | acceptance_results: AC-01..04 全 PASS（双端声明式渲染=单测×2+实机；item 能力=icon/shortcut/checked/enabled 单测断言；迁移零回归=矩阵 48/2；空标签兼容=plan626 合成测试仍绿） | findings: F-1 同 626 复审（ffi-dual 串行组修复落本计划 c3dbc80bf） | evidence: 同复审门禁 + 实机四菜单 | next: merge。
 - 2026-09-14 work handoff：`stage: work | plan_id: PLAN-630 | plan_revision: 1 | outcome: pass | code_commit: 98fb5d8c7 (branch plan-630-dev, base plan-629-dev@a5821a4b6 叠放) | task_ids: T-01..T-04 全完成 | evidence: 各任务行 + 矩阵 48/2 | blockers: 无 | next: review。
 - 2026-09-14 draft handoff：`stage: new`，PLAN-630 rev1。用户裁定明确（引语见 §4）；Vue 组件注册/生成器现成，VM 侧抽取自已验证的 convert_menubar 内部。`outcome: pass`，`next: work`。
 

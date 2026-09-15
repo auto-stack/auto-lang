@@ -54,7 +54,7 @@ widget FileTree (nodes: List, default_expanded: List = []) {
                         }
                     }
                     if r.has_kids {
-                        mouse-area (onclick: .Toggle(r.id), style: "w-5 h-5 shrink-0 items-center justify-center cursor-pointer") {
+                        mouse-area (onclick: .Toggle(r.id), style: "w-5 h-5 shrink-0 items-center justify-center cursor-pointer rounded hover:bg-accent/60") {
                             if r.open {
                                 icon (name: "chevron-down", style: "w-3.5 h-3.5 text-muted-foreground") {}
                             } else {

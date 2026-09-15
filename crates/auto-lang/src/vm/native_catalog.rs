@@ -102,6 +102,7 @@ macro_rules! for_each_native {
             (2067, NATIVE_LIST_SORT, shim_list_sort, "auto.list.sort"),
             (2068, NATIVE_LIST_SORT_BY, shim_list_sort_by, "auto.list.sort_by"),
             (2071, NATIVE_LIST_SPLICE, shim_list_splice, "auto.list.splice"),
+            (2072, NATIVE_LIST_FIND_INDEX, shim_list_find_index, "auto.list.find_index"),
             (2080, NATIVE_LIST_JOIN, shim_list_join, "auto.list.join"),
             // === Plan 046 (auto-musk T2): dynamic-receiver (obj) family ===
             (2090, NATIVE_OBJ_KEYS, shim_obj_keys, "auto.obj.keys"),
@@ -443,13 +444,19 @@ macro_rules! for_each_native {
             // 2026-09-14(PLAN-016 T-05):rename/canonical/ext 由 2842/2844/2845
             // 迁 2983/2984/2985——原 id 与 bigvm 表 File.read/Path.new/Path.join
             // 撞号（read_dir 2843→2866 同症先例），VM 模式派发错位非确定挂起。
-            (2983, NATIVE_FS_RENAME, shim_fs_rename, "auto.fs.rename"),
+            // 2026-09-15(PLAN-016 merge master):2983-2987 已被 master 侧
+            // PLAN-018 D5/PLAN-015 D4 term engine natives 占用——四件再迁
+            // 2994-2997（2994-2999 全仓空闲带，防撞号重演）。
+            (2994, NATIVE_FS_RENAME, shim_fs_rename, "auto.fs.rename"),
             // 2026-08-22:auto.fs.read_dir 换用 2866 —— 原 2843 与 BIGVM 表的
             // File.position(:1281/:2009)撞号(shim 按 ID 注册,File.position 的
             // CALL_NAT 2843 会错派到 read_dir shim)。read_dir 此前只在 shim 表
             // 登记、白名单(for_each_bigvm_native/NATIVE_ID_ENTRIES)缺失,VM 模式
             // 下 widget/back 模块调用报 Undefined symbol —— 一并补齐。
             (2866, NATIVE_FS_READ_DIR, shim_fs_read_dir, "auto.fs.read_dir"),
+            // Plan 626 T-04:嵌套目录树 JSON(参数 str,int;返回 str;
+            // 2875 取 random 段 2870-2874 与 2880 之间的空档,防撞号重演)。
+            (2875, NATIVE_FS_TREE, shim_fs_tree, "auto.fs.tree"),
             // Plan 060:merged 模式 shell 执行提交(api.at 契约归一的传输件)。
             (2867, NATIVE_SHELL_EXEC_SUBMIT, shim_shell_exec_submit, "auto.shell.exec_submit"),
             // Plan 060 M2:builtin 直发(语义在 .at 提交侧算好)。
@@ -490,10 +497,20 @@ macro_rules! for_each_native {
             (2980, NATIVE_TERM_ENGINE_BACKLOG_PAUSED, shim_term_backlog_paused, "auto.term.engine_backlog_paused"),
             (2981, NATIVE_TERM_ENGINE_BACKLOG_TAKE_ALERTS, shim_term_backlog_take_alerts, "auto.term.engine_backlog_take_alerts"),
             (2982, NATIVE_TERM_ENGINE_BACKLOG_DROPPED, shim_term_backlog_dropped, "auto.term.engine_backlog_dropped"),
-            (2984, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
-            (2985, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
+            // PLAN-018 D5:SpawnSpec(spawn_ex)+ 定向泵三件(per-key 泵面;
+            // 广播/任意旧件保留为兼容面)。
+            (2983, NATIVE_TERM_ENGINE_SPAWN_EX, shim_term_spawn_ex, "auto.term.engine_spawn_ex"),
+            (2984, NATIVE_TERM_ENGINE_ROWS_FOR, shim_term_rows_for, "auto.term.engine_rows_for"),
+            (2985, NATIVE_TERM_ENGINE_PUMP_FOR, shim_term_pump_for, "auto.term.engine_pump_for"),
+            (2986, NATIVE_TERM_ENGINE_APPLY_RESIZE_FOR, shim_term_apply_resize_for, "auto.term.engine_apply_resize_for"),
+            // PLAN-015 D4:菜单动作载荷(0=Copy 1=Paste 2=SelectAll
+            // 3=Interrupt;-1=无载荷;注册表任意端)。
+            (2987, NATIVE_TERM_ENGINE_MENU_TAKE, shim_term_menu_take, "auto.term.engine_menu_take"),
+            (2995, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
+            (2996, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             // 2026-09-14(PLAN-016 T-05):mtime 走 rust_fn 宏自注册
-            //（ffi/stdlib.rs，同 File.size 形态），不进本表。
+            //（ffi/stdlib.rs，同 File.size 形态），不进本表（id 载于
+            // 签名/白名单表，2997）。
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
             (2847, NATIVE_FS_WALK_FILES, shim_fs_walk_files, "auto.fs.walk_files"),
 
@@ -805,6 +822,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.list.insert", 108, Void),
             ("auto.list.remove", 109, Void),
             ("auto.list.splice", 2071, List),
+            ("auto.list.find_index", 2072, Void),
             // PLAN-057 T6：Array.isArray 静态名/ID（shim 由 engine 覆盖块绑定，
             // 沿 auto.json.parse 惯例——rust_fn 宏不适配 raw-nv 分派）。
             ("auto.list.is_array", 1919, Bool),
@@ -1009,10 +1027,10 @@ macro_rules! for_each_bigvm_native {
             // === FS extended (2860-2866) ===
             // 2026-09-14(PLAN-016 T-05):rename/canonical/ext 白名单补登记
             // （id 迁 2983/2984/2985 免撞号，注册行同批迁移）。
-            ("auto.fs.rename", 2983, Void),
-            ("auto.fs.canonical", 2984, String),
-            ("auto.fs.ext", 2985, String),
-            ("auto.fs.mtime", 2986, Int),
+            ("auto.fs.rename", 2994, Void),
+            ("auto.fs.canonical", 2995, String),
+            ("auto.fs.ext", 2996, String),
+            ("auto.fs.mtime", 2997, Int),
             ("auto.fs.walk", 2860, String),
             ("auto.fs.metadata", 2861, String),
             ("auto.fs.copy_recursive", 2862, Void),
@@ -1021,6 +1039,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.fs.join", 2865, String),
             // 2026-08-22:read_dir 白名单补登记(ash-gui cd 目录补全用)。
             ("auto.fs.read_dir", 2866, String),
+            // Plan 626 T-04:嵌套目录树 JSON(TreeView 节点 schema 直配)。
+            ("auto.fs.tree", 2875, String),
             // Plan 060:merged 模式 shell 执行提交(参数 int,str,str;返回 void)。
             ("auto.shell.exec_submit", 2867, Void),
             ("auto.shell.emit_result", 2868, Void),
@@ -1843,6 +1863,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.list.insert", 108),
     ("auto.list.remove", 109),
     ("auto.list.splice", 2071),
+    ("auto.list.find_index", 2072),
     ("auto.list.drop", 110),
     // PLAN-057 T6: Array.isArray（shim 由 engine 覆盖块绑定）。双行别名：
     // resolve 的 canonical 化保留方法名大小写——"Array.isArray" 规整为
@@ -2581,10 +2602,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
 
     // === FS extended (2860-2866) ===
     // 2026-09-14(PLAN-016 T-05):rename/canonical/ext 补登记（id 2983/2984/2985）。
-    ("auto.fs.rename", 2983),
-    ("auto.fs.canonical", 2984),
-    ("auto.fs.ext", 2985),
-    ("auto.fs.mtime", 2986),
+    ("auto.fs.rename", 2994),
+    ("auto.fs.canonical", 2995),
+    ("auto.fs.ext", 2996),
+    ("auto.fs.mtime", 2997),
     ("auto.fs.walk", 2860),
     ("auto.fs.metadata", 2861),
     ("auto.fs.copy_recursive", 2862),
@@ -2592,6 +2613,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.fs.parent", 2864),
     ("auto.fs.join", 2865),
     ("auto.fs.read_dir", 2866),
+    // Plan 626 T-04:嵌套目录树 JSON。
+    ("auto.fs.tree", 2875),
     ("auto.shell.exec_submit", 2867),
     ("auto.shell.emit_result", 2868),
     ("auto.shell.emit_show", 2869),
@@ -2618,6 +2641,11 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_backlog_paused", 2980),
     ("auto.term.engine_backlog_take_alerts", 2981),
     ("auto.term.engine_backlog_dropped", 2982),
+    ("auto.term.engine_spawn_ex", 2983),
+    ("auto.term.engine_rows_for", 2984),
+    ("auto.term.engine_pump_for", 2985),
+    ("auto.term.engine_apply_resize_for", 2986),
+    ("auto.term.engine_menu_take", 2987),
 
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
     ("auto.image.queue", 2960),

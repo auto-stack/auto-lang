@@ -25,7 +25,8 @@
    活动区编号冲突随本次 git rm 消解（补账提交 42219a602 即为保全其
    git 历史而生）。
 2. **留守未迁**：545-use-namespace-semantics、570-py-subclass-factory
-   （语言域，Design 01 §5 处置表裁定）。
+   （语言域，Design 01 §5 处置表裁定）；570 后于 2026-09-15 终态归档
+   （superseded-by-602，未启动即被取代，见 archive 收据）。
 3. **本仓收口不随迁**：541（025 系）、582（notes explorer）——产出资产
    随 P-5 本体批迁入 auto-os。
 

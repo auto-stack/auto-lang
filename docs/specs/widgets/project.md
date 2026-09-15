@@ -30,3 +30,4 @@ graph LR
 | registry | 生成的 Vue3 组件原语（10 个 widget 目录） | active |
 | cli | `npx @auto-ui/widgets add/list` 命令 | active |
 | styles | Tailwind 配置与预编译 CSS 构建（build-styles.cjs / src/input.css） | active |
+| [terminal-iced-draw](terminal-iced-draw.md) | terminal iced widget 绘制期契约（draw 段落强引用规则 + 像素金样环境契约；auto-lang 侧,Plan 634） | active |

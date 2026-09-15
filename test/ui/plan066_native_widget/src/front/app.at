@@ -1,0 +1,28 @@
+// PLAN-066 语料：原生组件外部注册 SPI。
+// - autodown_editor：T2 迁移等价臂（原硬编码字符串臂 → NativeWidgetRegistry
+//   global 注册派发，案 a sugar）；
+// - plan066_element_probe：T1 Element 通道探针（仅测试构建注册，native_widget.rs
+//   cfg(test) 块）→ 派发产 View::Custom，快照 kind=注册名。
+widget Plan066App {
+    msg M {
+        DocEdit
+    }
+
+    model {
+        doc str = "# 标题\n\n段落一。"
+        n int = 0
+    }
+
+    on {
+        .DocEdit -> {
+            .doc = autodown_editor_text("doc-ed")
+        }
+    }
+
+    view {
+        col (style: "p-6 gap-4") {
+            autodown_editor (key: "doc-ed", content: .doc, final: true, oninput: .DocEdit) {}
+            plan066_element_probe (label: "probe-x", count: 3) {}
+        }
+    }
+}

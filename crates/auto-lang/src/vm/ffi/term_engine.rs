@@ -30,8 +30,58 @@ static SNAPSHOTS: std::sync::LazyLock<Mutex<SnapMap>> =
     std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 static HANDLES: OnceLock<Mutex<std::collections::HashMap<i64, i64>>> = OnceLock::new();
 // 014:光标格与视口几何(glue 侧采样;feed 时随拍刷新,spawn 时落初值)。
-static CURSOR: Mutex<(i64, i64)> = Mutex::new((0, 0));
-static VIEWPORT: Mutex<(i64, i64)> = Mutex::new((0, 0));
+// PLAN-018 D5 per-handle 化:键 = 引擎句柄,多 Pane 几何/光标互不串线
+// (旧进程级单例 CURSOR/VIEWPORT 退役;shim 按柄读缺省 (0,0))。
+type GeomMap = std::collections::HashMap<i64, (i64, i64)>;
+static CURSORS: std::sync::LazyLock<Mutex<GeomMap>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+static VIEWPORTS: std::sync::LazyLock<Mutex<GeomMap>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+fn geom_of(map: &Mutex<GeomMap>, handle: i64) -> (i64, i64) {
+    *map.lock().unwrap().get(&handle).unwrap_or(&(0, 0))
+}
+
+fn set_geom(map: &Mutex<GeomMap>, handle: i64, v: (i64, i64)) {
+    map.lock().unwrap().insert(handle, v);
+}
+
+/// PLAN-018 D10:引擎 scheme 表装载(进程一次;FFI `palette_color` 纯
+/// 查询 → ui 注册表缓存覆盖内置回退表)。旧 DLL 无符号 = 静默保留内置
+/// (报警面同款皮实语义)。无 ui 特征无消费者,跳过。
+fn load_palettes_once(lib: &Library) {
+    #[cfg(feature = "ui")]
+    {
+        static LOADED: OnceLock<()> = OnceLock::new();
+        LOADED.get_or_init(|| unsafe {
+            let Ok(color) = lib.get::<unsafe extern "C" fn(c_int, c_int, c_int) -> u32>(
+                b"autoterm_engine_palette_color\0",
+            ) else {
+                return;
+            };
+            for scheme in [0i32, 1] {
+                let mut table = [0u32; crate::ui::terminal::TERMINAL_PALETTE_SLOTS];
+                let mut ok = true;
+                for slot in 0..18i32 {
+                    let is_fg = if slot == 0 { 1 } else { 0 };
+                    let v = color(scheme, slot, is_fg);
+                    if v == 0xFFFF_FFFF {
+                        ok = false;
+                        break;
+                    }
+                    table[slot as usize] = v;
+                }
+                if ok {
+                    crate::ui::terminal::terminal_palette_load(scheme, table);
+                }
+            }
+        });
+    }
+    #[cfg(not(feature = "ui"))]
+    {
+        let _ = lib;
+    }
+}
 
 fn lib() -> Option<&'static Library> {
     LIB.get_or_init(|| {
@@ -53,7 +103,10 @@ fn lib() -> Option<&'static Library> {
         let found = candidates.into_iter().find(|p| p.is_file());
         match found {
             Some(path) => match unsafe { Library::new(&path) } {
-                Ok(l) => Some(l),
+                Ok(l) => {
+                    load_palettes_once(&l);
+                    Some(l)
+                }
                 Err(e) => {
                     eprintln!("[term-engine] autoterm_core.dll 加载失败({path:?}): {e}");
                     None
@@ -90,8 +143,6 @@ fn engine_spawn(cols: i64, rows: i64) -> i64 {
     let Some(lib) = lib() else {
         return 0;
     };
-    *VIEWPORT.lock().unwrap() = (cols, rows);
-    *CURSOR.lock().unwrap() = (0, 0);
     unsafe {
         let spawn: libloading::Symbol<
             unsafe extern "C" fn(c_int, c_int, *const c_char) -> *mut core::ffi::c_void,
@@ -104,6 +155,61 @@ fn engine_spawn(cols: i64, rows: i64) -> i64 {
         // SAFETY: 句柄由 spawn 签名约定持有,free 前有效;原始指针无法
         // round-trip 进 VM int,故 glue 侧持句柄→指针表(at-gen 同款)。
         handles().insert(handle, h as i64);
+        set_geom(&VIEWPORTS, handle, (cols, rows));
+        set_geom(&CURSORS, handle, (0, 0));
+        handle
+    }
+}
+
+/// PLAN-018 D5 SpawnSpec:engine_spawn_ex(program/argv/cwd/几何)VM 轨。
+/// cwd 空 = 继承宿主;DLL 缺席/失败 = 0(契约内失败,与旧 spawn 同)。
+fn engine_spawn_ex(program: &str, argv: Vec<String>, cwd: &str, cols: i64, rows: i64) -> i64 {
+    let Some(lib) = lib() else {
+        return 0;
+    };
+    let c_prog = match std::ffi::CString::new(program) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    let c_args: Vec<std::ffi::CString> = argv
+        .iter()
+        .filter_map(|a| std::ffi::CString::new(a.as_str()).ok())
+        .collect();
+    let c_argv: Vec<*const c_char> = c_args.iter().map(|a| a.as_ptr()).collect();
+    let c_cwd = if cwd.is_empty() {
+        None
+    } else {
+        std::ffi::CString::new(cwd).ok()
+    };
+    unsafe {
+        let spawn_ex: libloading::Symbol<
+            unsafe extern "C" fn(
+                *const c_char,
+                *const *const c_char,
+                c_int,
+                *const c_char,
+                c_int,
+                c_int,
+            ) -> *mut core::ffi::c_void,
+        > = match lib.get(b"autoterm_engine_spawn_ex\0") {
+            Ok(s) => s,
+            Err(_) => return 0, // 旧 DLL(无符号)= 契约内失败
+        };
+        let h = spawn_ex(
+            c_prog.as_ptr(),
+            if c_argv.is_empty() { std::ptr::null() } else { c_argv.as_ptr() },
+            c_argv.len() as c_int,
+            c_cwd.as_ref().map(|c| c.as_ptr()).unwrap_or(std::ptr::null()),
+            cols as c_int,
+            rows as c_int,
+        );
+        if h.is_null() {
+            return 0;
+        }
+        let handle = NEXT_HANDLE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        handles().insert(handle, h as i64);
+        set_geom(&VIEWPORTS, handle, (cols, rows));
+        set_geom(&CURSORS, handle, (0, 0));
         handle
     }
 }
@@ -129,8 +235,18 @@ fn engine_write_line(handle: i64, line: &str) {
 /// `ui::terminal`,iced widget 键盘捕获入队),逐键**裸写**引擎(无
 /// \r\n 补缀——VT 串里 Enter 已是 \r、控制码/CSI 原样)。返回泵送键数
 /// (DLL 缺席/句柄无效时队列照样排空丢弃,不回灌)。
+/// 旧件 = 广播排空(单端应用行为不变)。
 fn engine_pump_input(handle: i64) -> i64 {
-    let keys = drain_pending_keys();
+    pump_inner(handle, drain_pending_keys())
+}
+
+/// PLAN-018 D5 定向泵:只排空 `key` terminal 的队列并裸写该柄——
+/// 多 Pane 键入互不串线。
+fn engine_pump_input_for(handle: i64, key: &str) -> i64 {
+    pump_inner(handle, drain_pending_keys_for(key))
+}
+
+fn pump_inner(handle: i64, keys: Vec<String>) -> i64 {
     let n = keys.len() as i64;
     if n == 0 {
         return 0;
@@ -153,9 +269,14 @@ fn engine_pump_input(handle: i64) -> i64 {
 }
 
 /// 收割引擎输出并刷新 glue 侧快照(feed + 损伤行全量重采 + 光标采样 +
-/// 逐格样式旁路:row_style 解码 → terminal_feed_cells_all,ash 彩色
-/// 输出经此上屏)。
-fn engine_feed_snapshot(lib: &Library, h: *mut core::ffi::c_void, handle: i64) {
+/// 逐格样式旁路)。`sideband` 决定样式上屏目标:旧 `engine_rows` 广播
+/// 全部注册 terminal(兼容面);PLAN-018 D5 `rows_for` 按 key 定向。
+fn engine_feed_snapshot(
+    lib: &Library,
+    h: *mut core::ffi::c_void,
+    handle: i64,
+    sideband: Sideband<'_>,
+) {
     unsafe {
         let feed: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
             .get(b"autoterm_engine_feed_ready\0")
@@ -166,13 +287,13 @@ fn engine_feed_snapshot(lib: &Library, h: *mut core::ffi::c_void, handle: i64) {
         > = lib.get(b"autoterm_engine_take_dirty_rows\0").expect("autoterm_engine_take_dirty_rows symbol");
         let mut rows = [0 as c_int; 64];
         take(h, rows.as_mut_ptr(), 64);
-        // 光标格随拍采样(可见时刷新;隐藏保持上次值)。
+        // 光标格随拍采样(可见时刷新;隐藏保持上次值;per-handle D5)。
         let cursor: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, *mut c_int, *mut c_int) -> c_int,
         > = lib.get(b"autoterm_engine_cursor\0").expect("autoterm_engine_cursor symbol");
         let (mut r, mut c) = (0 as c_int, 0 as c_int);
         if cursor(h, &mut r, &mut c) == 1 {
-            *CURSOR.lock().unwrap() = (r as i64, c as i64);
+            set_geom(&CURSORS, handle, (r as i64, c as i64));
         }
         // Full(-1)或脏行集都全量重采(行数由 rows 文本直至 -1 决定),
         // 逐行取文本 + 逐格样式,文本进快照、样式走组件旁路。
@@ -196,11 +317,20 @@ fn engine_feed_snapshot(lib: &Library, h: *mut core::ffi::c_void, handle: i64) {
             // 旁路上屏走 ui 适配层(无 ui 特征时丢弃,文本面不受影响)。
             let mut styles = [0u32; 1024];
             let styled = row_style(h, r, styles.as_mut_ptr(), 1024);
-            feed_styled_sideband(r, &text, &styles[..styled.max(0) as usize]);
+            feed_styled_sideband(sideband, r, &text, &styles[..styled.max(0) as usize]);
             lines.push(text);
         }
         snapshots().insert(handle, lines);
     }
+}
+
+/// PLAN-018 D5:样式旁路上屏目标(旧广播语义保留为兼容面)。
+#[derive(Clone, Copy)]
+enum Sideband<'k> {
+    /// 广播全部注册 terminal(旧 `engine_rows`;单端应用行为不变)。
+    All,
+    /// 只投喂该 key 的 terminal(定向;缺 key = no-op)。
+    Key(&'k str),
 }
 
 // ── ui 注册表适配层(F-02:vm/ffi 无 ui 特征编译时优雅降级为 no-op;
@@ -226,9 +356,45 @@ fn take_pending_resize() -> Option<(u16, u16)> {
     None
 }
 
-/// 逐格样式旁路上屏;无 ui 特征丢弃(快照文本面不受影响)。
+/// PLAN-018 D5 定向排空:只取 `key` terminal 的键入队列(缺 key/无 ui
+/// 特征恒空——载荷不跨 key 串线)。
 #[cfg(feature = "ui")]
-fn feed_styled_sideband(row: i32, text: &str, styles: &[u32]) {
+fn drain_pending_keys_for(key: &str) -> Vec<String> {
+    crate::ui::terminal::terminal_core(key)
+        .map(crate::ui::terminal::terminal_drain_inputs_for)
+        .unwrap_or_default()
+}
+#[cfg(not(feature = "ui"))]
+fn drain_pending_keys_for(_key: &str) -> Vec<String> {
+    Vec::new()
+}
+
+/// PLAN-018 D5 定向几何:只取 `key` terminal 的待定请求(缺 key/无 ui
+/// 特征恒 None)。
+#[cfg(feature = "ui")]
+fn take_pending_resize_for(key: &str) -> Option<(u16, u16)> {
+    crate::ui::terminal::terminal_core(key).and_then(crate::ui::terminal::terminal_take_resize_for)
+}
+#[cfg(not(feature = "ui"))]
+fn take_pending_resize_for(_key: &str) -> Option<(u16, u16)> {
+    None
+}
+
+/// PLAN-015 D4:菜单动作载荷(注册表任意端,BTreeMap 键序);无 ui
+/// 特征恒 None。
+#[cfg(feature = "ui")]
+fn take_menu_item_any() -> Option<u8> {
+    crate::ui::terminal::terminal_take_menu_item_any()
+}
+#[cfg(not(feature = "ui"))]
+fn take_menu_item_any() -> Option<u8> {
+    None
+}
+
+/// 逐格样式旁路上屏;无 ui 特征丢弃(快照文本面不受影响)。
+/// `sideband` = 广播(旧 rows)/按 key 定向(D5 rows_for)。
+#[cfg(feature = "ui")]
+fn feed_styled_sideband(sideband: Sideband<'_>, row: i32, text: &str, styles: &[u32]) {
     let pairs = styles.len() / 2;
     let mut cells: Vec<crate::ui::terminal::TermCell> = Vec::with_capacity(pairs);
     for (ci, ch) in text.chars().enumerate() {
@@ -241,12 +407,18 @@ fn feed_styled_sideband(row: i32, text: &str, styles: &[u32]) {
             bg: decode_style_color(styles[ci * 2 + 1]),
         });
     }
-    if !cells.is_empty() {
-        crate::ui::terminal::terminal_feed_cells_all(row as usize, cells);
+    if cells.is_empty() {
+        return;
+    }
+    match sideband {
+        Sideband::All => crate::ui::terminal::terminal_feed_cells_all(row as usize, cells),
+        Sideband::Key(key) => {
+            crate::ui::terminal::terminal_feed_cells_for(key, row as usize, cells)
+        }
     }
 }
 #[cfg(not(feature = "ui"))]
-fn feed_styled_sideband(_row: i32, _text: &str, _styles: &[u32]) {}
+fn feed_styled_sideband(_sideband: Sideband<'_>, _row: i32, _text: &str, _styles: &[u32]) {}
 
 /// FFI 标量色 → 组件色((kind<<24)|value:0=Default 1=Indexed 2=RGB)。
 #[cfg(feature = "ui")]
@@ -265,7 +437,17 @@ fn decode_style_color(v: u32) -> crate::ui::terminal::TermColor {
 }
 
 /// 视口行文本快照:先收割引擎输出(内联 feed + 损伤刷新)再回读。
+/// 旧件 = 广播样式旁路(单端应用行为不变)。
 fn engine_rows(handle: i64) -> Vec<String> {
+    engine_rows_inner(handle, Sideband::All)
+}
+
+/// PLAN-018 D5:定向变体——样式旁路只投喂 `key` 对应的 terminal。
+fn engine_rows_for(handle: i64, key: &str) -> Vec<String> {
+    engine_rows_inner(handle, Sideband::Key(key))
+}
+
+fn engine_rows_inner(handle: i64, sideband: Sideband<'_>) -> Vec<String> {
     let Some(lib) = lib() else {
         return Vec::new();
     };
@@ -273,7 +455,7 @@ fn engine_rows(handle: i64) -> Vec<String> {
     if h.is_null() {
         return Vec::new();
     }
-    engine_feed_snapshot(lib, h, handle);
+    engine_feed_snapshot(lib, h, handle, sideband);
     snapshots().get(&handle).cloned().unwrap_or_default()
 }
 
@@ -341,6 +523,23 @@ pub fn shim_term_spawn(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
+/// PLAN-018 D5:engine_spawn_ex(program str, argv []str, cwd str,
+/// cols int, rows int) int——SpawnSpec VM 面(cwd 空 = 继承宿主)。
+pub fn shim_term_spawn_ex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let rows = crate::vm::native::pop_arg_i32(task) as i64;
+    let cols = crate::vm::native::pop_arg_i32(task) as i64;
+    let cwd: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let argv: Vec<String> = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let program: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    task.ram.push_nv(auto_val::encode_i32(
+        engine_spawn_ex(&program, argv, &cwd, cols, rows) as i32,
+    ));
+    Ok(())
+}
+
 pub fn shim_term_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let line: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
@@ -356,16 +555,45 @@ pub fn shim_term_pump_input(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
     Ok(())
 }
 
+/// PLAN-018 D5:engine_pump_for(handle int, key str) int——定向键入泵。
+pub fn shim_term_pump_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_pump_input_for(handle, &key) as i32));
+    Ok(())
+}
+
+/// PLAN-018 D5:engine_rows_for(handle int, key str) []str——定向快照。
+pub fn shim_term_rows_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    engine_rows_for(handle, &key)
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
 // ── 014:几何随动 + 光标格(glue 静态量读写,泵同款管线)────────────
 
 /// 应用注册表里的待定几何:`terminal_take_any_resize()` → 引擎 resize →
-/// VIEWPORT 静态量刷新。返回 1=已应用 0=无请求。
+/// 该柄 VIEWPORT 刷新。返回 1=已应用 0=无请求。(旧件:任意端语义。)
 fn engine_apply_resize(handle: i64) -> i64 {
     let Some((cols, rows)) = take_pending_resize() else {
         return 0;
     };
     engine_resize(handle, cols as i64, rows as i64);
-    *VIEWPORT.lock().unwrap() = (cols as i64, rows as i64);
+    set_geom(&VIEWPORTS, handle, (cols as i64, rows as i64));
+    1
+}
+
+/// PLAN-018 D5:定向变体——只消费 `key` terminal 的待定几何请求。
+fn engine_apply_resize_for(handle: i64, key: &str) -> i64 {
+    let Some((cols, rows)) = take_pending_resize_for(key) else {
+        return 0;
+    };
+    engine_resize(handle, cols as i64, rows as i64);
+    set_geom(&VIEWPORTS, handle, (cols as i64, rows as i64));
     1
 }
 
@@ -375,26 +603,53 @@ pub fn shim_term_apply_resize(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
     Ok(())
 }
 
+/// PLAN-018 D5:engine_apply_resize_for(handle int, key str) int——定向
+/// 几何泵(只消费 key terminal 的待定请求,多 Pane 请求互不串线)。
+pub fn shim_term_apply_resize_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram.push_nv(auto_val::encode_i32(engine_apply_resize_for(handle, &key) as i32));
+    Ok(())
+}
+
+/// PLAN-015 D4:engine_menu_take() int——菜单动作载荷(0=Copy 1=Paste
+/// 2=SelectAll 3=Interrupt;-1=无载荷;注册表任意端,BTreeMap 键序)。
+fn engine_menu_take() -> i64 {
+    take_menu_item_any().map(i64::from).unwrap_or(-1)
+}
+
+pub fn shim_term_menu_take(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_nv(auto_val::encode_i32(engine_menu_take() as i32));
+    Ok(())
+}
+
 pub fn shim_term_viewport_cols(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let cols = VIEWPORT.lock().unwrap().0;
+    // PLAN-018 D5 per-handle 化:读该柄视口(缺省 0,0;旧件为进程级
+    // 单例,多柄下串线——本面从此按柄隔离)。
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let cols = geom_of(&VIEWPORTS, handle).0;
     task.ram.push_nv(auto_val::encode_i32(cols as i32));
     Ok(())
 }
 
 pub fn shim_term_viewport_rows(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let rows = VIEWPORT.lock().unwrap().1;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let rows = geom_of(&VIEWPORTS, handle).1;
     task.ram.push_nv(auto_val::encode_i32(rows as i32));
     Ok(())
 }
 
 pub fn shim_term_cursor_row(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let row = CURSOR.lock().unwrap().0;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let row = geom_of(&CURSORS, handle).0;
     task.ram.push_nv(auto_val::encode_i32(row as i32));
     Ok(())
 }
 
 pub fn shim_term_cursor_col(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let col = CURSOR.lock().unwrap().1;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let col = geom_of(&CURSORS, handle).1;
     task.ram.push_nv(auto_val::encode_i32(col as i32));
     Ok(())
 }

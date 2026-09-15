@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-629
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: editor-common-scroller
 author: [agent]
 created_at: 2026-09-14
@@ -153,7 +153,8 @@ worktree：`D:/autostack/.wt/lang-629/auto-lang`（branch `plan-629-dev`，基�
 ## 9. 复审记录
 
 - 2026-09-14 revision（rev1 续，用户实机回归两轮）：新增 T-05（gutter 滚动冻结）/T-06（菜单项对齐+icon），current_step 4→6；仍 execution_done。
-`stage: work | plan_id: PLAN-629 | plan_revision: 1 | outcome: pass | code_commit: f4b77192b (branch plan-629-dev, base plan-626-dev@3b85a0357 叠放) | task_ids: T-01..T-04 全完成 | evidence: 各任务行 + 实机截图（正文渲染/官方滚动行为）+ 矩阵 48/2 | blockers: 无 | next: review。
+- 2026-09-14 review：`stage: review | plan_id: PLAN-629 | plan_revision: 1 | outcome: pass | reviewed_commit: ef2238aaf (plan-629-dev, 含 T-03 widget 侧收尾补提交) | base_commit: plan-626-dev@ac6f9cbb0 | spec_inputs: SD-01（寄宿契约三机制） | acceptance_results: AC-01..05 全 PASS（官方滚动条外观/交互=截图+实机；大文件虚拟化=sync 粗定位+归一；折叠高度=content_height fresh；光标跟随=dispatch 排水 scroll_to；非寄宿回归=core 46/46） | findings: 无阻断（两处设计偏差已记录：caret_offset_y 直接计算不依赖渲染；光标跟随经 core 标记而非消息——M 泛型限制） | evidence: 同 626 复审门禁（tf/tv 覆盖全叠放）+ 矩阵 48/2 | next: merge。
+2026-09-14 work handoff（记录原样保留）：`stage: work | plan_id: PLAN-629 | plan_revision: 1 | outcome: pass | code_commit: f4b77192b (branch plan-629-dev, base plan-626-dev@3b85a0357 叠放) | task_ids: T-01..T-04 全完成 | evidence: 各任务行 + 实机截图（正文渲染/官方滚动行为）+ 矩阵 48/2 | blockers: 无 | next: review。
 `stage: new`，PLAN-629 rev1。用户裁定明确（引语见 §4），集成契约三机制（外部偏移同步/内容高度上报/scroll_to 跟随）均有 iced 0.14 现成通道与 renderer 先例。`outcome: pass`，`next: work`（用户指令即授权）。
 
 ## 10. 待澄清事项

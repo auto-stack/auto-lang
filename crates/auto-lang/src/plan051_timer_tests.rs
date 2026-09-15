@@ -143,6 +143,49 @@ widget Clock {
         assert!(sfc.contains("40"), "period emitted");
     }
 
+    /// PLAN-018 F-1 回归:timer 块 + `.Tick` 处理器并存(auto-term app.at
+    /// 形态)时,timers 臂与 tick_interval 臂同触——曾无守卫重推产出
+    /// `import { …, onUnmounted, onUnmounted }`(vue/compiler-sfc 重复
+    /// 声明,App.vue 编译炸)。断言导入行 onUnmounted 唯一。
+    #[cfg(feature = "ui")]
+    #[test]
+    fn vue_imports_dedupe_onunmounted_when_timer_and_tick_coexist() {
+        let at = r#"
+widget App {
+    msg { LocalTick }
+    model { var n int = 0 }
+    timer { Tick (every_ms: 50) }
+    view { col { text f"n={.n}" } }
+    on {
+        .Tick -> { .n = .n + 1 }
+        .LocalTick -> { .n = .n + 2 }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(at).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(&decl)
+            .expect("extract");
+        assert!(!widget.timers.is_empty(), "timer block ⇒ timers 臂");
+        assert!(widget.tick_interval.is_some(), ".Tick 处理器 ⇒ tick_interval 臂");
+        let mut gen = crate::ui_gen::vue::VueGenerator::new();
+        let sfc = gen.generate_sfc(&widget).expect("generate SFC");
+        let import_line = sfc
+            .lines()
+            .find(|l| l.starts_with("import {"))
+            .expect("vue import line");
+        assert_eq!(
+            import_line.matches("onUnmounted").count(),
+            1,
+            "onUnmounted 必须唯一: {import_line}"
+        );
+    }
+
     /// store（corpus ticker_store.at）提取 → composable：模块级 interval +
     /// when 门控。
     #[cfg(feature = "ui")]

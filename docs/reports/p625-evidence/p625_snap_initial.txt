@@ -1,0 +1,705 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  row #vnode_12642422519345821663 {
+    row #vnode_4305065243889594349 {
+      text #vnode_4321691031005245367 "🎨"
+      text #vnode_4321673438819200516 "AutoUI Gallery"
+      text #vnode_4321726215377335069 "官方示例交互画廊与教程中心"
+    }
+    row #vnode_4305047651703549498 {
+      input #vnode_4306385829146414222 {
+        placeholder: "搜索示例 (按名称或标签)..."
+        value: ""
+      }
+      col #vnode_4306403421332459073 {
+        button #vnode_5905075079555381363 "⚙ 设置"
+        col #vnode_5905057487369336512 {
+          col #vnode_14937216004942153792 {
+            row #vnode_17442569827827565760 {
+              text #vnode_1027536514016301632 "设置"
+            }
+            col #vnode_17442587420013610611 {
+              text #vnode_1042841715875132777 "主题模式"
+              row #vnode_1042824123689087926 {
+                button #vnode_13445364403793681986 "🌙 暗色"
+                button #vnode_13445381995979726837 "☀ 亮色"
+              }
+            }
+            col #vnode_17442605012199655462 {
+              text #vnode_1058146917733963922 "主题主色"
+              row #vnode_1058164509920008773 {
+                button #vnode_5015874946647958335 ""
+                button #vnode_5015857354461913484 ""
+                button #vnode_5015910131020048037 ""
+                button #vnode_5015892538834003186 ""
+                button #vnode_5015804577903778931 ""
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  row #vnode_12642404927159776812 {
+    col #vnode_4289760042030763204 {
+      col #vnode_12781790891868631308 {
+        col #vnode_15900409796501198692 {
+          row #vnode_8766178259980025580 {
+            button #vnode_9218183197671271172 "全部"
+            button #vnode_9218200789857316023 "基础"
+            button #vnode_9218218382043360874 "组件"
+            button #vnode_9218235974229405725 "应用"
+            button #vnode_9218112828927091768 "系统"
+          }
+        }
+        scrollable #vnode_15900427388687243543 {
+          col #vnode_8781483461838856725 {
+            col #vnode_758083336807885231 {
+              col #vnode_1947809668062073949 {
+                col #vnode_9503210199825668615 {
+                  button #vnode_13760426571060410853 "Hello World
+Hello World" {
+                    col #vnode_17083432474844504095 {
+                      row #vnode_9505601196625106093 {
+                        text #vnode_653120452500988407 "Hello World"
+                        text #vnode_653102860314943556 "可交互"
+                      }
+                      text #vnode_9505583604439061242 "Hello World"
+                    }
+                  }
+                }
+                col #vnode_9503192607639623764 {
+                  button #vnode_13745121369201579708 "Counter
+Counter" {
+                    col #vnode_7096788261998338420 {
+                      row #vnode_9529596902583588892 {
+                        text #vnode_4477417424484677524 "Counter"
+                        text #vnode_4477435016670722375 "可交互"
+                      }
+                      text #vnode_9529614494769633743 "Counter"
+                    }
+                  }
+                }
+                col #vnode_9503245384197758317 {
+                  button #vnode_13791036974778073143 "Converter
+Converter" {
+                    col #vnode_163232753117732213 {
+                      row #vnode_9457609784708140495 {
+                        text #vnode_11451270582243161789 "Converter"
+                        text #vnode_11451252990057116938 "可交互"
+                      }
+                      text #vnode_9457592192522095644 "Converter"
+                    }
+                  }
+                }
+                col #vnode_9503227792011713466 {
+                  button #vnode_13775731772919241998 "Profile Card
+Profile Card" {
+                    col #vnode_8623332613981118154 {
+                      row #vnode_9481605490666623294 {
+                        text #vnode_15275567554226850906 "Profile Card"
+                        text #vnode_15275585146412895757 "可交互"
+                      }
+                      text #vnode_9481623082852668145 "Profile Card"
+                    }
+                  }
+                }
+                col #vnode_9503139831081489211 {
+                  button #vnode_13699205763625086273 "Login
+Login" {
+                    col #vnode_14030343770878944627 {
+                      row #vnode_9601584020459037289 {
+                        text #vnode_15950308340435744875 "Login"
+                        text #vnode_15950290748249700024 "可交互"
+                      }
+                      text #vnode_9601566428272992438 "Login"
+                    }
+                  }
+                }
+                col #vnode_9503122238895444360 {
+                  button #vnode_13683900561766255128 "Hero Section
+Hero Section" {
+                    col #vnode_4043699558032778952 {
+                      row #vnode_9625579726417520088 {
+                        text #vnode_1327861238709882376 "Hero Section"
+                        text #vnode_1327878830895927227 "可交互"
+                      }
+                      text #vnode_9625597318603564939 "Hero Section"
+                    }
+                  }
+                }
+                col #vnode_9503175015453578913 {
+                  button #vnode_13729816167342748563 "Stats Board
+Stats Board" {
+                    col #vnode_15556888122861724361 {
+                      row #vnode_9553592608542071691 {
+                        text #vnode_8301714396468366641 "Stats Board"
+                        text #vnode_8301696804282321790 "可交互"
+                      }
+                      text #vnode_9553575016356026840 "Stats Board"
+                    }
+                  }
+                }
+                col #vnode_9503157423267534062 {
+                  button #vnode_13714510965483917418 "Pricing Table
+Pricing Table" {
+                    col #vnode_5570243910015558686 {
+                      row #vnode_9577588314500554490 {
+                        text #vnode_12126011368452055758 "Pricing Table"
+                        text #vnode_12126028960638100609 "可交互"
+                      }
+                      text #vnode_9577605906686599341 "Pricing Table"
+                    }
+                  }
+                }
+                col #vnode_9503069462337309807 {
+                  button #vnode_13637984956189761693 "Article Feed
+Article Feed" {
+                    col #vnode_10977255066913385159 {
+                      row #vnode_9697566844292968485 {
+                        text #vnode_12800752154660949727 "Article Feed"
+                        text #vnode_12800734562474904876 "可交互"
+                      }
+                      text #vnode_9697549252106923634 "Article Feed"
+                    }
+                  }
+                }
+                col #vnode_9503051870151264956 {
+                  button #vnode_13622679754330930548 "Contact Form
+Contact Form" {
+                    col #vnode_990610854067219484 {
+                      row #vnode_9721562550251451284 {
+                        text #vnode_16625049126644638844 "Contact Form"
+                        text #vnode_16625066718830683695 "可交互"
+                      }
+                      text #vnode_9721580142437496135 "Contact Form"
+                    }
+                  }
+                }
+                col #vnode_9503104646709399509 {
+                  button #vnode_13668595359907423983 "Calculator
+Calculator" {
+                    col #vnode_12503799418896164893 {
+                      row #vnode_9649575432376002887 {
+                        text #vnode_5152158210693571493 "Calculator"
+                        text #vnode_5152140618507526642 "可交互"
+                      }
+                      text #vnode_9649557840189958036 "Calculator"
+                    }
+                  }
+                }
+                col #vnode_9503087054523354658 {
+                  button #vnode_13653290158048592838 "Clock
+Clock" {
+                    col #vnode_2517155206049999218 {
+                      row #vnode_9673571138334485686 {
+                        text #vnode_8976455182677260610 "Clock"
+                        text #vnode_8976472774863305461 "可交互"
+                      }
+                      text #vnode_9673588730520530537 "Clock"
+                    }
+                  }
+                }
+                col #vnode_9502999093593130403 {
+                  button #vnode_13576764148754437113 "Todo
+Todo" {
+                    col #vnode_7924166362947825691 {
+                      row #vnode_9793549668126899681 {
+                        text #vnode_9651195968886154579 "Todo"
+                        text #vnode_9651178376700109728 "独立"
+                      }
+                      text #vnode_9793532075940854830 "Todo"
+                    }
+                  }
+                }
+                col #vnode_9502981501407085552 {
+                  button #vnode_13561458946895605968 "Weather
+Weather" {
+                    col #vnode_16384266223811211632 {
+                      row #vnode_9817545374085382480 {
+                        text #vnode_13475492940869843696 "Weather"
+                        text #vnode_13475510533055888547 "可交互"
+                      }
+                      text #vnode_9817562966271427331 "Weather"
+                    }
+                  }
+                }
+                col #vnode_9503034277965220105 {
+                  button #vnode_13607374552472099403 "Notes
+Notes" {
+                    col #vnode_9450710714930605425 {
+                      row #vnode_9745558256209934083 {
+                        text #vnode_2002602024918776345 "Notes"
+                        text #vnode_2002584432732731494 "独立"
+                      }
+                      text #vnode_9745540664023889232 "Notes"
+                    }
+                  }
+                }
+                col #vnode_9503016685779175254 {
+                  button #vnode_13592069350613268258 "Calendar
+Calendar" {
+                    col #vnode_17910810575793991366 {
+                      row #vnode_9769553962168416882 {
+                        text #vnode_5826898996902465462 "Calendar"
+                        text #vnode_5826916589088510313 "可交互"
+                      }
+                      text #vnode_9769571554354461733 "Calendar"
+                    }
+                  }
+                }
+                col #vnode_9502928724848950999 {
+                  button #vnode_13515543341319112533 "Chat
+Chat" {
+                    col #vnode_4871077658982266223 {
+                      row #vnode_9889532491960830877 {
+                        text #vnode_6501639783111359431 "Chat"
+                        text #vnode_6501622190925314580 "独立"
+                      }
+                      text #vnode_9889514899774786026 "Chat"
+                    }
+                  }
+                }
+                col #vnode_9502911132662906148 {
+                  button #vnode_13500238139460281388 "Book Reader
+Book Reader" {
+                    col #vnode_13331177519845652164 {
+                      row #vnode_9913528197919313676 {
+                        text #vnode_10325936755095048548 "Book Reader"
+                        text #vnode_10325954347281093399 "独立"
+                      }
+                      text #vnode_9913545790105358527 "Book Reader"
+                    }
+                  }
+                }
+                col #vnode_9502963909221040701 {
+                  button #vnode_13546153745036774823 "Video App
+Video App" {
+                    col #vnode_6397622010965045957 {
+                      row #vnode_9841541080043865279 {
+                        text #vnode_17299789912853532813 "Video App"
+                        text #vnode_17299772320667487962 "独立"
+                      }
+                      text #vnode_9841523487857820428 "Video App"
+                    }
+                  }
+                }
+                col #vnode_9502946317034995850 {
+                  button #vnode_13530848543177943678 "Music & Video Player
+Music & Video Player" {
+                    col #vnode_14857721871828431898 {
+                      row #vnode_9865536786002348078 {
+                        text #vnode_2677342811127670314 "Music & Video Player"
+                        text #vnode_2677360403313715165 "可交互"
+                      }
+                      text #vnode_9865554378188392929 "Music & Video Player"
+                    }
+                  }
+                }
+                col #vnode_9502858356104771595 {
+                  button #vnode_13454322533883787953 "Blog Viewer
+Blog Viewer" {
+                    col #vnode_1817988955016706755 {
+                      row #vnode_9985515315794762073 {
+                        text #vnode_3352083597336564283 "Blog Viewer"
+                        text #vnode_3352066005150519432 "独立"
+                      }
+                      text #vnode_9985497723608717222 "Blog Viewer"
+                    }
+                  }
+                }
+                col #vnode_9502840763918726744 {
+                  button #vnode_13439017332024956808 "Kanban
+Kanban" {
+                    col #vnode_10278088815880092696 {
+                      row #vnode_10009511021753244872 {
+                        text #vnode_7176380569320253400 "Kanban"
+                        text #vnode_7176398161506298251 "独立"
+                      }
+                      text #vnode_10009528613939289723 "Kanban"
+                    }
+                  }
+                }
+                col #vnode_9502893540476861297 {
+                  button #vnode_13484932937601450243 "RealWorld
+RealWorld" {
+                    col #vnode_3344533306999486489 {
+                      row #vnode_9937523903877796475 {
+                        text #vnode_14150233727078737665 "RealWorld"
+                        text #vnode_14150216134892692814 "独立"
+                      }
+                      text #vnode_9937506311691751624 "RealWorld"
+                    }
+                  }
+                }
+                col #vnode_9502875948290816446 {
+                  button #vnode_13469627735742619098 "Charts
+Charts" {
+                    col #vnode_11804633167862872430 {
+                      row #vnode_9961519609836279274 {
+                        text #vnode_17974530699062426782 "Charts"
+                        text #vnode_17974548291248471633 "可交互"
+                      }
+                      text #vnode_9961537202022324125 "Charts"
+                    }
+                  }
+                }
+                col #vnode_9502787987360592191 {
+                  button #vnode_13393101726448463373 "Database Studio
+Database Studio" {
+                    col #vnode_17211644324760698903 {
+                      row #vnode_10081498139628693269 {
+                        text #vnode_202527411561769135 "Database Studio"
+                        text #vnode_202509819375724284 "可交互"
+                      }
+                      text #vnode_10081480547442648418 "Database Studio"
+                    }
+                  }
+                }
+                col #vnode_9502770395174547340 {
+                  button #vnode_13377796524589632228 "File Manager
+File Manager" {
+                    col #vnode_7225000111914533228 {
+                      row #vnode_10105493845587176068 {
+                        text #vnode_4026824383545458252 "File Manager"
+                        text #vnode_4026841975731503103 "可交互"
+                      }
+                      text #vnode_10105511437773220919 "File Manager"
+                    }
+                  }
+                }
+                col #vnode_9502823171732681893 {
+                  button #vnode_13423712130166125663 "Photo Gallery
+Photo Gallery" {
+                    col #vnode_291444603033927021 {
+                      row #vnode_10033506727711727671 {
+                        text #vnode_11000677541303942517 "Photo Gallery"
+                        text #vnode_11000659949117897666 "可交互"
+                      }
+                      text #vnode_10033489135525682820 "Photo Gallery"
+                    }
+                  }
+                }
+                col #vnode_9502805579546637042 {
+                  button #vnode_13408406928307294518 "Video Player
+Video Player" {
+                    col #vnode_8751544463897312962 {
+                      row #vnode_10057502433670210470 {
+                        text #vnode_14824974513287631634 "Video Player"
+                        text #vnode_14824992105473676485 "独立"
+                      }
+                      text #vnode_10057520025856255321 "Video Player"
+                    }
+                  }
+                }
+                col #vnode_9502717618616412787 {
+                  button #vnode_13331880919013138793 "Image Viewer
+Image Viewer" {
+                    col #vnode_14158555620795139435 {
+                      row #vnode_10177480963462624465 {
+                        text #vnode_15499715299496525603 "Image Viewer"
+                        text #vnode_15499697707310480752 "独立"
+                      }
+                      text #vnode_10177463371276579614 "Image Viewer"
+                    }
+                  }
+                }
+                col #vnode_9502700026430367936 {
+                  button #vnode_13316575717154307648 "Paint
+Paint" {
+                    col #vnode_4171911407948973760 {
+                      row #vnode_10201476669421107264 {
+                        text #vnode_877268197770663104 "Paint"
+                        text #vnode_877285789956707955 "可交互"
+                      }
+                      text #vnode_10201494261607152115 "Paint"
+                    }
+                  }
+                }
+                col #vnode_9502752802988502489 {
+                  button #vnode_13362491322730801083 "AutoEdit
+AutoEdit" {
+                    col #vnode_15685099972777919169 {
+                      row #vnode_10129489551545658867 {
+                        text #vnode_7851121355529147369 "AutoEdit"
+                        text #vnode_7851103763343102518 "独立"
+                      }
+                      text #vnode_10129471959359614016 "AutoEdit"
+                    }
+                  }
+                }
+                col #vnode_9502735210802457638 {
+                  button #vnode_13347186120871969938 "ClipboardBridge
+ClipboardBridge" {
+                    col #vnode_5698455759931753494 {
+                      row #vnode_10153485257504141666 {
+                        text #vnode_11675418327512836486 "ClipboardBridge"
+                        text #vnode_11675435919698881337 "独立"
+                      }
+                      text #vnode_10153502849690186517 "ClipboardBridge"
+                    }
+                  }
+                }
+                col #vnode_9503773149779103847 {
+                  button #vnode_14250193030543007493 "DndBridge
+DndBridge" {
+                    col #vnode_4614653959149876607 {
+                      row #vnode_8737738605953656525 {
+                        text #vnode_7402825864989797975 "DndBridge"
+                        text #vnode_7402808272803753124 "独立"
+                      }
+                      text #vnode_8737721013767611674 "DndBridge"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    scrollable #vnode_4289777634216808055 {
+      col #vnode_12797096093727462453 {
+        col #vnode_7440309935637812751 {
+          col #vnode_8742182554021542781 {
+            row #vnode_5393886225687582055 {
+              text #vnode_16382534950997810693 "Counter"
+              text #vnode_16382517358811765842 "002-counter"
+            }
+            text #vnode_5393868633501537204 "Counter"
+          }
+          col #vnode_8742164961835497930 {
+            row #vnode_5378581023828750910 {
+              row #vnode_6395890738151645018 {
+                text #vnode_12171520787056494062 "实时内嵌视口"
+                text #vnode_12171538379242538913 "• 运行中"
+              }
+              row #vnode_6395908330337689869 {
+                row #vnode_12186825988915325207 {
+                  button #vnode_2338891833947263509 "全宽"
+                  button #vnode_2338874241761218658 "桌面 (1024)"
+                  button #vnode_2338856649575173807 "平板 (768)"
+                }
+                button #vnode_12186808396729280356 "🔄 重置状态"
+              }
+            }
+            col #vnode_5378598616014795761 {
+              text #vnode_6411195940010476163 "[Image]"
+            }
+          }
+          col #vnode_8742147369649453079 {
+            row #vnode_5363275821969919765 {
+              button #vnode_14855990599015030959 "📖 教程与深度解析"
+              button #vnode_14855973006828986108 "💻 完整源码 (app.at)"
+              button #vnode_14856025783387120661 "📦 工程配置 (pac.at)"
+            }
+            col #vnode_5363258229783874914 {
+              col #vnode_14840685397156199814 {
+                text #vnode_2208872280168811186 "002-counter — Interactive Counter"
+                text #vnode_2208889872354856037 "An increment/decrement/reset counter with three buttons demonstrating the Elm Architecture (model/view/update) pattern in AURA — in its simplest form, using inline lambda handlers (Plan 448)."
+                text #vnode_2208837095796721484 "Concepts"
+                col #vnode_2208854687982766335 {
+                  row #vnode_14631979170893990221 {
+                    text #vnode_15814100463951203799 "• "
+                    col #vnode_15814082871765158948 {
+                      row #vnode_6327406394503651628 {
+                        text #vnode_259312580282195396 "Model"
+                        text #vnode_259330172468240247 " — The "
+                        text #vnode_259347764654285098 "model"
+                        text #vnode_259365356840329949 " block holds the widget’s mutable state ("
+                        text #vnode_259242211538015992 "var count int = 0"
+                        text #vnode_259259803724060843 ")"
+                      }
+                    }
+                  }
+                  row #vnode_14631961578707945370 {
+                    text #vnode_15798795262092372654 "• "
+                    col #vnode_15798812854278417505 {
+                      row #vnode_14818116659084699859 {
+                        text #vnode_1809852638223457929 "Inline lambda handlers"
+                        text #vnode_1809835046037413078 " — "
+                        text #vnode_1809817453851368227 "onclick: () => {.count += 1}"
+                        text #vnode_1809799861665323376 " binds a click directly to a state update; the compiler mints an anonymous event and synthesizes the handler, so simple callbacks need no "
+                        text #vnode_1809923006967637333 "msg"
+                        text #vnode_1809905414781592482 "/"
+                        text #vnode_1809887822595547631 "on"
+                        text #vnode_1809870230409502780 " round trip"
+                      }
+                    }
+                  }
+                  row #vnode_14631943986521900519 {
+                    text #vnode_15783490060233541509 "• "
+                    col #vnode_15783472468047496658 {
+                      row #vnode_4800862042520871894 {
+                        text #vnode_307303992199160994 "Compound assignment"
+                        text #vnode_307321584385205845 " — "
+                        text #vnode_307268807827071292 ".count += 1"
+                        text #vnode_307286400013116143 " / "
+                        text #vnode_307233623454981590 ".count -= 1"
+                        text #vnode_307251215641026441 " work in handler bodies on every backend"
+                      }
+                    }
+                  }
+                  row #vnode_14631926394335855668 {
+                    text #vnode_15768184858374710364 "• "
+                    col #vnode_15768202450560755215 {
+                      row #vnode_13291572307101920125 {
+                        text #vnode_1857844050140423527 "Button widget"
+                        text #vnode_1857826457954378676 " — "
+                        text #vnode_1857879234512513229 "button"
+                        text #vnode_1857861642326468378 " renders a clickable element with a label and event binding"
+                      }
+                    }
+                  }
+                  row #vnode_14631908802149810817 {
+                    text #vnode_15752879656515879219 "• "
+                    col #vnode_15752862064329834368 {
+                      row #vnode_3274317690538092160 {
+                        text #vnode_355295404116126592 "F-string interpolation"
+                        text #vnode_355312996302171443 " — "
+                        text #vnode_355330588488216294 "`Counter: ${.count}`"
+                        text #vnode_355348180674261145 " embeds model state in displayed text"
+                      }
+                    }
+                  }
+                }
+                text #vnode_2208801911424631782 "Source"
+                row #vnode_2208819503610676633 {
+                  text #vnode_14601368767176327931 "See "
+                  text #vnode_14601351174990283080 "front/app.at"
+                  text #vnode_14601403951548417633 ":"
+                }
+                container #vnode_2208766727052542080 {
+                  col #vnode_14555453161599834496 {
+                    container #vnode_2774367547139478656 {
+                      text #vnode_6462690126154896768 "auto"
+                    }
+                    container #vnode_2774385139325523507 {
+                      textarea #vnode_6477995328013727913
+                    }
+                  }
+                }
+                text #vnode_2208784319238586931 "When a widget outgrows the inline form (payload-carrying events, handlers
+called from several places), declare the events explicitly instead:"
+                container #vnode_2209013017657169994 {
+                  col #vnode_14769725987623470526 {
+                    container #vnode_13460178011018936794 {
+                      text #vnode_6126750242736137582 "auto"
+                    }
+                    container #vnode_13460195603204981645 {
+                      textarea #vnode_6142055444594968727
+                    }
+                  }
+                }
+                text #vnode_2209030609843214845 "How to Run"
+                container #vnode_2208977833285080292 {
+                  col #vnode_14739115583905808236 {
+                    container #vnode_11933633659036157060 {
+                      text #vnode_6174741654653103180 "bash"
+                    }
+                    container #vnode_11933651251222201911 {
+                      textarea #vnode_6190046856511934325
+                    }
+                  }
+                }
+                row #vnode_2208995425471125143 {
+                  text #vnode_14754420785764639381 "After "
+                  text #vnode_14754403193578594530 "auto gen"
+                  text #vnode_14754385601392549679 ", generated projects appear in:"
+                }
+                col #vnode_2208942648912990590 {
+                  row #vnode_14708505180188145946 {
+                    text #vnode_10407089307053377326 "• "
+                    col #vnode_10407106899239422177 {
+                      row #vnode_6238038268428899923 {
+                        text #vnode_1111116146056081161 "vue/"
+                        text #vnode_1111098553870036310 " — Vue 3 + shadcn-vue"
+                      }
+                    }
+                  }
+                  row #vnode_14708522772374190797 {
+                    text #vnode_10422394508912208471 "• "
+                    col #vnode_10422376916726163620 {
+                      row #vnode_16194072077557403308 {
+                        text #vnode_18007320161824370244 "jet/"
+                        text #vnode_18007337754010415095 " — Jetpack Compose (Kotlin)"
+                      }
+                    }
+                  }
+                  row #vnode_14708469995816056244 {
+                    text #vnode_10376478903335715036 "• "
+                    col #vnode_10376496495521759887 {
+                      row #vnode_4711493916446120189 {
+                        text #vnode_1159107557973046759 "ark/"
+                        text #vnode_1159089965787001908 " — ArkTS (HarmonyOS)"
+                      }
+                    }
+                  }
+                  row #vnode_14708487588002101095 {
+                    text #vnode_10391784105194546181 "• "
+                    col #vnode_10391766513008501330 {
+                      row #vnode_14667527725574623574 {
+                        text #vnode_18055311573741335842 "rust/"
+                        text #vnode_18055329165927380693 " — Rust GPUI"
+                      }
+                    }
+                  }
+                }
+                text #vnode_2208960241099035441 "Concepts Taught"
+                col #vnode_2208907464540900888 {
+                  row #vnode_14677894776470483656 {
+                    text #vnode_8880544955070597592 "• "
+                    col #vnode_8880562547256642443 {
+                      row #vnode_6286029680345865521 {
+                        text #vnode_8759710090023459395 "Elm Architecture: "
+                        text #vnode_8759692497837414544 "model"
+                        text #vnode_8759745274395549097 " block for state, inline lambdas or "
+                        text #vnode_8759727682209504246 "msg"
+                        text #vnode_8759780458767638799 "/"
+                        text #vnode_8759762866581593948 "on"
+                        text #vnode_8759815643139728501 " for events and updates"
+                      }
+                    }
+                  }
+                  row #vnode_14677912368656528507 {
+                    text #vnode_8895850156929428737 "• "
+                    col #vnode_8895832564743383886 {
+                      row #vnode_16242063489474368906 {
+                        text #vnode_7209170032082196862 "button"
+                        text #vnode_7209187624268241713 " widget with "
+                        text #vnode_7209134847710107160 "onclick"
+                        text #vnode_7209152439896152011 " event binding"
+                      }
+                    }
+                  }
+                  row #vnode_14677929960842573358 {
+                    text #vnode_8911155358788259882 "• "
+                    col #vnode_8911172950974304733 {
+                      row #vnode_7812574032328645255 {
+                        text #vnode_8711718678106493797 "row"
+                        text #vnode_8711701085920448946 " container for horizontal layout of buttons"
+                      }
+                    }
+                  }
+                  row #vnode_14677947553028618209 {
+                    text #vnode_8926460560647091027 "• "
+                    col #vnode_8926442968461046176 {
+                      row #vnode_17768607841457148640 {
+                        text #vnode_7161178620165231264 "F-string interpolation with "
+                        text #vnode_7161196212351276115 "${.count}"
+                        text #vnode_7161213804537320966 " to display reactive model values"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

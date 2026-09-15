@@ -10,7 +10,7 @@
 | auto-lang（语言核心） | active | 9 | [auto-lang/project.md](auto-lang/project.md) |
 | auto-val | active | 7 | [auto-val/project.md](auto-val/project.md) |
 | auto-atom | active | 3 | [auto-atom/project.md](auto-atom/project.md) |
-| a2r-std | active | 5 | [a2r-std/project.md](a2r-std/project.md) |
+| a2r-std | active | 7 | [a2r-std/project.md](a2r-std/project.md) |
 | stdlib | active | 8 | [stdlib/project.md](stdlib/project.md) |
 | aavm | experimental | 11 | [aavm/project.md](aavm/project.md) |
 
@@ -63,6 +63,8 @@
 | json | JSON 读写（serde_json） | active |
 | http | HTTP 客户端（ureq） | active |
 | fs / env / math / time | 文件系统、环境、数学、时间 | active |
+| sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
+| redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
 
 </details>
 
@@ -150,7 +152,7 @@
 | exporter | IDE 工程导出：cmake / ghs / iar | active |
 | git / index / lock / pull | 依赖获取、注册索引、锁文件 | active |
 | scanner / target / dir / cache | 工程扫描、target 目录管理、本地缓存 | active |
-| vue / tauri / jet / ark / rust_ui | 各前端生态的工程集成；vue 侧含 desktop 宿主 scaffold（Plan 465：`generate_desktop_host` + `assets/wm/` WM 运行时资产 rust_embed + `apps-registry.ts` 注册表生成；`auto run --desktop/--apps`；Plan 515：`assets/wm/Wallpaper.vue` 桌面壁纸层三档组件 + host App.vue 生成期配置注入 `shell.desktop.wallpaper`） | active |
+| vue / tauri / jet / ark / rust_ui | 各前端生态的工程集成；vue 侧含 desktop 宿主 scaffold（Plan 465：`generate_desktop_host` + `assets/wm/` WM 运行时资产 rust_embed + `apps-registry.ts` 注册表生成；`auto run --desktop/--apps`；Plan 515：`assets/wm/Wallpaper.vue` 桌面壁纸层三档组件 + host App.vue 生成期配置注入 `shell.desktop.wallpaper`）；画廊 VM demo 级联发射 `emit_gallery_vm_demos`（Plan 625 T-10/632：loadable 单 widget 示例改名 `Demo*` 相邻拷贝自有模块 + `AppViewport.vm.at` 条件实例化——发射器保证模块组件源可达，组件状态桥接为运行时职责，见 auto-lang docs/specs/auto-lang/ui/architecture.md ADR-20） | active |
 | api_gen / tauri_backend / vscode / pkg | API/后端/扩展代码生成器，包管理器抽象（bun/npm） | active |
 | asset / fs / util / version / error 等 | 基础设施与公共类型 | active |
 | up | 升级功能 | disabled（zip 依赖已移除，模块注释停用） |
@@ -243,7 +245,7 @@
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
 | auto-playground | active | 8 | [auto-playground/project.md](auto-playground/project.md) |
-| widgets | active | 3 | [widgets/project.md](widgets/project.md) |
+| widgets | active | 4 | [widgets/project.md](widgets/project.md) |
 | forge-ui | active | 4 | [forge-ui/project.md](forge-ui/project.md) |
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
 | playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
@@ -273,6 +275,7 @@
 | registry | 生成的 Vue3 组件原语（10 个 widget 目录） | active |
 | cli | `npx @auto-ui/widgets add/list` 命令 | active |
 | styles | Tailwind 配置与预编译 CSS 构建（build-styles.cjs / src/input.css） | active |
+| terminal-iced-draw | terminal iced widget 绘制期契约（draw 段落强引用规则 + 像素金样环境契约；auto-lang 侧,Plan 634） | active |
 
 </details>
 

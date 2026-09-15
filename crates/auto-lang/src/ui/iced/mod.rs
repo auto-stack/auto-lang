@@ -15,6 +15,13 @@ pub mod seek_area;
 // PLAN-002 B: 布局件 hover 态 widget(row/col/div 的 `hover:` 变体类消费;
 // 共享标志 + request_redraw,无 view 重建)。
 pub mod hover_area;
+// PLAN-631 F-7: 指针按下记忆根 wrapper(popover placement "pointer" 锚源;
+// 窗口根单包装,ButtonPressed 现场记账窗口逻辑坐标到会话级单槽,纯委托)。
+pub mod right_press_area;
+// PLAN-631 F-7: pointer placement headless 测试(iced_test 管线,
+// iced-layout-tests 门控)。
+#[cfg(all(test, feature = "iced-layout-tests"))]
+mod pointer_placement_tests;
 // Plan 547: native display surface backed by the shared media registry.
 pub mod image_surface;
 // Plan 563: pen 事件层 widget(canvas onpenstart/onpenmove/onpenend 承载,

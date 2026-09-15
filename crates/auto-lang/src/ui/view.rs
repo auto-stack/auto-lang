@@ -581,6 +581,14 @@ pub enum View<M: Clone + Debug> {
         /// 光标格(app 每拍从引擎回读喂入;0,0 = 未喂入的占位)。
         cursor_row: u16,
         cursor_col: u16,
+        /// PLAN-018 D10:配色方案(id;缺省 -1 = 跟随桌面主题 dark→0/
+        /// light→1;≥0 显式覆盖,scheme 表见 ui::terminal palette 面)。
+        scheme: i32,
+        /// PLAN-019 D4:应用级捷径表(规范化键名 → 消息;Terminal 键盘
+        /// 路径前置拦截——命中发消息不落 VT 队列,未命中原样透传)。
+        /// .at 面 = `onkeydown.<键名>: .Msg` 事件(Textarea keydown 同款
+        /// 收集);rust/vm 轨承诺,vue 声明透传不实现。
+        shortcuts: Vec<(String, M)>,
         style: Option<Style>,
     },
 
@@ -612,6 +620,21 @@ pub enum View<M: Clone + Debug> {
         label: String,
         on_toggle: Option<M>,
         style: Option<Style>,  // ✅ NEW: Unified styling support
+    },
+
+    /// PLAN-066: 原生外部组件透传变体（NativeWidgetEntry::Element 通道）。
+    /// 派发期由 NativeWidgetRegistry 命中 Element 入口时产出，name+props 明
+    /// 文透传（快照 kind=name，MCP 断言面保明；刻意不用 Box<dyn>——Clone/
+    /// Debug 与快照可枚举是硬约束），iced renderer 在 lowering 期查注册表
+    /// 取 Element factory。本计划无 Element factory 注册，renderer 落防御臂。
+    Custom {
+        /// 注册名（NativeWidgetRegistry 键，快照 kind）。
+        name: String,
+        /// 已解析属性透传（值经 builder 显示化；快照 props 原样在场）。
+        props: Vec<(String, String)>,
+        /// 事件→消息（派发期经 event_to_message 解析，与内置变体同源）。
+        events: Vec<(String, M)>,
+        style: Option<Style>,
     },
 
     /// Container wrapper for styling and layout
@@ -984,6 +1007,11 @@ pub enum PopoverPlacement {
     EdgeRight,
     EdgeTop,
     EdgeBottom,
+    /// PLAN-631 F-7: 指针定位——面板原点 = 最近一次右键指针位置（渲染器
+    /// 会话级单槽，iced/right_press_area 记账；未记录时回退 BottomStart
+    /// 锚件语义）。Win11 式右键菜单：触发 mouse-area 与 popover 面板可
+    /// 分离（单实例菜单挂视图根），坐标不进 VM 状态、不经消息回路。
+    Pointer,
 }
 
 impl PopoverPlacement {
@@ -1924,6 +1952,13 @@ impl<M: Clone + Debug> View<M> {
     {
         match self {
             View::Empty => View::Empty,
+            // PLAN-066: Custom 事件消息同源映射（name/props/style 原样透传）。
+            View::Custom { name, props, events, style } => View::Custom {
+                name,
+                props,
+                events: events.into_iter().map(|(n, m)| (n, f(m))).collect(),
+                style,
+            },
             // Plan 409 §10 续 5: Overlay 递归映射 base + content 的 message。
             View::Overlay { base, content, position } => View::Overlay {
                 base: Box::new(base.map_msg_with_arc(f)),
@@ -2058,7 +2093,7 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
-            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => View::Terminal {
+            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => View::Terminal {
                 key,
                 cols,
                 rows,
@@ -2070,6 +2105,8 @@ impl<M: Clone + Debug> View<M> {
                 on_input: on_input.map(|m| f(m)),
                 cursor_row,
                 cursor_col,
+                scheme,
+                shortcuts: shortcuts.into_iter().map(|(k, m)| (k, f(m))).collect(),
                 style,
             },
             View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style } => View::AutodownEditor {

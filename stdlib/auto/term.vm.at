@@ -57,3 +57,26 @@ fn engine_backlog_take_alerts(handle int) int
 
 #[vm]
 fn engine_backlog_dropped(handle int) int
+
+/// PLAN-018 D5 SpawnSpec:扩展 spawn(program/argv/cwd/几何)。
+/// argv 逐项透传(可空);cwd 空 = 继承宿主;返回句柄(0 = 失败)。
+#[vm]
+fn engine_spawn_ex(program str, argv []str, cwd str, cols int, rows int) int
+
+/// PLAN-018 D5 定向快照:样式旁路只投喂 `key` 对应的 terminal
+/// (多 Pane 各 key,广播旧件 engine_rows 保留为兼容面)。
+#[vm]
+fn engine_rows_for(handle int, key str) []str
+
+/// PLAN-018 D5 定向键入泵:只排空 `key` terminal 的队列并裸写该柄。
+#[vm]
+fn engine_pump_for(handle int, key str) int
+
+/// PLAN-018 D5 定向几何泵:只消费 `key` terminal 的待定 resize 请求。
+#[vm]
+fn engine_apply_resize_for(handle int, key str) int
+
+/// PLAN-015 D4 菜单动作载荷:terminal 右键菜单命中项(0=Copy 1=Paste
+/// 2=SelectAll 3=Interrupt;-1=无载荷;注册表任意端)。
+#[vm]
+fn engine_menu_take() int

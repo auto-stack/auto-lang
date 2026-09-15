@@ -31,8 +31,9 @@
 //! below — alacritty types never cross into this crate (零新依赖).
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 // ② iced adapter — the only iced dependency point of the terminal.
@@ -182,6 +183,9 @@ pub struct TerminalCore {
     /// 待应用几何(014:widget layout 由可用空间反推的 cols×rows;与
     /// 当前几何不同才落位,宿主 `apply_resize` 泵取走后调引擎 resize)。
     pending_resize: Mutex<Option<(u16, u16)>>,
+    /// PLAN-018 D10:配色方案(-1 = 跟随桌面主题 dark→0/light→1;≥0 =
+    /// 显式 scheme id)。widget 绘制时解析,零每格开销。
+    scheme: AtomicI32,
 }
 
 const BLINK_PERIOD_MS: u64 = 530;
@@ -205,7 +209,18 @@ impl TerminalCore {
             menu_item: Mutex::new(None),
             pending_input: Mutex::new(Vec::new()),
             pending_resize: Mutex::new(None),
+            scheme: AtomicI32::new(TERMINAL_SCHEME_FOLLOW_THEME),
         }
+    }
+
+    /// PLAN-018 D10: 当前配色方案(-1 = 跟随主题)。
+    pub fn scheme(&self) -> i32 {
+        self.scheme.load(Ordering::Relaxed)
+    }
+
+    /// PLAN-018 D10: 设置配色方案(scheme prop 显式覆盖;-1 = 跟随主题)。
+    pub fn set_scheme(&self, scheme: i32) {
+        self.scheme.store(scheme, Ordering::Relaxed);
     }
 
     /// Current content generation (damage epoch).
@@ -279,6 +294,7 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
             *fresh.selection.lock().unwrap() = core.selection.lock().unwrap().clone();
             *fresh.pending_input.lock().unwrap() = core.pending_input.lock().unwrap().clone();
             *fresh.pending_resize.lock().unwrap() = *core.pending_resize.lock().unwrap();
+            fresh.set_scheme(core.scheme());
             fresh
                 .scroll_offset
                 .store(core.scroll_offset.load(Ordering::Relaxed), Ordering::Relaxed);
@@ -292,6 +308,15 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
     let core: &'static TerminalCore = Box::leak(Box::new(TerminalCore::new(key, cols, rows)));
     map.insert(key.to_owned(), core);
     core
+}
+
+/// PLAN-018 D4/D5:按 key 取注册表 core(引擎 glue 的定向泵出口:
+/// `drain_inputs_for` / `take_resize_for` 需要柄;缺 key = None,调用方
+/// no-op)。只读不创建——落表权限仍归渲染面 [`terminal`]。
+pub fn terminal_core(key: &str) -> Option<&'static TerminalCore> {
+    let map = TERMINALS.lock().unwrap();
+    let map = map.as_ref()?;
+    map.get(key).copied()
 }
 
 /// Row digest: chars + fg + bg (style-only changes also invalidate).
@@ -364,6 +389,17 @@ pub fn terminal_feed_cells_all(row: usize, cells: Vec<TermCell>) {
     let Some(map) = map.as_mut() else { return };
     for core in map.values() {
         terminal_feed_cells(core, row, cells.clone());
+    }
+}
+
+/// PLAN-018 D4 per-key 定向投喂:styled sideband 只喂 `key` 对应的
+/// terminal(缺 key = no-op)。多 Pane 各 Pane 各 key,广播退役为兼容面
+/// (广播三件原样保留,其余消费者零扰)。
+pub fn terminal_feed_cells_for(key: &str, row: usize, cells: Vec<TermCell>) {
+    let map = TERMINALS.lock().unwrap();
+    let Some(map) = map.as_ref() else { return };
+    if let Some(core) = map.get(key) {
+        terminal_feed_cells(core, row, cells);
     }
 }
 
@@ -601,9 +637,25 @@ pub fn terminal_set_menu_item(core: &TerminalCore, item: u8) {
     *core.menu_item.lock().unwrap() = Some(item);
 }
 
-/// 菜单动作载荷读取(0=Copy 1=Paste 2=SelectAll)。**读取即取走**(take)。
+/// 菜单动作载荷读取(0=Copy 1=Paste 2=SelectAll 3=Interrupt/PLAN-015 D1)。
+/// **读取即取走**(take)。
 pub fn terminal_take_menu_item(core: &TerminalCore) -> Option<u8> {
     core.menu_item.lock().unwrap().take()
+}
+
+/// PLAN-015 D2:registry 级菜单载荷取走(任意 terminal;BTreeMap 键序
+/// 稳定,首个 Some 即返,镜像 [`terminal_take_any_resize`])——宿主泵
+/// 模式无 core 引用侧的载荷出口(at-app db.term_menu_take 消费;单
+/// Pane 应用为当前消费形态,多 Pane 定向化留 Mux 后续)。
+pub fn terminal_take_menu_item_any() -> Option<u8> {
+    let mut map = TERMINALS.lock().unwrap();
+    let map = map.as_mut()?;
+    for core in map.values() {
+        if let Some(item) = core.menu_item.lock().unwrap().take() {
+            return Some(item);
+        }
+    }
+    None
 }
 
 // ============================================================================
@@ -659,6 +711,87 @@ pub fn terminal_drain_all_inputs() -> Vec<String> {
     out
 }
 
+/// PLAN-018 D4 定向排空:只取 `core` 自己的键入队列(FIFO 整段取走;
+/// 其他 terminal 的队列不受扰)——焦点 Pane 全量泵的载荷出口。
+pub fn terminal_drain_inputs_for(core: &TerminalCore) -> Vec<String> {
+    let mut queue = core.pending_input.lock().unwrap();
+    std::mem::take(&mut *queue)
+}
+
+// ============================================================================
+// PLAN-018 D10: 配色方案解析面(scheme 表 + palette 缓存 + 主题跟随)
+// ============================================================================
+
+/// scheme prop 缺省哨兵:跟随桌面主题(theme::dark_mode:dark→0/light→1)。
+pub const TERMINAL_SCHEME_FOLLOW_THEME: i32 = -1;
+/// scheme 0 = classic-dark(与 016 定型行为逐字节一致)。
+pub const TERMINAL_SCHEME_CLASSIC_DARK: i32 = 0;
+/// scheme 1 = light(浅底深字;Windows Terminal "Solarized Light" 官方盘)。
+pub const TERMINAL_SCHEME_LIGHT: i32 = 1;
+
+/// 一个方案的 [18] rgb 表:[0]=def-fg、[1]=def-bg、[2..18]=base16。
+/// 内置表与 autoterm-core palette.rs 单源同值(渲染端回退基线;引擎在线
+/// 时由 glue 经 FFI `palette_color` 查询装载覆盖——引擎单源契约)。
+pub const TERMINAL_PALETTE_SLOTS: usize = 18;
+
+/// scheme 0 内置表(016 像素金样逐字节基线)。
+pub const PALETTE_CLASSIC_DARK: [u32; TERMINAL_PALETTE_SLOTS] = [
+    0xE8E8E8, 0x060709, 0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080, 0x008080,
+    0xC0C0C0, 0x808080, 0xFF0000, 0x00FF00, 0xFFFF00, 0x0000FF, 0xFF00FF, 0x00FFFF, 0xFFFFFF,
+];
+
+/// scheme 1 内置表(Windows Terminal "Solarized Light" 官方盘,xterm 序)。
+pub const PALETTE_LIGHT: [u32; TERMINAL_PALETTE_SLOTS] = [
+    0x586E75, 0xFDF6E3, 0x002B36, 0xDC322F, 0x859900, 0xB58900, 0x268BD2, 0xD33682, 0x2AA198,
+    0xEEE8D5, 0x93A1A1, 0xCB4B16, 0x586E75, 0x657B83, 0x839496, 0x6C71C4, 0x93A1A1, 0xFDF6E3,
+];
+
+/// 引擎装载的方案表缓存(scheme id → [18] rgb;glue 经 FFI 查询后写入,
+/// 未装载的方案回落内置表——无 DLL/旧 DLL 场景渲染不中断)。
+static PALETTES: Mutex<Option<HashMap<i32, [u32; TERMINAL_PALETTE_SLOTS]>>> = Mutex::new(None);
+
+/// glue 装载口(engine 单源覆盖内置表;同 id 重复装载 = 覆盖 = scheme
+/// 切换失效语义的装载臂)。
+pub fn terminal_palette_load(scheme: i32, table: [u32; TERMINAL_PALETTE_SLOTS]) {
+    let mut map = PALETTES.lock().unwrap();
+    map.get_or_insert_with(HashMap::new).insert(scheme, table);
+}
+
+/// 解析方案生效表:引擎装载缓存优先,否则内置回退表(未知 id 回落
+/// classic-dark)。
+pub fn terminal_effective_palette(scheme: i32) -> [u32; TERMINAL_PALETTE_SLOTS] {
+    if let Ok(map) = PALETTES.lock() {
+        if let Some(map) = map.as_ref() {
+            if let Some(table) = map.get(&scheme) {
+                return *table;
+            }
+        }
+    }
+    builtin_palette(scheme)
+}
+
+/// 内置回退表(未知 scheme = classic-dark)。
+pub fn builtin_palette(scheme: i32) -> [u32; TERMINAL_PALETTE_SLOTS] {
+    if scheme == TERMINAL_SCHEME_LIGHT {
+        PALETTE_LIGHT
+    } else {
+        PALETTE_CLASSIC_DARK
+    }
+}
+
+/// 方案解析:显式 scheme ≥0 直用;否则跟随桌面主题(dark→0/light→1)。
+pub fn terminal_resolve_scheme(core: &TerminalCore) -> i32 {
+    let scheme = core.scheme();
+    if scheme >= 0 {
+        return scheme;
+    }
+    if crate::ui::style::theme::dark_mode() {
+        TERMINAL_SCHEME_CLASSIC_DARK
+    } else {
+        TERMINAL_SCHEME_LIGHT
+    }
+}
+
 // ============================================================================
 // 几何随动(014:窗口 resize → 引擎 resize → View 几何回流)
 // ============================================================================
@@ -695,6 +828,13 @@ pub fn terminal_take_any_resize() -> Option<(u16, u16)> {
         }
     }
     None
+}
+
+/// PLAN-018 D4 定向几何出口:只取 `core` 自己的待定几何请求(广播/任意
+/// 语义的 `terminal_take_any_resize` 退役为兼容面)——多 Pane 请求互不
+/// 串线,焦点 Pane 的 resize 请求由其宿主泵定向消费。
+pub fn terminal_take_resize_for(core: &TerminalCore) -> Option<(u16, u16)> {
+    core.pending_resize.lock().unwrap().take()
 }
 
 /// Display width of a character in cells (dependency-free compact table:
@@ -978,6 +1118,30 @@ mod tests {
         terminal_dispose("t4-menu-1");
     }
 
+    /// PLAN-015 D2:registry 级菜单载荷取走——多终端取走语义(BTreeMap
+    /// 键序稳定,首个 Some 即返;取走即清;注册但无载荷 = None)。
+    #[test]
+    fn menu_item_any_takes_across_terminals() {
+        terminal_dispose("p015-menu-1");
+        terminal_dispose("p015-menu-2");
+        assert_eq!(terminal_take_menu_item_any(), None, "无载荷 = None");
+        let a = terminal("p015-menu-1", 40, 6);
+        let b = terminal("p015-menu-2", 40, 6);
+        assert_eq!(terminal_take_menu_item_any(), None, "注册但无载荷 = None");
+        // 单端载荷:跨键可取(宿主泵模式无 core 引用)。
+        terminal_set_menu_item(b, 3); // Interrupt
+        assert_eq!(terminal_take_menu_item_any(), Some(3));
+        assert_eq!(terminal_take_menu_item_any(), None, "取走即清");
+        // 双端载荷:键序稳定先取 a(p015-menu-1 < p015-menu-2)。
+        terminal_set_menu_item(a, 0);
+        terminal_set_menu_item(b, 3);
+        assert_eq!(terminal_take_menu_item_any(), Some(0), "键序稳定,先 a");
+        assert_eq!(terminal_take_menu_item_any(), Some(3));
+        assert_eq!(terminal_take_menu_item_any(), None);
+        terminal_dispose("p015-menu-1");
+        terminal_dispose("p015-menu-2");
+    }
+
     #[test]
     fn input_queue_fifo_and_drain_all() {
         terminal_dispose("t4-in-1");
@@ -1019,6 +1183,86 @@ mod tests {
         terminal_request_resize(core, 0, u16::MAX);
         assert_eq!(terminal_take_any_resize(), Some((MIN_RESIZE_COLS, MAX_RESIZE_ROWS)));
         terminal_dispose("t4-rs-1");
+    }
+
+    // ==== PLAN-018 D4:per-key 定向泵(多 key 互不取走;缺 key no-op)====
+    #[test]
+    fn palette_fallback_and_engine_override() {
+        terminal_dispose("p18-scheme-1");
+        let core = terminal("p18-scheme-1", 20, 4);
+        // 缺省 = 跟随主题(-1);测试线程 dark_mode 缺省 true → classic-dark。
+        assert_eq!(core.scheme(), TERMINAL_SCHEME_FOLLOW_THEME);
+        assert_eq!(terminal_resolve_scheme(core), TERMINAL_SCHEME_CLASSIC_DARK);
+        // classic-dark 内置表与 016 定型常量逐字节一致(像素金样基线)。
+        let pal = terminal_effective_palette(TERMINAL_SCHEME_CLASSIC_DARK);
+        assert_eq!(pal, PALETTE_CLASSIC_DARK);
+        assert_eq!(pal[0], 0xE8E8E8);
+        assert_eq!(pal[1], 0x060709);
+        // 显式覆盖:scheme prop ≥0 直用。
+        core.set_scheme(TERMINAL_SCHEME_LIGHT);
+        assert_eq!(terminal_resolve_scheme(core), TERMINAL_SCHEME_LIGHT);
+        // 未装载时 light 走内置表(浅底深字)。
+        let light = terminal_effective_palette(TERMINAL_SCHEME_LIGHT);
+        assert_eq!(light, PALETTE_LIGHT);
+        assert_eq!(light[1], 0xFDF6E3);
+        // 引擎装载覆盖内置(单源生效;同 id 重复装载 = 覆盖)。
+        let mut loaded = PALETTE_LIGHT;
+        loaded[1] = 0x11_22_33;
+        terminal_palette_load(TERMINAL_SCHEME_LIGHT, loaded);
+        assert_eq!(terminal_effective_palette(TERMINAL_SCHEME_LIGHT)[1], 0x11_22_33);
+        // 未知 scheme 回落 classic-dark(渲染不中断)。
+        assert_eq!(terminal_effective_palette(99), PALETTE_CLASSIC_DARK);
+        core.set_scheme(TERMINAL_SCHEME_FOLLOW_THEME);
+        terminal_dispose("p18-scheme-1");
+    }
+
+    #[test]
+    fn per_key_feed_cells_is_directional() {
+        terminal_dispose("p18-feed-a");
+        terminal_dispose("p18-feed-b");
+        let a = terminal("p18-feed-a", 20, 4);
+        let _b = terminal("p18-feed-b", 20, 4);
+        let cells = vec![TermCell { ch: 'x', fg: TermColor::Indexed(1), bg: TermColor::Default }];
+
+        // 缺 key:no-op(不 panic、不投喂任何端)。
+        terminal_feed_cells_for("p18-missing", 0, cells.clone());
+        assert_eq!(a.line(0).as_deref(), Some(""), "缺 key 喂养不得落到任何端");
+        assert_eq!(terminal_take_damage(a), TerminalDamage::None);
+
+        // 命中 key:只喂它,另一端不动。
+        terminal_feed_cells_for("p18-feed-a", 0, cells);
+        assert_eq!(a.line(0).as_deref(), Some("x"));
+        assert_eq!(a.row_cells(0).unwrap()[0].fg, TermColor::Indexed(1));
+        assert_eq!(terminal_take_damage(a), TerminalDamage::Lines(vec![0]));
+        let _ = _b;
+        terminal_dispose("p18-feed-a");
+        terminal_dispose("p18-feed-b");
+    }
+
+    #[test]
+    fn per_key_drain_and_resize_are_directional() {
+        terminal_dispose("p18-pump-a");
+        terminal_dispose("p18-pump-b");
+        let a = terminal("p18-pump-a", 20, 4);
+        let b = terminal("p18-pump-b", 20, 4);
+
+        // 键入:A 两键、B 一键——定向排空各取各的,互不串。
+        terminal_push_input(a, "a1");
+        terminal_push_input(a, "a2");
+        terminal_push_input(b, "b1");
+        assert_eq!(terminal_drain_inputs_for(a), vec!["a1".to_owned(), "a2".to_owned()]);
+        assert_eq!(terminal_drain_inputs_for(a), Vec::<String>::new(), "排空即净");
+        assert_eq!(terminal_drain_inputs_for(b), vec!["b1".to_owned()], "A 的排空不得带走 B 的载荷");
+        // 广播旧件兼容面仍在(此处两端皆空 → 空)。
+        assert_eq!(terminal_drain_all_inputs(), Vec::<String>::new());
+
+        // 几何:A 落请求,定向取只动 A,B 的 None 不受扰。
+        terminal_request_resize(a, 60, 20);
+        assert_eq!(terminal_take_resize_for(b), None, "A 的请求不得被 B 的定向泵取走");
+        assert_eq!(terminal_take_resize_for(a), Some((60, 20)));
+        assert_eq!(terminal_take_resize_for(a), None, "取走即清");
+        terminal_dispose("p18-pump-a");
+        terminal_dispose("p18-pump-b");
     }
 
     #[test]

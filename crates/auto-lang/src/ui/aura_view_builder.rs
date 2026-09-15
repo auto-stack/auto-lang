@@ -112,6 +112,10 @@ pub struct AuraViewBuilder<'a> {
     /// Optional widget registry for child widget rendering
     widget_registry: Option<&'a crate::ui::widget_registry::WidgetRegistry>,
 
+    /// PLAN-066: 原生外部组件注册表（NativeWidgetRegistry）。缺省=进程级
+    /// global（feature 门控内置注册）；测试经 with_native_registry 注入。
+    native_registry: Option<&'a crate::ui::native_widget::NativeWidgetRegistry>,
+
     /// Plan 318: imported declarations shared with child widgets.
     import_stmts: Option<&'a [crate::ast::Stmt]>,
 
@@ -265,6 +269,7 @@ impl<'a> AuraViewBuilder<'a> {
             bridge,
             widget_name: widget_name.to_string(),
             widget_registry: None,
+            native_registry: Some(crate::ui::native_widget::global()),
             import_stmts: None,
             override_state_obj_id: None,
             routes: None,
@@ -286,6 +291,7 @@ impl<'a> AuraViewBuilder<'a> {
             bridge,
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
+            native_registry: Some(crate::ui::native_widget::global()),
             import_stmts: None,
             override_state_obj_id: None,
             routes: None,
@@ -311,6 +317,7 @@ impl<'a> AuraViewBuilder<'a> {
             bridge,
             widget_name: widget_name.to_string(),
             widget_registry: Some(registry),
+            native_registry: Some(crate::ui::native_widget::global()),
             import_stmts: Some(import_stmts),
             override_state_obj_id: None,
             routes: None,
@@ -320,6 +327,16 @@ impl<'a> AuraViewBuilder<'a> {
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
         }
+    }
+
+    /// PLAN-066: 注入自有 NativeWidgetRegistry（测试隔离面；生产构造器缺省
+    /// 绑定进程级 global）。
+    pub fn with_native_registry(
+        mut self,
+        registry: &'a crate::ui::native_widget::NativeWidgetRegistry,
+    ) -> Self {
+        self.native_registry = Some(registry);
+        self
     }
 
     /// Plan 401/VM-routing: attach the root widget's route table so `outlet`
@@ -1729,68 +1746,12 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-009 P1: native terminal component(auto-term 引擎网格)。
             "terminal" | "Terminal" => self.convert_terminal(props, events, bindings),
-            // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
-            // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
-            "autodown_editor" | "autodowneditor" => {
-                #[cfg(all(feature = "autodown", feature = "code-editor"))]
-                {
-                    let key = self
-                        .extract_string_with(props, "key", bindings)
-                        .or_else(|| self.extract_string_with(props, "id", bindings))
-                        .unwrap_or_else(|| "doc".to_owned());
-                    let value = self
-                        .extract_string_with(props, "content", bindings)
-                        .or_else(|| self.extract_string_with(props, "value", bindings))
-                        .unwrap_or_default();
-                    let is_final = props
-                        .get("final")
-                        .map(|v| match v {
-                            AuraPropValue::Expr(expr) => {
-                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
-                            }
-                            _ => None,
-                        })
-                        .flatten()
-                        .unwrap_or(true);
-                    let on_change = aura_events_get_base(events, "oninput")
-                        .or_else(|| aura_events_get_base(events, "input"))
-                        .or_else(|| aura_events_get_base(events, "onchange"))
-                        .or_else(|| aura_events_get_base(events, "change"))
-                        .map(|event| self.event_to_message(&event.handler));
-                    let style = self.extract_style_with(props, bindings);
-                    // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
-                    // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
-                    // 忽略」豁免摘除）。
-                    let placeholder = self.extract_string_with(props, "placeholder", bindings);
-                    // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
-                    //（DocEditor 全内容高、外滚）外包 View::Scrollable，
-                    // 编辑栏 offset 绑定写入 + onscroll 消息读出。
-                    // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
-                    // ghost 消息）。
-                    let p063_editor_sk = crate::ui::autodown_editor::storage_key(key.as_str());
-                    let (scroll_sync, offset, on_scroll, _details) =
-                        self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
-                    let on_focus = self.autodown_on_focus_binding(events);
-                    // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
-                    // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
-                    // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
-                    // 到内容全高（外滚）。编辑壳自身样式保留在内层。
-                    if scroll_sync {
-                        return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
-                            width: None,
-                            height: None,
-                            style: Style::parse("w-full h-full").ok(),
-                            auto_scroll: false,
-                            offset,
-                            on_scroll,
-                        };
-                    }
-                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style };
-                }
-                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
-                self.convert_textarea(props, events, bindings)
-            }
+            // Plan 019 批次九拆分（PLAN-066 T2 迁出）：`autodown_editor` 别名
+            // 走可编辑文档编辑器——原硬编码臂迁经 NativeWidgetRegistry 派发
+            // （native_widget::global 注册，案 a sugar：factory 仍产
+            // View::AutodownEditor，快照 kind 与断言面零改动）。臂体见
+            // convert_autodown_editor_native；无 feature 时 global 注册
+            // convert_textarea 降级（D-GAP-3 链保持）。
 
             // Plan 019 批次七: markdown/autodown → 只读真渲染（autodown-core
             // parse_blocks → 面板树 → View）。无 feature 时维持 D-GAP-3
@@ -1910,7 +1871,13 @@ impl<'a> AuraViewBuilder<'a> {
             // (capture_debug=false)时 record_event 早退,零开销。
             "menubar" => {
                 let p = path.clone();
-                self.convert_menubar(props, bindings, Some((&p, probe)))
+                // PLAN-630 T-01: 有子节点 = 声明式组件族；空标签 = actions
+                // DSL 合成（向后兼容，T10 热重载锚不受影响）。
+                if !children.is_empty() {
+                    self.convert_menubar_component(props, children, bindings, Some((&p, probe)))
+                } else {
+                    self.convert_menubar(props, bindings, Some((&p, probe)))
+                }
             }
             "toolbar" => {
                 let p = path.clone();
@@ -1934,7 +1901,15 @@ impl<'a> AuraViewBuilder<'a> {
                     .and_then(|r| r.get(tag))
                     .is_none() =>
             {
-                self.convert_icon_component(tag, props, bindings)
+                // PLAN-625 T-09(b): 非 icon 的 web-ecosystem 组件不再画 lucide
+                // glyph 占位（组件 ≠ 图标;ui-gallery AppViewport 实证=空盒无
+                // 信息）——降级为可读占位卡（组件名 + Web 专属提示）。
+                // 含 "icon" 的 tag 保持 glyph 路径（图标组件向后兼容）。
+                if tag.contains("icon") {
+                    self.convert_icon_component(tag, props, bindings)
+                } else {
+                    self.convert_web_component_placeholder(tag, props, bindings)
+                }
             }
 
             // Child widget lookup or fallback.
@@ -1956,6 +1931,11 @@ impl<'a> AuraViewBuilder<'a> {
                 // 避免落 fallback 产生占位噪音。
                 if tag == "toast-provider" || tag == "toast_provider" || tag == "toaster" {
                     return View::Empty;
+                }
+                // PLAN-066: 原生外部组件注册表——内置臂穷尽后、.at AuraWidget
+                // 前查（原生优先语义保持，提案 066 §3.3）。命中即接管。
+                if let Some(nv) = self.native_widget_view(tag, props, events, children, bindings) {
+                    return nv;
                 }
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
@@ -2724,6 +2704,54 @@ impl<'a> AuraViewBuilder<'a> {
     /// PLAN-054 T4 (A11): `class` prop 下传——musk 会话卡 "N 条" 行
     /// `Info { size: 11, class: "text-muted-foreground shrink-0 ml-auto" }`
     /// 的 ml-auto/着色此前整串丢弃,图标紧跟文本而非贴行右端。
+    /// PLAN-625 T-09(b): web-ecosystem 组件的 VM 降级占位卡——组件名 +
+    /// Web 专属提示 + 尽力展示首个字符串型 prop 值（如 AppViewport 的
+    /// `app: .selected_id`）。零交互、纯可读，Vue 臂不受影响。
+    fn convert_web_component_placeholder(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let mut lines = vec![format!("⚙ {tag}（Web 端组件）")];
+        for key in ["app", "id", "name", "src", "value"] {
+            if let Some(v) = self.extract_string_with(props, key, bindings) {
+                if !v.is_empty() {
+                    lines.push(format!("{key}: {v}"));
+                }
+            }
+        }
+        lines.push(
+            "该内嵌容器为 Web 端组件，VM 端暂不内嵌示例画面；完整交互请使用 auto run（Vue 端）查看".to_string(),
+        );
+        let mut children: Vec<View<DynamicMessage>> = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            let cls = if i == 0 {
+                "text-xs font-mono text-muted-foreground"
+            } else if i == lines.len() - 1 {
+                "text-[11px] text-muted-foreground/80"
+            } else {
+                "text-[11px] font-mono text-muted-foreground/70"
+            };
+            children.push(View::Text {
+                style: Style::parse(cls).ok(),
+                content: line.clone(),
+                selectable: false,
+            });
+        }
+        View::Column {
+            children,
+            spacing: 4,
+            padding: 0,
+            style: Style::parse(
+                "w-full rounded-lg border border-border/60 bg-muted/30 items-center justify-center gap-1 p-3",
+            )
+            .ok(),
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
     fn convert_icon_component(
         &self,
         tag: &str,
@@ -3016,6 +3044,134 @@ impl<'a> AuraViewBuilder<'a> {
         })
     }
 
+    /// PLAN-066 T2: `autodown_editor` 转换体——原两站点硬编码字符串臂
+    /// （"autodown_editor" | "autodowneditor"，臂体逐字节相同）的公共提取，
+    /// 经 NativeWidgetRegistry 派发（native_widget::global 注册；案 a
+    /// sugar：内部仍产 View::AutodownEditor，快照 kind 与 vm-smoke 断言面
+    /// 零改动）。门控同原臂；无 feature 时 global 注册 convert_textarea
+    /// 降级（D-GAP-3 链保持）。
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    pub(crate) fn convert_autodown_editor_native(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let key = self
+            .extract_string_with(props, "key", bindings)
+            .or_else(|| self.extract_string_with(props, "id", bindings))
+            .unwrap_or_else(|| "doc".to_owned());
+        let value = self
+            .extract_string_with(props, "content", bindings)
+            .or_else(|| self.extract_string_with(props, "value", bindings))
+            .unwrap_or_default();
+        let is_final = props
+            .get("final")
+            .map(|v| match v {
+                AuraPropValue::Expr(expr) => {
+                    self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
+                }
+                _ => None,
+            })
+            .flatten()
+            .unwrap_or(true);
+        let on_change = aura_events_get_base(events, "oninput")
+            .or_else(|| aura_events_get_base(events, "input"))
+            .or_else(|| aura_events_get_base(events, "onchange"))
+            .or_else(|| aura_events_get_base(events, "change"))
+            .map(|event| self.event_to_message(&event.handler));
+        let style = self.extract_style_with(props, bindings);
+        // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
+        // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
+        // 忽略」豁免摘除）。
+        let placeholder = self.extract_string_with(props, "placeholder", bindings);
+        // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
+        //（DocEditor 全内容高、外滚）外包 View::Scrollable，
+        // 编辑栏 offset 绑定写入 + onscroll 消息读出。
+        // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
+        // ghost 消息）。
+        let p063_editor_sk = crate::ui::autodown_editor::storage_key(key.as_str());
+        let (scroll_sync, offset, on_scroll, _details) =
+            self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
+        let on_focus = self.autodown_on_focus_binding(events);
+        // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
+        // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
+        // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
+        // 到内容全高（外滚）。编辑壳自身样式保留在内层。
+        if scroll_sync {
+            return View::Scrollable {
+                child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
+                width: None,
+                height: None,
+                style: Style::parse("w-full h-full").ok(),
+                auto_scroll: false,
+                offset,
+                on_scroll,
+            };
+        }
+        View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }
+    }
+
+    /// PLAN-066: 原生外部组件注册表派发——内置臂穷尽后、.at AuraWidget 前查
+    /// （原生优先语义保持；提案 066 §3.3 派发序）。registry 字段缺席回落进
+    /// 程级 global（feature 门控注册；测试经 with_native_registry 注入自有
+    /// 实例隔离）。View 工厂命中=直接产 View；Element 入口命中=产
+    /// View::Custom（name+props 明文透传，排序保快照确定性）；工厂返回
+    /// None=放弃接手，继续后续派发链。
+    fn native_widget_view(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> Option<View<DynamicMessage>> {
+        let registry = match self.native_registry {
+            Some(r) => r,
+            None => crate::ui::native_widget::global(),
+        };
+        let entry = registry.lookup(tag)?;
+        match entry {
+            crate::ui::native_widget::NativeWidgetEntry::View(factory) => {
+                let ctx = crate::ui::native_widget::NativeCtx {
+                    builder: self,
+                    tag,
+                    props,
+                    events,
+                    children,
+                    bindings,
+                };
+                factory(&ctx)
+            }
+            crate::ui::native_widget::NativeWidgetEntry::Element => {
+                // Element 通道：Expr 属性经 resolve→display，StyleBinding 跳过
+                // （样式走 style 面）。HashMap 迭代序不定——按键排序保快照
+                // 确定性（MCP 断言面依赖）。
+                let mut resolved: Vec<(String, String)> = props
+                    .iter()
+                    .filter_map(|(k, v)| match v {
+                        AuraPropValue::Expr(expr) => self
+                            .resolve_expr_to_value(expr, bindings)
+                            .map(|val| (k.clone(), value_to_display_string(&val))),
+                        AuraPropValue::StyleBinding(_) => None,
+                    })
+                    .collect();
+                resolved.sort();
+                let mut evs: Vec<(String, DynamicMessage)> = events
+                    .iter()
+                    .map(|(k, ev)| (k.clone(), self.event_to_message(&ev.handler)))
+                    .collect();
+                evs.sort_by(|a, b| a.0.cmp(&b.0));
+                Some(View::Custom {
+                    name: tag.to_string(),
+                    props: resolved,
+                    events: evs,
+                    style: self.extract_style_with(props, bindings),
+                })
+            }
+        }
+    }
+
     fn convert_element(
         &self,
         tag: &str,
@@ -3104,7 +3260,15 @@ impl<'a> AuraViewBuilder<'a> {
                     .and_then(|r| r.get(tag))
                     .is_none() =>
             {
-                self.convert_icon_component(tag, props, bindings)
+                // PLAN-625 T-09(b): 非 icon 的 web-ecosystem 组件不再画 lucide
+                // glyph 占位（组件 ≠ 图标;ui-gallery AppViewport 实证=空盒无
+                // 信息）——降级为可读占位卡（组件名 + Web 专属提示）。
+                // 含 "icon" 的 tag 保持 glyph 路径（图标组件向后兼容）。
+                if tag.contains("icon") {
+                    self.convert_icon_component(tag, props, bindings)
+                } else {
+                    self.convert_web_component_placeholder(tag, props, bindings)
+                }
             }
 
             // Core element widgets
@@ -3377,68 +3541,12 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-009 P1: native terminal component(auto-term 引擎网格)。
             "terminal" | "Terminal" => self.convert_terminal(props, events, bindings),
-            // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
-            // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
-            "autodown_editor" | "autodowneditor" => {
-                #[cfg(all(feature = "autodown", feature = "code-editor"))]
-                {
-                    let key = self
-                        .extract_string_with(props, "key", bindings)
-                        .or_else(|| self.extract_string_with(props, "id", bindings))
-                        .unwrap_or_else(|| "doc".to_owned());
-                    let value = self
-                        .extract_string_with(props, "content", bindings)
-                        .or_else(|| self.extract_string_with(props, "value", bindings))
-                        .unwrap_or_default();
-                    let is_final = props
-                        .get("final")
-                        .map(|v| match v {
-                            AuraPropValue::Expr(expr) => {
-                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
-                            }
-                            _ => None,
-                        })
-                        .flatten()
-                        .unwrap_or(true);
-                    let on_change = aura_events_get_base(events, "oninput")
-                        .or_else(|| aura_events_get_base(events, "input"))
-                        .or_else(|| aura_events_get_base(events, "onchange"))
-                        .or_else(|| aura_events_get_base(events, "change"))
-                        .map(|event| self.event_to_message(&event.handler));
-                    let style = self.extract_style_with(props, bindings);
-                    // PLAN-048 T7（W4）：placeholder 空态文案真消费——编辑壳
-                    // content 空且非聚焦时渲染浅灰占位（Plan 040「读取后
-                    // 忽略」豁免摘除）。
-                    let placeholder = self.extract_string_with(props, "placeholder", bindings);
-                    // PLAN-043 T3：scroll_sync 消费同 autodown 臂——编辑壳
-                    //（DocEditor 全内容高、外滚）外包 View::Scrollable，
-                    // 编辑栏 offset 绑定写入 + onscroll 消息读出。
-                    // PLAN-044 T4：onfocus 事件进 on_focus 读出臂（块聚焦
-                    // ghost 消息）。
-                    let p063_editor_sk = crate::ui::autodown_editor::storage_key(key.as_str());
-                    let (scroll_sync, offset, on_scroll, _details) =
-                        self.autodown_scroll_binding(props, events, bindings, Some(p063_editor_sk.as_str()));
-                    let on_focus = self.autodown_on_focus_binding(events);
-                    // PLAN-043 T6：包装层取纯 w-full h-full 合成样式——元素
-                    // class（flex-1/min-h-0/overflow-hidden 混合）直接挂
-                    // Scrollable 实测炸布局；Fill×Fill 视口约束 + 内层收缩
-                    // 到内容全高（外滚）。编辑壳自身样式保留在内层。
-                    if scroll_sync {
-                        return View::Scrollable {
-                            child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }),
-                            width: None,
-                            height: None,
-                            style: Style::parse("w-full h-full").ok(),
-                            auto_scroll: false,
-                            offset,
-                            on_scroll,
-                        };
-                    }
-                    return View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style };
-                }
-                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
-                self.convert_textarea(props, events, bindings)
-            }
+            // Plan 019 批次九拆分（PLAN-066 T2 迁出）：`autodown_editor` 别名
+            // 走可编辑文档编辑器——原硬编码臂迁经 NativeWidgetRegistry 派发
+            // （native_widget::global 注册，案 a sugar：factory 仍产
+            // View::AutodownEditor，快照 kind 与断言面零改动）。臂体见
+            // convert_autodown_editor_native；无 feature 时 global 注册
+            // convert_textarea 降级（D-GAP-3 链保持）。
 
             // Plan 019 批次七: markdown/autodown → 只读真渲染（autodown-core
             // parse_blocks → 面板树 → View）。无 feature 时维持 D-GAP-3
@@ -4188,6 +4296,11 @@ let tabs_inner = View::Row {
                         )).ok(),
                         on_right_click: None,
                     };
+                }
+                // PLAN-066: 原生外部组件注册表——内置臂穷尽后、.at AuraWidget
+                // 前查（原生优先语义保持，提案 066 §3.3）。命中即接管。
+                if let Some(nv) = self.native_widget_view(tag, props, events, children, bindings) {
+                    return nv;
                 }
                 // Check if this tag matches a registered child widget
                 if let Some(registry) = self.widget_registry {
@@ -5529,7 +5642,13 @@ let tabs_inner = View::Row {
     /// 渲染期补发一次(每渲染帧重放)。handler 缺失(HandlerNotFound)静默
     /// —— namespaced 导出不存在 = 该子组件没有 Init,常态;其余错误记
     /// warn 不中断渲染。
-    fn fire_child_init_if_any(&self, child_widget: &crate::aura::AuraWidget, state_obj_id: u64) {
+    fn fire_child_init_if_any(
+        &self,
+        child_widget: &crate::aura::AuraWidget,
+        state_obj_id: u64,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) {
         // Init 在提取期被移入 lifecycle 向量(extract.rs),不在 handlers 表。
         let has_init = child_widget
             .lifecycle
@@ -5543,7 +5662,16 @@ let tabs_inner = View::Row {
         // Init(ForgeStore.Init→LoadSessionList)随帧重入(musk 单会话期
         // 1.6 万+次实录);props 仍每帧重播种(ensure_child_state),派生值
         // 响应沿 vue 语义归 watch/computed。
-        if !self.bridge.child_init_first_mount(&child_widget.name) {
+        // os-config 016: 挂载身份 = 组件名 + 调用点 `key:` prop(可解析时)
+        // ——对齐 vue 的按 key 重挂载语义:同名子件 key 变化(含切回先前
+        // key)即重发 Init,否则子件继续渲染上一个 key 的数据体。无 key
+        // 调用点身份即组件名,每帧不变,536 防重放语义不变。
+        let init_identity = self
+            .extract_string_with(props, "key", bindings)
+            .filter(|k| !k.is_empty())
+            .map(|k| format!("{}#{}", child_widget.name, k))
+            .unwrap_or_else(|| child_widget.name.clone());
+        if !self.bridge.child_init_should_fire(&child_widget.name, &init_identity) {
             return;
         }
         if let Err(e) = self
@@ -5651,7 +5779,7 @@ let tabs_inner = View::Row {
         // onMounted 正常,跨轨语义缺口)。统一 state 架构下逐实例顺序
         // props → Init → build,每个渲染帧重放:纯派生 Init 幂等;副作用
         // 型子组件 Init 会在每次脏重建时重放(v1 近似,债务在案)。
-        self.fire_child_init_if_any(child_widget, child_state_id);
+        self.fire_child_init_if_any(child_widget, child_state_id, props, bindings);
 
         // Build a child view builder using the SAME bridge but with
         // override_state_obj_id pointing to the child's state object.
@@ -5661,6 +5789,7 @@ let tabs_inner = View::Row {
             bridge: self.bridge,
             widget_name: child_widget.name.clone(),
             widget_registry: self.widget_registry,
+            native_registry: self.native_registry,
             import_stmts: self.import_stmts,
             override_state_obj_id: Some(child_state_id),
             routes: None,
@@ -5711,13 +5840,14 @@ let tabs_inner = View::Row {
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
         // (tracked 双胎保持同一渲染语义)。
-        self.fire_child_init_if_any(child_widget, child_state_id);
+        self.fire_child_init_if_any(child_widget, child_state_id, props, bindings);
 
         // Plan 476: slot_fills 透传(untracked 双胎同款语义)。
         let child_builder = AuraViewBuilder {
             bridge: self.bridge,
             widget_name: child_widget.name.clone(),
             widget_registry: self.widget_registry,
+            native_registry: self.native_registry,
             import_stmts: self.import_stmts,
             override_state_obj_id: Some(child_state_id),
             routes: None,
@@ -6746,6 +6876,295 @@ let tabs_inner = View::Row {
     /// BottomStart = 左缘对齐),估位偏移与 2000px catch 一并退役 —— 按钮文
     /// 字任意宽度不再错位,点击捕获由 overlay 语义承担。popover 结构每帧
     /// 恒定(open 驱动面板显隐),view diff 稳定。
+    /// PLAN-630 T-01: shared menu-item presentation — the actions-DSL
+    /// synthesis AND the declarative menubar component both lower to this:
+    /// [leading slot (check/action icon/blank) + title] packed left |
+    /// [shortcut] packed right (right-aligned text). 626 T-02 的
+    /// justify-start/text-left 让位与 629 T-06 的两组布局在此收口。
+    fn menu_item_button_view(
+        &self,
+        title: &str,
+        icon: Option<String>,
+        shortcut: Option<String>,
+        checked: bool,
+        enabled: bool,
+        onclick: DynamicMessage,
+    ) -> View<DynamicMessage> {
+        let leading: View<DynamicMessage> = if checked {
+            View::Image {
+                src: "lucide:check".to_string(),
+                style: Style::parse("w-4 h-4 text-zinc-200 shrink-0").ok(),
+            }
+        } else if let Some(icon) = icon.filter(|i| !i.is_empty()) {
+            View::Image {
+                src: format!("lucide:{icon}"),
+                style: Style::parse("w-4 h-4 text-zinc-300 shrink-0").ok(),
+            }
+        } else {
+            View::Text {
+                content: String::new(),
+                style: Style::parse("w-4 h-4 shrink-0").ok(),
+                selectable: false,
+            }
+        };
+        let left_group = View::Row {
+            children: vec![
+                leading,
+                View::Text {
+                    content: title.to_string(),
+                    style: Style::parse("text-[12px] text-zinc-200").ok(),
+                    selectable: false,
+                },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("items-center gap-2").ok(),
+            onclick: None,
+            on_right_click: None,
+        };
+        let shortcut_text = View::Text {
+            content: shortcut.unwrap_or_default(),
+            style: Style::parse("text-[11px] text-zinc-500 w-14 text-right").ok(),
+            selectable: false,
+        };
+        View::Button {
+            disabled: !enabled,
+            label: title.to_string(),
+            onclick,
+            // PLAN-626 T-02: 显式 justify-start/text-left 走 plan050→plan414
+            // 让位通道压过按钮 content 容器的 Center 默认。
+            style: Style::parse("h-7 w-full px-0 py-0 justify-start text-left").ok(),
+            on_right_click: None,
+            content: Some(Box::new(View::Row {
+                children: vec![left_group, shortcut_text],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("w-full justify-between items-center gap-2 px-2").ok(),
+                onclick: None,
+                on_right_click: None,
+            })),
+        }
+    }
+
+    /// PLAN-630 T-01: declarative menubar component family (shadcn
+    /// Menubar 语义的 VM lowering) —
+    /// `menubar { menubar-menu (value) { menubar-trigger "文件"
+    ///   menubar-content { menubar-item (title, icon, shortcut)
+    ///     { onclick } menubar-separator
+    ///     menubar-checkbox-item (title, checked) { onclick } } } }`.
+    /// 触发/开合/定位走公共 Popover 原语（BottomStart + MENUBAR_OPEN
+    /// 注册表，与 actions 合成同机制）；菜单项 presentation 共享
+    /// [`Self::menu_item_button_view`]。
+    fn convert_menubar_component(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        path: Option<(&[usize], &mut BuildProbe)>,
+    ) -> View<DynamicMessage> {
+        use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+
+        let (base_vec, mut probe_mut): (Option<Vec<usize>>, Option<&mut BuildProbe>) =
+            match path {
+                Some((b, p)) => (Some(b.to_vec()), Some(p)),
+                None => (None, None),
+            };
+        macro_rules! record {
+            ($($idx:expr),* => $handler:expr) => {
+                if let (Some(base), Some(probe)) = (&base_vec, probe_mut.as_deref_mut()) {
+                    let mut child = base.clone();
+                    $(child.push($idx);)*
+                    let p: Vec<u16> = child.iter().map(|&x| x as u16).collect();
+                    probe.record_event(&p, "onclick", $handler);
+                }
+            };
+        }
+
+        fn node_tag(n: &AuraNode) -> Option<&str> {
+            match n {
+                AuraNode::Element { tag, .. } => Some(tag.as_str()),
+                _ => None,
+            }
+        }
+        fn node_children(n: &AuraNode) -> &[AuraNode] {
+            match n {
+                AuraNode::Element { children, .. } => children,
+                _ => &[],
+            }
+        }
+        fn node_text(n: &AuraNode) -> Option<String> {
+            match n {
+                AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+                _ => None,
+            }
+        }
+        fn node_props(n: &AuraNode) -> Option<&HashMap<String, AuraPropValue>> {
+            match n {
+                AuraNode::Element { props, .. } => Some(props),
+                _ => None,
+            }
+        }
+
+        let open = crate::ui::action_config::menubar_open();
+        let mut children_out: Vec<View<DynamicMessage>> = Vec::new();
+        let mut menu_index = 0usize;
+        for menu_node in children {
+            let Some(tag) = node_tag(menu_node) else { continue };
+            let tag_lc = tag.replace('_', "-");
+            if tag_lc != "menubar-menu" {
+                continue;
+            }
+            let menu_id = node_props(menu_node)
+                .and_then(|mp| self.extract_string_with(mp, "value", bindings))
+                .unwrap_or_else(|| format!("menu-{menu_index}"));
+            menu_index += 1;
+            let (trigger_title, content_nodes) = {
+                let mut title = String::new();
+                let mut content: &[AuraNode] = &[];
+                for kid in node_children(menu_node) {
+                    match node_tag(kid).unwrap_or("").replace('_', "-").as_str() {
+                        "menubar-trigger" => {
+                            title = node_props(kid)
+                                .and_then(|kp| self.extract_string_with(kp, "text", bindings))
+                                .or_else(|| node_children(kid).iter().find_map(node_text))
+                                .unwrap_or_default();
+                        }
+                        "menubar-content" => content = node_children(kid),
+                        _ => {}
+                    }
+                }
+                (title, content)
+            };
+
+            let is_open = open.as_deref() == Some(menu_id.as_str());
+            record!(children_out.len(), 0 => &format!(r#"__menubar_toggle("{}")"#, menu_id));
+            let trigger = View::Button {
+                disabled: false,
+                label: trigger_title.clone(),
+                onclick: DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__menubar_toggle".to_string(),
+                    args: vec![Value::str(menu_id.as_str())],
+                },
+                style: Style::parse(&format!(
+                    "h-7 px-3 text-[12px] {}",
+                    if is_open { "text-zinc-100" } else { "mr-1 text-zinc-300" }
+                ))
+                .ok(),
+                on_right_click: None,
+                content: None,
+            };
+
+            let mut items: Vec<View<DynamicMessage>> = Vec::new();
+            if is_open {
+                for (item_idx, item_node) in content_nodes.iter().enumerate() {
+                    let Some(itag) = node_tag(item_node) else { continue };
+                    let itag = itag.replace('_', "-");
+                    let Some((iprops, ievents, ikids)) = (match item_node {
+                        AuraNode::Element { props, events, children, .. } => {
+                            Some((props, events, children))
+                        }
+                        _ => None,
+                    }) else {
+                        continue;
+                    };
+                    match itag.as_str() {
+                        "menubar-separator" => {
+                            let mut sep_props = HashMap::new();
+                            sep_props.insert(
+                                "orientation".to_string(),
+                                AuraPropValue::Expr(Expr::Str("horizontal".into())),
+                            );
+                            items.push(self.convert_sep(&sep_props, bindings));
+                        }
+                        "menubar-item" | "menubar-checkbox-item" => {
+                            let is_checkbox = itag == "menubar-checkbox-item";
+                            let title = self
+                                .extract_string_with(iprops, "title", bindings)
+                                .or_else(|| ikids.iter().find_map(node_text))
+                                .unwrap_or_default();
+                            let icon = self.extract_string_with(iprops, "icon", bindings);
+                            let shortcut = self.extract_string_with(iprops, "shortcut", bindings);
+                            let checked = if is_checkbox {
+                                self.extract_string_with(iprops, "checked", bindings)
+                                    .map(|c| self.eval_condition_with(&c, bindings))
+                                    .unwrap_or(false)
+                            } else {
+                                false
+                            };
+                            let enabled = self
+                                .extract_string_with(iprops, "enabled", bindings)
+                                .map(|e| self.eval_condition_with(&e, bindings))
+                                .unwrap_or(true);
+                            let onclick = ievents
+                                .get("onclick")
+                                .or_else(|| aura_events_get_base(ievents, "onclick"))
+                                .map(|ev| self.event_to_message_with(ev, bindings));
+                            let Some(onclick) = onclick else { continue };
+                            record!(children_out.len(), 1, item_idx => &format!(
+                                "__menubar_item({:?})", title
+                            ));
+                            items.push(self.menu_item_button_view(
+                                &title,
+                                icon,
+                                shortcut,
+                                checked,
+                                enabled,
+                                onclick,
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            let mut panel_style =
+                Style::parse("w-44 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok();
+            if let Some(st) = panel_style.as_mut() {
+                if !st.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                    let owned = std::mem::take(st);
+                    *st = owned.add(StyleClass::Width(SizeValue::Auto));
+                }
+            }
+            let panel = View::Column {
+                children: items,
+                spacing: 0,
+                padding: 0,
+                style: panel_style,
+                onclick: None,
+                on_right_click: None,
+            };
+            children_out.push(View::Popover {
+                anchor: PopoverAnchor::Widget(Box::new(trigger)),
+                content: Box::new(panel),
+                placement: PopoverPlacement::BottomStart,
+                open: is_open,
+                on_dismiss: Some(DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__menubar_close".to_string(),
+                    args: vec![],
+                }),
+            });
+        }
+
+        let user = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .unwrap_or_default();
+        View::Row {
+            children: children_out,
+            spacing: 0,
+            padding: 0,
+            style: if user.is_empty() {
+                None
+            } else {
+                Style::parse(&user).ok()
+            },
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
     fn convert_menubar(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -6818,7 +7237,16 @@ let tabs_inner = View::Row {
                 for item in &menu.items {
                     match item {
                         MenuItem::Separator => {
-                            items.push(self.convert_sep(&HashMap::new(), bindings));
+                            // PLAN-626 T-02: 下拉面板内 sep 必须横向通栏
+                            // （convert_sep 默认 vertical 是 toolbar/行内语义
+                            // ——此前 menubar 从不传 orientation，下拉里渲染
+                            // 成 w-7 盒内短竖线，用户实机反馈）。
+                            let mut sep_props = HashMap::new();
+                            sep_props.insert(
+                                "orientation".to_string(),
+                                AuraPropValue::Expr(Expr::Str("horizontal".into())),
+                            );
+                            items.push(self.convert_sep(&sep_props, bindings));
                         }
                         MenuItem::Action(id) => {
                             let Some(a) = cfg.action_by_id(id) else { continue };
@@ -6835,64 +7263,50 @@ let tabs_inner = View::Row {
                             let enabled = a.enabled_if.as_deref()
                                 .map(|cond| self.eval_condition_with(cond, bindings))
                                 .unwrap_or(true);
-                            let check_slot: View<DynamicMessage> = if checked {
-                                View::Image {
-                                    src: "lucide:check".to_string(),
-                                    style: Style::parse("h-3 w-3 text-zinc-200 shrink-0").ok(),
-                                }
-                            } else {
-                                View::Text {
-                                    content: String::new(),
-                                    style: Style::parse("w-4 h-3 shrink-0").ok(),
-                                    selectable: false,
-                                }
+                            // PLAN-629 T-06: 前导槽 = 勾选（checked 时）或
+                            // action 声明的 lucide icon（用户要求每项带
+                            // icon）；title 紧贴前导槽左对齐——旧结构
+                            // [check][title][shortcut] 三子 justify-between
+                            // 的弹性撑杆把 title 推到面板中部（左大半空）。
+                            // 改两组：[槽+title] | [shortcut]，Between 只在
+                            // 组间插撑杆 → 左组贴左、快捷键贴右。
+                            const LEADING_EMPTY: &str = "w-4 h-4 shrink-0";
+                            let onclick = DynamicMessage::Typed {
+                                widget_name: self.widget_name.clone(),
+                                event_name: handler,
+                                args: vec![],
                             };
-                            let content = View::Row {
-                                children: vec![
-                                    check_slot,
-                                    View::Text {
-                                        content: a.title.clone(),
-                                        style: Style::parse("text-[12px] text-zinc-200").ok(),
-                                        selectable: false,
-                                    },
-                                    View::Text {
-                                        content: a.shortcut.clone().unwrap_or_default(),
-                                        style: Style::parse(
-                                            "text-[11px] text-zinc-500 ml-auto w-14",
-                                        )
-                                        .ok(),
-                                        selectable: false,
-                                    },
-                                ],
-                                spacing: 0,
-                                padding: 0,
-                                style: Style::parse("w-full justify-between items-center gap-2 px-2")
-                                    .ok(),
-            onclick: None, on_right_click: None,
-        };
-                            items.push(View::Button {
-                                disabled: !enabled,
-                                label: a.title.clone(),
-                                onclick: DynamicMessage::Typed {
-                                    widget_name: self.widget_name.clone(),
-                                    event_name: handler,
-                                    args: vec![],
-                                },
-                                style: Style::parse("h-7 w-full px-0 py-0").ok(),
-                                on_right_click: None,
-                                content: Some(Box::new(content)),
-                            });
+                            items.push(self.menu_item_button_view(
+                                &a.title,
+                                a.icon.clone(),
+                                a.shortcut.clone(),
+                                checked,
+                                enabled,
+                                onclick,
+                            ));
                         }
                     }
                 }
             }
             // chrome 全部留在面板列自身(bg/border/shadow 走既有 visual
             // wrap);定位交给 popover(overlay 层,不占文档流)。
+            // PLAN-626 T-02: 宽度防线镜像 convert_popover 的 PLAN-526 T27
+            // 注入——menubar 面板不经 convert_popover，width 类若解析失败
+            // 会按块级语义 Fill 撑满宿主宽；w-48→w-44 收窄贴近 shadcn 菜单
+            // 内容宽。
+            let mut panel_style =
+                Style::parse("w-44 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok();
+            if let Some(s) = panel_style.as_mut() {
+                if !s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                    let owned = std::mem::take(s);
+                    *s = owned.add(StyleClass::Width(SizeValue::Auto));
+                }
+            }
             let panel = View::Column {
                 children: items,
                 spacing: 0,
                 padding: 0,
-                style: Style::parse("w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok(),
+                style: panel_style,
             onclick: None, on_right_click: None,
         };
             children.push(View::Popover {
@@ -7770,6 +8184,9 @@ let tabs_inner = View::Row {
                 "top-end" | "topend" => Some(PopoverPlacement::TopEnd),
                 "left" => Some(PopoverPlacement::Left),
                 "right" => Some(PopoverPlacement::Right),
+                // PLAN-631 F-7: 指针定位——open 翻真时面板出现在最近一次
+                // 右键指针位置(渲染器会话级记忆,坐标不进 VM 状态)。
+                "pointer" => Some(PopoverPlacement::Pointer),
                 _ => None,
             })
             .unwrap_or(if px.is_some() && py.is_some() {
@@ -7777,6 +8194,15 @@ let tabs_inner = View::Row {
             } else {
                 PopoverPlacement::Bottom
             });
+        // PLAN-631 F-7: placement "pointer" 无需坐标锚——无 x/y 时合成原点
+        // 点锚（渲染期面板原点被最近按下位置取代；未记录时退化为坐标锚
+        // 语义，面板落窗原点）。触发件与面板可分离：单实例菜单挂视图根。
+        let (px, py) = match (px, py) {
+            (None, None) if placement == PopoverPlacement::Pointer => {
+                (Some(0.0f32), Some(0.0f32))
+            }
+            other => other,
+        };
         // 面板 chrome:popover 标签的 class 落在 content 列上(visual wrap 绘制)。
         // PLAN-528 W9:class 缺省时给 shadcn PopoverContent 同款默认面板
         // chrome(bg-popover + border + rounded-md + shadow-md + p-4)——vue 端
@@ -8876,7 +9302,9 @@ let tabs_inner = View::Row {
         }
     }
 
-    fn convert_textarea(
+    /// PLAN-066: pub(crate)——native_widget global 的无 feature 降级注册
+    /// （"autodown_editor" → textarea，D-GAP-3 链经注册表保持）也经本方法。
+    pub(crate) fn convert_textarea(
         &self,
         props: &HashMap<String, AuraPropValue>,
         events: &HashMap<String, AuraEvent>,
@@ -9060,6 +9488,32 @@ let tabs_inner = View::Row {
             .extract_u16(props, "cursor_col")
             .or_else(|| self.eval_u16_prop(props, "cursor_col", bindings))
             .unwrap_or(0);
+        // PLAN-018 D10:配色方案 prop(int;缺省 -1 = 跟随桌面主题)。字面量
+        // 或 state 绑定求值(scheme 随主题切换的重挂场景)。
+        let scheme = self
+            .extract_i32_prop(props, "scheme")
+            .or_else(|| self.eval_i32_prop(props, "scheme", bindings))
+            .unwrap_or(crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME);
+        // PLAN-019 D4:应用级捷径表 —— onkeydown.<键名> 事件收集(Textarea
+        // Plan 057 收集器同款:剥前缀与 prevent/stop/exact/capture/self/once
+        // 修饰段,小写规范化;实参经 event_to_message_with 烘焙)。命中发
+        // 消息不落 VT 队列,未命中原样透传(terminal_key_binding_name 命名)。
+        let mut shortcuts: Vec<(String, DynamicMessage)> = Vec::new();
+        for (ev_key, ev) in events.iter() {
+            if let Some(rest) = ev_key.strip_prefix("onkeydown.") {
+                let norm = rest
+                    .split('.')
+                    .filter(|seg| {
+                        !matches!(*seg, "prevent" | "stop" | "exact" | "capture" | "self" | "once")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(".")
+                    .to_lowercase();
+                if !norm.is_empty() {
+                    shortcuts.push((norm, self.event_to_message_with(ev, bindings)));
+                }
+            }
+        }
         View::Terminal {
             key,
             cols,
@@ -9072,6 +9526,8 @@ let tabs_inner = View::Row {
             on_input,
             cursor_row,
             cursor_col,
+            scheme,
+            shortcuts,
             style,
         }
     }
@@ -10411,11 +10867,36 @@ let tabs_inner = View::Row {
                 }
                 if end < len && bytes[end] == b'}' {
                     let field_name = &s[start + 3..end];
-                    // Validate field name is alphanumeric/underscore
-                    if !field_name.is_empty() && field_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        let full_pattern = s[start..end + 1].to_string();
-                        let value = self.read_state_as_string_with(field_name, bindings);
-                        replacements.push((full_pattern, value));
+                    // PLAN-626 T-01: allow multi-segment dotted paths
+                    // (`${.store.line}`). Previously single-segment only — a
+                    // dotted name failed this validation and the raw
+                    // `${.store.line}` stayed visible (auto-edit statusbar).
+                    let seg_ok = |seg: &str| {
+                        !seg.is_empty() && seg.chars().all(|c| c.is_alphanumeric() || c == '_')
+                    };
+                    let segments: Vec<&str> = field_name.split('.').collect();
+                    if !field_name.is_empty() && segments.iter().all(|seg| seg_ok(seg)) {
+                        let resolved = if segments.len() == 1 {
+                            Some(self.read_state_as_string_with(field_name, bindings))
+                        } else {
+                            // Multi-segment: rebuild the AST chain (rooted at
+                            // "." like the parser's dot_item) and ride the
+                            // same resolver conditions use — `.store.X`
+                            // flattens to a root-state read there (D-GAP-4).
+                            let mut expr = Expr::Ident(".".to_string().into());
+                            for seg in &segments {
+                                expr = Expr::Dot(Box::new(expr), seg.to_string().into());
+                            }
+                            self.resolve_expr_to_value(&expr, bindings)
+                                .map(|v| value_to_display_string(&v))
+                        };
+                        if let Some(value) = resolved {
+                            let full_pattern = s[start..end + 1].to_string();
+                            replacements.push((full_pattern, value));
+                        }
+                        // Unresolvable multi-segment path: leave the raw
+                        // `${.a.b}` in place (dots intact) instead of
+                        // splicing a stripped placeholder.
                     }
                 }
                 i = end + 1;
@@ -11091,6 +11572,35 @@ let tabs_inner = View::Row {
     }
 
     /// Extract a u16 property from AuraNode props.
+    /// PLAN-018 D10:int(scheme)字面量提取(负值合法:哨兵 -1 跟随主题)。
+    fn extract_i32_prop(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+    ) -> Option<i32> {
+        match props.get(key)? {
+            AuraPropValue::Expr(expr) => match expr {
+                Expr::Int(i) => Some(*i),
+                _ => None,
+            },
+            AuraPropValue::StyleBinding(_) => None,
+        }
+    }
+
+    /// PLAN-018 D10:scheme 的 bindings 求值形态(`scheme: .scheme`)。
+    fn eval_i32_prop(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> Option<i32> {
+        let AuraPropValue::Expr(expr) = props.get(key)? else {
+            return None;
+        };
+        let val = self.resolve_expr_to_value(expr, bindings)?;
+        Some(val.as_int())
+    }
+
     fn extract_u16(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -11846,6 +12356,298 @@ mod tests {
             Some(Value::Str("n!".into())),
             "expression computed unchanged"
         );
+    }
+
+    /// PLAN-626 T-01: literal-text `${.store.field}` multi-segment
+    /// interpolation rides the same resolver conditions use — `.store.X`
+    /// flattens to a root-state read, so the auto-edit statusbar shows real
+    /// values instead of the raw template. An unresolvable path keeps the
+    /// raw template text (leading dots intact, no stripped placeholder).
+    #[test]
+    fn plan626_literal_interpolation_multi_segment_dot_path() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "widget App {\n",
+            "    model {\n",
+            "        var line int = 3\n",
+            "        var col int = 9\n",
+            "    }\n",
+            "    view { col { text \"${.store.line}:${.store.col}\" {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+        assert!(
+            view_contains_text(&view, "3:9"),
+            "multi-segment interpolation must resolve from state; got {:?}",
+            view
+        );
+
+        // Unresolvable dotted path: raw template preserved with dots.
+        let src = concat!(
+            "widget App {\n",
+            "    model { var line int = 3 }\n",
+            "    view { col { text \"${.store.nope}\" {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+        assert!(
+            view_contains_text(&view, "${.store.nope}"),
+            "unresolvable dotted path must keep the raw template (dots intact); got {:?}",
+            view
+        );
+    }
+
+    /// PLAN-626 T-02: menubar dropdown synthesis — item buttons carry
+    /// explicit left alignment (justify-start/text-left beat the Plan-414
+    /// Center default), `sep` renders the horizontal full-width hairline
+    /// (not the toolbar vertical box), and the panel column keeps an
+    /// explicit width class (w-44) under the PLAN-526 T27-style guard
+    /// against block-level Fill fallback.
+    #[test]
+    fn plan626_menubar_panel_left_align_horizontal_sep_fixed_width() {
+        use crate::ui::action_config::{
+            extract_actions_from_source, set_dsl_action_config_from_block, set_menubar_open,
+        };
+        let src = concat!(
+            "widget App {\n",
+            "    msg { ActNew, ActOpen }\n",
+            "    actions {\n",
+            "        action (id: \"file.new\",  handler: .ActNew,  title: \"新建\")\n",
+            "        action (id: \"file.open\", handler: .ActOpen, title: \"打开…\")\n",
+            "        menubar {\n",
+            "            menu (id: \"file\", title: \"文件\") {\n",
+            "                item (action: \"file.new\")\n",
+            "                sep\n",
+            "                item (action: \"file.open\")\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "    view { col { menubar {} } }\n",
+            "    on {\n",
+            "        .ActNew -> { }\n",
+            "        .ActOpen -> { }\n",
+            "    }\n",
+            "}\n",
+        );
+        let block = extract_actions_from_source(src).expect("actions block");
+        set_dsl_action_config_from_block(&block, None);
+        set_menubar_open(Some("file".to_string()));
+
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+
+        fn find_popover(v: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {
+            match v {
+                View::Popover { content, .. } => Some(content),
+                View::Column { children, .. }
+                | View::Row { children, .. } => {
+                    children.iter().find_map(find_popover)
+                }
+                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Container { child, .. } => find_popover(child),
+                _ => None,
+            }
+        }
+        let content = find_popover(&view).expect("menubar popover synthesized");
+        let (items, panel_style) = match content {
+            View::Column { children, style, .. } => (children, style),
+            other => panic!("panel must be a Column, got {other:?}"),
+        };
+        assert_eq!(items.len(), 3, "two action items + one sep");
+        // Panel width class survives (w-44 → Fixed(44) units) — the guard
+        // must keep an explicit width so the column never falls back to Fill.
+        let panel_style = panel_style.as_ref().expect("panel style present");
+        assert!(
+            panel_style.classes.iter().any(
+                |c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Fixed(44)))
+            ),
+            "panel must keep explicit w-44 width, got {:?}",
+            panel_style.classes
+        );
+        // Item button: explicit left alignment classes on the button style.
+        match &items[0] {
+            View::Button { style, content, .. } => {
+                let st = style.as_ref().expect("item button style");
+                assert!(
+                    st.classes.iter().any(|c| matches!(c, StyleClass::JustifyStart)),
+                    "item button must carry justify-start, got {:?}",
+                    st.classes
+                );
+                assert!(content.is_some(), "item button must use content row");
+            }
+            other => panic!("item must be a Button, got {other:?}"),
+        }
+        // Sep: horizontal variant renders a bare Column hairline — the
+        // toolbar/vertical variant is a centered Container box.
+        match &items[1] {
+            View::Column { style, .. } => {
+                let st = style.as_ref().expect("sep style");
+                assert!(
+                    st.classes.iter().any(|c| matches!(c, StyleClass::Height(_))),
+                    "horizontal sep must carry its hairline height, got {:?}",
+                    st.classes
+                );
+            }
+            other => panic!("menubar sep must be horizontal Column, got {other:?}"),
+        }
+        set_menubar_open(None);
+    }
+
+    /// PLAN-630 T-01: declarative menubar component family — items carry
+    /// icon/shortcut/checked (expression-driven), separators render
+    /// horizontal, and the checked expression flips with state.
+    #[test]
+    fn plan630_declarative_menubar_component() {
+        let src = concat!(
+            "widget App {\n",
+            "    model { var console_open bool = false }\n",
+            "    view {\n",
+            "        col {\n",
+            "            menubar {\n",
+            "                menubar-menu (value: \"view\") {\n",
+            "                    menubar-trigger \"视图\"\n",
+            "                    menubar-content {\n",
+            "                        menubar-checkbox-item (title: \"切换 Console\", checked: .console_open) { onclick: .ActConsole }\n",
+            "                        menubar-separator\n",
+            "                        menubar-item (title: \"全选\", shortcut: \"Ctrl+A\") { onclick: .ActSelectAll }\n",
+            "                    }\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "    on { .ActConsole -> { } .ActSelectAll -> { } }\n",
+            "}\n",
+        );
+        use crate::ui::action_config::set_menubar_open;
+        set_menubar_open(Some("view".to_string()));
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+
+        fn find_popover(v: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {
+            match v {
+                View::Popover { content, .. } => Some(content),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    children.iter().find_map(find_popover)
+                }
+                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Container { child, .. } => find_popover(child),
+                _ => None,
+            }
+        }
+        let content = find_popover(&view).expect("declarative menubar popover");
+        let (items, panel_style) = match content {
+            View::Column { children, style, .. } => (children, style),
+            other => panic!("panel must be a Column, got {other:?}"),
+        };
+        // checkbox item + separator + plain item
+        assert_eq!(items.len(), 3, "menu items count");
+        assert!(
+            panel_style
+                .as_ref()
+                .unwrap()
+                .classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Fixed(44)))),
+            "panel width class"
+        );
+        // Item 0: checkbox item with icon-free leading (unchecked → blank),
+        // title 切换 Console.
+        match &items[0] {
+            View::Button { label, content: Some(inner), .. } => {
+                assert_eq!(label, "切换 Console");
+                match inner.as_ref() {
+                    View::Row { children, .. } => {
+                        assert_eq!(children.len(), 2, "left group + shortcut");
+                    }
+                    other => panic!("item content row, got {other:?}"),
+                }
+            }
+            other => panic!("checkbox item must be a Button, got {other:?}"),
+        }
+        // Item 1: separator — horizontal hairline Column.
+        match &items[1] {
+            View::Column { style, .. } => {
+                assert!(
+                    style.as_ref().unwrap().classes.iter()
+                        .any(|c| matches!(c, StyleClass::Height(_))),
+                    "separator horizontal"
+                );
+            }
+            other => panic!("separator must be a Column, got {other:?}"),
+        }
+        // Item 2: plain item with shortcut.
+        match &items[2] {
+            View::Button { label, .. } => assert_eq!(label, "全选"),
+            other => panic!("plain item must be a Button, got {other:?}"),
+        }
+
+        // Checked expression flips with state: rebuild after writing true.
+        set_menubar_open(Some("view".to_string()));
+        let mut bridge2 = VmBridge::new(&widget).unwrap();
+        bridge2.write_state("console_open", auto_val::Value::Bool(true)).unwrap();
+        let builder2 = AuraViewBuilder::new(&bridge2, "App");
+        let (view2, _id_map2, _probe2) = builder2.build_with_debug(&widget.view_tree);
+        let content2 = find_popover(&view2).expect("popover after state flip");
+        match content2 {
+            View::Column { children, .. } => match &children[0] {
+                View::Button { content: Some(inner), .. } => match inner.as_ref() {
+                    View::Row { children, .. } => match &children[0] {
+                        // left group row
+                        View::Row { children, .. } => match &children[0] {
+                            View::Image { src, .. } => {
+                                assert!(
+                                    src.contains("lucide:check"),
+                                    "checked slot shows check, got {src}"
+                                );
+                            }
+                            other => panic!("leading must be check image, got {other:?}"),
+                        },
+                        other => panic!("left group, got {other:?}"),
+                    },
+                    other => panic!("row, got {other:?}"),
+                },
+                other => panic!("button, got {other:?}"),
+            },
+            other => panic!("panel, got {other:?}"),
+        }
     }
 
     /// Plan 448 I: grid `cols:` dynamic values. A non-literal expression
@@ -12642,6 +13444,7 @@ mod tests {
             }
             other => panic!("expected AutodownEditor variant"),
         }
+        set_menubar_open(None);
     }
     /// D-GAP-4: an if/else body spliced into a row records each spliced node
     /// at its own RESULTING slot — not all at the conditional's index (which

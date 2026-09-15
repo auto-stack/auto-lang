@@ -268,6 +268,18 @@ impl SnapshotBuilder {
                 UiNode { id, kind: "AutodownEditor".to_string(), props, actions, children: vec![] }
             },
 
+            // PLAN-066: 原生外部组件快照——kind=注册名，props 明文透传，事件
+            // 逐条 extract_action（action 名=事件名）。MCP 断言面对外部件可见
+            // 是本变体的存在理由（不引入 Box<dyn> 的原因）。
+            View::Custom { name, props, events, .. } => {
+                let props: Vec<(String, String)> = props.clone();
+                let actions: Vec<_> = events
+                    .iter()
+                    .map(|(ev_name, msg)| Self::extract_action(ev_name, msg))
+                    .collect();
+                UiNode { id, kind: name.clone(), props, actions, children: vec![] }
+            },
+
             View::Checkbox { is_checked, label, on_toggle, .. } => {
                 let props = vec![
                     ("checked".to_string(), is_checked.to_string()),

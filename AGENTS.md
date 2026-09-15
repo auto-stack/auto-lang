@@ -26,7 +26,12 @@ All AI coding assistants working in this repository must strictly adhere to the 
 
 - **L0: Trivial Fixes (轻微修改)**
   - *Criteria*: Minor typos, comment updates, or 1-2 line simple bugfixes without side-effects.
-  - *Action*: Directly modify on the current branch, run verification tests, and commit with a clean commit message.
+  - *Action* (**2026-09-15 用户裁定：小型改动同样必须走 worktree，master 零 WIP 代码**):
+    轻量路径（无需正式 plan 文档）：`git worktree add D:/autostack/.wt/fix-<slug>/auto-lang -b fix-<slug>`
+    → 修改 + 按改动范围跑验证门禁 → 提交 → 合回 master → `bash D:/autostack/wt-guard.sh
+    D:/autostack/.wt/fix-<slug>/auto-lang`（必须 clean）→ 移除 worktree/分支/组目录。
+    实机走查/核查会话中的**顺手修复**同样适用本条（2026-09-15 三线 WIP 直接落 master 的事后矫正）。
+    master 上仅允许计划簿记类改动（`docs/plans/**`、`.next-id`、specs/docs 沉淀）。
 - **L1: Feature / Module Tasks (模块/特性任务)**
   - *Criteria*: Any new feature, multi-file change, complex bugfix, or cross-backend parity implementation.
   - *Action*:

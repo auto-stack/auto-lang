@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-625
-status: execution_done         # drafting → executing → execution_done → reviewed → archived（rev 3: T-10 全落,VM 视口实装交付）
+status: archived               # drafting → executing → execution_done → reviewed → archived（rev 3 复审 pass → merge 落地归档）
 feature_name: ui-gallery-vm-usability
 author: [agent]
 created_at: 2026-09-14
@@ -451,6 +451,43 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   附注：AC-07 的 vue 构建实证在本轮补齐（含 R002 修复回归）；AC-09 裁定(b)
   与落地均已闭环。
 
+- **2026-09-15 review（plan_revision 3）**：stage `review`；plan_id PLAN-625；
+  outcome `pass`；reviewed_commit=auto-lang worktree `1f72bb532`（merge master
+  fd893e25f 同步后,含 T-10b 补提交 51604e36d）+ auto-os worktree `94ff92e`；
+  base_commit=d2f983d63（worktree 创建点）;dependency_revisions=auto-os
+  plan-625-dev 94ff92e / widgets-gallery 共享检出（另会话有 025 在途脏文件,
+  与本计划无关）。
+  **复审局限声明**：与实现同会话复审（无独立会话可用）——裁定以工件重建:
+  cargo tf 3548 测试重跑、scoped 三组重跑绑定 reviewed commit、12 张证据
+  截图 + 快照逐一核验（固化于 docs/reports/p625-evidence/,8 件）。
+  acceptance_results：AC-01 PASS（33 项列表+过滤+搜索,MCP 快照/skip 清单）；
+  AC-02 PASS（点击切换详情+573 待澄清②关闭）；AC-03 PASS（三 tab 非空）；
+  AC-04 PASS（registry 8 stub→0,余 1 条 AppViewport 为 T-10 适配器旁路
+  化妆性残留,F-R3）；AC-05 PASS（pills 可见+归因落账+h-full 守卫测试）；
+  AC-06 PASS（标题可读,SD-02 矩阵行随 merge 沉淀）；AC-07 PASS（vue 构建
+  vite 9.61s/15.26s 全资产+R002 归零+style_parity 绿）；AC-08 PASS（两类
+  终态结论+WER 实证,文档化关账）；AC-09 PASS（裁定 b 落地）；AC-10 PASS
+  （14 自包含示例 VM 实时渲染+交互联动 PASS,6 模块 use 示例降级占位上报）。
+  findings（均非阻断）：
+  - F-R1（info）docs_gen kitchen_sink worktree 红：基线陈旧 fixture 同步
+    问题（worktree 基于 d2f983d63,master 侧 9ffab6f6/776f4ba2 已同步
+    fixture；主检出 PASS、本计划 diff 不触 docs_gen/schema）→ 随本合并
+    re-sync 已带入 master 侧状态,残余差异属共享 widgets-gallery 检出解析
+    路径,转 master 域。
+  - F-R2（info）plan606 test_029_photo_gallery 主检出同样红：并行会话
+    plan628-photo-gallery-v2 在途重构破坏（029 脏文件+628 计划在案）,
+    非本计划回归。
+  - F-R3（info）AppViewport 的 no-op stub WARN 在适配器注册后仍打印
+    （加载期告警,无功能影响）——可选清理,随 merge 记 KNOWN-DEBT。
+  evidence：docs/reports/p625-evidence/（8 件固化）+ 本计划 §8 各任务
+  [✅] 行内证据 + cargo tf 3547/3548（唯一红=F-R1）+ scoped
+  gallery 17/17、r002 6/6、p625_t10 1/1、style_parity 绿。
+  spec_inputs：SD-01/02/03 文本与实现一致（复审核对）,canonical 沉淀随
+  merge 执行；本证据包冻结 SD 表=本文件提交版（01f66ef29 之后的
+  1261da79c/8bc546996 及本次 review 提交）。
+  next：`merge`（auto-plan:merge——沉淀 SD-01/02/03 至 canonical specs +
+  KNOWN-DEBT 登记 F-R1/F-R2 归属、F-R3、P573-D1 清偿、T-10d Rust 臂差异）。
+
 - **2026-09-14 work round 5（plan_revision 3）**：stage `work`；code commits
   auto-lang `c90bbc870`（T-10a spike）。用户推翻 v1=b 裁定，指令升级候选 a
   实装（『VM 端（和 Rust 端）应该要实现这个 AppViewport 组件』）→ 计划修订
@@ -475,6 +512,31 @@ d2f983d63=计划提交）；auto-os 兄弟 worktree
   rust 臂实测 17 编译错（模块 use 未支持）——结论=VM 专属实装,Rust 臂转
   独立计划。status 回 execution_done。scoped 检查已过（本轮无代码改动）。
   blockers：无。`next: review`。
+
+- **2026-09-15 merge（PLAN-625:r3）consolidation receipt**：stage `merge`；
+  outcome `pass`。
+  - `prepared` ✅：reviewed 基线（rev 3；reviewed_commit=worktree
+    auto-lang `1f72bb532`/auto-os `94ff92e`）；canonical diff=SD-01/02/03
+    （SD-02 目标修正记录：降级矩阵实际载体=ui/overview.md 625 段，
+    parity/project.md 系三方对拍域非视觉对拍）+ KNOWN-DEBT（P573-D1
+    清偿标记 + P625-D1..D5 + F-R1..R3）；projection targets=.autoos/
+    specs.json（reviews/reports）+ ui/plans.md；delivery commit=8a5a5211f
+    （merge plan-625-dev ∈ master 祖先）+51604e36d（T-10b 补提交）。
+  - `landed` ✅：master merge 8a5a5211f（plan-625-dev 全部提交 ∈ master
+    祖先）；smoke=cargo check 0 错 + gallery_registry 6/6 + r002 6/6 +
+    p625_t10 1/1。
+  - `ledger_refreshed` ✅：.autoos/specs.json P625-1(reports)/P625-2(reviews)
+    published（回读验证）；ui/plans.md 625 行；INDEX.md 再生（26 projects,
+    无条目级变化）。
+  - `archived` ✅：本文件 git mv → docs/plans/archive/ + status: archived。
+  - `cleaned` ✅：wt-guard 三处（auto-lang clean / auto-os 首次拦截=构建
+    产物 reparse point[gen node_modules pnpm 链接+deps/settings 物化]，
+    按 prescribed `cmd /c rmdir` 只删链接后复检 clean / auto-down clean）；
+    worktree ×3 移除、plan-625-dev 分支双仓删除（auto-os 侧先落地
+    7173df8 再删）、组目录 `.wt/lang-625/` 移除确认。
+  - 附注：worktree 运行需 `AUTO_GALLERY_APPS` env（组布局探测多一层，
+    AGENTS.md 解析序 env 档）；AppViewport no-op stub WARN 化妆残留
+    （F-R3）随本归档记录在案。
 
 - **2026-09-14 work round 3（仍 plan_revision 2）**：stage `work`；无代码
   commit（纯调查/决策轮）；task_ids T-07、T-08 完成（8/9）。evidence：WER

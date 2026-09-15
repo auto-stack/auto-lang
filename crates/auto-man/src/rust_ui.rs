@@ -1995,6 +1995,9 @@ default = ["ui-iced", "auto-lang/default"]
 [dependencies]
 auto-lang.workspace = true
 serde_json.workspace = true
+# PLAN-018:a2r 全局 List 字面量(非 const 初始化)走 once_cell::Lazy 形态
+# (trans/rust.rs global_lazy_used;api_gen.rs db 路径同款先例)。
+once_cell = "1"
 reqwest = {{ version = "0.12", features = ["blocking", "json", "multipart", "cookies", "gzip", "brotli"] }}
 tungstenite = {{ version = "0.24", features = ["native-tls"] }}
 lazy_static = "1"
@@ -2858,6 +2861,21 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
             Ok(None) => {}
             Err(e) => eprintln!("  {} pac.at parse failed: {}", "⚠".bright_yellow(), e),
         }
+    }
+
+    // PLAN-625: ui-gallery VM 臂 registry 刷新——app.at 的 `use registry:`
+    // 消费 src/front/registry.at(生成产物),须在编译前落盘。vue 臂每次
+    // run/build 都刷 generate_gallery_host(run_vue_project 先例),VM 臂
+    // 此前不产任何 registry。非 gallery 项目零行为变化。
+    if project_dir.file_name().and_then(|n| n.to_str()) == Some("ui-gallery")
+        || crate::vue::gallery_mode()
+    {
+        let n = crate::vue::refresh_gallery_registry(project_dir)?;
+        println!(
+            "  {} Gallery registry: src/front/registry.at ({} demos)",
+            "✓".bright_green(),
+            n
+        );
     }
 
     let entry = project_dir.join("src").join("front").join("app.at");

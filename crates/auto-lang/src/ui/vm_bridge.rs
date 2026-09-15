@@ -161,7 +161,7 @@ pub struct VmBridge {
     /// 挂载语义(每组件生命周期一次),不随脏重建帧重放。子件 state 走统一
     /// 根态、无独立堆对象可挂"首建"信号,故以名字集合在 bridge(唯一跨帧
     /// 存活、渲染期可变的组件侧结构)上记账。
-    child_inits_fired: std::cell::RefCell<std::collections::HashSet<String>>,
+    child_last_init_identity: std::cell::RefCell<std::collections::HashMap<String, String>>,
 }
 
 /// PLAN-051 C3: 栈顶 nanbox → Value（call_vm_fn 返回值解码；与
@@ -311,7 +311,7 @@ impl VmBridge {
 
         // 2. Link (single module → no cross-module relocation).
         let mut linker = Linker::new();
-        linker.add_module(module);
+        linker.add_entry_module(module);
         let (code, exports) = linker.link().map_err(|e| VmBridgeError::InvalidState(
             format!("link failed for '{}': {}", widget_name, e)
         ))?;
@@ -363,7 +363,7 @@ impl VmBridge {
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
             handler_param_counts,
             import_aliases: import_aliases.clone(),
-            child_inits_fired: std::cell::RefCell::new(std::collections::HashSet::new()),
+            child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -411,7 +411,7 @@ impl VmBridge {
 
         // 2. Link (single module → no cross-module relocation).
         let mut linker = Linker::new();
-        linker.add_module(module);
+        linker.add_entry_module(module);
         let (code, exports) = linker.link().map_err(|e| VmBridgeError::InvalidState(
             format!("link failed for '{}': {}", widget_name, e)
         ))?;
@@ -536,7 +536,7 @@ impl VmBridge {
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
             handler_param_counts,
             import_aliases: import_aliases.clone(),
-            child_inits_fired: std::cell::RefCell::new(std::collections::HashSet::new()),
+            child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
         })
@@ -1137,10 +1137,20 @@ impl VmBridge {
     /// PLAN-536 T3(题2 收敛): 子件 Init 挂载判定——该子件名首次出现返回
     /// true（调用方派发 Init 并记账）,此后每帧重渲染恒 false。挂载语义对齐
     /// vue onMounted（props 响应走 watch/computed,不靠 Init 重放）。
-    pub fn child_init_first_mount(&self, name: &str) -> bool {
-        self.child_inits_fired
-            .borrow_mut()
-            .insert(name.to_string())
+    /// os-config 016: 判定升级为**身份变化**语义——按组件名记录上次触发的
+    /// 身份串（组件名 + 调用点 key prop）,身份与上次不同（含首挂）即触发
+    /// 并更新。这是 vue 按 key 重挂载的 vm 对应物:同一子件切回先前的 key
+    /// （侧栏 A→B→A）也要重挂载重 Init,只记"首次"会让回访页渲染陈旧数据。
+    /// 每帧重渲染身份不变,恒 false——536 防重放语义不变。
+    pub fn child_init_should_fire(&self, widget_name: &str, identity: &str) -> bool {
+        let mut last = self.child_last_init_identity.borrow_mut();
+        match last.get(widget_name) {
+            Some(prev) if prev == identity => false,
+            _ => {
+                last.insert(widget_name.to_string(), identity.to_string());
+                true
+            }
+        }
     }
 
     /// Plan 320: read a state field from a SPECIFIC child widget's state object
@@ -2053,6 +2063,39 @@ mod tests {
             }
             other => panic!("tabs[0] not an object: {other:?}"),
         }
+    }
+
+    /// PLAN-626 T-03: CloseRequest 生命周期 handler 的存在性探测与直调。
+    /// 声明了 `.CloseRequest` 的 widget 必须被 has_handler 命中（namespaced
+    /// 导出），未声明的必须 miss——渲染器关窗臂据此决定拦截还是默认关窗。
+    #[test]
+    fn plan626_has_handler_close_request_lifecycle() {
+        use crate::aura::LogicPayload;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let mut widget = make_test_widget("CloseProbe", vec![]);
+        let handler_src = r#"
+            console_log("close requested")
+        "#;
+        let mut parser = Parser::from(handler_src).with_session(CompilerSession::ui());
+        let ast = parser.parse().expect("parse handler");
+        widget
+            .handlers
+            .insert(".CloseRequest".to_string(), LogicPayload::AstStmts(ast.stmts));
+        let bridge = VmBridge::new(&widget).expect("bridge");
+        assert!(
+            bridge.has_handler("CloseRequest"),
+            "declared lifecycle handler must be found (namespaced export)"
+        );
+        assert!(
+            !bridge.has_handler("NoSuchLifecycle"),
+            "undeclared handler must be absent"
+        );
+        // Fire path: CloseRequest dispatches like a regular handler.
+        let mut bridge2 = VmBridge::new(&widget).expect("bridge2");
+        bridge2
+            .call_handler("CloseRequest", &[])
+            .expect("CloseRequest dispatch");
     }
 
     #[test]

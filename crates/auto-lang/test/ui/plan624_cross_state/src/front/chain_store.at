@@ -1,0 +1,16 @@
+// chain_store.at — PLAN-624 red corpus store for the P3 arm (named store so
+// the &&-chain compiles in the same handler/store consolidation context).
+
+store ChainStore {
+    model {
+        var note str = ""
+    }
+
+    msg Msg { Touch }
+
+    on {
+        .Touch -> {
+            .note = "touched"
+        }
+    }
+}

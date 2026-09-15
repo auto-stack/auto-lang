@@ -38,6 +38,35 @@
   算入；它不回读 parser 的判定。
 - `super` 不允许越过包根——越界是带指引的显式错误，不是静默截断。
 
+
+## 导入语义（Plan 545：bare = 命名空间）
+
+use 语句的**符号可见性**语义（区别于上文的路径解析机制）：
+
+- bare `use db`：仅引入模块命名空间——限定**函数**调用 `db.load()` 可用，
+  裸名 `load()` 是带提示的编译错误（提示 `db.load` 或 `use db: *`）。
+  类型引用不经命名空间（`db.Note {}` 类型位为语法层未支持形态，R1 探针
+  实证 545 前后同拒）——类型须具名导入（`use db: Note`）。
+  平铺通路的三层收紧：TypeStore 不 merge（compile.rs load_module_inner bare 分支）、
+  Linker dep 模块 exports 仅限定注册（`db#load` + 点分别名 `db.load`，入口模块
+  独占裸名——add_entry_module）、native/widget 注册不视为通配
+  （autovm_persistent.rs should_import + lib.rs widget/store 注册三处）。
+- `use db: *`：显式平铺——TypeStore `merge_with_conflicts`（同名异源异定义 →
+  编译错误，含双方模块名；同定义 re-export 不报）+ codegen wildcard 臂将导出符号
+  映射为 `db.sym` 限定 reloc（import_scope）。
+- `use db: a, b`：具名导入不变；主动遮蔽不报错（与 Rust use 一致）。
+- 传递隔离：被导入模块自己的 bare use 不再向导入方泄漏符号（递归 resolve_uses
+  走同一 bare 分支）；**例外**：传递 wildcard 仍 merge 进导入方 session store
+  （显式 opt-in 面维持现状，KNOWN-DEBT 候选）。
+- 语义边界：本语义只作用于 UseKind::Auto；`use.py`（Plan 214/300 独立分发，
+  bare → py_modules 点调用解析）与 use.rs/use.c 不受影响。a2py 对 bare 发射
+  `import X`（python.rs handle_use）本就同形；a2r bare 发射 `use crate::X;`
+  命名空间导入（trans/rust.rs），不再发 glob。
+- host↔aavm：aavm 自举层（auto/lib）的 use 实现未随本语义收紧（语料无 bare 平铺
+  锚定，不受冲击）——分叉登记 KNOWN-DEBT。
+
+> 来源: docs/plans/545-use-namespace-semantics.md；代码核对 vm/loader.rs、compile.rs、types.rs、vm/codegen.rs handle_use_stmt
+
 ## 显式非目标
 
 - use_scanner 不做语法校验，不报告非法 use——那是 parser 的职责。

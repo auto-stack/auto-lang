@@ -1,0 +1,18 @@
+// Memory-mapped memory demo — REAL memmap2 crate via the dep track (Plan 415-E1).
+// File-backed Mmap::map is `unsafe` and outside Auto's safe surface; the
+// anonymous MmapMut path (MmapOptions::map_anon) is the safe entry point.
+// `.len(4)` below is the builder setter (with-arg form); the zero-arg
+// `mmap.len()` is the length read — both forms covered (415-E1 len-cast
+// narrowing keeps the setter's Self return uncased).
+dep memmap2
+use.rs memmap2::MmapOptions
+
+fn main() {
+    var mmap = MmapOptions.new().len(4).map_anon().unwrap()
+    mmap[0] = 42
+    let byte0 = mmap[0]
+    let n = mmap.len()
+    print(f"len: ${n}, first byte: ${byte0}")
+    assert(byte0 == 42)
+    assert(n == 4)
+}

@@ -108,6 +108,61 @@ fn skeleton(line: &str) -> String {
     out
 }
 
+/// PLAN-066: 扫描原生组件注册面——`register_view("NAME"` / `register_element(
+/// "NAME"` 形态的首个字符串字面量参数（NativeWidgetRegistry 注册名）。
+/// 注册表式注册与臂式注册同属桌面派发表面，围栏据此把外部组件并入 vb 并集。
+/// 注意：不走 [`skeleton`]（它剥字符串内容，注册名会被掏空）；只剥行注释。
+fn scan_native_registrations(src: &str) -> BTreeSet<String> {
+    // cfg(test) 的 `mod tests` 内注册名（单测夹具）不是生产面——截去其后段。
+    let prod = src.split("mod tests").next().unwrap_or(src);
+    let mut out = BTreeSet::new();
+    for line in prod.lines() {
+        let mut code = String::with_capacity(line.len());
+        let mut in_str = false;
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if in_str {
+                match c {
+                    '\\' => {
+                        chars.next();
+                    }
+                    '"' => {
+                        in_str = false;
+                        code.push('"');
+                    }
+                    _ => code.push(c),
+                }
+                continue;
+            }
+            match c {
+                '"' => {
+                    in_str = true;
+                    code.push('"');
+                }
+                '/' if chars.peek() == Some(&'/') => break,
+                _ => code.push(c),
+            }
+        }
+        for pat in ["register_view(\"", "register_element(\""] {
+            let mut rest: &str = &code;
+            while let Some(i) = rest.find(pat) {
+                let after = &rest[i + pat.len()..];
+                match after.find('"') {
+                    Some(end) => {
+                        let name = &after[..end];
+                        if !name.is_empty() {
+                            out.insert(name.to_string());
+                        }
+                        rest = &after[end..];
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+    out
+}
+
 /// 提取文件中所有行 trim 后恰为 `match tag {` 的派发表,返回每张表的 tag 集
 /// (臂头的全部字符串字面量,含别名)。逐行扫描,用花括号/圆括号深度区分
 /// 臂头与臂体:臂体里的字符串(shadcn 模块路径、说明文案)不会被误收。
@@ -1658,7 +1713,16 @@ fn schema_drift_fence() {
         vb_tables.len()
     );
     let (vb0, vb1) = (&vb_tables[0], &vb_tables[1]);
-    let vb_union: BTreeSet<String> = vb0.union(vb1).cloned().collect();
+    // PLAN-066: 原生组件注册表（src/ui/native_widget.rs 的 register_view/
+    // register_element 注册名）与臂式注册同属桌面派发表面——注册表式注册
+    // 并入 vb 并集，外部组件（含 autodown_editor 首迁）不再触发臂表孤儿误
+    // 报；后续经 SPI 注册的新组件天然受同一围栏覆盖。
+    let native_registered = scan_native_registrations(&read("src/ui/native_widget.rs"));
+    let vb_union: BTreeSet<String> = vb0
+        .union(vb1)
+        .cloned()
+        .chain(native_registered)
+        .collect();
 
     let render_tables = scan_match_tables(&render_rs);
     assert_eq!(

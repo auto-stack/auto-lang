@@ -1,6 +1,6 @@
 // app.at - Main app entry point
 
-use Index
+use Index: Index
 
 /// Item list demo application
 widget App {

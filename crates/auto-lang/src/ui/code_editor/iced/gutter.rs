@@ -29,11 +29,13 @@ use crate::ui::code_editor::draw::GutterSection;
 pub struct GutterCache {
     /// (number, digits) → layout at font size 1.0.
     layouts: HashMap<(usize, usize), Vec<LayoutLine>>,
-    /// (image handle, gutter width, gutter height, revision) of the current
-    /// raster. Height must key too: a shorter viewport (e.g. the console
-    /// panel opening) would otherwise scale the stale taller image into the
-    /// new quad — squeezed digits, misaligned rows.
-    image: Option<(iced::advanced::image::Handle, f32, f32, u64)>,
+    /// (image handle, gutter width, gutter height, revision, content
+    /// marker) of the current raster. Height must key too: a shorter
+    /// viewport (e.g. the console panel opening) would otherwise scale the
+    /// stale taller image into the new quad — squeezed digits, misaligned
+    /// rows. The content marker (first number, its y bits, count) keys the
+    /// visible band: pure scroll changes it while w/h/revision stay put.
+    image: Option<(iced::advanced::image::Handle, f32, f32, u64, (Option<(usize, u32)>, usize))>,
     swash: SwashCache,
 }
 
@@ -91,16 +93,25 @@ impl GutterCache {
             return None;
         }
 
+        // PLAN-629 T-05: the content marker (first visible number + its y +
+        // count) must be part of freshness — w/h/revision alone stay constant
+        // across a pure scroll (no edit), which kept returning the raster of
+        // the OLD visible lines: line numbers froze while the body scrolled.
+        let marker = (
+            section.numbers.first().map(|n| (n.number, n.y.to_bits())),
+            section.numbers.len(),
+        );
         let fresh = match &self.image {
-            Some((_, cached_w, cached_h, cached_rev)) => {
+            Some((_, cached_w, cached_h, cached_rev, cached_marker)) => {
                 (*cached_w - section.bounds.w).abs() <= 0.5
                     && (*cached_h - section.bounds.h).abs() <= 0.5
                     && *cached_rev == revision
+                    && *cached_marker == marker
             }
             None => false,
         };
         if fresh {
-            return self.image.as_ref().map(|(h, w, _, _)| (h.clone(), *w));
+            return self.image.as_ref().map(|(h, w, _, _, _)| (h.clone(), *w));
         }
 
         let bg = rgba_to_cosmic(section.background);
@@ -190,7 +201,13 @@ impl GutterCache {
         }
 
         let handle = iced::advanced::image::Handle::from_rgba(width, height, rgba);
-        self.image = Some((handle.clone(), section.bounds.w, section.bounds.h, revision));
+        self.image = Some((
+            handle.clone(),
+            section.bounds.w,
+            section.bounds.h,
+            revision,
+            marker,
+        ));
         Some((handle, section.bounds.w))
     }
 }
@@ -326,7 +343,7 @@ mod tests {
         // Same width + revision, shorter viewport (console opened): the
         // cache must NOT serve the stale 120px-tall raster.
         let _ = cache.image(&section(80.0), &mut fs, 7).expect("re-raster");
-        let (_, _, cached_h, cached_rev) = cache.image.as_ref().unwrap();
+        let (_, _, cached_h, cached_rev, _) = cache.image.as_ref().unwrap();
         assert!(
             (cached_h - 80.0).abs() <= 0.5,
             "height change must re-rasterize (cache h={cached_h})"
@@ -334,7 +351,7 @@ mod tests {
         assert_eq!(*cached_rev, 7);
         // Unchanged geometry + revision keeps the cache (no churn per frame).
         let _ = cache.image(&section(80.0), &mut fs, 7).expect("cached serve");
-        let (_, _, h2, r2) = cache.image.as_ref().unwrap();
+        let (_, _, h2, r2, _) = cache.image.as_ref().unwrap();
         assert!((h2 - 80.0).abs() <= 0.5 && *r2 == 7);
     }
 }
