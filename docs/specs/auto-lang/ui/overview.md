@@ -514,6 +514,40 @@ VM/桌面动态编译路径不在其列——qualified 直落本地字节码为�
    守卫在案）；限定名直落本地字节码为 merged 进程内唯一可达形态
    （auto-term PLAN-017 实证）。
 
+## 交互原语三件：hover 样式对 / popover pointer 定位 / 转换缓存（PLAN-631）
+
+> 契约全文 = docs/design/29-autoui-style-theme-system.md §10（canonical）；
+> 本节为现状摘要。剖析与 A/B 证据：docs/plans/archive/631-*/evidence/。
+
+### MouseArea hover 样式对（SD-01）
+
+`mouse-area` class 串支持 `hover:` 变体（消费 `Style::variant_classes`
+既有面，零新增解析）：声明即构造 HoverFlag + `HoverArea` 包裹 + 容器样式
+闭包 base/hover 二选一——**零 VM 消息零视图重建**（只 request_redraw）；
+无声明零开销路径不变；`onmouseenter/onmouseleave` 事件臂保留兼容。消费示范
+027 树形折叠箭头（`hover:bg-accent/60`）。
+
+### popover `placement: "pointer"`（SD-02）
+
+面板 open 翻真时原点 = 渲染器会话记忆的**最近一次指针按下位置**（左/右键
+同记；触发件与面板可分离，单实例菜单挂视图根）。机制：窗口根单包装
+`PointerPressArea`（`iced/right_press_area.rs`，ButtonPressed 事件现场读
+cursor 记账，进程级单槽 f32 位型）→ `pointer_panel_anchor` 归一（未记账
+回退 BottomStart 锚件语义；snap/翻转钳制沿用）。无 x/y 的 pointer popover
+由转换器合成原点点锚；坐标不进 VM 状态、不经消息回路。已知边界：跨 App
+窗口共享单槽（最近写入即正确锚）；触屏/无指针设备不做。
+
+### 动态视图转换缓存（SD-03）
+
+`Style::parse_reported` 类串 intern 缓存（`ui/style/mod.rs parse_cache`）：
+键 = (类串原文, 6 位主题门控槽 = sm/md/lg/xl/2xl 命中位 + dark 位)——键对
+parse 输出完备（responsive/dark 门控只做布尔比较），窗口 resize 同断点域内
+恒命中；命中克隆已解析 Style；类串表上限 4096 兜底清空。A/B 开关
+`AUTO_STYLE_CACHE=0`（默认开）。剖析仪表 `P631_PROFILE=1`（renderer 逐重建
+帧吐 `[P631-PROFILE]` 行）。量化（027 67 行选中，debug）：parse p90
+13.2→1.4ms（~9x）、整重建 15.8→9.8ms；opt 档噪声内。结构 diffing 评估：
+不立项（行级 memo 为第一候选，触发门槛见 evidence diffing-eval.md）。
+
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
