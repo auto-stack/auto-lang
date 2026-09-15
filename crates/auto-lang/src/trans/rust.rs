@@ -2380,9 +2380,19 @@ impl RustTrans {
 
     fn is_auto_list_expr(&self, obj: &Expr) -> bool {
         match obj {
-            Expr::Ident(name) => self.local_var_types.get(name.as_str())
-                .map(|ty| matches!(ty, Type::List(_)))
-                .unwrap_or(false),
+            Expr::Ident(name) => {
+                // PLAN-019:全局 var List 纳入识别(db.at 平行表接收者)——
+                // 仅查局部表时全局 List 的 .set(idx,v) 跌进 Plan 514 W1 的
+                // Vec::insert 重映射(插入语义,右移后续元素),多 Tab 模型
+                // 表腐坏实测(tab_root_node [3,1] vs 期望 [3,4],UI 挂起)。
+                // 镜像 recv_is_list_like 的 PLAN-018 全局覆盖。
+                if let Some(ty) = self.global_var_types.get(name.as_str()) {
+                    return matches!(ty, Type::List(_) | Type::Array(_));
+                }
+                self.local_var_types.get(name.as_str())
+                    .map(|ty| matches!(ty, Type::List(_)))
+                    .unwrap_or(false)
+            }
             Expr::Dot(inner, field) => {
                 if let Expr::Ident(owner) = inner.as_ref() {
                     if let Some(Type::User(usr)) = self.local_var_types.get(owner.as_str()) {

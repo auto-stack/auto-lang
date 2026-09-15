@@ -1010,6 +1010,7 @@ unexpected failures:
 #[test] fn test_10_collections_006_map_literal() { test_a2r("10_collections/006_map_literal").unwrap(); }
 #[test] fn test_10_collections_007_list_new() { test_a2r("10_collections/007_list_new").unwrap(); }
 #[test] fn test_10_collections_008_list_set_index() { test_a2r("10_collections/008_list_set_index").unwrap(); }
+#[test] fn test_10_collections_009_global_list_set() { test_a2r("10_collections/009_global_list_set").unwrap(); }
 
 // === 11_methods ===
 #[test] fn test_11_methods_001_method() { test_a2r("11_methods/001_method").unwrap(); }
