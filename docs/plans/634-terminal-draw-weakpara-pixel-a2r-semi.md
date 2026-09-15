@@ -1,16 +1,17 @@
 ---
 plan_id: PLAN-634
-status: execution_done
+status: reviewed
 feature_name: 015 遗留三账清偿——像素金样环境漂移归因修复 + badge/preedit WeakParagraph 同族根修 + a2r 块尾分号
 author: [zcode-session]
 created_at: 2026-09-15T12:00:00Z
-updated_at: 2026-09-15T18:30:00Z
+updated_at: 2026-09-15T19:20:00Z
 plan_revision: 1
 current_step: 3
 total_steps: 3
-supersedes_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/a2r-std/project.md: 新增 rust 发射器语句发射规则节——语句位置块尾恒补 `;`(仅表达式位置可省),取代旧 let 特判;#18 E0308 实证(Plan 634 T-03)"
 new_spec_components:
-  - docs/specs/widgets/terminal-iced-draw.md
+  - "docs/specs/widgets/terminal-iced-draw.md: draw 期段落强引用规则(fill_paragraph 弱引用排队/强引用存活到 flush,行文本/菜单标签/badge+preedit 三处缓存范式)+ 像素金样环境契约(漂移维度定案/稳健比对阈值/受控再生成配方/nextest 进程隔离验证约束)"
 touched_goals: []
 ---
 
@@ -185,6 +186,44 @@ simulator)、cosmic-text 字体管线、a2r/ui_gen 语句发射器。
   plan634 语料 5/5+e2e rustc 过,tt 3938/3942(4 红预存在案),
   tf 3573/3574(ffi_dual_019 负载偶发,隔离跑绿,415 在案) ·
   blockers:无 · next:/auto-plan:review。
+- 2026-09-15 stage:review · plan_id:PLAN-634 · plan_revision:1 ·
+  outcome:pass · reviewed_commit:`38a917f5f`(plan-634-dev HEAD;
+  4 提交=52ca422a1/e64e0f33f/ee35eba96/38a917f5f,worktree 树净) ·
+  base_commit:`0cc6625d5` · dependency_revisions:auto-down sibling
+  `3adc930ca`(detached=其 master;组内 path 依赖) · spec_inputs(sha256
+  冻结):widgets/terminal-iced-draw.md=5a249a2957bf,
+  a2r-std/project.md=2b7302ac0ede,widgets/project.md=3a0d36e9c4b1,
+  INDEX.md=173474e356dd · acceptance_results:
+  **AC-01 pass**(terminal_pixel nextest 5/5 于基点复跑;金样对 base
+  零 diff(git diff 空证未被改写);归因报告含漂移维度定案+三后端探针
+  (vulkan/dx12/gl 零漂移)+再生成配方;负验证:注掉选中层→红);
+  **AC-02 pass**(badge/preedit 可见性用例绿;复审独立复做负验证——
+  复现局部段落旧形态→preedit 红,还原→树净;menu 单测随 ui:: 定向
+  74/75 绿,唯一红=plan055 strip_html 系 KNOWN-DEBT #867 在案 master
+  预存,与本计划无关;无独立 menu 金样件,terminal_pixel 金样即覆盖);
+  **AC-03 pass**(plan634 语料 5/5;e2e rustc 实编 1 passed;i32 桩使
+  旧发射必 E0308;ui_gen 777/777、plan627 5/5 逐字节金样不破;cargo tt
+  全档 3938/3942,4 红=415-B1/B2 commit 在案已知预存,其中 2 个复审
+  期复证 master 同红同因(007 括号差/27_c_abi FFI 桩 E0425),与分号
+  无关);**AC-04 pass**(cargo tf --no-fail-fast 3573/3574 于基点复跑,
+  唯一红=ffi_dual_019 负载偶发,隔离跑绿,415-B2 在案;tt 档同上;
+  双仓影响面=auto-term 零代码改动,协调记录 evidence/634) ·
+  findings:
+  F-R1(info,无需动):generate_on_method Tick 守卫后处理无条件补 `;`
+  行,遇已带尾分号的 body 产生独立空语句 `;`——合法 Rust,纯外观,
+  pre-existing 机制的自适应结果;
+  F-R2(info,无需动):§6「实机(可选)」未执行——计划即标注可选,
+  badge/preedit 像素区域断言已覆盖该准则;
+  F-R3(已处置):frontmatter supersedes 原为空,SD-03 对
+  a2r-std/project.md 的 modify 按仓规约(437/446 先例)补记——本次
+  复审 finalization,不构成语义契约变更,rev 不增 ·
+  evidence:本记录+evidence/634/ 两工件+基点复跑命令与结果
+  (terminal_pixel 5/5、plan634 5/5、ui_gen 777/777、plan627 5/5、
+  e2e 1 passed、tf 3573/3574、tt 3938/3942,均于 38a917f5f 复现;
+  fmt --check 对本计划 5 个改动文件零 diff;cargo check 无本计划
+  新增警告,crate 警告积压为预存) · 独立性注记:复审与实施同会话,
+  判定经基点伪证重建(差异/命令/复跑),非仅采信 work 记录 ·
+  next:/auto-plan:merge。
 
 ## 10. 待澄清事项
 
