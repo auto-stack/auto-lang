@@ -1591,6 +1591,9 @@ fn test_312_codegen_collects_api_routes() {
 
 // -- cookbook/safety --
 #[test] fn test_cookbook_safety_001_heapless() { test_cookbook("safety/001_heapless").unwrap(); }
+// Plan 415-E1: de-stubbed to the real memmap2 crate (dep track); VM tier not
+// registered (no VM mmap native — the old bare-file stub was VM-orphaned).
+#[test] fn test_cookbook_safety_001_memmap() { test_cookbook("safety/001_memmap").unwrap(); }
 
 // -- cookbook/science/mathematics/complex_numbers --
 #[test] fn test_cookbook_science_mathematics_complex_numbers_003_math_functions() { test_cookbook("science/mathematics/complex_numbers/003_math_functions").unwrap(); }
