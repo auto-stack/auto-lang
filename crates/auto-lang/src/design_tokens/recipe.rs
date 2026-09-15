@@ -1364,6 +1364,13 @@ mod tests {
         std::fs::write(dep_front.join("styles.at"), r#"
             pub style pill = "rounded-full shadow-sm"
         "#).unwrap();
+        // PLAN-635 D4: deps/ probing is declaration-gated.
+        std::fs::write(base.join("pac.at"), "name: \"t\"
+scene: \"ui\"
+dep common {
+    path: \"../common\"
+}
+").unwrap();
         std::fs::write(base.join("app.at"), "use common.styles: pill").unwrap();
         let ast = plan635_load(base);
         let pill = get_style_recipe("pill").expect("deps/<name> layout resolves");
