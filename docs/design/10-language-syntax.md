@@ -176,11 +176,29 @@ Auto code is organized in three tiers:
 
 **Import examples:**
 ```auto
-use db              // ./db.at or ./db/mod.at
-use super.db        // ../db.at
-use pac.db          // package root search
-use db: load, save  // specific symbols
+use db              // namespace import: brings in the module name `db`;
+                    // symbols are accessed qualified: db.load(), db.Note
+use db: load, save  // specific symbols (usable bare: load(), save())
+use db: *           // explicit flat import: ALL pub symbols usable bare
+use super.db        // ../db.at   (path rules unchanged)
+use pac.db          // package root search (path rules unchanged)
 ```
+
+**Namespace semantics (Plan 545, Rust-2018 style):**
+- Bare `use db` imports the module *namespace* only — `db.load()` works;
+  bare `load()` is a compile error with a hint suggesting `db.load` or
+  `use db: *`.
+- Flat (glob) import is an explicit decision: `use db: *` makes all `pub`
+  symbols visible bare, and detects conflicts — the same name from two
+  modules with different definitions is a compile error naming both modules
+  (`X is defined in both db and helpers — disambiguate with use db: X`).
+  Re-exports (identical definitions) do not conflict.
+- Named `use db: a, b` imports exactly those symbols; a named import that
+  shadows an existing name is an explicit override (no error), same as Rust.
+- Transitive imports do not leak: a module's own `use` statements stay in
+  its namespace; the importer sees only what it imports.
+- Migration tip: `use Banner` + bare `Banner {}` widget usage becomes
+  `use Banner: Banner`.
 
 Ambiguity check: if both `name.at` and `name/mod.at` exist, the compiler raises an error.
 
