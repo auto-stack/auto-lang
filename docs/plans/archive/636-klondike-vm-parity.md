@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-636
-status: reviewed
+status: archived
 feature_name: klondike-vm-parity
 author: [agent]
 created_at: 2026-09-15T07:32:00Z
-updated_at: 2026-09-15T09:31:00Z
+updated_at: 2026-09-15T09:38:00Z
 plan_revision: 1
 current_step: 6
 total_steps: 6
@@ -67,11 +67,13 @@ affects: [auto-os/apps/037-klondike]
 
 ## 6. 复审记录
 
-stage: reviewed | PLAN-636 | revision 1 | outcome: pass | next: merge
+stage: merge | PLAN-636 | revision 1 | outcome: pass | completion_kind: delivered
 reviewed_commit (auto-os): ae5c25765377b0abe60ae552bc00d760b4bec58f
 reviewed_commit (auto-lang): 773b864afa7f1779b7cfb9c0d4ce31ffced9edd7
-evidence:
-  - VM 截图: apps/037-klondike/src/front/tests/screenshots/klondike_vm_test.png
-  - Vue 截图: apps/037-klondike/tests/screenshots/vue_after_fix.png
-  - AC-01 ~ AC-05 全部 100% 通过，无 workaround 或临时补丁
+archived_path: docs/plans/archive/636-klondike-vm-parity.md
+cleanup:
+  - wt-guard scanned: clean (0 reparse points)
+  - worktree removed: D:/autostack/.wt/lang-636/auto-lang
+  - branch deleted: plan-636-dev
+  - group dir removed: D:/autostack/.wt/lang-636
 spec_impact: pure app UI polish in auto-os app, no specs change required in auto-lang.
