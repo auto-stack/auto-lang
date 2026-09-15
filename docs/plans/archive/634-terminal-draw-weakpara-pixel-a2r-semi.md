@@ -245,6 +245,10 @@ simulator)、cosmic-text 字体管线、a2r/ui_gen 语句发射器。
 - 落地特记：并行会话 PLAN-019-D4 WIP（terminal shortcuts，与交付面
   重叠 3 文件）经 `git stash push`（3 文件限定）保真 → FF 落地 →
   `stash pop` 零冲突复原；WIP 现为工作树未提交态，归属其会话处置。
+- `cleaned`：✅（2026-09-15）——两 worktree 移除前 wt-guard 双 clean
+  （auto-lang + auto-down 兄弟，无 reparse point）；分支 `plan-634-dev`
+  删除（was d5f5d6d7f，merge-base --is-ancestor 落地核验）；组目录
+  `.wt/lang-634/` 已空移除；`git worktree list` 零 lang-634 残留。
 
 ## 10. 待澄清事项
 
