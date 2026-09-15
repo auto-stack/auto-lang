@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-624
-status: execution_done          # drafting → executing → execution_done → reviewed → archived（needs_fix 修复后重新收口，见 §9 2026-09-15 work-repair 行）
+status: reviewed                # drafting → executing → execution_done → reviewed → archived（终态前最后一站；merge 见 auto-plan-merge）
 feature_name: store-facade-cross-state-resolution
 author: [zhaopuming]
 created_at: 2026-09-14
@@ -399,6 +399,38 @@ needs_replan 评估。
   plan622 8/8 绿（范围门：测试/语料面改动，AGENTS Category A/B）。
   blockers：无。**next: review**（复验基线 4f4069b5e；AC-6 跨仓门仍归
   merge）。
+- 2026-09-15 stage:review（re-review）| PLAN-624 | rev 2 | **outcome:
+  pass** | reviewed_commit: 4f4069b5e6ba6e8ca9d85c6a89511434023922d5
+  （plan-624-dev）| base_commit: a06efd9f7 | dependency_revisions:
+  lang-624/auto-down @ auto-lang-dev 140775f0c（clean 未动）|
+  spec_inputs: docs/specs/auto-lang/ui/overview.md @ 2d47174dc（与上轮
+  pass 评审**逐字节相同**——`git diff 2d47174dc..4f4069b5e -- docs/specs/`
+  为空，证据按明示理由复用）。独立性声明同上轮（实现会话内评审，结论
+  以当轮复现重建）。
+  **增量范围**：2d47174dc..4f4069b5e 仅 3 个测试/语料文件（+52/−3），
+  生产代码零改动。
+  **acceptance_results（全部 pass）**：
+  AC-1 pass（F-03 闭合：p2 Edit 的 SetBody map 字面量实参携
+  `.active_path`——jade 原始崩形首次被**执行**断言，端到端
+  `view_dirty=Bool(true) status=Str("edited")`）；AC-2 pass（F-01 闭合：
+  Open 前 None 态 ?str 跨状态读 `probe_none=Nil status=Str("probed-none")`
+  不崩不 READ_ERR；Some 态经 dirty/edited 值证）；AC-3 pass（当轮 p3 臂
+  绿）；AC-4 pass（F-02 闭合：`idx=Int(1) idx_miss=Int(-1)`，哨兵 -99
+  判别 no-op）；AC-5 pass（当轮复现：tv 3706/3706 + tf 3560/3560 +
+  plan622 8/8 + plan442 17/17 + plan340 11/11 + plan624 5/5）；AC-6
+  pass-by-design（merge 前置跨仓门，AUTO_EXE → 4f4069b5e）；AC-7 pass
+  （SD 文本未变，上轮质审证据复用）。
+  **findings**: 无新增。**环境波动记录（非回归）**：首轮 tf 单测
+  `ffi_dual_019_dep_layout_invariants` 失败（1980/3560，并行负载
+  6.1s）——与本计划增量无共享路径（仅 plan624 断言/语料改动），隔离
+  单跑通过、本会话早前两轮 tf 亦通过、复跑全量即绿：判定为 dep-FFI
+  负载敏感波动（本机多会话并行构建在案），非计划回归。
+  **evidence**：可复现命令 `cargo test -p auto-lang --features ui-iced
+  --lib plan{624,622,442,340}`、`cargo tv`、`cargo tf` @ 4f4069b5e；
+  工件 = diff 2d47174dc..4f4069b5e（plan624_cross_state_tests.rs +
+  p2_app.at + p4_app.at）。
+  **next: merge**（AC-6 jade vm-smoke AUTO_EXE 全臂绿为 merge 前置门；
+  canonical spec 落账与 ledger 刷新随 merge）。
 
 ## 待澄清事项
 
