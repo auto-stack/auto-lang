@@ -150,11 +150,13 @@ class McpClient:
         return self.call("autoui_vtree", include_box=False, include_style=False,
                          include_source=False, include_props=True)
 
-    def find_ids(self, kind="button", label=None, limit=600):
+    def find_ids(self, kind="button", label=None, limit=600, exact=False):
         """autoui_find → 匹配节点的 vnode id 列表（vtree 顺序）。
 
         直接匹配「kind vnode_N {label: ...目标...}」节点本身，不受返回
-        Atom 子树里祖先链同名节点干扰。"""
+        Atom 子树里祖先链同名节点干扰。exact=True 时全等匹配——
+        「新建文件夹」包含「新建文件」前缀，子串匹配会双命中取错钮
+        （T8 a.txt 被建成目录实证）。"""
         args = {"limit": limit}
         if kind:
             args["kind"] = kind
@@ -166,7 +168,10 @@ class McpClient:
         if label is None:
             return re.findall(rf"{kind} vnode_(\d+)", text)
         out = []
-        for m in re.finditer(rf'{kind} vnode_(\d+) \{{label: "([^"]*)"', text):
+        # 按钮类节点带 label:，input 节点带 placeholder:（find 工具对二者
+        # 同做子串匹配）——两种字段形态都收（与 type_into 修正同根因）。
+        pat = rf'{kind} vnode_(\d+) \{{(?:label|placeholder): "([^"]*)"'
+        for m in re.finditer(pat, text):
             if label in m.group(2):
                 out.append(m.group(1))
         return out
@@ -175,23 +180,31 @@ class McpClient:
         text = self.call("autoui_action", element_id=vnode_id, action="press")
         return "status: ok" in text
 
-    def press_label(self, label, pick="first", kind="button"):
+    def press_label(self, label, pick="first", kind="button", exact=False):
         """按 label 找按钮并 press。pick: first|last（同名泄漏面取末个=模态钮）。"""
-        ids = self.find_ids(kind=kind, label=label)
+        ids = self.find_ids(kind=kind, label=label, exact=exact)
         if not ids:
             return False
         return self.press("vnode_" + (ids[-1] if pick == "last" else ids[0]))
 
     def type_into(self, placeholder, text, clear_first=True):
-        """按 placeholder 寻址 input 并键入（oninput 同步 state）。"""
-        ids = self.find_ids(kind="input", label=placeholder)
-        if not ids:
+        """按 placeholder 寻址 input 并键入（oninput 同步 state）。
+
+        2026-09-15 修正（并发调和）：autoui_find 返回树里 input 节点带的是
+        `placeholder:` 属性而非 `label:`（label 面仅 button 有）——原
+        find_ids(label=) 对 input 恒零命中，全部键入型用例失联。改直接
+        匹配 input 行的 placeholder 属性。"""
+        text_out = self.call("autoui_find", kind="input", limit=600)
+        if "No nodes found" in text_out:
             return False
-        args = {"element_id": "vnode_" + ids[0], "text": text}
-        if clear_first:
-            args["clear_first"] = True
-        self.call("autoui_type", **args)
-        return True
+        for m in re.finditer(r'input vnode_(\d+) \{placeholder: "([^"]*)"', text_out):
+            if placeholder in m.group(2):
+                args = {"element_id": "vnode_" + m.group(1), "text": text}
+                if clear_first:
+                    args["clear_first"] = True
+                self.call("autoui_type", **args)
+                return True
+        return False
 
     def state(self, *fields):
         text = self.call("autoui_state", fields=list(fields))
@@ -256,8 +269,12 @@ class TestResult:
             print(f"  FAIL  {name}: {detail}")
 
 
-def find_row_index(mcp, name, count):
-    """ItemCtx(i) 探测定位 files_view 中 name 的下标（行名对 MCP 不可见）。"""
+def find_row_index(mcp, name, count=None):
+    """ItemCtx(i) 探测定位 files_view 中 name 的下标（行名对 MCP 不可见）。
+
+    count 缺省 = 当前 item_count（state 真值），防硬编码与实际漂移。"""
+    if count is None:
+        count = mcp.state_int("item_count_str")
     for i in range(count):
         mcp.trigger({"booted": True}, f"ItemCtx{SEP}i{SEP}{i}")
         time.sleep(0.12)
@@ -268,7 +285,7 @@ def find_row_index(mcp, name, count):
 
 def ui_create(mcp, result, button_label, name):
     """UI 全链新建：title 图标钮 → 模态输入 → 创建。"""
-    if not mcp.press_label(button_label):
+    if not mcp.press_label(button_label, exact=True):
         result.check(f"{name} 模态按钮", False, f"{button_label} not found")
         return False
     time.sleep(0.6)
@@ -366,7 +383,7 @@ def run_suite(mcp, workdir, result):
 
     # ── T4: 搜索过滤 ────────────────────────────────────────────────────────
     print("\n[T4] 搜索过滤")
-    result.check("T4 搜索框在场", bool(mcp.find_ids(kind="input", label="搜索当前目录")), "not found")
+    result.check("T4 搜索框在场", mcp.type_into("搜索当前目录", ""), "not found")
     if mcp.type_into("搜索当前目录", "notes"):
         time.sleep(1.0)
         result.check("T4 过滤至 1 项", mcp.state_int("item_count_str") == 1,
@@ -427,13 +444,21 @@ def run_suite(mcp, workdir, result):
     if fr_idx >= 0:
         mcp.trigger({"booted": True}, f"OpenItem{SEP}i{SEP}{fr_idx}")
         time.sleep(1.0)
-        result.check("T8 进入 fm-renamed",
-                     mcp.state_str("current_path").endswith("fm-renamed"),
+        want = os.path.join(data, "fm-renamed")
+        result.check("T8 进入 fm-renamed", mcp.state_str("current_path") == want,
                      mcp.state_str("current_path"))
         if ui_create(mcp, result, "新建文件", "a.txt"):
             p = os.path.join(data, "fm-renamed", "a.txt")
-            result.check("T8 磁盘落盘", os.path.isfile(p))
-            result.check("T8 空文件", os.path.getsize(p) == 0)
+            # 落盘可见性有秒级滞后（创建动作 VM 执行排队 + 文件系统可见窗口，
+            # 实测最长 ~7s）——等待预算 3s 不够，放宽到 10s。
+            ok = False
+            for _ in range(20):
+                if os.path.isfile(p):
+                    ok = True
+                    break
+                time.sleep(0.5)
+            result.check("T8 磁盘落盘", ok)
+            result.check("T8 空文件", os.path.isfile(p) and os.path.getsize(p) == 0)
 
     # ── T9: CtxDelete + 确认删除（alert-dialog）──────────────────────────────
     print("\n[T9] 删除文件 a.txt")
