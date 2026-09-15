@@ -456,7 +456,11 @@ needs_replan 评估。
     剥离 P624 项后与当前账本逐字节等价；读回 6/6，总 518 items）。
   - `archived` ✅ plan → docs/plans/archive/624-store-facade-cross-state-
     resolution.md + status: archived（本次提交）。
-  - `cleaned` ⏳ 待执行（guard→双 worktree/分支/组目录移除后补记）。
+  - `cleaned` ✅ 双 worktree guard clean（wt-guard: auto-lang/auto-down
+    均无 reparse point）→ worktree 移除（auto-lang 由本仓、auto-down 由
+    彼仓注销）+ 分支删除（plan-624-dev @ 141ed2c4d ∈ master 0b5a23d08
+    祖先链已验证 / auto-lang-dev @ 140775f 未改动）→ 空组目录
+    D:/autostack/.wt/lang-624/ 移除。全检查点闭合。
 
 ## 待澄清事项
 
