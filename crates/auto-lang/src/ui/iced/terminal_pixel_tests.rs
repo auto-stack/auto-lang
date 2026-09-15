@@ -1,16 +1,21 @@
-//! PLAN-010 T8: terminal 组件像素级 headless 自动化(layout_tests 同款
-//! `iced_test::simulator` 管线,Plan 414 §8.2 先例;T8 三形:固定文本行 /
-//! 选中态 / 光标块)。
+//! PLAN-010 T8 → PLAN-634 T-01: terminal 组件像素级 headless 自动化
+//! (layout_tests 同款 `iced_test::simulator` 管线,Plan 414 §8.2 先例)。
 //!
-//! 断言面:
+//! 断言面(634 稳健化):像素金样的**逐字节**比对把环境敏感渲染面(wgpu
+//! MSAA×4 合成、适配器枚举、系统字体栅格)钉进了门禁——015 收尾实测同日
+//! 晨绿午后红、bisect 定案非代码(f0dc16732 洁净树复红),634 执行期探针
+//! 进一步证实 vulkan/dx12/gl 三后端在本机均逐字节复现金样(漂移是环境态
+//! 翻转,非后端字符串可复现),归因与再生成配方见
+//! `docs/plans/evidence/634/`。故断言改为环境无关的语义契约:
+//!
 //! 1. bounds 非零且等于 cols×CELL_W + 2×PAD / rows×CELL_H + 2×PAD(widget
 //!    经 `operate` 向 selector 暴露 bounds——canvas 型 widget 缺省不可见);
-//! 2. 选中态与基线帧像素不同(高亮层进入渲染产物);
-//! 3. 光标块与基线帧像素不同。
-//!
-//! iced_test 的 Snapshot 不开放逐像素读取,像素证据以
-//! `matches_image` 落盘金样(base 首跑自建;选中/光标帧与 base 必须不同)
-//! 呈现——base 的两次独立渲染必须逐字节一致,保证「不同」断言非噪声。
+//! 2. 基线帧文本层入像素:亮(墨水)像素占比显著高于纯底色(字体无关);
+//! 3. 渲染确定性:同进程两次独立渲染逐字节一致(噪声基线;同环境同适配器,
+//!    字节级成立);
+//! 4. 选中态/光标帧相对基线产生容差像素差(高亮/光标层进入渲染产物);
+//! 5. 金样留档:首跑自建;此后按容差比对,超预算**仅告警**并给出再生成
+//!    配方(留档与粗回归探测,不再作为硬门禁)。
 //!
 //! Run with:
 //! `cargo test -p auto-lang --features ui-iced,iced-layout-tests --lib terminal_pixel`
@@ -29,6 +34,20 @@ use iced_test::selector::{Candidate, Selector};
 const KEY: &str = "t8px";
 const COLS: u16 = 40;
 const ROWS: u16 = 10;
+
+/// 容差像素差分的单通道容差(0-255)。环境漂移(MSAA/适配器)典型表现为
+/// 边缘若干灰阶的抖动,≤8 视为同像素;高亮带/光标块的信号远超此粒度。
+const CHANNEL_TOL: i32 = 8;
+/// 金样告警预算:实测帧与金样容差差分超过该比例时 eprintln 告警(非致命)。
+/// 字体替换级漂移通常 >20%;同环境应为 0。
+const GOLDEN_DRIFT_BUDGET: f64 = 0.05;
+/// 基线文本层墨水占比下限(634 实测金样校准:双行文本+基线光标 =
+/// 0.153%;文本缺失时仅剩光标块 ≈0.018%)。字体替换只改字形分布,
+/// 不改量级,故环境无关。
+const TEXT_INK_FLOOR: f64 = 0.0005;
+/// 选中/光标层相对基线的容差差分下限(634 实测金样校准:两信号均
+/// ≈0.212%;层缺失时残余差分仅 ~0.036%——帧核缺省光标位移)。
+const LAYER_DIFF_FLOOR: f64 = 0.001;
 
 fn fixed_lines() -> Vec<String> {
     let mut lines = vec![
@@ -105,41 +124,158 @@ fn terminal_pixel_bounds_nonzero_and_exact() {
     );
 }
 
-/// 基线帧两次独立渲染逐字节一致(matches_image 自建金样后复验),
-/// 随后的「选中/光标帧与基线不同」断言以此为噪声基线。
-/// `name`: 用例私有金样名——nextest 每用例独立进程,共用路径会互踩。
-fn write_baseline_golden(name: &str) -> std::path::PathBuf {
+// —— 帧取证工具(634 T-01):解码、容差差分、墨水占比、金样审计 ——
+
+/// 一帧解码后的 RGBA 产物(matches_image 落盘 PNG 是无损往返)。
+struct Frame {
+    rgba: Vec<u8>,
+}
+
+fn temp_png(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join("auto-lang-terminal-pixel");
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    // nextest 每用例独立进程:pid 隔离避免并发进程互踩同名临时帧。
+    dir.join(format!("{}_{}.png", tag, std::process::id()))
+}
+
+/// matches_image 落盘时按渲染器名给路径追加后缀(如 `-wgpu`)且不回传
+/// 实际路径——统一走「落盘 → 按前缀 glob 解析 → 解码」取证。
+fn write_frame(snap: &iced_test::simulator::Snapshot, tag: &str) -> Frame {
+    let base = temp_png(tag);
+    let _ = snap.matches_image(&base).expect("frame 落盘");
+    let prefix = format!("{}_{}-", tag, std::process::id());
+    let dir = base.parent().expect("temp parent");
+    let written = std::fs::read_dir(dir)
+        .expect("temp dir")
+        .filter_map(|e| e.ok())
+        .find_map(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            (n.starts_with(&prefix) && n.ends_with(".png")).then(|| e.path())
+        })
+        .expect("matches_image 落盘路径");
+    decode_rgba(&written)
+}
+
+fn decode_rgba(path: &std::path::Path) -> Frame {
+    let file = std::fs::File::open(path).expect("open png");
+    let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
+    let mut reader = decoder.read_info().expect("png info");
+    let mut bytes = vec![0; reader.output_buffer_size().expect("frame buffer size")];
+    let info = reader.next_frame(&mut bytes).expect("png frame");
+    bytes.truncate(info.buffer_size());
+    Frame { rgba: bytes }
+}
+
+/// 容差差分占比:单通道差 >CHANNEL_TOL 的像素比例(两帧尺寸必须一致)。
+fn diff_fraction(a: &Frame, b: &Frame) -> f64 {
+    assert_eq!(a.rgba.len(), b.rgba.len(), "帧尺寸必须一致");
+    let px = a.rgba.len() / 4;
+    let diff = (0..px)
+        .filter(|&i| {
+            [0, 1, 2].iter().any(|&c| {
+                (a.rgba[i * 4 + c] as i32 - b.rgba[i * 4 + c] as i32).abs() > CHANNEL_TOL
+            })
+        })
+        .count();
+    diff as f64 / px as f64
+}
+
+/// 墨水占比:亮度(通道和)>480 的像素比例。终端底色近黑(通道和 <60),
+/// 文本/光标为亮前景——字体替换只改字形分布,不改量级,故环境无关。
+fn ink_fraction(f: &Frame) -> f64 {
+    let px = f.rgba.len() / 4;
+    let ink = (0..px)
+        .filter(|&i| {
+            f.rgba[i * 4] as u32 + f.rgba[i * 4 + 1] as u32 + f.rgba[i * 4 + 2] as u32 > 480
+        })
+        .count();
+    ink as f64 / px as f64
+}
+
+fn golden_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/ui/terminal_pixel")
+}
+
+fn golden_path(name: &str, kind: &str) -> std::path::PathBuf {
+    golden_dir().join(format!("terminal_pixel_{name}_{kind}.png"))
+}
+
+/// 金样实际落盘路径:matches_image 按渲染器名追加后缀(如 `-wgpu`),
+/// 而 Snapshot 不暴露渲染器名——按前缀 glob 解析已有金样。
+fn resolve_golden(name: &str, kind: &str) -> Option<std::path::PathBuf> {
+    let prefix = format!("terminal_pixel_{name}_{kind}-");
+    std::fs::read_dir(golden_dir())
+        .ok()?
+        .filter_map(|e| e.ok())
+        .find_map(|e| {
+            let fname = e.file_name().to_string_lossy().to_string();
+            (fname.starts_with(&prefix) && fname.ends_with(".png")).then(|| e.path())
+        })
+}
+
+/// 金样审计(留档 + 粗回归探测,非硬门禁):缺失则自建(首跑留档);已有
+/// 则容差比对,超预算仅告警并附再生成配方——逐字节硬比对正是 015 收尾
+/// 2 红的根因(环境态翻转,非代码回归),语义门禁由墨水/差分断言承担。
+fn golden_audit(snap: &iced_test::simulator::Snapshot, name: &str, kind: &str) {
+    if resolve_golden(name, kind).is_none() {
+        let created = snap.matches_image(golden_path(name, kind)).expect("golden 自建");
+        assert!(created, "金样首跑自建必须成功: {name}/{kind}");
+        return;
+    }
+    let golden = resolve_golden(name, kind).expect("golden 已存在");
+    let actual = write_frame(snap, &format!("{name}_{kind}_audit"));
+    let d = diff_fraction(&decode_rgba(&golden), &actual);
+    if d > GOLDEN_DRIFT_BUDGET {
+        eprintln!(
+            "[terminal_pixel] 金样漂移 {:.1}% 超预算 {:.0}%\
+             (环境敏感面: wgpu MSAA/系统字体栅格;非代码回归。再生成: 删除\
+             test/ui/terminal_pixel/terminal_pixel_{name}_{kind}-*.png 后重跑;\
+             归因: docs/plans/evidence/634/)",
+            d * 100.0,
+            GOLDEN_DRIFT_BUDGET * 100.0
+        );
+    }
+}
+
+/// 渲染基线帧并跑三项环境无关断言:墨水占比(文本层入像素)、同进程
+/// 双渲染字节一致(确定性噪声基线)、金样审计。返回基线帧供差分。
+fn baseline_frame(tag: &str) -> Frame {
     // 预热实测字距:首帧渲染中测量会翻转 cell_w(8.0→实测),两次渲染
     // 逐字节一致性会因此假失败。
     let _ = crate::ui::terminal::iced::cell_w();
     feed_baseline();
     let mut ui = simulator(terminal_view().into_iced());
-    let snap = ui.snapshot(&iced::Theme::Light).expect("baseline snapshot");
-    let path = golden_path(name, "base");
-    assert!(
-        snap.matches_image(&path).expect("baseline matches_image"),
-        "基线金样应自建/复验一致: {}",
-        path.display()
-    );
-    // 再渲染一次同一内容,与金样必须仍一致(渲染确定性,噪声基线)。
+    let snap1 = ui.snapshot(&iced::Theme::Light).expect("baseline snapshot 1");
     let snap2 = ui.snapshot(&iced::Theme::Light).expect("baseline snapshot 2");
+
+    let frame = write_frame(&snap1, &format!("{tag}_base1"));
+    let f2 = temp_png(&format!("{tag}_base2"));
+    let _ = snap2.matches_image(&f2).expect("baseline frame 2 落盘");
+
+    let ink = ink_fraction(&frame);
     assert!(
-        snap2.matches_image(&path).expect("baseline rematches_image"),
-        "基线第二次渲染与金样不一致——渲染不确定,像素断言不可靠"
+        ink > TEXT_INK_FLOOR,
+        "基线帧墨水占比 {:.2}% 低于 {:.1}%——文本层未进入渲染产物",
+        ink * 100.0,
+        TEXT_INK_FLOOR * 100.0
     );
-    path
+    // 同进程两次渲染必须逐字节一致(snap1 vs snap2 的落盘产物)。
+    let identical = snap1.matches_image(&f2).expect("determinism matches_image");
+    assert!(
+        identical,
+        "同进程两次渲染不一致——渲染不确定,像素断言不可靠"
+    );
+
+    golden_audit(&snap1, tag, "base");
+    frame
 }
 
-fn golden_path(name: &str, kind: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("test/ui/terminal_pixel/terminal_pixel_{name}_{kind}.png"))
-}
-
-/// 选中态:同一核心开启 Simple 选中后,渲染产物必须偏离基线(选中列带
-/// 高亮进入像素)。金样 terminal_pixel_selection.png 首跑自建留档。
+/// 选中态:同一核心开启 Simple 选中后,渲染产物必须相对基线产生容差
+/// 像素差(选中列带高亮进入像素)。金样 terminal_pixel_selection_frame
+/// 首跑自建留档,其后审计制。
 #[test]
 fn terminal_pixel_selection_changes_pixels() {
-    let base = write_baseline_golden("selection");
+    let base = baseline_frame("selection");
 
     let core = terminal(KEY, COLS, ROWS);
     terminal_selection_begin(core, TermSelectionType::Simple, 0, 0);
@@ -148,38 +284,89 @@ fn terminal_pixel_selection_changes_pixels() {
 
     let mut ui = simulator(terminal_view().into_iced());
     let snap = ui.snapshot(&iced::Theme::Light).expect("selection snapshot");
-    let path = golden_path("selection", "frame");
-    // 首跑:自建金样并返回 true;此后的运行:必须与自建时的选中帧一致。
-    let identical = snap.matches_image(&path).expect("selection matches_image");
-    assert!(identical, "选中帧与自身金样不一致: {}", path.display());
+    let frame = write_frame(&snap, "selection_frame");
+
     // 关键断言:选中帧必须偏离基线(不然选中高亮没进渲染产物)。
-    let same_as_base = snap.matches_image(&base).expect("selection vs base");
+    let d = diff_fraction(&frame, &base);
     assert!(
-        !same_as_base,
-        "选中帧与基线帧逐字节一致——选中高亮未进入渲染产物"
+        d > LAYER_DIFF_FLOOR,
+        "选中帧与基线帧容差差分 {:.3}% 低于 {:.3}%——选中高亮未进入渲染产物",
+        d * 100.0,
+        LAYER_DIFF_FLOOR * 100.0
     );
+
+    golden_audit(&snap, "selection", "frame");
 
     // 清场:核心上的选中不影响其他用例。
     terminal_selection_clear(core);
 }
 
-/// 光标块:光标位置/形状写入核心后,渲染产物必须偏离基线(光标块像素
-/// 区域存在)。金样 terminal_pixel_cursor.png 首跑自建留档。
+/// 光标块:光标位置/形状写入核心后,渲染产物必须相对基线产生容差像素
+/// 差(光标块像素区域存在)。金样 terminal_pixel_cursor_frame 首跑自建
+/// 留档,其后审计制。
 #[test]
 fn terminal_pixel_cursor_changes_pixels() {
-    let base = write_baseline_golden("cursor");
+    let base = baseline_frame("cursor");
 
     let core = terminal(KEY, COLS, ROWS);
     terminal_set_cursor(core, 3, 5, TermCursorShape::Block);
 
     let mut ui = simulator(terminal_view().into_iced());
     let snap = ui.snapshot(&iced::Theme::Light).expect("cursor snapshot");
-    let path = golden_path("cursor", "frame");
-    let identical = snap.matches_image(&path).expect("cursor matches_image");
-    assert!(identical, "光标帧与自身金样不一致: {}", path.display());
-    let same_as_base = snap.matches_image(&base).expect("cursor vs base");
+    let frame = write_frame(&snap, "cursor_frame");
+
+    let d = diff_fraction(&frame, &base);
     assert!(
-        !same_as_base,
-        "光标帧与基线帧逐字节一致——光标块未进入渲染产物"
+        d > LAYER_DIFF_FLOOR,
+        "光标帧与基线帧容差差分 {:.3}% 低于 {:.3}%——光标块未进入渲染产物",
+        d * 100.0,
+        LAYER_DIFF_FLOOR * 100.0
     );
+
+    golden_audit(&snap, "cursor", "frame");
+}
+
+/// 诊断工具(#[ignore],漂移取证时手动跑):打印金样间墨水占比与容差
+/// 差分统计——634 归因报告的数据来源,再生成金样后可复跑印证。
+#[test]
+#[ignore = "diagnostic: 漂移取证/金样再生成印证(见 docs/plans/evidence/634/)"]
+fn terminal_pixel_dump_golden_stats() {
+    let _ = crate::ui::terminal::iced::cell_w();
+    feed_baseline();
+    let mut ui = simulator(terminal_view().into_iced());
+    let snap = ui.snapshot(&iced::Theme::Light).expect("snapshot");
+    let actual = write_frame(&snap, "dump_stats");
+    eprintln!(
+        "[stats] 实测帧墨水占比 {:.2}%",
+        ink_fraction(&actual) * 100.0
+    );
+    for (name, kind) in [("selection", "base"), ("selection", "frame"), ("cursor", "base"), ("cursor", "frame")] {
+        match resolve_golden(name, kind) {
+            Some(p) => {
+                let g = decode_rgba(&p);
+                eprintln!(
+                    "[stats] {name}/{kind}: ink={:.2}% diff-vs-actual={:.2}%",
+                    ink_fraction(&g) * 100.0,
+                    diff_fraction(&g, &actual) * 100.0
+                );
+            }
+            None => eprintln!("[stats] {name}/{kind}: 金样缺失"),
+        }
+    }
+    let sel_base = resolve_golden("selection", "base").map(|p| decode_rgba(&p));
+    let sel_frame = resolve_golden("selection", "frame").map(|p| decode_rgba(&p));
+    if let (Some(b), Some(f)) = (sel_base, sel_frame) {
+        eprintln!(
+            "[stats] selection frame-vs-base diff={:.2}%",
+            diff_fraction(&b, &f) * 100.0
+        );
+    }
+    let cur_base = resolve_golden("cursor", "base").map(|p| decode_rgba(&p));
+    let cur_frame = resolve_golden("cursor", "frame").map(|p| decode_rgba(&p));
+    if let (Some(b), Some(f)) = (cur_base, cur_frame) {
+        eprintln!(
+            "[stats] cursor frame-vs-base diff={:.2}%",
+            diff_fraction(&b, &f) * 100.0
+        );
+    }
 }
