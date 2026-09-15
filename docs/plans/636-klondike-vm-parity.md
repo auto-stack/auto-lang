@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-636
-status: execution_done
+status: reviewed
 feature_name: klondike-vm-parity
 author: [agent]
 created_at: 2026-09-15T07:32:00Z
-updated_at: 2026-09-15T09:25:00Z
+updated_at: 2026-09-15T09:31:00Z
 plan_revision: 1
 current_step: 6
 total_steps: 6
@@ -67,6 +67,11 @@ affects: [auto-os/apps/037-klondike]
 
 ## 6. 复审记录
 
-stage: execution_done | PLAN-636 | revision 1 | outcome: pass | next: user review
-authorized scope: auto-os/apps/037-klondike .at 源文件修改，无 Rust 变更
-diff verified: 仅修改 app.at 与 card_face.at，双端截图比对通过。
+stage: reviewed | PLAN-636 | revision 1 | outcome: pass | next: merge
+reviewed_commit (auto-os): ae5c25765377b0abe60ae552bc00d760b4bec58f
+reviewed_commit (auto-lang): 773b864afa7f1779b7cfb9c0d4ce31ffced9edd7
+evidence:
+  - VM 截图: apps/037-klondike/src/front/tests/screenshots/klondike_vm_test.png
+  - Vue 截图: apps/037-klondike/tests/screenshots/vue_after_fix.png
+  - AC-01 ~ AC-05 全部 100% 通过，无 workaround 或临时补丁
+spec_impact: pure app UI polish in auto-os app, no specs change required in auto-lang.
