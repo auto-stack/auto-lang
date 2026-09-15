@@ -872,13 +872,15 @@ fn plain_para(text: &str, width: f32) -> Para {
 }
 
 /// IME 聚焦后英文起步重试(AUTO_IME_TRACE=1 时 stderr 留痕,随宿主
-/// stderr 落盘可审计)。返回 false=上下文尚不可用(调用方续重试);
-/// true=已落位。策略三段:
-/// ①读 ImmGetConversionStatus:已是 ALPHANUMERIC → 不动;
-/// ②NATIVE → ImmSetConversionStatus 强制,回读验证;
-/// ③回读仍 NATIVE(TSF IME 可能无视 IMM32 强制)→ 合成 Shift 键——
-///   走 IME 自身的 EN/CN 切换管线(与用户手动 Shift 同路径,必然粘住)。
-/// 上下文取本线程活动窗(iced 单线程 UI,聚焦即本窗);拿不到返回 false。
+/// stderr 落盘可审计)。返回 false=尚未落地(调用方续重试);true=已英文。
+///
+/// 实测定性(2026-09-15 trace 三轮):现代微软拼音是 TSF IME,权威模式在
+/// TSF 侧,IMM32 转换状态只是兼容影子——ImmSetConversionStatus 写入
+/// 读回 0x0 后,TSF 周期同步又把 NATIVE 回写(实测 0x481→0x0→回 0x1),
+/// 单靠 IMM32 必输。故 NATIVE 时主武器=合成 Shift 键(走 IME 自身
+/// EN/CN 切换键事件管线,与用户手按 Shift 同路径,权威且粘住),
+/// IMM32 写入仅作影子同步辅助;落地与否由下一 tick 复读取信。
+/// NATIVE 才动手(已英文不动);20 tick 兜底。
 #[cfg(windows)]
 fn ime_force_alphanumeric() -> bool {
     static TRACE: OnceLock<bool> = OnceLock::new();
@@ -903,7 +905,6 @@ fn ime_force_alphanumeric() -> bool {
         ) -> i32;
         fn ImmSetConversionStatus(himc: isize, conversion: u32, sentence: u32) -> i32;
     }
-    const IME_CMODE_ALPHANUMERIC: u32 = 0x0000;
     const IME_CMODE_NATIVE: u32 = 0x0001;
     const VK_SHIFT: u8 = 0x10;
     const KEYEVENTF_KEYUP: u32 = 0x0002;
@@ -933,20 +934,17 @@ fn ime_force_alphanumeric() -> bool {
             ImmReleaseContext(hwnd, himc);
             return true;
         }
-        ImmSetConversionStatus(himc, IME_CMODE_ALPHANUMERIC, 0);
-        let mut after: u32 = 0;
-        ImmGetConversionStatus(himc, &mut after, &mut sentence);
+        // 主武器:合成 Shift(IME 自身 EN/CN 切换,TSF 权威,粘住);
+        // 辅助:IMM32 影子同步。本轮不宣布落地——下一 tick 复读取信
+        // (TSF 周期回写 NATIVE 的竞态由重试循环吸收)。
+        ImmSetConversionStatus(himc, 0x0000, 0);
+        keybd_event(VK_SHIFT, 0, 0, 0);
+        keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
         if trace {
-            eprintln!("[ime-trace] forced: before={mode:#x} after={after:#x} hwnd={hwnd:#x}");
-        }
-        if after & IME_CMODE_NATIVE != 0 {
-            // IMM32 强制未粘住:合成 Shift 走 IME 自身切换管线。
-            keybd_event(VK_SHIFT, 0, 0, 0);
-            keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0);
-            if trace { eprintln!("[ime-trace] shift fallback sent"); }
+            eprintln!("[ime-trace] native mode {mode:#x} → shift toggle sent (hwnd={hwnd:#x})");
         }
         ImmReleaseContext(hwnd, himc);
-        true
+        false
     }
 }
 
