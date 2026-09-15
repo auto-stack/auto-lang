@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-635
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: cross-package-style-recipes（Design 29 Phase 3 v2 + 依赖解析声明门控）
 author: [zhaopuming]
 created_at: 2026-09-15
@@ -16,7 +16,7 @@ new_spec_components:
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象）"]
 
 affects: [auto-lang/parser, auto-lang/ui, auto-lang/aura, auto-man]
-current_step: 1
+current_step: 8
 total_steps: 8
 ---
 
@@ -334,8 +334,17 @@ dep "<name>" 或加入 workspace members」提示。pac.at 读取沿用既有文
     parity_shot_diff.py 采样点为 015-notes 专用，本示例为新增布局，
     未注册采样点（结构对拍+截图代偿），评审知悉。
 - **T-08 门禁与收口**：
-  - `cargo t` 对拍 master 基线红名单零新增；`cargo tv` 全绿；状态
-    `execution_done`，移交 /auto-plan:review（review 后 fold 前 `cargo tf`）。
+  - [✅ 已完成 2026-09-15] `cargo t --no-fail-fast` 全量红名单对拍（同
+    worktree 同环境 master tip d96973a80 detached 对照）：分支 25 unique 红
+    ⊆ master 26 unique 红，**零新增回归**（消失 1 红 plan394::c1_future_all
+    为 master 侧 flaky，非本分支触碰面）；`cargo tv` 3725/3725 全绿
+    （35.3s）；plan635 专属 10/10 + plan339 5/5 + plan475 1/1 +
+    auto-man lock 8/8；警告面：新改文件零新增（cargo check 181=基线，
+    Name 未用导入顺修）；无遗留 debug 输出（唯一 eprintln 为幽灵依赖
+    硬门控诊断通道，与既有 collect_module_imports 诊断形态一致）。
+    代码 commits：f34531641 / df00f06d4 / 28c6e718e / 683b842d7
+    （worktree D:/autostack/.wt/lang-635/auto-lang，branch plan-635-dev，
+    base d96973a80）；`cargo tf` 按 T-08 契约移交 /auto-plan:review 执行。
 
 ## 9. 复审记录
 
@@ -345,6 +354,12 @@ dep "<name>" 或加入 workspace members」提示。pac.at 读取沿用既有文
 - （用户确认 2026-09-15：待澄清 #1/#2/#3 全部按推荐方案裁定——use 符号导入
   复用、硬门控、D6 入 scope；契约文本与 D1/D4/D6 原书写一致，
   plan_revision 维持 1，授权进入 work。）
+- （execution_done handoff 2026-09-15：`stage: work | PLAN-635 |
+  plan_revision: 1 | outcome: pass | code_commit: 683b842d7 (tip,
+  f34531641+df00f06d4+28c6e718e+683b842d7) | task_ids: T-01..T-08 全勾 |
+  evidence: plan635 10/10 + tv 3725/3725 + 红名单对拍分支25⊆master26零新增
+  + 双端实机快照/截图（VM MCP snapshot 三配方全展开 / Vue vite+Playwright
+  dark） | blockers: 无 | next: review`）
 
 ## 10. 待澄清事项
 
