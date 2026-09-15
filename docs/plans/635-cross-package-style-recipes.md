@@ -284,31 +284,55 @@ dep "<name>" 或加入 workspace members」提示。pac.at 读取沿用既有文
     纯名字列表，符号类别无关；recipe 按名蹭用即可。命名导入非 pub 检查在
     收集依赖模块 stmts 时与 use items 求交实现；撞名检测放注册层（需给
     StyleRecipe 加来源标记）。
-- **T-02 语言面收集与门控**：
-  - `lib.rs` collect_module_imports 增加 StyleRecipeDecl 收集臂（D2：pub 门控、
-    dedup、撞名检查）；
-  - 撞名诊断对齐既有双源形态。
-  - 验证：`cargo t style_recipe`（新增跨包 fixture 用例）。
-- **T-03 desugar 注册接线**：
-  - VM 轨注册时机统一（D3：合并后单次注册，导入 recipe 免重复全量验证）；
-  - 跨包参数化/组合配方展开用例。
-  - 验证：`cargo t style_recipe && cargo tv`。
-- **T-04 Vue 轨注册**：
-  - `auto-man/src/vue.rs` 宿主编译前预注册依赖包 styles 模块（与 VM 同一
-    register 入口）；
-  - SFC golden 断言。
-  - 验证：`cargo t -p auto-man`。
-- **T-05 声明门控与诊断**：
-  - `lib.rs` resolve_module_path probe_dep 放行条件（D4）+ 错误信息；
-  - 正反例测试。
-  - 验证：`cargo t resolve_module`（或所属既有测试族）。
+- **T-02 语言面收集与门控**（执行形态依 T-01 P2/P3 收敛，未动 collect_module_imports）：
+  - `recipe.rs` 新增 `prepare_style_recipe_imports`（源码扫描→模块解析→传递
+    收集，两阶段防 parser 实时注册污染）+ `register_style_recipe_checked`
+  （source 追踪撞名检测）；pub 门控/非 pub 命名导入硬错误；
+  - 四注册点接线：build_dynamic_component_inner（VM）/ui_build/
+    ui_build_shadcn/ui_gen::api::generate_component_from_file（Vue 生产链）。
+  - [✅ 已完成 2026-09-15] commit f34531641；plan635 测试 7/7（命名/glob/
+    非pub/撞名/传递/deps布局/vue链e2e）；design_tokens 21/21。
+  - 执行偏差记录：D2 原文写 collect_module_imports 收集臂——T-01 实勘表明
+    UI 提取三入口不走该合并器，正确挂点为 load_and_validate 单函数族；
+    D3「auto-man 预注册」收缩为 auto-lang 内单点（auto-man 零改动），
+    契约目标（双端同一注册路径）不变。
+- **T-03 desugar 注册接线**（并入 T-02 实现——注册与展开同函数族单点）：
+  - [✅ 已完成 2026-09-15] commit f34531641；参数化/组合跨包展开用例
+    （test_plan635_named_import_registers_and_desugars /
+    test_plan635_transitive_import）绿；cargo tv 见 T-08。
+- **T-04 Vue 轨注册**（T-01 P2 收敛：接线在 auto-lang api.rs 入口，auto-man 无改动）：
+  - [✅ 已完成 2026-09-15] commit f34531641；test_plan635_vue_chain_expands_
+    imported_recipe 走 ui_build_shadcn 生产链断言 SFC 含展开串；auto-man
+    回归（lock 套件 8/8，见 T-07）。
+- **T-05 声明门控与诊断（硬门控，2026-09-15 用户裁定）**：
+  - `lib.rs` resolve_module_path walk-up：deps/<name> 探测过 pac.at `dep`
+    声明门（裸名/引号双形态 + 词边界检查）；未声明幽灵依赖阻断 + 修复指引
+    eprintln；旧 probe_dep 闭包收敛为统一 probe_pkg 候选助手。
+  - [✅ 已完成 2026-09-15] commit df00f06d4；test_plan635_gate_blocks_
+    undeclared_deps（负例）+ plan475 fixture 补声明（语义变更预期内）；
+    plan339 5/5 + plan475 1/1 绿。
 - **T-06 workspace members 解析**：
-  - D5：members 同权探测 + 测试。
-  - 验证：`cargo t`（workspace fixture 用例）。
-- **T-07 示例实证**：
-  - examples/ui 两包形态（010 扩展或新增示例）：依赖包导出 pub recipe，宿主
-    use 导入消费；pac.lock 补全（D6）一并落地。
-  - 验证：autoui-verifier 双端对拍 + `cargo test -p auto-man plan635`。
+  - pac_workspace_member_dir 文本扫描（members: [...] 表项末段匹配依赖名）
+    + members 目录同权 deps/ 探测。
+  - [✅ 已完成 2026-09-15] commit df00f06d4；test_plan635_workspace_member_
+    resolves 绿。
+- **T-07 示例实证 + pac.lock 补全**：
+  - 新增受控跟踪两包示例：examples/ui/stylekit（共享包，pub card_base/
+    参数化 pill/非 pub internal_only）+ examples/ui/045-style-import
+  （pac.at `dep stylekit { path: "../stylekit" }` + 命名 use 导入 + 宿主
+    pill_danger 派生）。010 扩展弃用——T-01 实勘其依赖 examples/ui/common
+    为未跟踪本地目录（junction 悬空，settings 已迁址 auto-os），不可作
+    受控实证载体；
+  - D6：lock.rs from_target 收录本地 path 依赖（git commit 可选）+ verify()
+    对 commit-less 条目校验物化路径存在；
+  - [✅ 已完成 2026-09-15] commit 28c6e718e；auto-man lock 8/8；
+    test_plan635_example_fixture_vue_chain（真实示例生产链）绿。
+  - **双端实机实证**（AC-06 证据）：VM 轨 `auto run -r vm` + AUTOUI_MCP_PORT
+    ——结构快照三配方全展开（card_base 卡片串/pill() 主按钮串/pill_danger
+    派生串逐类吻合）+ iced 帧截图；Vue 轨 `auto run` 脚手架 + vite 就绪 +
+    Playwright dark 1280x800 截图；截图已留档（会话交付展示）。注：
+    parity_shot_diff.py 采样点为 015-notes 专用，本示例为新增布局，
+    未注册采样点（结构对拍+截图代偿），评审知悉。
 - **T-08 门禁与收口**：
   - `cargo t` 对拍 master 基线红名单零新增；`cargo tv` 全绿；状态
     `execution_done`，移交 /auto-plan:review（review 后 fold 前 `cargo tf`）。
