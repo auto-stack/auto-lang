@@ -681,11 +681,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     bounds: Rectangle::new(Point::new(x, y), Size::new(w, CELL_H)),
                     ..renderer::Quad::default()
                 },
-                Background::Color(Color::from_rgba(0.2, 0.3, 0.45, 0.9)),
-            );
-            let para = plain_para(preedit, w);
-            renderer.fill_paragraph(&para, Point::new(x, y), pal_fg, bounds);
-        }
+            Background::Color(Color::from_rgba(0.2, 0.3, 0.45, 0.9)),
+        );
+        fill_cached_para(renderer, preedit, w, Point::new(x, y), pal_fg, bounds);
+    }
 
         // 滚动偏移 badge(offset > 0 时右上角指示;auto-term 同款)。
         let offset = self.scroll_offset;
@@ -700,8 +699,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 renderer::Quad { bounds: bg_bounds, ..renderer::Quad::default() },
                 Background::Color(pal_bg),
             );
-            let para = plain_para(&badge, badge_w);
-            renderer.fill_paragraph(&para, bg_bounds.position(), pal_fg, bounds);
+            fill_cached_para(renderer, &badge, badge_w, bg_bounds.position(), pal_fg, bounds);
         }
 
         // 菜单层:右键打开的 Copy/Paste/Select All/Interrupt 浮层,悬停项反色。
@@ -900,6 +898,40 @@ fn plain_para(text: &str, width: f32) -> Para {
         shaping: Shaping::Basic,
         wrapping: Wrapping::None,
     })
+}
+
+/// badge/preedit 纯文本段落缓存(强引用静态存活;PLAN-634 T-02,菜单标签
+/// MENU_PARAS 同族根修)。根因同 015 R015-F1:iced wgpu 渲染层
+/// fill_paragraph 排队的是 `paragraph.downgrade()` 弱引用,flush 时
+/// upgrade 失败即静默丢弃——draw 内局部段落 fill 后析构,文字必然消失
+/// (quad 为值拷贝不受影响)。与菜单标签(静态串,OnceLock 一次建)不同,
+/// badge/preedit 内容动态——键 (text,width),容量封顶溢出即清空:滚动
+/// 偏移/IME 组合串是短瞬态值,重建只是一次小区段 shaping,不值得 LRU。
+/// 不变式:条目只增(封顶清空除外),fill 持有的强引用活在静态缓存,
+/// flush 时 upgrade 恒成功,无悬垂。
+static PLAIN_PARAS: OnceLock<Mutex<HashMap<(String, u32), Para>>> = OnceLock::new();
+
+/// 封顶容量:badge 偏移值 + preedit 组合串的活跃集合远小于此。
+const PLAIN_PARAS_CAP: usize = 64;
+
+/// 从静态缓存取段落并 fill(强引用存活到 flush;guard 在 fill 排队后才
+/// 析构——row 缓存同款纪律)。
+fn fill_cached_para(
+    renderer: &mut iced::Renderer,
+    text: &str,
+    width: f32,
+    position: Point,
+    color: Color,
+    clip_bounds: Rectangle,
+) {
+    let map = PLAIN_PARAS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = map.lock().unwrap();
+    if guard.len() >= PLAIN_PARAS_CAP {
+        guard.clear();
+    }
+    let key = (text.to_owned(), width.to_bits());
+    let para = guard.entry(key).or_insert_with(|| plain_para(text, width));
+    renderer.fill_paragraph(para, position, color, clip_bounds);
 }
 
 /// IME 聚焦后英文起步重试(AUTO_IME_TRACE=1 时 stderr 留痕,随宿主

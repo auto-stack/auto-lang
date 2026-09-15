@@ -45,9 +45,13 @@ const GOLDEN_DRIFT_BUDGET: f64 = 0.05;
 /// 0.153%;文本缺失时仅剩光标块 ≈0.018%)。字体替换只改字形分布,
 /// 不改量级,故环境无关。
 const TEXT_INK_FLOOR: f64 = 0.0005;
-/// 选中/光标层相对基线的容差差分下限(634 实测金样校准:两信号均
-/// ≈0.212%;层缺失时残余差分仅 ~0.036%——帧核缺省光标位移)。
-const LAYER_DIFF_FLOOR: f64 = 0.001;
+/// 选中层相对基线的容差差分下限(634 新帧实测:信号 ≈0.212%;缺层残差
+/// = 缺省光标位移 ≈0.036%,须判红)。
+const SELECTION_DIFF_FLOOR: f64 = 0.0005;
+/// 光标层相对基线的容差差分下限(634 新帧实测:光标位移信号本身即
+/// ≈0.036%——两枚块位置互换;缺层时帧与基线逐字节同,差分=0。同进程
+/// 渲染字节确定,无噪声带)。
+const CURSOR_DIFF_FLOOR: f64 = 0.0001;
 
 fn fixed_lines() -> Vec<String> {
     let mut lines = vec![
@@ -129,6 +133,8 @@ fn terminal_pixel_bounds_nonzero_and_exact() {
 /// 一帧解码后的 RGBA 产物(matches_image 落盘 PNG 是无损往返)。
 struct Frame {
     rgba: Vec<u8>,
+    width: u32,
+    height: u32,
 }
 
 fn temp_png(tag: &str) -> std::path::PathBuf {
@@ -163,7 +169,11 @@ fn decode_rgba(path: &std::path::Path) -> Frame {
     let mut bytes = vec![0; reader.output_buffer_size().expect("frame buffer size")];
     let info = reader.next_frame(&mut bytes).expect("png frame");
     bytes.truncate(info.buffer_size());
-    Frame { rgba: bytes }
+    Frame {
+        rgba: bytes,
+        width: info.width,
+        height: info.height,
+    }
 }
 
 /// 容差差分占比:单通道差 >CHANNEL_TOL 的像素比例(两帧尺寸必须一致)。
@@ -289,10 +299,10 @@ fn terminal_pixel_selection_changes_pixels() {
     // 关键断言:选中帧必须偏离基线(不然选中高亮没进渲染产物)。
     let d = diff_fraction(&frame, &base);
     assert!(
-        d > LAYER_DIFF_FLOOR,
+        d > SELECTION_DIFF_FLOOR,
         "选中帧与基线帧容差差分 {:.3}% 低于 {:.3}%——选中高亮未进入渲染产物",
         d * 100.0,
-        LAYER_DIFF_FLOOR * 100.0
+        SELECTION_DIFF_FLOOR * 100.0
     );
 
     golden_audit(&snap, "selection", "frame");
@@ -317,13 +327,108 @@ fn terminal_pixel_cursor_changes_pixels() {
 
     let d = diff_fraction(&frame, &base);
     assert!(
-        d > LAYER_DIFF_FLOOR,
+        d > CURSOR_DIFF_FLOOR,
         "光标帧与基线帧容差差分 {:.3}% 低于 {:.3}%——光标块未进入渲染产物",
         d * 100.0,
-        LAYER_DIFF_FLOOR * 100.0
+        CURSOR_DIFF_FLOOR * 100.0
     );
 
     golden_audit(&snap, "cursor", "frame");
+}
+
+// —— badge/preedit 可见性(PLAN-634 T-02;016 偏离基线法同款)——
+//
+// 根因同 015 R015-F1:draw 局部段落 fill 后析构,iced wgpu flush 时
+// upgrade 失败静默丢弃文字(bg quad 值拷贝不受影响,故旧帧只剩底色块)。
+// 断言 = 目标格区域亮像素计数:锚定在空单元格上,基线 ≈0;修复前仅
+// quad 无文字也 ≈0(badge 底色块)或负贡献(preedit 蓝底盖字),修复后
+// 文字字形进入像素,亮像素显著非零。
+
+/// 矩形区域(物理像素,左闭右开)内的亮像素数。
+fn ink_in_rect(f: &Frame, x0: u32, y0: u32, x1: u32, y1: u32) -> usize {
+    let stride = f.width as usize;
+    let mut ink = 0usize;
+    for y in y0 as usize..(y1 as usize).min(f.height as usize) {
+        for x in x0 as usize..(x1 as usize).min(stride) {
+            let i = (y * stride + x) * 4;
+            if i + 2 < f.rgba.len()
+                && f.rgba[i] as u32 + f.rgba[i + 1] as u32 + f.rgba[i + 2] as u32 > 480
+            {
+                ink += 1;
+            }
+        }
+    }
+    ink
+}
+
+/// 滚动偏移 badge(右上角指示)必须渲染进像素产物:目标区域亮像素
+/// 显著非零(修复前只有 pal_bg 底色块,近黑底近黑块,亮像素≈0)。
+#[test]
+fn terminal_pixel_badge_text_reaches_pixels() {
+    use crate::ui::terminal::iced::{CELL_H, PAD, cell_w};
+
+    let _ = crate::ui::terminal::iced::cell_w();
+    feed_baseline();
+
+    // badge 帧:scroll_offset=7(渲染 "↑7";核心内容/光标同基线)。
+    let mut view = terminal_view();
+    if let View::Terminal { scroll_offset, .. } = &mut view {
+        *scroll_offset = 7;
+    }
+    let mut ui = simulator(view.into_iced());
+    let snap = ui.snapshot(&iced::Theme::Light).expect("badge snapshot");
+    let frame = write_frame(&snap, "badge_frame");
+
+    // badge 几何:右上角,x0 = 宽 - 3×cw(字宽) - cw(右边距)。
+    let cw = cell_w();
+    let right = COLS as f32 * cw + 2.0 * PAD;
+    let scale = 2.0f32; // simulator 硬编码 scale_factor
+    let x0 = ((right - 4.0 * cw) * scale) as u32;
+    let x1 = (right * scale) as u32;
+    let y1 = ((PAD + CELL_H) * scale) as u32;
+
+    let ink = ink_in_rect(&frame, x0, 0, x1, y1);
+    assert!(
+        ink > 100,
+        "badge 区域亮像素 {ink} ≤ 100——滚动偏移指示文字未进入渲染产物\
+         (WeakParagraph 同族丢弃;widget.rs fill_cached_para)"
+    );
+}
+
+/// IME preedit 覆盖层文字必须渲染进像素产物:锚点在空单元格,基线
+/// ≈0 亮像素;修复前蓝底 quad 盖场但文字被丢弃,亮像素仍≈0。
+#[test]
+fn terminal_pixel_preedit_text_reaches_pixels() {
+    use crate::ui::terminal::iced::{CELL_H, PAD, cell_w};
+
+    let _ = crate::ui::terminal::iced::cell_w();
+    feed_baseline();
+    // preedit 锚点 = 核心光标格:设在空行(行3,列3),避免基线文字干扰。
+    let core = terminal(KEY, COLS, ROWS);
+    terminal_set_cursor(core, 3, 3, TermCursorShape::Block);
+
+    let mut view = terminal_view();
+    if let View::Terminal { preedit, .. } = &mut view {
+        *preedit = Some("ab".to_string());
+    }
+    let mut ui = simulator(view.into_iced());
+    let snap = ui.snapshot(&iced::Theme::Light).expect("preedit snapshot");
+    let frame = write_frame(&snap, "preedit_frame");
+
+    // 锚点几何:x = PAD + 3×cw,y = PAD + 3×CELL_H,w = 2×cw("ab")。
+    let cw = cell_w();
+    let scale = 2.0f32;
+    let x0 = ((PAD + 3.0 * cw) * scale) as u32;
+    let x1 = ((PAD + 5.0 * cw) * scale) as u32;
+    let y0 = ((PAD + 3.0 * CELL_H) * scale) as u32;
+    let y1 = ((PAD + 4.0 * CELL_H) * scale) as u32;
+
+    let ink = ink_in_rect(&frame, x0, y0, x1, y1);
+    assert!(
+        ink > 100,
+        "preedit 区域亮像素 {ink} ≤ 100——IME 组合串文字未进入渲染产物\
+         (WeakParagraph 同族丢弃;widget.rs fill_cached_para)"
+    );
 }
 
 /// 诊断工具(#[ignore],漂移取证时手动跑):打印金样间墨水占比与容差
