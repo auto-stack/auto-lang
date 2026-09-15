@@ -328,8 +328,10 @@ use/TypeStore 语义交界的全面排查（归档 621 文件 + 在途计划 gre
    基线复证：a2r_rustc_real_compile_gate/14_modules_007_shared_var/27_c_abi
    ×2）；`cargo tf` **3566/3567**（唯一红 ffi_dual_019 = P615-D3 dep cdylib
    spawn 计时敏感全档并发偶发，627-F-2 同族在案，**隔离复跑绿** 3.06s）；
-   `docs_gen` 4/4；`use_semantics` 7/7。双端：015-notes VM ✓ / vue 端
-   后端首编耗时挂钟超限（见复审记录 vue 注记）。
+   `docs_gen` 4/4；`use_semantics` 7/7。双端：015-notes VM ✓（窗口+MCP first
+   state sync）；**vue ✓**——`auto run` 后端全量首编完成后 front(3000)=200
+   （vite 服务生成前端）、back `/api/notes` 返回真实 JSON（Welcome/Quick
+   Ideas 种子数据），dev server 探活后停，零改动回归双端全过。
 
 ## 复审记录
 
@@ -359,11 +361,10 @@ next: /auto-plan:review
    `merge_with_conflicts` 维护 symbol_origin。
 3. **夹具零迁移面**：原估 ~89 处为 use 语句总量而非平铺依赖量——三档全量
    绿为其构造性证据（AC-4 证据形态变更，语义等价达成）。
-4. **vue 端注记**：`auto run`（vue 模式）需先编 examples/rust-workspace 后端
-   （fresh worktree 全量 ~300 deps），挂钟超会话预算被截断于编译段——
-   编译失败≠语义失败；VM 端零改动回归过 + vue 发射面（a2vue）不触及 use
-   发射语义（627 符号/模块形态抽取与 use 可见性正交）。复审若需 vue 端
-   补证：主检出复用已编 target 跑同例（预期同过，vue 轨不走 Linker）。
+4. **vue 端注记**：首跑会话内因 examples/rust-workspace 后端 fresh 全量编译
+   （~300 deps）挂钟较长；随后编译完成实测**全通**（front 200 + /api/notes
+   JSON，步骤 12 记录）。vue 发射面（a2vue）不触及 use 可见性语义（627
+   抽取与 use 形态正交），双端证据齐备。
 5. **KNOWN-DEBT 候选**（复审裁定登记）：① 传递 wildcard 仍 merge 进导入方
    session store（D1 兜底条款触发，bare 已隔离）；② host↔aavm bare 语义分叉
    （auto/lib 未随收紧，语料无锚定）；③ quickstart 平铺布局与 src/front
