@@ -1856,6 +1856,7 @@ impl AutoVM {
         let saved_bp = task.bp;
         let saved_closure_id = task.current_closure_id;
         let saved_fn_n_args = task.current_fn_n_args;
+        let saved_fn_n_locals = task.current_fn_n_locals;
         let saved_saved_closure_id = task.saved_closure_id;
 
         // 3. Setup closure context (mirrors CALL_CLOSURE opcode logic)
@@ -1867,6 +1868,23 @@ impl AutoVM {
         task.ram.push_i32(saved_ip as i32);  // Return address
         task.ram.push_i32(saved_bp as i32);  // Old BP
         task.bp = task.ram.sp - 1;
+
+        // PLAN-624 T-03: 闭包激活必须入 call_stack 一帧 —— 闭包体末端 RET
+        // 无条件弹一帧(CALL 帧协议)；此前本方法只推 ram 帧、不推 CallFrame，
+        // 闭包 RET 弹走的是**外层函数**的帧(call_stack 错位一层)。后果链
+        // (plan624 P2 实证)：store handler 内 `.tabs.find(λ)` → λ RET 偷走
+        // store 帧 → store 自身 RET 弹空栈、不恢复 → 最深被调帧的
+        // current_fn_n_args 泄漏进外层(0 参 widget handler 读 __state 时
+        // 偏移越界走 NULL 守卫 → SET_FIELD "Invalid object ID" 崩)。
+        // 入帧后 λ RET 弹自己的帧，外层帧原样保留，RET 恢复链闭合。
+        task.call_stack.push(crate::vm::task::CallFrame {
+            return_ip: saved_ip,
+            old_bp: task.bp,
+            fn_name: Some(format!("<closure:{}>", closure_id)),
+            line: task.current_line,
+            old_fn_n_args: saved_fn_n_args,
+            old_fn_n_locals: saved_fn_n_locals,
+        });
 
         // 5. Jump to closure body
         task.ip = closure.func_addr as usize;
@@ -1881,9 +1899,12 @@ impl AutoVM {
                     if self.intercept_error(task, &e) {
                         continue;
                     }
-                    // Restore state even on error
+                    // Restore state even on error。Err 出口上闭包帧未被 RET
+                    // 弹出(RET 未执行)——手动退帧，否则外层帧账错位。
+                    task.call_stack.pop();
                     task.current_closure_id = saved_closure_id;
                     task.current_fn_n_args = saved_fn_n_args;
+                    task.current_fn_n_locals = saved_fn_n_locals;
                     return Err(e);
                 }
             };
@@ -1895,9 +1916,11 @@ impl AutoVM {
                     continue;
                 }
                 StepResult::Terminated => {
-                    // Restore state even on error
+                    // Restore state even on error(同 Err 出口退帧)
+                    task.call_stack.pop();
                     task.current_closure_id = saved_closure_id;
                     task.current_fn_n_args = saved_fn_n_args;
+                    task.current_fn_n_locals = saved_fn_n_locals;
                     return Err(VMError::RuntimeError(
                         "Closure execution terminated unexpectedly".into()
                     ));
@@ -1913,8 +1936,14 @@ impl AutoVM {
                     continue;
                 }
                 StepResult::AwaitFuture { future_id, body_offset } => {
-                    // Handle await within closure execution
-                    self.handle_await_future(task, future_id, body_offset)?;
+                    // Handle await within closure execution(Err 同上退帧)
+                    if let Err(e) = self.handle_await_future(task, future_id, body_offset) {
+                        task.call_stack.pop();
+                        task.current_closure_id = saved_closure_id;
+                        task.current_fn_n_args = saved_fn_n_args;
+                        task.current_fn_n_locals = saved_fn_n_locals;
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -8439,6 +8468,8 @@ impl AutoVM {
                         task.current_closure_id = Some(closure_id);
 
                         // Set current_fn_n_args for LOAD_LOCAL parameter access
+                        let prev_fn_n_args = task.current_fn_n_args;
+                        let prev_fn_n_locals = task.current_fn_n_locals;
                         task.current_fn_n_args = _closure.n_args;
 
                         // Store old closure ID in task (not on stack) to avoid breaking parameter layout
@@ -8452,6 +8483,18 @@ impl AutoVM {
 
                         // New BP points to the saved BP location (SP - 1)
                         task.bp = task.ram.sp - 1;
+
+                        // PLAN-624 T-03: 同 call_closure 方法 —— 闭包激活入
+                        // call_stack 一帧，闭包体 RET 弹自己的帧而非外层函数
+                        // 的帧（帧错位使 current_fn_n_args 跨层泄漏）。
+                        task.call_stack.push(crate::vm::task::CallFrame {
+                            return_ip: task.ip,
+                            old_bp: task.bp,
+                            fn_name: Some(format!("<closure:{}>", closure_id)),
+                            line: task.current_line,
+                            old_fn_n_args: prev_fn_n_args,
+                            old_fn_n_locals: prev_fn_n_locals,
+                        });
 
                         // Jump to closure function
                         task.ip = _closure.func_addr as usize;

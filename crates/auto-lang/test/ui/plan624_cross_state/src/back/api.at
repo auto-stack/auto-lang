@@ -1,0 +1,19 @@
+// api.at — PLAN-624 red corpus contract module.
+// read_wiki stub returns a fixed doc (merged-mode stub body executes; in
+// split mode the call rewrites to HTTP — the corpus catch maps transport
+// failure to None, which still exercises the crash shape).
+
+#[api(method = "GET", path = "/api/wiki/{*path}")]
+pub fn read_wiki(path str) map {
+    return { frontmatter: { title: "T" }, body: "hello-body" }
+}
+
+#[api(method = "POST", path = "/api/wiki/{*path}")]
+pub fn write_wiki(path str, frontmatter map, body str) map {
+    return { frontmatter: frontmatter, body: body }
+}
+
+#[api(method = "GET", path = "/api/backlinks")]
+pub fn get_backlinks(title str) map {
+    return { links: [] }
+}
