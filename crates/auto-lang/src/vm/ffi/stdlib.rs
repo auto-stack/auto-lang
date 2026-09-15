@@ -6349,18 +6349,61 @@ pub fn shim_regex_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     Ok(())
 }
 
-/// Check if a regex pattern matches text. Returns 1 if match, 0 if not.
+/// PLAN-066 T-05（KD-057② 残余根修）：`Regex.match(text, pattern[, flags])`
+/// web 形态——JS `str.match`：无 'g' 返回 `[全匹配, 组1, …]`（musk
+/// colonMatch[1]/p0[1] 组提取），含 'g' 返回全部匹配子串列表（围栏提取）；
+/// 无匹配返回空列表（JS null 的 VM 对齐，`length > 0` 守卫双轨同真值）。
+/// 原实现为 is_match 1/0 语义且弹参错位，列表消费恒不可用——musk 侧曾以
+/// indexOf 纯串绕开（11b6c20，随本修回撤）。两参调用由 codegen 编译期补
+/// flags=""（沿 057 T6 JSON.stringify 补参先例）。
+/// 入参 CALL_NAT 约定（自顶向下，末参在顶）：[flags, pattern, text]。
 pub fn shim_regex_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let text: String = VMConvertible::pop_from_stack(task, vm)
+    let flags: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let pattern: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let text: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_regex_match_list(task, vm, &text, &pattern, flags.contains('g'), flags.contains('i'))
+}
 
-    let re = regex::Regex::new(&pattern)
-        .map_err(|e| VMError::RuntimeError(format!("regex.match failed: invalid pattern '{}': {}", pattern, e)))?;
-
-    let result: i32 = if re.is_match(&text) { 1 } else { 0 };
-    task.ram.push_i32(result);
+/// 匹配结果列表推送（堆 List<Value::Str>；fresh 列表 rc_push(+1) 与
+/// Plan 419 配平——元素为 Str 非堆引用，无子份额需求）。无匹配 → 空列表
+/// （length 0）。global 250 条上限沿 find_all 口径。
+fn push_regex_match_list(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    text: &str,
+    pattern: &str,
+    global: bool,
+    case_insensitive: bool,
+) -> Result<(), VMError> {
+    let mut builder = regex::RegexBuilder::new(pattern);
+    builder.case_insensitive(case_insensitive);
+    let re = builder.build().map_err(|e| {
+        VMError::RuntimeError(format!(
+            "Regex.match failed: invalid pattern '{}': {}",
+            pattern, e
+        ))
+    })?;
+    use crate::vm::types::ListData;
+    let mut list: ListData<auto_val::Value> = ListData::new();
+    let mut count = 0usize;
+    if global {
+        for m in re.find_iter(text) {
+            list.push(auto_val::Value::Str(auto_val::AutoStr::from(m.as_str())));
+            count += 1;
+            if count >= 250 {
+                break;
+            }
+        }
+    } else if let Some(caps) = re.captures(text) {
+        for g in caps.iter().flatten() {
+            list.push(auto_val::Value::Str(auto_val::AutoStr::from(g.as_str())));
+        }
+    }
+    let id = vm.insert_heap_object(list);
+    vm.rc_push(task, auto_val::encode_object(id as u32));
     Ok(())
 }
 

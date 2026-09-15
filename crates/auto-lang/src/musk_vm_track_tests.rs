@@ -3858,3 +3858,103 @@ mod musk_vm_track_p066_1_json_string_read {
         assert!(out.contains("lit-kind"), "expected lit-kind, got: [{}]", out);
     }
 }
+
+/// PLAN-066 T-05（auto-musk PLAN-066 上游复跑/回归锁）：wl_probe18 围栏提取
+/// 形态——`Regex.match(text, "```json[\s\S]*?```", "g")`。KD-057② 实证
+/// "0 匹配"（055-3 ①族）；上游 583（dbde35d1f）修 Regex/CSV/Vec 容器负哨兵
+/// 缺子份额 retain（元素 rc 从 0 起，首个消费者释放即 FREE → 墓碑/静默
+/// 空串），症状同族。本模块双脸断言：匹配计数 + 元素内容（锁定 583 修复
+/// 面不回退），并覆盖 musk 回撤后的消费形态（stripQuestionnaire 的
+/// match→replace 通道）。
+#[cfg(test)]
+mod musk_vm_track_p066_2_regex_fence {
+    use crate::run_with_capture;
+
+    fn run_code(code: &str) -> String {
+        match run_with_capture(code) {
+            Ok((_, stdout)) => stdout,
+            Err(e) => panic!("run failed: {:?}", e),
+        }
+    }
+
+    /// wl_probe18 全形态：计数==1 且元素内容为完整围栏（非空串墓碑）。
+    #[test]
+    fn fence_match_count_and_element_content() {
+        let out = run_code(
+            r#"fn main() {
+    let text = "before ```json\n{\"type\": \"questionnaire\"}\n``` after"
+    let matches = Regex.match(text, "```json[\s\S]*?```", "g")
+    print(matches.length)
+    if matches.length > 0 {
+        let m = matches[0]
+        print(m)
+    }
+}"#,
+        );
+        eprintln!("[P066-2] fence match => [{}]", out);
+        assert!(out.contains("1"), "expected 1 match, got: [{}]", out);
+        assert!(
+            out.contains("questionnaire"),
+            "match element is tombstone/empty (583 retain regression?), got: [{}]",
+            out
+        );
+    }
+
+    /// musk stripQuestionnaire 消费形态：match→replace 剥前导（回撤后的
+    /// 真实通道，替代 11b6c20 的 indexOf 纯串）。
+    #[test]
+    fn fence_strip_leading_via_replace() {
+        let out = run_code(
+            r#"fn main() {
+    let text = "```json\n{\"a\": 1}\n```"
+    let matches = Regex.match(text, "```json[\s\S]*?```", "g")
+    if matches.length > 0 {
+        var inner = Regex.replace(matches[0], "^```json\s*", "", "g")
+        print(inner)
+    } else {
+        print("NOMATCH")
+    }
+}"#,
+        );
+        eprintln!("[P066-2] fence strip => [{}]", out);
+        assert!(out.contains("\"a\": 1"), "expected JSON body, got: [{}]", out);
+        assert!(!out.contains("NOMATCH"), "no match, got: [{}]", out);
+    }
+
+    /// musk questionnaireFor Pass2 两参组提取形态（colonMatch[1]/[2]、
+    /// p0[1]）——JS 非 global 语义 [全匹配, 组1, …]，锁组下标契约。
+    #[test]
+    fn two_arg_form_extracts_capture_groups() {
+        let out = run_code(
+            r#"fn main() {
+    let m = Regex.match("设置: 你想要哪个? ", "^(.+?)[:：]\s*(.+)\?\s*$")
+    print(m.length)
+    if m.length > 0 {
+        print(m[1])
+        print(m[2])
+    }
+}"#,
+        );
+        eprintln!("[P066-2] group extract => [{}]", out);
+        assert!(out.contains("3"), "expected length 3 (full+g1+g2), got: [{}]", out);
+        assert!(out.contains("设置"), "expected group1, got: [{}]", out);
+        assert!(out.contains("你想要哪个"), "expected group2, got: [{}]", out);
+    }
+
+    /// 583 回归锁直击：匹配结果列表元素经消费后仍可读（首个消费者释放
+    /// 不清内容——负哨兵 retain 修复面）。
+    #[test]
+    fn match_elements_survive_consumption() {
+        let out = run_code(
+            r#"fn main() {
+    let ms = Regex.match("a1b2c3", "[0-9]", "g")
+    print(ms.length)
+    let total = ms[0] + ms[1] + ms[2]
+    print(total)
+}"#,
+        );
+        eprintln!("[P066-2] elements survive => [{}]", out);
+        assert!(out.contains("3"), "expected 3 matches, got: [{}]", out);
+        assert!(out.contains("123"), "expected 123 (elements intact), got: [{}]", out);
+    }
+}

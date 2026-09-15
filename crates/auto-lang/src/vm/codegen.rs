@@ -9259,6 +9259,16 @@ impl Codegen {
                         }
                     }
 
+                    // PLAN-066 T-05: Regex.match 两参调用编译期补 flags=""——
+                    // shim 固定弹 3 参 [flags, pattern, text]（JS match 双形态
+                    // 统一：无 'g' = 非 global 组提取语义）。沿 057 T6
+                    // JSON.stringify 补参先例。
+                    if func_name.as_deref() == Some("Regex.match")
+                        && call.args.args.len() == 2
+                    {
+                        self.emit_str_const_push("");
+                    }
+
                     // Plan 192/240: Inject implicit type_name and method for Rust stdlib dispatch
                     // Push AFTER user args so type_name/method are on top of stack.
                     // Handler pops method first (top), then type_name (next).
