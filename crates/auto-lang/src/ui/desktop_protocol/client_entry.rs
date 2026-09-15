@@ -10,9 +10,14 @@
 // 孵化（`request_incubation_render` 记录第三字段携带二态模式 + auto 降级
 // 标记）。预算 5000ms 同 cmd_autodesk 既有值。
 
+use crate::ui::component::Component;
 use crate::ui::desktop_protocol::broker::{self, RequestedRender};
-use crate::ui::desktop_protocol::client_runtime::{self, AppProjector, ClientConfig, ReconnectPolicy};
+use crate::ui::desktop_protocol::client_runtime::{
+    self, AppProjector, ClientConfig, ReconnectPolicy,
+};
+use crate::ui::desktop_protocol::coverage::RenderMode;
 use crate::ui::desktop_protocol::message::FrameMode;
+use crate::ui::desktop_protocol::native_projector::NativeProjector;
 use crate::ui::desktop_protocol::pixels;
 use crate::ui::desktop_protocol::transport;
 use crate::ui::dynamic::DynamicComponent;
@@ -86,6 +91,84 @@ pub fn run_dynamic_client(
             let projector = AppProjector::new(component, config.width, config.height);
             let (exit, projector) =
                 client_runtime::run_client(app_end, projector, config, Some(reconnect));
+            println!("[autodesk-client] exit={exit:?} revision={}", projector.revision());
+            Ok(())
+        }
+    }
+}
+
+/// native 轨三态 → 二态分派（Plan 020 T-04；待澄清③定案落地）：native
+/// 组件 `Auto` 缺省 = **independent**（queue 覆盖爬坡前的安全缺省——
+/// 带降级观测行留痕，与解释态 auto 语义并列入 v1.6）；显式 `Queue` 不
+/// 在此裁决（覆盖门在 [`run_native_client`] 消费 [`NativeProjector::
+/// ensure_covered`]——拒绝退出留痕）；`Independent` 直通。
+/// 返回 `(帧模式, auto 降级标记, Option<观测行>)`。
+pub fn resolve_native_frame_mode(
+    mode: RenderMode,
+    widget_name: &str,
+) -> (FrameMode, bool, Option<String>) {
+    match mode {
+        RenderMode::Queue => (FrameMode::Commands, false, None),
+        RenderMode::Independent => (FrameMode::Pixels, false, None),
+        RenderMode::Auto => (
+            FrameMode::Pixels,
+            true,
+            Some(format!(
+                "[render] native auto -> independent downgrade ({widget_name}; \
+                 queue coverage ramp v1)"
+            )),
+        ),
+    }
+}
+
+/// native 轨客户端（a2r 编译 `Component`，Plan 020 T-04）：
+/// - `Commands` → [`NativeProjector`] 投影 + 泛型泵命令帧（启动覆盖门：
+///   not-yet = 拒绝退出留痕，AC-04）；
+/// - `Pixels` → [`pixels::run_independent_native_child`] 隐藏窗自渲
+///   （T-03 入口）。
+///
+/// T-05 生成 main 消费：`--autodesk-incubate` 分派至此。
+pub fn run_native_client<C>(
+    component: C,
+    opts: ClientOpts,
+    target: ClientTarget,
+) -> Result<(), String>
+where
+    C: Component + 'static,
+    C::Msg: Clone + std::fmt::Debug + Send + 'static,
+{
+    let render =
+        RequestedRender { mode: opts.frame_mode, auto_downgraded: opts.auto_downgraded };
+    let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
+    match opts.frame_mode {
+        FrameMode::Pixels => pixels::run_independent_native_child(
+            app_end,
+            component,
+            &opts.app_name,
+            &opts.title,
+            opts.width,
+            opts.height,
+        ),
+        FrameMode::Commands => {
+            let projector = NativeProjector::new(component, opts.width, opts.height);
+            if let Err(gate) = projector.ensure_covered() {
+                eprintln!("[render] {gate}");
+                return Err(gate);
+            }
+            let config = ClientConfig {
+                app_name: opts.app_name.clone(),
+                title: opts.title,
+                width: opts.width,
+                height: opts.height,
+            };
+            let reconnect =
+                ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
+            let (exit, projector) = client_runtime::run_client_session(
+                app_end,
+                projector,
+                config,
+                Some(reconnect),
+            );
             println!("[autodesk-client] exit={exit:?} revision={}", projector.revision());
             Ok(())
         }

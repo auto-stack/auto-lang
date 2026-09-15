@@ -154,6 +154,50 @@ impl Coverage {
         }
         self.style_prefixes.iter().any(|p| token.starts_with(p.as_str()))
     }
+
+    /// Plan 020 T-04 —— native queue 臂 v1 覆盖集（counter 级；§5.4 实现
+    /// 设计钉）：kind = text/button + 线性堆叠布局族（col/row/container/
+    /// list）+ 布局样式子集（padding/gap/margin/尺寸/圆角/底色/前景色/
+    /// 对齐/字号字重）。payload 族（input/slider/select/checkbox/…）与
+    /// display 族（image/icon/badge/…）显式 **not-yet**——native 显式
+    /// queue 遇未覆盖 = 拒绝退出留痕（AC-04，非静默错绘）。与解释态
+    /// [`Coverage::target_set`] 分表：native 投影器 v1 渲染面更窄，爬坡
+    /// 随投影器扩臂同步扩表（单一事实源纪律同 500 §1.3.1）。
+    pub fn native_queue_set() -> Self {
+        let kinds: BTreeSet<String> = ["text", "button"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let layouts: BTreeSet<String> = [
+            "col", "row", "container", "list",
+            // 透传壳（View::Empty / AnchorSlot 块锚定槽——渲染透明）。
+            "empty", "anchorslot",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        // 布局样式子集：盒模/间距/尺寸/对齐/排版子集/装饰（bg/border/
+        // rounded/渐变端点）。shadow/underline/动画/滤镜/opacity 等渲染
+        // 未实现面不入——token 映射见 [`native_style_token`]。
+        let style_prefixes: BTreeSet<String> = [
+            "p-", "px-", "py-", "pt-", "pb-", "pl-", "pr-",
+            "m-", "mx-", "my-", "mt-", "mb-", "ml-", "mr-", "-m",
+            "gap-", "w-", "h-", "max-w-",
+            "items-", "justify-", "mx-auto",
+            "text-", "font-",
+            "bg-", "border", "rounded", "from-", "to-",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        Self {
+            kinds,
+            props: BTreeMap::new(),
+            events: BTreeMap::new(),
+            layouts,
+            style_prefixes,
+        }
+    }
 }
 
 /// 装载期静态扫描结果：App 视图清单（标签/prop/事件/样式类 + 带参
@@ -321,8 +365,252 @@ pub fn judge(scan: &ViewScan, coverage: &Coverage) -> Verdict {
 }
 
 // ---------------------------------------------------------------------------
-// 三态渲染开关（Plan 500 步骤 6：裁决链 spawn 参数 > pac.at > auto 探测）
+// native 视图清单扫描（Plan 020 T-04：View<M> 树 → ViewScan，judge 复用）
 // ---------------------------------------------------------------------------
+
+/// View 变体 → 归一 kind（对齐解释态 [`normalize_kind`] 的词表口径）。
+/// 未入 native 覆盖集的变体原样产出 kind 名（slider/select/input/…）——
+/// judge 缺项清单即载荷。
+pub fn native_kind_of<M: Clone + std::fmt::Debug>(view: &crate::ui::view::View<M>) -> &'static str {
+    use crate::ui::view::View;
+    match view {
+        View::Empty => "empty",
+        View::AnchorSlot { .. } => "anchorslot",
+        View::Text { .. } => "text",
+        View::Button { .. } => "button",
+        View::Row { .. } => "row",
+        View::Column { .. } => "col",
+        View::Container { .. } => "container",
+        View::List { .. } => "list",
+        View::Input { .. } => "input",
+        View::Textarea { .. } => "textarea",
+        View::CodeEditor { .. } => "codeeditor",
+        View::Terminal { .. } => "terminal",
+        View::AutodownEditor { .. } => "autodowneditor",
+        View::Checkbox { .. } => "checkbox",
+        View::Custom { .. } => "custom",
+        View::Scrollable { .. } => "scroll",
+        View::Radio { .. } => "radio",
+        View::Select { .. } => "select",
+        View::Table { .. } => "table",
+        View::Slider { .. } => "slider",
+        View::ProgressBar { .. } => "progress",
+        View::Accordion { .. } => "accordion",
+        View::Sidebar { .. } => "sidebar",
+        View::Tabs { .. } => "tabs",
+        View::NavigationRail { .. } => "navigationrail",
+        View::Image { .. } => "image",
+        View::ImageSurface { .. } => "imagesurface",
+        View::Video { .. } => "video",
+        View::WindowThumbnail { .. } => "windowthumbnail",
+        View::WorkspacePreview { .. } => "workspacepreview",
+        View::Grid { .. } => "grid",
+        View::Overlay { .. } => "overlay",
+        View::Popover { .. } => "popover",
+        View::MouseArea { .. } => "mousearea",
+        View::Canvas { .. } => "canvas",
+    }
+}
+
+/// 扫描 native View 树（解释态 [`scan_view`] 的 View 泛型同型）：标签 +
+/// 样式类（typed `Style` → 代表性 token 串）入 [`ViewScan`]。native
+/// handler 已是物化 `M` 值（零参 by construction）——`param_handlers`
+/// 恒空；带参族（Slider `fn(f32)->M` 等）由 kind not-yet 承担。
+pub fn scan_native_view<M: Clone + std::fmt::Debug>(view: &crate::ui::view::View<M>) -> ViewScan {
+    let mut scan = ViewScan::default();
+    scan_native_node(view, &mut scan);
+    scan
+}
+
+fn scan_native_node<M: Clone + std::fmt::Debug>(
+    view: &crate::ui::view::View<M>,
+    scan: &mut ViewScan,
+) {
+    use crate::ui::view::View;
+    let kind = native_kind_of(view);
+    scan.tags.insert(kind.to_string());
+    // 变体自带 style 的统一收集（typed StyleClass → 代表 token）。
+    let styles: Vec<Option<&crate::ui::style::Style>> = match view {
+        View::Empty | View::AnchorSlot { .. } => vec![],
+        View::Popover { .. } | View::Overlay { .. } => vec![],
+        View::Text { style, .. }
+        | View::Button { style, .. }
+        | View::Input { style, .. }
+        | View::Textarea { style, .. }
+        | View::CodeEditor { style, .. }
+        | View::Terminal { style, .. }
+        | View::AutodownEditor { style, .. }
+        | View::Checkbox { style, .. }
+        | View::Custom { style, .. }
+        | View::Radio { style, .. }
+        | View::Select { style, .. }
+        | View::Slider { style, .. }
+        | View::ProgressBar { style, .. }
+        | View::Accordion { style, .. }
+        | View::Sidebar { style, .. }
+        | View::Tabs { style, .. }
+        | View::NavigationRail { style, .. }
+        | View::Image { style, .. }
+        | View::ImageSurface { style, .. }
+        | View::Video { style, .. }
+        | View::WindowThumbnail { style, .. }
+        | View::WorkspacePreview { style, .. }
+        | View::Grid { style, .. }
+        | View::MouseArea { style, .. }
+        | View::Canvas { style, .. }
+        | View::Table { style, .. } => vec![style.as_ref()],
+        View::Row { style, .. } | View::Column { style, .. } | View::List { style, .. } => {
+            vec![style.as_ref()]
+        }
+        View::Container { style, .. } | View::Scrollable { style, .. } => vec![style.as_ref()],
+    };
+    for style in styles.into_iter().flatten() {
+        for class in &style.classes {
+            scan.style_tokens.insert(native_style_token(class));
+        }
+    }
+    // 子级递归（变体形状各异——逐一列出）。
+    match view {
+        View::AnchorSlot { child, .. }
+        | View::Container { child, .. }
+        | View::Scrollable { child, .. }
+        | View::Sidebar { content: child, .. } => scan_native_node(child, scan),
+        View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
+            for child in children {
+                scan_native_node(child, scan);
+            }
+        }
+        View::Button { content: Some(child), .. } => scan_native_node(child, scan),
+        View::Grid { cells, .. } => {
+            for cell in cells {
+                scan_native_node(cell, scan);
+            }
+        }
+        View::Overlay { base, content, .. } => {
+            scan_native_node(base, scan);
+            scan_native_node(content, scan);
+        }
+        View::MouseArea { content, .. } => scan_native_node(content, scan),
+        _ => {}
+    }
+}
+
+/// StyleClass → 代表性样式 token（覆盖判定用——judge 只做前缀匹配，
+/// 数值档不重要；映射集与 native 投影器适配器的消费面同册演进）。
+/// 未支持渲染的类产出**不含任何支持前缀**的稳定名（shadow/opacity-…）
+/// → not-yet 缺项。
+pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
+    use crate::ui::style::StyleClass as SC;
+    match class {
+        SC::Padding(_) => "p-1".into(),
+        SC::PaddingX(_) => "px-1".into(),
+        SC::PaddingY(_) => "py-1".into(),
+        SC::PaddingTop(_) => "pt-1".into(),
+        SC::PaddingBottom(_) => "pb-1".into(),
+        SC::PaddingLeft(_) => "pl-1".into(),
+        SC::PaddingRight(_) => "pr-1".into(),
+        SC::Margin(_) => "m-1".into(),
+        SC::MarginX(_) => "mx-1".into(),
+        SC::MarginY(_) => "my-1".into(),
+        SC::MarginTop(_) => "mt-1".into(),
+        SC::MarginBottom(_) => "mb-1".into(),
+        SC::MarginLeft(_) => "ml-1".into(),
+        SC::MarginRight(_) => "mr-1".into(),
+        SC::MarginLeftAuto => "ml-auto".into(),
+        SC::MarginRightAuto => "mr-auto".into(),
+        SC::MarginXAuto => "mx-auto".into(),
+        SC::NegativeMargin(_) => "-m-1".into(),
+        SC::NegativeMarginX(_) => "-mx-1".into(),
+        SC::NegativeMarginY(_) => "-my-1".into(),
+        SC::NegativeMarginTop(_) => "-mt-1".into(),
+        SC::NegativeMarginBottom(_) => "-mb-1".into(),
+        SC::NegativeMarginLeft(_) => "-ml-1".into(),
+        SC::NegativeMarginRight(_) => "-mr-1".into(),
+        SC::Gap(_) => "gap-1".into(),
+        SC::BackgroundColor(_) => "bg-slate-500".into(),
+        SC::BgGradient(_) => "bg-gradient-to-r".into(),
+        SC::BgClipText => "bg-clip-text".into(),
+        SC::GradientFrom(_) => "from-slate-500".into(),
+        SC::GradientTo(_) => "to-slate-500".into(),
+        SC::TextColor(_) => "text-slate-500".into(),
+        SC::Width(_) => "w-1".into(),
+        SC::Height(_) => "h-1".into(),
+        SC::MaxWidth(_) => "max-w-1".into(),
+        SC::MaxHeight(_) => "max-h-1".into(),
+        SC::ItemsCenter => "items-center".into(),
+        SC::ItemsStart => "items-start".into(),
+        SC::ItemsEnd => "items-end".into(),
+        SC::JustifyCenter => "justify-center".into(),
+        SC::JustifyBetween => "justify-between".into(),
+        SC::JustifyStart => "justify-start".into(),
+        SC::JustifyEnd => "justify-end".into(),
+        SC::TextXs => "text-xs".into(),
+        SC::TextSm => "text-sm".into(),
+        SC::TextBase => "text-base".into(),
+        SC::TextLg => "text-lg".into(),
+        SC::TextXl => "text-xl".into(),
+        SC::Text2Xl => "text-2xl".into(),
+        SC::Text3Xl => "text-3xl".into(),
+        SC::Text4Xl => "text-4xl".into(),
+        SC::Text5Xl => "text-5xl".into(),
+        SC::Text6Xl => "text-6xl".into(),
+        SC::Text7Xl => "text-7xl".into(),
+        SC::Text8Xl => "text-8xl".into(),
+        SC::Text9Xl => "text-9xl".into(),
+        SC::FontBold | SC::FontMedium | SC::FontNormal => "font-bold".into(),
+        SC::FontSerif | SC::FontSans | SC::FontMono => "font-sans".into(),
+        SC::TextCenter => "text-center".into(),
+        SC::TextLeft => "text-left".into(),
+        SC::TextRight => "text-right".into(),
+        SC::Border | SC::BorderBottom | SC::BorderTop | SC::BorderLeft | SC::BorderRight => {
+            "border".into()
+        }
+        SC::BorderColor(_) => "border-slate-500".into(),
+        // Border0 = 显式无边框；单侧宽度档 = PLAN-054 左条（native v1 渲染
+        // 为整圈 1px 或忽略——保真边界，判定放行同解释态 border 前缀）。
+        SC::Border0 => "border-0".into(),
+        SC::BorderWidth(_) => "border-1".into(),
+        SC::BorderLeftWidth(_) => "border-l-1".into(),
+        SC::Rounded
+        | SC::RoundedSm
+        | SC::RoundedMd
+        | SC::RoundedLg
+        | SC::RoundedXl
+        | SC::Rounded2Xl
+        | SC::Rounded3Xl
+        | SC::RoundedFull
+        | SC::RoundedNone
+        | SC::RoundedT(_)
+        | SC::RoundedB(_)
+        | SC::RoundedL(_)
+        | SC::RoundedR(_)
+        | SC::RoundedTL(_)
+        | SC::RoundedTR(_)
+        | SC::RoundedBL(_)
+        | SC::RoundedBR(_) => "rounded".into(),
+        // —— 渲染未实现面：稳定名不含支持前缀 → not-yet（显式缺项）。
+        SC::Flex1 => "flex-1".into(),
+        SC::Flex | SC::FlexRow | SC::FlexCol => "flex".into(),
+        SC::Block | SC::Inline | SC::InlineBlock | SC::InlineFlex => "block".into(),
+        SC::MinWidth(_) => "min-w-1".into(),
+        SC::MinHeight(_) => "min-h-1".into(),
+        SC::LineThrough => "line-through".into(),
+        SC::Underline => "underline".into(),
+        SC::NoUnderline => "no-underline".into(),
+        SC::Shadow
+        | SC::ShadowSm
+        | SC::ShadowMd
+        | SC::ShadowLg
+        | SC::ShadowXl
+        | SC::Shadow2Xl
+        | SC::ShadowNone => "shadow".into(),
+        SC::Opacity(_) => "opacity-50".into(),
+        _ => "native-unstyled".into(),
+    }
+}
+
+/// 三态渲染开关（Plan 500 步骤 6：裁决链 spawn 参数 > pac.at > auto 探测）
+/// ---------------------------------------------------------------------------
 
 /// per-App 三态渲染声明（pac.at `desktop_render:` / spawn `--render=`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

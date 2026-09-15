@@ -27,19 +27,19 @@ use crate::ui::dynamic::DynamicComponent;
 // ---------------------------------------------------------------------------
 
 /// 背景 clears 色（深灰，与 demo/直挂同一暗色基调）。
-const BG: Rgba8 = Rgba8::new(24, 24, 28, 255);
+pub(crate) const BG: Rgba8 = Rgba8::new(24, 24, 28, 255);
 /// 按钮底色（未声明样式时的缺省）。
-const BUTTON_BG: Rgba8 = Rgba8::new(48, 96, 200, 255);
+pub(crate) const BUTTON_BG: Rgba8 = Rgba8::new(48, 96, 200, 255);
 /// 常规文本色（未声明样式时的缺省）。
-const TEXT_FG: Rgba8 = Rgba8::new(220, 220, 220, 255);
+pub(crate) const TEXT_FG: Rgba8 = Rgba8::new(220, 220, 220, 255);
 /// 按钮/文本共用的白色前景。
-const LABEL_FG: Rgba8 = Rgba8::new(255, 255, 255, 255);
+pub(crate) const LABEL_FG: Rgba8 = Rgba8::new(255, 255, 255, 255);
 /// 输入框边框色。
-const INPUT_BORDER: Rgba8 = Rgba8::new(90, 90, 100, 255);
+pub(crate) const INPUT_BORDER: Rgba8 = Rgba8::new(90, 90, 100, 255);
 /// placeholder 前景色。
-const PLACEHOLDER_FG: Rgba8 = Rgba8::new(130, 130, 140, 255);
+pub(crate) const PLACEHOLDER_FG: Rgba8 = Rgba8::new(130, 130, 140, 255);
 /// 输入框底色（未声明样式时）。
-const INPUT_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
+pub(crate) const INPUT_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
 /// image 占位底色（保真边界：位图内容归 Stage 5）。
 const IMAGE_PLACEHOLDER: Rgba8 = Rgba8::new(60, 60, 70, 255);
 
@@ -53,22 +53,22 @@ const PROGRESS_TRACK: Rgba8 = Rgba8::new(45, 45, 52, 255);
 /// divider/分隔线。
 const DIVIDER_BG: Rgba8 = Rgba8::new(80, 80, 90, 255);
 /// 禁用态前景（前景/底色统一乘暗系数的近似——命令差分见 form 族）。
-const DISABLED_ALPHA: u8 = 110;
+pub(crate) const DISABLED_ALPHA: u8 = 110;
 
 /// 页边距（根内容盒）。
-const MARGIN: f32 = 10.0;
+pub(crate) const MARGIN: f32 = 10.0;
 /// 缺省块间距（未声明 gap- 时）。
-const GAP: f32 = 8.0;
+pub(crate) const GAP: f32 = 8.0;
 /// 按钮几何（固定高，宽随标签 + 内边距）。
-const BUTTON_H: f32 = 36.0;
-const BUTTON_PAD: f32 = 16.0;
-const BUTTON_MIN_W: f32 = 120.0;
+pub(crate) const BUTTON_H: f32 = 36.0;
+pub(crate) const BUTTON_PAD: f32 = 16.0;
+pub(crate) const BUTTON_MIN_W: f32 = 120.0;
 /// 输入框几何。
 const INPUT_H: f32 = 32.0;
 const INPUT_PAD: f32 = 10.0;
 /// 正文字号 / 行高系数。
-const TEXT_SIZE: f32 = 16.0;
-const LINE_H_FACTOR: f32 = 1.35;
+pub(crate) const TEXT_SIZE: f32 = 16.0;
+pub(crate) const LINE_H_FACTOR: f32 = 1.35;
 
 /// 命中区种类（D3 定案：widget 交互区表；Plan 507 T4 扩 form 族）。
 #[derive(Debug, Clone, PartialEq)]
@@ -198,25 +198,28 @@ enum Dir {
 }
 
 /// 节点样式参数（`ui/style::BoxLayout` 同源 + 装饰/对齐/字体扩展）。
+/// `pub(crate)`：native 投影器（`native_projector::NativeProjector`）的
+/// StyleClass 适配器复用同一参数面（Plan 020 T-04——typed 源直接填字段,
+/// 不复刻字符串解析）。
 #[derive(Default, Clone)]
-struct NodeStyle {
+pub(crate) struct NodeStyle {
     /// 盒模（p/m/gap/w/h/max_w——`ui/style::layout_extract` 同源解析）。
-    box_layout: crate::ui::style::BoxLayout,
+    pub(crate) box_layout: crate::ui::style::BoxLayout,
     /// 背景底色（bg-*/渐变 from 端）。
-    bg: Option<Rgba8>,
+    pub(crate) bg: Option<Rgba8>,
     /// 边框（border/border-<color>）。
-    border: Option<Rgba8>,
+    pub(crate) border: Option<Rgba8>,
     /// 前景文本色（text-<color>）。
-    fg: Option<Rgba8>,
+    pub(crate) fg: Option<Rgba8>,
     /// 字号档（text-xs/sm/.../4xl → px）。
-    font_size: Option<f32>,
-    font_bold: bool,
+    pub(crate) font_size: Option<f32>,
+    pub(crate) font_bold: bool,
     /// 斜体档（`italic` 类——Plan 515 G2 差分通道）。
-    font_italic: bool,
+    pub(crate) font_italic: bool,
     /// 子项居中（items-center/justify-center/mx-auto/text-center）。
-    center_children: bool,
+    pub(crate) center_children: bool,
     /// 文本水平居中（text-center）。
-    text_center: bool,
+    pub(crate) text_center: bool,
 }
 
 impl NodeStyle {
@@ -274,34 +277,34 @@ impl NodeStyle {
         s
     }
 
-    fn pad_top(&self) -> f32 {
+    pub(crate) fn pad_top(&self) -> f32 {
         self.box_layout.padding_top.unwrap_or(0.0)
     }
-    fn pad_bottom(&self) -> f32 {
+    pub(crate) fn pad_bottom(&self) -> f32 {
         self.box_layout.padding_bottom.unwrap_or(0.0)
     }
-    fn pad_left(&self) -> f32 {
+    pub(crate) fn pad_left(&self) -> f32 {
         self.box_layout.padding_left.unwrap_or(0.0)
     }
-    fn pad_right(&self) -> f32 {
+    pub(crate) fn pad_right(&self) -> f32 {
         self.box_layout.padding_right.unwrap_or(0.0)
     }
-    fn gap(&self) -> f32 {
+    pub(crate) fn gap(&self) -> f32 {
         self.box_layout.gap.unwrap_or(GAP)
     }
-    fn fixed_w(&self) -> Option<f32> {
+    pub(crate) fn fixed_w(&self) -> Option<f32> {
         size_to_px(self.box_layout.width)
     }
-    fn fixed_h(&self) -> Option<f32> {
+    pub(crate) fn fixed_h(&self) -> Option<f32> {
         size_to_px(self.box_layout.height)
     }
-    fn margin_y(&self) -> f32 {
+    pub(crate) fn margin_y(&self) -> f32 {
         self.box_layout.margin_top.unwrap_or(0.0)
     }
 }
 
 /// SizeValue → 定宽像素（Full/Auto/百分比 = None——随可用宽）。
-fn size_to_px(v: Option<crate::ui::style::SizeValue>) -> Option<f32> {
+pub(crate) fn size_to_px(v: Option<crate::ui::style::SizeValue>) -> Option<f32> {
     match v {
         Some(crate::ui::style::SizeValue::Fixed(units)) => Some(units as f32 * 4.0),
         Some(crate::ui::style::SizeValue::Pixels(px)) => Some(px),
@@ -311,7 +314,7 @@ fn size_to_px(v: Option<crate::ui::style::SizeValue>) -> Option<f32> {
 
 /// tailwind 颜色名 → Rgba8（语义 token 走 theme 双盘解析，调色板档走
 /// `Color::from_tailwind`）。
-fn resolve_color(name: &str) -> Option<Rgba8> {
+pub(crate) fn resolve_color(name: &str) -> Option<Rgba8> {
     use crate::ui::style::Color;
     let color = Color::from_tailwind(name).ok()?;
     if let Some((r, g, b)) = crate::ui::style::theme::resolve_semantic_rgb(&color) {
@@ -805,7 +808,7 @@ fn layout_button(
 
 /// 禁用态观感：alpha 压到 [`DISABLED_ALPHA`]（乘暗近似——命令差分，非
 /// 像素级透明合成语义）。
-fn dim_if(disabled: bool, color: Rgba8) -> Rgba8 {
+pub(crate) fn dim_if(disabled: bool, color: Rgba8) -> Rgba8 {
     if disabled {
         Rgba8::new(color.r, color.g, color.b, color.a.min(DISABLED_ALPHA))
     } else {
@@ -1919,7 +1922,7 @@ fn handler_token(pattern: &str) -> Option<String> {
 }
 
 /// 粗略文本测宽：全角（CJK 类）按字号计，半角按 0.6 倍。
-fn measure_text(text: &str, size: f32) -> f32 {
+pub(crate) fn measure_text(text: &str, size: f32) -> f32 {
     text.chars()
         .map(|c| if is_wide(c) { size } else { size * 0.6 })
         .sum()
@@ -2052,16 +2055,19 @@ pub struct ReconnectPolicy {
 /// child 进程（`auto --autodesk-client`，S2）主线程独占运行。动态组
 /// 件持 AST（Rc）非 Send，二者均不跨线程。
 ///
-/// 消息处理与 Stage 2 `dual_mode_child_body` 一致：Input → 端点派发
-/// （on_with_input）→ shm 产帧回发；BufferAlloc → 开段 + Active 首帧；
-/// L2Detach → Standalone 确认退出；host EOF → 断连（重连策略在册则
-/// 原地等待重连，VM 状态/revision 不动）。
-pub struct ClientPump {
+/// 会话参数 `S: FrameSource`（Plan 020 T-04）：解释态 = [`AppProjector`]
+/// （缺省类型参数，既有调用点零改动）；native = [`super::native_projector::NativeProjector`]
+/// （a2r 编译 Component 的 queue 臂）。消息处理与 Stage 2
+/// `dual_mode_child_body` 一致：Input → 端点派发（on_with_input）→ shm
+/// 产帧回发；BufferAlloc → 开段 + Active 首帧；L2Detach → Standalone
+/// 确认退出；host EOF → 断连（重连策略在册则原地等待重连，状态/revision
+/// 不动）。
+pub struct ClientPump<S: FrameSource = AppProjector> {
     app_end: Box<dyn Transport + Send>,
     /// None = 断连待重连（projector 已回 [`Self::projector`] 暂存）。
-    endpoint: Option<AppEndpoint<AppProjector>>,
+    endpoint: Option<AppEndpoint<S>>,
     shm: Option<SharedFrameBuffer>,
-    projector: Option<AppProjector>,
+    projector: Option<S>,
     config: ClientConfig,
     reconnect: Option<ReconnectPolicy>,
     /// 首次断连时刻（重连预算起点）。
@@ -2077,11 +2083,11 @@ fn t0() -> std::time::Instant {
     *PUMP_T0.get_or_init(std::time::Instant::now)
 }
 
-impl ClientPump {
+impl<S: FrameSource> ClientPump<S> {
     /// 建泵即发 Hello（Detached → Handshaking）。
     pub fn new(
         app_end: Box<dyn Transport + Send>,
-        projector: AppProjector,
+        projector: S,
         config: ClientConfig,
         reconnect: Option<ReconnectPolicy>,
     ) -> Self {
@@ -2100,7 +2106,7 @@ impl ClientPump {
     }
 
     /// 以给定 projector 建端点并发 Hello（首连 / 重连共用）。
-    fn attach(&mut self, projector: AppProjector) {
+    fn attach(&mut self, projector: S) {
         let mut app = AppEndpoint::new(
             projector,
             &self.config.app_name,
@@ -2126,7 +2132,7 @@ impl ClientPump {
 
     /// 非阻塞推进一轮：处理全部已到达消息。返回 `Some((出口, projector))`
     /// = 循环到出口（所有权交还调用方，仅此一次）；`None` = 仍在运行。
-    pub fn step(&mut self) -> Option<(ClientExit, AppProjector)> {
+    pub fn step(&mut self) -> Option<(ClientExit, S)> {
         if self.spent {
             return None;
         }
@@ -2148,6 +2154,9 @@ impl ClientPump {
                     if self.app_end.is_eof() {
                         return self.on_disconnect();
                     }
+                    // 空拍：周期拍机会（Plan 020 T-04——native tick 源；
+                    // 解释态缺省空实现零变化）。
+                    self.poll_session_tick();
                     return None;
                 }
             }
@@ -2160,7 +2169,7 @@ impl ClientPump {
     /// 等到的消息必须派发（不能丢弃）：此前 `let _ = recv_wait(..)` 把
     /// 握手 Welcome 弹掉，child 以 Handshaking 状态收到 BufferAlloc 被
     /// 状态机拒绝（S2 smoke 现场根因）。
-    pub fn run(mut self) -> (ClientExit, AppProjector) {
+    pub fn run(mut self) -> (ClientExit, S) {
         loop {
             if let Some(done) = self.step() {
                 return done;
@@ -2189,13 +2198,28 @@ impl ClientPump {
                             return done;
                         }
                     }
+                    // recv_wait 超时空拍 → 下一轮 step 的空拍臂对账周期拍。
                 }
             }
         }
     }
 
+    /// 周期拍对账（Plan 020 T-04）：`FrameSource::poll_tick` 每轮一调；
+    /// revision 前进 = 状态变化 → 产帧同步宿主（Active 才可）。
+    fn poll_session_tick(&mut self) {
+        let Some(app) = self.endpoint.as_mut() else { return };
+        if app.state != AppState::Active {
+            return;
+        }
+        let before = app.session.revision();
+        app.session.poll_tick();
+        if app.session.revision() != before {
+            self.push_frame();
+        }
+    }
+
     /// 单条消息派发；到出口时返回 `Some((出口, projector))`。
-    fn dispatch(&mut self, msg: ProtocolMsg) -> Option<(ClientExit, AppProjector)> {
+    fn dispatch(&mut self, msg: ProtocolMsg) -> Option<(ClientExit, S)> {
         match msg {
             ProtocolMsg::Input(_) => {
                 let app = self.endpoint.as_mut()?;
@@ -2282,7 +2306,7 @@ impl ClientPump {
 
     /// host 端消失：端点废、projector 原地暂存、旧 shm 段弃用；有重连
     /// 策略则留在重连现场（None = 仍活），否则出口 HostLost。
-    fn on_disconnect(&mut self) -> Option<(ClientExit, AppProjector)> {
+    fn on_disconnect(&mut self) -> Option<(ClientExit, S)> {
         if let Some(app) = self.endpoint.take() {
             self.projector = Some(app.session);
         }
@@ -2299,7 +2323,7 @@ impl ClientPump {
 
     /// 重连尝试一步：预算内连回 → 重建端点（同一 projector，revision
     /// 连续）续跑；超预算 → HostLost。
-    fn try_reconnect(&mut self) -> Option<(ClientExit, AppProjector)> {
+    fn try_reconnect(&mut self) -> Option<(ClientExit, S)> {
         let Some(policy) = self.reconnect.clone() else {
             return self.finish(ClientExit::HostLost);
         };
@@ -2324,13 +2348,13 @@ impl ClientPump {
     }
 
     /// 会话所有权交还调用方（出口路径；出口只交付一次）。
-    fn finish(&mut self, exit: ClientExit) -> Option<(ClientExit, AppProjector)> {
+    fn finish(&mut self, exit: ClientExit) -> Option<(ClientExit, S)> {
         self.spent = true;
         Some((exit, self.take_projector()))
     }
 
     /// 会话所有权交还调用方（出口路径）。
-    fn take_projector(&mut self) -> AppProjector {
+    fn take_projector(&mut self) -> S {
         if let Some(app) = self.endpoint.take() {
             self.projector = Some(app.session);
         }
@@ -2346,6 +2370,18 @@ pub fn run_client(
     config: ClientConfig,
     reconnect: Option<ReconnectPolicy>,
 ) -> (ClientExit, AppProjector) {
+    ClientPump::new(app_end, projector, config, reconnect).run()
+}
+
+/// 泛型会话主循环（Plan 020 T-04）：[`run_client`] 的 FrameSource 泛型
+/// 形——native queue 臂（[`super::native_projector::NativeProjector`]）经此驱动；[`run_client`]
+/// 公签名不动（解释态既有消费面零改动）。
+pub fn run_client_session<S: FrameSource>(
+    app_end: Box<dyn Transport + Send>,
+    projector: S,
+    config: ClientConfig,
+    reconnect: Option<ReconnectPolicy>,
+) -> (ClientExit, S) {
     ClientPump::new(app_end, projector, config, reconnect).run()
 }
 
