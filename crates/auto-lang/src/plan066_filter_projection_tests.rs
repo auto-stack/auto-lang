@@ -112,4 +112,55 @@ mod plan066_filter_projection_tests {
              ——_snapshot 应为 \"false\"（P536-D2 修复后自调链写可达），got {snap:?}"
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // (PC) T-07: ThinkBlock 读侧缩样——子件 obj/str prop + computed 串等值
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// musk ChatMessage 同形：子件 handler 直调 store msg（ToggleBubble）
+    /// 携 `.msg.id`（obj prop 域读实参）；翻转后子件 computed
+    /// `isOpen => .expanded == .msg.id` 经 SetProbe 回传。055-T13 现场
+    /// 为「读侧子件 computed 与视图 if 求值恒假/恒真分歧」。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn plan066_pc_think_block_read_side() {
+        let Some(manifest) = locate("src/front/app.at") else {
+            eprintln!("plan066: SKIPPED — corpus app.at not found");
+            return;
+        };
+        let Some(mut dc) = build_component_from_app(&manifest) else {
+            eprintln!("plan066: SKIPPED — corpus build failed");
+            return;
+        };
+
+        // 展开翻转：子件 handler 携 .msg.id（"m1"）调 store ToggleBubble。
+        dc.on_with_input_for("MsgBubble", "Toggle", None);
+        let expanded = dc.read_state("expanded");
+        eprintln!("plan066(PC) after Toggle expanded={expanded:?}");
+        assert!(
+            expanded == Ok(auto_val::Value::Str("m1".into())),
+            "(PC) 子件 handler 的 .msg.id 实参须达 store（obj prop 域读），             expanded 应为 \"m1\"，got {expanded:?}"
+        );
+
+        // 读侧 computed：isOpen = (.expanded == .msg.id) → true。
+        dc.on_with_input_for("MsgBubble", "Probe", None);
+        let probe_on = dc.read_state("probe_result");
+        eprintln!("plan066(PC) probe_on={probe_on:?}");
+        assert!(
+            probe_on == Ok(auto_val::Value::Str("true".into())),
+            "(PC) 展开态子件 computed 串等值须 true（055-T13 恒假分歧面），got {probe_on:?}"
+        );
+
+        // 再点收起：Toggle → expanded="" → isOpen false。
+        dc.on_with_input_for("MsgBubble", "Toggle", None);
+        let expanded_off = dc.read_state("expanded");
+        dc.on_with_input_for("MsgBubble", "Probe", None);
+        let probe_off = dc.read_state("probe_result");
+        eprintln!("plan066(PC) expanded_off={expanded_off:?} probe_off={probe_off:?}");
+        assert!(
+            expanded_off == Ok(auto_val::Value::Str("".into()))
+                && probe_off == Ok(auto_val::Value::Str("false".into())),
+            "(PC) 收起后 computed 须 false，got expanded={expanded_off:?} probe={probe_off:?}"
+        );
+    }
 }

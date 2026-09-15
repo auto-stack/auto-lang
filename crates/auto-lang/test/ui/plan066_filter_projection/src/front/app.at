@@ -8,6 +8,7 @@
 // P536-D2 臂在 store.at（MarkDone→ClearWindow 自调链）。
 
 use store: FilterStore
+use bubble: MsgBubble
 
 widget App {
     msg { Init, Seed, Search(str), MarkDone }
@@ -15,6 +16,7 @@ widget App {
     model {
         var projection_len int = -1
         var done_snapshot str = ""
+        var current_msg obj = { id: "m1", content: "hello" }
     }
 
     computed {
@@ -60,6 +62,7 @@ widget App {
     view {
         col {
             text .projection_len
+            MsgBubble { expanded: .expanded }
             for m in .filteredMessages {
                 text m.content
             }

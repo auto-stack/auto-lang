@@ -8,12 +8,13 @@ store FilterStore {
         var messages []Value = []
         var chat_search str = ""
         var done bool = false
-        // T-06 诊断臂：Append 写后即读（区分「写后立即可见、任务结束丢失」
-        // vs「写后即丢」）。
-        var dbg_after_append int = -1
+        // T-07 臂：气泡展开态单槽 id（musk forge_store.think_open 同形）
+        // + 子件 computed 探针回传。
+        var expanded str = ""
+        var probe_result str = ""
     }
 
-    msg Msg { Append(str, str), SetAll(str), SetSearch(str), MarkDone, ClearWindow }
+    msg Msg { Append(str, str), SetAll(str), SetSearch(str), MarkDone, ClearWindow, ToggleBubble(str), SetProbe(str) }
 
     on {
         .Append(role, content) -> {
@@ -41,6 +42,19 @@ store FilterStore {
 
         .ClearWindow -> {
             .done = false
+        }
+
+        // T-07：单槽展开态翻转（musk ThinkToggle 同形——同 id 再点收起）。
+        .ToggleBubble(id str) -> {
+            if .expanded == id {
+                .expanded = ""
+            } else {
+                .expanded = id
+            }
+        }
+
+        .SetProbe(v str) -> {
+            .probe_result = v
         }
     }
 }
