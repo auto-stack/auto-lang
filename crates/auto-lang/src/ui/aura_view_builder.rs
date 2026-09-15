@@ -13423,6 +13423,7 @@ mod tests {
             }
             other => panic!("expected AutodownEditor variant"),
         }
+        use crate::ui::action_config::set_menubar_open;
         set_menubar_open(None);
     }
     /// D-GAP-4: an if/else body spliced into a row records each spliced node

@@ -434,6 +434,8 @@ pub struct DocDrawList {
     pub runs: Vec<DocRun>,
     pub caret: Option<CaretDraw>,
     pub preedit: Option<PreeditDraw>,
+    /// PLAN-069：slash 弹层浮层段（最顶层；widget draw 在 preedit 之后渲染）。
+    pub slash_menu: Option<SlashMenuDraw>,
     /// 状态修订号（适配层缓存键）。
     pub revision: u64,
 }
@@ -442,6 +444,99 @@ pub struct DocFrame {
     pub list: DocDrawList,
     /// 内容总高度（布局用：widget 返回的 Node 高度）。
     pub height: f32,
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-069：slash 弹层（web SlashMenu 同源语义的原生实现；manifest 静态
+// 冻结子集，命令为编辑壳原生操作子）
+// ---------------------------------------------------------------------------
+
+/// 弹层开启态（query 跟随 + 键盘选中游标；selected 对过滤后列表循环）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SlashState {
+    pub query: String,
+    pub selected: usize,
+}
+
+/// 候选项操作子——web slash-manifest chain 命令的原生等价面
+/// （标题/引用/列表/代码块走 048 输入规则同款变换；骨架插入为新操作子）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SlashOp {
+    Paragraph,
+    Heading(i64),
+    Bullet,
+    Ordered,
+    Quote,
+    CodeBlock,
+    /// 光标处文本插入（任务状态/优先级前缀；ImeCommit 同通道）。
+    InsertText(&'static str),
+    Divider,
+    Table33,
+    Callout,
+    Details,
+}
+
+/// 候选项（web slash-manifest 30 项的 v1 冻结子集 23 项；差额 5 项登记
+/// DEBTS——Image 需 URL prompt、Query/Mermaid/Math 属 web-only 降级豁免
+/// （PARITY #9）、Block link 依赖 block anchor 登记面）。
+pub struct SlashItem {
+    pub title: &'static str,
+    pub desc: &'static str,
+    pub terms: &'static [&'static str],
+    op: SlashOp,
+}
+
+macro_rules! slash_item {
+    ($title:expr, $desc:expr, [$($term:expr),*], $op:expr) => {
+        SlashItem { title: $title, desc: $desc, terms: &[$($term),*], op: $op }
+    };
+}
+
+const SLASH_ITEMS: [SlashItem; 23] = [
+    slash_item!("Text", "Plain text", ["p"], SlashOp::Paragraph),
+    slash_item!("Heading 1", "Big section heading", ["h1"], SlashOp::Heading(1)),
+    slash_item!("Heading 2", "Medium section heading", ["h2"], SlashOp::Heading(2)),
+    slash_item!("Heading 3", "Small section heading", ["h3"], SlashOp::Heading(3)),
+    slash_item!("Heading 4", "Fourth level heading", ["h4"], SlashOp::Heading(4)),
+    slash_item!("Heading 5", "Fifth level heading", ["h5"], SlashOp::Heading(5)),
+    slash_item!("Heading 6", "Sixth level heading", ["h6"], SlashOp::Heading(6)),
+    slash_item!("Bullet List", "Bullet list", ["ul"], SlashOp::Bullet),
+    slash_item!("Numbered List", "Numbered list", ["ol"], SlashOp::Ordered),
+    slash_item!("Quote", "Quote", ["blockquote"], SlashOp::Quote),
+    slash_item!("Code Block", "Code snippet", ["code"], SlashOp::CodeBlock),
+    slash_item!("TODO", "Insert a TODO task", ["todo", "task"], SlashOp::InsertText("- TODO ")),
+    slash_item!("DOING", "Insert a DOING task", ["doing", "task"], SlashOp::InsertText("- DOING ")),
+    slash_item!("DONE", "Insert a DONE task", ["done", "task"], SlashOp::InsertText("- DONE ")),
+    slash_item!("NOW", "Insert a NOW task", ["now", "task"], SlashOp::InsertText("- NOW ")),
+    slash_item!("LATER", "Insert a LATER task", ["later", "task"], SlashOp::InsertText("- LATER ")),
+    slash_item!("Priority A", "Insert [#A] priority", ["priority", "a"], SlashOp::InsertText("[#A] ")),
+    slash_item!("Priority B", "Insert [#B] priority", ["priority", "b"], SlashOp::InsertText("[#B] ")),
+    slash_item!("Priority C", "Insert [#C] priority", ["priority", "c"], SlashOp::InsertText("[#C] ")),
+    slash_item!("Divider", "Horizontal rule", ["hr"], SlashOp::Divider),
+    slash_item!("Table", "Add table", ["table"], SlashOp::Table33),
+    slash_item!("Callout", "Admonition / callout box", ["callout", "admonition", "note"], SlashOp::Callout),
+    slash_item!("Details", "Collapsible details block", ["details", "toggle"], SlashOp::Details),
+];
+
+/// 弹层几何（px，widget 本地；render_frame 布局期写、命中测试读——
+/// table_geom 同款单源）。
+#[derive(Debug, Clone)]
+pub struct SlashMenuDraw {
+    pub rect: Rect,
+    pub selected: usize,
+    pub items: Vec<SlashItemDraw>,
+    pub bg: Rgba,
+    pub border: Rgba,
+    pub hover: Rgba,
+    pub fg: Rgba,
+    pub dim: Rgba,
+}
+
+#[derive(Debug, Clone)]
+pub struct SlashItemDraw {
+    pub rect: Rect,
+    pub title: String,
+    pub desc: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -514,6 +609,11 @@ pub struct AutodownEditorCore {
     /// 门控 + 尾部状态条横幅），final 解锁。sync_external 写，读出经
     /// streaming()。
     streaming: AtomicBool,
+    /// PLAN-069：slash 弹层状态（None=关闭）。
+    slash: Mutex<Option<SlashState>>,
+    /// PLAN-069：弹层几何快照（render_frame 写、命中测试读）——
+    /// (整层 rect, [(manifest 下标, 项 rect)])。
+    slash_geom: Mutex<Option<(Rect, Vec<(usize, Rect)>)>>,
 }
 
 impl AutodownEditorCore {
@@ -542,6 +642,8 @@ impl AutodownEditorCore {
             external_dirty: AtomicBool::new(false),
             last_used: AtomicU64::new(0),
             streaming: AtomicBool::new(false),
+            slash: Mutex::new(None),
+            slash_geom: Mutex::new(None),
         }
     }
 
@@ -685,6 +787,9 @@ impl AutodownEditorCore {
         *self.nav_goal_x.lock().unwrap() = None;
         *self.doc_sel.lock().unwrap() = None;
         *self.drag_anchor.lock().unwrap() = None;
+        // PLAN-069：文档整体重建（外部真变化）——弹层锚块失效，随重建关闭。
+        *self.slash.lock().unwrap() = None;
+        *self.slash_geom.lock().unwrap() = None;
         self.revision.fetch_add(1, Ordering::Relaxed);
         true
     }
@@ -765,6 +870,8 @@ impl AutodownEditorCore {
                 *self.preedit.lock().unwrap() = None;
                 *self.drag.lock().unwrap() = Drag::None;
                 *self.drag_anchor.lock().unwrap() = None;
+                // PLAN-069：失焦关层（web 编辑器 blur 同语义）。
+                *self.slash.lock().unwrap() = None;
                 DocOutput { request_redraw: true, ..Default::default() }
             }
             DocInput::ModifiersChanged(m) => {
@@ -802,10 +909,14 @@ impl AutodownEditorCore {
             }
             DocInput::ImePreedit(p) => {
                 *self.preedit.lock().unwrap() = if p.is_empty() { None } else { Some(p) };
+                // PLAN-069：IME 组合期关层（v1 差异登记——web 查询串支持
+                // 组合输入，VM 侧 query 仅直打字符）。
+                *self.slash.lock().unwrap() = None;
                 DocOutput { request_redraw: true, ..Default::default() }.captured()
             }
             DocInput::ImeCommit(content) => {
                 *self.preedit.lock().unwrap() = None;
+                *self.slash.lock().unwrap() = None;
                 let mut out = DocOutput::default();
                 let bi = self.focused_block();
                 if let Some(bi) = bi {
@@ -853,6 +964,16 @@ impl AutodownEditorCore {
     ) -> DocOutput {
         let Some(bi) = self.focused_block() else { return DocOutput::default() };
         let mods = *self.modifiers.lock().unwrap();
+
+        // ── PLAN-069 T1：弹层开启期键位路由优先于编辑路径 ───────────────
+        // 未被路由消费（组合键/水平 motion 等）→ 关层放行（web OnKeydown
+        // 仅拦截四键、其余落文档的形态）。
+        if self.slash_menu_visible() {
+            if let Some(out) = self.slash_route_key(font_system, key.clone(), mods) {
+                return out;
+            }
+            *self.slash.lock().unwrap() = None;
+        }
 
         // ── 跨块导航：↑↓ 于边界迁移焦点 ────────────────────────────────
         if matches!(key, EditorKey::Up | EditorKey::Down) {
@@ -981,6 +1102,9 @@ impl AutodownEditorCore {
         // ── 跨块选区下的编辑动作：先剪接选区（PLAN-048 T3）；Backspace/
         //    Delete 即删除本身；Char/Enter/Other 剪接后落正常动作。
         let mut bi = bi;
+        // PLAN-069：入口选区态快照——选区态下 '/' 走剪接+普通插入，不触发
+        // 弹层（web 替换选区后前导字符为 '/' 自身、不满足触发同形）。
+        let sel_at_entry = self.doc_selection().is_some();
         if self.doc_selection().is_some()
             && matches!(
                 key,
@@ -1036,6 +1160,15 @@ impl AutodownEditorCore {
                 out.cursor_changed = true;
             }
             EditorKey::Char(c) => {
+                // PLAN-069 T1：触发——块首/空白后 '/'（fence/表格 cell/选区
+                // 态不触发）。触发字符不落入文档（web 触发 range 被命令
+                // deleteRange 消化的同端语义）。
+                if c == '/' && !sel_at_entry && self.slash_should_trigger(bi) {
+                    *self.slash.lock().unwrap() =
+                        Some(SlashState { query: String::new(), selected: 0 });
+                    out.request_redraw = true;
+                    return out.captured();
+                }
                 self.block_action(font_system, bi, Action::Insert(c));
                 if c == ' ' {
                     // PLAN-048 T5：行首标记转换（整块精确命中检定）。
@@ -1212,6 +1345,11 @@ impl AutodownEditorCore {
     ) -> DocOutput {
         if !matches!(button, EditorButton::Left) {
             return DocOutput::default();
+        }
+        // PLAN-069 T2：弹层命中优先（项点击执行；层外点击关闭且不落文档
+        // ——web 点击外部关闭同语义）。None = 弹层未开，走文档命中链。
+        if let Some(out) = self.slash_mouse_press(font_system, x, y) {
+            return out;
         }
         // PLAN-055 T6：列宽拖拽命中（先于 caret/焦点——列边界 ±命中带
         // 优先；命中即捕获，不建焦点不改 caret）。
@@ -2122,6 +2260,85 @@ impl AutodownEditorCore {
             banner_h = BAR_H + BAR_PAD;
         }
 
+        // PLAN-069 T2：弹层浮层段——光标底缘锚定，下溢翻转到光标上方；整
+        // 层超出内容底的高度计入 DocFrame.height（widget 容下浮层，命中链
+        // 可达）。视图实例门控不开层（防御臂）。过滤空集不画层（开启态保
+        // 留供删字符回显；web 空态文案 v1 不做，登记）。
+        let mut menu_h = 0.0f32;
+        let slash_open = self.slash.lock().unwrap().as_ref().map(|s| (s.query.clone(), s.selected));
+        if let Some((query, selected)) = slash_open {
+            if !view_inst {
+                let filtered = Self::slash_filtered_static(&query);
+                if filtered.is_empty() {
+                    *self.slash_geom.lock().unwrap() = None;
+                } else {
+                    let content_total = (y - BLOCK_GAP).max(0.0);
+                    let (ax, ay) = list
+                        .caret
+                        .as_ref()
+                        .map(|c| (c.rect.x, c.rect.y + c.rect.h))
+                        .or_else(|| {
+                            focus
+                                .and_then(|fi| layouts.get(fi).copied().flatten())
+                                .map(|r| (r.origin.x, r.rect.y + r.rect.h))
+                        })
+                        .unwrap_or((0.0, 0.0));
+                    let width = SLASH_MENU_W.min((viewport_w - ax).max(160.0));
+                    let n = filtered.len();
+                    let height = SLASH_MENU_PAD * 2.0 + SLASH_ITEM_H * n as f32;
+                    let below = ay + SLASH_MENU_GAP;
+                    let flip = below + height > content_total + banner_h + 2.0;
+                    let top = if flip { (ay - SLASH_MENU_GAP - height).max(0.0) } else { below };
+                    let mx = ax.min((viewport_w - width - 1.0).max(0.0)).max(0.0);
+                    let dark = crate::ui::style::theme::dark_mode();
+                    let (br, bg_, bb) = crate::ui::style::theme::resolve_border_rgb();
+                    let mut menu = SlashMenuDraw {
+                        rect: Rect::new(mx, top, width, height),
+                        selected: selected.min(n - 1),
+                        items: Vec::with_capacity(n),
+                        bg: if dark {
+                            Rgba { r: 24.0 / 255.0, g: 24.0 / 255.0, b: 27.0 / 255.0, a: 1.0 }
+                        } else {
+                            Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }
+                        },
+                        border: Rgba {
+                            r: br as f32 / 255.0,
+                            g: bg_ as f32 / 255.0,
+                            b: bb as f32 / 255.0,
+                            a: 1.0,
+                        },
+                        hover: if dark {
+                            Rgba { r: 39.0 / 255.0, g: 39.0 / 255.0, b: 42.0 / 255.0, a: 1.0 }
+                        } else {
+                            Rgba { r: 244.0 / 255.0, g: 244.0 / 255.0, b: 245.0 / 255.0, a: 1.0 }
+                        },
+                        fg: base,
+                        dim: Rgba { r: base.r * 0.55, g: base.g * 0.55, b: base.b * 0.55, a: base.a },
+                    };
+                    let mut geom_items: Vec<(usize, Rect)> = Vec::with_capacity(n);
+                    for (i, &manifest_idx) in filtered.iter().enumerate() {
+                        let item = &SLASH_ITEMS[manifest_idx];
+                        let rect = Rect::new(
+                            mx + SLASH_MENU_PAD,
+                            top + SLASH_MENU_PAD + SLASH_ITEM_H * i as f32,
+                            width - 2.0 * SLASH_MENU_PAD,
+                            SLASH_ITEM_H,
+                        );
+                        menu.items.push(SlashItemDraw {
+                            rect,
+                            title: item.title.to_string(),
+                            desc: item.desc.to_string(),
+                        });
+                        geom_items.push((manifest_idx, rect));
+                    }
+                    *self.slash_geom.lock().unwrap() = Some((menu.rect, geom_items));
+                    let over = (top + height) - (content_total + banner_h);
+                    menu_h = over.max(0.0);
+                    list.slash_menu = Some(menu);
+                }
+            }
+        }
+
         if let Some(fi) = focus {
             if let Some(lay) = layouts.get(fi).copied().flatten() {
                 list.focus_frame = Some((lay.rect, frame_color));
@@ -2129,7 +2346,7 @@ impl AutodownEditorCore {
         }
         *self.layout.lock().unwrap() =
             DocLayout { blocks: layouts.into_iter().map(|l| l.expect("render covers every block")).collect() };
-        DocFrame { list, height: (y - BLOCK_GAP).max(0.0) + banner_h }
+        DocFrame { list, height: (y - BLOCK_GAP).max(0.0) + banner_h + menu_h }
     }
 }
 
@@ -3881,6 +4098,411 @@ static DOC_EDITORS: std::sync::OnceLock<Mutex<HashMap<String, &'static AutodownE
 
 const DOC_EDITOR_LRU_CAP: usize = 32;
 
+// ---------------------------------------------------------------------------
+// PLAN-069：slash 弹层状态机（触发/过滤/键位路由/命中/命令族）
+// ---------------------------------------------------------------------------
+
+/// 弹层几何常量（px；web .autodown-slash-menu 观感对标：260 宽、双行项）。
+const SLASH_ITEM_H: f32 = 34.0;
+const SLASH_MENU_PAD: f32 = 4.0;
+const SLASH_MENU_W: f32 = 260.0;
+const SLASH_MENU_GAP: f32 = 6.0;
+
+impl AutodownEditorCore {
+    pub fn slash_menu_visible(&self) -> bool {
+        self.slash.lock().unwrap().is_some()
+    }
+
+    /// MCP 快照读数（query, 选中, 过滤后项数）。None = 弹层关闭。
+    pub fn slash_state_snapshot(&self) -> Option<(String, usize, usize)> {
+        let st = self.slash.lock().unwrap();
+        let s = st.as_ref()?;
+        let n = Self::slash_filtered_static(&s.query).len();
+        Some((s.query.clone(), s.selected.min(n.saturating_sub(1)), n))
+    }
+
+    /// query 子串过滤（title/description/searchTerms 小写 contains；空
+    /// query 全量——web filteredItems 同语义）。
+    fn slash_filtered_static(query: &str) -> Vec<usize> {
+        let q = query.to_lowercase();
+        SLASH_ITEMS
+            .iter()
+            .enumerate()
+            .filter(|(_, it)| {
+                q.is_empty()
+                    || it.title.to_lowercase().contains(&q)
+                    || it.desc.to_lowercase().contains(&q)
+                    || it.terms.iter().any(|t| t.to_lowercase().contains(&q))
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    fn slash_filtered(&self) -> Vec<usize> {
+        let q = self
+            .slash
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|s| s.query.clone())
+            .unwrap_or_default();
+        Self::slash_filtered_static(&q)
+    }
+
+    /// 触发判定：焦点块非 fence、非表格 cell、无选区态，且光标位于块首
+    /// 或前一字符为空白（web slashQueryAt 同语义）。
+    fn slash_should_trigger(&self, bi: usize) -> bool {
+        if matches!(self.block_kind_of(bi), LeafKind::Fence) {
+            return false;
+        }
+        if self.doc_selection().is_some() {
+            return false;
+        }
+        {
+            let segs = self.segs.lock().unwrap();
+            if matches!(locate_leaf(&segs, bi), Some(LeafSlot::TableSlot { .. })) {
+                return false;
+            }
+        }
+        let blocks = self.blocks.lock().unwrap();
+        let Some(b) = blocks.get(bi) else { return false };
+        let Some(off) = Self::cursor_byte_offset(b) else { return false };
+        let text = SendEdit::of(b).text();
+        if off == 0 {
+            return true;
+        }
+        let off = off.min(text.len());
+        if !text.is_char_boundary(off) {
+            return false;
+        }
+        text[..off].chars().next_back().map(|c| c.is_whitespace()).unwrap_or(false)
+    }
+
+    /// 弹层开启期的键位路由。Some = 已消费（调用方直接返回）；None = 未
+    /// 消费（调用方关层放行到编辑路径）。
+    fn slash_route_key(&self, font_system: &mut FontSystem, key: EditorKey, mods: EditorModifiers) -> Option<DocOutput> {
+        // 组合键不进路由（关层放行——复制/撤销等组合优先）。
+        if mods.control || mods.logo || mods.alt {
+            return None;
+        }
+        let redraw = DocOutput { request_redraw: true, captured: true, ..Default::default() };
+        match key {
+            EditorKey::Up | EditorKey::Down => {
+                let len = self.slash_filtered().len();
+                let mut st = self.slash.lock().unwrap();
+                if let (Some(s), true) = (st.as_mut(), len > 0) {
+                    // 环形步进（中间局部变量防取模优先级问题——web 同款注释）。
+                    let delta = if key == EditorKey::Up { len - 1 } else { 1 };
+                    s.selected = (s.selected + delta) % len;
+                }
+                Some(redraw)
+            }
+            EditorKey::Enter => {
+                let pick = self.slash.lock().unwrap().as_ref().map(|s| s.selected).unwrap_or(0);
+                let Some(&item_idx) = self.slash_filtered().get(pick) else {
+                    // 过滤空集：Enter 无目标（web item null 早退同形）。
+                    return Some(redraw);
+                };
+                *self.slash.lock().unwrap() = None;
+                *self.slash_geom.lock().unwrap() = None;
+                let prev_focus = self.focused_block();
+                let changed = self.slash_execute(font_system, item_idx);
+                let focus_changed = self.focused_block() != prev_focus;
+                Some(DocOutput {
+                    text_changed: changed,
+                    cursor_changed: true,
+                    focus_changed,
+                    request_redraw: true,
+                    captured: true,
+                })
+            }
+            EditorKey::Escape => {
+                *self.slash.lock().unwrap() = None;
+                *self.slash_geom.lock().unwrap() = None;
+                Some(redraw)
+            }
+            EditorKey::Char(c) => {
+                if let Some(s) = self.slash.lock().unwrap().as_mut() {
+                    s.query.push(c);
+                    s.selected = 0;
+                }
+                Some(redraw)
+            }
+            EditorKey::Backspace => {
+                let mut st = self.slash.lock().unwrap();
+                match st.as_mut() {
+                    // 删尾字符（query 消费口，不动文档）。
+                    Some(s) if !s.query.is_empty() => {
+                        s.query.pop();
+                        s.selected = 0;
+                        drop(st);
+                        Some(redraw)
+                    }
+                    // 删穿关层：'/' 不在文档，无删除效果（web 删触发 range
+                    // 的等价收口）。
+                    _ => {
+                        *st = None;
+                        *self.slash_geom.lock().unwrap() = None;
+                        drop(st);
+                        Some(redraw)
+                    }
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// 弹层命中（handle_mouse_press 最先路由）。项 rect 内 = 执行该项；
+    /// 层内未中项 = 零操作；层外 = 关层且不落文档。None = 弹层未开。
+    fn slash_mouse_press(&self, font_system: &mut FontSystem, x: f32, y: f32) -> Option<DocOutput> {
+        if !self.slash_menu_visible() {
+            return None;
+        }
+        let geom = self.slash_geom.lock().unwrap().clone();
+        let Some((menu_rect, items)) = geom else {
+            // 开着但几何未就绪（触发后尚无渲染帧）——关层防呆。
+            *self.slash.lock().unwrap() = None;
+            return Some(DocOutput { request_redraw: true, captured: true, ..Default::default() });
+        };
+        let inside = x >= menu_rect.x
+            && x <= menu_rect.x + menu_rect.w
+            && y >= menu_rect.y
+            && y <= menu_rect.y + menu_rect.h;
+        if !inside {
+            *self.slash.lock().unwrap() = None;
+            *self.slash_geom.lock().unwrap() = None;
+            return Some(DocOutput { request_redraw: true, captured: true, ..Default::default() });
+        }
+        let hit = items
+            .iter()
+            .find(|(_, r)| x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)
+            .map(|(i, _)| *i);
+        let Some(item_idx) = hit else {
+            return Some(DocOutput { request_redraw: true, captured: true, ..Default::default() });
+        };
+        let prev_focus = self.focused_block();
+        *self.slash.lock().unwrap() = None;
+        *self.slash_geom.lock().unwrap() = None;
+        let changed = self.slash_execute(font_system, item_idx);
+        let focus_changed = self.focused_block() != prev_focus;
+        Some(DocOutput {
+            text_changed: changed,
+            cursor_changed: true,
+            focus_changed,
+            request_redraw: true,
+            captured: true,
+        })
+    }
+
+    /// 命令执行（manifest 下标）。true = 文档变化。结构操作不入 undo
+    /// （PLAN-048 T6 裁定口径：结构变换整换新缓冲，与 enter_split/合并/
+    /// 输入规则同不入栈）。
+    fn slash_execute(&self, font_system: &mut FontSystem, item_idx: usize) -> bool {
+        let Some(bi) = self.focused_block() else { return false };
+        let Some(item) = SLASH_ITEMS.get(item_idx) else { return false };
+        let changed = self.slash_apply_op(font_system, bi, item.op);
+        if changed {
+            self.revision.fetch_add(1, Ordering::Relaxed);
+        }
+        changed
+    }
+
+    fn slash_apply_op(&self, font_system: &mut FontSystem, bi: usize, op: SlashOp) -> bool {
+        match op {
+            SlashOp::Paragraph => self.slash_migrate_kind(font_system, bi, LeafKind::Paragraph),
+            SlashOp::Heading(level) => {
+                self.slash_migrate_kind(font_system, bi, LeafKind::Heading(level))
+            }
+            SlashOp::CodeBlock => self.slash_migrate_kind(font_system, bi, LeafKind::Fence),
+            SlashOp::Quote => {
+                let mut segs = self.segs.lock().unwrap();
+                replace_leaf_seg(&mut segs, bi, move || Seg::Quote(vec![Seg::Leaf(bi)]))
+            }
+            SlashOp::Bullet | SlashOp::Ordered => {
+                let ordered = op == SlashOp::Ordered;
+                let mut segs = self.segs.lock().unwrap();
+                replace_leaf_seg(&mut segs, bi, move || Seg::List {
+                    ordered,
+                    start: 1,
+                    checked: vec![None],
+                    items: vec![vec![Seg::Leaf(bi)]],
+                })
+            }
+            SlashOp::Callout => {
+                let mut segs = self.segs.lock().unwrap();
+                replace_leaf_seg(&mut segs, bi, move || Seg::Callout {
+                    kind: "note".to_string(),
+                    title: "Note".to_string(),
+                    inner: vec![Seg::Leaf(bi)],
+                })
+            }
+            SlashOp::Details => {
+                let mut segs = self.segs.lock().unwrap();
+                replace_leaf_seg(&mut segs, bi, move || Seg::Details {
+                    summary: "Details".to_string(),
+                    open: false,
+                    inner: vec![Seg::Leaf(bi)],
+                })
+            }
+            SlashOp::InsertText(prefix) => {
+                let mut blocks = self.blocks.lock().unwrap();
+                match blocks.get_mut(bi) {
+                    Some(b) => {
+                        b.editor.ed_mut().insert_string(prefix, None);
+                        true
+                    }
+                    None => false,
+                }
+            }
+            SlashOp::Divider => {
+                self.slash_insert_sibling_seg(bi, |_| Seg::Raw("---".to_string()))
+            }
+            SlashOp::Table33 => self.slash_insert_table(font_system, bi),
+        }
+    }
+
+    /// kind 迁移（Text/Heading×6/Code Block）：保留全文与光标字节位；
+    /// 缓冲按新 kind 重建（字号/家族/行高随 kind 重置——048 整换新缓冲
+    /// 口径，undo 历史随之作废）。
+    fn slash_migrate_kind(&self, font_system: &mut FontSystem, bi: usize, kind: LeafKind) -> bool {
+        let mut blocks = self.blocks.lock().unwrap();
+        let Some(b) = blocks.get_mut(bi) else { return false };
+        if b.kind == kind {
+            return false;
+        }
+        let text = SendEdit::of(b).text();
+        let caret = Self::cursor_byte_offset(b).map(|off| off.min(text.len()));
+        b.kind = kind;
+        b.syntax = None;
+        self.overwrite_block_text(font_system, b, text);
+        if let Some(off) = caret {
+            Self::place_caret_byte(b, off);
+        }
+        true
+    }
+
+    /// 在焦点叶的宿主段列表内其后插入新段（Divider；enter_split ③ 同款
+    /// 槽位算术；表格 cell 不触发——弹层触发门已挡，防御臂保留）。
+    fn slash_insert_sibling_seg(&self, bi: usize, make: impl FnOnce(usize) -> Seg) -> bool {
+        let slot = {
+            let segs = self.segs.lock().unwrap();
+            match locate_leaf(&segs, bi) {
+                Some(s) => s,
+                None => return false,
+            }
+        };
+        let mut segs = self.segs.lock().unwrap();
+        match slot {
+            LeafSlot::TopLevel(pos) => {
+                segs.insert(pos + 1, make(bi));
+                true
+            }
+            LeafSlot::QuoteInner { quote_pos, inner_pos } => {
+                match segs.get_mut(quote_pos) {
+                    Some(Seg::Quote(inner)) => {
+                        inner.insert(inner_pos + 1, make(bi));
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            LeafSlot::ListItem { list_pos, item_idx, inner_pos } => {
+                match segs.get_mut(list_pos) {
+                    Some(Seg::List { items, .. }) => match items.get_mut(item_idx) {
+                        Some(item) => {
+                            item.insert(inner_pos + 1, make(bi));
+                            true
+                        }
+                        None => false,
+                    },
+                    _ => false,
+                }
+            }
+            LeafSlot::TableSlot { .. } => false,
+        }
+    }
+
+    /// 3×3 表格骨架（含 header 行）插入焦点叶之后：9 个空 cell 叶新缓冲
+    /// + Table 段（插入后 reindex_table_keys 全量重排键——与 rebuild 同
+    /// 口径）。焦点迁表头首 cell（就地续编；web setTable 同聚焦语义）。
+    fn slash_insert_table(&self, font_system: &mut FontSystem, bi: usize) -> bool {
+        let slot = {
+            let segs = self.segs.lock().unwrap();
+            match locate_leaf(&segs, bi) {
+                Some(LeafSlot::TableSlot { .. }) | None => return false,
+                Some(s) => s,
+            }
+        };
+        let mut cell_ids = [[0usize; 3]; 3];
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            for r in 0..3 {
+                for c in 0..3 {
+                    let id = blocks.len();
+                    blocks.push(BlockBuf {
+                        editor: SendEditor(new_leaf_buffer(
+                            font_system,
+                            "",
+                            false,
+                            BODY_SIZE,
+                            None,
+                            LINE_H_PARA,
+                        )),
+                        kind: LeafKind::Paragraph,
+                        syntax: None,
+                        snapshot: String::new(),
+                        intervals: Vec::new(),
+                    });
+                    cell_ids[r][c] = id;
+                }
+            }
+        }
+        let rows: Vec<Vec<Vec<Seg>>> = (0..3)
+            .map(|r| (0..3).map(|c| vec![Seg::Leaf(cell_ids[r][c])]).collect())
+            .collect();
+        let inserted = {
+            let mut segs = self.segs.lock().unwrap();
+            let ok = match slot {
+                LeafSlot::TopLevel(pos) => {
+                    segs.insert(pos + 1, Seg::Table { key: u64::MAX, rows });
+                    true
+                }
+                LeafSlot::QuoteInner { quote_pos, inner_pos } => {
+                    match segs.get_mut(quote_pos) {
+                        Some(Seg::Quote(inner)) => {
+                            inner.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows });
+                            true
+                        }
+                        _ => false,
+                    }
+                }
+                LeafSlot::ListItem { list_pos, item_idx, inner_pos } => {
+                    match segs.get_mut(list_pos) {
+                        Some(Seg::List { items, .. }) => match items.get_mut(item_idx) {
+                            Some(item) => {
+                                item.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows });
+                                true
+                            }
+                            None => false,
+                        },
+                        _ => false,
+                    }
+                }
+                LeafSlot::TableSlot { .. } => false,
+            };
+            if ok {
+                reindex_table_keys(&mut segs);
+            }
+            ok
+        };
+        if !inserted {
+            return false;
+        }
+        *self.focus.lock().unwrap() = Some(cell_ids[0][0]);
+        true
+    }
+}
+
 fn registry() -> &'static Mutex<HashMap<String, &'static AutodownEditorCore>> {
     DOC_EDITORS.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -3938,6 +4560,14 @@ pub fn autodown_editor_text(key: &str) -> Option<String> {
     let norm = normalize_payload_key(key);
     let map = registry().lock().unwrap();
     map.get(&norm).map(|c| c.emit_document())
+}
+
+/// PLAN-069：MCP 快照弹层读数（query, 选中, 过滤后项数；key 未注册或
+/// 弹层关闭返回 None）。
+pub fn autodown_editor_slash_state(key: &str) -> Option<(String, usize, usize)> {
+    let norm = normalize_payload_key(key);
+    let map = registry().lock().unwrap();
+    map.get(&norm).and_then(|c| c.slash_state_snapshot())
 }
 
 /// PLAN-063 T-04d: 首个完整可见块（滚动同步锚块判定）。tol = 2px
@@ -4339,6 +4969,158 @@ mod tests {
         }
         assert_eq!(c.block_kind_of(0), LeafKind::Paragraph);
         assert_eq!(c.emit_document(), "1. ");
+    }
+
+    // ── PLAN-069：slash 弹层 ───────────────────────────────────────────
+
+    /// 触发：块首 '/' 弹层开启、触发字符不落入文档。
+    #[test]
+    fn slash_triggers_at_block_start_no_char_drop() {
+        let c = core_empty("sl1");
+        *c.focus.lock().unwrap() = Some(0);
+        let out = press(c, EditorKey::Char('/'));
+        assert!(out.captured && out.request_redraw, "{out:?}");
+        assert!(!out.text_changed, "触发字符不落档");
+        assert!(c.slash_menu_visible());
+        assert_eq!(c.emit_document(), "", "'/' 不得入档");
+        // 空白后触发：空格续打后 '/' 仍触发。
+        let w = core_for("sl1b", "甲 \n");
+        *w.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| w.block_motion(fs, 0, Motion::End));
+        assert!(press(w, EditorKey::Char('/')).captured);
+        assert!(w.slash_menu_visible());
+    }
+
+    /// 不触发：词中（前字符非空白）/ fence 内 / 跨块选区态。
+    #[test]
+    fn slash_no_trigger_midword_fence_selection() {
+        // 词中：'/' 作为普通字符插入。
+        let c = core_for("sl2", "abc\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        let out = press(c, EditorKey::Char('/'));
+        assert!(!out.captured, "词中 '/' 不捕获");
+        assert!(!c.slash_menu_visible());
+        assert_eq!(c.live_text(0), "abc/");
+        // fence 内。
+        let f = core_for("sl3", "```\n\n```\n");
+        assert_eq!(f.block_kind_of(0), LeafKind::Fence);
+        *f.focus.lock().unwrap() = Some(0);
+        let out = press(f, EditorKey::Char('/'));
+        assert!(!out.captured);
+        assert!(!f.slash_menu_visible());
+        // 跨块选区态（doc_sel 在场；offset 3 = '乙' 后字符边界）。
+        let s = core_for("sl3b", "甲段。\n\n乙段。\n");
+        *s.focus.lock().unwrap() = Some(0);
+        s.set_doc_selection(SelAnchor { block: 0, offset: 0 }, SelAnchor { block: 1, offset: 3 });
+        let out = press(s, EditorKey::Char('/'));
+        assert!(!out.captured, "选区态 '/' 不触发");
+        assert!(!s.slash_menu_visible());
+    }
+
+    /// 门控：只读视图实例（view_fence_* 键）与流式期不触发。
+    #[test]
+    fn slash_no_trigger_view_instance_or_streaming() {
+        let v = core_for("view_fence_sl", "# 只读\n");
+        assert!(v.is_view_instance());
+        *v.focus.lock().unwrap() = Some(0);
+        let out = press(v, EditorKey::Char('/'));
+        assert!(!out.captured);
+        assert!(!v.slash_menu_visible());
+        let c = core_empty("sl4");
+        *c.focus.lock().unwrap() = Some(0);
+        c.streaming.store(true, Ordering::Release);
+        let out = press(c, EditorKey::Char('/'));
+        assert!(!out.captured);
+        assert!(!c.slash_menu_visible());
+    }
+
+    /// query 跟随 + 过滤收缩 + Enter 执行选中（query "h" 首项 = Heading 1）
+    /// + 执行后关层。
+    #[test]
+    fn slash_query_filter_and_enter_executes() {
+        let c = core_empty("sl5");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('/'));
+        press(c, EditorKey::Char('h'));
+        let Some((query, selected, count)) = c.slash_state_snapshot() else {
+            panic!("menu must be open");
+        };
+        assert_eq!(query, "h");
+        assert_eq!(selected, 0);
+        assert!(count >= 1 && count < 23, "query 收缩过滤：{count}");
+        // "h" 过滤集首项 = Heading 1 → Enter 后空段迁移为 H1（emit "# "）。
+        let out = press(c, EditorKey::Enter);
+        assert!(out.text_changed, "{out:?}");
+        assert!(!c.slash_menu_visible(), "执行后关层");
+        assert_eq!(c.emit_document(), "# ");
+    }
+
+    /// ↑↓ 环形步进；Esc 关层零文档效果；未消费键（Left）关层放行。
+    #[test]
+    fn slash_nav_cycle_escape_and_fallthrough() {
+        let c = core_empty("sl6");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('/'));
+        press(c, EditorKey::Down);
+        assert_eq!(c.slash_state_snapshot().map(|(_, s, _)| s), Some(1));
+        press(c, EditorKey::Up);
+        assert_eq!(c.slash_state_snapshot().map(|(_, s, _)| s), Some(0));
+        press(c, EditorKey::Up); // 0 上步回绕到末位
+        assert_eq!(
+            c.slash_state_snapshot().map(|(_, s, n)| (s, n)),
+            Some((22, 23)),
+            "23 项环形"
+        );
+        press(c, EditorKey::Escape);
+        assert!(!c.slash_menu_visible());
+        assert_eq!(c.emit_document(), "");
+        // Left：未路由 → 关层 + 水平 motion 放行（cursor_changed）。
+        press(c, EditorKey::Char('/'));
+        assert!(c.slash_menu_visible());
+        let out = press(c, EditorKey::Left);
+        assert!(!c.slash_menu_visible(), "未消费键关层");
+        assert!(out.cursor_changed);
+    }
+
+    /// Backspace 删 query 尾 → 删穿关层；全程不动文档（'/' 不在档）。
+    #[test]
+    fn slash_backspace_deletes_query_then_closes() {
+        let c = core_empty("sl7");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('/'));
+        press(c, EditorKey::Char('a'));
+        press(c, EditorKey::Char('b'));
+        assert_eq!(c.slash_state_snapshot().map(|(q, _, _)| q), Some("ab".into()));
+        press(c, EditorKey::Backspace);
+        assert_eq!(c.slash_state_snapshot().map(|(q, _, _)| q), Some("a".into()));
+        assert!(c.slash_menu_visible());
+        press(c, EditorKey::Backspace);
+        assert_eq!(c.slash_state_snapshot().map(|(q, _, _)| q), Some("".into()));
+        assert!(c.slash_menu_visible(), "query 空但仍在层上");
+        press(c, EditorKey::Backspace);
+        assert!(!c.slash_menu_visible(), "删穿关层");
+        assert_eq!(c.emit_document(), "", "文档零变化");
+    }
+
+    /// 失焦关层；外部 rebuild 关层（文档整体重建锚块失效）。
+    #[test]
+    fn slash_closes_on_focus_lost_and_rebuild() {
+        let c = core_empty("sl8");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('/'));
+        assert!(c.slash_menu_visible());
+        run_fs(|fs| {
+            c.handle_input(fs, DocInput::FocusLost, &mut NullClipboard);
+        });
+        assert!(!c.slash_menu_visible());
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Char('/'));
+        assert!(c.slash_menu_visible());
+        run_fs(|fs| {
+            c.rebuild("全新文档。\n", fs);
+        });
+        assert!(!c.slash_menu_visible(), "rebuild 关层");
     }
 
     // ── PLAN-048 T6：undo/redo 面 ───────────────────────────────────────
