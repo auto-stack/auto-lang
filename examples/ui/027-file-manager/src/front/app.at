@@ -1280,9 +1280,13 @@ widget App {
                 }
                 if is_dir_target {
                     // D-4：非空目录拒绝（stdlib 无递归删除；walk 逆序删除有
-                    // 误删风险，v1 不做）
-                    var kids = json.parse(fs.read_dir(del_path))
-                    if kids.len() > 0 {
+                    // 误删风险，v1 不做）。
+                    // 2026-09-15(F-8)：空判改 read_dir 原串 != "[]"——
+                    // json.parse("[]").len() 实测返回 20（应为 0，VM json/len
+                    // 语义缺陷，desktop_mcp 套件实证）导致空目录恒被误判
+                    // 非空、D-4 删除永不可达。
+                    var kids_src str = fs.read_dir(del_path)
+                    if kids_src != "[]" {
                         toast.error("目录非空，仅支持删除空目录: " + del_name)
                     } else {
                         file.remove_dir(del_path)
