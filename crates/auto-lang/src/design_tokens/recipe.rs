@@ -1356,6 +1356,41 @@ mod tests {
     }
 
     #[test]
+    fn test_plan635_example_fixture_vue_chain() {
+        // PLAN-635 T-07: the tracked two-package example — pac.at declares
+        // `dep stylekit { path: "../stylekit" }`, app.at uses
+        // `use stylekit.styles: card_base, pill`. Compile through the real
+        // production chain and assert the imported + derived recipes expand.
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let app = std::path::Path::new(manifest)
+            .join("../../examples/ui/045-style-import/src/front/app.at");
+        if !app.exists() {
+            panic!("example fixture missing: {}", app.display());
+        }
+        let sfc = crate::ui_build_shadcn(app.to_str().unwrap(), None).unwrap();
+        assert!(
+            sfc.contains("bg-card text-card-foreground rounded-xl shadow-sm border border-border"),
+            "imported card_base expands in SFC: {}",
+            sfc
+        );
+        assert!(
+            sfc.contains("px-4 py-2 bg-primary text-primary-foreground rounded-full"),
+            "imported pill() expands in SFC: {}",
+            sfc
+        );
+        assert!(
+            sfc.contains("bg-destructive"),
+            "host pill_danger deriving imported pill expands: {}",
+            sfc
+        );
+        assert!(
+            !sfc.lines().any(|l| l.contains("class=\"") && l.contains("card_base")),
+            "raw recipe symbol must not leak into class bindings: {}",
+            sfc
+        );
+    }
+
+    #[test]
     fn test_plan635_cross_package_deps_layout() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path();
