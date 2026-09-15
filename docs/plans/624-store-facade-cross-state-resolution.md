@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-624
-status: executing              # drafting → executing → execution_done → reviewed → archived（review needs_fix 重开，见 §9 2026-09-15 review 行）
+status: execution_done          # drafting → executing → execution_done → reviewed → archived（needs_fix 修复后重新收口，见 §9 2026-09-15 work-repair 行）
 feature_name: store-facade-cross-state-resolution
 author: [zhaopuming]
 created_at: 2026-09-14
@@ -12,7 +12,7 @@ new_spec_components: [ui/store-facade-cross-state]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 4
+current_step: 6
 total_steps: 6
 ---
 
@@ -239,7 +239,8 @@ needs_replan 评估。
   排除）。
 - [✅ 已完成] T-05（P4）commit 3537683f9：`auto.list.find_index`（2072）
   原生落地（谓词闭包消费镜像 find 2063；命中下标/未命中 -1），红转绿。
-  **【review 2026-09-15 部分重开：T-05 按 F-02 续补未命中 -1 执行断言，见 §9】**
+  **【review 2026-09-15 部分重开 → F-02 已续补（commit 4f4069b5e），
+  重开闭合：miss=Int(-1) 断言绿】**
 - **T-02/T-03（P1/P2）**：未完成，带精确诊断挂起——P2 病灶收窄至
   「店 handler 读自家 `?str` 字段（含 lambda 形态）」；P1 在最小语料
   不复现，且崩溃轮 exe 为 623/625 会话脏树构建（`551-ge0c404f57-dirty`/
@@ -267,7 +268,8 @@ needs_replan 评估。
   无语义依赖登记。存量 `.at` 语料 `&&`/`||` 用法 335 处扫描清点均为
   纯布尔面（AC-3 存量影响面清点在案）。
 - [✅ 已完成] T-02/T-03 ④（commit 37585e4be）：P2 崩溃根因修复——
-  **【review 2026-09-15 部分重开：T-03 按 F-01/F-03 续补执行断言，见 §9】**——
+  **【review 2026-09-15 部分重开 → F-01/F-03 已续补（commit 4f4069b5e），
+  重开闭合】**——
   **真因与 ?str 编码无关**：`call_closure` 方法与 `CALL_CLOSURE` 码激活
   闭包不入 call_stack 帧，闭包体 RET 无条件弹一帧=弹走外层函数的帧；
   store handler 内 `find(λ)` 后 store RET 弹空栈不恢复，最深被调帧的
@@ -291,8 +293,9 @@ needs_replan 评估。
 
 - [✅ 已完成] T-02/T-03/T-04/T-06 全部收口（会话一已完成 T-01/T-05），
   AC-1..5、AC-7 在案；AC-6 为 merge 前置跨仓门（jade 侧执行）。
-  【review 2026-09-15：T-03/T-05 部分重开（F-01/F-02/F-03 续补执行
-  断言），current_step 重算 4/6，状态回 executing——见 §9 review 行】
+  【review 2026-09-15：T-03/T-05 部分重开（F-01/F-02/F-03）→
+  work-repair 已闭合（4f4069b5e），current_step 6/6，状态
+  execution_done——见 §9 两行】
 
 ## 分支与提交归属
 
@@ -386,6 +389,16 @@ needs_replan 评估。
   阻塞）。
   **next: work**（bounded：F-01/F-02/F-03 全为语料/断言续补，T-03/T-05
   重开，current_step 4/6，状态 executing；修复后回 review 复验）。
+- 2026-09-15 stage:work（repair）| PLAN-624 | rev 2 | **outcome: pass** |
+  code_commit: 4f4069b5e（plan-624-dev）| task_ids: T-03/T-05 重开部分
+  （F-01/F-02/F-03）| evidence: plan624 5/5 绿——F-01 `probe_none=Nil
+  status=Str("probed-none")`（Open 前 None 态 ?str 跨状态读落地不崩）、
+  F-02 `idx=Int(1) idx_miss=Int(-1)`（miss 路径落地，哨兵 -99 可判
+  no-op）、F-03 p2 Edit 的 SetBody map 字面量实参改携 `.active_path`
+  （jade 原始崩形）端到端 `view_dirty=Bool(true) status=Str("edited")`；
+  plan622 8/8 绿（范围门：测试/语料面改动，AGENTS Category A/B）。
+  blockers：无。**next: review**（复验基线 4f4069b5e；AC-6 跨仓门仍归
+  merge）。
 
 ## 待澄清事项
 
