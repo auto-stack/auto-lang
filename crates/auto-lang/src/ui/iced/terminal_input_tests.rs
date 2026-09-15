@@ -31,6 +31,7 @@ fn terminal_view() -> View<KeyMsg> {
         lines: vec![],
         scroll_offset: 0,
         preedit: None,
+        scheme: crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME,
         on_select: None,
         on_menu: None,
         on_input: Some(KeyMsg::KeyIn),

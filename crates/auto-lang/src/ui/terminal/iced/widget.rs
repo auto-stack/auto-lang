@@ -99,6 +99,8 @@ const DEFAULT_FG: Color = Color::from_rgb8(0xe8, 0xe8, 0xe8);
 /// 终端默认底色(近黑)。pub:renderer 侧 View::Terminal 臂用它涂满
 /// 固定尺寸组件外的客户区余量(右/底 ≤ 一格宽/一行高),否则露出
 /// 根容器 bg-background(9,14,26) 形成用户可见的"浅色带"。
+/// PLAN-018 D10:此常量现为 classic-dark 回退基线;绘制统一经
+/// [`crate::ui::terminal::terminal_effective_palette`] scheme 表解析。
 pub const DEFAULT_BG: Color = Color::from_rgb8(0x06, 0x07, 0x09);
 
 const MENU_ITEMS: [&str; 3] = ["Copy", "Paste", "Select All"];
@@ -469,6 +471,13 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let bounds = layout.bounds();
         let state = tree.state.downcast_ref::<TerminalState>();
 
+        // PLAN-018 D10: scheme → [18] rgb 每帧解析一次(零每格开销)。
+        // 显式 scheme prop 覆盖;缺省跟随桌面主题(dark→0/light→1)。
+        let scheme = crate::ui::terminal::terminal_resolve_scheme(self.core);
+        let palette = crate::ui::terminal::terminal_effective_palette(scheme);
+        let pal_fg = rgb_u32(palette[0]);
+        let pal_bg = rgb_u32(palette[1]);
+
         // 全幅底色:底部两角随窗框圆角(适配虚拟桌面;顶部归 chrome 不圆)。
         renderer.fill_quad(
             renderer::Quad {
@@ -484,7 +493,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 },
                 ..renderer::Quad::default()
             },
-            Background::Color(DEFAULT_BG),
+            Background::Color(pal_bg),
         );
 
         let (cells, digests) = self.core.snapshot();
@@ -518,7 +527,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                         ),
                         ..renderer::Quad::default()
                     },
-                    Background::Color(to_iced_color(bg, false)),
+                    Background::Color(to_iced_color(bg, false, &palette)),
                 );
             }
         }
@@ -574,21 +583,23 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             let digest = digests[y];
             let stale = cache[y].as_ref().is_none_or(|e| e.digest != digest);
             if stale {
-                let para = build_row_paragraph(line);
+                let para = build_row_paragraph(line, &palette);
                 cache[y] = Some(RowEntry { para, digest });
             }
             if let Some(entry) = cache[y].as_ref() {
                 renderer.fill_paragraph(
                     &entry.para,
                     Point::new(bounds.x + PAD, line_y),
-                    DEFAULT_FG,
+                    pal_fg,
                     bounds,
                 );
             }
         }
         drop(caches);
 
-        // 光标层:块/竖线/下划线(Hidden 或闪烁熄灭相不画)。
+        // 光标层:块/竖线/下划线(Hidden 或闪烁熄灭相不画)。块色 = 方案
+        // 前景色带 alpha(classic-dark 下 e8e8e8@0.85 与旧 0.91 常量逐字节
+        // 同值;light 方案自动变深块)。
         let cursor = self.core.cursor();
         if cursor.shape != TermCursorShape::Hidden && cursor.on {
             let row = cursor.row as f32 * CELL_H;
@@ -599,14 +610,19 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                         Point::new(bounds.x + PAD + col, bounds.y + PAD + row),
                         Size::new(cell_w(), CELL_H),
                     ),
-                    Color::from_rgba(0.91, 0.91, 0.91, 0.85),
+                    Color::from_rgba(
+                        pal_fg.r,
+                        pal_fg.g,
+                        pal_fg.b,
+                        0.85,
+                    ),
                 ),
                 TermCursorShape::Beam => (
                     Rectangle::new(
                         Point::new(bounds.x + PAD + col, bounds.y + PAD + row),
                         Size::new(2.0, CELL_H),
                     ),
-                    DEFAULT_FG,
+                    pal_fg,
                 ),
                 TermCursorShape::Underline => (
                     Rectangle::new(
@@ -616,7 +632,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                         ),
                         Size::new(cell_w(), 2.0),
                     ),
-                    DEFAULT_FG,
+                    pal_fg,
                 ),
                 TermCursorShape::Hidden => unreachable!("filtered above"),
             };
@@ -640,7 +656,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 Background::Color(Color::from_rgba(0.2, 0.3, 0.45, 0.9)),
             );
             let para = plain_para(preedit, w);
-            renderer.fill_paragraph(&para, Point::new(x, y), DEFAULT_FG, bounds);
+            renderer.fill_paragraph(&para, Point::new(x, y), pal_fg, bounds);
         }
 
         // 滚动偏移 badge(offset > 0 时右上角指示;auto-term 同款)。
@@ -654,10 +670,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             );
             renderer.fill_quad(
                 renderer::Quad { bounds: bg_bounds, ..renderer::Quad::default() },
-                Background::Color(DEFAULT_BG),
+                Background::Color(pal_bg),
             );
             let para = plain_para(&badge, badge_w);
-            renderer.fill_paragraph(&para, bg_bounds.position(), DEFAULT_FG, bounds);
+            renderer.fill_paragraph(&para, bg_bounds.position(), pal_fg, bounds);
         }
 
         // 菜单层:右键打开的 Copy/Paste/Select All 浮层,悬停项反色。
@@ -691,7 +707,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 renderer.fill_paragraph(
                     &para,
                     item_rect.position(),
-                    DEFAULT_FG,
+                    pal_fg,
                     bounds,
                 );
             }
@@ -770,7 +786,7 @@ mod key_to_vt_tests {
 
 /// run 聚合:同前景色的连续 cell 合并为一个 span,前景色烘焙进
 /// paragraph(auto-term build_row_paragraph 同款)。
-fn build_row_paragraph(line: &[TermCell]) -> Para {
+fn build_row_paragraph(line: &[TermCell], palette: &[u32; 18]) -> Para {
     let mut text = String::with_capacity(line.len());
     let mut runs: Vec<(usize, usize, TermColor)> = Vec::new();
     let mut idx = 0usize;
@@ -790,7 +806,7 @@ fn build_row_paragraph(line: &[TermCell]) -> Para {
         .iter()
         .map(|(begin, end, fg)| Span {
             text: std::borrow::Cow::Borrowed(&text[*begin..*end]),
-            color: Some(to_iced_color(*fg, true)),
+            color: Some(to_iced_color(*fg, true, palette)),
             ..Default::default()
         })
         .collect();
@@ -829,22 +845,34 @@ fn same_color(a: TermColor, b: TermColor) -> bool {
     a == b
 }
 
-/// 本地标量色板 → iced Color(xterm 256 全映射;Named 语义已并 Indexed 0-15)。
-fn to_iced_color(c: TermColor, is_fg: bool) -> Color {
+/// 本地标量色 → iced Color。PLAN-018 D10:Default 与 base16(0-15)经
+/// scheme 表解析(`palette`:每帧解析一次的 [18] rgb,引擎单源装载/内置
+/// 回退);16-255 仍走 xterm 256 全映射(scheme 表只定义 base16)。同一
+/// fg/bg run 合并比较在 run 层完成,此处每格 O(1) 无查表外开销。
+fn to_iced_color(c: TermColor, is_fg: bool, palette: &[u32; 18]) -> Color {
     match c {
         TermColor::Default => {
             if is_fg {
-                DEFAULT_FG
+                rgb_u32(palette[0])
             } else {
-                DEFAULT_BG
+                rgb_u32(palette[1])
             }
         }
         TermColor::Rgb(r, g, b) => Color::from_rgb8(r, g, b),
         TermColor::Indexed(i) => {
-            let [r, g, b] = xterm256(i);
-            Color::from_rgb8(r, g, b)
+            if (i as usize) < 16 {
+                rgb_u32(palette[2 + i as usize])
+            } else {
+                let [r, g, b] = xterm256(i);
+                Color::from_rgb8(r, g, b)
+            }
         }
     }
+}
+
+/// 0xRRGGBB → iced Color(pub:renderer View::Terminal 臂余量涂色同源)。
+pub fn rgb_u32(v: u32) -> Color {
+    Color::from_rgb8((v >> 16) as u8, (v >> 8) as u8, v as u8)
 }
 
 /// xterm 256 palette → RGB (0-15 = base16, 16-231 = 6×6×6 cube,

@@ -8169,6 +8169,9 @@ let tabs_inner = View::Row {
                 "top-end" | "topend" => Some(PopoverPlacement::TopEnd),
                 "left" => Some(PopoverPlacement::Left),
                 "right" => Some(PopoverPlacement::Right),
+                // PLAN-631 F-7: 指针定位——open 翻真时面板出现在最近一次
+                // 右键指针位置(渲染器会话级记忆,坐标不进 VM 状态)。
+                "pointer" => Some(PopoverPlacement::Pointer),
                 _ => None,
             })
             .unwrap_or(if px.is_some() && py.is_some() {
@@ -8176,6 +8179,15 @@ let tabs_inner = View::Row {
             } else {
                 PopoverPlacement::Bottom
             });
+        // PLAN-631 F-7: placement "pointer" 无需坐标锚——无 x/y 时合成原点
+        // 点锚（渲染期面板原点被最近按下位置取代；未记录时退化为坐标锚
+        // 语义，面板落窗原点）。触发件与面板可分离：单实例菜单挂视图根。
+        let (px, py) = match (px, py) {
+            (None, None) if placement == PopoverPlacement::Pointer => {
+                (Some(0.0f32), Some(0.0f32))
+            }
+            other => other,
+        };
         // 面板 chrome:popover 标签的 class 落在 content 列上(visual wrap 绘制)。
         // PLAN-528 W9:class 缺省时给 shadcn PopoverContent 同款默认面板
         // chrome(bg-popover + border + rounded-md + shadow-md + p-4)——vue 端
@@ -9461,6 +9473,12 @@ let tabs_inner = View::Row {
             .extract_u16(props, "cursor_col")
             .or_else(|| self.eval_u16_prop(props, "cursor_col", bindings))
             .unwrap_or(0);
+        // PLAN-018 D10:配色方案 prop(int;缺省 -1 = 跟随桌面主题)。字面量
+        // 或 state 绑定求值(scheme 随主题切换的重挂场景)。
+        let scheme = self
+            .extract_i32_prop(props, "scheme")
+            .or_else(|| self.eval_i32_prop(props, "scheme", bindings))
+            .unwrap_or(crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME);
         View::Terminal {
             key,
             cols,
@@ -9473,6 +9491,7 @@ let tabs_inner = View::Row {
             on_input,
             cursor_row,
             cursor_col,
+            scheme,
             style,
         }
     }
@@ -11517,6 +11536,35 @@ let tabs_inner = View::Row {
     }
 
     /// Extract a u16 property from AuraNode props.
+    /// PLAN-018 D10:int(scheme)字面量提取(负值合法:哨兵 -1 跟随主题)。
+    fn extract_i32_prop(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+    ) -> Option<i32> {
+        match props.get(key)? {
+            AuraPropValue::Expr(expr) => match expr {
+                Expr::Int(i) => Some(*i),
+                _ => None,
+            },
+            AuraPropValue::StyleBinding(_) => None,
+        }
+    }
+
+    /// PLAN-018 D10:scheme 的 bindings 求值形态(`scheme: .scheme`)。
+    fn eval_i32_prop(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> Option<i32> {
+        let AuraPropValue::Expr(expr) = props.get(key)? else {
+            return None;
+        };
+        let val = self.resolve_expr_to_value(expr, bindings)?;
+        Some(val.as_int())
+    }
+
     fn extract_u16(
         &self,
         props: &HashMap<String, AuraPropValue>,

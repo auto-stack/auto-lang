@@ -1,17 +1,18 @@
 ---
 plan_id: PLAN-631
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: autoui-interaction-primitives
 author: [agent]
 created_at: 2026-09-14
 updated_at: 2026-09-14
 plan_revision: 1
-current_step: 0
+current_step: 7
 total_steps: 7
 supersedes_spec_components: []
 new_spec_components:
-  - auto-lang/docs/design/29-autoui-style-theme-system.md §「MouseArea hover 样式对（PLAN-631）」
-  - auto-lang/schema/projection-protocol-v1.md §6「popover at_pointer 定位（PLAN-631）」
+  - auto-lang/docs/design/29-autoui-style-theme-system.md §10.1「MouseArea hover 样式对（PLAN-631）」
+  - auto-lang/docs/design/29-autoui-style-theme-system.md §10.2「popover at_pointer 定位（PLAN-631）」
+  - auto-lang/docs/design/29-autoui-style-theme-system.md §10.3「动态视图转换缓存（PLAN-631）」
 touched_goals: []
 
 affects:
@@ -214,19 +215,65 @@ placement: "pointer"`），右键任意行 → ItemCtx(id) 记目标 + ctx_open 
   027 列表交互 debug/opt 双构建热点突出 → 热区报告
   `docs/plans/evidence/631/profile.md`（决策工件：定缓存范围与 AC-05
   目标校准）。依赖：无。
+  ✅ 已完成（evidence/631/profile.md + profile_*.json×5）：027 根列表
+  缩放 67 行，MCP 驱动 15 次选中，逐帧 `[P631-PROFILE]`（P631_PROFILE=1，
+  仪表 = view() 脏路径 builder/render 计时 + Style::parse 全局计数）。
+  热区：Style::parse 占 debug builder ~80%（2.6k 次/帧、p90 13.2ms）。
+  立项依据值 ~0.3s 未复现（基线 max 26ms debug / 3.9ms opt）→ AC-05
+  按 §10 Q1 校准。
 - **T-02 〔lang〕F-5 hover 样式对**（AC-01/02）：convert_mouse_area
   hover 类提取 + HoverArea 包裹 + 渲染臂样式闭包；027 迁移 hover 类、
   删 mouseenter/leave。依赖：无。
+  ✅ 已完成（commit `6672070e7`）：零新增解析（`Style::variant_classes`
+  既有面），MouseArea 两构建臂（into_iced + render_dynamic_view）镜像
+  布局件臂（layout_hover_flag + HoverArea 包裹 + build_container
+  hover 标志）。设计微差：未新增 extract_hover_style_with——parse 已
+  把 hover 类隔离进 variant_classes，渲染臂直读即可。027 侧迁移为
+  树形折叠箭头 mouse-area 加 `hover:bg-accent/60`（treeview/filetree；
+  027 行 hover 早已是布局件 hover 类，无 mouseenter/leave 可删——
+  T-02 该子任务空集，实证 grep app.at 零 mouseenter）。
 - **T-03 〔lang〕Style intern 缓存**（AC-05，范围依 T-01）：parse 按类
   串缓存。依赖：T-01。
+  ✅ 已完成（commit `6672070e7`）：`ui/style/mod.rs parse_cache`，键 =
+  (类串, 6 位主题门控槽：5 断点命中位+dark)——键对 parse 输出完备；
+  命中克隆已解析 Style；类串表上限 4096 兜底。A/B 开关
+  `AUTO_STYLE_CACHE=0`。收益（67 行选中，debug）：parse p90
+  13.2→1.4ms（~9x），builder 1.6x，整重建 15.8→9.8ms（<50ms 达成）；
+  opt 噪声内。style_parity 5/5 绿（解析语义零漂移）。
 - **T-04 〔lang〕F-7 popover "pointer" 定位**（AC-03）：右键臂位置
   记录 + placement 解析 + anchor 回退。依赖：无（可与 T-02 并行）。
+  ✅ 已完成（commit `6672070e7`）：`iced/right_press_area.rs`——
+  PointerPressArea 窗口根单包装（ButtonPressed 事件现场读 cursor 记账；
+  纯委托）。实现勘误修正：iced 0.14 `on_right_press` 与
+  `mouse::Event::ButtonPressed` 均不携带坐标（计划"右键臂已有位置信息"
+  不成立），故取窗口根事件面记账；左键同记（027 "···" 左键快捷菜单
+  同源）。`PopoverPlacement::Pointer` + convert_popover 解析臂 + 无
+  x/y 原点点锚合成 + `pointer_panel_anchor` 归一（未记账回退
+  BottomStart）。单测：pointer_placement_tests（iced_test 模拟真实右键
+  事件序→槽位精确）+ popover.rs 几何单测（4 测绿）。
 - **T-05 〔lang〕027 迁移单实例菜单**（AC-04）：根 popover
   placement:"pointer" + 67 行内 popover 退役；消费回归。依赖：T-02/T-04。
+  ✅ 已完成（commit `086af61d0`）：ItemCtx 三触发点去坐标、ctx_x/ctx_y
+  退役、ctx popover 改 placement:"pointer" 无坐标锚。注：027 现状已是
+  单实例根 popover（PLAN-016 revamp 后形态），"67 行内 popover 退役"
+  为空集；本任务实做 = 假坐标退役 + pointer 接线 + 根列表缩放 67 行
+  （验收场景数据集）。MCP 链验证：··· press → ctx_open=true → 菜单
+  挂载，打开首项+单实例形态截图
+  （evidence/631/ctx_menu_open_fallback.png）。desktop_mcp 套件 33/38
+  与 master 逐项一致（5 失败两轮控制实验确认为预存，非本计划引入）。
 - **T-06 〔lang〕结构 diffing 评估报告**（bounded；AC-06 关联）：
   剖析后若仍不达标的 diffing/依赖追踪方案评估 → 决策工件（另立与否）。
   依赖：T-01/T-03。
+  ✅ 已完成（evidence/631/diffing-eval.md）：不建议立项——残余成本
+  render ~5ms + builder ~9.8ms（debug）在 60fps 预算内；行级 memo
+  （ForLoop 行转换缓存）列为第一候选，三触发门槛（规模×4/低端宿主
+  >50ms/新实时场景）后重启。§10 Q2 答案：不立。
 - **T-07 〔lang〕收口**（AC-07）：027 回归套件/人工清单 + 文档。
+  ✅ 已完成：desktop_mcp 33/38（同 master 基线，预存 5 红在案——
+  T9 新建文件夹显示/T10 notes.txt/T11 ··· 按钮/T13 配置切换+view_mode，
+  控制实验两轮定性）；scoped 面吃紧绿：pointer/popover/style 模块
+  241 测 239 绿（2 红均为预存，master 复现同签名）；style_parity 5/5。
+  文档：design/29 §10（SD-01/02/03）+ evidence/631/ 三工件。
 
 Worktree：`.wt/lang-631/auto-lang`（plan-631-dev）；消费验证需 auto-os
 侧 ui_desktop（AUTO_DESKTOP_APPS 指向本仓 examples/ui）。
@@ -235,10 +282,125 @@ Worktree：`.wt/lang-631/auto-lang`（plan-631-dev）；消费验证需 auto-os
 
 （drafting——/work 后回填）
 
+### 9.1 执行环境（2026-09-15 /work 启动）
+
+- worktree：`D:/autostack/.wt/lang-631/auto-lang`，分支 `plan-631-dev`，
+  base commit `b62164566`（master，含 PLAN-626/629/630 归档）。
+- 主检出存在无关未提交改动（`stdlib/auto/fs.at`、
+  `docs/plans/archive/626-auto-edit-vm-polish.md`）——归属外部工作，
+  本计划不触碰。
+
+### 9.2 work 阶段记录（2026-09-15）
+
+`stage: work | plan_id: PLAN-631 | plan_revision: 1 | outcome: pass |
+code_commit: 6672070e7（框架三件）→ 086af61d0（027 迁移）→ 308c9f4e9
+（docs+evidence）| worktree: .wt/lang-631/auto-lang @ plan-631-dev
+（base b62164566；依赖兄弟 .wt/lang-631/auto-down @ 140775f0 detached）|
+task_ids: T-01..T-07 全完成 | evidence: docs/plans/evidence/631/
+{profile.md, diffing-eval.md, profile_*.json×5, pointer_probe.py,
+ctx_menu_open_fallback.png} + design/29 §10 | blockers: 无 |
+next: review（/auto-plan:review）`
+
+- AC 对账：AC-01/02 ✅（F-5 + hover_area 机制，单测绿；实机悬停视觉
+  归入人工清单项）；AC-03 ✅ 框架内（模拟器真实事件序→记账→面板锚
+  归一，4 单测绿）+ 真窗指针验证受阻于本会话合成输入被叠加窗截获
+  （pointer_probe.py 已备，人工清单代——计划 AC-07 同款容忍）；
+  AC-04 ✅（MCP 链 ctx_open=true、菜单挂载、打开首项、单实例、截图）；
+  AC-05 ✅（校准后按 <50ms 腿：debug p90 9.8ms / max 16.5ms；parse
+  分项 ~9x）；AC-06 ✅（profile.md 冻结 debug/opt 双数据+热区排行+
+  收益量化）；AC-07 ✅（套件 33/38 与 master 逐项一致，5 预存红两轮
+  控制实验定性；计划明文允许清单代）。
+- 实现勘误（计划修正，语义修订记录）：①iced 0.14 右键事件不携带
+  坐标（§2.2 前提"renderer on_right_press 已有位置信息"不成立）→
+  窗口根 PointerPressArea 事件面记账，左键同记；②"67 行内 popover
+  退役"为空集（027 revamp 后已是单实例根 popover，假坐标形态）；
+  ③SD-02 规范承载由 projection-protocol-v1.md 调整至 design/29 §10
+  （实勘该文件为 `__wm_*` 状态投影合同，placement 非其论域）。
+- 验证门档：Category B——cargo check 零新增警告；scoped
+  style/popover/pointer 241 测 239 绿（2 红预存，master 同签名复现）；
+  style_parity 5/5；027 desktop_mcp 与 master 基线逐项一致。
+  未跑 cargo tf（改动未触编译器/VM 核心，review 档再跑全量）。
+
+### 9.3 review 阶段记录（2026-09-15）
+
+`stage: review | plan_id: PLAN-631 | plan_revision: 1 | outcome: pass |
+reviewed_commit: 308c9f4e9eb05abf7452d375f4581101bfd5fab8 |
+base_commit: b62164566a96697e19408de5849a7ca322affc9c |
+dependency_revisions: auto-down @ 140775f0cbec（detached，未改动）|
+spec_inputs: docs/design/29-autoui-style-theme-system.md §10（本计划新增节，
+worktree 提交 308c9f4e9 内）|
+acceptance_results: AC-01 ✅ / AC-02 ✅ / AC-03 ✅（框架链全验证+人工清单
+残项，见 F-R1）/ AC-04 ✅ / AC-05 ✅ / AC-06 ✅ / AC-07 ✅（预存红定性与
+计划容忍条款）| findings: F-R1/F-R2/F-R3（见下）|
+evidence: 复审独立复现记录（本节）+ worktree 内 evidence/631/ 工件包 |
+next: merge（/auto-plan:merge）`
+
+**独立复现（复审现场重跑，非沿用执行期结论）**：
+
+- `cargo tf`：**3560/3560 绿**（96 skip；该档不含 ui-iced，Plan 507 注记）。
+- `cargo t`（ui-iced 日常档）：**847 绿 / 2 红**——红 =
+  `musk_vm_track_tests p054` 两测（icon_component_child_renders… /
+  …class_prop_carries_ml_auto_and_tint），在 master 主检出同签名复现
+  → 预存红（564-Q6 族），非本计划回归。
+- pointer 单测（iced-layout-tests）：23/23 绿；style_parity 5/5 绿。
+- 027 desktop_mcp：33/38，5 失败集合与 master 基线控制实验逐项一致
+  （T9/T10/T11/T13×2，预存）。
+- 规范增量核对：design/29 §10 三节与实现逐条对读一致（缓存键 6 位
+  槽/4096 上限/Pointer 几何/回退语义/hover 零开销路径）；SD-02 承载档
+  调整已在正文与 frontmatter 双向固化（F-R3，复审修正）。
+- 剖析结论抽查：`AUTO_STYLE_CACHE=0/1` A/B 复测可行（开关在最终
+  二进制内生效），AC-06 冻结数据与 evidence JSON 一致。
+
+**findings**：
+
+- **F-R1（info→人工清单项）**：AC-03 的"实机截图"证据形态受本机
+  远程显示环境阻断（合成输入被叠加窗截获，AttachThreadInput/TOPMOST
+  均不可前台化；与预存债务 P481-6/P501-2 同族，Plan 494 已记录 ToDesk
+  环境疑因）。框架链已由最强自动化面验证：iced_test 模拟器真实事件序
+  （CursorMoved+右键按下 → 单槽精确记账）+ `pointer_panel_anchor` 几何
+  单测（记账→面板原点=按针位置；无记账→BottomStart 回退）+ MCP 消费
+  链（ctx_open 翻真）+ 回退形态截图。**残项：用户真机一次右键目视确认
+  （或运行 pointer_probe.py），merge 后可随时补记。**
+- **F-R2（info）**：ui-iced 日常档 2 红 + desktop_mcp 5 红 + scoped
+  p010_popover_ondismiss 1 红均为 master 预存（本轮在主检出同签名
+  复现定性），不属本计划修复面；已在 KNOWN-DEBT 体系既有条目覆盖
+  （564-Q6 族），无需新登记。
+- **F-R3（复审修正，已落）**：计划 frontmatter `new_spec_components`
+  的 SD-02 目标仍指向 projection-protocol-v1.md §6——执行期已实证
+  该文件为 `__wm_*` 状态投影合同（§6=变更记录，placement 非其论域），
+  规范承载调整为 design/29 §10.2；本复审固化 frontmatter 三条目为
+  design/29 §10.1–10.3 精确路径。语义契约本身无变化（plan_revision
+  维持 1）。
+
+**结论**：全部验收标准在复审基线（308c9f4e9）复现通过，规范增量
+如实描述当前行为；唯一残项为 F-R1 人工清单（计划 AC-07 容忍条款
+覆盖）。`status: reviewed`，下一动作 `/auto-plan:merge`。
+
+### 9.4 merge 收据（PLAN-631:r1，2026-09-15）
+
+- `prepared`：reviewed 基线 308c9f4e9（rev 1，依赖 auto-down@140775f0
+  未动）；canonical diff = design/29 §10（已在分支提交 308c9f4e9 内）；
+  投影目标 = ui/overview + plans.md + .autoos/specs.json P631-1..6。
+- `landed`：delivery `39dd77b48`（reviewed_commit 纯文档后裔——模块树
+  回写两文件，实现/依赖零变化）→ master 合入 **`4e5f39cad`**
+  （parent `553a5a74a`+`39dd77b48`；并行外部提交无冲突卷入）；合入后
+  `cargo check -p auto --bin auto` 冒烟绿。
+- `ledger_refreshed`：`.autoos/specs.json` upsert P631-1..6（六节，
+  读回验证 6/6）；`scripts/spec-index.py` 再生 INDEX.md（26 projects，
+  零差异）。
+- `archived`：`git mv` → `docs/plans/archive/631-autoui-interaction-
+  primitives.md`，frontmatter `status: archived`（本提交）。
+- `cleaned`：✅（2026-09-15）——两 worktree 移除前 wt-guard 双 clean
+  （auto-lang + auto-down 兄弟，无 reparse point）；auto-lang worktree
+  内唯一未跟踪文件为复审探针失败尝试的废截图（已弃，交付证据
+  ctx_menu_open_fallback.png 已随档入库）；`plan-631-dev` 分支删除
+  （was 39dd77b48，merge-base --is-ancestor 落地核验）；组目录
+  `.wt/lang-631/` 已空移除；`git worktree list` 零 lang-631 残留。
+
 ## 10. 待澄清事项
 
 | # | 事项 | 去向 |
 |---|---|---|
-| 1 | AC-05 目标值（5x / <50ms）以剖析数据校准 | T-01 决策工件 |
-| 2 | 结构 diffing 是否立项 | T-06 评估报告 → 用户裁定 |
-| 3 | last_right_press_pos 全局单槽 vs 按 mouse-area 多槽 | T-04 实测定（先单槽） |
+| 1 | AC-05 目标值（5x / <50ms）以剖析数据校准 | ✅ T-01 决策工件（profile.md）：立项依据 ~0.3s 未复现，<50ms 腿达成（debug p90 9.8ms），5x 按 parse 分项（~9x）达成 |
+| 2 | 结构 diffing 是否立项 | ✅ T-06 评估报告（diffing-eval.md）：**不立项**；行级 memo 为第一候选，三触发门槛后重启 |
+| 3 | last_right_press_pos 全局单槽 vs 按 mouse-area 多槽 | ✅ T-04 实测定：单槽成立（模拟器两连按后写覆盖验证）；左键同记（··· 快捷菜单同源），跨窗共享最近写入 |

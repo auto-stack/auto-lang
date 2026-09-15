@@ -4137,8 +4137,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
+                // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
+                // -1 = 跟随主题,绘制期解析)。
+                core.set_scheme(scheme);
                 crate::ui::terminal::terminal_feed(core, &lines);
                 crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
                 // 014:光标格随帧落注册表(app 从引擎回读喂入;preedit/光标
@@ -4168,15 +4171,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 根容器 bg-background(9,14,26) 即用户可见"浅色带"。涂同色
                 // (终端 DEFAULT_BG)填满可用空间,余量隐形;子件左上对齐,
                 // PAD 贴窗角。016 复审 T-07。
+                // PLAN-018 D10:余量涂色随 scheme 表(light 方案余量同浅底)。
+                let margin_bg = {
+                    let scheme = crate::ui::terminal::terminal_resolve_scheme(core);
+                    let palette = crate::ui::terminal::terminal_effective_palette(scheme);
+                    let v = palette[1];
+                    crate::ui::terminal::iced::rgb_u32(v)
+                };
                 let el: iced::Element<'static, M> = iced::widget::container(el)
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill)
                     .align_x(iced::alignment::Horizontal::Left)
                     .align_y(iced::alignment::Vertical::Top)
-                    .style(|_: &iced::Theme| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(
-                            crate::ui::terminal::iced::DEFAULT_BG,
-                        )),
+                    .style(move |_: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(margin_bg)),
                         ..Default::default()
                     })
                     .into();
@@ -4425,7 +4433,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     } else {
                         inner
                     };
-                build_container(
+                // PLAN-631 F-5：mouse-area hover 样式对——`hover:` 变体类经
+                // HoverArea + 共享标志零重建翻转（镜像布局件臂；无声明 =
+                // None，零开销路径不变）。
+                let hover = layout_hover_flag(style.as_ref());
+                let built = build_container(
                     wrapped,
                     0,
                     None,
@@ -4434,8 +4446,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     false,
                     style.as_ref(),
                     None,
-                    None,
-                )
+                    hover.clone(),
+                );
+                match hover {
+                    Some(flag) => crate::ui::iced::hover_area::HoverArea::new(built, flag).into(),
+                    None => built,
+                }
             }
 
             // Plan 563: 状态驱动画布 —— CanvasPainter(canvas::Program 直绘,
@@ -6683,7 +6699,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
         // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
         // (数据已在 convert_terminal 物化)。
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, style } => {
             AbstractView::Terminal {
                 key,
                 cols,
@@ -6696,6 +6712,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 on_input: on_input.map(|m| IcedMessage::from_dynamic(&m)),
                 cursor_row,
                 cursor_col,
+                scheme,
                 style,
             }
         }
@@ -8908,26 +8925,32 @@ fn service_snapshot_requests(
     if wids.is_empty() {
         return None;
     }
-    // 411 零尺寸守卫同款：宿主窗 minimized/pre-layout 时本轮不抓
+    // 411 零尺寸守卫：快照目标 = **host 窗本体**（显式 id，不再用
+    // `window::oldest()`——oldest 可能命中尚未完成尺寸初始化的特权层
+    // 窗口，0×0 surface → `create_texture Dimension X is zero` 硬崩溃，
+    // PLAN-019 走查启动竞态实测）。host 未就绪/尺寸 0 = 本轮不抓
     //（渲染臂冷却队列下轮自然再排）。
+    let Some(host) = state.host.as_ref() else {
+        return None;
+    };
+    let host_window = host.window;
     let host_ok = state
         .windows
-        .values()
-        .any(|w| w.window_size.borrow().width > 0.0 && w.window_size.borrow().height > 0.0);
+        .get(&host_window)
+        .map(|w| {
+            let s = w.window_size.borrow();
+            s.width > 0.0 && s.height > 0.0
+        })
+        .unwrap_or(false);
     if !host_ok {
         return None;
     }
     state.desktop.snapshot_pending_wids.replace(wids);
-    Some(
-        iced::window::oldest().then(move |maybe_id| match maybe_id {
-            Some(id) => iced::window::screenshot(id).map(|ss| {
-                crate::ui::session::DesktopMessage::Desktop(
-                    crate::ui::session::DesktopEvent::SnapshotShot(ss),
-                )
-            }),
-            None => iced::Task::none(),
-        }),
-    )
+    Some(iced::window::screenshot(host_window).map(|ss| {
+        crate::ui::session::DesktopMessage::Desktop(
+            crate::ui::session::DesktopEvent::SnapshotShot(ss),
+        )
+    }))
 }
 
 /// Plan 497 G1：dock 时钟注入——本地 HH:MM（chrono Local），分钟变化才
@@ -17254,6 +17277,11 @@ fn dynamic_view_impl(
         *state.app.devtools.needs_bounds.borrow_mut() = true;
     }
 
+    // PLAN-631 T-01：剖析计时——builder（模板→AbstractView 转换）与
+    // render（AbstractView→iced Element）两段耗时随 `[P631-PROFILE]` 行
+    // 逐重建帧吐出（P631_PROFILE=1 启用；Style::parse 计数见 ui::style::profile）。
+    let p631_profile = crate::ui::style::profile::enabled();
+    let p631_t_builder = p631_profile.then(std::time::Instant::now);
     let (converted, debug_id_map) = if dirty {
         // Full rebuild: construct AbstractView from template, cache the result.
         // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
@@ -17316,6 +17344,9 @@ fn dynamic_view_impl(
             (converted, debug_id_map)
         }
     };
+    let p631_builder_us = p631_t_builder
+        .as_ref()
+        .map(|t0| t0.elapsed().as_micros() as u64);
 
     // Plan 307 Task 5: build a live VTree once per frame for the DevTools inspector.
     // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
@@ -17379,7 +17410,23 @@ fn dynamic_view_impl(
     }
 
     let mut path = Vec::new();
+    let p631_t_render = p631_profile.then(std::time::Instant::now);
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref(), &mut path);
+    if p631_profile {
+        let (calls, nanos) = crate::ui::style::profile::take();
+        let builder_ms = p631_builder_us.unwrap_or(0) as f64 / 1000.0;
+        let render_ms = p631_t_render
+            .map(|t0| t0.elapsed().as_micros() as u64)
+            .unwrap_or(0) as f64
+            / 1000.0;
+        eprintln!(
+            "[P631-PROFILE] rebuild builder_ms={:.2} render_ms={:.2} style_parse_calls={} style_parse_ms={:.2}",
+            builder_ms,
+            render_ms,
+            calls,
+            nanos as f64 / 1_000_000.0
+        );
+    }
 
     // Plan 412 续(toast 修正 3):toast 的消费/入队/到期 Task 都在 update
     // (&mut)完成;dynamic_view 只按 DynamicState.toasts 渲染恒定双层
@@ -17531,6 +17578,11 @@ fn dynamic_view_impl(
             }
         }
     }
+
+    // PLAN-631 F-7: 指针按下记忆根包装——placement "pointer" 的锚源(窗口
+    // 根单包装,纯委托,ButtonPressed 事件现场记账;见 ui::iced::right_press_area)。
+    let result: iced::Element<'static, IcedMessage> =
+        crate::ui::iced::right_press_area::PointerPressArea::new(result).into();
 
     // Cache the Element for reuse on next non-dirty frame, then take and return.
     // view_dirty was already cleared above.
@@ -20790,7 +20842,14 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     inner
                 };
             let dbg_props = debug_style_props(style.as_ref());
-            let el = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, None);
+            // PLAN-631 F-5：mouse-area hover 样式对（镜像 into_iced 臂与
+            // 布局件臂——HoverArea + 共享标志，零 VM 消息零重建）。
+            let hover = layout_hover_flag(style.as_ref());
+            let built = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, hover.clone());
+            let el = match hover {
+                Some(flag) => crate::ui::iced::hover_area::HoverArea::new(built, flag).into(),
+                None => built,
+            };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "mouse_area", el, dbg_props, style.as_ref()) } else { el }
         }
 

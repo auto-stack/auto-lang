@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-624
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived（终态前最后一站；merge 见 auto-plan-merge）
 feature_name: store-facade-cross-state-resolution
 author: [zhaopuming]
 created_at: 2026-09-14
-updated_at: 2026-09-14
+updated_at: 2026-09-15
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: [ui/store-facade-cross-state]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 0
+current_step: 6
 total_steps: 6
 ---
 
@@ -185,8 +185,9 @@ needs_replan 评估。
 
 | delta | add/modify | 目标 | before/after | rationale | AC |
 | --- | --- | --- | --- | --- | --- |
-| SD-01 | modify | docs/specs/auto-lang/ui/overview.md「store facade 消费位语义」节 | before：五消费位契约（PLAN-622 SD-01）；after：增补「跨状态字段读」消费位（handler 直读 store 字段/嵌套字段/?str 双态）+ `&&`/`||` 非布尔编译期报错裁定 | facade 形态启用的语义冻结补完 | AC-01..04 |
+| SD-01 | modify | docs/specs/auto-lang/ui/overview.md「store facade 消费位语义」节 | before：五消费位契约（PLAN-622 SD-01）；after：增补「跨状态字段读」消费位（handler 直读 store 字段/嵌套字段/?str 双态）+ `&&`/`||` 短路值语义（rev 2 裁定②——落地改写，原文「编译期报错」作废） | facade 形态启用的语义冻结补完 | AC-01..04 |
 | SD-02 | add | docs/specs/auto-lang/ui/overview.md 同节内「列表原生面增补」注记 | before：无 find_index；after：auto.list.find_index（谓词/语义与 find 对齐，返回索引） | P4 消费面 | AC-04 |
+| SD-03 | add（执行期新增） | 同节「闭包激活帧协议」 | before：无闭包帧契约；after：闭包激活入 call_stack 恰一帧、RET 弹恰一帧（帧协议对闭包闭合） | jade P2 面真因契约化（T-03 执行期发现） | AC-02 |
 
 ## 测试设计
 
@@ -238,6 +239,8 @@ needs_replan 评估。
   排除）。
 - [✅ 已完成] T-05（P4）commit 3537683f9：`auto.list.find_index`（2072）
   原生落地（谓词闭包消费镜像 find 2063；命中下标/未命中 -1），红转绿。
+  **【review 2026-09-15 部分重开 → F-02 已续补（commit 4f4069b5e），
+  重开闭合：miss=Int(-1) 断言绿】**
 - **T-02/T-03（P1/P2）**：未完成，带精确诊断挂起——P2 病灶收窄至
   「店 handler 读自家 `?str` 字段（含 lambda 形态）」；P1 在最小语料
   不复现，且崩溃轮 exe 为 623/625 会话脏树构建（`551-ge0c404f57-dirty`/
@@ -249,6 +252,50 @@ needs_replan 评估。
   子系统接线，工作量最大）；②JS value 语义实装（AND/OR 短路透传操作数
   值，中等）；③文档偏差登记（现状 + 禁用指引，零成本）。P3 红测保留为
   pending 标记（plan624_p3，当前 FAILED 属预期）。
+
+### 执行进度（2026-09-15 work 会话二，自 58a8c6595 续）
+
+续做清单四项全部收敛，T-01..T-06 全数完成：
+
+- [✅ 已完成] T-04 ①（commit dbb3c3f9b）：`||` falsy 路径缺陷收敛——
+  WIP 发射的 POP 在 RHS 编译**之后**，弹掉的是 RHS 本体，真值路径恒返回
+  LHS（`falsy || fb` 得 Nil 即此）；修正为 POP 前置。同 commit 撤销
+  WIP 的 truthy 原生 2073：JMP_IF_Z/NZ 本就是 Plan 406 nv_truthy 标签
+  优先判定面（null/哨兵假），raw-i32 归一反而丢 NV 栈签且 sp 中性
+  CALL_NAT 不结算 DUP 副本 stake。p3 臂绿（hop_c=Str("fallback")）。
+- [✅ 已完成] T-04 ②：tv 12 失败逐个清点——**全数系坏发射伪影**：修正
+  后 tv 全量 3706/3706 绿，纯布尔用法值语义与布尔归一值相等，无金样更新、
+  无语义依赖登记。存量 `.at` 语料 `&&`/`||` 用法 335 处扫描清点均为
+  纯布尔面（AC-3 存量影响面清点在案）。
+- [✅ 已完成] T-02/T-03 ④（commit 37585e4be）：P2 崩溃根因修复——
+  **【review 2026-09-15 部分重开 → F-01/F-03 已续补（commit 4f4069b5e），
+  重开闭合】**——
+  **真因与 ?str 编码无关**：`call_closure` 方法与 `CALL_CLOSURE` 码激活
+  闭包不入 call_stack 帧，闭包体 RET 无条件弹一帧=弹走外层函数的帧；
+  store handler 内 `find(λ)` 后 store RET 弹空栈不恢复，最深被调帧的
+  current_fn_n_args（=2）泄漏进 0 参 widget handler（需 1），`__state`
+  参数寻址越界走 NULL 守卫 → SET_FIELD 收 NULL 哨兵 0x80000001 →
+  "Invalid object ID: 0xFFFFFFFF80000001"（= jade ?str 面实机错误原文）。
+  带参 handler（OpenPage n_args=2）泄漏值恰等自身故不可见——语料
+  OpenPage 臂绿而 Edit 臂红的分叉由此解释。修复：两路闭包激活推
+  CallFrame（RET 协议闭合），方法 Err/Terminated/AwaitFuture 出口手动
+  退帧。P2 臂全流程绿（SetBody 落账 + ?str 跨状态读 + find + dirty/
+  edited 断言）；P1 双模臂绿（P1 最小语料本就未复现，T-01 结论维持；
+  SD-03 帧协议顺带覆盖 jade 实机 P1/P2 面的候选机制，干净树重放归
+  AC-6 merge 门）。
+- [✅ 已完成] T-06（commit 2d47174dc）：回归 + spec 落账 + 移交——
+  tv 3706/3706 + tf 3560/3560 + plan622 8/8 + plan442 17/17 + plan340
+  11/11 + plan624 5/5 全绿；SD-01/02/03 delta 落 worktree
+  docs/specs/auto-lang/ui/overview.md（canonical 落账归 merge）。
+  **跨仓移交材料（AC-6）**：jade 侧 facade 切换复跑用 vm-smoke
+  AUTO_EXE 直指本计划构建产物（plan-624-dev @ 2d47174dc）全臂绿为
+  merge 前置门；facade 正式切换属 jade 侧（非本计划）。
+
+- [✅ 已完成] T-02/T-03/T-04/T-06 全部收口（会话一已完成 T-01/T-05），
+  AC-1..5、AC-7 在案；AC-6 为 merge 前置跨仓门（jade 侧执行）。
+  【review 2026-09-15：T-03/T-05 部分重开（F-01/F-02/F-03）→
+  work-repair 已闭合（4f4069b5e），current_step 6/6，状态
+  execution_done——见 §9 两行】
 
 ## 分支与提交归属
 
@@ -270,6 +317,15 @@ needs_replan 评估。
   项②（JS value 语义）——P3 设计/任务/验收按实装改写（T-04、AC-3、SD-03
   新增），本阶段证据（腐坏复现、朴素守卫 20 语料误伤、infer 粒度结论）随附
   §4。目标/其余任务/验收不变，属限范围修订。
+- 2026-09-14 work 续（rev 2 裁定②执行）：调和 master（plan066/627/625 并行
+  移动）；**T-04 WIP**（commit 58a8c6595，分支态）——value 语义发射已实装
+  （短路透传 + auto.vm.truthy 2073 归一跳转，NULL 不再误判真值），p3 臂仍红：
+  `||` falsy 路径得 Nil（疑栈/NV 交互，未收敛）；tv 12 失败 = short-circuit
+  契约语料族（语义变更预期，金样待更新）+ 布尔归一依赖面（逐个清点未做）。
+  plan624 套件态：P1×2/P4 绿，P2/P3 红（预期）。**T-04 未完，计划保持
+  `executing`**；续做清单：①`||` falsy 路径缺陷收敛；②tv 12 失败逐个清点
+  （金样更新 or 语义依赖登记）；③plan622/442/340 回归；④P1/P2 沿 622 记录
+  继续。worktree 保留。
 - 2026-09-14 stage:work 阶段收口（/auto-plan:work）：**outcome:
   needs_replan**（T-04 P3 语义三选一待裁决；P1 脏树伪影待排除），计划保持
   `executing`。code commits（plan-624-dev）：3537683f9（T-01 语料矩阵 +
@@ -278,6 +334,103 @@ needs_replan 评估。
   `D:/autostack/.wt/lang-624/{auto-lang,auto-down}`。next: new（P3 语义
   裁定的 bounded revision，随附 P1 排除计划）；unblock 后 work 续
   T-02/T-03。
+- 2026-09-15 stage:work 收口（/auto-plan:work，rev 2，自 58a8c6595 续）：
+  **outcome: pass**，状态 `execution_done`，next: review。code commits
+  （plan-624-dev）：58a8c6595（T-04 WIP）→ dbb3c3f9b（T-04 收口：POP
+  前置 + truthy 2073 撤销；tv 3706/3706 绿，12 失败系坏发射伪影无需金样
+  更新）→ 37585e4be（T-02/T-03：闭包激活入 call_stack 帧——P2
+  "Invalid object ID 0x80000001" 真因修复，与 ?str 编码无关；plan624
+  5/5 绿）→ 2d47174dc（T-06：SD-01/02/03 delta 落 worktree overview）。
+  回归：tv 3706/3706 + tf 3560/3560 + plan622 8/8 + plan442 17/17 +
+  plan340 11/11 全绿。task_ids：T-01..T-06 全数完成（AC-1..5、AC-7
+  在案；AC-6 = merge 前置跨仓门，jade 侧 vm-smoke AUTO_EXE 直指
+  plan-624-dev @ 2d47174dc）。blockers：无。依赖 worktree
+  `lang-624/auto-down`（auto-lang-dev @ 140775f）clean 未动。worktree
+  保留待 review/merge。
+- 2026-09-15 stage:review | PLAN-624 | rev 2 | **outcome: needs_fix** |
+  reviewed_commit: 2d47174dcc953a8fa281d77f7e570204939865f0（plan-624-dev）|
+  base_commit: a06efd9f7（master 含 rev2 簿记；代码全量 diff =
+  a06efd9f7..2d47174dc，15 文件 +785/−10，全在计划范围）|
+  dependency_revisions: lang-624/auto-down @ auto-lang-dev 140775f0c
+  （clean 未动）| spec_inputs: docs/specs/auto-lang/ui/overview.md
+  （worktree @ 2d47174dc，SD-01/02/03 增补节）。
+  **独立性声明**：评审在实现会话内进行，结论以工件与当轮复现重建，
+  不采信执行摘要。
+  **acceptance_results**：AC-1 pass（P1 双模臂绿 + T-01 差异结论入档；
+  偏差注记：「修复前红」相经 T-01 四维穷尽不可复现，属实证结论非跳过，
+  SD-03 帧协议覆盖同症状族已证机制）；AC-3 pass（p3 臂 Str("fallback")
+  非 Bool + 纯布尔 tv 金样不变 + 存量 335 处清点）；AC-5 pass（当轮
+  复现：tv 3706/3706 + tf 3560/3560 + plan622 8/8 + plan442 17/17 +
+  plan340 11/11 + plan624 5/5，命令 `cargo tv` / `cargo tf` /
+  `cargo test -p auto-lang --features ui-iced --lib plan{624,622,442,340}`）；
+  AC-6 pass-by-design（merge 前置跨仓门，移交材料在案：jade vm-smoke
+  AUTO_EXE → 2d47174dc）；AC-7 pass（SD 文本质审：描述现行为、无执行
+  日记体；new_spec_components [ui/store-facade-cross-state] 合 622 先例
+  约定，canonical 落账归 merge）。
+  **findings**：
+  - **F-01**（AC-2，medium）：?str **None 态**跨状态读无执行断言——
+    p2 臂读 `.active_path` 均在 Open 之后（恒 Some）；G2/AC-2 明文
+    「None/Some 双态断言」只覆盖 Some 半边。更正：p2 臂续补 None 态
+    读（Open 前派发读 `active_path` 的探针，断言不崩且值正确）。
+  - **F-02**（AC-4，low）：find_index **未命中 -1** 分支无执行断言——
+    p4 臂仅断言命中=1。更正：p4 臂续补 miss 断言。
+  - **F-03**（G1/AC-1 括注面，low）：**map 字面量实参内**跨状态读仅被
+    编译、从未执行断言——app.at `.Edit`（`SetBody({ path: .active_path,
+    ... })`，jade 原始崩形）为 compile-only，p2 臂 map 实参为字面串。
+    更正：续补一臂执行该形态并断言值落地。
+  **evidence**（可复现命令 + 工件）：见上 acceptance_results；工件 =
+  plan-624-dev diff a06efd9f7..2d47174dc（vm/engine.rs 帧协议修复、
+  vm/codegen.rs 短路值语义发射、native{,_catalog}.rs find_index 2072、
+  plan624_cross_state_tests.rs + test/ui/plan624_cross_state/ 八语料、
+  overview.md SD 节）；plan624 臂绿输出（P1 split/merged、P2 dirty=
+  true+edited、P3 hop_c=Str(fallback)、P4 idx=Int(1)）当轮复现在案。
+  非阻塞观察：call_closure 预算耗尽路径落入成功出口、不退新推帧
+  （1M 步闭包=病态域，bp/ram 帧本已失衡，属既有破碎类，不构成本计划
+  阻塞）。
+  **next: work**（bounded：F-01/F-02/F-03 全为语料/断言续补，T-03/T-05
+  重开，current_step 4/6，状态 executing；修复后回 review 复验）。
+- 2026-09-15 stage:work（repair）| PLAN-624 | rev 2 | **outcome: pass** |
+  code_commit: 4f4069b5e（plan-624-dev）| task_ids: T-03/T-05 重开部分
+  （F-01/F-02/F-03）| evidence: plan624 5/5 绿——F-01 `probe_none=Nil
+  status=Str("probed-none")`（Open 前 None 态 ?str 跨状态读落地不崩）、
+  F-02 `idx=Int(1) idx_miss=Int(-1)`（miss 路径落地，哨兵 -99 可判
+  no-op）、F-03 p2 Edit 的 SetBody map 字面量实参改携 `.active_path`
+  （jade 原始崩形）端到端 `view_dirty=Bool(true) status=Str("edited")`；
+  plan622 8/8 绿（范围门：测试/语料面改动，AGENTS Category A/B）。
+  blockers：无。**next: review**（复验基线 4f4069b5e；AC-6 跨仓门仍归
+  merge）。
+- 2026-09-15 stage:review（re-review）| PLAN-624 | rev 2 | **outcome:
+  pass** | reviewed_commit: 4f4069b5e6ba6e8ca9d85c6a89511434023922d5
+  （plan-624-dev）| base_commit: a06efd9f7 | dependency_revisions:
+  lang-624/auto-down @ auto-lang-dev 140775f0c（clean 未动）|
+  spec_inputs: docs/specs/auto-lang/ui/overview.md @ 2d47174dc（与上轮
+  pass 评审**逐字节相同**——`git diff 2d47174dc..4f4069b5e -- docs/specs/`
+  为空，证据按明示理由复用）。独立性声明同上轮（实现会话内评审，结论
+  以当轮复现重建）。
+  **增量范围**：2d47174dc..4f4069b5e 仅 3 个测试/语料文件（+52/−3），
+  生产代码零改动。
+  **acceptance_results（全部 pass）**：
+  AC-1 pass（F-03 闭合：p2 Edit 的 SetBody map 字面量实参携
+  `.active_path`——jade 原始崩形首次被**执行**断言，端到端
+  `view_dirty=Bool(true) status=Str("edited")`）；AC-2 pass（F-01 闭合：
+  Open 前 None 态 ?str 跨状态读 `probe_none=Nil status=Str("probed-none")`
+  不崩不 READ_ERR；Some 态经 dirty/edited 值证）；AC-3 pass（当轮 p3 臂
+  绿）；AC-4 pass（F-02 闭合：`idx=Int(1) idx_miss=Int(-1)`，哨兵 -99
+  判别 no-op）；AC-5 pass（当轮复现：tv 3706/3706 + tf 3560/3560 +
+  plan622 8/8 + plan442 17/17 + plan340 11/11 + plan624 5/5）；AC-6
+  pass-by-design（merge 前置跨仓门，AUTO_EXE → 4f4069b5e）；AC-7 pass
+  （SD 文本未变，上轮质审证据复用）。
+  **findings**: 无新增。**环境波动记录（非回归）**：首轮 tf 单测
+  `ffi_dual_019_dep_layout_invariants` 失败（1980/3560，并行负载
+  6.1s）——与本计划增量无共享路径（仅 plan624 断言/语料改动），隔离
+  单跑通过、本会话早前两轮 tf 亦通过、复跑全量即绿：判定为 dep-FFI
+  负载敏感波动（本机多会话并行构建在案），非计划回归。
+  **evidence**：可复现命令 `cargo test -p auto-lang --features ui-iced
+  --lib plan{624,622,442,340}`、`cargo tv`、`cargo tf` @ 4f4069b5e；
+  工件 = diff 2d47174dc..4f4069b5e（plan624_cross_state_tests.rs +
+  p2_app.at + p4_app.at）。
+  **next: merge**（AC-6 jade vm-smoke AUTO_EXE 全臂绿为 merge 前置门；
+  canonical spec 落账与 ledger 刷新随 merge）。
 
 ## 待澄清事项
 

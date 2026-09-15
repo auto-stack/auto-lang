@@ -1,10 +1,11 @@
 ---
 plan_id: PLAN-570
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
+                              # 2026-09-15 终态归档：superseded-by-602（未启动即被取代，用户裁决 A）
 feature_name: py-subclass-factory
 author: [zhaopuming]
 created_at: 2026-09-06
-updated_at: 2026-09-06
+updated_at: 2026-09-15
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -290,6 +291,32 @@ bridge 段扩写（类工厂面 + 生存期纪律）。
 
 （/auto-plan:review 填写）
 
+- stage: work | PLAN-570 | rev0（2026-09-06 原稿） | outcome: **blocked（范围裁决）** |
+  code_commit: fcf4b1092（master 基线，代码零改动） | task_ids: T01-T14（全部，未启动） |
+  evidence: 2026-09-15 执行前置调查发现本计划已被 **PLAN-602**（2026-09-11 归档）
+  整体交付——`py_subclass` native 481（py_ffi.rs:344/:2099，签名
+  `(name, base, methods)`，支持闭包+Python 源串双形态方法，较本计划设计更宽）、
+  n 参回调 ABI（tuple 顺序封送+arity TypeError，roadmap §7.3）、a2py
+  `_auto_subclass`（trans/python.rs:1236/:2558）、py_torch_subclass 套件
+  （nn.Module forward/Dataset `__len__`+`__getitem__`/训练收敛三方/重入≥3，
+  p12 注册 auto-parity main.rs:497）、KNOWN-DEBT P539-D4 ✅ 已核销（:1201）。
+  本计划 T05 拟用 NATIVE 481 已被占用，按原稿执行将与已交付代码直接冲突。
+  残余未交付面仅两处：① T11 条件项 DataLoader **main-thread（num_workers=0）
+  迭代探针**未做（602 明确 DataLoader workers 不支持→roadmap §7.4 ⑧ 长期；
+  main-thread 形态未探）；② T04 帧存活运行期探针——602 审计裁定既有
+  VmRef/RC 纪律足够、"无新增机制"（roadmap §7.3 生存期段），属已决事项非缺口。 |
+  blockers: ~~范围裁决待用户~~ **已裁决（2026-09-15，用户选 A）：归档为
+  superseded-by-602**，残余 DataLoader main-thread 探针不另立（§7.4 ⑧
+  "需求触发、不预建"纪律维持） | next: 已收口——状态 archived，git mv 入
+  docs/plans/archive/，零代码改动（602 交付面即本计划目标的实现态）
+
+> **归档收据（2026-09-15）**：本计划 0/14 未启动，无 worktree/分支/代码改动
+> （基线 fcf4b1092）。目标全部主面由 [PLAN-602](602-py-subclass-class-factory.md)
+> 于 2026-09-11 交付并归档（native 481/n 参回调 ABI/a2py `_auto_subclass`/
+> py_torch_subclass 三方套件 p12/§7.3 契约/P539-D4 核销）。本计划按
+> superseded-by-602 终态归档（用户裁决），非交付归档——执行步骤 T01-T14
+> 全部作废，勾选状态保持未勾以忠实记录"从未执行"。
+
 ## 待澄清事项
 
 1. **__init__ 组装形态**：自定义 Module 的层组装——Python 侧 `__init__` 闭包
@@ -304,3 +331,12 @@ bridge 段扩写（类工厂面 + 生存期纪律）。
    推荐 README 成文即可（与 W2 套件数据活 Python 侧约定互补）。
 4. **执行序依赖**：本计划 T10 假定 PLAN-569 已并（`.len()` 干净惯用法）——若
    569 未并则 T10 用 for-in 规避（不阻塞，仅惯用法差异）。
+5. **【2026-09-15 执行前置调查】本计划已被 PLAN-602 整体取代，范围裁决待用户**：
+   本计划创建（09-06）后从未启动（0/14，无 worktree/无 plan-570-dev 分支）；
+   PLAN-602 于 09-11 交付并归档 P539-D4 全部主面（native 481/n 参回调 ABI/
+   a2py `_auto_subclass`/py_torch_subclass 套件 p12/§7.3 契约/债务核销，证据见
+   复审记录 work 条目）。按原稿执行将与已交付代码冲突（481 已占用、套件已存在、
+   债务已核销）。待裁决：**A=归档为 superseded-by-602**（推荐，零代码改动）；
+   **B=残余 DataLoader main-thread 迭代探针另立小计划**（num_workers=0 形态，
+   通→语料纳入；不通→divergence 登记+手动批切金样；§7.4 立项纪律"需求触发、
+   不预建"——无明确需求时不做）。

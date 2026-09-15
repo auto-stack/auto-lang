@@ -22,6 +22,10 @@
 
 use std::path::{Path, PathBuf};
 
+// PLAN-018 cfg 修复:i18n_lookup 仅在 ui-interpreter 特征下编译
+// (ui/mod.rs),本文件此前无条件引用——无该特征的组合(vue back 等)
+// E0432。cfg 分臂:无特征时回落英文(非 zh)判定。
+#[cfg(feature = "ui-interpreter")]
 use crate::ui::i18n_lookup::locale_prefers_zh;
 
 /// 一个可启动 App 的注册表条目（R10 最小面）。
@@ -75,7 +79,16 @@ impl AppRegistryEntry {
     /// 链路在此之上不断）。未声明 title_zh 时两 locale 输出一致（零配置
     /// 零回归）。
     pub fn display_title(&self) -> &str {
-        self.display_title_in(locale_prefers_zh())
+        // PLAN-018 cfg 分臂:无 ui-interpreter 时 locale 查询面缺席,
+        // 回落英文标题(与 title_zh 未声明时同形,零回归)。
+        #[cfg(feature = "ui-interpreter")]
+        {
+            self.display_title_in(locale_prefers_zh())
+        }
+        #[cfg(not(feature = "ui-interpreter"))]
+        {
+            self.display_title_in(false)
+        }
     }
 
     /// 纯判定形态（locale 显式入参）——单测与宿主注入侧用，env 无关。

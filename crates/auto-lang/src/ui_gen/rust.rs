@@ -2529,8 +2529,29 @@ impl RustGenerator {
                         Some(msg) => format!("Some({msg})"),
                         None => "None".to_string(),
                     };
+                    // PLAN-015 D3:onmenu 信号位——右键菜单项选择(载荷走
+                    // TerminalCore 菜单通道,宿主经 terminal_take_menu_item(_any)
+                    // 取走;消息只当触发器,对齐 oninput 模式)。键集与 VM 臂
+                    // (aura_view_builder convert_terminal 的 oncontextmenu/
+                    // contextmenu/onmenu)同源,另收 on_menu 拼写。
+                    let on_menu_expr = ["onmenu", "on_menu", "oncontextmenu", "contextmenu"]
+                        .iter()
+                        .find_map(|k| events.get(*k))
+                        .map(|h| {
+                            format!("Some({})", self.handler_to_rust_direct_msg(&h.handler, &h.params))
+                        })
+                        .unwrap_or_else(|| "None".to_string());
+                    // PLAN-018 D10:scheme prop(Int 字面量或 .field 绑定;
+                    // 缺省 -1 = 跟随桌面主题)。
+                    let scheme = match props.get("scheme") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}i32"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
+                            format!("self.{} as i32", id.as_str())
+                        }
+                        _ => "-1i32".to_string(),
+                    };
                     return format!(
-                        "View::Terminal {{ key: \"{key}\".to_string(), cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: None, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, style: None }}",
+                        "View::Terminal {{ key: \"{key}\".to_string(), cols: {}, rows: {}, lines: {lines}, scroll_offset: {scroll}, preedit: None, on_select: None, on_menu: {on_menu_expr}, on_input: {on_input_expr}, cursor_row: {}, cursor_col: {}, scheme: {scheme}, style: None }}",
                         geom("cols", 80),
                         geom("rows", 24),
                         cursor("cursor_row"),
@@ -7834,6 +7855,69 @@ fn main() {{}}
             code.contains("    SetTag(String),\n"),
             "single-param SetTag stays one field, got:\n{}",
             code
+        );
+    }
+
+    /// PLAN-015 D3 金样:terminal `onmenu` 事件 → `on_menu: Some(...)` 直发
+    /// (载荷走 TerminalCore 菜单通道,消息只当触发器,对齐 oninput 模式);
+    /// 无 onmenu 时保持 `on_menu: None`。VM 臂(aura_view_builder
+    /// convert_terminal)同键集已支持,本样钉死 rust 发射臂双轨同源。
+    #[test]
+    fn terminal_onmenu_emits_on_menu_direct_msg() {
+        let gen_one = |onmenu_attr: &str| {
+            let src = format!(
+                r#"
+widget TermApp {{
+    msg {{ Init, Tick, KeyIn, Menu }}
+
+    model {{
+        var lines List<str> = []
+    }}
+
+    on {{
+        .Init -> {{
+            .lines = []
+        }}
+    }}
+
+    view {{
+        terminal {{
+            key: "auto-term"
+            cols: 80
+            rows: 24
+            lines: .lines
+            oninput: .KeyIn
+            {onmenu_attr}
+        }}
+    }}
+}}
+"#
+            );
+            let session = crate::session::CompilerSession::ui().with_backend("rust");
+            let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+            let ast = parser.parse().expect("parse");
+            let decl = ast
+                .stmts
+                .iter()
+                .find_map(|s| match s {
+                    crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                    _ => None,
+                })
+                .expect("widget decl");
+            let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+            let mut gen = RustGenerator::new();
+            gen.generate_rust(&widget).expect("generate rust")
+        };
+
+        let with_menu = gen_one("onmenu: .Menu");
+        assert!(
+            with_menu.contains("on_menu: Some(TermAppMsg::Menu)"),
+            "onmenu 必须直发 on_menu 信号位:\n{with_menu}"
+        );
+        let without_menu = gen_one("");
+        assert!(
+            without_menu.contains("on_menu: None"),
+            "无 onmenu 时保持 None(缺省零扰):\n{without_menu}"
         );
     }
 }

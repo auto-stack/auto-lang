@@ -1995,6 +1995,9 @@ default = ["ui-iced", "auto-lang/default"]
 [dependencies]
 auto-lang.workspace = true
 serde_json.workspace = true
+# PLAN-018:a2r 全局 List 字面量(非 const 初始化)走 once_cell::Lazy 形态
+# (trans/rust.rs global_lazy_used;api_gen.rs db 路径同款先例)。
+once_cell = "1"
 reqwest = {{ version = "0.12", features = ["blocking", "json", "multipart", "cookies", "gzip", "brotli"] }}
 tungstenite = {{ version = "0.24", features = ["native-tls"] }}
 lazy_static = "1"
