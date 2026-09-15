@@ -1795,6 +1795,76 @@ fn wrap_example(project_name: &str, components: &str) -> String {
         )
     };
 
+    // Plan 020 T-05 —— native 桌面客户端臂：孵化参数在册（
+    // `--autodesk-client=<pipe>` 直连 / `--autodesk-incubate` broker 孵化）
+    // → `client_entry::run_native_client` 协议 client（三态裁决：spawn
+    // `--autodesk-render=` 透传 > auto 缺省 independent——T-04 待澄清③
+    // 定案；pac `desktop_render:` 档由宿主 spawn 侧读取透传，生成物无
+    // pac 位置感知）。无标记 = 独立窗现行行为零变化（I1 零删除不变式）。
+    // v1 边界：async-init App 经孵化臂以 `default()` 态起（初始化 API
+    // 加载不接协议 client 面——超覆盖 App 走 auto 降级 independent）。
+    let native_client_gate = format!(
+        r#"let __autodesk_args: Vec<String> = std::env::args().collect();
+        let __has_client = __autodesk_args.iter().any(|a| a.starts_with("--autodesk-client="));
+        let __has_incubate = __autodesk_args.iter().any(|a| a == "--autodesk-incubate");
+        if __has_client || __has_incubate {{
+            let mut __pipe: Option<String> = None;
+            let mut __broker = auto_lang::ui::desktop_protocol::broker::BROKER_PIPE.to_string();
+            let mut __render: Option<String> = None;
+            let mut __app_name = "{project_name_snake}".to_string();
+            for __a in &__autodesk_args {{
+                if let Some(v) = __a.strip_prefix("--autodesk-client=") {{
+                    __pipe = Some(v.to_string());
+                }} else if let Some(v) = __a.strip_prefix("--autodesk-broker=") {{
+                    __broker = v.to_string();
+                }} else if let Some(v) = __a.strip_prefix("--autodesk-render=") {{
+                    __render = Some(v.to_string());
+                }} else if let Some(v) = __a.strip_prefix("--app386=") {{
+                    __app_name = v.to_string();
+                }}
+            }}
+            if let Some(arg) = __render.as_deref() {{
+                if auto_lang::ui::desktop_protocol::coverage::RenderMode::parse(arg).is_none() {{
+                    eprintln!("[autodesk-client] 未知 --autodesk-render={{arg}}（auto|queue|independent），回退 auto");
+                }}
+            }}
+            let __mode = auto_lang::ui::desktop_protocol::coverage::RenderMode::resolve(
+                __render.as_deref(),
+                None,
+            );
+            let (__frame_mode, __downgraded, __log) =
+                auto_lang::ui::desktop_protocol::client_entry::resolve_native_frame_mode(
+                    __mode,
+                    "{main_widget}",
+                );
+            if let Some(__l) = &__log {{
+                eprintln!("[autodesk-client] {{__l}}");
+            }}
+            let __target = match __pipe {{
+                Some(p) => auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Direct(p),
+                None => auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Broker {{
+                    broker_pipe: __broker,
+                }},
+            }};
+            let __opts = auto_lang::ui::desktop_protocol::client_entry::ClientOpts {{
+                app_name: __app_name.clone(),
+                title: __app_name,
+                width: 480.0,
+                height: 320.0,
+                frame_mode: __frame_mode,
+                auto_downgraded: __downgraded,
+            }};
+            return auto_lang::ui::desktop_protocol::client_entry::run_native_client(
+                {main_widget}::default(),
+                __opts,
+                __target,
+            )
+            .map_err(Into::into);
+        }}"#,
+        main_widget = main_widget,
+        project_name_snake = to_snake_case(project_name),
+    );
+
     format!(
         r#"// Auto-generated from Auto language by a2rust-ui
 
@@ -1810,10 +1880,18 @@ static GUARD_ALLOC: auto_lang::ui::mem_guard::GuardAlloc = auto_lang::ui::mem_gu
 fn main() -> auto_lang::ui::AppResult<()> {{
     #[cfg(feature = "ui-iced")]
     {{
+        // Plan 020 T-05：孵化参数在册 → native 协议 client 臂（返回即走）；
+        // 无标记 → 独立窗（下行 iced_entry 现行行为零变化）。
+        {native_client_gate}
         {iced_entry}
     }}
     #[cfg(feature = "ui-gpui")]
     {{
+        // Plan 020 §5.5：GPUI 臂不接桌面孵化客户端——参数在册报错退出留痕
+        //（v1 限 iced；防静默直跑开窗与孵化预期背离）。
+        if std::env::args().any(|a| a == "--autodesk-incubate" || a.starts_with("--autodesk-client=")) {{
+            return Err("native GPUI 臂不接桌面孵化客户端（Plan 020 v1 限 iced）".into());
+        }}
         println!("Running with GPUI backend");
         return auto_lang::ui::gpui::run_app::<{main_widget}>("{project_name}");
     }}
@@ -1824,6 +1902,7 @@ fn main() -> auto_lang::ui::AppResult<()> {{
 }}
 "#,
         cleaned = cleaned.trim(),
+        native_client_gate = native_client_gate,
         iced_entry = iced_entry,
         main_widget = main_widget,
         project_name = to_snake_case(project_name),
