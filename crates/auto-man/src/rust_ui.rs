@@ -751,27 +751,31 @@ fn merged_db_delegate(db: &MergedDbImpl, endpoint: &auto_lang::api::ApiEndpoint)
         return None;
     }
     let mut sig = Vec::new();
+    let mut call_args = Vec::new();
     for p in &endpoint.params {
-        sig.push(format!(
-            "{}: {}",
-            p.name,
-            merged_scalar_rust_ty(&p.ty)?
-        ));
+        let ty = merged_scalar_rust_ty(&p.ty)?;
+        // PLAN-019:参数面与 014 返回面同型校正——UI 模型 int 是 i32,
+        // db 侧 .at int 转译是 i64;垫片参数取 i32、调用处 as i64 升位,
+        // 否则 `api_f(self.int_field)` 编不下(app.at 多 Pane 槽位实测,
+        // 014 "返回面统一降位" 的镜像面)。
+        match ty {
+            "i64" => {
+                sig.push(format!("{}: i32", p.name));
+                call_args.push(format!("{} as i64", p.name));
+            }
+            "String" => {
+                // a2r str 形参是 &str(String 按引用传);标量按值。
+                sig.push(format!("{}: String", p.name));
+                call_args.push(format!("&{}", p.name));
+            }
+            other => {
+                sig.push(format!("{}: {}", p.name, other));
+                call_args.push(p.name.clone());
+            }
+        }
     }
     let ret_ty = merged_scalar_rust_ty(&endpoint.return_type)?;
-    let args = endpoint
-        .params
-        .iter()
-        .map(|p| {
-            // a2r str 形参是 &str(String 按引用传);标量按值。
-            if merged_scalar_rust_ty(&p.ty) == Some("String") {
-                format!("&{}", p.name)
-            } else {
-                p.name.clone()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
+    let args = call_args.join(", ");
     let ret_clause: String;
     let call;
     if ret_ty == "i64" {
