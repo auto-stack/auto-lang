@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-635
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: cross-package-style-recipes（Design 29 Phase 3 v2 + 依赖解析声明门控）
 author: [zhaopuming]
 created_at: 2026-09-15
@@ -360,6 +360,70 @@ dep "<name>" 或加入 workspace members」提示。pac.at 读取沿用既有文
   evidence: plan635 10/10 + tv 3725/3725 + 红名单对拍分支25⊆master26零新增
   + 双端实机快照/截图（VM MCP snapshot 三配方全展开 / Vue vite+Playwright
   dark） | blockers: 无 | next: review`）
+
+### R 轮独立复审（2026-09-15，/auto-plan:review）
+
+`stage: review | plan_id: PLAN-635 | plan_revision: 1 | outcome: pass |
+reviewed_commit: 683b842d7 (plan-635-dev tip) | base_commit: d96973a80 |
+dependency_revisions: auto-down 组内兄弟 detached 4ac3ffa（仅 workspace 构建
+解析序，零代码消费） | spec_inputs: docs/specs/auto-lang/ui/overview.md,
+docs/specs/auto-man/project.md, docs/specs/goals.md GOAL-007`
+
+**独立性声明**：与执行同会话——裁定自工件重构（门禁重跑/红名单对拍/diff
+重查/隔离复现），未采信执行期自述；执行偏差（T-02 挂点收敛）经 diff 实证
+（collect_module_imports 零触碰、auto-man/vue.rs 零触碰）后确认成立。
+
+**验收逐项**（全部 pass）：
+
+| AC | 结果 | 证据（R 轮重跑） |
+|---|---|---|
+| AC-01 语法完备 | pass | plan635 10/10（R 轮重跑）；use 符号形态与 parser.rs:6523 parse_use_items 纯名字列表同构；`pub style` 裸名解析（parser.rs:4952 设 is_pub）既有 |
+| AC-02 可见性门控 | pass | test_plan635_named_import_non_pub_is_error（硬错误）+ test_plan635_wildcard_imports_pub_only（glob 跳过非 pub） |
+| AC-03 撞名与循环防御 | pass | test_plan635_name_collision_is_error（诊断含双源名）；循环检测=合并后单 registry 跑 validate_style_recipes（recipe.rs:194/260 单点），单包循环用例（plan607 族）覆盖同一代码路径 |
+| AC-04 双端一致 | pass | test_plan635_vue_chain_expands_imported_recipe（Vue 生产链 SFC 断言）+ VM 轨 build_dynamic_component 同一 prepare/load 函数族；执行期双端实机（VM MCP snapshot 三配方展开 + iced 帧 / Vue vite+Playwright dark）在案，持久复现锚=test_plan635_example_fixture_vue_chain |
+| AC-05 声明门控 | pass | test_plan635_gate_blocks_undeclared_deps（负例）+ test_plan635_workspace_member_resolves；plan475 fixture 补声明（语义变更预期内，2026-09-15 用户裁定硬门控）；T-01 P1 实勘存量 junction 全部失效残留、受控面零破坏 |
+| AC-06 示例实证 | pass | test_plan635_example_fixture_vue_chain（真实 stylekit+045 示例走 ui_build_shadcn 全链）+ auto-man lock 8/8（R 轮重跑） |
+| AC-07 门禁通过 | pass | `cargo tv` 两轮全绿（3725/3725×2；首轮 1 flake 未复现）；`cargo t` 红名单对拍（同 worktree master tip detached）：分支 25 unique ⊆ master 26 unique，零新增；auto-man workspace 跑批 auto-man crate 自身零红；`cargo tf` 3578/3579（见 F-env）；plan339 5/5 + plan475 1/1 |
+
+**发现与处置**：
+
+- **F-env [环境 flake·已定性]** tf 档唯一红 `ffi_dual_019_dep_layout_
+  invariants`：分支隔离 3/3 PASS（2.3s）+ master tip 隔离 PASS + 机制不相交
+  （该测试走 PLAN-591 `.rs dep` methods-pack/nightly 工具链通道，与本计划
+  触碰的 `.at use` resolve_module_path 门控无共享代码路径）；同族在 tv 首轮
+  flake 次轮全绿同型。**非回归**。定级=环境并发负载 flake，登记复审在案，
+  不阻塞。
+- **F1 [语义松弛·契约内]** 传递导入不校验中间模块 use 的 pub 性：宿主经
+  `common.styles` 可达其内部私有 use 引入的 recipe（按名注册进 registry）。
+  契约原文（D1/§5 注记「导入模块自身 use 传递贡献」）未要求中间 pub 门，
+  实现与契约一致；跨包完整 pub 链语义留 v2（如需）。不阻塞，merge 时随
+  SD-01 spec 文本将「传递收集」语义如实成文即可。
+- **执行偏差复核 [成立]** T-02 挂点由 collect_module_imports 收敛为
+  load_and_validate 函数族：R 轮 diff 实证 collect_module_imports 与
+  auto-man/vue.rs 零触碰；契约目标（跨包注册、双端同源、零新语法）全部
+  兑现，plan_revision 不动。
+
+**Workaround & Debt Elimination**：无绕道代码；唯一 eprintln 为硬门控诊断
+通道（与 collect_module_imports 既有诊断形态一致，属功能面非 debug 残留）；
+规范面（docs/specs、KNOWN-DEBT）worktree 零触碰（merge 时沉淀）。
+
+**Spec Delta Review**（定稿，merge 时落盘）：
+- SD-01 ui/overview.md#style-recipe：跨包引用语义（use 符号导入 + pub 门控
+  + 传递收集 + 撞名规则 + desugar 单点不变）——与实现一致，含 F1 松弛度
+  如实成文；
+- SD-02 docs/design/10-language-syntax.md：use 样式符号示例；
+- SD-03 auto-man/project.md：deps/ 声明门控 + workspace members 解析规则；
+- SD-04 KNOWN-DEBT：登记 Plan 607 待澄清#1 兑付 + F-env ffi_dual flake
+  观察项 + F1 v2 预留。
+- frontmatter spec 组件定稿维持起草时 provisional 值（R 轮核对无漂移）。
+
+**证据包**：R 轮门禁重跑命令与结果（本记录内嵌）；红名单对拍文件
+/tmp/{master,branch}_reds.txt（会话暂存，对拍结论 25⊆26 已固化于 T-08 与
+本记录）；持久测试锚=plan635 10 测（recipe.rs 7+示例链 1+plan339 2），
+worktree 移除后随 master 可复现。
+
+**next**: `/auto-plan:merge`（折叠前按惯例 tf 兜底已在 R 轮执行；
+ffi_dual_019 flake 定性在案，merge 轮若复现同型可直接引用本记录）。
 
 ## 10. 待澄清事项
 
