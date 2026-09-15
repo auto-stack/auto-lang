@@ -1,16 +1,17 @@
 ---
 plan_id: PLAN-634
-status: drafting
+status: reviewed
 feature_name: 015 遗留三账清偿——像素金样环境漂移归因修复 + badge/preedit WeakParagraph 同族根修 + a2r 块尾分号
 author: [zcode-session]
 created_at: 2026-09-15T12:00:00Z
-updated_at: 2026-09-15T12:00:00Z
+updated_at: 2026-09-15T19:20:00Z
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 3
-supersedes_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/a2r-std/project.md: 新增 rust 发射器语句发射规则节——语句位置块尾恒补 `;`(仅表达式位置可省),取代旧 let 特判;#18 E0308 实证(Plan 634 T-03)"
 new_spec_components:
-  - docs/specs/widgets/terminal-iced-draw.md
+  - "docs/specs/widgets/terminal-iced-draw.md: draw 期段落强引用规则(fill_paragraph 弱引用排队/强引用存活到 flush,行文本/菜单标签/badge+preedit 三处缓存范式)+ 像素金样环境契约(漂移维度定案/稳健比对阈值/受控再生成配方/nextest 进程隔离验证约束)"
 touched_goals: []
 ---
 
@@ -140,23 +141,99 @@ simulator)、cosmic-text 字体管线、a2r/ui_gen 语句发射器。
 
 ## 8. 执行步骤
 
-- T-01 像素金样归因+修复(D1)——AC-01;优先级最高(master 门
-  当前红);含归因报告工件
-- T-02 badge/preedit 同族修复(D2/D3)——AC-02;依赖 T-01 的
-  像素验证环境可信
-- T-03 a2r 分号根修+语料(D4)——AC-03;独立可并行
-- (跨仓尾注)auto-term app.at 规避解除——T-03 落地后随 auto-term
+- [x] T-01 像素金样归因+修复(D1)——AC-01
+  [✅ 已完成] worktree `52ca422a1`:terminal_pixel_tests.rs 稳健化重写
+  (硬门禁=墨水占比/同进程字节确定性/层容差差分,阈值按金样校准实测:
+  ink 0.153% vs 缺文本 0.018%、层差分 0.212% vs 缺层 0.036%;金样降级
+  留档+审计制,超 5% 预算仅告警);负验证(注掉选中层→红,还原→绿);
+  探针 vulkan/dx12/gl 三后端金样零漂移(漂移=环境态翻转,非后端可枚举);
+  归因报告 `docs/plans/evidence/634/pixel-golden-drift-attribution.md`;
+  nextest 5/5 绿,金样文件零改写。
+- [x] T-02 badge/preedit 同族修复(D2/D3)——AC-02
+  [✅ 已完成] worktree `e64e0f33f`:widget.rs `PLAIN_PARAS` 静态缓存
+  (键 (text,width),封顶 64 溢出清空),`fill_cached_para` 持 guard 到
+  fill 排队后(row 缓存同款纪律);新增 badge/preedit 可见性像素用例
+  (空单元格锚定亮像素计数);负验证=复现局部段落旧形态双红,还原复绿
+  5/5;ui:: 定向 74/75(唯一红=plan055 strip_html,KNOWN-DEBT 在案
+  master 预存);menu 单测不破。
+- [x] T-03 a2r 分号根修+语料(D4)——AC-03
+  [✅ 已完成] worktree `ee35eba96`:ui_gen/rust.rs `join_stmt_block`
+  语句位置块发射器(handler 臂/if 分支与 else/for 体/裸块四处组装点
+  块尾恒补 `;`,取代旧 let 特判;值消费臂不动);plan634 语料 5/5 +
+  `#[ignore]` e2e rustc 实编过(#18 形态 i32 桩,旧发射必 E0308 新发射
+  编译通过);ui_gen 777/777、plan627 5/5(逐字节金样不破);cargo tt
+  全档 3938/3942(4 红=已知预存,415-B1/B2 commit 在案,2 复证 master
+  同红同因);SD-03 规范增量落 a2r-std/project.md。
+- [x] (跨仓尾注)auto-term app.at 规避解除——T-03 落地后随 auto-term
   下一改动执行,本计划只记协调
+  [✅ 已完成] 协调记录 `docs/plans/evidence/634/crossrepo-coordination.md`:
+  #17(标题转全清+实机复验清单)/#18(app.at .Menu 尾部 () 收尾规避回删
+  +处置节补记,1-2 行,前置=本计划 merge)/R015-F2(无需动作);auto-term
+  零代码改动。
 
 ## 9. 复审记录
 
 - 2026-09-15 stage:new · outcome:pass(ready for work;全程
   worktree 执行,按 87eba67ab 裁定) · next:/auto-plan:work。
+- 2026-09-15 stage:work · plan_id:PLAN-634 · plan_revision:1 ·
+  outcome:pass · code_commit:plan-634-dev =
+  `52ca422a1`(T-01)+`e64e0f33f`(T-02)+`ee35eba96`(T-03)+规范/协调
+  docs commit · worktree:`D:/autostack/.wt/lang-634/auto-lang`
+  (base 0cc6625d5;依赖组内 sibling auto-down @3adc930 detached) ·
+  task_ids:T-01/T-02/T-03/跨仓尾注 · evidence:
+  evidence/634/{pixel-golden-drift-attribution,crossrepo-coordination}.md,
+  terminal_pixel nextest 5/5(正反双验证),ui_gen 777/777,plan627 5/5,
+  plan634 语料 5/5+e2e rustc 过,tt 3938/3942(4 红预存在案),
+  tf 3573/3574(ffi_dual_019 负载偶发,隔离跑绿,415 在案) ·
+  blockers:无 · next:/auto-plan:review。
+- 2026-09-15 stage:review · plan_id:PLAN-634 · plan_revision:1 ·
+  outcome:pass · reviewed_commit:`38a917f5f`(plan-634-dev HEAD;
+  4 提交=52ca422a1/e64e0f33f/ee35eba96/38a917f5f,worktree 树净) ·
+  base_commit:`0cc6625d5` · dependency_revisions:auto-down sibling
+  `3adc930ca`(detached=其 master;组内 path 依赖) · spec_inputs(sha256
+  冻结):widgets/terminal-iced-draw.md=5a249a2957bf,
+  a2r-std/project.md=2b7302ac0ede,widgets/project.md=3a0d36e9c4b1,
+  INDEX.md=173474e356dd · acceptance_results:
+  **AC-01 pass**(terminal_pixel nextest 5/5 于基点复跑;金样对 base
+  零 diff(git diff 空证未被改写);归因报告含漂移维度定案+三后端探针
+  (vulkan/dx12/gl 零漂移)+再生成配方;负验证:注掉选中层→红);
+  **AC-02 pass**(badge/preedit 可见性用例绿;复审独立复做负验证——
+  复现局部段落旧形态→preedit 红,还原→树净;menu 单测随 ui:: 定向
+  74/75 绿,唯一红=plan055 strip_html 系 KNOWN-DEBT #867 在案 master
+  预存,与本计划无关;无独立 menu 金样件,terminal_pixel 金样即覆盖);
+  **AC-03 pass**(plan634 语料 5/5;e2e rustc 实编 1 passed;i32 桩使
+  旧发射必 E0308;ui_gen 777/777、plan627 5/5 逐字节金样不破;cargo tt
+  全档 3938/3942,4 红=415-B1/B2 commit 在案已知预存,其中 2 个复审
+  期复证 master 同红同因(007 括号差/27_c_abi FFI 桩 E0425),与分号
+  无关);**AC-04 pass**(cargo tf --no-fail-fast 3573/3574 于基点复跑,
+  唯一红=ffi_dual_019 负载偶发,隔离跑绿,415-B2 在案;tt 档同上;
+  双仓影响面=auto-term 零代码改动,协调记录 evidence/634) ·
+  findings:
+  F-R1(info,无需动):generate_on_method Tick 守卫后处理无条件补 `;`
+  行,遇已带尾分号的 body 产生独立空语句 `;`——合法 Rust,纯外观,
+  pre-existing 机制的自适应结果;
+  F-R2(info,无需动):§6「实机(可选)」未执行——计划即标注可选,
+  badge/preedit 像素区域断言已覆盖该准则;
+  F-R3(已处置):frontmatter supersedes 原为空,SD-03 对
+  a2r-std/project.md 的 modify 按仓规约(437/446 先例)补记——本次
+  复审 finalization,不构成语义契约变更,rev 不增 ·
+  evidence:本记录+evidence/634/ 两工件+基点复跑命令与结果
+  (terminal_pixel 5/5、plan634 5/5、ui_gen 777/777、plan627 5/5、
+  e2e 1 passed、tf 3573/3574、tt 3938/3942,均于 38a917f5f 复现;
+  fmt --check 对本计划 5 个改动文件零 diff;cargo check 无本计划
+  新增警告,crate 警告积压为预存) · 独立性注记:复审与实施同会话,
+  判定经基点伪证重建(差异/命令/复跑),非仅采信 work 记录 ·
+  next:/auto-plan:merge。
 
 ## 10. 待澄清事项
 
 - T-01 归因结论二选一路径(受控渲染 vs 稳健比对)为执行期裁定,
   以归因报告工件为准,rev 不增;若两案皆不可行(漂移不可控)，
   返回 needs_replan 重议金样策略。
+  → 执行期裁定:方案 b(稳健比对+受控再生成配方),定案=漂移系环境态
+  翻转(适配器/MSAA/系统字体面),本机三后端探针不复现、015 bisect
+  跨树复红为非代码充分证据,详见 evidence/634 归因报告。
 - auto-term app.at 规避解除依赖本计划 T-03 merge 后在 auto-term
   侧执行(1 行),跨仓协调随 merge 收据记录。
+  → 协调记录已落 evidence/634/crossrepo-coordination.md(解除动作
+  明细+前置条件)。
