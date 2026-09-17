@@ -21,7 +21,7 @@
 // 消费者唯一：宿主 renderer 的 dashboard_toggle / refresh_dashboard_panel
 // / dashboard 键盘订阅。
 widget DashboardPanel {
-    msg { Init, Escape, Close, SelectTab(str), RebuildFaces }
+    msg { Init, Escape, Close, SelectTab(str), ShowClose, HideClose, RebuildFaces }
 
     model {
         // ---- 接缝状态（desktop 宿主注入）----
@@ -47,6 +47,8 @@ widget DashboardPanel {
         // system 页，非活动页宿主不渲染 face 且孵化会话 Tick 停订，常驻
         // 零轮询开销；stella widget-tabs 语义）。
         var active_tab str = "main"
+        // R6：× 悬停显隐（面板级 mouse enter/leave；槽位固定不跳版）。
+        var show_close str = "0"
         var rows = []
         var nrows int = 0
     }
@@ -59,10 +61,12 @@ widget DashboardPanel {
             // 固定 h-12（48px = 宿主 DASH_HEADER_H，格位算式一致）。
             col {
                 style: "w-full h-full"
+                mouse-area (onmouseenter: .ShowClose, onmouseleave: .HideClose) {
                 col {
                     style: "w-full h-full bg-card/80 border rounded-xl overflow-hidden"
 
-                    // 标题行：居中 tab + 右缘 ×
+                    // 标题行：居中 tab + 右缘 ×（R6：hover 面板才显现，
+                    // 槽位 h-8 w-8 固定不跳版）
                     row {
                         style: "w-full h-12 items-center px-3"
                         col {
@@ -87,9 +91,14 @@ widget DashboardPanel {
                                 }
                             }
                         }
-                        button (onclick: .Close) {
-                            text { "×" }
-                            style: "h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent"
+                        mouse-area (onclick: .Close) {
+                            style: "h-8 w-8 rounded-lg"
+                            if .show_close == "1" {
+                                col {
+                                    style: "h-8 w-8 items-center justify-center rounded-lg hover:bg-accent"
+                                    text { "×" }
+                                }
+                            }
                         }
                     }
 
@@ -104,6 +113,7 @@ widget DashboardPanel {
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -126,6 +136,8 @@ widget DashboardPanel {
         .SelectTab(t) -> {
             .active_tab = t
         }
+        .ShowClose -> { .show_close = "1" }
+        .HideClose -> { .show_close = "0" }
         .RebuildFaces -> {
             // 空态判据 = face 快照长度（rows 由宿主 face 层渲染，本面不建）。
             .nrows = .face_ids.len()
