@@ -2082,7 +2082,22 @@ impl AutoVM {
                         format!("Function '{}' execution terminated unexpectedly", fn_name)
                     ));
                 }
-                StepResult::Yield => continue,
+                StepResult::Yield => {
+                    if let Some(req_id) = task.waiting_http_request_id {
+                        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                        while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+                            if std::time::Instant::now() > deadline {
+                                task.waiting_http_request_id = None;
+                                return Err(VMError::RuntimeError(
+                                    "async http request timed out in call_fn_by_name".into(),
+                                ));
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        steps = steps.saturating_sub(1);
+                    }
+                    continue;
+                }
                 StepResult::GeneratorYield => {
                     // Plan 321: YIELD_VAL in a regular call_fn_by_name context
                     // means the function is a generator. In non-generator mode
