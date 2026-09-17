@@ -1,7 +1,16 @@
 // app.at — Contact Form.
+// PLAN-637 B2（A+B 合并）：Phase A 提取 field_col ×3；Phase B 映射（2026-09-17）：
+// zinc/gray 明暗臂按角色收敛——zinc-100・gray-900/zinc-200→foreground；zinc-400・
+// gray-500・gray-600・gray-700（眉标签）→muted-foreground；border-zinc-800・gray-200→
+// border-border；卡面 bg-zinc-900・bg-white→bg-card（shadow 差异保留条件）；页根→
+// bg-background/text-foreground。豁免：发送成功回执的 emerald 簇 ×5（success 语义
+// registry 无键，装饰性状态色豁免，主题系统立项时评估回迁——与 004 状态点同口径）。
+
 // PLAN-637 T-01b（用户裁定：demo 跟随系统）：SettingsPopover 消费面移除，
 // 主题控制由 gallery 宿主切换器承接；SetTheme/SetAccent 消息面保留
 // （宿主 → 内嵌 demo 主题传播路线的既有通道），本 demo 内无发射方。
+
+style field_col = "gap-1.5 w-full"
 
 widget App {
     msg { Submit, SetTheme(str), SetAccent(str) }
@@ -36,9 +45,9 @@ widget App {
                     }
                     span "Check our FAQ for quick answers or send us a message." {
                         style: if .dark_mode {
-                            "text-sm text-zinc-400 text-center max-w-xl mt-1"
+                            "text-sm text-muted-foreground text-center max-w-xl mt-1"
                         } else {
-                            "text-sm text-gray-500 text-center max-w-xl mt-1"
+                            "text-sm text-muted-foreground text-center max-w-xl mt-1"
                         }
                     }
                     style: "gap-1 items-center mb-2"
@@ -50,9 +59,9 @@ widget App {
                     col {
                         h3 "Frequently Asked Questions" {
                             style: if .dark_mode {
-                                "text-lg font-bold text-zinc-100 mb-2"
+                                "text-lg font-bold text-foreground mb-2"
                             } else {
-                                "text-lg font-bold text-gray-900 mb-2"
+                                "text-lg font-bold text-foreground mb-2"
                             }
                         }
                         col {
@@ -60,23 +69,23 @@ widget App {
                                 col {
                                     span f.q {
                                         style: if .dark_mode {
-                                            "font-semibold text-zinc-200 text-sm"
+                                            "font-semibold text-foreground text-sm"
                                         } else {
-                                            "font-semibold text-gray-900 text-sm"
+                                            "font-semibold text-foreground text-sm"
                                         }
                                     }
                                     span f.a {
                                         style: if .dark_mode {
-                                            "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                            "text-sm text-muted-foreground mt-1 leading-relaxed"
                                         } else {
-                                            "text-sm text-gray-600 mt-1 leading-relaxed"
+                                            "text-sm text-muted-foreground mt-1 leading-relaxed"
                                         }
                                     }
                                     style: if i < .faqs.len() - 1 {
                                         if .dark_mode {
-                                            "py-3 border-b border-zinc-800"
+                                            "py-3 border-b border-border"
                                         } else {
-                                            "py-3 border-b border-gray-200"
+                                            "py-3 border-b border-border"
                                         }
                                     } else {
                                         "py-3"
@@ -86,9 +95,9 @@ widget App {
                             style: "w-full"
                         }
                         style: if .dark_mode {
-                            "flex-1 p-6 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-lg gap-3"
+                            "flex-1 p-6 rounded-2xl bg-card border border-border shadow-lg gap-3"
                         } else {
-                            "flex-1 p-6 rounded-2xl bg-white border border-gray-200 shadow-sm gap-3"
+                            "flex-1 p-6 rounded-2xl bg-card border border-border shadow-sm gap-3"
                         }
                     }
 
@@ -96,44 +105,44 @@ widget App {
                     col {
                         h3 "Still have questions?" {
                             style: if .dark_mode {
-                                "text-lg font-bold text-zinc-100 mb-2"
+                                "text-lg font-bold text-foreground mb-2"
                             } else {
-                                "text-lg font-bold text-gray-900 mb-2"
+                                "text-lg font-bold text-foreground mb-2"
                             }
                         }
                         col {
                             col {
                                 span "Name *" {
                                     style: if .dark_mode {
-                                        "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                        "text-xs font-semibold text-muted-foreground uppercase tracking-wide"
                                     } else {
-                                        "text-xs font-semibold text-gray-700 uppercase tracking-wide"
+                                        "text-xs font-semibold text-muted-foreground uppercase tracking-wide"
                                     }
                                 }
                                 input { placeholder: "Your name", value: .name }
-                                style: "gap-1.5 w-full"
+                                style: field_col
                             }
                             col {
                                 span "Email *" {
                                     style: if .dark_mode {
-                                        "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                        "text-xs font-semibold text-muted-foreground uppercase tracking-wide"
                                     } else {
-                                        "text-xs font-semibold text-gray-700 uppercase tracking-wide"
+                                        "text-xs font-semibold text-muted-foreground uppercase tracking-wide"
                                     }
                                 }
                                 input { placeholder: "you@example.com", value: .email }
-                                style: "gap-1.5 w-full"
+                                style: field_col
                             }
                             col {
                                 span "Message *" {
                                     style: if .dark_mode {
-                                        "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                        "text-xs font-semibold text-muted-foreground uppercase tracking-wide"
                                     } else {
-                                        "text-xs font-semibold text-gray-700 uppercase tracking-wide"
+                                        "text-xs font-semibold text-muted-foreground uppercase tracking-wide"
                                     }
                                 }
                                 textarea { placeholder: "How can we help?", value: .message }
-                                style: "gap-1.5 w-full"
+                                style: field_col
                             }
                             if .submitted {
                                 row {
@@ -159,9 +168,9 @@ widget App {
                             style: "w-full gap-4"
                         }
                         style: if .dark_mode {
-                            "flex-1 p-6 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-lg gap-3"
+                            "flex-1 p-6 rounded-2xl bg-card border border-border shadow-lg gap-3"
                         } else {
-                            "flex-1 p-6 rounded-2xl bg-white border border-gray-200 shadow-sm gap-3"
+                            "flex-1 p-6 rounded-2xl bg-card border border-border shadow-sm gap-3"
                         }
                     }
                     style: "w-full gap-6 items-start"
@@ -171,9 +180,9 @@ widget App {
             }
 
             style: if .dark_mode {
-                "w-full min-h-screen bg-zinc-950 text-zinc-100 relative"
+                "w-full min-h-screen bg-background text-foreground relative"
             } else {
-                "w-full min-h-screen bg-gray-50 text-gray-900 relative"
+                "w-full min-h-screen bg-background text-foreground relative"
             }
         }
     }
