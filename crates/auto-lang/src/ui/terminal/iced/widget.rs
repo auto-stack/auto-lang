@@ -625,6 +625,31 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         }
     }
 
+    /// 指针形态:滚动条拖拽中 Grabbing;右缘命中带悬停 Grab(拇指可抓);
+    /// 内容区 Text(选区);组件外默认。AutoUI 滚动条交互惯例(editor 同)。
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        _viewport: &Rectangle,
+        _renderer: &iced::Renderer,
+    ) -> mouse::Interaction {
+        let state = tree.state.downcast_ref::<TerminalState>();
+        if state.scrollbar_drag.is_some() {
+            return mouse::Interaction::Grabbing;
+        }
+        if let Some(pos) = cursor.position_in(layout.bounds()) {
+            let history = crate::ui::terminal::terminal_history(self.core);
+            if history > 0 && pos.x > layout.bounds().x + layout.bounds().width - SCROLLBAR_HIT_W
+            {
+                return mouse::Interaction::Grab;
+            }
+            return mouse::Interaction::Text;
+        }
+        mouse::Interaction::default()
+    }
+
     fn draw(
         &self,
         tree: &Tree,
@@ -839,9 +864,14 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
 
         // 滚动条:AutoUI 官方形态(scrollbar_style 同款)——3px 圆角拇指
         // rgba(0.9,0.9,0.9,0.3)、透明轨道、右缘内缩;历史区存在才画。
-        // 拖拽交互见 update(命中带宽于视觉宽)。
+        // 拖拽交互见 update(命中带宽于视觉宽)。拖拽中拇指画【拖拽目标
+        // 位置】(last_target,跟手 1:1)而非引擎回读值——回读滞后泵一拍,
+        // 按回读写拇指会明显落后指针(用户实测"拖拽时拇指不跟着走")。
         let history = crate::ui::terminal::terminal_history(self.core);
-        let eng_off = crate::ui::terminal::terminal_scroll_offset(self.core);
+        let eng_off = match state.scrollbar_drag.as_ref() {
+            Some(drag) => drag.last_target.max(0) as usize,
+            None => crate::ui::terminal::terminal_scroll_offset(self.core),
+        };
         if let Some((_, _, thumb_y, thumb_h)) =
             scrollbar_metrics(bounds, self.core.rows as usize, history, eng_off)
         {
