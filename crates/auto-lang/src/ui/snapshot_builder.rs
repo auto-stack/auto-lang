@@ -257,10 +257,27 @@ impl SnapshotBuilder {
                     ("value".to_string(), value.clone()),
                 ];
                 #[cfg(feature = "autodown")]
-                if let Some(text) = crate::ui::autodown_editor::autodown_editor_text(
-                    &crate::ui::autodown_editor::storage_key(key),
-                ) {
-                    props.push(("internal_text".to_string(), text));
+                {
+                    if let Some(text) = crate::ui::autodown_editor::autodown_editor_text(
+                        &crate::ui::autodown_editor::storage_key(key),
+                    ) {
+                        props.push(("internal_text".to_string(), text));
+                    }
+                    // PLAN-069：slash 弹层状态（MCP 断言面）——visible 恒在
+                    // 场（false=关），开启时附 query/selected/count。
+                    match crate::ui::autodown_editor::autodown_editor_slash_state(
+                        &crate::ui::autodown_editor::storage_key(key),
+                    ) {
+                        Some((query, selected, count)) => {
+                            props.push(("slash_visible".to_string(), "true".to_string()));
+                            props.push(("slash_query".to_string(), query));
+                            props.push(("slash_selected".to_string(), selected.to_string()));
+                            props.push(("slash_count".to_string(), count.to_string()));
+                        }
+                        None => {
+                            props.push(("slash_visible".to_string(), "false".to_string()));
+                        }
+                    }
                 }
                 let actions = on_change.as_ref()
                     .map(|msg| vec![Self::extract_action("edit", msg)])

@@ -1176,11 +1176,20 @@ fn tool_editor_state(shared_handle: &SharedStateHandle, args: serde_json::Value)
             .into_iter()
             .map(|(k, w)| (k.to_string(), serde_json::json!(w)))
             .collect();
+        // PLAN-069：slash 弹层读数（null=关；开=visible/query/selected/count
+        // ——vm-smoke slash 臂断言面，autoui_editor_state 探针既有约定延伸）。
+        let slash = match core.slash_state_snapshot() {
+            Some((query, selected, count)) => serde_json::json!({
+                "visible": true, "query": query, "selected": selected, "count": count
+            }),
+            None => serde_json::json!(null),
+        };
         let payload = serde_json::json!({
             "text": ade::autodown_editor_text(&sk).unwrap_or_default(),
             "focus": core.focused_block(),
             "tables": tables,
             "col_widths": widths,
+            "slash": slash,
         });
         text_result(payload.to_string())
     }
