@@ -1704,10 +1704,20 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                     _ => {
                         let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
                             || is.width.is_none();
-                        if col_width_fill { cont = cont.width(iced::Length::Fill); }
+                        if col_width_fill {
+                            cont = cont.width(iced::Length::Fill);
+                        } else if let Some(ref w) = is.width {
+                            cont = cont.width(iced_length(w));
+                        }
                         let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
                             || is.min_height.map_or(false, |mh| mh >= 9999.0);
-                        if col_height_fill { cont = cont.height(iced::Length::Fill); }
+                        if col_height_fill {
+                            cont = cont.height(iced::Length::Fill);
+                        } else if let Some(ref h) = is.height {
+                            cont = cont.height(iced_length(h));
+                        } else if let Some(mh) = is.min_height {
+                            cont = cont.height(iced::Length::Fixed(mh));
+                        }
                         if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
                     }
                 }
@@ -1732,10 +1742,20 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         if let Some(ref is) = iced_style {
             let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
                 || is.width.is_none();
-            if col_width_fill { cont = cont.width(iced::Length::Fill); }
+            if col_width_fill {
+                cont = cont.width(iced::Length::Fill);
+            } else if let Some(ref w) = is.width {
+                cont = cont.width(iced_length(w));
+            }
             let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
                 || is.min_height.map_or(false, |mh| mh >= 9999.0);
-            if col_height_fill { cont = cont.height(iced::Length::Fill); }
+            if col_height_fill {
+                cont = cont.height(iced::Length::Fill);
+            } else if let Some(ref h) = is.height {
+                cont = cont.height(iced_length(h));
+            } else if let Some(mh) = is.min_height {
+                cont = cont.height(iced::Length::Fixed(mh));
+            }
         }
         if let Some(mw) = col_max_width { cont = cont.max_width(mw); }
         if let Some(id) = widget_id { cont = cont.id(id); }
@@ -1839,9 +1859,17 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         // Propagate row's width/height to wrapping container
         if let Some(ref is) = iced_style {
             let row_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)));
-            if row_width_fill { cont = cont.width(iced::Length::Fill); }
+            if row_width_fill {
+                cont = cont.width(iced::Length::Fill);
+            } else if let Some(ref w) = is.width {
+                cont = cont.width(iced_length(w));
+            }
             let row_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
-            if row_height_fill { cont = cont.height(iced::Length::Fill); }
+            if row_height_fill {
+                cont = cont.height(iced::Length::Fill);
+            } else if let Some(ref h) = is.height {
+                cont = cont.height(iced_length(h));
+            }
         }
         if let Some(mw) = row_max_width { cont = cont.max_width(mw); }
         if let Some(ref is) = iced_style {
@@ -1856,9 +1884,17 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         // Propagate row's width/height to wrapping container
         if let Some(ref is) = iced_style {
             let row_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)));
-            if row_width_fill { cont = cont.width(iced::Length::Fill); }
+            if row_width_fill {
+                cont = cont.width(iced::Length::Fill);
+            } else if let Some(ref w) = is.width {
+                cont = cont.width(iced_length(w));
+            }
             let row_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
-            if row_height_fill { cont = cont.height(iced::Length::Fill); }
+            if row_height_fill {
+                cont = cont.height(iced::Length::Fill);
+            } else if let Some(ref h) = is.height {
+                cont = cont.height(iced_length(h));
+            }
         }
         if let Some(mw) = row_max_width { cont = cont.max_width(mw); }
         if let Some(id) = widget_id { cont = cont.id(id); }
@@ -3725,6 +3761,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 让位(iced 容器默认居中,外层 050 包装包不住内层 center_x
                 // ——nav-item(h-9 w-full text-left)内容恒居中的根因)。
                 let (p050_ax, p050_ay) = plan050_content_align(iced_style.as_ref());
+                let has_width = iced_style.as_ref().map_or(false, |is| is.width.is_some());
+                let has_height = iced_style.as_ref().map_or(false, |is| is.height.is_some());
                 let button_content: iced::Element<'static, M> = if fixed_both {
                     iced::widget::container(button_content)
                         .width(iced::Length::Fill)
@@ -3732,11 +3770,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         .center_x(iced::Length::Fill)
                         .center_y(iced::Length::Fill)
                         .into()
-                } else if iced_style
-                    .as_ref()
-                    .map_or(false, |is| is.height.is_some())
-                {
-                    let has_width = iced_style.as_ref().map_or(false, |is| is.width.is_some());
+                } else if has_height {
                     let (ax, ay) = plan414_content_alignment(p050_ax, p050_ay);
                     let mut cont = iced::widget::container(button_content)
                         .height(iced::Length::Fill)
@@ -3745,19 +3779,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         cont = cont.width(iced::Length::Fill).align_x(ax);
                     }
                     cont.into()
+                } else if has_width && (p050_ax.is_some() || p050_ay.is_some()) {
+                    let mut c = iced::widget::container(button_content)
+                        .width(iced::Length::Fill);
+                    if let Some(ax) = p050_ax { c = c.align_x(ax); }
+                    if let Some(ay) = p050_ay { c = c.align_y(ay); }
+                    c.into()
                 } else {
                     button_content
                 };
-                let button_content: iced::Element<'static, M> =
-                    if p050_ax.is_some() || p050_ay.is_some() {
-                        let mut c = iced::widget::container(button_content)
-                            .width(iced::Length::Fill);
-                        if let Some(ax) = p050_ax { c = c.align_x(ax); }
-                        if let Some(ay) = p050_ay { c = c.align_y(ay); }
-                        c.into()
-                    } else {
-                        button_content
-                    };
                 let mut btn = button(button_content);
                 // Plan 423 P3: disabled 态 —— 不挂 on_press(点击无消息);
                 // inspect 捕获模式同样不挂(原语义)。灰样式在下方 style 段追加。

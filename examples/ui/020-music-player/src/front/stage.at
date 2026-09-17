@@ -45,29 +45,15 @@ widget Stage {
 
                 // 左侧：质感黑胶唱盘
                 col {
-                    style: "relative items-center justify-center shrink-0"
-
-                    // 唱臂装置
-                    col {
-                        style: "absolute -top-10 left-36 w-14 h-24 pointer-events-none z-10 origin-top"
-                        col {
-                            style: "w-3 h-3 rounded-full bg-muted shadow-md border border-border"
-                        }
-                        col {
-                            style: "w-1 h-16 bg-muted ml-1 shadow-sm"
-                        }
-                        col {
-                            style: "w-3 h-5 bg-muted ml-0 rounded-sm shadow-md"
-                        }
-                    }
+                    style: "w-72 h-72 relative items-center justify-center shrink-0"
 
                     // 黑胶唱盘底座（带多重同心圆光泽）
                     col {
                         onclick: .PlayPause
                         style: if .store.is_playing {
-                            "w-72 h-72 rounded-full bg-background border-[8px] border-border shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-border group hover:scale-[1.02] transition-transform animate-spin duration-[12000ms]"
+                            "w-72 h-72 rounded-full bg-zinc-950 border-8 border-border shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-border group hover:scale-[1.02] transition-transform animate-spin duration-[12000ms]"
                         } else {
-                            "w-72 h-72 rounded-full bg-background border-[8px] border-border shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-border group hover:scale-[1.02] transition-transform"
+                            "w-72 h-72 rounded-full bg-zinc-950 border-8 border-border shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-border group hover:scale-[1.02] transition-transform"
                         }
 
                         // 同心圆黑胶纹理 1
@@ -90,11 +76,25 @@ widget Stage {
                             }
                         }
                     }
+
+                    // 唱臂装置
+                    col {
+                        style: "absolute top-2 left-44 w-12 h-24 pointer-events-none"
+                        col {
+                            style: "w-3 h-3 rounded-full bg-slate-300 shadow-md border border-slate-400"
+                        }
+                        col {
+                            style: "w-1 h-16 bg-slate-400 ml-1 shadow-sm"
+                        }
+                        col {
+                            style: "w-3 h-5 bg-slate-300 ml-0 rounded-sm shadow-md"
+                        }
+                    }
                 }
 
                 // 右侧：歌曲主标题、歌手、无损徽章与歌词卡片
                 col {
-                    style: "flex-1 max-w-md gap-4"
+                    style: "w-[440px] max-w-md gap-4 shrink-0"
 
                     col {
                         style: "gap-1.5"
@@ -153,44 +153,56 @@ widget Stage {
 
                     // 互动按钮条
                     row {
-                        style: "items-center gap-2.5 pt-2"
+                        style: "items-center gap-2 pt-2"
                         button {
                             onclick: .ToggleLike
                             style: if .store.is_current_liked {
-                                "h-9 items-center gap-2 px-3.5 rounded-lg bg-destructive/15 text-destructive font-medium text-xs cursor-pointer"
+                                "h-9 items-center gap-1.5 px-3 rounded-lg bg-destructive/15 text-destructive font-medium text-xs cursor-pointer shrink-0"
                             } else {
-                                "h-9 items-center gap-2 px-3.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                                "h-9 items-center gap-1.5 px-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer shrink-0"
                             }
                             if .store.is_current_liked {
-                                icon (name: "heart", size: 15, style: "text-destructive fill-current")
-                                text "已收藏" {}
+                                row {
+                                    style: "items-center gap-1.5"
+                                    icon (name: "heart", size: 14, style: "text-destructive fill-current")
+                                    text "已收藏" {}
+                                }
                             } else {
-                                icon (name: "heart", size: 15)
-                                text "收藏歌曲" {}
+                                row {
+                                    style: "items-center gap-1.5"
+                                    icon (name: "heart", size: 14)
+                                    text "收藏歌曲" {}
+                                }
                             }
                         }
 
                         button {
                             onclick: .PlayPause
-                            style: "h-9 items-center gap-2 px-4 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer shadow-sm"
+                            style: "h-9 items-center gap-1.5 px-3.5 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer shadow-sm shrink-0"
                             if .store.is_playing {
-                                icon (name: "pause", size: 15)
-                                text "暂停" {}
+                                row {
+                                    style: "items-center gap-1.5"
+                                    icon (name: "pause", size: 14)
+                                    text "暂停" {}
+                                }
                             } else {
-                                icon (name: "play", size: 15)
-                                text "播放" {}
+                                row {
+                                    style: "items-center gap-1.5"
+                                    icon (name: "play", size: 14)
+                                    text "播放" {}
+                                }
                             }
                         }
 
                         button {
-                            style: "h-9 items-center gap-1.5 px-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                            style: "h-9 items-center gap-1.5 px-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer shrink-0"
                             icon (name: "sliders-horizontal", size: 14)
                             text "音效" {}
                         }
 
                         button {
                             onclick: .SwitchToTracklist
-                            style: "h-9 items-center gap-1.5 px-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                            style: "h-9 items-center gap-1.5 px-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer shrink-0"
                             icon (name: "list-music", size: 14)
                             text "歌单" {}
                         }
