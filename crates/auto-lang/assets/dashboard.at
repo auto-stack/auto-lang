@@ -1,0 +1,123 @@
+// dashboard overlay pack（特权 .at App —— 宿主进程内编译装载，不进
+// examples/ui；PLAN-024 T-03/T-04——设置面板退役后的第四 overlay 槽继任，
+// 通知层邻位顶层）。
+//
+// 形态：dock Dashboard 钮召唤的小组件面板——顶部居中浮层（宽 ≤920px），
+// 3 列网格直显各 App 的 `view mini` 活渲染面。面板 chrome（scrim + 底板
+// + 标题行）在本文件；face 卡的格位几何由宿主计算（单一事实在宿主），
+// 经 `__panel_*` px 注入镜像（notification __panel_max_h 同型）；face
+// 视图本身由宿主拆借渲染叠合（活渲染面），不经本 App——事件带各自
+// app 标签直达该 App 会话，face 内交互零中转。
+//
+// 接缝（协议 v1.8，schema/projection-protocol-v1.md）：
+//   出：`__dashboard_cmd`（`dashboard_close`；编辑动词 pin/unpin/span/
+//       launch 在 T-05 编辑 popover 落地）
+//   入：召唤/活更新注入——face_ids/face_titles/face_icons/face_statuses/
+//       face_spans 平行字符串列表（B12：handler 字段读 Obj 数组失效，
+//       notification face_ids 同型规避）、`__dashboard_faces`（合同面
+//       Obj 数组，声明不 handler 消费）、`__panel_w/__panel_h/__panel_top`
+//       （宿主几何注入，px）、`hosted`/`visible`。
+// 关闭模型（PLAN-012 W2 同型）：× / 点面板外（scrim）/ Esc 三路径。
+// 消费者唯一：宿主 renderer 的 dashboard_toggle / refresh_dashboard_panel
+// / dashboard 键盘订阅。
+widget DashboardPanel {
+    msg { Init, Escape, Close, RebuildFaces }
+
+    model {
+        // ---- 接缝状态（desktop 宿主注入）----
+        var visible str = "0"       // overlay 门控：宿主召唤置 "1"
+        var hosted str = "0"        // 宿主挂载时写 "1"
+        var __dashboard_cmd str = "" // 协议 v1.8 上行命令总线（dashboard_close 等）
+        var __dashboard_faces = []  // 协议 v1.8 合同面（声明不 handler 消费）
+
+        // ---- 面板几何（宿主注入，px——单一事实在宿主，本面镜像）----
+        var __panel_w int = 920
+        var __panel_h int = 320
+        var __panel_top int = 64
+
+        // ---- face 快照（宿主注入平行字符串列表；B12 规避）----
+        var face_ids = []
+        var face_titles = []
+        var face_icons = []
+        var face_statuses = []      // running | hatched | placeholder
+        var face_spans = []         // "1" | "2"
+
+        // ---- 面板状态（handler 自建 rows；view 条件消费）----
+        var rows = []
+        var nrows int = 0
+    }
+
+    view {
+        if .visible == "1" {
+            // ---- 打开态：scrim 外点关闭（N6d 模式，通知中心同型）+
+            // 顶部居中面板（switcher items-center 同机制；贴顶由宿主
+            // 注入 __panel_top px 精确镜像 face 格位算式）----
+            mouse-area (onclick: .Close) {
+                style: "w-full h-full"
+                row {
+                    style: "w-full h-full justify-center items-start"
+                    mouse-area (onclick: .Close) {
+                        // 卡片守卫（PLAN-010 N6d 幂等动作吞内点）+
+                        // 贴顶 gap（宿主注入 px）。
+                        style: "mt-[${.__panel_top}px]"
+                        col {
+                            // glass 三件套（bg-card/80 + 细边框 + 柔影，
+                            // stella dashboard 骨架同源）。
+                            style: "bg-card/80 border rounded-xl shadow-xl overflow-hidden w-[${.__panel_w}px] h-[${.__panel_h}px]"
+
+                            // 标题行：Dashboard + × 关闭
+                            row {
+                                style: "w-full justify-between items-center px-4 pt-3"
+                                text "Dashboard" { style: "text-foreground text-sm font-medium" }
+                                button (onclick: .Close) {
+                                    text { "×" }
+                                }
+                            }
+
+                            // 网格区：face 由宿主拆借渲染按格位叠合，
+                            // 本层留白（面板高度由宿主按行数注入）。
+                            col {
+                                style: "w-full p-4"
+                                if .nrows == 0 {
+                                    col {
+                                        style: "flex items-center py-8 w-full"
+                                        text "No widgets" { style: "text-muted-foreground text-sm" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // ---- 隐藏态：透明空层（不挡桌面点击；装配层仅 visible 时推层）----
+            col {
+                style: "w-full h-full"
+            }
+        }
+    }
+
+    bind {
+        "Escape" -> .Escape
+    }
+
+    on {
+        .Init -> {
+            .hosted = "1"
+            .visible = "0"
+        }
+        .Close -> {
+            // 宿主臂 drain 后统一裁决（写 storage/重注入），本地先自隐
+            // ——同一消息周期内 visible=0 + 宿主 refresh 幂等。
+            .__dashboard_cmd += "dashboard_close\n"
+            .visible = "0"
+        }
+        .Escape -> {
+            .__dashboard_cmd += "dashboard_close\n"
+            .visible = "0"
+        }
+        .RebuildFaces -> {
+            .nrows = .rows.len()
+        }
+    }
+}

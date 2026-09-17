@@ -9489,6 +9489,362 @@ fn toggle_notification_center(
     iced::Task::none()
 }
 
+// ============================================================================
+// PLAN-024：dashboard 面板（第四 overlay 槽——设置面板退役后继任；通知层
+// 邻位顶层）。面板 chrome = dashboard.at 特权面（懒挂载）；face 卡 = 各
+// App `view mini` 命名视图的宿主拆借渲染（活渲染面，DM::App 打标直达该
+// App 会话）。配置 `shell.dashboard.*` storage（§5.6：面板 Init 读回 +
+// 宿主注入两段式，单一事实在宿主侧读回）。
+// ============================================================================
+
+/// dashboard 面板布局常量（stella 骨架比例简化：等宽 3 列起步，span 表达
+/// 宽卡）。宿主计算单一事实，面板 .at 经 `__panel_*` 注入镜像；face 格位
+/// 由同一算式产出（像素级一致，零漂移）。
+const DASH_COLS: usize = 3;
+const DASH_CELL_H: f32 = 132.0;
+const DASH_GAP: f32 = 12.0;
+const DASH_PAD: f32 = 16.0;
+const DASH_HEADER_H: f32 = 48.0;
+const DASH_PANEL_MAX_W: f32 = 920.0;
+
+/// face 卡片（格位算式输入）：registry id + 列跨度。
+struct DashFace {
+    id: String,
+    title: String,
+    icon: String,
+    status: &'static str, // running | hatched | placeholder
+    span: usize,
+}
+
+/// 面板布局算式（宿主/面板几何单一事实）——返回 (panel_w, panel_h,
+/// panel_top, 每张 face 的视口绝对格位矩形，行主序 next-fit：span 大于
+/// 余量即换行)。面板 = 顶部居中（x 居中，top 注入）；高 = 标题行 + 行数
+/// ×格高 + (行数+1)×gap + 2×pad。
+fn dashboard_layout(
+    viewport: iced::Rectangle,
+    faces: &[DashFace],
+) -> (f32, f32, f32, Vec<iced::Rectangle>) {
+    let panel_w = DASH_PANEL_MAX_W.min(viewport.width - 32.0).max(320.0);
+    let inner_w = panel_w - 2.0 * DASH_PAD;
+    let cell_w = (inner_w - (DASH_COLS as f32 - 1.0) * DASH_GAP) / DASH_COLS as f32;
+    // 行主序 next-fit 装箱（span ∈ 1..=3；越界 clamp——storage 坏值防御）。
+    let mut cells = Vec::with_capacity(faces.len());
+    let mut col = 0usize;
+    let mut row = 0usize;
+    for f in faces {
+        let span = f.span.clamp(1, DASH_COLS).min(DASH_COLS - col).max(1);
+        let x = DASH_PAD + col as f32 * (cell_w + DASH_GAP);
+        let y = DASH_PAD + row as f32 * (DASH_CELL_H + DASH_GAP);
+        let w = span as f32 * cell_w + (span as f32 - 1.0) * DASH_GAP;
+        cells.push(iced::Rectangle {
+            x,
+            y,
+            width: w,
+            height: DASH_CELL_H,
+        });
+        col += span;
+        if col >= DASH_COLS {
+            col = 0;
+            row += 1;
+        }
+    }
+    let rows = if faces.is_empty() {
+        0
+    } else if col > 0 {
+        row + 1 // 末行有内容未换行
+    } else {
+        row
+    };
+    let panel_h = if faces.is_empty() {
+        (DASH_HEADER_H + DASH_PAD + 64.0).clamp(160.0, viewport.height - 96.0)
+    } else {
+        DASH_HEADER_H + rows as f32 * (DASH_CELL_H + DASH_GAP) + DASH_PAD
+    };
+    let panel_top = 64.0_f32.min((viewport.height - panel_h).max(8.0));
+    let panel_x = (viewport.width - panel_w) / 2.0;
+    // 绝对格位 = 面板原点 + 内部坐标。
+    let cells = cells
+        .into_iter()
+        .map(|r| iced::Rectangle {
+            x: r.x + panel_x,
+            y: r.y + panel_top,
+            width: r.width,
+            height: r.height,
+        })
+        .collect();
+    (panel_w, panel_h, panel_top, cells)
+}
+
+/// `shell.dashboard.enabled`（csv）读回——None = 未配置（首次召唤自动
+/// 纳入全部候选，§5.6 默认策略）；Some = 用户显式清单（单一事实）。
+fn dashboard_enabled_list() -> Option<Vec<String>> {
+    crate::vm::ffi::stdlib::storage_host_read("shell.dashboard.enabled")
+        .map(|csv| csv.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+}
+
+/// `shell.dashboard.span.<id>` 读回（"1"|"2"，坏值/缺席 = 1）。
+fn dashboard_span_of(id: &str) -> usize {
+    match crate::vm::ffi::stdlib::storage_host_read(&format!("shell.dashboard.span.{id}")) {
+        Some(v) if v.trim() == "2" => 2,
+        _ => 1,
+    }
+}
+
+/// face 候选清单推导（§5.3 两级）：①注册表全量扫 `view mini` 文本探测
+/// （grep 级，含未运行——占位卡/孵化判定输入）；②会话确认——有会话者
+/// 以 `has_named_view("mini")` 精确生效（文本误报兜底）。产出按注册表序。
+fn dashboard_face_candidates(state: &mut crate::ui::session::DesktopSession) -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    for entry in state.desktop.registry_entries.iter() {
+        // ①文本探测：resolver 直读源（registry_entries 不携带源码）。
+        let has_mini = state
+            .desktop
+            .app_resolver
+            .as_ref()
+            .and_then(|r| r(&entry.id))
+            .map(|spec| spec.code.contains("view mini"))
+            .unwrap_or(false);
+        if has_mini {
+            out.push((entry.id.clone(), entry.title.clone(), entry.icon.clone()));
+        }
+    }
+    out
+}
+
+/// 注册表 id → 活会话 AppId（有窗运行中：vwin.registry_id 反查）。
+fn dashboard_running_app(state: &crate::ui::session::DesktopSession, id: &str) -> Option<crate::ui::session::AppId> {
+    let host = state.host.as_ref()?;
+    for v in host.wm.wins.values() {
+        if v.registry_id.as_deref() == Some(id) {
+            return Some(v.app);
+        }
+    }
+    None
+}
+
+/// view 侧 faces 清单（装配层消费）——只读面板注入的平行快照（零源
+/// 扫描/零文件 IO），重构 DashFace 供 [`dashboard_layout`] 同算式复算
+/// 格位。面板未挂载/快照空 → 空。
+fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<DashFace> {
+    let Some(panel) = state.desktop.dashboard_app else {
+        return Vec::new();
+    };
+    let Some(app) = state.apps.get(&panel) else {
+        return Vec::new();
+    };
+    let read_vec = |key: &str| -> Vec<String> {
+        match app.component.read_state(key) {
+            Ok(auto_val::Value::Array(vals)) => vals
+                .into_iter()
+                .map(|v| match v {
+                    auto_val::Value::Str(s) => s.to_string(),
+                    other => format!("{other:?}"),
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    };
+    let ids = read_vec("face_ids");
+    if ids.is_empty() {
+        return Vec::new();
+    }
+    let titles = read_vec("face_titles");
+    let icons = read_vec("face_icons");
+    let statuses = read_vec("face_statuses");
+    let spans = read_vec("face_spans");
+    ids.iter()
+        .enumerate()
+        .map(|(i, id)| DashFace {
+            id: id.clone(),
+            title: titles.get(i).cloned().unwrap_or_else(|| id.clone()),
+            icon: icons.get(i).cloned().unwrap_or_else(|| "app-window".into()),
+            status: match statuses.get(i).map(|s| s.as_str()) {
+                Some("running") => "running",
+                Some("hatched") => "hatched",
+                _ => "placeholder",
+            },
+            span: spans
+                .get(i)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(1),
+        })
+        .collect()
+}
+
+
+/// dashboard 面板 faces 快照注入（召唤 + 打开期间活更新同体）：
+/// 孵化臂（无会话 + 无后端 → windowless mini 会话）+ 平行列表注入 +
+/// `__dashboard_faces` 合同面 + 几何 px 注入 + RebuildFaces。
+fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
+    let Some(panel) = state.desktop.dashboard_app else {
+        return;
+    };
+    if !state.dashboard_visible() {
+        return;
+    }
+    // 1. 候选 + 配置清单 + 会话/孵化三态解析。
+    let candidates = dashboard_face_candidates(state);
+    let enabled_cfg = dashboard_enabled_list();
+    let mut faces: Vec<DashFace> = Vec::new();
+    for (id, title, icon) in candidates {
+        // 配置门：显式清单单一事实；未配置 = 全纳入（默认策略）。
+        if let Some(list) = &enabled_cfg {
+            if !list.iter().any(|s| s == &id) {
+                continue;
+            }
+        }
+        let status = if dashboard_running_app(state, &id).is_some() {
+            "running"
+        } else if state.hatched_mini_of(&id).is_some() {
+            "hatched"
+        } else {
+            // ②静默孵化臂（D4）：无后端依赖才孵化；有后端 = 占位卡。
+            match state.hatch_mini_app(&id) {
+                Ok(Some(app_id)) => {
+                    state.register_hatched_mini(&id, app_id);
+                    "hatched"
+                }
+                _ => "placeholder",
+            }
+        };
+        faces.push(DashFace {
+            id,
+            title,
+            icon,
+            status,
+            span: 0,
+        });
+    }
+    for f in faces.iter_mut() {
+        f.span = dashboard_span_of(&f.id);
+    }
+
+    // 2. 几何（宿主单一事实）+ 注入。
+    let viewport = state.host_viewport();
+    let (panel_w, panel_h, panel_top, _cells) = dashboard_layout(viewport, &faces);
+
+    // 3. 快照注入（平行列表 + 合同面 + 几何）。
+    let mut ids: Vec<auto_val::Value> = Vec::new();
+    let mut titles: Vec<auto_val::Value> = Vec::new();
+    let mut icons: Vec<auto_val::Value> = Vec::new();
+    let mut statuses: Vec<auto_val::Value> = Vec::new();
+    let mut spans: Vec<auto_val::Value> = Vec::new();
+    let mut objs: Vec<auto_val::Value> = Vec::new();
+    for f in &faces {
+        ids.push(auto_val::Value::Str(f.id.clone().into()));
+        titles.push(auto_val::Value::Str(f.title.clone().into()));
+        icons.push(auto_val::Value::Str(f.icon.clone().into()));
+        statuses.push(auto_val::Value::Str(f.status.into()));
+        spans.push(auto_val::Value::Str(f.span.to_string().into()));
+        objs.push(auto_val::Value::Str(f.id.clone().into()));
+    }
+    if let Some(app) = state.apps.get_mut(&panel) {
+        let _ = app.component.write_state_vec("face_ids", ids);
+        let _ = app.component.write_state_vec("face_titles", titles);
+        let _ = app.component.write_state_vec("face_icons", icons);
+        let _ = app.component.write_state_vec("face_statuses", statuses);
+        let _ = app.component.write_state_vec("face_spans", spans);
+        let _ = app.component.write_state("__dashboard_faces", auto_val::Value::Array(auto_val::Array::from(objs)));
+        let _ = app
+            .component
+            .write_state("__panel_w", auto_val::Value::Int(panel_w as i32));
+        let _ = app
+            .component
+            .write_state("__panel_h", auto_val::Value::Int(panel_h as i32));
+        let _ = app
+            .component
+            .write_state("__panel_top", auto_val::Value::Int(panel_top as i32));
+        if let Err(err) = app.component.bridge_mut().call_handler("RebuildFaces", &[]) {
+            eprintln!("[session] dashboard RebuildFaces failed: {err}");
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+}
+
+/// PLAN-024：dashboard 面板开合执行体（dock 钮 / Esc / × / scrim 同落；
+/// 二态翻转——可见再召唤即关）。懒挂载：首次召唤编译装载 dashboard.at
+/// （switcher/通知同型），召唤即 faces 快照注入（含静默孵化臂）。
+fn toggle_dashboard(
+    state: &mut crate::ui::session::DesktopSession,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // 1. 懒挂载
+    if state.desktop.dashboard_app.is_none() {
+        match crate::ui::shell::build_dashboard_component() {
+            Ok(comp) => {
+                let app_id = state.allocate_app(comp);
+                state.desktop.dashboard_app = Some(app_id);
+            }
+            Err(err) => {
+                push_notification(state, "error", &format!("dashboard 装载失败: {err}"));
+                return iced::Task::none();
+            }
+        }
+    }
+    // 2. toggle：可见 → 自隐。
+    if state.dashboard_visible() {
+        close_dashboard(state);
+        return iced::Task::none();
+    }
+    // 3. 打开：visible 置位 + faces 快照注入（孵化/几何/平行列表）。
+    let panel = state.desktop.dashboard_app.expect("dashboard mounted");
+    if let Some(app) = state.apps.get_mut(&panel) {
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    refresh_dashboard_panel(state);
+    iced::Task::none()
+}
+
+/// PLAN-024：dashboard 面板关闭执行体（× / scrim / Esc / 再点 dock 钮
+/// 四路径同一入口；孵化会话常驻不回收——notification 槽先例）。
+fn close_dashboard(state: &mut crate::ui::session::DesktopSession) {
+    if let Some(panel) = state.desktop.dashboard_app {
+        if let Some(app) = state.apps.get_mut(&panel) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("0"));
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+    }
+}
+
+/// PLAN-024 T-05：面板编辑——纳入/移除（storage `shell.dashboard.enabled`
+/// csv 直写 + 面板活刷新）。首次显式编辑把「未配置」升级为「显式清单」
+/// （默认全纳入 → 以编辑后清单为单一事实）。
+fn dashboard_set_pinned(state: &mut crate::ui::session::DesktopSession, id: &str, pin: bool) {
+    let mut list = dashboard_enabled_list().unwrap_or_default();
+    // 未配置态的首次编辑：以当前候选清单为底（全纳入），再做增量。
+    if !dashboard_enabled_list_from_storage() {
+        list = dashboard_face_candidates(state)
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+    }
+    if pin {
+        if !list.iter().any(|s| s == id) {
+            list.push(id.to_string());
+        }
+    } else {
+        list.retain(|s| s != id);
+    }
+    crate::vm::ffi::stdlib::storage_host_publish("shell.dashboard.enabled", list.join(","));
+    refresh_dashboard_panel(state);
+}
+
+/// `shell.dashboard.enabled` 是否已在 storage 显式配置。
+fn dashboard_enabled_list_from_storage() -> bool {
+    crate::vm::ffi::stdlib::storage_host_read("shell.dashboard.enabled").is_some()
+}
+
+/// PLAN-024 T-05：面板编辑——列跨度（storage `shell.dashboard.span.<id>`
+/// 直写 + 面板活刷新）。
+fn dashboard_set_span(state: &mut crate::ui::session::DesktopSession, id: &str, span: u8) {
+    let span = span.clamp(1, 2);
+    crate::vm::ffi::stdlib::storage_host_publish(
+        &format!("shell.dashboard.span.{id}"),
+        span.to_string(),
+    );
+    refresh_dashboard_panel(state);
+}
+
 /// Plan 551：⚙️/open_settings 的 launch-or-focus 靶 = os-config 统一设置
 /// 中心（501 相邻仓扫描 id `os-config`，pac `daemon: autoos` → launch 臂
 /// ensure daemon）。540 的 045-desktop-settings 设置窗随方向纠正退役
@@ -9974,6 +10330,15 @@ fn execute_desktop_commands(
             // Plan 540 T7：open_settings（齿轮/菜单）——launch-or-focus
             // 设置窗（execute_open_settings）。
             DC::OpenSettings => execute_open_settings(state),
+            // PLAN-024 v1.8：dashboard 面板开合/编辑/launch 执行臂。
+            DC::DashboardToggle => {
+                tasks.push(toggle_dashboard(state));
+            }
+            DC::DashboardClose => close_dashboard(state),
+            DC::DashboardPin(app) => dashboard_set_pinned(state, &app, true),
+            DC::DashboardUnpin(app) => dashboard_set_pinned(state, &app, false),
+            DC::DashboardSpan(app, span) => dashboard_set_span(state, &app, span),
+            DC::DashboardLaunch(app) => execute_launch_app(state, &app),
             // Plan 487 M4：dock 几何驱动动词（I7：热改 dock_edges + relayout
             // + storage 写回；执行体见下）。
             DC::SetDockPosition(top) => execute_set_dock_position(state, top),
@@ -12822,6 +13187,8 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     // inject_dock_pinned 为 pin/unpin 即时臂，两写者同形幂等）。
     // 借序：构建须在 apps.get_mut 借用期之前。
     let dock_pinned = dock_pinned_objs(state);
+    // PLAN-024 v1.8 借序：dashboard 可见性判定位同样先于 get_mut 读取。
+    let dashboard_visible = state.dashboard_visible();
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
         None => return,
@@ -12861,6 +13228,11 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app
         .component
         .write_state("__wm_showdesk", auto_val::Value::str(if showdesk_on { "1" } else { "" }));
+    // PLAN-024 v1.8：__wm_dashboard 可见性投影（"1"/""；dock Dashboard 钮
+    // 打开态高亮判据——__wm_showdesk 同型标量；面板自隐后随指纹差分翻转）。
+    let _ = app
+        .component
+        .write_state("__wm_dashboard", auto_val::Value::str(if dashboard_visible { "1" } else { "" }));
     // PLAN-012 F2 复验：布局名标量投影——任务栏布局钮（grid/master-stack）
     // 高亮判据（等式消费；同 __wm_settings_open 模式。布局切换翻 meta 段
     // → 指纹重写随写同步；free = 两钮均不亮 = 手动排布态）。
@@ -17402,6 +17774,89 @@ fn compare_pngs(
                 };
                 layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
             }
+            // PLAN-024：dashboard overlay 层（通知层邻位顶层——设置面板
+            // 退役后的第四 overlay 槽继任；仅 visible 时推层，switcher/
+            // 通知同款语义）。face 卡（各 App `view mini` 活渲染面）按
+            // 宿主格位算式叠合在同一 Stack（chrome 层 + face 子层，§5.2
+            // 预案形态），事件按 app 打标直达各会话。
+            if state.dashboard_visible() {
+                let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
+                let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
+                let dash_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] dashboard 缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] dashboard view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                let mut children: Vec<iced::Element<'_, DM>> = Vec::new();
+                children.push(dash_client.map(move |m| DM::App(dash_app, m)));
+                // face 叠合：读面板注入的平行快照（view 侧零源扫描/零
+                // 文件 IO——refresh_dashboard_panel 已算好），格位由同一
+                // 布局算式产出（像素一致）。
+                let faces_view = dashboard_faces_for_view(state);
+                if !faces_view.is_empty() {
+                    let viewport = state.host_viewport();
+                    let (_pw, _ph, _pt, cells) = dashboard_layout(viewport, &faces_view);
+                    for (f, rect) in faces_view.iter().zip(cells.iter()) {
+                        let Some(app_id) = (match f.status {
+                            "running" => dashboard_running_app(state, &f.id),
+                            "hatched" => state.hatched_mini_of(&f.id),
+                            _ => None,
+                        }) else {
+                            continue;
+                        };
+                        let build_face =
+                            || state.split_ref_face(app_id, "mini").map(|v| dynamic_view(v, false));
+                        let face_el: iced::Element<'_, IcedMessage> = match
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(build_face))
+                        {
+                            Ok(Some(el)) => el,
+                            Ok(None) => iced::widget::text("").size(1).into(),
+                            Err(payload) => {
+                                eprintln!(
+                                    "[session] face view panicked (plan-453 T6 boundary): {payload:?}"
+                                );
+                                desktop_crash_element()
+                            }
+                        };
+                        // face 事件打标直达该 app 会话（vwin 同型——格位
+                        // 内输入/交互零中转）。
+                        let face_client = face_el.map(move |m| DM::App(app_id, m));
+                        // 定位链：外层全幅 + padding=格位原点（像素精确落位，
+                        // 左上对齐）→ 内层固定宽高卡片容器（chrome）→ face。
+                        let card = iced::widget::container(face_client)
+                            .width(iced::Length::Fixed(rect.width))
+                            .height(iced::Length::Fixed(rect.height))
+                            .style(|_t| iced::widget::container::Style {
+                                border: iced::Border {
+                                    color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.35),
+                                    width: 1.0,
+                                    radius: 12.0.into(),
+                                },
+                                ..Default::default()
+                            });
+                        let placed = iced::widget::container(card)
+                            .align_x(iced::alignment::Horizontal::Left)
+                            .align_y(iced::alignment::Vertical::Top)
+                            .padding(iced::Padding {
+                                top: rect.y,
+                                left: rect.x,
+                                right: 0.0,
+                                bottom: 0.0,
+                            })
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill);
+                        children.push(placed.into());
+                    }
+                }
+                layers.push(
+                    iced::widget::Stack::with_children(children).into(),
+                );
+            }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
         let Some(app_id) = state.app_of_window(&window) else {
@@ -17594,6 +18049,25 @@ fn compare_pngs(
             if state.is_desktop() && state.notification_visible() {
                 if let (Some(panel), Some(host)) =
                     (state.desktop.notification_app, state.host.as_ref())
+                {
+                    if let Some(app) = state.apps.get(&panel) {
+                        let bindings = app.component.key_bindings().clone();
+                        subs.push(keyboard_subscription_ext(
+                            panel,
+                            host.window,
+                            bindings,
+                            true,
+                            true,
+                            true,
+                        ));
+                    }
+                }
+            }
+            // PLAN-024：dashboard 面板的键盘订阅（通知块同型第五块；
+            // Esc 关面板——bind "Escape" → .Escape，幂等由 visible 门控）。
+            if state.is_desktop() && state.dashboard_visible() {
+                if let (Some(panel), Some(host)) =
+                    (state.desktop.dashboard_app, state.host.as_ref())
                 {
                     if let Some(app) = state.apps.get(&panel) {
                         let bindings = app.component.key_bindings().clone();
@@ -17833,6 +18307,26 @@ fn dynamic_view_impl(
     sync_mcp: bool,
     round_bottom: bool,
 ) -> iced::Element<'_, IcedMessage> {
+    // PLAN-024：face（命名视图活渲染面）渲染分支——dashboard 面板的格位
+    // 直显。与主视图管线完全分离：不走 app 级 dirty/cached 缓存（与该 app
+    // 主窗的渲染缓存互不踩踏）、不做 MCP 同步、不碰 DevTools 捕获——每帧
+    // 经 view_named 新鲜构建（与 app 主窗共享同一 component/VM 桥，状态
+    // 一致即视觉一致 = 活渲染面本体）。面板关闭即不推 face 层（装配层
+    // 门控），重建成本只在面板打开期发生（§10.4 度量点留 T-08）。
+    if let Some(face_name) = state.view_name {
+        let mut path: Vec<usize> = Vec::new();
+        return match state.component.view_named(face_name) {
+            Some(view) => {
+                let converted = convert_view_messages(view);
+                render_dynamic_view(converted, None, &mut path)
+            }
+            None => iced::widget::text(format!(
+                "[dashboard] face `{face_name}` missing"
+            ))
+            .size(14)
+            .into(),
+        };
+    }
 
     // Plan 309 续篇 II: set the single INSPECT_CAPTURE flag read by
     // `into_iced` + `wrap_debug` during this build. Plain click/hover =

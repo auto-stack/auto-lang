@@ -96,6 +96,9 @@ widget Desktop {
         // PLAN-012 v1.6：通知面板可见性（"1"/""；宿主 overlay 组件直读
         // 投影——铃铛打开态高亮唯一事实源，外点/×/Esc 自隐后同步翻转）。
         var __wm_notes_visible str = ""
+        // PLAN-024 v1.8：dashboard 面板可见性投影（"1"/""——dock Dashboard 钮
+        // 打开态高亮判据；__wm_notes_visible 同型）。
+        var __wm_dashboard str = ""
         var __wm_meta str = ""
         var __wm_fp str = ""
         var __wm_notes = []            // 协议 v1.2 合同面（dock 不直接消费）
@@ -472,6 +475,17 @@ widget Desktop {
                             }
                         }
                     }
+                    // PLAN-024 v1.8：Dashboard 钮（widgets-gallery 小组件字形；协议
+                    // v1.8 dashboard_toggle 无参动词；宿主臂二态翻转——面板
+                    // 可见再点即关）。两态判据 = __wm_dashboard 投影。
+                    button (icon: "iconfile:widgets-gallery", variant: "ghost") {
+                        onclick: .DashboardToggle
+                        style: if .__wm_dashboard == "1" {
+                            "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
+                        } else {
+                            "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+                        }
+                    }
                     // Plan 487 M4：设置齿轮（v1.4 open_settings 无参动词；
                     // 宿主臂二态翻转——面板可见再点即关）。
                     // PLAN-012 W7：齿轮两态——判据 = `__wm_settings_open`
@@ -595,6 +609,9 @@ widget Desktop {
         // Plan 479 T4：通知中心开关（协议 v1.2 无参动词；宿主臂落
         // toggle_notification_center 执行体——开面板即未读清零）。
         .NotificationToggle -> { .__desktop_cmd = "notes_toggle" }
+        // PLAN-024 v1.8：dashboard 面板开合（dock Dashboard 钮；协议 v1.8
+        // 无参动词，宿主臂 toggle_dashboard 执行体——二态翻转）。
+        .DashboardToggle -> { .__desktop_cmd = "dashboard_toggle" }
         // Plan 486 v1.3：native 条目聚焦/关闭（arg 直传 wid "N<slot>"，
         // 宿主 parse 剥 N 前缀取 slot id——shell 零字符串加工）。
         .NativeFocus(wid) -> { .__desktop_cmd = "focus_native\t" + wid; .win_menu = "" }
