@@ -4949,13 +4949,22 @@ impl Codegen {
 
         // Plan 317: Register the module name so codegen knows `db.func()`
         // is a cross-module call (generates CALL with reloc "db.func").
+        // PLAN-633: `use auto.X`（原生命名空间导入）不得把原生根 "auto" 注册
+        // 为文件模块——否则全库 `auto.*` native 调用（clipboard/fs/...）被
+        // is_auto_module_call 抢路由成交叉模块 CALL reloc，链接期 Undefined
+        // symbol（画廊宿主 031-image-viewer `use auto.image` 实证，011/027
+        // 的 dom.copy_text 连带炸）。末段照旧注册，保 Plan 347 同名库遮蔽。
         if !use_stmt.paths.is_empty() {
-            self.auto_modules.insert(use_stmt.paths[0].to_string());
-            // PLAN-013 T1: file-module qualifier (single-path use, e.g.
-            // `use base64`) — the only shape that may shadow a native
-            // namespace of the same name at the import_scope arm.
-            if use_stmt.paths.len() == 1 {
-                self.file_modules.insert(use_stmt.paths[0].to_string());
+            let is_native_root_use =
+                use_stmt.paths.len() > 1 && use_stmt.paths[0].as_str() == "auto";
+            if !is_native_root_use {
+                self.auto_modules.insert(use_stmt.paths[0].to_string());
+                // PLAN-013 T1: file-module qualifier (single-path use, e.g.
+                // `use base64`) — the only shape that may shadow a native
+                // namespace of the same name at the import_scope arm.
+                if use_stmt.paths.len() == 1 {
+                    self.file_modules.insert(use_stmt.paths[0].to_string());
+                }
             }
         }
         // Plan 347: Also track the import qualifier (last path segment, e.g.
@@ -8349,13 +8358,20 @@ impl Codegen {
                         }
                     }
                 } else {
-                    // PLAN-053 P-053-4: merged 模式下 #[api] no-op 显式告警（一次性）
+                    // PLAN-053 P-053-4: merged 模式下 #[api] no-op 显式告警（一次性）。
+                    // PLAN-633: api 实现体已随 back 链扁平编译进本模块（导出存在，
+                    // 画廊内嵌/standalone merged 场景）→ 不发 no-op 桩，直落常规
+                    // 解析直调编译体（否则 no-op null 与真调用的栈序纠缠，返回值
+                    // 被吞——013 内嵌 list_todos 空列表实证）。导出缺席（api 体
+                    // 未装载）时保持 no-op 告警原语义。
                     if let Some(name) = func_name.as_ref() {
                         if matches!(call.name.as_ref(), Expr::Ident(_)) {
                             if let Some(api) = self.api_funcs.get(name).cloned() {
-                                self.emit_str_const_push(&api.fn_name);
-                                self.emit_call_nat_by_name("auto.vm.warn_api_noop", 1)?;
-                                self.emit(OpCode::POP);
+                                if !self.exports.contains_key(&api.fn_name) {
+                                    self.emit_str_const_push(&api.fn_name);
+                                    self.emit_call_nat_by_name("auto.vm.warn_api_noop", 1)?;
+                                    self.emit(OpCode::POP);
+                                }
                             }
                         }
                     }

@@ -11,7 +11,8 @@ use super::{Style, StyleClass, SizeValue, Color};
 // existing `iced_adapter::…` call sites.
 pub use super::theme::{
     accent_name, dark_mode, resolve_border_rgb, resolve_semantic_rgb, set_accent_name,
-    set_dark_mode, set_window_width, window_width,
+    set_dark_mode, set_window_width, set_window_height, window_width,
+    window_height,
 };
 
 // Plan 412 §1.3:降级必须"显式" — iced 物理不支持的能力(flex-wrap/self-*/order/

@@ -173,6 +173,20 @@ pub fn window_width() -> f32 {
     WINDOW_WIDTH.with(|c| c.get())
 }
 
+/// PLAN-020 T-00b: 窗口高度(逻辑 px),与 window_width 同规约——renderer
+/// 在 view() 前设值。窗口尺寸面(分屏矩形投影 px 类几何的标定源)。
+thread_local! {
+    static WINDOW_HEIGHT: std::cell::Cell<f32> = std::cell::Cell::new(768.0);
+}
+/// Set the current window height (called by renderer before rendering).
+pub fn set_window_height(h: f32) {
+    WINDOW_HEIGHT.with(|c| c.set(h));
+}
+/// Read the current window height.
+pub fn window_height() -> f32 {
+    WINDOW_HEIGHT.with(|c| c.get())
+}
+
 /// HSL → RGB conversion (for accent palettes).
 fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
     let h = h as f64 / 360.0;
@@ -335,6 +349,25 @@ pub fn resolve_border_rgb() -> (u8, u8, u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-020 T-00b:窗口尺寸面金样——height 与 width 同规约(线程局部
+    /// 全局,renderer 每帧 set;分屏矩形投影 px 类几何的标定源)。防回退:
+    /// 默认槽位值 + setter 往返。
+    #[test]
+    fn plan020_window_size_face_set_get_roundtrip() {
+        // thread_local 缺省槽位(与既有 width 缺省 1024 同代的合理值)。
+        let h0 = window_height();
+        assert!(h0 > 0.0, "window_height 缺省必须为正,实测 {h0}");
+        set_window_height(482.0);
+        assert_eq!(window_height(), 482.0);
+        set_window_height(h0);
+        assert_eq!(window_height(), h0);
+        // width 面既有行为锚定(防 T-00b 改动波及)。
+        let w0 = window_width();
+        set_window_width(802.0);
+        assert_eq!(window_width(), 802.0);
+        set_window_width(w0);
+    }
 
     fn rgb(color: Color) -> (u8, u8, u8) {
         resolve_semantic_rgb(&color).expect("semantic color must resolve")

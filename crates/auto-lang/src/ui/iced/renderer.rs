@@ -17457,11 +17457,14 @@ fn dynamic_view_impl(
         // Plan 370 D-GAP-4: materialize VmRef list fields (e.g. store.notes) to
         // inline Value::Array so the MCP snapshot/inspect tools can expand
         // `for` loops and evaluate `.len()` without VM heap access.
+        // PLAN-633: 状态采集移到本帧视图构建**之后**——挂载期子件 Init
+        // （画廊内嵌全栈 demo：Demo*.Init → store → #[api] → db 种子）在
+        // view 构建中派发并写根态，先采后建会把 Init 写入漏在本帧快照外，
+        // 且 view_dirty 门控使其后无再同步帧 → MCP 快照永久滞留挂载前空值
+        // （013 todos=[] 实证；白盒直读同刻为 4 条）。
+        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let state_vals = state.component.read_all_state_materialized();
         let input_map = state.component.input_state_map().clone();
-        // Plan 307 Task 18: MCP sync never needs the probe — capture_probe=false
-        // makes the returned probe a disabled no-op (zero probe overhead here).
-        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let view_template = Some(state.component.view_template().clone());
         // Plan 446 批一(J1 诊断层根因修复): styled_vtree 此前仅在
         // __bounds_collected 回路后设置,而 bounds 只在 view() 脏重建时请求
@@ -17540,6 +17543,9 @@ fn dynamic_view_impl(
     }
     // Plan 409 §10 续 11: 同步窗口宽度,供 VM builder 响应式布局(grid 列数)。
     crate::ui::style::iced_adapter::set_window_width(state.window_size.borrow().width);
+    // PLAN-020 T-00b: 高度随帧同步(window_size = 逻辑 px;分屏矩形投影
+    // 窗口尺寸面的消费源,与 width 同点同规约)。
+    crate::ui::style::iced_adapter::set_window_height(state.window_size.borrow().height);
     // PLAN-530 步骤2 表面追踪：view 重建时的宽度信号轨迹。
     if std::env::var("P530_TRACE").as_deref() == Ok("1") {
         let sz = state.window_size.borrow();

@@ -2244,3 +2244,9 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P020-D2 | low | 协议边界 | **native queue 臂键盘/滚轮/右键不路由、L3 StateSnapshot 注入 not-yet**（v1.6 边界随注）——input 族入覆盖集时同步补路由臂；StateSnapshot 融合态迁移需 typed 组件字段写回通道另立 | native_projector.rs on_input/on_control；desktop-protocol-v1.md §1.6 边界 |
 | P020-D3 | low | 生成器 | **async-init App 经孵化臂以 default() 态起**（初始化 API 加载不接协议 client 面）——超覆盖 App 的孵化形态缺省 auto→independent 可绕开，queue 档显式声明 async-init App 时启动态为空，待需要时立项 | rust_ui.rs wrap_example native_client_gate 随注 |
 | P020-D4 | low | 测试基建 | **桌面画布↔屏幕变换未文档化，OS 级点击自动化未打通**（DPI 2x + canvas 缩放系数非恒定——ui_desktop 真机冒烟三次坐标假设均未命中窗内按钮）；窗内点击/× 关闭的 GUI 级自动化待 acceptance channel 增 pointer verb（现仅 bus/handler），期间点击闭环/回收由协议级 p020_native_exe_arm 承载 | mcp_server.rs autoui_desktop；scripts/smoke-020-native-exe.sh（os 仓）随注 |
+
+## 2026-09-17 增补（PLAN-633 复审登记）
+
+- **P633-D1 [MCP typing→onenter 通路按键静默丢失（harness 工件，P632-R3 同族）]**：实机驱动 type_text 后 keyboard("Enter") 不触发 input 的 onenter（632 T-04 press_until 同族观察）。产品 onenter/on_submit 绑定本身健在（白盒 write_path + fixture trigger 直发 AddTodo 全链路 12/12 锁定写路径；input 双向绑定 on_change 正常）。验收驱动一律走 fixture trigger 或元素 action，避免依赖 typing 提交。引用：`target/p633/drive.py` add 流程注记；PLAN-632 §9 R632-3。
+- **P633-D2 [画廊视口徽标外观不一致（非阻塞）]**：AppViewport 工具栏"• 运行中/• 静态说明"徽标按 Vue 臂 loadable 语义取值——fullstack 内嵌档（013/015）显示"静态说明"但实际可交互。候选微修：VM 臂单独提示或 registry 增列（涉及 registry.at schema 契约，另议）。引用：`auto-man/src/vue.rs` write_registry_at 注记；ui-gallery app.at 徽标行。
+- **P633-D3 [test_gen_015_notes_rust 写穿 tracked 示例产物（存量卫生债）]**：`cargo nextest run -p auto-man` 会以当前生成器输出刷新 `examples/rust-workspace/015-notes/{Cargo.toml,src/main.rs}`（once_cell/mem_guard 模板演进 vs 仓内陈旧产物），留下与本计划无关的脏 diff。建议：测试改写临时目录或提交一次产物基线。引用：`rust_ui.rs:3240` test_gen_015_notes_rust。

@@ -150,6 +150,12 @@ fn types_are_compatible(expected: &Type, found: &Type) -> bool {
             types_are_compatible(k1, k2) && types_are_compatible(v1, v2)
         }
         (Type::Slice(a), Type::Slice(b)) => types_are_compatible(&a.elem, &b.elem),
+        // PLAN-633: 定长数组字面量对 slice 字段可协变——`Note { tags: ["a"] }`
+        // 对 `[]str` 字段，字面量推断为 Array(str, N)；core 场景（standalone
+        // back/）不做字面量域校验，UI 场景（画廊宿主内嵌 demos）却在此拒绝，
+        // 导致 back 语料仅在宿主启动期报 field type mismatch。运行时本就按
+        // 定长→slice 形态执行，校验补齐即可。
+        (Type::Slice(a), Type::Array(b)) => types_are_compatible(&a.elem, &b.elem),
         (Type::Reference(a), Type::Reference(b)) => types_are_compatible(a, b),
         (Type::Option(a), Type::Option(b)) => types_are_compatible(a, b),
         (Type::Result(a), Type::Result(b)) => types_are_compatible(a, b),

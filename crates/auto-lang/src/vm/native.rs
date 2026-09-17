@@ -23,6 +23,8 @@ use crate::vm::ffi::term_engine::{
     shim_term_backlog_paused, shim_term_backlog_pending_mb, shim_term_backlog_take_alerts,
     shim_term_cursor_col, shim_term_cursor_row, shim_term_free, shim_term_interrupt,
     shim_term_is_exited, shim_term_menu_take, shim_term_pump_for, shim_term_pump_input,
+    // PLAN-020 T-00b:窗口尺寸面 shim(auto.term.window_width/height)。
+    shim_term_window_height, shim_term_window_width,
     shim_term_resize, shim_term_rows, shim_term_rows_for, shim_term_spawn,
     shim_term_spawn_ex, shim_term_viewport_cols, shim_term_viewport_rows,
     shim_term_write_line,
