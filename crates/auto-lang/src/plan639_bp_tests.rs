@@ -157,3 +157,46 @@ fn t04_vue_track_emits_imported_bp() {
         result.vue_code
     );
 }
+
+/// AC-04 vue 轨：pac.at `ui_config:` 外挂配置（Plan 418 形态）经 T-05 桥接
+/// 驱动 Plan 451 menubar/toolbar 合成 + 快捷键 keymap——与 VM 桌面轨同一份
+/// 命令系统声明（jade-web 无命令系统根因的补齐面）。
+#[test]
+fn t05_vue_track_synth_menubar_from_ui_config() {
+    let Some(app_at) = fixture_app_at() else {
+        eprintln!("[SKIP] 046-bp-import fixture not found");
+        return;
+    };
+    let result = crate::ui_gen::generate_component_from_file(
+        &app_at,
+        crate::ui_gen::ComponentGenOptions::default(),
+    )
+    .expect("bp-import host with ui_config must generate");
+    crate::drain_store_extra_files();
+
+    assert!(
+        result.vue_code.contains("<MenubarMenu value=\"file\">"),
+        "ui_config menubar must synthesize MenubarMenu; code:
+{}",
+        result.vue_code
+    );
+    assert!(
+        result.vue_code.contains("新建"),
+        "ui_config action titles must reach the menubar; code:
+{}",
+        result.vue_code
+    );
+    assert!(
+        result.vue_code.contains("Ctrl+n"),
+        "ui_config shortcuts must reach the keymap; code:
+{}",
+        result.vue_code
+    );
+    assert!(
+        result.vue_code.contains("px-2 py-1 gap-1 border-b"),
+        "ui_config toolbar placeholder must synthesize the toolbar surface; code:
+{}",
+        result.vue_code
+    );
+}
+

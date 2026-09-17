@@ -5,10 +5,29 @@
 use bps.form.login.reference.minimal: LoginForm
 
 widget App {
+    msg {
+        ActNew,
+        ActOpen
+    }
+
     view {
         col {
+            // PLAN-639 T-05: menubar/toolbar 占位——动作注册表来自 pac.at
+            // ui_config 外挂文件（Plan 418 形态），vue 轨经 451 合成面生效。
+            menubar (class: "items-center") {}
+            toolbar (class: "px-2 py-1 gap-1 border-b") {}
+
             LoginForm {}
             style: "min-h-screen items-center justify-center p-6"
         }
+    }
+
+    on {
+        .ActNew -> { .ui_note = "new" }
+        .ActOpen -> { .ui_note = "open" }
+    }
+
+    model {
+        var ui_note str = ""
     }
 }

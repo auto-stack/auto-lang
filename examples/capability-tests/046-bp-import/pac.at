@@ -6,8 +6,11 @@ render: "vue"
 title: "BP Import"
 title_zh: "蓝图导入"
 
+// PLAN-639 T-05: Plan 418 外挂动作配置——双轨同一文件（VM 运行时 + vue 构建）。
+
 // PLAN-639: 共享 blueprint 包库依赖声明（635 声明门控）。
 // 路径相对本 pac.at 所在目录（examples/capability-tests/046-bp-import/）。
 dep bps {
     path: "../../../blueprints"
 }
+ui_config: "app-config.at"
