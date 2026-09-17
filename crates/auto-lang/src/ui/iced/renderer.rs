@@ -9520,6 +9520,68 @@ struct DashFace {
 /// panel_top, 每张 face 的视口绝对格位矩形，行主序 next-fit：span 大于
 /// 余量即换行)。面板 = 顶部居中（x 居中，top 注入）；高 = 标题行 + 行数
 /// ×格高 + (行数+1)×gap + 2×pad。
+#[cfg(test)]
+mod plan024_dashboard_layout_tests {
+    use super::*;
+
+    fn face(id: &str, span: usize) -> DashFace {
+        DashFace {
+            id: id.to_string(),
+            title: id.to_string(),
+            icon: "app-window".into(),
+            status: "hatched",
+            span,
+        }
+    }
+
+    const VP: iced::Rectangle = iced::Rectangle {
+        x: 0.0,
+        y: 0.0,
+        width: 1280.0,
+        height: 800.0,
+    };
+
+    /// 空清单：面板最小高，无格位。
+    #[test]
+    fn empty_faces_min_panel() {
+        let (w, h, _top, cells) = dashboard_layout(VP, &[]);
+        assert!(w > 0.0 && h > 0.0);
+        assert!(cells.is_empty());
+    }
+
+    /// 三张 span=1 恰好一行；第四张换行。
+    #[test]
+    fn three_fit_one_row_fourth_wraps() {
+        let faces = vec![face("a", 1), face("b", 1), face("c", 1), face("d", 1)];
+        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 4);
+        // 行主序：前三同 y，第四换行 y 更大。
+        assert_eq!(cells[0].y, cells[1].y);
+        assert_eq!(cells[1].y, cells[2].y);
+        assert!(cells[3].y > cells[0].y);
+    }
+
+    /// span=2 宽卡占两列：后续 1 卡同行，再下张换行。
+    #[test]
+    fn span2_occupies_two_columns() {
+        let faces = vec![face("wide", 2), face("n", 1), face("next", 1)];
+        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 3);
+        assert!(cells[0].width > cells[2].width, "span2 宽卡更宽");
+        assert_eq!(cells[0].y, cells[1].y, "span2+1 同行");
+        assert!(cells[2].y > cells[0].y, "第三张换行");
+    }
+
+    /// span 越界 clamp 防御（storage 坏值不 panic、不错位越界）。
+    #[test]
+    fn span_clamped_to_cols() {
+        let faces = vec![face("x", 99)];
+        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 1);
+        assert!(cells[0].width <= VP.width);
+    }
+}
+
 fn dashboard_layout(
     viewport: iced::Rectangle,
     faces: &[DashFace],

@@ -4571,6 +4571,87 @@ mod tests {
     use crate::ast::Expr;
     use crate::aura::{AuraNode, AuraStateDef, AuraWidget};
 
+    // PLAN-024：dashboard 第四槽无头单测——可见性判定位/孵化垫片/命令
+    // 词表（布局算式在 renderer 侧 target 测试，纯函数）。
+
+    fn make_mini_widget(name: &str) -> AuraWidget {
+        let mut w = make_test_widget(name);
+        w.named_views = vec![("mini".to_string(), AuraNode::element("col"))];
+        // dashboard_visible() 判定位（overlay 门控先例：visible state）。
+        w.state_vars.push(AuraStateDef {
+            name: "visible".to_string(),
+            type_info: crate::ast::Type::StrOwned,
+            initial: Expr::Str("0".into()),
+            decorators: vec![],
+        });
+        w
+    }
+
+    #[test]
+    fn dashboard_visibility_defaults_and_flips() {
+        let mut ds = DesktopSession::__test_session();
+        ds.__test_open_desktop();
+        // 未挂载恒 false（Esc 仲裁安全缺省）。
+        assert!(!ds.dashboard_visible());
+        let app_id = ds.allocate_app(DynamicComponent::new(&make_mini_widget("Dash")).unwrap());
+        ds.desktop.dashboard_app = Some(app_id);
+        assert!(!ds.dashboard_visible(), "挂载未召唤仍不可见");
+        if let Some(app) = ds.apps.get_mut(&app_id) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        }
+        assert!(ds.dashboard_visible());
+    }
+
+    #[test]
+    fn hatch_registers_face_fields_and_is_idempotent() {
+        let mut ds = DesktopSession::__test_session();
+        ds.__test_open_desktop();
+        let app_id = ds.allocate_app(DynamicComponent::new(&make_mini_widget("Clock")).unwrap());
+        ds.register_hatched_mini("clock", app_id);
+        assert_eq!(ds.hatched_mini_of("clock"), Some(app_id));
+        // face 垫片缺席 = 无窗 face 拆借返回 None（渲染侧安全跳过）。
+        assert!(ds.host.as_ref().unwrap().face_fields.get(&app_id.0).is_none());
+        // 垫片插入后 split_ref_face 提供 view_name 选择器。
+        ds.host
+            .as_mut()
+            .unwrap()
+            .face_fields
+            .insert(app_id.0, ShellFields::default());
+        let face = ds.split_ref_face(app_id, "mini").expect("face ref");
+        assert_eq!(face.app_id, app_id);
+        assert_eq!(face.view_name, Some("mini"));
+    }
+
+    #[test]
+    fn dashboard_command_verbs_roundtrip() {
+        use DesktopCommand as DC;
+        assert_eq!(DC::parse_records("dashboard_toggle"), vec![DC::DashboardToggle]);
+        assert_eq!(DC::parse_records("dashboard_close"), vec![DC::DashboardClose]);
+        assert_eq!(
+            DC::parse_records("dashboard_pin\tclock"),
+            vec![DC::DashboardPin("clock".into())]
+        );
+        assert_eq!(
+            DC::parse_records("dashboard_unpin\tclock"),
+            vec![DC::DashboardUnpin("clock".into())]
+        );
+        assert_eq!(
+            DC::parse_records("dashboard_span\tclock\t2"),
+            vec![DC::DashboardSpan("clock".into(), 2)]
+        );
+        // 坏跨度值跳过（窄值防御）。
+        assert!(DC::parse_records("dashboard_span\tclock\t3").is_empty());
+        assert_eq!(
+            DC::parse_records("dashboard_launch\tclock"),
+            vec![DC::DashboardLaunch("clock".into())]
+        );
+        // encode 对拍（编码出 FIELD_SEP U+1F；解析双轨同收 shell.at 的 \t）。
+        assert_eq!(
+            DC::DashboardSpan("clock".into(), 1).encode(),
+            "dashboard_span\u{1f}clock\u{1f}1"
+        );
+    }
+
     /// Helper: create a minimal AuraWidget for testing（同 dynamic.rs 测试）。
     fn make_test_widget(name: &str) -> AuraWidget {
         AuraWidget {
