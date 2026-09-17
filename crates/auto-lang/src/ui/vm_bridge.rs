@@ -1042,7 +1042,6 @@ impl VmBridge {
     pub fn run_module_init(&mut self) -> Result<()> {
         let fn_name = crate::ui::handler_codegen::MODULE_INIT_FN;
         if !self.vm.flash.exports_by_name.contains_key(fn_name) {
-            eprintln!("[P633-LIVE] __module_init export absent");
             return Ok(());
         }
         let mut task = AutoTask::new(0, 4096, 0);
