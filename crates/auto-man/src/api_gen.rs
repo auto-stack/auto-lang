@@ -1409,12 +1409,21 @@ async fn auto_media_scan() -> axum::response::Response {
             out.push(',');
         }
         let (artist, song_title) = auto_lang::ui::media_service::parse_artist_and_title(&e.name);
+        let album = if e.rel_dir.is_empty() {
+            "本地单曲".to_string()
+        } else {
+            e.rel_dir.clone()
+        };
+        let index_str = format!("{:02}", i + 1);
         out.push_str(&format!(
-            "{{\"id\":{},\"title\":{},\"song_title\":{},\"artist\":{},\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"url\":\"/api/media/stream/{}\",\"audio_url\":\"/api/media/stream/{}\",\"video_url\":\"/api/media/stream/{}\"}}",
+            "{{\"id\":{},\"index\":{},\"index_str\":{},\"title\":{},\"song_title\":{},\"artist\":{},\"album\":{},\"is_liked\":false,\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"url\":\"/api/media/stream/{}\",\"audio_url\":\"/api/media/stream/{}\",\"video_url\":\"/api/media/stream/{}\"}}",
             media_json_str(&e.id),
+            i + 1,
+            media_json_str(&index_str),
             media_json_str(auto_lang::ui::media_service::display_title(&e.name)),
             media_json_str(&song_title),
             media_json_str(&artist),
+            media_json_str(&album),
             media_json_str(&e.name),
             media_json_str(&e.rel_dir),
             media_json_str(&e.relative_path),

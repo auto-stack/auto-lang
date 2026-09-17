@@ -4,6 +4,8 @@
 use back.api: get_post, Article
 use store: BlogStore
 
+use stylekit.styles: caption_text
+
 widget detail {
     msg {
         Init,
@@ -70,7 +72,7 @@ widget detail {
                             col {
                                 style: "gap-0.5"
                                 text .article.author { style: "font-semibold text-sm text-foreground" }
-                                text "Writer & Contributor" { style: "text-xs text-muted-foreground" }
+                                text "Writer & Contributor" { style: caption_text }
                             }
                         }
 
@@ -96,7 +98,7 @@ widget detail {
                                 style: "p-4 rounded-xl border border-destructive/30 bg-destructive/5 gap-3"
                                 text "Delete this article?" { style: "font-semibold text-destructive text-sm" }
                                 text "This action cannot be undone. Are you sure you want to permanently remove this article?" {
-                                    style: "text-xs text-muted-foreground"
+                                    style: caption_text
                                 }
                                 row {
                                     style: "gap-2 justify-end"

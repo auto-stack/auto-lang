@@ -21,3 +21,7 @@ title: "Photo Gallery"
 title_zh: "照片图库"
 category: "media"
 desktop: "true"
+
+dep stylekit {
+    path: "../stylekit"
+}

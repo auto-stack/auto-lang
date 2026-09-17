@@ -21,6 +21,10 @@
 // Obj 数组已证可用）；快照 join("|")/split；BFS 邻接判定 `h%16`/`h>=16`/
 // `h<240` 边界式绕开整数除法。拖画：v1 点击画（T1c——无按压门控指针流）。
 
+use stylekit.styles: caption_text
+style tool_btn = "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80"
+style wrap_row = "items-center gap-2 flex-wrap"
+
 widget App {
     msg {
         Init, SetTool(str), SetCur(str), Paint(int), Fill(int), SetPx(int, str),
@@ -71,7 +75,7 @@ widget App {
 
             // ---- 标题 + 工具行 ----
             row {
-                style: "items-center gap-2 flex-wrap"
+                style: wrap_row
                 text "Paint" { style: "text-base font-semibold text-foreground mr-2" }
                 if .saved == "0" {
                     text "●" { style: "text-xs text-primary" }
@@ -105,7 +109,7 @@ widget App {
                     col {
                         style: "w-8 h-8 rounded-lg border${.cur}"
                     }
-                    text "Current" { style: "text-xs text-muted-foreground" }
+                    text "Current" { style: caption_text }
                 }
                 grid {
                     cols: 8
@@ -121,11 +125,11 @@ widget App {
 
             // ---- 操作行 + 状态条 ----
             row {
-                style: "items-center gap-2 flex-wrap"
-                button "Undo" { onclick: .Undo, style: "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80" }
-                button "Redo" { onclick: .Redo, style: "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80" }
-                button "Clear" { onclick: .Clear, style: "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80" }
-                button "New" { onclick: .New, style: "px-3 py-1.5 text-sm rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80" }
+                style: wrap_row
+                button "Undo" { onclick: .Undo, style: tool_btn }
+                button "Redo" { onclick: .Redo, style: tool_btn }
+                button "Clear" { onclick: .Clear, style: tool_btn }
+                button "New" { onclick: .New, style: tool_btn }
                 button "Save" { onclick: .Save, style: "px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground" }
                 button "Load" { onclick: .Load, style: "px-3 py-1.5 text-sm rounded-lg bg-primary/15 text-primary" }
                 text .status { style: "ml-auto text-xs text-muted-foreground" }

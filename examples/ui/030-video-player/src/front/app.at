@@ -15,6 +15,8 @@ use viewport: Viewport
 use playlist: Playlist
 use controls: Controls
 
+style theme_toggle = "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+
 widget App {
     msg {
         Init,
@@ -63,20 +65,20 @@ widget App {
                     if .dark_mode {
                         button {
                             onclick: .ToggleDarkMode
-                            style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                            style: theme_toggle
                             icon (name: "sun", size: 15)
                         }
                     } else {
                         button {
                             onclick: .ToggleDarkMode
-                            style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                            style: theme_toggle
                             icon (name: "moon", size: 15)
                         }
                     }
                     // 队列显隐
                     button {
                         onclick: .TogglePlaylist
-                        style: "theme-toggle w-8 h-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                        style: theme_toggle
                         // PLAN-621 e2e：state 绑定随 .store.show_playlist 翻转
                         // （on=primary+加重描边 / off=muted），Web/VM 双端同源。
                         icon (name: "panel-left", size: 15, state: .store.show_playlist)

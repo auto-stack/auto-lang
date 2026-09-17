@@ -13,6 +13,8 @@
 
 use player_store: PlayerStore
 
+style timecode = "text-xs font-mono text-muted-foreground"   // Phase B: zinc-500/400 → muted-foreground
+
 widget Viewport {
     msg {
         TogglePlay,
@@ -37,10 +39,10 @@ widget Viewport {
                 col { style: "flex-1" }
                 if .store.current_dir_label != "" {
                     text .store.current_dir_label {
-                        style: "text-xs font-mono text-zinc-500"
+                        style: timecode
                     }
                 }
-                text .store.current_size { style: "text-xs font-mono text-zinc-400" }
+                text .store.current_size { style: timecode }
             }
 
             // ── 画面区：受控 <video> ──
@@ -77,7 +79,7 @@ widget Viewport {
                             style: "text-sm font-semibold text-destructive-foreground"
                         }
                         text .store.media_error {
-                            style: "text-xs text-zinc-400 text-center"
+                            style: "text-xs text-muted-foreground text-center"
                         }
                     }
                 }
@@ -89,16 +91,16 @@ widget Viewport {
             // 凭扩展名的猜测；界面不假装有声，也不反向声称无声。
             row {
                 style: "h-8 items-center justify-center gap-4 px-4"
-                text .store.status_text { style: "text-xs text-zinc-400" }
+                text .store.status_text { style: "text-xs text-muted-foreground" }
                 if .store.audio_unsupported {
                     text "音轨不受支持（Dolby Digital Plus 无浏览器解码器）" {
                         style: "audio-note text-xs font-medium text-amber-400"
                     }
                 }
                 if .store.has_current {
-                    text "画幅 自适应" { style: "text-xs font-mono text-zinc-500" }
+                    text "画幅 自适应" { style: timecode }
                     text "时长 " + .store.duration_str {
-                        style: "text-xs font-mono text-zinc-500"
+                        style: timecode
                     }
                 }
             }

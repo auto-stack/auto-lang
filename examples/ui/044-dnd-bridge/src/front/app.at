@@ -11,6 +11,14 @@
 // 内建统一留在根 handler（041 纪律）；桌面模式启动：
 //   auto run --desktop -r vm（仓库根执行——apps registry 默认 examples/ui）。
 
+use stylekit.styles: caption_text
+style field_label = "text-sm font-semibold text-foreground"
+style row_gap2 = "items-center gap-2"
+style panel = "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-2"
+style text_fg = "text-sm text-foreground"
+style input_x = "px-3 py-2 rounded-md border border-border text-sm"
+style chip_inline = "gap-1 px-3 py-2 rounded-md bg-muted/40"
+
 widget App {
     msg Msg {
         DragText,
@@ -42,7 +50,7 @@ widget App {
                 style: "gap-1"
                 h1 "OLE 拖放双向" { style: "text-xl font-bold text-foreground" }
                 text "044-dnd-bridge — Plan 488 T6（IDataObject 三格式族 / IDropTarget / Ctrl+V 路由）" {
-                    style: "text-xs text-muted-foreground"
+                    style: caption_text
                 }
                 text .status { style: "text-xs text-primary" }
             }
@@ -51,10 +59,10 @@ widget App {
             col {
                 style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
                 row {
-                    style: "items-center gap-2"
-                    text "拖出" { style: "text-sm font-semibold text-foreground" }
+                    style: row_gap2
+                    text "拖出" { style: field_label }
                     text "(点按钮 → 按住左键拖到目标 → 松开；Esc 取消)" {
-                        style: "text-xs text-muted-foreground"
+                        style: caption_text
                     }
                 }
                 row {
@@ -66,47 +74,47 @@ widget App {
                     }
                     button {
                         onclick: .DragFiles
-                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        style: input_x
                         text "拖出真实文件×2"
                     }
                     button {
                         onclick: .DragVirtual
-                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        style: input_x
                         text "拖出虚拟文件(A2)"
                     }
                 }
-                text .finish_log { style: "text-xs text-muted-foreground" }
+                text .finish_log { style: caption_text }
             }
 
             // ── 拖入卡（A1/A5/A6/D2–D4 目标侧） ────────────────────
             col {
-                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-2"
+                style: panel
                 row {
-                    style: "items-center gap-2"
-                    text "拖入" { style: "text-sm font-semibold text-foreground" }
+                    style: row_gap2
+                    text "拖入" { style: field_label }
                     text "(Explorer 文件 / notepad 文本 / 浏览器 URL / Chrome 图片 → 拖到本窗口)" {
-                        style: "text-xs text-muted-foreground"
+                        style: caption_text
                     }
                 }
                 col {
-                    style: "gap-1 px-3 py-2 rounded-md bg-muted/40"
-                    text "on_native_drop:" { style: "text-xs text-muted-foreground" }
-                    text .drop_log { style: "text-sm text-foreground" }
+                    style: chip_inline
+                    text "on_native_drop:" { style: caption_text }
+                    text .drop_log { style: text_fg }
                 }
             }
 
             // ── Ctrl+V 卡（G3/T7） ─────────────────────────────────
             col {
-                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-2"
+                style: panel
                 row {
-                    style: "items-center gap-2"
-                    text "桌面级 Ctrl+V" { style: "text-sm font-semibold text-foreground" }
-                    text "(焦点在本 App 时按 Ctrl+V)" { style: "text-xs text-muted-foreground" }
+                    style: row_gap2
+                    text "桌面级 Ctrl+V" { style: field_label }
+                    text "(焦点在本 App 时按 Ctrl+V)" { style: caption_text }
                 }
                 col {
-                    style: "gap-1 px-3 py-2 rounded-md bg-muted/40"
-                    text "on_native_paste:" { style: "text-xs text-muted-foreground" }
-                    text .paste_log { style: "text-sm text-foreground" }
+                    style: chip_inline
+                    text "on_native_paste:" { style: caption_text }
+                    text .paste_log { style: text_fg }
                 }
             }
         }

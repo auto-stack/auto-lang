@@ -12,3 +12,7 @@ accent: "indigo"
 window: "fit"
 # Plan 552: 桌面策展 opt-in（C 档上架）。
 desktop: "true"
+
+dep stylekit {
+    path: "../stylekit"
+}

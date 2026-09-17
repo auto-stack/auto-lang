@@ -25,3 +25,7 @@ category: "media"
 desktop: "true"
 theme: "dark"
 accent: "indigo"
+
+dep stylekit {
+    path: "../stylekit"
+}

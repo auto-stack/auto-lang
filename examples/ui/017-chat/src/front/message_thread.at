@@ -2,6 +2,10 @@
 // Bubble direction is driven by the persisted `mine` field (Plan 399).
 // Sent bubbles are styled with bg-primary (right/justify-end),
 // Received bubbles are styled with bg-muted (left/justify-start).
+use stylekit.styles: caption_text
+style avatar_box = "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5"
+style row_gap3 = "items-center gap-3"
+
 widget MessageThread(messages: []Message, typing_name: str, active_name: str, active_avatar: str, active_status: str, on_trigger_bot: msg) {
     msg {
         RequestBotReply
@@ -14,7 +18,7 @@ widget MessageThread(messages: []Message, typing_name: str, active_name: str, ac
             row {
                 style: "items-center justify-between px-6 py-3.5 border-b border-border bg-muted/20"
                 row {
-                    style: "items-center gap-3"
+                    style: row_gap3
                     text .active_avatar { style: "text-2xl p-1.5 bg-card rounded-xl shadow-xs border border-border/50" }
                     col {
                         row {
@@ -22,11 +26,11 @@ widget MessageThread(messages: []Message, typing_name: str, active_name: str, ac
                             text .active_name { style: "text-base font-bold text-foreground" }
                             text "🟢" { style: "text-[9px]" }
                         }
-                        text .active_status { style: "text-xs text-muted-foreground" }
+                        text .active_status { style: caption_text }
                     }
                 }
                 row {
-                    style: "items-center gap-3"
+                    style: row_gap3
                     if .typing_name != "" {
                         text f"${.typing_name} is typing…" { style: "text-xs text-primary font-medium italic animate-pulse" }
                     }
@@ -63,13 +67,13 @@ widget MessageThread(messages: []Message, typing_name: str, active_name: str, ac
                             row {
                                 style: "justify-start gap-2.5 items-start"
                                 if msg.sender == "Alice" {
-                                    text "👩‍💼" { style: "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5" }
+                                    text "👩‍💼" { style: avatar_box }
                                 } else if msg.sender == "Bob" {
-                                    text "👨‍💻" { style: "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5" }
+                                    text "👨‍💻" { style: avatar_box }
                                 } else if msg.sender == "AutoBot" {
-                                    text "🤖" { style: "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5" }
+                                    text "🤖" { style: avatar_box }
                                 } else {
-                                    text "💬" { style: "text-2xl p-1 bg-muted/60 rounded-xl shadow-xs flex-shrink-0 mt-0.5" }
+                                    text "💬" { style: avatar_box }
                                 }
                                 col {
                                     style: "items-start max-w-[75%]"

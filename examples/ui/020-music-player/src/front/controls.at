@@ -70,11 +70,26 @@ widget Controls {
                 row {
                     style: "items-center gap-3"
 
-                    // 循环模式切换
+                    // 播放模式切换 (顺序播放 / 随机播放 / 单曲循环)
                     button {
                         onclick: .CycleRepeat
-                        style: "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
-                        icon (name: .store.repeat_icon, size: 15)
+                        style: if .store.repeat_mode == "single" {
+                            "h-8 items-center gap-1.5 px-2.5 rounded-lg bg-primary/15 text-primary text-xs font-medium cursor-pointer transition-colors"
+                        } else if .store.repeat_mode == "shuffle" {
+                            "h-8 items-center gap-1.5 px-2.5 rounded-lg bg-primary/15 text-primary text-xs font-medium cursor-pointer transition-colors"
+                        } else {
+                            "h-8 items-center gap-1.5 px-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition-colors"
+                        }
+                        if .store.repeat_mode == "single" {
+                            icon (name: "repeat-1", size: 15)
+                        } else if .store.repeat_mode == "shuffle" {
+                            icon (name: "shuffle", size: 15)
+                        } else {
+                            icon (name: "repeat", size: 15)
+                        }
+                        text .store.repeat_label {
+                            style: "text-[11px] font-medium"
+                        }
                     }
 
                     // 上一曲
@@ -130,18 +145,37 @@ widget Controls {
                 }
             }
 
-            // ── 右侧：音量与队列抽屉开关 ──
+            // ── 右侧：音效、歌词、音量与队列抽屉开关 ──
             row {
-                style: "w-64 items-center justify-end gap-3 shrink-0"
+                style: "w-80 items-center justify-end gap-2.5 shrink-0"
 
-                // 音量控制
+                // 音效均衡器
+                button {
+                    style: "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                    icon (name: "sliders-horizontal", size: 15)
+                }
+
+                // 歌词 / 舞台沉浸模式切换
+                button {
+                    onclick: .ToggleView
+                    style: if .store.view_mode == "stage" {
+                        "w-8 h-8 items-center justify-center rounded-md text-primary bg-primary/10 cursor-pointer"
+                    } else {
+                        "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                    }
+                    icon (name: "mic-2", size: 15)
+                }
+
+                // 音量控制 (三级梯度图标: volume-x, volume-1, volume-2)
                 row {
-                    style: "items-center gap-1.5"
+                    style: "items-center gap-1"
                     button {
                         onclick: .ToggleMute
                         style: "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
-                        if .store.is_muted {
+                        if .store.is_muted || .store.volume == 0 {
                             icon (name: "volume-x", size: 16)
+                        } else if .store.volume < 50 {
+                            icon (name: "volume-1", size: 16)
                         } else {
                             icon (name: "volume-2", size: 16)
                         }

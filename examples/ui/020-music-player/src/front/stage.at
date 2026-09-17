@@ -14,7 +14,7 @@ widget Stage {
 
     view {
         col {
-            style: "w-full h-full flex-col items-center justify-between p-8 overflow-y-auto min-h-0 select-none relative"
+            style: "w-full h-full flex-col items-center justify-between p-8 overflow-y-auto ash-scroll min-h-0 select-none relative"
 
             // ── 顶部操作栏 ──
             row {
@@ -103,8 +103,12 @@ widget Stage {
                             text .store.current_ext {
                                 style: "text-[11px] font-bold px-2 py-0.5 rounded bg-primary/15 text-primary tracking-wider"
                             }
-                            text "Hi-Res Lossless 24bit/96kHz" {
-                                style: "text-[11px] font-mono text-muted-foreground"
+                            row {
+                                style: "items-center gap-1 text-muted-foreground"
+                                icon (name: "headphones", size: 13, style: "text-primary")
+                                text "Hi-Res Lossless 24bit/96kHz" {
+                                    style: "text-[11px] font-mono"
+                                }
                             }
                         }
                         text .store.current_title {
@@ -120,7 +124,7 @@ widget Stage {
                             text "·" {}
                             row {
                                 style: "items-center gap-1.5"
-                                icon (name: "folder", size: 14)
+                                icon (name: "folder-music", size: 14)
                                 text "E:\\Music\\" { style: "font-mono text-xs" }
                             }
                         }
@@ -129,8 +133,12 @@ widget Stage {
                     // 歌词预览卡片（汽水音乐式悬浮歌词）
                     col {
                         style: "w-full p-4 rounded-xl bg-card border border-border/80 gap-2 shadow-sm"
-                        text "歌词预览" {
-                            style: "text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
+                        row {
+                            style: "items-center gap-1.5"
+                            icon (name: "mic-2", size: 13, style: "text-primary")
+                            text "歌词预览" {
+                                style: "text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
+                            }
                         }
                         col {
                             style: "gap-1.5 py-1"
@@ -145,13 +153,13 @@ widget Stage {
 
                     // 互动按钮条
                     row {
-                        style: "items-center gap-3 pt-2"
+                        style: "items-center gap-2.5 pt-2"
                         button {
                             onclick: .ToggleLike
                             style: if .store.is_current_liked {
-                                "h-9 items-center gap-2 px-4 rounded-lg bg-destructive/15 text-destructive font-medium text-xs cursor-pointer"
+                                "h-9 items-center gap-2 px-3.5 rounded-lg bg-destructive/15 text-destructive font-medium text-xs cursor-pointer"
                             } else {
-                                "h-9 items-center gap-2 px-4 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                                "h-9 items-center gap-2 px-3.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
                             }
                             if .store.is_current_liked {
                                 icon (name: "heart", size: 15, style: "text-destructive fill-current")
@@ -164,7 +172,7 @@ widget Stage {
 
                         button {
                             onclick: .PlayPause
-                            style: "h-9 items-center gap-2 px-4 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer"
+                            style: "h-9 items-center gap-2 px-4 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer shadow-sm"
                             if .store.is_playing {
                                 icon (name: "pause", size: 15)
                                 text "暂停" {}
@@ -172,6 +180,19 @@ widget Stage {
                                 icon (name: "play", size: 15)
                                 text "播放" {}
                             }
+                        }
+
+                        button {
+                            style: "h-9 items-center gap-1.5 px-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                            icon (name: "sliders-horizontal", size: 14)
+                            text "音效" {}
+                        }
+
+                        button {
+                            onclick: .SwitchToTracklist
+                            style: "h-9 items-center gap-1.5 px-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                            icon (name: "list-music", size: 14)
+                            text "歌单" {}
                         }
                     }
                 }

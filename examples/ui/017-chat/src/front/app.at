@@ -7,6 +7,9 @@ use message_thread: MessageThread
 use composer: Composer
 use back.api: send_message, list_messages, set_typing
 
+use stylekit.styles: caption_text
+style main_shell = "flex-1 gap-3 min-h-0 overflow-hidden"
+
 widget App {
     msg {
         Init,
@@ -47,7 +50,7 @@ widget App {
                 row {
                     style: "items-center gap-3"
                     if .store.loading {
-                        text "Loading…" { style: "text-xs text-muted-foreground" }
+                        text "Loading…" { style: caption_text }
                     }
                     text f"⏱ ${.clock_secs}s" { style: "text-xs text-muted-foreground tabular-nums font-mono" }
                 }
@@ -55,7 +58,7 @@ widget App {
 
             // Main Dual-column Body
             row {
-                style: "flex-1 gap-3 min-h-0 overflow-hidden"
+                style: main_shell
                 ChatSidebar(
                     contacts: .store.contacts,
                     active_id: .store.active_contact_id,
@@ -64,7 +67,7 @@ widget App {
                     on_search: .SearchContacts
                 )
                 col {
-                    style: "flex-1 gap-3 min-h-0 overflow-hidden"
+                    style: main_shell
                     MessageThread(
                         messages: .store.messages,
                         typing_name: .store.typing_name,

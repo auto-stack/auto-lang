@@ -3,6 +3,8 @@
 // Clicking an article navigates to /post/:id.
 use store: BlogStore
 
+style empty_state = "items-center justify-center py-16 gap-3 text-muted-foreground"
+
 widget home {
     msg {
         Init,
@@ -76,13 +78,13 @@ widget home {
             // Article list
             if .store.loading {
                 col {
-                    style: "items-center justify-center py-16 gap-3 text-muted-foreground"
+                    style: empty_state
                     text "Loading articles..." {}
                 }
             } else {
                 if .store.articles.len() == 0 {
                     col {
-                        style: "items-center justify-center py-16 gap-3 text-muted-foreground"
+                        style: empty_state
                         text "No articles found in this category" { style: "font-medium" }
                     }
                 } else {

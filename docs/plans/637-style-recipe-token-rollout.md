@@ -310,6 +310,16 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
 - **T-04 W3 波**（15 个中型 demo）：同模板；允许按 demo 分子提交。
   （r3：拆 **B3** 轻半 10 demo / **B4** 巨型 5 demo 两次 fold；
   tree_icon 四胞胎（018/026/027/041）聚 B4 机械联动。）
+  [◐ B3 轻半完成 2026-09-17，B4 巨型件未动] 10 demo 全改写：caption_text 全等
+  消费 ×28（10 demo 全挂 dep stylekit，AC-05 累计 13 demo ≥10 ✅）；本地提取
+  ~65 配方 ~230 位点；Phase B 面 022（卡片/动作钮/页根 + 泳道类目色豁免 ×5）、
+  029（红→destructive ×3 + 白覆盖层豁免 ×7）、030（zinc→muted ×6 + 叠字/状态
+  豁免 ×2）、016（色票豁免 ×5）。零漂移 8/10 双端实证（017/043/044 单轨）；
+  022/017 vue 轨既有损坏（主检出复现，非本计划引入）以 VM 承担；029 file://
+  缩略图缺陷（用户报告）确认为既有双端资产契约问题，修复方向=迁移
+  image_pipeline 媒体会话通道（另立小修复）；跨会话 master 演进（638 落地+
+  二进制重建）已按纪律 stash→sync→pop 解决。详见 evidence/637/
+  b3-evidence-summary.md（偏差 7 项）。
 - **T-05 W4 波**（011/019/020/023）：重型 token 化；020 的 264 处逐簇
   （同类串整簇替换）而非逐处。（r3：= **B5**，与 T-07/T-08 收口同批。）
 - [x] **T-06 存量三 demo 收尾**（013/015/045 Phase B + 门禁纳入；r3：提前
@@ -364,6 +374,24 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
 | 012 | ✅ 12 配方 48 位点 | ✅ 状态按钮三映射 | phaseA IDENTICAL/IDENTICAL；终态 0.41% / 空窗退化§4 | ✅ | — |
 | 014 | ✅ 4 配方 8 位点（A+B 合并） | ✅ 蓝→primary 族 | 27.20% / 26.28% | ✅ | — |
 
+### 8.3 B3 矩阵增补（2026-09-17，T-04a 轻半 10 demo）
+
+证据：`docs/plans/evidence/637/b3-evidence-summary.md`。零漂移 8/10；
+022/017 vue 轨既有损坏（主检出复现）以 VM 承担；043/044 为 VM 原生 demo。
+
+| demo | Phase A | Phase B | 对拍（vue/vm） | 门禁 | 消费 stylekit |
+|---|---|---|---|---|---|
+| 016 | ✅ 4 配方 8 位点 | 色票豁免 ×5 | IDENTICAL / IDENTICAL | ✅ | ✅ ×1 |
+| 017 | ✅ 7 配方 19 位点 | 无色可换 | n/a（既有后端损坏）/ IDENTICAL | ✅ | ✅ ×2 |
+| 021 | ✅ 3 配方 9 位点 | 无色可换 | IDENTICAL / IDENTICAL | ✅ | ✅ ×2 |
+| 022 | ✅ 4 配方 11 位点 | ✅ 泳道豁免 ×5+映射 | 既有缺陷降级 / 89.87%（归因） | ✅ | — |
+| 029 | ✅ 11 配方 33 位点 | ✅ 红→destructive+白覆盖豁免 ×7 | IDENTICAL / 6.98% | ✅ | ✅ ×2 |
+| 030 | ✅ 4 配方 10 位点 | ✅ zinc→muted+豁免 ×2 | 0.47% / 20.08% | ✅ | ✅ ×1 |
+| 031iv | ✅ 6 配方 19 位点 | 无色可换 | IDENTICAL / IDENTICAL | ✅ | ✅ ×1 |
+| 031p | ✅ 2 配方 6 位点 | 无色可换 | IDENTICAL / IDENTICAL | ✅ | ✅ ×1 |
+| 043 | ✅ 7 配方 31 位点 | 无色可换 | n/a（VM 原生）/ IDENTICAL | ✅ | ✅ ×10 |
+| 044 | ✅ 6 配方 25 位点 | 无色可换 | n/a（VM 原生）/ IDENTICAL | ✅ | ✅ ×7 |
+
 ## 9. 复审记录
 
 - （draft 起草 handoff 2026-09-17：`stage: new | PLAN-637 | plan_revision: 1 |
@@ -397,6 +425,16 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   零漂移经 git 重建中间态实拍证明；guard 增行尾注释剥除（URL 保护）；fit 窗
   VM 截图竞态为已知债（003/012 像素证据退化，vue+结构树承担）；偏差 6 项见
   b2-evidence-summary.md §4。）
+- （B3 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
+  outcome: pass（批次级，整体保持 executing；T-04 尚余 B4 巨型件） |
+  code_commit: plan-637-dev B3 提交 | task_ids: T-04a（T-04 轻半） | evidence:
+  docs/plans/evidence/637/b3-evidence-summary.md（对拍总表+偏差 7 项） |
+  blockers: 无（022/017 vue 既有缺陷与 029 资产缺陷均已知债化，不阻断） |
+  next: fold 回 master 后 B4（T-04b 巨型件 018/024/026/027/041+tree_icon）。
+  要点：AC-05 提前达标（消费 13 demo，caption_text ×28）；零漂移 8/10；
+  跨会话演进（638+二进制）按纪律同步解决；新增已知债三项（022 vue-gen 幻影
+  导入、017 后端编译失败、029 file:// 资产契约——均 master 既有，非本计划
+  引入，主检出可复现）。）
 
 ## 10. 待澄清事项
 

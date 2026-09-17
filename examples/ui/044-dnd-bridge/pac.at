@@ -6,3 +6,7 @@ render: "vm"
 front_port: 4044
 title: "DndBridge"
 title_zh: "拖放桥"
+
+dep stylekit {
+    path: "../stylekit"
+}

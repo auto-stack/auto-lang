@@ -59,11 +59,12 @@ store PlayerStore {
         var duration_str str = "00:00"
         var progress_pct float = 0.0
 
-        // ── 播放模式 ──
-        // "all": 列表循环; "one": 单曲循环; "shuffle": 随机播放
-        var repeat_mode str = "all"
-        var repeat_label str = "列表循环"
+        // ── 播放模式（三态：顺序播放 / 随机播放 / 单曲循环）──
+        // "sequence": 顺序播放; "shuffle": 随机播放; "single": 单曲循环
+        var repeat_mode str = "sequence"
+        var repeat_label str = "顺序播放"
         var repeat_icon str = "repeat"
+        var shuffle_seed int = 12345
 
         // ── 视图与导航 ──
         // "stage": 黑胶唱盘舞台模式 (网易云/汽水音乐); "tracklist": 歌曲列表模式 (QQ音乐/Spotify)
@@ -176,7 +177,12 @@ store PlayerStore {
                 return
             }
             if .repeat_mode == "shuffle" {
-                var next_idx int = (.current_index * 7 + 13) % .item_count
+                var s int = (.shuffle_seed * 37 + 17) % 10007
+                if s < 0 {
+                    s = 0 - s
+                }
+                .shuffle_seed = s
+                var next_idx int = .shuffle_seed % .item_count
                 if next_idx == .current_index && .item_count > 1 {
                     next_idx = (next_idx + 1) % .item_count
                 }
@@ -196,7 +202,12 @@ store PlayerStore {
                 return
             }
             if .repeat_mode == "shuffle" {
-                var prev_idx int = (.current_index * 11 + 3) % .item_count
+                var s int = (.shuffle_seed * 53 + 29) % 10007
+                if s < 0 {
+                    s = 0 - s
+                }
+                .shuffle_seed = s
+                var prev_idx int = .shuffle_seed % .item_count
                 if prev_idx == .current_index && .item_count > 1 {
                     prev_idx = (prev_idx + .item_count - 1) % .item_count
                 }
@@ -210,21 +221,46 @@ store PlayerStore {
             }
         }
 
-        // 切换循环模式
+        // 切换播放模式：顺序播放 -> 随机播放 -> 单曲循环 -> 顺序播放
         .CycleRepeat -> {
-            if .repeat_mode == "all" {
-                .repeat_mode = "one"
-                .repeat_label = "单曲循环"
-                .repeat_icon = "repeat-1"
-            } else if .repeat_mode == "one" {
+            if .repeat_mode == "sequence" {
                 .repeat_mode = "shuffle"
                 .repeat_label = "随机播放"
                 .repeat_icon = "shuffle"
+            } else if .repeat_mode == "shuffle" {
+                .repeat_mode = "single"
+                .repeat_label = "单曲循环"
+                .repeat_icon = "repeat-1"
             } else {
-                .repeat_mode = "all"
-                .repeat_label = "列表循环"
+                .repeat_mode = "sequence"
+                .repeat_label = "顺序播放"
                 .repeat_icon = "repeat"
             }
+        }
+
+        // 顺序播放全部
+        .PlayAll -> {
+            .repeat_mode = "sequence"
+            .repeat_label = "顺序播放"
+            .repeat_icon = "repeat"
+            PlayerStore.SelectIndex(0)
+        }
+
+        // 随机播放全部
+        .ShufflePlay -> {
+            .repeat_mode = "shuffle"
+            .repeat_label = "随机播放"
+            .repeat_icon = "shuffle"
+            if .item_count == 0 {
+                return
+            }
+            var s int = (.shuffle_seed * 37 + 17) % 10007
+            if s < 0 {
+                s = 0 - s
+            }
+            .shuffle_seed = s
+            var target int = .shuffle_seed % .item_count
+            PlayerStore.SelectIndex(target)
         }
 
         // 收藏 / 取消收藏当前歌曲
@@ -347,13 +383,32 @@ store PlayerStore {
             .is_playing = playing
         }
 
+        // 歌曲播放自然结束
         .OnEnded -> {
-            if .repeat_mode == "one" {
-                .seek_target = 0.0
+            if .repeat_mode == "single" {
+                // 单曲循环：从头重播当前歌曲
+                if .seek_target <= 0.001 {
+                    .seek_target = 0.002
+                } else {
+                    .seek_target = 0.0001
+                }
                 .current_time = 0.0
+                .progress_pct = 0.0
                 .is_playing = true
-            } else {
+            } else if .repeat_mode == "shuffle" {
+                // 随机播放：随机选取下一曲
                 PlayerStore.NextTrack()
+            } else {
+                // 顺序播放：若到达列表末尾则停止播放回到首曲，否则播放下一曲
+                if .current_index >= .item_count - 1 {
+                    .current_index = 0
+                    .seek_target = 0.0
+                    .current_time = 0.0
+                    .progress_pct = 0.0
+                    .is_playing = false
+                } else {
+                    PlayerStore.SelectIndex(.current_index + 1)
+                }
             }
         }
 
