@@ -2521,8 +2521,18 @@ impl RustGenerator {
                         }
                         _ => "Vec::new()".to_string(),
                     };
+                    // PLAN-019:scheme 同款——.field FieldAccess 绑定支持
+                    // (仅认 Ident 时动态绑定静默回落 0)。
                     let scroll = match props.get("scroll_offset") {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
+                        Some(AuraPropValue::Expr(expr)) => {
+                            let e = self.ast_expr_to_rust(expr);
+                            if e.starts_with("self.") {
+                                format!("({e}) as u16")
+                            } else {
+                                "0u16".to_string()
+                            }
+                        }
                         _ => "0u16".to_string(),
                     };
                     // 014 光标格:字面量或 .field 绑定(缺省 0,0 = 占位)。
@@ -2562,11 +2572,21 @@ impl RustGenerator {
                         })
                         .unwrap_or_else(|| "None".to_string());
                     // PLAN-018 D10:scheme prop(Int 字面量或 .field 绑定;
-                    // 缺省 -1 = 跟随桌面主题)。
+                    // 缺省 -1 = 跟随桌面主题)。PLAN-019:`.field` 实际解析为
+                    // FieldAccess(geom/lines 同款回退)——仅认 Ident 时动态
+                    // 绑定静默回落 -1,scheme 按钮失效(app.at 实测)。
                     let scheme = match props.get("scheme") {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}i32"),
                         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
                             format!("self.{} as i32", id.as_str())
+                        }
+                        Some(AuraPropValue::Expr(expr)) => {
+                            let e = self.ast_expr_to_rust(expr);
+                            if e.starts_with("self.") {
+                                format!("({e}) as i32")
+                            } else {
+                                "-1i32".to_string()
+                            }
                         }
                         _ => "-1i32".to_string(),
                     };
@@ -8025,6 +8045,69 @@ widget TermApp {
         assert!(
             code.contains("self.slotkey.clone()"),
             "key 动态绑定必须发射 self.field 克隆(T-B 槽位键):\n{code}"
+        );
+    }
+
+    /// PLAN-019 用户反馈回归:terminal `scheme: .field` / `scroll_offset:
+    /// .field` 的 FieldAccess 绑定必须发射 self.field 索引(此前仅认
+    /// Int 字面量/Ident,scheme 静默回落 -1 → ◐ 按钮失效)。
+    #[test]
+    fn terminal_scheme_and_scroll_fieldaccess_bindings_emit() {
+        let src = r#"
+widget TermApp {
+    msg { Init }
+
+    model {
+        var lines List<str> = []
+        var schemesel int = 0
+        var scrollofs int = 0
+    }
+
+    on {
+        .Init -> {
+            .lines = []
+        }
+    }
+
+    view {
+        terminal {
+            key: "pane-1"
+            cols: 80
+            rows: 24
+            lines: .lines
+            scheme: .schemesel
+            scroll_offset: .scrollofs
+            oninput: .KeyIn2
+        }
+    }
+}
+"#;
+        // 上面的 oninput 引用需要存在,msg 里没有 KeyIn2 —— 用 KeyIn。
+        let src = src.replace(".KeyIn2", ".Init");
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate_rust(&widget).expect("generate rust");
+
+        assert!(
+            code.contains("scheme: (self.schemesel) as i32"),
+            "scheme FieldAccess 绑定必须发射 (self.field) as i32:
+{code}"
+        );
+        assert!(
+            code.contains("scroll_offset: (self.scrollofs) as u16"),
+            "scroll_offset FieldAccess 绑定必须发射 (self.field) as u16:
+{code}"
         );
     }
 

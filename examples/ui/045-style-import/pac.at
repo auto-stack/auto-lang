@@ -1,0 +1,12 @@
+name: "style-import"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+title: "Style Import"
+title_zh: "跨包样式引用"
+theme: "dark"
+accent: "indigo"
+
+dep stylekit {
+    path: "../stylekit"
+}

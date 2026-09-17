@@ -265,6 +265,32 @@ pub fn run_independent_child(
         .map_err(|e| format!("pixels child: {e}"))
 }
 
+/// Plan 020 T-03 —— independent 臂 native child 入口（`Component` 泛型）：
+/// 像素桥/生命周期语义与 [`run_independent_child`] 一致，渲染宿主为 native
+/// 组件驱动（隐藏单窗 iced application——`iced::run_native_iced_pixels`，
+/// run_app_devtools 同族无 DevTools 层）。v1 边界对齐解释态像素臂：输入
+/// 不派发 handler（命中表归 queue 臂）；StateSnapshot 注入 not-yet
+/// （`on_protocol` 组件参数传 None，Plan 020 §5.1 定案记录）。
+pub fn run_independent_native_child<C>(
+    transport: Box<dyn Transport + Send>,
+    component: C,
+    app_name: &str,
+    title: &str,
+    width: f32,
+    height: f32,
+) -> Result<(), String>
+where
+    C: crate::ui::component::Component + 'static,
+    C::Msg: Clone + std::fmt::Debug + Send + 'static,
+{
+    let transport = Arc::new(Mutex::new(transport));
+    let child = PixelsChild::new(Arc::clone(&transport), app_name, title, width, height);
+    *launch_slot().lock().unwrap() = Some(child);
+    let _ = PIXELS_POLL.set(Arc::clone(&transport));
+    crate::ui::iced::run_native_iced_pixels(component, width, height)
+        .map_err(|e| format!("pixels child: {e}"))
+}
+
 /// 像素桥协议轮询订阅（MCP/native_dock 订阅同型：std 通道短轮询——
 /// PipeEnd 读线程已把帧搬进 inbox，try_recv 零阻塞）。child 管道 EOF =
 /// 流终止（订阅 diff 重订阅自愈，下一轮消息面自然重拉）。
@@ -324,7 +350,7 @@ pub fn pixels_protocol_subscription()
 /// session 内，管道 Arc 两处共享——读 inbox 与 update 层发送互不阻塞）。
 static PIXELS_POLL: OnceLock<Arc<Mutex<Box<dyn Transport + Send>>>> = OnceLock::new();
 
-fn poll_transport() -> Option<Result<ProtocolMsg, super::codec::CodecError>> {
+pub(crate) fn poll_transport() -> Option<Result<ProtocolMsg, super::codec::CodecError>> {
     PIXELS_POLL
         .get()?
         .lock()
@@ -516,5 +542,220 @@ mod tests {
     fn slot_of(m: &FrameMsg) -> u8 {
         let FrameMsg::FrameReadyPixels { slot, .. } = m else { panic!("FrameReadyPixels") };
         *slot
+    }
+    // -----------------------------------------------------------------------
+    // Plan 020 T-03 —— native 像素臂两进程集成（re-exec 测试二进制）
+    // -----------------------------------------------------------------------
+
+    /// 子进程识别键（值 = 直连 per-app 管道名；dual_mode 的 CHILD_ENV 同型）。
+    const NATIVE_CHILD_ENV: &str = "AUTO_020_NATIVE_PIXELS_PIPE";
+
+    /// Plan 020 T-03 —— 两进程 e2e：spawn 测试二进制子进程跑 native 像素臂
+    /// （真隐藏窗 + 真截图——实机档，`AUTO_DESKTOP_E2E=1` 门，无头环境
+    /// 跳过）。断言：Hello → Welcome(Pixels)+BufferAlloc → FrameReadyPixels
+    /// 首帧（shm 槽字节满幅非零、逻辑尺寸对齐）→ Input 触发新帧
+    /// （frame_id 递增，v1.3 边界：无 handler 派发仍重渲）→ Close →
+    /// 子进程干净退出。
+    #[test]
+    fn native_pixels_child_two_process() {
+        if std::env::var("AUTO_DESKTOP_E2E").is_err() {
+            eprintln!("skip: AUTO_DESKTOP_E2E 未设（实机档）");
+            return;
+        }
+        let pipe = format!("autodesk-native-pixels-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        // 子进程载体 = 示例二进制（winit 主线程约束：libtest 工作线程
+        // 建不了 EventLoop，窗口臂必须生产形态 main——stage3 t3 independent
+        // 臂用真 `auto run` 同理）。测试内 build（增量，库已编译）。
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let build_out = std::process::Command::new(env!("CARGO"))
+            .args([
+                "build",
+                "-p",
+                "auto-lang",
+                "--features",
+                "ui-iced",
+                "--example",
+                "native_pixels_counter",
+            ])
+            .current_dir(manifest_dir)
+            .output()
+            .expect("cargo build example");
+        assert!(
+            build_out.status.success(),
+            "example build failed: {}",
+            String::from_utf8_lossy(&build_out.stderr)
+        );
+        let target_dir = std::env::var("CARGO_TARGET_DIR")
+            .unwrap_or_else(|_| manifest_dir.join("../../target").to_string_lossy().into_owned());
+        let exe =
+            std::path::Path::new(&target_dir).join("debug/examples/native_pixels_counter.exe");
+        assert!(exe.exists(), "example exe missing: {}", exe.display());
+        let mut child = std::process::Command::new(&exe)
+            .env(NATIVE_CHILD_ENV, &pipe)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn native child");
+        let mut child_err = child.stderr.take();
+        // 子进程早夭/accept 超时的护栏：accept 搬线程 + recv_timeout 轮询
+        // try_wait（wait_connect 无超时——子进程静默退出会挂死父测试）。
+        let (conn_tx, conn_rx) = std::sync::mpsc::channel();
+        let conn_thread = std::thread::spawn(move || {
+            let _ = conn_tx.send(listener.wait_connect());
+        });
+        let mut host_end = None;
+        for _ in 0..120 {
+            match conn_rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                Ok(Ok(end)) => {
+                    host_end = Some(end);
+                    break;
+                }
+                Ok(Err(e)) => panic!("server accept: {e:?}"),
+                Err(_timeout) => {
+                    if let Some(status) = child.try_wait().expect("try_wait") {
+                        let mut err_text = String::new();
+                        if let Some(mut pipe) = child_err.take() {
+                            use std::io::Read;
+                            let _ = pipe.read_to_string(&mut err_text);
+                        }
+                        let mut out_text = String::new();
+                        if let Some(mut pipe) = child.stdout.take() {
+                            use std::io::Read;
+                            let _ = pipe.read_to_string(&mut out_text);
+                        }
+                        panic!(
+                            "native child 早夭 {status:?}，stdout: {out_text}，stderr: {err_text}"
+                        );
+                    }
+                }
+            }
+        }
+        let mut host_end = host_end.expect("60s 未 accept 到子进程连接");
+
+        // Hello（子进程窗/wgpu 冷启可达数秒——预算放大）。
+        let hello = match host_end.recv_wait(20_000) {
+            Some(Ok(msg)) => msg,
+            Some(Err(e)) => panic!("hello decode: {e:?}"),
+            None => {
+                // 超时/EOF——转储子进程现场辅助诊断。
+                let status = child.try_wait().expect("try_wait");
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                let mut out_text = String::new();
+                if let Some(mut pipe) = child.stdout.take() {
+                    use std::io::Read;
+                    let _ = pipe.read_to_string(&mut out_text);
+                }
+                let mut err_text = String::new();
+                if let Some(mut pipe) = child_err.take() {
+                    use std::io::Read;
+                    let _ = pipe.read_to_string(&mut err_text);
+                }
+                panic!(
+                    "hello 等待超时/EOF，child status={status:?}，stdout: {out_text}，stderr: {err_text}"
+                );
+            }
+        };
+        let ProtocolMsg::Handshake(HandshakeMsg::Hello { app_name, .. }) = &hello else {
+            panic!("期待 Hello");
+        };
+        assert_eq!(app_name, "native-counter");
+
+        let shm_name = format!("autodesk-shm-native-pixels-{}", std::process::id());
+        let host_shm =
+            SharedFrameBuffer::create(&shm_name, 2, pixels_slot_size(64.0, 32.0)).expect("shm");
+        host_end
+            .send(&ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+                app_id: 1,
+                wid: 7,
+                surface: 42,
+                rect: WRect::new(0.0, 0.0, 64.0, 32.0),
+                frame_mode: FrameMode::Pixels,
+            }))
+            .unwrap();
+        host_end
+            .send(&ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+                surface: 42,
+                slots: 2,
+                width: 64.0,
+                height: 32.0,
+                shm: Some(shm_name.clone()),
+            }))
+            .unwrap();
+
+        // 首帧（截图 → shm 槽 → FrameReadyPixels 元数据过管道）。
+        let mut last_frame_id = 0u64;
+        let mut saw_pixels = false;
+        for _ in 0..600 {
+            let Some(Ok(msg)) = host_end.recv_wait(50) else { continue };
+            if let ProtocolMsg::Frame(FrameMsg::FrameReadyPixels {
+                frame_id, slot, w, h, ..
+            }) = msg
+            {
+                assert_eq!((w, h), (64, 32), "逻辑尺寸对齐（降采样口径）");
+                let bytes = host_shm.read_slot(slot).expect("read slot");
+                assert_eq!(bytes.len(), (64 * 32 * 4) as usize, "槽字节满幅");
+                assert!(bytes.iter().any(|&b| b != 0), "非全零帧（真渲染）");
+                assert!(frame_id > last_frame_id, "frame_id 单调");
+                last_frame_id = frame_id;
+                saw_pixels = true;
+                break;
+            }
+        }
+        assert!(saw_pixels, "收到 FrameReadyPixels 首帧");
+
+        // Input → 新帧（v1.3 输入边界：无 handler 派发，仍触发重渲+截图）。
+        host_end
+            .send(&ProtocolMsg::Input(InputMsg::PointerPressed {
+                wid: 7,
+                button: MouseButton::Left,
+                x: 10.0,
+                y: 10.0,
+                modifiers: 0,
+            }))
+            .unwrap();
+        let mut second = false;
+        for _ in 0..600 {
+            let Some(Ok(msg)) = host_end.recv_wait(50) else { continue };
+            if let ProtocolMsg::Frame(FrameMsg::FrameReadyPixels { frame_id, .. }) = msg {
+                assert!(frame_id > last_frame_id, "Input 后 frame_id 递增");
+                second = true;
+                break;
+            }
+        }
+        assert!(second, "Input 触发第二帧");
+
+        // Close → 子进程回 ExitRequest（Closing 态）→ 宿主回 BufferRelease
+        // → Detached → 子进程 iced::exit（状态机 §4：宿主必须走完回收步）。
+        host_end
+            .send(&ProtocolMsg::Control(
+                crate::ui::desktop_protocol::message::ControlMsg::Close { wid: 7 },
+            ))
+            .unwrap();
+        let mut released = false;
+        for _ in 0..200 {
+            let Some(Ok(msg)) = host_end.recv_wait(50) else { continue };
+            if let ProtocolMsg::Control(crate::ui::desktop_protocol::message::ControlMsg::ExitRequest { .. }) = msg {
+                host_end
+                    .send(&ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 42 }))
+                    .unwrap();
+                released = true;
+                break;
+            }
+        }
+        assert!(released, "收到 ExitRequest 并回 BufferRelease");
+        let mut exited = None;
+        for _ in 0..200 {
+            if let Some(status) = child.try_wait().expect("try_wait") {
+                exited = Some(status);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        let status = exited.unwrap_or_else(|| {
+            let _ = child.kill();
+            panic!("Close 后 20s 未退出");
+        });
+        assert!(status.success(), "子进程干净退出: {status:?}");
     }
 }

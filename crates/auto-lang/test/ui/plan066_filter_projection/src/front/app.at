@@ -1,0 +1,84 @@
+// app.at — PLAN-066 T-06 red corpus: 055-4⑥ 过滤投影 + P536-D2 写达根态。
+//
+// musk chats_view 缩样：block-bodied computed `filteredMessages` 对 store
+// 列表（堆对象元素）做域读取过滤（`m.content`）——055-4⑥ 现场为「函数层
+// 同形探针全绿、computed 求值上下文 VmRef 域读取恒空 → 过滤投影恒 0 条」。
+// 预期（修后）：任意搜索键投影命中正确、清空恢复全量。
+//
+// P536-D2 臂在 store.at（MarkDone→ClearWindow 自调链）。
+
+use store: FilterStore
+use bubble: MsgBubble
+
+widget App {
+    msg { Init, Seed, Search(str), MarkDone, Probe2, OnProbe }
+
+    model {
+        var projection_len int = -1
+        var done_snapshot str = ""
+        var current_msg obj = { id: "m1", content: "hello" }
+    }
+
+    computed {
+        filteredMessages => {
+            var out = []
+            let q = (.chat_search ?? "").to_lower()
+            for m in .messages {
+                let content = (m.content ?? "").to_lower()
+                if content.includes(q) {
+                    out.push(m)
+                }
+            }
+            return out
+        }
+    }
+
+    on {
+        .Init -> {
+        }
+
+        // 运行期灌数（贴 musk 实际用法：数据来自运行期 #[api] 快照整写）。
+        .Seed -> {
+            FilterStore.SetAll([
+                { role: "user", content: "2+2等于几" },
+                { role: "assistant", content: "2+2等于4" },
+                { role: "user", content: "你好世界" }
+            ])
+            FilterStore.SetSearch("2+2")
+        }
+
+        .Search(q) -> {
+            FilterStore.SetSearch(q)
+            var proj = .filteredMessages
+            .projection_len = proj.len()
+        }
+
+        .MarkDone -> {
+            FilterStore.MarkDone()
+            .done_snapshot = f"${FilterStore.done}"
+        }
+
+        // T-08：handler-as-value 实参现场（musk StartStream 的
+        // Sse.open(url, .OnStreamEvent) 同形）——.OnProbe 命中当前件
+        // handler 集，改写为 fn 引用；Sse no-op 弹弃。修复前 GET_FIELD
+        // "OnProbe" 运行期 Field not found 中止 handler（probe2 恒 ""）。
+        .Probe2 -> {
+            Sse.open("/t08/stream", .OnProbe)
+            FilterStore.SetProbe2("reached")
+        }
+
+        .OnProbe -> {
+            return 0
+        }
+    }
+
+    view {
+        col {
+            text .projection_len
+            MsgBubble { expanded: .expanded }
+            for m in .filteredMessages {
+                text m.content
+            }
+        }
+    }
+}

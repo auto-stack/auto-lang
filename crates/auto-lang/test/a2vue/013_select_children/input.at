@@ -1,0 +1,36 @@
+// a2vue golden case 013 — select 双形态选项 + value/label 契约（os-config
+// 计划 OS-015/016 走查衍生）。
+// 锚 vue 轨契约：select 直出原生 <select>，option 携带 value+label 两属性；
+// for 循环选项展开为 v-for（value/label 经循环变量绑定）。
+// 已知 vm 轨缺陷（本 golden 不覆盖，由 examples/select_demo.at + 上游修复
+// 计划验收）：convert_select 只扫直接 option Element 子节点——for 循环生成
+// 的选项全部漏收（options=[]→空 pick_list）；option 的 value prop 被忽略
+// （只取 text，value≠label 无法绑定）；onselect 回调仅单串 relay，
+// 无法驱动 Apply(entry, value) 双参处理器。
+widget SelectChildren {
+    msg {
+        Pick
+    }
+    model {
+        var current str = "zhipu"
+        var providers Array<str> = []
+    }
+    view {
+        col {
+            select (value: .current) {
+                onchange: .Pick
+                option (value: "zhipu", text: "Zhipu") {}
+                option (value: "deepseek", text: "DeepSeek") {}
+            }
+            select (value: .current) {
+                onchange: .Pick
+                for o in .providers {
+                    option (value: o.value, text: o.label) {}
+                }
+            }
+        }
+    }
+    on {
+        .Pick -> { }
+    }
+}

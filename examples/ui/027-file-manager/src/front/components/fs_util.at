@@ -1,0 +1,120 @@
+// components/fs_util.at — 文件管理器纯函数工具（PLAN-016 T-05/T-06）。
+//
+// 大小/类型/日期格式化与隐藏名判定。VM 轨遍历纪律（P614 实证）：本模块
+// 全部为标量运算，无列表遍历。epoch→民用时间用 Hinnant civil-from-days
+// （仅支持 1970-01-01 起，更早返回 "--"——文件系统 mtime 实际不会早于该值）。
+
+/// 字节数格式化（B/KB/MB/GB，一位小数，int 运算避免 float 噪声）
+pub fn format_size(n int) str {
+    if n < 0 {
+        return "--"
+    }
+    if n < 1024 {
+        return n.str() + " B"
+    }
+    if n < 1048576 {
+        var t int = n * 10 / 1024
+        return (t / 10).str() + "." + (t - (t / 10) * 10).str() + " KB"
+    }
+    if n < 1073741824 {
+        var t int = n * 10 / 1048576
+        return (t / 10).str() + "." + (t - (t / 10) * 10).str() + " MB"
+    }
+    var t int = n * 10 / 1073741824
+    return (t / 10).str() + "." + (t - (t / 10) * 10).str() + " GB"
+}
+
+/// 类型列标签（目录/扩展名分派；未知扩展名 = 大写 + " 文件"）
+pub fn type_label(ext str, is_dir bool) str {
+    if is_dir {
+        return "文件夹"
+    }
+    if ext == "md" || ext == "txt" || ext == "log" || ext == "pdf" || ext == "doc" || ext == "docx" {
+        return "文档"
+    }
+    if ext == "toml" || ext == "json" || ext == "rs" || ext == "at" || ext == "js" || ext == "ts" || ext == "py" || ext == "sh" || ext == "yaml" || ext == "yml" || ext == "html" || ext == "css" {
+        return "代码"
+    }
+    if ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp" || ext == "bmp" || ext == "svg" || ext == "ico" {
+        return "图像"
+    }
+    if ext == "zip" || ext == "gz" || ext == "tar" || ext == "rar" || ext == "7z" {
+        return "压缩包"
+    }
+    if ext == "csv" || ext == "xlsx" || ext == "xls" {
+        return "表格"
+    }
+    if ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg" {
+        return "音频"
+    }
+    if ext == "mp4" || ext == "mkv" || ext == "avi" || ext == "mov" || ext == "webm" {
+        return "视频"
+    }
+    if ext == "exe" || ext == "msi" || ext == "dll" {
+        return "可执行"
+    }
+    if ext == "" {
+        return "文件"
+    }
+    return ext + " 文件"
+}
+
+/// 隐藏名判定（dot-prefix；Windows 隐藏属性 stdlib 不可达，v1 口径）
+pub fn hidden_name(name str) bool {
+    if name == "" {
+        return false
+    }
+    if name.sub(0, 1) == "." {
+        return true
+    }
+    return false
+}
+
+fn pad2(n int) str {
+    if n < 10 {
+        return "0" + n.str()
+    }
+    return n.str()
+}
+
+/// epoch 秒 → "YYYY-MM-DD HH:MM"（本地时区换算不做——VM 无时区面，
+/// 显示 UTC；d-4 残留注记）。t <= 0 → "--"。
+pub fn fmt_date(t int) str {
+    if t <= 0 {
+        return "--"
+    }
+    var days int = t / 86400
+    var secs int = t - days * 86400
+    var hh int = secs / 3600
+    var mm int = (secs - hh * 3600) / 60
+    // civil-from-days（Hinnant 2018；1970+ 全正值，负 era 分支省略）
+    var z int = days + 719468
+    var era int = z / 146097
+    var doe int = z - era * 146097
+    var yoe int = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    var y int = yoe + era * 400
+    var doy int = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    var mp int = (5 * doy + 2) / 153
+    var d int = doy - (153 * mp + 2) / 5 + 1
+    var m int = mp + 3
+    if mp >= 10 {
+        m = m - 12
+    }
+    if m <= 2 {
+        y = y + 1
+    }
+    return y.str() + "-" + pad2(m) + "-" + pad2(d) + " " + pad2(hh) + ":" + pad2(mm)
+}
+
+/// PLAN-016 T-09：扩展名 → 桌面 open_with 关联（v1 静态表——注册表
+/// `opens:` 投影面落地前，027 内置默认关联；与 041/031 pac.at opens
+/// 声明保持同源，host 执行臂仍按注册表校验）。无关联返回 ""。
+pub fn app_for_ext(ext str) str {
+    if ext == "txt" || ext == "md" || ext == "log" || ext == "at" || ext == "rs" || ext == "toml" || ext == "json" || ext == "yaml" || ext == "yml" || ext == "py" || ext == "js" || ext == "ts" || ext == "html" || ext == "css" || ext == "csv" {
+        return "041-auto-edit"
+    }
+    if ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" || ext == "gif" || ext == "bmp" || ext == "svg" || ext == "ico" {
+        return "031-image-viewer"
+    }
+    return ""
+}

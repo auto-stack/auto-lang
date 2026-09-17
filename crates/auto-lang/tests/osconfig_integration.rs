@@ -227,6 +227,11 @@ fn osconfig_full_chain_launch_modules_and_persist() {
             fit: false,
             daemon: daemon_decl.clone(),
             back_root: Some(back_root.clone()),
+            // PLAN-016 T-07 opens 随行补齐（漏改家族：504 注记同款，tf 档
+            // 不含 tests/ 目标）；os-config 无 pac opens 声明 = 空不校验。
+            opens: Vec::new(),
+            exe: None,
+            render_decl: None,
         })
     }));
     let probe_url = url.clone();

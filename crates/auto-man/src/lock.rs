@@ -124,6 +124,17 @@ impl LockFile {
                             name, locked.version, version
                         ));
                     }
+                    // PLAN-635 D6: local path deps (no git commit pin) verify
+                    // by materialized-path existence.
+                    if locked.commit.is_empty() && !locked.path.is_empty() {
+                        let p = std::path::Path::new(&locked.path);
+                        if !p.is_dir() {
+                            errors.push(format!(
+                                "Dependency '{}' path '{}' is not materialized",
+                                name, locked.path
+                            ));
+                        }
+                    }
                 }
                 None => {
                     errors.push(format!("Dependency '{}' not found in lock file", name));
@@ -154,9 +165,12 @@ impl LockEntry {
             return None;
         }
 
-        // Try to get git commit SHA
+        // PLAN-635 D6: local path deps enter the lock without a git commit —
+        // the resolved path IS the reproducibility anchor (junction/symlink
+        // materialization is deterministic from the pac.at declaration).
+        // Git deps keep their commit pin when the dep dir is a git repo.
         let at_str: AutoStr = target.at.to_string().into();
-        let commit = get_git_commit(&at_str)?;
+        let commit = get_git_commit(&at_str).unwrap_or_default();
 
         Some(Self {
             name: target.name.as_str().to_string(),

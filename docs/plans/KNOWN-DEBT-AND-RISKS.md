@@ -95,6 +95,9 @@
 | 002 | 🟡候选: convert_view_messages D-GAP 审计尾差 8 变体 | PLAN-002 补 WindowThumbnail 臂时全量审计——Accordion/NavigationRail/Overlay/Select/Sidebar/Slider/Tabs 仍落 `_ => Empty`（其中 5 个带 fn 指针回调系 rust-mode 专属无法机械映射;Overlay/Sidebar 纯数据可补;代码注释自认"Overlay 至今仍走兜底,是已知差异"）。VM 模式若用到即整件消失,同坑第五例起。 | `ui/iced/renderer.rs` convert_view_messages 尾部注释;PLAN-002 |
 | 002 | ✅已结算(PLAN-002,2026-09-09): desktop.at blank 菜单 T36 结构回归 | 526 T36 交付时闭合括号错位——blank 菜单内容 col 成 view 级散落子树,桌面左下角常驻渲染"更换壁纸/显示设置"（非 popover 态也可见）;修复=col 归位 popover 标签内（plain[1]=content）,金样再生,a2vue/desktop_surface 测试绿。实机:boot 截图散落消失 | `assets/desktop.at`（auto-os shell/ pack 同步）;auto-lang `test/a2vue/desktop_surface_asset/expected.vue`;scratch/p002 |
 | 002 | ✅已结算(PLAN-002,2026-09-09): resolve_shell_pack_dir 组目录解析 worktree 失效 | `repo_root.parent()` 对含 `..` 的合成路径词法只剥一层——worktree 检出（.wt/<组>/auto-lang）下第一候选（<组>/auto-os/shell）永不命中,静默落到硬编码主检出 pack:worktree 构建的桌面读主检出的 shell/desktop.at,worktree 侧 .at 改动实机验证静默失效。修复=ancestors().nth(3) 直取组目录。主检出构建行为不变 | `ui/shell.rs` resolve_shell_pack_dir;scratch/p002 |
+| 635 | 兑付: Plan 607 待澄清#1 跨包 recipe 引用已落地 | `use <dep>.<module>: <style>` 符号导入 + pub 门控 + 传递收集 + deps/ 声明硬门控 + workspace members 解析 + pac.lock path 依赖入锁（PLAN-635 交付，双端同源 desugar 不变）；spec 见 `docs/specs/auto-lang/ui/overview.md` 跨包节与 `docs/specs/auto-man/project.md` 门控节。 | `crates/auto-lang/src/design_tokens/recipe.rs`; `crates/auto-lang/src/lib.rs` resolve_module_path; Plan 635 |
+| 635 | v2 预留: 传递导入的中间 pub 门 | 宿主经 `common.styles` 传递可达其内部私有 use 引入的 recipe（按名注册）；v1 契约如实成文（spec 跨包节注记），如需完整 pub 链语义在 v2 收紧。 | `design_tokens/recipe.rs` collect_style_recipe_imports; Plan 635 复审 F1 |
+| 635 | 观察: ffi_dual 家族并发 flake | `ffi_dual_019_dep_layout_invariants` 在 tf/tv 高并发档偶发红（共享 nightly methods-pack 缓存竞态）；隔离 3/3 绿 + master 同分布（Plan 069 收口提交独立判定互证）。非回归；如复现引用 PLAN-635 复审 F-env。 | `src/tests/ffi_dual_tests.rs:480`; PLAN-635 复审记录 F-env |
 | 607 | 规划边界: Design 29 Phase 2b (Per-App Color Context) 独立排期 | 多窗口/不同 App 独立主题挂载涉及 RenderQueue 色彩上下文重构与 auto-os 窗口路由，维持独立排期，不阻塞 Phase 3 配方落地。 | `docs/design/29-autoui-style-theme-system.md` §4.5; Plan 607 |
 | 607 | 规划边界: P601-T11 (SVG 图形属性 Token 通道) 移交 SVG 专项 | `serialize_svg_element` 构建期逐字序列化需跨管线 SVG token 协议支持，在图表/SVG 专项处理。 | `docs/plans/archive/601-theme-declaration-hot-switch.md` P601-T11; Plan 607 |
 
@@ -2189,7 +2192,7 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 
 | 编号 | 严重度 | 类别 | 描述 | 引用 |
 |---|---|---|---|---|
-| P625-D1 | medium | 进程稳定性 | **VM UI 进程 AppHang 静默退出**：UI 线程停止泵消息 >5s（WER AppHangB1 ×2 实证，16:07/16:14）后进程被外部结束（exit 1/127，无 panic）。死亡窗口随机（deps 扫描期/GPU 初始化后/MCP 运行数分钟后），心跳失败刷屏持续到日志末行=事件循环挂起判定前仍存活。阻塞点候选=大树 MCP snapshot 序列化占 UI 线程/日志 I/O 洪水（每 2s 3 行心跳失败 WARN）。根因定位需挂起期线程转储（procdump/wpr）。缓解：MCP 起后立即快取证据、避免反复全量快照大树；可选=应用定义 no-op `__mcp_heartbeat` handler 消除刷屏。B 类（worktree deps 扫描期静默终止，无 WER）另见 plan625 §8 T-07 | `docs/plans/625-ui-gallery-vm-usability.md` §8 T-07；WER 事件 16:07:48/16:14:54 |
+| P625-D1 | medium | 进程稳定性 | **VM UI 进程 AppHang 静默退出**：UI 线程停止泵消息 >5s（WER AppHangB1 ×2 实证，16:07/16:14）后进程被外部结束（exit 1/127，无 panic）。死亡窗口随机（deps 扫描期/GPU 初始化后/MCP 运行数分钟后），心跳失败刷屏持续到日志末行=事件循环挂起判定前仍存活。阻塞点候选=大树 MCP snapshot 序列化占 UI 线程/日志 I/O 洪水（每 2s 3 行心跳失败 WARN）。根因定位需挂起期线程转储（procdump/wpr）。缓解：MCP 起后立即快取证据、避免反复全量快照大树；可选=应用定义 no-op `__mcp_heartbeat` handler 消除刷屏。B 类（worktree deps 扫描期静默终止，无 WER）另见 plan625 §8 T-07。**【2026-09-15 PLAN-066 处置更新】**：消费侧 A/B 定罪=慢性「~4-5min 静默退出」实为同机并发会话争抢默认 MCP 端口的环境干扰（musk run1 共址 0/3 vs 私有端口隔离 3/3；procdump -h 六轮零挂起+WER 零事件），AppHang 链未再现形；本行结构候选①（大树 MCP snapshot 序列化占 UI 线程）已根修——`SharedState.styled_vtree` 改 Arc 发布、tool_snapshot/autoui_wait 深序列化移出锁外（8d03dc1a8），端口绑定冲突加回退链 9247..+10 同 commit；候选②日志洪水本次取证无证据，不动。修复后 musk 隔离 3×10min 零静默退出。证据：musk attachments/066-kd048a-conviction/（PLAN-066 T-01/T-02） | `docs/plans/625-ui-gallery-vm-usability.md` §8 T-07；WER 事件 16:07:48/16:14:54；musk 066 定罪报告 |
 | P625-D2 | low | 渲染语义 | **iced Row 交叉轴无 CSS stretch 语义**：aside 无显式高度类时 provider 的 `h-full` 塌缩 0×0（整子树"树在/分发正常/像素无"——ui-gallery 侧栏 33 项实证）。惯用法补全：aside 外壳挂 sidebar_provider 带 `display:flex + min-h-0 + h-full` 三件。哨兵测试 `p625_uigallery_sidebar_pills_visible` 双形态钉住（无高度类=0×0；未来渲染器补 stretch 语义时翻转该断言） | `crates/auto-lang/src/ui/iced/layout_tests.rs`；ui-gallery app.at aside |
 | P625-D3 | low | 编译器能力 | **handler 合成不支持 lambda 捕获 for 循环变量**（`Undefined variable: demo` → poisoned export）。惯用法绕行=循环体事件用 msg 带参形式（`onclick: .SelectDemo(demo.id)`，027 `OpenItem(item.id)` 同型——循环变量分发期求值）。通用捕获能力（合成时注入循环变量为形参）待独立立项 | `crates/auto-lang/src/ui/handler_codegen.rs`；ui-gallery app.at SelectDemo |
 | P625-D4 | low | 转译器 | **Rust 臂（--render rust）未支持 Plan 522 模块 use**：ui-gallery rust 臂 cargo 编译 17 错（E0425 `filter_demos` not found 等）——`use registry:` 模块导入的转译发射缺失；`.vm.at` 适配链亦为 VM 加载器专属（ext_stubs 为 VM 渲染目标实现）。Rust 臂 AppViewport/模块导入实装需转译器侧工作,独立计划 | `crates/auto-lang/src/trans/`；ui-gallery app.at `use registry:` |
@@ -2232,3 +2235,12 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   缓解候选：根件无 Init 声明时静默/降为 debug 级；或画廊 app.at 补 no-op
   Init。收益仅日志卫生，另立微计划处理。证据：PLAN-632 T-01/T-05、
   `target/p632/t01-*-proc.log`。
+
+## P020 债务（rust-desktop-exe-compositor，2026-09-15 work 登记）
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P020-D1 | medium | 架构 | **双投影器并存（AppProjector 解释态 / NativeProjector native）**——块流布局 walker ~150 行语义镜像重复（layout_view_block/layout_view_node vs layout_block/layout_node），样式双轨（字符串解析 vs typed StyleClass 适配）。统一方向 = 解释态投影器改写为 View 基（AuraViewBuilder 已产 View，双轨归一），待 native 覆盖集爬坡后立项 | desktop_protocol/client_runtime.rs layout_*；desktop_protocol/native_projector.rs |
+| P020-D2 | low | 协议边界 | **native queue 臂键盘/滚轮/右键不路由、L3 StateSnapshot 注入 not-yet**（v1.6 边界随注）——input 族入覆盖集时同步补路由臂；StateSnapshot 融合态迁移需 typed 组件字段写回通道另立 | native_projector.rs on_input/on_control；desktop-protocol-v1.md §1.6 边界 |
+| P020-D3 | low | 生成器 | **async-init App 经孵化臂以 default() 态起**（初始化 API 加载不接协议 client 面）——超覆盖 App 的孵化形态缺省 auto→independent 可绕开，queue 档显式声明 async-init App 时启动态为空，待需要时立项 | rust_ui.rs wrap_example native_client_gate 随注 |
+| P020-D4 | low | 测试基建 | **桌面画布↔屏幕变换未文档化，OS 级点击自动化未打通**（DPI 2x + canvas 缩放系数非恒定——ui_desktop 真机冒烟三次坐标假设均未命中窗内按钮）；窗内点击/× 关闭的 GUI 级自动化待 acceptance channel 增 pointer verb（现仅 bus/handler），期间点击闭环/回收由协议级 p020_native_exe_arm 承载 | mcp_server.rs autoui_desktop；scripts/smoke-020-native-exe.sh（os 仓）随注 |

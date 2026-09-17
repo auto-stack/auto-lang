@@ -34,8 +34,8 @@ pub mod widget;
 
 #[cfg(all(feature = "autodown", feature = "code-editor"))]
 pub use core::{
-    autodown_editor, autodown_editor_dispose, autodown_editor_sync, autodown_editor_text,
-    retheme_all_fence_buffers,
-    storage_key, AutodownEditorCore, BlockDrawCtx, DocDrawList, DocFrame, DocInput, DocLayout,
-    DocOutput, DocRun, SelAnchor, VIEW_FENCE_PREFIX,
+    autodown_editor, autodown_editor_dispose, autodown_editor_slash_state, autodown_editor_sync,
+    autodown_editor_text, retheme_all_fence_buffers, storage_key, AutodownEditorCore, BlockDrawCtx,
+    DocDrawList, DocFrame, DocInput, DocLayout, DocOutput, DocRun, SelAnchor, SlashItemDraw,
+    SlashMenuDraw, SlashState, VIEW_FENCE_PREFIX,
 };

@@ -44,6 +44,12 @@ print(add(1, 2))
         var sel int = 0
         var console_open bool = false
         var console str = ""
+        // PLAN-016 T-08：桌面 open_with 接收臂——宿主执行臂 write_state
+        // 写入路径；Tick 消费一次（open_consumed 防重放）。interval 挂
+        // store（合并根 state 后为 .interval，Tick 契约读取面）。
+        var interval int = 800
+        var auto_open_path str = ""
+        var open_consumed str = "__none__"
         // Plan 428: 折叠状态读数(隐藏行数;矩阵经 autoui_state 校验)
         var fold_hidden int = 0
         // Plan 422 P3: 右键菜单(contextmenu popover 的坐标锚状态)
@@ -89,6 +95,9 @@ print(add(1, 2))
         ActSelectAll, ActCut, ActCopy, ActPaste, ActConsole,
         ActSwitchTab, ActFold, ActAbout,
         TreeToggle(str), TreeSelect(str),
+        // PLAN-016 T-08：桌面 open_with 接收臂（host 写 auto_open_path，
+        // Tick 消费一次）。
+        ConsumeOpen,
         LoadWorkspace, CloseRequest, QuitDiscard, QuitSaveClose, QuitConfirmCancel,
     }
 
@@ -254,6 +263,30 @@ print(add(1, 2))
             console_log("new: cleared active tab")
             .console = console_lines()
         }
+        // PLAN-016 T-08：open_with 接收消费——与 ActOpen 同构，路径来自
+        // 宿主写入的 auto_open_path（读文本入新 tab；防重放 + 清路径）。
+        .ConsumeOpen -> {
+            if .auto_open_path != "" {
+                if .auto_open_path != .open_consumed {
+                    .open_consumed = .auto_open_path
+                    let p str = .auto_open_path
+                    let s str = File.read_text(p)
+                    .open_count = .open_count + 1
+                    .tabs.push({key: "tab-" + .open_count.str(), title: file_basename(p), path: p, dirty: false, src: s})
+                    .tab = .tab_count
+                    .tab_count = .tab_count + 1
+                    .active_key = .tabs[.tab].key
+                    .title_active = .tabs[.tab].title
+                    .path_active = p
+                    .src_active = s
+                    .line = 1
+                    .col = 1
+                    .sel = 0
+                    .auto_open_path = ""
+                }
+            }
+        }
+
         .ActOpen -> {
             // Plan 420 P2: AUTO_OPEN_PATH 环境变量旁路(测试构建语义,prod
             // 忽略)—— 阻塞式 rfd 对话框无法被 MCP 驱动的盲区由此打通。

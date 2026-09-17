@@ -1,0 +1,27 @@
+// app.at — 跨包 style recipe 引用示范（PLAN-635）。
+//
+// `use stylekit.styles: card_base, pill` 命名导入共享包的 pub 配方；
+// 消费面（裸标识符/参数化调用/组合派生）与本地配方完全一致。
+use stylekit.styles: card_base, pill
+
+// 组合配方：在宿主侧基于导入配方派生（编译期单点展开，运行时零成本）。
+style pill_danger = pill(bg: "bg-destructive", fg: "text-destructive-foreground")
+
+widget App {
+    view {
+        col {
+            style: card_base
+            text "Cross-package style recipes" {
+                style: "text-lg font-semibold"
+            }
+            text "the recipes above are imported from examples/ui/stylekit via pac.at dep + use" {
+                style: "text-sm text-muted-foreground mt-1"
+            }
+            row {
+                style: "gap-2 mt-4"
+                button "Primary" { style: pill() }
+                button "Danger" { style: pill_danger }
+            }
+        }
+    }
+}

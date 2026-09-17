@@ -437,6 +437,50 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
             );
             fill_quad(renderer, to_rect(bounds, preedit.underline), to_color(preedit.color));
         }
+        // PLAN-069 T2：slash 弹层浮层（最顶层——preedit 之上；层 rect/选中
+        // 项高亮 + 标题/描述双行文本，几何与配色由 core render_frame 单源）。
+        if let Some(menu) = &list.slash_menu {
+            fill_quad(renderer, to_rect(bounds, menu.rect), to_color(menu.bg));
+            stroke_rect(renderer, bounds, menu.rect, to_color(menu.border));
+            let sans = Font::with_name("Inter");
+            for (i, item) in menu.items.iter().enumerate() {
+                if i == menu.selected {
+                    fill_quad(renderer, to_rect(bounds, item.rect), to_color(menu.hover));
+                }
+                renderer.fill_text(
+                    adv_text::Text {
+                        content: item.title.clone(),
+                        bounds: Size::new(f32::MAX / 2.0, 18.0),
+                        size: 13.0.into(),
+                        line_height: adv_text::LineHeight::Absolute(18.0.into()),
+                        font: sans,
+                        align_x: adv_text::Alignment::Left,
+                        align_y: iced::alignment::Vertical::Top,
+                        wrapping: adv_text::Wrapping::None,
+                        shaping: adv_text::Shaping::Advanced,
+                    },
+                    Point::new(bounds.x + item.rect.x + 8.0, bounds.y + item.rect.y + 3.0),
+                    to_color(menu.fg),
+                    bounds,
+                );
+                renderer.fill_text(
+                    adv_text::Text {
+                        content: item.desc.clone(),
+                        bounds: Size::new(f32::MAX / 2.0, 14.0),
+                        size: 11.0.into(),
+                        line_height: adv_text::LineHeight::Absolute(14.0.into()),
+                        font: sans,
+                        align_x: adv_text::Alignment::Left,
+                        align_y: iced::alignment::Vertical::Top,
+                        wrapping: adv_text::Wrapping::None,
+                        shaping: adv_text::Shaping::Advanced,
+                    },
+                    Point::new(bounds.x + item.rect.x + 8.0, bounds.y + item.rect.y + 18.0),
+                    to_color(menu.dim),
+                    bounds,
+                );
+            }
+        }
         // CaretDraw/PreeditDraw 类型再导出用于状态缓存（防未用告警）。
         let _ = (std::mem::size_of::<CaretDraw>(), std::mem::size_of::<PreeditDraw>());
     }

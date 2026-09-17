@@ -109,6 +109,11 @@ fn computed_fn_for(name: &str) -> Option<String> {
     COMPUTED_FN_NAMES.with(|m| m.borrow().get(name).cloned())
 }
 
+/// PLAN-066 T-08: 当前件是否有同名 handler（handler-as-value 改写判据）。
+fn current_widget_has_handler(name: &str) -> bool {
+    CURRENT_HANDLER_NAMES.with(|s| s.borrow().contains(name))
+}
+
 /// Plan 576: `__computed_<W>_<p>(__state)` 调用表达式。
 fn computed_call_expr(fn_name: &str) -> Expr {
     Expr::Call(crate::ast::Call {
@@ -226,6 +231,86 @@ pub type SynthResult<T> = Result<T, String>;
 pub fn rewrite_state_refs_stmts(stmts: &mut [Stmt], state_fields: &HashSet<String>) {
     let mut locals = HashSet::new();
     rewrite_state_refs_stmts_with_locals(stmts, state_fields, &mut locals);
+}
+
+/// PLAN-066 T-12（F-W1）：web 全局降级改写——合成体（import fn/handler/
+/// computed）里的 `document.<anything>` 整体替换为 `None`。VM 无 DOM：
+/// 引用 `document` 的 fn 曾在编译期报 "Undefined variable: document" 毒化
+/// 导出（mention_helpers.mention_detect → App link failed 启动 exit 1）。
+/// 语义面：document 分支在 VM 轨不可达（musk mention_detect 的 document
+/// 臂仅 web 单参字符串契约触达），置 None 走既有的 None 守卫路径；web 轨
+/// 不经合成，源码不受影响。
+pub fn rewrite_web_globals_stmts(stmts: &mut [Stmt]) {
+    for stmt in stmts.iter_mut() {
+        rewrite_web_globals_stmt(stmt);
+    }
+}
+
+fn rewrite_web_globals_expr(expr: &mut crate::ast::Expr) {
+    // 命中：`document.<field>` → None（整体替换，接收者不再编译）。
+    if let crate::ast::Expr::Dot(obj, _) = expr {
+        if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "document") {
+            *expr = crate::ast::Expr::None;
+            return;
+        }
+    }
+    match expr {
+        crate::ast::Expr::Dot(obj, _) => rewrite_web_globals_expr(obj),
+        crate::ast::Expr::Bina(l, _, r) => {
+            rewrite_web_globals_expr(l);
+            rewrite_web_globals_expr(r);
+        }
+        crate::ast::Expr::Unary(_, inner) => rewrite_web_globals_expr(inner),
+        crate::ast::Expr::Call(call) => {
+            rewrite_web_globals_expr(call.name.as_mut());
+            for arg in call.args.args.iter_mut() {
+                match arg {
+                    crate::ast::Arg::Pos(e) => rewrite_web_globals_expr(e),
+                    crate::ast::Arg::Pair(_, e) => rewrite_web_globals_expr(e),
+                    crate::ast::Arg::Name(_) => {}
+                }
+            }
+        }
+        crate::ast::Expr::Index(base, idx) => {
+            rewrite_web_globals_expr(base);
+            rewrite_web_globals_expr(idx);
+        }
+        crate::ast::Expr::Block(body) => rewrite_web_globals_stmts(&mut body.stmts),
+        _ => {}
+    }
+}
+
+fn rewrite_web_globals_stmt(stmt: &mut Stmt) {
+    match stmt {
+        Stmt::Expr(e) => rewrite_web_globals_expr(e),
+        Stmt::Return(e) | Stmt::Reply(e) => rewrite_web_globals_expr(e.as_mut()),
+        Stmt::Store(st) => rewrite_web_globals_expr(&mut st.expr),
+        Stmt::If(st) => {
+            for branch in st.branches.iter_mut() {
+                rewrite_web_globals_expr(&mut branch.cond);
+                rewrite_web_globals_stmts(&mut branch.body.stmts);
+            }
+            if let Some(else_body) = st.else_.as_mut() {
+                rewrite_web_globals_stmts(&mut else_body.stmts);
+            }
+        }
+        Stmt::For(st) => {
+            rewrite_web_globals_expr(&mut st.range);
+            rewrite_web_globals_stmts(&mut st.body.stmts);
+            if let Some(init) = st.init.as_mut() {
+                rewrite_web_globals_stmt(init);
+            }
+        }
+        Stmt::Try(st) => {
+            rewrite_web_globals_stmts(&mut st.body.stmts);
+            rewrite_web_globals_stmts(&mut st.catch_body.stmts);
+            if let Some(fin) = st.finally_body.as_mut() {
+                rewrite_web_globals_stmts(&mut fin.stmts);
+            }
+        }
+        Stmt::Block(body) => rewrite_web_globals_stmts(&mut body.stmts),
+        _ => {}
+    }
 }
 
 pub fn rewrite_state_refs_stmts_with_locals(
@@ -757,6 +842,30 @@ fn rewrite_expr_with_locals(
         {
             let fn_name = computed_fn_for(field.as_str()).unwrap();
             Some(computed_call_expr(&fn_name))
+        }
+        // PLAN-066 T-08: handler-as-value —— `.HandlerName`/`self.HandlerName`
+        // 命中当前件 handler 集（且非状态字段/局部/computed）时改写为
+        // handler 合成 fn 裸引用（值位置经 Plan 383 Ident 臂落 CLOSURE）。
+        // 此前落 generic self-dot 臂 → `__state.<Name>` → GET_FIELD，根态
+        // 无此字段即运行期 "Field not found" 中止 handler——musk
+        // StartStream 的 `Sse.open(url, .OnStreamEvent)` handler-as-value
+        // 实参现场（KD-059-FU1 族）。
+        Expr::Dot(obj, field)
+            if matches!(
+                obj.as_ref(),
+                Expr::Ident(n)
+                    if (n.as_str() == "self" || n.as_str() == "." || n.as_str().is_empty())
+                        && !state_fields.contains(field.as_str())
+                        && !locals.contains(field.as_str())
+                        && computed_fn_for(field.as_str()).is_none()
+                        && current_widget_has_handler(field.as_str())
+            ) =>
+        {
+            let widget = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
+            Some(Expr::Ident(Name::from(namespaced_handler_fn_name(
+                &widget,
+                field.as_str(),
+            ))))
         }
         Expr::Dot(obj, field)
             if matches!(
@@ -1406,6 +1515,18 @@ pub fn synthesize_widget_module(
     }
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
+            // PLAN-066 T-12: web 全局降级（document → None）——import fn
+            // 体（如 mention_helpers.mention_detect）引用 document 曾毒化
+            // 导出致 App link failed。
+            if let Stmt::Fn(fn_decl) = stmt {
+                let mut cloned = fn_decl.clone();
+                rewrite_web_globals_stmts(&mut cloned.body.stmts);
+                let rewritten = Stmt::Fn(cloned);
+                if let Err(e) = codegen.compile_stmt(&rewritten) {
+                    record_synth_failure(format!("import stmt: {}", e));
+                }
+                continue;
+            }
             if let Err(e) = codegen.compile_stmt(stmt) {
                 record_synth_failure(format!("import stmt: {}", e));
             }
@@ -2028,6 +2149,18 @@ pub fn synthesize_from_decl(
     }
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
+            // PLAN-066 T-12: web 全局降级（document → None）——import fn
+            // 体（如 mention_helpers.mention_detect）引用 document 曾毒化
+            // 导出致 App link failed。
+            if let Stmt::Fn(fn_decl) = stmt {
+                let mut cloned = fn_decl.clone();
+                rewrite_web_globals_stmts(&mut cloned.body.stmts);
+                let rewritten = Stmt::Fn(cloned);
+                if let Err(e) = codegen.compile_stmt(&rewritten) {
+                    record_synth_failure(format!("import stmt: {}", e));
+                }
+                continue;
+            }
             if let Err(e) = codegen.compile_stmt(stmt) {
                 record_synth_failure(format!("import stmt: {}", e));
             }

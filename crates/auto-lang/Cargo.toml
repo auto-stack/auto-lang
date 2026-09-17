@@ -343,6 +343,13 @@ path = "examples/mpv_spike.rs"
 required-features = ["mpv-spike"]
 
 [[example]]
+name = "native_pixels_counter"
+path = "examples/native_pixels_counter.rs"
+# Plan 020 T-03：native 像素臂 e2e 子进程（winit 主线程约束——窗口臂的
+# 载体必须是生产形态二进制；测试内 build + spawn）。
+required-features = ["ui-iced"]
+
+[[example]]
 name = "run_vm_test"
 path = "examples/run_vm_test.rs"
 required-features = ["build-examples"]

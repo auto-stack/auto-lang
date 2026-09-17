@@ -9643,6 +9643,19 @@ fn drain_and_execute_desktop_commands(
     if let Some(app) = settings_window_app {
         cmds.extend(state.drain_app_desktop_commands(app));
     }
+    // PLAN-016 T-07（协议 v1.7）：普通注册表窗上行联合排空——open_with
+    // 动词面（027 文件管理器）。特权窗上方已排空（二次排空空读无害）；
+    // 动词面仍受 DesktopCommand 解析白名单约束。
+    {
+        let app_ids: Vec<_> = state
+            .host
+            .as_ref()
+            .map(|h| h.wm.wins.values().map(|v| v.app).collect())
+            .unwrap_or_default();
+        for app_id in app_ids {
+            cmds.extend(state.drain_app_desktop_commands(app_id));
+        }
+    }
     if cmds.is_empty() {
         return (false, Vec::new());
     }
@@ -9675,6 +9688,8 @@ fn execute_desktop_commands(
                 tasks.push(summon_launcher(state));
             }
             DC::LaunchApp(name) => execute_launch_app(state, &name),
+            // PLAN-016 T-07（协议 v1.7）：open_with 执行臂。
+            DC::OpenWith(app, path) => execute_open_with(state, &app, &path),
             DC::CloseWindow(wid) => {
                 // PLAN-012 W1：os-config close→hide 拦截臂——设置窗"×"不改
                 // 换成常驻隐藏（hidden 置位：投影/命中/推层全排除，"真关了"
@@ -10929,6 +10944,96 @@ fn restore_all_native_slots(_state: &mut crate::ui::session::DesktopSession) {}
 
 /// LaunchApp 执行体（463 T4 主体抽出；472 T4 起被 LaunchApp/ActivateApp
 /// 两臂共用）。失败转 toast + 占位页（Design 24 §6.5）。
+/// PLAN-016 T-07（协议 v1.7）：open_with 执行体——注册表校验（opens 声明
+/// 面未命中即拒）→ 未运行 launch 后向目标 App state 写 `auto_open_path` /
+/// 已运行聚焦 + 同款写入；目标 App（041/031 接收臂）Tick 消费。写入后
+/// view_dirty 即标——目标下一帧可见。App 未声明 `auto_open_path` 时写入
+/// 静默无效（capability 自声明，无害）。
+fn execute_open_with(
+    state: &mut crate::ui::session::DesktopSession,
+    app_id: &str,
+    path: &str,
+) {
+    // 注册表校验：app 存在 + opens 声明面（空 = 不参与校验，放行）。
+    let ext = std::path::Path::new(path)
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+        .unwrap_or_default();
+    let opens_ok = state.desktop.app_resolver.as_ref()
+        .and_then(|r| r(app_id))
+        .map(|spec| spec.opens.is_empty() || spec.opens.iter().any(|o| o.eq_ignore_ascii_case(&ext)));
+    match opens_ok {
+        None => {
+            push_notification(state, "error", &format!("未知应用: {app_id}"));
+            return;
+        }
+        Some(false) => {
+            push_notification(
+                state,
+                "error",
+                &format!("{app_id} 未声明打开 {ext} 文件（pac opens）"),
+            );
+            return;
+        }
+        Some(true) => {}
+    }
+    // 已运行窗（registry_id 命中）→ 聚焦 + 写入；未运行 → launch + 写入。
+    let running = state.host.as_ref().and_then(|h| {
+        h.wm
+            .wins
+            .iter()
+            .find(|(_, v)| v.registry_id.as_deref() == Some(app_id))
+            .map(|(wid, v)| (*wid, v.app))
+    });
+    let delivered = match running {
+        Some((wid, app)) => {
+            state.wm_focus(wid);
+            deliver_open_arg(state, app, path)
+        }
+        None => match state.launch_app(app_id) {
+            Ok(wid) => {
+                let app = state.host.as_ref().and_then(|h| h.wm.wins.get(&wid)).map(|v| v.app);
+                match app {
+                    Some(app) => deliver_open_arg(state, app, path),
+                    None => false,
+                }
+            }
+            Err(err) => {
+                push_notification(state, "error", &format!("启动 {app_id} 失败: {err}"));
+                false
+            }
+        },
+    };
+    if !delivered {
+        // 目标未声明 auto_open_path（非接收臂 App）——聚焦语义仍达成。
+        push_notification(
+            state,
+            "info",
+            &format!("已聚焦 {app_id}（目标未声明 auto_open_path 接收臂）"),
+        );
+    }
+}
+
+/// PLAN-016 T-07：向目标 App 写 `auto_open_path` + view_dirty。返回目标
+/// 是否声明了接收臂（写成功 = true）。
+fn deliver_open_arg(
+    state: &mut crate::ui::session::DesktopSession,
+    app: crate::ui::session::AppId,
+    path: &str,
+) -> bool {
+    let Some(a) = state.apps.get_mut(&app) else {
+        return false;
+    };
+    let ok = a
+        .component
+        .write_state("auto_open_path", auto_val::Value::str(path))
+        .is_ok();
+    if ok {
+        *a.state.view_dirty.borrow_mut() = true;
+    }
+    ok
+}
+
 fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
     match state.launch_app(name) {
         // PLAN-002 N3（用户复核裁定 2026-09-09）：启动成功不再发通知——
@@ -12384,11 +12489,6 @@ fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
             );
         }
     }
-    eprintln!(
-        "[ws-preview] publish: {} ws entries, tiles per-ws {:?}",
-        per_ws.len(),
-        per_ws.iter().map(|(k, v)| (k.as_str(), v.len())).collect::<Vec<_>>()
-    );
     crate::ui::iced::workspace_preview::publish(
         crate::ui::iced::workspace_preview::Published {
             usable: (usable.width, usable.height),
@@ -12870,6 +12970,18 @@ fn compare_pngs(
                                     let code = std::fs::read_to_string(&e.entry).ok()?;
                                     // Plan 501：外部后端根（注册表扫描期已解析为
                                     // 绝对路径；坏路径 launch 臂 is_dir 兜底跳过）。
+                                    // Plan 020 T-06：pac `desktop_exe:` 相对 App 根
+                                    // 解析（`<dir>/src/front/app.at` 剥三层得 App 根）；
+                                    // 缺席 = None（launch 期约定路径兜底扫描）。
+                                    let app_dir = std::path::Path::new(&e.entry)
+                                        .ancestors()
+                                        .nth(3)
+                                        .map(|d| d.to_path_buf());
+                                    let exe = e
+                                        .desktop_exe
+                                        .as_deref()
+                                        .zip(app_dir.as_ref())
+                                        .map(|(rel, dir)| dir.join(rel));
                                     Some(crate::ui::session::LaunchSpec {
                                         code,
                                         source_path: Some(e.entry.to_string_lossy().to_string()),
@@ -12877,7 +12989,10 @@ fn compare_pngs(
                                         name: e.name.clone(),
                                         daemon: e.daemon.clone(),
                                         back_root: e.back_root.clone(),
+                                        opens: e.opens.clone(),
                                         fit: e.fit,
+                                        exe,
+                                        render_decl: e.desktop_render.clone(),
                                     })
                                 })
                         }));
@@ -15664,7 +15779,6 @@ fn compare_pngs(
                                 .map(|v| v.to_string().contains('1'))
                                 .unwrap_or(false);
                             if open {
-                                eprintln!("[ws-preview] tick refresh: shell view dirty");
                                 if let Some(host) = state.host.as_ref() {
                                     for &wid in &host.wm.z_order {
                                         let visible = host
@@ -22277,6 +22391,337 @@ where
 }
 
 /// Run a rust-mode Component — built by a boot closure — with the F12 DevTools
+// ---------------------------------------------------------------------------
+// Plan 020 T-03 —— native 像素臂渲染宿主（Component 泛型，independent 臂）
+// ---------------------------------------------------------------------------
+
+/// native 像素臂消息面：App 消息 / 协议入站 / 截图回调 / tick。
+/// 无 Debug 派生——`iced::window::Screenshot` 只有 Clone；iced 0.14 的
+/// `MaybeDebug/MaybeClone` 界限下合法（debug feature 未开）。
+#[derive(Clone)]
+pub enum NativePixelsMsg<C: Component> {
+    App(C::Msg),
+    Proto(Box<crate::ui::desktop_protocol::message::ProtocolMsg>),
+    Shot(iced::window::Screenshot),
+    Tick,
+}
+
+/// native 像素臂宿主状态：native 组件 + 像素桥（boot 期从 launch slot 取，
+/// Hello 握手在此发起——run_session Standalone 像素臂同序）。
+struct NativePixelsHost<C: Component> {
+    inner: C,
+    bridge: Option<crate::ui::desktop_protocol::pixels::PixelsChild>,
+}
+
+impl<C: Component> NativePixelsHost<C> {
+    fn from_launch(component: C) -> Self {
+        let mut host = Self {
+            inner: component,
+            bridge: crate::ui::desktop_protocol::pixels::take_launch(),
+        };
+        // Hello 握手失败不装桥——管道已死，宿主空转至窗亡（与解释态臂
+        // run_session Standalone 同边角语义）。
+        if let Some(bridge) = host.bridge.as_mut() {
+            if !bridge.start() {
+                host.bridge = None;
+            }
+        }
+        host
+    }
+}
+
+/// 状态变更（App 消息/tick）后的截图发起——去重防抖在桥内
+/// （`request_capture`：同轮只发一次 Task）。
+/// 截图 Task：经 `window::latest()` 取当前窗（iced 0.14 无 Id::MAIN——
+/// 单窗 application 的窗 id 运行期解析）再 screenshot。
+fn native_pixels_shot_task<C>() -> iced::Task<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    iced::window::latest().then(|id| match id {
+        Some(win) => iced::window::screenshot(win).map(NativePixelsMsg::Shot),
+        None => iced::Task::none(),
+    })
+}
+
+fn native_pixels_capture<C>(
+    state: &mut NativePixelsHost<C>,
+) -> iced::Task<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    let Some(bridge) = state.bridge.as_mut() else {
+        return iced::Task::none();
+    };
+    if bridge.request_capture() {
+        native_pixels_shot_task::<C>()
+    } else {
+        iced::Task::none()
+    }
+}
+
+/// update：Proto/Shot 两臂镜像 run_session 的解释态像素臂
+/// （DesktopEvent::PixelsProtocol/PixelsShot 同名臂）；App/Tick 臂驱动
+/// `inner.on` 后发起截图。native v1 边界：`on_protocol` 组件参数传
+/// None——StateSnapshot 注入 not-yet（Plan 020 §5.1）。
+fn native_pixels_update<C>(
+    state: &mut NativePixelsHost<C>,
+    msg: NativePixelsMsg<C>,
+) -> iced::Task<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    use crate::ui::desktop_protocol::message::ProtocolMsg;
+    match msg {
+        NativePixelsMsg::App(m) => {
+            state.inner.on(m);
+            native_pixels_capture(state)
+        }
+        NativePixelsMsg::Tick => {
+            if let Some(m) = state.inner.tick_msg() {
+                state.inner.on(m);
+            }
+            native_pixels_capture(state)
+        }
+        NativePixelsMsg::Proto(m) => {
+            let Some(mut bridge) = state.bridge.take() else {
+                return iced::Task::none();
+            };
+            let (replies, want_capture) = bridge.on_protocol(*m, None);
+            for reply in replies {
+                if !bridge.send(&reply) {
+                    state.bridge = Some(bridge);
+                    return iced::exit();
+                }
+            }
+            let mut tasks = Vec::new();
+            if want_capture && bridge.request_capture() {
+                tasks.push(native_pixels_shot_task::<C>());
+            }
+            let detached = bridge.is_detached();
+            state.bridge = Some(bridge);
+            if detached {
+                return iced::exit();
+            }
+            iced::Task::batch(tasks)
+        }
+        NativePixelsMsg::Shot(ss) => {
+            let Some(bridge) = state.bridge.as_mut() else {
+                return iced::Task::none();
+            };
+            // 物理像素 → 表面逻辑尺寸（盒降采样）：shm 槽按逻辑尺寸定档，
+            // HiDPI scale 经此对齐（497 快照同型）。
+            let (lw, lh) = bridge.size();
+            let lw = lw.max(1.0).ceil() as u32;
+            let lh = lh.max(1.0).ceil() as u32;
+            let rgba = crate::ui::desktop_protocol::pixels::downsample_to_logical(
+                ss.rgba.as_ref(),
+                ss.size.width,
+                ss.size.height,
+                lw,
+                lh,
+            );
+            let frame = crate::ui::desktop_protocol::pixels::PixelsFrame {
+                rgba,
+                w: lw,
+                h: lh,
+                stride: lw * 4,
+            };
+            if let Some(frame_msg) = bridge.capture(frame) {
+                if !bridge.send(&ProtocolMsg::Frame(frame_msg)) {
+                    return iced::exit();
+                }
+            }
+            if bridge.is_detached() {
+                return iced::exit();
+            }
+            iced::Task::none()
+        }
+    }
+}
+
+/// view：native 组件 View → iced（`IntoIcedElement`），消息面映射到
+/// `NativePixelsMsg::App`。
+fn native_pixels_view<C>(
+    state: &NativePixelsHost<C>,
+) -> iced::Element<'_, NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    state.inner.view().into_iced().map(NativePixelsMsg::App)
+}
+
+/// 协议入站轮询（pixels 协议订阅同型——该订阅 Output 钉死
+/// DesktopMessage，native 臂消息面独立建 recipe；空拍 5ms 重试）。
+fn native_pixels_proto_subscription<C>() -> iced::Subscription<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    use iced_futures::subscription::Recipe;
+
+    struct NativePixelsProtoRecipe<C: Component>(std::marker::PhantomData<fn() -> C>);
+
+    impl<C: Component> std::hash::Hash for NativePixelsProtoRecipe<C> {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            "auto-lang-native-pixels-protocol".hash(state);
+        }
+    }
+
+    impl<C: Component> Recipe for NativePixelsProtoRecipe<C>
+    where
+        C: 'static,
+    {
+        type Output = NativePixelsMsg<C>;
+
+        fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+            std::hash::Hash::hash(self, state);
+        }
+
+        fn stream(
+            self: Box<Self>,
+            _input: iced_futures::subscription::EventStream,
+        ) -> iced_futures::BoxStream<Self::Output> {
+            use iced_futures::futures::stream::{StreamExt, unfold};
+            unfold((), |()| async move {
+                loop {
+                    match crate::ui::desktop_protocol::pixels::poll_transport() {
+                        Some(Ok(msg)) => {
+                            return Some((NativePixelsMsg::Proto(Box::new(msg)), ()));
+                        }
+                        Some(Err(_codec)) => continue,
+                        None => {
+                            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                        }
+                    }
+                }
+            })
+            .boxed()
+        }
+    }
+
+    iced_futures::subscription::from_recipe(NativePixelsProtoRecipe(
+        std::marker::PhantomData,
+    ))
+}
+
+/// tick 订阅（run_app_devtools 的 tick_subscription 同型——.map() 在泛型
+/// 代码不可用，'static recipe 直发 Tick 变体；interval 入 hash 防漂重订阅）。
+fn native_pixels_tick_subscription<C>(
+    interval: std::time::Duration,
+) -> iced::Subscription<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    use iced_futures::subscription::Recipe;
+
+    struct NativePixelsTickRecipe<C: Component> {
+        interval: std::time::Duration,
+        _c: std::marker::PhantomData<fn() -> C>,
+    }
+
+    impl<C: Component> std::hash::Hash for NativePixelsTickRecipe<C> {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            ("auto-lang-native-pixels-tick", self.interval).hash(state);
+        }
+    }
+
+    impl<C: Component> Recipe for NativePixelsTickRecipe<C>
+    where
+        C: 'static,
+    {
+        type Output = NativePixelsMsg<C>;
+
+        fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+            std::hash::Hash::hash(self, state);
+        }
+
+        fn stream(
+            self: Box<Self>,
+            _input: iced_futures::subscription::EventStream,
+        ) -> iced_futures::BoxStream<Self::Output> {
+            use iced_futures::futures::stream::{StreamExt, unfold};
+            let interval = self.interval;
+            unfold((), move |()| {
+                let interval = interval;
+                async move {
+                    tokio::time::sleep(interval).await;
+                    Some((NativePixelsMsg::<C>::Tick, ()))
+                }
+            })
+            .boxed()
+        }
+    }
+
+    iced_futures::subscription::from_recipe(NativePixelsTickRecipe {
+        interval,
+        _c: std::marker::PhantomData,
+    })
+}
+
+fn native_pixels_subscription<C>(
+    state: &NativePixelsHost<C>,
+) -> iced::Subscription<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    let mut subs = vec![native_pixels_proto_subscription::<C>()];
+    if state.inner.tick_msg().is_some() {
+        if let Some(ms) = state.inner.tick_interval_ms() {
+            subs.push(native_pixels_tick_subscription::<C>(
+                std::time::Duration::from_millis(ms as u64),
+            ));
+        }
+    }
+    iced::Subscription::batch(subs)
+}
+
+/// Plan 020 T-03 —— native 像素臂渲染宿主入口：隐藏单窗 iced application
+/// over `C: Component` + 像素桥（协议轮询订阅 + 截图回发 + Close 退出）。
+/// 窗尺寸 = 表面逻辑尺寸（shm 槽/截图降采样口径同源）；`visible: false`
+/// ——渲染/截图照常，不进 OS 桌面 z 序（run_session Standalone+pixels
+/// 同语义，合成归宿主虚拟窗）。
+pub fn run_native_iced_pixels<C>(component: C, width: f32, height: f32) -> AppResult<()>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    // 单发组件装载（RefCell 内变——new 闭包需 Fn，生成 main 的 __init
+    // 同型手法）。
+    let cell = std::cell::RefCell::new(Some(component));
+    iced::application(
+        move || {
+            let component = cell
+                .borrow_mut()
+                .take()
+                .expect("pixels host init once");
+            NativePixelsHost::from_launch(component)
+        },
+        native_pixels_update::<C>,
+        native_pixels_view::<C>,
+    )
+    .subscription(native_pixels_subscription::<C>)
+    .window(iced::window::Settings {
+        size: iced::Size::new(width, height),
+        position: iced::window::Position::Specific(iced::Point::new(80.0, 80.0)),
+        visible: false,
+        ..Default::default()
+    })
+    .title(|_: &NativePixelsHost<C>| window_title(String::from("Auto Lang - Pixels")))
+    .font(INTER_FONT_REGULAR)
+    .font(INTER_FONT_MEDIUM)
+    .font(INTER_FONT_SEMIBOLD)
+    .default_font(INTER_FONT)
+    .run()
+    .map_err(|e| e.into())
+}
+
 /// layer (Plan 311 P2-A). The async-init counterpart of [`run_app_devtools`]:
 /// covers apps whose `main.rs` codegens to `run_app_with_task` (e.g. any app
 /// with an `__InitLoaded` init API, like `015-notes`).
@@ -23450,7 +23895,9 @@ mod tests {
                         fit: false,
                         daemon: Some("autoos".to_string()),
                         back_root: None,
-                    });
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    });
                 }
                 let e = apps.iter().find(|a| a.id == name)?;
                 Some(crate::ui::session::LaunchSpec {
@@ -23461,7 +23908,9 @@ mod tests {
                     fit: e.fit,
                     daemon: None,
                     back_root: None,
-                })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
             })
         });
         ds
@@ -23845,7 +24294,10 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        }];
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
@@ -23856,7 +24308,9 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
             }));
         ds.launch_app("011-calculator").expect("launch");
         sync_shell_windows(&mut ds);
@@ -25212,7 +25666,9 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
             }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
@@ -25256,7 +25712,9 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
             }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
@@ -25461,7 +25919,10 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        }];
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    }];
         inject_dock_pinned(&mut ds);
         {
             let app = ds.apps.get(&id).unwrap();
@@ -26238,7 +26699,10 @@ mod tests {
     back_root: None,
     fit: false,
     desktop_visible: true,
-            },
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
                 title: "便签".into(),
@@ -26252,7 +26716,10 @@ mod tests {
     back_root: None,
     fit: false,
     desktop_visible: true,
-            },
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    },
         ];
         // PLAN-012 W4：dock_pinned 缺省空（t3_session_with_shell 不动）。
         // storage：custom 014-weather + 重叠 011-calculator；hidden 013-todo。
@@ -26785,7 +27252,10 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        };
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();
         ds.open_desktop(iced::window::Id::unique());

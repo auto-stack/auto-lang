@@ -9266,13 +9266,21 @@ let tabs_inner = View::Row {
         builder.build()
     }
 
-    /// Convert a textarea element.
+    /// Convert a select element.
     /// Plan 446 批五 U4: `select { option "a" {} … }` → View::Select。
-    /// options 取 option 子元素文本（literal/text prop，绑定感知）；
-    /// selected 取 index prop（int）或 value/selected prop（按文本匹配）；
-    /// onselect/onchange → SelectCallback，经按钮同款 payload 编码通道
-    /// （`name\u{1F}s\u{1F}value`）把选中值送达 handler（decode_payload
-    /// 在 on_with_input_for 消费——与循环按钮实参同一条已证路径）。
+    /// OS-016（os-config 走查衍生）三契约补齐：
+    ///   D2 选项收集支持 for 循环子节点——逐迭代绑定循环变量后扫循环体内
+    ///      的 option 元素（数据驱动选项;此前只认直接 option 子节点,循环
+    ///      选项全漏 → options=[] → pick_list 空壳,os-config 016 批实况）。
+    ///   D3 option 双属性：(label,value) 平行数组——label 供 pick_list 展示,
+    ///      value 供选中态匹配与回调回传;value prop 缺省回退 label 文本
+    ///      （兼容 446-U4 纯文本形态）。选中态匹配:select 的 value/selected
+    ///      prop 先对 value 数组,再回退 label 文本（旧行为）。
+    ///   D4 回调参数：事件参数照 event_to_message_with 同款静态解析（循环
+    ///      绑定/字面量）,含 `$event` 的参数位在回调时替换为所选 value
+    ///      （vue 轨 `.Apply(e, $event.target.value)` 的 vm 对位）;无 `$event`
+    ///      位保留 446-U4 单串编码契约（`name\u{1F}s\u{1F}value`,handler 以
+    ///      选中值为实参;decode_payload 在 on_with_input_for 消费）。
     fn convert_select(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -9280,11 +9288,106 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let mut options: Vec<String> = Vec::new();
+        let mut labels: Vec<String> = Vec::new();
+        let mut values: Vec<String> = Vec::new();
+        self.collect_select_options(children, bindings, &mut labels, &mut values);
+
+        let cur = self
+            .extract_string_with(props, "value", bindings)
+            .or_else(|| self.extract_string_with(props, "selected", bindings));
+        let selected_index = self
+            .extract_string_with(props, "index", bindings)
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|i| *i < labels.len().max(1))
+            .or_else(|| {
+                let cur = cur?;
+                values
+                    .iter()
+                    .position(|v| v == &cur)
+                    .or_else(|| labels.iter().position(|l| l == &cur))
+            });
+        let on_select = aura_events_get_base(events, "onselect")
+            .or_else(|| aura_events_get_base(events, "select"))
+            .or_else(|| aura_events_get_base(events, "onchange"))
+            .or_else(|| aura_events_get_base(events, "change"))
+            .map(|event| {
+                let handler = extract_handler_name(&event.handler).to_string();
+                let widget_name = self.widget_name.clone();
+                // D4:静态参数位（循环绑定/字面量,同 event_to_message_with
+                // 口径）构建期解析;`$event` 位记 None,回调时以所选 value 补位。
+                let static_args: Vec<Option<Value>> = event
+                    .params
+                    .iter()
+                    .map(|param| {
+                        if param.contains("$event") {
+                            None
+                        } else {
+                            Some(
+                                self.resolve_binding_path(param, bindings)
+                                    .or_else(|| self.parse_event_param_expr(param, bindings))
+                                    .unwrap_or_else(|| parse_event_param_literal(param)),
+                            )
+                        }
+                    })
+                    .collect();
+                let has_event_slot = static_args.iter().any(|a| a.is_none());
+                let values = values.clone();
+                crate::ui::view::SelectCallback::new(move |idx, selected: &str| {
+                    // D3:按索引回查 value,缺失回退 pick_list 回传的 label。
+                    let chosen = values
+                        .get(idx)
+                        .cloned()
+                        .unwrap_or_else(|| selected.to_string());
+                    if has_event_slot {
+                        // vue 对位:.Apply(e, $event…) → Apply(e, selected_value)
+                        let args: Vec<Value> = static_args
+                            .iter()
+                            .map(|a| a.clone().unwrap_or_else(|| Value::str(&chosen)))
+                            .collect();
+                        DynamicMessage::Typed {
+                            widget_name: widget_name.clone(),
+                            event_name: handler.clone(),
+                            args,
+                        }
+                    } else {
+                        // 446-U4 既有契约:handler 以选中值为实参（单串编码,
+                        // 与循环按钮实参同一条已证 decode 路径）。
+                        DynamicMessage::String(format!(
+                            "{}\u{1F}s\u{1F}{}",
+                            handler, chosen
+                        ))
+                    }
+                })
+            });
+        let style = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .and_then(|s| Style::parse(&s).ok());
+        View::Select {
+            options: labels,
+            selected_index,
+            on_select,
+            style,
+        }
+    }
+
+    /// OS-016 D2:select 选项收集——直接 option 子节点 + for 循环子节点
+    /// （逐迭代绑定循环变量后扫循环体;iterable 解析口径同 for_loop_iterations:
+    /// 带点路径 resolve_iterable / 平名 bindings 与索引列表 / computed 回退;
+    /// 不做 matches_search 过滤——下拉选项非列表视图,不该被搜索态裁剪）。
+    fn collect_select_options(
+        &self,
+        children: &[AuraNode],
+        bindings: &Bindings,
+        labels: &mut Vec<String>,
+        values: &mut Vec<String>,
+    ) {
         for child in children {
-            if let AuraNode::Element { tag, props: cprops, children: ckids, .. } = child {
-                if tag == "option" || tag == "Option" {
-                    let text = self
+            match child {
+                AuraNode::Element { tag, props: cprops, children: ckids, .. }
+                    if tag == "option" || tag == "Option" =>
+                {
+                    let label = self
                         .child_element_text(cprops, bindings)
                         .or_else(|| {
                             ckids.iter().filter_map(|k| match k {
@@ -9293,41 +9396,55 @@ let tabs_inner = View::Row {
                             }).next()
                         })
                         .unwrap_or_default();
-                    if !text.is_empty() {
-                        options.push(text);
+                    if label.is_empty() {
+                        continue;
+                    }
+                    // D3:value prop 绑定感知（循环变量 o.value 可解析）,
+                    // 缺省回退 label（纯文本 option 形态）。
+                    let value = self
+                        .extract_string_with(cprops, "value", bindings)
+                        .unwrap_or_else(|| label.clone());
+                    labels.push(label);
+                    values.push(value);
+                }
+                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                    let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                    let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+                    let has_inner_dot =
+                        stripped.contains('.') && !stripped.starts_with("store.");
+                    let array = if has_inner_dot {
+                        match self.resolve_iterable(iterable, bindings) {
+                            Some(elems) => auto_val::Array::from(elems),
+                            None => continue,
+                        }
+                    } else if let Some(val) = bindings.get(state_name).cloned() {
+                        match val {
+                            Value::Array(arr) => arr,
+                            Value::Int(id) if id >= 4_000_000 => {
+                                auto_val::Array::from(self.bridge.index_list_all(id as usize))
+                            }
+                            Value::VmRef(r) => {
+                                auto_val::Array::from(self.bridge.index_list_all(r.id))
+                            }
+                            _ => continue,
+                        }
+                    } else {
+                        match self.resolve_iterable(iterable, bindings) {
+                            Some(elems) => auto_val::Array::from(elems),
+                            None => continue,
+                        }
+                    };
+                    for (i, item) in array.iter().enumerate() {
+                        let mut loop_bindings = bindings.clone();
+                        loop_bindings.insert(var.clone(), item.clone());
+                        if let Some(idx_var) = index {
+                            loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                        }
+                        self.collect_select_options(body, &loop_bindings, labels, values);
                     }
                 }
+                _ => {}
             }
-        }
-        let selected_index = self
-            .extract_string_with(props, "index", bindings)
-            .and_then(|s| s.parse::<usize>().ok())
-            .filter(|i| *i < options.len().max(1))
-            .or_else(|| {
-                let cur = self
-                    .extract_string_with(props, "value", bindings)
-                    .or_else(|| self.extract_string_with(props, "selected", bindings))?;
-                options.iter().position(|o| *o == cur)
-            });
-        let on_select = aura_events_get_base(events, "onselect")
-            .or_else(|| aura_events_get_base(events, "select"))
-            .or_else(|| aura_events_get_base(events, "onchange"))
-            .or_else(|| aura_events_get_base(events, "change"))
-            .map(|event| {
-                let handler = extract_handler_name(&event.handler).to_string();
-                crate::ui::view::SelectCallback::new(move |_idx, selected: &str| {
-                    DynamicMessage::String(format!("{}\u{1F}s\u{1F}{}", handler, selected))
-                })
-            });
-        let style = self
-            .extract_string_with(props, "class", bindings)
-            .or_else(|| self.extract_string_with(props, "style", bindings))
-            .and_then(|s| Style::parse(&s).ok());
-        View::Select {
-            options,
-            selected_index,
-            on_select,
-            style,
         }
     }
 
@@ -13484,6 +13601,7 @@ mod tests {
             }
             other => panic!("expected AutodownEditor variant"),
         }
+        use crate::ui::action_config::set_menubar_open;
         set_menubar_open(None);
     }
     /// D-GAP-4: an if/else body spliced into a row records each spliced node
@@ -13931,6 +14049,142 @@ mod tests {
                 other => panic!("expected Typed ToggleCollapse, got {:?}", other),
             },
             other => panic!("text-with-onclick must convert to Button, got {:?}", other),
+        }
+    }
+
+    // OS-016 D2+D3:select 循环选项收集 + value 契约——for 循环 option 不再
+    // 漏收（修复前 options=[] → pick_list 空壳,os-config 016 批实况）;
+    // 选中态按 option value 匹配（value≠label 场景）;回调按索引回查 value
+    // （非 label）。
+    #[test]
+    fn test_select_for_loop_options_and_value_contract() {
+        let widget = make_test_widget("Sel", vec![AuraStateDef {
+            name: "providers".to_string(),
+            type_info: Type::List(Box::new(Type::StrSlice)),
+            initial: Expr::Str(String::new().into()),
+            decorators: vec![],
+        }]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let mk = |v: &str, l: &str| {
+            let mut o = auto_val::Obj::new();
+            o.set("value", Value::str(v));
+            o.set("label", Value::str(l));
+            Value::Obj(Box::new(o))
+        };
+        bridge
+            .write_state(
+                "providers",
+                Value::Array(auto_val::Array::from(vec![mk("zhipu", "Zhipu"), mk("ds", "DeepSeek")])),
+            )
+            .unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Sel");
+
+        // select (value: "ds") { onchange: .Pick
+        //   for o in .providers { option (value: o.value, text: o.label) } }
+        let node = AuraNode::element("select")
+            .with_prop("value", Expr::Str("ds".into()))
+            .with_event("onchange", ".Pick")
+            .with_child(AuraNode::ForLoop {
+                var: "o".to_string(),
+                index: None,
+                iterable: ".providers".to_string(),
+                body: vec![AuraNode::element("option")
+                    .with_prop("value", Expr::Dot(
+                        Box::new(Expr::Ident("o".into())),
+                        "value".into(),
+                    ))
+                    .with_prop("text", Expr::Dot(
+                        Box::new(Expr::Ident("o".into())),
+                        "label".into(),
+                    ))],
+                span: None,
+                debug_id: None,
+            });
+        match builder.build(&node) {
+            View::Select { options, selected_index, on_select, .. } => {
+                assert_eq!(options, vec!["Zhipu", "DeepSeek"], "D2: 循环选项全收（修复前 []）");
+                assert_eq!(
+                    selected_index, Some(1),
+                    "D3: value 'ds' 经 value 数组匹配 idx=1（label 文本 'DeepSeek'≠'ds'，纯文本匹配会 miss）"
+                );
+                let cb = on_select.expect("onchange present");
+                match cb.call(1, "DeepSeek") {
+                    DynamicMessage::String(s) => assert_eq!(
+                        s, "Pick\u{1F}s\u{1F}ds",
+                        "D3: 回调回传 option value 'ds'（非 label 'DeepSeek'）"
+                    ),
+                    other => panic!("expected encoded String message, got {:?}", other),
+                }
+            }
+            other => panic!("expected View::Select, got {:?}", other),
+        }
+    }
+
+    // OS-016 D4:select onchange 的 $event 参数位——构建期解析静态参数
+    // （字面量/绑定）,回调时以所选 value 补位 $event（vue 轨
+    // `.Apply(e, $event.target.value)` 的 vm 对位,Typed 消息）。
+    #[test]
+    fn test_select_event_slot_substitution() {
+        let widget = make_test_widget("Sel", vec![AuraStateDef {
+            name: "providers".to_string(),
+            type_info: Type::List(Box::new(Type::StrSlice)),
+            initial: Expr::Str(String::new().into()),
+            decorators: vec![],
+        }]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let mut o = auto_val::Obj::new();
+        o.set("value", Value::str("zhipu"));
+        o.set("label", Value::str("Zhipu"));
+        bridge
+            .write_state(
+                "providers",
+                Value::Array(auto_val::Array::from(vec![Value::Obj(Box::new(o))])),
+            )
+            .unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Sel");
+
+        let mut node = AuraNode::element("select")
+            .with_event("onchange", ".Apply")
+            .with_child(AuraNode::ForLoop {
+                var: "o".to_string(),
+                index: None,
+                iterable: ".providers".to_string(),
+                body: vec![AuraNode::element("option")
+                    .with_prop("value", Expr::Dot(
+                        Box::new(Expr::Ident("o".into())),
+                        "value".into(),
+                    ))
+                    .with_prop("text", Expr::Dot(
+                        Box::new(Expr::Ident("o".into())),
+                        "label".into(),
+                    ))],
+                span: None,
+                debug_id: None,
+            });
+        // with_event 无参数变体——直填 AuraEvent.params（.at 解析器的
+        // `.Apply("fixed", $event.target.value)` 参数形态）。
+        if let AuraNode::Element { events, .. } = &mut node {
+            if let Some(ev) = events.get_mut("onchange") {
+                ev.params = vec!["\"fixed\"".to_string(), "$event.target.value".to_string()];
+            }
+        }
+        match builder.build(&node) {
+            View::Select { on_select, .. } => {
+                let cb = on_select.expect("onchange present");
+                match cb.call(0, "Zhipu") {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "Apply");
+                        assert_eq!(args.len(), 2, "静态参数 + $event 补位");
+                        assert_eq!(args[0], Value::str("fixed"));
+                        assert_eq!(
+                            args[1], Value::str("zhipu"),
+                            "$event 位收 option value（非 label 'Zhipu'）"
+                        );
+                    }
+                    other => panic!("expected Typed message, got {:?}", other),
+                }
+            }
+            other => panic!("expected View::Select, got {:?}", other),
         }
     }
 

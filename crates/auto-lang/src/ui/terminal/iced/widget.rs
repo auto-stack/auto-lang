@@ -433,13 +433,14 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             shell.request_input_method(&input_method::InputMethod::<String>::Disabled);
         }
 
-        // 键入捕获:聚焦(点击过本组件)且菜单未开时,把按键翻译成 VT 串
-        // 入队并上抛 on_input(载荷走 TerminalCore 队列,消息只当触发器)。
-        if state.focused && state.menu_open.is_none() {
-            // PLAN-019 D4:捷径表前置拦截 —— 命中即吞(发捷径消息,不落
-            // VT 队列、不触发 on_input,双通道都断);未命中原样落 VT
-            // (终端内程序不受扰;裸 Ctrl+C/Z 等零变)。IME 提交串非
-            // Keyboard 事件,天然不经本面。
+        // PLAN-019 D4(用户裁定修正):捷径表拦截 = 窗口全局语义 ——
+        // 不要求 pane 聚焦(只要求窗口收得到键盘事件;iced 仅向焦点
+        // 窗口派发),命中即吞(发捷径消息,不落 VT 队列、不触发
+        // on_input,双通道都断);未命中原样落 VT(终端内程序不受扰;
+        // 裸 Ctrl+C/Z 等零变)。去重契约:捷径表只挂一份(主槽
+        // terminal;app 面保证同帧仅一个带表实例)。IME 提交串非
+        // Keyboard 事件,天然不经本面。
+        if state.menu_open.is_none() {
             if let iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
                 let name = terminal_key_binding_name(key, *modifiers);
                 if !name.is_empty() {
@@ -449,6 +450,11 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     }
                 }
             }
+        }
+
+        // 键入捕获:聚焦(点击过本组件)且菜单未开时,把按键翻译成 VT 串
+        // 入队并上抛 on_input(载荷走 TerminalCore 队列,消息只当触发器)。
+        if state.focused && state.menu_open.is_none() {
             let payload = match event {
                 iced::Event::Keyboard(keyboard::Event::KeyPressed { key, text, modifiers, .. }) => {
                     key_event_to_vt(key, text.as_deref(), *modifiers)

@@ -1,0 +1,6 @@
+// PLAN-019 回归金样:List 接收者的 .set(idx, v) 必须发射索引赋值
+// (替换语义),而非 Vec::insert(插入语义,右移后续元素)——
+// db.at 多 Tab 模型表腐坏 + UI 挂起实测(tab_root_node [3,1])。
+fn set_at(xs List<int>, idx int, v int) {
+    xs.set(idx, v)
+}

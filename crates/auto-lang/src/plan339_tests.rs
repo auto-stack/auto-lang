@@ -465,9 +465,57 @@ pub fn create_note(title str, body str) Note {
 
         let header_file = dep_front.join("header.at");
         fs::write(&header_file, "widget Header {}").unwrap();
+        // PLAN-635 D4: deps/ probing is declaration-gated — declare the dep.
+        fs::write(
+            project_root.join("pac.at"),
+            "name: \"t\"
+scene: \"ui\"
+dep common {
+    path: \"../common\"
+}
+",
+        ).unwrap();
 
         let resolved = crate::resolve_module_path(&front_dir, "common.header");
         assert!(resolved.is_some(), "Must resolve common.header via deps/");
+        assert_eq!(resolved.unwrap(), header_file);
+    }
+
+    #[test]
+    fn test_plan635_gate_blocks_undeclared_deps() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let project_root = temp_dir.path();
+        let front_dir = project_root.join("src").join("front");
+        let dep_front = project_root.join("deps").join("ghost").join("src").join("front");
+        fs::create_dir_all(&front_dir).unwrap();
+        fs::create_dir_all(&dep_front).unwrap();
+        fs::write(dep_front.join("header.at"), "widget Header {}").unwrap();
+        // No pac.at: the materialized deps/ghost is a ghost dependency.
+
+        let resolved = crate::resolve_module_path(&front_dir, "ghost.header");
+        assert!(resolved.is_none(), "undeclared deps/<name> must not resolve");
+    }
+
+    #[test]
+    fn test_plan635_workspace_member_resolves() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let project_root = temp_dir.path();
+        let front_dir = project_root.join("src").join("front");
+        let member_front = project_root.join("common").join("src").join("front");
+        fs::create_dir_all(&front_dir).unwrap();
+        fs::create_dir_all(&member_front).unwrap();
+        let header_file = member_front.join("header.at");
+        fs::write(&header_file, "widget Header {}").unwrap();
+        fs::write(
+            project_root.join("pac.at"),
+            "name: \"ws\"
+scene: \"workspace\"
+members: [\"common\"]
+",
+        ).unwrap();
+
+        let resolved = crate::resolve_module_path(&front_dir, "common.header");
+        assert!(resolved.is_some(), "workspace member must resolve like deps/");
         assert_eq!(resolved.unwrap(), header_file);
     }
 }

@@ -2380,9 +2380,19 @@ impl RustTrans {
 
     fn is_auto_list_expr(&self, obj: &Expr) -> bool {
         match obj {
-            Expr::Ident(name) => self.local_var_types.get(name.as_str())
-                .map(|ty| matches!(ty, Type::List(_)))
-                .unwrap_or(false),
+            Expr::Ident(name) => {
+                // PLAN-019:全局 var List 纳入识别(db.at 平行表接收者)——
+                // 仅查局部表时全局 List 的 .set(idx,v) 跌进 Plan 514 W1 的
+                // Vec::insert 重映射(插入语义,右移后续元素),多 Tab 模型
+                // 表腐坏实测(tab_root_node [3,1] vs 期望 [3,4],UI 挂起)。
+                // 镜像 recv_is_list_like 的 PLAN-018 全局覆盖。
+                if let Some(ty) = self.global_var_types.get(name.as_str()) {
+                    return matches!(ty, Type::List(_) | Type::Array(_));
+                }
+                self.local_var_types.get(name.as_str())
+                    .map(|ty| matches!(ty, Type::List(_)))
+                    .unwrap_or(false)
+            }
             Expr::Dot(inner, field) => {
                 if let Expr::Ident(owner) = inner.as_ref() {
                     if let Some(Type::User(usr)) = self.local_var_types.get(owner.as_str()) {
@@ -8322,15 +8332,23 @@ impl RustTrans {
                 // when the receiver is NOT a known user-type instance — a type
                 // method named `set` (99_idiom2/m09 `Holder.set`) must pass
                 // through unchanged. Mirror of the Plan 393 E1 `append` guard.
+                // PLAN-019 缺陷修正:List 接收者的 .set(idx, v) 是替换语义,
+                // 不得映射 Vec::insert(插入语义,右移后续元素)——db.at 多 Tab
+                // 模型表腐坏实测(tab_root_node [3,1] vs 期望 [3,4],UI 挂起)。
+                // List 接收者改走下方 "set 索引赋值" 特化臂。
                 "set" => {
-                                        let lhs_is_struct = if let Expr::Ident(name) = object.as_ref() {
-                        self.local_var_types.get(name)
-                            .map(|ty| matches!(ty,
-                                Type::User(_) | Type::Tag(_) | Type::Enum(_)
-                                | Type::GenericInstance(_)))
-                            .unwrap_or(false)
-                    } else { false };
-                    if !lhs_is_struct { Some("insert") } else { None }
+                    if self.recv_is_list_like(object) {
+                        Some("__list_set_idx__")
+                    } else {
+                        let lhs_is_struct = if let Expr::Ident(name) = object.as_ref() {
+                            self.local_var_types.get(name)
+                                .map(|ty| matches!(ty,
+                                    Type::User(_) | Type::Tag(_) | Type::Enum(_)
+                                    | Type::GenericInstance(_)))
+                                .unwrap_or(false)
+                        } else { false };
+                        if !lhs_is_struct { Some("insert") } else { None }
+                    }
                 }
                 // Plan 384 A9: keep `.delete()` as-is (see note at the other
                 // match site) — axum Router `.delete()` must not become remove.
@@ -8350,6 +8368,21 @@ impl RustTrans {
             };
 
             if let Some(rust_name) = rust_method {
+                // PLAN-019:List 接收者的 .set(idx, v) → 索引赋值(替换语义;
+                // 镜像 Plan 514 W3 的 get 索引形特化)。
+                if rust_name == "__list_set_idx__" && call.args.args.len() == 2 {
+                    self.expr(object, out)?;
+                    write!(out, "[(")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, out)?;
+                    }
+                    write!(out, ") as usize] = ")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.get(1) {
+                        self.expr(a, out)?;
+                    }
+                    writeln!(out, ";")?;
+                    return Ok(());
+                }
                 // Plan 514 W3:List/Vec 接收者的 .get(i) → 索引形
                 // `recv[(i) as usize]`(Vec::get 返 Option<&T>,直接字段访问
                 // E0609;lib 方法体 `.toks.get(.pos).kind` 位)。
