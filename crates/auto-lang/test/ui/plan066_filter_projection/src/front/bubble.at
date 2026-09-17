@@ -1,0 +1,31 @@
+// bubble.at — PLAN-066 T-07 语料：ThinkBlock 读侧缩样。子件 widget 内
+// computed 串等值（isOpen => .expanded == .current_msg.id，双操作数均读
+// 根态——obj 域读 + str 读）+ 视图/子件 handler 同源求值。musk 形态的
+// obj prop 传递在 harness 无逐帧烘焙（生产每帧重建写子件态），为隔离
+// 读侧本体，msg 走根态直读（.current_msg 由 App model 持有）。
+
+use store: FilterStore
+
+widget MsgBubble(expanded: str) {
+    msg Msg { Toggle, Probe }
+
+    computed {
+        isOpen => .expanded == .current_msg.id
+    }
+
+    on {
+        .Toggle -> {
+            FilterStore.ToggleBubble(.current_msg.id)
+        }
+
+        .Probe -> {
+            FilterStore.SetProbe(f"${.isOpen}")
+        }
+    }
+
+    view {
+        col {
+            text .current_msg.id
+        }
+    }
+}

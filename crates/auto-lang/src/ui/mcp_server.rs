@@ -164,7 +164,7 @@ pub struct SharedState {
     layout_bounds: HashMap<String, (f32, f32, f32, f32)>,
     /// Real-time styled VTree snapshot (Plan 314). Copied each frame by the
     /// iced renderer when F12 is open or MCP is active.
-    styled_vtree: Option<StyledNodeSnapshot>,
+    styled_vtree: Option<std::sync::Arc<StyledNodeSnapshot>>,
     /// Backend capability used by test-only MCP fixtures. Set by the renderer
     /// at startup so Rust mode can reject VM state injection explicitly.
     backend_kind: BackendKind,
@@ -367,18 +367,23 @@ impl SharedState {
 
     /// Set the real-time styled VTree snapshot (Plan 314). Called each frame by
     /// the iced renderer when F12 is open or MCP is active.
+    /// PLAN-066 T-02a：帧快照以 Arc 发布——读取方 clone 即 O(1) 指针拷贝，
+    /// 深序列化可在锁外进行，UI 线程发帧不再被 MCP 端长持有顶停
+    /// （P625-D1 AppHang 结构面孔：tool_snapshot 曾持锁深拷贝+全树序列化）。
     pub fn set_styled_vtree(&mut self, snap: StyledNodeSnapshot) {
-        self.styled_vtree = Some(snap);
+        self.styled_vtree = Some(std::sync::Arc::new(snap));
     }
 
     /// Take (move out) the latest styled VTree snapshot, if any (Plan 314).
     /// Leaves `None` behind so a stale frame is never served twice.
-    pub fn take_styled_vtree(&mut self) -> Option<StyledNodeSnapshot> {
+    pub fn take_styled_vtree(&mut self) -> Option<std::sync::Arc<StyledNodeSnapshot>> {
         self.styled_vtree.take()
     }
 
     /// Peek (clone) the latest styled VTree snapshot, if any (Plan 314).
-    pub fn clone_styled_vtree(&self) -> Option<StyledNodeSnapshot> {
+    /// PLAN-066 T-02a：O(1) Arc 克隆——调用方拿到后应尽快释放锁，再对
+    /// 快照做深读/序列化。
+    pub fn clone_styled_vtree(&self) -> Option<std::sync::Arc<StyledNodeSnapshot>> {
         self.styled_vtree.clone()
     }
 
@@ -491,23 +496,39 @@ impl McpUiServer {
             let app = axum::Router::new()
                 .route("/mcp", axum::routing::post(mcp_http_handler))
                 .with_state(shared);
-            let addr = format!("127.0.0.1:{}", self.port);
             // Plan 065:bind 竞争(前一会话孤儿/TIME_WAIT)时有限重试。此前
             // 失败即静默 return —— VM 无头续跑,测试端只见 startup 超时 skip,
             // 死因不可见(auto-shell 065 排查:跨会话 flake 的一类)。
+            // PLAN-066 T-02b（KD-048a 定罪后加固）：同端口重试后跨端口
+            // 回退——单机多 AutoUI 应用/多 agent 会话并发时,默认端口的
+            // 持有者会成为他方清理式干扰的靶子（066 取证 run1/run2 A/B
+            // 实证:9247 共址 0/3 存活 vs 私有端口隔离 3/3 存活）。回退链
+            // 让后来者落到空闲端口并播报实际端口,共址双方都可存活;客户端
+            // 以启动日志/AUTOUI_MCP_PORT env 为准。env 覆盖优先面不变
+            // （mcp_port()）。
             let mut listener = None;
-            for attempt in 0..10 {
-                match tokio::net::TcpListener::bind(&addr).await {
-                    Ok(l) => {
-                        eprintln!("AutoUI MCP: listening on http://{}", addr);
-                        listener = Some(l);
-                        break;
-                    }
-                    Err(e) => {
-                        if attempt == 0 {
-                            eprintln!("AutoUI MCP: bind {} failed: {} (retrying)", addr, e);
+            'ports: for offset in 0..=10u16 {
+                let port = self.port.saturating_add(offset);
+                let addr = format!("127.0.0.1:{}", port);
+                for attempt in 0..3 {
+                    match tokio::net::TcpListener::bind(&addr).await {
+                        Ok(l) => {
+                            if offset > 0 {
+                                eprintln!(
+                                    "AutoUI MCP: port {} busy — fell back to {} (set AUTOUI_MCP_PORT to pin)",
+                                    self.port, port
+                                );
+                            }
+                            eprintln!("AutoUI MCP: listening on http://{}", addr);
+                            listener = Some(l);
+                            break 'ports;
                         }
-                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                        Err(e) => {
+                            if attempt == 0 && offset == 0 {
+                                eprintln!("AutoUI MCP: bind {} failed: {} (retrying)", addr, e);
+                            }
+                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                        }
                     }
                 }
             }
@@ -516,7 +537,7 @@ impl McpUiServer {
                 None => {
                     // Loud + distinctive: grep-able marker for "server never
                     // started" post-mortems (tests capture VM stderr).
-                    eprintln!("AutoUI MCP: FATAL: failed to bind {} after retries — server NOT started", addr);
+                    eprintln!("AutoUI MCP: FATAL: failed to bind 127.0.0.1:{}..{} after retries — server NOT started (set AUTOUI_MCP_PORT to a free port)", self.port, self.port.saturating_add(10));
                     return;
                 }
             };
@@ -1189,8 +1210,12 @@ fn tool_snapshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
     // the actual on-screen tree with child widgets inlined and `for` loops
     // expanded. Fall back to the raw view_template only when no rendered
     // frame is available yet (e.g. before first paint).
+    // PLAN-066 T-02a：快照获取降为 O(1) Arc 克隆，全树序列化移出锁外——
+    // 大树 build_aura 期间 UI 线程发帧不再等这把锁（P625-D1 AppHang 结构
+    // 面孔的根修）。回退路径（首帧前源模板，小树、低频）保持原锁内语义。
     if let Some(snap) = shared.clone_styled_vtree() {
         let layout_bounds = if include_bounds { shared.get_layout_bounds().clone() } else { HashMap::new() };
+        drop(shared);
         let output = build_aura_from_styled_vtree(&snap, include_status, include_bounds, &layout_bounds);
         return text_result(output);
     }
@@ -2448,11 +2473,14 @@ fn tool_wait(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
         let want_found = condition == "appears";
         let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
         loop {
-            let shared = shared_handle.lock().unwrap();
-            let snap = match shared.clone_styled_vtree() {
+            // PLAN-066 T-02a：Arc 克隆后立即释放锁，元素扫描锁外进行。
+            let snap = {
+                let shared = shared_handle.lock().unwrap();
+                shared.clone_styled_vtree()
+            };
+            let snap = match snap {
                 Some(s) => s,
                 None => {
-                    drop(shared);
                     std::thread::sleep(std::time::Duration::from_millis(interval_ms));
                     if std::time::Instant::now() >= deadline {
                         return error_result("Timeout: no VTree snapshot available");
@@ -2473,7 +2501,6 @@ fn tool_wait(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
                 }
                 true
             });
-            drop(shared);
 
             if found == want_found {
                 let state_str = if want_found { "appeared" } else { "disappeared" };

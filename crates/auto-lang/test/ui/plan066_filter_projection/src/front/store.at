@@ -1,0 +1,66 @@
+// store.at — PLAN-066 T-06 red corpus store: musk ForgeStore 缩样。
+// 列表状态（[]Value，元素为堆对象）+ 搜索键 + done 旗标；Append/SetSearch
+// 供消费侧驱动；MarkDone→ClearWindow 自调链复刻 musk OnStreamEvent→
+// .StopStream() 的跨模块调用帧 SET_FIELD 自清形态（P536-D2 面）。
+
+store FilterStore {
+    model {
+        var messages []Value = []
+        var chat_search str = ""
+        var done bool = false
+        // T-07 臂：气泡展开态单槽 id（musk forge_store.think_open 同形）
+        // + 子件 computed 探针回传。
+        var expanded str = ""
+        var probe_result str = ""
+        // T-08 臂：handler-as-value 实参现场回传。
+        var probe2 str = ""
+    }
+
+    msg Msg { Append(str, str), SetAll(str), SetSearch(str), MarkDone, ClearWindow, ToggleBubble(str), SetProbe(str), SetProbe2(str) }
+
+    on {
+        .Append(role, content) -> {
+            .messages = [{ role: role, content: content }]
+            .dbg_after_append = .messages.len()
+        }
+
+        // T-06 Face A 注记：读改写 concat（.messages = .messages + [..]）
+        // 在 VM 轨静默失效（另一独立脸），此处以整写绕行（musk 生产同款）。
+        .SetAll(json) -> {
+            .messages = json
+        }
+
+        .SetSearch(q) -> {
+            .chat_search = q
+        }
+
+        .MarkDone -> {
+            .done = true
+            // P536-D2 面：本帧内跨模块调用（同 store 自调同形）——
+            // ClearWindow 体内的 SET_FIELD 必须达共享根态（055 期 musk
+            // done 臂「本臂自清」绕行所规避的原缺陷）。
+            FilterStore.ClearWindow()
+        }
+
+        .ClearWindow -> {
+            .done = false
+        }
+
+        // T-07：单槽展开态翻转（musk ThinkToggle 同形——同 id 再点收起）。
+        .ToggleBubble(id str) -> {
+            if .expanded == id {
+                .expanded = ""
+            } else {
+                .expanded = id
+            }
+        }
+
+        .SetProbe(v str) -> {
+            .probe_result = v
+        }
+
+        .SetProbe2(v str) -> {
+            .probe2 = v
+        }
+    }
+}

@@ -6865,6 +6865,11 @@ mod plan624_cross_state_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan066_native_widget_tests;
 
+// PLAN-066 T-06（auto-musk）: 055-4⑥ 过滤投影（computed 内 VmRef 域读取）
+// + P536-D2 跨模块调用帧 SET_FIELD 达根态 red corpus。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan066_filter_projection_tests;
+
 // PLAN-627: qualified api-module-call corpus（模块形态 use back.api +
 // 限定名 api.X()：抽取/vue 发射/rust 发射三面）。
 #[cfg(test)]
