@@ -284,26 +284,9 @@ fn engine_feed_snapshot(
         feed(h);
         // PLAN-019 滚轮回灌:widget 滚轮队列 → 引擎 display_offset。排水先于
         // 损伤重采,同拍快照即滚动视图。仅 Key 侧带排水(可见 pane 均走
-        // rows_for;All 门面无 key,不重复排水)。
+        // rows_for;All 门面无 key,不重复排水)。no-ui 构建为 no-op。
         if let Sideband::Key(key) = sideband {
-            if let Some(core) = crate::ui::terminal::terminal_core(key) {
-                let delta = crate::ui::terminal::terminal_take_scroll_delta(core);
-                if delta != 0 {
-                    let scroll: libloading::Symbol<
-                        unsafe extern "C" fn(*mut core::ffi::c_void, c_int),
-                    > = lib.get(b"autoterm_engine_scroll\0").expect("autoterm_engine_scroll symbol");
-                    scroll(h, delta as c_int);
-                }
-                let soff: libloading::Symbol<
-                    unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
-                > = lib.get(b"autoterm_engine_scroll_offset\0").expect("autoterm_engine_scroll_offset symbol");
-                let off = soff(h);
-                crate::ui::terminal::terminal_set_scroll_offset(core, off.max(0) as usize);
-                let hist: libloading::Symbol<
-                    unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
-                > = lib.get(b"autoterm_engine_history\0").expect("autoterm_engine_history symbol");
-                crate::ui::terminal::terminal_set_history(core, hist(h).max(0) as usize);
-            }
+            apply_scroll_queue(lib, h, key);
         }
         let take: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, *mut c_int, c_int) -> c_int,
@@ -442,6 +425,38 @@ fn feed_styled_sideband(sideband: Sideband<'_>, row: i32, text: &str, styles: &[
 }
 #[cfg(not(feature = "ui"))]
 fn feed_styled_sideband(_sideband: Sideband<'_>, _row: i32, _text: &str, _styles: &[u32]) {}
+
+/// PLAN-019 滚轮回灌(排水先于损伤重采,同拍快照即滚动视图;仅 Key 侧带
+/// 排水,All 门面无 key 不重复)。ui 臂:排空 core 滚动队列 → 引擎
+/// scroll → 回读 display_offset/history 回写 badge 与拇指比例。no-ui 臂
+/// 为 no-op(tv/tt 等无 ui 特性档编译零依赖)。
+#[cfg(feature = "ui")]
+fn apply_scroll_queue(lib: &Library, h: *mut core::ffi::c_void, key: &str) {
+    unsafe {
+        let Some(core) = crate::ui::terminal::terminal_core(key) else {
+            return;
+        };
+        let delta = crate::ui::terminal::terminal_take_scroll_delta(core);
+        if delta != 0 {
+            let scroll: libloading::Symbol<
+                unsafe extern "C" fn(*mut core::ffi::c_void, c_int),
+            > = lib.get(b"autoterm_engine_scroll\0").expect("autoterm_engine_scroll symbol");
+            scroll(h, delta as c_int);
+        }
+        let soff: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
+        > = lib.get(b"autoterm_engine_scroll_offset\0").expect("autoterm_engine_scroll_offset symbol");
+        let off = soff(h);
+        crate::ui::terminal::terminal_set_scroll_offset(core, off.max(0) as usize);
+        let hist: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
+        > = lib.get(b"autoterm_engine_history\0").expect("autoterm_engine_history symbol");
+        let n = hist(h);
+        crate::ui::terminal::terminal_set_history(core, n.max(0) as usize);
+    }
+}
+#[cfg(not(feature = "ui"))]
+fn apply_scroll_queue(_lib: &Library, _h: *mut core::ffi::c_void, _key: &str) {}
 
 /// FFI 标量色 → 组件色((kind<<24)|value:0=Default 1=Indexed 2=RGB)。
 #[cfg(feature = "ui")]
