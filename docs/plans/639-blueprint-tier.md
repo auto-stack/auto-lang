@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-639
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: blueprint-tier（Block 层更名 Blueprint + 平台化地基）
 author: [zhaopuming]
 created_at: 2026-09-17
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: ["GOAL-011: Blocks 一等公民生态（更名 Blueprint 并升级消费机制）"]
 
 affects: [blueprint, autoui-skill, blocks]
-current_step: 5
+current_step: 9
 total_steps: 9
 ---
 
@@ -227,17 +227,41 @@ CLI 面（`auto bp`，`auto block` 别名保留一版 + 弃用提示）、blocks
   quote-aware tag-end（lambda `>` 误配）；②bp 参考实现语法规范化（旧语法
   解析错/strict 校验拦截）；③blueprints/pac.at 包化（build 依赖物化面）。
   全档与基线零差异。
-- **T-05** [新] a2ts 发射 `actions{}`/`menubar`/`toolbar` 到 vue 轨：
+- **T-05** [x] [新] a2ts 发射 `actions{}`/`menubar`/`toolbar` 到 vue 轨：
   `crates/auto-lang/src/ui_gen`（vue 发射面）+ demo app 双轨断言。
   依赖：T-04。→ AC-04
-- **T-06** [新] L1 bind v0：`auto bp add --bind` 产出绑定工件 + 一致性校验 +
+  [✅ 已完成 2026-09-17] commit e8f68f431。实勘修订：DSL `actions {}` 形态
+  vue 轨本已消费（451 P2/P3）——真实缺口=Plan 418 `ui_config:` 外挂文件
+  仅 VM 运行时加载。桥接：`to_actions_block` 转换器+`load_ui_config_actions`
+  （pac.at ui_config→DSL ActionsBlock，451 链最低优先级，限 app.at 防
+  子组件动作泄漏）。046 fixture 双轨 demo（VM 同一份配置文件运行时消费）。
+  验证：t05 SFC 断言+playwright DOM 断言全过（trigger 文件/items 新建打开/
+  Ctrl+N/toolbar 面）；`auto build` 全链绿。
+- **T-06** [x] [新] L1 bind v0：`auto bp add --bind` 产出绑定工件 + 一致性校验 +
   GENERATED 头注；L2/L3 落地文件登记行。依赖：T-04/T-05。→ AC-05
-- **T-07** [调查/决策工件] VM 三约束（回调 props 退化/子树快照不可见/
+  [✅ 已完成 2026-09-17] commit d990a99b9。`auto bp add form/login --bind`
+  （+独立 `bind` 子命令）产出 `src/front/bps/login_bind.at`（GENERATED 头注
+  含来源/日期；use 导入+声明式装配；Q-3 裁定修订=下划线 stem，点号文件名
+  不可达模块解析）；校验=bp/variant 硬检+pac.at dep 声明告警+spec 动作/
+  props 义务报告。L2 `--reference` 加 provenance 头注。vue.rs `bps/` 目录
+  与 components/ 同构扫描（绑定 widget 独立 SFC）。046 fixture 全 L1 化：
+  app→LoginBind→LoginForm 零副本链（负断言在 t04）。
+- **T-07** [x] [调查/决策工件] VM 三约束（回调 props 退化/子树快照不可见/
   view fn 条件不求值）：各约束最小复现 + 修复方案选项 + 工作量级估计，
   产物 `docs/plans/attachments/639-vm-constraints.md`；**不实现**。
   依赖：无（可并行）。→ AC-06（DEBTS 指针）
-- **T-08** [改] 门禁收口：重命名完整性 grep 门入 CI/门禁脚本；DEBTS 两行；
+  [✅ 已完成 2026-09-17] commit b8853ffc9。探针复核（449 文献 vs 当前码）：
+  3.1 恶化为编译中止；3.2 运行时树已含子树（MCP 快照遍历器待实测）；
+  3.3 表达式+字面量 props 均缺（`text .expr` 形态混淆待区分探针排除）。
+  修复选项 A/B/C+工作量级；建议立项 vm-component-parity。
+- **T-08** [x] [改] 门禁收口：重命名完整性 grep 门入 CI/门禁脚本；DEBTS 两行；
   `uncompleted_plans.md`/INDEX 相关行更新。依赖：T-01..T-07。→ AC-06
+  [✅ 已完成 2026-09-17] commit c3bf47158。`scripts/blueprint_rename_guard.py`
+  （复活模式封禁：旧类型名/CLI 面/模块路径/包库路径；弃用提示+历史注记豁免；
+  全量+--changed 双档）入 vm-files-ci。DEBTS 三行：449 行更新 T-07 复核
+  指针+D2 消费侧移交 PLAN-070+D3 bp 多版本 Q-1 悬置。plans/INDEX.md 为
+  Stage-B 指针页无活跃清单行（无需更新）；specs INDEX 已由 T-03 重生成。
+  终档 `cargo t --no-fail-fast` 5028 跑 40 红=基线集逐名一致（零新增）。
 
 ## 8. 复审记录
 
@@ -248,6 +272,16 @@ CLI 面（`auto bp`，`auto block` 别名保留一版 + 弃用提示）、blocks
   （覆盖 draft handoff 的 review-first 建议，用户指令优先）。status drafting→executing。
   worktree `D:/autostack/.wt/lang-639/auto-lang`，分支 `plan-639-dev`（base c2ec1c350）。
   主检出 preflight：master clean 零 WIP。
+- 2026-09-17 work 收执：`stage: work | plan_id: PLAN-639 | plan_revision: 1 |
+  outcome: pass | code_commit: c3bf47158 (plan-639-dev) | task_ids: T-00..T-08 (9/9) |
+  evidence: 各任务勾记行+AC 映射见 §7；终档全档门 5028 跑 40 红与基线逐名一致 |
+  blockers: 无 | next: review（/auto-plan:review；折叠前全档门 cargo tf/ta 归 review 档）`。
+  执行摘要：更名（CLI auto bp/registry bp/blueprints 包库/bps-gallery/设计文档/
+  spec 模块/goals）+六问契约+三通道消费（L1 bind 零副本落地+L2 provenance+L3 提升评审）
+  +双轨地基（跨包 .at 解析 demo 双轨绿+ui_config 动作配置 vue 轨生效含 DOM 断言）
+  +VM 三约束调查工件。计划外顺带修复：vue.rs v-for :key 注入引号感知 tag-end
+  （lambda `>` 误配）；bp 参考实现语法规范化（旧语法解析错/strict 校验拦截）；
+  blueprints/pac.at 包化；合并 master 拾 PLAN-014 桌面修复。
 
 ## 9. 待澄清事项
 
