@@ -1,0 +1,11 @@
+// stylekit —— PLAN-635 跨包 style recipe 共享包。
+//
+// pub 声明的 recipe 可被依赖方 `use stylekit.styles: <name>` 命名导入，
+// 或 `use stylekit.styles: *` glob 导入（只导 pub）。非 pub 配方仅包内可用。
+
+pub style card_base = "bg-card text-card-foreground rounded-xl shadow-sm border border-border p-4"
+
+pub style pill(bg: str = "bg-primary", fg: str = "text-primary-foreground", pad: str = "px-4 py-2") =
+    "{pad} {bg} {fg} rounded-full text-sm font-medium shadow-sm hover:{bg}/90 transition-colors"
+
+style internal_only = "hidden"

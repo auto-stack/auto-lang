@@ -39,6 +39,8 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 **声明式样式配方语言层（plan-607 落地，Design 29 Phase 3，GOAL-007）**：
 AutoUI 顶层引入 `style <name> = "<classes>"` 常量配方与 `style <name>(<params>...) = "<f-string>"` 参数化配方语法；在 widget 的 `style:` 属性中支持裸标识符引用、参数化调用与数组/条件/插值混用；通过在 AST → AuraNode（`aura_view_builder.rs` / `extract.rs`）单一入口处编译期 Desugar 展开为标准 class 字符串，实现 Vue 与 VM Iced 双端同源、运行时零开销、零视觉漂移；配套硬编码调色板色（如 `bg-blue-500`）lint 警告，并在 013-todo 与 015-notes 中示范重构，收敛存量重复 class 字符串。
 
+**跨包 style recipe 引用（plan-635 落地，GOAL-007）**：recipe 作用域从单编译单元扩展为可经 `use` 符号导入跨包消费——依赖包以 `pub style` 导出（非 pub 仅包内可用），宿主 `use <dep>.<module>: <name>` 命名导入或 `: *` glob 导入（只导 pub），与 widget/fn/store 的 use 同构零新语法；命名导入命中非 pub 配方为编译错误，宿主与导入源同名撞名为编译错误（诊断含双源名）；导入模块自身的 use 传递贡献其 pub recipe（visited 集防环；注：传递收集不校验中间模块 use 的 pub 性——v1 语义，v2 视需要收紧）。实现为「预导入通道」：宿主 parse 前按源码扫描 use 收集并预注册（parser 符号检查钩子只认活注册表），parse 后 clear+按 source 标记受控重放（`design_tokens/recipe.rs` prepare_style_recipe_imports / load_and_validate_style_recipes_with_imports）；VM（build_dynamic_component_inner）与 Vue（ui_gen::api::generate_component_from_file）四注册点同函数族单点，desugar 单点与双端同源承诺不变。示范=examples/ui/stylekit（共享包）+ examples/ui/045-style-import（消费者）。
+
 **vue as-cast 整型降级（plan-604 落地，KD-VM4 双端一致）**：view/handler 内
 `expr.as(int)`（及 i64/uint/u64/usize/byte）vue 侧降级 `Math.trunc(...)`，对齐
 VM TYPE_CAST_I32 的 Rust `f as i32` 截断语义；浮点目标 JS 原生 f64 直通，其余
