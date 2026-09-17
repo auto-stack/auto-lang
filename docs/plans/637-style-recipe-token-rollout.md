@@ -187,6 +187,7 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 
 - **T-00 stylekit 扩容**：styles.at 落 D1 首批 recipe（pub），045 回归
   （既有消费不破）；`cargo test -p auto-man --lib vue` + 045 双端 run。
+  （待澄清#1 已裁定，Phase B 无阻塞。）
 - **T-01 守卫脚本先行**：`scripts/style_palette_guard.py` + 调用约定
   （矩阵清单文件）；正反例自测。
 - **T-02 W1 波**（001-005）：逐 demo「Phase A 去重 → 双端零漂移 →
@@ -211,13 +212,18 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 
 ## 10. 待澄清事项
 
-1. **Phase B 视觉变更授权（阻塞 W1 Phase B，不阻塞 T-00/T-01/W1 Phase A）**：
-   token 化是有意的视觉变化（如 gray-400→muted-foreground 在 dark 模式下
-   提亮、blue-500→primary 换品牌色）。两个子裁定：
-   a) 逐 demo 映射表是否需要用户过目确认，还是按「语义就近 + 截图留档
-   事后抽查」授权执行（推荐后者，波次验收时集中过目）；
-   b) 豁免边界：纯装饰性插画色/语法高亮色等非语义色是否允许保留字面量
-   （推荐允许，进豁免表）。
+1. **Phase B 视觉变更授权**：✅ **已裁定（2026-09-17 用户）**——按「语义
+   就近 + 截图留档、波次验收时集中过目」执行。裁定的实质依据（用户同日
+   给出终局目标）：token 化颜色表最终要做**可选可配置的主题系统**（VSCode
+   式切换/预览，每主题对全部 token 独立设色），demo 不拥有颜色、主题拥有
+   颜色——因此 Phase B 映射 = 纯角色分类（机械），原字面量值按设计退休，
+   最终观感由默认主题（registry 既有 zinc/scaffold/stella）决定；截图 =
+   归一化文档而非漂移审查。第一版默认一套（或几套）即可——registry 三套
+   内置已满足。豁免边界（装饰性插画色/语法高亮色保留字面量）一并授权，
+   进豁免表。**后续路线注记（另立项，不入本计划）**：①双轨默认色板归一
+   （VM stella vs Vue scaffold zinc 的 593 分叉，VSCode 式体验要求 canonical
+   默认）；②主题选择器/预览组件 + 用户自定义主题配置集成（601 热切换
+   之上的 UI 面）。
 2. **Phase A/B 同 demo 内的顺序**：推荐 A 完成验收后再做 B（漂移归因
    单变量化）；若 demo 样式面很小可 A+B 合并一次过（W1 多数如此）。
 3. **stylekit 定位**：它是 examples 内的示范包（随仓分发）还是未来抽出为
