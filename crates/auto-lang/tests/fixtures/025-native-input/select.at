@@ -1,0 +1,27 @@
+// PLAN-025 T-04 fixture —— native queue select 载体（codegen golden 单测
+// 源 + a2r scratch 载体源，e2e 期复制入 scratch）。
+// 契约：options 数组字面量 prop；selected 下标 prop；onchange =
+// SelectCallback 物化闭包（on_choose）——(idx, val) 载荷变体；on 块
+// 模式 .Pick(idx usize, s str) 绑定载荷。
+widget SelectBox {
+    msg {
+        Pick(str)
+    }
+
+    model {
+        var pick str = "Small"
+    }
+
+    view {
+        col {
+            select (options: ["Small", "Medium", "Large"], selected: 0) { onchange: .Pick }
+            text `pick: ${.pick}`
+        }
+    }
+
+    on {
+        .Pick(s str) -> {
+            .pick = s
+        }
+    }
+}

@@ -3204,6 +3204,71 @@ fn spawn_outproc_child(
         false
     }
 
+    /// PLAN-025 T-05 宿主生产路径（镜像 `broker_pointer_down` 收尾——
+    /// 键盘/字符路由**焦点窗**（`wm.focused`，区别于 pointer_down 的
+    /// hit_test 命中窗），滚轮路由指针命中窗（hover 语义）。queued
+    /// child 的 InputMsg 消费端（native/解释态投影器）同册受益。
+    /// 桌面级键盘事件路由：焦点窗 → (Wid, KeyPressed) 注入。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_key_event(&mut self, key: u32, modifiers: u8) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::KeyPressed { wid: wid.0, key, modifiers });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级字符输入路由：焦点窗 → (Wid, CharTyped) 注入。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_char(&mut self, ch: char) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::CharTyped { wid: wid.0, ch });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级滚轮路由：指针命中窗（hit_test）→ (Wid, Scroll) 注入
+    /// （窗内 Scrollable 定位在 child 投影器侧——wire Scroll 无坐标）。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_scroll(&mut self, x: f32, y: f32, dx: f32, dy: f32) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.hit_test(x, y) {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::Scroll { wid: wid.0, dx, dy });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
     /// 宿主动作落会话（与 `host::ProtocolHost::handle` 的动作臂同构；
     /// per-client 表面/shm/wid 映射挂在 [`stage3::BrokerClient`] 上）。
     #[cfg(feature = "ui-iced")]

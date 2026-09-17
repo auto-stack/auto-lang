@@ -1068,6 +1068,15 @@ pub fn last_input_text() -> String {
     INPUT_TEXT.with(|t| t.borrow().clone())
 }
 
+/// PLAN-025 T-02（D2 定案 A）：INPUT_TEXT 代写口——native queue 投影器
+/// 聚焦框编辑后同线程写入（与 iced 窗口路径写点语义等价：写入 = 焦点框
+/// 当前文本；MCP 派发臂 renderer.rs 同款先例），生成 `on()` 经
+/// [`last_input_text`] 读面消费。同线程纪律：ClientPump 泵与
+/// `component.on` 同线程。
+pub fn store_input_text(text: &str) {
+    INPUT_TEXT.with(|t| *t.borrow_mut() = text.to_string());
+}
+
 /// Trait for converting abstract View<M> into Iced Element
 ///
 /// This trait enables rendering the abstract view tree using the Iced framework
