@@ -5927,6 +5927,15 @@ pub fn emit_gallery_vm_demos(
             // 改写映射：原始模块路径 → `<ns>_<mod>`（`.` 折叠 `_`，与
             // resolve_module_path 的 rel 同形）；种子别名形式（back.api）
             // 指向与其 canonical（api）同一目标。
+            // back 链名称集（canonical + 种子别名形式）——item 调用点限定
+            // 仅对 back 链 use 生效。
+            let mut back_names: std::collections::BTreeSet<String> = Default::default();
+            for k in back_modules.keys() {
+                back_names.insert(k.clone());
+            }
+            for k in back_aliases.keys() {
+                back_names.insert(k.clone());
+            }
             let mut renames: std::collections::BTreeMap<String, String> = Default::default();
             for m in row_modules.keys() {
                 renames.insert(m.clone(), format!("{ns}_{}", m.replace('.', "_")));
@@ -5942,7 +5951,7 @@ pub fn emit_gallery_vm_demos(
             // back 内容改写 + 解析探针（改写后：防改写损伤/语法坏源上发射面）。
             let mut rewritten: Vec<(String, String)> = Vec::with_capacity(back_modules.len());
             for (m, c) in back_modules.iter() {
-                let rc = qualify_native_ns_receivers(&rewrite_use_modules(c, &renames));
+                let rc = qualify_native_ns_receivers(&rewrite_use_modules(c, &renames, &back_names));
                 let mut parser = auto_lang::Parser::from(rc.as_str())
                     .with_session(auto_lang::session::CompilerSession::core());
                 if let Err(e) = parser.parse() {
@@ -5962,12 +5971,12 @@ pub fn emit_gallery_vm_demos(
                 skipped.push(format!("{}(back 链不可内嵌)", r.id));
                 continue;
             }
-            source_rw = qualify_native_ns_receivers(&rewrite_use_modules(source, &renames));
+            source_rw = qualify_native_ns_receivers(&rewrite_use_modules(source, &renames, &back_names));
             let mut ns_modules: std::collections::BTreeMap<String, String> = Default::default();
             for (m, c) in row_modules {
                 ns_modules.insert(
                     renames.get(&m).cloned().unwrap_or_else(|| m.clone()),
-                    qualify_native_ns_receivers(&rewrite_use_modules(&c, &renames)),
+                    qualify_native_ns_receivers(&rewrite_use_modules(&c, &renames, &back_names)),
                 );
             }
             row_modules = ns_modules;
@@ -6097,12 +6106,15 @@ fn demo_ns_prefix(id: &str) -> String {
 fn rewrite_use_modules(
     source: &str,
     renames: &std::collections::BTreeMap<String, String>,
+    back_names: &std::collections::BTreeSet<String>,
 ) -> String {
     let mut out = String::with_capacity(source.len() + 64);
-    // PLAN-633: item 导入清单——`use <mod>: f1, f2` 的调用点改写为
-    // `<mod_new>.f1(` 限定形式。内嵌合成里裸 #[api] 调用点不可达
-    // （合成层终结），点式经 is_auto_module_call 走 CALL reloc 直达
-    // 扁平编译体（db 链同律实证）。
+    // PLAN-633: item 导入清单——**仅 back 链模块**的 `use <mod>: f1, f2`
+    // 调用点改写为 `<mod_new>.f1(` 限定形式。内嵌合成里裸 #[api] 调用点
+    // 不可达（合成层终结），点式经 is_auto_module_call 走 CALL reloc 直达
+    // 扁平编译体（db 链同律实证）。front 模块的导入项（TodoList 等组件
+    // 名）绝不改写——组件调用被限定成函数形式会被 parser 打成模块路径
+    // tag，registry miss → 整块消失（013 内嵌列表区空白实证）。
     let mut item_fns: Vec<(String, String)> = Vec::new();
     for l in source.lines() {
         let t = l.trim_start();
@@ -6120,11 +6132,13 @@ fn rewrite_use_modules(
                     ),
                     None => (String::new(), String::new()),
                 };
-                if let Some(new_m) = renames.get(m.as_str()) {
-                    for it in items.split(',') {
-                        let it = it.trim();
-                        if !it.is_empty() {
-                            item_fns.push((it.to_string(), new_m.clone()));
+                if back_names.contains(m.as_str()) {
+                    if let Some(new_m) = renames.get(m.as_str()) {
+                        for it in items.split(',') {
+                            let it = it.trim();
+                            if !it.is_empty() {
+                                item_fns.push((it.to_string(), new_m.clone()));
+                            }
                         }
                     }
                 }

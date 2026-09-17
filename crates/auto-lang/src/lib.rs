@@ -3681,9 +3681,11 @@ fn register_transitive_widgets_inner(
             Ok(c) => c,
             Err(_) => continue,
         };
+
         let mod_session = crate::session::CompilerSession::ui();
         let mut mod_parser = crate::Parser::from(sub_code.as_str()).with_session(mod_session);
         if let Ok(sub_ast) = mod_parser.parse() {
+
             for stmt in &sub_ast.stmts {
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
@@ -4312,6 +4314,7 @@ fn build_dynamic_component_inner(
         // child_decls（handlers 一并编译进单 VM 模块）。
         for wd in &ext_widget_decls {
             if let Ok(w) = crate::aura::extract_widget_from_decl(wd) {
+
                 all_child_decls.push(wd.clone());
                 registry.register(w);
             }
@@ -7114,5 +7117,11 @@ mod musk_vm_track_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 #[path = "tests/plan632_demo_bridge_tests.rs"]
 mod plan632_demo_bridge_tests;
+// PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
+// 回归。
+#[cfg(all(test, feature = "ui-iced"))]
+#[path = "tests/plan633_fullstack_embed_tests.rs"]
+mod plan633_fullstack_embed_tests;
+
 
 

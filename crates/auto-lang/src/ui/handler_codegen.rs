@@ -123,10 +123,45 @@ fn computed_call_expr(fn_name: &str) -> Expr {
     })
 }
 
+/// PLAN-633: 渲染期 store 别名快照——synthesis 尾部 clear_store_context 会
+/// 清 thread-local 上下文，而视图 f-string/绑定的 store 字段读取发生在渲染
+/// 期（同线程、同一组件）。set_store_context 同步落一份别名→真名快照
+/// （仅收 is-store 条目；clear 不清快照），view_store_alias_real_name 据此
+/// 判定。进程=单 app，last-synthesis-wins 语义与渲染一一对应。
+static VIEW_STORE_ALIAS_SNAPSHOT: std::sync::LazyLock<
+    std::sync::Mutex<HashMap<String, String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
 /// Set the store context for the current synthesis pass.
 pub fn set_store_context(fields: HashMap<String, Vec<String>>, names: HashMap<String, String>) {
+    if let Ok(mut snap) = VIEW_STORE_ALIAS_SNAPSHOT.lock() {
+        snap.clear();
+        for (alias, real) in names.iter() {
+            if fields.contains_key(real) {
+                snap.insert(alias.clone(), real.clone());
+            }
+        }
+    }
     STORE_FIELDS.with(|s| *s.borrow_mut() = fields);
     STORE_WIDGET_NAMES.with(|s| *s.borrow_mut() = names);
+}
+
+/// PLAN-633: 视图侧 store 字段读取的别名泛化——`.store.X` 字面别名之外，
+/// 真名限定形态（`.TodoStore.X`，发射器 store 接收者限定产物）同样落
+/// 根态裸字段。返回该别名对应的 store 真名；None = 非 store 别名（视图
+/// 侧不展平，走常规字段访问）。
+pub fn view_store_alias_real_name(alias: &str) -> Option<String> {
+    if let Ok(snap) = VIEW_STORE_ALIAS_SNAPSHOT.lock() {
+        if let Some(real) = snap.get(alias) {
+            return Some(real.clone());
+        }
+        // 无任何 store 工程（快照空）时字面 "store" 也不展平（与空表语义一致）。
+        if !snap.is_empty() && alias == "store" {
+            return Some("store".to_string());
+        }
+        return None;
+    }
+    None
 }
 
 /// Set the store msg-variant map (VM multi-store fix).

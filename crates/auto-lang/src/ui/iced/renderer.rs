@@ -17343,11 +17343,14 @@ fn dynamic_view_impl(
         // Plan 370 D-GAP-4: materialize VmRef list fields (e.g. store.notes) to
         // inline Value::Array so the MCP snapshot/inspect tools can expand
         // `for` loops and evaluate `.len()` without VM heap access.
+        // PLAN-633: 状态采集移到本帧视图构建**之后**——挂载期子件 Init
+        // （画廊内嵌全栈 demo：Demo*.Init → store → #[api] → db 种子）在
+        // view 构建中派发并写根态，先采后建会把 Init 写入漏在本帧快照外，
+        // 且 view_dirty 门控使其后无再同步帧 → MCP 快照永久滞留挂载前空值
+        // （013 todos=[] 实证；白盒直读同刻为 4 条）。
+        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let state_vals = state.component.read_all_state_materialized();
         let input_map = state.component.input_state_map().clone();
-        // Plan 307 Task 18: MCP sync never needs the probe — capture_probe=false
-        // makes the returned probe a disabled no-op (zero probe overhead here).
-        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let view_template = Some(state.component.view_template().clone());
         // Plan 446 批一(J1 诊断层根因修复): styled_vtree 此前仅在
         // __bounds_collected 回路后设置,而 bounds 只在 view() 脏重建时请求
