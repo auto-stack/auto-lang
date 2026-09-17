@@ -34,6 +34,21 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 权威正文 = `docs/design/autoui/desktop-protocol-v1.md` §1.6（本节仅指针，
 不重复）；度量 = `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
 
+## 现状（2026-09-17）
+
+**examples/ui 全量 Style Recipe 配方化 + 裸调色板色门禁（plan-637 落地，GOAL-007）**：
+`examples/ui/stylekit` 为 **canonical 共享配方库**（`hint_text`/`caption_text`/
+`input_field`/`icon_base`/`pill` 族等），全部 33 个有源码 demo + 045 完成
+Phase A 去重与 Phase B 语义 token 化；demo 经 635 通道消费
+（`dep stylekit { path: "../stylekit" }` + `use stylekit.styles: <name>`，
+16 demo / 100+ 位点）。**规范纪律**：已完成 rollout 的 demo 禁新增裸调色板色——
+门禁 `scripts/style_palette_guard.py` + `scripts/style_palette_manifest.json`
+（completed 清单驱动 + 豁免表逐键定性，四类口径：显式品牌色、装饰性插画/
+渐变色、语义状态色 registry 无键、图像叠字恒白）。**已知限制**：括号形属性
+中的配方引用（`icon (..., style: 配方名)`）在 VM 原生轨判 undefined（组件静默
+跳过）——大括号形全轨可用；475 组件包形态（widget 内 `use { package }` 块）
+与顶层 stylekit use 解析互斥——两场景暂留字面量，待框架收敛后回迁。
+
 ## 现状（2026-09-11）
 
 **声明式样式配方语言层（plan-607 落地，Design 29 Phase 3，GOAL-007）**：

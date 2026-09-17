@@ -27,7 +27,7 @@ widget Tracklist {
                     style: "items-center gap-4"
                     col {
                         style: "w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 items-center justify-center text-white shadow-md shadow-emerald-900/20 shrink-0"
-                        icon (name: "folder-archive", size: 30)
+                        icon (name: "folder-music", size: 30)
                     }
                     col {
                         style: "gap-1"

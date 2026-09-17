@@ -7,3 +7,7 @@ title_zh: "RealWorld"
 api: "rust"
 front_port: 3023
 back_port: 8023
+
+dep stylekit {
+    path: "../stylekit"
+}

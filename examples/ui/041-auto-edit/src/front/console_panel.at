@@ -7,6 +7,7 @@
 
 use editor_store: EditorStore
 
+style console_meta = "text-[11px] text-muted-foreground ml-auto"   // Phase B: zinc-500 → muted-foreground
 widget ConsolePanel {
     msg { Clear }
 
@@ -15,20 +16,20 @@ widget ConsolePanel {
             col (style: "h-px w-full bg-border")
             row (style: "h-7 items-center bg-muted/30 shrink-0 gap-3 px-2") {
                 text "CONSOLE" {
-                    style: "text-[11px] font-bold text-zinc-400"
+                    style: "text-[11px] font-bold text-muted-foreground"
                 }
                 button (text: "Clear", variant: "text") {
                     onclick: .Clear
-                    style: "text-[11px] h-5 px-1 text-zinc-400"
+                    style: "text-[11px] h-5 px-1 text-muted-foreground"
                 }
                 text "edits: ${.store.edits}" {
-                    style: "text-[11px] text-zinc-500 ml-auto"
+                    style: console_meta
                 }
             }
             scroll (style: "h-40 w-full bg-muted/10 shrink-0") {
                 col (style: "p-2") {
                     text .store.console {
-                        style: "text-xs font-mono text-zinc-300"
+                        style: "text-xs font-mono text-muted-foreground"
                     }
                 }
             }

@@ -9,3 +9,7 @@ front_port: 3019
 back_port: 8019
 theme: "dark"
 accent: "pink"
+
+dep stylekit {
+    path: "../stylekit"
+}

@@ -5,6 +5,9 @@
 
 use components.tree_util: filter_tree, collect_ids, toggle_id
 
+// PLAN-637 B4 注记：本 demo 为 475 组件包形态（widget 内 use { package } 块），
+// 顶层 stylekit use 与之解析互斥（caption_text 判 undefined），caption ×4 暂留
+// 字面量——待框架修复后回迁（已知债，见 b4-evidence-summary）。
 widget App {
     use { package: official from "./components" }
     msg {
@@ -891,7 +894,7 @@ widget App {
                             badge (text: f"${.dirtyCount} Uncommitted", variant: "default") {}
                             button "✓ Commit" {
                                 onclick: .CommitTx,
-                                style: "px-2.5 py-1 text-xs rounded bg-green-600 hover:bg-green-700 text-white font-medium"
+                                style: "px-2.5 py-1 text-xs rounded bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
                             }
                             button "↺ Rollback" {
                                 onclick: .RollbackTx,
@@ -1010,7 +1013,7 @@ widget App {
                                         input { placeholder: "Contact / Category", value: .newContact, oninput: .InputContactChanged, style: "flex-1 px-3 py-1.5 text-xs rounded border bg-background" }
                                         input { placeholder: "City / Stock", value: .newCity, oninput: .InputCityChanged, style: "flex-1 px-3 py-1.5 text-xs rounded border bg-background" }
                                         input { placeholder: "Country / Price", value: .newCountry, oninput: .InputCountryChanged, style: "flex-1 px-3 py-1.5 text-xs rounded border bg-background" }
-                                        button "Save Record" { onclick: .SaveNewRow, style: "px-4 py-1.5 text-xs rounded bg-green-600 text-white font-medium hover:bg-green-700" }
+                                        button "Save Record" { onclick: .SaveNewRow, style: "px-4 py-1.5 text-xs rounded bg-primary text-primary-foreground font-medium hover:bg-primary/90" }
                                     }
                                 }
                             }
@@ -1049,7 +1052,7 @@ widget App {
                                                 table-cell (style: "text-right") {
                                                     button "🗑" {
                                                         onclick: () => { .DeleteRow(i) },
-                                                        style: "px-2 py-0.5 text-xs text-red-500 hover:bg-red-500/10 rounded"
+                                                        style: "px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10 rounded"
                                                     }
                                                 }
                                             }
@@ -1149,7 +1152,7 @@ widget App {
                                 button "Customers LIMIT 20" { onclick: .PresetSqlCustomers, style: "px-2.5 py-1 rounded border bg-card hover:bg-accent" }
                                 button "High-Value Products" { onclick: .PresetSqlProducts, style: "px-2.5 py-1 rounded border bg-card hover:bg-accent" }
                                 button "Recent Orders" { onclick: .PresetSqlOrders, style: "px-2.5 py-1 rounded border bg-card hover:bg-accent" }
-                                button "Error Syntax Test" { onclick: .PresetSqlError, style: "px-2.5 py-1 rounded border border-red-500/40 text-red-500 hover:bg-red-500/10" }
+                                button "Error Syntax Test" { onclick: .PresetSqlError, style: "px-2.5 py-1 rounded border border-destructive/40 text-destructive hover:bg-destructive/10" }
                             }
 
                             // SQL 编辑器
@@ -1182,11 +1185,11 @@ widget App {
 
                             // 错误反馈面板
                             if .sqlStatus == "error" {
-                                col (style: "p-4 rounded-lg bg-red-500/10 border border-red-500/30 gap-1") {
-                                    row (style: "items-center gap-2 text-red-600 font-semibold text-xs") {
+                                col (style: "p-4 rounded-lg bg-destructive/10 border border-destructive/30 gap-1") {
+                                    row (style: "items-center gap-2 text-destructive font-semibold text-xs") {
                                         text "✕ SQL Execution Error" {}
                                     }
-                                    text .sqlErrorMsg { style: "font-mono text-xs text-red-500" }
+                                    text .sqlErrorMsg { style: "font-mono text-xs text-destructive" }
                                 }
                             }
 

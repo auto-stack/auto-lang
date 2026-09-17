@@ -9,49 +9,51 @@
 /// (folder/folder-open/file/file-text/image)+ home/wrench/layout-grid/
 /// terminal/settings/eye/book-open + PLAN-618 增 table/zap(026 对象树)。
 /// 调色板外名字渲染为空(契约文档收录)。
+use stylekit.styles: icon_base
+
 widget TreeIcon (name: str = "") {
     view {
         if .name == "folder" {
-            icon (name: "folder", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+            icon (name: "folder", style: icon_base) {}
         } else {
             if .name == "folder-open" {
-                icon (name: "folder-open", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                icon (name: "folder-open", style: icon_base) {}
             } else {
                 if .name == "file" {
-                    icon (name: "file", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                    icon (name: "file", style: icon_base) {}
                 } else {
                     if .name == "file-text" {
-                        icon (name: "file-text", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                        icon (name: "file-text", style: icon_base) {}
                     } else {
                         if .name == "image" {
-                            icon (name: "image", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                            icon (name: "image", style: icon_base) {}
                         } else {
                             if .name == "home" {
-                                icon (name: "home", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                icon (name: "home", style: icon_base) {}
                             } else {
                                 if .name == "wrench" {
-                                    icon (name: "wrench", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                    icon (name: "wrench", style: icon_base) {}
                                 } else {
                                     if .name == "layout-grid" {
-                                        icon (name: "layout-grid", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                        icon (name: "layout-grid", style: icon_base) {}
                                     } else {
                                         if .name == "terminal" {
-                                            icon (name: "terminal", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                            icon (name: "terminal", style: icon_base) {}
                                         } else {
                                             if .name == "settings" {
-                                                icon (name: "settings", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                                icon (name: "settings", style: icon_base) {}
                                             } else {
                                                 if .name == "eye" {
-                                                    icon (name: "eye", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                                    icon (name: "eye", style: icon_base) {}
                                                 } else {
                                                     if .name == "book-open" {
-                                                        icon (name: "book-open", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                                        icon (name: "book-open", style: icon_base) {}
                                                     } else {
                                                         if .name == "table" {
-                                                            icon (name: "table", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                                            icon (name: "table", style: icon_base) {}
                                                         } else {
                                                             if .name == "zap" {
-                                                                icon (name: "zap", style: "w-4 h-4 shrink-0 text-muted-foreground") {}
+                                                                icon (name: "zap", style: icon_base) {}
                                                             }
                                                         }
                                                     }

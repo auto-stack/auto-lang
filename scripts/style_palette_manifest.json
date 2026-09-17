@@ -25,7 +25,16 @@
     "031-image-viewer",
     "031-paint",
     "043-clipboard-bridge",
-    "044-dnd-bridge"
+    "044-dnd-bridge",
+    "018-book-reader",
+    "024-charts",
+    "026-database",
+    "027-file-manager",
+    "041-auto-edit",
+    "011-calculator",
+    "019-video-app",
+    "020-music-player",
+    "023-realworld"
   ],
   "exemptions": {
     "004-profile-card": {
@@ -83,6 +92,60 @@
     "030-video-player": {
       "text-white": "视频画面上的标题叠字（viewport）——恒白可读性，同 029 口径",
       "text-amber-400": "audio-note 提示（警告/注意语义，registry 无 warning 键，状态色豁免）"
+    },
+    "018-book-reader": {
+      "text-white/70": "书封 emoji 叠字——封面渐变/色块上的恒白文字（图像叠字，同 029 口径）（B4/T-04b）",
+      "bg-white/80": "书封阅读进度条填充——封面图像上的覆盖元素，同上",
+      "text-emerald-600": "✓ Finished 完成徽章亮支（success 语义 registry 无键，装饰性状态色豁免，主题系统立项回迁）",
+      "text-emerald-400": "✓ Finished 完成徽章暗支（dark: 变体）——同上"
+    },
+    "026-database": {
+      "bg-green-500": "连接状态指示点 ×2——状态语义 registry 无键，装饰性状态色豁免（同 004 口径）",
+      "text-green-600": "已连接状态文字——同上"
+    },
+    "041-auto-edit": {
+      "text-amber-400": "编辑器警告标签（warn_label 配方体）——warning 语义 registry 无键，状态色豁免（B4/T-04b）"
+    },
+    "011-calculator": {
+      "text-white": "按键配对字 ×18：数字/功能键暗臂（bg-secondary 上白字）与运算符/科学类目键（显式类目色键位编码，registry 无语义键）（B5/T-05）",
+      "bg-orange-500": "运算符键类目色（+−×÷= 计算器键位编码）——同上",
+      "bg-indigo-700": "科学函数键类目色（sin/cos/tan…）——同上"
+    },
+    "019-video-app": {
+      "text-white": "视频缩略图叠字/时长角标 ×4——图像上恒白（029 口径）",
+      "text-white/80": "缩略图播放钮叠字——同上",
+      "bg-pink-500": "视频分类标签 pill 类目色（Live/音乐/游戏…）——显式类目色（B5/T-05）",
+      "text-pink-500": "分类标签文字——同上",
+      "text-pink-400": "分类标签文字暗支——同上",
+      "text-pink-600": "分类标签文字亮支——同上",
+      "bg-pink-50": "分类标签底亮支——同上",
+      "ring-pink-500": "分类标签 ring——同上",
+      "bg-indigo-500": "分类标签底（indigo 组）——同上",
+      "text-indigo-500": "分类标签文字——同上",
+      "ring-indigo-500": "分类标签 ring——同上",
+      "bg-sky-500": "分类标签底（sky 组）——同上",
+      "text-sky-500": "分类标签文字——同上",
+      "ring-sky-500": "分类标签 ring——同上",
+      "bg-emerald-500": "分类标签底（emerald 组）——同上",
+      "text-emerald-500": "分类标签文字——同上",
+      "ring-emerald-500": "分类标签 ring——同上",
+      "bg-amber-500": "分类标签底（amber 组）——同上",
+      "text-amber-500": "分类标签文字——同上",
+      "ring-amber-500": "分类标签 ring——同上"
+    },
+    "020-music-player": {
+      "text-white": "封面渐变叠字 ×4——图像上恒白（029 口径）（B5/T-05）",
+      "text-rose-500": "红心（喜欢）——语义状态色 registry 无键",
+      "text-rose-500/40": "红心未点亮态——同上",
+      "text-emerald-400": "正在播放徽章文字——同上",
+      "bg-emerald-500/15": "播放徽章底——同上",
+      "border-emerald-500/30": "播放徽章框——同上",
+      "bg-purple-500/15": "purple 徽章底（另类播放态）——同上",
+      "text-purple-400": "purple 徽章文字——同上",
+      "border-purple-500/30": "purple 徽章框——同上"
+    },
+    "023-realworld": {
+      "text-white": "brand-green 品牌按钮配对字 ×5（Follow/Favorite/Publish）——品牌色=本 demo 自定义语义，整体豁免（B5/T-05）"
     }
   }
 }

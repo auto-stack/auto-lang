@@ -23,6 +23,9 @@
 
 use chart_geom: dc, ds
 
+use stylekit.styles: caption_text
+style legend_swatch = "w-3 h-3 shrink-0"
+
 widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
     msg { Init, Hover(int), Toggle(int), PointerMove(float, float), PointerOut, AnimDnTick }
 
@@ -311,7 +314,7 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 if .tooltip && .hovered == "true" {
                     col (class: f"absolute top-[20px] right-[20px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md opacity-${.tipOpDn} transition-opacity duration-150") {
                         text .tipTitle { style: "text-xs font-semibold text-foreground" }
-                        text .tipBody { style: "text-xs text-muted-foreground" }
+                        text .tipBody { style: cap }
                     }
                 }
             }
@@ -320,40 +323,40 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                     if .legendText0 != "" {
                         mouse-area (onmouseenter: .Hover(0), onmouseleave: .HoverOut, onclick: .Toggle(0)) {
                             row (style: ["items-center gap-2", if .visDn0 { "" } else { "opacity-40" }]) {
-                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor0) {}
                                 }
-                                text .legendText0 { style: "text-xs text-muted-foreground" }
+                                text .legendText0 { style: cap }
                             }
                         }
                     }
                     if .legendText1 != "" {
                         mouse-area (onmouseenter: .Hover(1), onmouseleave: .HoverOut, onclick: .Toggle(1)) {
                             row (style: ["items-center gap-2", if .visDn1 { "" } else { "opacity-40" }]) {
-                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor1) {}
                                 }
-                                text .legendText1 { style: "text-xs text-muted-foreground" }
+                                text .legendText1 { style: cap }
                             }
                         }
                     }
                     if .legendText2 != "" {
                         mouse-area (onmouseenter: .Hover(2), onmouseleave: .HoverOut, onclick: .Toggle(2)) {
                             row (style: ["items-center gap-2", if .visDn2 { "" } else { "opacity-40" }]) {
-                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor2) {}
                                 }
-                                text .legendText2 { style: "text-xs text-muted-foreground" }
+                                text .legendText2 { style: cap }
                             }
                         }
                     }
                     if .legendText3 != "" {
                         mouse-area (onmouseenter: .Hover(3), onmouseleave: .HoverOut, onclick: .Toggle(3)) {
                             row (style: ["items-center gap-2", if .visDn3 { "" } else { "opacity-40" }]) {
-                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor3) {}
                                 }
-                                text .legendText3 { style: "text-xs text-muted-foreground" }
+                                text .legendText3 { style: cap }
                             }
                         }
                     }

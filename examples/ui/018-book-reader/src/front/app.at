@@ -3,6 +3,8 @@
 // strong-typed rust backend (015/017 CRUD pattern).
 use book_store: BooksStore
 
+style sub_text = "text-sm text-muted-foreground"
+
 widget App {
     routes {
         "/" -> use bookshelf
@@ -63,8 +65,8 @@ widget App {
                     style: "h-14 border-b border-border bg-card items-center px-4 gap-4 md:hidden"
                     text "📖 AutoRead" { style: "font-bold text-foreground" }
                     row { style: "flex-1" }
-                    link (to: "/") { text "Library" { style: "text-sm text-muted-foreground" } }
-                    link (to: "/settings") { text "Settings" { style: "text-sm text-muted-foreground" } }
+                    link (to: "/") { text "Library" { style: sub_text } }
+                    link (to: "/settings") { text "Settings" { style: sub_text } }
                     theme-toggle {}
                 }
                 outlet

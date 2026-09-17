@@ -110,9 +110,9 @@ widget watch {
                                 // Video Description Card
                                 col {
                                     style: if .store.dark_mode {
-                                        "p-4 rounded-xl bg-zinc-900 border border-zinc-800 gap-2 text-sm text-zinc-300"
+                                        "p-4 rounded-xl bg-card border border-border gap-2 text-sm text-muted-foreground"
                                     } else {
-                                        "p-4 rounded-xl bg-gray-100 border border-gray-200 gap-2 text-sm text-gray-700"
+                                        "p-4 rounded-xl bg-muted border border-border gap-2 text-sm text-foreground"
                                     }
                                     text "About this video" { style: "text-xs font-bold text-foreground uppercase tracking-wider" }
                                     text .video.desc { style: "leading-relaxed" }
@@ -137,9 +137,9 @@ widget watch {
                                         row {
                                             onclick: .OpenRelated(rel.id)
                                             style: if .store.dark_mode {
-                                                "gap-3 p-2 rounded-xl bg-zinc-900/80 border border-zinc-800/80 hover:border-zinc-700 transition-colors cursor-pointer group"
+                                                "gap-3 p-2 rounded-xl bg-card/80 border border-border/80 hover:border-border transition-colors cursor-pointer group"
                                             } else {
-                                                "gap-3 p-2 rounded-xl bg-white border border-gray-200/80 hover:border-gray-300 transition-colors cursor-pointer group"
+                                                "gap-3 p-2 rounded-xl bg-card border border-border/80 hover:border-border transition-colors cursor-pointer group"
                                             }
 
                                             // Mini thumbnail

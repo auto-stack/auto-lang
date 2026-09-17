@@ -22,6 +22,8 @@ fn ch_nodes(chs List) List {
     return [{ id: "book", label: "Chapters", children: kids, kind: "dir", icon: "book-open", is_leaf: false, badge: "" }]
 }
 
+style page_btn = "inline-flex items-center gap-1 px-3 py-1.5 text-sm text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-40"
+
 widget reading {
     use { package: official from "../components" }
     msg { Init, Back, PrevChapter, NextChapter, ChToggle(str), ChSelect(str) }
@@ -93,7 +95,7 @@ widget reading {
                 style: "h-14 border-t border-border bg-card items-center px-4 gap-4"
                 button {
                     onclick: .PrevChapter
-                    style: "inline-flex items-center gap-1 px-3 py-1.5 text-sm text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-40"
+                    style: page_btn
                     disabled: .chapter_num <= 1
                     text "← Prev" {}
                 }
@@ -112,7 +114,7 @@ widget reading {
                 }
                 button {
                     onclick: .NextChapter
-                    style: "inline-flex items-center gap-1 px-3 py-1.5 text-sm text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-40"
+                    style: page_btn
                     disabled: .chapter_num >= .chapter_count
                     text "Next →" {}
                 }

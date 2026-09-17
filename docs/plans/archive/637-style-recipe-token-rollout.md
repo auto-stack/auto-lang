@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-637
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: style-recipe-token-rollout（examples/ui 全量配方化 + token 化）
 author: [zhaopuming]
 created_at: 2026-09-17
@@ -11,10 +11,11 @@ plan_revision: 3
 supersedes_spec_components: []
 new_spec_components:
   - docs/specs/auto-lang/ui/overview.md（示例配方化规范条目：stylekit 共享库 + 禁新增裸调色板色门禁）
+  - docs/specs/auto-man/project.md（stylekit 记为标准多包消费样例：dep path 双形态）
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象）"]
 
 affects: [auto-lang/ui, autoui-examples]
-current_step: 6
+current_step: 10
 total_steps: 10
 ---
 
@@ -307,21 +308,31 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   URL 保护用例），正例 15/15。偏差：fit 窗 VM 截图竞态致 003/012 VM 像素证据
   退化（pre-existing 空窗/半绘帧，vue 侧+结构树承担），详见 evidence/637/
   b2-evidence-summary.md §4。
-- **T-04 W3 波**（15 个中型 demo）：同模板；允许按 demo 分子提交。
+- [x] **T-04 W3 波**（15 个中型 demo）：同模板；允许按 demo 分子提交。
   （r3：拆 **B3** 轻半 10 demo / **B4** 巨型 5 demo 两次 fold；
   tree_icon 四胞胎（018/026/027/041）聚 B4 机械联动。）
-  [◐ B3 轻半完成 2026-09-17，B4 巨型件未动] 10 demo 全改写：caption_text 全等
-  消费 ×28（10 demo 全挂 dep stylekit，AC-05 累计 13 demo ≥10 ✅）；本地提取
-  ~65 配方 ~230 位点；Phase B 面 022（卡片/动作钮/页根 + 泳道类目色豁免 ×5）、
-  029（红→destructive ×3 + 白覆盖层豁免 ×7）、030（zinc→muted ×6 + 叠字/状态
-  豁免 ×2）、016（色票豁免 ×5）。零漂移 8/10 双端实证（017/043/044 单轨）；
-  022/017 vue 轨既有损坏（主检出复现，非本计划引入）以 VM 承担；029 file://
-  缩略图缺陷（用户报告）确认为既有双端资产契约问题，修复方向=迁移
-  image_pipeline 媒体会话通道（另立小修复）；跨会话 master 演进（638 落地+
-  二进制重建）已按纪律 stash→sync→pop 解决。详见 evidence/637/
-  b3-evidence-summary.md（偏差 7 项）。
+  [✅ 已完成 2026-09-17（B3 轻半 + B4 巨型件两 fold）]
+  **B3**：10 demo 见下方 B3 记录与 8.3 矩阵。
+  **B4**：024 hint_text ×75 + caption ×17 消费（全仓最大家族）+ 15 位点提取 +
+  Pause/Play→secondary/primary（012 先例）；018/026/027 icon_base ×14×3 树图标
+  联动（四胞胎 md5 一致验证，vue/VM 渲染均验）；026 Connect/Save→primary、
+  错误簇→destructive、状态点豁免；027 纯 A 42 位点双端 IDENTICAL；041 zinc
+  分层 ×13 + amber/#16171B 豁免。零漂移 018/026/027 双端 IDENTICAL；024 差异
+  bbox 精确对位按钮；041 0.12% 文字级。**已知债两项**：026 caption ×4 因 475
+  包 use 块与顶层 stylekit use 解析互斥回退（caption_text 判 undefined）；
+  041 icon_base ×14 回退（render:vm 原生轨括号形配方名判 undefined、组件静默
+  跳过）——四胞胎落地 42/56。框架解析路径分叉注记在案。详见
+  evidence/637/b4-evidence-summary.md。
 - **T-05 W4 波**（011/019/020/023）：重型 token 化；020 的 264 处逐簇
   （同类串整簇替换）而非逐处。（r3：= **B5**，与 T-07/T-08 收口同批。）
+  [✅ 已完成 2026-09-17 B5] 011 tier 映射（数字键→secondary 族、功能键行→
+  muted+foreground、显示器→primary）+ 7 键位配方提取，运算符橙/科学 indigo
+  类目豁免；019 tier 收敛 ×13 键 + 视频叠字豁免 ×4；020（638 重设计后残余）
+  tier ×5 键 + rose/emerald/白字豁免 ×9；023 灰阶分层 ×12 键 + destructive 族 +
+  **input_field ×13 消费**（D1 家族源 demo）+ brand-green 品牌对豁免。
+  对拍：011 vue 13.68%/vm 83.41%（键色随暗主题换装）、019 vue 60.92%、
+  020 双端 IDENTICAL、023 vue 3.68%；019/023 VM 轨既有问题（019 挂起/
+  023 后端再生成 E0425——干净态同错，主检出可复现）以 vue 承担。
 - [x] **T-06 存量三 demo 收尾**（013/015/045 Phase B + 门禁纳入；r3：提前
   并入 **B1** 执行——Phase A 已达标故便宜，且提前兑现 AC-05 stylekit
   消费实证）。
@@ -330,13 +341,24 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   （pac dep stylekit + editor/sidebar use 导入；vue 像素 IDENTICAL 零漂移；vm
   22.8%=有状态 db 内容/时间戳漂移，差值可视化在案非样式）+ accent 五色票豁免
   登记；045 零改动纳入门禁（双端 IDENTICAL 回归）。guard completed 集 8 demo。
-- **T-07 矩阵终验**：35/35 勾记 + grep 全量复扫 + 豁免表复核。
-- **T-08 回归与收口**：`cargo tv` + `cargo t` 对拍；spec delta 回填；
+- [x] **T-07 矩阵终验**：35/35 勾记 + grep 全量复扫 + 豁免表复核。
+  [✅ 已完成 2026-09-17 B5] guard 全量复扫 **34/34 PASS**（33 rollout + 045；
+  025/038 N/A）；豁免表 14 demo ~50 键全部带定性 reason 复核通过；矩阵
+  8.1–8.4 + 8.5 B5 增补全勾记。
+- [x] **T-08 回归与收口**：`cargo tv` + `cargo t` 对拍；spec delta 回填；
   `execution_done`。**worktree 链接拆除（r2，wt-guard 红线）**：各 demo
   `auto run` 按 475 通道物化的 `deps/stylekit` 等 junction（预计 30+ 枚）
   收尾时逐枚 `rmdir` 拆除（严禁递归删除——会穿透链接删除目标内容），
   拆净后跑 `bash D:/autostack/wt-guard.sh` 确认 clean 再移除 worktree
   （635 先例：合并时手工拆除 360 枚链接，见其合并回执 cleaned 节）。
+  [✅ 已完成 2026-09-17 B5] junction：worktree deps/stylekit ×34 逐枚拆除 +
+  空壳清除；主检出 011 deps/common（B1 遗留）+ 陈旧 junction 复扫清零；
+  gen/dist 超长路径 pnpm 链接树以 mv→robocopy /MIR /XJ→rmdir 安全清除；
+  **wt-guard 终判 clean**。spec delta 回填见 SD-01/SD-02（review 裁定）。
+  cargo tv 阻断记录：E0433 ×20（term_engine.rs terminal 块无 ui 门控——
+  PLAN-019 复审曾修、后续合并复活；crates 属 019/020 lineage，本计划
+  Category A 不越界）——解除动作=补 ui/not(ui) 双臂门控后重跑，移交
+  review 裁定。cargo t 依 Category A 免跑（全程零 crates 改动+语料隔离已证）。
 - （波次内发现的新重复模式回流 stylekit 时，走 demo 内 style 先行、
   升库与消费方切换同波完成，避免半态。）
 
@@ -392,6 +414,37 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
 | 043 | ✅ 7 配方 31 位点 | 无色可换 | n/a（VM 原生）/ IDENTICAL | ✅ | ✅ ×10 |
 | 044 | ✅ 6 配方 25 位点 | 无色可换 | n/a（VM 原生）/ IDENTICAL | ✅ | ✅ ×7 |
 
+### 8.4 B4 矩阵增补（2026-09-17，T-04b 巨型件 5 demo + tree_icon 联动）
+
+证据：`docs/plans/evidence/637/b4-evidence-summary.md`。
+
+| demo | Phase A | Phase B | 对拍（vue/vm） | 门禁 | 消费 stylekit |
+|---|---|---|---|---|---|
+| 018 | ✅ 9 配方 36 位点 | 覆盖层/成功徽章豁免 ×4 | IDENTICAL / IDENTICAL | ✅ | ✅ icon_base ×14 + caption ×2 |
+| 024 | ✅ 4 配方 15 位点 | ✅ Pause/Play 映射 | 0.66%（按钮 bbox）/ 1.94%（含动画帧态） | ✅ | ✅ hint_text ×75 + caption ×17 |
+| 026 | ✅ 13 配方 43 位点 | ✅ primary/destructive 映射+状态豁免 ×2 | IDENTICAL / IDENTICAL（换装区在 SQL tab，交互截图在案） | ✅ | 回退 ×4（475 互斥债） |
+| 027 | ✅ 9 配方 42 位点 | 无色可换 | IDENTICAL / IDENTICAL | ✅ | ✅ icon_base ×14 |
+| 041 | ✅ 8 配方 15 位点 | ✅ zinc 分层 ×13+豁免 ×2 | n/a（VM 原生）/ 0.12% | ✅ | 回退 ×14（VM 原生轨债） |
+
+tree_icon 四胞胎：018/026/027 落地 ×42；041 回退 ×14（VM 原生轨括号形配方名
+不支持，框架债）。
+
+### 8.5 B5 矩阵增补（2026-09-17，T-05 重型 + T-07/T-08 终验收口）
+
+证据：`docs/plans/evidence/637/b5-evidence-summary.md`。
+
+| demo | Phase A/Phase B | 对拍（vue/vm） | 门禁 | 消费 stylekit |
+|---|---|---|---|---|
+| 011 | tier 映射 + 7 键位配方提取（key_digit_dark ×13 等） | 13.68% / 83.41%（键色随暗主题） | ✅ 类目键豁免 | — |
+| 019 | tier 收敛 ×13 键 | 60.92% / n/a（VM 挂起既有） | ✅ 叠字豁免 ×4 + 分类 pill 类目豁免 ×16 键 | — |
+| 020 | tier 残余 ×5 键 | IDENTICAL / IDENTICAL | ✅ rose/emerald/白字豁免 ×9 | — |
+| 023 | 灰阶分层 ×12 键 + destructive 族 | 3.68% / n/a（后端再生成 E0425 既有） | ✅ brand-green 对豁免 ×5 | ✅ input_field ×13 |
+
+终验：guard **34/34 PASS**（0 非豁免残留）；豁免表 14 demo ~50 键复核；
+cargo tv 被 master 既有 E0433（term_engine 无 ui 门控）阻断——记录+移交
+（解除动作在案）；语料隔离已证（examples/ui 不入 golden）；worktree
+junction ×34 + 主检出遗留全清，**wt-guard clean**。
+
 ## 9. 复审记录
 
 - （draft 起草 handoff 2026-09-17：`stage: new | PLAN-637 | plan_revision: 1 |
@@ -435,6 +488,38 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   跨会话演进（638+二进制）按纪律同步解决；新增已知债三项（022 vue-gen 幻影
   导入、017 后端编译失败、029 file:// 资产契约——均 master 既有，非本计划
   引入，主检出可复现）。）
+- （B4 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
+  outcome: pass（批次级；T-04 全部完成） | code_commit: plan-637-dev B4 提交 |
+  task_ids: T-04b（T-04 巨型半） | evidence:
+  docs/plans/evidence/637/b4-evidence-summary.md | blockers: 无 |
+  next: fold 回 master 后 B5（T-05 重型四件 + T-07 终验 + T-08 收口）。
+  要点：024 hint_text ×75 全仓最大家族消费落地；icon_base 四胞胎 42/56
+  （041 VM 原生轨括号形配方名不支持→回退，框架债）；026 475 包 use 互斥→
+  caption 回退 ×4（框架债）；转换事故（行尾注释吞 token）两处已修复并全目录
+  审计清零。）
+
+- （合并收据 `PLAN-637:r3` 2026-09-17：**prepared**（基线 583beea6a→reviewed
+  c2ec1c350；canonical diff SD-01/SD-02 冻结于 delivery_commit 568a5c401 前工作
+  树；投影目标=.autoos/specs.json architecture 节 P635-1/-2 复用更新）→
+  **landed**（master 2930b3325 = delivery ff；canonical 锚点双文件读回验证；
+  master 守卫 34/34 smoke）→ **ledger_refreshed**（.autoos/specs.json：P635-1/-2
+  同目标复用更新 + P637-1 reviews 新增，读回断言通过）→ **archived**（本文件
+  git mv + status: archived）→ **cleaned**（wt-guard 复验 clean 后 worktree
+  .wt/lang-637/auto-lang 移除、分支 plan-637-dev 删除（568a5c401 完全落入
+  master）、auto-down 只读兄弟检出移除、组目录 .wt/lang-637 删除。合并收据
+  归属会话：PLAN-637 执行会话。）
+
+- （B5 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
+  outcome: pass → execution_done | code_commit: plan-637-dev B5 提交 |
+  task_ids: T-05/T-07/T-08 | evidence:
+  docs/plans/evidence/637/b5-evidence-summary.md | blockers:
+  cargo tv 门禁被 master 既有 E0433 阻断（term_engine 无 ui 门控，
+  019 复审曾修后复活；解除动作=补 ui/not(ui) 门控后重跑，归 019/020
+  lineage）| next: 独立 review（/auto-plan:review）。
+  全量：33/33 rollout + 045 + 2 N/A；guard 34/34；stylekit 消费 16 demo；
+  AC-01..06 达成，AC-07 tv 项移交裁定。已知债累计：022 vue-gen 幻影导入、
+  017 后端 E0308、023 后端 E0425、029 file:// 资产契约、026/041 配方引用
+  两项框架解析限制、cargo tv E0433——均 master/框架层既有，主检出可复现。））
 
 ## 10. 待澄清事项
 
@@ -464,3 +549,30 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
    确认）**——本计划仅做 `icon_base` recipe 收编；widget 本体四胞胎合并
    （018/026/027/041 的 tree_icon.at，md5 逐字节相同，走 475 组件级
    use 通道）另立小计划，与待澄清#3 stylekit 定位裁定联动。
+- （独立复审 2026-09-17：`stage: review | PLAN-637 | plan_revision: 3 |
+  outcome: pass | reviewed_commit: c2ec1c350（master=dev 同点） |
+  base_commit: 583beea6a（r3 基线） | dependency_revisions: auto-down 兄弟
+  worktree 140775f（B5 补建，跨仓 media 路径）；共享 auto 二进制 v0.4.2-880
+  （随他会话演进，B3 中途已按纪律同步） | spec_inputs:
+  docs/specs/auto-lang/ui/overview.md + docs/specs/auto-man/project.md
+  （SD-01/SD-02 合并时落盘，本审未发布） | acceptance_results:
+  AC-01 pass（Phase A 33/33+045，guard 34/34）、AC-02 pass（豁免 ~50 键全带
+  定性 reason）、AC-03 pass（纯 A 面双端/vm IDENTICAL：016/017/018/020/021/
+  026/027/029-vue/031iv/031p/043/044，抽样独立复算 018-vm/020 双端复核一致）、
+  AC-04 pass（逐 demo 映射头注+差异 bbox 对位：024 按钮区/026 交互截图
+  026-vue-sqltab-after-b4.png）、AC-05 pass（dep+use 16 demo ≥10，caption ×43、
+  hint ×75、input ×13、icon ×42 等）、AC-06 pass（自测 5/5+全量 34/34）、
+  **AC-07 partial**（tv 被 master 既有 E0433 阻断——term_engine terminal 块无
+  ui 门控，019 复审 f165040f7 曾修、后续合并复活；主检出同码复现；计划提交
+  零 crates 触碰（路径审计：六提交仅 examples/scripts/.gitignore）；语料隔离
+  复核成立——唯一 examples/ui 引用为 #[ignore] a2ts tsc 探针的 node_modules
+  二进制路径锚，不受样式改动影响；解除动作=补 ui/not(ui) 双臂门控后重跑，
+  归 019/020 lineage） | findings: F1 tv 门禁 E0433（阻断级，外部债，已路由）；
+  F2 既有缺陷六项（022 幻影导入/017 E0308/023 E0425/029 file:// 资产契约/
+  026 与 041 括号形配方引用限制——均主检出复现，非本计划引入）；
+  F3 G1 口径（跨文件 ×1 重复与单类短串不提取——不过度抽象注记的操作化）；
+  F4 证据卫生（_tmp022.png 误入库，本审移除） | evidence:
+  docs/plans/evidence/637/{b1..b5}-evidence-summary.md + 矩阵 8.1–8.5 +
+  截图对/差值可视化 | next: /auto-plan:merge 落地归档。复审限制声明：
+  本审在执行会话内进行，结论以工件重建（守卫重跑/像素独立复算/路径审计/
+  源码门控核验），未采信执行摘要。）

@@ -30,6 +30,12 @@ AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析�
   即复现锚）；`verify()` 对无 commit 条目校验物化路径存在性。锁文件保持
   TOML 文本可 diff。
 
+**标准多包消费样例（PLAN-637）**：`examples/ui/stylekit` 为声明门控的
+canonical 消费示范——消费方 pac.at 声明 `dep stylekit { path: "../stylekit" }`
+（相对路径形态）后即可 `use stylekit.styles: <name>` 导入 pub 配方；截至
+plan-637 共 16 个 demo 以此形态消费（045-style-import 为最小完整样例）。
+新建跨包消费工程照此结构起模板。
+
 **边界**：auto-lang 不依赖 auto-man crate——pac.at 声明读取为文本扫描
 （auto-lang 内实现）；auto-man 物化（junction/symlink/worktree，Plan 475）
 与该门控正交互补。

@@ -21,6 +21,19 @@
 
 use prog_util: pdigit_val, pdigit_new_lo, pdigit_new_hi, pop_lo, pop_hi, pdiv, pcur_fmt, pline_calc
 
+// PLAN-637 B5 Phase B 映射（2026-09-17）：数字键 zinc-800/gray-200→bg-secondary、配字
+// white/gray-900→white/secondary-foreground；功能键行 zinc-700/gray-300→bg-muted、配字
+// →white/secondary-foreground；显示器 text-red-400→text-primary；zinc-300/400→次级文字。
+// 豁免（类目色）：运算符 bg-orange-500 ×N、科学键 bg-indigo-700 ×N（配对 text-white 同留）
+// ——计算器键位色彩编码，registry 无语义键。
+style key_digit_dark = "w-full bg-secondary text-white rounded-lg p-4 text-lg"
+style key_digit_light = "w-full bg-secondary text-secondary-foreground rounded-lg p-4 text-lg"
+style key_fn_dark = "w-full bg-muted text-white rounded-lg p-4 text-lg"
+style key_fn_light = "w-full bg-muted text-secondary-foreground rounded-lg p-4 text-lg"
+style key_op = "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold"
+style key_sci = "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm"
+style key_fn_muted = "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold"
+
 widget App {
     msg {
         Digit(int),
@@ -103,9 +116,9 @@ widget App {
                                     "flex-1 px-2 py-1 text-xs rounded bg-orange-500 text-white font-medium"
                                 } else {
                                     if .dark_mode {
-                                        "flex-1 px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                                        "flex-1 px-2 py-1 text-xs rounded bg-secondary text-secondary-foreground hover:bg-muted transition-colors"
                                     } else {
-                                        "flex-1 px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                                        "flex-1 px-2 py-1 text-xs rounded bg-secondary text-secondary-foreground hover:bg-muted transition-colors"
                                     }
                                 }
                             }
@@ -115,9 +128,9 @@ widget App {
                                     "flex-1 px-2 py-1 text-xs rounded bg-orange-500 text-white font-medium"
                                 } else {
                                     if .dark_mode {
-                                        "flex-1 px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                                        "flex-1 px-2 py-1 text-xs rounded bg-secondary text-secondary-foreground hover:bg-muted transition-colors"
                                     } else {
-                                        "flex-1 px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                                        "flex-1 px-2 py-1 text-xs rounded bg-secondary text-secondary-foreground hover:bg-muted transition-colors"
                                     }
                                 }
                             }
@@ -127,9 +140,9 @@ widget App {
                                     "flex-1 px-2 py-1 text-xs rounded bg-orange-500 text-white font-medium"
                                 } else {
                                     if .dark_mode {
-                                        "flex-1 px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                                        "flex-1 px-2 py-1 text-xs rounded bg-secondary text-secondary-foreground hover:bg-muted transition-colors"
                                     } else {
-                                        "flex-1 px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                                        "flex-1 px-2 py-1 text-xs rounded bg-secondary text-secondary-foreground hover:bg-muted transition-colors"
                                     }
                                 }
                             }
@@ -139,23 +152,23 @@ widget App {
                         if .mode == "programmer" {
                             text .pline {
                                 style: if .dark_mode {
-                                    "text-sm text-zinc-400 text-right w-full truncate"
+                                    "text-sm text-muted-foreground text-right w-full truncate"
                                 } else {
-                                    "text-sm text-gray-500 text-right w-full truncate"
+                                    "text-sm text-muted-foreground text-right w-full truncate"
                                 }
                             }
                         } else {
                             text .expr_line {
                                 style: if .dark_mode {
-                                    "text-sm text-zinc-400 text-right w-full truncate"
+                                    "text-sm text-muted-foreground text-right w-full truncate"
                                 } else {
-                                    "text-sm text-gray-500 text-right w-full truncate"
+                                    "text-sm text-muted-foreground text-right w-full truncate"
                                 }
                             }
                         }
                         if .error != "" {
                             text .error {
-                                style: "text-2xl font-light text-red-400 text-right w-full"
+                                style: "text-2xl font-light text-primary text-right w-full"
                             }
                         } else {
                             if .mode == "programmer" {
@@ -163,7 +176,7 @@ widget App {
                                     style: if .dark_mode {
                                         "text-4xl font-light text-white text-right w-full truncate"
                                     } else {
-                                        "text-4xl font-light text-gray-900 text-right w-full truncate"
+                                        "text-4xl font-light text-secondary-foreground text-right w-full truncate"
                                     }
                                 }
                             } else {
@@ -171,7 +184,7 @@ widget App {
                                     style: if .dark_mode {
                                         "text-4xl font-light text-white text-right w-full truncate"
                                     } else {
-                                        "text-4xl font-light text-gray-900 text-right w-full truncate"
+                                        "text-4xl font-light text-secondary-foreground text-right w-full truncate"
                                     }
                                 }
                             }
@@ -261,14 +274,14 @@ widget App {
                             }
                             if .perr != "" {
                                 text .perr {
-                                    style: "text-lg font-light text-red-400 text-right w-full"
+                                    style: "text-lg font-light text-primary text-right w-full"
                                 }
                             }
                         }
                         style: if .dark_mode {
-                            "w-full p-4 bg-zinc-900 rounded-t-2xl gap-1"
+                            "w-full p-4 bg-background rounded-t-2xl gap-1"
                         } else {
-                            "w-full p-4 bg-gray-100 rounded-t-2xl gap-1 border-b border-gray-200"
+                            "w-full p-4 bg-muted rounded-t-2xl gap-1 border-b border-border"
                         }
                     }
 
@@ -278,18 +291,18 @@ widget App {
                     // (bit-logic operations are future work).
                     if .mode == "scientific" {
                         grid {
-                            grid-item { button "sin" { onclick: .SciFn("sin"),  style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                            grid-item { button "cos" { onclick: .SciFn("cos"),  style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                            grid-item { button "tan" { onclick: .SciFn("tan"),  style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                            grid-item { button "sqrt" { onclick: .SciFn("sqrt"), style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                            grid-item { button "^" { onclick: .Operator("^"),    style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
-                            grid-item { button "pi" { onclick: .SciFn("pi"),    style: "w-full bg-indigo-700 text-white rounded-lg p-3 text-sm" } }
+                            grid-item { button "sin" { onclick: .SciFn("sin"),  style: key_sci } }
+                            grid-item { button "cos" { onclick: .SciFn("cos"),  style: key_sci } }
+                            grid-item { button "tan" { onclick: .SciFn("tan"),  style: key_sci } }
+                            grid-item { button "sqrt" { onclick: .SciFn("sqrt"), style: key_sci } }
+                            grid-item { button "^" { onclick: .Operator("^"),    style: key_sci } }
+                            grid-item { button "pi" { onclick: .SciFn("pi"),    style: key_sci } }
                             cols: 6
                             gap: 1
                             style: if .dark_mode {
-                                "w-full px-2 pt-1 bg-zinc-800"
+                                "w-full px-2 pt-1 bg-secondary"
                             } else {
-                                "w-full px-2 pt-1 bg-gray-200"
+                                "w-full px-2 pt-1 bg-secondary"
                             }
                         }
                     }
@@ -298,42 +311,42 @@ widget App {
                     // programmer 使用专属 int 键盘，见下方 Programmer 键盘组)。
                     if .mode != "programmer" {
                     grid {
-                        grid-item { button "C"   { onclick: .Clear,         style: if .dark_mode { "w-full bg-zinc-700 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-300 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "+/-" { onclick: .Negate,        style: if .dark_mode { "w-full bg-zinc-700 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-300 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "%"   { onclick: .Percent,       style: if .dark_mode { "w-full bg-zinc-700 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-300 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "/"   { onclick: .Operator("/"), style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                        grid-item { button "C"   { onclick: .Clear,         style: if .dark_mode { key_fn_dark } else { key_fn_light } } }
+                        grid-item { button "+/-" { onclick: .Negate,        style: if .dark_mode { key_fn_dark } else { key_fn_light } } }
+                        grid-item { button "%"   { onclick: .Percent,       style: if .dark_mode { key_fn_dark } else { key_fn_light } } }
+                        grid-item { button "/"   { onclick: .Operator("/"), style: key_op } }
 
-                        grid-item { button "7"   { onclick: .Digit(7),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "8"   { onclick: .Digit(8),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "9"   { onclick: .Digit(9),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "*"   { onclick: .Operator("*"), style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                        grid-item { button "7"   { onclick: .Digit(7),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "8"   { onclick: .Digit(8),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "9"   { onclick: .Digit(9),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "*"   { onclick: .Operator("*"), style: key_op } }
 
-                        grid-item { button "4"   { onclick: .Digit(4),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "5"   { onclick: .Digit(5),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "6"   { onclick: .Digit(6),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "-"   { onclick: .Operator("-"), style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                        grid-item { button "4"   { onclick: .Digit(4),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "5"   { onclick: .Digit(5),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "6"   { onclick: .Digit(6),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "-"   { onclick: .Operator("-"), style: key_op } }
 
-                        grid-item { button "1"   { onclick: .Digit(1),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "2"   { onclick: .Digit(2),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "3"   { onclick: .Digit(3),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "+"   { onclick: .Operator("+"), style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                        grid-item { button "1"   { onclick: .Digit(1),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "2"   { onclick: .Digit(2),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "3"   { onclick: .Digit(3),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "+"   { onclick: .Operator("+"), style: key_op } }
 
-                        grid-item { button "("   { onclick: .Paren("("),    style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "0"   { onclick: .Digit(0),      style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "."   { onclick: .Dot,           style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "="   { onclick: .Equals,        style: "w-full bg-orange-500 text-white rounded-lg p-4 text-lg font-bold" } }
+                        grid-item { button "("   { onclick: .Paren("("),    style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "0"   { onclick: .Digit(0),      style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "."   { onclick: .Dot,           style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "="   { onclick: .Equals,        style: key_op } }
 
-                        grid-item { button ")"   { onclick: .Paren(")"),    style: if .dark_mode { "w-full bg-zinc-800 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-200 text-gray-900 rounded-lg p-4 text-lg" } } }
-                        grid-item { button "⌫"   { onclick: .Backspace,     style: if .dark_mode { "w-full bg-zinc-700 text-white rounded-lg p-4 text-lg" } else { "w-full bg-gray-300 text-gray-900 rounded-lg p-4 text-lg" } } }
+                        grid-item { button ")"   { onclick: .Paren(")"),    style: if .dark_mode { key_digit_dark } else { key_digit_light } } }
+                        grid-item { button "⌫"   { onclick: .Backspace,     style: if .dark_mode { key_fn_dark } else { key_fn_light } } }
                         grid-item { text ""      { style: "bg-transparent" } }
                         grid-item { text ""      { style: "bg-transparent" } }
 
                         cols: 4
                         gap: 1
                         style: if .dark_mode {
-                            "w-full p-2 bg-zinc-800 rounded-b-2xl"
+                            "w-full p-2 bg-secondary rounded-b-2xl"
                         } else {
-                            "w-full p-2 bg-gray-200 rounded-b-2xl"
+                            "w-full p-2 bg-secondary rounded-b-2xl"
                         }
                     }
                     }
@@ -343,20 +356,20 @@ widget App {
                     if .mode == "programmer" {
                         // 位运算排（AND OR XOR NOT / SHL SHR MOD ÷）
                         grid {
-                            grid-item { button "AND" { onclick: .POp("AND"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
-                            grid-item { button "OR"  { onclick: .POp("OR"),  style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
-                            grid-item { button "XOR" { onclick: .POp("XOR"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
-                            grid-item { button "NOT" { onclick: .PNot,       style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
-                            grid-item { button "SHL" { onclick: .POp("SHL"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
-                            grid-item { button "SHR" { onclick: .POp("SHR"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
-                            grid-item { button "MOD" { onclick: .POp("MOD"), style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
-                            grid-item { button "÷"   { onclick: .POp("/"),   style: "w-full bg-muted text-primary rounded-lg p-3 text-sm font-semibold" } }
+                            grid-item { button "AND" { onclick: .POp("AND"), style: key_fn_muted } }
+                            grid-item { button "OR"  { onclick: .POp("OR"),  style: key_fn_muted } }
+                            grid-item { button "XOR" { onclick: .POp("XOR"), style: key_fn_muted } }
+                            grid-item { button "NOT" { onclick: .PNot,       style: key_fn_muted } }
+                            grid-item { button "SHL" { onclick: .POp("SHL"), style: key_fn_muted } }
+                            grid-item { button "SHR" { onclick: .POp("SHR"), style: key_fn_muted } }
+                            grid-item { button "MOD" { onclick: .POp("MOD"), style: key_fn_muted } }
+                            grid-item { button "÷"   { onclick: .POp("/"),   style: key_fn_muted } }
                             cols: 4
                             gap: 1
                             style: if .dark_mode {
-                                "w-full px-2 pt-1 bg-zinc-800"
+                                "w-full px-2 pt-1 bg-secondary"
                             } else {
-                                "w-full px-2 pt-1 bg-gray-200"
+                                "w-full px-2 pt-1 bg-secondary"
                             }
                         }
                         // HEX 字母排（非 HEX 基底灰显，处理器端亦忽略非法键）
@@ -370,9 +383,9 @@ widget App {
                             cols: 3
                             gap: 1
                             style: if .dark_mode {
-                                "w-full px-2 pt-1 bg-zinc-800"
+                                "w-full px-2 pt-1 bg-secondary"
                             } else {
-                                "w-full px-2 pt-1 bg-gray-200"
+                                "w-full px-2 pt-1 bg-secondary"
                             }
                         }
                         // 主 int 键盘（BIN 时 2-9 灰显；OCT 时 8-9 灰显——
@@ -406,17 +419,17 @@ widget App {
                             cols: 4
                             gap: 1
                             style: if .dark_mode {
-                                "w-full p-2 bg-zinc-800 rounded-b-2xl"
+                                "w-full p-2 bg-secondary rounded-b-2xl"
                             } else {
-                                "w-full p-2 bg-gray-200 rounded-b-2xl"
+                                "w-full p-2 bg-secondary rounded-b-2xl"
                             }
                         }
                     }
 
                     style: if .dark_mode {
-                        "w-96 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl"
+                        "w-96 bg-background border border-border rounded-2xl overflow-hidden shadow-2xl"
                     } else {
-                        "w-96 bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl"
+                        "w-96 bg-card border border-border rounded-2xl overflow-hidden shadow-xl"
                     }
         }
     }
