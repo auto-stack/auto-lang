@@ -241,8 +241,8 @@ fn terminal_key_binding_name(key: &keyboard::Key, mods: Modifiers) -> String {
     use keyboard::key::Named;
     let base = match key {
         keyboard::Key::Character(s) => {
-            let c = s.chars().next().unwrap_or(' ');
-            if c == ' ' {
+            let c = s.chars().next().unwrap_or('\0');
+            if c == '\0' {
                 return String::new();
             }
             c.to_ascii_lowercase().to_string()
@@ -408,6 +408,14 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let bounds = layout.bounds();
         let core = self.core;
 
+        // PLAN-019: 启动自动聚焦——尚无任何 terminal 持焦时,首个 terminal
+        // 自动持有(整窗即终端,开窗即可打字,无需先点一下)。全局注册表
+        // 防多 pane 双持;点击换焦/点击他处释放照旧。
+        if !state.focused && crate::ui::terminal::terminal_focus_free() {
+            state.focused = true;
+            crate::ui::terminal::terminal_claim_focus(core);
+        }
+
         // 任意事件到达即刷新 IME 声明(幂等;auto-term T8 同款)——聚焦时
         // 以光标格锚定,未聚焦声明 Disabled(键入归焦点组件)。
         if state.focused {
@@ -479,9 +487,11 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 let Some(pos) = cursor.position_over(bounds) else {
                     // 点在组件外:失焦(键入归他处,标准终端焦点语义)。
                     state.focused = false;
+                    crate::ui::terminal::terminal_release_focus(core);
                     return;
                 };
                 state.focused = true;
+                crate::ui::terminal::terminal_claim_focus(core);
                 // IME 英文起步:pending 置位(重试制),update 顶部逐 tick
                 // 消费直到上下文可查且强制落地(两拍竞态见 request_ime 块注记)。
                 state.ime_force_pending = IME_FORCE_TICKS;
@@ -495,6 +505,25 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     }
                     state.menu_open = None;
                     return;
+                }
+                // 滚动条命中:拇指拖拽大范围跳转(优先于选区;仅历史区
+                // 存在时右缘命中带生效)。拖拽增量经滚动队列回灌引擎。
+                let history = crate::ui::terminal::terminal_history(core);
+                let offset = crate::ui::terminal::terminal_scroll_offset(core);
+                let in_hit_band =
+                    pos.x > bounds.x + bounds.width - SCROLLBAR_HIT_W && history > 0;
+                if in_hit_band {
+                    match scrollbar_metrics(bounds, core.rows as usize, history, offset) {
+                        Some((_, track_h, _, thumb_h)) => {
+                            state.scrollbar_drag = Some(ScrollbarDrag {
+                                last_y: pos.y,
+                                travel: (track_h - thumb_h).max(1.0),
+                                history: history as f32,
+                            });
+                            return;
+                        }
+                        None => {}
+                    }
                 }
                 // 多击判定(500ms 窗口 + 同格)。
                 let now = Instant::now();
@@ -519,6 +548,19 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 state.dragging = true;
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
+                // 滚动条拖拽:位移按拇指行程比例换算为行数(拖下=回底),
+                // 经滚动队列回灌引擎;优先于选区扩展。
+                if let Some(drag) = state.scrollbar_drag.as_mut() {
+                    if let Some(pos) = cursor.position() {
+                        let dy = pos.y - drag.last_y;
+                        drag.last_y = pos.y;
+                        let lines = -(dy / drag.travel * drag.history) as i32;
+                        if lines != 0 {
+                            crate::ui::terminal::terminal_queue_scroll_delta(core, lines);
+                        }
+                    }
+                    return;
+                }
                 if state.dragging {
                     if let Some(pos) = cursor.position_over(bounds) {
                         let cell = self.pixel_to_cell(pos, bounds);
@@ -536,6 +578,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 }
             }
             iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                // 滚动条拖拽结束(优先于选区完成)。
+                if state.scrollbar_drag.take().is_some() {
+                    return;
+                }
                 if state.dragging {
                     state.dragging = false;
                     crate::ui::terminal::terminal_selection_finish(core);
@@ -784,6 +830,36 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         fill_cached_para(renderer, preedit, w, Point::new(x, y), pal_fg, bounds);
     }
 
+        // 滚动条:历史区存在才画。轨道淡写右缘,拇指 = 视口/全量比例、
+        // 位置随 display_offset;拖拽交互见 update(命中带宽于视觉宽)。
+        let history = crate::ui::terminal::terminal_history(self.core);
+        let eng_off = crate::ui::terminal::terminal_scroll_offset(self.core);
+        if let Some((track_y, track_h, thumb_y, thumb_h)) =
+            scrollbar_metrics(bounds, self.core.rows as usize, history, eng_off)
+        {
+            let track_x = bounds.x + bounds.width - SCROLLBAR_W - 2.0;
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: Rectangle::new(
+                        Point::new(track_x, track_y),
+                        Size::new(SCROLLBAR_W, track_h),
+                    ),
+                    ..renderer::Quad::default()
+                },
+                Background::Color(Color::from_rgba(0.5, 0.5, 0.5, 0.10)),
+            );
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: Rectangle::new(
+                        Point::new(track_x, thumb_y),
+                        Size::new(SCROLLBAR_W, thumb_h),
+                    ),
+                    ..renderer::Quad::default()
+                },
+                Background::Color(Color::from_rgba(0.5, 0.5, 0.5, 0.40)),
+            );
+        }
+
         // 滚动偏移 badge(offset > 0 时右上角指示;auto-term 同款)。
         let offset = self.scroll_offset;
         if offset > 0 {
@@ -872,7 +948,47 @@ pub struct TerminalState {
     hover_item: Option<usize>,
     /// 键入焦点(点击本组件获得、点击他处失去;键盘捕获的门控)。
     focused: bool,
+    /// PLAN-019 滚动条拖拽态(Some = 拖拽中:last_y 上次指针 y、travel
+    /// 拇指可行程 px、history 引擎历史行数)。
+    scrollbar_drag: Option<ScrollbarDrag>,
 }
+
+/// 滚动条拖拽参数(Left press 命中右缘命中带时定格)。
+#[derive(Clone, Copy)]
+struct ScrollbarDrag {
+    last_y: f32,
+    travel: f32,
+    history: f32,
+}
+
+/// 滚动条几何:轨道内缩右缘 `SCROLLBAR_W`,拇指高 = 视口/全量比例
+/// (下限 `SCROLLBAR_MIN_THUMB`),拇指 y = display_offset 比例。
+/// history = 0 → None(无历史不画)。
+fn scrollbar_metrics(
+    bounds: Rectangle,
+    rows: usize,
+    history: usize,
+    offset: usize,
+) -> Option<(f32, f32, f32, f32)> {
+    if history == 0 {
+        return None;
+    }
+    let track_y = bounds.y + PAD;
+    let track_h = bounds.height - 2.0 * PAD;
+    if track_h <= SCROLLBAR_MIN_THUMB {
+        return None;
+    }
+    let thumb_h = (track_h * rows as f32 / (rows + history) as f32)
+        .max(SCROLLBAR_MIN_THUMB)
+        .min(track_h);
+    let travel = track_h - thumb_h;
+    let ratio = (offset as f32 / history as f32).clamp(0.0, 1.0);
+    Some((track_y, track_h, track_y + ratio * travel, thumb_h))
+}
+
+const SCROLLBAR_W: f32 = 6.0;
+const SCROLLBAR_HIT_W: f32 = 14.0;
+const SCROLLBAR_MIN_THUMB: f32 = 24.0;
 
 impl<'a, M: Clone + std::fmt::Debug + 'static> From<Terminal<M>> for Element<'a, M> {
     fn from(widget: Terminal<M>) -> Self {

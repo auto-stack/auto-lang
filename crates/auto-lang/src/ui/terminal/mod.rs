@@ -190,7 +190,13 @@ pub struct TerminalCore {
     /// 历史),宿主引擎泵排水后调引擎 scroll——display_offset 在引擎侧,
     /// 本组件只缓存视口快照,本地无历史可滚。
     scroll_delta: Mutex<i32>,
+    /// 引擎回滚历史行数(泵回读;滚动条拇指比例用;0=无历史不画)。
+    history: std::sync::atomic::AtomicUsize,
 }
+
+/// PLAN-019 启动自动聚焦:窗口内焦点持有者(terminal key;None = 自由,
+/// 首个 terminal 于 update 自动持有)。点击换焦/点击他处释放照旧。
+static FOCUS_OWNER: Mutex<Option<String>> = Mutex::new(None);
 
 const BLINK_PERIOD_MS: u64 = 530;
 
@@ -215,6 +221,7 @@ impl TerminalCore {
             pending_resize: Mutex::new(None),
             scheme: AtomicI32::new(TERMINAL_SCHEME_FOLLOW_THEME),
             scroll_delta: Mutex::new(0),
+            history: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -647,6 +654,34 @@ pub fn terminal_queue_scroll_delta(core: &TerminalCore, delta: i32) {
 /// 排水:取走累计滚动增量(读后即清零;引擎泵每拍调用)。
 pub fn terminal_take_scroll_delta(core: &TerminalCore) -> i32 {
     std::mem::take(&mut *core.scroll_delta.lock().unwrap())
+}
+
+/// 引擎回滚历史行数(泵回读;滚动条比例)。
+pub fn terminal_history(core: &TerminalCore) -> usize {
+    core.history.load(Ordering::Relaxed)
+}
+
+/// 引擎回滚历史行数回写(泵每拍刷新)。
+pub fn terminal_set_history(core: &TerminalCore, rows: usize) {
+    core.history.store(rows, Ordering::Relaxed);
+}
+
+/// 焦点空闲(无任何 terminal 持有):启动自动聚焦的门控。
+pub fn terminal_focus_free() -> bool {
+    FOCUS_OWNER.lock().unwrap().is_none()
+}
+
+/// 持焦(启动自动聚焦/点击换焦;后来者顶替先来者)。
+pub fn terminal_claim_focus(core: &TerminalCore) {
+    *FOCUS_OWNER.lock().unwrap() = Some(core.key.clone());
+}
+
+/// 释放焦点(点击组件外;仅本人持有时)。
+pub fn terminal_release_focus(core: &TerminalCore) {
+    let mut owner = FOCUS_OWNER.lock().unwrap();
+    if owner.as_deref() == Some(core.key.as_str()) {
+        *owner = None;
+    }
 }
 
 /// 菜单动作载荷写入(widget 命中菜单项时;app 在收到 on_menu 后读取)。

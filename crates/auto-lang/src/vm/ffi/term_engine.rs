@@ -291,14 +291,18 @@ fn engine_feed_snapshot(
                 if delta != 0 {
                     let scroll: libloading::Symbol<
                         unsafe extern "C" fn(*mut core::ffi::c_void, c_int),
-                    > = lib.get(b"autoterm_engine_scroll ").expect("autoterm_engine_scroll symbol");
+                    > = lib.get(b"autoterm_engine_scroll\0").expect("autoterm_engine_scroll symbol");
                     scroll(h, delta as c_int);
                 }
                 let soff: libloading::Symbol<
                     unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
-                > = lib.get(b"autoterm_engine_scroll_offset ").expect("autoterm_engine_scroll_offset symbol");
+                > = lib.get(b"autoterm_engine_scroll_offset\0").expect("autoterm_engine_scroll_offset symbol");
                 let off = soff(h);
                 crate::ui::terminal::terminal_set_scroll_offset(core, off.max(0) as usize);
+                let hist: libloading::Symbol<
+                    unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
+                > = lib.get(b"autoterm_engine_history\0").expect("autoterm_engine_history symbol");
+                crate::ui::terminal::terminal_set_history(core, hist(h).max(0) as usize);
             }
         }
         let take: libloading::Symbol<
