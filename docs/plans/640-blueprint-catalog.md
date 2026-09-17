@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-640
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: blueprint-catalog（官方默认 Blueprint 集 Tier 0 扩容 + gallery 自动化）
 author: [agent]
 created_at: 2026-09-18
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 10
 total_steps: 10
 ---
 
@@ -234,42 +234,87 @@ login："Baking the endpoint into the blueprint"——dataSource/动作不得烧
 > 全部在 worktree `D:/autostack/.wt/lang-640/auto-lang`（分支 `plan-640-dev`）执行；
 > plan 簿记（[✅] 标记/frontmatter）留在主检出。
 
-- **T-01 [有界调查] chart tag 注册状态终验**（0.5h）
+- **T-01 [✅ 已完成] chart tag 注册状态终验**（0.5h）
   依赖：无。影响：调查记录（本文件 §5.1 表注 + KNOWN-DEBT 草稿）。
   操作：跑最小探针（测试或 `auto bp check` 临时 palette 试验）确认 chart 四 tag 在
   `WidgetRegistry::with_defaults()` 的注册状态，复核 Plan 484 注释语义
   （registry.rs:2162-2164）。产出：dashboard palette 终版裁定（预期=不含 chart）+
   DEBT 行草稿。验证：探针输出记录于本节。→ AC-09（及 AC-01 的 palette 终版）
-- **T-02 spec 词表与判定标准先行**
+  证据：探针包 `dashboard/probe-chart`（palette=全部 23 候选 tag + chart 四 tag）跑
+  `cargo t palette_has_no_drift`（worktree 冷编译 2m17s）→ 失败清单**恰为** chart 四
+  tag（area/bar/line/donut），其余 23 tag 零漂移；删探针后复跑 PASS。dashboard
+  palette 终版=不含 chart（`sidebar,header,table,card,badge,skeleton,text,button,image`）。
+  Plan 484 退役语义实证（registry.rs:2162-2164）。DEBT 定稿见 KNOWN-DEBT §已知限制 640 行。
+- **T-02 [✅ 已完成] spec 词表与判定标准先行**
   依赖：无。影响：`docs/specs/blueprint/contract.md`（Q5）、
   `docs/specs/blueprint/project.md`（判定标准五条 + 13 行目标态清单表 + mermaid）。
   验证：文档 diff 审读；kind 词表覆盖磁盘全部 kind。→ AC-06
-- **T-03 form 批 A**：`blueprints/form/signup/{spec.md, reference/minimal.at, gotchas.md}`
+  证据：contract.md Q5 = 8 kind 词表 + 治理规则（新增 kind 须随 spec 沉淀 + 同步
+  gallery kindOrder）；project.md = 判定标准五条 + mermaid（13 节点按 kind 分组 +
+  click 链接）+ 13 行清单表。commit T-02..T-07 批次。
+- **T-03 [✅ 已完成] form 批 A**：`blueprints/form/signup/{spec.md, reference/minimal.at, gotchas.md}`
   + `blueprints/form/login/spec.md`（variants 追加 two_column）+
   `blueprints/form/login/reference/two_column.at`。
   验证：`auto bp show form/signup`、`auto bp check form/signup form/login`。→ AC-01/02
-- **T-04 form 批 B**：`form/settings`、`form/wizard`（同构三件套）。
+  证据：`auto bp show` OK；`bp check` form/signup 3/3、form/login 3/3 绿。
+  signup 契约五字段非空（props=invite_token / actions=submit / dataSource.register /
+  5 extension_points / acceptance×4）。login variants 排序断言
+  `["minimal","two_column","with_sso"]`（login_has_three_references 绿）。
+- **T-04 [✅ 已完成] form 批 B**：`form/settings`、`form/wizard`（同构三件套）。
   验证：`auto bp check form/settings form/wizard`。→ AC-01/02
-- **T-05 data 批**：`data-display/data-table-crud`（minimal + with_dialog 两变体）、
+  证据：两包 bp check 3/3 绿；settings 含 alert-dialog 危险区守卫（PLAN-016
+  trigger/content 惯例）、wizard 三步状态机（badge 指示 + 分步校验 + review summary）。
+- **T-05 [✅ 已完成] data 批**：`data-display/data-table-crud`（minimal + with_dialog 两变体）、
   `data-display/master-detail`。验证：`auto bp check data-display/*`。→ AC-01/02
-- **T-06 feedback 批**：`feedback/empty-state`（first_use/no_result/error 三变体）、
+  证据：data-table-crud minimal/with_dialog 均 3/3；master-detail 3/3。
+  with_dialog 的 dialog 用 trigger/content 子节点惯例 + dialog-close。
+- **T-06 [✅ 已完成] feedback 批**：`feedback/empty-state`（first_use/no_result/error 三变体）、
   `feedback/result-page`（success/error 两变体）。验证：`auto bp check feedback/*`。→ AC-01/02
-- **T-07 navigation + dashboard 批**：`navigation/sidebar-shell`（default/compact）、
+  证据：empty-state（error.at 代表）3/3、result-page 3/3；三分法落三变体；
+  callout 用 `kind:` prop + children 惯例。
+- **T-07 [✅ 已完成] navigation + dashboard 批**：`navigation/sidebar-shell`（default/compact）、
   `dashboard/overview`（default，palette 按 T-01 终版）。
   验证：`auto bp check navigation/sidebar-shell dashboard/overview`。→ AC-01/02
-- **T-08 gallery 自动化 + 卫生 + CI**：重写 `examples/bps-gallery/src/bps.ts`（glob 派生）；
+  证据：两包 3/3 绿（content 槽补 route-level loading/error 归宿注释后过闸）；
+  overview palette 无 chart（T-01 裁定），charts 走 extension_point + gotcha 反例。
+- **T-08 [✅ 已完成] gallery 自动化 + 卫生 + CI**：重写 `examples/bps-gallery/src/bps.ts`（glob 派生）；
   `index.html` 标题；`examples/bps-gallery/README.md`（glob 机制 + Scope note）；
   `blueprints/README.md`（SD-03：命令/路径/链接）；新增
   `.github/workflows/build-bps-gallery.yml`。
   验证：`cd examples/bps-gallery && pnpm install && pnpm build` 绿；dev 走查 13 包。→ AC-04/05
-- **T-09 测试面**：`registry.rs` scan_tests 扩展；新
+  证据：`pnpm build`（vue-tsc + vite）绿；bundle 抽查 13 包关键串全命中；preview
+  走查 14 路由截图全渲染正常（首页 13 包按 kind 偏好序分组、login 三变体 tab）；
+  AC-05 grep "block" src+index.html 零命中；lockfile 入库对齐 vue-gallery 惯例
+  （原 .gitignore 条目系种子期遗留，frozen-lockfile CI 需要）。
+  勘误：计划所称"`../docs/...` 越仓坏链"实为坏文件名（342/343 归档实名
+  `block-tier-*`）；bps-gallery/README 的坏链则是 `docs/design/bps/`（改名后不存在），
+  均已修至实存路径。
+- **T-09 [✅ 已完成] 测试面**：`registry.rs` scan_tests 扩展；新
   `crates/auto-lang/src/plan640_bp_tests.rs` + `lib.rs` 注册（feature `ui-iced`）。
   验证：`cargo check -p auto-lang` 零警告；`cargo t plan640` 绿。→ AC-01/03
-- **T-10 门禁与抽查（review 前兜底）**：`auto bp list/show/check` 全量冒烟；
+  证据：`cargo t plan640` 5/5 绿（t01 全包契约面/gotchas；t02-t04 signup、
+  data-table-crud、empty-state VM 轨 view 结构断言；t05 vue 轨 SFC 发射断言）；
+  `scans_default_packages` 13 key、`login_has_three_references`、
+  `palette_has_no_drift` 单跑均绿。`cargo check --features ui-iced` 无 plan640 归因警告。
+  执行中修正：9 spec 的 `acceptance` 曾误置于 `[dataSource]` 表头后（TOML 顶层键序
+  错误 → serde 解析全败、扫描静默丢失），已移至表头前；Python 批处理引入的 CRLF
+  （孤立 `\r` 使 toml 解析炸）已全目录归一 LF。
+- **T-10 [✅ 已完成] 门禁与抽查（review 前兜底）**：`auto bp list/show/check` 全量冒烟；
   autoui-verifier 双端抽查（empty-state 或 data-table-crud）截图存档；
   `KNOWN-DEBT-AND-RISKS.md` 落 DEBT 行（T-01 草稿定稿）；
-  复核门禁档位（Category B：不触发 tf/taa）。
-  验证：命令输出留档本节。→ AC-07/08/09
+  复核门禁档位（Category B：不触发 tf/taa）。→ AC-07/08/09
+  验证：命令输出留档本节。
+  证据：`auto bp list` 13 包按 kind 分组；`bp show <key>` ×13 全部正常出契约面；
+  `bp check <reference> --spec <key>` 矩阵——11 新+login 全部 3/3 绿，note-editor /
+  sidebar-nav 两存量包预存失败（loading 硬门，静态 bp 无此契约；计划明确存量不回改）。
+  双端抽查改用 **form/signup**（见 §10 备注 4）：L1 直连 `use bps.form.signup.reference.minimal`
+  ——VM 轨 test_vm_mcp.py 起真 iced 进程 MCP snapshot（signup 子树 Name/Email/input
+  全入树）+ 截图；vue 轨 `auto run` + Playwright DOM 截图——双端视觉一致
+  （字段/占位符/密码提示/terms/按钮/分隔线/页脚）。截图留档
+  `tests/screenshots/plan640_signup_vm.png`、`tests/screenshots/signup_vue.png`
+  （仓策 .gitignore tests/screenshots/ 本地留档，不入 git）。
+  门禁档位复核：crates/ 仅测试文件改动 + blueprints/ 内容 → Category B（cargo check
+  + scoped cargo t），未触发 tf/taa。
 
 依赖链：T-07 依赖 T-01；T-03..T-07 依赖 T-02（kind 词表）；T-08/T-09 依赖 T-03..T-07；
 T-10 最后。T-03/T-04/T-05/T-06 相互独立可乱序。
@@ -279,6 +324,22 @@ T-10 最后。T-03/T-04/T-05/T-06 相互独立可乱序。
 - 2026-09-18 draft handoff（/auto-plan:new）：plan_revision 1，stage: new，
   outcome: pass（授权范围内可交付 work），next: work。
   待用户确认项见 §10（两项，均有默认裁定，不阻塞开工）。
+- 2026-09-18 work handoff（/auto-plan:work）：plan_revision 1，stage: work，
+  outcome: **pass**，code_commit: plan-640-dev @ 3 commits（T-02..T-07 内容批 /
+  T-08 gallery 批 / T-09..T-10 门禁批），task_ids: T-01..T-10 全勾，
+  current_step 10/10。
+  evidence：`cargo t plan640` 5/5 绿；scan_tests 扩展 + `palette_has_no_drift` 绿；
+  `cargo check -p auto-lang --features ui-iced` 零 plan640 归因警告；CLI 冒烟
+  list/show ×13 + check 矩阵（11+login 绿，2 存量预存）；pnpm build 绿 + 14 路由
+  走查；双端抽查 signup VM+vue 截图一致；AC-01..09 全部落账（AC-06 的
+  specs.json upsert + spec-index.py 留 merge 阶段执行）。
+  执行期记录（三个计划外发现，均在既有授权内消化）：
+  1. 跨仓依赖需组内 auto-down 兄弟 worktree（detached @ 2d27a0a，lang-021 惯例）；
+  2. `acceptance` TOML 顶层键序错误 + Python CRLF 写入两处内容性坑，已修并归一 LF；
+  3. L1 点号 use 通道对连字符 bp key 不可达（8/13 包），已落 KNOWN-DEBT；
+     AC-08 抽查据此从 empty-state 改用 form/signup（同为 ⭐ 代表面：
+     契约五字段 + 双变体状态机 + gotchas 齐备）。
+  blockers：无。next：review（/auto-plan:review）。
 
 ## 10. 待澄清事项
 
@@ -290,3 +351,7 @@ T-10 最后。T-03/T-04/T-05/T-06 相互独立可乱序。
    （仅词表与目录名，不影响其余任务）。
 3. （记录性，无需裁决）`form/wizard` 的步进指示 v0 用 badge 组合实现，不新增
    stepper widget——若后续体验不足，走变体提升评审。
+4. （执行期发现，已落 KNOWN-DEBT §已知限制 640 行，无需裁决）L1 点号 use 通道
+   对连字符 bp key 不可达（`resolve_module_path` 点号→路径转换无连字符变体，
+   8/13 包受影响）；AC-08 双端抽查据此由 empty-state 改用 form/signup。
+   根治（连字符变体探测或目录改名）触及解析链/包命名约定，另立计划。
