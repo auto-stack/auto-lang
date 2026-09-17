@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-639
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: blueprint-tier（Block 层更名 Blueprint + 平台化地基）
 author: [zhaopuming]
 created_at: 2026-09-17
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: ["GOAL-011: Blocks 一等公民生态（更名 Blueprint 并升级消费机制）"]
 
 affects: [blueprint, autoui-skill, blocks]
-current_step: 0
+current_step: 5
 total_steps: 9
 ---
 
@@ -187,25 +187,46 @@ CLI 面（`auto bp`，`auto block` 别名保留一版 + 弃用提示）、blocks
 > 执行在 `D:/autostack/.wt/lang-639/auto-lang`（plan-639-dev 分支，Plan 529 布局）；
 > 移除前过 `bash D:/autostack/wt-guard.sh`。跨仓解析序遵 AGENTS.md 红线。
 
-- **T-00** [调查/决策工件] ①block 术语全量清单与更名 manifest（含豁免清单：
+- **T-00** [x] [调查/决策工件] ①block 术语全量清单与更名 manifest（含豁免清单：
   AST block/历史归档/auto-down）；②PLAN-635 跨包机制覆盖面调查（依赖声明
   位置/解析序/缓存，能否承载 widget/bp 级 `.at`），裁定扩展或平行。
   产物：`docs/plans/attachments/639-rename-manifest.md` + 裁定小节。
   验证：manifest 覆盖 grep 全集；裁定有证据引用。依赖：无。→ AC-01/03
-- **T-01** [新] `docs/specs/blueprint/contract.md`：§4.1 六问契约成文；
+  [✅ 已完成 2026-09-17] commit f939b8e06。裁定=扩展 635（零新解析设施，
+  dotted 候选 `{pkg_root}/{sub}.at` 已可达 bp 包文件）；四类语义裁定（UI 层/
+  AST/autodown/同形词）；grep 门口径 §2.5。
+- **T-01** [x] [新] `docs/specs/blueprint/contract.md`：§4.1 六问契约成文；
   `docs/specs/goals.md` GOAL-011 表述更新（SD-01/03）。依赖：T-00。→ AC-02
-- **T-02** [改] 设计文档更名改写：`docs/design/blocks/` → `blueprints/`
+  [✅ 已完成 2026-09-17] commit 8a21f2285。specs/blocks→blueprint git mv +
+  project.md 三通道改写（SD-02）+ contract.md 六问 + GOAL-011 + overview.md
+  行 + INDEX 重生成（spec-index.py GROUPS 更名）。
+- **T-02** [x] [改] 设计文档更名改写：`docs/design/blocks/` → `blueprints/`
   （git mv 保历史）；Design 17 增补三通道分级/产物纪律/变体提升评审节，
   保留归位注记与历史结论；agent-generation-workflow.md 接入提升流程。
   依赖：T-01。→ AC-02
-- **T-03** [改] 代码与包库更名：`crates/auto/src/cmd_block.rs`→`cmd_bp.rs`
+  [✅ 已完成 2026-09-17] commit 1c23dfa96。Design 17 术语全改写+更名注记+
+  新增 §13（三通道/产物纪律/变体提升评审）；agent-generation-workflow 接入
+  通道纪律+提升评审节；00-intro、ui/architecture ADR-06/07、ui/plans 342/343
+  行、block-tier.md→blueprint-tier.md 同步。
+- **T-03** [x] [改] 代码与包库更名：`crates/auto/src/cmd_block.rs`→`cmd_bp.rs`
   （CLI `auto bp`，旧名别名+弃用提示）；`crates/auto-lang/src/ui_gen/block/`
   →`bp/`（BlockRegistry→BlueprintRegistry）；`blocks/`→`blueprints/`；
   `examples/blocks-gallery`→`bps-gallery`。按 T-00 manifest 执行，rename 后
   全量构建+既有 tests 绿。依赖：T-00。→ AC-01
-- **T-04** [新] 跨包 `.at` 解析（VM+a2ts 双轨）：按 T-00 裁定扩展 635 机制
+  [✅ 已完成 2026-09-17] commit f961386de。CLI 四命令实跑绿（list/show/add/
+  check）+ `auto block` 别名弃用提示实跑确认；cargo t 全档与 637-wt 基线
+  逐名比对零差异（40 预存红两态一致）。
+- **T-04** [x] [新] 跨包 `.at` 解析（VM+a2ts 双轨）：按 T-00 裁定扩展 635 机制
   或平行复用；pac.at 依赖声明 + 解析序（env→组内→主检出）+ 双轨消费。
   验证：AC-03 demo。依赖：T-00/T-03。→ AC-03
+  [✅ 已完成 2026-09-17] commit 7fc81d1ae。demo=`examples/capability-tests/
+  046-bp-import`（`dep bps { path: "../../../blueprints" }` + `use
+  bps.form.login.reference.minimal`）；`auto build` vue 全链绿（解析/校验/
+  发射/vue-tsc/vite）；plan639 双轨测试 2/2 绿（VM view_template 结构断言+
+  vue SFC import/模板使用断言）。顺带修复：①vue.rs v-for :key 注入
+  quote-aware tag-end（lambda `>` 误配）；②bp 参考实现语法规范化（旧语法
+  解析错/strict 校验拦截）；③blueprints/pac.at 包化（build 依赖物化面）。
+  全档与基线零差异。
 - **T-05** [新] a2ts 发射 `actions{}`/`menubar`/`toolbar` 到 vue 轨：
   `crates/auto-lang/src/ui_gen`（vue 发射面）+ demo app 双轨断言。
   依赖：T-04。→ AC-04
@@ -223,6 +244,10 @@ CLI 面（`auto bp`，`auto block` 别名保留一版 + 弃用提示）、blocks
 - 2026-09-17 draft handoff：`stage: new`，PLAN-639 rev1。`outcome: pass`
   （起草授权范围内ready for review；执行未授权）。`next: work`（work 前须
   `/auto-plan:review` 通过；T-00/T-07 两调查任务为首批可执行项）。
+- 2026-09-17 work 启动：用户显式指令「计划639: /auto-plan:work 实施它」授权执行
+  （覆盖 draft handoff 的 review-first 建议，用户指令优先）。status drafting→executing。
+  worktree `D:/autostack/.wt/lang-639/auto-lang`，分支 `plan-639-dev`（base c2ec1c350）。
+  主检出 preflight：master clean 零 WIP。
 
 ## 9. 待澄清事项
 
