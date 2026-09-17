@@ -740,10 +740,14 @@ pub const PALETTE_CLASSIC_DARK: [u32; TERMINAL_PALETTE_SLOTS] = [
     0xC0C0C0, 0x808080, 0xFF0000, 0x00FF00, 0xFFFF00, 0x0000FF, 0xFF00FF, 0x00FFFF, 0xFFFFFF,
 ];
 
-/// scheme 1 内置表(Windows Terminal "Solarized Light" 官方盘,xterm 序)。
+/// scheme 1 内置表(Solarized Light 族底;2026-09-17 用户实机裁定可读性
+/// 修订,与 autoterm-core palette.rs LIGHT 同值同修——白/亮白族反转为
+/// 深色(7=base01/8=base00/15=base02,原官方盘 15=FDF6E3 与 bg 同色致
+/// cmd 亮白文本隐身)、亮色族 vivid 化、def_fg=base02、def_bg=base2),
+/// xterm 序。
 pub const PALETTE_LIGHT: [u32; TERMINAL_PALETTE_SLOTS] = [
-    0x586E75, 0xFDF6E3, 0x002B36, 0xDC322F, 0x859900, 0xB58900, 0x268BD2, 0xD33682, 0x2AA198,
-    0xEEE8D5, 0x93A1A1, 0xCB4B16, 0x586E75, 0x657B83, 0x839496, 0x6C71C4, 0x93A1A1, 0xFDF6E3,
+    0x073642, 0xEEE8D5, 0x002B36, 0xDC322F, 0x859900, 0xB58900, 0x268BD2, 0xD33682, 0x2AA198,
+    0x586E75, 0x657B83, 0xCB4B16, 0x859900, 0xB58900, 0x268BD2, 0x6C71C4, 0x2AA198, 0x073642,
 ];
 
 /// 引擎装载的方案表缓存(scheme id → [18] rgb;glue 经 FFI 查询后写入,
@@ -1201,10 +1205,11 @@ mod tests {
         // 显式覆盖:scheme prop ≥0 直用。
         core.set_scheme(TERMINAL_SCHEME_LIGHT);
         assert_eq!(terminal_resolve_scheme(core), TERMINAL_SCHEME_LIGHT);
-        // 未装载时 light 走内置表(浅底深字)。
+        // 未装载时 light 走内置表(浅底深字;2026-09-17 可读性修订表)。
         let light = terminal_effective_palette(TERMINAL_SCHEME_LIGHT);
         assert_eq!(light, PALETTE_LIGHT);
-        assert_eq!(light[1], 0xFDF6E3);
+        assert_eq!(light[1], 0xEEE8D5);
+        assert_eq!(light[17], 0x073642, "亮白槽=base02 深色(非 bg 同色)");
         // 引擎装载覆盖内置(单源生效;同 id 重复装载 = 覆盖)。
         let mut loaded = PALETTE_LIGHT;
         loaded[1] = 0x11_22_33;
