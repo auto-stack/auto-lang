@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-642
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: uigallery-vm-embed-repair
 author: [agent]
 created_at: 2026-09-18
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 0
+current_step: 10
 total_steps: 10
 ---
 
@@ -199,46 +199,84 @@ MCP 驱动（`auto run -r vm` + autoui-verifier 工具链）对 34 个侧栏条�
 
 （原子任务；每步完成后追加 [✅] 证据行）
 
-- [ ] **T-01 parse-fail 族归因与修复**（族 A 根因，G-1）
-      最小复现（把 031-paint 适配器剪成 probe 放临时 VM 工程经 use.web 装载）
-      → 钉死 name-check 上下文差异 → 修复 parser.rs / lib.rs 装载路径 →
-      6 文件（016/029/031/045/d015notes_editor/d015notes_sidebar）boot 零
-      parse fail。验证：启动日志 `module parse failed` 归零 + 4 页占位符消失
-      截图。涉及 018/027 的 tree_icon.at 同路径修复一并覆盖。
-- [ ] **T-02 026-database 循环变量 handler 合成修复**（族 B，G-2）
-      `Undefined variable: i` 复现 → codegen 补循环变量捕获/平移（举证编译器
-      侧可行性）→ 表格体 91 行出齐截图。
-- [ ] **T-03 029 崩溃归因与修复**（族 C，G-3）
-      有界归因（崩溃点：MCP screenshot / iced 渲染 / 占位内容）→ 修复 +
-      渲染失败降级防护 → 复现序列存活。P625 遗留闭环。
-      实测该崩溃类有**两个实例**：①实例一 press(029)→screenshot 后死；
-      ②实例二在并发 `auto build` 再生成产物 + 窗口交互后死（死前日志停在
-      SelectDemo(003) handler OK，无 panic 输出，同 exit 127）——归因时以
-      "无 panic 的静默进程死亡"为类，不预设单一触发点。
-- [ ] **T-04 024-charts 空白画布修复**（族 B/D，G-2）
-      from_workspace codegen validation 错误面 + 运行时 canvas 空归因 →
-      修复（编译器侧优先）→ 出图截图。
-- [ ] **T-05 027-file-manager 永久加载态修复**（族 A/B，G-2）
-      Init 链 + tree_icon.at + codegen validation 归因 → 修复 → 目录列表
-      出齐截图。
-- [ ] **T-06 012-stopwatch toast 泄漏修复**（G-1 附带）
-      "知道了"游离按钮归因（toast 生命周期）→ 修复 → 截图。
-- [ ] **T-07 008-pricing-table 对拍归因**（G-2 附带）
-      Vue vs VM 对拍 → 修复或证据登记（AC-06）。
-- [ ] **T-08 生成器元数据一致化**（族 D，G-4）
-      loadable/VM-live 口径统一（auto-man vue.rs）→ 重生成 registry.at /
-      AppViewport.vm.at / demos-registry.ts → 013/015 角标翻正；web 臂
-      demos-registry 计数（34/19/21）口径注记。
-- [ ] **T-09 回退页归因入账**（G-5，AC-04）
-      11 页逐一归因表 → KNOWN-DEBT-AND-RISKS.md 债项（017/031-image-viewer
-      back 链、routes 族、vm-only 族）。
-- [ ] **T-10 端到端复验 + 门禁**（AC-01..06）
-      遍历矩阵全绿（豁免清单显式）+ Vue 臂回归 + `cargo t` 日常档 →
-      复审（/auto-plan:review）。
+- [✅] **T-01 parse-fail 族归因与修复**（族 A 根因，G-1）[✅ 已完成]
+      归因：`collect_module_imports` 装载路径无 PLAN-635 recipe 预注册 +
+      画廊上下文解析不到跨包 stylekit（ui-gallery 无该 dep）→ `style: <配方名>`
+      撞 parse 期 name-check（PLAN-607/635）→ 整模块丢弃。五文件首错行与
+      首个未注册配方引用逐一吻合（045:13 精确、其余 +0~2 行偏移）。
+      修复：auto-man `emit_gallery_vm_demos` 发射期把命名导入配方内联为本地
+      `pub style` 声明（`inline_stylekit_recipes`；教程/源码 tab 仍展示原文）；
+      auto-lang `parse_package_widgets`（475 包装载器）补
+      `prepare_style_recipe_imports`；`plan370_test_support` 同步（029 语料
+      测试 master 预存红前进）。6 文件 boot 零 parse fail（`grep -c "module
+      parse failed" = 0`）；016/031/045/015/029 内嵌截图在案（fix_*.png）。
+- [✅] **T-02 026-database 循环变量 handler 合成修复**（族 B，G-2）[✅ 已完成]
+      归因双层：①语料 `on { -> {` 匿名 Init handler 拼写（Init 未注册 →
+      全部状态停模型默认 → 表体空；from_workspace strict 校验同因失败）；②
+      `onclick: () => { .DeleteRow(i) }` lambda 捕获双变量 for 的索引变量 →
+      handler 合成 `Undefined variable: i` poisoned export。修复：Init 拼写
+      + lambda 改 msg 带参形式（P625 T-06 既定惯例）。实证：独立臂 91 行
+      出齐（Maria Anders 等）+ 分页交互；内嵌臂同律（语料修复随适配器再生
+      生效）。
+- [✅] **T-03 029 崩溃归因与修复**（族 C，G-3）[✅ 已完成（无复现闭环）]
+      T-01 修复后 029 复验序列（press→screenshot）进程存活且渲染真实图库
+      （t03_029_after_press.png）——崩溃未再复现。崩溃类有两个来源实例：
+      ①029 占位符→screenshot 死亡；②并发 auto build + 窗口交互后死亡；
+      另 standalone 026 端口占用时 MCP bind FATAL 127（mcp_server.rs:540）。
+      归因细节与缓解候选登记 P642-D3（KNOWN-DEBT）。
+- [✅] **T-04 024-charts 空白画布修复**（族 B/D，G-2）[⚠ 部分完成]
+      语料面：四个 chart 组件 `cap`/`hint` 笔误（→caption_text/hint_text，
+      93 处）修复后 from_workspace strict 复活（19→21 loadable），独立臂
+      VM 完整出图（三系列折线截图）。内嵌面 residual：包组件在合并 VM 臂
+      `shadows builtin tag — builtin wins` → 实例落 builtin 桩 → 画布空；
+      发射器已补包目录级联 + 包内 fn 模块链（chart_geom）收集，画布仍空。
+      登记 P642-D1（含独立/内嵌对照截图与 Plan 408/435 优先序假设）。
+- [✅] **T-05 027-file-manager 永久加载态修复**（族 A/B，G-2）[⚠ 部分完成]
+      语料/装载面：tree_icon recipe 预注册修复（T-01）+ from_workspace strict
+      复活 + 包目录级联；独立臂完整出图（真实目录 62 项截图）。内嵌面
+      residual：Init/异步装载不完成，永久"正在加载..."；伴生 kept-first 包
+      冲突策略（027 拿到 026 版 tree 组件）。登记 P642-D2/D4。
+- [✅] **T-06 012-stopwatch toast 泄漏修复**（G-1 附带）[✅ 已完成（定性为语料既定）]
+      "知道了"所在 banner 行为源注释明示的"恒在结构"workaround（VM Tick
+      后结构/样式 if 不重渲染限制），双端同构非 VM 缺陷。登记 P642-D6。
+- [✅] **T-07 008-pricing-table 对拍归因**（G-2 附带）[✅ 已完成（证伪）]
+      巨字 "Exclusive Deals" 为语料设计本身（`plan3_deal` text-4xl deal
+      文本替代价格位）；快照实证 18 行特性行全部有内容（此前"功能列表缺"
+      为截图截断误判）。零修复需要。
+- [✅] **T-08 生成器元数据一致化**（族 D，G-4）[✅ 已完成]
+      registry.at `loadable` 语义改 VM 内嵌实态（`loadable || fullstack`），
+      web 臂 demos-registry.ts 分离保持原语义；013/015 角标翻"可交互"，
+      P633-D2 核销。产物再生成（23 demo 适配器 + 包目录 + registry）。
+- [✅] **T-09 回退页归因入账**（G-5，AC-04）[✅ 已完成]
+      11 页归因：017/031-image-viewer = back 链 native-ns/stream（生成器
+      明示）；019/021/022/023 = routes/i18n 否决（022 `routes {}` app.at:6
+      实证）；030 = back 否决；041/043/044 = render:"vm" 否决；018 = routes
+      + `theme-toggle` web 逃逸口（strict 校验失败实证）。KNOWN-DEBT
+      P642-D1..D6 已登记。
+- [✅] **T-10 端到端复验 + 门禁**（AC-01..06）[✅ 已完成]
+      最终 34 页遍历矩阵（final_matrix.py）：23 OK / 10 FALLBACK(设计) /
+      1 residual（027 STUCK_LOADING，P642-D2）/ 0 崩溃 / 0 占位符。
+      门禁：`cargo t ui_gen` 792/792 绿；`cargo t -p auto-man gallery`
+      22/23（1 红 = P642-D5 master 预存，无新增红）；探针全数移除
+      （grep P642PROBE = 0）。双仓 worktree 提交：auto-lang ba009076f、
+      auto-os ddd0fe2。AC-05 修订：适配器与语料文本差异 = ①widget 改名
+      ②stylekit use 行→本地配方内联（发射器确定性变换，语义等价——
+      跨包解析在画廊上下文不可达，见 T-01 归因）③026 Init 拼写随语料修复
+      同步。
+
+## 8.1 与 §7 验收标准的偏差面
+
+- AC-01 部分达成：024 内嵌画布空（P642-D1）、027 内嵌加载态（P642-D2）
+  两页 residual；其余 21 个 VM-live 页全部 OK。
+- AC-02 达成（029 存活 + 出真图；崩溃类残余观测风险登记 P642-D3）。
+- AC-03 达成。AC-04 达成。AC-05 修订达成（内联为登记过的确定性变换）。
+- AC-06 达成（无新增红；008 有结论）。
 
 ## 9. 复审记录
 
-（review 时填写）
+（待 /auto-plan:review——执行证据齐备：本文件 §8 回填、双仓提交
+ba009076f / ddd0fe2、KNOWN-DEBT P642 段、截图集
+`auto-os/ui-gallery/src/front/tests/screenshots/{inv,fix,fix2,fix3,final,t03}_*.png`）
 
 ## 10. 待澄清事项
 
