@@ -8,7 +8,14 @@
     "005-login",
     "013-todo",
     "015-notes",
-    "045-style-import"
+    "045-style-import",
+    "006-hero-section",
+    "007-stats-board",
+    "008-pricing-table",
+    "009-article-feed",
+    "010-contact-form",
+    "012-stopwatch",
+    "014-weather"
   ],
   "exemptions": {
     "004-profile-card": {
@@ -20,6 +27,25 @@
       "bg-sky-500": "accent 五色板色票 ocean（同上）",
       "bg-emerald-500": "accent 五色板色票 sage（同上）",
       "bg-amber-500": "accent 五色板色票 amber（同上）"
+    },
+    "007-stats-board": {
+      "bg-red-100": "stat 图标 chip 类目底色（alerts）——装饰性类目色，registry 无语义键（B2/T-03）",
+      "bg-blue-100": "stat 图标 chip 底色（system）+ avatar 底色——同上",
+      "bg-green-100": "stat 图标 chip 底色（promo）+ avatar 底色——同上",
+      "bg-purple-100": "stat 图标 chip 底色（traffic）+ avatar 底色——同上",
+      "text-red-500": "stat 图标前景（alerts）——装饰性类目色",
+      "text-blue-500": "stat 图标前景（system）——同上",
+      "text-green-500": "stat 图标前景（promo）——同上",
+      "text-purple-500": "stat 图标前景（traffic）——同上"
+    },
+    "010-contact-form": {
+      "text-emerald-500": "发送成功回执 ✓（success 语义 registry 无键，装饰性状态色豁免，主题系统立项评估回迁——与 004 状态点同口径）（B2/T-03）",
+      "text-emerald-400": "成功回执文本暗支——同上",
+      "text-emerald-600": "成功回执文本亮支——同上",
+      "bg-emerald-950/50": "成功回执底暗支——同上",
+      "bg-emerald-50": "成功回执底亮支——同上",
+      "border-emerald-800": "成功回执框暗支——同上",
+      "border-emerald-200": "成功回执框亮支——同上"
     }
   }
 }

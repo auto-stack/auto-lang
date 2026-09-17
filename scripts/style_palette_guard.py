@@ -62,11 +62,14 @@ def scan_dir(demo_dir: Path, exemptions: dict[str, str]) -> list:
             stripped = line.strip()
             if stripped.startswith("//") or stripped.startswith("#"):
                 continue  # 注释行不扫（映射表/豁免备案会引用旧字面量）
-            for m in RE_PALETTE.finditer(line):
+            # 剥行尾注释（配方行尾备案会引用旧字面量）；用「空白+//」边界避免
+            # 误伤字符串内的 https:// 等协议写法。
+            code_line = re.sub(r"(^|\s)//.*$", "", line)
+            for m in RE_PALETTE.finditer(code_line):
                 literal = m.group(0)
                 if literal not in exemptions:
                     hits.append((at_file, lineno, literal))
-            for m in RE_WHITE.finditer(line):
+            for m in RE_WHITE.finditer(code_line):
                 literal = m.group(0)
                 if literal not in exemptions:
                     hits.append((at_file, lineno, literal))
@@ -113,6 +116,11 @@ def selftest() -> int:
         )
         (good / "swatch.at").write_text(
             'button { style: "w-5 h-5 rounded-full bg-indigo-500" }\n',  # 豁免命中
+            encoding="utf-8",
+        )
+        (good / "mapped.at").write_text(
+            'style x = "text-sm text-muted-foreground"   // Phase B: 原 text-gray-500\n'
+            'image (src: "https://example.com/a.png")    // URL 的 // 不应被误当注释剥到\n',
             encoding="utf-8",
         )
         (bad / "app.at").write_text(

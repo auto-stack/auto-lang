@@ -9,6 +9,10 @@
 // 移除，主题控制由 gallery 宿主切换器承接；SetTheme/SetAccent 消息面保留
 // （宿主 → 内嵌 demo 主题传播路线的既有通道），本 demo 内无发射方。
 
+// PLAN-637 B2 Phase B 映射（2026-09-17）：亮支 bg-gray-50/text-gray-900→
+// bg-background/text-foreground；暗支 text-white→text-primary-foreground（渐变
+// from-blue-500/to-purple-600 豁免保留，r2 口径）。
+
 widget App {
     msg { GetStarted, SetTheme(str), SetAccent(str) }
 
@@ -30,9 +34,9 @@ widget App {
                 style: "w-full flex-1 justify-center items-center gap-4 p-8"
             }
             style: if .dark_mode {
-                "w-full h-full min-h-screen bg-gradient-to-b from-blue-500 to-purple-600 text-white"
+                "w-full h-full min-h-screen bg-gradient-to-b from-blue-500 to-purple-600 text-primary-foreground"
             } else {
-                "w-full h-full min-h-screen bg-gray-50 text-gray-900"
+                "w-full h-full min-h-screen bg-background text-foreground"
             }
         }
     }

@@ -1,3 +1,26 @@
+use stylekit.styles: caption_text, section_title
+
+// PLAN-637 B2（Phase A 提取 + Phase B 映射，2026-09-17）：
+//   Phase B 映射：text-gray-900→text-foreground；text-gray-500→text-muted-foreground；
+//   bg-white→bg-card；border-gray-100→border-border；页面底 bg-gray-50→bg-background。
+//   stylekit 消费：hint_sm→caption_text（×12 位点）、stat_value→section_title(text-sm)
+//   （×21 位点；Phase B 归一后体序全等）。title_lg（×3）因源串词序（text-lg 在前）
+//   与 section_title 输出序不同，字节等价不可达，留本地（词序敏感性未验证不冒险）。
+//   豁免：四 stat 图标 chip（bg-{red,blue,green,purple}-100 + 同色 text-*-500）与
+//   三 avatar 底色（bg-{blue,green,purple}-100）＝类目装饰色，registry 无对应语义键。
+style title_2xl = "text-2xl font-bold text-foreground"   // Phase B: gray-900 → foreground
+style title_lg = "text-lg font-semibold text-foreground"   // Phase B: gray-900 → foreground
+style stat_value = section_title(size: "text-sm")   // Phase B：归一后消费 stylekit（体 ≡ "font-semibold text-foreground text-sm"）
+style stat_label = "text-sm text-muted-foreground"   // Phase B: text-gray-500 → text-muted-foreground
+style hint_sm = caption_text                        // Phase B：消费 stylekit caption_text
+style stat_card = "bg-card rounded-xl shadow-sm border border-border p-4 flex-1"   // Phase B: bg-white/border-gray-100 → bg-card/border-border
+style list_row_lg = "w-full items-center py-3 border-b border-border"   // Phase B
+style panel_card = "bg-card rounded-xl shadow-sm border border-border p-5 flex-1 gap-4"   // Phase B: 同 stat_card（Phase A 漏盘 p-5 变体，B 补提取）
+style member_stats_row = "gap-4 mt-3"   // Phase A 补提取（截断漏盘）
+style list_row_sm = "w-full items-center py-2 border-b border-border"   // Phase B
+style row_inline = "gap-0 items-center"
+style row_avatar = "gap-3 items-center"
+
 widget App {
     model {
         // Header
@@ -58,10 +81,10 @@ widget App {
             row {
                 col {
                     h2 .dashboard_title {
-                        style: "text-2xl font-bold text-gray-900"
+                        style: title_2xl
                     }
                     span .dashboard_subtitle {
-                        style: "text-sm text-gray-500"
+                        style: stat_label
                     }
                     style: "gap-1"
                 }
@@ -78,16 +101,16 @@ widget App {
                         }
                         col {
                             span .stat1_title {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             span .stat1_value {
-                                style: "text-2xl font-bold text-gray-900"
+                                style: title_2xl
                             }
                             style: "gap-0"
                         }
-                        style: "gap-3 items-center"
+                        style: row_avatar
                     }
-                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    style: stat_card
                 }
                 col {
                     row {
@@ -96,16 +119,16 @@ widget App {
                         }
                         col {
                             span .stat2_title {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             span .stat2_value {
-                                style: "text-2xl font-bold text-gray-900"
+                                style: title_2xl
                             }
                             style: "gap-0"
                         }
-                        style: "gap-3 items-center"
+                        style: row_avatar
                     }
-                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    style: stat_card
                 }
                 col {
                     row {
@@ -114,16 +137,16 @@ widget App {
                         }
                         col {
                             span .stat3_title {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             span .stat3_value {
-                                style: "text-2xl font-bold text-gray-900"
+                                style: title_2xl
                             }
                             style: "gap-0"
                         }
-                        style: "gap-3 items-center"
+                        style: row_avatar
                     }
-                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    style: stat_card
                 }
                 col {
                     row {
@@ -132,16 +155,16 @@ widget App {
                         }
                         col {
                             span .stat4_title {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             span .stat4_value {
-                                style: "text-2xl font-bold text-gray-900"
+                                style: title_2xl
                             }
                             style: "gap-0"
                         }
-                        style: "gap-3 items-center"
+                        style: row_avatar
                     }
-                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                    style: stat_card
                 }
                 style: "gap-4"
             }
@@ -151,77 +174,77 @@ widget App {
                 // Campaign Performance
                 col {
                     h3 "Campaign Performance" {
-                        style: "text-lg font-semibold text-gray-900"
+                        style: title_lg
                     }
                     col {
                         row {
                             span "All Traffic" {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .perf_all_traffic {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
-                            style: "w-full items-center py-3 border-b border-gray-100"
+                            style: list_row_lg
                         }
                         row {
                             span "Instagram" {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .perf_instagram {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
-                            style: "w-full items-center py-3 border-b border-gray-100"
+                            style: list_row_lg
                         }
                         row {
                             span "LinkedIn" {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .perf_linkedin {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
-                            style: "w-full items-center py-3 border-b border-gray-100"
+                            style: list_row_lg
                         }
                         row {
                             span "Google" {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .perf_google {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
-                            style: "w-full items-center py-3 border-b border-gray-100"
+                            style: list_row_lg
                         }
                         row {
                             span "X" {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .perf_x {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
                             style: "w-full items-center py-3"
                         }
                         style: "w-full"
                     }
-                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex-1 gap-4"
+                    style: panel_card
                 }
 
                 // Campaign Targets
                 col {
                     h3 "Campaign Targets" {
-                        style: "text-lg font-semibold text-gray-900"
+                        style: title_lg
                     }
                     col {
                         row {
                             span "Overall Progress" {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span "85.7%" {
-                                style: "text-sm font-semibold text-gray-900"
+                                style: "text-sm font-semibold text-foreground"
                             }
                             style: "w-full items-center"
                         }
@@ -232,7 +255,7 @@ widget App {
                             span .target_current
                             span "/"
                             span .target_goal
-                            style: "text-sm text-gray-500 gap-1"
+                            style: "text-sm text-muted-foreground gap-1"
                         }
                         style: "w-full"
                     }
@@ -240,47 +263,47 @@ widget App {
                     col {
                         row {
                             span .kpi1 {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .kpi1_value {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
-                            style: "w-full items-center py-2 border-b border-gray-100"
+                            style: list_row_sm
                         }
                         row {
                             span .kpi2 {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .kpi2_value {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
-                            style: "w-full items-center py-2 border-b border-gray-100"
+                            style: list_row_sm
                         }
                         row {
                             span .kpi3 {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .kpi3_value {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
-                            style: "w-full items-center py-2 border-b border-gray-100"
+                            style: list_row_sm
                         }
                         row {
                             span .kpi4 {
-                                style: "text-sm text-gray-500"
+                                style: stat_label
                             }
                             spacer
                             span .kpi4_value {
-                                style: "font-semibold text-gray-900 text-sm"
+                                style: stat_value
                             }
                             style: "w-full items-center py-2"
                         }
                         style: "w-full"
                     }
-                    style: "bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex-1 gap-4"
+                    style: panel_card
                 }
                 style: "gap-4"
             }
@@ -288,7 +311,7 @@ widget App {
             // Team Performance
             col {
                 h3 "Team Performance" {
-                    style: "text-lg font-semibold text-gray-900"
+                    style: title_lg
                 }
                 row {
                     col {
@@ -298,46 +321,46 @@ widget App {
                             }
                             col {
                                 span .member1_name {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
                                 span .member1_role {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 style: "gap-0"
                             }
-                            style: "gap-3 items-center"
+                            style: row_avatar
                         }
                         row {
                             col {
                                 span "Posts" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member1_posts {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
                             col {
                                 span "Followers" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member1_followers {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
                             col {
                                 span "Engagement" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member1_engagement {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
-                            style: "gap-4 mt-3"
+                            style: member_stats_row
                         }
-                        style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                        style: stat_card
                     }
                     col {
                         row {
@@ -346,46 +369,46 @@ widget App {
                             }
                             col {
                                 span .member2_name {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
                                 span .member2_role {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 style: "gap-0"
                             }
-                            style: "gap-3 items-center"
+                            style: row_avatar
                         }
                         row {
                             col {
                                 span "Posts" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member2_posts {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
                             col {
                                 span "Followers" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member2_followers {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
                             col {
                                 span "Engagement" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member2_engagement {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
-                            style: "gap-4 mt-3"
+                            style: member_stats_row
                         }
-                        style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                        style: stat_card
                     }
                     col {
                         row {
@@ -394,53 +417,53 @@ widget App {
                             }
                             col {
                                 span .member3_name {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
                                 span .member3_role {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 style: "gap-0"
                             }
-                            style: "gap-3 items-center"
+                            style: row_avatar
                         }
                         row {
                             col {
                                 span "Posts" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member3_posts {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
                             col {
                                 span "Followers" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member3_followers {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
                             col {
                                 span "Engagement" {
-                                    style: "text-xs text-gray-500"
+                                    style: hint_sm
                                 }
                                 span .member3_engagement {
-                                    style: "font-semibold text-gray-900 text-sm"
+                                    style: stat_value
                                 }
-                                style: "gap-0 items-center"
+                                style: row_inline
                             }
-                            style: "gap-4 mt-3"
+                            style: member_stats_row
                         }
-                        style: "bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex-1"
+                        style: stat_card
                     }
                     style: "gap-4"
                 }
                 style: "w-full gap-4"
             }
 
-            style: "w-full p-6 gap-6 bg-gray-50 min-h-screen"
+            style: "w-full p-6 gap-6 bg-background min-h-screen"
         }
     }
 }
