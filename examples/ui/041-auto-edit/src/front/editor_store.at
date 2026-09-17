@@ -11,7 +11,7 @@
 //   RemoveAt   —— 关闭 tab 的 remove + 索引修补 + 激活态重算
 //                 （原 CloseTab/ConfirmClose 各持一份，现合一）
 //   SyncCursor —— line/col/sel 三元组读回（原 5 处重复，现 1 处）
-use components.tree_util: toggle_id
+use bps.navigation.filetree.tree_util: toggle_id
 
 store EditorStore {
     model {

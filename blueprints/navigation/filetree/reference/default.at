@@ -1,4 +1,5 @@
-// components/filetree.at — FileTree 组件(PLAN-614)。
+// blueprints/navigation/filetree/reference/default.at — FileTree 组合形态（bp canonical）
+// PLAN-070 自 jade-garden PLAN-614 家族收编：desktop 版（≅widgets-gallery）；041 死副本不收（其左栏实为 TreeView）。
 //
 // 文件系统树展示,TreeView 语义的文件系统预设(参考 Ant Design Tree 的
 // directory 形态):fs 形态数据(id=路径的 node schema)自动映射目录/文件
@@ -11,12 +12,11 @@
 // Init 仅挂载期一次(PLAN-536 T3),ftExpanded 从 default_expanded 播种安全。
 //
 // # Usage
-// use { package: official from "../components" }
+// （消费方）use bps.navigation.filetree.reference.default: FileTree
 // FileTree (nodes: .ftNodes, default_expanded: ["src", "src/components"]) {}
 
-use components.tree_util: flatten_tree, toggle_id
-
-style tree_chevron = "w-3.5 h-3.5 text-muted-foreground"
+use tree_util: flatten_tree, toggle_id
+use tree_icon: TreeIcon
 
 widget FileTree (nodes: List, default_expanded: List = []) {
     msg { Init, Toggle(str), Select(str) }
@@ -58,9 +58,9 @@ widget FileTree (nodes: List, default_expanded: List = []) {
                     if r.has_kids {
                         mouse-area (onclick: .Toggle(r.id), style: "w-5 h-5 shrink-0 items-center justify-center cursor-pointer") {
                             if r.open {
-                                icon (name: "chevron-down", style: tree_chevron) {}
+                                icon (name: "chevron-down", style: "w-3.5 h-3.5 text-muted-foreground") {}
                             } else {
-                                icon (name: "chevron-right", style: tree_chevron) {}
+                                icon (name: "chevron-right", style: "w-3.5 h-3.5 text-muted-foreground") {}
                             }
                         }
                     } else {

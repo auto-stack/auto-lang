@@ -1,4 +1,4 @@
-// components/tree_util.at — tree 组件族纯函数工具(PLAN-614)。
+// blueprints/navigation/filetree/tree_util.at — tree 组件族纯函数工具(PLAN-614，PLAN-070 收编为 bp 包内支撑件)。
 //
 // flatten_tree: 嵌套树 × 展开态 → 可见行序列。显式栈迭代 DFS(无递归——
 // chart/diagram 族同款纪律),row 记录携带渲染所需一切(缩进/图标/chevron/
