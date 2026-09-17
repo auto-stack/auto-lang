@@ -608,6 +608,17 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         );
 
         let (cells, digests) = self.core.snapshot();
+
+        // PLAN-019 T-06: palette 参与段落缓存键。digest 只含语义值(字符+语义
+        // fg/bg),切方案后语义不变 → 复用旧 palette 烤入的 Paragraph(build 时
+        // to_iced_color 已定色),旧行残留旧方案字色直到内容变化才重建(浅底上
+        // 深底字不可读,用户实测)。把生效 [18] 表整体混入键:任何换表(切
+        // scheme/引擎装载新表)即全部行失效重建,旧行立即按新盘重着色。
+        let pal_key: u64 = {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(&palette, &mut h);
+            std::hash::Hasher::finish(&h)
+        };
         if cells.is_empty() {
             return;
         }
@@ -691,7 +702,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             if line_y > bounds.y + bounds.height {
                 break;
             }
-            let digest = digests[y];
+            // palette 键混入:换表即失效(见上 pal_key 注)。
+            let digest = digests[y] ^ pal_key;
             let stale = cache[y].as_ref().is_none_or(|e| e.digest != digest);
             if stale {
                 let para = build_row_paragraph(line, &palette);
