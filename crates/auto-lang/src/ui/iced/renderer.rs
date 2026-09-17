@@ -9011,20 +9011,52 @@ fn service_snapshot_requests(
 /// 写 shell `__wm_clock` + 置 view_dirty（同分钟重复调用零写入零 dirty；
 /// toast tick 先例的"只有变化才 dirty"模式）。时钟不进投影指纹门控组
 /// （每分钟翻指纹会引发 dock 全组换装抖动——计划"零投影流量"判定）。
+/// **PLAN-014 W-06'（协议 v1.8）**：同泵扩注 `__wm_date`（"M月D日 周X"，
+/// 中文周几宿主格式化——.at 无日期算术）——两字段独立脏帧（各自变化才
+/// 写；跨天分钟/日期同翻无害幂等），稳态零重建口径不变。
 fn update_shell_clock(state: &mut crate::ui::session::DesktopSession) {
+    use chrono::Datelike;
     let Some(shell_id) = state.desktop.shell_app else { return };
-    let hhmm = chrono::Local::now().format("%H:%M").to_string();
-    {
+    let now = chrono::Local::now();
+    let hhmm = now.format("%H:%M").to_string();
+    let weekday = match now.weekday() {
+        chrono::Weekday::Mon => "周一",
+        chrono::Weekday::Tue => "周二",
+        chrono::Weekday::Wed => "周三",
+        chrono::Weekday::Thu => "周四",
+        chrono::Weekday::Fri => "周五",
+        chrono::Weekday::Sat => "周六",
+        chrono::Weekday::Sun => "周日",
+    };
+    let date = format!("{}月{}日 {}", now.format("%-m"), now.format("%-d"), weekday);
+    let minute_changed = {
         let cur = state.desktop.clock_text.borrow();
-        if *cur == hhmm {
-            return;
-        }
+        *cur != hhmm
+    };
+    let date_changed = {
+        let cur = state.desktop.date_text.borrow();
+        *cur != date
+    };
+    if !minute_changed && !date_changed {
+        return;
     }
-    state.desktop.clock_text.replace(hhmm.clone());
+    if minute_changed {
+        state.desktop.clock_text.replace(hhmm.clone());
+    }
+    if date_changed {
+        state.desktop.date_text.replace(date.clone());
+    }
     if let Some(app) = state.apps.get_mut(&shell_id) {
-        let _ = app
-            .component
-            .write_state("__wm_clock", auto_val::Value::str(hhmm));
+        if minute_changed {
+            let _ = app
+                .component
+                .write_state("__wm_clock", auto_val::Value::str(&hhmm));
+        }
+        if date_changed {
+            let _ = app
+                .component
+                .write_state("__wm_date", auto_val::Value::str(&date));
+        }
         *app.state.view_dirty.borrow_mut() = true;
     }
 }
@@ -9043,6 +9075,14 @@ fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str,
     };
     // at = 入史时刻 HH:MM 本地时间（宿主侧格式化，T1 定案 3）。
     let at = chrono::Local::now().format("%H:%M").to_string();
+    // PLAN-014 W-08：来源 app id（联合排空泵注册表分段执行期置位；
+    // 特权面批量段/宿主内部通知 None → ""）。
+    let src_app = state
+        .desktop
+        .notify_source
+        .borrow()
+        .clone()
+        .unwrap_or_default();
     {
         let mut notes = state.desktop.notifications.borrow_mut();
         notes.insert(
@@ -9052,6 +9092,7 @@ fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str,
                 kind: kind.to_string(),
                 msg: msg.to_string(),
                 at,
+                app: src_app,
             },
         );
         notes.truncate(crate::ui::session::NOTES_CAP);
@@ -9077,7 +9118,7 @@ fn persist_notes(state: &crate::ui::session::DesktopSession) {
             .get(slot)
             .map(|n| {
                 serde_json::json!({
-                    "id": n.id, "kind": n.kind, "msg": n.msg, "at": n.at
+                    "id": n.id, "kind": n.kind, "msg": n.msg, "at": n.at, "app": n.app
                 })
                 .to_string()
             })
@@ -9111,11 +9152,19 @@ pub(crate) fn restore_notifications(state: &mut crate::ui::session::DesktopSessi
         let (Some(id), Some(kind), Some(msg), Some(at)) = (id, kind, msg, at) else {
             break;
         };
+        // PLAN-014 W-08：来源 app 恢复（历史槽无该键 = v1.7 旧库 → ""，
+        // 面板行跳来源臂以空串判不可跳）。
+        let app = v
+            .get("app")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
         restored.push(crate::ui::session::NotificationEntry {
             id,
             kind: kind.to_string(),
             msg: msg.to_string(),
             at: at.to_string(),
+            app,
         });
     }
     if let Some(max_id) = restored.iter().map(|n| n.id).max() {
@@ -9141,6 +9190,8 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
     let mut kinds: Vec<auto_val::Value> = Vec::new();
     let mut msgs: Vec<auto_val::Value> = Vec::new();
     let mut ats: Vec<auto_val::Value> = Vec::new();
+    // PLAN-014 W-08：来源 app 平行列表（同 B12 规避族；W-14 落地后消参）。
+    let mut apps: Vec<auto_val::Value> = Vec::new();
     {
         let notes = state.desktop.notifications.borrow();
         for n in notes.iter() {
@@ -9148,6 +9199,7 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
             kinds.push(auto_val::Value::Str(n.kind.clone().into()));
             msgs.push(auto_val::Value::Str(n.msg.clone().into()));
             ats.push(auto_val::Value::Str(n.at.clone().into()));
+            apps.push(auto_val::Value::Str(n.app.clone().into()));
         }
     }
     let max_h = panel_max_h(state);
@@ -9158,6 +9210,7 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
     let _ = app.component.write_state_vec("note_kinds", kinds);
     let _ = app.component.write_state_vec("note_msgs", msgs);
     let _ = app.component.write_state_vec("note_ats", ats);
+    let _ = app.component.write_state_vec("note_apps", apps);
     let _ = app
         .component
         .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
@@ -9459,6 +9512,8 @@ fn toggle_notification_center(
     let mut kinds: Vec<auto_val::Value> = Vec::new();
     let mut msgs: Vec<auto_val::Value> = Vec::new();
     let mut ats: Vec<auto_val::Value> = Vec::new();
+    // PLAN-014 W-08：来源 app 平行列表（与 refresh_notification_panel 同形）。
+    let mut apps: Vec<auto_val::Value> = Vec::new();
     {
         let notes = state.desktop.notifications.borrow();
         for n in notes.iter() {
@@ -9466,6 +9521,7 @@ fn toggle_notification_center(
             kinds.push(auto_val::Value::Str(n.kind.clone().into()));
             msgs.push(auto_val::Value::Str(n.msg.clone().into()));
             ats.push(auto_val::Value::Str(n.at.clone().into()));
+            apps.push(auto_val::Value::Str(n.app.clone().into()));
         }
     }
     let max_h = panel_max_h(state);
@@ -9474,6 +9530,7 @@ fn toggle_notification_center(
         let _ = app.component.write_state_vec("note_kinds", kinds);
         let _ = app.component.write_state_vec("note_msgs", msgs);
         let _ = app.component.write_state_vec("note_ats", ats);
+        let _ = app.component.write_state_vec("note_apps", apps);
         let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
         let _ = app
@@ -9676,23 +9733,51 @@ fn drain_and_execute_desktop_commands(
     // PLAN-016 T-07（协议 v1.7）：普通注册表窗上行联合排空——open_with
     // 动词面（027 文件管理器）。特权窗上方已排空（二次排空空读无害）；
     // 动词面仍受 DesktopCommand 解析白名单约束。
+    // PLAN-014 W-08（协议 v1.8）：注册表窗段**按 app 分段收集**——段随
+    // 携带发件方 registry_id，执行期置 `notify_source` 供 notify 落库来源
+    // 归因。分段执行序与原扁平 concat 逐一相同（drain 序即执行序），
+    // Shutdown 短路语义按段传递（特权段退出即跳过后续段）。
+    let mut segments: Vec<(Option<String>, Vec<crate::ui::session::DesktopCommand>)> =
+        Vec::new();
     {
         let app_ids: Vec<_> = state
             .host
             .as_ref()
-            .map(|h| h.wm.wins.values().map(|v| v.app).collect())
+            .map(|h| {
+                h.wm
+                    .wins
+                    .values()
+                    .map(|v| (v.app, v.registry_id.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
-        for app_id in app_ids {
-            cmds.extend(state.drain_app_desktop_commands(app_id));
+        for (app_id, registry_id) in app_ids {
+            let seg = state.drain_app_desktop_commands(app_id);
+            if !seg.is_empty() {
+                segments.push((registry_id, seg));
+            }
         }
     }
-    if cmds.is_empty() {
+    if cmds.is_empty() && segments.is_empty() {
         return (false, Vec::new());
     }
     if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
-        eprintln!("[464-DRAIN] {} commands", cmds.len());
+        let seg_n: usize = segments.iter().map(|(_, s)| s.len()).sum();
+        eprintln!("[464-DRAIN] {} commands", cmds.len() + seg_n);
     }
-    let (exit, tasks) = execute_desktop_commands(state, cmds);
+    let (mut exit, mut tasks) = execute_desktop_commands(state, cmds);
+    if !exit {
+        for (registry_id, seg) in segments {
+            *state.desktop.notify_source.borrow_mut() = registry_id;
+            let (seg_exit, seg_tasks) = execute_desktop_commands(state, seg);
+            *state.desktop.notify_source.borrow_mut() = None;
+            tasks.extend(seg_tasks);
+            if seg_exit {
+                exit = true;
+                break;
+            }
+        }
+    }
     if !exit {
         // Plan 473 T6：命令驱动的 relayout（布局切换/关闭/launch）即刻
         // 排水槽位几何，不等 400ms 帧泵。
@@ -12785,6 +12870,9 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             ("kind", auto_val::Value::Str(n.kind.clone().into())),
             ("msg", auto_val::Value::Str(n.msg.clone().into())),
             ("at", auto_val::Value::Str(n.at.clone().into())),
+            // PLAN-014 W-08（协议 v1.8）：来源 app id（合同面字段；宿主
+            // 内部通知/历史恢复为 ""）。
+            ("app", auto_val::Value::Str(n.app.clone().into())),
         ]))));
     }
     let notes_front = notes_snapshot
@@ -12844,6 +12932,18 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app
         .component
         .write_state("__wm_notes_unread", auto_val::Value::Str(notes_unread.to_string().into()));
+    // PLAN-014 W-07（协议 v1.8）：badge 显示串宿主派生（>9 → "9+"、0 →
+    // ""——.at 视图无数值比较/截断原语，I9 单一事实；等式消费在 shell.at）。
+    let notes_badge = if notes_unread > 9 {
+        "9+".to_string()
+    } else if notes_unread > 0 {
+        notes_unread.to_string()
+    } else {
+        String::new()
+    };
+    let _ = app
+        .component
+        .write_state("__wm_notes_badge", auto_val::Value::str(&notes_badge));
     let _ = app
         .component
         .write_state("__wm_notes_visible", auto_val::Value::str(notes_visible));
@@ -12869,6 +12969,22 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         .write_state("__wm_layout", auto_val::Value::str(layout_name));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
+    // PLAN-014 W-04（协议 v1.8）：__wm_running 注入面扩注 desktop 层——
+    // launching ack 判据数据面（desktop.at ActivateApp 置 launching，
+    // running 含该 id 即清）。随写显式召唤 RunningSync（宿主写状态不触发
+    // handler——RebuildMru/RebuildNotes 同律）；启动失败场景 running 永不
+    // 含 launching id，残态由 Init/重注入求差自愈（desktop.at Init 臂）。
+    if let Some(desktop_id) = state.desktop.desktop_app {
+        if let Some(dapp) = state.apps.get_mut(&desktop_id) {
+            let _ = dapp
+                .component
+                .write_state("__wm_running", auto_val::Value::str(&running));
+            if let Err(err) = dapp.component.bridge_mut().call_handler("RunningSync", &[]) {
+                eprintln!("[session] desktop RunningSync failed: {err}");
+            }
+            *dapp.state.view_dirty.borrow_mut() = true;
+        }
+    }
     // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget）。
     // 2026-09-15：抽独立 fn——切换预览面板开着时 400ms 节拍直发（快照
     // 补抓后的下一拍即可见）；sync 指纹未变时也保持预览数据新鲜。

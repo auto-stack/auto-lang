@@ -30,7 +30,9 @@
 // 消费者唯一：宿主 renderer 的 toggle_notification_center /
 // refresh_notification_panel / 通知面板键盘订阅。
 widget NotificationCenter {
-    msg { Init, RebuildNotes, Escape, Close, Dismiss(str), ClearAll }
+    // PLAN-014 W-08：OpenSource 整行点击跳来源（activate 两臂复用，
+    // 零新动词）；SendCmd 总线写单点（同 shell.at）。
+    msg { Init, RebuildNotes, Escape, Close, Dismiss(str), ClearAll, OpenSource(str), SendCmd(str) }
 
     model {
         // ---- 接缝状态（desktop 宿主注入）----
@@ -50,9 +52,12 @@ widget NotificationCenter {
         var note_kinds = []
         var note_msgs = []
         var note_ats = []
+        // PLAN-014 W-08（协议 v1.8）：来源 app 平行列表（notify 落库记录
+        // 发件方；历史槽无该键恢复为 ""——行点击跳来源臂空串判不可跳）。
+        var note_apps = []
 
         // ---- 面板状态（handler 自建 rows；view 消费 + handler 下标读安全）----
-        var rows = []               // {i,id,kind,msg,at}
+        var rows = []               // {i,id,kind,msg,at,app}
         var nrows int = 0           // 条目数（view 条件用，替代模板 .len()）
     }
 
@@ -106,27 +111,32 @@ widget NotificationCenter {
                                         }
                                     }
                                     for r in .rows {
-                                        row {
-                                            style: "flex items-center gap-3 px-4 py-2 border-b cursor-pointer"
-                                            if r.kind == "success" {
-                                                icon (name: "check") { style: "h-4 w-4 text-success" }
-                                            } else {
-                                                if r.kind == "error" {
-                                                    // PLAN-012 F2（用户裁定）：错误 ❗
-                                                    // （原 x 与右侧关闭钮混淆）。
-                                                    icon (name: "circle-alert") { style: "h-4 w-4 text-error" }
+                                        // PLAN-014 W-08：整行点击跳来源
+                                        // （mouse-area 承载；× 钮在 iced 捕获
+                                        // press 不冒泡——桌面格双击+菜单先例）。
+                                        mouse-area (onclick: .OpenSource(r.app)) {
+                                            row {
+                                                style: "flex items-center gap-3 px-4 py-2 border-b cursor-pointer"
+                                                if r.kind == "success" {
+                                                    icon (name: "check") { style: "h-4 w-4 text-success" }
                                                 } else {
-                                                    icon (name: "info") { style: "h-4 w-4 text-muted-foreground" }
+                                                    if r.kind == "error" {
+                                                        // PLAN-012 F2（用户裁定）：错误 ❗
+                                                        // （原 x 与右侧关闭钮混淆）。
+                                                        icon (name: "circle-alert") { style: "h-4 w-4 text-error" }
+                                                    } else {
+                                                        icon (name: "info") { style: "h-4 w-4 text-muted-foreground" }
+                                                    }
                                                 }
-                                            }
-                                            col {
-                                                style: "flex-1 gap-0"
-                                                text r.msg { style: "text-foreground text-sm" }
-                                                text r.at { style: "text-muted-foreground text-xs" }
-                                            }
-                                            button "×" {
-                                                onclick: .Dismiss(r.id)
-                                                style: "h-7 w-7 px-0 text-xs text-muted-foreground rounded hover:bg-primary/10"
+                                                col {
+                                                    style: "flex-1 gap-0"
+                                                    text r.msg { style: "text-foreground text-sm" }
+                                                    text r.at { style: "text-muted-foreground text-xs" }
+                                                }
+                                                button "×" {
+                                                    onclick: .Dismiss(r.id)
+                                                    style: "h-7 w-7 px-0 text-xs text-muted-foreground rounded hover:bg-primary/10"
+                                                }
                                             }
                                         }
                                     }
@@ -161,7 +171,13 @@ widget NotificationCenter {
             .nrows = 0
             var idx int = 0
             while idx < .note_ids.len() {
-                var row = { i: idx, id: .note_ids[idx], kind: .note_kinds[idx], msg: .note_msgs[idx], at: .note_ats[idx] }
+                // PLAN-014 W-08：note_apps 域外防御读（v1.7 注入方/测试
+                // fixture 只注四列表——缺列表时 app = "" 判不可跳，不炸）。
+                var src str = ""
+                if idx < .note_apps.len() {
+                    src = .note_apps[idx]
+                }
+                var row = { i: idx, id: .note_ids[idx], kind: .note_kinds[idx], msg: .note_msgs[idx], at: .note_ats[idx], app: src }
                 .rows.push(row)
                 idx = idx + 1
             }
@@ -170,12 +186,30 @@ widget NotificationCenter {
 
         // 逐条 ×：写上行总线（删除执行 + 落盘 + 重注入在宿主臂）。
         .Dismiss(id) -> {
-            .__desktop_cmd = "notes_dismiss\t" + id
+            .SendCmd("notes_dismiss\t" + id)
         }
 
         // 全部清除：写上行总线。
         .ClearAll -> {
-            .__desktop_cmd = "notes_clear"
+            .SendCmd("notes_clear")
+        }
+
+        // PLAN-014 W-08：整行点击跳来源 app——activate 两臂（宿主：未运行
+        // 启动 / 运行聚焦，472 语义零新动词）；app = ""（宿主内部通知/旧
+        // 历史槽）no-op。跳转即收面板（激活面不被面板遮挡）。
+        .OpenSource(app) -> {
+            if app != "" {
+                .SendCmd("activate\t" + app)
+                .visible = "0"
+            }
+        }
+
+        // PLAN-014 W-02：追加语义单点（同 shell.at SendCmd）。
+        .SendCmd(rec) -> {
+            if .__desktop_cmd != "" {
+                .__desktop_cmd = .__desktop_cmd + "\n"
+            }
+            .__desktop_cmd = .__desktop_cmd + rec
         }
 
         // Esc 关闭：自隐（未读已在打开时清零，关闭不加未读——visible 门控）。

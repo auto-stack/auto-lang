@@ -204,13 +204,16 @@ impl DevToolsState {
 
 /// Plan 479 T2：通知中心历史条目（S6 双面一体的「史」半边；toast 为「浮」
 /// 半边）。at = 入史时刻 HH:MM 本地时间串（宿主侧格式化，478 label 同型——
-/// 避开 .at 算术）。
+/// 避开 .at 算术）。**PLAN-014 W-08（协议 v1.8）**：`app` = 来源 app id
+/// （notify 动词发件方 registry_id；宿主内部通知/历史恢复缺省 ""——面板
+/// 行跳来源臂以空串判不可跳）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NotificationEntry {
     pub id: u64,
     pub kind: String,
     pub msg: String,
     pub at: String,
+    pub app: String,
 }
 
 /// Plan 479 T1 定案：通知历史内存容量（FIFO，front=最新；落盘独立 10 槽
@@ -320,6 +323,14 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// 分钟变化才写 shell `__wm_clock`（稳态零重建；不进投影指纹门控
     /// ——本地时钟非驱动事实投影，shell 只读消费）。
     pub clock_text: RefCell<String>,
+    /// PLAN-014 W-06'（协议 v1.8）：日期当前注入串（"M月D日 周X"）。
+    /// ServiceTick 帧泵里日期变化才写 shell `__wm_date`——与分钟字段独立
+    /// 脏帧（另一字段不变时稳态零重建口径维持），同不进指纹门控。
+    pub date_text: RefCell<String>,
+    /// PLAN-014 W-08（协议 v1.8）：notify 动词发件方来源（registry_id）。
+    /// 联合排空泵按注册表 app 分段执行期置位，push_notification 落库读
+    /// 取；特权面批量段/宿主内部通知恒 None（落库 app = ""）。
+    pub notify_source: RefCell<Option<String>>,
     /// Plan 497：本轮 screenshot 服务中的快照目标 wid 集（ServiceTick
     /// 排空 request_capture 队列时记录；SnapshotShot 回调消费清空）。
     /// 一次整窗截图服务全部请求（裁剪按各窗 rect 分发）。
@@ -375,6 +386,8 @@ impl DesktopState {
             notes_next_id: Cell::new(1),
             notes_unread: Cell::new(0),
             clock_text: RefCell::new(String::new()),
+            date_text: RefCell::new(String::new()),
+            notify_source: RefCell::new(None),
             snapshot_pending_wids: RefCell::new(Vec::new()),
             shell_app: None,
             app_resolver: None,
