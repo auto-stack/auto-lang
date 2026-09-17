@@ -2,6 +2,10 @@
 // bar, and add/delete actions. Clicking a card navigates to its detail page.
 use store: BooksStore
 
+style field_label = "text-sm font-medium text-foreground"
+style search_input = "px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
+style empty_state = "items-center justify-center py-20 gap-3 text-muted-foreground"
+
 widget bookshelf {
     msg { Init, OpenBook(int), ShowAdd, CloseAdd, SubmitAdd, TitleChanged, AuthorChanged, DeleteBook(int) }
 
@@ -30,13 +34,13 @@ widget bookshelf {
 
             if .store.loading {
                 col {
-                    style: "items-center justify-center py-20 gap-3 text-muted-foreground"
+                    style: empty_state
                     text "Loading library…" {}
                 }
             } else {
                 if .store.books.len() == 0 {
                     col {
-                        style: "items-center justify-center py-20 gap-3 text-muted-foreground"
+                        style: empty_state
                         text "📖" { style: "text-5xl opacity-40" }
                         text "No books yet" { style: "font-medium" }
                         text "Add your first book to get started" { style: "text-sm" }
@@ -92,22 +96,22 @@ widget bookshelf {
                         text "Add a Book" { style: "text-lg font-semibold text-foreground" }
                         col {
                             style: "gap-1.5"
-                            text "Title" { style: "text-sm font-medium text-foreground" }
+                            text "Title" { style: field_label }
                             input {
                                 value: .new_title
                                 oninput: .TitleChanged
                                 placeholder: "Book title"
-                                style: "px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
+                                style: search_input
                             }
                         }
                         col {
                             style: "gap-1.5"
-                            text "Author" { style: "text-sm font-medium text-foreground" }
+                            text "Author" { style: field_label }
                             input {
                                 value: .new_author
                                 oninput: .AuthorChanged
                                 placeholder: "Author"
-                                style: "px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground outline-none focus:border-primary"
+                                style: search_input
                             }
                         }
                         row {

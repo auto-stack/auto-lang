@@ -6701,6 +6701,12 @@ fn resolve_http_base_url(url: &str) -> String {
             return format!("{}{}", base, url);
         }
     }
+    if let Ok(port) = std::env::var("AUTO_HTTP_PORT") {
+        let port = port.trim();
+        if !port.is_empty() {
+            return format!("http://127.0.0.1:{}{}", port, url);
+        }
+    }
     url.to_string()
 }
 

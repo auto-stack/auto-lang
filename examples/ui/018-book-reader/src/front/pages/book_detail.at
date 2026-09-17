@@ -6,6 +6,9 @@
 // computed, so it would yield undefined.
 use back.api: get_book, list_chapters
 
+style btn_primary_xl = "mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+style row_gap1 = "items-center gap-1"
+
 widget book_detail {
     msg { Init, Back, ReadChapter(int), ContinueReading }
 
@@ -48,12 +51,12 @@ widget book_detail {
                             row {
                                 style: "items-center gap-3 text-sm text-muted-foreground flex-wrap mt-1"
                                 row {
-                                    style: "items-center gap-1"
+                                    style: row_gap1
                                     text "📑" {}
                                     text f"${.book.chapter_count} chapters" {}
                                 }
                                 row {
-                                    style: "items-center gap-1"
+                                    style: row_gap1
                                     text "📝" {}
                                     text f"${.book.word_count} words" {}
                                 }
@@ -65,7 +68,7 @@ widget book_detail {
                                 if .book.progress < 100 {
                                     button {
                                         onclick: .ContinueReading
-                                        style: "mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                                        style: btn_primary_xl
                                         text "📖 Continue Reading" {}
                                     }
                                 } else {
@@ -74,7 +77,7 @@ widget book_detail {
                             } else {
                                 button {
                                     onclick: .ReadChapter(1)
-                                    style: "mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                                    style: btn_primary_xl
                                     text "📖 Start Reading" {}
                                 }
                             }

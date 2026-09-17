@@ -937,6 +937,16 @@ fn real_main(cli: Cli) -> Result<()> {
             if let Some(ref s) = scene {
                 am.set_scene(s.clone());
             }
+            let pac_api = am.pac_api();
+            let is_rust_api = pac_api.as_deref() == Some("rust");
+            let server = server.or_else(|| {
+                if is_rust_api {
+                    Some("rust".to_string())
+                } else {
+                    None
+                }
+            });
+
             // Plan 317: --server=vm uses AutoVM HTTP server (with module
             // flattening for use db), --server=rust (default) uses a2r.
             let vm_server_mode = server.as_deref() == Some("vm");
@@ -952,10 +962,9 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             }
             // Plan 340: --merge/--no-merge controls VM+VM in-process merging.
-            // Default (no --no-merge) keeps the existing fast in-process path.
-            // --no-merge sets AUTO_VM_MERGE=0 so run_file_dynamic_ui rewrites
-            // #[api] calls to HTTP requests against the separate backend.
-            let merge_mode = !no_merge;
+            // When backend is Rust (`api: "rust"` or `--server=rust`), merging is impossible:
+            // Rust backend runs in a separate process, so VM+Rust is always split mode.
+            let merge_mode = !no_merge && server.as_deref() != Some("rust") && !is_rust_api;
             std::env::set_var("AUTO_VM_MERGE", if merge_mode { "1" } else { "0" });
             if merged {
                 // The Rust UI runner already uses AUTO_VM_MERGE=1 by default;
@@ -965,7 +974,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_VM_MERGE", "1");
             }
             if !merge_mode {
-                let backend = server.as_deref().unwrap_or("vm");
+                let backend = server.as_deref().unwrap_or(if is_rust_api { "rust" } else { "vm" });
                 let frontend = render.as_deref().unwrap_or("vm");
                 println!("  {} split mode: frontend {} ↔ backend {} over HTTP", "→".bright_cyan(), frontend, backend);
             }
@@ -988,6 +997,9 @@ fn real_main(cli: Cli) -> Result<()> {
                     ));
                 }
                 std::env::set_var("AUTO_HTTP_PORT", p.trim());
+                if std::env::var_os("AUTO_HTTP_BASE").is_none() {
+                    std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", p.trim()));
+                }
                 let via = if back_src.is_empty() { String::new() } else { format!(" (from {})", back_src) };
                 println!("  Backend API server port: {}{}", p.trim(), via);
             }

@@ -338,6 +338,11 @@ impl Automan {
         (self.pac.front_port, self.pac.back_port)
     }
 
+    /// Backend API implementation declared in pac.at (`api: "rust"` / `api: "vm"`).
+    pub fn pac_api(&self) -> Option<String> {
+        self.pac.api.as_ref().map(|t| t.to_string())
+    }
+
     /// Plan 411: VM startup window size from pac.at `window: "WxH"`.
     pub fn pac_window_size(&self) -> Option<(f32, f32)> {
         self.pac.window

@@ -19,3 +19,6 @@ category: "system"
 desktop: "true"
 theme: "dark"
 
+dep stylekit {
+    path: "../stylekit"
+}

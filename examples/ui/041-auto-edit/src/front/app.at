@@ -24,6 +24,7 @@ use status_bar: StatusBar
 use console_panel: ConsolePanel
 use ctx_menu: EditorCtxMenu
 
+style warn_label = "text-[12px] text-amber-400 mr-1"
 widget App {
     // PLAN-618 T-06: tree 四件组件拷贝分发(package use 必须在 widget 内,
     // 顶层 parse 报 LBrace 错——027 T-03 同款结论)。
@@ -121,8 +122,8 @@ widget App {
             // 嵌套不受限)。
             row (style: "flex-1 items-stretch overflow-hidden w-full") {
                 col (style: "w-56 shrink-0 border-r border-border bg-card hidden md:flex flex-col gap-2 p-2 overflow-y-auto") {
-                    text "EXPLORER" { style: "text-[11px] text-zinc-500 px-1 pt-1 tracking-wider" }
-                    text .store.ws_name { style: "text-[11px] text-zinc-400 px-1 pb-1" }
+                    text "EXPLORER" { style: "text-[11px] text-muted-foreground px-1 pt-1 tracking-wider" }
+                    text .store.ws_name { style: "text-[11px] text-muted-foreground px-1 pb-1" }
                     TreeView (nodes: .store.tree_nodes, expanded: .store.tree_expanded, selected: .store.tree_sel, on_toggle: .TreeToggle, on_select: .TreeSelect, directory: true) {}
                 }
                 col (style: "flex-1 overflow-hidden") {
@@ -135,13 +136,13 @@ widget App {
                                 row (style: "items-center bg-[#1C1D24]") {
                                     button (text: t.title, variant: "text") {
                                         onclick: .TabActivate(i)
-                                        style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
+                                        style: "h-8 px-3 text-[12px] text-foreground font-medium"
                                     }
                                     if t.dirty {
-                                        text "*" { style: "text-[12px] text-amber-400 mr-1" }
+                                        text "*" { style: warn_label }
                                     }
                                     button (variant: "text") {
-                                        icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
+                                        icon (name: "x", style: "h-3 w-3 text-muted-foreground") {}
                                         onclick: .CloseTab(i)
                                         style: "h-7 w-6 px-0 py-0 mr-2"
                                     }
@@ -151,16 +152,16 @@ widget App {
                                 row (style: "items-center") {
                                     button (text: t.title, variant: "text") {
                                         onclick: .TabActivate(i)
-                                        style: "h-8 px-3 text-[12px] text-zinc-500"
+                                        style: "h-8 px-3 text-[12px] text-muted-foreground"
                                     }
                                     if t.dirty {
-                                        text "*" { style: "text-[12px] text-amber-400 mr-1" }
+                                        text "*" { style: warn_label }
                                     }
                                 }
                             }
                         }
                         button (variant: "text") {
-                            icon (name: "plus", style: "h-3.5 w-3.5 text-zinc-400") {}
+                            icon (name: "plus", style: "h-3.5 w-3.5 text-muted-foreground") {}
                             onclick: .ActOpen
                             style: "h-7 w-7 px-0 py-0 ml-1"
                         }
@@ -180,7 +181,7 @@ widget App {
                     if .store.tab_count == 0 {
                         col (style: "flex-1 w-full items-center justify-center") {
                             text "没有打开的文件 — 点击 + 或「文件 → 打开」" {
-                                style: "text-[13px] text-zinc-500"
+                                style: "text-[13px] text-muted-foreground"
                             }
                         }
                     }

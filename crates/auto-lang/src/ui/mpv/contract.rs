@@ -177,7 +177,28 @@ impl MediaContract {
         //    设置暂停/音量，无谓地扰动。
         if down.src != self.applied.src {
             if let Some(src) = down.src.as_ref() {
-                match engine.command(&["loadfile", src]) {
+                let effective_src = if src.starts_with('/') {
+                    if let Ok(base) = std::env::var("AUTO_HTTP_BASE") {
+                        let base = base.trim().trim_end_matches('/');
+                        if !base.is_empty() {
+                            format!("{}{}", base, src)
+                        } else {
+                            src.clone()
+                        }
+                    } else if let Ok(port) = std::env::var("AUTO_HTTP_PORT") {
+                        let port = port.trim();
+                        if !port.is_empty() {
+                            format!("http://127.0.0.1:{}{}", port, src)
+                        } else {
+                            src.clone()
+                        }
+                    } else {
+                        src.clone()
+                    }
+                } else {
+                    src.clone()
+                };
+                match engine.command(&["loadfile", &effective_src]) {
                     Ok(()) => {
                         // 换片 = 新一代：清掉上一部的 seek/时长/错误等物化状态，
                         // 并让 T-17 的在途帧失效。

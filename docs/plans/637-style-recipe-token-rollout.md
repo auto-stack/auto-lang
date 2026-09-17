@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象）"]
 
 affects: [auto-lang/ui, autoui-examples]
-current_step: 6
+current_step: 7
 total_steps: 10
 ---
 
@@ -307,19 +307,21 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   URL 保护用例），正例 15/15。偏差：fit 窗 VM 截图竞态致 003/012 VM 像素证据
   退化（pre-existing 空窗/半绘帧，vue 侧+结构树承担），详见 evidence/637/
   b2-evidence-summary.md §4。
-- **T-04 W3 波**（15 个中型 demo）：同模板；允许按 demo 分子提交。
+- [x] **T-04 W3 波**（15 个中型 demo）：同模板；允许按 demo 分子提交。
   （r3：拆 **B3** 轻半 10 demo / **B4** 巨型 5 demo 两次 fold；
   tree_icon 四胞胎（018/026/027/041）聚 B4 机械联动。）
-  [◐ B3 轻半完成 2026-09-17，B4 巨型件未动] 10 demo 全改写：caption_text 全等
-  消费 ×28（10 demo 全挂 dep stylekit，AC-05 累计 13 demo ≥10 ✅）；本地提取
-  ~65 配方 ~230 位点；Phase B 面 022（卡片/动作钮/页根 + 泳道类目色豁免 ×5）、
-  029（红→destructive ×3 + 白覆盖层豁免 ×7）、030（zinc→muted ×6 + 叠字/状态
-  豁免 ×2）、016（色票豁免 ×5）。零漂移 8/10 双端实证（017/043/044 单轨）；
-  022/017 vue 轨既有损坏（主检出复现，非本计划引入）以 VM 承担；029 file://
-  缩略图缺陷（用户报告）确认为既有双端资产契约问题，修复方向=迁移
-  image_pipeline 媒体会话通道（另立小修复）；跨会话 master 演进（638 落地+
-  二进制重建）已按纪律 stash→sync→pop 解决。详见 evidence/637/
-  b3-evidence-summary.md（偏差 7 项）。
+  [✅ 已完成 2026-09-17（B3 轻半 + B4 巨型件两 fold）]
+  **B3**：10 demo 见下方 B3 记录与 8.3 矩阵。
+  **B4**：024 hint_text ×75 + caption ×17 消费（全仓最大家族）+ 15 位点提取 +
+  Pause/Play→secondary/primary（012 先例）；018/026/027 icon_base ×14×3 树图标
+  联动（四胞胎 md5 一致验证，vue/VM 渲染均验）；026 Connect/Save→primary、
+  错误簇→destructive、状态点豁免；027 纯 A 42 位点双端 IDENTICAL；041 zinc
+  分层 ×13 + amber/#16171B 豁免。零漂移 018/026/027 双端 IDENTICAL；024 差异
+  bbox 精确对位按钮；041 0.12% 文字级。**已知债两项**：026 caption ×4 因 475
+  包 use 块与顶层 stylekit use 解析互斥回退（caption_text 判 undefined）；
+  041 icon_base ×14 回退（render:vm 原生轨括号形配方名判 undefined、组件静默
+  跳过）——四胞胎落地 42/56。框架解析路径分叉注记在案。详见
+  evidence/637/b4-evidence-summary.md。
 - **T-05 W4 波**（011/019/020/023）：重型 token 化；020 的 264 处逐簇
   （同类串整簇替换）而非逐处。（r3：= **B5**，与 T-07/T-08 收口同批。）
 - [x] **T-06 存量三 demo 收尾**（013/015/045 Phase B + 门禁纳入；r3：提前
@@ -392,6 +394,21 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
 | 043 | ✅ 7 配方 31 位点 | 无色可换 | n/a（VM 原生）/ IDENTICAL | ✅ | ✅ ×10 |
 | 044 | ✅ 6 配方 25 位点 | 无色可换 | n/a（VM 原生）/ IDENTICAL | ✅ | ✅ ×7 |
 
+### 8.4 B4 矩阵增补（2026-09-17，T-04b 巨型件 5 demo + tree_icon 联动）
+
+证据：`docs/plans/evidence/637/b4-evidence-summary.md`。
+
+| demo | Phase A | Phase B | 对拍（vue/vm） | 门禁 | 消费 stylekit |
+|---|---|---|---|---|---|
+| 018 | ✅ 9 配方 36 位点 | 覆盖层/成功徽章豁免 ×4 | IDENTICAL / IDENTICAL | ✅ | ✅ icon_base ×14 + caption ×2 |
+| 024 | ✅ 4 配方 15 位点 | ✅ Pause/Play 映射 | 0.66%（按钮 bbox）/ 1.94%（含动画帧态） | ✅ | ✅ hint_text ×75 + caption ×17 |
+| 026 | ✅ 13 配方 43 位点 | ✅ primary/destructive 映射+状态豁免 ×2 | IDENTICAL / IDENTICAL（换装区在 SQL tab，交互截图在案） | ✅ | 回退 ×4（475 互斥债） |
+| 027 | ✅ 9 配方 42 位点 | 无色可换 | IDENTICAL / IDENTICAL | ✅ | ✅ icon_base ×14 |
+| 041 | ✅ 8 配方 15 位点 | ✅ zinc 分层 ×13+豁免 ×2 | n/a（VM 原生）/ 0.12% | ✅ | 回退 ×14（VM 原生轨债） |
+
+tree_icon 四胞胎：018/026/027 落地 ×42；041 回退 ×14（VM 原生轨括号形配方名
+不支持，框架债）。
+
 ## 9. 复审记录
 
 - （draft 起草 handoff 2026-09-17：`stage: new | PLAN-637 | plan_revision: 1 |
@@ -435,6 +452,15 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   跨会话演进（638+二进制）按纪律同步解决；新增已知债三项（022 vue-gen 幻影
   导入、017 后端编译失败、029 file:// 资产契约——均 master 既有，非本计划
   引入，主检出可复现）。）
+- （B4 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
+  outcome: pass（批次级；T-04 全部完成） | code_commit: plan-637-dev B4 提交 |
+  task_ids: T-04b（T-04 巨型半） | evidence:
+  docs/plans/evidence/637/b4-evidence-summary.md | blockers: 无 |
+  next: fold 回 master 后 B5（T-05 重型四件 + T-07 终验 + T-08 收口）。
+  要点：024 hint_text ×75 全仓最大家族消费落地；icon_base 四胞胎 42/56
+  （041 VM 原生轨括号形配方名不支持→回退，框架债）；026 475 包 use 互斥→
+  caption 回退 ×4（框架债）；转换事故（行尾注释吞 token）两处已修复并全目录
+  审计清零。））
 
 ## 10. 待澄清事项
 

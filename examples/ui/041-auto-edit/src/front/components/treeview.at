@@ -22,6 +22,8 @@
 
 use tree_util: flatten_tree
 
+style tree_chevron = "w-3.5 h-3.5 text-muted-foreground"
+
 widget TreeView (nodes: List, expanded: List = [], selected: str = "", on_toggle: msg, on_select: msg, directory: bool = false) {
     msg { Toggle(str), Select(str) }
 
@@ -45,9 +47,9 @@ widget TreeView (nodes: List, expanded: List = [], selected: str = "", on_toggle
                     if r.has_kids {
                         mouse-area (onclick: .Toggle(r.id), style: "w-5 h-5 shrink-0 items-center justify-center cursor-pointer") {
                             if r.open {
-                                icon (name: "chevron-down", style: "w-3.5 h-3.5 text-muted-foreground") {}
+                                icon (name: "chevron-down", style: tree_chevron) {}
                             } else {
-                                icon (name: "chevron-right", style: "w-3.5 h-3.5 text-muted-foreground") {}
+                                icon (name: "chevron-right", style: tree_chevron) {}
                             }
                         }
                     } else {

@@ -2869,10 +2869,23 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // Plan 340 fix: 分离模式启动独立后端 HTTP 进程。后端可以是 AutoVM server
     // （VM+VM split）或 a2r 转译的 Rust axum server（VM+Rust）。
     // AUTO_BACKEND_IMPL=rust → Rust 后端（start_api_server）
-    // AUTO_BACKEND_IMPL=vm 或未设 → AutoVM 后端（start_vm_server）
+    let pac_path = project_dir.join("pac.at");
+    let has_rust_api = pac_path.is_file() && {
+        auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new())
+            .ok()
+            .map(|c| c.root.get_prop("api").to_astr() == "rust")
+            .unwrap_or(false)
+    };
+    let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| {
+        if has_rust_api {
+            "rust".to_string()
+        } else {
+            "vm".to_string()
+        }
+    });
     let split_mode = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0")
-        || std::env::var("AUTO_VM_WITH_HTTP").as_deref() == Ok("1");
-    let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| "vm".to_string());
+        || std::env::var("AUTO_VM_WITH_HTTP").as_deref() == Ok("1")
+        || backend_impl == "rust";
     let mut _api_child = if split_mode {
         if backend_impl == "rust" {
             // VM+Rust split: ensure the Rust axum server is generated, then
@@ -2881,10 +2894,17 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
             if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
                 eprintln!("  {} Failed to generate Rust backend: {}", "⚠".bright_yellow(), e);
             }
-            start_api_server(project_dir)
+            let child = start_api_server(project_dir);
+            if child.is_some() && std::env::var_os("AUTO_HTTP_BASE").is_none() {
+                std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", crate::util::http_port()));
+            }
+            child
         } else {
             // VM+VM split: AutoVM HTTP server as backend.
             start_vm_server(project_dir);
+            if std::env::var_os("AUTO_HTTP_BASE").is_none() {
+                std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", crate::util::http_port()));
+            }
             None
         }
     } else {

@@ -22,6 +22,9 @@
 // use { package: official from "../components" }
 // area-chart (data: .series, index: "m", fields: ["v", "w"]) {}
 
+use stylekit.styles: hint_text, caption_text
+style legend_swatch = "w-3 h-3 shrink-0"
+
 widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
     msg { Init, Hover(int), HoverSeries(int), SeriesOut, Toggle(int) }
 
@@ -421,40 +424,40 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     if .legendText0 != "" {
                         mouse-area (onmouseenter: .HoverSeries(0), onmouseleave: .SeriesOut, onclick: .Toggle(0)) {
                             row (style: ["items-center gap-1", if .visAr0 { "" } else { "opacity-40" }]) {
-                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor0) {}
                                 }
-                                text .legendText0 { style: "text-xs text-muted-foreground" }
+                                text .legendText0 { style: cap }
                             }
                         }
                     }
                     if .legendText1 != "" {
                         mouse-area (onmouseenter: .HoverSeries(1), onmouseleave: .SeriesOut, onclick: .Toggle(1)) {
                             row (style: ["items-center gap-1", if .visAr1 { "" } else { "opacity-40" }]) {
-                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor1) {}
                                 }
-                                text .legendText1 { style: "text-xs text-muted-foreground" }
+                                text .legendText1 { style: cap }
                             }
                         }
                     }
                     if .legendText2 != "" {
                         mouse-area (onmouseenter: .HoverSeries(2), onmouseleave: .SeriesOut, onclick: .Toggle(2)) {
                             row (style: ["items-center gap-1", if .visAr2 { "" } else { "opacity-40" }]) {
-                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor2) {}
                                 }
-                                text .legendText2 { style: "text-xs text-muted-foreground" }
+                                text .legendText2 { style: cap }
                             }
                         }
                     }
                     if .legendText3 != "" {
                         mouse-area (onmouseenter: .HoverSeries(3), onmouseleave: .SeriesOut, onclick: .Toggle(3)) {
                             row (style: ["items-center gap-1", if .visAr3 { "" } else { "opacity-40" }]) {
-                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor3) {}
                                 }
-                                text .legendText3 { style: "text-xs text-muted-foreground" }
+                                text .legendText3 { style: cap }
                             }
                         }
                     }
@@ -463,11 +466,11 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             row (style: "items-stretch w-full") {
                 if .axis == "auto" {
                     col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-[20px] pb-[40px]") {
-                        text .yTick4 { style: "text-[10px] text-muted-foreground" }
-                        text .yTick3 { style: "text-[10px] text-muted-foreground" }
-                        text .yTick2 { style: "text-[10px] text-muted-foreground" }
-                        text .yTick1 { style: "text-[10px] text-muted-foreground" }
-                        text .yTick0 { style: "text-[10px] text-muted-foreground" }
+                        text .yTick4 { style: hint }
+                        text .yTick3 { style: hint }
+                        text .yTick2 { style: hint }
+                        text .yTick1 { style: hint }
+                        text .yTick0 { style: hint }
                     }
                 }
                 col (style: "flex-1") {
@@ -562,64 +565,64 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     if .axis == "auto" {
                         row (style: "justify-between pl-10 pr-2.5 pt-1") {
                                 if .xLab0 != "" {
-                                    text .xLab0 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab0 { style: hint }
                                 }
                                 if .xLab1 != "" {
-                                    text .xLab1 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab1 { style: hint }
                                 }
                                 if .xLab2 != "" {
-                                    text .xLab2 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab2 { style: hint }
                                 }
                                 if .xLab3 != "" {
-                                    text .xLab3 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab3 { style: hint }
                                 }
                                 if .xLab4 != "" {
-                                    text .xLab4 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab4 { style: hint }
                                 }
                                 if .xLab5 != "" {
-                                    text .xLab5 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab5 { style: hint }
                                 }
                                 if .xLab6 != "" {
-                                    text .xLab6 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab6 { style: hint }
                                 }
                                 if .xLab7 != "" {
-                                    text .xLab7 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab7 { style: hint }
                                 }
                                 if .xLab8 != "" {
-                                    text .xLab8 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab8 { style: hint }
                                 }
                                 if .xLab9 != "" {
-                                    text .xLab9 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab9 { style: hint }
                                 }
                                 if .xLab10 != "" {
-                                    text .xLab10 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab10 { style: hint }
                                 }
                                 if .xLab11 != "" {
-                                    text .xLab11 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab11 { style: hint }
                                 }
                                 if .xLab12 != "" {
-                                    text .xLab12 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab12 { style: hint }
                                 }
                                 if .xLab13 != "" {
-                                    text .xLab13 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab13 { style: hint }
                                 }
                                 if .xLab14 != "" {
-                                    text .xLab14 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab14 { style: hint }
                                 }
                                 if .xLab15 != "" {
-                                    text .xLab15 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab15 { style: hint }
                                 }
                                 if .xLab16 != "" {
-                                    text .xLab16 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab16 { style: hint }
                                 }
                                 if .xLab17 != "" {
-                                    text .xLab17 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab17 { style: hint }
                                 }
                                 if .xLab18 != "" {
-                                    text .xLab18 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab18 { style: hint }
                                 }
                                 if .xLab19 != "" {
-                                    text .xLab19 { style: "text-[10px] text-muted-foreground" }
+                                    text .xLab19 { style: hint }
                                 }
                         }
                     }

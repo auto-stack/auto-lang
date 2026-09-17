@@ -25,7 +25,12 @@
     "031-image-viewer",
     "031-paint",
     "043-clipboard-bridge",
-    "044-dnd-bridge"
+    "044-dnd-bridge",
+    "018-book-reader",
+    "024-charts",
+    "026-database",
+    "027-file-manager",
+    "041-auto-edit"
   ],
   "exemptions": {
     "004-profile-card": {
@@ -83,6 +88,19 @@
     "030-video-player": {
       "text-white": "视频画面上的标题叠字（viewport）——恒白可读性，同 029 口径",
       "text-amber-400": "audio-note 提示（警告/注意语义，registry 无 warning 键，状态色豁免）"
+    },
+    "018-book-reader": {
+      "text-white/70": "书封 emoji 叠字——封面渐变/色块上的恒白文字（图像叠字，同 029 口径）（B4/T-04b）",
+      "bg-white/80": "书封阅读进度条填充——封面图像上的覆盖元素，同上",
+      "text-emerald-600": "✓ Finished 完成徽章亮支（success 语义 registry 无键，装饰性状态色豁免，主题系统立项回迁）",
+      "text-emerald-400": "✓ Finished 完成徽章暗支（dark: 变体）——同上"
+    },
+    "026-database": {
+      "bg-green-500": "连接状态指示点 ×2——状态语义 registry 无键，装饰性状态色豁免（同 004 口径）",
+      "text-green-600": "已连接状态文字——同上"
+    },
+    "041-auto-edit": {
+      "text-amber-400": "编辑器警告标签（warn_label 配方体）——warning 语义 registry 无键，状态色豁免（B4/T-04b）"
     }
   }
 }
