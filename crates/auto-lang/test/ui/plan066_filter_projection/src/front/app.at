@@ -11,7 +11,7 @@ use store: FilterStore
 use bubble: MsgBubble
 
 widget App {
-    msg { Init, Seed, Search(str), MarkDone }
+    msg { Init, Seed, Search(str), MarkDone, Probe2, OnProbe }
 
     model {
         var projection_len int = -1
@@ -56,6 +56,19 @@ widget App {
         .MarkDone -> {
             FilterStore.MarkDone()
             .done_snapshot = f"${FilterStore.done}"
+        }
+
+        // T-08：handler-as-value 实参现场（musk StartStream 的
+        // Sse.open(url, .OnStreamEvent) 同形）——.OnProbe 命中当前件
+        // handler 集，改写为 fn 引用；Sse no-op 弹弃。修复前 GET_FIELD
+        // "OnProbe" 运行期 Field not found 中止 handler（probe2 恒 ""）。
+        .Probe2 -> {
+            Sse.open("/t08/stream", .OnProbe)
+            FilterStore.SetProbe2("reached")
+        }
+
+        .OnProbe -> {
+            return 0
         }
     }
 

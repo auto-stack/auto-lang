@@ -12,9 +12,11 @@ store FilterStore {
         // + 子件 computed 探针回传。
         var expanded str = ""
         var probe_result str = ""
+        // T-08 臂：handler-as-value 实参现场回传。
+        var probe2 str = ""
     }
 
-    msg Msg { Append(str, str), SetAll(str), SetSearch(str), MarkDone, ClearWindow, ToggleBubble(str), SetProbe(str) }
+    msg Msg { Append(str, str), SetAll(str), SetSearch(str), MarkDone, ClearWindow, ToggleBubble(str), SetProbe(str), SetProbe2(str) }
 
     on {
         .Append(role, content) -> {
@@ -55,6 +57,10 @@ store FilterStore {
 
         .SetProbe(v str) -> {
             .probe_result = v
+        }
+
+        .SetProbe2(v str) -> {
+            .probe2 = v
         }
     }
 }

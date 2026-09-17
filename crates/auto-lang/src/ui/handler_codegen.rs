@@ -109,6 +109,11 @@ fn computed_fn_for(name: &str) -> Option<String> {
     COMPUTED_FN_NAMES.with(|m| m.borrow().get(name).cloned())
 }
 
+/// PLAN-066 T-08: 当前件是否有同名 handler（handler-as-value 改写判据）。
+fn current_widget_has_handler(name: &str) -> bool {
+    CURRENT_HANDLER_NAMES.with(|s| s.borrow().contains(name))
+}
+
 /// Plan 576: `__computed_<W>_<p>(__state)` 调用表达式。
 fn computed_call_expr(fn_name: &str) -> Expr {
     Expr::Call(crate::ast::Call {
@@ -802,6 +807,30 @@ fn rewrite_expr_with_locals(
         {
             let fn_name = computed_fn_for(field.as_str()).unwrap();
             Some(computed_call_expr(&fn_name))
+        }
+        // PLAN-066 T-08: handler-as-value —— `.HandlerName`/`self.HandlerName`
+        // 命中当前件 handler 集（且非状态字段/局部/computed）时改写为
+        // handler 合成 fn 裸引用（值位置经 Plan 383 Ident 臂落 CLOSURE）。
+        // 此前落 generic self-dot 臂 → `__state.<Name>` → GET_FIELD，根态
+        // 无此字段即运行期 "Field not found" 中止 handler——musk
+        // StartStream 的 `Sse.open(url, .OnStreamEvent)` handler-as-value
+        // 实参现场（KD-059-FU1 族）。
+        Expr::Dot(obj, field)
+            if matches!(
+                obj.as_ref(),
+                Expr::Ident(n)
+                    if (n.as_str() == "self" || n.as_str() == "." || n.as_str().is_empty())
+                        && !state_fields.contains(field.as_str())
+                        && !locals.contains(field.as_str())
+                        && computed_fn_for(field.as_str()).is_none()
+                        && current_widget_has_handler(field.as_str())
+            ) =>
+        {
+            let widget = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
+            Some(Expr::Ident(Name::from(namespaced_handler_fn_name(
+                &widget,
+                field.as_str(),
+            ))))
         }
         Expr::Dot(obj, field)
             if matches!(

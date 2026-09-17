@@ -163,4 +163,32 @@ mod plan066_filter_projection_tests {
             "(PC) 收起后 computed 须 false，got expanded={expanded_off:?} probe={probe_off:?}"
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // (PD) T-08: handler-as-value 实参容错（musk StartStream 同形）
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// `Sse.open(url, .OnProbe)`——handler-as-value 实参须改写为 fn 引用
+    /// （Sse no-op 弹弃），handler 不再因 GET_FIELD "OnProbe" Field not
+    /// found 中止。KD-059-FU1 族（musk StartStream 现场）。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn plan066_pd_handler_as_value_arg_tolerated() {
+        let Some(manifest) = locate("src/front/app.at") else {
+            eprintln!("plan066: SKIPPED — corpus app.at not found");
+            return;
+        };
+        let Some(mut dc) = build_component_from_app(&manifest) else {
+            eprintln!("plan066: SKIPPED — corpus build failed");
+            return;
+        };
+
+        dc.on_with_input_for("App", "Probe2", None);
+        let probe2 = dc.read_state("probe2");
+        eprintln!("plan066(PD) probe2={probe2:?}");
+        assert!(
+            probe2 == Ok(auto_val::Value::Str("reached".into())),
+            "(PD) Sse.open(url, .OnProbe) 后 handler 须继续执行到 SetProbe2             （handler-as-value 实参容错），got {probe2:?}"
+        );
+    }
 }
