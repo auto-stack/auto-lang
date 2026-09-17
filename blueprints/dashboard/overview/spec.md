@@ -7,15 +7,16 @@ variants = ["default"]
 props = ["period"]
 actions = ["refresh"]
 
-[dataSource]
-metrics = "() -> Stats"
-
 acceptance = [
     "stat cards render skeleton until dataSource.metrics resolves",
     "the charts region is a declared EDIT slot — the bp never fakes chart data",
     "refresh re-runs dataSource.metrics and preserves the selected period",
     "recent-activity table renders its own empty/loading branches"
 ]
+
+[dataSource]
+metrics = "() -> Stats"
+
 
 +++
 

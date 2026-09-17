@@ -7,16 +7,17 @@ variants = ["default"]
 props = ["breakpoint"]
 actions = ["preview"]
 
-[dataSource]
-fetch_list = "(q) -> []Item"
-fetch_detail = "(id) -> Detail"
-
 acceptance = [
     "selection change fetches detail via dataSource.fetch_detail and renders loading while pending",
     "no-selection state is an explicit UI state, never a blank pane",
     "below props.breakpoint the panes stack (list OR detail, not both)",
     "list and detail keep independent loading/error branches"
 ]
+
+[dataSource]
+fetch_list = "(q) -> []Item"
+fetch_detail = "(id) -> Detail"
+
 
 +++
 

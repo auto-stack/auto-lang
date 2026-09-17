@@ -7,15 +7,15 @@ variants = ["minimal", "with_dialog"]
 props = ["columns"]
 actions = ["create", "update", "delete"]
 
-[dataSource]
-query = "(filter, page) -> Rows"
-
 acceptance = [
     "renders loading, empty, and error branches — they are contract",
     "search/filter changes re-run dataSource.query with page reset to 1",
     "row actions (edit/delete) are reachable without leaving the table",
     "pagination reflects the query total, not just the current page slice"
 ]
+
+[dataSource]
+query = "(filter, page) -> Rows"
 
 +++
 

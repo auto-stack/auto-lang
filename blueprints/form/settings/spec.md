@@ -7,16 +7,16 @@ variants = ["default"]
 props = ["sections"]
 actions = ["save", "reset"]
 
-[dataSource]
-load = "() -> Config"
-save = "(Config) -> Config"
-
 acceptance = [
     "loads current config via dataSource.load before first paint of values",
     "dirty state gates navigation away with a confirm (alert-dialog)",
     "danger_zone actions require an alert-dialog confirmation",
     "save shows pending state and lands outcome in success/error_display"
 ]
+
+[dataSource]
+load = "() -> Config"
+save = "(Config) -> Config"
 
 +++
 

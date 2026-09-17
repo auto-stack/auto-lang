@@ -21,15 +21,20 @@ widget SidebarShellCompact {
                 row {
                     // ── EDIT: logo ──
                     text "A" { style: "text-sm font-semibold px-2" }
-                    avatar {
-                        src: ""
-                        alt: f"${.user_name}"
-                        style: "w-7 h-7 rounded-full"
-                    }
-                    dropdown_menu {
-                        items: ["Profile", "Settings", "Sign out"]
-                        onselect: .MenuSignOut
-                        style: "w-8"
+                    dropdown-menu {
+                        dropdown-menu-trigger {
+                            avatar {
+                                src: ""
+                                alt: f"${.user_name}"
+                                style: "w-7 h-7 rounded-full"
+                            }
+                        }
+                        dropdown-menu-content {
+                            dropdown-menu-item "Profile"
+                            dropdown-menu-item "Settings"
+                            dropdown-menu-separator {}
+                            dropdown-menu-item "Sign out" { onclick: .MenuSignOut }
+                        }
                     }
                     style: "w-full items-center gap-2"
                 }
@@ -41,22 +46,19 @@ widget SidebarShellCompact {
                     col {
                         // ── EDIT: nav_items (icon rail; title = tooltip) ──
                         col {
-                            button {
-                                label: "⌂"
+                            button "⌂" {
                                 title: "Home"
                                 onclick: .NavSelected
                                 variant: "default"
                                 style: "w-9 h-9 rounded-lg"
                             }
-                            button {
-                                label: "▦"
+                            button "▦" {
                                 title: "Projects"
                                 onclick: .NavSelected
                                 variant: "ghost"
                                 style: "w-9 h-9 rounded-lg"
                             }
-                            button {
-                                label: "⚙"
+                            button "⚙" {
                                 title: "Settings"
                                 onclick: .NavSelected
                                 variant: "ghost"
@@ -68,7 +70,9 @@ widget SidebarShellCompact {
                     }
                 }
 
-                // ── EDIT: content ──
+                // ── EDIT: content (routed app surface; single slot —
+                //    route-level loading/error states belong to the routed
+                //    bp, not to this shell) ──
                 col {
                     text "App content mounts here" {
                         style: "text-sm text-gray-400"
@@ -87,7 +91,7 @@ widget SidebarShellCompact {
         .NavSelected(id) -> {
             .active_nav = id
         }
-        .MenuSignOut(item) -> {
+        .MenuSignOut -> {
             // actions.sign_out
         }
     }

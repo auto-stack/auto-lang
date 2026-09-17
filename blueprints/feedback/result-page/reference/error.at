@@ -19,8 +19,7 @@ widget ResultPageError {
     view {
         col {
             // ── EDIT: icon ──
-            badge {
-                label: "✕ Failed"
+            badge "✕ Failed" {
                 variant: "destructive"
             }
 
@@ -42,9 +41,8 @@ widget ResultPageError {
                     }
                 }
                 if .result_detail != "" {
-                    callout {
-                        variant: "error"
-                        content: f"${.result_detail}"
+                    callout (kind: "error") {
+                        text f"${.result_detail}"
                         style: "max-w-md"
                     }
                 }
@@ -55,14 +53,12 @@ widget ResultPageError {
 
             // ── EDIT: actions ──
             row {
-                button {
-                    label: "Try again"
+                button "Try again" {
                     onclick: .PrimaryClicked
                     disabled: .loading
                     style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
                 }
-                button {
-                    label: "Contact support"
+                button "Contact support" {
                     onclick: .SecondaryClicked
                     variant: "outline"
                     style: "px-4 py-2 border rounded-lg"

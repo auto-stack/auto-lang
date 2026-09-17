@@ -17,8 +17,7 @@ widget ResultPageSuccess {
     view {
         col {
             // ── EDIT: icon ──
-            badge {
-                label: "✓ Success"
+            badge "✓ Success" {
                 variant: "default"
             }
 
@@ -40,13 +39,11 @@ widget ResultPageSuccess {
 
             // ── EDIT: actions ──
             row {
-                button {
-                    label: "View item"
+                button "View item" {
                     onclick: .PrimaryClicked
                     style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
                 }
-                button {
-                    label: "Back to list"
+                button "Back to list" {
                     onclick: .SecondaryClicked
                     variant: "outline"
                     style: "px-4 py-2 border rounded-lg"

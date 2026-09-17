@@ -7,15 +7,16 @@ variants = ["first_use", "no_result", "error"]
 props = ["illustration"]
 actions = ["primary"]
 
-[dataSource]
-refresh = "() -> ()"
-
 acceptance = [
     "each variant renders its distinct headline and body copy",
     "the primary action is reachable by keyboard and announced with a label",
     "error variant offers a retry wired to dataSource.refresh",
     "illustration falls back to a text marker when the prop is empty"
 ]
+
+[dataSource]
+refresh = "() -> ()"
+
 
 +++
 

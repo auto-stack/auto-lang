@@ -36,8 +36,7 @@ widget EmptyStateNoResult {
             separator { style: "w-16 my-2" }
 
             // ── EDIT: actions ──
-            button {
-                label: "Clear filters"
+            button "Clear filters" {
                 onclick: .PrimaryClicked
                 variant: "outline"
                 style: "px-4 py-2 border rounded-lg"

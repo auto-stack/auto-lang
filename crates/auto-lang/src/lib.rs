@@ -7207,6 +7207,10 @@ mod plan632_demo_bridge_tests;
 #[cfg(test)]
 mod plan639_bp_tests;
 
+// PLAN-640: Tier-0 官方默认集扩容门禁（全包契约完整面 + 代表包双轨断言）。
+#[cfg(test)]
+mod plan640_bp_tests;
+
 // PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
 // 回归。
 #[cfg(all(test, feature = "ui-iced"))]

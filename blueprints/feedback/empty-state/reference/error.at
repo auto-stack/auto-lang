@@ -10,7 +10,7 @@ widget EmptyStateError {
     model {
         var illustration str = "" // prop: media source override
         var error str = ""        // failure detail, rendered in the callout
-        var refreshing bool = false
+        var loading bool = false
     }
 
     view {
@@ -36,9 +36,8 @@ widget EmptyStateError {
             }
 
             if .error != "" {
-                callout {
-                    variant: "error"
-                    content: f"${.error}"
+                callout (kind: "error") {
+                    text f"${.error}"
                     style: "max-w-sm"
                 }
             }
@@ -46,10 +45,9 @@ widget EmptyStateError {
             separator { style: "w-16 my-2" }
 
             // ── EDIT: actions ──
-            button {
-                label: "Retry"
+            button "Retry" {
                 onclick: .PrimaryClicked
-                disabled: .refreshing
+                disabled: .loading
                 style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
             }
 
@@ -59,10 +57,10 @@ widget EmptyStateError {
 
     on {
         .PrimaryClicked -> {
-            .refreshing = true
+            .loading = true
             // consumer wires dataSource.refresh() here;
             // on success the enclosing view re-renders its data branch
-            .refreshing = false
+            .loading = false
         }
     }
 }

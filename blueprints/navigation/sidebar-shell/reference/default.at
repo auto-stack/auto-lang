@@ -24,15 +24,20 @@ widget SidebarShell {
                     // ── EDIT: logo ──
                     text "Acme" { style: "text-sm font-semibold px-2" }
 
-                    avatar {
-                        src: "" // prop: user.avatar_url
-                        alt: f"${.user_name}"
-                        style: "w-7 h-7 rounded-full"
-                    }
-                    dropdown_menu {
-                        items: ["Profile", "Settings", "Sign out"]
-                        onselect: .MenuSignOut
-                        style: "w-8"
+                    dropdown-menu {
+                        dropdown-menu-trigger {
+                            avatar {
+                                src: "" // prop: user.avatar_url
+                                alt: f"${.user_name}"
+                                style: "w-7 h-7 rounded-full"
+                            }
+                        }
+                        dropdown-menu-content {
+                            dropdown-menu-item "Profile"
+                            dropdown-menu-item "Settings"
+                            dropdown-menu-separator {}
+                            dropdown-menu-item "Sign out" { onclick: .MenuSignOut }
+                        }
                     }
                     style: "w-full items-center gap-2"
                 }
@@ -45,24 +50,23 @@ widget SidebarShell {
                     col {
                         // ── EDIT: nav_items (recursive over props.nav_tree) ──
                         col {
-                            button {
-                                label: "Home"
+                            button "Home" {
                                 onclick: .NavSelected
                                 variant: "default"
                                 style: "w-full px-3 py-2 rounded-lg text-sm"
                             }
-                            button {
-                                label: "Projects"
-                                onclick: .NavSelected
-                                variant: "ghost"
-                                badge {
-                                    label: "3"
+                            row {
+                                button "Projects" {
+                                    onclick: .NavSelected
+                                    variant: "ghost"
+                                    style: "flex-1 px-3 py-2 rounded-lg text-sm"
+                                }
+                                badge "3" {
                                     variant: "outline"
                                 }
-                                style: "w-full px-3 py-2 rounded-lg text-sm"
+                                style: "gap-2 items-center pr-2"
                             }
-                            button {
-                                label: "Settings"
+                            button "Settings" {
                                 onclick: .NavSelected
                                 variant: "ghost"
                                 style: "w-full px-3 py-2 rounded-lg text-sm"
@@ -76,7 +80,9 @@ widget SidebarShell {
                     style: "w-56 border-r p-2 gap-2"
                 }
 
-                // ── EDIT: content (routed app surface; single slot) ──
+                // ── EDIT: content (routed app surface; single slot —
+                //    route-level loading/error states belong to the routed
+                //    bp, not to this shell) ──
                 col {
                     text "App content mounts here" {
                         style: "text-sm text-gray-400"
@@ -96,7 +102,7 @@ widget SidebarShell {
             .active_nav = id
             // consumer routes to the node; refresh dataSource.counts()
         }
-        .MenuSignOut(item) -> {
+        .MenuSignOut -> {
             // actions.sign_out: consumer ends the session + navigates
         }
     }

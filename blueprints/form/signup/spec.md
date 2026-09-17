@@ -7,15 +7,15 @@ variants = ["minimal"]
 props = ["invite_token"]
 actions = ["submit"]
 
-[dataSource]
-register = "(creds) -> Account"
-
 acceptance = [
     "renders loading state on the submit button while register is pending",
     "surfaces failures in the error_display region, never as a dead submit",
     "every input has an id and an associated label",
     "terms checkbox gates submit when the terms region is materialized"
 ]
+
+[dataSource]
+register = "(creds) -> Account"
 
 +++
 

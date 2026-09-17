@@ -9,6 +9,7 @@ widget SettingsScreen {
         Reset,
         ConfirmReset,
         CancelReset,
+        AskDeleteAccount,
         ToggleNotifications,
         EditDisplayName,
         SelectLanguage
@@ -49,7 +50,9 @@ widget SettingsScreen {
                     select {
                         value: .language
                         onchange: .SelectLanguage
-                        options: ["en", "zh", "ja"]
+                        option "en" {}
+                        option "zh" {}
+                        option "ja" {}
                     }
                     style: "gap-3"
                 }
@@ -61,10 +64,9 @@ widget SettingsScreen {
             // ── EDIT: danger_zone (destructive actions, alert-dialog guarded) ──
             col {
                 text "Danger zone" { style: "text-lg font-semibold text-red-600" }
-                button {
-                    label: "Delete account"
+                button "Delete account" {
                     variant: "destructive"
-                    onclick: .ConfirmReset
+                    onclick: .AskDeleteAccount
                     style: "px-4 py-2 border border-red-600 text-red-600 rounded-lg"
                 }
                 style: "gap-2"
@@ -76,14 +78,12 @@ widget SettingsScreen {
             }
 
             col {
-                button {
-                    label: "Save changes"
+                button "Save changes" {
                     onclick: .Save
                     disabled: !.dirty
                     style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
                 }
-                button {
-                    label: "Reset"
+                button "Reset" {
                     onclick: .Reset
                     disabled: !.dirty
                     variant: "outline"
@@ -92,16 +92,19 @@ widget SettingsScreen {
                 style: "gap-2"
             }
 
-            // dirty-guard confirm (alert-dialog surface)
+            // dirty-guard confirm (alert-dialog surface, PLAN-016 form)
             if .confirm_open {
-                alert_dialog {
-                    title: "Discard unsaved changes?"
-                    description: "Your edits have not been saved."
-                    confirm_label: "Discard"
-                    cancel_label: "Keep editing"
-                    onconfirm: .ConfirmReset
-                    oncancel: .CancelReset
-                    open: .confirm_open
+                alert-dialog (open: .confirm_open) {
+                    alert-dialog-content {
+                        alert-dialog-header {
+                            alert-dialog-title "Discard unsaved changes?"
+                            alert-dialog-description "Your edits have not been saved."
+                        }
+                        alert-dialog-footer {
+                            alert-dialog-cancel "Keep editing" { onclick: .CancelReset }
+                            alert-dialog-action "Discard" { onclick: .ConfirmReset }
+                        }
+                    }
                 }
             }
 
@@ -124,6 +127,9 @@ widget SettingsScreen {
         }
         .Reset -> { .confirm_open = true }
         .CancelReset -> { .confirm_open = false }
+        .AskDeleteAccount -> {
+            // actions consumer-side: confirm + delete account flow
+        }
         .ConfirmReset -> {
             .confirm_open = false
             .dirty = false

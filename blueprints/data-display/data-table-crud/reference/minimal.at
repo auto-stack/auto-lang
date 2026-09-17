@@ -55,14 +55,21 @@ widget DataTableCrud {
                 for row in .rows {
                     row {
                         text f"${row.name}" { style: "text-sm" }
-                        badge {
-                            label: f"${row.status}"
+                        badge f"${row.status}" {
                             variant: "outline"
                         }
-                        dropdown_menu {
-                            items: ["Edit", "Delete"]
-                            onselect: .EditRow
-                            style: "w-8"
+                        dropdown-menu {
+                            dropdown-menu-trigger {
+                                button "⋯" {
+                                    variant: "ghost"
+                                    style: "w-8 h-8"
+                                }
+                            }
+                            dropdown-menu-content {
+                                dropdown-menu-item "Edit" { onclick: .EditRow }
+                                dropdown-menu-separator {}
+                                dropdown-menu-item "Delete" { onclick: .DeleteRow }
+                            }
                         }
                     }
                 }

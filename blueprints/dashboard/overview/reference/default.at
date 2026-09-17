@@ -26,11 +26,12 @@ widget DashboardOverview {
                     select {
                         value: .period
                         onchange: .PeriodChanged
-                        options: ["7d", "30d", "90d"]
+                        option "7d" {}
+                        option "30d" {}
+                        option "90d" {}
                         style: "w-24"
                     }
-                    button {
-                        label: "Refresh"
+                    button "Refresh" {
                         onclick: .RefreshClicked
                         disabled: .loading
                         variant: "outline"
@@ -56,8 +57,7 @@ widget DashboardOverview {
                             col {
                                 text "Total users" { style: "text-xs text-gray-500" }
                                 text f"${.total_users}" { style: "text-2xl font-semibold" }
-                                badge {
-                                    label: "+12%"
+                                badge "+12%" {
                                     variant: "outline"
                                 }
                                 style: "gap-1"

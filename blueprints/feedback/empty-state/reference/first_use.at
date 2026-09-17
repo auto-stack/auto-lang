@@ -36,8 +36,7 @@ widget EmptyStateFirstUse {
             separator { style: "w-16 my-2" }
 
             // ── EDIT: actions ──
-            button {
-                label: "New item"
+            button "New item" {
                 onclick: .PrimaryClicked
                 style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
             }

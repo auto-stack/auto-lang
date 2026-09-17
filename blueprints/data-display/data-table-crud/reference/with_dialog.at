@@ -11,8 +11,7 @@ widget DataTableCrudDialog {
         EditRow,
         DeleteRow,
         DialogNameChanged,
-        DialogSubmit,
-        DialogCancel
+        DialogSubmit
     }
 
     model {
@@ -39,8 +38,7 @@ widget DataTableCrudDialog {
                     placeholder: "Search…"
                     style: "w-64 px-3 py-2 border rounded-lg text-sm"
                 }
-                button {
-                    label: "New item"
+                button "New item" {
                     onclick: .CreateClicked
                     style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
                 }
@@ -55,10 +53,18 @@ widget DataTableCrudDialog {
                 for row in .rows {
                     row {
                         text f"${row.name}" { style: "text-sm" }
-                        dropdown_menu {
-                            items: ["Edit", "Delete"]
-                            onselect: .EditRow
-                            style: "w-8"
+                        dropdown-menu {
+                            dropdown-menu-trigger {
+                                button "⋯" {
+                                    variant: "ghost"
+                                    style: "w-8 h-8"
+                                }
+                            }
+                            dropdown-menu-content {
+                                dropdown-menu-item "Edit" { onclick: .EditRow }
+                                dropdown-menu-separator {}
+                                dropdown-menu-item "Delete" { onclick: .DeleteRow }
+                            }
                         }
                     }
                 }
@@ -87,32 +93,28 @@ widget DataTableCrudDialog {
 
             // ── EDIT: form_dialog (create/edit surface) ──
             if .dialog_open {
-                dialog {
-                    title: "Edit item"
-                    open: .dialog_open
-                    col {
-                        label "Name" { for: "dialog_name" }
-                        input {
-                            id: "dialog_name"
-                            value: .dialog_name
-                            oninput: .DialogNameChanged
-                            style: "w-full px-3 py-2 border rounded-lg text-sm"
+                dialog (open: .dialog_open) {
+                    dialog-content {
+                        dialog-header {
+                            dialog-title "Edit item"
                         }
-                        row {
-                            button {
-                                label: "Cancel"
-                                onclick: .DialogCancel
-                                variant: "outline"
-                                style: "px-4 py-2 border rounded-lg"
+                        col {
+                            label "Name" { for: "dialog_name" }
+                            input {
+                                id: "dialog_name"
+                                value: .dialog_name
+                                oninput: .DialogNameChanged
+                                style: "w-full px-3 py-2 border rounded-lg text-sm"
                             }
-                            button {
-                                label: "Save"
+                            style: "gap-3"
+                        }
+                        dialog-footer {
+                            dialog-close "Cancel"
+                            button "Save" {
                                 onclick: .DialogSubmit
                                 style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
                             }
-                            style: "gap-2"
                         }
-                        style: "gap-3"
                     }
                 }
             }
@@ -142,7 +144,6 @@ widget DataTableCrudDialog {
             .dialog_open = true
         }
         .DialogNameChanged(s) -> { .dialog_name = s }
-        .DialogCancel -> { .dialog_open = false }
         .DialogSubmit -> {
             // actions.create (dialog_editing == "") or actions.update
             .dialog_open = false

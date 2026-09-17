@@ -7,15 +7,16 @@ variants = ["default", "compact"]
 props = ["nav_tree", "user"]
 actions = ["sign_out"]
 
-[dataSource]
-counts = "() -> Counts"
-
 acceptance = [
     "renders the shell (header + sidebar + content slot + user menu) without any app-specific copy",
     "nav badges reflect dataSource.counts and refresh on navigation",
     "user menu exposes actions.sign_out behind a dropdown",
     "compact variant collapses labels to icons with tooltips preserved"
 ]
+
+[dataSource]
+counts = "() -> Counts"
+
 
 +++
 

@@ -28,16 +28,13 @@ widget WizardForm {
         col {
             // ── EDIT: step_indicator (badge per props.steps entry) ──
             row {
-                badge {
-                    label: "1 Account"
+                badge "1 Account" {
                     variant: "default"
                 }
-                badge {
-                    label: "2 Profile"
+                badge "2 Profile" {
                     variant: "outline"
                 }
-                badge {
-                    label: "3 Review"
+                badge "3 Review" {
                     variant: "outline"
                 }
                 style: "gap-2"
@@ -97,23 +94,20 @@ widget WizardForm {
             }
 
             row {
-                button {
-                    label: "Back"
+                button "Back" {
                     onclick: .Back
                     disabled: .step == 0
                     variant: "outline"
                     style: "px-4 py-2 border rounded-lg"
                 }
                 if .step < 2 {
-                    button {
-                        label: "Next"
+                    button "Next" {
                         onclick: .Next
                         style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
                     }
                 }
                 if .step == 2 {
-                    button {
-                        label: "Finish"
+                    button "Finish" {
                         onclick: .Finish
                         disabled: .loading
                         style: "px-4 py-2 bg-blue-600 text-white rounded-lg"

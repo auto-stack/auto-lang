@@ -36,8 +36,7 @@ widget MasterDetail {
                             // ── EDIT: list_item ──
                             row {
                                 text f"${item.title}" { style: "text-sm" }
-                                badge {
-                                    label: f"${item.tag}"
+                                badge f"${item.tag}" {
                                     variant: "outline"
                                 }
                                 style: "gap-2"
@@ -75,8 +74,7 @@ widget MasterDetail {
                         text f"error: ${.detail_error}" {
                             style: "text-sm text-red-600"
                         }
-                        button {
-                            label: "Back to list"
+                        button "Back to list" {
                             onclick: .BackToList
                             variant: "outline"
                             style: "px-3 py-1 border rounded-lg text-sm"

@@ -7,15 +7,15 @@ variants = ["default"]
 props = ["steps"]
 actions = ["next", "back", "finish", "cancel"]
 
-[dataSource]
-submit = "(steps) -> Result"
-
 acceptance = [
     "only the active step's fields are rendered and validated",
     "next is gated on the current step passing its validation",
     "back never loses already-entered step data",
     "finish is reachable only from the last step and shows pending state"
 ]
+
+[dataSource]
+submit = "(steps) -> Result"
 
 +++
 

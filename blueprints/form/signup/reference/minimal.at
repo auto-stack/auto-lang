@@ -84,8 +84,7 @@ widget SignupForm {
             }
 
             // ── EDIT: submit ──
-            button {
-                label: "Create account"
+            button "Create account" {
                 onclick: .Submit
                 disabled: .loading
                 variant: "default"

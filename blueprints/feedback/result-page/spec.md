@@ -7,15 +7,16 @@ variants = ["success", "error"]
 props = ["result"]
 actions = ["primary", "secondary"]
 
-[dataSource]
-fetch = "(id) -> Result"
-
 acceptance = [
     "each variant renders its status icon and title without extra wiring",
     "deep-linked pages load the result via dataSource.fetch and render loading while pending",
     "both action slots render (or degrade gracefully when unwired)",
     "failure details are visible in the content region, not swallowed"
 ]
+
+[dataSource]
+fetch = "(id) -> Result"
+
 
 +++
 
