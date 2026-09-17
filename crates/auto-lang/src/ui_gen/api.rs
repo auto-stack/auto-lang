@@ -377,6 +377,69 @@ pub struct GeneratedComponent {
 /// resolution mirrors the vm loader; unreadable/unparseable modules are
 /// skipped with a log line (never fatal — the host widget just keeps its
 /// own/no actions).
+/// PLAN-639 T-05: locate and convert a pac.at `ui_config: "<file>"` external
+/// action config (Plan 418 auto-atom form) into the DSL ActionsBlock shape.
+///
+/// Walks up from the .at file's directory (≤4 levels) for `pac.at`, reads the
+/// `ui_config:` prop, resolves the file relative to the pac.at directory, and
+/// converts via [`crate::ui::action_config::UiActionConfig::to_actions_block`].
+/// Any failure (no pac.at, no prop, missing/unparseable file) yields `None` —
+/// never fatal, mirroring the use-module fallback tolerance.
+#[cfg(feature = "ui")]
+fn load_ui_config_actions(at_path: &std::path::Path) -> Option<crate::ast::ui::ActionsBlock> {
+    // App-level config: only the app shell (app.at) inherits the external
+    // action registry. Sub-widgets / bind artifacts compile their own handlers
+    // and must not synthesize menus for actions they don't declare
+    // (046-bp-import LoginBind TS2304 实测)。
+    if at_path.file_stem().and_then(|s| s.to_str()) != Some("app") {
+        return None;
+    }
+    let mut dir = at_path.parent()?.to_path_buf();
+    let pac_content = (0..4).find_map(|_| {
+        let candidate = dir.join("pac.at");
+        if candidate.is_file() {
+            std::fs::read_to_string(&candidate).ok()
+        } else {
+            let next = dir.parent()?.to_path_buf();
+            dir = next;
+            None
+        }
+    })?;
+    // `ui_config: "auto-edit.at"` — quoted or bare value.
+    let pos = pac_content.find("ui_config")?;
+    let rest = &pac_content[pos + "ui_config".len()..];
+    let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+    let file_name: &str = if let Some(stripped) = rest.strip_prefix('"') {
+        // Quoted: take up to the closing quote.
+        let end = stripped.find('"')?;
+        &stripped[..end]
+    } else {
+        // Bare: up to end of line / comment.
+        let end = rest.find(|c: char| c == '\n' || c == '#').unwrap_or(rest.len());
+        let raw = rest[..end].trim();
+        if raw.is_empty() {
+            return None;
+        }
+        raw
+    };
+    if file_name.is_empty() {
+        return None;
+    }
+    // dir currently points at the pac.at's directory when found.
+    let cfg_path = dir.join(file_name);
+    let doc = std::fs::read_to_string(&cfg_path).ok()?;
+    let (cfg, warnings) = crate::ui::action_config::UiActionConfig::parse(&doc).ok()?;
+    for w in warnings {
+        log::debug!("ui_config action: {w}");
+    }
+    Some(cfg.to_actions_block())
+}
+
+#[cfg(not(feature = "ui"))]
+fn load_ui_config_actions(_at_path: &std::path::Path) -> Option<crate::ast::ui::ActionsBlock> {
+    None
+}
+
 fn collect_use_module_actions(
     at_path: &std::path::Path,
     code: &str,
@@ -677,7 +740,12 @@ pub fn generate_component_from_file(
             crate::ast::Stmt::ActionsDecl(b) => Some(b.clone()),
             _ => None,
         })
-        .or_else(|| collect_use_module_actions(at_path, &code));
+        .or_else(|| collect_use_module_actions(at_path, &code))
+        // PLAN-639 T-05: lowest priority — pac.at `ui_config:` file (Plan 418
+        // auto-atom form) converted to the DSL shape. Web builds now pick up
+        // the same command system the VM/desktop runtime loads from the same
+        // file (jade-web 无命令系统的根因补齐)。
+        .or_else(|| load_ui_config_actions(at_path));
     if let Some(acts) = fallback_actions {
         for w in widgets.iter_mut() {
             if w.actions.is_none() {

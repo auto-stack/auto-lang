@@ -1,0 +1,14 @@
+// PLAN-639 T-05 demo：Plan 418 ui_config 外挂动作配置（auto-atom 形态）。
+// VM/桌面轨：`auto run` 注入 AUTO_VM_ACTION_CONFIG 运行时加载（既有）。
+// vue 轨：PLAN-639 起 `auto build` 经 load_ui_config_actions 转换为 DSL
+// ActionsBlock 喂给 Plan 451 合成面——双轨同一份命令系统声明。
+bp-edit {
+    action { id : "file.new" handler : ".ActNew" title : "新建"
+             icon : "file-plus" shortcut : "Ctrl+N" }
+    action { id : "file.open" handler : ".ActOpen" title : "打开"
+             icon : "folder-open" shortcut : "Ctrl+O" }
+    menubar { menu { id : "file" title : "文件"
+                     item { action : "file.new" } sep {}
+                     item { action : "file.open" } } }
+    toolbar { item { action : "file.new" } sep {} item { action : "file.open" } }
+}

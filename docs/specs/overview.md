@@ -43,7 +43,7 @@
 |---|---|---|
 | [auto-playground](auto-playground/project.md) | Playground Web API 服务（axum+ws+前端） | active |
 | [packages/](../design/autoui/examples-app-track.md) | 4 个 JS 包：@auto-ui/widgets、forge-ui、lab-ui、playground-vue | active |
-| [blocks/](blocks/project.md) | Skill 级 UI 区块包（Design 17） | active |
+| [blueprint/](blueprint/project.md) | Blueprint 蓝图包（Design 17；六问契约+三通道消费） | active |
 | [website/](website/project.md) | 文档站点 + 8 本书籍 + playground 页 | active |
 | [autoui-skill](autoui-skill/project.md) | AI agent 技能包（AutoUI 项目生成契约 C1–C9） | active |
 

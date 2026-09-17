@@ -1,0 +1,11 @@
+// blueprints —— AutoUI Blueprint 共享包库（PLAN-639）。
+// 库内每个 blueprint 是 `blueprints/<kind>/<name>/` 包（spec.md + reference/*.at
+// + gotchas.md）；本 pac.at 将库整体声明为 lib 包 `bps`，供消费应用
+// `dep bps { path: <相对本库路径> }` + `use bps.<kind>.<name>.reference.<variant>`
+// 跨包导入（L1 通道；解析面=PLAN-635 声明门控 + resolve_module_path）。
+name: "bps"
+version: "0.1.0"
+scene: "ui"
+render: "vue"
+title: "Blueprints"
+title_zh: "蓝图库"

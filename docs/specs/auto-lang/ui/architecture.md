@@ -20,7 +20,7 @@ graph TD
     JET["jet/ (Compose)"]
     ARK["ark/ (ArkTS)"]
     RUSTG["rust.rs (a2rust)"]
-    BLOCK["block/<br/>BlockRegistry/BlockSpec"]
+    BP["bp/<br/>BlueprintRegistry/BlueprintSpec"]
   end
 
   subgraph VM运行时["ui/（VM 渲染 + 桌面运行时）"]
@@ -38,12 +38,12 @@ graph TD
 
   A2UI["a2ui/<br/>A2UIMessage JSON 协议"]
   API["api/ #[api] 契约<br/>typescript/tauri/axum"]
-  EXT["外部：schema/aura.at · stdlib/aura/widgets · blocks/ · packages/widgets · examples/ui"]
+  EXT["外部：schema/aura.at · stdlib/aura/widgets · blueprints/ · packages/widgets · examples/ui"]
 
   DIALECT --> PARSER --> EXTRACT --> TYPES
   SCHEMA --> EXTRACT
   TYPES --> VUE & JET & ARK & RUSTG
-  BLOCK --> VUE
+  BP --> VUE
   TYPES --> VNODE --> EVT
   BRIDGE --> VNODE
   VNODE --> HOSTS
@@ -52,7 +52,7 @@ graph TD
   MCP --> VNODE
   A2UI -.agent 协议.-> VUE
   API -.前后端契约.-> VUE
-  EXT --> BLOCK
+  EXT --> BP
 ```
 
 ## ADR 日志
@@ -92,18 +92,18 @@ graph TD
 - 后果：落地于 `src/api/targets/typescript.rs`（另有 tauri/axum 目标）；015-notes（plan-288/354）为首个真实消费者。
 - 状态：active
 
-### ADR-06: Block = Skill（spec + reference 双产物，AI 生成而非预烘焙库）
-- 日期 / 来源：docs/design/blocks/blocks-first-class.md §2
-- 决策：block 不是预烘焙组件库，而是"自然语言 spec + 结构化 frontmatter + 每 variant 一份 reference `.at` + gotchas"；`auto block add` 由 AI 按 spec 现场生成定制 `.at`，消费者拥有输出源码、可改可 eject。
+### ADR-06: Blueprint = Skill（spec + reference 双产物，AI 生成而非预烘焙库；原 "Block = Skill"，PLAN-639 更名）
+- 日期 / 来源：docs/design/blueprints/blueprints-first-class.md §2
+- 决策：blueprint 不是预烘焙组件库，而是"自然语言 spec + 结构化 frontmatter + 每 variant 一份 reference `.at` + gotchas"；`auto bp add` 由 AI 按 spec 现场生成定制 `.at`，消费者拥有输出源码、可改可 eject。
 - 备选：A. 黑盒高配置组件（pros：复用即所得；cons：变体空间高维，props 爆炸——低代码地狱）；B. 纯示例代码（pros：零维护；cons：不算复用）；C. Skill 模型（pros：订制走 NL、验收靠 acceptance 清单；cons：生成可复现性需 reference 锚定 + 编译回路收敛）。
-- 后果：`ui_gen/block/registry.rs:BlockRegistry` + 顶层 `blocks/`（form/data-display/editor/navigation）已按包格式落地；Phase B 生成器 CLI 待做（plan-343）。
+- 后果：`ui_gen/bp/registry.rs:BlueprintRegistry` + 顶层 `blueprints/`（form/data-display/editor/navigation）已按包格式落地；Phase B 生成器 CLI 已落地（plan-343）；PLAN-639 升级三通道分级消费（L1 import/bind 主通道）+ 契约六问（docs/specs/blueprint/contract.md）。
 - 状态：active
 
-### ADR-07: block kind 词汇表圈住订制自由，eject 为天花板
-- 日期 / 来源：docs/design/blocks/blocks-first-class.md §4、§7
-- 决策：不定"万能 block"，而定 kind 分类法（Form/Data-display/Feedback/Layout/Composite），每类固定扩展点词汇表；订制超出词汇表 → eject 接管源码。配色/间距归 design token，不进 block。
+### ADR-07: blueprint kind 词汇表圈住订制自由，eject 为天花板
+- 日期 / 来源：docs/design/blueprints/blueprints-first-class.md §4、§7
+- 决策：不定"万能 blueprint"，而定 kind 分类法（Form/Data-display/Feedback/Layout/Composite），每类固定扩展点词汇表；订制超出词汇表 → eject 接管源码。配色/间距归 design token，不进 blueprint。
 - 备选：A. 无限 props（cons：不可枚举、AI 无稳定目标）；B. kind 词汇表 + eject（pros：灵活且可文档化；cons：eject 后 spec 改进无法回流——开放问题）。
-- 后果：loading/error/empty 成为数据型 block 的强制槽（对接 Rung 2 数据生命周期）。
+- 后果：loading/error/empty 成为数据型 blueprint 的强制槽（对接 Rung 2 数据生命周期）。
 - 状态：active
 
 ### ADR-08: app 生成走"能力阶梯 × 基准阶梯"，拒绝一键生成与反向转译

@@ -130,7 +130,7 @@
 |---|---|---|
 | main | clap 子命令定义、脚本执行/REPL 分发、JSON 错误格式化、转译子命令；`.as` 直跑（plan-560 起=lower→compile 真管线）、`trans auto` s2s 子命令与 `--dump-lowered` 全局 flag（W2 真产物+模式头） | active |
 | cmd_ui | `auto ui` 系列（list/select/install 等 UI 工程命令） | active |
-| cmd_block | `auto block list/show/add/check`：blocks 目录浏览、参考实现拷贝、校验 | active |
+| cmd_bp | `auto bp list/show/add/check`：blueprints 目录浏览、参考实现拷贝、`--bind` L1 绑定工件、校验（`auto block` 为弃用别名） | active |
 | cmd_a2c_stdlib | `auto a2c-stdlib`：生成 a2c 标准库 | active |
 | cmd_vue / cmd_tauri | Vue/Tauri 工程脚手架源码 | orphan（文件存在但未被 main.rs 挂接） |
 
@@ -250,7 +250,7 @@
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
 | playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
 | website | active | 8 | [website/project.md](website/project.md) |
-| blocks | active | 4 | [blocks/project.md](blocks/project.md) |
+| blueprint | active | 5 | [blueprint/project.md](blueprint/project.md) |
 | autoui-skill | active | 2 | [autoui-skill/project.md](autoui-skill/project.md) |
 
 <details><summary>auto-playground 模块明细</summary>
@@ -329,14 +329,15 @@
 
 </details>
 
-<details><summary>blocks 模块明细</summary>
+<details><summary>blueprint 模块明细</summary>
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| form/login | 登录表单 block | active |
-| data-display/note-list | 笔记列表展示 block | active |
-| editor/note-editor | 笔记编辑器 block | active |
-| navigation/sidebar-nav | 侧边导航 block | active |
+| contract | Blueprint 六问契约（输入/输出/状态归属/变体/打包解析/双形态） | active |
+| form/login | 登录表单 blueprint | active |
+| data-display/note-list | 笔记列表展示 blueprint | active |
+| editor/note-editor | 笔记编辑器 blueprint | active |
+| navigation/sidebar-nav | 侧边导航 blueprint | active |
 
 </details>
 
