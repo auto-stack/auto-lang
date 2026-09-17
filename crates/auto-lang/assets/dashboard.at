@@ -21,7 +21,7 @@
 // 消费者唯一：宿主 renderer 的 dashboard_toggle / refresh_dashboard_panel
 // / dashboard 键盘订阅。
 widget DashboardPanel {
-    msg { Init, Escape, Close, RebuildFaces }
+    msg { Init, Escape, Close, SelectTab(str), RebuildFaces }
 
     model {
         // ---- 接缝状态（desktop 宿主注入）----
@@ -43,32 +43,57 @@ widget DashboardPanel {
         var face_spans = []         // "1" | "2"
 
         // ---- 面板状态（handler 自建 rows；view 条件消费）----
+        // R5：活动 tab（main=小组件 / system=系统——实时轮询类组件住
+        // system 页，非活动页宿主不渲染 face 且孵化会话 Tick 停订，常驻
+        // 零轮询开销；stella widget-tabs 语义）。
+        var active_tab str = "main"
         var rows = []
         var nrows int = 0
     }
 
     view {
         if .visible == "1" {
-            // 常驻小组件层（用户裁定 2026-09-17）：宿主 wrapper 给定
-            // 面板矩形（与 face 卡同一算式，像素一致），本面只画 chrome。
-            // 无 scrim、无外点关闭（常驻语义——仅 × 隐藏 / dock ▦ 切换）。
+            // 常驻小组件层（R2）：宿主 wrapper 给定面板矩形，本面只画
+            // chrome。R4 重设计（stella widget-tabs 语言）：居中 pill
+            // tab（激活 bg-primary/15 text-primary）+ glass 底板；标题行
+            // 固定 h-12（48px = 宿主 DASH_HEADER_H，格位算式一致）。
             col {
                 style: "w-full h-full"
                 col {
                     style: "w-full h-full bg-card/80 border rounded-xl overflow-hidden"
 
-                    // 标题行：固定 h-12（48px，与宿主 DASH_HEADER_H 严格
-                    // 一致——格位算式的头部偏移常量）。
+                    // 标题行：居中 tab + 右缘 ×
                     row {
-                        style: "w-full h-12 px-4 items-center justify-between"
-                        text "Dashboard" { style: "text-foreground text-sm font-medium" }
+                        style: "w-full h-12 items-center px-3"
+                        col {
+                            style: "w-full items-center"
+                            row {
+                                style: "items-center gap-2"
+                                button (onclick: .SelectTab("main")) {
+                                    text { "小组件" }
+                                    style: if .active_tab == "main" {
+                                        "px-4 py-1.5 rounded-full bg-primary/15 text-primary text-sm font-medium"
+                                    } else {
+                                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                                    }
+                                }
+                                button (onclick: .SelectTab("system")) {
+                                    text { "系统" }
+                                    style: if .active_tab == "system" {
+                                        "px-4 py-1.5 rounded-full bg-primary/15 text-primary text-sm font-medium"
+                                    } else {
+                                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                                    }
+                                }
+                            }
+                        }
                         button (onclick: .Close) {
                             text { "×" }
+                            style: "h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent"
                         }
                     }
 
-                    // 网格区：face 由宿主拆借渲染按格位叠合，本层留白
-                    // （面板高度由宿主按行数注入）。
+                    // 网格区：face 由宿主按活动 tab 拆借渲染叠合。
                     col {
                         style: "w-full p-4"
                         if .nrows == 0 {
@@ -97,6 +122,9 @@ widget DashboardPanel {
         .Escape -> {
             .__dashboard_cmd += "dashboard_close\n"
             .visible = "0"
+        }
+        .SelectTab(t) -> {
+            .active_tab = t
         }
         .RebuildFaces -> {
             // 空态判据 = face 快照长度（rows 由宿主 face 层渲染，本面不建）。

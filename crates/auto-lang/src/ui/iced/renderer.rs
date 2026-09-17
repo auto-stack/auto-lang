@@ -9507,13 +9507,16 @@ const DASH_PAD: f32 = 16.0;
 const DASH_HEADER_H: f32 = 48.0;
 const DASH_PANEL_MAX_W: f32 = 920.0;
 
-/// face 卡片（格位算式输入）：registry id + 列跨度。
+/// face 卡片（格位算式输入）：registry id + 列跨度 + 所属 tab。
+/// R5：tab 由注册表 category 派生（"system" → 系统页，其余 → 小组件页）
+/// ——实时轮询类组件住系统页，非活动页宿主不渲染且孵化 Tick 停订。
 struct DashFace {
     id: String,
     title: String,
     icon: String,
     status: &'static str, // running | hatched | placeholder
     span: usize,
+    tab: &'static str,    // main | system
 }
 
 /// PLAN-024：face 卡 spacer 链定位（viewport 绝对格位 → 全幅层）——
@@ -9556,6 +9559,7 @@ mod plan024_dashboard_layout_tests {
             icon: "app-window".into(),
             status: "hatched",
             span,
+            tab: "main",
         }
     }
 
@@ -9684,7 +9688,9 @@ fn dashboard_span_of(id: &str) -> usize {
 /// face 候选清单推导（§5.3 两级）：①注册表全量扫 `view mini` 文本探测
 /// （grep 级，含未运行——占位卡/孵化判定输入）；②会话确认——有会话者
 /// 以 `has_named_view("mini")` 精确生效（文本误报兜底）。产出按注册表序。
-fn dashboard_face_candidates(state: &mut crate::ui::session::DesktopSession) -> Vec<(String, String, String)> {
+fn dashboard_face_candidates(
+    state: &mut crate::ui::session::DesktopSession,
+) -> Vec<(String, String, String, String)> {
     let mut out = Vec::new();
     for entry in state.desktop.registry_entries.iter() {
         // ①文本探测：resolver 直读源（registry_entries 不携带源码）。
@@ -9696,10 +9702,20 @@ fn dashboard_face_candidates(state: &mut crate::ui::session::DesktopSession) -> 
             .map(|spec| spec.code.contains("view mini"))
             .unwrap_or(false);
         if has_mini {
-            out.push((entry.id.clone(), entry.title.clone(), entry.icon.clone()));
+            out.push((
+                entry.id.clone(),
+                entry.title.clone(),
+                entry.icon.clone(),
+                entry.category.clone(),
+            ));
         }
     }
     out
+}
+
+/// R5：注册表 category → tab（"system" → 系统页，其余 → 小组件页）。
+fn dashboard_tab_of_category(category: &str) -> &'static str {
+    if category == "system" { "system" } else { "main" }
 }
 
 /// 注册表 id → 活会话 AppId（有窗运行中：vwin.registry_id 反查）。
@@ -9711,6 +9727,50 @@ fn dashboard_running_app(state: &crate::ui::session::DesktopSession, id: &str) -
         }
     }
     None
+}
+
+/// R5：孵化 mini 会话的 Tick 门控——face 当前不可见（面板隐藏或所在
+/// tab 非活动）→ 停订 .Tick（实时轮询类组件常驻零开销；stella tab 语义
+/// ——“平时不看，也就不影响 CPU”）。非孵化 app 恒允许（自己的窗自己
+/// 驱动）。
+fn dashboard_hatched_tick_allowed(
+    state: &crate::ui::session::DesktopSession,
+    app_id: crate::ui::session::AppId,
+) -> bool {
+    let Some(host) = state.host.as_ref() else { return true };
+    if !host.face_fields.contains_key(&app_id.0) {
+        return true; // 非孵化会话：正常 app，Tick 恒订。
+    }
+    // 面板隐藏 → face 不渲染 → 停订。
+    if !state.dashboard_visible() {
+        return false;
+    }
+    // 注册表 id 反查 → category → tab；面板活动 tab 匹配才订。
+    let Some(panel) = state.desktop.dashboard_app else { return false };
+    let reg_id = state
+        .desktop
+        .hatched_minis
+        .iter()
+        .find(|(_, a)| **a == app_id)
+        .map(|(name, _)| name.clone());
+    let Some(reg_id) = reg_id else { return false };
+    let tab = state
+        .desktop
+        .registry_entries
+        .iter()
+        .find(|e| e.id == reg_id)
+        .map(|e| dashboard_tab_of_category(&e.category))
+        .unwrap_or("main");
+    let active_tab = state
+        .apps
+        .get(&panel)
+        .and_then(|a| a.component.read_state("active_tab").ok())
+        .and_then(|v| match v {
+            auto_val::Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "main".to_string());
+    tab == active_tab
 }
 
 /// view 侧 faces 清单（装配层消费）——只读面板注入的平行快照（零源
@@ -9744,8 +9804,21 @@ fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<D
     let icons = read_vec("face_icons");
     let statuses = read_vec("face_statuses");
     let spans = read_vec("face_spans");
+    let tabs = read_vec("face_tabs");
+    // R5：只渲染面板 .at 活动 tab 的 face（宿主 wrapper 尺寸随活动页
+    // 行数变化——dashboard_layout 同算式重算）。
+    let active_tab = app
+        .component
+        .read_state("active_tab")
+        .ok()
+        .and_then(|v| match v {
+            auto_val::Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "main".to_string());
     ids.iter()
         .enumerate()
+        .filter(|(i, _)| tabs.get(*i).map(|t| t == &active_tab).unwrap_or(false))
         .map(|(i, id)| DashFace {
             id: id.clone(),
             title: titles.get(i).cloned().unwrap_or_else(|| id.clone()),
@@ -9759,6 +9832,10 @@ fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<D
                 .get(i)
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(1),
+            tab: match tabs.get(i).map(|t| t.as_str()) {
+                Some("system") => "system",
+                _ => "main",
+            },
         })
         .collect()
 }
@@ -9778,7 +9855,7 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
     let candidates = dashboard_face_candidates(state);
     let enabled_cfg = dashboard_enabled_list();
     let mut faces: Vec<DashFace> = Vec::new();
-    for (id, title, icon) in candidates {
+    for (id, title, icon, category) in candidates {
         // 配置门：显式清单单一事实；未配置 = 全纳入（默认策略）。
         if let Some(list) = &enabled_cfg {
             if !list.iter().any(|s| s == &id) {
@@ -9805,6 +9882,7 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
             icon,
             status,
             span: 0,
+            tab: dashboard_tab_of_category(&category),
         });
     }
     for f in faces.iter_mut() {
@@ -9821,6 +9899,7 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
     let mut icons: Vec<auto_val::Value> = Vec::new();
     let mut statuses: Vec<auto_val::Value> = Vec::new();
     let mut spans: Vec<auto_val::Value> = Vec::new();
+    let mut tabs: Vec<auto_val::Value> = Vec::new();
     let mut objs: Vec<auto_val::Value> = Vec::new();
     for f in &faces {
         ids.push(auto_val::Value::Str(f.id.clone().into()));
@@ -9828,6 +9907,7 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
         icons.push(auto_val::Value::Str(f.icon.clone().into()));
         statuses.push(auto_val::Value::Str(f.status.into()));
         spans.push(auto_val::Value::Str(f.span.to_string().into()));
+        tabs.push(auto_val::Value::Str(f.tab.into()));
         objs.push(auto_val::Value::Str(f.id.clone().into()));
     }
     eprintln!(
@@ -9841,6 +9921,7 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
         let _ = app.component.write_state_vec("face_icons", icons);
         let _ = app.component.write_state_vec("face_statuses", statuses);
         let _ = app.component.write_state_vec("face_spans", spans);
+        let _ = app.component.write_state_vec("face_tabs", tabs);
         let _ = app.component.write_state("__dashboard_faces", auto_val::Value::Array(auto_val::Array::from(objs)));
         let _ = app
             .component
@@ -9925,7 +10006,7 @@ fn dashboard_set_pinned(state: &mut crate::ui::session::DesktopSession, id: &str
     if !dashboard_enabled_list_from_storage() {
         list = dashboard_face_candidates(state)
             .into_iter()
-            .map(|(id, _, _)| id)
+            .map(|(id, _, _, _)| id)
             .collect();
     }
     if pin {
@@ -17725,6 +17806,13 @@ fn compare_pngs(
                 let viewport = state.host_viewport();
                 let (pw, ph, ptop, cells) = dashboard_layout(viewport, &faces_view);
                 let panel_x = (viewport.width - pw) / 2.0;
+                // R4：卡面 glass 底（stella dash-card 语言——主题感知半透
+                // 明填充，dark=轻提亮/light=白玻璃）。
+                let card_fill = if crate::ui::style::iced_adapter::dark_mode() {
+                    iced::Color::from_rgba(1.0, 1.0, 1.0, 0.04)
+                } else {
+                    iced::Color::from_rgba(1.0, 1.0, 1.0, 0.45)
+                };
                 let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
                 let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
                 let dash_client: iced::Element<'_, IcedMessage> = match
@@ -17785,7 +17873,8 @@ fn compare_pngs(
                             .height(iced::Length::Fixed(rect.height))
                             .align_x(iced::alignment::Horizontal::Center)
                             .align_y(iced::alignment::Vertical::Center)
-                            .style(|_t| iced::widget::container::Style {
+                            .style(move |_t| iced::widget::container::Style {
+                                background: Some(card_fill.into()),
                                 border: iced::Border {
                                     color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.25),
                                     width: 1.0,
@@ -17821,7 +17910,8 @@ fn compare_pngs(
                     let card = iced::widget::container(face_client)
                         .width(iced::Length::Fixed(rect.width))
                         .height(iced::Length::Fixed(rect.height))
-                        .style(|_t| iced::widget::container::Style {
+                        .style(move |_t| iced::widget::container::Style {
+                            background: Some(card_fill.into()),
                             border: iced::Border {
                                 color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.35),
                                 width: 1.0,
@@ -18142,7 +18232,11 @@ fn compare_pngs(
                     subs.push(hot_reload_tick(app_id));
                 }
                 if let Some(interval_ms) = app.component.tick_interval() {
-                    subs.push(widget_tick(app_id, interval_ms));
+                    // R5：孵化 mini 会话 Tick 门控（面板隐藏/非活动 tab 停订
+                    // ——常驻零轮询开销）。
+                    if dashboard_hatched_tick_allowed(state, app_id) {
+                        subs.push(widget_tick(app_id, interval_ms));
+                    }
                 }
                 // Plan 442 A5: one-shot timer tick — only while set_timeout timers
                 // are pending; due callbacks fire in update's __timer_tick arm.
