@@ -2562,11 +2562,21 @@ impl RustGenerator {
                         })
                         .unwrap_or_else(|| "None".to_string());
                     // PLAN-018 D10:scheme prop(Int 字面量或 .field 绑定;
-                    // 缺省 -1 = 跟随桌面主题)。
+                    // 缺省 -1 = 跟随桌面主题)。PLAN-019:`.field` 实际解析为
+                    // FieldAccess(geom/lines 同款回退)——仅认 Ident 时动态
+                    // 绑定静默回落 -1,scheme 按钮失效(app.at 实测)。
                     let scheme = match props.get("scheme") {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}i32"),
                         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
                             format!("self.{} as i32", id.as_str())
+                        }
+                        Some(AuraPropValue::Expr(expr)) => {
+                            let e = self.ast_expr_to_rust(expr);
+                            if e.starts_with("self.") {
+                                format!("({e}) as i32")
+                            } else {
+                                "-1i32".to_string()
+                            }
                         }
                         _ => "-1i32".to_string(),
                     };
