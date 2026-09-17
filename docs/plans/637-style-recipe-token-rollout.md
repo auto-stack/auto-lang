@@ -5,7 +5,7 @@ feature_name: style-recipe-token-rollout（examples/ui 全量配方化 + token �
 author: [zhaopuming]
 created_at: 2026-09-17
 updated_at: 2026-09-17
-plan_revision: 1
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -15,7 +15,7 @@ touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象
 
 affects: [auto-lang/ui, autoui-examples]
 current_step: 0
-total_steps: 9
+total_steps: 10
 ---
 
 # [PLAN-637] style-recipe-token-rollout——examples/ui 全量 Style Recipe / Design Token 应用
@@ -44,13 +44,27 @@ demo 中仅 3 个配方化（013/015 为 607 试点、045 为 635 示范），�
 
 排序从最简单 demo 开始（001-005 起步），重型（020/023/011/019）最后。
 
+> **r2 修订（2026-09-17 计划再评审，8 项）**：①025/038 无 `.at` 源码，
+> 矩阵登记 N/A（G1 计数勘正 35→33+045）；②无色号字面量 `text-white`/`bg-white`
+> 入 Phase B 作用域，`bg-black` 遮罩与渐变 `from-/to-` 入豁免表；③D4 豁免
+> 口径对齐待澄清#1 裁定（三类）；④AC-05 增 W1 不过度抽象注记；⑤D1 增
+> 变体纪律（Phase A 不跨串合并）；⑥tree_icon widget 四胞胎合并另立小计划；
+> ⑦新增 T-01b——006/010/016 settings 消费面移除（用户裁定：demo 跟随系统）；
+> ⑧T-08 增 worktree junction 拆除步骤（wt-guard 红线）。
+
 ## 1. 目标
 
-1. **G1 全量覆盖**：examples/ui/ 全部 35 个编号 demo（除 045 自身）完成
-   Phase A 去重；重复 ≥2 次的 class 串不再以字面量形态出现。
-2. **G2 token 化**：全部 demo 完成硬编码调色板色 → 语义 token 迁移
+1. **G1 全量覆盖**：examples/ui/ 全部 34 个有源码 demo 中除 045 外的 33 个
+   完成 Phase A 去重（r2 勘正：原「35 个编号 demo」计数含 025-dashboard/
+   038-minesweeper——实测两者已无 `.at` 源码，仅余 `.am` 簿记，矩阵登记
+   N/A）；重复 ≥2 次的 class 串不再以字面量形态出现。
+2. **G2 token 化**：全部有源码 demo 完成硬编码颜色 → 语义 token 迁移
    （映射表在案），迁移后 demo 内 `bg|text|border|ring-<palette>-<n>` 零
-   残留（有意的品牌色除外，逐 demo 显式豁免表）。
+   残留（有意的品牌色除外，逐 demo 显式豁免表）。**r2 边界补全**：无色号
+   字面量同入作用域——`text-white`（全仓 ×101，011×42/020×26）、`bg-white`
+   （×40+）按宿主角色映射（主按钮 `text-white` → `text-primary-foreground`、
+   卡片 `bg-white` → `bg-card`）；`bg-black/40-50` 遮罩与渐变
+   `from-/to-/via-`（~20 处）无对应 token，进豁免表登记。
 3. **G3 零漂移纪律**：Phase A 各 demo 双端截图 before/after 逐像素一致；
    Phase B 各 demo before/after 截图在案且差异可归因于映射表逐条解释。
 4. **G4 门禁固化**：rollout 完成的 demo 登记进矩阵；新增「demo 禁新增裸
@@ -104,6 +118,20 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
   recipe 体内裸调色板色已有 warning。
 - **022 通道先例**：demo 重构以双端对拍为验收（Plan 448 style 数组、619
   parity 探针）。
+- **r2 勘察补记（2026-09-17 计划再评审会话实勘）**：
+  - ①无色号字面量体量：`text-white` 全仓 101 处（011×42、020×26、029×8）、
+    `bg-white` 44 处（含 `/10` 变体）、`bg-black` 系 10 处（遮罩 `/40`~`/50`
+    +实黑）、渐变 `from-/to-` ~20 处——均落在原门禁模式 `<palette>-<n>` 之外；
+  - ②`icon_base` 收编对象 ×56 全部集中于 018/026/027/041 四份 **md5 逐字节
+    相同** 的 `components/tree_icon.at`（各 14 处）——组件级四胞胎，widget
+    本体合并另立小计划（见待澄清#3/#5）；
+  - ③006/010/016 pac.at `dep settings { path: "../common/settings" }` 目标
+    目录已删（settings 迁址 auto-os/apps/common/settings，auto-os 侧
+    ui-gallery 自有可解析 dep），本仓 `deps/settings` junction 悬空、006
+    无本地兜底模块（app.at:10 `use settings: SettingsPopover`），standalone
+    解析必失败——r2 裁定：demo 跟随系统，删消费面自足化（T-01b），gallery
+    宿主自带切换器（ui-gallery/src/front/app.at 有 dark_mode/accent_color
+    + 五色板，SettingsPopover 引用数为 0）承接主题控制。
 
 ## 5. 详细设计
 
@@ -122,6 +150,16 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 命名纪律：避开保留字（`shared` 事件在案）；参数化只对真变体（色/尺寸），
 不做过头抽象。
 
+**变体纪律（r2）**：Phase A 字节等价约束下**不跨串合并**——形态相近的串
+（如 005-login 的 `w-full px-3 py-2 border rounded-lg mt-2 text-gray-900`
+vs D1 `input_field` 的 `w-full px-3 py-2 border border-gray-300 rounded
+text-sm`）各自本地配方，Phase B 归一（边框色→token、圆角/边距族裁定）后
+才升库合并。
+
+**icon_base 注记（r2）**：56 处全在四份逐字相同的 tree_icon.at——recipe
+收编在本计划内完成；widget 本体四胞胎合并走 475 组件级 use 通道（机制已
+交付）另立小计划，与待澄清#3 stylekit 定位联动。
+
 **D2 波次划分（从简到重，每波一个任务）**：
 
 | 波 | demo | 特征 |
@@ -130,6 +168,7 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 | W2 | 006 007 008 009 010 012 014 | 中小（style 面 <40 处） |
 | W3 | 016 017 018 021 022 024 026 027 029 030 031-image-viewer 031-paint 041 043 044 | 中型 |
 | W4 | 011 019 020 023 | 重型（裸调色板色 ≥100） |
+| N/A | 025 038 | 无 `.at` 源码（仅 `.am` 簿记残留），矩阵登记 N/A 不入波次（r2） |
 
 013/015/045：Phase A 已达标，仅纳入 Phase B token 化与门禁矩阵
 （013 自身仍有 27 处裸调色板色）。
@@ -140,11 +179,16 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 - Phase B 映射表先行：每个 demo 一张 `palette → token | 定性` 表
   （neutralize/brand 化/destructive/豁免），截图 before/after 存档，
   差异逐条可归因；**不追求跨 demo 同色一律同映射**（020 的品牌蓝 ≠
-  011 的计算器蓝，逐 demo 定）。
+  011 的计算器蓝，逐 demo 定）；同一字面量按宿主角色分流映射（如 011 的
+  `text-white`×42：橙/靛蓝键上 → `text-primary-foreground`、深色键上 →
+  `text-card-foreground`），整簇替换不逐处。
 
 **D4 守卫固化**：`scripts/style_palette_guard.py`——读已完成 demo 清单，
-`grep` 该 demo 下 `.at` 的裸调色板色，非豁免命中即退出 1；矩阵登记进
-本档（执行期回填）。豁免仅限显式品牌色（映射表标注）。
+`grep` 该 demo 下 `.at` 的裸颜色字面量，非豁免命中即退出 1；矩阵登记进
+本档（执行期回填）。**r2 门禁模式扩容**：`<bg|text|border|ring>-<palette>-<n>`
+之外增扫无色号 `text-white`/`bg-white`（`bg-black` 系与渐变在豁免表内静态
+登记，不入动态扫描）。豁免三类（对齐待澄清#1 裁定口径）：显式品牌色、
+装饰性插画/渐变色、语法高亮色——映射表逐条标注。
 
 ### 规范增量
 
@@ -167,8 +211,9 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 
 ## 7. 验收标准
 
-- **AC-01 覆盖**：35 demo 全部完成 Phase A；矩阵（执行期回填本档）逐
-  demo 勾记，重复 ≥2 次长串字面量清零（grep 可验证）。
+- **AC-01 覆盖**：33 demo（有源码、除 045）全部完成 Phase A；矩阵（执行期
+  回填本档，含 025/038 N/A 行）逐 demo 勾记，重复 ≥2 次长串字面量清零
+  （grep 可验证）。
 - **AC-02 token 化**：全部 demo 完成Phase B 或显式豁免登记；已完成 demo
   裸调色板色残留 = 豁免表条目。
 - **AC-03 零漂移（Phase A）**：全部 demo 截图 before/after 逐像素一致，
@@ -176,7 +221,10 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 - **AC-04 受控变更（Phase B）**：每 demo 映射表 + 截图 before/after 在案，
   差异逐条归因。
 - **AC-05 机制消费**：≥10 demo 的 pac.at 含 `dep stylekit` 且 `use`
-  导入真实配方；双端 run 物化消费通过。
+  导入真实配方；双端 run 物化消费通过。（r2 注记：W1 极简 demo——001 仅
+  2 处 style、002 仅 1 处、003 零调色板——仅在真实命中 recipe 时接入，
+  不为指标强行挂 dep；≥10 目标由 W2/W3 兜底，007 单 demo 121 处 style
+  面已足。）
 - **AC-06 门禁**：guard 脚本落地并入 matrix 工作流；正反例自测绿。
 - **AC-07 门禁**：`cargo tv` 作用域重基线逐条定性零漂移；`cargo t`
   对拍 master 零新增红。
@@ -190,6 +238,16 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
   （待澄清#1 已裁定，Phase B 无阻塞。）
 - **T-01 守卫脚本先行**：`scripts/style_palette_guard.py` + 调用约定
   （矩阵清单文件）；正反例自测。
+- **T-01b settings 消费面移除（r2 前置，W2 开工前完成）**：006/010/016
+  删 `use settings: SettingsPopover`、`SettingsPopover(...)` 调用点、
+  `settings_open` 状态与 ⚙ Theme 触发按钮；**保留** `dark_mode`/
+  `accent_color` 两变量（双端运行时契约——VM 渲染器每帧回读、Vue gen
+  据此生成 `.dark` 绑定与 applyAccent 注入，pac `theme:`/`accent:` 启动
+  默认的落点，删则 demo 失去主题敏感性）；悬空 `deps/settings` junction
+  逐枚 `rmdir` 拆除。验证：三 demo 双端 `auto run` 可起（standalone
+  自足化，无悬空 use）；auto-os 侧 gallery registry 再生时 demo 面
+  popover 自动消失（registry 从 examples/ui 全量覆写，单源不漂移），
+  不入本计划验证面。
 - **T-02 W1 波**（001-005）：逐 demo「Phase A 去重 → 双端零漂移 →
   Phase B 映射表 + 迁移 → 截图 → 矩阵登记」；T-00 后 stylekit 消费第一批。
 - **T-03 W2 波**（006/007/008/009/010/012/014）：同模板；按需增补
@@ -200,7 +258,11 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 - **T-06 存量三 demo 收尾**（013/015/045 Phase B + 门禁纳入）。
 - **T-07 矩阵终验**：35/35 勾记 + grep 全量复扫 + 豁免表复核。
 - **T-08 回归与收口**：`cargo tv` + `cargo t` 对拍；spec delta 回填；
-  `execution_done`。
+  `execution_done`。**worktree 链接拆除（r2，wt-guard 红线）**：各 demo
+  `auto run` 按 475 通道物化的 `deps/stylekit` 等 junction（预计 30+ 枚）
+  收尾时逐枚 `rmdir` 拆除（严禁递归删除——会穿透链接删除目标内容），
+  拆净后跑 `bash D:/autostack/wt-guard.sh` 确认 clean 再移除 worktree
+  （635 先例：合并时手工拆除 360 枚链接，见其合并回执 cleaned 节）。
 - （波次内发现的新重复模式回流 stylekit 时，走 demo 内 style 先行、
   升库与消费方切换同波完成，避免半态。）
 
@@ -209,6 +271,13 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 - （draft 起草 handoff 2026-09-17：`stage: new | PLAN-637 | plan_revision: 1 |
   outcome: pass | next: work`——Phase B 视觉变更授权与豁免边界见待澄清#1，
   开工前需裁定。）
+- （r2 修订 2026-09-17 计划再评审：8 项落档——①025/038 无源码 N/A（G1
+  计数勘正）；②white/black 入 Phase B、遮罩/渐变入豁免；③D4 豁免三类
+  口径对齐#1 裁定；④AC-05 W1 不过度抽象注记；⑤D1 变体纪律；⑥tree_icon
+  widget 四胞胎另立小计划；⑦T-01b settings 消费面移除（用户裁定：demo
+  跟随系统，宿主切换器承接）；⑧T-08 worktree junction 拆除。评审依据=
+  同会话实勘带锚点：tree_icon md5 四份一致、006/010/016 悬空 junction、
+  text-white/bg-white 计量、025/038 目录只剩 .am。）
 
 ## 10. 待澄清事项
 
@@ -229,3 +298,12 @@ Phase B（token 化）: 调色板色 → registry 31 键语义 token（593 单�
 3. **stylekit 定位**：它是 examples 内的示范包（随仓分发）还是未来抽出为
    独立发行组件库的雏形（影响命名空间与版本纪律——本计划按示范包执行，
    发行化另行立项）。
+4. **settings 跟随系统（r2）**：✅ **已裁定（2026-09-17 用户）**——006/
+   010/016 demo 跟随系统，不保留应用级 settings：删消费面（T-01b），保留
+   `dark_mode`/`accent_color` 契约变量；主题控制由 auto-os 侧 gallery 宿主
+   切换器承接（已就位）。**宿主 → 内嵌 demo 的运行时主题传播**不在本计划
+   ——归后续主题系统路线（待澄清#1 注记②立项时列为首个设计点）。
+5. **tree_icon widget 级合并归属（r2）**：✅ **已裁定（2026-09-17 用户
+   确认）**——本计划仅做 `icon_base` recipe 收编；widget 本体四胞胎合并
+   （018/026/027/041 的 tree_icon.at，md5 逐字节相同，走 475 组件级
+   use 通道）另立小计划，与待澄清#3 stylekit 定位裁定联动。
