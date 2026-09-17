@@ -16,6 +16,11 @@ const __desktop_cell_cs = ref<any[]>([])
 const __desktop_cell_rs = ref<any[]>([])
 const menu_id = ref<string>('')
 const drag_id = ref<string>('')
+const drag_icon = ref<string>('')
+const drop_c = ref<string>('')
+const drop_r = ref<string>('')
+const drag_moved = ref<string>('')
+const __desktop_label_dark = ref<string>('')
 const blank_menu = ref<string>('')
 const __desktop_cursor_x = ref<number>(0)
 const __desktop_cursor_y = ref<number>(0)
@@ -183,15 +188,15 @@ onMounted(() => {
           <div class="grid grid-cols-8 gap-2 w-[696px]">
             <div v-for="(e, __for_idx) in __desktop_cells" :key="__for_idx">
               <template v-if="e.spacer == '1'">
-                <div class="w-20 h-20" />
+                <div class="w-20 h-[72px]" />
               </template>
               <template v-else>
                 <div @click="IconPress(e.id)" @dblclick="ActivateApp(e.id)">
-                  <div :class="(drag_id == e.id ? 'w-20 h-20 items-center justify-center gap-1 bg-white/20 opacity-50' : 'w-20 h-20 items-center justify-center gap-1 hover:bg-white/10')" class="flex flex-col" @contextmenu.prevent="IconMenu(e.id)">
+                  <div :class="(drag_id == e.id ? 'w-20 h-[72px] items-center justify-center gap-1 bg-white/20 opacity-50' : ((drag_id != '' && drag_id != e.id && e.c == drop_c && e.r == drop_r ? 'w-20 h-[72px] items-center justify-center gap-1 bg-primary/20' : 'w-20 h-[72px] items-center justify-center gap-1 hover:bg-white/10')))" class="flex flex-col" @contextmenu.prevent="IconMenu(e.id)">
 <div v-if="menu_id == e.id" class="fixed inset-0 z-40" @click="MenuClose"></div>
 <div v-if="menu_id == e.id" class="fixed z-50 p-1 border rounded bg-card" :style="{ left: '8px', top: '8px' }">
                       <template v-if="e.full == '1'">
-                        <div class="flex flex-col w-20 h-20 rounded-xl border-2 border-transparent hover:border-white/50">
+                        <div class="flex flex-col w-12 h-12">
                           <Circle class="w-full h-full" />
                         </div>
                       </template>
@@ -206,12 +211,17 @@ onMounted(() => {
                         <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-3-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
                       </div>
 </div>
-                    <span class="text-xs text-foreground truncate w-full text-center">{{ e.label }}</span>
+                    <span :class="(__desktop_bg == '' ? 'text-xs text-white truncate w-full text-center rounded-md bg-black/30' : ((__desktop_label_dark == '1' ? 'text-xs text-white truncate w-full text-center' : 'text-xs text-foreground truncate w-full text-center')))">{{ e.label }}</span>
                   </div>
                 </div>
               </template>
             </div>
           </div>
+<div v-if="drag_moved == '1'" class="fixed z-50 p-0 bg-transparent" :style="{ left: __desktop_cursor_x + 'px', top: __desktop_cursor_y + 'px' }">
+            <div class="flex flex-col w-12 h-12 opacity-60">
+              <Circle class="w-full h-full" />
+            </div>
+</div>
         </div>
       </div>
 <div v-if="blank_menu != ''" class="fixed inset-0 z-40" @click="BlankClose"></div>
