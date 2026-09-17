@@ -2673,7 +2673,28 @@ impl RustGenerator {
                     let mut builder = format!("View::input(\"{}\")", placeholder);
 
                     // Value binding: value: .field → .value(format!("{}", self.field))
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
+                    // PLAN-025 T-07：绑定形状容差对齐 client_runtime::
+                    // binding_field（Ident 带 '.' 前缀 / Dot("."|"self", f)
+                    // ——build_rust_ui 提取路径产 Dot 形，缺臂曾致 003
+                    // 真源 value 绑定整段丢失）。
+                    let value_field = props.get("value").and_then(|v| match v {
+                        AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                            let f = name.as_str().trim_start_matches('.');
+                            (!f.is_empty()).then(|| f.to_string())
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) => {
+                            match obj.as_ref() {
+                                crate::ast::Expr::Ident(base)
+                                    if base.as_str() == "." || base.as_str() == "self" =>
+                                {
+                                    Some(field.as_str().to_string())
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    });
+                    if let Some(name) = &value_field {
                         builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
                     } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("value") {
                         builder = format!("{}.value(\"{}\".to_string())", builder, s);
@@ -2712,8 +2733,8 @@ impl RustGenerator {
                                     builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
                                 // Record event→field mapping for handler generation
-                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
-                                    self.input_fields.entry(variant).or_default().push(name.to_string());
+                                if let Some(name) = &value_field {
+                                    self.input_fields.entry(variant).or_default().push(name.clone());
                                 }
                             }
                             "onenter" | "onEnter" | "onsubmit" | "onSubmit" => {
@@ -3113,12 +3134,14 @@ impl RustGenerator {
                 // 模式（.SetVol(v float) -> {...}）既有机制承担。
                 if tag == "slider" {
                     let numeric = |v: Option<&AuraPropValue>, default: f64| -> String {
+                        // f32 实参拒收整数字面量（Rust 整型字面量不向浮点
+                        // 收敛）——恒带小数点输出。
                         match v {
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) => format!("{f}"),
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Double(f, _))) => format!("{f}"),
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) => format!("{i}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) => format!("{f:.1}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Double(f, _))) => format!("{f:.1}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) => format!("{i}.0"),
                             Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
-                            _ => format!("{default}"),
+                            _ => format!("{default:.1}"),
                         }
                     };
                     let min = numeric(props.get("min"), 0.0);
@@ -3209,7 +3232,8 @@ impl RustGenerator {
                         if key == "options" || key == "selected" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
-                    return format!("{builder}.build()");
+                    // View::select 直返 View（链式 self）——无 .build()。
+                    return builder;
                 }
 
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
@@ -4992,6 +5016,9 @@ impl RustGenerator {
         // 的 fix_numeric_conversion_methods 只覆盖非 UI 管线,此处对 handler
         // 体补同一 `(expr as i32)` 改写(x.to_int() → (x as i32))。
         fix_numeric_conversion_methods_for_ui(&mut body);
+        // PLAN-025 T-07：VM math.* 内建降级（003-converter handler 真源
+        // math.round 先例——解释态 VM 直算，a2r 臂需落到 Rust f64 方法）。
+        lower_math_builtins_for_ui(&mut body);
         body
     }
 
@@ -6986,7 +7013,7 @@ widget Counter {
             code
         );
         assert!(
-            code.contains(".step(1)"),
+            code.contains(".step(1.0)"),
             "step prop 消费:
 {}",
             code
@@ -8487,6 +8514,60 @@ widget Demo {
 /// 有语义(499 M3 charts 先例;VM 轨在库),但 a2r 生成的 f32/f64 无此方法。
 /// trans/rust.rs 的 fix_numeric_conversion_methods 只覆盖非 UI 管线,此处
 /// 对 handler 体补同一保守改写(IDENT/链式接收者 → `(expr as i32)`)。
+/// PLAN-025 T-07：VM `math.*` 内建 → Rust f64 方法（handler 臂）。
+/// `math.round(EXPR)` → `(EXPR).round()`——round/floor/ceil/abs/sqrt
+/// 五族；括号配对扫描（正则不配嵌套）。
+pub(crate) fn lower_math_builtins_for_ui(content: &mut String) {
+    const MAP: [(&str, &str); 5] = [
+        ("math.round", "round"),
+        ("math.floor", "floor"),
+        ("math.ceil", "ceil"),
+        ("math.abs", "abs"),
+        ("math.sqrt", "sqrt"),
+    ];
+    for (pat, method) in MAP {
+        let mut out = String::new();
+        let mut rest = content.as_str();
+        while let Some(pos) = rest.find(pat) {
+            let after = &rest[pos + pat.len()..];
+            if !after.starts_with('(') {
+                out.push_str(&rest[..pos + pat.len()]);
+                rest = after;
+                continue;
+            }
+            out.push_str(&rest[..pos]);
+            let bytes = after.as_bytes();
+            let mut depth = 0usize;
+            let mut end = None;
+            for (i, b) in bytes.iter().enumerate() {
+                match b {
+                    b'(' => depth += 1,
+                    b')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = Some(i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let Some(e) = end else {
+                out.push_str(&rest[..pos + pat.len()]);
+                rest = after;
+                continue;
+            };
+            let expr = &after[1..e];
+            out.push_str(&format!("({expr}).{method}()"));
+            rest = &after[e + 1..];
+        }
+        out.push_str(rest);
+        if *content != out {
+            *content = out;
+        }
+    }
+}
+
 pub(crate) fn fix_numeric_conversion_methods_for_ui(content: &mut String) {
     for (method, cast) in [("to_float", "f64"), ("to_uint", "u32"), ("to_int", "i32")] {
         let pat = format!(r"([\w.()]+)\.{}\(\)", method);

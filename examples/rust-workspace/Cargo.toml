@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "003-converter",
     "011-calculator",
     "012-stopwatch",
     "013-todo",
@@ -7,17 +8,17 @@ members = [
     "015-notes",
     "015-notes-back",
     "016-calendar",
-    "020-music-player-back",
+    "025-inputs",
     "auto-musk-back",
     "contact-form",
-    "converter",
     "counter",
     "hero-section",
     "login",
     "myapp-back",
     "pricing-table",
     "profile-card",
-    "stats-board"
+    "stats-board",
+    "testt1"
 ]
 resolver = "2"
 

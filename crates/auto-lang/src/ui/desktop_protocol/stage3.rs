@@ -381,6 +381,330 @@ mod tests {
     }
 
     /// 按示例名取该 client 的合成帧（queue 臂 DrawList）。
+    /// PLAN-025 T-07 —— native input 族 e2e（`AUTO_DESKTOP_E2E=1` 门 +
+    /// 025 载体 env；p020_native_exe_arm 同型）。两载体真 exe 孵化：
+    /// ①003-converter（真源 a2r，queue 档）——双 input 帧渲染 →
+    /// broker_pointer_down 聚焦 celsius → broker_char 生产路径键入
+    /// "100" → 换算联动帧（212）断言；②inputs025 fixture——slider 轨道
+    /// 点击 f32 派发 + select 开合 → 选项命中 → 帧值变。键入口径 =
+    /// 宿主生产路径协议承载（⑤——真机 iced 事件注入面缺席，D4 随注）。
+    /// 载体缺省寻址：`target/debug/{converter,inputs025}.exe` +
+    /// `../scratch025/{003-converter,025-inputs}`；env AUTO_025_* 覆盖。
+    #[test]
+    fn p025_native_input_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let exe_c = std::env::var("AUTO_025_NATIVE_EXE")
+            .unwrap_or_else(|_| format!("{manifest}/../../target/debug/converter.exe"));
+        let dir_c = std::path::PathBuf::from(
+            std::env::var("AUTO_025_NATIVE_APP_DIR")
+                .unwrap_or_else(|_| format!("{manifest}/../../scratch025/003-converter")),
+        );
+        let exe_i = std::env::var("AUTO_025_INPUTS_EXE")
+            .unwrap_or_else(|_| format!("{manifest}/../../target/debug/inputs025.exe"));
+        let dir_i = std::path::PathBuf::from(
+            std::env::var("AUTO_025_INPUTS_APP_DIR")
+                .unwrap_or_else(|_| format!("{manifest}/../../scratch025/025-inputs")),
+        );
+        if !std::path::Path::new(&exe_c).is_file()
+            || !dir_c.join("src/front/app.at").is_file()
+            || !std::path::Path::new(&exe_i).is_file()
+            || !dir_i.join("src/front/app.at").is_file()
+        {
+            eprintln!(
+                "[p025] skip: 载体缺席（exe_c={exe_c} dir_c={} exe_i={exe_i} dir_i={}）",
+                dir_c.display(),
+                dir_i.display()
+            );
+            return;
+        }
+
+        use crate::ui::desktop_protocol::message::{DrawOp, FrameMode};
+        use crate::ui::session::{LaunchSpec, ProcessModel};
+        let broker_pipe = format!("autodesk-broker-025-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        let code_c = std::fs::read_to_string(dir_c.join("src/front/app.at")).expect("read 003");
+        let code_c_for = code_c.clone();
+        let exe_c_for = exe_c.clone();
+        let dir_c_for = dir_c.clone();
+        let code_i_for = std::fs::read_to_string(dir_i.join("src/front/app.at")).expect("read inputs");
+        let exe_i_for = exe_i.clone();
+        session.desktop.app_resolver =
+            Some(std::sync::Arc::new(move |name: &str| match name {
+                "003-converter" => Some(LaunchSpec {
+                    code: code_c_for.clone(),
+                    source_path: Some(
+                        dir_c_for.join("src/front/app.at").to_string_lossy().to_string(),
+                    ),
+                    title: Some("Converter".into()),
+                    name: Some("converter".into()),
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: Some(std::path::PathBuf::from(&exe_c_for)),
+                    render_decl: Some("queue".into()),
+                    opens: Vec::new(),
+                }),
+                "025-inputs" => Some(LaunchSpec {
+                    code: code_i_for.clone(),
+                    source_path: Some(
+                        dir_i.join("src/front/app.at").to_string_lossy().to_string(),
+                    ),
+                    title: Some("Inputs025".into()),
+                    name: Some("inputs025".into()),
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: Some(std::path::PathBuf::from(&exe_i_for)),
+                    render_decl: Some("queue".into()),
+                    opens: Vec::new(),
+                }),
+                _ => None,
+            }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        fn origin_of(session: &DesktopSession, wid: Wid) -> (f32, f32) {
+            session
+                .host
+                .as_ref()
+                .and_then(|h| h.wm.wins.get(&wid))
+                .map(|v| {
+                    let r = *v.rect.borrow();
+                    (r.x, r.y)
+                })
+                .expect("窗原点")
+        }
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| l.ops.iter().map(|o| format!("{o:?}")).collect::<Vec<_>>())
+                );
+                std::thread::yield_now();
+            }
+        }
+        fn quads_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Quad { rect, .. } => Some((rect.x, rect.y, rect.w, rect.h)),
+                    _ => None,
+                })
+                .collect()
+        }
+        fn texts_of(ops: &[DrawOp]) -> Vec<String> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // —— ①003-converter：queue 孵化 + 双 input + broker_char 键入联动。
+        let wid_c = session.launch_app("003-converter").expect("converter launch");
+        place_window(&mut session, wid_c, 0);
+        // 先泵到首帧（wid 在 ResolveAndAttach 落地期回填 client）。
+        wait_frame(
+            &mut session,
+            "003-converter",
+            |ops| {
+                quads_of(ops)
+                    .iter()
+                    .any(|r| r.2 == 320.0 && r.3 == 32.0)
+            },
+            "003 input 帧",
+        );
+        let mode_c = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_c))
+            .map(|c| c.endpoint.frame_mode)
+            .expect("converter client");
+        assert_eq!(mode_c, FrameMode::Commands, "003 显式 queue → Commands");
+        // 首个 (320,32) 盒 = celsius input；窗内点击聚焦 → broker_char 键入。
+        let (ox, oy) = origin_of(&session, wid_c);
+        let (ix, iy, _, _) = *session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_c))
+            .and_then(|c| c.composed())
+            .map(|l| quads_of(&l.ops))
+            .expect("composed")
+            .iter()
+            .find(|r| r.2 == 320.0 && r.3 == 32.0)
+            .expect("celsius input 盒");
+        assert!(session.broker_pointer_down(ox + ix + 160.0, oy + iy + 16.0, MouseButton::Left));
+        for ch in "100".chars() {
+            assert!(session.broker_char(ch), "broker_char 路由");
+        }
+        wait_frame(
+            &mut session,
+            "003-converter",
+            |ops| texts_of(ops).iter().any(|t| t.starts_with("212")),
+            "003 键入换算联动（fahrenheit=212）",
+        );
+        println!("AUTO025-NATIVE converter typing PASS (celsius 100 -> fahrenheit 212)");
+
+        // —— ②inputs025：slider 点击定位 + select 开合选项命中。
+        let wid_i = session.launch_app("025-inputs").expect("inputs launch");
+        place_window(&mut session, wid_i, 1);
+        wait_frame(
+            &mut session,
+            "025-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "vol: 50"),
+            "inputs 首帧",
+        );
+        let (ox, oy) = origin_of(&session, wid_i);
+        // slider 轨道 = 4px 高 Quad；75% 处点击 → vol = 75。
+        let (tx, ty, tw, _) = *session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_i))
+            .and_then(|c| c.composed())
+            .map(|l| quads_of(&l.ops))
+            .expect("composed")
+            .iter()
+            .find(|r| r.3 == 4.0)
+            .expect("slider track");
+        assert!(session.broker_pointer_down(ox + tx + tw * 0.75, oy + ty + 2.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "025-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "vol: 75"),
+            "slider 轨道点击 f32 派发（vol 75）",
+        );
+        println!("AUTO025-NATIVE slider click PASS (vol 50 -> 75)");
+
+        // select：值盒 = 第二个 (320,32) Quad；点击开 → 选项列 → 命中
+        // Medium（开态选项第 2 项）→ pick 帧变 + 回闭态。
+        wait_frame(
+            &mut session,
+            "025-inputs",
+            |ops| {
+                quads_of(ops)
+                    .iter()
+                    .filter(|r| r.2 == 320.0 && r.3 == 32.0)
+                    .count()
+                    >= 2
+            },
+            "select 盒在册",
+        );
+        let quads = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_i))
+            .and_then(|c| c.composed())
+            .map(|l| quads_of(&l.ops))
+            .expect("composed");
+        let boxes: Vec<_> = quads
+            .iter()
+            .filter(|r| r.2 == 320.0 && r.3 == 32.0)
+            .collect();
+        let (sx, sy, _, _) = *boxes[1];
+        assert!(session.broker_pointer_down(ox + sx + 160.0, oy + sy + 16.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "025-inputs",
+            |ops| {
+                quads_of(ops)
+                    .iter()
+                    .filter(|r| r.2 == 320.0 && r.3 == 32.0)
+                    .count()
+                    >= 5
+            },
+            "select 开态选项列（3 项）",
+        );
+        let quads = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_i))
+            .and_then(|c| c.composed())
+            .map(|l| quads_of(&l.ops))
+            .expect("composed");
+        let boxes: Vec<_> = quads
+            .iter()
+            .filter(|r| r.2 == 320.0 && r.3 == 32.0)
+            .collect();
+        let (mx, my, _, _) = *boxes[boxes.len() - 2]; // 开态选项第 2 项 = Medium
+        assert!(session.broker_pointer_down(ox + mx + 160.0, oy + my + 16.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "025-inputs",
+            |ops| {
+                texts_of(ops).iter().any(|t| t == "pick: Medium")
+                    && quads_of(ops)
+                        .iter()
+                        .filter(|r| r.2 == 320.0 && r.3 == 32.0)
+                        .count()
+                        == 2
+            },
+            "select 选项命中（pick: Medium + 回闭态）",
+        );
+        println!("AUTO025-NATIVE select pick PASS (Small -> Medium)");
+
+        // 帧留痕（AUTO_025_ASSETS=1 → docs/plans/reports/assets/025/）。
+        if std::env::var("AUTO_025_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/025");
+            let _ = std::fs::create_dir_all(&assets);
+            for (app, file) in [
+                ("003-converter", "converter-frame.txt"),
+                ("025-inputs", "inputs025-frame.txt"),
+            ] {
+                if let Some(list) = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                {
+                    let out = crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                    let _ = std::fs::write(assets.join(file), out);
+                }
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
     /// PLAN-025 T-05：broker_key_event/broker_char/broker_scroll 路由
     /// 语义单测（真管道对端落 wire 断言——键盘/字符走焦点窗，滚轮走
     /// 指针命中窗；无焦点/未命中 = false 不路由）。
