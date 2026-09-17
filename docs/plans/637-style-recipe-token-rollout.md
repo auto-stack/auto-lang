@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-637
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: style-recipe-token-rollout（examples/ui 全量配方化 + token 化）
 author: [zhaopuming]
 created_at: 2026-09-17
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象）"]
 
 affects: [auto-lang/ui, autoui-examples]
-current_step: 0
+current_step: 5
 total_steps: 10
 ---
 
@@ -255,12 +255,20 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- **T-00 stylekit 扩容**：styles.at 落 D1 首批 recipe（pub），045 回归
+- [x] **T-00 stylekit 扩容**：styles.at 落 D1 首批 recipe（pub），045 回归
   （既有消费不破）；`cargo test -p auto-man --lib vue` + 045 双端 run。
   （待澄清#1 已裁定，Phase B 无阻塞。）
-- **T-01 守卫脚本先行**：`scripts/style_palette_guard.py` + 调用约定
+  [✅ 已完成 2026-09-17 B1] 8 recipe 落库（pill_ghost/hint_text/caption_text/
+  icon_base/input_field/section_title 新增；input_field 直接落 Phase B 定案形
+  border-border，消费方 W4/023）。045 双端 run 像素 IDENTICAL
+  （evidence/637/045-{vue,vm}-after.png 对 before）。验证命令勘正：auto-man 在
+  auto-os 仓不在本仓，本仓侧以 045 双端 run+guard 为准（Category A 免 cargo t）。
+- [x] **T-01 守卫脚本先行**：`scripts/style_palette_guard.py` + 调用约定
   （矩阵清单文件）；正反例自测。
-- **T-01b settings 消费面移除（r2 前置，W2 开工前完成）**：006/010/016
+  [✅ 已完成 2026-09-17 B1] guard + style_palette_manifest.json 落地；自测
+  4/4 绿（正例零命中/反例 4 命中/from-bg-black 不扫/hover 变体命中）；已完成集
+  正例 8/8 PASS（001-005/013/015/045）。注释行不扫（映射表头注引用旧字面量）。
+- [x] **T-01b settings 消费面移除（r2 前置，W2 开工前完成）**：006/010/016
   删 `use settings: SettingsPopover`、`SettingsPopover(...)` 调用点、
   `settings_open` 状态与 ⚙ Theme 触发按钮；**保留** `dark_mode`/
   `accent_color` 两变量（双端运行时契约——VM 渲染器每帧回读、Vue gen
@@ -270,9 +278,21 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   自足化，无悬空 use）；auto-os 侧 gallery registry 再生时 demo 面
   popover 自动消失（registry 从 examples/ui 全量覆写，单源不漂移），
   不入本计划验证面。
-- **T-02 W1 波**（001-005）：逐 demo「Phase A 去重 → 双端零漂移 →
+  [✅ 已完成 2026-09-17 B1] 006/010 use+调用点+settings_open+⚙按钮+ToggleSettings
+  删除；016 仅删 pac.at 悬空 dep（其内置面板为 store 本地实现，保留）；
+  SetTheme/SetAccent msg 面保留（宿主→demo 主题传播路线通道，本 demo 内无发射方）。
+  主检出悬空 junction ×5 拆除（006/010/015/016+计划外 019；011/deps/common 留 W4）。
+  三 demo VM 冒烟绿 + Vue/VM run-proof 在案（016 双端像素 IDENTICAL）。偏差：r2
+  「standalone 必失败」失实（worktree 无 junction 亦能起，疑 index/缓存兜底），
+  移除按用户裁定照常执行。
+- [x] **T-02 W1 波**（001-005）：逐 demo「Phase A 去重 → 双端零漂移 →
   Phase B 映射表 + 迁移 → 截图 → 矩阵登记」；T-00 后 stylekit 消费第一批。
   （r3：与 T-00/T-01/T-01b/T-06 同属 **B1** 批次。）
+  [✅ 已完成 2026-09-17 B1] 001/002 no-op（无重复串/无调色板色，矩阵登记）；
+  003 Phase A 本地配方 ×4 位点，vue+vm 像素 IDENTICAL 零漂移；004 Phase B
+  8 簇（vue 11.4%/vm 10.5% 差异逐条归因，状态点+渐变豁免登记）；005 A+B 合并
+  （3 本地配方 ×6 位点 + 9 簇，vue 16.2%；vm 81.4%=bg-white→bg-card 暗主题整卡
+  翻转，目标行为）。W1 无全等 recipe 命中，依 r2 AC-05 注记不强行挂 dep。
 - **T-03 W2 波**（006/007/008/009/010/012/014）：同模板；按需增补
   stylekit recipe（版本随波推进）。（r3：= **B2** 批次。）
 - **T-04 W3 波**（15 个中型 demo）：同模板；允许按 demo 分子提交。
@@ -280,9 +300,14 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   tree_icon 四胞胎（018/026/027/041）聚 B4 机械联动。）
 - **T-05 W4 波**（011/019/020/023）：重型 token 化；020 的 264 处逐簇
   （同类串整簇替换）而非逐处。（r3：= **B5**，与 T-07/T-08 收口同批。）
-- **T-06 存量三 demo 收尾**（013/015/045 Phase B + 门禁纳入；r3：提前
+- [x] **T-06 存量三 demo 收尾**（013/015/045 Phase B + 门禁纳入；r3：提前
   并入 **B1** 执行——Phase A 已达标故便宜，且提前兑现 AC-05 stylekit
   消费实证）。
+  [✅ 已完成 2026-09-17 B1] 013 Phase B 16 簇（vue 95.4%/vm 98.3%，主因
+  bg-gray-100→bg-background 全屏翻转+映射表逐条）；015 caption_text ×5 真实消费
+  （pac dep stylekit + editor/sidebar use 导入；vue 像素 IDENTICAL 零漂移；vm
+  22.8%=有状态 db 内容/时间戳漂移，差值可视化在案非样式）+ accent 五色票豁免
+  登记；045 零改动纳入门禁（双端 IDENTICAL 回归）。guard completed 集 8 demo。
 - **T-07 矩阵终验**：35/35 勾记 + grep 全量复扫 + 豁免表复核。
 - **T-08 回归与收口**：`cargo tv` + `cargo t` 对拍；spec delta 回填；
   `execution_done`。**worktree 链接拆除（r2，wt-guard 红线）**：各 demo
@@ -292,6 +317,25 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   （635 先例：合并时手工拆除 360 枚链接，见其合并回执 cleaned 节）。
 - （波次内发现的新重复模式回流 stylekit 时，走 demo 内 style 先行、
   升库与消费方切换同波完成，避免半态。）
+
+### 8.1 执行矩阵（执行期回填，随批次追加）
+
+像素对拍证据：`docs/plans/evidence/637/`（b1-evidence-summary.md 含归因总表）。
+
+| demo | Phase A | Phase B | B1 对拍（vue/vm） | 门禁 | 消费 stylekit |
+|---|---|---|---|---|---|
+| 001 | no-op | no-op | —（未改未拍） | ✅ | — |
+| 002 | no-op | no-op | —（未改未拍） | ✅ | — |
+| 003 | ✅ 本地配方 ×4 | 无色可换 | IDENTICAL / IDENTICAL | ✅ | —（无全等命中） |
+| 004 | 无重复串 | ✅ 8 簇+豁免 2 | 11.4% / 10.5%（归因表） | ✅ | — |
+| 005 | ✅ 本地配方 ×6 | ✅ 9 簇 | 16.2% / 81.4%（归因表） | ✅ | — |
+| 006 | （T-01b 先行移除） | B2 | 3.9% / 3.2%（移除归因） | B2 | — |
+| 010 | （T-01b 先行移除） | B2 | 25.8% / IDENTICAL（vm 本不可见） | B2 | — |
+| 013 | 607 达标 | ✅ 16 簇 | 95.4% / 98.3%（归因表） | ✅ | — |
+| 015 | 607 达标 | ✅ 豁免 5 | IDENTICAL / 22.8%（状态漂移在案） | ✅ | ✅ caption_text ×5 |
+| 016 | B2 | B2 | IDENTICAL / IDENTICAL（T-01b 仅 pac） | B2 | — |
+| 045 | 635 达标 | 无色可换 | IDENTICAL / IDENTICAL（回归） | ✅ | ✅（既有） |
+| 025/038 | N/A（无 .at 源码，r2） | N/A | — | — | — |
 
 ## 9. 复审记录
 
@@ -309,6 +353,14 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   工作量实测配平）；D2 特征列勘正（007=216/008=133 位点，原 W2「<40 处」
   失实）；T-06 提前并入 B1；T-04 拆 B3/B4 两次 fold。工作量基线=同会话
   33 demo 全量实测（style/调色板/white 三列计量，总计 ~3070 位点）。）
+- （B1 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
+  outcome: pass（批次级，整体保持 executing） | code_commit: plan-637-dev B1 提交 |
+  task_ids: T-00/T-01/T-01b/T-02/T-06 | evidence: docs/plans/evidence/637/
+  （b1-evidence-summary.md + 截图对 + 015-vm-diff-vis.png） | blockers: 无 |
+  next: fold 回 master 后 B2（T-03 W2 波）。批次机制：完整 review+cargo tv/tf
+  仅在 B5 终态执行一次；批次级偏差 7 项见 b1-evidence-summary.md §3
+  （r2 standalone 失实勘正、006/010 SetTheme/SetAccent 保留、016 本地面板保留、
+  004 状态点豁免、T-00 验证命令勘正、主检出副产物还原、截图脚本陷阱）。）
 
 ## 10. 待澄清事项
 
