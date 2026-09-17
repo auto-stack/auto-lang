@@ -3256,6 +3256,7 @@ fn store_decl_as_widget_decl(
         model: store_decl.model.clone(),
         computed: store_decl.computed.clone(),
         view: None,
+        named_views: Vec::new(),
         on: store_decl.on.clone(),
         bind: None,
         props: Vec::new(),
@@ -3983,6 +3984,7 @@ fn build_dynamic_component_inner(
                                     model: store_decl.model.clone(),
                                     computed: store_decl.computed.clone(),
                                     view: None,
+                                    named_views: Vec::new(),
                                     on: store_decl.on.clone(),
                                     bind: None,
                                     props: Vec::new(),
@@ -4098,6 +4100,7 @@ fn build_dynamic_component_inner(
                                     model: store_decl.model.clone(),
                                     computed: store_decl.computed.clone(),
                                     view: None,
+                                    named_views: Vec::new(),
                                     on: store_decl.on.clone(),
                                     bind: None,
                                     props: Vec::new(),
@@ -4167,6 +4170,7 @@ fn build_dynamic_component_inner(
                 model: store_decl.model.clone(),
                 computed: store_decl.computed.clone(),
                 view: None,  // stores have no view
+                named_views: Vec::new(),
                 on: store_decl.on.clone(),
                 bind: None,
                 props: Vec::new(),
@@ -4201,6 +4205,7 @@ fn build_dynamic_component_inner(
                     model: store_decl.model.clone(),
                     computed: store_decl.computed.clone(),
                     view: None,
+                    named_views: Vec::new(),
                     on: store_decl.on.clone(),
                     bind: None,
                     props: Vec::new(),
@@ -6906,6 +6911,11 @@ mod plan627_qualified_api_tests;
 // PLAN-634 T-03: a2r 语句位置块尾分号语料（auto-term DEBTS #18 根修）。
 #[cfg(test)]
 mod plan634_block_tail_semi_tests;
+
+// PLAN-024: named view (`view mini { ... }`) parsing corpus — desktop
+// dashboard language extension.
+#[cfg(test)]
+mod plan024_named_view_tests;
 
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
