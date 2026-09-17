@@ -3,6 +3,7 @@
 // them from `dataSource.list` / `dataSource.by_folder` / `dataSource.by_tag` on
 // init). Demonstrates the folder/tag filter bar, loading/error/empty branches.
 
+
 widget NoteList {
     msg {
         SearchChanged,
@@ -12,16 +13,15 @@ widget NoteList {
         Retry
     }
 
-    // Sample items so the reference renders standalone; a real consumer
-    // replaces these by calling dataSource.list() (or by_folder/by_tag when a
-    // scope is active) in .Init.
-    items: list of Note = [
-        { id: 1, title: "Welcome note", body: "Hello world.", time: "2026-06-26", folder: "Inbox", tags: ["intro", "pinned"] },
-        { id: 2, title: "Second note", body: "More content.", time: "2026-06-26", folder: "Work", tags: ["todo"] }
-    ]
-
     model {
-        var search str = ""
+        // Sample items so the reference renders standalone; a real consumer
+        // replaces these by calling dataSource.list() (or by_folder/by_tag when a
+        // scope is active) in .Init.
+        var items list = [
+            { id: 1, title: "Welcome note", body: "Hello world.", time: "2026-06-26", folder: "Inbox", tags: ["intro", "pinned"] },
+            { id: 2, title: "Second note", body: "More content.", time: "2026-06-26", folder: "Work", tags: ["todo"] }
+        ]
+        var query str = ""
         var active_id int = 1
         var active_folder str = "Inbox"
         var active_tag str = ""
@@ -33,7 +33,7 @@ widget NoteList {
         col {
             // ── EDIT: toolbar ──
             input {
-                value: .search
+                value: .query
                 oninput: .SearchChanged
                 placeholder: "Search…"
                 style: "w-full px-3 py-2 text-sm border rounded-lg mb-2"
@@ -70,7 +70,7 @@ widget NoteList {
             // ── EDIT: error ──
             if .error != "" {
                 col {
-                    text .error { style: "text-sm text-red-600 p-3" }
+                    text f"error: ${.error}" { style: "text-sm text-red-600 p-3" }
                     button {
                         label: "Retry"
                         onclick: .Retry
@@ -87,8 +87,8 @@ widget NoteList {
 
             // ── EDIT: items ──
             for note in .items {
-                if .search == "" || note.title.contains(.search) {
-                    col {
+                col {
+                    if .query == "" || note.title.contains(.query) {
                         button {
                             label: note.title
                             onclick: .SelectItem(note.id)
@@ -110,7 +110,7 @@ widget NoteList {
     }
 
     on {
-        .SearchChanged(s) -> { .search = s }
+        .SearchChanged(s) -> { .query = s }
         .SelectItem(id) -> { .active_id = id }
         .ClearFolder -> {
             .active_folder = ""
@@ -127,13 +127,4 @@ widget NoteList {
             .loading = false
         }
     }
-}
-
-type Note = {
-    id int
-    title str
-    body str
-    time str
-    folder str
-    tags list of str
 }

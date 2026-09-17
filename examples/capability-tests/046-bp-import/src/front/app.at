@@ -1,0 +1,14 @@
+// PLAN-639 AC-03 demo：跨包 blueprint 消费（L1 import/bind 通道，零副本）。
+// `use bps.form.login.reference.minimal` 经 resolve_module_path 命中
+// <repo>/blueprints/form/login/reference/minimal.at（635 dotted 候选），
+// 本应用不持有 LoginForm 的任何副本。
+use bps.form.login.reference.minimal: LoginForm
+
+widget App {
+    view {
+        col {
+            LoginForm {}
+            style: "min-h-screen items-center justify-center p-6"
+        }
+    }
+}

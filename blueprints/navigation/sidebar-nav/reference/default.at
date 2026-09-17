@@ -10,18 +10,18 @@ widget SidebarNav {
         SelectTag(str)
     }
 
-    // Sample data so the reference renders standalone; a real consumer
-    // replaces these by calling dataSource.folders() / dataSource.tags() in
-    // .Init.
-    folders: list of Folder = [
-        { name: "Inbox", count: 12 },
-        { name: "Work", count: 7 },
-        { name: "Personal", count: 3 }
-    ]
-    tags: list of str = ["intro", "pinned", "todo", "idea"]
-
     model {
+        // Sample data so the reference renders standalone; a real consumer
+        // replaces these by calling dataSource.folders() / dataSource.tags() in
+        // .Init.
+        var folders list = [
+            { name: "Inbox", count: 12 },
+            { name: "Work", count: 7 },
+            { name: "Personal", count: 3 }
+        ]
+        var tags list = ["intro", "pinned", "todo", "idea"]
         var active str = "all"
+        var shortcuts list = ["all", "pinned", "recent"]
     }
 
     view {
@@ -29,7 +29,7 @@ widget SidebarNav {
             // ── EDIT: shortcuts ──
             col {
                 style: "gap-1 pb-2"
-                for s in ["all", "pinned", "recent"] {
+                for s in .shortcuts {
                     button {
                         label: s
                         onclick: .SelectShortcut(s)
@@ -91,7 +91,3 @@ widget SidebarNav {
     }
 }
 
-type Folder = {
-    name str
-    count int
-}

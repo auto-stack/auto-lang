@@ -44,7 +44,7 @@ widget LoginFormSso {
             }
 
             // ── EDIT: submit ──
-            button .loading {
+            button {
                 label: "Sign in"
                 onclick: .Submit
                 disabled: .loading
@@ -53,7 +53,7 @@ widget LoginFormSso {
 
             // ── EDIT: error_display ──
             if .error != "" {
-                text .error { style: "text-sm text-red-600" }
+                text f"error: ${.error}" { style: "text-sm text-red-600" }
             }
 
             separator { style: "my-2" }

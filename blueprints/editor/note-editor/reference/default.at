@@ -8,25 +8,24 @@ widget NoteEditor {
         TitleChanged,
         BodyChanged,
         AddTag,
-        RemoveTag(str),
+        RemoveTag(int),
         Save,
         Delete,
         Pin
     }
 
-    // Sample note so the reference renders standalone; a real consumer
-    // replaces this by loading the selected note into .note.
-    note: Note = {
-        id: 1,
-        title: "Welcome note",
-        body: "# Welcome\n\nThis is your first note. Edit me!",
-        pinned: true
-    }
-
     model {
+        // Sample note so the reference renders standalone; a real consumer
+        // replaces this by loading the selected note into .note.
+        var note = {
+            id: 1,
+            title: "Welcome note",
+            body: "# Welcome\n\nThis is your first note. Edit me!",
+            pinned: true
+        }
         var title str = .note.title
         var body str = .note.body
-        var tags list of str = ["intro", "pinned"]
+        var tags list = ["intro", "pinned"]
         var new_tag str = ""
         var dirty bool = false
         var saving bool = false
@@ -68,9 +67,12 @@ widget NoteEditor {
             }
 
             // ── EDIT: editor ──
-            autodown_editor {
-                content: .body
-                onupdate: .BodyChanged
+            // v0 keeps the surface a plain multi-line input (zero npm deps);
+            // swap in an AutoDownEditor / markdown surface here per app needs.
+            textarea {
+                value: .body
+                oninput: .BodyChanged
+                placeholder: "Note body"
                 style: "w-full min-h-64 px-2 py-2"
             }
 
@@ -79,10 +81,10 @@ widget NoteEditor {
             // ── EDIT: tags ──
             row {
                 style: "flex-wrap items-center gap-1 pt-2"
-                for tag in .tags {
+                for i, tag in .tags {
                     badge {
                         text: "#" + tag
-                        onclick: .RemoveTag(tag)
+                        onclick: .RemoveTag(i)
                         variant: "secondary"
                         style: "cursor-pointer"
                     }
@@ -112,8 +114,8 @@ widget NoteEditor {
             .new_tag = s
             // consumer commits on Enter; placeholder for keystroke handling
         }
-        .RemoveTag(t) -> {
-            .tags = .tags.filter(func(x str) bool { x != t })
+        .RemoveTag(i) -> {
+            .tags.remove(i)
             .dirty = true
         }
         .Pin -> {
@@ -132,9 +134,3 @@ widget NoteEditor {
     }
 }
 
-type Note = {
-    id int
-    title str
-    body str
-    pinned bool
-}

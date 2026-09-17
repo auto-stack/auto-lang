@@ -120,6 +120,30 @@ fn dot_chain_path(expr: &crate::ast::Expr) -> Option<String> {
     }
 }
 
+/// PLAN-639 T-04: quote-aware scan for a tag's closing `>`.
+/// `String::find('>')` misfires when an attribute VALUE contains `>`
+/// (e.g. the auto search-filter's `(n: any) =>` lambda inside v-for) and
+/// yields a position inside the attribute — inserting `:key` mid-value and
+/// corrupting the emitted tag (046-bp-import NoteList v-for 实测).
+fn find_tag_close(html: &str) -> Option<usize> {
+    let bytes = html.as_bytes();
+    let mut quote: Option<u8> = None;
+    for (i, b) in bytes.iter().enumerate() {
+        match quote {
+            Some(q) if *b == q => quote = None,
+            Some(_) => {}
+            None => {
+                if *b == b'"' || *b == b'\'' {
+                    quote = Some(*b);
+                } else if *b == b'>' {
+                    return Some(i);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn find_loop_child_key(body: &[AuraNode]) -> Option<String> {
     // depth-bounded recursive search: the key may sit on a text nested a few
     // containers inside a conditional branch
@@ -7682,7 +7706,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     match &body[0] {
                         AuraNode::Element { .. } | AuraNode::Component { .. } => {
                             let child_html = self.node_to_html(&body[0], indent)?;
-                            if let Some(gt_pos) = child_html.find('>') {
+                            if let Some(gt_pos) = find_tag_close(&child_html) {
                                 let mut result = child_html;
                                 // Self-closing tag (<Foo />): insert before the
                                 // '/', not between '/' and '>'.
@@ -7695,7 +7719,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                 // Plan 041a(musk 041 Phase 5 R006 收口): 快路径
                                 // (单元素直挂 v-for)无 :key 时补 id 回退键——
                                 // strict 模式 R006 拦截;显式 key 已在则不动。
-                                let tag_end = result.find('>').unwrap();
+                                let tag_end = find_tag_close(&result).unwrap();
                                 let head = &result[..tag_end];
                                 if !head.contains(":key=") {
                                     let key_expr = format!(
