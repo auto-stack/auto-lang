@@ -186,6 +186,10 @@ pub struct TerminalCore {
     /// PLAN-018 D10:配色方案(-1 = 跟随桌面主题 dark→0/light→1;≥0 =
     /// 显式 scheme id)。widget 绘制时解析,零每格开销。
     scheme: AtomicI32,
+    /// PLAN-019 滚轮回灌队列:widget 滚轮增量累计(引擎约定,正=上翻
+    /// 历史),宿主引擎泵排水后调引擎 scroll——display_offset 在引擎侧,
+    /// 本组件只缓存视口快照,本地无历史可滚。
+    scroll_delta: Mutex<i32>,
 }
 
 const BLINK_PERIOD_MS: u64 = 530;
@@ -210,6 +214,7 @@ impl TerminalCore {
             pending_input: Mutex::new(Vec::new()),
             pending_resize: Mutex::new(None),
             scheme: AtomicI32::new(TERMINAL_SCHEME_FOLLOW_THEME),
+            scroll_delta: Mutex::new(0),
         }
     }
 
@@ -630,6 +635,18 @@ pub fn terminal_scroll(core: &TerminalCore, delta: i32) {
 /// Explicit offset set (app round-trips the engine's scrollback position).
 pub fn terminal_set_scroll_offset(core: &TerminalCore, offset: usize) {
     core.scroll_offset.store(offset as u64, Ordering::Relaxed);
+}
+
+/// PLAN-019 滚轮回灌:滚轮增量入队(引擎约定:**正=上翻历史**)。组件
+/// 本地无历史可滚(视口快照缓存),滚动语义在引擎 display_offset——
+/// 宿主引擎泵排水后调引擎 scroll,同拍快照即反映滚动视图。
+pub fn terminal_queue_scroll_delta(core: &TerminalCore, delta: i32) {
+    *core.scroll_delta.lock().unwrap() += delta;
+}
+
+/// 排水:取走累计滚动增量(读后即清零;引擎泵每拍调用)。
+pub fn terminal_take_scroll_delta(core: &TerminalCore) -> i32 {
+    std::mem::take(&mut *core.scroll_delta.lock().unwrap())
 }
 
 /// 菜单动作载荷写入(widget 命中菜单项时;app 在收到 on_menu 后读取)。

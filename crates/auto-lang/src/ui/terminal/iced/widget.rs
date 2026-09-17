@@ -560,6 +560,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                         core,
                         -lines * WHEEL_LINES_PER_NOTCH,
                     );
+                    // PLAN-019 滚轮回灌:引擎约定正=上翻历史(iced y>0=滚轮向上),
+                    // 引擎泵排水后调 display_offset,同拍快照即历史视图。
+                    crate::ui::terminal::terminal_queue_scroll_delta(core, lines * WHEEL_LINES_PER_NOTCH);
                     if let Some(msg) = self.on_select.clone() {
                         shell.publish(msg);
                     }
