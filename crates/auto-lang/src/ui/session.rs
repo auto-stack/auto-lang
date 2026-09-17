@@ -5679,6 +5679,61 @@ mod tests {
         assert!(DesktopCommand::parse_records("dock_unpin\u{1f}").is_empty());
     }
 
+    /// PLAN-019 v1.7：负一屏/壁纸 picker 七动词编码解析往返（词表回归
+    /// 保护）。无参族前置判定（wallpaper_pick 近形带参壁纸动词不互吞）、
+    /// nav 值域 prev/next 窄值、preview 空参 = 退栅格态（唯一空参合法的
+    /// 带参动词）、\u{1f}/\t 双轨。
+    #[test]
+    fn showdesk_wallpaper_verbs_parse_and_encode() {
+        let cmds = vec![
+            DesktopCommand::ShowDesktop,
+            DesktopCommand::ShowdeskReturn,
+            DesktopCommand::WallpaperPick,
+            DesktopCommand::WallpaperClose,
+            DesktopCommand::WallpaperBrowseDir,
+            DesktopCommand::WallpaperNav("prev".to_string()),
+            DesktopCommand::WallpaperNav("next".to_string()),
+            DesktopCommand::WallpaperPreview(
+                "D:/Down/stella-os/wallpapers/room.jpg".to_string(),
+            ),
+        ];
+        let payload = cmds
+            .iter()
+            .map(|c| c.encode())
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        assert_eq!(DesktopCommand::parse_records(&payload), cmds);
+        // 无参动词编码 = 裸词（无分隔符尾巴）。
+        assert_eq!(DesktopCommand::ShowDesktop.encode(), "show_desktop");
+        assert_eq!(DesktopCommand::ShowdeskReturn.encode(), "showdesk_return");
+        assert_eq!(DesktopCommand::WallpaperPick.encode(), "wallpaper_pick");
+        assert_eq!(DesktopCommand::WallpaperClose.encode(), "wallpaper_close");
+        assert_eq!(
+            DesktopCommand::WallpaperBrowseDir.encode(),
+            "wallpaper_browse_dir"
+        );
+        // shell.at 轨：\n 分记录 + \t 分字段（lexer 无 \u{..} 转义）。
+        assert_eq!(
+            DesktopCommand::parse_records("show_desktop\nwallpaper_pick"),
+            vec![DesktopCommand::ShowDesktop, DesktopCommand::WallpaperPick]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("wallpaper_nav\tnext"),
+            vec![DesktopCommand::WallpaperNav("next".to_string())],
+            "\\t 分隔符双轨等价"
+        );
+        // preview 空参 = 退栅格态（保留空串，不跳过）。
+        assert_eq!(
+            DesktopCommand::parse_records("wallpaper_preview\u{1f}"),
+            vec![DesktopCommand::WallpaperPreview(String::new())]
+        );
+        // nav 值域外跳过（不 panic、不阻塞后续记录）。
+        assert_eq!(
+            DesktopCommand::parse_records("wallpaper_nav\u{1f}up\u{1e}show_desktop"),
+            vec![DesktopCommand::ShowDesktop]
+        );
+    }
+
     #[test]
     fn launch_app_cascade_index_counts_current_partition() {
         let mut ds = t4_session_with_resolver();
