@@ -1501,13 +1501,15 @@ mod tests {
             type Msg = SMsg;
             fn on(&mut self, _msg: Self::Msg) {}
             fn view(&self) -> View<Self::Msg> {
-                View::text_styled("x", "shadow-lg")
+                // shadow 已降级放行（T-06——解释态同款保真边界）；样本换
+                // underline（装饰未实现面——token 无支持前缀 → not-yet）。
+                View::text_styled("x", "underline")
             }
         }
 
         let p = NativeProjector::new(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("style:shadow"), "native v1 无 shadow 渲染: {err}");
+        assert!(err.contains("style:underline"), "native 无 underline 渲染: {err}");
     }
 
     #[test]
@@ -2144,6 +2146,130 @@ mod tests {
             "左键派发 Left: {:?}",
             texts_of(&frame)
         );
+    }
+
+    // —— PLAN-025 T-06 防漏钉（双向）+ native queue 金样 ——
+
+    /// 防漏钉（双向，parity_matrix_covers_target_set 的 native 同型）：
+    /// ① 覆盖表 → 投影器臂：native_queue_set 每个 kind/layout 在矩阵
+    /// 夹具中在场，且各夹具 ensure_covered 通过 + 渲染零 uncovered
+    /// （= 投影器**确有**对应臂——gate 过但臂缺会当场炸）；② 投影器臂
+    /// → 覆盖表：矩阵中每种被渲染的变体 kind 均在 native_queue_set
+    ///（防"臂已写、表未扩"漂移）。
+    #[test]
+    fn native_coverage_matrix_pinned_to_projector() {
+        use std::collections::BTreeSet;
+
+        #[derive(Debug)]
+        struct Matrix;
+        #[derive(Debug, Clone)]
+        enum MMsg {
+            Nop,
+        }
+        impl Component for Matrix {
+            type Msg = MMsg;
+            fn on(&mut self, _m: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::text("t"))
+                    .child(View::button("b").on_click(|_| MMsg::Nop).build())
+                    .child(View::input("i").build())
+                    .child(View::textarea("ta").build())
+                    .child(View::checkbox(true, "cb"))
+                    .child(View::radio(false, "r"))
+                    .child(View::slider(0.0..=1.0, 0.5, |_| MMsg::Nop).build())
+                    .child(View::Select {
+                        options: vec!["o".into()],
+                        selected_index: Some(0),
+                        on_select: None,
+                        style: None,
+                    })
+                    .child(View::scrollable(View::text("s")).height(16).build())
+                    .child(View::row().child(View::text("r1")).build())
+                    .child(View::container(View::text("c")).build())
+                    .child(View::list(vec![View::text("l1")]).build())
+                    // 透传壳（layouts: empty / anchorslot）。
+                    .child(View::spacer())
+                    .child(View::AnchorSlot { index: 0, child: Box::new(View::text("a")) })
+                    .build()
+            }
+        }
+
+        let p = NativeProjector::new(Matrix, 480.0, 320.0);
+        let scan = coverage::scan_native_view(&p.component.view());
+        let set = Coverage::native_queue_set();
+
+        // ① kinds ∪ layouts ⊆ 夹具扫描标签并集。
+        for kind in &set.kinds {
+            assert!(scan.tags.contains(kind), "矩阵缺 {kind} 夹具");
+        }
+        for layout in &set.layouts {
+            assert!(scan.tags.contains(layout), "矩阵缺 {layout} 夹具");
+        }
+        // 夹具 Covered（扫描面过 gate）。
+        assert!(p.ensure_covered().is_ok(), "矩阵视图应 Covered");
+
+        // ② 投影器臂在场：渲染零 uncovered_seen（占位臂未触发——
+        // 每个登记 kind 都有真臂）。反向钉：native_kind_of 全变体
+        // 映射逐一入表 or 显式 not-yet（无第三态——表外 kind 渲染即
+        // 占位留痕，由 dynamic_branch 测试钉住）。
+        let mut p = NativeProjector::new(Matrix, 480.0, 320.0);
+        let _ = p.render_frame();
+        assert!(
+            p.uncovered_seen().is_empty(),
+            "覆盖 kind 渲染不得落占位臂: {:?}",
+            p.uncovered_seen()
+        );
+        // 防表内幽灵 kind：set 中每个 kind 必须被 native_kind_of 产出
+        // 过（矩阵扫描标签并集 == 表面，防手滑多登记）。
+        let produced: BTreeSet<String> = scan.tags.iter().cloned().collect();
+        for kind in &set.kinds {
+            assert!(produced.contains(kind), "表内 kind 无投影臂夹具: {kind}");
+        }
+        for layout in &set.layouts {
+            assert!(produced.contains(layout), "表内 layout 无投影臂夹具: {layout}");
+        }
+    }
+
+    /// native queue 金样（003-converter 形态——双 input + 换算文本，
+    /// a2r 生成 View 的手建同构；drawlist_to_text 全精度锁，
+    /// AUTO_WRITE_GOLDEN=1 重写）。三臂对拍：本金样 = queue 臂；
+    /// 独立窗/pixels 臂 = stage3 e2e（p025_native_input_arm）+ 020
+    /// 像素臂在册。
+    #[test]
+    fn native_queue_golden_003_shape() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test/parity/native");
+        std::fs::create_dir_all(&dir).expect("mkdir parity/native");
+        let mut p = NativeProjector::new(
+            Converter { celsius: 0.0, fahrenheit: 32.0 },
+            480.0,
+            320.0,
+        );
+        let mut out = String::new();
+        out.push_str("---- frame 1 ----\n");
+        out.push_str(&crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(&p.render_frame()));
+        // 输入交互差分：聚焦 celsius → 键入 "0100"（视图值 0 + 100）→
+        // 换算联动复帧。
+        click(&mut p, 100.0, 26.0);
+        for ch in "100".chars() {
+            p.on_input(&InputMsg::CharTyped { wid: 1, ch });
+        }
+        out.push_str("---- after input ----\n");
+        out.push_str(&crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(&p.render_frame()));
+
+        let exp_path = dir.join("003-converter.expected.txt");
+        if std::env::var("AUTO_WRITE_GOLDEN").is_ok() || !exp_path.is_file() {
+            std::fs::write(&exp_path, &out).expect("write golden");
+        }
+        let expected = std::fs::read_to_string(&exp_path)
+            .unwrap_or_else(|e| panic!("read golden: {e}"));
+        if out != expected {
+            let _ = std::fs::write(dir.join("003-converter.wrong.txt"), &out);
+            panic!(
+                "003 native queue 金样不匹配（见 test/parity/native/003-converter.wrong.txt）"
+            );
+        }
     }
 
     #[test]

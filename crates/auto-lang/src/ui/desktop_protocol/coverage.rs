@@ -205,6 +205,12 @@ impl Coverage {
             "items-", "justify-", "mx-auto",
             "text-", "font-",
             "bg-", "border", "rounded", "from-", "to-",
+            // PLAN-025 T-06（T-01 §5.1 定案 2）：flex-1/shadow 降级放行
+            // ——解释态 target_set 同款保真边界（shadow 渲染 no-op、
+            // flex 族自然宽——native_projector::node_style_of 随注），
+            // 非静默扩权：003-converter 真源 gate 通过所需。
+            "flex-1",
+            "shadow",
         ]
         .into_iter()
         .map(String::from)
@@ -967,6 +973,24 @@ mod tests {
             assert!(
                 line.contains(&evidence.trim_start_matches("tag:")),
                 "{family} 缺项清单随行: {line}"
+            );
+        }
+    }
+
+    /// PLAN-025 T-06：003-converter 真源样式 token 全放行（native gate
+    /// ——flex-1/shadow 降级放行定案；AC-05 覆盖翻转样本）。
+    #[test]
+    fn native_gate_accepts_003_style_tokens() {
+        let coverage = Coverage::native_queue_set();
+        for token in [
+            "flex-1", "gap-1.5", "max-w-md", "p-8", "bg-card", "border",
+            "rounded-2xl", "shadow-sm", "mx-auto", "text-2xl", "font-bold",
+            "text-primary", "text-center", "mb-6", "gap-4", "text-sm",
+            "font-medium", "text-muted-foreground", "text-xs", "mt-6",
+        ] {
+            assert!(
+                coverage.style_token_supported(token),
+                "003 token 应放行: {token}"
             );
         }
     }
