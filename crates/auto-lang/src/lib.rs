@@ -6528,7 +6528,14 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
     default_classes: Option<bool>,
     bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
     sub_widget_msgs: Option<std::collections::HashMap<String, Vec<String>>>,
-) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
+) -> AutoResult<(
+    String,
+    Vec<crate::aura::AuraWidget>,
+    Vec<(String, String)>,
+    Vec<(String, String, String)>,
+)> {
+    // PLAN-024：第四返回段 = named_view_codes（widget, view, SFC code）——
+    // 桌面 vue 宿主 Mini.vue 产物源（仅本 fn 的唯一调用方 auto-man 消费）。
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let at_path = std::path::Path::new(path);
@@ -6568,7 +6575,12 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
         }
     }
 
-    Ok((result.vue_code, result.widgets, store_composables))
+    Ok((
+        result.vue_code,
+        result.widgets,
+        store_composables,
+        result.named_view_codes,
+    ))
 }
 
 pub fn ui_build_shadcn_with_sub_widgets_and_stores(

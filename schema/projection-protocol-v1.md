@@ -1,6 +1,10 @@
-# AutoShell 状态投影协议 v1.7（S2 接缝合同）
+# AutoShell 状态投影协议 v1.8（S2 接缝合同）
 
-> **版本**：v1.7（2026-09-14，双增量并行落码——PLAN-016：`open_with` 打开
+> **版本**：v1.8（2026-09-17，auto-os PLAN-024：dashboard 面板第四 overlay
+> 槽——入向 `__dashboard_faces`/`__wm_dashboard` 注入面 + 出向
+> `__dashboard_cmd` 六动词词表（toggle/close/pin/unpin/span/launch）+
+> `shell.dashboard.*` storage 键空间。详见 §6 v1.8 节）。
+> v1.7（2026-09-14，双增量并行落码——PLAN-016：`open_with` 打开
 > 文件动词（普通注册表窗上行排空面 + pac `opens:` 关联校验面）；auto-os
 > PLAN-019：负一屏显示桌面（保留分区 + origin 往返）与壁纸选择 carousel
 > （pick/close 组合簿记 + 候选注入面）。详见 §6 v1.7 节）。
@@ -168,6 +172,36 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.8（2026-09-17，auto-os PLAN-024：dashboard 面板）
+
+- **dashboard 面板 = 第四 overlay 槽**（设置面板退役后继任，通知层邻位顶层；
+  懒挂载 + visible 门控推层，switcher/通知同款语义）。面板本体 = 特权面
+  `dashboard.at`（shell pack 第五件，hash-lock 双写）；face 卡 = 各 App
+  `view mini` 命名视图的**宿主拆借渲染**（`SessionViewRef.view_name` 选择
+  器 + `DynamicComponent.view_named`——活渲染面：与主窗同 component/同
+  VM 桥，输入/Tick/重渲染全通，非截图/缩放）。
+- **入向 `__dashboard_faces`**（面板 App 合同面 Obj 数组，声明不 handler
+  消费——handler 侧走 `face_ids/face_titles/face_icons/face_statuses/
+  face_spans` 平行字符串列表 + `RebuildFaces`，B12 规避同族）：face 快照
+  `{id,title,icon,status,span}`，`status` ∈ running/hatched/placeholder
+  （D4 可用性规则：会话存在即活卡；无后端 app 未运行可静默孵化 windowless
+  会话；有后端 app 未运行 = 占位卡 + `dashboard_launch`）。
+- **入向 `__wm_dashboard`**（shell 标量 "1"/""）：面板可见性投影——dock
+  Dashboard 钮两态高亮判据（`__wm_notes_visible` 同型）。
+- **入向几何注入** `__panel_w/__panel_h/__panel_top`（px）：面板布局单一
+  事实在宿主（`dashboard_layout` 行主序 next-fit：等宽 3 列 + span 1|2 宽卡），
+  面板 .at 经 style 插值镜像（`__panel_max_h` 同型）。
+- **出向 `__dashboard_cmd`**（面板 App 上行总线，宿主读+清）：六动词
+  `dashboard_toggle`/`dashboard_close`/`dashboard_pin <id>`/
+  `dashboard_unpin <id>`/`dashboard_span <id> <1|2>`/`dashboard_launch
+  <id>`（`__desktop_cmd` 同一 parse_records 解析，DesktopCommand 六新变体）。
+  shell.at dock 钮走 `__desktop_cmd` 的 `dashboard_toggle` 无参动词。
+- **配置键空间 `shell.dashboard.*`**：`enabled`（csv 纳入清单；缺席 =
+  未配置 = 首次召唤自动纳入全部候选）+`span.<app>`（"1"|"2"）。宿主侧
+  `storage_host_read`/`storage_host_publish` 直读写（非几何无动词，boot
+  生效——既定判定）。
+- **新动词（§4 词表扩）**：上述六 dashboard 动词。
 
 ### v1.7（2026-09-14，双增量并行落码：PLAN-016 + auto-os PLAN-019）
 

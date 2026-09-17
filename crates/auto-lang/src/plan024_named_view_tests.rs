@@ -201,3 +201,60 @@ widget Nav {
         }
     }
 }
+
+/// PLAN-024 vue 生成：named_view_codes 产物（Mini.vue 源）——generate
+/// 管线克隆换根复用（script/store 段共享），无 mini 源恒空。
+#[test]
+fn vue_named_view_codes_generated() {
+    let dir = std::env::temp_dir().join("plan024_vue_mini");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("app.at");
+    std::fs::write(
+        &path,
+        r#"
+widget App {
+    model { n int = 0 }
+    view { col { text { "Main" } } }
+    view mini { col { text { "12:00" } } }
+}
+"#,
+    )
+    .unwrap();
+    let result = crate::ui_gen::generate_component_from_file(
+        &path,
+        crate::ui_gen::ComponentGenOptions::default(),
+    )
+    .expect("generate");
+    assert_eq!(result.named_view_codes.len(), 1);
+    let (wname, vname, code) = &result.named_view_codes[0];
+    assert_eq!(wname, "App");
+    assert_eq!(vname, "mini");
+    assert!(code.contains("12:00"), "mini template in SFC");
+    assert!(code.contains("<template>"), "valid SFC shape");
+    let _ = std::fs::remove_file(&path);
+}
+
+/// PLAN-024 vue 生成：无 named view 的源产物恒空（零回归面）。
+#[test]
+fn vue_named_view_codes_empty_without_mini() {
+    let dir = std::env::temp_dir().join("plan024_vue_nomini");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("app.at");
+    std::fs::write(
+        &path,
+        r#"
+widget App {
+    model { n int = 0 }
+    view { col { text { "Main" } } }
+}
+"#,
+    )
+    .unwrap();
+    let result = crate::ui_gen::generate_component_from_file(
+        &path,
+        crate::ui_gen::ComponentGenOptions::default(),
+    )
+    .expect("generate");
+    assert!(result.named_view_codes.is_empty());
+    let _ = std::fs::remove_file(&path);
+}

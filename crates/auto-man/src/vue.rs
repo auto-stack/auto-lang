@@ -2147,6 +2147,9 @@ pub struct VueProject {
     pub has_routes: bool,
     /// Generated App.vue code
     pub app_vue_code: String,
+    /// PLAN-024：根 widget 的 `view mini` 命名视图产物（view_name, SFC）——
+    /// 桌面 vue 宿主 Mini.vue 落盘源；None = 该 app 无 mini 面。
+    pub mini_face: Option<(String, String)>,
     /// All components (relative_dir, name, code, widget_name)
     pub components: Vec<(String, String, String, String)>,
     /// All routes
@@ -2575,10 +2578,23 @@ export default router
         }
 
         // Process app.at — generate each widget independently, with known sub-widget names
+        // PLAN-024：根 widget mini 面收集（工程无 mini 恒 None）——
+        // 声明提至外层作用域（ViewProject 构造消费）。
+        let mut root_widget_name_minis: Option<(String, String)> = None;
         if app_at.exists() {
             match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(sub_widget_models.clone()), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes), Some(bound_model_channels.clone()), Some(sub_widget_msgs.clone())) {
-                Ok((vue_code, widgets, stores)) => {
+                Ok((vue_code, widgets, stores, named_view_codes)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
+                    // PLAN-024：根 widget 的 mini 面（桌面 dashboard 卡）——
+                    // (view_name, SFC code)；v1 仅收根 widget 的命名视图
+                    //（子件 mini 需 per-component 注册，v2）。
+                    if let Some(root_widget) = widgets.first() {
+                        for (wname, vname, mcode) in named_view_codes {
+                            if wname == root_widget.name && root_widget_name_minis.is_none() {
+                                root_widget_name_minis = Some((vname, mcode));
+                            }
+                        }
+                    }
                     let components = detect_shadcn_components(&vue_code);
                     for comp in &components {
                         all_shadcn_components.insert(comp.clone());
@@ -3057,6 +3073,7 @@ export default router
             shadcn_components,
             has_routes,
             app_vue_code,
+            mini_face: root_widget_name_minis,
             components: all_components,
             routes: all_routes,
             npm_deps,
@@ -3837,7 +3854,7 @@ export default router
         let stores_dir = src_dir.join("stores");
 
         let mut shadcn_needed: Vec<String> = Vec::new();
-        let mut registry_rows: Vec<(String, String, String, String)> = Vec::new();
+        let mut registry_rows: Vec<(String, String, String, String, bool)> = Vec::new();
         let mut npm_merge: Vec<(String, String)> = Vec::new();
         let mut claimed_stores: HashSet<String> = HashSet::new();
         let mut claimed_components: HashSet<String> = HashSet::new();
@@ -3983,7 +4000,12 @@ export default router
             fs::write(app_dir.join("App.vue"), &vp.app_vue_code)
                 .map_err(|e| format!("Failed to write {}/App.vue: {}", app_dir.display(), e))?;
             // PLAN-015：注册表行展示名走 locale 链（zh=title_zh→title…）。
-            registry_rows.push((e.id.clone(), e.display_title().to_string(), e.icon.clone(), e.category.clone()));
+            // PLAN-024：mini 面旗标 + Mini.vue 落盘（根 widget 的 view mini）。
+            if let Some((_, mcode)) = &vp.mini_face {
+                fs::write(app_dir.join("Mini.vue"), mcode)
+                    .map_err(|e| format!("Failed to write {}/Mini.vue: {}", app_dir.display(), e))?;
+            }
+            registry_rows.push((e.id.clone(), e.display_title().to_string(), e.icon.clone(), e.category.clone(), vp.mini_face.is_some()));
         }
 
         // App-referenced shadcn components are absent from the host's own
@@ -6814,16 +6836,26 @@ fn merge_host_npm_deps(output_dir: &Path, deps: &[(String, String)]) -> AutoResu
 /// 条目（id/url/app/title/icon；token 并入 url）。无配置 = 空表（桌面
 /// 行为零变化，G4 回归门）。
 fn generate_apps_registry(
-    entries: &[(String, String, String, String)],
+    entries: &[(String, String, String, String, bool)],
     remote_entries: &[(String, String, String, String)],
 ) -> String {
     let mut rows = String::new();
-    for (id, title, icon, category) in entries {
+    for (id, title, icon, category, mini) in entries {
         // {:?} produces a quoted, escaped TS-compatible string literal.
+        // PLAN-024：`mini` 旗标 + `loadMini`（仅 view mini 声明 app 携带）——
+        // dashboard 面板卡按需动态装载 Mini.vue。
+        let mini_rows = if *mini {
+            format!(
+                "  mini: true,\n  loadMini: () => import({:?}),\n",
+                format!("./apps/{}/Mini.vue", id)
+            )
+        } else {
+            String::new()
+        };
         rows.push_str(&format!(
-            "  {{ id: {:?}, title: {:?}, icon: {:?}, category: {:?}, load: () => import({:?}) }},
+            "  {{ id: {:?}, title: {:?}, icon: {:?}, category: {:?}, load: () => import({:?}), {} }},
 ",
-            id, title, icon, category, format!("./apps/{}/App.vue", id)
+            id, title, icon, category, format!("./apps/{}/App.vue", id), mini_rows
         ));
     }
     let mut remote_rows = String::new();
@@ -6845,6 +6877,9 @@ export interface AppEntry {{
   icon: string
   category: string
   load: () => Promise<{{ default: Component }}>
+  /** PLAN-024：该 app 声明 `view mini`（dashboard 面板卡候选）。 */
+  mini?: boolean
+  loadMini?: () => Promise<{{ default: Component }}>
 }}
 
 export const APPS: AppEntry[] = [
@@ -6895,6 +6930,7 @@ import {
 import { bootRemoteApps } from './wm/remote'
 import { installDesktopKeyboard } from './wm/keyboard'
 import Taskbar from './wm/Taskbar.vue'
+import DashboardPanel from './wm/DashboardPanel.vue'
 import VirtualWindow from './wm/VirtualWindow.vue'
 import Wallpaper from './wm/Wallpaper.vue'
 import RemoteWindow from './wm/RemoteWindow.vue'
@@ -6903,6 +6939,8 @@ import RemoteWindow from './wm/RemoteWindow.vue'
 // 改动经下次生成生效——vue 无 storage 桥的差异注记）。
 const WALLPAPER = __WALLPAPER_INJECT__
 const overlayOpen = ref(false)
+// PLAN-024：dashboard 面板开合（Taskbar 钮 / Esc / scrim 三路径）。
+const dashboardOpen = ref(false)
 const desktopEl = ref<HTMLElement | null>(null)
 // Plan 465 T6: 464-launcher 占位槽的搜索流（真 launcher 落地后换源，I5 复验）。
 const query = ref('')
@@ -6912,6 +6950,11 @@ const filtered = computed(() => {
   if (!q) return APPS
   return APPS.filter((a) => a.title.toLowerCase().includes(q) || a.id.toLowerCase().includes(q))
 })
+
+// PLAN-024：dashboard 开合（Taskbar ▦ 钮；Esc/scrim 在面板组件内）。
+function toggleDashboard(): void {
+  dashboardOpen.value = !dashboardOpen.value
+}
 
 async function launch(id: string): Promise<void> {
   overlayOpen.value = false
@@ -7031,7 +7074,14 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <Taskbar @summon="toggleOverlay" @settings="launchSettings" />
+    <Taskbar
+      :dashboard-open="dashboardOpen"
+      @summon="toggleOverlay"
+      @settings="launchSettings"
+      @dashboard="toggleDashboard"
+    />
+    <!-- PLAN-024：dashboard 面板（第四 overlay 槽；最顶层浮层）。 -->
+    <DashboardPanel :open="dashboardOpen" @close="dashboardOpen = false" />
   </div>
 </template>
 "#
@@ -7384,7 +7434,7 @@ render: \"vm\"
             entries
         );
 
-        let rows: Vec<(String, String, String, String)> = entries
+        let rows: Vec<(String, String, String, String, bool)> = entries
             .iter()
             .map(|e| {
                 (
@@ -7392,6 +7442,7 @@ render: \"vm\"
                     e.title.clone(),
                     e.icon.clone(),
                     e.category.clone(),
+                    false,
                 )
             })
             .collect();
@@ -7916,6 +7967,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             shadcn_components: vec![],
             has_routes: false,
             app_vue_code: String::new(),
+            mini_face: None,
             components: vec![],
             routes: vec![],
             npm_deps: vec![],
@@ -7950,6 +8002,7 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
             shadcn_components: vec![],
             has_routes: false,
             app_vue_code: String::new(),
+            mini_face: None,
             components: vec![],
             routes: vec![],
             npm_deps: vec![],
@@ -8062,6 +8115,7 @@ widget App {
             shadcn_components: vec![],
             has_routes: false,
             app_vue_code: String::new(),
+            mini_face: None,
             components: vec![],
             routes: vec![],
             npm_deps: vec![],
@@ -8094,6 +8148,7 @@ widget App {
             shadcn_components: vec![],
             has_routes: false,
             app_vue_code: String::new(),
+            mini_face: None,
             components: vec![],
             routes: vec![],
             npm_deps: vec![],
