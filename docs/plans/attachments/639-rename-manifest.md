@@ -51,7 +51,7 @@
 | D5 | `docs/specs/goals.md` GOAL-011（:20） | Blueprint 表述 | T-01（SD-03） |
 | D6 | `docs/specs/INDEX.md`（:28 ui_gen 模块清单、:133 cmd_block 行、:253 blocks 行、:325/:332-339 专题页与明细） | bp/blueprint 行 | T-08 前完成（随各任务顺带，T-08 收口核对） |
 | D7 | `docs/specs/auto-cli/project.md`（cmd_block 行） | `auto bp` 行 | T-03 |
-| D8 | `website/blocks.md`、`website/zh/blocks.md`、`website/.vitepress/config.ts`（spaDirs `/ui/blocks`）、`website/public/ui/blocks/` | `blueprints.md`/`/ui/blueprints` | 内容+路径一并更名（预发布期无外链保护负担）；`blocks.css/js` 资产目录同名迁移 |
+| D8 | ~~website 更名~~ **改判豁免（T-03 实勘）** | 维持现状 | 实勘裁定：`website/blocks.md` 与 `public/ui/blocks/` 描述的是 **ui-gallery 构建产物的 `#/blocks` 路由**（24 个 shadcn-vue 组合复刻演示页），非 Block 包层概念；SPA 构建产物 URL 与 ui-gallery 内部路由属消费侧产品面，移交 PLAN-070。grep 门按路径豁免 |
 | D9 | `examples/ui/README.md`（:156 "Tier 2 · Blocks"） | "Tier 2 · Blueprint（组合层）" | 示例分层名与三层术语对齐 |
 | D10 | `docs/specs/autoui-skill/project.md`（SD-04） | 补 vue 轨 actions 发射契约行 | 实勘：该 spec 无 Block 术语残留（SKILL.md 命中的 block 均为 D 类语义）→ SD-04 术语臂零改动，仅补契约行 |
 

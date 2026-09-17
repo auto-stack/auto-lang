@@ -7,7 +7,7 @@ use log::info;
 use std::path::PathBuf;
 
 mod cmd_a2c_stdlib;
-mod cmd_block;
+mod cmd_bp;
 mod cmd_autodesk;
 mod cmd_ui;
 mod cmd_docs;
@@ -310,23 +310,23 @@ pub enum WizardAction {
 }
 
 #[derive(Subcommand, Debug)]
-enum BlockAction {
-    /// List block packages (grouped by kind)
+enum BpAction {
+    /// List blueprint packages (grouped by kind)
     List,
-    /// Print a block's spec + variants + gotchas (the agent skill interface)
+    /// Print a blueprint's spec + variants + gotchas (the agent skill interface)
     Show {
-        /// `kind/name` of the block (e.g. `form/login`)
+        /// `kind/name` of the blueprint (e.g. `form/login`)
         key: String,
     },
     /// Copy a reference implementation into a consumer project (adopt-and-edit)
     Add {
-        /// `kind/name` of the block (e.g. `form/login`)
+        /// `kind/name` of the blueprint (e.g. `form/login`)
         key: String,
         /// Variant to copy (default: the package's first variant)
         #[arg(long)]
         reference: Option<String>,
-        /// Output directory (default: src/front/blocks)
-        #[arg(long, default_value = "src/front/blocks")]
+        /// Output directory (default: src/front/bps)
+        #[arg(long, default_value = "src/front/bps")]
         out: String,
     },
     /// Static acceptance check on a generated/copied .at (agent repair-loop gate)
@@ -514,11 +514,17 @@ enum Commands {
         action: UiAction,
     },
 
-    // ========== AutoUI Blocks (Plan 343, Design 17) ==========
-    #[command(about = "AutoUI block catalog commands (Skill-tier)")]
+    // ========== AutoUI Blueprints (Plan 343, Design 17; PLAN-639 rename) ==========
+    #[command(about = "AutoUI blueprint catalog commands (Skill-tier)")]
+    Bp {
+        #[command(subcommand)]
+        action: BpAction,
+    },
+    /// Deprecated alias of `auto bp` (PLAN-639 rename) — prints a warning and forwards
+    #[command(hide = true)]
     Block {
         #[command(subcommand)]
-        action: BlockAction,
+        action: BpAction,
     },
 
     // ========== Legacy / Dev Tools ==========
@@ -1732,9 +1738,13 @@ fn real_main(cli: Cli) -> Result<()> {
             cmd_ui::run(action)?;
         }
 
-        // ========== AutoUI Blocks (Plan 343, Design 17) ==========
+        // ========== AutoUI Blueprints (Plan 343, Design 17; PLAN-639 rename) ==========
+        Some(Commands::Bp { action }) => {
+            cmd_bp::run(action)?;
+        }
         Some(Commands::Block { action }) => {
-            cmd_block::run(action)?;
+            eprintln!("warning: `auto block` is deprecated (renamed by PLAN-639); use `auto bp`");
+            cmd_bp::run(action)?;
         }
 
         // ========== Schema Docs (Plan 435 P8-1) ==========
