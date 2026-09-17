@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-639
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: blueprint-tier（Block 层更名 Blueprint + 平台化地基）
 author: [zhaopuming]
 created_at: 2026-09-17
@@ -317,6 +317,26 @@ CLI 面（`auto bp`，`auto block` 别名保留一版 + 弃用提示）、blocks
   （调查工件在案）；auto-down PBlock 概念未触碰。范围削减：无。workaround：
   bp 参考实现语法规范化属合规面修复（参考实现本应可编译——Design 17 §2.4
   回归 fixture 定位），非绕行。
+- 2026-09-17 merge 收据：`stage: merge | plan_id: PLAN-639:r1 | outcome: pass |
+  completion_kind: delivered`
+  - **prepared**：reviewed 基线 e4a435c9e；对账 master 57ae06add（ui 修复，零文件
+    重叠）合入 af0280b39 + plan639 3/3 刷新；canonical spec 差集=worktree 已提交
+    面（blueprint/{contract,project}.md、goals.md、autoui-skill、blueprint-tier.md、
+    INDEX 派生）。
+  - **landed**：master 8e281d825（--no-ff，ancestry 含 reviewed af0280b39 链）；
+    smoke=cargo check 0 错+guard clean+plan639 3/3；F-3 guard 跟踪文件过滤补丁
+    c89ae3a4e → ff819fa12。
+  - **ledger_refreshed**：`.autoos/specs.json`（runtime-only，gitignored）原子
+    写入 architecture **P639-1**（canonical=docs/specs/blueprint/contract.md）+
+    reviews **P639-2**（本归档件）；读回校验过。
+  - **archived**：docs/plans/archive/639-blueprint-tier.md，status: archived。
+  - **cleaned**：wt-guard 首轮 BLOCKED（fixture deps/bps 自动管理依赖 junction +
+    pnpm node_modules junction 共 200+ reparse point——T-04..T-06 验证产物）；
+    按 guard 处方 `cmd /c rmdir` 逐链接摘除后双 worktree clean；auto-lang
+    worktree remove 注销后目录删除遇进程占用（vite preview 残留 node/esbuild），
+    kill 后 `rm -rf` 清盘；auto-down（detached 3a05255 零改动）经其本仓注销移除；
+    分支 plan-639-dev（c89ae3a4e 已全落 master）删除；组目录 lang-639 移除。
+    2026-09-17 全 checkpoint 完成。
 
 ## 9. 待澄清事项
 
