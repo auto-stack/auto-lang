@@ -1,0 +1,62 @@
+// viewport.at — 020-music-player 受控媒体视口。
+//
+// 契约：受控 <video> 元素（HTML5 媒体管道原生解码播放 FLAC / MP3 / WAV），
+// 并将时间、状态、结束与错误回灌至 PlayerStore。
+
+use player_store: PlayerStore
+
+widget Viewport {
+    msg {
+        TogglePlay,
+        OnTime(float),
+        OnDuration(float),
+        OnPlayState(bool),
+        OnEnded,
+        OnMediaError(str)
+    }
+
+    view {
+        col {
+            style: "w-0 h-0 overflow-hidden absolute pointer-events-none opacity-0"
+
+            video {
+                src: .store.current_url
+                controls: false
+                preload: "auto"
+                playsinline: true
+                paused: .store.is_playing == false
+                position: .store.seek_target
+                volume: .store.volume
+                muted: .store.is_muted
+                rate: 1.0
+                class: "w-0 h-0"
+                ontimeupdate: .OnTime()
+                onloadedmetadata: .OnDuration()
+                onplaystatechange: .OnPlayState()
+                onended: .OnEnded
+                onmediaerror: .OnMediaError()
+            }
+        }
+    }
+
+    on {
+        .TogglePlay -> {
+            store.PlayPause()
+        }
+        .OnTime(sec float) -> {
+            store.OnTime(sec)
+        }
+        .OnDuration(sec float) -> {
+            store.OnDuration(sec)
+        }
+        .OnPlayState(playing bool) -> {
+            store.OnPlayState(playing)
+        }
+        .OnEnded -> {
+            store.OnEnded()
+        }
+        .OnMediaError(err str) -> {
+            store.OnMediaError(err)
+        }
+    }
+}

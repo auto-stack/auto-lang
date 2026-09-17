@@ -24,7 +24,11 @@ use std::path::{Path, PathBuf};
 /// the browser's (or the native decoder's) call — the index never promises
 /// playability. `.mkv` is included on purpose: Matroska *demuxing* works in
 /// Chromium, and excluding it would hide the very files the user cares about.
-pub const SUPPORTED_EXTENSIONS: &[&str] = &["mp4", "m4v", "webm", "mkv", "mov", "avi"];
+/// Audio extensions (`.mp3`, `.flac`, `.wav`, etc.) are also supported for music players.
+pub const SUPPORTED_EXTENSIONS: &[&str] = &[
+    "mp4", "m4v", "webm", "mkv", "mov", "avi",
+    "mp3", "flac", "wav", "ogg", "m4a", "aac",
+];
 
 /// Hard cap on directory depth, so a pathological tree cannot spin forever even
 /// if a symlink loop somehow slips past the symlink guard.
@@ -218,6 +222,12 @@ pub fn content_type(extension: &str) -> &'static str {
         "mkv" => "video/x-matroska",
         "mov" => "video/quicktime",
         "avi" => "video/x-msvideo",
+        "mp3" => "audio/mpeg",
+        "flac" => "audio/flac",
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        "m4a" => "audio/mp4",
+        "aac" => "audio/aac",
         _ => "application/octet-stream",
     }
 }
@@ -325,6 +335,31 @@ pub fn display_title(name: &str) -> &str {
         Some(i) if i > 0 => &name[..i],
         _ => name,
     }
+}
+
+/// Parse artist and song title from a media filename (e.g. "阿杜 - 撕夜.flac").
+pub fn parse_artist_and_title(filename: &str) -> (String, String) {
+    let raw = display_title(filename).trim();
+    if let Some((artist, title)) = raw.split_once(" - ") {
+        let a = artist.trim();
+        let t = title.trim();
+        if !a.is_empty() && !t.is_empty() {
+            return (a.to_string(), t.to_string());
+        }
+    }
+    if let Some((artist, title)) = raw.split_once('-') {
+        let a = artist.trim();
+        let t = title.trim();
+        if !a.is_empty() && !t.is_empty() && !a.chars().all(|c| c.is_ascii_digit()) {
+            return (a.to_string(), t.to_string());
+        }
+    }
+    // Check leading track numbers like "01 粉雪"
+    let trimmed = raw.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == ' ');
+    if !trimmed.is_empty() && trimmed.len() < raw.len() {
+        return ("精选音乐".to_string(), trimmed.trim().to_string());
+    }
+    ("本地音乐".to_string(), raw.to_string())
 }
 
 #[cfg(test)]
@@ -443,6 +478,9 @@ mod tests {
     fn content_type_map() {
         assert_eq!(content_type("mp4"), "video/mp4");
         assert_eq!(content_type("mkv"), "video/x-matroska");
+        assert_eq!(content_type("mp3"), "audio/mpeg");
+        assert_eq!(content_type("flac"), "audio/flac");
+        assert_eq!(content_type("wav"), "audio/wav");
         assert_eq!(content_type("MP4"), "application/octet-stream"); // extension is pre-lowercased
         assert_eq!(content_type("bin"), "application/octet-stream");
     }

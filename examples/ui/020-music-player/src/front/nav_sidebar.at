@@ -1,0 +1,174 @@
+// nav_sidebar.at — 020-music-player 现代化桌面左侧导航栏。
+//
+// 视觉：参考 QQ音乐 / Spotify / 网易云音乐。
+
+use player_store: PlayerStore
+
+widget NavSidebar {
+    msg {
+        SelectNav(str),
+        SelectStage,
+        ToggleLike
+    }
+
+    view {
+        col {
+            style: "w-60 h-full flex-col justify-between border-r border-border bg-card/60 p-4 select-none shrink-0"
+
+            // ── 顶部 Logo & 品牌区 ──
+            col {
+                style: "w-full gap-6"
+
+                row {
+                    style: "items-center gap-2.5 px-2 py-1"
+                    col {
+                        style: "w-8 h-8 rounded-lg bg-primary/20 items-center justify-center text-primary"
+                        icon (name: "music", size: 18)
+                    }
+                    col {
+                        style: "gap-0.5"
+                        row {
+                            style: "items-center gap-1.5"
+                            text "AutoMusic" {
+                                style: "text-base font-bold tracking-tight text-foreground"
+                            }
+                            text "v2.0" {
+                                style: "text-[10px] px-1 py-0.2 rounded bg-primary/15 text-primary font-mono font-semibold"
+                            }
+                        }
+                        text "Hi-Res 无损播放器" {
+                            style: "text-[11px] text-muted-foreground font-medium"
+                        }
+                    }
+                }
+
+                // ── 导航项 1：发现与电台 ──
+                col {
+                    style: "w-full gap-1"
+                    text "发现音乐" {
+                        style: "text-[11px] font-semibold text-muted-foreground/70 px-2.5 mb-1 uppercase tracking-wider"
+                    }
+
+                    button {
+                        onclick: .SelectStage
+                        style: if .store.view_mode == "stage" {
+                            "w-full h-9 items-center gap-3 px-3 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer"
+                        } else {
+                            "w-full h-9 items-center gap-3 px-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        icon (name: "disc", size: 15)
+                        text "黑胶唱片舞台" {}
+                    }
+
+                    button {
+                        onclick: .SelectNav("discover")
+                        style: if .store.view_mode == "tracklist" && .store.active_nav == "discover" {
+                            "w-full h-9 items-center gap-3 px-3 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer"
+                        } else {
+                            "w-full h-9 items-center gap-3 px-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        icon (name: "compass", size: 15)
+                        text "精选推荐" {}
+                    }
+                }
+
+                // ── 导航项 2：我的音乐库 ──
+                col {
+                    style: "w-full gap-1"
+                    text "我的音乐" {
+                        style: "text-[11px] font-semibold text-muted-foreground/70 px-2.5 mb-1 uppercase tracking-wider"
+                    }
+
+                    button {
+                        onclick: .SelectNav("local")
+                        style: if .store.view_mode == "tracklist" && .store.active_nav == "local" {
+                            "w-full h-9 items-center justify-between px-3 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer"
+                        } else {
+                            "w-full h-9 items-center justify-between px-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        row {
+                            style: "items-center gap-3"
+                            icon (name: "hard-drive", size: 15)
+                            text "本地音乐" {}
+                        }
+                        text .store.item_count_label {
+                            style: "text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted/60 text-foreground"
+                        }
+                    }
+
+                    button {
+                        onclick: .SelectNav("favorites")
+                        style: if .store.view_mode == "tracklist" && .store.active_nav == "favorites" {
+                            "w-full h-9 items-center gap-3 px-3 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer"
+                        } else {
+                            "w-full h-9 items-center gap-3 px-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        icon (name: "heart", size: 15)
+                        text "我喜欢的音乐" {}
+                    }
+
+                    button {
+                        onclick: .SelectNav("history")
+                        style: if .store.view_mode == "tracklist" && .store.active_nav == "history" {
+                            "w-full h-9 items-center gap-3 px-3 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer"
+                        } else {
+                            "w-full h-9 items-center gap-3 px-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        icon (name: "clock", size: 15)
+                        text "最近播放" {}
+                    }
+                }
+            }
+
+            // ── 底部当前播放 Mini 预览卡片 ──
+            if .store.has_current {
+                col {
+                    style: "w-full p-3 rounded-xl bg-muted/40 border border-border/70 gap-2.5"
+                    row {
+                        style: "w-full items-center gap-2.5"
+                        col {
+                            style: "w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-800 items-center justify-center text-white shrink-0 shadow-sm relative overflow-hidden"
+                            icon (name: "music-2", size: 18)
+                        }
+                        col {
+                            style: "flex-1 min-w-0 gap-0.5"
+                            text .store.current_title {
+                                style: "text-xs font-semibold text-foreground truncate block"
+                            }
+                            text .store.current_artist {
+                                style: "text-[11px] text-muted-foreground truncate block"
+                            }
+                        }
+                        button {
+                            onclick: .ToggleLike
+                            style: "w-7 h-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive cursor-pointer"
+                            if .store.is_current_liked {
+                                icon (name: "heart", size: 14, style: "text-destructive fill-current")
+                            } else {
+                                icon (name: "heart", size: 14)
+                            }
+                        }
+                    }
+                    row {
+                        style: "w-full items-center justify-between text-[10px] text-muted-foreground font-mono"
+                        text .store.current_ext {}
+                        text .store.time_progress_label {}
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .SelectNav(nav str) -> {
+            store.SetActiveNav(nav)
+            store.SetViewMode("tracklist")
+        }
+        .SelectStage -> {
+            store.SetViewMode("stage")
+        }
+        .ToggleLike -> {
+            store.ToggleLike()
+        }
+    }
+}

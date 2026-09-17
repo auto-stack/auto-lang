@@ -1,9 +1,17 @@
 name: "music-player"
-version: "1.0.0"
+version: "2.0.0"
+description: "AutoMusic Player - Modern Local & Stream Music Player (QQ Music / NetEase / Spotify / Soda Music style)"
+
 scene: "ui"
 render: "vue"
-title: "Music & Video Player"
-title_zh: "音乐视频播放器"
-theme: "dark"
-accent: "indigo"
+api: "rust"
+front_port: 3020
+back_port: 8320
+media_root: "E:\\Music\\"
+icon: "music"
+title: "AutoMusic Player"
+title_zh: "极光音乐播放器"
+category: "media"
 desktop: "true"
+theme: "dark"
+accent: "emerald"

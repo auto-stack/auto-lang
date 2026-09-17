@@ -1408,16 +1408,21 @@ async fn auto_media_scan() -> axum::response::Response {
         if i > 0 {
             out.push(',');
         }
+        let (artist, song_title) = auto_lang::ui::media_service::parse_artist_and_title(&e.name);
         out.push_str(&format!(
-            "{{\"id\":{},\"title\":{},\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"video_url\":\"/api/media/stream/{}\"}}",
+            "{{\"id\":{},\"title\":{},\"song_title\":{},\"artist\":{},\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"url\":\"/api/media/stream/{}\",\"audio_url\":\"/api/media/stream/{}\",\"video_url\":\"/api/media/stream/{}\"}}",
             media_json_str(&e.id),
             media_json_str(auto_lang::ui::media_service::display_title(&e.name)),
+            media_json_str(&song_title),
+            media_json_str(&artist),
             media_json_str(&e.name),
             media_json_str(&e.rel_dir),
             media_json_str(&e.relative_path),
             media_json_str(&e.extension),
             e.bytes,
             media_json_str(&auto_lang::ui::media_service::human_size(e.bytes)),
+            &e.id,
+            &e.id,
             &e.id
         ));
     }
@@ -1443,7 +1448,7 @@ async fn auto_media_stream(
         return media_plain(404, "unknown media id".to_string());
     };
     // Re-join under the index root: the caller only ever supplied a token.
-    let Ok(root) = std::env::var("AUTO_MEDIA_ROOT").map(std::path::PathBuf::from) else {
+    let Some(root) = auto_lang::ui::media_service::resolve_root(None) else {
         return media_plain(503, "no media root configured".to_string());
     };
     let path = ms::entry_path(&root, entry);
