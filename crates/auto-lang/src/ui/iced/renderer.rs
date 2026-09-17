@@ -4395,7 +4395,34 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // px → coords 逻辑幅面)+ ≤30Hz 限频 + 量化去重;不带 on_move
             // 的存量 mouse-area 映射零改动。
             AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
-                let mut ma = mouse_area(content.into_iced());
+                // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):构建面接线状态。
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    let (sw, sh) = style.as_ref().map(|s| {
+                        let is = IcedStyle::from_style(s);
+                        (format!("{:?}", is.width), format!("{:?}", is.height))
+                    }).unwrap_or_else(|| ("None".into(), "None".into()));
+                    eprintln!("[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
+                        on_click.is_some(), on_release.is_some(), on_double_click.is_some(),
+                        on_context_menu.is_some(), on_move.is_some());
+                }
+                // PLAN-021 线 B 根修:iced 0.14 mouse_area layout 直通子件,
+                // 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类原挂
+                // 外层 build_container(空内容 → 自身 0×0 bounds),press/
+                // hover 全死而渲染正常(020 双区探针计数 0 与 split 分隔条
+                // 拖拽死的断点)。内容侧镜像一个仅承载宽高的透明容器,使命
+                // 中区=可视区;外层树形与样式归属不动(absolute 抬升/z-order
+                // /绘制均不感知本改动)。
+                let sized_content = match style.as_ref() {
+                    Some(s) => {
+                        let is = IcedStyle::from_style(s);
+                        let mut c = iced::widget::container(content.into_iced());
+                        if let Some(ref ws) = is.width { c = c.width(iced_length(ws)); }
+                        if let Some(ref hs) = is.height { c = c.height(iced_length(hs)); }
+                        c.into()
+                    }
+                    None => content.into_iced(),
+                };
+                let mut ma = mouse_area(sized_content);
                 if let Some(msg) = on_enter {
                     ma = ma.on_enter(msg);
                 }
@@ -21578,8 +21605,34 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // 实测"聚焦了但打不出字"）。IcedMessage 专用递归渲染保住
         // on_input → on_with_input_for 的文本载荷。
         AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
-            let inner = render_dynamic_view(*content, debug_ctx, path);
-            let mut ma = mouse_area(inner);
+            // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):构建面接线状态。
+            if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                let (sw, sh) = style.as_ref().map(|s| {
+                    let is = IcedStyle::from_style(s);
+                    (format!("{:?}", is.width), format!("{:?}", is.height))
+                }).unwrap_or_else(|| ("None".into(), "None".into()));
+                eprintln!("[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
+                    on_click.is_some(), on_release.is_some(), on_double_click.is_some(),
+                    on_context_menu.is_some(), on_move.is_some());
+            }
+            // PLAN-021 线 B 根修:iced 0.14 mouse_area layout 直通子件,
+            // 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类原挂
+            // 外层 build_container(空内容 → 自身 0×0 bounds),press/
+            // hover 全死而渲染正常(020 双区探针计数 0 与 split 分隔条
+            // 拖拽死的断点)。内容侧镜像一个仅承载宽高的透明容器,使命
+            // 中区=可视区;外层树形与样式归属不动(absolute 抬升/z-order
+            // /绘制均不感知本改动)。
+            let sized_content: iced::Element<'static, IcedMessage> = match style.as_ref() {
+                Some(s) => {
+                    let is = IcedStyle::from_style(s);
+                    let mut c = iced::widget::container(render_dynamic_view(*content, debug_ctx, path));
+                    if let Some(ref ws) = is.width { c = c.width(iced_length(ws)); }
+                    if let Some(ref hs) = is.height { c = c.height(iced_length(hs)); }
+                    c.into()
+                }
+                None => render_dynamic_view(*content, debug_ctx, path),
+            };
+            let mut ma = mouse_area(sized_content);
             if let Some(msg) = on_enter {
                 ma = ma.on_enter(msg);
             }
