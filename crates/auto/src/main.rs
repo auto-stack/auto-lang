@@ -328,6 +328,28 @@ enum BpAction {
         /// Output directory (default: src/front/bps)
         #[arg(long, default_value = "src/front/bps")]
         out: String,
+        /// PLAN-639 L1: emit a declarative bind artifact (zero-copy import)
+        /// instead of copying the reference implementation
+        #[arg(long)]
+        bind: bool,
+        /// pac.at dep name pointing at the blueprints package (with --bind)
+        #[arg(long, default_value = "bps")]
+        dep: String,
+    },
+    /// PLAN-639 L1 import/bind: emit a declarative bind artifact that imports
+    /// the blueprint from the declared package (zero-copy consumption)
+    Bind {
+        /// `kind/name` of the blueprint (e.g. `form/login`)
+        key: String,
+        /// Variant to import (default: the package's first variant)
+        #[arg(long)]
+        reference: Option<String>,
+        /// Output directory (default: src/front/bps)
+        #[arg(long, default_value = "src/front/bps")]
+        out: String,
+        /// pac.at dep name pointing at the blueprints package
+        #[arg(long, default_value = "bps")]
+        dep: String,
     },
     /// Static acceptance check on a generated/copied .at (agent repair-loop gate)
     Check {

@@ -102,7 +102,7 @@
 
 | # | 扩展 | 说明 |
 | --- | --- | --- |
-| E1 | L1 消费形态约定 | 应用 pac.at 声明 `dep "bps" { path: <blueprints 包库> }`；`src/front/bps/<name>.bind.at` 生成 `use bps.<kind>.<name>.reference.<variant>: <PascalName>` + 布局装配 fn（GENERATED 头注）。**位置/扩展名裁定（Q-3）：`src/front/bps/<name>.bind.at`**——与 L2 默认落地目录同族、文件级 GENERATED 标记清晰、编译器按普通模块解析零特判 |
+| E1 | L1 消费形态约定 | 应用 pac.at 声明 `dep "bps" { path: <blueprints 包库> }`；绑定工件生成 `use bps.<kind>.<name>.reference.<variant>: <WidgetSym>` + 布局装配 widget（GENERATED 头注）。**位置/命名裁定（Q-3，T-06 实勘修订）**：`src/front/bps/<name>_bind.at`（下划线 stem）——模块解析面 dots→路径段 映射无法命中含点文件名（`login.bind.at` 不可达），下划线 stem 使 `use bps.<name>_bind` 经 base_dir 直探命中；构建期 `bps/` 目录与 `components/` 同构扫描（vue.rs T-06 扩展），绑定 widget 获独立 SFC |
 | E2 | BlueprintSpec 前向兼容字段 | spec.rs frontmatter 增可选 `props`/`actions`（六问契约 §4.1 的声明面）；既有 4 包无此字段=合法（缺省可省） |
 | E3 | bind 一致性校验 | `auto bp add --bind`：bp 存在、variant 存在、bind 引用的 action id ⊆ spec `actions:` 声明（声明缺省时降级 warning——存量包未声明不阻断） |
 | E4 | 双轨消费实证 | demo app（bps-gallery 扩展或独立 fixture）：VM `auto run -r vm` 渲染断言 + vue `auto build` 绿（AC-03） |

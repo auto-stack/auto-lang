@@ -387,6 +387,13 @@ pub struct GeneratedComponent {
 /// never fatal, mirroring the use-module fallback tolerance.
 #[cfg(feature = "ui")]
 fn load_ui_config_actions(at_path: &std::path::Path) -> Option<crate::ast::ui::ActionsBlock> {
+    // App-level config: only the app shell (app.at) inherits the external
+    // action registry. Sub-widgets / bind artifacts compile their own handlers
+    // and must not synthesize menus for actions they don't declare
+    // (046-bp-import LoginBind TS2304 实测)。
+    if at_path.file_stem().and_then(|s| s.to_str()) != Some("app") {
+        return None;
+    }
     let mut dir = at_path.parent()?.to_path_buf();
     let pac_content = (0..4).find_map(|_| {
         let candidate = dir.join("pac.at");
