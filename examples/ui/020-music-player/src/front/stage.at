@@ -1,0 +1,214 @@
+// stage.at — 020-music-player 黑胶唱盘与沉浸式音乐舞台。
+//
+// 视觉：参考 网易云音乐黑胶唱片 / 汽水音乐沉浸播放。
+// 包含：同心圆光胶唱盘、唱臂探针、封面贴片、16段音波律动条、歌词卡片与无损音质徽章。
+
+use player_store: PlayerStore
+
+widget Stage {
+    msg {
+        PlayPause,
+        ToggleLike,
+        SwitchToTracklist
+    }
+
+    view {
+        col {
+            style: "w-full h-full flex-col items-center justify-between p-8 overflow-y-auto min-h-0 select-none relative"
+
+            // ── 顶部操作栏 ──
+            row {
+                style: "w-full items-center justify-between"
+                row {
+                    style: "items-center gap-2"
+                    text "正在播放" {
+                        style: "text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    }
+                    if .store.has_current {
+                        text .store.current_ext_label {
+                            style: "text-xs font-mono text-primary font-medium"
+                        }
+                    }
+                }
+
+                button {
+                    onclick: .SwitchToTracklist
+                    style: "h-8 items-center gap-2 px-3 rounded-md bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted font-medium text-xs cursor-pointer"
+                    icon (name: "list-music", size: 14)
+                    text "查看完整曲库" {}
+                }
+            }
+
+            // ── 中部核心：黑胶唱片 + 唱臂 + 歌曲信息 ──
+            row {
+                style: "w-full max-w-4xl flex-1 items-center justify-center gap-16 my-4"
+
+                // 左侧：质感黑胶唱盘
+                col {
+                    style: "relative items-center justify-center shrink-0"
+
+                    // 唱臂装置
+                    col {
+                        style: "absolute -top-10 left-36 w-14 h-24 pointer-events-none z-10 origin-top"
+                        col {
+                            style: "w-3 h-3 rounded-full bg-zinc-400 shadow-md border border-zinc-600"
+                        }
+                        col {
+                            style: "w-1 h-16 bg-zinc-400 ml-1 shadow-sm"
+                        }
+                        col {
+                            style: "w-3 h-5 bg-zinc-300 ml-0 rounded-sm shadow-md"
+                        }
+                    }
+
+                    // 黑胶唱盘底座（带多重同心圆光泽）
+                    col {
+                        onclick: .PlayPause
+                        style: if .store.is_playing {
+                            "w-72 h-72 rounded-full bg-zinc-950 border-[8px] border-zinc-900 shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-zinc-800 group hover:scale-[1.02] transition-transform animate-spin duration-[12000ms]"
+                        } else {
+                            "w-72 h-72 rounded-full bg-zinc-950 border-[8px] border-zinc-900 shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-zinc-800 group hover:scale-[1.02] transition-transform"
+                        }
+
+                        // 同心圆黑胶纹理 1
+                        col {
+                            style: "w-60 h-60 rounded-full border border-zinc-800/80 items-center justify-center"
+                            // 同心圆黑胶纹理 2
+                            col {
+                                style: "w-48 h-48 rounded-full border border-zinc-800/60 items-center justify-center"
+                                // 中心唱片封面贴纸
+                                col {
+                                    style: "w-28 h-28 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-700 to-cyan-900 items-center justify-center text-white shadow-inner relative overflow-hidden"
+                                    // 中心轴孔
+                                    col {
+                                        style: "w-6 h-6 rounded-full bg-zinc-950 border-2 border-zinc-700 shadow-md items-center justify-center"
+                                        col {
+                                            style: "w-2 h-2 rounded-full bg-zinc-300"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 右侧：歌曲主标题、歌手、无损徽章与歌词卡片
+                col {
+                    style: "flex-1 max-w-md gap-4"
+
+                    col {
+                        style: "gap-1.5"
+                        row {
+                            style: "items-center gap-2"
+                            text .store.current_ext {
+                                style: "text-[11px] font-bold px-2 py-0.5 rounded bg-primary/15 text-primary tracking-wider"
+                            }
+                            text "Hi-Res Lossless 24bit/96kHz" {
+                                style: "text-[11px] font-mono text-muted-foreground"
+                            }
+                        }
+                        text .store.current_title {
+                            style: "text-2xl font-bold tracking-tight text-foreground leading-tight"
+                        }
+                        row {
+                            style: "items-center gap-3 text-sm text-muted-foreground"
+                            row {
+                                style: "items-center gap-1.5"
+                                icon (name: "user", size: 14)
+                                text .store.current_artist {}
+                            }
+                            text "·" {}
+                            row {
+                                style: "items-center gap-1.5"
+                                icon (name: "folder", size: 14)
+                                text "E:\\Music\\" { style: "font-mono text-xs" }
+                            }
+                        }
+                    }
+
+                    // 歌词预览卡片（汽水音乐式悬浮歌词）
+                    col {
+                        style: "w-full p-4 rounded-xl bg-card border border-border/80 gap-2 shadow-sm"
+                        text "歌词预览" {
+                            style: "text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
+                        }
+                        col {
+                            style: "gap-1.5 py-1"
+                            text "♪ 正在享受高解析度母带级音频…" {
+                                style: "text-sm font-semibold text-primary"
+                            }
+                            text "纯音乐，请随旋律沉浸放松" {
+                                style: "text-xs text-muted-foreground"
+                            }
+                        }
+                    }
+
+                    // 互动按钮条
+                    row {
+                        style: "items-center gap-3 pt-2"
+                        button {
+                            onclick: .ToggleLike
+                            style: if .store.is_current_liked {
+                                "h-9 items-center gap-2 px-4 rounded-lg bg-destructive/15 text-destructive font-medium text-xs cursor-pointer"
+                            } else {
+                                "h-9 items-center gap-2 px-4 rounded-lg bg-muted text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                            }
+                            if .store.is_current_liked {
+                                icon (name: "heart", size: 15, style: "text-destructive fill-current")
+                                text "已收藏" {}
+                            } else {
+                                icon (name: "heart", size: 15)
+                                text "收藏歌曲" {}
+                            }
+                        }
+
+                        button {
+                            onclick: .PlayPause
+                            style: "h-9 items-center gap-2 px-4 rounded-lg bg-primary text-primary-foreground font-medium text-xs cursor-pointer"
+                            if .store.is_playing {
+                                icon (name: "pause", size: 15)
+                                text "暂停" {}
+                            } else {
+                                icon (name: "play", size: 15)
+                                text "播放" {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 底部：16段流光音波动态频谱律动条 ──
+            row {
+                style: "items-end justify-center gap-1.5 h-10 w-full max-w-md py-1"
+                col { style: if .store.is_playing { "w-1.5 h-6 rounded-full bg-primary/80 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-9 rounded-full bg-primary transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-4 rounded-full bg-primary/70 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-8 rounded-full bg-primary transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-5 rounded-full bg-primary/80 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-10 rounded-full bg-primary transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-7 rounded-full bg-primary/90 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-4 rounded-full bg-primary/70 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-9 rounded-full bg-primary transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-6 rounded-full bg-primary/80 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-8 rounded-full bg-primary transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-5 rounded-full bg-primary/70 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-10 rounded-full bg-primary transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-7 rounded-full bg-primary/90 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-4 rounded-full bg-primary/70 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+                col { style: if .store.is_playing { "w-1.5 h-3 rounded-full bg-primary/60 transition-all" } else { "w-1.5 h-2 rounded-full bg-muted transition-all" } }
+            }
+        }
+    }
+
+    on {
+        .PlayPause -> {
+            store.PlayPause()
+        }
+        .ToggleLike -> {
+            store.ToggleLike()
+        }
+        .SwitchToTracklist -> {
+            store.SetViewMode("tracklist")
+        }
+    }
+}

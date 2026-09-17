@@ -1,23 +1,26 @@
-# 020-music-player — AutoUI Music & Video Player
+# 020-music-player — AutoUI Modern Desktop Music Player
 
-A modern, full-featured music & video player with dual-backend AutoUI support (Vue mode and VM/Iced mode).
+A modern desktop music player inspired by Spotify, QQ Music, NetEase Cloud Music, and Soda Music (汽水音乐), supporting full local music library indexing and streaming from `E:\Music\`.
 
 ## Features
 
-- **8-track playlist** — Classical masterpieces with title, artist, tag, icon, duration, and like counts
-- **Video/Album Stage** — Full-width cover art card with HD/Lossless badge overlay and genre tag
-- **Playback controls** — Prev / Play-Pause / Next with Shuffle and Repeat (All / One / Off) modes
-- **Progress bar with seek** — `progress { value: .progress_val, max: 100 }` with +10s seek step button
-- **Like system** — Heart toggle with live like count update
-- **Up Next queue** — Scrollable playlist; clicking any track row instantly switches and auto-plays
-- **Dark / Light theme** — Full dark/light mode toggle with distinct color palettes for all elements
-- **5 accent colors** — Indigo / Coral / Ocean / Sage / Amber with live color swatch picker
-- **Settings panel** — Expandable in-page Settings popover (017-chat style) in the bottom-right corner
+- **Modern 3-Column Layout**:
+  - **NavSidebar**: Brand logo, navigation tabs (Local Music, Stage, Playlists, Favorites), dynamic stats badge, and dark mode toggle.
+  - **Stage View**: Immersive vinyl turntable animation with realistic tonearm, 16-band animated audio spectrum equalizer, lyrics preview card, and Hi-Res / Lossless format badges.
+  - **Tracklist View**: Full local music table with search filter, format pills (All, FLAC, MP3, WAV), song metadata (title, artist, size, extension), play/shuffle action buttons, and scan refresh.
+  - **Queue Drawer**: Collapsible right-hand upcoming queue drawer showing queue count and instant song switching.
+  - **Bottom Player Bar**: Spotify/NetEase style 3-column sticky bar with track cover info, center transport controls (Shuffle, Prev, Play/Pause, Next, Repeat), interactive draggable seekbar with time stamps, volume control, and view/queue toggles.
+- **Local Audio Streaming & Media Service**:
+  - Automatically indexes local audio files from `media_root: "E:\\Music\\"` in `pac.at`.
+  - Supports FLAC, MP3, WAV, OGG, M4A, AAC.
+  - Automatic `Artist - Title` parsing from standard music filenames.
+  - HTTP 206 partial content byte-range streaming via `/api/media/stream/:id` served by the native backend.
+  - Controlled HTML5 `<video>` / audio element syncing seek position, volume, playback state, duration, and error reporting.
 
 ## Running
 
 ```bash
-# Vue dev server (browser)
+# Run with Vue frontend (browser) + Rust media backend
 cd examples/ui/020-music-player
 auto run
 
@@ -27,52 +30,15 @@ auto run -r vm
 
 ## Architecture
 
-```auto
-widget App {
-    msg {
-        PlayPause, NextTrack, PrevTrack,
-        SelectTrack1..SelectTrack8,
-        ToggleShuffle, CycleRepeat,
-        ToggleLike, SeekStep,
-        ToggleSettings, ToggleDarkMode,
-        SetTheme(str), SetAccent(str)
-    }
+- `src/front/player_store.at`: Global reactive player store (state machine, library scan, playlist management, seek target, volume, repeat/shuffle modes, computed labels).
+- `src/front/nav_sidebar.at`: Left navigation sidebar with branding, views, and playlists.
+- `src/front/stage.at`: Immersive playback stage with spinning vinyl disc, tonearm, 16-bar spectrum analyzer, and lyrics card.
+- `src/front/tracklist.at`: Local music library table, instant search, format filter tags, and track rows.
+- `src/front/queue_drawer.at`: Upcoming play queue drawer with count indicator and track jump.
+- `src/front/controls.at`: Bottom 3-column playback controller with draggable progress bar and volume controls.
+- `src/front/viewport.at`: Invisible controlled media element binding playback events to the store.
+- `src/front/app.at`: Root layout combining sidebar, main stage/tracklist, queue drawer, and bottom controls.
 
-    model {
-        var dark_mode bool = true
-        var accent_color str = "indigo"
-        var show_settings bool = false
-        var is_playing bool = true
-        var current_index int = 1
-        var progress_val int = 42
-        // ... 8 track data fields + current track state
-    }
+## Inspiration & Design Reference
 
-    view {
-        // Two-column layout:
-        // Left (560px): Stage card + track metadata + controls + progress
-        // Right (flex): Scrollable playlist queue + bottom Settings panel
-    }
-
-    on { /* ... handlers for all messages */ }
-}
-```
-
-## Generated Backends
-
-After `auto gen`, generated projects appear in:
-- `gen/vue/` — Vue 3 + Tailwind CSS
-- `gen/rust/` — Rust + Iced (via VM backend)
-
-## Testing
-
-```bash
-# VM MCP automated test (requires auto run -r vm)
-python tests/test_020_vm.py
-```
-
-The MCP test exercises: Settings toggle, Dark→Light→Dark theme, Play/Pause, Next track, Playlist track select, Like toggle.
-
-## Inspiration
-
-Spotify, Apple Music, YouTube Music.
+QQ Music, NetEase Cloud Music (网易云音乐), Soda Music (汽水音乐), Spotify.

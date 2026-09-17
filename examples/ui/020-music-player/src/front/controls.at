@@ -1,0 +1,216 @@
+// controls.at — 020-music-player 现代化一体化底部播控台。
+//
+// 视觉：经典 Spotify / 网易云音乐三段式发丝线播控台。
+// 左：封面缩略图、歌名歌手、红心喜欢、音质徽章
+// 中：循环模式、上一首、主播放键、下一首、舞台切换、精准可拖拽 Seek 进度条
+// 右：音量加减与静音、播放队列抽屉开关
+
+use player_store: PlayerStore
+
+widget Controls {
+    msg {
+        PlayPause,
+        Next,
+        Prev,
+        CycleRepeat,
+        ToggleLike,
+        ToggleView,
+        ToggleQueue,
+        SeekFraction(float),
+        ToggleMute,
+        VolUp,
+        VolDown
+    }
+
+    view {
+        row {
+            style: "w-full h-20 items-center justify-between px-6 border-t border-border bg-card/95 backdrop-blur-md shrink-0 select-none z-20"
+
+            // ── 左侧：当前曲目卡片 ──
+            row {
+                style: "w-72 items-center gap-3.5 shrink-0"
+
+                col {
+                    style: "w-12 h-12 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-800 items-center justify-center text-white shrink-0 shadow-sm relative overflow-hidden"
+                    icon (name: "music-2", size: 20)
+                }
+
+                col {
+                    style: "flex-1 min-w-0 gap-1"
+                    row {
+                        style: "items-center gap-1.5"
+                        text .store.current_title {
+                            style: "text-xs font-semibold text-foreground truncate max-w-[160px]"
+                        }
+                        text .store.current_ext {
+                            style: "text-[9px] font-mono font-bold px-1 py-0.2 rounded bg-primary/15 text-primary"
+                        }
+                    }
+                    text .store.current_artist {
+                        style: "text-[11px] text-muted-foreground truncate"
+                    }
+                }
+
+                button {
+                    onclick: .ToggleLike
+                    style: "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-destructive cursor-pointer"
+                    if .store.is_current_liked {
+                        icon (name: "heart", size: 16, style: "text-destructive fill-current")
+                    } else {
+                        icon (name: "heart", size: 16)
+                    }
+                }
+            }
+
+            // ── 中间：播放控制 + 进度条 ──
+            col {
+                style: "flex-1 max-w-xl items-center gap-1 px-4"
+
+                // 播控按钮组
+                row {
+                    style: "items-center gap-3"
+
+                    // 循环模式切换
+                    button {
+                        onclick: .CycleRepeat
+                        style: "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                        icon (name: .store.repeat_icon, size: 15)
+                    }
+
+                    // 上一曲
+                    button {
+                        onclick: .Prev
+                        style: "w-8 h-8 items-center justify-center rounded-md text-foreground hover:bg-muted cursor-pointer"
+                        icon (name: "skip-back", size: 17)
+                    }
+
+                    // 播放 / 暂停大按钮
+                    button {
+                        onclick: .PlayPause
+                        style: "w-10 h-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+                        if .store.is_playing {
+                            icon (name: "pause", size: 18)
+                        } else {
+                            icon (name: "play", size: 18)
+                        }
+                    }
+
+                    // 下一曲
+                    button {
+                        onclick: .Next
+                        style: "w-8 h-8 items-center justify-center rounded-md text-foreground hover:bg-muted cursor-pointer"
+                        icon (name: "skip-forward", size: 17)
+                    }
+
+                    // 舞台 / 列表视图切换
+                    button {
+                        onclick: .ToggleView
+                        style: if .store.view_mode == "stage" {
+                            "w-8 h-8 items-center justify-center rounded-md text-primary bg-primary/10 cursor-pointer"
+                        } else {
+                            "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                        }
+                        icon (name: "disc", size: 15)
+                    }
+                }
+
+                // 进度条与时钟显示
+                row {
+                    style: "w-full items-center gap-2.5"
+                    text .store.current_time_str {
+                        style: "text-[11px] font-mono text-muted-foreground w-10 text-right"
+                    }
+
+                    progress (value: .store.progress_pct, max: 100.0, class: "h-1.5 w-full cursor-pointer",
+                              onseek: .SeekFraction())
+
+                    text .store.duration_str {
+                        style: "text-[11px] font-mono text-muted-foreground w-10"
+                    }
+                }
+            }
+
+            // ── 右侧：音量与队列抽屉开关 ──
+            row {
+                style: "w-64 items-center justify-end gap-3 shrink-0"
+
+                // 音量控制
+                row {
+                    style: "items-center gap-1.5"
+                    button {
+                        onclick: .ToggleMute
+                        style: "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                        if .store.is_muted {
+                            icon (name: "volume-x", size: 16)
+                        } else {
+                            icon (name: "volume-2", size: 16)
+                        }
+                    }
+                    button {
+                        onclick: .VolDown
+                        style: "w-6 h-6 items-center justify-center rounded text-muted-foreground hover:bg-muted cursor-pointer"
+                        icon (name: "minus", size: 12)
+                    }
+                    text .store.volume_label {
+                        style: "text-xs font-mono text-muted-foreground w-9 text-center"
+                    }
+                    button {
+                        onclick: .VolUp
+                        style: "w-6 h-6 items-center justify-center rounded text-muted-foreground hover:bg-muted cursor-pointer"
+                        icon (name: "plus", size: 12)
+                    }
+                }
+
+                // 待播队列抽屉开关
+                button {
+                    onclick: .ToggleQueue
+                    style: if .store.show_queue {
+                        "h-8 items-center gap-1.5 px-2.5 rounded-lg bg-primary/15 text-primary text-xs font-medium cursor-pointer"
+                    } else {
+                        "h-8 items-center gap-1.5 px-2.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground text-xs font-medium cursor-pointer"
+                    }
+                    icon (name: "list-music", size: 15)
+                    text .store.item_count.to_string() {
+                        style: "font-mono text-[11px]"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .PlayPause -> {
+            store.PlayPause()
+        }
+        .Next -> {
+            store.NextTrack()
+        }
+        .Prev -> {
+            store.PrevTrack()
+        }
+        .CycleRepeat -> {
+            store.CycleRepeat()
+        }
+        .ToggleLike -> {
+            store.ToggleLike()
+        }
+        .ToggleView -> {
+            store.ToggleView()
+        }
+        .ToggleQueue -> {
+            store.ToggleQueue()
+        }
+        .SeekFraction(ratio float) -> {
+            store.SeekFraction(ratio)
+        }
+        .ToggleMute -> {
+            store.ToggleMute()
+        }
+        .VolUp -> {
+            store.VolUp()
+        }
+        .VolDown -> {
+            store.VolDown()
+        }
+    }
+}

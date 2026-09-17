@@ -1,0 +1,363 @@
+// player_store.at — 020-music-player 全局播放状态与业务逻辑。
+//
+// 数据源：GET /api/media/scan（由 auto-man 自动生成的 Rust Axum 后端提供）
+// 媒体流：GET /api/media/stream/:id（HTTP 206 断点范围分块无损传输）
+
+/// 秒 → "mm:ss"。
+fn fmt_clock(sec float) str {
+    var s float = sec
+    if s < 0.0 {
+        s = 0.0
+    }
+    var mm float = math.floor(s / 60.0)
+    var ss float = math.floor(s - mm * 60.0)
+    var mm_str str = mm.to_string()
+    if mm < 10.0 {
+        mm_str = "0" + mm_str
+    }
+    var ss_str str = ss.to_string()
+    if ss < 10.0 {
+        ss_str = "0" + ss_str
+    }
+    return mm_str + ":" + ss_str
+}
+
+store PlayerStore {
+    model {
+        // ── 播放列表与曲库 ──
+        var playlist = []
+        var item_count int = 0
+        var current_index int = 0
+        var has_current bool = false
+
+        // 当前播放条目元信息
+        var current_id str = ""
+        var current_url str = ""
+        var current_title str = "未选择歌曲"
+        var current_artist str = "极光音乐"
+        var current_ext str = "FLAC"
+        var current_size str = "0 MB"
+
+        // 预拼文案（对齐 AutoUI 规约：handler 做计算，模板零方法调用）
+        var item_count_label str = "0"
+        var queue_count_label str = "(0)"
+        var library_summary_label str = "共 0 首歌曲 · 默认路径 E:\\Music\\ · FLAC / MP3 / WAV"
+        var current_ext_label str = "· FLAC 无损音频"
+        var time_progress_label str = "00:00 / 00:00"
+
+        // ── 受控播放状态（下行 → viewport.at 的受控 video）──
+        var is_playing bool = false
+        var seek_target float = 0.0
+        var volume int = 85
+        var volume_label str = "85%"
+        var is_muted bool = false
+
+        // ── 播放时间与进度（上行 ← viewport.at 回灌）──
+        var current_time float = 0.0
+        var duration float = 0.0
+        var current_time_str str = "00:00"
+        var duration_str str = "00:00"
+        var progress_pct float = 0.0
+
+        // ── 播放模式 ──
+        // "all": 列表循环; "one": 单曲循环; "shuffle": 随机播放
+        var repeat_mode str = "all"
+        var repeat_label str = "列表循环"
+        var repeat_icon str = "repeat"
+
+        // ── 视图与导航 ──
+        // "stage": 黑胶唱盘舞台模式 (网易云/汽水音乐); "tracklist": 歌曲列表模式 (QQ音乐/Spotify)
+        var view_mode str = "stage"
+        var active_nav str = "local"
+        var show_queue bool = false
+
+        // ── 搜索与筛选 ──
+        var search_query str = ""
+        var filter_ext str = "all"
+
+        // ── 收藏与状态 ──
+        var liked_ids []str = []
+        var is_current_liked bool = false
+        var status_text str = "正在加载本地曲库…"
+        var library_error str = ""
+        var root_missing bool = false
+        var media_error str = ""
+    }
+
+    on {
+        // 扫描本地音乐库
+        .Load -> {
+            try {
+                let data = json.to_value(Http.get_json("/api/media/scan"))
+                .playlist = data.entries ?? []
+                .root_missing = data.root_missing ?? false
+                .library_error = ""
+            } catch {
+                .playlist = []
+                .root_missing = false
+                .library_error = "后端服务未启动或未配置 AUTO_MEDIA_ROOT"
+            }
+            .item_count = .playlist.len()
+            .item_count_label = .item_count.to_string()
+            .queue_count_label = "(" + .item_count_label + ")"
+            .library_summary_label = "共 " + .item_count_label + " 首歌曲 · 默认路径 E:\\Music\\ · FLAC / MP3 / WAV"
+
+            if .item_count > 0 {
+                PlayerStore.SelectIndex(0)
+                .status_text = "本地曲库已就绪（" + .item_count_label + " 首）"
+            } else {
+                .current_index = 0
+                .has_current = false
+                .current_title = "本地曲库为空"
+                .current_artist = "E:\\Music\\"
+                .current_url = ""
+                if .root_missing {
+                    .status_text = "音乐目录不存在：请检查 E:\\Music\\ 或 AUTO_MEDIA_ROOT"
+                } else {
+                    .status_text = "目录内无支持的音频文件（.flac / .mp3 / .wav）"
+                }
+            }
+        }
+
+        // 选择特定曲目
+        .SelectIndex(idx int) -> {
+            if .item_count == 0 {
+                return
+            }
+            var target int = idx
+            if target < 0 {
+                target = 0
+            }
+            if target >= .item_count {
+                target = .item_count - 1
+            }
+            .current_index = target
+            let item = .playlist[target]
+            .has_current = true
+            .current_id = item.id ?? ""
+            .current_url = item.url ?? item.audio_url ?? item.video_url ?? ""
+            .current_title = item.song_title ?? item.title ?? "未知歌曲"
+            .current_artist = item.artist ?? "本地歌手"
+            .current_ext = item.extension ?? "FLAC"
+            .current_ext_label = "· " + .current_ext + " 无损音频"
+            .current_size = item.size_str ?? ""
+            .seek_target = 0.0
+            .current_time = 0.0
+            .duration = 0.0
+            .current_time_str = "00:00"
+            .duration_str = "00:00"
+            .progress_pct = 0.0
+            .media_error = ""
+            .is_playing = true
+
+            // 刷新红心收藏状态
+            .is_current_liked = false
+            for id in .liked_ids {
+                if id == .current_id {
+                    .is_current_liked = true
+                }
+            }
+        }
+
+        // 播放 / 暂停
+        .PlayPause -> {
+            if .has_current == false && .item_count > 0 {
+                PlayerStore.SelectIndex(0)
+                return
+            }
+            .is_playing = !.is_playing
+        }
+
+        // 下一曲
+        .NextTrack -> {
+            if .item_count == 0 {
+                return
+            }
+            if .repeat_mode == "shuffle" {
+                var next_idx int = (.current_index * 7 + 13) % .item_count
+                if next_idx == .current_index && .item_count > 1 {
+                    next_idx = (next_idx + 1) % .item_count
+                }
+                PlayerStore.SelectIndex(next_idx)
+            } else {
+                var next_idx int = .current_index + 1
+                if next_idx >= .item_count {
+                    next_idx = 0
+                }
+                PlayerStore.SelectIndex(next_idx)
+            }
+        }
+
+        // 上一曲
+        .PrevTrack -> {
+            if .item_count == 0 {
+                return
+            }
+            if .repeat_mode == "shuffle" {
+                var prev_idx int = (.current_index * 11 + 3) % .item_count
+                if prev_idx == .current_index && .item_count > 1 {
+                    prev_idx = (prev_idx + .item_count - 1) % .item_count
+                }
+                PlayerStore.SelectIndex(prev_idx)
+            } else {
+                var prev_idx int = .current_index - 1
+                if prev_idx < 0 {
+                    prev_idx = .item_count - 1
+                }
+                PlayerStore.SelectIndex(prev_idx)
+            }
+        }
+
+        // 切换循环模式
+        .CycleRepeat -> {
+            if .repeat_mode == "all" {
+                .repeat_mode = "one"
+                .repeat_label = "单曲循环"
+                .repeat_icon = "repeat-1"
+            } else if .repeat_mode == "one" {
+                .repeat_mode = "shuffle"
+                .repeat_label = "随机播放"
+                .repeat_icon = "shuffle"
+            } else {
+                .repeat_mode = "all"
+                .repeat_label = "列表循环"
+                .repeat_icon = "repeat"
+            }
+        }
+
+        // 收藏 / 取消收藏当前歌曲
+        .ToggleLike -> {
+            if .current_id == "" {
+                return
+            }
+            var found bool = false
+            var new_liked []str = []
+            for id in .liked_ids {
+                if id == .current_id {
+                    found = true
+                } else {
+                    new_liked.push(id)
+                }
+            }
+            if found == false {
+                new_liked.push(.current_id)
+                .is_current_liked = true
+            } else {
+                .is_current_liked = false
+            }
+            .liked_ids = new_liked
+        }
+
+        // 进度拖拽 / 跳转 (0..1 横向比例)
+        .SeekFraction(ratio float) -> {
+            var r float = ratio
+            if r < 0.0 {
+                r = 0.0
+            }
+            if r > 1.0 {
+                r = 1.0
+            }
+            if .duration > 0.0 {
+                var target_sec float = .duration * r
+                .seek_target = target_sec
+                .current_time = target_sec
+                .progress_pct = r * 100.0
+                .current_time_str = fmt_clock(target_sec)
+            }
+        }
+
+        // 音量加 / 减 / 静音
+        .VolUp -> {
+            var v int = .volume + 5
+            if v > 100 {
+                v = 100
+            }
+            .volume = v
+            .volume_label = v.to_string() + "%"
+            .is_muted = false
+        }
+
+        .VolDown -> {
+            var v int = .volume - 5
+            if v < 0 {
+                v = 0
+            }
+            .volume = v
+            .volume_label = v.to_string() + "%"
+        }
+
+        .ToggleMute -> {
+            .is_muted = !.is_muted
+        }
+
+        // 切换视图（黑胶舞台 / 列表）
+        .ToggleView -> {
+            if .view_mode == "stage" {
+                .view_mode = "tracklist"
+            } else {
+                .view_mode = "stage"
+            }
+        }
+
+        .SetViewMode(mode str) -> {
+            .view_mode = mode
+        }
+
+        .SetActiveNav(nav str) -> {
+            .active_nav = nav
+            if nav == "discover" || nav == "local" {
+                .view_mode = "tracklist"
+            }
+        }
+
+        .ToggleQueue -> {
+            .show_queue = !.show_queue
+        }
+
+        .SetSearch(q str) -> {
+            .search_query = q
+        }
+
+        .SetFilter(f str) -> {
+            .filter_ext = f
+        }
+
+        // ── 上行媒体事件回灌 ──
+        .OnTime(sec float) -> {
+            .current_time = sec
+            .current_time_str = fmt_clock(sec)
+            .time_progress_label = .current_time_str + " / " + .duration_str
+            if .duration > 0.0 {
+                .progress_pct = (.current_time / .duration) * 100.0
+            }
+        }
+
+        .OnDuration(sec float) -> {
+            .duration = sec
+            .duration_str = fmt_clock(sec)
+            .time_progress_label = .current_time_str + " / " + .duration_str
+            if .duration > 0.0 {
+                .progress_pct = (.current_time / .duration) * 100.0
+            }
+        }
+
+        .OnPlayState(playing bool) -> {
+            .is_playing = playing
+        }
+
+        .OnEnded -> {
+            if .repeat_mode == "one" {
+                .seek_target = 0.0
+                .current_time = 0.0
+                .is_playing = true
+            } else {
+                PlayerStore.NextTrack()
+            }
+        }
+
+        .OnMediaError(err str) -> {
+            .media_error = err
+            .is_playing = false
+        }
+    }
+}
