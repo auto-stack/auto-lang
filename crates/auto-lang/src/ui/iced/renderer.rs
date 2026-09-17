@@ -9516,6 +9516,31 @@ struct DashFace {
     span: usize,
 }
 
+/// PLAN-024：face 卡 spacer 链定位（viewport 绝对格位 → 全幅层）——
+/// row[h-space(x), col[v-space(y), card]]，家法（真实 Stack 子层
+/// padding/align 不可依赖）。
+fn spare_position<M: Clone + std::fmt::Debug + 'static>(
+    card: iced::Element<'_, M>,
+    rect: iced::Rectangle,
+) -> iced::Element<'_, M> {
+    let placed = iced::widget::container(
+        iced::widget::row![
+            iced::widget::Space::new()
+                .width(iced::Length::Fixed(rect.x))
+                .height(iced::Length::Shrink),
+            iced::widget::column![
+                iced::widget::Space::new()
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Fixed(rect.y)),
+                card,
+            ],
+        ],
+    )
+    .width(iced::Length::Fill)
+    .height(iced::Length::Fill);
+    placed.into()
+}
+
 /// 面板布局算式（宿主/面板几何单一事实）——返回 (panel_w, panel_h,
 /// panel_top, 每张 face 的视口绝对格位矩形，行主序 next-fit：span 大于
 /// 余量即换行)。面板 = 顶部居中（x 居中，top 注入）；高 = 标题行 + 行数
@@ -13944,14 +13969,10 @@ fn compare_pngs(
                     crate::ui::desktop_protocol::broker::BROKER_PIPE,
                     std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 );
-                // PLAN-024：dashboard boot 召唤钩子（验证/演示通道，
-                // AUTOUI_PANIC_PROBE 先例）——`AUTO_DASHBOARD_BOOT=1` 时
-                // boot 即召唤面板（孵化 + faces 快照 + 几何注入同链），
-                // 供面板链无人值守走查/截图驱动；常规启动零影响。
-                let mut dash_boot_task = iced::Task::<crate::ui::session::DesktopMessage>::none();
-                if std::env::var("AUTO_DASHBOARD_BOOT").as_deref() == Ok("1") {
-                    dash_boot_task = toggle_dashboard(&mut session);
-                }
+                // PLAN-024：常驻小组件层——boot 即挂载并显示（用户裁定
+                // 2026-09-17：桌面常驻，× = 隐藏 / dock ▦ 切换恢复；
+                // toggle 在未挂载态首次调用即挂载+显示，幂等）。
+                let dash_boot_task = toggle_dashboard(&mut session);
                 (session, open_task.discard().chain(dash_boot_task))
             }
             RunMode::Standalone => {
@@ -17694,6 +17715,123 @@ fn compare_pngs(
                 // Plan 503 M3：壁纸罩层（可读性 scrim，紧贴壁纸之上）。
                 layers.push(desktop_wallpaper_scrim());
             }
+            // PLAN-024：dashboard 常驻小组件层（用户裁定 2026-09-17）——
+            // z 仅高于壁纸、低于桌面图标与全部 app 窗（v2 预留的桌面层
+            // z 槽形态提前兑现）；常驻非召唤：× = 隐藏 / dock ▦ 切换。
+            // chrome wrapper 与 face 卡共用 dashboard_layout 算式定位
+            // 定尺寸（px spacer 链，像素一致——.at 侧尺寸类不参与的根修）。
+            if state.dashboard_visible() {
+                let faces_view = dashboard_faces_for_view(state);
+                let viewport = state.host_viewport();
+                let (pw, ph, ptop, cells) = dashboard_layout(viewport, &faces_view);
+                let panel_x = (viewport.width - pw) / 2.0;
+                let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
+                let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
+                let dash_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] dashboard 缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] dashboard view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                // chrome wrapper：panel 矩形 spacer 链定位定尺寸，.at 内部
+                // w-full h-full 填充（chrome 不再自带尺寸类）。
+                let chrome = iced::widget::container(
+                    iced::widget::row![
+                        iced::widget::Space::new()
+                            .width(iced::Length::Fixed(panel_x))
+                            .height(iced::Length::Shrink),
+                        iced::widget::column![
+                            iced::widget::Space::new()
+                                .width(iced::Length::Shrink)
+                                .height(iced::Length::Fixed(ptop)),
+                            iced::widget::container(
+                                dash_client.map(move |m| DM::App(dash_app, m)),
+                            )
+                            .width(iced::Length::Fixed(pw))
+                            .height(iced::Length::Fixed(ph)),
+                        ],
+                    ],
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill);
+                layers.push(chrome.into());
+                // face 卡叠合（viewport 绝对格位；占位卡 = 宿主合成面）。
+                for (f, rect) in faces_view.iter().zip(cells.iter()) {
+                    if f.status != "running" && f.status != "hatched" {
+                        let launch_msg = IcedMessage {
+                            widget: String::new(),
+                            event: format!("__dashboard_launch:{}", f.id),
+                            input_value: None,
+                        };
+                        let hint: iced::Element<'_, IcedMessage> =
+                            iced::widget::mouse_area(
+                                iced::widget::column![
+                                    iced::widget::text("▸").size(22),
+                                    iced::widget::text(f.title.clone()).size(12),
+                                    iced::widget::text("未运行 — 点击启动").size(11),
+                                ]
+                                .align_x(iced::alignment::Horizontal::Center)
+                                .spacing(4),
+                            )
+                            .on_press(launch_msg)
+                            .into();
+                        let placeholder_client = hint.map(move |m| DM::App(dash_app, m));
+                        let card = iced::widget::container(placeholder_client)
+                            .width(iced::Length::Fixed(rect.width))
+                            .height(iced::Length::Fixed(rect.height))
+                            .align_x(iced::alignment::Horizontal::Center)
+                            .align_y(iced::alignment::Vertical::Center)
+                            .style(|_t| iced::widget::container::Style {
+                                border: iced::Border {
+                                    color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.25),
+                                    width: 1.0,
+                                    radius: 12.0.into(),
+                                },
+                                ..Default::default()
+                            });
+                        layers.push(spare_position(card.into(), *rect));
+                        continue;
+                    }
+                    let Some(app_id) = (match f.status {
+                        "running" => dashboard_running_app(state, &f.id),
+                        "hatched" => state.hatched_mini_of(&f.id),
+                        _ => None,
+                    }) else {
+                        continue;
+                    };
+                    let build_face =
+                        || state.split_ref_face(app_id, "mini").map(|v| dynamic_view(v, false));
+                    let face_el: iced::Element<'_, IcedMessage> = match
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(build_face))
+                    {
+                        Ok(Some(el)) => el,
+                        Ok(None) => iced::widget::text("").size(1).into(),
+                        Err(payload) => {
+                            eprintln!(
+                                "[session] face view panicked (plan-453 T6 boundary): {payload:?}"
+                            );
+                            desktop_crash_element()
+                        }
+                    };
+                    let face_client = face_el.map(move |m| DM::App(app_id, m));
+                    let card = iced::widget::container(face_client)
+                        .width(iced::Length::Fixed(rect.width))
+                        .height(iced::Length::Fixed(rect.height))
+                        .style(|_t| iced::widget::container::Style {
+                            border: iced::Border {
+                                color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.35),
+                                width: 1.0,
+                                radius: 12.0.into(),
+                            },
+                            ..Default::default()
+                        });
+                    layers.push(spare_position(card.into(), *rect));
+                }
+            }
             // Plan 496 M5：桌面本体层（463 预留桌面层 z 槽消费）——Stack
             // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口
             // 之下（G3 层级：窗口拖过时图标自然被覆盖）。shell 层同型
@@ -17898,152 +18036,6 @@ fn compare_pngs(
                 };
                 layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
             }
-            // PLAN-024：dashboard overlay 层（通知层邻位顶层——设置面板
-            // 退役后的第四 overlay 槽继任；仅 visible 时推层，switcher/
-            // 通知同款语义）。face 卡（各 App `view mini` 活渲染面）按
-            // 宿主格位算式叠合在同一 Stack（chrome 层 + face 子层，§5.2
-            // 预案形态），事件按 app 打标直达各会话。
-            if state.dashboard_visible() {
-                let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
-                let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
-                let dash_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] dashboard 缺失").size(14).into(),
-                    Err(payload) => {
-                        eprintln!("[session] dashboard view panicked (plan-453 T6 boundary): {payload:?}");
-                        desktop_crash_element()
-                    }
-                };
-                let mut children: Vec<iced::Element<'_, DM>> = Vec::new();
-                children.push(dash_client.map(move |m| DM::App(dash_app, m)));
-                // face 叠合：读面板注入的平行快照（view 侧零源扫描/零
-                // 文件 IO——refresh_dashboard_panel 已算好），格位由同一
-                // 布局算式产出（像素一致）。
-                let faces_view = dashboard_faces_for_view(state);
-                if !faces_view.is_empty() {
-                    let viewport = state.host_viewport();
-                    let (_pw, _ph, _pt, cells) = dashboard_layout(viewport, &faces_view);
-                    for (f, rect) in faces_view.iter().zip(cells.iter()) {
-                        // PLAN-024 §5.7：占位卡（有后端 app 未运行）——宿主
-                        // 合成面（标题 + 「点击启动」提示），点击产生合成
-                        // 消息 `__dashboard_launch:<id>` 直投面板 App（update
-                        // 拦截臂转 `__dashboard_cmd` 记录，bus 排空统一执行）。
-                        // v1 图标用文本字形（registry lucide 名进宿主侧
-                        // 原生 widget 需图标管线直连，留 v2）。
-                        if f.status != "running" && f.status != "hatched" {
-                            let launch_msg = IcedMessage {
-                                widget: String::new(),
-                                event: format!("__dashboard_launch:{}", f.id),
-                                input_value: None,
-                            };
-                            let hint: iced::Element<'_, IcedMessage> =
-                                iced::widget::mouse_area(
-                                    iced::widget::column![
-                                        iced::widget::text("▸").size(22),
-                                        iced::widget::text(f.title.clone()).size(12),
-                                        iced::widget::text("未运行 — 点击启动").size(11),
-                                    ]
-                                    .align_x(iced::alignment::Horizontal::Center)
-                                    .spacing(4),
-                                )
-                                .on_press(launch_msg)
-                                .into();
-                            let placeholder_client = hint.map(move |m| DM::App(dash_app, m));
-                            let card = iced::widget::container(placeholder_client)
-                                .width(iced::Length::Fixed(rect.width))
-                                .height(iced::Length::Fixed(rect.height))
-                                .align_x(iced::alignment::Horizontal::Center)
-                                .align_y(iced::alignment::Vertical::Center)
-                                .style(|_t| iced::widget::container::Style {
-                                    border: iced::Border {
-                                        color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.25),
-                                        width: 1.0,
-                                        radius: 12.0.into(),
-                                    },
-                                    ..Default::default()
-                                });
-                            let placed = iced::widget::container(
-                                iced::widget::row![
-                                    iced::widget::Space::new()
-                                        .width(iced::Length::Fixed(rect.x))
-                                        .height(iced::Length::Shrink),
-                                    iced::widget::column![
-                                        iced::widget::Space::new()
-                                            .width(iced::Length::Shrink)
-                                            .height(iced::Length::Fixed(rect.y)),
-                                        card,
-                                    ],
-                                ],
-                            )
-                            .width(iced::Length::Fill)
-                            .height(iced::Length::Fill);
-                            children.push(placed.into());
-                            continue;
-                        }
-                        let Some(app_id) = (match f.status {
-                            "running" => dashboard_running_app(state, &f.id),
-                            "hatched" => state.hatched_mini_of(&f.id),
-                            _ => None,
-                        }) else {
-                            continue;
-                        };
-                        let build_face =
-                            || state.split_ref_face(app_id, "mini").map(|v| dynamic_view(v, false));
-                        let face_el: iced::Element<'_, IcedMessage> = match
-                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(build_face))
-                        {
-                            Ok(Some(el)) => el,
-                            Ok(None) => iced::widget::text("").size(1).into(),
-                            Err(payload) => {
-                                eprintln!(
-                                    "[session] face view panicked (plan-453 T6 boundary): {payload:?}"
-                                );
-                                desktop_crash_element()
-                            }
-                        };
-                        // face 事件打标直达该 app 会话（vwin 同型——格位
-                        // 内输入/交互零中转）。
-                        let face_client = face_el.map(move |m| DM::App(app_id, m));
-                        // 定位链：外层全幅 + padding=格位原点（像素精确落位，
-                        // 左上对齐）→ 内层固定宽高卡片容器（chrome）→ face。
-                        let card = iced::widget::container(face_client)
-                            .width(iced::Length::Fixed(rect.width))
-                            .height(iced::Length::Fixed(rect.height))
-                            .style(|_t| iced::widget::container::Style {
-                                border: iced::Border {
-                                    color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.35),
-                                    width: 1.0,
-                                    radius: 12.0.into(),
-                                },
-                                ..Default::default()
-                            });
-                        // 定位链家法（notification O1 教训：真实 Stack 子层
-                        // padding/align 不可依赖）——px spacer 精确落位：
-                        // row[ h-space(x), col[ v-space(y), card ] ]。
-                        let placed = iced::widget::container(
-                            iced::widget::row![
-                                iced::widget::Space::new()
-                                    .width(iced::Length::Fixed(rect.x))
-                                    .height(iced::Length::Shrink),
-                                iced::widget::column![
-                                    iced::widget::Space::new()
-                                        .width(iced::Length::Shrink)
-                                        .height(iced::Length::Fixed(rect.y)),
-                                    card,
-                                ],
-                            ],
-                        )
-                        .width(iced::Length::Fill)
-                        .height(iced::Length::Fill);
-                        children.push(placed.into());
-                    }
-                }
-                layers.push(
-                    iced::widget::Stack::with_children(children).into(),
-                );
-            }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
         let Some(app_id) = state.app_of_window(&window) else {
@@ -18236,25 +18228,6 @@ fn compare_pngs(
             if state.is_desktop() && state.notification_visible() {
                 if let (Some(panel), Some(host)) =
                     (state.desktop.notification_app, state.host.as_ref())
-                {
-                    if let Some(app) = state.apps.get(&panel) {
-                        let bindings = app.component.key_bindings().clone();
-                        subs.push(keyboard_subscription_ext(
-                            panel,
-                            host.window,
-                            bindings,
-                            true,
-                            true,
-                            true,
-                        ));
-                    }
-                }
-            }
-            // PLAN-024：dashboard 面板的键盘订阅（通知块同型第五块；
-            // Esc 关面板——bind "Escape" → .Escape，幂等由 visible 门控）。
-            if state.is_desktop() && state.dashboard_visible() {
-                if let (Some(panel), Some(host)) =
-                    (state.desktop.dashboard_app, state.host.as_ref())
                 {
                     if let Some(app) = state.apps.get(&panel) {
                         let bindings = app.component.key_bindings().clone();

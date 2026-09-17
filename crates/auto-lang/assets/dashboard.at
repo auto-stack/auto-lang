@@ -49,56 +49,38 @@ widget DashboardPanel {
 
     view {
         if .visible == "1" {
-            // ---- 打开态：scrim 外点关闭（N6d 模式，通知中心同型）+
-            // 顶部居中面板（switcher items-center 同机制；贴顶由宿主
-            // 注入 __panel_top px 精确镜像 face 格位算式）----
-            mouse-area (onclick: .Close) {
+            // 常驻小组件层（用户裁定 2026-09-17）：宿主 wrapper 给定
+            // 面板矩形（与 face 卡同一算式，像素一致），本面只画 chrome。
+            // 无 scrim、无外点关闭（常驻语义——仅 × 隐藏 / dock ▦ 切换）。
+            col {
                 style: "w-full h-full"
-                row {
-                    style: "w-full h-full justify-center items-start"
-                    mouse-area (onclick: .Close) {
-                        // 卡片守卫（PLAN-010 N6d 幂等动作吞内点）+
-                        // 贴顶 gap（宿主注入 px）。
-                        style: "mt-[${.__panel_top}px]"
-                        col {
-                            // glass 三件套（bg-card/80 + 细边框 + 柔影，
-                            // stella dashboard 骨架同源）。
-                            style: "bg-card/80 border rounded-xl shadow-xl overflow-hidden w-[920px] h-[212px]"
+                col {
+                    style: "w-full h-full bg-card/80 border rounded-xl overflow-hidden"
 
-                            // 标题行：Dashboard + × 关闭
-                            row {
-                                style: "w-full justify-between items-center px-4 pt-3"
-                                text "Dashboard" { style: "text-foreground text-sm font-medium" }
-                                button (onclick: .Close) {
-                                    text { "×" }
-                                }
-                            }
+                    // 标题行：固定 h-12（48px，与宿主 DASH_HEADER_H 严格
+                    // 一致——格位算式的头部偏移常量）。
+                    row {
+                        style: "w-full h-12 px-4 items-center justify-between"
+                        text "Dashboard" { style: "text-foreground text-sm font-medium" }
+                        button (onclick: .Close) {
+                            text { "×" }
+                        }
+                    }
 
-                            // 网格区：face 由宿主拆借渲染按格位叠合，
-                            // 本层留白（面板高度由宿主按行数注入）。
+                    // 网格区：face 由宿主拆借渲染按格位叠合，本层留白
+                    // （面板高度由宿主按行数注入）。
+                    col {
+                        style: "w-full p-4"
+                        if .nrows == 0 {
                             col {
-                                style: "w-full p-4"
-                                if .nrows == 0 {
-                                    col {
-                                        style: "flex items-center py-8 w-full"
-                                        text "No widgets" { style: "text-muted-foreground text-sm" }
-                                    }
-                                }
+                                style: "flex items-center py-8 w-full"
+                                text "No widgets" { style: "text-muted-foreground text-sm" }
                             }
                         }
                     }
                 }
             }
-        } else {
-            // ---- 隐藏态：透明空层（不挡桌面点击；装配层仅 visible 时推层）----
-            col {
-                style: "w-full h-full"
-            }
         }
-    }
-
-    bind {
-        "Escape" -> .Escape
     }
 
     on {
