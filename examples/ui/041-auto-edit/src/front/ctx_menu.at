@@ -9,23 +9,25 @@
 
 use editor_store: EditorStore
 
+style menu_item = "h-7 w-full justify-start px-2 text-[12px] text-foreground"   // Phase B: zinc-200 → foreground
 widget EditorCtxMenu {
     msg { Cut, Copy, SelectAll, Dismiss }
 
     view {
+        // Phase B: border-zinc-700 → border-border（#16171B 面板底为编辑器主题深色，豁免保留）
         popover (open: .store.ctx_open, x: .store.ctx_x, y: .store.ctx_y, ondismiss: .Dismiss,
-                 class: "w-40 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+                 class: "w-40 bg-[#16171B] border border-border shadow-md py-1") {
             button (text: "剪切", variant: "text") {
                 onclick: .Cut
-                style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+                style: menu_item
             }
             button (text: "复制", variant: "text") {
                 onclick: .Copy
-                style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+                style: menu_item
             }
             button (text: "全选", variant: "text") {
                 onclick: .SelectAll
-                style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+                style: menu_item
             }
         }
     }

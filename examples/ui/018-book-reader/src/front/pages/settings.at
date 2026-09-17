@@ -1,6 +1,11 @@
 // settings.at — "/settings" reading preferences.
 // Font size is persisted to localStorage (storage.get/set) and applied to the
 // reading view. Theme (light/dark) is handled by the ThemeToggle escape hatch.
+use stylekit.styles: caption_text
+style settings_label = "text-sm font-semibold text-foreground"
+style size_xl = "text-xl"
+style sub_text = "text-sm text-muted-foreground"
+
 widget settings {
     msg { Init, SetFont(str) }
 
@@ -23,8 +28,8 @@ widget settings {
                 // Font size
                 col {
                     style: "gap-3"
-                    text "Font Size" { style: "text-sm font-semibold text-foreground" }
-                    text "Affects the reading view text size." { style: "text-xs text-muted-foreground" }
+                    text "Font Size" { style: settings_label }
+                    text "Affects the reading view text size." { style: cap }
                     row {
                         style: "gap-2"
                         button {
@@ -60,22 +65,22 @@ widget settings {
                 // Theme
                 col {
                     style: "gap-3"
-                    text "Theme" { style: "text-sm font-semibold text-foreground" }
-                    text "Use the sun/moon toggle (top of the sidebar or reading bar) to switch between light and dark." { style: "text-xs text-muted-foreground" }
+                    text "Theme" { style: settings_label }
+                    text "Use the sun/moon toggle (top of the sidebar or reading bar) to switch between light and dark." { style: cap }
                     row {
                         style: "gap-2 items-center"
-                        text "☀️" { style: "text-xl" }
-                        text "Light" { style: "text-sm text-muted-foreground" }
+                        text "☀️" { style: size_xl }
+                        text "Light" { style: sub_text }
                         text "⇄" { style: "text-muted-foreground mx-2" }
-                        text "🌙" { style: "text-xl" }
-                        text "Dark" { style: "text-sm text-muted-foreground" }
+                        text "🌙" { style: size_xl }
+                        text "Dark" { style: sub_text }
                     }
                 }
 
                 // About
                 col {
                     style: "gap-2 p-4 bg-card border border-border rounded-xl"
-                    text "About" { style: "text-sm font-semibold text-foreground" }
+                    text "About" { style: settings_label }
                     text "AutoRead — a multi-page e-book reader built with AutoUI: routes, a rust backend, and a runtime theme toggle." { style: "text-xs text-muted-foreground leading-relaxed" }
                 }
             }

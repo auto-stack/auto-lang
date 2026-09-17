@@ -13,3 +13,7 @@ title: "Charts"
 title_zh: "图表"
 front_port: 4024
 desktop: "true"
+
+dep stylekit {
+    path: "../stylekit"
+}
