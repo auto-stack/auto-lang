@@ -55,10 +55,14 @@
 widget Desktop {
     msg {
         SummonLauncher,
-        LayoutFree, LayoutGrid, LayoutStack,
+        // PLAN-014 W-02：总线写单点（全部写点经 .SendCmd 落 .__desktop_cmd
+        // ——同排空周期多命令换行连接不互相覆盖；宿主 parse_records 按
+        // 记录切分逐条执行，协议 v1.8 登记追加语义）。
+        SendCmd(str),
+        LayoutGrid, LayoutStack,
         WinFocus(str), WinClose(str), WinMin(str),
-        ActivateApp(str), SetWorkspace(str), WorkspaceNext,
-        WorkspaceAdd, WorkspaceClose(str),
+        ActivateApp(str), SetWorkspace(str),
+        WorkspaceAdd,
         NotificationToggle,
         NativeFocus(str), NativeClose(str),
         OpenSettingsPanel,
@@ -78,7 +82,7 @@ widget Desktop {
         ShutdownRequest, ShutdownCancel, ShutdownConfirm,
         // Plan 497 G5：dock/pager hover 预览（shell 内部 UI 态，非总线动词）。
         // PLAN-010 N6c：HoverEnd 退役拆分——HoverLeave 只清预览态。
-        HoverWin(str), HoverLeave, HoverWs(str), HoverWsEnd,
+        HoverWin(str), HoverLeave,
         // PLAN-019 v1.7：显示桌面 sliver（任务栏右缘细条——Win11 惯例；
         // toggle 判据 __wm_showdesk 宿主投影，本面零分支直发）。
         ShowDesktopToggle, SliverHover, SliverUnhover
@@ -100,6 +104,9 @@ widget Desktop {
         var __wm_fp str = ""
         var __wm_notes = []            // 协议 v1.2 合同面（dock 不直接消费）
         var __wm_notes_unread str = "" // 协议 v1.2：未读串（badge 条件消费）
+        // PLAN-014 W-07（协议 v1.8）：badge 显示串（宿主派生——未读 >9 →
+        // "9+"、0 → ""；.at 视图无数值比较原语，I9 宿主派生单点）。
+        var __wm_notes_badge str = ""
         // PLAN-012 v1.6：固定集合派生串（宿主注入 ",id1,id2,"）——窗口
         // 条目与固定图标去重合并判据（Obj 数组字段读失效 B12 同族规避）。
         var __dock_pinned_csv str = ""
@@ -128,10 +135,13 @@ widget Desktop {
         // （分钟变化才写——稳态零重建）；本地 tick 非驱动事实投影，不进
         // 指纹门控组（协议字段表外注记，零协议改动）。
         var __wm_clock str = ""
+        // PLAN-014 W-06'（协议 v1.8）：日期行（"M月D日 周X"；与 __wm_clock
+        // 同一 ServiceTick 帧泵、独立变化才写——两字段独立脏帧）。
+        var __wm_date str = ""
         // Plan 497 G5：hover 预览态（shell 自有 UI 态——非 __wm_ 宿主注入
-        // 域）。dock_hover = 预览中窗口 wid；ws_hover = 预览中分区 id。
+        // 域）。dock_hover = 预览中窗口 wid（PLAN-014 W-01：ws_hover 随
+        // HoverWs/HoverWsEnd 死组退役——旧 pager hover 臂 526 T18 起无发送者）。
         var dock_hover str = ""
-        var ws_hover str = ""
         // PLAN-019 v1.7：sliver hover 态（显示桌面细条高亮）。
         var sliver_hover str = ""
         // PLAN-526 T8：右键菜单态（命中条目 wid；hover 复用同一 popover
@@ -453,22 +463,28 @@ widget Desktop {
                     // 开关走 notes_toggle 总线动词，清除钮在面板内）。
                     // PLAN-526 T7/T9：去默认 primary 底（显式透明）+ 统一
                     // start 档外框。
+                    // PLAN-014 W-07：badge 圆形化——绝对定位 16px 圆压
+                    // notification 位图钮右上角（relative 容器 + absolute
+                    // 脱流子；>9 → "9+" 宿主派生 __wm_notes_badge）。
                     row {
                         style: "items-center gap-0"
                         // PLAN-012 W7：铃铛两态——判据 = __wm_notes_visible
                         // 投影（宿主 overlay 直读；外点/×/Esc 关闭路径同步翻转）。
                         // 2026-09-15 用户裁定：bell lucide → notification 位图。
-                        button (icon: "iconfile:notification", variant: "ghost") {
-                            onclick: .NotificationToggle
-                            style: if .__wm_notes_visible == "1" {
-                                "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
-                            } else {
-                                "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+                        col {
+                            style: "relative"
+                            button (icon: "iconfile:notification", variant: "ghost") {
+                                onclick: .NotificationToggle
+                                style: if .__wm_notes_visible == "1" {
+                                    "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
+                                } else {
+                                    "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
+                                }
                             }
-                        }
-                        if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
-                            text .__wm_notes_unread {
-                                style: "text-xs text-error font-semibold"
+                            if .__wm_notes_badge != "" {
+                                text .__wm_notes_badge {
+                                    style: "absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-error text-primary-foreground text-[10px] font-semibold flex items-center justify-center"
+                                }
                             }
                         }
                     }
@@ -525,8 +541,17 @@ widget Desktop {
                     row {
                         style: "items-center gap-0"
                     }
-                    text .__wm_clock {
-                        style: "text-xs text-muted-foreground px-2 tabular-nums"
+                    // PLAN-014 W-06'：时钟两行（上行 HH:MM / 下行 M月D日
+                    // 周X——__wm_clock/__wm_date 独立注入独立脏帧；无点击
+                    // 臂——注册表无日历 app，§10-Q3）。
+                    col {
+                        style: "items-center justify-center px-2"
+                        text .__wm_clock {
+                            style: "text-xs text-muted-foreground tabular-nums leading-tight"
+                        }
+                        text .__wm_date {
+                            style: "text-[10px] text-muted-foreground leading-tight"
+                        }
                     }
                     // PLAN-019 v1.7：显示桌面 sliver（任务栏最右缘细条——
                     // Win11 惯例；负一屏时高亮提示 toggle 语义。v1 hover
@@ -567,17 +592,16 @@ widget Desktop {
                 .__dock_enabled = "0"
             }
         }
-        .SummonLauncher -> { .__desktop_cmd = "summon\tlauncher" }
-        .LayoutFree -> { .__desktop_cmd = "layout\tfree" }
-        .LayoutGrid -> { .__desktop_cmd = "layout_toggle\tgrid" }
-        .LayoutStack -> { .__desktop_cmd = "layout_toggle\tmaster-stack" }
+        .SummonLauncher -> { .SendCmd("summon\tlauncher") }
+        .LayoutGrid -> { .SendCmd("layout_toggle\tgrid") }
+        .LayoutStack -> { .SendCmd("layout_toggle\tmaster-stack") }
         // PLAN-526 T8：菜单态随动作消费清零（动作项与条目本体共用消息，
         // 非菜单路径清空为无害幂等）。
-        .WinFocus(wid) -> { .__desktop_cmd = "focus\t" + wid; .win_menu = "" }
-        .WinClose(wid) -> { .__desktop_cmd = "close\t" + wid; .win_menu = "" }
-        .WinMin(wid) -> { .__desktop_cmd = "win_min\t" + wid; .win_menu = "" }
-        .ActivateApp(app) -> { .__desktop_cmd = "activate\t" + app }
-        .SetWorkspace(id) -> { .__desktop_cmd = "workspace\t" + id; .switcher_open = "" }
+        .WinFocus(wid) -> { .SendCmd("focus\t" + wid); .win_menu = "" }
+        .WinClose(wid) -> { .SendCmd("close\t" + wid); .win_menu = "" }
+        .WinMin(wid) -> { .SendCmd("win_min\t" + wid); .win_menu = "" }
+        .ActivateApp(app) -> { .SendCmd("activate\t" + app) }
+        .SetWorkspace(id) -> { .SendCmd("workspace\t" + id); .switcher_open = "" }
         // PLAN-526 T18：面板开合（触发 icon 二态翻转；热键切换由宿主
         // 直写 switcher_open 并 ServiceTick 计时收起）。PLAN-012 W3：
         // popover ondismiss 复用本臂（开态下外点/Esc → 翻转即收）。
@@ -588,31 +612,29 @@ widget Desktop {
                 .switcher_open = "1"
             }
         }
-        .WorkspaceNext -> { .__desktop_cmd = "workspace_next" }
         // Plan 478 T5：pager 增/删分区（协议 v1.1 动词；非空/末分区门在宿主臂）。
-        .WorkspaceAdd -> { .__desktop_cmd = "workspace_add" }
-        .WorkspaceClose(id) -> { .__desktop_cmd = "workspace_close\t" + id }
+        .WorkspaceAdd -> { .SendCmd("workspace_add") }
         // Plan 479 T4：通知中心开关（协议 v1.2 无参动词；宿主臂落
         // toggle_notification_center 执行体——开面板即未读清零）。
-        .NotificationToggle -> { .__desktop_cmd = "notes_toggle" }
+        .NotificationToggle -> { .SendCmd("notes_toggle") }
         // Plan 486 v1.3：native 条目聚焦/关闭（arg 直传 wid "N<slot>"，
         // 宿主 parse 剥 N 前缀取 slot id——shell 零字符串加工）。
-        .NativeFocus(wid) -> { .__desktop_cmd = "focus_native\t" + wid; .win_menu = "" }
-        .NativeClose(wid) -> { .__desktop_cmd = "close_native\t" + wid; .win_menu = "" }
+        .NativeFocus(wid) -> { .SendCmd("focus_native\t" + wid); .win_menu = "" }
+        .NativeClose(wid) -> { .SendCmd("close_native\t" + wid); .win_menu = "" }
         // Plan 487 M4 v1.4：设置面板召唤（无参动词；宿主臂落
         // toggle_settings 执行体——二态翻转，面板可见再点即关）。
-        .OpenSettingsPanel -> { .__desktop_cmd = "open_settings" }
+        .OpenSettingsPanel -> { .SendCmd("open_settings") }
         // PLAN-526 T8：条目右键 → 菜单态（popover open 条件或合 hover）。
         .WinMenu(wid) -> { .win_menu = wid }
         // PLAN-012 W4 v1.6：单枚固定/取消固定（菜单动作消费即清菜单态；
         // 持久化与投影热同步在宿主执行臂）。
-        .DockPin(app) -> { .__desktop_cmd = "dock_pin\t" + app; .win_menu = "" }
-        .DockUnpin(app) -> { .__desktop_cmd = "dock_unpin\t" + app; .win_menu = "" }
+        .DockPin(app) -> { .SendCmd("dock_pin\t" + app); .win_menu = "" }
+        .DockUnpin(app) -> { .SendCmd("dock_unpin\t" + app); .win_menu = "" }
         // PLAN-526 T11：关机确认三态（确认落 shutdown 无参动词；
         // Escape 退出热键退役——T13——后唯一图形退出入口）。
         .ShutdownRequest -> { .shutdown_ask = "1" }
         .ShutdownCancel -> { .shutdown_ask = "" }
-        .ShutdownConfirm -> { .__desktop_cmd = "shutdown"; .shutdown_ask = "" }
+        .ShutdownConfirm -> { .SendCmd("shutdown"); .shutdown_ask = "" }
         // Plan 497 G5：hover 预览态翻转（mouse-area enter/exit 驱动）。
         // PLAN-010 N6c：HoverEnd 退役——hover 离开只清预览态；菜单关闭
         // 走 WinMenuClose（popover ondismiss 外点/Esc + 三动作自带清态），
@@ -620,18 +642,24 @@ widget Desktop {
         .HoverWin(wid) -> { .dock_hover = wid }
         .HoverLeave -> { .dock_hover = "" }
         .WinMenuClose -> { .win_menu = "" }
-        .HoverWs(id) -> { .ws_hover = id }
-        .HoverWsEnd -> { .ws_hover = "" }
         // PLAN-019 v1.7：显示桌面 sliver（toggle 判据 = __wm_showdesk
         // 宿主投影等式；负一屏上开 picker 时返回臂幂等先关 picker）。
         .ShowDesktopToggle -> {
             if .__wm_showdesk == "1" {
-                .__desktop_cmd = "showdesk_return"
+                .SendCmd("showdesk_return")
             } else {
-                .__desktop_cmd = "show_desktop"
+                .SendCmd("show_desktop")
             }
         }
         .SliverHover -> { .sliver_hover = "1" }
         .SliverUnhover -> { .sliver_hover = "" }
+        // PLAN-014 W-02：追加语义单点——写点一律经本臂落总线（多命令以
+        // 换行连接；直接赋值会在同周期第二条到达时冲掉第一条）。
+        .SendCmd(rec) -> {
+            if .__desktop_cmd != "" {
+                .__desktop_cmd = .__desktop_cmd + "\n"
+            }
+            .__desktop_cmd = .__desktop_cmd + rec
+        }
     }
 }

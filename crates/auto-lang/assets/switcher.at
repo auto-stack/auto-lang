@@ -16,7 +16,9 @@
 // 快照语义：召唤时点定序，打开期间 Advance 不重注（MRU 切换器惯例）。
 // 消费者唯一：宿主 renderer 的 summon_switcher / switcher 键盘订阅。
 widget Switcher {
-    msg { Init, RebuildMru, Advance, Back, Pick, Focus(str), Escape }
+    // PLAN-014 W-02：SendCmd 总线写单点（追加语义，同 shell.at）。
+    // PLAN-014 W-10：HoverSel 行悬停跟随选中（int 下标直传）。
+    msg { Init, RebuildMru, Advance, Back, Pick, Focus(str), Escape, SendCmd(str), HoverSel(int) }
 
     model {
         // ---- 接缝状态（desktop 宿主注入）----
@@ -73,6 +75,7 @@ widget Switcher {
                             if .sel == r.i {
                                 row {
                                     onclick: .Focus(r.wid)
+                                    onmouseenter: .HoverSel(r.i)
                                     style: "flex items-center gap-3 px-4 py-2 bg-primary/15 cursor-pointer"
                                     window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border rounded" }
                                     text r.title { style: "text-primary text-sm font-medium" }
@@ -80,6 +83,7 @@ widget Switcher {
                             } else {
                                 row {
                                     onclick: .Focus(r.wid)
+                                    onmouseenter: .HoverSel(r.i)
                                     style: "flex items-center gap-3 px-4 py-2 hover:bg-primary/10 cursor-pointer"
                                     window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border rounded" }
                                     text r.title { style: "text-foreground text-sm" }
@@ -126,6 +130,8 @@ widget Switcher {
 
         // 宿主召唤时显式调用（宿主写状态不触发 handler）：平行列表 →
         // handler 自有 rows（此后 .Pick 下标读安全），sel 复位 0（计划 D1）。
+        // PLAN-014 W-10：预选 MRU 第 2 项（Alt-Tab 惯例——第 1 项 = 当前
+        // 聚焦窗，Enter 即切最近其他窗；单条目/空表保持 0）。
         .RebuildMru -> {
             .rows = []
             .nres = 0
@@ -137,6 +143,17 @@ widget Switcher {
                 idx = idx + 1
             }
             .nres = .rows.len()
+            if .nres > 1 {
+                .sel = 1
+            }
+        }
+
+        // PLAN-014 W-10：行悬停跟随选中（键盘 Advance/Back 从当前 sel 继续
+        // ——天然互洽，无需特判）。
+        .HoverSel(i) -> {
+            if .visible == "1" {
+                .sel = i
+            }
         }
 
         // 选中推进（快照序内环走；不重注——MRU 切换器惯例）。
@@ -177,8 +194,16 @@ widget Switcher {
 
         // 确认聚焦：写上行总线 + 自隐（宿主排空执行 FocusWindow）。
         .Focus(wid) -> {
-            .__desktop_cmd = "focus\t" + wid
+            .SendCmd("focus\t" + wid)
             .visible = "0"
+        }
+
+        // PLAN-014 W-02：追加语义单点（同 shell.at SendCmd）。
+        .SendCmd(rec) -> {
+            if .__desktop_cmd != "" {
+                .__desktop_cmd = .__desktop_cmd + "\n"
+            }
+            .__desktop_cmd = .__desktop_cmd + rec
         }
 
         // Esc 取消：自隐不聚焦。
