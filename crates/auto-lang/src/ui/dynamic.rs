@@ -92,6 +92,11 @@ pub struct DynamicComponent {
     /// The AuraNode view template (cloned from AuraWidget::view_tree).
     view_template: crate::aura::AuraNode,
 
+    /// PLAN-024: named view templates (`view mini { ... }`) — additional
+    /// render faces sharing this component's VM bridge/state. BTreeMap so
+    /// face enumeration order is deterministic (dashboard protocol).
+    named_templates: std::collections::BTreeMap<String, crate::aura::AuraNode>,
+
     /// Widget name, cached for efficient access.
     widget_name: String,
 
@@ -228,6 +233,9 @@ impl DynamicComponent {
         Ok(Self {
             bridge,
             view_template,
+            named_templates: widget.named_views.iter()
+                .map(|(n, v)| (n.clone(), v.clone()))
+                .collect(),
             widget_name,
             import_stmts: Vec::new(),
             dirty: true,
@@ -302,6 +310,9 @@ impl DynamicComponent {
         Ok(Self {
             bridge,
             view_template,
+            named_templates: widget.named_views.iter()
+                .map(|(n, v)| (n.clone(), v.clone()))
+                .collect(),
             widget_name,
             import_stmts,
             dirty: true,
@@ -428,6 +439,9 @@ impl DynamicComponent {
         Ok(Self {
             bridge,
             view_template,
+            named_templates: view_widget.named_views.iter()
+                .map(|(n, v)| (n.clone(), v.clone()))
+                .collect(),
             widget_name,
             import_stmts,
             dirty: true,
@@ -446,7 +460,6 @@ impl DynamicComponent {
             timers,
         })
     }
-
     /// Create a new DynamicComponent with a pre-configured AutoVM instance.
     ///
     /// Use this when the VM already has bytecode loaded (e.g., from a compiled module).
@@ -469,6 +482,9 @@ impl DynamicComponent {
         Ok(Self {
             bridge,
             view_template,
+            named_templates: widget.named_views.iter()
+                .map(|(n, v)| (n.clone(), v.clone()))
+                .collect(),
             widget_name,
             import_stmts: Vec::new(),
             dirty: true,
@@ -776,6 +792,33 @@ impl DynamicComponent {
         builder.build_with_debug_gated(&self.view_template, capture_probe)
     }
 
+    /// PLAN-024: names of the declared named views (`view mini { ... }`).
+    /// Deterministic (declaration order preserved by the BTreeMap is NOT
+    /// required by callers — sorted iteration comes from BTreeMap keys).
+    pub fn named_views(&self) -> Vec<String> {
+        self.named_templates.keys().cloned().collect()
+    }
+
+    /// Whether this component declares a named view with the given name.
+    pub fn has_named_view(&self, name: &str) -> bool {
+        self.named_templates.contains_key(name)
+    }
+
+    /// PLAN-024: build a named view face — same builder stack as `view()`,
+    /// different template root. Shares the VM bridge/state with the main
+    /// view, so input/Tick/dispatch drive both faces identically (活渲染面,
+    /// not a screenshot). Returns None for an unknown name.
+    pub fn view_named(&self, name: &str) -> Option<View<DynamicMessage>> {
+        let template = self.named_templates.get(name)?;
+        let builder = AuraViewBuilder::with_registry_and_imports(
+            &self.bridge,
+            &self.widget_name,
+            &self.widget_registry,
+            &self.import_stmts,
+        ).with_routes(&self.routes);
+        Some(builder.build(template))
+    }
+
     /// Return the deterministic VNode id used by the debug/snapshot pipeline
     /// for a view path.  ImageSurface events use this same path identity, so a
     /// late load/error/pointer message cannot be associated with a recycled
@@ -1036,6 +1079,9 @@ impl DynamicComponent {
         // 5. Update self
         self.bridge = new_bridge;
         self.view_template = new_widget.view_tree.clone();
+        self.named_templates = new_widget.named_views.iter()
+            .map(|(n, v)| (n.clone(), v.clone()))
+            .collect();
         self.widget_name = new_widget.name.clone();
         self.input_state_map = extract_input_state_map_with_registry(&new_widget.view_tree, &self.widget_registry);
         self.tick_interval = new_widget.tick_interval;
@@ -2398,6 +2444,7 @@ mod tests {
     /// Helper: create a minimal AuraWidget for testing.
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: name.to_string(),
             state_vars,
@@ -2565,6 +2612,7 @@ mod tests {
     #[test]
     fn test_view_with_state_binding() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Counter".to_string(),
@@ -2746,6 +2794,7 @@ mod tests {
     #[test]
     fn test_view_with_button_and_event() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Counter".to_string(),
@@ -2841,6 +2890,7 @@ mod tests {
     #[test]
     fn test_write_state_updates_view() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Counter".to_string(),
@@ -3037,6 +3087,7 @@ mod tests {
 
         // Reload with a different view template
         let new_widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Counter".to_string(),

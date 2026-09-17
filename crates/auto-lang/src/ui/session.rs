@@ -4312,6 +4312,7 @@ mod tests {
     /// Helper: create a minimal AuraWidget for testing（同 dynamic.rs 测试）。
     fn make_test_widget(name: &str) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: name.to_string(),
             state_vars: vec![AuraStateDef {

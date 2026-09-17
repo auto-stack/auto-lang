@@ -631,6 +631,7 @@ fn compile_at_file(
             model: store.model.clone(),
             computed: store.computed.clone(),
             view: None,
+            named_views: Vec::new(),
             on: store.on.clone(),
             bind: None,
             props: Vec::new(),

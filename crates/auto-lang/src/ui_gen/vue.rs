@@ -19429,6 +19429,7 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
             is_pub: false,
         });
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "Child".to_string(),
             state_vars: vec![],

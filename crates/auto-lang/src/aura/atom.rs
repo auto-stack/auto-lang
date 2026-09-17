@@ -478,6 +478,7 @@ mod tests {
     #[test]
     fn test_to_atom_simple_widget() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
@@ -517,6 +518,7 @@ mod tests {
     #[test]
     fn test_to_atom_with_children() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "App".to_string(),
@@ -568,6 +570,7 @@ mod tests {
         let module = AuraModule {
             name: "MyApp".to_string(),
             widgets: vec![AuraWidget {
+                named_views: Vec::new(),
                 actions: None,
                 timers: Vec::new(),
                 name: "Main".to_string(),
