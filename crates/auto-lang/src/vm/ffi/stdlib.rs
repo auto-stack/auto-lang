@@ -65,7 +65,7 @@ mod image_pipeline_vm_http_tests {
 
     #[test]
     fn image_natives_register_opaque_ticket_operations() {
-        assert_eq!(IMAGE_NATIVE_NAMES.len(), 16);
+        assert_eq!(IMAGE_NATIVE_NAMES.len(), 17);
         assert!(IMAGE_NATIVE_NAMES.iter().all(|name| name.starts_with("auto.image.")));
     }
 }
@@ -4057,6 +4057,7 @@ pub const IMAGE_NATIVE_NAMES: &[&str] = &[
     "auto.image.retain", "auto.image.release", "auto.image.close", "auto.image.stats",
     "auto.image.open_session", "auto.image.snapshot", "auto.image.current_uri", "auto.image.names", "auto.image.navigate",
     "auto.image.request_view", "auto.image.close_session", "auto.image.session_stats",
+    "auto.image.thumb",
 ];
 
 #[cfg(feature = "ui-iced")]
@@ -4213,6 +4214,15 @@ pub fn shim_image_session_stats(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     push_string_result(task, vm, crate::ui::image_pipeline::media_session_stats(&session))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_thumb(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args pushed (path, size): size pops first.
+    let size = task.ram.pop_i32();
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::queue_media_thumbnail(path, size))
 }
 
 /// Add GET route (placeholder)
@@ -8102,6 +8112,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
         natives.register_shim_by_name("auto.image.request_view", shim_image_request_view);
         natives.register_shim_by_name("auto.image.close_session", shim_image_close_session);
         natives.register_shim_by_name("auto.image.session_stats", shim_image_session_stats);
+        natives.register_shim_by_name("auto.image.thumb", shim_image_thumb);
     }
     // auto-os Plan 013 T2: AutoTerm 引擎桥(auto.term.*)注册走 native_catalog
     // 静态表(ID 2943-2949,register_std_shims 自动绑 shim + canonical 名,
