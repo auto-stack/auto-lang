@@ -3,46 +3,22 @@
 // 根节点声明 dark_mode / accent_color 状态变量 —— 这两个变量名是双端运行时
 // 契约(不要改名):VM 渲染器每帧回读并切换 shadcn 明暗调色板与主题主色,
 // Vue 代码gen据此生成 `.dark` class 绑定与 applyAccent(`--primary`)注入。
-// 右上角 Theme Settings 面板在运行中切换主题(Light/Dark)与主题主色(5 色板);
-// 页面配色用 `style: if` 条件分支,保证任意主题下文字/底色成对出现、可读。
 // pac.at 里 `theme: "dark"` / `accent: "indigo"` 声明的是启动默认值(也可用
 // `auto run --theme light --accent ocean` 从 CLI 覆盖)。
-use settings: SettingsPopover
+// PLAN-637 T-01b（用户裁定：demo 跟随系统）：应用级 SettingsPopover 消费面
+// 移除，主题控制由 gallery 宿主切换器承接；SetTheme/SetAccent 消息面保留
+// （宿主 → 内嵌 demo 主题传播路线的既有通道），本 demo 内无发射方。
 
 widget App {
-    msg { GetStarted, ToggleSettings, SetTheme(str), SetAccent(str) }
+    msg { GetStarted, SetTheme(str), SetAccent(str) }
 
     model {
         var dark_mode bool = true
         var accent_color str = "indigo"
-        var settings_open bool = false
     }
 
     view {
         col {
-            // ── 顶栏:右上角 Theme Settings 触发按钮 + 弹出面板 ──
-            col {
-                row {
-                    style: "w-full justify-end px-4 pt-4"
-                    button "⚙ Theme" {
-                        onclick: .ToggleSettings
-                        style: if .dark_mode {
-                            "px-4 py-2 text-sm rounded-full bg-black/30 text-white hover:bg-black/40 transition-colors"
-                        } else {
-                            "px-4 py-2 text-sm rounded-full bg-gray-200 text-gray-900 hover:bg-gray-300 transition-colors"
-                        }
-                    }
-                }
-                SettingsPopover(
-                    open: .settings_open,
-                    dark_mode: .dark_mode,
-                    accent_color: .accent_color,
-                    on_close: .ToggleSettings,
-                    on_set_theme: .SetTheme,
-                    on_set_accent: .SetAccent
-                )
-                style: "w-full items-end"
-            }
             // ── 主区:Hero 内容(主题条件配色;CTA 随 accent 走)──
             col {
                 text "Build Beautiful Apps" { style: "text-5xl font-bold tracking-tight" }
@@ -63,7 +39,6 @@ widget App {
 
     on {
         .GetStarted -> { print("Getting started!") }
-        .ToggleSettings -> { .settings_open = !.settings_open }
         .SetTheme(t) -> {
             if t == "light" {
                 .dark_mode = false

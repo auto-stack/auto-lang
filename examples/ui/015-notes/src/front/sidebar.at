@@ -32,6 +32,9 @@ style seg = "h-7 w-auto border-0 flex-1 items-center justify-center rounded-md b
 style seg_on = "h-7 w-auto border-0 flex-1 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-medium transition-colors"
 style swatch_on = "w-5 h-5 border-0 rounded-full p-0 ring-2 ring-offset-2 ring-offset-background ring-primary"
 
+// PLAN-637 T-06：共享配方导入（stylekit caption_text ≡ 原字面量，零漂移）。
+use stylekit.styles: caption_text
+
 // 单行笔记条目。view fn 在调用点内联，故可直接引用调用点的循环变量 k
 // （与 PLAN-562 迁移后的 NoteNav 同款约定）。
 view fn NoteRow(note: Note, active: bool) {
@@ -104,7 +107,7 @@ widget NavTree(on_toggle_dark_mode: msg, on_set_accent: msg, on_set_mode: msg) {
                     button {
                         onclick: .SelectTag(t)
                         style: if .store.active_tag == t { chip_on } else { chip }
-                        text "#" { style: "text-xs text-muted-foreground" }
+                        text "#" { style: caption_text }
                         text t { style: "text-xs" }
                     }
                 }
@@ -148,7 +151,7 @@ widget NavTree(on_toggle_dark_mode: msg, on_set_accent: msg, on_set_mode: msg) {
                         col {
                             style: "items-center gap-2 py-8"
                             icon (name: "search", size: 18, style: "text-muted-foreground/50")
-                            text "No matching notes" { style: "text-xs text-muted-foreground" }
+                            text "No matching notes" { style: caption_text }
                         }
                     }
                 }

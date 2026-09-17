@@ -7,6 +7,3 @@ title_zh: "联系表单"
 theme: "dark"
 accent: "indigo"
 
-dep settings {
-    path: "../common/settings"
-}

@@ -1,3 +1,19 @@
+
+// ── PLAN-637 B1：本地配方（×2 重复串提取）─────────────────────────────
+// Phase A 提取 + Phase B token 定案合并过（W1 小面授权，映射见下注）。
+// input_login 与 stylekit input_field 形态不同（rounded-lg/mt-2，无 text-sm），
+// 圆角/边距族归一待 Phase B 裁定后再升库（r2 变体纪律）。
+style input_login = "w-full px-3 py-2 border border-border rounded-lg mt-2 text-foreground"
+// 字段标签：text-gray-700 → text-foreground
+style field_label = "text-sm font-medium text-foreground mt-6"
+// 错误提示：text-red-500 → text-destructive
+style error_text = "text-destructive text-xs mt-1"
+
+// Phase B 映射（唯一串逐条）：h2/欢迎语/链接/主按钮/卡面——
+// text-gray-900→text-foreground；text-gray-500→text-muted-foreground；
+// bg-blue-500 text-white→bg-primary text-primary-foreground；
+// text-blue-500→text-primary；bg-white/border-gray-200→bg-card/border-border。
+
 widget App {
     msg { Submit }
 
@@ -12,62 +28,62 @@ widget App {
         col {
             col {
                 h2 "Sign In" {
-                    style: "text-3xl font-extrabold text-gray-900"
+                    style: "text-3xl font-extrabold text-foreground"
                 }
 
                 text "Welcome back! Please enter your credentials." {
-                    style: "text-gray-500 mt-3"
+                    style: "text-muted-foreground mt-3"
                 }
 
                 col {
                     text "Email" {
-                        style: "text-sm font-medium text-gray-700 mt-6"
+                        style: field_label
                     }
                     input (value: .email) {
                         oninput: () => { if .email != "" { .email_error = "" } }
                         placeholder: "you@example.com"
-                        style: "w-full px-3 py-2 border rounded-lg mt-2 text-gray-900"
+                        style: input_login
                     }
                     if .email_error != "" {
                         text .email_error {
-                            style: "text-red-500 text-xs mt-1"
+                            style: error_text
                         }
                     }
                 }
 
                 col {
                     text "Password" {
-                        style: "text-sm font-medium text-gray-700 mt-6"
+                        style: field_label
                     }
                     input (value: .password) {
                         oninput: () => { if .password != "" { .password_error = "" } }
                         placeholder: "Enter your password"
                         type: "password"
-                        style: "w-full px-3 py-2 border rounded-lg mt-2 text-gray-900"
+                        style: input_login
                     }
                     if .password_error != "" {
                         text .password_error {
-                            style: "text-red-500 text-xs mt-1"
+                            style: error_text
                         }
                     }
                 }
 
                 button "Sign In" {
                     onclick: .Submit
-                    style: "w-full py-2.5 bg-blue-500 text-white rounded-lg font-semibold mt-6"
+                    style: "w-full py-2.5 bg-primary text-primary-foreground rounded-lg font-semibold mt-6"
                 }
 
                 row {
                     text "Don't have an account?" {
-                        style: "text-sm text-gray-500 mr-1"
+                        style: "text-sm text-muted-foreground mr-1"
                     }
                     a "Sign up" {
-                        style: "text-sm text-blue-500 font-semibold underline"
+                        style: "text-sm text-primary font-semibold underline"
                     }
                     style: "justify-center items-center mt-4"
                 }
 
-                style: "bg-white rounded-xl shadow-lg border border-gray-200 p-8 w-112"
+                style: "bg-card rounded-xl shadow-lg border border-border p-8 w-112"
             }
             // Plan 512: fit 迁移——center 居中外壳退役，根 col Shrink 包裹；
             // 卡片固定宽 w-112=448px（原 max-w-md+w-full 满窗语义在 Shrink

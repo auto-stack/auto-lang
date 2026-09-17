@@ -4880,7 +4880,13 @@ impl RustGenerator {
             }
         };
         // Plan 374: Post-process handler body to fix Value array/bool operations.
-        self.postprocess_handler_body(&raw)
+        let mut body = self.postprocess_handler_body(&raw);
+        // PLAN-020 T-02: UI handler 臂补数字转换下降——`.to_int()` 在 UI 语料
+        // 有语义(499 M3 先例),但 a2r 生成的 f32/f64 无此方法;trans/rust.rs
+        // 的 fix_numeric_conversion_methods 只覆盖非 UI 管线,此处对 handler
+        // 体补同一 `(expr as i32)` 改写(x.to_int() → (x as i32))。
+        fix_numeric_conversion_methods_for_ui(&mut body);
+        body
     }
 
     /// Fix known codegen patterns for Value type operations in handler bodies.
@@ -8257,5 +8263,30 @@ widget Demo {
             "primary 不带中性基线:\n{}",
             code
         );
+    }
+}
+
+/// PLAN-020 T-02: UI handler 臂 `.to_int()` 下降——`.to_int()` 在 UI 语料
+/// 有语义(499 M3 charts 先例;VM 轨在库),但 a2r 生成的 f32/f64 无此方法。
+/// trans/rust.rs 的 fix_numeric_conversion_methods 只覆盖非 UI 管线,此处
+/// 对 handler 体补同一保守改写(IDENT/链式接收者 → `(expr as i32)`)。
+pub(crate) fn fix_numeric_conversion_methods_for_ui(content: &mut String) {
+    for (method, cast) in [("to_float", "f64"), ("to_uint", "u32"), ("to_int", "i32")] {
+        let pat = format!(r"([\w.()]+)\.{}\(\)", method);
+        if let Ok(re) = regex::Regex::new(&pat) {
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let recv = caps.get(1).unwrap().as_str();
+                    if recv.starts_with('(') && recv.ends_with(')') {
+                        format!("{} as {})", &recv[..recv.len() - 1], cast)
+                    } else {
+                        format!("({} as {})", recv, cast)
+                    }
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
+        }
     }
 }

@@ -21690,7 +21690,7 @@ pub use auto_cabi_kit::*;"#
     /// `expr.to_uint()`  → `(expr as u32)`
     /// `expr.to_int()`   → `(expr as i64)`
     /// (Rust ints/floats have no `.to_float()`/`.to_uint()` methods.)
-    fn fix_numeric_conversion_methods(content: &mut String) {
+    pub(crate) fn fix_numeric_conversion_methods(content: &mut String) {
         // Match a receiver that is either an identifier or a method chain we can
         // wrap in parens. Keep it conservative: `IDENT.method_chain().to_float()`.
         for (method, cast) in [
