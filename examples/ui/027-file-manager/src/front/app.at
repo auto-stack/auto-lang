@@ -13,11 +13,12 @@
 //   （PLAN-016 crates 扩展；旧宿主二进制该列显示 "--"）
 // - 持久化：storage.get/set 保持视图模式、排序字段、排序方向与隐藏文件状态
 
-use components.fs_util: format_size, type_label, hidden_name, fmt_date, app_for_ext
+use components.fs_util: format_size, type_label, hidden_name, fmt_date, app_for_ext, is_image_ext
 use auto.process
 use auto.fs
 use auto.file
 use auto.json
+use auto.image
 
 widget App {
     use { package: official from "./components" }
@@ -31,6 +32,7 @@ widget App {
         NavTo(str), GoBack, GoForward, GoUp,
         SetViewMode(str), SortByName, SortBySize, SortByDate, SortByType, ToggleHidden,
         SetSearch(str), SetAddr(str), AddrGo, AddrEdit, AddrCancel, SelectItem(int), OpenItem(int), OpenSelected,
+        CrumbsExpand,
         StartRename(int), SetEditName(str), CommitRename, CancelRename,
         ItemCtx(int), CtxClose, CtxOpen, CtxRename, CtxCopy, CtxCut, CtxPaste, CtxDelete,
         NewFolderOpen, NewFileOpen, NewModalClose, SetNewName(str), CommitNew,
@@ -61,8 +63,13 @@ widget App {
         var can_back bool = false
         var can_forward bool = false
 
-        // 面包屑段（父链回走生成）
+        // 面包屑段（父链回走生成；PLAN-023 坍缩：全链存 crumbs，视图取
+        // crumbs_head + [...] + crumbs_tail 三面）
         var crumbs = []
+        var crumbs_head = []
+        var crumbs_tail = []
+        var crumb_gap bool = false
+        var crumbs_expanded bool = false
 
         // 快捷访问（Tick 引导构建，exists 门控）：{ path: str, label: str, is_home: bool }
         var quick = []
@@ -132,7 +139,8 @@ widget App {
                 file_ext: "",
                 type_name: "",
                 date: "",
-                is_hidden: false
+                is_hidden: false,
+                thumb_src: ""
             }
         ]
     }
@@ -145,7 +153,7 @@ widget App {
             // 顶部工具栏与路径条
             // ══════════════════════════════════════════════════════════════
             row {
-                style: "h-14 border-b border-border px-4 flex items-center justify-between bg-card/90 shrink-0 gap-3"
+                style: "h-14 border-b border-border px-4 flex items-center bg-card/90 shrink-0 gap-3"
 
                 // 历史导航与路径面包屑
                 row {
@@ -198,17 +206,39 @@ widget App {
                     } else {
                         // R4-1：mouse-area 包单行子件——空白点击进编辑态
                         //（crumb 按钮自身消费点击，空白区域落到 mouse-area）
+                        // PLAN-023 坍缩三面：crumbs_head + [ ... ] + crumbs_tail
+                        //（规避循环内条件节点纵向堆叠债——三片段平铺实证形态）
                         mouse-area (onclick: .AddrEdit, style: "flex-1 min-w-0 h-9") {
                             row {
                                 style: "h-9 items-center bg-background/80 border border-border rounded-lg px-2 gap-0.5 w-full overflow-hidden"
-                                for c in .crumbs {
+                                for c in .crumbs_head {
                                     // VM for 迭代单根元素纪律：按钮+分隔符包进行
                                     // 片段（多根迭代纵向堆叠，chevron 掉行实证）
                                     row {
                                         style: "items-center gap-0.5 shrink-0"
                                         button (text: c.name, variant: "ghost", title: c.path) {
                                             onclick: .NavTo(c.path)
-                                            style: if c.is_last { "h-7 shrink-0 text-xs font-medium text-foreground px-1.5" } else { "h-7 shrink-0 text-xs text-muted-foreground px-1.5" }
+                                            style: if c.is_last { "h-7 shrink-0 max-w-[10rem] truncate text-xs font-medium text-foreground px-1.5" } else { "h-7 shrink-0 max-w-[10rem] truncate text-xs text-muted-foreground px-1.5" }
+                                        }
+                                        text c.sep { style: "shrink-0 text-xs text-muted-foreground/60" }
+                                    }
+                                }
+                                if .crumb_gap {
+                                    row {
+                                        style: "items-center gap-0.5 shrink-0"
+                                        button (text: "...", variant: "ghost", title: "展开完整路径") {
+                                            onclick: .CrumbsExpand
+                                            style: "h-7 shrink-0 text-xs font-semibold text-primary px-1.5"
+                                        }
+                                        text "›" { style: "shrink-0 text-xs text-muted-foreground/60" }
+                                    }
+                                }
+                                for c in .crumbs_tail {
+                                    row {
+                                        style: "items-center gap-0.5 shrink-0"
+                                        button (text: c.name, variant: "ghost", title: c.path) {
+                                            onclick: .NavTo(c.path)
+                                            style: if c.is_last { "h-7 shrink-0 max-w-[10rem] truncate text-xs font-medium text-foreground px-1.5" } else { "h-7 shrink-0 max-w-[10rem] truncate text-xs text-muted-foreground px-1.5" }
                                         }
                                         text c.sep { style: "shrink-0 text-xs text-muted-foreground/60" }
                                     }
@@ -542,7 +572,18 @@ widget App {
                                             col {
                                                 style: if item.id == .selected_id { "h-40 bg-accent border-2 border-primary rounded-xl p-3 items-center justify-center gap-2 shadow-lg" } else { "h-40 bg-card/60 border border-border rounded-xl p-3 items-center justify-center gap-2 hover:bg-accent/40" }
 
-                                                FileIcon (is_dir: item.is_dir, ext: item.file_ext, size: 36) {}
+                                                // PLAN-023：图片文件 → 媒体管线缩略图
+                                                //（256px rendition，cover 裁切入卡，
+                                                // 未就绪本帧空、随 Tick 渐进浮现）；
+                                                // 非图片/失败回落 FileIcon 原样
+                                                if item.thumb_src != "" {
+                                                    col {
+                                                        style: "h-20 w-full rounded-lg overflow-hidden bg-muted"
+                                                        image_surface (src: item.thumb_src, fit: "cover", style: "w-full h-full") {}
+                                                    }
+                                                } else {
+                                                    FileIcon (is_dir: item.is_dir, ext: item.file_ext, size: 36) {}
+                                                }
 
                                                 text item.name { style: if item.is_hidden { "text-xs text-muted-foreground font-medium truncate w-full text-center" } else { "text-xs text-foreground font-medium truncate w-full text-center" } }
 
@@ -747,6 +788,7 @@ widget App {
 
                     .current_path = can
                     .addr = can
+                    .crumbs_expanded = false
                     .selected_id = -1
                     .selected_name = ""
                     .selected_info = "未选中任何项目"
@@ -809,6 +851,31 @@ widget App {
                     }
                     .crumbs = cs
 
+                    // PLAN-023 地址栏坍缩：段数 > 5 且未展开 → 首 1 段 +
+                    // "..."（CrumbsExpand 可展开）+ 末 2 段；展开态或短路径
+                    // 全链呈现。crumbs 恒存全链（展开幂等取自它）。
+                    if .crumbs_expanded {
+                        .crumbs_head = cs
+                        .crumbs_tail = []
+                        .crumb_gap = false
+                    } else {
+                        var tot2 int = cs.len()
+                        if tot2 > 5 {
+                            var head = []
+                            head.push(cs[0])
+                            var tail = []
+                            tail.push(cs[tot2 - 2])
+                            tail.push(cs[tot2 - 1])
+                            .crumbs_head = head
+                            .crumbs_tail = tail
+                            .crumb_gap = true
+                        } else {
+                            .crumbs_head = cs
+                            .crumbs_tail = []
+                            .crumb_gap = false
+                        }
+                    }
+
                     // 条目物化：过滤（隐藏/搜索）→ 逐条 metadata（cap 500）
                     var out = []
                     var total_bytes int = 0
@@ -831,6 +898,15 @@ widget App {
                                     let sz int = file.size(pp)
                                     let mt int = fs.mtime(pp)
                                     let ext str = fs.ext(nm)
+                                    // PLAN-023：图片文件排队 256px 缩略图
+                                    // rendition（cap 120）——仅入队零解码，
+                                    // URI 未就绪渲染为空、随 Tick 渐进浮现
+                                    var thumb_src str = ""
+                                    if kept < 120 {
+                                        if is_image_ext(ext) {
+                                            thumb_src = image.thumb(pp, 256)
+                                        }
+                                    }
                                     out.push({
                                         name: nm,
                                         path: pp,
@@ -840,7 +916,8 @@ widget App {
                                         file_ext: ext,
                                         type_name: type_label(ext, isd),
                                         date: fmt_date(mt),
-                                        is_hidden: hid
+                                        is_hidden: hid,
+                                        thumb_src: thumb_src
                                     })
                                     if !isd {
                                         total_bytes = total_bytes + sz
@@ -916,7 +993,7 @@ widget App {
                     var f2 int = 0
                     while f2 < n {
                         let r = out[f2]
-                        fv.push({ id: f2, name: r.name, path: r.path, is_dir: r.is_dir, size: r.size, size_str: r.size_str, file_ext: r.file_ext, type_name: r.type_name, date: r.date, is_hidden: r.is_hidden })
+                        fv.push({ id: f2, name: r.name, path: r.path, is_dir: r.is_dir, size: r.size, size_str: r.size_str, file_ext: r.file_ext, type_name: r.type_name, date: r.date, is_hidden: r.is_hidden, thumb_src: r.thumb_src })
                         f2 = f2 + 1
                     }
                     .files_view = fv
@@ -1043,6 +1120,14 @@ widget App {
 
         .AddrCancel -> {
             .addr_editing = false
+        }
+
+        // ---- PLAN-023：地址栏 "..." 就地展开全链（不导航；导航后重回坍缩态）----
+        .CrumbsExpand -> {
+            .crumbs_expanded = true
+            .crumbs_head = .crumbs
+            .crumbs_tail = []
+            .crumb_gap = false
         }
 
         // ---- 选中与打开 ----

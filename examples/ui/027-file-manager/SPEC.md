@@ -7,6 +7,9 @@ AutoOS 桌面文件管理器（Finder / Explorer 双栏形态）。桌面事实�
 > lucide（按扩展名字面量分支）；固定坐标 popover → alert-dialog + 锚定
 > popover + toast()；zinc 硬编码 → 语义 token + dark_mode（桌面 SetTheme 回写
 > 链即时换肤）。本节取代 Plan 440 原描述。
+>
+> PLAN-023（2026-09）增量：网格图片缩略图（auto.image.thumb → Plan 547 媒体
+> 管线）+ 地址栏可伸缩坍缩（§1.5/§2.5）。
 
 ---
 
@@ -28,6 +31,19 @@ AutoOS 桌面文件管理器（Finder / Explorer 双栏形态）。桌面事实�
 - 错误态：canonical/is_dir 门控 + toast 反馈；`fs.read_dir` 失败中止
   handler（状态变更全部置于列目录之后，失败保留原视图）。
 
+## 1.5 地址栏与面包屑（PLAN-023）
+
+- 胶囊占满：面包屑容器 `flex-1 min-w-0`，平时占满导航钮簇与右侧操作区
+  （搜索框起）之间全部可用宽；`overflow-hidden` 兜底裁。**顶栏禁用
+  `justify-between`**——iced Row SpaceBetween 会把 Fill 子件降级为内容宽
+  （实证胶囊恒 ~495px），伸缩一律由 `flex-1` + 对侧 `shrink-0` 承担。
+- 深路径坍缩：全链段数 > 5 且未展开 → 首 1 段 + `...` + 末 2 段（视图三面
+  crumbs_head / crumb_gap / crumbs_tail——规避循环内条件节点纵向堆叠债，
+  R4-2 实证形态）；`...` 点击 = `CrumbsExpand` 就地展开全链（不导航），
+  任何导航（NavTo 入口）重置回坍缩态。全链恒存 `crumbs`。
+- 段名截断：crumb 按钮 `max-w-[10rem] truncate`——vue 轨真省略号；VM 轨
+  裁切无 "…" 字形（renderer truncate = 单行 + clip，框架既有口径）。
+
 ## 2. 主题与图标（T-01/T-02）
 
 - 全视图语义 token（bg-background/bg-card/border-border/text-foreground/
@@ -36,6 +52,25 @@ AutoOS 桌面文件管理器（Finder / Explorer 双栏形态）。桌面事实�
   （renderer execute_set_theme），vue 轨生成器据此绑根 dark class。
 - 图标：`icon (name:)` 元素 + FileIcon 组件（components/file_icon.at，按
   扩展名字面量分支——vue 轨 icon 动态名 Circle 占位规避，TreeIcon 范式）。
+
+## 2.5 网格缩略图（PLAN-023）
+
+- `auto.image.thumb(path, size) -> str`（stdlib 新原语）：图片文件排队
+  方形 rendition，返回媒体 URI（"" = 不支持/失败）；解码走 Plan 547 媒体
+  管线 worker 池 **Thumbnail 优先档**（最低优先、`MediaPin::None` 可驱逐），
+  主线程零解码。
+- 接线：物化循环内 `is_image_ext(ext)`（jpg/jpeg/png/webp，与管线解码器
+  白名单同款——gif/bmp/svg/ico 管线不收，照旧 FileIcon）且 `kept < 120`
+  （THUMB_CAP）时排队，URI 存行字段 `thumb_src`。
+- 渲染：grid 卡 `thumb_src` 非空 → `image_surface (fit: "cover")` 入
+  h-20 圆角容器；空 → FileIcon 原样。URI 未就绪本帧渲染为空，随 250ms
+  Tick 渐进浮现；解码后 per-asset Handle 缓存稳定不闪（P547）。
+- vue 轨：`image.*` 走 ts_adapter VM-only 白名单 `__vmOnly` 降级（Plan 444
+  形态），thumb_src 恒空 → FileIcon 回落（与既有 fs.* 桩同口径）。
+- 驱逐卫生：thumb 原语 queue 后立即 release 配平引用——条目 30s 宽限后
+  可驱逐，decoded LRU 保 URI 渲染直至预算压力（重导航自愈）。
+- Windows Shell 缩略图（IShellItemImageFactory/ thumbcache 复用）为后续
+  可选优化臂，不在本计划（PLAN-023 §0 裁决记录）。
 
 ## 3. 弹层（T-03/T-04）
 

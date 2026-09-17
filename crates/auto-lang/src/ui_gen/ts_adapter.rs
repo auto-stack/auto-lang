@@ -1025,8 +1025,12 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     // explicit throwing stub `__vmOnly(...)` (declared by the
                     // generator when any body uses it) — an honest runtime
                     // error beats silently illegal code.
+                    // PLAN-023: `image` joins the whitelist — media URIs need
+                    // the host process pipeline; vue-track callers must guard
+                    // the call site (027 gates on vm_track) and fall back to
+                    // their icon branch.
                     if let crate::ast::Expr::Ident(recv) = object.as_ref() {
-                        if matches!(recv.as_str(), "fs" | "File") {
+                        if matches!(recv.as_str(), "fs" | "File" | "image") {
                             let qualified = format!("{}.{}", recv.as_str(), method.as_str());
                             ctx.note_warning(format!(
                                 "VM-only native `{}` has no Vue/JS build — emitted as a throwing __vmOnly stub",

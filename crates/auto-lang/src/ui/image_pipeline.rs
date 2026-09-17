@@ -1166,6 +1166,31 @@ fn queue_media_rendition(path: PathBuf, spec: RenditionSpec, priority: MediaPrio
     ticket
 }
 
+/// Queues a small square thumbnail rendition for one image file (PLAN-023
+/// `auto.image.thumb` runtime). Returns the opaque media URI for the
+/// rendition, or "" when the path is missing, unreadable, or has an
+/// unsupported extension — callers render their icon fallback off "".
+///
+/// The registry queue takes a reference on dedup hit, and file-manager-style
+/// callers never hold tickets, so the reference is released immediately: the
+/// entry rides its 30s expiry grace (decode finishes in milliseconds) and
+/// stays evictable afterwards, while the decoded-pixels LRU keeps the URI
+/// rendering until budget pressure evicts it (self-healing on re-navigation).
+pub fn queue_media_thumbnail(path: impl Into<PathBuf>, size: i32) -> String {
+    let path = path.into();
+    if !supported_media_path(&path) {
+        return String::new();
+    }
+    if !path.is_file() {
+        return String::new();
+    }
+    let edge = size.clamp(16, 1024) as u32;
+    let spec = RenditionSpec { width: edge, height: edge, rotation_degrees: 0, quality: 85, original_pixels: false };
+    let ticket = queue_media_rendition(path, spec, MediaPriority::Thumbnail, 1);
+    global_media_registry().release(ticket.id);
+    media_uri(ticket)
+}
+
 impl Drop for MediaWorkerPool { fn drop(&mut self) { self.shutdown(); } }
 
 pub const MAX_IMAGE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
@@ -1469,6 +1494,26 @@ mod tests {
         assert!(uri.is_empty() || uri.starts_with("/api/__auto/media/"));
         assert!(super::close_media_session(&session));
         assert!(!super::close_media_session(&session));
+    }
+
+    #[test]
+    fn thumbnail_queue_rejects_unsupported_and_queues_supported_paths() {
+        // Missing path (supported ext) and unsupported ext both degrade to ""
+        // so callers can fall back to their icon branch.
+        assert_eq!(super::queue_media_thumbnail("not-a-file.png", 64), "");
+        assert_eq!(super::queue_media_thumbnail("fixture.txt", 64), "");
+
+        // Supported fixture queues a Thumbnail-priority rendition and returns
+        // an opaque media URI that never leaks the source path.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png");
+        let uri = super::queue_media_thumbnail(&fixture, 64);
+        assert!(uri.starts_with("/api/__auto/media/"));
+        assert!(!uri.contains("fixtures"));
+        let route = uri.strip_prefix("/api/__auto/media/").unwrap();
+        let (id, revision) = route.split_once('/').unwrap();
+        assert_eq!(id.len(), 32);
+        assert_eq!(revision, "1");
     }
 
     #[test]

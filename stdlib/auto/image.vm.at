@@ -47,3 +47,6 @@ fn close_session(session str) bool
 
 #[vm]
 fn session_stats(session str) str
+
+#[vm]
+fn thumb(path str, size int) str
