@@ -31,48 +31,48 @@ widget home {
                     }
                 }
                 if .store.articles.len() == 0 {
-                    text "No articles are here... yet." { style: "py-8 text-center text-gray-400" }
+                    text "No articles are here... yet." { style: "py-8 text-center text-muted-foreground" }
                 }
                 for article in .store.articles {
                     if .store.active_tag == "" {
                         col {
-                            style: "py-4 border-b border-gray-100"
+                            style: "py-4 border-b border-border"
                             row {
                                 style: "items-center gap-2 mb-1"
                                 text article.author { style: "text-sm font-medium text-brand-green" }
-                                text article.createdAt { style: "text-xs text-gray-400 ml-auto" }
+                                text article.createdAt { style: "text-xs text-muted-foreground ml-auto" }
                             }
                             col {
                                 onclick: .OpenArticle(article.slug)
                                 style: "cursor-pointer"
-                                text article.title { style: "text-xl font-semibold text-gray-800" }
-                                text article.description { style: "text-gray-500 text-sm mt-1" }
+                                text article.title { style: "text-xl font-semibold text-foreground" }
+                                text article.description { style: "text-muted-foreground text-sm mt-1" }
                             }
                             row {
                                 style: "mt-2 items-center"
                                 text "Read more..." {
                                     onclick: .OpenArticle(article.slug)
-                                    style: "text-xs text-gray-400 hover:underline cursor-pointer"
+                                    style: "text-xs text-muted-foreground hover:underline cursor-pointer"
                                 }
                                 text article.tagList {
-                                    style: "ml-auto text-xs px-2 py-0.5 rounded-full border border-gray-300 text-gray-600"
+                                    style: "ml-auto text-xs px-2 py-0.5 rounded-full border border-border text-foreground"
                                 }
                             }
                         }
                     } else {
                         if article.tagList.contains(.store.active_tag) {
                             col {
-                                style: "py-4 border-b border-gray-100"
+                                style: "py-4 border-b border-border"
                                 row {
                                     style: "items-center gap-2 mb-1"
                                     text article.author { style: "text-sm font-medium text-brand-green" }
-                                    text article.createdAt { style: "text-xs text-gray-400 ml-auto" }
+                                    text article.createdAt { style: "text-xs text-muted-foreground ml-auto" }
                                 }
                                 col {
                                     onclick: .OpenArticle(article.slug)
                                     style: "cursor-pointer"
-                                    text article.title { style: "text-xl font-semibold text-gray-800" }
-                                    text article.description { style: "text-gray-500 text-sm mt-1" }
+                                    text article.title { style: "text-xl font-semibold text-foreground" }
+                                    text article.description { style: "text-muted-foreground text-sm mt-1" }
                                 }
                             }
                         }
@@ -83,12 +83,12 @@ widget home {
             col {
                 style: "w-48"
                 col {
-                    style: "bg-gray-50 rounded p-3 gap-1"
-                    text "Popular Tags" { style: "text-sm font-medium text-gray-500 mb-2" }
+                    style: "bg-background rounded p-3 gap-1"
+                    text "Popular Tags" { style: "text-sm font-medium text-muted-foreground mb-2" }
                     for tag in .tags {
                         button tag {
                             onclick: .SetTag(tag)
-                            style: "text-xs px-3 py-1 rounded-full border border-gray-300 text-gray-600 cursor-pointer hover:bg-gray-100"
+                            style: "text-xs px-3 py-1 rounded-full border border-border text-foreground cursor-pointer hover:bg-muted"
                         }
                     }
                 }

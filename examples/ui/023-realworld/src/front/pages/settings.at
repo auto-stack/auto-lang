@@ -4,6 +4,7 @@
 // after Init (codegen flattens struct-literal init to null; current_user()
 // returns id=0 when unauthenticated). Both states = "not logged in".
 use auth_store: AuthStore
+use stylekit.styles: input_field
 
 widget settings {
     msg { Init, Logout }
@@ -19,14 +20,14 @@ widget settings {
             // Logged in = current_user != nil AND id != 0.
             if .store.me == nil {
                 col {
-                    style: "text-gray-500 text-sm"
+                    style: "text-muted-foreground text-sm"
                     text "You are not logged in." {}
                     link (to: "/login") { text "Sign in" { style: "text-brand-green" } }
                 }
             } else {
                 if .store.me.id == 0 {
                     col {
-                        style: "text-gray-500 text-sm"
+                        style: "text-muted-foreground text-sm"
                         text "You are not logged in." {}
                         link (to: "/login") { text "Sign in" { style: "text-brand-green" } }
                     }
@@ -36,36 +37,36 @@ widget settings {
                         input {
                             placeholder: "URL of profile picture",
                             value: .store.me.image,
-                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                            style: input_field
                         }
                         input {
                             placeholder: "Username",
                             value: .store.me.username,
-                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                            style: input_field
                         }
                         textarea {
                             placeholder: "Short bio about you",
                             value: .store.me.bio,
-                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                            style: input_field
                         }
                         input {
                             placeholder: "Email",
                             value: .store.me.email,
-                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                            style: input_field
                         }
                         input {
                             placeholder: "New Password (stage 2)",
                             type: "password",
-                            style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                            style: input_field
                         }
                         row {
                             style: "justify-between"
                             button "Or click here to logout." {
                                 onclick: .Logout,
-                                style: "text-red-500 border border-red-500 px-3 py-1 text-sm rounded hover:bg-red-50"
+                                style: "text-destructive border border-destructive px-3 py-1 text-sm rounded hover:bg-destructive/10"
                             }
                             button "Update Settings (stage 2)" {
-                                style: "px-5 py-2 rounded bg-gray-300 text-gray-500 text-sm cursor-not-allowed"
+                                style: "px-5 py-2 rounded bg-muted text-muted-foreground text-sm cursor-not-allowed"
                             }
                         }
                     }

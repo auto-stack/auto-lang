@@ -29,17 +29,17 @@ widget home {
             // ── Top Header: Search Bar ──
             row {
                 style: if .store.dark_mode {
-                    "w-full items-center justify-between px-6 py-3.5 border-b border-zinc-800 bg-zinc-900/60 backdrop-blur shrink-0 gap-4"
+                    "w-full items-center justify-between px-6 py-3.5 border-b border-border bg-card/60 backdrop-blur shrink-0 gap-4"
                 } else {
-                    "w-full items-center justify-between px-6 py-3.5 border-b border-gray-200 bg-white/80 backdrop-blur shrink-0 gap-4"
+                    "w-full items-center justify-between px-6 py-3.5 border-b border-border bg-card/80 backdrop-blur shrink-0 gap-4"
                 }
 
                 // Search input container
                 row {
                     style: if .store.dark_mode {
-                        "flex-1 max-w-xl items-center px-4 py-2 bg-zinc-800/80 border border-zinc-700 rounded-full gap-2 focus-within:border-primary transition-colors"
+                        "flex-1 max-w-xl items-center px-4 py-2 bg-muted/80 border border-border rounded-full gap-2 focus-within:border-primary transition-colors"
                     } else {
-                        "flex-1 max-w-xl items-center px-4 py-2 bg-gray-100 border border-gray-200 rounded-full gap-2 focus-within:border-primary transition-colors"
+                        "flex-1 max-w-xl items-center px-4 py-2 bg-muted border border-border rounded-full gap-2 focus-within:border-primary transition-colors"
                     }
                     text "🔍" { style: "text-xs opacity-60" }
                     input {
@@ -47,9 +47,9 @@ widget home {
                         oninput: .SearchInput
                         placeholder: "Search videos, creators, topics..."
                         style: if .store.dark_mode {
-                            "flex-1 bg-transparent text-sm text-zinc-100 outline-none border-none placeholder:text-zinc-500"
+                            "flex-1 bg-transparent text-sm text-foreground outline-none border-none placeholder:text-muted-foreground"
                         } else {
-                            "flex-1 bg-transparent text-sm text-gray-900 outline-none border-none placeholder:text-gray-400"
+                            "flex-1 bg-transparent text-sm text-foreground outline-none border-none placeholder:text-muted-foreground"
                         }
                     }
                 }
@@ -60,9 +60,9 @@ widget home {
                     text "🔔" { style: "text-sm text-muted-foreground cursor-pointer" }
                     row {
                         style: if .store.dark_mode {
-                            "items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 border border-zinc-700 cursor-pointer"
+                            "items-center gap-2 px-3 py-1.5 rounded-full bg-muted border border-border cursor-pointer"
                         } else {
-                            "items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 border border-gray-200 cursor-pointer"
+                            "items-center gap-2 px-3 py-1.5 rounded-full bg-muted border border-border cursor-pointer"
                         }
                         text "👤" { style: "text-sm" }
                         text "User" { style: "text-xs font-medium text-foreground" }
@@ -73,9 +73,9 @@ widget home {
             // ── Navigation Tabs: Recommend / Trending / Following ──
             row {
                 style: if .store.dark_mode {
-                    "w-full px-6 pt-3 pb-1 gap-6 border-b border-zinc-800/60 items-center"
+                    "w-full px-6 pt-3 pb-1 gap-6 border-b border-border/60 items-center"
                 } else {
-                    "w-full px-6 pt-3 pb-1 gap-6 border-b border-gray-200/60 items-center"
+                    "w-full px-6 pt-3 pb-1 gap-6 border-b border-border/60 items-center"
                 }
 
                 button {
@@ -151,9 +151,9 @@ widget home {
             // ── Category Chips Row ──
             row {
                 style: if .store.dark_mode {
-                    "w-full gap-2 px-6 py-3 border-b border-zinc-800/80 items-center overflow-x-auto shrink-0"
+                    "w-full gap-2 px-6 py-3 border-b border-border/80 items-center overflow-x-auto shrink-0"
                 } else {
-                    "w-full gap-2 px-6 py-3 border-b border-gray-200/80 items-center overflow-x-auto shrink-0"
+                    "w-full gap-2 px-6 py-3 border-b border-border/80 items-center overflow-x-auto shrink-0"
                 }
 
                 button "All" {
@@ -162,9 +162,9 @@ widget home {
                         "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
                     } else {
                         if .store.dark_mode {
-                            "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                            "px-4 py-1.5 text-xs font-medium bg-muted text-muted-foreground hover:bg-accent rounded-full cursor-pointer transition-colors"
                         } else {
-                            "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                            "px-4 py-1.5 text-xs font-medium bg-muted text-foreground hover:bg-muted rounded-full cursor-pointer transition-colors"
                         }
                     }
                 }
@@ -176,9 +176,9 @@ widget home {
                             "px-4 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-full shadow-sm cursor-pointer transition-colors"
                         } else {
                             if .store.dark_mode {
-                                "px-4 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded-full cursor-pointer transition-colors"
+                                "px-4 py-1.5 text-xs font-medium bg-muted text-muted-foreground hover:bg-accent rounded-full cursor-pointer transition-colors"
                             } else {
-                                "px-4 py-1.5 text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full cursor-pointer transition-colors"
+                                "px-4 py-1.5 text-xs font-medium bg-muted text-foreground hover:bg-muted rounded-full cursor-pointer transition-colors"
                             }
                         }
                     }
@@ -208,9 +208,9 @@ widget home {
                             col {
                                 onclick: .OpenVideo(video.id)
                                 style: if .store.dark_mode {
-                                    "bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-all shadow-md group cursor-pointer"
+                                    "bg-card border border-border rounded-2xl overflow-hidden hover:border-border transition-all shadow-md group cursor-pointer"
                                 } else {
-                                    "bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-gray-300 transition-all shadow-sm group cursor-pointer"
+                                    "bg-card border border-border rounded-2xl overflow-hidden hover:border-border transition-all shadow-sm group cursor-pointer"
                                 }
 
                                 // Thumbnail box

@@ -51,13 +51,13 @@ widget Stage {
                     col {
                         style: "absolute -top-10 left-36 w-14 h-24 pointer-events-none z-10 origin-top"
                         col {
-                            style: "w-3 h-3 rounded-full bg-zinc-400 shadow-md border border-zinc-600"
+                            style: "w-3 h-3 rounded-full bg-muted shadow-md border border-border"
                         }
                         col {
-                            style: "w-1 h-16 bg-zinc-400 ml-1 shadow-sm"
+                            style: "w-1 h-16 bg-muted ml-1 shadow-sm"
                         }
                         col {
-                            style: "w-3 h-5 bg-zinc-300 ml-0 rounded-sm shadow-md"
+                            style: "w-3 h-5 bg-muted ml-0 rounded-sm shadow-md"
                         }
                     }
 
@@ -65,25 +65,25 @@ widget Stage {
                     col {
                         onclick: .PlayPause
                         style: if .store.is_playing {
-                            "w-72 h-72 rounded-full bg-zinc-950 border-[8px] border-zinc-900 shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-zinc-800 group hover:scale-[1.02] transition-transform animate-spin duration-[12000ms]"
+                            "w-72 h-72 rounded-full bg-background border-[8px] border-border shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-border group hover:scale-[1.02] transition-transform animate-spin duration-[12000ms]"
                         } else {
-                            "w-72 h-72 rounded-full bg-zinc-950 border-[8px] border-zinc-900 shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-zinc-800 group hover:scale-[1.02] transition-transform"
+                            "w-72 h-72 rounded-full bg-background border-[8px] border-border shadow-2xl items-center justify-center relative cursor-pointer ring-1 ring-border group hover:scale-[1.02] transition-transform"
                         }
 
                         // 同心圆黑胶纹理 1
                         col {
-                            style: "w-60 h-60 rounded-full border border-zinc-800/80 items-center justify-center"
+                            style: "w-60 h-60 rounded-full border border-border/80 items-center justify-center"
                             // 同心圆黑胶纹理 2
                             col {
-                                style: "w-48 h-48 rounded-full border border-zinc-800/60 items-center justify-center"
+                                style: "w-48 h-48 rounded-full border border-border/60 items-center justify-center"
                                 // 中心唱片封面贴纸
                                 col {
                                     style: "w-28 h-28 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-700 to-cyan-900 items-center justify-center text-white shadow-inner relative overflow-hidden"
                                     // 中心轴孔
                                     col {
-                                        style: "w-6 h-6 rounded-full bg-zinc-950 border-2 border-zinc-700 shadow-md items-center justify-center"
+                                        style: "w-6 h-6 rounded-full bg-background border-2 border-border shadow-md items-center justify-center"
                                         col {
-                                            style: "w-2 h-2 rounded-full bg-zinc-300"
+                                            style: "w-2 h-2 rounded-full bg-muted"
                                         }
                                     }
                                 }
