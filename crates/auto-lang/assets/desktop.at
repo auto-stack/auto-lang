@@ -62,6 +62,18 @@ widget DesktopSurface {
         var menu_id str = ""
         // PLAN-012 W5：拖拽态（按下拾起的图标 id；"" = 无拖拽）。
         var drag_id str = ""
+        // 2026-09-15：拖拽辅助视觉数据面（宿主写入）——drag_icon = 被拖
+        // 图标渲染名（坐标锚幽灵 popover）；drop_c/drop_r = 光标所在格
+        // （落点格高亮）；__desktop_label_dark = 壁纸亮度判定（暗壁纸
+        // 白字标题）。
+        var drag_icon str = ""
+        var drop_c str = ""
+        var drop_r str = ""
+        // 2026-09-15：位移阈值越线旗标（宿主 __mouse_moved 臂置 "1"，清理
+        // 臂复位）——拖拽幽灵 popover 的开门条件（drag_id 按下即置位，直接
+        // 用它会让单击/双击第一击也闪出副本）。
+        var drag_moved str = ""
+        var __desktop_label_dark str = ""
         var blank_menu str = ""
         // PLAN-012：光标坐标（宿主 __mouse_moved 臂持续写入，只写不置
         // view_dirty；空白菜单坐标锚数据源——open 翻转重建时读取最新值）。
@@ -113,21 +125,19 @@ widget DesktopSurface {
             // Plan 518 G4③：格 = per-app 徽标色圆角底（哈希分配,数据驱动
             // bg-[ 拼接——"grid grid-cols-" + n 先例）+ 白 glyph（stella
             // 桌面 Notes 徽标同款;单色 lucide "带颜色"正解是容器底色）。
-            // PLAN-012 W5：grid 定宽——原 8 列 × 80px 格 + 7 × 8px gap =
-            // 696px（原 w-full 均分整行把格距拉伸到数百 px 的"间距过大"
-            // 根因）；定宽后图标群贴左上、格距 = gap 8px 量级（w-fit iced
-            // 轨不支持，class.rs 白名单受限——显式算术宽）。
-            // PLAN-019-FU1（用户走查反馈 2026-09-14）：图标默认大一倍——
-            // 格 160px + chip 80px + glyph 40px + label text-sm；定宽重算
-            // 8×160 + 7×8 = 1336px。宿主 drop_at 栅距同步 168px（88→168，
-            // renderer.rs execute_desktop_icon_drop_at ORIGIN/PITCH）。
-            grid (cols: 8, gap: 8) {
-                style: "w-[696px]"
+                            // PLAN-012 W5：grid 定宽（8 列 × 80px 格宽 + 7 × 8px gap =
+                            // 696px）——原 w-full 均分整行把格距拉伸到数百 px（用户反馈
+                            // "间距过大"根因）；定宽后图标群贴左上、格距 = gap 8px 量级
+                            // （w-fit iced 轨不支持，class.rs 白名单受限——显式算术宽）。
+                            // 2026-09-15 用户裁定（二轮）：图标 48×48 + 下方标题回归，
+                            // 格宽 w-20 承载标签；栅格宽随之 568 → 696。
+                            grid (cols: 8, gap: 8) {
+                                style: "w-[696px]"
                 // PLAN-012 W5：格子表渲染（宿主分配 (c,r) + spacer 填位）——
                 // 拖拽换位后位置持久（shell.desktop.positions，重启保持）。
                 for e in .__desktop_cells {
                     if e.spacer == "1" {
-                        div { style: "w-20 h-20" }
+                        div { style: "w-20 h-[72px]" }
                     } else {
                     mouse-area (ondblclick: .ActivateApp(e.id), onclick: .IconPress(e.id)) {
                         col {
@@ -135,10 +145,21 @@ widget DesktopSurface {
                             // 上的 hover: 静默丢弃——526 Q9①）+ 右键挂点。
                             // PLAN-012 W5：拖拽拾起态 = 半透明底（拖拽语义反馈；
                             // 无逐帧跟随幽灵——headless 决策，见工件）。
+                            // 2026-09-15 用户裁定（二轮）：格高改自适应（图标 48
+                            // + 下方标题；此前固定 h 把标签裁没），hover 半透明
+                            // 底覆盖 icon+标题整组。
+                            // 2026-09-15 用户裁定（三轮）：格高回固定 72px——
+                            // 自适应高被 iced grid 拉伸成整行高（行高数百 px、
+                            // 高亮纵向稀疏）；48px 图标 + 4px gap + 16px 标题
+                            // 恰好 72。拖拽中落点格 = bg-primary/20 实时高亮。
                             style: if .drag_id == e.id {
-                                "w-20 h-20 items-center justify-center gap-1 bg-white/20 opacity-50"
+                                "w-20 h-[72px] items-center justify-center gap-1 bg-white/20 opacity-50"
                             } else {
-                                "w-20 h-20 items-center justify-center gap-1 hover:bg-white/10"
+                                if .drag_id != "" && .drag_id != e.id && e.c == .drop_c && e.r == .drop_r {
+                                    "w-20 h-[72px] items-center justify-center gap-1 bg-primary/20"
+                                } else {
+                                    "w-20 h-[72px] items-center justify-center gap-1 hover:bg-white/10"
+                                }
                             }
                             oncontextmenu.prevent: .IconMenu(e.id)
             // PLAN-526 T30：icon 右键菜单 popover 化（锚=图标 chip 视觉件，
@@ -153,10 +174,10 @@ widget DesktopSurface {
                 // 可点）；PLAN-019-FU1：chip 80px + glyph 40px（原 40/20）。
                 if e.full == "1" {
                     col {
-                        // PLAN-018-FU3（用户裁定）：满幅 tile 高亮走边框——
-                        // 背景高亮被不透明图标本体挡住不可见；透明边框 +
-                        // hover 亮边，待透明底 SVG 时代再回背景高亮。
-                        style: "w-20 h-20 rounded-xl border-2 border-transparent hover:border-white/50"
+                        // 2026-09-15 用户裁定（二轮）：图标 48×48 满幅、FU3
+                        // 透明边框方案退役（边框观感差）——高亮由整组 hover
+                        // 半透明底承担（外层 col hover:bg-white/10）。
+                        style: "w-12 h-12"
                         icon (name: e.icon) {
                             style: "w-full h-full"
                         }
@@ -186,10 +207,35 @@ widget DesktopSurface {
                                 }
                             }
                             text e.label {
-                                style: "text-xs text-foreground truncate w-full text-center"
+                                // 2026-09-15：暗壁纸可读性三级配色——图片壁纸
+                                // （__desktop_bg 空）= 白字 + 半透明深色底片
+                                // （明暗混合壁纸平均亮度判不准，底片恒可读）；
+                                // 纯色壁纸按亮度白字/前景色。
+                                style: if .__desktop_bg == "" {
+                                    "text-xs text-white truncate w-full text-center rounded-md bg-black/30"
+                                } else {
+                                    if .__desktop_label_dark == "1" {
+                                        "text-xs text-white truncate w-full text-center"
+                                    } else {
+                                        "text-xs text-foreground truncate w-full text-center"
+                                    }
+                                }
                             }
                         }
                     }
+                    }
+                }
+            }
+            // 2026-09-15：拖拽幽灵——坐标锚 popover 跟随光标（__desktop_cursor_x/y
+            // 宿主 __mouse_moved 臂逐事件回写 + 拖拽期置 view_dirty），内容 =
+            // 被拖图标 48px 半透明满幅渲染；class 全透明无边框（popover 容器
+            // 样式完全由 class 承载）。开门 = drag_moved（真拖起来才显示——
+            // drag_id 按下即置位，单击/双击第一击不闪副本）。
+            popover (open: .drag_moved == "1", x: .__desktop_cursor_x, y: .__desktop_cursor_y, class: "p-0 bg-transparent") {
+                col {
+                    style: "w-12 h-12 opacity-60"
+                    icon (name: .drag_icon) {
+                        style: "w-full h-full"
                     }
                 }
             }
