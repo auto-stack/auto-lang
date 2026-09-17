@@ -86,14 +86,19 @@ def iter_files(changed_only: bool):
         for line in out:
             yield ROOT / line
         return
+    # 仅扫 git 跟踪文件——website/zh/docs 等生成镜像/构建缓存不入库，
+    # 逐 rglob 会把主检出的未跟踪产物误报（8e281d825 实勘）。
     for base in SCAN_PATHS:
         p = ROOT / base
         if not p.exists():
             print(f"warn: scan path missing: {base}")
             continue
-        for f in p.rglob("*"):
-            if f.is_file():
-                yield f
+        out = subprocess.run(
+            ["git", "ls-files", base],
+            capture_output=True, text=True, cwd=ROOT,
+        ).stdout.splitlines()
+        for line in out:
+            yield ROOT / line
 
 
 def check_file(f: Path) -> list[str]:
