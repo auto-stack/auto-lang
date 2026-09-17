@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-633
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: gallery-fullstack-backend-mount
 author: [zhaopuming, agent]
 created_at: 2026-09-15
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-man]
-current_step: 0
+current_step: 3
 total_steps: 6
 ---
 
@@ -60,7 +60,7 @@ Rust（auto-lang vm/ui、auto-man 发射器）；.at 语料；验证 cargo nexte
 | delta_id | add/modify | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/auto-man/project.md | before: 含 back/api 语料的示例 loadable=false，画廊仅静态面板；after: 全栈示例标记 fullstack 档，发射器级联拷贝 back 模块，宿主具备 per-demo 进程内后端挂载时以内嵌形态呈现 | 解除全栈 demo 内嵌排除 | AC-01, AC-03 |
-| SD-02 | add | docs/specs/auto-lang/vm/architecture.md | add: per-demo 命名空间化 in-process 后端注册——`<demo_id>.<api.method>` 路由 + 按 demo id 隔离的 db 实例；前端 api 调用在 merged 语境路由至同进程注册表 | 隔离与路由契约 | AC-01, AC-02 |
+| SD-02 | add | docs/specs/auto-lang/vm/architecture.md | add: 全栈 demo 内嵌的 per-demo 命名空间隔离契约——back 链模块经发射器级联为 `<demo_ns>_<mod>` 唯一 stem（fn 符号按 Plan 339 stem 限定、db 全局按 Plan 345 stem 前缀隔离）；前端 `use back.api:` 调用经 import_aliases 落到 per-demo 限定名，merged 语境进程内直调（rev2 按 T-01 实证修正措辞：发射器级命名空间，非宿主注册表） | 隔离与路由契约 | AC-01, AC-02 |
 
 ### 设计要点
 
@@ -85,18 +85,34 @@ Rust（auto-lang vm/ui、auto-man 发射器）；.at 语料；验证 cargo nexte
 ## 8. 执行步骤
 
 - **T-01**（有界调查）：盘点 013/015 前端→后端调用链形态（`@/lib/api` 封装、todo_store/notes_store 与 back/api.at 的端点对应）+ db.at 存储形态；产出路由设计决定记录（写入 §9）。验证：决定记录落档。
-- **T-02**（新）：发射器 fullstack 档——gallery_demo_row 判定拆分 + emit_gallery_vm_demos 级联拷贝 back 模块；单测。验证：AC-04 命令绿。→ AC-04。
-- **T-03**（新）：命名空间注册表——per-demo 后端实例构造（复用 standalone merged 装配）+ 隔离单测。验证：隔离单测绿。→ AC-03。
-- **T-04**（新）：前端 api 调用路由到进程内注册表（handler_codegen merged 路径扩展）。验证：单测 + 013 内嵌 MCP 冒烟。→ AC-01。
+  - [x] T-01 ✅ 2026-09-15 完成。决定记录（证据+路线修正）见 §9 2026-09-15 T-01 条目。核心：前端为 `use back.api:` 裸函数直调（VM merged=CALL reloc，非 fetch/client）；db.at 纯内存 var；**放弃宿主注册表原案，改发射器级 per-demo 模块命名空间改写**（VM 隔离机制 Plan 339/345 已在，缺的只是发射器唯一 stem）；T-03/T-04 相应重定界（AC 不变）。
+- **T-02**（新）：发射器 fullstack 档——gallery_demo_row 判定拆分 + emit_gallery_vm_demos 级联拷贝 back 模块（含 per-demo 唯一 stem 命名空间改写，T-01 决定）；单测。验证：AC-04 命令绿。→ AC-04。
+  - [x] T-02 ✅ 2026-09-15 完成（worktree commit `8109172ea`）。gallery_demo_row 判定分层（loadable 原语义不动 + fullstack=base_ok∧back 语料）；emit_gallery_vm_demos 门放行 `loadable||fullstack`；collect_back_chain 传递闭包（`back.X` 规范化裸名，同文件单 stem）+ rewrite_use_modules 全部级联 own 模块（front store 内容 per-demo 化须同 prefix）`<ns>_<mod>` 唯一 stem 改写；发射前 core 场景解析探针；back 链缺失/解析失败严格降级跳过。registry.at / demos-registry.ts 不序列化新字段（Vue 臂零变化）。
+- **T-03**（新，rev2 重定界）：隔离单测——两 fullstack demo 同名 endpoint/同型 db var 场景，断言发射产物符号集不相交（AC-03 语义）。验证：隔离单测绿。→ AC-03。
+  - [x] T-03 ✅ 2026-09-15 完成（同 commit）。`test_emit_gallery_vm_demos_fullstack_isolation`：013-a/015-b 双 fixture 同名 `get_item`+同型 `var items`，断言双方 use 各指己方 ns、不引用对方、同名 fn 分属不同 stem 文件、视口双分支接线。附带 `test_emit_gallery_vm_demos_fullstack_missing_back_skips`（严格降级）。验证证据：`cargo nextest run -p auto-man gallery` 12/12 绿；`cargo nextest run -p auto-man` 298/298 绿。注：测试运行会写穿 `examples/rust-workspace/015-notes`（`test_gen_015_notes_rust` 生成器测试刷新 tracked 示例产物，存量卫生问题非本计划引入）——已还原，建议记入 KNOWN-DEBT。
+- **T-04**（新，rev2 重定界）：013 内嵌端到端冒烟（VM 装载 + MCP 交互冒烟）。验证：单测 + 013 内嵌 MCP 冒烟。→ AC-01。
+  - [~] T-04 ⏸ 2026-09-15 部分（commit `4d5f8de13`，blocked 见 §9）：宿主 READY✓、013/015/016 内嵌 UI 挂载✓（无静态回退）、store 状态字段入根态✓、002 回归✓（0→1）；**数据面最后一跳不通**——内嵌语境 child-handler 合成里裸 `#[api]` 调用（`list_todos()`）结果不达根态（todos 恒 []），standalone 同源码 4 条种子可见。已修三层真实缺陷并验证：① UI 场景字面量校验 Slice←Array 缺臂（宿主启动 parse fatal 根因）；② `use auto.X` 原生根劫持 auto_modules（宿主链接期 Undefined：clipboard 连坐）；③ 多 store 接收者限定（plan-446 A1 歧义即宿主致命，016 同律）；另补传递子 widget 注册（TodoList registry miss→Empty）。跨 demo 干扰已排除（单全栈 demo 仍空）；no-op 拦截/接收者绑定/调用点限定三修不改变行为。
 - **T-05**：实机 MCP 全链路验证（013/015 交互 + 隔离 + 回归巡检 + tv 门）。验证：AC-01/AC-02/AC-03/AC-05。→ 各 AC。
 - **T-06**：簿记 + 复审移交。验证：`/auto-plan:review`。
 
 ## 9. 复审记录
 
 - 2026-09-15 draft 新建（stage: new, PLAN-633 rev1）：与 PLAN-632 同会话立项；handoff `next: work`，T-01 为首任务；依赖 PLAN-632 前置会话落地的模块级联发射（已在本仓 master 在途改动中）。
+- 2026-09-15 work 进入（stage: work | PLAN-633 rev1 | worktree `D:/autostack/.wt/lang-633/auto-lang` @ branch `plan-633-dev`，base `4a1b8cf59` | 状态 drafting→executing）。
+- 2026-09-15 **T-01 决定记录**（rev1→实施语义修正，AC/范围不变）：
+  - **证据 1（调用链形态）**：013 `todo_store.at:4` / 015 `notes_store.at:28` 均为 `use back.api: <fns>` **裸函数直调**——无 fetch 封装、无生成 client。VM merged 臂（`AUTO_VM_MERGE!=0`）下 `api_over_http=false`，调用保持 CALL reloc（plan340_tests 先例：`list_notes stays a CALL reloc`）；"throwing __vmOnly stub" 属 **Vue 臂 ts_adapter**（`ui_gen/ts_adapter.rs`），VM 臂无此拦截点——原 §2"前端调用重写"预设与实证不符。
+  - **证据 2（db 存储形态）**：013/015 `back/db.at` 均为**纯内存模块级 `var`**（`var todos List<Todo>`/种子数据），无文件落盘——待澄清项 2（落盘路径归属）关闭。VM 全局状态按 `current_module`（=文件 stem）前缀隔离于 vm.globals（codegen.rs Plan 345：`db.notes` 形态），fn 符号按文件 stem 限定（Plan 339：`api.list_todos`）。
+  - **决定（路由设计）**：**放弃原案**的"宿主 per-demo GenericRegistry + 前端调用重写"（针对的拦截层在 VM 臂不存在；且 VM 已内建 stem 命名空间隔离，注册表属重复机制）。改为**发射器级 per-demo 命名空间改写**：back 链模块（back.api/db/…传递闭包）级联拷贝为 `demos/<ns>_<mod>.at` 唯一 stem（`<ns>`=demo id 消毒，如 `d013todo`），demo 发射源与 back 链内部互相 `use` 全部改写到唯一 stem——fn 符号/全局状态/StoreDecl 天然按 stem 隔离，**宿主运行时（dynamic.rs/vm_bridge.rs/rust_ui.rs 装配）零改动**。前端 api 调用经既有 import_aliases 机制自动落到 per-demo 限定名（merged CALL reloc 先例同族）。
+  - **任务重定界**（验证与 AC 不变，机制落点修正）：T-02 扩为 fullstack 档+命名空间级联改写（原 T-02+T-04 路由机制）；T-03 重定为"双 demo 同 stem 场景隔离单测"（两 demo 同名 endpoint/同型 db var 不互串——AC-03 语义原样）；T-04 重定为"013 内嵌端到端冒烟"（VM 装载+MCP 交互——AC-01 验证形态原样）。
+  - **SD-02 修正**：spec delta 措辞随机制修正（见 §5 规范增量表），隔离契约语义不变。
+- 2026-09-15 work 完成（stage: work | PLAN-633 rev1 | outcome: **blocked** | code_commit: `8109172ea` + `4d5f8de13` @ plan-633-dev（base `4a1b8cf59`） | task_ids: T-01✅ T-02✅ T-03✅ T-04⏸ T-05/T-06 未入 | evidence: AC-04 `cargo nextest run -p auto-man gallery` 12/12 + 全套 298/298；实机 auto-os/ui-gallery VM 宿主 READY（对照组 master 二进制同 READY），013/015 内嵌 UI 挂载 + store 字段入根态，002 计数交互 0→1 回归绿；依赖兄弟 worktree `.wt/lang-633/auto-down`（detached，仅 path 依赖解析） | blockers: **AC-01/AC-02 数据面最后一跳**——内嵌 child-handler 合成里裸 `#[api]` 调用（`list_todos()`）结果不达根态（todos 恒 []，state 实测），standalone 同源码 4 种子可见（worktree 二进制双跑对照）；已排除：no-op 拦截（export 存在即跳过仍空）、接收者绑定（改写验证）、跨 demo 干扰（单全栈 demo 仍空）。修复顺带落地三个真实缺陷：UI 场景 Slice←Array 校验缺臂、`use auto.` 原生根劫持 auto_modules、多 store 接收者歧义 | next: 解锁动作——`vm_debug` 导出表 + `handler_TodoStore_Init` 字节码对照（内嵌 vs standalone，重点 `resolve_call_symbol` 产物与 CALL/CALL_SPEC 发射形态差异），或验证点式限定调用（`d013todo_api.list_todos()`）在合成层的可达性；解锁后 T-04 冒烟 → T-05 全链路（含 `cargo tv`：本计划已触 infer/codegen/lib.rs 编译器面）→ T-06 复审）。
+- 2026-09-15 备注：①测试运行会写穿 `examples/rust-workspace/015-notes`（`test_gen_015_notes_rust` 生成器测试刷新 tracked 示例产物，存量问题非本计划引入，已还原，建议记 KNOWN-DEBT）；②画廊视口"运行中/静态说明"徽标按 Vue 臂 loadable 语义，fullstack 内嵌显示"静态说明"但实际可交互（外观不一致，候选后续微修）；③031-image-viewer（native-ns 后端）/017-chat（~Stream SSE）按 §5 失败模式降级回静态面板，属 v1 范围裁定非缺陷。
 
 ## 10. 待澄清事项
 
-- `@/lib/api` 的前端调用形态（T-01 定）：若为生成 client 而非手写 fetch 封装，路由重写落点随之调整。
-- db.at 若为文件持久化，内嵌语境的落盘路径归属（临时目录/项目 tmp）需在 T-01 定，避免污染语料目录。
-- Vue 臂全栈内嵌是否跟进（明确列为非目标，后续另议）。
+- `@/lib/api` 的前端调用形态（T-01 已定）：`use back.api:` 裸函数直调，非 fetch/生成 client；✅关闭。
+- db.at 若为文件持久化，内嵌语境的落盘路径归属（T-01 已定）：纯内存 var，无落盘；✅关闭。
+- Vue 臂全栈内嵌是否跟进（明确列为非目标，后续另议）；保持非目标。
+- **（新增，2026-09-15 work）**内嵌 child-handler 合成里裸 `#[api]` 调用数据面不通（T-04 blocker，解锁动作见 §9）——需 VM 级追踪（导出表/字节码对照）定位 `resolve_call_symbol` 产物与最终发射形态在两语境的差异；候选修法：① bare #[api] 调用统一降为点式限定调用（合成层改写）；② 合成层为内嵌 api 调用补专用路由。
+- **（新增，2026-09-15 work）**`test_gen_015_notes_rust` 写穿 tracked 示例产物（`examples/rust-workspace/015-notes`）——测试卫生债，建议记 KNOWN-DEBT-AND-RISKS.md。
+- **（新增，2026-09-15 work）**画廊视口徽标"运行中/静态说明"按 loadable 语义，fullstack 内嵌显示"静态说明"（外观不一致，候选微修：registry 不加字段的前提下由 VM 臂单独提示）。

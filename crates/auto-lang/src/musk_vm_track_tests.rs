@@ -3788,3 +3788,204 @@ mod probe_rc_leak_soak {
         }
     }
 }
+
+/// PLAN-066 T-04（auto-musk PLAN-066 上游根修）：`__json_object` 字符串字段读
+/// 污染——JSON.parse 产物的字符串字段读取返回类型名 `"str"`（KD-057①，
+/// wl_probe21 实证：`j.kind → "str"`、字面量 `{type:"x"}.type → 空`），
+/// musk 问卷卡 `questionnaireFor` 的 `json.type` 判定失效的最后堵点。
+/// 本模块以脚本级真实 codegen+执行链锁定读返值本体语义。
+#[cfg(test)]
+mod musk_vm_track_p066_1_json_string_read {
+    use crate::run_with_capture;
+
+    fn run_code(code: &str) -> String {
+        match run_with_capture(code) {
+            Ok((_, stdout)) => stdout,
+            Err(e) => panic!("run failed: {:?}", e),
+        }
+    }
+
+    /// wl_probe21 主形态：JSON.parse 对象的字符串字段读取返值本体（非类型名）。
+    #[test]
+    fn json_parse_string_field_reads_value() {
+        let out = run_code(
+            r#"fn main() {
+    let j = JSON.parse("{\"type\": \"questionnaire\", \"kind\": \"x\"}")
+    print(j.kind)
+}"#,
+        );
+        eprintln!("[P066-1] j.kind => [{}]", out);
+        assert!(out.contains("x"), "expected x, got: [{}]", out);
+        assert!(!out.contains("str"), "type name leak, got: [{}]", out);
+    }
+
+    /// 同对象 `type` 键（musk questionnaireFor 的现场判定键）。
+    #[test]
+    fn json_parse_type_key_reads_value() {
+        let out = run_code(
+            r#"fn main() {
+    let j = JSON.parse("{\"type\": \"questionnaire\", \"kind\": \"x\"}")
+    print(j.type)
+}"#,
+        );
+        eprintln!("[P066-1] j.type => [{}]", out);
+        assert!(out.contains("questionnaire"), "expected questionnaire, got: [{}]", out);
+    }
+
+    /// 字面量 obj 的 `type` 键（KD-057①：读取为空）。
+    #[test]
+    fn literal_type_key_reads_value() {
+        let out = run_code(
+            r#"fn main() {
+    let lit = { type: "lit-type", kind: "lit-kind" }
+    print(lit.type)
+}"#,
+        );
+        eprintln!("[P066-1] lit.type => [{}]", out);
+        assert!(out.contains("lit-type"), "expected lit-type, got: [{}]", out);
+    }
+
+    /// 对照组：字面量 `kind` 键读取本就正常（KD-057① 在案），钉住防回归。
+    #[test]
+    fn literal_kind_key_control() {
+        let out = run_code(
+            r#"fn main() {
+    let lit = { type: "lit-type", kind: "lit-kind" }
+    print(lit.kind)
+}"#,
+        );
+        eprintln!("[P066-1] lit.kind => [{}]", out);
+        assert!(out.contains("lit-kind"), "expected lit-kind, got: [{}]", out);
+    }
+}
+
+/// PLAN-066 T-05（auto-musk PLAN-066 上游复跑/回归锁）：wl_probe18 围栏提取
+/// 形态——`Regex.match(text, "```json[\s\S]*?```", "g")`。KD-057② 实证
+/// "0 匹配"（055-3 ①族）；上游 583（dbde35d1f）修 Regex/CSV/Vec 容器负哨兵
+/// 缺子份额 retain（元素 rc 从 0 起，首个消费者释放即 FREE → 墓碑/静默
+/// 空串），症状同族。本模块双脸断言：匹配计数 + 元素内容（锁定 583 修复
+/// 面不回退），并覆盖 musk 回撤后的消费形态（stripQuestionnaire 的
+/// match→replace 通道）。
+#[cfg(test)]
+mod musk_vm_track_p066_2_regex_fence {
+    use crate::run_with_capture;
+
+    fn run_code(code: &str) -> String {
+        match run_with_capture(code) {
+            Ok((_, stdout)) => stdout,
+            Err(e) => panic!("run failed: {:?}", e),
+        }
+    }
+
+    /// wl_probe18 全形态：计数==1 且元素内容为完整围栏（非空串墓碑）。
+    #[test]
+    fn fence_match_count_and_element_content() {
+        let out = run_code(
+            r#"fn main() {
+    let text = "before ```json\n{\"type\": \"questionnaire\"}\n``` after"
+    let matches = Regex.match(text, "```json[\s\S]*?```", "g")
+    print(matches.length)
+    if matches.length > 0 {
+        let m = matches[0]
+        print(m)
+    }
+}"#,
+        );
+        eprintln!("[P066-2] fence match => [{}]", out);
+        assert!(out.contains("1"), "expected 1 match, got: [{}]", out);
+        assert!(
+            out.contains("questionnaire"),
+            "match element is tombstone/empty (583 retain regression?), got: [{}]",
+            out
+        );
+    }
+
+    /// musk stripQuestionnaire 消费形态：match→replace 剥前导（回撤后的
+    /// 真实通道，替代 11b6c20 的 indexOf 纯串）。
+    #[test]
+    fn fence_strip_leading_via_replace() {
+        let out = run_code(
+            r#"fn main() {
+    let text = "```json\n{\"a\": 1}\n```"
+    let matches = Regex.match(text, "```json[\s\S]*?```", "g")
+    if matches.length > 0 {
+        var inner = Regex.replace(matches[0], "^```json\s*", "", "g")
+        print(inner)
+    } else {
+        print("NOMATCH")
+    }
+}"#,
+        );
+        eprintln!("[P066-2] fence strip => [{}]", out);
+        assert!(out.contains("\"a\": 1"), "expected JSON body, got: [{}]", out);
+        assert!(!out.contains("NOMATCH"), "no match, got: [{}]", out);
+    }
+
+    /// musk questionnaireFor Pass2 两参组提取形态（colonMatch[1]/[2]、
+    /// p0[1]）——JS 非 global 语义 [全匹配, 组1, …]，锁组下标契约。
+    #[test]
+    fn two_arg_form_extracts_capture_groups() {
+        let out = run_code(
+            r#"fn main() {
+    let m = Regex.match("设置: 你想要哪个? ", "^(.+?)[:：]\s*(.+)\?\s*$")
+    print(m.length)
+    if m.length > 0 {
+        print(m[1])
+        print(m[2])
+    }
+}"#,
+        );
+        eprintln!("[P066-2] group extract => [{}]", out);
+        assert!(out.contains("3"), "expected length 3 (full+g1+g2), got: [{}]", out);
+        assert!(out.contains("设置"), "expected group1, got: [{}]", out);
+        assert!(out.contains("你想要哪个"), "expected group2, got: [{}]", out);
+    }
+
+    /// 583 回归锁直击：匹配结果列表元素经消费后仍可读（首个消费者释放
+    /// 不清内容——负哨兵 retain 修复面）。
+    #[test]
+    fn match_elements_survive_consumption() {
+        let out = run_code(
+            r#"fn main() {
+    let ms = Regex.match("a1b2c3", "[0-9]", "g")
+    print(ms.length)
+    let total = ms[0] + ms[1] + ms[2]
+    print(total)
+}"#,
+        );
+        eprintln!("[P066-2] elements survive => [{}]", out);
+        assert!(out.contains("3"), "expected 3 matches, got: [{}]", out);
+        assert!(out.contains("123"), "expected 123 (elements intact), got: [{}]", out);
+    }
+}
+
+/// PLAN-066 T-12（F-W1）：i18n.t VM 静态路由回归锁。
+mod musk_vm_track_p066_3_i18n_route {
+    use crate::run_with_capture;
+
+    /// 合成作用域内 `i18n.t(key)`——接收者 i18n 不编译为实例变量
+    /// （composable facade 声明，组件级 `let i18n = useI18n()` 不进
+    /// 合成体）。回归面=codegen 第二处 is_static_method 白名单漏
+    /// "i18n"，致 receiver Ident("i18n") 走实例编译 → Undefined
+    /// variable → WikiNav_dropText/MentionInput 标签 computed 导出
+    /// 毒化。锁面为编译毒化消除；运行期查表（i18n_lookup）随 ui
+    /// 构建，非 ui 的 shim 缺席回退不属本锁。
+    #[test]
+    fn i18n_t_dot_call_not_poisoned_as_undefined_variable() {
+        let code = "fn main() {\n    print(i18n.t(\"wiki.dropHere\"))\n}";
+        match run_with_capture(code) {
+            Ok((_, stdout)) => {
+                eprintln!("[P066-3] i18n.t ok => [{}]", stdout);
+            }
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                eprintln!("[P066-3] i18n.t err => {}", msg);
+                assert!(
+                    !msg.contains("Undefined variable: i18n"),
+                    "i18n.t receiver compiled as instance variable (T-12 regression): {}",
+                    msg
+                );
+            }
+        }
+    }
+}
