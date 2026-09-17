@@ -17200,11 +17200,9 @@ fn compare_pngs(
                 if let Some(open_id) =
                     m.event.strip_prefix("__dashboard_open:").map(str::to_string)
                 {
-                    if let Some(hatched) = state.hatched_mini_of(&open_id) {
-                        if let Err(err) = state.open_window_for_session(&open_id, hatched) {
-                            eprintln!("[session] dashboard promote failed: {err}");
-                        }
-                    } else if dashboard_running_app(state, &open_id).is_some() {
+                    // 判定顺序 = 去重语义（R21）：已有窗 → 聚焦（多次打开
+                    // 不重复开窗）；其次孵化会话 → 升格开窗；最后 → launch。
+                    if dashboard_running_app(state, &open_id).is_some() {
                         if let Some(panel) = state.desktop.dashboard_app {
                             if let Some(app) = state.apps.get_mut(&panel) {
                                 let _ = app.component.write_state(
@@ -17213,6 +17211,10 @@ fn compare_pngs(
                                 );
                                 *app.state.view_dirty.borrow_mut() = true;
                             }
+                        }
+                    } else if let Some(hatched) = state.hatched_mini_of(&open_id) {
+                        if let Err(err) = state.open_window_for_session(&open_id, hatched) {
+                            eprintln!("[session] dashboard promote failed: {err}");
                         }
                     } else {
                         execute_launch_app(state, &open_id);
@@ -17982,8 +17984,10 @@ fn compare_pngs(
                     let face_client = face_el.map(move |m| DM::App(app_id, m));
                     // R20：卡体点击 → 打开对应 app（内层按钮/交互优先命中，
                     // 空白区落到本 mouse_area——N6d 内外层同款机制）。
+                    // R21：双击打开（桌面图标同款交互；单击留给卡片内部
+                    // 交互/无动作）。
                     let face_wrapped = iced::widget::mouse_area(face_client)
-                        .on_press(DM::App(
+                        .on_double_click(DM::App(
                             app_id,
                             IcedMessage {
                                 widget: String::new(),
