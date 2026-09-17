@@ -509,7 +509,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                                 svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor0) {}
                                 }
-                                text .legendText0 { style: cap }
+                                text .legendText0 { style: caption_text }
                             }
                         }
                     }
@@ -519,7 +519,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                                 svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor1) {}
                                 }
-                                text .legendText1 { style: cap }
+                                text .legendText1 { style: caption_text }
                             }
                         }
                     }
@@ -529,7 +529,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                                 svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor2) {}
                                 }
-                                text .legendText2 { style: cap }
+                                text .legendText2 { style: caption_text }
                             }
                         }
                     }
@@ -539,7 +539,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                                 svg (viewBox: "0 0 8 8", style: legend_swatch) {
                                     rect (width: "8", height: "8", fill: .legendColor3) {}
                                 }
-                                text .legendText3 { style: cap }
+                                text .legendText3 { style: caption_text }
                             }
                         }
                     }
@@ -548,11 +548,11 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             row (style: "items-stretch w-full") {
                 if .axis == "auto" {
                     col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-[20px] pb-[40px]") {
-                        text .yTick4 { style: hint }
-                        text .yTick3 { style: hint }
-                        text .yTick2 { style: hint }
-                        text .yTick1 { style: hint }
-                        text .yTick0 { style: hint }
+                        text .yTick4 { style: hint_text }
+                        text .yTick3 { style: hint_text }
+                        text .yTick2 { style: hint_text }
+                        text .yTick1 { style: hint_text }
+                        text .yTick0 { style: hint_text }
                     }
                 }
                 col (style: "flex-1") {
@@ -649,64 +649,64 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     if .axis == "auto" {
                         row (style: "justify-between pl-10 pr-2.5 pt-1") {
                                 if .xLab0 != "" {
-                                    text .xLab0 { style: hint }
+                                    text .xLab0 { style: hint_text }
                                 }
                                 if .xLab1 != "" {
-                                    text .xLab1 { style: hint }
+                                    text .xLab1 { style: hint_text }
                                 }
                                 if .xLab2 != "" {
-                                    text .xLab2 { style: hint }
+                                    text .xLab2 { style: hint_text }
                                 }
                                 if .xLab3 != "" {
-                                    text .xLab3 { style: hint }
+                                    text .xLab3 { style: hint_text }
                                 }
                                 if .xLab4 != "" {
-                                    text .xLab4 { style: hint }
+                                    text .xLab4 { style: hint_text }
                                 }
                                 if .xLab5 != "" {
-                                    text .xLab5 { style: hint }
+                                    text .xLab5 { style: hint_text }
                                 }
                                 if .xLab6 != "" {
-                                    text .xLab6 { style: hint }
+                                    text .xLab6 { style: hint_text }
                                 }
                                 if .xLab7 != "" {
-                                    text .xLab7 { style: hint }
+                                    text .xLab7 { style: hint_text }
                                 }
                                 if .xLab8 != "" {
-                                    text .xLab8 { style: hint }
+                                    text .xLab8 { style: hint_text }
                                 }
                                 if .xLab9 != "" {
-                                    text .xLab9 { style: hint }
+                                    text .xLab9 { style: hint_text }
                                 }
                                 if .xLab10 != "" {
-                                    text .xLab10 { style: hint }
+                                    text .xLab10 { style: hint_text }
                                 }
                                 if .xLab11 != "" {
-                                    text .xLab11 { style: hint }
+                                    text .xLab11 { style: hint_text }
                                 }
                                 if .xLab12 != "" {
-                                    text .xLab12 { style: hint }
+                                    text .xLab12 { style: hint_text }
                                 }
                                 if .xLab13 != "" {
-                                    text .xLab13 { style: hint }
+                                    text .xLab13 { style: hint_text }
                                 }
                                 if .xLab14 != "" {
-                                    text .xLab14 { style: hint }
+                                    text .xLab14 { style: hint_text }
                                 }
                                 if .xLab15 != "" {
-                                    text .xLab15 { style: hint }
+                                    text .xLab15 { style: hint_text }
                                 }
                                 if .xLab16 != "" {
-                                    text .xLab16 { style: hint }
+                                    text .xLab16 { style: hint_text }
                                 }
                                 if .xLab17 != "" {
-                                    text .xLab17 { style: hint }
+                                    text .xLab17 { style: hint_text }
                                 }
                                 if .xLab18 != "" {
-                                    text .xLab18 { style: hint }
+                                    text .xLab18 { style: hint_text }
                                 }
                                 if .xLab19 != "" {
-                                    text .xLab19 { style: hint }
+                                    text .xLab19 { style: hint_text }
                                 }
                         }
                     }
