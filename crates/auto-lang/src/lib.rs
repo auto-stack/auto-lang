@@ -6882,6 +6882,9 @@ mod plan634_block_tail_semi_tests;
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;
+// PLAN-019 T-06: own-module bare-call binding (vm merged link) corpus.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan019_vm_own_module_link_tests;
 mod plan051_ext_widget_tests;
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
 mod plan051_timer_tests;

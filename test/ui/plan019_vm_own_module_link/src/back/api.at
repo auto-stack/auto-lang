@@ -1,0 +1,14 @@
+// api.at — 契约 + VM 直跑委托体(auto-term 同构)。
+// bump 非 #[api] 但同样被扁平化 qualify 为 api.bump,与 db.bump 构成
+// 歧义裸名。语义故意差异化(= db.bump(x) + 100):若模块内裸调用误绑
+// api 包装,消费值会是 103 而非 4 —— 金样据此区分绑定目标。
+use db
+
+#[api(method = "GET", path = "/api/probe/val")]
+pub fn get_val(x int) int {
+    return db.get_val(x)
+}
+
+pub fn bump(x int) int {
+    return db.bump(x) + 100
+}

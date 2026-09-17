@@ -290,6 +290,18 @@ pub struct Codegen {
     /// runtime heap tag) — the static `T.method` symbol doesn't exist.
     pub current_fn_type_params: Vec<String>,
 
+    /// PLAN-019 T-06 (vm delegate): module prefix of the fn currently being
+    /// compiled, when the name is module-qualified (`db.mux_resize_pane` →
+    /// Some("db")). Flattened single-module synthesis (handler_codegen
+    /// import_stmts) renames every imported fn to `mod.fn`, so an intra-module
+    /// bare call inside such a fn body is ambiguous at module scope (api.X and
+    /// db.X both define the bare name) and would otherwise stay unresolved —
+    /// bare CALL reloc against dotted-only entry exports → "Undefined symbol".
+    /// Call-site resolution binds bare names to the current fn's own module
+    /// first (mirrors loader Plan 322/545 own-module semantics at codegen
+    /// level). Unqualified fns compile with None; no behavior change elsewhere.
+    pub current_fn_module: Option<String>,
+
     /// Plan 417-E3-P4: bounded type params per fn (callee name → params with
     /// their constraint lists), e.g. max_of → [(T, [Comparable])]. Populated
     /// at Stmt::Fn; consulted at call sites to reject arguments whose static
@@ -598,6 +610,7 @@ impl Codegen {
             current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
             current_fn_ret_type: Type::Void,
             current_fn_type_params: Vec::new(), // Plan 417-E3
+            current_fn_module: None, // PLAN-019 T-06: own-module bare-call binding
             fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
@@ -971,6 +984,7 @@ impl Codegen {
             current_fn_n_args: 0,
             current_fn_ret_type: Type::Void,
             current_fn_type_params: Vec::new(), // Plan 417-E3
+            current_fn_module: None, // PLAN-019 T-06: own-module bare-call binding
             fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
@@ -1437,6 +1451,17 @@ impl Codegen {
                 self.current_fn_n_args = fn_decl.params.len();
                 self.current_fn_ret_type = fn_decl.ret.clone();
 
+                // PLAN-019 T-06 (vm delegate): record the fn's module prefix so
+                // bare intra-module calls in its body bind to its own module
+                // (see current_fn_module field doc). Flattened-qualified names
+                // (`db.mux_resize_pane`) carry the prefix; bare names → None.
+                let saved_fn_module = self.current_fn_module.take();
+                self.current_fn_module = fn_decl
+                    .name
+                    .to_string()
+                    .rsplit_once('.')
+                    .map(|(prefix, _)| prefix.to_string());
+
                 // Plan 417-E3: record this fn's type-parameter names so method
                 // calls on receivers typed as one of them dispatch dynamically
                 // (CALL_SPEC on the runtime heap tag) instead of a static
@@ -1703,6 +1728,7 @@ impl Codegen {
                 self.current_fn_n_args = 0;
                 self.current_fn_ret_type = Type::Void;
                 self.current_fn_type_params = saved_fn_type_params; // Plan 417-E3
+                self.current_fn_module = saved_fn_module; // PLAN-019 T-06
                 self.fn_scope_start = 0;
 
                 // 9. Patch jump to skip body
@@ -4578,6 +4604,26 @@ impl Codegen {
         // 2. exact export key.
         if self.exports.contains_key(name) {
             return name.to_string();
+        }
+        // 2.5 PLAN-019 T-06 (vm delegate): own-module binding for bare calls
+        // inside module-qualified fns. Flattened synthesis renames every
+        // imported fn to `mod.fn`, so a bare intra-module call (`mux_tab_id_at`
+        // inside db.mux_tab_title_at) is ambiguous at module scope (api.X and
+        // db.X both define the bare name) and step 3 leaves it bare — a bare
+        // CALL reloc that can never bind against dotted-only entry-module
+        // exports ("Undefined symbol" at link). Bind to the current fn's own
+        // module first, mirroring the loader's Plan 322/545 own-module
+        // semantics at codegen level. fn_return_types covers forward refs
+        // (pre-registered for every flattened import before bodies compile).
+        if !name.contains('.') {
+            if let Some(mod_name) = &self.current_fn_module {
+                let qualified = format!("{}.{}", mod_name, name);
+                if self.exports.contains_key(&qualified)
+                    || self.fn_return_types.contains_key(&qualified)
+                {
+                    return qualified;
+                }
+            }
         }
         // 3. unique bare-name → module-qualified fallback.
         if !name.contains('.') {
@@ -9843,6 +9889,23 @@ impl Codegen {
                         if stripped != name {
                             // Try the stripped bare name
                             if let Some(addr) = self.exports.get(stripped).copied() {
+                                return Some(addr);
+                            }
+                        }
+                    }
+                    // PLAN-019 T-06 (vm delegate): own-module binding — a bare
+                    // call inside a module-qualified fn resolves against its
+                    // own module's export first (ambiguous bare names like
+                    // mux_resize_branch exist under both api. and db.; the
+                    // fn's module is authoritative). Mirrors resolve_call_symbol
+                    // step 2.5; see current_fn_module field doc.
+                    if !name.contains('.') {
+                        if let Some(mod_name) = &self.current_fn_module {
+                            if let Some(addr) = self
+                                .exports
+                                .get(&format!("{}.{}", mod_name, name))
+                                .copied()
+                            {
                                 return Some(addr);
                             }
                         }
