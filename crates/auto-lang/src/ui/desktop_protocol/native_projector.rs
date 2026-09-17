@@ -28,7 +28,8 @@ use std::time::Instant;
 
 use super::client_runtime::{
     dim_if, measure_text, NodeStyle, BG, BUTTON_BG, BUTTON_H, BUTTON_MIN_W, BUTTON_PAD,
-    DISABLED_ALPHA, INPUT_BG, LABEL_FG, LINE_H_FACTOR, MARGIN, PLACEHOLDER_FG, TEXT_FG, TEXT_SIZE,
+    DISABLED_ALPHA, INPUT_BG, INPUT_BORDER, LABEL_FG, LINE_H_FACTOR, MARGIN, PLACEHOLDER_FG,
+    TEXT_FG, TEXT_SIZE,
 };
 use super::coverage::{self, Coverage, Verdict};
 use super::endpoint::FrameSource;
@@ -37,13 +38,55 @@ use crate::ui::component::Component;
 use crate::ui::style::{Color, Style, StyleClass};
 use crate::ui::view::View;
 
+/// 输入框几何（client_runtime 私有常量的 native 同值镜像——视觉规格
+/// 镜像解释态，参数面各自持有）。
+const INPUT_H: f32 = 32.0;
+const INPUT_PAD: f32 = 10.0;
+/// 聚焦描边色（解释态 `resolve_color("blue-500")` 的常量形态）。
+const FOCUS_BORDER: Rgba8 = Rgba8::new(59, 130, 246, 255);
+/// checkbox/radio 勾选盒标签与盒体的间距。
+const CHECK_LABEL_GAP: f32 = 6.0;
+
+/// 分型命中表项（PLAN-025 T-01 D1/D3 定形态）：零参物化消息直入；payload
+/// 族携派发材料（输入闭环身份/slider 几何/…——随覆盖爬坡扩臂）。
+#[derive(Clone)]
+enum HitEntry<M: Clone + std::fmt::Debug> {
+    /// 零参物化消息（button click / checkbox·radio toggle——handler 在场 =
+    /// handler 拥有状态变更，native 无字段写回路径，自动翻转不可达）。
+    Msg { rect: WRect, msg: M },
+    /// input/textarea：点击聚焦（编辑闭环走聚焦槽位，不经命中表派发）。
+    /// `value` = 布局期视图值（聚焦时 buffer 初始化源，D2）；`slot` =
+    /// 聚焦身份（Input/Textarea 合一计数，D1-A）；`on_change` = 键入
+    /// 回写物化消息（None = 只显不编——登记省略）。
+    Input { rect: WRect, value: String, on_change: Option<M>, slot: usize },
+}
+
+impl<M: Clone + std::fmt::Debug> HitEntry<M> {
+    fn rect(&self) -> &WRect {
+        match self {
+            HitEntry::Msg { rect, .. } | HitEntry::Input { rect, .. } => rect,
+        }
+    }
+}
+
+/// 点是否在矩形内（命中判定——既有 position() 谓词的命名提取）。
+fn rect_contains(r: &WRect, x: f32, y: f32) -> bool {
+    x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+}
+
 /// View 枚举 → DrawList 投影器（实现 [`FrameSource`]，作
 /// `AppEndpoint` 的会话——[`super::client_runtime::ClientPump`] 泛型泵
 /// 驱动，native queue 臂全链）。
 pub struct NativeProjector<C: Component> {
     component: C,
-    /// 最近一帧的命中区 `(rect, 物化消息)`（渲染时刷新）。
-    hits: Vec<(WRect, C::Msg)>,
+    /// 最近一帧的分型命中表（渲染时刷新；左键按型派发）。
+    hits: Vec<HitEntry<C::Msg>>,
+    /// 聚焦 input 槽位（T-01 D1-A：Input/Textarea 槽序身份，帧后重定位；
+    /// 点击聚焦，无显式失焦——解释态同边界）。
+    focused_input: Option<usize>,
+    /// 聚焦框编辑 buffer（T-01 D2：聚焦期显示/编辑面——聚焦时自视图值
+    /// 初始化，键入/退格就地编辑后经 INPUT_TEXT 代写回写组件）。
+    input_buffer: String,
     /// 渲染期遭遇的未覆盖 kind（动态分支防线——显式留痕面，测试/e2e 断言口）。
     uncovered_seen: Vec<String>,
     rev: u64,
@@ -58,6 +101,8 @@ impl<C: Component> NativeProjector<C> {
         Self {
             component,
             hits: Vec::new(),
+            focused_input: None,
+            input_buffer: String::new(),
             uncovered_seen: Vec::new(),
             rev: 1,
             width,
@@ -110,6 +155,9 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             ops: Vec::new(),
             hits: Vec::new(),
             uncovered: Vec::new(),
+            input_slots: 0,
+            focused_input: self.focused_input,
+            input_buffer: self.input_buffer.clone(),
         };
         let root_style = NodeStyle::default();
         let _ = layout_view_block(
@@ -121,6 +169,14 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             Dir::Vertical,
             &root_style,
         );
+        // 聚焦重定位（T-01 D1-A）：槽位越界 = 视图结构变化 → 失焦 +
+        // buffer 清空（不猜测对位——槽序身份在结构变化下不可靠，v1 边界）。
+        if let Some(slot) = self.focused_input {
+            if slot >= ctx.input_slots {
+                self.focused_input = None;
+                self.input_buffer.clear();
+            }
+        }
         self.hits = ctx.hits;
         self.uncovered_seen = ctx.uncovered;
         DrawList { clear: Some(BG), ops: ctx.ops }
@@ -129,17 +185,11 @@ impl<C: Component> FrameSource for NativeProjector<C> {
     fn on_input(&mut self, input: &InputMsg) {
         match input {
             InputMsg::PointerPressed { x, y, button: MouseButton::Left, .. } => {
-                let hit = self.hits.iter().position(|(r, _)| {
-                    *x >= r.x && *x < r.x + r.w && *y >= r.y && *y < r.y + r.h
-                });
-                if let Some(i) = hit {
-                    let msg = self.hits[i].1.clone();
-                    self.component.on(msg);
-                    self.rev += 1;
-                }
+                self.pointer_down_left(*x, *y);
             }
-            // 键盘/滚轮/右键 v1 不路由（覆盖集无 input 族；右键为解释态
-            // queue 臂同边界）。
+            // 键盘/滚轮/右键：T-05 接线（消费面随覆盖爬坡扩臂——I3）。
+            InputMsg::CharTyped { ch, .. } => self.char_typed(*ch),
+            InputMsg::KeyPressed { key, .. } if *key == 8 => self.backspace(),
             _ => {}
         }
     }
@@ -180,6 +230,73 @@ impl<C: Component> FrameSource for NativeProjector<C> {
     }
 }
 
+impl<C: Component> NativeProjector<C> {
+    /// 左键按下：分型派发（倒序 = 绘制序置顶优先）。
+    fn pointer_down_left(&mut self, x: f32, y: f32) {
+        let hit = self
+            .hits
+            .iter()
+            .rev()
+            .find(|e| rect_contains(e.rect(), x, y))
+            .cloned();
+        match hit {
+            Some(HitEntry::Msg { msg, .. }) => {
+                self.component.on(msg);
+                self.rev += 1;
+            }
+            // 聚焦（T-01 D1/D2）：记槽位 + buffer 自视图值初始化。聚焦
+            // 改变帧面（焦点描边）→ rev 前进（解释态不推版——native 帧
+            // 面全由 rev 驱动，差异随注）。
+            Some(HitEntry::Input { value, slot, .. }) => {
+                self.focused_input = Some(slot);
+                self.input_buffer = value;
+                self.rev += 1;
+            }
+            None => {}
+        }
+    }
+
+    /// 聚焦槽位的 on_change 物化消息（无槽位/无 handler → None）。
+    fn focused_on_change(&self) -> Option<C::Msg> {
+        let slot = self.focused_input?;
+        self.hits.iter().find_map(|e| match e {
+            HitEntry::Input { on_change, slot: s, .. } if *s == slot => on_change.clone(),
+            _ => None,
+        })
+    }
+
+    /// 键入回写（T-01 D2 定案 A）：编辑 buffer → INPUT_TEXT thread-local
+    /// 代写（与 a2r 生成 on() 的 `last_input_text()` 读面同线程接驳——
+    /// ClientPump 单线程泵）→ on_change 派发 → rev 前进。
+    fn dispatch_input_edit(&mut self, msg: C::Msg) {
+        crate::ui::iced::store_input_text(&self.input_buffer);
+        self.component.on(msg);
+        self.rev += 1;
+    }
+
+    /// CharTyped：聚焦框 buffer 追加 → 回写（控制字符不过——Enter/
+    /// on_submit not-yet，T-01 D2 随注）。
+    fn char_typed(&mut self, ch: char) {
+        if ch.is_control() || self.focused_input.is_none() {
+            return;
+        }
+        let Some(msg) = self.focused_on_change() else { return };
+        self.input_buffer.push(ch);
+        self.dispatch_input_edit(msg);
+    }
+
+    /// VK_BACK：聚焦框 buffer 回退一格 → 同通道回写（退格到空仍派发——
+    /// 清空语义合法；解释态同口径 client_runtime.rs:450-457）。
+    fn backspace(&mut self) {
+        if self.focused_input.is_none() {
+            return;
+        }
+        let Some(msg) = self.focused_on_change() else { return };
+        self.input_buffer.pop();
+        self.dispatch_input_edit(msg);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 块流布局 walker（镜像 client_runtime::layout_block 语义，节点面换 View）
 // ---------------------------------------------------------------------------
@@ -200,8 +317,15 @@ struct Laid {
 /// 状态读在 view() 构建期已完成）。
 struct NativeCtx<M: Clone + std::fmt::Debug> {
     ops: Vec<DrawOp>,
-    hits: Vec<(WRect, M)>,
+    hits: Vec<HitEntry<M>>,
     uncovered: Vec<String>,
+    /// Input/Textarea 槽位计数（登记序 = 确定性树序——D1-A 聚焦身份）。
+    input_slots: usize,
+    /// 聚焦槽位（projector 状态的布局期只读快照——臂内判焦点描边）。
+    focused_input: Option<usize>,
+    /// 聚焦框编辑 buffer 快照（臂内显示消费——聚焦框显示 buffer 而非
+    /// 视图值，D2）。
+    input_buffer: String,
 }
 
 impl<M: Clone + std::fmt::Debug> NativeCtx<M> {
@@ -378,9 +502,62 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 });
             }
             if !disabled {
-                ctx.hits.push((WRect::new(x, y, w, h), onclick.clone()));
+                ctx.hits.push(HitEntry::Msg {
+                    rect: WRect::new(x, y, w, h),
+                    msg: onclick.clone(),
+                });
             }
             Laid { size: (w, h) }
+        }
+        // —— PLAN-025 T-02 form 族臂（视觉镜像解释态 layout_input/
+        // layout_textarea/checkbox/radio；命中/聚焦/编辑闭环 = 分型命中表
+        // + 聚焦槽位，T-01 D1/D2 定案）。
+        View::Input { placeholder, value, on_change, width, .. } => {
+            layout_view_input(
+                ctx,
+                placeholder,
+                value,
+                on_change.as_ref(),
+                false,
+                style.fixed_w().or_else(|| width.map(f32::from)),
+                None,
+                &style,
+                x,
+                y,
+                avail_w,
+            )
+        }
+        View::Textarea { placeholder, value, on_change, height, .. } => {
+            // 多行框复用 input 命中/编辑闭环（槽位合一计数——D1）；行数
+            // = height px 折行数（rows 语义的解释态缺省 4 行档对齐）。
+            let size = style.font_size.unwrap_or(14.0);
+            let line_h = size * LINE_H_FACTOR;
+            let rows_h = |px: f32| INPUT_PAD * 2.0 + line_h * (px / line_h).max(1.0);
+            let h = style
+                .fixed_h()
+                .or_else(|| height.map(|v| rows_h(f32::from(v))))
+                .unwrap_or_else(|| rows_h(line_h * 4.0));
+            layout_view_input(
+                ctx,
+                placeholder,
+                value,
+                on_change.as_ref(),
+                true,
+                style.fixed_w(),
+                Some(h),
+                &style,
+                x,
+                y,
+                avail_w,
+            )
+        }
+        // checkbox/radio：勾选图形 + 标签文本；命中 = handler 在场才登记
+        // （native 无字段写回路径——自动翻转不可达，T-01 D2）。
+        View::Checkbox { is_checked, label, on_toggle, .. } => {
+            layout_view_toggle(ctx, *is_checked, label, on_toggle.as_ref(), &style, x, y, avail_w, false)
+        }
+        View::Radio { label, is_selected, on_select, .. } => {
+            layout_view_toggle(ctx, *is_selected, label, on_select.as_ref(), &style, x, y, avail_w, true)
         }
         View::Row { .. } => {
             let dir = Dir::Horizontal;
@@ -508,6 +685,148 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
 }
 
 // ---------------------------------------------------------------------------
+// PLAN-025 T-02 form 族臂（input/textarea/checkbox/radio——视觉镜像解释态）
+// ---------------------------------------------------------------------------
+
+/// input/textarea 布局臂：INPUT_BG 盒 + 1px 边框 + 焦点蓝描边（聚焦槽位
+/// = 本框）+ placeholder/值文本 + Input 命中登记（镜像解释态
+/// layout_input :1047-1126；多行 = 按 '\n' 分行自上而下、无自动换行——
+/// 解释态 layout_textarea 同边界）。
+#[allow(clippy::too_many_arguments)]
+fn layout_view_input<M: Clone + std::fmt::Debug>(
+    ctx: &mut NativeCtx<M>,
+    placeholder: &str,
+    value: &str,
+    on_change: Option<&M>,
+    multiline: bool,
+    fixed_w: Option<f32>,
+    h_override: Option<f32>,
+    style: &NodeStyle,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+) -> Laid {
+    let w = fixed_w.unwrap_or_else(|| {
+        if multiline {
+            avail_w.max(0.0)
+        } else {
+            avail_w.min(320.0)
+        }
+    })
+    .min(avail_w.max(0.0));
+    let h = h_override.unwrap_or(INPUT_H);
+    ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(INPUT_BG));
+    let slot = ctx.input_slots;
+    let focused = ctx.focused_input == Some(slot);
+    let border = if focused { FOCUS_BORDER } else { INPUT_BORDER };
+    ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(border));
+    ctx.input_slots += 1;
+    // 显示面（D2）：聚焦框显 buffer（编辑面——解析失败时组件状态不变，
+    // 用户意图仍可见），非聚焦框显视图值；空显 placeholder。
+    let (text, color) = {
+        let shown = if focused { &ctx.input_buffer } else { value };
+        if shown.is_empty() {
+            (placeholder.to_string(), PLACEHOLDER_FG)
+        } else {
+            (shown.to_string(), style.fg.unwrap_or(TEXT_FG))
+        }
+    };
+    let size = style.font_size.unwrap_or(14.0);
+    let line_h = size * LINE_H_FACTOR;
+    if !text.is_empty() && multiline {
+        // 多行：按 '\n' 分行自上而下排（无自动换行——宽度溢出裁剪边界
+        // 归宿主；保真边界随注，解释态 layout_textarea 同款）。
+        let rows = (((h - INPUT_PAD * 2.0) / line_h).floor() as usize).max(1);
+        for (i, line) in text.split('\n').take(rows).enumerate() {
+            ctx.ops.push(DrawOp::Text {
+                x: x + INPUT_PAD,
+                y: y + INPUT_PAD + line_h * i as f32,
+                size,
+                line_height: line_h,
+                color,
+                text: line.to_string(),
+            });
+        }
+    } else if !text.is_empty() {
+        ctx.ops.push(DrawOp::Text {
+            x: x + INPUT_PAD,
+            y: y + (h - line_h) / 2.0,
+            size,
+            line_height: line_h,
+            color,
+            text,
+        });
+    }
+    if let Some(msg) = on_change {
+        ctx.hits.push(HitEntry::Input {
+            rect: WRect::new(x, y, w, h),
+            value: value.to_string(),
+            on_change: Some(msg.clone()),
+            slot,
+        });
+    }
+    Laid { size: (w, h) }
+}
+
+/// checkbox/radio 布局臂：勾选盒（checkbox 18×18 / radio 16×16，圆形
+/// 直角化保真边界——解释态同款内芯 inset）+ 标签文本；命中 = handler
+/// 在场才登记（native 组件无字段写回路径，"handler 在场 = handler 拥有
+/// 状态变更"——解释态 register_toggle 语义的物化消息形）。
+#[allow(clippy::too_many_arguments)]
+fn layout_view_toggle<M: Clone + std::fmt::Debug>(
+    ctx: &mut NativeCtx<M>,
+    checked: bool,
+    label: &str,
+    handler: Option<&M>,
+    style: &NodeStyle,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    radio: bool,
+) -> Laid {
+    let (box_w, inset_factor, inset_clamp) = if radio {
+        (16.0f32, 0.28f32, 5.0f32)
+    } else {
+        (18.0f32, 0.22f32, 6.0f32)
+    };
+    let w = style.fixed_w().unwrap_or(box_w).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(w);
+    ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(INPUT_BG));
+    ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(INPUT_BORDER));
+    if checked {
+        let inset = (w.min(h) * inset_factor).clamp(1.5, inset_clamp);
+        ctx.push_quad(
+            WRect::new(x + inset, y + inset, w - inset * 2.0, h - inset * 2.0),
+            style.fg.unwrap_or(BUTTON_BG),
+        );
+    }
+    let mut outer_w = w;
+    let mut outer_h = h;
+    if !label.is_empty() {
+        let size = style.font_size.unwrap_or(14.0);
+        let line_h = size * LINE_H_FACTOR;
+        let label_w = measure_text(label, size);
+        ctx.ops.push(DrawOp::Text {
+            x: x + w + CHECK_LABEL_GAP,
+            y: y + (h - line_h) / 2.0,
+            size,
+            line_height: line_h,
+            color: style.fg.unwrap_or(TEXT_FG),
+            text: label.to_string(),
+        });
+        outer_w = w + CHECK_LABEL_GAP + label_w;
+        outer_h = h.max(line_h);
+    }
+    if let Some(msg) = handler {
+        ctx.hits.push(HitEntry::Msg {
+            rect: WRect::new(x, y, outer_w, outer_h),
+            msg: msg.clone(),
+        });
+    }
+    Laid { size: (outer_w, outer_h) }
+}
+
+// ---------------------------------------------------------------------------
 // typed 样式适配器（StyleClass → NodeStyle；盒模复用 layout_extract）
 // ---------------------------------------------------------------------------
 
@@ -520,7 +839,13 @@ fn node_style_of_view<M: Clone + std::fmt::Debug>(view: &View<M>) -> NodeStyle {
         | View::Row { style, .. }
         | View::Column { style, .. }
         | View::List { style, .. }
-        | View::Container { style, .. } => style.as_ref(),
+        | View::Container { style, .. }
+        | View::Input { style, .. }
+        | View::Textarea { style, .. }
+        | View::Checkbox { style, .. }
+        | View::Radio { style, .. }
+        | View::Select { style, .. }
+        | View::Slider { style, .. } => style.as_ref(),
         _ => None,
     };
     node_style_of(style)
@@ -880,6 +1205,271 @@ mod tests {
         assert_eq!(p.revision(), before + 1, "interval 到期派发 tick_msg");
     }
 
+    // —— PLAN-025 T-02 form 族单测（golden + 聚焦编辑闭环 + toggle）——
+
+    const FOC: Rgba8 = Rgba8::new(59, 130, 246, 255);
+
+    /// 双 input 换算组件（a2r 生成物最小同构——on() 读 INPUT_TEXT 写绑定
+    /// 字段 + 内联换算；003-converter 同构）。
+    #[derive(Debug)]
+    struct Converter {
+        celsius: f64,
+        fahrenheit: f64,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    enum CvMsg {
+        SetC,
+        SetF,
+    }
+
+    impl Component for Converter {
+        type Msg = CvMsg;
+        fn on(&mut self, msg: Self::Msg) {
+            let text = crate::ui::iced::last_input_text();
+            match msg {
+                CvMsg::SetC => {
+                    self.celsius = text.parse::<f64>().unwrap_or(self.celsius);
+                    self.fahrenheit = (self.celsius * 9.0 / 5.0 + 32.0) * 100.0 / 100.0;
+                }
+                CvMsg::SetF => {
+                    self.fahrenheit = text.parse::<f64>().unwrap_or(self.fahrenheit);
+                    self.celsius = (self.fahrenheit - 32.0) * 5.0 / 9.0 * 100.0 / 100.0;
+                }
+            }
+        }
+        fn view(&self) -> View<Self::Msg> {
+            View::col()
+                .child(
+                    View::input("c")
+                        .value(format!("{}", self.celsius))
+                        .on_change(CvMsg::SetC)
+                        .build(),
+                )
+                .child(
+                    View::input("f")
+                        .value(format!("{}", self.fahrenheit))
+                        .on_change(CvMsg::SetF)
+                        .build(),
+                )
+                .build()
+        }
+    }
+
+    fn quads_of(frame: &DrawList) -> Vec<&WRect> {
+        frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn click<C: Component>(p: &mut NativeProjector<C>, x: f32, y: f32) {
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x,
+            y,
+            modifiers: 0,
+        });
+    }
+
+    #[test]
+    fn input_golden_placeholder_value_focus_border() {
+        #[derive(Debug)]
+        struct OneInput;
+        #[derive(Debug, Clone)]
+        enum OMsg {
+            Nop,
+        }
+        impl Component for OneInput {
+            type Msg = OMsg;
+            fn on(&mut self, _m: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                // on_change 在场 = 可聚焦可编辑（登记纪律与解释态同：
+                // 无绑定不登记——None 时点击不聚焦）。
+                View::input("your name")
+                    .value("Zhang".to_string())
+                    .on_change(OMsg::Nop)
+                    .build()
+            }
+        }
+        let mut p = NativeProjector::new(OneInput, 480.0, 320.0);
+        p.ensure_covered().expect("input 级入覆盖集");
+        let frame = p.render_frame();
+        // 盒 (10,10,320,32) + 1px 边框 + 值文本（未聚焦 = 视图值）。
+        assert_eq!(quads_of(&frame)[0], &WRect::new(10.0, 10.0, 320.0, 32.0));
+        assert_eq!(texts_of(&frame), vec!["Zhang"], "值文本（placeholder 隐藏）");
+        // 空值 → placeholder（PLACEHOLDER_FG 色）。
+        #[derive(Debug)]
+        struct Empty;
+        impl Component for Empty {
+            type Msg = OMsg;
+            fn on(&mut self, _m: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::input("your name").build()
+            }
+        }
+        let frame = NativeProjector::new(Empty, 480.0, 320.0).render_frame();
+        assert_eq!(texts_of(&frame), vec!["your name"]);
+        let ph_color = frame.ops.iter().find_map(|op| match op {
+            DrawOp::Text { color, text, .. } if text == "your name" => Some(*color),
+            _ => None,
+        });
+        assert_eq!(ph_color, Some(PLACEHOLDER_FG), "placeholder 灰");
+        // 聚焦 → 描边变蓝（FOCUS_BORDER 顶边 quad）。
+        let mut p = NativeProjector::new(OneInput, 480.0, 320.0);
+        let _ = p.render_frame(); // 首帧建命中表（点击寻址前提）。
+        click(&mut p, 100.0, 26.0);
+        let frame = p.render_frame();
+        assert!(
+            quads_of(&frame)
+                .iter()
+                .any(|r| r.x == 10.0 && r.y == 10.0 && r.w == 320.0 && r.h == 1.0),
+            "顶边 1px 边框在册"
+        );
+        let has_focus_border = frame.ops.iter().any(|op| match op {
+            DrawOp::Quad { color: c, .. } => *c == FOC,
+            _ => false,
+        });
+        assert!(has_focus_border, "聚焦描边 blue-500");
+    }
+
+    #[test]
+    fn focus_edit_closure_converter() {
+        let mut p = NativeProjector::new(
+            Converter { celsius: 0.0, fahrenheit: 32.0 },
+            480.0,
+            320.0,
+        );
+        p.ensure_covered().expect("form 级入覆盖集");
+        let frame = p.render_frame();
+        // 双 input 框（槽 0 = celsius y=10，槽 1 = fahrenheit y=50——gap 8）。
+        assert!(quads_of(&frame).iter().any(|r| **r == WRect::new(10.0, 10.0, 320.0, 32.0)));
+        assert!(quads_of(&frame).iter().any(|r| **r == WRect::new(10.0, 50.0, 320.0, 32.0)));
+
+        // 点击聚焦槽 0 → 键入 "100" → 换算联动（fahrenheit = 212）。
+        click(&mut p, 100.0, 26.0);
+        assert_eq!(p.focused_input, Some(0), "点击聚焦槽位（D1-A）");
+        for ch in "100".chars() {
+            p.on_input(&InputMsg::CharTyped { wid: 1, ch });
+        }
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| t.starts_with("212")),
+            "换算联动帧变: {:?}",
+            texts_of(&frame)
+        );
+        // 聚焦框显示 buffer（视图值 "0" + 键入 "100" = "0100"——iced
+        // 内部 buffer 同款语义），非聚焦框显示换算值。
+        assert_eq!(texts_of(&frame)[0], "0100", "聚焦框显 buffer（D2）");
+
+        // 切聚焦槽 1（buffer 自视图值初始化）→ 退格 "212"→"21" → 联动。
+        click(&mut p, 100.0, 66.0);
+        assert_eq!(p.focused_input, Some(1));
+        assert_eq!(p.input_buffer, "212", "聚焦时 buffer 自视图值初始化");
+        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 8, modifiers: 0 });
+        let frame = p.render_frame();
+        let f = 21.0_f64;
+        let c = (f - 32.0) * 5.0 / 9.0;
+        assert_eq!(texts_of(&frame)[0], format!("{c}"), "celsius 联动重算");
+        assert_eq!(texts_of(&frame)[1], "21", "聚焦框显退格后 buffer");
+
+        // 无聚焦键入不派发（解释态同口径——无路由目标静默）。
+        let before = p.revision();
+        p.focused_input = None;
+        p.on_input(&InputMsg::CharTyped { wid: 1, ch: 'x' });
+        assert_eq!(p.revision(), before, "无聚焦不派发");
+    }
+
+    #[test]
+    fn textarea_multiline_golden() {
+        #[derive(Debug)]
+        struct Note;
+        #[derive(Debug, Clone)]
+        enum NMsg {}
+        impl Component for Note {
+            type Msg = NMsg;
+            fn on(&mut self, _m: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::textarea("note").value("a\nb".to_string()).build()
+            }
+        }
+        let mut p = NativeProjector::new(Note, 480.0, 320.0);
+        p.ensure_covered().expect("textarea 入覆盖集");
+        let frame = p.render_frame();
+        assert_eq!(texts_of(&frame), vec!["a", "b"], "按 '\\n' 分行");
+    }
+
+    #[test]
+    fn toggle_golden_and_dispatch() {
+        #[derive(Debug)]
+        struct Toggles {
+            on: bool,
+            picked: bool,
+        }
+        #[derive(Debug, Clone)]
+        enum TMsg {
+            Flip,
+            Pick,
+        }
+        impl Component for Toggles {
+            type Msg = TMsg;
+            fn on(&mut self, msg: Self::Msg) {
+                match msg {
+                    TMsg::Flip => self.on = !self.on,
+                    TMsg::Pick => self.picked = true,
+                }
+            }
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::Checkbox {
+                        is_checked: self.on,
+                        label: "opt".into(),
+                        on_toggle: Some(TMsg::Flip),
+                        style: None,
+                    })
+                    .child(View::radio(self.picked, "pick").on_select(TMsg::Pick))
+                    .child(View::checkbox(false, "no handler")) // 无 handler 不登记
+                    .build()
+            }
+        }
+        let mut p = NativeProjector::new(Toggles { on: false, picked: false }, 480.0, 320.0);
+        p.ensure_covered().expect("toggle 族入覆盖集");
+        let frame = p.render_frame();
+        assert_eq!(texts_of(&frame), vec!["opt", "pick", "no handler"], "标签随盒渲染");
+        // checkbox 命中（盒 + 标签整行）：盒 18×18 @ (10,10)，中心 (19,19)。
+        click(&mut p, 19.0, 19.0);
+        let frame = p.render_frame();
+        // 勾选内芯 quad：inset = 18*0.22=3.96 → (13.96,13.96,10.08,10.08)。
+        assert!(
+            quads_of(&frame)
+                .iter()
+                .any(|r| (r.x - 13.96).abs() < 0.01 && (r.w - 10.08).abs() < 0.01),
+            "选中内芯: {:?}",
+            quads_of(&frame)
+        );
+        // radio 命中（第二行：checkbox 行高 = max(18, 标签行高 18.9)=18.9，
+        // radio y = 10 + 18.9 + gap 8 = 36.9，盒中心 y ≈ 44.9）。
+        let radio_y = 10.0 + 18.0_f32.max(14.0 * 1.35) + 8.0 + 8.0;
+        click(&mut p, 18.0, radio_y);
+        let frame = p.render_frame();
+        assert!(
+            quads_of(&frame)
+                .iter()
+                .any(|r| (r.w - 16.0).abs() < 0.01 && (r.h - 16.0).abs() < 0.01),
+            "radio 盒 16×16 在册"
+        );
+        // 无 handler checkbox（第三行）：点击不派发（revision 不动）。
+        let before = p.revision();
+        let third_y = radio_y + 18.0_f32.max(14.0 * 1.35) + 8.0 + 9.0;
+        click(&mut p, 19.0, third_y);
+        assert_eq!(p.revision(), before, "无 handler 不登记不派发");
+    }
+
     /// 全循环（真实命名管道，同线程协同泵；client_runtime 解释态全循环
     /// 同机件换 native 会话）：握手 → shm 产帧（native View 投影）→ 协议
     /// 点击 → count 递增 → L2Detach 出口。
@@ -993,5 +1583,115 @@ mod tests {
         };
         assert_eq!(exit, ClientExit::L2Detached);
         assert_eq!(projector.revision(), 2, "点击一次 revision 连续");
+    }
+
+    /// PLAN-025 T-02 集成（真管道全循环，form 级）：双 input 换算 App
+    /// —— 协议点击聚焦 input 0 → 协议级 CharTyped 注入（P020-D4 GUI
+    /// 自动化债未清前的承载口径，⑤）→ INPUT_TEXT → on_change → 换算
+    /// 联动帧断言（AC-02 的协议级证据）。
+    #[test]
+    fn native_form_full_cycle_over_pipe() {
+        use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientPump};
+        use crate::ui::desktop_protocol::host::ProtocolHost;
+        use crate::ui::desktop_protocol::message::ProtocolMsg;
+        use crate::ui::session::DesktopSession;
+
+        const HOST_SRC: &str = r#"widget native-form { view { text "x" } }"#;
+
+        let pipe = format!("autodesk-native-form-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        let config = ClientConfig {
+            app_name: "native-form".into(),
+            title: "native-form".into(),
+            width: 480.0,
+            height: 320.0,
+        };
+
+        let app_end = transport::connect(&pipe, 2000).expect("connect");
+        let projector = NativeProjector::new(
+            Converter { celsius: 0.0, fahrenheit: 32.0 },
+            480.0,
+            320.0,
+        );
+        let mut client = ClientPump::new(app_end, projector, config, None);
+        let mut server_end = listener.wait_connect().expect("server connect");
+
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        let mut ph = ProtocolHost::new(&mut session, move |name: &str| {
+            if name == "native-form" {
+                crate::build_dynamic_component(HOST_SRC, None).map_err(|e| format!("{e}"))
+            } else {
+                Err(format!("unknown app {name}"))
+            }
+        });
+
+        fn pump(server_end: &mut Box<dyn transport::Transport + Send>, ph: &mut ProtocolHost<'_>) {
+            while let Some(loaded) = server_end.try_recv() {
+                let msg = loaded.expect("解码");
+                ph.handle(&msg).expect("host 状态机");
+                for reply in std::mem::take(&mut ph.to_app) {
+                    let _ = server_end.send(&reply);
+                }
+            }
+        }
+
+        fn drive(
+            server_end: &mut Box<dyn transport::Transport + Send>,
+            ph: &mut ProtocolHost<'_>,
+            client: &mut ClientPump<NativeProjector<Converter>>,
+        ) {
+            pump(server_end, ph);
+            if let Some((exit, _)) = client.step() {
+                panic!("form 全循环意外出口 {exit:?}");
+            }
+        }
+
+        // 泵到 Active + 首帧。
+        let mut wid = None;
+        for _ in 0..1000 {
+            drive(&mut server_end, &mut ph, &mut client);
+            if !ph.session.apps.is_empty() {
+                wid = ph.active().1;
+                if ph.composed(wid.expect("wid").0).is_some() {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let wid = wid.expect("child 已孵化");
+        let wwid = wid.0;
+        let frame_has = |ph: &ProtocolHost<'_>, needle: &str| {
+            ph.composed(wwid).is_some_and(|list| {
+                list.ops
+                    .iter()
+                    .any(|op| matches!(op, DrawOp::Text { text, .. } if text.starts_with(needle)))
+            })
+        };
+        assert!(frame_has(&ph, "32"), "首帧 fahrenheit=32 在册");
+
+        // 协议点击 input 0（rect (10,10,320,32) 中心）→ 聚焦（聚焦
+        // 推版一帧——泵数轮消化）。
+        let injected = ph.pointer_down(170.0, 26.0, MouseButton::Left).expect("窗内命中");
+        server_end.send(&injected).unwrap();
+        for _ in 0..10 {
+            drive(&mut server_end, &mut ph, &mut client);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+
+        // 协议级 CharTyped 注入 "5" → buffer "05" → celsius=5 →
+        // fahrenheit=41 联动帧。
+        let typed = ProtocolMsg::Input(InputMsg::CharTyped { wid: wid.0, ch: '5' });
+        server_end.send(&typed).unwrap();
+        let mut seen = false;
+        for _ in 0..1000 {
+            drive(&mut server_end, &mut ph, &mut client);
+            if frame_has(&ph, "41") {
+                seen = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(seen, "CharTyped 经 INPUT_TEXT → on_change → 换算联动帧: {:?}", ph.composed(wwid));
     }
 }
