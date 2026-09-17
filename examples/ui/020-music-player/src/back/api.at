@@ -1,0 +1,14 @@
+// api.at — 020-music-player backend API.
+// Control-plane API for 020-music-player.
+// Media indexing and streaming are served automatically via /api/media/scan and /api/media/stream/:id.
+
+pub type PlayerInfo = {
+    status: str
+    version: str
+}
+
+/// GET /api/player/status — check player backend service status.
+#[api(method = "GET", path = "/api/player/status")]
+pub fn status() []PlayerInfo {
+    return []
+}
