@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-637
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: style-recipe-token-rollout（examples/ui 全量配方化 + token 化）
 author: [zhaopuming]
 created_at: 2026-09-17
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象）"]
 
 affects: [auto-lang/ui, autoui-examples]
-current_step: 7
+current_step: 10
 total_steps: 10
 ---
 
@@ -324,6 +324,14 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   evidence/637/b4-evidence-summary.md。
 - **T-05 W4 波**（011/019/020/023）：重型 token 化；020 的 264 处逐簇
   （同类串整簇替换）而非逐处。（r3：= **B5**，与 T-07/T-08 收口同批。）
+  [✅ 已完成 2026-09-17 B5] 011 tier 映射（数字键→secondary 族、功能键行→
+  muted+foreground、显示器→primary）+ 7 键位配方提取，运算符橙/科学 indigo
+  类目豁免；019 tier 收敛 ×13 键 + 视频叠字豁免 ×4；020（638 重设计后残余）
+  tier ×5 键 + rose/emerald/白字豁免 ×9；023 灰阶分层 ×12 键 + destructive 族 +
+  **input_field ×13 消费**（D1 家族源 demo）+ brand-green 品牌对豁免。
+  对拍：011 vue 13.68%/vm 83.41%（键色随暗主题换装）、019 vue 60.92%、
+  020 双端 IDENTICAL、023 vue 3.68%；019/023 VM 轨既有问题（019 挂起/
+  023 后端再生成 E0425——干净态同错，主检出可复现）以 vue 承担。
 - [x] **T-06 存量三 demo 收尾**（013/015/045 Phase B + 门禁纳入；r3：提前
   并入 **B1** 执行——Phase A 已达标故便宜，且提前兑现 AC-05 stylekit
   消费实证）。
@@ -332,13 +340,24 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   （pac dep stylekit + editor/sidebar use 导入；vue 像素 IDENTICAL 零漂移；vm
   22.8%=有状态 db 内容/时间戳漂移，差值可视化在案非样式）+ accent 五色票豁免
   登记；045 零改动纳入门禁（双端 IDENTICAL 回归）。guard completed 集 8 demo。
-- **T-07 矩阵终验**：35/35 勾记 + grep 全量复扫 + 豁免表复核。
-- **T-08 回归与收口**：`cargo tv` + `cargo t` 对拍；spec delta 回填；
+- [x] **T-07 矩阵终验**：35/35 勾记 + grep 全量复扫 + 豁免表复核。
+  [✅ 已完成 2026-09-17 B5] guard 全量复扫 **34/34 PASS**（33 rollout + 045；
+  025/038 N/A）；豁免表 14 demo ~50 键全部带定性 reason 复核通过；矩阵
+  8.1–8.4 + 8.5 B5 增补全勾记。
+- [x] **T-08 回归与收口**：`cargo tv` + `cargo t` 对拍；spec delta 回填；
   `execution_done`。**worktree 链接拆除（r2，wt-guard 红线）**：各 demo
   `auto run` 按 475 通道物化的 `deps/stylekit` 等 junction（预计 30+ 枚）
   收尾时逐枚 `rmdir` 拆除（严禁递归删除——会穿透链接删除目标内容），
   拆净后跑 `bash D:/autostack/wt-guard.sh` 确认 clean 再移除 worktree
   （635 先例：合并时手工拆除 360 枚链接，见其合并回执 cleaned 节）。
+  [✅ 已完成 2026-09-17 B5] junction：worktree deps/stylekit ×34 逐枚拆除 +
+  空壳清除；主检出 011 deps/common（B1 遗留）+ 陈旧 junction 复扫清零；
+  gen/dist 超长路径 pnpm 链接树以 mv→robocopy /MIR /XJ→rmdir 安全清除；
+  **wt-guard 终判 clean**。spec delta 回填见 SD-01/SD-02（review 裁定）。
+  cargo tv 阻断记录：E0433 ×20（term_engine.rs terminal 块无 ui 门控——
+  PLAN-019 复审曾修、后续合并复活；crates 属 019/020 lineage，本计划
+  Category A 不越界）——解除动作=补 ui/not(ui) 双臂门控后重跑，移交
+  review 裁定。cargo t 依 Category A 免跑（全程零 crates 改动+语料隔离已证）。
 - （波次内发现的新重复模式回流 stylekit 时，走 demo 内 style 先行、
   升库与消费方切换同波完成，避免半态。）
 
@@ -409,6 +428,22 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
 tree_icon 四胞胎：018/026/027 落地 ×42；041 回退 ×14（VM 原生轨括号形配方名
 不支持，框架债）。
 
+### 8.5 B5 矩阵增补（2026-09-17，T-05 重型 + T-07/T-08 终验收口）
+
+证据：`docs/plans/evidence/637/b5-evidence-summary.md`。
+
+| demo | Phase A/Phase B | 对拍（vue/vm） | 门禁 | 消费 stylekit |
+|---|---|---|---|---|
+| 011 | tier 映射 + 7 键位配方提取（key_digit_dark ×13 等） | 13.68% / 83.41%（键色随暗主题） | ✅ 类目键豁免 | — |
+| 019 | tier 收敛 ×13 键 | 60.92% / n/a（VM 挂起既有） | ✅ 叠字豁免 ×4 + 分类 pill 类目豁免 ×16 键 | — |
+| 020 | tier 残余 ×5 键 | IDENTICAL / IDENTICAL | ✅ rose/emerald/白字豁免 ×9 | — |
+| 023 | 灰阶分层 ×12 键 + destructive 族 | 3.68% / n/a（后端再生成 E0425 既有） | ✅ brand-green 对豁免 ×5 | ✅ input_field ×13 |
+
+终验：guard **34/34 PASS**（0 非豁免残留）；豁免表 14 demo ~50 键复核；
+cargo tv 被 master 既有 E0433（term_engine 无 ui 门控）阻断——记录+移交
+（解除动作在案）；语料隔离已证（examples/ui 不入 golden）；worktree
+junction ×34 + 主检出遗留全清，**wt-guard clean**。
+
 ## 9. 复审记录
 
 - （draft 起草 handoff 2026-09-17：`stage: new | PLAN-637 | plan_revision: 1 |
@@ -460,7 +495,18 @@ tree_icon 四胞胎：018/026/027 落地 ×42；041 回退 ×14（VM 原生轨�
   要点：024 hint_text ×75 全仓最大家族消费落地；icon_base 四胞胎 42/56
   （041 VM 原生轨括号形配方名不支持→回退，框架债）；026 475 包 use 互斥→
   caption 回退 ×4（框架债）；转换事故（行尾注释吞 token）两处已修复并全目录
-  审计清零。））
+  审计清零。）
+- （B5 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
+  outcome: pass → execution_done | code_commit: plan-637-dev B5 提交 |
+  task_ids: T-05/T-07/T-08 | evidence:
+  docs/plans/evidence/637/b5-evidence-summary.md | blockers:
+  cargo tv 门禁被 master 既有 E0433 阻断（term_engine 无 ui 门控，
+  019 复审曾修后复活；解除动作=补 ui/not(ui) 门控后重跑，归 019/020
+  lineage）| next: 独立 review（/auto-plan:review）。
+  全量：33/33 rollout + 045 + 2 N/A；guard 34/34；stylekit 消费 16 demo；
+  AC-01..06 达成，AC-07 tv 项移交裁定。已知债累计：022 vue-gen 幻影导入、
+  017 后端 E0308、023 后端 E0425、029 file:// 资产契约、026/041 配方引用
+  两项框架解析限制、cargo tv E0433——均 master/框架层既有，主检出可复现。））
 
 ## 10. 待澄清事项
 
