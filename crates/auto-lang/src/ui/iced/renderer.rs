@@ -17540,6 +17540,9 @@ fn dynamic_view_impl(
     }
     // Plan 409 §10 续 11: 同步窗口宽度,供 VM builder 响应式布局(grid 列数)。
     crate::ui::style::iced_adapter::set_window_width(state.window_size.borrow().width);
+    // PLAN-020 T-00b: 高度随帧同步(window_size = 逻辑 px;分屏矩形投影
+    // 窗口尺寸面的消费源,与 width 同点同规约)。
+    crate::ui::style::iced_adapter::set_window_height(state.window_size.borrow().height);
     // PLAN-530 步骤2 表面追踪：view 重建时的宽度信号轨迹。
     if std::env::var("P530_TRACE").as_deref() == Ok("1") {
         let sz = state.window_size.borrow();
