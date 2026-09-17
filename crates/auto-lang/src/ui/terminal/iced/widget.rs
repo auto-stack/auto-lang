@@ -507,18 +507,22 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     return;
                 }
                 // 滚动条命中:拇指拖拽大范围跳转(优先于选区;仅历史区
-                // 存在时右缘命中带生效)。拖拽增量经滚动队列回灌引擎。
+                // 存在时右缘命中带生效)。抓点式定格:拇指随指针平移,
+                // 不跳变;移动增量经滚动队列回灌引擎。
                 let history = crate::ui::terminal::terminal_history(core);
                 let offset = crate::ui::terminal::terminal_scroll_offset(core);
                 let in_hit_band =
                     pos.x > bounds.x + bounds.width - SCROLLBAR_HIT_W && history > 0;
                 if in_hit_band {
                     match scrollbar_metrics(bounds, core.rows as usize, history, offset) {
-                        Some((_, track_h, _, thumb_h)) => {
+                        Some((track_y, track_h, thumb_y, thumb_h)) => {
                             state.scrollbar_drag = Some(ScrollbarDrag {
-                                last_y: pos.y,
+                                grab: pos.y - thumb_y,
+                                track_y,
+                                thumb_h,
                                 travel: (track_h - thumb_h).max(1.0),
                                 history: history as f32,
+                                last_target: offset as i32,
                             });
                             return;
                         }
@@ -548,15 +552,18 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 state.dragging = true;
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                // 滚动条拖拽:位移按拇指行程比例换算为行数(拖下=回底),
-                // 经滚动队列回灌引擎;优先于选区扩展。
+                // 滚动条拖拽:拇指中心跟随指针(grab 抓点平移),拇指位置
+                // 反解目标 offset(0=贴底)后增量回灌引擎;优先于选区扩展。
                 if let Some(drag) = state.scrollbar_drag.as_mut() {
                     if let Some(pos) = cursor.position() {
-                        let dy = pos.y - drag.last_y;
-                        drag.last_y = pos.y;
-                        let lines = -(dy / drag.travel * drag.history) as i32;
-                        if lines != 0 {
-                            crate::ui::terminal::terminal_queue_scroll_delta(core, lines);
+                        let thumb_y = pos.y - drag.grab;
+                        let center = thumb_y + drag.thumb_h * 0.5;
+                        let t = ((center - drag.track_y) / drag.travel).clamp(0.0, 1.0);
+                        let target = ((1.0 - t) * drag.history).round() as i32;
+                        let delta = target - drag.last_target;
+                        drag.last_target = target;
+                        if delta != 0 {
+                            crate::ui::terminal::terminal_queue_scroll_delta(core, delta);
                         }
                     }
                     return;
@@ -830,33 +837,28 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         fill_cached_para(renderer, preedit, w, Point::new(x, y), pal_fg, bounds);
     }
 
-        // 滚动条:历史区存在才画。轨道淡写右缘,拇指 = 视口/全量比例、
-        // 位置随 display_offset;拖拽交互见 update(命中带宽于视觉宽)。
+        // 滚动条:AutoUI 官方形态(scrollbar_style 同款)——3px 圆角拇指
+        // rgba(0.9,0.9,0.9,0.3)、透明轨道、右缘内缩;历史区存在才画。
+        // 拖拽交互见 update(命中带宽于视觉宽)。
         let history = crate::ui::terminal::terminal_history(self.core);
         let eng_off = crate::ui::terminal::terminal_scroll_offset(self.core);
-        if let Some((track_y, track_h, thumb_y, thumb_h)) =
+        if let Some((_, _, thumb_y, thumb_h)) =
             scrollbar_metrics(bounds, self.core.rows as usize, history, eng_off)
         {
-            let track_x = bounds.x + bounds.width - SCROLLBAR_W - 2.0;
+            let thumb_x = bounds.x + bounds.width - SCROLLBAR_W - 4.0;
             renderer.fill_quad(
                 renderer::Quad {
                     bounds: Rectangle::new(
-                        Point::new(track_x, track_y),
-                        Size::new(SCROLLBAR_W, track_h),
-                    ),
-                    ..renderer::Quad::default()
-                },
-                Background::Color(Color::from_rgba(0.5, 0.5, 0.5, 0.10)),
-            );
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: Rectangle::new(
-                        Point::new(track_x, thumb_y),
+                        Point::new(thumb_x, thumb_y),
                         Size::new(SCROLLBAR_W, thumb_h),
                     ),
+                    border: iced::Border {
+                        radius: 3.0.into(),
+                        ..iced::Border::default()
+                    },
                     ..renderer::Quad::default()
                 },
-                Background::Color(Color::from_rgba(0.5, 0.5, 0.5, 0.40)),
+                Background::Color(Color::from_rgba(0.9, 0.9, 0.9, 0.3)),
             );
         }
 
@@ -948,22 +950,29 @@ pub struct TerminalState {
     hover_item: Option<usize>,
     /// 键入焦点(点击本组件获得、点击他处失去;键盘捕获的门控)。
     focused: bool,
-    /// PLAN-019 滚动条拖拽态(Some = 拖拽中:last_y 上次指针 y、travel
-    /// 拇指可行程 px、history 引擎历史行数)。
+    /// PLAN-019 滚动条拖拽态(Some = 拖拽中,抓点式拇指跟手)。
     scrollbar_drag: Option<ScrollbarDrag>,
 }
 
-/// 滚动条拖拽参数(Left press 命中右缘命中带时定格)。
+/// 滚动条拖拽参数(Left press 命中右缘命中带时定格;抓点式——拇指跟随
+/// 指针不跳变):grab=按点相对拇指顶的偏移,track_y/thumb_h/travel=
+/// 几何定格,history=引擎历史行数,last_target=上次目标 offset(增量
+/// 回灌引擎的基准)。
 #[derive(Clone, Copy)]
 struct ScrollbarDrag {
-    last_y: f32,
+    grab: f32,
+    track_y: f32,
+    thumb_h: f32,
     travel: f32,
     history: f32,
+    last_target: i32,
 }
 
-/// 滚动条几何:轨道内缩右缘 `SCROLLBAR_W`,拇指高 = 视口/全量比例
-/// (下限 `SCROLLBAR_MIN_THUMB`),拇指 y = display_offset 比例。
-/// history = 0 → None(无历史不画)。
+/// 滚动条几何(AutoUI 官方形态:3px 圆角拇指、透明轨道、右缘内缩):
+/// 返回 (track_y, track_h, thumb_y, thumb_h)。拇指高 = 视口/全量比例
+/// (下限 `SCROLLBAR_MIN_THUMB`),位置 = display_offset 反比——
+/// offset 0=贴底实时(拇指最下),history=翻到最上(终端回滚语义与
+/// 文本生长方向相反)。history = 0 → None(无历史不画)。
 fn scrollbar_metrics(
     bounds: Rectangle,
     rows: usize,
@@ -982,13 +991,13 @@ fn scrollbar_metrics(
         .max(SCROLLBAR_MIN_THUMB)
         .min(track_h);
     let travel = track_h - thumb_h;
-    let ratio = (offset as f32 / history as f32).clamp(0.0, 1.0);
-    Some((track_y, track_h, track_y + ratio * travel, thumb_h))
+    let ratio_from_bottom = (offset as f32 / history as f32).clamp(0.0, 1.0);
+    Some((track_y, track_h, track_y + (1.0 - ratio_from_bottom) * travel, thumb_h))
 }
 
-const SCROLLBAR_W: f32 = 6.0;
+const SCROLLBAR_W: f32 = 3.0;
 const SCROLLBAR_HIT_W: f32 = 14.0;
-const SCROLLBAR_MIN_THUMB: f32 = 24.0;
+const SCROLLBAR_MIN_THUMB: f32 = 16.0;
 
 impl<'a, M: Clone + std::fmt::Debug + 'static> From<Terminal<M>> for Element<'a, M> {
     fn from(widget: Terminal<M>) -> Self {
