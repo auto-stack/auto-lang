@@ -1225,6 +1225,10 @@ pub enum DesktopCommand {
     /// （窗在隐藏分区先切分区）聚焦其窗；未运行 → launch（.at 无法跨列表
     /// 反查 wid，保持 shell 零智能）。
     ActivateApp(String),
+    /// PLAN-016 T-07（协议 v1.7）：用注册表 App 打开文件（`open_with
+    /// <app-id> <path>`）。执行臂：未运行 → launch 后向目标 App state 写
+    /// `auto_open_path`；已运行 → 聚焦 + 同款写入（目标 App 自行消费）。
+    OpenWith(String, String),
     /// Plan 473：原生窗口收编（native dock，Phase 1 假洞）。按 pid（枚举
     /// 首个可见顶层窗）或 hwnd（十六进制）定位目标；宿主代解 Win32 发现。
     DockNative(NativeTarget),
@@ -1388,6 +1392,16 @@ impl DesktopCommand {
             DesktopCommand::NextWorkspace => "workspace_next".to_string(),
             DesktopCommand::ActivateApp(name) => {
                 format!("activate{}{name}", Self::FIELD_SEP)
+            }
+            // PLAN-016 v1.7：双参动词（Notify 同型——parse 取首分符尾部完整）。
+            DesktopCommand::OpenWith(app, path) => {
+                format!(
+                    "open_with{}{}{}{}",
+                    Self::FIELD_SEP,
+                    app,
+                    Self::FIELD_SEP,
+                    path
+                )
             }
             DesktopCommand::DockNative(target) => {
                 format!("dock_native{}{}", Self::FIELD_SEP, target.encode_arg())
@@ -1594,6 +1608,20 @@ impl DesktopCommand {
                     "activate" if !arg.is_empty() => {
                         Some(DesktopCommand::ActivateApp(arg.to_string()))
                     }
+                    // PLAN-016 v1.7：open_with <app-id> <path>（path 单行约束，
+                    // Notify msg 同款——parse 取首分符，尾部完整保留）。
+                    "open_with" if !arg.is_empty() => {
+                        // 第二参分隔符两套等价（\u{1F} 编码面 / \t 直书面）。
+                        let (app, path) =
+                            arg.split_once([Self::FIELD_SEP, '\t'])?;
+                        if app.is_empty() || path.is_empty() {
+                            return None;
+                        }
+                        Some(DesktopCommand::OpenWith(
+                            app.to_string(),
+                            path.to_string(),
+                        ))
+                    }
                     "dock_native" => NativeTarget::parse_arg(arg).map(DesktopCommand::DockNative),
                     "undock_native" => arg.parse::<u64>().ok().map(DesktopCommand::UndockNative),
                     // Plan 486 v1.3：任务栏 native 条目动词（undock_native 同型；
@@ -1794,6 +1822,9 @@ pub struct LaunchSpec {
     /// 绝对路径——`back.*` 模块链接式契约解析根，Plan 061；None = 无）。
     /// boot 期 resolver 自条目目录解析填入。
     pub back_root: Option<std::path::PathBuf>,
+    /// PLAN-016 T-07：pac `opens:` 可打开扩展名声明（小写、带点，如
+    /// ".txt"）——`open_with` 执行臂的关联校验面；空 = 不参与校验。
+    pub opens: Vec<String>,
     /// Plan 020 T-06：编译 exe 声明（pac `desktop_exe:` 相对 App 根解析的
     /// 路径——a2r `auto build -r rust` 产物；None = 无声明）。launch 期
     /// 发现序 = 此声明 > rust-workspace 约定路径扫描（`outproc_native_exe`）；
@@ -1816,6 +1847,7 @@ impl Default for LaunchSpec {
             fit: false,
             daemon: None,
             back_root: None,
+            opens: Vec::new(),
             exe: None,
             render_decl: None,
         }
@@ -4829,6 +4861,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         ds
@@ -4859,6 +4892,7 @@ mod tests {
                 back_root: None,
                 fit: true,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
@@ -4900,6 +4934,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
@@ -5054,6 +5089,7 @@ mod tests {
                 daemon: None,
                 back_root: None,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         ds.desktop.process_model = ProcessModel::Outproc;
@@ -5239,6 +5275,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
@@ -5277,6 +5314,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {

@@ -410,6 +410,20 @@ pub fn shim_file_size(path: String) -> Result<i64, String> {
         .map_err(|e| format!("File.size failed: {} - {}", path, e))
 }
 
+/// Get file modification time as epoch seconds (PLAN-016 T-05).
+/// 列表物化不走 metadata JSON（JsonValue 可选字段读取在 VM 轨产出 None
+/// 级联 TypeError）——mtime/len/is_dir 各走直连 native。失败/1970 前 = -1。
+#[auto_macros::rust_fn("auto.fs.mtime")]
+pub fn shim_fs_mtime(path: String) -> Result<i64, String> {
+    let secs = fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(-1);
+    Ok(secs)
+}
+
 /// Check if path is a directory
 #[auto_macros::rust_fn("File.is_dir")]
 pub fn shim_file_is_dir(path: String) -> bool {

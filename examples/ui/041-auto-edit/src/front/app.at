@@ -231,6 +231,9 @@ widget App {
     }
 
     on {
+        // PLAN-016 T-08：桌面 open_with 接收（宿主 write_state auto_open_path
+        // → Tick 消费；interval 声明在 store，合并根 state 后被 Tick 契约读取）。
+        .Tick -> { store.ConsumeOpen() }
         .TabActivate(i) -> { store.TabActivate(i) }
         .SrcChanged(i) -> { store.SrcChanged(i) }
         .CursorMoved(i) -> { store.CursorMoved(i) }

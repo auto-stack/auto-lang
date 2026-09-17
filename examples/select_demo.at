@@ -1,0 +1,56 @@
+// Select Demo — AutoUI `select` 组件双轨契约示例（os-config 计划 OS-016;
+// config 编辑器 select 行的提纯复现）。
+//
+// 【已知 vm 轨缺陷（2026-09-15 代码实证,aura_view_builder.rs convert_select）】
+//   D1 路由缺失——446 批五 U4 已修:view-builder 现有 "select" 臂 + iced
+//      pick_list 渲染臂（renderer.rs AbstractView::Select）。
+//   D2 选项只认直接 option 子节点:for 循环生成的 option 全部漏收 →
+//      options=[] → pick_list 空壳（os-config 016 批「select 映射为空壳」
+//      的实况主因）。
+//   D3 value 契约缺失:option 只取 text（label）,value prop 被忽略;选中态
+//      匹配 select.value 对比 option 文本——value≠label 无法绑定/回显。
+//   D4 回调单串 relay:onselect 只发 "handler⟨US⟩s⟨US⟩selected" 单串,
+//      绑定参数被丢弃——无法驱动 Apply(entry, value) 双参处理器。
+//
+// 【验收口径（上游修复后,convert_select 契约）】
+//   A1 S1 字面选项:下拉 3 项（Alpha/Beta/Gamma）,默认选中 Beta
+//      （value "b" 匹配 option value,非文本）;点选触发 .Pick。
+//   A2 S2 循环选项:providers 驱动 N 项全渲染（修复前 vm 渲染空壳）,
+//      当前值回显正确。
+//   A3 S3 relay:点选回调收到所选 value 字符串;双参形态（Apply(e,v)）
+//      待 D4 修复后以绑定参数转发另测。
+
+widget SelectDemo {
+    msg {
+        Pick
+    }
+
+    model {
+        var current str = "b"
+        var providers Array<str> = []
+    }
+
+    view {
+        col (style: "gap-4 p-4") {
+            text (text: "S1 literal options + value≠label", style: "text-sm font-medium") {}
+            select (value: .current) {
+                onchange: .Pick
+                option (value: "a", text: "Alpha") {}
+                option (value: "b", text: "Beta") {}
+                option (value: "c", text: "Gamma") {}
+            }
+
+            text (text: "S2 for-loop options（vm 修复前空壳）", style: "text-sm font-medium") {}
+            select (value: .current) {
+                onchange: .Pick
+                for o in .providers {
+                    option (value: o.value, text: o.label) {}
+                }
+            }
+        }
+    }
+
+    on {
+        .Pick -> { }
+    }
+}

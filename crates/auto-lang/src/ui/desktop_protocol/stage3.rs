@@ -443,6 +443,7 @@ mod tests {
                     daemon: None,
                     back_root: None,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -775,6 +776,7 @@ mod tests {
                     daemon: None,
                     back_root: None,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -945,6 +947,7 @@ mod tests {
                         back_root: None,
                         fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
                 } else {
                     None
@@ -1492,6 +1495,7 @@ mod tests {
                         back_root: None,
                         fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
                 } else {
                     None
@@ -1654,6 +1658,7 @@ mod tests {
                 back_root: None,
                 fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
     }
@@ -2001,6 +2006,7 @@ mod tests {
                     // queue 档显式申明（AC-03 全链）——生产链同参：pac
                     // `desktop_render: "queue"` → spawn `--autodesk-render=queue`。
                     render_decl: Some("queue".to_string()),
+                    opens: Vec::new(),
                 })
             }));
         session.desktop.process_model = ProcessModel::Outproc;
@@ -2229,6 +2235,7 @@ mod tests {
                     fit: false,
                     exe: Some(std::path::PathBuf::from(&exe_for_resolver)),
                     render_decl: Some("queue".to_string()),
+                    opens: Vec::new(),
                 })
             }));
         session.desktop.process_model = ProcessModel::Outproc;

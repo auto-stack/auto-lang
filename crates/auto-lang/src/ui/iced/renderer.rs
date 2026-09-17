@@ -9643,6 +9643,19 @@ fn drain_and_execute_desktop_commands(
     if let Some(app) = settings_window_app {
         cmds.extend(state.drain_app_desktop_commands(app));
     }
+    // PLAN-016 T-07（协议 v1.7）：普通注册表窗上行联合排空——open_with
+    // 动词面（027 文件管理器）。特权窗上方已排空（二次排空空读无害）；
+    // 动词面仍受 DesktopCommand 解析白名单约束。
+    {
+        let app_ids: Vec<_> = state
+            .host
+            .as_ref()
+            .map(|h| h.wm.wins.values().map(|v| v.app).collect())
+            .unwrap_or_default();
+        for app_id in app_ids {
+            cmds.extend(state.drain_app_desktop_commands(app_id));
+        }
+    }
     if cmds.is_empty() {
         return (false, Vec::new());
     }
@@ -9675,6 +9688,8 @@ fn execute_desktop_commands(
                 tasks.push(summon_launcher(state));
             }
             DC::LaunchApp(name) => execute_launch_app(state, &name),
+            // PLAN-016 T-07（协议 v1.7）：open_with 执行臂。
+            DC::OpenWith(app, path) => execute_open_with(state, &app, &path),
             DC::CloseWindow(wid) => {
                 // PLAN-012 W1：os-config close→hide 拦截臂——设置窗"×"不改
                 // 换成常驻隐藏（hidden 置位：投影/命中/推层全排除，"真关了"
@@ -10929,6 +10944,96 @@ fn restore_all_native_slots(_state: &mut crate::ui::session::DesktopSession) {}
 
 /// LaunchApp 执行体（463 T4 主体抽出；472 T4 起被 LaunchApp/ActivateApp
 /// 两臂共用）。失败转 toast + 占位页（Design 24 §6.5）。
+/// PLAN-016 T-07（协议 v1.7）：open_with 执行体——注册表校验（opens 声明
+/// 面未命中即拒）→ 未运行 launch 后向目标 App state 写 `auto_open_path` /
+/// 已运行聚焦 + 同款写入；目标 App（041/031 接收臂）Tick 消费。写入后
+/// view_dirty 即标——目标下一帧可见。App 未声明 `auto_open_path` 时写入
+/// 静默无效（capability 自声明，无害）。
+fn execute_open_with(
+    state: &mut crate::ui::session::DesktopSession,
+    app_id: &str,
+    path: &str,
+) {
+    // 注册表校验：app 存在 + opens 声明面（空 = 不参与校验，放行）。
+    let ext = std::path::Path::new(path)
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+        .unwrap_or_default();
+    let opens_ok = state.desktop.app_resolver.as_ref()
+        .and_then(|r| r(app_id))
+        .map(|spec| spec.opens.is_empty() || spec.opens.iter().any(|o| o.eq_ignore_ascii_case(&ext)));
+    match opens_ok {
+        None => {
+            push_notification(state, "error", &format!("未知应用: {app_id}"));
+            return;
+        }
+        Some(false) => {
+            push_notification(
+                state,
+                "error",
+                &format!("{app_id} 未声明打开 {ext} 文件（pac opens）"),
+            );
+            return;
+        }
+        Some(true) => {}
+    }
+    // 已运行窗（registry_id 命中）→ 聚焦 + 写入；未运行 → launch + 写入。
+    let running = state.host.as_ref().and_then(|h| {
+        h.wm
+            .wins
+            .iter()
+            .find(|(_, v)| v.registry_id.as_deref() == Some(app_id))
+            .map(|(wid, v)| (*wid, v.app))
+    });
+    let delivered = match running {
+        Some((wid, app)) => {
+            state.wm_focus(wid);
+            deliver_open_arg(state, app, path)
+        }
+        None => match state.launch_app(app_id) {
+            Ok(wid) => {
+                let app = state.host.as_ref().and_then(|h| h.wm.wins.get(&wid)).map(|v| v.app);
+                match app {
+                    Some(app) => deliver_open_arg(state, app, path),
+                    None => false,
+                }
+            }
+            Err(err) => {
+                push_notification(state, "error", &format!("启动 {app_id} 失败: {err}"));
+                false
+            }
+        },
+    };
+    if !delivered {
+        // 目标未声明 auto_open_path（非接收臂 App）——聚焦语义仍达成。
+        push_notification(
+            state,
+            "info",
+            &format!("已聚焦 {app_id}（目标未声明 auto_open_path 接收臂）"),
+        );
+    }
+}
+
+/// PLAN-016 T-07：向目标 App 写 `auto_open_path` + view_dirty。返回目标
+/// 是否声明了接收臂（写成功 = true）。
+fn deliver_open_arg(
+    state: &mut crate::ui::session::DesktopSession,
+    app: crate::ui::session::AppId,
+    path: &str,
+) -> bool {
+    let Some(a) = state.apps.get_mut(&app) else {
+        return false;
+    };
+    let ok = a
+        .component
+        .write_state("auto_open_path", auto_val::Value::str(path))
+        .is_ok();
+    if ok {
+        *a.state.view_dirty.borrow_mut() = true;
+    }
+    ok
+}
+
 fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
     match state.launch_app(name) {
         // PLAN-002 N3（用户复核裁定 2026-09-09）：启动成功不再发通知——
@@ -12384,11 +12489,6 @@ fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
             );
         }
     }
-    eprintln!(
-        "[ws-preview] publish: {} ws entries, tiles per-ws {:?}",
-        per_ws.len(),
-        per_ws.iter().map(|(k, v)| (k.as_str(), v.len())).collect::<Vec<_>>()
-    );
     crate::ui::iced::workspace_preview::publish(
         crate::ui::iced::workspace_preview::Published {
             usable: (usable.width, usable.height),
@@ -12889,6 +12989,7 @@ fn compare_pngs(
                                         name: e.name.clone(),
                                         daemon: e.daemon.clone(),
                                         back_root: e.back_root.clone(),
+                                        opens: e.opens.clone(),
                                         fit: e.fit,
                                         exe,
                                         render_decl: e.desktop_render.clone(),
@@ -15678,7 +15779,6 @@ fn compare_pngs(
                                 .map(|v| v.to_string().contains('1'))
                                 .unwrap_or(false);
                             if open {
-                                eprintln!("[ws-preview] tick refresh: shell view dirty");
                                 if let Some(host) = state.host.as_ref() {
                                     for &wid in &host.wm.z_order {
                                         let visible = host
@@ -23793,6 +23893,7 @@ mod tests {
                         daemon: Some("autoos".to_string()),
                         back_root: None,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    });
                 }
                 let e = apps.iter().find(|a| a.id == name)?;
@@ -23805,6 +23906,7 @@ mod tests {
                     daemon: None,
                     back_root: None,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
             })
         });
@@ -24191,6 +24293,7 @@ mod tests {
             desktop_visible: true,
         desktop_exe: None,
         desktop_render: None,
+        opens: Vec::new(),
     }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
@@ -24203,6 +24306,7 @@ mod tests {
                     back_root: None,
                     fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
             }));
         ds.launch_app("011-calculator").expect("launch");
@@ -25560,6 +25664,7 @@ mod tests {
                     back_root: None,
                     fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -25605,6 +25710,7 @@ mod tests {
                     back_root: None,
                     fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -25812,6 +25918,7 @@ mod tests {
             desktop_visible: true,
         desktop_exe: None,
         desktop_render: None,
+        opens: Vec::new(),
     }];
         inject_dock_pinned(&mut ds);
         {
@@ -26591,6 +26698,7 @@ mod tests {
     desktop_visible: true,
         desktop_exe: None,
         desktop_render: None,
+        opens: Vec::new(),
     },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
@@ -26607,6 +26715,7 @@ mod tests {
     desktop_visible: true,
         desktop_exe: None,
         desktop_render: None,
+        opens: Vec::new(),
     },
         ];
         // PLAN-012 W4：dock_pinned 缺省空（t3_session_with_shell 不动）。
@@ -27142,6 +27251,7 @@ mod tests {
             desktop_visible: true,
         desktop_exe: None,
         desktop_render: None,
+        opens: Vec::new(),
     };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();

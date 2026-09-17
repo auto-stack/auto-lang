@@ -71,6 +71,20 @@ pub struct AppRegistryEntry {
     /// 外部自含根缺省 true=opt-out）。仅过滤展示清单（boot 期
     /// `registry_entries`），不影响启动解析（`app_resolver` 全量）。
     pub desktop_visible: bool,
+    /// PLAN-016 T-07：pac `opens:` 可打开扩展名声明（逗号分隔，规范化为
+    /// 小写带点，如 ".txt"）——`open_with` 执行臂的关联校验面；空 = 不参与
+    /// 关联解析（声明即契约，见 docs/specs/auto-man/project.md PLAN-016 节）。
+    pub opens: Vec<String>,
+}
+
+/// PLAN-016 T-07：pac `opens:` 值规范化——逗号分隔扩展名，剥空白与点
+/// 前缀统一为小写带点形态（".TXT,.md" → [".txt", ".md"]）。
+fn normalize_opens(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|e| e.trim().to_lowercase())
+        .filter(|e| !e.is_empty())
+        .map(|e| if e.starts_with('.') { e } else { format!(".{e}") })
+        .collect()
 }
 
 /// 扫描选项。
@@ -176,6 +190,7 @@ fn entry_for_dir(
         fit: fields
             .get("window")
             .is_some_and(|w| w.eq_ignore_ascii_case("fit")),
+        opens: fields.get("opens").map(|v| normalize_opens(v)).unwrap_or_default(),
         desktop_visible: match fields.get("desktop").map(|v| v.to_ascii_lowercase()) {
             Some(v) if v == "true" => true,
             Some(v) if v == "false" => false,
@@ -1324,6 +1339,7 @@ desktop_exe: \"target/release/native-app.exe\"
                         name: e.name.clone(),
                         daemon: None,
                         back_root: None,
+                        opens: Vec::new(),
                         fit: false,
         exe: None,
         render_decl: None,    })

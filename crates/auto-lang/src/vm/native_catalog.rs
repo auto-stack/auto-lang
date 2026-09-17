@@ -441,7 +441,13 @@ macro_rules! for_each_native {
             // === FS extended (2840-2847) — Plan 250 ===
             (2840, NATIVE_FS_TEMP_DIR, shim_fs_temp_dir, "auto.fs.temp_dir"),
             (2841, NATIVE_FS_TEMP_FILE, shim_fs_temp_file, "auto.fs.temp_file"),
-            (2842, NATIVE_FS_RENAME, shim_fs_rename, "auto.fs.rename"),
+            // 2026-09-14(PLAN-016 T-05):rename/canonical/ext 由 2842/2844/2845
+            // 迁 2983/2984/2985——原 id 与 bigvm 表 File.read/Path.new/Path.join
+            // 撞号（read_dir 2843→2866 同症先例），VM 模式派发错位非确定挂起。
+            // 2026-09-15(PLAN-016 merge master):2983-2987 已被 master 侧
+            // PLAN-018 D5/PLAN-015 D4 term engine natives 占用——四件再迁
+            // 2994-2997（2994-2999 全仓空闲带，防撞号重演）。
+            (2994, NATIVE_FS_RENAME, shim_fs_rename, "auto.fs.rename"),
             // 2026-08-22:auto.fs.read_dir 换用 2866 —— 原 2843 与 BIGVM 表的
             // File.position(:1281/:2009)撞号(shim 按 ID 注册,File.position 的
             // CALL_NAT 2843 会错派到 read_dir shim)。read_dir 此前只在 shim 表
@@ -500,8 +506,11 @@ macro_rules! for_each_native {
             // PLAN-015 D4:菜单动作载荷(0=Copy 1=Paste 2=SelectAll
             // 3=Interrupt;-1=无载荷;注册表任意端)。
             (2987, NATIVE_TERM_ENGINE_MENU_TAKE, shim_term_menu_take, "auto.term.engine_menu_take"),
-            (2844, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
-            (2845, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
+            (2995, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
+            (2996, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
+            // 2026-09-14(PLAN-016 T-05):mtime 走 rust_fn 宏自注册
+            //（ffi/stdlib.rs，同 File.size 形态），不进本表（id 载于
+            // 签名/白名单表，2997）。
             (2846, NATIVE_FS_STEM, shim_fs_stem, "auto.fs.stem"),
             (2847, NATIVE_FS_WALK_FILES, shim_fs_walk_files, "auto.fs.walk_files"),
 
@@ -1016,6 +1025,12 @@ macro_rules! for_each_bigvm_native {
             ("auto.fs.is_dir", 1009, Void),
 
             // === FS extended (2860-2866) ===
+            // 2026-09-14(PLAN-016 T-05):rename/canonical/ext 白名单补登记
+            // （id 迁 2983/2984/2985 免撞号，注册行同批迁移）。
+            ("auto.fs.rename", 2994, Void),
+            ("auto.fs.canonical", 2995, String),
+            ("auto.fs.ext", 2996, String),
+            ("auto.fs.mtime", 2997, Int),
             ("auto.fs.walk", 2860, String),
             ("auto.fs.metadata", 2861, String),
             ("auto.fs.copy_recursive", 2862, Void),
@@ -2586,6 +2601,11 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("io.read_line", 1150),
 
     // === FS extended (2860-2866) ===
+    // 2026-09-14(PLAN-016 T-05):rename/canonical/ext 补登记（id 2983/2984/2985）。
+    ("auto.fs.rename", 2994),
+    ("auto.fs.canonical", 2995),
+    ("auto.fs.ext", 2996),
+    ("auto.fs.mtime", 2997),
     ("auto.fs.walk", 2860),
     ("auto.fs.metadata", 2861),
     ("auto.fs.copy_recursive", 2862),

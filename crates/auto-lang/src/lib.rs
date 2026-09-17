@@ -2726,6 +2726,45 @@ pub fn set_external_back_root(root: std::path::PathBuf) {
     let _ = EXTERNAL_BACK_ROOT.set(root);
 }
 
+/// PLAN-635 D4: does this pac.at text declare a dependency with the given
+/// name? Matches both `dep "name" { ... }` and `dep name { ... }` forms with
+/// a word-boundary check so `dep settings` does not match `dep settings_v2`.
+fn pac_declares_dep(content: &str, dep_name: &str) -> bool {
+    for form in [format!("dep \"{}\"", dep_name), format!("dep {}", dep_name)] {
+        if let Some(pos) = content.find(&form) {
+            let after = content[pos + form.len()..].chars().next();
+            // The name must end at a non-identifier char (whitespace, `{`, `,`, `:`).
+            let boundary = after.is_some_and(|c| !(c.is_alphanumeric() || c == '_' || c == '.'));
+            if boundary {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// PLAN-635 D5: if this pac.at declares a workspace whose members include a
+/// directory matching `dep_name` (member entry's last path segment), return
+/// that entry's relative path. Members syntax: `members: ["common", "apps/x"]`
+/// (single- or multi-line).
+fn pac_workspace_member_dir(content: &str, dep_name: &str) -> Option<String> {
+    let members_pos = content.find("members")?;
+    let list_start = content[members_pos..].find('[')? + members_pos;
+    let list_end = content.find(']').filter(|e| *e > list_start)?;
+    let list = &content[list_start + 1..list_end];
+    for entry in list.split(',') {
+        let entry = entry.trim().trim_matches(|c| c == '"' || c == '\'');
+        if entry.is_empty() {
+            continue;
+        }
+        let last = entry.rsplit(['/']).next().unwrap_or(entry);
+        if last == dep_name {
+            return Some(entry.to_string());
+        }
+    }
+    None
+}
+
 fn resolve_module_path(
     base_dir: &std::path::Path,
     module: &str,
@@ -2781,125 +2820,101 @@ fn resolve_module_path(
         }
     }
 
-    // Plan 475: 检索项目根的 `deps/` 目录中的依赖包 (e.g. `use common.header` -> `deps/common/src/front/header.at`)
-    let probe_dep = |deps_dir: &std::path::Path| -> Option<std::path::PathBuf> {
-        let (dep_name, sub) = match module.find('.') {
-            Some(dot) => (&module[..dot], &module[dot + 1..]),
-            None => (module, ""),
-        };
-        let dep_dir = deps_dir.join(dep_name);
-        if !dep_dir.is_dir() {
-            return None;
-        }
-        if sub.is_empty() {
-            let candidates = [
-                dep_dir.join("src").join("front").join("app.at"),
-                dep_dir.join("src").join("front").join("mod.at"),
-                dep_dir.join("src").join("mod.at"),
-                dep_dir.join("mod.at"),
-                dep_dir.join(format!("{}.at", dep_name)),
-            ];
-            for c in candidates {
-                if c.exists() {
-                    return Some(c);
-                }
-            }
-        } else {
-            let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
-            let candidates = [
-                dep_dir.join("src").join("front").join(format!("{}.at", sub_rel)),
-                dep_dir.join("src").join("front").join(&sub_rel).join("mod.at"),
-                dep_dir.join("src").join("back").join(format!("{}.at", sub_rel)),
-                dep_dir.join("src").join("back").join(&sub_rel).join("mod.at"),
-                dep_dir.join("src").join(format!("{}.at", sub_rel)),
-                dep_dir.join("src").join(&sub_rel).join("mod.at"),
-                dep_dir.join("front").join(format!("{}.at", sub_rel)),
-                dep_dir.join("front").join(&sub_rel).join("mod.at"),
-                dep_dir.join(format!("{}.at", sub_rel)),
-                dep_dir.join(&sub_rel).join("mod.at"),
-            ];
-            for c in candidates {
-                if c.exists() {
-                    return Some(c);
-                }
-            }
-        }
-        None
-    };
-
     // 向上遍历查找 deps 目录 (如 src/front/ -> src/ -> root/deps/) 或 pac.at 中的本地 path 依赖
     let (dep_name, _) = match module.find('.') {
         Some(dot) => (&module[..dot], &module[dot + 1..]),
         None => (module, ""),
     };
+    // PLAN-635 D4/D5: deps/ 与 workspace members 的候选探测序列（与本地
+    // path 依赖一致）。声明门控（pnpm 式严格隔离）：deps/<name> 仅在 pac.at
+    // `dep` 声明（或 workspace member）时可达；物化但未声明 = 幽灵依赖，
+    // 阻断解析并给修复指引。
+    let probe_pkg = |pkg_root: &std::path::Path| -> Option<std::path::PathBuf> {
+        let (_, sub) = match module.find('.') {
+            Some(dot) => (&module[..dot], &module[dot + 1..]),
+            None => (module, ""),
+        };
+        if sub.is_empty() {
+            let candidates = [
+                pkg_root.join("src").join("front").join("app.at"),
+                pkg_root.join("src").join("front").join("mod.at"),
+                pkg_root.join("src").join("mod.at"),
+                pkg_root.join("mod.at"),
+                pkg_root.join(format!("{}.at", dep_name)),
+            ];
+            candidates.into_iter().find(|c| c.exists())
+        } else {
+            let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
+            let candidates = [
+                pkg_root.join("src").join("front").join(format!("{}.at", sub_rel)),
+                pkg_root.join("src").join("front").join(&sub_rel).join("mod.at"),
+                pkg_root.join("src").join("back").join(format!("{}.at", sub_rel)),
+                pkg_root.join("src").join("back").join(&sub_rel).join("mod.at"),
+                pkg_root.join("src").join(format!("{}.at", sub_rel)),
+                pkg_root.join("src").join(&sub_rel).join("mod.at"),
+                pkg_root.join("front").join(format!("{}.at", sub_rel)),
+                pkg_root.join("front").join(&sub_rel).join("mod.at"),
+                pkg_root.join(format!("{}.at", sub_rel)),
+                pkg_root.join(&sub_rel).join("mod.at"),
+            ];
+            candidates.into_iter().find(|c| c.exists())
+        }
+    };
     let mut curr_dir = Some(base_dir);
     for _ in 0..4 {
-        if let Some(d) = curr_dir {
-            let deps_candidate = d.join("deps");
-            if deps_candidate.is_dir() {
-                if let Some(p) = probe_dep(&deps_candidate) {
+        let Some(d) = curr_dir else { break };
+        let pac_content = std::fs::read_to_string(d.join("pac.at")).ok();
+        let dep_declared = pac_content
+            .as_deref()
+            .is_some_and(|c| pac_declares_dep(c, dep_name));
+        let member_entry = pac_content
+            .as_deref()
+            .and_then(|c| pac_workspace_member_dir(c, dep_name));
+
+        let deps_candidate = d.join("deps");
+        if deps_candidate.is_dir() {
+            if dep_declared {
+                if let Some(p) = probe_pkg(&deps_candidate.join(dep_name)) {
                     return Some(p);
                 }
+            } else if member_entry.is_none() && deps_candidate.join(dep_name).exists() {
+                eprintln!(
+                    "error: dependency '{}' is materialized at {} but not declared in pac.at — declare it (`dep \"{}\" {{ path: ... }}`) or add it to workspace members",
+                    dep_name,
+                    deps_candidate.display(),
+                    dep_name
+                );
             }
-            // Check if d has a pac.at with local path dependencies
-            let pac_file = d.join("pac.at");
-            if pac_file.is_file() {
-                if let Ok(content) = std::fs::read_to_string(&pac_file) {
-                    if let Some(pos) = content.find(&format!("dep \"{}\"", dep_name)).or_else(|| content.find(&format!("dep {}", dep_name))) {
-                        let slice = &content[pos..];
-                        if let Some(path_pos) = slice.find("path:") {
-                            let path_slice = &slice[path_pos + 5..];
-                            let path_line = path_slice.lines().next().unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'');
-                            if !path_line.is_empty() {
-                                let local_dep_dir = d.join(path_line);
-                                if local_dep_dir.is_dir() {
-                                    let (_, sub) = match module.find('.') {
-                                        Some(dot) => (&module[..dot], &module[dot + 1..]),
-                                        None => (module, ""),
-                                    };
-                                    if sub.is_empty() {
-                                        let candidates = [
-                                            local_dep_dir.join("src").join("front").join("app.at"),
-                                            local_dep_dir.join("src").join("front").join("mod.at"),
-                                            local_dep_dir.join("src").join("mod.at"),
-                                            local_dep_dir.join("mod.at"),
-                                            local_dep_dir.join(format!("{}.at", dep_name)),
-                                        ];
-                                        for c in candidates {
-                                            if c.exists() {
-                                                return Some(c);
-                                            }
-                                        }
-                                    } else {
-                                        let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
-                                        let candidates = [
-                                            local_dep_dir.join("src").join("front").join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join("src").join("front").join(&sub_rel).join("mod.at"),
-                                            local_dep_dir.join("src").join("back").join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join("src").join("back").join(&sub_rel).join("mod.at"),
-                                            local_dep_dir.join("src").join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join("src").join(&sub_rel).join("mod.at"),
-                                            local_dep_dir.join("front").join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join("front").join(&sub_rel).join("mod.at"),
-                                            local_dep_dir.join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join(&sub_rel).join("mod.at"),
-                                        ];
-                                        for c in candidates {
-                                            if c.exists() {
-                                                return Some(c);
-                                            }
-                                        }
-                                    }
-                                }
+        }
+
+        // PLAN-635 D5: workspace members resolve like deps/<name>.
+        if let Some(entry) = &member_entry {
+            let member_root = d.join(entry);
+            if let Some(p) = probe_pkg(&member_root) {
+                return Some(p);
+            }
+        }
+
+        // pac.at 中的本地 path 依赖（dep "<name>" { path: ... } 声明形态，
+        // 天然过门控）。
+        if let Some(content) = &pac_content {
+            if let Some(pos) = content.find(&format!("dep \"{}\"", dep_name)).or_else(|| content.find(&format!("dep {}", dep_name))) {
+                let slice = &content[pos..];
+                if let Some(path_pos) = slice.find("path:") {
+                    let path_slice = &slice[path_pos + 5..];
+                    let path_line = path_slice.lines().next().unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'');
+                    if !path_line.is_empty() {
+                        let local_dep_dir = d.join(path_line);
+                        if local_dep_dir.is_dir() {
+                            if let Some(p) = probe_pkg(&local_dep_dir) {
+                                return Some(p);
                             }
                         }
                     }
                 }
             }
-            curr_dir = d.parent();
-        } else {
-            break;
         }
+        curr_dir = d.parent();
     }
 
     None
@@ -3680,10 +3695,14 @@ fn register_transitive_widgets_inner(
             for stmt in &sub_ast.stmts {
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
-                        // 只注册 use 子句明确要的(或通配的),且 registry 还没有的
-                        // Plan 545: bare `use mod` 不再视为通配——widget/store
-                        // 具名可见须 `use mod: Name` 或 `use mod: *` 显式 opt-in
+                        // 只注册 use 子句明确要的(或通配/裸装载的),且 registry
+                        // 还没有的。PLAN-545 回归修复（069 收口转介收回）：
+                        // bare `use mod` 的组件发现语义恢复（items.is_empty()
+                        // 臂）——545 的"bare=命名空间"针对 fn 符号冲突面；
+                        // UI 子件码道收紧后裸 use 孙件 handler 不再合成
+                        // （同 demo CustomScrollbar 断裂）。
                         if (use_stmt.is_wildcard
+                            || use_stmt.items.is_empty()
                             || use_stmt.items.iter().any(|s| s == &child_widget.name))
                             && registry.get(&child_widget.name).is_none()
                         {
@@ -3717,6 +3736,21 @@ fn build_dynamic_component_inner(
     use crate::ui::dynamic::DynamicComponent;
     use crate::ui::widget_registry::WidgetRegistry;
 
+    // PLAN-635: pre-register use-imported recipes BEFORE the parse — the
+    // parser's symbol checker accepts `style: <name>` idents only when the
+    // recipe is in the live registry.
+    let recipe_imports = match path {
+        Some(p) => {
+            let base_dir = std::path::Path::new(p)
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, code)
+                .map_err(|e| e.to_string())?
+        }
+        None => Vec::new(),
+    };
+
     // 1. Parse with UI scenario (or override if provided — PR-6)
     let session = override_scenario
         .cloned()
@@ -3733,9 +3767,13 @@ fn build_dynamic_component_inner(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut root_decl: Option<crate::ast::WidgetDecl> = None;
     let mut widget = None;
     for stmt in &ast.stmts {
@@ -3892,7 +3930,17 @@ fn build_dynamic_component_inner(
                     for stmt in &mod_ast.stmts {
                         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                             if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                // PLAN-545 回归修复（069 收口转介收回）：bare
+                                // use 的**组件发现**语义恢复——`use custom_scrollbar`
+                                //（无 items 无通配）装载该模块的子件。545 的
+                                // "bare=命名空间"裁定针对 fn 符号冲突面
+                                // （compile.rs/linker），此处是 UI 子件收集码道；
+                                // 收紧时连带删掉 items.is_empty() 臂令裸 use 子件
+                                // 的 handler 不再合成（handler_<Child>_* 导出
+                                // 缺席→运行时派发全灭，demo CustomScrollbar
+                                // 拖拽死——vm-smoke 组 4(d) 实证）。
                                 if use_stmt.is_wildcard
+                                    || use_stmt.items.is_empty()
                                     || use_stmt.items.iter().any(|s| s == &child_widget.name)
                                 {
                                     // PR-3b Step 4: collect the child WidgetDecl
@@ -3914,7 +3962,10 @@ fn build_dynamic_component_inner(
                             // like `.notes = list_notes()` silently no-op and the view
                             // renders an empty list.
                             let name = store_decl.name.clone();
+                            // 069 同款回归修复：bare use 亦装载 store（组件
+                            // 发现语义，见上方 WidgetDecl 臂注）。
                             if use_stmt.is_wildcard
+                                || use_stmt.items.is_empty()
                                 || use_stmt.items.iter().any(|s| *s == name.as_str())
                             {
                                 child_decls.push(crate::ast::ui::WidgetDecl {
@@ -5963,6 +6014,15 @@ pub fn ui_build(
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
+    // PLAN-635: pre-register use-imported recipes before the parse (parser
+    // symbol-checker hook), then replay after the parse.
+    let base_dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+        .map_err(|e| e.to_string())?;
+
     // Parse with scenario
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session.clone());
@@ -5977,9 +6037,13 @@ pub fn ui_build(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
@@ -6079,6 +6143,15 @@ pub fn ui_build_shadcn(
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
+    // PLAN-635: pre-register use-imported recipes before the parse (parser
+    // symbol-checker hook), then replay after the parse.
+    let base_dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+        .map_err(|e| e.to_string())?;
+
     // Parse with UI scenario
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(code.as_str());
@@ -6094,9 +6167,13 @@ pub fn ui_build_shadcn(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {

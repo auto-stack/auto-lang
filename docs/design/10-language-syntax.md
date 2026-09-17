@@ -183,6 +183,10 @@ use db: load, save  // specific symbols (usable bare: load(), save())
 use db: *           // explicit flat import: ALL pub symbols usable bare
 use super.db        // ../db.at   (path rules unchanged)
 use pac.db          // package root search (path rules unchanged)
+use stylekit.styles: pill, card_base
+                    // cross-package style recipes (PLAN-635): named import of
+                    // `pub style` declarations; non-pub targets are a compile
+                    // error; `use stylekit.styles: *` globs pub recipes only
 ```
 
 **Namespace semantics (Plan 545, Rust-2018 style):**

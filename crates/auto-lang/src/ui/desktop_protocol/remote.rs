@@ -277,6 +277,7 @@ mod tests {
                 daemon: None,
                 back_root: None,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
         }));
         session.desktop.process_model = ProcessModel::Outproc;

@@ -431,6 +431,7 @@ mod tests {
                         back_root: None,
                         fit: false,
         exe: None,
+            opens: Vec::new(),
         render_decl: None,    })
                 } else {
                     None
