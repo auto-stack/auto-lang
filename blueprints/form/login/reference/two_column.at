@@ -1,0 +1,94 @@
+// reference/two_column.at — LoginForm blueprint, "two_column" variant.
+// Split-panel layout (shadcn login-04 anchor): an image/brand panel beside the
+// minimal credential form. Consumer wires `dataSource.attempt` and swaps the
+// panel media per brand.
+
+widget LoginFormTwoColumn {
+    msg {
+        Submit,
+        EditEmail,
+        EditPassword,
+        ToggleRemember
+    }
+
+    model {
+        var email str = ""
+        var password str = ""
+        var remember bool = true
+        var loading bool = false
+        var error str = ""
+    }
+
+    view {
+        row {
+            // ── EDIT: media panel (brand image / product shot) ──
+            col {
+                image {
+                    src: "/brand/login-panel.png"
+                    alt: "Product highlights"
+                    style: "w-full h-full object-cover"
+                }
+                style: "hidden w-1/2 md:flex items-center justify-center bg-gray-100"
+            }
+
+            col {
+                // ── EDIT: fields ──
+                col {
+                    label "Email" { for: "email" }
+                    input {
+                        id: "email"
+                        value: .email
+                        oninput: .EditEmail
+                        placeholder: "you@example.com"
+                        style: "w-full px-3 py-2 border rounded-lg text-sm"
+                    }
+                    label "Password" { for: "password" }
+                    input {
+                        id: "password"
+                        value: .password
+                        oninput: .EditPassword
+                        placeholder: "••••••••"
+                        style: "w-full px-3 py-2 border rounded-lg text-sm"
+                    }
+                    checkbox {
+                        checked: .remember
+                        onchange: .ToggleRemember
+                    }
+                    label "Remember me" { for: "remember" }
+                    style: "gap-2"
+                }
+
+                // ── EDIT: error_display ──
+                if .error != "" {
+                    text f"error: ${.error}" { style: "text-sm text-red-600" }
+                }
+
+                // ── EDIT: submit ──
+                button {
+                    label: "Sign in"
+                    onclick: .Submit
+                    disabled: .loading
+                    style: "w-full px-4 py-2 bg-blue-600 text-white rounded-lg"
+                }
+
+                style: "w-full max-w-sm mx-auto p-6 gap-4"
+            }
+
+            style: "w-full min-h-screen"
+        }
+    }
+
+    on {
+        .EditEmail(e) -> { .email = e }
+        .EditPassword(p) -> { .password = p }
+        .ToggleRemember -> { .remember = !.remember }
+
+        .Submit -> {
+            .loading = true
+            .error = ""
+            // consumer wires dataSource.attempt(email, password) here;
+            // on success -> navigate; on failure -> set .error, .loading = false
+            .loading = false
+        }
+    }
+}

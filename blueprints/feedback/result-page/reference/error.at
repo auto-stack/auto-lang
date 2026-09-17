@@ -1,0 +1,88 @@
+// reference/error.at — ResultPage blueprint, "error" variant.
+// Failed outcome (403/404/500 semantics fold into the copy) + retry/support
+// pair. Consumer wires dataSource.fetch for deep links and owns the actions.
+
+widget ResultPageError {
+    msg {
+        PrimaryClicked,
+        SecondaryClicked
+    }
+
+    model {
+        var result_id str = ""  // prop: result.id
+        var status int = 500    // 403 / 404 / 500…
+        var result_title str = "Something went wrong" // prop: result.title
+        var result_detail str = "" // prop: result.detail (reason / request id)
+        var loading bool = false
+    }
+
+    view {
+        col {
+            // ── EDIT: icon ──
+            badge {
+                label: "✕ Failed"
+                variant: "destructive"
+            }
+
+            text f"${.result_title}" { style: "text-xl font-semibold" }
+
+            // ── EDIT: content (failure detail; per-status copy) ──
+            col {
+                if .status == 404 {
+                    text "The page you requested does not exist." {
+                        style: "text-sm text-gray-500"
+                    }
+                } else if .status == 403 {
+                    text "You don't have permission to view this page." {
+                        style: "text-sm text-gray-500"
+                    }
+                } else {
+                    text "An unexpected error occurred. Try again later." {
+                        style: "text-sm text-gray-500"
+                    }
+                }
+                if .result_detail != "" {
+                    callout {
+                        variant: "error"
+                        content: f"${.result_detail}"
+                        style: "max-w-md"
+                    }
+                }
+                style: "gap-2 items-center max-w-md"
+            }
+
+            separator { style: "w-16 my-2" }
+
+            // ── EDIT: actions ──
+            row {
+                button {
+                    label: "Try again"
+                    onclick: .PrimaryClicked
+                    disabled: .loading
+                    style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+                }
+                button {
+                    label: "Contact support"
+                    onclick: .SecondaryClicked
+                    variant: "outline"
+                    style: "px-4 py-2 border rounded-lg"
+                }
+                style: "gap-2"
+            }
+
+            style: "items-center justify-center gap-3 py-16"
+        }
+    }
+
+    on {
+        .PrimaryClicked -> {
+            .loading = true
+            // consumer wires dataSource.fetch(result_id) retry here;
+            // on success -> swap to the success/data branch
+            .loading = false
+        }
+        .SecondaryClicked -> {
+            // actions.secondary: open support surface
+        }
+    }
+}

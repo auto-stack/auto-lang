@@ -1,0 +1,69 @@
+// reference/success.at — ResultPage blueprint, "success" variant.
+// Completed outcome + primary/secondary action pair. Consumer wires
+// actions.primary / actions.secondary to its navigation semantics.
+
+widget ResultPageSuccess {
+    msg {
+        PrimaryClicked,
+        SecondaryClicked
+    }
+
+    model {
+        var result_id str = ""   // prop: result.id
+        var result_title str = "Operation complete" // prop: result.title
+        var result_detail str = "" // prop: result.detail
+    }
+
+    view {
+        col {
+            // ── EDIT: icon ──
+            badge {
+                label: "✓ Success"
+                variant: "default"
+            }
+
+            text f"${.result_title}" { style: "text-xl font-semibold" }
+
+            // ── EDIT: content ──
+            col {
+                if .result_detail != "" {
+                    text f"${.result_detail}" { style: "text-sm text-gray-500" }
+                } else {
+                    text "Your changes have been saved." {
+                        style: "text-sm text-gray-500"
+                    }
+                }
+                style: "gap-1 items-center max-w-md"
+            }
+
+            separator { style: "w-16 my-2" }
+
+            // ── EDIT: actions ──
+            row {
+                button {
+                    label: "View item"
+                    onclick: .PrimaryClicked
+                    style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+                }
+                button {
+                    label: "Back to list"
+                    onclick: .SecondaryClicked
+                    variant: "outline"
+                    style: "px-4 py-2 border rounded-lg"
+                }
+                style: "gap-2"
+            }
+
+            style: "items-center justify-center gap-3 py-16"
+        }
+    }
+
+    on {
+        .PrimaryClicked -> {
+            // actions.primary: navigate to the created/changed resource
+        }
+        .SecondaryClicked -> {
+            // actions.secondary: return to the origin list
+        }
+    }
+}

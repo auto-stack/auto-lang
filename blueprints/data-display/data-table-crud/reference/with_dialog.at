@@ -1,0 +1,155 @@
+// reference/with_dialog.at — DataTableCrud blueprint, "with_dialog" variant.
+// minimal + the `form_dialog` extension point materialized: a create/edit
+// dialog over the table. Consumer wires `dataSource.query` and owns
+// actions.create/update/delete.
+
+widget DataTableCrudDialog {
+    msg {
+        SearchChanged,
+        PageChanged,
+        CreateClicked,
+        EditRow,
+        DeleteRow,
+        DialogNameChanged,
+        DialogSubmit,
+        DialogCancel
+    }
+
+    model {
+        var search str = ""
+        var page int = 1
+        var total int = 0
+        var rows []Row = []
+        var loading bool = false
+        var error str = ""
+        // dialog state
+        var dialog_open bool = false
+        var dialog_editing str = "" // row id, "" = create
+        var dialog_name str = ""
+    }
+
+    view {
+        col {
+            // ── EDIT: filters ──
+            row {
+                input {
+                    id: "search"
+                    value: .search
+                    oninput: .SearchChanged
+                    placeholder: "Search…"
+                    style: "w-64 px-3 py-2 border rounded-lg text-sm"
+                }
+                button {
+                    label: "New item"
+                    onclick: .CreateClicked
+                    style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+                }
+                style: "gap-2"
+            }
+
+            table {
+                row {
+                    text "Name" { style: "text-sm font-medium" }
+                    text "Actions" { style: "text-sm font-medium" }
+                }
+                for row in .rows {
+                    row {
+                        text f"${row.name}" { style: "text-sm" }
+                        dropdown_menu {
+                            items: ["Edit", "Delete"]
+                            onselect: .EditRow
+                            style: "w-8"
+                        }
+                    }
+                }
+                style: "w-full gap-1"
+            }
+
+            // ── EDIT: loading / empty / error_display ──
+            if .loading {
+                text "Loading…" { style: "text-sm text-gray-500" }
+            }
+            if .total == 0 && !.loading && .error == "" {
+                text "No results. Adjust your filters." {
+                    style: "text-sm text-gray-500"
+                }
+            }
+            if .error != "" {
+                text f"error: ${.error}" { style: "text-sm text-red-600" }
+            }
+
+            pagination {
+                page: .page
+                total: .total
+                onchange: .PageChanged
+                style: "gap-1"
+            }
+
+            // ── EDIT: form_dialog (create/edit surface) ──
+            if .dialog_open {
+                dialog {
+                    title: "Edit item"
+                    open: .dialog_open
+                    col {
+                        label "Name" { for: "dialog_name" }
+                        input {
+                            id: "dialog_name"
+                            value: .dialog_name
+                            oninput: .DialogNameChanged
+                            style: "w-full px-3 py-2 border rounded-lg text-sm"
+                        }
+                        row {
+                            button {
+                                label: "Cancel"
+                                onclick: .DialogCancel
+                                variant: "outline"
+                                style: "px-4 py-2 border rounded-lg"
+                            }
+                            button {
+                                label: "Save"
+                                onclick: .DialogSubmit
+                                style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+                            }
+                            style: "gap-2"
+                        }
+                        style: "gap-3"
+                    }
+                }
+            }
+
+            style: "w-full max-w-3xl mx-auto p-6 gap-4"
+        }
+    }
+
+    on {
+        .SearchChanged(s) -> {
+            .search = s
+            .page = 1
+            // consumer wires dataSource.query(filter, page) here
+        }
+        .PageChanged(p) -> {
+            .page = p
+            // consumer wires dataSource.query(filter, page) here
+        }
+        .CreateClicked -> {
+            .dialog_editing = ""
+            .dialog_name = ""
+            .dialog_open = true
+        }
+        .EditRow(id) -> {
+            .dialog_editing = id
+            .dialog_name = "" // consumer seeds from the row
+            .dialog_open = true
+        }
+        .DialogNameChanged(s) -> { .dialog_name = s }
+        .DialogCancel -> { .dialog_open = false }
+        .DialogSubmit -> {
+            // actions.create (dialog_editing == "") or actions.update
+            .dialog_open = false
+            // then re-run dataSource.query
+        }
+        .DeleteRow(id) -> {
+            // actions.delete: confirm, then remove + re-run query
+        }
+    }
+}

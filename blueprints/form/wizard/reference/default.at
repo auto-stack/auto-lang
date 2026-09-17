@@ -1,0 +1,158 @@
+// reference/default.at — WizardForm blueprint, "default" variant.
+// Three-step shape over props.steps: account -> profile -> review + finish.
+// The consumer wires `dataSource.submit` and owns actions.next/back/finish.
+// EDIT regions mark where per-app customization is expected.
+
+widget WizardForm {
+    msg {
+        Next,
+        Back,
+        Finish,
+        Cancel,
+        EditWorkspace,
+        EditFullName,
+        EditRole
+    }
+
+    model {
+        var step int = 0
+        var total int = 3
+        var workspace str = ""
+        var full_name str = ""
+        var role str = ""
+        var loading bool = false
+        var error str = ""
+    }
+
+    view {
+        col {
+            // ── EDIT: step_indicator (badge per props.steps entry) ──
+            row {
+                badge {
+                    label: "1 Account"
+                    variant: "default"
+                }
+                badge {
+                    label: "2 Profile"
+                    variant: "outline"
+                }
+                badge {
+                    label: "3 Review"
+                    variant: "outline"
+                }
+                style: "gap-2"
+            }
+
+            separator { style: "my-2" }
+
+            // ── EDIT: step_content (step 0: account) ──
+            if .step == 0 {
+                col {
+                    label "Workspace name" { for: "workspace" }
+                    input {
+                        id: "workspace"
+                        value: .workspace
+                        oninput: .EditWorkspace
+                        placeholder: "acme-inc"
+                        style: "w-full px-3 py-2 border rounded-lg text-sm"
+                    }
+                    style: "gap-2"
+                }
+            }
+
+            // ── EDIT: step_content (step 1: profile) ──
+            if .step == 1 {
+                col {
+                    label "Full name" { for: "full_name" }
+                    input {
+                        id: "full_name"
+                        value: .full_name
+                        oninput: .EditFullName
+                        style: "w-full px-3 py-2 border rounded-lg text-sm"
+                    }
+                    label "Role" { for: "role" }
+                    input {
+                        id: "role"
+                        value: .role
+                        oninput: .EditRole
+                        style: "w-full px-3 py-2 border rounded-lg text-sm"
+                    }
+                    style: "gap-2"
+                }
+            }
+
+            // ── EDIT: summary (step 2: review) ──
+            if .step == 2 {
+                col {
+                    text f"Workspace: ${.workspace}" { style: "text-sm" }
+                    text f"Name: ${.full_name}" { style: "text-sm" }
+                    text f"Role: ${.role}" { style: "text-sm" }
+                    style: "gap-1"
+                }
+            }
+
+            // ── EDIT: error_display ──
+            if .error != "" {
+                text f"error: ${.error}" { style: "text-sm text-red-600" }
+            }
+
+            row {
+                button {
+                    label: "Back"
+                    onclick: .Back
+                    disabled: .step == 0
+                    variant: "outline"
+                    style: "px-4 py-2 border rounded-lg"
+                }
+                if .step < 2 {
+                    button {
+                        label: "Next"
+                        onclick: .Next
+                        style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+                    }
+                }
+                if .step == 2 {
+                    button {
+                        label: "Finish"
+                        onclick: .Finish
+                        disabled: .loading
+                        style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+                    }
+                }
+                style: "gap-2"
+            }
+
+            style: "w-full max-w-md mx-auto p-6 gap-4"
+        }
+    }
+
+    on {
+        .EditWorkspace(s) -> { .workspace = s }
+        .EditFullName(s) -> { .full_name = s }
+        .EditRole(s) -> { .role = s }
+
+        .Next -> {
+            .error = ""
+            // per-step validation gate: step 0 requires a workspace name
+            if .step == 0 && .workspace == "" {
+                .error = "workspace name is required"
+            } else {
+                .step = .step + 1
+            }
+        }
+        .Back -> {
+            .error = ""
+            .step = .step - 1
+        }
+        .Finish -> {
+            .loading = true
+            .error = ""
+            // consumer wires dataSource.submit(steps payload) here;
+            // on success -> navigate; on failure -> set .error, .loading = false
+            .loading = false
+        }
+        .Cancel -> {
+            // consumer decides: discard draft + navigate away
+        }
+    }
+}

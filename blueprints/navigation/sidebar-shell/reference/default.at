@@ -1,0 +1,103 @@
+// reference/default.at — SidebarShell blueprint, "default" variant.
+// App frame: header (brand + user menu) over sidebar + content slot.
+// Consumer fills nav_tree/user props and owns actions.sign_out.
+// EDIT regions mark where per-app customization is expected.
+
+widget SidebarShell {
+    msg {
+        NavSelected,
+        MenuSignOut
+    }
+
+    model {
+        var active_nav str = "" // selected nav node id
+        var badge_counts map = [] // from dataSource.counts
+        var user_name str = ""  // prop: user.name
+        var user_email str = "" // prop: user.email
+    }
+
+    view {
+        col {
+            // ── header: brand + user menu ──
+            header {
+                row {
+                    // ── EDIT: logo ──
+                    text "Acme" { style: "text-sm font-semibold px-2" }
+
+                    avatar {
+                        src: "" // prop: user.avatar_url
+                        alt: f"${.user_name}"
+                        style: "w-7 h-7 rounded-full"
+                    }
+                    dropdown_menu {
+                        items: ["Profile", "Settings", "Sign out"]
+                        onselect: .MenuSignOut
+                        style: "w-8"
+                    }
+                    style: "w-full items-center gap-2"
+                }
+                style: "w-full h-12 border-b px-3"
+            }
+
+            row {
+                // ── sidebar ──
+                sidebar {
+                    col {
+                        // ── EDIT: nav_items (recursive over props.nav_tree) ──
+                        col {
+                            button {
+                                label: "Home"
+                                onclick: .NavSelected
+                                variant: "default"
+                                style: "w-full px-3 py-2 rounded-lg text-sm"
+                            }
+                            button {
+                                label: "Projects"
+                                onclick: .NavSelected
+                                variant: "ghost"
+                                badge {
+                                    label: "3"
+                                    variant: "outline"
+                                }
+                                style: "w-full px-3 py-2 rounded-lg text-sm"
+                            }
+                            button {
+                                label: "Settings"
+                                onclick: .NavSelected
+                                variant: "ghost"
+                                style: "w-full px-3 py-2 rounded-lg text-sm"
+                            }
+                            style: "gap-1"
+                        }
+                        // ── EDIT: footer ──
+                        text "v0.1" { style: "text-xs text-gray-400 px-3" }
+                        style: "gap-2"
+                    }
+                    style: "w-56 border-r p-2 gap-2"
+                }
+
+                // ── EDIT: content (routed app surface; single slot) ──
+                col {
+                    text "App content mounts here" {
+                        style: "text-sm text-gray-400"
+                    }
+                    style: "flex-1 items-center justify-center"
+                }
+
+                style: "flex-1 min-h-0"
+            }
+
+            style: "w-full h-screen"
+        }
+    }
+
+    on {
+        .NavSelected(id) -> {
+            .active_nav = id
+            // consumer routes to the node; refresh dataSource.counts()
+        }
+        .MenuSignOut(item) -> {
+            // actions.sign_out: consumer ends the session + navigates
+        }
+    }
+}
