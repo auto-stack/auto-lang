@@ -9596,7 +9596,8 @@ fn dashboard_layout(
     for f in faces {
         let span = f.span.clamp(1, DASH_COLS).min(DASH_COLS - col).max(1);
         let x = DASH_PAD + col as f32 * (cell_w + DASH_GAP);
-        let y = DASH_PAD + row as f32 * (DASH_CELL_H + DASH_GAP);
+        // 网格区起点 = 标题行之下（面板 .at 头行 + p-4 同源算式）。
+        let y = DASH_HEADER_H + DASH_PAD + row as f32 * (DASH_CELL_H + DASH_GAP);
         let w = span as f32 * cell_w + (span as f32 - 1.0) * DASH_GAP;
         cells.push(iced::Rectangle {
             x,
@@ -9620,7 +9621,10 @@ fn dashboard_layout(
     let panel_h = if faces.is_empty() {
         (DASH_HEADER_H + DASH_PAD + 64.0).clamp(160.0, viewport.height - 96.0)
     } else {
-        DASH_HEADER_H + rows as f32 * (DASH_CELL_H + DASH_GAP) + DASH_PAD
+        // 标题行 + 网格（rows 行 + 行间 gap）+ 底垫。
+        DASH_HEADER_H + DASH_PAD + rows as f32 * DASH_CELL_H
+            + (rows as f32 - 1.0) * DASH_GAP
+            + DASH_PAD
     };
     let panel_top = 64.0_f32.min((viewport.height - panel_h).max(8.0));
     let panel_x = (viewport.width - panel_w) / 2.0;
@@ -9694,17 +9698,18 @@ fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<D
     let Some(app) = state.apps.get(&panel) else {
         return Vec::new();
     };
+    // write_state_vec 落 VM 堆（读回 = VmRef 引用）——必须走物化读
+    // （read_state_as_vec），Value::Array 直匹配恒空（实机诊断定位）。
     let read_vec = |key: &str| -> Vec<String> {
-        match app.component.read_state(key) {
-            Ok(auto_val::Value::Array(vals)) => vals
-                .into_iter()
-                .map(|v| match v {
-                    auto_val::Value::Str(s) => s.to_string(),
-                    other => format!("{other:?}"),
-                })
-                .collect(),
-            _ => Vec::new(),
-        }
+        app.component
+            .read_state_as_vec(key)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|v| match v {
+                auto_val::Value::Str(s) => s.to_string(),
+                other => format!("{other:?}"),
+            })
+            .collect()
     };
     let ids = read_vec("face_ids");
     if ids.is_empty() {
@@ -9800,6 +9805,11 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
         spans.push(auto_val::Value::Str(f.span.to_string().into()));
         objs.push(auto_val::Value::Str(f.id.clone().into()));
     }
+    eprintln!(
+        "[dashboard] refresh: faces={} statuses={:?} panel={panel_w}x{panel_h}@{panel_top}",
+        faces.len(),
+        faces.iter().map(|f| (f.id.as_str(), f.status)).collect::<Vec<_>>(),
+    );
     if let Some(app) = state.apps.get_mut(&panel) {
         let _ = app.component.write_state_vec("face_ids", ids);
         let _ = app.component.write_state_vec("face_titles", titles);
@@ -9819,6 +9829,19 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildFaces", &[]) {
             eprintln!("[session] dashboard RebuildFaces failed: {err}");
         }
+        let rd = |k: &str| -> String {
+            match app.component.read_state(k) {
+                Ok(v) => format!("{v:?}"),
+                Err(e) => format!("ERR {e}"),
+            }
+        };
+        eprintln!(
+            "[dashboard] panel state: face_ids={} __panel_w={} __panel_h={} nrows={}",
+            rd("face_ids"),
+            rd("__panel_w"),
+            rd("__panel_h"),
+            rd("nrows"),
+        );
         *app.state.view_dirty.borrow_mut() = true;
     }
 }
@@ -13921,7 +13944,15 @@ fn compare_pngs(
                     crate::ui::desktop_protocol::broker::BROKER_PIPE,
                     std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 );
-                (session, open_task.discard())
+                // PLAN-024：dashboard boot 召唤钩子（验证/演示通道，
+                // AUTOUI_PANIC_PROBE 先例）——`AUTO_DASHBOARD_BOOT=1` 时
+                // boot 即召唤面板（孵化 + faces 快照 + 几何注入同链），
+                // 供面板链无人值守走查/截图驱动；常规启动零影响。
+                let mut dash_boot_task = iced::Task::<crate::ui::session::DesktopMessage>::none();
+                if std::env::var("AUTO_DASHBOARD_BOOT").as_deref() == Ok("1") {
+                    dash_boot_task = toggle_dashboard(&mut session);
+                }
+                (session, open_task.discard().chain(dash_boot_task))
             }
             RunMode::Standalone => {
                 let mut open_tasks = Vec::new();
@@ -17028,6 +17059,37 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::App(app_id, m) => {
+                // PLAN-024：dashboard 占位卡一键 launch 拦截臂——face 叠合层
+                // 宿主合成消息（`__dashboard_launch:<registry-id>`）直投面板
+                // App；写入面板 `__dashboard_cmd` 后走同周期 bus 排空统一
+                // 执行（面板 .at 零感知、无 handler 不产生派发噪音）。尾与
+                // 常规臂同形（exit/sync/batch）。
+                if let Some(launch_id) =
+                    m.event.strip_prefix("__dashboard_launch:").map(str::to_string)
+                {
+                    if state.desktop.dashboard_app == Some(app_id) {
+                        if let Some(panel) = state.desktop.dashboard_app {
+                            if let Some(app) = state.apps.get_mut(&panel) {
+                                let _ = app.component.write_state(
+                                    "__dashboard_cmd",
+                                    auto_val::Value::str(&format!(
+                                        "dashboard_launch\t{launch_id}"
+                                    )),
+                                );
+                                *app.state.view_dirty.borrow_mut() = true;
+                            }
+                        }
+                        let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+                        if exit {
+                            state.shutdown_broker();
+                            return iced::exit();
+                        }
+                        if state.desktop.shell_app.is_some() {
+                            sync_shell_windows(state);
+                        }
+                        return iced::Task::batch(tasks);
+                    }
+                }
                 // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
                 if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1")
                     && (m.event == "MenuClose"
@@ -17864,6 +17926,62 @@ fn compare_pngs(
                     let viewport = state.host_viewport();
                     let (_pw, _ph, _pt, cells) = dashboard_layout(viewport, &faces_view);
                     for (f, rect) in faces_view.iter().zip(cells.iter()) {
+                        // PLAN-024 §5.7：占位卡（有后端 app 未运行）——宿主
+                        // 合成面（标题 + 「点击启动」提示），点击产生合成
+                        // 消息 `__dashboard_launch:<id>` 直投面板 App（update
+                        // 拦截臂转 `__dashboard_cmd` 记录，bus 排空统一执行）。
+                        // v1 图标用文本字形（registry lucide 名进宿主侧
+                        // 原生 widget 需图标管线直连，留 v2）。
+                        if f.status != "running" && f.status != "hatched" {
+                            let launch_msg = IcedMessage {
+                                widget: String::new(),
+                                event: format!("__dashboard_launch:{}", f.id),
+                                input_value: None,
+                            };
+                            let hint: iced::Element<'_, IcedMessage> =
+                                iced::widget::mouse_area(
+                                    iced::widget::column![
+                                        iced::widget::text("▸").size(22),
+                                        iced::widget::text(f.title.clone()).size(12),
+                                        iced::widget::text("未运行 — 点击启动").size(11),
+                                    ]
+                                    .align_x(iced::alignment::Horizontal::Center)
+                                    .spacing(4),
+                                )
+                                .on_press(launch_msg)
+                                .into();
+                            let placeholder_client = hint.map(move |m| DM::App(dash_app, m));
+                            let card = iced::widget::container(placeholder_client)
+                                .width(iced::Length::Fixed(rect.width))
+                                .height(iced::Length::Fixed(rect.height))
+                                .align_x(iced::alignment::Horizontal::Center)
+                                .align_y(iced::alignment::Vertical::Center)
+                                .style(|_t| iced::widget::container::Style {
+                                    border: iced::Border {
+                                        color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.25),
+                                        width: 1.0,
+                                        radius: 12.0.into(),
+                                    },
+                                    ..Default::default()
+                                });
+                            let placed = iced::widget::container(
+                                iced::widget::row![
+                                    iced::widget::Space::new()
+                                        .width(iced::Length::Fixed(rect.x))
+                                        .height(iced::Length::Shrink),
+                                    iced::widget::column![
+                                        iced::widget::Space::new()
+                                            .width(iced::Length::Shrink)
+                                            .height(iced::Length::Fixed(rect.y)),
+                                        card,
+                                    ],
+                                ],
+                            )
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill);
+                            children.push(placed.into());
+                            continue;
+                        }
                         let Some(app_id) = (match f.status {
                             "running" => dashboard_running_app(state, &f.id),
                             "hatched" => state.hatched_mini_of(&f.id),
@@ -17901,17 +18019,24 @@ fn compare_pngs(
                                 },
                                 ..Default::default()
                             });
-                        let placed = iced::widget::container(card)
-                            .align_x(iced::alignment::Horizontal::Left)
-                            .align_y(iced::alignment::Vertical::Top)
-                            .padding(iced::Padding {
-                                top: rect.y,
-                                left: rect.x,
-                                right: 0.0,
-                                bottom: 0.0,
-                            })
-                            .width(iced::Length::Fill)
-                            .height(iced::Length::Fill);
+                        // 定位链家法（notification O1 教训：真实 Stack 子层
+                        // padding/align 不可依赖）——px spacer 精确落位：
+                        // row[ h-space(x), col[ v-space(y), card ] ]。
+                        let placed = iced::widget::container(
+                            iced::widget::row![
+                                iced::widget::Space::new()
+                                    .width(iced::Length::Fixed(rect.x))
+                                    .height(iced::Length::Shrink),
+                                iced::widget::column![
+                                    iced::widget::Space::new()
+                                        .width(iced::Length::Shrink)
+                                        .height(iced::Length::Fixed(rect.y)),
+                                    card,
+                                ],
+                            ],
+                        )
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill);
                         children.push(placed.into());
                     }
                 }

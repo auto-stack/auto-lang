@@ -63,7 +63,7 @@ widget DashboardPanel {
                         col {
                             // glass 三件套（bg-card/80 + 细边框 + 柔影，
                             // stella dashboard 骨架同源）。
-                            style: "bg-card/80 border rounded-xl shadow-xl overflow-hidden w-[${.__panel_w}px] h-[${.__panel_h}px]"
+                            style: "bg-card/80 border rounded-xl shadow-xl overflow-hidden w-[920px] h-[212px]"
 
                             // 标题行：Dashboard + × 关闭
                             row {
@@ -117,7 +117,8 @@ widget DashboardPanel {
             .visible = "0"
         }
         .RebuildFaces -> {
-            .nrows = .rows.len()
+            // 空态判据 = face 快照长度（rows 由宿主 face 层渲染，本面不建）。
+            .nrows = .face_ids.len()
         }
     }
 }

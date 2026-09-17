@@ -3753,11 +3753,24 @@ fn spawn_outproc_child(
             // Plan 496 M5：桌面本体面（windowless 拆借第六路；常驻面，
             // shell/overlay 同型垫片承接）。
             let is_desktop = self.desktop.desktop_app == Some(id);
+            // PLAN-024：dashboard 面板 overlay（windowless 拆借第七路）。
+            let is_dashboard = self.desktop.dashboard_app == Some(id);
+            // PLAN-024：静默孵化 mini 会话（windowless face 拆借第八路）
+            // ——face_fields 垫片在场即认；没有这条臂，孵化会话的
+            // update 侧拆借恒 None，Tick/handler 全部静默丢失（实机
+            // 走查定位：clock face 恒显初始值的根因）。
+            let is_hatched = self
+                .host
+                .as_ref()
+                .map(|h| h.face_fields.contains_key(&id.0))
+                .unwrap_or(false);
             if !is_shell
                 && !is_launcher
                 && !is_switcher
                 && !is_notification
                 && !is_desktop
+                && !is_dashboard
+                && !is_hatched
             {
                 return None;
             }
@@ -3799,6 +3812,25 @@ fn spawn_outproc_child(
                     &mut host.notification_fields.initial_focus_done,
                     &host.notification_fields.fit_pending,
                     &host.notification_fields.fit_enabled,
+                )
+            } else if is_dashboard {
+                (
+                    &mut host.dashboard_fields.window_size,
+                    &mut host.dashboard_fields.pending_window_resize,
+                    &mut host.dashboard_fields.initial_resize_done,
+                    &mut host.dashboard_fields.initial_focus_done,
+                    &host.dashboard_fields.fit_pending,
+                    &host.dashboard_fields.fit_enabled,
+                )
+            } else if is_hatched {
+                let f = host.face_fields.get_mut(&id.0).expect("hatched shim");
+                (
+                    &mut f.window_size,
+                    &mut f.pending_window_resize,
+                    &mut f.initial_resize_done,
+                    &mut f.initial_focus_done,
+                    &f.fit_pending,
+                    &f.fit_enabled,
                 )
             } else {
                 (

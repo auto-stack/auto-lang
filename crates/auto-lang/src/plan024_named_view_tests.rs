@@ -258,3 +258,16 @@ widget App {
     assert!(result.named_view_codes.is_empty());
     let _ = std::fs::remove_file(&path);
 }
+
+/// PLAN-024 走查诊断：面板 chrome 样式串逐类解析——w-[920px] 任意值类
+/// 必须落 Width(920)（渲染实机面板曾收缩为内容宽，定位用）。
+#[test]
+fn dashboard_panel_classes_parse() {
+    use crate::ui::style::Style;
+    let s = Style::parse(
+        "bg-card/80 border rounded-xl shadow-xl overflow-hidden w-[920px] h-[212px]",
+    )
+    .expect("panel style parses");
+    let dbg = format!("{s:?}");
+    assert!(dbg.contains("920"), "width arbitrary class applied: {dbg}");
+}
