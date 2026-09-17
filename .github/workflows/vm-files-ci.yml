@@ -57,6 +57,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
 
+      # PLAN-639 T-08：Block→Blueprint 重命名完整性门（复活模式封禁）
+      - name: Blueprint rename guard (no Block-tier resurrection)
+        run: python scripts/blueprint_rename_guard.py
+
       - name: Gallery corpus fences active (not SKIPPED)
         run: |
           test -f "$AUTO_OS_ROOT/widgets-gallery/pac.at" || { echo "auto-os checkout 缺 widgets-gallery"; exit 1; }

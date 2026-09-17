@@ -44,8 +44,8 @@
 | 336 | vue-gallery-autoui-widgets-showcase | 设计待确认，实施未开始 | plans/ | vue-gallery 作为 @auto-ui/widgets 的 dogfood 展示页 |
 | 337 | vue-gallery-widgets-sync-foundation | 设计待确认，实施未开始 | plans/ | gallery↔widgets 薄同步层；TODO-A=扩到 ~60 widget（Rung 3 天花板） |
 | 338 | extend-015-notes-m1-benchmark | 设计待确认，实施未开始 | plans/ | M1 基准：015-notes 扩成中等 CRUD（后续由 354/357/360 接力） |
-| 342 | block-tier-phase-a-package-foundation | 设计待确认，实施未开始（代码已先行） | plans/ | block 包格式 + BlockRegistry + blocks-gallery 骨架 |
-| 343 | block-tier-phase-b-generator-and-cli | 设计待确认，实施未开始 | plans/ | `auto block add` 双模式 + 静态 acceptance check |
+| 342 | block-tier-phase-a-package-foundation | 设计待确认，实施未开始（代码已先行） | plans/ | blueprint 包格式 + BlueprintRegistry + bps-gallery 骨架 |
+| 343 | block-tier-phase-b-generator-and-cli | 设计待确认，实施未开始 | plans/ | `auto bp add` 双模式 + 静态 acceptance check |
 | 351 | shared-store-rung4 | 设计待确认，实施未开始 | plans/ | Rung 4：跨 widget/跨路由共享状态 store |
 | 354 | 015-notes-real-app | 实施中 | plans/ | 015-notes 从 CRUD demo 到真实笔记 app（标签/搜索/三列/AutoDown 编辑器） |
 | 356 | vue-generator-oom-recursion-fix | ✅ | archive/ | 修复 parser OOM + 软关键字递归，015-notes sidebar 完整再生成 |

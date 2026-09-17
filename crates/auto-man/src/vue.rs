@@ -2745,8 +2745,11 @@ export default router
         // (文件名 = widget 名,与页面的 `@/components/<Widget>.vue` 导入对齐)。
         // package.at 是包清单(manifest),不是组件源,跳过。此前该目录只服务
         // VM 轨(§0.6.E-2 的 435 前状态在 auto-man 的残留)。
-        {
-            let components_at_dir = front_dir.join("components");
+        // PLAN-639 T-06: `bps/` 目录与 components/ 同构扫描——L1 绑定工件
+        // （`auto bp add --bind` 产出的 GENERATED *.at）落盘于此，构建期
+        // 与 components/ 一样编译为独立组件 SFC（文件名 = widget 名）。
+        for sub_dir in ["components", "bps"] {
+            let components_at_dir = front_dir.join(sub_dir);
             if components_at_dir.exists() {
                 let mut comp_entries: Vec<std::path::PathBuf> = fs::read_dir(&components_at_dir)
                     .map_err(|e| format!("Failed to read components directory: {}", e))?

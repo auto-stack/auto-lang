@@ -7202,6 +7202,11 @@ mod musk_vm_track_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 #[path = "tests/plan632_demo_bridge_tests.rs"]
 mod plan632_demo_bridge_tests;
+
+// PLAN-639: 跨包 blueprint .at 解析双轨消费门（VM 渲染结构 + vue 发射面）。
+#[cfg(test)]
+mod plan639_bp_tests;
+
 // PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
 // 回归。
 #[cfg(all(test, feature = "ui-iced"))]

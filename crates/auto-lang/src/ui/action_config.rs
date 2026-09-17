@@ -169,6 +169,43 @@ impl UiActionConfig {
         (cfg, warnings)
     }
 
+    /// PLAN-639 T-05: convert back to the DSL `actions {}` block shape so the
+    /// vue build (ui_gen Plan 451 P2/P3 synthesis) can consume the SAME
+    /// `ui_config:` file the VM/desktop runtime loads. Inverse of
+    /// [`Self::from_actions_block`]; shortcut_bindings (a derived index) are
+    /// not carried — the SFC rebuilds its own keymap.
+    pub fn to_actions_block(&self) -> crate::ast::ui::ActionsBlock {
+        let map_item = |i: &MenuItem| match i {
+            MenuItem::Action(id) => crate::ast::ui::MenuItemEntry::Action(id.clone()),
+            MenuItem::Separator => crate::ast::ui::MenuItemEntry::Sep,
+        };
+        crate::ast::ui::ActionsBlock {
+            actions: self.actions.iter()
+                .map(|a| crate::ast::ui::ActionEntry {
+                    id: a.id.clone(),
+                    handler: a.handler.clone(),
+                    title: (!a.title.is_empty()).then(|| a.title.clone()),
+                    icon: a.icon.clone(),
+                    shortcut: a.shortcut.clone(),
+                    enabled_if: a.enabled_if.clone(),
+                    checked_if: a.checked_if.clone(),
+                })
+                .collect(),
+            menubar: (!self.menus.is_empty()).then(|| crate::ast::ui::MenubarBlock {
+                menus: self.menus.iter()
+                    .map(|m| crate::ast::ui::MenuEntry {
+                        id: m.id.clone(),
+                        title: m.title.clone(),
+                        items: m.items.iter().map(map_item).collect(),
+                    })
+                    .collect(),
+            }),
+            toolbar: (!self.toolbar.is_empty()).then(|| crate::ast::ui::ToolbarBlock {
+                items: self.toolbar.iter().map(map_item).collect(),
+            }),
+        }
+    }
+
     /// Shared validation of parse/from_actions_block results: unique non-empty
     /// action ids, menu/toolbar references resolve.
     fn validate_refs(&mut self) -> Vec<String> {

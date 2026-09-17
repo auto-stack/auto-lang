@@ -187,7 +187,7 @@ widget DetailPage { use store: NotesStore; view { ... .store.notes[.store.active
 3. **AURA extraction**:提取 `AuraStore { name, state_vars, messages, handlers }`(与 AuraWidget 同构,去 view/routes/props)。
 4. **Codegen**:生成 `useXxxStore.ts`(模块级 ref + actions);`use store:` → 消费组件生成 import + `const store = use…()` + `store.` 表达式的 `.value` 处理。
 5. **回归**:015(后端作 shared source,不受影响)、025(可拆多页了)、blocks(design 17)、canaries 全绿。
-6. **文档**:creator skill + blocks-gallery 的 dataSource 约定接 store。
+6. **文档**:creator skill + bps-gallery 的 dataSource 约定接 store。
 
 ## 11. 开放问题
 

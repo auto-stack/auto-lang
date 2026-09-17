@@ -33,7 +33,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 定性 | 判据 | 去向 |
 |---|---|---|
 | **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **30**），在本索引登记 |
-| **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blocks/`、`strategy/`…），**slug 命名不带号** |
+| **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blueprints/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
 **封存号说明**：17–19、21–26 已被历史文档用过并随 Plan 468 归位（对应关系见各子目录），
@@ -51,7 +51,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 |---|---|---|
 | 一、语言核心 | 10（01–10） | 从源码到执行的语言本体设计 |
 | 二、应用框架与生态 | 5（11–15）+ 1 子目录 | Shell / 并发 / 网络 / 开发工具 / AI 基础设施；文档与在线体验线设计归 `documents/` |
-| 三、AutoUI 与 App 生成域 | 2 章 + 2 子目录 | 域级章 16/20；需求级设计归 `autoui/`（10）与 `blocks/`（4） |
+| 三、AutoUI 与 App 生成域 | 2 章 + 2 子目录 | 域级章 16/20；需求级设计归 `autoui/`（10）与 `blueprints/`（4） |
 | 四、流程与知识体系 | 1 个域级章 + 2 个根级专题 | Knowledge Lifecycle、AutoPlan 账本、Plan+Spec v1 |
 | 五、战略路线图 `strategy/` | 13 | 生态版图伞形（三市场框架）/ Rust 脚本层 / 消费者 parity / C·Web·鸿蒙·Mobile·ROS2·Native·第三代互联网(Godot) 生态 / Python parity / Rust 库复刻 |
 | 六、专题诊断（根级） | 4 | 方言体系诊断、VM 调试、ASH 设计总览（外仓主题）、[管道算子 `|>`](pipe-operator.md)（讨论稿，Plan 514 衍生） |
@@ -120,8 +120,8 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
   `docs/design/`**（Stage B P-5 指针登记，2026-09-07；首例即 auto-os Design 01
   Stage B 迁移定案，资产去向见 [docs/plans/INDEX.md](../plans/INDEX.md)）
 - [`autoui/autoui-mcp-test-fixture`](autoui/autoui-mcp-test-fixture.md)（AutoUI MCP 测试夹具协议，Plan 623）
-- [`blocks/`](blocks/blocks-first-class.md)（4 篇）：blocks-first-class(原17) 为 Blocks 层主设计，
-  配套 agent-generation-workflow / block-package-format / datasource-convention
+- [`blueprints/`](blueprints/blueprints-first-class.md)（4 篇）：blueprints-first-class(原17) 为 Blueprint 层主设计（PLAN-639 更名，原 blocks/），
+  配套 agent-generation-workflow / blueprint-package-format / datasource-convention
 
 **在途**：`25-autoshell-dsl-unified-shell.md`——桌面 Shell 的 AutoUI 统一层（细化 Design 23/24，
 服务 463/464/465 shell-track），稳定后归位 `autoui/`。
@@ -183,7 +183,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 2024 Q1–Q4  语言核心：AST/VM/类型系统 → a2c/a2r → 泛型/枚举/模式匹配 → 内存模型
 2025 Q1–Q4  UI 系统(AURA/a2ark/a2jet) → Shell → 并发(Task/Actor) → AIE/AutoCache
 2026 Q1–Q2  ASH 分层架构 → LSP/MCP → 设计文档 00–15 章首次体系化(2026-06-15)
-2026 Q6–Q8  App 生成战略(16) → AutoUI 域需求设计族(17–25, 后归位 autoui/blocks)
+2026 Q6–Q8  App 生成战略(16) → AutoUI 域需求设计族(17–25, 后归位 autoui/blueprints)
             → 分离架构(20) → 虚拟桌面三部曲(23/24) → 范式收敛(Plan 467/468)
 2026 Q9     documents 大模块目录建立：Playground 在线体验设计归位子目录（design 树
             「根级章=大块+模块子目录」结构化的起点，整体重组待议）

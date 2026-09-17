@@ -1,0 +1,32 @@
+// PLAN-639 AC-03/AC-05 demo：跨包 blueprint 消费（L1 import/bind 通道，零副本）。
+// LoginForm 经 GENERATED 绑定工件 src/front/bps/login_bind.at 导入
+// （`auto bp add form/login --bind` 产出）；本应用不持有任何 bp 副本。
+use bps.login_bind: LoginBind
+
+widget App {
+    msg {
+        ActNew,
+        ActOpen
+    }
+
+    view {
+        col {
+            // PLAN-639 T-05: menubar/toolbar 占位——动作注册表来自 pac.at
+            // ui_config 外挂文件（Plan 418 形态），vue 轨经 451 合成面生效。
+            menubar (class: "items-center") {}
+            toolbar (class: "px-2 py-1 gap-1 border-b") {}
+
+            LoginBind {}
+            style: "min-h-screen items-center justify-center p-6"
+        }
+    }
+
+    on {
+        .ActNew -> { .ui_note = "new" }
+        .ActOpen -> { .ui_note = "open" }
+    }
+
+    model {
+        var ui_note str = ""
+    }
+}

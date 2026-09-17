@@ -17,7 +17,7 @@ GROUPS = {
     "工具链": ["auto-cli", "auto-man", "auto-gen", "auto-lsp", "auto-vm",
                "auto-cache", "auto-bindgen", "auto-macros", "shim-metadata"],
     "UI/Web 生态": ["auto-playground", "widgets", "forge-ui", "lab-ui",
-                    "playground-vue", "website", "blocks", "autoui-skill"],
+                    "playground-vue", "website", "blueprint", "autoui-skill"],
     "外围/验证": ["parity", "a2r-actor-tests"],
     "实验/沙盒": ["auto-cosmic"],
 }

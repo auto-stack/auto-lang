@@ -153,7 +153,7 @@ f-string 插值 `` `Counter: ${.count}` ``。
 邮箱 + 密码 + 条件错误提示 + 提交按钮的完整表单模式：
 密码型 `input`、`if` 条件渲染错误信息、卡片式表单布局。
 
-### Tier 2 · Blocks（006–010）— 布局与组合
+### Tier 2 · Blueprint（组合层，006–010）— 布局与组合
 
 **[006-hero-section](006-hero-section/) — 落地页 hero**
 标题层级 + 渐变背景 + CTA 按钮的经典 landing 首屏，flex 居中布局。
