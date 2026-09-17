@@ -46,7 +46,7 @@ the blueprint's extension-point vocabulary, eject and own it fully.
 
 Follow the [package format](../docs/design/blueprints/blueprint-package-format.md):
 create `blueprints/<kind>/<name>/{spec.md, reference/<variant>.at, gotchas.md}`.
-The `BlockRegistry` scans it on the next `auto bp list`; the
+The `BlueprintRegistry` scans it on the next `auto bp list`; the
 palette-drift guard checks every `palette` entry exists in the AURA
 `WidgetRegistry`.
 

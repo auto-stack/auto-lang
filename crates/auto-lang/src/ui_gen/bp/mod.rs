@@ -8,7 +8,8 @@
 //! - `gotchas.md` (anti-examples)
 //!
 //! [`BlueprintRegistry`] scans and indexes them; [`BlueprintSpec`] is the parsed spec.
-//! Renamed from Block tier (PLAN-639): `ui_gen/block` → `ui_gen/bp`, CLI `auto block` → `auto bp`.
+//! Renamed from the Block tier by PLAN-639 — mapping table in
+//! docs/plans/attachments/639-rename-manifest.md §2.
 
 pub mod registry;
 pub mod spec;
