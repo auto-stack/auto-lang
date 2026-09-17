@@ -6,3 +6,7 @@ title: "Chat"
 title_zh: "聊天"
 api: "rust"
 desktop: "true"
+
+dep stylekit {
+    path: "../stylekit"
+}

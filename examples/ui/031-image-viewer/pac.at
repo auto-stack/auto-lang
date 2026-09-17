@@ -20,3 +20,7 @@ desktop: "true"
 opens: ".jpg,.jpeg,.png,.webp,.gif,.bmp,.svg,.ico"
 theme: "dark"
 accent: "indigo"
+
+dep stylekit {
+    path: "../stylekit"
+}

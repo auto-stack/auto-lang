@@ -1,4 +1,7 @@
 // chat_sidebar.at — Left contacts and conversation navigation panel.
+style nav_item = "text-xs text-muted-foreground truncate"
+style sidebar_col = "flex-1 min-w-0"
+
 widget ChatSidebar(contacts: []Contact, active_id: str, search_query: str, on_select: msg, on_search: msg) {
     msg {
         SelectContact(str),
@@ -17,13 +20,13 @@ widget ChatSidebar(contacts: []Contact, active_id: str, search_query: str, on_se
                 style: "items-center gap-3 p-4 border-b border-border bg-muted/20"
                 text "🧑‍💻" { style: "text-2xl p-1.5 bg-card rounded-xl shadow-xs border border-border/50" }
                 col {
-                    style: "flex-1 min-w-0"
+                    style: sidebar_col
                     row {
                         style: "items-center gap-1.5"
                         text "You" { style: "text-sm font-bold text-foreground" }
                         text "🟢" { style: "text-[10px]" }
                     }
-                    text "Online • WeChat IM" { style: "text-xs text-muted-foreground truncate" }
+                    text "Online • WeChat IM" { style: nav_item }
                 }
             }
 
@@ -61,7 +64,7 @@ widget ChatSidebar(contacts: []Contact, active_id: str, search_query: str, on_se
                         }
                         text .c.avatar { style: "text-2xl p-1 bg-card rounded-lg shadow-xs flex-shrink-0" }
                         col {
-                            style: "flex-1 min-w-0"
+                            style: sidebar_col
                             row {
                                 style: "items-center justify-between"
                                 text .c.name { style: "text-sm font-semibold truncate" }
@@ -69,7 +72,7 @@ widget ChatSidebar(contacts: []Contact, active_id: str, search_query: str, on_se
                             }
                             row {
                                 style: "items-center justify-between mt-1"
-                                text .c.last_message { style: "text-xs text-muted-foreground truncate" }
+                                text .c.last_message { style: nav_item }
                                 if .c.unread > 0 {
                                     text f"${.c.unread}" { style: "text-[10px] font-bold bg-destructive text-destructive-foreground px-1.5 py-0.5 rounded-full flex-shrink-0" }
                                 }

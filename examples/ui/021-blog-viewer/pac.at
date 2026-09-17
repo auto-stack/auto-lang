@@ -7,3 +7,7 @@ title_zh: "博客阅读器"
 api: "rust"
 front_port: 3021
 back_port: 8421
+
+dep stylekit {
+    path: "../stylekit"
+}

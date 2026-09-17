@@ -1,6 +1,12 @@
 use calendar_store: CalendarStore
 use calendar_util: build_month_grid, month_name
 
+use stylekit.styles: caption_text
+style nav_round_btn = "w-10 h-10 rounded-full hover:bg-accent text-foreground font-bold"
+style settings_label = "text-xs text-muted-foreground font-medium"
+style theme_btn_idle = "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+style theme_btn_active = "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+
 widget App {
     msg {
         PrevMonth,
@@ -41,7 +47,7 @@ widget App {
                     button "<" {
                         onclick: .PrevMonth
                         variant: "ghost"
-                        style: "w-10 h-10 rounded-full hover:bg-accent text-foreground font-bold"
+                        style: nav_round_btn
                     }
                     col {
                         style: "items-center"
@@ -58,7 +64,7 @@ widget App {
                         button ">" {
                             onclick: .NextMonth
                             variant: "ghost"
-                            style: "w-10 h-10 rounded-full hover:bg-accent text-foreground font-bold"
+                            style: nav_round_btn
                         }
                     }
                 }
@@ -100,35 +106,35 @@ widget App {
                         }
                         col {
                             style: "gap-1.5"
-                            text "Theme" { style: "text-xs text-muted-foreground font-medium" }
+                            text "Theme" { style: settings_label }
                             row {
                                 style: "gap-2"
                                 if .store.dark_mode {
                                     button "🌙 Dark" {
                                         onclick: .SetTheme("dark")
-                                        style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                                        style: theme_btn_active
                                     }
                                     button "☀ Light" {
                                         onclick: .SetTheme("light")
                                         variant: "ghost"
-                                        style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+                                        style: theme_btn_idle
                                     }
                                 } else {
                                     button "🌙 Dark" {
                                         onclick: .SetTheme("dark")
                                         variant: "ghost"
-                                        style: "flex-1 py-1 px-2 text-xs font-medium rounded-md text-muted-foreground hover:bg-accent border border-border bg-transparent transition-colors"
+                                        style: theme_btn_idle
                                     }
                                     button "☀ Light" {
                                         onclick: .SetTheme("light")
-                                        style: "flex-1 py-1 px-2 text-xs font-medium rounded-md bg-primary text-primary-foreground transition-colors"
+                                        style: theme_btn_active
                                     }
                                 }
                             }
                         }
                         col {
                             style: "gap-1.5"
-                            text "Accent Color" { style: "text-xs text-muted-foreground font-medium" }
+                            text "Accent Color" { style: settings_label }
                             row {
                                 style: "items-center gap-3 py-1"
                                 button "" { onclick: .SetAccent("indigo"), style: if .store.accent_color == "indigo" { "w-6 h-6 p-0 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 p-0 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
@@ -154,7 +160,7 @@ widget App {
                         }
                     }
                     text f"Selected: ${.store.selected_date}" {
-                        style: "text-xs text-muted-foreground"
+                        style: caption_text
                     }
                 }
             }

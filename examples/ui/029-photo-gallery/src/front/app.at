@@ -5,6 +5,19 @@
 // 2. 真实缩略图与原图呈现：秒开高清本地缩略图 + 全屏无损原画直接渲染
 // 3. 平板/手机端 UI/UX：取消生硬的左侧 PC 侧栏，采用沉浸式分段导航栏 + 纯净无边框照片网格 + 悬浮胶囊控制条
 
+use stylekit.styles: caption_text
+style label_xs_medium = "text-xs font-medium"
+style emoji_count = "text-[11px] ml-1.5 opacity-60"
+style img_fill = "w-full h-full"
+style photo_btn = "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
+style meta_trunc = "text-xs font-semibold truncate"
+style row_meta = "items-center gap-2.5"
+style glass_btn_a = "h-9 px-4 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center gap-1.5 border border-white/10"
+style glass_btn_b = "h-9 px-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center gap-1.5 backdrop-blur-md border border-white/10"
+style icon_btn = "h-8 w-8 rounded-lg bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
+style group_card = "group rounded-2xl overflow-hidden bg-card border border-border/50 hover:border-primary/60 transition-all shadow-sm flex flex-col"
+style meta_col = "flex-1 min-w-0 pr-2"
+
 widget App {
     msg {
         Init,
@@ -184,7 +197,7 @@ widget App {
 
                         // App 标题徽标
                         row {
-                            style: "items-center gap-2.5"
+                            style: row_meta
                             text "相册" { style: "text-lg font-bold tracking-tight" }
                             text "Photos" { style: "text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium" }
                         }
@@ -196,31 +209,31 @@ widget App {
                                 onclick: .SelectAlbum("all")
                                 style: if .album == "all" { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
                                 text "全部照片" { style: "text-xs" }
-                                text .cnt_all { style: "text-[11px] ml-1.5 opacity-60" }
+                                text .cnt_all { style: emoji_count }
                             }
                             button {
                                 onclick: .SelectAlbum("photos")
                                 style: if .album == "photos" { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
                                 text "📷 图片" { style: "text-xs" }
-                                text .cnt_photos { style: "text-[11px] ml-1.5 opacity-60" }
+                                text .cnt_photos { style: emoji_count }
                             }
                             button {
                                 onclick: .SelectAlbum("screenshots")
                                 style: if .album == "screenshots" { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
                                 text "📱 截图" { style: "text-xs" }
-                                text .cnt_screenshots { style: "text-[11px] ml-1.5 opacity-60" }
+                                text .cnt_screenshots { style: emoji_count }
                             }
                             button {
                                 onclick: .SelectAlbum("favorites")
                                 style: if .album == "favorites" { "h-8 px-4 rounded-lg bg-background text-foreground text-xs font-semibold shadow-sm" } else { "h-8 px-4 rounded-lg bg-transparent text-muted-foreground hover:text-foreground text-xs font-medium" }
                                 text "❤ 收藏" { style: "text-xs" }
-                                text .cnt_favorites { style: "text-[11px] ml-1.5 opacity-60" }
+                                text .cnt_favorites { style: emoji_count }
                             }
                         }
 
                         // 右侧工具区：搜索、排序、网格密度调节、主题色
                         row {
-                            style: "items-center gap-2.5"
+                            style: row_meta
                             input {
                                 value: .search_q
                                 oninput: .SetSearch
@@ -251,13 +264,13 @@ widget App {
                             if .dark_mode {
                                 button {
                                     onclick: .ToggleDark
-                                    style: "h-8 w-8 rounded-lg bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
+                                    style: icon_btn
                                     icon (name: "moon", size: 16)
                                 }
                             } else {
                                 button {
                                     onclick: .ToggleDark
-                                    style: "h-8 w-8 rounded-lg bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
+                                    style: icon_btn
                                     icon (name: "sun", size: 16)
                                 }
                             }
@@ -267,7 +280,7 @@ widget App {
                     // 信息提示条 (状态与真实目录展示)
                     row {
                         style: "h-8 shrink-0 items-center justify-between px-6 bg-muted/20 border-b border-border/40"
-                        text .view_label { style: "text-xs text-muted-foreground" }
+                        text .view_label { style: caption_text }
                         text "源目录: C:/Users/zhaop/Pictures/" { style: "text-[11px] text-muted-foreground/60" }
                     }
 
@@ -281,15 +294,15 @@ widget App {
                                     gap: 16
                                     for item in .view_list {
                                         col {
-                                            style: "group rounded-2xl overflow-hidden bg-card border border-border/50 hover:border-primary/60 transition-all shadow-sm flex flex-col"
+                                            style: group_card
                                             // 图片区域（点击直开原图）
                                             button {
                                                 onclick: .OpenPhoto(item.id)
-                                                style: "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
+                                                style: photo_btn
                                                 col {
                                                     style: "h-56 w-full overflow-hidden bg-muted"
                                                     image (src: item.thumb, alt: item.title, fit: "cover") {
-                                                        style: "w-full h-full"
+                                                        style: img_fill
                                                     }
                                                 }
                                             }
@@ -297,14 +310,14 @@ widget App {
                                             row {
                                                 style: "items-center justify-between px-3.5 py-2.5 bg-card"
                                                 col {
-                                                    style: "flex-1 min-w-0 pr-2"
-                                                    text item.title { style: "text-xs font-semibold truncate" }
+                                                    style: meta_col
+                                                    text item.title { style: meta_trunc }
                                                     text item.date { style: "text-[11px] text-muted-foreground mt-0.5" }
                                                 }
                                                 if item.fav {
                                                     button (text: "❤", variant: "ghost") {
                                                         onclick: .ToggleFav(item.id)
-                                                        style: "shrink-0 h-7 w-7 p-0 text-sm text-red-500 hover:bg-red-500/10 rounded-full"
+                                                        style: "shrink-0 h-7 w-7 p-0 text-sm text-destructive hover:bg-destructive/10 rounded-full"
                                                     }
                                                 } else {
                                                     button (text: "♡", variant: "ghost") {
@@ -322,28 +335,28 @@ widget App {
                                     gap: 14
                                     for item in .view_list {
                                         col {
-                                            style: "group rounded-2xl overflow-hidden bg-card border border-border/50 hover:border-primary/60 transition-all shadow-sm flex flex-col"
+                                            style: group_card
                                             button {
                                                 onclick: .OpenPhoto(item.id)
-                                                style: "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
+                                                style: photo_btn
                                                 col {
                                                     style: "h-48 w-full overflow-hidden bg-muted"
                                                     image (src: item.thumb, alt: item.title, fit: "cover") {
-                                                        style: "w-full h-full"
+                                                        style: img_fill
                                                     }
                                                 }
                                             }
                                             row {
                                                 style: "items-center justify-between px-3 py-2 bg-card"
                                                 col {
-                                                    style: "flex-1 min-w-0 pr-2"
-                                                    text item.title { style: "text-xs font-semibold truncate" }
+                                                    style: meta_col
+                                                    text item.title { style: meta_trunc }
                                                     text item.date { style: "text-[10px] text-muted-foreground mt-0.5" }
                                                 }
                                                 if item.fav {
                                                     button (text: "❤", variant: "ghost") {
                                                         onclick: .ToggleFav(item.id)
-                                                        style: "shrink-0 h-6 w-6 p-0 text-xs text-red-500 hover:bg-red-500/10 rounded-full"
+                                                        style: "shrink-0 h-6 w-6 p-0 text-xs text-destructive hover:bg-destructive/10 rounded-full"
                                                     }
                                                 } else {
                                                     button (text: "♡", variant: "ghost") {
@@ -364,11 +377,11 @@ widget App {
                                             style: "group rounded-xl overflow-hidden bg-card border border-border/50 hover:border-primary/60 transition-all shadow-sm flex flex-col"
                                             button {
                                                 onclick: .OpenPhoto(item.id)
-                                                style: "w-full h-auto p-0 border-0 rounded-none bg-transparent block cursor-pointer"
+                                                style: photo_btn
                                                 col {
                                                     style: "h-36 w-full overflow-hidden bg-muted"
                                                     image (src: item.thumb, alt: item.title, fit: "cover") {
-                                                        style: "w-full h-full"
+                                                        style: img_fill
                                                     }
                                                 }
                                             }
@@ -382,7 +395,7 @@ widget App {
                                                 if item.fav {
                                                     button (text: "❤", variant: "ghost") {
                                                         onclick: .ToggleFav(item.id)
-                                                        style: "shrink-0 h-5 w-5 p-0 text-xs text-red-500 rounded-full"
+                                                        style: "shrink-0 h-5 w-5 p-0 text-xs text-destructive rounded-full"
                                                     }
                                                 } else {
                                                     button (text: "♡", variant: "ghost") {
@@ -400,7 +413,7 @@ widget App {
                                 style: "w-full flex flex-col items-center justify-center py-24 gap-3"
                                 text "🖼️" { style: "text-5xl opacity-80" }
                                 text "当前相册未找到照片" { style: "text-sm font-semibold" }
-                                text "试着清空搜索关键字，或在上方切换到其他相簿" { style: "text-xs text-muted-foreground" }
+                                text "试着清空搜索关键字，或在上方切换到其他相簿" { style: caption_text }
                             }
                         }
                     }
@@ -417,9 +430,9 @@ widget App {
                         style: "h-16 shrink-0 items-center justify-between px-6 bg-gradient-to-b from-black/80 to-transparent z-10 gap-4"
                         button {
                             onclick: .BackToGrid
-                            style: "h-9 px-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center gap-1.5 backdrop-blur-md border border-white/10"
+                            style: glass_btn_b
                             icon (name: "chevron-left", size: 16)
-                            text "返回网格" { style: "text-xs font-medium" }
+                            text "返回网格" { style: label_xs_medium }
                         }
                         col {
                             style: "items-center text-center"
@@ -428,8 +441,8 @@ widget App {
                         }
                         button {
                             onclick: .ToggleFav(.cur_id)
-                            style: "h-9 px-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center gap-1.5 backdrop-blur-md border border-white/10"
-                            text .fav_label { style: "text-xs font-medium" }
+                            style: glass_btn_b
+                            text .fav_label { style: label_xs_medium }
                         }
                     }
 
@@ -448,15 +461,15 @@ widget App {
                             style: "items-center px-4 py-2 rounded-full bg-white/15 backdrop-blur-xl border border-white/15 gap-4 shadow-2xl"
                             button {
                                 onclick: .PrevPhoto
-                                style: "h-9 px-4 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center gap-1.5 border border-white/10"
+                                style: glass_btn_a
                                 icon (name: "chevron-left", size: 16)
-                                text "上一张" { style: "text-xs font-medium" }
+                                text "上一张" { style: label_xs_medium }
                             }
                             text "•" { style: "text-white/30 text-xs" }
                             button {
                                 onclick: .NextPhoto
-                                style: "h-9 px-4 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center gap-1.5 border border-white/10"
-                                text "下一张" { style: "text-xs font-medium" }
+                                style: glass_btn_a
+                                text "下一张" { style: label_xs_medium }
                                 icon (name: "chevron-right", size: 16)
                             }
                         }
