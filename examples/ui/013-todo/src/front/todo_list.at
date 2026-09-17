@@ -5,9 +5,17 @@
 
 use todo_store: TodoStore
 
+// PLAN-637 Phase B token 化映射（2026-09-17，B1）：filter 选中态 border-red-400→
+// border-primary（选中态强调）；hover:border-gray-300→hover:border-border；行分隔
+// border-gray-200→border-border；编辑输入 border-gray-400→border-border；✓ 提交
+// bg-blue-500/text-white→bg-primary/text-primary-foreground；✕ 取消 text-gray-500→
+// text-muted-foreground；完成项 text-gray-400→text-muted-foreground、待办项
+// text-gray-800→text-foreground；删除 × hover:text-red-500→hover:text-destructive
+// （唯一真 destructive 语义）；页脚 text-gray-600→text-muted-foreground。
+
 // PLAN-607: Declarative style recipes for filter buttons
-style filter_btn_active = "px-2 py-1 border border-red-400 rounded text-xs"
-style filter_btn_inactive = "px-2 py-1 border border-transparent rounded text-xs hover:border-gray-300"
+style filter_btn_active = "px-2 py-1 border border-primary rounded text-xs"
+style filter_btn_inactive = "px-2 py-1 border border-transparent rounded text-xs hover:border-border"
 
 widget TodoList() {
     msg { FilterAll, FilterActive, FilterCompleted, ToggleTodo(int), DeleteTodo(int),
@@ -19,7 +27,7 @@ widget TodoList() {
 
     view {
         col {
-            style: "border-t border-gray-200"
+            style: "border-t border-border"
 
             // Todo items — inline rendering with centralized editing state (§18)
             col {
@@ -27,16 +35,16 @@ widget TodoList() {
                 for item in .store.todos {
                     if .filter == "all" || (.filter == "active" && item.done == false) || (.filter == "completed" && item.done == true) {
                         row {
-                            style: "flex items-center py-3 px-4 border-b border-gray-200"
+                            style: "flex items-center py-3 px-4 border-b border-border"
                             if .store.editing_id == item.id {
                                 input {
                                     value: .store.edit_text
                                     oninput: .EditInputChanged
                                     onenter: .CommitEdit
-                                    style: "flex-1 text-lg px-2 py-1 border border-gray-400 rounded outline-none"
+                                    style: "flex-1 text-lg px-2 py-1 border border-border rounded outline-none"
                                 }
-                                button "✓" { onclick: .CommitEdit, style: "ml-2 px-3 py-1 text-sm bg-blue-500 text-white rounded" }
-                                button "✕" { onclick: .CancelEdit, style: "ml-1 px-3 py-1 text-sm text-gray-500 rounded" }
+                                button "✓" { onclick: .CommitEdit, style: "ml-2 px-3 py-1 text-sm bg-primary text-primary-foreground rounded" }
+                                button "✕" { onclick: .CancelEdit, style: "ml-1 px-3 py-1 text-sm text-muted-foreground rounded" }
                             } else {
                                 checkbox {
                                     checked: item.done
@@ -46,14 +54,14 @@ widget TodoList() {
                                 text item.text {
                                     onclick: .StartEdit(item.id)
                                     style: if item.done {
-                                        "flex-1 text-lg text-gray-400 line-through cursor-pointer"
+                                        "flex-1 text-lg text-muted-foreground line-through cursor-pointer"
                                     } else {
-                                        "flex-1 text-lg text-gray-800 cursor-pointer"
+                                        "flex-1 text-lg text-foreground cursor-pointer"
                                     }
                                 }
                                 button "×" {
                                     onclick: .DeleteTodo(item.id)
-                                    style: "ml-2 w-8 h-8 text-xl text-gray-400 hover:text-red-500"
+                                    style: "ml-2 w-8 h-8 text-xl text-muted-foreground hover:text-destructive"
                                 }
                             }
                         }
@@ -64,7 +72,7 @@ widget TodoList() {
             // Footer with filter buttons + count
             if .store.todos.len() > 0 {
                 row {
-                    style: "flex items-center justify-between px-4 py-3 border-t border-gray-200 text-sm text-gray-600"
+                    style: "flex items-center justify-between px-4 py-3 border-t border-border text-sm text-muted-foreground"
                     text f"${.store.active_count} items left"
 
                     row {

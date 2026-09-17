@@ -154,6 +154,9 @@ test_temp.txt
 !crates/auto-man/wm-test/package.json
 !packages/drawlist-renderer/package.json
 !examples/remote/viewer/package.json
+# Plan 637：style 守卫清单（guard 正例的驱动数据，随批次追加；*.json 母规则
+# 曾吞掉本件——B1 提交时发现漏库，强制补入后补否定规则）
+!scripts/style_palette_manifest.json
 !examples/ui/**/package.json
 playwright-report/
 test-results/

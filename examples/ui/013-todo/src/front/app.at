@@ -6,6 +6,11 @@
 use todo_store: TodoStore
 use todo_list: TodoList
 
+// PLAN-637 Phase B token 化映射（2026-09-17，B1）：页面底 bg-gray-100→bg-background；
+// 标题 text-red-400→text-primary（TodoMVC 传承红按设计退休，角色=品牌强调）；卡面
+// bg-white→bg-card；输入行 border-gray-200→border-border；页脚提示 text-gray-400→
+// text-muted-foreground。todo_list.at 侧映射见其文件头注。
+
 widget App {
     msg {
         Init, AddTodo, ToggleAll
@@ -17,20 +22,20 @@ widget App {
 
     view {
         col {
-            style: "flex flex-col items-center min-h-screen bg-gray-100 pt-16"
+            style: "flex flex-col items-center min-h-screen bg-background pt-16"
 
             // Title
             h1 "todos" {
-                style: "text-6xl font-thin text-center text-red-400 mb-4"
+                style: "text-6xl font-thin text-center text-primary mb-4"
             }
 
             // Main card
             col {
-                style: "bg-white w-full max-w-xl shadow-lg rounded-lg overflow-hidden"
+                style: "bg-card w-full max-w-xl shadow-lg rounded-lg overflow-hidden"
 
                 // Input row
                 row {
-                    style: "flex items-center border-b border-gray-200"
+                    style: "flex items-center border-b border-border"
                     checkbox {
                         checked: .store.active_count == 0 && .store.todos.len() > 0
                         onclick: .ToggleAll
@@ -50,7 +55,7 @@ widget App {
 
             // Footer hint
             text "Double-click text to edit" {
-                style: "mt-8 text-xs text-gray-400"
+                style: "mt-8 text-xs text-muted-foreground"
             }
         }
     }
