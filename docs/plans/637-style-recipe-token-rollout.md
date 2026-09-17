@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象）"]
 
 affects: [auto-lang/ui, autoui-examples]
-current_step: 5
+current_step: 6
 total_steps: 10
 ---
 
@@ -293,8 +293,20 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   8 簇（vue 11.4%/vm 10.5% 差异逐条归因，状态点+渐变豁免登记）；005 A+B 合并
   （3 本地配方 ×6 位点 + 9 簇，vue 16.2%；vm 81.4%=bg-white→bg-card 暗主题整卡
   翻转，目标行为）。W1 无全等 recipe 命中，依 r2 AC-05 注记不强行挂 dep。
-- **T-03 W2 波**（006/007/008/009/010/012/014）：同模板；按需增补
+- [x] **T-03 W2 波**（006/007/008/009/010/012/014）：同模板；按需增补
   stylekit recipe（版本随波推进）。（r3：= **B2** 批次。）
+  [✅ 已完成 2026-09-17 B2] 007：Phase A 12 配方 88 位点双端 IDENTICAL（git 重建
+  中间态实拍）+ Phase B 全局映射（页底/文字/卡面）；stylekit 双消费 caption_text
+  ×12 + section_title(text-sm) ×21（声明级派生，归一后体序全等）；类目色 ×11 豁免。
+  008：Phase A 4 配方 24 位点 IDENTICAL + Phase B 明暗臂收敛（zinc/gray 对按角色
+  归 token，plan3 按钮→secondary 族），feat_text ×18 等收敛提取。012：Phase A
+  12 配方 48 位点 IDENTICAL + 状态按钮映射（开始→primary/停止→destructive/
+  暂停→secondary），Vue 差异 bbox=映射按钮逐一吻合。006/009/010/014 小面 A+B
+  合并：009/010 明暗臂收敛+卡面 bg-card，014 蓝→primary 族+primary-foreground
+  /80・/70 降档，006 三点映射。守卫 completed 15，自测 5/5（补行尾注释剥除+
+  URL 保护用例），正例 15/15。偏差：fit 窗 VM 截图竞态致 003/012 VM 像素证据
+  退化（pre-existing 空窗/半绘帧，vue 侧+结构树承担），详见 evidence/637/
+  b2-evidence-summary.md §4。
 - **T-04 W3 波**（15 个中型 demo）：同模板；允许按 demo 分子提交。
   （r3：拆 **B3** 轻半 10 demo / **B4** 巨型 5 demo 两次 fold；
   tree_icon 四胞胎（018/026/027/041）聚 B4 机械联动。）
@@ -337,6 +349,21 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
 | 045 | 635 达标 | 无色可换 | IDENTICAL / IDENTICAL（回归） | ✅ | ✅（既有） |
 | 025/038 | N/A（无 .at 源码，r2） | N/A | — | — | — |
 
+### 8.2 B2 矩阵增补（2026-09-17）
+
+证据：`docs/plans/evidence/637/b2-evidence-summary.md`。Phase A 中间态对拍 =
+`<demo>-<端>-phaseA.png`；终态 = `-before-b2/-after-b2` 对。
+
+| demo | Phase A | Phase B | 对拍（vue/vm） | 门禁 | 消费 stylekit |
+|---|---|---|---|---|---|
+| 006 | 无重复串 | ✅ 3 点映射+渐变豁免 | 1.20% / IDENTICAL（暗支换白不可分） | ✅ | — |
+| 007 | ✅ 12 配方 88 位点 | ✅ 全局映射+类目色豁免 ×11 | phaseA IDENTICAL/IDENTICAL；终态 97.97% / 98.11% | ✅ | ✅ caption_text ×12 + section_title ×21 |
+| 008 | ✅ 4 配方 24 位点 | ✅ 明暗臂收敛 | phaseA IDENTICAL/IDENTICAL；终态 97.20% / 97.15% | ✅ | — |
+| 009 | ✅ 4 配方 12 位点（A+B 合并） | ✅ 收敛+缩略图 muted | 99.88% / 99.71% | ✅ | — |
+| 010 | ✅ field_col ×3（A+B 合并） | ✅ 收敛+emerald 豁免 ×7 | 91.67% / 96.75% | ✅ | — |
+| 012 | ✅ 12 配方 48 位点 | ✅ 状态按钮三映射 | phaseA IDENTICAL/IDENTICAL；终态 0.41% / 空窗退化§4 | ✅ | — |
+| 014 | ✅ 4 配方 8 位点（A+B 合并） | ✅ 蓝→primary 族 | 27.20% / 26.28% | ✅ | — |
+
 ## 9. 复审记录
 
 - （draft 起草 handoff 2026-09-17：`stage: new | PLAN-637 | plan_revision: 1 |
@@ -361,6 +388,15 @@ B5 终态执行一次，中间批次不重复付全量门禁成本。备选：00
   仅在 B5 终态执行一次；批次级偏差 7 项见 b1-evidence-summary.md §3
   （r2 standalone 失实勘正、006/010 SetTheme/SetAccent 保留、016 本地面板保留、
   004 状态点豁免、T-00 验证命令勘正、主检出副产物还原、截图脚本陷阱）。）
+- （B2 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
+  outcome: pass（批次级，整体保持 executing） | code_commit: plan-637-dev B2 提交 |
+  task_ids: T-03 | evidence: docs/plans/evidence/637/b2-evidence-summary.md
+  （Phase A 中间态对拍 + 终态归因表 + 守卫修复记录） | blockers: 无 |
+  next: fold 回 master 后 B3（T-04a 轻半 10 demo）。要点：007 stylekit 双消费
+  （caption_text ×12 + section_title ×21，AC-05 累计 3 demo）；大面三件 Phase A
+  零漂移经 git 重建中间态实拍证明；guard 增行尾注释剥除（URL 保护）；fit 窗
+  VM 截图竞态为已知债（003/012 像素证据退化，vue+结构树承担）；偏差 6 项见
+  b2-evidence-summary.md §4。）
 
 ## 10. 待澄清事项
 
