@@ -21,6 +21,8 @@
 
 use player_store: PlayerStore
 
+style playpause = "transport-playpause w-9 h-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+
 widget Controls {
     msg {
         TogglePlay,
@@ -64,13 +66,13 @@ widget Controls {
                 if .store.is_playing {
                     button {
                         onclick: .TogglePlay
-                        style: "transport-playpause w-9 h-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                        style: playpause
                         icon (name: "pause", size: 16)
                     }
                 } else {
                     button {
                         onclick: .TogglePlay
-                        style: "transport-playpause w-9 h-9 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                        style: playpause
                         icon (name: "play", size: 16)
                     }
                 }

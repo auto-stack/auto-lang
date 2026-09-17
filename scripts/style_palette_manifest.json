@@ -15,7 +15,17 @@
     "009-article-feed",
     "010-contact-form",
     "012-stopwatch",
-    "014-weather"
+    "014-weather",
+    "016-calendar",
+    "017-chat",
+    "021-blog-viewer",
+    "022-kanban",
+    "029-photo-gallery",
+    "030-video-player",
+    "031-image-viewer",
+    "031-paint",
+    "043-clipboard-bridge",
+    "044-dnd-bridge"
   ],
   "exemptions": {
     "004-profile-card": {
@@ -46,6 +56,33 @@
       "bg-emerald-50": "成功回执底亮支——同上",
       "border-emerald-800": "成功回执框暗支——同上",
       "border-emerald-200": "成功回执框亮支——同上"
+    },
+    "016-calendar": {
+      "bg-indigo-500": "accent 五色板色票（016 内置 settings 面板，同 015 口径：选择器预览件，字面量即语义）（B3/T-04a）",
+      "bg-rose-500": "accent 色票 coral（同上）",
+      "bg-sky-500": "accent 色票 ocean（同上）",
+      "bg-emerald-500": "accent 色票 sage（同上）",
+      "bg-amber-500": "accent 色票 amber（同上）"
+    },
+    "022-kanban": {
+      "bg-gray-100": "To Do 泳道底色——泳道类目色，registry 无语义键（B3/T-04a）",
+      "bg-orange-50": "In Progress 泳道底色——同上",
+      "text-orange-600": "In Progress 泳道标题——同上",
+      "bg-green-50": "Done 泳道底色——同上",
+      "text-green-600": "Done 泳道标题——同上"
+    },
+    "029-photo-gallery": {
+      "bg-white/10": "照片上的玻璃拟态/覆盖层（hover:/25）——叠于任意图像上，字面量即语义，无 token 对应（B3/T-04a）",
+      "bg-white/15": "照片覆盖层——同上",
+      "bg-white/20": "照片覆盖层——同上",
+      "bg-white/25": "照片覆盖层 hover——同上",
+      "text-white": "照片/视频上的文字必须恒白（任意底图上随主题换色不可读）——同上",
+      "text-white/60": "照片覆盖文字降档——同上",
+      "text-white/30": "照片覆盖文字降档——同上"
+    },
+    "030-video-player": {
+      "text-white": "视频画面上的标题叠字（viewport）——恒白可读性，同 029 口径",
+      "text-amber-400": "audio-note 提示（警告/注意语义，registry 无 warning 键，状态色豁免）"
     }
   }
 }

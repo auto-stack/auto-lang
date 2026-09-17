@@ -1,6 +1,9 @@
 // composer.at — enhanced input bar with emoji picker and quick chips.
 // DoSend msg avoids name collision with on_send callback (Gotcha U21).
 // Input sync via value: .draft two-way binding; on_typing triggered via inline lambda.
+style emoji_react = "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none"
+style quick_reply = "text-xs px-2.5 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors border border-border/40 font-medium"
+
 widget Composer(on_send: msg, on_typing: msg) {
     msg { DoSend, InsertEmoji(str), SendQuick(str) }
     model { var draft str = "" }
@@ -12,19 +15,19 @@ widget Composer(on_send: msg, on_typing: msg) {
                 style: "items-center justify-between gap-2 overflow-x-auto pb-1"
                 row {
                     style: "items-center gap-1"
-                    button "😀" { onclick: .InsertEmoji("😀"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
-                    button "😂" { onclick: .InsertEmoji("😂"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
-                    button "👍" { onclick: .InsertEmoji("👍"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
-                    button "❤️" { onclick: .InsertEmoji("❤️"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
-                    button "🎉" { onclick: .InsertEmoji("🎉"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
-                    button "🔥" { onclick: .InsertEmoji("🔥"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
-                    button "🚀" { onclick: .InsertEmoji("🚀"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
-                    button "🤖" { onclick: .InsertEmoji("🤖"), style: "text-base p-1 bg-transparent hover:scale-125 transition-transform border-0 cursor-pointer select-none" }
+                    button "😀" { onclick: .InsertEmoji("😀"), style: emoji_react }
+                    button "😂" { onclick: .InsertEmoji("😂"), style: emoji_react }
+                    button "👍" { onclick: .InsertEmoji("👍"), style: emoji_react }
+                    button "❤️" { onclick: .InsertEmoji("❤️"), style: emoji_react }
+                    button "🎉" { onclick: .InsertEmoji("🎉"), style: emoji_react }
+                    button "🔥" { onclick: .InsertEmoji("🔥"), style: emoji_react }
+                    button "🚀" { onclick: .InsertEmoji("🚀"), style: emoji_react }
+                    button "🤖" { onclick: .InsertEmoji("🤖"), style: emoji_react }
                 }
                 row {
                     style: "items-center gap-1.5 flex-shrink-0"
-                    button "Hello! 👋" { onclick: .SendQuick("Hello! 👋"), style: "text-xs px-2.5 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors border border-border/40 font-medium" }
-                    button "Got it! 👍" { onclick: .SendQuick("Got it! 👍"), style: "text-xs px-2.5 py-1 bg-muted hover:bg-muted/80 text-foreground rounded-lg transition-colors border border-border/40 font-medium" }
+                    button "Hello! 👋" { onclick: .SendQuick("Hello! 👋"), style: quick_reply }
+                    button "Got it! 👍" { onclick: .SendQuick("Got it! 👍"), style: quick_reply }
                 }
             }
             // Input row

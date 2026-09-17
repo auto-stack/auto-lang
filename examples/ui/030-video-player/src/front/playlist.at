@@ -18,6 +18,10 @@
 use player_store: PlayerStore
 use.web component FilePicker from "src/front/file_picker.vue"
 
+use stylekit.styles: caption_text
+style section_label = "text-xs font-semibold text-muted-foreground"
+style xs_medium = "text-xs font-medium"
+
 widget Playlist {
     msg {
         SelectIndex(int),
@@ -59,7 +63,7 @@ widget Playlist {
                 if .store.item_count == 0 {
                     col {
                         style: "w-full items-center justify-center gap-1 py-6"
-                        text "队列为空" { style: "text-xs font-medium" }
+                        text "队列为空" { style: xs_medium }
                         text "检查媒体根目录（AUTO_MEDIA_ROOT）后重新扫描" {
                             style: "text-xs text-muted-foreground text-center"
                         }
@@ -75,11 +79,11 @@ widget Playlist {
                             // 分组标题：根本身用可见文案（空串不能当标题）。
                             if g == "" {
                                 text "根目录" {
-                                    style: "text-xs font-semibold text-muted-foreground"
+                                    style: section_label
                                 }
                             } else {
                                 text g {
-                                    style: "text-xs font-semibold text-muted-foreground"
+                                    style: section_label
                                 }
                             }
                         }
@@ -93,7 +97,7 @@ widget Playlist {
                                     } else {
                                         "queue-item w-full px-3 py-2 rounded-md border border-transparent hover:bg-muted cursor-pointer gap-0.5"
                                     }
-                                    text item.title { style: "text-xs font-medium" }
+                                    text item.title { style: xs_medium }
                                     text item.size_str {
                                         style: "text-xs text-muted-foreground font-mono"
                                     }
@@ -116,7 +120,7 @@ widget Playlist {
                     style: "rescan-btn w-full h-9 items-center justify-center rounded-md bg-muted border border-border text-xs font-medium hover:bg-muted/70 cursor-pointer"
                 }
                 text .store.queue_summary {
-                    style: "text-xs text-muted-foreground"
+                    style: caption_text
                 }
                 // 隐藏的 File API 包装：size: 0 让 VM 端的 lucide 占位
                 // （"file-picker" 不在表内）不可见；Vue 端它只渲染 display:none

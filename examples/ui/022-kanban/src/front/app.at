@@ -11,14 +11,14 @@ widget App {
 
     view {
         col {
-            style: "min-h-screen bg-gray-50 text-gray-900"
+            style: "min-h-screen bg-background text-foreground"
             // Header
             row {
-                style: "w-full items-center justify-between p-4 border-b border-gray-200 bg-white"
+                style: "w-full items-center justify-between p-4 border-b border-border bg-card"
                 row {
                     style: "items-center gap-2"
-                    text "Project Board" { style: "text-xl font-bold text-gray-800" }
-                    text "Kanban" { style: "text-sm text-gray-400" }
+                    text "Project Board" { style: "text-xl font-bold text-foreground" }
+                    text "Kanban" { style: "text-sm text-muted-foreground" }
                 }
             }
             // Route outlet

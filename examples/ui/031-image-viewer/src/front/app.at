@@ -3,6 +3,14 @@
 // shared media route and ImageSurface renderer.
 use back.api: open_file, open_directory, current_uri, names, request_view, close_session, image_stats, navigate
 
+use stylekit.styles: caption_text
+style ctrl_size = "w-8 h-7"
+style tool_sm = "px-2.5 py-1.5 text-xs"
+style tool_xs = "px-2 text-xs"
+style caption_sm = "text-sm text-muted-foreground"
+style stage_row = "items-center justify-center gap-2"
+style content_col = "flex-1 min-h-0"
+
 widget App {
     msg {
         Init,
@@ -75,27 +83,27 @@ widget App {
                 }
                 row {
                     style: "items-center gap-1"
-                    button "Open File" { onclick: .OpenFile, style: "px-2.5 py-1.5 text-xs" }
-                    button "Open Directory" { onclick: .OpenDirectory, style: "px-2.5 py-1.5 text-xs" }
-                    button "Fullscreen" { onclick: .ToggleFullscreen, style: "px-2.5 py-1.5 text-xs" }
-                        button "Stats" { onclick: .RefreshStats, style: "px-2.5 py-1.5 text-xs" }
+                    button "Open File" { onclick: .OpenFile, style: tool_sm }
+                    button "Open Directory" { onclick: .OpenDirectory, style: tool_sm }
+                    button "Fullscreen" { onclick: .ToggleFullscreen, style: tool_sm }
+                        button "Stats" { onclick: .RefreshStats, style: tool_sm }
                 }
             }
 
             row {
-                style: "flex-1 min-h-0"
+                style: content_col
                 col {
                     style: "w-52 shrink-0 border-r border-border bg-card p-3 gap-2 overflow-hidden"
                     row {
                         style: "items-center justify-between"
                         text "Images" { style: "text-xs font-semibold" }
-                        text .image_count { style: "text-xs text-muted-foreground" }
+                        text .image_count { style: caption_text }
                     }
                     if .image_count == 0 {
                         text "No images yet" { style: "text-xs text-muted-foreground p-2" }
                     } else {
                         col {
-                            style: "flex-1 min-h-0"
+                            style: content_col
                             col {
                                 style: "gap-1"
                                 for item in .thumbnails {
@@ -113,31 +121,31 @@ widget App {
                     style: "flex-1 min-w-0 min-h-0"
                     row {
                         style: "h-10 shrink-0 items-center justify-center gap-1 border-b border-border"
-                        button "◀" { onclick: .PrevImage, style: "w-8 h-7" }
-                        button "▶" { onclick: .NextImage, style: "w-8 h-7" }
-                        button "−" { onclick: .ZoomOut, style: "w-8 h-7" }
+                        button "◀" { onclick: .PrevImage, style: ctrl_size }
+                        button "▶" { onclick: .NextImage, style: ctrl_size }
+                        button "−" { onclick: .ZoomOut, style: ctrl_size }
                         text "Zoom" { style: "text-xs text-muted-foreground px-2" }
-                        button "+" { onclick: .ZoomIn, style: "w-8 h-7" }
-                        button "Fit" { onclick: .FitContain, style: "px-2 text-xs" }
-                        button "Width" { onclick: .FitWidth, style: "px-2 text-xs" }
-                        button "1:1" { onclick: .OneToOne, style: "px-2 text-xs" }
-                        button "↺" { onclick: .RotateLeft, style: "w-8 h-7" }
-                        button "↻" { onclick: .RotateRight, style: "w-8 h-7" }
+                        button "+" { onclick: .ZoomIn, style: ctrl_size }
+                        button "Fit" { onclick: .FitContain, style: tool_xs }
+                        button "Width" { onclick: .FitWidth, style: tool_xs }
+                        button "1:1" { onclick: .OneToOne, style: tool_xs }
+                        button "↺" { onclick: .RotateLeft, style: ctrl_size }
+                        button "↻" { onclick: .RotateRight, style: ctrl_size }
                     }
 
                     col {
                         style: "flex-1 min-h-0 items-center justify-center p-3 bg-muted/20"
                         if .view_state == "empty" {
                             col {
-                                style: "items-center justify-center gap-2"
+                                style: stage_row
                                 text "🖼️" { style: "text-5xl opacity-40" }
-                                text "Choose an image file or directory" { style: "text-sm text-muted-foreground" }
+                                text "Choose an image file or directory" { style: caption_sm }
                             }
                         } else if .view_state == "loading" {
-                            text "Loading image…" { style: "text-sm text-muted-foreground" }
+                            text "Loading image…" { style: caption_sm }
                         } else if .view_state == "error" {
                             col {
-                                style: "items-center justify-center gap-2"
+                                style: stage_row
                                 text "Unable to load image" { style: "text-sm text-destructive" }
                                 button "Retry" { onclick: .OpenFile, style: "px-3 py-1.5 text-xs" }
                             }

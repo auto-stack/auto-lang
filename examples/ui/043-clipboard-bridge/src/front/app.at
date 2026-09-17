@@ -8,6 +8,15 @@
 // 起跑形态为示例目录内 `auto run -r vm`——资产路径（assets/…）与 image
 // src 均按进程 CWD（=示例根）解析。
 
+use stylekit.styles: caption_text
+style panel = "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
+style field_label = "text-sm font-semibold text-foreground"
+style input_x = "px-3 py-2 rounded-md border border-border text-sm"
+style btn_primary = "px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm"
+style row_gap2 = "items-center gap-2"
+style text_fg = "text-sm text-foreground"
+style chip_inline = "gap-1 px-3 py-2 rounded-md bg-muted/40"
+
 widget App {
     msg Msg {
         TextGet,
@@ -36,18 +45,18 @@ widget App {
                 style: "gap-1"
                 h1 "剪贴板三族互通" { style: "text-xl font-bold text-foreground" }
                 text "043-clipboard-bridge — text (418) / files (CF_HDROP) / image (DIBV5+PNG)" {
-                    style: "text-xs text-muted-foreground"
+                    style: caption_text
                 }
                 text .status { style: "text-xs text-primary" }
             }
 
             // ── 文本卡 ────────────────────────────────────────────
             col {
-                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
+                style: panel
                 row {
-                    style: "items-center gap-2"
-                    text "文本" { style: "text-sm font-semibold text-foreground" }
-                    text "(Plan 418 · arboard)" { style: "text-xs text-muted-foreground" }
+                    style: row_gap2
+                    text "文本" { style: field_label }
+                    text "(Plan 418 · arboard)" { style: caption_text }
                 }
                 row {
                     style: "gap-2"
@@ -58,78 +67,78 @@ widget App {
                     }
                     button {
                         onclick: .TextSet
-                        style: "px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm"
+                        style: btn_primary
                         text "写出"
                     }
                     button {
                         onclick: .TextGet
-                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        style: input_x
                         text "读取"
                     }
                 }
                 col {
-                    style: "gap-1 px-3 py-2 rounded-md bg-muted/40"
-                    text "剪贴板文本:" { style: "text-xs text-muted-foreground" }
-                    text .text_out { style: "text-sm text-foreground" }
+                    style: chip_inline
+                    text "剪贴板文本:" { style: caption_text }
+                    text .text_out { style: text_fg }
                 }
             }
 
             // ── 文件卡 ────────────────────────────────────────────
             col {
-                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
+                style: panel
                 row {
-                    style: "items-center gap-2"
-                    text "文件" { style: "text-sm font-semibold text-foreground" }
-                    text "(CF_HDROP · Explorer Ctrl+C / Ctrl+V)" { style: "text-xs text-muted-foreground" }
+                    style: row_gap2
+                    text "文件" { style: field_label }
+                    text "(CF_HDROP · Explorer Ctrl+C / Ctrl+V)" { style: caption_text }
                 }
                 row {
                     style: "gap-2"
                     button {
                         onclick: .FilesGet
-                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        style: input_x
                         text "读取剪贴板文件"
                     }
                     button {
                         onclick: .FilesSet
-                        style: "px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm"
+                        style: btn_primary
                         text "写出示例文件"
                     }
                 }
                 col {
-                    style: "gap-1 px-3 py-2 rounded-md bg-muted/40"
+                    style: chip_inline
                     if .files_read {
                         if .files.len() == 0 {
                             text "(剪贴板无 CF_HDROP — 先去 Explorer Ctrl+C 一个文件)" {
-                                style: "text-xs text-muted-foreground"
+                                style: caption_text
                             }
                         }
                         for i, p in .files {
-                            text p { style: "text-sm text-foreground" }
+                            text p { style: text_fg }
                         }
                     } else {
-                        text "(未读取)" { style: "text-xs text-muted-foreground" }
+                        text "(未读取)" { style: caption_text }
                     }
                 }
             }
 
             // ── 图片卡 ────────────────────────────────────────────
             col {
-                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
+                style: panel
                 row {
-                    style: "items-center gap-2"
-                    text "图片" { style: "text-sm font-semibold text-foreground" }
-                    text "(CF_DIBV5 / PNG · 截图工具复制后读取)" { style: "text-xs text-muted-foreground" }
+                    style: row_gap2
+                    text "图片" { style: field_label }
+                    text "(CF_DIBV5 / PNG · 截图工具复制后读取)" { style: caption_text }
                 }
                 row {
                     style: "gap-2"
                     button {
                         onclick: .ImageGet
-                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        style: input_x
                         text "读取剪贴板图片"
                     }
                     button {
                         onclick: .ImageSet
-                        style: "px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm"
+                        style: btn_primary
                         text "写出示例图"
                     }
                 }
@@ -139,12 +148,12 @@ widget App {
                         image (src: .img_path) {
                             style: "max-w-xs max-h-48 border border-border rounded-md"
                         }
-                        text (text: f"temp: {.img_path}", style: "text-xs text-muted-foreground") {}
-                        text (text: f"尺寸 {.img_w} × {.img_h}", style: "text-xs text-muted-foreground") {}
+                        text (text: f"temp: {.img_path}", style: caption_text) {}
+                        text (text: f"尺寸 {.img_w} × {.img_h}", style: caption_text) {}
                     }
                 } else {
                     text "(未读取 — 截图/浏览器复制图片后点「读取剪贴板图片」)" {
-                        style: "text-xs text-muted-foreground"
+                        style: caption_text
                     }
                 }
             }

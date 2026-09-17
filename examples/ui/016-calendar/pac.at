@@ -11,3 +11,7 @@ window: "fit"
 # PLAN-637 T-01b: dep settings 悬空声明移除（common/settings 已迁址 auto-os；
 # 本 demo 的 settings 面板为 store 驱动的本地实现，不依赖共享包，自足）。
 desktop: "true"
+
+dep stylekit {
+    path: "../stylekit"
+}
