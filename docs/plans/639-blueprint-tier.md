@@ -1,20 +1,24 @@
 ---
 plan_id: PLAN-639
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: blueprint-tier（Block 层更名 Blueprint + 平台化地基）
 author: [zhaopuming]
 created_at: 2026-09-17
 updated_at: 2026-09-17
 plan_revision: 1
 
-# /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+# /auto-plan:review 结束时填写（review 2026-09-17 终稿）：
+supersedes_spec_components:
+  - docs/specs/blocks/project.md（→blueprint/project.md 更名改写；旧路径退役）
 new_spec_components:
-  - docs/specs/blueprint/contract.md（Blueprint 六问契约：slot 树/action 点/状态归属/变体/打包解析/双形态语义）
-touched_goals: ["GOAL-011: Blocks 一等公民生态（更名 Blueprint 并升级消费机制）"]
+  - docs/specs/blueprint/contract.md（Blueprint 六问契约：输入/输出/状态归属/变体/打包解析/双形态）
+touched_goals: ["GOAL-011: Blueprint 一等公民生态（更名+三通道+双轨地基）"]
+# 修改类规范增量（SD-02/03/04 落点，合并时随 §4 规范增量表沉淀）：
+# docs/specs/blueprint/project.md、docs/specs/goals.md、
+# docs/specs/autoui-skill/project.md、docs/specs/auto-lang/ui/design/blueprint-tier.md
 
 affects: [blueprint, autoui-skill, blocks]
-current_step: 5
+current_step: 9
 total_steps: 9
 ---
 
@@ -227,17 +231,41 @@ CLI 面（`auto bp`，`auto block` 别名保留一版 + 弃用提示）、blocks
   quote-aware tag-end（lambda `>` 误配）；②bp 参考实现语法规范化（旧语法
   解析错/strict 校验拦截）；③blueprints/pac.at 包化（build 依赖物化面）。
   全档与基线零差异。
-- **T-05** [新] a2ts 发射 `actions{}`/`menubar`/`toolbar` 到 vue 轨：
+- **T-05** [x] [新] a2ts 发射 `actions{}`/`menubar`/`toolbar` 到 vue 轨：
   `crates/auto-lang/src/ui_gen`（vue 发射面）+ demo app 双轨断言。
   依赖：T-04。→ AC-04
-- **T-06** [新] L1 bind v0：`auto bp add --bind` 产出绑定工件 + 一致性校验 +
+  [✅ 已完成 2026-09-17] commit e8f68f431。实勘修订：DSL `actions {}` 形态
+  vue 轨本已消费（451 P2/P3）——真实缺口=Plan 418 `ui_config:` 外挂文件
+  仅 VM 运行时加载。桥接：`to_actions_block` 转换器+`load_ui_config_actions`
+  （pac.at ui_config→DSL ActionsBlock，451 链最低优先级，限 app.at 防
+  子组件动作泄漏）。046 fixture 双轨 demo（VM 同一份配置文件运行时消费）。
+  验证：t05 SFC 断言+playwright DOM 断言全过（trigger 文件/items 新建打开/
+  Ctrl+N/toolbar 面）；`auto build` 全链绿。
+- **T-06** [x] [新] L1 bind v0：`auto bp add --bind` 产出绑定工件 + 一致性校验 +
   GENERATED 头注；L2/L3 落地文件登记行。依赖：T-04/T-05。→ AC-05
-- **T-07** [调查/决策工件] VM 三约束（回调 props 退化/子树快照不可见/
+  [✅ 已完成 2026-09-17] commit d990a99b9。`auto bp add form/login --bind`
+  （+独立 `bind` 子命令）产出 `src/front/bps/login_bind.at`（GENERATED 头注
+  含来源/日期；use 导入+声明式装配；Q-3 裁定修订=下划线 stem，点号文件名
+  不可达模块解析）；校验=bp/variant 硬检+pac.at dep 声明告警+spec 动作/
+  props 义务报告。L2 `--reference` 加 provenance 头注。vue.rs `bps/` 目录
+  与 components/ 同构扫描（绑定 widget 独立 SFC）。046 fixture 全 L1 化：
+  app→LoginBind→LoginForm 零副本链（负断言在 t04）。
+- **T-07** [x] [调查/决策工件] VM 三约束（回调 props 退化/子树快照不可见/
   view fn 条件不求值）：各约束最小复现 + 修复方案选项 + 工作量级估计，
   产物 `docs/plans/attachments/639-vm-constraints.md`；**不实现**。
   依赖：无（可并行）。→ AC-06（DEBTS 指针）
-- **T-08** [改] 门禁收口：重命名完整性 grep 门入 CI/门禁脚本；DEBTS 两行；
+  [✅ 已完成 2026-09-17] commit b8853ffc9。探针复核（449 文献 vs 当前码）：
+  3.1 恶化为编译中止；3.2 运行时树已含子树（MCP 快照遍历器待实测）；
+  3.3 表达式+字面量 props 均缺（`text .expr` 形态混淆待区分探针排除）。
+  修复选项 A/B/C+工作量级；建议立项 vm-component-parity。
+- **T-08** [x] [改] 门禁收口：重命名完整性 grep 门入 CI/门禁脚本；DEBTS 两行；
   `uncompleted_plans.md`/INDEX 相关行更新。依赖：T-01..T-07。→ AC-06
+  [✅ 已完成 2026-09-17] commit c3bf47158。`scripts/blueprint_rename_guard.py`
+  （复活模式封禁：旧类型名/CLI 面/模块路径/包库路径；弃用提示+历史注记豁免；
+  全量+--changed 双档）入 vm-files-ci。DEBTS 三行：449 行更新 T-07 复核
+  指针+D2 消费侧移交 PLAN-070+D3 bp 多版本 Q-1 悬置。plans/INDEX.md 为
+  Stage-B 指针页无活跃清单行（无需更新）；specs INDEX 已由 T-03 重生成。
+  终档 `cargo t --no-fail-fast` 5028 跑 40 红=基线集逐名一致（零新增）。
 
 ## 8. 复审记录
 
@@ -248,6 +276,47 @@ CLI 面（`auto bp`，`auto block` 别名保留一版 + 弃用提示）、blocks
   （覆盖 draft handoff 的 review-first 建议，用户指令优先）。status drafting→executing。
   worktree `D:/autostack/.wt/lang-639/auto-lang`，分支 `plan-639-dev`（base c2ec1c350）。
   主检出 preflight：master clean 零 WIP。
+- 2026-09-17 work 收执：`stage: work | plan_id: PLAN-639 | plan_revision: 1 |
+  outcome: pass | code_commit: c3bf47158 (plan-639-dev) | task_ids: T-00..T-08 (9/9) |
+  evidence: 各任务勾记行+AC 映射见 §7；终档全档门 5028 跑 40 红与基线逐名一致 |
+  blockers: 无 | next: review（/auto-plan:review；折叠前全档门 cargo tf/ta 归 review 档）`。
+  执行摘要：更名（CLI auto bp/registry bp/blueprints 包库/bps-gallery/设计文档/
+  spec 模块/goals）+六问契约+三通道消费（L1 bind 零副本落地+L2 provenance+L3 提升评审）
+  +双轨地基（跨包 .at 解析 demo 双轨绿+ui_config 动作配置 vue 轨生效含 DOM 断言）
+  +VM 三约束调查工件。计划外顺带修复：vue.rs v-for :key 注入引号感知 tag-end
+  （lambda `>` 误配）；bp 参考实现语法规范化（旧语法解析错/strict 校验拦截）；
+  blueprints/pac.at 包化；合并 master 拾 PLAN-014 桌面修复。
+- 2026-09-17 review：`stage: review | plan_id: PLAN-639 | plan_revision: 1 |
+  outcome: pass（修复环 1 轮后） | reviewed_commit: e4a435c9e (plan-639-dev) |
+  base_commit: c2ec1c350（diff 基=master 合并点 844ff9c81） |
+  dependency_revisions: auto-down 3a05255（detached 组内 worktree） |
+  spec_inputs: contract.md 六问/blueprint project.md/goals.md GOAL-011/
+  autoui-skill project.md/blueprint-tier.md（worktree 内 prepared，合并时沉淀） |
+  acceptance_results: AC-01..AC-06 全 pass（下详） |
+  findings: F-1（plan639_bp_tests 缺 ui-iced 门，tf 档 E0433 编译错——修复
+  3e3757fd8）/ F-2（SD-04 契约行漏补——修复 e4a435c9e）均当轮闭环 |
+  evidence: 下表 | next: merge`
+
+  **独立性声明**：复审在实现会话内进行（无独立会话授权），裁定从工件重构：
+  全部门禁实跑 + AC 逐条复现，不采信执行摘要。
+
+  | AC | 复现命令/检查 | 结果 |
+  | --- | --- | --- |
+  | AC-01 | `auto bp list/show/add/check` 实跑；`auto block` 别名打印弃用提示；`python scripts/blueprint_rename_guard.py` 全量 clean | pass |
+  | AC-02 | `docs/specs/blueprint/contract.md` 在案，六问齐备（grep 6/6），三通道与提升评审成文 | pass |
+  | AC-03 | `cargo t plan639` 3/3（VM view_template 结构断言+vue 发射断言）；fixture `auto build` 全链绿（解析/校验/发射/vue-tsc/vite） | pass |
+  | AC-04 | playwright DOM 断言复跑全过（trigger 文件/items 新建·打开/Ctrl+N/toolbar 面）；VM 轨 vm-smoke 无回归（终档 40 红与基线逐名一致） | pass |
+  | AC-05 | bind 重生成实跑（GENERATED 头注+dep 声明校验+spec 义务报告）；零副本负断言（工件不含 bp 源） | pass |
+  | AC-06 | 全档门：`cargo tf` 3597 跑 1 红 + `cargo tv` 3743 跑 1 红（同一基线预存 plan367 real_sidebar，非本计划引入）；DEBTS PLAN-639-D1/D2/D3 三行在案；blocks 谱系+plan639 tests 10/10 | pass |
+
+  **门禁口径**：tf/tv 本轮实跑；tt/tb 免跑（trans/ 与 book/ 零改动）；ta 免跑
+  （零 aavm 触发路径——未触 auto/lib、aavm2 语料、parity）。64 环境红清单见
+  执行期记录（`/tmp/b4.txt` 派生集），与上游 637 复审在案口径一致。
+
+  **非目标核对**：消费应用副本迁移未动（PLAN-070 承接）；VM 三约束未实现
+  （调查工件在案）；auto-down PBlock 概念未触碰。范围削减：无。workaround：
+  bp 参考实现语法规范化属合规面修复（参考实现本应可编译——Design 17 §2.4
+  回归 fixture 定位），非绕行。
 
 ## 9. 待澄清事项
 

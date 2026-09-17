@@ -1479,10 +1479,17 @@ impl StyleClass {
             }
         }
 
-        // Parse border-N (numeric width, e.g. border-2, border-4)
+        // Parse border-N (numeric width, e.g. border-2, border-4, border-[8px])
         if let Some(rest) = class.strip_prefix("border-") {
-            if let Ok(width) = rest.parse::<f32>() {
-                return Ok(StyleClass::BorderWidth(width));
+            let width_str = if rest.is_empty() {
+                arbitrary_value.and_then(|v| v.strip_suffix("px").or(Some(v)))
+            } else {
+                Some(rest)
+            };
+            if let Some(ws) = width_str {
+                if let Ok(width) = ws.parse::<f32>() {
+                    return Ok(StyleClass::BorderWidth(width));
+                }
             }
         }
 
