@@ -1,13 +1,13 @@
-# Block Package Format (Plan 342, Design 17)
+# Blueprint Package Format (Plan 342, Design 17)
 
-A **block package** is the unit of the block tier. Each lives at
-`blocks/<kind>/<name>/` and has three parts: a **spec**, one or more
+A **blueprint package** is the unit of the blueprint tier. Each lives at
+`blueprints/<kind>/<name>/` and has three parts: a **spec**, one or more
 **reference implementations**, and a **gotchas** file.
 
 ## Directory layout
 
 ```
-blocks/<kind>/<name>/
+blueprints/<kind>/<name>/
   spec.md                  # TOML frontmatter + natural-language body
   reference/
     <variant>.at           # one reference Auto UI widget per variant
@@ -35,7 +35,7 @@ providers = "[]Provider"
 # Intent
 A credential-capture form that authenticates against a session endpoint.
 
-# What this block absorbs (per-app variation)
+# What this blueprint absorbs (per-app variation)
 fields / SSO / 2FA / captcha / success-redirect-vs-inline / validation / ...
 
 # Assembly guidance
@@ -54,12 +54,12 @@ See gotchas.md.
 
 | field | type | meaning |
 |---|---|---|
-| `kind` | string | block category: `form` / `data-display` / `feedback` / `layout` / `composite` |
-| `name` | string | block name (kebab) |
-| `palette` | []string | widgets this block composes — each must exist in `WidgetRegistry` |
+| `kind` | string | blueprint category: `form` / `data-display` / `feedback` / `layout` / `composite` |
+| `name` | string | blueprint name (kebab) |
+| `palette` | []string | widgets this blueprint composes — each must exist in `WidgetRegistry` |
 | `extension_points` | []string | the bounded vocabulary a consumer may vary (EDIT regions) |
 | `variants` | []string | named presets; each must have a `reference/<variant>.at` |
-| `dataSource` | table | typed fetcher signatures the block expects (consumer wires real `#[api]` fns) |
+| `dataSource` | table | typed fetcher signatures the blueprint expects (consumer wires real `#[api]` fns) |
 
 > TOML is used (not YAML) because it is already a workspace dependency and
 > authoring quality is comparable for this size of document.
@@ -71,7 +71,7 @@ A valid Auto UI `widget` source. It must:
 - Be self-contained and compile (`auto build` green) — pass data/callbacks in as
   props or model rather than importing a backend, so it runs without one (mirrors
   `EditorPanel(note: str)` in `examples/ui/015-notes`).
-- Materialize the block's extension points as `// EDIT: <point>` marked regions.
+- Materialize the blueprint's extension points as `// EDIT: <point>` marked regions.
 - Demonstrate the loading / error / empty states the spec declares as contract.
 
 ## gotchas.md
@@ -82,7 +82,7 @@ Each entry:
 ### <short title>
 
 **Wrong**
-<description or ```auto code block of the anti-example>
+<description or ```auto code blueprint of the anti-example>
 
 **Why**
 <why it's wrong>
@@ -92,4 +92,4 @@ Each entry:
 ```
 
 Gotchas may start sparse and grow from real AI failure modes (each time the
-generator errs on this block, a gotcha is added).
+generator errs on this blueprint, a gotcha is added).
