@@ -256,11 +256,10 @@ widget Tracklist {
             store.SelectIndex(idx)
         }
         .PlayAll -> {
-            store.SelectIndex(0)
+            store.PlayAll()
         }
         .ShufflePlay -> {
-            store.CycleRepeat()
-            store.NextTrack()
+            store.ShufflePlay()
         }
         .Rescan -> {
             store.Load()

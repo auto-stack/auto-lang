@@ -70,11 +70,20 @@ widget Controls {
                 row {
                     style: "items-center gap-3"
 
-                    // 循环模式切换
+                    // 播放模式切换 (顺序播放 / 随机播放 / 单曲循环)
                     button {
                         onclick: .CycleRepeat
-                        style: "w-8 h-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer"
+                        style: if .store.repeat_mode == "single" {
+                            "h-8 items-center gap-1.5 px-2 rounded-lg bg-primary/15 text-primary text-xs font-medium cursor-pointer transition-colors"
+                        } else if .store.repeat_mode == "shuffle" {
+                            "h-8 items-center gap-1.5 px-2 rounded-lg bg-primary/15 text-primary text-xs font-medium cursor-pointer transition-colors"
+                        } else {
+                            "h-8 items-center gap-1.5 px-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer transition-colors"
+                        }
                         icon (name: .store.repeat_icon, size: 15)
+                        text .store.repeat_label {
+                            style: "text-[11px] font-medium"
+                        }
                     }
 
                     // 上一曲
