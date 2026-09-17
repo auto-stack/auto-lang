@@ -504,7 +504,9 @@ junction ×34 + 主检出遗留全清，**wt-guard clean**。
   **landed**（master 2930b3325 = delivery ff；canonical 锚点双文件读回验证；
   master 守卫 34/34 smoke）→ **ledger_refreshed**（.autoos/specs.json：P635-1/-2
   同目标复用更新 + P637-1 reviews 新增，读回断言通过）→ **archived**（本文件
-  git mv + status: archived）→ cleaned 待 worktree/分支移除后回填。合并收据
+  git mv + status: archived）→ **cleaned**（wt-guard 复验 clean 后 worktree
+  .wt/lang-637/auto-lang 移除、分支 plan-637-dev 删除（568a5c401 完全落入
+  master）、auto-down 只读兄弟检出移除、组目录 .wt/lang-637 删除。合并收据
   归属会话：PLAN-637 执行会话。）
 
 - （B5 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
