@@ -17192,6 +17192,41 @@ fn compare_pngs(
                         return iced::Task::batch(tasks);
                     }
                 }
+                // PLAN-024 R20：卡片点击打开 app——合成消息
+                // `__dashboard_open:<registry-id>`（face 层 mouse-area 发
+                // 出，带 face app 标签）。三态：孵化会话 → 升格开窗
+                // （face/窗同会话零分家）；已有窗 → activate 聚焦（跨分区
+                // 语义复用）；无会话 → launch。尾与常规臂同形。
+                if let Some(open_id) =
+                    m.event.strip_prefix("__dashboard_open:").map(str::to_string)
+                {
+                    if let Some(hatched) = state.hatched_mini_of(&open_id) {
+                        if let Err(err) = state.open_window_for_session(&open_id, hatched) {
+                            eprintln!("[session] dashboard promote failed: {err}");
+                        }
+                    } else if dashboard_running_app(state, &open_id).is_some() {
+                        if let Some(panel) = state.desktop.dashboard_app {
+                            if let Some(app) = state.apps.get_mut(&panel) {
+                                let _ = app.component.write_state(
+                                    "__dashboard_cmd",
+                                    auto_val::Value::str(&format!("activate	{open_id}")),
+                                );
+                                *app.state.view_dirty.borrow_mut() = true;
+                            }
+                        }
+                    } else {
+                        execute_launch_app(state, &open_id);
+                    }
+                    let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+                    if exit {
+                        state.shutdown_broker();
+                        return iced::exit();
+                    }
+                    if state.desktop.shell_app.is_some() {
+                        sync_shell_windows(state);
+                    }
+                    return iced::Task::batch(tasks);
+                }
                 // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
                 if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1")
                     && (m.event == "MenuClose"
@@ -17945,7 +17980,18 @@ fn compare_pngs(
                         }
                     };
                     let face_client = face_el.map(move |m| DM::App(app_id, m));
-                    let card = iced::widget::container(face_client)
+                    // R20：卡体点击 → 打开对应 app（内层按钮/交互优先命中，
+                    // 空白区落到本 mouse_area——N6d 内外层同款机制）。
+                    let face_wrapped = iced::widget::mouse_area(face_client)
+                        .on_press(DM::App(
+                            app_id,
+                            IcedMessage {
+                                widget: String::new(),
+                                event: format!("__dashboard_open:{}", f.id),
+                                input_value: None,
+                            },
+                        ));
+                    let card = iced::widget::container(face_wrapped)
                         .width(iced::Length::Fixed(rect.width))
                         .height(iced::Length::Fixed(rect.height))
                         .align_x(iced::alignment::Horizontal::Center)

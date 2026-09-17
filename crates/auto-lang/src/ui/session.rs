@@ -2469,6 +2469,41 @@ impl DesktopSession {
         host.wm.add_win(app, title, rect)
     }
 
+    /// PLAN-024 R20：孵化 mini 会话升格开窗——为**既有** AppSession 创建
+    /// 虚拟窗（不新建组件实例）：face 与窗同会话，状态零分家（点卡片打开
+    /// 的窗和桌面卡显示/操作同一份 store）。几何/布局语义与 launch_app
+    /// 尾段同构（级联初位 + registry 回填 + 布局应用）。
+    pub fn open_window_for_session(
+        &mut self,
+        name: &str,
+        app_id: AppId,
+    ) -> Result<Wid, String> {
+        let title = self
+            .apps
+            .get(&app_id)
+            .map(|a| a.component.widget_name().to_string())
+            .unwrap_or_else(|| name.to_string());
+        let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
+        let index = self
+            .host
+            .as_ref()
+            .map(|h| h.wm.wins_in_workspace(h.wm.current_workspace).len())
+            .unwrap_or(0);
+        let size = iced::Size::new(usable.width * 0.6, usable.height * 0.6);
+        let rect = crate::ui::layout::cascade_rect(index, size, usable);
+        let layout = self.host.as_ref().map(|h| h.wm.layout).unwrap_or_default();
+        let wid = self.wm_add_win(app_id, title, rect);
+        if let Some(host) = self.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid) {
+                v.registry_id = Some(name.to_string());
+            }
+        }
+        if layout != LayoutMode::Free {
+            self.wm_set_layout(layout);
+        }
+        Ok(wid)
+    }
+
     /// desktop 模式：移除虚拟窗口并返回其 AppId（调用方负责移除 App）。
     pub fn wm_remove_win(&mut self, wid: Wid) -> Option<AppId> {
         self.host.as_mut()?.wm.remove_win(wid)
