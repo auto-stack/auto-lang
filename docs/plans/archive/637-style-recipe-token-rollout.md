@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-637
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: style-recipe-token-rollout（examples/ui 全量配方化 + token 化）
 author: [zhaopuming]
 created_at: 2026-09-17
@@ -11,6 +11,7 @@ plan_revision: 3
 supersedes_spec_components: []
 new_spec_components:
   - docs/specs/auto-lang/ui/overview.md（示例配方化规范条目：stylekit 共享库 + 禁新增裸调色板色门禁）
+  - docs/specs/auto-man/project.md（stylekit 记为标准多包消费样例：dep path 双形态）
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（样式配方/令牌抽象）"]
 
 affects: [auto-lang/ui, autoui-examples]
@@ -496,6 +497,18 @@ junction ×34 + 主检出遗留全清，**wt-guard clean**。
   （041 VM 原生轨括号形配方名不支持→回退，框架债）；026 475 包 use 互斥→
   caption 回退 ×4（框架债）；转换事故（行尾注释吞 token）两处已修复并全目录
   审计清零。）
+
+- （合并收据 `PLAN-637:r3` 2026-09-17：**prepared**（基线 583beea6a→reviewed
+  c2ec1c350；canonical diff SD-01/SD-02 冻结于 delivery_commit 568a5c401 前工作
+  树；投影目标=.autoos/specs.json architecture 节 P635-1/-2 复用更新）→
+  **landed**（master 2930b3325 = delivery ff；canonical 锚点双文件读回验证；
+  master 守卫 34/34 smoke）→ **ledger_refreshed**（.autoos/specs.json：P635-1/-2
+  同目标复用更新 + P637-1 reviews 新增，读回断言通过）→ **archived**（本文件
+  git mv + status: archived）→ **cleaned**（wt-guard 复验 clean 后 worktree
+  .wt/lang-637/auto-lang 移除、分支 plan-637-dev 删除（568a5c401 完全落入
+  master）、auto-down 只读兄弟检出移除、组目录 .wt/lang-637 删除。合并收据
+  归属会话：PLAN-637 执行会话。）
+
 - （B5 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
   outcome: pass → execution_done | code_commit: plan-637-dev B5 提交 |
   task_ids: T-05/T-07/T-08 | evidence:
@@ -536,3 +549,30 @@ junction ×34 + 主检出遗留全清，**wt-guard clean**。
    确认）**——本计划仅做 `icon_base` recipe 收编；widget 本体四胞胎合并
    （018/026/027/041 的 tree_icon.at，md5 逐字节相同，走 475 组件级
    use 通道）另立小计划，与待澄清#3 stylekit 定位裁定联动。
+- （独立复审 2026-09-17：`stage: review | PLAN-637 | plan_revision: 3 |
+  outcome: pass | reviewed_commit: c2ec1c350（master=dev 同点） |
+  base_commit: 583beea6a（r3 基线） | dependency_revisions: auto-down 兄弟
+  worktree 140775f（B5 补建，跨仓 media 路径）；共享 auto 二进制 v0.4.2-880
+  （随他会话演进，B3 中途已按纪律同步） | spec_inputs:
+  docs/specs/auto-lang/ui/overview.md + docs/specs/auto-man/project.md
+  （SD-01/SD-02 合并时落盘，本审未发布） | acceptance_results:
+  AC-01 pass（Phase A 33/33+045，guard 34/34）、AC-02 pass（豁免 ~50 键全带
+  定性 reason）、AC-03 pass（纯 A 面双端/vm IDENTICAL：016/017/018/020/021/
+  026/027/029-vue/031iv/031p/043/044，抽样独立复算 018-vm/020 双端复核一致）、
+  AC-04 pass（逐 demo 映射头注+差异 bbox 对位：024 按钮区/026 交互截图
+  026-vue-sqltab-after-b4.png）、AC-05 pass（dep+use 16 demo ≥10，caption ×43、
+  hint ×75、input ×13、icon ×42 等）、AC-06 pass（自测 5/5+全量 34/34）、
+  **AC-07 partial**（tv 被 master 既有 E0433 阻断——term_engine terminal 块无
+  ui 门控，019 复审 f165040f7 曾修、后续合并复活；主检出同码复现；计划提交
+  零 crates 触碰（路径审计：六提交仅 examples/scripts/.gitignore）；语料隔离
+  复核成立——唯一 examples/ui 引用为 #[ignore] a2ts tsc 探针的 node_modules
+  二进制路径锚，不受样式改动影响；解除动作=补 ui/not(ui) 双臂门控后重跑，
+  归 019/020 lineage） | findings: F1 tv 门禁 E0433（阻断级，外部债，已路由）；
+  F2 既有缺陷六项（022 幻影导入/017 E0308/023 E0425/029 file:// 资产契约/
+  026 与 041 括号形配方引用限制——均主检出复现，非本计划引入）；
+  F3 G1 口径（跨文件 ×1 重复与单类短串不提取——不过度抽象注记的操作化）；
+  F4 证据卫生（_tmp022.png 误入库，本审移除） | evidence:
+  docs/plans/evidence/637/{b1..b5}-evidence-summary.md + 矩阵 8.1–8.5 +
+  截图对/差值可视化 | next: /auto-plan:merge 落地归档。复审限制声明：
+  本审在执行会话内进行，结论以工件重建（守卫重跑/像素独立复算/路径审计/
+  源码门控核验），未采信执行摘要。）

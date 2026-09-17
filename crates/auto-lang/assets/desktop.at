@@ -12,9 +12,11 @@
 //   入：`__desktop_bg`（宿主注入：壁纸色值类片段——"#hex" 色值时注入
 //       "bg-[#hex]"（本面根 bg 实铺）；图片路径/缺省时注入 ""（图片壁纸
 //       由宿主在更底层推壁纸图层——DSL 无重叠布局，z 序宿主侧兑现））
-//       `__desktop_icons`（宿主注入 {id,icon,label,src} Obj 数组——
+//       `__desktop_icons`（宿主注入 {id,icon,label,src,color} Obj 数组——
 //       pinned ∪ 自定义条目合并去重（排除 hidden），src 标来源
-//       pinned|custom；icon/label 宿主自注册表解析，缺省 app-window/id）
+//       pinned|custom；icon/label 宿主自注册表解析，缺省 app-window/id；
+//       color = per-app 徽标色（badge_color_for 哈希分配，PLAN-014 W-01
+//       补记——v1.4 起实注入，协议字段表 v1.8 同步审计））
 //       `__desktop_hidden`（宿主注入：排除 id 逗号串——移除臂重写
 //       shell.desktop.hidden 的当前值底稿）。
 // storage 键（487 判定先例：非几何无动词，storage 直写 boot 生效）：
@@ -45,7 +47,13 @@ widget DesktopSurface {
         PickerBack,
         PickerNav(str),
         PickerBrowse,
-        PickerDismiss
+        PickerDismiss,
+        // PLAN-014 W-05'：空白菜单「恢复默认图标」（清 hidden 单源 +
+        // refresh_desktop_icons 即时重注入）。
+        ResetIconsBlank,
+        // PLAN-014 W-02：总线写单点（同 shell.at SendCmd——追加语义，
+        // 同排空周期多命令不互相覆盖）。
+        SendCmd(str)
     }
 
     model {
@@ -79,6 +87,15 @@ widget DesktopSurface {
         // view_dirty；空白菜单坐标锚数据源——open 翻转重建时读取最新值）。
         var __desktop_cursor_x float = 0.0
         var __desktop_cursor_y float = 0.0
+        // PLAN-014 W-04：图标选中态（单击置位 / 空白点击清空；与 022
+        // 拖拽互洽——选中只置本地态，不写命令，拖拽阈值臂不受影响）。
+        var sel_id str = ""
+        // PLAN-014 W-04：启动中反馈（ActivateApp 置位；__wm_running 含
+        // 该 id 即清——宿主 RunningSync 召唤臂 / Init 重注入求差自愈）。
+        var launching str = ""
+        // PLAN-014 W-04：运行集合派生串（宿主 __wm_running 注入面扩注
+        // desktop 层，协议 v1.8 登记——launching ack 判据数据面）。
+        var __wm_running str = ""
         // PLAN-019 v1.7：壁纸 picker 注入面（协议 v1.7 §2.1——宿主写，
         // 本面只读消费；wp_paths 平行列表 = handler 侧数据合同面，本面
         // 消息均闭包带参，无下标读）。
@@ -158,7 +175,19 @@ widget DesktopSurface {
                                 if .drag_id != "" && .drag_id != e.id && e.c == .drop_c && e.r == .drop_r {
                                     "w-20 h-[72px] items-center justify-center gap-1 bg-primary/20"
                                 } else {
-                                    "w-20 h-[72px] items-center justify-center gap-1 hover:bg-white/10"
+                                    // PLAN-014 W-04：启动中 = 选中底 + 半透明
+                                    // （chip 半透明语义；RunningSync/Init 收敛后回落）。
+                                    if .launching == e.id {
+                                        "w-20 h-[72px] items-center justify-center gap-1 rounded-lg bg-white/10 opacity-50"
+                                    } else {
+                                        // PLAN-014 W-04：单击选中 = 白/10 圆角
+                                        // 高亮块（022 网格语境 rev2 形态）。
+                                        if .sel_id == e.id {
+                                            "w-20 h-[72px] items-center justify-center gap-1 rounded-lg bg-white/10"
+                                        } else {
+                                            "w-20 h-[72px] items-center justify-center gap-1 hover:bg-white/10"
+                                        }
+                                    }
                                 }
                             }
                             oncontextmenu.prevent: .IconMenu(e.id)
@@ -221,6 +250,12 @@ widget DesktopSurface {
                                     }
                                 }
                             }
+                            // PLAN-014 W-04：启动中右上角灰点（launching 态
+                            // 第二反馈臂；绝对定位压格右上——class.rs
+                            // absolute/-top/-right 白名单在案）。
+                            if .launching == e.id {
+                                div { style: "absolute top-0.5 right-1 w-1.5 h-1.5 rounded-full bg-muted-foreground" }
+                            }
                         }
                     }
                     }
@@ -257,6 +292,14 @@ widget DesktopSurface {
                 button (text: "显示设置", variant: "ghost") {
                     onclick: .OpenSettingsBlank
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
+                }
+                // PLAN-014 W-05'：恢复默认图标（清 shell.desktop.hidden
+                // 单源——boot 合并臂不再排除任何条目，重启全量回；
+                // refresh_desktop_icons 触发宿主即时重注入，storage 已清
+                // 故即时臂同效）。
+                button (text: "恢复默认图标", variant: "ghost") {
+                    onclick: .ResetIconsBlank
+                    style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                 }
             }
         }
@@ -359,10 +402,23 @@ widget DesktopSurface {
         .Init -> {
             .menu_id = ""
             .blank_menu = ""
+            // PLAN-014 W-04：launching 残态自愈（Init/重注入时 running
+            // 不含 launching id = 启动失败/过期——求差清残，防永驻灰点）。
+            if .launching != "" {
+                if .__wm_running.contains("," + .launching + ",") == false {
+                    .launching = ""
+                }
+            }
         }
 
         // 双击启动/聚焦（472 activate 两臂动词复用——宿主臂已备）。
-        .ActivateApp(app) -> { .__desktop_cmd = "activate\t" + app }
+        .ActivateApp(app) -> {
+            .SendCmd("activate\t" + app)
+            // PLAN-014 W-04：启动中反馈（T-05 完成两臂——已运行应用
+            // activate = 聚焦语义，不置 launching；此处先置，RunningSync
+            // 读 __wm_running 收敛，重入双击无害幂等）。
+            .launching = app
+        }
 
         // 右键图标：开菜单（记录目标条目）。
         .IconMenu(id) -> { .menu_id = id }
@@ -370,15 +426,18 @@ widget DesktopSurface {
         // PLAN-012 F2 走查：拖拽 = 按下拾起（宿主 drag_start 置位）→
         // 拖动 → 松手落格（根 mouse-area onmouseup → BlankDrop；宿主全局
         // __mouse_released 臂兜底）。落格 = 光标格磁吸，占位挤下一空格。
+        // PLAN-014 W-04：onclick 兼选中（单击/双击第一击置 sel_id；拖拽
+        // 拾起臂不受影响——阈值门在宿主 icon_drag_moved，选中只置本地态）。
         .IconPress(id) -> {
+            .sel_id = id
             if .drag_id == "" {
                 .drag_id = id
-                .__desktop_cmd = "desktop_icon_drag_start	" + id
+                .SendCmd("desktop_icon_drag_start	" + id)
             }
         }
         .BlankDrop -> {
             if .drag_id != "" {
-                .__desktop_cmd = "desktop_icon_drop_at	" + .drag_id
+                .SendCmd("desktop_icon_drop_at	" + .drag_id)
                 .drag_id = ""
             }
         }
@@ -387,8 +446,8 @@ widget DesktopSurface {
         .BlankMenu -> { .blank_menu = "1" }
 
         // 空白点击：关菜单（463 语义——不动 WM 焦点，纯本地态）。
-        // PLAN-526 T10：兼清空白菜单。
-        .BlankPress -> { .menu_id = ""; .blank_menu = "" }
+        // PLAN-526 T10：兼清空白菜单。PLAN-014 W-04：兼清图标选中态。
+        .BlankPress -> { .menu_id = ""; .blank_menu = ""; .sel_id = "" }
         // PLAN-526 T36/T34：popover ondismiss 关闭（点外部/Esc）。
         .BlankClose -> { .blank_menu = "" }
         .MenuClose -> { .menu_id = "" }
@@ -396,33 +455,49 @@ widget DesktopSurface {
         // PLAN-526 T10：空白菜单动作（消费即收起；动词同图标菜单臂）。
         .MenuWallpaperBlank -> {
             .blank_menu = ""
-            .__desktop_cmd = "wallpaper_pick"
+            .SendCmd("wallpaper_pick")
         }
         .OpenSettingsBlank -> {
             .blank_menu = ""
-            .__desktop_cmd = "open_settings"
+            .SendCmd("open_settings")
         }
 
         // 菜单：打开 = activate 两臂（同双击）。
         .MenuOpen -> {
             if .menu_id != "" {
-                .__desktop_cmd = "activate\t" + .menu_id
+                .SendCmd("activate\t" + .menu_id)
                 .menu_id = ""
             }
         }
 
         // 菜单：从桌面移除 = shell.desktop.hidden 续写（pinned/custom 通用；
         // boot 合并臂排除 hidden id——下次启动生效，487 pinned 同语义）。
+        // PLAN-014 W-05'：追加前去重（逗号域串包裹 contains——重复移除
+        // 同 id 不产生重份；handler 侧 contains 可用，view 条件才是死点）。
         .MenuRemove -> {
             if .menu_id != "" {
-                if .__desktop_hidden == "" {
-                    .__desktop_hidden = .menu_id
-                } else {
-                    .__desktop_hidden = .__desktop_hidden + "," + .menu_id
+                var hay str = "," + .__desktop_hidden + ","
+                var needle str = "," + .menu_id + ","
+                if hay.contains(needle) == false {
+                    if .__desktop_hidden == "" {
+                        .__desktop_hidden = .menu_id
+                    } else {
+                        .__desktop_hidden = .__desktop_hidden + "," + .menu_id
+                    }
+                    storage.set("shell.desktop.hidden", .__desktop_hidden)
                 }
-                storage.set("shell.desktop.hidden", .__desktop_hidden)
                 .menu_id = ""
             }
+        }
+
+        // PLAN-014 W-05'：恢复默认图标 = hidden 单源清空（storage 落盘 +
+        // 本地底稿清空）+ refresh_desktop_icons 即时重注入（宿主重读
+        // storage 重算格子表——storage 已清故即时臂与重启全量回同效）。
+        .ResetIconsBlank -> {
+            .blank_menu = ""
+            .__desktop_hidden = ""
+            storage.set("shell.desktop.hidden", "")
+            .SendCmd("refresh_desktop_icons")
         }
 
         // 菜单：更换壁纸 → wallpaper_pick（PLAN-019 v1.7 组合动词 = 借
@@ -430,28 +505,48 @@ widget DesktopSurface {
         // 「显示设置」臂仍走旧通道）。
         .MenuWallpaper -> {
             .menu_id = ""
-            .__desktop_cmd = "wallpaper_pick"
+            .SendCmd("wallpaper_pick")
         }
 
         // PLAN-019 v1.7：壁纸 picker 消息族（语义宿主收口——本面只发
         // 总线记录，零本地态）。
         .PickerApply(path) -> {
-            .__desktop_cmd = "set_wallpaper\t" + path
+            .SendCmd("set_wallpaper\t" + path)
         }
         .PickerPreview(path) -> {
-            .__desktop_cmd = "wallpaper_preview\t" + path
+            .SendCmd("wallpaper_preview\t" + path)
         }
         .PickerBack -> {
-            .__desktop_cmd = "wallpaper_preview\t"
+            .SendCmd("wallpaper_preview\t")
         }
         .PickerNav(dir) -> {
-            .__desktop_cmd = "wallpaper_nav\t" + dir
+            .SendCmd("wallpaper_nav\t" + dir)
         }
         .PickerBrowse -> {
-            .__desktop_cmd = "wallpaper_browse_dir"
+            .SendCmd("wallpaper_browse_dir")
         }
         .PickerDismiss -> {
-            .__desktop_cmd = "wallpaper_close"
+            .SendCmd("wallpaper_close")
+        }
+
+        // PLAN-014 W-02：追加语义单点（同 shell.at SendCmd——多命令以
+        // 换行连接，宿主排空按记录切分逐条执行）。
+        .SendCmd(rec) -> {
+            if .__desktop_cmd != "" {
+                .__desktop_cmd = .__desktop_cmd + "\n"
+            }
+            .__desktop_cmd = .__desktop_cmd + rec
+        }
+
+        // PLAN-014 W-04：launching 收敛（宿主 running 集合变化时召唤，
+        // call_handler 同 RebuildMru/RebuildNotes 先例）——running 含
+        // launching id 即清（启动成功 ack）；Init/重注入求差清残在 Init 臂。
+        .RunningSync -> {
+            if .launching != "" {
+                if .__wm_running.contains("," + .launching + ",") {
+                    .launching = ""
+                }
+            }
         }
     }
 }

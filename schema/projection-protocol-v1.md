@@ -1,6 +1,12 @@
-# AutoShell 状态投影协议 v1.7（S2 接缝合同）
+# AutoShell 状态投影协议 v1.8（S2 接缝合同）
 
-> **版本**：v1.7（2026-09-14，双增量并行落码——PLAN-016：`open_with` 打开
+> **版本**：v1.8（2026-09-17，auto-os PLAN-014 shell-ux-polish-v2 落码；
+> 纯字段 + 总线语义增量、**零新动词**——`__wm_date` 新字段、
+> `__wm_running` 注入面扩注 desktop 层、`__wm_notes[].app`/`note_apps`
+> 来源面、`__wm_notes_badge` 派生显示面、`__desktop_cmd` 追加语义、
+> `__desktop_icons[].color`/`__desktop_cells[].full` 字段表审计补记。
+> 详见 §6 v1.8 节）。
+> v1.7（2026-09-14，双增量并行落码——PLAN-016：`open_with` 打开
 > 文件动词（普通注册表窗上行排空面 + pac `opens:` 关联校验面）；auto-os
 > PLAN-019：负一屏显示桌面（保留分区 + origin 往返）与壁纸选择 carousel
 > （pick/close 组合簿记 + 候选注入面）。详见 §6 v1.7 节）。
@@ -32,9 +38,10 @@
 | `__wm_meta` | str `"layout\tfocused_wid"` | 布局名（free/grid/master-stack）+ 焦点窗 wid（无焦点空串） | 宿主写 | v1 |
 | `__wm_workspaces` | Obj 数组 `{id:str, name:str, current:str, label:str, more:str}` | 分区清单；`id` = 下标串；`name` = pack 默认 "Desktop N"（M4 settings 可覆盖）；`current` = `"1"/""`；`label` = 1 基人读标签（= id+1 十进制串；**宿主投影**，避开 .at 字符串算术——pager 按钮文本消费）；**v1.5 `more`**：溢出标签 `"+N"`（分区窗数 >4 时；无溢出/空分区空串——pager 网格≤4 截断配套消费） | 宿主写 | v1（label：v1.1；more：v1.5） |
 | `__wm_mru` | Obj 数组（条目同 `__wm_wins` 六字段） | **当前分区**的窗口按 MRU 序（front = 最近聚焦；退役 Ctrl+Tab 焦点环语义延续——焦点环不跨分区，472 定案）。switcher overlay 专用消费面，dock 消费不受影响。switcher **handler** 侧消费走宿主召唤时的伴随平行字符串列表（`mru_wids`/`mru_titles`/`mru_icons` + `call_handler("RebuildMru")` 建 handler 自有 rows，B12 规避——464 launcher `apps_*`/`ranked` 同型；`__wm_mru` 本体保持合同面对拍形态） | 宿主写 | v1.1 |
-| `__wm_running` | str `",id1,id2,"` | 运行中 app id 集合的**派生串**（.at view 条件无法 `contains` 消费——方法调用死点，O2 实证；保留为对拍/审计面 + handler 侧可用。pinned 灰条判据改 `__dock_pinned` 条目 `running` 字段） | 宿主写 | v1 |
-| `__wm_notes` | Obj 数组 `{id:str, kind:str, msg:str, at:str}` | **通知历史全量**（MRU 序 front=最新；容量 50 FIFO）。shell 侧为合同面（dock 不直接消费）；通知中心面板 handler 消费走召唤/活更新时的伴随平行字符串列表（`note_ids`/`note_kinds`/`note_msgs`/`note_ats` + `call_handler("RebuildNotes")` 建 handler 自有 rows，B12 规避——`__wm_mru` 同型）。`kind` ∈ success/error/info（约定值，未知宿主侧已兜底）；`at` = 入史时刻 `HH:MM` 本地时间串（宿主投影） | 宿主写 | v1.2 |
+| `__wm_running` | str `",id1,id2,"` | 运行中 app id 集合的**派生串**（.at view 条件无法 `contains` 消费——方法调用死点，O2 实证；保留为对拍/审计面 + handler 侧可用。pinned 灰条判据改 `__dock_pinned` 条目 `running` 字段）。**v1.8 注入面扩展**：同步扩注 desktop 本体面（`assets/desktop.at` 声明同款）——W-04 启动中反馈的 launching ack 判据数据面（handler 侧 contains 消费合法）；宿主写点 = `sync_shell_windows` 投影组内，随写显式召唤 desktop 层 `RunningSync` handler | 宿主写 | v1（desktop 层扩注：v1.8） |
+| `__wm_notes` | Obj 数组 `{id:str, kind:str, msg:str, at:str, app:str}` | **通知历史全量**（MRU 序 front=最新；容量 50 FIFO）。shell 侧为合同面（dock 不直接消费）；通知中心面板 handler 消费走召唤/活更新时的伴随平行字符串列表（`note_ids`/`note_kinds`/`note_msgs`/`note_ats` + `call_handler("RebuildNotes")` 建 handler 自有 rows，B12 规避——`__wm_mru` 同型）。`kind` ∈ success/error/info（约定值，未知宿主侧已兜底）；`at` = 入史时刻 `HH:MM` 本地时间串（宿主投影）。**v1.8 `app`**：来源 app id（notify 动词发件方 registry_id；宿主内部通知/历史槽恢复缺省 `""`——面板行跳来源臂以空串判不可跳）；平行列表同型增 `note_apps`（W-14 B12 落地后消参，挂账 auto-os §10-Q5） | 宿主写 | v1.2（app/note_apps：v1.8） |
 | `__wm_notes_unread` | str | 未读通知计数十进制串（dock 铃铛 badge 条件消费：`!= "0"` 且非空串渲染）；开面板即清零；不落盘——boot 恢复后恒 `"0"` | 宿主写 | v1.2 |
+| `__wm_notes_badge` | str | **v1.8** badge **显示串**（宿主派生：unread >9 → `"9+"`、1..9 → 十进制串、0 → `""`）——W-07 圆形角标文本面（.at 视图无数值比较/截断原语，I9 宿主派生单点）；等式/空串消费在 shell.at，`__wm_notes_unread` 本体保持计数合同不变 | 宿主写 | v1.8 |
 | `__wm_focused_app` | str | **v1.6** 聚焦窗 registry_id 派生串（"" = 无聚焦或聚焦在 native 槽位）——pinned 图标聚焦底条 + 底色高亮的**标量判据面**（.at 无法跨列表表达"存在聚焦窗"量词，宿主派生保持 I9；聚焦变化必经 meta 段 focused_wid 翻转触发重写，本字段随写同步） | 宿主写 | v1.6 |
 | `__dock_pinned_csv` | str `",id1,id2,"` | **v1.6** 固定集合派生串（前后逗号封边；空表 = 单纯 `","`）——dock 去重的**原判据面，已被 `__wm_wins.pinned`/`dup_app` 派生字段取代**（view 条件 contains 死点，F2 走查实证）；保留为对拍/审计面 | 宿主写 | v1.6 |
 | `__dock_pinned` | Obj 数组 `{id:str, icon:str, running:str}` | **v1.6** 固定集合（config.dock_pinned 单源；icon 注册表解析缺省 `app-window`）。**F2 走查增补 `running`**：`"1"/""` 该 app 当前有非隐藏运行窗——pinned 图标灰条判据（等式消费）；inject_dock_pinned（pin/unpin 即时臂）与 sync 投影（fp 差分刷新臂，窗开合即刷新）双写者同形幂等 | 宿主写 | v1.6（running：F2 走查增补） |
@@ -42,9 +49,10 @@
 | `__wm_settings_open` | str `"1"/""` | **F2 走查增补** 设置窗在场标量（存在非隐藏 os-config 窗 = "1"；W1 close→hide 后隐藏即回落）——⚙️ 高亮判据（原 `__wm_running.contains(",os-config,")` view 条件方法调用死点，实机探针定性：设置窗在场齿轮仍无高亮）；窗开/关/hide 翻 win 指纹段随写同步 | 宿主写 | F2 走查增补 |
 | `__wm_fp` | str | 投影指纹（§3）；shell 不消费，仅门控 | 宿主写 | v1 |
 | `__wm_clock` | str `"HH:MM"` | dock 时钟本地时间串（497 S3）。**非门控字段**：不进 `__wm_fp` 指纹、不走 §3 投影组换装——ServiceTick 帧泵独立注入（分钟变化才写，稳态零重建；本地时钟非驱动事实，避免每分钟全组换装抖动） | 宿主写 | v1.4 内（497） |
+| `__wm_date` | str `"M月D日 周X"` | **v1.8** dock 日期行（中文周几宿主格式化——.at 无日期算术；`%-m`/`%-d` 不补零）。与 `__wm_clock` 同一 ServiceTick 帧泵、**独立变化才写**（两字段独立脏帧——另一字段不变时稳态零重建口径维持）；同不进指纹门控 | 宿主写 | v1.8 |
 | `__wm_showdesk` | str `"1"/""` | **v1.7** 当前分区 = 负一屏（保留空分区，PLAN-019）——任务栏 sliver 两态高亮与 toggle 判据（`"1"` = 点击发 `showdesk_return`，`""` = 发 `show_desktop`；等式消费）。负一屏簿记（origin/picker 簿记）在宿主 WmState，不投影 | 宿主写 | v1.7 |
 | `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
-| `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清**。**v1.7 发件面扩宽**：普通注册表窗联合排空（pump 全窗 drain；特权四窗原有专属排空保留，二次空读无害）——`open_with` 首个普通窗动词（027 文件管理器发件） | shell 写（v1.7 起：普通注册表窗亦可） | v1（发件面扩宽：v1.7） |
+| `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清**。**v1.7 发件面扩宽**：普通注册表窗联合排空（pump 全窗 drain；特权四窗原有专属排空保留，二次空读无害）——`open_with` 首个普通窗动词（027 文件管理器发件）。**v1.8 追加语义（PLAN-014 W-02）**：shell 侧写点一律 `.SendCmd(rec)` 单点追加（非空先接换行符再拼记录）——同排空周期多命令累积不互相覆盖；宿主 `parse_records` 按换行/REC_SEP 切分逐条执行，排空点每 update 周期读+清（追加语义以此为止） | shell 写（v1.7 起：普通注册表窗亦可） | v1（发件面扩宽：v1.7；追加语义：v1.8） |
 
 ### 2.0.1 通知面板接缝字段（`assets/notification_center.at`，召唤/活更新注入）
 
@@ -62,9 +70,9 @@ Plan 496 M5 的第五面（常驻不召唤，boot 装载挂桌面层 z 槽）。
 | 字段 | 类型 | 语义 | 权属 | 引入 |
 |---|---|---|---|---|
 | `__desktop_bg` | str | 壁纸色值类片段：`shell.desktop.wallpaper` 为 `#hex` 时注入 `"bg-[#hex]"`（面根 bg 实铺）；图片路径/缺省时注入 `""`（图片壁纸由宿主在面之下推壁纸图层——DSL 无重叠布局，z 序宿主侧兑现） | 宿主写 | v1.4 内（496） |
-| `__desktop_icons` | Obj 数组 `{id:str, icon:str, label:str, src:str}` | 桌面条目 = pinned ∪ 自定义合并去重（pinned 先列；`shell.desktop.icons` 逗号串）再排除 hidden（`shell.desktop.hidden` 逗号串，pinned/custom 通用移除位）。`icon`/`label` 注册表解析（缺省 `app-window`/id）；`src` = `pinned`\|`custom` | 宿主写 | v1.4 内（496） |
+| `__desktop_icons` | Obj 数组 `{id:str, icon:str, label:str, src:str, color:str}` | 桌面条目 = 自定义条目（`shell.desktop.icons` 逗号串）排除 hidden（`shell.desktop.hidden` 逗号串；PLAN-012 F2 起桌面图标 = 仅自定义列表，pinned 不并入）。`icon`/`label` 注册表解析（缺省 `app-window`/id）；`src` = `pinned`\|`custom`。**v1.8 `color` 审计补记**：per-app 徽标色（`badge_color_for` 哈希分配）——v1.4 起实注入而字段表漏记（PLAN-014 W-01/W-12' 补记），非 full 满幅条目的 chip 底色消费 | 宿主写 | v1.4 内（496；color 补记：v1.8） |
 | `__desktop_hidden` | str | 排除 id 逗号串（移除臂续写 `shell.desktop.hidden` 的当前值底稿） | 宿主写 | v1.4 内（496） |
-| `__desktop_cells` | Obj 数组 `{id,icon,label,src,color,c,r,spacer}`（spacer 条目仅 `{spacer:"1",c,r}`） | **v1.6** 格子化图标表——`shell.desktop.positions`（追加式 `"id=c:r,..."` csv，last-wins 解析）定位优先 + 未定位行主序填首个空格 + 空位 spacer 填充；view 渲染消费（handler 消费走下列平行字符串列表，B12 规避）。拖拽落子 = shell 追加写 positions + `refresh_desktop_icons` 触发重注入 | 宿主写 | v1.6 |
+| `__desktop_cells` | Obj 数组 `{id,icon,label,src,color,c,r,spacer,full}`（spacer 条目仅 `{spacer:"1",c,r}`） | **v1.6** 格子化图标表——`shell.desktop.positions`（追加式 `"id=c:r,..."` csv，last-wins 解析）定位优先 + 未定位**列主序**填首个空格（022 SD-01；rows = 视口高/80px 行距扣任务栏，clamp 4..24）+ 空位 spacer 填充；view 渲染消费（handler 消费走下列平行字符串列表，B12 规避）。拖拽落子 = shell 追加写 positions + `refresh_desktop_icons` 触发重注入。**v1.8 `full` 审计补记**：满幅位图旗标（"1" = 48px 满幅 iconfile 渲染臂；缺省 = 徽标色 chip）——022 起实注入而字段表漏记（PLAN-014 补记） | 宿主写 | v1.6（full 补记：v1.8） |
 | `__desktop_cell_ids` / `__desktop_cell_cs` / `__desktop_cell_rs` | 平行字符串列表（与 `__desktop_cells` 同序；spacer 格 id = 空串） | **v1.6** 格子平行字符串列表——`IconPress` 拖拽落子的 handler 下标读数据面（按 id 检索 (c,r)，B12 规避——`note_ids` 同型） | 宿主写 | v1.6 |
 | （DSL 合同面）`workspace_preview` | 布局件 `workspace_preview (ws: <分区id>, fallback: <icon>)` | **v1.6** 整桌面等比预览 leaf——宿主渲染臂合成（壁纸 `#hex` 基色底 / 缺省主色占位 → 该分区逐窗 snapshot 按 usable 矩形 Contain 等比贴片；miss = 占位块 + fallback icon 居中 + request_capture 预抓，window_thumbnail 同款 SWR）。**协议零字段增量**：数据面直连 wm 几何 + snapshot 缓存（`iced::workspace_preview` 发布/消费），不入 VM 状态。消费面 = switcher 分区卡 | 宿主渲染 | v1.6 |
 | `__wp_picker` | str `"1"/""` | **v1.7** 壁纸选择 carousel 可见性（PLAN-019；desktop.at 全屏层条件渲染唯一事实源）。开合簿记在宿主（`picker_open` + `picker_return_on_close`——`wallpaper_pick`/`wallpaper_close` 组合臂单点维护，.at 侧零分支）；随写置 dirty | 宿主写 | v1.7 |
@@ -168,6 +176,40 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.8（2026-09-17，auto-os PLAN-014 shell-ux-polish-v2——纯字段 + 总线语义，零新动词）
+
+- **`__wm_date` 新字段（§2，W-06'）**：dock 日期行 `"M月D日 周X"`——与
+  `__wm_clock` 同一 ServiceTick 帧泵独立注入（各自变化才写，独立脏帧），
+  不进指纹门控（497 时钟先例同口径）。
+- **`__wm_running` 注入面扩展（§2，W-04）**：字段本体 v1 不变，同步扩注
+  desktop 本体面（desktop.at 同款声明）——启动中反馈 launching ack 判据
+  数据面；宿主随写召唤 desktop 层 `RunningSync` handler（写状态不触发
+  handler 律）；启动失败残态由 Init/重注入求差自愈（shell 侧防御）。
+- **`__wm_notes[].app` / `note_apps`（§2，W-08）**：notify 落库记录来源
+  app id（联合排空泵注册表窗段**按 app 分段执行**——段前置置
+  `notify_source`，命令顺序与原扁平 concat 逐一相同）；宿主内部通知/
+  历史槽恢复缺省 `""`（面板行跳来源臂空串判不可跳，`activate` 两臂复用
+  零新动词）。W-14 B12 落地后 `note_apps`/平行列表族消参（挂账）。
+- **`__wm_notes_badge` 新字段（§2，W-07）**：badge 显示串宿主派生
+  （>9 → `"9+"`、0 → `""`）——.at 视图无数值比较/截断原语，I9 单点；
+  `__wm_notes_unread` 计数合同不变。
+- **`__desktop_cmd` 追加语义（§2/§4 头注，W-02）**：shell 侧写点 `.SendCmd`
+  单点追加（四 pack 统一），同排空周期多命令以换行累积；宿主排空/解析
+  语义不变（`parse_records` 换行切分既有支持）。
+- **字段表审计补记（§2.1，W-01/W-12'）**：`__desktop_icons[].color`
+  （badge_color_for 徽标色，v1.4 起实注入漏记）+ `__desktop_cells[].full`
+  （022 满幅位图旗标漏记）；`__desktop_icons` 语义行同步修正为 PLAN-012
+  F2 后实况（仅自定义列表，pinned 不并入）；`__desktop_cells` 未定位
+  填充序更正为列主序（022 SD-01 实况）。
+- **oncontextmenu 坐标事件臂**：默认**后置**（auto-os §10-Q2——022 拖拽
+  幽灵臂依赖 `__desktop_cursor_x/y` 泵，改造前需裁定交互归属），不在
+  本版强捆，泵与坐标锚照旧。
+- **向后兼容声明**：纯增量字段/注入面——`app`/`note_apps` 缺席消费方
+  零破坏（notification_center.at 域外防御读：缺列表 app = ""）；
+  `__wm_notes_badge` 为新只读面；追加语义对既有单写点行为等价（单命令
+  串不变）；`__wm_running` desktop 层扩注对 shell 层零影响。vue 端以
+  本版为对拍基线（§5）。
 
 ### v1.7（2026-09-14，双增量并行落码：PLAN-016 + auto-os PLAN-019）
 
