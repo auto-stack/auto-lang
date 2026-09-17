@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-637
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: style-recipe-token-rollout（examples/ui 全量配方化 + token 化）
 author: [zhaopuming]
 created_at: 2026-09-17
@@ -497,6 +497,16 @@ junction ×34 + 主检出遗留全清，**wt-guard clean**。
   （041 VM 原生轨括号形配方名不支持→回退，框架债）；026 475 包 use 互斥→
   caption 回退 ×4（框架债）；转换事故（行尾注释吞 token）两处已修复并全目录
   审计清零。）
+
+- （合并收据 `PLAN-637:r3` 2026-09-17：**prepared**（基线 583beea6a→reviewed
+  c2ec1c350；canonical diff SD-01/SD-02 冻结于 delivery_commit 568a5c401 前工作
+  树；投影目标=.autoos/specs.json architecture 节 P635-1/-2 复用更新）→
+  **landed**（master 2930b3325 = delivery ff；canonical 锚点双文件读回验证；
+  master 守卫 34/34 smoke）→ **ledger_refreshed**（.autoos/specs.json：P635-1/-2
+  同目标复用更新 + P637-1 reviews 新增，读回断言通过）→ **archived**（本文件
+  git mv + status: archived）→ cleaned 待 worktree/分支移除后回填。合并收据
+  归属会话：PLAN-637 执行会话。）
+
 - （B5 批次 work handoff 2026-09-17：`stage: work | PLAN-637 | plan_revision: 3 |
   outcome: pass → execution_done | code_commit: plan-637-dev B5 提交 |
   task_ids: T-05/T-07/T-08 | evidence:
