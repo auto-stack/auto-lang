@@ -41,6 +41,9 @@ widget DashboardPanel {
         var face_icons = []
         var face_statuses = []      // running | hatched | placeholder
         var face_spans = []         // "1" | "2"
+        var face_tabs = []          // "main" | "system"（R9：未声明此变量时
+                                    // write_state_vec 静默失败，视图按 tab
+                                    // 过滤会滤光所有 face——两个 tab 全空根因）
 
         // ---- 面板状态（handler 自建 rows；view 条件消费）----
         // R5：活动 tab（main=小组件 / system=系统——实时轮询类组件住

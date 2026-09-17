@@ -17796,25 +17796,52 @@ fn compare_pngs(
                 // Plan 503 M3：壁纸罩层（可读性 scrim，紧贴壁纸之上）。
                 layers.push(desktop_wallpaper_scrim());
             }
+            if state.desktop.desktop_app.is_some() {
+                let surface_app = state.desktop.desktop_app.expect("surface checked");
+                let build = || state.split_ref_desktop().map(|v| dynamic_view(v, false));
+                let surface_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] 桌面本体缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!(
+                            "[session] desktop surface view panicked (plan-453 T6 boundary): {payload:?}"
+                        );
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(surface_client.map(move |m| DM::App(surface_app, m)));
+            }
             // PLAN-024：dashboard 常驻小组件层（用户裁定 2026-09-17）——
-            // z 仅高于壁纸、低于桌面图标与全部 app 窗（v2 预留的桌面层
-            // z 槽形态提前兑现）；常驻非召唤：× = 隐藏 / dock ▦ 切换。
+            // z 高于桌面图标层、低于全部 app 窗（R12：图标层全屏
+            // BlankPress mouse-area 会吞面板 click，必须在图标层之上才可
+            // 交互；视觉右上与图标网格不重叠，app 窗照常遮挡——R3 保持）；
+            // 常驻非召唤：× = 隐藏 / dock ▦ 切换。
             // chrome wrapper 与 face 卡共用 dashboard_layout 算式定位
             // 定尺寸（px spacer 链，像素一致——.at 侧尺寸类不参与的根修）。
             if state.dashboard_visible() {
                 let faces_view = dashboard_faces_for_view(state);
                 let viewport = state.host_viewport();
-                let (pw, ph, ptop, cells_rel) = dashboard_layout(viewport, &faces_view);
-                // R7：默认右上角（与桌面图标网格有机共存——图标列主序占
-                // 左侧，右上天然无碰撞；用户拖拽 自定义位置留 v2）。
-                let panel_x = (viewport.width - pw - 24.0).max(8.0);
+                let (pw0, ph0, ptop, cells_rel) = dashboard_layout(viewport, &faces_view);
+                // R10：面板外框吸附桌面图标网格（列距 88 = 80+8，行距 80 =
+                // 72+8，原点 12）——宽 10 列高 3 行，右上对齐 12px 边距；
+                // 内部格位按实际面板宽等比缩放。
+                let gcol: f32 = 88.0;
+                let grow: f32 = 80.0;
+                let gpad: f32 = 12.0;
+                let pw = (10.0 * gcol - 8.0).min(viewport.width - 2.0 * gpad);
+                let ph = (3.0 * grow - 8.0).max(160.0);
+                let sx = pw / pw0.max(1.0);
+                let sy = ph / ph0.max(1.0);
+                let panel_x = (viewport.width - gpad - pw).max(gpad);
                 let cells: Vec<iced::Rectangle> = cells_rel
                     .iter()
                     .map(|r| iced::Rectangle {
-                        x: r.x + panel_x,
-                        y: r.y + ptop,
-                        width: r.width,
-                        height: r.height,
+                        x: r.x * sx + panel_x,
+                        y: r.y * sy + ptop,
+                        width: r.width * sx,
+                        height: r.height * sy,
                     })
                     .collect();
                 // R4：卡面 glass 底（stella dash-card 语言——主题感知半透
@@ -17921,6 +17948,8 @@ fn compare_pngs(
                     let card = iced::widget::container(face_client)
                         .width(iced::Length::Fixed(rect.width))
                         .height(iced::Length::Fixed(rect.height))
+                        .align_x(iced::alignment::Horizontal::Center)
+                        .align_y(iced::alignment::Vertical::Center)
                         .style(move |_t| iced::widget::container::Style {
                             background: Some(card_fill.into()),
                             border: iced::Border {
@@ -17937,23 +17966,6 @@ fn compare_pngs(
             // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口
             // 之下（G3 层级：窗口拖过时图标自然被覆盖）。shell 层同型
             // catch_unwind 视图边界（453 T6）。
-            if state.desktop.desktop_app.is_some() {
-                let surface_app = state.desktop.desktop_app.expect("surface checked");
-                let build = || state.split_ref_desktop().map(|v| dynamic_view(v, false));
-                let surface_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] 桌面本体缺失").size(14).into(),
-                    Err(payload) => {
-                        eprintln!(
-                            "[session] desktop surface view panicked (plan-453 T6 boundary): {payload:?}"
-                        );
-                        desktop_crash_element()
-                    }
-                };
-                layers.push(surface_client.map(move |m| DM::App(surface_app, m)));
-            }
             for &wid in &host.wm.z_order {
                 let Some(vwin) = host.wm.wins.get(&wid) else { continue };
                 // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。
