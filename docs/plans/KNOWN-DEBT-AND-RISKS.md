@@ -2241,9 +2241,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
 |---|---|---|---|---|
 | P020-D1 | medium | 架构 | **双投影器并存（AppProjector 解释态 / NativeProjector native）**——块流布局 walker ~150 行语义镜像重复（layout_view_block/layout_view_node vs layout_block/layout_node），样式双轨（字符串解析 vs typed StyleClass 适配）。统一方向 = 解释态投影器改写为 View 基（AuraViewBuilder 已产 View，双轨归一），待 native 覆盖集爬坡后立项 | desktop_protocol/client_runtime.rs layout_*；desktop_protocol/native_projector.rs |
-| P020-D2 | low | 协议边界 | **native queue 臂键盘/滚轮/右键不路由、L3 StateSnapshot 注入 not-yet**（v1.6 边界随注）——input 族入覆盖集时同步补路由臂；StateSnapshot 融合态迁移需 typed 组件字段写回通道另立 | native_projector.rs on_input/on_control；desktop-protocol-v1.md §1.6 边界 |
+| P020-D2 | low | 协议边界 | **✅ 键/滚轮/右键半句已核销（PLAN-025 T-05，§1.7）**——投影器 Right/Scroll/聚焦编辑消费臂 + 宿主 broker_key_event/broker_char/broker_scroll 生产路径落册；**StateSnapshot 半句保留**：L3 注入 native 仍 not-yet（typed 组件字段写回通道另立） | native_projector.rs on_input/wheel；session.rs broker_key_event/broker_char/broker_scroll；desktop-protocol-v1.md §1.7 |
 | P020-D3 | low | 生成器 | **async-init App 经孵化臂以 default() 态起**（初始化 API 加载不接协议 client 面）——超覆盖 App 的孵化形态缺省 auto→independent 可绕开，queue 档显式声明 async-init App 时启动态为空，待需要时立项 | rust_ui.rs wrap_example native_client_gate 随注 |
 | P020-D4 | low | 测试基建 | **桌面画布↔屏幕变换未文档化，OS 级点击自动化未打通**（DPI 2x + canvas 缩放系数非恒定——ui_desktop 真机冒烟三次坐标假设均未命中窗内按钮）；窗内点击/× 关闭的 GUI 级自动化待 acceptance channel 增 pointer verb（现仅 bus/handler），期间点击闭环/回收由协议级 p020_native_exe_arm 承载 | mcp_server.rs autoui_desktop；scripts/smoke-020-native-exe.sh（os 仓）随注 |
+| P025-D1 | low | 协议边界 | **live iced 桌面壳无键盘/滚轮事件订阅通道**（session.rs 零键盘事件臂——PLAN-025 D4 调查证据）；broker_key_event/broker_char/broker_scroll 生产路径已落（协议/broker 层），live 接线需 DesktopMessage 扩展 + iced 事件映射（Key::Named→VK u32、WheelScrolled→Scroll{dx,dy}、Key text→CharTyped）另立；期间真机键入链路由协议级 p025_native_input_arm 承载（P020-D4 同口径） | session.rs broker_* 生产路径；desktop-protocol-v1.md §1.7 输入路由两端 |
+| P025-D2 | low | 保真边界 | **native 聚焦身份 = 槽位序（D1-A）**——动态增删 input 致焦点前插入的结构变化下槽位越界即失焦（不猜测对位）；同族 not-yet 随注：slider 拖拽连续派发、select 键盘跳项、input on_submit/Enter、密码掩码、多行自动换行 | native_projector.rs focused_input 重定位；desktop-protocol-v1.md §1.7 聚焦与编辑闭环 |
 
 ## 2026-09-17 增补（PLAN-633 复审登记）
 
