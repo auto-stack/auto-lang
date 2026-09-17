@@ -113,6 +113,8 @@ store PlayerStore {
                 .current_url = ""
                 if .root_missing {
                     .status_text = "音乐目录不存在：请检查 E:\\Music\\ 或 AUTO_MEDIA_ROOT"
+                } else if .library_error != "" {
+                    .status_text = "连接服务失败：请确保后端服务正常运行（端口 8320）"
                 } else {
                     .status_text = "目录内无支持的音频文件（.flac / .mp3 / .wav）"
                 }
