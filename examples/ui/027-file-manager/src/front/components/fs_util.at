@@ -106,6 +106,16 @@ pub fn fmt_date(t int) str {
     return y.str() + "-" + pad2(m) + "-" + pad2(d) + " " + pad2(hh) + ":" + pad2(mm)
 }
 
+/// PLAN-023：媒体管线可缩略的图片扩展名（image_pipeline supported_media_path
+/// 同款白名单：jpg/jpeg/png/webp——gif/bmp/svg/ico 管线解码器不收，照旧
+/// FileIcon）。thumb 队列的 app 侧预门，避免排注定失败的活。
+pub fn is_image_ext(ext str) bool {
+    if ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" {
+        return true
+    }
+    return false
+}
+
 /// PLAN-016 T-09：扩展名 → 桌面 open_with 关联（v1 静态表——注册表
 /// `opens:` 投影面落地前，027 内置默认关联；与 041/031 pac.at opens
 /// 声明保持同源，host 执行臂仍按注册表校验）。无关联返回 ""。

@@ -6216,7 +6216,7 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
