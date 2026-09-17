@@ -189,6 +189,8 @@ impl Coverage {
             "col", "row", "container", "list",
             // 透传壳（View::Empty / AnchorSlot 块锚定槽——渲染透明）。
             "empty", "anchorslot",
+            // PLAN-025 T-05 —— scrollable（Scissor 裁剪 + on_scroll 滚轮）。
+            "scroll",
         ]
         .into_iter()
         .map(String::from)

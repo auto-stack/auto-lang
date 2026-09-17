@@ -36,7 +36,7 @@ use super::endpoint::FrameSource;
 use super::message::{ControlMsg, DrawList, DrawOp, InputMsg, MouseButton, Rgba8, WRect};
 use crate::ui::component::Component;
 use crate::ui::style::{Color, Style, StyleClass};
-use crate::ui::view::{SelectCallback, View};
+use crate::ui::view::{ScrollCallback, ScrollMetrics, SelectCallback, View};
 
 /// 输入框几何（client_runtime 私有常量的 native 同值镜像——视觉规格
 /// 镜像解释态，参数面各自持有）。
@@ -76,6 +76,15 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
     SelectBox { rect: WRect, slot: usize },
     /// select 开态选项项（消息布局期已物化——`SelectCallback.call`）。
     SelectOption { rect: WRect, msg: M },
+    /// scrollable 视口：滚轮派发（offset' = clamp(快照+delta)——T-01 D5；
+    /// on_scroll 不在场不登记——I3 留痕面）。
+    Scroll {
+        rect: WRect,
+        offset: (f32, f32),
+        viewport: (f32, f32),
+        content: (f32, f32),
+        callback: ScrollCallback<M>,
+    },
 }
 
 /// select 开态覆盖序记录（主块渲染后统一追加——D3：DrawList paint
@@ -95,7 +104,8 @@ impl<M: Clone + std::fmt::Debug> HitEntry<M> {
             | HitEntry::Input { rect, .. }
             | HitEntry::Slider { rect, .. }
             | HitEntry::SelectBox { rect, .. }
-            | HitEntry::SelectOption { rect, .. } => rect,
+            | HitEntry::SelectOption { rect, .. }
+            | HitEntry::Scroll { rect, .. } => rect,
         }
     }
 }
@@ -120,6 +130,11 @@ pub struct NativeProjector<C: Component> {
     input_buffer: String,
     /// 开态 select 槽位（T-01 D3：投影器侧开合状态；None = 全闭）。
     select_open: Option<usize>,
+    /// 最近一帧的右键命中表（`on_right_click` 物化消息；渲染时刷新）。
+    right_hits: Vec<(WRect, C::Msg)>,
+    /// 最近指针位（PointerMoved/Pressed 跟踪——wire Scroll 无坐标，滚轮
+    /// 路由定位消费；T-01 D5 执行期附注）。
+    pointer: (f32, f32),
     /// 渲染期遭遇的未覆盖 kind（动态分支防线——显式留痕面，测试/e2e 断言口）。
     uncovered_seen: Vec<String>,
     rev: u64,
@@ -137,6 +152,8 @@ impl<C: Component> NativeProjector<C> {
             focused_input: None,
             input_buffer: String::new(),
             select_open: None,
+            right_hits: Vec::new(),
+            pointer: (0.0, 0.0),
             uncovered_seen: Vec::new(),
             rev: 1,
             width,
@@ -195,6 +212,7 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             select_slots: 0,
             select_open: self.select_open,
             overlays: Vec::new(),
+            right_hits: Vec::new(),
         };
         let root_style = NodeStyle::default();
         let _ = layout_view_block(
@@ -246,16 +264,34 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             }
         }
         self.hits = ctx.hits;
+        self.right_hits = ctx.right_hits;
         self.uncovered_seen = ctx.uncovered;
         DrawList { clear: Some(BG), ops: ctx.ops }
     }
 
     fn on_input(&mut self, input: &InputMsg) {
         match input {
+            // 最近指针位跟踪（滚轮定位消费——wire Scroll 无坐标，T-01 D5
+            // 执行期附注）。
+            InputMsg::PointerMoved { x, y, .. } => self.pointer = (*x, *y),
             InputMsg::PointerPressed { x, y, button: MouseButton::Left, .. } => {
+                self.pointer = (*x, *y);
                 self.pointer_down_left(*x, *y);
             }
-            // 键盘/滚轮/右键：T-05 接线（消费面随覆盖爬坡扩臂——I3）。
+            // 右键命中派发（`on_right_click` 物化消息——倒序置顶优先）。
+            InputMsg::PointerPressed { x, y, button: MouseButton::Right, .. } => {
+                self.pointer = (*x, *y);
+                let hit = self
+                    .right_hits
+                    .iter()
+                    .rev()
+                    .find(|(r, _)| rect_contains(r, *x, *y))
+                    .cloned();
+                if let Some((_, msg)) = hit {
+                    self.component.on(msg);
+                    self.rev += 1;
+                }
+            }
             InputMsg::CharTyped { ch, .. } => self.char_typed(*ch),
             InputMsg::KeyPressed { key, .. } if *key == 8 => self.backspace(),
             // Esc（VK_ESCAPE = 27）关开态 select（T-01 D3）。
@@ -264,6 +300,11 @@ impl<C: Component> FrameSource for NativeProjector<C> {
                     self.rev += 1;
                 }
             }
+            // 滚轮派发（T-01 D5）：指针位包含 → 内层胜（倒序；嵌套
+            // scrollable 外层先登记）→ 唯一 Scrollable 兜底（wire Scroll
+            // 无坐标）；offset' = clamp(快照+delta) 后组装 ScrollMetrics
+            // （镜像 iced absolute_offset = 滚动后偏移语义）。
+            InputMsg::Scroll { dx, dy, .. } => self.wheel(*dx, *dy),
             _ => {}
         }
     }
@@ -361,8 +402,9 @@ impl<C: Component> NativeProjector<C> {
                 self.select_open = Some(slot);
                 self.rev += 1;
             }
-            // 开态选项项只在互斥臂可达（闭态派发不落此处）。
-            Some(HitEntry::SelectOption { .. }) => {}
+            // 开态选项项只在互斥臂可达（闭态派发不落此处）；滚轮只在
+            // wheel 臂可达（左键不派发）。
+            Some(HitEntry::SelectOption { .. }) | Some(HitEntry::Scroll { .. }) => {}
             None => {}
         }
     }
@@ -406,6 +448,42 @@ impl<C: Component> NativeProjector<C> {
         self.input_buffer.pop();
         self.dispatch_input_edit(msg);
     }
+
+    /// 滚轮路由（T-01 D5）：内层命中胜 → 唯一 Scrollable 兜底；不命中
+    /// 且非唯一 = 静默不路由（多 Scrollable 且指针缺席 → 目标歧义，I3）。
+    fn wheel(&mut self, dx: f32, dy: f32) {
+        let entry = {
+            let containing = self.hits.iter().enumerate().rev().find_map(|(i, e)| match e {
+                HitEntry::Scroll { .. } if rect_contains(e.rect(), self.pointer.0, self.pointer.1) => Some(i),
+                _ => None,
+            });
+            let idx = containing.or_else(|| {
+                let scrolls: Vec<usize> = self
+                    .hits
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, e)| if matches!(e, HitEntry::Scroll { .. }) { Some(i) } else { None })
+                    .collect();
+                (scrolls.len() == 1).then_some(scrolls[0])
+            });
+            idx.and_then(|i| self.hits.get(i).cloned())
+        };
+        let Some(HitEntry::Scroll { offset, viewport, content, callback, .. }) = entry else {
+            return;
+        };
+        let max_y = (content.1 - viewport.1).max(0.0);
+        let max_x = (content.0 - viewport.0).max(0.0);
+        let msg = callback.call(ScrollMetrics {
+            offset_x: (offset.0 + dx).clamp(0.0, max_x),
+            offset_y: (offset.1 + dy).clamp(0.0, max_y),
+            viewport_w: viewport.0,
+            viewport_h: viewport.1,
+            content_w: content.0,
+            content_h: content.1,
+        });
+        self.component.on(msg);
+        self.rev += 1;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -443,6 +521,8 @@ struct NativeCtx<M: Clone + std::fmt::Debug> {
     select_open: Option<usize>,
     /// 开态 select 覆盖序记录（render_frame 主块后统一追加）。
     overlays: Vec<SelectOverlay<M>>,
+    /// 右键命中表（Button/Row/Column/Container `on_right_click`）。
+    right_hits: Vec<(WRect, M)>,
 }
 
 impl<M: Clone + std::fmt::Debug> NativeCtx<M> {
@@ -582,7 +662,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             }
             Laid { size: (w, line_h) }
         }
-        View::Button { label, onclick, content, disabled, .. } => {
+        View::Button { label, onclick, on_right_click, content, disabled, .. } => {
             let size = style.font_size.unwrap_or(14.0);
             let label_w = measure_text(label, size);
             let w = style
@@ -623,6 +703,12 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     rect: WRect::new(x, y, w, h),
                     msg: onclick.clone(),
                 });
+            }
+            // 右键命中（T-05）：on_right_click 在场且未禁用才登记。
+            if !disabled {
+                if let Some(rc) = on_right_click {
+                    ctx.right_hits.push((WRect::new(x, y, w, h), rc.clone()));
+                }
             }
             Laid { size: (w, h) }
         }
@@ -747,6 +833,87 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             }
             Laid { size: (w, h) }
         }
+        // PLAN-025 T-05 scrollable 臂：溢出裁剪（Scissor push/pop——镜像
+        // client_runtime::layout_scroll :953-1020）+ 滚轮命中（on_scroll
+        // 在场才登记——I3；先登记后走子级：嵌套时内层倒序胜，D5）。滚动
+        // 偏移 = app 状态经 on_scroll 重入 view()（投影器只裁剪不缓存）。
+        View::Scrollable { child, width, height, offset, on_scroll, .. } => {
+            let outer_w = style
+                .fixed_w()
+                .or_else(|| width.map(f32::from))
+                .unwrap_or(avail_w.max(0.0))
+                .min(avail_w.max(0.0));
+            let viewport_h = style.fixed_h().or_else(|| height.map(f32::from));
+            let off = offset.unwrap_or((0.0, 0.0));
+            let Some(vh) = viewport_h else {
+                // 无固定高：自然高容器语义（零裁剪对）。
+                let laid = layout_view_block(
+                    ctx,
+                    std::slice::from_ref(child.as_ref()),
+                    x,
+                    y,
+                    outer_w,
+                    Dir::Vertical,
+                    &style,
+                );
+                return Laid { size: (outer_w, laid.size.1) };
+            };
+            // Scroll 命中先登记（on_scroll 在场才登记——I3 滚轮不路由
+            // 留痕；content_h 两遍法后补——见下）。
+            let scroll_idx = ctx.hits.len();
+            if let Some(cb) = on_scroll {
+                ctx.hits.push(HitEntry::Scroll {
+                    rect: WRect::new(x, y, outer_w, vh),
+                    offset: off,
+                    viewport: (outer_w, vh),
+                    content: (outer_w, 0.0),
+                    callback: cb.clone(),
+                });
+            }
+            let ops_mark = ctx.ops.len();
+            let hits_mark = ctx.hits.len();
+            let laid = layout_view_block(
+                ctx,
+                std::slice::from_ref(child.as_ref()),
+                x,
+                y,
+                outer_w,
+                Dir::Vertical,
+                &style,
+            );
+            let content_h = laid.size.1;
+            if content_h > vh + 0.01 {
+                // 溢出：撤首轮 → Scissor push → 子级 → pop；视口外命中
+                // 区不登记（几何判交——嵌套组合正确，解释态同款）。
+                ctx.ops.truncate(ops_mark);
+                ctx.ops.push(DrawOp::Scissor { rect: WRect::new(x, y, outer_w, vh) });
+                let _ = layout_view_block(
+                    ctx,
+                    std::slice::from_ref(child.as_ref()),
+                    x,
+                    y,
+                    outer_w,
+                    Dir::Vertical,
+                    &style,
+                );
+                ctx.ops.push(DrawOp::ScissorPop);
+                let clip = WRect::new(x, y, outer_w, vh);
+                let child_hits: Vec<HitEntry<M>> = ctx.hits.drain(hits_mark..).collect();
+                for h in child_hits {
+                    let r = h.rect();
+                    let intersects =
+                        r.x < clip.x + clip.w && r.x + r.w > clip.x && r.y < clip.y + clip.h && r.y + r.h > clip.y;
+                    if intersects {
+                        ctx.hits.push(h);
+                    }
+                }
+            }
+            if let Some(HitEntry::Scroll { content, .. }) = ctx.hits.get_mut(scroll_idx) {
+                content.1 = content_h;
+            }
+            // 视口占位 = viewport_h（溢出不影响兄弟节点位置——解释态同款）。
+            Laid { size: (outer_w, vh) }
+        }
         View::Row { .. } => {
             let dir = Dir::Horizontal;
             layout_view_group(ctx, view, &style, x, y, avail_w, dir)
@@ -755,8 +922,8 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let dir = Dir::Vertical;
             layout_view_group(ctx, view, &style, x, y, avail_w, dir)
         }
-        View::Container { child, .. } => {
-            layout_view_container(ctx, child, &style, x, y, avail_w)
+        View::Container { child, on_right_click, .. } => {
+            layout_view_container(ctx, child, on_right_click.clone(), &style, x, y, avail_w)
         }
         // —— 覆盖门后动态分支防线：占位盒 + 留痕（I3：非静默错绘）。
         other => {
@@ -809,7 +976,18 @@ fn layout_view_group<M: Clone + std::fmt::Debug>(
         group_style.box_layout.padding_left = Some(p);
         group_style.box_layout.padding_right = Some(p);
     }
-    layout_view_block(ctx, children, x, y, avail_w, dir, &group_style)
+    let laid = layout_view_block(ctx, children, x, y, avail_w, dir, &group_style);
+    // 右键命中（T-05）：布局件整框登记（Row/Column `on_right_click`）。
+    let rc = match view {
+        View::Row { on_right_click, .. } | View::Column { on_right_click, .. } => {
+            on_right_click.clone()
+        }
+        _ => None,
+    };
+    if let Some(rc) = rc {
+        ctx.right_hits.push((WRect::new(x, y, laid.size.0, laid.size.1), rc));
+    }
+    laid
 }
 
 /// 容器（View::Container）：bg/padding 包装 + 子级块流。z 序镜像
@@ -818,11 +996,13 @@ fn layout_view_group<M: Clone + std::fmt::Debug>(
 fn layout_view_container<M: Clone + std::fmt::Debug>(
     ctx: &mut NativeCtx<M>,
     child: &View<M>,
+    right_click: Option<M>,
     style: &NodeStyle,
     x: f32,
     y: f32,
     avail_w: f32,
 ) -> Laid {
+    let container_right_click = right_click;
     let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
     let mut inner_w = avail_w;
     if let Some(fw) = style.fixed_w() {
@@ -868,6 +1048,10 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
         if let Some(border) = style.border {
             ctx.push_border(WRect::new(x, y, outer_w, outer_h), border);
         }
+    }
+    // 右键命中（T-05）：容器整框登记（`on_right_click`——div 形态消费面）。
+    if let Some(rc) = container_right_click {
+        ctx.right_hits.push((WRect::new(x, y, outer_w, outer_h), rc));
     }
     Laid { size: (outer_w, outer_h) }
 }
@@ -1818,6 +2002,148 @@ mod tests {
         assert_eq!(p.select_open, None, "Esc 关闭");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["Small", "▾", "pick: Small"], "回闭态");
+    }
+
+    // —— PLAN-025 T-05 右键/滚轮/Scissor 单测 ——
+
+    #[derive(Debug)]
+    struct Scroller {
+        offset_y: f32,
+    }
+
+    #[derive(Debug, Clone)]
+    enum ScMsg {
+        Scrolled(f32),
+    }
+
+    impl Component for Scroller {
+        type Msg = ScMsg;
+        fn on(&mut self, msg: Self::Msg) {
+            if let ScMsg::Scrolled(oy) = msg {
+                self.offset_y = oy;
+            }
+        }
+        fn view(&self) -> View<Self::Msg> {
+            // 视口 h40；内容 3 行（≈72.9px）→ 溢出 → Scissor 对。
+            View::col()
+                .child(
+                    View::scrollable(
+                        View::col()
+                            .child(View::text("t1"))
+                            .child(View::text("t2"))
+                            .child(View::text("t3"))
+                            .build(),
+                    )
+                    .height(40)
+                    .offset((0.0, self.offset_y))
+                    .on_scroll(|m: crate::ui::view::ScrollMetrics| ScMsg::Scrolled(m.offset_y))
+                    .build(),
+                )
+                .child(View::text(format!("oy: {}", self.offset_y)))
+                .build()
+        }
+    }
+
+    #[test]
+    fn scrollable_scissor_frame_and_wheel() {
+        let mut p = NativeProjector::new(Scroller { offset_y: 0.0 }, 480.0, 320.0);
+        p.ensure_covered().expect("scroll 入覆盖集（layouts + scroll）");
+        let frame = p.render_frame();
+        // 溢出（内容 72.9 > 视口 40）→ Scissor push/pop 对在册。
+        let scissors = frame
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DrawOp::Scissor { .. } | DrawOp::ScissorPop))
+            .count();
+        assert_eq!(scissors, 2, "Scissor push+pop 对: {:?}", frame.ops);
+
+        // 滚轮（唯一 Scrollable 兜底——指针位缺席也能定位）dy=+15 →
+        // offset' = clamp(0+15, 0..=32.9) = 15 → on_scroll 派发 → app 状态。
+        p.on_input(&InputMsg::Scroll { wid: 1, dx: 0.0, dy: 15.0 });
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| *t == "oy: 15"),
+            "滚轮派发 offset' 前进: {:?}",
+            texts_of(&frame)
+        );
+
+        // 越界钳制：dy=+1000 → offset' = content_h - viewport_h
+        // （内容 3×21.6 + 2×gap8 = 80.8 → max_oy ≈ 40.8）。
+        p.on_input(&InputMsg::Scroll { wid: 1, dx: 0.0, dy: 1000.0 });
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| t.starts_with("oy: 40.8")),
+            "滚轮末端钳制: {:?}",
+            texts_of(&frame)
+        );
+    }
+
+    #[test]
+    fn right_click_dispatch() {
+        #[derive(Debug)]
+        struct RClick {
+            lefts: u32,
+            rights: u32,
+        }
+        #[derive(Debug, Clone)]
+        enum RMsg {
+            Left,
+            Right,
+        }
+        impl Component for RClick {
+            type Msg = RMsg;
+            fn on(&mut self, msg: Self::Msg) {
+                match msg {
+                    RMsg::Left => self.lefts += 1,
+                    RMsg::Right => self.rights += 1,
+                }
+            }
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(
+                        View::Button {
+                            label: "ctx".into(),
+                            onclick: RMsg::Left,
+                            style: None,
+                            on_right_click: Some(RMsg::Right),
+                            content: None,
+                            disabled: false,
+                        },
+                    )
+                    .child(View::text(format!("l{} r{}", self.lefts, self.rights)))
+                    .build()
+            }
+        }
+        let mut p = NativeProjector::new(RClick { lefts: 0, rights: 0 }, 480.0, 320.0);
+        let _ = p.render_frame();
+        // 按钮盒 (10,10,120,36) 中心右键 → Right 派发（帧文本 l0 r1）。
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Right,
+            x: 70.0,
+            y: 28.0,
+            modifiers: 0,
+        });
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| *t == "l0 r1"),
+            "右键派发 Right: {:?}",
+            texts_of(&frame)
+        );
+        // 左键同区 → Left 派发（l1 r1）。
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: 70.0,
+            y: 28.0,
+            modifiers: 0,
+        });
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| *t == "l1 r1"),
+            "左键派发 Left: {:?}",
+            texts_of(&frame)
+        );
     }
 
     #[test]

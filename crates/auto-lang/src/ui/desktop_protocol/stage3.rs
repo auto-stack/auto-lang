@@ -381,6 +381,94 @@ mod tests {
     }
 
     /// 按示例名取该 client 的合成帧（queue 臂 DrawList）。
+    /// PLAN-025 T-05：broker_key_event/broker_char/broker_scroll 路由
+    /// 语义单测（真管道对端落 wire 断言——键盘/字符走焦点窗，滚轮走
+    /// 指针命中窗；无焦点/未命中 = false 不路由）。
+    #[test]
+    fn broker_input_production_routes() {
+        use crate::ui::desktop_protocol::message::{InputMsg, MouseButton, ProtocolMsg};
+        use crate::ui::desktop_protocol::transport;
+        use crate::ui::session::{AppId, DesktopSession};
+
+        let pipe = format!("autodesk-broker-input-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        // 虚拟窗 + broker client 装配（真管道对端）。
+        let component = crate::build_dynamic_component(
+            r#"widget t { view { text "x" } }"#,
+            None,
+        )
+        .expect("build");
+        let app_id = session.allocate_app(component);
+        let wid = session.wm_add_win(
+            app_id,
+            "t".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(480.0, 320.0)),
+        );
+        session.wm_focus(wid);
+        let mut child_end = transport::connect(&pipe, 2000).expect("child connect");
+        let host_end = listener.wait_connect().expect("host accept");
+        let mut client =
+            crate::ui::desktop_protocol::stage3::BrokerClient::new(pipe.clone(), host_end);
+        client.wid = Some(wid);
+        session.broker_clients.insert(pipe.clone(), client);
+
+        // 管道投递有传输时延——预算内自旋收帧。
+        fn wait_msg(
+            child_end: &mut Box<dyn transport::Transport + Send>,
+        ) -> Option<ProtocolMsg> {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                if let Some(loaded) = child_end.try_recv() {
+                    return Some(loaded.expect("解码"));
+                }
+                if std::time::Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+
+        // broker_char：焦点窗 → CharTyped 落 wire。
+        assert!(session.broker_char('x'), "char 路由");
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::CharTyped { wid: w, ch })) => {
+                assert_eq!((w, ch), (wid.0, 'x'));
+            }
+            other => panic!("CharTyped 未落 wire: {other:?}"),
+        }
+
+        // broker_key_event：焦点窗 → KeyPressed 落 wire（VK_BACK）。
+        assert!(session.broker_key_event(8, 0), "key 路由");
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::KeyPressed { wid: w, key, .. })) => {
+                assert_eq!((w, key), (wid.0, 8));
+            }
+            other => panic!("KeyPressed 未落 wire: {other:?}"),
+        }
+
+        // broker_scroll：指针命中窗 → Scroll 落 wire。
+        assert!(session.broker_scroll(100.0, 100.0, 0.0, 15.0), "scroll 路由");
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::Scroll { wid: w, dx, dy })) => {
+                assert_eq!((w, dx, dy), (wid.0, 0.0, 15.0));
+            }
+            other => panic!("Scroll 未落 wire: {other:?}"),
+        }
+        // 窗外滚轮不路由。
+        assert!(!session.broker_scroll(5000.0, 5000.0, 0.0, 1.0), "窗外不路由");
+
+        // 焦点窗回收后键盘不路由（焦点窗语义——区别于 hit_test）。
+        let _ = MouseButton::Left; // 触碰导入（button 族断言在 pointer_down 侧）
+        let _ = AppId(0);
+        let host = session.host.as_mut().unwrap();
+        host.wm.wins.clear();
+        host.wm.focused = None;
+        assert!(!session.broker_char('y'), "焦点丢失不路由");
+    }
+
     fn composed_texts(session: &DesktopSession, app: &str) -> Vec<String> {
         session
             .broker_clients
@@ -608,29 +696,14 @@ mod tests {
             let (hx, hy) = twin_hit("003-converter", "input:celsius").expect("003 celsius 坐标");
             let (ox, oy) = origin_of(&session, "003-converter").expect("003 窗原点");
             assert!(session.broker_pointer_down(ox + hx, oy + hy, MouseButton::Left));
-            let (wid, mut end_pipe) = {
-                let client = session
-                    .broker_clients
-                    .values_mut()
-                    .find(|c| c.app_name.as_deref() == Some("003-converter"))
-                    .expect("003 client");
-                (client.wid.expect("wid"), client.pipe.clone())
-            };
-            let _ = &mut end_pipe;
+            // PLAN-025 T-05（AC-04 解释态同册受益实证）：键入改走宿主
+            // 生产路径 `broker_char`（WM 焦点窗 → 命中窗 client 管道）——
+            // 原直注 client.end 的协议级承载退役。
             for ch in ['1', '0', '0'] {
-                let msg = crate::ui::desktop_protocol::message::ProtocolMsg::Input(
-                    crate::ui::desktop_protocol::message::InputMsg::CharTyped {
-                        wid: wid.0,
-                        ch,
-                    },
+                assert!(
+                    session.broker_char(ch),
+                    "broker_char 路由（焦点窗 = 前次 broker_pointer_down 聚焦）"
                 );
-                if let Some(client) = session
-                    .broker_clients
-                    .values_mut()
-                    .find(|c| c.app_name.as_deref() == Some("003-converter"))
-                {
-                    let _ = client.end.send(&msg);
-                }
             }
             assert!(
                 wait_frames(&mut session, |s| {
