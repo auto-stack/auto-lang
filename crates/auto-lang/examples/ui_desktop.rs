@@ -30,6 +30,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 虚拟桌面内（如 file-manager 的 open_with / 系统默认程序分流）。
     // 单 app 窗口（auto run -r vm）不设此变量。
     std::env::set_var("AUTO_UI_IN_DESKTOP", "1");
+    // PLAN-024 R7：storage 路径对齐 desktop.sh（PLAN-018 rev2 确定性
+    // per-user 文件）——直接 exec exe（不经脚本）时缺此 env 会落到按
+    // CWD 哈希的临时库：桌面快捷方式/shell 配置全部"消失"（实机走查
+    // R7 根因）。已设 env（脚本/测试隔离）不覆盖。
+    if std::env::var_os("AUTO_VM_STORAGE_FILE").is_none() {
+        if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+            let path = std::path::PathBuf::from(home)
+                .join(".config")
+                .join("autoos")
+                .join("desktop-storage.json");
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+        }
+    }
     let args: Vec<String> = std::env::args().collect();
     // Plan 463 T3：--fullscreen = borderless 全屏桌面（PLAN-526 T13 起
     // Esc 调试退出退役——退出走 dock 电源键确认面板）。

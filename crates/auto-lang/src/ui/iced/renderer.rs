@@ -9656,17 +9656,9 @@ fn dashboard_layout(
             + DASH_PAD
     };
     let panel_top = 64.0_f32.min((viewport.height - panel_h).max(8.0));
-    let panel_x = (viewport.width - panel_w) / 2.0;
-    // 绝对格位 = 面板原点 + 内部坐标。
-    let cells = cells
-        .into_iter()
-        .map(|r| iced::Rectangle {
-            x: r.x + panel_x,
-            y: r.y + panel_top,
-            width: r.width,
-            height: r.height,
-        })
-        .collect();
+    // 格位 = 面板相对坐标（落位 panel_x 由调用方单一注入——chrome 与
+    // face 永远同源；R7 伴随修正：此前内部居中导致 wrapper 挪位后
+    // chrome/face 分家）。
     (panel_w, panel_h, panel_top, cells)
 }
 
@@ -12854,6 +12846,14 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
         &state.desktop.registry_entries,
         layout_key.as_deref(),
         rows,
+    );
+    eprintln!(
+        "[desktop-icons] order={} hidden={} layout_key={:?} rows={} cells={}",
+        order.len(),
+        hidden.len(),
+        layout_key,
+        rows,
+        cells.len(),
     );
     let Some(app) = state.apps.get_mut(&surface) else { return };
     let _ = app.component.write_state_vec("__desktop_icons", entries);
@@ -17804,8 +17804,19 @@ fn compare_pngs(
             if state.dashboard_visible() {
                 let faces_view = dashboard_faces_for_view(state);
                 let viewport = state.host_viewport();
-                let (pw, ph, ptop, cells) = dashboard_layout(viewport, &faces_view);
-                let panel_x = (viewport.width - pw) / 2.0;
+                let (pw, ph, ptop, cells_rel) = dashboard_layout(viewport, &faces_view);
+                // R7：默认右上角（与桌面图标网格有机共存——图标列主序占
+                // 左侧，右上天然无碰撞；用户拖拽 自定义位置留 v2）。
+                let panel_x = (viewport.width - pw - 24.0).max(8.0);
+                let cells: Vec<iced::Rectangle> = cells_rel
+                    .iter()
+                    .map(|r| iced::Rectangle {
+                        x: r.x + panel_x,
+                        y: r.y + ptop,
+                        width: r.width,
+                        height: r.height,
+                    })
+                    .collect();
                 // R4：卡面 glass 底（stella dash-card 语言——主题感知半透
                 // 明填充，dark=轻提亮/light=白玻璃）。
                 let card_fill = if crate::ui::style::iced_adapter::dark_mode() {
