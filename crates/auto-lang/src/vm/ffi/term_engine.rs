@@ -624,6 +624,35 @@ pub fn shim_term_menu_take(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
+/// PLAN-020 T-00b:窗口尺寸面(逻辑 px)。读 iced_adapter 窗口全局
+/// (renderer 每帧 set_window_width/height),与引擎零耦合——分屏矩形
+/// 投影的前端 px 类几何标定源。非 ui 特性(无窗口)返缺省槽位值。
+#[cfg(feature = "ui")]
+pub fn shim_term_window_width(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let w = crate::ui::style::theme::window_width();
+    task.ram.push_nv(auto_val::encode_i32(w as i32));
+    Ok(())
+}
+
+#[cfg(not(feature = "ui"))]
+pub fn shim_term_window_width(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_nv(auto_val::encode_i32(1024));
+    Ok(())
+}
+
+#[cfg(feature = "ui")]
+pub fn shim_term_window_height(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let h = crate::ui::style::theme::window_height();
+    task.ram.push_nv(auto_val::encode_i32(h as i32));
+    Ok(())
+}
+
+#[cfg(not(feature = "ui"))]
+pub fn shim_term_window_height(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_nv(auto_val::encode_i32(768));
+    Ok(())
+}
+
 pub fn shim_term_viewport_cols(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     // PLAN-018 D5 per-handle 化:读该柄视口(缺省 0,0;旧件为进程级
     // 单例,多柄下串线——本面从此按柄隔离)。

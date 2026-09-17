@@ -660,10 +660,28 @@ impl<'a> AuraViewBuilder<'a> {
     /// (`.note.tags`) are resolved field-by-field via `resolve_expr_to_value`
     /// so that a prop object's sub-fields (e.g. a Note's tags array stored
     /// as a heap-id Int) can be iterated.
+    /// PLAN-633: for 源/字段读取的 store 别名识别——`.store.X` 字面别名与
+    /// 真名限定形态（`.TodoStore.X`，发射器 store 接收者限定产物）统一
+    /// 落根态裸字段 X。返回 Some(裸字段名) = store 源；None = 常规路径。
+    fn store_source_field(&self, stripped: &str) -> Option<String> {
+        if !stripped.contains('.') {
+            return None;
+        }
+        let first = stripped.split('.').next().unwrap_or("");
+        if first == "store" {
+            return stripped.split('.').nth(1).map(|x| x.to_string());
+        }
+        if crate::ui::handler_codegen::view_store_alias_real_name(first).is_some() {
+            return stripped.split('.').nth(1).map(|x| x.to_string());
+        }
+        None
+    }
     fn resolve_iterable(&self, iterable: &str, bindings: &Bindings) -> Option<Vec<auto_val::Value>> {
         // Simple state field (no interior dot after stripping the leading '.')
         let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
-        let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+        let store_field = self.store_source_field(stripped);
+        let has_inner_dot = stripped.contains('.') && store_field.is_none();
+        let stripped = store_field.as_deref().unwrap_or(stripped);
         if !has_inner_dot {
             // Delegate to existing state-read helpers.
             if let Ok(arr) = self.read_state_as_vec(stripped) {
@@ -784,7 +802,10 @@ impl<'a> AuraViewBuilder<'a> {
                 // resolve via resolve_iterable (handles field-by-field deref).
                 // For simple state fields, use read_state/read_state_as_vec.
                 let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
-                let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+                let store_field = self.store_source_field(stripped);
+                let has_inner_dot = stripped.contains('.') && store_field.is_none();
+                let stripped = store_field.as_deref().unwrap_or(stripped);
+                let state_name = store_field.as_deref().unwrap_or(state_name);
                 // elems → loop children(堆引用与 computed 回退两路共用;语义
                 // 与下方 Ok(Value::Array) 主路径一致:matches_search 过滤 +
                 // 循环变量/index 绑定 + 空/单/多子聚合)。
@@ -982,6 +1003,7 @@ impl<'a> AuraViewBuilder<'a> {
                 }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
+
                     if let Some(child_widget) = registry.get(name) {
                         let prop_values: HashMap<String, AuraPropValue> = props.iter()
                             .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
@@ -1938,6 +1960,7 @@ impl<'a> AuraViewBuilder<'a> {
                     return nv;
                 }
                 if let Some(registry) = self.widget_registry {
+
                     if let Some(child_widget) = registry.get(tag) {
                         // D-GAP-4: tracked variant so the child subtree's
                         // style/event bindings reach the BuildProbe (snapshot).
@@ -5768,6 +5791,7 @@ let tabs_inner = View::Row {
             .active_child_widgets
             .borrow()
             .contains(&child_widget.name);
+
         if cycling {
             return View::Empty;
         }
@@ -5837,6 +5861,7 @@ let tabs_inner = View::Row {
             return View::Empty;
         }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
+
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
         // (tracked 双胎保持同一渲染语义)。
@@ -6119,7 +6144,11 @@ let tabs_inner = View::Row {
         // 静默返回空,row 内嵌的 for-loop(表头列名)整体消失。col 路径一直走
         // resolve_iterable,所以数据行(for 在 col 直接子级)不受影响。
         let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
-        let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
+        let store_field = self.store_source_field(stripped);
+        let has_inner_dot = stripped.contains('.') && store_field.is_none();
+        let stripped = store_field.as_deref().unwrap_or(stripped);
+        let state_name = state_name.strip_prefix('.').unwrap_or(state_name);
+        let state_name = store_field.as_deref().unwrap_or(state_name);
         let array = if has_inner_dot {
             match self.resolve_iterable(iterable, bindings) {
                 Some(elems) => auto_val::Array::from(elems),
@@ -10004,9 +10033,16 @@ let tabs_inner = View::Row {
                 // Without this, `.store.mines_label` resolves to empty (read_state
                 // has no "store" field since store fields are bare-named in root
                 // state) → empty text node → filtered out → label disappears.
-                if let Expr::Dot(inner_obj, store_field) = object.as_ref() {
-                    if store_field.as_str() == "store"
-                        && matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                if let Expr::Dot(inner_obj, store_alias) = object.as_ref() {
+                    // PLAN-633: `.store.X` 字面别名之外,真名限定形态
+                    // (`.TodoStore.X`,发射器 store 接收者限定产物)同读根态
+                    // 裸字段——多 store 语境(画廊宿主)下泛型别名歧义,发射
+                    // 期已真名化,视图侧须同口径。
+                    if matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                        && crate::ui::handler_codegen::view_store_alias_real_name(
+                            store_alias.as_str(),
+                        )
+                        .is_some()
                     {
                         return self.read_state_as_string_with(field.as_str(), bindings);
                     }
@@ -10232,9 +10268,13 @@ let tabs_inner = View::Row {
             Expr::Dot(object, field) => {
                 // Plan 370 D-GAP-4: handle .store.X path — flatten to read root state X.
                 // Store fields are merged into root state as bare names.
-                if let Expr::Dot(inner_obj, store_field) = object.as_ref() {
-                    if store_field.as_str() == "store"
-                        && matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                if let Expr::Dot(inner_obj, store_alias) = object.as_ref() {
+                    // PLAN-633: 同上——真名限定形态与 `.store.X` 同读根态。
+                    if matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                        && crate::ui::handler_codegen::view_store_alias_real_name(
+                            store_alias.as_str(),
+                        )
+                        .is_some()
                     {
                         return self.read_state(field.as_str()).ok();
                     }
@@ -13561,6 +13601,7 @@ mod tests {
             }
             other => panic!("expected AutodownEditor variant"),
         }
+        use crate::ui::action_config::set_menubar_open;
         set_menubar_open(None);
     }
     /// D-GAP-4: an if/else body spliced into a row records each spliced node

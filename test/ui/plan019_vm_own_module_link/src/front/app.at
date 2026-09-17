@@ -1,0 +1,24 @@
+// app.at — PLAN-019 T-06 金样语料:裸名模块内调用 × 跨模块歧义导出。
+// Init 经 api.get_val(3)(GET 带参路由)回填 .v;断言 v == 4 钉死
+// own-module 绑定(db.bump)而非 api 包装(api.bump,语义 x+100)。
+use back.api
+
+widget App {
+    msg { Init }
+
+    model {
+        var v int = 0
+    }
+
+    on {
+        .Init -> {
+            .v = api.get_val(3)
+        }
+    }
+
+    view {
+        col {
+            text { .text = "val=" + .v.str() }
+        }
+    }
+}

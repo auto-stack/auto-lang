@@ -506,6 +506,11 @@ macro_rules! for_each_native {
             // PLAN-015 D4:菜单动作载荷(0=Copy 1=Paste 2=SelectAll
             // 3=Interrupt;-1=无载荷;注册表任意端)。
             (2987, NATIVE_TERM_ENGINE_MENU_TAKE, shim_term_menu_take, "auto.term.engine_menu_take"),
+            // PLAN-020 T-00b:窗口尺寸面(逻辑 px;分屏矩形投影 px 类几何的
+            // 标定源)。读 iced_adapter 窗口全局(renderer 每帧 set),零引擎
+            // 耦合;vue back 无窗口降级返缺省槽位值。
+            (2998, NATIVE_TERM_WINDOW_WIDTH, shim_term_window_width, "auto.term.window_width"),
+            (2999, NATIVE_TERM_WINDOW_HEIGHT, shim_term_window_height, "auto.term.window_height"),
             (2995, NATIVE_FS_CANONICAL, shim_fs_canonical, "auto.fs.canonical"),
             (2996, NATIVE_FS_EXT, shim_fs_ext, "auto.fs.ext"),
             // 2026-09-14(PLAN-016 T-05):mtime 走 rust_fn 宏自注册
@@ -1068,6 +1073,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.term.engine_backlog_paused", 2980, Int),
             ("auto.term.engine_backlog_take_alerts", 2981, Int),
             ("auto.term.engine_backlog_dropped", 2982, Int),
+            ("auto.term.window_width", 2998, Int),
+            ("auto.term.window_height", 2999, Int),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2654,6 +2661,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_pump_for", 2985),
     ("auto.term.engine_apply_resize_for", 2986),
     ("auto.term.engine_menu_take", 2987),
+    ("auto.term.window_width", 2998),
+    ("auto.term.window_height", 2999),
 
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
     ("auto.image.queue", 2960),
