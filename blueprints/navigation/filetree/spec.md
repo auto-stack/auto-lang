@@ -3,7 +3,7 @@ kind = "navigation"
 name = "filetree"
 palette = ["icon", "text"]
 extension_points = ["nodes", "default_expanded", "selection", "toggle"]
-variants = ["default"]
+variants = []
 
 [dataSource]
 nodes = "[]Node"
@@ -35,7 +35,18 @@ fs 形态数据（id=路径 node schema）自动映射目录/文件图标（fold
 
 # References
 
-- `default` — FileTree 组合形态（widget，自持展开/选中态）
+（暂无——组合形态 FileTree 暂缓，见下）
+
+## 组合形态暂缓（PLAN-070 T-03 实证）
+
+FileTree 组合 widget（自持展开/选中态，源码见 git af8c72a84 的
+reference/default.at）在 vue 轨 bps 扫描下不可构建：扫描发射器不转译
+`.at` 跨文件 fn 导入（`use bps...tree_util:`/bare 形态均实测
+`Cannot find name 'flatten_tree'/'toggle_id'`，046-bp-import 构建断裂
+复现），且单文件内联会撞单文件单 widget 纪律/制造 fn 双份漂移面。
+待发射器补 plan522 式 fn 转译后回归（auto-lang DEBTS 070 第二行）。
+本包当前交付 = 支撑件（tree_util/tree_icon）+ 契约 + gotchas——活消费面
+（jade desktop/041）全部经支撑件符号导入，不受影响。
 
 # 包内支撑件（格式扩展，PLAN-070）
 
