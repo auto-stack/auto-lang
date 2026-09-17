@@ -1,7 +1,27 @@
 // app.at — Pricing Table.
+// PLAN-637 B2 Phase B 映射（2026-09-17）：zinc/gray 明暗条件对按角色收敛到同 token——
+// zinc-100/gray-900→foreground；zinc-400/gray-500→muted-foreground；zinc-300/gray-700
+// →foreground（特性行正文）；卡片 bg-zinc-900/bg-white→bg-card、border-zinc-800/gray-200→
+// border-border（shadow-lg/sm 差异保留条件）；plan3 按钮 zinc-800/gray-800 系→secondary 族
+// （双臂全同）；页根 zinc-950/gray-50→bg-background（双臂全同）。条件结构保留（结构简化
+// 不属本计划授权面）。Phase A 提取：feat_check ×12 / feat_check_muted ×6 / feat_list ×3 /
+// title_block ×3；Phase B 收敛提取：feat_text ×18 / plan_name ×3 / plan_subtitle ×3 /
+// plan_price ×3。
+
 // Plan 506: in-app title bar / Settings panel removed (common header widget
 // retired) — title/theme/accent live in pac.at + os-config, host chrome carries them.
 // Default theme: Dark mode.
+// PLAN-637 B2 Phase A：重复 class 串提取为本地配方（体 ≡ 原字面量，
+// 展开后逐字节等价；单类短串（如 items-center）按不过度抽象口径豁免）。
+style feat_check = "text-primary font-bold mr-2.5 text-sm"
+style feat_check_muted = "text-muted-foreground font-bold mr-2.5 text-sm"   // Phase B: zinc-400 → muted-foreground
+style feat_list = "gap-3.5 my-5 flex-1"
+style title_block = "gap-1 items-center"
+style feat_text = "text-sm text-foreground"   // Phase B：明暗臂收敛（zinc-300/gray-700→foreground）
+style plan_name = "text-lg font-bold text-foreground"   // Phase B 收敛提取
+style plan_subtitle = "text-xs text-muted-foreground"   // Phase B 收敛提取
+style plan_price = "text-4xl font-extrabold text-foreground mt-2"   // Phase B 收敛提取
+
 widget App {
     msg {
         BuyPlan1,
@@ -53,9 +73,9 @@ widget App {
                     }
                     span "Choose the plan that fits your needs" {
                         style: if .dark_mode {
-                            "text-sm text-zinc-400 mt-1"
+                            "text-sm text-muted-foreground mt-1"
                         } else {
-                            "text-sm text-gray-500 mt-1"
+                            "text-sm text-muted-foreground mt-1"
                         }
                     }
                     style: "gap-1 items-center mb-2"
@@ -68,80 +88,80 @@ widget App {
                         col {
                             h3 .plan1_name {
                                 style: if .dark_mode {
-                                    "text-lg font-bold text-zinc-100"
+                                    "text-lg font-bold text-foreground"
                                 } else {
-                                    "text-lg font-bold text-gray-900"
+                                    "text-lg font-bold text-foreground"
                                 }
                             }
                             span .plan1_subtitle {
                                 style: if .dark_mode {
-                                    "text-xs text-zinc-400"
+                                    "text-xs text-muted-foreground"
                                 } else {
-                                    "text-xs text-gray-500"
+                                    "text-xs text-muted-foreground"
                                 }
                             }
                             span .plan1_price {
                                 style: if .dark_mode {
-                                    "text-4xl font-extrabold text-zinc-100 mt-2"
+                                    "text-4xl font-extrabold text-foreground mt-2"
                                 } else {
-                                    "text-4xl font-extrabold text-gray-900 mt-2"
+                                    "text-4xl font-extrabold text-foreground mt-2"
                                 }
                             }
-                            style: "gap-1 items-center"
+                            style: title_block
                         }
                         col {
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .plan1_devs {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat1 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat2 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat3 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat4 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat5 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
-                            style: "gap-3.5 my-5 flex-1"
+                            style: feat_list
                         }
                         button .plan1_btn {
                             onclick: .BuyPlan1
                             style: "w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-semibold transition-colors shadow-sm cursor-pointer"
                         }
                         style: if .dark_mode {
-                            "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between"
+                            "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between"
                         } else {
-                            "bg-white rounded-2xl border border-gray-200 p-6 flex-1 max-w-[340px] min-w-[260px] shadow-sm justify-between"
+                            "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-sm justify-between"
                         }
                     }
 
@@ -156,80 +176,80 @@ widget App {
                             }
                             h3 .plan2_name {
                                 style: if .dark_mode {
-                                    "text-lg font-bold text-zinc-100"
+                                    "text-lg font-bold text-foreground"
                                 } else {
-                                    "text-lg font-bold text-gray-900"
+                                    "text-lg font-bold text-foreground"
                                 }
                             }
                             span .plan2_subtitle {
                                 style: if .dark_mode {
-                                    "text-xs text-zinc-400"
+                                    "text-xs text-muted-foreground"
                                 } else {
-                                    "text-xs text-gray-500"
+                                    "text-xs text-muted-foreground"
                                 }
                             }
                             span .plan2_price {
                                 style: if .dark_mode {
-                                    "text-4xl font-extrabold text-zinc-100 mt-2"
+                                    "text-4xl font-extrabold text-foreground mt-2"
                                 } else {
-                                    "text-4xl font-extrabold text-gray-900 mt-2"
+                                    "text-4xl font-extrabold text-foreground mt-2"
                                 }
                             }
-                            style: "gap-1 items-center"
+                            style: title_block
                         }
                         col {
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .plan2_devs {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat1 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat2 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat3 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat4 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check }
                                 span .feat5 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
-                            style: "gap-3.5 my-5 flex-1"
+                            style: feat_list
                         }
                         button .plan2_btn {
                             onclick: .BuyPlan2
                             style: "w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-semibold transition-colors shadow-md cursor-pointer"
                         }
                         style: if .dark_mode {
-                            "bg-zinc-900 rounded-2xl border-2 border-primary p-6 flex-1 max-w-[340px] min-w-[260px] shadow-xl justify-between"
+                            "bg-card rounded-2xl border-2 border-primary p-6 flex-1 max-w-[340px] min-w-[260px] shadow-xl justify-between"
                         } else {
-                            "bg-white rounded-2xl border-2 border-primary p-6 flex-1 max-w-[340px] min-w-[260px] shadow-md justify-between"
+                            "bg-card rounded-2xl border-2 border-primary p-6 flex-1 max-w-[340px] min-w-[260px] shadow-md justify-between"
                         }
                     }
 
@@ -238,84 +258,84 @@ widget App {
                         col {
                             h3 .plan3_name {
                                 style: if .dark_mode {
-                                    "text-lg font-bold text-zinc-100"
+                                    "text-lg font-bold text-foreground"
                                 } else {
-                                    "text-lg font-bold text-gray-900"
+                                    "text-lg font-bold text-foreground"
                                 }
                             }
                             span .plan3_subtitle {
                                 style: if .dark_mode {
-                                    "text-xs text-zinc-400"
+                                    "text-xs text-muted-foreground"
                                 } else {
-                                    "text-xs text-gray-500"
+                                    "text-xs text-muted-foreground"
                                 }
                             }
                             span .plan3_deal {
                                 style: if .dark_mode {
-                                    "text-4xl font-extrabold text-zinc-100 mt-2"
+                                    "text-4xl font-extrabold text-foreground mt-2"
                                 } else {
-                                    "text-4xl font-extrabold text-gray-900 mt-2"
+                                    "text-4xl font-extrabold text-foreground mt-2"
                                 }
                             }
-                            style: "gap-1 items-center"
+                            style: title_block
                         }
                         col {
                             row {
-                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check_muted }
                                 span .plan3_devs {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check_muted }
                                 span .feat1 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check_muted }
                                 span .feat2 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check_muted }
                                 span .feat3 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check_muted }
                                 span .feat4 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
                             row {
-                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span "✓" { style: feat_check_muted }
                                 span .feat5 {
-                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                    style: feat_text
                                 }
                                 style: "items-center"
                             }
-                            style: "gap-3.5 my-5 flex-1"
+                            style: feat_list
                         }
                         button .plan3_btn {
                             onclick: .BuyPlan3
                             style: if .dark_mode {
-                                "w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-xl font-semibold transition-colors shadow-sm cursor-pointer"
+                                "w-full py-2.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border rounded-xl font-semibold transition-colors shadow-sm cursor-pointer"
                             } else {
-                                "w-full py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-semibold transition-colors shadow-sm cursor-pointer"
+                                "w-full py-2.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border rounded-xl font-semibold transition-colors shadow-sm cursor-pointer"
                             }
                         }
                         style: if .dark_mode {
-                            "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between"
+                            "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between"
                         } else {
-                            "bg-white rounded-2xl border border-gray-200 p-6 flex-1 max-w-[340px] min-w-[260px] shadow-sm justify-between"
+                            "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-sm justify-between"
                         }
                     }
                     style: "gap-6 max-w-5xl w-full items-stretch"
@@ -324,9 +344,9 @@ widget App {
             }
 
             style: if .dark_mode {
-                "w-full min-h-screen bg-zinc-950 text-zinc-100"
+                "w-full min-h-screen bg-background text-foreground"
             } else {
-                "w-full min-h-screen bg-gray-50 text-gray-900"
+                "w-full min-h-screen bg-background text-foreground"
             }
         }
     }

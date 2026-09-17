@@ -1,7 +1,25 @@
 // 012-stopwatch → Clock 四 tab 应用（os-003 / origin PLAN-554）。
+// PLAN-637 B2 Phase B 映射（2026-09-17）：开始 bg-green-500/text-white→bg-primary/
+// text-primary-foreground（主行动）；停止 bg-red-500/text-white→bg-destructive/
+// text-destructive-foreground；暂停 bg-yellow-500/text-white→bg-secondary 族。
 // T2 骨架：tab 化外壳 + 秒表面板迁入 stopwatch tab；计时器/世界时钟/闹钟
 // 占位（T4-T6 落）。T1 契约：开关避名 `running`（vue 轨 watch(running) 会
 // 把 setInterval 整只门死，iced 轨无门控——双端一致取恒 tick+handler 自管）。
+// PLAN-637 B2 Phase A：重复 class 串提取为本地配方（体 ≡ 原字面量，
+// 展开后逐字节等价；单类短串按不过度抽象口径豁免）。
+style tab_active = "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+style tab_idle = "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+style stepper_btn = "px-3 py-1 bg-secondary rounded"
+style stepper_val = "text-2xl font-mono w-10 text-center text-foreground"
+style mono_row = "text-foreground font-mono py-1.5 text-lg"
+style del_btn = "text-muted-foreground hover:text-destructive px-2"
+style step_col = "items-center gap-1"
+style unit_label = "text-muted-foreground self-center"
+style list_col = "gap-1 items-center"
+style disp_hint = "text-muted-foreground font-mono"
+style sw_secondary_btn = "px-10 py-4 bg-secondary text-secondary-foreground rounded-full text-lg font-semibold"
+style panel_shell = "items-center py-6 gap-4"
+
 widget App {
     msg { Init, Start, Stop, Reset, DoLap, SelectTab(str), Tick,
       SetTH(str), SetTM(str), SetTS(str), TStart, TPause, TCancel,
@@ -71,33 +89,33 @@ widget App {
                 button "秒表" {
                     onclick: .SelectTab("stopwatch"),
                     style: if .tab == "stopwatch" {
-                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                        tab_active
                     } else {
-                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                        tab_idle
                     }
                 }
                 button "计时器" {
                     onclick: .SelectTab("timer"),
                     style: if .tab == "timer" {
-                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                        tab_active
                     } else {
-                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                        tab_idle
                     }
                 }
                 button "世界时钟" {
                     onclick: .SelectTab("world"),
                     style: if .tab == "world" {
-                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                        tab_active
                     } else {
-                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                        tab_idle
                     }
                 }
                 button "闹钟" {
                     onclick: .SelectTab("alarm"),
                     style: if .tab == "alarm" {
-                        "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
+                        tab_active
                     } else {
-                        "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
+                        tab_idle
                     }
                 }
                 style: "gap-2"
@@ -125,11 +143,11 @@ widget App {
                     }
                     row {
                         if .sw_on == "true" {
-                            button "停止" { onclick: .Stop, style: "px-10 py-4 bg-red-500 text-white rounded-full text-lg font-semibold" }
-                            button "计圈" { onclick: .DoLap, style: "px-10 py-4 bg-secondary text-secondary-foreground rounded-full text-lg font-semibold" }
+                            button "停止" { onclick: .Stop, style: "px-10 py-4 bg-destructive text-destructive-foreground rounded-full text-lg font-semibold" }
+                            button "计圈" { onclick: .DoLap, style: sw_secondary_btn }
                         } else {
-                            button "开始" { onclick: .Start, style: "px-10 py-4 bg-green-500 text-white rounded-full text-lg font-semibold" }
-                            button "复位" { onclick: .Reset, style: "px-10 py-4 bg-secondary text-secondary-foreground rounded-full text-lg font-semibold" }
+                            button "开始" { onclick: .Start, style: "px-10 py-4 bg-primary text-primary-foreground rounded-full text-lg font-semibold" }
+                            button "复位" { onclick: .Reset, style: sw_secondary_btn }
                         }
                         style: "gap-4 items-center"
                     }
@@ -149,34 +167,34 @@ widget App {
                 col {
                     text .t_disp { style: "text-6xl font-mono font-bold text-foreground py-8" }
                     row {
-                        col { button "时−" { onclick: .TDnH, style: "px-3 py-1 bg-secondary rounded" }
-                            text .t_h_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
-                            button "时+" { onclick: .TUpH, style: "px-3 py-1 bg-secondary rounded" }
-                            style: "items-center gap-1" }
-                        text "时" { style: "text-muted-foreground self-center" }
-                        col { button "分−" { onclick: .TDnM, style: "px-3 py-1 bg-secondary rounded" }
-                            text .t_m_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
-                            button "分+" { onclick: .TUpM, style: "px-3 py-1 bg-secondary rounded" }
-                            style: "items-center gap-1" }
-                        text "分" { style: "text-muted-foreground self-center" }
-                        col { button "秒−" { onclick: .TDnS, style: "px-3 py-1 bg-secondary rounded" }
-                            text .t_s_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
-                            button "秒+" { onclick: .TUpS, style: "px-3 py-1 bg-secondary rounded" }
-                            style: "items-center gap-1" }
-                        text "秒" { style: "text-muted-foreground self-center" }
+                        col { button "时−" { onclick: .TDnH, style: stepper_btn }
+                            text .t_h_str { style: stepper_val }
+                            button "时+" { onclick: .TUpH, style: stepper_btn }
+                            style: step_col }
+                        text "时" { style: unit_label }
+                        col { button "分−" { onclick: .TDnM, style: stepper_btn }
+                            text .t_m_str { style: stepper_val }
+                            button "分+" { onclick: .TUpM, style: stepper_btn }
+                            style: step_col }
+                        text "分" { style: unit_label }
+                        col { button "秒−" { onclick: .TDnS, style: stepper_btn }
+                            text .t_s_str { style: stepper_val }
+                            button "秒+" { onclick: .TUpS, style: stepper_btn }
+                            style: step_col }
+                        text "秒" { style: unit_label }
                         style: "gap-3"
                     }
-                    text .t_set_disp { style: "text-muted-foreground font-mono" }
+                    text .t_set_disp { style: disp_hint }
                     row {
                         if .t_on == "false" {
-                            button "开始" { onclick: .TStart, style: "px-8 py-3 bg-green-500 text-white rounded-full font-semibold" }
+                            button "开始" { onclick: .TStart, style: "px-8 py-3 bg-primary text-primary-foreground rounded-full font-semibold" }
                         } else {
-                            button "暂停" { onclick: .TPause, style: "px-8 py-3 bg-yellow-500 text-white rounded-full font-semibold" }
+                            button "暂停" { onclick: .TPause, style: "px-8 py-3 bg-secondary text-secondary-foreground rounded-full font-semibold" }
                         }
                         button "取消" { onclick: .TCancel, style: "px-8 py-3 bg-secondary text-secondary-foreground rounded-full font-semibold" }
                         style: "gap-4"
                     }
-                    style: "items-center py-6 gap-4"
+                    style: panel_shell
                 }
             }
             if .tab == "world" {
@@ -184,9 +202,9 @@ widget App {
                     text .w_local { style: "text-5xl font-mono font-bold text-foreground py-6" }
                     col {
                         for r in .w_rows {
-                            text r { style: "text-foreground font-mono py-1.5 text-lg" }
+                            text r { style: mono_row }
                         }
-                        style: "gap-1 items-center"
+                        style: list_col
                     }
                     text "点击城市设为本地（v1 固定偏移，不含夏令时）" { style: "text-muted-foreground text-xs" }
                     style: "items-center py-6 gap-2"
@@ -195,33 +213,33 @@ widget App {
             if .tab == "alarm" {
                 col {
                     row {
-                        col { button "时−" { onclick: .ADnH, style: "px-3 py-1 bg-secondary rounded" }
-                            text .a_h_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
-                            button "时+" { onclick: .AUpH, style: "px-3 py-1 bg-secondary rounded" }
-                            style: "items-center gap-1" }
+                        col { button "时−" { onclick: .ADnH, style: stepper_btn }
+                            text .a_h_str { style: stepper_val }
+                            button "时+" { onclick: .AUpH, style: stepper_btn }
+                            style: step_col }
                         text ":" { style: "text-2xl font-mono self-center text-foreground" }
-                        col { button "分−" { onclick: .ADnM, style: "px-3 py-1 bg-secondary rounded" }
-                            text .a_m_str { style: "text-2xl font-mono w-10 text-center text-foreground" }
-                            button "分+" { onclick: .AUpM, style: "px-3 py-1 bg-secondary rounded" }
-                            style: "items-center gap-1" }
+                        col { button "分−" { onclick: .ADnM, style: stepper_btn }
+                            text .a_m_str { style: stepper_val }
+                            button "分+" { onclick: .AUpM, style: stepper_btn }
+                            style: step_col }
                         button "添加" { onclick: .AAdd, style: "ml-2 px-6 py-2 bg-primary text-primary-foreground rounded-full font-semibold" }
                         style: "gap-3"
                     }
-                    text .a_set_disp { style: "text-muted-foreground font-mono" }
+                    text .a_set_disp { style: disp_hint }
                     col {
-                        if .alarm1 != "" { row { text .alarm1 { style: "text-foreground font-mono py-1.5 text-lg" }
-                            button "×" { onclick: .ADel(.alarm1), style: "text-muted-foreground hover:text-destructive px-2" } } }
-                        if .alarm2 != "" { row { text .alarm2 { style: "text-foreground font-mono py-1.5 text-lg" }
-                            button "×" { onclick: .ADel(.alarm2), style: "text-muted-foreground hover:text-destructive px-2" } } }
-                        if .alarm3 != "" { row { text .alarm3 { style: "text-foreground font-mono py-1.5 text-lg" }
-                            button "×" { onclick: .ADel(.alarm3), style: "text-muted-foreground hover:text-destructive px-2" } } }
-                        if .alarm4 != "" { row { text .alarm4 { style: "text-foreground font-mono py-1.5 text-lg" }
-                            button "×" { onclick: .ADel(.alarm4), style: "text-muted-foreground hover:text-destructive px-2" } } }
-                        if .alarm5 != "" { row { text .alarm5 { style: "text-foreground font-mono py-1.5 text-lg" }
-                            button "×" { onclick: .ADel(.alarm5), style: "text-muted-foreground hover:text-destructive px-2" } } }
-                        style: "gap-1 items-center"
+                        if .alarm1 != "" { row { text .alarm1 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm1), style: del_btn } } }
+                        if .alarm2 != "" { row { text .alarm2 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm2), style: del_btn } } }
+                        if .alarm3 != "" { row { text .alarm3 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm3), style: del_btn } } }
+                        if .alarm4 != "" { row { text .alarm4 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm4), style: del_btn } } }
+                        if .alarm5 != "" { row { text .alarm5 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm5), style: del_btn } } }
+                        style: list_col
                     }
-                    style: "items-center py-6 gap-4"
+                    style: panel_shell
                 }
             }
 
