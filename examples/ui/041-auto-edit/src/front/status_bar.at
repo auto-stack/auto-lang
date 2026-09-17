@@ -9,6 +9,9 @@
 
 use editor_store: EditorStore
 
+style status_text = "text-[11px] text-muted-foreground"   // Phase B: zinc-400 → muted-foreground
+style status_alt = "text-[11px] text-muted-foreground"   // Phase B: zinc-300 → muted-foreground
+style mini_btn = "h-6 w-9 px-0 py-0"
 widget StatusBar {
     msg { ToggleConsole }
 
@@ -16,31 +19,31 @@ widget StatusBar {
         col (style: "w-full shrink-0") {
             col (style: "h-px w-full bg-border")
             row (style: "h-6 items-center bg-muted/30 shrink-0 w-full gap-3 px-2") {
-                text "Auto" { style: "text-[11px] text-zinc-400" }
-                text "UTF-8" { style: "text-[11px] text-zinc-400" }
-                text "Spaces: 4" { style: "text-[11px] text-zinc-400" }
+                text "Auto" { style: status_text }
+                text "UTF-8" { style: status_text }
+                text "Spaces: 4" { style: status_text }
 
                 text "${.store.line}:${.store.col}" {
-                    style: "text-[11px] text-zinc-300 ml-auto"
+                    style: "text-[11px] text-muted-foreground ml-auto"
                 }
                 if .store.sel > 0 {
-                    text "Sel ${.store.sel}" { style: "text-[11px] text-zinc-300" }
+                    text "Sel ${.store.sel}" { style: status_alt }
                 }
                 if .store.fold_hidden > 0 {
-                    text "Fold ${.store.fold_hidden}" { style: "text-[11px] text-zinc-300" }
+                    text "Fold ${.store.fold_hidden}" { style: status_alt }
                 }
                 if .store.console_open == false {
                     button (variant: "text") {
-                        icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-400") {}
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-muted-foreground") {}
                         onclick: .ToggleConsole
-                        style: "h-6 w-9 px-0 py-0"
+                        style: mini_btn
                     }
                 }
                 if .store.console_open == true {
                     button (variant: "text") {
-                        icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-200") {}
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-foreground") {}
                         onclick: .ToggleConsole
-                        style: "h-6 w-9 px-0 py-0"
+                        style: mini_btn
                     }
                 }
             }

@@ -16,6 +16,8 @@
 
 use components.tree_util: flatten_tree, toggle_id
 
+style tree_chevron = "w-3.5 h-3.5 text-muted-foreground"
+
 widget FileTree (nodes: List, default_expanded: List = []) {
     msg { Init, Toggle(str), Select(str) }
 
@@ -56,9 +58,9 @@ widget FileTree (nodes: List, default_expanded: List = []) {
                     if r.has_kids {
                         mouse-area (onclick: .Toggle(r.id), style: "w-5 h-5 shrink-0 items-center justify-center cursor-pointer") {
                             if r.open {
-                                icon (name: "chevron-down", style: "w-3.5 h-3.5 text-muted-foreground") {}
+                                icon (name: "chevron-down", style: tree_chevron) {}
                             } else {
-                                icon (name: "chevron-right", style: "w-3.5 h-3.5 text-muted-foreground") {}
+                                icon (name: "chevron-right", style: tree_chevron) {}
                             }
                         }
                     } else {

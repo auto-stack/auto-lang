@@ -9,6 +9,9 @@
 /// (folder/folder-open/file/file-text/image)+ home/wrench/layout-grid/
 /// terminal/settings/eye/book-open + PLAN-618 增 table/zap(026 对象树)。
 /// 调色板外名字渲染为空(契约文档收录)。
+// PLAN-637 B4 注记：icon_base 配方消费在本 demo 回退——041 为 render:vm 原生轨，
+// 括号形属性中的配方名被判 undefined variable（组件静默跳过），大括号形亦不被
+// icon 元素接受；待框架支持后与 018/026/027 同步回迁（它们的同款引用已验证可用）。
 widget TreeIcon (name: str = "") {
     view {
         if .name == "folder" {
