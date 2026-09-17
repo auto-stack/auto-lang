@@ -34,7 +34,9 @@ AutoOS 桌面文件管理器（Finder / Explorer 双栏形态）。桌面事实�
 ## 1.5 地址栏与面包屑（PLAN-023）
 
 - 胶囊占满：面包屑容器 `flex-1 min-w-0`，平时占满导航钮簇与右侧操作区
-  （搜索框起）之间全部可用宽；`overflow-hidden` 兜底裁。
+  （搜索框起）之间全部可用宽；`overflow-hidden` 兜底裁。**顶栏禁用
+  `justify-between`**——iced Row SpaceBetween 会把 Fill 子件降级为内容宽
+  （实证胶囊恒 ~495px），伸缩一律由 `flex-1` + 对侧 `shrink-0` 承担。
 - 深路径坍缩：全链段数 > 5 且未展开 → 首 1 段 + `...` + 末 2 段（视图三面
   crumbs_head / crumb_gap / crumbs_tail——规避循环内条件节点纵向堆叠债，
   R4-2 实证形态）；`...` 点击 = `CrumbsExpand` 就地展开全链（不导航），
