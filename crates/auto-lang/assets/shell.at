@@ -78,7 +78,10 @@ widget Desktop {
         ShutdownRequest, ShutdownCancel, ShutdownConfirm,
         // Plan 497 G5：dock/pager hover 预览（shell 内部 UI 态，非总线动词）。
         // PLAN-010 N6c：HoverEnd 退役拆分——HoverLeave 只清预览态。
-        HoverWin(str), HoverLeave, HoverWs(str), HoverWsEnd
+        HoverWin(str), HoverLeave, HoverWs(str), HoverWsEnd,
+        // PLAN-019 v1.7：显示桌面 sliver（任务栏右缘细条——Win11 惯例；
+        // toggle 判据 __wm_showdesk 宿主投影，本面零分支直发）。
+        ShowDesktopToggle, SliverHover, SliverUnhover
     }
 
     model {
@@ -108,6 +111,9 @@ widget Desktop {
         // 原 view 条件 `__wm_running.contains(...)` 方法调用死点，宿主派生
         // 等式消费（W1 close→hide 后隐藏即回落）。
         var __wm_settings_open str = ""
+        // PLAN-019 v1.7：当前分区 = 负一屏（"1"/""；宿主投影）——sliver
+        // toggle 判据（"1" = 发 showdesk_return，"" = 发 show_desktop）。
+        var __wm_showdesk str = ""
         // PLAN-012 F2 复验：布局名标量（free/grid/master-stack）——布局钮
         // 高亮判据（同 host 派生标量 + 等式模式；用户复验：布局切换行为
         // 正确但钮无高亮态）。
@@ -126,6 +132,8 @@ widget Desktop {
         // 域）。dock_hover = 预览中窗口 wid；ws_hover = 预览中分区 id。
         var dock_hover str = ""
         var ws_hover str = ""
+        // PLAN-019 v1.7：sliver hover 态（显示桌面细条高亮）。
+        var sliver_hover str = ""
         // PLAN-526 T8：右键菜单态（命中条目 wid；hover 复用同一 popover
         // 容器——open 条件或合，内容按本态切换缩略/菜单）。
         var win_menu str = ""
@@ -156,14 +164,19 @@ widget Desktop {
 
                     // Plan 503：launcher 召唤钮。
                     // PLAN-526 T17：全任务栏 icon 统一 start 规格——容器
-                    // h-10 w-10、字标本体 text-lg、底色全透明（三轮反馈：
+                    // h-10 w-10、字标本体 text-3xl（PLAN-019-FU2：图标盒跟随按钮字号——
+                    // 18→30px，用户走查反馈"框内真实图标太小，相对框框大一号"；
+                    // 框 h-10 与任务栏行高 h-14 不动，layout 常量零影响）、底色全透明（三轮反馈：
                     // start 也不保留 accent 底），hover = 语义前景 10% 透明
                     // （深色主题变亮/浅色主题变暗，Win11 形态）。start 字形
                     // lucide 化（layout-grid）——文字 ⊞ 与矢量 icon 的字形
                     // 视觉尺寸差即三轮反馈"icon 本体大小不一致"根因。
-                    button (icon: "layout-grid") {
+                    // 2026-09-15 用户裁定：任务栏五钮全部换 iconfile 位图
+                    // （assets/icons 双主题，auto-os 图标集同源）——launcher
+                    // = 应用格+放大镜位图。
+                    button (icon: "iconfile:launcher", variant: "ghost") {
                         onclick: .SummonLauncher
-                        style: "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                        style: "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                     }
                     // Plan 503：dock 图标格 48px rounded-xl(stella 签名)。
                     // Plan 518 G3：格常驻透明(hover 才出格,rounded-xl 保留),
@@ -171,7 +184,13 @@ widget Desktop {
                     // PLAN-526 T9：外框统一 h-10 w-10。
                     for p in .__dock_pinned {
                         col {
-                            style: "items-center"
+                            // 2026-09-15：栈高固定为任务栏全高（按钮 pt-1.5 起
+                            // 排、条带槽常驻占位）——条带出现/消失不再改变按钮
+                            // 纵向位置（原自适应栈高被居中上推 1-3px）。
+                            // 条带 mt-[3px]（用户实测裁定：2px 时视觉贴高亮框，
+                            // 下移 1px 留缝；五处条带臂同值——pinned 三态 +
+                            // 窗口条目二态）。
+                            style: "h-14 items-center justify-start pt-1.5"
                             // PLAN-012 W4：pinned 图标右键菜单（win_menu 态
                             // 复用同一 popover 容器，菜单键 = pinned id）——
                             // 「取消固定」+ 该 app 逐窗「聚焦/关闭」（Win11
@@ -180,13 +199,13 @@ widget Desktop {
                             // bg-foreground/10 常驻——Win11 形态；判据 =
                             // __wm_focused_app 标量投影）。
                             popover (open: .win_menu == p.id, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
-                                button (icon: p.icon) {
+                                button (icon: p.icon, variant: "ghost") {
                                     onclick: .ActivateApp(p.id)
                                     oncontextmenu.prevent: .WinMenu(p.id)
                                     style: if .__wm_focused_app == p.id {
-                                        "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                        "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
                                     } else {
-                                        "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                        "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                                     }
                                 }
                                 col {
@@ -218,10 +237,13 @@ widget Desktop {
                             // 调用死点（求值器无方法臂，恒 false，实机探针
                             // 定性：运行中 pinned 图标永无灰条）。
                             if .__wm_focused_app == p.id {
-                                div { style: "h-1 w-6 rounded-full bg-primary mt-0.5" }
+                                div { style: "h-1 w-6 rounded-full bg-primary mt-[3px]" }
                             } else {
                                 if p.running == "1" {
-                                    div { style: "h-1 w-6 rounded-full bg-muted-foreground/60 mt-0.5" }
+                                    div { style: "h-1 w-6 rounded-full bg-muted-foreground/60 mt-[3px]" }
+                                } else {
+                                    // 无指示条也占位（透明），保证按钮纵位恒定。
+                                    div { style: "h-1 w-6 mt-[3px]" }
                                 }
                             }
                         }
@@ -247,7 +269,7 @@ widget Desktop {
                                         button (text: w.title) {
                                             onclick: .NativeFocus(w.wid)
                                             oncontextmenu.prevent: .WinMenu(w.wid)
-                                            style: "h-10 max-w-32 truncate px-2 text-sm rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                            style: "h-10 max-w-32 truncate px-2 text-sm rounded-xl bg-transparent text-foreground hover:bg-white/50"
                                         }
                                         col {
                                             style: "w-36 gap-1"
@@ -277,7 +299,9 @@ widget Desktop {
                             if w.pinned == "1" || w.dup_app == "1" {
                             } else {
                                 col {
-                                    style: "items-center"
+                                    // 2026-09-15：同 pinned 列——全高固定，条带
+                                    // 不挤动按钮。
+                                    style: "h-14 items-center justify-start pt-1.5"
                                     // PLAN-012 W7：聚焦左竖条退役（实机被感知为
                                     // "分隔符"）——聚焦语义由底条主色 + 底色高亮
                                     // 承接（Win11 形态，与 pinned 图标同款三态）。
@@ -297,13 +321,13 @@ widget Desktop {
                                         // 关闭——原 HoverEnd 兼清使菜单被 hover-leave
                                         // 秒关（菜单项不可达，用户实测）。
                                         popover (open: (.dock_hover == w.wid && .win_menu == "") || .win_menu == w.wid, placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
-                                            button (icon: w.icon) {
+                                            button (icon: w.icon, variant: "ghost") {
                                                 onclick: .WinFocus(w.wid)
                                                 oncontextmenu.prevent: .WinMenu(w.wid)
                                                 style: if w.focused == "1" {
-                                                    "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                                    "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
                                                 } else {
-                                                    "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                                    "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                                                 }
                                             }
                                             if .win_menu == w.wid {
@@ -336,9 +360,9 @@ widget Desktop {
                                     // PLAN-012 W7：条目底条——窗口条目必在运行
                                     //（本组未固定条目），二态即可：聚焦主色 / 非聚焦灰。
                                     if w.focused == "1" {
-                                        div { style: "h-1 w-6 rounded-full bg-primary mt-0.5" }
+                                        div { style: "h-1 w-6 rounded-full bg-primary mt-[3px]" }
                                     } else {
-                                        div { style: "h-1 w-6 rounded-full bg-muted-foreground/60 mt-0.5" }
+                                        div { style: "h-1 w-6 rounded-full bg-muted-foreground/60 mt-[3px]" }
                                     }
                                 }
                             }
@@ -358,12 +382,14 @@ widget Desktop {
                     // tick 收起路径不变；ondismiss = 外点/Esc 关闭，Win11
                     // 任务视图形态让位外点关闭语义）。
                     popover (open: .switcher_open == "1", placement: "top-end", ondismiss: .SwitcherToggle, class: "p-2 border rounded bg-card") {
-                        button (icon: "square-stack") {
+                        // 2026-09-15 用户裁定：square-stack lucide → desktop-switch
+                        // 位图（双窗循环箭头，assets/icons/desktop-switch）。
+                        button (icon: "iconfile:desktop-switch", variant: "ghost") {
                             onclick: .SwitcherToggle
                             style: if .switcher_open == "1" {
-                                "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
                             } else {
-                                "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                             }
                         }
                         row {
@@ -376,9 +402,9 @@ widget Desktop {
                                 mouse-area (onclick: .SetWorkspace(ws.id)) {
                                     col {
                                         style: if ws.current == "1" {
-                                            "w-44 p-2 rounded-xl border-2 border-primary bg-card/95 text-foreground hover:bg-foreground/10"
+                                            "w-44 p-2 rounded-xl border-2 border-primary bg-card/95 text-foreground hover:bg-white/50"
                                         } else {
-                                            "w-44 p-2 rounded-xl border bg-card/95 text-foreground hover:bg-foreground/10"
+                                            "w-44 p-2 rounded-xl border bg-card/95 text-foreground hover:bg-white/50"
                                         }
                                         text ws.label { style: "text-xs text-muted-foreground" }
                                         workspace_preview (ws: ws.id, fallback: "app-window") {
@@ -387,27 +413,38 @@ widget Desktop {
                                     }
                                 }
                             }
+                            // 2026-09-15：新建虚拟桌面卡（WorkspaceAdd →
+                            // workspace_add 动词，宿主建区后回注本面板）。
+                            mouse-area (onclick: .WorkspaceAdd) {
+                                col {
+                                    style: "w-12 h-[88px] rounded-xl border bg-card/95 text-muted-foreground items-center justify-center hover:bg-white/50 cursor-pointer"
+                                    text "+" { style: "text-xl text-muted-foreground" }
+                                }
+                            }
                                                 }
                     }
                     // PLAN-526 T17：布局钮 lucide 化（文字字形 ▦▤▢ 与
                     // 矢量 icon 的视觉尺寸差不复存在）。
+                    // 2026-09-15 用户裁定：布局双钮换位图——layout-grid =
+                    // 2×2 窗格（网格布局），layout-stack = 主窗+侧栏堆叠
+                    // （master-stack），与布局语义一一对应。
                     // PLAN-012 F2 复验：布局钮两态高亮（__wm_layout 等式）
                     // ——当前布局 = 主色描边钮亮底；free（手动排布）= 两钮
                     // 均不亮。用户复验：切换行为正确但无高亮态。
-                    button (icon: "layout-grid") {
+                    button (icon: "iconfile:layout-grid", variant: "ghost") {
                         onclick: .LayoutGrid
                         style: if .__wm_layout == "grid" {
-                            "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                            "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
                         } else {
-                            "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                         }
                     }
-                    button (icon: "table") {
+                    button (icon: "iconfile:layout-stack", variant: "ghost") {
                         onclick: .LayoutStack
                         style: if .__wm_layout == "master-stack" {
-                            "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                            "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
                         } else {
-                            "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                         }
                     }
                     // PLAN-526 T35：Free 布局钮（square）退役——T33 同预设
@@ -420,12 +457,13 @@ widget Desktop {
                         style: "items-center gap-0"
                         // PLAN-012 W7：铃铛两态——判据 = __wm_notes_visible
                         // 投影（宿主 overlay 直读；外点/×/Esc 关闭路径同步翻转）。
-                        button (icon: "bell") {
+                        // 2026-09-15 用户裁定：bell lucide → notification 位图。
+                        button (icon: "iconfile:notification", variant: "ghost") {
                             onclick: .NotificationToggle
                             style: if .__wm_notes_visible == "1" {
-                                "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
                             } else {
-                                "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                             }
                         }
                         if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
@@ -441,24 +479,27 @@ widget Desktop {
                     // close→hide 落地后隐藏即回落，语义自洽为"关"）。原
                     // `__wm_running.contains(...)` 为 view 条件方法调用死点
                     //（O2 实机探针定性：设置窗在场齿轮仍无高亮）。
-                    button (icon: "settings") {
+                    // 2026-09-15 用户裁定：settings lucide → config 位图
+                    // （齿轮，与 os-config 应用图标同源 assets/icons/config）。
+                    button (icon: "iconfile:config", variant: "ghost") {
                         onclick: .OpenSettingsPanel
                         style: if .__wm_settings_open == "1" {
-                            "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                            "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
                         } else {
-                            "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                            "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                         }
                     }
                     // PLAN-526 T11：电源键（Q10b——Escape 退出退役后的图形
                     // 退出入口；确认面板 popover 锚定本键，top 落位）。
                     // PLAN-012 W7：电源钮两态（确认面板开着 = 高亮，本地态）。
+                    // 2026-09-15 用户裁定：power lucide → shutdown 位图。
                     popover (open: .shutdown_ask == "1", placement: "top", ondismiss: .ShutdownCancel, class: "p-3 border rounded bg-card") {
-                        button (icon: "power") {
+                        button (icon: "iconfile:shutdown", variant: "ghost") {
                             onclick: .ShutdownRequest
                             style: if .shutdown_ask == "1" {
-                                "h-10 w-10 px-0 text-3xl rounded-xl bg-foreground/10 text-foreground hover:bg-foreground/10"
+                                "h-11 w-11 px-0 text-4xl rounded-xl bg-white/50 text-foreground hover:bg-white/50"
                             } else {
-                                "h-10 w-10 px-0 text-3xl rounded-xl bg-transparent text-foreground hover:bg-foreground/10"
+                                "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent text-foreground hover:bg-white/50"
                             }
                         }
                         col {
@@ -468,7 +509,7 @@ widget Desktop {
                                 style: "gap-2"
                                 button (text: "取消", variant: "ghost") {
                                     onclick: .ShutdownCancel
-                                    style: "h-8 px-3 text-sm rounded-md bg-transparent text-foreground hover:bg-foreground/10"
+                                    style: "h-8 px-3 text-sm rounded-md bg-transparent text-foreground hover:bg-white/50"
                                 }
                                 button (text: "退出", variant: "primary") {
                                     onclick: .ShutdownConfirm
@@ -486,6 +527,16 @@ widget Desktop {
                     }
                     text .__wm_clock {
                         style: "text-xs text-muted-foreground px-2 tabular-nums"
+                    }
+                    // PLAN-019 v1.7：显示桌面 sliver（任务栏最右缘细条——
+                    // Win11 惯例；负一屏时高亮提示 toggle 语义。v1 hover
+                    // 底色 + 分隔线，文字 tooltip 作 stretch）。
+                    mouse-area (onclick: .ShowDesktopToggle, onmouseenter: .SliverHover, onmouseleave: .SliverUnhover) {
+                        style: if .sliver_hover == "1" {
+                            "w-3 h-10 border-l border-border bg-foreground/10"
+                        } else {
+                            "w-3 h-10 border-l border-border"
+                        }
                     }
                 }
             }
@@ -571,5 +622,16 @@ widget Desktop {
         .WinMenuClose -> { .win_menu = "" }
         .HoverWs(id) -> { .ws_hover = id }
         .HoverWsEnd -> { .ws_hover = "" }
+        // PLAN-019 v1.7：显示桌面 sliver（toggle 判据 = __wm_showdesk
+        // 宿主投影等式；负一屏上开 picker 时返回臂幂等先关 picker）。
+        .ShowDesktopToggle -> {
+            if .__wm_showdesk == "1" {
+                .__desktop_cmd = "showdesk_return"
+            } else {
+                .__desktop_cmd = "show_desktop"
+            }
+        }
+        .SliverHover -> { .sliver_hover = "1" }
+        .SliverUnhover -> { .sliver_hover = "" }
     }
 }

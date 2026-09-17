@@ -1,0 +1,78 @@
+// queue_drawer.at — 020-music-player 右侧待播队列抽屉。
+
+use player_store: PlayerStore
+
+widget QueueDrawer {
+    msg {
+        SelectIndex(int),
+        CloseQueue
+    }
+
+    view {
+        col {
+            style: "w-80 h-full flex-col border-l border-border bg-card/90 backdrop-blur-md p-4 min-h-0 select-none z-10 shrink-0"
+
+            // ── 抽屉标题栏 ──
+            row {
+                style: "w-full items-center justify-between pb-3 border-b border-border/80"
+                row {
+                    style: "items-center gap-2"
+                    icon (name: "list-music", size: 16, style: "text-primary")
+                    text "当前播放队列" {
+                        style: "text-sm font-bold text-foreground"
+                    }
+                    text .store.queue_count_label {
+                        style: "text-xs font-mono text-muted-foreground"
+                    }
+                }
+
+                button {
+                    onclick: .CloseQueue
+                    style: "w-7 h-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+                    icon (name: "x", size: 14)
+                }
+            }
+
+            // ── 队列歌曲列表 ──
+            col {
+                style: "w-full flex-1 overflow-y-auto min-h-0 gap-1 pt-2"
+
+                for i, item in .store.playlist {
+                    row {
+                        onclick: .SelectIndex(i)
+                        style: if item.id == .store.current_id {
+                            "w-full h-10 items-center justify-between px-3 rounded-lg bg-primary/15 text-primary cursor-pointer border border-primary/20"
+                        } else {
+                            "w-full h-10 items-center justify-between px-3 rounded-lg text-foreground hover:bg-muted/70 cursor-pointer"
+                        }
+
+                        row {
+                            style: "items-center gap-2.5 flex-1 min-w-0 pr-2"
+                            if item.id == .store.current_id && .store.is_playing {
+                                icon (name: "volume-2", size: 14, style: "text-primary shrink-0")
+                            } else {
+                                icon (name: "music-2", size: 13, style: "text-muted-foreground shrink-0")
+                            }
+                            text item.title {
+                                style: "text-xs font-medium truncate"
+                            }
+                        }
+
+                        text item.artist {
+                            style: "text-[11px] text-muted-foreground truncate w-20 text-right shrink-0"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .SelectIndex(idx int) -> {
+            store.SelectIndex(idx)
+        }
+        .CloseQueue -> {
+            store.ToggleQueue()
+        }
+    }
+}

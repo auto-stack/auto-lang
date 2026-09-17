@@ -1,0 +1,240 @@
+// tracklist.at — 020-music-player 本地音乐曲库列表组件。
+//
+// 视觉：参考 QQ音乐 / Spotify 曲库列表。
+// 包含：歌曲总数统计、路径说明、播放全部/随机播放、搜索栏、格式滤镜、曲目表格。
+
+use player_store: PlayerStore
+
+widget Tracklist {
+    msg {
+        SelectIndex(int),
+        PlayAll,
+        ShufflePlay,
+        Rescan,
+        SearchChange(str),
+        FilterChange(str)
+    }
+
+    view {
+        col {
+            style: "w-full h-full flex-col p-6 overflow-hidden min-h-0 select-none gap-5"
+
+            // ── 顶部曲库横幅 ──
+            row {
+                style: "w-full items-center justify-between pb-4 border-b border-border/80 shrink-0"
+
+                row {
+                    style: "items-center gap-4"
+                    col {
+                        style: "w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 items-center justify-center text-white shadow-md shadow-emerald-900/20 shrink-0"
+                        icon (name: "folder-archive", size: 30)
+                    }
+                    col {
+                        style: "gap-1"
+                        row {
+                            style: "items-center gap-2"
+                            text "本地音乐库" {
+                                style: "text-xl font-bold tracking-tight text-foreground"
+                            }
+                            text "本地仓库" {
+                                style: "text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary font-medium"
+                            }
+                        }
+                        text .store.library_summary_label {
+                            style: "text-xs text-muted-foreground"
+                        }
+                    }
+                }
+
+                // 头部操作按钮
+                row {
+                    style: "items-center gap-2.5"
+                    button {
+                        onclick: .PlayAll
+                        style: "h-9 items-center gap-2 px-4 rounded-lg bg-primary text-primary-foreground font-semibold text-xs shadow-sm hover:bg-primary/90 cursor-pointer"
+                        icon (name: "play", size: 14)
+                        text "播放全部" {}
+                    }
+                    button {
+                        onclick: .ShufflePlay
+                        style: "h-9 items-center gap-2 px-3.5 rounded-lg bg-muted border border-border text-foreground font-medium text-xs hover:bg-muted/80 cursor-pointer"
+                        icon (name: "shuffle", size: 14)
+                        text "随机播放" {}
+                    }
+                    button {
+                        onclick: .Rescan
+                        style: "h-9 w-9 items-center justify-center rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-muted/80 cursor-pointer"
+                        icon (name: "refresh-cw", size: 14)
+                    }
+                }
+            }
+
+            // ── 搜索与格式筛选栏 ──
+            row {
+                style: "w-full items-center justify-between shrink-0"
+
+                row {
+                    style: "items-center gap-1.5 bg-muted/50 p-1 rounded-lg border border-border/60"
+                    button {
+                        onclick: .FilterChange("all")
+                        style: if .store.filter_ext == "all" {
+                            "h-7 px-3 rounded-md bg-card text-foreground font-medium text-xs shadow-xs cursor-pointer"
+                        } else {
+                            "h-7 px-3 rounded-md text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        text "全部曲目" {}
+                    }
+                    button {
+                        onclick: .FilterChange("flac")
+                        style: if .store.filter_ext == "flac" {
+                            "h-7 px-3 rounded-md bg-card text-foreground font-medium text-xs shadow-xs cursor-pointer"
+                        } else {
+                            "h-7 px-3 rounded-md text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        text "FLAC 无损" {}
+                    }
+                    button {
+                        onclick: .FilterChange("mp3")
+                        style: if .store.filter_ext == "mp3" {
+                            "h-7 px-3 rounded-md bg-card text-foreground font-medium text-xs shadow-xs cursor-pointer"
+                        } else {
+                            "h-7 px-3 rounded-md text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        text "MP3" {}
+                    }
+                    button {
+                        onclick: .FilterChange("wav")
+                        style: if .store.filter_ext == "wav" {
+                            "h-7 px-3 rounded-md bg-card text-foreground font-medium text-xs shadow-xs cursor-pointer"
+                        } else {
+                            "h-7 px-3 rounded-md text-muted-foreground hover:text-foreground font-medium text-xs cursor-pointer"
+                        }
+                        text "WAV" {}
+                    }
+                }
+
+                // 搜索输入框
+                row {
+                    style: "h-8 items-center gap-2 px-3 rounded-lg bg-muted/50 border border-border/80 w-64 text-xs"
+                    icon (name: "search", size: 14, style: "text-muted-foreground shrink-0")
+                    input {
+                        placeholder: "搜索歌曲、歌手、专辑..."
+                        value: .store.search_query
+                        onchange: .SearchChange()
+                        style: "w-full bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/60 text-xs"
+                    }
+                }
+            }
+
+            // ── 曲目列表表头 ──
+            row {
+                style: "w-full h-8 items-center px-4 text-xs font-semibold text-muted-foreground/80 border-b border-border/60 shrink-0"
+                text "状态" { style: "w-12 text-center" }
+                text "歌曲标题" { style: "flex-1 min-w-0" }
+                text "歌手" { style: "w-44 truncate" }
+                text "格式" { style: "w-20" }
+                text "大小" { style: "w-24 text-right font-mono" }
+            }
+
+            // ── 歌曲滚动列表 ──
+            col {
+                style: "w-full flex-1 overflow-y-auto min-h-0 gap-0.5 pr-1"
+
+                if .store.item_count == 0 {
+                    col {
+                        style: "w-full items-center justify-center py-20 gap-3"
+                        icon (name: "music", size: 36, style: "text-muted-foreground/40")
+                        text .store.status_text {
+                            style: "text-sm text-muted-foreground"
+                        }
+                        button {
+                            onclick: .Rescan
+                            style: "h-8 items-center gap-2 px-3 rounded-md bg-muted text-foreground text-xs cursor-pointer"
+                            icon (name: "refresh-cw", size: 13)
+                            text "重新扫描 E:\\Music\\" {}
+                        }
+                    }
+                }
+
+                for i, item in .store.playlist {
+                    row {
+                        onclick: .SelectIndex(i)
+                        style: if item.id == .store.current_id {
+                            "w-full h-11 items-center px-4 rounded-lg bg-primary/10 border border-primary/30 text-primary cursor-pointer transition-colors group"
+                        } else {
+                            "w-full h-11 items-center px-4 rounded-lg border border-transparent hover:bg-muted/60 text-foreground cursor-pointer transition-colors group"
+                        }
+
+                        // 序号 / 播放动效图标
+                        row {
+                            style: "w-12 items-center justify-center"
+                            if item.id == .store.current_id && .store.is_playing {
+                                icon (name: "audio-waveform", size: 14, style: "text-primary")
+                            } else {
+                                icon (name: "music-2", size: 13, style: "text-muted-foreground/60 group-hover:text-foreground")
+                            }
+                        }
+
+                        // 歌曲名
+                        row {
+                            style: "flex-1 min-w-0 items-center gap-2 pr-4"
+                            text item.title {
+                                style: if item.id == .store.current_id {
+                                    "text-xs font-semibold text-primary truncate"
+                                } else {
+                                    "text-xs font-medium text-foreground truncate group-hover:text-primary"
+                                }
+                            }
+                        }
+
+                        // 歌手
+                        row {
+                            style: "w-44 items-center pr-4"
+                            text item.artist {
+                                style: "text-xs text-muted-foreground truncate"
+                            }
+                        }
+
+                        // 格式
+                        row {
+                            style: "w-20 items-center"
+                            text item.extension {
+                                style: "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                            }
+                        }
+
+                        // 大小
+                        row {
+                            style: "w-24 items-center justify-end"
+                            text item.size_str {
+                                style: "text-xs font-mono text-muted-foreground"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .SelectIndex(idx int) -> {
+            store.SelectIndex(idx)
+        }
+        .PlayAll -> {
+            store.SelectIndex(0)
+        }
+        .ShufflePlay -> {
+            store.CycleRepeat()
+            store.NextTrack()
+        }
+        .Rescan -> {
+            store.Load()
+        }
+        .SearchChange(q str) -> {
+            store.SetSearch(q)
+        }
+        .FilterChange(f str) -> {
+            store.SetFilter(f)
+        }
+    }
+}

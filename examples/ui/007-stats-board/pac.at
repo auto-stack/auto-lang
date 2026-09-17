@@ -4,3 +4,7 @@ scene: "ui"
 render: "vue"
 title: "Stats Board"
 title_zh: "数据统计板"
+
+dep stylekit {
+    path: "../stylekit"
+}

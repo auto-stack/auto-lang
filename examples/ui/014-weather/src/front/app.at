@@ -1,3 +1,15 @@
+// PLAN-637 B2 Phase B 映射（2026-09-17）：bg-blue-500/text-white→bg-primary/
+// text-primary-foreground；蓝卡上浅字 text-blue-100/white/blue-200→
+// text-primary-foreground（/80、/70 降档）；gray-800/700→foreground、gray-400→
+// muted-foreground；tab_idle→secondary 族；页底 bg-gray-50→bg-background。
+// 豁免：天气卡 from-blue-400/to-blue-600 渐变（装饰性，r2 口径）。
+
+// PLAN-637 B2（A+B 合并）：配方体直接落 Phase B 定案值。
+style tab_active = "px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground"   // 原 bg-blue-500/text-white
+style tab_idle = "px-4 py-2 rounded-lg text-sm font-medium bg-secondary text-secondary-foreground"   // 原 bg-gray-200/text-gray-600
+style panel_title = "text-sm font-semibold text-muted-foreground uppercase mt-2"   // 原 gray-400
+style panel_body = "text-foreground py-2"   // 原 gray-700
+
 widget App {
     msg { TabDaily, TabHourly, Refresh }
 
@@ -15,48 +27,48 @@ widget App {
         center {
             col {
                 row {
-                    text .city { style: "text-2xl font-bold text-gray-800" }
-                    button "Refresh" { onclick: .Refresh, style: "ml-auto px-4 py-2 bg-blue-500 text-white rounded-lg text-sm" }
+                    text .city { style: "text-2xl font-bold text-foreground" }
+                    button "Refresh" { onclick: .Refresh, style: "ml-auto px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm" }
                     style: "w-full items-center"
                 }
                 col {
-                    text .condition { style: "text-lg text-blue-100" }
-                    text .temp { style: "text-8xl font-thin text-white" }
-                    text .info { style: "text-sm text-blue-200" }
+                    text .condition { style: "text-lg text-primary-foreground/80" }
+                    text .temp { style: "text-8xl font-thin text-primary-foreground" }
+                    text .info { style: "text-sm text-primary-foreground/70" }
                     style: "bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-6 mt-4 items-center gap-2 py-6"
                 }
                 row {
                     if .tab == "daily" {
-                        button "Daily" { onclick: .TabDaily, style: "px-4 py-2 rounded-lg text-sm font-medium bg-blue-500 text-white" }
+                        button "Daily" { onclick: .TabDaily, style: tab_active }
                     }
                     if .tab != "daily" {
-                        button "Daily" { onclick: .TabDaily, style: "px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-600" }
+                        button "Daily" { onclick: .TabDaily, style: tab_idle }
                     }
                     if .tab == "hourly" {
-                        button "Hourly" { onclick: .TabHourly, style: "px-4 py-2 rounded-lg text-sm font-medium bg-blue-500 text-white" }
+                        button "Hourly" { onclick: .TabHourly, style: tab_active }
                     }
                     if .tab != "hourly" {
-                        button "Hourly" { onclick: .TabHourly, style: "px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-600" }
+                        button "Hourly" { onclick: .TabHourly, style: tab_idle }
                     }
                     style: "gap-2 mt-6"
                 }
                 if .tab == "daily" {
                     col {
-                        text "5-Day Forecast" { style: "text-sm font-semibold text-gray-400 uppercase mt-2" }
+                        text "5-Day Forecast" { style: panel_title }
                         divider {}
-                        text .forecast { style: "text-gray-700 py-2" }
+                        text .forecast { style: panel_body }
                         style: "w-full"
                     }
                 }
                 if .tab == "hourly" {
                     col {
-                        text "Today" { style: "text-sm font-semibold text-gray-400 uppercase mt-2" }
+                        text "Today" { style: panel_title }
                         divider {}
-                        text .hourly { style: "text-gray-700 py-2" }
+                        text .hourly { style: panel_body }
                         style: "w-full"
                     }
                 }
-                style: "w-full max-w-md p-6 bg-gray-50 min-h-screen"
+                style: "w-full max-w-md p-6 bg-background min-h-screen"
             }
         }
     }

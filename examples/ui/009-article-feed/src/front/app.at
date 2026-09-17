@@ -2,6 +2,18 @@
 // Plan 506: in-app title bar / Settings panel removed (common header widget
 // retired) — title/theme/accent live in pac.at + os-config, host chrome carries them.
 // Default theme: Dark mode.
+// PLAN-637 B2（A+B 合并，小面授权）：Phase A 提取 art_tag/read_more/thumb_emoji/
+// content_col 各 ×3；Phase B 映射：zinc-100/gray-900→foreground；zinc-400/gray-500
+// /gray-600→muted-foreground；缩略图 bg-zinc-800/80・bg-gray-100→bg-muted、
+// border-zinc-700/50・gray-200/50→border-border/50；卡片→bg-card/border-border、
+// hover:border-zinc-700・gray-300→hover:border-foreground/20；页根→bg-background。
+// 明暗双臂收敛为同串（条件结构保留）。
+
+style art_tag = "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary"
+style read_more = "p-0 h-auto text-sm text-primary font-semibold mt-2 hover:underline cursor-pointer"
+style thumb_emoji = "text-3xl opacity-60"
+style content_col = "gap-1 flex-1"
+
 widget App {
     msg {
         ReadArticle1,
@@ -47,16 +59,16 @@ widget App {
                 col {
                     h2 .header_title {
                         style: if .dark_mode {
-                            "text-3xl font-extrabold text-zinc-100 tracking-tight text-center"
+                            "text-3xl font-extrabold text-foreground tracking-tight text-center"
                         } else {
-                            "text-3xl font-extrabold text-gray-900 tracking-tight text-center"
+                            "text-3xl font-extrabold text-foreground tracking-tight text-center"
                         }
                     }
                     span .header_subtitle {
                         style: if .dark_mode {
-                            "text-sm text-zinc-400 text-center max-w-xl mt-1"
+                            "text-sm text-muted-foreground text-center max-w-xl mt-1"
                         } else {
-                            "text-sm text-gray-500 text-center max-w-xl mt-1"
+                            "text-sm text-muted-foreground text-center max-w-xl mt-1"
                         }
                     }
                     style: "gap-1 items-center mb-2"
@@ -66,18 +78,18 @@ widget App {
                 row {
                     col {
                         span "📖" {
-                            style: "text-3xl opacity-60"
+                            style: thumb_emoji
                         }
                         style: if .dark_mode {
-                            "w-32 h-32 rounded-xl bg-zinc-800/80 border border-zinc-700/50 shrink-0 items-center justify-center"
+                            "w-32 h-32 rounded-xl bg-muted border border-border/50 shrink-0 items-center justify-center"
                         } else {
-                            "w-32 h-32 rounded-xl bg-gray-100 border border-gray-200/50 shrink-0 items-center justify-center"
+                            "w-32 h-32 rounded-xl bg-muted border border-border/50 shrink-0 items-center justify-center"
                         }
                     }
                     col {
                         row {
                             span .art1_tag {
-                                style: "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary"
+                                style: art_tag
                             }
                             style: "items-center"
                         }
@@ -86,36 +98,36 @@ widget App {
                             span "·"
                             span .art1_date
                             style: if .dark_mode {
-                                "text-xs text-zinc-400 gap-1.5 items-center mt-1"
+                                "text-xs text-muted-foreground gap-1.5 items-center mt-1"
                             } else {
-                                "text-xs text-gray-500 gap-1.5 items-center mt-1"
+                                "text-xs text-muted-foreground gap-1.5 items-center mt-1"
                             }
                         }
                         h3 .art1_title {
                             style: if .dark_mode {
-                                "text-lg font-bold text-zinc-100 mt-1 hover:text-primary transition-colors cursor-pointer"
+                                "text-lg font-bold text-foreground mt-1 hover:text-primary transition-colors cursor-pointer"
                             } else {
-                                "text-lg font-bold text-gray-900 mt-1 hover:text-primary transition-colors cursor-pointer"
+                                "text-lg font-bold text-foreground mt-1 hover:text-primary transition-colors cursor-pointer"
                             }
                         }
                         span .art1_excerpt {
                             style: if .dark_mode {
-                                "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                "text-sm text-muted-foreground mt-1 leading-relaxed"
                             } else {
-                                "text-sm text-gray-600 mt-1 leading-relaxed"
+                                "text-sm text-muted-foreground mt-1 leading-relaxed"
                             }
                         }
                         button "Read more →" {
                             variant: "ghost"
                             onclick: .ReadArticle1
-                            style: "p-0 h-auto text-sm text-primary font-semibold mt-2 hover:underline cursor-pointer"
+                            style: read_more
                         }
-                        style: "gap-1 flex-1"
+                        style: content_col
                     }
                     style: if .dark_mode {
-                        "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-zinc-700"
+                        "bg-card rounded-2xl border border-border p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-foreground/20"
                     } else {
-                        "bg-white rounded-2xl border border-gray-200 p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-gray-300"
+                        "bg-card rounded-2xl border border-border p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-foreground/20"
                     }
                 }
 
@@ -123,18 +135,18 @@ widget App {
                 row {
                     col {
                         span "♿" {
-                            style: "text-3xl opacity-60"
+                            style: thumb_emoji
                         }
                         style: if .dark_mode {
-                            "w-32 h-32 rounded-xl bg-zinc-800/80 border border-zinc-700/50 shrink-0 items-center justify-center"
+                            "w-32 h-32 rounded-xl bg-muted border border-border/50 shrink-0 items-center justify-center"
                         } else {
-                            "w-32 h-32 rounded-xl bg-gray-100 border border-gray-200/50 shrink-0 items-center justify-center"
+                            "w-32 h-32 rounded-xl bg-muted border border-border/50 shrink-0 items-center justify-center"
                         }
                     }
                     col {
                         row {
                             span .art2_tag {
-                                style: "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary"
+                                style: art_tag
                             }
                             style: "items-center"
                         }
@@ -143,36 +155,36 @@ widget App {
                             span "·"
                             span .art2_date
                             style: if .dark_mode {
-                                "text-xs text-zinc-400 gap-1.5 items-center mt-1"
+                                "text-xs text-muted-foreground gap-1.5 items-center mt-1"
                             } else {
-                                "text-xs text-gray-500 gap-1.5 items-center mt-1"
+                                "text-xs text-muted-foreground gap-1.5 items-center mt-1"
                             }
                         }
                         h3 .art2_title {
                             style: if .dark_mode {
-                                "text-lg font-bold text-zinc-100 mt-1 hover:text-primary transition-colors cursor-pointer"
+                                "text-lg font-bold text-foreground mt-1 hover:text-primary transition-colors cursor-pointer"
                             } else {
-                                "text-lg font-bold text-gray-900 mt-1 hover:text-primary transition-colors cursor-pointer"
+                                "text-lg font-bold text-foreground mt-1 hover:text-primary transition-colors cursor-pointer"
                             }
                         }
                         span .art2_excerpt {
                             style: if .dark_mode {
-                                "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                "text-sm text-muted-foreground mt-1 leading-relaxed"
                             } else {
-                                "text-sm text-gray-600 mt-1 leading-relaxed"
+                                "text-sm text-muted-foreground mt-1 leading-relaxed"
                             }
                         }
                         button "Read more →" {
                             variant: "ghost"
                             onclick: .ReadArticle2
-                            style: "p-0 h-auto text-sm text-primary font-semibold mt-2 hover:underline cursor-pointer"
+                            style: read_more
                         }
-                        style: "gap-1 flex-1"
+                        style: content_col
                     }
                     style: if .dark_mode {
-                        "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-zinc-700"
+                        "bg-card rounded-2xl border border-border p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-foreground/20"
                     } else {
-                        "bg-white rounded-2xl border border-gray-200 p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-gray-300"
+                        "bg-card rounded-2xl border border-border p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-foreground/20"
                     }
                 }
 
@@ -180,18 +192,18 @@ widget App {
                 row {
                     col {
                         span "🎨" {
-                            style: "text-3xl opacity-60"
+                            style: thumb_emoji
                         }
                         style: if .dark_mode {
-                            "w-32 h-32 rounded-xl bg-zinc-800/80 border border-zinc-700/50 shrink-0 items-center justify-center"
+                            "w-32 h-32 rounded-xl bg-muted border border-border/50 shrink-0 items-center justify-center"
                         } else {
-                            "w-32 h-32 rounded-xl bg-gray-100 border border-gray-200/50 shrink-0 items-center justify-center"
+                            "w-32 h-32 rounded-xl bg-muted border border-border/50 shrink-0 items-center justify-center"
                         }
                     }
                     col {
                         row {
                             span .art3_tag {
-                                style: "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary"
+                                style: art_tag
                             }
                             style: "items-center"
                         }
@@ -200,36 +212,36 @@ widget App {
                             span "·"
                             span .art3_date
                             style: if .dark_mode {
-                                "text-xs text-zinc-400 gap-1.5 items-center mt-1"
+                                "text-xs text-muted-foreground gap-1.5 items-center mt-1"
                             } else {
-                                "text-xs text-gray-500 gap-1.5 items-center mt-1"
+                                "text-xs text-muted-foreground gap-1.5 items-center mt-1"
                             }
                         }
                         h3 .art3_title {
                             style: if .dark_mode {
-                                "text-lg font-bold text-zinc-100 mt-1 hover:text-primary transition-colors cursor-pointer"
+                                "text-lg font-bold text-foreground mt-1 hover:text-primary transition-colors cursor-pointer"
                             } else {
-                                "text-lg font-bold text-gray-900 mt-1 hover:text-primary transition-colors cursor-pointer"
+                                "text-lg font-bold text-foreground mt-1 hover:text-primary transition-colors cursor-pointer"
                             }
                         }
                         span .art3_excerpt {
                             style: if .dark_mode {
-                                "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                "text-sm text-muted-foreground mt-1 leading-relaxed"
                             } else {
-                                "text-sm text-gray-600 mt-1 leading-relaxed"
+                                "text-sm text-muted-foreground mt-1 leading-relaxed"
                             }
                         }
                         button "Read more →" {
                             variant: "ghost"
                             onclick: .ReadArticle3
-                            style: "p-0 h-auto text-sm text-primary font-semibold mt-2 hover:underline cursor-pointer"
+                            style: read_more
                         }
-                        style: "gap-1 flex-1"
+                        style: content_col
                     }
                     style: if .dark_mode {
-                        "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-zinc-700"
+                        "bg-card rounded-2xl border border-border p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-foreground/20"
                     } else {
-                        "bg-white rounded-2xl border border-gray-200 p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-gray-300"
+                        "bg-card rounded-2xl border border-border p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-foreground/20"
                     }
                 }
 
@@ -237,9 +249,9 @@ widget App {
             }
 
             style: if .dark_mode {
-                "w-full min-h-screen bg-zinc-950 text-zinc-100"
+                "w-full min-h-screen bg-background text-foreground"
             } else {
-                "w-full min-h-screen bg-gray-50 text-gray-900"
+                "w-full min-h-screen bg-background text-foreground"
             }
         }
     }

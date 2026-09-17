@@ -59,6 +59,12 @@ pub struct DesktopConfig {
     pub wallpaper_path: String,
     /// 壁纸目录（"" = 未配置；env/探测回退链在 boot 侧）。
     pub wallpapers_dir: String,
+    /// PLAN-019-FU8：壁纸 picker 外部请求通道——os-config 设置面「切换壁纸」
+    /// 按钮写本字段（每次点击值递变，"1"/"2" 交替），宿主 config 轮询差分臂
+    /// 只认**值变化**：变化即触发一次 `wallpaper_pick` 组合（show_desktop +
+    /// picker 开 + return_on_close）。宿主不清该值（config.at 单写方仍是
+    /// daemon/设置面），交替保证相邻两次点击恒为变化。
+    pub wallpaper_request: String,
     pub dark_theme: bool,
     /// PLAN-615 T-06：主题来源——`"system"`（缺省）= 每次 load 从 OS 系统主题
     /// 派生 `dark_theme`（设置面板 set_theme 切换即置 `"manual"` 并持久化，
@@ -87,6 +93,7 @@ impl Default for DesktopConfig {
             dock_pinned: DEFAULT_DOCK_PINNED.iter().map(|s| s.to_string()).collect(),
             wallpaper_path: String::new(),
             wallpapers_dir: String::new(),
+            wallpaper_request: String::new(),
             dark_theme: true,
             theme_source: "system".to_string(),
             // PLAN-619 T-03：宿主显式持有 stella（轨缺省已改为 scaffold）。
@@ -150,6 +157,9 @@ pub fn parse_config(src: &str) -> DesktopConfig {
     }
     if let Some(v) = f.get("wallpapers_dir") {
         cfg.wallpapers_dir = v.clone();
+    }
+    if let Some(v) = f.get("wallpaper_request") {
+        cfg.wallpaper_request = v.clone();
     }
     if let Some(v) = f.get("dark_theme").and_then(|v| parse_bool(v)) {
         cfg.dark_theme = v;
@@ -246,6 +256,10 @@ pub fn serialize_config(cfg: &DesktopConfig) -> String {
     out.push_str(&format!("    dock_pinned : \"{}\"\n", cfg.dock_pinned.join(",")));
     out.push_str(&format!("    wallpaper_path : \"{}\"\n", cfg.wallpaper_path));
     out.push_str(&format!("    wallpapers_dir : \"{}\"\n", cfg.wallpapers_dir));
+    out.push_str(&format!(
+        "    wallpaper_request : \"{}\"\n",
+        cfg.wallpaper_request
+    ));
     out.push_str(&format!(
         "    dark_theme : {}\n",
         if cfg.dark_theme { "true" } else { "false" }
@@ -461,6 +475,8 @@ mod tests {
             dock_pinned: vec!["011-calculator".to_string(), "015-notes".to_string()],
             wallpaper_path: "builtin:inkwash".to_string(),
             wallpapers_dir: String::new(),
+            // PLAN-019-FU8：请求字段参与往返（空串往返 = 空串）。
+            wallpaper_request: String::new(),
             dark_theme: false,
             theme_source: "manual".to_string(),
             // PLAN-619 T-03：`None` 不是可持久状态下——存盘省略键、读回落到
@@ -570,6 +586,26 @@ mod tests {
         assert!(ser.contains("theme_source : \"manual\""), "{ser}");
         let (back_m, _) = load_from(Some(&ser), &mut |_| None);
         assert_eq!(back_m.theme_source, "manual");
+    }
+
+    /// PLAN-019-FU8：wallpaper_request 请求字段——缺席 = 空（宿主差分臂
+    /// 不触发），有值原样保留，serialize 往返不丢（设置面每次点击交替
+    /// 值，宿主只认变化）。
+    #[test]
+    fn wallpaper_request_parse_serialize_roundtrip() {
+        // 缺席 → 空
+        let (back, _) = load_from(Some("desktop {
+    dark_theme : false
+}
+"), &mut |_| None);
+        assert_eq!(back.wallpaper_request, "");
+        // 有值解析 + 序列化往返
+        let mut cfg = DesktopConfig::default();
+        cfg.wallpaper_request = "2".to_string();
+        let ser = serialize_config(&cfg);
+        assert!(ser.contains("wallpaper_request : \"2\""), "{ser}");
+        let (back_2, _) = load_from(Some(&ser), &mut |_| None);
+        assert_eq!(back_2.wallpaper_request, "2");
     }
 
     /// save_to → read → parse round-trip 走真文件系统（临时目录隔离）。

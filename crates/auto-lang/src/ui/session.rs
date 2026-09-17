@@ -632,6 +632,28 @@ pub struct WmState {
     pub workspaces: Vec<Workspace>,
     /// Plan 472 T2：当前分区下标（可见/命中/焦点环/排布的过滤基准）。
     pub current_workspace: usize,
+    /// PLAN-019 v1.7：负一屏保留分区下标（懒建——首次 show_desktop 时
+    /// add_workspace 并记录；投影/pager/环切/删除/发送全链排除，见各处
+    /// showdesk 守卫）。
+    pub showdesk_ws: Option<usize>,
+    /// PLAN-019 v1.7：进入负一屏前的分区（show_desktop 记录、
+    /// showdesk_return 消费清零；remove_workspace 下标压实时跟随迁移）。
+    pub showdesk_origin: Option<usize>,
+    /// PLAN-019 v1.7：壁纸 picker 开（wallpaper_pick 开、wallpaper_close /
+    /// showdesk_return 关）。
+    pub picker_open: bool,
+    /// PLAN-019 v1.7：关闭 picker 时是否自动返回 origin（归属规则——谁
+    /// 切屏谁负责切回；wallpaper_pick 单点裁决，负一屏自入 = false）。
+    pub picker_return_on_close: bool,
+    /// PLAN-019 v1.7：picker 大图预览游标（None = 栅格态；Some = 下标）。
+    /// 宿主持有——.at 无列表下标算术（B12 族），‹›/←→ 导航在宿主收口。
+    pub picker_preview: Option<usize>,
+    /// PLAN-019-FU7：carousel 滑动窗口起点（可见 5 枚的起始下标；‹›/←→
+    /// 滑窗、点选应用不动窗——用户裁定「一次只显示四五个候选」）。
+    pub picker_win: usize,
+    /// PLAN-019 v1.7：picker 候选路径缓存（inject_wallpaper_picker 时与
+    /// `__wp_items` 同源刷新；wallpaper_nav 数学区数据面）。
+    pub picker_paths: Vec<String>,
     /// Plan 473：原生窗口槽位注册表（NativeSlot 与 VirtualWindow 同为 WM
     /// 布局单元；布局参与见 T5，宿主装配/几何同步见 T6）。
     pub native_slots: BTreeMap<crate::ui::native_dock::NativeSlotId, crate::ui::native_dock::NativeSlot>,
@@ -686,6 +708,13 @@ impl WmState {
                 Workspace { id: 1, name: "Desktop 2".to_string() },
             ],
             current_workspace: 0,
+            showdesk_ws: None,
+            showdesk_origin: None,
+            picker_open: false,
+            picker_return_on_close: false,
+            picker_preview: None,
+            picker_win: 0,
+            picker_paths: Vec::new(),
             native_slots: BTreeMap::new(),
             next_native_slot_id: 0,
             native_slot_local_rects: BTreeMap::new(),
@@ -905,6 +934,38 @@ impl WmState {
         id
     }
 
+    /// PLAN-019 v1.7：显示桌面（负一屏）——懒建保留分区并切入，记录
+    /// origin。幂等：已在负一屏不覆盖 origin（wallpaper_pick 组合臂的
+    /// 归属规则判据依赖此语义——自入不迁移簿记）。
+    pub fn show_desktop(&mut self) {
+        let ws = match self.showdesk_ws {
+            Some(ws) => ws,
+            None => {
+                let id = self.add_workspace();
+                self.showdesk_ws = Some(id);
+                id
+            }
+        };
+        if self.current_workspace != ws {
+            self.showdesk_origin = Some(self.current_workspace);
+            self.set_workspace(ws);
+        }
+    }
+
+    /// PLAN-019 v1.7：返回 origin 分区。origin 缺席（已不在负一屏/无
+    /// 簿记）= no-op。picker 簿记清理由执行臂负责（含 return_on_close
+    /// 旗标），本方法只管分区往返。
+    pub fn showdesk_return(&mut self) {
+        if let Some(origin) = self.showdesk_origin.take() {
+            self.set_workspace(origin);
+        }
+    }
+
+    /// PLAN-019 v1.7：当前是否在负一屏（`__wm_showdesk` 投影判据）。
+    pub fn on_showdesk(&self) -> bool {
+        self.showdesk_ws == Some(self.current_workspace)
+    }
+
     /// Plan 472 T2：切换当前分区（clamp；无几何改动——换分区=切换可见
     /// 分区，App/窗全保留）。焦点让渡给目标分区栈顶窗（空分区 = None）。
     pub fn set_workspace(&mut self, n: usize) {
@@ -916,19 +977,27 @@ impl WmState {
         self.focused = self.wins_in_workspace(n).last().copied();
     }
 
-    /// Plan 472 T2：(current+1) % N 环切。
+    /// Plan 472 T2：(current+1) % N 环切。PLAN-019：负一屏不参与环切
+    /// （常规分区导航永不路过空屏）。
     pub fn next_workspace(&mut self) {
         if !self.workspaces.is_empty() {
-            self.set_workspace((self.current_workspace + 1) % self.workspaces.len());
+            let mut n = (self.current_workspace + 1) % self.workspaces.len();
+            while Some(n) == self.showdesk_ws && self.workspaces.len() > 1 {
+                n = (n + 1) % self.workspaces.len();
+            }
+            self.set_workspace(n);
         }
     }
 
-    /// Plan 472 T2：前一分区（环回）。
+    /// Plan 472 T2：前一分区（环回）。PLAN-019：负一屏不参与环切。
     pub fn prev_workspace(&mut self) {
         if !self.workspaces.is_empty() {
-            self.set_workspace(
-                (self.current_workspace + self.workspaces.len() - 1) % self.workspaces.len(),
-            );
+            let mut n =
+                (self.current_workspace + self.workspaces.len() - 1) % self.workspaces.len();
+            while Some(n) == self.showdesk_ws && self.workspaces.len() > 1 {
+                n = (n + self.workspaces.len() - 1) % self.workspaces.len();
+            }
+            self.set_workspace(n);
         }
     }
 
@@ -942,6 +1011,11 @@ impl WmState {
         if self.workspaces.len() <= 1 || n >= self.workspaces.len() {
             return;
         }
+        // PLAN-019：负一屏保留分区不可删（宿主臂 toast 门之外的第二道
+        // 纯驱动守卫——热键/pager 任何路径都到不了删除）。
+        if self.showdesk_ws == Some(n) {
+            return;
+        }
         let removed_was_current = self.current_workspace == n;
         let target = n.saturating_sub(1);
         for v in self.wins.values_mut() {
@@ -952,6 +1026,20 @@ impl WmState {
             }
         }
         self.workspaces.remove(n);
+        // PLAN-019：负一屏簿记跟随下标压实（删负一屏前的分区 → 下标 -1；
+        // 删的恰是 origin → origin 迁到其窗口并入的相邻前驱）。
+        if let Some(sd) = self.showdesk_ws {
+            if sd > n {
+                self.showdesk_ws = Some(sd - 1);
+            }
+        }
+        if let Some(origin) = self.showdesk_origin {
+            if origin == n {
+                self.showdesk_origin = Some(target);
+            } else if origin > n {
+                self.showdesk_origin = Some(origin - 1);
+            }
+        }
         self.current_workspace = self.current_workspace.min(self.workspaces.len() - 1);
         let focused_in_current = self
             .focused
@@ -966,6 +1054,10 @@ impl WmState {
     /// （焦点环不跨分区，472 语义）；发往当前分区 = 恒等（焦点保持）。
     pub fn move_win_to_workspace(&mut self, wid: Wid, n: usize) {
         if self.workspaces.is_empty() {
+            return;
+        }
+        // PLAN-019：窗口不可发往负一屏（保留空分区——发过去即穿帮）。
+        if self.showdesk_ws == Some(n) {
             return;
         }
         let Some(v) = self.wins.get_mut(&wid) else {
@@ -1321,6 +1413,28 @@ pub enum DesktopCommand {
     /// Plan 540 T3：壁纸目录写动词（`set_wallpapers_dir\t<dir>`；执行臂
     /// config 落盘——scan_wallpapers_dir 与缺省壁纸链共用解析）。
     SetWallpapersDir(String),
+    /// PLAN-019 v1.7：显示桌面（负一屏）——保留分区懒建 + origin 簿记
+    /// （`show_desktop` 无参动词；发件面 = 任务栏 sliver）。
+    ShowDesktop,
+    /// PLAN-019 v1.7：返回 origin 分区（`showdesk_return` 无参动词；
+    /// sliver 再点臂——picker 开着先关，簿记清理由执行臂负责）。
+    ShowdeskReturn,
+    /// PLAN-019 v1.7：更换壁纸组合入口（`wallpaper_pick` 无参动词 =
+    /// show_desktop 幂等 + picker 开 + 归属规则单点裁决）。
+    WallpaperPick,
+    /// PLAN-019 v1.7：关闭 picker（`wallpaper_close` 无参动词；
+    /// return_on_close 分支决定是否自动返回 origin）。
+    WallpaperClose,
+    /// PLAN-019 v1.7：弹原生目录对话框（`wallpaper_browse_dir` 无参动词；
+    /// 宿主 rfd pick_folder → SetWallpapersDir 同一执行臂）。
+    WallpaperBrowseDir,
+    /// PLAN-019 v1.7：picker 导航（`wallpaper_nav\t<prev|next>`；宿主按
+    /// 态分派——栅格态 = flip 轮换并立即应用，预览态 = 大图游标移动。
+    /// .at 无列表下标算术，导航数学生宿主侧）。
+    WallpaperNav(String),
+    /// PLAN-019 v1.7：进入/退出大图预览（`wallpaper_preview\t<path>`；
+    /// 空参 = 退回栅格态。宿主按 path 反查游标——.at 无下标算术）。
+    WallpaperPreview(String),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -1509,6 +1623,18 @@ impl DesktopCommand {
             DesktopCommand::SetWallpapersDir(dir) => {
                 format!("set_wallpapers_dir{}{}", Self::FIELD_SEP, dir)
             }
+            // PLAN-019 v1.7：负一屏/壁纸 picker 无参动词族。
+            DesktopCommand::ShowDesktop => "show_desktop".to_string(),
+            DesktopCommand::ShowdeskReturn => "showdesk_return".to_string(),
+            DesktopCommand::WallpaperPick => "wallpaper_pick".to_string(),
+            DesktopCommand::WallpaperClose => "wallpaper_close".to_string(),
+            DesktopCommand::WallpaperBrowseDir => "wallpaper_browse_dir".to_string(),
+            DesktopCommand::WallpaperNav(dir) => {
+                format!("wallpaper_nav{}{}", Self::FIELD_SEP, dir)
+            }
+            DesktopCommand::WallpaperPreview(path) => {
+                format!("wallpaper_preview{}{}", Self::FIELD_SEP, path)
+            }
         }
     }
 
@@ -1554,6 +1680,38 @@ impl DesktopCommand {
                 // PLAN-012 W5：桌面图标格子重注入（无参动词前置防互吞）。
                 if rec == "refresh_desktop_icons" {
                     return Some(DesktopCommand::RefreshDesktopIcons);
+                }
+                // PLAN-019 v1.7：负一屏/壁纸 picker 无参动词族（前置防
+                // 互吞——wallpaper_pick 近形于既有壁纸带参动词）。
+                if rec == "show_desktop" {
+                    return Some(DesktopCommand::ShowDesktop);
+                }
+                if rec == "showdesk_return" {
+                    return Some(DesktopCommand::ShowdeskReturn);
+                }
+                if rec == "wallpaper_pick" {
+                    return Some(DesktopCommand::WallpaperPick);
+                }
+                if rec == "wallpaper_close" {
+                    return Some(DesktopCommand::WallpaperClose);
+                }
+                if rec == "wallpaper_browse_dir" {
+                    return Some(DesktopCommand::WallpaperBrowseDir);
+                }
+                let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
+                // PLAN-019 v1.7：picker 导航（值域 prev/next 窄值，坏值跳过）。
+                if verb == "wallpaper_nav" {
+                    return match arg {
+                        "prev" | "next" => {
+                            Some(DesktopCommand::WallpaperNav(arg.to_string()))
+                        }
+                        _ => None,
+                    };
+                }
+                // PLAN-019 v1.7：预览进出（空参 = 退栅格态；带参 = 按 path
+                // 反查游标，缺席 no-op）。
+                if verb == "wallpaper_preview" {
+                    return Some(DesktopCommand::WallpaperPreview(arg.to_string()));
                 }
                 // PLAN-012 F2 走查：拖拽落格双动词（双参记录，二次 split）。
                 // 分隔符双轨：宿主/单测直写 \u{1f}；shell.at 转义 \t。
@@ -2007,6 +2165,13 @@ pub enum DesktopEvent {
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
     SummonSwitcher,
+    /// PLAN-019 v1.7：picker 键盘导航（picker 开时 ←/→ 消费；订阅层
+    /// PICKER_KEYS_OPEN 原子门控——负一屏无文本焦点窗，吞键无副作用）。
+    /// dir ∈ "prev"/"next"，同落 [`DesktopCommand::WallpaperNav`] 执行体。
+    WallpaperKeyNav(&'static str),
+    /// PLAN-019 v1.7：picker Esc 链——预览态回栅格态；栅格态关闭（按
+    /// `picker_return_on_close` 簿记决定是否自动返回 origin）。
+    WallpaperKeyEscape,
     /// Plan 488：拖出会话完成（STA 线程 DoDragDrop 返回 → 本事件；effect ∈
     /// copy/move/link/none）。App 事件注入（on_dnd_finished）在步骤 6 接线。
     DndFinished {
@@ -5788,6 +5953,61 @@ mod tests {
         // 空 arg 跳过。
         assert!(DesktopCommand::parse_records("dock_pin\u{1f}").is_empty());
         assert!(DesktopCommand::parse_records("dock_unpin\u{1f}").is_empty());
+    }
+
+    /// PLAN-019 v1.7：负一屏/壁纸 picker 七动词编码解析往返（词表回归
+    /// 保护）。无参族前置判定（wallpaper_pick 近形带参壁纸动词不互吞）、
+    /// nav 值域 prev/next 窄值、preview 空参 = 退栅格态（唯一空参合法的
+    /// 带参动词）、\u{1f}/\t 双轨。
+    #[test]
+    fn showdesk_wallpaper_verbs_parse_and_encode() {
+        let cmds = vec![
+            DesktopCommand::ShowDesktop,
+            DesktopCommand::ShowdeskReturn,
+            DesktopCommand::WallpaperPick,
+            DesktopCommand::WallpaperClose,
+            DesktopCommand::WallpaperBrowseDir,
+            DesktopCommand::WallpaperNav("prev".to_string()),
+            DesktopCommand::WallpaperNav("next".to_string()),
+            DesktopCommand::WallpaperPreview(
+                "D:/Down/stella-os/wallpapers/room.jpg".to_string(),
+            ),
+        ];
+        let payload = cmds
+            .iter()
+            .map(|c| c.encode())
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        assert_eq!(DesktopCommand::parse_records(&payload), cmds);
+        // 无参动词编码 = 裸词（无分隔符尾巴）。
+        assert_eq!(DesktopCommand::ShowDesktop.encode(), "show_desktop");
+        assert_eq!(DesktopCommand::ShowdeskReturn.encode(), "showdesk_return");
+        assert_eq!(DesktopCommand::WallpaperPick.encode(), "wallpaper_pick");
+        assert_eq!(DesktopCommand::WallpaperClose.encode(), "wallpaper_close");
+        assert_eq!(
+            DesktopCommand::WallpaperBrowseDir.encode(),
+            "wallpaper_browse_dir"
+        );
+        // shell.at 轨：\n 分记录 + \t 分字段（lexer 无 \u{..} 转义）。
+        assert_eq!(
+            DesktopCommand::parse_records("show_desktop\nwallpaper_pick"),
+            vec![DesktopCommand::ShowDesktop, DesktopCommand::WallpaperPick]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("wallpaper_nav\tnext"),
+            vec![DesktopCommand::WallpaperNav("next".to_string())],
+            "\\t 分隔符双轨等价"
+        );
+        // preview 空参 = 退栅格态（保留空串，不跳过）。
+        assert_eq!(
+            DesktopCommand::parse_records("wallpaper_preview\u{1f}"),
+            vec![DesktopCommand::WallpaperPreview(String::new())]
+        );
+        // nav 值域外跳过（不 panic、不阻塞后续记录）。
+        assert_eq!(
+            DesktopCommand::parse_records("wallpaper_nav\u{1f}up\u{1e}show_desktop"),
+            vec![DesktopCommand::ShowDesktop]
+        );
     }
 
     #[test]
