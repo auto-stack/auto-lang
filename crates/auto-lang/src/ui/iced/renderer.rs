@@ -25434,16 +25434,25 @@ mod tests {
                 "rows 序 = MRU 序（front=最近聚焦）"
             );
         }
-        // Advance：sel 0→1（handler 直调——与宿主 Ctrl+Tab 直投 .Advance
-        // 消息同落同一 handler；DM::App 分派管线为 464 已证路径）。
+        // PLAN-014 W-10：RebuildMru 预选 MRU 第 2 项（nres>1 → sel=1，
+        // Alt-Tab 惯例——第 1 项 = 当前聚焦窗）。
+        {
+            let app = ds.apps.get(&sw).unwrap();
+            match app.component.read_state("sel") {
+                Ok(auto_val::Value::Int(1)) => {}
+                other => panic!("召唤后 sel 应预选 1（W-10）: {other:?}"),
+            }
+        }
+        // Advance：sel 1→0 回绕（handler 直调——与宿主 Ctrl+Tab 直投
+        // .Advance 消息同落同一 handler；DM::App 分派管线为 464 已证路径）。
         let app = ds.apps.get_mut(&sw).unwrap();
         app.component
             .bridge_mut()
             .call_handler("Advance", &[])
             .expect("Advance handler");
         match app.component.read_state("sel") {
-            Ok(auto_val::Value::Int(1)) => {}
-            other => panic!("Advance 后 sel 应为 1: {other:?}"),
+            Ok(auto_val::Value::Int(0)) => {}
+            other => panic!("Advance 后 sel 应回绕为 0: {other:?}"),
         }
         // confirm（Enter 同落 Focus handler）：写 focus 记录 + 自隐。
         app.component
@@ -26904,7 +26913,8 @@ mod tests {
         assert!(pinned.is_empty(), "pack 默认 pinned 应为空（W4 置空），实得 {pinned:?}");
 
         // Plan 478 T5：pager 升格——v1.1 投影形状（含 label/current）注入 +
-        // 新消息臂写总线记录（workspace_add / workspace_close\t<n>）。
+        // 新消息臂写总线记录。PLAN-014 W-01：workspace_close 臂随死组退役
+        // （pager × 按钮已删，pack 无发送者），fixture 仅保 workspace_add。
         let app = ds.apps.get_mut(&id).unwrap();
         let _ = app.component.write_state_vec(
             "__wm_workspaces",
@@ -26931,19 +26941,6 @@ mod tests {
             Ok(auto_val::Value::Str(ref s)) => {
                 assert_eq!(s.to_string(), "workspace_add", "pager + 写 workspace_add 记录")
             }
-            other => panic!("__desktop_cmd 读回异常: {other:?}"),
-        }
-        let _ = app.component.write_state("__desktop_cmd", auto_val::Value::str(""));
-        app.component
-            .bridge_mut()
-            .call_handler("WorkspaceClose", &[auto_val::Value::str("1")])
-            .expect("WorkspaceClose handler");
-        match app.component.read_state("__desktop_cmd") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(
-                s.to_string(),
-                "workspace_close\t1",
-                "pager × 写 workspace_close 记录"
-            ),
             other => panic!("__desktop_cmd 读回异常: {other:?}"),
         }
         let _ = std::fs::remove_file(&_store);
@@ -27951,6 +27948,15 @@ mod tests {
             }
             other => panic!("__desktop_cmd 异常: {other:?}"),
         }
+        // PLAN-014 W-02 追加语义：bus 记录由宿主每 update 周期排空——此处
+        // 排空既有记录（兼断 activate 到达宿主），后续 wallpaper 臂读单记录。
+        assert_eq!(
+            ds.drain_app_desktop_commands(surface),
+            vec![crate::ui::session::DesktopCommand::ActivateApp(
+                "011-calculator".into()
+            )],
+            "activate 记录宿主排空（W-02 配套）"
+        );
         match t496_read(&ds, "menu_id") {
             auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "空白点击关菜单"),
             other => panic!("menu_id 异常: {other:?}"),
@@ -27975,6 +27981,75 @@ mod tests {
             }
             other => panic!("__desktop_cmd（wallpaper）异常: {other:?}"),
         }
+    }
+
+    /// PLAN-014 F-03 回归（builder 端到端）：条件样式（style: if 链）分支体
+    /// 内的注释行此前把 Plan 339「单表达式」合同推到 stmts.len()==2 → 求值
+    /// 落空串 → Style::parse 失败 → 布局件 style 整体 None → hover 变体类
+    /// VM 轨归零（desktop.at 图标格五分支链现场）。合同：注释/空行不计入
+    /// 分支体合同，深层 else 照常求值。
+    #[test]
+    fn conditional_style_with_comments_in_branches_resolves_hover() {
+        let _guard = t2_isolate_storage("f03-style-comments");
+        let src = concat!(
+            "widget StyleProbe {\n",
+            "    state {\n",
+            "        var mode str = \"\"\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            style: if .mode == \"a\" {\n",
+            "                \"bg-white/20 opacity-50\"\n",
+            "            } else {\n",
+            "                // 注释在 else 分支体内（F-03 现场）\n",
+            "                if .mode == \"b\" {\n",
+            "                    \"bg-primary/20\"\n",
+            "                } else {\n",
+            "                    // 再一层注释\n",
+            "                    \"w-20 h-[72px] hover:bg-white/10\"\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let comp = crate::build_dynamic_component(src, None).expect("装载");
+        let mut ds = t3_session_with_shell();
+        let id = ds.allocate_app(comp);
+        let app = ds.apps.get(&id).unwrap();
+        let (view, _, _) = app.component.view_with_debug_gated(false);
+        // mode="" → 两层条件全 false → 最深 else（hover 串）。
+        let mut hover_cols = 0usize;
+        let mut total_cols = 0usize;
+        fn walk(v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+                hover_cols: &mut usize, total_cols: &mut usize) {
+            use crate::ui::view::View;
+            match v {
+                View::Column { children, style, .. } => {
+                    *total_cols += 1;
+                    if style.as_ref().map_or(false, |s| {
+                        s.has_variant(crate::ui::style::Variant::Hover)
+                    }) {
+                        *hover_cols += 1;
+                    }
+                    for c in children {
+                        walk(c, hover_cols, total_cols);
+                    }
+                }
+                View::Row { children, .. } => {
+                    for c in children {
+                        walk(c, hover_cols, total_cols);
+                    }
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => {
+                    walk(child, hover_cols, total_cols)
+                }
+                _ => {}
+            }
+        }
+        walk(&view, &mut hover_cols, &mut total_cols);
+        assert!(total_cols >= 1, "探针 col 存在");
+        assert_eq!(hover_cols, 1, "注释不废链：最深 else 的 hover 变体类存活");
     }
 
     /// PLAN-010 T4 回归：desktop.at popover 的 ondismiss 必须提取自 events

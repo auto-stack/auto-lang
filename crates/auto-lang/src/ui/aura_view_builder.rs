@@ -10101,8 +10101,8 @@ let tabs_inner = View::Row {
                     };
                     if is_true {
                         // then body must be a single expression (Plan 339 contract)
-                        if branch.body.stmts.len() == 1 {
-                            match &branch.body.stmts[0] {
+                        if let Some(stmt) = first_meaningful_stmt(&branch.body) {
+                            match stmt {
                                 crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_string_with(e, bindings),
                                 crate::ast::Stmt::If(nested_if) => {
                                     return self.resolve_expr_to_string_with(&crate::ast::Expr::If(nested_if.clone()), bindings);
@@ -10114,8 +10114,8 @@ let tabs_inner = View::Row {
                     }
                 }
                 if let Some(else_body) = &if_expr.else_ {
-                    if else_body.stmts.len() == 1 {
-                        match &else_body.stmts[0] {
+                    if let Some(stmt) = first_meaningful_stmt(else_body) {
+                        match stmt {
                             crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_string_with(e, bindings),
                             crate::ast::Stmt::If(nested_if) => {
                                 return self.resolve_expr_to_string_with(&crate::ast::Expr::If(nested_if.clone()), bindings);
@@ -10585,8 +10585,8 @@ let tabs_inner = View::Row {
                     }
                     decided = true;
                     // then body must be a single expression (Plan 339 contract)
-                    if branch.body.stmts.len() == 1 {
-                        match &branch.body.stmts[0] {
+                    if let Some(stmt) = first_meaningful_stmt(&branch.body) {
+                        match stmt {
                             crate::ast::Stmt::Expr(e) => {
                                 match self.resolve_expr_to_value(e, bindings) {
                                     Some(v) => selected = Some(v),
@@ -10611,8 +10611,8 @@ let tabs_inner = View::Row {
                 }
                 if selected.is_none() && !decided {
                     if let Some(else_body) = &if_expr.else_ {
-                        if else_body.stmts.len() == 1 {
-                            match &else_body.stmts[0] {
+                        if let Some(stmt) = first_meaningful_stmt(else_body) {
+                            match stmt {
                                 crate::ast::Stmt::Expr(e) => {
                                     selected = self.resolve_expr_to_value(e, bindings);
                                 }
@@ -11891,6 +11891,17 @@ let tabs_inner = View::Row {
 // Free helper functions
 // ============================================================================
 
+/// PLAN-014 F-03: Plan 339「if 分支体 = 单表达式」合同的语句筛。注释
+/// （Stmt::Comment）与空行（Stmt::EmptyLine）是解析器语句流的正式成员，
+/// 不计入合同——此前 `stmts.len() == 1` 严格判定遇分支体内注释即整链
+/// 报废：desktop.at 图标格样式链嵌套 else 内含注释 → 条件样式求值落
+/// 空串 → hover 变体类 VM 轨整体丢失（布局件 hover 消费面归零）。
+fn first_meaningful_stmt(body: &crate::ast::Body) -> Option<&crate::ast::Stmt> {
+    body.stmts.iter().find(
+        |s| !matches!(s, crate::ast::Stmt::Comment(_) | crate::ast::Stmt::EmptyLine(_)),
+    )
+}
+
 /// PLAN-050 T7 (C5): 生产管线的 use.web component 名单（lib.rs 装载期从
 /// root+child decls 的 ext_imports 收集注册；每次装载整体替换）。builder
 /// 的图标组件臂按此判定。
@@ -12419,6 +12430,25 @@ mod tests {
     use crate::aura::{AuraEvent, AuraStateDef, AuraWidget};
     use crate::ast::Type;
     use std::collections::HashMap;
+
+    /// PLAN-014 F-03：分支体语句筛合同——注释/空行不计入「单表达式」合同，
+    /// 首条有效语句命中；纯注释体 = None。
+    #[test]
+    fn first_meaningful_stmt_skips_comments_and_blank_lines() {
+        use crate::ast::{Body, Stmt};
+        let mk = |stmts: Vec<Stmt>| Body { stmts, has_new_line: false, source_lines: vec![] };
+        let with_comments = mk(vec![
+            Stmt::Comment("注释行".into()),
+            Stmt::Expr(crate::ast::Expr::Int(7)),
+            Stmt::EmptyLine(1),
+        ]);
+        assert!(matches!(
+            first_meaningful_stmt(&with_comments),
+            Some(Stmt::Expr(crate::ast::Expr::Int(7)))
+        ));
+        let comments_only = mk(vec![Stmt::Comment("a".into()), Stmt::EmptyLine(2)]);
+        assert!(first_meaningful_stmt(&comments_only).is_none());
+    }
 
     /// Helper: create a minimal AuraWidget for testing.
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
