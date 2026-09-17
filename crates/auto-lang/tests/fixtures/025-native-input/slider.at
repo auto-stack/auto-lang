@@ -1,0 +1,27 @@
+// PLAN-025 T-03 fixture —— native queue slider 载体（codegen golden 单测
+// 源 + a2r scratch 载体源，e2e 期复制入 scratch）。
+// 契约：value 绑定 float 字段（View::slider 载荷恒 f32——f64 字段由
+// codegen 补 as f32）；onchange = f32 载荷变体 fn 指针构造（物化自足，
+// 零 thread-local）；on 块模式 .SetVol(v float) 绑定载荷。
+widget SliderBox {
+    msg {
+        SetVol(float)
+    }
+
+    model {
+        var vol float = 50.0
+    }
+
+    view {
+        col {
+            slider (value: .vol, min: 0.0, max: 100.0, step: 1.0) { onchange: .SetVol }
+            text `vol: ${.vol}`
+        }
+    }
+
+    on {
+        .SetVol(v float) -> {
+            .vol = v
+        }
+    }
+}

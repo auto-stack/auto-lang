@@ -160,7 +160,7 @@ impl Coverage {
     /// （渲染/命中/聚焦/键入回写臂同落 native_projector）。**switch 无
     /// native 对象**——View 枚举无 Switch 变体（解释态 aura 标签专属，
     /// T-01 §5.1 调查证据），native 轨无可产该 kind 的构造（I4 分表，
-    /// 非缺口）。slider/select 随 T-03/T-04 扩容。kind = text/button +
+    /// 非缺口）。slider 随 T-03、select 随 T-04 扩容。kind = text/button +
     /// form 族 + 线性堆叠布局族（col/row/container/list）+ 布局样式子集
     /// （padding/gap/margin/尺寸/圆角/底色/前景色/对齐/字号字重）。
     /// payload 族残余（table/tabs 等）与 display 族（image/icon/badge/…）
@@ -177,6 +177,8 @@ impl Coverage {
             "textarea",
             "checkbox",
             "radio",
+            // PLAN-025 T-03 —— payload 族 slider。
+            "slider",
         ]
         .into_iter()
         .map(String::from)

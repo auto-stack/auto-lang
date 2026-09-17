@@ -46,6 +46,10 @@ const INPUT_PAD: f32 = 10.0;
 const FOCUS_BORDER: Rgba8 = Rgba8::new(59, 130, 246, 255);
 /// checkbox/radio 勾选盒标签与盒体的间距。
 const CHECK_LABEL_GAP: f32 = 6.0;
+/// slider 几何（轨道厚 / knob 边 / 命中带高——v1 常量档，样式类可覆高宽）。
+const SLIDER_H: f32 = 20.0;
+const SLIDER_TRACK_H: f32 = 4.0;
+const SLIDER_KNOB: f32 = 12.0;
 
 /// 分型命中表项（PLAN-025 T-01 D1/D3 定形态）：零参物化消息直入；payload
 /// 族携派发材料（输入闭环身份/slider 几何/…——随覆盖爬坡扩臂）。
@@ -59,12 +63,23 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
     /// 聚焦身份（Input/Textarea 合一计数，D1-A）；`on_change` = 键入
     /// 回写物化消息（None = 只显不编——登记省略）。
     Input { rect: WRect, value: String, on_change: Option<M>, slot: usize },
+    /// slider：轨道点击 → 几何换算 f32（min..=max 线性 + step 取整）→
+    /// fn 指针物化派发（T-01 附带定案：v1 点击定位，拖拽 not-yet）。
+    Slider {
+        rect: WRect,
+        min: f32,
+        max: f32,
+        step: Option<f32>,
+        on_change: fn(f32) -> M,
+    },
 }
 
 impl<M: Clone + std::fmt::Debug> HitEntry<M> {
     fn rect(&self) -> &WRect {
         match self {
-            HitEntry::Msg { rect, .. } | HitEntry::Input { rect, .. } => rect,
+            HitEntry::Msg { rect, .. }
+            | HitEntry::Input { rect, .. }
+            | HitEntry::Slider { rect, .. } => rect,
         }
     }
 }
@@ -250,6 +265,22 @@ impl<C: Component> NativeProjector<C> {
             Some(HitEntry::Input { value, slot, .. }) => {
                 self.focused_input = Some(slot);
                 self.input_buffer = value;
+                self.rev += 1;
+            }
+            // 轨道点击 → f32 = min + clamp((x-x0)/w)×range（step 取整）→
+            // fn 指针物化派发（零 thread-local——载荷自足）。
+            Some(HitEntry::Slider { rect, min, max, step, on_change }) => {
+                let t = if rect.w > 0.0 {
+                    ((x - rect.x) / rect.w).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let raw = min + t * (max - min);
+                let v = match step {
+                    Some(st) if st > 0.0 => min + ((raw - min) / st).round() * st,
+                    _ => raw,
+                };
+                self.component.on(on_change(v.clamp(min, max)));
                 self.rev += 1;
             }
             None => {}
@@ -558,6 +589,35 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         }
         View::Radio { label, is_selected, on_select, .. } => {
             layout_view_toggle(ctx, *is_selected, label, on_select.as_ref(), &style, x, y, avail_w, true)
+        }
+        // PLAN-025 T-03 slider 臂：track 底 + fill + knob（值比例几何）+
+        // 轨道命中（点击 → f32 → fn 指针物化派发；step 取整在派发侧）。
+        View::Slider { min, max, value, on_change, step, .. } => {
+            let w = style.fixed_w().unwrap_or(avail_w.min(320.0)).min(avail_w.max(0.0));
+            let h = style.fixed_h().unwrap_or(SLIDER_H);
+            let cy = y + h / 2.0;
+            let t = if *max > *min {
+                ((*value - *min) / (*max - *min)).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let vx = x + w * t;
+            ctx.push_quad(WRect::new(x, cy - SLIDER_TRACK_H / 2.0, w, SLIDER_TRACK_H), INPUT_BORDER);
+            if vx > x {
+                ctx.push_quad(WRect::new(x, cy - SLIDER_TRACK_H / 2.0, vx - x, SLIDER_TRACK_H), BUTTON_BG);
+            }
+            ctx.push_quad(
+                WRect::new(vx - SLIDER_KNOB / 2.0, cy - SLIDER_KNOB / 2.0, SLIDER_KNOB, SLIDER_KNOB),
+                LABEL_FG,
+            );
+            ctx.hits.push(HitEntry::Slider {
+                rect: WRect::new(x, y, w, h),
+                min: *min,
+                max: *max,
+                step: *step,
+                on_change: *on_change,
+            });
+            Laid { size: (w, h) }
         }
         View::Row { .. } => {
             let dir = Dir::Horizontal;
@@ -1069,12 +1129,13 @@ mod tests {
     }
 
     #[test]
-    fn coverage_gate_refuses_payload_family() {
+    fn coverage_gate_refuses_uncovered_family() {
         // counter 级视图：Covered。
         let ok = counter();
         assert!(ok.ensure_covered().is_ok());
 
-        // payload 族（Slider）：not-yet → 拒绝 + 缺项清单。
+        // PLAN-025 T-03 语义反转：slider 已入 native 覆盖集 → Covered
+        // （020 原样本由拒转收；防漏面 = 覆盖单测 + native 臂测试）。
         #[derive(Debug)]
         struct WithSlider;
 
@@ -1092,8 +1153,28 @@ mod tests {
         }
 
         let p = NativeProjector::new(WithSlider, 480.0, 320.0);
+        p.ensure_covered().expect("slider 入覆盖集（020 拒面反转）");
+
+        // 新拒样本：grid（PLAN-025 非目标——kind 未入册）→ 拒绝 + 缺项。
+        #[derive(Debug)]
+        struct WithGrid;
+
+        impl Component for WithGrid {
+            type Msg = WMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::Grid {
+                    cols: 2,
+                    gap: 4,
+                    cells: vec![View::text("a"), View::text("b")],
+                    style: None,
+                }
+            }
+        }
+
+        let p = NativeProjector::new(WithGrid, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("slider"), "缺项清单随行: {err}");
+        assert!(err.contains("grid"), "缺项清单随行: {err}");
     }
 
     #[test]
@@ -1120,9 +1201,11 @@ mod tests {
     #[test]
     fn dynamic_branch_uncovered_placeholder_tracked() {
         // 门后动态分支：状态切换遭遇未覆盖变体 → 占位盒 + uncovered_seen。
+        // （样本 = grid——PLAN-025 非目标 kind；原 slider 样本随 T-03
+        // 覆盖扩容转正，拒面换 grid 与 gate 反转测试同册。）
         #[derive(Debug)]
         struct Branchy {
-            show_slider: bool,
+            show_grid: bool,
         }
 
         #[derive(Debug, Clone, PartialEq)]
@@ -1134,22 +1217,27 @@ mod tests {
             type Msg = BMsg;
             fn on(&mut self, msg: Self::Msg) {
                 if msg == BMsg::Toggle {
-                    self.show_slider = !self.show_slider;
+                    self.show_grid = !self.show_grid;
                 }
             }
             fn view(&self) -> View<Self::Msg> {
-                // 门时刻 slider 不可见 → Covered；Toggle 后动态出现。
+                // 门时刻 grid 不可见 → Covered；Toggle 后动态出现。
                 let mut col = View::col().child(
                     View::button("t").on_click(|_| BMsg::Toggle).build(),
                 );
-                if self.show_slider {
-                    col = col.child(View::slider(0.0..=1.0, 0.5, |_| BMsg::Toggle).build());
+                if self.show_grid {
+                    col = col.child(View::Grid {
+                        cols: 2,
+                        gap: 4,
+                        cells: vec![View::text("a"), View::text("b")],
+                        style: None,
+                    });
                 }
                 col.build()
             }
         }
 
-        let mut p = NativeProjector::new(Branchy { show_slider: false }, 480.0, 320.0);
+        let mut p = NativeProjector::new(Branchy { show_grid: false }, 480.0, 320.0);
         assert!(p.ensure_covered().is_ok(), "门时刻无未覆盖变体");
         let _ = p.render_frame();
         assert!(p.uncovered_seen().is_empty());
@@ -1163,9 +1251,9 @@ mod tests {
             modifiers: 0,
         });
         let frame = p.render_frame();
-        assert_eq!(p.uncovered_seen(), ["slider"], "动态分支遭遇留痕");
+        assert_eq!(p.uncovered_seen(), ["grid"], "动态分支遭遇留痕");
         assert!(
-            texts_of(&frame).iter().any(|t| t.starts_with("not-rendered: slider")),
+            texts_of(&frame).iter().any(|t| t.starts_with("not-rendered: grid")),
             "占位盒显式标记: {:?}",
             texts_of(&frame)
         );
@@ -1256,12 +1344,12 @@ mod tests {
         }
     }
 
-    fn quads_of(frame: &DrawList) -> Vec<&WRect> {
+    fn quads_of(frame: &DrawList) -> Vec<WRect> {
         frame
             .ops
             .iter()
             .filter_map(|op| match op {
-                DrawOp::Quad { rect, .. } => Some(rect),
+                DrawOp::Quad { rect, .. } => Some(*rect),
                 _ => None,
             })
             .collect()
@@ -1301,7 +1389,7 @@ mod tests {
         p.ensure_covered().expect("input 级入覆盖集");
         let frame = p.render_frame();
         // 盒 (10,10,320,32) + 1px 边框 + 值文本（未聚焦 = 视图值）。
-        assert_eq!(quads_of(&frame)[0], &WRect::new(10.0, 10.0, 320.0, 32.0));
+        assert_eq!(quads_of(&frame)[0], WRect::new(10.0, 10.0, 320.0, 32.0));
         assert_eq!(texts_of(&frame), vec!["Zhang"], "值文本（placeholder 隐藏）");
         // 空值 → placeholder（PLACEHOLDER_FG 色）。
         #[derive(Debug)]
@@ -1348,8 +1436,8 @@ mod tests {
         p.ensure_covered().expect("form 级入覆盖集");
         let frame = p.render_frame();
         // 双 input 框（槽 0 = celsius y=10，槽 1 = fahrenheit y=50——gap 8）。
-        assert!(quads_of(&frame).iter().any(|r| **r == WRect::new(10.0, 10.0, 320.0, 32.0)));
-        assert!(quads_of(&frame).iter().any(|r| **r == WRect::new(10.0, 50.0, 320.0, 32.0)));
+        assert!(quads_of(&frame).iter().any(|r| *r == WRect::new(10.0, 10.0, 320.0, 32.0)));
+        assert!(quads_of(&frame).iter().any(|r| *r == WRect::new(10.0, 50.0, 320.0, 32.0)));
 
         // 点击聚焦槽 0 → 键入 "100" → 换算联动（fahrenheit = 212）。
         click(&mut p, 100.0, 26.0);
@@ -1383,6 +1471,99 @@ mod tests {
         p.focused_input = None;
         p.on_input(&InputMsg::CharTyped { wid: 1, ch: 'x' });
         assert_eq!(p.revision(), before, "无聚焦不派发");
+    }
+
+    // —— PLAN-025 T-03 slider 单测 ——
+
+    #[derive(Debug)]
+    struct SliderBox {
+        vol: f32,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    enum SMsg {
+        Vol(f32),
+    }
+
+    impl Component for SliderBox {
+        type Msg = SMsg;
+        fn on(&mut self, msg: Self::Msg) {
+            if let SMsg::Vol(v) = msg {
+                self.vol = v;
+            }
+        }
+        fn view(&self) -> View<Self::Msg> {
+            View::col()
+                .child(View::slider(0.0..=100.0, self.vol, SMsg::Vol).build())
+                .child(View::text(format!("vol: {}", self.vol)))
+                .build()
+        }
+    }
+
+    #[test]
+    fn slider_geometry_golden() {
+        let mut p = NativeProjector::new(SliderBox { vol: 25.0 }, 480.0, 320.0);
+        p.ensure_covered().expect("slider 入覆盖集");
+        let frame = p.render_frame();
+        // track (10, 18, 320, 4) 底；fill (10,18,80,4)（25%）；knob
+        // (84,14,12,12)。布局：h=20 → cy=20；vx = 10 + 320×0.25 = 90。
+        let qs = quads_of(&frame);
+        assert!(qs.iter().any(|r| *r == WRect::new(10.0, 18.0, 320.0, 4.0)), "track: {qs:?}");
+        assert!(qs.iter().any(|r| *r == WRect::new(10.0, 18.0, 80.0, 4.0)), "fill 25%");
+        assert!(qs.iter().any(|r| *r == WRect::new(84.0, 14.0, 12.0, 12.0)), "knob: {qs:?}");
+        // 值文本（第二子）。
+        assert!(texts_of(&frame).iter().any(|t| t.starts_with("vol: 25")),);
+    }
+
+    #[test]
+    fn slider_track_click_dispatch() {
+        let mut p = NativeProjector::new(SliderBox { vol: 0.0 }, 480.0, 320.0);
+        let _ = p.render_frame();
+        // 轨道 50% 处点击（(170, 20)）→ vol = 50 → 帧文本联动。
+        click(&mut p, 170.0, 20.0);
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| *t == "vol: 50"),
+            "轨道点击 f32 派发: {:?}",
+            texts_of(&frame)
+        );
+        // 近右缘点击（rect 内 x=329）→ t=0.996875 → v=99.6875（f32 精确
+        // 表示，文本可比；越界点击 rect 外不命中——命中判定语义不变）。
+        click(&mut p, 329.0, 20.0);
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| *t == "vol: 99.6875"),
+            "右缘线性换算: {:?}",
+            texts_of(&frame)
+        );
+        // step 取整：0..=100 step 30 → 25% 点击（raw 25）→ 30（fill
+        // 96px = 320×0.30 独立证词）。
+        #[derive(Debug)]
+        struct Stepper {
+            seen: f32,
+        }
+        impl Component for Stepper {
+            type Msg = SMsg;
+            fn on(&mut self, msg: Self::Msg) {
+                if let SMsg::Vol(v) = msg {
+                    self.seen = v;
+                }
+            }
+            fn view(&self) -> View<Self::Msg> {
+                View::slider(0.0..=100.0, self.seen, SMsg::Vol).step(30.0).build()
+            }
+        }
+        let mut sp = NativeProjector::new(Stepper { seen: 0.0 }, 480.0, 320.0);
+        let _ = sp.render_frame();
+        click(&mut sp, 90.0, 20.0); // 25% → raw 25 → step 30
+        let frame = sp.render_frame();
+        assert!(
+            quads_of(&frame)
+                .iter()
+                .any(|r| *r == WRect::new(10.0, 18.0, 96.0, 4.0)),
+            "step 30 取整后 fill 30%: {:?}",
+            quads_of(&frame)
+        );
     }
 
     #[test]

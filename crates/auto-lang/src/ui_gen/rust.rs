@@ -3106,6 +3106,60 @@ impl RustGenerator {
                     return result;
                 }
 
+                // PLAN-025 T-03: slider — View::slider(min..=max, value, fn
+                // 指针)。载荷回写 = f32 载荷变体的构造器 fn 指针（物化
+                // 自足——零 thread-local，与 input 的 INPUT_TEXT 通道相
+                // 比"回写通道更干净"）；on() 侧载荷臂由 msg 声明 + on 块
+                // 模式（.SetVol(v float) -> {...}）既有机制承担。
+                if tag == "slider" {
+                    let numeric = |v: Option<&AuraPropValue>, default: f64| -> String {
+                        match v {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) => format!("{f}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Double(f, _))) => format!("{f}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) => format!("{i}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+                            _ => format!("{default}"),
+                        }
+                    };
+                    let min = numeric(props.get("min"), 0.0);
+                    let max = numeric(props.get("max"), 100.0);
+                    // value 绑定：Ident → self.<field>（f64 字段补 as f32
+                    // ——View::slider 载荷恒 f32）；字面量直用。
+                    let value_expr = match props.get("value") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
+                            if self.state_types.get(name.as_str()).map(|s| s.as_str()) == Some("f64") {
+                                format!("self.{name} as f32")
+                            } else {
+                                format!("self.{name}")
+                            }
+                        }
+                        _ => numeric(props.get("value"), 0.0),
+                    };
+                    let mut builder = format!("View::slider({min}..={max}, {value_expr}");
+                    // onchange → fn 指针 = 变体构造器（载荷变体）。
+                    if let Some((_, handler)) = events
+                        .iter()
+                        .find(|(e, _)| matches!(e.as_str(), "onchange" | "onChange"))
+                    {
+                        let variant = self.extract_variant_name(&handler.handler);
+                        let msg_name = self.current_msg_name();
+                        builder = format!("{builder}, {msg_name}::{variant}");
+                    } else {
+                        // 无 onchange：占位零参闭合（View::slider 的 fn 槽
+                        // 必填——不被消费即无行为面）。
+                        builder = format!("{builder}, |_| {{ unreachable!() }}");
+                    }
+                    builder = format!("{builder})");
+                    if let Some(st) = props.get("step") {
+                        builder = format!("{builder}.step({})", numeric(Some(st), 0.0));
+                    }
+                    for (key, value) in props {
+                        if key == "min" || key == "max" || key == "value" || key == "step" { continue; }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+                    return format!("{builder}.build()");
+                }
+
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
                     if let Some(ref name) = text_state_ref {
                         if tag == "button" {
@@ -6836,6 +6890,67 @@ widget Counter {
             code
         );
         assert!(code.contains("self.count += 1"), "lambda body:\n{}", code);
+    }
+
+    /// PLAN-025 T-03: slider codegen golden（fixture 真源：
+    /// tests/fixtures/025-native-input/slider.at——View::slider 构造 +
+    /// f32 载荷变体 fn 指针 + on() 载荷臂，零 thread-local 回写）。
+    #[test]
+    fn test_slider_codegen_arm_fixture() {
+        let src = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/025-native-input/slider.at"
+        ))
+        .expect("read slider fixture");
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("View::slider("),
+            "slider 构造在册:
+{}",
+            code
+        );
+        assert!(
+            code.contains("SliderBoxMsg::SetVol"),
+            "fn 指针 = 载荷变体构造器:
+{}",
+            code
+        );
+        assert!(
+            code.contains("SetVol(f32)"),
+            "载荷变体 f32:
+{}",
+            code
+        );
+        assert!(
+            code.contains(".step(1)"),
+            "step prop 消费:
+{}",
+            code
+        );
+        assert!(
+            code.contains("SetVol(v") && code.contains("self.vol = v"),
+            "on() 载荷臂绑定 v 写 vol:
+{}",
+            code
+        );
+        assert!(
+            !code.contains("last_input_text"),
+            "slider 回写零 thread-local:
+{}",
+            code
+        );
     }
 
     /// PLAN-533 T4: on-only handler（无 msg 块声明,vue 风格源——gallery 页
