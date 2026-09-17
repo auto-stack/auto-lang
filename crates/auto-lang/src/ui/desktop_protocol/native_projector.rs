@@ -36,7 +36,7 @@ use super::endpoint::FrameSource;
 use super::message::{ControlMsg, DrawList, DrawOp, InputMsg, MouseButton, Rgba8, WRect};
 use crate::ui::component::Component;
 use crate::ui::style::{Color, Style, StyleClass};
-use crate::ui::view::View;
+use crate::ui::view::{SelectCallback, View};
 
 /// 输入框几何（client_runtime 私有常量的 native 同值镜像——视觉规格
 /// 镜像解释态，参数面各自持有）。
@@ -72,6 +72,20 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
         step: Option<f32>,
         on_change: fn(f32) -> M,
     },
+    /// select 闭态盒：点击开（无消息派发——开合是投影器侧状态，D3）。
+    SelectBox { rect: WRect, slot: usize },
+    /// select 开态选项项（消息布局期已物化——`SelectCallback.call`）。
+    SelectOption { rect: WRect, msg: M },
+}
+
+/// select 开态覆盖序记录（主块渲染后统一追加——D3：DrawList paint
+/// order 天然置顶，无需 overlay 协议语义）。
+struct SelectOverlay<M: Clone + std::fmt::Debug> {
+    /// 闭态盒 rect（选项列贴盒底同宽）。
+    rect: WRect,
+    options: Vec<String>,
+    selected_index: Option<usize>,
+    on_select: Option<SelectCallback<M>>,
 }
 
 impl<M: Clone + std::fmt::Debug> HitEntry<M> {
@@ -79,7 +93,9 @@ impl<M: Clone + std::fmt::Debug> HitEntry<M> {
         match self {
             HitEntry::Msg { rect, .. }
             | HitEntry::Input { rect, .. }
-            | HitEntry::Slider { rect, .. } => rect,
+            | HitEntry::Slider { rect, .. }
+            | HitEntry::SelectBox { rect, .. }
+            | HitEntry::SelectOption { rect, .. } => rect,
         }
     }
 }
@@ -102,6 +118,8 @@ pub struct NativeProjector<C: Component> {
     /// 聚焦框编辑 buffer（T-01 D2：聚焦期显示/编辑面——聚焦时自视图值
     /// 初始化，键入/退格就地编辑后经 INPUT_TEXT 代写回写组件）。
     input_buffer: String,
+    /// 开态 select 槽位（T-01 D3：投影器侧开合状态；None = 全闭）。
+    select_open: Option<usize>,
     /// 渲染期遭遇的未覆盖 kind（动态分支防线——显式留痕面，测试/e2e 断言口）。
     uncovered_seen: Vec<String>,
     rev: u64,
@@ -118,6 +136,7 @@ impl<C: Component> NativeProjector<C> {
             hits: Vec::new(),
             focused_input: None,
             input_buffer: String::new(),
+            select_open: None,
             uncovered_seen: Vec::new(),
             rev: 1,
             width,
@@ -173,6 +192,9 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             input_slots: 0,
             focused_input: self.focused_input,
             input_buffer: self.input_buffer.clone(),
+            select_slots: 0,
+            select_open: self.select_open,
+            overlays: Vec::new(),
         };
         let root_style = NodeStyle::default();
         let _ = layout_view_block(
@@ -184,12 +206,43 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             Dir::Vertical,
             &root_style,
         );
+        // 开态 select 覆盖序（T-01 D3）：主块渲染后追加选项列 ops +
+        // 命中项——DrawList paint order 天然置顶（无 overlay 协议语义）。
+        let overlays = std::mem::take(&mut ctx.overlays);
+        for ov in overlays {
+            let size = 14.0;
+            let line_h = size * LINE_H_FACTOR;
+            let mut oy = ov.rect.y + ov.rect.h;
+            for (i, opt) in ov.options.iter().enumerate() {
+                let or = WRect::new(ov.rect.x, oy, ov.rect.w, INPUT_H);
+                ctx.push_quad(or, if ov.selected_index == Some(i) { BUTTON_BG } else { INPUT_BG });
+                ctx.ops.push(DrawOp::Text {
+                    x: or.x + INPUT_PAD,
+                    y: or.y + (INPUT_H - line_h) / 2.0,
+                    size,
+                    line_height: line_h,
+                    color: TEXT_FG,
+                    text: opt.clone(),
+                });
+                if let Some(cb) = &ov.on_select {
+                    let msg = cb.call(i, opt);
+                    ctx.hits.push(HitEntry::SelectOption { rect: or, msg });
+                }
+                oy += INPUT_H;
+            }
+        }
         // 聚焦重定位（T-01 D1-A）：槽位越界 = 视图结构变化 → 失焦 +
         // buffer 清空（不猜测对位——槽序身份在结构变化下不可靠，v1 边界）。
         if let Some(slot) = self.focused_input {
             if slot >= ctx.input_slots {
                 self.focused_input = None;
                 self.input_buffer.clear();
+            }
+        }
+        // select 开合重定位（同槽序纪律——D3）。
+        if let Some(slot) = self.select_open {
+            if slot >= ctx.select_slots {
+                self.select_open = None;
             }
         }
         self.hits = ctx.hits;
@@ -205,6 +258,12 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             // 键盘/滚轮/右键：T-05 接线（消费面随覆盖爬坡扩臂——I3）。
             InputMsg::CharTyped { ch, .. } => self.char_typed(*ch),
             InputMsg::KeyPressed { key, .. } if *key == 8 => self.backspace(),
+            // Esc（VK_ESCAPE = 27）关开态 select（T-01 D3）。
+            InputMsg::KeyPressed { key, .. } if *key == 27 => {
+                if self.select_open.take().is_some() {
+                    self.rev += 1;
+                }
+            }
             _ => {}
         }
     }
@@ -248,6 +307,20 @@ impl<C: Component> FrameSource for NativeProjector<C> {
 impl<C: Component> NativeProjector<C> {
     /// 左键按下：分型派发（倒序 = 绘制序置顶优先）。
     fn pointer_down_left(&mut self, x: f32, y: f32) {
+        // select 开态命中互斥（T-01 D3）：仅选项项 + 关闭区——命中选项
+        // → 物化消息派发；未命中（外点）→ 仅关闭（吞掉不下穿主块）。
+        if self.select_open.is_some() {
+            let hit = self.hits.iter().rev().find_map(|e| match e {
+                HitEntry::SelectOption { rect, msg } if rect_contains(rect, x, y) => Some(msg.clone()),
+                _ => None,
+            });
+            self.select_open = None;
+            self.rev += 1; // 关闭也是状态变化（帧回闭态）
+            if let Some(msg) = hit {
+                self.component.on(msg);
+            }
+            return;
+        }
         let hit = self
             .hits
             .iter()
@@ -283,6 +356,13 @@ impl<C: Component> NativeProjector<C> {
                 self.component.on(on_change(v.clamp(min, max)));
                 self.rev += 1;
             }
+            // select 闭态盒点击 → 开（无消息——投影器侧状态，D3）。
+            Some(HitEntry::SelectBox { slot, .. }) => {
+                self.select_open = Some(slot);
+                self.rev += 1;
+            }
+            // 开态选项项只在互斥臂可达（闭态派发不落此处）。
+            Some(HitEntry::SelectOption { .. }) => {}
             None => {}
         }
     }
@@ -357,6 +437,12 @@ struct NativeCtx<M: Clone + std::fmt::Debug> {
     /// 聚焦框编辑 buffer 快照（臂内显示消费——聚焦框显示 buffer 而非
     /// 视图值，D2）。
     input_buffer: String,
+    /// select 槽位计数（开合身份，D3）。
+    select_slots: usize,
+    /// 开态 select 槽位快照（臂内判开态渲染 + 命中互斥登记）。
+    select_open: Option<usize>,
+    /// 开态 select 覆盖序记录（render_frame 主块后统一追加）。
+    overlays: Vec<SelectOverlay<M>>,
 }
 
 impl<M: Clone + std::fmt::Debug> NativeCtx<M> {
@@ -617,6 +703,48 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 step: *step,
                 on_change: *on_change,
             });
+            Laid { size: (w, h) }
+        }
+        // PLAN-025 T-04 select 臂（D3）：闭态 = 值盒 + ▾ + 点击开；开态
+        // = 值盒照常 + 覆盖序选项列（render_frame 尾追加）+ 命中互斥。
+        View::Select { options, selected_index, on_select, .. } => {
+            let w = style.fixed_w().unwrap_or(avail_w.min(320.0)).min(avail_w.max(0.0));
+            let h = style.fixed_h().unwrap_or(INPUT_H);
+            let slot = ctx.select_slots;
+            ctx.select_slots += 1;
+            let open = ctx.select_open == Some(slot);
+            ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(INPUT_BG));
+            ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(INPUT_BORDER));
+            let size = style.font_size.unwrap_or(14.0);
+            let line_h = size * LINE_H_FACTOR;
+            if let Some(label) = selected_index.and_then(|i| options.get(i)) {
+                ctx.ops.push(DrawOp::Text {
+                    x: x + INPUT_PAD,
+                    y: y + (h - line_h) / 2.0,
+                    size,
+                    line_height: line_h,
+                    color: style.fg.unwrap_or(TEXT_FG),
+                    text: label.clone(),
+                });
+            }
+            ctx.ops.push(DrawOp::Text {
+                x: x + w - 14.0,
+                y: y + (h - line_h) / 2.0,
+                size,
+                line_height: line_h,
+                color: PLACEHOLDER_FG,
+                text: '\u{25be}'.to_string(),
+            });
+            if !open {
+                ctx.hits.push(HitEntry::SelectBox { rect: WRect::new(x, y, w, h), slot });
+            } else {
+                ctx.overlays.push(SelectOverlay {
+                    rect: WRect::new(x, y, w, h),
+                    options: options.clone(),
+                    selected_index: *selected_index,
+                    on_select: on_select.clone(),
+                });
+            }
             Laid { size: (w, h) }
         }
         View::Row { .. } => {
@@ -1564,6 +1692,132 @@ mod tests {
             "step 30 取整后 fill 30%: {:?}",
             quads_of(&frame)
         );
+    }
+
+    // —— PLAN-025 T-04 select 单测 ——
+
+    #[derive(Debug)]
+    struct SelectBox {
+        pick: String,
+        open_seen: bool,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    enum SbMsg {
+        Pick(usize, String),
+    }
+
+    impl Component for SelectBox {
+        type Msg = SbMsg;
+        fn on(&mut self, msg: Self::Msg) {
+            if let SbMsg::Pick(_, s) = msg {
+                self.pick = s;
+                self.open_seen = false;
+            }
+        }
+        fn view(&self) -> View<Self::Msg> {
+            let options = vec!["Small".to_string(), "Medium".to_string(), "Large".to_string()];
+            let selected_index = options.iter().position(|o| o == &self.pick);
+            View::col()
+                .child(View::Select {
+                    options,
+                    selected_index,
+                    on_select: Some(SelectCallback::new(|i, s| SbMsg::Pick(i, s.to_string()))),
+                    style: None,
+                })
+                .child(View::text(format!("pick: {}", self.pick)))
+                .build()
+        }
+    }
+
+    #[test]
+    fn select_closed_golden_and_open() {
+        let mut p = NativeProjector::new(
+            SelectBox { pick: "Small".into(), open_seen: false },
+            480.0,
+            320.0,
+        );
+        p.ensure_covered().expect("select 入覆盖集");
+        let frame = p.render_frame();
+        // 闭态：值盒 + 当前值 + ▾；无选项列。
+        assert_eq!(texts_of(&frame), vec!["Small", "▾", "pick: Small"]);
+        assert!(quads_of(&frame).iter().any(|r| *r == WRect::new(10.0, 10.0, 320.0, 32.0)));
+
+        // 点击盒 → 开（覆盖序选项列在主块后追加）。
+        click(&mut p, 100.0, 26.0);
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert_eq!(&texts[..5], &["Small", "▾", "pick: Small", "Small", "Medium"], "选项列置顶: {texts:?}");
+        assert!(texts.contains(&"Large"));
+        // 高亮当前项（选项 0 rect (10,42,320,32) quad = BUTTON_BG；其余
+        // 选项 INPUT_BG）。
+        let hl = frame.ops.iter().find_map(|op| match op {
+            DrawOp::Quad { rect, color } if *rect == WRect::new(10.0, 42.0, 320.0, 32.0) => Some(*color),
+            _ => None,
+        });
+        assert_eq!(hl, Some(BUTTON_BG), "当前项高亮");
+    }
+
+    #[test]
+    fn select_option_dispatch_and_close() {
+        let mut p = NativeProjector::new(
+            SelectBox { pick: "Small".into(), open_seen: false },
+            480.0,
+            320.0,
+        );
+        let _ = p.render_frame();
+        click(&mut p, 100.0, 26.0); // 开
+        let _ = p.render_frame(); // 开态帧刷新命中表（泵语义：rev 前进即产帧）。
+        // 命中选项 1（Medium）——rect (10, 74, 320, 32) 中心（选项列
+        // 自盒底 42 起每项 32px）。
+        click(&mut p, 170.0, 90.0);
+        let frame = p.render_frame();
+        assert!(
+            texts_of(&frame).iter().any(|t| *t == "Medium"),
+            "SelectCallback 物化派发 → 帧值变: {:?}",
+            texts_of(&frame)
+        );
+        assert_eq!(p.select_open, None, "命中后关闭");
+        // 闭态帧无选项列。
+        assert_eq!(texts_of(&frame), vec!["Medium", "▾", "pick: Medium"]);
+    }
+
+    #[test]
+    fn select_outside_click_closes_only() {
+        let mut p = NativeProjector::new(
+            SelectBox { pick: "Small".into(), open_seen: false },
+            480.0,
+            320.0,
+        );
+        let _ = p.render_frame();
+        click(&mut p, 100.0, 26.0); // 开
+        let _ = p.render_frame();
+        let before_pick = "Small";
+        // 外点（值文本子区域——主块非选项区）→ 仅关闭，不下穿派发。
+        click(&mut p, 400.0, 200.0);
+        let frame = p.render_frame();
+        assert_eq!(p.select_open, None, "外点关闭");
+        assert!(
+            texts_of(&frame).iter().any(|t| t.starts_with(&format!("pick: {before_pick}"))),
+            "外点不派发: {:?}",
+            texts_of(&frame)
+        );
+    }
+
+    #[test]
+    fn select_esc_closes() {
+        let mut p = NativeProjector::new(
+            SelectBox { pick: "Small".into(), open_seen: false },
+            480.0,
+            320.0,
+        );
+        let _ = p.render_frame();
+        click(&mut p, 100.0, 26.0); // 开
+        assert_eq!(p.select_open, Some(0));
+        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 });
+        assert_eq!(p.select_open, None, "Esc 关闭");
+        let frame = p.render_frame();
+        assert_eq!(texts_of(&frame), vec!["Small", "▾", "pick: Small"], "回闭态");
     }
 
     #[test]

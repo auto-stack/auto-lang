@@ -3160,6 +3160,58 @@ impl RustGenerator {
                     return format!("{builder}.build()");
                 }
 
+                // PLAN-025 T-04: select — View::select(options) +
+                // .selected(i) + .on_choose(|idx, val| Msg::Variant(idx,
+                // val.to_string()))。on_select = SelectCallback（Arc<dyn
+                // Fn(usize,&str)->M>），闭包内物化载荷消息——零
+                // thread-local；on() 侧载荷臂由 msg 声明 + on 块模式既有
+                // 机制承担。
+                if tag == "select" {
+                    let options_expr = match props.get("options") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Array(items))) => {
+                            let elems: Vec<String> = items
+                                .iter()
+                                .filter_map(|e| match e {
+                                    crate::ast::Expr::Str(s) => Some(format!("\"{s}\".to_string()")),
+                                    _ => None,
+                                })
+                                .collect();
+                            format!("vec![{}]", elems.join(", "))
+                        }
+                        _ => "Vec::new()".to_string(),
+                    };
+                    let mut builder = format!("View::select({options_expr})");
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) = props.get("selected") {
+                        builder = format!("{builder}.selected({i})");
+                    }
+                    if let Some((_, handler)) = events
+                        .iter()
+                        .find(|(e, _)| matches!(e.as_str(), "onchange" | "onChange"))
+                    {
+                        let variant = self.extract_variant_name(&handler.handler);
+                        let msg_name = self.current_msg_name();
+                        // 闭包形态随变体载荷数自适应：单 str 载荷（值绑定
+                        // 常态）忽略 idx；双载荷取 idx as i32（int 载荷）。
+                        let closure = match self
+                            .message_variants
+                            .iter()
+                            .find(|v| v.name == variant)
+                            .map(|v| v.payload.len())
+                            .unwrap_or(0)
+                        {
+                            1 => format!("|_idx: usize, val: &str| {msg_name}::{variant}(val.to_string())"),
+                            2 => format!("|idx: usize, val: &str| {msg_name}::{variant}(idx as i32, val.to_string())"),
+                            _ => format!("|_idx: usize, _val: &str| {msg_name}::{variant}()"),
+                        };
+                        builder = format!("{builder}.on_choose({closure})");
+                    }
+                    for (key, value) in props {
+                        if key == "options" || key == "selected" { continue; }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+                    return format!("{builder}.build()");
+                }
+
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
                     if let Some(ref name) = text_state_ref {
                         if tag == "button" {
@@ -6949,6 +7001,56 @@ widget Counter {
             !code.contains("last_input_text"),
             "slider 回写零 thread-local:
 {}",
+            code
+        );
+    }
+
+    /// PLAN-025 T-04: select codegen golden（fixture 真源：
+    /// tests/fixtures/025-native-input/select.at——View::select 构造 +
+    /// on_choose SelectCallback 物化闭包 + on() 载荷臂，零 thread-local）。
+    #[test]
+    fn test_select_codegen_arm_fixture() {
+        let src = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/025-native-input/select.at"
+        ))
+        .expect("read select fixture");
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains(r#"View::select(vec!["Small".to_string(), "Medium".to_string(), "Large".to_string()])"#),
+            "options 数组构造:\n{}",
+            code
+        );
+        assert!(
+            code.contains(".selected(0)"),
+            "selected prop 消费:\n{}",
+            code
+        );
+        assert!(
+            code.contains(".on_choose(|_idx: usize, val: &str| SelectBoxMsg::Pick(val.to_string()))"),
+            "SelectCallback 物化闭包:\n{}",
+            code
+        );
+        assert!(
+            code.contains("Pick(String)"),
+            "载荷变体 (str):\n{}",
+            code
+        );
+        assert!(
+            !code.contains("last_input_text"),
+            "select 回写零 thread-local:\n{}",
             code
         );
     }
