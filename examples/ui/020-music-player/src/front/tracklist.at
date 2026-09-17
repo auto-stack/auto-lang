@@ -126,19 +126,21 @@ widget Tracklist {
                 }
             }
 
-            // ── 曲目列表表头 ──
+            // ── 曲目列表表头 (对齐汽水音乐 / QQ音乐视觉规范) ──
             row {
-                style: "w-full h-8 items-center px-4 text-xs font-semibold text-muted-foreground/80 border-b border-border/60 shrink-0"
-                text "状态" { style: "w-12 text-center" }
-                text "歌曲标题" { style: "flex-1 min-w-0" }
-                text "歌手" { style: "w-44 truncate" }
-                text "格式" { style: "w-20" }
-                text "大小" { style: "w-24 text-right font-mono" }
+                style: "w-full h-9 items-center px-4 text-xs font-semibold text-muted-foreground/70 border-b border-border/60 shrink-0 gap-4"
+                text "#" { style: "w-10 text-center" }
+                text "" { style: "w-8" }
+                text "歌曲" { style: "flex-1 min-w-0" }
+                text "歌手" { style: "w-48 truncate" }
+                text "专辑" { style: "w-44 truncate" }
+                text "大小" { style: "w-20 text-right font-mono" }
+                text "" { style: "w-10" }
             }
 
-            // ── 歌曲滚动列表 ──
+            // ── 歌曲滚动列表 (挂载 AutoUI ash-scroll 定制细窄圆角滚动条) ──
             col {
-                style: "w-full flex-1 overflow-y-auto min-h-0 gap-0.5 pr-1"
+                style: "w-full flex-1 overflow-y-auto ash-scroll min-h-0 gap-1.5 pr-2"
 
                 if .store.item_count == 0 {
                     col {
@@ -160,55 +162,88 @@ widget Tracklist {
                     row {
                         onclick: .SelectIndex(i)
                         style: if item.id == .store.current_id {
-                            "w-full h-11 items-center px-4 rounded-lg bg-primary/10 border border-primary/30 text-primary cursor-pointer transition-colors group"
+                            "w-full h-14 items-center px-4 rounded-xl bg-primary/10 border border-primary/30 text-primary cursor-pointer transition-all group gap-4 shadow-xs"
                         } else {
-                            "w-full h-11 items-center px-4 rounded-lg border border-transparent hover:bg-muted/60 text-foreground cursor-pointer transition-colors group"
+                            "w-full h-14 items-center px-4 rounded-xl border border-transparent hover:bg-muted/40 text-foreground cursor-pointer transition-all group gap-4"
                         }
 
-                        // 序号 / 播放动效图标
+                        // 序号 / 播放状态
                         row {
-                            style: "w-12 items-center justify-center"
+                            style: "w-10 items-center justify-center shrink-0"
                             if item.id == .store.current_id && .store.is_playing {
-                                icon (name: "audio-waveform", size: 14, style: "text-primary")
+                                icon (name: "play", size: 15, style: "text-primary fill-primary")
+                            } else if item.id == .store.current_id {
+                                icon (name: "pause", size: 15, style: "text-primary")
                             } else {
-                                icon (name: "music-2", size: 13, style: "text-muted-foreground/60 group-hover:text-foreground")
+                                text item.index_str {
+                                    style: "text-xs font-mono text-muted-foreground/60 group-hover:text-foreground/80 font-medium"
+                                }
                             }
                         }
 
-                        // 歌曲名
+                        // 喜爱红心 (汽水音乐标志性红心)
                         row {
-                            style: "flex-1 min-w-0 items-center gap-2 pr-4"
+                            style: "w-8 items-center justify-center shrink-0"
+                            if item.id == .store.current_id && .store.is_current_liked {
+                                icon (name: "heart", size: 16, style: "text-rose-500 fill-rose-500")
+                            } else {
+                                icon (name: "heart", size: 16, style: "text-rose-500/40 hover:text-rose-500 group-hover:opacity-100 opacity-60")
+                            }
+                        }
+
+                        // 歌曲名 + SQ / HQ / VIP 标签 (汽水音乐 / QQ音乐风)
+                        row {
+                            style: "flex-1 min-w-0 items-center gap-2.5 pr-2"
                             text item.title {
                                 style: if item.id == .store.current_id {
-                                    "text-xs font-semibold text-primary truncate"
+                                    "text-sm font-semibold text-primary truncate"
                                 } else {
-                                    "text-xs font-medium text-foreground truncate group-hover:text-primary"
+                                    "text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors"
+                                }
+                            }
+                            if item.extension == "flac" {
+                                text "SQ" {
+                                    style: "text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 tracking-wider leading-none"
+                                }
+                            } else if item.extension == "wav" {
+                                text "Master" {
+                                    style: "text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 shrink-0 tracking-wider leading-none"
+                                }
+                            } else {
+                                text "VIP" {
+                                    style: "text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 tracking-wider leading-none"
                                 }
                             }
                         }
 
                         // 歌手
                         row {
-                            style: "w-44 items-center pr-4"
+                            style: "w-48 items-center pr-2"
                             text item.artist {
-                                style: "text-xs text-muted-foreground truncate"
+                                style: "text-xs text-muted-foreground/80 truncate font-normal"
                             }
                         }
 
-                        // 格式
+                        // 专辑
                         row {
-                            style: "w-20 items-center"
-                            text item.extension {
-                                style: "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                            style: "w-44 items-center pr-2"
+                            text item.album {
+                                style: "text-xs text-muted-foreground/60 truncate font-normal"
                             }
                         }
 
                         // 大小
                         row {
-                            style: "w-24 items-center justify-end"
+                            style: "w-20 items-center justify-end"
                             text item.size_str {
-                                style: "text-xs font-mono text-muted-foreground"
+                                style: "text-xs font-mono text-muted-foreground/70"
                             }
+                        }
+
+                        // 更多操作 (汽水音乐末尾三个点)
+                        row {
+                            style: "w-10 items-center justify-center"
+                            icon (name: "more-horizontal", size: 16, style: "text-muted-foreground/40 group-hover:text-foreground cursor-pointer shrink-0")
                         }
                     }
                 }

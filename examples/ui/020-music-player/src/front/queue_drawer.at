@@ -35,7 +35,7 @@ widget QueueDrawer {
 
             // ── 队列歌曲列表 ──
             col {
-                style: "w-full flex-1 overflow-y-auto min-h-0 gap-1 pt-2"
+                style: "w-full flex-1 overflow-y-auto ash-scroll min-h-0 gap-1 pt-2 pr-1"
 
                 for i, item in .store.playlist {
                     row {

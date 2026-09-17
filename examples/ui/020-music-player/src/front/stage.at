@@ -14,7 +14,7 @@ widget Stage {
 
     view {
         col {
-            style: "w-full h-full flex-col items-center justify-between p-8 overflow-y-auto min-h-0 select-none relative"
+            style: "w-full h-full flex-col items-center justify-between p-8 overflow-y-auto ash-scroll min-h-0 select-none relative"
 
             // ── 顶部操作栏 ──
             row {
