@@ -15,3 +15,7 @@ category: "media"
 desktop: "true"
 theme: "dark"
 accent: "emerald"
+
+dep stylekit {
+    path: "../stylekit"
+}

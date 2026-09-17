@@ -15,6 +15,9 @@ use controls: Controls
 use queue_drawer: QueueDrawer
 use viewport: Viewport
 
+// PLAN-637 B5 Phase B 映射（2026-09-17）：bg-zinc-950→bg-background；轨道 bg-zinc-400/300→
+// bg-muted；ring-zinc-800/border-zinc-900→border 系。豁免：封面渐变叠字 text-white ×4、
+// rose（红心）与 emerald（播放徽章/封面渐变）= 语义状态与装饰渐变（638 重设计后残余）。
 widget App {
     msg {
         Init,

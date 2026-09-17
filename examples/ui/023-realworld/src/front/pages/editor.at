@@ -2,6 +2,7 @@
 // (loads existing). Stage 2: user types the slug directly (no auto title→slug
 // to avoid string ops). Cf. vue-ref editor concept + login form pattern.
 use article_store: ArticleStore
+use stylekit.styles: input_field
 
 widget editor {
     msg { Init, SlugChanged, TitleChanged, DescChanged, BodyChanged, TagsChanged, Publish, Back }
@@ -21,7 +22,7 @@ widget editor {
             style: "max-w-2xl mx-auto px-4 py-8 items-center"
             text "Editor" { style: "text-3xl font-semibold mb-4" }
             if .error != "" {
-                text .error { style: "text-red-500 text-sm mb-3 bg-red-50 rounded p-2" }
+                text .error { style: "text-destructive text-sm mb-3 bg-destructive/10 rounded p-2" }
             }
             col {
                 style: "gap-3 w-full text-left"
@@ -29,33 +30,33 @@ widget editor {
                     placeholder: "Article Title",
                     value: .title,
                     oninput: .TitleChanged,
-                    style: "w-full px-3 py-2 border border-gray-300 rounded text-lg"
+                    style: "w-full px-3 py-2 border border-border rounded text-lg"
                 }
                 if .editing == false {
                     input {
                         placeholder: "url-slug (lowercase, dashes)",
                         value: .slug,
                         oninput: .SlugChanged,
-                        style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                        style: input_field
                     }
                 }
                 input {
                     placeholder: "What's this article about?",
                     value: .description,
                     oninput: .DescChanged,
-                    style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                    style: input_field
                 }
                 textarea {
                     placeholder: "Write your article (markdown supported in stage 3)",
                     value: .body,
                     oninput: .BodyChanged,
-                    style: "w-full px-3 py-2 border border-gray-300 rounded text-sm h-48"
+                    style: "w-full px-3 py-2 border border-border rounded text-sm h-48"
                 }
                 input {
                     placeholder: "Tags (comma-separated)",
                     value: .tagList,
                     oninput: .TagsChanged,
-                    style: "w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                    style: input_field
                 }
                 row {
                     style: "justify-between"

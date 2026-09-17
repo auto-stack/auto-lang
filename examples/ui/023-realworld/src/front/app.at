@@ -3,6 +3,11 @@
 use auth_store: AuthStore
 use article_store: ArticleStore
 
+// PLAN-637 B5 Phase B 映射（灰阶分层口径）：gray-800/700/600→foreground；gray-500/400→
+// muted-foreground；border-gray-N→border-border；bg-white→bg-card；bg-gray-100→bg-muted；
+// bg-red-50/text-red-500→destructive 族。text-white ×5 为 brand-green 品牌按钮配对字
+// （品牌绿=本 demo 自定义语义色，整体豁免保留）。表单输入框 ×13 消费 stylekit
+// input_field（D1 家族源 demo）。
 widget App {
     routes {
         "/" -> use home
@@ -18,31 +23,31 @@ widget App {
 
     view {
         col {
-            style: "min-h-screen font-serif text-gray-800"
+            style: "min-h-screen font-serif text-foreground"
             // Top nav
             row {
-                style: "w-full border-b border-gray-200 px-4 py-3 max-w-3xl mx-auto items-center gap-4"
+                style: "w-full border-b border-border px-4 py-3 max-w-3xl mx-auto items-center gap-4"
                 link (to: "/") {
                     text "conduit" { style: "text-brand-green text-xl font-bold no-underline" }
                 }
                 row {
                     style: "ml-auto gap-4 text-sm"
-                    link (to: "/") { text "Home" { style: "text-gray-600" } }
+                    link (to: "/") { text "Home" { style: "text-foreground" } }
                     if .store.me != nil {
                         if .store.me.id != 0 {
-                            link (to: "/editor/new") { text "New Post" { style: "text-gray-600" } }
-                            link (to: "/settings") { text "Settings" { style: "text-gray-600" } }
+                            link (to: "/editor/new") { text "New Post" { style: "text-foreground" } }
+                            link (to: "/settings") { text "Settings" { style: "text-foreground" } }
                             text .store.me.username {
                                 onclick: .GoProfile(.store.me.username)
-                                style: "text-gray-600 cursor-pointer"
+                                style: "text-foreground cursor-pointer"
                             }
                         } else {
-                            link (to: "/login") { text "Sign in" { style: "text-gray-600" } }
-                            link (to: "/register") { text "Sign up" { style: "text-gray-600" } }
+                            link (to: "/login") { text "Sign in" { style: "text-foreground" } }
+                            link (to: "/register") { text "Sign up" { style: "text-foreground" } }
                         }
                     } else {
-                        link (to: "/login") { text "Sign in" { style: "text-gray-600" } }
-                        link (to: "/register") { text "Sign up" { style: "text-gray-600" } }
+                        link (to: "/login") { text "Sign in" { style: "text-foreground" } }
+                        link (to: "/register") { text "Sign up" { style: "text-foreground" } }
                     }
                 }
             }
