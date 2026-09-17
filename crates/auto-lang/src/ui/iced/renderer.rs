@@ -12489,11 +12489,6 @@ fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
             );
         }
     }
-    eprintln!(
-        "[ws-preview] publish: {} ws entries, tiles per-ws {:?}",
-        per_ws.len(),
-        per_ws.iter().map(|(k, v)| (k.as_str(), v.len())).collect::<Vec<_>>()
-    );
     crate::ui::iced::workspace_preview::publish(
         crate::ui::iced::workspace_preview::Published {
             usable: (usable.width, usable.height),
@@ -15784,7 +15779,6 @@ fn compare_pngs(
                                 .map(|v| v.to_string().contains('1'))
                                 .unwrap_or(false);
                             if open {
-                                eprintln!("[ws-preview] tick refresh: shell view dirty");
                                 if let Some(host) = state.host.as_ref() {
                                     for &wid in &host.wm.z_order {
                                         let visible = host
