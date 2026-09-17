@@ -1,13 +1,14 @@
 // app.at — Contact Form.
-use settings: SettingsPopover
+// PLAN-637 T-01b（用户裁定：demo 跟随系统）：SettingsPopover 消费面移除，
+// 主题控制由 gallery 宿主切换器承接；SetTheme/SetAccent 消息面保留
+// （宿主 → 内嵌 demo 主题传播路线的既有通道），本 demo 内无发射方。
 
 widget App {
-    msg { Submit, ToggleSettings, SetTheme(str), SetAccent(str) }
+    msg { Submit, SetTheme(str), SetAccent(str) }
 
     model {
         var dark_mode bool = true
         var accent_color str = "indigo"   // declared for os-config/env seeding (Plan 504 idiom)
-        var settings_open bool = false
 
         var name str = ""
         var email str = ""
@@ -26,33 +27,6 @@ widget App {
 
     view {
         col {
-            // ── 顶栏: 右上角 Theme Settings 触发按钮 + 弹出面板 ──
-            col {
-                row {
-                    style: "w-full justify-end px-8 pt-4 relative z-30"
-                    button "⚙ Theme" {
-                        onclick: .ToggleSettings
-                        style: if .dark_mode {
-                            "px-3 py-1.5 text-xs rounded-full bg-zinc-800 text-zinc-100 hover:bg-zinc-700 transition-colors cursor-pointer border border-zinc-700"
-                        } else {
-                            "px-3 py-1.5 text-xs rounded-full bg-white text-gray-800 hover:bg-gray-100 transition-colors cursor-pointer border border-gray-200 shadow-sm"
-                        }
-                    }
-                }
-                col {
-                    SettingsPopover(
-                        open: .settings_open,
-                        dark_mode: .dark_mode,
-                        accent_color: .accent_color,
-                        on_close: .ToggleSettings,
-                        on_set_theme: .SetTheme,
-                        on_set_accent: .SetAccent
-                    )
-                    style: "absolute right-8 top-10 z-40"
-                }
-                style: "w-full relative"
-            }
-
             // ── Main Contact Form & FAQ Content ──
             col {
                 // Section Header
@@ -208,7 +182,6 @@ widget App {
         .Submit -> {
             .submitted = true
         }
-        .ToggleSettings -> { .settings_open = !.settings_open }
         .SetTheme(t) -> {
             if t == "light" {
                 .dark_mode = false

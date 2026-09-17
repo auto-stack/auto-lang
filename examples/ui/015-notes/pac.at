@@ -5,9 +5,14 @@ render: "vue"
 icon: "notebook"
 title: "Notes"
 title_zh: "备忘录"
+# PLAN-637 T-06：经 635 通道消费 stylekit 共享配方（caption_text ×5）
 theme: "dark"
 accent: "indigo"
 api: "rust"
 npm_deps: ["@autodown/editor:link:D:/autostack/auto-down/autodown/packages/editor", "@autodown/core:link:D:/autostack/auto-down/autodown/packages/core", "@autodown/engine:link:D:/autostack/auto-down/autodown/packages/engine"]
+
+dep stylekit {
+    path: "../stylekit"
+}
 
 desktop: "true"
