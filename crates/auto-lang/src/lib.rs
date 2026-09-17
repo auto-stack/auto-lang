@@ -3002,6 +3002,9 @@ pub(crate) fn load_ext_imports_for_vm(
     // 声明（ports renderer.vm.at 的 Markdown 纯文本降级等）——调用方注册进
     // 视图 registry + child_decls，激活 use.web component 的 VM widget 形态。
     ext_widget_decls: &mut Vec<crate::ast::ui::WidgetDecl>,
+    // PLAN-633: 解析到的适配器文件路径——调用方补传递子 widget 注册
+    // （Demo013Todo 视图内的 TodoList 等 registry miss → Empty 实证）。
+    ext_adapter_paths: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
     let mut ext_imports = crate::ui::ext_stubs::collect_useweb_imports(&ast.stmts);
     ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(
@@ -3038,6 +3041,10 @@ pub(crate) fn load_ext_imports_for_vm(
             );
         },
     );
+    // PLAN-633: 适配器路径上交调用方（传递子 widget 注册用）。
+    for (adapter, _) in &loaded_adapters {
+        ext_adapter_paths.push(adapter.clone());
+    }
     // Alias each adapter-loaded symbol to ITS adapter's module-qualified
     // name (collect_module_imports renames adapter fns by file stem) so call
     // sites emit resolvable qualified relocs. Pairs come from the loader —
@@ -3689,9 +3696,11 @@ fn register_transitive_widgets_inner(
             Ok(c) => c,
             Err(_) => continue,
         };
+
         let mod_session = crate::session::CompilerSession::ui();
         let mut mod_parser = crate::Parser::from(sub_code.as_str()).with_session(mod_session);
         if let Ok(sub_ast) = mod_parser.parse() {
+
             for stmt in &sub_ast.stmts {
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
@@ -4335,6 +4344,7 @@ fn build_dynamic_component_inner(
             .parent()
             .unwrap_or(std::path::Path::new("."));
         let mut ext_widget_decls: Vec<crate::ast::ui::WidgetDecl> = Vec::new();
+        let mut ext_adapter_paths: Vec<std::path::PathBuf> = Vec::new();
         load_ext_imports_for_vm(
             base_dir,
             &ast,
@@ -4347,6 +4357,7 @@ fn build_dynamic_component_inner(
             override_scenario,
             &mut import_aliases,
             &mut ext_widget_decls,
+            &mut ext_adapter_paths,
         )
         .map_err(|e| format!("ext imports (use.web) failed: {}", e))?;
         // PLAN-051 C4: adapter widget 注册——use.web component 的 VM widget
@@ -4354,8 +4365,25 @@ fn build_dynamic_component_inner(
         // child_decls（handlers 一并编译进单 VM 模块）。
         for wd in &ext_widget_decls {
             if let Ok(w) = crate::aura::extract_widget_from_decl(wd) {
+
                 all_child_decls.push(wd.clone());
                 registry.register(w);
+            }
+        }
+        // PLAN-633: demo 适配器的传递子 widget 注册——Demo013Todo 视图里的
+        // TodoList 等经适配器自身的 `use` 引入，C4 只注册适配器本体 widget；
+        // 不补传递注册则子件 registry miss → fallback Empty（013 内嵌列表区
+        // 空白实证）。stores 由下方 632-F1 晚到补转换覆盖，此处只补 widget。
+        {
+            let mut tw_visited: std::collections::HashSet<std::path::PathBuf> =
+                std::collections::HashSet::new();
+            for p in &ext_adapter_paths {
+                register_transitive_widgets_inner(
+                    p,
+                    &mut registry,
+                    &mut all_child_decls,
+                    &mut tw_visited,
+                );
             }
         }
         // PLAN-632 F1: 装载顺序缺陷收口——use.web demo 适配器链带来的
@@ -7171,5 +7199,11 @@ mod musk_vm_track_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 #[path = "tests/plan632_demo_bridge_tests.rs"]
 mod plan632_demo_bridge_tests;
+// PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
+// 回归。
+#[cfg(all(test, feature = "ui-iced"))]
+#[path = "tests/plan633_fullstack_embed_tests.rs"]
+mod plan633_fullstack_embed_tests;
+
 
 

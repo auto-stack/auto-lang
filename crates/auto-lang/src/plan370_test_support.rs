@@ -382,6 +382,7 @@ pub(crate) fn build_component_from_app_mode(
         None,
         &mut import_aliases,
         &mut ext_widget_decls,
+        &mut Vec::new(),
     )
     .expect("ext imports");
     // PLAN-051 C4: adapter widget 注册（与生产 build_dynamic_component_inner

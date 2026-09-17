@@ -116,3 +116,10 @@ graph TD
 - 备选：实现先行、事后对齐（cons：漂移发现晚、返工大）。
 - 后果：`docs/conformance/` 规划 10 章（01/02/03/04/10 为 Draft，余 Planned）；对偶测试在 `test/a2r/conformance/`，差分测试用随机程序生成器。
 - 状态：active
+
+### ADR-21: 内嵌全栈 demo 的命名空间隔离——发射器唯一 stem，运行时零特判
+- 日期 / 来源：2026-09-17 / plan-633（ui-gallery 画廊内嵌 013/015 实证）
+- 决策：画廊宿主（单一 VM 编译单元）内嵌含 `src/back` 的全栈 demo 时，back 链模块由发射器级联为 `<ns>_<mod>` 唯一 stem（`<ns>`=demo id 消毒；种子形式 `back.X` 规范化裸名，同文件单 stem），demo 源与链内互引 `use` 同步改写。fn 符号按 stem 限定（Plan 339）、模块级 var 按 current_module=stem 前缀隔离（Plan 345）、StoreDecl 按店名去重——唯一 stem 即完全隔离，宿主运行时零特判。裸 `#[api]` 调用若实现体已随扁平编译进本模块（导出存在）则不落 merged no-op 桩，直落常规解析直调编译体。
+- 备选：宿主侧 per-demo 后端注册表 + api 调用重写（cons：VM merged 臂无 HTTP 拦截层，且 stem 隔离机制已在，属重复机制）；运行时 native-opaque 路由依赖（cons：`use auto.X` 原生根注册会劫持全库 `auto.*` native 调用为交叉模块 reloc，codegen 对原生根 "auto" 不注册 auto_modules）。
+- 后果：多全栈 demo 同名 endpoint/同型 db var 天然隔离（白盒 plan633_fullstack_embed_tests 锁定）；`use auto.*` 后端（031 族）与 `~Stream`/`~Promise` 签名后端（017 族）VM 臂无内嵌等价物，发射器严格降级回静态面板；视图侧 store 字段读取需真名别名泛化（`.TodoStore.X` 与 `.store.X` 同读根态，view_store_alias_real_name 渲染期快照）。
+- 状态：active
