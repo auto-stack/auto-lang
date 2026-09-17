@@ -290,6 +290,18 @@ pub struct Codegen {
     /// runtime heap tag) — the static `T.method` symbol doesn't exist.
     pub current_fn_type_params: Vec<String>,
 
+    /// PLAN-019 T-06 (vm delegate): module prefix of the fn currently being
+    /// compiled, when the name is module-qualified (`db.mux_resize_pane` →
+    /// Some("db")). Flattened single-module synthesis (handler_codegen
+    /// import_stmts) renames every imported fn to `mod.fn`, so an intra-module
+    /// bare call inside such a fn body is ambiguous at module scope (api.X and
+    /// db.X both define the bare name) and would otherwise stay unresolved —
+    /// bare CALL reloc against dotted-only entry exports → "Undefined symbol".
+    /// Call-site resolution binds bare names to the current fn's own module
+    /// first (mirrors loader Plan 322/545 own-module semantics at codegen
+    /// level). Unqualified fns compile with None; no behavior change elsewhere.
+    pub current_fn_module: Option<String>,
+
     /// Plan 417-E3-P4: bounded type params per fn (callee name → params with
     /// their constraint lists), e.g. max_of → [(T, [Comparable])]. Populated
     /// at Stmt::Fn; consulted at call sites to reject arguments whose static
@@ -598,6 +610,7 @@ impl Codegen {
             current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
             current_fn_ret_type: Type::Void,
             current_fn_type_params: Vec::new(), // Plan 417-E3
+            current_fn_module: None, // PLAN-019 T-06: own-module bare-call binding
             fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
             infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
@@ -971,6 +984,7 @@ impl Codegen {
             current_fn_n_args: 0,
             current_fn_ret_type: Type::Void,
             current_fn_type_params: Vec::new(), // Plan 417-E3
+            current_fn_module: None, // PLAN-019 T-06: own-module bare-call binding
             fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
@@ -1437,6 +1451,17 @@ impl Codegen {
                 self.current_fn_n_args = fn_decl.params.len();
                 self.current_fn_ret_type = fn_decl.ret.clone();
 
+                // PLAN-019 T-06 (vm delegate): record the fn's module prefix so
+                // bare intra-module calls in its body bind to its own module
+                // (see current_fn_module field doc). Flattened-qualified names
+                // (`db.mux_resize_pane`) carry the prefix; bare names → None.
+                let saved_fn_module = self.current_fn_module.take();
+                self.current_fn_module = fn_decl
+                    .name
+                    .to_string()
+                    .rsplit_once('.')
+                    .map(|(prefix, _)| prefix.to_string());
+
                 // Plan 417-E3: record this fn's type-parameter names so method
                 // calls on receivers typed as one of them dispatch dynamically
                 // (CALL_SPEC on the runtime heap tag) instead of a static
@@ -1703,6 +1728,7 @@ impl Codegen {
                 self.current_fn_n_args = 0;
                 self.current_fn_ret_type = Type::Void;
                 self.current_fn_type_params = saved_fn_type_params; // Plan 417-E3
+                self.current_fn_module = saved_fn_module; // PLAN-019 T-06
                 self.fn_scope_start = 0;
 
                 // 9. Patch jump to skip body
@@ -4579,6 +4605,26 @@ impl Codegen {
         if self.exports.contains_key(name) {
             return name.to_string();
         }
+        // 2.5 PLAN-019 T-06 (vm delegate): own-module binding for bare calls
+        // inside module-qualified fns. Flattened synthesis renames every
+        // imported fn to `mod.fn`, so a bare intra-module call (`mux_tab_id_at`
+        // inside db.mux_tab_title_at) is ambiguous at module scope (api.X and
+        // db.X both define the bare name) and step 3 leaves it bare — a bare
+        // CALL reloc that can never bind against dotted-only entry-module
+        // exports ("Undefined symbol" at link). Bind to the current fn's own
+        // module first, mirroring the loader's Plan 322/545 own-module
+        // semantics at codegen level. fn_return_types covers forward refs
+        // (pre-registered for every flattened import before bodies compile).
+        if !name.contains('.') {
+            if let Some(mod_name) = &self.current_fn_module {
+                let qualified = format!("{}.{}", mod_name, name);
+                if self.exports.contains_key(&qualified)
+                    || self.fn_return_types.contains_key(&qualified)
+                {
+                    return qualified;
+                }
+            }
+        }
         // 3. unique bare-name → module-qualified fallback.
         if !name.contains('.') {
             let mut hits = self.exports.keys().filter(|k| {
@@ -4903,13 +4949,22 @@ impl Codegen {
 
         // Plan 317: Register the module name so codegen knows `db.func()`
         // is a cross-module call (generates CALL with reloc "db.func").
+        // PLAN-633: `use auto.X`（原生命名空间导入）不得把原生根 "auto" 注册
+        // 为文件模块——否则全库 `auto.*` native 调用（clipboard/fs/...）被
+        // is_auto_module_call 抢路由成交叉模块 CALL reloc，链接期 Undefined
+        // symbol（画廊宿主 031-image-viewer `use auto.image` 实证，011/027
+        // 的 dom.copy_text 连带炸）。末段照旧注册，保 Plan 347 同名库遮蔽。
         if !use_stmt.paths.is_empty() {
-            self.auto_modules.insert(use_stmt.paths[0].to_string());
-            // PLAN-013 T1: file-module qualifier (single-path use, e.g.
-            // `use base64`) — the only shape that may shadow a native
-            // namespace of the same name at the import_scope arm.
-            if use_stmt.paths.len() == 1 {
-                self.file_modules.insert(use_stmt.paths[0].to_string());
+            let is_native_root_use =
+                use_stmt.paths.len() > 1 && use_stmt.paths[0].as_str() == "auto";
+            if !is_native_root_use {
+                self.auto_modules.insert(use_stmt.paths[0].to_string());
+                // PLAN-013 T1: file-module qualifier (single-path use, e.g.
+                // `use base64`) — the only shape that may shadow a native
+                // namespace of the same name at the import_scope arm.
+                if use_stmt.paths.len() == 1 {
+                    self.file_modules.insert(use_stmt.paths[0].to_string());
+                }
             }
         }
         // Plan 347: Also track the import qualifier (last path segment, e.g.
@@ -4950,6 +5005,23 @@ impl Codegen {
             // so Dot(Dot(Ident("types"), ...), ...) can be recognized as qualified access
             let module_name = module_path.split('.').last().unwrap_or(&module_path);
             self.known_module_prefixes.insert(module_name.to_string());
+            // Plan 545: `use db: *` — explicit flat import. Map every exported
+            // fn of the module to its qualified reloc name (`db.add`) so bare
+            // calls bind module-qualified in the linker (dep-module exports
+            // no longer register bare names). bare `use db` (not wildcard)
+            // stops here: namespace-only, bare names must NOT resolve.
+            if use_stmt.is_wildcard {
+                if let Ok(ts) = self.type_store.read() {
+                    if let Some(loaded) = ts.lookup_module(module_name) {
+                        for fn_name in &loaded.export_fns {
+                            self.import_scope.insert(
+                                fn_name.clone(),
+                                format!("{}.{}", module_name, fn_name),
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -6199,7 +6271,7 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -6310,23 +6382,77 @@ impl Codegen {
                 }
 
                 // Check if this is the .type property - returns type name as string
+                // PLAN-066 T-04（KD-057① 根修，auto-musk PLAN-066 上游消费）：
+                // typeof 语义仅保留原始类型接收者。对象接收者（User/
+                // GenericInstance/obj 字面量/JSON 产物等动态值）一律落普通
+                // 字段访问通道——与 web 轨 a2ts 纯属性访问同语义。此前对
+                // field=="type" 无条件抢占为编译期类型名 LOAD_STR：任何名为
+                // type 的字段读取在 VM 轨恒返回接收者推断型名（JSON.parse
+                // 推断型 str → j.type == "str"），musk questionnaireFor 的
+                // json.type 判定、forge_store 的 ev.type 分派等约 90 处字段
+                // 比较恒假。M3 语料门（corpus_m3 t01/t03/t05/t06）的 .type
+                // 接收者均为原始类型字面量/原始型 fn 返回/数组元素，本守卫
+                // 下语义不变。
                 if field.as_str() == "type" {
-                    // Get the type of the object expression using infer module
                     let ty = self.infer_expr_type(obj);
-                    // Get type name as string
-                    let type_name = ty.unique_name();
-                    // Add to string pool
-                    let type_bytes = type_name.to_string().into_bytes();
-                    let str_idx = self.strings.len() as u32;
-                    self.strings.push(type_bytes);
-                    // Emit LOAD_STR instruction
-                    self.emit(OpCode::LOAD_STR);
-                    self.code.extend_from_slice(&str_idx.to_le_bytes());
-                    self.last_expr_type = ObjectType::String;
-                    vm_debug!("DEBUG: .type property: obj={:?}, type_name={}",
-                        obj, type_name
-                    );
-                    return Ok(());
+                    // 诊断口（沿 AUTO_DEBUG_GETFIELD 先例，env 门控零行为变更）。
+                    if std::env::var_os("AUTO_DEBUG_TYPEPROP").is_some() {
+                        let prim = match &ty {
+                            Type::StrFixed(n) => *n > 0,
+                            Type::Byte
+                            | Type::Int
+                            | Type::Uint
+                            | Type::USize
+                            | Type::I64
+                            | Type::U64
+                            | Type::Float
+                            | Type::Double
+                            | Type::Bool
+                            | Type::Char
+                            | Type::CStrLit
+                            | Type::StrSlice
+                            | Type::StrOwned => true,
+                            _ => false,
+                        };
+                        eprintln!("[TYPEPROP] obj={:?} ty={:?} prim={}", obj, ty, prim);
+                    }
+                    // StrFixed(0) 是动态值推断哨兵（真实 str 字面量推断带长度
+                    // 的 StrFixed(n)，n=len；Plan 212 注记在案 StrFixed(0) 曾
+                    // 为错误推断源）——排除之，落字段访问通道。
+                    let is_primitive_receiver = match &ty {
+                        Type::StrFixed(n) => *n > 0,
+                        Type::Byte
+                        | Type::Int
+                        | Type::Uint
+                        | Type::USize
+                        | Type::I64
+                        | Type::U64
+                        | Type::Float
+                        | Type::Double
+                        | Type::Bool
+                        | Type::Char
+                        | Type::CStrLit
+                        | Type::StrSlice
+                        | Type::StrOwned => true,
+                        _ => false,
+                    };
+                    if is_primitive_receiver {
+                        // Get type name as string
+                        let type_name = ty.unique_name();
+                        // Add to string pool
+                        let type_bytes = type_name.to_string().into_bytes();
+                        let str_idx = self.strings.len() as u32;
+                        self.strings.push(type_bytes);
+                        // Emit LOAD_STR instruction
+                        self.emit(OpCode::LOAD_STR);
+                        self.code.extend_from_slice(&str_idx.to_le_bytes());
+                        self.last_expr_type = ObjectType::String;
+                        vm_debug!("DEBUG: .type property: obj={:?}, type_name={}",
+                            obj, type_name
+                        );
+                        return Ok(());
+                    }
+                    // 对象/未知接收者：不抢占，落下方字段访问通道（GET_FIELD）。
                 }
 
                 // Plan 087 Phase 3: Check if this is field access on a user-defined type instance
@@ -7090,21 +7216,37 @@ impl Codegen {
                     //   a || b:  [a] DUP JMP_IF_NZ Lshort [b] JMP Lend
                     //            Lshort: PUSH_BOOL 0   Lend: OR
                     if matches!(op, Op::And | Op::Or) {
+                        // PLAN-624 (P3, rev 2 裁定②): JS value 语义——短路透传
+                        // 操作数值（`a && b` = a 真值 ? b : a；`a || b` = a 真值
+                        // ? a : b），与 web 轨 TS/JS 对齐，使 .at 惯用法
+                        // `fm && fm.title || fb` 逐字可用。此前形态：短路路径
+                        // PUSH_BOOL 占位 + 末端 AND/OR 归一——非布尔操作数被
+                        // 静默写成 true（jade facade 切换实机，DEBTS 064 ⑥）。
+                        // 真值判定 = JMP_IF_Z/NZ 既有判定面（Plan 406 nv_truthy：
+                        // tagged bool 权威，null/0/哨兵假）——不经 shim 归一：
+                        // raw-i32 归一会丢 NV 栈签，且 sp 中性 CALL_NAT 不结算
+                        // DUP 副本的 stake（泄漏堆引用）。
+                        // 发射（双路径栈平衡；WIP 缺陷修正：POP 必须在编译 RHS
+                        // 之前弹 LHS 本体——放在 RHS 之后弹掉的是 RHS 本体，
+                        // 真值路径恒返回 LHS，`falsy || fb` 得 Nil 即此）：
+                        //   a && b:  [a] DUP JMP_IF_Z Lshort  POP [b] JMP Lend
+                        //            Lshort: (a 留栈即结果)
+                        //   a || b:  [a] DUP JMP_IF_NZ Lshort  POP [b] JMP Lend
                         self.compile_expr(lhs)?;
                         self.emit(OpCode::DUP);
                         self.emit(if matches!(op, Op::And) { OpCode::JMP_IF_Z } else { OpCode::JMP_IF_NZ });
                         let short_jump = self.emit_placeholder_i16();
+                        // 真值路径：弃 LHS 本体（POP 的 stake/串释放对齐旧
+                        // AND/OR 末端对该槽的结算），再编译 RHS
+                        self.emit(OpCode::POP);
                         self.compile_expr(rhs)?;
                         self.emit(OpCode::JMP);
                         let end_jump = self.emit_placeholder_i16();
-                        let short_pos = self.code.len();
-                        self.patch_jump_to(short_jump, short_pos);
-                        self.emit(OpCode::PUSH_BOOL);
-                        self.code.push(if matches!(op, Op::And) { 1 } else { 0 });
+                        // 短路路径：LHS 值留栈即为结果；真值路径 JMP 汇聚至此
                         let end_pos = self.code.len();
+                        self.patch_jump_to(short_jump, end_pos);
                         self.patch_jump_to(end_jump, end_pos);
-                        self.emit(if matches!(op, Op::And) { OpCode::AND } else { OpCode::OR });
-                        self.last_expr_type = ObjectType::Bool;
+                        self.last_expr_type = self.infer_object_type(rhs.as_ref());
                         return Ok(());
                     }
 
@@ -7814,7 +7956,14 @@ impl Codegen {
                                 // instead of module call. Without the global_vars check, an
                                 // uppercase-named global (e.g. `H0`) is misclassified as a static
                                 // type reference. See Plan 347 (sha2 global-var bitop bug).
-                                let is_local_var = self.var_types.contains_key(obj_name.as_ref())
+                                // PLAN-066 T-12（F-W1）：i18n 单例排除在局部
+                                // 变量判定外——合成作用域无 i18n 绑定（组件级
+                                // `let i18n = useI18n()` 不进合成体），实例路径
+                                // 编译接收者报 Undefined variable 毒化导出；
+                                // 静态模块路由 → P240 ("i18n","t") → auto.i18n.t
+                                // （PLAN-050 C7 查表）。
+                                let is_local_var = obj_name.as_str() != "i18n"
+                                    && (self.var_types.contains_key(obj_name.as_ref())
                                     || self.global_vars.contains(obj_name.as_ref())
                                     || self.lookup_var(obj_name.as_str()).is_some()
                                     // Plan 348 E1: an imported value name (e.g.
@@ -7822,8 +7971,9 @@ impl Codegen {
                                     // call like `MAX.to(str)` must treat MAX as
                                     // an instance (load the global) rather than a
                                     // static type reference.
-                                    || self.import_scope.contains_key(obj_name.as_ref());
-                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi" | "storage" | "host");
+                                    || self.import_scope.contains_key(obj_name.as_ref()));
+                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi" | "storage" | "host" | "i18n");
+                                vm_debug!("DEBUG: Dot Ident static-check: obj={}, is_local_var={}, is_stdlib_module={}", obj_name, is_local_var, is_stdlib_module);
                                 if !is_local_var && (is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)) {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
@@ -7857,7 +8007,17 @@ impl Codegen {
                                         }
                                     } else {
                                         // Static method call: Type.method
-                                        Some(format!("{}.{}", obj_name, method))
+                                        // PLAN-066 T-12（F-W1）：i18n 单例 →
+                                        // auto.i18n.t 原生查表（i18n_lookup，
+                                        // PLAN-050 C7）。此 inner func_name
+                                        // 走静态 native 发射通道。
+                                        if obj_name.as_str() == "i18n"
+                                            && method.as_str() == "t"
+                                        {
+                                            Some("auto.i18n.t".to_string())
+                                        } else {
+                                            Some(format!("{}.{}", obj_name, method))
+                                        }
                                     }
                                 } else {
                                     // Instance method call: obj.method
@@ -8198,13 +8358,20 @@ impl Codegen {
                         }
                     }
                 } else {
-                    // PLAN-053 P-053-4: merged 模式下 #[api] no-op 显式告警（一次性）
+                    // PLAN-053 P-053-4: merged 模式下 #[api] no-op 显式告警（一次性）。
+                    // PLAN-633: api 实现体已随 back 链扁平编译进本模块（导出存在，
+                    // 画廊内嵌/standalone merged 场景）→ 不发 no-op 桩，直落常规
+                    // 解析直调编译体（否则 no-op null 与真调用的栈序纠缠，返回值
+                    // 被吞——013 内嵌 list_todos 空列表实证）。导出缺席（api 体
+                    // 未装载）时保持 no-op 告警原语义。
                     if let Some(name) = func_name.as_ref() {
                         if matches!(call.name.as_ref(), Expr::Ident(_)) {
                             if let Some(api) = self.api_funcs.get(name).cloned() {
-                                self.emit_str_const_push(&api.fn_name);
-                                self.emit_call_nat_by_name("auto.vm.warn_api_noop", 1)?;
-                                self.emit(OpCode::POP);
+                                if !self.exports.contains_key(&api.fn_name) {
+                                    self.emit_str_const_push(&api.fn_name);
+                                    self.emit_call_nat_by_name("auto.vm.warn_api_noop", 1)?;
+                                    self.emit(OpCode::POP);
+                                }
                             }
                         }
                     }
@@ -8411,6 +8578,14 @@ impl Codegen {
                             ("Object", "values") => Some("auto.obj.values".to_string()),
                             ("shell", "exec") => Some("auto.sys.exec".to_string()),
                             ("regex", "match") => Some("auto.regex.match".to_string()),
+                            // PLAN-066 T-12（F-W1）：i18n.t VM 查表路由——
+                            // 合成作用域无 i18n 绑定，不路由则接收者编译报
+                            // Undefined variable 毒化导出（shim 接
+                            // i18n_lookup 查表，PLAN-050 C7）。ui 门控：
+                            // i18n_lookup 随 ui 模块裁剪，非 ui 构建保持
+                            // 旧行为（Undefined variable → 毒化）。
+                            #[cfg(feature = "ui-iced")]
+                            ("i18n", "t") => Some("auto.i18n.t".to_string()),
                             // URL module → opaque heap object shims
                             ("url", "parse") => Some("auto.url_opaque.parse".to_string()),
                             ("url", "encode") => Some("auto.url.encode".to_string()),
@@ -8984,7 +9159,15 @@ impl Codegen {
                                     // 吃到 [占位 0, 结果] 而非 [a, 结果]——首轮
                                     // "正确"纯属 a=0 巧合；m12/m16/kanban
                                     // source_root 同族）。
-                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math" | "sys" | "file"
+                                    // PLAN-066 T-12（F-W1）：i18n 补入——静态分支
+                                    // 已路由 i18n.t→auto.i18n.t（id2460 惰性注册
+                                    // 必解析成功），但本表漏项使 receiver Ident
+                                    // ("i18n") 仍走实例编译→Undefined variable→
+                                    // computed 导出毒化（WikiNav_dropText/
+                                    // MentionInput 标签×2 实证）。i18n 在合成
+                                    // 作用域无绑定（composable facade，063），
+                                    // 永远不该编译 receiver。
+                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math" | "sys" | "file" | "i18n"
                                         | "Array" | "Object" | "JSON" | "Math" | "Date")
                                         || self.is_type_name_heuristic(obj_name)
                                         || self.is_type(obj_name)
@@ -9203,6 +9386,16 @@ impl Codegen {
                             }
                             _ => {}
                         }
+                    }
+
+                    // PLAN-066 T-05: Regex.match 两参调用编译期补 flags=""——
+                    // shim 固定弹 3 参 [flags, pattern, text]（JS match 双形态
+                    // 统一：无 'g' = 非 global 组提取语义）。沿 057 T6
+                    // JSON.stringify 补参先例。
+                    if func_name.as_deref() == Some("Regex.match")
+                        && call.args.args.len() == 2
+                    {
+                        self.emit_str_const_push("");
                     }
 
                     // Plan 192/240: Inject implicit type_name and method for Rust stdlib dispatch
@@ -9716,6 +9909,23 @@ impl Codegen {
                             }
                         }
                     }
+                    // PLAN-019 T-06 (vm delegate): own-module binding — a bare
+                    // call inside a module-qualified fn resolves against its
+                    // own module's export first (ambiguous bare names like
+                    // mux_resize_branch exist under both api. and db.; the
+                    // fn's module is authoritative). Mirrors resolve_call_symbol
+                    // step 2.5; see current_fn_module field doc.
+                    if !name.contains('.') {
+                        if let Some(mod_name) = &self.current_fn_module {
+                            if let Some(addr) = self
+                                .exports
+                                .get(&format!("{}.{}", mod_name, name))
+                                .copied()
+                            {
+                                return Some(addr);
+                            }
+                        }
+                    }
                     // Plan 339 Phase 6: bare-name → module-qualified fallback.
                     // A bare call to a function that wasn't named in any `use`
                     // clause (e.g. `search_notes(...)` from db.at) should still
@@ -9812,7 +10022,14 @@ impl Codegen {
                     // by reference (documented C2-probe semantics — musk backend
                     // corpus's User/AgentMode/Profession/SpecsDocument.clone).
                     return Ok(());
-                                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
+                                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static))
+                    // PLAN-066 T-06（055-4⑥ 现代真身）：未注册的 str.* 方法
+                    // （includes/startsWith/trim…）走 CALL_SPEC 运行时按堆标签
+                    // 分发——引擎 str 臂已实现该族。此前解析失败落 extern
+                    // no-op 桩（Nil→if 恒假），musk filteredMessages 的
+                    // includes 过滤恒假即此；t3_filter 脚本层另一分发路故绿。
+                    || func_name.as_deref().map_or(false, |f| f.starts_with("str.") || f.starts_with("auto.str."))
+                {
                     // Plan 249: Transparent unwrap for opaque handle values.
                     // If this is .unwrap()/.expect() on an opaque Rust crate value,
                     // skip CALL_SPEC — the receiver (inner call result) is already a valid handle.

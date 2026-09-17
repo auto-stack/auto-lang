@@ -42,8 +42,12 @@
 | 377 | TYPE_CAST_U64 | engine.rs:2690 的 TYPE_CAST_U64 用 `push_u64(v as u32 as u64)`，值 < 2^32 安全，但未走 heap-aware 路径。 | `vm/engine.rs:2690` |
 | 340 | reduce init_val 类型 | shim_list_reduce 的 Value path 中 init_val 仍是 `pop_i32()`（而非 `pop_nv()`+`nv_to_value`）。若 reduce 初始值是 struct/str 会丢类型。常见用例（init=0/""）不受影响。 | `vm/native.rs shim_list_reduce` |
 | 399 | api_gen 后处理兜底 | `post_process_db_rs` 保留 5 类后处理兜底（i32→i64 之外的：去 deref 正则、str→String、`id: *NEXTID as i64` 替换、use 路径映射、strip_collection_new），代码自注 "workarounds, not redundant"——a2r 根治回归面广，正则方案为永久设计。 | `auto-man/src/api_gen.rs:331` 起 |
-| 396 | 一致性遗漏 | a2r-std/src/*.rs 是 stdlib/auto/*.rs.at 的手抄副本，无生成/校验环——time.rs 曾漂移到 i32（§2.6 教训：stdlib 声明 i64）。建议后续由 stdlib 生成或加 CI 签名比对。 | `crates/a2r-std/src/time.rs` vs `stdlib/auto/time.rs.at` |
+| 396 | 一致性遗漏 | ~~a2r-std/src/*.rs 是 stdlib/auto/*.rs.at 的手抄副本，无生成/校验环~~ ✅ 半收偿(2026-09-15,Plan 415-B1 骑乘项)：签名比对环 `a2r_std_signature_parity` 落地(crates/auto-lang/src/tests/a2r_std_signature_parity.rs,8 对全绿——名称集+元数,含 json 分派改名表/list 隐式 self 归一,遗留漂移入显式允许清单)。未做部分：参数/返回**类型**比对(Auto→Rust 类型映射不可机械反转,如 int↔i32/i64)与生成路线,仍属 396 原始债面。 | `crates/auto-lang/src/tests/a2r_std_signature_parity.rs`;time.rs i32 漂移已修(8164e93a9) |
 | 396 | 绕道残留 | auto-ai 两处 sed 仍在（agent tier.rs `Some(m.clone())` 属 Plan 020、SOUL const `&str` 属 Plan 016 可选项）——396 §2 范围内 sed 已全部毕业，这两条按计划归属留在原计划。 | `auto-ai crates/auto-ai-agent/retranspile.sh:82` |
+| 415-B1 | 预存死臂(新实证) | Plan 223 三段式模块调用分派臂(`auto.env.get`/`auto.X.Y(...)`)对当前解析形状不命中——415-B1 探针实证 `auto.env.get("HOME")` 与 `auto.sqlite.open(...)` 均字面发射 `auto::env::get`(Rust 不可编译,E0433 类),落入通用 `::` 拼接路径;既有 corpus 无 3 段式覆盖故长期潜伏。415-B1 范围裁定:sqlite 语料收窄为 2 段式(`sqlite.open`,全链含真 rustc 实编零错)。修复需先定位 call.name 的实际解析形状(疑右结合嵌套)再复活分派臂,波及面=env/io/fs 既有分派,宜独立小计划。 | `trans/rust.rs` Plan 223 块(auto_name=="auto" match);复现:golden 002_advanced 早期形态(415b worktree 探针) |
+| 415-C | 未来项(用户裁定 2026-09-15) | GPUI a2r UI 生成器**延后**:门控信号已核(2026-09-15)——虚拟桌面 M0-M4 全线交付(452/453/459/462/463/464/465,2026-08-26~29)但渲染路线双轨定型(VM 轨 iced+Web 轨 Vue,路线 B 渲染叶子=RenderCommand,386 复活承载),GPUI 不在关键路径,现投入=无需求驱动。骨架保留(crates/auto-lang/src/ui/gpui/ ~3.8k 行+ui-gpui feature+19 examples;365 条目 Image 占位/Grid 分解限制仍在)。**重启条件**:GPUI 生态特定需求出现,或路线 B 渲染叶子变更。 | `docs/plans/archive/415-a2r-remaining-big-items.md` C 节(现状刷新版);auto-os `docs/plans/autos-desktop-program.md` 台账;242 #15 行 |
+| 415-E1 | 解析宽松性 | `let mut X = ...` 被 parser 静默解析为 name="mut"/type=X 的注解 let——415-E1 CLI 探针实证(全类型ck路径 undefined variable;转译路径产物 `let r#mut: X` 坏输出)。Auto 可变绑定正语法=`var`。收紧方向:parser 对 `let mut` 直接报错(与 417-E2 uninit var 收紧同族)。 | `parser.rs` let/var 声明;复现:`echo 'let mut m = 1' 类 .at` + `auto trans --path f.at rust` |
+| 018-T05 | 存量 golden 过期(a2r) | PLAN-018 T-05 发射改动(全局读解引用加括号 `73ac6edd8` 等)后 golden 未再生:①`14_modules/007_shared_var`(*APP_NAME.lock() 括号化漂移);②`27_c_abi/003/004` 文本 golden;③rustc 实编门 3 unexpected(024_nested_async_await 解析错误+27_c_abi/003 E0425 等)。415 三轮基线对照实证为预存(b0e603501/15654a7f8 纯净基线同败,非 415 各分支引入)。修复=逐例 bless 再生或根因修+门禁红归因清账。 | `crates/auto-lang/test/a2r/14_modules/007_shared_var/`+`27_c_abi/`+`a2r_rustc_real_compile_gate`;基线证据:415 归档件 B1/B2/E 复审记录 |
 | 417-E2 | a2r 后处理盲重写 | `fix_vec_i32_index` Pattern 2 把任意 `xxx.get(i)`（参数名 ∈ int_like 名单：i/j/k/idx/n/...）正则重写为 `xxx[i as usize]`，不看 receiver 类型——用户类型若有 `.get(int)` 方法且局部变量名不在 hash_map_names 白名单，产物编坏（E0608）。E2 parity wrapper 以变量名 `data`（白名单内）规避；根治需让该启发式感知类型。 | `trans/rust.rs fix_vec_i32_index` Pattern 2 |
 | 432 | SET_ELEM 栈序 quick-fix | 数组下标赋值编译为 rhs→arr→idx→`set.elem`（value 展栈底），源自 codegen.rs ~5954 的注释自述"quick fix"（原想 SWAP/ROTATE 未做）。操作数顺序反直觉且有 40 行困惑注释，理想为自然序编译或引入 ROTATE。v2 侧已镜像此序（divergences.md M4 扩语料节）。 | `vm/codegen.rs` SET_ELEM 发射段 |
 | 432 | .len() 发射依赖运行时注册表 | `.len()` 走 ARRAY_LEN 还是 CALL_NAT 取决于 BIGVM_NATIVES 全局注册表内容（str.len 已注册 → CALL_NAT；未注册类型 → ARRAY_LEN 兜底，codegen.rs 7217-7229）。字节码发射应是 AST+类型表的纯函数，全局注册表状态使其不可静态复现（v2 侧只能按"接收者==Array"闸镜像主路径）。 | `vm/codegen.rs` 7177/7222 |
@@ -91,6 +95,9 @@
 | 002 | 🟡候选: convert_view_messages D-GAP 审计尾差 8 变体 | PLAN-002 补 WindowThumbnail 臂时全量审计——Accordion/NavigationRail/Overlay/Select/Sidebar/Slider/Tabs 仍落 `_ => Empty`（其中 5 个带 fn 指针回调系 rust-mode 专属无法机械映射;Overlay/Sidebar 纯数据可补;代码注释自认"Overlay 至今仍走兜底,是已知差异"）。VM 模式若用到即整件消失,同坑第五例起。 | `ui/iced/renderer.rs` convert_view_messages 尾部注释;PLAN-002 |
 | 002 | ✅已结算(PLAN-002,2026-09-09): desktop.at blank 菜单 T36 结构回归 | 526 T36 交付时闭合括号错位——blank 菜单内容 col 成 view 级散落子树,桌面左下角常驻渲染"更换壁纸/显示设置"（非 popover 态也可见）;修复=col 归位 popover 标签内（plain[1]=content）,金样再生,a2vue/desktop_surface 测试绿。实机:boot 截图散落消失 | `assets/desktop.at`（auto-os shell/ pack 同步）;auto-lang `test/a2vue/desktop_surface_asset/expected.vue`;scratch/p002 |
 | 002 | ✅已结算(PLAN-002,2026-09-09): resolve_shell_pack_dir 组目录解析 worktree 失效 | `repo_root.parent()` 对含 `..` 的合成路径词法只剥一层——worktree 检出（.wt/<组>/auto-lang）下第一候选（<组>/auto-os/shell）永不命中,静默落到硬编码主检出 pack:worktree 构建的桌面读主检出的 shell/desktop.at,worktree 侧 .at 改动实机验证静默失效。修复=ancestors().nth(3) 直取组目录。主检出构建行为不变 | `ui/shell.rs` resolve_shell_pack_dir;scratch/p002 |
+| 635 | 兑付: Plan 607 待澄清#1 跨包 recipe 引用已落地 | `use <dep>.<module>: <style>` 符号导入 + pub 门控 + 传递收集 + deps/ 声明硬门控 + workspace members 解析 + pac.lock path 依赖入锁（PLAN-635 交付，双端同源 desugar 不变）；spec 见 `docs/specs/auto-lang/ui/overview.md` 跨包节与 `docs/specs/auto-man/project.md` 门控节。 | `crates/auto-lang/src/design_tokens/recipe.rs`; `crates/auto-lang/src/lib.rs` resolve_module_path; Plan 635 |
+| 635 | v2 预留: 传递导入的中间 pub 门 | 宿主经 `common.styles` 传递可达其内部私有 use 引入的 recipe（按名注册）；v1 契约如实成文（spec 跨包节注记），如需完整 pub 链语义在 v2 收紧。 | `design_tokens/recipe.rs` collect_style_recipe_imports; Plan 635 复审 F1 |
+| 635 | 观察: ffi_dual 家族并发 flake | `ffi_dual_019_dep_layout_invariants` 在 tf/tv 高并发档偶发红（共享 nightly methods-pack 缓存竞态）；隔离 3/3 绿 + master 同分布（Plan 069 收口提交独立判定互证）。非回归；如复现引用 PLAN-635 复审 F-env。 | `src/tests/ffi_dual_tests.rs:480`; PLAN-635 复审记录 F-env |
 | 607 | 规划边界: Design 29 Phase 2b (Per-App Color Context) 独立排期 | 多窗口/不同 App 独立主题挂载涉及 RenderQueue 色彩上下文重构与 auto-os 窗口路由，维持独立排期，不阻塞 Phase 3 配方落地。 | `docs/design/29-autoui-style-theme-system.md` §4.5; Plan 607 |
 | 607 | 规划边界: P601-T11 (SVG 图形属性 Token 通道) 移交 SVG 专项 | `serialize_svg_element` 构建期逐字序列化需跨管线 SVG token 协议支持，在图表/SVG 专项处理。 | `docs/plans/archive/601-theme-declaration-hot-switch.md` P601-T11; Plan 607 |
 
@@ -245,6 +252,8 @@
 | 585 观察 | CALL_SPEC 字符串方法臂接收者份额泄漏（安全向） | `trim`/`trimEnd`/`len`/`is_empty` 等臂 `for _ in 0..=arg_count { pop_nv() }` 弹出接收者不 `rc_release`——接收者池份额每次方法调用泄一份（泄漏向,安全:条目永活不 UAF）。585 池日志实证（idx 4 `./x.tmp` 凭泄漏份额跨迭代存活）。低危:churn 场景池峰值缓涨;收口=各臂弹出后补 `self.rc_release(receiver_nv)`（对齐 567 T01 先读后放纪律）。 | `vm/engine.rs` CALL_SPEC 字符串方法臂（:6901-6934 等） |
 
 ---
+
+| 631 | DSL 事件扩展：mouse-area 滚轮事件 | `mouse-area` 元素无滚轮事件（`on_wheel`/横向滚动增量）——iced `mouse_area` 本身不暴露 scroll，DSL 事件面仅 click/dblclick/contextmenu/enter/exit/move/up。首例消费面：auto-os PLAN-019 壁纸 carousel 候选条滚轮横滑（现以 ‹› 按钮 + ←/→ 键滑窗替代，`picker_win` 滑窗语义已就位，接入 wheel 后仅需把事件映射到 `WallpaperNav`）。实现面 = DSL 事件解析 + `View::MouseArea` 增臂 + iced scroll 映射；归 autoui-interaction-primitives 族（631 F-5 MouseArea hover 同族，本条为其后续候选 finding）。 | `aura_view_builder.rs` mouse-area 事件面；auto-os `shell/desktop.at` picker 块；`docs/plans/631-autoui-interaction-primitives.md` |
 
 ## ⏸ 延期（finish-plan 登记的未竟项，Type=延期）
 
@@ -1640,7 +1649,7 @@ DesktopMessage 与 WrapperMsg<C> 不兼容,需泛型版)。VM 轨正常(bind 表
 由 run_dynamic 填)。绕法(本批已落):031 工具栏 ◀/▶ 无参按钮(MCP
 press 可达)+ n/p 键(VM 轨)。修复随 rust 轨键盘接线独立小计划。
 
-**P573-D1｜ui-gallery registry 数据源 Vue-only（VM 端列表空,低）**
+**P573-D1｜ui-gallery registry 数据源 Vue-only（VM 端列表空,低）——✅ 已清偿（PLAN-625 T-01/T-02，2026-09-15）**：registry 双产物（TS+registry.at）跨端化落地，VM 端列表/标题/描述/教程/源码全通；下述原始描述保留作历史。
 `examples/ui-gallery/src/front/app.at:4` 的 demo 数据源
 （`filterDemosBy`/`getDemoTitle`/`getDemoDesc` 等 8 件）全部是 TS extern fn
 （`src/front/utils/demos.ts`），VM/iced 端无从执行——`filteredDemos` 恒空，
@@ -2178,3 +2187,66 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 |---|---|---|---|---|
 | ARCH-AUTOUI-REPO | —（裁定留底） | 仓界时序 | **AutoUI 拆独立仓推迟，不设日程；重开前置 = VM/Rust 桌面版（VM/iced 轨道）稳定**。submodule 形态裁定不采用（依赖方向相悖 + 只解决路径检出不解决依赖 + worktree 红线敏感）。重开路线 = 先仓内 crate 化（workspace 成员 `crates/auto-ui`，编排函数上移 + native 注册制），边缘资产可先行，repo 拆分按 auto-shell 模式（Plan 330）且须触发条件（API 收敛/共变衰减/第二消费者）。依据：近 90 天同提交跨 UI/核心两侧 245 次（≈2.7/天）；三处硬耦合（UI 语法在 ast/parser、ui_gen/aura/a2ui 无条件编译、VM native 表烧 UI ID 段）；2026-03 并入史（Plan 045/096/175）。关联 auto-os PLAN-578「examples 归属两读」待裁定 | `docs/design/20-autoui-separation-architecture.md` §11 |
 | ARCH-AUTOUI-GUARD | medium（持续纪律） | 门禁护栏 | **新增 UI native/FFI 必须挂 feature cfg + 降级桩（沿用 `vm/native.rs` 桩模式），无 UI 构建（`--no-default-features`/`cargo tv`/CI vm-files 档）保持绿色**——未来 AutoUI 拆仓唯一能站住的地基，欠账后重新考古代价高。**当飞项**：Plan 619 工作树 `vm/ffi/term_engine.rs` 133/199-230/331 行存在未门控 `crate::ui::terminal` 引用（HEAD 版本无），合入前必须补门控，否则弄红全部无 UI 构建 | `crates/auto-lang/src/vm/ffi/term_engine.rs`；桩模式参照 `crates/auto-lang/src/vm/native.rs`；Design 20 §11.5 |
+
+## P625 债务（ui-gallery-vm-usability，2026-09-15 复审登记）
+
+| 编号 | 严重度 | 类别 | 描述 | 引用 |
+|---|---|---|---|---|
+| P625-D1 | medium | 进程稳定性 | **VM UI 进程 AppHang 静默退出**：UI 线程停止泵消息 >5s（WER AppHangB1 ×2 实证，16:07/16:14）后进程被外部结束（exit 1/127，无 panic）。死亡窗口随机（deps 扫描期/GPU 初始化后/MCP 运行数分钟后），心跳失败刷屏持续到日志末行=事件循环挂起判定前仍存活。阻塞点候选=大树 MCP snapshot 序列化占 UI 线程/日志 I/O 洪水（每 2s 3 行心跳失败 WARN）。根因定位需挂起期线程转储（procdump/wpr）。缓解：MCP 起后立即快取证据、避免反复全量快照大树；可选=应用定义 no-op `__mcp_heartbeat` handler 消除刷屏。B 类（worktree deps 扫描期静默终止，无 WER）另见 plan625 §8 T-07。**【2026-09-15 PLAN-066 处置更新】**：消费侧 A/B 定罪=慢性「~4-5min 静默退出」实为同机并发会话争抢默认 MCP 端口的环境干扰（musk run1 共址 0/3 vs 私有端口隔离 3/3；procdump -h 六轮零挂起+WER 零事件），AppHang 链未再现形；本行结构候选①（大树 MCP snapshot 序列化占 UI 线程）已根修——`SharedState.styled_vtree` 改 Arc 发布、tool_snapshot/autoui_wait 深序列化移出锁外（8d03dc1a8），端口绑定冲突加回退链 9247..+10 同 commit；候选②日志洪水本次取证无证据，不动。修复后 musk 隔离 3×10min 零静默退出。证据：musk attachments/066-kd048a-conviction/（PLAN-066 T-01/T-02） | `docs/plans/625-ui-gallery-vm-usability.md` §8 T-07；WER 事件 16:07:48/16:14:54；musk 066 定罪报告 |
+| P625-D2 | low | 渲染语义 | **iced Row 交叉轴无 CSS stretch 语义**：aside 无显式高度类时 provider 的 `h-full` 塌缩 0×0（整子树"树在/分发正常/像素无"——ui-gallery 侧栏 33 项实证）。惯用法补全：aside 外壳挂 sidebar_provider 带 `display:flex + min-h-0 + h-full` 三件。哨兵测试 `p625_uigallery_sidebar_pills_visible` 双形态钉住（无高度类=0×0；未来渲染器补 stretch 语义时翻转该断言） | `crates/auto-lang/src/ui/iced/layout_tests.rs`；ui-gallery app.at aside |
+| P625-D3 | low | 编译器能力 | **handler 合成不支持 lambda 捕获 for 循环变量**（`Undefined variable: demo` → poisoned export）。惯用法绕行=循环体事件用 msg 带参形式（`onclick: .SelectDemo(demo.id)`，027 `OpenItem(item.id)` 同型——循环变量分发期求值）。通用捕获能力（合成时注入循环变量为形参）待独立立项 | `crates/auto-lang/src/ui/handler_codegen.rs`；ui-gallery app.at SelectDemo |
+| P625-D4 | low | 转译器 | **Rust 臂（--render rust）未支持 Plan 522 模块 use**：ui-gallery rust 臂 cargo 编译 17 错（E0425 `filter_demos` not found 等）——`use registry:` 模块导入的转译发射缺失；`.vm.at` 适配链亦为 VM 加载器专属（ext_stubs 为 VM 渲染目标实现）。Rust 臂 AppViewport/模块导入实装需转译器侧工作,独立计划 | `crates/auto-lang/src/trans/`；ui-gallery app.at `use registry:` |
+| P625-D5 | info | 覆盖范围 | **VM live 视口集=自包含示例 14/20**：多文件（自有 components/）与模块 use 示例 v1 降级占位卡（跳过清单启动日志上报：006/010/011/016/026/027）。扩展=生成器随行拷贝示例模块树+路径重写,独立评估 | `crates/auto-man/src/vue.rs` emit_gallery_vm_demos 过滤条件 |
+| F-R1 | info | 环境归属 | **docs_gen kitchen_sink worktree 红**：worktree 基于 d2f983d63,widgets-gallery fixture 已被 master 侧 9ffab6f6/776f4ba2 同步——基线陈旧 artifact（主检出 PASS;PLAN-625 diff 不触 docs_gen/schema）。随 worktree merge master 已消解大半,残余属共享检出的解析路径差异 | `crates/auto-lang/tests/docs_gen.rs:378` |
+| F-R2 | info | 环境归属 | **plan606 test_029_photo_gallery 红**：并行会话 plan628-photo-gallery-v2 在途重构破坏（主检出脏文件+628 计划在案;主检出与 worktree 合并态均红）——归 plan628 域,非 PLAN-625 | `crates/auto-lang/src/tests/plan606_gallery_tests.rs` |
+
+## 2026-09-15 增补（Plan 545 复审裁定）
+
+- **P545-D1 [传递 wildcard merge 维持现状]**：bare use 的传递隔离已落地
+  （递归 resolve_uses 走同一 bare 不 merge 分支，探针 G 断言）；但被导入
+  模块自己的 **wildcard** use（`use X: *`）仍 merge 进导入方 session store
+  （D1 兜底条款：解析上下文耦合过深时降级维持）。显式 opt-in 面的传递
+  语义留待有实例痛点时收紧。证据：PLAN-545 待澄清 #1/#5、spec 导入语义节
+  例外注记。
+- **P545-D2 [host↔aavm bare use 语义分叉]**：Plan 545 只收紧宿主工具链
+  （compile.rs/TypeStore/Linker/注册面），aavm 自举层（auto/lib/*.at）的
+  use 实现未随动。aavm 语料无"bare use + 裸名"golden 锚定（corpus_use 仅
+  002 限定风格）不受冲击；分叉本身待 aavm 侧对齐（另立计划）。证据：
+  PLAN-545 待澄清 #5、R1 记录。
+- **P545-D3 [stdlib `use auto.*` 全管线模块加载解析不兼容（预存）]**：
+  `use auto.str` 等经 compile.rs load_module_inner→parse_module_to_type_store
+  解析 stdlib `.at` 的 `#[vm]` 接口声明（`#[vm] fn repeat(n int) str` 无体
+  形态）即多错失败——**master 同错复现**（CLI 直证，两份 stdlib 字节一致
+  排除环境分叉），非 545 引入。后果：AC-5 行为级测试载体断裂（R545-F2，
+  545 注册语义以代码路径审查判 pass）；stdlib natives 实际经 native_catalog
+  预登记路径工作，本断裂面在 `use auto.X` 显式模块加载。修复位：
+  parse_module_to_type_store 的 Parser 对 `#[vm]` 接口声明的接受面。
+  证据：PLAN-545 R1 F2、探针错误文本内联（"Expected LBrace found #"）。
+
+## 2026-09-15 增补（PLAN-632 执行裁定）
+
+- **P632-D1 [宿主根件无 Init 的 fire_init 兜底告警（预存，定性无关）]**：
+  `App.Init failed (state may be unpopulated): handler not found: Init` 在
+  standalone（006/016 examples）与内嵌（ui-gallery VM）同样出现——是
+  fire_init 对根件无 `.Init` 声明时的一律兜底告警，与组件/store 桥接机制
+  无关（T-01 对照实验判定：standalone 016 store 桥接全通、告警同在）。
+  语义提示词（"state may be unpopulated"）对 store 型宿主有真实含义
+  （store→child 播种依赖根件 Init 或模型默认），但画廊宿主不消费该路径。
+  缓解候选：根件无 Init 声明时静默/降为 debug 级；或画廊 app.at 补 no-op
+  Init。收益仅日志卫生，另立微计划处理。证据：PLAN-632 T-01/T-05、
+  `target/p632/t01-*-proc.log`。
+
+## P020 债务（rust-desktop-exe-compositor，2026-09-15 work 登记）
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P020-D1 | medium | 架构 | **双投影器并存（AppProjector 解释态 / NativeProjector native）**——块流布局 walker ~150 行语义镜像重复（layout_view_block/layout_view_node vs layout_block/layout_node），样式双轨（字符串解析 vs typed StyleClass 适配）。统一方向 = 解释态投影器改写为 View 基（AuraViewBuilder 已产 View，双轨归一），待 native 覆盖集爬坡后立项 | desktop_protocol/client_runtime.rs layout_*；desktop_protocol/native_projector.rs |
+| P020-D2 | low | 协议边界 | **native queue 臂键盘/滚轮/右键不路由、L3 StateSnapshot 注入 not-yet**（v1.6 边界随注）——input 族入覆盖集时同步补路由臂；StateSnapshot 融合态迁移需 typed 组件字段写回通道另立 | native_projector.rs on_input/on_control；desktop-protocol-v1.md §1.6 边界 |
+| P020-D3 | low | 生成器 | **async-init App 经孵化臂以 default() 态起**（初始化 API 加载不接协议 client 面）——超覆盖 App 的孵化形态缺省 auto→independent 可绕开，queue 档显式声明 async-init App 时启动态为空，待需要时立项 | rust_ui.rs wrap_example native_client_gate 随注 |
+| P020-D4 | low | 测试基建 | **桌面画布↔屏幕变换未文档化，OS 级点击自动化未打通**（DPI 2x + canvas 缩放系数非恒定——ui_desktop 真机冒烟三次坐标假设均未命中窗内按钮）；窗内点击/× 关闭的 GUI 级自动化待 acceptance channel 增 pointer verb（现仅 bus/handler），期间点击闭环/回收由协议级 p020_native_exe_arm 承载 | mcp_server.rs autoui_desktop；scripts/smoke-020-native-exe.sh（os 仓）随注 |
+
+## 2026-09-17 增补（PLAN-633 复审登记）
+
+- **P633-D1 [MCP typing→onenter 通路按键静默丢失（harness 工件，P632-R3 同族）]**：实机驱动 type_text 后 keyboard("Enter") 不触发 input 的 onenter（632 T-04 press_until 同族观察）。产品 onenter/on_submit 绑定本身健在（白盒 write_path + fixture trigger 直发 AddTodo 全链路 12/12 锁定写路径；input 双向绑定 on_change 正常）。验收驱动一律走 fixture trigger 或元素 action，避免依赖 typing 提交。引用：`target/p633/drive.py` add 流程注记；PLAN-632 §9 R632-3。
+- **P633-D2 [画廊视口徽标外观不一致（非阻塞）]**：AppViewport 工具栏"• 运行中/• 静态说明"徽标按 Vue 臂 loadable 语义取值——fullstack 内嵌档（013/015）显示"静态说明"但实际可交互。候选微修：VM 臂单独提示或 registry 增列（涉及 registry.at schema 契约，另议）。引用：`auto-man/src/vue.rs` write_registry_at 注记；ui-gallery app.at 徽标行。
+- **P633-D3 [test_gen_015_notes_rust 写穿 tracked 示例产物（存量卫生债）]**：`cargo nextest run -p auto-man` 会以当前生成器输出刷新 `examples/rust-workspace/015-notes/{Cargo.toml,src/main.rs}`（once_cell/mem_guard 模板演进 vs 仓内陈旧产物），留下与本计划无关的脏 diff。建议：测试改写临时目录或提交一次产物基线。引用：`rust_ui.rs:3240` test_gen_015_notes_rust。

@@ -1200,7 +1200,15 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
         iced::Shadow::default()
     };
     // Build background: use gradient if both from/to colors present, else solid
-    let background = if is.gradient_from.is_some() && is.gradient_to.is_some() {
+    let background = if is.gradient_clip_text
+        && is.gradient_from.is_some()
+        && is.gradient_to.is_some()
+    {
+        // PLAN-625 T-05: 渐变裁剪文字降级——渐变仅填充文字(CSS bg-clip:text),
+        // iced 无对应能力;按底盒绘制会形成透明文字+实心渐变块,整体抑制,
+        // 文字回落继承色(from_style 臂已清 transparent text_color)。
+        None
+    } else if is.gradient_from.is_some() && is.gradient_to.is_some() {
         let from = is.gradient_from.unwrap();
         let to = is.gradient_to.unwrap();
         let angle = match is.gradient_dir {
@@ -3044,6 +3052,14 @@ fn render_image_surface<M: Clone + Debug + 'static>(
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
+            // PLAN-066: 原生外部组件（Element 通道）——查 NativeWidgetRegistry
+            // 的 iced Element factory 表。本计划未注册任何 factory（首个后端
+            // 原生件落地时建表消费，提案 066 §3.2），零高 Space 防御臂与
+            // Empty 同款（不占布局位）。
+            AbstractView::Custom { .. } => iced::widget::Space::new()
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Fixed(0.0))
+                .into(),
             // PLAN-063 T-04d-2: 锚槽 → 记录布局坐标的委托 wrapper。
             AbstractView::AnchorSlot { index, child } => {
                 let el = child.into_iced();
@@ -3433,10 +3449,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     // iconfile → hicon → lucide）。Plan 515 D1：hicon:<slot> =
                     // native 真图标（raster——486 占位清偿；14px 与邻位 lucide
                     // 图标同档）。两 raster 源合流同一元素臂。
+                    // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
+                    // 回退 14px（462 档）——大框小图实测反馈闭环。
+                    // PLAN-018-FU7：iconfile 按显示档装载（512 直挂经无
+                    // mipmap 的 Linear min_filter 缩 ~28× 硬边——见
+                    // icon_file::load_sized 注）。
+                    let icon_px = iced_style
+                        .as_ref()
+                        .and_then(|is| is.font_size.as_ref())
+                        .map(font_size_to_f32)
+                        .unwrap_or(14.0);
                     let raster_icon: Option<iced::widget::image::Handle> = {
-                        if let Some(handle) = crate::ui::iced::icon_file::load(
+                        if let Some(handle) = crate::ui::iced::icon_file::load_sized(
                             icon_name,
                             crate::ui::style::theme::dark_mode(),
+                            icon_px,
                         ) {
                             Some(handle)
                         } else {
@@ -3450,13 +3477,6 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                     };
                     if let Some(handle) = raster_icon {
-                        // PLAN-526 T9：图标盒跟随按钮字号（text-lg → 18px），
-                        // 回退 14px（462 档）——大框小图实测反馈闭环。
-                        let icon_px = iced_style
-                            .as_ref()
-                            .and_then(|is| is.font_size.as_ref())
-                            .map(font_size_to_f32)
-                            .unwrap_or(14.0);
                         let icon_el = iced::widget::image(handle)
                             .width(iced::Length::Fixed(icon_px))
                             .height(iced::Length::Fixed(icon_px));
@@ -4121,8 +4141,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
+            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
+                // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
+                // -1 = 跟随主题,绘制期解析)。
+                core.set_scheme(scheme);
                 crate::ui::terminal::terminal_feed(core, &lines);
                 crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
                 // 014:光标格随帧落注册表(app 从引擎回读喂入;preedit/光标
@@ -4144,6 +4167,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
                     on_input: on_input.clone(),
+                    shortcuts: shortcuts.clone(),
                     width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0 * crate::ui::terminal::iced::PAD),
                     height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0 * crate::ui::terminal::iced::PAD),
                 }
@@ -4152,15 +4176,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 根容器 bg-background(9,14,26) 即用户可见"浅色带"。涂同色
                 // (终端 DEFAULT_BG)填满可用空间,余量隐形;子件左上对齐,
                 // PAD 贴窗角。016 复审 T-07。
+                // PLAN-018 D10:余量涂色随 scheme 表(light 方案余量同浅底)。
+                let margin_bg = {
+                    let scheme = crate::ui::terminal::terminal_resolve_scheme(core);
+                    let palette = crate::ui::terminal::terminal_effective_palette(scheme);
+                    let v = palette[1];
+                    crate::ui::terminal::iced::rgb_u32(v)
+                };
                 let el: iced::Element<'static, M> = iced::widget::container(el)
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill)
                     .align_x(iced::alignment::Horizontal::Left)
                     .align_y(iced::alignment::Vertical::Top)
-                    .style(|_: &iced::Theme| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(
-                            crate::ui::terminal::iced::DEFAULT_BG,
-                        )),
+                    .style(move |_: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(margin_bg)),
                         ..Default::default()
                     })
                     .into();
@@ -4409,7 +4438,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     } else {
                         inner
                     };
-                build_container(
+                // PLAN-631 F-5：mouse-area hover 样式对——`hover:` 变体类经
+                // HoverArea + 共享标志零重建翻转（镜像布局件臂；无声明 =
+                // None，零开销路径不变）。
+                let hover = layout_hover_flag(style.as_ref());
+                let built = build_container(
                     wrapped,
                     0,
                     None,
@@ -4418,8 +4451,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     false,
                     style.as_ref(),
                     None,
-                    None,
-                )
+                    hover.clone(),
+                );
+                match hover {
+                    Some(flag) => crate::ui::iced::hover_area::HoverArea::new(built, flag).into(),
+                    None => built,
+                }
             }
 
             // Plan 563: 状态驱动画布 —— CanvasPainter(canvas::Program 直绘,
@@ -5110,10 +5147,25 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // PLAN-018：iconfile:<stem> = 双主题位图（回退链首位）。
                 // Plan 515 D1：hicon:<slot> = native 真图标 raster
                 //（window_thumbnail 的 fallback_icon / image 直挂两消费面）。
+                // PLAN-018-FU7：显式 Fixed 宽/高 → 按显示档装载；无显式
+                // 尺寸档 → 512 原生档（回退链同源）。
+                let style_for_px = style.as_ref().map(IcedStyle::from_style);
+                let display_px = match (
+                    style_for_px.as_ref().and_then(|s| s.width.as_ref()),
+                    style_for_px.as_ref().and_then(|s| s.height.as_ref()),
+                ) {
+                    (Some(IcedSize::Fixed(w)), _) => Some(*w),
+                    (_, Some(IcedSize::Fixed(h))) => Some(*h),
+                    _ => None,
+                };
                 let raster_icon: Option<iced::widget::image::Handle> = {
-                    if let Some(handle) =
-                        crate::ui::iced::icon_file::load(&src, crate::ui::style::theme::dark_mode())
-                    {
+                    let dark = crate::ui::style::theme::dark_mode();
+                    let iconfile = display_px
+                        .and_then(|px| {
+                            crate::ui::iced::icon_file::load_sized(&src, dark, px)
+                        })
+                        .or_else(|| crate::ui::iced::icon_file::load(&src, dark));
+                    if let Some(handle) = iconfile {
                         Some(handle)
                     } else {
                         crate::ui::iced::native_icon::parse_field(&src).map(|icon| {
@@ -6667,7 +6719,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
         // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
         // (数据已在 convert_terminal 物化)。
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, style } => {
+        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
             AbstractView::Terminal {
                 key,
                 cols,
@@ -6680,6 +6732,11 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 on_input: on_input.map(|m| IcedMessage::from_dynamic(&m)),
                 cursor_row,
                 cursor_col,
+                scheme,
+                shortcuts: shortcuts
+                    .iter()
+                    .map(|(k, m)| (k.clone(), IcedMessage::from_dynamic(m)))
+                    .collect(),
                 style,
             }
         }
@@ -9483,7 +9540,7 @@ fn execute_open_settings(state: &mut crate::ui::session::DesktopSession) {
 }
 /// PLAN-526 T14：壁纸目录扫描（jpg/png 枚举 → {name,path,src} Obj 数组）。
 /// 键缺席/非目录/空目录 = 空表（面板显示引导文案）。load_desktop_id_list
-/// 同型的宿主派生面——.at 无 read_dir 原语，目录枚举保持宿主侧（I9）。
+/// 同型的宿主派生面（I9）。注：.at 侧自 2026-08-22 起已有 fs.read_dir/fs.walk/fs.tree（2866/2860/2875），此处宿主侧枚举系历史实现，非能力缺失。
 fn scan_wallpapers_dir(cfg: &crate::ui::desktop_config::DesktopConfig) -> Vec<auto_val::Value> {
     let Some(dir) = wallpapers_dir_or_default(cfg) else {
         return Vec::new();
@@ -9616,6 +9673,19 @@ fn drain_and_execute_desktop_commands(
     if let Some(app) = settings_window_app {
         cmds.extend(state.drain_app_desktop_commands(app));
     }
+    // PLAN-016 T-07（协议 v1.7）：普通注册表窗上行联合排空——open_with
+    // 动词面（027 文件管理器）。特权窗上方已排空（二次排空空读无害）；
+    // 动词面仍受 DesktopCommand 解析白名单约束。
+    {
+        let app_ids: Vec<_> = state
+            .host
+            .as_ref()
+            .map(|h| h.wm.wins.values().map(|v| v.app).collect())
+            .unwrap_or_default();
+        for app_id in app_ids {
+            cmds.extend(state.drain_app_desktop_commands(app_id));
+        }
+    }
     if cmds.is_empty() {
         return (false, Vec::new());
     }
@@ -9648,6 +9718,8 @@ fn execute_desktop_commands(
                 tasks.push(summon_launcher(state));
             }
             DC::LaunchApp(name) => execute_launch_app(state, &name),
+            // PLAN-016 T-07（协议 v1.7）：open_with 执行臂。
+            DC::OpenWith(app, path) => execute_open_with(state, &app, &path),
             DC::CloseWindow(wid) => {
                 // PLAN-012 W1：os-config close→hide 拦截臂——设置窗"×"不改
                 // 换成常驻隐藏（hidden 置位：投影/命中/推层全排除，"真关了"
@@ -9731,8 +9803,37 @@ fn execute_desktop_commands(
                 execute_desktop_icon_drop_at(state, &dragged, &xy)
             }
             // PLAN-012 F2 走查：拖拽开始（宿主置位；__mouse_released 臂落格）。
+            // 2026-09-15：附拾起起点光标 + drag_icon（拖拽幽灵坐标锚
+            // popover 数据面）；移动超阈值前两路落格动词都拒落（点击语义）。
             DC::DesktopIconDragStart(id) => {
-                state.desktop.icon_drag = Some(id);
+                let origin = state
+                    .host
+                    .as_ref()
+                    .map(|h| {
+                        let p = h.wm.last_cursor.get();
+                        (p.x, p.y)
+                    })
+                    .unwrap_or((f32::NEG_INFINITY, f32::NEG_INFINITY));
+                if let Some(surface) = state.desktop.desktop_app {
+                    if let Some(app) = state.apps.get_mut(&surface) {
+                        let icon = state
+                            .desktop
+                            .registry_entries
+                            .iter()
+                            .find(|e| e.id == *id)
+                            .map(|e| e.icon.clone())
+                            .unwrap_or_else(|| "app-window".to_string());
+                        let _ = app
+                            .component
+                            .write_state("drag_icon", auto_val::Value::Str(icon.into()));
+                        let _ = app.component.write_state("drop_c", auto_val::Value::str(""));
+                        let _ = app.component.write_state("drop_r", auto_val::Value::str(""));
+                        let _ = app.component.write_state("drag_moved", auto_val::Value::str(""));
+                        *app.state.view_dirty.borrow_mut() = true;
+                    }
+                }
+                state.desktop.icon_drag = Some((id, origin));
+                state.desktop.icon_drag_moved = false;
             }
             DC::SetWallpapersDir(dir) => execute_set_wallpapers_dir(state, &dir),
             // PLAN-019 v1.7：显示桌面（负一屏）/ 返回 origin（sliver toggle
@@ -11176,6 +11277,96 @@ fn restore_all_native_slots(_state: &mut crate::ui::session::DesktopSession) {}
 
 /// LaunchApp 执行体（463 T4 主体抽出；472 T4 起被 LaunchApp/ActivateApp
 /// 两臂共用）。失败转 toast + 占位页（Design 24 §6.5）。
+/// PLAN-016 T-07（协议 v1.7）：open_with 执行体——注册表校验（opens 声明
+/// 面未命中即拒）→ 未运行 launch 后向目标 App state 写 `auto_open_path` /
+/// 已运行聚焦 + 同款写入；目标 App（041/031 接收臂）Tick 消费。写入后
+/// view_dirty 即标——目标下一帧可见。App 未声明 `auto_open_path` 时写入
+/// 静默无效（capability 自声明，无害）。
+fn execute_open_with(
+    state: &mut crate::ui::session::DesktopSession,
+    app_id: &str,
+    path: &str,
+) {
+    // 注册表校验：app 存在 + opens 声明面（空 = 不参与校验，放行）。
+    let ext = std::path::Path::new(path)
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
+        .unwrap_or_default();
+    let opens_ok = state.desktop.app_resolver.as_ref()
+        .and_then(|r| r(app_id))
+        .map(|spec| spec.opens.is_empty() || spec.opens.iter().any(|o| o.eq_ignore_ascii_case(&ext)));
+    match opens_ok {
+        None => {
+            push_notification(state, "error", &format!("未知应用: {app_id}"));
+            return;
+        }
+        Some(false) => {
+            push_notification(
+                state,
+                "error",
+                &format!("{app_id} 未声明打开 {ext} 文件（pac opens）"),
+            );
+            return;
+        }
+        Some(true) => {}
+    }
+    // 已运行窗（registry_id 命中）→ 聚焦 + 写入；未运行 → launch + 写入。
+    let running = state.host.as_ref().and_then(|h| {
+        h.wm
+            .wins
+            .iter()
+            .find(|(_, v)| v.registry_id.as_deref() == Some(app_id))
+            .map(|(wid, v)| (*wid, v.app))
+    });
+    let delivered = match running {
+        Some((wid, app)) => {
+            state.wm_focus(wid);
+            deliver_open_arg(state, app, path)
+        }
+        None => match state.launch_app(app_id) {
+            Ok(wid) => {
+                let app = state.host.as_ref().and_then(|h| h.wm.wins.get(&wid)).map(|v| v.app);
+                match app {
+                    Some(app) => deliver_open_arg(state, app, path),
+                    None => false,
+                }
+            }
+            Err(err) => {
+                push_notification(state, "error", &format!("启动 {app_id} 失败: {err}"));
+                false
+            }
+        },
+    };
+    if !delivered {
+        // 目标未声明 auto_open_path（非接收臂 App）——聚焦语义仍达成。
+        push_notification(
+            state,
+            "info",
+            &format!("已聚焦 {app_id}（目标未声明 auto_open_path 接收臂）"),
+        );
+    }
+}
+
+/// PLAN-016 T-07：向目标 App 写 `auto_open_path` + view_dirty。返回目标
+/// 是否声明了接收臂（写成功 = true）。
+fn deliver_open_arg(
+    state: &mut crate::ui::session::DesktopSession,
+    app: crate::ui::session::AppId,
+    path: &str,
+) -> bool {
+    let Some(a) = state.apps.get_mut(&app) else {
+        return false;
+    };
+    let ok = a
+        .component
+        .write_state("auto_open_path", auto_val::Value::str(path))
+        .is_ok();
+    if ok {
+        *a.state.view_dirty.borrow_mut() = true;
+    }
+    ok
+}
+
 fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
     match state.launch_app(name) {
         // PLAN-002 N3（用户复核裁定 2026-09-09）：启动成功不再发通知——
@@ -11627,6 +11818,7 @@ fn desktop_icon_cells(
     hidden: &[String],
     registry: &[crate::ui::app_registry::AppRegistryEntry],
     layout_key: Option<&str>,
+    rows: usize,
 ) -> (
     Vec<auto_val::Value>,
     Vec<String>,
@@ -11647,18 +11839,26 @@ fn desktop_icon_cells(
             None => free.push(e),
         }
     }
-    // ② 未定位：行主序填首个空格（跳过已占位）。
+    // ② 未定位：**列主序**填首个空格（2026-09-15 用户裁定——纵向优先，
+    // 左列自上而下占满后再排下一列；跳过已占位）。rows 下限保证容量。
+    let rows = rows.max((visible.len() + COLS - 1) / COLS).max(1);
     let mut taken: std::collections::BTreeSet<usize> = placed
         .iter()
         .map(|&(c, r, _)| r * COLS + c)
         .collect();
     for e in &free {
-        let mut slot = 0usize;
-        while taken.contains(&slot) {
-            slot += 1;
+        let mut k = 0usize;
+        loop {
+            // 列主序序数 k → (c, r) = (k / rows, k % rows)。
+            let (c, r) = (k / rows, k % rows);
+            let linear = r * COLS + c;
+            if !taken.contains(&linear) {
+                taken.insert(linear);
+                placed.push((c, r, e));
+                break;
+            }
+            k += 1;
         }
-        taken.insert(slot);
-        placed.push((slot % COLS, slot / COLS, e));
     }
     // ③ 行主序输出（spacer 填空格）。
     placed.sort_by_key(|&(c, r, _)| (r, c));
@@ -11947,17 +12147,25 @@ fn execute_desktop_icon_drop_at(
     dragged: &str,
     xy: &str,
 ) {
+    // 2026-09-15：未超位移阈值 = 点击——两路落格动词统一拒落（兜底
+    // __mouse_released 臂已拦，此处覆盖 BlankDrop 路径），只清视觉态。
+    if !state.desktop.icon_drag_moved {
+        clear_desktop_drag_visual(state);
+        return;
+    }
     // x,y → 线性格换算在闭包内完成（解析失败 = no-op）。
-    // desktop 本地像素 → 格：面根 p-3(12px) + 格 + gap → 栅距。
-    // 图标格 80 + gap 8 → 88px 栅距（FU1 曾翻倍至 168，FU5 用户裁定回半）。
+    // desktop 本地像素 → 格：面根 p-3(12px)；横向 80px 格宽 + gap 8 =
+    // 88px 栅距；纵向 72px 格（图标 48px + 标题回归）+ gap 8 = 80px 栅距
+    // （FU1 曾翻倍至 168，FU5 用户裁定回半）。
     let changed = (|| -> Option<bool> {
         let (xs, ys) = xy.split_once(',')?;
         let x = xs.trim().parse::<f32>().ok()?;
         let y = ys.trim().parse::<f32>().ok()?;
         const ORIGIN: f32 = 12.0;
-        const PITCH: f32 = 88.0;
-        let col = (((x - ORIGIN) / PITCH).floor() as i32).clamp(0, 7) as usize;
-        let row = (((y - ORIGIN) / PITCH).floor() as i32).clamp(0, 96) as usize;
+        const XPITCH: f32 = 88.0;
+        const YPITCH: f32 = 80.0;
+        let col = (((x - ORIGIN) / XPITCH).floor() as i32).clamp(0, 7) as usize;
+        let row = (((y - ORIGIN) / YPITCH).floor() as i32).clamp(0, 96) as usize;
         Some(desktop_icon_apply_drop(
             state,
             dragged,
@@ -11973,14 +12181,64 @@ fn execute_desktop_icon_drop_at(
 
 /// PLAN-012 F2 走查：清桌面面视觉拖拽态（落格完成后调用）。
 fn clear_desktop_drag_visual(state: &mut crate::ui::session::DesktopSession) {
+    state.desktop.icon_drag_moved = false;
     if let Some(surface) = state.desktop.desktop_app {
         if let Some(app) = state.apps.get_mut(&surface) {
             let _ = app
                 .component
                 .write_state("drag_id", auto_val::Value::str(""));
+            // 2026-09-15：落点高亮/幽灵数据面同步清零。
+            let _ = app.component.write_state("drop_c", auto_val::Value::str(""));
+            let _ = app.component.write_state("drop_r", auto_val::Value::str(""));
+            let _ = app.component.write_state("drag_icon", auto_val::Value::str(""));
+            let _ = app.component.write_state("drag_moved", auto_val::Value::str(""));
             *app.state.view_dirty.borrow_mut() = true;
         }
     }
+}
+
+/// 2026-09-15：壁纸亮度判定——#hex 直算 luma；图片壁纸解码缩 32×32 求
+/// 平均亮度（<128 = 暗）。结果按路径缓存（inject 在拖拽落格等时机高频
+/// 重入，解码不可重复）。判定失败（解码失败/未知形态）= 亮（前景色兜底）。
+fn desktop_wallpaper_dark(wallpaper: &str) -> bool {
+    if let Some(hex) = wallpaper.strip_prefix('#') {
+        if hex.len() == 6 {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                u8::from_str_radix(&hex[0..2], 16),
+                u8::from_str_radix(&hex[2..4], 16),
+                u8::from_str_radix(&hex[4..6], 16),
+            ) {
+                // Rec.601 luma（u8 溢出防护用 u16 中间量）。
+                let luma = (r as u16 * 299 + g as u16 * 587 + b as u16 * 114) / 1000;
+                return luma < 128;
+            }
+        }
+        return false;
+    }
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    fn cache() -> &'static Mutex<HashMap<String, bool>> {
+        static CACHE: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+        CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+    if let Some(hit) = cache().lock().ok().and_then(|c| c.get(wallpaper).copied()) {
+        return hit;
+    }
+    let dark = load_image_bytes(wallpaper)
+        .and_then(|data| image::load_from_memory(&data).ok())
+        .map(|img| {
+            let img = img.thumbnail(32, 32).to_rgb8();
+            let n = img.pixels().len().max(1) as u32;
+            let sum: u32 = img.pixels().map(|p| {
+                (p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000
+            }).sum();
+            sum / n < 128
+        })
+        .unwrap_or(false);
+    if let Ok(mut c) = cache().lock() {
+        c.insert(wallpaper.to_string(), dark);
+    }
+    dark
 }
 
 fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
@@ -12025,11 +12283,21 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
     // ids/cs/rs 平行字符串列表供 handler 下标读，B12 规避）。
     // PLAN-019 T-06：布局键控——当前壁纸键优先（切换壁纸布局跟随）。
     let layout_key = current_wallpaper_layout_key(state);
+    // 2026-09-15：rows 随视口高度（80px 行距 = 72px 格 + gap 8，扣任务栏
+    // 预留）——列主序默认排布的纵向上限。
+    let rows = {
+        let viewport = state.host_viewport();
+        let reserved = desktop_dock_edges(&state.desktop.config);
+        (((viewport.height - reserved.top - reserved.bottom) / 80.0).floor()
+            as usize)
+            .clamp(4, 24)
+    };
     let (cells, cell_ids, cell_cs, cell_rs) = desktop_icon_cells(
         &order,
         &hidden,
         &state.desktop.registry_entries,
         layout_key.as_deref(),
+        rows,
     );
     let Some(app) = state.apps.get_mut(&surface) else { return };
     let _ = app.component.write_state_vec("__desktop_icons", entries);
@@ -12048,6 +12316,16 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
         .component
         .write_state_vec("__desktop_cell_rs", cell_rs);
     let _ = app.component.write_state("__desktop_bg", auto_val::Value::Str(bg.into()));
+    // 2026-09-15：壁纸亮度 → 标签配色旗标（暗壁纸白字，否则语义前景色）
+    // ——text-foreground 随主题不随壁纸，深色壁纸上黑字不可读。
+    let _ = app.component.write_state(
+        "__desktop_label_dark",
+        auto_val::Value::str(if desktop_wallpaper_dark(&state.desktop.desktop_wallpaper) {
+            "1"
+        } else {
+            "0"
+        }),
+    );
     let _ = app.component.write_state(
         "__desktop_hidden",
         auto_val::Value::Str(hidden_str.into()),
@@ -12591,14 +12869,21 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         .write_state("__wm_layout", auto_val::Value::str(layout_name));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
-    // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget——
-    // 协议零字段增量）。usable 区逐窗 tile（常驻隐藏窗排除——与投影
-    // 同裁定），壁纸 #hex 基色；渲染臂直查 snapshot 缓存（SWR）。
-    {
-        let viewport = state.host_viewport();
-        let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
-        let mut per_ws: std::collections::BTreeMap<String, Vec<crate::ui::iced::workspace_preview::PreviewTile>> =
-            Default::default();
+    // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget）。
+    // 2026-09-15：抽独立 fn——切换预览面板开着时 400ms 节拍直发（快照
+    // 补抓后的下一拍即可见）；sync 指纹未变时也保持预览数据新鲜。
+    publish_workspace_previews(state);
+}
+
+/// 2026-09-15：workspace_preview 数据发布（原 sync_shell_windows 内联块）。
+/// usable 区逐窗 tile（常驻隐藏窗排除），壁纸 #hex 基色；渲染臂直查
+/// snapshot 缓存（SWR）。
+fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
+    let viewport = state.host_viewport();
+    let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
+    let mut per_ws: std::collections::BTreeMap<String, Vec<crate::ui::iced::workspace_preview::PreviewTile>> =
+        Default::default();
+    if let Some(host) = state.host.as_ref() {
         for &wid in &host.wm.z_order {
             let Some(v) = host.wm.wins.get(&wid) else { continue };
             if v.hidden.get() {
@@ -12615,16 +12900,16 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
                 },
             );
         }
-        crate::ui::iced::workspace_preview::publish(
-            crate::ui::iced::workspace_preview::Published {
-                usable: (usable.width, usable.height),
-                wallpaper: crate::ui::iced::workspace_preview::wallpaper_rgb(
-                    &state.desktop.config.wallpaper_path,
-                ),
-                workspaces: per_ws,
-            },
-        );
     }
+    crate::ui::iced::workspace_preview::publish(
+        crate::ui::iced::workspace_preview::Published {
+            usable: (usable.width, usable.height),
+            wallpaper: crate::ui::iced::workspace_preview::wallpaper_rgb(
+                &state.desktop.config.wallpaper_path,
+            ),
+            workspaces: per_ws,
+        },
+    );
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -13097,6 +13382,18 @@ fn compare_pngs(
                                     let code = std::fs::read_to_string(&e.entry).ok()?;
                                     // Plan 501：外部后端根（注册表扫描期已解析为
                                     // 绝对路径；坏路径 launch 臂 is_dir 兜底跳过）。
+                                    // Plan 020 T-06：pac `desktop_exe:` 相对 App 根
+                                    // 解析（`<dir>/src/front/app.at` 剥三层得 App 根）；
+                                    // 缺席 = None（launch 期约定路径兜底扫描）。
+                                    let app_dir = std::path::Path::new(&e.entry)
+                                        .ancestors()
+                                        .nth(3)
+                                        .map(|d| d.to_path_buf());
+                                    let exe = e
+                                        .desktop_exe
+                                        .as_deref()
+                                        .zip(app_dir.as_ref())
+                                        .map(|(rel, dir)| dir.join(rel));
                                     Some(crate::ui::session::LaunchSpec {
                                         code,
                                         source_path: Some(e.entry.to_string_lossy().to_string()),
@@ -13104,7 +13401,10 @@ fn compare_pngs(
                                         name: e.name.clone(),
                                         daemon: e.daemon.clone(),
                                         back_root: e.back_root.clone(),
+                                        opens: e.opens.clone(),
                                         fit: e.fit,
+                                        exe,
+                                        render_decl: e.desktop_render.clone(),
                                     })
                                 })
                         }));
@@ -13592,6 +13892,19 @@ fn compare_pngs(
         // PLAN-043 T6: MCP scroll action 直落——scrollable 无 VM handler，
         // 合成事件 __mcp_scroll 在此拦截（input_value = "element_id␟y"），
         // 直接发 iced scroll_to 写目标滚动位。
+        // PLAN-629 T-03: 光标跟随——键盘/IME 把光标移出可见带时，编辑器发
+        // 本命令；会话读 caret 内容 y 换算目标偏移（caret 置视口上沿下一行）。
+        if msg.event == "__editor_scroll_to_caret" {
+            let key = &msg.widget;
+            if let Some(caret_y) = crate::ui::code_editor::code_editor_caret_offset_y(key) {
+                let target = (caret_y - 24.0).max(0.0);
+                return iced::widget::operation::scroll_to(
+                    iced::widget::Id::from(format!("editor-scroll-{key}")),
+                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target },
+                );
+            }
+            return iced::Task::none();
+        }
         if msg.event == "__mcp_scroll" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
             if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
@@ -15866,6 +16179,37 @@ fn compare_pngs(
                         // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
                         // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
                         update_shell_clock(state);
+                        // 2026-09-15：切换预览面板开着时——逐可见窗补抓快照
+                        // + 置 shell 重建。快照异步入缓存后原本无人触发重建，
+                        // 预览恒为空壁纸底（用户实测截图）；400ms 节拍内小
+                        // 视图重建成本可控，面板收起（switcher_open="0"）即停。
+                        if let Some(shell) = state.desktop.shell_app {
+                            let open = state
+                                .apps
+                                .get(&shell)
+                                .and_then(|a| a.component.read_state("switcher_open").ok())
+                                .map(|v| v.to_string().contains('1'))
+                                .unwrap_or(false);
+                            if open {
+                                if let Some(host) = state.host.as_ref() {
+                                    for &wid in &host.wm.z_order {
+                                        let visible = host
+                                            .wm
+                                            .wins
+            .get(&wid)
+                                            .map(|v| !v.hidden.get())
+                                            .unwrap_or(false);
+                                        if visible {
+                                            crate::ui::iced::snapshot::request_capture(wid);
+                                        }
+                                    }
+                                }
+                                publish_workspace_previews(state);
+                                if let Some(app) = state.apps.get_mut(&shell) {
+                                    *app.state.view_dirty.borrow_mut() = true;
+                                }
+                            }
+                        }
                         // Plan 551 T6:外写热应用轮询(os-config 经 daemon 改
                         // config.at → 宿主 400ms 节拍感知 → 差异应用)。
                         poll_external_config(state);
@@ -16569,6 +16913,21 @@ fn compare_pngs(
                                     // 单坐标锚数据源）——只写状态不置
                                     // view_dirty，blank_menu open 翻转才重
                                     // 建视图读取最新值，零逐帧重建成本。
+                                    // 2026-09-15：拖拽进行中——超阈值即置
+                                    // moved 旗标（两路落格动词的门），并把
+                                    // 光标所在格回写 drop_c/drop_r（落点格
+                                    // 高亮数据面）；置 view_dirty 让坐标锚
+                                    // 幽灵 popover 跟随（拖拽结束即恢复零
+                                    // 逐帧重建）。
+                                    let mut drag_active = false;
+                                    if let Some((_, (ox, oy))) = &state.desktop.icon_drag {
+                                        let dist =
+                                            ((x - ox).powi(2) + (y - oy).powi(2)).sqrt();
+                                        if dist >= 6.0 {
+                                            state.desktop.icon_drag_moved = true;
+                                            drag_active = true;
+                                        }
+                                    }
                                     if let Some(surface) = state.desktop.desktop_app {
                                         if let Some(app) = state.apps.get_mut(&surface) {
                                             let _ = app.component.write_state(
@@ -16579,6 +16938,32 @@ fn compare_pngs(
                                                 "__desktop_cursor_y",
                                                 auto_val::Value::Float(y as f64),
                                             );
+                                            if drag_active {
+                                                // 与 execute_desktop_icon_drop_at
+                                                // 同一套栅格换算（12px 面内边距 +
+                                                // 88/80px 栅距）。
+                                                let col = (((x - 12.0) / 88.0).floor()
+                                                    as i32)
+                                                    .clamp(0, 7);
+                                                let row = (((y - 12.0) / 80.0).floor()
+                                                    as i32)
+                                                    .clamp(0, 96);
+                                                let _ = app.component.write_state(
+                                                    "drop_c",
+                                                    auto_val::Value::str(col.to_string()),
+                                                );
+                                                let _ = app.component.write_state(
+                                                    "drop_r",
+                                                    auto_val::Value::Str(row.to_string().into()),
+                                                );
+                                                // 2026-09-15：幽灵 popover 开门条件
+                                                // （drag_id 按下即置位，点击会闪副本
+                                                // ——改用 drag_moved 门，真拖起来才显示）。
+                                                let _ = app
+                                                    .component
+                                                    .write_state("drag_moved", auto_val::Value::str("1"));
+                                                *app.state.view_dirty.borrow_mut() = true;
+                                            }
                                         }
                                     }
                                     let host_size = state
@@ -16646,8 +17031,16 @@ fn compare_pngs(
                             // is_pressed，跨件 release 不可达）。光标 =
                             // last_cursor（全局 CursorMoved 持续回写，
                             // desktop 本地坐标）。
-                            if let Some(dragged) = state.desktop.icon_drag.take() {
-                                execute_desktop_icon_drop_at_cursor(state, &dragged);
+                            if let Some((dragged, _origin)) =
+                                state.desktop.icon_drag.take()
+                            {
+                                // 2026-09-15：未超位移阈值 = 点击——原样落回
+                                // （只清视觉态），不再误落光标格。
+                                if state.desktop.icon_drag_moved {
+                                    execute_desktop_icon_drop_at_cursor(state, &dragged);
+                                } else {
+                                    clear_desktop_drag_visual(state);
+                                }
                                 return iced::Task::none();
                             }
                         }
@@ -16726,8 +17119,30 @@ fn compare_pngs(
                     }
                 }
                 // 关窗请求：产 window::close（Closed 事件随后走注册表清理 +
-                // 空则退出；不该由 App 分派管线处理）。
+                // 空则退出）。PLAN-626 T-03: 声明 CloseRequest 生命周期
+                // handler 的应用可拦截（fire 语义同 Init 直调先例）——有
+                // 未保存状态的编辑器先弹确认层，由 handler 决定后续；未
+                // 声明行为不变（向后兼容）。
                 if m.event == "__window_close_request" {
+                    let close_declared = state
+                        .app_of_window(&win)
+                        .and_then(|app_id| {
+                            state.apps.get(&app_id).map(|a| {
+                                (app_id, a.component.has_lifecycle_handler("CloseRequest"))
+                            })
+                        });
+                    if let Some((app_id, true)) = close_declared {
+                        if let Some(app) = state.apps.get_mut(&app_id) {
+                            if let Err(e) = app.component.fire_close_request() {
+                                eprintln!(
+                                    "[VM-HANDLER] {}.CloseRequest failed: {e}",
+                                    app.component.widget_name()
+                                );
+                            }
+                            *app.state.view_dirty.borrow_mut() = true;
+                        }
+                        return iced::Task::none();
+                    }
                     return iced::window::close::<crate::ui::session::DesktopMessage>(win);
                 }
                 match state.app_of_window(&win) {
@@ -17461,11 +17876,14 @@ fn dynamic_view_impl(
         // Plan 370 D-GAP-4: materialize VmRef list fields (e.g. store.notes) to
         // inline Value::Array so the MCP snapshot/inspect tools can expand
         // `for` loops and evaluate `.len()` without VM heap access.
+        // PLAN-633: 状态采集移到本帧视图构建**之后**——挂载期子件 Init
+        // （画廊内嵌全栈 demo：Demo*.Init → store → #[api] → db 种子）在
+        // view 构建中派发并写根态，先采后建会把 Init 写入漏在本帧快照外，
+        // 且 view_dirty 门控使其后无再同步帧 → MCP 快照永久滞留挂载前空值
+        // （013 todos=[] 实证；白盒直读同刻为 4 条）。
+        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let state_vals = state.component.read_all_state_materialized();
         let input_map = state.component.input_state_map().clone();
-        // Plan 307 Task 18: MCP sync never needs the probe — capture_probe=false
-        // makes the returned probe a disabled no-op (zero probe overhead here).
-        let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let view_template = Some(state.component.view_template().clone());
         // Plan 446 批一(J1 诊断层根因修复): styled_vtree 此前仅在
         // __bounds_collected 回路后设置,而 bounds 只在 view() 脏重建时请求
@@ -17544,6 +17962,9 @@ fn dynamic_view_impl(
     }
     // Plan 409 §10 续 11: 同步窗口宽度,供 VM builder 响应式布局(grid 列数)。
     crate::ui::style::iced_adapter::set_window_width(state.window_size.borrow().width);
+    // PLAN-020 T-00b: 高度随帧同步(window_size = 逻辑 px;分屏矩形投影
+    // 窗口尺寸面的消费源,与 width 同点同规约)。
+    crate::ui::style::iced_adapter::set_window_height(state.window_size.borrow().height);
     // PLAN-530 步骤2 表面追踪：view 重建时的宽度信号轨迹。
     if std::env::var("P530_TRACE").as_deref() == Ok("1") {
         let sz = state.window_size.borrow();
@@ -17627,6 +18048,11 @@ fn dynamic_view_impl(
         *state.app.devtools.needs_bounds.borrow_mut() = true;
     }
 
+    // PLAN-631 T-01：剖析计时——builder（模板→AbstractView 转换）与
+    // render（AbstractView→iced Element）两段耗时随 `[P631-PROFILE]` 行
+    // 逐重建帧吐出（P631_PROFILE=1 启用；Style::parse 计数见 ui::style::profile）。
+    let p631_profile = crate::ui::style::profile::enabled();
+    let p631_t_builder = p631_profile.then(std::time::Instant::now);
     let (converted, debug_id_map) = if dirty {
         // Full rebuild: construct AbstractView from template, cache the result.
         // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
@@ -17689,6 +18115,9 @@ fn dynamic_view_impl(
             (converted, debug_id_map)
         }
     };
+    let p631_builder_us = p631_t_builder
+        .as_ref()
+        .map(|t0| t0.elapsed().as_micros() as u64);
 
     // Plan 307 Task 5: build a live VTree once per frame for the DevTools inspector.
     // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
@@ -17752,7 +18181,23 @@ fn dynamic_view_impl(
     }
 
     let mut path = Vec::new();
+    let p631_t_render = p631_profile.then(std::time::Instant::now);
     let rendered = render_dynamic_view(converted, debug_ctx.as_ref(), &mut path);
+    if p631_profile {
+        let (calls, nanos) = crate::ui::style::profile::take();
+        let builder_ms = p631_builder_us.unwrap_or(0) as f64 / 1000.0;
+        let render_ms = p631_t_render
+            .map(|t0| t0.elapsed().as_micros() as u64)
+            .unwrap_or(0) as f64
+            / 1000.0;
+        eprintln!(
+            "[P631-PROFILE] rebuild builder_ms={:.2} render_ms={:.2} style_parse_calls={} style_parse_ms={:.2}",
+            builder_ms,
+            render_ms,
+            calls,
+            nanos as f64 / 1_000_000.0
+        );
+    }
 
     // Plan 412 续(toast 修正 3):toast 的消费/入队/到期 Task 都在 update
     // (&mut)完成;dynamic_view 只按 DynamicState.toasts 渲染恒定双层
@@ -17904,6 +18349,11 @@ fn dynamic_view_impl(
             }
         }
     }
+
+    // PLAN-631 F-7: 指针按下记忆根包装——placement "pointer" 的锚源(窗口
+    // 根单包装,纯委托,ButtonPressed 事件现场记账;见 ui::iced::right_press_area)。
+    let result: iced::Element<'static, IcedMessage> =
+        crate::ui::iced::right_press_area::PointerPressArea::new(result).into();
 
     // Cache the Element for reuse on next non-dirty frame, then take and return.
     // view_dirty was already cleared above.
@@ -20265,6 +20715,20 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
     if let Some(msg) = on_context_menu {
         widget = widget.on_context_menu(move |_| msg.clone());
     }
+
+    // PLAN-629 T-03: 寄宿公共 scroller（M 无关契约——draw 每帧偏移同步 +
+    // dispatch_app 尾部排水光标跟随，见 render_dynamic_view 同款包裹）。
+    if std::env::var("AUTO_EDITOR_NO_SCROLLER").as_deref() != Ok("1") {
+        widget = widget.hosted();
+        let scroller = iced::widget::scrollable(widget)
+            .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
+            .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                scrollbar_style()
+            })
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill);
+        return scroller.into();
+    }
     widget.into()
 }
 
@@ -20272,6 +20736,8 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
 fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<&Style> {
     match view {
         AbstractView::Empty => None,
+        // PLAN-066: Custom 自带 style（与内置变体同待遇）。
+        AbstractView::Custom { style, .. } => style.as_ref(),
         // Plan 409 §10 续 5: Overlay 本身无 style(base/content 各自带)。
         AbstractView::Overlay { .. } => None,
         // PLAN-063 T-04d-2: 锚槽无自有样式，读子件。
@@ -20364,6 +20830,8 @@ fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> b
 fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str {
     match view {
         AbstractView::Empty => "empty",
+        // PLAN-066: 原生外部组件 hover 前缀（快照 kind 是注册名本体）。
+        AbstractView::Custom { .. } => "custom",
         AbstractView::Overlay { .. } => "overlay",
         AbstractView::AnchorSlot { .. } => "anchor_slot",
         AbstractView::Popover { .. } => "popover",
@@ -21019,8 +21487,25 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 });
             }
 
-            let el: iced::Element<'static, IcedMessage> = widget.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            // PLAN-629 T-03: 寄宿公共 scroller（VM 轨主路径）——滚动条 UI/
+            // 交互由官方 scrollable 承担（scrollbar_style vue 风格），编辑器
+            // 只做虚拟化渲染。契约 M 无关：draw 每帧偏移同步；光标跟随经
+            // core 标记由 dispatch_app 尾部排水成 scroll_to 任务。
+            if std::env::var("AUTO_EDITOR_NO_SCROLLER").as_deref() != Ok("1") {
+                widget = widget.hosted();
+                let scroller = iced::widget::scrollable(widget)
+                    .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
+                    .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                        scrollbar_style()
+                    })
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill);
+                let el: iced::Element<'static, IcedMessage> = scroller.into();
+                if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            } else {
+                let el: iced::Element<'static, IcedMessage> = widget.into();
+                if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
+            }
         }
 
         // Plan 019 Phase 3: autodown doc editor (VM path) — on_change 发布携带
@@ -21128,7 +21613,14 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     inner
                 };
             let dbg_props = debug_style_props(style.as_ref());
-            let el = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, None);
+            // PLAN-631 F-5：mouse-area hover 样式对（镜像 into_iced 臂与
+            // 布局件臂——HoverArea + 共享标志，零 VM 消息零重建）。
+            let hover = layout_hover_flag(style.as_ref());
+            let built = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, hover.clone());
+            let el = match hover {
+                Some(flag) => crate::ui::iced::hover_area::HoverArea::new(built, flag).into(),
+                None => built,
+            };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "mouse_area", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -22321,6 +22813,337 @@ where
 }
 
 /// Run a rust-mode Component — built by a boot closure — with the F12 DevTools
+// ---------------------------------------------------------------------------
+// Plan 020 T-03 —— native 像素臂渲染宿主（Component 泛型，independent 臂）
+// ---------------------------------------------------------------------------
+
+/// native 像素臂消息面：App 消息 / 协议入站 / 截图回调 / tick。
+/// 无 Debug 派生——`iced::window::Screenshot` 只有 Clone；iced 0.14 的
+/// `MaybeDebug/MaybeClone` 界限下合法（debug feature 未开）。
+#[derive(Clone)]
+pub enum NativePixelsMsg<C: Component> {
+    App(C::Msg),
+    Proto(Box<crate::ui::desktop_protocol::message::ProtocolMsg>),
+    Shot(iced::window::Screenshot),
+    Tick,
+}
+
+/// native 像素臂宿主状态：native 组件 + 像素桥（boot 期从 launch slot 取，
+/// Hello 握手在此发起——run_session Standalone 像素臂同序）。
+struct NativePixelsHost<C: Component> {
+    inner: C,
+    bridge: Option<crate::ui::desktop_protocol::pixels::PixelsChild>,
+}
+
+impl<C: Component> NativePixelsHost<C> {
+    fn from_launch(component: C) -> Self {
+        let mut host = Self {
+            inner: component,
+            bridge: crate::ui::desktop_protocol::pixels::take_launch(),
+        };
+        // Hello 握手失败不装桥——管道已死，宿主空转至窗亡（与解释态臂
+        // run_session Standalone 同边角语义）。
+        if let Some(bridge) = host.bridge.as_mut() {
+            if !bridge.start() {
+                host.bridge = None;
+            }
+        }
+        host
+    }
+}
+
+/// 状态变更（App 消息/tick）后的截图发起——去重防抖在桥内
+/// （`request_capture`：同轮只发一次 Task）。
+/// 截图 Task：经 `window::latest()` 取当前窗（iced 0.14 无 Id::MAIN——
+/// 单窗 application 的窗 id 运行期解析）再 screenshot。
+fn native_pixels_shot_task<C>() -> iced::Task<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    iced::window::latest().then(|id| match id {
+        Some(win) => iced::window::screenshot(win).map(NativePixelsMsg::Shot),
+        None => iced::Task::none(),
+    })
+}
+
+fn native_pixels_capture<C>(
+    state: &mut NativePixelsHost<C>,
+) -> iced::Task<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    let Some(bridge) = state.bridge.as_mut() else {
+        return iced::Task::none();
+    };
+    if bridge.request_capture() {
+        native_pixels_shot_task::<C>()
+    } else {
+        iced::Task::none()
+    }
+}
+
+/// update：Proto/Shot 两臂镜像 run_session 的解释态像素臂
+/// （DesktopEvent::PixelsProtocol/PixelsShot 同名臂）；App/Tick 臂驱动
+/// `inner.on` 后发起截图。native v1 边界：`on_protocol` 组件参数传
+/// None——StateSnapshot 注入 not-yet（Plan 020 §5.1）。
+fn native_pixels_update<C>(
+    state: &mut NativePixelsHost<C>,
+    msg: NativePixelsMsg<C>,
+) -> iced::Task<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    use crate::ui::desktop_protocol::message::ProtocolMsg;
+    match msg {
+        NativePixelsMsg::App(m) => {
+            state.inner.on(m);
+            native_pixels_capture(state)
+        }
+        NativePixelsMsg::Tick => {
+            if let Some(m) = state.inner.tick_msg() {
+                state.inner.on(m);
+            }
+            native_pixels_capture(state)
+        }
+        NativePixelsMsg::Proto(m) => {
+            let Some(mut bridge) = state.bridge.take() else {
+                return iced::Task::none();
+            };
+            let (replies, want_capture) = bridge.on_protocol(*m, None);
+            for reply in replies {
+                if !bridge.send(&reply) {
+                    state.bridge = Some(bridge);
+                    return iced::exit();
+                }
+            }
+            let mut tasks = Vec::new();
+            if want_capture && bridge.request_capture() {
+                tasks.push(native_pixels_shot_task::<C>());
+            }
+            let detached = bridge.is_detached();
+            state.bridge = Some(bridge);
+            if detached {
+                return iced::exit();
+            }
+            iced::Task::batch(tasks)
+        }
+        NativePixelsMsg::Shot(ss) => {
+            let Some(bridge) = state.bridge.as_mut() else {
+                return iced::Task::none();
+            };
+            // 物理像素 → 表面逻辑尺寸（盒降采样）：shm 槽按逻辑尺寸定档，
+            // HiDPI scale 经此对齐（497 快照同型）。
+            let (lw, lh) = bridge.size();
+            let lw = lw.max(1.0).ceil() as u32;
+            let lh = lh.max(1.0).ceil() as u32;
+            let rgba = crate::ui::desktop_protocol::pixels::downsample_to_logical(
+                ss.rgba.as_ref(),
+                ss.size.width,
+                ss.size.height,
+                lw,
+                lh,
+            );
+            let frame = crate::ui::desktop_protocol::pixels::PixelsFrame {
+                rgba,
+                w: lw,
+                h: lh,
+                stride: lw * 4,
+            };
+            if let Some(frame_msg) = bridge.capture(frame) {
+                if !bridge.send(&ProtocolMsg::Frame(frame_msg)) {
+                    return iced::exit();
+                }
+            }
+            if bridge.is_detached() {
+                return iced::exit();
+            }
+            iced::Task::none()
+        }
+    }
+}
+
+/// view：native 组件 View → iced（`IntoIcedElement`），消息面映射到
+/// `NativePixelsMsg::App`。
+fn native_pixels_view<C>(
+    state: &NativePixelsHost<C>,
+) -> iced::Element<'_, NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    state.inner.view().into_iced().map(NativePixelsMsg::App)
+}
+
+/// 协议入站轮询（pixels 协议订阅同型——该订阅 Output 钉死
+/// DesktopMessage，native 臂消息面独立建 recipe；空拍 5ms 重试）。
+fn native_pixels_proto_subscription<C>() -> iced::Subscription<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    use iced_futures::subscription::Recipe;
+
+    struct NativePixelsProtoRecipe<C: Component>(std::marker::PhantomData<fn() -> C>);
+
+    impl<C: Component> std::hash::Hash for NativePixelsProtoRecipe<C> {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            "auto-lang-native-pixels-protocol".hash(state);
+        }
+    }
+
+    impl<C: Component> Recipe for NativePixelsProtoRecipe<C>
+    where
+        C: 'static,
+    {
+        type Output = NativePixelsMsg<C>;
+
+        fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+            std::hash::Hash::hash(self, state);
+        }
+
+        fn stream(
+            self: Box<Self>,
+            _input: iced_futures::subscription::EventStream,
+        ) -> iced_futures::BoxStream<Self::Output> {
+            use iced_futures::futures::stream::{StreamExt, unfold};
+            unfold((), |()| async move {
+                loop {
+                    match crate::ui::desktop_protocol::pixels::poll_transport() {
+                        Some(Ok(msg)) => {
+                            return Some((NativePixelsMsg::Proto(Box::new(msg)), ()));
+                        }
+                        Some(Err(_codec)) => continue,
+                        None => {
+                            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                        }
+                    }
+                }
+            })
+            .boxed()
+        }
+    }
+
+    iced_futures::subscription::from_recipe(NativePixelsProtoRecipe(
+        std::marker::PhantomData,
+    ))
+}
+
+/// tick 订阅（run_app_devtools 的 tick_subscription 同型——.map() 在泛型
+/// 代码不可用，'static recipe 直发 Tick 变体；interval 入 hash 防漂重订阅）。
+fn native_pixels_tick_subscription<C>(
+    interval: std::time::Duration,
+) -> iced::Subscription<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    use iced_futures::subscription::Recipe;
+
+    struct NativePixelsTickRecipe<C: Component> {
+        interval: std::time::Duration,
+        _c: std::marker::PhantomData<fn() -> C>,
+    }
+
+    impl<C: Component> std::hash::Hash for NativePixelsTickRecipe<C> {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            ("auto-lang-native-pixels-tick", self.interval).hash(state);
+        }
+    }
+
+    impl<C: Component> Recipe for NativePixelsTickRecipe<C>
+    where
+        C: 'static,
+    {
+        type Output = NativePixelsMsg<C>;
+
+        fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+            std::hash::Hash::hash(self, state);
+        }
+
+        fn stream(
+            self: Box<Self>,
+            _input: iced_futures::subscription::EventStream,
+        ) -> iced_futures::BoxStream<Self::Output> {
+            use iced_futures::futures::stream::{StreamExt, unfold};
+            let interval = self.interval;
+            unfold((), move |()| {
+                let interval = interval;
+                async move {
+                    tokio::time::sleep(interval).await;
+                    Some((NativePixelsMsg::<C>::Tick, ()))
+                }
+            })
+            .boxed()
+        }
+    }
+
+    iced_futures::subscription::from_recipe(NativePixelsTickRecipe {
+        interval,
+        _c: std::marker::PhantomData,
+    })
+}
+
+fn native_pixels_subscription<C>(
+    state: &NativePixelsHost<C>,
+) -> iced::Subscription<NativePixelsMsg<C>>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    let mut subs = vec![native_pixels_proto_subscription::<C>()];
+    if state.inner.tick_msg().is_some() {
+        if let Some(ms) = state.inner.tick_interval_ms() {
+            subs.push(native_pixels_tick_subscription::<C>(
+                std::time::Duration::from_millis(ms as u64),
+            ));
+        }
+    }
+    iced::Subscription::batch(subs)
+}
+
+/// Plan 020 T-03 —— native 像素臂渲染宿主入口：隐藏单窗 iced application
+/// over `C: Component` + 像素桥（协议轮询订阅 + 截图回发 + Close 退出）。
+/// 窗尺寸 = 表面逻辑尺寸（shm 槽/截图降采样口径同源）；`visible: false`
+/// ——渲染/截图照常，不进 OS 桌面 z 序（run_session Standalone+pixels
+/// 同语义，合成归宿主虚拟窗）。
+pub fn run_native_iced_pixels<C>(component: C, width: f32, height: f32) -> AppResult<()>
+where
+    C: Component + 'static,
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    // 单发组件装载（RefCell 内变——new 闭包需 Fn，生成 main 的 __init
+    // 同型手法）。
+    let cell = std::cell::RefCell::new(Some(component));
+    iced::application(
+        move || {
+            let component = cell
+                .borrow_mut()
+                .take()
+                .expect("pixels host init once");
+            NativePixelsHost::from_launch(component)
+        },
+        native_pixels_update::<C>,
+        native_pixels_view::<C>,
+    )
+    .subscription(native_pixels_subscription::<C>)
+    .window(iced::window::Settings {
+        size: iced::Size::new(width, height),
+        position: iced::window::Position::Specific(iced::Point::new(80.0, 80.0)),
+        visible: false,
+        ..Default::default()
+    })
+    .title(|_: &NativePixelsHost<C>| window_title(String::from("Auto Lang - Pixels")))
+    .font(INTER_FONT_REGULAR)
+    .font(INTER_FONT_MEDIUM)
+    .font(INTER_FONT_SEMIBOLD)
+    .default_font(INTER_FONT)
+    .run()
+    .map_err(|e| e.into())
+}
+
 /// layer (Plan 311 P2-A). The async-init counterpart of [`run_app_devtools`]:
 /// covers apps whose `main.rs` codegens to `run_app_with_task` (e.g. any app
 /// with an `__InitLoaded` init API, like `015-notes`).
@@ -23495,7 +24318,9 @@ mod tests {
                         fit: false,
                         daemon: Some("autoos".to_string()),
                         back_root: None,
-                    });
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    });
                 }
                 let e = apps.iter().find(|a| a.id == name)?;
                 Some(crate::ui::session::LaunchSpec {
@@ -23506,7 +24331,9 @@ mod tests {
                     fit: e.fit,
                     daemon: None,
                     back_root: None,
-                })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
             })
         });
         ds
@@ -23890,7 +24717,10 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        }];
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
@@ -23901,7 +24731,9 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
             }));
         ds.launch_app("011-calculator").expect("launch");
         sync_shell_windows(&mut ds);
@@ -24637,10 +25469,12 @@ mod tests {
             raw.to_string(),
         );
         let pos = load_desktop_positions();
-        let (cells, ids, cs, rs) = desktop_icon_cells(&order, &[], &[], None);
+        // 2026-09-15：未定位图标改**列主序**填充（rows=8；纵向优先——左列
+        // 自上而下占满再排下一列）。
+        let (cells, ids, cs, rs) = desktop_icon_cells(&order, &[], &[], None, 8);
         eprintln!("[w5-cells] positions={pos:?} ids={ids:?} cs={cs:?} rs={rs:?}");
-        // 行主序：(0,0)=a，(1,0)=spacer，(2,0)=c？——b 占 (3,0)、d 占 (1,1)。
-        // 行主序填充：a→(0,0)，c→(1,0)（b 占 (3,0)），d 定位 (1,1)。
+        // b 占 (3,0)、d 占 (1,1)。列主序填充：a→k=0→(0,0)，c→k=1→(0,1)
+        // （线性格 8 未被占）。
         let id_of = |i: usize| -> String {
             match &cells[i] {
                 auto_val::Value::Obj(o) => match o.get("id") {
@@ -24652,21 +25486,21 @@ mod tests {
         };
         assert_eq!(cells.len(), ids.len(), "cells 与 ids 等长");
         assert_eq!(cs.len(), rs.len());
-        assert_eq!(id_of(0), "a", "行主序首个空格 (0,0)");
-        assert_eq!(id_of(1), "c", "跳过 b 的定位格后首个空格 (1,0)");
-        // b 定位 (3,0)：cells 数组紧凑到最后一枚图标——b 前仅 (2,0) 一格
-        // 空缺 → spacer，故 b 落数组下标 3（(c,r)=(3,0) 由 cs/rs 背书）。
-        let bi = ids.iter().position(|x| x == "b").unwrap();
-        assert_eq!(bi, 3, "b 紧跟 (2,0) spacer");
+        assert_eq!(id_of(0), "a", "列主序首格 (0,0)");
+        // 行主序输出：(0,1) = 线性下标 8。
+        assert_eq!(id_of(8), "c", "列主序次格 (0,1) → 行主序下标 8");
         let cell_str = |v: &auto_val::Value| -> String {
             match v {
                 auto_val::Value::Str(x) => x.to_string(),
                 other => other.to_string(),
             }
         };
+        // b 定位 (3,0) → 行主序下标 3；其前 (1,0)(2,0) 为 spacer。
+        let bi = ids.iter().position(|x| x == "b").unwrap();
+        assert_eq!(bi, 3, "b 在行主序下标 3");
         assert_eq!(cell_str(&cs[bi]), "3", "b 的列 = 定位值");
         assert_eq!(cell_str(&rs[bi]), "0", "b 的行 = 定位值");
-        let spacer_at_2 = match &cells[2] {
+        let spacer_at_1 = match &cells[1] {
             auto_val::Value::Obj(o) => o
                 .get("spacer")
                 .map(|v| {
@@ -24675,7 +25509,7 @@ mod tests {
                 .unwrap_or(false),
             _ => false,
         };
-        assert!(spacer_at_2, "(2,0) 应为 spacer 填位");
+        assert!(spacer_at_1, "(1,0) 应为 spacer 填位");
         let di = ids.iter().position(|x| x == "d").unwrap();
         assert_eq!(cell_str(&cs[di]), "1", "d 定位列");
         assert_eq!(cell_str(&rs[di]), "1", "d 定位行");
@@ -25353,6 +26187,7 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
+                    ..Default::default()
                 })
             }));
         let _ = execute_desktop_commands(&mut ds, vec![DC::ShowDesktop]);
@@ -25678,7 +26513,9 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
             }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
@@ -25722,7 +26559,9 @@ mod tests {
                     daemon: None,
                     back_root: None,
                     fit: false,
-                })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
             }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
@@ -25927,7 +26766,10 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        }];
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    }];
         inject_dock_pinned(&mut ds);
         {
             let app = ds.apps.get(&id).unwrap();
@@ -26704,7 +27546,10 @@ mod tests {
     back_root: None,
     fit: false,
     desktop_visible: true,
-            },
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
                 title: "便签".into(),
@@ -26718,7 +27563,10 @@ mod tests {
     back_root: None,
     fit: false,
     desktop_visible: true,
-            },
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    },
         ];
         // PLAN-012 W4：dock_pinned 缺省空（t3_session_with_shell 不动）。
         // storage：custom 014-weather + 重叠 011-calculator；hidden 013-todo。
@@ -27265,7 +28113,10 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        };
+        desktop_exe: None,
+        desktop_render: None,
+        opens: Vec::new(),
+    };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();
         ds.open_desktop(iced::window::Id::unique());

@@ -88,6 +88,11 @@ pub trait FrameSource {
     fn on_input(&mut self, input: &InputMsg);
     /// 控制消息消费（焦点/resize 等生命周期语义）。
     fn on_control(&mut self, control: &ControlMsg);
+    /// 周期拍（Plan 020 T-04）：泵循环每轮调用——解释态投影器无 tick 源
+    /// （缺省空实现，行为零变化）；native 投影器实现为 interval 到期 →
+    /// `component.on(tick_msg)` + revision 前进（`Component::tick_interval_ms`
+    /// 配方，run_app_devtools 同源）。revision 变化由泵侧对账产帧。
+    fn poll_tick(&mut self) {}
 }
 
 /// app 侧端点。泛型 [`FrameSource`] 是会话的最小接缝。

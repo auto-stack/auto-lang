@@ -1361,7 +1361,41 @@ impl CompileSession {
 
                 if use_stmt.is_wildcard {
 
-                    store.merge(&cached.type_store);
+                    // Plan 545 D2: wildcard 冲突检测（与 fresh 分支同款）
+
+                    let conflicts = store.merge_with_conflicts(
+
+                        &cached.type_store,
+
+                        &use_stmt.module,
+
+                    );
+
+                    if !conflicts.is_empty() {
+
+                        let detail = conflicts.iter()
+
+                            .map(|c| format!(
+
+                                "`{}` is defined in both `{}` and `{}`",
+
+                                c.symbol, c.existing_origin, c.incoming_origin
+
+                            ))
+
+                            .collect::<Vec<_>>()
+
+                            .join("; ");
+
+                        return Err(AutoError::Msg(format!(
+
+                            "ambiguous import from `{}`: {} — disambiguate with `use {}: <name>`",
+
+                            use_stmt.module, detail, use_stmt.module
+
+                        )));
+
+                    }
 
                 } else if !use_stmt.items.is_empty() {
 
@@ -1369,9 +1403,21 @@ impl CompileSession {
 
                 } else {
 
-                    store.merge(&cached.type_store);
+                    // Plan 545: bare = namespace-only，不 merge（同 fresh 分支）
 
                 }
+
+                // Plan 545: 模块登记（缓存命中路径）
+
+                let module_name = use_stmt.module.rsplit('.').next()
+
+                    .unwrap_or(use_stmt.module.as_str())
+
+                    .to_string();
+
+                let export_fns = cached.type_store.pub_fn_names();
+
+                store.register_module(&module_name, cached.type_store.clone(), export_fns);
 
                 return Ok(());
 
@@ -1630,6 +1676,11 @@ impl CompileSession {
         // into the session TypeStore before parse_module_to_type_store needs them
         self.resolve_uses(&module_source)?;
 
+        // Plan 545 D2: 解析前快照——Parser 解析模块源时会直接把该模块的 decl
+        // 写进共享 session store（parser 多处 type_store.write），冲突检测若
+        // 读 live store 会退化为"自己比自己"而漏报；以快照为准做只读检测。
+        let preparse_store_snapshot = self.type_store.read().unwrap().clone();
+
         // 瑙ｆ瀽鍚堝苟鍚庣殑妯″潡鑾峰彇 type_store
         let module_type_store = self.parse_module_to_type_store(&module_source, &root_path.to_string_lossy())?;
 
@@ -1638,8 +1689,12 @@ impl CompileSession {
         let path_key = root_path.canonicalize()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| root_path.to_string_lossy().to_string());
+        // Plan 545: 该模块的导出函数名（bytecode exports 键），供
+        // TypeStore.modules 登记（wildcard 平铺映射/限定查找消费）。
+        let module_export_fns: Vec<String>;
         if !self.compiled_module_paths.contains(&path_key) {
             let module_code = self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
+            module_export_fns = module_code.exports.keys().cloned().collect();
             // Plan 348 E1: retain a module if it exports functions OR declares
             // top-level globals (var/const). Previously a const/var-only module
             // was dropped (empty exports), so its STORE_GLOBAL init code never
@@ -1648,6 +1703,8 @@ impl CompileSession {
                 self.compiled_modules.push(module_code);
             }
             self.compiled_module_paths.insert(path_key);
+        } else {
+            module_export_fns = Vec::new();
         }
 
 
@@ -1678,23 +1735,85 @@ impl CompileSession {
 
             if use_stmt.is_wildcard {
 
-                // 閫氶厤绗﹀鍏ワ細鍚堝苟鎵€鏈夌鍙?
+                // Plan 545 D2: wildcard 平铺带冲突检测——同名异源异定义 → 编译错误
 
-                store.merge(&module_type_store);
+                // （检测读 pre-parse 快照；写入走 merge_with_conflicts 维护 origin）
+
+                let conflicts = preparse_store_snapshot.detect_conflicts(
+
+                    &module_type_store,
+
+                    &use_stmt.module,
+
+                );
+
+                if !conflicts.is_empty() {
+
+                    let detail = conflicts.iter()
+
+                        .map(|c| format!(
+
+                            "`{}` is defined in both `{}` and `{}`",
+
+                            c.symbol, c.existing_origin, c.incoming_origin
+
+                        ))
+
+                        .collect::<Vec<_>>()
+
+                        .join("; ");
+
+                    return Err(AutoError::Msg(format!(
+
+                        "ambiguous import from `{}`: {} — disambiguate with `use {}: <name>`",
+
+                        use_stmt.module, detail, use_stmt.module
+
+                    )));
+
+                }
+
+                // 写入（origin 登记）；检测已由快照完成，返回值忽略
+
+                let _ = store.merge_with_conflicts(&module_type_store, &use_stmt.module);
 
             } else if !use_stmt.items.is_empty() {
-
-                // 閫夋嫨鎬у鍏ワ細鍙鍏ユ寚瀹氶」
 
                 store.import_items(&module_type_store, &use_stmt.items);
 
             } else {
 
-                // 榛樿瀵煎叆鏁翠釜妯″潡
+                // Plan 545: bare `use db` = namespace-only（Rust 2018 风格）。
 
-                store.merge(&module_type_store);
+                // 不平铺 merge——限定访问 `db.X` 走 codegen 限定 reloc +
+
+                // Linker `db#X`，类型层经 modules 注册表限定查找。
 
             }
+
+            // Plan 545: 模块登记（所有形态——bare/wildcard/named 都需限定可见）
+
+            let module_name = use_stmt.module.rsplit('.').next()
+
+                .unwrap_or(use_stmt.module.as_str())
+
+                .to_string();
+
+            let export_fns = if module_export_fns.is_empty() {
+
+                // 重复加载（compiled_module_paths 命中）或无导出：从模块符号表
+
+                // 的 pub fn 面近似（wildcard 映射的超集无碍）
+
+                module_type_store.pub_fn_names()
+
+            } else {
+
+                module_export_fns.clone()
+
+            };
+
+            store.register_module(&module_name, module_type_store.clone(), export_fns);
 
         }
 

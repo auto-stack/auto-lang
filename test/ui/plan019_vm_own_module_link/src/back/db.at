@@ -1,0 +1,12 @@
+// db.at — 模型面。缺陷形状(019 真机 mux_resize_branch/mux_tab_id_at
+// 同型):bump 先声明,get_val 后向裸调用;编译 get_val 体时 exports 已
+// 含 api.bump + db.bump(两个 .bump 后缀)→ unique-suffix 回退失效 →
+// 裸名 reloc → 单模块链接 "Undefined symbol: bump"。
+// 修复 = codegen own-module 绑定(current_fn_module),裸调用绑 db.bump。
+pub fn bump(x int) int {
+    return x + 1
+}
+
+pub fn get_val(x int) int {
+    return bump(x)
+}

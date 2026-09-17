@@ -1009,6 +1009,8 @@ unexpected failures:
 #[test] fn test_10_collections_005_method_chain() { test_a2r("10_collections/005_method_chain").unwrap(); }
 #[test] fn test_10_collections_006_map_literal() { test_a2r("10_collections/006_map_literal").unwrap(); }
 #[test] fn test_10_collections_007_list_new() { test_a2r("10_collections/007_list_new").unwrap(); }
+#[test] fn test_10_collections_008_list_set_index() { test_a2r("10_collections/008_list_set_index").unwrap(); }
+#[test] fn test_10_collections_009_global_list_set() { test_a2r("10_collections/009_global_list_set").unwrap(); }
 
 // === 11_methods ===
 #[test] fn test_11_methods_001_method() { test_a2r("11_methods/001_method").unwrap(); }
@@ -1172,6 +1174,14 @@ fn test_16_interop_021_path_dep() {
 #[test] fn test_18_rust_std_017_hash_map_ops() { test_a2r("17_rust_std/017_hash_map_ops").unwrap(); }
 // Plan 349: http.download / http.upload / http.download_resume a2r parity.
 #[test] fn test_18_rust_std_011_http_download_upload() { test_a2r("17_rust_std/011_http_download_upload").unwrap(); }
+
+// === 28_sqlite: sqlite stdlib module (Plan 415-B1) ===
+#[test] fn test_28_sqlite_001_basic() { test_a2r("28_sqlite/001_basic").unwrap(); }
+#[test] fn test_28_sqlite_002_advanced() { test_a2r("28_sqlite/002_advanced").unwrap(); }
+
+// === 29_redis: redis stdlib module (Plan 415-B2) ===
+#[test] fn test_29_redis_001_basic() { test_a2r("29_redis/001_basic").unwrap(); }
+#[test] fn test_29_redis_002_advanced() { test_a2r("29_redis/002_advanced").unwrap(); }
 
 // === 18_pure_rust: Pure Rust output (no a2r_std dependency) ===
 
@@ -1583,6 +1593,9 @@ fn test_312_codegen_collects_api_routes() {
 
 // -- cookbook/safety --
 #[test] fn test_cookbook_safety_001_heapless() { test_cookbook("safety/001_heapless").unwrap(); }
+// Plan 415-E1: de-stubbed to the real memmap2 crate (dep track); VM tier not
+// registered (no VM mmap native — the old bare-file stub was VM-orphaned).
+#[test] fn test_cookbook_safety_001_memmap() { test_cookbook("safety/001_memmap").unwrap(); }
 
 // -- cookbook/science/mathematics/complex_numbers --
 #[test] fn test_cookbook_science_mathematics_complex_numbers_003_math_functions() { test_cookbook("science/mathematics/complex_numbers/003_math_functions").unwrap(); }

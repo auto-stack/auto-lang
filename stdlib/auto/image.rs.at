@@ -47,3 +47,6 @@ pub fn close_session(session str) bool
 
 #[rs]
 pub fn session_stats(session str) str
+
+#[rs]
+pub fn thumb(path str, size int) str

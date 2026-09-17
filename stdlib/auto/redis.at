@@ -1,0 +1,46 @@
+/// Redis module - in-memory data structure store client
+///
+/// Interface layer (declarations only). The a2r (Auto-to-Rust) path binds
+/// these calls to `a2r_std::redis` (redis-rs, sync API) — Plan 415-B2.
+/// The AutoVM path has no native implementation yet; VM programs must not
+/// call into this module until a VM backend lands.
+
+/// Opaque handle to a Redis client connection.
+/// The connection is opened eagerly and closed automatically when the
+/// handle goes out of scope (RAII) — there is no explicit close.
+type RedisClient
+
+/// Open a connection to a Redis server ("redis://host:port/db").
+/// On failure (unreachable server, bad URL), returns a client whose
+/// operations report failure sentinels and records the error for
+/// `redis.last_error()` — never panics.
+/// Example: var r RedisClient = redis.open("redis://127.0.0.1:6379")
+pub fn open(addr str) RedisClient;
+
+/// Check the connection is alive (PING/PONG).
+/// Returns true on success, false when not connected or on error.
+/// Example: r.ping()
+pub fn RedisClient.ping(self RedisClient) bool;
+
+/// Set a string key to a string value.
+/// Returns true on success, false on failure.
+/// Example: r.set("greeting", "hello")
+pub fn RedisClient.set(self RedisClient, key str, val str) bool;
+
+/// Get a string value by key.
+/// Returns "" when the key is missing or on failure.
+/// Example: let v str = r.get("greeting")
+pub fn RedisClient.get(self RedisClient, key str) str;
+
+/// Delete keys. Returns the number of keys removed, or -1 on failure.
+/// Example: let n int = r.del("greeting")
+pub fn RedisClient.del(self RedisClient, key str) int;
+
+/// Check whether a key exists.
+/// Returns true if the key exists, false when missing or on failure.
+/// Example: r.exists("greeting")
+pub fn RedisClient.exists(self RedisClient, key str) bool;
+
+/// The most recent error message recorded by this module ("" if none).
+/// Example: redis.last_error()
+pub fn last_error() str;

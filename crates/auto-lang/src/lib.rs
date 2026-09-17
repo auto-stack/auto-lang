@@ -1535,7 +1535,7 @@ async fn execute_autovm_with_path(
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
     vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {
@@ -1815,7 +1815,7 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         crate::error::AutoError::Msg(e.message.clone())
@@ -2726,6 +2726,45 @@ pub fn set_external_back_root(root: std::path::PathBuf) {
     let _ = EXTERNAL_BACK_ROOT.set(root);
 }
 
+/// PLAN-635 D4: does this pac.at text declare a dependency with the given
+/// name? Matches both `dep "name" { ... }` and `dep name { ... }` forms with
+/// a word-boundary check so `dep settings` does not match `dep settings_v2`.
+fn pac_declares_dep(content: &str, dep_name: &str) -> bool {
+    for form in [format!("dep \"{}\"", dep_name), format!("dep {}", dep_name)] {
+        if let Some(pos) = content.find(&form) {
+            let after = content[pos + form.len()..].chars().next();
+            // The name must end at a non-identifier char (whitespace, `{`, `,`, `:`).
+            let boundary = after.is_some_and(|c| !(c.is_alphanumeric() || c == '_' || c == '.'));
+            if boundary {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// PLAN-635 D5: if this pac.at declares a workspace whose members include a
+/// directory matching `dep_name` (member entry's last path segment), return
+/// that entry's relative path. Members syntax: `members: ["common", "apps/x"]`
+/// (single- or multi-line).
+fn pac_workspace_member_dir(content: &str, dep_name: &str) -> Option<String> {
+    let members_pos = content.find("members")?;
+    let list_start = content[members_pos..].find('[')? + members_pos;
+    let list_end = content.find(']').filter(|e| *e > list_start)?;
+    let list = &content[list_start + 1..list_end];
+    for entry in list.split(',') {
+        let entry = entry.trim().trim_matches(|c| c == '"' || c == '\'');
+        if entry.is_empty() {
+            continue;
+        }
+        let last = entry.rsplit(['/']).next().unwrap_or(entry);
+        if last == dep_name {
+            return Some(entry.to_string());
+        }
+    }
+    None
+}
+
 fn resolve_module_path(
     base_dir: &std::path::Path,
     module: &str,
@@ -2781,125 +2820,101 @@ fn resolve_module_path(
         }
     }
 
-    // Plan 475: 检索项目根的 `deps/` 目录中的依赖包 (e.g. `use common.header` -> `deps/common/src/front/header.at`)
-    let probe_dep = |deps_dir: &std::path::Path| -> Option<std::path::PathBuf> {
-        let (dep_name, sub) = match module.find('.') {
-            Some(dot) => (&module[..dot], &module[dot + 1..]),
-            None => (module, ""),
-        };
-        let dep_dir = deps_dir.join(dep_name);
-        if !dep_dir.is_dir() {
-            return None;
-        }
-        if sub.is_empty() {
-            let candidates = [
-                dep_dir.join("src").join("front").join("app.at"),
-                dep_dir.join("src").join("front").join("mod.at"),
-                dep_dir.join("src").join("mod.at"),
-                dep_dir.join("mod.at"),
-                dep_dir.join(format!("{}.at", dep_name)),
-            ];
-            for c in candidates {
-                if c.exists() {
-                    return Some(c);
-                }
-            }
-        } else {
-            let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
-            let candidates = [
-                dep_dir.join("src").join("front").join(format!("{}.at", sub_rel)),
-                dep_dir.join("src").join("front").join(&sub_rel).join("mod.at"),
-                dep_dir.join("src").join("back").join(format!("{}.at", sub_rel)),
-                dep_dir.join("src").join("back").join(&sub_rel).join("mod.at"),
-                dep_dir.join("src").join(format!("{}.at", sub_rel)),
-                dep_dir.join("src").join(&sub_rel).join("mod.at"),
-                dep_dir.join("front").join(format!("{}.at", sub_rel)),
-                dep_dir.join("front").join(&sub_rel).join("mod.at"),
-                dep_dir.join(format!("{}.at", sub_rel)),
-                dep_dir.join(&sub_rel).join("mod.at"),
-            ];
-            for c in candidates {
-                if c.exists() {
-                    return Some(c);
-                }
-            }
-        }
-        None
-    };
-
     // 向上遍历查找 deps 目录 (如 src/front/ -> src/ -> root/deps/) 或 pac.at 中的本地 path 依赖
     let (dep_name, _) = match module.find('.') {
         Some(dot) => (&module[..dot], &module[dot + 1..]),
         None => (module, ""),
     };
+    // PLAN-635 D4/D5: deps/ 与 workspace members 的候选探测序列（与本地
+    // path 依赖一致）。声明门控（pnpm 式严格隔离）：deps/<name> 仅在 pac.at
+    // `dep` 声明（或 workspace member）时可达；物化但未声明 = 幽灵依赖，
+    // 阻断解析并给修复指引。
+    let probe_pkg = |pkg_root: &std::path::Path| -> Option<std::path::PathBuf> {
+        let (_, sub) = match module.find('.') {
+            Some(dot) => (&module[..dot], &module[dot + 1..]),
+            None => (module, ""),
+        };
+        if sub.is_empty() {
+            let candidates = [
+                pkg_root.join("src").join("front").join("app.at"),
+                pkg_root.join("src").join("front").join("mod.at"),
+                pkg_root.join("src").join("mod.at"),
+                pkg_root.join("mod.at"),
+                pkg_root.join(format!("{}.at", dep_name)),
+            ];
+            candidates.into_iter().find(|c| c.exists())
+        } else {
+            let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
+            let candidates = [
+                pkg_root.join("src").join("front").join(format!("{}.at", sub_rel)),
+                pkg_root.join("src").join("front").join(&sub_rel).join("mod.at"),
+                pkg_root.join("src").join("back").join(format!("{}.at", sub_rel)),
+                pkg_root.join("src").join("back").join(&sub_rel).join("mod.at"),
+                pkg_root.join("src").join(format!("{}.at", sub_rel)),
+                pkg_root.join("src").join(&sub_rel).join("mod.at"),
+                pkg_root.join("front").join(format!("{}.at", sub_rel)),
+                pkg_root.join("front").join(&sub_rel).join("mod.at"),
+                pkg_root.join(format!("{}.at", sub_rel)),
+                pkg_root.join(&sub_rel).join("mod.at"),
+            ];
+            candidates.into_iter().find(|c| c.exists())
+        }
+    };
     let mut curr_dir = Some(base_dir);
     for _ in 0..4 {
-        if let Some(d) = curr_dir {
-            let deps_candidate = d.join("deps");
-            if deps_candidate.is_dir() {
-                if let Some(p) = probe_dep(&deps_candidate) {
+        let Some(d) = curr_dir else { break };
+        let pac_content = std::fs::read_to_string(d.join("pac.at")).ok();
+        let dep_declared = pac_content
+            .as_deref()
+            .is_some_and(|c| pac_declares_dep(c, dep_name));
+        let member_entry = pac_content
+            .as_deref()
+            .and_then(|c| pac_workspace_member_dir(c, dep_name));
+
+        let deps_candidate = d.join("deps");
+        if deps_candidate.is_dir() {
+            if dep_declared {
+                if let Some(p) = probe_pkg(&deps_candidate.join(dep_name)) {
                     return Some(p);
                 }
+            } else if member_entry.is_none() && deps_candidate.join(dep_name).exists() {
+                eprintln!(
+                    "error: dependency '{}' is materialized at {} but not declared in pac.at — declare it (`dep \"{}\" {{ path: ... }}`) or add it to workspace members",
+                    dep_name,
+                    deps_candidate.display(),
+                    dep_name
+                );
             }
-            // Check if d has a pac.at with local path dependencies
-            let pac_file = d.join("pac.at");
-            if pac_file.is_file() {
-                if let Ok(content) = std::fs::read_to_string(&pac_file) {
-                    if let Some(pos) = content.find(&format!("dep \"{}\"", dep_name)).or_else(|| content.find(&format!("dep {}", dep_name))) {
-                        let slice = &content[pos..];
-                        if let Some(path_pos) = slice.find("path:") {
-                            let path_slice = &slice[path_pos + 5..];
-                            let path_line = path_slice.lines().next().unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'');
-                            if !path_line.is_empty() {
-                                let local_dep_dir = d.join(path_line);
-                                if local_dep_dir.is_dir() {
-                                    let (_, sub) = match module.find('.') {
-                                        Some(dot) => (&module[..dot], &module[dot + 1..]),
-                                        None => (module, ""),
-                                    };
-                                    if sub.is_empty() {
-                                        let candidates = [
-                                            local_dep_dir.join("src").join("front").join("app.at"),
-                                            local_dep_dir.join("src").join("front").join("mod.at"),
-                                            local_dep_dir.join("src").join("mod.at"),
-                                            local_dep_dir.join("mod.at"),
-                                            local_dep_dir.join(format!("{}.at", dep_name)),
-                                        ];
-                                        for c in candidates {
-                                            if c.exists() {
-                                                return Some(c);
-                                            }
-                                        }
-                                    } else {
-                                        let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
-                                        let candidates = [
-                                            local_dep_dir.join("src").join("front").join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join("src").join("front").join(&sub_rel).join("mod.at"),
-                                            local_dep_dir.join("src").join("back").join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join("src").join("back").join(&sub_rel).join("mod.at"),
-                                            local_dep_dir.join("src").join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join("src").join(&sub_rel).join("mod.at"),
-                                            local_dep_dir.join("front").join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join("front").join(&sub_rel).join("mod.at"),
-                                            local_dep_dir.join(format!("{}.at", sub_rel)),
-                                            local_dep_dir.join(&sub_rel).join("mod.at"),
-                                        ];
-                                        for c in candidates {
-                                            if c.exists() {
-                                                return Some(c);
-                                            }
-                                        }
-                                    }
-                                }
+        }
+
+        // PLAN-635 D5: workspace members resolve like deps/<name>.
+        if let Some(entry) = &member_entry {
+            let member_root = d.join(entry);
+            if let Some(p) = probe_pkg(&member_root) {
+                return Some(p);
+            }
+        }
+
+        // pac.at 中的本地 path 依赖（dep "<name>" { path: ... } 声明形态，
+        // 天然过门控）。
+        if let Some(content) = &pac_content {
+            if let Some(pos) = content.find(&format!("dep \"{}\"", dep_name)).or_else(|| content.find(&format!("dep {}", dep_name))) {
+                let slice = &content[pos..];
+                if let Some(path_pos) = slice.find("path:") {
+                    let path_slice = &slice[path_pos + 5..];
+                    let path_line = path_slice.lines().next().unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'');
+                    if !path_line.is_empty() {
+                        let local_dep_dir = d.join(path_line);
+                        if local_dep_dir.is_dir() {
+                            if let Some(p) = probe_pkg(&local_dep_dir) {
+                                return Some(p);
                             }
                         }
                     }
                 }
             }
-            curr_dir = d.parent();
-        } else {
-            break;
         }
+        curr_dir = d.parent();
     }
 
     None
@@ -2930,6 +2945,28 @@ pub(crate) fn resolve_use_module(
     }
     if use_stmt.module == "store" && !use_stmt.items.is_empty() {
         return UseModuleResolution::StoreFiles(find_store_decl_files(base_dir, &use_stmt.items));
+    }
+    // PLAN-632 F2: dep 目录 item 命名文件探测——`use settings: SettingsPopover`
+    // → `deps/settings/settings_popover.at`。此前 dep 目录候选只认
+    // `{dep}.at`/`mod.at`/`app.at`,item 命名的组件文件永不命中,组件实例
+    // 在 VM 渲染目标整体缺席(006 实证)。探测走 resolve_module_path 的
+    // dotted-module 形态(`{dep}.{item_snake}` 的 sub 臂已含
+    // `deps/{dep}/{sub}.at` 平铺候选),deps 走查/pac.at path dep 零重复。
+    // item 优先 snake_case(PascalCase 组件 ↔ 文件命名惯例,与
+    // find_store_decl_files 同款);裸 item 兜底。
+    if !use_stmt.items.is_empty() {
+        for item in &use_stmt.items {
+            let mut cands = vec![store_name_snake(item)];
+            if *cands.last().unwrap() != *item {
+                cands.push(item.clone());
+            }
+            for cand in cands {
+                let dotted = format!("{}.{}", use_stmt.module, cand);
+                if let Some(p) = resolve_module_path(base_dir, &dotted) {
+                    return UseModuleResolution::Module(p);
+                }
+            }
+        }
     }
     UseModuleResolution::None
 }
@@ -2965,6 +3002,9 @@ pub(crate) fn load_ext_imports_for_vm(
     // 声明（ports renderer.vm.at 的 Markdown 纯文本降级等）——调用方注册进
     // 视图 registry + child_decls，激活 use.web component 的 VM widget 形态。
     ext_widget_decls: &mut Vec<crate::ast::ui::WidgetDecl>,
+    // PLAN-633: 解析到的适配器文件路径——调用方补传递子 widget 注册
+    // （Demo013Todo 视图内的 TodoList 等 registry miss → Empty 实证）。
+    ext_adapter_paths: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
     let mut ext_imports = crate::ui::ext_stubs::collect_useweb_imports(&ast.stmts);
     ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(
@@ -3001,6 +3041,10 @@ pub(crate) fn load_ext_imports_for_vm(
             );
         },
     );
+    // PLAN-633: 适配器路径上交调用方（传递子 widget 注册用）。
+    for (adapter, _) in &loaded_adapters {
+        ext_adapter_paths.push(adapter.clone());
+    }
     // Alias each adapter-loaded symbol to ITS adapter's module-qualified
     // name (collect_module_imports renames adapter fns by file stem) so call
     // sites emit resolvable qualified relocs. Pairs come from the loader —
@@ -3051,6 +3095,85 @@ pub(crate) fn load_ext_imports_for_vm(
                         "use.web.fn '{}': .at 目标 {} 未导出名为 '{}' 的顶层 fn（显式 fn 声明校验，PLAN-051 C4）",
                         sym, imp.path, sym
                     ));
+                }
+            }
+        }
+    }
+
+    // PLAN-632 F3: 已装载模块自身 use 链上的 widget 注册。根 use 环的
+    // register_transitive_widgets 只覆盖根文件;use.web demo 适配器
+    // （AppViewport.vm.at → Demo*.at）自带的 `use <mod>: Component`
+    // （006 的 SettingsPopover）此前从不进 registry/child_decls——
+    // 组件实例在 VM 渲染目标渲染 Empty/缺席。扫 visited 全集（与上方
+    // use.web 收集同集、同重解析模式），按各文件 use items 显式名单
+    // 注册 widget 声明进 ext_widget_decls（调用方统一入
+    // registry+child_decls，handler 随之编译进单 VM）。P545 语义：
+    // 仅具名 items / 显式通配可见，bare use 不触发。
+    {
+        let mut swept: std::collections::HashSet<String> = ext_widget_decls
+            .iter()
+            .map(|wd| wd.name.to_string())
+            .collect();
+        for wd in all_child_decls {
+            swept.insert(wd.name.to_string());
+        }
+        swept.insert(root_decl.name.to_string());
+        for path in visited.iter() {
+            if path.extension().and_then(|e| e.to_str()) != Some("at") {
+                continue;
+            }
+            let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+            let Ok(mod_ast) = parser.parse() else { continue };
+            let mod_dir = path
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            for use_stmt in crate::use_scanner::scan_use_statements(&code) {
+                if use_stmt.is_c_import || use_stmt.is_rust_import {
+                    continue;
+                }
+                if !(use_stmt.is_wildcard || !use_stmt.items.is_empty()) {
+                    continue;
+                }
+                // F2 增强后的解析（dep item 文件命中同路）。
+                let module_path = match resolve_use_module(&mod_dir, &use_stmt) {
+                    UseModuleResolution::Module(p) => p,
+                    _ => continue,
+                };
+                // PLAN-632 F4: 已装载模块 use 链的符号别名——裸名 → 模块限定名
+                // （与根 use 环 lib.rs 别名位同规则）。此前别名只对根文件 use
+                // 填充：demo 作为 ext 适配器装载时其 `use calendar_util:
+                // month_name` 无别名 → 视图 computed 体 `month_name(...)`
+                // call_vm_fn 裸名查 exports miss（fn 实为
+                // `calendar_util.month_name`）→ 求值失败回退 raw `${}`。
+                // or_insert：根环别名（先填）优先。
+                {
+                    let qualifier = use_stmt.module.split('.').last().unwrap_or(&use_stmt.module);
+                    for item in &use_stmt.items {
+                        import_aliases
+                            .entry(item.clone())
+                            .or_insert_with(|| format!("{}.{}", qualifier, item));
+                    }
+                }
+                let Ok(module_code) = std::fs::read_to_string(&module_path) else { continue };
+                let mod_session = crate::session::CompilerSession::ui();
+                let mut mod_parser =
+                    crate::Parser::from(module_code.as_str()).with_session(mod_session);
+                let Ok(target_ast) = mod_parser.parse() else { continue };
+                for stmt in &target_ast.stmts {
+                    if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                        if swept.contains(decl.name.as_str()) {
+                            continue;
+                        }
+                        if use_stmt.is_wildcard
+                            || use_stmt.items.iter().any(|s| s == &decl.name.as_str())
+                        {
+                            swept.insert(decl.name.to_string());
+                            ext_widget_decls.push(decl.clone());
+                        }
+                    }
                 }
             }
         }
@@ -3119,6 +3242,33 @@ fn store_name_snake(name: &str) -> String {
         }
     }
     out
+}
+
+/// StoreDecl → view-less child WidgetDecl（store-as-child：store 与子件
+/// 同构、仅缺视图——统一根态模型并入 + handler 编译进单 VM 都走 child
+/// 通道）。PLAN-632 F1 抽出公共转换体，供 ext 装载后的补转换位使用。
+fn store_decl_as_widget_decl(
+    store_decl: &crate::ast::ui::StoreDecl,
+) -> crate::ast::ui::WidgetDecl {
+    crate::ast::ui::WidgetDecl {
+        name: store_decl.name.clone(),
+        messages: store_decl.messages.clone(),
+        model: store_decl.model.clone(),
+        computed: store_decl.computed.clone(),
+        view: None,
+        on: store_decl.on.clone(),
+        bind: None,
+        props: Vec::new(),
+        routes: None,
+        lifecycle: Vec::new(),
+        style: None,
+        ext_imports: Vec::new(),
+        watch: Vec::new(),
+        expose: Vec::new(),
+        setup: None,
+        actions: None,
+        timer: store_decl.timer.clone(),
+    }
 }
 
 /// Plan 442 A2 (store facade): the legacy `use store: Name` form uses the
@@ -3546,13 +3696,20 @@ fn register_transitive_widgets_inner(
             Ok(c) => c,
             Err(_) => continue,
         };
+
         let mod_session = crate::session::CompilerSession::ui();
         let mut mod_parser = crate::Parser::from(sub_code.as_str()).with_session(mod_session);
         if let Ok(sub_ast) = mod_parser.parse() {
+
             for stmt in &sub_ast.stmts {
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
-                        // 只注册 use 子句明确要的(或通配的),且 registry 还没有的
+                        // 只注册 use 子句明确要的(或通配/裸装载的),且 registry
+                        // 还没有的。PLAN-545 回归修复（069 收口转介收回）：
+                        // bare `use mod` 的组件发现语义恢复（items.is_empty()
+                        // 臂）——545 的"bare=命名空间"针对 fn 符号冲突面；
+                        // UI 子件码道收紧后裸 use 孙件 handler 不再合成
+                        // （同 demo CustomScrollbar 断裂）。
                         if (use_stmt.is_wildcard
                             || use_stmt.items.is_empty()
                             || use_stmt.items.iter().any(|s| s == &child_widget.name))
@@ -3588,6 +3745,21 @@ fn build_dynamic_component_inner(
     use crate::ui::dynamic::DynamicComponent;
     use crate::ui::widget_registry::WidgetRegistry;
 
+    // PLAN-635: pre-register use-imported recipes BEFORE the parse — the
+    // parser's symbol checker accepts `style: <name>` idents only when the
+    // recipe is in the live registry.
+    let recipe_imports = match path {
+        Some(p) => {
+            let base_dir = std::path::Path::new(p)
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, code)
+                .map_err(|e| e.to_string())?
+        }
+        None => Vec::new(),
+    };
+
     // 1. Parse with UI scenario (or override if provided — PR-6)
     let session = override_scenario
         .cloned()
@@ -3604,9 +3776,13 @@ fn build_dynamic_component_inner(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut root_decl: Option<crate::ast::WidgetDecl> = None;
     let mut widget = None;
     for stmt in &ast.stmts {
@@ -3763,6 +3939,15 @@ fn build_dynamic_component_inner(
                     for stmt in &mod_ast.stmts {
                         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                             if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                // PLAN-545 回归修复（069 收口转介收回）：bare
+                                // use 的**组件发现**语义恢复——`use custom_scrollbar`
+                                //（无 items 无通配）装载该模块的子件。545 的
+                                // "bare=命名空间"裁定针对 fn 符号冲突面
+                                // （compile.rs/linker），此处是 UI 子件收集码道；
+                                // 收紧时连带删掉 items.is_empty() 臂令裸 use 子件
+                                // 的 handler 不再合成（handler_<Child>_* 导出
+                                // 缺席→运行时派发全灭，demo CustomScrollbar
+                                // 拖拽死——vm-smoke 组 4(d) 实证）。
                                 if use_stmt.is_wildcard
                                     || use_stmt.items.is_empty()
                                     || use_stmt.items.iter().any(|s| s == &child_widget.name)
@@ -3786,6 +3971,8 @@ fn build_dynamic_component_inner(
                             // like `.notes = list_notes()` silently no-op and the view
                             // renders an empty list.
                             let name = store_decl.name.clone();
+                            // 069 同款回归修复：bare use 亦装载 store（组件
+                            // 发现语义，见上方 WidgetDecl 臂注）。
                             if use_stmt.is_wildcard
                                 || use_stmt.items.is_empty()
                                 || use_stmt.items.iter().any(|s| *s == name.as_str())
@@ -4157,6 +4344,7 @@ fn build_dynamic_component_inner(
             .parent()
             .unwrap_or(std::path::Path::new("."));
         let mut ext_widget_decls: Vec<crate::ast::ui::WidgetDecl> = Vec::new();
+        let mut ext_adapter_paths: Vec<std::path::PathBuf> = Vec::new();
         load_ext_imports_for_vm(
             base_dir,
             &ast,
@@ -4169,6 +4357,7 @@ fn build_dynamic_component_inner(
             override_scenario,
             &mut import_aliases,
             &mut ext_widget_decls,
+            &mut ext_adapter_paths,
         )
         .map_err(|e| format!("ext imports (use.web) failed: {}", e))?;
         // PLAN-051 C4: adapter widget 注册——use.web component 的 VM widget
@@ -4176,8 +4365,46 @@ fn build_dynamic_component_inner(
         // child_decls（handlers 一并编译进单 VM 模块）。
         for wd in &ext_widget_decls {
             if let Ok(w) = crate::aura::extract_widget_from_decl(wd) {
+
                 all_child_decls.push(wd.clone());
                 registry.register(w);
+            }
+        }
+        // PLAN-633: demo 适配器的传递子 widget 注册——Demo013Todo 视图里的
+        // TodoList 等经适配器自身的 `use` 引入，C4 只注册适配器本体 widget；
+        // 不补传递注册则子件 registry miss → fallback Empty（013 内嵌列表区
+        // 空白实证）。stores 由下方 632-F1 晚到补转换覆盖，此处只补 widget。
+        {
+            let mut tw_visited: std::collections::HashSet<std::path::PathBuf> =
+                std::collections::HashSet::new();
+            for p in &ext_adapter_paths {
+                register_transitive_widgets_inner(
+                    p,
+                    &mut registry,
+                    &mut all_child_decls,
+                    &mut tw_visited,
+                );
+            }
+        }
+        // PLAN-632 F1: 装载顺序缺陷收口——use.web demo 适配器链带来的
+        // StoreDecl 在 load_ext_imports_for_vm 内才进 import_stmts，晚于
+        // 上方 store→child 转换位（Plan 370 D-GAP-4 / 多 store fix：根
+        // AST + 当时的 import_stmts）。晚到的 store（016 的 CalendarStore
+        // 经 Demo*.at 适配器链）错过转换 → model 不并入统一根态、handler
+        // 不编译（synthesize 的 all_decls 只含 decl+child_decls）→
+        // `.store.*` 全落空 + `store.X()` 派发失联。此处按名去重补转换。
+        {
+            let known: std::collections::HashSet<String> = all_child_decls
+                .iter()
+                .map(|d| d.name.to_string())
+                .collect();
+            for stmt in &import_stmts {
+                if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
+                    let sname = store_decl.name.to_string();
+                    if !known.contains(&sname) {
+                        all_child_decls.push(store_decl_as_widget_decl(store_decl));
+                    }
+                }
             }
         }
     }
@@ -4437,7 +4664,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {
@@ -4664,7 +4891,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
     let main_module = codegen.finish("<main>".to_string());
-    linker.add_module(main_module);
+    linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
         let span = if let Some(pos) = e.source_pos {
@@ -5815,6 +6042,15 @@ pub fn ui_build(
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
+    // PLAN-635: pre-register use-imported recipes before the parse (parser
+    // symbol-checker hook), then replay after the parse.
+    let base_dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+        .map_err(|e| e.to_string())?;
+
     // Parse with scenario
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session.clone());
@@ -5829,9 +6065,13 @@ pub fn ui_build(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
@@ -5931,6 +6171,15 @@ pub fn ui_build_shadcn(
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
+    // PLAN-635: pre-register use-imported recipes before the parse (parser
+    // symbol-checker hook), then replay after the parse.
+    let base_dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+        .map_err(|e| e.to_string())?;
+
     // Parse with UI scenario
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(code.as_str());
@@ -5946,9 +6195,13 @@ pub fn ui_build_shadcn(
             crate::aura::extract::register_view_fragment(frag);
         }
     }
-    // PLAN-607: register and validate style recipes before extracting widget
-    crate::design_tokens::recipe::load_and_validate_style_recipes(&ast.stmts)
-        .map_err(|e| e.to_string())?;
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order.
+    crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
@@ -6631,14 +6884,35 @@ mod plan442_store_facade_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan622_store_facade_gap_tests;
 
+// PLAN-624: merged single-state cross-state resolution red corpus.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan624_cross_state_tests;
+
+// PLAN-066: 原生组件外部注册 SPI 语料（autodown_editor 迁移等价 + Element
+// 通道 View::Custom + 未注册名保形）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan066_native_widget_tests;
+
+// PLAN-066 T-06（auto-musk）: 055-4⑥ 过滤投影（computed 内 VmRef 域读取）
+// + P536-D2 跨模块调用帧 SET_FIELD 达根态 red corpus。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan066_filter_projection_tests;
+
 // PLAN-627: qualified api-module-call corpus（模块形态 use back.api +
 // 限定名 api.X()：抽取/vue 发射/rust 发射三面）。
 #[cfg(test)]
 mod plan627_qualified_api_tests;
 
+// PLAN-634 T-03: a2r 语句位置块尾分号语料（auto-term DEBTS #18 根修）。
+#[cfg(test)]
+mod plan634_block_tail_semi_tests;
+
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;
+// PLAN-019 T-06: own-module bare-call binding (vm merged link) corpus.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan019_vm_own_module_link_tests;
 mod plan051_ext_widget_tests;
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
 mod plan051_timer_tests;
@@ -6922,5 +7196,17 @@ mod plan492_m5_tests;
 // computed+helper 链)。
 #[cfg(test)]
 mod musk_vm_track_tests;
+
+// PLAN-632: 画廊内嵌 demo 的模块组件桥接（store 装配顺序 + dep item
+// 文件解析 + 适配器链 widget 注册）回归。
+#[cfg(all(test, feature = "ui-iced"))]
+#[path = "tests/plan632_demo_bridge_tests.rs"]
+mod plan632_demo_bridge_tests;
+// PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
+// 回归。
+#[cfg(all(test, feature = "ui-iced"))]
+#[path = "tests/plan633_fullstack_embed_tests.rs"]
+mod plan633_fullstack_embed_tests;
+
 
 

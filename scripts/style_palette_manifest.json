@@ -1,0 +1,25 @@
+{
+  "_comment": "PLAN-637 style_palette_guard 清单：completed=已完成 rollout 的 demo（B1 起逐批追加）；exemptions=<demo> 下豁免的裸色字面量（键=字面量，值=豁免定性）。豁免三类口径（计划待澄清#1）：显式品牌色、装饰性插画/渐变色、语法高亮色。渐变 from-/to-/via- 与 bg-black 系不入动态扫描（r2 裁定），仅在此表口径下静态备案。",
+  "completed": [
+    "001-helloworld",
+    "002-counter",
+    "003-converter",
+    "004-profile-card",
+    "005-login",
+    "013-todo",
+    "015-notes",
+    "045-style-import"
+  ],
+  "exemptions": {
+    "004-profile-card": {
+      "bg-green-400": "在线状态指示点——registry 无 success 语义键，按装饰性指示色豁免，主题系统立项时评估回迁（B1/T-02）"
+    },
+    "015-notes": {
+      "bg-indigo-500": "accent 五色板色票 indigo——选择器预览件，字面量即语义（显式品牌色类，B1/T-06）",
+      "bg-rose-500": "accent 五色板色票 coral（同上）",
+      "bg-sky-500": "accent 五色板色票 ocean（同上）",
+      "bg-emerald-500": "accent 五色板色票 sage（同上）",
+      "bg-amber-500": "accent 五色板色票 amber（同上）"
+    }
+  }
+}

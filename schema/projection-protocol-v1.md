@@ -1,8 +1,9 @@
 # AutoShell 状态投影协议 v1.7（S2 接缝合同）
 
-> **版本**：v1.7（2026-09-14，auto-os PLAN-019 落码；负一屏显示桌面（保留
-> 分区 + origin 往返）与壁纸选择 carousel（pick/close 组合簿记 + 候选注入面），
-> 详见 §6 v1.7 节）。
+> **版本**：v1.7（2026-09-14，双增量并行落码——PLAN-016：`open_with` 打开
+> 文件动词（普通注册表窗上行排空面 + pac `opens:` 关联校验面）；auto-os
+> PLAN-019：负一屏显示桌面（保留分区 + origin 往返）与壁纸选择 carousel
+> （pick/close 组合簿记 + 候选注入面）。详见 §6 v1.7 节）。
 > v1.6（2026-09-12，PLAN-012 落码；dock 固定/聚焦/通知可见派生面
 > + 单枚固定与格子重注入动词 + 整桌面预览合同面，详见 §6 v1.6 节）。
 > v1.5（2026-08-31，Plan 505 B2 落码；pager 派生面（≤4 截断 + "+N"）。
@@ -43,6 +44,7 @@
 | `__wm_clock` | str `"HH:MM"` | dock 时钟本地时间串（497 S3）。**非门控字段**：不进 `__wm_fp` 指纹、不走 §3 投影组换装——ServiceTick 帧泵独立注入（分钟变化才写，稳态零重建；本地时钟非驱动事实，避免每分钟全组换装抖动） | 宿主写 | v1.4 内（497） |
 | `__wm_showdesk` | str `"1"/""` | **v1.7** 当前分区 = 负一屏（保留空分区，PLAN-019）——任务栏 sliver 两态高亮与 toggle 判据（`"1"` = 点击发 `showdesk_return`，`""` = 发 `show_desktop`；等式消费）。负一屏簿记（origin/picker 簿记）在宿主 WmState，不投影 | 宿主写 | v1.7 |
 | `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
+| `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清**。**v1.7 发件面扩宽**：普通注册表窗联合排空（pump 全窗 drain；特权四窗原有专属排空保留，二次空读无害）——`open_with` 首个普通窗动词（027 文件管理器发件） | shell 写（v1.7 起：普通注册表窗亦可） | v1（发件面扩宽：v1.7） |
 
 ### 2.0.1 通知面板接缝字段（`assets/notification_center.at`，召唤/活更新注入）
 
@@ -131,6 +133,8 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 | `wallpaper_browse_dir` | （无参记录） | **v1.7** 弹原生目录对话框（rfd `pick_folder`，`ui-dialog` feature）——选定后走 `SetWallpapersDir` 同一执行臂（目录写路径单一：config 落盘 + mtime 热轮询）+ `__wp_items`/`__wp_dir` 重注入。发件面 = desktop.at picker 头部「浏览…」 | v1.7 |
 | `wallpaper_nav` | `prev`/`next` | **v1.7** picker 导航（宿主按态分派；FU7 语义修订）——预览态 = 大图游标环绕移动（`__wp_preview` 随写）；栅格态 = **carousel 滑窗**（`picker_win` 可见 5 枚窗口起点的 ±1 滑动 + `__wp_visible` 重注入；端点 clamp）。导航不应用——点选缩略图才应用。数学生宿主的缘由：.at 无列表下标/算术（B12 族） | v1.7 |
 | `wallpaper_preview` | 图片路径（空参 = 退栅格） | **v1.7** 大图预览进出——带参按 path 反查游标进入预览（缺席/关态 no-op）；空参退栅格态。`__wp_preview` 载荷 = 预览图路径（.at 零算术直渲染）。发件面 = desktop.at 缩略图「预览」钮 / 预览态「返回」钮 | v1.7 |
+| `open_with` | app id、绝对路径 | **v1.7** 用注册表 App 打开文件——执行臂：注册表校验（未知 app 拒绝；pac `opens:` 声明面非空且未含目标扩展名即拒，toast 反馈）→ 未运行 launch 后向目标 App state 写 `auto_open_path` / 已运行聚焦 + 同款写入 → 目标 App Tick 消费（041-auto-edit `ConsumeOpen`、031-image-viewer SettleTick 消费臂为首批接收面；未声明 `auto_open_path` 的 App 写入静默无效 = capability 自声明）。约束：**path 单行**（记录层按 `
+` 切分，notify msg 同款）；发件面 = 027 双击/右键打开（PLAN-016） | v1.7 |
 
 ## 5. 对拍与验收（I8/I9）
 
@@ -165,24 +169,14 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 
 ## 6. 变更记录
 
-### v1.7（2026-09-14，auto-os PLAN-019）
+### v1.7（2026-09-14，双增量并行落码：PLAN-016 + auto-os PLAN-019）
 
-- **负一屏显示桌面**：§4 +`show_desktop`/`showdesk_return` 两动词——宿主保留
-  空分区（懒建）+ origin 簿记往返；排除规则（非动词增量，宿主行为约定）：
-  `__wm_workspaces` 投影过滤负一屏、`workspace_next` 环切跳过、
-  `workspace_close`/`send_to` 目标拒绝、`activate` 在负一屏先 return 再启动
-  （防新窗开在负一屏）。§2 +`__wm_showdesk` 标量（sliver toggle 判据）。
-  与 Win11「显示桌面」语义对齐，实现不用最小化（多分区机制天然保留窗口现场）。
-- **壁纸选择 carousel**：§4 +`wallpaper_pick`/`wallpaper_close`/
-  `wallpaper_browse_dir`/`wallpaper_nav` 四动词——组合簿记
-  `picker_return_on_close` 在宿主单点裁决（**归属规则：谁切屏谁负责切回**）；
-  §2.1 +`__wp_picker`/`__wp_preview`/`__wp_dir`/`__wp_current`/`__wp_items`
-  （+`wp_paths` 平行字符串列表，B12 规避）。候选供源复用
-  `scan_wallpapers_dir`；选壁纸/换目录复用既有 `set_wallpaper`/
-  `set_wallpapers_dir` 热生效通道，零新写路径。
-- **vue 端注记**：本版实现方 = vm 端（renderer.rs）；vue 端沿 v1.6 先例，
-  按本文档后续对拍（负一屏 = 分区过滤 + 保留分区；picker = 注入面 + 组合臂
-  语义一致即可，UI 形态自定）。
+- **（PLAN-016）新动词 `open_with`（app id、绝对路径）**：桌面级文件打开互操作。执行臂
+- **（PLAN-016）`__desktop_cmd` 发件面扩宽**：pump 联合排空从特权四窗扩展到全部注册表
+- **（PLAN-016）pac `opens:` 关联键**：`AppRegistryEntry.opens`/`LaunchSpec.opens`
+- **（auto-os PLAN-019）负一屏显示桌面**：§4 +`show_desktop`/`showdesk_return` 两动词——宿主保留
+- **（auto-os PLAN-019）壁纸选择 carousel**：§4 +`wallpaper_pick`/`wallpaper_close`/
+- **（auto-os PLAN-019）vue 端注记**：本版实现方 = vm 端（renderer.rs）；vue 端沿 v1.6 先例，
 
 ### v1.6（2026-09-13 F2 走查增补，PLAN-012 O1-O3 收口）
 

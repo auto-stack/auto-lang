@@ -36,3 +36,11 @@ pub fn navigate(session str, delta int) str;
 pub fn request_view(session str, index int, viewport_width int, viewport_height int, quality int) str;
 pub fn close_session(session str) bool;
 pub fn session_stats(session str) str;
+
+/// Queue a small square thumbnail rendition for one image file and return its
+/// opaque media URI ("/api/__auto/media/{id}/{rev}"), or "" when the path is
+/// missing, unreadable, or has an unsupported extension (jpg/jpeg/png/webp).
+/// Decode runs asynchronously on the shared media worker pool at Thumbnail
+/// priority; the URI renders blank until the rendition is published, then the
+/// per-asset renderer cache keeps it stable (progressive fill, PLAN-023).
+pub fn thumb(path str, size int) str;

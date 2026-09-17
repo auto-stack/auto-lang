@@ -257,15 +257,44 @@ impl SnapshotBuilder {
                     ("value".to_string(), value.clone()),
                 ];
                 #[cfg(feature = "autodown")]
-                if let Some(text) = crate::ui::autodown_editor::autodown_editor_text(
-                    &crate::ui::autodown_editor::storage_key(key),
-                ) {
-                    props.push(("internal_text".to_string(), text));
+                {
+                    if let Some(text) = crate::ui::autodown_editor::autodown_editor_text(
+                        &crate::ui::autodown_editor::storage_key(key),
+                    ) {
+                        props.push(("internal_text".to_string(), text));
+                    }
+                    // PLAN-069：slash 弹层状态（MCP 断言面）——visible 恒在
+                    // 场（false=关），开启时附 query/selected/count。
+                    match crate::ui::autodown_editor::autodown_editor_slash_state(
+                        &crate::ui::autodown_editor::storage_key(key),
+                    ) {
+                        Some((query, selected, count)) => {
+                            props.push(("slash_visible".to_string(), "true".to_string()));
+                            props.push(("slash_query".to_string(), query));
+                            props.push(("slash_selected".to_string(), selected.to_string()));
+                            props.push(("slash_count".to_string(), count.to_string()));
+                        }
+                        None => {
+                            props.push(("slash_visible".to_string(), "false".to_string()));
+                        }
+                    }
                 }
                 let actions = on_change.as_ref()
                     .map(|msg| vec![Self::extract_action("edit", msg)])
                     .unwrap_or_default();
                 UiNode { id, kind: "AutodownEditor".to_string(), props, actions, children: vec![] }
+            },
+
+            // PLAN-066: 原生外部组件快照——kind=注册名，props 明文透传，事件
+            // 逐条 extract_action（action 名=事件名）。MCP 断言面对外部件可见
+            // 是本变体的存在理由（不引入 Box<dyn> 的原因）。
+            View::Custom { name, props, events, .. } => {
+                let props: Vec<(String, String)> = props.clone();
+                let actions: Vec<_> = events
+                    .iter()
+                    .map(|(ev_name, msg)| Self::extract_action(ev_name, msg))
+                    .collect();
+                UiNode { id, kind: name.clone(), props, actions, children: vec![] }
             },
 
             View::Checkbox { is_checked, label, on_toggle, .. } => {

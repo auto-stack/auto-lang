@@ -1,3 +1,15 @@
+// PLAN-637 Phase B token 化映射（2026-09-17，B1）：
+//   头像饰边 border-gray-200→border-border；姓名 text-gray-900→text-foreground；
+//   状态说明 text-gray-500→text-muted-foreground；徽章 bg-blue-100/text-blue-800→
+//   bg-secondary/text-secondary-foreground；bio text-gray-600→text-muted-foreground；
+//   Follow bg-blue-500/text-white/hover:bg-blue-600→bg-primary/text-primary-foreground/
+//   hover:bg-primary/90；Message bg-gray-200/text-gray-700/hover:bg-gray-300→
+//   bg-secondary/text-secondary-foreground/hover:bg-secondary/80；
+//   卡面 bg-white/border-gray-200→bg-card/border-border。
+//   豁免（2 项）：顶部 from-blue-500/to-purple-600 渐变（装饰性插画/渐变，r2 不入扫描）；
+//   在线状态点 bg-green-400（registry 无 success 语义键，装饰性指示色豁免，
+//   主题系统立项时评估回迁）。
+
 widget App {
     model {
         var name str = "Jane Cooper"
@@ -19,7 +31,7 @@ widget App {
                 // Avatar overlapping the header
                 col {
                     image (src: .avatar_url) {
-                        style: "w-20 h-20 rounded-full border-4 border-gray-200 shadow-md"
+                        style: "w-20 h-20 rounded-full border-4 border-border shadow-md"
                     }
                     style: "-mt-10 items-center"
                 }
@@ -27,7 +39,7 @@ widget App {
                 // Name and role
                 col {
                     text .name {
-                        style: "text-xl font-bold text-gray-900",
+                        style: "text-xl font-bold text-foreground",
                         selectable: true
                     }
 
@@ -36,7 +48,7 @@ widget App {
                             style: "w-3 h-3 rounded-full bg-green-400"
                         }
                         text "Active" {
-                            style: "text-sm text-gray-500",
+                            style: "text-sm text-muted-foreground",
                             selectable: true
                         }
                         style: "gap-2 items-center"
@@ -47,29 +59,29 @@ widget App {
                 // Role badge
                 row {
                     text .role {
-                        style: "px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full font-medium",
+                        style: "px-3 py-1 bg-secondary text-secondary-foreground text-sm rounded-full font-medium",
                         selectable: true
                     }
                 }
 
                 // Bio
                 text .bio {
-                    style: "text-gray-600 text-sm text-center px-6 leading-relaxed",
+                    style: "text-muted-foreground text-sm text-center px-6 leading-relaxed",
                     selectable: true
                 }
 
                 // Action buttons
                 row {
                     button "Follow" {
-                        style: "px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                        style: "px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
                     }
                     button "Message" {
-                        style: "px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                        style: "px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80"
                     }
                     style: "gap-3"
                 }
 
-                style: "bg-white rounded-lg shadow-lg border border-gray-200 w-96 items-center gap-4 pb-6 overflow-hidden"
+                style: "bg-card rounded-lg shadow-lg border border-border w-96 items-center gap-4 pb-6 overflow-hidden"
             }
             // Plan 512: fit 迁移——center 居中外壳退役，根 col Shrink 包裹；
             // 卡片固定宽 w-96（原 max-w-sm 满窗语义在 Shrink 根下会塌缩）。

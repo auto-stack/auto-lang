@@ -1,0 +1,34 @@
+// p2_tab_store.at — PLAN-624 red corpus store (?str variant for P2).
+
+use back.api: read_wiki
+
+store OptStore {
+    model {
+        var tabs Array<str> = []
+        var active_path ?str = None
+    }
+
+    msg Msg { Open(map), SetBody(map) }
+
+    on {
+        .Open(args) -> {
+            var path = args.path
+            var existing = .tabs.find(t => t.path == path)
+            if existing == null {
+                .tabs.push({ path: path, title: "Page", body: "orig", originalBody: "orig", frontmatter: {}, dirty: false, loaded: true })
+                .active_path = path
+            }
+            if existing != null {
+                .active_path = path
+            }
+        }
+
+        .SetBody(args) -> {
+            var tab = .tabs.find(t => t.path == args.path)
+            if tab != null {
+                tab.body = args.body
+                tab.dirty = tab.body != tab.originalBody
+            }
+        }
+    }
+}

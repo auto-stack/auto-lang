@@ -1,8 +1,8 @@
 // Index.at - Main page with Grid and List
 
-use Banner
-use EnablementView
-use TutorialView
+use Banner: Banner
+use EnablementView: EnablementView
+use TutorialView: TutorialView
 
 /// Main page with Banner, Grid, and List
 widget Index {

@@ -190,3 +190,10 @@ graph TD
 - 备选：computed 求值器扩展块体/循环（cons：view-build 快速路径复杂化，与 VM 字节码执行语义重复）；子组件独立 VM（cons：破坏单 VM 合成架构）。
 - 后果：vue 轨 onMounted 与 VM 轨语义对齐，chart 等派生计算型组件双轨可用；**副作用型子组件 Init 随脏重建重放**（v1 近似，组件 Init 应保持纯派生）；vue-tsc/结构同源已证，视觉并排未重做。
 - 状态：active（重放语义收敛留后续：dirty-prop 比对后重放）
+
+### ADR-20: 内嵌 demo 模块组件桥接——use.web 适配器链与根 use 环同权装载
+- 日期 / 来源：plan-632（2026-09-15，ui-gallery VM 保真度核查会话裁定）
+- 决策：模块组件（`use <mod>: Component`）在 VM 渲染目标与 `use.web` 组件同保真——实例展开视图子树、按实例 props 桥接参数；store 型组件（模块含 store 声明）的状态注入消费方作用域。四项装载不变量：①use.web 适配器链（Demo*.at）携带的 StoreDecl 与根 use 环同权进 store→child 转换（ext 装载后补转换位，按名去重，`store_decl_as_widget_decl` 公共转换体）；②dep 目录 item 命名文件（`deps/{dep}/{item_snake}.at`）为 `use <dep>: Component` 的合法解析目标（resolve_use_module 走 dotted-module 探测，snake_case 优先）；③已装载模块自身 use 链上的 widget 按显式 items/通配注册进 registry+child_decls（扫 visited 全集；P545 语义——bare use 不触发）；④模块 use 的符号别名（裸名→模块限定名，or_insert 根环优先）覆盖全部已装载文件（视图 computed 内模块 fn 调用可达）。
+- 备选：store 命名分支泛化（T-01 实测证伪——`use <mod>: Store` 经邻接文件 Module 分支本就工作，standalone 016 全通）；发射器侧实例化清单（cons：组件状态桥接是运行时职责，发射器只保证源可达）。
+- 后果：画廊内嵌 006 SettingsPopover 开合可用、016 CalendarStore 网格/选中全保真（实机 MCP 10/10 双轮：实现期+复审期）；装配顺序缺陷类（ext 装载晚于转换位的声明）由补转换位兜底。App.Init 兜底告警为宿主根件无 Init 的既有形态（KNOWN-DEBT P632-D1）。
+- 状态：active

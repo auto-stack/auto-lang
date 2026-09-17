@@ -160,6 +160,62 @@ pub(crate) fn load_at_ext_imports(
     let mut nested = Vec::new();
     for imp in imports {
         if !imp.path.ends_with(".at") {
+            // PLAN-625 T-10: 非 .at 的 Component 导入（AppViewport.vue 等
+            // 网页组件）探测同目录同名 `.vm.at` 适配器（musk ports 精神对
+            // .vue 源的收口）：存在即装载为该组件的 VM widget 形态（C4 流
+            // 注册进 registry），其内嵌套的 `.at` component 导入（Demo* 子
+            // widget 源）随装随注册；否则维持 no-op stub 降级。
+            if imp.kind == crate::ast::ExtImportKind::Component {
+                if let Some(resolved_src) = resolve_ext_source(base_dir, &imp.path) {
+                    let stem = resolved_src
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
+                    if !stem.is_empty() {
+                        let vm_adapter = resolved_src.with_file_name(format!("{stem}.vm.at"));
+                        if vm_adapter.is_file() {
+                            let Ok(code) = std::fs::read_to_string(&vm_adapter) else {
+                                continue;
+                            };
+                            let session = crate::session::CompilerSession::ui();
+                            let mut parser =
+                                crate::Parser::from(code.as_str()).with_session(session);
+                            if let Ok(ast) = parser.parse() {
+                                for nested_imp in collect_useweb_imports(&ast.stmts) {
+                                    if nested_imp.kind == crate::ast::ExtImportKind::Component
+                                        && nested_imp.path.ends_with(".at")
+                                    {
+                                        if let Some(resolved_nested) =
+                                            resolve_ext_source(base_dir, &nested_imp.path)
+                                        {
+                                            load_module(&resolved_nested);
+                                            if let Some(entry) = loaded
+                                                .iter_mut()
+                                                .find(|(p, _)| *p == resolved_nested)
+                                            {
+                                                entry.1.extend(
+                                                    nested_imp.symbols.iter().cloned(),
+                                                );
+                                            } else {
+                                                loaded.push((
+                                                    resolved_nested,
+                                                    nested_imp.symbols.clone(),
+                                                ));
+                                            }
+                                        }
+                                    } else {
+                                        // fn/.ts 嵌套导入沿旧路返回调用方（stub 覆盖）。
+                                        nested.push(nested_imp);
+                                    }
+                                }
+                            }
+                            load_module(&vm_adapter);
+                            loaded.push((vm_adapter, imp.symbols.clone()));
+                            continue;
+                        }
+                    }
+                }
+            }
             continue; // TS/npm source — stub candidates only
         }
         let Some(resolved) = resolve_ext_source(base_dir, &imp.path) else {

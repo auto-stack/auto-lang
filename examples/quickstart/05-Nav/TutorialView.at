@@ -1,6 +1,6 @@
 // TutorialView.at - Tutorial section
 
-use TutorialItem
+use TutorialItem: TutorialItem
 
 /// Tutorial section with vertical scrolling list
 widget TutorialView {

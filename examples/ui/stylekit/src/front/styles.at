@@ -1,0 +1,37 @@
+// stylekit —— PLAN-635 跨包 style recipe 共享包。
+//
+// pub 声明的 recipe 可被依赖方 `use stylekit.styles: <name>` 命名导入，
+// 或 `use stylekit.styles: *` glob 导入（只导 pub）。非 pub 配方仅包内可用。
+//
+// PLAN-637 扩容为 canonical recipe 库：收编 examples/ui 全量 demo 的跨包
+// 重复 class 串（形态见计划 D1 首批表）。Phase A 字节等价纪律：recipe 体
+// ≡ 被收编字面量；跨串归一（如 input_field 的 border token 化）只发生在
+// Phase B 定案后。命名避开保留字（`shared` 事件在案）。
+
+pub style card_base = "bg-card text-card-foreground rounded-xl shadow-sm border border-border p-4"
+
+pub style pill(bg: str = "bg-primary", fg: str = "text-primary-foreground", pad: str = "px-4 py-2") =
+    "{pad} {bg} {fg} rounded-full text-sm font-medium shadow-sm hover:{bg}/90 transition-colors"
+
+// 次级药丸：pill 的 secondary 变体（形态镜像 pill()，默认盘 secondary）。
+pub style pill_ghost(bg: str = "bg-secondary", fg: str = "text-secondary-foreground", pad: str = "px-4 py-2") =
+    "{pad} {bg} {fg} rounded-full text-sm font-medium shadow-sm hover:{bg}/80 transition-colors"
+
+// 全域提示行（仓库重复 TOP1，×76）。
+pub style hint_text = "text-[10px] text-muted-foreground"
+
+// 说明文字（×58；015-notes 首批消费）。
+pub style caption_text = "text-xs text-muted-foreground"
+
+// 图标默认盒（×56，收编对象为 018/026/027/041 四份 tree_icon.at；
+// widget 本体合并走 475 组件级 use 通道另立小计划）。
+pub style icon_base = "w-4 h-4 shrink-0 text-muted-foreground"
+
+// 表单输入（×13；border-border 为 Phase B token 化定案形——D1 注记，
+// 消费方为 W4 波 023-realworld）。Phase A 消费者须先完成对应 token 改写。
+pub style input_field = "w-full px-3 py-2 border border-border rounded text-sm"
+
+// 分节标题族（×9+）：仅尺寸为真变体，参数化不做过头抽象。
+pub style section_title(size: str = "text-lg") = "font-semibold text-foreground {size}"
+
+style internal_only = "hidden"

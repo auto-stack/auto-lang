@@ -259,6 +259,9 @@ pub struct RustTrans {
     // Plan 151: Global variables (top-level var declarations)
     // Tracks global variables that need Lazy<Mutex<T>> wrapper
     global_vars: HashSet<AutoStr>,
+    /// PLAN-018: 全局 var 的声明类型(recv_is_list_like 全局 List 接收者
+    /// 识别用——全局 List 的 .get(i)/.set(i,v) 需与局部同款索引改写)。
+    global_var_types: HashMap<AutoStr, Type>,
     /// Plan 523 H5: 任一全局走了非字面量初始化（保留 once_cell Lazy 形态）
     /// ——决定产物头是否仍需 once_cell 导入。Phase 2 登记期置位。
     global_lazy_used: bool,
@@ -506,6 +509,7 @@ impl RustTrans {
             enum_tuple_field_types: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            global_var_types: HashMap::new(),
             global_lazy_used: false,
             in_fn_body: false,
             function_names: HashSet::new(),
@@ -605,6 +609,7 @@ impl RustTrans {
             enum_tuple_field_types: HashMap::new(),
             spec_decls: HashMap::new(),
             global_vars: HashSet::new(),
+            global_var_types: HashMap::new(),
             global_lazy_used: false,
             in_fn_body: false,
             function_names: HashSet::new(),
@@ -816,6 +821,12 @@ impl RustTrans {
     /// Register a global variable (top-level var declaration)
     pub fn register_global_var(&mut self, name: AutoStr) {
         self.global_vars.insert(name);
+    }
+
+    /// PLAN-018: register with declared type(全局 List 接收者识别)。
+    pub fn register_global_var_typed(&mut self, name: AutoStr, ty: Type) {
+        self.global_vars.insert(name.clone());
+        self.global_var_types.insert(name, ty);
     }
 
     /// Check if a variable is a global variable
@@ -1459,6 +1470,21 @@ impl RustTrans {
         Ok(())
     }
 
+    /// PLAN-018: List 元素非 Copy(str 系)时索引改写后置 .clone()
+    /// (`return G[i]` / `let x = G[i]` 的 String 移出即 E0507;int/bool
+    /// 元素 Copy 不加,维持既有金样)。
+    fn list_elem_needs_index_clone(&self, object: &Expr) -> bool {
+        let ty = match object {
+            Expr::Ident(name) => self
+                .global_var_types
+                .get(name.as_str())
+                .or_else(|| self.local_var_types.get(name.as_str()))
+                .cloned(),
+            _ => None,
+        };
+        matches!(ty, Some(Type::List(inner)) if matches!(inner.as_ref(), Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit))
+    }
+
     /// Write a return expression with automatic .to_string() coercion when needed.
     /// `add_semi`: whether to append a semicolon (false for match arm bodies).
     fn write_return_expr(&mut self, expr: &Expr, out: &mut impl Write, add_semi: bool) -> AutoResult<()> {
@@ -1901,6 +1927,23 @@ impl RustTrans {
             return "a2r_std::StringBuilder".to_string();
         }
 
+        // Plan 415-B1: the sqlite module's opaque connection handle. The
+        // distinct `SqliteDb` name (not `Db`) avoids hijacking user structs;
+        // map it to the a2r-std rusqlite wrapper, fully-qualified so it
+        // resolves without the glob `use a2r_std::*` import (StringBuilder
+        // precedent above).
+        if name == "SqliteDb" {
+            self.a2r_std_used.set(true);
+            return "a2r_std::sqlite::SqliteDb".to_string();
+        }
+
+        // Plan 415-B2: the redis module's client handle, same rationale as
+        // SqliteDb above (distinct name, fully-qualified a2r-std mapping).
+        if name == "RedisClient" {
+            self.a2r_std_used.set(true);
+            return "a2r_std::redis::RedisClient".to_string();
+        }
+
         // Merge mode: all types are in one file, skip crate:: prefix
         if self.merge_mode {
             if let Some(dot_pos) = name.rfind('.') {
@@ -2315,6 +2358,12 @@ impl RustTrans {
     /// .get 方法形由 Vec::get/HashMap::get 各自正确分派)。
     fn recv_is_list_like(&self, object: &Expr) -> bool {
         if let Expr::Ident(name) = object {
+            // PLAN-018: 全局 var List(Array 同款)——.get(i)/.set(i,v)
+            // 索引改写须覆盖全局接收者(`(*G.lock().unwrap())[(i) as usize]`),
+            // 否则落回 Vec::get(Option/i64 实参 E0277)。
+            if let Some(ty) = self.global_var_types.get(name.as_str()) {
+                return matches!(ty, Type::List(_) | Type::Array(_));
+            }
             self.local_var_types.get(name.as_str())
                 .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
                 .unwrap_or(false)
@@ -2331,9 +2380,19 @@ impl RustTrans {
 
     fn is_auto_list_expr(&self, obj: &Expr) -> bool {
         match obj {
-            Expr::Ident(name) => self.local_var_types.get(name.as_str())
-                .map(|ty| matches!(ty, Type::List(_)))
-                .unwrap_or(false),
+            Expr::Ident(name) => {
+                // PLAN-019:全局 var List 纳入识别(db.at 平行表接收者)——
+                // 仅查局部表时全局 List 的 .set(idx,v) 跌进 Plan 514 W1 的
+                // Vec::insert 重映射(插入语义,右移后续元素),多 Tab 模型
+                // 表腐坏实测(tab_root_node [3,1] vs 期望 [3,4],UI 挂起)。
+                // 镜像 recv_is_list_like 的 PLAN-018 全局覆盖。
+                if let Some(ty) = self.global_var_types.get(name.as_str()) {
+                    return matches!(ty, Type::List(_) | Type::Array(_));
+                }
+                self.local_var_types.get(name.as_str())
+                    .map(|ty| matches!(ty, Type::List(_)))
+                    .unwrap_or(false)
+            }
             Expr::Dot(inner, field) => {
                 if let Expr::Ident(owner) = inner.as_ref() {
                     if let Some(Type::User(usr)) = self.local_var_types.get(owner.as_str()) {
@@ -2651,7 +2710,11 @@ impl RustTrans {
                 // read-only `*` never conflicts.
                 if self.is_global_var(name) {
                     let static_name = self.global_var_static_name(name);
-                    write!(out, "*{}.lock().unwrap()", static_name)
+                    // PLAN-018: 括号绑定解引用范围。裸 `*G.lock().unwrap()`
+                    // 后接方法/字段时整链被解引用(`*…len()` = deref usize,
+                    // E0614);括号后方法作用于 MutexGuard 的 Deref 目标
+                    // (Vec/i64),标量读/算术/转型语义不变。
+                    write!(out, "(*{}.lock().unwrap())", static_name)
                 } else if self.is_write_captured(name.as_str()) {
                     // Plan 419 §4.5: 写捕获绑定是 Rc<RefCell<T>> —— 读走
                     // .borrow(),赋值 LHS(assign_lhs_depth>0)走 .borrow_mut()。
@@ -5585,6 +5648,19 @@ impl RustTrans {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::io::read_line()")?;
                                     return Ok(());
                                 }
+                                // Plan 415-B1: auto.sqlite.* mirrors the bare
+                                // `sqlite.*` dispatch (open takes &str).
+                                ("sqlite", "open") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
+                                    if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    write!(out, ")")?;
+                                    return Ok(());
+                                }
+                                ("sqlite", "last_error") => {
+                                    self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
+                                    return Ok(());
+                                }
                                 ("env", "set") => {
                                     self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
@@ -5773,6 +5849,39 @@ impl RustTrans {
                                     self.arg(arg, out)?;
                                 }
                                 write!(out, ")")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        // Plan 415-B1: sqlite module-level functions. `open`
+                        // takes &str — borrow bare-ident String args (fs
+                        // read_text precedent); `last_error` is nullary.
+                        "sqlite" => match method.as_str() {
+                            "open" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "last_error" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
+                                return Ok(());
+                            }
+                            _ => {}
+                        },
+                        // Plan 415-B2: redis module-level functions, mirroring
+                        // the sqlite arm (open takes &str; last_error nullary).
+                        "redis" => match method.as_str() {
+                            "open" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::redis::open(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "last_error" => {
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::redis::last_error()")?;
                                 return Ok(());
                             }
                             _ => {}
@@ -6714,7 +6823,13 @@ impl RustTrans {
 
                     // Simple name-remap table
                     // .len()/.length() returns usize, cast to i32 for Auto's int
-                    let needs_i32_cast_1 = matches!(method_name.as_str(), "len" | "length");
+                    // Plan 415-E1: the int cast only holds for the ZERO-ARG
+                    // collection-length form. A `.len(n)` WITH an argument is a
+                    // foreign builder setter (e.g. memmap2 MmapOptions::len)
+                    // returning Self — casting that to i64 breaks the chain
+                    // (`(opts.len(4) as i64).map_anon()` does not compile).
+                    let needs_i32_cast_1 = matches!(method_name.as_str(), "len" | "length")
+                        && call.args.args.is_empty();
                     let rust_method = match method_name.as_str() {
                         // String methods
                         "to_lower" | "lower" => Some("to_lowercase"),
@@ -6838,6 +6953,26 @@ impl RustTrans {
                 // list.get(i) -> list[i as usize].clone() for Auto List only
                 // Rust Vec/HashMap .get() falls through to generic method call handler
                 "get" => {
+                    // Plan 415-B2: RedisClient.get(key) → a2r-std inherent
+                    // method (&str borrow, sqlite exec precedent). Guarded
+                    // inside this arm — a preceding arm would shadow the
+                    // List-indexing logic below.
+                    if call.args.args.len() == 1 {
+                        let is_redis = if let Expr::Ident(name) = object.as_ref() {
+                            self.local_var_types.get(name)
+                                .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
+                                .unwrap_or(false)
+                        } else { false };
+                        if is_redis {
+                            self.a2r_std_used.set(true);
+                            self.expr(object, out)?;
+                            write!(out, ".get(")?;
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
                     if call.args.args.len() == 1 {
                         if let Some(Arg::Pos(arg)) = call.args.args.first() {
                             // Plan 433 A1: resolve List-typed locals/params AND
@@ -6956,6 +7091,63 @@ impl RustTrans {
                         return Ok(());
                     }
                     // Not a StringBuilder — fall through to the generic remap.
+                }
+                // Plan 415-B1: sqlite handle methods. The a2r-std
+                // `SqliteDb` wrapper exposes inherent methods with the same
+                // names as the Auto surface, so emit the receiver-typed call
+                // directly (bypassing the generic method path, which may
+                // rewrite Auto-declared `SqliteDb.*` methods into module
+                // free functions). `exec` takes the sql as &str.
+                "exec" | "query" | "last_insert_rowid" => {
+                    let is_sqlitedb = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "SqliteDb"))
+                            .unwrap_or(false)
+                    } else { false };
+                    if is_sqlitedb {
+                        self.a2r_std_used.set(true);
+                        self.expr(object, out)?;
+                        write!(out, ".{}(", method_name)?;
+                        if method_name == "exec" {
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        } else {
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                self.arg(arg, out)?;
+                            }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // Not a SqliteDb — fall through to the generic path.
+                }
+                // Plan 415-B2: redis client methods with NON-colliding names
+                // get their own arm. `get`/`set` collide with pre-existing
+                // arms of this match (List indexing / Map::insert rewrite
+                // live inside those arm bodies) — a preceding arm here would
+                // shadow them, so their RedisClient guards are embedded at
+                // the top of the existing `"get"`/`"set"` arms instead.
+                // The receiver must be a `var` binding: redis-rs connection
+                // ops take &mut self, mirrored by Auto var → `let mut`.
+                "ping" | "del" | "exists" => {
+                    let is_redis = if let Expr::Ident(name) = object.as_ref() {
+                        self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
+                            .unwrap_or(false)
+                    } else { false };
+                    if is_redis {
+                        self.a2r_std_used.set(true);
+                        self.expr(object, out)?;
+                        write!(out, ".{}(", method_name)?;
+                        if method_name != "ping" {
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    // Not a RedisClient — fall through to the generic path.
                 }
                 // Plan 204 Phase 5: Complex method translations requiring
                 // non-trivial Rust output (not just a name remap).
@@ -7315,6 +7507,29 @@ impl RustTrans {
                     return Ok(());
                 }
                 "set" => {
+                    // Plan 415-B2: RedisClient.set(key, val) → a2r-std
+                    // inherent method (both args &str borrows). Guarded
+                    // inside this arm — a preceding arm would shadow the
+                    // List/Map handling below.
+                    if call.args.args.len() == 2 {
+                        let is_redis = if let Expr::Ident(name) = object.as_ref() {
+                            self.local_var_types.get(name)
+                                .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
+                                .unwrap_or(false)
+                        } else { false };
+                        if is_redis {
+                            self.a2r_std_used.set(true);
+                            self.expr(object, out)?;
+                            write!(out, ".set(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                if let Arg::Pos(Expr::Ident(_)) = arg { write!(out, "&")?; }
+                                if let Arg::Pos(a) = arg { self.expr_as_str(a, out)?; }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                    }
                     // Plan 433 A1: list.set(i, v) -> list[i as usize] = v for
                     // Auto List receivers (in-place element write). The HashMap
                     // insert rewrite below shifts Vec elements instead of
@@ -7821,6 +8036,32 @@ impl RustTrans {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::io::read_line()")?;
                         return Ok(());
                     }
+                    // Plan 415-B1: sqlite module fns on the Dot-path dispatch
+                    // (mirrors the Bina-path arms; open takes &str).
+                    ("sqlite", "open") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
+                        if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("sqlite", "last_error") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
+                        return Ok(());
+                    }
+                    // Plan 415-B2: redis module fns on the Dot-path dispatch
+                    // (mirrors the sqlite arms; open takes &str).
+                    ("redis", "open") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::redis::open(")?;
+                        if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("redis", "last_error") => {
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::redis::last_error()")?;
+                        return Ok(());
+                    }
                     ("Map", "new") => {
                         write!(out, "std::collections::HashMap::new()")?;
                         return Ok(());
@@ -8020,7 +8261,12 @@ impl RustTrans {
             }
 
             // .len() and .length() return usize in Rust, cast to i32 for Auto's int
-            let needs_i32_cast = matches!(method_name.as_str(), "len" | "length");
+            // Plan 415-E1: zero-arg form only — `.len(n)` WITH an argument is a
+            // foreign builder setter (memmap2 MmapOptions::len) returning Self;
+            // casting that to i64 breaks the method chain. (Mirror of the
+            // Bina-path flag above.)
+            let needs_i32_cast = matches!(method_name.as_str(), "len" | "length")
+                && call.args.args.is_empty();
 
             // For "contains", choose between str::contains and map::contains_key
             // Only use contains_key when we KNOW the object is a Map.
@@ -8086,15 +8332,23 @@ impl RustTrans {
                 // when the receiver is NOT a known user-type instance — a type
                 // method named `set` (99_idiom2/m09 `Holder.set`) must pass
                 // through unchanged. Mirror of the Plan 393 E1 `append` guard.
+                // PLAN-019 缺陷修正:List 接收者的 .set(idx, v) 是替换语义,
+                // 不得映射 Vec::insert(插入语义,右移后续元素)——db.at 多 Tab
+                // 模型表腐坏实测(tab_root_node [3,1] vs 期望 [3,4],UI 挂起)。
+                // List 接收者改走下方 "set 索引赋值" 特化臂。
                 "set" => {
-                                        let lhs_is_struct = if let Expr::Ident(name) = object.as_ref() {
-                        self.local_var_types.get(name)
-                            .map(|ty| matches!(ty,
-                                Type::User(_) | Type::Tag(_) | Type::Enum(_)
-                                | Type::GenericInstance(_)))
-                            .unwrap_or(false)
-                    } else { false };
-                    if !lhs_is_struct { Some("insert") } else { None }
+                    if self.recv_is_list_like(object) {
+                        Some("__list_set_idx__")
+                    } else {
+                        let lhs_is_struct = if let Expr::Ident(name) = object.as_ref() {
+                            self.local_var_types.get(name)
+                                .map(|ty| matches!(ty,
+                                    Type::User(_) | Type::Tag(_) | Type::Enum(_)
+                                    | Type::GenericInstance(_)))
+                                .unwrap_or(false)
+                        } else { false };
+                        if !lhs_is_struct { Some("insert") } else { None }
+                    }
                 }
                 // Plan 384 A9: keep `.delete()` as-is (see note at the other
                 // match site) — axum Router `.delete()` must not become remove.
@@ -8114,6 +8368,21 @@ impl RustTrans {
             };
 
             if let Some(rust_name) = rust_method {
+                // PLAN-019:List 接收者的 .set(idx, v) → 索引赋值(替换语义;
+                // 镜像 Plan 514 W3 的 get 索引形特化)。
+                if rust_name == "__list_set_idx__" && call.args.args.len() == 2 {
+                    self.expr(object, out)?;
+                    write!(out, "[(")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                        self.expr(a, out)?;
+                    }
+                    write!(out, ") as usize] = ")?;
+                    if let Some(Arg::Pos(a)) = call.args.args.get(1) {
+                        self.expr(a, out)?;
+                    }
+                    writeln!(out, ";")?;
+                    return Ok(());
+                }
                 // Plan 514 W3:List/Vec 接收者的 .get(i) → 索引形
                 // `recv[(i) as usize]`(Vec::get 返 Option<&T>,直接字段访问
                 // E0609;lib 方法体 `.toks.get(.pos).kind` 位)。
@@ -8128,6 +8397,9 @@ impl RustTrans {
                             self.expr(a, out)?;
                         }
                         write!(out, ") as usize]")?;
+                        if self.list_elem_needs_index_clone(object) {
+                            write!(out, ".clone()")?;
+                        }
                         return Ok(());
                     }
                 }
@@ -9549,6 +9821,11 @@ impl RustTrans {
                         // move,复用即 E0382;与 List 同列。
                         .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
                         .unwrap_or(false)
+                        // PLAN-018: 全局 List 读作 owned 实参同 move
+                        // (E0507 cannot move out of MutexGuard)——同款克隆。
+                        || self.global_var_types.get(name.as_str())
+                            .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
+                            .unwrap_or(false)
                 } else { false };
             // Plan 016 Phase 4: a field-read (`s.marks`, `node.attrs`, `a.sel`)
             // passed to a by-value OWNED param (Vec/struct/enum/Map — anything
@@ -16125,10 +16402,13 @@ pub use auto_cabi_kit::*;"#
                             return Ok(()); // skip: functions already in merged file
                         }
                         // Module already declared via mod X; at file header.
-                        // use X (bare, no items) means "import all from this module"
-                        // → generate use crate::X::*;
+                        // Plan 545: use X (bare, no items) = namespace-only —
+                        // import the module name itself (Rust 2018 style); flat
+                        // glob requires explicit `use X: *` (wildcard arm above
+                        // at the shared emitter). Qualified `X.foo()` resolves
+                        // through the namespace import.
                         self.glob_imported_modules.insert(mod_name.to_string());
-                        write!(out, "{}use crate::{}::*;", pub_kw, mod_name)?;
+                        write!(out, "{}use crate::{};", pub_kw, mod_name)?;
                         return Ok(());
                     }
                 }
@@ -16195,7 +16475,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" => {
+                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", rest)
                             }
@@ -16217,7 +16497,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" => {
+                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", mod_name)
                             }
@@ -16230,7 +16510,7 @@ pub use auto_cabi_kit::*;"#
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
                             | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
                             | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may"
+                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis"
                         );
                         if is_stdlib {
                             self.a2r_std_used.set(true);
@@ -16250,8 +16530,11 @@ pub use auto_cabi_kit::*;"#
                     } else if !use_stmt.items.is_empty() {
                         write!(out, "{}use {}::{{{}}};", pub_kw, rust_path, use_stmt.items.join(", "))?;
                     } else if is_multi_file_bare {
-                        // In multi-file mode, bare import → wildcard
-                        write!(out, "{}use {}::*;", pub_kw, rust_path)?;
+                        // Plan 545: bare module import = namespace-only —
+                        // `use super::X;` / `use crate::X;` brings the module
+                        // name in scope for qualified `X::foo()` paths; flat
+                        // glob requires explicit `use X: *` (wildcard arm).
+                        write!(out, "{}use {};", pub_kw, rust_path)?;
                     } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty() || self.is_dir_module) {
                         // Multi-segment super:: path in directory module context.
                         // Only add wildcard if the last segment is a known module name,
@@ -21407,7 +21690,7 @@ pub use auto_cabi_kit::*;"#
     /// `expr.to_uint()`  → `(expr as u32)`
     /// `expr.to_int()`   → `(expr as i64)`
     /// (Rust ints/floats have no `.to_float()`/`.to_uint()` methods.)
-    fn fix_numeric_conversion_methods(content: &mut String) {
+    pub(crate) fn fix_numeric_conversion_methods(content: &mut String) {
         // Match a receiver that is either an identifier or a method chain we can
         // wrap in parens. Keep it conservative: `IDENT.method_chain().to_float()`.
         for (method, cast) in [
@@ -22775,7 +23058,7 @@ impl Trans for RustTrans {
                     || matches!(store.kind, StoreKind::Const)
                 {
                     if matches!(store.kind, StoreKind::Var) || matches!(store.kind, StoreKind::Shared) {
-                        self.register_global_var(store.name.clone());
+                        self.register_global_var_typed(store.name.clone(), store.ty.clone());
                         // Plan 523 H5: 非字面量初始化的全局保留 Lazy 形态。
                         if !Self::global_store_is_const_init(store) {
                             self.global_lazy_used = true;

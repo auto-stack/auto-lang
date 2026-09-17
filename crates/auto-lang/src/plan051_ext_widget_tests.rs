@@ -172,6 +172,7 @@ mod plan051_ext_widget_tests {
         let mut import_session = crate::compile::CompileSession::new();
         let mut aliases = std::collections::HashMap::new();
         let mut ext_widgets = Vec::new();
+        let mut ext_adapter_paths = Vec::new();
         let base_dir = front.clone();
         let err = crate::load_ext_imports_for_vm(
             &base_dir,
@@ -185,6 +186,7 @@ mod plan051_ext_widget_tests {
             None,
             &mut aliases,
             &mut ext_widgets,
+            &mut ext_adapter_paths,
         )
         .expect_err("typo 必须报错");
         assert!(

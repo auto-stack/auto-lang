@@ -15,6 +15,13 @@ pub mod seek_area;
 // PLAN-002 B: 布局件 hover 态 widget(row/col/div 的 `hover:` 变体类消费;
 // 共享标志 + request_redraw,无 view 重建)。
 pub mod hover_area;
+// PLAN-631 F-7: 指针按下记忆根 wrapper(popover placement "pointer" 锚源;
+// 窗口根单包装,ButtonPressed 现场记账窗口逻辑坐标到会话级单槽,纯委托)。
+pub mod right_press_area;
+// PLAN-631 F-7: pointer placement headless 测试(iced_test 管线,
+// iced-layout-tests 门控)。
+#[cfg(all(test, feature = "iced-layout-tests"))]
+mod pointer_placement_tests;
 // Plan 547: native display surface backed by the shared media registry.
 pub mod image_surface;
 // Plan 563: pen 事件层 widget(canvas onpenstart/onpenmove/onpenend 承载,
@@ -55,5 +62,5 @@ mod terminal_pixel_tests;
 mod terminal_input_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
-pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_with_title, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_iced_pixels, run_dynamic_desktop, run_dynamic_desktop_with_options, run_dynamic_desktop_fullscreen, DesktopOptions, last_input_text};
+pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_with_title, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_iced_pixels, run_native_iced_pixels, run_dynamic_desktop, run_dynamic_desktop_with_options, run_dynamic_desktop_fullscreen, DesktopOptions, last_input_text};
 pub(crate) use renderer::encode_payload;

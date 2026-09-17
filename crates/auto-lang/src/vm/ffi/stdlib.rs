@@ -65,7 +65,7 @@ mod image_pipeline_vm_http_tests {
 
     #[test]
     fn image_natives_register_opaque_ticket_operations() {
-        assert_eq!(IMAGE_NATIVE_NAMES.len(), 16);
+        assert_eq!(IMAGE_NATIVE_NAMES.len(), 17);
         assert!(IMAGE_NATIVE_NAMES.iter().all(|name| name.starts_with("auto.image.")));
     }
 }
@@ -408,6 +408,20 @@ pub fn shim_file_size(path: String) -> Result<i64, String> {
     fs::metadata(&path)
         .map(|meta| meta.len() as i64)
         .map_err(|e| format!("File.size failed: {} - {}", path, e))
+}
+
+/// Get file modification time as epoch seconds (PLAN-016 T-05).
+/// 列表物化不走 metadata JSON（JsonValue 可选字段读取在 VM 轨产出 None
+/// 级联 TypeError）——mtime/len/is_dir 各走直连 native。失败/1970 前 = -1。
+#[auto_macros::rust_fn("auto.fs.mtime")]
+pub fn shim_fs_mtime(path: String) -> Result<i64, String> {
+    let secs = fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(-1);
+    Ok(secs)
 }
 
 /// Check if path is a directory
@@ -4043,6 +4057,7 @@ pub const IMAGE_NATIVE_NAMES: &[&str] = &[
     "auto.image.retain", "auto.image.release", "auto.image.close", "auto.image.stats",
     "auto.image.open_session", "auto.image.snapshot", "auto.image.current_uri", "auto.image.names", "auto.image.navigate",
     "auto.image.request_view", "auto.image.close_session", "auto.image.session_stats",
+    "auto.image.thumb",
 ];
 
 #[cfg(feature = "ui-iced")]
@@ -4199,6 +4214,15 @@ pub fn shim_image_session_stats(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     push_string_result(task, vm, crate::ui::image_pipeline::media_session_stats(&session))
+}
+
+#[cfg(feature = "ui-iced")]
+pub fn shim_image_thumb(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args pushed (path, size): size pops first.
+    let size = task.ram.pop_i32();
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_string_result(task, vm, crate::ui::image_pipeline::queue_media_thumbnail(path, size))
 }
 
 /// Add GET route (placeholder)
@@ -6349,18 +6373,94 @@ pub fn shim_regex_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     Ok(())
 }
 
-/// Check if a regex pattern matches text. Returns 1 if match, 0 if not.
+/// PLAN-066 T-05（KD-057② 残余根修）：`Regex.match(text, pattern[, flags])`
+/// web 形态——JS `str.match`：无 'g' 返回 `[全匹配, 组1, …]`（musk
+/// colonMatch[1]/p0[1] 组提取），含 'g' 返回全部匹配子串列表（围栏提取）；
+/// 无匹配返回空列表（JS null 的 VM 对齐，`length > 0` 守卫双轨同真值）。
+/// 原实现为 is_match 1/0 语义且弹参错位，列表消费恒不可用——musk 侧曾以
+/// indexOf 纯串绕开（11b6c20，随本修回撤）。两参调用由 codegen 编译期补
+/// flags=""（沿 057 T6 JSON.stringify 补参先例）。
+/// 入参 CALL_NAT 约定（自顶向下，末参在顶）：[flags, pattern, text]。
 pub fn shim_regex_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let text: String = VMConvertible::pop_from_stack(task, vm)
+    let flags: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let pattern: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let text: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    push_regex_match_list(task, vm, &text, &pattern, flags.contains('g'), flags.contains('i'))
+}
 
-    let re = regex::Regex::new(&pattern)
-        .map_err(|e| VMError::RuntimeError(format!("regex.match failed: invalid pattern '{}': {}", pattern, e)))?;
+/// 匹配结果列表推送（堆 List<Value::Str>；fresh 列表 rc_push(+1) 与
+/// Plan 419 配平——元素为 Str 非堆引用，无子份额需求）。无匹配 → 空列表
+/// （length 0）。global 250 条上限沿 find_all 口径。
+fn push_regex_match_list(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    text: &str,
+    pattern: &str,
+    global: bool,
+    case_insensitive: bool,
+) -> Result<(), VMError> {
+    let mut builder = regex::RegexBuilder::new(pattern);
+    builder.case_insensitive(case_insensitive);
+    let re = builder.build().map_err(|e| {
+        VMError::RuntimeError(format!(
+            "Regex.match failed: invalid pattern '{}': {}",
+            pattern, e
+        ))
+    })?;
+    use crate::vm::types::ListData;
+    let mut list: ListData<auto_val::Value> = ListData::new();
+    let mut count = 0usize;
+    if global {
+        for m in re.find_iter(text) {
+            list.push(auto_val::Value::Str(auto_val::AutoStr::from(m.as_str())));
+            count += 1;
+            if count >= 250 {
+                break;
+            }
+        }
+    } else if let Some(caps) = re.captures(text) {
+        for g in caps.iter().flatten() {
+            list.push(auto_val::Value::Str(auto_val::AutoStr::from(g.as_str())));
+        }
+    }
+    let id = vm.insert_heap_object(list);
+    vm.rc_push(task, auto_val::encode_object(id as u32));
+    Ok(())
+}
 
-    let result: i32 = if re.is_match(&text) { 1 } else { 0 };
-    task.ram.push_i32(result);
+/// PLAN-066 T-12（F-W1）：`i18n.t(key)` VM 轨查表——接 PLAN-050 C7 的
+/// i18n_lookup 注册表（front 根目录 i18n/{lang}.json，AUTO_LOCALE 装载；
+/// 查不中回落 key 本身）。此前 computed/handler 合成体的 `i18n.t(...)`
+/// 无路由：`i18n` 标识符在合成作用域未绑定（组件级
+/// `let i18n = useI18n()` 不进合成体）→ codegen "Undefined variable:
+/// i18n" → computed 导出毒化 → App link failed 启动 exit 1（KD-066
+/// F-W1）。codegen P240 map ("i18n","t") 路由至此，接收者不再编译。
+/// 入参 CALL_NAT 约定（自顶向下）：[key]。
+#[cfg(feature = "ui-iced")]
+pub fn shim_i18n_t(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let out = crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key.clone());
+    VMConvertible::push_to_stack(&out, task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// PLAN-066 T-06（055-4⑥ 现代真身）：`str.includes(pat)` 字符串包含判定。
+/// 实例方法 CALL_NAT 约定（自顶向下）：[pat, receiver]。此前合成 fn 内
+/// `str.includes` 无 native 注册且不达引擎 CALL_SPEC str 臂 → 静默 no-op
+/// 桩（恒 Nil → if 恒假），musk filteredMessages 的 includes 过滤投影恒
+/// 0 条（聊天搜索/画布投影脸）；t3_filter 脚本层另一分发路故绿。
+pub fn shim_str_includes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let pat = String::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let receiver = String::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    VMConvertible::push_to_stack(&receiver.contains(&pat), task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
@@ -8012,6 +8112,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
         natives.register_shim_by_name("auto.image.request_view", shim_image_request_view);
         natives.register_shim_by_name("auto.image.close_session", shim_image_close_session);
         natives.register_shim_by_name("auto.image.session_stats", shim_image_session_stats);
+        natives.register_shim_by_name("auto.image.thumb", shim_image_thumb);
     }
     // auto-os Plan 013 T2: AutoTerm 引擎桥(auto.term.*)注册走 native_catalog
     // 静态表(ID 2943-2949,register_std_shims 自动绑 shim + canonical 名,
@@ -8157,6 +8258,11 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // PLAN-053 P-053-6: web 生态静态形态（CALL_SPEC Regex.replace/test 路由）。
     natives.register_shim_by_name("auto.regex.replace", shim_regex_replace);
     natives.register_shim_by_name("auto.regex.test", shim_regex_test);
+    #[cfg(feature = "ui-iced")]
+    natives.register_shim_by_name("auto.i18n.t", shim_i18n_t);
+    // PLAN-066 T-06：str.includes 字符串包含（实例方法 CALL_NAT：[pat,
+    // receiver]；register_shim_by_name 动态 id，沿 http_stream 先例）。
+    natives.register_shim_by_name("auto.str.includes", shim_str_includes);
 
     // Task system (manual shim — VM access for event loop)
     natives.register_shim_by_name("auto.task_system.run", shim_task_system_run);

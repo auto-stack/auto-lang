@@ -1,0 +1,6 @@
+name: "stylekit"
+version: "0.1.0"
+scene: "ui"
+render: "vue"
+title: "StyleKit"
+title_zh: "样式组件库"

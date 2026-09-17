@@ -22,6 +22,9 @@ style save_btn = "h-8 w-auto border-0 flex items-center gap-1.5 px-3 rounded-md 
 style pill_btn = "h-8 w-auto border-0 flex items-center gap-1.5 px-2.5 rounded-full bg-primary/10 text-xs text-primary font-medium hover:bg-primary/20 transition-colors"
 style tag_pill = "h-6 w-auto border-0 flex items-center gap-1 pl-2 pr-1 rounded-full bg-primary/10"
 
+// PLAN-637 T-06：共享配方导入（stylekit caption_text ≡ 原字面量，零漂移）。
+use stylekit.styles: caption_text
+
 widget EditorPanel() {
     msg {
         EditTitle(str), EditBody(str),
@@ -52,7 +55,7 @@ widget EditorPanel() {
                         style: "flex-1 text-2xl font-semibold tracking-tight bg-transparent border-0 outline-none text-foreground"
                     }
                     if .store.dirty {
-                        text "Unsaved changes" { style: "text-xs text-muted-foreground" }
+                        text "Unsaved changes" { style: caption_text }
                         button {
                             onclick: .SaveDraft
                             style: save_btn
@@ -101,9 +104,9 @@ widget EditorPanel() {
                 row {
                     style: "items-center gap-1.5"
                     icon (name: "clock", size: 12, style: "text-muted-foreground")
-                    text .store.draft_time { style: "text-xs text-muted-foreground" }
+                    text .store.draft_time { style: caption_text }
                     if .store.draft_folder != "" {
-                        text .store.draft_folder { style: "text-xs text-muted-foreground" }
+                        text .store.draft_folder { style: caption_text }
                     }
                 }
 

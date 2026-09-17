@@ -343,10 +343,14 @@ impl AutovmReplSession {
                 let full_path = format!("{}.{}", use_stmt.module, fn_name);
 
                 // Check if this function is in the import list (if selective import)
+                // Plan 545: bare `use auto.str` = namespace-only — short-name
+                // aliases register under wildcard (explicit flat opt-in) or
+                // named items only. Qualified `str.split(...)` calls resolve
+                // via the full-path native (`auto.str.split`) regardless.
                 let should_import = if use_stmt.is_wildcard {
                     true
                 } else if use_stmt.items.is_empty() {
-                    true
+                    false
                 } else {
                     use_stmt.items.iter().any(|item| item == fn_name)
                 };

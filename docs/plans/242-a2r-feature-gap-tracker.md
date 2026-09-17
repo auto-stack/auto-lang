@@ -30,9 +30,9 @@ This tracker serves as a **living document** that inventories all outstanding a2
 | 12 | a2rs async model (blocking → tokio) | 🔧 Partial | 119 / 355 | ⭐⭐⭐⭐⭐ Very High | — | a2r 发射侧 ✅（Plan 355：.await + async fn + `#[tokio::main]` rust.rs:10456/10466）；VM 内嵌 tokio 的 13 cookbook stub 仍阻塞（属 VM 侧，非 a2r） | — |
 | 13 | Core a2r completeness / a2c parity | 🔧 Partial | 007 / 067 | ⭐⭐⭐⭐⭐ Very High | — | Many edge cases across expr/stmt/types | — |
 | 14 | Rust Cookbook systematic test suite | ✅ Done | 240 | ⭐⭐⭐⭐⭐ Very High | — | Core suite complete (163 .at, 124/124 a2r pass); DB/async/cc stubs handed to #10/#12/#17 | 2026-07-14 |
-| 15 | a2r UI generator (GPUI/ICED) | ⏳ Planned | 180 / **415-C** | ⭐⭐⭐⭐⭐ Extreme | — | AURA → GPUI mapping layer; auto-ui integration | — |
+| 15 | a2r UI generator (GPUI/ICED) | 🔮 未来项 | 180 | ⭐⭐⭐⭐⭐ Extreme | — | AURA → GPUI mapping layer; auto-ui integration。**延后（2026-09-15 用户裁定,入 KNOWN-DEBT 415-C）**:虚拟桌面 M0-M4 已交付但渲染双轨定型（iced+Vue,路线 B 叶子=RenderCommand）,GPUI 非关键路径——重启条件=GPUI 生态特定需求或路线 B 变更;骨架现状/限制见 415 归档件 C 节与 DEBTS 365 条目 | — |
 | 16 | Self-hosting a2r transpiler (in Auto) | 🔧 Partial | 229 / 237 / **415-D** | ⭐⭐⭐⭐⭐ Maximum | — | Generics, pattern matching, trait system completion | — |
-| 17 | Build-time codegen (`dep cc`) + `memmap2` FFI | ⏳ Planned | **415-E** | ⭐⭐⭐⭐ High | — | build-time codegen + memmap2 FFI bridge; 4 cookbook stubs handed off from Plan 240 Phase 13 | — |
+| 17 | Build-time codegen (`dep cc`) + `memmap2` FFI | ✅ Done | **415-E** | ⭐⭐⭐⭐ High | — | 2026-09-15 重定+落地（415-E1）：memmap2 经 **dep 轨**（591/596,`dep memmap2`+`use.rs`）去桩 safety/001_memmap（原 build.rs+cc+FFI 方案被 610 use.c 双形态/manifest IR 与 dep 轨双重取代,重定方案见 415-E 节）；"dep cc" 重定性为非 Auto 侧（产物 Cargo 传递处理,415-E2）；Phase 13 四文件实勘=1 桩（已去桩）+1 已完成+2 不可定位 | 2026-09-15 |
 
 **Legend**
 - ⏳ Planned = Not yet started

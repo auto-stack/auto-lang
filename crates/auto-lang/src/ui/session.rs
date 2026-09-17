@@ -268,8 +268,14 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// 懒挂载（launcher 同型 overlay 槽约定）；独立模式恒 None。
     pub switcher_app: Option<AppId>,
     /// PLAN-012 F2 走查：进行中的桌面图标拖拽（desktop_icon_drag_start
-    /// 置位；__mouse_released 臂落格清位）。
-    pub icon_drag: Option<String>,
+    /// 置位；__mouse_released 臂落格清位）。2026-09-15：附拾起起点光标
+    /// （desktop 本地坐标）——松手位移 < 阈值视为点击原样落回，杜绝
+    /// "点图标旁空隙即跳格"误拖。
+    pub icon_drag: Option<(String, (f32, f32))>,
+    /// 2026-09-15：本次拖拽是否已超过位移阈值（6px）——未超 = 点击，
+    /// 两路落格动词（__mouse_released 兜底臂 + BlankDrop desktop_icon_drop_at）
+    /// 都拒落，只清视觉态。
+    pub icon_drag_moved: bool,
     /// Plan 479 T3：通知中心 overlay App 的 AppId。首次 notes_toggle 召唤时
     /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
     pub notification_app: Option<AppId>,
@@ -376,6 +382,7 @@ impl DesktopState {
             launcher_app: None,
             switcher_app: None,
             icon_drag: None,
+            icon_drag_moved: false,
             notification_app: None,
             desktop_app: None,
             desktop_wallpaper: DESKTOP_WALLPAPER_DEFAULT.to_string(),
@@ -1310,6 +1317,10 @@ pub enum DesktopCommand {
     /// （窗在隐藏分区先切分区）聚焦其窗；未运行 → launch（.at 无法跨列表
     /// 反查 wid，保持 shell 零智能）。
     ActivateApp(String),
+    /// PLAN-016 T-07（协议 v1.7）：用注册表 App 打开文件（`open_with
+    /// <app-id> <path>`）。执行臂：未运行 → launch 后向目标 App state 写
+    /// `auto_open_path`；已运行 → 聚焦 + 同款写入（目标 App 自行消费）。
+    OpenWith(String, String),
     /// Plan 473：原生窗口收编（native dock，Phase 1 假洞）。按 pid（枚举
     /// 首个可见顶层窗）或 hwnd（十六进制）定位目标；宿主代解 Win32 发现。
     DockNative(NativeTarget),
@@ -1495,6 +1506,16 @@ impl DesktopCommand {
             DesktopCommand::NextWorkspace => "workspace_next".to_string(),
             DesktopCommand::ActivateApp(name) => {
                 format!("activate{}{name}", Self::FIELD_SEP)
+            }
+            // PLAN-016 v1.7：双参动词（Notify 同型——parse 取首分符尾部完整）。
+            DesktopCommand::OpenWith(app, path) => {
+                format!(
+                    "open_with{}{}{}{}",
+                    Self::FIELD_SEP,
+                    app,
+                    Self::FIELD_SEP,
+                    path
+                )
             }
             DesktopCommand::DockNative(target) => {
                 format!("dock_native{}{}", Self::FIELD_SEP, target.encode_arg())
@@ -1745,6 +1766,20 @@ impl DesktopCommand {
                     "activate" if !arg.is_empty() => {
                         Some(DesktopCommand::ActivateApp(arg.to_string()))
                     }
+                    // PLAN-016 v1.7：open_with <app-id> <path>（path 单行约束，
+                    // Notify msg 同款——parse 取首分符，尾部完整保留）。
+                    "open_with" if !arg.is_empty() => {
+                        // 第二参分隔符两套等价（\u{1F} 编码面 / \t 直书面）。
+                        let (app, path) =
+                            arg.split_once([Self::FIELD_SEP, '\t'])?;
+                        if app.is_empty() || path.is_empty() {
+                            return None;
+                        }
+                        Some(DesktopCommand::OpenWith(
+                            app.to_string(),
+                            path.to_string(),
+                        ))
+                    }
                     "dock_native" => NativeTarget::parse_arg(arg).map(DesktopCommand::DockNative),
                     "undock_native" => arg.parse::<u64>().ok().map(DesktopCommand::UndockNative),
                     // Plan 486 v1.3：任务栏 native 条目动词（undock_native 同型；
@@ -1945,6 +1980,19 @@ pub struct LaunchSpec {
     /// 绝对路径——`back.*` 模块链接式契约解析根，Plan 061；None = 无）。
     /// boot 期 resolver 自条目目录解析填入。
     pub back_root: Option<std::path::PathBuf>,
+    /// PLAN-016 T-07：pac `opens:` 可打开扩展名声明（小写、带点，如
+    /// ".txt"）——`open_with` 执行臂的关联校验面；空 = 不参与校验。
+    pub opens: Vec<String>,
+    /// Plan 020 T-06：编译 exe 声明（pac `desktop_exe:` 相对 App 根解析的
+    /// 路径——a2r `auto build -r rust` 产物；None = 无声明）。launch 期
+    /// 发现序 = 此声明 > rust-workspace 约定路径扫描（`outproc_native_exe`）；
+    /// 两者皆无 = 现行解释态 outproc 臂（I1 零变化）。
+    pub exe: Option<std::path::PathBuf>,
+    /// Plan 020 T-07：pac `desktop_render:` 透传（native exe spawn 时下发
+    /// `--autodesk-render=<v>`——queue 档显式申明；None = 生成 gate auto
+    /// 裁决（v1 缺省 independent，待澄清③））。解释态臂不消费（其裁决
+    /// 链在 cmd_autodesk 壳内同参读取）。
+    pub render_decl: Option<String>,
 }
 
 impl Default for LaunchSpec {
@@ -1957,6 +2005,9 @@ impl Default for LaunchSpec {
             fit: false,
             daemon: None,
             back_root: None,
+            opens: Vec::new(),
+            exe: None,
+            render_decl: None,
         }
     }
 }
@@ -2000,6 +2051,14 @@ pub struct HostCtx {
     /// Plan 496 M5：桌面本体面同型垫片（常驻面，非 overlay——垫片语义
     /// 与 overlay 槽相同：windowless 特权 App 的窗口级字段挂靠点）。
     pub desktop_fields: ShellFields,
+}
+
+impl Drop for DesktopSession {
+    fn drop(&mut self) {
+        // KD-062 滞留脸根修（见 shutdown_outproc_children 文档）：会话
+        // 消亡（含全部 iced::exit() 面）统一收割 outproc 子进程。
+        self.shutdown_outproc_children();
+    }
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -2497,6 +2556,81 @@ fn outproc_child_identity(
     )
 }
 
+/// Plan 020 T-06：native exe 发现序（待澄清②定案：pac 声明为主 + 约定
+/// 路径兜底）——①`LaunchSpec.exe`（pac `desktop_exe:`，resolver 装配期已
+/// 相对 App 根解析；声明即信，缺失在 spawn 臂报错——"声明了但未构建"
+/// 走 toast，不静默回退解释臂）→ ②rust-workspace 约定路径扫描：
+/// `<app-root>/rust-workspace/<dir>/target/{release,debug}/<exe>.exe`
+/// （exe 名先 pac `name:` 蛇形、后目录名——scratch counter 实测生成物 =
+/// 蛇形包名）。两者皆无 → None = 现行解释态 outproc 臂。
+pub(crate) fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf> {
+    if spec.exe.is_some() {
+        return spec.exe.clone();
+    }
+    let dir = spec
+        .source_path
+        .as_deref()
+        .and_then(|p| std::path::Path::new(p).ancestors().nth(3))?;
+    let root = dir.parent()?;
+    let dir_name = dir.file_name()?.to_string_lossy().to_string();
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(name) = &spec.name {
+        let snake: String = name
+            .chars()
+            .map(|c| if c == '-' || c == ' ' { '_' } else { c.to_ascii_lowercase() })
+            .collect();
+        candidates.push(snake);
+    }
+    candidates.push(dir_name.clone());
+    for build in ["release", "debug"] {
+        for exe_name in &candidates {
+            let candidate = root
+                .join("rust-workspace")
+                .join(&dir_name)
+                .join("target")
+                .join(build)
+                .join(format!("{exe_name}.exe"));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Plan 020 T-06：native exe 子进程 spawn——a2r 编译产物自带孵化参数解析
+/// （T-05 生成 main gate）：无 `run` 子命令、不注入 `AUTO_386_APP_ROOT`
+/// 解释根；参数面与解释态同形（`--app386=<dir>` 在 native 侧为 Hello
+/// app_name 覆盖——宿主认领按目录名匹配同源）。NEXTEST_* 剥除同款。
+fn spawn_exe_child(
+    exe: &std::path::Path,
+    child_name: &str,
+    broker_pipe: &str,
+    render: Option<&str>,
+) -> std::io::Result<std::process::Child> {
+    let mut cmd = std::process::Command::new(exe);
+    cmd.args([
+        "--autodesk-incubate",
+        &format!("--app386={child_name}"),
+        &format!("--autodesk-broker={broker_pipe}"),
+    ]);
+    // pac `desktop_render:` 透传（queue 档显式下发；None = 生成 gate auto
+    // 裁决——v1 缺省 independent，待澄清③）。stdio 静默（p508 注入
+    // spawner 同款——子进程输出/句柄不挂宿主管道）。
+    if let Some(v) = render {
+        cmd.arg(format!("--autodesk-render={v}"));
+    }
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    for (key, _) in std::env::vars() {
+        if key.starts_with("NEXTEST_") {
+            cmd.env_remove(&key);
+        }
+    }
+    cmd.spawn()
+}
+
 /// Plan 508 G1：outproc 子进程本体定位——宿主即 `auto` 二进制
 /// （`auto run --desktop`）时用 current_exe；其他宿主（ui_desktop 验收/
 /// 实机宿主）取同目录的 auto 兄弟二进制（target/{debug,release}/ 共存
@@ -2564,6 +2698,18 @@ fn spawn_outproc_child(
         if self.desktop.process_model == ProcessModel::Outproc {
             eprintln!("[session] launch_app(outproc) {name}");
             return self.launch_app_outproc(name);
+        }
+        // Plan 020 T-07 补路由（G1/非目标节裁定："exe App 天然 outproc"）：
+        // inproc 缺省下发现编译 exe（pac `desktop_exe:` / rust-workspace
+        // 约定）同样走孵化链；纯解释 spec（发现 MISS）维持 inproc 零变化
+        //（I1——多一次 resolver 读源 + 少量 stat，launch 本就重复读源）。
+        if let Some(resolver) = self.desktop.app_resolver.clone() {
+            if let Some(spec) = resolver(name) {
+                if Self::outproc_native_exe(&spec).is_some() {
+                    eprintln!("[session] launch_app(outproc-native) {name}");
+                    return self.launch_app_outproc(name);
+                }
+            }
         }
         eprintln!("[session] launch_app(inproc) {name}");
         let resolver = self
@@ -2746,10 +2892,25 @@ fn spawn_outproc_child(
             .broker_pipe
             .clone()
             .unwrap_or_else(|| crate::ui::desktop_protocol::broker::BROKER_PIPE.to_string());
+        // Plan 020 T-06：spawn 分流——测试注入 spawner > native exe 臂
+        //（`outproc_native_exe` 发现序命中）> 现行 auto re-exec 臂（零变化）。
+        let native_exe = Self::outproc_native_exe(&spec);
         let child = match self.desktop.outproc_spawner.clone() {
             Some(spawn) => spawn(&child_name).map_err(|e| format!("spawn outproc child: {e}"))?,
-            None => Self::spawn_outproc_child(&child_name, app_root.as_deref(), &broker_pipe)
-                .map_err(|e| format!("spawn outproc child: {e}"))?,
+            None => match native_exe.as_deref() {
+                Some(exe) => {
+                    eprintln!("[session] launch_app(outproc-native) {name} <- {}", exe.display());
+                    Self::spawn_exe_child(
+                        exe,
+                        &child_name,
+                        &broker_pipe,
+                        spec.render_decl.as_deref(),
+                    )
+                    .map_err(|e| format!("spawn outproc child: {e}"))?
+                }
+                None => Self::spawn_outproc_child(&child_name, app_root.as_deref(), &broker_pipe)
+                    .map_err(|e| format!("spawn outproc child: {e}"))?,
+            },
         };
         self.desktop.outproc_children.push(child);
         // 等受理（子进程 spawn + connect，冷启可达数秒）→ attach 到 Active
@@ -2837,6 +2998,22 @@ fn spawn_outproc_child(
             // 唤醒：连上即关的探测连接（500ms 超时兜底——serve 线程可能
             // 恰在两次 serve_once 间隙，连接失败无碍旗标退出）。
             let _ = crate::ui::desktop_protocol::transport::connect(pipe, 500);
+        }
+    }
+
+    /// PLAN-066 T-03（KD-062）：会话消亡时统一收割 outproc 子进程。
+    /// Rust `Child` Drop 既不 kill 也不 wait——此前生产路径只在测试里
+    /// drain(kill)，会话结束即与子进程失联：子 auto.exe（Plan 508
+    /// `--autodesk-incubate` re-exec，release ~66MB 档）存活过桌面会话=
+    /// KNOWN-DEBT KD-062「MCP snapshot ~66MB 子 auto 进程不退」的真身；
+    /// ~43MB 瞬态=broker attach 失败自退的同族。收割入口挂
+    /// [`DesktopSession::drop`] 兜底而非散布在各 iced::exit() 点：run()
+    /// 返回时 state 必经 Drop，协议失败等未显式停机的退出面同样覆盖；
+    /// 先行 drain 的测试路径 Drop 见空 vec 无操作。
+    pub fn shutdown_outproc_children(&mut self) {
+        for mut child in self.desktop.outproc_children.drain(..) {
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
 
@@ -2957,7 +3134,23 @@ fn spawn_outproc_child(
             }
         }
         for pipe in dead {
-            clients.remove(&pipe);
+            // Plan 020 T-07（AC-05 kill 方向）：client 断连死亡（EOF/编码
+            // 错——kill 子进程路径，ExitRequest 不可达）→ 窗回收与 Close
+            // 语义对称（462 wm_remove_win + App 槽移除 + 表面释放；无
+            // BufferRelease 回发——管道已死）。
+            let Some(mut client) = clients.remove(&pipe) else {
+                continue;
+            };
+            if let Some(wid) = client.wid {
+                let app_id = self.wm_remove_win(wid);
+                if let Some(app_id) = app_id {
+                    self.apps.remove(&app_id);
+                }
+                if let Some(surface) = client.wid_surface.remove(&wid.0) {
+                    client.shm.remove(&surface);
+                    client.surfaces.release(surface);
+                }
+            }
         }
         self.broker_clients = clients;
     }
@@ -4856,7 +5049,9 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
         }));
         ds
     }
@@ -4885,7 +5080,9 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: true,
-            })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
         let host = ds.host.as_ref().unwrap();
@@ -4925,7 +5122,9 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
         let app = ds.host.as_ref().unwrap().wm.wins[&wid].app;
@@ -4963,6 +5162,77 @@ mod tests {
         assert_eq!(ProcessModel::from_storage(Some("outproc")), ProcessModel::Outproc);
         assert_eq!(ProcessModel::from_storage(Some("  outproc ")), ProcessModel::Outproc);
         assert_eq!(ProcessModel::from_storage(Some("bogus")), ProcessModel::Inproc);
+    }
+
+    /// Plan 020 T-06：native exe 发现序单测——pac `desktop_exe:` 声明 >
+    /// rust-workspace 约定路径（release > debug；exe 名 pac name 蛇形 >
+    /// 目录名）；两者皆无 → None（解释态 outproc 臂）。
+    #[test]
+    fn native_exe_discovery_order() {
+        let root = std::env::temp_dir().join("plan020-native-exe-disc");
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("002-counter");
+        std::fs::create_dir_all(dir.join("src").join("front")).unwrap();
+        let app_at = dir.join("src").join("front").join("app.at");
+        std::fs::write(&app_at, "widget App {}").unwrap();
+        let ws = root.join("rust-workspace").join("002-counter");
+        for build in ["release", "debug"] {
+            std::fs::create_dir_all(ws.join("target").join(build)).unwrap();
+            std::fs::write(
+                ws.join("target").join(build).join("counter.exe"),
+                b"MZ",
+            )
+            .unwrap();
+        }
+        let spec = |exe: Option<std::path::PathBuf>| LaunchSpec {
+            code: String::new(),
+            source_path: Some(app_at.to_string_lossy().to_string()),
+            name: Some("counter".to_string()),
+            exe,
+            ..Default::default()
+        };
+
+        // ① pac 声明即信（路径甚至不必存在——缺失在 spawn 臂报错）。
+        let declared = root.join("custom").join("elsewhere.exe");
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec(Some(declared.clone()))).as_ref(),
+            Some(&declared),
+            "pac 声明优先于约定路径"
+        );
+
+        // ② 约定路径：release 先于 debug；exe 名 = pac name 蛇形。
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec(None)).as_ref(),
+            Some(&ws.join("target").join("release").join("counter.exe")),
+        );
+
+        // ③ release 缺产物 → debug 档。
+        std::fs::remove_file(ws.join("target").join("release").join("counter.exe")).unwrap();
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec(None)).as_ref(),
+            Some(&ws.join("target").join("debug").join("counter.exe")),
+        );
+
+        // ④ 蛇形名缺席 → 目录名兜底。
+        std::fs::remove_file(ws.join("target").join("debug").join("counter.exe")).unwrap();
+        std::fs::write(ws.join("target").join("debug").join("002-counter.exe"), b"MZ").unwrap();
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec(None)).as_ref(),
+            Some(&ws.join("target").join("debug").join("002-counter.exe")),
+        );
+
+        // ⑤ 全缺 → None（解释态 outproc 臂）；无 source_path 亦 None。
+        std::fs::remove_file(ws.join("target").join("debug").join("002-counter.exe")).unwrap();
+        assert_eq!(DesktopSession::outproc_native_exe(&spec(None)), None);
+        let inline = LaunchSpec {
+            code: String::new(),
+            source_path: None,
+            name: Some("counter".to_string()),
+            exe: None,
+            render_decl: None,            ..Default::default()
+        };
+        assert_eq!(DesktopSession::outproc_native_exe(&inline), None, "内联 spec 无发现面");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Plan 508 G1：outproc 臂子进程体（re-exec）——env 注入时走 broker
@@ -5007,7 +5277,9 @@ mod tests {
                 fit: false,
                 daemon: None,
                 back_root: None,
-            })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
         }));
         ds.desktop.process_model = ProcessModel::Outproc;
         // spawn 钩子注入：re-exec 测试体（生产 = spawn_outproc_child）。
@@ -5191,7 +5463,9 @@ mod tests {
                 daemon: Some("autoos".to_string()),
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
             crate::ui::osconfig_daemon::DaemonStatus::Running(
@@ -5228,7 +5502,9 @@ mod tests {
                 daemon: Some("autoos".to_string()),
                 back_root: None,
                 fit: false,
-            })
+        exe: None,
+            opens: Vec::new(),
+        render_decl: None,    })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
             crate::ui::osconfig_daemon::DaemonStatus::Offline("就绪超时".to_string())
@@ -5918,6 +6194,44 @@ mod tests {
         ds.wm_set_layout(crate::ui::layout::LayoutMode::Free);
         let host = ds.host.as_ref().unwrap();
         assert!(host.wm.pending_native_geometry.is_empty(), "free 模式槽位恒等");
+    }
+
+    // ---- PLAN-066 T-03（KD-062）：会话消亡收割 outproc 子进程 ----
+
+    /// 回归锁：DesktopSession Drop 必须 kill+wait 全部 outproc 子进程。
+    /// Rust `Child` Drop 不杀不 wait——滞留子 auto.exe（~66MB 档）即
+    /// KNOWN-DEBT KD-062「MCP snapshot 拉起子 auto 进程不退」真身。
+    #[test]
+    fn session_drop_reaps_outproc_children() {
+        let mut ds = DesktopSession::empty(None);
+        // 长命子进程打桩：Windows ping（无外部依赖，30s 远超测试窗）。
+        let mut child = std::process::Command::new("ping")
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn long-lived probe child");
+        let pid = child.id();
+        ds.desktop.outproc_children.push(child);
+
+        drop(ds);
+
+        let probe = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ 'ALIVE' }} else {{ 'GONE' }}"
+                ),
+            ])
+            .output()
+            .expect("probe child pid");
+        let out = String::from_utf8_lossy(&probe.stdout).to_string();
+        assert!(
+            out.contains("GONE"),
+            "outproc child pid {pid} must be reaped on session drop, got: {}",
+            out.trim()
+        );
     }
 
     // ---- Plan 486 T1：拖入手势会话字段（NativeDragOver 消息面）----

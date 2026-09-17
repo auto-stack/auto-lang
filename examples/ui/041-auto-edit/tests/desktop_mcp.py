@@ -613,7 +613,9 @@ def run_tests(mcp_url, proc):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         # Plan 451: 动作配置 DSL 化——热重载对象改为 app.at 的 actions 块
         config_file = os.path.join(PROJECT, "src", "front", "app.at")
-        config_backup = open(config_file, encoding="utf-8").read()
+        # newline="": Windows 文本模式会把换行译成 CRLF 回写,残留会让下一轮
+        # 实例的 DSL 解析退化(菜单项快照匹配全挂,矩阵自毒循环)。
+        config_backup = open(config_file, encoding="utf-8", newline="").read()
         try:
             t10_url = f"http://127.0.0.1:{t10_port}/mcp"
             assert wait_for_server(t10_url, 30), "T10 server never up"
@@ -670,17 +672,19 @@ def run_tests(mcp_url, proc):
             # 10.3 hot reload: append an action + a T10 menu INSIDE the root
             # block (auto-atom rejects trailing nodes after the closing brace),
             # reload via the MCP tool, expect it in the next snapshot.
+            # PLAN-630 T-03: 菜单已迁移声明式组件（不随 actions 热重载），
+            # toolbar 仍为 actions 合成 → 热重载锚移到 toolbar。
             modified = config_backup.replace(
                 "    actions {\n",
                 "    actions {\n        action (id: \"help.t10\", handler: .ActAbout, title: \"T10 重载项\")\n",
                 1,
             ).replace(
-                "        menubar {\n",
-                "        menubar {\n            menu (id: \"t10menu\", title: \"T10\") { item (action: \"help.t10\") }\n",
+                "        toolbar {\n",
+                "        toolbar {\n            item (action: \"help.t10\")\n",
                 1,
             )
             assert "help.t10" in modified, "app.at actions-block anchors not found"
-            with open(config_file, "w", encoding="utf-8") as f:
+            with open(config_file, "w", encoding="utf-8", newline="") as f:
                 f.write(modified)
             try:
                 mcp10.call("action_config_reload")
@@ -692,9 +696,16 @@ def run_tests(mcp_url, proc):
                     if '"T10"' in mcp10.snapshot():
                         t10_seen = True
                         break
-                open_menu(mcp10, [snap10], "T10")
-                item = find_button_by_text(mcp10.snapshot(), "T10 重载项")
-                result.check("T10 hot-reloaded menu item appears", item is not None,
+                # toolbar 合成按钮以 title 文本可寻址（无 icon 的 action 直
+                # 出 title）；ActAbout 现有多个入口，取 T10 专属文本按钮。
+                item = None
+                for _ in range(6):
+                    time.sleep(1)
+                    m_btn = re.search(r'button #(\w+) "T10 重载项"', mcp10.snapshot())
+                    if m_btn:
+                        item = m_btn.group(1)
+                        break
+                result.check("T10 hot-reloaded toolbar item appears", item is not None,
                              "item not in snapshot after reload")
                 if item:
                     mcp10.click(item)
@@ -703,7 +714,7 @@ def run_tests(mcp_url, proc):
                                  "auto-edit 0.1" in (state_str(mcp10.state("console"), "console") or ""),
                                  "no about line")
             finally:
-                with open(config_file, "w", encoding="utf-8") as f:
+                with open(config_file, "w", encoding="utf-8", newline="") as f:
                     f.write(config_backup)
                 mcp10.call("action_config_reload")  # restore effective config
         finally:
@@ -741,14 +752,29 @@ def run_tests(mcp_url, proc):
     else:
         print("  NOTE  AUTO_OPEN_PATH not set; skipping T11")
 
-    print("\nT8: ActQuit (menu item)")
+    print()
+    print("T8: ActQuit (menu item)")
     open_menu(mcp, snap_cache, "文件")
     item = find_button_by_text(snap_cache[0], "退出")
     if item:
-        # ActQuit runs Process.exit(0): the process may die before the HTTP
-        # response completes — a dropped connection here IS the success path.
+        # ActQuit（PLAN-626 T-06 起）带脏检查：有脏 tab 先弹退出确认
+        # alert-dialog。T6 的键入/撤销序列会遗留 dirty tab —— 确认层出现时
+        # 走「不保存退出」(QuitDiscard) 完成退出。Process.exit(0) 可能在
+        # HTTP 响应完成前杀进程——连接被断即成功路径（异常吞掉）。
         try:
             mcp.click(item)
+        except (requests.ConnectionError, requests.Timeout):
+            pass
+        try:
+            for _ in range(4):
+                snap_cache[0] = mcp.snapshot()
+                discard = find_button_by_text(snap_cache[0], "不保存退出")
+                if proc.poll() is not None:
+                    break
+                if discard:
+                    mcp.click(discard)
+                    break
+                time.sleep(0.3)
         except (requests.ConnectionError, requests.Timeout):
             pass
         for _ in range(10):

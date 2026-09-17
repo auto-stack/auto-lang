@@ -55,33 +55,6 @@ widget App {
         action (id: "view.fold",       handler: .ActFold,       title: "折叠切换")
         action (id: "help.about",      handler: .ActAbout,      title: "关于 auto-edit")
 
-        menubar {
-            menu (id: "file", title: "文件") {
-                item (action: "file.new")
-                item (action: "file.open")
-                item (action: "file.save")
-                sep
-                item (action: "file.quit")
-            }
-            menu (id: "edit", title: "编辑") {
-                item (action: "edit.undo")
-                item (action: "edit.redo")
-                sep
-                item (action: "edit.cut")
-                item (action: "edit.copy")
-                item (action: "edit.paste")
-                item (action: "edit.select-all")
-            }
-            menu (id: "view", title: "视图") {
-                item (action: "view.console")
-                item (action: "view.switch-tab")
-                item (action: "view.fold")
-            }
-            menu (id: "help", title: "帮助") {
-                item (action: "help.about")
-            }
-        }
-
         toolbar {
             item (action: "file.new")
             item (action: "file.open")
@@ -100,7 +73,47 @@ widget App {
         col (style: "h-full w-full") {
 
             row (style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0 px-2") {
-                menubar {}
+                // PLAN-630 T-03: 声明式可复用 menubar 组件族（迁移自 actions
+                // DSL 占位合成；actions 块保留 shortcut 三源绑定）。VM=Popover
+                // 原语 lowering；Vue=shadcn Menubar。
+                menubar (class: "items-center") {
+                    menubar-menu (value: "file") {
+                        menubar-trigger "文件"
+                        menubar-content {
+                            menubar-item (title: "新建", icon: "file-plus", shortcut: "Ctrl+N") { onclick: .ActNew }
+                            menubar-item (title: "打开…", icon: "folder-open", shortcut: "Ctrl+O") { onclick: .ActOpen }
+                            menubar-item (title: "保存", icon: "save", shortcut: "Ctrl+S", enabled: .store.tab_count > 0) { onclick: .ActSave }
+                            menubar-separator
+                            menubar-item (title: "退出", icon: "log-out", shortcut: "Alt+F4") { onclick: .ActQuit }
+                        }
+                    }
+                    menubar-menu (value: "edit") {
+                        menubar-trigger "编辑"
+                        menubar-content {
+                            menubar-item (title: "撤销", icon: "undo-2", shortcut: "Ctrl+Z") { onclick: .ActUndo }
+                            menubar-item (title: "重做", icon: "redo-2", shortcut: "Ctrl+Y") { onclick: .ActRedo }
+                            menubar-separator
+                            menubar-item (title: "剪切", icon: "scissors") { onclick: .ActCut }
+                            menubar-item (title: "复制", icon: "copy") { onclick: .ActCopy }
+                            menubar-item (title: "粘贴", icon: "clipboard") { onclick: .ActPaste }
+                            menubar-item (title: "全选", shortcut: "Ctrl+A") { onclick: .ActSelectAll }
+                        }
+                    }
+                    menubar-menu (value: "view") {
+                        menubar-trigger "视图"
+                        menubar-content {
+                            menubar-checkbox-item (title: "切换 Console", icon: "terminal", checked: .store.console_open, shortcut: "Ctrl+J") { onclick: .ActConsole }
+                            menubar-item (title: "切换 Tab", shortcut: "Ctrl+D") { onclick: .ActSwitchTab }
+                            menubar-item (title: "折叠切换", icon: "chevrons-down-up") { onclick: .ActFold }
+                        }
+                    }
+                    menubar-menu (value: "help") {
+                        menubar-trigger "帮助"
+                        menubar-content {
+                            menubar-item (title: "关于 auto-edit", icon: "info") { onclick: .ActAbout }
+                        }
+                    }
+                }
                 toolbar (style: "ml-auto") {}
             }
             // PLAN-618 T-06: 左文件浏览器树 + 右编辑区双列。tab 条/编辑区
@@ -109,6 +122,7 @@ widget App {
             row (style: "flex-1 items-stretch overflow-hidden w-full") {
                 col (style: "w-56 shrink-0 border-r border-border bg-card hidden md:flex flex-col gap-2 p-2 overflow-y-auto") {
                     text "EXPLORER" { style: "text-[11px] text-zinc-500 px-1 pt-1 tracking-wider" }
+                    text .store.ws_name { style: "text-[11px] text-zinc-400 px-1 pb-1" }
                     TreeView (nodes: .store.tree_nodes, expanded: .store.tree_expanded, selected: .store.tree_sel, on_toggle: .TreeToggle, on_select: .TreeSelect, directory: true) {}
                 }
                 col (style: "flex-1 overflow-hidden") {
@@ -123,6 +137,9 @@ widget App {
                                         onclick: .TabActivate(i)
                                         style: "h-8 px-3 text-[12px] text-zinc-200 font-medium"
                                     }
+                                    if t.dirty {
+                                        text "*" { style: "text-[12px] text-amber-400 mr-1" }
+                                    }
                                     button (variant: "text") {
                                         icon (name: "x", style: "h-3 w-3 text-zinc-500") {}
                                         onclick: .CloseTab(i)
@@ -131,9 +148,14 @@ widget App {
                                 }
                             }
                             if i != .store.tab {
-                                button (text: t.title, variant: "text") {
-                                    onclick: .TabActivate(i)
-                                    style: "h-8 px-3 text-[12px] text-zinc-500"
+                                row (style: "items-center") {
+                                    button (text: t.title, variant: "text") {
+                                        onclick: .TabActivate(i)
+                                        style: "h-8 px-3 text-[12px] text-zinc-500"
+                                    }
+                                    if t.dirty {
+                                        text "*" { style: "text-[12px] text-amber-400 mr-1" }
+                                    }
                                 }
                             }
                         }
@@ -173,19 +195,33 @@ widget App {
             // 落点并置开；面板本体在 ctx_menu.at 组件。
             EditorCtxMenu()
 
-            // Plan 420 P2: 关闭脏 tab 的确认弹层(固定落点,坐标锚)。
-            popover (open: .store.confirm_open, x: 420.0, y: 260.0, ondismiss: .ConfirmCancel,
-                     class: "w-64 bg-[#16171B] border border-zinc-700 shadow-md py-2 px-3") {
-                text "有未保存的修改" { style: "text-[13px] text-zinc-100 py-1" }
-                text "关闭前要保存吗?" { style: "text-[12px] text-zinc-400 pb-2" }
-                row (style: "gap-2 justify-end") {
-                    button (text: "直接关闭", variant: "text") {
-                        onclick: .ConfirmClose
-                        style: "h-7 px-2 text-[12px] text-zinc-300"
+            // Plan 626 T-06: 关闭脏 tab 的确认改标准 alert-dialog(PLAN-530
+            // 模态族,取代原固定坐标 popover——VM 下曾落回普通流渲染错位)。
+            alert-dialog (open: .store.confirm_open) {
+                alert-dialog-content {
+                    alert-dialog-header {
+                        alert-dialog-title "有未保存的修改"
+                        alert-dialog-description "关闭前要保存吗?"
                     }
-                    button (text: "取消", variant: "text") {
-                        onclick: .ConfirmCancel
-                        style: "h-7 px-2 text-[12px] text-zinc-400"
+                    alert-dialog-footer {
+                        alert-dialog-cancel "取消" { onclick: .ConfirmCancel }
+                        alert-dialog-action "直接关闭" { onclick: .ConfirmClose }
+                    }
+                }
+            }
+
+            // Plan 626 T-06: 退出/关窗确认(窗口 X 经 CloseRequest 拦截与
+            // 菜单「退出」共用入口;有脏 tab 时弹出)。
+            alert-dialog (open: .store.quit_confirm_open) {
+                alert-dialog-content {
+                    alert-dialog-header {
+                        alert-dialog-title "有未保存的修改"
+                        alert-dialog-description "退出前要保存吗?"
+                    }
+                    alert-dialog-footer {
+                        alert-dialog-cancel "取消" { onclick: .QuitConfirmCancel }
+                        alert-dialog-action "不保存退出" { onclick: .QuitDiscard }
+                        alert-dialog-action "保存并退出" { onclick: .QuitSaveClose }
                     }
                 }
             }
@@ -195,6 +231,9 @@ widget App {
     }
 
     on {
+        // PLAN-016 T-08：桌面 open_with 接收（宿主 write_state auto_open_path
+        // → Tick 消费；interval 声明在 store，合并根 state 后被 Tick 契约读取）。
+        .Tick -> { store.ConsumeOpen() }
         .TabActivate(i) -> { store.TabActivate(i) }
         .SrcChanged(i) -> { store.SrcChanged(i) }
         .CursorMoved(i) -> { store.CursorMoved(i) }
@@ -225,5 +264,10 @@ widget App {
         .ActAbout -> { store.ActAbout() }
         .TreeToggle(id) -> { store.TreeToggle(id) }
         .TreeSelect(id) -> { store.TreeSelect(id) }
+        .Init -> { store.LoadWorkspace() }
+        .CloseRequest -> { store.CloseRequest() }
+        .QuitDiscard -> { store.QuitDiscard() }
+        .QuitSaveClose -> { store.QuitSaveClose() }
+        .QuitConfirmCancel -> { store.QuitConfirmCancel() }
     }
 }
