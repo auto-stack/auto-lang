@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-635
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
+completion_kind: delivered
 feature_name: cross-package-style-recipes（Design 29 Phase 3 v2 + 依赖解析声明门控）
 author: [zhaopuming]
 created_at: 2026-09-15
@@ -424,6 +425,22 @@ worktree 移除后随 master 可复现。
 
 **next**: `/auto-plan:merge`（折叠前按惯例 tf 兜底已在 R 轮执行；
 ffi_dual_019 flake 定性在案，merge 轮若复现同型可直接引用本记录）。
+
+### 合并回执（PLAN-635:r1，2026-09-15，/auto-plan:merge）
+
+`PLAN-635:r1`
+
+| Checkpoint | 证据 |
+|---|---|
+| `prepared` | reviewed_commit 683b842d7（r1 pass）；master 增量（62336eaea Plan 069 同函数融合+445e04dc2+f94558d36/c3ed41773 PLAN-019）先 merge 进分支 4456339b7，融合门禁刷新（plan635 10/10+use_semantics 7/7+tv 3733/3733）；SD-01..04 canonical diff 落盘，delivery_commit **678d24b45**（docs/specs+design/10+KNOWN-DEBT+INDEX，实现/依赖零变化的 doc-only descendant） |
+| `landed` | master merge **0d823d375**（--no-ff feat(ui)，13 文件+767/-111）；`git merge-base --is-ancestor 683b842d7 HEAD` ✓；master 期间并行线 9bd26d884（022 诊断退役，零交集）；merge 后 master smoke：plan635 10/10 + auto-man lock 8/8 绿 |
+| `ledger_refreshed` | canonical 面（tracked）随 0d823d375 落地（ui/overview 跨包节/design/10 示例/auto-man project 门控节/KNOWN-DEBT 635×3/INDEX 重生）；台账面（runtime）：`.autoos/specs.json` P635-1..4 原子替换（tempfile+os.replace）+读回 4/4 验证（gitignore 运行时路径，主检出发布——两仓一致规约） |
+| `archived` | 本文件 `docs/plans/archive/635-cross-package-style-recipes.md`（git mv）+ `status: archived` + completion_kind: delivered |
+| `cleaned` | 双守卫 clean（wt-guard exit=0；Vue 实证产生的 junction/pnpm 链接农场 360 枚按 prescribed cmd rmdir 逐链接拆除，零穿透目标）；worktree lang-635/auto-lang + auto-down(detached 4ac3ffa) 移除；分支 plan-635-dev 删（tip 已含于 0d823d375）；组目录 .wt/lang-635 除（stash 保全条目随 stash 栈归属全局，认领信息见本行） |
+
+**外来改动处置记录**：merge 前工作树发现并行 PLAN-019/018 会话产物（examples/rust-workspace/015-notes 两文件未提交改动），已 `git stash push -m "PLAN-635 merge 前外来脏改动(019 会话产物,非本计划)"` 保全，未混入交付；归属会话可 `git stash list` 认领（019 内容已随 master c3ed41773/f94558d36 落地，本 stash 预计可安全 drop）。
+
+`stage: merge | plan_id: PLAN-635 | plan_revision: 1 | outcome: pass | delivery_commit: 678d24b45 | master_merge: 0d823d375 | canonical_specs: docs/specs/auto-lang/ui/overview.md + docs/specs/auto-man/project.md + docs/design/10-language-syntax.md + docs/plans/KNOWN-DEBT-AND-RISKS.md + docs/specs/INDEX.md | ledger: .autoos/specs.json P635-1..4 | archive: docs/plans/archive/635-*.md | cleanup: done`
 
 ## 10. 待澄清事项
 
