@@ -4032,6 +4032,10 @@ fn spawn_shell_outproc(
                                 to_app.push(welcome);
                                 client.app_id = Some(AppId(0));
                                 client.wid = Some(bg_wid);
+                                eprintln!(
+                                    "[autodesk-broker] shell attached (dual-surface bg={} chrome={})",
+                                    bg_wid.0, chrome_wid.0
+                                );
                                 self.desktop.shell_pipe = Some(client.pipe.clone());
                                 self.desktop.shell_pseudo_wids = vec![bg_wid, chrome_wid];
                                 self.desktop.shell_geometry = Some(geometry);
