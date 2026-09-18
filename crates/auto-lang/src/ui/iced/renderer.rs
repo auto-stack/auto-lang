@@ -1135,6 +1135,29 @@ pub(crate) fn axis_fix_col_child<M: Clone + Debug>(mut c: AbstractView<M>) -> Ab
     c
 }
 
+/// PLAN-642 T-11: distributed（justify-between/around/evenly）列判定——
+/// 与 build_column 的垫片发射共用同一口径，子项 grow 剥离条件随之同步。
+pub(crate) fn style_is_distributed(style: Option<&Style>) -> bool {
+    style.map(IcedStyle::from_style).and_then(|is| is.justify_content).is_some_and(|j| {
+        matches!(j, IcedJustify::Between | IcedJustify::Around | IcedJustify::Evenly)
+    })
+}
+
+/// PLAN-642 T-11: distributed 列的直接子修正——剥 grow（Flex1/FlexAuto/
+/// Grow）且不补 Height(Full)。iced 0.14 flex 第三 pass 对 FillPortion 子
+/// min=max=份额硬钉，且列内子项按剩余量逐个配给：份额 < 内容自然高时
+/// 后续子项被配给至 0×0 隐没（008 定价卡特性行 18 节点只画 1 行的根因，
+/// headless 复现 p642_t11_008_feat_rows_probe）。CSS flex 的 grow 子有
+/// min-content 钳制永不隐没；iced 无该钳制，distributed 列里 grow 让渡
+/// 给垫片独占（子项保持自然高，justify 分布语义不变；欠额场景差异仅为
+/// "grow 子不再撑高"，由垫片吸收等量空隙）。
+pub(crate) fn axis_fix_col_child_distributed<M: Clone + Debug>(mut c: AbstractView<M>) -> AbstractView<M> {
+    if let Some(classes) = view_classes_mut(&mut c) {
+        classes.retain(|cl| !matches!(cl, StyleClass::Flex1 | StyleClass::FlexAuto | StyleClass::Grow));
+    }
+    c
+}
+
 /// Helper to compute effective spacing: style.gap takes priority, then legacy spacing.
 /// Plan 412: axis-aware — Row consumes gap-x (axis-specific wins over bare gap),
 /// Column consumes gap-y. The other axis is ignored, mirroring CSS grid/flex semantics.
@@ -3995,6 +4018,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // PLAN-054 T4 (A6): 子项 self-end/start/center → 交叉轴(横向)
                 // Fill+align 包裹——iced 列无 per-child 对齐,消息行
                 // `self-end` 右对齐此前被静默丢弃。
+                // PLAN-642 T-11: distributed 列（justify-between 族）子项 grow
+                // 剥离,防 iced 0.14 配给制 0×0 隐没（见 axis_fix_col_child_distributed）。
+                let distributed = style_is_distributed(style.as_ref());
                 let mut els: Vec<iced::Element<'static, M>> = Vec::new();
                 for c in children {
                     let mt_auto = extract_view_style(&c)
@@ -4004,7 +4030,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     let align_self = extract_view_style(&c)
                         .and_then(|s| crate::ui::style::iced_adapter::IcedStyle::from_style(s).align_self);
-                    let el = axis_fix_col_child(c).into_iced();
+                    let el = if distributed {
+                        axis_fix_col_child_distributed(c)
+                    } else {
+                        axis_fix_col_child(c)
+                    }
+                    .into_iced();
                     let el = match align_self
                     {
                         Some(crate::ui::style::iced_adapter::IcedAlign::End) => {
@@ -22360,13 +22391,24 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // PLAN-530 步骤3：仅 absolute 子脱流入叠层（Row 分支同语义）。
             // z-index-only 子保持流内——前缀 overlay 双渲染路径随 472 立场
             // 退役（见 column_layer_partition 文档）。
+            // PLAN-642 T-11: distributed 列（justify-between 族）子项 grow
+            // 剥离,防 iced 0.14 配给制 0×0 隐没（见 axis_fix_col_child_distributed;
+            // 与 into_iced 臂同口径,Plan 319 双入口一致）。
+            let distributed = style_is_distributed(style.as_ref());
+            let fix_col_child = |c: AbstractView<IcedMessage>| {
+                if distributed {
+                    axis_fix_col_child_distributed(c)
+                } else {
+                    axis_fix_col_child(c)
+                }
+            };
             let (flow_idx, abs_idx) = column_layer_partition(&children);
 
             let el = if abs_idx.is_empty() {
                 let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
                 for (i, child) in children.into_iter().enumerate() {
                     path.push(i);
-                    els.push(render_dynamic_view(axis_fix_col_child(child), debug_ctx, path));
+                    els.push(render_dynamic_view(fix_col_child(child), debug_ctx, path));
                     path.pop();
                 }
                 let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
@@ -22375,7 +22417,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let mut base_els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(flow_idx.len());
                 for &i in &flow_idx {
                     path.push(i);
-                    base_els.push(render_dynamic_view(axis_fix_col_child(children[i].clone()), debug_ctx, path));
+                    base_els.push(render_dynamic_view(fix_col_child(children[i].clone()), debug_ctx, path));
                     path.pop();
                 }
                 let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));

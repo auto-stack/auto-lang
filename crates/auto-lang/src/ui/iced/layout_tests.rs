@@ -2564,3 +2564,113 @@ fn ma_press_outside_sized_content_stays_silent() {
     let hit = ui.into_messages().any(|m| m == Msg::Hit);
     assert!(!hit, "块外点击不得命中(命中区=可视区,不吞邻居)");
 }
+
+/// PLAN-642 T-11 回归守卫（008-pricing-table 特性行只画 1 行）:008 卡片
+/// 结构 = justify-between 卡片列 [标题文本, feat_list(flex-1, 6 行), 按钮]，
+/// 三卡置于 items-stretch 行。iced 0.14 flex 第三 pass 对 FillPortion 子
+/// min=max=份额硬钉 + 列内子项按剩余量逐个配给:修复前 18 个特性文本
+/// 全部 0×0 隐没（实机只画首卡第 1 行）。修复 = distributed 列剥子项
+/// grow（axis_fix_col_child_distributed），空隙由 justify 垫片独占。
+/// 对照面:flex_nobetween 变体守卫"非 distributed 列的 flex-1 仍走
+/// Height(Full) 撑满"不被误伤。
+#[test]
+fn p642_t11_008_feat_rows_visible_in_distributed_cards() {
+    fn feat_row(text: String) -> View<()> {
+        View::Row {
+            children: vec![
+                View::Text { content: "✓".to_string(), style: Style::parse("text-primary font-bold mr-2.5 text-sm").ok(), selectable: false },
+                View::Text { content: text, style: Style::parse("text-sm text-foreground").ok(), selectable: false },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("items-center").ok(),
+            onclick: None, on_right_click: None,
+        }
+    }
+    fn card(idx: usize, feat_style: &str, card_style: &str) -> View<()> {
+        let feat_list = View::Column {
+            children: (0..6).map(|i| feat_row(format!("c{idx}f{i}"))).collect(),
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(feat_style).ok(),
+            onclick: None, on_right_click: None,
+        };
+        View::Column {
+            children: vec![
+                View::Text { content: format!("name{idx}"), style: Style::parse("text-lg font-bold text-foreground").ok(), selectable: false },
+                View::Text { content: format!("sub{idx}"), style: Style::parse("text-xs text-muted-foreground").ok(), selectable: false },
+                View::Text { content: format!("price{idx}"), style: Style::parse("text-4xl font-extrabold text-foreground mt-2").ok(), selectable: false },
+                feat_list,
+                View::Button { label: format!("buy{idx}"), onclick: (), style: Style::parse("w-full py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold").ok(), on_right_click: None, content: None, disabled: false },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(card_style).ok(),
+            onclick: None, on_right_click: None,
+        }
+    }
+    fn root_of(feat_style: &str, card_style: &str) -> View<()> {
+        let cards_row = View::Row {
+            children: vec![
+                card(0, feat_style, card_style),
+                card(1, feat_style, card_style),
+                card(2, feat_style, card_style),
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("gap-6 max-w-5xl w-full items-stretch").ok(),
+            onclick: None, on_right_click: None,
+        };
+        let content = View::Column {
+            children: vec![
+                View::Text { content: "Pricing Plans".to_string(), style: Style::parse("text-3xl font-extrabold text-primary text-center").ok(), selectable: false },
+                cards_row,
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-full flex-1 px-8 py-6 gap-4 items-center justify-center max-w-6xl mx-auto").ok(),
+            onclick: None, on_right_click: None,
+        };
+        View::Column {
+            children: vec![content],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-full min-h-screen bg-background text-foreground").ok(),
+            onclick: None, on_right_click: None,
+        }
+    }
+    let between = "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between";
+    let plain = "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg";
+    // 修复面:distributed 卡片 + flex-1 特性列(margin 变体在案)——18 行全出。
+    for (tag, feat_style, card_style) in [
+        ("between", "gap-3.5 my-5 flex-1", between),
+        ("between_nomargin", "gap-3.5 flex-1", between),
+    ] {
+        let mut ui = simulator(root_of(feat_style, card_style).into_iced());
+        let mut zero = Vec::new();
+        for idx in 0..3 {
+            for f in 0..6 {
+                let b = bounds_of(&mut ui, &format!("c{idx}f{f}"));
+                if b.2 == 0.0 || b.3 == 0.0 {
+                    zero.push(format!("c{idx}f{f}"));
+                }
+            }
+        }
+        assert!(
+            zero.is_empty(),
+            "[{tag}] distributed 卡片特性行不得 0×0 隐没（iced 0.14 配给制回归）: {zero:?}"
+        );
+    }
+    // 对照面:非 distributed 卡片的 flex-1 特性列仍走 Height(Full) 撑满,
+    // 6 行全部可见且列顶紧随标题块（fill 生效,非自然高堆叠）。
+    let mut ui = simulator(root_of("gap-3.5 my-5 flex-1", plain).into_iced());
+    for idx in 0..3 {
+        for f in 0..6 {
+            let b = bounds_of(&mut ui, &format!("c{idx}f{f}"));
+            assert!(
+                b.2 > 0.0 && b.3 > 0.0,
+                "[nobetween] flex-1 特性列必须保持撑满语义（c{idx}f{f} = {:?}）", b
+            );
+        }
+    }
+}
