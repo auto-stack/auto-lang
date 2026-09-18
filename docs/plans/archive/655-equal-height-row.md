@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-655
-status: reviewed             # drafting → executing → execution_done → reviewed → archived
+status: archived             # drafting → executing → execution_done → reviewed → archived
 feature_name: equal-height-row
 author: [agent]
 created_at: 2026-09-18
@@ -249,6 +249,43 @@ evidence: >
 next: merge（auto-plan-merge；worktree 与组内 auto-down 兄弟随 merge 清理；
   产物沉淀 SD-01 五条 + ledger 回写）
 ```
+
+```yaml
+stage: merge
+plan_id: PLAN-655:r1
+outcome: pass
+checkpoints:
+  prepared: worktree 同步 master（merge 80bbaae45，无冲突；合并结果 p655/layout_tests
+    59 绿+2 预存复跑确认）+ delivery_commit 3788c1360（自 reviewed_commit 7044d67cf
+    仅 plans.md 投影行，实现/依赖零变化）+ canonical spec delta 已在分支
+    （overview.md SD-01 五条@9d6cb15b9/7044d67cf）
+  landed: master 7e2a09775（merge plan-655-dev --no-ff）；祖先验证
+    7044d67cf/3788c1360 均可迖；main smoke：spec 节内容在位 + 61 run 59 绿
+    +2 预存
+  ledger_refreshed: .autoos/specs.json architecture 段 P655-1 upsert
+    （file=docs/specs/auto-lang/ui/overview.md，related=[PLAN-655,PLAN-642]，
+    原子写+读回校验；git-ignored 本地投影不提交）+ INDEX.md 再生
+    （scripts/spec-index.py，26 projects，无 diff）+ ui/plans.md 655 行
+    （3788c1360，随分支落地）
+  archived: git mv docs/plans/655-equal-height-row.md → docs/plans/archive/
+    （本仓归档目录为 archive/，非技能书写的 archived/）+ status: archived
+    + 文末 spec-sync 回写记录节
+  cleaned: wt-guard 双 clean（auto-lang wt + auto-down 兄弟，无 reparse
+    point）→ auto-lang worktree 移除 + 分支 plan-655-dev 删除（@3788c1360，
+    已含于 master 7e2a09775 祖先）→ auto-down 兄弟（b1c88de detached）移除
+    → 组目录 .wt/lang-655 移除；git worktree list 零 655 残留
+```
+
+## spec-sync 回写记录
+
+- `docs/specs/auto-lang/ui/overview.md`：新增「items-stretch 两阶段行语义
+  （PLAN-655）」节五条（SD-01 等高原语/交叉轴拉伸载体/主轴配给/旧 Fill
+  包装退役并解除 P642 第 6 条让渡约定/非目标）——随 plan-655-dev 落地。
+- `docs/specs/auto-lang/ui/plans.md`：追加 655 行（一句话沉淀）。
+- `.autoos/specs.json`：architecture 段 P655-1（本地兼容投影）。
+- `docs/specs/INDEX.md`：spec-index.py 再生（无 diff）。
+- 全局件：无结构性变化（无新模块/crate/状态翻转），goals.md 无对应条目，
+  均不动。
 
 ## 待澄清事项
 
