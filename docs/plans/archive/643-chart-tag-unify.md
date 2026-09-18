@@ -486,7 +486,10 @@ checkpoints:
     无差异）；模块回写 blueprint/project.md 判定③ + ui/overview.md +
     ui/plans.md + goals.md GOAL-007（master 216b7d4d1）
   archived: docs/plans/archive/643-chart-tag-unify.md，status: archived
-  cleaned: 见下节（guard + worktree/分支/组目录移除）
+  cleaned: wt-guard clean（auto-lang 与 auto-down 两 worktree 均无 reparse
+    point）→ git worktree remove ×2 + branch -d plan-643-dev（was 5c401fe00，
+    祖先链 --is-ancestor master 实证）+ 组目录 .wt/lang-643 移除（含
+    evidence/ug-mini/ug-full/024-standalone scratch）——零残留实证
 notes:
   - R643-F1 对账：642 R642-F2（09bb8e218 未合）与本计划装载修复语义冗余——
     642 后续落地时必须裁撤其 lib.rs 第二轮包装载 hunk（保 F3/F4/语料），
