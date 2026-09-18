@@ -1982,9 +1982,9 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
-            "scroll" | "scrollable" | "scroll-pane" => self.convert_scroll_tracked_ctx(props, events, children, path, id_map, probe, bindings),
+            "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, events, children, path, id_map, probe, bindings),
             // PLAN-656 T-06: synthetic managed content（capability-test 专用）。
-            "scroll-test-content" => self.managed_scroll_content_view(props, bindings),
+            "scroll_test_content" => self.managed_scroll_content_view(props, bindings),
             // Plan 482: nav 容器支持 search:true 集成搜索行（子节点随 untracked
             // 转换，同 button 先例）。
             "nav" => self.convert_nav_container(props, events, children, bindings),
@@ -3666,9 +3666,9 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style(padding/flex/overflow),导致 sidebar 无 padding、
             // 无滚动条、Home 页溢出被裁。scroll → 可滚动 column;其余 → container。
-            "scroll" | "scrollable" | "scroll-pane" => self.convert_scroll(props, events, children, bindings),
+            "scroll" | "scrollable" => self.convert_scroll(props, events, children, bindings),
             // PLAN-656 T-06: synthetic managed content（capability-test 专用）。
-            "scroll-test-content" => self.managed_scroll_content_view(props, bindings),
+            "scroll_test_content" => self.managed_scroll_content_view(props, bindings),
             // Plan 482: nav 容器支持 search:true 集成搜索行，其余语义容器不变。
             "nav" => self.convert_nav_container(props, events, children, bindings),
             "aside" | "main" | "header" | "section" | "footer" | "article" => {

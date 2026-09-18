@@ -8946,7 +8946,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "grid" | "Grid" => "div".to_string(),
             // Plan 412 §4.3: demo 占位块(色块 + flex 居中数字)
             "square" | "Square" => "div".to_string(),
-            "scroll" | "Scroll" | "scrollable" | "scroll-pane" | "scroll-test-content" | "scroll_test_content" => "div".to_string(),
+            "scroll" | "Scroll" | "scroll_test_content" => "div".to_string(),
             "container" | "Container" => "div".to_string(),
             "center" | "Center" => "div".to_string(),
 

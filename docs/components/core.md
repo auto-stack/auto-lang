@@ -1105,7 +1105,7 @@ Horizontal layout container
 
 ### `scroll`
 
-`builtin_widget` · `scroll` · web: `component` · iced: `partial` · category: `layout`
+`builtin_widget` · `scroll` · web: `component` · iced: `full` · category: `layout`
 
 [demo →](/examples/widgets-gallery/scroll)
 

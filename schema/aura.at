@@ -1078,7 +1078,7 @@ element scroll {
     category: "layout"
     tier: "builtin_widget"
     aliases: ["Scroll", "scrollable", "scroll-pane"]
-    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "ScrollArea", import: "@/components/ui/scroll-area" }
     sub_widgets: ["scrollarea", "scrollareascrollbar", "scrollareathumb", "scrollareaviewport"]
     props: [

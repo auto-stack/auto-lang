@@ -499,6 +499,18 @@ impl AuraSchema {
             description: "Universal scroll viewport (PLAN-656 scroll-pane; scrollable/scroll are aliases)",
         });
 
+        elements.insert("scroll_test_content", ElementDef {
+            tag: "scroll_test_content",
+            category: ElementCategory::Layout,
+            props: vec![
+                PropDef { name: "key", type_: PropType::String, required: false, default: None, description: "Stable host registry key" },
+                PropDef { name: "extent_w", type_: PropType::Float, required: false, default: None, description: "Logical extent width px" },
+                PropDef { name: "extent_h", type_: PropType::Float, required: false, default: None, description: "Logical extent height px" },
+            ],
+            allows_children: false,
+            description: "PLAN-656 capability-test-only synthetic managed scroll content (NOT a public widget)",
+        });
+
         elements.insert("container", ElementDef {
             tag: "container",
             category: ElementCategory::Layout,
