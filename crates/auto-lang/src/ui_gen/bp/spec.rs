@@ -75,9 +75,30 @@ pub fn split_frontmatter(spec_md: &str) -> Result<(&str, &str), String> {
 }
 
 impl BlueprintSpec {
+    /// Frontmatter keys that pretend at a version plane (PLAN-647 guardrail;
+    /// key set mirrors the pac.at dep guardrail B in `lib.rs`).
+    const VERSION_KEYS: [&'static str; 6] = ["version", "pin", "rev", "tag", "branch", "commit"];
+
     /// Parse frontmatter (TOML) into a [`BlueprintSpec`].
     pub fn parse(frontmatter: &str) -> Result<Self, String> {
-        let mut spec: BlueprintSpec = toml::from_str(frontmatter)
+        // PLAN-647 guardrail A: the spec.md version plane is not enabled
+        // (contract Q5 single-source ruling) — version-ish keys must fail
+        // loudly instead of being silently dropped by serde. Only top-level
+        // keys are checked; a `[dataSource]` slot named `version` is a
+        // legitimate fetcher signature.
+        let table: toml::Table = toml::from_str(frontmatter)
+            .map_err(|e| format!("invalid spec frontmatter: {e}"))?;
+        for key in Self::VERSION_KEYS {
+            if table.contains_key(key) {
+                return Err(format!(
+                    "spec: frontmatter `{key}` key is rejected — the blueprint version \
+                     plane is not enabled (single-source ruling: \
+                     docs/specs/blueprint/contract.md Q5); package history is carried \
+                     by git, so drop the key"
+                ));
+            }
+        }
+        let mut spec: BlueprintSpec = serde::Deserialize::deserialize(toml::Value::Table(table))
             .map_err(|e| format!("invalid spec frontmatter: {e}"))?;
         if spec.kind.trim().is_empty() {
             return Err("spec: `kind` is required".into());
@@ -152,5 +173,15 @@ A login form.
     fn rejects_missing_kind() {
         let bad = "+++\nname = \"x\"\npalette = []\nvariants = []\n+++\n";
         assert!(BlueprintSpec::parse_document(bad).is_err());
+    }
+
+    /// PLAN-647 guardrail A: a top-level frontmatter `version` key must fail
+    /// loudly (single-version ruling, contract Q5) instead of being silently
+    /// dropped by serde.
+    #[test]
+    fn rejects_frontmatter_version_key() {
+        let bad = "+++\nkind = \"form\"\nname = \"login\"\nversion = \"1.0\"\npalette = []\n+++\n";
+        let err = BlueprintSpec::parse_document(bad).unwrap_err();
+        assert!(err.contains("Q5"), "error must point at contract Q5: {err}");
     }
 }
