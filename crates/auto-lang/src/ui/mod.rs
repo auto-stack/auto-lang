@@ -61,6 +61,8 @@ pub mod app;
 pub mod widget;
 pub mod style;
 pub mod debug;
+// PLAN-646 Select Anything——框选语义纯函数 + 结果信封。
+pub mod selection;
 pub mod vm_bridge;
 pub mod handler_codegen;
 // PLAN-051 C2：子→父 msg 参数回调通用路由表（handler_codegen 无 feature 门，
