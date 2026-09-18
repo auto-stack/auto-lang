@@ -21,7 +21,7 @@ use iced::advanced::renderer;
 use iced::advanced::text::Renderer as _TextRenderer;
 use iced::advanced::widget::Tree;
 use iced::advanced::widget::Widget;
-use iced::advanced::{Clipboard, Renderer as _, Shell};
+use iced::advanced::Renderer as _;
 use iced::{
     Background, Border, Color, Element, Event, Length, Point, Rectangle, Size, Theme, mouse,
 };
