@@ -7404,6 +7404,11 @@ mod plan640_bp_tests;
 #[cfg(test)]
 mod plan643_chart_tag_tests;
 
+// PLAN-645: bps 扫描 fn 转译（DEBTS 070 第二行）——组合形态 reference 跨文件
+// fn 内联正/负断言 + 047 组合夹具消费方面。
+#[cfg(test)]
+mod plan645_bp_tests;
+
 // PLAN-647: bp 版本面裁定护栏（contract Q5）——spec frontmatter 版本键拒绝
 // + pac.at dep 版本类键硬失败双负测试。
 #[cfg(test)]
