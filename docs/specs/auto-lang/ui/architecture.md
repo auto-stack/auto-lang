@@ -197,3 +197,10 @@ graph TD
 - 备选：store 命名分支泛化（T-01 实测证伪——`use <mod>: Store` 经邻接文件 Module 分支本就工作，standalone 016 全通）；发射器侧实例化清单（cons：组件状态桥接是运行时职责，发射器只保证源可达）。
 - 后果：画廊内嵌 006 SettingsPopover 开合可用、016 CalendarStore 网格/选中全保真（实机 MCP 10/10 双轮：实现期+复审期）；装配顺序缺陷类（ext 装载晚于转换位的声明）由补转换位兜底。App.Init 兜底告警为宿主根件无 Init 的既有形态（KNOWN-DEBT P632-D1）。
 - 状态：active
+
+### ADR-21: 多命名视图（`view mini`）与第二渲染面——桌面常驻小组件层的语言/会话支撑
+- 日期 / 来源：PLAN-024（2026-09-17/18，auto-os dashboard-widgets；用户裁定走查 R1–R21 收敛）
+- 决策：①语言层 widget 支持多命名视图（`view mini { … }`，`WidgetDecl.named_views`；widget 体 `view` 臂 peek 分派——`{` 主视图 / Ident 命名视图 / `fn` 顶层片段不扰；duplicate 主视图与命名视图均报错，主视图静默覆盖旧疾顺带修复）；②提取全链（aura/动态轨 `named_templates` BTreeMap + `view_named()`/vue `named_view_codes` 克隆换根复用整条 SFC 管线）；③会话层 `SessionViewRef.view_name` 选择器 + `DynamicComponent.view_named`（与主视图共享同一 VM 桥=活渲染面）；④无窗孵化会话（`hatch_mini_app`：文本探测 + 无 daemon/back_root/exe 门 + `named_views()` 精确确认；face_fields 垫片 + split_mut 第八路拆借——无窗会话 update 通路由此打通）；⑤**升格开窗原语** `open_window_for_session`（为既有 AppSession 建虚拟窗，face/窗同会话零分家）。
+- 备选：截图/缩放（否——字不可读，Design 24 早已否决）；shell 重画（否——双份维护违反所有权）；主窗会话开窗（否——同 app 双会话状态分裂）。
+- 后果：`.as(int)` 对 float 产出垃圾值（CPU 44% 整条红实证）——浮点阈值判定一律累加比较绕行；styled text 节点宽度行为使 items-center 对其失效——`text-center` 显式声明；.at 对象键 `on` 撞关键字（seg 表键名 `lit`）；vue 轨需 API-client-glue 的 app（013-todo）被宿主门跳过（iced 轨正常）。**float→int 转换在 VM 内不可靠**升格为通用教训。
+- 状态：active（vue 轨 autoui-verifier 真跑对拍延后——F-02，unblock=pnpm install + 浏览器）
