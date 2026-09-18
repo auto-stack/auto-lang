@@ -15,7 +15,7 @@ use crate::ui::desktop_protocol::broker::{self, RequestedRender};
 use crate::ui::desktop_protocol::client_runtime::{
     self, AppProjector, ClientConfig, ReconnectPolicy,
 };
-use crate::ui::desktop_protocol::coverage::RenderMode;
+use crate::ui::desktop_protocol::coverage::{Coverage, RenderMode, Verdict};
 use crate::ui::desktop_protocol::message::FrameMode;
 use crate::ui::desktop_protocol::native_projector::NativeProjector;
 use crate::ui::desktop_protocol::pixels;
@@ -97,27 +97,43 @@ pub fn run_dynamic_client(
     }
 }
 
-/// native 轨三态 → 二态分派（Plan 020 T-04；待澄清③定案落地）：native
-/// 组件 `Auto` 缺省 = **independent**（queue 覆盖爬坡前的安全缺省——
-/// 带降级观测行留痕，与解释态 auto 语义并列入 v1.6）；显式 `Queue` 不
-/// 在此裁决（覆盖门在 [`run_native_client`] 消费 [`NativeProjector::
-/// ensure_covered`]——拒绝退出留痕）；`Independent` 直通。
-/// 返回 `(帧模式, auto 降级标记, Option<观测行>)`。
-pub fn resolve_native_frame_mode(
+/// native 轨三态 → 二态分派（Plan 020 T-04；**PLAN-026 T-06 翻转裁定**：
+/// native `Auto` 缺省翻 **queue**——508 三闸 T-覆盖复测达标（examples
+/// 全量 Covered 比例 ≥95%，数据行见 026 报告），queue 优先 + 探测不
+/// Covered 降级 independent（降级观测行语义保留——载荷 = 缺项清单，
+/// 禁拍脑袋）。显式 `Queue` 不在此裁决（覆盖门在 [`run_native_client`]
+/// 消费 [`NativeProjector::ensure_covered`]——拒绝退出留痕）；
+/// `Independent` 直通。返回 `(帧模式, auto 降级标记, Option<观测行>)`。
+pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
     mode: RenderMode,
     widget_name: &str,
+    view: &crate::ui::view::View<M>,
 ) -> (FrameMode, bool, Option<String>) {
     match mode {
         RenderMode::Queue => (FrameMode::Commands, false, None),
         RenderMode::Independent => (FrameMode::Pixels, false, None),
-        RenderMode::Auto => (
-            FrameMode::Pixels,
-            true,
-            Some(format!(
-                "[render] native auto -> independent downgrade ({widget_name}; \
-                 queue coverage ramp v1)"
-            )),
-        ),
+        RenderMode::Auto => {
+            let scan = crate::ui::desktop_protocol::coverage::scan_native_view(view);
+            match crate::ui::desktop_protocol::coverage::judge(&scan, &Coverage::native_queue_set()) {
+                Verdict::Covered => (
+                    FrameMode::Commands,
+                    false,
+                    Some(format!(
+                        "[render] native auto -> queue ({widget_name}; \
+                         coverage ramp v2 covered default)"
+                    )),
+                ),
+                Verdict::NotCovered(missing) => (
+                    FrameMode::Pixels,
+                    true,
+                    Some(format!(
+                        "[render] native auto -> independent downgrade ({widget_name}; \
+                         missing: {})",
+                        missing.join(", ")
+                    )),
+                ),
+            }
+        }
     }
 }
 

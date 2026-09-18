@@ -1802,8 +1802,9 @@ fn wrap_example(project_name: &str, components: &str) -> String {
     // Plan 020 T-05 —— native 桌面客户端臂：孵化参数在册（
     // `--autodesk-client=<pipe>` 直连 / `--autodesk-incubate` broker 孵化）
     // → `client_entry::run_native_client` 协议 client（三态裁决：spawn
-    // `--autodesk-render=` 透传 > auto 缺省 independent——T-04 待澄清③
-    // 定案；pac `desktop_render:` 档由宿主 spawn 侧读取透传，生成物无
+    // `--autodesk-render=` 透传 > auto 缺省 = 覆盖扫描制（PLAN-026 T-06
+    // 翻转：Covered → queue；NotCovered → 降级 independent 留痕）；
+    // pac `desktop_render:` 档由宿主 spawn 侧读取透传，生成物无
     // pac 位置感知）。无标记 = 独立窗现行行为零变化（I1 零删除不变式）。
     // v1 边界：async-init App 经孵化臂以 `default()` 态起（初始化 API
     // 加载不接协议 client 面——超覆盖 App 走 auto 降级 independent）。
@@ -1836,10 +1837,14 @@ fn wrap_example(project_name: &str, components: &str) -> String {
                 __render.as_deref(),
                 None,
             );
+            // PLAN-026 T-06 翻转：组件先行构造（auto 裁决 = 覆盖扫描制
+            // ——queue 优先 + NotCovered 降级 independent 留痕）。
+            let __component = {main_widget}::default();
             let (__frame_mode, __downgraded, __log) =
                 auto_lang::ui::desktop_protocol::client_entry::resolve_native_frame_mode(
                     __mode,
                     "{main_widget}",
+                    &__component.view(),
                 );
             if let Some(__l) = &__log {{
                 eprintln!("[autodesk-client] {{__l}}");
@@ -1859,7 +1864,7 @@ fn wrap_example(project_name: &str, components: &str) -> String {
                 auto_downgraded: __downgraded,
             }};
             return auto_lang::ui::desktop_protocol::client_entry::run_native_client(
-                {main_widget}::default(),
+                __component,
                 __opts,
                 __target,
             )

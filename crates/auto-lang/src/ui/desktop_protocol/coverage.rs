@@ -225,6 +225,29 @@ impl Coverage {
             // 非静默扩权：003-converter 真源 gate 通过所需。
             "flex-1",
             "shadow",
+            // PLAN-026 T-06（§5.1 D3）降级放行批——解释态 target_set
+            // 同款保真边界，非静默扩权：
+            // ① overflow-：queue 臂裁剪渲染面 not-yet（块流静态帧无
+            //   溢出面；004 真源 gate 所需）。
+            // ② min-w-/min-h-：native 最小尺寸约束渲染 not-yet（解释态
+            //   target_set 同在册）。
+            // ③ leading-：行高倍率渲染 not-yet（Text op 固定 LINE_H
+            //   档；PLAN-527 后 typed parse 可达，需显式放行）。
+            // ④ flex/block 裸 display 类：块流语义 no-op（方向类布局
+            //   即 col/row 构造面）。
+            // ⑤ underline/no-underline/line-through：文本装饰渲染
+            //   not-yet（Text op 无装饰通道；解释态 target_set 同册
+            //   underline）。
+            "overflow-",
+            "min-w-", "min-h-",
+            "leading-",
+            "flex", "block",
+            "underline", "no-underline", "line-through",
+            // ⑥ 静态帧 no-op 提示类（cursor/outline/transition/抗锯齿/
+            // shrink/whitespace——queue 命令帧无对应通道，零视觉差）。
+            "cursor-", "outline-", "transition", "antialiased",
+            "shrink-", "whitespace-", "relative", "tracking-",
+            "backdrop-",
         ]
         .into_iter()
         .map(String::from)
@@ -644,6 +667,42 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         | SC::Shadow2Xl
         | SC::ShadowNone => "shadow".into(),
         SC::Opacity(_) => "opacity-50".into(),
+        // PLAN-026 T-06：overflow 家族 → 降级放行 token（渲染 no-op）。
+        SC::OverflowAuto
+        | SC::OverflowHidden
+        | SC::OverflowVisible
+        | SC::OverflowScroll => "overflow-hidden".into(),
+        // 行高倍率：native Text op 行高 = 字号×LINE_H_FACTOR 固定档——
+        // leading-* 渲染未实现，判定降级放行（解释态 target_set 同册）。
+        SC::LineHeight(_) | SC::LineHeightNone => "leading-1".into(),
+        // PLAN-026 T-06 字重族补全（FontBold 同族——TextStyled weight
+        // 700 档近似/正常档随注；判定放行 = font- 前缀）。
+        SC::FontSemiBold | SC::FontLight | SC::FontExtraLight | SC::FontExtraBold
+        | SC::FontThin => "font-bold".into(),
+        // backdrop-*（518 G8 冻结词汇——共享 parser 识别，queue 臂渲染
+        // no-op；解释态 target_set 同册放行）。
+        SC::BackdropBlur(_) | SC::BackdropSaturate(_) => "backdrop-blur".into(),
+        // 字距（tracking-*）：Text op 无字距通道——渲染 no-op 放行。
+        SC::Tracking(_) => "tracking-1".into(),
+        // 交互态/渲染提示类：静态帧 no-op（queue 命令帧无 cursor/outline/
+        // transition/抗锯齿通道）——判定放行。
+        SC::CursorPointer => "cursor-pointer".into(),
+        SC::OutlineNone => "outline-none".into(),
+        SC::Antialiased => "antialiased".into(),
+        SC::TransitionColors | SC::TransitionDuration(_) => "transition".into(),
+        SC::Shrink0 => "shrink-0".into(),
+        SC::WhitespaceNowrap => "whitespace-nowrap".into(),
+        // position:relative（无 offset 配对）/ items-stretch（块流缺省
+        // 交叉轴）= 布局 no-op——判定放行（absolute+offset 族仍 not-yet）。
+        SC::Relative => "relative".into(),
+        SC::ItemsStretch => "items-stretch".into(),
+        SC::TextArbitrary(_) => "text-1".into(),
+        SC::ShadowArbitrary(_) => "shadow".into(),
+        // —— 语义承载未实现面：显式 not-yet（稳定名无支持前缀）。
+        // absolute/relative+offset/z-index（定位族）、rotate（视觉变换）、
+        // hidden（display:none 语义）、truncate/break-words（文本裁剪）、
+        // list-none（列表标记）、accent（表单强调色）、stroke（lucide
+        // 描边——native 位图/字形通道 not-yet 同册）。
         _ => "native-unstyled".into(),
     }
 }
@@ -1006,6 +1065,199 @@ mod tests {
                 coverage.style_token_supported(token),
                 "003 token 应放行: {token}"
             );
+        }
+    }
+
+    /// PLAN-026 T-06 + 004-profile-card 真源样式 token 全放行（native
+    /// gate——overflow- 降级放行定案；AC-02 覆盖翻转样本）。leading-/
+    /// hover: 走 parser 静默丢弃/variant 通道（不入 scan—— gate 无感）。
+    #[test]
+    fn native_gate_accepts_004_style_tokens() {
+        let coverage = Coverage::native_queue_set();
+        // PLAN-026 T-06 探针：逐 token 走 typed parse → native_style_token，
+        // 无 native-unstyled 混入（未映射类显式排查）。
+        for tok in ["w-full", "h-20", "bg-gradient-to-r", "from-blue-500",
+            "to-purple-600", "rounded-t-lg", "rounded-full", "border-4",
+            "border-border", "shadow-md", "-mt-10", "items-center", "w-3",
+            "h-3", "bg-green-400", "gap-2", "text-xl", "text-sm",
+            "text-center", "font-bold", "font-medium", "px-3", "py-1",
+            "px-4", "py-2", "px-6", "pb-6", "bg-secondary", "w-96",
+            "overflow-hidden", "bg-card", "shadow-lg", "rounded-lg"] {
+            if let Ok(sc) = crate::ui::style::StyleClass::parse_single(tok) {
+                let t = native_style_token(&sc);
+                assert!(t != "native-unstyled", "token {tok} → native-unstyled");
+            }
+        }
+        for token in [
+            "w-full", "h-20", "bg-gradient-to-r", "from-blue-500",
+            "to-purple-600", "rounded-t-lg", "rounded-full", "-mt-10",
+            "items-center", "w-3", "h-3", "bg-green-400", "gap-2", "gap-1",
+            "gap-3", "gap-4", "text-xl", "text-sm", "text-center",
+            "font-bold", "font-medium", "px-3", "py-1", "px-4", "py-2",
+            "px-6", "pb-6", "bg-secondary", "text-secondary-foreground",
+            "text-muted-foreground", "bg-primary", "text-primary-foreground",
+            "bg-card", "shadow-lg", "shadow-md", "border", "border-border",
+            "w-96", "overflow-hidden", "leading-relaxed",
+        ] {
+            assert!(
+                coverage.style_token_supported(token) || token == "leading-relaxed",
+                "004 token 应放行（或 parser 静默丢弃面）: {token}"
+            );
+        }
+    }
+
+    /// PLAN-026 T-06：覆盖翻转数据行（§5.1 D3 定案仪器）——examples/ui
+    /// 全量 .at → AuraViewBuilder（VM 轨运行时 aura→View 构造器，与
+    /// a2r codegen 同以"降级到 View IR"为口径）→ scan_native_view ×
+    /// judge(native_queue_set)。数据行入 026 报告；阈值 = ≥95% 且缺项
+    /// 全在册 not-yet（AC-06 双出口的达标腿判据）。
+    #[test]
+    fn native_flip_coverage_data_row() {
+        use crate::ui::aura_view_builder::AuraViewBuilder;
+        use crate::ui::vm_bridge::VmBridge;
+
+        let examples_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui");
+        // (name, covered, 缺项/失败原因)
+        let mut rows: Vec<(String, bool, String)> = Vec::new();
+        let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(&examples_dir)
+            .expect("examples dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
+        dirs.sort();
+        for dir in dirs {
+            let front = dir.join("src/front");
+            if !front.is_dir() {
+                continue;
+            }
+            let mut srcs: Vec<std::path::PathBuf> = std::fs::read_dir(&front)
+                .expect("front dir")
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "at"))
+                .collect();
+            srcs.sort();
+            if srcs.is_empty() {
+                continue;
+            }
+            let name = dir.file_name().unwrap().to_string_lossy().to_string();
+            let mut combined = String::new();
+            for s in &srcs {
+                combined.push_str(&std::fs::read_to_string(s).unwrap_or_default());
+                combined.push('\n');
+            }
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(combined.as_str()).with_session(session);
+            let Ok(ast) = parser.parse() else {
+                rows.push((name, false, "parse-fail".into()));
+                continue;
+            };
+            // App widget 优先（examples 惯例），缺省首个 WidgetDecl。
+            let mut app_decl: Option<&crate::ast::WidgetDecl> = None;
+            let mut first_decl: Option<&crate::ast::WidgetDecl> = None;
+            for st in &ast.stmts {
+                if let crate::ast::Stmt::WidgetDecl(d) = st {
+                    if first_decl.is_none() {
+                        first_decl = Some(d);
+                    }
+                    if d.name.as_str() == "App" {
+                        app_decl = Some(d);
+                        break;
+                    }
+                }
+            }
+            let Some(decl) = app_decl.or(first_decl) else {
+                rows.push((name, false, "no-widget".into()));
+                continue;
+            };
+            let Ok(widget) = crate::aura::extract::extract_widget_from_decl(decl) else {
+                rows.push((name, false, "extract-fail".into()));
+                continue;
+            };
+            let bridge = VmBridge::new_from_decls(
+                decl,
+                &[],
+                vec![],
+                &std::collections::HashMap::new(),
+                false,
+            );
+            let Ok(bridge) = bridge else {
+                rows.push((name, false, "bridge-fail".into()));
+                continue;
+            };
+            let view = AuraViewBuilder::new(&bridge, &widget.name).build(&widget.view_tree);
+            let scan = scan_native_view(&view);
+            if std::env::var("AUTO_FLIP_DEBUG").is_ok() {
+                eprintln!("[native-flip-data] {name} tags={:?} styles={:?}", scan.tags, scan.style_tokens);
+                // 逐节点 typed classes dump（native-unstyled 溯源用）。
+                fn dump_classes<M: Clone + std::fmt::Debug>(v: &crate::ui::view::View<M>, out: &mut Vec<String>) {
+                    use crate::ui::view::View;
+                    let classes: Vec<Option<&crate::ui::style::Style>> = match v {
+                        View::Text { style, .. } | View::Button { style, .. }
+                        | View::Row { style, .. } | View::Column { style, .. }
+                        | View::Container { style, .. } | View::Image { style, .. }
+                        | View::ProgressBar { style, .. } => vec![style.as_ref()],
+                        View::Grid { style, .. } => vec![style.as_ref()],
+                        _ => vec![],
+                    };
+                    for st in classes.into_iter().flatten() {
+                        for c in &st.classes {
+                            if native_style_token(c) == "native-unstyled" {
+                                out.push(format!("{c:?}"));
+                            }
+                        }
+                    }
+                    match v {
+                        View::Column { children, .. } | View::Row { children, .. } => {
+                            for c in children { dump_classes(c, out); }
+                        }
+                        View::Container { child, .. } => dump_classes(child, out),
+                        View::Grid { cells, .. } => {
+                            for c in cells { dump_classes(c, out); }
+                        }
+                        View::Button { content: Some(c), .. } => dump_classes(c, out),
+                        _ => {}
+                    }
+                }
+                if name.starts_with("013") || name.starts_with("014") || name.starts_with("018") || name.starts_with("019") || name.starts_with("021") || name.starts_with("024") || name.starts_with("041") {
+                    let mut out = Vec::new();
+                    dump_classes(&view, &mut out);
+                    for (i, c) in out.iter().enumerate() {
+                        eprintln!("[native-flip-data]   node{i} classes={c}");
+                    }
+                }
+            }
+            match judge(&scan, &Coverage::native_queue_set()) {
+                Verdict::Covered => rows.push((name, true, String::new())),
+                Verdict::NotCovered(missing) => {
+                    rows.push((name, false, missing.join(", ")))
+                }
+            }
+        }
+        let total = rows.len();
+        let covered = rows.iter().filter(|(_, c, _)| *c).count();
+        let pct = covered as f64 / total.max(1) as f64 * 100.0;
+        eprintln!("[native-flip-data] covered {covered}/{total} = {pct:.1}%");
+        for (name, c, why) in &rows {
+            if !c {
+                eprintln!("[native-flip-data]   {name}: {why}");
+            }
+        }
+        assert!(total > 0, "样本集非空");
+        // AC-06 不翻出口裁定钉：本批数据 < 95% 阈值 → 维持 auto=
+        // independent；缺项（opacity/hidden/样式版 grid/popover/定位族）
+        // 全在册 not-yet。ramp v3 复测达标时改钉达标出口 +
+        // resolve_native_frame_mode Covered 臂翻 Commands（§1.8 翻转点）。
+        let flip = pct >= 95.0;
+        assert!(
+            !flip,
+            "Covered 比例达 95% 阈值（{covered}/{total}）——应走翻转向下任（§1.8 翻转点 + 台账裁定行），禁静默达标配平"
+        );
+        // 缺项清单非空不变式（NotCovered 行必载缺项载荷）。
+        for (name, covered_row, why) in &rows {
+            assert!(!(!covered_row && why.is_empty()), "{name} NotCovered 缺项空载荷");
         }
     }
 

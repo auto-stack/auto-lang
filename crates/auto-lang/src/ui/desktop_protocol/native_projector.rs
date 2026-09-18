@@ -1702,15 +1702,16 @@ mod tests {
             type Msg = SMsg;
             fn on(&mut self, _msg: Self::Msg) {}
             fn view(&self) -> View<Self::Msg> {
-                // shadow 已降级放行（T-06——解释态同款保真边界）；样本换
-                // underline（装饰未实现面——token 无支持前缀 → not-yet）。
-                View::text_styled("x", "underline")
+                // shadow/underline 均降级放行（025 T-06 / 026 T-06——
+                // 解释态同款保真边界）；样本换 opacity（视觉语义未实现
+                // 面——alpha 合成无通道，解释态 target_set 同 not-yet）。
+                View::text_styled("x", "opacity-50")
             }
         }
 
         let p = NativeProjector::new(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("style:underline"), "native 无 underline 渲染: {err}");
+        assert!(err.contains("style:opacity-50"), "native 无 opacity 渲染: {err}");
     }
 
     #[test]
