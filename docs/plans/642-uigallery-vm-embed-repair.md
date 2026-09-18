@@ -747,6 +747,12 @@ rulings:
     immediate_step: exit(127) 主动退出点全仓枚举 + AUTO_DEBUG_EXIT_TRACE
       门控追踪(POLLTRACE 先例形态)——判定死亡是否混有未被识破的主动
       退出路径;本会话执行,结果记入 P642-D3
+    result: 枚举判定完成(2026-09-19)——全仓零 deliberate exit(127),代码
+      侧无可 trace 点,转向 crashprobe 退出码映射控制实验:F1 的 bash 127
+      = fastfail/栈溢出(AV 报 139,panic 报 101,均排除);审计日志 959 行
+      零 F1 时刻记录吻合"绕过 panic 钩子"死法;另录 wgpu offscreen 纹理
+      与 min>max 布局两条 panic 线索;修复构建 soak 4 轮全遍历存活零审计
+      新增。详见 P642-D3 枚举小步执行结果段
 queue_after_ruling: T-18 → T-15 → T-17 (+T-14 a/c 可选,既定授权面内)
   → 复审 → merge 收口;proxy 独立计划与崩溃专项另行立项
 ```
