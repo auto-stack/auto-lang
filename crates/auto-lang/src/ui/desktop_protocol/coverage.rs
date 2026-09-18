@@ -201,6 +201,10 @@ impl Coverage {
             "empty", "anchorslot",
             // PLAN-025 T-05 —— scrollable（Scissor 裁剪 + on_scroll 滚轮）。
             "scroll",
+            // PLAN-026 T-04 —— grid（View::Grid walker 两遍网格）。
+            // "center" 不入册：View::center 归一 Container（scan 无
+            // "center" kind 产出点——登记即违反防漏钉钉②）。
+            "grid",
         ]
         .into_iter()
         .map(String::from)

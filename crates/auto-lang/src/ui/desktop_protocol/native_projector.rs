@@ -858,6 +858,59 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             }
             Laid { size: (w, h) }
         }
+        // PLAN-026 T-04 grid walker（镜像 client_runtime::layout_grid
+        // :831——cols 等宽格 × row-major 行序，行高 = 行内最大，bg 底色
+        // 两遍法置子级之下）。
+        View::Grid { cols, gap, cells, .. } => {
+            let cols = (*cols).max(1);
+            // gap：Grid.gap 字段（a2r codegen .spacing() 通道）优先，
+            // style gap- 类回退档（解释态 layout_grid 同序）。
+            let gap = if *gap > 0 { f32::from(*gap) } else { style.gap() };
+            let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+            let inner_w = (avail_w - pad.0 - pad.2).max(0.0);
+            let cell_w = if cells.is_empty() {
+                0.0
+            } else {
+                ((inner_w - gap * (cols.saturating_sub(1)) as f32) / cols as f32).max(0.0)
+            };
+            let place = |ctx: &mut NativeCtx<M>| -> (f32, f32) {
+                let mut row_y = 0.0f32;
+                for (ri, row) in cells.chunks(cols).enumerate() {
+                    if ri > 0 {
+                        row_y += gap;
+                    }
+                    let mut row_h = 0.0f32;
+                    for (ci, cell) in row.iter().enumerate() {
+                        let cell_x = ci as f32 * (cell_w + gap);
+                        let laid = layout_view_node(ctx, cell, x + pad.0 + cell_x, y + pad.1 + row_y, cell_w);
+                        row_h = row_h.max(laid.size.1);
+                    }
+                    row_y += row_h;
+                }
+                (cell_w * cols as f32 + gap * (cols.saturating_sub(1)) as f32, row_y)
+            };
+            let ops_mark = ctx.ops.len();
+            let hits_mark = ctx.hits.len();
+            let (content_w, content_h) = place(ctx);
+            let outer_w = match style.fixed_w() {
+                Some(fw) => fw,
+                None => content_w + pad.0 + pad.2,
+            };
+            let outer_h = match style.fixed_h() {
+                Some(fh) => fh,
+                None => content_h + pad.1 + pad.3,
+            };
+            if style.bg.is_some() {
+                ctx.ops.truncate(ops_mark);
+                ctx.hits.truncate(hits_mark);
+                ctx.push_quad(WRect::new(x, y, outer_w, outer_h), style.bg.unwrap());
+                place(ctx);
+            }
+            if let Some(border) = style.border {
+                ctx.push_border(WRect::new(x, y, outer_w, outer_h), border);
+            }
+            Laid { size: (outer_w, outer_h) }
+        }
         // PLAN-025 T-05 scrollable 臂：溢出裁剪（Scissor push/pop——镜像
         // client_runtime::layout_scroll :953-1020）+ 滚轮命中（on_scroll
         // 在场才登记——I3；先登记后走子级：嵌套时内层倒序胜，D5）。滚动
@@ -947,8 +1000,20 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let dir = Dir::Vertical;
             layout_view_group(ctx, view, &style, x, y, avail_w, dir)
         }
-        View::Container { child, on_right_click, .. } => {
-            layout_view_container(ctx, child, on_right_click.clone(), &style, x, y, avail_w)
+        View::Container { child, on_right_click, center_x, center_y, width, height, .. } => {
+            layout_view_container(
+                ctx,
+                child,
+                on_right_click.clone(),
+                *center_x,
+                *center_y,
+                *width,
+                *height,
+                &style,
+                x,
+                y,
+                avail_w,
+            )
         }
         // —— 覆盖门后动态分支防线：占位盒 + 留痕（I3：非静默错绘）。
         other => {
@@ -1022,6 +1087,10 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
     ctx: &mut NativeCtx<M>,
     child: &View<M>,
     right_click: Option<M>,
+    center_x: bool,
+    center_y: bool,
+    legacy_width: Option<u16>,
+    legacy_height: Option<u16>,
     style: &NodeStyle,
     x: f32,
     y: f32,
@@ -1029,8 +1098,10 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
 ) -> Laid {
     let container_right_click = right_click;
     let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    // PLAN-026 T-04：legacy width/height 兜底（View::container/.center()
+    // builder 字段——iced 消费面同源，typed style 优先）。
     let mut inner_w = avail_w;
-    if let Some(fw) = style.fixed_w() {
+    if let Some(fw) = style.fixed_w().or_else(|| legacy_width.map(f32::from)) {
         inner_w = (fw - pad.0 - pad.2).max(0.0);
     }
     if let Some(max_w) = style.box_layout.max_width {
@@ -1047,15 +1118,30 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
         Dir::Vertical,
         style,
     );
-    let outer_w = match style.fixed_w() {
+    let outer_w = match style.fixed_w().or_else(|| legacy_width.map(f32::from)) {
         Some(fw) => fw,
         None => (laid.size.0 + pad.0 + pad.2).max(0.0),
     };
-    let outer_h = match style.fixed_h() {
+    let outer_h = match style.fixed_h().or_else(|| legacy_height.map(f32::from)) {
         Some(fh) => fh,
         None => laid.size.1 + pad.1 + pad.3,
     };
-    if style.bg.is_some() || style.border.is_some() {
+    // PLAN-026 T-04 center：View::center/Container center_x/center_y 臂
+    // （解释态 center 经 items-center/mx-auto 类两遍法同档；center_y 需
+    // fixed_h 外框——自然高容器居中无位移）。
+    let child_x = if center_x {
+        x + pad.0 + ((inner_w.max(0.0) - laid.size.0).max(0.0)) / 2.0
+    } else {
+        x + pad.0
+    };
+    let child_y = if center_y && (style.fixed_h().is_some() || legacy_height.is_some()) {
+        let inner_h = (outer_h - pad.1 - pad.3).max(0.0);
+        y + pad.1 + ((inner_h - laid.size.1).max(0.0)) / 2.0
+    } else {
+        y + pad.1
+    };
+    if style.bg.is_some() || style.border.is_some() || child_x != x + pad.0 || child_y != y + pad.1
+    {
         ctx.ops.truncate(ops_mark);
         ctx.hits.truncate(hits_mark);
         if let Some(bg) = style.bg {
@@ -1064,8 +1150,8 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
         let _ = layout_view_block(
             ctx,
             std::slice::from_ref(child),
-            x + pad.0,
-            y + pad.1,
+            child_x,
+            child_y,
             inner_w.max(0.0),
             Dir::Vertical,
             style,
@@ -1496,7 +1582,8 @@ mod tests {
         let p = NativeProjector::new(WithSlider, 480.0, 320.0);
         p.ensure_covered().expect("slider 入覆盖集（020 拒面反转）");
 
-        // 新拒样本：grid（PLAN-025 非目标——kind 未入册）→ 拒绝 + 缺项。
+        // PLAN-026 T-04 语义反转：grid 已入 native 覆盖集 → Covered
+        // （025 拒面样本转正；防漏面 = grid_layout_and_hit_golden）。
         #[derive(Debug)]
         struct WithGrid;
 
@@ -1514,8 +1601,25 @@ mod tests {
         }
 
         let p = NativeProjector::new(WithGrid, 480.0, 320.0);
+        p.ensure_covered().expect("grid 入覆盖集（025 拒面反转）");
+
+        // 新拒样本：imagesurface（PLAN-026 §5.1 D5 定案——渲染占位顺带
+        // 但 kind 整体 not-yet：交互回调无采集面，登记即静默放行，I3）
+        // → 拒绝 + 缺项。
+        #[derive(Debug)]
+        struct WithImageSurface;
+
+        impl Component for WithImageSurface {
+            type Msg = WMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::image_surface("x.png")
+            }
+        }
+
+        let p = NativeProjector::new(WithImageSurface, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("grid"), "缺项清单随行: {err}");
+        assert!(err.contains("imagesurface"), "缺项清单随行: {err}");
     }
 
     #[test]
@@ -1544,8 +1648,8 @@ mod tests {
     #[test]
     fn dynamic_branch_uncovered_placeholder_tracked() {
         // 门后动态分支：状态切换遭遇未覆盖变体 → 占位盒 + uncovered_seen。
-        // （样本 = grid——PLAN-025 非目标 kind；原 slider 样本随 T-03
-        // 覆盖扩容转正，拒面换 grid 与 gate 反转测试同册。）
+        // （样本 = imagesurface——PLAN-026 D5 整 kind not-yet；原 grid
+        // 样本随 T-04 覆盖扩容转正，拒面换 imagesurface 同册。）
         #[derive(Debug)]
         struct Branchy {
             show_grid: bool,
@@ -1564,17 +1668,12 @@ mod tests {
                 }
             }
             fn view(&self) -> View<Self::Msg> {
-                // 门时刻 grid 不可见 → Covered；Toggle 后动态出现。
+                // 门时刻 imagesurface 不可见 → Covered；Toggle 后动态出现。
                 let mut col = View::col().child(
                     View::button("t").on_click(|_| BMsg::Toggle).build(),
                 );
                 if self.show_grid {
-                    col = col.child(View::Grid {
-                        cols: 2,
-                        gap: 4,
-                        cells: vec![View::text("a"), View::text("b")],
-                        style: None,
-                    });
+                    col = col.child(View::image_surface("x.png"));
                 }
                 col.build()
             }
@@ -1594,9 +1693,9 @@ mod tests {
             modifiers: 0,
         });
         let frame = p.render_frame();
-        assert_eq!(p.uncovered_seen(), ["grid"], "动态分支遭遇留痕");
+        assert_eq!(p.uncovered_seen(), ["imagesurface"], "动态分支遭遇留痕");
         assert!(
-            texts_of(&frame).iter().any(|t| t.starts_with("not-rendered: grid")),
+            texts_of(&frame).iter().any(|t| t.starts_with("not-rendered: imagesurface")),
             "占位盒显式标记: {:?}",
             texts_of(&frame)
         );
@@ -2218,6 +2317,7 @@ mod tests {
                     // ——覆盖表扩容 kinds+image/progress 的防漏钉夹具）。
                     .child(View::image_styled("img", "w-16 h-16"))
                     .child(View::progress_bar_styled(0.5, "w-20 h-2"))
+                    .child(View::grid().cols(2).spacing(8).child(View::text("g1")).child(View::text("g2")).build())
                     .child(View::row().child(View::text("r1")).build())
                     .child(View::container(View::text("c")).build())
                     .child(View::list(vec![View::text("l1")]).build())
@@ -2405,6 +2505,107 @@ mod tests {
             fill2.4, track2.4,
             "style.bg 覆盖 fill 色（bg-blue-500 ≠ 轨道底）: {qs:?}"
         );
+    }
+
+    /// PLAN-026 T-04：grid walker golden + 命中派发（镜像
+    /// client_runtime::layout_grid :831——cols 等宽格 row-major，格宽 =
+    /// (内容宽 - gap×(cols-1))/cols；格内按钮命中派发正确）。
+    #[test]
+    fn grid_layout_and_hit_golden() {
+        #[derive(Debug)]
+        struct GridApp {
+            hits: u32,
+        }
+        #[derive(Debug, Clone)]
+        enum GMsg {
+            Hit,
+        }
+        impl Component for GridApp {
+            type Msg = GMsg;
+            fn on(&mut self, m: Self::Msg) {
+                if matches!(m, GMsg::Hit) {
+                    self.hits += 1;
+                }
+            }
+            fn view(&self) -> View<Self::Msg> {
+                // 2 列 × gap 8；内容宽 460-0 pad → 格宽 (460-8)/2 = 226。
+                View::grid()
+                    .cols(2)
+                    .spacing(8)
+                    .child(View::text("a"))
+                    .child(View::button("b1").on_click(|_| GMsg::Hit).build())
+                    .child(View::button("b2").on_click(|_| GMsg::Hit).build())
+                    .child(View::text("d"))
+                    .build()
+            }
+        }
+        let mut p = NativeProjector::new(GridApp { hits: 0 }, 480.0, 320.0);
+        p.ensure_covered().expect("grid 入覆盖集");
+        let frame = p.render_frame();
+        let quads: Vec<(f32, f32, f32, f32)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } => Some((rect.x, rect.y, rect.w, rect.h)),
+                _ => None,
+            })
+            .collect();
+        // 第 1 行第 1 格（文本 a 无 quad）；第 1 行第 2 格按钮 b1：格 x =
+        // MARGIN + 1×(226+8) = 244；第 2 行第 1 格 b2：y 下移一行。
+        // 按钮宽 = 内容驱动（BUTTON_MIN_W 档），格位 = 等宽格起点。
+        let b1 = quads.iter().find(|&&(x, y, _, _)| x == 244.0 && y == 10.0)
+            .expect("b1 格位 (244,10)");
+        let b2 = quads.iter().find(|&&(x, y, _, _)| x == 10.0 && y > b1.1)
+            .expect("b2 次行首格");
+        let _ = (b1, b2);
+        // 命中：b1 按钮中心点击派发 Hit。
+        click(&mut p, 244.0 + 100.0, 10.0 + 12.0);
+        let frame2 = p.render_frame();
+        let _ = frame2;
+        assert_eq!(p.component.hits, 1, "grid 格内按钮命中派发");
+        // b2 同样派发。
+        click(&mut p, 10.0 + 100.0, b2.1 + 12.0);
+        assert_eq!(p.component.hits, 2, "次行格内按钮命中派发");
+    }
+
+    /// PLAN-026 T-04：center 臂（View::center → Container center_x/
+    /// center_y——fixed_w 容器内子级水平居中；fixed_h 下垂直居中）。
+    #[test]
+    fn center_container_golden() {
+        #[derive(Debug)]
+        struct CApp;
+        #[derive(Debug, Clone)]
+        enum CMsg2 {
+            Nop,
+        }
+        impl Component for CApp {
+            type Msg = CMsg2;
+            fn on(&mut self, _m: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::center(View::button("mid").on_click(|_| CMsg2::Nop).build())
+                    .width(200)
+                    .height(100)
+                    .build()
+            }
+        }
+        let mut p = NativeProjector::new(CApp, 480.0, 320.0);
+        let frame = p.render_frame();
+        let quads: Vec<(f32, f32, f32, f32)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } => Some((rect.x, rect.y, rect.w, rect.h)),
+                _ => None,
+            })
+            .collect();
+        // 容器 (10,10) 200×100（legacy width/height 臂——iced 消费面
+        // 同源）；按钮 (120×36 内容驱动) 居中 → (10+(200-120)/2,
+        // 10+(100-36)/2) = (50,42)。
+        let btn = quads
+            .iter()
+            .find(|&&(x, y, _, _)| x == 50.0 && y == 42.0)
+            .expect("center 子级水平+垂直居中（50,42）");
+        let _ = btn;
     }
 
     #[test]
