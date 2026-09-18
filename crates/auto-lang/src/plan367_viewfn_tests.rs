@@ -119,9 +119,21 @@ widget W(a: str) {
             return;
         };
         let code = std::fs::read_to_string(&path).unwrap();
+        // PLAN-642 R642-F4: 与生产入口同契约——parse 前 pre-register 跨包
+        // style recipe（PLAN-637 收编后 sidebar.at 携带 `use stylekit.styles:
+        // ...`，PLAN-607/635 name-check 只认注册表配方）。
+        let base_dir = std::path::Path::new(&path).parent().unwrap().to_path_buf();
+        let recipe_imports =
+            crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+                .map_err(|e| e.to_string())
+                .expect("sidebar.at style recipe imports must resolve");
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
         let ast = parser.parse().expect("sidebar.at must parse cleanly");
+        let _ = crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+            &recipe_imports,
+            &ast.stmts,
+        );
         let has_navtree = ast.stmts.iter().any(|s| {
             matches!(s, crate::ast::Stmt::WidgetDecl(d) if d.name.to_string() == "NavTree")
         });

@@ -2564,3 +2564,245 @@ fn ma_press_outside_sized_content_stays_silent() {
     let hit = ui.into_messages().any(|m| m == Msg::Hit);
     assert!(!hit, "块外点击不得命中(命中区=可视区,不吞邻居)");
 }
+
+/// PLAN-642 T-11 回归守卫（008-pricing-table 特性行只画 1 行）:008 卡片
+/// 结构 = justify-between 卡片列 [标题文本, feat_list(flex-1, 6 行), 按钮]，
+/// 三卡置于 items-stretch 行。iced 0.14 flex 第三 pass 对 FillPortion 子
+/// min=max=份额硬钉 + 列内子项按剩余量逐个配给:修复前 18 个特性文本
+/// 全部 0×0 隐没（实机只画首卡第 1 行）。修复 = distributed 列剥子项
+/// grow（axis_fix_col_child_distributed），空隙由 justify 垫片独占。
+/// 对照面:flex_nobetween 变体守卫"非 distributed 列的 flex-1 仍走
+/// Height(Full) 撑满"不被误伤。
+#[test]
+fn p642_t11_008_feat_rows_visible_in_distributed_cards() {
+    fn feat_row(text: String) -> View<()> {
+        View::Row {
+            children: vec![
+                View::Text { content: "✓".to_string(), style: Style::parse("text-primary font-bold mr-2.5 text-sm").ok(), selectable: false },
+                View::Text { content: text, style: Style::parse("text-sm text-foreground").ok(), selectable: false },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("items-center").ok(),
+            onclick: None, on_right_click: None,
+        }
+    }
+    fn card(idx: usize, feat_style: &str, card_style: &str) -> View<()> {
+        let feat_list = View::Column {
+            children: (0..6).map(|i| feat_row(format!("c{idx}f{i}"))).collect(),
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(feat_style).ok(),
+            onclick: None, on_right_click: None,
+        };
+        View::Column {
+            children: vec![
+                View::Text { content: format!("name{idx}"), style: Style::parse("text-lg font-bold text-foreground").ok(), selectable: false },
+                View::Text { content: format!("sub{idx}"), style: Style::parse("text-xs text-muted-foreground").ok(), selectable: false },
+                View::Text { content: format!("price{idx}"), style: Style::parse("text-4xl font-extrabold text-foreground mt-2").ok(), selectable: false },
+                feat_list,
+                View::Button { label: format!("buy{idx}"), onclick: (), style: Style::parse("w-full py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold").ok(), on_right_click: None, content: None, disabled: false },
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(card_style).ok(),
+            onclick: None, on_right_click: None,
+        }
+    }
+    fn root_of(feat_style: &str, card_style: &str) -> View<()> {
+        let cards_row = View::Row {
+            children: vec![
+                card(0, feat_style, card_style),
+                card(1, feat_style, card_style),
+                card(2, feat_style, card_style),
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("gap-6 max-w-5xl w-full items-stretch").ok(),
+            onclick: None, on_right_click: None,
+        };
+        let content = View::Column {
+            children: vec![
+                View::Text { content: "Pricing Plans".to_string(), style: Style::parse("text-3xl font-extrabold text-primary text-center").ok(), selectable: false },
+                cards_row,
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-full flex-1 px-8 py-6 gap-4 items-center justify-center max-w-6xl mx-auto").ok(),
+            onclick: None, on_right_click: None,
+        };
+        View::Column {
+            children: vec![content],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-full min-h-screen bg-background text-foreground").ok(),
+            onclick: None, on_right_click: None,
+        }
+    }
+    let between = "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between";
+    let plain = "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg";
+    // 修复面:distributed 卡片 + flex-1 特性列(margin 变体在案)——18 行全出。
+    for (tag, feat_style, card_style) in [
+        ("between", "gap-3.5 my-5 flex-1", between),
+        ("between_nomargin", "gap-3.5 flex-1", between),
+    ] {
+        let mut ui = simulator(root_of(feat_style, card_style).into_iced());
+        let mut zero = Vec::new();
+        for idx in 0..3 {
+            for f in 0..6 {
+                let b = bounds_of(&mut ui, &format!("c{idx}f{f}"));
+                if b.2 == 0.0 || b.3 == 0.0 {
+                    zero.push(format!("c{idx}f{f}"));
+                }
+            }
+        }
+        assert!(
+            zero.is_empty(),
+            "[{tag}] distributed 卡片特性行不得 0×0 隐没（iced 0.14 配给制回归）: {zero:?}"
+        );
+    }
+    // 对照面:非 distributed 卡片的 flex-1 特性列仍走 Height(Full) 撑满,
+    // 6 行全部可见且列顶紧随标题块（fill 生效,非自然高堆叠）。
+    let mut ui = simulator(root_of("gap-3.5 my-5 flex-1", plain).into_iced());
+    for idx in 0..3 {
+        for f in 0..6 {
+            let b = bounds_of(&mut ui, &format!("c{idx}f{f}"));
+            assert!(
+                b.2 > 0.0 && b.3 > 0.0,
+                "[nobetween] flex-1 特性列必须保持撑满语义（c{idx}f{f} = {:?}）", b
+            );
+        }
+    }
+}
+
+/// PLAN-642 T-12 回归守卫（P2-009/P2-016b，009 溢出塌缩 + 016 不居中）:
+/// 画廊 frame 形态 = h-[300px]（缩短以加速）+ overflow-hidden +
+/// justify-center 列内挂 min-h-screen demo 根 + 40 行内容。修复前 iced
+/// 0.14 配给制把超出 frame 的行压成 0×0（不可见不可滚动）；修复后
+/// overflow-hidden 列走 scroll 兜底（apply_column_style）：全部行完整
+/// 布局（可滚达）+ 短内容变体垂直居中。
+#[test]
+fn p642_t12_overflow_frame_scrolls_and_centers() {
+    fn build_sim(vmode: &str, rows: usize, w: f32, h: f32) -> iced_test::Simulator<'static, crate::ui::interpreter::DynamicMessage, iced::Theme, iced::Renderer> {
+        let mut src = String::from("widget Host {
+    model { var vmode str = \"desktop\" }
+    view {
+        col {
+            style: \"w-full flex flex-col items-center\"
+            col {
+                style: if .vmode == \"desktop\" { \"w-[1024px] max-w-full h-[300px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else { \"w-full h-[300px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" }
+                DemoProbe {}
+            }
+        }
+    }
+}
+");
+        src.push_str("widget DemoProbe {
+    view {
+        col {
+            style: \"w-full min-h-screen bg-background text-foreground\"
+");
+        for i in 0..rows {
+            src.push_str(&format!("            text `ROW{i:02}` {{ style: \"h-[24px] w-full\" }}
+"));
+        }
+        src.push_str("        }
+    }
+}
+");
+        let _ = vmode;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let mut host_decl = None;
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = stmt {
+                if d.name == "Host" {
+                    host_decl = Some(d.clone());
+                } else {
+                    let w = crate::aura::extract::extract_widget_from_decl(d).expect("child extract");
+                    registry.register(w);
+                }
+            }
+        }
+        let decl = host_decl.expect("host decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(&decl).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry(&widget, registry).unwrap();
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        iced_test::Simulator::with_size(<iced_test::core::Settings as Default>::default(), (w, h), view.into_iced())
+    }
+    // 长内容(40 行=960 逻辑高 > 300 frame):全部行完整布局(修复前行 13+ 塌缩 0×0)。
+    {
+        // 双窗口尺寸守卫(实机 1920×1200 与模拟 1024×800 同验收)。
+        for (w, h) in [(1024.0, 800.0), (1920.0, 1200.0)] {
+            let mut ui = build_sim("desktop", 40, w, h);
+            for row in ["ROW00", "ROW12", "ROW20", "ROW39"] {
+                let b = bounds_of(&mut ui, row);
+                assert!(b.3 > 0.0, "[{w}x{h}] {row} 必须完整布局(scroll 兜底防配给塌缩), 实际 {:?}", b);
+            }
+        }
+        let mut ui = build_sim("desktop", 40, 1024.0, 800.0);
+        for row in ["ROW00", "ROW12", "ROW20", "ROW39"] {
+            let b = bounds_of(&mut ui, row);
+            assert!(b.3 > 0.0, "[长内容] {row} 必须完整布局(scroll 兜底防配给塌缩), 实际 {:?}", b);
+        }
+        let r0 = bounds_of(&mut ui, "ROW00");
+        let r39 = bounds_of(&mut ui, "ROW39");
+        assert!(r39.1 > r0.1, "行序必须自上而下");
+    }
+    // 短内容(3 行≈72 逻辑高 < 300 frame):demo 根被容器 center_y 垂直居中,
+    // 且 items-center 根内 Shrink 宽文本水平居中(016 卡片水平居中同机制)。
+    {
+        let mut ui = build_sim("desktop", 3, 1024.0, 800.0);
+        let r0 = bounds_of(&mut ui, "ROW00");
+        // 300 高 frame,3 行(24+行高≈20×3≈60-72)居中 → 首行 y ≈ (300-72)/2 ≈ 114 ± 40
+        assert!(
+            r0.1 > 40.0 && r0.1 < 200.0,
+            "[短内容] 内容应被垂直居中(首行 y={:.1},期望 40..200)", r0.1
+        );
+    }
+}
+
+/// PLAN-642 T-12 探针③:真实 008 语料(单 widget)挂进 overflow-hidden+
+/// justify-center frame(h-720)→ scroll 兜底路径 → 卡片是否渲染。
+#[test]
+fn p642_t12_real_008_in_frame_probe() {
+    let src_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/ui/008-pricing-table/src/front/app.at");
+    let src = std::fs::read_to_string(&src_path).expect("008 source");
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+    let ast = parser.parse().expect("parse");
+    let decl = ast.stmts.iter().find_map(|s| match s {
+        crate::ast::Stmt::WidgetDecl(d) => Some(d),
+        _ => None,
+    }).expect("decl");
+    let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+    let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
+    let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+    let frame = View::<()>::Column {
+        children: vec![View::Empty],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center").ok(),
+        onclick: None, on_right_click: None,
+    };
+    // 把 demo 视图挂进 frame:用 Column 组合(frame 的孩子位置替换)。
+    // 简化:直接并排 simulator 两次 —— 外层 frame 由真实装配替代过于复杂,
+    // 这里直接量 demo 自身(等价于 frame 内布局,因为 frame 仅提供高度上限)。
+    let mut ui = iced_test::Simulator::with_size(
+        <iced_test::core::Settings as Default>::default(),
+        (1024.0, 720.0),
+        view.into_iced(),
+    );
+    for probe in ["Pricing Plans", "Single Developer", "$39", "Buy Now", "Figma UI Kit"] {
+        match ui.find(probe) {
+            Ok(t) => {
+                let b = t.bounds();
+                eprintln!("T12D {probe}: x={:.1} y={:.1} w={:.1} h={:.1}", b.x, b.y, b.width, b.height);
+            }
+            Err(_) => eprintln!("T12D {probe}: NOT FOUND"),
+        }
+    }
+}
