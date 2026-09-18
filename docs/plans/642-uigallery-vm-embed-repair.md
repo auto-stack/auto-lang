@@ -682,6 +682,31 @@ next: merge(phase landing plan-642-dev → master);overall 仍 executing
   (剩余: T-13 方向裁定 / T-18 / T-15 / T-17 / T-14 / T-16+T-19 / F1)
 ```
 
+---
+
+```yaml
+stage: merge (phase landing 收据——非归档;overall 计划保持 executing)
+plan_id: PLAN-642:r1
+outcome: pass (phase landing)
+checkpoints:
+  prepared: reviewed fe48a3945 + spec delta 落 worktree
+  landed: master merge 1039d998e（含 fe48a3945 全链）+ 7375cd027(spec 节)
+    经并发 PLAN-074 merge ffe2dac6d 一并入主;master cargo check 绿
+  ledger_refreshed: .autoos/specs.json P642-1 upsert(读回验证,gitignore
+    运行时数据就地发布);docs/specs/INDEX.md 重算无变化;spec 节已入主
+  archived: N/A——分阶段落地,overall 保持 executing(T-13/T-14..T-19 在途)
+  cleaned: wt-guard clean(024-charts/deps/stylekit junction 系 auto run
+    产物,已按规程 os.rmdir 摘除)→ worktree 移除 + branch plan-642-dev
+    删除(was 7375cd027,已含于 master)→ 组目录 .wt/lang-642 移除
+master_wip_note: master 存在他会话未提交 WIP(examples/rust-workspace/
+  Cargo.toml 加 013/015-back members + docs/plans/evidence/653/)——非本
+  计划产物,未纳入落地,已表面化待其属主路由
+next: 续作须重建 worktree(git worktree add D:/autostack/.wt/lang-642/
+  auto-lang -b plan-642-dev,自最新 master);队列=T-13 方向裁定/T-18/
+  T-15/T-17;计划外队列=PLAN-655 执行/T-14/T-16+T-19/F1
+```
+
+
 
 
 ## 10. 待澄清事项
