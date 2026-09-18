@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-645
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: toolchain-parity-debt（bps fn 转译缺口 + with_defaults 扫描根）
 author: [zhaopuming]
 created_at: 2026-09-18
@@ -211,6 +211,19 @@ with_defaults 实勘）；PLAN-522（use fn 双端同源转译先例）、PLAN-6
   发射路径 = auto-man Plan 475 dep 通道，非草案所写 ui_gen/vue.rs）；
   附带修复 PLAN-643 引入的 046 全量构建基线红（with_charts S003 strict，
   库形态 dep 软化）；新增 P645-D1/P645-D2 两条环境/语料债登记。
+- 2026-09-18 merge 收据 `PLAN-645:r1`：
+  `stage: merge | plan_id: PLAN-645 | plan_revision: 1 | outcome: delivered |
+  prepared: 冻结 delta=contract.md 验证面三行（SD-01/SD-02/库包 dep 扫描纪律）@
+  49bd351da；master 推进（PLAN-650/fix-clock-rust）经 worktree merge 68ad16d85
+  和解（仅 KNOWN-DEBT 双边追加自动并合；代码/规范面零交集），post-merge
+  plan645 3/3 + auto-man 298/298（首跑单例抖动不复现，两连绿）
+  | landed: master ed43e9e8e（--no-ff merge plan-645-dev；主检出冒烟
+  plan645 3/3 绿；外来 WIP 646/Cargo.toml 未触碰） |
+  ledger_refreshed: .autoos/specs.json（运行时账本，非跟踪）+P645-1
+  （architecture→contract.md）+P645-2（reviews→本档归档路径） |
+  archived: docs/plans/archive/645-toolchain-parity-debt.md（status: archived）
+  | cleaned: wt-guard clean ×2 → worktree/分支/组目录移除（证据见归档后
+  回填） | completion_kind: delivered`。
 
 ## 9. 待澄清事项
 
