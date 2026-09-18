@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 use super::endpoint::{HostAction, HostEndpoint, HostState};
 use super::host::SurfaceStore;
 use super::message::{
-    ControlMsg, DrawList, FrameMode, FrameMsg, HandshakeMsg, ProtocolMsg,
+    ControlMsg, DrawList, FrameMode, FrameMsg, HandshakeMsg, InputMsg, MouseButton, ProtocolMsg,
 };
 use super::shm::SharedFrameBuffer;
 use super::stage3::BrokerClient;
@@ -556,6 +556,13 @@ pub enum RqMessage {
     /// OS 窗关闭：宿主 Close 下发（app ExitRequest → Reclaim 既有状态机，
     /// 退出码 0）；末窗 = daemon 退出（iced 空窗不自动退出的反面，D5）。
     WindowClosed { window: iced::window::Id },
+    /// live 输入（键盘/滚轮/IME——029 映射族产物；发生窗随行）。
+    Live { window: iced::window::Id, input: crate::ui::session::LiveInput },
+    /// 光标移动（窗口本地坐标 = 表面坐标，D4；也是按下事件的坐标源）。
+    CursorMoved { window: iced::window::Id, x: f32, y: f32 },
+    /// 指针按下/释放（坐标取 `last_cursor` 簿记——Button 事件不带位）。
+    PointerPressed { window: iced::window::Id, button: iced::mouse::Button },
+    PointerReleased { window: iced::window::Id, button: iced::mouse::Button },
 }
 
 /// daemon 状态：客户端表（窗注册表即 `client.window`）+ serve 柄。
@@ -570,6 +577,9 @@ pub struct RqDaemon {
     had_window: bool,
     /// 开窗级联序（多窗不叠死）。
     opened: u64,
+    /// 窗 → 最近光标位（窗口本地坐标；按下事件的坐标源——Button 事件
+    /// 不带位，WM `last_cursor` 簿记同型）。
+    last_cursor: BTreeMap<iced::window::Id, (f32, f32)>,
 }
 
 impl RqDaemon {
@@ -607,7 +617,42 @@ fn open_window_for(client: &mut RqClient, cascade: u64) -> iced::Task<RqMessage>
     task.map(|_| RqMessage::Tick)
 }
 
-/// daemon update：Tick（采纳+泵）/ resize / 关窗。
+/// iced 鼠标按钮 → 协议按钮。
+fn wire_button(b: iced::mouse::Button) -> MouseButton {
+    match b {
+        iced::mouse::Button::Left => MouseButton::Left,
+        iced::mouse::Button::Right => MouseButton::Right,
+        iced::mouse::Button::Middle => MouseButton::Middle,
+        _ => MouseButton::Left,
+    }
+}
+
+/// live 输入 → 协议 InputMsg（029 六型逐映射；`broker_*` 路由族语义的
+/// 纯函数化——桌面按焦点窗/hit_test 选窗，rqhost 按发生窗，映射同源）。
+fn live_input_msgs(wid: u64, input: &crate::ui::session::LiveInput) -> Vec<InputMsg> {
+    use crate::ui::session::LiveInput;
+    match input {
+        LiveInput::KeyPressed { key, modifiers } => {
+            vec![InputMsg::KeyPressed { wid, key: *key, modifiers: *modifiers }]
+        }
+        LiveInput::Chars { text } => text
+            .chars()
+            .map(|ch| InputMsg::CharTyped { wid, ch })
+            .collect(),
+        LiveInput::ImeCommit { text } => {
+            vec![InputMsg::ImeCommit { wid, text: text.clone() }]
+        }
+        LiveInput::ImePreedit { text } => vec![InputMsg::ImePreedit {
+            wid,
+            text: text.clone(),
+            cursor: super::message::WRect::new(0.0, 0.0, 0.0, 0.0),
+        }],
+        LiveInput::ImeCancelled => vec![InputMsg::ImeCancelled { wid }],
+        LiveInput::Wheel { dx, dy } => vec![InputMsg::Scroll { wid, dx: *dx, dy: *dy }],
+    }
+}
+
+/// daemon update：Tick（采纳+泵）/ resize / 关窗 / 输入路由（D4）。
 fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
     match msg {
         RqMessage::Tick => {
@@ -693,6 +738,61 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
             }
             iced::Task::none()
         }
+        RqMessage::Live { window, input } => {
+            if let Some(client) = state.client_of(window) {
+                if let Some(wid) = client.inner.wid.map(|w| w.0) {
+                    for msg in live_input_msgs(wid, &input) {
+                        let _ = client.inner.end.send(&ProtocolMsg::Input(msg));
+                    }
+                }
+            }
+            iced::Task::none()
+        }
+        RqMessage::CursorMoved { window, x, y } => {
+            state.last_cursor.insert(window, (x, y));
+            if let Some(client) = state.client_of(window) {
+                if let Some(wid) = client.inner.wid.map(|w| w.0) {
+                    let _ = client.inner.end.send(&ProtocolMsg::Input(
+                        InputMsg::PointerMoved { wid, x, y },
+                    ));
+                }
+            }
+            iced::Task::none()
+        }
+        RqMessage::PointerPressed { window, button } => {
+            let at = state.last_cursor.get(&window).copied().unwrap_or((0.0, 0.0));
+            if let Some(client) = state.client_of(window) {
+                if let Some(wid) = client.inner.wid.map(|w| w.0) {
+                    let _ = client.inner.end.send(&ProtocolMsg::Input(
+                        InputMsg::PointerPressed {
+                            wid,
+                            button: wire_button(button),
+                            x: at.0,
+                            y: at.1,
+                            modifiers: 0,
+                        },
+                    ));
+                }
+            }
+            iced::Task::none()
+        }
+        RqMessage::PointerReleased { window, button } => {
+            let at = state.last_cursor.get(&window).copied().unwrap_or((0.0, 0.0));
+            if let Some(client) = state.client_of(window) {
+                if let Some(wid) = client.inner.wid.map(|w| w.0) {
+                    let _ = client.inner.end.send(&ProtocolMsg::Input(
+                        InputMsg::PointerReleased {
+                            wid,
+                            button: wire_button(button),
+                            x: at.0,
+                            y: at.1,
+                            modifiers: 0,
+                        },
+                    ));
+                }
+            }
+            iced::Task::none()
+        }
     }
 }
 
@@ -716,16 +816,50 @@ fn rq_view(state: &RqDaemon, window: iced::window::Id) -> iced::Element<'_, RqMe
     }
 }
 
-/// daemon 订阅：15ms 帧泵 + 窗事件流（resize/关窗；输入臂随 T-04 扩）。
+/// daemon 订阅：15ms 帧泵 + 窗事件流 + 输入流（键盘/滚轮/IME Ignored
+/// 门 + 指针全事件——desktop_window_events 029 族同源直调，D4）。
 fn rq_subscription(_state: &RqDaemon) -> iced::Subscription<RqMessage> {
+    use crate::ui::session::{
+        live_input_from_input_method, live_input_from_wheel, live_inputs_from_keyboard,
+    };
     iced::Subscription::batch(vec![
         iced::time::every(std::time::Duration::from_millis(15)).map(|_| RqMessage::Tick),
-        iced::event::listen_with(|e, _status, window_id| match e {
+        iced::event::listen_with(|e, status, window_id| match e {
             iced::Event::Window(iced::window::Event::Resized(size)) => Some(
                 RqMessage::WindowResized { window: window_id, width: size.width, height: size.height },
             ),
             iced::Event::Window(iced::window::Event::Closed) => {
                 Some(RqMessage::WindowClosed { window: window_id })
+            }
+            // live 输入三族（Ignored 门——Captured = 宿主真 widget 已消费；
+            // rqhost 窗内容 = canvas 无交互 widget，稳态恒 Ignored）。
+            iced::Event::Keyboard(kb) if status == iced::event::Status::Ignored => {
+                live_inputs_from_keyboard(&kb).into_iter().next().map(|input| {
+                    RqMessage::Live { window: window_id, input }
+                })
+            }
+            iced::Event::InputMethod(im) if status == iced::event::Status::Ignored => {
+                live_input_from_input_method(&im)
+                    .map(|input| RqMessage::Live { window: window_id, input })
+            }
+            iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })
+                if status == iced::event::Status::Ignored =>
+            {
+                live_input_from_wheel(&delta)
+                    .map(|input| RqMessage::Live { window: window_id, input })
+            }
+            iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                Some(RqMessage::CursorMoved {
+                    window: window_id,
+                    x: position.x,
+                    y: position.y,
+                })
+            }
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(button)) => {
+                Some(RqMessage::PointerPressed { window: window_id, button })
+            }
+            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(button)) => {
+                Some(RqMessage::PointerReleased { window: window_id, button })
             }
             _ => None,
         }),
@@ -756,6 +890,7 @@ pub fn run_daemon(wellknown: &str) -> Result<(), String> {
         clients: Vec::new(),
         had_window: false,
         opened: 0,
+        last_cursor: BTreeMap::new(),
     };
     // boot 闭包 Fn 约束——RefCell 一次性提取（renderer.rs run_session 同型）。
     let init = std::cell::RefCell::new(Some(state));
@@ -1158,6 +1293,110 @@ mod tests {
         assert!(reclaimed, "ReclaimWindow 落地");
         let exit = app.join().expect("app 线程");
         assert_eq!(exit, ClientExit::Closed, "关窗 = 干净退出（码 0 语义）");
+
+        serve.stop(&pipe);
+    }
+
+    /// T-04：输入按窗路由不串扰——双客户端双窗，A 窗键盘/指针只达
+    /// A 的连接（wid 随行正确）；B 端静默。
+    #[test]
+    fn input_routes_by_window_without_crosstalk() {
+        use crate::ui::session::LiveInput;
+
+        let pipe = pid_pipe("route");
+        let (serve, _claim) = start_serve(&pipe);
+
+        // 双客户端采纳到 Active（真实管道双端在手）。
+        let mut ends = Vec::new();
+        for name in ["alpha", "beta"] {
+            let (_, mut app_end) = adopt(&pipe, name, 2000).expect("adopt");
+            app_end.send(&hello(name, name)).unwrap();
+            ends.push(app_end);
+        }
+        let mut state = RqDaemon {
+            serve: Arc::clone(&serve),
+            claim: None,
+            wellknown: pipe.clone(),
+            ids: RqIds::default(),
+            clients: Vec::new(),
+            had_window: false,
+            opened: 0,
+            last_cursor: BTreeMap::new(),
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state.clients.len() < 2 {
+            let pending: Vec<_> = state.serve.pending.lock().unwrap().drain(..).collect();
+            for (name, end) in pending {
+                if let Some((client, _)) = adopt_one(name, end, &mut state.ids, 3000) {
+                    state.clients.push(client);
+                }
+            }
+            assert!(std::time::Instant::now() < deadline, "双客户端 5s 未落地");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        // 手工挂窗（daemon update 的开窗任务在此测试内不执行——路由键
+        // 只看注册表，不依赖真窗）。
+        let win_a = iced::window::Id::unique();
+        let win_b = iced::window::Id::unique();
+        state.clients[0].window = Some(win_a);
+        state.clients[1].window = Some(win_b);
+        let wid_a = state.clients[0].inner.wid.unwrap().0;
+        let wid_b = state.clients[1].inner.wid.unwrap().0;
+        assert_ne!(wid_a, wid_b, "wid 分配互异");
+
+        // 消费握手回包（Welcome/BufferAlloc——防误读为输入）。
+        for end in ends.iter_mut() {
+            let _ = end.recv_wait(500);
+            let _ = end.recv_wait(500);
+        }
+
+        // A 窗输入四型：光标 → 按下 → 键 → 字符串。
+        let _ = rq_update(
+            &mut state,
+            RqMessage::CursorMoved { window: win_a, x: 12.0, y: 34.0 },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::PointerPressed { window: win_a, button: iced::mouse::Button::Left },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::Live {
+                window: win_a,
+                input: LiveInput::KeyPressed { key: 13, modifiers: 1 },
+            },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::Live {
+                window: win_a,
+                input: LiveInput::Chars { text: "hi".into() },
+            },
+        );
+
+        // A 端按序收四组 Input（wid 全 = wid_a；按下坐标 = 光标簿记）。
+        let expect = vec![
+            (InputMsg::PointerMoved { wid: wid_a, x: 12.0, y: 34.0 }),
+            (InputMsg::PointerPressed {
+                wid: wid_a,
+                button: MouseButton::Left,
+                x: 12.0,
+                y: 34.0,
+                modifiers: 0,
+            }),
+            (InputMsg::KeyPressed { wid: wid_a, key: 13, modifiers: 1 }),
+            (InputMsg::CharTyped { wid: wid_a, ch: 'h' }),
+            (InputMsg::CharTyped { wid: wid_a, ch: 'i' }),
+        ];
+        for want in expect {
+            let got = ends[0].recv_wait(2000).expect("A 端应收到").expect("解码");
+            match (got, want) {
+                (ProtocolMsg::Input(g), w) => assert_eq!(g, w),
+                other => panic!("期待 Input: {other:?}"),
+            }
+        }
+        // B 端静默（200ms 无串扰到达）。
+        assert!(ends[1].recv_wait(200).is_none(), "B 端不应收到 A 窗输入");
 
         serve.stop(&pipe);
     }
