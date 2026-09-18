@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-643
-status: executing              # drafting → executing → execution_done → reviewed → archived（2026-09-18 work 开始）
+status: reviewed               # drafting → executing → execution_done → reviewed → archived（2026-09-18 review pass）
 feature_name: chart-tag-unify（chart 裸名归属统一与 bp palette 包词汇面）
 author: [agent]
 created_at: 2026-09-18
 updated_at: 2026-09-18
 
-# /auto-plan:review 结束时填写：
+# /auto-plan:review 终定（2026-09-18）：
 supersedes_spec_components:
-  - docs/specs/auto-lang/ui/design/chart-components.md#归属（chart 契约 v2 补章：tag 双态归属与合并臂裁定）
-new_spec_components:
-  - docs/specs/blueprint/contract.md#验证面-palette-包词汇面
-touched_goals: [GOAL-007]      # 引用 docs/specs/goals.md 的 GOAL-NNN（review 终定）
+  - docs/specs/auto-lang/ui/design/chart-components.md#tag-双态归属（schema 声明面 × 包实现面，PLAN-643 补章）
+  - docs/specs/blueprint/contract.md#验证面
+new_spec_components: []          # 两处 SD 均为 modify（补章/改规则），无新文件
+touched_goals: [GOAL-007]        # review 核实：goals.md GOAL-007 真实存在（AutoUI 双端一致，chart 双端同源在辖）
 
 affects: [blueprint, auto-lang/ui]   # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 7
@@ -285,7 +285,11 @@ contract.md 变体提升评审流程留痕。
   `with_charts`、palette 增 chart 四 tag、`# Promotions` 评审记录（提案/差异/
   裁定：包词汇面而非 registry 注册，484 维持）；`reference/with_charts.at`
   （官方包消费方契约 `from "components"`，数据绑 metrics 形状字段，loading/
-  error 契约保留）；gotchas 语义随 spec 更新。`auto bp check` 3/3 过（loading/
+  error 契约保留）；~~gotchas 语义随 spec 更新~~（**复审修正 R643-F2**：此句为
+  工作期过度声明——gotchas.md 实际未改；其"Why"陈述在 643 后仍为真
+  （chart tag 确实未注册进 WidgetRegistry），仅"Right"面被 with_charts 变体
+  部分取代，low 级非阻断，建议 merge 触碰时顺手补一段）。
+  `auto bp check` 3/3 过（loading/
   error/palette）。双端测试（plan643_chart_tag_tests）：VM 轨
   `t01_with_charts_vm_track_renders_charts`（scratch 物化 + 动态分支装载，
   月轴标签 Jan..Jun 出图断言——组件 Init 由数据派生的硬证据）+ vue 轨
@@ -365,6 +369,90 @@ blockers: |
   2. 024 语料 cap/hint 笔误修复在 642 分支（ba009076f），本计划未重复修复
      （避免双写；测试物化改用 charts-gallery 干净副本）。
 next: review（/auto-plan:review；worktree 留用）
+```
+
+### review 记录（2026-09-18，/auto-plan:review）
+
+```yaml
+stage: review
+plan_id: PLAN-643
+plan_revision: 1
+outcome: pass
+reviewed_commit:
+  auto-lang: 85d4d10b4046c95d75e805979730c1d30589a4d6   # plan-643-dev, worktree clean
+base_commit:
+  auto-lang: ea311722b83084e9f20d72866420e891e182f8d6
+dependency_revisions:
+  auto-down: c6ff105 (detached 组内兄弟，仅 path 依赖)
+  # 只读借用（未改动）：.wt/lang-642/{auto-lang,auto-os} 的 642 在途产物
+spec_inputs:
+  - docs/specs/auto-lang/ui/design/chart-components.md   # 冻结哈希 2e85c8e1e3946978af22eabde8be92b55eb4bf6c
+  - docs/specs/blueprint/contract.md                     # 冻结哈希 209bd358cf0f12a37196148802ab80af463ef2b8
+  - docs/specs/goals.md（GOAL-007 引用核实）
+independence_note: 复审与实现同会话——裁决全部重建自工件（diff 审读 + 新鲜命令
+  输出 + 留档快照/截图），未采信执行期总结； limitation 已声明。
+acceptance_results:
+  AC-01: pass — 完整 ui-gallery 宿主（642 发射产物 scratch 改名拷贝）VM 臂
+         实测：base 二进制视口无图表（活性判别面=组件 Init 计算的 y 轴刻度
+         独立文本节点 400/300/200/100/0，base 快照 0 个）；fix 二进制
+         5 刻度节点 + 月轴 Jan..Jun + 图例齐全（p643_full_{base,fix}.png +
+         *_024.txt 结构证据；刻度值由种子 vmax=305 经 nice-ticks 算出，
+         语料/文档均不含，非标记污染）。mini 宿主 A/B 同向
+         （p643_merged_{base,fix}）。独立臂 base==fix 无回归。
+         全链注记：demos 产物含 642 发射器包级联——ui-gallery 产物再生成
+         路径需 642 合入后方可持续（见 R643-F1）。
+  AC-02: pass — cargo t plan643 3/3（含 palette 正/负：chart 四 tag 零漂移、
+         pie-chart 仍漂移）；bp::registry 5/5 新鲜复跑。
+  AC-03: pass — schema diff 恰 4 元素×(tier+description)（8 行 tier 变更审读），
+         其余 unclassified 零触碰；scoped 测试绿；docs_gen/schema_drift 绿。
+  AC-04: pass — spec promotions 记录/variants/palette 扩容在案；
+         auto bp check 3/3（复审新鲜复跑）；双轨测试绿（VM 月轴出图断言 +
+         vue SFC + 零 S004）。
+  AC-05: pass — KNOWN-DEBT 双核销行在案（P642-D1 全条 + 640 chart 半句；
+         data-table 半句保留移交，另注 data-table 实为 DataTable alias 待
+         归属计划复核）。
+  AC-06: pass(delta prepared) — SD-01/SD-02 文本与实现对齐（enduring 语义，
+         非执行日志）；frontmatter 锚点已按实锚定；specs.json upsert +
+         spec-index.py 归 merge。
+findings:
+  - id: R643-F1
+    severity: medium
+    affects: [merge]
+    evidence: plan-642-dev 09bb8e218（R642-F2）在 build_dynamic_component_inner
+      内独立修复同一根因（适配器 use{package} 无装载走查→包组件缺注册），
+      与本计划 load_ext_imports_for_vm 的 visited 全集 sweep 语义冗余；
+      两修并存有双注册风险（WidgetRegistry 同名拒绝口径）。
+    correction: merge 时必须二选一（建议保留 643 的 sweep——覆盖 visited 全集
+      含嵌套链 + import_aliases + 包文件 use 依赖收集为超集；642 保留其
+      F3 Tick 合成/F4 预注册/语料笔误），不得双落。
+  - id: R643-F2
+    severity: low
+    affects: [T-06 文档面, 非验收项]
+    evidence: 工作期回填声明"gotchas 语义随 spec 更新"为过度声明——
+      gotchas.md 实未改；原文"Why"（tag 未注册进 WidgetRegistry）在 643 后
+      仍为真，"Right"面被 with_charts 变体部分取代。
+    correction: 非阻断；merge 触碰时补一段 with_charts 语义（已在工作记录
+      原句划线修正）。
+  - id: R643-F3
+    severity: low
+    affects: [环境注记]
+    evidence: cargo tf 全量下 ffi_dual_019_dep_layout_invariants 单次红，
+      单跑/整组复跑均绿（并发时序类）；real_sidebar_at_parses_with_navtree
+      为 642 复审在案预存（R642-F4 其分支在修）；scratch 独立臂空图态
+      base==fix（语料/环境态，非回归，642 分支自持独立臂出图证据）。
+    correction: 无需行动，登记备查。
+evidence: |
+  - 新鲜复跑（受审提交 85d4d10b4）：cargo t plan643 3/3；component_registry 8/8；
+    bp::registry 5/5；auto bp check 3/3；cargo tf 3610/3612（2 红归因见
+    R643-F3）；cargo tv 3756/3757（唯一红=在案预存）。
+  - diff 审读：14 文件 +694/-37；schema 恰 4 元素；408/435 通用 shadow 规则、
+    S003/S004 语义、非目标四项全部未触碰；负断言在测。
+  - 合并臂活性证据：evidence/p643_full_{base,fix}.png + *_024.txt（刻度节点
+    结构对比）+ p643_merged_{base,fix}（mini 宿主）。
+  - 健康：改动区无新增编译警告（lib.rs:6520 unused imports 为基线携带
+    shift 验证）；fmt 漂移为仓内常态（lib.rs 数百处预存），改动区外。
+next: merge（/auto-plan:merge；merge 时按 R643-F1 与 642 对账，勿双落装载修复；
+  specs.json upsert + spec-index.py）
 ```
 
 ## 10. 待澄清事项
