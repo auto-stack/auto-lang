@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: [GOAL-007]      # AutoUI 跨端一致：scroll-pane 双端同语义
 
 affects: [widgets, auto-lang]  # docs/specs/widgets/**、docs/specs/auto-lang/project.md ui 行
-current_step: 9
+current_step: 10
 total_steps: 11                # T-00..T-10
 ---
 
@@ -1704,7 +1704,7 @@ test_vue_playwright.mjs
 → AC-17。
 > ✅ 2026-09-19 commits `b143eecd6`/`2e3f673c7`+：新文件 rustfmt（全仓 fmt 预存
 > 分叉不动——552 文件重排已回退）+ managed_content 未用导入清零（新文件零警告
-> 实证）；`cargo tf` 结果见复审记录。
+> 实证）；`cargo tf --no-fail-fast` 终态 **3643/3645**（2 红均非滚动域：mouse_area_emits=master 同败预存实证；display_family=standalone 双侧绿、全量顺序性）。四表同步收口 f76fc9136（render_support full+scroll_test_content 臂/schema iced:full/element_coverage 登记/fallback 表/canonical 拼写）——schema_drift 2/2。
 
 ---
 
@@ -1909,7 +1909,7 @@ CodeEditor
 这一复审目标。
 
 - 2026-09-19 /auto-plan:work 交接：`stage: work | plan_id: PLAN-656 | plan_revision: 2 |
-  outcome: pass(10/11 任务全绿) + 一项验证留尾 | code_commit: 66be039d8..2e3f673c7
+  outcome: pass(10/11 任务闭环+T-10 门禁终态 3643/3645) + 一项验证留尾 | code_commit: 66be039d8..f76fc9136（11 commits）
   (worktree D:/autostack/.wt/lang-656/auto-lang, branch plan-656-dev, base c52f6fdfa) |
   task_ids: T-00..T-10 | evidence: cargo t scroll 62/62、vue 338/338、iced 88/90(2 预存)、
   docs_gen 4/4、schema_drift 8/8、p656 示例 auto gen 全绿+产物五要素实证、p656 黄金 1/1、
