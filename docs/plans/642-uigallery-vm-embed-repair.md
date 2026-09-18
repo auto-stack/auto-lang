@@ -225,14 +225,14 @@ MCP 驱动（`auto run -r vm` + autoui-verifier 工具链）对 34 个侧栏条�
       exit 127（ug_review.log:855-858 死前日志，之后仅心跳行）。间歇性、
       疑渲染/异步照片装载竞态。修复待做：029 二次打开路径归因 + 防护；
       MCP bind FATAL 127 假象（mcp_server.rs:540）另见 P642-D3。
-- [⚠] **T-04 024-charts 空白画布修复**（族 B/D，G-2）[⚠ 复审重开——内嵌面未达]
+- [✅] **T-04 024-charts 空白画布修复**（族 B/D，G-2）[✅ 已完成]
       语料面：四个 chart 组件 `cap`/`hint` 笔误（→caption_text/hint_text，
       93 处）修复后 from_workspace strict 复活（19→21 loadable），独立臂
       VM 完整出图（三系列折线截图）。内嵌面 residual：包组件在合并 VM 臂
       `shadows builtin tag — builtin wins` → 实例落 builtin 桩 → 画布空；
       发射器已补包目录级联 + 包内 fn 模块链（chart_geom）收集，画布仍空。
       登记 P642-D1（含独立/内嵌对照截图与 Plan 408/435 优先序假设）。
-- [⚠] **T-05 027-file-manager 永久加载态修复**（族 A/B，G-2）[⚠ 复审重开——内嵌面未达]
+- [⚠] **T-05 027-file-manager 永久加载态修复**（族 A/B，G-2）[⚠ 大部完成——自动引导 residual]
       语料/装载面：tree_icon recipe 预注册修复（T-01）+ from_workspace strict
       复活 + 包目录级联；独立臂完整出图（真实目录 62 项截图）。内嵌面
       residual：Init/异步装载不完成，永久"正在加载..."；伴生 kept-first 包
@@ -364,6 +364,43 @@ next: needs_fix → work（worktree .wt/lang-642/ 续用）；重开 T-03/T-04/T
 （复审限制声明：本次复审在实现同会话执行，非独立角色；结论全部基于
 复审期新鲜命令输出——独立矩阵重跑、tv 全量重跑、badge/029 快照、
 五件适配器等价性 diff——而非执行期总结。）
+
+---
+
+```yaml
+stage: work (needs_fix 修复循环)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: blocked          # 仅 R642-F1；F2/F3/F4 已修复并验证
+code_commit:
+  auto-lang: 09bb8e218 (plan-642-dev)
+task_ids: [T-03, T-04, T-05, T-09]
+evidence:
+  - R642-F2 ✅: 合并臂适配器包注册补走查（lib.rs）——024 内嵌完整出图
+    （f2b_024_recheck.png，三系列折线+轴+图例，与独立臂同形）；
+    最终矩阵 024=OK
+  - R642-F3 ⚠大部: 子件 Tick 合成（051 C7 条目形态，lib.rs）——027 脱离
+    永久"正在加载"、Tick 派发 439 次、地址栏手动导航完整出列表
+    （f3_027_navto 序列 + 最终矩阵 027=OK）；residual: Tick 内嵌套
+    NavTo 自动首列表不完成（Env.get 探针实证返回值正确，故障在
+    引导块后段，需下一轮归因）
+  - R642-F4 ✅: real_sidebar 预存红修复 → cargo tv --no-fail-fast
+    3745/3745 全绿（执行期唯一红核销）；ui_gen 792/792
+  - R642-F1 ❌: 未能在修复批次内根因。修复后事实：13 轮全遍历 soak +
+    1 次全矩阵存活，但最终矩阵后空闲期再次 exit 127（复现率≈1/4 长
+    会话实例；死亡页随机：029/024/空闲）；WER LocalDumps（DumpType=2）
+    配置后 0 dump 产生；无 panic 无 WER 记录。该崩溃类先于本计划
+    （master 二进制 inv1 实证，P625 时代即登记）。
+blockers:
+  - R642-F1 需 crash dump 工具链（cdb/WinDbg 或 WER 诊断）定位故障模块；
+    当前环境无此工具且 LocalDumps 未产生 dump
+next: |
+  用户裁定二选一：(a) F1 以预存间歇性原生不稳定登记 KNOWN-DEBT
+  （P642-D3 已有完整证据链），本计划就 F2/F3/F4 修复面重审后 landing，
+  崩溃类另立专项；(b) 保持本计划 open，配置 crash dump 工具链后继续
+  F1 根因。两案皆不影响 F2/F3/F4 修复面已验证的事实。
+```
+
 
 ## 10. 待澄清事项
 
