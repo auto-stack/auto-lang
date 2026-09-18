@@ -154,6 +154,9 @@ pub struct AuraViewBuilder<'a> {
     /// PLAN-652: 装配期 mounted 登记 sink（与 DynamicComponent 共享）。
     /// `render_child_widget*` 每实例化一个 registry 命中的 child 即 insert 其名。
     mounted_sink: Option<&'a RefCell<HashSet<String>>>,
+    /// PLAN-654: path 级挂载登记（InstancePath + per-type seq）。
+    /// 与类型级 `mounted_sink` 并行写入；None 时仅类型级（652 兼容）。
+    mount_path_sink: Option<crate::ui::dynamic::MountPathSinkRef<'a>>,
 }
 
 /// Plan 476: widget 调用位的 slot 填充集。
@@ -282,6 +285,7 @@ impl<'a> AuraViewBuilder<'a> {
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
             mounted_sink: None,
+            mount_path_sink: None,
         }
     }
 
@@ -305,6 +309,7 @@ impl<'a> AuraViewBuilder<'a> {
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
             mounted_sink: None,
+            mount_path_sink: None,
         }
     }
 
@@ -332,6 +337,7 @@ impl<'a> AuraViewBuilder<'a> {
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
             mounted_sink: None,
+            mount_path_sink: None,
         }
     }
 
@@ -341,6 +347,15 @@ impl<'a> AuraViewBuilder<'a> {
         sink: &'a RefCell<HashSet<String>>,
     ) -> Self {
         self.mounted_sink = Some(sink);
+        self
+    }
+
+    /// PLAN-654: path 级挂载登记 sink（DynamicComponent.mounted_paths + seq）。
+    pub fn with_mount_path_sink(
+        mut self,
+        sink: crate::ui::dynamic::MountPathSinkRef<'a>,
+    ) -> Self {
+        self.mount_path_sink = Some(sink);
         self
     }
 
@@ -6095,6 +6110,10 @@ let tabs_inner = View::Row {
         if let Some(sink) = self.mounted_sink {
             sink.borrow_mut().insert(child_widget.name.clone());
         }
+        // PLAN-654: path 级登记（帧内序号自增）。
+        if let Some(psink) = self.mount_path_sink {
+            psink.register(&child_widget.name);
+        }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
@@ -6127,6 +6146,7 @@ let tabs_inner = View::Row {
                 RefCell::new(active)
             },
             mounted_sink: self.mounted_sink,
+            mount_path_sink: self.mount_path_sink,
         };
 
         child_builder.build(&child_widget.view_tree)
@@ -6165,6 +6185,10 @@ let tabs_inner = View::Row {
         if let Some(sink) = self.mounted_sink {
             sink.borrow_mut().insert(child_widget.name.clone());
         }
+        // PLAN-654: path 级登记（tracked 双胎同款）。
+        if let Some(psink) = self.mount_path_sink {
+            psink.register(&child_widget.name);
+        }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
 
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
@@ -6191,6 +6215,7 @@ let tabs_inner = View::Row {
                 RefCell::new(active)
             },
             mounted_sink: self.mounted_sink,
+            mount_path_sink: self.mount_path_sink,
         };
 
         child_builder.convert_node_tracked_ctx(

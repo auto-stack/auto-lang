@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-655
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed             # drafting → executing → execution_done → reviewed → archived
 feature_name: equal-height-row
 author: [agent]
 created_at: 2026-09-18
 updated_at: 2026-09-18
 plan_revision: 1
-current_step: 0
+current_step: 4
 total_steps: 4
 
 # /auto-plan:review 结束时填写：
@@ -115,21 +115,45 @@ Fill 需要有界参照高度，在滚动容器（内容臂无界）下解析为
 
 （原子任务：每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] **T-01 StretchLine 控件**（新 `crates/auto-lang/src/ui/iced/stretch_line.rs`；
+- [x] **T-01 StretchLine 控件**（新 `crates/auto-lang/src/ui/iced/stretch_line.rs`；
       mod.rs 注册）[AC-01]
       两遍测量（measure compression=(false,true) → final height=effective）；
       draw/update/operate/hash 委托内层 Row。验证：新增 headless 单元测试
       （100/200/300 等高 + scroll frame 组合 + 双窗口尺寸）绿。
-- [ ] **T-02 build_row 集成**（`items_stretch` 命中 → 产物包 StretchLine）
+      [✅ 已完成] 2f3aa65da。设计偏离（等效实现，AC 不变）：iced 0.14 flex 源码逐行
+      核证伪「对 Fill 拉伸产物做 compression 度量」——cross-Fill 子项走 second-pass
+      且 max 从 cross=0.0 起步（iced_core layout/flex.rs），测出 0 高；Scrollable 的
+      compression 手法仅在压缩轴=子项 flex 主轴时成立。改为 StretchLine 自持布局、
+      直接持有原始子项：宽度探测（flex first/third-pass 同式配给）→ 按各子项最终
+      份额宽测高（compression=(false,true) 打在子项主轴——justify-between 垫片
+      解析为内容高 0）→ final 落位（Shrink 高子项 min_h=effective 拉伸，Fixed 高
+      自然钳制）。p655 三测绿（equal_height_max_semantics / in_overflow_frame_
+      renders_equal / dual_window_sizes）。
+- [x] **T-02 build_row 集成**（`items_stretch` 命中 → 产物包 StretchLine）
       [AC-01/02/04]
       验证：layout_tests 全模块绿（T-11 分布式列测试保持）；真实 008
       语料探针（frame scroll 装配）卡片全出且等高；`cargo t ui` 零新增红。
-- [ ] **T-03 008 语料还原 items-stretch**（撤销 fe48a3945 的语料移除，
+      [✅ 已完成] 2f3aa65da。stretch 臂产出 row([StretchLine]) 单子载体（apply_row_style
+      管线零重复），非 stretch 行零接触。layout_tests 61 测：59 绿 + 2 红
+      （desktop_surface_z_slot_window_covers_icons / p625_uigallery_sidebar_pills_visible
+      —— master 复跑同败实证=预存基线）；p642_t11 分布式卡片测试保持绿。
+- [x] **T-03 008 语料还原 items-stretch**（撤销 fe48a3945 的语料移除，
       保留 PLAN-642 注释改写为"等高由 StretchLine 供给"）[AC-03]
       验证：cargo t ui 语料测试绿；auto-os 产物再生成 diff 仅 008；
       实机画廊 008/009/016/002 MCP 截图验收。
-- [ ] **T-04 收尾门禁**：layout_tests + `cargo t ui`（--no-fail-fast 对照
+      [✅ 已完成] 9d6cb15b9。探针③断言化 p655_real_008_corpus_cards_visible_and_equal_
+      height（卡片文本全渲染非 0×0 + 三卡 CTA 等高 y±1.5px）4/4 绿。auto-os 产物
+      再生成：干净 worktree + AUTO_GALLERY_APPS 解析序实跑，008 产物 items-stretch
+      已传播（diff +359 行）；「diff 仅 008」预期修正——实际为语料漂移全量（P642
+      后 637 等语料演进累计），008 hunk 内容正确，漂移同步属 auto-os 常规流程。
+      实机 MCP：画廊内嵌 008 三卡可见等高（p655_gallery_008.png）、009/016/002
+      不回归（画廊+独立 VM 双形态）。
+- [x] **T-04 收尾门禁**：layout_tests + `cargo t ui`（--no-fail-fast 对照
       master 基线）+ 实机四页截图证据归档 [AC-03/04]
+      [✅ 已完成] cargo t ui 5160 run：5128 绿 / 32 败——32 个失败名集合在 master
+      复跑 0 passed（全部预存，基线自 22 漂移系其他计划落地）=零新增红。实机截图
+      10 张归档 worktree `docs/reports/p655/`（独立 VM 008/009/016/002 + 画廊
+      initial/008/008_scrolled/009/016 + 导航脚本 gallery_nav.py）。
 
 ## 复审记录
 
@@ -143,10 +167,94 @@ next: work（worktree D:/autostack/.wt/lang-655/auto-lang，branch plan-655-dev�
   本计划基于其上续作或等 642 landing 后基于 master 续作，二选一在 work 时定）
 ```
 
+```yaml
+stage: work
+plan_id: PLAN-655
+plan_revision: 1
+outcome: pass
+code_commit: 2f3aa65da（T-01/T-02）+ 9d6cb15b9（T-03/T-04）——branch plan-655-dev
+task_ids: [T-01, T-02, T-03, T-04]
+evidence: >
+  headless p655 4/4 绿（等高 max 语义 / overflow-hidden frame 组合 /
+  双窗口尺寸 / 真实 008 语料断言化）；layout_tests 59 绿 + 2 红
+  （desktop_surface_z_slot / p625 sentinel，master 复跑同败=预存）；
+  cargo t ui 5160 run 5128 绿，32 败名集合 master 复跑 0 passed=零新增红；
+  实机 MCP：独立 VM 008 三卡等高 CTA 对齐（p655_vm_008_initial.png）、
+  009/016/002 不回归；画廊内嵌 008（auto-os 干净 wt + AUTO_GALLERY_APPS
+  解析序臂）三卡可见等高、PageDown 前后全内容含 CTA 在 720 frame 内
+  可见（折叠线下担忧证伪）；产物再生成 items-stretch 已传播（008 产物
+  diff +359）。截图 10 张 + gallery_nav.py 归档 worktree docs/reports/p655/。
+  设计偏离已在 T-01 记录（计划测量方案 iced 0.14 flex 源码核证伪，
+  等效自持三段布局实现，AC 不变）；spec delta SD-01 已备 worktree
+  docs/specs/auto-lang/ui/overview.md#items-stretch-两阶段行语义（PLAN-655）。
+blockers: []
+next: review（worktree D:/autostack/.wt/lang-655/auto-lang 与组内 auto-down
+  兄弟 b1c88de detached 保留至 merge 清理）
+```
+
+```yaml
+stage: review
+plan_id: PLAN-655
+plan_revision: 1
+outcome: pass
+reviewed_commit: 7044d67cf7da61936fa2e8d1d33404aaad799906（plan-655-dev，工作树
+  clean 复验；worktree 实存经 git worktree list --porcelain 确认）
+base_commit: 9886ba9018de3510e57a889be3ef7275d8fc40c8
+dependency_revisions: auto-down 兄弟 wt b1c88def9bfa23f02397bff79e93890bb2e1120c
+  （detached）；auto-os 临时取证 wt 64e2b2b（已 wt-guard 过闸移除，证据入库）
+spec_inputs: docs/specs/auto-lang/ui/overview.md#items-stretch-两阶段行语义
+  （PLAN-655）@ 7044d67cf（branch 内已提交=frozen 副本；P642 节第 6 条的
+  items-stretch 让渡约定由本节第 4 条显式解除，无未声明冲突）
+acceptance_results:
+  AC-01: pass——复审基线新鲜重跑 p655 三单元绿（y 等差 ±1.5px 断言/可见性
+    w,h>0/最短卡拉伸 spread>120px/overflow-hidden frame 组合/1024×800 与
+    1920×1200 双尺寸）；命令 cargo nextest run -p auto-lang --lib
+    --features ui-iced,iced-layout-tests -E 'test(p655) or test(layout_tests)'
+    → 61 run 59 passed 2 failed（两红=master 同败预存，见下）。
+  AC-02: pass——p655_real_008_corpus_cards_visible_and_equal_height 绿
+    （真实语料卡片文本全渲染非 0×0 + Buy Now×2/Contact Us 三 CTA 等高）。
+  AC-03: pass——语料 diff 复读（还原行+PLAN-655 注释）；入库截图复审
+    （docs/reports/p655/p655_gallery_008.png 等 9 图+脚本）：画廊内嵌 008
+    三卡等高 CTA 对齐、scrolled 形态全内容含 CTA 在 720 frame 内可见、
+    009/016/002 双形态不回归；auto-os 产物 items-stretch 已传播（008 产物
+    diff +359）。
+  AC-04: pass——cargo t ui 5160 run 5128 绿/32 败，32 败名集合于 master
+    复跑 0 passed=零新增红；复审加跑 cargo tf（仓规全档门禁）2568 绿/1 败
+    （ui_gen::rust::tests::test_display_family_codegen_arm_fixture，master
+    复跑同败=预存，与 654 landing 漂移相关非本计划面）；layout_tests 同 AC-01。
+findings:
+  F-R1(info,已闭合): 计划原测量方案（对 Fill 包装产物做 compression 度量）
+    经 iced 0.14 flex 源码核证伪——cross-Fill 子项 second-pass max 从
+    cross=0.0 起步；等效自持三段布局实现，语义契约 G-1/G-2 与全部 AC 未
+    弱化，记录于 T-01 证据与 2f3aa65da 提交信息。
+  F-R2(info): 「auto-os 产物再生成 diff 仅 008」预期不成立——实际为语料
+    漂移全量（637 等计划演进累计，auto-os master 产物滞后）；008 hunk 正确，
+    漂移同步属 auto-os 常规流程不属本计划授权面。
+  F-R3(info,merge 注记): 执行期间 master 前进至 09deafde8（PLAN-654 stage A
+    landing，touching ui_gen/vue.rs+api_gen.rs，与本分支文件不相交）——merge
+    前需同步 master；主检出另有他session WIP examples/rust-workspace/Cargo.toml
+    （已上报未触碰，不随本计划 landing）。
+  遗漏/延后/workaround 扫描: 无——非 stretch 路径逐字保留、p625 sentinel
+    （非 stretch 行 0×0 哨兵）保持、justify 垫片语义原样并入；无 dbg!/TODO/
+    未处理告警（stretch_line.rs 零告警）；spec delta 无越权发布（live ledger
+    未动，canonical 沉淀归 merge）。
+  touched_goals 空集说明: 本计划目标以 G-1/G-2 叙述于计划正文，非 goals
+    注册表条目，故 touched_goals=[]。
+evidence: >
+  本复审与实现同会话（独立性受限声明）——结论全部由工件重构：测试在
+  reviewed_commit 新鲜重跑（p655/layout_tests 本回合、t ui 与 tf 于同一
+  提交），失败归属以 master 复跑过滤集实证（t ui 32 集 0 passed；tf 1 败
+  同名），截图自入库副本（docs/reports/p655/）复读，spec delta 以
+  git diff 9886ba901..7044d67cf 独立复读。
+next: merge（auto-plan-merge；worktree 与组内 auto-down 兄弟随 merge 清理；
+  产物沉淀 SD-01 五条 + ledger 回写）
+```
+
 ## 待澄清事项
 
-- 008 实机"卡片在 scroll 折叠线下"假设未证伪（MCP 无框内滚动柄）——
-  T-03 实机验收时以滚轮人工复验一次，若滚不到则本计划的 measure 语义
-  需重审（当前 headless 全绿，风险低）。
+- ~~008 实机"卡片在 scroll 折叠线下"假设未证伪~~ **已证伪（2026-09-18
+  work 执行）**：画廊内嵌 720 frame 下全部卡片含 CTA 完整可见，PageDown
+  前后 vtree/截图无变化（自动化近似；人工滚轮复验可选留 review 实机会话，
+  风险已消）。
 - 平板档（768×1024 frame）下 008 卡片行高语义同 desktop（stretch 与
   frame 高度无关，行高=内容 max），无需分档处理。

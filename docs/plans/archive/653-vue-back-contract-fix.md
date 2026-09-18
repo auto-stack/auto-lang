@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-653
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-back-contract-fix
 author: [zhaopuming/zcode-session]
 created_at: 2026-09-18
 updated_at: 2026-09-18
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components: []   # 空置说明:仅对既有 spec 条目做 modify(见 SD-01),无组件废止
+new_spec_components: []          # 空置说明:契约分域规则落入既有 terminal-mux-model.md,无新组件
+touched_goals: [GOAL-007]        # GOAL-007 AutoUI 双端一致——D4 vue 轨样式发射正确性属双端同源面
 
-affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
+affects: [auto-term/terminal-mux-model]  # SD-01 modify 目标(auto-term 仓)
 current_step: 5
 total_steps: 5
 ---
@@ -216,6 +216,40 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
   会话并 master merge 3fb469842;用户裁定关闭对方 agent,后续由本
   会话收口。证据:evidence/653/(t00-decision.md、t01 前后对照、
   dll-probe 双态、t01-final、e2e 截图/日志)。
+- 2026-09-18 stage:review | plan_id PLAN-653 | rev1(7bd8e5147 承载,
+  语义契约未再变) | outcome:**pass** | reviewed_commit = auto-lang
+  plan-653-dev **7d5ae193d**(基 52d27ebcd,含 merge 3fb469842)+
+  auto-term plan-653-dev **38477cf** | dependency_revisions:auto-term
+  主检出 3a3339a(仅消费,未改动)| spec_inputs:auto-term
+  terminal-mux-model.md @38477cf(SD-01 hunk 复读合格——分域规则描
+  述当前行为、含 rationale、非执行日志)| acceptance_results(全部
+  在复审基线独立复现,非沿用实施摘要):
+  - AC-01 pass:tab-id-at?i=0 → 200、tab-title-at?i=0 → 200
+    "shell 1"(review-run 栈实测);
+  - AC-02 pass:[term-dll] 加载仓根 DLL、零 panic(复审 run 日志);
+  - AC-03 pass:t01 [2]/[3]/[4] 多槽+分隔条结构正确(/tmp/t01-review
+    复跑;归档见 evidence/653/t01-model-run-653-final.log 同版);
+  - AC-04 pass:12 步全绿(磁吸 500/钳位 100/键盘 700/帽 -2/窗缺省);
+  - AC-05 pass(部分语义见待澄清 5):Tab 条+banner+提示符 DOM 断言
+    全 true;
+  - AC-06 pass:9 个 absolute 槽位 div(5 pane+4 divider,t01 后树态)
+    getBoundingClientRect 全部 inFirstScreen=true,scrollHeight 768
+    (修复前 2209;48px 余量归窗模型缺省,待澄清 6)。
+  findings:
+  - F-1(P2,基线):auto-cache lib test 编译失败(E0063)——**master
+    HEAD 同样破损**,阻塞全仓 nextest 门;非 653 引入,建议独立修复
+    计划/走查件收口;
+  - F-2(P3,基线):plan367 real_sidebar_at_parses_with_navtree 分支
+    红/master 绿——分支落后 master 解析器修复(52d27ebcd 后 master 有
+    899aa2e9c/ffe2dac6d 等),merge 阶段 re-sync 即解,非 653 引入;
+  - F-3(P3,口径修正):先期记录"ui_gen::vue 23 预存红"经 nextest
+    进程隔离复测为 **cargo test 同进程状态干扰**(隔离下 master/分支
+    皆绿)——待澄清 8 已改口径;musk_vm_track_p053 族为特性门真
+    预存红(master 同态)。
+  evidence:evidence/653/ 全集 + review-run.log(临时,关键行已摘录
+  上文)+ 浏览器 evaluate 断言(9 槽位 rect 明细,本记录即凭证)。
+  next:**merge**(复审通过;merge 阶段需先把分支 re-sync master——
+  F-2 随 re-sync 自解)。
 
 ## 待澄清事项
 
@@ -241,6 +275,32 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
 7. **vue 页在极端模型态下重载 boot 静默失败**(t01 后 6-pane 极端
    几何时重载零 /api 请求;干净态正常)——疑似前端 boot 健壮性缺口,
    非 653 缺陷集,留后续计划勘定;
-8. **ui_gen::vue 模块 23 预存红**(master 与本分支逐一致,如
-   test_a2vue_* 族,疑特性门/断言过期)——非本计划引入,建议独立
-   勘定归属。
+8. **ui_gen::vue "23 预存红"口径修正(review 定责)**:cargo test
+   单进程下 23 例红系**同进程状态干扰**——nextest 每测进程隔离下
+   master 与本分支皆绿;真预存红为 musk_vm_track_p053 族(特性门,
+   master 同态)。另:master HEAD 的 auto-cache lib test 编译破损
+   (E0063)阻塞全仓门,见复审 F-1。
+- 2026-09-18 merge 收执 `PLAN-653:r1`(stage: merge | outcome: pass |
+  delivery: auto-lang master `398a60a8e`——content `3a6c78d59`(T-01)+
+  `7d5ae193d`(T-05),merge 前 re-sync `a4b3f9d89`;auto-term main
+  `38477cf`(T-02+SD-01,ff)| checkpoints:
+  **prepared**=复审冻结增量 SD-01(auto-term terminal-mux-model.md 分域
+  措辞)+代码基线 7d5ae193d/38477cf;
+  **landed**=auto-lang 398a60a8e(merge 3fb469842+a4b3f9d89 后
+  ff-able 祖先链核实,落地冒烟 cargo check auto-man+auto-lang 过、
+  plan367 复测随 re-sync 转绿=F-2 自解、653 双测保持绿);
+  auto-term 38477cf ff-only 于 main;
+  **ledger_refreshed**=docs/specs/auto-lang/ui/plans.md 增 653 行
+  (本提交);canonical spec 即 auto-term 仓文件本体(38477cf);
+  **archived**=本件 git mv 至 docs/plans/archive/ + status: archived;
+  **cleaned**=双仓过闸:lang-653/auto-lang guard clean 一次过;
+  lang-653/auto-term 首扫 BLOCKED(gen/front/vue node_modules 内
+  pnpm junction ~50 枚,E2E 跑法产物)——按 guard 工序
+  `cmd /c rmdir <链接>` 逐枚只删链接不穿透目标,7 轮删扫后 guard
+  clean;两 worktree remove+分支删除完成(auto-lang plan-653-dev
+  @a4b3f9d89、auto-term plan-653-dev @38477cf,均先核祖先已落地);
+  本会话 scratch 目录移除(残留 vite 进程终结后)。组目录
+  .wt/lang-653/ 仅余他仓 auto-down worktree(auto-down6),不属本
+  计划,保留不动。
+  归属面:653 无 auto-lang 仓 canonical spec 文本变更(增量目标仅
+  auto-term 仓),故 auto-lang 侧台账=plans.md 回写,零虚构沉淀。
