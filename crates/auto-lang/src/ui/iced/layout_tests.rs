@@ -2674,3 +2674,84 @@ fn p642_t11_008_feat_rows_visible_in_distributed_cards() {
         }
     }
 }
+
+/// PLAN-642 T-12 回归守卫（P2-009/P2-016b，009 溢出塌缩 + 016 不居中）:
+/// 画廊 frame 形态 = h-[300px]（缩短以加速）+ overflow-hidden +
+/// justify-center 列内挂 min-h-screen demo 根 + 40 行内容。修复前 iced
+/// 0.14 配给制把超出 frame 的行压成 0×0（不可见不可滚动）；修复后
+/// overflow-hidden 列走 scroll 兜底（apply_column_style）：全部行完整
+/// 布局（可滚达）+ 短内容变体垂直居中。
+#[test]
+fn p642_t12_overflow_frame_scrolls_and_centers() {
+    fn build_sim(vmode: &str, rows: usize, w: f32, h: f32) -> iced_test::Simulator<'static, crate::ui::interpreter::DynamicMessage, iced::Theme, iced::Renderer> {
+        let mut src = String::from("widget Host {
+    model { var vmode str = \"desktop\" }
+    view {
+        col {
+            style: \"w-full flex flex-col items-center\"
+            col {
+                style: if .vmode == \"desktop\" { \"w-[1024px] max-w-full h-[300px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else { \"w-full h-[300px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" }
+                DemoProbe {}
+            }
+        }
+    }
+}
+");
+        src.push_str("widget DemoProbe {
+    view {
+        col {
+            style: \"w-full min-h-screen bg-background text-foreground\"
+");
+        for i in 0..rows {
+            src.push_str(&format!("            text `ROW{i:02}` {{ style: \"h-[24px] w-full\" }}
+"));
+        }
+        src.push_str("        }
+    }
+}
+");
+        let _ = vmode;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let mut host_decl = None;
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = stmt {
+                if d.name == "Host" {
+                    host_decl = Some(d.clone());
+                } else {
+                    let w = crate::aura::extract::extract_widget_from_decl(d).expect("child extract");
+                    registry.register(w);
+                }
+            }
+        }
+        let decl = host_decl.expect("host decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(&decl).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry(&widget, registry).unwrap();
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        iced_test::Simulator::with_size(<iced_test::core::Settings as Default>::default(), (w, h), view.into_iced())
+    }
+    // 长内容(40 行=960 逻辑高 > 300 frame):全部行完整布局(修复前行 13+ 塌缩 0×0)。
+    {
+        let mut ui = build_sim("desktop", 40, 1024.0, 800.0);
+        for row in ["ROW00", "ROW12", "ROW20", "ROW39"] {
+            let b = bounds_of(&mut ui, row);
+            assert!(b.3 > 0.0, "[长内容] {row} 必须完整布局(scroll 兜底防配给塌缩), 实际 {:?}", b);
+        }
+        let r0 = bounds_of(&mut ui, "ROW00");
+        let r39 = bounds_of(&mut ui, "ROW39");
+        assert!(r39.1 > r0.1, "行序必须自上而下");
+    }
+    // 短内容(3 行≈72 逻辑高 < 300 frame):demo 根被容器 center_y 垂直居中,
+    // 且 items-center 根内 Shrink 宽文本水平居中(016 卡片水平居中同机制)。
+    {
+        let mut ui = build_sim("desktop", 3, 1024.0, 800.0);
+        let r0 = bounds_of(&mut ui, "ROW00");
+        // 300 高 frame,3 行(24+行高≈20×3≈60-72)居中 → 首行 y ≈ (300-72)/2 ≈ 114 ± 40
+        assert!(
+            r0.1 > 40.0 && r0.1 < 200.0,
+            "[短内容] 内容应被垂直居中(首行 y={:.1},期望 40..200)", r0.1
+        );
+    }
+}
