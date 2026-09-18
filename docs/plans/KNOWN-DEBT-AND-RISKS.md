@@ -647,6 +647,11 @@
   setInterval/调度器无条件起拍,handler 早退。功能正确但每图族常驻
   ~30Hz 空事件(全 gallery 合计可观数量)。偿还路径:timer 调度器在
   派发前求值 when(状态变化时启停 interval),或 handler 空转计数熔断。
+  **→ PLAN-650 E-1 订阅层清偿（2026-09-18 merge）**：VM/iced 轨
+  `DynamicComponent::timer_when_allows_subscription` + renderer 订阅循环
+  `when` 假时不挂 `widget_event_tick`；`fire_timer` 派发门保留为双保险。
+  vue 轨 handler 体内门控（原有形态）不在 650 范围、行为不变。
+  实机静止 CPU 对照仍待后续量测（650 §10/R650-5）。
 - **P499-2 donut tooltip 角落锚定不跟随(max-w-md 缩放对位风险)**：donut
   tooltip 维持 `absolute top-[20px] right-[20px]` 角落锚定(M4 决议)——
   line 的跟随定位(cx-80 钳制)不适用于 donut 的 max-w-md 随宽缩放(逻辑
@@ -1149,6 +1154,10 @@
   4.1 万次全重建）。iced Element 不可 Clone，注释承诺的"同 Element 复用"
   不可达；偿还路径：评估 iced `lazy`/组件化包层做帧间跳过，或接受重建
   但以 D2 退订消除空转触发源。
+  **→ PLAN-650 裁定延期 D-1（2026-09-18 merge）**：easy wins（E-2/E-4
+  旁路减负）已落，架构级帧间缓存不在 650；设计选项/取舍见
+  `docs/design/autoui/vm-frame-budget.md` §5.1。本债保持在案，待 D-1
+  独立计划清偿。P530-D2 路由退订同批延期 D-2（E-1 对 when 假场景已够）。
 - **P530-D4 诊断门控留档**：`P530_TRACE=1`（LayoutCollector 重复 id 记录
   + view/resize 宽度轨迹）、`P530_NOMCP=1`（跳过 per-frame MCP 同步/
   capture 路径，A/B 判别用）两 env 门控留存于 renderer/layout_collector，
