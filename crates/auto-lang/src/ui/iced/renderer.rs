@@ -22013,13 +22013,30 @@ pub(crate) fn column_layer_partition<M: Clone + std::fmt::Debug>(
 /// 渲染=纯空容器)叠在 textarea 上方会挡死其点击聚焦(C1/C2 单变量实验
 /// 实证:同结构有 backdrop 即不可输,无则可输)。vue 轨该层有 v-html 内容
 /// 不受影响——本判定仅存在于 VM 渲染层。
+/// PLAN-022 T-03 加固:声明了背景色的容器/布局件**不再判空**——bg 即
+/// 可见 chrome(021 实测:分隔条 = bg-[#8899aa] 定尺寸 div + mouse-area
+/// 子件,rust codegen 丢 mouse-area 后内层空 col 臂本判定跳过整层,
+/// 分隔条消失)。纯透明空层(backdrop 族无 bg 声明)语义不变。
 fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
     use AbstractView as AV;
+    fn has_declared_background(style: Option<&crate::ui::style::Style>) -> bool {
+        style.is_some_and(|s| {
+            s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::BackgroundColor(_)))
+        })
+    }
     match view {
         AV::Empty => true,
         AV::Text { content, .. } => content.trim().is_empty(),
-        AV::Container { child, .. } => is_empty_stack_layer(child),
-        AV::Column { children, .. } | AV::Row { children, .. } => {
+        AV::Container { child, style, .. } => {
+            if has_declared_background(style.as_ref()) {
+                return false;
+            }
+            is_empty_stack_layer(child)
+        }
+        AV::Column { children, style, .. } | AV::Row { children, style, .. } => {
+            if has_declared_background(style.as_ref()) {
+                return false;
+            }
             children.iter().all(is_empty_stack_layer)
         }
         _ => false,
@@ -23026,21 +23043,34 @@ where
 {
     if let Some(t) = title {
         let t: String = t.to_string();
-        return iced::application(
-            TickWrap::<C>::default,
-            TickWrap::<C>::update,
-            view_wrapped::<C>,
-        )
-        .subscription(|c: &TickWrap<C>| {
-            // Plan 407: tick 订阅(修复后形态,见上注)。
-            if let Some(ms) = c.inner.tick_interval_ms() {
-                iced::time::every(std::time::Duration::from_millis(ms as u64))
-                    .map(|_| TickWrapMsg::<C::Msg>::Tick)
-            } else {
-                iced::Subscription::none()
+    // PLAN-022 T-03:窗口尺寸面启动种子——thread_local 先落 startup 值,
+    // 开窗后由 WindowResized 漏斗保活(无 resize 事件也有正确初值)。
+    let seed = startup_window_size();
+    crate::ui::style::theme::set_window_width(seed.width);
+    crate::ui::style::theme::set_window_height(seed.height);
+    return iced::application(
+        TickWrap::<C>::default,
+        TickWrap::<C>::update,
+        view_wrapped::<C>,
+    )
+    .subscription(|c: &TickWrap<C>| {
+        // Plan 407: tick 订阅(修复后形态,见上注)。
+        let tick = if let Some(ms) = c.inner.tick_interval_ms() {
+            iced::time::every(std::time::Duration::from_millis(ms as u64))
+                .map(|_| TickWrapMsg::<C::Msg>::Tick)
+        } else {
+            iced::Subscription::none()
+        };
+        // PLAN-022 T-03:窗口尺寸面(Resized → thread_local,见枚举注)。
+        let win = iced::event::listen_with(|event, _status, _window_id| match event {
+            iced::Event::Window(iced::window::Event::Resized(size)) => {
+                Some(TickWrapMsg::<C::Msg>::WindowResized(size.width, size.height))
             }
-        })
-        .window_size(startup_window_size())
+            _ => None,
+        });
+        iced::Subscription::batch(vec![tick, win])
+    })
+    .window_size(seed)
         // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
         .font(INTER_FONT_REGULAR)
         .font(INTER_FONT_MEDIUM)
@@ -23050,20 +23080,31 @@ where
         .run()
         .map_err(|e| e.into());
     }
+    let seed = startup_window_size();
+    crate::ui::style::theme::set_window_width(seed.width);
+    crate::ui::style::theme::set_window_height(seed.height);
     iced::application(
         TickWrap::<C>::default,
         TickWrap::<C>::update,
         view_wrapped::<C>,
     )
     .subscription(|c: &TickWrap<C>| {
-        if let Some(ms) = c.inner.tick_interval_ms() {
+        let tick = if let Some(ms) = c.inner.tick_interval_ms() {
             iced::time::every(std::time::Duration::from_millis(ms as u64))
                 .map(|_| TickWrapMsg::<C::Msg>::Tick)
         } else {
             iced::Subscription::none()
-        }
+        };
+        // PLAN-022 T-03:窗口尺寸面(Resized → thread_local,见枚举注)。
+        let win = iced::event::listen_with(|event, _status, _window_id| match event {
+            iced::Event::Window(iced::window::Event::Resized(size)) => {
+                Some(TickWrapMsg::<C::Msg>::WindowResized(size.width, size.height))
+            }
+            _ => None,
+        });
+        iced::Subscription::batch(vec![tick, win])
     })
-    .window_size(startup_window_size())
+    .window_size(seed)
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
     .font(INTER_FONT_SEMIBOLD)
@@ -23091,6 +23132,12 @@ where
 enum TickWrapMsg<M: Clone + Debug> {
     Inner(M),
     Tick,
+    /// PLAN-022 T-03 窗口尺寸面(逻辑 px):iced Resized 事件直通。普通
+    /// run_app 路径不走 dynamic_view_impl 的尺寸同步——theme thread_local
+    /// 停在默认 1024×768,mux_window_width/height(020 T-00b D7 面)读到
+    /// 假值 → 分屏矩形投影 px 类几何全错(021 T-07 右面板错位蓝屏的定界
+    /// 根因,evidence/022/t00-decision.md §3)。
+    WindowResized(f32, f32),
 }
 
 /// run_app 的内部组件包装(DevToolsWrapper 同款手法,不动 VM 轨)。
@@ -23110,6 +23157,16 @@ where
             TickWrapMsg::Tick => {
                 if let Some(m) = self.inner.tick_msg() {
                     self.inner.on(m);
+                }
+            }
+            // PLAN-022 T-03:update 与 view 同在主线程 → thread_local 写读
+            // 同线程,下一拍 api.mux_window_* 即真值。退化尺寸(Windows 开窗
+            // /过渡态 winit 会发 Resized(0,0))拒收——0 会把投影 px 全归零
+            // (分屏面板全蓝实录),保号上次真值。
+            TickWrapMsg::WindowResized(w, h) => {
+                if w >= 1.0 && h >= 1.0 {
+                    crate::ui::style::theme::set_window_width(w);
+                    crate::ui::style::theme::set_window_height(h);
                 }
             }
         }
@@ -23367,6 +23424,16 @@ fn apply_debug_event(dt: &mut DevToolsState, raw: &str) -> bool {
                 let w: f32 = w.parse().unwrap_or(800.0);
                 let h: f32 = h.parse().unwrap_or(600.0);
                 *dt.window_size.borrow_mut() = iced::Size::new(w, h);
+                // PLAN-022 T-03 窗口尺寸面:term.rs 的 auto.term.window_width/
+                // height(mux_window_* 投影标定源)读 theme thread_local——
+                // 此前仅更新 DevTools 自身 state,thread_local 恒默认
+                // 1024×768 → 分屏矩形投影 px 全错(021 T-07 右面板错位
+                // 蓝屏定界根因)。update 在主线程,写读同 thread_local。
+                // 退化尺寸(0×0 过渡态)拒收,保号上次真值。
+                if w >= 1.0 && h >= 1.0 {
+                    crate::ui::style::theme::set_window_width(w);
+                    crate::ui::style::theme::set_window_height(h);
+                }
                 // PLAN-046-B: keep .at-visible viewport height fresh.
                 crate::vm::ffi::stdlib::storage_host_publish(
                     "vm.window_inner_height",
@@ -24008,6 +24075,12 @@ where
     let (tick_ms, tick_msg) = (tick.tick_interval_ms(), tick.tick_msg());
     let interval = tick_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
     drop(tick);
+
+    // PLAN-022 T-03:窗口尺寸面启动种子(开窗若无后续 resize 也有真值;
+    // 见 devtools_update __window_resized 臂的同源同步)。
+    let seed = startup_window_size();
+    crate::ui::style::theme::set_window_width(seed.width);
+    crate::ui::style::theme::set_window_height(seed.height);
 
     iced::application(
         DevToolsWrapper::<C>::default,
@@ -25010,6 +25083,35 @@ mod tests {
         let (flow, floating) = super::column_layer_partition(&children);
         assert_eq!(floating, vec![3], "仅 absolute 子脱流入叠层");
         assert_eq!(flow, vec![0, 1, 2], "z-index-only 子保持流内（每子恰渲染一次）");
+    }
+
+    /// PLAN-022 T-03 空层判定加固:声明背景色的空容器(分隔条 = bg div
+    /// + mouse-area 子件;codegen 缺臂时代内层落空 col)不再判空入栈
+    /// 跳过——bg 即可见 chrome。纯透明空层(backdrop 族)语义不变。
+    #[test]
+    fn plan022_empty_layer_with_background_stays_in_stack() {
+        use crate::ui::style::Style;
+        let empty_col = |classes: &'static str| AbstractView::<IcedMessage>::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(classes).ok(),
+            onclick: None, on_right_click: None,
+        };
+        // 分隔条内层形态:bg 薄条 + Fill 空子(空 col)。
+        let divider_inner = AbstractView::<IcedMessage>::Column {
+            children: vec![empty_col("w-full h-full")],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("absolute z-20 w-[8px] h-[410px] bg-[#8899aa]").ok(),
+            onclick: None, on_right_click: None,
+        };
+        assert!(
+            !super::is_empty_stack_layer(&divider_inner),
+            "带 bg 的空容器不得判空(分隔条 chrome 消失回归)"
+        );
+        // 无 bg 的纯空 col(旧 backdrop 形态):保持判空。
+        assert!(super::is_empty_stack_layer(&empty_col("w-full h-full")));
     }
 
     /// PLAN-526 T6：boot 对齐匹配核——双向后缀命中（相对源路径 vs 绝对
