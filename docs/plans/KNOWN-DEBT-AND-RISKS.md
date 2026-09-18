@@ -2353,3 +2353,7 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P651-D5 [TS 扩展块 view 面板依赖 EngineEditor 加载]**：Details/Math/Mermaid/Query/Embed 五类型面板注册在 EngineEditor 侧（EngineEditor.vue:261-264），纯渲染消费者降级 unknown-node（测试被迫 void EngineEditor 补注册）。改注册层级动导入图且涉及 loader 数据通道依赖；对拍不暴露数据丢失，登记为结构性注记。
 - **P651-D6 [vm-smoke 稳定性转介（Q-5）]**：group 4 拖拽臂=069 已登记预存红（de86e1d8e，pristine master 复现）；group 11 全量 smoke 挂但 vm-069-probe 同场景五臂 ALL PASS（2026-09-19 实机，worktree 二进制）——判环境/时序。归 auto-down 侧 smoke 稳定性排查（重试隔离/端口 Collision 防护——本次实测 9247 被旧进程占用致首跑连错窗口）。
 - **P651-F1 [折叠 details 隐藏叶仍入 doc_sel/copy 全序（v1 细节，非阻断）]**：编辑核 Seg 树含闭合 details 内叶（不可见/不可聚焦/布局零矩形），跨块选区与 copy 走 dfs 全序会含隐藏文本。TS 折叠同样排除选区；对齐属增强面，随编辑器交互计划顺带。
+
+## 2026-09-19 增补四（PLAN-075 执行期登记）
+
+- **P075-D1 [`auto build` 物化 deps junction——worktree 红线成文（纪律项）]**：PLAN-075 T-00 探针实证（`--gen-only` 同）：声明 `dep <name> { path }` 的工程在构建时经 pac.rs `materialize_local_dep` Mode B 在工程内物化 `deps/<name>` junction（mklink /J）——junction 落 worktree 内即 Plan 529 红线（wt-guard 拦移除、`git worktree remove` 穿透删除）。历史：PLAN-645 期 046/047 在 worktree 内构建曾留此类链接（074 merge 收据"摘链 2660 junction"同族），当时未成文。**裁定（075 R-B）**：凡 `auto build`/`Pac::resolve` 类验证一律在仓库外沙箱跑（复制 blueprints+工程 → 临时目录构建 → 退出先 rmdir 摘 deps 链接再整树删）；在库范式 = `examples/bp-gate/scripts/gate.mjs`（沙箱+摘链+重试清理）与 `crates/auto-man/src/plan075_bp_tests.rs`（tempdir+先摘链后删）。仓库内允许的构建类：vite/playwright/cargo/pnpm（node_modules 实勘无 reparse point）。
