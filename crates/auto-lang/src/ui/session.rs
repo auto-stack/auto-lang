@@ -282,6 +282,14 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// Plan 479 T3：通知中心 overlay App 的 AppId。首次 notes_toggle 召唤时
     /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
     pub notification_app: Option<AppId>,
+    /// PLAN-024：dashboard 面板 overlay App 的 AppId。首次 dashboard_toggle
+    /// 召唤时懒挂载（设置面板退役后的第四 overlay 槽继任；通知层邻位
+    /// 顶层）；独立模式恒 None。可见性沿 switcher/通知先例 = 面板 .at 的
+    /// `visible` state（宿主召唤写 "1"/关闭写 ""），dashboard_visible() 读。
+    pub dashboard_app: Option<AppId>,
+    /// PLAN-024：注册表 id → 静默孵化 mini 会话映射（face 反查 + 幂等
+    /// 孵化；常驻不回收，会话消亡随 DesktopSession 释放）。
+    pub hatched_minis: std::collections::HashMap<String, AppId>,
     /// Plan 487 M4：设置面板 overlay App 的 AppId。首次 open_settings 召唤时
     /// Plan 496 M5：桌面本体面（assets/desktop.at 图标网格面）的 AppId。
     /// boot 期常驻装载（非 overlay 懒挂载——面常驻不召唤），装配层 Stack
@@ -397,6 +405,8 @@ impl DesktopState {
             icon_drag: None,
             icon_drag_moved: false,
             notification_app: None,
+            dashboard_app: None,
+            hatched_minis: std::collections::HashMap::new(),
             desktop_app: None,
             desktop_wallpaper: DESKTOP_WALLPAPER_DEFAULT.to_string(),
             launcher_entry: None,
@@ -1448,6 +1458,25 @@ pub enum DesktopCommand {
     /// PLAN-019 v1.7：进入/退出大图预览（`wallpaper_preview\t<path>`；
     /// 空参 = 退回栅格态。宿主按 path 反查游标——.at 无下标算术）。
     WallpaperPreview(String),
+    /// PLAN-024 协议 v1.8：dashboard 面板开合（dock Dashboard 钮
+    /// `dashboard_toggle` 无参动词；二态翻转——面板可见再召唤即关，
+    /// switcher/launcher 同型）。
+    DashboardToggle,
+    /// PLAN-024 协议 v1.8：dashboard 面板关闭（面板 × / scrim / Esc
+    /// 三路径同一执行体；无参动词）。
+    DashboardClose,
+    /// PLAN-024 协议 v1.8：面板编辑 popover——纳入 app（`dashboard_pin
+    /// <registry-id>`；执行臂写 `shell.dashboard.enabled` storage）。
+    DashboardPin(String),
+    /// PLAN-024 协议 v1.8：面板编辑 popover——移除 app
+    /// （`dashboard_unpin <registry-id>`；storage 同上）。
+    DashboardUnpin(String),
+    /// PLAN-024 协议 v1.8：面板编辑 popover——列跨度（`dashboard_span
+    /// <registry-id> <1|2>`；storage `shell.dashboard.span.<app>`）。
+    DashboardSpan(String, u8),
+    /// PLAN-024 协议 v1.8：占位卡一键 launch（`dashboard_launch
+    /// <registry-id>`；ExecuteLaunchApp 同体，有后端 app 的正常启动路径）。
+    DashboardLaunch(String),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -1648,6 +1677,20 @@ impl DesktopCommand {
             DesktopCommand::WallpaperPreview(path) => {
                 format!("wallpaper_preview{}{}", Self::FIELD_SEP, path)
             }
+            DesktopCommand::DashboardToggle => "dashboard_toggle".to_string(),
+            DesktopCommand::DashboardClose => "dashboard_close".to_string(),
+            DesktopCommand::DashboardPin(app) => {
+                format!("dashboard_pin{}{app}", Self::FIELD_SEP)
+            }
+            DesktopCommand::DashboardUnpin(app) => {
+                format!("dashboard_unpin{}{app}", Self::FIELD_SEP)
+            }
+            DesktopCommand::DashboardSpan(app, span) => {
+                format!("dashboard_span{}{app}{}{span}", Self::FIELD_SEP, Self::FIELD_SEP)
+            }
+            DesktopCommand::DashboardLaunch(app) => {
+                format!("dashboard_launch{}{app}", Self::FIELD_SEP)
+            }
         }
     }
 
@@ -1711,7 +1754,38 @@ impl DesktopCommand {
                 if rec == "wallpaper_browse_dir" {
                     return Some(DesktopCommand::WallpaperBrowseDir);
                 }
+                // PLAN-024 v1.8：dashboard 无参动词族（前置防互吞）。
+                if rec == "dashboard_toggle" {
+                    return Some(DesktopCommand::DashboardToggle);
+                }
+                if rec == "dashboard_close" {
+                    return Some(DesktopCommand::DashboardClose);
+                }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
+                // PLAN-024 v1.8：dashboard 面板编辑/launch 带参动词。
+                // dashboard_span 双参（app + 1|2 跨度，坏值跳过）。
+                if verb == "dashboard_span" {
+                    let mut it = arg.split([Self::FIELD_SEP, '\t']);
+                    let (Some(app), Some(span), None) = (it.next(), it.next(), it.next()) else {
+                        return None;
+                    };
+                    return match span {
+                        "1" | "2" => Some(DesktopCommand::DashboardSpan(
+                            app.to_string(),
+                            span.parse::<u8>().unwrap_or(1),
+                        )),
+                        _ => None,
+                    };
+                }
+                if verb == "dashboard_pin" {
+                    return Some(DesktopCommand::DashboardPin(arg.to_string()));
+                }
+                if verb == "dashboard_unpin" {
+                    return Some(DesktopCommand::DashboardUnpin(arg.to_string()));
+                }
+                if verb == "dashboard_launch" {
+                    return Some(DesktopCommand::DashboardLaunch(arg.to_string()));
+                }
                 // PLAN-019 v1.7：picker 导航（值域 prev/next 窄值，坏值跳过）。
                 if verb == "wallpaper_nav" {
                     return match arg {
@@ -2064,6 +2138,12 @@ pub struct HostCtx {
     /// Plan 496 M5：桌面本体面同型垫片（常驻面，非 overlay——垫片语义
     /// 与 overlay 槽相同：windowless 特权 App 的窗口级字段挂靠点）。
     pub desktop_fields: ShellFields,
+    /// PLAN-024：dashboard 面板 overlay 同型垫片（设置面板退役后的第四
+    /// overlay 槽继任者；面板本身无虚拟窗）。
+    pub dashboard_fields: ShellFields,
+    /// PLAN-024：静默孵化 mini 会话（windowless，face 拆借用）的窗口级
+    /// 字段垫片——按 AppId.0 键；hatch 时插入，会话消亡随 HostCtx 释放。
+    pub face_fields: std::collections::HashMap<u64, ShellFields>,
 }
 
 impl Drop for DesktopSession {
@@ -2376,6 +2456,8 @@ impl DesktopSession {
             notification_fields: ShellFields::default(),
             settings_fields: ShellFields::default(),
             desktop_fields: ShellFields::default(),
+            dashboard_fields: ShellFields::default(),
+            face_fields: std::collections::HashMap::new(),
         });
         // PLAN-601 R1（复审）：boot 读回——config.at 持久的 theme_name 在
         // 此激活（此前只有动词臂/外写 diff 臂会 set_theme，重启后主题不
@@ -2398,6 +2480,41 @@ impl DesktopSession {
     pub fn wm_add_win(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
         let host = self.host.as_mut().expect("wm_add_win requires desktop mode");
         host.wm.add_win(app, title, rect)
+    }
+
+    /// PLAN-024 R20：孵化 mini 会话升格开窗——为**既有** AppSession 创建
+    /// 虚拟窗（不新建组件实例）：face 与窗同会话，状态零分家（点卡片打开
+    /// 的窗和桌面卡显示/操作同一份 store）。几何/布局语义与 launch_app
+    /// 尾段同构（级联初位 + registry 回填 + 布局应用）。
+    pub fn open_window_for_session(
+        &mut self,
+        name: &str,
+        app_id: AppId,
+    ) -> Result<Wid, String> {
+        let title = self
+            .apps
+            .get(&app_id)
+            .map(|a| a.component.widget_name().to_string())
+            .unwrap_or_else(|| name.to_string());
+        let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
+        let index = self
+            .host
+            .as_ref()
+            .map(|h| h.wm.wins_in_workspace(h.wm.current_workspace).len())
+            .unwrap_or(0);
+        let size = iced::Size::new(usable.width * 0.6, usable.height * 0.6);
+        let rect = crate::ui::layout::cascade_rect(index, size, usable);
+        let layout = self.host.as_ref().map(|h| h.wm.layout).unwrap_or_default();
+        let wid = self.wm_add_win(app_id, title, rect);
+        if let Some(host) = self.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid) {
+                v.registry_id = Some(name.to_string());
+            }
+        }
+        if layout != LayoutMode::Free {
+            self.wm_set_layout(layout);
+        }
+        Ok(wid)
     }
 
     /// desktop 模式：移除虚拟窗口并返回其 AppId（调用方负责移除 App）。
@@ -2516,6 +2633,9 @@ impl DesktopSession {
     /// （desktop.at `ondblclick: .ActivateApp(e.id)` → `activate\t<id>`）
     /// 写在 desktop 自己的 `__desktop_cmd` 里，此前只排 shell 一路导致
     /// 双击打开静默失效。
+    /// PLAN-024 v1.8：补排 dashboard 面板 `__dashboard_cmd`（v1.8 新词表
+    /// 面——toggle/close/pin/unpin/span/launch；同一 parse_records 解析，
+    /// 复用 DesktopCommand 序列）。
     pub fn drain_desktop_commands(&mut self) -> Vec<DesktopCommand> {
         let mut commands = Vec::new();
         if let Some(shell) = self.desktop.shell_app {
@@ -2524,7 +2644,27 @@ impl DesktopSession {
         if let Some(desktop) = self.desktop.desktop_app {
             commands.extend(self.drain_app_desktop_commands(desktop));
         }
+        if let Some(dashboard) = self.desktop.dashboard_app {
+            commands.extend(self.drain_dashboard_commands(dashboard));
+        }
         commands
+    }
+
+    /// PLAN-024 v1.8：dashboard 面板 `__dashboard_cmd` 排空（读+清幂等；
+    /// [`Self::drain_app_desktop_commands`] 的 v1.8 词表面变体）。
+    pub fn drain_dashboard_commands(&mut self, app_id: AppId) -> Vec<DesktopCommand> {
+        let Some(app) = self.apps.get_mut(&app_id) else {
+            return Vec::new();
+        };
+        let Ok(auto_val::Value::Str(payload)) = app.component.read_state("__dashboard_cmd")
+        else {
+            return Vec::new();
+        };
+        if payload.is_empty() {
+            return Vec::new();
+        }
+        let _ = app.component.write_state("__dashboard_cmd", auto_val::Value::str(""));
+        DesktopCommand::parse_records(&payload)
     }
 
     /// Plan 464 T4：任意特权 App 的 DesktopBus 排空（shell 之外，
@@ -3204,6 +3344,71 @@ fn spawn_outproc_child(
         false
     }
 
+    /// PLAN-025 T-05 宿主生产路径（镜像 `broker_pointer_down` 收尾——
+    /// 键盘/字符路由**焦点窗**（`wm.focused`，区别于 pointer_down 的
+    /// hit_test 命中窗），滚轮路由指针命中窗（hover 语义）。queued
+    /// child 的 InputMsg 消费端（native/解释态投影器）同册受益。
+    /// 桌面级键盘事件路由：焦点窗 → (Wid, KeyPressed) 注入。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_key_event(&mut self, key: u32, modifiers: u8) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::KeyPressed { wid: wid.0, key, modifiers });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级字符输入路由：焦点窗 → (Wid, CharTyped) 注入。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_char(&mut self, ch: char) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::CharTyped { wid: wid.0, ch });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级滚轮路由：指针命中窗（hit_test）→ (Wid, Scroll) 注入
+    /// （窗内 Scrollable 定位在 child 投影器侧——wire Scroll 无坐标）。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_scroll(&mut self, x: f32, y: f32, dx: f32, dy: f32) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.hit_test(x, y) {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::Scroll { wid: wid.0, dx, dy });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
     /// 宿主动作落会话（与 `host::ProtocolHost::handle` 的动作臂同构；
     /// per-client 表面/shm/wid 映射挂在 [`stage3::BrokerClient`] 上）。
     #[cfg(feature = "ui-iced")]
@@ -3661,11 +3866,24 @@ fn spawn_outproc_child(
             // Plan 496 M5：桌面本体面（windowless 拆借第六路；常驻面，
             // shell/overlay 同型垫片承接）。
             let is_desktop = self.desktop.desktop_app == Some(id);
+            // PLAN-024：dashboard 面板 overlay（windowless 拆借第七路）。
+            let is_dashboard = self.desktop.dashboard_app == Some(id);
+            // PLAN-024：静默孵化 mini 会话（windowless face 拆借第八路）
+            // ——face_fields 垫片在场即认；没有这条臂，孵化会话的
+            // update 侧拆借恒 None，Tick/handler 全部静默丢失（实机
+            // 走查定位：clock face 恒显初始值的根因）。
+            let is_hatched = self
+                .host
+                .as_ref()
+                .map(|h| h.face_fields.contains_key(&id.0))
+                .unwrap_or(false);
             if !is_shell
                 && !is_launcher
                 && !is_switcher
                 && !is_notification
                 && !is_desktop
+                && !is_dashboard
+                && !is_hatched
             {
                 return None;
             }
@@ -3707,6 +3925,25 @@ fn spawn_outproc_child(
                     &mut host.notification_fields.initial_focus_done,
                     &host.notification_fields.fit_pending,
                     &host.notification_fields.fit_enabled,
+                )
+            } else if is_dashboard {
+                (
+                    &mut host.dashboard_fields.window_size,
+                    &mut host.dashboard_fields.pending_window_resize,
+                    &mut host.dashboard_fields.initial_resize_done,
+                    &mut host.dashboard_fields.initial_focus_done,
+                    &host.dashboard_fields.fit_pending,
+                    &host.dashboard_fields.fit_enabled,
+                )
+            } else if is_hatched {
+                let f = host.face_fields.get_mut(&id.0).expect("hatched shim");
+                (
+                    &mut f.window_size,
+                    &mut f.pending_window_resize,
+                    &mut f.initial_resize_done,
+                    &mut f.initial_focus_done,
+                    &f.fit_pending,
+                    &f.fit_enabled,
                 )
             } else {
                 (
@@ -3817,6 +4054,7 @@ fn spawn_outproc_child(
                 fit_pending: &v.fit_pending,
                 fit_enabled: &v.fit_enabled,
                 vwin_rect: Some(&v.rect),
+                view_name: None,
             });
         }
         let entry = self.windows.get(&win)?;
@@ -3833,6 +4071,7 @@ fn spawn_outproc_child(
             fit_pending: &entry.fit_pending,
             fit_enabled: &entry.fit_enabled,
             vwin_rect: None,
+            view_name: None,
         })
     }
 
@@ -3856,6 +4095,7 @@ fn spawn_outproc_child(
             fit_pending: &host.shell_fields.fit_pending,
             fit_enabled: &host.shell_fields.fit_enabled,
             vwin_rect: None,
+            view_name: None,
         })
     }
 
@@ -3878,6 +4118,7 @@ fn spawn_outproc_child(
             fit_pending: &host.launcher_fields.fit_pending,
             fit_enabled: &host.launcher_fields.fit_enabled,
             vwin_rect: None,
+            view_name: None,
         })
     }
 
@@ -3913,6 +4154,7 @@ fn spawn_outproc_child(
             fit_pending: &host.switcher_fields.fit_pending,
             fit_enabled: &host.switcher_fields.fit_enabled,
             vwin_rect: None,
+            view_name: None,
         })
     }
 
@@ -3961,6 +4203,7 @@ fn spawn_outproc_child(
             fit_pending: &host.notification_fields.fit_pending,
             fit_enabled: &host.notification_fields.fit_enabled,
             vwin_rect: None,
+            view_name: None,
         })
     }
     /// Plan 496 M5：桌面本体面 App 的拆借视图（view 装配的桌面层 z 槽
@@ -3983,7 +4226,153 @@ fn spawn_outproc_child(
             fit_pending: &host.desktop_fields.fit_pending,
             fit_enabled: &host.desktop_fields.fit_enabled,
             vwin_rect: None,
+            view_name: None,
         })
+    }
+
+    /// PLAN-024：dashboard 面板 overlay 的拆借视图（view 装配的 dashboard
+    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_notification`]
+    /// 相同，字段走 [`HostCtx::dashboard_fields`]）。
+    pub fn split_ref_dashboard(&self) -> Option<SessionViewRef<'_>> {
+        let panel = self.desktop.dashboard_app?;
+        let app = self.apps.get(&panel)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: panel,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.dashboard_fields.window_size,
+            pending_window_resize: &host.dashboard_fields.pending_window_resize,
+            initial_resize_done: &host.dashboard_fields.initial_resize_done,
+            initial_focus_done: &host.dashboard_fields.initial_focus_done,
+            fit_pending: &host.dashboard_fields.fit_pending,
+            fit_enabled: &host.dashboard_fields.fit_enabled,
+            vwin_rect: None,
+            view_name: None,
+        })
+    }
+
+    /// PLAN-024：dashboard face（命名视图活渲染面）的拆借视图。
+    ///
+    /// face App 已有虚拟窗（如 sys-monitor 运行中）→ 走 [`Self::split_ref_at`]
+    /// 的真实窗口字段、仅附加 view_name 选择器；无窗（静默孵化会话）→
+    /// 走 [`HostCtx::face_fields`] 垫片（hatch 时插入）。两条路都把
+    /// view_name 交给渲染侧分派 `view_named`——face 与主窗共享同一
+    /// component（同一 store/同一 handler 面）= 活渲染面语义本体。
+    pub fn split_ref_face(&self, id: AppId, view_name: &'static str) -> Option<SessionViewRef<'_>> {
+        let app = self.apps.get(&id)?;
+        let host = self.host.as_ref()?;
+        // 有虚拟窗：真实窗口级字段（fit/vwin 几何全保留）。
+        if let Some(wid) = host.wm.win_of_app(id) {
+            if let Some(v) = host.wm.wins.get(&wid) {
+                return Some(SessionViewRef {
+                    app_id: id,
+                    window: host.window,
+                    component: &app.component,
+                    app: &app.state,
+                    desktop: &self.desktop,
+                    window_size: &v.window_size,
+                    pending_window_resize: &v.pending_window_resize,
+                    initial_resize_done: &v.initial_resize_done,
+                    initial_focus_done: &v.initial_focus_done,
+                    fit_pending: &v.fit_pending,
+                    fit_enabled: &v.fit_enabled,
+                    vwin_rect: Some(&v.rect),
+                    view_name: Some(view_name),
+                });
+            }
+        }
+        // 无窗（孵化会话）：face 垫片字段。
+        let fields = host.face_fields.get(&id.0)?;
+        Some(SessionViewRef {
+            app_id: id,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &fields.window_size,
+            pending_window_resize: &fields.pending_window_resize,
+            initial_resize_done: &fields.initial_resize_done,
+            initial_focus_done: &fields.initial_focus_done,
+            fit_pending: &fields.fit_pending,
+            fit_enabled: &fields.fit_enabled,
+            vwin_rect: None,
+            view_name: Some(view_name),
+        })
+    }
+
+    /// PLAN-024：dashboard 面板是否可见（Esc 仲裁 / 键盘独占路由的判定
+    /// 位；[`Self::notification_visible`] 同型——可见性在面板 .at 的
+    /// `visible` state，宿主召唤写 "1"/关闭写 ""）。未挂载恒 false。
+    pub fn dashboard_visible(&self) -> bool {
+        let Some(panel) = self.desktop.dashboard_app else { return false };
+        matches!(
+            self.apps
+                .get(&panel)
+                .and_then(|a| a.component.read_state("visible").ok()),
+            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        )
+    }
+
+    /// PLAN-024：静默孵化 mini 会话（windowless）——`build_dynamic_component`
+    /// + `allocate_app` 照常，但不创建虚拟窗、不参与 z 序，仅供 face 拆借。
+    /// 孵化条件（D4）：注册表条目存在 + 源含 `view mini` 声明（grep 级
+    /// 探测，§5.3 两级确认的启动扫描半）+ 无后端依赖（pac 无 daemon 声明
+    /// 且无外部 back 根）+ 非 outproc/exe 形态。孵化会话常驻（面板关闭
+    /// 不杀；notification_app 槽先例）。
+    /// 返回已存在的孵化会话 id（幂等）或新建的 id；条件不满足返回 None。
+    pub fn hatch_mini_app(&mut self, name: &str) -> Result<Option<AppId>, String> {
+        // 幂等：已孵化直接复用。
+        if let Some(existing) = self.hatched_mini_of(name) {
+            return Ok(Some(existing));
+        }
+        // outproc 进程模型 / native exe 不孵化（face 需要 inproc component）。
+        if self.desktop.process_model == crate::ui::session::ProcessModel::Outproc {
+            return Ok(None);
+        }
+        let resolver = self
+            .desktop
+            .app_resolver
+            .clone()
+            .ok_or_else(|| "app registry unavailable".to_string())?;
+        let Some(spec) = resolver(name) else {
+            return Ok(None);
+        };
+        // grep 级 mini 声明探测（文本误报由会话化后 named_views() 精确生效）。
+        if !spec.code.contains("view mini") {
+            return Ok(None);
+        }
+        // 静默孵化仅限无后端依赖（D4：有后端 app 未运行显示占位卡）。
+        if spec.daemon.is_some() || spec.back_root.is_some() || spec.exe.is_some() {
+            return Ok(None);
+        }
+        let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
+            .map_err(|e| format!("hatch `{name}` failed: {e}"))?;
+        // 面无 mini（文本误报/只有主视图）→ 丢弃，不占会话槽。
+        if comp.named_views().is_empty() {
+            return Ok(None);
+        }
+        let app_id = self.allocate_app(comp);
+        if let Some(host) = self.host.as_mut() {
+            host.face_fields.insert(app_id.0, ShellFields::default());
+        }
+        Ok(Some(app_id))
+    }
+
+    /// PLAN-024：按注册表 id 反查已存在的孵化 mini 会话（face_fields 有
+    /// 垫片且组件 widget 名/源路径与注册表条目匹配——孵化时记录映射，
+    /// 这里走映射表）。v1 用 DesktopState.hatched_map（id → AppId）。
+    pub fn hatched_mini_of(&self, name: &str) -> Option<AppId> {
+        let id = self.desktop.hatched_minis.get(name)?;
+        // 会话仍存活才返回（防御：无删除路径，恒真）。
+        self.apps.contains_key(id).then_some(*id)
+    }
+
+    /// PLAN-024：记录注册表 id → 孵化会话映射。
+    pub fn register_hatched_mini(&mut self, name: &str, app_id: AppId) {
+        self.desktop.hatched_minis.insert(name.to_string(), app_id);
     }
 }
 
@@ -4030,6 +4419,7 @@ impl<'a> SessionViewMut<'a> {
             fit_pending: self.fit_pending,
             fit_enabled: self.fit_enabled,
             vwin_rect: self.vwin_rect,
+            view_name: None,
         }
     }
 }
@@ -4053,6 +4443,10 @@ pub struct SessionViewRef<'a> {
     /// Plan 512：fit 持久标记（见 [`WindowEntry::fit_enabled`]）。
     pub fit_enabled: &'a Cell<bool>,
     pub vwin_rect: Option<&'a RefCell<iced::Rectangle>>,
+    /// PLAN-024：命名视图选择器——Some(name) = 拆借渲染该命名视图
+    /// （dashboard face 活渲染面）；None = 主视图（既有语义，零回归）。
+    /// 渲染侧 dynamic_view_impl 据此分派 `view_named(name)`。
+    pub view_name: Option<&'a str>,
 }
 
 // ---------------------------------------------------------------------------
@@ -4322,9 +4716,91 @@ mod tests {
     use crate::ast::Expr;
     use crate::aura::{AuraNode, AuraStateDef, AuraWidget};
 
+    // PLAN-024：dashboard 第四槽无头单测——可见性判定位/孵化垫片/命令
+    // 词表（布局算式在 renderer 侧 target 测试，纯函数）。
+
+    fn make_mini_widget(name: &str) -> AuraWidget {
+        let mut w = make_test_widget(name);
+        w.named_views = vec![("mini".to_string(), AuraNode::element("col"))];
+        // dashboard_visible() 判定位（overlay 门控先例：visible state）。
+        w.state_vars.push(AuraStateDef {
+            name: "visible".to_string(),
+            type_info: crate::ast::Type::StrOwned,
+            initial: Expr::Str("0".into()),
+            decorators: vec![],
+        });
+        w
+    }
+
+    #[test]
+    fn dashboard_visibility_defaults_and_flips() {
+        let mut ds = DesktopSession::__test_session();
+        ds.__test_open_desktop();
+        // 未挂载恒 false（Esc 仲裁安全缺省）。
+        assert!(!ds.dashboard_visible());
+        let app_id = ds.allocate_app(DynamicComponent::new(&make_mini_widget("Dash")).unwrap());
+        ds.desktop.dashboard_app = Some(app_id);
+        assert!(!ds.dashboard_visible(), "挂载未召唤仍不可见");
+        if let Some(app) = ds.apps.get_mut(&app_id) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        }
+        assert!(ds.dashboard_visible());
+    }
+
+    #[test]
+    fn hatch_registers_face_fields_and_is_idempotent() {
+        let mut ds = DesktopSession::__test_session();
+        ds.__test_open_desktop();
+        let app_id = ds.allocate_app(DynamicComponent::new(&make_mini_widget("Clock")).unwrap());
+        ds.register_hatched_mini("clock", app_id);
+        assert_eq!(ds.hatched_mini_of("clock"), Some(app_id));
+        // face 垫片缺席 = 无窗 face 拆借返回 None（渲染侧安全跳过）。
+        assert!(ds.host.as_ref().unwrap().face_fields.get(&app_id.0).is_none());
+        // 垫片插入后 split_ref_face 提供 view_name 选择器。
+        ds.host
+            .as_mut()
+            .unwrap()
+            .face_fields
+            .insert(app_id.0, ShellFields::default());
+        let face = ds.split_ref_face(app_id, "mini").expect("face ref");
+        assert_eq!(face.app_id, app_id);
+        assert_eq!(face.view_name, Some("mini"));
+    }
+
+    #[test]
+    fn dashboard_command_verbs_roundtrip() {
+        use DesktopCommand as DC;
+        assert_eq!(DC::parse_records("dashboard_toggle"), vec![DC::DashboardToggle]);
+        assert_eq!(DC::parse_records("dashboard_close"), vec![DC::DashboardClose]);
+        assert_eq!(
+            DC::parse_records("dashboard_pin\tclock"),
+            vec![DC::DashboardPin("clock".into())]
+        );
+        assert_eq!(
+            DC::parse_records("dashboard_unpin\tclock"),
+            vec![DC::DashboardUnpin("clock".into())]
+        );
+        assert_eq!(
+            DC::parse_records("dashboard_span\tclock\t2"),
+            vec![DC::DashboardSpan("clock".into(), 2)]
+        );
+        // 坏跨度值跳过（窄值防御）。
+        assert!(DC::parse_records("dashboard_span\tclock\t3").is_empty());
+        assert_eq!(
+            DC::parse_records("dashboard_launch\tclock"),
+            vec![DC::DashboardLaunch("clock".into())]
+        );
+        // encode 对拍（编码出 FIELD_SEP U+1F；解析双轨同收 shell.at 的 \t）。
+        assert_eq!(
+            DC::DashboardSpan("clock".into(), 1).encode(),
+            "dashboard_span\u{1f}clock\u{1f}1"
+        );
+    }
+
     /// Helper: create a minimal AuraWidget for testing（同 dynamic.rs 测试）。
     fn make_test_widget(name: &str) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: name.to_string(),
             state_vars: vec![AuraStateDef {

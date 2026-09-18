@@ -2673,7 +2673,28 @@ impl RustGenerator {
                     let mut builder = format!("View::input(\"{}\")", placeholder);
 
                     // Value binding: value: .field → .value(format!("{}", self.field))
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
+                    // PLAN-025 T-07：绑定形状容差对齐 client_runtime::
+                    // binding_field（Ident 带 '.' 前缀 / Dot("."|"self", f)
+                    // ——build_rust_ui 提取路径产 Dot 形，缺臂曾致 003
+                    // 真源 value 绑定整段丢失）。
+                    let value_field = props.get("value").and_then(|v| match v {
+                        AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                            let f = name.as_str().trim_start_matches('.');
+                            (!f.is_empty()).then(|| f.to_string())
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) => {
+                            match obj.as_ref() {
+                                crate::ast::Expr::Ident(base)
+                                    if base.as_str() == "." || base.as_str() == "self" =>
+                                {
+                                    Some(field.as_str().to_string())
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    });
+                    if let Some(name) = &value_field {
                         builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
                     } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("value") {
                         builder = format!("{}.value(\"{}\".to_string())", builder, s);
@@ -2712,8 +2733,8 @@ impl RustGenerator {
                                     builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
                                 // Record event→field mapping for handler generation
-                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
-                                    self.input_fields.entry(variant).or_default().push(name.to_string());
+                                if let Some(name) = &value_field {
+                                    self.input_fields.entry(variant).or_default().push(name.clone());
                                 }
                             }
                             "onenter" | "onEnter" | "onsubmit" | "onSubmit" => {
@@ -3104,6 +3125,115 @@ impl RustGenerator {
                         ),
                     };
                     return result;
+                }
+
+                // PLAN-025 T-03: slider — View::slider(min..=max, value, fn
+                // 指针)。载荷回写 = f32 载荷变体的构造器 fn 指针（物化
+                // 自足——零 thread-local，与 input 的 INPUT_TEXT 通道相
+                // 比"回写通道更干净"）；on() 侧载荷臂由 msg 声明 + on 块
+                // 模式（.SetVol(v float) -> {...}）既有机制承担。
+                if tag == "slider" {
+                    let numeric = |v: Option<&AuraPropValue>, default: f64| -> String {
+                        // f32 实参拒收整数字面量（Rust 整型字面量不向浮点
+                        // 收敛）——恒带小数点输出。
+                        match v {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) => format!("{f:.1}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Double(f, _))) => format!("{f:.1}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) => format!("{i}.0"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+                            _ => format!("{default:.1}"),
+                        }
+                    };
+                    let min = numeric(props.get("min"), 0.0);
+                    let max = numeric(props.get("max"), 100.0);
+                    // value 绑定：Ident → self.<field>（f64 字段补 as f32
+                    // ——View::slider 载荷恒 f32）；字面量直用。
+                    let value_expr = match props.get("value") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
+                            if self.state_types.get(name.as_str()).map(|s| s.as_str()) == Some("f64") {
+                                format!("self.{name} as f32")
+                            } else {
+                                format!("self.{name}")
+                            }
+                        }
+                        _ => numeric(props.get("value"), 0.0),
+                    };
+                    let mut builder = format!("View::slider({min}..={max}, {value_expr}");
+                    // onchange → fn 指针 = 变体构造器（载荷变体）。
+                    if let Some((_, handler)) = events
+                        .iter()
+                        .find(|(e, _)| matches!(e.as_str(), "onchange" | "onChange"))
+                    {
+                        let variant = self.extract_variant_name(&handler.handler);
+                        let msg_name = self.current_msg_name();
+                        builder = format!("{builder}, {msg_name}::{variant}");
+                    } else {
+                        // 无 onchange：占位零参闭合（View::slider 的 fn 槽
+                        // 必填——不被消费即无行为面）。
+                        builder = format!("{builder}, |_| {{ unreachable!() }}");
+                    }
+                    builder = format!("{builder})");
+                    if let Some(st) = props.get("step") {
+                        builder = format!("{builder}.step({})", numeric(Some(st), 0.0));
+                    }
+                    for (key, value) in props {
+                        if key == "min" || key == "max" || key == "value" || key == "step" { continue; }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+                    return format!("{builder}.build()");
+                }
+
+                // PLAN-025 T-04: select — View::select(options) +
+                // .selected(i) + .on_choose(|idx, val| Msg::Variant(idx,
+                // val.to_string()))。on_select = SelectCallback（Arc<dyn
+                // Fn(usize,&str)->M>），闭包内物化载荷消息——零
+                // thread-local；on() 侧载荷臂由 msg 声明 + on 块模式既有
+                // 机制承担。
+                if tag == "select" {
+                    let options_expr = match props.get("options") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Array(items))) => {
+                            let elems: Vec<String> = items
+                                .iter()
+                                .filter_map(|e| match e {
+                                    crate::ast::Expr::Str(s) => Some(format!("\"{s}\".to_string()")),
+                                    _ => None,
+                                })
+                                .collect();
+                            format!("vec![{}]", elems.join(", "))
+                        }
+                        _ => "Vec::new()".to_string(),
+                    };
+                    let mut builder = format!("View::select({options_expr})");
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) = props.get("selected") {
+                        builder = format!("{builder}.selected({i})");
+                    }
+                    if let Some((_, handler)) = events
+                        .iter()
+                        .find(|(e, _)| matches!(e.as_str(), "onchange" | "onChange"))
+                    {
+                        let variant = self.extract_variant_name(&handler.handler);
+                        let msg_name = self.current_msg_name();
+                        // 闭包形态随变体载荷数自适应：单 str 载荷（值绑定
+                        // 常态）忽略 idx；双载荷取 idx as i32（int 载荷）。
+                        let closure = match self
+                            .message_variants
+                            .iter()
+                            .find(|v| v.name == variant)
+                            .map(|v| v.payload.len())
+                            .unwrap_or(0)
+                        {
+                            1 => format!("|_idx: usize, val: &str| {msg_name}::{variant}(val.to_string())"),
+                            2 => format!("|idx: usize, val: &str| {msg_name}::{variant}(idx as i32, val.to_string())"),
+                            _ => format!("|_idx: usize, _val: &str| {msg_name}::{variant}()"),
+                        };
+                        builder = format!("{builder}.on_choose({closure})");
+                    }
+                    for (key, value) in props {
+                        if key == "options" || key == "selected" { continue; }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+                    // View::select 直返 View（链式 self）——无 .build()。
+                    return builder;
                 }
 
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
@@ -4886,6 +5016,9 @@ impl RustGenerator {
         // 的 fix_numeric_conversion_methods 只覆盖非 UI 管线,此处对 handler
         // 体补同一 `(expr as i32)` 改写(x.to_int() → (x as i32))。
         fix_numeric_conversion_methods_for_ui(&mut body);
+        // PLAN-025 T-07：VM math.* 内建降级（003-converter handler 真源
+        // math.round 先例——解释态 VM 直算，a2r 臂需落到 Rust f64 方法）。
+        lower_math_builtins_for_ui(&mut body);
         body
     }
 
@@ -6509,6 +6642,7 @@ mod tests {
             payload: vec![],
         };
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "ImageViewer".to_string(),
@@ -6599,6 +6733,7 @@ widget App {
     #[test]
     fn test_setup_block_rejected_on_rust_target() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "SetupWidget".to_string(),
             state_vars: vec![],
@@ -6639,6 +6774,7 @@ widget App {
     #[test]
     fn test_simple_counter() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Counter".to_string(),
@@ -6690,6 +6826,7 @@ widget App {
     /// 组合 View(与 VM 侧 aura_view_builder 面板臂同款降级)。
     fn autodown_panel_widget(view_tree: AuraNode) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             name: "PanelDoc".to_string(),
             state_vars: vec![],
             messages: vec![],
@@ -6836,6 +6973,117 @@ widget Counter {
             code
         );
         assert!(code.contains("self.count += 1"), "lambda body:\n{}", code);
+    }
+
+    /// PLAN-025 T-03: slider codegen golden（fixture 真源：
+    /// tests/fixtures/025-native-input/slider.at——View::slider 构造 +
+    /// f32 载荷变体 fn 指针 + on() 载荷臂，零 thread-local 回写）。
+    #[test]
+    fn test_slider_codegen_arm_fixture() {
+        let src = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/025-native-input/slider.at"
+        ))
+        .expect("read slider fixture");
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("View::slider("),
+            "slider 构造在册:
+{}",
+            code
+        );
+        assert!(
+            code.contains("SliderBoxMsg::SetVol"),
+            "fn 指针 = 载荷变体构造器:
+{}",
+            code
+        );
+        assert!(
+            code.contains("SetVol(f32)"),
+            "载荷变体 f32:
+{}",
+            code
+        );
+        assert!(
+            code.contains(".step(1.0)"),
+            "step prop 消费:
+{}",
+            code
+        );
+        assert!(
+            code.contains("SetVol(v") && code.contains("self.vol = v"),
+            "on() 载荷臂绑定 v 写 vol:
+{}",
+            code
+        );
+        assert!(
+            !code.contains("last_input_text"),
+            "slider 回写零 thread-local:
+{}",
+            code
+        );
+    }
+
+    /// PLAN-025 T-04: select codegen golden（fixture 真源：
+    /// tests/fixtures/025-native-input/select.at——View::select 构造 +
+    /// on_choose SelectCallback 物化闭包 + on() 载荷臂，零 thread-local）。
+    #[test]
+    fn test_select_codegen_arm_fixture() {
+        let src = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/025-native-input/select.at"
+        ))
+        .expect("read select fixture");
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains(r#"View::select(vec!["Small".to_string(), "Medium".to_string(), "Large".to_string()])"#),
+            "options 数组构造:\n{}",
+            code
+        );
+        assert!(
+            code.contains(".selected(0)"),
+            "selected prop 消费:\n{}",
+            code
+        );
+        assert!(
+            code.contains(".on_choose(|_idx: usize, val: &str| SelectBoxMsg::Pick(val.to_string()))"),
+            "SelectCallback 物化闭包:\n{}",
+            code
+        );
+        assert!(
+            code.contains("Pick(String)"),
+            "载荷变体 (str):\n{}",
+            code
+        );
+        assert!(
+            !code.contains("last_input_text"),
+            "select 回写零 thread-local:\n{}",
+            code
+        );
     }
 
     /// PLAN-533 T4: on-only handler（无 msg 块声明,vue 风格源——gallery 页
@@ -7284,6 +7532,7 @@ widget LoginForm {
         }
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Playground".to_string(),
@@ -7418,6 +7667,7 @@ widget LoginForm {
         }
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Playground".to_string(),
@@ -7521,6 +7771,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_scalar_override() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "App".to_string(),
@@ -7593,6 +7844,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_no_scalars_no_override() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "OnlyCollections".to_string(),
@@ -7634,6 +7886,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_recurses_into_store() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "App".to_string(),
@@ -7683,6 +7936,7 @@ fn main() {{}}
         // The store struct itself should NOT recurse into a `store` field
         // (avoid NotesStore { store: NotesStore } infinite recursion).
         let store_widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "NotesStore".to_string(),
@@ -7867,6 +8121,7 @@ fn main() {{}}
     /// Plan 043 M5 #1: multi-param msg variants emit a multi-field Rust enum.
     fn widget_with_msg(variants: Vec<AuraMsgVariant>) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Shell".to_string(),
@@ -8270,6 +8525,60 @@ widget Demo {
 /// 有语义(499 M3 charts 先例;VM 轨在库),但 a2r 生成的 f32/f64 无此方法。
 /// trans/rust.rs 的 fix_numeric_conversion_methods 只覆盖非 UI 管线,此处
 /// 对 handler 体补同一保守改写(IDENT/链式接收者 → `(expr as i32)`)。
+/// PLAN-025 T-07：VM `math.*` 内建 → Rust f64 方法（handler 臂）。
+/// `math.round(EXPR)` → `(EXPR).round()`——round/floor/ceil/abs/sqrt
+/// 五族；括号配对扫描（正则不配嵌套）。
+pub(crate) fn lower_math_builtins_for_ui(content: &mut String) {
+    const MAP: [(&str, &str); 5] = [
+        ("math.round", "round"),
+        ("math.floor", "floor"),
+        ("math.ceil", "ceil"),
+        ("math.abs", "abs"),
+        ("math.sqrt", "sqrt"),
+    ];
+    for (pat, method) in MAP {
+        let mut out = String::new();
+        let mut rest = content.as_str();
+        while let Some(pos) = rest.find(pat) {
+            let after = &rest[pos + pat.len()..];
+            if !after.starts_with('(') {
+                out.push_str(&rest[..pos + pat.len()]);
+                rest = after;
+                continue;
+            }
+            out.push_str(&rest[..pos]);
+            let bytes = after.as_bytes();
+            let mut depth = 0usize;
+            let mut end = None;
+            for (i, b) in bytes.iter().enumerate() {
+                match b {
+                    b'(' => depth += 1,
+                    b')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = Some(i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let Some(e) = end else {
+                out.push_str(&rest[..pos + pat.len()]);
+                rest = after;
+                continue;
+            };
+            let expr = &after[1..e];
+            out.push_str(&format!("({expr}).{method}()"));
+            rest = &after[e + 1..];
+        }
+        out.push_str(rest);
+        if *content != out {
+            *content = out;
+        }
+    }
+}
+
 pub(crate) fn fix_numeric_conversion_methods_for_ui(content: &mut String) {
     for (method, cast) in [("to_float", "f64"), ("to_uint", "u32"), ("to_int", "i32")] {
         let pat = format!(r"([\w.()]+)\.{}\(\)", method);

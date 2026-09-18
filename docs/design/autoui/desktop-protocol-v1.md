@@ -196,6 +196,66 @@ App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口
   留痕。度量：queue 臂边际 ≈2.42 MiB/App（508 解释 outproc 6.48 的
   ≈2.7×），见 `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
 
+## 1.7 v1.7 增量（native 覆盖爬坡 + 输入路由收口，PLAN-025）
+
+- **投影器 form/payload 族入册**（`Coverage::native_queue_set` 扩容，
+  `PROTOCOL_VERSION` 维持 1——零 wire 变体）：kind 扩 input/textarea/
+  checkbox/radio/slider/select，layouts 扩 scroll；样式子集扩 flex-1/
+  shadow（**降级放行**——解释态 target_set 同款保真边界：shadow 渲染
+  no-op、flex 族自然宽，非静默扩权）。**switch 无 native 对象**：View
+  枚举无 Switch 变体（解释态 aura 标签专属），native 覆盖集不列（I4
+  分表，非缺口）。防漏钉：native 覆盖矩阵 × 投影器臂双向钉测试
+  （`native_coverage_matrix_pinned_to_projector`）+ 003-converter 形态
+  native queue 金样（`test/parity/native/003-converter.expected.txt`，
+  与解释态金样 `drawlist_to_text` 同构可对读）。
+- **聚焦与编辑闭环**（T-01 D1/D2 定案）：native View 全物化无字段身份
+  → 聚焦 = **Input/Textarea 槽位序**（命中表登记序 = 确定性树序），帧
+  后重定位（槽位越界 = 结构变化 → 失焦，不猜测对位）；编辑 = 投影器侧
+  buffer（聚焦时自视图值初始化，聚焦期显示 buffer——iced 内部 buffer
+  同语义）→ `store_input_text` 同线程代写 INPUT_TEXT thread-local →
+  a2r 生成 `on()` 经 `last_input_text()` 读面按字段类型 parse 回写 →
+  on_change 物化派发。零生成器改动。**on_submit/Enter 不派发**（解释态
+  臂同边界 not-yet）。多行 = 按 '
+' 分行、无自动换行（解释态同边界）。
+- **select 开合语义**（D3）：闭态 = 值盒 + ▾ + 点击开；开态 = 主块渲染
+  后**追加覆盖序选项列**（DrawList paint order 天然置顶，无 overlay 协议
+  语义）+ **命中互斥**（开态仅选项项：命中 → `SelectCallback` 物化派发
+  + 关闭；外点 → 仅关闭吞掉不下穿；Esc 关闭）。选项消息布局期经回调
+  物化（命中表存 `(rect, M)` 零新类型）；键盘跳项 not-yet。
+- **输入路由两端**（P020-D2 键/滚轮/右键半句核销）：
+  - 投影器消费：`PointerPressed{Right}` → 右键命中表（Button/Row/Column/
+    Container `on_right_click` 整框登记，禁用态不登记）；`Scroll` →
+    scrollable 滚轮派发（内层命中倒序胜 + 唯一 Scrollable 兜底——wire
+    Scroll 无坐标，投影器以 PointerMoved/Pressed 跟踪最近指针位定位）；
+    `offset' = clamp(快照+delta)` 组装 `ScrollMetrics`（镜像 iced
+    `absolute_offset()` = 滚动后偏移语义）；on_scroll 不在场 = 滚轮不
+    路由留痕。scrollable 溢出 = Scissor push/pop + 视口外命中区过滤
+    （解释态 layout_scroll 镜像）；滚动偏移 = app 状态经 on_scroll 重入
+    view()（投影器只裁剪不缓存——与解释态"偏移 v1 不载"的口径差即此：
+    native 全交 app）。
+  - 宿主生产：`DesktopSession::broker_key_event/broker_char`（WM **焦点
+    窗**路由）+ `broker_scroll`（指针命中窗 hover 路由）——镜像
+    broker_pointer_down 收尾；解释态臂 CharTyped/退格消费同册受益实证
+    （t3_examples_queue_end_to_end 003 键入改走 broker_char）。
+  - **live 壳接线缺口（新债随注）**：现桌面 iced 壳无键盘/滚轮事件订阅
+    通道（调查证据：session.rs 零键盘事件臂），live 接线需
+    DesktopMessage 扩展另立；本节生产路径 = 协议/broker 层（真机链路
+    经 p025_native_input_arm 协议级承载——P020-D4 GUI 自动化债未清的
+    既有口径）。
+- **slider 语义**：点击定位（PointerPressed 一次派发，f32 = min +
+  clamp((x-x0)/w)×range，step 取整 + 端点钳制）→ fn 指针物化派发（零
+  thread-local）；**按住拖拽连续派发 not-yet**（分型命中表无按住态机）。
+  a2r codegen 补臂：slider（`View::slider(min..=max, value, 变体构造
+  fn 指针)`，f32 载荷变体；f64 字段 as f32 补码）+ select
+  （`View::select(options)+.selected(i)+.on_choose(物化闭包)`，闭包形态
+  随变体载荷数自适应）；input value 绑定形状容差（Ident '.' 前缀 /
+  Dot('.'|'self',f)——对齐 `binding_field`）；`math.*` 内建 handler 臂
+  降级（round/floor/ceil/abs/sqrt → f64 方法）。
+- **v1.7 已知边界**（随注非静默）：IME（ImePreedit/Commit）not-yet 维持；
+  grid 布局 native 臂 not-yet；L3 StateSnapshot 注入 native not-yet 维持
+  （P020-D2 后半句另立）；live iced 壳键盘/滚轮订阅接线缺口（上述新债）；
+  slider 拖拽、select 键盘跳项、input on_submit not-yet。
+
 ## 2. Wire Format（信封）
 
 小端。头部 12 字节定长：

@@ -13,7 +13,7 @@
 | 2 | **输出** | events 声明（名/负载）。行为统一走 **action 点**：bp 内只声明所需 action id 与语义契约，实现由消费应用经 `actions{}` 注册表注入。bp 不自带业务 handler——命令语义属于应用，bp 只约定"此处会上抛"。 |
 | 3 | **状态归属** | bp 可带 **scoped store**（局部 UI 状态：折叠态/选中项等，随 bp 生命周期）。workspace/tabs/theme/keybinding 等**平台服务为单例注入，禁止 bp 私有副本**（jade §9.5 tabs_store 孪生教训成文：孪生 store 即漂移温床）。 |
 | 4 | **参数与变体** | 样式小差异走 **token/recipe**（PLAN-635/607 机制：宿主 `style:` 消费面 + 跨包 recipe 导入）；结构性小差异走 **slot**；reference variants 是变体的物化样本（拷贝源的候选形态），不是参数化机制本身。小差异禁止 fork 包。 |
-| 5 | **打包与解析** | 包 = `blueprints/<kind>/<name>/`（`spec.md` + `reference/<v>.at` + `gotchas.md`；kind 分类：form/data-display/feedback/layout/composite）。应用经 pac.at `dep` 声明依赖（PLAN-635 声明门控：物化未声明=幽灵依赖阻断）；解析走 `resolve_module_path` 既有链（base_dir→父目录→逐级 deps/path dep 探测）；版本面 MVP=主检出单版本。 |
+| 5 | **打包与解析** | 包 = `blueprints/<kind>/<name>/`（`spec.md` + `reference/<v>.at` + `gotchas.md`；kind 词表（PLAN-640 对齐磁盘现实）：form/navigation/dashboard/data-display/feedback/editor/layout/composite）。应用经 pac.at `dep` 声明依赖（PLAN-635 声明门控：物化未声明=幽灵依赖阻断）；解析走 `resolve_module_path` 既有链（base_dir→父目录→逐级 deps/path dep 探测）；版本面 MVP=主检出单版本。**kind 治理规则**：新增 kind 须随 spec 沉淀更新本词表，并同步 gallery kindOrder 偏好序（`examples/bps-gallery/src/bps.ts`）；禁止在包名里自造词表外 kind。 |
 | 6 | **双形态同语义** | 同一 bp 在 a2ts(vue 发射轨) 与 AutoVM(iced 解释轨) 行为一致：结构、状态、事件语义全等；`actions{}`/`menubar`/`toolbar` 配置两轨均发射/解释（PLAN-639 补齐 vue 轨）。双端验证按 autoui-verifier 双端模式执行。 |
 
 ## 消费通道与产物纪律（SD-02 摘要）

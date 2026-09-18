@@ -3,7 +3,7 @@ kind = "form"
 name = "login"
 palette = ["button", "checkbox", "input", "separator"]
 extension_points = ["fields", "submit", "third_party", "success", "error_display"]
-variants = ["minimal", "with_sso"]
+variants = ["minimal", "with_sso", "two_column"]
 
 [dataSource]
 attempt = "(creds) -> Session"
@@ -37,6 +37,8 @@ wired to their `#[api]` login endpoint.
 
 - `minimal` — email + password + remember + submit (reference/minimal.at)
 - `with_sso` — minimal plus a third-party provider row (reference/with_sso.at)
+- `two_column` — split-panel layout: image/brand panel beside the minimal form
+  (reference/two_column.at)
 
 # Gotchas
 

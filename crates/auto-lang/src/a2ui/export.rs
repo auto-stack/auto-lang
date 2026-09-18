@@ -478,6 +478,7 @@ mod tests {
         };
 
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
@@ -558,6 +559,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Test".to_string(),

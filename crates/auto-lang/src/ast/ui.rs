@@ -67,6 +67,12 @@ pub struct WidgetDecl {
     /// View tree declaration
     pub view: Option<ViewBlock>,
 
+    /// PLAN-024: named views (`view mini { ... }`) — additional render faces
+    /// sharing the widget's store/model. The main `view` slot is untouched;
+    /// duplicates (named or main) are a parse error. Consumers: desktop
+    /// dashboard faces (auto-os shell), other backends ignore.
+    pub named_views: Vec<(Name, ViewBlock)>,
+
     /// Event handlers
     pub on: Option<OnBlock>,
 
@@ -1049,6 +1055,7 @@ mod tests {
             messages: vec![],
             model: None,
             view: None,
+            named_views: Vec::new(),
             on: None,
             bind: None,
             props: vec![],

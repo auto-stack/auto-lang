@@ -23,6 +23,7 @@
 | [icon-data-source-and-parity](icon-data-source-and-parity.md) | — | 图标数据源与生成器（lucide 全量表/离线重跑/版本漂移门禁）与双端一致性口径（几何/尺寸/颜色/描边） | 620 |
 | [025-gap-enumeration](025-gap-enumeration.md) | 16a | 025 示例差距枚举（历史记录） | 345 |
 | [autoui-mcp-test-fixture](autoui-mcp-test-fixture.md) | — | AutoUI MCP 测试夹具协议（VM 状态注入与 request-id ack） | 623 |
+| [desktop-shell-a2r](desktop-shell-a2r.md) | — | 桌面 Shell a2r 编译化形态（缺口普查 + A 链入宿主/B outproc 形态裁定输入 + 迁移路径草案 S1–S3） | 设计先行（待裁定拆 plan，§10） |
 
 > \* 原 `25-a2ui-composer-analysis.md`。注：该文档已归位本目录为 `desktop-shell.md`（Design 25，曾用名 AutoShell），
 > 届时 25 号一并封存。

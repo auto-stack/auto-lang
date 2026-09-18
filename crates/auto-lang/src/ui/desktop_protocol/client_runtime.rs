@@ -2390,7 +2390,7 @@ pub fn run_client_session<S: FrameSource>(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::ui::desktop_protocol::host::ProtocolHost;
     use crate::ui::session::DesktopSession;
@@ -2615,7 +2615,7 @@ mod tests {
 
     /// 确定性文本形态（clear + 算子序列；坐标/颜色全精度锁）——parity
     /// 金样共用序列化（001 + 507 矩阵）。
-    fn drawlist_to_text(frame: &DrawList) -> String {
+    pub(crate) fn drawlist_to_text(frame: &DrawList) -> String {
         let mut out = String::new();
         match frame.clear {
             Some(c) => out.push_str(&format!("clear {},{},{},{}\n", c.r, c.g, c.b, c.a)),

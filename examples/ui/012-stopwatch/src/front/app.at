@@ -468,4 +468,19 @@ widget App {
         }
         .DismissBanner -> { .banner = "" }
     }
+
+    // PLAN-024 试点：桌面 dashboard 时钟卡（T-06）——活渲染面，与主窗
+    // 同 model/Tick（w_local 250ms 走秒）；纯前端（Time natives），pac 无
+    // 后端依赖 → dashboard 召唤期静默孵化（无窗会话，D4）。
+    view mini {
+        col {
+            style: "w-full items-center justify-center gap-1 h-full"
+            text .w_local {
+                style: "text-4xl font-mono font-bold text-foreground tabular-nums text-center"
+            }
+            text "Local time" {
+                style: "text-xs text-muted-foreground"
+            }
+        }
+    }
 }

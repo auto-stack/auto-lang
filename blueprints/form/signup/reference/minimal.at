@@ -1,0 +1,126 @@
+// reference/minimal.at — SignupForm blueprint, "minimal" variant.
+// Self-contained UI widget (no backend): the consumer wires `dataSource.register`
+// to their #[api] signup endpoint and handles the Submit msg.
+// EDIT regions mark where per-app customization is expected.
+
+widget SignupForm {
+    msg {
+        Submit,
+        EditName,
+        EditEmail,
+        EditPassword,
+        EditConfirm,
+        ToggleTerms
+    }
+
+    model {
+        var name str = ""
+        var email str = ""
+        var password str = ""
+        var confirm str = ""
+        var terms_accepted bool = false
+        var invite_token str = "" // prop: prefilled from the route
+        var loading bool = false
+        var error str = ""
+    }
+
+    view {
+        col {
+            // ── EDIT: fields (credential fields live here) ──
+            col {
+                label "Name" { for: "name" }
+                input {
+                    id: "name"
+                    value: .name
+                    oninput: .EditName
+                    placeholder: "Ada Lovelace"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+
+                label "Email" { for: "email" }
+                input {
+                    id: "email"
+                    value: .email
+                    oninput: .EditEmail
+                    placeholder: "you@example.com"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+
+                label "Password" { for: "password" }
+                input {
+                    id: "password"
+                    value: .password
+                    oninput: .EditPassword
+                    placeholder: "••••••••"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+                // ── EDIT: password_rules (policy hint / strength meter) ──
+                text "At least 8 characters" { style: "text-xs text-gray-500" }
+
+                label "Confirm password" { for: "confirm" }
+                input {
+                    id: "confirm"
+                    value: .confirm
+                    oninput: .EditConfirm
+                    placeholder: "••••••••"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+                style: "gap-2"
+            }
+
+            // ── EDIT: terms (ToS gating checkbox) ──
+            col {
+                checkbox {
+                    checked: .terms_accepted
+                    onchange: .ToggleTerms
+                }
+                label "I agree to the Terms of Service" { for: "terms" }
+                style: "gap-2"
+            }
+
+            // ── EDIT: error_display ──
+            if .error != "" {
+                text f"error: ${.error}" { style: "text-sm text-red-600" }
+            }
+
+            // ── EDIT: submit ──
+            button "Create account" {
+                onclick: .Submit
+                disabled: .loading
+                variant: "default"
+                style: "w-full px-4 py-2 bg-blue-600 text-white rounded-lg"
+            }
+
+            separator { style: "my-2" }
+
+            text "Already have an account? Sign in" {
+                style: "text-sm text-gray-500 text-center"
+            }
+
+            style: "w-full max-w-sm mx-auto p-6 gap-4"
+        }
+    }
+
+    on {
+        .EditName(s) -> { .name = s }
+        .EditEmail(e) -> { .email = e }
+        .EditPassword(p) -> { .password = p }
+        .EditConfirm(c) -> { .confirm = c }
+        .ToggleTerms -> { .terms_accepted = !.terms_accepted }
+
+        .Submit -> {
+            .loading = true
+            .error = ""
+            if .password != .confirm {
+                .error = "passwords do not match"
+                .loading = false
+            } else if !.terms_accepted {
+                .error = "please accept the terms first"
+                .loading = false
+            }
+            // consumer wires dataSource.register(name, email, password, invite_token)
+            // here; on success -> navigate; on failure -> set .error, .loading = false
+            .loading = false
+        }
+    }
+}

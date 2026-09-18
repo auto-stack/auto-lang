@@ -1,0 +1,139 @@
+// reference/default.at — SettingsScreen blueprint, "default" variant.
+// Self-contained UI widget (no backend): the consumer wires `dataSource.load` /
+// `dataSource.save` and owns `actions.save` / `actions.reset` semantics.
+// EDIT regions mark where per-app customization is expected.
+
+widget SettingsScreen {
+    msg {
+        Save,
+        Reset,
+        ConfirmReset,
+        CancelReset,
+        AskDeleteAccount,
+        ToggleNotifications,
+        EditDisplayName,
+        SelectLanguage
+    }
+
+    model {
+        var display_name str = ""
+        var notifications bool = true
+        var language str = "en"
+        var saved_language str = "en"
+        var dirty bool = false
+        var loading bool = false
+        var error str = ""
+        var confirm_open bool = false
+    }
+
+    view {
+        col {
+            // ── EDIT: custom_section (repeat per props.sections entry) ──
+            form {
+                col {
+                    text "Profile" { style: "text-lg font-semibold" }
+                    label "Display name" { for: "display_name" }
+                    input {
+                        id: "display_name"
+                        value: .display_name
+                        oninput: .EditDisplayName
+                        style: "w-full px-3 py-2 border rounded-lg text-sm"
+                    }
+
+                    label "Notifications" { for: "notifications" }
+                    switch {
+                        checked: .notifications
+                        onchange: .ToggleNotifications
+                    }
+
+                    label "Language" { for: "language" }
+                    select {
+                        value: .language
+                        onchange: .SelectLanguage
+                        option "en" {}
+                        option "zh" {}
+                        option "ja" {}
+                    }
+                    style: "gap-3"
+                }
+                style: "w-full max-w-xl gap-4"
+            }
+
+            separator { style: "my-2" }
+
+            // ── EDIT: danger_zone (destructive actions, alert-dialog guarded) ──
+            col {
+                text "Danger zone" { style: "text-lg font-semibold text-red-600" }
+                button "Delete account" {
+                    variant: "destructive"
+                    onclick: .AskDeleteAccount
+                    style: "px-4 py-2 border border-red-600 text-red-600 rounded-lg"
+                }
+                style: "gap-2"
+            }
+
+            // ── EDIT: error_display ──
+            if .error != "" {
+                text f"error: ${.error}" { style: "text-sm text-red-600" }
+            }
+
+            col {
+                button "Save changes" {
+                    onclick: .Save
+                    disabled: !.dirty
+                    style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+                }
+                button "Reset" {
+                    onclick: .Reset
+                    disabled: !.dirty
+                    variant: "outline"
+                    style: "px-4 py-2 border rounded-lg"
+                }
+                style: "gap-2"
+            }
+
+            // dirty-guard confirm (alert-dialog surface, PLAN-016 form)
+            if .confirm_open {
+                alert-dialog (open: .confirm_open) {
+                    alert-dialog-content {
+                        alert-dialog-header {
+                            alert-dialog-title "Discard unsaved changes?"
+                            alert-dialog-description "Your edits have not been saved."
+                        }
+                        alert-dialog-footer {
+                            alert-dialog-cancel "Keep editing" { onclick: .CancelReset }
+                            alert-dialog-action "Discard" { onclick: .ConfirmReset }
+                        }
+                    }
+                }
+            }
+
+            style: "w-full max-w-xl mx-auto p-6 gap-4"
+        }
+    }
+
+    on {
+        .EditDisplayName(s) -> { .display_name = s; .dirty = true }
+        .ToggleNotifications -> { .notifications = !.notifications; .dirty = true }
+        .SelectLanguage(lang) -> { .language = lang; .dirty = true }
+
+        .Save -> {
+            .loading = true
+            .error = ""
+            // consumer wires dataSource.save(draft) here;
+            // on success clear .dirty; on failure set .error
+            .dirty = false
+            .loading = false
+        }
+        .Reset -> { .confirm_open = true }
+        .CancelReset -> { .confirm_open = false }
+        .AskDeleteAccount -> {
+            // actions consumer-side: confirm + delete account flow
+        }
+        .ConfirmReset -> {
+            .confirm_open = false
+            .dirty = false
+            // restore draft from last dataSource.load snapshot
+        }
+    }
+}

@@ -250,7 +250,7 @@
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
 | playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
 | website | active | 8 | [website/project.md](website/project.md) |
-| blueprint | active | 5 | [blueprint/project.md](blueprint/project.md) |
+| blueprint | active | 14 | [blueprint/project.md](blueprint/project.md) |
 | autoui-skill | active | 2 | [autoui-skill/project.md](autoui-skill/project.md) |
 
 <details><summary>auto-playground 模块明细</summary>
@@ -334,10 +334,19 @@
 | 模块 | 职责 | 状态 |
 |---|---|---|
 | contract | Blueprint 六问契约（输入/输出/状态归属/变体/打包解析/双形态） | active |
-| form/login | 登录表单 blueprint | active |
+| form/login | 登录表单 blueprint（minimal / with_sso / two_column） | active |
+| form/signup | 注册表单 blueprint | active |
+| form/settings | 设置页 blueprint（分区 + 危险区确认） | active |
+| form/wizard | 分步向导 blueprint | active |
+| navigation/sidebar-nav | 侧边导航（三段式内容）blueprint | active |
+| navigation/sidebar-shell | 应用壳 blueprint（header + sidebar + 内容槽 + user menu） | active |
+| dashboard/overview | 仪表盘总览 blueprint | active |
 | data-display/note-list | 笔记列表展示 blueprint | active |
+| data-display/data-table-crud | 查询表格 CRUD blueprint | active |
+| data-display/master-detail | 主从视图 blueprint | active |
+| feedback/empty-state | 空态三分法 blueprint | active |
+| feedback/result-page | 结果页 blueprint | active |
 | editor/note-editor | 笔记编辑器 blueprint | active |
-| navigation/sidebar-nav | 侧边导航 blueprint | active |
 
 </details>
 

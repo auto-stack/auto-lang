@@ -1,0 +1,119 @@
+// reference/default.at — MasterDetail blueprint, "default" variant.
+// Two-pane list + detail. Consumer wires dataSource.fetch_list /
+// dataSource.fetch_detail and owns the actions.preview semantics.
+// EDIT regions mark where per-app customization is expected.
+
+widget MasterDetail {
+    msg {
+        SearchChanged,
+        Select,
+        BackToList
+    }
+
+    model {
+        var query str = ""
+        var items []Item = []
+        var selected_id str = ""
+        var detail_loading bool = false
+        var detail_error str = ""
+        var stacked bool = false // true below props.breakpoint
+    }
+
+    view {
+        row {
+            // ── master pane ──
+            col {
+                input {
+                    id: "search"
+                    value: .query
+                    oninput: .SearchChanged
+                    placeholder: "Filter…"
+                    style: "w-full px-3 py-2 border rounded-lg text-sm"
+                }
+                list {
+                    for item in .items {
+                        col {
+                            // ── EDIT: list_item ──
+                            row {
+                                text f"${item.title}" { style: "text-sm" }
+                                badge f"${item.tag}" {
+                                    variant: "outline"
+                                }
+                                style: "gap-2"
+                            }
+                        }
+                    }
+                    style: "w-full gap-1"
+                }
+                style: "w-1/3 gap-2 p-2"
+            }
+
+            separator {
+                orientation: "vertical"
+                style: "min-h-full"
+            }
+
+            // ── detail pane ──
+            col {
+                if .selected_id == "" {
+                    // ── EDIT: empty_selection ──
+                    col {
+                        text "Select an item to preview" {
+                            style: "text-sm text-gray-500"
+                        }
+                        style: "items-center justify-center gap-2"
+                    }
+                } else if .detail_loading {
+                    skeleton {
+                        lines: 4
+                        style: "w-full"
+                    }
+                } else if .detail_error != "" {
+                    // ── EDIT: error_display ──
+                    col {
+                        text f"error: ${.detail_error}" {
+                            style: "text-sm text-red-600"
+                        }
+                        button "Back to list" {
+                            onclick: .BackToList
+                            variant: "outline"
+                            style: "px-3 py-1 border rounded-lg text-sm"
+                        }
+                        style: "gap-2"
+                    }
+                } else {
+                    // ── EDIT: detail ──
+                    col {
+                        text "Detail" { style: "text-lg font-semibold" }
+                        text "Consumer renders the fetched detail here" {
+                            style: "text-sm text-gray-500"
+                        }
+                        style: "gap-2"
+                    }
+                }
+                style: "flex-1 gap-2 p-4"
+            }
+
+            style: "w-full min-h-0"
+        }
+    }
+
+    on {
+        .SearchChanged(q) -> {
+            .query = q
+            // consumer wires dataSource.fetch_list(q) here
+        }
+        .Select(id) -> {
+            .selected_id = id
+            .detail_loading = true
+            .detail_error = ""
+            // consumer wires dataSource.fetch_detail(id) here;
+            // on success -> render detail; on failure -> .detail_error
+            .detail_loading = false
+        }
+        .BackToList -> {
+            .selected_id = ""
+            .detail_error = ""
+        }
+    }
+}
