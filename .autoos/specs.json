@@ -4,6 +4,19 @@
       "id": "reports",
       "items": [
         {
+          "id": "P651-1",
+          "title": "autodown-editor-block-closure — 变更摘要",
+          "content": "编辑器 block 类型三态矩阵与闭合（RC-E 引擎对拍单元）。T-00 三态支持矩阵在案（attachments/651-matrix.md：17 kind × view/edit/streaming × engine-TS/core-Rust 逐格，双实现独立盘点交叉校验）；T-01+T-02 红项 8 格全闭合（VM 编辑壳 core.rs：fence 语言发射/query+embed 冻结源行/mermaid 入 fence 族/math 叶 %{ }% 往返/块锚 ^id 通道/details 折叠点击翻转/行首规则 7→10 对齐 TS INPUT_RULES/表格 align+IAL canonical :--- 还原）+ 5 项 DEBTS 提案（Q-4）+ 2 豁免维持；T-03 对拍 gate 常驻（t651_* 9/9 + autodown_editor 121/121 + closure corpus 幂等锚；gallery editor_tab 状态占位登记=auto-down a615d69）。回归：parser parity 16 测绿 + vm-smoke groups 1-10 绿（group 4 预存红在案/group 11 探针甄别 PASS）+ tf 2568/2569（唯一败=ui_gen 预存红 master 复现）。landing=master ff3c85b25..86b020ece（cherry-pick 等价落盘）。",
+          "file": "docs/plans/archive/651-autodown-editor-block-closure.md",
+          "related": [
+            "PLAN-651",
+            "GOAL-007"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
+        },
+        {
           "id": "P654-1",
           "title": "nested-timesource-path-and-clock — 变更摘要",
           "content": "PLAN-654（阶段 2+3 同契约）：TimeSource path 级订阅 + 框架 Clock 服务。阶段 A InstancePath=`{widget}@{mount_seq}`（always/root 为类型名）；装配期 mounted_paths 与类型 mounted_types 并行；renderer 订阅 identity 含 path（同 widget 多实例分订阅/分退订）；派发 IcedMessage.widget 带 path，on_with_input_for/fire_timer 剥 @seq 走类型级 handler（单 VM 根态——path 级订阅 ≠ path 级状态隔离，已文档化+单测钉住）。阶段 B Clock C1+C2：Time.now_sec() handler 路径 + 视图引用 __clock_ 时框架 1Hz 注入 __clock_now_sec/__clock_hhmm（与 desktop __wm_clock 分钟级对照见 clock-service.md）；无引用零额外泵；.Tick 兼容不回归。实机 gallery 012-clock：652 回归红线 PASS + path 可观测 TS_PATH Demo012Clock@0。landing master A=b13af5927 B=4817b51e1（format-patch apply；隔离钩子拦 merge）。",
