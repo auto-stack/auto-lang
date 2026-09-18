@@ -434,6 +434,13 @@ variant、两端渲染器落实连通结构、gallery 加示例覆盖两种观�
 - 合并收据：master `727b7c9b1`（merge plan-641-dev，基线 e352437b0，实现
   提交 75cfcd47c..49d8be5d1 共 9 个）；主检出冒烟：tabs 单测 8/8 +
   schema_drift 2/2 + docs_gen 4/4。
+- 归档后 follow-up（2026-09-18，用户反馈两缺陷：冗余按钮/merged 不可见）：
+  master `d257fac73`（fix 分支 fix-tabs-merged-look，64b65529b）——iced
+  enclosed 臂重构（per-cell 1px 边框 padding-reveal、激活 cell 底部开口、
+  面板自带左/右/下边框顶部开口）+ fold 回调载荷改 tab value 字符串
+  （on 块直绑）+ 046 去冗余按钮改 onselect 自驱 + Vue 三源 class 同步 +
+  plan024 dashboard 测试补 ui feature 门（024 落地基线破损机械修复，
+  解锁 tv/tf）；tf 3611/3613（双红主检出现存对照复证）。
 - 清理（已核实）：wt-guard 首扫 BLOCK——pnpm node_modules junction 364 枚
   （gen 产物内），按处方 PowerShell ReparsePoint 逐链接 rmdir（round 2
   归零）→ guard clean → 移除 worktree `D:/autostack/.wt/lang-641/auto-lang`
