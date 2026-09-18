@@ -275,9 +275,12 @@ fn get_support_details(tag: &str) -> TagSupport {
             &["variant", "title", "message", "style"],
             "alert/toast not implemented",
         ),
-        "tabs" | "tab" | "tabs-list" | "tabs-trigger" | "tabs-content" => TagSupport::fallback(
-            &["style", "active", "value"],
-            "tabs component not implemented — renders as Column",
+        // PLAN-641 T-03：tabs 族升级为真折叠（convert_tabs）——有状态
+        // View::Tabs（选中态受控 + onselect/onclick 事件 + variant 形态）。
+        // 未登记 props 静默忽略（position/orientation VM 子集外）。
+        "tabs" | "tab" | "tabs-list" | "tabs-trigger" | "tabs-content" => TagSupport::partial(
+            &["style", "active", "value", "defaultvalue", "default", "variant", "text", "label", "onselect", "onclick"],
+            "PLAN-641: folds into stateful Tabs (labels/contents/selected); variant default|enclosed; click switches via onselect handler receiving selected index; position/orientation not supported on VM track",
         ),
         "accordion" | "accordion-item" | "accordion-trigger" | "accordion-content" => {
             TagSupport::fallback(
