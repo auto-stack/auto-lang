@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-640
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: blueprint-catalog（官方默认 Blueprint 集 Tier 0 扩容 + gallery 自动化）
 author: [agent]
 created_at: 2026-09-18
@@ -11,7 +11,7 @@ supersedes_spec_components:
   - docs/specs/blueprint/contract.md#Q5-kind-词表
 new_spec_components:
   - docs/specs/blueprint/project.md#官方默认集判定标准
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: []             # blueprint 模块无 goals.md GOAL-NNN 绑定；delta 影响面为模块内契约与清单（复审记录 F-3 有书面说明）
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 10
@@ -340,6 +340,50 @@ T-10 最后。T-03/T-04/T-05/T-06 相互独立可乱序。
      AC-08 抽查据此从 empty-state 改用 form/signup（同为 ⭐ 代表面：
      契约五字段 + 双变体状态机 + gotchas 齐备）。
   blockers：无。next：review（/auto-plan:review）。
+- 2026-09-18 review（/auto-plan:review，与执行同会话——结论全部从工件重建，
+  未采信执行期总结）：plan_revision 1，stage: review，outcome: **pass**，
+  reviewed_commit: plan-640-dev `c3817f0cb93e27a28e890969f20f4d71cc4726dc`
+  （worktree clean，实现全部已提交），base_commit: `776fe8f6c`，
+  dependency_revisions: auto-down detached @ `2d27a0a5`（组内 .wt/lang-640/auto-down），
+  spec_inputs（frozen sha256 前 16 位）: contract.md `3cc4fcc03786fa39` /
+  project.md `d52cfe744d734dc4`（均在 worktree，merge 时随分支落 master）。
+  scope audit：diff = blueprints×35 + examples×6 + docs×3 + crates×3 + .github×1，
+  crates/ 纯测试面（lib.rs 仅 `#[cfg(test)] mod` 注册）→ Category B 档位成立。
+  acceptance_results（复审基线重放）：
+  - AC-01 pass——`scans_default_packages`(13 key)/`login_has_three_references`/
+    `palette_has_no_drift` 三测重放 PASS；`auto bp list` = 13 包按 kind 分组。
+  - AC-02 pass——t01 断言 9 包五字段非空；逐包 grep 审计 Intent/absorbs/
+    guidance/acceptance 正文节 9/9 齐备。
+  - AC-03 pass——`cargo t plan640` 5/5（VM 轨 t02-t04 + vue 轨 t05）。
+  - AC-04 pass——bps.ts 静态 import 0 处 / glob 3 组；`blueprints/**` 在 workflow
+    paths；pnpm build 绿 + bundle 13 包关键串抽查（work 记录在案）。
+  - AC-05 pass——`grep -ri block` src+index.html 零命中；6 个 README 链接目标
+    逐一实存（342/343 归档实名 block-tier-*）。
+  - AC-06 pass（prepared）——SD-01/02/03 文本已在 worktree canonical specs，
+    hash 冻结如上；specs.json upsert + `python scripts/spec-index.py` 按 AC-06
+    原文留 merge 阶段执行。
+  - AC-07 pass——`bp show` ×13、`bp check` 矩阵 11+login 全 3/3；note-editor/
+    sidebar-nav 预存失败（静态 bp 无 loading 硬门契约，计划明文存量不回改，
+    非本计划引入）。
+  - AC-08 pass——双端截图本地留档 `tests/screenshots/{plan640_signup_vm,signup_vue}.png`
+    （仓策 .gitignore 该目录，证据以 work 记录文字 + 测试代码为可复现载体）。
+  - AC-09 pass——KNOWN-DEBT §已知限制 2 行 `| 640 |`（chart 注册缺口裁定 +
+    L1 连字符 key 限制）。
+  findings（均 info 级，不阻断）：
+  - F-1 master 基线红（非本计划回归）：全档 `cargo t` 出 musk_vm_track_p053 簇
+    与 plan367 `real_sidebar_at_parses_with_navtree` 两簇失败，均在本计划 worktree
+    **与 master HEAD 双双复现**（master 已被 plan-025 于基点后合入，动 ui/codegen
+    正是其主题域）；musk 测试与 blueprints/ 零数据耦合、plan367 读的 sidebar.at
+    为基点版本未动。结论：外部基线红，merge/fold 时不得记于本计划；建议路由
+    plan-025 责任面核查（fold 前全量门禁届时须另行定性）。
+  - F-2 `bp check` 的 loading 硬门对静态 bp（shell/空态变体）语义不适——与存量
+    包行为一致，已按现状记录（work §8 T-10），不构成本计划缺陷。
+  - F-3 `touched_goals: []` 书面说明：blueprint 模块在 docs/specs/goals.md 无
+    GOAL-NNN 绑定，本 delta 影响面为模块内契约（Q5 词表）与模块清单/判定标准，
+    无跨 goal 语义。
+  evidence：本节命令与结果均可重放（worktree 移除后以 master 落地版 + 归档计划
+  记录为准）；spec delta 文本冻结 hash 见 spec_inputs。next：merge
+  （/auto-plan:merge——落 master、specs.json upsert + spec-index.py、归档清理）。
 
 ## 10. 待澄清事项
 
