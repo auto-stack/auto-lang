@@ -20,6 +20,11 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
     （eject 语义保留，头注登记来源）；
   - **L3 agent generation**：agent 读 spec 生成，`auto bp check` + `auto build`
     循环校验；结构性变体走提升评审（`promotions:`）。
+- **版本面（PLAN-647 终版裁定，P639-D3 核销）**：`blueprints/` = 单版本滚动
+  权威源（升版=全体消费方下次构建重构建；跨仓对齐走 git 层，bp 层禁自造
+  pin/lock，锁面触发条件见 contract Q5⑤）；pac.at `version` 仅展示元数据
+  非约束面；spec frontmatter 顶层与 pac.at `dep` 声明的版本类键均显式报错
+  （双护栏，contract Q5 五项）。
 - 不做：`auto bp` 命令实现本体在 auto-cli（cmd_bp）；组件原语在 packages/widgets；
   运行时动态插件/manifest 加载（终态另议）。
 
