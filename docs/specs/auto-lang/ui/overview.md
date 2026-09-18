@@ -25,6 +25,20 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
+## 现状（2026-09-18）——Select Anything（PLAN-646）
+
+任意 AutoUI 基面框选 → 结构化 Auto/JSON 回吐（知识采集地基）：选择语义
+纯函数（中心点包含命中 + 顶层修剪 + 文档序，`ui/selection/`）、结果信封
+三格式（Auto 切片/JSON/Atom，`ui/selection/output.rs`）。挂点：VM 端
+Alt+拖拽 marquee（`GlobalPress` 臂起笔 + canvas 蒙层 + `__bounds_collected`
+延迟计算 + DevTools「采集」标签页三视图+复制）；Vue 端 dev overlay
+（`node_to_html` 注入 `data-auto-{tag,src,id,span}`，`AUTOUI_SELECT_MARKERS=1`
+门控；脚手架 `auto-sources.ts` 源映射 + `auto-select/overlay.ts`，
+main.ts `import.meta.env.DEV` 动态引用）；MCP 工具 `autoui_select_rect`
+（共享 styled_vtree + layout_bounds + 随帧 source_code）。契约：
+`design/select-anything.md`。`__hot_reload` 泵臂代消费 `needs_bounds`
+（静默会话 bounds 采集闭环，Plan 282 补线）。
+
 ## 现状（2026-09-18）
 
 **012-clock 现代时钟应用重构与传统手表表盘（PLAN-644 落地）**：
