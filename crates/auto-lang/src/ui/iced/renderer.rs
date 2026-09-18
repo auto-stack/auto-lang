@@ -15889,6 +15889,24 @@ fn compare_pngs(
         }
 
         if msg.event == HOT_RELOAD_EVENT {
+            // PLAN-646/Plan 282 补线：needs_bounds 的消费点原本只在 app 消息
+            // 尾部批处理臂——静默会话（无交互、MCP 心跳在问）只有 500ms 泵
+            // 消息到达，走早退分支，采集器永不分发，MCP layout_bounds 常驻
+            // 空（实机 trace：armed 4 次 / consumed 0 次）。泵臂代为消费，
+            // 让无交互会话的 layout_bounds/styled_vtree 回路照常闭环。
+            if *state.app.devtools.needs_bounds.borrow()
+                && state.app.devtools.screenshot_request.borrow().is_none()
+            {
+                *state.app.devtools.needs_bounds.borrow_mut() = false;
+                use crate::ui::iced::LayoutCollector;
+                return iced::advanced::widget::operate(LayoutCollector::new()).map(|bounds_map| {
+                    IcedMessage {
+                        widget: String::new(),
+                        event: "__bounds_collected".to_string(),
+                        input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                    }
+                });
+            }
             if let Ok(Some(_)) = state.component.check_file_changed() {
                 if let Some(path) = state.component.source_path() {
                     if let Ok(code) = std::fs::read_to_string(path) {
