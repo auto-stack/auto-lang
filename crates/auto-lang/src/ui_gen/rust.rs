@@ -2934,15 +2934,41 @@ impl RustGenerator {
                 };
 
                 // Handle image element — generate View::image() or View::image_styled()
+                // PLAN-026 T-07：src 绑定形状容差（025 value 绑定同款——
+                // Ident '.' 前缀 / Dot("."|"self", f)，build_rust_ui 提取
+                // 路径产 Dot 形；缺臂曾致 004 真源 src 静默丢失——AC-05
+                // 非静默丢关键 prop 纪律）。
                 if tag == "image" {
-                    let src = props.get("src")
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = v {
-                            Some(format!("format!(\"{{}}\", self.{})", name))
-                        } else if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
-                            Some(format!("\"{}\"", s))
-                        } else {
-                            None
-                        }).unwrap_or_else(|| "\"\"".to_string());
+                    let src_field = props.get("src").and_then(|v| match v {
+                        AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                            let f = name.as_str().trim_start_matches('.');
+                            (!f.is_empty()).then(|| f.to_string())
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) => {
+                            match obj.as_ref() {
+                                crate::ast::Expr::Ident(base)
+                                    if base.as_str() == "." || base.as_str() == "self" =>
+                                {
+                                    Some(field.as_str().to_string())
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    });
+                    let src = match &src_field {
+                        Some(f) => format!("format!(\"{{}}\", self.{f})"),
+                        None => props
+                            .get("src")
+                            .and_then(|v| {
+                                if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                    Some(format!("\"{}\"", s))
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_else(|| "\"\"".to_string()),
+                    };
                     let style_str = props.get("style")
                         .or_else(|| props.get("class"))
                         .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })

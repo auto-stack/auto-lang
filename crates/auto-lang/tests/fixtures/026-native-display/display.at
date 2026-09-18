@@ -30,6 +30,17 @@ widget DisplayBox {
             link (to: "/library") {
                 text "Library"
             }
+            grid {
+                grid-item { text "ga" }
+                grid-item { text "gb" }
+                grid-item { text "gc" }
+                grid-item { text "gd" }
+                cols: 2
+                gap: 8
+            }
+            center {
+                text "centered"
+            }
         }
     }
 }

@@ -867,6 +867,356 @@ mod tests {
         assert!(!session2.broker_ime_commit("x"), "焦点丢失不路由");
     }
 
+    /// PLAN-026 T-07 —— native display 族 e2e（`AUTO_DESKTOP_E2E=1` 门 +
+    /// 026 载体 env；p025_native_input_arm 同型）。三腿真 exe 孵化：
+    /// ①004-profile-card（真源 a2r，queue 档）——image 占位 80×80 Quad
+    /// + 渐变 col + 按钮帧（AC-02）；②display026 fixture——display 族
+    /// 全件（icon lucide 占位 14×14 / badge / divider / avatar / spacer /
+    /// scroll / grid 2×2 / center）帧断言（AC-02/03/05）；③003-converter
+    /// IME——broker_ime_commit("100") 协议级注入 → 换算联动帧 212
+    /// （AC-04，P020-D4 口径协议承载）。帧留痕 AUTO_026_ASSETS →
+    /// docs/plans/reports/assets/026/（帧 dump 代截图——⑤口径）。
+    /// 载体缺省寻址：`target/debug/{profile-card,display026,converter}.exe`
+    /// + `../scratch026/{004-profile-card,display026,003-converter}`；
+    /// env AUTO_026_* 覆盖。
+    #[test]
+    fn p026_native_display_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let exe_p = std::env::var("AUTO_026_PROFILE_EXE")
+            .unwrap_or_else(|_| format!("{manifest}/../../target/debug/profile-card.exe"));
+        let dir_p = std::path::PathBuf::from(
+            std::env::var("AUTO_026_PROFILE_APP_DIR")
+                .unwrap_or_else(|_| format!("{manifest}/../../scratch026/004-profile-card")),
+        );
+        let exe_d = std::env::var("AUTO_026_DISPLAY_EXE")
+            .unwrap_or_else(|_| format!("{manifest}/../../target/debug/display026.exe"));
+        let dir_d = std::path::PathBuf::from(
+            std::env::var("AUTO_026_DISPLAY_APP_DIR")
+                .unwrap_or_else(|_| format!("{manifest}/../../scratch026/display026")),
+        );
+        let exe_c = std::env::var("AUTO_026_IME_EXE")
+            .unwrap_or_else(|_| format!("{manifest}/../../target/debug/converter.exe"));
+        let dir_c = std::path::PathBuf::from(
+            std::env::var("AUTO_026_IME_APP_DIR")
+                .unwrap_or_else(|_| format!("{manifest}/../../scratch026/003-converter")),
+        );
+        if !std::path::Path::new(&exe_p).is_file()
+            || !dir_p.join("src/front/app.at").is_file()
+            || !std::path::Path::new(&exe_d).is_file()
+            || !dir_d.join("src/front/app.at").is_file()
+            || !std::path::Path::new(&exe_c).is_file()
+            || !dir_c.join("src/front/app.at").is_file()
+        {
+            eprintln!(
+                "[p026] skip: 载体缺席（exe_p={exe_p} dir_p={} exe_d={exe_d} dir_d={} exe_c={exe_c} dir_c={}）",
+                dir_p.display(),
+                dir_d.display(),
+                dir_c.display()
+            );
+            return;
+        }
+
+        use crate::ui::desktop_protocol::message::{DrawOp, FrameMode};
+        use crate::ui::session::{LaunchSpec, ProcessModel};
+        let broker_pipe = format!("autodesk-broker-026-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        let code_p =
+            std::fs::read_to_string(dir_p.join("src/front/app.at")).expect("read 004");
+        let code_d =
+            std::fs::read_to_string(dir_d.join("src/front/app.at")).expect("read display");
+        let code_c =
+            std::fs::read_to_string(dir_c.join("src/front/app.at")).expect("read 003");
+        let (exe_p, dir_p) = (exe_p.clone(), dir_p.clone());
+        let (exe_d, dir_d) = (exe_d.clone(), dir_d.clone());
+        let (exe_c, dir_c) = (exe_c.clone(), dir_c.clone());
+        session.desktop.app_resolver =
+            Some(std::sync::Arc::new(move |name: &str| match name {
+                "004-profile-card" => Some(LaunchSpec {
+                    code: code_p.clone(),
+                    source_path: Some(
+                        dir_p.join("src/front/app.at").to_string_lossy().to_string(),
+                    ),
+                    title: Some("Profile Card".into()),
+                    name: Some("profile-card".into()),
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: Some(std::path::PathBuf::from(&exe_p)),
+                    render_decl: Some("queue".into()),
+                    opens: Vec::new(),
+                }),
+                "026-display" => Some(LaunchSpec {
+                    code: code_d.clone(),
+                    source_path: Some(
+                        dir_d.join("src/front/app.at").to_string_lossy().to_string(),
+                    ),
+                    title: Some("Display026".into()),
+                    name: Some("display026".into()),
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: Some(std::path::PathBuf::from(&exe_d)),
+                    render_decl: Some("queue".into()),
+                    opens: Vec::new(),
+                }),
+                "003-converter" => Some(LaunchSpec {
+                    code: code_c.clone(),
+                    source_path: Some(
+                        dir_c.join("src/front/app.at").to_string_lossy().to_string(),
+                    ),
+                    title: Some("Converter".into()),
+                    name: Some("converter".into()),
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: Some(std::path::PathBuf::from(&exe_c)),
+                    render_decl: Some("queue".into()),
+                    opens: Vec::new(),
+                }),
+                _ => None,
+            }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        fn origin_of(session: &DesktopSession, wid: Wid) -> (f32, f32) {
+            session
+                .host
+                .as_ref()
+                .and_then(|h| h.wm.wins.get(&wid))
+                .map(|v| {
+                    let r = *v.rect.borrow();
+                    (r.x, r.y)
+                })
+                .expect("窗原点")
+        }
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| l.ops.iter().map(|o| format!("{o:?}")).collect::<Vec<_>>())
+                );
+                std::thread::yield_now();
+            }
+        }
+        fn quads_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Quad { rect, .. } => Some((rect.x, rect.y, rect.w, rect.h)),
+                    _ => None,
+                })
+                .collect()
+        }
+        fn texts_of(ops: &[DrawOp]) -> Vec<String> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { text, .. } | DrawOp::TextStyled { text, .. } => {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // —— ①004-profile-card：queue 孵化 + image 占位/渐变 col/按钮。
+        let wid_p = session.launch_app("004-profile-card").expect("profile launch");
+        place_window(&mut session, wid_p, 0);
+        wait_frame(
+            &mut session,
+            "004-profile-card",
+            |ops| {
+                quads_of(ops)
+                    .iter()
+                    .any(|r| r.2 == 80.0 && r.3 == 80.0)
+            },
+            "004 image 占位帧",
+        );
+        let mode_p = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_p))
+            .map(|c| c.endpoint.frame_mode)
+            .expect("profile client");
+        assert_eq!(mode_p, FrameMode::Commands, "004 显式 queue → Commands");
+        if let Some(list) = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_p))
+            .and_then(|c| c.composed())
+        {
+            let out = crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+            eprintln!("[p026-dbg] 004 frame:
+{out}");
+        }
+        {
+            let texts = session
+                .broker_clients
+                .values()
+                .find(|c| c.wid == Some(wid_p))
+                .and_then(|c| c.composed())
+                .map(|l| texts_of(&l.ops))
+                .expect("004 composed");
+            assert!(
+                texts.iter().any(|t| t.contains("Jane Cooper")),
+                "004 姓名文本在帧: {texts:?}"
+            );
+            assert!(
+                texts.iter().any(|t| t.contains("Follow")),
+                "004 按钮标签在帧: {texts:?}"
+            );
+        }
+
+        // —— ②display026：display 族全件帧断言。
+        let wid_d = session.launch_app("026-display").expect("display launch");
+        place_window(&mut session, wid_d, 1);
+        wait_frame(
+            &mut session,
+            "026-display",
+            |ops| {
+                texts_of(ops).iter().any(|t| t == "ga")
+                    && texts_of(ops).iter().any(|t| t == "gd")
+            },
+            "display grid 帧",
+        );
+        {
+            let frame = session
+                .broker_clients
+                .values()
+                .find(|c| c.wid == Some(wid_d))
+                .and_then(|c| c.composed())
+                .expect("display composed");
+            let mode_d = session
+                .broker_clients
+                .values()
+                .find(|c| c.wid == Some(wid_d))
+                .map(|c| c.endpoint.frame_mode)
+                .expect("display client");
+            assert_eq!(mode_d, FrameMode::Commands, "display 显式 queue → Commands");
+            let texts = texts_of(&frame.ops);
+            let quads = quads_of(&frame.ops);
+            for want in ["Active", "ga", "gb", "gc", "gd", "centered", "JC", "long content"] {
+                assert!(
+                    texts.iter().any(|t| t.contains(want)),
+                    "display 帧 text {want}: {texts:?}"
+                );
+            }
+            // icon size 14 → 14×14 占位方块（lucide 字形占位口径）。
+            assert!(
+                quads.iter().any(|r| r.2 == 14.0 && r.3 == 14.0),
+                "icon 14×14 占位方块: {quads:?}"
+            );
+            // divider h-1 → 4px 线 quad。
+            assert!(
+                quads.iter().any(|r| r.3 == 4.0 && r.2 > 40.0),
+                "divider 4px 线: {quads:?}"
+            );
+            // scroll 视口 h-40 → 160px 高。
+            assert!(
+                quads.iter().any(|r| r.3 == 160.0),
+                "scroll h-40 视口: {quads:?}"
+            );
+        }
+
+        // —— ③003-converter IME：协议级 ImeCommit 注入 → 联动帧。
+        let wid_c = session.launch_app("003-converter").expect("converter launch");
+        place_window(&mut session, wid_c, 2);
+        wait_frame(
+            &mut session,
+            "003-converter",
+            |ops| {
+                quads_of(ops)
+                    .iter()
+                    .any(|r| r.2 == 320.0 && r.3 == 32.0)
+            },
+            "003 input 帧",
+        );
+        let (ox, oy) = origin_of(&session, wid_c);
+        let (ix, iy) = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_c))
+            .and_then(|c| c.composed())
+            .map(|l| {
+                let q = quads_of(&l.ops);
+                (q[0].0, q[0].1)
+            })
+            .expect("composed quads");
+        assert!(
+            session.broker_pointer_down(ox + ix + 160.0, oy + iy + 16.0, MouseButton::Left),
+            "IME 腿聚焦 celsius"
+        );
+        // 协议级 ImeCommit 注入（数字串经 IME 组合提交——⑤口径承载）。
+        assert!(session.broker_ime_commit("100"), "broker_ime_commit 路由");
+        wait_frame(
+            &mut session,
+            "003-converter",
+            |ops| texts_of(ops).iter().any(|t| t.contains("212")),
+            "IME 注入联动帧（celsius=100 → f=212）",
+        );
+
+        // 帧留痕（AUTO_026_ASSETS=1 → docs/plans/reports/assets/026/）。
+        if std::env::var("AUTO_026_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/026");
+            let _ = std::fs::create_dir_all(&assets);
+            for (app, file) in [
+                ("004-profile-card", "profile-card-frame.txt"),
+                ("026-display", "display-frame.txt"),
+                ("003-converter", "converter-ime-frame.txt"),
+            ] {
+                if let Some(list) = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                {
+                    let out = crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                    let _ = std::fs::write(assets.join(file), out);
+                }
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
     fn composed_texts(session: &DesktopSession, app: &str) -> Vec<String> {
         session
             .broker_clients

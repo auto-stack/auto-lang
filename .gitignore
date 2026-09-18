@@ -189,9 +189,11 @@ target-*/
 scratch/
 
 # PLAN-025 T-07：a2r e2e 载体（020 scratch020 先例——产物不入库，缺省寻址
-# scratch025/ + examples/rust-workspace 生成件；复现见 p025_native_input_arm
+# scratch025/
+scratch026/ + examples/rust-workspace 生成件；复现见 p025_native_input_arm
 # 头注与 scripts/smoke-025-native-input.sh）
 scratch025/
+scratch026/
 examples/rust-workspace/003-converter/
 examples/rust-workspace/025-inputs/
 examples/rust-workspace/testt1/
