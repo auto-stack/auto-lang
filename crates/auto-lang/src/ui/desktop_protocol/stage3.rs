@@ -793,6 +793,80 @@ mod tests {
         assert!(!session.broker_char('y'), "焦点丢失不路由");
     }
 
+    /// PLAN-026 T-05：broker_ime_commit/preedit/cancelled 路由（焦点窗
+    /// → Ime* 落 wire；025 键盘路由同型——D2 定案协议级承载）。
+    #[test]
+    fn broker_ime_production_routes() {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        use crate::ui::desktop_protocol::transport;
+        use crate::ui::session::DesktopSession;
+        // 独立装配第二会话（IME 断言与上一测试的焦点回收段解耦）。
+        // 管道投递有传输时延——预算内自旋收帧（025 键盘路由测试同款）。
+        fn wait_msg(
+            child_end: &mut Box<dyn transport::Transport + Send>,
+        ) -> Option<ProtocolMsg> {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                if let Some(loaded) = child_end.try_recv() {
+                    return Some(loaded.expect("解码"));
+                }
+                if std::time::Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        let pipe2 = format!("autodesk-broker-ime-{}", std::process::id());
+        let listener2 = transport::listen(&pipe2).expect("listen2");
+        let mut session2 = DesktopSession::__test_session();
+        session2.open_desktop(iced::window::Id::unique());
+        let component2 = crate::build_dynamic_component(
+            r#"widget t2 { view { input "n" } }"#,
+            None,
+        )
+        .expect("build2");
+        let app_id2 = session2.allocate_app(component2);
+        let wid2 = session2.wm_add_win(
+            app_id2,
+            "t2".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(480.0, 320.0)),
+        );
+        session2.wm_focus(wid2);
+        let mut child_end2 = transport::connect(&pipe2, 2000).expect("child connect2");
+        let host_end2 = listener2.wait_connect().expect("host accept2");
+        let mut client2 =
+            crate::ui::desktop_protocol::stage3::BrokerClient::new(pipe2.clone(), host_end2);
+        client2.wid = Some(wid2);
+        session2.broker_clients.insert(pipe2.clone(), client2);
+
+        assert!(session2.broker_ime_preedit("中文"), "preedit 路由");
+        match wait_msg(&mut child_end2) {
+            Some(ProtocolMsg::Input(InputMsg::ImePreedit { wid: w, text, .. })) => {
+                assert_eq!((w, text.as_str()), (wid2.0, "中文"));
+            }
+            other => panic!("ImePreedit 未落 wire: {other:?}"),
+        }
+        assert!(session2.broker_ime_commit("中文"), "commit 路由");
+        match wait_msg(&mut child_end2) {
+            Some(ProtocolMsg::Input(InputMsg::ImeCommit { wid: w, text })) => {
+                assert_eq!((w, text.as_str()), (wid2.0, "中文"));
+            }
+            other => panic!("ImeCommit 未落 wire: {other:?}"),
+        }
+        assert!(session2.broker_ime_cancelled(), "cancelled 路由");
+        match wait_msg(&mut child_end2) {
+            Some(ProtocolMsg::Input(InputMsg::ImeCancelled { wid: w })) => {
+                assert_eq!(w, wid2.0);
+            }
+            other => panic!("ImeCancelled 未落 wire: {other:?}"),
+        }
+        // 焦点丢失不路由（与 025 键盘语义同界）。
+        let host2 = session2.host.as_mut().unwrap();
+        host2.wm.wins.clear();
+        host2.wm.focused = None;
+        assert!(!session2.broker_ime_commit("x"), "焦点丢失不路由");
+    }
+
     fn composed_texts(session: &DesktopSession, app: &str) -> Vec<String> {
         session
             .broker_clients

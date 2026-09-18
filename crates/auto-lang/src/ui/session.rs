@@ -3248,6 +3248,73 @@ fn spawn_outproc_child(
         false
     }
 
+    /// 桌面级 IME 提交路由：焦点窗 → (Wid, ImeCommit) 注入
+    /// （PLAN-026 T-05——broker_char 同型；宿主 iced IME 事件订阅缺口
+    /// 并入 P025-D1 在册债，协议级注入为证据承载口径）。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_ime_commit(&mut self, text: &str) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::ImeCommit { wid: wid.0, text: text.to_string() });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级 IME preedit 路由：焦点窗 → (Wid, ImePreedit) 注入
+    /// （组合串 + 光标矩形——候选窗定位消费 not-yet，投影器尾拼显示）。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_ime_preedit(&mut self, text: &str) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::ImePreedit {
+            wid: wid.0,
+            text: text.to_string(),
+            cursor: crate::ui::desktop_protocol::message::WRect::new(0.0, 0.0, 0.0, 0.0),
+        });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级 IME 取消路由：焦点窗 → (Wid, ImeCancelled) 注入。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_ime_cancelled(&mut self) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::ImeCancelled { wid: wid.0 });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
     /// 桌面级滚轮路由：指针命中窗（hit_test）→ (Wid, Scroll) 注入
     /// （窗内 Scrollable 定位在 child 投影器侧——wire Scroll 无坐标）。
     #[cfg(feature = "ui-iced")]

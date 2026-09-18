@@ -128,6 +128,11 @@ pub struct NativeProjector<C: Component> {
     /// 聚焦框编辑 buffer（T-01 D2：聚焦期显示/编辑面——聚焦时自视图值
     /// 初始化，键入/退格就地编辑后经 INPUT_TEXT 代写回写组件）。
     input_buffer: String,
+    /// IME preedit 暂存（PLAN-026 T-05 D2-A 定案：Commit 前组合串——
+    /// 聚焦框渲染尾拼显示；Commit 并入 buffer / Cancelled 消解）。
+    ime_preedit: Option<String>,
+    /// 无聚焦时 IME 输入丢弃计数（I3 留痕观测面——测试/e2e 断言口）。
+    ime_dropped: usize,
     /// 开态 select 槽位（T-01 D3：投影器侧开合状态；None = 全闭）。
     select_open: Option<usize>,
     /// 最近一帧的右键命中表（`on_right_click` 物化消息；渲染时刷新）。
@@ -151,6 +156,8 @@ impl<C: Component> NativeProjector<C> {
             hits: Vec::new(),
             focused_input: None,
             input_buffer: String::new(),
+            ime_preedit: None,
+            ime_dropped: 0,
             select_open: None,
             right_hits: Vec::new(),
             pointer: (0.0, 0.0),
@@ -209,6 +216,7 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             input_slots: 0,
             focused_input: self.focused_input,
             input_buffer: self.input_buffer.clone(),
+            ime_preedit: self.ime_preedit.clone(),
             select_slots: 0,
             select_open: self.select_open,
             overlays: Vec::new(),
@@ -255,6 +263,7 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             if slot >= ctx.input_slots {
                 self.focused_input = None;
                 self.input_buffer.clear();
+                self.ime_preedit = None;
             }
         }
         // select 开合重定位（同槽序纪律——D3）。
@@ -293,12 +302,27 @@ impl<C: Component> FrameSource for NativeProjector<C> {
                 }
             }
             InputMsg::CharTyped { ch, .. } => self.char_typed(*ch),
+            // IME 闭环（PLAN-026 T-05，D2 定案）：Commit = 聚焦 buffer
+            // 追加 → INPUT_TEXT 代写 → on_change 派发；Cancelled =
+            // preedit 消解；Preedit = 暂存（渲染尾拼）。消费先例 =
+            // editor_frame.rs:195-199（wire v1.0 在册变体）。
+            InputMsg::ImeCommit { text, .. } => self.ime_commit(text),
+            InputMsg::ImeCancelled { .. } => self.ime_preedit = None,
+            InputMsg::ImePreedit { text, .. } => {
+                if self.focused_input.is_some() {
+                    self.ime_preedit = Some(text.clone());
+                } else {
+                    self.ime_dropped += 1;
+                }
+            }
             InputMsg::KeyPressed { key, .. } if *key == 8 => self.backspace(),
-            // Esc（VK_ESCAPE = 27）关开态 select（T-01 D3）。
+            // Esc（VK_ESCAPE = 27）关开态 select（T-01 D3）+ preedit
+            // 消解（ImeCancelled 同义宿主路径）。
             InputMsg::KeyPressed { key, .. } if *key == 27 => {
                 if self.select_open.take().is_some() {
                     self.rev += 1;
                 }
+                self.ime_preedit = None;
             }
             // 滚轮派发（T-01 D5）：指针位包含 → 内层胜（倒序；嵌套
             // scrollable 外层先登记）→ 唯一 Scrollable 兜底（wire Scroll
@@ -379,6 +403,7 @@ impl<C: Component> NativeProjector<C> {
             Some(HitEntry::Input { value, slot, .. }) => {
                 self.focused_input = Some(slot);
                 self.input_buffer = value;
+                self.ime_preedit = None;
                 self.rev += 1;
             }
             // 轨道点击 → f32 = min + clamp((x-x0)/w)×range（step 取整）→
@@ -449,6 +474,29 @@ impl<C: Component> NativeProjector<C> {
         self.dispatch_input_edit(msg);
     }
 
+    /// ImeCommit（PLAN-026 T-05）：组合串并入聚焦 buffer → 同 CharTyped
+    /// 通道回写（INPUT_TEXT 代写 + on_change 派发 + rev 前进）。无聚焦 /
+    /// 无 handler = 丢弃 + ime_dropped 留痕（I3）。preedit 暂存随并入
+    /// 消解（组合终态 = Commit）。
+    fn ime_commit(&mut self, text: &str) {
+        if self.focused_input.is_none() {
+            self.ime_dropped += 1;
+            return;
+        }
+        let Some(msg) = self.focused_on_change() else {
+            self.ime_dropped += 1;
+            return;
+        };
+        self.ime_preedit = None;
+        self.input_buffer.push_str(text);
+        self.dispatch_input_edit(msg);
+    }
+
+    /// 无聚焦 IME 丢弃计数（观测面——与 uncovered_seen 同级的显式留痕）。
+    pub fn ime_dropped(&self) -> usize {
+        self.ime_dropped
+    }
+
     /// 滚轮路由（T-01 D5）：内层命中胜 → 唯一 Scrollable 兜底；不命中
     /// 且非唯一 = 静默不路由（多 Scrollable 且指针缺席 → 目标歧义，I3）。
     fn wheel(&mut self, dx: f32, dy: f32) {
@@ -515,6 +563,8 @@ struct NativeCtx<M: Clone + std::fmt::Debug> {
     /// 聚焦框编辑 buffer 快照（臂内显示消费——聚焦框显示 buffer 而非
     /// 视图值，D2）。
     input_buffer: String,
+    /// IME preedit 暂存快照（PLAN-026 T-05 D2-A：聚焦框渲染尾拼消费）。
+    ime_preedit: Option<String>,
     /// select 槽位计数（开合身份，D3）。
     select_slots: usize,
     /// 开态 select 槽位快照（臂内判开态渲染 + 命中互斥登记）。
@@ -1206,13 +1256,17 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
     ctx.input_slots += 1;
     // 显示面（D2）：聚焦框显 buffer（编辑面——解析失败时组件状态不变，
     // 用户意图仍可见），非聚焦框显视图值；空显 placeholder。
-    let (text, color) = {
-        let shown = if focused { &ctx.input_buffer } else { value };
-        if shown.is_empty() {
-            (placeholder.to_string(), PLACEHOLDER_FG)
-        } else {
-            (shown.to_string(), style.fg.unwrap_or(TEXT_FG))
-        }
+    // PLAN-026 T-05（D2-A）：IME preedit 尾拼——聚焦框 buffer 后接组合串
+    // （单行 = 独立 Text op 差分色显示；多行 = 并入末行同色，边界随注）。
+    let shown = if focused { ctx.input_buffer.clone() } else { value.to_string() };
+    let preedit_tail =
+        if focused { ctx.ime_preedit.clone().unwrap_or_default() } else { String::new() };
+    let (text, color) = if shown.is_empty() && preedit_tail.is_empty() {
+        (placeholder.to_string(), PLACEHOLDER_FG)
+    } else if multiline && !preedit_tail.is_empty() {
+        (format!("{shown}{preedit_tail}"), style.fg.unwrap_or(TEXT_FG))
+    } else {
+        (shown.clone(), style.fg.unwrap_or(TEXT_FG))
     };
     let size = style.font_size.unwrap_or(14.0);
     let line_h = size * LINE_H_FACTOR;
@@ -1231,6 +1285,10 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
             });
         }
     } else if !text.is_empty() {
+        // preedit 尾拼 op（差分色——真下划线无 DrawOp 通道，PLACEHOLDER_FG
+        // 近似 + 随注；文本排布 = buffer 尾 x 累进）。
+        let tail = if focused { preedit_tail.clone() } else { String::new() };
+        let shown_w = measure_text(&text, size);
         ctx.ops.push(DrawOp::Text {
             x: x + INPUT_PAD,
             y: y + (h - line_h) / 2.0,
@@ -1239,6 +1297,16 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
             color,
             text,
         });
+        if focused && !tail.is_empty() {
+            ctx.ops.push(DrawOp::Text {
+                x: x + INPUT_PAD + shown_w,
+                y: y + (h - line_h) / 2.0,
+                size,
+                line_height: line_h,
+                color: PLACEHOLDER_FG,
+                text: tail,
+            });
+        }
     }
     if let Some(msg) = on_change {
         ctx.hits.push(HitEntry::Input {
@@ -1784,6 +1852,59 @@ mod tests {
                 )
                 .build()
         }
+    }
+
+    /// PLAN-026 T-05：IME 闭环投影器侧（D2 定案：Commit 并入 buffer →
+    /// INPUT_TEXT 代写 → on_change 派发 → 帧变；Preedit 尾拼显示（差分
+    /// 色 op）；Cancelled 消解；无聚焦丢弃 + ime_dropped 留痕）。
+    #[test]
+    fn ime_commit_preedit_cancelled_loop() {
+        let mut p = NativeProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        p.ensure_covered().expect("converter Covered");
+        let _ = p.render_frame(); // 命中表首帧（click 消费上一帧 hits）
+        // 聚焦 celsius（首 input 槽位——003 金样同位坐标）。
+        click(&mut p, 100.0, 26.0);
+        // ① ImePreedit：暂存 → 聚焦框尾拼 op（差分色）。
+        p.on_input(&InputMsg::ImePreedit { wid: 1, text: "中文".into(), cursor: WRect::new(0.0, 0.0, 0.0, 0.0) });
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(
+            texts.iter().any(|t| t.contains("中文")),
+            "preedit 尾拼进帧: {texts:?}"
+        );
+        // preedit 独立 op（差分色 = PLACEHOLDER_FG 近似下划线）。
+        let preedit_op = frame.ops.iter().any(|op| {
+            matches!(op, DrawOp::Text { color, text, .. }
+                if *color == PLACEHOLDER_FG && text.contains("中文"))
+        });
+        assert!(preedit_op, "preedit 尾拼差分色 op 在场");
+        // ② ImeCancelled：组合取消 → preedit 消解（帧面回退）。
+        p.on_input(&InputMsg::ImeCancelled { wid: 1 });
+        let frame = p.render_frame();
+        assert!(
+            !texts_of(&frame).iter().any(|t| t.contains("中文")),
+            "Cancelled 消解 preedit"
+        );
+        // ③ ImeCommit：并入 buffer → on_change 派发（值 5 → 帧联动）。
+        p.on_input(&InputMsg::ImeCommit { wid: 1, text: "5".into() });
+        p.on_input(&InputMsg::ImeCommit { wid: 1, text: "中文".into() });
+        assert_eq!(p.ime_dropped(), 0, "聚焦在册不丢弃");
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(
+            texts.iter().any(|t| t.contains("5中文")),
+            "Commit 并入 buffer 显示面: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("41")),
+            "on_change 派发联动帧（celsius=5中文 parse 前缀 5 → f=41）: {texts:?}"
+        );
+        // ④ 无聚焦 Commit = 丢弃留痕。
+        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 }); // Esc 不失焦——改走结构变化失焦：省略，直接测无聚焦路径
+        let mut p2 = NativeProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        p2.on_input(&InputMsg::ImeCommit { wid: 1, text: "x".into() });
+        p2.on_input(&InputMsg::ImePreedit { wid: 1, text: "y".into(), cursor: WRect::new(0.0, 0.0, 0.0, 0.0) });
+        assert_eq!(p2.ime_dropped(), 2, "无聚焦丢弃留痕");
     }
 
     fn quads_of(frame: &DrawList) -> Vec<WRect> {
