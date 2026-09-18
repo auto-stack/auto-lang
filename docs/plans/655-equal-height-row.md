@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-655
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: reviewed             # drafting → executing → execution_done → reviewed → archived
 feature_name: equal-height-row
 author: [agent]
 created_at: 2026-09-18
@@ -190,6 +190,64 @@ evidence: >
 blockers: []
 next: review（worktree D:/autostack/.wt/lang-655/auto-lang 与组内 auto-down
   兄弟 b1c88de detached 保留至 merge 清理）
+```
+
+```yaml
+stage: review
+plan_id: PLAN-655
+plan_revision: 1
+outcome: pass
+reviewed_commit: 7044d67cf7da61936fa2e8d1d33404aaad799906（plan-655-dev，工作树
+  clean 复验；worktree 实存经 git worktree list --porcelain 确认）
+base_commit: 9886ba9018de3510e57a889be3ef7275d8fc40c8
+dependency_revisions: auto-down 兄弟 wt b1c88def9bfa23f02397bff79e93890bb2e1120c
+  （detached）；auto-os 临时取证 wt 64e2b2b（已 wt-guard 过闸移除，证据入库）
+spec_inputs: docs/specs/auto-lang/ui/overview.md#items-stretch-两阶段行语义
+  （PLAN-655）@ 7044d67cf（branch 内已提交=frozen 副本；P642 节第 6 条的
+  items-stretch 让渡约定由本节第 4 条显式解除，无未声明冲突）
+acceptance_results:
+  AC-01: pass——复审基线新鲜重跑 p655 三单元绿（y 等差 ±1.5px 断言/可见性
+    w,h>0/最短卡拉伸 spread>120px/overflow-hidden frame 组合/1024×800 与
+    1920×1200 双尺寸）；命令 cargo nextest run -p auto-lang --lib
+    --features ui-iced,iced-layout-tests -E 'test(p655) or test(layout_tests)'
+    → 61 run 59 passed 2 failed（两红=master 同败预存，见下）。
+  AC-02: pass——p655_real_008_corpus_cards_visible_and_equal_height 绿
+    （真实语料卡片文本全渲染非 0×0 + Buy Now×2/Contact Us 三 CTA 等高）。
+  AC-03: pass——语料 diff 复读（还原行+PLAN-655 注释）；入库截图复审
+    （docs/reports/p655/p655_gallery_008.png 等 9 图+脚本）：画廊内嵌 008
+    三卡等高 CTA 对齐、scrolled 形态全内容含 CTA 在 720 frame 内可见、
+    009/016/002 双形态不回归；auto-os 产物 items-stretch 已传播（008 产物
+    diff +359）。
+  AC-04: pass——cargo t ui 5160 run 5128 绿/32 败，32 败名集合于 master
+    复跑 0 passed=零新增红；复审加跑 cargo tf（仓规全档门禁）2568 绿/1 败
+    （ui_gen::rust::tests::test_display_family_codegen_arm_fixture，master
+    复跑同败=预存，与 654 landing 漂移相关非本计划面）；layout_tests 同 AC-01。
+findings:
+  F-R1(info,已闭合): 计划原测量方案（对 Fill 包装产物做 compression 度量）
+    经 iced 0.14 flex 源码核证伪——cross-Fill 子项 second-pass max 从
+    cross=0.0 起步；等效自持三段布局实现，语义契约 G-1/G-2 与全部 AC 未
+    弱化，记录于 T-01 证据与 2f3aa65da 提交信息。
+  F-R2(info): 「auto-os 产物再生成 diff 仅 008」预期不成立——实际为语料
+    漂移全量（637 等计划演进累计，auto-os master 产物滞后）；008 hunk 正确，
+    漂移同步属 auto-os 常规流程不属本计划授权面。
+  F-R3(info,merge 注记): 执行期间 master 前进至 09deafde8（PLAN-654 stage A
+    landing，touching ui_gen/vue.rs+api_gen.rs，与本分支文件不相交）——merge
+    前需同步 master；主检出另有他session WIP examples/rust-workspace/Cargo.toml
+    （已上报未触碰，不随本计划 landing）。
+  遗漏/延后/workaround 扫描: 无——非 stretch 路径逐字保留、p625 sentinel
+    （非 stretch 行 0×0 哨兵）保持、justify 垫片语义原样并入；无 dbg!/TODO/
+    未处理告警（stretch_line.rs 零告警）；spec delta 无越权发布（live ledger
+    未动，canonical 沉淀归 merge）。
+  touched_goals 空集说明: 本计划目标以 G-1/G-2 叙述于计划正文，非 goals
+    注册表条目，故 touched_goals=[]。
+evidence: >
+  本复审与实现同会话（独立性受限声明）——结论全部由工件重构：测试在
+  reviewed_commit 新鲜重跑（p655/layout_tests 本回合、t ui 与 tf 于同一
+  提交），失败归属以 master 复跑过滤集实证（t ui 32 集 0 passed；tf 1 败
+  同名），截图自入库副本（docs/reports/p655/）复读，spec delta 以
+  git diff 9886ba901..7044d67cf 独立复读。
+next: merge（auto-plan-merge；worktree 与组内 auto-down 兄弟随 merge 清理；
+  产物沉淀 SD-01 五条 + ledger 回写）
 ```
 
 ## 待澄清事项
