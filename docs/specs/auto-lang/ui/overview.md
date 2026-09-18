@@ -424,6 +424,16 @@ VM 画廊内嵌形态（AppViewport.vm.at + demos/*.at 适配器 + registry.at�
 6. **frame scroll 兜底 + 内嵌语料 Fill 高度约定（add，T-12）**：overflow-y:hidden + justify-Center/End 列的内容包 Shrink 高度 Scrollable——短内容被容器 center_y 垂直居中、长内容封顶滚动（009/016）。配套语料约定：**内嵌 demo 避免 Fill 高度技巧**（items-stretch 等高拉伸、定高滚动上下文中的 flex-1——Fill 在 scroll 无界主轴下解析塌缩，008 实证）；等高需求待 PLAN-655 StretchLine 原语（P642-D12 近期处置）。
 7. **已知开放项**：子件主题魔法变量统一状态覆写链（016 打开翻转宿主主题持久）在案未修（T-13 needs_replan，见债账 P642-D9/D12）；008 卡片 scroll 折叠线下滚轮可达性待人工复验。
 
+## items-stretch 两阶段行语义（PLAN-655）
+
+`items-stretch` 行的 enduring 渲染契约，2026-09-18 落地（P642-D12 路线 A）：
+
+1. **等高原语（add）**：stretch 行由 `ui/iced/stretch_line.rs` 的 `StretchLine` 控件承载——两阶段布局：measure 遍按各子项**最终份额宽** + 子项主轴 compression 取内容自然高（`h_line = max(子项内容高)`）；final 遍以 `effective = 有界父上下文 min(h_line, 入射上限) / 无界 h_line` 落位。行高 = max 子项内容高，子项等高 = 行高（CSS `align-items:stretch` 同构），**任意祖先上下文成立**（scroll 内容臂无界下不再塌缩——P642-D12 008 定价卡消失根修）。
+2. **交叉轴拉伸载体（add）**：Shrink 高子项以 `min_h = effective` 拉伸到行高（CSS auto 高 flex 项语义；justify-between 列因此在行高内分布内容，008 卡底 CTA 对齐实证）；Fixed 高子项不拉伸（CSS：显式高不参与 stretch），自然钳制；Fill 高子项解析到行高。
+3. **主轴配给（add）**：行内 Fill/FillPortion 子项按 third-pass 数学均分剩余宽（justify 垫片即 FillPortion Space，并入同一配给）；宽度探测先于测高（文本换行行数依赖最终宽——宽度未定时测高会把最高卡测短，内容下溢钳裁）。
+4. **旧 Fill 包装形态退役（retire）**：build_row 不再用「子项包 height:Fill 容器」模拟 stretch（该形态依赖有界祖先，无界下塌缩 0 高）；上节第 6 条「内嵌 demo 避免 items-stretch」约定自本节起解除，008 语料还原 items-stretch。scroll 兜底本身（overflow-hidden 列包 Shrink Scrollable）不受影响。
+5. **非目标**：012-clock 横向 stretch 行（列交叉轴=宽度，现实现无害）；iced 引擎级 flex 补丁（P642-D12 远期路线 B，iced 升级时处理）。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）

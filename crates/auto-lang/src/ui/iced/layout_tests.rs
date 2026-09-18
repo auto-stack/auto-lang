@@ -2764,10 +2764,11 @@ fn p642_t12_overflow_frame_scrolls_and_centers() {
     }
 }
 
-/// PLAN-642 T-12 探针③:真实 008 语料(单 widget)挂进 overflow-hidden+
-/// justify-center frame(h-720)→ scroll 兜底路径 → 卡片是否渲染。
+/// PLAN-642 T-12 探针③ → PLAN-655 AC-02 断言化:真实 008 语料(单 widget)
+/// 挂 720 视口(frame scroll 兜底形态)→ 卡片文本全部渲染 + 三卡等高
+/// (justify-between 的三个 Buy Now 落同一条卡底线)。
 #[test]
-fn p642_t12_real_008_in_frame_probe() {
+fn p655_real_008_corpus_cards_visible_and_equal_height() {
     let src_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../examples/ui/008-pricing-table/src/front/app.at");
     let src = std::fs::read_to_string(&src_path).expect("008 source");
@@ -2781,16 +2782,9 @@ fn p642_t12_real_008_in_frame_probe() {
     let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
     let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
     let (view, _ids, _probe) = comp.view_with_debug_gated(false);
-    let frame = View::<()>::Column {
-        children: vec![View::Empty],
-        spacing: 0,
-        padding: 0,
-        style: Style::parse("w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center").ok(),
-        onclick: None, on_right_click: None,
-    };
-    // 把 demo 视图挂进 frame:用 Column 组合(frame 的孩子位置替换)。
-    // 简化:直接并排 simulator 两次 —— 外层 frame 由真实装配替代过于复杂,
-    // 这里直接量 demo 自身(等价于 frame 内布局,因为 frame 仅提供高度上限)。
+    // 外层 frame 由真实装配替代过于复杂,直接量 demo 自身(等价于 frame 内
+    // 布局,因为 frame 仅提供高度上限;scroll 兜底组合由 p655_stretch_in_
+    // overflow_frame_renders_equal 单元覆盖)。
     let mut ui = iced_test::Simulator::with_size(
         <iced_test::core::Settings as Default>::default(),
         (1024.0, 720.0),
@@ -2801,10 +2795,49 @@ fn p642_t12_real_008_in_frame_probe() {
             Ok(t) => {
                 let b = t.bounds();
                 eprintln!("T12D {probe}: x={:.1} y={:.1} w={:.1} h={:.1}", b.x, b.y, b.width, b.height);
+                assert!(
+                    b.width > 0.0 && b.height > 0.0,
+                    "008 卡片文本 {probe} 必须可见(P642-D12 塌缩形态 = 0×0),实测 {:.1}x{:.1}",
+                    b.width,
+                    b.height
+                );
             }
-            Err(_) => eprintln!("T12D {probe}: NOT FOUND"),
+            Err(_) => panic!("008 卡片文本 {probe} 未找到(items-stretch 还原后必须全渲染)"),
         }
     }
+    // 三卡等高:收集三卡卡底 CTA 文本("Buy Now"×2 + "Contact Us";
+    // justify-between 落卡底),y 必须一致。
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(String, f32, f32, f32)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    struct CtaSink(std::sync::Arc<std::sync::Mutex<Vec<(String, f32, f32, f32)>>>);
+    impl iced_test::selector::Selector for CtaSink {
+        type Output = ();
+        fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+            if let Candidate::Text { content, bounds, .. } = candidate {
+                if content.contains("Buy Now") || content.contains("Contact Us") {
+                    self.0.lock().unwrap().push((
+                        content.to_string(),
+                        bounds.y,
+                        bounds.width,
+                        bounds.height,
+                    ));
+                }
+            }
+            None
+        }
+        fn description(&self) -> String {
+            "p655-cta-sink".into()
+        }
+    }
+    let _ = ui.find(CtaSink(store.clone()));
+    let ctas = store.lock().unwrap().clone();
+    eprintln!("[p655-008] CTA bounds: {ctas:?}");
+    assert_eq!(ctas.len(), 3, "008 必须有三张定价卡的卡底 CTA,实测 {}", ctas.len());
+    let ys: Vec<f32> = ctas.iter().map(|(_, y, _, _)| *y).collect();
+    assert!(
+        (ys[0] - ys[1]).abs() < 1.5 && (ys[1] - ys[2]).abs() < 1.5,
+        "三卡等高(StretchLine max 语义):CTA y 必须一致,实测 {ys:?}"
+    );
 }
 
 // ===== PLAN-655: items-stretch 两阶段等高行（StretchLine）=====
