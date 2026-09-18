@@ -9927,19 +9927,6 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildFaces", &[]) {
             eprintln!("[session] dashboard RebuildFaces failed: {err}");
         }
-        let rd = |k: &str| -> String {
-            match app.component.read_state(k) {
-                Ok(v) => format!("{v:?}"),
-                Err(e) => format!("ERR {e}"),
-            }
-        };
-        eprintln!(
-            "[dashboard] panel state: face_ids={} __panel_w={} __panel_h={} nrows={}",
-            rd("face_ids"),
-            rd("__panel_w"),
-            rd("__panel_h"),
-            rd("nrows"),
-        );
         *app.state.view_dirty.borrow_mut() = true;
     }
 }
@@ -12846,14 +12833,6 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
         &state.desktop.registry_entries,
         layout_key.as_deref(),
         rows,
-    );
-    eprintln!(
-        "[desktop-icons] order={} hidden={} layout_key={:?} rows={} cells={}",
-        order.len(),
-        hidden.len(),
-        layout_key,
-        rows,
-        cells.len(),
     );
     let Some(app) = state.apps.get_mut(&surface) else { return };
     let _ = app.component.write_state_vec("__desktop_icons", entries);
