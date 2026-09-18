@@ -7198,14 +7198,15 @@ fn widget_event_tick(
     })
 }
 
-/// Periodic tick subscription for hot-reload file watching (per-App).
-///
-/// Emits `DM::App(app, HOT_RELOAD_EVENT)` every 500ms. The update handler
-/// checks `check_file_changed()` and reloads if the source file was modified.
-fn hot_reload_tick(
-    app: crate::ui::session::AppId,
-) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    app_tick(app, HOT_RELOAD_EVENT, 500)
+/// PLAN-650 E-3：hot_reload 轮询间隔。
+/// `AUTOUI_HOT_RELOAD=0` → None（不订阅）；`=1` → 500ms；缺省 debug 500ms /
+/// 非 debug 2000ms——浏览/静止场景显著降低 update→view 泵频率，开发热重载仍可用。
+fn hot_reload_interval_ms(debug_mode: bool) -> Option<u64> {
+    match std::env::var("AUTOUI_HOT_RELOAD").as_deref() {
+        Ok("0") => None,
+        Ok("1") => Some(500),
+        _ => Some(if debug_mode { 500 } else { 2000 }),
+    }
 }
 
 /// Periodic tick subscription for widget .Tick handlers (per-App).
@@ -18670,8 +18671,14 @@ fn compare_pngs(
             let mut subs: Vec<iced::Subscription<DM>> = Vec::new();
             for (app_id, app) in state.apps.iter() {
                 let app_id = *app_id;
+                // PLAN-650 E-3：hot_reload 降频/门控——AUTOUI_HOT_RELOAD=0 全关；
+                // =1 强制 500ms；缺省 debug 500ms / 非 debug 2000ms（静止泵 ÷4）。
                 if app.component.source_path().is_some() {
-                    subs.push(hot_reload_tick(app_id));
+                    if let Some(interval_ms) =
+                        hot_reload_interval_ms(app.state.devtools.debug_mode)
+                    {
+                        subs.push(app_tick(app_id, HOT_RELOAD_EVENT, interval_ms));
+                    }
                 }
                 if let Some(interval_ms) = app.component.tick_interval() {
                     // R5：孵化 mini 会话 Tick 门控（面板隐藏/非活动 tab 停订
@@ -18687,7 +18694,14 @@ fn compare_pngs(
                 }
                 // Plan 051 C7: timer 块条目订阅（每条目一订阅，身份含
                 // widget/event/ms 三元组互不去重）。
+                // PLAN-650 E-1：when 假不订阅（调度器层门控；P499-1）。
                 for t in app.component.timer_entries() {
+                    if !app
+                        .component
+                        .timer_when_allows_subscription(&t.widget, &t.event)
+                    {
+                        continue;
+                    }
                     subs.push(widget_event_tick(app_id, &t.widget, &t.event, t.every_ms));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
@@ -19222,8 +19236,19 @@ fn dynamic_view_impl(
     // opening F12. Visual overlays (hover/selected highlight, inspect mouse_area)
     // remain gated on `debug_mode` alone (see `wrap_debug`'s `if !self.debug_mode`
     // early-return), so MCP-only capture never perturbs the rendered layout.
+    // PLAN-650 E-2/E-4：capture 以 F12 为主；MCP 仅在 **dirty 重建帧** 追加
+    //（静止 fall-through 帧不再为 MCP 付 live_vtree/needs_bounds——快照走
+    // 既有 gate_dirty/gate_ws 同步，视图未变时仍然准确）。
     let mcp_active = !p530_nomcp && state.desktop.mcp_shared.is_some();
-    let capture_debug = state.app.devtools.debug_mode || mcp_active;
+    let mcp_wants_live = mcp_active
+        && (dirty
+            || state
+                .desktop
+                .mcp_shared
+                .as_ref()
+                .map(|m| m.lock().unwrap().mcp_active_recently(30))
+                .unwrap_or(false));
+    let capture_debug = state.app.devtools.debug_mode || mcp_wants_live;
 
     // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
     // are capturing DevTools/MCP data. `update()` checks `needs_bounds` at its
@@ -19234,7 +19259,8 @@ fn dynamic_view_impl(
     // Element at the fast path above), so it bounds the round-trips to ~one per
     // changed frame, not every frame. Gated on `capture_debug` so ordinary
     // non-debug/non-MCP runs pay zero bounds-collection overhead.
-    if capture_debug {
+    // PLAN-650 E-2：非 dirty 帧不请求 bounds（结构未变，沿用上次测量）。
+    if capture_debug && dirty {
         *state.app.devtools.needs_bounds.borrow_mut() = true;
     }
 
@@ -19313,7 +19339,9 @@ fn dynamic_view_impl(
     // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
     // here (before `converted` is moved into render_dynamic_view and before
     // `debug_id_map` is moved into debug_ctx) as a side-effect snapshot only.
-    if !p530_nomcp {
+    // PLAN-650 E-2/E-4：仅 debug_mode 或 dirty 重建帧构建；静止 fall-through
+    // 非 F12 帧跳过（MCP 快照仍由 gate_dirty 同步块提供，视图未变即准确）。
+    if !p530_nomcp && (state.app.devtools.debug_mode || dirty) {
         if let Some(id_map) = &debug_id_map {
             let span_map = state.component.span_map().clone();
             let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
@@ -19364,7 +19392,8 @@ fn dynamic_view_impl(
 
     // Plan 483: 脏重建时清填 input Id 登记(DFS 序同渲染侧;缓存帧沿用
     // 上次登记——结构未变)。
-    {
+    // PLAN-650 E-2：仅 dirty 帧刷新；非 dirty fall-through 沿用上次（结构未变）。
+    if dirty {
         let mut ids = Vec::new();
         collect_input_ids(&converted, &mut ids);
         *state.app.devtools.input_ids.borrow_mut() = ids;
