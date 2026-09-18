@@ -350,6 +350,14 @@ P639-D3 悬置债收口：**blueprints 包库的版本语义正式裁定**。现
     archived（终态）+ 本收据与文末 spec-sync 回写记录。
   - `cleaned`：（待清理完成后补记）
 
+- **cleaned 补记（2026-09-18）**：移除前复核——worktree 零脏区、HEAD=
+  2808c551a 且为 master 祖先（ALL COMMITS LANDED）；wt-guard 双过闸
+  （`.wt/lang-647/auto-lang` 与依赖兄弟 `.wt/lang-647/auto-down`@d8f11bf 均
+  "clean — 无任何 reparse point"）→ `git worktree remove` ×2（主检出 +
+  auto-down 属仓）→ `git branch -d plan-647-dev`（was 2808c551a）→ 组目录
+  rmdir。复核：worktree list 无 lang-647 条目、无 plan-647* 分支、
+  `.wt/` 无 lang-647 组目录。
+
 ## spec-sync 回写记录（v1 惯例）
 
 - 规范增量：SD-01（contract.md Q5"MVP 半句"→五项终版段）+ SD-02（验证面节
