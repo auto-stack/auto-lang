@@ -136,4 +136,4 @@ for src in component.subscribable_instance_timesources():
 - PLAN-650 E-1：`timer_when_allows_subscription` 保持，与 mount 过滤正交叠加。
 - **path 级实例状态槽**：单 VM 统一根态，阶段 A 不承诺 per-instance state；债项另开。
 - 订阅刷新时滞（652 F-02）：阶段 A 默认不顺手做即时重订阅；保持文档化时滞。
-- 阶段 3 Clock / `__wm_clock` 对齐：PLAN-654 阶段 B（未开）。
+- 阶段 3 Clock / `__wm_clock` 对齐：见 [clock-service.md](clock-service.md)（PLAN-654 阶段 B）。

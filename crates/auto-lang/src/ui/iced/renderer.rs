@@ -15253,6 +15253,13 @@ fn compare_pngs(
                     }
                 }
             }
+            // PLAN-654 阶段 B: 框架墙钟 1Hz 刷新（仅消费方订阅时到达）。
+            if msg.event == crate::ui::dynamic::DynamicComponent::CLOCK_TICK_EVENT {
+                if state.component.handle_clock_tick() {
+                    *state.app.view_dirty.borrow_mut() = true;
+                }
+                return iced::Task::none();
+            }
         }
 
         // Plan 418 P2-3: synthesized menubar (config-driven via auto-edit.at)
@@ -18956,6 +18963,15 @@ fn compare_pngs(
                     {
                         subs.push(app_tick(app_id, HOT_RELOAD_EVENT, interval_ms));
                     }
+                }
+                // PLAN-654 阶段 B C2: 框架墙钟——仅当视图/computed 引用
+                // `__clock_` 时订 1Hz `__clock_tick`（静止无引用零额外泵）。
+                if app.component.wants_framework_clock() {
+                    subs.push(app_tick(
+                        app_id,
+                        crate::ui::dynamic::DynamicComponent::CLOCK_TICK_EVENT,
+                        1000,
+                    ));
                 }
                 // PLAN-652: Tick/timer 统一走 timesources + mounted/when 过滤。
                 // 根 `tick_interval()` 不再单独订阅（避免与 root Tick 源双订）。

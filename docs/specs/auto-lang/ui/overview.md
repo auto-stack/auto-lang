@@ -55,8 +55,11 @@ D-1..D-5 延期，设计见 `docs/design/autoui/vm-frame-budget.md`。
 `mounted_paths`；renderer 对「挂载中且 when 通过」的源按 **path 级 identity**
 建 `widget_event_tick` 订阅（同 widget 多实例可分订阅/分退订）。派发消息携带
 path，handler 仍为类型级（单 VM 根态——path 级订阅 ≠ path 级状态隔离）。
-条件分支切走后对应 path **停订**。详见
-`docs/specs/auto-lang/ui/design/nested-timesource.md` 与设计
+条件分支切走后对应 path **停订**。**框架墙钟（阶段 B）**：视图引用
+`__clock_hhmm`/`__clock_now_sec` 时框架 1Hz 注入，组件可不自起高频 Tick；
+handler 侧用 `Time.now_sec()`；desktop dock 仍用分钟级 `__wm_clock`。详见
+`docs/specs/auto-lang/ui/design/nested-timesource.md`、
+`docs/specs/auto-lang/ui/design/clock-service.md` 与设计
 `docs/design/autoui/component-time-and-events.md`。
 
 **012-clock 现代时钟应用重构与传统手表表盘（PLAN-644 落地）**：

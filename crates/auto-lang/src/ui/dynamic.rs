@@ -176,6 +176,11 @@ pub struct DynamicComponent {
 
     /// PLAN-654: 装配帧内 per-type 实例序号（begin_mount_frame 清零）。
     mount_type_seq: std::cell::RefCell<HashMap<String, usize>>,
+
+    /// PLAN-654 阶段 B: 框架墙钟字段是否被视图/computed 引用（缓存）。
+    framework_clock_wanted: std::cell::Cell<bool>,
+    /// 是否已完成 `__clock_` 引用扫描（懒扫一次）。
+    framework_clock_scanned: std::cell::Cell<bool>,
 }
 
 /// PLAN-652 阶段 1: 时间源种类。
@@ -313,6 +318,14 @@ fn instance_paths_for_types(types: &std::collections::HashSet<String>) -> std::c
     types.iter().map(|w| InstancePath::of_type(w)).collect()
 }
 
+/// PLAN-654 阶段 B: 视图/computed 是否引用框架墙钟字段 `__clock_*`。
+fn template_mentions_clock(node: &crate::aura::AuraNode) -> bool {
+    // Debug 走查足够覆盖 Expr/props/children 中的状态引用字符串。
+    // 仅在 wants_framework_clock 首次调用时执行一次并缓存。
+    let s = format!("{node:?}");
+    s.contains("__clock_")
+}
+
 /// Plan 051 C7: 运行期计时器条目（widget 名 + 事件名 + 周期 + 门控）。
 #[derive(Debug, Clone)]
 pub struct TimerEntryRuntime {
@@ -433,6 +446,8 @@ impl DynamicComponent {
                 s
             },
             mount_type_seq: std::cell::RefCell::new(HashMap::new()),
+            framework_clock_wanted: std::cell::Cell::new(false),
+            framework_clock_scanned: std::cell::Cell::new(false),
         })
     }
 
@@ -545,6 +560,8 @@ impl DynamicComponent {
                 s
             },
             mount_type_seq: std::cell::RefCell::new(HashMap::new()),
+            framework_clock_wanted: std::cell::Cell::new(false),
+            framework_clock_scanned: std::cell::Cell::new(false),
         })
     }
 
@@ -736,6 +753,8 @@ impl DynamicComponent {
             mounted_paths: std::cell::RefCell::new(mounted_paths_init),
             always_mounted_paths,
             mount_type_seq: std::cell::RefCell::new(HashMap::new()),
+            framework_clock_wanted: std::cell::Cell::new(false),
+            framework_clock_scanned: std::cell::Cell::new(false),
         })
     }
     /// Create a new DynamicComponent with a pre-configured AutoVM instance.
@@ -814,6 +833,8 @@ impl DynamicComponent {
                 s
             },
             mount_type_seq: std::cell::RefCell::new(HashMap::new()),
+            framework_clock_wanted: std::cell::Cell::new(false),
+            framework_clock_scanned: std::cell::Cell::new(false),
         })
     }
     // ========================================================================
@@ -858,6 +879,74 @@ impl DynamicComponent {
             paths: &self.mounted_paths,
             type_seq: &self.mount_type_seq,
         }
+    }
+
+    /// PLAN-654 阶段 B（C2）: 框架墙钟字段。
+    /// - `__clock_now_sec`: int Unix 秒（与 `Time.now_sec()` 同源）
+    /// - `__clock_hhmm`: str 本地 `HH:MM`（与 desktop `__wm_clock` 同形）
+    /// - 仅当视图/computed 引用 `__clock_` 时 renderer 订 1Hz `__clock_tick`
+    pub const CLOCK_SEC_FIELD: &'static str = "__clock_now_sec";
+    pub const CLOCK_HHMM_FIELD: &'static str = "__clock_hhmm";
+    pub const CLOCK_TICK_EVENT: &'static str = "__clock_tick";
+
+    /// 视图/computed 是否消费框架墙钟字段（懒扫一次缓存）。
+    pub fn wants_framework_clock(&self) -> bool {
+        if self.framework_clock_scanned.get() {
+            return self.framework_clock_wanted.get();
+        }
+        let hit = template_mentions_clock(&self.view_template)
+            || self
+                .computed
+                .iter()
+                .any(|c| format!("{:?}", c.expr).contains("__clock_"))
+            || self.named_templates.values().any(template_mentions_clock);
+        self.framework_clock_wanted.set(hit);
+        self.framework_clock_scanned.set(true);
+        hit
+    }
+
+    /// 写入当前墙钟字段。返回是否有实际变更。
+    /// 字段不存在时经 `write_or_insert_state` 追加到根态。
+    pub fn write_framework_clock(&mut self) -> bool {
+        let now_sec = crate::vm::ffi::stdlib::shim_time_now_sec();
+        let hhmm = chrono::Local::now().format("%H:%M").to_string();
+        let mut changed = false;
+        let prev_sec = self.read_state(Self::CLOCK_SEC_FIELD).ok();
+        let prev_hhmm = self.read_state(Self::CLOCK_HHMM_FIELD).ok();
+        let sec_val = auto_val::Value::Int(now_sec as i32);
+        let hhmm_val = auto_val::Value::str(&hhmm);
+        if prev_sec.as_ref() != Some(&sec_val) {
+            if self
+                .bridge
+                .write_or_insert_state(Self::CLOCK_SEC_FIELD, sec_val)
+                .is_ok()
+            {
+                changed = true;
+            }
+        }
+        if prev_hhmm.as_ref() != Some(&hhmm_val) {
+            if self
+                .bridge
+                .write_or_insert_state(Self::CLOCK_HHMM_FIELD, hhmm_val)
+                .is_ok()
+            {
+                changed = true;
+            }
+        }
+        if changed {
+            self.dirty = true;
+        }
+        changed
+    }
+
+    /// `__clock_tick`：刷新墙钟字段（renderer 门控 1Hz 订阅）。
+    pub fn handle_clock_tick(&mut self) -> bool {
+        self.write_framework_clock()
+    }
+
+    /// 播种墙钟字段，避免消费方首帧空值。
+    pub fn seed_framework_clock(&mut self) {
+        let _ = self.write_framework_clock();
     }
 
     /// PLAN-652: (widget, event) 是否时间源候选。
@@ -1829,6 +1918,10 @@ impl DynamicComponent {
     }
 
     pub fn fire_init(&mut self) {
+        // PLAN-654 B: 消费方在 Init 前播种墙钟字段，首帧即可读。
+        if self.wants_framework_clock() {
+            self.seed_framework_clock();
+        }
         // Plan 333: run imported module-level initializers (var notes = ... etc.)
         // before Init, so globals have defined values when Init reads them.
         if let Err(e) = self.bridge.run_module_init() {
@@ -4579,6 +4672,7 @@ widget TimerChild652 {
 }
 
 /// PLAN-654 阶段 A: InstancePath / path 级 TimeSource 单测。
+/// PLAN-654 阶段 B: 框架墙钟 C2 单测同模块。
 #[cfg(test)]
 mod plan654_path_timesource {
     use super::{DynamicComponent, InstancePath, TimeSourceKind};
@@ -4927,5 +5021,74 @@ widget Plain654 {
         comp.on_with_input_for("DemoClock654@1", "Tick", None);
         let w2 = comp.read_state("w_tick").expect("w_tick after @1").as_int();
         assert_eq!(w2, w1 + 1, "second instance shares type-level state (documented stage-A limit)");
+    }
+
+    /// AC-B1: 框架墙钟字段可写可读；wants 门控正确。
+    #[test]
+    fn plan654_framework_clock_fields_and_gate() {
+        const CLOCK_VIEW: &str = r#"
+widget ClockConsumer654 {
+    model { var label str = "" }
+    view {
+        col {
+            text .__clock_hhmm
+            text "${.__clock_now_sec}"
+        }
+    }
+}
+"#;
+        const PLAIN_VIEW: &str = r#"
+widget PlainNoClock654 {
+    model { var x int = 0 }
+    view { col { text "plain" } }
+}
+"#;
+        const HELPER: &str = r#"
+widget Helper654 {
+    model { var y int = 0 }
+    view { col { text "h" } }
+}
+"#;
+        let src = format!("{CLOCK_VIEW}\n{HELPER}");
+        let mut comp = build(&src);
+        assert!(comp.wants_framework_clock(), "view references __clock_ → wants gate");
+        assert!(comp.write_framework_clock(), "first write changes fields");
+        let sec = comp.read_state(DynamicComponent::CLOCK_SEC_FIELD).expect("clock sec");
+        let hhmm = comp.read_state(DynamicComponent::CLOCK_HHMM_FIELD).expect("clock hhmm");
+        match sec {
+            auto_val::Value::Int(v) => assert!(v > 1_600_000_000, "unix sec plausible; got {v}"),
+            other => panic!("clock sec should be int; got {other:?}"),
+        }
+        match &hhmm {
+            auto_val::Value::Str(s) => assert_eq!(s.as_str().len(), 5, "HH:MM length; got {s}"),
+            other => panic!("hhmm should be str; got {other:?}"),
+        }
+        // 同秒二次 write 应无变更（或仅跨秒边界）——不强制 false，但 handler 可调用
+        let _ = comp.handle_clock_tick();
+
+        let src2 = format!("{PLAIN_VIEW}\n{HELPER}");
+        let plain = build(&src2);
+        assert!(
+            !plain.wants_framework_clock(),
+            "no __clock_ in view → no 1Hz subscription"
+        );
+    }
+
+    /// AC-B3 兼容：仍声明 .Tick 的组件不受 Clock 服务影响（gate=false 时无 clock 订阅语义）。
+    #[test]
+    fn plan654_clock_does_not_break_self_tick_component() {
+        let src = format!("{HOST_IF}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        let _ = comp.view_with_debug_gated(false);
+        // self-tick demo 仍可派发
+        let w0 = comp.read_state("w_tick").unwrap().as_int();
+        comp.on_with_input_for("DemoClock654", "Tick", None);
+        let w1 = comp.read_state("w_tick").unwrap().as_int();
+        assert_eq!(w1, w0 + 1);
+        // 该 demo 视图未引用 __clock_ → wants=false
+        assert!(!comp.wants_framework_clock());
+        // 仍可主动写 clock 字段（API 总是可用）
+        comp.seed_framework_clock();
+        assert!(comp.read_state(DynamicComponent::CLOCK_SEC_FIELD).is_ok());
     }
 }
