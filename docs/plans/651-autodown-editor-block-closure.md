@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-651
-status: execution_done        # drafting → executing → execution_done → reviewed → archived（2026-09-18 work 全任务完成交接，next=/auto-plan:review）
+status: reviewed              # drafting → executing → execution_done → reviewed → archived（2026-09-18 复审 pass，next=/auto-plan:merge）
 feature_name: autodown-editor-block-closure（编辑器 block 类型三态矩阵与闭合）
 author: [zhaopuming]
 created_at: 2026-09-18
@@ -203,6 +203,28 @@ T-03 对拍 gate 常驻化（tests/ 套件）+ jade gallery RC-E 联动
   vm-smoke 第一跑 groups 1-10 绿（group 4 预存红在案/group 11 探针甄别
   ALL PASS）；cargo check 零新告警 | blockers: 无（Q-4 DEBTS 裁定/Q-5
   smoke 稳定性转介均非阻断） | next: /auto-plan:review（worktree 留存）`。
+- 2026-09-18 复审（实现会话自审，工件重建裁定）：`stage: review |
+  plan_id: PLAN-651 | plan_revision: 2 | outcome: pass |
+  reviewed_commit: auto-lang 60e427854（worktree plan-651-dev，clean）|
+  base_commit: 9886ba901 | dependency_revisions: auto-down fd05981
+  （worktree plan-651-dev，clean；base b1c88def） | spec_inputs: SD-01
+  裁定=矩阵维持工作工件（attachments/651-matrix.md，§0 判定口径+§6 处置
+  回填），不上升 canonical（design 31 系增补留待需要）；spec components
+  空 + 书面说明在案（计划 frontmatter 注记）；touched_goals=GOAL-007
+  （goals.md 实证存在） | acceptance_results: AC-01 pass（矩阵在案+三路
+  独立盘点交叉校验+主会话关键格复核）；AC-02 pass（8 红格闭合逐格测试
+  锚；5 DEBTS 提案在案 Q-4 待用户裁定，非悬置）；AC-03 pass（t651 组
+  9/9 + autodown_editor 121/121 在被审提交复跑，gate 命令落矩阵 §5）；
+  AC-04 pass（units.mjs node --check 通过 + 072 台账行，fd05981） |
+  findings: F-1（note，非阻断）折叠 details 隐藏叶仍入 doc_sel/copy
+  全序——v1 细节，TS 折叠选区排除为增强面，不在 AC 范围；F-2（转介）
+  cargo tf 2568/2569，唯一失败 test_display_family_codegen_arm_fixture
+  经 master 主检出（6934e2839）复现=预存红（ui_gen codegen fixture，
+  与本计划特性门控改动面零关联） | evidence: /tmp/tf_review.log 摘要
+  2568/2569+1 预存、/tmp/review_mod.log 121/121、/tmp/base_test.log
+  master 复现、diff 审计单文件 747+/45- 零调试残留零越界重构、
+  vm-smoke/探针记录见上条 | next: /auto-plan:merge（DEBTS 提案随 merge
+  沉淀 KNOWN-DEBT-AND-RISKS.md 待用户处置）`。
 
 ## 9. 待澄清事项
 
