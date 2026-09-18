@@ -3456,15 +3456,27 @@ pub struct Timer {
     fn test_w1_get_body_uses_reqwest_client() {
         // GET body must route through _http_client() and reqwest's .send()/.json(),
         // never emit `ureq::`.
+        // PLAN-021 T-09:Option 返回改声明类型直反序列化 + .flatten() 归一
+        // (此前硬编码 Value 使返回面与声明错位)。
         for (ret, expected) in [
             ("serde_json::Value", "_http_client().get("),
             ("Vec<serde_json::Value>", "r.json::<Vec<serde_json::Value>>().ok()"),
-            ("Option<serde_json::Value>", "r.json::<serde_json::Value>().ok()"),
+            (
+                "Option<serde_json::Value>",
+                "r.json::<Option<serde_json::Value>>().ok()",
+            ),
         ] {
             let body = generate_get_fn_body("get".into(), "&format!(\"http://x/{}\", id)".into(), false, ret);
             assert!(body.contains(expected), "GET({ret}) missing {expected}: {body}");
             assert!(!body.contains("ureq"), "GET({ret}) still emits ureq: {body}");
         }
+        let option = generate_get_fn_body(
+            "get".into(),
+            "&format!(\"http://x/{}\", id)".into(),
+            false,
+            "Option<serde_json::Value>",
+        );
+        assert!(option.contains(".flatten()"), "GET(Option) must flatten: {option}");
         let void = generate_get_fn_body("get".into(), "\"http://x\"".into(), true, "");
         assert!(void.contains("_http_client().get(\"http://x\").send()"), "void GET: {void}");
         assert!(!void.contains("ureq"), "void GET still emits ureq: {void}");
@@ -3490,6 +3502,18 @@ pub struct Timer {
         assert!(blocking.contains("_http_client().post(&url).json(&body).send()"), "blocking POST: {blocking}");
         assert!(blocking.contains("local_result"), "blocking POST must return placeholder: {blocking}");
         assert!(!blocking.contains("ureq"), "blocking POST still emits ureq: {blocking}");
+
+        // PLAN-021 T-09:声明标量返回(int)的 POST 改阻塞反序列化——
+        // 调用方按声明消费返回值,占位 Value 破坏类型契约。
+        let scalar_blocking = generate_write_fn_body(
+            "post".into(),
+            "\"http://x\"".into(),
+            &params,
+            false,
+            "i32",
+        );
+        assert!(scalar_blocking.contains("r.json::<i32>().ok()"), "scalar POST must block+deserialize: {scalar_blocking}");
+        assert!(!scalar_blocking.contains("local_result"), "scalar POST must not return placeholder: {scalar_blocking}");
 
         let bool_result = generate_write_fn_body(
             "post".into(),
