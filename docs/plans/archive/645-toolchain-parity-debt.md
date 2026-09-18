@@ -222,8 +222,18 @@ with_defaults 实勘）；PLAN-522（use fn 双端同源转译先例）、PLAN-6
   ledger_refreshed: .autoos/specs.json（运行时账本，非跟踪）+P645-1
   （architecture→contract.md）+P645-2（reviews→本档归档路径） |
   archived: docs/plans/archive/645-toolchain-parity-debt.md（status: archived）
-  | cleaned: wt-guard clean ×2 → worktree/分支/组目录移除（证据见归档后
-  回填） | completion_kind: delivered`。
+  | cleaned: wt-guard clean ×2（auto-lang/auto-down）→ 双 worktree remove +
+  branch plan-645-dev 删除（was 68ad16d85，-d 即祖先证明）+ 组目录
+  .wt/lang-645 rmdir 成功（空）——worktree list 残留 645=0 |
+  completion_kind: delivered`。
+- 2026-09-18 merge 报告：`stage: merge | PLAN-645:r1 | outcome: pass |
+  delivery_commit: ed43e9e8e（master） | canonical_specs:
+  docs/specs/blueprint/contract.md（验证面三行） | ledger_targets:
+  .autoos/specs.json P645-1(architecture)/P645-2(reviews)（运行时账本，
+  原子替换写入并回读验证；docs/specs/INDEX.md 再生无 diff） |
+  archive_path: docs/plans/archive/645-toolchain-parity-debt.md |
+  cleanup: 全部完成（组目录已删）；观察项：主检出有误跟踪的
+  .autoos/specs.json.tmp2 残留（非本计划产物，未动） |`。
 
 ## 9. 待澄清事项
 
