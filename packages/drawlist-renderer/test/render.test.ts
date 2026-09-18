@@ -145,6 +145,24 @@ describe('renderFrame（Canvas2D）', () => {
       '14px system-ui, sans-serif',
     ]);
   });
+
+  it('image 占位渲染（PLAN-028：web 真位图 not-yet——灰底保底，禁静默丢弃）', () => {
+    const frame: DrawList = {
+      clear: null,
+      ops: [
+        { kind: 'image', rect: { x: 8, y: 8, w: 100, h: 40 }, src: 'https://example.com/a.png', fit: 1 },
+        { kind: 'image', rect: { x: 0, y: 0, w: 10, h: 10 }, src: 'thumbnail://42', fit: 1 },
+      ],
+    };
+    const { ctx, calls } = mockCtx();
+    renderFrame(ctx, frame);
+    expect(calls).toEqual([
+      { op: 'fillStyle', value: 'rgba(60, 60, 70, 1)' },
+      { op: 'fillRect', x: 8, y: 8, w: 100, h: 40 },
+      { op: 'fillStyle', value: 'rgba(60, 60, 70, 1)' },
+      { op: 'fillRect', x: 0, y: 0, w: 10, h: 10 },
+    ]);
+  });
 });
 
 describe('hitTest（表驱动）', () => {

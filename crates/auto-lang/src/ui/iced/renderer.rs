@@ -5837,7 +5837,9 @@ fn render_video<M: Clone + Debug + 'static>(
 /// Download image bytes from a URL using blocking HTTP.
 /// Results are cached in memory so each URL is only fetched once.
 /// Returns None on failure.
-fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
+/// PLAN-028：提权 pub(crate)——DrawList 图像算子（queue 臂 broker_surface）
+/// 复用同一 src 词汇与负缓存（单源解析纪律）。
+pub(crate) fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
     // Process-local media tickets are resolved before the legacy URL/file
     // cache. A pending ticket must be retried on the next frame rather than
     // being cached as a permanent miss.

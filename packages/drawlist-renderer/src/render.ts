@@ -47,6 +47,12 @@ export function renderFrame(ctx: CanvasRenderingContext2D, frame: DrawList): voi
       ctx.font = `${style}${weight}${op.size}px system-ui, sans-serif`;
       ctx.textBaseline = 'top';
       ctx.fillText(op.text, op.x, op.y);
+    } else if (op.kind === 'image') {
+      // PLAN-028 —— **web 真位图渲染 not-yet**（fetch/跨源/data 通道
+      // 独立增量，TS 无 shm 位图通道）：占位灰底（宿主 IMAGE_PLACEHOLDER
+      // 同值）保底呈现，禁静默丢弃（I3 降级纪律）。
+      ctx.fillStyle = 'rgba(60, 60, 70, 1)';
+      ctx.fillRect(op.rect.x, op.rect.y, op.rect.w, op.rect.h);
     } else {
       ctx.fillStyle = rgbaToCss(op.color);
       ctx.font = `${op.size}px system-ui, sans-serif`;

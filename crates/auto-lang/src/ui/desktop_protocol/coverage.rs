@@ -161,9 +161,11 @@ impl Coverage {
     /// native 对象**——View 枚举无 Switch 变体（解释态 aura 标签专属，
     /// T-01 §5.1 调查证据），native 轨无可产该 kind 的构造（I4 分表，
     /// 非缺口）。slider/select 随 T-03/T-04 扩容。PLAN-026 T-03 扩容：
-    /// display 族 image/progress 入册（占位保真臂）；icon/badge/avatar/
+    /// display 族 image/progress 入册；PLAN-028 真图升级（image 占位
+    /// 保真臂 → `DrawOp::Image` 真渲，未解析降级转兜底——随注见下）；
+    /// icon/badge/avatar/
     /// divider/separator/spacer/a/img 经 a2r codegen 降级归一（D1/D1'
-    /// 定案）。kind = text/button + form 族 + display 占位族 + 线性堆叠
+    /// 定案）。kind = text/button + form 族 + display 族 + 线性堆叠
     /// 布局族（col/row/container/list）+ 布局样式子集（padding/gap/
     /// margin/尺寸/圆角/底色/前景色/对齐/字号字重）。payload 族残余
     /// （table/tabs 等）与 imagesurface 显式 **not-yet**——native 显式
@@ -183,12 +185,16 @@ impl Coverage {
             "slider",
             // PLAN-025 T-04 —— payload 族 select。
             "select",
-            // PLAN-026 T-03 —— display 族占位保真臂（View::Image /
+            // PLAN-026 T-03 —— display 族臂（View::Image /
             // View::ProgressBar 变体在场）。icon/badge/avatar/divider/
             // separator/spacer/a/img 经 a2r codegen 降级归一到 image/
             // text/row/container/empty（§5.1 D1/D1' 定案——分表非缺口，
             // 025"switch 无 View 变体"口径）；imagesurface 整 kind
             // not-yet（D5：交互回调无采集面，登记即静默放行——I3）。
+            // PLAN-028 真图升级：image 臂占位保真注释核销——src 在场即发
+            // `DrawOp::Image`（tag 6 真渲；未解析降级占位转宿主侧兜底
+            // 语义）；icon 降级形态（lucide:）随臂入线、宿主字形解析
+            // not-yet（P026-D1 后半维持）→ 未解析降级同兜底。
             "image",
             "progress",
         ]

@@ -108,6 +108,15 @@ pub fn cache_put(wid: Wid, snap: WindowSnapshot) {
     cache().lock().unwrap().insert(wid, (snap, Instant::now()));
 }
 
+/// 测试专用：把条目时间戳回拨到 TTL 之外（PLAN-028 thumbnail 臂 SWR
+/// 路径单测——私有 cache 的跨模块替身，`__test_session` 先例同款）。
+#[doc(hidden)]
+pub fn __test_backdate(wid: Wid) {
+    if let Some(entry) = cache().lock().unwrap().get_mut(&wid) {
+        entry.1 = Instant::now() - SNAPSHOT_TTL - Duration::from_secs(1);
+    }
+}
+
 /// 消费口（SWR 版）：读一枚窗口缩略并附新鲜度——存在即返回（含过期
 /// 条目，不删除），`(快照, 是否 TTL 新鲜)`。渲染臂专用：新鲜直绘；
 /// 过期仍绘旧图 + [`request_capture`] 静默重抓（重抓落地 cache_put

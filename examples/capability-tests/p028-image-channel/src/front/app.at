@@ -1,0 +1,19 @@
+// p028-image-channel — PLAN-028 构造覆盖示例：DrawOp::Image（tag 6）
+// src 词汇表的实机 queue 模式语料。五 src 形态一帧：
+// data:（内嵌 1×1 PNG）/ builtin:（518 内嵌壁纸词汇）/ thumbnail://{wid}
+// （虚拟引用——宿主快照解析，SWR 三路径单测 = broker_surface t028_*）/
+// 本地文件（仓库根相对字面量——帧级断言用；宿主侧解析由 p028_image_arm
+// 以 manifest 拼绝对路径孪生驱动）/ 不可达 http（127.0.0.1:1 拒绝连接
+// ——宿主侧后台解码负缓存 + 占位降级的 I3 承载面，帧内仍合法 Image op）。
+
+widget App {
+    view {
+        col (style: "gap-2 p-2") {
+            image (src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==") { style: "w-10 h-10" }
+            image (src: "builtin:ricepaper") { style: "w-16 h-9" }
+            image (src: "thumbnail://42842") { style: "w-32 h-18" }
+            image (src: "examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg") { style: "w-12 h-12" }
+            image (src: "http://127.0.0.1:1/zero28.png") { style: "w-8 h-8" }
+        }
+    }
+}

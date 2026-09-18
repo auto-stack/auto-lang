@@ -100,6 +100,38 @@ pub enum DrawOp {
     Scissor { rect: WRect },
     /// 出栈最近一次 `Scissor`（tag 4 追加式）。
     ScissorPop,
+    /// 图像引用（PLAN-028 图像通道，tag 6 追加式）：**src 引用 + 宿主侧
+    /// 解析**——零位图字节过线，宿主按词汇表（本地文件 / `builtin:` /
+    /// `data:` / `http(s)://` / `thumbnail://{wid}` 虚拟引用）解码缓存
+    /// 后 `draw_image`；未解析 src = 宿主占位 + 观测行（not-yet 降级
+    /// 纪律，禁静默错绘）。`fit` 最小枚举 v1 仅 Stretch（拉伸至 rect，
+    /// 与占位尺寸盒同位）；filter/border_radius 不入 wire（宿主缺省
+    /// Linear/方形，视觉与占位零差）——**op 字段定长不可尾部追加**
+    /// （解码共享 Reader 无载荷尾判据），未来呈现参数 = 新 tag。
+    Image { rect: WRect, src: String, fit: ImageFit },
+}
+
+/// 图像适配语义（PLAN-028 D1 定案：v1 最小集）。线格式 u8：1 Stretch。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ImageFit {
+    /// 拉伸填充 rect（与占位尺寸盒语义同位）。
+    #[default]
+    Stretch,
+}
+
+impl ImageFit {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Stretch => 1,
+        }
+    }
+
+    pub fn from_u8(v: u8) -> Result<Self, CodecError> {
+        match v {
+            1 => Ok(Self::Stretch),
+            other => Err(CodecError::UnknownTag(other)),
+        }
+    }
 }
 
 impl DrawList {
@@ -147,6 +179,12 @@ impl DrawList {
                 DrawOp::ScissorPop => {
                     put_u8(out, 4);
                 }
+                DrawOp::Image { rect, src, fit } => {
+                    put_u8(out, 6);
+                    rect.encode(out);
+                    put_string(out, src);
+                    put_u8(out, fit.as_u8());
+                }
             }
         }
     }
@@ -191,6 +229,12 @@ impl DrawList {
                     ops.push(DrawOp::Scissor { rect });
                 }
                 4 => ops.push(DrawOp::ScissorPop),
+                6 => {
+                    let rect = WRect::decode(r)?;
+                    let src = r.string()?;
+                    let fit = ImageFit::from_u8(r.u8()?)?;
+                    ops.push(DrawOp::Image { rect, src, fit });
+                }
                 tag => return Err(CodecError::UnknownTag(tag)),
             }
         }
@@ -1535,6 +1579,93 @@ mod tests {
         expect.extend_from_slice(&2u32.to_le_bytes()); // str len
         expect.extend_from_slice(b"hi");
         assert_eq!(buf, expect, "TextStyled 线格式冻结锚点");
+    }
+
+    /// PLAN-028 图像通道（tag 6 追加式）：Image op round-trip（src 多
+    /// 形态 + 空 src 容错）+ golden 字节锚点 + 未知 fit 拒收。
+    #[test]
+    fn image_op_round_trip_and_golden() {
+        // round trip：src 词汇多形态（本地文件/http/data:/thumbnail://）。
+        for src in [
+            "D:/pics/wall.png",
+            "https://cn.cravatar.com/avatar/abc.png",
+            "data:image/png;base64,iVBORw0KGgo=",
+            "thumbnail://42",
+        ] {
+            round_trip(ProtocolMsg::Frame(FrameMsg::FrameReady {
+                wid: 3,
+                frame_id: 28,
+                slot: 0,
+                damage: None,
+                revision: 28,
+                payload: DrawList {
+                    clear: None,
+                    ops: vec![DrawOp::Image {
+                        rect: WRect::new(10.0, 20.0, 80.0, 80.0),
+                        src: src.into(),
+                        fit: ImageFit::Stretch,
+                    }],
+                },
+            }));
+        }
+        // 空 src 容错（View::image("") 投影容差——宿主按未解析降级）。
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameReady {
+            wid: 3,
+            frame_id: 29,
+            slot: 0,
+            damage: None,
+            revision: 29,
+            payload: DrawList {
+                clear: None,
+                ops: vec![DrawOp::Image {
+                    rect: WRect::new(0.0, 0.0, 1.0, 1.0),
+                    src: String::new(),
+                    fit: ImageFit::Stretch,
+                }],
+            },
+        }));
+
+        // golden：DrawList 直编（tag 6 + rect 4×f32 + str + fit u8）。
+        let list = DrawList {
+            clear: None,
+            ops: vec![DrawOp::Image {
+                rect: WRect::new(1.0, 2.0, 3.0, 4.0),
+                src: "https://example.com/a.png".into(),
+                fit: ImageFit::Stretch,
+            }],
+        };
+        let mut buf = Vec::new();
+        list.encode(&mut buf);
+        let mut expect: Vec<u8> = vec![1, 0, 1, 0, 0, 0, 6]; // kind, clear, len, tag
+        expect.extend_from_slice(&1.0f32.to_le_bytes());
+        expect.extend_from_slice(&2.0f32.to_le_bytes());
+        expect.extend_from_slice(&3.0f32.to_le_bytes());
+        expect.extend_from_slice(&4.0f32.to_le_bytes());
+        let src = b"https://example.com/a.png";
+        expect.extend_from_slice(&(src.len() as u32).to_le_bytes());
+        expect.extend_from_slice(src);
+        expect.push(1); // fit: Stretch
+        assert_eq!(buf, expect, "Image 线格式冻结锚点");
+
+        // 未知 fit tag（fit 字节 = 9）拒收——与 FrameMode/PixelFormat 同纪律。
+        let mut bytes = ProtocolMsg::Frame(FrameMsg::FrameReady {
+            wid: 1,
+            frame_id: 1,
+            slot: 0,
+            damage: None,
+            revision: 1,
+            payload: list,
+        })
+        .encode();
+        let payload_len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        // FrameReady 头 27 + DrawList（kind+clear+len=6；op = tag1+rect16+
+        // str_len4+str25+fit1 = 47）= 80。
+        assert_eq!(payload_len, 80, "载荷长锚点");
+        *bytes.last_mut().unwrap() = 9; // 载荷末字节 = fit
+        assert!(matches!(
+            ProtocolMsg::decode(&bytes),
+            Err(CodecError::UnknownTag(9))
+        ));
     }
 
     #[test]

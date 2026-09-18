@@ -32,7 +32,11 @@ export type DrawOp =
   // Plan 515 G1 —— scissor 裁剪栈（Rust tag 3/4 镜像）：push 与当前有效
   // 裁剪取交，作用于后续 op 直至配对 pop。
   | { kind: 'scissor'; rect: WRect }
-  | { kind: 'scissorPop' };
+  | { kind: 'scissorPop' }
+  // PLAN-028 图像通道（Rust tag 6 镜像）：src 引用 + 宿主侧解析（零位图
+  // 过线）；fit u8 枚举（1 = Stretch，未知值解码 throw——与 Rust from_u8
+  // 对称）。web 真位图渲染 not-yet（render 占位，见 render.ts）。
+  | { kind: 'image'; rect: WRect; src: string; fit: number };
 
 export interface HitRegion {
   rect: WRect;
@@ -158,6 +162,12 @@ function readDrawList(r: Reader): DrawList {
       ops.push({ kind: 'scissor', rect: readRect(r) });
     } else if (tag === 4) {
       ops.push({ kind: 'scissorPop' });
+    } else if (tag === 6) {
+      // PLAN-028 图像算子（decode 必达——未知 tag throw 破坏 WS 会话）。
+      const rect = readRect(r);
+      const src = r.string();
+      const fit = r.u8();
+      ops.push({ kind: 'image', rect, src, fit });
     } else {
       throw new CodecError(`unknown drawop tag ${tag}`);
     }
