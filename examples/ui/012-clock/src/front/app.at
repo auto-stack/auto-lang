@@ -145,13 +145,15 @@ widget App {
             }
 
             // 通用横幅顶栏（timer 到零/闹钟到点）
-            row {
-                text .banner { style: "text-xl font-bold text-primary" }
-                button "知道了" {
-                    onclick: .DismissBanner,
-                    style: "px-4 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-full text-sm font-medium transition-colors"
+            if .banner != "" {
+                row {
+                    text .banner { style: "text-lg font-bold text-primary" }
+                    button "知道了" {
+                        onclick: .DismissBanner,
+                        style: "px-4 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-full text-sm font-medium transition-colors"
+                    }
+                    style: "items-center justify-center gap-3 min-h-9"
                 }
-                style: "items-center justify-center gap-3 min-h-9"
             }
 
             // ==================== Tab 1: 时钟 (Clock 首屏) ====================
@@ -383,7 +385,7 @@ widget App {
                 }
             }
 
-            style: "relative max-w-2xl w-full p-8 gap-4 bg-background text-foreground items-stretch rounded-3xl border border-border/40 shadow-lg"
+            style: "relative w-[480px] p-6 gap-4 bg-card text-foreground items-stretch rounded-3xl border border-border shadow-lg"
         }
     }
 
