@@ -1,0 +1,117 @@
+// reference/minimal.at — DataTableCrud blueprint, "minimal" variant.
+// Query table + search + pagination + row action menu. Consumer wires
+// `dataSource.query` and owns actions.create/update/delete semantics.
+// EDIT regions mark where per-app customization is expected.
+
+widget DataTableCrud {
+    msg {
+        SearchChanged,
+        PageChanged,
+        EditRow,
+        DeleteRow,
+        CreateClicked
+    }
+
+    model {
+        var search str = ""
+        var page int = 1
+        var total int = 0
+        var rows []Row = []
+        var loading bool = false
+        var error str = ""
+    }
+
+    view {
+        col {
+            // ── EDIT: filters (search input + selects) ──
+            row {
+                input {
+                    id: "search"
+                    value: .search
+                    oninput: .SearchChanged
+                    placeholder: "Search…"
+                    style: "w-64 px-3 py-2 border rounded-lg text-sm"
+                }
+                style: "gap-2"
+            }
+
+            // ── EDIT: loading ──
+            if .loading {
+                text "Loading…" { style: "text-sm text-gray-500" }
+            }
+
+            // ── EDIT: error_display ──
+            if .error != "" {
+                text f"error: ${.error}" { style: "text-sm text-red-600" }
+            }
+
+            table {
+                // header row per props.columns
+                row {
+                    text "Name" { style: "text-sm font-medium" }
+                    text "Status" { style: "text-sm font-medium" }
+                    text "Actions" { style: "text-sm font-medium" }
+                }
+                for row in .rows {
+                    row {
+                        text f"${row.name}" { style: "text-sm" }
+                        badge f"${row.status}" {
+                            variant: "outline"
+                        }
+                        dropdown-menu {
+                            dropdown-menu-trigger {
+                                button "⋯" {
+                                    variant: "ghost"
+                                    style: "w-8 h-8"
+                                }
+                            }
+                            dropdown-menu-content {
+                                dropdown-menu-item "Edit" { onclick: .EditRow }
+                                dropdown-menu-separator {}
+                                dropdown-menu-item "Delete" { onclick: .DeleteRow }
+                            }
+                        }
+                    }
+                }
+                style: "w-full gap-1"
+            }
+
+            // ── EDIT: empty ──
+            if .total == 0 && !.loading && .error == "" {
+                text "No results. Adjust your filters." {
+                    style: "text-sm text-gray-500"
+                }
+            }
+
+            pagination {
+                page: .page
+                total: .total
+                onchange: .PageChanged
+                style: "gap-1"
+            }
+
+            style: "w-full max-w-3xl mx-auto p-6 gap-4"
+        }
+    }
+
+    on {
+        .SearchChanged(s) -> {
+            .search = s
+            .page = 1
+            // consumer wires dataSource.query(filter, page) here
+        }
+        .PageChanged(p) -> {
+            .page = p
+            // consumer wires dataSource.query(filter, page) here
+        }
+        .CreateClicked -> {
+            // actions.create: open the create surface (dialog in with_dialog)
+        }
+        .EditRow(id) -> {
+            // actions.update: open edit surface for this row
+        }
+        .DeleteRow(id) -> {
+            // actions.delete: confirm, then remove + re-run query
+        }
+    }
+}

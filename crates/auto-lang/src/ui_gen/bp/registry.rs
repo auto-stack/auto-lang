@@ -225,16 +225,33 @@ mod scan_tests {
     fn scans_default_packages() {
         let reg = BlueprintRegistry::with_defaults();
         let keys: Vec<String> = reg.iter().map(|p| p.key()).collect();
-        assert!(keys.contains(&"data-display/note-list".to_string()), "keys: {keys:?}");
-        assert!(keys.contains(&"form/login".to_string()), "keys: {keys:?}");
+        // PLAN-640 Tier-0 catalog: all 13 official packages must scan clean.
+        for key in [
+            "dashboard/overview",
+            "data-display/data-table-crud",
+            "data-display/master-detail",
+            "data-display/note-list",
+            "editor/note-editor",
+            "feedback/empty-state",
+            "feedback/result-page",
+            "form/login",
+            "form/settings",
+            "form/signup",
+            "form/wizard",
+            "navigation/sidebar-nav",
+            "navigation/sidebar-shell",
+        ] {
+            assert!(keys.contains(&key.to_string()), "missing {key}; keys: {keys:?}");
+        }
     }
 
     #[test]
-    fn login_has_two_references() {
+    fn login_has_three_references() {
         let reg = BlueprintRegistry::with_defaults();
         let pkg = reg.get("form", "login").unwrap();
-        assert_eq!(pkg.spec.variants, vec!["minimal", "with_sso"]);
+        assert_eq!(pkg.spec.variants, vec!["minimal", "two_column", "with_sso"]);
         assert!(pkg.references.contains_key("minimal"));
+        assert!(pkg.references.contains_key("two_column"));
         assert!(pkg.references.contains_key("with_sso"));
         assert!(pkg.gotchas.is_some());
     }
@@ -246,4 +263,5 @@ mod scan_tests {
         let drift = reg.palette_drift(&widgets);
         assert!(drift.is_empty(), "palette drift: {drift:?}");
     }
+
 }

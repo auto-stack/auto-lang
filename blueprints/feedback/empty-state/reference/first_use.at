@@ -1,0 +1,53 @@
+// reference/first_use.at — EmptyState blueprint, "first_use" variant.
+// Nothing here yet: invite the user's first creation. Consumer wires
+// actions.primary (the create affordance) and supplies copy + illustration.
+
+widget EmptyStateFirstUse {
+    msg {
+        PrimaryClicked
+    }
+
+    model {
+        var illustration str = "" // prop: media source override
+    }
+
+    view {
+        col {
+            // ── EDIT: media (illustration prop, text-marker fallback) ──
+            if .illustration != "" {
+                image {
+                    src: .illustration
+                    alt: "No items yet"
+                    style: "w-40 h-40 object-contain"
+                }
+            } else {
+                text "◎" { style: "text-4xl text-gray-300" }
+            }
+
+            // ── EDIT: headline ──
+            col {
+                text "Nothing here yet" { style: "text-lg font-semibold" }
+                text "Create your first item to get started." {
+                    style: "text-sm text-gray-500"
+                }
+                style: "gap-1 items-center"
+            }
+
+            separator { style: "w-16 my-2" }
+
+            // ── EDIT: actions ──
+            button "New item" {
+                onclick: .PrimaryClicked
+                style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+            }
+
+            style: "items-center justify-center gap-3 py-16"
+        }
+    }
+
+    on {
+        .PrimaryClicked -> {
+            // actions.primary: consumer opens the create surface
+        }
+    }
+}

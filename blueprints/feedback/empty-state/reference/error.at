@@ -1,0 +1,66 @@
+// reference/error.at — EmptyState blueprint, "error" variant.
+// Fetch failed: explain, and offer retry via dataSource.refresh. Consumer
+// wires actions.primary for post-retry navigation if any.
+
+widget EmptyStateError {
+    msg {
+        PrimaryClicked
+    }
+
+    model {
+        var illustration str = "" // prop: media source override
+        var error str = ""        // failure detail, rendered in the callout
+        var loading bool = false
+    }
+
+    view {
+        col {
+            // ── EDIT: media ──
+            if .illustration != "" {
+                image {
+                    src: .illustration
+                    alt: "Something went wrong"
+                    style: "w-40 h-40 object-contain"
+                }
+            } else {
+                text "⚠" { style: "text-4xl text-gray-300" }
+            }
+
+            // ── EDIT: headline ──
+            col {
+                text "Couldn't load this view" { style: "text-lg font-semibold" }
+                text "Check your connection and try again." {
+                    style: "text-sm text-gray-500"
+                }
+                style: "gap-1 items-center"
+            }
+
+            if .error != "" {
+                callout (kind: "error") {
+                    text f"${.error}"
+                    style: "max-w-sm"
+                }
+            }
+
+            separator { style: "w-16 my-2" }
+
+            // ── EDIT: actions ──
+            button "Retry" {
+                onclick: .PrimaryClicked
+                disabled: .loading
+                style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
+            }
+
+            style: "items-center justify-center gap-3 py-16"
+        }
+    }
+
+    on {
+        .PrimaryClicked -> {
+            .loading = true
+            // consumer wires dataSource.refresh() here;
+            // on success the enclosing view re-renders its data branch
+            .loading = false
+        }
+    }
+}

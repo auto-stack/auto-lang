@@ -1,0 +1,43 @@
+# Build regression for examples/bps-gallery — the blueprint catalog browser
+# (PLAN-640). The gallery derives its catalog from blueprints/** via Vite
+# import.meta.glob, so bp package edits can break the type-check/bundle; they
+# surface here instead of in a downstream consumer.
+
+name: Build bps-gallery
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'examples/bps-gallery/**'
+      - 'blueprints/**'
+      - '.github/workflows/build-bps-gallery.yml'
+  pull_request:
+    paths:
+      - 'examples/bps-gallery/**'
+      - 'blueprints/**'
+      - '.github/workflows/build-bps-gallery.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: examples/bps-gallery/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: examples/bps-gallery
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (vue-tsc --noEmit && vite build)
+        working-directory: examples/bps-gallery
+        run: pnpm build
