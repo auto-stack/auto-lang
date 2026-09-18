@@ -12597,6 +12597,20 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let default = self.extract_string_value(value).unwrap_or("");
                     attrs.push(format!("default-value=\"{}\"", default));
                 }
+                // PLAN-641：defaultvalue 别名（schema 词表名；default 为历史拼写）。
+                if !attrs.iter().any(|a| a.starts_with("default-value=")) {
+                    if let Some(value) = props.get("defaultvalue") {
+                        if let Some(val) = self.extract_string_value(value) {
+                            attrs.push(format!("default-value=\"{}\"", val));
+                        }
+                    }
+                }
+                // PLAN-641：形态 prop 直传 registry Tabs（default|enclosed）。
+                if let Some(value) = props.get("variant") {
+                    if let Some(val) = self.extract_string_value(value) {
+                        attrs.push(format!("variant=\"{}\"", val));
+                    }
+                }
             }
 
             // === Tab ===
