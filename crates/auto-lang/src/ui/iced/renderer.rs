@@ -4353,6 +4353,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
+            // PLAN-656 T-06: synthetic managed content——logical extent 自绘
+            // widget（host 注册表 draw 期 viewport 观察）。
+            AbstractView::ManagedScrollContent { key, logical_w, logical_h, .. } => {
+                crate::ui::iced::managed_content::ManagedScrollContentWidget::new(key.clone(), logical_w, logical_h)
+                    .into_element()
+            }
+
             AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
@@ -7193,6 +7200,11 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
         // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
         // (数据已在 convert_terminal 物化)。
+        // PLAN-656 T-06: managed content 纯数据透传。
+        AbstractView::ManagedScrollContent { key, logical_w, logical_h, axes } => {
+            AbstractView::ManagedScrollContent { key, logical_w, logical_h, axes }
+        }
+
         AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
             AbstractView::Terminal {
                 key,
@@ -22611,6 +22623,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::MouseArea { style, .. } => style.as_ref(),
         // PLAN-009 P1: terminal 的 style 参与常规定位/边距判定。
         AbstractView::Terminal { style, .. } => style.as_ref(),
+        AbstractView::ManagedScrollContent { .. } => None,
         // PLAN-617 T-19: video 的 style（尺寸/定位类）参与布线判定。
         AbstractView::Video { style, .. } => style.as_ref(),
         // Plan 563: Canvas 的 style(尺寸类)同 MouseArea 参与定位判定。
@@ -22735,6 +22748,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Textarea { .. } => "textarea",
         AbstractView::CodeEditor { .. } => "code_editor",
         AbstractView::Terminal { .. } => "terminal",
+        AbstractView::ManagedScrollContent { .. } => "managed_content",
         AbstractView::AutodownEditor { .. } => "autodown_editor",
         AbstractView::Input { .. } => "input",
         AbstractView::Accordion { .. } => "accordion",
@@ -23267,6 +23281,14 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // Plan 490 G4：div/Container 点击（inspect 模式自守卫不包）。
             // PLAN-002 B：右键 + hover 同包装点。
             wrap_layout_events(el, onclick, on_right_click, hover)
+        }
+
+        // PLAN-656 T-06: managed content——dynamic 臂同 widget（debug 包裹
+        // 保 bounds 可见性；真渲染在 widget draw）。
+        AbstractView::ManagedScrollContent { key, logical_w, logical_h, .. } => {
+            let el = crate::ui::iced::managed_content::ManagedScrollContentWidget::new(key.clone(), logical_w, logical_h)
+                .into_element();
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "managed_content", el, vec![], None) } else { el }
         }
 
         AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll, axes, scrollbar_policy, controller } => {

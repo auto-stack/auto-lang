@@ -1058,6 +1058,21 @@ element row {
     description: "Horizontal layout container"
 }
 
+element scroll_test_content {
+    tag: "scroll_test_content"
+    category: "layout"
+    tier: "builtin_widget"
+    aliases: ["scroll-test-content"]
+    backends: { web: "none", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "key", type: "string", description: "Stable host registry key (persist across rebuilds)" }
+        { name: "extent_w", type: "float", description: "Logical extent width px (default 2000000)" }
+        { name: "extent_h", type: "float", description: "Logical extent height px (default 10000000)" }
+    ]
+    allows_children: false
+    description: "PLAN-656 capability-test-only synthetic managed scroll content (NOT a public widget) - host-owned logical extent, ~20 visible rows materialized; place inside scroll-pane"
+}
+
 element scroll {
     tag: "scroll"
     category: "layout"

@@ -981,6 +981,7 @@ pub fn shim_dnd_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // ============================================================================
 
 /// `scroll_controller() -> Str` — 分配 controller 句柄（"@scrollctl:N"）。
+#[cfg(feature = "ui")]
 pub fn shim_scroll_controller(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::ui::scroll::next_controller_handle();
     let idx = vm.add_string(handle.into_bytes());
@@ -989,12 +990,14 @@ pub fn shim_scroll_controller(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 }
 
 /// 弹出 controller 句柄实参（非句柄串返回 None 并清空队列路径）。
+#[cfg(feature = "ui")]
 fn pop_controller_handle(task: &mut AutoTask, vm: &AutoVM) -> Option<String> {
     let s = pop_string_arg(task, vm);
     crate::ui::scroll::is_controller_handle(&s).then_some(s)
 }
 
 /// 弹出可选轴实参："x"/"y" → Axis；缺省 Y（单轴 pane 简写）。
+#[cfg(feature = "ui")]
 fn pop_axis_arg(task: &mut AutoTask, vm: &AutoVM) -> crate::ui::scroll::Axis {
     use crate::ui::scroll::Axis;
     let nv = crate::vm::native::pop_arg_nv(task);
@@ -1010,6 +1013,7 @@ fn pop_axis_arg(task: &mut AutoTask, vm: &AutoVM) -> crate::ui::scroll::Axis {
 }
 
 /// `scroll_to_start(handle)` — 到起点（Y 简写；可选第二实参轴）。
+#[cfg(feature = "ui")]
 pub fn shim_scroll_to_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
     let arity = task.pending_native_arg_count as usize;
@@ -1022,6 +1026,7 @@ pub fn shim_scroll_to_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 }
 
 /// `scroll_to_end(handle, axis?)` — 到终点。
+#[cfg(feature = "ui")]
 pub fn shim_scroll_to_end(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
     let arity = task.pending_native_arg_count as usize;
@@ -1034,6 +1039,7 @@ pub fn shim_scroll_to_end(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 }
 
 /// `scroll_by(handle, delta)` / `scroll_by(handle, axis, delta)` — 相对滚动。
+#[cfg(feature = "ui")]
 pub fn shim_scroll_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
     let arity = task.pending_native_arg_count as usize;
@@ -1049,6 +1055,7 @@ pub fn shim_scroll_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `scroll_to(handle, x, y)`（双轴绝对）/ `scroll_to(handle, axis, offset)`
 /// （单轴绝对；axis 实参为字符串时按轴形态）。args 压序 handle,a,b → 弹序
 /// b,a,handle；a 为字符串 → 轴形态，否则坐标形态。
+#[cfg(feature = "ui")]
 pub fn shim_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
     let b = pop_f64_operand(task);
@@ -1087,6 +1094,7 @@ pub fn shim_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `scroll_state(handle) -> ScrollState` — 最近测量快照读出（8 具名字段
 // record，GenericInstanceData 堆路径——ProcInfo 同款，.at 端 `s.progress_y`
 // 具名可读；未测量/未绑定为全零——capability 验证断言面）。
+#[cfg(feature = "ui")]
 pub fn shim_scroll_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::generic_registry::GenericInstanceData;
     let handle = pop_string_arg(task, vm);
@@ -1120,6 +1128,60 @@ pub fn shim_scroll_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let inst = GenericInstanceData::new_with_names("ScrollState".to_string(), fields, names);
     let id = vm.insert_heap_object(inst);
     vm.rc_push_id(task, id as u64);
+    Ok(())
+}
+
+
+// ── PLAN-656: scroll controller natives 降级臂（feature 无 ui 时队列层
+// 不存在；弹实参保栈纪律 + 默认值——dnd_start 降级先例）──────────────────
+#[cfg(not(feature = "ui"))]
+pub fn shim_scroll_controller(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = (&mut *task, vm);
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+#[cfg(not(feature = "ui"))]
+pub fn shim_scroll_to_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arity = task.pending_native_arg_count as usize;
+    let _ = pop_string_arg(task, vm);
+    if arity >= 2 { let _ = pop_string_arg(task, vm); }
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+#[cfg(not(feature = "ui"))]
+pub fn shim_scroll_to_end(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arity = task.pending_native_arg_count as usize;
+    let _ = pop_string_arg(task, vm);
+    if arity >= 2 { let _ = pop_string_arg(task, vm); }
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+#[cfg(not(feature = "ui"))]
+pub fn shim_scroll_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arity = task.pending_native_arg_count as usize;
+    let _ = pop_f64_operand(task);
+    let _ = pop_string_arg(task, vm);
+    if arity >= 3 { let _ = pop_string_arg(task, vm); }
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+#[cfg(not(feature = "ui"))]
+pub fn shim_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = pop_f64_operand(task);
+    let _ = pop_f64_operand(task);
+    let _ = pop_string_arg(task, vm);
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+#[cfg(not(feature = "ui"))]
+pub fn shim_scroll_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = pop_string_arg(task, vm);
+    task.ram.push_f64(0.0);
     Ok(())
 }
 

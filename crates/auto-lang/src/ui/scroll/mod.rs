@@ -17,6 +17,7 @@ pub mod controller;
 pub mod geometry;
 pub mod host;
 pub mod intent;
+pub mod managed;
 pub mod state;
 
 pub use controller::{

@@ -1983,6 +1983,8 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" | "scroll-pane" => self.convert_scroll_tracked_ctx(props, events, children, path, id_map, probe, bindings),
+            // PLAN-656 T-06: synthetic managed content（capability-test 专用）。
+            "scroll-test-content" => self.managed_scroll_content_view(props, bindings),
             // Plan 482: nav 容器支持 search:true 集成搜索行（子节点随 untracked
             // 转换，同 button 先例）。
             "nav" => self.convert_nav_container(props, events, children, bindings),
@@ -2371,6 +2373,47 @@ impl<'a> AuraViewBuilder<'a> {
             return fold_floats(base, floats);
         }
         fold_floats(col_view, floats)
+    }
+
+    /// PLAN-656 T-06: synthetic managed content 提取——`scroll-test-content`
+    ///（capability-test 专用，非 public widget；plan r2 §11）。props：
+    /// key（稳定宿主键，缺省 "cap"）/ extent_w / extent_h（逻辑 px，缺省
+    /// 2M×10M）。双臂共用（D-GAP）。
+    fn managed_scroll_content_view(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let key = self
+            .extract_string_with(props, "key", bindings)
+            .unwrap_or_else(|| "cap".to_string());
+        let num = |name: &str, default: f64| {
+            props.get(name)
+                .and_then(|v| match v {
+                    AuraPropValue::Expr(expr) => self.resolve_expr_to_value(expr, bindings),
+                    _ => None,
+                })
+                .and_then(|val| match val {
+                    Value::Float(f) => Some(f),
+                    Value::Double(d) => Some(d),
+                    Value::Int(i) => Some(i as f64),
+                    Value::Uint(u) => Some(u as f64),
+                    _ => None,
+                })
+                .filter(|v| v.is_finite() && *v > 0.0)
+                .unwrap_or(default)
+        };
+        let logical_w = num(
+            "extent_w",
+            crate::ui::scroll::SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_W,
+        );
+        let logical_h = num(
+            "extent_h",
+            crate::ui::scroll::SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_H,
+        );
+        // axes prop 仅供信息面（host 创建恒 BOTH；实际滚动轴由外层
+        // scroll-pane 的 axis 决定）。
+        View::ManagedScrollContent { key, logical_w, logical_h, axes: crate::ui::scroll::ScrollAxes::BOTH }
     }
 
     /// PLAN-656 T-03: scroll-pane 语义提取——tracked/untracked 双臂共用
@@ -3618,6 +3661,8 @@ impl<'a> AuraViewBuilder<'a> {
             // 之前落 fallback 丢 style(padding/flex/overflow),导致 sidebar 无 padding、
             // 无滚动条、Home 页溢出被裁。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" | "scroll-pane" => self.convert_scroll(props, events, children, bindings),
+            // PLAN-656 T-06: synthetic managed content（capability-test 专用）。
+            "scroll-test-content" => self.managed_scroll_content_view(props, bindings),
             // Plan 482: nav 容器支持 search:true 集成搜索行，其余语义容器不变。
             "nav" => self.convert_nav_container(props, events, children, bindings),
             "aside" | "main" | "header" | "section" | "footer" | "article" => {

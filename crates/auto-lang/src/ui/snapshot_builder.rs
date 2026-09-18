@@ -115,6 +115,20 @@ impl SnapshotBuilder {
             },
             // Plan 563: 画布在 snapshot 里为占位 leaf(内容 = scene 状态
             // 纯函数渲染,无子树;带笔画数 props 供 MCP 检视定位)。
+            // PLAN-656 T-06: managed content 快照（logical extent 可见；
+            // 无 action 面）。
+            View::ManagedScrollContent { key, logical_w, logical_h, .. } => UiNode {
+                id,
+                kind: "ManagedScrollContent".to_string(),
+                props: vec![
+                    ("key".to_string(), key.clone()),
+                    ("logical_w".to_string(), format!("{}", *logical_w as u64)),
+                    ("logical_h".to_string(), format!("{}", *logical_h as u64)),
+                ],
+                actions: vec![],
+                children: vec![],
+            },
+
             View::Canvas { scene, .. } => UiNode {
                 id,
                 kind: "Canvas".to_string(),

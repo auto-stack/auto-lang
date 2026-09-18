@@ -686,6 +686,22 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// PLAN-656 T-06: synthetic managed scroll content（capability-test 专用，
+    /// plan r2 §11——非正式 public widget）。logical extent 巨大、真实绘制
+    /// 节点 ~20 行/列；host（`ui::scroll::managed` 注册表）单源持有 semantic
+    /// offset/extent，iced widget 在 draw 期观察 viewport 回灌（terminal
+    /// virtual_scroll 同款）。双轴几何独立（BOTH case 宽高各自逻辑值）。
+    ManagedScrollContent {
+        /// 宿主注册表键（跨 view 重建持久）。
+        key: String,
+        /// 逻辑宽度（px, f64 逻辑空间）。
+        logical_w: f64,
+        /// 逻辑高度（px）。
+        logical_h: f64,
+        /// 开启轴（host 创建参数）。
+        axes: ScrollAxes,
+    },
+
     /// Container wrapper for styling and layout
     Container {
         child: Box<View<M>>,
@@ -2161,6 +2177,10 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
+            // PLAN-656 T-06: managed content 纯数据透传。
+            View::ManagedScrollContent { key, logical_w, logical_h, axes } => {
+                View::ManagedScrollContent { key, logical_w, logical_h, axes }
+            }
             View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => View::Terminal {
                 key,
                 cols,

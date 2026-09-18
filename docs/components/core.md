@@ -1126,6 +1126,22 @@ Universal scroll viewport (PLAN-656 scroll-pane; scrollable/scroll are aliases)
 
 ---
 
+### `scroll_test_content`
+
+`builtin_widget` · `scroll_test_content` · web: `none` · iced: `full` · category: `layout`
+
+PLAN-656 capability-test-only synthetic managed scroll content (NOT a public widget) - host-owned logical extent, ~20 visible rows materialized; place inside scroll-pane
+
+别名:`scroll-test-content`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `key` | `string` | — | Stable host registry key (persist across rebuilds) |
+| `extent_w` | `float` | — | Logical extent width px (default 2000000) |
+| `extent_h` | `float` | — | Logical extent height px (default 10000000) |
+
+---
+
 ### `section`
 
 `builtin_widget` · `section` · web: `native` · iced: `unknown` · category: `content`
