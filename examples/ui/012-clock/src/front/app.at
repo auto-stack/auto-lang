@@ -30,7 +30,7 @@ widget App {
         SetTH(str), SetTM(str), SetTS(str), TStart, TPause, TCancel,
         TUpH, TDnH, TUpM, TDnM, TUpS, TDnS, TQuick(int),
         SetLocal(int),
-        AAdd, ADel(str), AUpH, ADnH, AUpM, ADnM, AQuick(int, int)
+        AAdd, ADel(int), AUpH, ADnH, AUpM, ADnM, AQuick(int, int)
     }
 
     model {
@@ -278,19 +278,19 @@ widget App {
                     // 闹钟列表
                     col {
                         if .alarm1 != "" { row { text .alarm1 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm1), style: del_btn }
+                            button "×" { onclick: .ADel(1), style: del_btn }
                             style: alarm_row } }
                         if .alarm2 != "" { row { text .alarm2 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm2), style: del_btn }
+                            button "×" { onclick: .ADel(2), style: del_btn }
                             style: alarm_row } }
                         if .alarm3 != "" { row { text .alarm3 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm3), style: del_btn }
+                            button "×" { onclick: .ADel(3), style: del_btn }
                             style: alarm_row } }
                         if .alarm4 != "" { row { text .alarm4 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm4), style: del_btn }
+                            button "×" { onclick: .ADel(4), style: del_btn }
                             style: alarm_row } }
                         if .alarm5 != "" { row { text .alarm5 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm5), style: del_btn }
+                            button "×" { onclick: .ADel(5), style: del_btn }
                             style: alarm_row } }
                         style: list_col
                     }
@@ -396,7 +396,6 @@ widget App {
             .alarm3 = storage.get("clock.alarms.2")
             .alarm4 = storage.get("clock.alarms.3")
             .alarm5 = storage.get("clock.alarms.4")
-            .SelectTab("clock")
         }
         .SelectTab(t) -> { .tab = t }
         .SetDialMode(m) -> { .dial_mode = m }
@@ -614,16 +613,12 @@ widget App {
             storage.set("clock.alarms.3", .alarm4)
             storage.set("clock.alarms.4", .alarm5)
         }
-        .ADel(t) -> {
-            if .alarm1 == t { .alarm1 = "" } else {
-                if .alarm2 == t { .alarm2 = "" } else {
-                    if .alarm3 == t { .alarm3 = "" } else {
-                        if .alarm4 == t { .alarm4 = "" } else {
-                            if .alarm5 == t { .alarm5 = "" }
-                        }
-                    }
-                }
-            }
+        .ADel(idx) -> {
+            if idx == 1 { .alarm1 = "" }
+            if idx == 2 { .alarm2 = "" }
+            if idx == 3 { .alarm3 = "" }
+            if idx == 4 { .alarm4 = "" }
+            if idx == 5 { .alarm5 = "" }
             storage.set("clock.alarms.0", .alarm1)
             storage.set("clock.alarms.1", .alarm2)
             storage.set("clock.alarms.2", .alarm3)
