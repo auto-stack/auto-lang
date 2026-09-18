@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-648
-status: drafting
+status: executing
 feature_name: 跑法/门禁/codegen 缺陷簇整备——dev 跑法 VM api 委托断供 + tf 门 E0433 谱系 + codegen 遗留面清理
 author: [zhaopuming/zcode-session]
 created_at: 2026-09-18T00:00:00Z
-updated_at: 2026-09-18T00:00:00Z
+updated_at: 2026-09-19T00:00:00Z
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components: []
@@ -130,11 +130,35 @@ CLI runner / vm_bridge / 生成面)。tf 门禁 = 测试文件 feature 门控
 
 - **T-00 [D1] T-10 定因调查**(bounded investigation,决策工件)。
   前置:无。关联 AC-01。
+  [✅ 2026-09-19] 决策工件 `docs/plans/evidence/648/t00-decision.md`:
+  主断点=生成面裸名-only api 改写(两合成入口同病);限定调用回落
+  back 链进程内执行+宿主引擎 DLL 缺席降级→全空;"第三断点"不存在
+  (021 "3 连接=轮询"系误读);AUTO_FFI_TRACE 敏感性归 auto-term 侧
+  仪器(与断供无因果)。次生发现:VM handler 再入缺陷(P648-D1,
+  三次实证)。仪器:AUTO_LANG_HTTP_TRACE(simple_http_json 汇聚点)。
+  复现/对照日志同目录 5 件。
 - **T-01 [D2] T-10 根修**。前置 T-00。关联 AC-02。
+  [✅ 2026-09-19] worktree 9ada0a21e:api_funcs 增限定名键(扁平化
+  全名+别名末段.fn)+codegen 门卫放行 Dot(Ident,fn);db.* 不受
+  影响;merged 路径零改动。plan340 12/12(含新增限定名回归测试);
+  实机 `auto run -r vm` 70s 零交互 1063 次 api 轮询全 200,
+  tab-title="shell 1"/pane-lines 真实 Windows banner,Tab "● shell 1"
+  +提示符渲染(截图 evidence/648/t01-window-rendered.png)。
+  注意:交互事件(restore/键入)触发既有再入缺陷 P648-D1——
+  无交互判据已达成,交互稳定性独立立项。
 - **T-02 [D3] tf 门禁修复**(plan024 门控;镜像既有 gated 惯例)。
   前置:无(与 T-00 并行)。关联 AC-03。
+  [✅ 外部落地 2026-09-18 12:10] 并行会话 64b65529b ⑤已补
+  plan024 dashboard 测试 ui feature 门("解锁 tv/tf",提交信息含
+  tf 3611/3613 双红对照)。本计划不重复副作用;E0433 消除的编译
+  实证并入 T-04 tf 全量门(见下)。
 - **T-03 [D4] codegen 遗留面收口**(CRUD 原型退役评估/清理)。
   前置:无(与 T-00/T-02 并行)。关联 AC-05。
+  [✅ 2026-09-19] 裁定=明示保留(非退役):API_DATA CRUD=demo 脚手架
+  兜底,在库消费方 020-music-player/031-image-viewer(带 db.at 应用
+  全走吸收臂)。worktree 6422eb267:契约注释+双锁定测试(吸收优先/
+  CRUD 兜底形态)2/2 绿。vue.rs 环境性失败复核归 P028-D4/P645-D2
+  预存红家族(master 同败实证),显式豁免不并入。
 - **T-04 全量门归档**(tf/cargo t 红集清单定界落档)。前置 T-02。
   关联 AC-04。
 - **T-05 app 实机验证 + 收口**。前置 T-01+T-02+T-03。关联
