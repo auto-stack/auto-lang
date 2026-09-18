@@ -402,9 +402,13 @@ for src in app.component.subscribable_timesources() {
 
   **checkpoint ledger_refreshed**：`docs/specs/auto-lang/ui/plans.md` 652 行；overview.md PLAN-652 现状段；nested-timesource.md AC-06 指向 evidence JSON；`scripts/spec-index.py` 已跑。  
 
-  **checkpoint archived**：`git mv` → `docs/plans/archive/652-nested-component-timesource.md`，frontmatter `status: archived`。  
+  **checkpoint archived**：`git mv` → `docs/plans/archive/652-nested-component-timesource.md`，frontmatter `status: archived`；bookkeeping commit `0ed2874af`。  
 
-  **completion_kind: delivered**。
+  **checkpoint cleaned**：reparse 扫描 `dir /s /b /a:l` = File Not Found（clean）；已删除 `D:/autostack/.wt/lang-652/auto-lang` clone 与组目录 `lang-652`；master 无 `plan-652-dev` 本地分支（仅 clone 内存在，随 clone 移除）。交付 ancestry = `0b301b17e`（patch from `52bf8606b`）。  
+
+  **completion_kind: delivered**。  
+
+  **非阻塞遗留**：F-03 `widget_tick` dead code（可选后续清理）；F-02 订阅时滞已在 spec 文档化。
 
 ## 10. 待澄清事项
 
@@ -421,4 +425,4 @@ for src in app.component.subscribable_timesources() {
 - 2026-09-18 /auto-plan:review：`outcome: needs_fix`（F-01 AC-06 实机证据缺失；其余 AC pass）。`status: executing`，`current_step: 7/8`，**T-06 重开**。clone 保留。**next: `/auto-plan:work` 补 T-06 实机**。  
 - 2026-09-18 /auto-plan:work（T-06）：实机 AC-06 **pass**（gallery 走时+停订 + standalone 不回归）；证据 `scratch/p652/t06_mcp_evidence.json`。`status: execution_done`，`current_step: 8/8`。**next: `/auto-plan:review`**。  
 - 2026-09-18 /auto-plan:review re-review：**`outcome: pass`**，`status: reviewed`。F-01 已清偿；冻结证据 `docs/plans/evidence-p652-t06-mcp.json`。**next: `/auto-plan:merge`**。  
-- 2026-09-18 /auto-plan:merge：**`outcome: pass`**，`delivery_commit: 0b301b17e` @ master；`status: archived` → `docs/plans/archive/652-nested-component-timesource.md`。
+- 2026-09-18 /auto-plan:merge：**`outcome: pass`**，`delivery_commit: 0b301b17e` @ master；`status: archived` → `docs/plans/archive/652-nested-component-timesource.md`；clone 已清理。
