@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-647
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-version-ruling（blueprints 多版本/锁面裁定——P639-D3 收口）
 author: [agent]
 created_at: 2026-09-18
@@ -11,6 +11,7 @@ supersedes_spec_components:
   - docs/specs/blueprint/contract.md#Q5-版本面-MVP-半句
 new_spec_components:
   - docs/specs/blueprint/contract.md#Q5-版本面规则（终版）
+  - docs/specs/blueprint/contract.md#验证面-版本键面护栏（PLAN-647 新增句）
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
@@ -292,6 +293,38 @@ P639-D3 悬置债收口：**blueprints 包库的版本语义正式裁定**。现
   - **AC-05 部分（specs.json upsert / spec-index.py）**：属 merge 阶段动作
     （/auto-plan:merge），work 阶段仅完成 contract.md 规范增量本体（SD-01/
     02 已落 worktree 分支）。
+- 2026-09-18 independent review（/auto-plan:review）：stage: review |
+  plan_id: PLAN-647 | plan_revision: 1 | outcome: **pass** | reviewed_commit:
+  92bd47a7c | base_commit: 1f4e3e32c | dependency_revisions: auto-down
+  detached@d8f11bf（组内只读兄弟）| spec_inputs:
+  docs/specs/blueprint/contract.md@92bd47a7c（worktree 版；SD-01/02 已落）|
+  **独立性声明**：本复审与实施同会话，裁决自工件重建——全 diff 审读
+  （bf3573851 双护栏+contract / 92bd47a7c 债核销）+ 门禁复跑 + master 基线
+  对照，不采信执行摘要。
+  - **acceptance_results**：AC-01 pass（Q5 五项①-⑤逐条在 diff 中核对，持久
+    裁定文本非执行日记）；AC-02 pass（`cargo t plan647 rejects_frontmatter`
+    9/9 绿 @92bd47a7c；红相先 FAIL 后 PASS 留案 §4；护栏消息与 Q5 互指核对）；
+    AC-03 pass（§4 实勘结论七项+消费方升版反应盘点在案）；AC-04 pass（债文件
+    diff 实证：P639-D3 ✅ 核销行+070 三项承接，未越仓）；AC-05 pass（SD-01/
+    02 落 worktree 分支；specs.json upsert 属 merge 动作，frontmatter 元数据
+    本次复审补全——new_spec_components 增验证面护栏组件）；AC-06 **未启用**
+    （Option B 未裁，lock/pin 不交付，复审记录在案非静默删项）。
+  - **门禁复跑（@92bd47a7c worktree）**：`cargo tf --no-fail-fast` 全景
+    3624 run：3623 passed / 1 failed / 97 skipped；唯一败
+    `plan367_viewfn_tests::real_sidebar_at_parses_with_navtree`（caption_text
+    UndefinedVariable 解析红）经 master 主检出同点复跑实证为**预存基线红**，
+    与本计划无接触面（护栏只触 spec frontmatter 键面与 pac dep 版本键，解析
+    面 diff 审读无 viewfn 路径）。work 阶段门禁（check 零新增警告/bp list
+    14 包/bp check 22 变体与 master 逐项一致）复认可用。
+  - **findings**：无阻断项。观察两条（非阻塞，不立项）：①护栏 B 文本扫描对
+    "dep 块字符串值内含 `tag:` 等子串"存在理论误报面——与仓内既有文本式
+    pac 解析同局限，实盘 22 变体+全语料零误伤；②070 承接事项已登记债文件，
+    auto-down 侧落点（CI pin）执行时点归 070 自己的计划节奏。
+  - **evidence**：本节命令/计数摘录为持久证据（worktree 移除后仍可解析：
+    提交 bf3573851/92bd47a7c 在 plan-647-dev 分支历史，master 对照在主检出
+    1f4e3e32c）；规范增量冻结=contract.md@92bd47a7c 的 SD-01/02 hunk。
+  - **next**：merge（/auto-plan:merge——specs.json upsert + spec-index.py +
+    归档 + worktree 清理守闸）。
 
 ## 10. 待澄清事项
 
