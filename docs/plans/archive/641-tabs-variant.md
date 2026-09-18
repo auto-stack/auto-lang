@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-641
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: tabs-variant（Tabs 组件 variant 扩展：enclosed 连通形态）
 author: [agent]
 created_at: 2026-09-18
@@ -422,3 +422,17 @@ variant、两端渲染器落实连通结构、gallery 加示例覆盖两种观�
 - **Q4（低风险，执行期观察）**：iced `Default` 形态现状激活标记为 `[label]`
   括号 hack——若替换为等效选中标记则需截图证明视觉等效，否则原样保留
   （AC-07 零回归口径以"原样保留"为最稳路径）。
+
+
+## spec-sync 回写记录
+
+- 2026-09-18（/auto-plan:merge）：SD-01/SD-02 落
+  `docs/specs/auto-lang/ui/design/tabs-components.md`（新建，variant 词表/VM
+  折叠契约/三源同步纪律/验证基线）+ `ui/overview.md` 641 条目 +
+  `ui/plans.md` 行 + INDEX 再生（26 projects）+ `.autoos/specs.json`
+  upsert（P641-1 architecture / P641-2 reviews，运行时账本本地投影）。
+- 合并收据：master `727b7c9b1`（merge plan-641-dev，基线 e352437b0，实现
+  提交 75cfcd47c..49d8be5d1 共 9 个）；主检出冒烟：tabs 单测 8/8 +
+  schema_drift 2/2 + docs_gen 4/4。
+- 清理：wt-guard clean 后移除 worktree `D:/autostack/.wt/lang-641/auto-lang`
+  与分支 `plan-641-dev`（组内 auto-down detached 兄弟一并移除）。
