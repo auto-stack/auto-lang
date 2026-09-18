@@ -2209,29 +2209,51 @@ fn build_row<M: Clone + Debug + 'static>(
         iced::widget::Space::new()
                             .width(iced::Length::FillPortion(portion))
     };
-    let mut row_widget = row([]).spacing(eff_spacing);
-    if let Some(p) = lead {
-        row_widget = row_widget.push(spacer(p));
-    }
     let stretch = iced_style.as_ref().map_or(false, |is| is.items_stretch);
-    let mut first = true;
-    for child in children {
-        if let Some(p) = between {
-            if !first {
-                row_widget = row_widget.push(spacer(p));
-            }
+    let row_widget = if stretch {
+        // PLAN-655: 等高行走 StretchLine 两阶段布局（CSS align-items:stretch
+        // 原语）。旧形态的 height:Fill 包装在无界祖先（scroll 内容臂）下
+        // 塌缩 0 高（P642-D12，008 定价卡消失）；子项现保持原始形态，
+        // 行高（=max 子项内容高）与子项拉伸由控件内部供给，justify 垫片
+        // 照常并入序列（FillPortion Space 主轴配给语义不变）。
+        let mut items: Vec<iced::Element<'static, M>> = Vec::new();
+        if let Some(p) = lead {
+            items.push(spacer(p).into());
         }
-        first = false;
-        let child = if stretch {
-            container(child).height(iced::Length::Fill).into()
-        } else {
-            child
-        };
-        row_widget = row_widget.push(child);
-    }
-    if let Some(p) = trail {
-        row_widget = row_widget.push(spacer(p));
-    }
+        let mut first = true;
+        for child in children {
+            if let Some(p) = between {
+                if !first {
+                    items.push(spacer(p).into());
+                }
+            }
+            first = false;
+            items.push(child);
+        }
+        if let Some(p) = trail {
+            items.push(spacer(p).into());
+        }
+        row([crate::ui::iced::stretch_line::stretch_line(items, eff_spacing as f32).into()])
+    } else {
+        let mut row_widget = row([]).spacing(eff_spacing);
+        if let Some(p) = lead {
+            row_widget = row_widget.push(spacer(p));
+        }
+        let mut first = true;
+        for child in children {
+            if let Some(p) = between {
+                if !first {
+                    row_widget = row_widget.push(spacer(p));
+                }
+            }
+            first = false;
+            row_widget = row_widget.push(child);
+        }
+        if let Some(p) = trail {
+            row_widget = row_widget.push(spacer(p));
+        }
+        row_widget
+    };
     apply_side_borders(apply_row_style(row_widget, padding, style, widget_id, hover), iced_style.as_ref())
 }
 
