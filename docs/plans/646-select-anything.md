@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-646
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: select-anything
 author: [zcode-agent]
 created_at: 2026-09-18
@@ -425,7 +425,60 @@ base 1f4e3e32c）| task_ids: T-01..T-11 全闭环`
   采集闭环——Plan 282 既有链路缺口，非本计划引入，实机 trace armed 4/
   consumed 0 定罪后修复）。
 
-### 9.3 worktree 事件记录（外来 WIP 冲突）
+### 9.3 review 记录（2026-09-18）
+
+`stage: review | plan_id: PLAN-646 | plan_revision: 1 | outcome: pass |
+reviewed_commit: 738ec4ecd（worktree plan-646-dev） | base_commit: 1f4e3e32c |
+dependency_revisions: auto-down detached @fae21d90（仅 cargo path 解析） |
+spec_inputs: docs/specs/auto-lang/ui/design/select-anything.md（新件，
+SD-01/02/03 已落 worktree 提交 911c6a93d）`
+
+**独立性声明**：复审在实现会话内进行（无独立会话可用），结论全部从工件
+重建——复审期新增/复跑的命令与截图均在本节记录，不采信执行期摘要。
+
+**复审期修复（回 work 两小项，均已验证）**：
+- R646-F1（defect，已修 738ec4ecd）：Select 面板正文在深色主题下白字白底
+  隐身（text 缺省色随主题，面板浅底硬编码）——实机合成输入驱动真窗口后
+  截图定罪，正文加显式深灰。
+- R646-F2（style，已修 65976a912）：selection 新件 rustfmt 归位。
+
+**验收对账（复审复跑证据）**：
+- AC-01 ✅ pass：`cargo t selection`（复审批 25/25，含中心包含/边缘扫过
+  不命中/顶层修剪/文档序/死区/空集安全）。
+- AC-02 ✅ pass：切片逐字节锚点（`slice_is_byte_exact_substring`）、JSON
+  字段完整、Atom Display、node_to_json 往返。
+- AC-03 ✅ pass（实机机器驱动）：PowerShell SendInput 合成 Alt+拖拽驱动
+  真窗口（"待办清单"，013-todo），trace 全链 `GlobalPress alt=true →
+  released drag=true → select bounds=12 nodes=1`；截图证明采集 tab 激活+
+  信封头可见（`docs/plans/reports/p646/`）；R646-F1 修复后正文可视（修复
+  后面板终态截图因桌面物理输入竞争未捕获，行为层由修复版 trace + 单行
+  颜色 diff 佐证——证据层瑕疵已如实标注）。
+- AC-04 ✅ pass（附人工残项）：clipboard 原语有 roundtrip 单测
+  （clipboard.rs set_then_get），按钮→`__select_copy`→`clipboard_set`→
+  `render(当前视图)` 接线经代码审查；物理粘贴核对留用户目视（§10.6）。
+- AC-05 ✅ pass：`plan646_vue_emits_data_auto_markers`（tag/src/id/span+
+  off:len 形态断言）；vue 生成器 304/304。
+- AC-06 ✅ pass：playwright e2e 复审复跑全绿（assertDataAuto 30 元素 →
+  altDrag → assertPanel surface=vue/span=），截图
+  `docs/plans/reports/p646/p646-review-vue-*.png`。
+- AC-07 ✅ pass：test_vm_mcp.py 复审复跑（envelope surface=vm nodes=1
+  kinds=['col'] + 结构化错误路径）。
+- AC-08 ✅ pass：**复审提交点 738ec4ecd 全量 tf 3615/3615 绿**（排除
+  plan367 sidebar——master 同红实证；ffi_dual_019 flaky 一次重试过=在案
+  预存并发 flake，Plan 621/634 同族）；scoped 25/25。
+
+**知识增量复审**：SD-01/02/03 描述与实现一致（含走查修订：data-auto-src、
+UTF-8 字节切片、AUTOUI_SELECT_MARKERS 门控、泵臂代消费）；`new_spec_
+components`/`touched_goals`（GOAL-007/014/015，goals.md 注册在案）核对
+无误；台账 upsert 留 merge。
+
+**发现汇总**：R646-F1/F2 已修复；无未决 finding。**残项**（§10.6）：
+VM 物理粘贴核对、Vue 面板 Copy（headless 剪贴板权限不可驱）——人工 30 秒
+目视项，不阻塞。
+
+`next: merge`
+
+### 9.4 worktree 事件记录（外来 WIP 冲突）
 
 执行中段发现**另一会话的 PLAN-022 terminal WIP 落入本 worktree 工作树**
 （renderer.rs 片段曾误入一次本计划提交，已 reset --soft 撤销并恢复）。
