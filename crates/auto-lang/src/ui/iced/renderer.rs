@@ -13798,9 +13798,18 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
 /// PLAN-030 T-04：outproc 壳投影推送泵（sync_shell_windows 壳臂体）——
 /// shell 面（17 键指纹门）+ desktop 面（快照指纹门）分面增量；推送失败
 /// 不清指纹（下拍重推）。
-fn push_shell_projection_outproc(state: &mut crate::ui::session::DesktopSession) {
+pub(crate) fn push_shell_projection_outproc(state: &mut crate::ui::session::DesktopSession) {
     use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
     let proj = build_shell_projection(state);
+    if std::env::var("AUTO030_TRACE").is_ok() {
+        eprintln!(
+            "[p030-host] push gate: fp_prev={:?} fp_now={} wins={} running={}",
+            state.desktop.shell_push_fp,
+            proj.fp,
+            proj.wins.len(),
+            proj.running_csv
+        );
+    }
     if state.desktop.shell_push_fp.as_deref() != Some(proj.fp.as_str()) {
         let mut payload = Vec::new();
         crate::ui::shell_projection::ShellProjection::wire_encode(&proj, &mut payload);
@@ -13972,6 +13981,11 @@ pub(crate) fn build_shell_projection(
         if let Some(v) = host.wm.wins.get(&wid) {
             // PLAN-012 W1：常驻隐藏窗不入运行集（齿轮高亮语义）。
             if v.hidden.get() {
+                continue;
+            }
+            // PLAN-030：壳伪窗不入运行集（面名非 app——p030 e2e 腿 3
+            // trace 实锤泄漏，T-06 收口）。
+            if state.desktop.shell_pseudo_wids.contains(&wid) {
                 continue;
             }
             if let Some(id) = v.registry_id.as_deref() {

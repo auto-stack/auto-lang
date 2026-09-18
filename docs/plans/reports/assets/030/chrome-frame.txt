@@ -1,0 +1,21 @@
+clear 24,24,28,255
+quad 10.0,10.0 44.0x44.0 0,0,0,255
+text -173.2,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:launcher\u{ee02}"
+quad 62.0,10.0 44.0x44.0 0,0,0,255
+text -45.6,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}app-window\u{ee02}"
+quad 62.0,65.0 24.0x4.0 148,163,183,255
+quad 122.0,10.0 44.0x44.0 0,0,0,255
+text -126.0,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:desktop-switch\u{ee02}"
+quad 174.0,10.0 44.0x44.0 0,0,0,255
+text -41.6,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:layout-grid\u{ee02}"
+quad 226.0,10.0 44.0x44.0 0,0,0,255
+text -0.4,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:layout-stack\u{ee02}"
+quad 886.0,10.0 44.0x44.0 0,0,0,255
+text 659.6,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:notification\u{ee02}"
+text 886.0,62.0 size=16.0 lh=21.6 15,23,42,255 "1"
+quad 1546.0,10.0 44.0x44.0 0,0,0,255
+text 1287.2,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:widgets-gallery\u{ee02}"
+quad 1598.0,10.0 44.0x44.0 0,0,0,255
+text 1436.4,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:config\u{ee02}"
+quad 1650.0,10.0 44.0x44.0 0,0,0,255
+text 1466.8,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:shutdown\u{ee02}"

@@ -523,6 +523,11 @@ mod tests {
             run_native_t3_child(&broker_pipe, &app, P029ShellFace::default());
             return;
         }
+        // PLAN-030 T-08：p030 壳装配子进程——shell_client 真身 + 点击钩子。
+        if mode == "shell" && app == "p030-shell" {
+            run_p030_shell_child(&broker_pipe);
+            return;
+        }
         let src = example_source(&app);
         let component = crate::build_dynamic_component(&src, None).expect("child build");
         match mode.as_str() {
@@ -890,6 +895,310 @@ mod tests {
                 {
                     let out = crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
                     let _ = std::fs::write(assets.join(file), out);
+                }
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// PLAN-030 T-08：p030 壳子进程体——shell_client 装配真身
+    /// （`--autodesk-shell` 产品入口同体；AUTO_SHELL_GEOM 由 spawn 侧
+    /// env 注入）+ e2e 点击钩子（chrome 面真按钮命中区坐标自注入
+    /// press/release——宿主 pointer 路由的等价载荷，前 3 拍投影各一次）。
+    fn run_p030_shell_child(broker_pipe: &str) {
+        use crate::ui::desktop_protocol::message::{shell_face, InputMsg, MouseButton};
+        use crate::ui::desktop_protocol::shell_client::{ShellFaces, ShellGeometry, ShellPump};
+        let geometry = ShellGeometry::from_env().unwrap_or_else(ShellGeometry::fallback);
+        let faces = ShellFaces::load(geometry).expect("p030 壳面装载");
+        let pump = ShellPump::start(broker_pipe, geometry, faces).expect("p030 壳泵");
+        let mut clicks = 0u32;
+        let pump = pump.with_on_applied(Box::new(move |faces: &mut ShellFaces| {
+            clicks += 1;
+            if clicks > 3 {
+                return;
+            }
+            let rects = faces.hit_rects(shell_face::SHELL);
+            let Some(rect) = rects.first().copied() else {
+                println!("AUTO030-CLICK no-hit (apply {clicks})");
+                return;
+            };
+            let handler = format!("hit#{}", rects.len());
+            let (cx, cy) = (rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+            for press in [true, false] {
+                let input = if press {
+                    InputMsg::PointerPressed {
+                        wid: 0,
+                        button: MouseButton::Left,
+                        x: cx,
+                        y: cy,
+                        modifiers: 0,
+                    }
+                } else {
+                    InputMsg::PointerReleased {
+                        wid: 0,
+                        button: MouseButton::Left,
+                        x: cx,
+                        y: cy,
+                        modifiers: 0,
+                    }
+                };
+                faces.on_input(shell_face::SHELL, &input);
+            }
+            println!("AUTO030-CLICK {cx:.0},{cy:.0} handler={handler} (apply {clicks})");
+        }));
+        pump.run().expect("p030 shell child run");
+    }
+
+    /// PLAN-030 T-08：壳 outproc 全链 e2e——真子进程壳（t3 re-exec +
+    /// shell_client 真身）四腿：①双表面首帧（background 全屏 + chrome
+    /// 带，DrawList 合成）②任务栏真按钮点击 → DesktopBus 上行 →
+    /// registry_id 归因（"shell"）③投影推送 → dock 列表帧变（假窗
+    /// "P030Win" 入帧）④kill 壳 → 看门兵退避重启 → attach 指纹失效 →
+    /// 全量重推恢复。`AUTO_DESKTOP_E2E=1` 门；留痕
+    /// `AUTO_030_ASSETS=1` → assets/030/。
+    #[test]
+    fn p030_shell_outproc_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::{shell_face, DrawOp};
+        use crate::ui::desktop_protocol::shell_client::ShellGeometry;
+        use crate::ui::session::{DesktopSession, ShellModel};
+
+        let broker_pipe = format!("autodesk-broker-030-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        session.desktop.shell_model = ShellModel::Outproc;
+        session.desktop.shell_geometry =
+            Some(ShellGeometry { viewport_w: 1280.0, viewport_h: 800.0, band_h: 48.0 });
+        let pipe_for_spawn = broker_pipe.clone();
+        session.desktop.shell_spawner = Some(Arc::new(move |geom, _pipe| {
+            // 几何经 env 传递（spawn_t3_child 继承父 env）。
+            std::env::set_var("AUTO_SHELL_GEOM", geom.encode());
+            Ok(spawn_t3_child(&pipe_for_spawn, "p030-shell", "shell"))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        // attach 泵辅助：孵化排队 → attach → 壳 pipe 落地。
+        fn pump_until_shell_attached(session: &mut DesktopSession) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while session.desktop.shell_pipe.is_none() {
+                if session.pending_incubations() > 0 {
+                    session.attach_pending_incubations(5000);
+                }
+                session.pump_broker_clients();
+                assert!(std::time::Instant::now() < deadline, "p030 壳 attach 超时");
+                std::thread::yield_now();
+            }
+        }
+        fn shell_frame_of(
+            session: &DesktopSession,
+            face: u8,
+        ) -> Option<crate::ui::desktop_protocol::message::DrawList> {
+            let pipe = session.desktop.shell_pipe.as_ref()?;
+            let client = session.broker_clients.get(pipe)?;
+            // chrome = pseudo[1]、background = pseudo[0]。
+            let idx = if face == shell_face::SHELL { 1 } else { 0 };
+            let wid = session.desktop.shell_pseudo_wids.get(idx).copied()?;
+            let surface = client.wid_surface.get(&wid.0)?;
+            client.surfaces.front(*surface).cloned()
+        }
+
+        // —— 腿 0：孵化 + attach + 双伪窗在案。
+        session.launch_shell_outproc().expect("p030 壳 spawn");
+        pump_until_shell_attached(&mut session);
+        assert_eq!(session.desktop.shell_pseudo_wids.len(), 2, "双伪窗在案");
+        println!("AUTO030 leg0 attach PASS");
+
+        // —— 腿 1：双表面首帧（两面 DrawList 合成在册）。
+        {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let bg = shell_frame_of(&session, shell_face::DESKTOP_SURFACE);
+                let chrome = shell_frame_of(&session, shell_face::SHELL);
+                if bg.is_some() && chrome.is_some() {
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "p030 腿1 双表面首帧超时");
+                std::thread::yield_now();
+            }
+        }
+        println!("AUTO030 leg1 dual-surface-first-frame PASS");
+
+        // —— 腿 3：投影推送 → 任务栏帧变（假窗入投影 → chrome 帧变化；
+        // 断言 = op 数增量——dock 窗口按钮渲染形态（quad/icon）不假设文本）。
+        let baseline_ops;
+        {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                if let Some(l) = shell_frame_of(&session, shell_face::SHELL) {
+                    baseline_ops = l.ops.len();
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "p030 腿3 基线帧超时");
+                std::thread::yield_now();
+            }
+        }
+        {
+            let comp = crate::build_dynamic_component(
+                r#"widget t { view { text "P030Win" } }"#,
+                None,
+            )
+            .expect("假窗组件");
+            let app = session.allocate_app(comp);
+            let fake_wid = session.wm_add_win(
+                app,
+                "P030Win".into(),
+                iced::Rectangle::new(
+                    iced::Point::new(64.0, 64.0),
+                    iced::Size::new(320.0, 200.0),
+                ),
+            );
+            // registry_id 回填：running 集派生入投影（dock/任务栏可变面）。
+            if let Some(host) = session.host.as_mut() {
+                if let Some(v) = host.wm.wins.get_mut(&fake_wid) {
+                    v.registry_id = Some("p030-fake".into());
+                }
+            }
+        }
+        {
+            crate::ui::iced::renderer::push_shell_projection_outproc(&mut session);
+            println!(
+                "AUTO030 leg3 pushed (shell_fp={:?} desk_fp={:?})",
+                session.desktop.shell_push_fp.is_some(),
+                session.desktop.shell_desk_fp.is_some()
+            );
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let hit = shell_frame_of(&session, shell_face::SHELL).is_some_and(|l| {
+                    let grew = l.ops.len() > baseline_ops;
+                    if grew {
+                        let texts: Vec<String> = l
+                            .ops
+                            .iter()
+                            .filter_map(|op| match op {
+                                DrawOp::Text { text, .. } => Some(text.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        println!("AUTO030 leg3 ops {} -> {} texts={:?}", baseline_ops, l.ops.len(), texts);
+                    }
+                    grew
+                });
+                if hit {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "p030 腿3 投影推送帧变超时 (shell_pipe={:?} baseline={})",
+                    session.desktop.shell_pipe,
+                    baseline_ops
+                );
+                std::thread::yield_now();
+            }
+        }
+        println!("AUTO030 leg3 projection-push-frame-change PASS");
+
+        // —— 腿 2：任务栏真按钮点击 → DesktopBus 上行 → 归因 + 执行。
+        {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                if !session.desktop.desktop_bus_inbox.is_empty() {
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "p030 腿2 DesktopBus 上行超时");
+                std::thread::yield_now();
+            }
+            let inbox = std::mem::take(&mut session.desktop.desktop_bus_inbox);
+            for (src, cmd) in &inbox {
+                println!("AUTO030 leg2 bus: source={src} cmd={cmd:?}");
+                assert_eq!(src, "shell", "registry_id 归因（chrome 伪窗 = shell）");
+            }
+            assert!(!inbox.is_empty(), "上行记录 >= 1");
+            // 回填后经 drain 执行（真执行臂——动词效果随词表，断言不炸 + 取尽）。
+            session.desktop.desktop_bus_inbox = inbox;
+            let _ = crate::ui::iced::renderer::drain_desktop_bus_inbox(&mut session);
+            assert!(session.desktop.desktop_bus_inbox.is_empty(), "drain 取尽");
+        }
+        println!("AUTO030 leg2 taskbar-click-bus-uplink PASS");
+
+        // —— 腿 4：kill 壳 → 看门兵检出 → 退避 respawn → 全量重推恢复。
+        {
+            let child = session
+                .desktop
+                .outproc_children
+                .last_mut()
+                .expect("壳子进程句柄在案");
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                if session.desktop.shell_pipe.is_none()
+                    && session.desktop.shell_respawn.is_some()
+                {
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "p030 腿4 死亡检出超时");
+                std::thread::yield_now();
+            }
+        }
+        println!("AUTO030 leg4 death-detected PASS");
+        // 退避第一档 1s：到期后 watchdog 步发起 respawn。
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        assert!(session.shell_watchdog_step(), "respawn 发起");
+        pump_until_shell_attached(&mut session);
+        // attach 即指纹强制失效 → 全量重推可达。
+        assert!(session.desktop.shell_push_fp.is_none(), "respawn 后指纹失效");
+        crate::ui::iced::renderer::push_shell_projection_outproc(&mut session);
+        assert!(session.desktop.shell_push_fp.is_some(), "重推后指纹回填");
+        {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                if shell_frame_of(&session, shell_face::SHELL).is_some() {
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "p030 腿4 恢复帧超时");
+                std::thread::yield_now();
+            }
+        }
+        println!("AUTO030 leg4 watchdog-respawn-recovered PASS");
+
+        // 帧留痕（AUTO_030_ASSETS=1 → docs/plans/reports/assets/030/）。
+        if std::env::var("AUTO_030_ASSETS").is_ok() {
+            let dir = concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../docs/plans/reports/assets/030"
+            );
+            let _ = std::fs::create_dir_all(dir);
+            for (name, face) in [
+                ("bg-frame.txt", shell_face::DESKTOP_SURFACE),
+                ("chrome-frame.txt", shell_face::SHELL),
+            ] {
+                if let Some(list) = shell_frame_of(&session, face) {
+                    let out =
+                        crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(&list);
+                    let _ = std::fs::write(format!("{dir}/{name}"), out);
                 }
             }
         }

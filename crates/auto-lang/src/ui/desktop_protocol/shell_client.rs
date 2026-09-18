@@ -18,7 +18,7 @@
 //! ReconnectPolicy 30s 自愈不对称的显式取舍，I5 桌面不炸）。
 
 use crate::ui::desktop_protocol::broker::{self, RequestedRender};
-use crate::ui::desktop_protocol::client_runtime::AppProjector;
+use crate::ui::desktop_protocol::native_projector::NativeProjector;
 use crate::ui::desktop_protocol::codec::Reader;
 use crate::ui::desktop_protocol::endpoint::FrameSource;
 use crate::ui::desktop_protocol::message::{
@@ -68,15 +68,19 @@ impl ShellGeometry {
 /// 双常驻面会话（face → AppProjector；AppProjector 接缝 = 渲染/命中/
 /// 输入/revision 全套——编译面轨替换点）。
 pub struct ShellFaces {
-    /// chrome 面（shell.at 任务栏）。
-    chrome: AppProjector,
+    /// chrome 面（shell.at 任务栏）。投影器 = NativeProjector（View 树
+    /// 全展开渲染——for/conditional 驱动的 dock/窗口条目；AppProjector
+    /// 队列臂对 ForLoop/Conditional 为 no-op[client_runtime.rs layout
+    /// walker]，shell 面不可用——p030 e2e 腿 3 实测定轨）。
+    chrome: NativeProjector<crate::ui::dynamic::DynamicComponent>,
     /// background 面（desktop.at 桌面图标）。
-    background: AppProjector,
+    background: NativeProjector<crate::ui::dynamic::DynamicComponent>,
     geometry: ShellGeometry,
 }
 
 impl ShellFaces {
-    /// 解释装载 v1 双常驻面（027 SHELL_MANIFEST ResidentBoot 两件）。
+    /// 解释装载 v1 双常驻面（027 SHELL_MANIFEST ResidentBoot 两件）+
+    /// ensure_covered 过门（029 五件 Covered 前提——AC-02 证据）。
     pub fn load(geometry: ShellGeometry) -> Result<Self, String> {
         let chrome_src = crate::ui::shell::shell_source("shell.at");
         let bg_src = crate::ui::shell::shell_source("desktop.at");
@@ -84,18 +88,27 @@ impl ShellFaces {
             .map_err(|e| format!("壳 chrome 面装载失败: {e}"))?;
         let background = crate::build_dynamic_component(&bg_src, None)
             .map_err(|e| format!("壳 background 面装载失败: {e}"))?;
-        Ok(Self {
-            chrome: AppProjector::new(chrome, geometry.viewport_w, geometry.band_h),
-            background: AppProjector::new(background, geometry.viewport_w, geometry.viewport_h),
-            geometry,
-        })
+        let mut chrome =
+            NativeProjector::new(chrome, geometry.viewport_w, geometry.band_h);
+        let mut background =
+            NativeProjector::new(background, geometry.viewport_w, geometry.viewport_h);
+        if let Err(gate) = chrome.ensure_covered() {
+            return Err(format!("壳 chrome 面 {gate}"));
+        }
+        if let Err(gate) = background.ensure_covered() {
+            return Err(format!("壳 background 面 {gate}"));
+        }
+        Ok(Self { chrome, background, geometry })
     }
 
     pub fn geometry(&self) -> ShellGeometry {
         self.geometry
     }
 
-    fn projector_mut(&mut self, face: u8) -> Option<&mut AppProjector> {
+    fn projector_mut(
+        &mut self,
+        face: u8,
+    ) -> Option<&mut NativeProjector<crate::ui::dynamic::DynamicComponent>> {
         match face {
             shell_face::SHELL => Some(&mut self.chrome),
             shell_face::DESKTOP_SURFACE => Some(&mut self.background),
@@ -116,6 +129,14 @@ impl ShellFaces {
                 };
                 let Some(p) = self.projector_mut(face) else { return false };
                 apply_writes(p, proj.interpreted_writes());
+                if std::env::var("AUTO030_TRACE").is_ok() {
+                    let n = p
+                        .component()
+                        .read_state_as_vec("__wm_wins")
+                        .map(|v| v.len())
+                        .unwrap_or(usize::MAX);
+                    eprintln!("[p030-child] applied shell proj: __wm_wins.len={n} proj.wins={}", proj.wins.len());
+                }
                 p.bump_revision();
                 true
             }
@@ -215,9 +236,21 @@ impl ShellFaces {
             _ => 0,
         }
     }
+
+    /// 面命中区矩形快照（e2e 点击钩子消费——宿主 pointer 路由的等价载荷）。
+    pub fn hit_rects(&self, face: u8) -> Vec<crate::ui::desktop_protocol::message::WRect> {
+        match face {
+            shell_face::SHELL => self.chrome.hit_rects(),
+            shell_face::DESKTOP_SURFACE => self.background.hit_rects(),
+            _ => Vec::new(),
+        }
+    }
 }
 
-fn apply_writes(p: &mut AppProjector, writes: Vec<ShellWrite>) {
+fn apply_writes(
+    p: &mut NativeProjector<crate::ui::dynamic::DynamicComponent>,
+    writes: Vec<ShellWrite>,
+) {
     for w in writes {
         match w {
             ShellWrite::Scalar(k, v) => {
@@ -260,6 +293,9 @@ impl SurfaceFrames {
 pub struct ShellPump {
     end: Box<dyn transport::Transport + Send>,
     faces: ShellFaces,
+    /// 投影应用后钩子（e2e 点击注入——真按钮命中区坐标自注入，宿主
+    /// pointer 路由的等价载荷；生产 None）。
+    on_applied: Option<Box<dyn FnMut(&mut ShellFaces) + Send>>,
     /// wid → (surface, face)——Welcome 协商结果。
     routes: BTreeMap<u64, (u64, u8)>,
     frames: BTreeMap<u64, SurfaceFrames>,
@@ -307,10 +343,20 @@ impl ShellPump {
         Ok(Self {
             end,
             faces,
+            on_applied: None,
             routes: BTreeMap::new(),
             frames: BTreeMap::new(),
             last_revisions: BTreeMap::new(),
         })
+    }
+
+    /// 注册投影应用钩子（e2e 专用——builder）。
+    pub fn with_on_applied(
+        mut self,
+        f: Box<dyn FnMut(&mut ShellFaces) + Send>,
+    ) -> Self {
+        self.on_applied = Some(f);
+        self
     }
 
     /// 阻塞主循环（child 主线程）。EOF = 宿主消失 → 退出（恢复归宿主
@@ -351,7 +397,23 @@ impl ShellPump {
                     return Ok(());
                 }
                 ProtocolMsg::Control(ControlMsg::ShellProjectionPush { face, payload }) => {
-                    self.faces.apply_projection(face, &payload);
+                    if self.faces.apply_projection(face, &payload) {
+                        if let Some(hook) = self.on_applied.as_mut() {
+                            hook(&mut self.faces);
+                            // 钩子注入的输入与 wire 输入同路：命令读走 + 上行。
+                            for record in self.faces.drain_commands(face) {
+                                let wid = self
+                                    .routes
+                                    .iter()
+                                    .find(|(_, (_, f))| *f == face)
+                                    .map(|(w, _)| *w)
+                                    .unwrap_or(0);
+                                let _ = self.end.send(
+                                    &ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record }),
+                                );
+                            }
+                        }
+                    }
                     self.sync_frames();
                 }
                 ProtocolMsg::Control(ControlMsg::ShellClockTick { face, time, date }) => {
@@ -402,8 +464,18 @@ impl ShellPump {
             let Some((&wid, _)) = self.routes.iter().find(|(_, (_, f))| *f == face) else {
                 continue;
             };
-            let Some(list) = self.faces.render(face) else { continue };
-            let Some(fr) = self.frames.get_mut(&wid) else { continue };
+            let Some(list) = self.faces.render(face) else {
+                if std::env::var("AUTO030_TRACE").is_ok() {
+                    eprintln!("[p030-child] sync_frames face={face} render-none");
+                }
+                continue;
+            };
+            let Some(fr) = self.frames.get_mut(&wid) else {
+                if std::env::var("AUTO030_TRACE").is_ok() {
+                    eprintln!("[p030-child] sync_frames face={face} wid={wid} no-frames");
+                }
+                continue;
+            };
             fr.next_frame_id += 1;
             let frame = ProtocolMsg::Frame(FrameMsg::FrameReady {
                 wid,
@@ -413,8 +485,21 @@ impl ShellPump {
                 revision: rev,
                 payload: list,
             });
-            let _ = self.end.send(&frame);
+            if std::env::var("AUTO030_TRACE").is_ok() {
+                eprintln!("[p030-child] send frame face={face} wid={wid} rev={rev} ops={}", frame_ops(&frame));
+            }
+            if self.end.send(&frame).is_err() {
+                eprintln!("[p030-child] frame send FAILED face={face} wid={wid}");
+            }
         }
+    }
+}
+
+#[cfg(feature = "ui-iced")]
+fn frame_ops(frame: &ProtocolMsg) -> usize {
+    match frame {
+        ProtocolMsg::Frame(FrameMsg::FrameReady { payload, .. }) => payload.ops.len(),
+        _ => 0,
     }
 }
 

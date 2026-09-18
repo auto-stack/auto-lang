@@ -5406,6 +5406,41 @@ impl HostStorage for ShimHostStorage {
 #[cfg(test)]
 mod tests {
 
+    /// PLAN-030 T-07：双轨开关解析——缺省 inproc（I1：既有路径零漂移的
+    /// 配置面锚点）、outproc 显式、坏值/缺席回退（472 同型）。
+    #[test]
+    fn shell_model_from_storage_defaults_inproc() {
+        assert_eq!(ShellModel::from_storage(None), ShellModel::Inproc);
+        assert_eq!(ShellModel::from_storage(Some("inproc")), ShellModel::Inproc);
+        assert_eq!(ShellModel::from_storage(Some("outproc")), ShellModel::Outproc);
+        assert_eq!(ShellModel::from_storage(Some(" junk ")), ShellModel::Inproc);
+        // 显式 outproc 但带空白容差与 process_model 同册（trim 后判定）。
+        assert_eq!(ShellModel::from_storage(Some("outproc")), ShellModel::Outproc);
+    }
+
+    /// PLAN-030 T-07（D1）：垫底窗——z_order 插序 0（命中序最低）、不抢
+    /// 焦点、不入 MRU（伪窗非用户窗）。
+    #[test]
+    fn wm_add_win_bottom_pins_z_and_skips_focus_mru() {
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let a = ds.wm_add_win(AppId(1), "a".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)));
+        let b = ds.wm_add_win(AppId(2), "b".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)));
+        let bottom = ds.wm_add_win_bottom(AppId(9), "desktop-face".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(1280.0, 800.0)));
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.z_order.first(), Some(&bottom), "垫底 = z_order[0]");
+        assert_eq!(host.wm.z_order.last(), Some(&b));
+        assert!(host.wm.z_order.contains(&a));
+        assert_ne!(host.wm.focused, Some(bottom), "伪窗不抢焦点");
+        assert!(!host.wm.mru.contains(&bottom), "伪窗不入 MRU");
+        // 命中序：同点命中 = z 顶真窗（b）而非垫底伪窗。
+        assert_eq!(host.wm.hit_test(10.0, 10.0), Some(b));
+        // 仅伪窗在场（真窗移除后）= 空白点击落伪窗（desktop face 承接）。
+        let _ = ds.wm_remove_win(a);
+        let _ = ds.wm_remove_win(b);
+        assert_eq!(ds.host.as_ref().unwrap().wm.hit_test(10.0, 10.0), Some(bottom));
+    }
+
     /// PLAN-027 T-06：46+ 动词全量清单 roundtrip 对拍（记录级 ↔ 类型化
     /// 双向）——encode → parse_records 恒等。显式逐变体枚举：新增动词
     /// 漏 encode/parse 臂时本测试红（清单即合同）。
