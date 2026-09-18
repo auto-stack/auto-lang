@@ -59,6 +59,7 @@ mod layout_tests;
 mod terminal_pixel_tests;
 // 014 直键入:terminal 键盘捕获 → 键入队列 → on_input 消息的集成轨。
 #[cfg(all(test, feature = "iced-layout-tests"))]
+mod p022_stack_click_tests;
 mod terminal_input_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};

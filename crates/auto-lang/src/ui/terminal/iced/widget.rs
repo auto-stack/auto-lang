@@ -711,15 +711,17 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
     fn mouse_interaction(
         &self,
         _tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
+        _layout: Layout<'_>,
+        _cursor: mouse::Cursor,
         _viewport: &Rectangle,
         _renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        if cursor.position_in(layout.bounds()).is_some() {
-            return mouse::Interaction::Text;
-        }
-        mouse::Interaction::default()
+        // PLAN-022 T-05:恒 None——终端在 Stack 浮层里,非 None 交互形态
+        // 会令 iced Stack 对**下层所有面板**抬升光标(Cursor::Levitating,
+        // position()=None)→ 下层终端的点击/滚轮/滚动条全部失联(实测:
+        // 分屏后仅 slot1 可交互,右侧无法聚焦输入)。代价:光标悬停图标
+        // 不变 I-beam(纯外观)。
+        mouse::Interaction::None
     }
 
     fn draw(
