@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 10
+current_step: 11
 total_steps: 19
 ---
 
@@ -341,9 +341,28 @@ SSE/WebSocket/stream 签名后端（017/031-image-viewer 的 native-ns/stream）
 （路由表 + session 管理 + 热挂载）2-3 天；生成器 baseURL 适配 1 天；
 gallery 集成（启动 proxy + registry 注入子 URL）1 天。
 
-- [ ] **T-11 (P2-008) 008 特性行渲染缺失**（rev2）
-      树有 18 ✓ 节点视觉只画 1 行（u2_008.png 实证）——渲染层丢弃归因
-      （疑 justify-between 卡片 col 行分布/裁剪），修复 + 截图。
+- [✅] **T-11 (P2-008) 008 特性行渲染缺失**（rev2）[✅ 已完成]
+      归因（headless 定案，p642_t11_008_feat_rows 复现矩阵）：iced 0.14 flex
+      第三 pass 对 FillPortion 子 min=max=份额硬钉 + 列内子项按剩余量逐个
+      配给——justify-between 卡片列里 flex-1 feat_list 与 2 个 FillPortion
+      垫片竞争,份额<内容自然高时行序列被配给至 0×0 隐没（修复前 18/18
+      特性文本零尺寸;二分矩阵:去 flex-1 或去 justify-between 任一即全出,
+      桌面 1024×768 模拟器）。CSS flex grow 子有 min-content 钳制永不
+      隐没,iced 无该钳制——非裁剪、非数据缺失,渲染器语义缺口。
+      修复：`axis_fix_col_child_distributed`——distributed 列
+      （justify-between/around/evenly）直接子剥 Flex1/FlexAuto/Grow 且不补
+      Height(Full),空隙由垫片独占（与 CSS 溢出场景等价;欠额场景差异仅为
+      grow 子不再撑高,垫片吸收等量空隙,视觉由 justify 分布吸收）;
+      `style_is_distributed` 与 build_column 垫片口径同源;into_iced +
+      render_dynamic_view 双入口同修（Plan 319）。
+      实证：headless 回归 18/18 零尺寸→0/18（含非 distributed flex-1 仍
+      撑满对照面）；layout_tests 54 绿（2 红=master 预存,主检出同红实证）；
+      `cargo t ui` 2101 跑零新增红（23 败逐一对照主检出=预存,含 merge
+      带入的 shell_pack_hash 漂移——auto-os worktree 合并 main 后
+      hash-lock 四件全等复绿）；实机 VM 画廊 008 截图 18 特性行全出、按钮
+      贴底（t11_008_fixed.png）,007/013/024/026/029 抽样零回归,6 次切页
+      零崩溃。双仓提交：auto-lang 50f623e5c、auto-os 98613b0（产物再生成
+      012-clock 改名/046 新增/013+020 随语料,合并对齐非 T-11 生成器变化）。
 - [ ] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）
       `min-h-screen`/`h-screen` 在内嵌上下文 = 窗口高而非容器高（009 溢出
       被裁、016 不居中同根因，app.at:252/40 实证）——VM 渲染器对
@@ -517,6 +536,34 @@ next: |
   （P642-D3 已有完整证据链），本计划就 F2/F3/F4 修复面重审后 landing，
   崩溃类另立专项；(b) 保持本计划 open，配置 crash dump 工具链后继续
   F1 根因。两案皆不影响 F2/F3/F4 修复面已验证的事实。
+```
+
+---
+
+```yaml
+stage: work (rev2 波次)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-11 单任务;计划整体仍 executing（T-12..T-19 在途）
+code_commit:
+  auto-lang: 50f623e5c (plan-642-dev, 合并 master e1f79db2d 后)
+  auto-os:   98613b0   (plan-642-dev, 合并 main d5e5ae3 后 + 产物再生成)
+task_ids: [T-11]
+evidence:
+  - headless 复现/守卫:layout_tests::p642_t11_008_feat_rows_visible_in_distributed_cards
+    （修复前 18/18 特性文本 0×0;修复后 0/18;非 distributed flex-1 撑满
+    对照面保持——防过度剥离）
+  - 归因钉死:iced_core 0.14 layout/flex.rs 第三 pass min_main=max_main=
+    份额 + 列内子项 first-pass 剩余量逐个配给;二分矩阵（flex-1 ×
+    justify-between 缺一不现）
+  - 门禁:layout_tests 54 绿+2 master 预存红（主检出同红实证）;
+    cargo t ui 2101 全跑 23 败全数对照主检出=预存;cargo check 绿
+  - E2E:VM 画廊（worktree 构建,端口 2178）008 截图 18 特性行全出
+    （t11_008_fixed.png）;007/013/024/026/029 抽样零回归;6 次切页+
+    截图全程进程存活（F1 本会话未复现,不改变其 blocked 状态）
+  - 附带修复:master 合并带入的 shell_pack_hash_parity 红——auto-os
+    worktree 合并 main 后 hash-lock 校验四件全等（未动快照,方向正确）
+next: T-12..T-19 续作（worktree 续用;T-16/T-19 仍待用户裁定立项）
 ```
 
 
