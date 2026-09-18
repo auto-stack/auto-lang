@@ -12,3 +12,8 @@ opens: ".txt,.md,.at,.au,.rs,.json,.toml,.yaml,.yml,.log,.py,.js,.ts,.html,.css,
 dep stylekit {
     path: "../stylekit"
 }
+
+// PLAN-070 T-01：共享 filetree bp 依赖（tree_util 支撑件跨包直用；L1 零副本）。
+dep bps {
+    path: "../../../blueprints"
+}

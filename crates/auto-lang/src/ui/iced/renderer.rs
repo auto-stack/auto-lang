@@ -4434,7 +4434,34 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // px → coords 逻辑幅面)+ ≤30Hz 限频 + 量化去重;不带 on_move
             // 的存量 mouse-area 映射零改动。
             AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
-                let mut ma = mouse_area(content.into_iced());
+                // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):构建面接线状态。
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    let (sw, sh) = style.as_ref().map(|s| {
+                        let is = IcedStyle::from_style(s);
+                        (format!("{:?}", is.width), format!("{:?}", is.height))
+                    }).unwrap_or_else(|| ("None".into(), "None".into()));
+                    eprintln!("[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
+                        on_click.is_some(), on_release.is_some(), on_double_click.is_some(),
+                        on_context_menu.is_some(), on_move.is_some());
+                }
+                // PLAN-021 线 B 根修:iced 0.14 mouse_area layout 直通子件,
+                // 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类原挂
+                // 外层 build_container(空内容 → 自身 0×0 bounds),press/
+                // hover 全死而渲染正常(020 双区探针计数 0 与 split 分隔条
+                // 拖拽死的断点)。内容侧镜像一个仅承载宽高的透明容器,使命
+                // 中区=可视区;外层树形与样式归属不动(absolute 抬升/z-order
+                // /绘制均不感知本改动)。
+                let sized_content = match style.as_ref() {
+                    Some(s) => {
+                        let is = IcedStyle::from_style(s);
+                        let mut c = iced::widget::container(content.into_iced());
+                        if let Some(ref ws) = is.width { c = c.width(iced_length(ws)); }
+                        if let Some(ref hs) = is.height { c = c.height(iced_length(hs)); }
+                        c.into()
+                    }
+                    None => content.into_iced(),
+                };
+                let mut ma = mouse_area(sized_content);
                 if let Some(msg) = on_enter {
                     ma = ma.on_enter(msg);
                 }
@@ -4882,33 +4909,192 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 contents,
                 selected,
                 position: _,
-                on_select: _,
-                style: _,
+                on_select,
+                style,
+                variant,
             } => {
                 use iced::widget::container;
 
-                let mut tabs_widget = column([]);
+                // PLAN-641：enclosed 圆角 token——tabs 根 style 的 rounded-*
+                // 类驱动激活 cell 顶部圆角（有值→Chrome 观感；无→IDE 直角
+                // 观感）；底部圆角恒 0（与内容面板连通）。
+                let top_radius = style.as_ref().map(|s| {
+                    let r = IcedStyle::from_style(s).effective_border_radius();
+                    iced::border::Radius {
+                        top_left: r.top_left,
+                        top_right: r.top_right,
+                        bottom_right: 0.0,
+                        bottom_left: 0.0,
+                    }
+                });
 
-                let mut tab_buttons_row = row([]);
-                for (idx, label) in labels.iter().enumerate() {
-                    let is_selected = idx == selected;
-                    let label_text = if is_selected {
-                        format!("[{}]", label)
-                    } else {
-                        label.clone()
-                    };
+                let dark = crate::ui::style::theme::dark_mode();
+                let token_rgb = |t: crate::design_tokens::registry::TokenName| {
+                    crate::ui::style::theme::active_theme_rgb(t, dark)
+                        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                };
 
-                    let tab_button = button(text(label_text));
-                    tab_buttons_row = tab_buttons_row.push(tab_button);
+                match variant {
+                    crate::ui::view::TabsVariant::Default => {
+                        // default：按钮托盘形态（PLAN-641 零回归口径——现状
+                        // 原样保留，含 [label] 选中标记；点击接 on_select）。
+                        let mut tabs_widget = column([]);
+
+                        let mut tab_buttons_row = row([]);
+                        for (idx, label) in labels.iter().enumerate() {
+                            let is_selected = idx == selected;
+                            let label_text = if is_selected {
+                                format!("[{}]", label)
+                            } else {
+                                label.clone()
+                            };
+
+                            let mut tab_button = button(text(label_text));
+                            if let Some(cb) = &on_select {
+                                tab_button = tab_button.on_press(cb.call(idx));
+                            }
+                            tab_buttons_row = tab_buttons_row.push(tab_button);
+                        }
+
+                        tabs_widget = tabs_widget.push(tab_buttons_row);
+
+                        if let Some(content) = contents.get(selected) {
+                            tabs_widget = tabs_widget
+                                .push(container(content.clone().into_iced()).padding(20));
+                        }
+
+                        container(tabs_widget).into()
+                    }
+                    crate::ui::view::TabsVariant::Enclosed => {
+                        // enclosed 连通形态结构契约（Zed 式，fix-tabs-merged-look
+                        // 重构——交付版"激活底色=页面底色"在无框面板上不可辨，
+                        // merged 无视觉锚点）：
+                        // ① 每个 cell 自带 1px 边框（padding-reveal：外层
+                        //    container bg=边框色，内衬 1px 露出）；
+                        // ② 激活 cell 底部开口（padding-bottom 0）+ 背景=面板
+                        //    背景 → 与下方内容面板无边框区直接连通；
+                        // ③ 内容面板自带边框（左/右/下，顶部开口）→ 边框的
+                        //    连接可见。
+                        let bg = token_rgb(crate::design_tokens::registry::TokenName::Background);
+                        let strip_bg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Muted);
+                        let cell_bg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Secondary);
+                        let active_fg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Foreground);
+                        let inactive_fg =
+                            token_rgb(crate::design_tokens::registry::TokenName::MutedForeground);
+                        // 边框色：Border token，缺省走 iced adapter 的边框解析。
+                        let frame_rgb = crate::ui::style::theme::active_theme_rgb(
+                            crate::design_tokens::registry::TokenName::Border,
+                            dark,
+                        )
+                        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                        .unwrap_or_else(|| {
+                            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+                            iced::Color::from_rgb8(r, g, b)
+                        });
+
+                        let mut strip = row([]);
+                        for (idx, label) in labels.iter().enumerate() {
+                            let is_active = idx == selected;
+                            let label_color =
+                                if is_active { active_fg } else { inactive_fg };
+                            let cell_fill = if is_active { bg } else { cell_bg };
+                            let radius = if is_active {
+                                top_radius.unwrap_or_default()
+                            } else {
+                                iced::border::Radius::default()
+                            };
+                            // 激活 cell 底部开口：padding-bottom 0（其余三边
+                            // 1px 内衬露出边框色）。
+                            let frame_pad = if is_active {
+                                iced::Padding { top: 1.0, right: 1.0, bottom: 0.0, left: 1.0 }
+                            } else {
+                                iced::Padding { top: 1.0, right: 1.0, bottom: 1.0, left: 1.0 }
+                            };
+
+                            // cell 本体：外层 frame（bg=边框色，padding 内衬）
+                            // > 内层 fill（bg=cell 填充）。button 仅作点击命
+                            // 中面，样式透明化（覆盖 iced 默认 primary 底色）。
+                            let inner = container(
+                                text(label.clone())
+                                    .color(label_color.unwrap_or(iced::Color::WHITE)),
+                            )
+                            .center_y(iced::Length::Fill)
+                            .style(move |_| container::Style {
+                                background: cell_fill.map(iced::Background::Color),
+                                border: iced::Border {
+                                    radius,
+                                    ..iced::Border::default()
+                                },
+                                ..container::Style::default()
+                            });
+                            let cell = container(inner)
+                                .padding(frame_pad)
+                                .center_y(iced::Length::Fill)
+                                .style(move |_| container::Style {
+                                    background: Some(iced::Background::Color(frame_rgb)),
+                                    border: iced::Border {
+                                        radius,
+                                        ..iced::Border::default()
+                                    },
+                                    ..container::Style::default()
+                                });
+
+                            let mut cell_hit = button(cell).padding(0);
+                            if let Some(cb) = &on_select {
+                                cell_hit = cell_hit.on_press(cb.call(idx));
+                            }
+                            cell_hit = cell_hit.style(move |_theme, _status| {
+                                iced::widget::button::Style {
+                                    background: None,
+                                    text_color: label_color
+                                        .unwrap_or(iced::Color::WHITE),
+                                    border: iced::Border {
+                                        radius,
+                                        ..iced::Border::default()
+                                    },
+                                    ..iced::widget::button::Style::default()
+                                }
+                            });
+                            strip = strip.push(cell_hit);
+                        }
+
+                        let mut tabs_widget = column([]);
+                        tabs_widget = tabs_widget.push(container(strip).height(36.0).style(
+                            move |_| container::Style {
+                                background: strip_bg.map(iced::Background::Color),
+                                ..container::Style::default()
+                            },
+                        ));
+
+                        if let Some(content) = contents.get(selected) {
+                            // 面板自带边框：外层 bg=边框色 + padding
+                            // [0,1,1,1]（顶部开口，激活 tab 连通处无横线），
+                            // 内层 bg=背景色。
+                            tabs_widget = tabs_widget.push(
+                                container(
+                                    container(content.clone().into_iced())
+                                        .padding(12)
+                                        .width(iced::Length::Fill)
+                                        .style(move |_| container::Style {
+                                            background: bg.map(iced::Background::Color),
+                                            ..container::Style::default()
+                                        }),
+                                )
+                                .width(iced::Length::Fill)
+                                .padding(iced::Padding { top: 0.0, right: 1.0, bottom: 1.0, left: 1.0 })
+                                .style(move |_| container::Style {
+                                    background: Some(iced::Background::Color(frame_rgb)),
+                                    ..container::Style::default()
+                                }),
+                            );
+                        }
+
+                        tabs_widget.into()
+                    }
                 }
-
-                tabs_widget = tabs_widget.push(tab_buttons_row);
-
-                if let Some(content) = contents.get(selected) {
-                    tabs_widget = tabs_widget.push(container(content.clone().into_iced()).padding(20));
-                }
-
-                container(tabs_widget).into()
             }
 
             AbstractView::NavigationRail {
@@ -6831,7 +7017,32 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             }
         }
 
-        // Select, Slider, Accordion, Sidebar, Tabs, NavigationRail use
+        // PLAN-641：Tabs 显式臂——on_select 是 Arc 回调，与 PointerMoveHandler
+        // 同款 from_dynamic 包装即可跨消息类型转换（此前落 `_ => Empty`，VM
+        // live 树中 Tabs 整枝被折空）。
+        AbstractView::Tabs {
+            labels,
+            contents,
+            selected,
+            position,
+            on_select,
+            style,
+            variant,
+        } => AbstractView::Tabs {
+            labels,
+            contents: contents.into_iter().map(convert_view_messages).collect(),
+            selected,
+            position,
+            on_select: on_select.map(|cb| {
+                crate::ui::view::TabsSelectCallback::new(move |idx| {
+                    IcedMessage::from_dynamic(&cb.call(idx))
+                })
+            }),
+            style,
+            variant,
+        },
+
+        // Select, Slider, Accordion, Sidebar, NavigationRail use
         // callback types (SelectCallback, fn pointers, Arc<...>) that
         // cannot be trivially converted. Map them to Empty as fallback.
         _ => AbstractView::Empty,
@@ -9403,7 +9614,7 @@ fn summon_launcher(
 fn launcher_brand_color(id: &str) -> &'static str {
     match id {
         "011-calculator" => "#7c9a6d",
-        "012-stopwatch" => "#b88c61",
+        "012-clock" | "012-stopwatch" => "#b88c61",
         "013-todo" => "#6a8bad",
         "014-weather" => "#7d9ec4",
         "015-notes" => "#c9a77e",
@@ -22533,8 +22744,34 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // 实测"聚焦了但打不出字"）。IcedMessage 专用递归渲染保住
         // on_input → on_with_input_for 的文本载荷。
         AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
-            let inner = render_dynamic_view(*content, debug_ctx, path);
-            let mut ma = mouse_area(inner);
+            // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):构建面接线状态。
+            if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                let (sw, sh) = style.as_ref().map(|s| {
+                    let is = IcedStyle::from_style(s);
+                    (format!("{:?}", is.width), format!("{:?}", is.height))
+                }).unwrap_or_else(|| ("None".into(), "None".into()));
+                eprintln!("[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
+                    on_click.is_some(), on_release.is_some(), on_double_click.is_some(),
+                    on_context_menu.is_some(), on_move.is_some());
+            }
+            // PLAN-021 线 B 根修:iced 0.14 mouse_area layout 直通子件,
+            // 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类原挂
+            // 外层 build_container(空内容 → 自身 0×0 bounds),press/
+            // hover 全死而渲染正常(020 双区探针计数 0 与 split 分隔条
+            // 拖拽死的断点)。内容侧镜像一个仅承载宽高的透明容器,使命
+            // 中区=可视区;外层树形与样式归属不动(absolute 抬升/z-order
+            // /绘制均不感知本改动)。
+            let sized_content: iced::Element<'static, IcedMessage> = match style.as_ref() {
+                Some(s) => {
+                    let is = IcedStyle::from_style(s);
+                    let mut c = iced::widget::container(render_dynamic_view(*content, debug_ctx, path));
+                    if let Some(ref ws) = is.width { c = c.width(iced_length(ws)); }
+                    if let Some(ref hs) = is.height { c = c.height(iced_length(hs)); }
+                    c.into()
+                }
+                None => render_dynamic_view(*content, debug_ctx, path),
+            };
+            let mut ma = mouse_area(sized_content);
             if let Some(msg) = on_enter {
                 ma = ma.on_enter(msg);
             }

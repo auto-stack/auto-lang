@@ -484,6 +484,15 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 state.mods = *mods;
             }
             iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):press 子路径
+                // 首站——组件收到 press 即留痕(bounds/落点/命中带判定),
+                // 与 [MA_BUILD]/[UI_EVENT] 对读定位断点层级。
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    eprintln!("[TERM_PRESS] pos={:?} bounds={:?} hit_band={}",
+                        cursor.position().map(|p| (p.x, p.y)),
+                        (bounds.x, bounds.y, bounds.width, bounds.height),
+                        cursor.position().map(|p| p.x > bounds.x + bounds.width - SCROLLBAR_HIT_W).unwrap_or(false));
+                }
                 let Some(pos) = cursor.position_over(bounds) else {
                     // 点在组件外:失焦(键入归他处,标准终端焦点语义)。
                     state.focused = false;
@@ -604,6 +613,12 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 }
             }
             iced::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
+                // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):wheel 子路径——
+                // 与 press 死法差异是断点定位证据(两条独立子路径)。
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    eprintln!("[TERM_WHEEL] delta={delta:?} bounds={:?}",
+                        (bounds.x, bounds.y, bounds.width, bounds.height));
+                }
                 let lines: i32 = match delta {
                     ScrollDelta::Lines { y, .. } => *y as i32,
                     ScrollDelta::Pixels { y, .. } => (*y / CELL_H) as i32,

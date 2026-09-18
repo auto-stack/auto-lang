@@ -20,7 +20,7 @@
 // TreeView (nodes: .tvNodes, expanded: .tvExpanded, selected: .tvSel,
 //           on_toggle: .TvToggle, on_select: .TvSelect) {}
 
-use tree_util: flatten_tree
+use bps.navigation.filetree.tree_util: flatten_tree
 
 style tree_chevron = "w-3.5 h-3.5 text-muted-foreground"
 

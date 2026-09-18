@@ -696,6 +696,8 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 position: _,
                 on_select: _,
                 style: _,
+                // PLAN-641：gpui enclosed 非目标（编译适配，降级保持现状渲染）。
+                variant: _,
             } => {
                 let mut tabs = div().flex().flex_col().gap_2().p_4();
 
@@ -1254,6 +1256,8 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 position: _,
                 on_select,
                 style: _,
+                // PLAN-641：gpui enclosed 非目标（编译适配，降级保持现状渲染）。
+                variant: _,
             } => {
                 let mut tabs = div().flex().flex_col().gap_2().p_4();
 
