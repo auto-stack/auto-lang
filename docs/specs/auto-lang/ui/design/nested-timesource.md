@@ -1,8 +1,9 @@
 # nested-timesource（PLAN-652 阶段 1 current-state）
 
 > 设计层：[component-time-and-events](../../../../design/autoui/component-time-and-events.md)
-> 计划：`docs/plans/652-nested-component-timesource.md`
-> 状态：work 落地草稿（merge 阶段随 plan 归档同步）
+> 计划：阶段 1 `docs/plans/archive/652-nested-component-timesource.md`；
+> **阶段 2+3** `docs/plans/654-nested-timesource-path-and-clock.md`（drafting）
+> 状态：阶段 1 已 merge；path 级订阅与 Clock 服务见 PLAN-654
 
 ## 问题（已定罪）
 
@@ -67,5 +68,6 @@ for src in component.subscribable_timesources():
 
 ## 债项对账
 
-- P530-D2：类型级 mount 过滤落地（本计划阶段 1）；path 级/精确实例退订仍开。
+- P530-D2：类型级 mount 过滤落地（PLAN-652 阶段 1）；**path 级/精确实例退订 → PLAN-654 阶段 A**。
 - PLAN-650 E-1：`timer_when_allows_subscription` 保持，与 mount 过滤正交叠加。
+- 阶段 3 Clock / `__wm_clock` 对齐：PLAN-654 阶段 B。
