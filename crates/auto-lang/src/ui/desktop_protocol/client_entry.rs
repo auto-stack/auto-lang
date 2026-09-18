@@ -15,7 +15,7 @@ use crate::ui::desktop_protocol::broker::{self, RequestedRender};
 use crate::ui::desktop_protocol::client_runtime::{
     self, AppProjector, ClientConfig, ReconnectPolicy,
 };
-use crate::ui::desktop_protocol::coverage::RenderMode;
+use crate::ui::desktop_protocol::coverage::{Coverage, RenderMode, Verdict};
 use crate::ui::desktop_protocol::message::FrameMode;
 use crate::ui::desktop_protocol::native_projector::NativeProjector;
 use crate::ui::desktop_protocol::pixels;
@@ -97,27 +97,50 @@ pub fn run_dynamic_client(
     }
 }
 
-/// native 轨三态 → 二态分派（Plan 020 T-04；待澄清③定案落地）：native
-/// 组件 `Auto` 缺省 = **independent**（queue 覆盖爬坡前的安全缺省——
-/// 带降级观测行留痕，与解释态 auto 语义并列入 v1.6）；显式 `Queue` 不
-/// 在此裁决（覆盖门在 [`run_native_client`] 消费 [`NativeProjector::
+/// native 轨三态 → 二态分派（Plan 020 T-04；PLAN-026 T-06 复测后裁定
+/// **维持不翻**）：native `Auto` 缺省 = **independent**（025 语义不变），
+/// 升级点 = 观测行携带**真扫描缺项清单**（原 v1 恒定文案 → 逐 App 缺项
+/// 载荷）+ queue-covered 命名（queue 化可行性逐 App 可见）。**翻转点
+/// 已备**：三闸数据门 = examples 全量 Covered ≥95%（026 数据行
+/// overall 45.7% / judged 76.2%，缺项全在册 not-yet——报告
+/// `docs/plans/reports/p026-native-flip-data-row.md`）；达标时 Covered
+/// 臂改返值即为翻转（one-line，随 ramp v3 复评）。显式 `Queue` 不在
+/// 此裁决（覆盖门在 [`run_native_client`] 消费 [`NativeProjector::
 /// ensure_covered`]——拒绝退出留痕）；`Independent` 直通。
 /// 返回 `(帧模式, auto 降级标记, Option<观测行>)`。
-pub fn resolve_native_frame_mode(
+pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
     mode: RenderMode,
     widget_name: &str,
+    view: &crate::ui::view::View<M>,
 ) -> (FrameMode, bool, Option<String>) {
     match mode {
         RenderMode::Queue => (FrameMode::Commands, false, None),
         RenderMode::Independent => (FrameMode::Pixels, false, None),
-        RenderMode::Auto => (
-            FrameMode::Pixels,
-            true,
-            Some(format!(
-                "[render] native auto -> independent downgrade ({widget_name}; \
-                 queue coverage ramp v1)"
-            )),
-        ),
+        RenderMode::Auto => {
+            let scan = crate::ui::desktop_protocol::coverage::scan_native_view(view);
+            match crate::ui::desktop_protocol::coverage::judge(&scan, &Coverage::native_queue_set()) {
+                Verdict::Covered => (
+                    // 翻转点：数据门达标时本臂改返 Commands——026
+                    // 数据未达标（报告 p026-native-flip-data-row.md），
+                    // 维持 Auto→independent 缺省。
+                    FrameMode::Pixels,
+                    true,
+                    Some(format!(
+                        "[render] native auto -> independent ({widget_name}; \
+                         queue-covered, default flip pending ramp v3 data gate)"
+                    )),
+                ),
+                Verdict::NotCovered(missing) => (
+                    FrameMode::Pixels,
+                    true,
+                    Some(format!(
+                        "[render] native auto -> independent downgrade ({widget_name}; \
+                         missing: {})",
+                        missing.join(", ")
+                    )),
+                ),
+            }
+        }
     }
 }
 

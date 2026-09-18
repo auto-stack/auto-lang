@@ -2773,9 +2773,11 @@ fn spawn_exe_child(
     if let Some(v) = render {
         cmd.arg(format!("--autodesk-render={v}"));
     }
+    // AUTO_OUTPROC_STDERR=1 诊断口：继承宿主 stderr（子进程 panic 可见）。
+    let inherit = std::env::var("AUTO_OUTPROC_STDERR").is_ok();
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(if inherit { std::process::Stdio::inherit() } else { std::process::Stdio::null() });
     for (key, _) in std::env::vars() {
         if key.starts_with("NEXTEST_") {
             cmd.env_remove(&key);
@@ -3380,6 +3382,73 @@ fn spawn_outproc_child(
             }
         };
         let input = ProtocolMsg::Input(InputMsg::CharTyped { wid: wid.0, ch });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级 IME 提交路由：焦点窗 → (Wid, ImeCommit) 注入
+    /// （PLAN-026 T-05——broker_char 同型；宿主 iced IME 事件订阅缺口
+    /// 并入 P025-D1 在册债，协议级注入为证据承载口径）。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_ime_commit(&mut self, text: &str) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::ImeCommit { wid: wid.0, text: text.to_string() });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级 IME preedit 路由：焦点窗 → (Wid, ImePreedit) 注入
+    /// （组合串 + 光标矩形——候选窗定位消费 not-yet，投影器尾拼显示）。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_ime_preedit(&mut self, text: &str) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::ImePreedit {
+            wid: wid.0,
+            text: text.to_string(),
+            cursor: crate::ui::desktop_protocol::message::WRect::new(0.0, 0.0, 0.0, 0.0),
+        });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 桌面级 IME 取消路由：焦点窗 → (Wid, ImeCancelled) 注入。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_ime_cancelled(&mut self) -> bool {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.focused {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::ImeCancelled { wid: wid.0 });
         for client in self.broker_clients.values_mut() {
             if client.wid == Some(wid) {
                 return client.end.send(&input).is_ok();

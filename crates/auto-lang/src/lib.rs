@@ -2765,6 +2765,45 @@ fn pac_workspace_member_dir(content: &str, dep_name: &str) -> Option<String> {
     None
 }
 
+/// PLAN-647 guardrail B (contract Q5): version-plane keys inside a pac.at
+/// `dep` declaration are a violation. The version plane is not enabled —
+/// blueprints are a single rolling source and cross-repo alignment is
+/// git-level — so a `version:`/`pin:`/… key would read like a constraint
+/// while being silently ignored. Returns the offending message (points at
+/// contract Q5) or None when the declaration is clean.
+fn pac_dep_version_violation(content: &str, dep_name: &str) -> Option<String> {
+    const VERSION_KEYS: [&str; 6] = ["version", "pin", "rev", "tag", "branch", "commit"];
+    for form in [format!("dep \"{dep_name}\""), format!("dep {dep_name}")] {
+        let Some(pos) = content.find(&form) else { continue };
+        // Same name-boundary discipline as pac_declares_dep: the matched name
+        // must end at a non-identifier char (`bpsx` must not hit `dep bps`).
+        let after = content[pos + form.len()..].chars().next();
+        if !after.is_some_and(|c| !(c.is_alphanumeric() || c == '_' || c == '.')) {
+            continue;
+        }
+        // Scan only this declaration's `{ ... }` block.
+        let Some(brace) = content[pos..].find('{') else { continue };
+        let brace = pos + brace;
+        let Some(block_len) = content[brace..].find('}') else { continue };
+        let block = &content[brace..brace + block_len];
+        for key in VERSION_KEYS {
+            for prefix in [format!("{key}:"), format!("{key} =")] {
+                let Some(kpos) = block.find(&prefix) else { continue };
+                // Word-start check so `rev:` doesn't hit `prev:`.
+                let before = block[..kpos].chars().last();
+                if !before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                    return Some(format!(
+                        "pac.at dep `{dep_name}` declares `{key}` — the version plane is \
+                         not enabled (single-source ruling: docs/specs/blueprint/contract.md \
+                         Q5); declare `path` only, cross-repo alignment is carried by git"
+                    ));
+                }
+            }
+        }
+    }
+    None
+}
+
 fn resolve_module_path(
     base_dir: &std::path::Path,
     module: &str,
@@ -2870,6 +2909,18 @@ fn resolve_module_path(
         let member_entry = pac_content
             .as_deref()
             .and_then(|c| pac_workspace_member_dir(c, dep_name));
+
+        // PLAN-647 guardrail B: a version-ish key on this dep's declaration
+        // fails the resolution outright (even when `path:` would resolve) —
+        // resolving anyway would validate a fake constraint.
+        if dep_declared {
+            if let Some(pac) = &pac_content {
+                if let Some(msg) = pac_dep_version_violation(pac, dep_name) {
+                    eprintln!("error: {msg}");
+                    return None;
+                }
+            }
+        }
 
         let deps_candidate = d.join("deps");
         if deps_candidate.is_dir() {
@@ -7352,6 +7403,11 @@ mod plan640_bp_tests;
 // palette 包词汇面正断言。
 #[cfg(test)]
 mod plan643_chart_tag_tests;
+
+// PLAN-647: bp 版本面裁定护栏（contract Q5）——spec frontmatter 版本键拒绝
+// + pac.at dep 版本类键硬失败双负测试。
+#[cfg(test)]
+mod plan647_bp_version_tests;
 
 // PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
 // 回归。

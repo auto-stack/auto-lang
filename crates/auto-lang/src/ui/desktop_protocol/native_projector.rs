@@ -28,8 +28,8 @@ use std::time::Instant;
 
 use super::client_runtime::{
     dim_if, measure_text, NodeStyle, BG, BUTTON_BG, BUTTON_H, BUTTON_MIN_W, BUTTON_PAD,
-    DISABLED_ALPHA, INPUT_BG, INPUT_BORDER, LABEL_FG, LINE_H_FACTOR, MARGIN, PLACEHOLDER_FG,
-    TEXT_FG, TEXT_SIZE,
+    DISABLED_ALPHA, IMAGE_PLACEHOLDER, INPUT_BG, INPUT_BORDER, LABEL_FG, LINE_H_FACTOR, MARGIN,
+    PLACEHOLDER_FG, PROGRESS_TRACK, TEXT_FG, TEXT_SIZE,
 };
 use super::coverage::{self, Coverage, Verdict};
 use super::endpoint::FrameSource;
@@ -128,6 +128,11 @@ pub struct NativeProjector<C: Component> {
     /// 聚焦框编辑 buffer（T-01 D2：聚焦期显示/编辑面——聚焦时自视图值
     /// 初始化，键入/退格就地编辑后经 INPUT_TEXT 代写回写组件）。
     input_buffer: String,
+    /// IME preedit 暂存（PLAN-026 T-05 D2-A 定案：Commit 前组合串——
+    /// 聚焦框渲染尾拼显示；Commit 并入 buffer / Cancelled 消解）。
+    ime_preedit: Option<String>,
+    /// 无聚焦时 IME 输入丢弃计数（I3 留痕观测面——测试/e2e 断言口）。
+    ime_dropped: usize,
     /// 开态 select 槽位（T-01 D3：投影器侧开合状态；None = 全闭）。
     select_open: Option<usize>,
     /// 最近一帧的右键命中表（`on_right_click` 物化消息；渲染时刷新）。
@@ -151,6 +156,8 @@ impl<C: Component> NativeProjector<C> {
             hits: Vec::new(),
             focused_input: None,
             input_buffer: String::new(),
+            ime_preedit: None,
+            ime_dropped: 0,
             select_open: None,
             right_hits: Vec::new(),
             pointer: (0.0, 0.0),
@@ -209,6 +216,7 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             input_slots: 0,
             focused_input: self.focused_input,
             input_buffer: self.input_buffer.clone(),
+            ime_preedit: self.ime_preedit.clone(),
             select_slots: 0,
             select_open: self.select_open,
             overlays: Vec::new(),
@@ -255,6 +263,7 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             if slot >= ctx.input_slots {
                 self.focused_input = None;
                 self.input_buffer.clear();
+                self.ime_preedit = None;
             }
         }
         // select 开合重定位（同槽序纪律——D3）。
@@ -293,12 +302,27 @@ impl<C: Component> FrameSource for NativeProjector<C> {
                 }
             }
             InputMsg::CharTyped { ch, .. } => self.char_typed(*ch),
+            // IME 闭环（PLAN-026 T-05，D2 定案）：Commit = 聚焦 buffer
+            // 追加 → INPUT_TEXT 代写 → on_change 派发；Cancelled =
+            // preedit 消解；Preedit = 暂存（渲染尾拼）。消费先例 =
+            // editor_frame.rs:195-199（wire v1.0 在册变体）。
+            InputMsg::ImeCommit { text, .. } => self.ime_commit(text),
+            InputMsg::ImeCancelled { .. } => self.ime_preedit = None,
+            InputMsg::ImePreedit { text, .. } => {
+                if self.focused_input.is_some() {
+                    self.ime_preedit = Some(text.clone());
+                } else {
+                    self.ime_dropped += 1;
+                }
+            }
             InputMsg::KeyPressed { key, .. } if *key == 8 => self.backspace(),
-            // Esc（VK_ESCAPE = 27）关开态 select（T-01 D3）。
+            // Esc（VK_ESCAPE = 27）关开态 select（T-01 D3）+ preedit
+            // 消解（ImeCancelled 同义宿主路径）。
             InputMsg::KeyPressed { key, .. } if *key == 27 => {
                 if self.select_open.take().is_some() {
                     self.rev += 1;
                 }
+                self.ime_preedit = None;
             }
             // 滚轮派发（T-01 D5）：指针位包含 → 内层胜（倒序；嵌套
             // scrollable 外层先登记）→ 唯一 Scrollable 兜底（wire Scroll
@@ -379,6 +403,7 @@ impl<C: Component> NativeProjector<C> {
             Some(HitEntry::Input { value, slot, .. }) => {
                 self.focused_input = Some(slot);
                 self.input_buffer = value;
+                self.ime_preedit = None;
                 self.rev += 1;
             }
             // 轨道点击 → f32 = min + clamp((x-x0)/w)×range（step 取整）→
@@ -449,6 +474,29 @@ impl<C: Component> NativeProjector<C> {
         self.dispatch_input_edit(msg);
     }
 
+    /// ImeCommit（PLAN-026 T-05）：组合串并入聚焦 buffer → 同 CharTyped
+    /// 通道回写（INPUT_TEXT 代写 + on_change 派发 + rev 前进）。无聚焦 /
+    /// 无 handler = 丢弃 + ime_dropped 留痕（I3）。preedit 暂存随并入
+    /// 消解（组合终态 = Commit）。
+    fn ime_commit(&mut self, text: &str) {
+        if self.focused_input.is_none() {
+            self.ime_dropped += 1;
+            return;
+        }
+        let Some(msg) = self.focused_on_change() else {
+            self.ime_dropped += 1;
+            return;
+        };
+        self.ime_preedit = None;
+        self.input_buffer.push_str(text);
+        self.dispatch_input_edit(msg);
+    }
+
+    /// 无聚焦 IME 丢弃计数（观测面——与 uncovered_seen 同级的显式留痕）。
+    pub fn ime_dropped(&self) -> usize {
+        self.ime_dropped
+    }
+
     /// 滚轮路由（T-01 D5）：内层命中胜 → 唯一 Scrollable 兜底；不命中
     /// 且非唯一 = 静默不路由（多 Scrollable 且指针缺席 → 目标歧义，I3）。
     fn wheel(&mut self, dx: f32, dy: f32) {
@@ -515,6 +563,8 @@ struct NativeCtx<M: Clone + std::fmt::Debug> {
     /// 聚焦框编辑 buffer 快照（臂内显示消费——聚焦框显示 buffer 而非
     /// 视图值，D2）。
     input_buffer: String,
+    /// IME preedit 暂存快照（PLAN-026 T-05 D2-A：聚焦框渲染尾拼消费）。
+    ime_preedit: Option<String>,
     /// select 槽位计数（开合身份，D3）。
     select_slots: usize,
     /// 开态 select 槽位快照（臂内判开态渲染 + 命中互斥登记）。
@@ -833,6 +883,84 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             }
             Laid { size: (w, h) }
         }
+        // PLAN-026 T-03 display 族臂（I4：保真口径 = 解释态 queue 臂同级
+        // 占位——client_runtime::layout_image :1339 / layout_progress
+        // :1452 镜像；ImageSurface 仍落 catch-all 占位盒，D5 整 kind
+        // not-yet 在册）。
+        View::Image { .. } => {
+            // v1.8 保真边界：image = 样式尺寸驱动的占位 Quad（结构/占位
+            // 正确，位图内容归图像通道独立线——KNOWN-DEBT 在册，非静默
+            // 错绘）；icon 经 codegen 降级到本臂（lucide 字形占位同口径）。
+            let w = style.fixed_w().unwrap_or(avail_w.min(96.0)).min(avail_w.max(0.0));
+            let h = style.fixed_h().unwrap_or(w);
+            ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(IMAGE_PLACEHOLDER));
+            Laid { size: (w, h) }
+        }
+        View::ProgressBar { progress, .. } => {
+            // 轨道 + 填充条比例几何；on_seek 点击定位 not-yet（解释态
+            // queue 臂同边界——I3 留痕）。
+            let frac = progress.clamp(0.0, 1.0);
+            let w = style.fixed_w().unwrap_or(avail_w).min(avail_w.max(0.0));
+            let h = style.fixed_h().unwrap_or(8.0);
+            ctx.push_quad(WRect::new(x, y, w, h), PROGRESS_TRACK);
+            if frac > 0.0 {
+                ctx.push_quad(WRect::new(x, y, w * frac, h), style.bg.unwrap_or(BUTTON_BG));
+            }
+            Laid { size: (w, h) }
+        }
+        // PLAN-026 T-04 grid walker（镜像 client_runtime::layout_grid
+        // :831——cols 等宽格 × row-major 行序，行高 = 行内最大，bg 底色
+        // 两遍法置子级之下）。
+        View::Grid { cols, gap, cells, .. } => {
+            let cols = (*cols).max(1);
+            // gap：Grid.gap 字段（a2r codegen .spacing() 通道）优先，
+            // style gap- 类回退档（解释态 layout_grid 同序）。
+            let gap = if *gap > 0 { f32::from(*gap) } else { style.gap() };
+            let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+            let inner_w = (avail_w - pad.0 - pad.2).max(0.0);
+            let cell_w = if cells.is_empty() {
+                0.0
+            } else {
+                ((inner_w - gap * (cols.saturating_sub(1)) as f32) / cols as f32).max(0.0)
+            };
+            let place = |ctx: &mut NativeCtx<M>| -> (f32, f32) {
+                let mut row_y = 0.0f32;
+                for (ri, row) in cells.chunks(cols).enumerate() {
+                    if ri > 0 {
+                        row_y += gap;
+                    }
+                    let mut row_h = 0.0f32;
+                    for (ci, cell) in row.iter().enumerate() {
+                        let cell_x = ci as f32 * (cell_w + gap);
+                        let laid = layout_view_node(ctx, cell, x + pad.0 + cell_x, y + pad.1 + row_y, cell_w);
+                        row_h = row_h.max(laid.size.1);
+                    }
+                    row_y += row_h;
+                }
+                (cell_w * cols as f32 + gap * (cols.saturating_sub(1)) as f32, row_y)
+            };
+            let ops_mark = ctx.ops.len();
+            let hits_mark = ctx.hits.len();
+            let (content_w, content_h) = place(ctx);
+            let outer_w = match style.fixed_w() {
+                Some(fw) => fw,
+                None => content_w + pad.0 + pad.2,
+            };
+            let outer_h = match style.fixed_h() {
+                Some(fh) => fh,
+                None => content_h + pad.1 + pad.3,
+            };
+            if style.bg.is_some() {
+                ctx.ops.truncate(ops_mark);
+                ctx.hits.truncate(hits_mark);
+                ctx.push_quad(WRect::new(x, y, outer_w, outer_h), style.bg.unwrap());
+                place(ctx);
+            }
+            if let Some(border) = style.border {
+                ctx.push_border(WRect::new(x, y, outer_w, outer_h), border);
+            }
+            Laid { size: (outer_w, outer_h) }
+        }
         // PLAN-025 T-05 scrollable 臂：溢出裁剪（Scissor push/pop——镜像
         // client_runtime::layout_scroll :953-1020）+ 滚轮命中（on_scroll
         // 在场才登记——I3；先登记后走子级：嵌套时内层倒序胜，D5）。滚动
@@ -922,8 +1050,20 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let dir = Dir::Vertical;
             layout_view_group(ctx, view, &style, x, y, avail_w, dir)
         }
-        View::Container { child, on_right_click, .. } => {
-            layout_view_container(ctx, child, on_right_click.clone(), &style, x, y, avail_w)
+        View::Container { child, on_right_click, center_x, center_y, width, height, .. } => {
+            layout_view_container(
+                ctx,
+                child,
+                on_right_click.clone(),
+                *center_x,
+                *center_y,
+                *width,
+                *height,
+                &style,
+                x,
+                y,
+                avail_w,
+            )
         }
         // —— 覆盖门后动态分支防线：占位盒 + 留痕（I3：非静默错绘）。
         other => {
@@ -997,6 +1137,10 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
     ctx: &mut NativeCtx<M>,
     child: &View<M>,
     right_click: Option<M>,
+    center_x: bool,
+    center_y: bool,
+    legacy_width: Option<u16>,
+    legacy_height: Option<u16>,
     style: &NodeStyle,
     x: f32,
     y: f32,
@@ -1004,8 +1148,10 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
 ) -> Laid {
     let container_right_click = right_click;
     let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    // PLAN-026 T-04：legacy width/height 兜底（View::container/.center()
+    // builder 字段——iced 消费面同源，typed style 优先）。
     let mut inner_w = avail_w;
-    if let Some(fw) = style.fixed_w() {
+    if let Some(fw) = style.fixed_w().or_else(|| legacy_width.map(f32::from)) {
         inner_w = (fw - pad.0 - pad.2).max(0.0);
     }
     if let Some(max_w) = style.box_layout.max_width {
@@ -1022,15 +1168,37 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
         Dir::Vertical,
         style,
     );
-    let outer_w = match style.fixed_w() {
+    // PLAN-026 T-07：w-full（Width(Full)）= 块级满宽（iced 消费面同语义
+    // ——divider/spacer 降级形态的宽度承载；无尺寸声明仍收内容宽）。
+    let fills_w = matches!(
+        style.box_layout.width,
+        Some(crate::ui::style::SizeValue::Full)
+    );
+    let outer_w = match style.fixed_w().or_else(|| legacy_width.map(f32::from)) {
         Some(fw) => fw,
+        None if fills_w => avail_w.max(0.0),
         None => (laid.size.0 + pad.0 + pad.2).max(0.0),
     };
-    let outer_h = match style.fixed_h() {
+    let outer_h = match style.fixed_h().or_else(|| legacy_height.map(f32::from)) {
         Some(fh) => fh,
         None => laid.size.1 + pad.1 + pad.3,
     };
-    if style.bg.is_some() || style.border.is_some() {
+    // PLAN-026 T-04 center：View::center/Container center_x/center_y 臂
+    // （解释态 center 经 items-center/mx-auto 类两遍法同档；center_y 需
+    // fixed_h 外框——自然高容器居中无位移）。
+    let child_x = if center_x {
+        x + pad.0 + ((inner_w.max(0.0) - laid.size.0).max(0.0)) / 2.0
+    } else {
+        x + pad.0
+    };
+    let child_y = if center_y && (style.fixed_h().is_some() || legacy_height.is_some()) {
+        let inner_h = (outer_h - pad.1 - pad.3).max(0.0);
+        y + pad.1 + ((inner_h - laid.size.1).max(0.0)) / 2.0
+    } else {
+        y + pad.1
+    };
+    if style.bg.is_some() || style.border.is_some() || child_x != x + pad.0 || child_y != y + pad.1
+    {
         ctx.ops.truncate(ops_mark);
         ctx.hits.truncate(hits_mark);
         if let Some(bg) = style.bg {
@@ -1039,8 +1207,8 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
         let _ = layout_view_block(
             ctx,
             std::slice::from_ref(child),
-            x + pad.0,
-            y + pad.1,
+            child_x,
+            child_y,
             inner_w.max(0.0),
             Dir::Vertical,
             style,
@@ -1095,13 +1263,17 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
     ctx.input_slots += 1;
     // 显示面（D2）：聚焦框显 buffer（编辑面——解析失败时组件状态不变，
     // 用户意图仍可见），非聚焦框显视图值；空显 placeholder。
-    let (text, color) = {
-        let shown = if focused { &ctx.input_buffer } else { value };
-        if shown.is_empty() {
-            (placeholder.to_string(), PLACEHOLDER_FG)
-        } else {
-            (shown.to_string(), style.fg.unwrap_or(TEXT_FG))
-        }
+    // PLAN-026 T-05（D2-A）：IME preedit 尾拼——聚焦框 buffer 后接组合串
+    // （单行 = 独立 Text op 差分色显示；多行 = 并入末行同色，边界随注）。
+    let shown = if focused { ctx.input_buffer.clone() } else { value.to_string() };
+    let preedit_tail =
+        if focused { ctx.ime_preedit.clone().unwrap_or_default() } else { String::new() };
+    let (text, color) = if shown.is_empty() && preedit_tail.is_empty() {
+        (placeholder.to_string(), PLACEHOLDER_FG)
+    } else if multiline && !preedit_tail.is_empty() {
+        (format!("{shown}{preedit_tail}"), style.fg.unwrap_or(TEXT_FG))
+    } else {
+        (shown.clone(), style.fg.unwrap_or(TEXT_FG))
     };
     let size = style.font_size.unwrap_or(14.0);
     let line_h = size * LINE_H_FACTOR;
@@ -1120,6 +1292,10 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
             });
         }
     } else if !text.is_empty() {
+        // preedit 尾拼 op（差分色——真下划线无 DrawOp 通道，PLACEHOLDER_FG
+        // 近似 + 随注；文本排布 = buffer 尾 x 累进）。
+        let tail = if focused { preedit_tail.clone() } else { String::new() };
+        let shown_w = measure_text(&text, size);
         ctx.ops.push(DrawOp::Text {
             x: x + INPUT_PAD,
             y: y + (h - line_h) / 2.0,
@@ -1128,6 +1304,16 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
             color,
             text,
         });
+        if focused && !tail.is_empty() {
+            ctx.ops.push(DrawOp::Text {
+                x: x + INPUT_PAD + shown_w,
+                y: y + (h - line_h) / 2.0,
+                size,
+                line_height: line_h,
+                color: PLACEHOLDER_FG,
+                text: tail,
+            });
+        }
     }
     if let Some(msg) = on_change {
         ctx.hits.push(HitEntry::Input {
@@ -1217,7 +1403,11 @@ fn node_style_of_view<M: Clone + std::fmt::Debug>(view: &View<M>) -> NodeStyle {
         | View::Checkbox { style, .. }
         | View::Radio { style, .. }
         | View::Select { style, .. }
-        | View::Slider { style, .. } => style.as_ref(),
+        | View::Slider { style, .. }
+        // PLAN-026 T-03：display 族（image/progress 占位臂消费样式
+        // 尺寸/bg——scan_native_node 变体样式收集面同册）。
+        | View::Image { style, .. }
+        | View::ProgressBar { style, .. } => style.as_ref(),
         _ => None,
     };
     node_style_of(style)
@@ -1467,7 +1657,8 @@ mod tests {
         let p = NativeProjector::new(WithSlider, 480.0, 320.0);
         p.ensure_covered().expect("slider 入覆盖集（020 拒面反转）");
 
-        // 新拒样本：grid（PLAN-025 非目标——kind 未入册）→ 拒绝 + 缺项。
+        // PLAN-026 T-04 语义反转：grid 已入 native 覆盖集 → Covered
+        // （025 拒面样本转正；防漏面 = grid_layout_and_hit_golden）。
         #[derive(Debug)]
         struct WithGrid;
 
@@ -1485,8 +1676,25 @@ mod tests {
         }
 
         let p = NativeProjector::new(WithGrid, 480.0, 320.0);
+        p.ensure_covered().expect("grid 入覆盖集（025 拒面反转）");
+
+        // 新拒样本：imagesurface（PLAN-026 §5.1 D5 定案——渲染占位顺带
+        // 但 kind 整体 not-yet：交互回调无采集面，登记即静默放行，I3）
+        // → 拒绝 + 缺项。
+        #[derive(Debug)]
+        struct WithImageSurface;
+
+        impl Component for WithImageSurface {
+            type Msg = WMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::image_surface("x.png")
+            }
+        }
+
+        let p = NativeProjector::new(WithImageSurface, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("grid"), "缺项清单随行: {err}");
+        assert!(err.contains("imagesurface"), "缺项清单随行: {err}");
     }
 
     #[test]
@@ -1501,22 +1709,23 @@ mod tests {
             type Msg = SMsg;
             fn on(&mut self, _msg: Self::Msg) {}
             fn view(&self) -> View<Self::Msg> {
-                // shadow 已降级放行（T-06——解释态同款保真边界）；样本换
-                // underline（装饰未实现面——token 无支持前缀 → not-yet）。
-                View::text_styled("x", "underline")
+                // shadow/underline 均降级放行（025 T-06 / 026 T-06——
+                // 解释态同款保真边界）；样本换 opacity（视觉语义未实现
+                // 面——alpha 合成无通道，解释态 target_set 同 not-yet）。
+                View::text_styled("x", "opacity-50")
             }
         }
 
         let p = NativeProjector::new(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("style:underline"), "native 无 underline 渲染: {err}");
+        assert!(err.contains("style:opacity-50"), "native 无 opacity 渲染: {err}");
     }
 
     #[test]
     fn dynamic_branch_uncovered_placeholder_tracked() {
         // 门后动态分支：状态切换遭遇未覆盖变体 → 占位盒 + uncovered_seen。
-        // （样本 = grid——PLAN-025 非目标 kind；原 slider 样本随 T-03
-        // 覆盖扩容转正，拒面换 grid 与 gate 反转测试同册。）
+        // （样本 = imagesurface——PLAN-026 D5 整 kind not-yet；原 grid
+        // 样本随 T-04 覆盖扩容转正，拒面换 imagesurface 同册。）
         #[derive(Debug)]
         struct Branchy {
             show_grid: bool,
@@ -1535,17 +1744,12 @@ mod tests {
                 }
             }
             fn view(&self) -> View<Self::Msg> {
-                // 门时刻 grid 不可见 → Covered；Toggle 后动态出现。
+                // 门时刻 imagesurface 不可见 → Covered；Toggle 后动态出现。
                 let mut col = View::col().child(
                     View::button("t").on_click(|_| BMsg::Toggle).build(),
                 );
                 if self.show_grid {
-                    col = col.child(View::Grid {
-                        cols: 2,
-                        gap: 4,
-                        cells: vec![View::text("a"), View::text("b")],
-                        style: None,
-                    });
+                    col = col.child(View::image_surface("x.png"));
                 }
                 col.build()
             }
@@ -1565,9 +1769,9 @@ mod tests {
             modifiers: 0,
         });
         let frame = p.render_frame();
-        assert_eq!(p.uncovered_seen(), ["grid"], "动态分支遭遇留痕");
+        assert_eq!(p.uncovered_seen(), ["imagesurface"], "动态分支遭遇留痕");
         assert!(
-            texts_of(&frame).iter().any(|t| t.starts_with("not-rendered: grid")),
+            texts_of(&frame).iter().any(|t| t.starts_with("not-rendered: imagesurface")),
             "占位盒显式标记: {:?}",
             texts_of(&frame)
         );
@@ -1656,6 +1860,59 @@ mod tests {
                 )
                 .build()
         }
+    }
+
+    /// PLAN-026 T-05：IME 闭环投影器侧（D2 定案：Commit 并入 buffer →
+    /// INPUT_TEXT 代写 → on_change 派发 → 帧变；Preedit 尾拼显示（差分
+    /// 色 op）；Cancelled 消解；无聚焦丢弃 + ime_dropped 留痕）。
+    #[test]
+    fn ime_commit_preedit_cancelled_loop() {
+        let mut p = NativeProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        p.ensure_covered().expect("converter Covered");
+        let _ = p.render_frame(); // 命中表首帧（click 消费上一帧 hits）
+        // 聚焦 celsius（首 input 槽位——003 金样同位坐标）。
+        click(&mut p, 100.0, 26.0);
+        // ① ImePreedit：暂存 → 聚焦框尾拼 op（差分色）。
+        p.on_input(&InputMsg::ImePreedit { wid: 1, text: "中文".into(), cursor: WRect::new(0.0, 0.0, 0.0, 0.0) });
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(
+            texts.iter().any(|t| t.contains("中文")),
+            "preedit 尾拼进帧: {texts:?}"
+        );
+        // preedit 独立 op（差分色 = PLACEHOLDER_FG 近似下划线）。
+        let preedit_op = frame.ops.iter().any(|op| {
+            matches!(op, DrawOp::Text { color, text, .. }
+                if *color == PLACEHOLDER_FG && text.contains("中文"))
+        });
+        assert!(preedit_op, "preedit 尾拼差分色 op 在场");
+        // ② ImeCancelled：组合取消 → preedit 消解（帧面回退）。
+        p.on_input(&InputMsg::ImeCancelled { wid: 1 });
+        let frame = p.render_frame();
+        assert!(
+            !texts_of(&frame).iter().any(|t| t.contains("中文")),
+            "Cancelled 消解 preedit"
+        );
+        // ③ ImeCommit：并入 buffer → on_change 派发（值 5 → 帧联动）。
+        p.on_input(&InputMsg::ImeCommit { wid: 1, text: "5".into() });
+        p.on_input(&InputMsg::ImeCommit { wid: 1, text: "中文".into() });
+        assert_eq!(p.ime_dropped(), 0, "聚焦在册不丢弃");
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(
+            texts.iter().any(|t| t.contains("5中文")),
+            "Commit 并入 buffer 显示面: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("41")),
+            "on_change 派发联动帧（celsius=5中文 parse 前缀 5 → f=41）: {texts:?}"
+        );
+        // ④ 无聚焦 Commit = 丢弃留痕。
+        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 }); // Esc 不失焦——改走结构变化失焦：省略，直接测无聚焦路径
+        let mut p2 = NativeProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        p2.on_input(&InputMsg::ImeCommit { wid: 1, text: "x".into() });
+        p2.on_input(&InputMsg::ImePreedit { wid: 1, text: "y".into(), cursor: WRect::new(0.0, 0.0, 0.0, 0.0) });
+        assert_eq!(p2.ime_dropped(), 2, "无聚焦丢弃留痕");
     }
 
     fn quads_of(frame: &DrawList) -> Vec<WRect> {
@@ -2185,6 +2442,11 @@ mod tests {
                         style: None,
                     })
                     .child(View::scrollable(View::text("s")).height(16).build())
+                    // PLAN-026 T-03 display 族夹具（image/progress 臂在场
+                    // ——覆盖表扩容 kinds+image/progress 的防漏钉夹具）。
+                    .child(View::image_styled("img", "w-16 h-16"))
+                    .child(View::progress_bar_styled(0.5, "w-20 h-2"))
+                    .child(View::grid().cols(2).spacing(8).child(View::text("g1")).child(View::text("g2")).build())
                     .child(View::row().child(View::text("r1")).build())
                     .child(View::container(View::text("c")).build())
                     .child(View::list(vec![View::text("l1")]).build())
@@ -2289,6 +2551,190 @@ mod tests {
         p.ensure_covered().expect("textarea 入覆盖集");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["a", "b"], "按 '\\n' 分行");
+    }
+
+    /// PLAN-026 T-03：display 族占位保真 golden（I4——解释态
+    /// layout_image/layout_progress client_runtime.rs:1339/:1452 同级
+    /// 口径：image 样式尺寸占位 Quad（缺省 min(avail,96) 方形）；
+    /// progress 轨道 + 填充比例几何；style.bg 覆盖权同解释态）。
+    #[test]
+    fn display_family_placeholder_golden() {
+        use crate::ui::desktop_protocol::client_runtime::IMAGE_PLACEHOLDER as IMG_PH;
+        #[derive(Debug)]
+        struct Disp;
+        #[derive(Debug, Clone)]
+        enum DMsg {}
+        impl Component for Disp {
+            type Msg = DMsg;
+            fn on(&mut self, _m: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::image_styled("x", "w-16 h-16"))
+                    .child(View::image("bare")) // 无样式：缺省 96 上限方形
+                    .child(View::progress_bar_styled(0.5, "w-20 h-2"))
+                    .child(View::progress_bar_styled(0.25, "bg-blue-500"))
+                    .build()
+            }
+        }
+        let quads = |p: &mut NativeProjector<Disp>| -> Vec<(f32, f32, f32, f32, Rgba8)> {
+            p.render_frame()
+                .ops
+                .iter()
+                .filter_map(|op| match op {
+                    DrawOp::Quad { rect, color } => {
+                        Some((rect.x, rect.y, rect.w, rect.h, *color))
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let mut p = NativeProjector::new(Disp, 480.0, 320.0);
+        p.ensure_covered().expect("display 族入覆盖集");
+        let qs = quads(&mut p);
+        // styled image：w-16 h-16（Tailwind 刻度 16×4=64px）→ 64×64 占位。
+        assert!(
+            qs.iter().any(|&(x, _, w, h, _)| x == 10.0 && w == 64.0 && h == 64.0),
+            "styled image 64×64 占位 (x=MARGIN): {qs:?}"
+        );
+        // 无样式 image：w = min(avail, 96) = 96，h = w（方形缺省）+
+        // IMAGE_PLACEHOLDER 底色（pub(crate) 复用同值镜像）。
+        assert!(
+            qs.iter()
+                .any(|&(x, _, w, h, c)| x == 10.0 && w == 96.0 && h == 96.0 && c == IMG_PH),
+            "bare image 缺省 96 方形 IMAGE_PLACEHOLDER: {qs:?}"
+        );
+        // progress 0.5（w-20=80, h-2=8）：track 全长 + fill = w*frac 同位。
+        let track = qs
+            .iter()
+            .find(|&&(x, _, w, h, _)| x == 10.0 && w == 80.0 && h == 8.0)
+            .copied()
+            .expect("progress track 80×8 (w-20/h-2 刻度)");
+        assert!(
+            qs.iter().any(|&(x, y, w, h, _)| x == track.0
+                && y == track.1
+                && w == 40.0
+                && h == 8.0),
+            "progress 0.5 → fill 40×8 同位: {qs:?}"
+        );
+        // progress 0.25 无尺寸类：w = avail = 480；fill = 120 同位。
+        let track2 = qs
+            .iter()
+            .find(|&&(x, _, w, h, _)| x == 10.0 && w == 460.0 && h == 8.0)
+            .copied()
+            .expect("progress 缺省宽 460×8");
+        let fill2 = qs
+            .iter()
+            .find(|&&(x, y, w, h, _)| x == track2.0
+                && y == track2.1
+                && w == 115.0
+                && h == 8.0)
+            .copied()
+            .expect("progress 0.25 → fill 115×8 同位");
+        assert_ne!(
+            fill2.4, track2.4,
+            "style.bg 覆盖 fill 色（bg-blue-500 ≠ 轨道底）: {qs:?}"
+        );
+    }
+
+    /// PLAN-026 T-04：grid walker golden + 命中派发（镜像
+    /// client_runtime::layout_grid :831——cols 等宽格 row-major，格宽 =
+    /// (内容宽 - gap×(cols-1))/cols；格内按钮命中派发正确）。
+    #[test]
+    fn grid_layout_and_hit_golden() {
+        #[derive(Debug)]
+        struct GridApp {
+            hits: u32,
+        }
+        #[derive(Debug, Clone)]
+        enum GMsg {
+            Hit,
+        }
+        impl Component for GridApp {
+            type Msg = GMsg;
+            fn on(&mut self, m: Self::Msg) {
+                if matches!(m, GMsg::Hit) {
+                    self.hits += 1;
+                }
+            }
+            fn view(&self) -> View<Self::Msg> {
+                // 2 列 × gap 8；内容宽 460-0 pad → 格宽 (460-8)/2 = 226。
+                View::grid()
+                    .cols(2)
+                    .spacing(8)
+                    .child(View::text("a"))
+                    .child(View::button("b1").on_click(|_| GMsg::Hit).build())
+                    .child(View::button("b2").on_click(|_| GMsg::Hit).build())
+                    .child(View::text("d"))
+                    .build()
+            }
+        }
+        let mut p = NativeProjector::new(GridApp { hits: 0 }, 480.0, 320.0);
+        p.ensure_covered().expect("grid 入覆盖集");
+        let frame = p.render_frame();
+        let quads: Vec<(f32, f32, f32, f32)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } => Some((rect.x, rect.y, rect.w, rect.h)),
+                _ => None,
+            })
+            .collect();
+        // 第 1 行第 1 格（文本 a 无 quad）；第 1 行第 2 格按钮 b1：格 x =
+        // MARGIN + 1×(226+8) = 244；第 2 行第 1 格 b2：y 下移一行。
+        // 按钮宽 = 内容驱动（BUTTON_MIN_W 档），格位 = 等宽格起点。
+        let b1 = quads.iter().find(|&&(x, y, _, _)| x == 244.0 && y == 10.0)
+            .expect("b1 格位 (244,10)");
+        let b2 = quads.iter().find(|&&(x, y, _, _)| x == 10.0 && y > b1.1)
+            .expect("b2 次行首格");
+        let _ = (b1, b2);
+        // 命中：b1 按钮中心点击派发 Hit。
+        click(&mut p, 244.0 + 100.0, 10.0 + 12.0);
+        let frame2 = p.render_frame();
+        let _ = frame2;
+        assert_eq!(p.component.hits, 1, "grid 格内按钮命中派发");
+        // b2 同样派发。
+        click(&mut p, 10.0 + 100.0, b2.1 + 12.0);
+        assert_eq!(p.component.hits, 2, "次行格内按钮命中派发");
+    }
+
+    /// PLAN-026 T-04：center 臂（View::center → Container center_x/
+    /// center_y——fixed_w 容器内子级水平居中；fixed_h 下垂直居中）。
+    #[test]
+    fn center_container_golden() {
+        #[derive(Debug)]
+        struct CApp;
+        #[derive(Debug, Clone)]
+        enum CMsg2 {
+            Nop,
+        }
+        impl Component for CApp {
+            type Msg = CMsg2;
+            fn on(&mut self, _m: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::center(View::button("mid").on_click(|_| CMsg2::Nop).build())
+                    .width(200)
+                    .height(100)
+                    .build()
+            }
+        }
+        let mut p = NativeProjector::new(CApp, 480.0, 320.0);
+        let frame = p.render_frame();
+        let quads: Vec<(f32, f32, f32, f32)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } => Some((rect.x, rect.y, rect.w, rect.h)),
+                _ => None,
+            })
+            .collect();
+        // 容器 (10,10) 200×100（legacy width/height 臂——iced 消费面
+        // 同源）；按钮 (120×36 内容驱动) 居中 → (10+(200-120)/2,
+        // 10+(100-36)/2) = (50,42)。
+        let btn = quads
+            .iter()
+            .find(|&&(x, y, _, _)| x == 50.0 && y == 42.0)
+            .expect("center 子级水平+垂直居中（50,42）");
+        let _ = btn;
     }
 
     #[test]

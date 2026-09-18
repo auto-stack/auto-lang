@@ -256,6 +256,73 @@ App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口
   （P020-D2 后半句另立）；live iced 壳键盘/滚轮订阅接线缺口（上述新债）；
   slider 拖拽、select 键盘跳项、input on_submit not-yet。
 
+## 1.8 v1.8 增量（native 覆盖爬坡第二批 + IME 闭环 + auto 裁决复测，PLAN-026）
+
+- **display 族 native 臂入册**（`Coverage::native_queue_set` 扩容，
+  `PROTOCOL_VERSION` 维持 1——零 wire 变体）：kind 扩 **image/progress**
+  （`View::Image`/`View::ProgressBar` 变体臂——占位保真：image = 样式
+  尺寸占位 Quad（缺省 min(avail,96) 方形，IMAGE_PLACEHOLDER 底色），
+  progress = 轨道 + fill=w×frac 比例几何，style.bg 覆盖权同解释态；
+  on_seek 点击定位 not-yet）；layouts 扩 **grid**（`View::Grid` walker
+  ——cols 等宽格 × row-major，行高 = 行内最大，bg 两遍法置子级之下，
+  gap = Grid.gap 字段优先 + style gap- 类回退）。**icon/badge/avatar/
+  divider/separator/spacer/a/img 不入册——分表非缺口**（025"switch 无
+  View 变体"口径）：a2r codegen 降级归一（§下 codegen 条），View 层
+  产出 kind 全在册（image/text/row/container/empty）。**imagesurface
+  整 kind not-yet**（交互回调无采集面，登记即静默放行——I3）；渲染
+  顺带 = catch-all 占位盒（门后动态防线臂）。**center 不入册**：
+  `View::center` 归一 Container（scan 无 "center" kind 产出点——防漏
+  钉钉②口径）；native 容器臂补 center_x/center_y 消费（水平两遍法 +
+  fixed_h/legacy_height 外框垂直居中）+ legacy width/height 兜底 +
+  **w-full（Width(Full)）满宽承载**（iced 消费面同语义——divider/
+  spacer 降级形态宽度）。
+- **IME 闭环两端**（D2 定案：preedit 尾拼 + 协议级注入口径）：wire
+  `ImePreedit/ImeCommit/ImeCancelled` v1.0 在册变体启用——投影器消费
+  （Commit = 聚焦 buffer 追加 → INPUT_TEXT 代写 → on_change 派发 →
+  rev 前进；Preedit = 暂存 + 聚焦框渲染尾拼（单行独立差分色 op——真
+  下划线无 DrawOp 通道随注；多行并入末行）；Cancelled/Esc 消解；无聚焦
+  丢弃 + `ime_dropped()` 留痕观测面）；宿主生产 = `DesktopSession::
+  broker_ime_commit/preedit/cancelled`（025 broker_char 焦点窗路由同型
+  ——live iced 壳订阅缺口并入 P025-D1 在册债；协议级注入为证据承载，
+  p026_native_display_arm 第三腿实证 broker_ime_commit("100") → 换算
+  联动帧 212）。
+- **a2r codegen display 族降级臂**（§5.1 D1/D1' 定案——对齐 VM 轨
+  AuraViewBuilder 既有降级形态，零 View 变体）：icon → `View::image_
+  styled("lucide:{name}")`（PLAN-018 三前缀透传 + 尺寸契约：显式 w-/h-
+  类 > size prop 精确 px（w-[Npx] 任意值通道）> 默认 20px——VM
+  with_icon_size 两端一致契约）；badge → 样式 Row（shadcn 基类 +
+  variant 预设 + label 必达）；card/divider/separator/spacer/avatar →
+  styled container（VM convert_* 同型底档；direction/orientation 竖档）；
+  scroll → `View::scrollable`；link/a → styled text（AuraNode::Link 有
+  子件时组合子件——原实现静默丢子件内容）；image src 绑定形状容差
+  （Ident '.' 前缀 / Dot('.'|'self',f)——004 真源 src 曾静默丢失）；
+  image 样式尺寸 native 臂消费（Tailwind 刻度）。断裂映射移除：
+  badge/card/icon/scroll/link（降级臂先行，未达臂落 col 兜底）；
+  **modal/tooltip/spinner/option/toggle/radiogroup/tab 映射断裂维持**——
+  显式拒绝策略归 shell a2r 设计 S1（KNOWN-DEBT 随注）。
+- **auto 裁决复测（508 三闸 T-覆盖数据行）**：examples/ui 全量 →
+  AuraViewBuilder（VM 轨运行时 aura→View 构造器）→ scan_native_view ×
+  judge(native_queue_set)——**overall 16/35 = 45.7% / judged 16/21 =
+  76.2%，均未达 ≥95% 阈值 → 裁定维持 native `auto` = independent
+  （不翻）**；缺项面全在册 not-yet（opacity/hidden/样式版 grid/popover/
+  定位族/rotate/truncate 等——报告
+  `docs/plans/reports/p026-native-flip-data-row.md`）。**翻转点已备**：
+  `resolve_native_frame_mode` 升级扫描制观测（Auto → 真扫描，观测行
+  携带逐 App 缺项清单 + queue-covered 命名，裁决仍 Auto→Pixels）；达标
+  时 Covered 臂改返 Commands 即翻转（one-line，随 ramp v3 复评）。
+  样式子集降级放行批（解释态 target_set 同款保真边界，逐类随注
+  `native_queue_set`）：overflow-（含 x/y 轴族）/min-w-/min-h-/leading-
+  （PLAN-527 typed LineHeight 可达）/flex/block/underline 族/cursor-/
+  outline-/transition/antialiased/shrink-/whitespace-/relative/tracking-
+  /backdrop-（518 G8 冻结词汇）+ 字重族补全。
+- **v1.8 已知边界**（随注非静默）：位图真渲/图像 DrawOp 算子 not-yet
+  （image/icon/avatar 占位保真口径——图像通道归 shell a2r 设计 §4-B
+  独立线）；imagesurface 交互族 not-yet（D5）；live iced 壳
+  键盘/滚轮/IME 事件订阅缺口（P025-D1 债扩展）；opacity/hidden/定位族/
+  样式版 grid/样式版 grid-col 数 native 渲染 not-yet（覆盖表显式缺项，
+  auto 降级留痕）；slider 拖拽/select 键盘跳项/on_submit/L3 快照注入
+  not-yet 维持（025 在册）；modal/tooltip/spinner a2r 映射断裂（S1）。
+
 ## 2. Wire Format（信封）
 
 小端。头部 12 字节定长：

@@ -1346,7 +1346,10 @@ impl RustGenerator {
                     && self.state_types.contains_key("ms_display")
                 {
                     // Ensure prior statement ends with semicolon
-                    code.push_str("                    ;\n");
+                    let trimmed = code.trim_end();
+                    if !trimmed.ends_with(';') && !trimmed.ends_with('}') {
+                        code.push_str(";\n");
+                    }
                     code.push_str(
                         "                    let total_cs = self.elapsed / 10;\n\
                          \x20                   let cs = total_cs % 100;\n\
@@ -3055,15 +3058,41 @@ impl RustGenerator {
                 };
 
                 // Handle image element — generate View::image() or View::image_styled()
+                // PLAN-026 T-07：src 绑定形状容差（025 value 绑定同款——
+                // Ident '.' 前缀 / Dot("."|"self", f)，build_rust_ui 提取
+                // 路径产 Dot 形；缺臂曾致 004 真源 src 静默丢失——AC-05
+                // 非静默丢关键 prop 纪律）。
                 if tag == "image" {
-                    let src = props.get("src")
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = v {
-                            Some(format!("format!(\"{{}}\", self.{})", name))
-                        } else if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
-                            Some(format!("\"{}\"", s))
-                        } else {
-                            None
-                        }).unwrap_or_else(|| "\"\"".to_string());
+                    let src_field = props.get("src").and_then(|v| match v {
+                        AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                            let f = name.as_str().trim_start_matches('.');
+                            (!f.is_empty()).then(|| f.to_string())
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) => {
+                            match obj.as_ref() {
+                                crate::ast::Expr::Ident(base)
+                                    if base.as_str() == "." || base.as_str() == "self" =>
+                                {
+                                    Some(field.as_str().to_string())
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    });
+                    let src = match &src_field {
+                        Some(f) => format!("format!(\"{{}}\", self.{f})"),
+                        None => props
+                            .get("src")
+                            .and_then(|v| {
+                                if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                    Some(format!("\"{}\"", s))
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_else(|| "\"\"".to_string()),
+                    };
                     let style_str = props.get("style")
                         .or_else(|| props.get("class"))
                         .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
@@ -3147,14 +3176,301 @@ impl RustGenerator {
                     return surface;
                 }
 
-                // Handle spacer — returns View directly, no builder
-                if tag == "spacer" {
-                    return "View::spacer()".to_string();
+                // PLAN-026 T-02（§5.1 D1/D1' 定案）：display 族 a2r 降级臂
+                // ——对齐 VM 轨 AuraViewBuilder 既有降级形态（零 View 变体；
+                // icon = convert_image_or_icon :6455 的 lucide 承载 + 尺寸
+                // 契约；divider/spacer/avatar = convert_divider :6885 /
+                // convert_spacer :6813 / convert_avatar :8559 同型）。
+                // 降级纪律：label/src/progress 等关键 prop 不静默丢失
+                // （字面量必达；动态求值面逐臂随注）。
+                let user_style_str = |props: &std::collections::HashMap<String, AuraPropValue>| -> String {
+                    props
+                        .get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_default()
+                };
+
+                // icon → View::image("lucide:{name}")（VM 同型：PLAN-018
+                // 前缀 iconfile:/hicon:/lucide: 透传，裸名补 lucide:）；
+                // 尺寸契约 = 显式 w-/h- 类 > size prop（精确 px，任意值
+                // w-[Npx] 通道）> 默认 20px（VM DEFAULT_ICON_PX）。
+                if tag == "icon" {
+                    let mut classes = user_style_str(props);
+                    let has_w = classes.split_whitespace().any(|t| t.starts_with("w-"));
+                    let has_h = classes.split_whitespace().any(|t| t.starts_with("h-"));
+                    if !has_w || !has_h {
+                        let px: Option<f32> = props.get("size").and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f32),
+                            AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => Some(*f as f32),
+                            _ => None,
+                        })
+                        .filter(|v| *v > 0.0);
+                        // 动态 size 求值 not-yet（VM 走 bindings 求值；a2r
+                        // 静态发射面暂只认字面量）——缺省档兜底。
+                        let d = px.unwrap_or(20.0);
+                        if !has_w {
+                            classes.push_str(&format!(" w-[{d}px]"));
+                        }
+                        if !has_h {
+                            classes.push_str(&format!(" h-[{d}px]"));
+                        }
+                    }
+                    let src = match props.get("name") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                            if s.starts_with("iconfile:")
+                                || s.starts_with("hicon:")
+                                || s.starts_with("lucide:")
+                            {
+                                format!("\"{s}\".to_string()")
+                            } else {
+                                format!("\"lucide:{s}\".to_string()")
+                            }
+                        }
+                        Some(AuraPropValue::Expr(expr)) => {
+                            let e = self.ast_expr_to_rust(expr);
+                            format!(
+                                "{{ let n = format!(\"{{}}\", {e}); \
+                                 if n.starts_with(\"iconfile:\") || n.starts_with(\"hicon:\") \
+                                 || n.starts_with(\"lucide:\") {{ n }} \
+                                 else {{ format!(\"lucide:{{}}\", n) }} }}"
+                            )
+                        }
+                        _ => "\"\".to_string()".to_string(),
+                    };
+                    return format!("View::image_styled({src}, \"{classes}\")");
                 }
 
-                // Handle divider — returns View directly, no builder
-                if tag == "divider" {
-                    return "View::divider()".to_string();
+                // divider/separator/hr → 1px 线容器（VM convert_divider
+                // 同型底档 h-1 bg-gray-200；direction/orientation=vertical
+                // 竖档——解释态 layout_divider client_runtime.rs:1474 同款
+                // 双键）。separator label prop：解释态臂同样不载（同口径
+                // 丢弃随注，非静默降级）。
+                if matches!(tag.as_str(), "divider" | "separator" | "hr") {
+                    let user_style = user_style_str(props);
+                    let vertical = ["direction", "orientation"]
+                        .iter()
+                        .find_map(|k| props.get(*k))
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                                Some(s.eq_ignore_ascii_case("vertical"))
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or(false);
+                    let base = if tag == "separator" {
+                        if vertical { "w-px h-6 bg-border" } else { "w-full h-px bg-border" }
+                    } else if vertical {
+                        "w-px h-6 bg-gray-200"
+                    } else {
+                        "w-full h-1 bg-gray-200"
+                    };
+                    if user_style.is_empty() {
+                        return format!("View::container(View::Empty).style(\"{base}\").build()");
+                    }
+                    return format!(
+                        "View::container(View::Empty).style(\"{base} {user_style}\").build()"
+                    );
+                }
+
+                // spacer → 占位容器（VM convert_spacer 同型：无样式 =
+                // flex-1 吃剩余主轴；显式 style 保真）。
+                if tag == "spacer" {
+                    let user_style = user_style_str(props);
+                    if user_style.is_empty() {
+                        return "View::container(View::Empty).style(\"flex-1\").build()".to_string();
+                    }
+                    return format!(
+                        "View::container(View::Empty).style(\"{user_style}\").build()"
+                    );
+                }
+
+                // avatar → 占位容器（VM convert_avatar 同型：缺省
+                // w-10 h-10 bg-gray-300 rounded-full；子件组合；fallback
+                // 字面量 → 首字母 text 子级——解释态 layout_avatar
+                // client_runtime.rs:1415 占位口径；src 位图内容归图像
+                // 通道独立线，占位随注）。
+                if tag == "avatar" {
+                    let user_style = user_style_str(props);
+                    let base = if user_style.is_empty() {
+                        "w-10 h-10 bg-gray-300 rounded-full".to_string()
+                    } else {
+                        user_style
+                    };
+                    let child_view = if children.is_empty() {
+                        let initials: String = props
+                            .get("fallback")
+                            .and_then(|v| match v {
+                                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.clone()),
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                            .split_whitespace()
+                            .filter_map(|w| w.chars().next())
+                            .take(2)
+                            .collect::<String>()
+                            .to_uppercase();
+                        if initials.is_empty() {
+                            "View::Empty".to_string()
+                        } else {
+                            format!("View::text(\"{initials}\")")
+                        }
+                    } else if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for child in children {
+                            col = format!("{}.child({})", col, self.generate_view_tree(child));
+                        }
+                        format!("{col}.build()")
+                    };
+                    return format!("View::container({child_view}).style(\"{base}\").build()");
+                }
+
+                // badge → 样式化 Row（VM convert_badge :9157 同型：shadcn
+                // 基类 + variant 预设 + user 类；label = text prop/子件，
+                // 动态求值经 interpolate/format 通道必达）。
+                if tag == "badge" {
+                    let variant = props
+                        .get("variant")
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.clone()),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let preset = match variant.as_str() {
+                        "outline" => "border border-input text-foreground",
+                        "secondary" => "bg-secondary text-secondary-foreground",
+                        "destructive" => "bg-destructive text-destructive-foreground",
+                        _ => "bg-primary text-primary-foreground",
+                    };
+                    let base = "items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium";
+                    let user_style = user_style_str(props);
+                    let merged = if user_style.is_empty() {
+                        format!("{base} {preset}")
+                    } else {
+                        format!("{base} {preset} {user_style}")
+                    };
+                    let child_view = if children.is_empty() {
+                        if let Some(ref name) = text_state_ref {
+                            let name_ref = if self.is_loop_var(name) {
+                                name.to_string()
+                            } else {
+                                format!("self.{}", name)
+                            };
+                            format!("View::text(format!(\"{{}}\", {name_ref}))")
+                        } else if let Some(label) = &text_prop {
+                            if label.contains("${") {
+                                format!("View::text({})", self.interpolate_str(label))
+                            } else {
+                                format!("View::text(\"{label}\")")
+                            }
+                        } else if let Some(text) = &text_rust_expr {
+                            let text = if text.starts_with("self.") {
+                                format!("format!(\"{{}}\", {text})")
+                            } else {
+                                text.clone()
+                            };
+                            format!("View::text({text})")
+                        } else {
+                            String::new()
+                        }
+                    } else if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for child in children {
+                            col = format!("{}.child({})", col, self.generate_view_tree(child));
+                        }
+                        format!("{col}.build()")
+                    };
+                    if child_view.is_empty() {
+                        return format!("View::row().style(\"{merged}\").build()");
+                    }
+                    return format!("View::row().style(\"{merged}\").child({child_view}).build()");
+                }
+
+                // card → styled 容器（§5.1 D1：container 降级；语义 card
+                // 族表面档由作者 style 声明——VM 轨同无缺省注入）。
+                if tag == "card" {
+                    let user_style = user_style_str(props);
+                    let child_view = if children.is_empty() {
+                        "View::Empty".to_string()
+                    } else if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for child in children {
+                            col = format!("{}.child({})", col, self.generate_view_tree(child));
+                        }
+                        format!("{col}.build()")
+                    };
+                    if user_style.is_empty() {
+                        return format!("View::container({child_view}).build()");
+                    }
+                    return format!("View::container({child_view}).style(\"{user_style}\").build()");
+                }
+
+                // scroll → View::scrollable（既有构造器；style 透传）。
+                if tag == "scroll" || tag == "scrollable" {
+                    let user_style = user_style_str(props);
+                    let child_view = if children.is_empty() {
+                        "View::Empty".to_string()
+                    } else if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for child in children {
+                            col = format!("{}.child({})", col, self.generate_view_tree(child));
+                        }
+                        format!("{col}.build()")
+                    };
+                    if user_style.is_empty() {
+                        return format!("View::scrollable({child_view}).build()");
+                    }
+                    return format!(
+                        "View::scrollable({child_view}).style(\"{user_style}\").build()"
+                    );
+                }
+
+                // a（Element 形态）→ styled text（AuraNode::Link 臂同口径；
+                // href 语义归 shell a2r S1，label 必达）。
+                if tag == "a" {
+                    let user_style = user_style_str(props);
+                    let style_str = if user_style.is_empty() {
+                        "text-blue-600 underline cursor-pointer".to_string()
+                    } else {
+                        user_style
+                    };
+                    if let Some(ref name) = text_state_ref {
+                        let name_ref = if self.is_loop_var(name) {
+                            name.to_string()
+                        } else {
+                            format!("self.{}", name)
+                        };
+                        return format!("View::text_styled(format!(\"{{}}\", {name_ref}), \"{style_str}\")");
+                    }
+                    if let Some(label) = &text_prop {
+                        if label.contains("${") {
+                            return format!("View::text_styled({}, \"{style_str}\")", self.interpolate_str(label));
+                        }
+                        return format!("View::text_styled(\"{label}\".to_string(), \"{style_str}\")");
+                    }
+                    if let Some(text) = &text_rust_expr {
+                        let text = if text.starts_with("self.") {
+                            format!("format!(\"{{}}\", {text})")
+                        } else {
+                            text.clone()
+                        };
+                        return format!("View::text_styled({text}, \"{style_str}\")");
+                    }
+                    return format!("View::text_styled(\"\", \"{style_str}\")");
                 }
 
                 // Handle progress — View::progress_bar(value / max)
@@ -3752,12 +4068,24 @@ impl RustGenerator {
                 "View::empty()".to_string()
             }
 
-            AuraNode::Link { to, text, href, .. } => {
-                // Render link as a styled text/button (no routing in compiled Rust).
-                // Label comes from a plain string field only — children are already
-                // rendered Rust expressions, so embedding them inside a string
-                // literal would produce invalid code. Fall back to to/href as the
-                // placeholder label when no explicit text is present.
+            AuraNode::Link { to, text, href, children, .. } => {
+                // Render link as styled text (no routing in compiled Rust).
+                // PLAN-026 T-02：有子件时组合子件（col）——原实现无条件落
+                // to/href 占位标签，`link (to:) { text … }` 主形态子件内容
+                // 静默丢失（AC-05 非 Silent 丢内容纪律）。无子件保留既有
+                // text/href/to 标签兜底 + 链接缺省观感。
+                if !children.is_empty() {
+                    let child_view = if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for child in children {
+                            col = format!("{}.child({})", col, self.generate_view_tree(child));
+                        }
+                        format!("{}.build()", col)
+                    };
+                    return format!("View::container({child_view}).build()");
+                }
                 let label = if !text.is_empty() {
                     text.clone()
                 } else if !href.is_empty() {
@@ -4856,7 +5184,8 @@ impl RustGenerator {
             "col" | "column" => "col",
             "row" => "row",
             "grid" => "grid",
-            "scroll" => "scroll",
+            // PLAN-026 T-02：scroll 走 display 降级臂（View::scrollable），
+            // 断裂映射移除。
             "container" => "container",
             "center" => "center",
 
@@ -4869,7 +5198,9 @@ impl RustGenerator {
             "toggle" => "toggle",
             "select" => "select",
             "option" => "option",
-            "link" => "link",
+            // PLAN-026 T-02：link/a 不再映射（Element 形态走 display 降级
+            // 臂 text_styled；AuraNode::Link 有专属臂）——断裂映射移除，
+            // 未达臂形态落 `_ => "col"` 兜底。
 
             // Typography
             "text" | "label" | "span" => "text",
@@ -4901,16 +5232,13 @@ impl RustGenerator {
 
             // Feedback
             "progress" => "progress",
-            "badge" => "badge",
             "spinner" => "spinner",
 
             // Display
-            "card" => "card",
             "avatar" => "avatar",
 
             // Media
             "image" => "image",
-            "icon" => "icon",
 
             // Utility
             "divider" => "divider",
@@ -6072,7 +6400,7 @@ impl RustGenerator {
                         args.get(1).cloned().unwrap_or_else(|| "String::new()".to_owned())
                     ),
                     "Time.now_sec" | "time.now_sec" | "time_now_sec" => {
-                        "(auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32)".to_string()
+                        "auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32".to_string()
                     }
                     "Time.now_ms" | "time.now_ms" | "time_now_ms" => {
                         "auto_lang::vm::ffi::stdlib::shim_time_now_ms()".to_string()
@@ -7179,6 +7507,121 @@ widget Counter {
             code
         );
     }
+
+    /// PLAN-026 T-02: display 族 codegen golden（fixture 真源：
+    /// tests/fixtures/026-native-display/display.at——§5.1 D1/D1' 定案
+    /// 的降级形态逐件钉：icon→Image lucide+精确 px 尺寸、badge→样式
+    /// Row、card/divider/separator/spacer/avatar→styled container、
+    /// scroll→scrollable、link 子件组合不丢内容）。
+    #[test]
+    fn test_display_family_codegen_arm_fixture() {
+        let src = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/026-native-display/display.at"
+        ))
+        .expect("read display fixture");
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        // image：既有臂（View::image/image_styled）。
+        assert!(
+            code.contains("View::image(") || code.contains("View::image_styled("),
+            "image 构造在册:\n{}",
+            code
+        );
+        // icon：lucide 承载 + size prop 精确 px（w-[14px]）+ user 类透传。
+        assert!(
+            code.contains("\"lucide:search\"") && code.contains("View::image_styled("),
+            "icon → lucide Image:\n{}",
+            code
+        );
+        assert!(
+            code.contains("w-[14px]") && code.contains("h-[14px]"),
+            "icon size prop 精确 px:\n{}",
+            code
+        );
+        assert!(
+            code.contains("text-muted-foreground"),
+            "icon user 类透传:\n{}",
+            code
+        );
+        // badge：样式 Row + variant 预设 + label 子级（text prop 必达）。
+        assert!(
+            code.contains("View::row().style(\"items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-secondary text-secondary-foreground\")"),
+            "badge shadcn 基类+variant:\n{}",
+            code
+        );
+        assert!(
+            code.contains("View::text(\"Active\")"),
+            "badge label 必达:\n{}",
+            code
+        );
+        // card：styled container（user 类必达）。
+        assert!(
+            code.contains("View::container(") && code.contains("bg-card border rounded-xl p-4"),
+            "card container 降级 + style 必达:\n{}",
+            code
+        );
+        // divider/separator：1px 线容器。
+        assert!(
+            code.contains("w-full h-1 bg-gray-200"),
+            "divider 底档:\n{}",
+            code
+        );
+        assert!(
+            code.contains("w-full h-px bg-border"),
+            "separator 底档:\n{}",
+            code
+        );
+        // spacer：显式 style 保真。
+        assert!(
+            code.contains("View::container(View::Empty).style(\"w-8\").build()"),
+            "spacer 显式 style:\n{}",
+            code
+        );
+        // avatar：缺省档 + 子件组合。
+        assert!(
+            code.contains("w-10 h-10 bg-gray-300 rounded-full"),
+            "avatar 缺省档:\n{}",
+            code
+        );
+        assert!(
+            code.contains("View::text(\"JC\".to_string())"),
+            "avatar 子件:\n{}",
+            code
+        );
+        // scroll：scrollable 构造 + style 透传。
+        assert!(
+            code.contains("View::scrollable(") && code.contains(".style(\"h-40 w-full\")"),
+            "scroll → scrollable:\n{}",
+            code
+        );
+        // link：子件组合（to 仅作兜底，内容不丢）。
+        assert!(
+            code.contains("View::text(\"Library\".to_string())"),
+            "link 子件内容必达:\n{}",
+            code
+        );
+        // 断裂构造器零发射（badge/card/icon/scroll/link 映射已移除）。
+        for broken in ["View::badge(", "View::card(", "View::icon(", "View::scroll(", "View::link("] {
+            assert!(
+                !code.contains(broken),
+                "断裂构造器 {broken} 不得发射:\n{}",
+                code
+            );
+        }
+    }
+
 
     /// PLAN-025 T-04: select codegen golden（fixture 真源：
     /// tests/fixtures/025-native-input/select.at——View::select 构造 +
