@@ -6230,6 +6230,10 @@ pub fn startup_window_size() -> iced::Size {
                     resolved = iced::Size::new(w, h);
                 }
             }
+        } else if spec.trim().eq_ignore_ascii_case("fit") {
+            // Plan 644 follow-up: fit mode defaults to compact card dimensions
+            // before content measurement completes, avoiding large desktop window flash.
+            resolved = iced::Size::new(480.0, 680.0);
         }
     }
     // PLAN-046-B (auto-musk T7): baseline height lands in session KV so .at
@@ -6240,6 +6244,26 @@ pub fn startup_window_size() -> iced::Size {
         format!("{}", resolved.height),
     );
     resolved
+}
+
+/// Extract initial content size from root view's style when `window: "fit"` is declared.
+pub fn extract_root_view_fit_size<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<iced::Size> {
+    let style = match view {
+        AbstractView::Column { style, .. } | AbstractView::Row { style, .. } | AbstractView::Container { style, .. } => style.as_ref(),
+        _ => None,
+    }?;
+    let layout = crate::ui::style::BoxLayout::from_style(style);
+    let w = match layout.width {
+        Some(SizeValue::Pixels(px)) if px > 0.0 => Some(px),
+        Some(SizeValue::Fixed(units)) if units > 0 => Some((units as f32) * 4.0),
+        _ => None,
+    }?;
+    let h = match layout.height {
+        Some(SizeValue::Pixels(px)) if px > 0.0 => px,
+        Some(SizeValue::Fixed(units)) if units > 0 => (units as f32) * 4.0,
+        _ => (w * 1.4).clamp(320.0, 720.0),
+    };
+    Some(iced::Size::new(w.max(200.0), h.max(200.0)))
 }
 
 /// Plan 504: startup window fit-to-content mode. Source:
@@ -23208,6 +23232,7 @@ struct DevToolsState {
     // Plan 371 Task 11: MCP support for rust mode
     mcp_shared: std::cell::RefCell<Option<crate::ui::mcp_server::SharedStateHandle>>,
     mcp_widget_name: String,
+    pub fit_pending: std::cell::Cell<bool>,
 }
 
 impl Default for DevToolsState {
@@ -23240,6 +23265,7 @@ impl Default for DevToolsState {
             dragging_inner_divider: std::cell::RefCell::new(false),
             mcp_shared: std::cell::RefCell::new(Some(mcp_shared)),
             mcp_widget_name: widget_name,
+            fit_pending: std::cell::Cell::new(startup_window_fit()),
         }
     }
 }
@@ -23633,6 +23659,27 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
 
         let app_el: iced::Element<'static, WrapperMsg<C>> = app_view.into_iced();
 
+        let app_el = if startup_window_fit() {
+            container(
+                scrollable(
+                    container(app_el)
+                        .width(iced::Length::Shrink)
+                        .height(iced::Length::Shrink)
+                        .id(iced::widget::Id::from("aura_fit_root_rust")),
+                )
+                .direction(scrollable::Direction::Vertical(scrollable::Scrollbar::hidden()))
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Shrink),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .center_x(iced::Length::Fill)
+            .center_y(iced::Length::Fill)
+            .into()
+        } else {
+            app_el
+        };
+
         if *self.dt.devtools_open.borrow() {
             let panel = rdt_devtools_panel::<C>(&self.dt);
             row![app_el, panel]
@@ -23685,10 +23732,30 @@ where
     }
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
+        WrapperMsg::Debug(ref s) if s.starts_with("__fit_measured|") => {
+            if let Some(payload) = s.strip_prefix("__fit_measured|") {
+                let bounds: std::collections::HashMap<String, (f32, f32, f32, f32)> =
+                    serde_json::from_str(payload).unwrap_or_default();
+                if let Some((_x, _y, w_val, h_val)) = bounds.get("aura_fit_root_rust") {
+                    if *w_val >= 50.0 && *h_val >= 50.0 {
+                        w.dt.fit_pending.set(false);
+                        let size = iced::Size::new((*w_val).max(200.0), (*h_val).max(200.0));
+                        return iced::window::latest().then(move |opt_id| match opt_id {
+                            Some(id) => iced::window::resize(id, size),
+                            None => iced::Task::none(),
+                        });
+                    }
+                }
+            }
+        }
         WrapperMsg::Debug(ref s) if s == "__tick__" => {
             // Plan 407: tick event — dispatch Tick to inner component.
             if let Some(msg) = w.inner.tick_msg() {
                 w.inner.on(msg);
+            }
+            if w.dt.fit_pending.get() {
+                return iced::advanced::widget::operate(crate::ui::iced::LayoutCollector::new())
+                    .map(|bounds| WrapperMsg::Debug(format!("__fit_measured|{}", serde_json::to_string(&bounds).unwrap_or_default())));
             }
         }
         WrapperMsg::Debug(s) => {
@@ -23969,10 +24036,15 @@ where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    // Check tick interval at startup
+    // Check tick interval and initial fit size at startup
     let tick = C::default();
     let (tick_ms, tick_msg) = (tick.tick_interval_ms(), tick.tick_msg());
     let interval = tick_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
+    let initial_fit_size = if startup_window_fit() {
+        extract_root_view_fit_size(&tick.view())
+    } else {
+        None
+    };
     drop(tick);
 
     iced::application(
@@ -23992,7 +24064,7 @@ where
         }
         iced::Subscription::batch(subs)
     })
-    .window_size(startup_window_size())
+    .window_size(initial_fit_size.unwrap_or_else(startup_window_size))
     // Plan 411: pac window/title envs(AUTO_VM_WINDOW/AUTO_VM_TITLE)对
     // rust 轨同语义生效(VM 轨同款读取面);DevTools 面板不受影响。
     .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))
