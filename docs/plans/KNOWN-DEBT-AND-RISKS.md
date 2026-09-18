@@ -1150,6 +1150,12 @@
   （离页后日志持续刷 tick），`when` 门控丢弃但每条消息仍触发一次 view()
   全量树重建（空转功耗+泄漏倍增器）。偿还路径：路由/组件卸载时同步
   退订 widget_event_tick 订阅（renderer 订阅面按存活组件过滤）。
+  **→ PLAN-652 阶段 1（2026-09-18 work）**：类型级 mount 过滤落地——
+  `timesources` + `mounted_types`（装配期写入）+ `subscribable_timesources`
+  订阅过滤；条件臂未命中/widget 不再实例化 ⇒ 该名不在 mounted ⇒ 停订。
+  **范围**：widget **类型名** 身份（与 TimerEntryRuntime.widget 一致）；
+  同类型 for 多实例仍共一条订阅；path 级/精确实例退订仍开（设计阶段 2）。
+  实机 gallery 012-clock MCP 验收见 PLAN-652 T-06/AC-06。
 - **P530-D3 Element 缓存快速路径架构性失效（空转重建）**：dynamic_view
   末尾 store-then-take 使 cached_rendered 恒 None，`dirty=false` 帧仍走
   cached AbstractView → 全量 iced 树重建（实测 47k tick 仅 7 次 dirty，
