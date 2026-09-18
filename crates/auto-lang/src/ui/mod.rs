@@ -61,7 +61,9 @@ pub mod app;
 pub mod widget;
 pub mod style;
 pub mod debug;
-// PLAN-646 Select Anything——框选语义纯函数 + 结果信封。
+// PLAN-646 Select Anything——框选语义纯函数 + 结果信封。依赖
+// mcp_server/vtree_atom（StyledNodeSnapshot/VTreeAtomBuilder），同门控。
+#[cfg(feature = "ui-interpreter")]
 pub mod selection;
 pub mod vm_bridge;
 pub mod handler_codegen;
