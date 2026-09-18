@@ -6311,10 +6311,16 @@ pub fn emit_gallery_vm_demos(
         if !r.loadable && !r.fullstack {
             continue;
         }
+        // PLAN-642 T-13①: 宿主保留字段 α-改名前缀（全档位统一，非 fullstack
+        // 独有——纯前端 demo 的模型/store var 同样落合并根态对象）。
+        let reserved_ns = demo_ns_prefix(&r.id);
         // PLAN-642 T-01: 跨包 stylekit 配方内联（适配器 + 自有模块副本），
         // 根因与形态见 inline_stylekit_recipes 文档。
         let recipes = stylekit_pub_recipes(&apps_dir.join(&r.id));
-        let source_owned = inline_stylekit_recipes(&r.source, recipes.as_ref());
+        let source_owned = rename_reserved_root_fields(
+            &inline_stylekit_recipes(&r.source, recipes.as_ref()),
+            &reserved_ns,
+        );
         let source: &str = &source_owned;
         // widget 声明判定按行首匹配（注释中的 "widget " 字样不算——002-counter
         // 的 Plan 506 注释曾误触);多声明(宿主+工具 widget 同文件)跳过。
@@ -6555,10 +6561,21 @@ pub fn emit_gallery_vm_demos(
                 // PLAN-642 T-04: 包内组件自身的 `use <mod>:` fn 模块链
                 // （024 chart_geom 实证）必须同样进 demos/ + 嵌入 VM 模块池，
                 // 否则组件 Init 的几何计算 CALL reloc miss → 画布空。
-                let content = inline_stylekit_recipes(&raw, recipes.as_ref());
+                // PLAN-642 T-13①: 包文件同 ns 改名保留字段（015 子件读
+                // 父态 dark_mode 一类引用须与适配器改名后字段对齐）。
+                let content = rename_reserved_root_fields(
+                    &inline_stylekit_recipes(&raw, recipes.as_ref()),
+                    &reserved_ns,
+                );
                 collect_own_modules(&content, &app_dir, deps_dir.as_deref(), &mut row_modules);
                 fs::write(&target, content).map_err(|e| format!("write pkg {fname}: {}", e))?;
             }
+        }
+        // PLAN-642 T-13①: 自有模块统一保留字段改名——置于全部收集点
+        // （主收集 + 包级联 fn 链）之后单遍执行，避免两批内容不一致；
+        // fullstack ns 改名/store 限定是模块级改写，与字段名正交。
+        for (_, c) in row_modules.iter_mut() {
+            *c = rename_reserved_root_fields(c, &reserved_ns);
         }
         for (m, c) in &row_modules {
             module_files.entry(m.clone()).or_insert_with(|| c.clone());
@@ -6711,6 +6728,54 @@ fn stylekit_pub_recipes(app_root: &Path) -> Option<std::collections::BTreeMap<St
     } else {
         Some(out)
     }
+}
+
+/// PLAN-642 T-13①: 合并画廊 demo 的宿主保留字段 α-改名。根因（实机
+/// 写点追踪定罪）：合并 VM 轨统一状态对象（Plan 419）下，demo 适配器
+/// 的模型 var / store 模块级 var 初始化（`handler_CalendarStore_Init`
+/// 与匿名模块 init 两条 SET_FIELD 直写）会覆写宿主壳根态声明的
+/// `dark_mode`/`accent_color`——正是渲染器每帧状态→主题同步
+/// （renderer.rs D-GAP-2 块）与 `execute_set_theme` 写回消费的两个
+/// 保留名。独立形态下 demo 自己就是根、该写合法；画廊合并形态下即
+/// 主题污染（P2-016a）。修复：发射期把 demo 侧（适配器 + 自有模块 +
+/// 包级联文件）这两个保留名统一 α-改名为 `<ns>_` 前缀字段（声明/
+/// 读/写一体改名，语义自洽；语料原文不动——教程/源码 tab 与独立运行
+/// 不受影响，web 臂 demo 本就各自独立持主题态，此改名恰对齐双臂语
+/// 义）。宿主壳与宿主 deps（settings_popover 等）不经本变换，保留名
+/// 语义不变。改名为 word-boundary：前后均非 ident 字符才命中（
+/// `.dark_mode`/`var dark_mode`/`.store.accent_color` 全覆盖；语料
+/// 无字符串字面量含此二词，实证安全）。
+fn rename_reserved_root_fields(source: &str, ns: &str) -> String {
+    const RESERVED: [&str; 2] = ["dark_mode", "accent_color"];
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let bytes = source.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(source.len() + 64);
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let mut matched = false;
+        for word in RESERVED {
+            let w = word.as_bytes();
+            if bytes[i..].starts_with(w) {
+                let prev_ok = i == 0 || !is_ident(bytes[i - 1]);
+                let next_ok = i + w.len() >= bytes.len() || !is_ident(bytes[i + w.len()]);
+                if prev_ok && next_ok {
+                    out.extend_from_slice(ns.as_bytes());
+                    out.push(b'_');
+                    out.extend_from_slice(w);
+                    i += w.len();
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        if !matched {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    // reserved 全 ASCII 且仅在 char 边界命中，拼接不可能破坏 UTF-8；
+    // 防御性回退原串（理论不可达）。
+    String::from_utf8(out).unwrap_or_else(|_| source.to_string())
 }
 
 /// PLAN-642 T-01: 把 source 中 `use stylekit.styles: a, b`（或 `: *`）行
@@ -9822,6 +9887,56 @@ widget Helper {
         assert!(skipped.is_empty());
         assert!(gallery.join("demos").join("011-x.at").exists());
         assert!(gallery.join("demos").join("prog_util.at").exists());
+    }
+
+    /// PLAN-642 T-13①: 宿主保留字段 α-改名——demo 适配器与自有模块（store）
+    /// 的 `dark_mode`/`accent_color` 统一 `<ns>_` 前缀（合并根态对象上宿主
+    /// 声明的主题魔法字段不被 demo 初始化/handler 写覆写）；边界词
+    /// （`dark_mode_x`/`xdark_mode`）不误改。语料原文（r.source）不动。
+    #[test]
+    fn test_emit_gallery_vm_demos_reserved_field_rename() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let front = apps.join("016-x").join("src").join("front");
+        fs::create_dir_all(&front).unwrap();
+        let store_src = "store MyStore {\n    model {\n        var dark_mode bool = false\n    }\n    on {\n        .Init -> {\n            .dark_mode = false\n        }\n    }\n}\n";
+        fs::write(front.join("my_store.at"), store_src).unwrap();
+        let rows = vec![vm_demo_row(
+            "016-x",
+            true,
+            "use my_store: MyStore\n\nwidget App {\n    model {\n        var dark_mode bool = false\n        var dark_mode_x int = 1\n    }\n    view {\n        text \"hi\" { style: if .dark_mode { \"a\" } else { \"b\" } }\n    }\n    on {\n        .Init -> {\n            .dark_mode = .MyStore.dark_mode\n        }\n    }\n}\n",
+        )];
+        let gallery = dir.path().join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1);
+        assert!(skipped.is_empty());
+
+        let demo_src = std::fs::read_to_string(gallery.join("demos").join("016-x.at")).unwrap();
+        assert!(
+            demo_src.contains("var d016x_dark_mode bool = false"),
+            "adapter decl renamed: {demo_src}"
+        );
+        assert!(
+            demo_src.contains(".d016x_dark_mode = .MyStore.d016x_dark_mode"),
+            "read/write refs renamed: {demo_src}"
+        );
+        assert!(
+            demo_src.contains("var dark_mode_x int = 1"),
+            "boundary-suffixed ident untouched: {demo_src}"
+        );
+        assert!(
+            !demo_src.contains(" .dark_mode") && !demo_src.contains(".dark_mode "),
+            "no bare dark_mode ref remains: {demo_src}"
+        );
+
+        let store_out = std::fs::read_to_string(gallery.join("demos").join("my_store.at")).unwrap();
+        assert!(
+            store_out.contains("var d016x_dark_mode bool = false") && store_out.contains(".d016x_dark_mode = false"),
+            "own module renamed with same ns: {store_out}"
+        );
+
+        // 语料原文不动：r.source 之外的输入文件保持原样（教程/源码 tab 语义）。
+        assert!(store_src.contains("var dark_mode bool"));
     }
 
     /// PLAN-633: 全栈档 row 构造帮手（fullstack=true、loadable=false ——
