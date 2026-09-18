@@ -185,12 +185,16 @@ impl WidgetBlockSchema {
 /// - BuiltinWidget:桌面(iced)有 Rust 实现
 /// - WebComponent:shadcn 家族生成映射
 /// - Unclassified:提取时尚无归属(P2 起逐步归类)
+/// - PackageOrigin:official 组件包供给(PLAN-643 tag 双态归属)——schema 只登记
+///   名与契约(palette/lsp 词汇面),实现由组件包提供,**不参与 builtin 压制**
+///   (ComponentRegistry builtin 判定排除;首批=chart 四 tag)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElementTier {
     NativeHtml,
     BuiltinWidget,
     WebComponent,
     Unclassified,
+    PackageOrigin,
 }
 
 impl ElementTier {
@@ -200,6 +204,7 @@ impl ElementTier {
             "builtin_widget" => Some(ElementTier::BuiltinWidget),
             "web_component" => Some(ElementTier::WebComponent),
             "unclassified" => Some(ElementTier::Unclassified),
+            "package_origin" => Some(ElementTier::PackageOrigin),
             _ => None,
         }
     }
@@ -209,6 +214,7 @@ impl ElementTier {
             ElementTier::BuiltinWidget => "builtin_widget",
             ElementTier::WebComponent => "web_component",
             ElementTier::Unclassified => "unclassified",
+            ElementTier::PackageOrigin => "package_origin",
         }
     }
 }

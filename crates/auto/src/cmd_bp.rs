@@ -383,9 +383,24 @@ fn check(file: &str, spec_key: Option<&str>) -> Result<()> {
         let reg = registry();
         if let Some(pkg) = reg.get(kind, name) {
             let widgets = WidgetRegistry::with_defaults();
-            let used: Vec<&str> = widgets
+            // PLAN-643: 候选 tag 集含 schema package_origin 词汇面(chart 四
+            // tag 首批)——它们不在 WidgetRegistry,不扩集则 bp check 对其
+            // 视而不见;palette 合法集语义与 BlueprintRegistry::palette_drift
+            // 对齐(registry ∪ package_origin)。
+            let mut candidates: Vec<String> = widgets
                 .all_widgets()
                 .keys()
+                .map(|s| s.to_string())
+                .collect();
+            if let Some(schema) = auto_lang::aura::default_schema_cached() {
+                for (tag, meta) in schema.meta.iter() {
+                    if meta.tier == auto_lang::aura::schema::ElementTier::PackageOrigin {
+                        candidates.push(tag.to_string());
+                    }
+                }
+            }
+            let used: Vec<&str> = candidates
+                .iter()
                 .map(|s| s.as_str())
                 .filter(|tag| {
                     // crude: tag appears as a line-leading view element `tag {`
