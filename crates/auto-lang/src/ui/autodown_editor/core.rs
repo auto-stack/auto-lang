@@ -17,7 +17,8 @@
 // 为 .at 回环 payload 读数口。
 //
 // PLAN-048 收口：跨块选区（SelAnchor×2 + 逐叶渲染 + copy 拼接 + 跨块
-// 删除剪接）、行首输入规则（LINE_START_RULES 7 条）、跨容器合并
+// 删除剪接）、行首输入规则（LINE_START_RULES 10 条，651 对齐 TS 基线；
+// 每字符整块精确检定——`---`/`***` 无尾空格）、跨容器合并
 // （same_host 闸撤除；fence 维持不做）、undo 面（打字/删除级钉死，
 // 结构操作不入栈——overwrite 整换新缓冲防陈旧栈）。余量台账见 mod.rs。
 //
@@ -189,6 +190,13 @@ enum Seg {
     Table {
         key: u64,
         rows: Vec<Vec<Vec<Seg>>>,
+        /// PLAN-651 T-02 R7：列对齐（表头 cell `align` attr 逐列；emit 分隔
+        /// 行 `:---`/`:---:`/`---:` 还原——serializer tableDelimMd 同形，
+        /// 原恒 `---` 回写丢对齐）。
+        align: Vec<String>,
+        /// PLAN-651 T-02 R7：表 IAL 尾（含花括号，serializer `\n{...}` 同
+        /// 形；空 = 无——原回写丢 cols/rows）。
+        ial: String,
     },
     /// 只读区段在建树时固化为文本（thematic break / 表格管道行）。
     Raw(String),
@@ -602,6 +610,9 @@ pub struct AutodownEditorCore {
     col_drag: Mutex<Option<(u64, usize)>>,
     /// PLAN-055 T6：单表几何快照（render_frame 写、列边界命中读）。
     table_geom: Mutex<HashMap<u64, TableGeom>>,
+    /// PLAN-651 T-02 R5：details 摘要条几何（渲染期整帧替换；点击命中→
+    /// 折叠翻转）。
+    details_geom: Mutex<Vec<(Rect, bool)>>,
     /// PLAN-057：近期 emit 过的全文回声集（发布链每次 autodown_editor_text
     /// 读全文即记录）——逐键连发时中途落地的旧自回显据此甄别（回声绝
     /// 不 rebuild，见 sync_external 回声守卫）。有界环形，容量 32。
@@ -644,6 +655,7 @@ impl AutodownEditorCore {
             table_widths: Mutex::new(HashMap::new()),
             col_drag: Mutex::new(None),
             table_geom: Mutex::new(HashMap::new()),
+            details_geom: Mutex::new(Vec::new()),
             emitted_echo: Mutex::new(std::collections::VecDeque::new()),
             layout: Mutex::new(DocLayout { blocks: Vec::new() }),
             revision: AtomicU64::new(0),
@@ -1180,10 +1192,10 @@ impl AutodownEditorCore {
                     return out.captured();
                 }
                 self.block_action(font_system, bi, Action::Insert(c));
-                if c == ' ' {
-                    // PLAN-048 T5：行首标记转换（整块精确命中检定）。
-                    self.try_line_start_rule(font_system, bi);
-                }
+                // PLAN-048 T5 / PLAN-651 T-02 R6：行首标记转换（整块精确
+                // 命中检定）。每字符检定——`---`/`***` 无尾空格，TS 侧
+                // fireRuleOn 亦在每次输入后整块匹配（host-controller onInput）。
+                self.try_line_start_rule(font_system, bi);
                 out.text_changed = true;
                 out.cursor_changed = true;
             }
@@ -1367,6 +1379,11 @@ impl AutodownEditorCore {
             *self.col_drag.lock().unwrap() = Some((key, col));
             return DocOutput { request_redraw: true, captured: true, ..Default::default() };
         }
+        // PLAN-651 T-02 R5：details 摘要条命中 → 折叠翻转（先于文本命中
+        // ——摘要行非编辑面；web marker 翻转同语义）。
+        if let Some(idx) = self.details_summary_hit(x, y) {
+            return self.toggle_details(idx);
+        }
         let layout = self.layout.lock().unwrap().clone();
         // PLAN-603 T-1：点击改严格口径——块矩形外（真空白/gap）无效果，
         // 撤「最近块回落」（PARITY #19 观察①对齐网页轨槽外无效果语义）。
@@ -1482,6 +1499,39 @@ impl AutodownEditorCore {
             }
         }
         None
+    }
+
+    /// PLAN-651 T-02 R5：details 摘要条命中（命中带=整行宽 ×
+    /// CONT_SUMMARY_H；返回可见序 index）。
+    fn details_summary_hit(&self, x: f32, y: f32) -> Option<usize> {
+        let geom = self.details_geom.lock().unwrap();
+        geom.iter()
+            .position(|(r, _)| r.contains(Pt::new(x, y)))
+    }
+
+    /// PLAN-651 T-02 R5：折叠翻转——可见序定位 details seg，open 取反
+    /// （一步语义，serializer open 往返同源）；收起时焦点在隐藏内容内
+    /// 则清退。不入 undo 栈（结构操作口径同族）。
+    fn toggle_details(&self, index: usize) -> DocOutput {
+        let mut segs = self.segs.lock().unwrap();
+        let mut counter = 0usize;
+        let Some((open, inner)) = details_at_visible(&mut segs, index, &mut counter) else {
+            return DocOutput::default();
+        };
+        let collapsing = *open;
+        let mut hidden_leaves = Vec::new();
+        if collapsing {
+            dfs_leaf_order(inner, &mut hidden_leaves);
+        }
+        *open = !*open;
+        drop(segs);
+        if collapsing
+            && self.focused_block().map(|f| hidden_leaves.contains(&f)).unwrap_or(false)
+        {
+            *self.focus.lock().unwrap() = None;
+        }
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        DocOutput { request_redraw: true, ..Default::default() }
     }
 
     /// PLAN-055 T6：拖拽改宽——新宽 = 拖点 x − 被拖列左缘（min 48px 钳
@@ -1610,6 +1660,8 @@ impl AutodownEditorCore {
         // 标题行/摘要行/首尾标注）。消费见下方布局循环。
         let mut render_items: Vec<DrawItem> = Vec::new();
         let mut attrib: HashMap<usize, LeafAttrib> = HashMap::new();
+        // PLAN-651 T-02 R5：折叠隐藏块（布局面零矩形占位）。
+        let mut hidden_blocks: std::collections::HashSet<usize> = std::collections::HashSet::new();
         // PLAN-055 T3：表格列宽状态快照（等分缺省在归因侧解算）。
         let widths_snap: HashMap<u64, Vec<f32>> = self.table_widths.lock().unwrap().clone();
         {
@@ -1621,6 +1673,8 @@ impl AutodownEditorCore {
         }
         {
             // 防御：不在骨架的块按 id 补尾（正常建树/结构操作后不发生）。
+            // PLAN-651 T-02 R5：折叠 details 的内容叶（folded 标记）跳过
+            // ——隐藏内容不补渲染；布局面以零矩形占位（永不命中）。
             let known: std::collections::HashSet<usize> = render_items
                 .iter()
                 .filter_map(|d| match d {
@@ -1629,9 +1683,14 @@ impl AutodownEditorCore {
                 })
                 .collect();
             for bi in 0..blocks.len() {
-                if !known.contains(&bi) {
-                    render_items.push(DrawItem::Leaf(bi));
+                if known.contains(&bi) {
+                    continue;
                 }
+                if attrib.get(&bi).map(|a| a.folded).unwrap_or(false) {
+                    hidden_blocks.insert(bi);
+                    continue;
+                }
+                render_items.push(DrawItem::Leaf(bi));
             }
         }
         // 跨块选区段表：块 id → (lo, hi)（T3 doc_sel_spans_in 复用）。
@@ -1740,6 +1799,9 @@ impl AutodownEditorCore {
         }
         let mut row_acc: Option<RowAcc> = None;
         let mut geom_acc: HashMap<u64, TableGeom> = HashMap::new();
+        // PLAN-651 T-02 R5：details 摘要条几何（渲染期写、命中读；可见序
+        // 与 items 一致——toggle 按同序定位 seg）。
+        let mut details_acc: Vec<(Rect, bool)> = Vec::new();
         // PLAN-600 T-1：callout 盒式 chrome 运行段累积器——连续 callout 叶
         // 同段（段界=带标题行/strip 色变/中断），段闭合一次推盒。
         let mut callout_run: Option<(u8, u8, u8, f32, f32)> = None;
@@ -1792,6 +1854,28 @@ impl AutodownEditorCore {
                         Rect::new(0.0, y + h / 2.0, viewport_w.max(1.0), 1.0),
                         Rgba { r: br as f32 / 255.0, g: bg_ as f32 / 255.0, b: bb as f32 / 255.0, a: 1.0 },
                     ));
+                    y += h + BLOCK_GAP;
+                    continue;
+                }
+                DrawItem::DetailsSummary { text, open } => {
+                    // PLAN-651 T-02 R5：摘要行绘制（muted 色）+ 几何登记
+                    // （整行宽命中带；点击翻转 open，鼠标钩子先于文本命中）。
+                    let h = CONT_SUMMARY_H;
+                    let (mr, mg, mb) = autodown_blocks::quote_muted_rgb();
+                    list.runs.push(DocRun {
+                        text: text.clone(),
+                        x: 0.0,
+                        y,
+                        size: BODY_SIZE,
+                        line_height: h,
+                        color: Rgba { r: mr as f32 / 255.0, g: mg as f32 / 255.0, b: mb as f32 / 255.0, a: 1.0 },
+                        bold: false,
+                        italic: false,
+                        mono: false,
+                        strike: false,
+                        underline: false,
+                    });
+                    details_acc.push((Rect::new(0.0, y, viewport_w.max(1.0), h), *open));
                     y += h + BLOCK_GAP;
                     continue;
                 }
@@ -2211,6 +2295,7 @@ impl AutodownEditorCore {
             finalize_table_row(ra, BLOCK_GAP, &mut list, &mut layouts, &mut y, &mut geom_acc);
         }
         *self.table_geom.lock().unwrap() = geom_acc;
+        *self.details_geom.lock().unwrap() = details_acc;
         // PLAN-048 T7（W4）：空态占位——content 空 && 非聚焦时浅灰文案
         //（视图实例只读轨豁免；聚焦即隐；空白文案跳过；基色按 0.55 调光
         // 贴主题）。
@@ -2355,8 +2440,23 @@ impl AutodownEditorCore {
                 list.focus_frame = Some((lay.rect, frame_color));
             }
         }
-        *self.layout.lock().unwrap() =
-            DocLayout { blocks: layouts.into_iter().map(|l| l.expect("render covers every block")).collect() };
+        *self.layout.lock().unwrap() = DocLayout {
+            blocks: layouts
+                .into_iter()
+                .enumerate()
+                .map(|(bi, l)| match l {
+                    Some(l) => l,
+                    None if hidden_blocks.contains(&bi) => BlockLayout {
+                        // 折叠隐藏块：负坐标零矩形——任何点击不命中。
+                        rect: Rect::new(-1.0, -1.0, 0.0, 0.0),
+                        origin: Pt::new(0.0, 0.0),
+                        font_size: BODY_SIZE,
+                        line_height: LINE_H_PARA,
+                    },
+                    None => panic!("render covers every block"),
+                })
+                .collect(),
+        };
         DocFrame { list, height: (y - BLOCK_GAP).max(0.0) + banner_h + menu_h }
     }
 }
@@ -2811,6 +2911,26 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 // cell 也建空 buffer，保持可聚焦）。key 占位 0，rebuild 侧
                 // reindex_table_keys 按结构位置落号。空行跳过（原口径）。
                 let mut rows: Vec<Vec<Vec<Seg>>> = Vec::new();
+                // PLAN-651 T-02 R7：列对齐随表头 cell attr 入骨架；表 IAL
+                // 经 serializer ialText 还原成 `\n{...}` 尾（发射保真）。
+                let align: Vec<String> = node
+                    .children
+                    .first()
+                    .map(|h| {
+                        h.children
+                            .iter()
+                            .map(|c| attrGetStr(c.attrs.clone(), "align", ""))
+                            .collect()
+                    })
+                    .unwrap_or_default();                let ial = match attrGet(node.attrs.clone(), "ial") {
+                    Some(v) => {
+                        let body = autodown_core::serializer::ialText(
+                            autodown_core::serializer::attrsOfValue(v),
+                        );
+                        if body.is_empty() { String::new() } else { format!("{{{body}}}") }
+                    }
+                    None => String::new(),
+                };
                 for row in &node.children {
                     let mut cells: Vec<Vec<Seg>> = Vec::new();
                     for cell in &row.children {
@@ -2836,7 +2956,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                         rows.push(cells);
                     }
                 }
-                segs.push(Seg::Table { key: 0, rows });
+                segs.push(Seg::Table { key: 0, rows, align, ial });
             }
             // TableRow/TableCell 顶层不出现；未知种类降级段落叶子。
             // PLAN-651 T-01 R-ANCH：降级叶仍携带块锚（serializer 默认路径
@@ -2865,7 +2985,7 @@ fn reindex_table_keys(segs: &mut [Seg]) {
     fn walk(segs: &mut [Seg], next: &mut u64) {
         for seg in segs {
             match seg {
-                Seg::Table { key, rows } => {
+                Seg::Table { key, rows, .. } => {
                     *key = *next;
                     *next += 1;
                     for row in rows {
@@ -3021,9 +3141,11 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
             emit_inner_joined(inner, blocks, out);
             out.push_str("\n}");
         }
-        Seg::Table { rows, .. } => {
-            // PLAN-055 T2：管道行发射（cell live text；首行后补 `| --- |`
-            // 分隔行；`\|` 转义沿用 cell_live_text 口径）。表键不进发射面。
+        Seg::Table { rows, align, ial, .. } => {
+            // PLAN-055 T2：管道行发射（cell live text；首行后补分隔行；
+            // `\|` 转义沿用 cell_live_text 口径）。表键不进发射面。
+            // PLAN-651 T-02 R7：分隔行按列对齐还原（tableDelimMd/alignMarker
+            // 同形），表 IAL 尾随管道行（serializer Table 臂 `\n{...}` 同形）。
             let pipe_join = |cells: &[String]| format!("| {} |", cells.join(" | "));
             let mut body = String::new();
             for (ri, row) in rows.iter().enumerate() {
@@ -3032,10 +3154,15 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 body.push_str(&pipe_join(&cells));
                 body.push('\n');
                 if ri == 0 {
-                    let seps: Vec<String> = cells.iter().map(|_| "---".to_string()).collect();
+                    let seps: Vec<String> = (0..cells.len())
+                        .map(|ci| align_marker(align.get(ci).map(String::as_str).unwrap_or("")).to_string())
+                        .collect();
                     body.push_str(&pipe_join(&seps));
                     body.push('\n');
                 }
+            }
+            if !ial.is_empty() {
+                body.push_str(ial);
             }
             // 尾 \n 摘除（emit_document 每 seg 后补 "\n\n"，与 Raw 无尾换行
             // 同口径）。
@@ -3048,10 +3175,68 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
     }
 }
 
+/// PLAN-651 T-02 R5：可见序定位第 target 个 details seg（计数与 items
+/// 走序一致——闭合 details 不递归内部；返回 open 与 inner 的可变引用）。
+fn details_at_visible<'a>(
+    segs: &'a mut [Seg],
+    target: usize,
+    counter: &mut usize,
+) -> Option<(&'a mut bool, &'a mut Vec<Seg>)> {
+    for seg in segs.iter_mut() {
+        match seg {
+            Seg::Details { open, inner, .. } => {
+                let k = *counter;
+                *counter += 1;
+                if k == target {
+                    return Some((open, inner));
+                }
+                if *open {
+                    if let Some(r) = details_at_visible(inner, target, counter) {
+                        return Some(r);
+                    }
+                }
+            }
+            Seg::Quote(inner) | Seg::Callout { inner, .. } => {
+                if let Some(r) = details_at_visible(inner, target, counter) {
+                    return Some(r);
+                }
+            }
+            Seg::List { items, .. } => {
+                for item in items.iter_mut() {
+                    if let Some(r) = details_at_visible(item, target, counter) {
+                        return Some(r);
+                    }
+                }
+            }
+            Seg::Table { rows, .. } => {
+                for row in rows.iter_mut() {
+                    for cell in row.iter_mut() {
+                        if let Some(r) = details_at_visible(cell, target, counter) {
+                            return Some(r);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// PLAN-651 T-02 R7：列对齐分隔标记（serializer alignMarker 同形；空 =
+/// parser 默认 left——convertTableCell unwrap_or("left")，保插入→编辑→
+/// 回写幂等）。
+fn align_marker(align: &str) -> &'static str {
+    match align {
+        "center" => ":---:",
+        "right" => "---:",
+        _ => ":---",
+    }
+}
+
 /// PLAN-651 T-01 R-ANCH：块锚发射（serializer withIdSuffix 同形——文本尾
 /// 已带 token 时不再追加，锚 attr 为空零开销）。
-fn emit_anchor_suffix(out: &mut String, anchor: &str, live: &str) {
-    if anchor.is_empty() {
+fn emit_anchor_suffix(out: &mut String, anchor: &str, live: &str) {    if anchor.is_empty() {
         return;
     }
     let tok = format!("^{anchor}");
@@ -3086,7 +3271,11 @@ fn emit_inner_joined(inner: &[Seg], blocks: &[BlockBuf], out: &mut String) {
 /// 等于 marker（空格键入后检定）。冻结：标题×3 / 无序列表×3 / 引用；
 /// ``` fence（代码块语义）、`---`/`***`（Raw 只读固化）、任务列表、
 /// `1. ` 有序（vue 亦无）不补——登记余量。
-const LINE_START_RULES: [&str; 7] = ["# ", "## ", "### ", "- ", "* ", "+ ", "> "];
+/// PLAN-651 T-02 R6：规则表对齐 TS 基线 10 条（editor/engine/input-rules.ts
+/// INPUT_RULES）——VM 原 7 条补 `---`/`***`（ThematicBreak）与 "``` "
+/// （Fence）。`1. ` 有序与 h4-h6 双侧均无（冻结面一致，t651 矩阵注记）。
+const LINE_START_RULES: [&str; 10] =
+    ["# ", "## ", "### ", "- ", "* ", "+ ", "> ", "``` ", "---", "***"];
 
 /// 骨架树内把叶子槽位原位替换为包装段（quote/list wrap 用；递归定位；
 /// wrap 以工厂闭包构造——Seg 非 Clone，递归多臂各建一次；闭包仅捕获
@@ -3281,6 +3470,9 @@ enum DrawItem {
     Leaf(usize),
     RawText(String),
     RawBreak,
+    /// PLAN-651 T-02 R5：details 摘要行（▸/▾ 随 open；几何入 details_geom
+    /// ——点击翻转折叠，serializer open 往返同源）。可见序 = items 序。
+    DetailsSummary { text: String, open: bool },
 }
 
 /// PLAN-055 T3：表格 cell 槽（网格定位 + 几何；LeafAttrib.cell）。x 为
@@ -3325,6 +3517,9 @@ struct LeafAttrib {
     x: f32,
     /// PLAN-055 T3：表格 cell 槽（网格定位 + 几何；None = 非表格叶）。
     cell: Option<CellSlot>,
+    /// PLAN-651 T-02 R5：折叠 details 的隐藏内容叶（不入 items/不可见；
+    /// 渲染兜底清扫跳过）。
+    folded: bool,
 }
 
 /// callout 图标（与只读臂 autodown_render 同表——T4 统一对）。
@@ -3489,16 +3684,28 @@ fn walk_seg(
                 inner, in_quote, x_base + CONT_PAD_X, 4.0, fs, frame_w, widths, attrib, items,
             )
         }
-        Seg::Details { summary, inner, .. } => {
+        Seg::Details { summary, open, inner, .. } => {
+            // PLAN-651 T-02 R5：折叠交互——摘要行独立 DrawItem（▸/▾ 随
+            // open，点击翻转）；闭合态内容不入 items（不可见/不可聚焦，
+            // TS 折叠同语义）；open 往返发射已有（PLAN-054 T8）。
+            let arrow = if *open { "\u{25BE}" } else { "\u{25B8}" }; // ▾ ▸
+            items.push(DrawItem::DetailsSummary {
+                text: format!("{arrow} {summary}"),
+                open: *open,
+            });
+            if !open {
+                // 闭合：内容叶标 folded（渲染兜底清扫跳过——不补渲染）。
+                let mut leaves = Vec::new();
+                dfs_leaf_order(inner, &mut leaves);
+                for leaf in leaves {
+                    attrib.entry(leaf).or_default().folded = true;
+                }
+                return None;
+            }
             let mut leaves = Vec::new();
             dfs_leaf_order(inner, &mut leaves);
-            let ttext = format!("\u{25B8} {summary}"); // ▸
             for (li, leaf) in leaves.iter().enumerate() {
                 let a = attrib.entry(*leaf).or_default();
-                if li == 0 {
-                    a.cont_title = Some((ttext.clone(), None));
-                    a.cont_extra_top = CONT_SUMMARY_H;
-                }
                 if li + 1 == leaves.len() {
                     a.cont_extra_bottom = CONT_PAD_B_DETAILS;
                 }
@@ -3507,7 +3714,7 @@ fn walk_seg(
                 inner, in_quote, x_base + CONT_PAD_X, 4.0, fs, frame_w, widths, attrib, items,
             )
         }
-        Seg::Table { key, rows } => {
+        Seg::Table { key, rows, .. } => {
             // PLAN-055 T3：网格几何归因——列宽解算（状态/等分缺省），逐
             // cell 递归 walk（内容 x = cell 左缘 + pad）；cell 槽挂每叶。
             // DrawItem 保持行主序叶序列（行高对齐由渲染循环按 key+row
@@ -3884,6 +4091,34 @@ impl AutodownEditorCore {
                 replace_leaf_seg(&mut segs, bi, || {
                     Seg::List { ordered: false, start: 1, checked: vec![None], items: vec![vec![Seg::Leaf(bi)]] }
                 });
+            }
+            // PLAN-651 T-02 R6：`---`/`***` → ThematicBreak（TS 规则同款；
+            // 块本身转换为 Raw 分隔——叶缓冲经紧凑删除出表（不留孤儿：
+            // 兜底清扫不再补渲染死叶），焦点/选区清退）。
+            "---" | "***" => {
+                {
+                    let mut segs = self.segs.lock().unwrap();
+                    replace_leaf_seg(&mut segs, bi, || Seg::Raw("---".into()));
+                }
+                *self.focus.lock().unwrap() = None;
+                *self.doc_sel.lock().unwrap() = None;
+                *self.shift_anchor.lock().unwrap() = None;
+                *self.nav_goal_x.lock().unwrap() = None;
+                remove_leaves_compact(
+                    &mut self.blocks.lock().unwrap(),
+                    &mut self.segs.lock().unwrap(),
+                    &[bi],
+                );
+                self.revision.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+            // "``` " → Fence（TS 规则同款；mono/行高随 kind 迁移，公共尾
+            // 剥前缀后文本为空）。
+            "``` " => {
+                let mut blocks = self.blocks.lock().unwrap();
+                if let Some(b) = blocks.get_mut(bi) {
+                    b.kind = LeafKind::Fence;
+                }
             }
             _ => {
                 let level = marker.trim().len().min(3) as i64; // "# "→1 … "### "→3
@@ -4585,13 +4820,13 @@ impl AutodownEditorCore {
             let mut segs = self.segs.lock().unwrap();
             let ok = match slot {
                 LeafSlot::TopLevel(pos) => {
-                    segs.insert(pos + 1, Seg::Table { key: u64::MAX, rows });
+                    segs.insert(pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
                     true
                 }
                 LeafSlot::QuoteInner { quote_pos, inner_pos } => {
                     match segs.get_mut(quote_pos) {
                         Some(Seg::Quote(inner)) => {
-                            inner.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows });
+                            inner.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
                             true
                         }
                         _ => false,
@@ -4601,7 +4836,7 @@ impl AutodownEditorCore {
                     match segs.get_mut(list_pos) {
                         Some(Seg::List { items, .. }) => match items.get_mut(item_idx) {
                             Some(item) => {
-                                item.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows });
+                                item.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
                                 true
                             }
                             None => false,
@@ -5417,7 +5652,10 @@ mod tests {
         let doc = c.emit_document();
         assert_eq!(
             doc,
-            "表前\n\n|  |  |  |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |",
+            // PLAN-651 T-02 R7：分隔行 canonical `:---`（parser 对 bare ---
+            // 赋 align=left，serializer tableDelimMd 同形——旧恒 --- 才是
+            // 非规范形态）。
+            "表前\n\n|  |  |  |\n| :--- | :--- | :--- |\n|  |  |  |\n|  |  |  |",
             "焦点叶保留 + 空表管道行（3 行含 header + 分隔行）"
         );
         run_fs(|fs| c.rebuild(&doc, fs));
@@ -6821,10 +7059,11 @@ fn main() { let s = \"hi\"; }
             .filter(|(r, _)| (r.w - autodown_blocks::TABLE_RULE).abs() < 0.2 && r.h > 20.0)
             .count();
         assert!(col_rules >= 3, "列分隔线在册（列间+右缘×2 行）：{col_rules}");
-        // emit 往返：管道行结构保留。
+        // emit 往返：管道行结构保留。分隔行 canonical `:---`（PLAN-651
+        // T-02 R7：parser align=left 默认 → alignMarker）。
         let out = c.emit_document();
         assert!(out.contains("| Name | Value | Note |"), "emit 往返保留表头：{out:?}");
-        assert!(out.contains("| --- | --- | --- |"), "emit 保留分隔行：{out:?}");
+        assert!(out.contains("| :--- | :--- | :--- |"), "emit 保留分隔行：{out:?}");
         assert!(out.contains("| Foo | 1 | A |"), "emit 往返保留数据行：{out:?}");
     }
 
@@ -6937,9 +7176,10 @@ fn main() { let s = \"hi\"; }
         let n2 = { c.blocks.lock().unwrap().len() };
         assert_eq!(n2, n0, "块首 Backspace 禁合并：{n2}");
         assert!(!out.text_changed || c.live_text(2).starts_with('1'), "cell 文本不并入前叶");
-        // emit 往返：表格结构保留（软换行折叠空格）。
+        // emit 往返：表格结构保留（软换行折叠空格）。分隔行 canonical
+        // `:---`（PLAN-651 T-02 R7：parser align=left 默认 → alignMarker）。
         let md = c.emit_document();
-        assert!(md.contains("| --- | --- |"), "分隔行保留：{md:?}");
+        assert!(md.contains("| :--- | :--- |"), "分隔行保留：{md:?}");
         assert!(md.contains("| 1x"), "cell 编辑往返：{md:?}");
         assert!(md.contains("正文段"), "表后段落往返：{md:?}");
     }
@@ -7373,4 +7613,110 @@ $details(summary: \"展开\", open: true) {
     assert!(e1.contains("$callout(type:\"warning\", title:\"注意\") {"), "{e1}");
     assert!(e1.contains("$details(summary:\"展开\", open:true) {"), "{e1}");
 }
+
+// ── PLAN-651 T-02：红项闭合第二批 ─────────────────────────────────────
+
+/// R6：`---`/`***` → thematic break、'``` ' → Fence（TS INPUT_RULES 同款
+/// 三条补齐；`1. `/h4-6 维持双侧冻结面）。
+#[test]
+fn t651_input_rules_hr_and_fence_align_ts() {
+    let c = core_empty("t651hr");
+    *c.focus.lock().unwrap() = Some(0);
+    for k in ['-', '-', '-'] {
+        press(c, EditorKey::Char(k));
+    }
+    assert_eq!(c.emit_document(), "---", "--- converts to thematic break");
+    let c2 = core_empty("t651hr2");
+    *c2.focus.lock().unwrap() = Some(0);
+    for k in ['*', '*', '*'] {
+        press(c2, EditorKey::Char(k));
+    }
+    assert_eq!(c2.emit_document(), "---", "*** also converts to thematic break");
+    let c3 = core_empty("t651hr3");
+    *c3.focus.lock().unwrap() = Some(0);
+    for k in ['`', '`', '`', ' '] {
+        press(c3, EditorKey::Char(k));
+    }
+    assert_eq!(c3.block_kind_of(0), LeafKind::Fence, "'``` ' converts to fence");
+    // 空体 fence 发射恒带体行（既有 fence emit 口径）。
+    assert_eq!(c3.emit_document(), "```\n\n```");
 }
+
+/// R7：表格列对齐 + IAL 随发射还原（原恒 `---`/丢 cols/rows——回写降级）。
+#[test]
+fn t651_table_align_ial_roundtrip() {
+    let src = "| a | b | c |\n| :--- | ---: | :---: |\n| 1 | 2 | 3 |\n{cols:[120,\"auto\"], rows:[40,\"auto\"]}\n";
+    let c = core_for("t651tbl", src);
+    let e1 = c.emit_document();
+    assert!(e1.contains("| :--- | ---: | :---: |"), "{e1}");
+    assert!(e1.contains("{cols:"), "{e1}");
+    assert!(e1.contains("\"auto\""), "{e1}");
+    // 幂等：再解析再发射同形（IAL 重挂 + align 重收）。
+    let c2 = core_for("t651tbl2", &e1);
+    assert_eq!(c2.emit_document(), e1, "align/IAL must roundtrip stably");
+    // cell 编辑后 align/IAL 仍随行发射。
+    *c.focus.lock().unwrap() = Some(0);
+    press(c, EditorKey::End);
+    type_str(c, "!");
+    assert!(c.emit_document().contains("| a! | b | c |"), "{:?}", c.emit_document());
+}
+
+/// R5：details 折叠交互——摘要条点击翻转 open（▸/▾ 随态），闭合内容
+/// 不可见，emit 往返保形；折叠隐藏内容内焦点清退。
+#[test]
+fn t651_details_fold_toggle_roundtrip() {
+    let src = "$details(summary:\"展开\", open: true) {\n内容甲。\n}\n\n尾段。\n";
+    let c = core_for("t651det", src);
+    let f0 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+    assert!(f0.list.runs.iter().any(|r| r.text.contains("▾ 展开")), "open summary ▾");
+    assert!(f0.list.runs.iter().any(|r| r.text.contains("内容甲")), "open content drawn");
+
+    // 聚焦内容叶（块 0）后点击摘要条 → 折叠 + 焦点清退。
+    *c.focus.lock().unwrap() = Some(0);
+    let (rect, open0) = c.details_geom.lock().unwrap()[0];
+    assert!(open0);
+    let out = run_fs(|fs| {
+        c.handle_input(
+            fs,
+            DocInput::MousePressed {
+                button: EditorButton::Left,
+                x: rect.x + 5.0,
+                y: rect.y + 5.0,
+            },
+            &mut NullClipboard,
+        )
+    });
+    assert!(out.request_redraw, "toggle requests redraw");
+    assert_eq!(c.focused_block(), None, "focus inside collapsed content clears");
+    let f1 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+    assert!(f1.list.runs.iter().any(|r| r.text.contains("▸ 展开")), "folded summary ▸");
+    assert!(
+        !f1.list.runs.iter().any(|r| r.text.contains("内容甲")),
+        "folded content hidden"
+    );
+    // emit 往返：open 翻转落发射（open:true → 摘除）。
+    let doc = c.emit_document();
+    assert!(doc.contains("$details(summary:\"展开\") {"), "{doc}");
+    assert!(!doc.contains("open:true"), "{doc}");
+    assert!(doc.contains("内容甲。"), "emit keeps inner content");
+
+    // 再点击 → 展开，内容复显。
+    let (rect2, open1) = c.details_geom.lock().unwrap()[0];
+    assert!(!open1);
+    let _ = run_fs(|fs| {
+        c.handle_input(
+            fs,
+            DocInput::MousePressed {
+                button: EditorButton::Left,
+                x: rect2.x + 5.0,
+                y: rect2.y + 5.0,
+            },
+            &mut NullClipboard,
+        )
+    });
+    let f2 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+    assert!(f2.list.runs.iter().any(|r| r.text.contains("内容甲")), "re-expanded");
+    assert!(c.emit_document().contains("open:true"), "re-open roundtrips");
+}
+}
+
