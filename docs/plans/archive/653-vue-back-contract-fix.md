@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-653
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-back-contract-fix
 author: [zhaopuming/zcode-session]
 created_at: 2026-09-18
@@ -280,3 +280,19 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
    master 与本分支皆绿;真预存红为 musk_vm_track_p053 族(特性门,
    master 同态)。另:master HEAD 的 auto-cache lib test 编译破损
    (E0063)阻塞全仓门,见复审 F-1。
+- 2026-09-18 merge 收执 `PLAN-653:r1`(stage: merge | outcome: pass |
+  delivery: auto-lang master `398a60a8e`——content `3a6c78d59`(T-01)+
+  `7d5ae193d`(T-05),merge 前 re-sync `a4b3f9d89`;auto-term main
+  `38477cf`(T-02+SD-01,ff)| checkpoints:
+  **prepared**=复审冻结增量 SD-01(auto-term terminal-mux-model.md 分域
+  措辞)+代码基线 7d5ae193d/38477cf;
+  **landed**=auto-lang 398a60a8e(merge 3fb469842+a4b3f9d89 后
+  ff-able 祖先链核实,落地冒烟 cargo check auto-man+auto-lang 过、
+  plan367 复测随 re-sync 转绿=F-2 自解、653 双测保持绿);
+  auto-term 38477cf ff-only 于 main;
+  **ledger_refreshed**=docs/specs/auto-lang/ui/plans.md 增 653 行
+  (本提交);canonical spec 即 auto-term 仓文件本体(38477cf);
+  **archived**=本件 git mv 至 docs/plans/archive/ + status: archived;
+  **cleaned**=待 wt-guard 双仓过闸后回填(见下)。
+  归属面:653 无 auto-lang 仓 canonical spec 文本变更(增量目标仅
+  auto-term 仓),故 auto-lang 侧台账=plans.md 回写,零虚构沉淀。
