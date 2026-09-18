@@ -13,8 +13,8 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 7
-total_steps: 10
+current_step: 10
+total_steps: 19
 ---
 
 # [PLAN-642] uigallery-vm-embed-repair
@@ -292,6 +292,88 @@ MCP 驱动（`auto run -r vm` + autoui-verifier 工具链）对 34 个侧栏条�
 - **parse_package_widgets recipe 预注册义务（modify）**：475 包装载器 parse
   前必须执行 `prepare_style_recipe_imports`（与编译入口同契约）。依据
   tree_icon 修复证据。
+
+## 8.2 第二波实测问题（2026-09-18 用户报告，rev2 扩容）
+
+用户以 6 张截图 + 文字报告 ui-gallery VM 模式第二波问题。本会话已逐一实机
+复现归因（截图证据 `u2_*.png`，构建 = 修复批次 09bb8e218）：
+
+| # | 问题 | 实测归因 | 解决方案 |
+|---|---|---|---|
+| P2-008 | 008 三张价格卡特性行文字不见 | **树有 18 个 ✓ 节点、视觉只画第一行**（u2_008.png：Single Developer 仅"✓ 1 Developer"，Team/Enterprise 特性区全空）→ 渲染层丢弃，非数据缺失 | T-11：卡片 col `justify-between` + 特性块行序列的绘制丢弃归因（疑 iced col/row 溢出裁剪或行分布），修复 |
+| P2-009 | 009 内容超桌面高度无滚动条 | demo 根 `min-h-screen`（app.at:252/254）在 VM 语义 = **窗口高**（900）而非视口容器高（720）→ 内容溢出 frame，frame `overflow-hidden` 裁剪且无滚动 | T-12：内嵌上下文 screen 单位语义修正（screen→内嵌容器高）+ frame scroll 兜底 |
+| P2-016a | 016 打开强制全 app 变浅色 | **主题污染实锤**：016 demo `dark_mode=false` 魔法变量驱动宿主主题运行时（u2_008 深色 → u2_016 起全浅色持久）；且 016 有深色样式分支但默认浅色 | T-13：合并 VM 子件主题魔法变量与宿主主题运行时隔离（主题只认根件）；016 默认主题跟随/改深色（语料） |
+| P2-016b | 016 不居中（自由尺寸 app 应居中） | 同 P2-009：demo `min-h-screen`（app.at:40）= 窗口高 → 溢出 frame → 左上对齐 | T-12 同修（screen 语义修正后 items-center 居中生效） |
+| P2-017 族 | 017/018/019/021/022/023 完全不显示"暂无 VM 内嵌形态" | 三类否决：routes 单页族（018/019/021/022/023——022 注释自证"routes just render the board page"）；back 链 native-ns/stream（017）；混合（023） | T-14 分档覆盖：(a) routes 单页 stub（渲染首页路由）；(b) back 链进程内 stub/空态降级或接 T-19 proxy；(c) 030/041/043/044 保持独立 + 文案精确化 |
+| P2-015 | 015 无默认数据 | db.at **有 6 条种子笔记**（Welcome/Quick Ideas...，List<Note>.new）但合并 VM 视图"No notes yet" → back 链模块级堆初始化或 api CALL 链断点 | T-15：合并 VM back 链模块级 List 初始化/调用链归因修复 |
+| P2-020 | 020 曲库空（E:/Music 有 mp3） | 曲库来自 `Http.get_json("/api/media/scan")`（auto-man 生成的 Axum 后端，player_store.at:92）——**内嵌 merged 模式无该 HTTP 后端进程**，调用落空 | T-16：接 T-19 proxy（子 URL）或内嵌进程内媒体扫描适配 |
+| P2-024 | 024 右侧绘图不显示 | **最新构建已出图**（u2_024.png 三系列折线完整）——用户所见为修复批次（09bb8e218）前的构建 | T-17：结案记录 + 用户以新构建复验 |
+| 附带 | 027 错误 toast 跨 demo 残留（u2_008 右下角） | toast 生命周期无过期/清理 | T-18：toast 过期修复（并入 T-06 族） |
+
+### 多后端 proxy 机制可行性分析（T-19 前置调研）
+
+**需求**：ui-gallery 一站式内嵌 fullstack demo（015/020/017/031-image-viewer
+等都需要各自后端），不能每个 demo 起独立后端进程/端口——需要**单进程多后端
+宿主**：每个 app 的后端代码在同一进程内运行，按子 URL（`/apps/<id>/api/*`）
+或子 domain 路由到对应后端；前端（生成的 api.ts / Http.* 调用）自动适配。
+
+**可行性：高**。依据：
+1. **会话隔离已有原型**：`auto serve` daemon（Plan 269）已是"单进程多
+   stateful VM session"形态（named pipe、session 管理）——proxy 只需把
+   session 前端从 pipe 换成 HTTP 路由。
+2. **back 链进程内执行已通**：PLAN-633 merged 模式证明 back .at 模块可在
+   宿主 VM 进程内加载执行（013/015 内嵌即此形态）——proxy 的"每 app 一个
+   VM session"是同一机制的会话化扩展。
+3. **HTTP 生成器已有**：auto-man 的 back→Axum 生成器（020 媒体扫描即此）
+   产出路由表——proxy 复用同一生成器的路由清单做挂载，或直接以 VM session
+   内 `#[api]` fn 表动态分发（merged 模式 CALL 语义的 HTTP 化）。
+4. **前端适配面小**：生成器把 api baseURL 从 `:port` 换成子 URL 前缀
+   （`/apps/<id>`）；VM merged 臂不走 HTTP 天然兼容；`Http.get_json` 相对
+   路径调用（020 实证）按前缀展开——PLAN-617 已有 `AUTO_HTTP_BASE` 相对
+   URL 展开先例（get/post/put/delete/json 五臂）。
+
+**推荐形态**：子 URL 路径前缀（零 DNS/hosts 成本）优于子 domain（需通配
+解析，远期选项）。**风险与边界**：① session 崩溃隔离——一个 app 的后端
+panic 不得带倒同进程其他 app（需 per-session catch + 重启）；②
+SSE/WebSocket/stream 签名后端（017/031-image-viewer 的 native-ns/stream）
+转发需专项；③ binary 响应（图片/文件）转发体积；④ 端口收敛收益
+（3049..3050+N → 1）与调试可观测性权衡。**工作量估计**：proxy 进程
+（路由表 + session 管理 + 热挂载）2-3 天；生成器 baseURL 适配 1 天；
+gallery 集成（启动 proxy + registry 注入子 URL）1 天。
+
+- [ ] **T-11 (P2-008) 008 特性行渲染缺失**（rev2）
+      树有 18 ✓ 节点视觉只画 1 行（u2_008.png 实证）——渲染层丢弃归因
+      （疑 justify-between 卡片 col 行分布/裁剪），修复 + 截图。
+- [ ] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）
+      `min-h-screen`/`h-screen` 在内嵌上下文 = 窗口高而非容器高（009 溢出
+      被裁、016 不居中同根因，app.at:252/40 实证）——VM 渲染器对
+      screen 类的解析在内嵌装配时改映射容器高，frame 加 scroll 兜底；
+      009 出滚动条、016 居中截图验收。
+- [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）
+      016 的 `dark_mode=false` 驱动宿主主题运行时（u2_008 深 → u2_016 起
+      全浅色持久实证）——合并 VM 子件主题魔法变量与宿主隔离（主题只认
+      根件）；016 默认主题语料评估（跟随宿主或改深色，其有深色样式分支）。
+- [ ] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）
+      (a) routes 单页族（018/019/021/022/023）：VM 内嵌支持 `routes {}`
+      首页路由 stub 渲染；(b) back 链 native-ns/stream 族（017）：
+      进程内 stub/诚实空态降级或接 T-19 proxy；(c) 030/041/043/044 保持
+      独立、回退文案精确化（列独立运行命令）。
+- [ ] **T-15 (P2-015) 015 种子数据合并链归因**（rev2）
+      db.at 有 6 条种子（List<Note>.new）但内嵌视图"No notes yet"——
+      合并 VM back 链模块级堆初始化/`api.list_notes` 调用链断点归因修复。
+- [ ] **T-16 (P2-020) 020 媒体扫描后端接入**（rev2，依赖 T-19 或独立挂载）
+      `Http.get_json("/api/media/scan")` 在内嵌无后端进程（player_store.at:92
+      实证）——经 T-19 proxy 子 URL 或内嵌进程内扫描适配后出曲库。
+- [ ] **T-17 (P2-024) 024 空画布结案**（rev2）
+      最新构建（09bb8e218+）已出图（u2_024.png 实证）——用户侧为旧构建；
+      记录结案 + 请用户以新构建复验。
+- [ ] **T-18 (P2-附带) 027 错误 toast 跨 demo 残留**（rev2）
+      u2_008 右下角残留 027 的"无法定位主目录"toast——toast 过期/清理
+      修复（与 T-06 同族，14263 toast 修正先例）。
+- [ ] **T-19 多后端 proxy 机制**（rev2，可行性分析见 §8.2，立项待用户裁定）
+      单进程 axum 多后端宿主：per-app VM session + 子 URL `/apps/<id>/api/*`
+      路由；生成器 baseURL 子前缀适配（PLAN-617 AUTO_HTTP_BASE 相对展开
+      先例）；风险项：session 崩溃隔离、stream/WS 转发、binary 响应。
 
 ## 9. 复审记录
 

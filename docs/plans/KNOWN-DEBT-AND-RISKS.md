@@ -2270,3 +2270,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P642-D4 [包目录 kept-first 冲突策略]**：026/027 的 components/（filetree/treeview/tree_icon 同名异容）共用 demos/components/，首者（026）胜出——027 内嵌视觉树用 026 版组件。与 P642-D2 的 per-demo 命名空间化一并处理。引用：生成日志 `gallery package file conflict ... (kept first)` ×3。
 - **P642-D5 [plan606 029 缩略图 data-URL 断言预存红（环境相关）]**：`test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit` master 上即红（PLAN-637 收编 caption_text 后 test-support 解析路径缺 recipe 预注册）。PLAN-642 T-01 已补预注册（parse 面前进），现红于 data-URL 断言：src 停留文件路径未内联，路径指主检出（worktree 运行时定位到主检出语料）。引用：`plan370_test_support.rs` PLAN-642 注记；plan606_gallery_tests.rs:65。
 - **P642-D6 [012-stopwatch 横幅行恒在（双端同构，语料既定）]**："知道了"按钮所在 banner 行为"恒在结构"设计（源注释：VM 轨 Tick 后结构/样式 if 均不重渲染的既定 workaround），banner 空文本时按钮仍显示——Vue 臂同构。低成本修复受同一渲染限制阻断，随 VM 结构级重渲染能力另议。引用：`examples/ui/012-stopwatch/src/front/app.at:121-131`。
+
+## 2026-09-18 增补二（PLAN-642 rev2 第二波实测登记）
+
+- **P642-D7 [008 特性行渲染缺失]**：树 18 ✓ 节点视觉只画 1 行（u2_008.png）——渲染层丢弃非数据缺失。T-11 归因修复。
+- **P642-D8 [内嵌 screen 单位语义=窗口高]**：`min-h-screen`/`h-screen` 内嵌时按窗口高解析（009 溢出被裁、016 不居中同根因）。T-12 修正映射 + scroll 兜底。
+- **P642-D9 [子件主题魔法变量污染宿主]**：016 `dark_mode=false` 打开后宿主全局持久变浅色（u2 序列实证）。T-13 隔离（主题只认根件）。
+- **P642-D10 [020 媒体扫描依赖独立 HTTP 后端]**：`Http.get_json("/api/media/scan")` 内嵌无后端进程即空曲库（player_store.at:92）——T-19 proxy 的直接用例。
+- **P642-D11 [plan606 029 data-URL 断言]**：见 P642-D5——补记：该测试期望视图层含 data URL，但语料已演进为"路径引用 + 渲染端内嵌"契约（Plan 617/628），断言过时；候选修法 = 更新断言到现契约或恢复视图层内联，属测试契约决策。
