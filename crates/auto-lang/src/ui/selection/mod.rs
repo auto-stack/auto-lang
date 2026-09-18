@@ -15,8 +15,8 @@
 pub mod output;
 
 pub use output::{
-    build_selection_result, node_to_json, value_to_json, SelectionFormat, SelectionResult,
-    SelectedNode,
+    build_selection_result, node_to_json, select_envelope, value_to_json, SelectionFormat,
+    SelectionResult, SelectedNode,
 };
 
 use std::collections::{HashMap, HashSet};
