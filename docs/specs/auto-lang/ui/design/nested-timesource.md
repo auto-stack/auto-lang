@@ -2,8 +2,8 @@
 
 > 设计层：[component-time-and-events](../../../../design/autoui/component-time-and-events.md)
 > 计划：阶段 1 `docs/plans/archive/652-nested-component-timesource.md`；
-> **阶段 2+3** `docs/plans/654-nested-timesource-path-and-clock.md`（executing）
-> 状态：阶段 1 已 merge；阶段 2 path 级订阅 **已实现于 plan-654-dev**（待 fold）；Clock 服务见阶段 B
+> **阶段 2+3** `docs/plans/archive/654-nested-timesource-path-and-clock.md`（archived）
+> 状态：阶段 1+2 已 fold master；path 级订阅 current-state 见下；Clock 见 [clock-service.md](clock-service.md)
 
 ## 问题（已定罪）
 
@@ -136,4 +136,4 @@ for src in component.subscribable_instance_timesources():
 - PLAN-650 E-1：`timer_when_allows_subscription` 保持，与 mount 过滤正交叠加。
 - **path 级实例状态槽**：单 VM 统一根态，阶段 A 不承诺 per-instance state；债项另开。
 - 订阅刷新时滞（652 F-02）：阶段 A 默认不顺手做即时重订阅；保持文档化时滞。
-- 阶段 3 Clock / `__wm_clock` 对齐：PLAN-654 阶段 B（未开）。
+- 阶段 3 Clock / `__wm_clock` 对齐：见 [clock-service.md](clock-service.md)（PLAN-654 阶段 B）。

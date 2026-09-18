@@ -1157,6 +1157,13 @@
   **范围**：widget **类型名** 身份（与 TimerEntryRuntime.widget 一致）；
   同类型 for 多实例仍共一条订阅；path 级/精确实例退订仍开（设计阶段 2）。
   实机 gallery 012-clock MCP 验收见 PLAN-652 T-06/AC-06。
+  **→ PLAN-654 阶段 A（2026-09-18 merge）**：path 级实例退订落地——
+  `InstancePath`（`{widget}@{mount_seq}`）+ `mounted_paths` 装配登记 +
+  renderer 订阅 identity 含 path；实例离开后该 path 停订。派发仍类型级
+  handler（单 VM 根态，见 nested-timesource.md 状态语义节）；图表
+  AnimLnTick/AnimDnTick 的路由级退订在 path 级订阅下随 mounted_paths
+  过滤。canonical：`docs/specs/auto-lang/ui/design/nested-timesource.md`。
+  landing A `b13af5927` / B `4817b51e1`。
 - **P530-D3 Element 缓存快速路径架构性失效（空转重建）**：dynamic_view
   末尾 store-then-take 使 cached_rendered 恒 None，`dirty=false` 帧仍走
   cached AbstractView → 全量 iced 树重建（实测 47k tick 仅 7 次 dirty，

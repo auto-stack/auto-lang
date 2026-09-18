@@ -1,18 +1,21 @@
 ---
 plan_id: PLAN-654
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
+completion_kind: delivered
 feature_name: nested-timesource-path-and-clock
 author: [agent]
 created_at: 2026-09-18
-updated_at: 2026-09-18Twork
+updated_at: 2026-09-18TstageB-fold
 plan_revision: 1
-current_step: 8
+current_step: 12
 total_steps: 12
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components:
-  - docs/specs/auto-lang/ui/design/nested-timesource.md  # 阶段 2/3 增量（modify existing）
+  - docs/specs/auto-lang/ui/design/nested-timesource.md
+  - docs/specs/auto-lang/ui/design/clock-service.md
+  - docs/specs/auto-lang/ui/overview.md
 touched_goals:
   - GOAL-007: TimeSource path 级订阅身份 + 框架 Clock 服务（多层时间调度收官线）
 
@@ -251,21 +254,21 @@ pub struct InstanceTimeSource {
 
 ### 阶段 A
 
-- [ ] **AC-A1** `InstancePath`（或等价）进运行时模型；单测证明同 widget 多 path 可区分。
-- [ ] **AC-A2** path 级 mount：装配登记 mounted paths；实例消失后 **不再订阅** 该 path（单测）。
-- [ ] **AC-A3** 订阅 identity 含 path：同 widget 两 path 可同时出现在 subscribable 列表。
-- [ ] **AC-A4** 派发：消息含 path；路由到 handler（或类型级+path 可观测）；**状态语义**（隔离或不隔离）有测试或文档钉住。
-- [ ] **AC-A5** when 门与 652/650 回归绿。
-- [ ] **AC-A6** 可观测：MCP/state/debug 至少一种可列出 timesources/mounted/subscribable（含 path）。
-- [ ] **AC-A7** SD-A01..03 内容成文（merge 落 specs）；design §7 阶段 2 状态更新。
-- [ ] **AC-A8** 门禁 check + 滤测通过；gallery 012-clock 单实例回归不红。
+- [x] **AC-A1** `InstancePath`（或等价）进运行时模型；单测证明同 widget 多 path 可区分。
+- [x] **AC-A2** path 级 mount：装配登记 mounted paths；实例消失后 **不再订阅** 该 path（单测）。
+- [x] **AC-A3** 订阅 identity 含 path：同 widget 两 path 可同时出现在 subscribable 列表。
+- [x] **AC-A4** 派发：消息含 path；路由到 handler（或类型级+path 可观测）；**状态语义**（隔离或不隔离）有测试或文档钉住。
+- [x] **AC-A5** when 门与 652/650 回归绿。
+- [x] **AC-A6** 可观测：MCP/state/debug 至少一种可列出 timesources/mounted/subscribable（含 path）。
+- [x] **AC-A7** SD-A01..03 内容成文（merge 落 specs）；design §7 阶段 2 状态更新。
+- [x] **AC-A8** 门禁 check + 滤测通过；gallery 012-clock 单实例回归不红。
 
 ### 阶段 B
 
-- [ ] **AC-B1** Clock 能力落地（C2/C3 之一）**或** C1 文档+决策记录「暂缓新 API」有用户可见理由（非空话）。
-- [ ] **AC-B2** standalone 可消费墙钟（API/字段/文档可执行说明）。
-- [ ] **AC-B3** SD-B01/B02 + 与 `__wm_clock` 对照文档；`.Tick` 兼容不回归。
-- [ ] **AC-B4** 阶段 B 门禁绿；阶段 A 验收证据仍有效。
+- [x] **AC-B1** Clock 能力落地（C2/C3 之一）**或** C1 文档+决策记录「暂缓新 API」有用户可见理由（非空话）。
+- [x] **AC-B2** standalone 可消费墙钟（API/字段/文档可执行说明）。
+- [x] **AC-B3** SD-B01/B02 + 与 `__wm_clock` 对照文档；`.Tick` 兼容不回归。
+- [x] **AC-B4** 阶段 B 门禁绿；阶段 A 验收证据仍有效。
 
 > **阶段门**：A 的 AC 全过才开 B 的实现任务（允许提前写设计注记）；B 不得静默删减 A 的 AC。
 
@@ -325,19 +328,28 @@ pub struct InstanceTimeSource {
 
 ### 阶段 B（A 完成后）
 
-- [ ] **T-B00 Clock 选型决策**  
-  - C1/C2/C3 裁定 + 与 `__wm_clock` 差异表；写入 §9/§10。  
+- [x] **T-B00 Clock 选型决策** [✅ 已完成]  
+  - **裁定 C1 + C2**（见 §9 T-B00 差异表）。默认节拍 **1s**。  
+  - C3 不单独立项：`Time.now_sec()` 已是 handler 原语。  
 
-- [ ] **T-B01 Clock 实现**  
-  - 按 T-B00 落地最小 API/字段/文档链。  
+- [x] **T-B01 Clock 实现** [✅ 已完成]  
+  - `__clock_now_sec` / `__clock_hhmm` + `write_or_insert_state`；`wants_framework_clock` 门控 1Hz `__clock_tick`；Init 播种。  
   - 验证：AC-B1/B2。  
+  - 证据：`plan654_framework_clock_fields_and_gate` PASS；worktree commit stage B。  
 
-- [ ] **T-B02 示范与兼容**  
-  - 消费说明/片段；`.Tick` 回归。  
+- [x] **T-B02 示范与兼容** [✅ 已完成]  
+  - `clock-service.md` 用法 + 迁移指引；`.Tick` 兼容测 `plan654_clock_does_not_break_self_tick_component` PASS。  
   - AC：AC-B3  
 
-- [ ] **T-B03 阶段 B 文档 + 门禁 + 全量收执**  
-  - SD-B01/B02；AC-B4；status→execution_done；next review。  
+- [x] **T-B03 阶段 B 文档 + 门禁** [✅ 已完成（待 fold 后 review）]  
+  - SD-B01 `docs/specs/auto-lang/ui/design/clock-service.md`；SD-B02 overview/nested-timesource 链接。  
+  - 门禁：check + plan654 **11/11** + plan652 **5/5** + plan650 **1/1**。  
+  - AC-B4：阶段 A 证据仍有效 + B 门禁绿。  
+  - **overall `execution_done` 待 stage B fold 到 master 后 flip**（下一步 `/auto-plan:review` 或先 fold）。  
+
+### 完成收执（2026-09-18）
+
+- **status: execution_done**；阶段 A+B 任务 12/12；next: `/auto-plan:review`。
 
 ## 9. 复审记录
 
@@ -375,6 +387,101 @@ pub struct InstanceTimeSource {
   未 fold 内容：master foreign WIP（`examples/rust-workspace/Cargo.toml`、`docs/plans/655-*`）保持原样 |
   dependency_revisions：`.wt/lang-654/auto-down` clone sibling（autodown path）；阶段 B 期间保留 |
   **overall status 仍为 `executing`**；阶段 A AC 映射见上；**next: 阶段 B T-B00 Clock 选型**（需用户确认开 B，或按契约续作）。
+
+- **2026-09-18 T-A08 fold 收执落地**：
+  - master landing commit **`b13af5927`**（8 files，format-patch apply）。
+  - master 验证：`cargo check --features ui-iced` Finished；`cargo t plan654` 9/9；`cargo t plan652` 5/5。
+  - worktree re-sync：隔离钩子拦 `git merge`；已 `git fetch` master → `refs/remotes/sync/master`；
+    阶段 A 代码文件与 master **内容一致**（worktree 为 patch 源）。clone worktree 继续承载阶段 B。
+  - foreign WIP 未触碰：`examples/rust-workspace/Cargo.toml`、`docs/plans/655-*`。
+  - **stage: work | outcome: pass | next: 阶段 B T-B00**。
+
+- **2026-09-18 T-B00..T-B03 work（stage B）**：
+  `outcome: pass` @ plan-654-dev |
+  选型 C1+C2、1s 节拍、`__clock_*` + 门控 1Hz、`clock-service.md` |
+  门禁 plan654 11/11 + plan652 5/5 + plan650 1/1 |
+  **next: fold stage B → status execution_done → `/auto-plan:review`**。
+
+- **2026-09-18 stage B fold + execution_done**：
+  `stage: work | plan_id: PLAN-654 | plan_revision: 1 | outcome: pass` |
+  landing_method: format-patch apply（`76487fbea` → master）|
+  阶段 A `b13af5927` + 阶段 B Clock C1/C2 + specs SD-A01/A02/B01/B02 |
+  evidence: stage A `evidence-p654-gallery-live.json`；stage B plan654 11/11 + plan652 5/5 + plan650 1/1 |
+  worktree: `.wt/lang-654/{auto-lang,auto-down}` 保留至 review/merge 清理 |
+  foreign WIP 未触碰（`examples/rust-workspace/Cargo.toml`）|
+  **status: execution_done** | **next: `/auto-plan:review`**。
+
+- **2026-09-18 独立复审（/auto-plan:review）**：
+  `stage: review | plan_id: PLAN-654 | plan_revision: 1 | outcome: **pass** |
+  reviewed_commit: **4817b51e1e5268ae28fd9651f1b8aa1342d6ba86** @ master |
+  base_commit: 9886ba901（worktree clone 起点）|
+  worktree: clone 隔离 `.wt/lang-654/auto-lang` @ `76487fbea`（非 git worktree 注册项；以 master ancestry 验 landing）|
+  dependency_revisions: sibling clone `.wt/lang-654/auto-down`（autodown-core path 解析；未改 auto-down 代码）|
+  limitation: **实现会话内复审**——结论由工件重放重建（门禁重跑+证据 JSON 独立解析+代码锚 grep），非采信执行摘要 |
+  spec_inputs: `docs/specs/auto-lang/ui/design/nested-timesource.md`、`clock-service.md`、`ui/overview.md`；设计 `component-time-and-events.md`；`docs/plans/evidence-p654-gallery-live.json` |
+  acceptance_results:
+  - AC-A1 pass | plan654_instance_path_identity_forms + multi_instance_paths_expand | InstancePath@dynamic.rs:222
+  - AC-A2 pass | plan654_view_assembly_registers_paths + unmount_drops_instance_path | builder path sink
+  - AC-A3 pass | renderer.rs:18983 subscribable_instance_timesources + path.as_str() 订阅
+  - AC-A4 pass | plan654_dispatch_is_type_level_state_with_path_identity + nested-timesource.md「状态语义」节 + 实机 UI_EVENT widget=Demo012Clock@0 → handler_Demo012Clock_Tick
+  - AC-A5 pass | cargo t plan652 5/5 + plan650 1/1 + timer_when 2/2 + fire_timer 1/1（复审重跑）
+  - AC-A6 pass | timesource_debug_rows() + AUTOUI_TIMESOURCE_DEBUG 日志 + evidence TS_PATH 42 行含 path
+  - AC-A7 pass | nested-timesource 阶段 2 段 + clock-service.md + overview 段落成文（F-R1 头注已校正）
+  - AC-A8 pass | check Finished；plan654 11/11；gallery evidence ac6_pass=true（复审独立解析 JSON）
+  - AC-B1 pass | CLOCK_* 字段 + wants_framework_clock 1Hz 门控 + plan654_framework_clock_fields_and_gate
+  - AC-B2 pass | write_or_insert_state 注入 __clock_now_sec/__clock_hhmm；clock-service.md standalone 消费说明
+  - AC-B3 pass | clock-service.md 与 __wm_clock 对照表 + plan654_clock_does_not_break_self_tick_component
+  - AC-B4 pass | 阶段 A gallery 证据仍有效 + plan654 11/11 on master 4817b51e1
+  findings:
+  - **F-R1 (info,已修)** nested-timesource.md 头注曾写「plan-654-dev 待 fold」——与 master 已 fold 不符；复审期校正为 execution_done/current-state，非语义契约变更
+  - **F-R2 (info,非本计划)** `cargo tf` 1 红：`ui_gen::rust::tests::test_display_family_codegen_arm_fixture`（icon size px 断言）。**无 ui-iced 时必红、有 ui-iced 必绿**；在 plan-651 基线 worktree（pre-654）同样复现 → **预存 feature 配置债**，与 PLAN-654 diff（dynamic/builder/renderer/vm_bridge/specs）无文件交集
+  - **F-R3 (info,merge 时)** KNOWN-DEBT P530-D2 仍写「path 级退订仍开」——merge 清偿注记应指向 PLAN-654 阶段 A 已落地（SD-A03）
+  - **F-R4 (info)** TS_PATH 同 path 同现 Tick+Timer 候选（ms=250）——iced WidgetEvent(path,event,ms) hash 去重后单订；012-clock 是否双声明待 merge 后核对，非阻断
+  evidence:
+  - master `4817b51e1` check Finished；`cargo t plan654` 11/11；plan652 5/5；plan650 1/1；timesource 16/16
+  - `cargo tf --no-fail-fast` 3640/3641（唯一红=F-R2 预存）
+  - `docs/plans/evidence-p654-gallery-live.json`：gallery ac6_pass/clock/stop=true；standalone clock_running=true；path Demo012Clock@0；handler 类型级
+  - 代码锚：InstancePath/InstanceTimeSource/subscribable_instance_timesources/timesource_debug_rows/CLOCK_*/wants_framework_clock；renderer path 订阅+__clock_tick；vm_bridge write_or_insert_state
+  | next: **`/auto-plan:merge`**（overall **reviewed**；worktree/clone 与 auto-down sibling 留 merge 清理；foreign WIP 仍不在本计划范围）`。
+
+- **2026-09-18 merge 收据（/auto-plan:merge，key: PLAN-654:r1）**：
+  `stage: merge | plan_id: PLAN-654 | plan_revision: 1 | outcome: pass` |
+  **prepared**: reviewed@`4817b51e1`；canonical Spec 三件已在 master（A land `b13af5927` / B land `4817b51e1`，format-patch）；evidence `docs/plans/evidence-p654-gallery-live.json` |
+  **landed**: master ancestry 验证 `b13af5927`+`4817b51e1` 均为 HEAD 祖先；specs nested-timesource/clock-service/overview 在盘；复审簿记 `bc676a8fa` |
+  **ledger_refreshed**: `docs/specs/auto-lang/ui/plans.md` 增 654 行；`docs/specs/INDEX.md` 经 `scripts/spec-index.py`；`.autoos/specs.json` upsert `P654-1..5`（reports/goals/architecture/designs/reviews，file 指向 archive 与 canonical specs）；KNOWN-DEBT **P530-D2** 注记 path 级退订已由 654 落地 |
+  **archived**: `docs/plans/archive/654-nested-timesource-path-and-clock.md`；`status: archived`；`completion_kind: delivered` |
+  **cleaned**: wt-guard `auto-lang`/`auto-down`/组目录均 **clean**（exit 0）；
+  clone 目录 `.wt/lang-654/{auto-lang,auto-down}` 与 patches/临时文件已删除；
+  组目录 `.wt/lang-654` 移除；主仓无 `plan-654*` 分支/无注册 worktree 残留。
+  foreign WIP 未触碰（`examples/rust-workspace/Cargo.toml` 等） |
+
+- **2026-09-18 T-B00 Clock 选型**（stage: work | plan_id: PLAN-654）：
+
+  **裁定：C1（必做）+ C2（最小 store 注入）**。C3 不单独立项——`Time.now_sec()` 已是 handler 侧原语。
+
+  | 能力 | 形态 | 说明 |
+  |------|------|------|
+  | Handler 读墙钟 | **既有** `Time.now_sec()` / `Time.now_ms()` / `Time.now()` | stdlib shim `shim_time_now_sec`；vue 桥 `Date.now()`；**不**用高频 Tick 才能「知道现在几点」 |
+  | 视图/state 读墙钟（免自泵） | **C2 新增** `__clock_now_sec`（int unix 秒）+ `__clock_hhmm`（str `HH:MM`） | 框架注入根态；**仅当**视图/computed 引用 `__clock_` 时才订 1Hz `__clock_tick` |
+  | Desktop 对照 | 既有 `__wm_clock` / `__wm_date` | Plan 497：**分钟级**、ServiceTick 泵、只写 shell App、变化才 dirty；应用作者在 desktop 壳内可读 `__wm_clock` |
+
+  **`__clock_*` vs `__wm_clock` 差异表**：
+
+  | 维度 | `__clock_now_sec` / `__clock_hhmm`（PLAN-654 B） | `__wm_clock`（Plan 497 desktop） |
+  |------|---------------------------------------------------|----------------------------------|
+  | 作用域 | **任意** VM UI App（standalone + gallery 内嵌） | **仅** desktop shell App |
+  | 节拍 | **1s**（unix 秒 / HH:MM 秒级刷新） | **1min**（HH:MM） |
+  | 订阅门控 | 视图引用 `__clock_` 才订；静止无引用 **零** 额外泵 | shell ServiceTick 帧泵内变化才写 |
+  | 字段 | `__clock_now_sec` int + `__clock_hhmm` str | `__wm_clock` str + `__wm_date` str |
+  | 目标 | 时钟类 UI **可不自起 250ms Tick** | dock 状态栏分钟时钟 |
+
+  **T-B00 默认节拍**：standalone/framework clock = **1s**（计划 §10.2）。
+  理由：数字钟/秒显示需要秒粒度；1Hz 相对 012-clock 自订 250ms Tick 降频 4×；
+  分钟投影留给 desktop `__wm_clock`；秒针平滑动画仍可 `.Tick` + `Time.now_sec()` 并存。
+
+  **AC-B1 路径**：C2 落地 `__clock_*` + 门控 1Hz 订阅；C1 文档写清「handler 用 Time.now_sec；视图用 __clock_*；勿为墙钟自泵 4Hz」。
+  **AC-B2**：standalone 可直接读 `__clock_*`；desktop 壳内对照 `__wm_clock` 文档化（应用也可读 `__clock_*` 若框架对所有 App 注入）。
+  **next: T-B01 实现**。
 
 - **2026-09-18 T-A01 实勘**（work / plan_revision 1）：`stage: work | plan_id: PLAN-654 | task_ids: T-A01 | outcome: pass`。
 
