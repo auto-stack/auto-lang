@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-644
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: 012-clock-app-redesign
 author: [Antigravity]
 created_at: 2026-09-18
