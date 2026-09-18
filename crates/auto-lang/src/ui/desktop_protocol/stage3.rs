@@ -869,7 +869,7 @@ mod tests {
 
     /// PLAN-026 T-07 —— native display 族 e2e（`AUTO_DESKTOP_E2E=1` 门 +
     /// 026 载体 env；p025_native_input_arm 同型）。三腿真 exe 孵化：
-    /// ①004-profile-card（真源 a2r，queue 档）——image 占位 80×80 Quad
+    /// ①profile-card（004-profile-card 真源 a2r，queue 档）——image 占位 80×80 Quad
     /// + 渐变 col + 按钮帧（AC-02）；②display026 fixture——display 族
     /// 全件（icon lucide 占位 14×14 / badge / divider / avatar / spacer /
     /// scroll / grid 2×2 / center）帧断言（AC-02/03/05）；③003-converter
@@ -877,7 +877,7 @@ mod tests {
     /// （AC-04，P020-D4 口径协议承载）。帧留痕 AUTO_026_ASSETS →
     /// docs/plans/reports/assets/026/（帧 dump 代截图——⑤口径）。
     /// 载体缺省寻址：`target/debug/{profile-card,display026,converter}.exe`
-    /// + `../scratch026/{004-profile-card,display026,003-converter}`；
+    /// + `../scratch026/{profile-card,026-display,003-converter}`；
     /// env AUTO_026_* 覆盖。
     #[test]
     fn p026_native_display_arm() {
@@ -889,7 +889,7 @@ mod tests {
             .unwrap_or_else(|_| format!("{manifest}/../../target/debug/profile-card.exe"));
         let dir_p = std::path::PathBuf::from(
             std::env::var("AUTO_026_PROFILE_APP_DIR")
-                .unwrap_or_else(|_| format!("{manifest}/../../scratch026/004-profile-card")),
+                .unwrap_or_else(|_| format!("{manifest}/../../scratch026/profile-card")),
         );
         let exe_d = std::env::var("AUTO_026_DISPLAY_EXE")
             .unwrap_or_else(|_| format!("{manifest}/../../target/debug/display026.exe"));
@@ -936,7 +936,7 @@ mod tests {
         let (exe_c, dir_c) = (exe_c.clone(), dir_c.clone());
         session.desktop.app_resolver =
             Some(std::sync::Arc::new(move |name: &str| match name {
-                "004-profile-card" => Some(LaunchSpec {
+                "profile-card" => Some(LaunchSpec {
                     code: code_p.clone(),
                     source_path: Some(
                         dir_p.join("src/front/app.at").to_string_lossy().to_string(),
@@ -1045,12 +1045,12 @@ mod tests {
                 .collect()
         }
 
-        // —— ①004-profile-card：queue 孵化 + image 占位/渐变 col/按钮。
-        let wid_p = session.launch_app("004-profile-card").expect("profile launch");
+        // —— ①profile-card（004 真源）：queue 孵化 + image 占位/渐变 col/按钮。
+        let wid_p = session.launch_app("profile-card").expect("profile launch");
         place_window(&mut session, wid_p, 0);
         wait_frame(
             &mut session,
-            "004-profile-card",
+            "profile-card",
             |ops| {
                 quads_of(ops)
                     .iter()
@@ -1184,7 +1184,7 @@ mod tests {
                 .join("../../docs/plans/reports/assets/026");
             let _ = std::fs::create_dir_all(&assets);
             for (app, file) in [
-                ("004-profile-card", "profile-card-frame.txt"),
+                ("profile-card", "profile-card-frame.txt"),
                 ("026-display", "display-frame.txt"),
                 ("003-converter", "converter-ime-frame.txt"),
             ] {
