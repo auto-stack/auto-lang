@@ -401,7 +401,7 @@ AUTO_GALLERY_APPS=D:/autostack/.wt/lang-642/auto-lang/examples/ui AUTOUI_MCP_POR
 
 **在途/悬置事项**：
 - R642-F1（间歇性原生崩溃 exit 127）blocked——待用户裁定 debt-landing vs
-  继续；WER LocalDumps 已配置（HKCU ...LocalDumpsuto.exe →
+  继续；WER LocalDumps 已配置（HKCU ...LocalDumps/auto.exe →
   %TEMP%\p642dumps，DumpType=2；截至目前 0 dump 产生）。
 - T-05 residual：027 Tick 已合成但 Tick 内嵌套 NavTo 自动首列表不完成
   （Env.get 探针实证返回值正确，故障在引导块后段）。
