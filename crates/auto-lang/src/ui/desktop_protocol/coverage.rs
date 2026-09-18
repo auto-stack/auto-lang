@@ -160,14 +160,16 @@ impl Coverage {
     /// （渲染/命中/聚焦/键入回写臂同落 native_projector）。**switch 无
     /// native 对象**——View 枚举无 Switch 变体（解释态 aura 标签专属，
     /// T-01 §5.1 调查证据），native 轨无可产该 kind 的构造（I4 分表，
-    /// 非缺口）。slider/select 随 T-03/T-04 扩容。kind = text/button +
-    /// form 族 + 线性堆叠布局族（col/row/container/list）+ 布局样式子集
-    /// （padding/gap/margin/尺寸/圆角/底色/前景色/对齐/字号字重）。
-    /// payload 族残余（table/tabs 等）与 display 族（image/icon/badge/…）
-    /// 显式 **not-yet**——native 显式 queue 遇未覆盖 = 拒绝退出留痕
-    /// （AC-04，非静默错绘）。与解释态 [`Coverage::target_set`] 分表：
-    /// native 投影器渲染面按投影器臂爬坡同步扩表（单一事实源纪律同
-    /// 500 §1.3.1）。
+    /// 非缺口）。slider/select 随 T-03/T-04 扩容。PLAN-026 T-03 扩容：
+    /// display 族 image/progress 入册（占位保真臂）；icon/badge/avatar/
+    /// divider/separator/spacer/a/img 经 a2r codegen 降级归一（D1/D1'
+    /// 定案）。kind = text/button + form 族 + display 占位族 + 线性堆叠
+    /// 布局族（col/row/container/list）+ 布局样式子集（padding/gap/
+    /// margin/尺寸/圆角/底色/前景色/对齐/字号字重）。payload 族残余
+    /// （table/tabs 等）与 imagesurface 显式 **not-yet**——native 显式
+    /// queue 遇未覆盖 = 拒绝退出留痕（AC-04，非静默错绘）。与解释态
+    /// [`Coverage::target_set`] 分表：native 投影器渲染面按投影器臂
+    /// 爬坡同步扩表（单一事实源纪律同 500 §1.3.1）。
     pub fn native_queue_set() -> Self {
         let kinds: BTreeSet<String> = [
             "text",
@@ -181,6 +183,14 @@ impl Coverage {
             "slider",
             // PLAN-025 T-04 —— payload 族 select。
             "select",
+            // PLAN-026 T-03 —— display 族占位保真臂（View::Image /
+            // View::ProgressBar 变体在场）。icon/badge/avatar/divider/
+            // separator/spacer/a/img 经 a2r codegen 降级归一到 image/
+            // text/row/container/empty（§5.1 D1/D1' 定案——分表非缺口，
+            // 025"switch 无 View 变体"口径）；imagesurface 整 kind
+            // not-yet（D5：交互回调无采集面，登记即静默放行——I3）。
+            "image",
+            "progress",
         ]
         .into_iter()
         .map(String::from)

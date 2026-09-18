@@ -28,8 +28,8 @@ use std::time::Instant;
 
 use super::client_runtime::{
     dim_if, measure_text, NodeStyle, BG, BUTTON_BG, BUTTON_H, BUTTON_MIN_W, BUTTON_PAD,
-    DISABLED_ALPHA, INPUT_BG, INPUT_BORDER, LABEL_FG, LINE_H_FACTOR, MARGIN, PLACEHOLDER_FG,
-    TEXT_FG, TEXT_SIZE,
+    DISABLED_ALPHA, IMAGE_PLACEHOLDER, INPUT_BG, INPUT_BORDER, LABEL_FG, LINE_H_FACTOR, MARGIN,
+    PLACEHOLDER_FG, PROGRESS_TRACK, TEXT_FG, TEXT_SIZE,
 };
 use super::coverage::{self, Coverage, Verdict};
 use super::endpoint::FrameSource;
@@ -833,6 +833,31 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             }
             Laid { size: (w, h) }
         }
+        // PLAN-026 T-03 display 族臂（I4：保真口径 = 解释态 queue 臂同级
+        // 占位——client_runtime::layout_image :1339 / layout_progress
+        // :1452 镜像；ImageSurface 仍落 catch-all 占位盒，D5 整 kind
+        // not-yet 在册）。
+        View::Image { .. } => {
+            // v1.8 保真边界：image = 样式尺寸驱动的占位 Quad（结构/占位
+            // 正确，位图内容归图像通道独立线——KNOWN-DEBT 在册，非静默
+            // 错绘）；icon 经 codegen 降级到本臂（lucide 字形占位同口径）。
+            let w = style.fixed_w().unwrap_or(avail_w.min(96.0)).min(avail_w.max(0.0));
+            let h = style.fixed_h().unwrap_or(w);
+            ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(IMAGE_PLACEHOLDER));
+            Laid { size: (w, h) }
+        }
+        View::ProgressBar { progress, .. } => {
+            // 轨道 + 填充条比例几何；on_seek 点击定位 not-yet（解释态
+            // queue 臂同边界——I3 留痕）。
+            let frac = progress.clamp(0.0, 1.0);
+            let w = style.fixed_w().unwrap_or(avail_w).min(avail_w.max(0.0));
+            let h = style.fixed_h().unwrap_or(8.0);
+            ctx.push_quad(WRect::new(x, y, w, h), PROGRESS_TRACK);
+            if frac > 0.0 {
+                ctx.push_quad(WRect::new(x, y, w * frac, h), style.bg.unwrap_or(BUTTON_BG));
+            }
+            Laid { size: (w, h) }
+        }
         // PLAN-025 T-05 scrollable 臂：溢出裁剪（Scissor push/pop——镜像
         // client_runtime::layout_scroll :953-1020）+ 滚轮命中（on_scroll
         // 在场才登记——I3；先登记后走子级：嵌套时内层倒序胜，D5）。滚动
@@ -1217,7 +1242,11 @@ fn node_style_of_view<M: Clone + std::fmt::Debug>(view: &View<M>) -> NodeStyle {
         | View::Checkbox { style, .. }
         | View::Radio { style, .. }
         | View::Select { style, .. }
-        | View::Slider { style, .. } => style.as_ref(),
+        | View::Slider { style, .. }
+        // PLAN-026 T-03：display 族（image/progress 占位臂消费样式
+        // 尺寸/bg——scan_native_node 变体样式收集面同册）。
+        | View::Image { style, .. }
+        | View::ProgressBar { style, .. } => style.as_ref(),
         _ => None,
     };
     node_style_of(style)
@@ -2185,6 +2214,10 @@ mod tests {
                         style: None,
                     })
                     .child(View::scrollable(View::text("s")).height(16).build())
+                    // PLAN-026 T-03 display 族夹具（image/progress 臂在场
+                    // ——覆盖表扩容 kinds+image/progress 的防漏钉夹具）。
+                    .child(View::image_styled("img", "w-16 h-16"))
+                    .child(View::progress_bar_styled(0.5, "w-20 h-2"))
                     .child(View::row().child(View::text("r1")).build())
                     .child(View::container(View::text("c")).build())
                     .child(View::list(vec![View::text("l1")]).build())
@@ -2289,6 +2322,89 @@ mod tests {
         p.ensure_covered().expect("textarea 入覆盖集");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["a", "b"], "按 '\\n' 分行");
+    }
+
+    /// PLAN-026 T-03：display 族占位保真 golden（I4——解释态
+    /// layout_image/layout_progress client_runtime.rs:1339/:1452 同级
+    /// 口径：image 样式尺寸占位 Quad（缺省 min(avail,96) 方形）；
+    /// progress 轨道 + 填充比例几何；style.bg 覆盖权同解释态）。
+    #[test]
+    fn display_family_placeholder_golden() {
+        use crate::ui::desktop_protocol::client_runtime::IMAGE_PLACEHOLDER as IMG_PH;
+        #[derive(Debug)]
+        struct Disp;
+        #[derive(Debug, Clone)]
+        enum DMsg {}
+        impl Component for Disp {
+            type Msg = DMsg;
+            fn on(&mut self, _m: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::image_styled("x", "w-16 h-16"))
+                    .child(View::image("bare")) // 无样式：缺省 96 上限方形
+                    .child(View::progress_bar_styled(0.5, "w-20 h-2"))
+                    .child(View::progress_bar_styled(0.25, "bg-blue-500"))
+                    .build()
+            }
+        }
+        let quads = |p: &mut NativeProjector<Disp>| -> Vec<(f32, f32, f32, f32, Rgba8)> {
+            p.render_frame()
+                .ops
+                .iter()
+                .filter_map(|op| match op {
+                    DrawOp::Quad { rect, color } => {
+                        Some((rect.x, rect.y, rect.w, rect.h, *color))
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let mut p = NativeProjector::new(Disp, 480.0, 320.0);
+        p.ensure_covered().expect("display 族入覆盖集");
+        let qs = quads(&mut p);
+        // styled image：w-16 h-16（Tailwind 刻度 16×4=64px）→ 64×64 占位。
+        assert!(
+            qs.iter().any(|&(x, _, w, h, _)| x == 10.0 && w == 64.0 && h == 64.0),
+            "styled image 64×64 占位 (x=MARGIN): {qs:?}"
+        );
+        // 无样式 image：w = min(avail, 96) = 96，h = w（方形缺省）+
+        // IMAGE_PLACEHOLDER 底色（pub(crate) 复用同值镜像）。
+        assert!(
+            qs.iter()
+                .any(|&(x, _, w, h, c)| x == 10.0 && w == 96.0 && h == 96.0 && c == IMG_PH),
+            "bare image 缺省 96 方形 IMAGE_PLACEHOLDER: {qs:?}"
+        );
+        // progress 0.5（w-20=80, h-2=8）：track 全长 + fill = w*frac 同位。
+        let track = qs
+            .iter()
+            .find(|&&(x, _, w, h, _)| x == 10.0 && w == 80.0 && h == 8.0)
+            .copied()
+            .expect("progress track 80×8 (w-20/h-2 刻度)");
+        assert!(
+            qs.iter().any(|&(x, y, w, h, _)| x == track.0
+                && y == track.1
+                && w == 40.0
+                && h == 8.0),
+            "progress 0.5 → fill 40×8 同位: {qs:?}"
+        );
+        // progress 0.25 无尺寸类：w = avail = 480；fill = 120 同位。
+        let track2 = qs
+            .iter()
+            .find(|&&(x, _, w, h, _)| x == 10.0 && w == 460.0 && h == 8.0)
+            .copied()
+            .expect("progress 缺省宽 460×8");
+        let fill2 = qs
+            .iter()
+            .find(|&&(x, y, w, h, _)| x == track2.0
+                && y == track2.1
+                && w == 115.0
+                && h == 8.0)
+            .copied()
+            .expect("progress 0.25 → fill 115×8 同位");
+        assert_ne!(
+            fill2.4, track2.4,
+            "style.bg 覆盖 fill 色（bg-blue-500 ≠ 轨道底）: {qs:?}"
+        );
     }
 
     #[test]
