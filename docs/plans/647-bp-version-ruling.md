@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-647
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-version-ruling（blueprints 多版本/锁面裁定——P639-D3 收口）
 author: [agent]
 created_at: 2026-09-18
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -114,6 +114,45 @@ P639-D3 悬置债收口：**blueprints 包库的版本语义正式裁定**。现
   （glob 直读磁盘，构建即取最新）；CI 面 `build-bps-gallery.yml`（paths 含
   `blueprints/**`——升版触发 gallery 重构建的现成实例）。
 
+### T-01 实勘结论（2026-09-18，worktree plan-647-dev@master=1f4e3e32c）
+
+1. **解析序与 dep 键面现状**：`resolve_module_path`（lib.rs:2768-2921）=
+   external back root → base_dir probe → 父目录 probe → 向上 4 级（deps/
+   声明门控 + workspace members + pac.at 文本式 path dep）。dep 声明解析是
+   **文本式**（`dep "name"`/`dep name` → 只找 `path:` 取行尾）——版本键现状
+   =**静默忽略**；仅写 `version:` 无 `path:` 时报的是下游 unresolved 类错误，
+   不指向版本键（风险实锤：假约束无诊断）。fixture 实测由
+   `plan647_bp_version_tests::resolve_module_path_*` 永久钉住。
+2. **隐患②运行期确证**：`BlueprintSpec::parse` 走 `toml::from_str` 无
+   deny_unknown_fields，frontmatter `version` 键被 serde 静默丢弃——红测试
+   `spec_frontmatter_version_key_is_rejected`（实现前 FAIL、实现后 PASS）
+   即确证记录。
+3. **护栏 A 落点定夺**：**不用 `deny_unknown_fields`**（frontmatter 未来可能
+   进合法键如 `promotions:`——契约变体提升评审流程；且 `[dataSource]` 表内
+   `version` 槽名是合法 fetcher 签名），改用 parse 前置 `toml::Table` 顶层
+   键定点扫描。现网 14 包 frontmatter 键面实勘（awk 全量 tally）：全部落在
+   已知字段/`[dataSource]` 槽内，无版本键。
+4. **护栏 B 落点定夺**：`pac_dep_version_violation` 纯文本扫描 helper
+   （词首边界防 `prev:`/`versions:` 误伤；按 dep 名只扫本声明 `{}` 块）+
+   `resolve_module_path` 内 dep_declared 后接线：违规=显式 eprintln（指向
+   Q5）+ return None **硬失败**（即使 path 本可解析——防假约束；错误通道
+   与 ghost-dep eprintln 先例同型，lib.rs 返回 Option 签名不动以控制波及面）。
+   dep_scanner.rs 的 `dep serde(version:)` 是 Rust crate 级另一形态，不属
+   pac.at 包声明面、不在护栏范围。
+5. **消费方"升版反应"盘点**：046——blueprints/** 变更下次构建重解析重构建；
+   bps-gallery——无 pac.at，Vite `import.meta.glob('../../../blueprints/*/*/')`
+   构建即取最新，CI build-bps-gallery.yml paths `blueprints/**` 触发重构建；
+   auto-down PLAN-070——起草中（auto-down master d8f11bf 无成品 pac.at），
+   跨仓对齐=git 层 pin。**"升版即全体消费方下次构建重构建"现状即成立**，
+   CI paths 是现成对齐机制实例。
+6. **pac.at `version` 消费面**：`AutoConfig::version()`（config.rs:116）全仓
+   **零调用点**；`auto bp list` 不读 pac.at 不显示 version（cmd_bp.rs list
+   只打 kind/name）——"展示元数据可示未示"，本计划零机制不接展示。
+7. **worktree/依赖记录**：base=1f4e3e32c；worktree `D:/autostack/.wt/lang-647/
+   auto-lang`（plan-647-dev）；依赖兄弟 worktree `D:/autostack/.wt/lang-647/
+   auto-down`（detached@auto-down master d8f11bf，只读；cargo workspace
+   path dep `../../../auto-down/...` 组内兄弟解析所需）。
+
 ### 风险
 
 - 护栏②（dep 版本键报错）若现状是"解析错误已存在"则改为成文现状；若现状是
@@ -189,25 +228,44 @@ P639-D3 悬置债收口：**blueprints 包库的版本语义正式裁定**。现
 > worktree `D:/autostack/.wt/lang-647/auto-lang`（分支 `plan-647-dev`）；
 > plan 簿记留主检出。全计划轻量，T-01 半日内可毕。
 
-- **T-01 [有界调查] 现状盘点与隐患确证**（0.5d）
+- **T-01 [有界调查] 现状盘点与隐患确证**（0.5d）[x]
   无依赖。操作：①实读 `resolve_module_path`（lib.rs:2768 起）解析序与 dep 键
   面现状（版本键现在是报错还是忽略——fixture 实测）；②spec frontmatter
   `version` 键静默忽略负空间实验确证；③消费方全名单盘点（046/070 pac.at
   草案/gallery/CI paths），每家"升版反应"记录；④护栏 A 实现落点定夺
   （deny_unknown_fields 可行性）。产出：§5.1 证据补全 + §5.2 两护栏的精确
   落点。验证：结论与 fixture 输出记入本节。→ AC-02/03 前置
-- **T-02 裁定落文**（前置：PLAN-643 已合并）
+  [✅ 已完成] 七项结论记于 §4"T-01 实勘结论"（2026-09-18）；红测试先 FAIL
+  后 PASS 即隐患①②运行期确证；deny_unknown_fields 否决（promotions/
+  dataSource 槽名保护），定点扫描落地。
+- **T-02 裁定落文**（前置：PLAN-643 已合并）[x]
   影响：`docs/specs/blueprint/contract.md` Q5 行（SD-01）+ 验证面护栏句
   （SD-02）。验证：diff 审读，五项齐备。→ AC-01
+  [✅ 已完成] 643 已归档（1f4e3e32c）时序解锁；Q5"版本面 MVP"半句→五项
+  终版整段 + 验证面节"版本键面护栏"句（与护栏错误消息互指 Q5）；
+  commit bf3573851。
 - **T-03 护栏落地**：`bp/spec.rs` 拒 version 键 + dep 版本类键显式错误（落点
-  按 T-01）+ 负/正测试。
+  按 T-01）+ 负/正测试。[x]
   验证：`cargo check -p auto-lang` 零警告；`cargo t plan647` 绿；
   `auto bp check` 全包冒烟不回归。→ AC-02
+  [✅ 已完成] 护栏 A=spec.rs `VERSION_KEYS` 定点拒（[dataSource] 槽名不误伤）
+  + 护栏 B=`pac_dep_version_violation` + resolve 硬失败；`plan647_bp_version_
+  tests` 9 测试（负/正对照/词首边界/集成面）+ spec.rs 1 负测试全绿；改面
+  零新增警告；commit bf3573851。
 - **T-04 债核销与 070 移交记录**：KNOWN-DEBT P639-D3 核销行；070 承接事项
-  （跨仓 git pin 落点、MVP 假设转正）登记于本计划复审区与债文件。
+  （跨仓 git pin 落点、MVP 假设转正）登记于本计划复审区与债文件。[x]
   验证：DEBT diff。→ AC-04
+  [✅ 已完成] KNOWN-DEBT 新增"2026-09-18 增补三（PLAN-647 核销与移交）"节：
+  P639-D3 ✅ 核销 + 070 三项承接事项（不越仓改文件）；commit 92bd47a7c。
 - **T-05 门禁与复审兜底**：门禁档位复核（Category B）、全量 `auto bp list/
-  check` 冒烟输出留档。→ AC-03/05 及全 AC 兜底
+  check` 冒烟输出留档。[x]
+  验证：全 AC 兜底。→ AC-03/05
+  [✅ 已完成] Category B 复核：改动=解析层小改+文档，无 VM/编译器/docs_gen/
+  aavm 面，不触发 tv/docs_gen/taa。门禁实测：`cargo check -p auto-lang` 过
+  （改面零新增警告，存量为仓基线）；`cargo t plan647 rejects_frontmatter` 9/9
+  绿；`cargo t ui_gen::bp` 9/9 绿（含 14 真包扫描+palette 无漂移）；`auto bp
+  list` 14 包全列；全包 `bp check` 循环 22 变体=16 过 6 败，与 master 基线
+  二进制逐项一致（预存：reference 变体缺 loading/error 槽），零回归。
 
 依赖链：T-01 → T-03；T-02 仅依赖 643 合并（与 T-01/T-03 可并行）；T-04/T-05
 收尾。
@@ -218,6 +276,22 @@ P639-D3 悬置债收口：**blueprints 包库的版本语义正式裁定**。现
   outcome: pass（授权范围内可交付 work），next: work。
   待用户确认项见 §10（两项，均有默认裁定；Option A/B 为方向性默认，B 启用即
   触发 §7 AC-06 条件项与范围修订流程）。
+- 2026-09-18 work completion（/auto-plan:work）：stage: work | plan_id:
+  PLAN-647 | plan_revision: 1 | outcome: **pass** | code_commit:
+  bf3573851（护栏+contract）+ 92bd47a7c（债核销）| base: 1f4e3e32c |
+  worktree: `D:/autostack/.wt/lang-647/auto-lang`（plan-647-dev）+
+  依赖兄弟 auto-down detached@d8f11bf | task_ids: T-01/T-02/T-03/T-04/T-05
+  全毕（5/5）| evidence: §4 实勘结论 + §8 各条验证注记；`cargo check` 过、
+  `cargo t plan647 rejects_frontmatter` 9/9、`cargo t ui_gen::bp` 9/9、
+  `auto bp list` 14 包、`bp check` 全包循环与 master 基线逐项一致（预存
+  6 败非本计划引入）| blockers: 无 | next: review（/auto-plan:review）。
+  - **§10 裁定记录**：用户指示"实施"=授权按默认执行——①Option A（零机制
+    新增）落地；②dep 版本类键=显式报错（硬失败形态）。
+  - **AC-06（条件项）**：Option B 未被裁启用——lock/pin 机制**未交付**，
+    按计划记"未启用"，非静默删项；触发条件成文于 contract Q5 ⑤。
+  - **AC-05 部分（specs.json upsert / spec-index.py）**：属 merge 阶段动作
+    （/auto-plan:merge），work 阶段仅完成 contract.md 规范增量本体（SD-01/
+    02 已落 worktree 分支）。
 
 ## 10. 待澄清事项
 
