@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-645
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done               # drafting → executing → execution_done → reviewed → archived
 feature_name: toolchain-parity-debt（bps fn 转译缺口 + with_defaults 扫描根）
 author: [zhaopuming]
 created_at: 2026-09-18
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（parity 三层机制的 L2 前置）", "GOAL-011: Blueprint 一等公民生态"]
 
 affects: [blueprint, auto-gen]
-current_step: 0
+current_step: 4
 total_steps: 4
 ---
 
@@ -103,21 +103,67 @@ with_defaults 实勘）；PLAN-522（use fn 双端同源转译先例）、PLAN-6
 > 注意：jade 侧消费样本在 auto-down 仓（组 worktree
 > `.wt/lang-645/{auto-lang,auto-down}` 或临时借用 jade front 构建面）。
 
-- **T-01** [改] with_defaults 三级解析根 + 测试。依赖：无。→ AC-02
-- **T-02** [改] bps 扫描 fn 转译臂 + 正/负测试。依赖：无（可与 T-01 并行）。→ AC-01
-- **T-03** [新] filetree 组合形态回归样本（恢复 reference/default.at，
+- **T-01** [x] [改] with_defaults 三级解析根 + 测试。依赖：无。→ AC-02
+  [✅ 已完成 2026-09-18] `resolve_blueprints_root` 纯函数（AUTO_BLUEPRINTS_ROOT
+  env → cwd 向上找 blueprints/ → 编译期 CARGO_MANIFEST_DIR 兜底）+ with_defaults
+  改造（registry.rs）；`registry::root_resolution_tests` 4/4 绿 + 既有 registry
+  115 测绿。提交 afc79e53d。AC-02 实证：worktree 内 `auto bp list` 含
+  navigation/filetree（master 二进制同 cwd 对照 = 主检出包库 variants=[]，
+  worktree 二进制 = worktree 包库 variants=["default"]——扫描根跟随运行位置）；
+  env 指向空目录 → 列举为空，指向主检出 blueprints → 列举跟随。
+- **T-02** [x] [改] bps 扫描 fn 转译臂 + 正/负测试。依赖：无（可与 T-01 并行）。→ AC-01
+  [✅ 已完成 2026-09-18] 实勘修正：发射路径 = auto-man vue.rs Plan 475 dep 通道
+  （collect_dep_front_dirs 对 bps 库包原目录直推→逐 .at 编译 SFC——LoginForm/
+  FileTree.vue 的实际生产点；计划草案所写 "ui_gen/vue.rs bp reference 构建路径"
+  定位不准，语义不变）。修复 = 通道内挂 `collect_use_module_fns` 池（与
+  components/bps 通道 Plan 522 臂同款——首遍编译已在 api.rs 挂池但逐 widget
+  重生成需重挂）+ library 形态 dep（无 src/front、无 front/）strict 软化为告警
+  （证据见 T-04 基线红）。提交 13fa93205。Q-1 裁定 = 默认案：仅被引符号闭包
+  （负断言 filter_tree/collect_ids 不入 SFC；闭包到不动点正断言
+  has_id/ext_icon 入）。
+- **T-03** [x] [新] filetree 组合形态回归样本（恢复 reference/default.at，
   适配转译语义；`use` 形态按 T-02 实现定 bare/bps 限定）。依赖：T-02。→ AC-01
-- **T-04** [改] 回归三面（046/jade/既有测试）+ DEBTS 两行销号 +
+  [✅ 已完成 2026-09-18] reference/default.at 按 af8c72a84 原样恢复（bare
+  `use tree_util:`/`use tree_icon:`——父目录解析即达包内支撑件，无需改写）；
+  spec.md variants=["default"]、暂缓节撤除（palette=[] 维持，icon 债 P643-D1
+  不变）。新夹具 examples/capability-tests/047-bp-compose（pac.at dep bps +
+  bps 限定组合导入）+ plan645_bp_tests 3/3 绿。提交 13fa93205。
+- **T-04** [x] [改] 回归三面（046/jade/既有测试）+ DEBTS 两行销号 +
   contract.md SD 落笔。依赖：T-01..T-03。→ AC-03
+  [✅ 已完成 2026-09-18] **基线红发现与修复**：046 全量 `auto build` 在 master
+  （1fc4772d9）即红——PLAN-643 with_charts.at `use { package: official from
+  "components" }`（消费方契约导入）在包内 standalone strict 编译 S003 硬炸
+  （643 门禁不覆盖全量构建故漏检）→ 库形态 dep strict 降为告警（Plan 041a
+  fn_only 先例同向延伸；应用形态 dep 门禁不变）。回归证据：①046 gen-only
+  （0 失败告警外全绿）+ vue-tsc+vite build 绿；②047 同全绿；③jade front/auto
+  codegen 30 组件 0 失败 + **双工具链 gen 产物逐字节一致**（master vs plan645
+  二进制同源双跑 diff = 空——零影响的最强形态）；④bp 谱系测试 plan639/640/
+  645 全绿 + registry 115 绿。DEBTS 两行销号 + P645-D1（data-table R006 语料
+  债新登记）+ P645-D2（musk p053_4 预存红基点对照归因）落 KNOWN-DEBT 增补四；
+  contract.md SD-01/SD-02 契约行 + 库包 dep 扫描纪律行落笔。提交 0c46b23bc。
 
 ## 8. 复审记录
 
 - 2026-09-18 draft handoff：`stage: new | plan_id: PLAN-645 | plan_revision: 1 |
   outcome: pass（起草完成；执行未授权） | next: review → work`。
+- 2026-09-18 work handoff：`stage: work | plan_id: PLAN-645 | plan_revision: 1 |
+  outcome: pass | code_commit: 0c46b23bc（worktree plan-645-dev；
+  afc79e53d T-01 → 13fa93205 T-02+T-03 → 0c46b23bc T-04 docs） |
+  task_ids: T-01,T-02,T-03,T-04 | evidence: 见 §7 各任务勾记（046/047
+  auto build+vue-tsc+vite 绿、jade 双工具链 gen 逐字节一致、
+  plan645 3/3+registry 115+plan639/640 绿、AC-02 双二进制对照、
+  全档对照零新增红：基点 1fc4772d9 no-fail-fast 41 failed（unique 36）vs
+  本计划 40 failed（unique 35，净新增=空集；少的 1 个=iced renderer
+  external_config_poll flaky）+7 新测试全绿 |
+  blockers: 无 | next: review`。
+- 执行摘要：两债均按三级序/plan522 先例偿还；实勘修正一处（bps 扫描
+  发射路径 = auto-man Plan 475 dep 通道，非草案所写 ui_gen/vue.rs）；
+  附带修复 PLAN-643 引入的 046 全量构建基线红（with_charts S003 strict，
+  库形态 dep 软化）；新增 P645-D1/P645-D2 两条环境/语料债登记。
 
 ## 9. 待澄清事项
 
 | # | 事项 | 影响 | owner/下一步 |
 | --- | --- | --- | --- |
-| Q-1 | fn 内联的体积上限（超大支撑件全量内联 vs 仅被引符号闭包） | T-02 实现细节 | T-02 实测裁定（默认：仅被引符号闭包） |
+| Q-1 | ~~fn 内联的体积上限~~ **已裁定（T-02 实现取默认案）**：仅被引符号闭包（imported 项 + 调用闭包到不动点），未导入符号不入 SFC——plan522 既有纪律，plan645 负断言锁定（filter_tree/collect_ids 不入 FileTree.vue） | 已闭环 | — |
 | Q-2 | filetree 组合形态启用后是否回填 jade（web file_tree 谱系仍独立，Q-7=A 不变） | 范围 | 维持 Q-7=A；组合形态仅作为 bp 能力样本与未来消费方基建 |
