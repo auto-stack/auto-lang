@@ -2620,25 +2620,52 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     // container(Fill)+align_x 在 Stack 子路径不生效(× 落左上,musk 会话卡
     // 实测),spacer 是不会说谎的几何：top spacer 垂直定位,水平方向
     // Fill-spacer + 定宽 right/left spacer 夹出水平位置。
+    // PLAN-022 T-05(2026-09-19)：悬浮层根改**贴内容紧致(Shrink)**——
+    // 根若 Fill,Stack 内 Opaque 包装(helpers.rs opaque:update 尾对
+    // ButtonPressed `cursor.is_over(layout.bounds())` 即 capture_event)
+    // 的捕获边界=整个 Stack 矩形 → 顶层浮层吞掉全窗口按压,下层
+    // (第二槽/基础层)交互全灭(auto-term 分屏实测:仅 slot1 可交互,
+    // 右面板无法聚焦输入/滚动条死)。top/left 锚 → Shrink 根贴内容,
+    // Opaque 捕获=内容矩形,与 CSS absolute 命中语义一致;right 锚需
+    // Fill 行做右夹持,保留 Fill 根退路(捕获过宽为已知代价,当前无
+    // 消费方)。
+    let top = position.top.unwrap_or(0.0) as f32;
     let top_space = iced::widget::Space::new()
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fixed(position.top.unwrap_or(0.0) as f32));
-    let mut row = iced::widget::Row::<M>::new().width(iced::Length::Fill);
-    if let Some(left) = position.left {
-        if left > 0.0 {
-            row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(left)));
+        .width(iced::Length::Fixed(0.0))
+        .height(iced::Length::Fixed(top));
+    let right_anchored = position.left.is_none() && position.right.is_some();
+    let mut row = iced::widget::Row::<M>::new();
+    match position.left {
+        Some(left) => {
+            if left > 0.0 {
+                row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(left)));
+            }
+            row = row.push(content);
         }
-        row = row.push(content);
-    } else {
-        row = row.push(iced::widget::Space::new().width(iced::Length::Fill));
-        row = row.push(content);
-        if let Some(right) = position.right {
-            if right > 0.0 {
-                row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(right)));
+        None => {
+            if right_anchored {
+                row = iced::widget::Row::<M>::new().width(iced::Length::Fill);
+                row = row.push(iced::widget::Space::new().width(iced::Length::Fill));
+                row = row.push(content);
+                if let Some(right) = position.right {
+                    if right > 0.0 {
+                        row = row.push(iced::widget::Space::new().width(
+                            iced::Length::Fixed(right),
+                        ));
+                    }
+                }
+            } else {
+                row = row.push(content);
             }
         }
     }
-    iced::widget::column![top_space, row].width(iced::Length::Fill).into()
+    let column = iced::widget::column![top_space, row];
+    let column = if right_anchored {
+        column.width(iced::Length::Fill)
+    } else {
+        column.width(iced::Length::Shrink).height(iced::Length::Shrink)
+    };
+    column.into()
 }
 
 /// PLAN-536 T10(D1 根修): 动态路径 abs 拆分层的偏移消费判定。
