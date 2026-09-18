@@ -973,6 +973,156 @@ pub fn shim_dnd_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
+// ============================================================================
+// PLAN-656 T-03: scroll-pane controller natives
+// （ui::scroll::controller 队列；renderer update 期排空消费。
+//   语义：controller 是 logical handle——见 docs/plans/656 §5；
+//   方法语法糖 scroll.to_end() 属后续语言面，v1 为函数族形态。）
+// ============================================================================
+
+/// `scroll_controller() -> Str` — 分配 controller 句柄（"@scrollctl:N"）。
+pub fn shim_scroll_controller(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::ui::scroll::next_controller_handle();
+    let idx = vm.add_string(handle.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// 弹出 controller 句柄实参（非句柄串返回 None 并清空队列路径）。
+fn pop_controller_handle(task: &mut AutoTask, vm: &AutoVM) -> Option<String> {
+    let s = pop_string_arg(task, vm);
+    crate::ui::scroll::is_controller_handle(&s).then_some(s)
+}
+
+/// 弹出可选轴实参："x"/"y" → Axis；缺省 Y（单轴 pane 简写）。
+fn pop_axis_arg(task: &mut AutoTask, vm: &AutoVM) -> crate::ui::scroll::Axis {
+    use crate::ui::scroll::Axis;
+    let nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+    if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv);
+        let s = vm.get_string(idx).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+        // 池份额已由 StakeGuard 释放；轴词只认 "x"，其余归 Y。
+        if s == "x" { Axis::X } else { Axis::Y }
+    } else {
+        Axis::Y
+    }
+}
+
+/// `scroll_to_start(handle)` — 到起点（Y 简写；可选第二实参轴）。
+pub fn shim_scroll_to_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
+    let arity = task.pending_native_arg_count as usize;
+    if let Some(handle) = pop_controller_handle(task, vm) {
+        let axis = if arity >= 2 { pop_axis_arg(task, vm) } else { crate::ui::scroll::Axis::Y };
+        enqueue_intent(&handle, ScrollIntent::ToStart { axis, source: ScrollSource::Programmatic });
+    }
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `scroll_to_end(handle, axis?)` — 到终点。
+pub fn shim_scroll_to_end(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
+    let arity = task.pending_native_arg_count as usize;
+    if let Some(handle) = pop_controller_handle(task, vm) {
+        let axis = if arity >= 2 { pop_axis_arg(task, vm) } else { crate::ui::scroll::Axis::Y };
+        enqueue_intent(&handle, ScrollIntent::ToEnd { axis, source: ScrollSource::Programmatic });
+    }
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `scroll_by(handle, delta)` / `scroll_by(handle, axis, delta)` — 相对滚动。
+pub fn shim_scroll_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
+    let arity = task.pending_native_arg_count as usize;
+    let delta = pop_f64_operand(task); // 最后压栈，先弹
+    if let Some(handle) = pop_controller_handle(task, vm) {
+        let axis = if arity >= 3 { pop_axis_arg(task, vm) } else { crate::ui::scroll::Axis::Y };
+        enqueue_intent(&handle, ScrollIntent::ScrollBy { axis, delta, source: ScrollSource::Programmatic });
+    }
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `scroll_to(handle, x, y)`（双轴绝对）/ `scroll_to(handle, axis, offset)`
+/// （单轴绝对；axis 实参为字符串时按轴形态）。args 压序 handle,a,b → 弹序
+/// b,a,handle；a 为字符串 → 轴形态，否则坐标形态。
+pub fn shim_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
+    let b = pop_f64_operand(task);
+    let a_nv = crate::vm::native::pop_arg_nv(task);
+    let a_is_string = auto_val::is_string(a_nv);
+    let a_str = if a_is_string {
+        let idx = auto_val::decode_string(a_nv);
+        vm.get_string(idx).map(|s| String::from_utf8_lossy(&s).into_owned()).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let _stake_a = crate::vm::native::StakeGuard::nv(vm, a_nv);
+    if a_is_string {
+        // 池份额已由 StakeGuard 释放；轴形态：a="x"/"y"，b=offset。
+        if let Some(handle) = pop_controller_handle(task, vm) {
+            let axis = if a_str == "x" { crate::ui::scroll::Axis::X } else { crate::ui::scroll::Axis::Y };
+            enqueue_intent(&handle, ScrollIntent::ScrollTo { axis, offset: b, source: ScrollSource::Programmatic });
+        }
+    } else {
+        let a = if auto_val::is_f64(a_nv) {
+            auto_val::decode_f64(a_nv)
+        } else if auto_val::is_f32(a_nv) {
+            auto_val::decode_f32(a_nv) as f64
+        } else {
+            auto_val::decode_i32(a_nv) as f64
+        };
+        if let Some(handle) = pop_controller_handle(task, vm) {
+            enqueue_intent(&handle, ScrollIntent::ScrollTo { axis: crate::ui::scroll::Axis::X, offset: a, source: ScrollSource::Programmatic });
+            enqueue_intent(&handle, ScrollIntent::ScrollTo { axis: crate::ui::scroll::Axis::Y, offset: b, source: ScrollSource::Programmatic });
+        }
+    }
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `scroll_state(handle) -> ScrollState` — 最近测量快照读出（8 具名字段
+// record，GenericInstanceData 堆路径——ProcInfo 同款，.at 端 `s.progress_y`
+// 具名可读；未测量/未绑定为全零——capability 验证断言面）。
+pub fn shim_scroll_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let handle = pop_string_arg(task, vm);
+    let snap = crate::ui::scroll::controller::controller_snapshot(&handle);
+    let x = crate::ui::scroll::ScrollAxisState {
+        offset: snap.offset_x,
+        viewport_extent: snap.viewport_w,
+        content_extent: snap.content_w,
+    };
+    let y = crate::ui::scroll::ScrollAxisState {
+        offset: snap.offset_y,
+        viewport_extent: snap.viewport_h,
+        content_extent: snap.content_h,
+    };
+    let fields = vec![
+        auto_val::Value::Float(x.offset),
+        auto_val::Value::Float(y.offset),
+        auto_val::Value::Float(x.viewport_extent),
+        auto_val::Value::Float(y.viewport_extent),
+        auto_val::Value::Float(x.content_extent),
+        auto_val::Value::Float(y.content_extent),
+        auto_val::Value::Float(crate::ui::scroll::geometry::progress(&x)),
+        auto_val::Value::Float(crate::ui::scroll::geometry::progress(&y)),
+    ];
+    let names: Vec<String> = [
+        "offset_x", "offset_y", "viewport_w", "viewport_h", "content_w", "content_h", "progress_x", "progress_y",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let inst = GenericInstanceData::new_with_names("ScrollState".to_string(), fields, names);
+    let id = vm.insert_heap_object(inst);
+    vm.rc_push_id(task, id as u64);
+    Ok(())
+}
+
 // ── Plan 418: native file dialogs (rfd, sync API) ──────────────────────
 // Both return "" on cancel/unavailable (headless CI included).
 

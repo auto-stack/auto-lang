@@ -1013,6 +1013,9 @@ mod tests {
             style: None,
             offset: None,
             on_scroll: None,
+            axes: crate::ui::scroll::ScrollAxes::Y,
+            scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
+            controller: None,
         };
 
         let tree = view_to_vtree(view);

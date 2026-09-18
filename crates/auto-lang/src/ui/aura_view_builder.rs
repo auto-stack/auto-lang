@@ -1982,7 +1982,7 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
-            "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "scroll" | "scrollable" | "scroll-pane" => self.convert_scroll_tracked_ctx(props, events, children, path, id_map, probe, bindings),
             // Plan 482: nav 容器支持 search:true 集成搜索行（子节点随 untracked
             // 转换，同 button 先例）。
             "nav" => self.convert_nav_container(props, events, children, bindings),
@@ -2364,10 +2364,78 @@ impl<'a> AuraViewBuilder<'a> {
                 width: None, height: None, style: scroll_style,
                 auto_scroll: false,
                 offset: None, on_scroll: None,
+                axes: crate::ui::scroll::ScrollAxes::Y,
+                scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
+                controller: None,
             };
             return fold_floats(base, floats);
         }
         fold_floats(col_view, floats)
+    }
+
+    /// PLAN-656 T-03: scroll-pane 语义提取——tracked/untracked 双臂共用
+    /// （D-GAP：共享逻辑单点）。解析 `axis:`/`scrollbar:`/`controller:`
+    /// props 与 `onscroll` 事件；legacy `direction:` 映射 axis（axis 优先）。
+    fn scroll_pane_semantics(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> (
+        crate::ui::scroll::ScrollAxes,
+        crate::ui::scroll::ScrollbarPolicy,
+        Option<crate::ui::view::ScrollControllerBinding>,
+        Option<crate::ui::view::ScrollCallback<DynamicMessage>>,
+    ) {
+        // axis 优先；缺失时 legacy direction 词表同源映射（vertical→y
+        // 缺省回落，horizontal→x，both→both）。
+        let axes = self
+            .extract_string_with(props, "axis", bindings)
+            .or_else(|| self.extract_string_with(props, "direction", bindings))
+            .map(|kw| crate::ui::scroll::ScrollAxes::from_keyword(&kw))
+            .unwrap_or(crate::ui::scroll::ScrollAxes::Y);
+        let policy = self
+            .extract_string_with(props, "scrollbar", bindings)
+            .map(|kw| crate::ui::scroll::ScrollbarPolicy::from_keyword(&kw))
+            .unwrap_or(crate::ui::scroll::ScrollbarPolicy::Auto);
+        let controller = self
+            .extract_string_with(props, "controller", bindings)
+            .filter(|s| !s.is_empty())
+            .map(crate::ui::view::ScrollControllerBinding::new);
+        // on-scroll 观察面（v1 执行裁定：8 个位置实参，顺序=record 字段序
+        // offset_x..progress_y——VM handler 桥的 push_value 对 heap 实参是
+        // 占位 0，record 对象实参不可达；具名 record 经 scroll_state() native。
+        // 双端契约：Vue 端同序位置实参，见 spec 兼容节）。
+        let on_scroll = aura_events_get_base(events, "onscroll").map(|ev| {
+            let handler = extract_handler_name(&ev.handler).to_string();
+            let widget = self.widget_name.clone();
+            crate::ui::view::ScrollCallback::new(
+                move |m: crate::ui::view::ScrollMetrics| {
+                    let make_axis = |offset: f32, viewport: f32, content: f32| crate::ui::scroll::ScrollAxisState {
+                        offset: offset as f64,
+                        viewport_extent: viewport as f64,
+                        content_extent: content as f64,
+                    };
+                    let x = make_axis(m.offset_x, m.viewport_w, m.content_w);
+                    let y = make_axis(m.offset_y, m.viewport_h, m.content_h);
+                    DynamicMessage::Typed {
+                        widget_name: widget.clone(),
+                        event_name: handler.clone(),
+                        args: vec![
+                            auto_val::Value::Float(x.offset),
+                            auto_val::Value::Float(y.offset),
+                            auto_val::Value::Float(x.viewport_extent),
+                            auto_val::Value::Float(y.viewport_extent),
+                            auto_val::Value::Float(x.content_extent),
+                            auto_val::Value::Float(y.content_extent),
+                            auto_val::Value::Float(crate::ui::scroll::geometry::progress(&x)),
+                            auto_val::Value::Float(crate::ui::scroll::geometry::progress(&y)),
+                        ],
+                    }
+                },
+            )
+        });
+        (axes, policy, controller, on_scroll)
     }
 
     /// Tracked convert_scroll — mirrors `convert_scroll` but recurses via
@@ -2375,6 +2443,7 @@ impl<'a> AuraViewBuilder<'a> {
     fn convert_scroll_tracked_ctx(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
         children: &[AuraNode],
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
@@ -2408,6 +2477,9 @@ impl<'a> AuraViewBuilder<'a> {
         // Plan 057 续:`auto_scroll: "…"` 标记 → VM 端唯一挂 blocklist_scroll id
         // 的主列表(snap_to_end 目标);块内 max-h 滚动区不再共享同 id。
         let auto_scroll = self.extract_string(props, "auto_scroll").is_some();
+        // PLAN-656 T-03: scroll-pane 语义（axis/scrollbar/controller/onscroll）。
+        let (axes, scrollbar_policy, controller, on_scroll) =
+            self.scroll_pane_semantics(props, events, bindings);
         View::Scrollable {
             child: Box::new(col_view),
             width: None,
@@ -2415,7 +2487,10 @@ impl<'a> AuraViewBuilder<'a> {
             style: scroll_style,
             auto_scroll,
             offset: None,
-            on_scroll: None,
+            on_scroll,
+            axes,
+            scrollbar_policy,
+            controller,
         }
     }
 
@@ -3542,7 +3617,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style(padding/flex/overflow),导致 sidebar 无 padding、
             // 无滚动条、Home 页溢出被裁。scroll → 可滚动 column;其余 → container。
-            "scroll" | "scrollable" => self.convert_scroll(props, children, bindings),
+            "scroll" | "scrollable" | "scroll-pane" => self.convert_scroll(props, events, children, bindings),
             // Plan 482: nav 容器支持 search:true 集成搜索行，其余语义容器不变。
             "nav" => self.convert_nav_container(props, events, children, bindings),
             "aside" | "main" | "header" | "section" | "footer" | "article" => {
@@ -5460,7 +5535,8 @@ let tabs_inner = View::Row {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let p = self.with_class_prop(props, bindings, crate::ui_gen::sidebar_contract::CONTENT_BASE);
-        self.convert_scroll(&p, children, bindings)
+        let no_events: HashMap<String, AuraEvent> = HashMap::new();
+        self.convert_scroll(&p, &no_events, children, bindings)
     }
 
     /// sidebar_separator：细分隔线（h-px 为 VM 显式高度补全，web 端由
@@ -6308,6 +6384,9 @@ let tabs_inner = View::Row {
                 width: None, height: None, style: scroll_style,
                 auto_scroll: false,
                 offset: None, on_scroll: None,
+                axes: crate::ui::scroll::ScrollAxes::Y,
+                scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
+                controller: None,
             }
         } else {
             col_view
@@ -6322,6 +6401,7 @@ let tabs_inner = View::Row {
     fn convert_scroll(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
@@ -6354,6 +6434,9 @@ let tabs_inner = View::Row {
         // Plan 057 续:`auto_scroll: "…"` 标记 → VM 端唯一挂 blocklist_scroll id
         // 的主列表(snap_to_end 目标);块内 max-h 滚动区不再共享同 id。
         let auto_scroll = self.extract_string(props, "auto_scroll").is_some();
+        // PLAN-656 T-03: scroll-pane 语义（axis/scrollbar/controller/onscroll）。
+        let (axes, scrollbar_policy, controller, on_scroll) =
+            self.scroll_pane_semantics(props, events, bindings);
         View::Scrollable {
             child: Box::new(col_view),
             width: None,
@@ -6361,7 +6444,10 @@ let tabs_inner = View::Row {
             style: scroll_style,
             auto_scroll,
             offset: None,
-            on_scroll: None,
+            on_scroll,
+            axes,
+            scrollbar_policy,
+            controller,
         }
     }
 

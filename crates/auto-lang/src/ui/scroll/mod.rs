@@ -13,11 +13,16 @@
 //! Phase D/E 再设计）与 core 级 `ScrollControllerId`（controller 是 logical
 //! handle，binding id 属 runtime 私有类型）。
 
+pub mod controller;
 pub mod geometry;
 pub mod host;
 pub mod intent;
 pub mod state;
 
+pub use controller::{
+    bind_controller, controller_snapshot, drain_resolved_intents, enqueue_intent, is_controller_handle,
+    next_controller_handle, note_controller_state, CONTROLLER_HANDLE_PREFIX,
+};
 pub use geometry::{clamp_offset, offset_from_thumb_pos, progress, scroll_range, thumb_from_state, ThumbGeometry};
 pub use host::{
     ScrollContentHost, ScrollContentHostRecord, SyntheticManagedContent, SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_H,
