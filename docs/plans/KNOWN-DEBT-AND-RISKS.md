@@ -2282,3 +2282,8 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P642-D9 [子件主题魔法变量污染宿主]**：016 `dark_mode=false` 打开后宿主全局持久变浅色（u2 序列实证）。T-13 隔离（主题只认根件）。
 - **P642-D10 [020 媒体扫描依赖独立 HTTP 后端]**：`Http.get_json("/api/media/scan")` 内嵌无后端进程即空曲库（player_store.at:92）——T-19 proxy 的直接用例。
 - **P642-D11 [plan606 029 data-URL 断言]**：见 P642-D5——补记：该测试期望视图层含 data URL，但语料已演进为"路径引用 + 渲染端内嵌"契约（Plan 617/628），断言过时；候选修法 = 更新断言到现契约或恢复视图层内联，属测试契约决策。
+
+## 2026-09-18 增补三（PLAN-647 核销与移交）
+
+- **P639-D3 ✅ 核销（PLAN-647，2026-09-18）**：bp 包多版本/锁面正式裁定为 **Option A 单版本 MVP 转正**——五项终版规则落 `docs/specs/blueprint/contract.md` Q5（①单版本滚动权威源 ②升版=全体消费方下次构建重构建 ③pac.at `version`=展示元数据非约束面 ④跨仓对齐走 git 层（CI pin commit/同 commit 检出）⑤锁面触发条件三选一即立项 Option B）。配套双护栏堵半吊子口子：spec frontmatter 顶层版本键与 pac.at `dep` 版本类键均显式报错（`plan647_bp_version_tests` 负测试；此前两者皆静默忽略）。
+- **070 侧承接事项（移交 auto-down，不越仓改文件）**：①PLAN-070 消费侧铺开按 Q5 单版本假设执行（MVP 假设转正，无版本键依赖声明——`dep bps { path }` 纯 path 形态）；②跨仓对齐落点=auto-down CI/构建脚本 pin auto-lang commit 或同 commit 家族检出（git 层，非 bp 层）；③若后续出现仓族外消费者/独立发版需求，按 Q5 ⑤触发条件提出 Option B 立项。
