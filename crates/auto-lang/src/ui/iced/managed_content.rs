@@ -17,12 +17,14 @@ use std::fmt::Debug;
 use std::sync::Mutex;
 
 use iced::advanced::layout::{Layout, Node};
+use iced::advanced::renderer;
 use iced::advanced::text::Renderer as _TextRenderer;
 use iced::advanced::widget::Tree;
 use iced::advanced::widget::Widget;
-use iced::advanced::renderer;
 use iced::advanced::{Clipboard, Renderer as _, Shell};
-use iced::{mouse, Background, Border, Color, Element, Event, Length, Point, Rectangle, Size, Theme};
+use iced::{
+    Background, Border, Color, Element, Event, Length, Point, Rectangle, Size, Theme, mouse,
+};
 
 use crate::ui::scroll::host::ScrollContentHost;
 use crate::ui::scroll::intent::{ScrollIntent, ScrollSource};
@@ -47,7 +49,11 @@ pub struct ManagedScrollContentWidget {
 
 impl ManagedScrollContentWidget {
     pub fn new(key: impl Into<String>, logical_w: f64, logical_h: f64) -> Self {
-        Self { key: key.into(), logical_w, logical_h }
+        Self {
+            key: key.into(),
+            logical_w,
+            logical_h,
+        }
     }
 
     /// 直接构造 iced Element（renderer 臂消费）。
@@ -105,7 +111,10 @@ impl<M: Clone + Debug + 'static> Widget<M, Theme, iced::Renderer> for ManagedScr
         let host_arc = host_of(&self.key);
         {
             let mut host = host_arc.lock().unwrap();
-            host.viewport_changed(ScrollViewportState { width: vp_w, height: vp_h });
+            host.viewport_changed(ScrollViewportState {
+                width: vp_w,
+                height: vp_h,
+            });
             host.apply_scroll_intent(ScrollIntent::ScrollTo {
                 axis: crate::ui::scroll::Axis::X,
                 offset: offset_x,
@@ -135,8 +144,16 @@ impl<M: Clone + Debug + 'static> Widget<M, Theme, iced::Renderer> for ManagedScr
             let vp = h.latest_viewport();
             (ox, oy, vp.width, vp.height)
         };
-        let eff_vh = if host_vh > 0.0 { host_vh } else { FALLBACK_VIEWPORT_H };
-        let eff_vw = if host_vw > 0.0 { host_vw } else { FALLBACK_VIEWPORT_W };
+        let eff_vh = if host_vh > 0.0 {
+            host_vh
+        } else {
+            FALLBACK_VIEWPORT_H
+        };
+        let eff_vw = if host_vw > 0.0 {
+            host_vw
+        } else {
+            FALLBACK_VIEWPORT_W
+        };
         let row0 = (host_off_y / ROW_H).floor().max(0.0) as u64;
         let rows = ((eff_vh / ROW_H).ceil() as u64 + 2).min(MAX_ROWS_PER_FRAME);
         let col0 = (host_off_x / COL_W).floor().max(0.0) as u64;
@@ -151,10 +168,18 @@ impl<M: Clone + Debug + 'static> Widget<M, Theme, iced::Renderer> for ManagedScr
                 Point::new(bounds.x, bounds.y + y as f32),
                 Size::new(bounds.width, ROW_H as f32),
             );
-            let zebra = if i % 2 == 0 { Color::from_rgba(1.0, 1.0, 1.0, 0.03) } else { Color::TRANSPARENT };
+            let zebra = if i % 2 == 0 {
+                Color::from_rgba(1.0, 1.0, 1.0, 0.03)
+            } else {
+                Color::TRANSPARENT
+            };
             if zebra != Color::TRANSPARENT {
                 renderer.fill_quad(
-                    renderer::Quad { bounds: row_bounds, border: Border::default(), ..renderer::Quad::default() },
+                    renderer::Quad {
+                        bounds: row_bounds,
+                        border: Border::default(),
+                        ..renderer::Quad::default()
+                    },
                     Background::Color(zebra),
                 );
             }
@@ -194,13 +219,15 @@ impl<M: Clone + Debug + 'static> Widget<M, Theme, iced::Renderer> for ManagedScr
                     shaping: Default::default(),
                     wrapping: Default::default(),
                 },
-                Point::new(bounds.x + x as f32 + 6.0, bounds.y + host_off_y as f32 + 4.0),
+                Point::new(
+                    bounds.x + x as f32 + 6.0,
+                    bounds.y + host_off_y as f32 + 4.0,
+                ),
                 Color::from_rgb(0.45, 0.62, 0.9),
                 *viewport,
             );
         }
     }
-
 }
 
 impl<M: Clone + Debug + 'static> From<ManagedScrollContentWidget> for Element<'static, M> {

@@ -15,7 +15,9 @@
 
 use crate::ui::scroll::geometry::{clamp_offset, scroll_range};
 use crate::ui::scroll::intent::ScrollIntent;
-use crate::ui::scroll::state::{Axis, ScrollAxes, ScrollAxisState, ScrollState, ScrollViewportState};
+use crate::ui::scroll::state::{
+    Axis, ScrollAxes, ScrollAxisState, ScrollState, ScrollViewportState,
+};
 
 /// hosting contract 的规范形态。runtime 可用 trait 对象、callback bundle
 /// （[`ScrollContentHostRecord`]）或内部 message enum 承载，但三条通道语义
@@ -45,7 +47,11 @@ impl ScrollContentHostRecord {
         apply_intent: Box<dyn Fn(ScrollIntent) + Send + Sync>,
         viewport: Box<dyn Fn(ScrollViewportState) + Send + Sync>,
     ) -> Self {
-        Self { state, apply_intent, viewport }
+        Self {
+            state,
+            apply_intent,
+            viewport,
+        }
     }
 }
 
@@ -189,14 +195,21 @@ mod tests {
     use crate::ui::scroll::state::ScrollbarPolicy;
 
     fn viewport(w: f64, h: f64) -> ScrollViewportState {
-        ScrollViewportState { width: w, height: h }
+        ScrollViewportState {
+            width: w,
+            height: h,
+        }
     }
 
     #[test]
     fn state_channel_publishes_logical_extent_and_offset() {
         let mut host = SyntheticManagedContent::new(ScrollAxes::Y);
         host.viewport_changed(viewport(400.0, 600.0));
-        host.apply_scroll_intent(ScrollIntent::ScrollBy { axis: Axis::Y, delta: 1_000.0, source: crate::ui::scroll::ScrollSource::Wheel });
+        host.apply_scroll_intent(ScrollIntent::ScrollBy {
+            axis: Axis::Y,
+            delta: 1_000.0,
+            source: crate::ui::scroll::ScrollSource::Wheel,
+        });
         let state = host.scroll_state();
         let y = state.y.expect("y axis enabled");
         assert_eq!(y.content_extent, SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_H);
@@ -209,7 +222,10 @@ mod tests {
     fn intent_channel_resolves_and_clamps_against_logical_extent() {
         let mut host = SyntheticManagedContent::new(ScrollAxes::Y);
         host.viewport_changed(viewport(400.0, 600.0));
-        host.apply_scroll_intent(ScrollIntent::ToEnd { axis: Axis::Y, source: crate::ui::scroll::ScrollSource::Programmatic });
+        host.apply_scroll_intent(ScrollIntent::ToEnd {
+            axis: Axis::Y,
+            source: crate::ui::scroll::ScrollSource::Programmatic,
+        });
         let (_, offset_y) = host.host_offset();
         assert_eq!(offset_y, SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_H - 600.0);
         assert_eq!(host.intent_log().len(), 1);
@@ -217,30 +233,51 @@ mod tests {
 
     #[test]
     fn viewport_channel_drives_range_and_reclamps() {
-        let mut host = SyntheticManagedContent::new(ScrollAxes::Y).with_logical_extent(400.0, 1_000.0);
+        let mut host =
+            SyntheticManagedContent::new(ScrollAxes::Y).with_logical_extent(400.0, 1_000.0);
         host.viewport_changed(viewport(400.0, 200.0));
-        host.apply_scroll_intent(ScrollIntent::ToEnd { axis: Axis::Y, source: crate::ui::scroll::ScrollSource::Programmatic });
+        host.apply_scroll_intent(ScrollIntent::ToEnd {
+            axis: Axis::Y,
+            source: crate::ui::scroll::ScrollSource::Programmatic,
+        });
         assert_eq!(host.host_offset().1, 800.0);
         // resize：viewport 变大 → range 缩小 → offset 重 clamp（无悬挂）。
         host.viewport_changed(viewport(400.0, 900.0));
         assert_eq!(host.host_offset().1, 100.0);
         // 逻辑 extent 缩小同理（host 程序化更新路径由 bridge 走 apply/set 后重 clamp）。
         let state = host.scroll_state();
-        assert_eq!(crate::ui::scroll::geometry::scroll_range(&state.y.unwrap()), 100.0);
+        assert_eq!(
+            crate::ui::scroll::geometry::scroll_range(&state.y.unwrap()),
+            100.0
+        );
     }
 
     #[test]
     fn both_axes_independent() {
         let mut host = SyntheticManagedContent::new(ScrollAxes::BOTH);
         host.viewport_changed(viewport(300.0, 500.0));
-        host.apply_scroll_intent(ScrollIntent::ScrollTo { axis: Axis::X, offset: 500_000.0, source: crate::ui::scroll::ScrollSource::Programmatic });
-        host.apply_scroll_intent(ScrollIntent::ScrollTo { axis: Axis::Y, offset: 7_000_000.0, source: crate::ui::scroll::ScrollSource::Programmatic });
+        host.apply_scroll_intent(ScrollIntent::ScrollTo {
+            axis: Axis::X,
+            offset: 500_000.0,
+            source: crate::ui::scroll::ScrollSource::Programmatic,
+        });
+        host.apply_scroll_intent(ScrollIntent::ScrollTo {
+            axis: Axis::Y,
+            offset: 7_000_000.0,
+            source: crate::ui::scroll::ScrollSource::Programmatic,
+        });
         let (x, y) = host.host_offset();
         assert_eq!(x, 500_000.0);
         assert_eq!(y, 7_000_000.0);
         // 各自 clamp 到各自 range，互不影响。
-        host.apply_scroll_intent(ScrollIntent::ToEnd { axis: Axis::X, source: crate::ui::scroll::ScrollSource::Programmatic });
-        assert_eq!(host.host_offset().0, SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_W - 300.0);
+        host.apply_scroll_intent(ScrollIntent::ToEnd {
+            axis: Axis::X,
+            source: crate::ui::scroll::ScrollSource::Programmatic,
+        });
+        assert_eq!(
+            host.host_offset().0,
+            SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_W - 300.0
+        );
         assert_eq!(host.host_offset().1, 7_000_000.0);
     }
 
@@ -249,7 +286,11 @@ mod tests {
         let mut host = SyntheticManagedContent::new(ScrollAxes::Y);
         host.viewport_changed(viewport(400.0, 600.0));
         for _ in 0..(SYNTHETIC_INTENT_LOG_CAP + 10) {
-            host.apply_scroll_intent(ScrollIntent::ScrollBy { axis: Axis::Y, delta: 0.0, source: crate::ui::scroll::ScrollSource::Wheel });
+            host.apply_scroll_intent(ScrollIntent::ScrollBy {
+                axis: Axis::Y,
+                delta: 0.0,
+                source: crate::ui::scroll::ScrollSource::Wheel,
+            });
         }
         assert_eq!(host.intent_log().len(), SYNTHETIC_INTENT_LOG_CAP);
     }
@@ -275,7 +316,11 @@ mod tests {
         let policy = ScrollbarPolicy::Hidden;
         let mut host = SyntheticManagedContent::new(ScrollAxes::Y);
         host.viewport_changed(viewport(400.0, 600.0));
-        host.apply_scroll_intent(ScrollIntent::ScrollBy { axis: Axis::Y, delta: 50.0, source: crate::ui::scroll::ScrollSource::Keyboard });
+        host.apply_scroll_intent(ScrollIntent::ScrollBy {
+            axis: Axis::Y,
+            delta: 50.0,
+            source: crate::ui::scroll::ScrollSource::Keyboard,
+        });
         assert_eq!(host.host_offset().1, 50.0);
         assert_eq!(policy, ScrollbarPolicy::Hidden);
     }

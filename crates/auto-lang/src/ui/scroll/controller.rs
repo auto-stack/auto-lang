@@ -16,8 +16,8 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::ui::scroll::intent::{ScrollIntent, ScrollSource};
 use crate::ui::scroll::state::{Axis, ScrollAxisState, ScrollState};
@@ -63,7 +63,10 @@ impl ControllerPaneSnapshot {
             viewport_extent: self.viewport_h,
             content_extent: self.content_h,
         };
-        ScrollState { x: Some(x), y: Some(y) }
+        ScrollState {
+            x: Some(x),
+            y: Some(y),
+        }
     }
 }
 
@@ -121,15 +124,24 @@ pub fn drain_resolved_intents() -> Vec<(String, f64, f64)> {
     let mut folded: HashMap<String, (f64, f64)> = HashMap::new();
     let mut order: Vec<String> = Vec::new();
     for (handle, intent) in queued {
-        let Some(snapshot) = reg.panes.get(&handle) else { continue };
+        let Some(snapshot) = reg.panes.get(&handle) else {
+            continue;
+        };
         if snapshot.widget_id.is_empty() {
             continue;
         }
         // 每条 intent 对「当前聚合态」resolve（首条用快照基线）。
-        let (bx, by) = folded.get(&handle).copied().unwrap_or((snapshot.offset_x, snapshot.offset_y));
+        let (bx, by) = folded
+            .get(&handle)
+            .copied()
+            .unwrap_or((snapshot.offset_x, snapshot.offset_y));
         let mut state = snapshot.to_scroll_state();
-        if let Some(x) = state.x.as_mut() { x.offset = bx; }
-        if let Some(y) = state.y.as_mut() { y.offset = by; }
+        if let Some(x) = state.x.as_mut() {
+            x.offset = bx;
+        }
+        if let Some(y) = state.y.as_mut() {
+            y.offset = by;
+        }
         let resolved = intent.resolve(&state);
         let (nx, ny) = match resolved.axis {
             Axis::X => (resolved.offset, by),
@@ -140,7 +152,8 @@ pub fn drain_resolved_intents() -> Vec<(String, f64, f64)> {
         }
         folded.insert(handle, (nx, ny));
     }
-    order.into_iter()
+    order
+        .into_iter()
         .filter_map(|handle| {
             let (x, y) = folded.get(&handle).copied()?;
             let widget_id = reg.panes.get(&handle)?.widget_id.clone();
@@ -158,7 +171,13 @@ pub fn default_axis() -> Axis {
 /// 读出某句柄的最近快照（未绑定 → 全零默认；`scroll_state()` native 与
 /// capability 验证断言面消费）。
 pub fn controller_snapshot(handle: &str) -> ControllerPaneSnapshot {
-    REGISTRY.lock().unwrap().panes.get(handle).cloned().unwrap_or_default()
+    REGISTRY
+        .lock()
+        .unwrap()
+        .panes
+        .get(handle)
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// 测试/调试面：intent 队列长度（不消费）。
@@ -194,25 +213,62 @@ mod tests {
         let h = next_controller_handle();
         bind_controller(&h, "pane_a");
         // 未测量时 resolve 仍 total（退化态 → to_end 落 0）。
-        enqueue_intent(&h, ScrollIntent::ToEnd { axis: Axis::Y, source: ScrollSource::Programmatic });
+        enqueue_intent(
+            &h,
+            ScrollIntent::ToEnd {
+                axis: Axis::Y,
+                source: ScrollSource::Programmatic,
+            },
+        );
         let drained = drain_resolved_intents();
         assert_eq!(drained.len(), 1);
         assert_eq!(drained[0].0, "pane_a");
         assert_eq!(drained[0].2, 0.0); // (x, y)：y 终态
 
         note_controller_state(&h, (0.0, 100.0), (300.0, 200.0), (500.0, 1000.0));
-        enqueue_intent(&h, ScrollIntent::ScrollBy { axis: Axis::Y, delta: 150.0, source: ScrollSource::Programmatic });
-        enqueue_intent(&h, ScrollIntent::ToEnd { axis: Axis::Y, source: ScrollSource::Programmatic });
+        enqueue_intent(
+            &h,
+            ScrollIntent::ScrollBy {
+                axis: Axis::Y,
+                delta: 150.0,
+                source: ScrollSource::Programmatic,
+            },
+        );
+        enqueue_intent(
+            &h,
+            ScrollIntent::ToEnd {
+                axis: Axis::Y,
+                source: ScrollSource::Programmatic,
+            },
+        );
         let drained = drain_resolved_intents();
-        assert_eq!(drained.len(), 1, "same-handle intents fold into one final state");
+        assert_eq!(
+            drained.len(),
+            1,
+            "same-handle intents fold into one final state"
+        );
         assert_eq!(drained[0].2, 800.0); // range 1000-200（第二条覆盖第一条）
         assert_eq!(drained[0].1, 0.0); // x 轴不受 y intent 影响
         assert_eq!(pending_intent_count(), 0, "drain empties queue");
 
         // 双轴独立叠加：x by → x 终态变化、y 保持。
         note_controller_state(&h, (10.0, 0.0), (300.0, 200.0), (1000.0, 1000.0));
-        enqueue_intent(&h, ScrollIntent::ScrollBy { axis: Axis::X, delta: 90.0, source: ScrollSource::Programmatic });
-        enqueue_intent(&h, ScrollIntent::ScrollBy { axis: Axis::Y, delta: 50.0, source: ScrollSource::Programmatic });
+        enqueue_intent(
+            &h,
+            ScrollIntent::ScrollBy {
+                axis: Axis::X,
+                delta: 90.0,
+                source: ScrollSource::Programmatic,
+            },
+        );
+        enqueue_intent(
+            &h,
+            ScrollIntent::ScrollBy {
+                axis: Axis::Y,
+                delta: 50.0,
+                source: ScrollSource::Programmatic,
+            },
+        );
         let drained = drain_resolved_intents();
         assert_eq!(drained[0].1, 100.0);
         assert_eq!(drained[0].2, 50.0);
@@ -221,7 +277,13 @@ mod tests {
     #[test]
     fn unbound_handle_silently_dropped() {
         reset_for_test();
-        enqueue_intent("@scrollctl:999", ScrollIntent::ToStart { axis: Axis::Y, source: ScrollSource::Programmatic });
+        enqueue_intent(
+            "@scrollctl:999",
+            ScrollIntent::ToStart {
+                axis: Axis::Y,
+                source: ScrollSource::Programmatic,
+            },
+        );
         assert!(drain_resolved_intents().is_empty());
         reset_for_test();
     }

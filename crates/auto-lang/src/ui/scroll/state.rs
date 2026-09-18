@@ -57,7 +57,11 @@ pub struct ScrollAxisState {
 impl ScrollAxisState {
     /// 退化态：零 extent、零 offset（未启用轴的观测投影，plan r2 §7.1）。
     pub const fn degenerate() -> Self {
-        Self { offset: 0.0, viewport_extent: 0.0, content_extent: 0.0 }
+        Self {
+            offset: 0.0,
+            viewport_extent: 0.0,
+            content_extent: 0.0,
+        }
     }
 }
 
@@ -80,7 +84,8 @@ impl ScrollState {
     /// 未启用轴读取退化态（offset=0 / extent=0），保证 resolve/geometry 的
     /// total 行为；启用轴正常返回。
     pub fn axis_or_degenerate(&self, axis: Axis) -> ScrollAxisState {
-        self.axis_state(axis).unwrap_or(ScrollAxisState::degenerate())
+        self.axis_state(axis)
+            .unwrap_or(ScrollAxisState::degenerate())
     }
 
     pub fn with_axis(mut self, axis: Axis, state: ScrollAxisState) -> Self {
@@ -151,23 +156,43 @@ mod tests {
 
     #[test]
     fn degenerate_axis_projection() {
-        let state = ScrollState { x: None, y: Some(ScrollAxisState { offset: 10.0, viewport_extent: 100.0, content_extent: 500.0 }) };
-        assert_eq!(state.axis_or_degenerate(Axis::X), ScrollAxisState::degenerate());
+        let state = ScrollState {
+            x: None,
+            y: Some(ScrollAxisState {
+                offset: 10.0,
+                viewport_extent: 100.0,
+                content_extent: 500.0,
+            }),
+        };
+        assert_eq!(
+            state.axis_or_degenerate(Axis::X),
+            ScrollAxisState::degenerate()
+        );
         assert_eq!(state.axis_or_degenerate(Axis::Y).offset, 10.0);
     }
 
     #[test]
     fn scrollbar_policy_keywords() {
         assert_eq!(ScrollbarPolicy::from_keyword("auto"), ScrollbarPolicy::Auto);
-        assert_eq!(ScrollbarPolicy::from_keyword("always"), ScrollbarPolicy::Always);
-        assert_eq!(ScrollbarPolicy::from_keyword("hidden"), ScrollbarPolicy::Hidden);
+        assert_eq!(
+            ScrollbarPolicy::from_keyword("always"),
+            ScrollbarPolicy::Always
+        );
+        assert_eq!(
+            ScrollbarPolicy::from_keyword("hidden"),
+            ScrollbarPolicy::Hidden
+        );
         assert_eq!(ScrollbarPolicy::from_keyword("typo"), ScrollbarPolicy::Auto);
     }
 
     #[test]
     fn f64_large_extent_precision() {
         // 10,000,000px 逻辑高度下 offset 精度仍远高于亚像素阈值（f64 尾数 52bit）。
-        let s = ScrollAxisState { offset: 9_999_000.5, viewport_extent: 600.0, content_extent: 10_000_000.0 };
+        let s = ScrollAxisState {
+            offset: 9_999_000.5,
+            viewport_extent: 600.0,
+            content_extent: 10_000_000.0,
+        };
         assert_eq!(s.offset, 9_999_000.5_f64);
         let next = s.offset + 0.5;
         assert_eq!(next - s.offset, 0.5);

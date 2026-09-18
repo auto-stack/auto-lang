@@ -21,13 +21,17 @@ pub mod managed;
 pub mod state;
 
 pub use controller::{
-    bind_controller, controller_snapshot, drain_resolved_intents, enqueue_intent, is_controller_handle,
-    next_controller_handle, note_controller_state, CONTROLLER_HANDLE_PREFIX,
+    CONTROLLER_HANDLE_PREFIX, bind_controller, controller_snapshot, drain_resolved_intents,
+    enqueue_intent, is_controller_handle, next_controller_handle, note_controller_state,
 };
-pub use geometry::{clamp_offset, offset_from_thumb_pos, progress, scroll_range, thumb_from_state, ThumbGeometry};
+pub use geometry::{
+    ThumbGeometry, clamp_offset, offset_from_thumb_pos, progress, scroll_range, thumb_from_state,
+};
 pub use host::{
-    ScrollContentHost, ScrollContentHostRecord, SyntheticManagedContent, SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_H,
-    SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_W,
+    SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_H, SYNTHETIC_MANAGED_DEFAULT_LOGICAL_EXTENT_W,
+    ScrollContentHost, ScrollContentHostRecord, SyntheticManagedContent,
 };
 pub use intent::{ResolvedScrollIntent, ScrollIntent, ScrollSource};
-pub use state::{Axis, ScrollAxes, ScrollAxisState, ScrollbarPolicy, ScrollState, ScrollViewportState};
+pub use state::{
+    Axis, ScrollAxes, ScrollAxisState, ScrollState, ScrollViewportState, ScrollbarPolicy,
+};

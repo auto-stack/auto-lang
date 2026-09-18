@@ -41,17 +41,24 @@ mod tests {
     fn host_registry_persists_across_lookups() {
         reset_for_test();
         let h1 = managed_host("cap_y", ScrollAxes::Y);
-        h1.lock().unwrap().viewport_changed(crate::ui::scroll::ScrollViewportState { width: 100.0, height: 200.0 });
+        h1.lock()
+            .unwrap()
+            .viewport_changed(crate::ui::scroll::ScrollViewportState {
+                width: 100.0,
+                height: 200.0,
+            });
         // 再次取同 key → 同实例（跨重建持久）。
         let h2 = managed_host("cap_y", ScrollAxes::BOTH);
         assert_eq!(h2.lock().unwrap().latest_viewport().height, 200.0);
         // 不同 key → 独立实例。
         let h3 = managed_host("cap_x", ScrollAxes::X);
-        h3.lock().unwrap().apply_scroll_intent(crate::ui::scroll::ScrollIntent::ScrollBy {
-            axis: Axis::X,
-            delta: 5.0,
-            source: crate::ui::scroll::ScrollSource::Wheel,
-        });
+        h3.lock()
+            .unwrap()
+            .apply_scroll_intent(crate::ui::scroll::ScrollIntent::ScrollBy {
+                axis: Axis::X,
+                delta: 5.0,
+                source: crate::ui::scroll::ScrollSource::Wheel,
+            });
         assert_eq!(h1.lock().unwrap().intent_log().len(), 0);
         assert_eq!(h3.lock().unwrap().intent_log().len(), 1);
         reset_for_test();

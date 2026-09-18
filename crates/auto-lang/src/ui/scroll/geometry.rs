@@ -47,17 +47,40 @@ fn thumb_extent(viewport: f64, content: f64, rail_extent: f64, min_thumb_extent:
 }
 
 /// offset → thumb 几何（设计文档 §12.3 逐式）。
-pub fn thumb_from_state(s: &ScrollAxisState, rail_extent: f64, min_thumb_extent: f64) -> ThumbGeometry {
-    let extent = thumb_extent(s.viewport_extent, s.content_extent, rail_extent, min_thumb_extent);
+pub fn thumb_from_state(
+    s: &ScrollAxisState,
+    rail_extent: f64,
+    min_thumb_extent: f64,
+) -> ThumbGeometry {
+    let extent = thumb_extent(
+        s.viewport_extent,
+        s.content_extent,
+        rail_extent,
+        min_thumb_extent,
+    );
     let range = scroll_range(s);
     let travel = rail_extent - extent;
-    let pos = if range <= 0.0 || travel <= 0.0 { 0.0 } else { (clamp_offset(s, s.offset) / range) * travel };
+    let pos = if range <= 0.0 || travel <= 0.0 {
+        0.0
+    } else {
+        (clamp_offset(s, s.offset) / range) * travel
+    };
     ThumbGeometry { pos, extent }
 }
 
 /// thumb 拖动位置 → offset（反向映射；travel ≤ 0 时恒 0）。
-pub fn offset_from_thumb_pos(s: &ScrollAxisState, thumb_pos: f64, rail_extent: f64, min_thumb_extent: f64) -> f64 {
-    let extent = thumb_extent(s.viewport_extent, s.content_extent, rail_extent, min_thumb_extent);
+pub fn offset_from_thumb_pos(
+    s: &ScrollAxisState,
+    thumb_pos: f64,
+    rail_extent: f64,
+    min_thumb_extent: f64,
+) -> f64 {
+    let extent = thumb_extent(
+        s.viewport_extent,
+        s.content_extent,
+        rail_extent,
+        min_thumb_extent,
+    );
     let range = scroll_range(s);
     let travel = rail_extent - extent;
     if range <= 0.0 || travel <= 0.0 {
@@ -74,7 +97,11 @@ mod tests {
     use super::*;
 
     fn state(offset: f64, viewport: f64, content: f64) -> ScrollAxisState {
-        ScrollAxisState { offset, viewport_extent: viewport, content_extent: content }
+        ScrollAxisState {
+            offset,
+            viewport_extent: viewport,
+            content_extent: content,
+        }
     }
 
     #[test]
@@ -134,15 +161,18 @@ mod tests {
             (0.0, 250.0, 1000.0),
             (375.0, 250.0, 1000.0),
             (750.0, 250.0, 1000.0),
-            (0.0, 10.0, 10_000_000.0),          // min-thumb clamp 生效域
+            (0.0, 10.0, 10_000_000.0), // min-thumb clamp 生效域
             (4_999_995.0, 10.0, 10_000_000.0),
             (9_999_990.0, 10.0, 10_000_000.0),
-            (123.0, 500.0, 300.0),              // range 0
+            (123.0, 500.0, 300.0), // range 0
         ] {
             let s = state(offset, viewport, content);
             let t = thumb_from_state(&s, rail, min);
             let back = offset_from_thumb_pos(&s, t.pos, rail, min);
-            assert!((back - clamp_offset(&s, offset)).abs() < 1e-6, "round trip broke at offset={offset}");
+            assert!(
+                (back - clamp_offset(&s, offset)).abs() < 1e-6,
+                "round trip broke at offset={offset}"
+            );
         }
     }
 
@@ -153,7 +183,7 @@ mod tests {
         let rail = 200.0;
         let min = 20.0;
         let travel = rail - min; // 150
-        let pos = 75.0;          // 中点
+        let pos = 75.0; // 中点
         let off = offset_from_thumb_pos(&s, pos, rail, min);
         assert!((off - 375.0).abs() < 1e-9); // 0.5 * 750
         let t = thumb_from_state(&state(off, 250.0, 1000.0), rail, min);
@@ -163,7 +193,13 @@ mod tests {
     #[test]
     fn pathological_zero_rail_and_extent() {
         let s = state(10.0, 100.0, 500.0);
-        assert_eq!(thumb_from_state(&s, 0.0, 24.0), ThumbGeometry { pos: 0.0, extent: 0.0 });
+        assert_eq!(
+            thumb_from_state(&s, 0.0, 24.0),
+            ThumbGeometry {
+                pos: 0.0,
+                extent: 0.0
+            }
+        );
         assert_eq!(offset_from_thumb_pos(&s, 50.0, 0.0, 24.0), 0.0);
         let zero_content = state(0.0, 0.0, 0.0);
         assert_eq!(thumb_from_state(&zero_content, 160.0, 24.0).extent, 0.0);
