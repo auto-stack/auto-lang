@@ -2129,7 +2129,7 @@ _props 待声明_
 
 ### `tab`
 
-`native_html` · `tab` · web: `native` · iced: `fallback` · category: `content`
+`native_html` · `tab` · web: `native` · iced: `partial` · category: `content`
 
 P1 extracted from production tables; props TBD
 
