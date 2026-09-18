@@ -3142,6 +3142,11 @@ export default router
                                 let comp_code = fs::read_to_string(&path).unwrap_or_default();
                                 let (use_fns, imported_names) =
                                     auto_lang::ui_gen::api::collect_use_module_fns(&path, &comp_code);
+                                // PLAN-075 (074-sink-mode G-6 未修面): 同文件模块 fn
+                                // (Plan 367 P2-4) 在本臂同病——逐 widget 裸重生成时
+                                // 文件顶层 fn 定义被丢弃,调用点有 emission 无定义
+                                // (vue-tsc TS2304)。与 src/front 兄弟臂同款重挂。
+                                let comp_module_fns = same_file_module_fns(&comp_code);
                                 for widget in &widgets {
                                     let gen = if shadcn {
                                         VueGenerator::new_shadcn()
@@ -3150,7 +3155,8 @@ export default router
                                     };
                                     let mut gen = gen
                                         .with_default_classes(default_classes)
-                                        .with_use_module_fns(use_fns.clone(), imported_names.clone());
+                                        .with_use_module_fns(use_fns.clone(), imported_names.clone())
+                                        .with_module_fns(comp_module_fns.clone());
                                     match gen.generate(widget) {
                                         Ok(widget_code) => {
                                             let stem = path.file_stem()
@@ -3307,6 +3313,11 @@ export default router
                             fs::read_to_string(&path).unwrap_or_default();
                         let (dep_use_fns, dep_imported_names) =
                             auto_lang::ui_gen::api::collect_use_module_fns(&path, &dep_comp_code);
+                        // PLAN-075 (074-sink-mode G-6 未修面): dep 文件自身的
+                        // 同文件模块 fn（Plan 367 P2-4）在重生成臂同样被丢弃——
+                        // bp reference 携带文件顶层 fn 时调用点 TS2304（048
+                        // 夹具为首个消费方）。与 src/front 兄弟臂同款重挂。
+                        let dep_module_fns = same_file_module_fns(&dep_comp_code);
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
@@ -3322,6 +3333,7 @@ export default router
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
                                 .with_use_module_fns(dep_use_fns.clone(), dep_imported_names.clone())
+                                .with_module_fns(dep_module_fns.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );

@@ -1,0 +1,27 @@
+// local-bps/feedback/module-fn-demo/reference/default.at — 同文件模块 fn 携带件
+// （PLAN-075 048 夹具，G-6 首个真实消费方）。
+//
+// bp reference 文件顶层 `fn`（Plan 367 P2-4 同文件模块 fn）与 widget 同文件
+// 共存——dep 通道逐 widget 重生成臂须重挂 fn 池（PLAN-075 收口 074-sink-mode
+// G-6 未修面），否则 SFC 只有 count_badge 调用点无 function 定义（vue-tsc
+// TS2304）。磁盘 kebab 命名 + use 下划线书写，兼测 PLAN-649 连字符变体探测。
+//
+// # Usage
+// use bplocal.feedback.module_fn_demo.reference.default: ModuleFnDemo
+// ModuleFnDemo (rows: [...]) {}
+
+pub fn count_badge(rows List) str {
+    var n int = rows.len()
+    return f"{n} items"
+}
+
+widget ModuleFnDemo (rows: List = []) {
+    computed {
+        badge => count_badge(.rows)
+    }
+    view {
+        row (class: "flex items-center gap-2 rounded-md border px-3 py-2") {
+            text .badge { style: "text-sm text-muted-foreground" }
+        }
+    }
+}
