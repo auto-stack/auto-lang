@@ -1414,6 +1414,32 @@ impl<'a> AuraViewBuilder<'a> {
             collect(c, &mut trigger_nodes, &mut content_nodes, &mut flat_tabs);
         }
 
+        // prop 值解析：静态字面量与状态引用（.demo）都穿透到 Value
+        // （resolve_expr_to_value 走 bindings/computed/read_state 链）。
+        let prop_value = |key: &str| -> Option<Value> {
+            let p = props.get(key)?;
+            match p {
+                AuraPropValue::Expr(e) => self.resolve_expr_to_value(e, bindings),
+                _ => None,
+            }
+        };
+        let prop_str = |key: &str| -> Option<String> {
+            prop_value(key).and_then(|v| match v {
+                Value::Str(s) => Some(s.to_string()),
+                Value::Int(i) => Some(i.to_string()),
+                Value::Uint(u) => Some(u.to_string()),
+                _ => None,
+            })
+        };
+        let prop_int = |key: &str| -> Option<u64> {
+            prop_value(key).and_then(|v| match v {
+                Value::Int(i) if i >= 0 => Some(i as u64),
+                Value::Uint(u) => Some(u as u64),
+                Value::Float(f) if f >= 0.0 => Some(f as u64),
+                _ => None,
+            })
+        };
+
         let use_flat = !flat_tabs.is_empty();
         let mut labels: Vec<String> = Vec::new();
         let mut values: Vec<String> = Vec::new();
@@ -1471,19 +1497,15 @@ impl<'a> AuraViewBuilder<'a> {
             }
             0
         };
-        let mut selected = resolve_selected(
-            self.extract_u16(props, "active").map(|v| v as u64),
-            self.extract_string_with(props, "value", bindings),
-        );
         let has_active_or_value = props.keys().any(|k| {
             let k = k.to_ascii_lowercase();
             k == "active" || k == "value"
         });
+        let mut selected = resolve_selected(prop_int("active"), prop_str("value"));
         if !has_active_or_value {
             selected = resolve_selected(
-                self.extract_u16(props, "defaultvalue").map(|v| v as u64),
-                self.extract_string_with(props, "defaultvalue", bindings)
-                    .or_else(|| self.extract_string_with(props, "default", bindings)),
+                prop_int("defaultvalue"),
+                prop_str("defaultvalue").or_else(|| prop_str("default")),
             );
         }
         if labels.is_empty() {
@@ -1550,8 +1572,7 @@ impl<'a> AuraViewBuilder<'a> {
                 })
             });
 
-        let variant = self
-            .extract_string_with(props, "variant", bindings)
+        let variant = prop_str("variant")
             .map(|v| crate::ui::view::TabsVariant::parse(&v))
             .unwrap_or_default();
 
