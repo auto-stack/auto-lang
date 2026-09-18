@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 14
+current_step: 16
 total_steps: 19
 ---
 
@@ -413,16 +413,35 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       首页路由 stub 渲染；(b) back 链 native-ns/stream 族（017）：
       进程内 stub/诚实空态降级或接 T-19 proxy；(c) 030/041/043/044 保持
       独立、回退文案精确化（列独立运行命令）。
-- [ ] **T-15 (P2-015) 015 种子数据合并链归因**（rev2）
-      db.at 有 6 条种子（List<Note>.new）但内嵌视图"No notes yet"——
-      合并 VM back 链模块级堆初始化/`api.list_notes` 调用链断点归因修复。
+- [✅] **T-15 (P2-015) 015 种子数据合并链归因**（rev2）[✅ 已完成（归因反转：数据链通，视图层双断点）]
+      归因（state 工具 + 探针实证）：db.at 6 条种子**在内嵌态完整落地**根态
+      （notes=6 vmref，store.Init→list_notes→db.all_notes 全链通）——任务
+      预设的"back 链断点"不成立，真断点在**视图层求值**：①`.len()` 后缀
+      快路径（aura_view_builder eval_condition）把 `.NotesStore.notes.len()`
+      剥掉 `.len()` 后的 "NotesStore.notes" **整段当单字段名** read_state
+      必 miss → 条件恒 false → 空态分支（015 "No notes yet" 实锤；026
+      `.schemaIndexes.len()` 恰为裸字段故幸存）；②store 别名快照
+      （VIEW_STORE_ALIAS_SNAPSHOT）为线程级单例——多组件画廊下被后续合成
+      覆盖/错主，`.TodoStore.X` 真名限定读在字符串/值解析三消费点落空
+      （013 footer f-string 渲染字面模板实锤；探针证实快照内容含全部
+      真名自映射但条件求值路径根本不经展平臂=零 MISS）。修复：①快路径
+      经 store_source_field 展平为根态裸字段；②快照随 VmBridge 存档
+      （合成同线程紧邻捕获）+ 三消费点 bridge 查表兜底。复验：015
+      "No notes yet" 消失、Welcome 种子可见（t15_lenfix_015.png）；013
+      footer 插值 "3 items left" 正确（t15_lenfix_013.png；快照中另一
+      "f\"${...}\"" 节点为教程说明字面量非缺陷）。门禁：新单测
+      plan642_store_qualified_len_condition_resolves 绿；cargo t ui
+      --no-fail-fast 2155/2177，22 败全落 master 基线（零新增）。
+      auto-lang d70662244。
 - [ ] **T-16 (P2-020) 020 媒体扫描后端接入**（rev2）[↪ 移交独立计划（用户裁定 2026-09-19）]
       `Http.get_json("/api/media/scan")` 在内嵌无后端进程（player_store.at:92
       实证）。**裁定：随 P642-D13 proxy 独立计划一并解决，不走 per-demo 窄路
       特例**；过渡期 020 内嵌保持诚实空态。本计划内不再执行。
-- [ ] **T-17 (P2-024) 024 空画布结案**（rev2）
-      最新构建（09bb8e218+）已出图（u2_024.png 实证）——用户侧为旧构建；
-      记录结案 + 请用户以新构建复验。
+- [✅] **T-17 (P2-024) 024 空画布结案**（rev2）[✅ 已完成（结案记录）]
+      最新构建（09bb8e218+，含 P642-D1 核销与 PLAN-643 修复链）内嵌已
+      完整出图（u2_024.png 三系列折线实证；本会话 soak 4 轮遍历含 024
+      均正常渲染）——用户侧所见为旧构建。**结案：024 以最新构建复验
+      即可**；若仍见空画布，以 `auto build` 重新生成产物后复验。
 - [✅] **T-18 (P2-附带) 027 错误 toast 跨 demo 残留**（rev2）[✅ 已完成（证伪结案——触发源灭绝，无修复面）]
       实机定性（t18_repro/t18_lifecycle 脚本，端口 2303/2304 双实例）：
       ①**触发源已随 T-05 修复批次灭绝**——027 内嵌 boot 链现正确解析
@@ -791,6 +810,29 @@ evidence:
   - 附带发现两条登记 P642-D14:fixture 派发不可达任意 handler（AddrGo
     实证）;fs.canonical 失败返原路径使 can=="" 哨兵分支 VM 臂不可达
 next: T-15（015 种子数据合并链归因）→ T-17（024 结案）→ 复审
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-15 归因反转 + T-17 结案)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-15/T-17 两任务;计划整体仍 executing（T-14 a/c 可选在途）
+code_commit:
+  auto-lang: d70662244 (plan-642-dev;T-17 无代码改动)
+task_ids: [T-15, T-17]
+evidence:
+  - T-15 归因反转:state 工具证实种子数据全链落地根态(notes=6 vmref);
+    真断点=视图层——.len() 快路径整段字段名 miss + store 别名快照
+    线程级单例被多组件合成覆盖(015 No notes yet/013 footer 字面模板双实锤)
+  - 修复:len() 快路径 store 展平 + 快照随 VmBridge 存档 + 三消费点
+    bridge 兜底;E2E 015 Welcome 可见/013 footer "3 items left" 插值正确
+  - 门禁:plan642_store_qualified_len_condition_resolves 新单测绿;
+    cargo t ui --no-fail-fast 22 败全落 master 基线(零新增)
+  - T-17:024 最新构建出图实证在案(u2_024 + 本会话 soak 4 轮),
+    结案=用户以新构建复验
+next: 剩余 T-14 a/c(可选,授权面内) → 复审 → merge 收口
 ```
 
 ---
