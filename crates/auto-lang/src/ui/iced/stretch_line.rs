@@ -81,16 +81,54 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         let avail_w = max.width.max(0.0);
         let total_spacing = self.spacing * (n - 1) as f32;
 
-        // —— measure 遍：自然高。compression 打在**子项 flex 的主轴**上
-        // （子项列垂直 → compression.height=true）：justify-between 列的
-        // FillPortion 垫片在 main-compress 下解析为内容高 0（不再吸走 ∞
-        // 剩余高），列高 = 纯内容高；Scrollable 同款手法（009/016 实证）。
-        // 注意不可用 (false,false)——垫片 third-pass 会把列高抬到入射上限。
+        // —— 宽度探测遍：主轴配给份额（非 fill 子项按序吃自然宽，fill 子项
+        // 均分剩余——flex first/third pass 同式）。份额宽必须先定：文本换行
+        // 行数依赖最终宽，测高用错宽会把最高卡测短（内容下溢钳裁）。
+        let mut available = (avail_w - total_spacing).max(0.0);
+        let fill_sum: f32 = self
+            .children
+            .iter()
+            .map(|c| fill_portion(c.as_widget().size().width))
+            .sum();
+        let mut final_w = vec![0.0f32; n];
+        for (i, child) in self.children.iter_mut().enumerate() {
+            if fill_portion(child.as_widget().size().width) == 0.0 {
+                let child_limits = Limits::with_compression(
+                    Size::ZERO,
+                    Size::new(available.max(0.0), f32::INFINITY),
+                    Size::new(false, false),
+                );
+                let node = child
+                    .as_widget_mut()
+                    .layout(&mut tree.children[i], renderer, &child_limits);
+                let w = node.size().width;
+                available -= w;
+                final_w[i] = w;
+            }
+        }
+        let remaining = available.max(0.0);
+        for (i, child) in self.children.iter().enumerate() {
+            let portion = fill_portion(child.as_widget().size().width);
+            if portion > 0.0 {
+                final_w[i] = if fill_sum > 0.0 {
+                    (remaining * portion / fill_sum).max(0.0)
+                } else {
+                    0.0
+                };
+            }
+        }
+
+        // —— measure 遍：按各自最终份额宽测内容自然高。compression 打在
+        // **子项 flex 的主轴**上（子项列垂直 → compression.height=true）：
+        // justify-between 列的 FillPortion 垫片在 main-compress 下解析为
+        // 内容高 0（不再吸走 ∞ 剩余高），列高 = 纯内容高；Scrollable 同款
+        // 手法（009/016 实证）。注意不可用 (false,false)——垫片 third-pass
+        // 会把列高抬到入射上限。
         let mut natural_h = 0.0f32;
         for (i, child) in self.children.iter_mut().enumerate() {
             let child_limits = Limits::with_compression(
                 Size::ZERO,
-                Size::new(avail_w, f32::INFINITY),
+                Size::new(final_w[i], f32::INFINITY),
                 Size::new(false, true),
             );
             let node = child
@@ -104,55 +142,25 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
             natural_h
         };
 
-        // —— final 遍：主轴配给（非 fill 子项按序吃自然宽，fill 子项均分
-        // 剩余——flex first/third pass 同式）。
-        let mut available = (avail_w - total_spacing).max(0.0);
-        let fill_sum: f32 = self
-            .children
-            .iter()
-            .map(|c| fill_portion(c.as_widget().size().width))
-            .sum();
+        // —— final 遍：按份额宽落位 + 交叉轴拉伸。
         let mut nodes: Vec<layout::Node> = (0..n).map(|_| layout::Node::default()).collect();
         for (i, child) in self.children.iter_mut().enumerate() {
-            if fill_portion(child.as_widget().size().width) == 0.0 {
-                let child_limits = Limits::with_compression(
-                    Size::ZERO,
-                    Size::new(available.max(0.0), effective),
-                    Size::new(false, false),
-                );
-                let node = child
-                    .as_widget_mut()
-                    .layout(&mut tree.children[i], renderer, &child_limits);
-                available -= node.size().width;
-                nodes[i] = node;
-            }
-        }
-        let remaining = available.max(0.0);
-        for (i, child) in self.children.iter_mut().enumerate() {
-            let portion = fill_portion(child.as_widget().size().width);
-            if portion > 0.0 {
-                let share = if fill_sum > 0.0 {
-                    (remaining * portion / fill_sum).max(0.0)
-                } else {
-                    0.0
-                };
-                // 交叉轴拉伸：Shrink 高子项 min=effective（CSS stretch 载体，
-                // 同时让 justify-between 列在行高内分布内容）；Fixed 高不拉伸
-                // （CSS：显式高 flex 项不参与 stretch），自然钳制到 effective；
-                // Fill 高经 max 解析到 effective。
-                let min_h = if child.as_widget().size().height == Length::Shrink {
-                    effective
-                } else {
-                    0.0
-                };
-                let child_limits = Limits::with_compression(
-                    Size::new(0.0, min_h),
-                    Size::new(share, effective),
-                    Size::new(false, false),
-                );
-                nodes[i] =
-                    child.as_widget_mut().layout(&mut tree.children[i], renderer, &child_limits);
-            }
+            // 交叉轴拉伸：Shrink 高子项 min=effective（CSS stretch 载体，
+            // 同时让 justify-between 列在行高内分布内容）；Fixed 高不拉伸
+            // （CSS：显式高 flex 项不参与 stretch），自然钳制到 effective；
+            // Fill 高经 max 解析到 effective。
+            let min_h = if child.as_widget().size().height == Length::Shrink {
+                effective
+            } else {
+                0.0
+            };
+            let child_limits = Limits::with_compression(
+                Size::new(0.0, min_h),
+                Size::new(final_w[i], effective),
+                Size::new(false, false),
+            );
+            nodes[i] =
+                child.as_widget_mut().layout(&mut tree.children[i], renderer, &child_limits);
         }
 
         // 定位：顺序排列 + spacing（行高 = effective，子项顶对齐——拉伸后
