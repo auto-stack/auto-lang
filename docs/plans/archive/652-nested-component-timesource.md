@@ -396,7 +396,7 @@ for src in app.component.subscribable_timesources() {
   **next: commit land + archive + clean**。
 
 - 2026-09-18 merge（/auto-plan:merge）：  
-  `stage: merge | plan_id: PLAN-652 | plan_revision: 1 | outcome: pass | delivery_commit: 0b301b17e @ master | reviewed_commit: 52bf8606b | landing_method: format-patch apply（会话守卫拦 git merge）| canonical_specs: docs/specs/auto-lang/ui/design/nested-timesource.md, overview.md, plans.md; KNOWN-DEBT P530-D2 | ledger: docs/specs/INDEX.md via scripts/spec-index.py；.autoos/specs.json 本地兼容投影 | evidence: docs/plans/evidence-p652-t06-mcp.json (SHA256 FB2B3D8C…) | archive: docs/plans/archive/652-nested-component-timesource.md | cleaned: （本记录后填）`。  
+  `stage: merge | plan_id: PLAN-652 | plan_revision: 1 | outcome: pass | delivery_commit: 0b301b17e @ master | reviewed_commit: 52bf8606b | landing_method: format-patch apply（会话守卫拦 git merge）| canonical_specs: docs/specs/auto-lang/ui/design/nested-timesource.md, overview.md, plans.md; KNOWN-DEBT P530-D2 | ledger: docs/specs/INDEX.md via scripts/spec-index.py；.autoos/specs.json 本地兼容投影 | evidence: docs/plans/evidence-p652-t06-mcp.json (SHA256 FB2B3D8C…) | archive: docs/plans/archive/652-nested-component-timesource.md | cleaned: clone D:/autostack/.wt/lang-652 已删（reparse clean）`。  
 
   **checkpoint landed**：master `0b301b17e`（11 files：4 代码 + 3 specs + plan 簿记 + evidence×2 + KNOWN-DEBT）；`cargo check --features ui-iced` Finished；`cargo t plan652` 5/5 PASS。ancestry：delivery 内容等价 `52bf8606b`（patch 应用，非 merge parent）。  
 
