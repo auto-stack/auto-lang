@@ -375,6 +375,42 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       路由；生成器 baseURL 子前缀适配（PLAN-617 AUTO_HTTP_BASE 相对展开
       先例）；风险项：session 崩溃隔离、stream/WS 转发、binary 响应。
 
+## 8.3 新会话续作指南（T-11..T-19 冷启动手册）
+
+**worktree/分支（续用，勿重建）**：
+- 实现仓：`D:/autostack/.wt/lang-642/auto-lang`（branch `plan-642-dev`，
+  修复批次 HEAD = `09bb8e218`）
+- 产物仓：`D:/autostack/.wt/lang-642/auto-os`（branch `plan-642-dev`）
+- 依赖兄弟：`D:/autostack/.wt/lang-642/auto-down`（detached，仅满足 cargo
+  path 依赖 `autodown-core`，勿删）
+- master 有其他会话并发活动——续作前先在 worktree rebase/合并最新 master。
+
+**构建与启动（每次验证的标准形态）**：
+```bash
+cd D:/autostack/.wt/lang-642/auto-lang && cargo build -p auto
+cd D:/autostack/.wt/lang-642/auto-os/ui-gallery
+AUTO_GALLERY_APPS=D:/autostack/.wt/lang-642/auto-lang/examples/ui AUTOUI_MCP_PORT=<空闲端口> D:/autostack/.wt/lang-642/auto-lang/target/debug/auto.exe run -r vm
+```
+- 启动即再生成 gallery 产物（demos/*.at、AppViewport.vm.at、registry.at，
+  勿手改；`auto build` 同效）。启动需 40-60s（预编译全部 demo），MCP 就绪
+  以 snapshot 含 `045-style-import` 为准。
+- 驱动：`.agents/skills/autoui-verifier/scripts/test_vm_mcp.py`
+  （AutoUiMcpClient(port)：snapshot/press/type_text/screenshot）；遍历矩阵
+  脚本模式见 §6。截图落 `ui-gallery/src/front/tests/screenshots/`
+  （已 gitignore）。
+
+**在途/悬置事项**：
+- R642-F1（间歇性原生崩溃 exit 127）blocked——待用户裁定 debt-landing vs
+  继续；WER LocalDumps 已配置（HKCU ...LocalDumpsuto.exe →
+  %TEMP%\p642dumps，DumpType=2；截至目前 0 dump 产生）。
+- T-05 residual：027 Tick 已合成但 Tick 内嵌套 NavTo 自动首列表不完成
+  （Env.get 探针实证返回值正确，故障在引导块后段）。
+- T-16/T-19 立项需用户裁定（proxy 形态/工期）。
+- 门禁基线：cargo tv --no-fail-fast 3745/3745；ui_gen 792/792；auto-man
+  gallery 22/23（唯一红 = plan606 data-URL 断言，P642-D11 master 预存）。
+- 崩溃类复现偏好：长会话（2+ 轮全遍历 + 截图）复现率 ≈1/4 实例，死亡页
+  随机（029/024/空闲均出现过）。
+
 ## 9. 复审记录
 
 ```yaml
