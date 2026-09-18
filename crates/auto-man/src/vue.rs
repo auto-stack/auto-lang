@@ -3201,6 +3201,16 @@ export default router
                         let file_store_deps = auto_lang::extract_store_deps_from_file(
                             path.to_str().unwrap()
                         );
+                        // PLAN-074: src/front 兄弟通道与 components//bps（上方
+                        // Plan 522 臂）同病——首遍 vue_code 被丢弃、逐 widget 裸
+                        // 重生成丢 fn 池：use 导入池（Plan 522）与同文件模块 fn
+                        // （Plan 367 P2-4）都必须重挂，否则调用点有 emission 无
+                        // 定义（vue-tsc TS2304；jade outline_panel 下沉首件实证
+                        // ——app 根通道发射正常、兄弟通道 TS2304 的不对称即本缺口）。
+                        let sib_code = fs::read_to_string(&path).unwrap_or_default();
+                        let (sib_use_fns, sib_imported_names) =
+                            auto_lang::ui_gen::api::collect_use_module_fns(&path, &sib_code);
+                        let sib_module_fns = same_file_module_fns(&sib_code);
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
@@ -3216,6 +3226,8 @@ export default router
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
+                                .with_use_module_fns(sib_use_fns.clone(), sib_imported_names.clone())
+                                .with_module_fns(sib_module_fns.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );
@@ -5896,6 +5908,25 @@ fn handle_compile_error_with_dep_shape(path: &Path, e: &str, library_dep: bool) 
     }
     println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
     Ok(())
+}
+
+/// PLAN-074: same-file module fns (`fn` at .at top level, Plan 367 P2-4)
+/// for the secondary generation passes that re-generate per widget with a
+/// bare VueGenerator. Mirrors the in-file collection in
+/// ui_gen::api::generate_component_from_file — parse failures yield an
+/// empty pool (the first pass already reported the real error).
+fn same_file_module_fns(code: &str) -> Vec<auto_lang::aura::AuraModuleFn> {
+    let session = auto_lang::session::CompilerSession::ui();
+    let mut parser = auto_lang::parser::Parser::from(code).with_session(session);
+    let Ok(ast) = parser.parse() else {
+        return Vec::new();
+    };
+    ast.stmts.iter()
+        .filter_map(|s| match s {
+            auto_lang::ast::Stmt::Fn(f) => auto_lang::aura::extract_module_fn(f),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
