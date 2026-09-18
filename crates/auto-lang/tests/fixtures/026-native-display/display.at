@@ -1,0 +1,35 @@
+// PLAN-026 T-02 fixture —— display 族 a2r 降级臂载体（codegen golden 单测
+// 源 + a2r scratch 载体源）。§5.1 D1/D1' 定案：零 View 变体，降级对齐
+// VM 轨形态（icon→Image lucide + 尺寸契约；divider/spacer/avatar/badge/
+// card/scroll → container/Row/scrollable）。
+widget DisplayBox {
+    model {
+        var label str = "Active"
+    }
+
+    view {
+        col {
+            image (src: "https://example.test/avatar.png") {
+                style: "w-20 h-20 rounded-full"
+            }
+            icon (name: "search", size: 14, style: "text-muted-foreground")
+            badge (text: "Active", variant: "secondary")
+            card {
+                text "inside card"
+                style: "bg-card border rounded-xl p-4"
+            }
+            divider {}
+            separator {}
+            spacer (style: "w-8")
+            avatar {
+                text "JC"
+            }
+            scroll (style: "h-40 w-full") {
+                text "long content"
+            }
+            link (to: "/library") {
+                text "Library"
+            }
+        }
+    }
+}
