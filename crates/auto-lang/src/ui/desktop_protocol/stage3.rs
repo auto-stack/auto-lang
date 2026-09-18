@@ -1508,7 +1508,7 @@ mod tests {
             },
         );
         let handle =
-            crate::ui::iced::broker_surface::resolve_drawlist_image("thumbnail://42842")
+            crate::ui::iced::broker_surface::resolve_drawlist_image("thumbnail://42842", 96, 56)
                 .expect("thumbnail 命中（cache_put 注入替身后直出）");
         drop(handle);
         // 命中后 SNAPSHOT_TTL 2s 内为新鲜——清除请求队列作 SWR 断言基线。
@@ -1521,21 +1521,23 @@ mod tests {
         );
         let t0 = std::time::Instant::now();
         let file_handle =
-            crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs)
+            crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs, 96, 56)
                 .expect("本地文件解析（绝对路径）");
         drop(file_handle);
         let decode_ms = t0.elapsed().as_millis();
         eprintln!("[p028-metric] local file resolve = {decode_ms} ms（缓存命中后重复解析 <1ms）");
         let t1 = std::time::Instant::now();
         assert!(
-            crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs).is_some(),
+            crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs, 96, 56).is_some(),
             "二次解析 = 缓存命中"
         );
         eprintln!("[p028-metric] cached resolve = {} ms", t1.elapsed().as_millis());
         // 离线降级腿：不可达 http → 当帧占位（None）+ 后台负缓存落地。
         assert!(
             crate::ui::iced::broker_surface::resolve_drawlist_image(
-                "http://127.0.0.1:1/zero28.png"
+                "http://127.0.0.1:1/zero28.png",
+                96,
+                56
             )
             .is_none(),
             "不可达 http 首帧 = 占位（不阻塞）"

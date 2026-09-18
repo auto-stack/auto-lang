@@ -6119,7 +6119,7 @@ fn lucide_svg_doc(name: &str) -> Option<String> {
     lucide_svg_doc_with(name, 2.0)
 }
 
-fn lucide_svg_doc_with(name: &str, stroke_width: f32) -> Option<String> {
+pub(crate) fn lucide_svg_doc_with(name: &str, stroke_width: f32) -> Option<String> {
     // PLAN-619 §8.5（根因定案）+ PLAN-617 全量表：这里必须从**内部 markup**
     // （`lucide_fragment`，24×24 坐标系）按目标尺寸做**单层**包装。历史上这里
     // 曾把 `lucide_svg` 的完整 16×16 文档再套进一层 24×24 `<svg>` → **嵌套

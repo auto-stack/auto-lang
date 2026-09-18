@@ -95,12 +95,26 @@ fn decode_handle(bytes: &[u8]) -> Option<ImageHandle> {
 
 /// DrawOp::Image src 解析总入口（D2 词汇表；paint 路径调用——禁阻塞）。
 /// pub(crate)：p028_image_arm e2e 宿主侧解析/降级腿与度量直接驱动。
-pub(crate) fn resolve_drawlist_image(src: &str) -> Option<ImageHandle> {
-    // thumbnail://{wid} 虚拟引用（D3）：快照缓存直查，不进永久 Handle
-    // 缓存——SWR 刷新语义，冻结句柄会锁死旧图（WindowThumbnail 消费臂
-    // from_rgba 每帧重建同律）。
+/// PLAN-029 T-07（D5）：签名扩 `(w, h)`——lucide: 栅格化目标尺寸/缓存
+/// 键维度（`{src}@{w}x{h}`）；thumbnail/本地/http 词汇忽略尺寸（快照
+/// 原始尺寸/内在尺寸语义不变）。
+pub(crate) fn resolve_drawlist_image(src: &str, w: u32, h: u32) -> Option<ImageHandle> {
+    // thumbnail://{wid}[!{fallback}] 虚拟引用（D3 + 029 T-05 fallback
+    // 语法）：快照缓存直查，不进永久 Handle 缓存——SWR 刷新语义，冻结
+    // 句柄会锁死旧图（WindowThumbnail 消费臂 from_rgba 每帧重建同律）；
+    // miss → fallback lucide 占位图标真渲（灰 quad 降级升级）。
     if let Some(rest) = src.strip_prefix("thumbnail://") {
-        return resolve_thumbnail(src, rest);
+        return resolve_thumbnail(src, rest, w, h);
+    }
+    // workspace://{ws}[!{fallback}]（029 T-05 D4-A）：宿主合成虚拟引用
+    //——壁纸基色 + 分区窗 tile 等比 Contain（012 W3 数据面直用）。
+    if let Some(rest) = src.strip_prefix("workspace://") {
+        return resolve_workspace(src, rest, w, h);
+    }
+    // lucide:{name}[#{rrggbb}]（029 T-07 D5）：字形栅格化真渲（ink 缺省
+    // #FFFFFF——深色壳面约定；tint 可选）。缓存键含尺寸。
+    if let Some(rest) = src.strip_prefix("lucide:") {
+        return resolve_lucide(src, rest, w, h);
     }
     if let Some(entry) = handle_cache().lock().unwrap().get(src) {
         return entry.clone();
@@ -137,13 +151,19 @@ pub(crate) fn resolve_drawlist_image(src: &str) -> Option<ImageHandle> {
     handle
 }
 
-/// `thumbnail://{wid}` 解析（D3）：命中（含过期）→ `from_rgba` 直绘；
-/// 过期 → request_capture 静默重抓（SWR）；真 miss → request_capture +
-/// 占位当帧，重抓 cache_put 落地后下帧翻真。wid 非法 = 未解析降级。
-fn resolve_thumbnail(src: &str, rest: &str) -> Option<ImageHandle> {
+/// `thumbnail://{wid}[!{fallback}]` 解析（D3 + 029 T-05）：命中（含
+/// 过期）→ `from_rgba` 直绘；过期 → request_capture 静默重抓（SWR）；
+/// 真 miss → request_capture + fallback lucide 占位图标（029 升级：灰
+/// quad → 真图标）。wid 非法 = 未解析降级。
+fn resolve_thumbnail(src: &str, rest: &str, w: u32, h: u32) -> Option<ImageHandle> {
     use crate::ui::iced::snapshot;
     use crate::ui::session::Wid;
-    let Some(wid) = rest.parse::<u64>().ok().map(Wid) else {
+    // fallback 语法拆分（`!` 后为 lucide 名）。
+    let (wid_part, fallback) = match rest.split_once('!') {
+        Some((wid, fb)) => (wid, Some(fb.to_string())),
+        None => (rest, None),
+    };
+    let Some(wid) = wid_part.parse::<u64>().ok().map(Wid) else {
         observe_unresolved(src);
         return None;
     };
@@ -156,10 +176,152 @@ fn resolve_thumbnail(src: &str, rest: &str) -> Option<ImageHandle> {
         }
         None => {
             snapshot::request_capture(wid);
+            // 029 T-05：miss → fallback 图标真渲（I3 降级升级；中性灰
+            // tint——缩略图占位与前景皆宜）。
+            if let Some(fb) = fallback {
+                return resolve_lucide(src, &format!("{fb}#9aa0a6"), w, h);
+            }
             observe_unresolved(&format!("{src} (capture requested)"));
             None
         }
     }
+}
+
+/// `workspace://{ws}[!{fallback}]` 解析（029 T-05 D4-A）：
+/// `workspace_preview::current()` 数据面合成——壁纸基色铺底 + 分区 tile
+/// 等比 Contain（`tile_rect` 纯函数复用）+ tile 内 snapshot 命中真缩略/
+/// miss 灰块；Published 缺席/分区空 → fallback 图标。逐帧合成不进永久
+/// 缓存（thumbnail 同纪律——SWR 活语义）。
+fn resolve_workspace(src: &str, rest: &str, w: u32, h: u32) -> Option<ImageHandle> {
+    let (ws, fallback) = match rest.split_once('!') {
+        Some((ws, fb)) => (ws, Some(fb.to_string())),
+        None => (rest, None),
+    };
+    let fallback_or_none = |why: &str| -> Option<ImageHandle> {
+        if let Some(fb) = &fallback {
+            return resolve_lucide(src, &format!("{fb}#9aa0a6"), w, h);
+        }
+        observe_unresolved(&format!("{src} ({why})"));
+        None
+    };
+    let Some(published) = crate::ui::iced::workspace_preview::current() else {
+        return fallback_or_none("no preview published");
+    };
+    let Some(tiles) = published.workspaces.get(ws) else {
+        return fallback_or_none("workspace absent");
+    };
+    let w = w.max(1);
+    let h = h.max(1);
+    let mut pm = tiny_skia::Pixmap::new(w, h)?;
+    // 壁纸基色铺底（None = 中性深底占位——012 W3 口径）。
+    let (br, bg, bb) = published.wallpaper.unwrap_or((24, 28, 38));
+    pm.fill(tiny_skia::Color::from_rgba8(br, bg, bb, 255));
+    for tile in tiles {
+        let (tx, ty, tw, th) =
+            crate::ui::iced::workspace_preview::tile_rect(tile, published.usable, w as f32, h as f32);
+        if tw <= 0.0 || th <= 0.0 {
+            continue;
+        }
+        let snap = crate::ui::iced::snapshot::snapshot_window_stale(
+            crate::ui::session::Wid(tile.wid),
+        )
+        .map(|(s, _)| s);
+        blit_rgba_rect(
+            pm.data_mut(),
+            snap.as_ref().map(|s| (s.rgba.as_slice(), s.w, s.h)),
+            tx,
+            ty,
+            tw,
+            th,
+        );
+    }
+    Some(ImageHandle::from_rgba(w, h, pm.take()))
+}
+
+/// RGBA 区块近邻缩放平贴进 Pixmap 矩形（workspace tile；无快照 = 灰块）。
+fn blit_rgba_rect(
+    pm: &mut [u8],
+    snap: Option<(&[u8], u32, u32)>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    for row in 0..h.max(1.0) as u32 {
+        for col in 0..w.max(1.0) as u32 {
+            let px = x as u32 + col;
+            let py = y as u32 + row;
+            if px as f32 >= w + x || py as f32 >= h + y {
+                continue;
+            }
+            let idx = ((py * w.max(1.0) as u32 + px) * 4) as usize;
+            if idx + 3 >= pm.len() {
+                return;
+            }
+            let (r, g, b) = match snap {
+                Some((rgba, sw, sh)) if sw > 0 && sh > 0 => {
+                    let sx = (((col as f32 + 0.5) / w) * (sw as f32)) as u32 % sw;
+                    let sy = (((row as f32 + 0.5) / h) * (sh as f32)) as u32 % sh;
+                    let sidx = ((sy * sw + sx) * 4) as usize;
+                    if sidx + 2 >= rgba.len() {
+                        (70, 74, 84)
+                    } else {
+                        (rgba[sidx], rgba[sidx + 1], rgba[sidx + 2])
+                    }
+                }
+                _ => (70, 74, 84),
+            };
+            pm[idx] = r;
+            pm[idx + 1] = g;
+            pm[idx + 2] = b;
+            pm[idx + 3] = 255;
+        }
+    }
+}
+
+/// `lucide:{name}[#{rrggbb}]` 解析（029 T-07 D5）：`lucide_svg_doc_with`
+///（stroke 按 size 推导——直挂臂先例 ≥48px→1.5 否则 2.0）→ currentColor
+/// 文档内替换 tint（ink 缺省 #FFFFFF）→ resvg/tiny-skia 栅格化目标尺寸
+///（Contain 居中）→ RGBA Handle。缓存键 `{src}@{w}x{h}`（进程级含负缓
+/// 存）；未知名/栅格化失败 → observe_unresolved + None（占位 + I3）。
+fn resolve_lucide(src: &str, rest: &str, w: u32, h: u32) -> Option<ImageHandle> {
+    let (name, tint) = match rest.split_once('#') {
+        Some((n, c)) => (n, format!("#{c}")),
+        None => (rest, "#ffffff".to_string()),
+    };
+    let w = w.max(1);
+    let h = h.max(1);
+    let key = format!("{src}@{w}x{h}");
+    if let Some(entry) = handle_cache().lock().unwrap().get(&key) {
+        return entry.clone();
+    }
+    let stroke = if w.max(h) >= 48 { 1.5 } else { 2.0 };
+    let built = crate::ui::iced::renderer::lucide_svg_doc_with(name, stroke)
+        .map(|doc| doc.replace("currentColor", &tint));
+    let handle = built.and_then(|doc| rasterize_svg_contain(&doc, w, h));
+    if handle.is_none() {
+        observe_unresolved(src);
+    }
+    handle_cache().lock().unwrap().insert(key, handle.clone());
+    handle
+}
+
+/// SVG 文档 → Contain 居中栅格化（resvg 0.45 + tiny-skia 0.11——
+/// plan619 测试先例同机具）。
+fn rasterize_svg_contain(doc: &str, w: u32, h: u32) -> Option<ImageHandle> {
+    let tree = resvg::usvg::Tree::from_str(doc, &resvg::usvg::Options::default()).ok()?;
+    let mut pm = tiny_skia::Pixmap::new(w, h)?;
+    let ts = tree.size();
+    if ts.width() <= 0.0 || ts.height() <= 0.0 {
+        return None;
+    }
+    let scale = (w as f32 / ts.width()).min(h as f32 / ts.height());
+    let tx = (w as f32 - ts.width() * scale) / 2.0;
+    let ty = (h as f32 - ts.height() * scale) / 2.0;
+    let transform =
+        tiny_skia::Transform::from_scale(scale, scale).post_translate(tx, ty);
+    resvg::render(&tree, transform, &mut pm.as_mut());
+    Some(ImageHandle::from_rgba(w, h, pm.take()))
 }
 
 impl iced::widget::canvas::Program<DesktopMessage> for DrawListPainter {
@@ -280,7 +442,7 @@ fn paint_ops(frame: &mut iced::widget::canvas::Frame, ops: &[DrawOp]) {
                 let at = iced::Point::new(rect.x, rect.y);
                 let size =
                     iced::Size::new(rect.w.max(0.0), rect.h.max(0.0));
-                match resolve_drawlist_image(src) {
+                match resolve_drawlist_image(src, rect.w.max(1.0) as u32, rect.h.max(1.0) as u32) {
                     Some(handle) => frame.draw_image(
                         iced::Rectangle::new(at, size),
                         &handle,
@@ -351,16 +513,16 @@ mod tests {
     /// T-03：data: 词汇解析 → Handle；二次调用缓存命中（同 Handle 实例）。
     #[test]
     fn t028_data_uri_resolves_and_caches() {
-        let h1 = resolve_drawlist_image(TINY_PNG_DATA_URI);
+        let h1 = resolve_drawlist_image(TINY_PNG_DATA_URI, 24, 24);
         assert!(h1.is_some(), "data: 解码命中");
-        let h2 = resolve_drawlist_image(TINY_PNG_DATA_URI);
+        let h2 = resolve_drawlist_image(TINY_PNG_DATA_URI, 24, 24);
         assert_eq!(h1, h2, "二次调用 = 缓存命中（同 Handle）");
     }
 
     /// T-03：builtin: 内嵌壁纸词汇（与 518 壁纸线同源）。
     #[test]
     fn t028_builtin_wallpaper_resolves() {
-        assert!(resolve_drawlist_image("builtin:ricepaper").is_some());
+        assert!(resolve_drawlist_image("builtin:ricepaper", 24, 24).is_some());
     }
 
     /// T-03/D4：未解析降级——缺文件/未知 scheme/字形词汇（lucide not-yet，
@@ -369,14 +531,14 @@ mod tests {
     #[test]
     fn t028_unresolved_negative_cache_and_notyet_lexicon() {
         let missing = "Z:/definitely/missing-028.png";
-        assert!(resolve_drawlist_image(missing).is_none(), "缺文件 None");
+        assert!(resolve_drawlist_image(missing, 24, 24).is_none(), "缺文件 None");
         assert!(
             handle_cache().lock().unwrap().contains_key(missing),
             "负缓存落位（占位 + 观测去重依据）"
         );
-        assert!(resolve_drawlist_image("foo://bar").is_none(), "未知 scheme");
-        assert!(resolve_drawlist_image("lucide:home").is_none(), "字形词汇 not-yet");
-        assert!(resolve_drawlist_image("").is_none(), "空 src 容错");
+        assert!(resolve_drawlist_image("foo://bar", 24, 24).is_none(), "未知 scheme");
+        assert!(resolve_drawlist_image("lucide:definitely-not-a-real-icon-name", 24, 24).is_none(), "未知名降级 None");
+        assert!(resolve_drawlist_image("", 24, 24).is_none(), "空 src 容错");
     }
 
     /// T-03/D1：http miss 占位先行（不阻塞 paint）→ 后台解码落缓存。
@@ -384,7 +546,7 @@ mod tests {
     #[test]
     fn t028_http_placeholder_first_then_background_fill() {
         let src = "http://127.0.0.1:1/zero28.png";
-        assert!(resolve_drawlist_image(src).is_none(), "首帧占位（无阻塞等待）");
+        assert!(resolve_drawlist_image(src, 24, 24).is_none(), "首帧占位（无阻塞等待）");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             if handle_cache().lock().unwrap().contains_key(src) {
@@ -410,7 +572,7 @@ mod tests {
         let miss_wid = Wid(428_001);
         let _ = snapshot::take_capture_requests(); // 清场
         let src = format!("thumbnail://{}", miss_wid.0);
-        assert!(resolve_drawlist_image(&src).is_none(), "miss 当帧占位");
+        assert!(resolve_drawlist_image(&src, 96, 64).is_none(), "miss 当帧占位");
         assert!(
             snapshot::take_capture_requests().iter().any(|w| *w == miss_wid),
             "miss 触发 request_capture"
@@ -424,7 +586,7 @@ mod tests {
             WindowSnapshot { rgba: vec![1, 2, 3, 255], w: 1, h: 1 },
         );
         let _ = snapshot::take_capture_requests(); // 清场
-        assert!(resolve_drawlist_image(&src).is_some(), "命中直绘");
+        assert!(resolve_drawlist_image(&src, 96, 64).is_some(), "命中直绘");
         assert!(snapshot::take_capture_requests().is_empty(), "新鲜命中零重抓");
 
         // SWR：过期条目续绘（不跌占位）+ request_capture 静默重抓。
@@ -436,13 +598,103 @@ mod tests {
         );
         snapshot::__test_backdate(swr_wid);
         let _ = snapshot::take_capture_requests(); // 清场
-        assert!(resolve_drawlist_image(&src).is_some(), "过期条目续绘");
+        assert!(resolve_drawlist_image(&src, 96, 64).is_some(), "过期条目续绘");
         assert!(
             snapshot::take_capture_requests().iter().any(|w| *w == swr_wid),
             "过期触发静默重抓"
         );
 
         // wid 非法 = 未解析降级。
-        assert!(resolve_drawlist_image("thumbnail://not-a-wid").is_none());
+        assert!(resolve_drawlist_image("thumbnail://not-a-wid", 24, 24).is_none());
+    }
+
+    /// PLAN-029 T-07（D5）：lucide: 词汇真渲——代表图标 ink 非零 +
+    /// tint 着色 + 缓存命中零重栅格化 + 未知名降级。
+    #[test]
+    fn t029_lucide_vocabulary_rasterizes_with_tint_and_cache() {
+        // ink 非零（缺省 #FFFFFF——全通道命中即非零）。
+        let h = resolve_drawlist_image("lucide:search", 24, 24).expect("search 真渲");
+        let (hw, hh, data) = handle_rgba(&h);
+        assert_eq!((hw, hh), (24, 24));
+        let ink = data.chunks(4).filter(|px| px[0] > 0).count();
+        assert!(ink > 0, "ink 非零: {ink}");
+        // tint：#ff0000 红——ink 像素 R 通道显著高于 B。
+        let hr = resolve_drawlist_image("lucide:search#ff0000", 32, 32).expect("tint 真渲");
+        let (_, _, rdata) = handle_rgba(&hr);
+        assert!(
+            rdata.chunks(4).any(|px| px[0] > 100 && px[0] > px[2]),
+            "红 tint 命中"
+        );
+        // 缓存命中：同键二次解析（值等即可——内部零重栅格化由缓存键直证）。
+        assert!(resolve_drawlist_image("lucide:search#ff0000", 32, 32).is_some());
+        // 尺寸维度：不同尺寸 = 不同缓存键 = 各自可解析。
+        assert!(resolve_drawlist_image("lucide:search", 64, 64).is_some());
+        // 未知名 → None（负缓存 + 观测去重——I3）。
+        assert!(
+            resolve_drawlist_image("lucide:not-a-lucide-icon-xyz", 24, 24).is_none(),
+            "未知名降级"
+        );
+        assert!(
+            resolve_drawlist_image("lucide:not-a-lucide-icon-xyz", 24, 24).is_none(),
+            "负缓存续 None"
+        );
+    }
+
+    /// PLAN-029 T-05：thumbnail miss → fallback 图标真渲（灰 quad 升级）。
+    #[test]
+    fn t029_thumbnail_miss_falls_back_to_lucide_icon() {
+        assert!(
+            resolve_drawlist_image("thumbnail://999777!app-window", 48, 48).is_some(),
+            "miss → lucide:app-window 占位图标"
+        );
+        // 无 fallback 的 miss 维持 None（028 口径不回归）。
+        assert!(resolve_drawlist_image("thumbnail://999778", 48, 48).is_none());
+    }
+
+    /// PLAN-029 T-05（D4-A）：workspace:// 合成——Published 数据面铺底 +
+    /// tile 灰块（无快照）+ 缺席 → fallback。
+    #[test]
+    fn t029_workspace_preview_composition() {
+        use crate::ui::iced::workspace_preview::{publish, PreviewTile, Published};
+        let mut p = Published::default();
+        p.usable = (1920.0, 1040.0);
+        p.wallpaper = Some((10, 20, 30));
+        p.workspaces.insert(
+            "0".into(),
+            vec![PreviewTile { wid: 777001, x: 0.0, y: 0.0, w: 960.0, h: 520.0 }],
+        );
+        publish(p);
+        let h = resolve_drawlist_image("workspace://0!app-window", 176, 64)
+            .expect("workspace 合成");
+        let (w, hh, data) = handle_rgba(&h);
+        assert_eq!((w, hh), (176, 64));
+        // 壁纸基色铺底在场（非 tile 区像素 = 10,20,30）。
+        assert!(
+            data.chunks(4).any(|px| px[0] == 10 && px[1] == 20 && px[2] == 30),
+            "壁纸基色铺底"
+        );
+        // tile 灰块在场（无快照 → 70,74,84）。
+        assert!(
+            data.chunks(4).any(|px| px[0] == 70 && px[1] == 74 && px[2] == 84),
+            "tile 灰块占位"
+        );
+        // 分区缺席 → fallback 图标。
+        assert!(
+            resolve_drawlist_image("workspace://9!app-window", 64, 64).is_some(),
+            "缺席分区 → fallback 图标"
+        );
+        // 清场（ Published 全局静态——防污染他测）。
+        publish(Published::default());
+    }
+
+    /// Handle → (w, h, rgba)（iced Handle 数据面读取——ink/tint 断言口）。
+    fn handle_rgba(h: &ImageHandle) -> (u32, u32, Vec<u8>) {
+        use iced::widget::image::Handle;
+        match h {
+            Handle::Rgba { width, height, pixels, .. } => {
+                (*width, *height, pixels.to_vec())
+            }
+            _ => panic!("期望 RGBA Handle"),
+        }
     }
 }
