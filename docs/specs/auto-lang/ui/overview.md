@@ -100,6 +100,31 @@ web 真位图 not-yet。权威正文 =
 `t028_*` 宿主解析单测族 + `p028_image_arm`（AUTO_DESKTOP_E2E）+
 `IMAGE_FRAME_HEX` 双侧 golden。
 
+
+**live 输入接线 + shell queue 面（PLAN-029，provisional）**：①live 输入
+两端（P025-D1 核销）——`desktop_window_events` 扩键盘/滚轮/IME 三族臂
+（`EventStatus::Ignored` 门）+ 映射纯函数（Named→VK 转发表/Character→
+Chars/IME 三态/Lines×`WHEEL_LINE_PX`=40px；修饰位 wire 布局 bit0-3）+
+`DesktopEvent::LiveInput{window, input}` 泵入（带发生 OS 窗——update 臂
+`HostCtx.window` 桌面窗过滤 + picker 模态避让）+ `route_live_input` →
+broker_* 六函数零改动直用（键盘/IME=焦点窗、滚轮=last_cursor 命中窗）；
+真机证据分层（`p029_live_input_arm` 五腿 + acceptance key verb +
+`sendinput.rs` FFI 组装层——真桌面 SendInput e2e 腿 not-yet）。②shell
+面四 kind 入册（popover 覆盖序渲染/全 14 placement 几何/命中互斥 catcher/
+Esc→on_dismiss/零开合状态机；mousearea 命中序；windowthumbnail·
+workspacepreview 桥接）。③词汇增量——`lucide:{name}[#{rrggbb}]` 真渲
+（resvg 0.45 + tiny-skia 0.11 Contain 栅格化，缓存键 `{src}@{w}x{h}`，
+P026-D1 字形半句核销；`svgdoc:` 维持 not-yet）+ `thumbnail://{wid}!
+{fallback}` miss→图标 + `workspace://{ws}!{fallback}` 宿主合成
+（`workspace_preview` 数据面 + `tile_rect`）。④`shell_pack_native_
+covered` 五件 Covered（B 覆盖门预演）；翻转复测 judged 72.7% < 95%
+维持不翻。权威正文 =
+`docs/design/autoui/desktop-protocol-v1.md` §1.10（本节仅指针，不
+重复）；测试面 = `live_input_tests` + `sendinput` 组装 + popover 几何/
+命中族 + `t029_*` + `shell_pack_native_covered` + `p029_live_input_
+arm`/`p029_shell_face_arm`（AUTO_DESKTOP_E2E）；复测行 =
+`docs/plans/reports/p029-native-flip-retest-row.md`。
+
 ## 现状（2026-09-17）
 
 **examples/ui 全量 Style Recipe 配方化 + 裸调色板色门禁（plan-637 落地，GOAL-007）**：
