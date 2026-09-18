@@ -94,6 +94,11 @@ icon 名单受限；P537-D2 语义 grid 的 cols/class 状态绑定不解析—�
 widget-parens props + Init 几何 + 段记录打包，载体 widgets-gallery components/）；
 VM 轨子组件 Init 渲染期补发（props 播种→Init→build，vue onMounted 对齐）——
 派生计算型组件双轨可用的地基。契约细节见 [design/chart-components.md](design/chart-components.md)。
+**tag 双态归属（PLAN-643）**：chart 四裸名 tag（area/bar/line/donut-chart）schema 分类
+`package_origin`——声明面只登记名与契约（palette/lsp 词汇面），实现面归 official 组件包，
+不参与 builtin 压制（`is_builtin_fold`/`resolve` 排除，Plan 408/435 通用 shadow 规则不动）；
+合并臂 demo 适配器装载链补 package 分支（`load_ext_imports_for_vm` sweep，P642-D1 核销）；
+bp `palette_drift` 合法集 = WidgetRegistry ∪ schema package-origin tags。
 **交互态（plan-498 落地）**：四图族 emphasis 二态（line/area 图例悬停高亮+转折点浮现/
 bar 分组描边/donut 扇区中角外移）+ legend onclick 点击显隐（mouse-area on_click 引擎臂，
 iced on_press/vue @click）；悬停态字段图族专属（hovLn/hovAr/hovBr/hovDn 无悬停哨兵 9——

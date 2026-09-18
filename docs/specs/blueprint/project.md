@@ -33,8 +33,10 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
    Fiori pattern 库可引用锚点）。
 2. **契约可成文且非平凡**：`props` / `actions` / `dataSource` 至少一类有真实
    数据接口（纯静态装饰组合不入选——那是 recipe/主题的事）。
-3. **palette ⊆ WidgetRegistry 且双端可发射**：palette 每项过
-   `palette_drift` 零漂移门禁，且 vue 发射轨与 VM 解释轨均可产出产物。
+3. **palette ⊆ AURA registry ∪ schema package-origin tags 且双端可发射**：palette 每项过
+   `palette_drift` 零漂移门禁——合法集 = `WidgetRegistry` ∪ schema `package_origin` tags
+   （PLAN-643：official 组件包供给名经词汇面入列，chart 四 tag 首批；词表外未知名仍拒绝），
+   且 vue 发射轨与 VM 解释轨均可产出产物。
 4. **状态机含量 ≥ 三态**：包内至少承载三态行为（如 loading/empty/error、
    step 分步、success/error）——防"静态摆件"混入 blueprint 层。
 5. **NL spec 可描述、可被 agent 组装**：六问可答（contract.md），L3 通道
