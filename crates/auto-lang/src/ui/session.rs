@@ -2302,6 +2302,140 @@ pub enum DesktopEvent {
     /// OS 剪贴板（418 文本 → 485 文件/图片）→ on_native_paste 注入焦点
     /// App。490（桌面热键清理）后合收编本臂键位（热键域协调条款）。
     NativePaste,
+    /// PLAN-029 T-02（D1）：宿主 live 输入泵入——`desktop_window_events`
+    /// 扩臂产出（键盘/滚轮/IME，Ignored 门）。window = 发生 OS 窗（update
+    /// 臂按 `HostCtx.window` 桌面窗过滤，防独立 app 窗未捕获键漏路由）；
+    /// 路由零新增：`route_live_input` → broker_* 既有语义（键盘/IME =
+    /// 焦点窗、滚轮 = last_cursor 命中窗）。
+    LiveInput {
+        window: iced::window::Id,
+        input: LiveInput,
+    },
+}
+
+/// PLAN-029 T-02（D1）：宿主 live 输入六型——listen_with 键盘/滚轮/IME
+/// 臂的映射产物（纯函数构造，单测钉死），生产路由见
+/// [`DesktopSession::route_live_input`]。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LiveInput {
+    /// Named 键 → Windows VK（`InputMsg::KeyPressed.key` 语义；投影器现
+    /// 消费 8=Backspace/27=Escape）。
+    KeyPressed { key: u32, modifiers: u8 },
+    /// 可打印 text（逐字符 `broker_char`——CharTyped 语义；控制字符在
+    /// 投影器 char_typed 侧被滤，此处原样透传）。
+    Chars { text: String },
+    ImeCommit { text: String },
+    ImePreedit { text: String },
+    ImeCancelled,
+    /// 像素化滚轮增量（Lines×[`WHEEL_LINE_PX`]；投影器 on_scroll 像素
+    /// 消费——editor_frame WheelScrolled 直通同号）。
+    Wheel { dx: f32, dy: f32 },
+}
+
+/// Lines→像素换算约定（D1 定案：1 行 = 40px；§1.10 入册）。
+pub const WHEEL_LINE_PX: f32 = 40.0;
+
+/// iced 修饰 → wire 修饰位（bit0 shift / bit1 ctrl / bit2 alt / bit3 logo
+/// ——`editor_frame::wire_mods` 反向同表；iced 0.14 `Modifiers::bits` 是
+/// 三位一段布局不可直用）。
+pub fn wire_modifiers(m: &iced::keyboard::Modifiers) -> u8 {
+    let mut bits = 0u8;
+    if m.shift() {
+        bits |= 1;
+    }
+    if m.control() {
+        bits |= 1 << 1;
+    }
+    if m.alt() {
+        bits |= 1 << 2;
+    }
+    if m.logo() {
+        bits |= 1 << 3;
+    }
+    bits
+}
+
+/// Named 键 → Windows VK 转发表（D1 定案转发集：编辑/导航/功能键；
+/// 修饰键与其余 Named 不转发——无子侧消费者，热键链路另有
+/// `desktop_hotkey_subscription` 自理）。
+pub fn named_key_vk(name: &iced::keyboard::key::Named) -> Option<u32> {
+    use iced::keyboard::key::Named as N;
+    Some(match name {
+        N::Backspace => 8,
+        N::Tab => 9,
+        N::Enter => 13,
+        N::Escape => 27,
+        N::Space => 32,
+        N::PageUp => 33,
+        N::PageDown => 34,
+        N::End => 35,
+        N::Home => 36,
+        N::ArrowLeft => 37,
+        N::ArrowUp => 38,
+        N::ArrowRight => 39,
+        N::ArrowDown => 40,
+        N::Insert => 45,
+        N::Delete => 46,
+        N::F1 => 0x70,
+        N::F2 => 0x71,
+        N::F3 => 0x72,
+        N::F4 => 0x73,
+        N::F5 => 0x74,
+        N::F6 => 0x75,
+        N::F7 => 0x76,
+        N::F8 => 0x77,
+        N::F9 => 0x78,
+        N::F10 => 0x79,
+        N::F11 => 0x7A,
+        N::F12 => 0x7B,
+        _ => return None,
+    })
+}
+
+/// 键盘事件 → live 输入（纯函数）：`KeyPressed` Named → VK 转发；
+/// Character 且有 text → `Chars`；`KeyReleased`/`ModifiersChanged` 不
+/// 转发（broker 无 key_released、修饰态由 `__modifiers_changed` 独立
+/// 维护）。
+pub fn live_inputs_from_keyboard(kb: &iced::keyboard::Event) -> Vec<LiveInput> {
+    match kb {
+        iced::keyboard::Event::KeyPressed { key, text, modifiers, .. } => match key {
+            iced::keyboard::Key::Named(name) => named_key_vk(name)
+                .map(|key| {
+                    vec![LiveInput::KeyPressed { key, modifiers: wire_modifiers(modifiers) }]
+                })
+                .unwrap_or_default(),
+            iced::keyboard::Key::Character(_) => text
+                .as_ref()
+                .filter(|t| !t.is_empty())
+                .map(|t| vec![LiveInput::Chars { text: t.to_string() }])
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+/// IME（input_method）事件 → live 输入（纯函数）：Preedit/Commit/Closed
+/// → 三态；Opened 无子侧语义不转发。
+pub fn live_input_from_input_method(
+    im: &iced::advanced::input_method::Event,
+) -> Option<LiveInput> {
+    use iced::advanced::input_method::Event as Ime;
+    Some(match im {
+        Ime::Preedit(text, _) => LiveInput::ImePreedit { text: text.clone() },
+        Ime::Commit(text) => LiveInput::ImeCommit { text: text.clone() },
+        Ime::Closed => LiveInput::ImeCancelled,
+        Ime::Opened => return None,
+    })
+}
+
+/// 滚轮增量 → live 输入（纯函数）：Lines × 40px 像素化 / Pixels 直通。
+pub fn live_input_from_wheel(delta: &iced::mouse::ScrollDelta) -> Option<LiveInput> {
+    let (dx, dy) = match delta {
+        iced::mouse::ScrollDelta::Lines { x, y } => (x * WHEEL_LINE_PX, y * WHEEL_LINE_PX),
+        iced::mouse::ScrollDelta::Pixels { x, y } => (*x, *y),
+    };
+    Some(LiveInput::Wheel { dx, dy })
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
@@ -3500,6 +3634,36 @@ fn spawn_outproc_child(
             }
         }
         false
+    }
+
+    /// PLAN-029 T-02（D1）：live 输入生产路由——`DesktopEvent::LiveInput`
+    /// update 臂唯一入口；broker_* 六函数零改动直用（键盘/IME = 焦点窗、
+    /// 滚轮 = last_cursor 命中窗）。返回是否路由成功（观测/e2e 断言用）。
+    #[cfg(feature = "ui-iced")]
+    pub fn route_live_input(&mut self, input: &LiveInput) -> bool {
+        match input {
+            LiveInput::KeyPressed { key, modifiers } => self.broker_key_event(*key, *modifiers),
+            LiveInput::Chars { text } => {
+                let mut routed = false;
+                for ch in text.chars() {
+                    routed |= self.broker_char(ch);
+                }
+                routed
+            }
+            LiveInput::ImeCommit { text } => self.broker_ime_commit(text),
+            LiveInput::ImePreedit { text } => self.broker_ime_preedit(text),
+            LiveInput::ImeCancelled => self.broker_ime_cancelled(),
+            LiveInput::Wheel { dx, dy } => {
+                // 滚轮路由指针命中窗（hover 语义）——listen_with 回调不带
+                // 光标位，取 WM 持续回写的 last_cursor（GlobalPress 同源）。
+                let cursor = self
+                    .host
+                    .as_ref()
+                    .map(|h| h.wm.last_cursor.get())
+                    .unwrap_or_default();
+                self.broker_scroll(cursor.x, cursor.y, *dx, *dy)
+            }
+        }
     }
 
     /// 宿主动作落会话（与 `host::ProtocolHost::handle` 的动作臂同构；
@@ -7083,8 +7247,11 @@ mod tests {
 /// Plan 453 T4b/T4c：桌面级窗口事件订阅 —— 原生产出 DesktopMessage（不经
 /// App 打标通路的桌面事件），与业务订阅在批量点并列合并。窗口生命周期
 /// 统一由此产出（T4c 起含 Opened/Focused，业务订阅侧不再重复捕获）。
+/// PLAN-029 T-02（D1）：扩键盘/滚轮/IME 三族 live 臂——Ignored 门
+/// （Captured = host 真 widget 已消费不转发，keyboard_subscription 先例）；
+/// 映射纯函数单测钉死；window 位随行（update 臂按桌面窗过滤）。
 pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
-    iced::event::listen_with(|e, _status, wid| match e {
+    iced::event::listen_with(|e, status, wid| match e {
         iced::Event::Window(iced::window::Event::Opened { size, .. }) => {
             Some(DesktopMessage::Desktop(DesktopEvent::WindowOpened(wid, size)))
         }
@@ -7096,6 +7263,21 @@ pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
         }
         iced::Event::Window(iced::window::Event::Unfocused) => {
             Some(DesktopMessage::Desktop(DesktopEvent::WindowUnfocused(wid)))
+        }
+        iced::Event::Keyboard(kb) if status == iced::event::Status::Ignored => {
+            live_inputs_from_keyboard(&kb).into_iter().next().map(|input| {
+                DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input })
+            })
+        }
+        iced::Event::InputMethod(im) if status == iced::event::Status::Ignored => {
+            live_input_from_input_method(&im)
+                .map(|input| DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input }))
+        }
+        iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })
+            if status == iced::event::Status::Ignored =>
+        {
+            live_input_from_wheel(&delta)
+                .map(|input| DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input }))
         }
         _ => None,
     })
@@ -7277,5 +7459,222 @@ mod hotkey_tests {
 
         assert!(t.apply_override("cycle_window", "alt+tab"), "G1 逃生舱：显式复活 Alt+Tab");
         assert!(t.matches(HotkeyAction::CycleWindow, &mods(false, true, false), &named(iced::keyboard::key::Named::Tab)));
+    }
+}
+
+#[cfg(test)]
+mod live_input_tests {
+    use super::*;
+
+    /// PLAN-029 T-02：VK 转发表全覆盖（D1 定案转发集逐键钉死）。
+    #[test]
+    fn vk_table_covers_forwarding_set() {
+        use iced::keyboard::key::Named as N;
+        let table = [
+            (N::Backspace, 8u32),
+            (N::Tab, 9),
+            (N::Enter, 13),
+            (N::Escape, 27),
+            (N::Space, 32),
+            (N::PageUp, 33),
+            (N::PageDown, 34),
+            (N::End, 35),
+            (N::Home, 36),
+            (N::ArrowLeft, 37),
+            (N::ArrowUp, 38),
+            (N::ArrowRight, 39),
+            (N::ArrowDown, 40),
+            (N::Insert, 45),
+            (N::Delete, 46),
+            (N::F1, 0x70),
+            (N::F6, 0x75),
+            (N::F12, 0x7B),
+        ];
+        for (name, vk) in table {
+            assert_eq!(named_key_vk(&name), Some(vk), "{name:?}");
+        }
+        // 修饰键与其余 Named 不转发（热键链路自理）。
+        for name in [N::Shift, N::Control, N::Alt, N::CapsLock, N::ContextMenu] {
+            assert_eq!(named_key_vk(&name), None, "{name:?} 不转发");
+        }
+    }
+
+    /// 键盘映射：Named → KeyPressed（含 wire 修饰位）；Character+text →
+    /// Chars；KeyReleased/ModifiersChanged/修饰 Named 不转发。
+    #[test]
+    fn keyboard_mapping_shapes() {
+        use iced::keyboard::{Event as Kb, Key, Modifiers, key::Named as N};
+        let mut m = Modifiers::default();
+        m |= Modifiers::CTRL;
+        assert_eq!(
+            live_inputs_from_keyboard(&Kb::KeyPressed {
+                key: Key::Named(N::Escape),
+                modified_key: Key::Named(N::Escape),
+                physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+                location: iced::keyboard::Location::Standard,
+                modifiers: m,
+                text: None,
+                repeat: false,
+            }),
+            vec![LiveInput::KeyPressed { key: 27, modifiers: 0b10 }]
+        );
+        assert_eq!(
+            live_inputs_from_keyboard(&Kb::KeyPressed {
+                key: Key::Character("1".into()),
+                modified_key: Key::Character("1".into()),
+                physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+                location: iced::keyboard::Location::Standard,
+                modifiers: Modifiers::default(),
+                text: Some("1".into()),
+                repeat: false,
+            }),
+            vec![LiveInput::Chars { text: "1".into() }]
+        );
+        // 修饰 Named 键按下（如 Shift）不产生转发。
+        assert!(live_inputs_from_keyboard(&Kb::KeyPressed {
+            key: Key::Named(N::Shift),
+            modified_key: Key::Named(N::Shift),
+            physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+            location: iced::keyboard::Location::Standard,
+            modifiers: Modifiers::default(),
+            text: None,
+            repeat: false,
+        })
+        .is_empty());
+        assert!(live_inputs_from_keyboard(&Kb::KeyReleased {
+            key: Key::Named(N::Enter),
+            modified_key: Key::Named(N::Enter),
+            physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+            location: iced::keyboard::Location::Standard,
+            modifiers: Modifiers::default(),
+        })
+        .is_empty());
+        assert!(live_inputs_from_keyboard(&Kb::ModifiersChanged(Modifiers::default())).is_empty());
+    }
+
+    /// IME 三态 + Opened 不转发；滚轮 Lines×40/Pixels 直通；wire 修饰位
+    /// 四键位组合。
+    #[test]
+    fn ime_wheel_and_modifiers_shapes() {
+        use iced::advanced::input_method::Event as Ime;
+        use iced::keyboard::Modifiers;
+        use iced::mouse::ScrollDelta;
+        assert_eq!(
+            live_input_from_input_method(&Ime::Preedit("中".into(), None)),
+            Some(LiveInput::ImePreedit { text: "中".into() })
+        );
+        assert_eq!(
+            live_input_from_input_method(&Ime::Commit("中文".into())),
+            Some(LiveInput::ImeCommit { text: "中文".into() })
+        );
+        assert_eq!(live_input_from_input_method(&Ime::Closed), Some(LiveInput::ImeCancelled));
+        assert_eq!(live_input_from_input_method(&Ime::Opened), None);
+
+        assert_eq!(
+            live_input_from_wheel(&ScrollDelta::Lines { x: 0.0, y: -3.0 }),
+            Some(LiveInput::Wheel { dx: 0.0, dy: -120.0 })
+        );
+        assert_eq!(
+            live_input_from_wheel(&ScrollDelta::Pixels { x: 4.0, y: -9.5 }),
+            Some(LiveInput::Wheel { dx: 4.0, dy: -9.5 })
+        );
+
+        let mut m = Modifiers::default();
+        m |= Modifiers::SHIFT | Modifiers::ALT | Modifiers::LOGO;
+        assert_eq!(wire_modifiers(&m), 0b1101);
+        assert_eq!(wire_modifiers(&Modifiers::default()), 0);
+    }
+
+    /// route_live_input 生产路由：键盘/字符/IME 走焦点窗、滚轮走
+    /// last_cursor 命中窗——真管道对端落 wire 断言（D1 路由语义零新增，
+    /// 与 broker_input_production_routes 同 harness 形态）。
+    #[test]
+    fn route_live_input_routes_to_focus_and_hover() {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        use crate::ui::desktop_protocol::transport;
+
+        let pipe = format!("autodesk-live-input-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        let component = crate::build_dynamic_component(
+            r#"widget t { view { text "x" } }"#,
+            None,
+        )
+        .expect("build");
+        let app_id = session.allocate_app(component);
+        let wid = session.wm_add_win(
+            app_id,
+            "t".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(480.0, 320.0)),
+        );
+        session.wm_focus(wid);
+        let mut child_end = transport::connect(&pipe, 2000).expect("child connect");
+        let host_end = listener.wait_connect().expect("host accept");
+        let mut client =
+            crate::ui::desktop_protocol::stage3::BrokerClient::new(pipe.clone(), host_end);
+        client.wid = Some(wid);
+        session.broker_clients.insert(pipe.clone(), client);
+
+        fn wait_msg(
+            child_end: &mut Box<dyn transport::Transport + Send>,
+        ) -> Option<ProtocolMsg> {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                if let Some(loaded) = child_end.try_recv() {
+                    return Some(loaded.expect("解码"));
+                }
+                if std::time::Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+
+        // 键盘（VK）→ 焦点窗 KeyPressed 落 wire。
+        assert!(session.route_live_input(&LiveInput::KeyPressed { key: 13, modifiers: 0 }));
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::KeyPressed { wid: w, key, .. })) => {
+                assert_eq!((w, key), (wid.0, 13));
+            }
+            other => panic!("KeyPressed 未落 wire: {other:?}"),
+        }
+
+        // 字符 → 焦点窗 CharTyped 落 wire（Chars 逐字符）。
+        assert!(session.route_live_input(&LiveInput::Chars { text: "10".into() }));
+        for expect in ['1', '0'] {
+            match wait_msg(&mut child_end) {
+                Some(ProtocolMsg::Input(InputMsg::CharTyped { wid: w, ch })) => {
+                    assert_eq!((w, ch), (wid.0, expect));
+                }
+                other => panic!("CharTyped({expect}) 未落 wire: {other:?}"),
+            }
+        }
+
+        // IME commit → 焦点窗 ImeCommit 落 wire。
+        assert!(session.route_live_input(&LiveInput::ImeCommit { text: "文".into() }));
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::ImeCommit { wid: w, text })) => {
+                assert_eq!((w, text.as_str()), (wid.0, "文"));
+            }
+            other => panic!("ImeCommit 未落 wire: {other:?}"),
+        }
+
+        // 滚轮 → last_cursor 命中窗（hover 语义）。
+        session.host.as_mut().unwrap().wm.last_cursor.set(iced::Point::new(100.0, 100.0));
+        assert!(session.route_live_input(&LiveInput::Wheel { dx: 0.0, dy: -40.0 }));
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::Scroll { wid: w, dx, dy })) => {
+                assert_eq!((w, dx, dy), (wid.0, 0.0, -40.0));
+            }
+            other => panic!("Scroll 未落 wire: {other:?}"),
+        }
+
+        // 焦点窗回收后键盘不路由。
+        let host = session.host.as_mut().unwrap();
+        host.wm.wins.clear();
+        host.wm.focused = None;
+        assert!(!session.route_live_input(&LiveInput::Chars { text: "y".into() }));
     }
 }

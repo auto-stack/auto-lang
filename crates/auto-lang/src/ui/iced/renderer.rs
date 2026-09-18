@@ -17349,6 +17349,18 @@ fn compare_pngs(
                             }
                         }
                     }
+                    // PLAN-029 T-02（D1）：live 输入泵入——桌面窗过滤（防独立
+                    // app 窗未捕获键漏路由）+ picker 模态避让（负一屏开时键
+                    // 归 picker 导航，不透传子窗）→ 生产路由（键盘/IME = 焦点
+                    // 窗、滚轮 = last_cursor 命中窗，broker_* 零改动直用）。
+                    DesktopEvent::LiveInput { window, input } => {
+                        let desktop_window = state.host.as_ref().map(|h| h.window);
+                        if desktop_window == Some(window)
+                            && !PICKER_KEYS_OPEN.load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            state.route_live_input(&input);
+                        }
+                    }
                     // Plan 462：desktop 帧泵 —— 空更新，仅驱动 view 重算
                     //（MCP 截图请求在 view 投递 / update 消费）。
                     // Plan 464 T4：帧泵期排空（463 排空 #1 上移后的空闲期
