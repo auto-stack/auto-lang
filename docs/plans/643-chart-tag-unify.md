@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-643
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived（2026-09-18 work 开始）
 feature_name: chart-tag-unify（chart 裸名归属统一与 bp palette 包词汇面）
 author: [agent]
 created_at: 2026-09-18
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: [GOAL-007]      # 引用 docs/specs/goals.md 的 GOAL-NNN（review 终定）
 
 affects: [blueprint, auto-lang/ui]   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -212,25 +212,117 @@ contract.md 变体提升评审流程留痕。
   schema 元素的全部下游（生成器回写、a2ts/vue 轨解析、docs_gen 参考表、S004
   消费方）；③盘点官方 chart 组件包副本全名单。产出：归因结论 + §5.2 选项
   裁定 + 若主因属 D4 则触发 §10.3 缩范围。验证：结论记入本节。→ 全 AC 前置
+  **[✅ 已完成 2026-09-18]** 结论：
+  - **①归因（代码级证实）**：压制源双重。**(a) 生成链**：`is_builtin_fold`
+    （component_registry.rs:316-328）对**任意** schema 元素不分 tier 当 builtin，
+    `register_local`（api.rs:818-829）拒同名折叠本地组件 → S004（P642-D1 日志
+    实证）。**(b) 合并臂运行时装载链（空画布精确落点）**：ui-gallery VM 臂经
+    `load_ext_imports_for_vm`（lib.rs:3030 ext-stub 链）装载 demo 适配器——
+    PLAN-051 C4 注册适配器 widget（Demo024Charts）、PLAN-632 F3 注册传递 use
+    模块组件，但适配器内 `use { package: official from "components" }`
+    **无任何装载分支**（模块链只处理 `use <mod>`/`use.web`；package 仅
+    build_dynamic_component_inner lib.rs:4225 根组件分支处理）→ LineChart 等
+    四组件不进 registry/child_decls → 运行时 `line-chart` 实例落 schema
+    builtin（backends:none）→ 空画布。**独立臂正常因**：standalone 走
+    build_dynamic_component_inner，其 package 分支直接 `registry.register`
+    绕过 register_local，包组件成为子组件名优先解析。**D4 排除**：per-demo
+    命名空间化是 027 tree 同名异容（kept-first）问题，与本因无关 → §10.3
+    不触发、不缩范围。**裁定**：T-04 扩一项"合并臂装载链 package 分支补齐"
+    （load_ext_imports_for_vm 增 package 扫描装载，镜像 lib.rs:4225 既有
+    生产分支；§3"合并臂生成面若涉 T-01 归因后定"授权内；register_local
+    通用 shadow 规则不触碰）。
+  - **②下游盘点**：tier 消费面仅两处——`aura/schema_loader.rs`（字符串
+    parse→ElementTier::parse().unwrap_or(Unclassified)，加变体自动兼容）+
+    `auto-lsp/completion.rs:209`（exhaustive match 排序，需补一臂）；
+    `apply_schema_vue_mappings`（registry.rs:55）只 overlay 带 `vue:` spec
+    的元素（chart 四元素无）不受影响；docs_gen 参考表随 schema 重渲染
+    （Category C 门禁覆盖）。
+  - **③包副本清单**：恰两处——`examples/ui/024-charts/src/front/components/`
+    与 `examples/charts-gallery/src/front/components/`（各四组件 + package.at；
+    其余 components/ 包为非 chart 组件）。§5.2 **选项 A 裁定**（schema 单一
+    权威，零物理搬运）。
+  - **验证基线注记**：024 语料 cap/hint 笔误修复与发射器包级联在 642 分支
+    （plan-642-dev ba009076f，未合）；T-07 合并臂验证以 lang-642 组内
+    auto-os worktree 的已发射 demos（含 024-charts.at + components/）为
+    只读基线，scratch 拷贝运行（不写他仓 worktree）。
 - **T-02 spec 先行**：SD-01/SD-02 两文件补章/改规则（chart-components.md
   双态归属补章；contract.md 验证面包词汇面）。
   验证：diff 审读。→ AC-06
+  **[✅ 已完成]** chart-components.md 增"tag 双态归属"补章（声明面 package_origin
+  × 实现面包 × 压制判定语义 + 合并臂装载语义）；contract.md 验证面合法集改
+  "AURA registry（含 alias）∪ schema package_origin tags"。worktree 内备妥，
+  merge 时随 SD 沉淀发布。
 - **T-03 schema 处置**：`schema/aura.at` 四 chart 元素 package-origin 分类 +
   `aura/schema.rs` 分类词汇支持（如需）+ 生成器/回写面适配（T-01 盘点清单）。
   验证：`cargo check -p auto-lang`；`cargo test -p auto-lang --test docs_gen`。→ AC-03
+  **[✅ 已完成]** aura.at 四元素 `tier: "unclassified"`→`"package_origin"`（其余
+  unclassified 元素零改动，`git diff` 审读）；`ElementTier::PackageOrigin` 变体
+  （parse/as_str）；auto-lsp completion 补臂（rank 与 unclassified 同档）。
+  apply_schema_vue_mappings 不受影响（四元素无 vue: spec）。docs_gen/schema_drift
+  全绿（随 `cargo t`）。
 - **T-04 压制排除**：`ui_gen/widget`ComponentRegistry` builtin 压制集排除
   package-origin；S004 对 chart 四 tag 消失、Card 等既有 shadow 不变。
   验证：scoped 测试（正/负）。→ AC-01 前置/AC-03
+  **[✅ 已完成]** `is_builtin_fold`/`resolve` 排除 package_origin（alias 臂同滤）；
+  **装载链 package 分支补齐**（T-01 裁定项）：`load_ext_imports_for_vm` 增
+  visited 全集 package 扫描装载（镜像 lib.rs:4225 动态分支：load_package →
+  ext_widget_decls + 包文件 use 依赖 collect_module_imports + 裸名别名）。
+  正/负测试：`package_origin_tags_do_not_suppress_local_components`（chart 四
+  组件放行 + Button 对照仍拒 + resolve 四 tag 归本地组件 + button 仍归内置）
+  8/8 绿；既有 a2vue Card shadow 用例不变（component_registry_test 全绿）。
 - **T-05 palette 包词汇面**：`bp/registry.rs` palette_drift 合法集扩展（§5.2
   裁定形态）+ 正/负测试。
   验证：`cargo t plan643`。→ AC-02
+  **[✅ 已完成]** `palette_drift` 合法集 = WidgetRegistry（含 alias）∪ schema
+  package_origin tags；`cmd_bp.rs` check 的 used-tag 候选集同步扩展。正/负：
+  `palette_accepts_package_origin_tags_but_rejects_unknown`（chart 四 tag 零漂移；
+  pie-chart 仍报漂移；data-table 实为 WidgetRegistry 内 DataTable alias 合法
+  通过，不作负样本——640-AC-09 该半句核销注记已随 KNOWN-DEBT 更新）。
 - **T-06 dashboard 图表变体提升**（依赖 640 合并）：spec `promotions:` 记录 →
   `reference/with_charts.at` + palette 增补 + 双端断言。
   验证：`auto bp check dashboard/overview` + 双端测试。→ AC-04
+  **[✅ 已完成（640 已合入 e53fd3a7e，依赖满足）]** spec.md：variants 增
+  `with_charts`、palette 增 chart 四 tag、`# Promotions` 评审记录（提案/差异/
+  裁定：包词汇面而非 registry 注册，484 维持）；`reference/with_charts.at`
+  （官方包消费方契约 `from "components"`，数据绑 metrics 形状字段，loading/
+  error 契约保留）；gotchas 语义随 spec 更新。`auto bp check` 3/3 过（loading/
+  error/palette）。双端测试（plan643_chart_tag_tests）：VM 轨
+  `t01_with_charts_vm_track_renders_charts`（scratch 物化 + 动态分支装载，
+  月轴标签 Jan..Jun 出图断言——组件 Init 由数据派生的硬证据）+ vue 轨
+  `t02`（SFC 生成 + 零 S004）+ `t03`（palette 零漂移）3/3 绿；plan639/640
+  回归全绿。测试物化用 charts-gallery 副本（024 副本笔误属 642 辖区）。
 - **T-07 双臂验证与双债核销（review 前兜底）**：024-charts 独立/合并双臂出图
   证据；KNOWN-DEBT 双核销行；裸 `cargo tv` 兜底；门禁档位复核（Category B+C，
   不触发 taa/ta）。
   验证：输出留档本节。→ AC-01/05
+  **[✅ 已完成]**
+  - **合并臂 A/B（AC-01 决定性证据）**：mini 宿主 `D:/autostack/.wt/lang-643/
+    ug-mini`（复刻 AppViewport `use.web component` 嵌入链 + 642 发射产物
+    demos/024-charts.at + demos/components/ 原样拷贝）+ test_vm_mcp.py MCP
+    快照。**base 二进制（ea311722b）**：月轴标签 False、图表组件 Init 不执行
+    （仅 Demo024Charts_Init）；**fix 二进制（68d6d457a）**：
+    `handler_LineChart_Init`/DonutChart 执行、AnimLnTick/AnimDnTick 事件流
+    活跃、月轴 Jan..Jun + 图例（Desktop/Mobile/Tablet）齐全。
+    留档 `D:/autostack/.wt/lang-643/evidence/p643_merged_{base,fix}.png` +
+    `p643_merged_{base,fix}_snapshot.txt`。642 发射器（包级联）为其分支
+    未合产物——AC-01 全链落地需 642 合入（其 demos 已含修复后语料）；
+    本计划交付运行时两腿（schema 豁免 + 装载链分支）。
+  - **独立臂**：scratch 024 语料（642 修复后拷贝）下 base==fix（月标签均
+    False——scratch 缺 stylekit 上下文的语料装载态，与 master 基线一致，
+    **非本计划回归**；642 分支自持其独立臂出图证据 fix3 截图）。动态分支
+    正向控制由 t01 单测承担（charts-gallery 包月轴出图）。
+  - **双债核销**：KNOWN-DEBT-AND-RISKS.md P642-D1 ✅ 核销（根因成文 + A/B
+    实证引用）；640 chart 半句 ✅ 核销（palette 包词汇面正解，"注册进
+    WidgetRegistry"方向证伪；data-table 半句保留移交）。
+  - **cargo tv 兜底**：3757 跑 3756 绿，唯一红 `real_sidebar_at_parses_with_
+    navtree` 为 642 复审在案 master 预存（R642-F4 其分支在修）。tv 档曾被
+    plan024 测试缺 ui 门控整档阻断（基线即坏）——顺带一行门控修复
+    （85d4d10b4，日常档行为不变）。
+  - **门禁档位**：Category B（cargo check 零新增警告 + cargo t 全档）+
+    Category C（docs_gen/schema_drift 绿）✓；未触发 taa/ta（aavm 路径
+    零触及）✓。`cargo t` 全档 5074 跑 7 红均为 master 预存（基线复证：
+    musk×3/layout×1/vm_bridge×2 + stage3 环境类×2，逐一经 stash-基线或
+    文件零改动复证）。
 
 依赖链：T-01 → {T-03, T-04, T-05}（T-02 可与 T-01 并行，裁定后定稿）；
 T-04 → T-07；T-06 独立于 T-03..T-05（仅依赖 640）。
@@ -241,14 +333,48 @@ T-04 → T-07；T-06 独立于 T-03..T-05（仅依赖 640）。
   outcome: pass（授权范围内可交付 work），next: work。
   待用户确认项见 §10（三项，均有默认裁定；#3 为 scope guard 非预决）。
 
+```yaml
+stage: work
+plan_id: PLAN-643
+plan_revision: 1
+outcome: pass                  # 全部 7 任务完成，无 blocker；next: review
+code_commit:
+  auto-lang: 85d4d10b4         # plan-643-dev（68d6d457a 主实现 + 85d4d10b4 tv 门控顺带修复）
+base_commit:
+  auto-lang: ea311722b         # master（worktree D:/autostack/.wt/lang-643/auto-lang）
+dependency_revisions:
+  auto-down: c6ff105 (detached 组内兄弟 .wt/lang-643/auto-down，仅满足 path 依赖)
+  # 只读借用（未改动）：.wt/lang-642/{auto-lang,auto-os} 的 642 在途产物
+  #（demos 发射面 + 修复后 024 语料）用于合并臂 A/B 验证与独立臂语料。
+task_ids: [T-01, T-02, T-03, T-04, T-05, T-06, T-07]
+evidence: |
+  - 压制排除/装载链：cargo t plan643 3/3；component_registry_test 8/8；
+    bp registry 5/5；plan639/640 回归绿；cargo t 全档 5074 跑 7 红均为
+    master 预存（基线逐项复证）；docs_gen/schema_drift 绿（Category C）。
+  - 合并臂 A/B：mini 宿主 + MCP 快照/截图（evidence/p643_merged_{base,fix}.png）
+    —— base 无图表 Init、fix LineChart/DonutChart Init+动画 tick+月轴图例全出。
+  - 独立臂：base==fix 无回归（scratch 环境 642 语料下双方同态；
+    642 分支自持独立臂出图证据）。
+  - tv 兜底：3757 跑 3756 绿，唯一红为 642 在案 master 预存
+    real_sidebar_at_parses_with_navtree（R642-F4 其分支在修）。
+  - 双债核销：KNOWN-DEBT P642-D1 ✅ + 640 chart 半句 ✅（data-table 半句保留）。
+blockers: |
+  无阻断。协作注记两条：
+  1. AC-01 全链（ui-gallery 合并臂实机出图）需 642 发射器（包级联）合入——
+     其 demos 产物已验证与本计划运行时修复兼容（A/B 即用其产物）。
+  2. 024 语料 cap/hint 笔误修复在 642 分支（ba009076f），本计划未重复修复
+     （避免双写；测试物化改用 charts-gallery 干净副本）。
+next: review（/auto-plan:review；worktree 留用）
+```
+
 ## 10. 待澄清事项
 
-1. **palette 词汇面形态**（§5.2）：默认选项 A（schema 分类驱动，零物理搬运）；
-   若希望官方组件物理收拢单一权威包目录（选项 B，动两处 example 消费方），
-   请明示——影响 T-03/T-05 形态与工作量（B 约 +1 天）。
-2. **T-06 时序**：默认按依赖阻塞处理（643 执行期 640 未合则 T-06 等待，其余
-   任务不受阻）；若希望 T-06 强制随本计划交付，需协调 640 先合并。
-3. **（scope guard，非预决）** 若 T-01 归因认定 P642-D1 主因是 P642-D4
-   per-demo 包命名空间化（kept-first 冲突）而非 chart 空壳压制：本计划 G1 缩为
-   "空壳处置 + palette 面"（AC-01 改为移交记录），P642-D1 本体移交 D4 归因计划，
-   复审时按修订流程处理。
+1. **palette 词汇面形态**（§5.2）：~~默认选项 A~~ **已裁定：选项 A 落地**
+   （schema 分类驱动，零物理搬运；副本清单 T-01 ③：auto-os/widgets-gallery、
+   examples/charts-gallery、examples/ui/024-charts 三处）。
+2. **T-06 时序**：~~默认按依赖阻塞处理~~ **已解除**——PLAN-640 已合入
+   （e53fd3a7e landing，计划归档），T-06 随本计划正常交付。
+3. **（scope guard，非预决）** ~~若 T-01 归因认定 P642-D1 主因是 P642-D4~~
+   **已排除**：T-01 代码级归因证实主因 = 装载链 package 分支缺失 + 空壳
+   builtin 压制（D4 是 027 tree 同名异容问题，另一断面）；G1 未缩范围，
+   合并臂 A/B 出图实证在案。
