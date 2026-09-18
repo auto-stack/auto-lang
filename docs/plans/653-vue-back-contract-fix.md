@@ -1,18 +1,18 @@
 ---
 plan_id: PLAN-653
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-back-contract-fix
 author: [zhaopuming/zcode-session]
 created_at: 2026-09-18
 updated_at: 2026-09-18
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components: []   # 空置说明:仅对既有 spec 条目做 modify(见 SD-01),无组件废止
+new_spec_components: []          # 空置说明:契约分域规则落入既有 terminal-mux-model.md,无新组件
+touched_goals: [GOAL-007]        # GOAL-007 AutoUI 双端一致——D4 vue 轨样式发射正确性属双端同源面
 
-affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+affects: [auto-term/terminal-mux-model]  # SD-01 modify 目标(auto-term 仓)
+current_step: 5
 total_steps: 5
 ---
 
@@ -110,10 +110,7 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | (预计)无规范文本变更 | — | 019 规范"带参读一律 POST"已存在;本计划为**恢复合规**的缺陷修复。若 T-00 定稿走 GET+Query 路线,则修订 auto-term terminal-mux-model.md §V1.8 对应句 | 缺陷修复恢复既有契约;路线变更才动规范 | AC-01 |
-
-(若定稿 GET+Query,SD-01 转为对 terminal-mux-model.md 的 modify 并
-回填精确条目;纯 POST 路线则无规范增量,理由如上。)
+| SD-01 | modify | auto-term docs/specs/terminal-mux-model.md(§可见多终端视图契约) | before:"带参读一律 POST"(全域)。after:**分域**——rect-\*/命令型投影族维持一律 POST;标量 getter 族(tab-id-at/tab-is-active-at/tab-title-at/pane-cols/pane-rows/pane-cursor-\* 等)= **GET+Query**(纯读幂等面;前端客户端生成器按 `?i=` 形态发射,rust back 生成器以 `{Fn}Query`-struct 提取对齐) | T-00 定稿 GET+Query(后端单侧根修,零前端改动);auto-term 38477cf 落档 | AC-01 |
 
 ## 测试设计
 
@@ -151,16 +148,52 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
   ③对 1fc4772d9 做投影段最小复现(对拍生成 db.rs),定界单幅化破坏
   点。产出决策工件(证据归 docs/plans/evidence/653/)。前置:无。
   关联 AC-01/02/03。
+  [✅] **已完成**(本会话 2026-09-18):①定稿 **GET+Query**(前端生成器
+  已按 `?i=` 发射、api.at 源声明 GET、后端单侧根修);②exe 实落
+  `<app>/rust-workspace/<name>-back` 默认 target(cargo config 发现
+  基于 CWD,workspace 内 target-dir 配置不生效),仓根 DLL 距 exe 目录
+  5 级祖先,旧 take(4) 恒落空,D2 落点=sidecar 候选链扩展;③从零生成
+  db.rs 与部署版逐字节一致 + 投影实测全对,D3 撤销(与 rev1 判定一致)
+  。决策工件:evidence/653/t00-decision.md。
 - **T-01 [D1] 带参路由契约修复**(auto-lang worktree)。前置 T-00。
   关联 AC-01。
+  [✅] **已完成**:commit 3a6c78d59——scalar 分支 GET/DELETE 复用既有
+  `{Fn}Query`-struct 机制(endpoint_query_params+serde(default)),
+  POST 维持 Json。实测:带参/缺参/str 参数 GET 全 200,投影链完好,
+  POST 对照 200。cargo check -p auto-man 零新增 warning;nextest
+  -p auto-man 298/298。**调和记录**:worktree 曾有并行会话中断残留
+  的同任务 untyped Query<Value> 草稿(实测可编译可运行,axum Query
+  对 Value 有 Deref),按计划 D1 点名的既有机制重实现覆盖;草稿 diff
+  存证 evidence/653/t01-predecessor-wip-uncommitted.diff。
 - **T-02 [D2] dev DLL 解析修复**(auto-term 侧,兄弟 worktree)。
   前置 T-00。关联 AC-02。
+  [✅] **已完成**:auto-term plan-653-dev commit 38477cf——app/term.rs
+  候选链 exe 祖先 4→6 级 + CWD 祖先 4 级兜底(env 优先/dist 同目录
+  语义不变)。阴性对照:旧 sidecar 故障位置复现 panic;修复版同位置
+  tick 200 + [term-dll] 日志明示仓根 DLL;真实 `auto run -r vue` 管线
+  无手动 env 同证据(evidence/653/dll-probe-*.log、e2e-run.log)。
 - ~~T-03 [D3] 投影单幅化根修~~ 撤销(干净 back 复跑 12 步全绿,
   非缺陷;t01 门改由本计划 T-04 直接覆盖)。
+  [✅] 撤销已复核:本会话独立实测(从零生成 db.rs 逐字节比对 + 投影
+  全链探测)与 rev1 判定一致。
 - **T-05 [D4] 槽位样式发射修复**(auto-lang worktree + 前端重生成)。
   前置 T-00。关联 AC-05(新增)。
+  [✅] **已完成**:commit 7d5ae193d——extract_classes 动态 style 通道增
+  tailwind_class_template_to_inline_style 翻译(全 token 可识别才翻
+  译,未知整体回退;\${…} 插值保留),单点覆盖三处 :style 发射臂。
+  翻译器单测 + 生成级单测双绿;ui_gen::vue 模块 284/23 与 master
+  基线逐一致(23 红预存,非本改动引入)。从零重生成实测 App.vue 槽位
+  div position:absolute 定位生效。
 - **T-04 回归门**:从零生成 + t01 剧本 + workspace 全绿 + 受控浏览器
   端到端(首屏即见终端)。前置 T-01/T-02/T-05。关联 AC-04/05。
+  [✅] **已完成**(2026-09-18):从零生成(auto-term worktree app,
+  修复版生成器+sidecar)→ t01_model.sh 12 步全绿
+  (evidence/653/t01-model-run-653-final.log;磁吸 500/钳位 100/键盘
+  700/MAX_PANES 帽 -2/窗缺省 1024x768/close 重算全对)→ 受控浏览器
+  端到端:Tab 条"● shell 1"渲染、cmd banner+提示符首屏可见
+  (evidence/653/e2e-tabbar-banner.png、e2e-firstscreen-653.png)、
+  槽位 div computed style position:absolute 生效、scrollHeight
+  768(修复前 2209);GET+Query 线上 200;无手动 env DLL 解析成功。
 
 ## 复审记录
 
@@ -168,13 +201,82 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
   pass`(起草授权 = 用户裁定"独立的修复计划吧",022 会话;诊断证据
   已实测在案,T-00 为首批可执行项)。`next: work`(work 前按惯例
   `/auto-plan:review`)。
+- 2026-09-18 stage:work 交接(Plan 653 rev1,全 5 任务完成 → `outcome:
+  pass`,`status → execution_done`,`next: review`):code_commit =
+  auto-lang plan-653-dev **3a6c78d59**(T-01)+ **7d5ae193d**(T-05,
+  基线含 3fb469842 master merge);auto-term plan-653-dev **38477cf**
+  (T-02+SD-01,兄弟 worktree D:/autostack/.wt/lang-653/auto-term)。
+  task_ids = T-00/T-01/T-02/T-05/T-04 全完成(已回填 [✅] + 证据)。
+  验收对照:AC-01 ✅(GET+Query 线上 200/前端无 4xx)、AC-02 ✅(无
+  env DLL 解析,tick 200,阴性对照 panic 复现)、AC-03 ✅(t01 布局
+  多槽+分隔条全对)、AC-04 ✅(t01 12 步全绿)、AC-05 ✅(banner+提示符
+  首屏可见;**键入回显除外**——见待澄清 5)、AC-06 ✅(槽位 absolute
+  生效,scrollHeight 2209→768;48px 余量归窗模型缺省,见待澄清 6)。
+  并行会话调和:T-01 草稿存证后被本会话实现覆盖;worktree 已由该
+  会话并 master merge 3fb469842;用户裁定关闭对方 agent,后续由本
+  会话收口。证据:evidence/653/(t00-decision.md、t01 前后对照、
+  dll-probe 双态、t01-final、e2e 截图/日志)。
+- 2026-09-18 stage:review | plan_id PLAN-653 | rev1(7bd8e5147 承载,
+  语义契约未再变) | outcome:**pass** | reviewed_commit = auto-lang
+  plan-653-dev **7d5ae193d**(基 52d27ebcd,含 merge 3fb469842)+
+  auto-term plan-653-dev **38477cf** | dependency_revisions:auto-term
+  主检出 3a3339a(仅消费,未改动)| spec_inputs:auto-term
+  terminal-mux-model.md @38477cf(SD-01 hunk 复读合格——分域规则描
+  述当前行为、含 rationale、非执行日志)| acceptance_results(全部
+  在复审基线独立复现,非沿用实施摘要):
+  - AC-01 pass:tab-id-at?i=0 → 200、tab-title-at?i=0 → 200
+    "shell 1"(review-run 栈实测);
+  - AC-02 pass:[term-dll] 加载仓根 DLL、零 panic(复审 run 日志);
+  - AC-03 pass:t01 [2]/[3]/[4] 多槽+分隔条结构正确(/tmp/t01-review
+    复跑;归档见 evidence/653/t01-model-run-653-final.log 同版);
+  - AC-04 pass:12 步全绿(磁吸 500/钳位 100/键盘 700/帽 -2/窗缺省);
+  - AC-05 pass(部分语义见待澄清 5):Tab 条+banner+提示符 DOM 断言
+    全 true;
+  - AC-06 pass:9 个 absolute 槽位 div(5 pane+4 divider,t01 后树态)
+    getBoundingClientRect 全部 inFirstScreen=true,scrollHeight 768
+    (修复前 2209;48px 余量归窗模型缺省,待澄清 6)。
+  findings:
+  - F-1(P2,基线):auto-cache lib test 编译失败(E0063)——**master
+    HEAD 同样破损**,阻塞全仓 nextest 门;非 653 引入,建议独立修复
+    计划/走查件收口;
+  - F-2(P3,基线):plan367 real_sidebar_at_parses_with_navtree 分支
+    红/master 绿——分支落后 master 解析器修复(52d27ebcd 后 master 有
+    899aa2e9c/ffe2dac6d 等),merge 阶段 re-sync 即解,非 653 引入;
+  - F-3(P3,口径修正):先期记录"ui_gen::vue 23 预存红"经 nextest
+    进程隔离复测为 **cargo test 同进程状态干扰**(隔离下 master/分支
+    皆绿)——待澄清 8 已改口径;musk_vm_track_p053 族为特性门真
+    预存红(master 同态)。
+  evidence:evidence/653/ 全集 + review-run.log(临时,关键行已摘录
+  上文)+ 浏览器 evaluate 断言(9 槽位 rect 明细,本记录即凭证)。
+  next:**merge**(复审通过;merge 阶段需先把分支 re-sync master——
+  F-2 随 re-sync 自解)。
 
 ## 待澄清事项
 
-1. 带参读取契约定稿:POST+Json(019 规范字面)vs GET+Query(REST
-   惯例)——T-00 给建议,方向涉及规范措辞时报用户裁定;
-2. D2 落点:sidecar 候选链(auto-term 仓)vs vue 启动器 env 注入
-   (auto-lang 仓)——T-00 按 back exe 实际落点定;
-3. 投影回归若定界为 1fc4772d9(他人 master 修复引入):修复方式与
-   该 fix 作者意图的兼容性——届时回报用户;
-4. 与在途 642/647 会话的 auto-lang 冲突面:开工前复查其 worktree diff。
+1. ~~带参读取契约定稿~~ **已定稿 T-00**:GET+Query;SD-01 已按此修订
+   auto-term terminal-mux-model.md(auto-term 38477cf),复审时请
+   用户对规范措辞追认;
+2. ~~D2 落点~~ **已勘定**:sidecar 候选链扩展(auto-term 仓),启动器
+   env 注入方案否决;
+3. ~~投影回归归属~~ **已撤销**:干净 back 复跑 t01 全绿,非缺陷
+   (rev1 判定,本会话独立复证);
+4. ~~与在途 642/647 会话冲突面~~ 已消解:用户关闭并行 agent;其
+   T-01 草稿被覆盖存证,merge 3fb469842 已在案;
+5. **键入回显(G4/AC-05 措辞越界)**:vue 轨无键盘→引擎桥接(生成前端
+   唯一全局 keydown 监听 = PLAN-646 框选 Escape;mux_enqueue 仅 UI
+   动作码 1..6 无键入码)——019"只读视口"边界,且本计划非目标明文
+   维持该边界。G4/AC-05 的"可键入回显"措辞超出可交付面,AC-05 以
+   banner+提示符可达交付;若需键入能力请另立计划(生成器层键入桥)。
+   请用户裁定;
+6. **窗模型-视口 48px 错位**:back 无头缺省 1024x768,真实视口 720
+   高 → 槽位高 728px,scrollHeight 768 vs 720 余 48px。对齐面 =
+   apply-resize(mounted 首拍 500,rev1 D2 注"同族证据")——本计划
+   未修,建议随窗尺寸同步独立收口;
+7. **vue 页在极端模型态下重载 boot 静默失败**(t01 后 6-pane 极端
+   几何时重载零 /api 请求;干净态正常)——疑似前端 boot 健壮性缺口,
+   非 653 缺陷集,留后续计划勘定;
+8. **ui_gen::vue "23 预存红"口径修正(review 定责)**:cargo test
+   单进程下 23 例红系**同进程状态干扰**——nextest 每测进程隔离下
+   master 与本分支皆绿;真预存红为 musk_vm_track_p053 族(特性门,
+   master 同态)。另:master HEAD 的 auto-cache lib test 编译破损
+   (E0063)阻塞全仓门,见复审 F-1。

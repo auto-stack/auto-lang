@@ -1,0 +1,17 @@
+clear 24,24,28,255
+quad 72.0,34.0 384.0x387.7 13,20,37,255
+quad 72.0,34.0 0.0x80.0 59,130,246,255
+image 72.0,130.0 80.0x80.0 fit=1 "https://cn.cravatar.com/avatar/e1e7ba949ade0936e071132d2edd3b3c.png"
+text-styled 72.0,226.0 size=20.0 lh=27.0 w=700 it=false 247,249,251,255 "Jane Cooper"
+quad 228.8,257.0 12.0x12.0 74,222,128,255
+text 248.8,257.0 size=14.0 lh=18.9 148,163,183,255 "Active"
+text-styled 72.0,291.9 size=14.0 lh=18.9 w=700 it=false 247,249,251,255 "Full Stack Developer"
+text 72.0,326.8 size=14.0 lh=18.9 148,163,183,255 "Passionate about building great user experiences. Open source contributor and coffee enthusiast."
+quad 72.0,361.7 120.0x36.0 147,148,245,255
+text 106.8,370.2 size=14.0 lh=18.9 15,23,42,255 "Follow"
+quad 204.0,361.7 120.0x36.0 51,65,86,255
+text 234.6,370.2 size=14.0 lh=18.9 247,249,251,255 "Message"
+quad 72.0,34.0 384.0x1.0 30,41,59,255
+quad 72.0,420.7 384.0x1.0 30,41,59,255
+quad 72.0,34.0 1.0x387.7 30,41,59,255
+quad 455.0,34.0 1.0x387.7 30,41,59,255

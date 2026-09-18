@@ -33,7 +33,7 @@ use super::client_runtime::{
 };
 use super::coverage::{self, Coverage, Verdict};
 use super::endpoint::FrameSource;
-use super::message::{ControlMsg, DrawList, DrawOp, InputMsg, MouseButton, Rgba8, WRect};
+use super::message::{ControlMsg, DrawList, DrawOp, ImageFit, InputMsg, MouseButton, Rgba8, WRect};
 use crate::ui::component::Component;
 use crate::ui::style::{Color, Style, StyleClass};
 use crate::ui::view::{ScrollCallback, ScrollMetrics, SelectCallback, View};
@@ -884,16 +884,26 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             Laid { size: (w, h) }
         }
         // PLAN-026 T-03 display 族臂（I4：保真口径 = 解释态 queue 臂同级
-        // 占位——client_runtime::layout_image :1339 / layout_progress
-        // :1452 镜像；ImageSurface 仍落 catch-all 占位盒，D5 整 kind
+        // 占位——client_runtime::layout_image / layout_progress
+        // 镜像；ImageSurface 仍落 catch-all 占位盒，D5 整 kind
         // not-yet 在册）。
-        View::Image { .. } => {
-            // v1.8 保真边界：image = 样式尺寸驱动的占位 Quad（结构/占位
-            // 正确，位图内容归图像通道独立线——KNOWN-DEBT 在册，非静默
-            // 错绘）；icon 经 codegen 降级到本臂（lucide 字形占位同口径）。
+        View::Image { src, .. } => {
+            // PLAN-028 真图升级（v1.9，与解释态 layout_image 同刻度）：
+            // src 在场 → `DrawOp::Image`（tag 6；rect 推导零变化——026
+            // §1.8 占位保真注释核销，占位转宿主侧未解析兜底语义）。
+            // icon 经 codegen 降级到本臂（src = "lucide:{name}"，宿主
+            // 字形解析 not-yet → 未解析降级占位，行为与旧占位口径连续）。
             let w = style.fixed_w().unwrap_or(avail_w.min(96.0)).min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(w);
-            ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(IMAGE_PLACEHOLDER));
+            if src.is_empty() {
+                ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(IMAGE_PLACEHOLDER));
+            } else {
+                ctx.ops.push(DrawOp::Image {
+                    rect: WRect::new(x, y, w, h),
+                    src: src.clone(),
+                    fit: ImageFit::Stretch,
+                });
+            }
             Laid { size: (w, h) }
         }
         View::ProgressBar { progress, .. } => {
@@ -2553,13 +2563,12 @@ mod tests {
         assert_eq!(texts_of(&frame), vec!["a", "b"], "按 '\\n' 分行");
     }
 
-    /// PLAN-026 T-03：display 族占位保真 golden（I4——解释态
-    /// layout_image/layout_progress client_runtime.rs:1339/:1452 同级
-    /// 口径：image 样式尺寸占位 Quad（缺省 min(avail,96) 方形）；
-    /// progress 轨道 + 填充比例几何；style.bg 覆盖权同解释态）。
+    /// PLAN-026 T-03：display 族 golden。PLAN-028 真图升级归因——image
+    /// 臂占位 Quad → `DrawOp::Image`（src 在场即发，rect 推导零变化；
+    /// 占位保真口径转宿主侧未解析兜底），progress 几何维持 quad。I4——
+    /// 解释态 layout_image 同刻度（client_runtime.rs）。
     #[test]
     fn display_family_placeholder_golden() {
-        use crate::ui::desktop_protocol::client_runtime::IMAGE_PLACEHOLDER as IMG_PH;
         #[derive(Debug)]
         struct Disp;
         #[derive(Debug, Clone)]
@@ -2588,21 +2597,35 @@ mod tests {
                 })
                 .collect()
         };
+        // PLAN-028：image op 定位器（真图升级断言面）。
+        let images = |p: &mut NativeProjector<Disp>| -> Vec<(f32, f32, f32, f32, String)> {
+            p.render_frame()
+                .ops
+                .iter()
+                .filter_map(|op| match op {
+                    DrawOp::Image { rect, src, .. } => {
+                        Some((rect.x, rect.y, rect.w, rect.h, src.clone()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
         let mut p = NativeProjector::new(Disp, 480.0, 320.0);
         p.ensure_covered().expect("display 族入覆盖集");
+        let ims = images(&mut p);
+        // styled image：w-16 h-16（Tailwind 刻度 16×4=64px）→ 64×64 Image op。
+        assert!(
+            ims.iter()
+                .any(|&(x, _, w, h, ref s)| x == 10.0 && w == 64.0 && h == 64.0 && s == "x"),
+            "styled image 64×64 Image op (x=MARGIN): {ims:?}"
+        );
+        // 无样式 image：w = min(avail, 96) = 96，h = w（方形缺省）。
+        assert!(
+            ims.iter()
+                .any(|&(x, _, w, h, ref s)| x == 10.0 && w == 96.0 && h == 96.0 && s == "bare"),
+            "bare image 缺省 96 方形 Image op: {ims:?}"
+        );
         let qs = quads(&mut p);
-        // styled image：w-16 h-16（Tailwind 刻度 16×4=64px）→ 64×64 占位。
-        assert!(
-            qs.iter().any(|&(x, _, w, h, _)| x == 10.0 && w == 64.0 && h == 64.0),
-            "styled image 64×64 占位 (x=MARGIN): {qs:?}"
-        );
-        // 无样式 image：w = min(avail, 96) = 96，h = w（方形缺省）+
-        // IMAGE_PLACEHOLDER 底色（pub(crate) 复用同值镜像）。
-        assert!(
-            qs.iter()
-                .any(|&(x, _, w, h, c)| x == 10.0 && w == 96.0 && h == 96.0 && c == IMG_PH),
-            "bare image 缺省 96 方形 IMAGE_PLACEHOLDER: {qs:?}"
-        );
         // progress 0.5（w-20=80, h-2=8）：track 全长 + fill = w*frac 同位。
         let track = qs
             .iter()

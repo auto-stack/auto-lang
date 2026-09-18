@@ -3201,6 +3201,16 @@ export default router
                         let file_store_deps = auto_lang::extract_store_deps_from_file(
                             path.to_str().unwrap()
                         );
+                        // PLAN-074: src/front 兄弟通道与 components//bps（上方
+                        // Plan 522 臂）同病——首遍 vue_code 被丢弃、逐 widget 裸
+                        // 重生成丢 fn 池：use 导入池（Plan 522）与同文件模块 fn
+                        // （Plan 367 P2-4）都必须重挂，否则调用点有 emission 无
+                        // 定义（vue-tsc TS2304；jade outline_panel 下沉首件实证
+                        // ——app 根通道发射正常、兄弟通道 TS2304 的不对称即本缺口）。
+                        let sib_code = fs::read_to_string(&path).unwrap_or_default();
+                        let (sib_use_fns, sib_imported_names) =
+                            auto_lang::ui_gen::api::collect_use_module_fns(&path, &sib_code);
+                        let sib_module_fns = same_file_module_fns(&sib_code);
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
@@ -3216,6 +3226,8 @@ export default router
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
+                                .with_use_module_fns(sib_use_fns.clone(), sib_imported_names.clone())
+                                .with_module_fns(sib_module_fns.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );
@@ -5898,6 +5910,25 @@ fn handle_compile_error_with_dep_shape(path: &Path, e: &str, library_dep: bool) 
     Ok(())
 }
 
+/// PLAN-074: same-file module fns (`fn` at .at top level, Plan 367 P2-4)
+/// for the secondary generation passes that re-generate per widget with a
+/// bare VueGenerator. Mirrors the in-file collection in
+/// ui_gen::api::generate_component_from_file — parse failures yield an
+/// empty pool (the first pass already reported the real error).
+fn same_file_module_fns(code: &str) -> Vec<auto_lang::aura::AuraModuleFn> {
+    let session = auto_lang::session::CompilerSession::ui();
+    let mut parser = auto_lang::parser::Parser::from(code).with_session(session);
+    let Ok(ast) = parser.parse() else {
+        return Vec::new();
+    };
+    ast.stmts.iter()
+        .filter_map(|s| match s {
+            auto_lang::ast::Stmt::Fn(f) => auto_lang::aura::extract_module_fn(f),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
 ///
 /// Returns (vue_code, widget_names, store_composables). The store composables
@@ -6065,7 +6096,12 @@ pub fn write_registry_at(front_dir: &Path, rows: &[GalleryDemoRow]) -> AutoResul
             at_str_lit(&r.doc),
             at_str_lit(&r.source),
             at_str_lit(&r.pac),
-            r.loadable,
+            // PLAN-642 T-08: registry.at 是 VM 臂唯一元数据源——此处 loadable
+            // 语义 = "VM 内嵌可交互"（loadable || fullstack）。此前纯 loadable
+            // 使 fullstack 档（013/015）侧栏标"独立"、工具栏标"静态说明"，
+            // 而视口实际运行中（G-4 元数据漂移实证）。web 臂 demos-registry.ts
+            // 保持原语义（动态挂载能力），两臂数据源分离。
+            r.loadable || r.fullstack,
             at_str_lit(&search_lc),
         ));
     }
@@ -6275,7 +6311,11 @@ pub fn emit_gallery_vm_demos(
         if !r.loadable && !r.fullstack {
             continue;
         }
-        let source = &r.source;
+        // PLAN-642 T-01: 跨包 stylekit 配方内联（适配器 + 自有模块副本），
+        // 根因与形态见 inline_stylekit_recipes 文档。
+        let recipes = stylekit_pub_recipes(&apps_dir.join(&r.id));
+        let source_owned = inline_stylekit_recipes(&r.source, recipes.as_ref());
+        let source: &str = &source_owned;
         // widget 声明判定按行首匹配（注释中的 "widget " 字样不算——002-counter
         // 的 Plan 506 注释曾误触);多声明(宿主+工具 widget 同文件)跳过。
         let widget_decls = source
@@ -6288,6 +6328,9 @@ pub fn emit_gallery_vm_demos(
         let mut row_modules: std::collections::BTreeMap<String, String> = Default::default();
         let app_dir = apps_dir.join(&r.id).join("src").join("front");
         collect_own_modules(source, &app_dir, deps_dir.as_deref(), &mut row_modules);
+        for (_, c) in row_modules.iter_mut() {
+            *c = inline_stylekit_recipes(c, recipes.as_ref());
+        }
         let modules_conflict = row_modules.iter().any(|(m, c)| {
             module_files
                 .get(m)
@@ -6312,7 +6355,7 @@ pub fn emit_gallery_vm_demos(
             let ns = demo_ns_prefix(&r.id);
             let mut back_modules: std::collections::BTreeMap<String, String> = Default::default();
             let mut seeds: Vec<(String, String)> = Vec::new();
-            for content in std::iter::once(source).chain(row_modules.values()) {
+            for content in std::iter::once(source).chain(row_modules.values().map(|s| s.as_str())) {
                 for l in content.lines() {
                     let t = l.trim_start();
                     if !t.starts_with("use ") {
@@ -6439,15 +6482,13 @@ pub fn emit_gallery_vm_demos(
         // 对带 store 的内嵌 demo（纯前端 016 与全栈 013/015/017 同律）统一
         // 改写真名限定形态。
         let store_names = scan_store_decls(
-            std::iter::once(source)
-                .chain(row_modules.values())
-                .cloned(),
+            std::iter::once(source.to_string()).chain(row_modules.values().cloned()),
         );
         if store_names.len() == 1 {
             let base = if r.fullstack {
                 source_rw.clone()
             } else {
-                source.clone()
+                source.to_string()
             };
             source_rw = store_qualify_source(&base, &store_names);
             for (_, c) in row_modules.iter_mut() {
@@ -6459,6 +6500,66 @@ pub fn emit_gallery_vm_demos(
         } else {
             source
         };
+        // PLAN-642 T-04/T-05: 475 组件包级联——widget 内
+        // `use { package: X from "dir" }` 的包目录整拷进 demos/<dir>
+        // （package.at 清单跳过），包内 widget 才能进嵌入 VM 注册
+        // （024 chart 画布空 / 026 文件树空实证：包目录缺席 → 包内
+        // widget 全部缺注册 → 实例渲染 Empty）。同名异容沿用模块冲突
+        // 策略：保持首者 + 告警跳过后来者。
+        for l in source.lines() {
+            let t = l.trim_start();
+            if !(t.starts_with("use { package:") || t.starts_with("use{package:")) {
+                continue;
+            }
+            let Some(from_pos) = t.find("from") else { continue };
+            let seg = t[from_pos + 4..].trim();
+            let Some(q) = seg.find('"') else { continue };
+            let rest = &seg[q + 1..];
+            let Some(end) = rest.find('"') else { continue };
+            let pkg_rel = &rest[..end];
+            let pkg_dir = app_dir.join(pkg_rel.trim_start_matches("./"));
+            let Ok(entries) = fs::read_dir(&pkg_dir) else {
+                println!(
+                    "  {} gallery demo `{}`: package dir `{}` not found — widgets not embedded",
+                    "⚠".bright_yellow(),
+                    r.id,
+                    pkg_dir.display()
+                );
+                continue;
+            };
+            let target_dir = demos_dir.join(pkg_rel.trim_start_matches("./"));
+            fs::create_dir_all(&target_dir).map_err(|e| format!("demos pkg mkdir: {}", e))?;
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.extension().map(|x| x != "at").unwrap_or(true) {
+                    continue;
+                }
+                if p.file_name().map_or(false, |n| n == "package.at") {
+                    continue;
+                }
+                let Some(fname) = p.file_name().and_then(|n| n.to_str()) else { continue };
+                let target = target_dir.join(fname);
+                if target.exists() {
+                    let prev = fs::read_to_string(&target).unwrap_or_default();
+                    let cur = fs::read_to_string(&p).unwrap_or_default();
+                    if prev != cur {
+                        println!(
+                            "  {} gallery package file conflict: {} (kept first)",
+                            "⚠".bright_yellow(),
+                            target.display()
+                        );
+                        continue;
+                    }
+                }
+                let raw = fs::read_to_string(&p).unwrap_or_default();
+                // PLAN-642 T-04: 包内组件自身的 `use <mod>:` fn 模块链
+                // （024 chart_geom 实证）必须同样进 demos/ + 嵌入 VM 模块池，
+                // 否则组件 Init 的几何计算 CALL reloc miss → 画布空。
+                let content = inline_stylekit_recipes(&raw, recipes.as_ref());
+                collect_own_modules(&content, &app_dir, deps_dir.as_deref(), &mut row_modules);
+                fs::write(&target, content).map_err(|e| format!("write pkg {fname}: {}", e))?;
+            }
+        }
         for (m, c) in &row_modules {
             module_files.entry(m.clone()).or_insert_with(|| c.clone());
             let target = demos_dir.join(m.replace('.', "/")).with_extension("at");
@@ -6528,6 +6629,165 @@ pub fn demo_widget_name(id: &str) -> String {
             out.extend(first.to_uppercase());
             out.push_str(chars.as_str());
         }
+    }
+    out
+}
+
+/// PLAN-642 T-01: 解析示例声明的 `dep stylekit` → 样式源 styles.at →
+/// pub 配方名 → 声明原文（多行块整体）。demo 适配器/自有模块副本在画廊
+/// 宿主上下文解析不到跨包 stylekit（ui-gallery pac.at 无该 dep；且
+/// collect_module_imports 模块装载路径没有根路径 prepare_style_recipe_imports
+/// 的预注册——PLAN-607/635 的 name-check 会对未注册配方名报 undefined
+/// variable 硬错，整模块丢弃 →"Web 臂组件"占位符，016/029/031/045/
+/// d015notes_editor/d015notes_sidebar 六文件实证）。发射期把命名导入的
+/// 配方内联为本地声明（parse 期 register_style_recipe 自注册，渲染期配方
+/// 真值生效）；教程/源码 tab 展示的仍是示例原文（r.source），不受影响。
+/// 返回 None = 该示例未声明 stylekit dep 或 styles.at 缺失（沿用现状，
+/// 生成日志已有 not-found 告警）。
+fn stylekit_pub_recipes(app_root: &Path) -> Option<std::collections::BTreeMap<String, String>> {
+    let pac = fs::read_to_string(app_root.join("pac.at")).ok()?;
+    // dep stylekit { path: "../stylekit" } —— 行级扫描取 path 值。
+    let mut dep_path: Option<String> = None;
+    let mut in_stylekit_dep = false;
+    for l in pac.lines() {
+        let t = l.trim();
+        if t.starts_with("dep stylekit") {
+            in_stylekit_dep = true;
+            continue;
+        }
+        if in_stylekit_dep {
+            if t.starts_with("path:") {
+                dep_path = t["path:".len()..]
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches(',')
+                    .to_string()
+                    .into();
+            }
+            if t.starts_with('}') {
+                in_stylekit_dep = false;
+            }
+        }
+    }
+    let rel = dep_path?;
+    let base = app_root.join(rel.trim_end_matches(['/', '\\']));
+    let styles_at = [
+        base.join("src").join("front").join("styles.at"),
+        base.join("styles.at"),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())?;
+    let text = fs::read_to_string(&styles_at).ok()?;
+    // 块提取：`pub style <name>` 起始，续行 = 缩进行；列 0 非空行收束块
+    // （styles.at 格式约定：续行/值行均有缩进）。
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = std::collections::BTreeMap::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let t = lines[i].trim_start();
+        if let Some(rest) = t.strip_prefix("pub style ") {
+            let name = rest
+                .split(|c: char| c == '=' || c == '(' || c.is_whitespace())
+                .find(|s| !s.is_empty())
+                .unwrap_or("");
+            let mut end = i + 1;
+            while end < lines.len()
+                && (lines[end].is_empty()
+                    || lines[end].starts_with(' ')
+                    || lines[end].starts_with('\t'))
+            {
+                end += 1;
+            }
+            if !name.is_empty() {
+                out.insert(name.to_string(), lines[i..end].join("\n"));
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+/// PLAN-642 T-01: 把 source 中 `use stylekit.styles: a, b`（或 `: *`）行
+/// 内联为对应 pub 配方的本地声明原文。仅当**全部**请求名可解析时改写
+/// （部分缺名维持现状响亮失败，不让坏行静默过解析）；无该 use 行原样返回。
+fn inline_stylekit_recipes(
+    source: &str,
+    recipes: Option<&std::collections::BTreeMap<String, String>>,
+) -> String {
+    let requested: Vec<String> = match recipes {
+        Some(r) => {
+            let mut names = Vec::new();
+            for l in source.lines() {
+                let t = l.trim_start();
+                if let Some(rest) = t.strip_prefix("use stylekit.styles:") {
+                    if rest.trim() == "*" {
+                        names = r.keys().cloned().collect();
+                        break;
+                    }
+                    for n in rest.split(',') {
+                        let n = n.trim();
+                        if !n.is_empty() {
+                            names.push(n.to_string());
+                        }
+                    }
+                }
+            }
+            names
+        }
+        None => Vec::new(),
+    };
+    if requested.is_empty() {
+        return source.to_string();
+    }
+    let table = recipes.unwrap();
+    if !requested.iter().all(|n| table.contains_key(n)) {
+        let missing: Vec<String> = requested
+            .iter()
+            .filter(|n| !table.contains_key(*n))
+            .cloned()
+            .collect();
+        println!(
+            "  {} stylekit recipes not found for inline: {} — use line kept (will fail parse loudly)",
+            "⚠".bright_yellow(),
+            missing.join(", ")
+        );
+        return source.to_string();
+    }
+    let mut emitted: std::collections::BTreeSet<String> = Default::default();
+    let mut out = String::with_capacity(source.len() + 256);
+    for l in source.lines() {
+        let t = l.trim_start();
+        if let Some(rest) = t.strip_prefix("use stylekit.styles:") {
+            let names: Vec<String> = if rest.trim() == "*" {
+                table.keys().cloned().collect()
+            } else {
+                rest.split(',')
+                    .map(|n| n.trim().to_string())
+                    .filter(|n| !n.is_empty())
+                    .collect()
+            };
+            for n in names {
+                if emitted.insert(n.clone()) {
+                    if let Some(decl) = table.get(&n) {
+                        out.push_str(decl);
+                        out.push('\n');
+                    }
+                }
+            }
+        } else {
+            out.push_str(l);
+            out.push('\n');
+        }
+    }
+    // 保留源尾随换行形态（lines() 逐行重建后多出/缺失的末尾换行归一）。
+    if !source.ends_with('\n') && out.ends_with('\n') {
+        out.pop();
     }
     out
 }

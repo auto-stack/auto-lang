@@ -18,6 +18,11 @@
 | v1.2 | 2026-08-29 | 真桌面壳增量：通用 client 运行时 / broker 桌面接入 + 多 App 驻留宿主 / 多 App 压测与内存实测 / 弹性重连 / L1 换窗 / L3 v2a 快照迁移（`StateSnapshot` tag 11 追加；`PROTOCOL_VERSION` 仍为 1） | Plan 480 S1–S10 |
 | v1.3 | 2026-08-31 | RenderQueue 并行渲染模式——帧载荷二态化（Commands \| Pixels）+ 三态渲染开关（auto/queue/independent）+ `AppProjector` 覆盖爬坡 + 宿主两态合成 + 三臂 parity 纪律（见 §1.3；T1 定案 D1–D4 + 497 快照结论复核） | Plan 500（Stage 4） |
 | v1.4 | 2026-09-01 | Stage 6 收官：默认策略裁定（`shell.apps.process_model` 配置位；实测维持 inproc 缺省、outproc 为隔离选项，见 §1.4）+ 远程 command 流消费（WS transport 第五实现 + 镜像会话 + `HitTable` tag 9 追加 + `packages/drawlist-renderer` TS/Canvas2D + 浏览器点击闭环；`PROTOCOL_VERSION` 仍 1） | Plan 508（Stage 6） |
+| v1.5 | 2026-09-01 | queue 臂保真收口——scissor 裁剪算子（`Scissor` tag 3 / `ScissorPop` tag 4 追加式，栈语义取交）+ typography 差分（`TextStyled` tag 5 追加式，weight/italic；见 §1.5；`PROTOCOL_VERSION` 仍 1） | Plan 515（§1.5） |
+| v1.6 | 2026-09-15 | 编译 exe 一等客户端——`Component` seam 双投影器（解释态 `AppProjector` + native `NativeProjector<C>`；a2r 产物经孵化参数接入 compositor；见 §1.6） | Plan 020（§1.6） |
+| v1.7 | 2026-09-18 | native 覆盖爬坡（form/payload 族 + scroll 入册）+ 输入路由收口（见 §1.7；`PROTOCOL_VERSION` 仍 1） | PLAN-025（§1.7） |
+| v1.8 | 2026-09-18 | native 覆盖爬坡第二批（display 族 image/progress + grid）+ IME 闭环两端（v1.0 在册变体启用）+ auto 裁决复测（见 §1.8；`PROTOCOL_VERSION` 仍 1） | PLAN-026（§1.8） |
+| v1.9 | 2026-09-18 | 图像 DrawOp 通道——`DrawOp::Image`（tag 6 追加式，src 引用 + 宿主侧解析，零位图字节过线）+ src 词汇表（file/`builtin:`/`data:`/`http(s)`/`thumbnail://` 虚拟引用）+ 未解析降级纪律 + 两投影臂真图升级 + TS decode/占位（见 §1.9；`PROTOCOL_VERSION` 仍 1） | PLAN-028（§1.9） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -317,11 +322,84 @@ App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口
   /backdrop-（518 G8 冻结词汇）+ 字重族补全。
 - **v1.8 已知边界**（随注非静默）：位图真渲/图像 DrawOp 算子 not-yet
   （image/icon/avatar 占位保真口径——图像通道归 shell a2r 设计 §4-B
-  独立线）；imagesurface 交互族 not-yet（D5）；live iced 壳
+  独立线；**PLAN-028 图像半句已由 v1.9 核销——见 §1.9；icon/avatar
+  中字形/头像语义占位半句维持，未解析降级转兜底**）；imagesurface 交互族 not-yet（D5）；live iced 壳
   键盘/滚轮/IME 事件订阅缺口（P025-D1 债扩展）；opacity/hidden/定位族/
   样式版 grid/样式版 grid-col 数 native 渲染 not-yet（覆盖表显式缺项，
   auto 降级留痕）；slider 拖拽/select 键盘跳项/on_submit/L3 快照注入
   not-yet 维持（025 在册）；modal/tooltip/spinner a2r 映射断裂（S1）。
+
+## 1.9 v1.9 增量（图像 DrawOp 通道——src 引用 + 宿主侧解析，PLAN-028）
+
+> **动机**：shell a2r 化裁定 B 形态（outproc shell 经 RenderQueue 渲染，
+> desktop-shell-a2r.md 裁定落定）——壁纸/窗口缩略图/壁纸预览全是图像，
+> DrawList 仅有 Quad/Text/TextStyled/Scissor 五算子是 B 硬阻断（§1.8
+> 已知边界"图像 DrawOp 算子 not-yet"即此债）。核心路线 = **src 引用 +
+> 宿主侧解析**：零位图字节过线、child 免解码（"轻 child"哲学延续）、
+> 复用宿主既有图像词汇与缓存（`load_image_bytes` / snapshot 基建），
+> 零新依赖。
+
+- **wire（tag 6 追加式）**：`DrawOp::Image { rect: WRect, src: String,
+  fit: ImageFit }`。`ImageFit` v1 仅 `Stretch = 1`（拉伸至 rect——与
+  占位尺寸盒同位；Cover/Contain = fit 精化另立），未知 fit 值
+  `UnknownTag` 拒收（FrameMode/PixelFormat 同纪律）。`PROTOCOL_VERSION`
+  维持 1；tag 1–5 语义冻结；旧端（不识 6）= 拒收会话（既有 unknown
+  tag 纪律，无静默漂移）。**op 字段定长不可尾部追加**（DrawOp 逐 op
+  解码共享 Reader，无载荷尾判据——v1.3 `Welcome` 尾部追加先例仅适用
+  载荷末字段）：filter_method/border_radius **不入 wire**（宿主缺省
+  Linear/方形填充），未来呈现参数 = 新 tag。落点 `message.rs`（codec
+  对称 + round-trip/golden 单测，六算子锚点入 `ts_fixtures`）。
+- **src 词汇表**（宿主解析面，`load_image_bytes` 单源）：本地文件路径
+  / `builtin:ricepaper|inkwash`（518 内嵌壁纸）/ `data:[<mediatype>]
+  [;base64],<payload>` / `http(s)://`（reqwest 3s 超时，结果含负缓存
+  每 URL 至多一次）/ `thumbnail://{wid}` 虚拟引用（宿主快照解析，下条）
+  ；`/api/__auto/media/` 票据前缀随注在册（宿主本地管线词汇，投影器不
+  特判）。**not-yet 词汇显式成文**：`lucide:`/`svgdoc:`（字形/矢量
+  栅格化独立线——P026-D1 字形半句维持）经未解析降级处理；未知 scheme
+  同。
+- **宿主栅格化与降级纪律（I3）**：queue 臂 `broker_surface::paint_ops`
+  增 Image 臂——src → 进程级 Handle 缓存（key = src，解码一次防每帧
+  重上传；负缓存 = 已定失败，占位与观测去重的依据）→
+  `Frame::draw_image`（仓内 canvas 首用，iced 0.14 image feature 链，
+  wgpu/tiny_skia 双后端）。**未解析 src（缺文件/超时/未知 scheme/
+  字形词汇）= `IMAGE_PLACEHOLDER` 同色占位 Quad + `[drawlist-image]`
+  观测行（stderr + ui_console 双落，src 级首败去重）**——禁静默错绘。
+  **http miss = 占位先行 + 后台线程解码 + 下帧翻真**（paint 路径禁
+  阻塞——os-007 P534-D4 三秒挂渲染教训；翻真由宿主任一后续重绘兑现：
+  鼠标/toast tick 250ms/MCP 心跳/帧泵，零新增触发器）。
+- **`thumbnail://{wid}` 虚拟引用（D3）**：每帧 `snapshot_window_stale`
+  直查（**不进永久 Handle 缓存**——SWR 刷新语义，冻结句柄锁死旧图；
+  `WindowThumbnail` 消费臂 from_rgba 每帧重建同律）：命中（含过期）→
+  `Handle::from_rgba` 直绘；过期 → `request_capture` 静默重抓（SWR，
+  旧图续帧）；真 miss → request_capture + 占位当帧，重抓 `cache_put`
+  落地后下帧翻真。wid 非法 = 未解析降级。复用 snapshot.rs 全套
+  （TTL 2s / 冷却 500ms / 整窗 screenshot × rect 裁剪），零新机制——
+  B 形态 shell（showdesk/workspace preview）的前置能力本期即可测。
+- **两投影臂真图升级（I4 同刻度）**：解释态 `layout_image`（src 字面
+  量/绑定形态经 `read_state` 代入——026 T-07 a2r 容差同款）与 native
+  `View::Image` 臂，src 在场即发 Image op（**rect 推导逐字零变化**——
+  `fixed_w/h else min(avail,96)`；src 缺/空 → 占位 Quad 原样容差）；
+  icon 的 a2r 降级形态（`View::image_styled("lucide:{name}")`）随之
+  入线（宿主字形解析 not-yet → 未解析降级占位，行为连续）。§1.8
+  "位图真渲/图像 DrawOp 算子 not-yet"边界条款核销（图像半句）——
+  KNOWN-DEBT P026-D1 图像半句同步核销，字形半句维持。
+- **TS 远程端（D5）**：`packages/drawlist-renderer` decode tag 6 必达
+  （不增臂 = unknown tag throw 破坏 WS 会话——防线义务）+ `fit` u8
+  镜像（未知值 throw，与 Rust 对称）；`renderFrame` image 臂 = 占位
+  灰底（IMAGE_PLACEHOLDER 同值）——**web 真位图渲染 not-yet 成文**
+  （fetch/跨源/data 通道独立增量，TS 无 shm 位图通道）。对拍锚点
+  `IMAGE_FRAME_HEX` ↔ Rust `ts_fixtures` 第六锚点双侧钉。
+- **帧尺寸边界（D6）**：Commands 档 shm 槽 16KiB + `write_slot`
+  超槽**显式拒绝**（`payload N exceeds slot size`）——超长 src（极端
+  data: URL）= 帧编码超槽响亮失败，v1 不设投影器侧截断；帧字节增量
+  ≈ src 串长（正常 URL 路径零压力，度量行随 e2e 在册）。
+- **验证面**：`Image` round-trip（src 四形态/空 src）+ DrawList 直编
+  golden + 未知 fit 拒收；宿主解析单测族 `t028_*`（data:/builtin:
+  解析缓存、负缓存与 not-yet 词汇降级、http 占位先行后台落缓存、
+  thumbnail miss/命中/SWR 三路径）；`p028_image_arm` e2e（AUTO_DESKTOP_
+  E2E 门）；p026 既有 image 占位 Quad 断言改写为 Image op 断言（随注
+  归因）；TS 对拍 + 占位渲染测试。
+
 
 ## 2. Wire Format（信封）
 

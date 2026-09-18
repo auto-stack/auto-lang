@@ -112,10 +112,27 @@ pub(crate) fn build_component_from_app_mode(
     crate::ui::i18n_lookup::load_from_dir(&base_dir);
     let code = fs::read_to_string(manifest).unwrap();
 
+    // PLAN-642 T-01: 与生产 build_dynamic_component 同款跨包 style recipe
+    // 预注册——PLAN-637 收编后示例 app.at 携带 `use stylekit.styles: ...`，
+    // parse 期 name-check（PLAN-607/635）只认注册表配方，缺本步则
+    // 029-photo-gallery 语料测试报 "undefined variable: caption_text"
+    // （master 预存红实证）。
+    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(
+        &base_dir,
+        &code,
+    )
+    .map_err(|e| e.to_string())
+    .unwrap();
+
     // 1. Parse + extract root widget
     let session = CompilerSession::ui();
     let mut parser = crate::Parser::from(code.as_str()).with_session(session);
     let ast = parser.parse().unwrap();
+    // PLAN-635: 回放导入配方 + 本地配方（生产路径同序）。
+    let _ = crate::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    );
     let mut root_decl = None;
     let mut widget = None;
     for stmt in &ast.stmts {

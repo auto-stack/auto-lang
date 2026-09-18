@@ -1044,19 +1044,32 @@ mod tests {
                 })
                 .collect()
         }
+        // PLAN-028：image op 定位器（帧内定位法扩展——真图升级断言面）。
+        fn images_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32, String)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Image { rect, src, .. } => {
+                        Some((rect.x, rect.y, rect.w, rect.h, src.clone()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
 
-        // —— ①profile-card（004 真源）：queue 孵化 + image 占位/渐变 col/按钮。
+        // —— ①profile-card（004 真源）：queue 孵化 + image 真图 op/
+        // 渐变 col/按钮。PLAN-028 归因：原 80×80 占位 Quad 断言改写为
+        // Image op 断言（占位保真 → 真图 op 同位替换，rect 推导零变化）。
         let wid_p = session.launch_app("profile-card").expect("profile launch");
         place_window(&mut session, wid_p, 0);
         wait_frame(
             &mut session,
             "profile-card",
             |ops| {
-                quads_of(ops)
+                images_of(ops)
                     .iter()
-                    .any(|r| r.2 == 80.0 && r.3 == 80.0)
+                    .any(|r| r.2 == 80.0 && r.3 == 80.0 && r.4.contains("cravatar"))
             },
-            "004 image 占位帧",
+            "004 image 真图 op 帧",
         );
         let mode_p = session
             .broker_clients
@@ -1127,10 +1140,16 @@ mod tests {
                     "display 帧 text {want}: {texts:?}"
                 );
             }
-            // icon size 14 → 14×14 占位方块（lucide 字形占位口径）。
+            // PLAN-028 归因：icon 原 14×14 占位方块断言改写为 Image op
+            // 断言——icon a2r 降级形态（lucide:）随图像通道升级入线，
+            // 宿主字形解析 not-yet（P026-D1 后半维持）→ 未解析降级占位
+            // 仍兜底，解释态/native 行为连续。
             assert!(
-                quads.iter().any(|r| r.2 == 14.0 && r.3 == 14.0),
-                "icon 14×14 占位方块: {quads:?}"
+                images_of(&frame.ops)
+                    .iter()
+                    .any(|r| r.2 == 14.0 && r.3 == 14.0 && r.4.starts_with("lucide:")),
+                "icon 14×14 image op（lucide 降级形态）: {:?}",
+                images_of(&frame.ops)
             );
             // divider h-1 → 4px 线 quad。
             assert!(
@@ -1195,6 +1214,245 @@ mod tests {
                     .and_then(|c| c.composed())
                 {
                     let out = crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                    let _ = std::fs::write(assets.join(file), out);
+                }
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// PLAN-028 T-07 —— 图像通道 e2e（`AUTO_DESKTOP_E2E=1` 门；t3 真子
+    /// 进程 re-exec 模式）。腿：①004（http 远程 URL src——真子进程 queue
+    /// 帧含 80×80 Image op + src 代入）；②p028 语料（capability-tests
+    /// 构造件——data:/builtin:/thumbnail://vault/本地文件/不可达 http 五
+    /// 形态一帧全数入帧；029-photo-gallery 源解释态编译器不可 parse
+    /// （探针实证 20 错），本地文件腿按计划 §5.6 "029/fixture" 措辞由
+    /// fixture 承载 + 直接消费 029 缩略文件）；③宿主侧解析三路径实驱
+    /// （thumbnail 命中/本地文件/离线负缓存——快照替身注入）+ 度量行
+    /// （解码成本 ms / 帧字节增量 ≈ src 串长）。帧留痕 AUTO_028_ASSETS=1
+    /// → docs/plans/reports/assets/028/。
+    #[test]
+    fn p028_image_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::DrawOp;
+        use crate::ui::session::ProcessModel;
+        fn images_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32, String)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Image { rect, src, .. } => {
+                        Some((rect.x, rect.y, rect.w, rect.h, src.clone()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+        // p026 同款帧谓词轮询（局部 helper——同模块各 e2e 自带）。
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| l.ops.iter().map(|o| format!("{o:?}")).collect::<Vec<_>>())
+                );
+                std::thread::yield_now();
+            }
+        }
+        let broker_pipe = format!("autodesk-broker-028-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        // 载体源：004 + p028 语料（example_source 双根解析命中
+        // capability-tests）。
+        let names = ["004-profile-card", "p028-image-channel"];
+        let sources: Vec<(String, String)> = names
+            .iter()
+            .map(|n| (n.to_string(), example_source(n)))
+            .collect();
+        session.desktop.app_resolver =
+            Some(std::sync::Arc::new(move |name: &str| {
+                sources
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(n, src)| LaunchSpec {
+                        code: src.clone(),
+                        source_path: None,
+                        title: Some(n.to_string()),
+                        name: None,
+                        fit: false,
+                        daemon: None,
+                        back_root: None,
+                        exe: None,
+                        opens: Vec::new(),
+                        render_decl: Some("queue".into()),
+                    })
+            }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let broker_for_spawn = broker_pipe.clone();
+        session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
+            Ok(spawn_t3_child(&broker_for_spawn, child_name, "queue"))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        // —— ①004：http 远程 URL src → 80×80 Image op + src 代入。
+        let wid_p = session.launch_app("004-profile-card").expect("profile launch");
+        place_window(&mut session, wid_p, 0);
+        wait_frame(
+            &mut session,
+            "004-profile-card",
+            |ops| {
+                images_of(ops)
+                    .iter()
+                    .any(|r| r.2 == 80.0 && r.3 == 80.0 && r.4.contains("cravatar"))
+            },
+            "004 image 真图 op 帧",
+        );
+
+        // —— ②p028 语料：五 src 形态一帧全数入帧（rect = Tailwind 刻度
+        // 40×40 / 64×36 / 128×72 / 48×48 / 32×32——占位同位推导零变化）。
+        let wid_i = session.launch_app("p028-image-channel").expect("corpus launch");
+        place_window(&mut session, wid_i, 1);
+        wait_frame(
+            &mut session,
+            "p028-image-channel",
+            |ops| images_of(ops).len() == 5,
+            "p028 语料五 Image op 帧",
+        );
+        {
+            let frame = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("p028-image-channel"))
+                .and_then(|c| c.composed())
+                .expect("corpus composed");
+            let ims = images_of(&frame.ops);
+            for (w, h) in [(40.0, 40.0), (64.0, 36.0), (128.0, 72.0), (48.0, 48.0), (32.0, 32.0)] {
+                assert!(
+                    ims.iter().any(|r| r.2 == w && r.3 == h),
+                    "image rect {w}x{h}: {ims:?}"
+                );
+            }
+            assert!(
+                ims.iter().any(|r| r.4.starts_with("data:image/png;base64,")),
+                "data: 形态: {ims:?}"
+            );
+            assert!(ims.iter().any(|r| r.4 == "builtin:ricepaper"), "builtin: 形态");
+            assert!(ims.iter().any(|r| r.4 == "thumbnail://42842"), "thumbnail:// 形态");
+            assert!(
+                ims.iter().any(|r| r.4.ends_with("thumb_001.jpg")),
+                "本地文件形态: {ims:?}"
+            );
+            assert!(
+                ims.iter().any(|r| r.4 == "http://127.0.0.1:1/zero28.png"),
+                "不可达 http 形态（帧内合法——降级归宿主侧）"
+            );
+            // 度量行：帧字节增量 ≈ src 串长（编码帧长 vs src 长度合计）。
+            let mut buf = Vec::new();
+            frame.encode(&mut buf);
+            let src_bytes: usize = ims.iter().map(|r| r.4.len()).sum();
+            eprintln!(
+                "[p028-metric] frame_bytes={} src_bytes={src_bytes} ops={}",
+                buf.len(),
+                frame.ops.len()
+            );
+        }
+
+        // —— ③宿主侧解析三路径实驱（快照替身注入；解码/缓存/降级语义
+        // 单测面 = broker_surface t028_*，此处为 e2e 进程内实证）。
+        crate::ui::iced::snapshot::cache_put(
+            crate::ui::session::Wid(42842),
+            crate::ui::iced::snapshot::WindowSnapshot {
+                rgba: vec![1, 2, 3, 255],
+                w: 1,
+                h: 1,
+            },
+        );
+        let handle =
+            crate::ui::iced::broker_surface::resolve_drawlist_image("thumbnail://42842")
+                .expect("thumbnail 命中（cache_put 注入替身后直出）");
+        drop(handle);
+        // 命中后 SNAPSHOT_TTL 2s 内为新鲜——清除请求队列作 SWR 断言基线。
+        let _ = crate::ui::iced::snapshot::take_capture_requests();
+        // 本地文件腿：nextest cwd = crate manifest 目录——仓库根相对形
+        // 态经 manifest 拼绝对路径驱动（语料内相对字面量仅承载帧级断言）。
+        let thumb_abs = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg"
+        );
+        let t0 = std::time::Instant::now();
+        let file_handle =
+            crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs)
+                .expect("本地文件解析（绝对路径）");
+        drop(file_handle);
+        let decode_ms = t0.elapsed().as_millis();
+        eprintln!("[p028-metric] local file resolve = {decode_ms} ms（缓存命中后重复解析 <1ms）");
+        let t1 = std::time::Instant::now();
+        assert!(
+            crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs).is_some(),
+            "二次解析 = 缓存命中"
+        );
+        eprintln!("[p028-metric] cached resolve = {} ms", t1.elapsed().as_millis());
+        // 离线降级腿：不可达 http → 当帧占位（None）+ 后台负缓存落地。
+        assert!(
+            crate::ui::iced::broker_surface::resolve_drawlist_image(
+                "http://127.0.0.1:1/zero28.png"
+            )
+            .is_none(),
+            "不可达 http 首帧 = 占位（不阻塞）"
+        );
+
+        // 帧留痕（AUTO_028_ASSETS=1 → docs/plans/reports/assets/028/）。
+        if std::env::var("AUTO_028_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/028");
+            let _ = std::fs::create_dir_all(&assets);
+            for (app, file) in [
+                ("004-profile-card", "profile-card-frame.txt"),
+                ("p028-image-channel", "image-channel-frame.txt"),
+            ] {
+                if let Some(list) = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                {
+                    let out =
+                        crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
                     let _ = std::fs::write(assets.join(file), out);
                 }
             }

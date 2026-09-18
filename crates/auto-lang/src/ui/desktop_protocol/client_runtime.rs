@@ -16,7 +16,8 @@ use crate::ast::Expr;
 use crate::aura::{aura_events_get_base, AuraNode, AuraPropValue, AuraTextContent};
 use crate::ui::desktop_protocol::endpoint::{AppEndpoint, AppState, FrameSource};
 use crate::ui::desktop_protocol::message::{
-    ControlMsg, DrawList, DrawOp, FrameMsg, InputMsg, MouseButton, ProtocolMsg, Rgba8, WRect,
+    ControlMsg, DrawList, DrawOp, FrameMsg, ImageFit, InputMsg, MouseButton, ProtocolMsg, Rgba8,
+    WRect,
 };
 use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
 use crate::ui::desktop_protocol::transport::{self, Transport};
@@ -40,8 +41,9 @@ pub(crate) const INPUT_BORDER: Rgba8 = Rgba8::new(90, 90, 100, 255);
 pub(crate) const PLACEHOLDER_FG: Rgba8 = Rgba8::new(130, 130, 140, 255);
 /// 输入框底色（未声明样式时）。
 pub(crate) const INPUT_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
-/// image 占位底色（保真边界：位图内容归 Stage 5）。PLAN-026 T-03
-/// pub(crate) 化——native_projector display 臂复用（同值镜像禁再立）。
+/// image 占位底色（PLAN-028 起转**降级兜底语义**：src 在场即发 Image op
+/// 真图，本占位 = src 缺/空投影容差 + 宿主侧未解析降级同色；PLAN-026
+/// T-03 pub(crate) 化——native_projector display 臂复用（同值镜像禁再立））。
 pub(crate) const IMAGE_PLACEHOLDER: Rgba8 = Rgba8::new(60, 60, 70, 255);
 
 // Plan 507 T3 —— Tier1 display 族常量（未声明样式时的缺省观感）。
@@ -1345,13 +1347,34 @@ fn layout_image(
     avail_w: f32,
     style: &NodeStyle,
 ) -> LaidBlock {
-    // v1.3 保真边界：image = 样式尺寸驱动的占位 Quad（结构/占位正确，
-    // 位图内容归 Stage 5——Coverage 表 image 随注，非静默错绘）。
-    let _ = props.get("src");
+    // PLAN-028 真图升级（v1.9，与 native Image 臂同刻度）：src 在场 →
+    // `DrawOp::Image`（tag 6；rect 推导零变化——占位同位替换），宿主按
+    // 词汇表解析真图，未解析降级占位（占位保真口径转宿主侧兜底语义，
+    // 原解释态占位注释核销）。src 缺/空 → 占位 Quad 原样（View::image("")
+    // 容差）；src 绑定形状（Ident '.' 前缀 / Dot('.'|'self',f)）经
+    // read_state 代入——026 T-07 a2r 容差同款。
+    let src = props
+        .get("src")
+        .and_then(|v| match v {
+            AuraPropValue::Expr(Expr::Str(s)) => Some(s.to_string()),
+            AuraPropValue::Expr(expr) => binding_field(expr).and_then(|field| {
+                ctx.comp.read_state(&field).ok().map(|v| format_value(&v))
+            }),
+            _ => None,
+        })
+        .unwrap_or_default();
     let w = style.fixed_w().unwrap_or(avail_w.min(96.0)).min(avail_w.max(0.0));
     let h = style.fixed_h().unwrap_or(w);
-    let bg = style.bg.unwrap_or(IMAGE_PLACEHOLDER);
-    push_quad(ctx, WRect::new(x, y, w, h), bg);
+    if src.is_empty() {
+        let bg = style.bg.unwrap_or(IMAGE_PLACEHOLDER);
+        push_quad(ctx, WRect::new(x, y, w, h), bg);
+    } else {
+        ctx.ops.push(DrawOp::Image {
+            rect: WRect::new(x, y, w, h),
+            src,
+            fit: ImageFit::Stretch,
+        });
+    }
     LaidBlock { size: (w, h) }
 }
 
@@ -2520,25 +2543,27 @@ pub(crate) mod tests {
         assert!(texts.contains(&"212"), "联动字段显示: {texts:?}");
     }
 
-    /// 004：渐变头（from-blue-500 端色 Quad）+ image 占位（w-20=80px）+
-    /// 文本/按钮族。
+    /// 004：渐变头（from-blue-500 端色 Quad）+ image 真图 op（w-20=80px）+
+    /// 文本/按钮族。PLAN-028 归因：原占位 Quad 断言 → Image op 断言
+    /// （tag 6，rect 推导零变化；src 绑定经 read_state 代入）。
     #[test]
-    fn climb_004_profile_card_gradient_image_placeholder() {
+    fn climb_004_profile_card_gradient_image_op() {
         let mut p = projector_of_example("004-profile-card");
         let frame = p.render_frame();
         let texts = texts_of(&frame);
         assert!(texts.contains(&"Jane Cooper"), "{texts:?}");
         assert!(texts.contains(&"Follow"), "{texts:?}");
-        // image 占位：80×80（w-20 h-20 = 20×4px）。
+        // image 真图 op：80×80（w-20 h-20 = 20×4px），src = avatar_url 代入。
         let img = frame.ops.iter().find_map(|op| match op {
-            DrawOp::Quad { rect, .. }
+            DrawOp::Image { rect, src, .. }
                 if (rect.w - 80.0).abs() < 0.5 && (rect.h - 80.0).abs() < 0.5 =>
             {
-                Some(*rect)
+                Some(src.clone())
             }
             _ => None,
         });
-        assert!(img.is_some(), "image 占位 80×80: {:?}", frame.ops);
+        let src = img.expect("image 真图 op 80×80");
+        assert!(src.contains("cravatar"), "src 绑定代入 URL: {src:?}");
         // Follow/Message 无 onclick → 无命中区（非交互按钮不进交互区表）。
         let buttons: Vec<_> = p
             .hit_regions()
@@ -2643,6 +2668,12 @@ pub(crate) mod tests {
                     rect.x, rect.y, rect.w, rect.h
                 )),
                 DrawOp::ScissorPop => out.push_str("scissor-pop\n"),
+                DrawOp::Image { rect, src, fit } => out.push_str(&format!(
+                    "image {:.1},{:.1} {:.1}x{:.1} fit={} {:?}\n",
+                    rect.x, rect.y, rect.w, rect.h,
+                    fit.as_u8(),
+                    src
+                )),
             }
         }
         out

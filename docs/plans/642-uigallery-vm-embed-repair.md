@@ -646,6 +646,68 @@ next: T-13(写点追踪/反向改名待裁定) → T-18 → T-15 → T-17;
   T-16/T-19/F1 仍待用户裁定
 ```
 
+---
+
+```yaml
+stage: review (phase landing——wave1 + T-11 + T-12②;overall 仍 executing)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass (phase verdict;非终审——T-13/T-14..T-19 不在本审范围)
+reviewed_commit:
+  auto-lang: fe48a3945 (plan-642-dev, worktree clean)
+base_commit:
+  auto-lang: 1f4e3e32c (phase 前 master);phase diff = 50f623e5c(T-11)
+  + e1f79db2d(master 合并) + 2c96c5e40/267d76904/fe48a3945(T-12 循环)
+dependency_revisions:
+  auto-os: 98613b0+ (plan-642-dev, 产物随语料同步)
+  auto-down: 60b038f (detached 兄弟, path 依赖)
+acceptance_results:
+  - cargo tf 3615/3615 全绿(本审全新,复审全量门)
+  - cargo tv 3760/3760 全绿(008 语料修正 golden)
+  - cargo t ui 2101: 2079 绿/22 红 全落 master 基线(零新增)
+  - layout_tests 55 绿(2 红=master 预存);auto-man gallery 22/23
+    (1 红=P642-D5 master 预存)
+  - E2E: 009 滚动条+完整内容(t12final_009.png);016 垂直居中
+    (t12final_016.png);008 卡片 headless 全出(探针③)+live 滚轮
+    可达性待复验(R642-P1)
+  - wave1 AC-01..06 与 T-11 证据沿用前审记录(同基线未变)
+findings:
+  - R642-F1 (沿用): 间歇性 exit 127——本轮部分实例退出已查明为
+    TaskStop 孤儿+单实例冲突(环境),崩溃家族死亡仍在案;F1 债处置
+  - R642-P1 (new, low): 008 卡片实机滚轮可达性未复验(MCP 无框内
+    滚动柄);headless 已证卡片全出
+  - R642-P2 (new, info): 主题配置持久污染——修复前会话曾存
+    dark_theme=false,新会话默认浅色,需设置面板手动恢复一次
+next: merge(phase landing plan-642-dev → master);overall 仍 executing
+  (剩余: T-13 方向裁定 / T-18 / T-15 / T-17 / T-14 / T-16+T-19 / F1)
+```
+
+---
+
+```yaml
+stage: merge (phase landing 收据——非归档;overall 计划保持 executing)
+plan_id: PLAN-642:r1
+outcome: pass (phase landing)
+checkpoints:
+  prepared: reviewed fe48a3945 + spec delta 落 worktree
+  landed: master merge 1039d998e（含 fe48a3945 全链）+ 7375cd027(spec 节)
+    经并发 PLAN-074 merge ffe2dac6d 一并入主;master cargo check 绿
+  ledger_refreshed: .autoos/specs.json P642-1 upsert(读回验证,gitignore
+    运行时数据就地发布);docs/specs/INDEX.md 重算无变化;spec 节已入主
+  archived: N/A——分阶段落地,overall 保持 executing(T-13/T-14..T-19 在途)
+  cleaned: wt-guard clean(024-charts/deps/stylekit junction 系 auto run
+    产物,已按规程 os.rmdir 摘除)→ worktree 移除 + branch plan-642-dev
+    删除(was 7375cd027,已含于 master)→ 组目录 .wt/lang-642 移除
+master_wip_note: master 存在他会话未提交 WIP(examples/rust-workspace/
+  Cargo.toml 加 013/015-back members + docs/plans/evidence/653/)——非本
+  计划产物,未纳入落地,已表面化待其属主路由
+next: 续作须重建 worktree(git worktree add D:/autostack/.wt/lang-642/
+  auto-lang -b plan-642-dev,自最新 master);队列=T-13 方向裁定/T-18/
+  T-15/T-17;计划外队列=PLAN-655 执行/T-14/T-16+T-19/F1
+```
+
+
+
 
 ## 10. 待澄清事项
 

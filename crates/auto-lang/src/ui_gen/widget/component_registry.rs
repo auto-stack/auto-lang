@@ -386,6 +386,15 @@ fn parse_package_widgets(
     path: &Path,
 ) -> Result<Vec<(crate::ast::ui::WidgetDecl, AuraWidget)>, String> {
     let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+    // PLAN-642 T-01: 跨包 style recipe 预注册——包文件可 `use stylekit.styles:
+    // icon_base` 形态引用共享配方（027/018 tree_icon 实证），而 parse 期
+    // name-check（PLAN-607/635）只认注册表内配方；本装载器此前不做
+    // prepare_style_recipe_imports 预注册 → 配方名撞 "undefined variable"
+    // 硬错 + RBrace 级联，整文件被 Plan 435 P7-3 跳过（组件无声消失）。
+    // 解析序与编译入口一致（resolve_module_path 的 pac.at dep 上溯），
+    // 解析失败沿用宽容语义（配方缺席 → parse 报错入 warning，不 panic）。
+    let base_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let _ = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, code);
     let mut parser = crate::Parser::from(code);
     parser = parser.with_session(session);
     let ast = parser

@@ -29,7 +29,7 @@ widget settings {
                 col {
                     style: "gap-3"
                     text "Font Size" { style: settings_label }
-                    text "Affects the reading view text size." { style: cap }
+                    text "Affects the reading view text size." { style: caption_text }
                     row {
                         style: "gap-2"
                         button {
@@ -66,7 +66,7 @@ widget settings {
                 col {
                     style: "gap-3"
                     text "Theme" { style: settings_label }
-                    text "Use the sun/moon toggle (top of the sidebar or reading bar) to switch between light and dark." { style: cap }
+                    text "Use the sun/moon toggle (top of the sidebar or reading bar) to switch between light and dark." { style: caption_text }
                     row {
                         style: "gap-2 items-center"
                         text "☀️" { style: size_xl }
