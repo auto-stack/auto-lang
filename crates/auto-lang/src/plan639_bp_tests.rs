@@ -225,3 +225,68 @@ fn t05_vue_track_synth_menubar_from_ui_config() {
     );
 }
 
+
+/// PLAN-070 T-05：组件级 ui_config 选择性继承（app.at 壳专属门的扩展）——
+/// 含匹配 handler 的组件继承 ActionsBlock（menubar 合成正断言）；无匹配
+/// handler 的组件零注入（LoginBind TS2304 泄漏类负断言）。
+#[test]
+fn t05_component_level_ui_config_selective_inheritance() {
+    let base = std::env::temp_dir().join(format!("plan070-uicfg-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+
+    std::fs::write(base.join("pac.at"), "ui_config: \"cfg.at\"\n").unwrap();
+    std::fs::write(
+        base.join("cfg.at"),
+        "bp-edit {\n    action { id : \"file.new\" handler : \".ActNew\" title : \"新建\" }\n    menubar { menu { id : \"file\" title : \"文件\" item { action : \"file.new\" } } }\n}\n",
+    )
+    .unwrap();
+    let menu_at = base.join("menu_bar.at");
+    std::fs::write(
+        &menu_at,
+        "widget MenuBar {\n    msg { ActNew }\n    model {\n        var n int = 0\n    }\n    view {\n        menubar (class: \"items-center\") {}\n    }\n    on {\n        .ActNew -> { .n = .n + 1 }\n    }\n}\n",
+    )
+    .unwrap();
+
+    // 正：声明了匹配 handler 的组件继承命令系统
+    let result = crate::ui_gen::generate_component_from_file(
+        &menu_at,
+        crate::ui_gen::ComponentGenOptions::default(),
+    )
+    .expect("component declaring matching handlers must inherit ui_config actions");
+    assert!(
+        result.vue_code.contains("<MenubarMenu"),
+        "component-level ui_config must synthesize MenubarMenu; code:\n{}",
+        result.vue_code
+    );
+    assert!(
+        result.vue_code.contains("function ActNew"),
+        "handler fn must be emitted for the matching component; code:\n{}",
+        result.vue_code
+    );
+
+    // 负：无匹配 handler 的组件零注入（泄漏防线保持）
+    let other_at = base.join("other.at");
+    std::fs::write(
+        &other_at,
+        "widget Other {\n    model {\n        var m int = 0\n    }\n    view {\n        text \"hi\"\n    }\n}\n",
+    )
+    .unwrap();
+    let result2 = crate::ui_gen::generate_component_from_file(
+        &other_at,
+        crate::ui_gen::ComponentGenOptions::default(),
+    )
+    .expect("plain component must generate");
+    assert!(
+        !result2.vue_code.contains("Menubar"),
+        "leak: non-participating component must not synthesize menubar; code:\n{}",
+        result2.vue_code
+    );
+    assert!(
+        !result2.vue_code.contains("ActNew"),
+        "leak: non-participating component must not reference foreign actions; code:\n{}",
+        result2.vue_code
+    );
+
+    let _ = std::fs::remove_dir_all(&base);
+}

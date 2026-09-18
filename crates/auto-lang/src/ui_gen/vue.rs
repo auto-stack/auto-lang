@@ -6601,7 +6601,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // from the declarations (VM parity: the iced view builder
                 // composes the same structure from action_config on the vm
                 // side). Explicit children keep the hand-written tree.
-                if children.is_empty() && self.is_shadcn() {
+                // PLAN-070 T-05: no longer shadcn-mode-gated — a project that
+                // renders `menubar {}/toolbar {}` against an actions block
+                // has opted into the command-surface contract and must host
+                // the menubar ui module + reka-ui (shadcn: off projects like
+                // jade-garden front host exactly those; the synthesized
+                // imports resolve against the consumer's own ui module).
+                if children.is_empty() {
                     if tag == "menubar" && self.actions_menubar_available() {
                         return self.generate_actions_menubar_html(props, indent);
                     }
