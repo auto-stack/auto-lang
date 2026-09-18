@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 16
+current_step: 17
 total_steps: 19
 ---
 
@@ -408,11 +408,31 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       （auto-lang core 与 master 零 diff）。双仓提交：auto-lang dfcc3bbe1、
       auto-os T-13 批次（16 文件，11 适配器+calendar_store+d015notes 模块
       改名映射+registry 语料漂移+A/B 脚本入 tests/）。
-- [ ] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）
-      (a) routes 单页族（018/019/021/022/023）：VM 内嵌支持 `routes {}`
-      首页路由 stub 渲染；(b) back 链 native-ns/stream 族（017）：
-      进程内 stub/诚实空态降级或接 T-19 proxy；(c) 030/041/043/044 保持
-      独立、回退文案精确化（列独立运行命令）。
+- [✅] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）[✅ 已完成（a/c 两臂；(b) 随 P642-D13 proxy 独立计划）]
+      **(a) routes 首页 stub 档**：新 `route_stub` 档（判定 = app.at 含
+      `routes {}` 块且非 render:"vm"；不依赖 vp——018 的 from_workspace
+      strict 失败是 Vue 装配臂问题）。发射变换（vue.rs `rewrite_routes_
+      stub`）：routes 块剔除 + `outlet` 行替换为 `/` 首页路由组件实例
+      （无 `/` 时首个无参路由兜底）+ 首页页面文件 per-demo ns 级联
+      （pages/home.at 跨 demo 同名异容，平面名必撞 modules_conflict）。
+      **三处配套挖掘（迭代三轮实证）**：①store 别名 use 行重链
+      （`relink_store_use_lines`——021 `use store: BlogStore` 别名 token
+      ≠声明文件名 → 收集 miss → store 不入池 → scan 空表 → 真名限定
+      不跑 → 合并单元 plan-446 A1 歧义硬错）；②back 级联接入（四家
+      store 数据全走 `use back.api:`——route_stub 与 fullstack 同管线
+      级联；纯前端无种子 stub 跳过级联不跳 demo）；③多 store 边界
+      降级（023 AuthStore+ArticleStore 泛型调用语义分属，A1 不可消解
+      → 回退页，发射期记录原因）。**(c) 回退文案精确化**：AppViewport
+      else 分支三行——标题（依赖说明）+ `f"独立运行：cd examples/ui/
+      ${.app}"`（插值注意 AutoLang f-string 是 `${}` 非 `{}`）+ 双臂
+      运行命令。registry.at loadable 三档并集（loadable||fullstack||
+      route_stub——T-08 元数据=VM 实态原则延伸；web 臂 demos-registry
+      .ts 不变）。**E2E**：四页 stub 首页真实渲染（022 "Project Board"/
+      018 "Library"/021/019 "Home"）+ 三回退页命令插值正确（023/030/
+      017）。门禁：gallery 15/15（含新 route_stub 单测）；auto-man 全套
+      2 红 = 并行 flaky（plan609+generate_rust_ui_out_of_repo，双测
+      隔离重跑绿、master 同特征）。双仓提交：auto-lang d19190a11、
+      auto-os T-14 产物批次（4 适配器+页面/链模块+registry+AppViewport）。
 - [✅] **T-15 (P2-015) 015 种子数据合并链归因**（rev2）[✅ 已完成（归因反转：数据链通，视图层双断点）]
       归因（state 工具 + 探针实证）：db.at 6 条种子**在内嵌态完整落地**根态
       （notes=6 vmref，store.Init→list_notes→db.all_notes 全链通）——任务
@@ -833,6 +853,33 @@ evidence:
   - T-17:024 最新构建出图实证在案(u2_024 + 本会话 soak 4 轮),
     结案=用户以新构建复验
 next: 剩余 T-14 a/c(可选,授权面内) → 复审 → merge 收口
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-14 a/c 完成——计划执行面收官)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-14 a/c;全部执行任务完成,计划待复审收口
+code_commit:
+  auto-lang: d19190a11 (plan-642-dev, auto-man vue.rs +319/-14)
+  auto-os:   T-14 产物批次 (plan-642-dev, 4 stub 适配器+页面/链模块+
+    registry+AppViewport 文案)
+task_ids: [T-14]
+evidence:
+  - (a) route_stub 档:rewrite_routes_stub(routes 剔除/outlet→首页组件)+
+    页面 ns 级联 + relink_store_use_lines(别名 use 重链,021 实证) +
+    back 级联接入(四家 store 全走 back.api) + 多 store 边界降级(023)
+  - (c) 回退文案三行:依赖说明 + cd 命令 ${.app} 插值 + 双臂运行命令
+  - E2E:022"Project Board"/018"Library"/021/019"Home" 四页 stub 真实
+    渲染;023/030/017 回退页命令插值正确
+  - 门禁:gallery 15/15(新 route_stub 单测);auto-man 全套 2 红并行
+    flaky(隔离重跑绿,master 同特征,零新增)
+remaining: 无执行任务——T-16/T-19 移交 P642-D13 独立计划,T-14(b) 随之;
+  全部在途任务(T-01..T-18)完成或定性结案
+next: /auto-plan:review 复审 → merge 收口（landing 后按 P642-D13 立
+  proxy 独立计划、按 P642-D3 裁定立崩溃专项）
 ```
 
 ---
