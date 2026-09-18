@@ -385,6 +385,9 @@ pub struct VueGenerator {
     /// （`auto run` 经 AUTOUI_SELECT_MARKERS=1）开启；产物构建保持输出
     /// 逐字节不变（既有快照测试锚定精确 HTML，恒定注入会大面积破坏）。
     select_markers: bool,
+    /// PLAN-646: 本生成器实例对应的 .at 源文件 stem（data-auto-src 注入，
+    /// overlay 据此在 AUTO_SOURCES 中选对源文——子件 span 归各自 .at）。
+    source_stem: String,
     /// Current widget name
     current_widget: Option<String>,
 
@@ -865,6 +868,7 @@ impl VueGenerator {
     pub fn new() -> Self {
         Self {
             select_markers: std::env::var("AUTOUI_SELECT_MARKERS").as_deref() == Ok("1"),
+            source_stem: "app".to_string(),
             current_widget: None,
             imports: Vec::new(),
             state_names: Vec::new(),
@@ -1164,6 +1168,12 @@ impl VueGenerator {
     /// Set the `default_classes` toggle (pac.at `default_classes: off`).
     /// When false, `extract_classes` skips the doc-theme default Tailwind
     /// classes for everything except layout primitives (row/col/grid/...).
+    /// PLAN-646: 设置源文件 stem（data-auto-src 注入）。
+    pub fn with_source_stem(mut self, stem: impl Into<String>) -> Self {
+        self.source_stem = stem.into();
+        self
+    }
+
     pub fn with_default_classes(mut self, default_classes: bool) -> Self {
         self.default_classes = default_classes;
         self
@@ -7503,6 +7513,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // 外部组件）在上方早退不经此处——标记面由内层通用元素携带。
                 if self.select_markers {
                     attrs.push(format!("data-auto-tag=\"{}\"", tag));
+                    attrs.push(format!("data-auto-src=\"{}\"", self.source_stem));
                     if let Some(id) = debug_id {
                         attrs.push(format!("data-auto-id=\"aura_{}\"", id.0));
                     }
@@ -21641,6 +21652,8 @@ widget SelectMarkers {
         assert!(sfc.contains("data-auto-tag=\"col\""), "col tag marker:
 {sfc}");
         assert!(sfc.contains("data-auto-id=\"aura_"), "debug_id marker:
+{sfc}");
+        assert!(sfc.contains("data-auto-src=\"app\""), "source stem marker:
 {sfc}");
         // span 形态 off:len（数字:数字）
         let span_vals: Vec<String> = sfc

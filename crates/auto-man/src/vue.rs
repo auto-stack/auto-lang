@@ -1254,11 +1254,24 @@ interface SelectedNode {
   structure: unknown
 }
 
-function appSource(): string {
-  // v1 单 App 页面：优先 'app' 键，否则取任一（gallery 多 App 为非目标）。
+function sourceFor(el: Element): string {
+  // 子件元素的 span 归各自 .at（data-auto-src=stem）；缺省回落 app/首个。
+  const key = el.getAttribute('data-auto-src')
+  if (key && AUTO_SOURCES[key] != null) return AUTO_SOURCES[key]
   const keys = Object.keys(AUTO_SOURCES)
   if (keys.length === 0) return ''
   return AUTO_SOURCES['app'] ?? AUTO_SOURCES[keys[0]] ?? ''
+}
+
+const UTF8 = new TextEncoder()
+const UTF8D = new TextDecoder()
+
+/// .at span 是字节偏移（Rust 侧口径）；JS 字符串按 UTF-16 码元索引，
+/// 中文注释会让两种单位错位——统一走 UTF-8 字节切片。
+function sliceBytes(src: string, off: number, len: number): string | null {
+  const bytes = UTF8.encode(src)
+  if (off + len > bytes.length || off < 0 || len < 0) return null
+  return UTF8D.decode(bytes.subarray(off, off + len))
 }
 
 function appName(): string {
@@ -1323,7 +1336,6 @@ function collectSelection(rect: { left: number; top: number; right: number; bott
     }
     return true
   })
-  const src = appSource()
   return topmost.map((el) => {
     const kind = el.getAttribute('data-auto-tag') ?? el.tagName.toLowerCase()
     const id = el.getAttribute('data-auto-id') ?? ''
@@ -1334,9 +1346,13 @@ function collectSelection(rect: { left: number; top: number; right: number; bott
       const parts = raw.split(':')
       const off = Number(parts[0])
       const len = Number(parts[1])
-      if (Number.isFinite(off) && Number.isFinite(len) && src.length > 0 && off + len <= src.length) {
-        span = [off, len]
-        source = dedent(src.slice(off, off + len))
+      const src = sourceFor(el)
+      if (Number.isFinite(off) && Number.isFinite(len) && src.length > 0) {
+        const sliced = sliceBytes(src, off, len)
+        if (sliced !== null) {
+          span = [off, len]
+          source = dedent(sliced)
+        }
       }
     }
     return { id, kind, span, source, structure: buildStructure(el) }
@@ -5547,7 +5563,21 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     // PLAN-646: 源码映射随每次运行刷新（内容 hash 防抖，覆盖首启/全量生成路径
     // ——incremental_compile_changed 内的同步点只在有增量时触达）。
-    write_auto_sources_ts(&resolve_front_dir(root_dir), &root_dir.join("dist"));
+    let p646_vue_root = root_dir.join("gen").join("front").join("vue");
+    write_auto_sources_ts(&resolve_front_dir(root_dir), &p646_vue_root);
+    // PLAN-646: overlay 资产自愈刷新（旧工程 scaffold 停在旧版 overlay）。
+    {
+        let overlay_path = p646_vue_root.join("src").join("auto-select").join("overlay.ts");
+        let overlay_new = generate_select_overlay_ts();
+        let stale = match std::fs::read_to_string(&overlay_path) {
+            Ok(existing) => existing != overlay_new,
+            Err(_) => true,
+        };
+        if stale {
+            std::fs::create_dir_all(overlay_path.parent().unwrap()).ok();
+            std::fs::write(&overlay_path, overlay_new).ok();
+        }
+    }
 
     let changed_count = incremental_compile_changed(root_dir)?;
 
