@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-641
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: tabs-variant（Tabs 组件 variant 扩展：enclosed 连通形态）
 author: [agent]
 created_at: 2026-09-18
@@ -9,7 +9,7 @@ updated_at: 2026-09-18
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components:
-  - docs/specs/auto-lang/ui/design/tree-components.md#tabs-variant
+  - docs/specs/auto-lang/ui/design/tabs-components.md
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径
@@ -381,6 +381,32 @@ variant、两端渲染器落实连通结构、gallery 加示例覆盖两种观�
   执行期新增债/发现：①VM 轨大写标签（Col/H1/Row/Button）子树丢失（既有
   行为，046 以小写规避，KNOWN-DEBT 候选）；②docs SFC 三源同步纪律入
   tabs-components.md（registry/vue.rs 模板/auto-man assets，Q1 完整答案）。
+- 2026-09-18 独立复审（/auto-plan:review，实现同会话——按技能要求从工件
+  重建结论，不采信执行期总结）：stage: review | PLAN-641 | rev1 |
+  reviewed_commit: 49d8be5d1（含 R1 修复）| base_commit: e352437b0 |
+  dependency_revisions: auto-down detached@362d75b（组内兄弟，路径解析
+  只读）| spec_inputs: design/tabs-components.md（新增）+ overview.md 641
+  条目 + schema/aura.at + docs/components/core.md（再生）。
+  **复审发现与修复循环**：
+  - **P641-R1（fail → 已修复）**：trigger 文本子件形态
+    （`tabstrigger (value:"a") { text "Alpha" }`）标签静默回退 "Tab N"——
+    fold 浅层 Text 匹配漏掉 text-like Element 形态；执行期最后一轮改
+    app.at 后未重跑 VM 视觉验证，漏网。修复=复用 convert_text_element
+    折叠链（TEXT_LIKE_TAGS + child_element_text props 链下钻一层）+
+    回归单测 plan641_tabs_fold_trigger_text_child_element。受影响任务
+    T-03 重开即修（修复循环 1/3），commit 49d8be5d1。
+  - P641-R2（flake，非回归）：tv 偶发 c1_future_all 红——双端单跑皆绿
+    （主检出 PASS / worktree PASS），并发抖动在案。
+  **AC 复证结果（全 pass）**：AC-01 单测 parse 兜底 7/7；AC-02/04 VM 全新
+  实机复现 p641_review_fix.png（三形态标签正确+连通+圆角对比）+ 受控切换
+  断言（press Beta → s2 "b"）；AC-03 Vue computed 样式断言（bg
+  rgb(9,14,26)/白字）+ 点击切换；AC-05 wire 单测；AC-06 双端脚本跑通；
+  AC-07 tf 3600/3601（唯一红=real_sidebar_at_parses_with_navtree 基线
+  预存，主检出对照复证）；AC-08 spec 沉淀在案（specs.json 留 merge）。
+  frontmatter new_spec_components 落位修正（tree-components.md#tabs-variant
+  → design/tabs-components.md，T-06 落位调整后的簿记同步）。
+  规范增量核验：SD-01/SD-02 与 design/tabs-components.md 实文一致，无
+  超范围承诺。**outcome: pass** | next: merge。
 
 ## 10. 待澄清事项
 
