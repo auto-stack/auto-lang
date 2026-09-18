@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-653
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-back-contract-fix
 author: [zhaopuming/zcode-session]
 created_at: 2026-09-18
@@ -33,9 +33,16 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
 2. **dev 跑法(`auto run -r vue`)back 引擎 DLL 解析失败**——首 tick
    panic(app-back/src/term.rs:225 "autoterm_core.dll 未找到"),手动
    设 AUTOTERM_ENGINE_DLL 才活;020/021 可用走部署态配方掩盖了缺口。
-3. **vue back 矩形投影单幅化**——visible=5 但投影仅出单满幅 pane,
-   020 t01 剧本 12 步受阻;嫌疑收敛到 master `1fc4772d9`(rust lowering
-   尾分号/括号修复)恰好改了发射投影的 rust_ui.rs,或 642/643 合并族。
+3. ~~vue back 矩形投影单幅化~~ **撤销(非缺陷)**:干净 back
+   (18080,独立端口)重跑 020 t01 剧本 **12 步全绿**(split/磁吸/钳位/
+   MAX_PANES/close 全对)——此前单幅化读数来自被用户实测轮询污染的
+   共享 17401 实例,剧本须按 020 惯例在干净 back 上跑。
+4. **vue 前端槽位样式发射错误**(auto-term 17401 实测,页面 2209px
+   需滚动才见终端):生成的 App.vue 把类名串塞进 `:style`
+   (`:style="absolute z-10 top-[${y1}px]..."`)——非合法 inline style,
+   浏览器整串忽略 → 槽位 div 零定位零尺寸落文档流。正确应为
+   `:style` 发真样式(position:absolute;top:Npx;…)或 `:class`+静态
+   扫描。auto-shell 的 vue(18400)同生成器同病。
 
 ## 目标
 
@@ -46,6 +53,7 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
 - G3 vue back 矩形投影与模型一致(多 pane 出多槽+分隔条槽),t01 剧本
   12 步全绿。
 - G4 端到端:vue 形态打开即见 cmd 输出(banner+提示符),可键入回显。
+- G5 vue 页首屏即见终端(槽位 absolute 布局生效,无需翻页)。
 
 ### 非目标
 
@@ -94,8 +102,9 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
 | # | 改动 | 文件:符号(仓) | 说明 |
 |---|---|---|---|
 | D1 | 带参 GET 路由契约修复 | crates/auto-man/src/api_gen.rs(:1570-1600 分支;复用 :1741 Query 机制) | method 分流:GET+Query 或统一 POST+Json(019 规范),T-00 定稿 |
-| D2 | dev DLL 解析 | auto-term `app/term.rs` 解析候选链 或 vue 启动器 | 候选链补 back exe 实际落点/启动器注 env |
-| D3 | 投影单幅化根修 | crates/auto-man/src/rust_ui.rs(投影发射) | T-00 最小复现定界 1fc4772d9 破坏点后修复 |
+| D2 | dev DLL 解析 | auto-term `app/term.rs` 解析候选链 或 vue 启动器 | 候选链补 back exe 实际落点/启动器注 env;auto-shell 18401 实测 apply-resize 每拍 500(mounted 钩子首拍死,同族证据) |
+| D4 | 槽位样式发射修复 | crates/auto-lang/src/ui_gen/vue.rs(App.vue 槽位 div) | `:style` 发真 inline style(position:absolute;top/left/width/height px),或 :class 走静态白名单;修复页面 2209px/翻页问题(auto-term 17401 实测 + auto-shell 同病) |
+| ~~D3~~ | ~~投影单幅化根修~~ | — | 撤销:干净 back 复跑 t01 全绿,非缺陷(见摘要 3) |
 
 ### 规范增量
 
@@ -130,6 +139,9 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
 - **AC-04** 020 t01 剧本 12 步全绿。验证:剧本日志。
 - **AC-05** 端到端:vue 页可见 cmd 输出并可键入回显。验证:受控浏览器
   截图/断言。
+- **AC-06** 首屏布局:vue 页首屏(无滚动)即见终端槽位。验证:受控浏览器
+  evaluate 断言 document.scrollHeight ≤ viewport 高 + 槽位 div
+  getBoundingClientRect 在首屏内。
 
 ## 执行步骤
 
@@ -143,10 +155,12 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
   关联 AC-01。
 - **T-02 [D2] dev DLL 解析修复**(auto-term 侧,兄弟 worktree)。
   前置 T-00。关联 AC-02。
-- **T-03 [D3] 投影单幅化根修**(auto-lang worktree)。前置 T-00。
-  关联 AC-03。
+- ~~T-03 [D3] 投影单幅化根修~~ 撤销(干净 back 复跑 12 步全绿,
+  非缺陷;t01 门改由本计划 T-04 直接覆盖)。
+- **T-05 [D4] 槽位样式发射修复**(auto-lang worktree + 前端重生成)。
+  前置 T-00。关联 AC-05(新增)。
 - **T-04 回归门**:从零生成 + t01 剧本 + workspace 全绿 + 受控浏览器
-  端到端。前置 T-01..T-03。关联 AC-04/05。
+  端到端(首屏即见终端)。前置 T-01/T-02/T-05。关联 AC-04/05。
 
 ## 复审记录
 
