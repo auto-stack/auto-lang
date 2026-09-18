@@ -36,7 +36,9 @@ use super::endpoint::FrameSource;
 use super::message::{ControlMsg, DrawList, DrawOp, ImageFit, InputMsg, MouseButton, Rgba8, WRect};
 use crate::ui::component::Component;
 use crate::ui::style::{Color, Style, StyleClass};
-use crate::ui::view::{ScrollCallback, ScrollMetrics, SelectCallback, View};
+use crate::ui::view::{
+    PopoverAnchor, PopoverPlacement, ScrollCallback, ScrollMetrics, SelectCallback, View,
+};
 
 /// 输入框几何（client_runtime 私有常量的 native 同值镜像——视觉规格
 /// 镜像解释态，参数面各自持有）。
@@ -50,6 +52,16 @@ const CHECK_LABEL_GAP: f32 = 6.0;
 const SLIDER_H: f32 = 20.0;
 const SLIDER_TRACK_H: f32 = 4.0;
 const SLIDER_KNOB: f32 = 12.0;
+/// popover 面板几何（PLAN-029 T-04 D3）：内容可用宽（a2r 缺省 w-72 ≈
+/// 288px 同刻度）/ 锚-面板间距 / 视口边距。
+const POP_W: f32 = 288.0;
+const POP_GAP: f32 = 6.0;
+const POP_MARGIN: f32 = 8.0;
+/// Modal scrim 半透明全屏层（RGB 0 + alpha 120）。
+const POP_SCRIM: Rgba8 = Rgba8::new(0, 0, 0, 120);
+/// 面板底/边（select 选项列同视觉族）。
+const POP_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
+const POP_BORDER: Rgba8 = Rgba8::new(90, 90, 100, 255);
 
 /// 分型命中表项（PLAN-025 T-01 D1/D3 定形态）：零参物化消息直入；payload
 /// 族携派发材料（输入闭环身份/slider 几何/…——随覆盖爬坡扩臂）。
@@ -85,6 +97,10 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
         content: (f32, f32),
         callback: ScrollCallback<M>,
     },
+    /// PLAN-029 T-04（D3）：popover 开态全屏 catcher（rect = 视口——开态
+    /// 任何落点即关；先于面板项登记 → rev 序面板项胜，锚/主块被吞）。
+    /// Esc 同臂派发（key=27 且在场）。
+    PopoverDismiss { rect: WRect, on_dismiss: Option<M> },
 }
 
 /// select 开态覆盖序记录（主块渲染后统一追加——D3：DrawList paint
@@ -97,6 +113,26 @@ struct SelectOverlay<M: Clone + std::fmt::Debug> {
     on_select: Option<SelectCallback<M>>,
 }
 
+/// PLAN-029 T-04（D3）：popover 开态覆盖序记录（select 同序——主块渲染
+/// 后追加面板 ops + 命中项；开合零投影器状态，open 随帧）。
+struct PopoverOverlay<M: Clone + std::fmt::Debug> {
+    /// 面板外框（几何已在登记期定：锚 + placement + 视口翻转）。
+    rect: WRect,
+    /// Modal = scrim 半透明全屏 Quad 先于面板 ops。
+    modal: bool,
+    on_dismiss: Option<M>,
+    /// 面板子树渲染产物（走线期临时 ctx 收纳 + 原点平移完成）。
+    ops: Vec<DrawOp>,
+    hits: Vec<HitEntry<M>>,
+}
+
+/// 几何归一后的锚（Widget = 主流量 laid rect；Point = 视口坐标直用，
+/// BottomStart 语义——a2r 缺省先例）。
+enum PopoverAnchorSite {
+    Widget(WRect),
+    Point { x: f32, y: f32 },
+}
+
 impl<M: Clone + std::fmt::Debug> HitEntry<M> {
     fn rect(&self) -> &WRect {
         match self {
@@ -105,9 +141,141 @@ impl<M: Clone + std::fmt::Debug> HitEntry<M> {
             | HitEntry::Slider { rect, .. }
             | HitEntry::SelectBox { rect, .. }
             | HitEntry::SelectOption { rect, .. }
-            | HitEntry::Scroll { rect, .. } => rect,
+            | HitEntry::Scroll { rect, .. }
+            | HitEntry::PopoverDismiss { rect, .. } => rect,
         }
     }
+
+    /// 原点平移（popover 面板子树走线期 @0,0 渲染 → 平移到面板原点）。
+    fn shifted(mut self, dx: f32, dy: f32) -> Self {
+        fn move_rect(r: &mut WRect, dx: f32, dy: f32) {
+            r.x += dx;
+            r.y += dy;
+        }
+        match &mut self {
+            HitEntry::Msg { rect, .. }
+            | HitEntry::Input { rect, .. }
+            | HitEntry::Slider { rect, .. }
+            | HitEntry::SelectBox { rect, .. }
+            | HitEntry::SelectOption { rect, .. }
+            | HitEntry::Scroll { rect, .. }
+            | HitEntry::PopoverDismiss { rect, .. } => move_rect(rect, dx, dy),
+        }
+        self
+    }
+}
+
+/// DrawOp 原点平移（popover 面板子树走线产物同移——全部坐标字段绝对制）。
+fn shift_draw_op(op: &DrawOp, dx: f32, dy: f32) -> DrawOp {
+    match op {
+        DrawOp::Quad { rect, color } => DrawOp::Quad {
+            rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
+            color: *color,
+        },
+        DrawOp::Text { x, y, size, line_height, color, text } => DrawOp::Text {
+            x: x + dx,
+            y: y + dy,
+            size: *size,
+            line_height: *line_height,
+            color: *color,
+            text: text.clone(),
+        },
+        DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+            DrawOp::TextStyled {
+                x: x + dx,
+                y: y + dy,
+                size: *size,
+                line_height: *line_height,
+                color: *color,
+                weight: *weight,
+                italic: *italic,
+                text: text.clone(),
+            }
+        }
+        DrawOp::Scissor { rect } => DrawOp::Scissor {
+            rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
+        },
+        DrawOp::ScissorPop => DrawOp::ScissorPop,
+        DrawOp::Image { rect, src, fit } => DrawOp::Image {
+            rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
+            src: src.clone(),
+            fit: *fit,
+        },
+    }
+}
+
+/// D3 定案几何：锚 + placement + 面板尺寸 → 面板原点（视口溢出对向翻转 +
+/// 边距钳制；Modal 视口居中；Edge* 贴边 sheet；Pointer = 最近右键点）。
+/// 纯函数——单测钉死全 14 枚举。
+fn popover_panel_origin(
+    site: &PopoverAnchorSite,
+    placement: &PopoverPlacement,
+    panel: (f32, f32),
+    viewport: (f32, f32),
+    last_right_click: (f32, f32),
+) -> (f32, f32) {
+    let (vw, vh) = viewport;
+    let (pw, ph) = panel;
+    let clamp_x = |x: f32| x.clamp(POP_MARGIN, (vw - pw - POP_MARGIN).max(POP_MARGIN));
+    let clamp_y = |y: f32| y.clamp(POP_MARGIN, (vh - ph - POP_MARGIN).max(POP_MARGIN));
+    let r = match site {
+        PopoverAnchorSite::Widget(r) => *r,
+        PopoverAnchorSite::Point { x, y } => WRect::new(*x, *y, 0.0, 0.0),
+    };
+    // 纵向对向翻转（Bottom 族下溢 → 上翻 / Top 族上溢 → 下翻）。
+    let v_flip = |below: f32, above: f32, want_below: bool| {
+        if want_below && below + ph > vh - POP_MARGIN {
+            above
+        } else if !want_below && above < POP_MARGIN {
+            below
+        } else if want_below {
+            below
+        } else {
+            above
+        }
+    };
+    // 横向对向翻转（Left 左溢 → 右翻 / Right 右溢 → 左翻）。
+    let h_flip = |left: f32, right: f32, want_left: bool| {
+        if want_left && left < POP_MARGIN {
+            right
+        } else if !want_left && right + pw > vw - POP_MARGIN {
+            left
+        } else if want_left {
+            left
+        } else {
+            right
+        }
+    };
+    // Point 锚 = 面板原点直用（view.rs 文档口径："面板左上角对齐该点"，
+    /// 无 GAP/高度推导）；Widget 锚 = 边缘 + GAP。
+    let (below, above) = match site {
+        PopoverAnchorSite::Point { y, .. } => (*y, *y - ph),
+        PopoverAnchorSite::Widget(_) => (r.y + r.h + POP_GAP, r.y - POP_GAP - ph),
+    };
+    let left = r.x - POP_GAP - pw;
+    let right = r.x + r.w + POP_GAP;
+    let cx = r.x + r.w / 2.0 - pw / 2.0;
+    let cy = r.y + r.h / 2.0 - ph / 2.0;
+    let (px, py) = match placement {
+        PopoverPlacement::Modal => ((vw - pw) / 2.0, (vh - ph) / 2.0),
+        PopoverPlacement::EdgeLeft => (POP_MARGIN, (vh - ph) / 2.0),
+        PopoverPlacement::EdgeRight => ((vw - pw - POP_MARGIN).max(POP_MARGIN), (vh - ph) / 2.0),
+        PopoverPlacement::EdgeTop => ((vw - pw) / 2.0, POP_MARGIN),
+        PopoverPlacement::EdgeBottom => ((vw - pw) / 2.0, (vh - ph - POP_MARGIN).max(POP_MARGIN)),
+        PopoverPlacement::Pointer => (clamp_x(last_right_click.0), clamp_y(last_right_click.1)),
+        // Point 锚恒 BottomStart 语义（view.rs 文档口径"placement 固定按
+        // BottomStart 处理"）——方向性枚举对坐标锚全部退化原点对齐。
+        _ if matches!(site, PopoverAnchorSite::Point { .. }) => (clamp_x(r.x), clamp_y(below)),
+        PopoverPlacement::BottomStart => (r.x, v_flip(below, above, true)),
+        PopoverPlacement::BottomEnd => (r.x + r.w - pw, v_flip(below, above, true)),
+        PopoverPlacement::Bottom => (cx, v_flip(below, above, true)),
+        PopoverPlacement::TopStart => (r.x, v_flip(below, above, false)),
+        PopoverPlacement::TopEnd => (r.x + r.w - pw, v_flip(below, above, false)),
+        PopoverPlacement::Top => (cx, v_flip(below, above, false)),
+        PopoverPlacement::Left => (h_flip(left, right, true), cy),
+        PopoverPlacement::Right => (h_flip(left, right, false), cy),
+    };
+    (clamp_x(px), clamp_y(py))
 }
 
 /// 点是否在矩形内（命中判定——既有 position() 谓词的命名提取）。
@@ -140,6 +308,8 @@ pub struct NativeProjector<C: Component> {
     /// 最近指针位（PointerMoved/Pressed 跟踪——wire Scroll 无坐标，滚轮
     /// 路由定位消费；T-01 D5 执行期附注）。
     pointer: (f32, f32),
+    /// 最近右键落点（PLAN-029 T-04：PopoverPlacement::Pointer 面板原点）。
+    last_right_click: (f32, f32),
     /// 渲染期遭遇的未覆盖 kind（动态分支防线——显式留痕面，测试/e2e 断言口）。
     uncovered_seen: Vec<String>,
     rev: u64,
@@ -161,6 +331,7 @@ impl<C: Component> NativeProjector<C> {
             select_open: None,
             right_hits: Vec::new(),
             pointer: (0.0, 0.0),
+            last_right_click: (0.0, 0.0),
             uncovered_seen: Vec::new(),
             rev: 1,
             width,
@@ -220,6 +391,9 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             select_slots: 0,
             select_open: self.select_open,
             overlays: Vec::new(),
+            popover_overlays: Vec::new(),
+            viewport: (self.width, self.height),
+            last_right_click: self.last_right_click,
             right_hits: Vec::new(),
         };
         let root_style = NodeStyle::default();
@@ -257,6 +431,23 @@ impl<C: Component> FrameSource for NativeProjector<C> {
                 oy += INPUT_H;
             }
         }
+        // PLAN-029 T-04（D3）：popover 开态覆盖序——scrim（Modal）→ 面板
+        // 底/边 → 面板子树 ops；命中登记序 = catcher 先、面板项后（rev 序
+        // 面板项胜、主块被吞——select 互斥语义同款，开合零投影器状态）。
+        let popovers = std::mem::take(&mut ctx.popover_overlays);
+        for po in popovers {
+            if po.modal {
+                ctx.push_quad(WRect::new(0.0, 0.0, self.width, self.height), POP_SCRIM);
+            }
+            ctx.push_quad(po.rect, POP_BG);
+            ctx.push_border(po.rect, POP_BORDER);
+            ctx.ops.extend(po.ops);
+            ctx.hits.push(HitEntry::PopoverDismiss {
+                rect: WRect::new(0.0, 0.0, self.width, self.height),
+                on_dismiss: po.on_dismiss,
+            });
+            ctx.hits.extend(po.hits);
+        }
         // 聚焦重定位（T-01 D1-A）：槽位越界 = 视图结构变化 → 失焦 +
         // buffer 清空（不猜测对位——槽序身份在结构变化下不可靠，v1 边界）。
         if let Some(slot) = self.focused_input {
@@ -290,6 +481,8 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             // 右键命中派发（`on_right_click` 物化消息——倒序置顶优先）。
             InputMsg::PointerPressed { x, y, button: MouseButton::Right, .. } => {
                 self.pointer = (*x, *y);
+                // PLAN-029 T-04：Pointer placement 面板原点跟踪。
+                self.last_right_click = (*x, *y);
                 let hit = self
                     .right_hits
                     .iter()
@@ -320,6 +513,14 @@ impl<C: Component> FrameSource for NativeProjector<C> {
             // 消解（ImeCancelled 同义宿主路径）。
             InputMsg::KeyPressed { key, .. } if *key == 27 => {
                 if self.select_open.take().is_some() {
+                    self.rev += 1;
+                } else if let Some(msg) = self.hits.iter().rev().find_map(|e| match e {
+                    HitEntry::PopoverDismiss { on_dismiss: Some(m), .. } => Some(m.clone()),
+                    _ => None,
+                }) {
+                    // PLAN-029 T-04：Esc 关开态 popover（最顶者——rev 序
+                    // 末位 = 最后登记的开态面板）。
+                    self.component.on(msg);
                     self.rev += 1;
                 }
                 self.ime_preedit = None;
@@ -430,6 +631,15 @@ impl<C: Component> NativeProjector<C> {
             // 开态选项项只在互斥臂可达（闭态派发不落此处）；滚轮只在
             // wheel 臂可达（左键不派发）。
             Some(HitEntry::SelectOption { .. }) | Some(HitEntry::Scroll { .. }) => {}
+            // PLAN-029 T-04（D3）：popover 开态 catcher 命中 = 外点/scrim
+            // → on_dismiss 派发 + 关闭（吞——不落穿主块，select 互斥同
+            // 语义；面板项在 catcher 之前登记 = rev 序先胜不落此处）。
+            Some(HitEntry::PopoverDismiss { on_dismiss, .. }) => {
+                if let Some(msg) = on_dismiss {
+                    self.component.on(msg);
+                }
+                self.rev += 1;
+            }
             None => {}
         }
     }
@@ -571,6 +781,12 @@ struct NativeCtx<M: Clone + std::fmt::Debug> {
     select_open: Option<usize>,
     /// 开态 select 覆盖序记录（render_frame 主块后统一追加）。
     overlays: Vec<SelectOverlay<M>>,
+    /// PLAN-029 T-04：开态 popover 覆盖序记录（select 同序追加）。
+    popover_overlays: Vec<PopoverOverlay<M>>,
+    /// 视口尺寸快照（popover 面板几何推导）。
+    viewport: (f32, f32),
+    /// 最近右键落点快照（Pointer placement 原点）。
+    last_right_click: (f32, f32),
     /// 右键命中表（Button/Row/Column/Container `on_right_click`）。
     right_hits: Vec<(WRect, M)>,
 }
@@ -1074,6 +1290,138 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 y,
                 avail_w,
             )
+        }
+        // PLAN-029 T-04（D3）：popover 臂——锚子树主流量渲染；开态 = 面板
+        // 子树临时 ctx @0,0 走线（槽位计数接续——树序身份稳定）→ 量尺
+        // 寸 → 几何定原点 → 平移入覆盖序记录（主块后追加，paint order
+        // 置顶）；闭态零面板 ops/hits（open 随帧，投影器零开合状态机）。
+        View::Popover { anchor, content, placement, open, on_dismiss } => {
+            let site = match anchor {
+                PopoverAnchor::Widget(child) => {
+                    let laid = layout_view_node(ctx, child, x, y, avail_w);
+                    PopoverAnchorSite::Widget(WRect::new(x, y, laid.size.0, laid.size.1))
+                }
+                PopoverAnchor::Point { x: px, y: py } => {
+                    PopoverAnchorSite::Point { x: *px, y: *py }
+                }
+            };
+            if !*open {
+                return match site {
+                    PopoverAnchorSite::Widget(r) => Laid { size: (r.w, r.h) },
+                    PopoverAnchorSite::Point { .. } => Laid { size: (0.0, 0.0) },
+                };
+            }
+            // 面板子树走线（快照字段透传——content 内 input/select 焦点/
+            // 开合渲染同册；Edge* 面板几何覆盖 = 贴边 sheet 尺寸）。
+            let mut tmp = NativeCtx {
+                ops: Vec::new(),
+                hits: Vec::new(),
+                uncovered: Vec::new(),
+                input_slots: ctx.input_slots,
+                focused_input: ctx.focused_input,
+                input_buffer: ctx.input_buffer.clone(),
+                ime_preedit: ctx.ime_preedit.clone(),
+                select_slots: ctx.select_slots,
+                select_open: ctx.select_open,
+                overlays: Vec::new(),
+                popover_overlays: Vec::new(),
+                viewport: ctx.viewport,
+                last_right_click: ctx.last_right_click,
+                right_hits: Vec::new(),
+            };
+            let laid = layout_view_node(&mut tmp, content, 0.0, 0.0, POP_W);
+            // 开态 select 选项列同走 tmp（互斥面板内嵌时的追加点在 tmp 侧
+            // 未发生——select overlay 只在 render_frame 顶层追加；嵌 select
+            // 面板 v1 以闭态渲染，随注）。
+            let panel = match placement {
+                PopoverPlacement::EdgeLeft | PopoverPlacement::EdgeRight => {
+                    (laid.size.0.max(200.0).min(ctx.viewport.0 / 2.0), ctx.viewport.1 - POP_MARGIN * 2.0)
+                }
+                PopoverPlacement::EdgeTop | PopoverPlacement::EdgeBottom => {
+                    (ctx.viewport.0 - POP_MARGIN * 2.0, laid.size.1.min(ctx.viewport.1 / 2.0))
+                }
+                _ => (laid.size.0.max(40.0), laid.size.1.max(INPUT_H)),
+            };
+            let (px, py) =
+                popover_panel_origin(&site, placement, panel, ctx.viewport, ctx.last_right_click);
+            let rect = WRect::new(px, py, panel.0, panel.1);
+            // 平移：面板子树 ops/hits + 右键表 + 嵌套 popover 记录（嵌套
+            // 几何按 tmp 空间推导后整体平移——翻转边界以真视口近似，v1）。
+            let ops = tmp.ops.iter().map(|op| shift_draw_op(op, px, py)).collect();
+            let hits = tmp.hits.into_iter().map(|h| h.shifted(px, py)).collect();
+            ctx.right_hits.extend(tmp.right_hits.into_iter().map(|(mut r, m)| {
+                r.x += px;
+                r.y += py;
+                (r, m)
+            }));
+            for mut nested in std::mem::take(&mut tmp.popover_overlays) {
+                nested.rect.x += px;
+                nested.rect.y += py;
+                nested.ops = nested.ops.iter().map(|op| shift_draw_op(op, px, py)).collect();
+                nested.hits = nested.hits.into_iter().map(|h| h.shifted(px, py)).collect();
+                ctx.popover_overlays.push(nested);
+            }
+            // 槽位计数回接（tmp 接续起点 = ctx 当前值——直接采纳终值）。
+            ctx.input_slots = tmp.input_slots;
+            ctx.select_slots = tmp.select_slots;
+            ctx.uncovered.extend(tmp.uncovered);
+            ctx.popover_overlays.push(PopoverOverlay {
+                rect,
+                modal: *placement == PopoverPlacement::Modal,
+                on_dismiss: on_dismiss.clone(),
+                ops,
+                hits,
+            });
+            match site {
+                PopoverAnchorSite::Widget(r) => Laid { size: (r.w, r.h) },
+                PopoverAnchorSite::Point { .. } => Laid { size: (0.0, 0.0) },
+            }
+        }
+        // PLAN-029 T-05（D4）：thumbnail/preview 桥接臂——虚拟引用语法
+        // `thumbnail://{wid}!{fallback}` / `workspace://{ws}!{fallback}`
+        //（028 宿主解析直用；miss → 宿主转 `lucide:{fallback}` 占位图标
+        // 真渲——I3 降级升级，语法入册 §1.10）。几何同 Image 臂。
+        View::WindowThumbnail { wid, fallback_icon, .. } => {
+            let w = style.fixed_w().unwrap_or(avail_w.min(192.0)).min(avail_w.max(0.0));
+            let h = style.fixed_h().unwrap_or(w * 112.0 / 192.0);
+            let fallback = if fallback_icon.is_empty() { "app-window" } else { fallback_icon };
+            ctx.ops.push(DrawOp::Image {
+                rect: WRect::new(x, y, w, h),
+                src: format!("thumbnail://{wid}!{fallback}"),
+                fit: ImageFit::Stretch,
+            });
+            Laid { size: (w, h) }
+        }
+        View::WorkspacePreview { ws, fallback_icon, .. } => {
+            let w = style.fixed_w().unwrap_or(avail_w.min(176.0)).min(avail_w.max(0.0));
+            let h = style.fixed_h().unwrap_or(w * 64.0 / 176.0);
+            let fallback = if fallback_icon.is_empty() { "app-window" } else { fallback_icon };
+            ctx.ops.push(DrawOp::Image {
+                rect: WRect::new(x, y, w, h),
+                src: format!("workspace://{ws}!{fallback}"),
+                fit: ImageFit::Stretch,
+            });
+            Laid { size: (w, h) }
+        }
+        // PLAN-029 T-06：MouseArea 透传 + 命中项——area 命中先 push、
+        // content 子树后 push（rev 序 content 项优先，空白落 area——iced
+        // mouse_area 冒泡语义的命中序等价）；contextmenu → 右键表。
+        // on_enter/on_exit/on_move/on_release/on_double_click = hover/时序
+        // 语义 not-yet（投影器无 hover 态，I3 随注——shell ×13 全
+        // click/contextmenu 族不受影响）。
+        View::MouseArea { content, on_click, on_context_menu, logical_extent, .. } => {
+            let (ew, eh) = logical_extent.unwrap_or((avail_w.min(120.0), 24.0));
+            let rect = WRect::new(x, y, ew, eh);
+            // area 命中先 push（rev 序 content 项优先胜——空白落 area）。
+            if let Some(msg) = on_click {
+                ctx.hits.push(HitEntry::Msg { rect, msg: msg.clone() });
+            }
+            if let Some(msg) = on_context_menu {
+                ctx.right_hits.push((rect, msg.clone()));
+            }
+            let laid = layout_view_node(ctx, content, x, y, avail_w);
+            let (ew, eh) = logical_extent.unwrap_or(laid.size);
+            Laid { size: (ew, eh) }
         }
         // —— 覆盖门后动态分支防线：占位盒 + 留痕（I3：非静默错绘）。
         other => {
@@ -2456,6 +2804,39 @@ mod tests {
                     // ——覆盖表扩容 kinds+image/progress 的防漏钉夹具）。
                     .child(View::image_styled("img", "w-16 h-16"))
                     .child(View::progress_bar_styled(0.5, "w-20 h-2"))
+                    // PLAN-029 shell queue 面四 kind 夹具（T-04/T-05/T-06
+                    // ——覆盖表扩容的防漏钉夹具；popover 闭态零面板 ops）。
+                    .child(View::Popover {
+                        anchor: crate::ui::view::PopoverAnchor::Widget(Box::new(
+                            View::button("pm").on_click(|_| MMsg::Nop).build(),
+                        )),
+                        content: Box::new(View::text("pc")),
+                        placement: PopoverPlacement::BottomStart,
+                        open: false,
+                        on_dismiss: None,
+                    })
+                    .child(View::MouseArea {
+                        content: Box::new(View::text("ma")),
+                        on_enter: None,
+                        on_exit: None,
+                        on_double_click: None,
+                        on_click: Some(MMsg::Nop),
+                        on_context_menu: Some(MMsg::Nop),
+                        on_release: None,
+                        on_move: None,
+                        logical_extent: Some((40.0, 16.0)),
+                        style: None,
+                    })
+                    .child(View::WindowThumbnail {
+                        wid: "42".into(),
+                        fallback_icon: "app-window".into(),
+                        style: None,
+                    })
+                    .child(View::WorkspacePreview {
+                        ws: "0".into(),
+                        fallback_icon: "app-window".into(),
+                        style: None,
+                    })
                     .child(View::grid().cols(2).spacing(8).child(View::text("g1")).child(View::text("g2")).build())
                     .child(View::row().child(View::text("r1")).build())
                     .child(View::container(View::text("c")).build())
@@ -3049,5 +3430,360 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(seen, "CharTyped 经 INPUT_TEXT → on_change → 换算联动帧: {:?}", ph.composed(wwid));
+    }
+
+    // —— PLAN-029 T-04 popover 臂（D3 全 14 placement + 覆盖序/命中/Esc）——
+
+    #[derive(Debug, Clone, PartialEq)]
+    enum PopMsg {
+        Go,
+        Dismiss,
+    }
+
+    /// popover 载体：锚（Widget=按钮 / Point=坐标）+ 面板（文本 + 按钮）；
+    /// on_dismiss = Dismiss（on 内自关——应用态驱动，投影器零开合状态）。
+    #[derive(Debug)]
+    struct PopHost {
+        open: bool,
+        point_anchor: bool,
+        placement: PopoverPlacement,
+        last: Option<PopMsg>,
+    }
+
+    impl PopHost {
+        fn widget(open: bool, placement: PopoverPlacement) -> Self {
+            Self { open, point_anchor: false, placement, last: None }
+        }
+    }
+
+    impl Component for PopHost {
+        type Msg = PopMsg;
+        fn on(&mut self, msg: Self::Msg) {
+            if msg == PopMsg::Dismiss {
+                self.open = false;
+            }
+            self.last = Some(msg);
+        }
+        fn view(&self) -> View<Self::Msg> {
+            let anchor = if self.point_anchor {
+                PopoverAnchor::Point { x: 40.0, y: 60.0 }
+            } else {
+                PopoverAnchor::Widget(Box::new(
+                    View::button("menu").on_click(|_| PopMsg::Go).build(),
+                ))
+            };
+            View::col()
+                .child(View::Popover {
+                    anchor,
+                    content: Box::new(
+                        View::col()
+                            .child(View::text("panel-item"))
+                            .child(View::button("go").on_click(|_| PopMsg::Go).build())
+                            .build(),
+                    ),
+                    placement: self.placement,
+                    open: self.open,
+                    on_dismiss: Some(PopMsg::Dismiss),
+                })
+                .build()
+        }
+    }
+
+    /// D3 几何纯函数：全 14 枚举 + 对向翻转（file 级常量代入）。
+    #[test]
+    fn popover_geometry_all_placements() {
+        use PopoverPlacement as PP;
+        let site = PopoverAnchorSite::Widget(WRect::new(100.0, 50.0, 80.0, 24.0));
+        let panel = (288.0, 96.0);
+        let vp = (480.0, 320.0);
+        // Bottom 族：y = 锚底 + GAP；Start 左对齐 / 居中 clamp。
+        assert_eq!(popover_panel_origin(&site, &PP::BottomStart, panel, vp, (0.0, 0.0)), (100.0, 80.0));
+        assert_eq!(popover_panel_origin(&site, &PP::Bottom, panel, vp, (0.0, 0.0)), (8.0, 80.0));
+        assert_eq!(popover_panel_origin(&site, &PP::BottomEnd, panel, vp, (0.0, 0.0)), (8.0, 80.0));
+        // Top 族上溢 → 对向翻转到下方。
+        assert_eq!(popover_panel_origin(&site, &PP::TopStart, panel, vp, (0.0, 0.0)), (100.0, 80.0));
+        assert_eq!(popover_panel_origin(&site, &PP::Top, panel, vp, (0.0, 0.0)), (8.0, 80.0));
+        // Left 左溢 → 右翻（右位 186 → clamp 184）。
+        assert_eq!(
+            popover_panel_origin(&site, &PP::Left, panel, vp, (0.0, 0.0)),
+            (184.0, 14.0)
+        );
+        // Right 微溢（186+288=474 > 472）→ 翻左 -194 → 钳 8（翻转-钳制
+        // 确定性口径——窄视口下双侧不贴合，贴边落定）。
+        assert_eq!(
+            popover_panel_origin(&site, &PP::Right, panel, vp, (0.0, 0.0)),
+            (8.0, 14.0)
+        );
+        // Modal 居中 / Edge* 贴边。
+        assert_eq!(popover_panel_origin(&site, &PP::Modal, panel, vp, (0.0, 0.0)), (96.0, 112.0));
+        assert_eq!(popover_panel_origin(&site, &PP::EdgeLeft, panel, vp, (0.0, 0.0)), (8.0, 112.0));
+        assert_eq!(popover_panel_origin(&site, &PP::EdgeRight, panel, vp, (0.0, 0.0)), (184.0, 112.0));
+        assert_eq!(popover_panel_origin(&site, &PP::EdgeTop, panel, vp, (0.0, 0.0)), (96.0, 8.0));
+        assert_eq!(popover_panel_origin(&site, &PP::EdgeBottom, panel, vp, (0.0, 0.0)), (96.0, 216.0));
+        // Pointer = 最近右键点。
+        assert_eq!(
+            popover_panel_origin(&site, &PP::Pointer, panel, vp, (30.0, 40.0)),
+            (30.0, 40.0)
+        );
+        // Point 锚恒 BottomStart 语义（原点对齐）。
+        let pt = PopoverAnchorSite::Point { x: 40.0, y: 60.0 };
+        assert_eq!(popover_panel_origin(&pt, &PP::BottomStart, panel, vp, (0.0, 0.0)), (40.0, 60.0));
+        // Top 对 Point 锚同样回落 BottomStart 语义（缺省先例）。
+        assert_eq!(popover_panel_origin(&pt, &PP::Top, panel, vp, (0.0, 0.0)), (40.0, 60.0));
+    }
+
+    /// 开态覆盖序渲染（面板 ops 主块后追加 = paint order 置顶）+ 命中
+    /// 互斥（面板项 > catcher > 主块）+ 外点/Esc → on_dismiss + 闭态零
+    /// 面板 ops（open 随帧）。
+    #[test]
+    fn popover_open_closed_render_and_hit_semantics() {
+        let mut p = NativeProjector::new(PopHost::widget(true, PopoverPlacement::BottomStart), 480.0, 320.0);
+        p.ensure_covered().expect("popover 载体 Covered");
+        let frame = p.render_frame();
+        // 开态：面板底 Quad（POP_BG）+ 面板文本在场。
+        let panel_quads: Vec<WRect> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, color } if *color == POP_BG => Some(*rect),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(panel_quads.len(), 1, "单面板底: {panel_quads:?}");
+        assert!(texts_of(&frame).iter().any(|t| *t == "panel-item"), "面板子树渲染: {:?}", texts_of(&frame));
+        // 命中登记序：catcher 在场且面板项（Msg）在其后（rev 序面板项胜）。
+        let dismiss_idx = p
+            .hits
+            .iter()
+            .position(|e| matches!(e, HitEntry::PopoverDismiss { .. }))
+            .expect("catcher 在场");
+        let go_idx = p
+            .hits
+            .iter()
+            .rposition(|e| matches!(e, HitEntry::Msg { msg, .. } if matches!(msg, PopMsg::Go)))
+            .expect("面板项在场");
+        // 面板内 go 按钮 + 锚 menu 按钮都是 Go——取 catcher 之后者（面板项）。
+        assert!(go_idx > dismiss_idx, "面板项在 catcher 后（rev 序胜）");
+        // 外点 → on_dismiss 派发 + 吞（锚按钮不派发）。
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: 470.0,
+            y: 310.0,
+            modifiers: 0,
+        });
+        assert_eq!(p.component.last, Some(PopMsg::Dismiss), "外点 → on_dismiss");
+        // 应用态自关 → 闭帧行零面板。
+        let closed = p.render_frame();
+        assert!(
+            !closed.ops.iter().any(|op| matches!(op, DrawOp::Quad { color, .. } if *color == POP_BG)),
+            "闭态零面板 ops（open 随帧）"
+        );
+        assert!(!p.hits.iter().any(|e| matches!(e, HitEntry::PopoverDismiss { .. })));
+
+        // Esc → on_dismiss（重开态）。
+        p.component.open = true;
+        let _ = p.render_frame();
+        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 });
+        assert_eq!(p.component.last, Some(PopMsg::Dismiss), "Esc → on_dismiss");
+
+        // 面板项命中 → 项消息派发（Go——非 Dismiss）。
+        p.component.open = true;
+        p.component.last = None;
+        let _ = p.render_frame();
+        let go_rect = p
+            .hits
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                HitEntry::Msg { rect, msg } if matches!(msg, PopMsg::Go) => Some(*rect),
+                _ => None,
+            })
+            .expect("面板 go 项");
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: go_rect.x + 2.0,
+            y: go_rect.y + 2.0,
+            modifiers: 0,
+        });
+        assert_eq!(p.component.last, Some(PopMsg::Go), "面板项命中派发项消息");
+    }
+
+    /// Modal scrim：全屏半透明 Quad 先于面板 ops。
+    #[test]
+    fn popover_modal_scrim_order() {
+        let mut p = NativeProjector::new(
+            PopHost::widget(true, PopoverPlacement::Modal),
+            480.0,
+            320.0,
+        );
+        let frame = p.render_frame();
+        let scrim_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Quad { rect, color } if *color == POP_SCRIM && rect.w == 480.0 && rect.h == 320.0))
+            .expect("scrim 全屏 Quad");
+        let panel_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Quad { color, .. } if *color == POP_BG))
+            .expect("面板底");
+        assert!(scrim_idx < panel_idx, "scrim 先于面板（paint order）");
+    }
+
+    // —— PLAN-029 T-05/T-06 桥接与命中臂 ——
+
+    #[derive(Debug, Clone, PartialEq)]
+    enum BridgeMsg {
+        Click,
+        Ctx,
+        Inner,
+    }
+
+    /// 桥接 + MouseArea 载体：thumbnail/preview 两 op + area（click/
+    /// contextmenu）包裹按钮（content 项优先命中验证）。
+    #[derive(Debug)]
+    struct BridgeHost {
+        last: Option<BridgeMsg>,
+    }
+
+    impl Component for BridgeHost {
+        type Msg = BridgeMsg;
+        fn on(&mut self, msg: Self::Msg) {
+            self.last = Some(msg);
+        }
+        fn view(&self) -> View<Self::Msg> {
+            View::col()
+                .child(View::WindowThumbnail {
+                    wid: "42842".into(),
+                    fallback_icon: w_fallback(),
+                    style: None,
+                })
+                .child(View::WorkspacePreview {
+                    ws: "1".into(),
+                    fallback_icon: "app-window".into(),
+                    style: None,
+                })
+                .child(View::MouseArea {
+                    content: Box::new(
+                        View::button("inner")
+                            .on_click(|_| BridgeMsg::Inner)
+                            .build(),
+                    ),
+                    on_enter: None,
+                    on_exit: None,
+                    on_double_click: None,
+                    on_click: Some(BridgeMsg::Click),
+                    on_context_menu: Some(BridgeMsg::Ctx),
+                    on_release: None,
+                    on_move: None,
+                    logical_extent: Some((200.0, 60.0)),
+                    style: None,
+                })
+                .build()
+        }
+    }
+
+    fn w_fallback() -> String {
+        "panel-top".into()
+    }
+
+    /// T-05：两虚拟引用 src 语法（thumbnail://{wid}!{fallback} /
+    /// workspace://{ws}!{fallback}）——宿主解析侧（SWR/合成）028/T-07
+    /// 在册，本测钉投影器桥接语法。
+    #[test]
+    fn thumbnail_preview_bridge_src_grammar() {
+        let mut p = NativeProjector::new(BridgeHost { last: None }, 480.0, 320.0);
+        p.ensure_covered().expect("桥接载体 Covered");
+        let frame = p.render_frame();
+        let srcs: Vec<&str> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Image { src, .. } => Some(src.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            srcs.iter().any(|s| *s == "thumbnail://42842!panel-top"),
+            "thumbnail 桥接语法: {srcs:?}"
+        );
+        assert!(
+            srcs.iter().any(|s| *s == "workspace://1!app-window"),
+            "workspace 桥接语法: {srcs:?}"
+        );
+    }
+
+    /// T-06：MouseArea 命中序——content 项（按钮）rev 序优先于 area 命中；
+    /// 空白落 area（click）；右键 → contextmenu。
+    #[test]
+    fn mousearea_hit_priority_and_context_menu() {
+        let mut p = NativeProjector::new(BridgeHost { last: None }, 480.0, 320.0);
+        let frame = p.render_frame();
+        // area 命中盒（200×60 逻辑_extent）。
+        let area_rect = frame
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Quad { rect, .. } if rect.w == 200.0 && rect.h == 60.0 => Some(*rect),
+                _ => None,
+            });
+        let _ = area_rect;
+        // 按钮盒（inner）与 area 盒皆从 hits 取（同文件测试可及）。
+        let (btn, area) = {
+            let mut btn = None;
+            let mut area = None;
+            for e in &p.hits {
+                if let HitEntry::Msg { rect, msg } = e {
+                    if matches!(msg, BridgeMsg::Inner) {
+                        btn = Some(*rect);
+                    }
+                    if matches!(msg, BridgeMsg::Click) {
+                        area = Some(*rect);
+                    }
+                }
+            }
+            (btn.expect("按钮命中"), area.expect("area 命中"))
+        };
+        // 命中登记序：area 先、按钮后（rev 序按钮胜）。
+        let area_idx = p
+            .hits
+            .iter()
+            .position(|e| matches!(e, HitEntry::Msg { msg, .. } if matches!(msg, BridgeMsg::Click)))
+            .expect("area idx");
+        let btn_idx = p
+            .hits
+            .iter()
+            .position(|e| matches!(e, HitEntry::Msg { msg, .. } if matches!(msg, BridgeMsg::Inner)))
+            .expect("btn idx");
+        assert!(btn_idx > area_idx, "content 项后登记（rev 序优先）");
+        // 点按钮 → Inner（非 area Click）。
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: btn.x + 2.0,
+            y: btn.y + 2.0,
+            modifiers: 0,
+        });
+        assert_eq!(p.component.last, Some(BridgeMsg::Inner), "按钮优先命中");
+        // 点 area 空白 → Click。
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: area.x + area.w - 2.0,
+            y: area.y + area.h - 2.0,
+            modifiers: 0,
+        });
+        assert_eq!(p.component.last, Some(BridgeMsg::Click), "空白落 area");
+        // 右键 → Ctx。
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Right,
+            x: area.x + 4.0,
+            y: area.y + 4.0,
+            modifiers: 0,
+        });
+        assert_eq!(p.component.last, Some(BridgeMsg::Ctx), "右键 contextmenu");
     }
 }

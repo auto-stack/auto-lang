@@ -197,6 +197,15 @@ impl Coverage {
             // not-yet（P026-D1 后半维持）→ 未解析降级同兜底。
             "image",
             "progress",
+            // PLAN-029 T-04/T-05/T-06 —— shell queue 面四 kind（B 前置
+            // 序列第二件）：popover（覆盖序渲染 + on_dismiss 命中，open =
+            // View 态）/ mousearea（透传 + click/contextmenu 命中）/
+            // windowthumbnail·workspacepreview（thumbnail:// ·
+            // workspace:// 虚拟引用桥接，宿主侧解析）。
+            "popover",
+            "mousearea",
+            "windowthumbnail",
+            "workspacepreview",
         ]
         .into_iter()
         .map(String::from)
@@ -559,6 +568,14 @@ fn scan_native_node<M: Clone + std::fmt::Debug>(
             scan_native_node(content, scan);
         }
         View::MouseArea { content, .. } => scan_native_node(content, scan),
+        // PLAN-029 T-04：Popover 双子树递归（anchor + content——:562 缺口
+        // 清偿；open 闭态 content 子树同扫——覆盖判定与开合态无关）。
+        View::Popover { anchor, content, .. } => {
+            if let crate::ui::view::PopoverAnchor::Widget(child) = anchor {
+                scan_native_node(child, scan);
+            }
+            scan_native_node(content, scan);
+        }
         _ => {}
     }
 }
