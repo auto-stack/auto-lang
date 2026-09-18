@@ -24,6 +24,16 @@
 | **L2 copy reference** | `auto bp add --reference` 拷贝参考实现 | 落地文件归应用所有（eject 语义，离线/深度定制场景）；头注登记行（来源 bp + 版本 + 日期）为回迁 L1 留账面 |
 | **L3 agent generation** | agent 读 spec + 需求 → 组装 `.at` → `auto bp check` + `auto build` 验收门 | 产出后走**变体提升评审**（spec 未声明的结构性差异 → `promotions:` 小节提案 → 评审进 spec 或留应用侧登记 DEBTS）；落地文件同样登记行 |
 
+## 组件级参与门（PLAN-070 T-05 增补）
+
+vue 轨组件（非 app 壳）消费 ui_config 的参与条件 = **handler 交集**：组件
+AST 声明的 handler 与 ui_config action 的 handler 有交集才注入 ActionsBlock
+（发射的 handler fn + 快捷键 keymap 引用宿主自身 handler，无交集即 TS2304
+泄漏类）。app 壳不豁免——占位 app 壳（真实宿主在别处，如 jade web）同样
+受门约束。menubar/toolbar 视图合成不设 shadcn 模式门：渲染 `menubar {}/
+toolbar {}` + actions 即选择加入命令面契约，宿主自备 menubar ui 模块 +
+reka-ui（shadcn: off 项目如 jade-garden front 宿主化 ui/menubar+ui/button）。
+
 ## 变体提升评审（轻量流程）
 
 1. L3（或深度定制的 L2）产出出现 spec 未声明的结构性差异；
