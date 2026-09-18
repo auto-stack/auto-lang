@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-648
-status: executing
+status: execution_done
 feature_name: 跑法/门禁/codegen 缺陷簇整备——dev 跑法 VM api 委托断供 + tf 门 E0433 谱系 + codegen 遗留面清理
 author: [zhaopuming/zcode-session]
 created_at: 2026-09-18T00:00:00Z
 updated_at: 2026-09-19T00:00:00Z
 plan_revision: 1
-current_step: 3
+current_step: 6
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components: []
@@ -161,8 +161,18 @@ CLI runner / vm_bridge / 生成面)。tf 门禁 = 测试文件 feature 门控
   预存红家族(master 同败实证),显式豁免不并入。
 - **T-04 全量门归档**(tf/cargo t 红集清单定界落档)。前置 T-02。
   关联 AC-04。
+  [✅ 2026-09-19] `evidence/648/t04-redset.md`:master 全量 tf 3 红
+  (ffi_dual_019/mouse_area/display_family,并行 flaky 家族,单测隔离
+  均过)⊇ worktree 红集(1-2 红),零新增红;E0433 消除实证=tf 全
+  特性组合编译通过且 3641 全装载执行(AC-03 同时闭合);日常档
+  musk 3 红=master 同败(P648-D2/P028-D4 家族)。
 - **T-05 app 实机验证 + 收口**。前置 T-01+T-02+T-03。关联
   AC-02/03/04/05。
+  [✅ 2026-09-19] 实机判据于 T-01 轮达成(截图+1063×200 轮询+真实
+  内容流,AC-02);收口=作用域门禁全绿(plan340 12/12 含新增回归、
+  merged_api_client 2/2、tf 全量零新增红)+ 债务登记(P648-D1/D2)
+  + spec 契约复核(限定名改写与 545 bare=命名空间语义同向,零
+  delta 必要)。
 
 ## 9. 复审记录
 
@@ -170,11 +180,32 @@ CLI runner / vm_bridge / 生成面)。tf 门禁 = 测试文件 feature 门控
   pass`(起草授权 = 021 T-10 移交 + 排障发现承接;T-00/T-02/T-03
   为首批可执行项)。`next: work`。注:本仓 643/645-647 有并行会话
   活动,执行时与 INDEX/.next-id 复核冲突面。
+- 2026-09-19 work stage:work | PLAN-648 | rev1 | outcome:pass |
+  code_commit:plan-648-dev 9ada0a21e(T-01 根修)+6422eb267(T-03
+  锁定;worktree D:/autostack/.wt/lang-648/auto-lang,base=master
+  4817b51e1;组内依赖 worktree .wt/lang-648/auto-down@b1c88de
+  detached) | task_ids:T-00..T-05 全六项 | evidence:evidence/648/
+  七件(t00-decision.md 决策工件/t00-repro1 修复前/verify4-5+final
+  修复后与再入触发/window-rendered.png 渲染实证/t04-redset.md 红集
+  定界);plan340 12/12(含限定名回归新增)、merged_api_client 2/2、
+  tf 全量零新增红(master 3 闪红 ⊇ worktree 红集)、实机 1063×200
+  轮询+Tab"● shell 1"+提示符渲染 | blockers:无 | next:review。
+  执行期要点:①T-02 修复已由并行会话 64b65529b(09-18 12:10)落地,
+  本计划核验而非重复(技能"未复检前不重复副作用"条);②次生发现
+  VM handler 再入缺陷(交互触发失控,P648-D1 三次实证)按路由记债
+  独立立项,不并入本计划范围——无交互判据(AC-02)已达成,交互
+  稳定性为独立缺陷面。
 
 ## 10. 待澄清事项
 
-1. T-10 的 AUTO_FFI_TRACE 敏感性与"轮询但数据不渲染"的第三断点
-   归因(D1 输出);
-2. vue.rs 环境性失败(auto-os mirror 缺失)是否随本计划环境整备
-   一并处理,或显式豁免(T-03 顺带评估);
-3. 与并行会话(643/645-647 谱系)的文件冲突面协调。
+1. ~~T-10 的 AUTO_FFI_TRACE 敏感性与"轮询但数据不渲染"的第三断点
+   归因(D1 输出)~~ 已闭(t00-decision.md §二:第三断点不存在,
+   021 "3 连接=轮询"系误读;AUTO_FFI_TRACE=auto-term 侧仪器行为,
+   与断供无因果,如仍复现归 auto-term 侧);
+2. ~~vue.rs 环境性失败是否随本计划环境整备一并处理~~ 已闭
+   (P028-D4/P645-D2 预存红家族,master 同败实证,显式豁免);
+3. ~~与并行会话(643/645-647 谱系)的文件冲突面协调~~ 已闭
+   (T-02 由 64b65529b 落地,本计划核验不重复;改动面 4+1 文件
+   与并行计划零交集);
+4. 新增移交:VM 事件 handler 再入缺陷(P648-D1,交互阻断级,
+   三次实证)——dev 跑法 VM 轨实点交互前需先修,独立立项。
