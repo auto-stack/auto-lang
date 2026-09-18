@@ -4909,33 +4909,149 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 contents,
                 selected,
                 position: _,
-                on_select: _,
-                style: _,
+                on_select,
+                style,
+                variant,
             } => {
                 use iced::widget::container;
 
-                let mut tabs_widget = column([]);
+                // PLAN-641：enclosed 圆角 token——tabs 根 style 的 rounded-*
+                // 类驱动激活 cell 顶部圆角（有值→Chrome 观感；无→IDE 直角
+                // 观感）；底部圆角恒 0（与内容面板连通）。
+                let top_radius = style.as_ref().map(|s| {
+                    let r = IcedStyle::from_style(s).effective_border_radius();
+                    iced::border::Radius {
+                        top_left: r.top_left,
+                        top_right: r.top_right,
+                        bottom_right: 0.0,
+                        bottom_left: 0.0,
+                    }
+                });
 
-                let mut tab_buttons_row = row([]);
-                for (idx, label) in labels.iter().enumerate() {
-                    let is_selected = idx == selected;
-                    let label_text = if is_selected {
-                        format!("[{}]", label)
-                    } else {
-                        label.clone()
-                    };
+                let dark = crate::ui::style::theme::dark_mode();
+                let token_rgb = |t: crate::design_tokens::registry::TokenName| {
+                    crate::ui::style::theme::active_theme_rgb(t, dark)
+                        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                };
 
-                    let tab_button = button(text(label_text));
-                    tab_buttons_row = tab_buttons_row.push(tab_button);
+                match variant {
+                    crate::ui::view::TabsVariant::Default => {
+                        // default：按钮托盘形态（PLAN-641 零回归口径——现状
+                        // 原样保留，含 [label] 选中标记；点击接 on_select）。
+                        let mut tabs_widget = column([]);
+
+                        let mut tab_buttons_row = row([]);
+                        for (idx, label) in labels.iter().enumerate() {
+                            let is_selected = idx == selected;
+                            let label_text = if is_selected {
+                                format!("[{}]", label)
+                            } else {
+                                label.clone()
+                            };
+
+                            let mut tab_button = button(text(label_text));
+                            if let Some(cb) = &on_select {
+                                tab_button = tab_button.on_press(cb.call(idx));
+                            }
+                            tab_buttons_row = tab_buttons_row.push(tab_button);
+                        }
+
+                        tabs_widget = tabs_widget.push(tab_buttons_row);
+
+                        if let Some(content) = contents.get(selected) {
+                            tabs_widget = tabs_widget
+                                .push(container(content.clone().into_iced()).padding(20));
+                        }
+
+                        container(tabs_widget).into()
+                    }
+                    crate::ui::view::TabsVariant::Enclosed => {
+                        // enclosed 连通形态结构契约（AC-02）：
+                        // ① 激活 cell 背景 = 内容面板背景，条与面板间无分隔线；
+                        // ② 非激活 cell 扁平等高，仅背景色差（非按钮/浮起芯片）；
+                        // ③ 条（muted 底）与内容区（background 底）层次分明。
+                        let bg = token_rgb(crate::design_tokens::registry::TokenName::Background);
+                        let strip_bg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Muted);
+                        let cell_bg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Secondary);
+                        let active_fg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Foreground);
+                        let inactive_fg =
+                            token_rgb(crate::design_tokens::registry::TokenName::MutedForeground);
+
+                        let mut strip = row([]);
+                        for (idx, label) in labels.iter().enumerate() {
+                            let is_active = idx == selected;
+                            let label_color =
+                                if is_active { active_fg } else { inactive_fg };
+                            let cell_fill = if is_active { bg } else { cell_bg };
+                            let radius = if is_active {
+                                top_radius.unwrap_or_default()
+                            } else {
+                                iced::border::Radius::default()
+                            };
+
+                            // cell 本体：container 持背景填充 + 顶角半径；
+                            // button 仅作点击命中面，样式透明化（覆盖 iced
+                            // 默认 primary 底色，保"非按钮"扁平观感）。
+                            let cell = container(
+                                text(label.clone())
+                                    .color(label_color.unwrap_or(iced::Color::WHITE)),
+                            )
+                            .padding([0, 16])
+                            .center_y(iced::Length::Fill)
+                            .style(move |_| container::Style {
+                                background: cell_fill.map(iced::Background::Color),
+                                border: iced::Border {
+                                    radius,
+                                    ..iced::Border::default()
+                                },
+                                ..container::Style::default()
+                            });
+
+                            let mut cell_hit = button(cell).padding(0);
+                            if let Some(cb) = &on_select {
+                                cell_hit = cell_hit.on_press(cb.call(idx));
+                            }
+                            cell_hit = cell_hit.style(move |_theme, _status| {
+                                iced::widget::button::Style {
+                                    background: None,
+                                    text_color: label_color
+                                        .unwrap_or(iced::Color::WHITE),
+                                    border: iced::Border {
+                                        radius,
+                                        ..iced::Border::default()
+                                    },
+                                    ..iced::widget::button::Style::default()
+                                }
+                            });
+                            strip = strip.push(cell_hit);
+                        }
+
+                        let mut tabs_widget = column([]);
+                        tabs_widget = tabs_widget.push(container(strip).height(36.0).style(
+                            move |_| container::Style {
+                                background: strip_bg.map(iced::Background::Color),
+                                ..container::Style::default()
+                            },
+                        ));
+
+                        if let Some(content) = contents.get(selected) {
+                            tabs_widget = tabs_widget.push(
+                                container(content.clone().into_iced())
+                                    .padding(12)
+                                    .width(iced::Length::Fill)
+                                    .style(move |_| container::Style {
+                                        background: bg.map(iced::Background::Color),
+                                        ..container::Style::default()
+                                    }),
+                            );
+                        }
+
+                        tabs_widget.into()
+                    }
                 }
-
-                tabs_widget = tabs_widget.push(tab_buttons_row);
-
-                if let Some(content) = contents.get(selected) {
-                    tabs_widget = tabs_widget.push(container(content.clone().into_iced()).padding(20));
-                }
-
-                container(tabs_widget).into()
             }
 
             AbstractView::NavigationRail {
@@ -6858,7 +6974,32 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             }
         }
 
-        // Select, Slider, Accordion, Sidebar, Tabs, NavigationRail use
+        // PLAN-641：Tabs 显式臂——on_select 是 Arc 回调，与 PointerMoveHandler
+        // 同款 from_dynamic 包装即可跨消息类型转换（此前落 `_ => Empty`，VM
+        // live 树中 Tabs 整枝被折空）。
+        AbstractView::Tabs {
+            labels,
+            contents,
+            selected,
+            position,
+            on_select,
+            style,
+            variant,
+        } => AbstractView::Tabs {
+            labels,
+            contents: contents.into_iter().map(convert_view_messages).collect(),
+            selected,
+            position,
+            on_select: on_select.map(|cb| {
+                crate::ui::view::TabsSelectCallback::new(move |idx| {
+                    IcedMessage::from_dynamic(&cb.call(idx))
+                })
+            }),
+            style,
+            variant,
+        },
+
+        // Select, Slider, Accordion, Sidebar, NavigationRail use
         // callback types (SelectCallback, fn pointers, Arc<...>) that
         // cannot be trivially converted. Map them to Empty as fallback.
         _ => AbstractView::Empty,

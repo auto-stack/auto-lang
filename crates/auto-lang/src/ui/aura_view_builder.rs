@@ -1362,6 +1362,268 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// PLAN-641 T-03：tabs 复合组件折叠——`tabs` 根（+ `tab`/`tabs-trigger`/
+    /// `tabs-content` 子件与 `tabs-list`/`tabslist`/`tabrow` 透明包装）折叠为
+    /// 有状态 `View::Tabs`（此前落 unknown fallback → Column，VM 轨无 tabs）。
+    /// 契约（Q2 受控最小集，§9 T-01 定案）：
+    /// - labels：trigger 的 `text`/`label` prop 或文本子件；
+    /// - contents：`tabs-content` 子件；`tab` 平铺形态（A2UI 折叠产物）取其子件；
+    /// - selected 解析序：`active`（索引）→ `value`（索引或按值匹配）→
+    ///   `defaultvalue`/`default` → 0；越界钳制到末 tab；
+    /// - on_select：根 `onselect` 或首个 trigger `onclick`，事件 args=[选中索引]；
+    ///   无绑定则点击不切换（受控语义，对齐 Vue 端受控 v-model 缺省）；
+    /// - variant：`variant` prop → TabsVariant::parse（未知值回退 Default，
+    ///   PLAN-641 AC-01 兜底）。
+    fn convert_tabs(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        fn tag_lc(tag: &str) -> String {
+            tag.to_ascii_lowercase().replace('_', "-")
+        }
+        fn collect<'a>(
+            node: &'a AuraNode,
+            triggers: &mut Vec<&'a AuraNode>,
+            contents: &mut Vec<&'a AuraNode>,
+            flats: &mut Vec<&'a AuraNode>,
+        ) {
+            let AuraNode::Element { tag, children, .. } = node else {
+                return;
+            };
+            match tag_lc(tag).as_str() {
+                "tab" => flats.push(node),
+                "tabs-trigger" | "tabstrigger" => triggers.push(node),
+                "tabs-content" | "tabscontent" => contents.push(node),
+                "tabs-list" | "tabslist" | "tabrow" | "tab-row" => {
+                    for c in children {
+                        collect(c, triggers, contents, flats);
+                    }
+                }
+                // 未知子件忽略（契约面收窄；catalog 文档随 spec 沉淀）。
+                _ => {}
+            }
+        }
+
+        let mut trigger_nodes: Vec<&AuraNode> = Vec::new();
+        let mut content_nodes: Vec<&AuraNode> = Vec::new();
+        let mut flat_tabs: Vec<&AuraNode> = Vec::new();
+        for c in children {
+            collect(c, &mut trigger_nodes, &mut content_nodes, &mut flat_tabs);
+        }
+
+        // prop 值解析：静态字面量与状态引用（.demo）都穿透到 Value
+        // （resolve_expr_to_value 走 bindings/computed/read_state 链）。
+        let prop_value = |key: &str| -> Option<Value> {
+            let p = props.get(key)?;
+            match p {
+                AuraPropValue::Expr(e) => self.resolve_expr_to_value(e, bindings),
+                _ => None,
+            }
+        };
+        let prop_str = |key: &str| -> Option<String> {
+            prop_value(key).and_then(|v| match v {
+                Value::Str(s) => Some(s.to_string()),
+                Value::Int(i) => Some(i.to_string()),
+                Value::Uint(u) => Some(u.to_string()),
+                _ => None,
+            })
+        };
+        let prop_int = |key: &str| -> Option<u64> {
+            prop_value(key).and_then(|v| match v {
+                Value::Int(i) if i >= 0 => Some(i as u64),
+                Value::Uint(u) => Some(u as u64),
+                Value::Float(f) if f >= 0.0 => Some(f as u64),
+                _ => None,
+            })
+        };
+
+        let use_flat = !flat_tabs.is_empty();
+        let mut labels: Vec<String> = Vec::new();
+        let mut values: Vec<String> = Vec::new();
+        if use_flat {
+            for (i, t) in flat_tabs.iter().enumerate() {
+                if let AuraNode::Element { props: tp, .. } = t {
+                    labels.push(
+                        self.extract_string_with(tp, "label", bindings)
+                            .or_else(|| self.extract_string_with(tp, "text", bindings))
+                            .unwrap_or_else(|| format!("Tab {}", i + 1)),
+                    );
+                    values.push(
+                        self.extract_string_with(tp, "value", bindings)
+                            .unwrap_or_else(|| i.to_string()),
+                    );
+                }
+            }
+        } else {
+            for (i, t) in trigger_nodes.iter().enumerate() {
+                if let AuraNode::Element { props: tp, children: tch, .. } = t {
+                    labels.push(
+                        self.extract_string_with(tp, "text", bindings)
+                            .or_else(|| self.extract_string_with(tp, "label", bindings))
+                            .or_else(|| {
+                                // 子件文本：直接 Text 子件 + text-like 元素
+                                // 子件（`tabstrigger { text "Alpha" }` 的
+                                // 解析形态是 Element{text}——复审 P641-R1
+                                // 抓漏：浅层 Text 匹配漏掉该形态，标签
+                                // 静默回退 "Tab N"）。同
+                                // convert_text_element 的子件折叠链。
+                                tch.iter().find_map(|c| match c {
+                                    AuraNode::Text(AuraTextContent::Literal(s)) => {
+                                        Some(s.clone())
+                                    }
+                                    AuraNode::Text(
+                                        AuraTextContent::Interpolated {
+                                            template,
+                                            bindings: tpl_bindings,
+                                        },
+                                    ) => Some(self.resolve_interpolation_with(
+                                        template,
+                                        tpl_bindings,
+                                        bindings,
+                                    )),
+                                    AuraNode::Element {
+                                        tag,
+                                        props: cprops,
+                                        children: cch,
+                                        ..
+                                    }
+                                        if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) =>
+                                    {
+                                        // child_element_text 只扫 props；
+                                        // `text "Alpha"` 的字面量在元素自身
+                                        // 子件里，须再落一层。
+                                        self.child_element_text(cprops, bindings)
+                                            .or_else(|| {
+                                                cch.iter().find_map(|d| match d {
+                                                    AuraNode::Text(
+                                                        AuraTextContent::Literal(s),
+                                                    ) => Some(s.clone()),
+                                                    _ => None,
+                                                })
+                                            })
+                                    }
+                                    _ => None,
+                                })
+                            })
+                            .unwrap_or_else(|| format!("Tab {}", i + 1)),
+                    );
+                    values.push(
+                        self.extract_string_with(tp, "value", bindings)
+                            .unwrap_or_else(|| i.to_string()),
+                    );
+                }
+            }
+        }
+
+        // selected 解析：active（索引）→ value（索引或按值匹配）→
+        // defaultvalue/default（同前）→ 0；越界钳制。
+        let resolve_selected = |expr_idx: Option<u64>, expr_val: Option<String>| -> usize {
+            if let Some(idx) = expr_idx {
+                return idx as usize;
+            }
+            if let Some(v) = expr_val {
+                if let Some(idx) = values.iter().position(|x| *x == v) {
+                    return idx;
+                }
+                if let Ok(n) = v.parse::<usize>() {
+                    return n;
+                }
+            }
+            0
+        };
+        let has_active_or_value = props.keys().any(|k| {
+            let k = k.to_ascii_lowercase();
+            k == "active" || k == "value"
+        });
+        let mut selected = resolve_selected(prop_int("active"), prop_str("value"));
+        if !has_active_or_value {
+            selected = resolve_selected(
+                prop_int("defaultvalue"),
+                prop_str("defaultvalue").or_else(|| prop_str("default")),
+            );
+        }
+        if labels.is_empty() {
+            selected = 0;
+        } else if selected >= labels.len() {
+            selected = labels.len() - 1;
+        }
+
+        // contents：content 节点子件序列（多子件包一列）；平铺形态取 tab 子件。
+        let content_sources: Vec<Vec<&AuraNode>> = if use_flat {
+            flat_tabs
+                .iter()
+                .map(|t| match t {
+                    AuraNode::Element { children, .. } => children.iter().collect(),
+                    _ => Vec::new(),
+                })
+                .collect()
+        } else {
+            content_nodes
+                .iter()
+                .map(|c| match c {
+                    AuraNode::Element { children, .. } => children.iter().collect(),
+                    _ => Vec::new(),
+                })
+                .collect()
+        };
+        let mut contents: Vec<View<DynamicMessage>> = Vec::new();
+        for parts in content_sources {
+            let views: Vec<View<DynamicMessage>> = parts
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .collect();
+            contents.push(if views.len() == 1 {
+                views.into_iter().next().unwrap()
+            } else {
+                View::Column {
+                    children: views,
+                    spacing: 8,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                    on_right_click: None,
+                }
+            });
+        }
+
+        // on_select：根 onselect 优先，缺省取首个 trigger onclick；事件
+        // args 覆写为 [选中索引]（handler 契约：首参=索引，details_onclick
+        // 运行时注参同款）。
+        let root_onselect = aura_events_get_base(events, "onselect");
+        let trigger_onclick = trigger_nodes.iter().find_map(|t| match t {
+            AuraNode::Element { events: te, .. } => aura_events_get_base(te, "onclick"),
+            _ => None,
+        });
+        let on_select = root_onselect
+            .or(trigger_onclick)
+            .map(|ev| {
+                let handler = extract_handler_name(&ev.handler).to_string();
+                let widget = self.widget_name.clone();
+                crate::ui::view::TabsSelectCallback::new(move |idx| DynamicMessage::Typed {
+                    widget_name: widget.clone(),
+                    event_name: handler.clone(),
+                    args: vec![Value::Int(idx as i32)],
+                })
+            });
+
+        let variant = prop_str("variant")
+            .map(|v| crate::ui::view::TabsVariant::parse(&v))
+            .unwrap_or_default();
+
+        View::Tabs {
+            labels,
+            contents,
+            selected,
+            position: crate::ui::view::TabsPosition::Top,
+            on_select,
+            style: self.extract_style(props),
+            variant,
+        }
+    }
+
     fn convert_element_tracked_ctx(
         &self,
         tag: &str,
@@ -1439,6 +1701,9 @@ impl<'a> AuraViewBuilder<'a> {
                 self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
+            // PLAN-641 T-03：tabs 复合组件折叠——有状态 View::Tabs（此前落
+            // unknown fallback → Column）。契约见 convert_tabs 文档。
+            "tabs" | "Tabs" => self.convert_tabs(props, events, children, bindings),
             // PLAN-530 步骤7（W12）：toggle_group VM 映射——横排连体 button
             // 组（tracked 镜像臂,D-GAP 规则）。见 toggle_group_rewrite_children。
             "togglegroup" | "toggle-group" | "toggle_group" => {
@@ -3227,6 +3492,10 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 463 T5: taskbar —— 桌面 shell 底栏（I4）；row 语义。
             // 镜像 tracked 层同名臂（文件 D-GAP 规则）。
             "taskbar" => self.convert_row(props, children, bindings),
+            // PLAN-641 T-03：tabs 复合组件折叠——有状态 View::Tabs（此前落
+            // unknown fallback → Column）。契约见 convert_tabs 文档。
+            "tabs" | "Tabs" => self.convert_tabs(props, events, children, bindings),
+
             "grid" => self.convert_grid(props, children, bindings),
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style(padding/flex/overflow),导致 sidebar 无 padding、
@@ -12475,6 +12744,194 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
+        }
+    }
+
+    // ========== PLAN-641 T-03：tabs 复合组件折叠 ==========
+
+    /// 构造 tabs 树的触发器/内容件快捷方式。
+    fn p641_trigger(value: &str, label: &str) -> AuraNode {
+        AuraNode::element("tabs-trigger")
+            .with_prop("value", crate::ast::Expr::Str(value.into()))
+            .with_child(AuraNode::text(label))
+    }
+    fn p641_content() -> AuraNode {
+        AuraNode::element("tabs-content").with_child(AuraNode::element("text"))
+    }
+    fn p641_run_fold(
+        builder: &AuraViewBuilder,
+        tabs_root: AuraNode,
+    ) -> View<DynamicMessage> {
+        let (props, events, children) = match &tabs_root {
+            AuraNode::Element { props, events, children, .. } => {
+                (props.clone(), events.clone(), children.clone())
+            }
+            _ => panic!("tabs root must be an element"),
+        };
+        builder.convert_tabs(&props, &events, &children, &Bindings::new())
+    }
+
+    #[test]
+    fn plan641_tabs_fold_wrappers_triggers_contents() {
+        let widget = make_test_widget("App", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+
+        // tabs > tabs-list(trigger×2) + tabs-content×2（别名拼写混用）。
+        let tabs = AuraNode::element("tabs")
+            .with_child(
+                AuraNode::element("tabs-list")
+                    .with_child(p641_trigger("a", "Alpha"))
+                    .with_child(
+                        AuraNode::element("tabstrigger")
+                            .with_prop("value", crate::ast::Expr::Str("b".into()))
+                            .with_prop("text", crate::ast::Expr::Str("Beta".into())),
+                    ),
+            )
+            .with_child(p641_content())
+            .with_child(p641_content());
+
+        match p641_run_fold(&builder, tabs) {
+            View::Tabs { labels, contents, selected, variant, .. } => {
+                assert_eq!(labels, vec!["Alpha", "Beta"]);
+                assert_eq!(contents.len(), 2);
+                assert_eq!(selected, 0);
+                assert_eq!(variant, crate::ui::view::TabsVariant::Default);
+            }
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn plan641_tabs_fold_variant_and_selected_resolution() {
+        let widget = make_test_widget("App", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+
+        let mk = |root_props: Vec<(&str, crate::ast::Expr)>| {
+            let mut root = AuraNode::element("tabs")
+                .with_child(p641_trigger("a", "Alpha"))
+                .with_child(p641_trigger("b", "Beta"))
+                .with_child(p641_content())
+                .with_child(p641_content());
+            for (k, v) in root_props {
+                root = root.with_prop(k, v);
+            }
+            root
+        };
+
+        // variant: enclosed 生效；非法值回退 Default（AC-01 兜底）。
+        match p641_run_fold(&builder, mk(vec![("variant", crate::ast::Expr::Str("enclosed".into()))])) {
+            View::Tabs { variant, .. } => {
+                assert_eq!(variant, crate::ui::view::TabsVariant::Enclosed)
+            }
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+        match p641_run_fold(&builder, mk(vec![("variant", crate::ast::Expr::Str("bogus".into()))])) {
+            View::Tabs { variant, .. } => {
+                assert_eq!(variant, crate::ui::view::TabsVariant::Default)
+            }
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+
+        // selected：value 值串匹配 > active 索引 > defaultvalue > 0；越界钳制。
+        match p641_run_fold(&builder, mk(vec![("value", crate::ast::Expr::Str("b".into()))])) {
+            View::Tabs { selected, .. } => assert_eq!(selected, 1),
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+        match p641_run_fold(&builder, mk(vec![("active", crate::ast::Expr::Int(1))])) {
+            View::Tabs { selected, .. } => assert_eq!(selected, 1),
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+        match p641_run_fold(
+            &builder,
+            mk(vec![("defaultvalue", crate::ast::Expr::Str("b".into()))]),
+        ) {
+            View::Tabs { selected, .. } => assert_eq!(selected, 1),
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+        match p641_run_fold(&builder, mk(vec![("active", crate::ast::Expr::Int(9))])) {
+            View::Tabs { selected, .. } => assert_eq!(selected, 1),
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+    }
+
+    /// 复审 P641-R1 回归：trigger 文本走 text-like 元素子件形态
+    /// （`tabstrigger (value: "a") { text "Alpha" }`）时标签不得回退 "Tab N"。
+    #[test]
+    fn plan641_tabs_fold_trigger_text_child_element() {
+        let widget = make_test_widget("App", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+
+        let tabs = AuraNode::element("tabs")
+            .with_child(
+                AuraNode::element("tabstrigger")
+                    .with_prop("value", crate::ast::Expr::Str("a".into()))
+                    .with_child(AuraNode::element("text").with_child(AuraNode::text("Alpha"))),
+            )
+            .with_child(
+                AuraNode::element("tabstrigger")
+                    .with_prop("value", crate::ast::Expr::Str("b".into()))
+                    .with_child(AuraNode::element("text").with_child(AuraNode::text("Beta"))),
+            )
+            .with_child(p641_content())
+            .with_child(p641_content());
+
+        match p641_run_fold(&builder, tabs) {
+            View::Tabs { labels, .. } => assert_eq!(labels, vec!["Alpha", "Beta"]),
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn plan641_tabs_fold_onselect_and_flat_tab_form() {
+        let widget = make_test_widget("App", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+
+        // 根 onselect：回调产出 Typed 消息，event_name 取 handler 名、
+        // args=[选中索引]（Q2 受控契约）。
+        let tabs = AuraNode::element("tabs")
+            .with_event("onselect", ".SelectTab")
+            .with_child(p641_trigger("a", "Alpha"))
+            .with_child(p641_trigger("b", "Beta"))
+            .with_child(p641_content())
+            .with_child(p641_content());
+        match p641_run_fold(&builder, tabs) {
+            View::Tabs { on_select, .. } => {
+                let cb = on_select.expect("onselect should wire on_select");
+                match cb.call(1) {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "SelectTab");
+                        assert_eq!(args, vec![Value::Int(1)]);
+                    }
+                    other => panic!("Expected Typed message, got {:?}", other),
+                }
+            }
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+
+        // 平铺 tab 形态（A2UI import 折叠产物）：label prop → labels，
+        // 子件 → contents。
+        let flat = AuraNode::element("tabs")
+            .with_child(
+                AuraNode::element("tab")
+                    .with_prop("label", crate::ast::Expr::Str("One".into()))
+                    .with_child(AuraNode::element("text")),
+            )
+            .with_child(
+                AuraNode::element("tab")
+                    .with_prop("label", crate::ast::Expr::Str("Two".into()))
+                    .with_child(AuraNode::element("text")),
+            );
+        match p641_run_fold(&builder, flat) {
+            View::Tabs { labels, contents, selected, .. } => {
+                assert_eq!(labels, vec!["One", "Two"]);
+                assert_eq!(contents.len(), 2);
+                assert_eq!(selected, 0);
+            }
+            other => panic!("Expected View::Tabs, got {:?}", other),
         }
     }
 

@@ -509,7 +509,7 @@ fn import_component_body(
                 debug_id: None,
             }
         }
-        A2UIComponentBody::Tabs { tabs } => {
+        A2UIComponentBody::Tabs { tabs, variant } => {
             let mut children = Vec::new();
             for (i, tab) in tabs.iter().enumerate() {
                 let (tab_node, tab_s, tab_h) = import_component_body(
@@ -533,9 +533,18 @@ fn import_component_body(
                 state_vars.extend(tab_s);
                 handlers.extend(tab_h);
             }
+            // PLAN-641：variant 直传 tabs 根 prop（None → 不落 prop，渲染端
+            // 回退 Default）；未知字符串由 TabsVariant::parse 兜底。
+            let mut root_props = HashMap::new();
+            if let Some(v) = variant {
+                root_props.insert(
+                    "variant".to_string(),
+                    AuraPropValue::Expr(Expr::Str(v.clone().into())),
+                );
+            }
             AuraNode::Element {
                 tag: "tabs".to_string(),
-                props: HashMap::new(),
+                props: root_props,
                 events: HashMap::new(),
                 children,
                 span: None,

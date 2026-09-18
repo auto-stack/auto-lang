@@ -1,0 +1,89 @@
+widget App {
+    model {
+        var s1 str = "a"
+        var s2 str = "a"
+        var s3 str = "a"
+    }
+
+    // PLAN-641：tabs variant 双端对照——default（按钮托盘）/ enclosed 直角
+    // （IDE 观感）/ enclosed + rounded-t-lg（Chrome 观感）。选中态由 store
+    // 驱动（受控）：value 值串匹配 trigger value；按钮改 store，tab 点击经
+    // onselect 回调（首参=选中索引）。
+    // 注：VM 轨标签用小写惯用形（col/text/row/button/h1/h3）。
+    view {
+        col {
+            style: "p-8 gap-8 max-w-2xl"
+
+            h1 "Tabs Variants"
+
+            // ── Section 1：default（按钮托盘，零回归形态）──
+            col {
+                style: "gap-3"
+                h3 "default tray"
+                row {
+                    style: "gap-2"
+                    button (variant: "outline") "Alpha" { onclick: () => {.s1 = "a"} }
+                    button (variant: "outline") "Beta" { onclick: () => {.s1 = "b"} }
+                }
+                tabs (value: .s1) {
+                    tabslist {
+                        tabstrigger (value: "a") { text "Alpha" }
+                        tabstrigger (value: "b") { text "Beta" }
+                    }
+                    tabscontent (value: "a") {
+                        text "Alpha panel - default tray (status quo)"
+                    }
+                    tabscontent (value: "b") {
+                        text "Beta panel - default tray (status quo)"
+                    }
+                }
+            }
+
+            // ── Section 2：enclosed 直角（IDE 编辑器 tab 观感）──
+            col {
+                style: "gap-3"
+                h3 "enclosed flat (IDE)"
+                row {
+                    style: "gap-2"
+                    button (variant: "outline") "Alpha" { onclick: () => {.s2 = "a"} }
+                    button (variant: "outline") "Beta" { onclick: () => {.s2 = "b"} }
+                }
+                tabs (value: .s2, variant: "enclosed") {
+                    tabslist {
+                        tabstrigger (value: "a") { text "Alpha" }
+                        tabstrigger (value: "b") { text "Beta" }
+                    }
+                    tabscontent (value: "a") {
+                        text "Alpha panel - active tab merges with this panel"
+                    }
+                    tabscontent (value: "b") {
+                        text "Beta panel - active tab merges with this panel"
+                    }
+                }
+            }
+
+            // ── Section 3：enclosed + 顶部圆角（Chrome 观感；圆角走 token）──
+            col {
+                style: "gap-3"
+                h3 "enclosed rounded (Chrome)"
+                row {
+                    style: "gap-2"
+                    button (variant: "outline") "Alpha" { onclick: () => {.s3 = "a"} }
+                    button (variant: "outline") "Beta" { onclick: () => {.s3 = "b"} }
+                }
+                tabs (value: .s3, variant: "enclosed", style: "rounded-t-lg") {
+                    tabslist {
+                        tabstrigger (value: "a", class: "rounded-t-lg") { text "Alpha" }
+                        tabstrigger (value: "b", class: "rounded-t-lg") { text "Beta" }
+                    }
+                    tabscontent (value: "a") {
+                        text "Alpha panel - Chrome rounded look"
+                    }
+                    tabscontent (value: "b") {
+                        text "Beta panel - Chrome rounded look"
+                    }
+                }
+            }
+        }
+    }
+}
