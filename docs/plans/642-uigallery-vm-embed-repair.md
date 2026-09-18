@@ -392,11 +392,14 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       候选:store 模块 var 链、Init 派发链其他写点、accent 联动）,需
       VM 写点级追踪（dump App 堆对象写者/地址断点）。随 T-12 回退一并
       摘除发射变换（vue.rs 还原,单测同撤）。
-      replan 方向（待裁定）：①VM 层写点追踪定位真写入者后精准隔离；
-      ②gallery App 改名自家魔法变量（dark_mode→host_dark_mode,宿主侧
-      让渡, demo 保持原名——反向隔离）；③主题同步面加"仅根件声明期"
-      门控。016 语料默认主题评估：保持 light 默认（其自有分支）,跟随
-      宿主依赖②/③落地。
+      replan 方向裁定（用户 2026-09-18）：**①VM 层写点追踪**——v2 写端
+      改名未阻断翻转证明盲修打偏,先诊断后修。T-13 改形为有界任务：
+      (a) 在 VM 状态写路径加临时探针（根对象 dark_mode 字段写入即打印
+      写入者 fn 名/调用上下文）；(b) 跑 008→016→008 A/B 读日志定位真
+      写入者；(c) 按发现精准修（候选:子件 Init 状态路由/store 模块
+      var 前缀/os-config 联动门控）；(d) A/B 复验（008 深色→016→008
+      仍深色）；(e) 摘探针。执行排序：**655 落地后**（避免双 agent
+      画廊实例冲突）。016 语料默认主题：保持 light 默认（其自有分支）。
 - [ ] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）
       (a) routes 单页族（018/019/021/022/023）：VM 内嵌支持 `routes {}`
       首页路由 stub 渲染；(b) back 链 native-ns/stream 族（017）：
@@ -642,7 +645,7 @@ evidence:
   - 本轮额外发现资产:MCP 端口避开 Windows 排除区 2180-2279;
     TaskStop 孤儿 auto.exe + 单实例冲突 = 实例"自杀"真因(非 F1);
     iced Scrollable 内容臂 compression=true(Fill→内容高,009/016 为证)
-next: T-13(写点追踪/反向改名待裁定) → T-18 → T-15 → T-17;
+next: T-13 方向已裁定=①写点追踪(655 落地后执行) → T-18 → T-15 → T-17;
   T-16/T-19/F1 仍待用户裁定
 ```
 
@@ -702,8 +705,9 @@ master_wip_note: master 存在他会话未提交 WIP(examples/rust-workspace/
   Cargo.toml 加 013/015-back members + docs/plans/evidence/653/)——非本
   计划产物,未纳入落地,已表面化待其属主路由
 next: 续作须重建 worktree(git worktree add D:/autostack/.wt/lang-642/
-  auto-lang -b plan-642-dev,自最新 master);队列=T-13 方向裁定/T-18/
-  T-15/T-17;计划外队列=PLAN-655 执行/T-14/T-16+T-19/F1
+  auto-lang -b plan-642-dev,自最新 master);队列=T-13①(655 落地后)/
+  T-18/T-15/T-17;计划外队列=PLAN-655 执行(另一 agent 进行中)/T-14/
+  T-16+T-19/F1
 ```
 
 
