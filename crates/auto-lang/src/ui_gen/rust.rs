@@ -2410,6 +2410,17 @@ impl RustGenerator {
                     }
                 }
 
+                // PLAN-027 T-02: 裸 popover 臂 —— View::Popover 直发（此前
+                // 落 tag_to_view_fn `_ => "col"` 降级，open/placement/
+                // ondismiss/x/y 静默丢弃）。语义与解释侧 convert_popover
+                // （aura_view_builder.rs:8449）对齐（PLAN-027 parity 锚）：
+                // x/y 双全 = 坐标锚（placement 缺省 BottomStart，children
+                // 全为面板）；否则首 plain 子 = 锚件（placement 缺省
+                // Bottom，其余子 = 面板列）。详见 generate_bare_popover。
+                if tag == "popover" {
+                    return self.generate_bare_popover(props, events, children);
+                }
+
                 // grid → View::grid() builder. iced has no native grid; the
                 // col-of-rows decomposition (final-row padding + w-full rows)
                 // now lives in ONE place — the shared generic `build_grid`
@@ -4371,6 +4382,143 @@ impl RustGenerator {
         format!(
             "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: {}, open: {}, on_dismiss: {} }}",
             anchor_code, panel, placement_path, open_expr, on_dismiss_expr
+        )
+    }
+
+    /// PLAN-027 T-02: 裸 `popover` 元素 → `View::Popover` 发射（shell pack
+    /// 右键菜单/壁纸选择器/拖拽幽灵 ×9 消费面；解释侧同构 =
+    /// aura_view_builder convert_popover）。双形态：
+    /// - **坐标锚**（x/y prop 双全）：`PopoverAnchor::Point{x,y}`，children
+    ///   全为面板内容，placement 缺省 BottomStart（contextmenu 落点约定）。
+    /// - **首子锚**（缺省）：plain[0] = 锚件，plain[1..] = 面板列，placement
+    ///   缺省 Bottom。shadcn popover-trigger/content 嵌套形态不在此消化
+    ///   （shell pack 无此形态；误入按 plain 逐子直译，不静默丢件）。
+    ///
+    /// 其余对齐点：open 缺省 false（解释臂 __popover_toggle 自管开合为 VM
+    /// 交互特性，codegen 面不合成——shell pack 九处全显式带 open）；
+    /// ondismiss 取 events 桶（parser on* 升格同源），缺省 None（解释臂
+    /// 合成 __popover_close 同为自管专属）；class 缺省给 shadcn
+    /// PopoverContent chrome；有 class 缺 Width 类注入 `w-auto`（解释臂
+    /// StyleClass::Width(Auto) 注入同语义——面板列被宿主宽拉满的 T27 修）。
+    fn generate_bare_popover(
+        &mut self,
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        events: &std::collections::HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+    ) -> String {
+        let expr_str = |name: &str| -> Option<String> {
+            props.get(name).and_then(|v| match v {
+                AuraPropValue::Expr(e) => Some(self.ast_expr_to_rust(e)),
+                _ => None,
+            })
+        };
+        let (x_expr, y_expr) = (expr_str("x"), expr_str("y"));
+        let point_anchor = x_expr.is_some() && y_expr.is_some();
+
+        let open_expr = match props.get("open") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => b.to_string(),
+            Some(AuraPropValue::Expr(e)) => self.ast_expr_to_rust(e),
+            _ => "false".to_string(),
+        };
+
+        // placement 串映射（解释臂表同源）；字面量静态选臂，动态表达式发
+        // 全臂 match（纯表达式形态，autodown heading 同款纪律）。缺省 =
+        // 坐标锚 BottomStart / 锚件 Bottom（PLAN-528 W9 对齐语义）。
+        let default_placement = if point_anchor { "BottomStart" } else { "Bottom" };
+        let placement_lit = |s: &str| -> Option<&'static str> {
+            match s.to_ascii_lowercase().as_str() {
+                "bottom" => Some("Bottom"),
+                "bottom-start" | "bottomstart" => Some("BottomStart"),
+                "bottom-end" | "bottomend" => Some("BottomEnd"),
+                "top" => Some("Top"),
+                "top-start" | "topstart" => Some("TopStart"),
+                "top-end" | "topend" => Some("TopEnd"),
+                "left" => Some("Left"),
+                "right" => Some("Right"),
+                "pointer" => Some("Pointer"),
+                _ => None,
+            }
+        };
+        let placement_expr = match props.get("placement") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                let lit = placement_lit(s).unwrap_or(default_placement);
+                format!("auto_lang::ui::view::PopoverPlacement::{lit}")
+            }
+            Some(AuraPropValue::Expr(e)) => {
+                let k = self.ast_expr_to_rust(e);
+                let arms = [
+                    "bottom", "bottom-start", "bottom-end", "top", "top-start", "top-end",
+                    "left", "right", "pointer",
+                ]
+                .iter()
+                .filter_map(|p| {
+                    placement_lit(p).map(|lit| format!("\"{p}\" => auto_lang::ui::view::PopoverPlacement::{lit},"))
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+                format!(
+                    "match {k}.to_ascii_lowercase().as_str() {{ {arms} _ => auto_lang::ui::view::PopoverPlacement::{default_placement} }}"
+                )
+            }
+            _ => format!("auto_lang::ui::view::PopoverPlacement::{default_placement}"),
+        };
+
+        // ondismiss：events 桶基名（.prevent 等后缀容忍）。
+        let on_dismiss_expr = events
+            .iter()
+            .find(|(k, _)| k.as_str() == "ondismiss" || k.starts_with("ondismiss."))
+            .map(|(_, ev)| {
+                format!(
+                    "Some({})",
+                    self.handler_to_rust_direct_msg(&ev.handler, &ev.params)
+                )
+            })
+            .unwrap_or_else(|| "None".to_string());
+
+        // 面板列：内容子件（坐标锚 = 全部 children；锚件形态 = plain[1..]）。
+        let content_nodes: Vec<&AuraNode> = if point_anchor {
+            children.iter().collect()
+        } else {
+            children.iter().skip(1).collect()
+        };
+        let mut content = "View::col()".to_string();
+        for c in &content_nodes {
+            content = format!("{}.child({})", content, self.generate_view_tree(c));
+        }
+        let class_str = props
+            .get("class")
+            .or_else(|| props.get("style"))
+            .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                Some(s.trim().to_string())
+            } else {
+                None
+            })
+            .unwrap_or_default();
+        let panel_style = if class_str.is_empty() {
+            "w-72 bg-popover border border-border rounded-md shadow-md p-4".to_string()
+        } else if class_str.split_whitespace().any(|t| t.starts_with("w-")) {
+            class_str
+        } else {
+            format!("{class_str} w-auto")
+        };
+        content = format!("{}.style(\"{}\").build()", content, panel_style);
+
+        let anchor_expr = if point_anchor {
+            format!(
+                "auto_lang::ui::view::PopoverAnchor::Point {{ x: ({} ) as f32, y: ({} ) as f32 }}",
+                x_expr.unwrap(),
+                y_expr.unwrap()
+            )
+        } else if children.is_empty() {
+            "auto_lang::ui::view::PopoverAnchor::Widget(Box::new(auto_lang::ui::view::View::Empty))".to_string()
+        } else {
+            let anchor_code = self.generate_view_tree(&children[0]);
+            format!("auto_lang::ui::view::PopoverAnchor::Widget(Box::new({anchor_code}))")
+        };
+
+        format!(
+            "View::Popover {{ anchor: {}, content: Box::new({}), placement: {}, open: {}, on_dismiss: {} }}",
+            anchor_expr, content, placement_expr, open_expr, on_dismiss_expr
         )
     }
 
@@ -7712,6 +7860,117 @@ widget Demo {
         );
         assert!(code.contains("DemoMsg::openDialog"), "trigger onclick dispatch:\n{}", code);
         assert!(code.contains("DemoMsg::cancelAction"), "cancel onclick dispatch:\n{}", code);
+    }
+
+    /// PLAN-027 T-02: 裸 popover codegen 臂 golden —— 坐标锚形态（desktop.at
+    /// 空白菜单/拖拽幽灵同构）：x/y → Point 锚、open 动态表达式、ondismiss
+    /// 消息、placement 缺省 BottomStart、class 落面板 + w-auto 注入。此前
+    /// 落 `_ => "col"` 降级 + props 静默丢弃（shell pack a2r 编译阻断面）。
+    #[test]
+    fn test_bare_popover_point_anchor_codegen() {
+        let src = r#"
+widget Probe {
+    msg { BlankClose }
+    model {
+        var blank_menu str = ""
+        var cx float = 0.0
+        var cy float = 0.0
+    }
+    view {
+        popover (open: .blank_menu != "", x: .cx, y: .cy, ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
+            text "menu"
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(code.contains("View::Popover {"), "Popover variant literal:\n{}", code);
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverAnchor::Point { x: (self.cx"),
+            "Point anchor bound to cursor state:\n{}", code
+        );
+        assert!(
+            code.contains("open: self.blank_menu !="),
+            "open bound to state expression:\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: Some(ProbeMsg::BlankClose)"),
+            "ondismiss → on_dismiss message:\n{}", code
+        );
+        assert!(
+            code.contains("placement: auto_lang::ui::view::PopoverPlacement::BottomStart,"),
+            "point anchor default placement (PLAN-528 W9):\n{}", code
+        );
+        assert!(
+            code.contains("p-1 border rounded bg-card w-auto"),
+            "user class on panel + w-auto width injection:\n{}", code
+        );
+    }
+
+    /// PLAN-027 T-02: 裸 popover 首子锚形态（shell.at 任务栏右键菜单同构）：
+    /// plain[0] = 锚件、plain[1..] = 面板列、placement "top" 直译、缺省
+    /// Bottom 不误落 Modal。
+    #[test]
+    fn test_bare_popover_widget_anchor_codegen() {
+        let src = r#"
+widget Taskbar {
+    msg { WinMenuClose, Ping }
+    model { var win_menu str = "" }
+    view {
+        popover (open: .win_menu == "1", placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
+            text "anchor"
+            col {
+                text "menu item"
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new("),
+            "first plain child becomes widget anchor:\n{}", code
+        );
+        assert!(
+            code.contains("placement: auto_lang::ui::view::PopoverPlacement::Top,"),
+            "literal top placement (not TopStart/TopEnd):\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: Some(TaskbarMsg::WinMenuClose)"),
+            "ondismiss handler:\n{}", code
+        );
+        // 内容列 = plain[1..]（锚件不进面板）；面板内子件存活。
+        let panel_zone = code.split("content: Box::new(").nth(1).unwrap_or("");
+        assert!(
+            panel_zone.contains("menu item"),
+            "second plain child lands in panel:\n{}", code
+        );
+        assert!(
+            !panel_zone.contains(">anchor<"),
+            "anchor text must not leak into panel:\n{}", code
+        );
     }
 
     /// PLAN-534 T9: sheet/drawer/hovercard 经真实管线发射——placement/
