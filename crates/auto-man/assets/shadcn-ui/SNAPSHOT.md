@@ -18,6 +18,7 @@
   docs/design/autoui/base-styles-and-visual-parity.md §1.2/§3。
 - **Baked patch**: `sonner/Sonner.vue` 已把 `CircleCheckIcon → CheckCircle`、
   `OctagonXIcon → XOctagon`、`TriangleAlertIcon → AlertTriangle`
+- **Baked patch (PLAN-641, 2026-09-18)**: `tabs/` 四件增 `variant` 形态（`default`=shadcn 托盘原样；`enclosed`=激活 tab 与内容面板连通、非激活扁平 cell）——Tabs 根 provide `autoTabsVariant`，List/Trigger/Content inject 切换 class 结构；与 `packages/widgets/registry/tabs/`（手工维护源）及 `ui_gen/vue.rs` WidgetTemplate 三处同源。
   改名烘焙（对应 `fix_shadcn_compatibility_issues` 的兼容性改写；该函数
   保留作为 CLI 兜底路径的保险）。
 - **Dependency contract**: 快照只含源码。缺口依赖 = charts 家族的

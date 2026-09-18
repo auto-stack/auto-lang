@@ -2956,6 +2956,7 @@ impl AuraSchema {
             category: ElementCategory::Navigation,
             props: vec![
                 PropDef { name: "defaultvalue", type_: PropType::String, required: false, default: None, description: "Default active tab" },
+                PropDef { name: "value", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Active tab value (state ref → v-model on Vue track; value-string match on VM track)" },
                 PropDef { name: "active", type_: PropType::Union(vec![PropType::String, PropType::Int]), required: false, default: None, description: "Active tab (index or value string); controlled selection (PLAN-641)" },
                 // PLAN-641：形态词表（default=按钮托盘，enclosed=激活 tab 与内容连通）；
                 // Chrome/IDE 观感差异走圆角 token，不扩词表（SD-02 治理规则）。

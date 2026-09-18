@@ -29,5 +29,7 @@ const forwarded = useForwardProps(delegatedProps)
         props.class,
       )
     "
-  />
+  >
+    <slot />
+  </TabsContent>
 </template>

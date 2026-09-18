@@ -27,8 +27,8 @@ widget App {
                 }
                 tabs (value: .s1) {
                     tabslist {
-                        tabstrigger (value: "a", text: "Alpha")
-                        tabstrigger (value: "b", text: "Beta")
+                        tabstrigger (value: "a") { text "Alpha" }
+                        tabstrigger (value: "b") { text "Beta" }
                     }
                     tabscontent (value: "a") {
                         text "Alpha panel - default tray (status quo)"
@@ -50,8 +50,8 @@ widget App {
                 }
                 tabs (value: .s2, variant: "enclosed") {
                     tabslist {
-                        tabstrigger (value: "a", text: "Alpha")
-                        tabstrigger (value: "b", text: "Beta")
+                        tabstrigger (value: "a") { text "Alpha" }
+                        tabstrigger (value: "b") { text "Beta" }
                     }
                     tabscontent (value: "a") {
                         text "Alpha panel - active tab merges with this panel"
@@ -73,8 +73,8 @@ widget App {
                 }
                 tabs (value: .s3, variant: "enclosed", style: "rounded-t-lg") {
                     tabslist {
-                        tabstrigger (value: "a", text: "Alpha", class: "rounded-t-lg")
-                        tabstrigger (value: "b", text: "Beta", class: "rounded-t-lg")
+                        tabstrigger (value: "a", class: "rounded-t-lg") { text "Alpha" }
+                        tabstrigger (value: "b", class: "rounded-t-lg") { text "Beta" }
                     }
                     tabscontent (value: "a") {
                         text "Alpha panel - Chrome rounded look"

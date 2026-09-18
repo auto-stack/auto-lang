@@ -5655,6 +5655,7 @@ element tabs {
     sub_widgets: ["tabscontent", "tabslist", "tabstrigger"]
     props: [
         { name: "defaultvalue", type: "string", description: "Default active tab" }
+        { name: "value", type: "union:string,state_ref", description: "Active tab value (state ref → v-model on Vue track; value-string match on VM track)" }
         { name: "active", type: "union:string,int", description: "Active tab (index or value string); controlled selection (PLAN-641)" }
         { name: "variant", type: "oneof:default,enclosed", description: "Tabs form variant; enclosed = active tab merges with content panel (flat inactive cells)" }
         { name: "onselect", type: "string", description: "Handler receiving selected tab index (VM track)" }
