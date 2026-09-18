@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-649
-status: executing            # drafting → executing → execution_done → reviewed → archived（R1 needs_fix 回工修 F-649-1）
+status: reviewed             # drafting → executing → execution_done → reviewed → archived（R2 pass）
 feature_name: bp-consumption-groundwork（bp 消费地基：L1 连字符解析 + icon 词汇面 + data-table 半句复核）
 author: [agent]
 created_at: 2026-09-18
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: [GOAL-011]     # 引用 docs/specs/goals.md 的 GOAL-NNN——L1 import 零副本主通道（复审 R1 终定）
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 4
+current_step: 5
 total_steps: 5
 ---
 
@@ -220,17 +220,14 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
   KNOWN-DEBT 640 行按事实改写（"未入 registry/缺 vue 映射"两说不成立，
   回避维持理由更正为零消费）；同批核销 KNOWN-DEBT:90（L1 行）与
   P643-D1（icon 词面）。验证：DEBT diff（commit 20789bec1）。
-- **T-05 [ ] 端到端与门禁兜底**（R1 needs_fix 重开——修复 F-649-1 后复裁）：
-  原完成面：t08-t10 双轨端到端——empty-state（640 AC-08"全黑"对照转绿，
-  VM view 文案断言 + vue SFC import 断言）、sidebar-shell、data-table-crud
-  （≥3 连字符包）+ signup 不回归；裸 `cargo tv` = 3785/3786 绿，唯一红
-  `test_display_family_codegen_arm_fixture` 经 A/B 证实为基线预存（非本
-  计划引入）；门禁档位=Category B 全过。
-  **R1 修正点（F-649-1）**：T-05 期间登记的 DEBT 649 行有两处失实——
-  "此前零登记"不成立（PLAN-654 §9 F-R2 在 master bc676a8fa 已记录同一红；
-  工作树基线 b13af592 早于该提交致 grep 落空），"分诊方向=size 提取链"
-  被 F-R2 定性取代（无 ui-iced 必红/有 ui-iced 必绿的预存 feature 配置债，
-  R1 双态独立复现证实）。修复=DEBT 649 行按 F-R2 机制改写。
+- **T-05 [x] 端到端与门禁兜底**（含 R1 修复）：t08-t10 双轨端到端——
+  empty-state（640 AC-08"全黑"对照转绿，VM view 文案断言 + vue SFC import
+  断言）、sidebar-shell、data-table-crud（≥3 连字符包）+ signup 不回归；
+  裸 `cargo tv` = 3785/3786 绿，唯一红 `test_display_family_codegen_arm_fixture`
+  为基线预存（A/B 归因）+ feature 配置债机制在案（R1 双态复现）；门禁
+  Category B 全过；**F-649-1 修复**（commit 350c2ac0d）：DEBT 649 行按
+  PLAN-654 F-R2 在案记录与机制改写，撤回"此前零登记/size 提取链分诊"
+  失实表述。
 
 依赖链：T-01 → T-03/T-04；T-02 无依赖；T-05 最后。
 
@@ -294,6 +291,27 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
   test_display_family_codegen_arm_fixture：test-vm-files FAIL 0.058s /
   ui-iced PASS 0.085s）+ tf 摘要行 | next: **work 修复 F-649-1**
   （docs-only，代码/测试/门禁零假设变化，无需重跑）→ R2 复裁。
+- 2026-09-18 work 修复（F-649-1，needs_fix 回工）：stage: work | PLAN-649 |
+  plan_revision 1 | outcome: pass | code_commit: **350c2ac0d**（叠加于
+  20789bec1；docs-only 单行 DEBT 改写，代码/测试/spec 零变化）|
+  task_ids: T-05 | evidence: `git diff 20789bec1..350c2ac0d` = DEBT 单文件
+  单行；DEBT 649 行现文=引 F-R2 首次登记 + feature 配置债机制 + R1 双态
+  复现记录，失实表述撤回 | blockers: 无 | next: R2 复裁。
+- 2026-09-18 review R2（/auto-plan:review，R1 needs_fix 后复裁）：
+  stage: review | PLAN-649 | plan_revision 1 | outcome: **pass** |
+  reviewed_commit: **350c2ac0d**（tip；代码面=R1 已审 20789bec1 原样）|
+  base_commit: b13af5927 | dependency_revisions: 同 R1（auto-down @
+  b1c88def 零改动） | spec_inputs: 同 R1（contract.md SD-01/SD-02 已核；
+  touched_goals=GOAL-011 已终定）。
+  acceptance_results: AC-01..AC-05 全 **pass**（R1 逐项结论原样成立——
+  修复仅动 DEBT 簿记行，不触及任何 AC 载体；F-649-1 已修复核验：DEBT
+  649 行与 PLAN-654 §9 F-R2/master bc676a8fa 在案记录及双态复现事实
+  一致，误导性分诊方向已撤）。
+  findings: 无新发现；F-649-2/F-649-3 维持 info 不阻断。
+  evidence: R1 全部门禁证据沿用（明确理由：`git diff 20789bec1..350c2ac0d`
+  仅 DEBT 单文件单行，代码/测试/门禁配置零假设变化）+ 修复行文本核验 |
+  next: **/auto-plan:merge**（reviewed；工作树/分支保留归 merge 清理，
+  auto-down 依赖 worktree 一并归 merge 守卫流程）。
 
 ## 10. 待澄清事项
 
