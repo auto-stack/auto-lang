@@ -229,6 +229,9 @@ mod pack_tests {
             ("switcher", crate::ui::shell::SWITCHER_AT),
             ("notification_center", crate::ui::shell::NOTIFICATION_CENTER_AT),
             ("desktop", crate::ui::shell::DESKTOP_AT),
+            // PLAN-027 T-09'：dashboard.at 补入（PLAN-024 新增第五件，
+            // 历史遗漏——本测试此前只扫四件）。
+            ("dashboard", crate::ui::shell::DASHBOARD_AT),
         ] {
             crate::build_dynamic_component(src, None)
                 .unwrap_or_else(|e| panic!("{name}.at 编译失败: {e}"));

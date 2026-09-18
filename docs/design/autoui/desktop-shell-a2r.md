@@ -1,8 +1,12 @@
 # 桌面 Shell a2r 编译化形态设计（desktop-shell-a2r）
 
-> **状态：设计输入（未裁定）**。本文档是 L2 范式的"先设计后拆 plan"产物：
-> §3 缺口普查是事实资产（file:line 锚定，2026-09-18 普查），§4/§5 形态
-> 选项与推荐待用户拍板，裁定后按 §6 迁移路径拆实施计划。
+> **状态：裁定落定（2026-09-18，§10-① 用户裁定）——主形态 = B
+> （outproc 特权协议客户端）+ 解释装载路径双轨常驻**。S1 生成域 + S2
+> typed 接缝已经 PLAN-027（rev2）落地（任务映射见文末"实施锚定"）；
+> S3 装配改由 **B 形态程序**承接（§5 裁定记录），前置序列 = 图像
+> DrawOp 通道立项先行 → 025 键盘真机实测 → 覆盖二批 → shell outproc
+> client + 启动序/看门兵。§3 缺口普查是事实资产（file:line 锚定，
+> 2026-09-18 普查；实施期修正 A–D 见 PLAN-027 §5.1/任务证据）。
 > 依据：Design 23（[virtual-desktop.md](virtual-desktop.md)）、Design 24
 > （[desktop-shell-and-launcher.md](desktop-shell-and-launcher.md)）、
 > [desktop-protocol-v1.md](desktop-protocol-v1.md)（v1.6 现行，v1.7 = 025）、
@@ -180,7 +184,17 @@ outproc、壁纸/缩略图留宿主层——拆两层引入双形态复杂度，
 025 键盘路由真机实测达标；覆盖二批 display 族全量落地；出现 shell 独立
 发布/第三方 shell 的真实需求。
 
-**待用户裁定项**：§10。
+**裁定记录（2026-09-18）**：用户裁定**否决 A 推荐、采纳 B**——终态图景
+= "桌面是独立进程（且包含 compositor），打开的 app 也是独立进程，渲染
+经 RenderQueue 发给桌面进程统一渲染"（shell 与 app 同律独立进程）。
+**档案事实注记**：A 形态只链 shell pack 五件生成物、不涉及任何 App
+（App 两形态下均已是独立进程走 RenderQueue，PLAN-020/025 既有）；裁定
+对 shell 本身的推论（同律独立进程）成立，与本文 §4-B 的"桌面=RenderHost、
+其余皆上层 App"终态图景一致。B 的前置阻断件（图像通道/键盘实测/覆盖
+二批）按 §4-B 清单成为 B 程序的立项序列；双轨常驻（§8-R3）同日裁定
+确认——解释 fallback（AUTO_SHELL_PACK 既有通道）保留为开发态缺省。
+
+**待用户裁定项**：§10（①②已裁定，见上）。
 
 ## 6. 迁移路径草案（A 主线，裁定后拆 plan）
 
@@ -201,7 +215,9 @@ S2 shell 专属接缝（投影方向反转 + 命令类型化）
    handle.verb(...) 类型化调用；storage.* 对接宿主 storage/os-config
    运行时；__desktop_cmd 字符串通道退役（解释壳与编译壳同一 handle 背后
    可先桥接，双轨期零分叉）
-S3 生成目标 + 宿主装配 + parity 切换
+S3 生成目标 + 宿主装配 + parity 切换（**已改道**：A 形态 S3 经
+   PLAN-027 rev2 退役——B 裁定后 shell 编译产物 = outproc exe；本节
+   其余 S1/S2 文字为 PLAN-027 已交付面的设计记录）
    wrap_example 新"无窗组件库"目标（四件 → 一个 crate：常驻 2 组件 +
    懒挂载 3 组件 + 装配清单）；宿主 shell_app/desktop_app 槽位接 typed
    组件（ShellSurface 装配 trait：解释壳/编译壳同接口）；a2r shell ×
@@ -250,13 +266,39 @@ S3 生成目标 + 宿主装配 + parity 切换
 - **度量**：宿主二进制体积/启动时延 增量；shell 视图重建耗时（对齐
   解释态基线）。
 
-## 10. 待裁定事项
+## 10. 待裁定事项（2026-09-18 全部落定）
 
-- **① 主形态**：A 链入宿主（推荐）vs B outproc 特权客户端——本设计
-  推荐依据见 §5；若用户终态图景坚持"shell 也走 RenderQueue"，B 的图像
-  通道须先立项（独立大件）。
-- **② 解释装载路径去留**：双轨常驻（开发态解释 + 发布态编译，推荐）vs
-  S3 后直接退役解释路径（接受编译回路）。
-- **③ S1 与覆盖二批的拆分**：合并一个计划（IR 层共享）vs 分两个计划
-  先后（S1 先行）。倾向合并或 S1 先行——实施期定。
-- **④ Stage B 搬迁与编译化先后**（§7 末条）——低风险，默认编译化先行。
+- **① 主形态：✅ 已裁定 = B（outproc 特权协议客户端）**。§5 的 A 推荐
+  未被采纳，裁定记录与事实注记见 §5。B 前置序列：图像 DrawOp 通道立项
+  （独立大件，先行）→ 025 键盘真机实测 → 覆盖二批 → shell outproc
+  client + 启动序/看门兵。
+- **② 解释装载路径去留：✅ 已裁定 = 双轨常驻**（开发态解释 fallback +
+  编译态；退役另立裁定）。
+- **③ S1 与覆盖二批的拆分：✅ S1 已落地**（PLAN-027 T-02..T-04，独立
+  计划先行）；覆盖二批为 B 前置序列件，随 B 程序计划排布。
+- **④ Stage B 搬迁与编译化先后**——维持默认（编译化先行，低风险）。
+
+
+---
+
+## 实施锚定（PLAN-027，2026-09-18）
+
+- **S1 生成域**（T-02/03/04，auto-lang plan-027-dev 97d0bb75d /
+  274265345 / 611fbff2f）：裸 popover 臂（Point 锚 + ondismiss 译）、
+  宿主合成件直发既有 `View::WindowThumbnail/WorkspacePreview`、
+  mouse-area 臂（§3a 普查修正 C——a5"shell 未用"误记，实勘 26 处）、
+  div→container / taskbar→row、显式拒绝门（未知 prop/事件
+  `compile_error!`；布局 hover 事件 = 认知且双轨同弃层）、shell 五件
+  全量词汇门测试；随附修复 `ViewBuilder.build()` 布局件 onclick 丢件
+  与 `with_button_preset` variant/size 消费。
+- **S2 typed 接缝**（T-05/06，同分支 T-05 commit / d6e8da838）：
+  `ui/shell_projection.rs`（ShellProjection 载体 + ShellEvent +
+  ShellClock + 懒挂载 payload 四件 + ShellManifest 五件清单；
+  sync_shell_windows 单源化 build+apply，指纹门控/写集逐字节一致）；
+  `DesktopBusHandle`（枚举载荷单方法 + send_record 单点分型）+
+  `DesktopBusQueue` + `HostStorage`/`ShimHostStorage`（普查修正 D：
+  storage.* 已有 shim 双轨同后端）；52 动词 roundtrip 对拍捕获并修复
+  `SetThemeName` encode 死词（PLAN-601 漏逆向）。
+- **S3 → B 程序**：本文 §4-B 前置清单即新计划立项序列；PLAN-027
+  rev2 范围收口记录见 auto-os `docs/plans/027-desktop-shell-a2r.md`
+  rev 2（§10-① 裁定 + 交接面）。

@@ -1,7 +1,8 @@
 # ui（AURA / UI 引擎 / 桌面运行时）
 
 > **Status**: active（主战场：vue 轨 codegen 成熟化 + VM 轨视觉 parity + 虚拟桌面线推进中）
-> 最近刷新：2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
+> 最近刷新：2026-09-18（PLAN-027 rev2 回写：shell a2r 接缝面 S1/S2 落地——codegen 臂族 + 显式拒绝门/词汇门 + ShellProjection/DesktopBusHandle typed 载体，详见 design/shell-a2r-seams.md（provisional）；design 文档 desktop-shell-a2r.md 裁定落定 = B 形态 + 双轨常驻）
+> 2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
 >
 > **资产位置注记（PLAN-590，Stage B P-5，2026-09-07）**：桌面域资产已随迁
 > auto-os——`ui-gallery`/`widgets-gallery` 在 **auto-os 顶层**（框架侧

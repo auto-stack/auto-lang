@@ -38,6 +38,8 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 027 | 解释臂缺陷候选（基线红在册） | `p010_popover_ondismiss_extracted_from_events` 全量跑红（PLAN-027 work 期 stash 对照实证为改前基线红，非 027 回归）：桌面 surface 视图 5 枚 popover 中 1 枚 ondismiss 落 `__popover_close` 合成兜底（VM 态无此处理语义，测试断言红）。疑因 = desktop.at 拖拽幽灵 popover（open+x/y、无 ondismiss，desktop.at:269）在解释臂被判为 widget 形态（`resolve_expr_to_value` 对 cursor 浮点态求值路径）走首子锚分支。影响面 = 解释轨拖拽幽灵 popover 外点关闭语义 + 测试基线；修复面在 `aura_view_builder.rs convert_popover` 坐标锚判定，PLAN-027 零触碰解释轨未修。 | `ui/iced/renderer.rs:29252`（断言点）；`aura_view_builder.rs convert_popover`；PLAN-027 T-02 证据（stash 对照） |
+| 027 | 双轨视觉分歧候选（B parity 线复核项） | a2r 按钮动态 style + variant：preset 不注入（PLAN-571 文档化先例"动态表达式无法静态合并则不注入"），VM 臂恒注入——shell 按钮 ×38 携 variant（ghost/primary）且多为动态 if-style，编译轨按钮缺 preset chrome。PLAN-027 T-04 拒绝门配套将 variant/size 改为已消费词汇剥除（四臂双 feature 一致），消除误伤但保留不注入分歧。shell 编译化（B 程序）双轨对拍时需实测定级。 | `ui_gen/rust.rs with_button_preset`（四臂）；PLAN-571 记录；PLAN-027 T-04 证据 |
 | 377 | heap-aware 遗漏 | stdlib.rs 有 10 处 `push_i64(handle/server)` 未改用 `push_i64_vm`。值是 heap ID（< 2^48），实际安全，但不符合 Plan 377 的"所有 64 位值走 heap-aware"一致性目标。 | `vm/ffi/stdlib.rs:3092,3105,3115,3125,3135,3146,3478,3493,3511,3531` |
 | 377 | TYPE_CAST_U64 | engine.rs:2690 的 TYPE_CAST_U64 用 `push_u64(v as u32 as u64)`，值 < 2^32 安全，但未走 heap-aware 路径。 | `vm/engine.rs:2690` |
 | 340 | reduce init_val 类型 | shim_list_reduce 的 Value path 中 init_val 仍是 `pop_i32()`（而非 `pop_nv()`+`nv_to_value`）。若 reduce 初始值是 struct/str 会丢类型。常见用例（init=0/""）不受影响。 | `vm/native.rs shim_list_reduce` |
