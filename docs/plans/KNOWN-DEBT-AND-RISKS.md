@@ -2332,3 +2332,8 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P028-D2 [~~lucide:~~ ✅ 字形半句已核销（PLAN-029，协议 §1.10）——`lucide:` 真渲入册（resvg/tiny-skia 栅格化 + `#{rrggbb}` tint 语法 + 尺寸缓存键 + 未知名负缓存）；svgdoc: 通用矢量词汇维持 not-yet（保真边界）]**：通用内联 SVG（非 lucide 表内图标）仍走未解析降级占位——通用 SVG 安全渲染/缓存独立线。
 - **P028-D3 [web 远程端真位图渲染 not-yet（TS 面）]**：drawlist-renderer image 臂 = 占位灰底；真位图需 fetch/跨源/data 通道（TS 无 shm 位图通道），独立增量。§1.9 成文。
 - **P028-D4 [musk_vm_track p053 ui-iced 组合预存红家族扩充观测（非本计划）]**：worktree 日常档（--features ui-iced）4 红——p053_1 两件 + p053_4 + p053_6，master 主检出同 feature 对照逐一复现同败（P645-D2 控制实验同法）。归 564-Q6 预存红家族（P645-D2 在册 1 件 → 本次观测扩至 4 件面），musk 域后续计划排查。
+
+## 2026-09-19 增补（PLAN-648 执行期登记）
+
+- **P648-D1 [VM 事件 handler 再入破坏 HTTP-yield 中任务状态（VM 调度缺陷，交互阻断级）]**：PLAN-648 T-01 打通 split 模式 api 委托链后暴露的既有缺陷。机制：Tick handler 在 `auto.http.*` 异步 yield（`Waiting("http")`，单槽 `waiting_http_request_id`）期间，iced 再投递任意窗口事件（restore/resize/activate/键入）→ DynamicComponent 再入调用 handler → 同任务帧/单槽被覆写 → 恢复后局部变量取错值 → 循环上界失效无界自旋（`tab-id-at?i=N` 单调爬升至 2 万+，UI 线程打满窗口"未响应"）。三次实证：70s 零交互对照全程健康（evidence/648/t01-verify4.log）；SetForegroundWindow+ALT 注入触发失控（t01-verify5-runaway-trace.log，转折点=同 tick 内 i=1,2,3… 无界）；纯 SW_RESTORE（零键鼠注入）同样触发（t01-final-trace.log 尾部 i→8764）。修复前 handler 从不 yield（委托断供→全进程内消化）故窗口从未打开——非 648 根修引入。修向候选：handler 执行期间事件排队/Waiting 任务互斥（VM 调度层面，影响面广需独立计划）。验收影响：dev 跑法 VM 轨交互稳定性——无交互内容流已验证可用，实点交互前需先修此项。
+- **P648-D2 [musk_vm_track p053 预存红家族（复核确认，非新增）]**：648 worktree 日常档 3 红（p053_1 两件 + p053_4）与 master 主检出同滤串同败——P028-D4 在案 4 红家族的 fail-fast 截停子集（p053_6 未及运行），非 648 回归。
