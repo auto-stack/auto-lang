@@ -19269,6 +19269,12 @@ fn dynamic_view_impl(
             *state.app.mcp_sync_vtree.borrow_mut() = Some(vtree);
         }
         mcp.update(view, id_map, state_vals, input_map, view_template, state.component.key_bindings().clone());
+        // PLAN-646: 源码全文随帧发布——`autoui_select_rect` 信封切片用
+        //（ensure 幂等：装载过零开销；未装载过此处读盘一次）。
+        ensure_source_loaded(state);
+        if let Some(ref code) = *state.app.source_code.borrow() {
+            mcp.set_source_code(code.clone());
+        }
         // Sync window size for layout annotations (Plan 281)
         let ws = state.window_size.borrow();
         let iced::Size { width, height } = *ws;

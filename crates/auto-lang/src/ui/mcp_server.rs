@@ -165,6 +165,9 @@ pub struct SharedState {
     /// Real-time styled VTree snapshot (Plan 314). Copied each frame by the
     /// iced renderer when F12 is open or MCP is active.
     styled_vtree: Option<std::sync::Arc<StyledNodeSnapshot>>,
+    /// PLAN-646: .at 源码全文（`autoui_select_rect` 信封 source 切片用）。
+    /// iced 线程随帧发布（ensure_source_loaded 幂等装载后 set）。
+    source_code: Option<String>,
     /// Backend capability used by test-only MCP fixtures. Set by the renderer
     /// at startup so Rust mode can reject VM state injection explicitly.
     backend_kind: BackendKind,
@@ -271,6 +274,7 @@ impl SharedState {
             window_size: None,
             layout_bounds: HashMap::new(),
             styled_vtree: None,
+            source_code: None,
             backend_kind: BackendKind::Unknown,
             fixture_next_id: 1,
             fixture_acks: HashMap::new(),
@@ -385,6 +389,16 @@ impl SharedState {
     /// 快照做深读/序列化。
     pub fn clone_styled_vtree(&self) -> Option<std::sync::Arc<StyledNodeSnapshot>> {
         self.styled_vtree.clone()
+    }
+
+    /// PLAN-646: publish the .at source text (iced thread, per frame).
+    pub fn set_source_code(&mut self, code: String) {
+        self.source_code = Some(code);
+    }
+
+    /// PLAN-646: clone the latest .at source text (MCP thread reader).
+    pub fn clone_source_code(&self) -> Option<String> {
+        self.source_code.clone()
     }
 
     /// Request a screenshot capture. Returns a Receiver that will receive the
@@ -955,6 +969,35 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        // PLAN-646: rect select — programmatic knowledge capture (same
+        // envelope as the interactive Alt+drag marquee).
+        json!({
+            "name": "autoui_select_rect",
+            "title": "Select Rect (Structured Capture)",
+            "description": "Select widgets by rectangle and get the SAME structured envelope as the interactive Select-Anything marquee: topmost nodes (center-inside hit-test, trimmed to topmost ancestors, document order), each with widget kind, .at source span, source slice and Atom structure subtree.\n\n## When to use\n- Programmatic knowledge capture: return what a human would Alt+drag-select, organized by component structure\n- Extract a card/panel region as structured Auto/JSON/Atom text\n\n## Semantics\nA node is hit when its layout-bounds CENTER falls inside the rect (edge-swept nodes are not selected); hits are trimmed to topmost (a selected parent absorbs its children) and returned in document order. Nodes without measured bounds are not hit-testable but appear inside their ancestor's structure.\n\n## Output\nEnvelope: {surface, app, rect:[x,y,w,h], nodes:[{id, kind, span, source, structure}]}. format=auto renders .at source slices, json the envelope object, atom the structure subtrees.",
+            "inputSchema": {
+                "type": "object",
+                "required": ["x", "y", "w", "h"],
+                "properties": {
+                    "x": { "type": "number", "description": "Rect left (window logical px)" },
+                    "y": { "type": "number", "description": "Rect top (window logical px)" },
+                    "w": { "type": "number", "description": "Rect width (> 0)" },
+                    "h": { "type": "number", "description": "Rect height (> 0)" },
+                    "format": {
+                        "type": "string",
+                        "enum": ["auto", "json", "atom"],
+                        "default": "json",
+                        "description": "Envelope rendering: json (default), auto (source slices), atom (structure text)"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
         // Plan 371 Task 7: search VTree for matching nodes
         json!({
             "name": "autoui_find",
@@ -1131,6 +1174,7 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_type" => tool_type(shared, args),
         "autoui_keyboard" => tool_keyboard(shared, args),
         "autoui_vtree" => tool_vtree(shared, args),
+        "autoui_select_rect" => tool_select_rect(shared, args),
         "autoui_find" => tool_find(shared, args),
         "autoui_exists" => tool_exists(shared, args),
         "autoui_press_sequence" => tool_press_sequence(shared, args),
@@ -3447,6 +3491,78 @@ fn tool_vtree(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
     }
 }
 
+// ── Tool: autoui_select_rect (PLAN-646) ──
+
+/// 矩形框选程序化采集——与交互式 Alt+拖拽同一信封/语义（ui::selection 纯
+/// 函数：中心包含 → 顶层修剪 → 文档序）。快照/结构取 `autoui_vtree` 同源
+/// styled_vtree；bounds 取 layout_bounds（`vnode_N` 键直解析）；源码切片取
+/// 随帧发布的 source_code（未发布时 source=null、span 仍可定位）。
+fn tool_select_rect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let get_f = |k: &str| args.get(k).and_then(|v| v.as_f64()).map(|v| v as f32);
+    let (x, y, w, h) = match (get_f("x"), get_f("y"), get_f("w"), get_f("h")) {
+        (Some(x), Some(y), Some(w), Some(h)) => (x, y, w, h),
+        _ => {
+            return error_result(
+                "Missing required parameters: x, y, w, h (rect in window logical px)",
+            )
+        }
+    };
+    if w <= 0.0 || h <= 0.0 {
+        return error_result("Invalid rect: w and h must be > 0");
+    }
+    let format = crate::ui::selection::SelectionFormat::parse(
+        args.get("format").and_then(|v| v.as_str()).unwrap_or("json"),
+    );
+    let rect = crate::ui::debug::Rect::new(x, y, w, h);
+
+    let (snap, bounds, source) = {
+        let sh = shared.lock().unwrap();
+        (
+            sh.clone_styled_vtree(),
+            sh.get_layout_bounds().clone(),
+            sh.clone_source_code(),
+        )
+    };
+    let snap = match snap {
+        Some(s) => s,
+        None => {
+            return error_result(
+                "No live VTree snapshot yet — retry after the window has painted.",
+            )
+        }
+    };
+
+    // `vnode_N` 键 → VNodeId（G4e 约定：iced id 内嵌 VNodeId 数值；
+    // aura_* 键无注册表不可反查，跳过——容器级 id 恒为 vnode_N 形态）。
+    let mut vnode_bounds = std::collections::HashMap::new();
+    for (k, (bx, by, bw, bh)) in bounds {
+        if let Some(rest) = k.strip_prefix("vnode_") {
+            if let Ok(n) = rest.parse::<u64>() {
+                vnode_bounds.insert(
+                    crate::ui::vnode::VNodeId::new(n),
+                    crate::ui::debug::Rect::new(bx, by, bw, bh),
+                );
+            }
+        }
+    }
+
+    let result = crate::ui::selection::select_envelope(
+        "vm",
+        &snap.widget_name,
+        rect,
+        &vnode_bounds,
+        &snap.vtree,
+        source.as_deref(),
+    );
+    match format {
+        crate::ui::selection::SelectionFormat::Json => {
+            let json = result.to_json();
+            text_result(serde_json::to_string_pretty(&json).unwrap_or_else(|_| "{}".into()))
+        }
+        other => text_result(result.render(other)),
+    }
+}
+
 // ── Tool: autoui_find (Plan 371 Task 7) ──
 
 fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
@@ -4077,6 +4193,105 @@ mod tests_314 {
         let mut state = SharedState::new("Demo".into());
         state.set_styled_vtree(snap);
         Arc::new(Mutex::new(state))
+    }
+
+    // ── autoui_select_rect (PLAN-646) ──
+
+    /// shared_with_snapshot + layout_bounds（几何对齐 fill_cache：
+    /// root 中心 (50,25)；button 中心 (70,25)）。
+    fn shared_with_bounds() -> SharedStateHandle {
+        let shared = shared_with_snapshot();
+        shared.lock().unwrap().set_layout_bounds(
+            std::collections::HashMap::from([
+                ("vnode_0".to_string(), (0.0f32, 0.0f32, 100.0f32, 50.0f32)),
+                ("vnode_2".to_string(), (40.0f32, 10.0f32, 60.0f32, 30.0f32)),
+            ]),
+        );
+        shared
+    }
+
+    #[test]
+    fn tool_select_rect_trims_to_topmost_and_returns_envelope() {
+        let shared = shared_with_bounds();
+        // 覆盖 root(中心 50,25) + button(中心 70,25) → 修剪为 root
+        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 0.0, "y": 0.0, "w": 100.0, "h": 50.0 }));
+        assert!(!res["isError"].as_bool().unwrap_or(true));
+        let text = res["content"][0]["text"].as_str().expect("text content");
+        let env: serde_json::Value = serde_json::from_str(text).expect("json envelope");
+        assert_eq!(env["surface"], "vm");
+        assert_eq!(env["app"], "Demo");
+        assert_eq!(env["rect"], json!([0.0, 0.0, 100.0, 50.0]));
+        assert_eq!(env["nodes"].as_array().unwrap().len(), 1, "topmost trim: {env}");
+        assert_eq!(env["nodes"][0]["kind"], "col");
+        assert_eq!(env["nodes"][0]["id"], "vnode_0");
+        // structure 子树完整（button 作为子孙在 structure 内）
+        let struct_str = env["nodes"][0]["structure"].to_string();
+        assert!(struct_str.contains("button"), "subtree: {struct_str}");
+    }
+
+    #[test]
+    fn tool_select_rect_hits_child_only_when_parent_center_outside() {
+        let shared = shared_with_bounds();
+        // 只含 button 中心(70,25)、不含 root 中心(50,25) → 单独命中 button
+        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 60.0, "y": 10.0, "w": 30.0, "h": 20.0 }));
+        let text = res["content"][0]["text"].as_str().unwrap();
+        let env: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(env["nodes"].as_array().unwrap().len(), 1);
+        assert_eq!(env["nodes"][0]["kind"], "button");
+    }
+
+    #[test]
+    fn tool_select_rect_edge_sweep_misses_and_format_atom() {
+        let shared = shared_with_bounds();
+        // 边缘扫过 button（中心不在）→ 空集；atom 格式渲染
+        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 0.0, "y": 0.0, "w": 40.0, "h": 20.0, "format": "atom" }));
+        let text = res["content"][0]["text"].as_str().unwrap();
+        assert!(text.is_empty() || !text.contains("button"), "no hit: {text}");
+    }
+
+    #[test]
+    fn tool_select_rect_slices_source_from_published_code() {
+        let mut state = SharedState::new("Demo".into());
+        // 源文：`app Demo {\n  text "hi"\n}\n`；text 节点 span=(13,6) → `text "`
+        let mut tree = VTree::new();
+        let root = VNode::new(VNodeId::new(1), VNodeKind::Column, VNodeProps::Empty);
+        tree.set_root(root);
+        let mut text_node = VNode::new(VNodeId::new(2), VNodeKind::Text, VNodeProps::Empty);
+        text_node.source_span = Some(crate::ui::debug::SourceSpan { offset: 13, len: 6 });
+        text_node.parent = Some(VNodeId::new(1));
+        tree.add_node(text_node);
+        tree.get_mut(VNodeId::new(1)).unwrap().add_child(VNodeId::new(2));
+        state.set_styled_vtree(StyledNodeSnapshot::from_live("Demo", &tree, &InspectorCache::new()));
+        // root 中心 (50,50)；text 中心 (25,20)——矩形只含后者 → 只命中 text
+        state.set_layout_bounds(std::collections::HashMap::from([
+            ("vnode_1".to_string(), (0.0, 0.0, 100.0, 100.0)),
+            ("vnode_2".to_string(), (10.0, 10.0, 30.0, 20.0)),
+        ]));
+        state.set_source_code("app Demo {\n  text \"hi\"\n}\n".into());
+        let shared = Arc::new(Mutex::new(state));
+
+        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 10.0, "y": 15.0, "w": 30.0, "h": 10.0 }));
+        let env: serde_json::Value =
+            serde_json::from_str(res["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(env["nodes"].as_array().unwrap().len(), 1);
+        assert_eq!(env["nodes"][0]["kind"], "text");
+        assert_eq!(env["nodes"][0]["span"], json!([13, 6]));
+        assert_eq!(env["nodes"][0]["source"], "text \"");
+    }
+
+    #[test]
+    fn tool_select_rect_error_paths() {
+        let shared = shared_with_snapshot();
+        // 缺参数
+        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 1.0 }));
+        assert!(res["isError"].as_bool().unwrap_or(false), "missing params: {res}");
+        // 非法 w/h
+        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 0.0, "y": 0.0, "w": 0.0, "h": 10.0 }));
+        assert!(res["isError"].as_bool().unwrap_or(false), "bad w: {res}");
+        // 无快照（未渲染）
+        let empty = Arc::new(Mutex::new(SharedState::new("Demo".into())));
+        let res = dispatch_tool_static(&empty, "autoui_select_rect", json!({ "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }));
+        assert!(res["isError"].as_bool().unwrap_or(false), "no snapshot: {res}");
     }
 
     #[test]

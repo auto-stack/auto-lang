@@ -82,18 +82,29 @@ pub fn select_nodes(rect: Rect, bounds: &HashMap<VNodeId, Rect>) -> HashSet<VNod
 ///
 /// 命中集合中某节点的任一祖先也在命中集合中 → 该节点被其祖先吸收（剔除）。
 /// 输出按 VTree 文档序（`nodes()` DFS 先序存储序）。
+///
+/// 祖先链从 children 列表派生（不依赖 `VNode.parent` 字段——构造器/夹具
+/// 可能不回填；children 列表是拓扑事实源）。
 pub fn trim_to_topmost(selected: &HashSet<VNodeId>, vtree: &VTree) -> Vec<VNodeId> {
     if selected.is_empty() {
         return Vec::new();
     }
-    let has_selected_ancestor = |mut id: VNodeId| -> bool {
-        while let Some(node) = vtree.get(id) {
-            match node.parent {
-                Some(p) => {
+    let mut parent_of: HashMap<VNodeId, VNodeId> = HashMap::new();
+    for node in vtree.nodes() {
+        for &c in &node.children {
+            parent_of.insert(c, node.id);
+        }
+    }
+    let has_selected_ancestor = |id: VNodeId| -> bool {
+        let mut cur = id;
+        // 步数上界 = 节点数（防御环数据；正常树必在祖先链终止）。
+        for _ in 0..=vtree.node_count() {
+            match parent_of.get(&cur) {
+                Some(&p) => {
                     if selected.contains(&p) {
                         return true;
                     }
-                    id = p;
+                    cur = p;
                 }
                 None => return false,
             }
@@ -215,5 +226,16 @@ mod tests {
     fn trim_empty_selection_is_empty() {
         let t = tree_with_parents();
         assert!(trim_to_topmost(&HashSet::new(), &t).is_empty());
+    }
+
+    #[test]
+    fn trim_derives_ancestry_from_children_not_parent_field() {
+        // 夹具/构造器可能不回填 VNode.parent——children 列表是拓扑事实源。
+        let mut t = VTree::new();
+        t.set_root(VNode::new(VNodeId::new(1), crate::ui::vnode::VNodeKind::Column, VNodeProps::Empty));
+        t.add_node(VNode::new(VNodeId::new(2), crate::ui::vnode::VNodeKind::Row, VNodeProps::Empty));
+        t.get_mut(VNodeId::new(1)).unwrap().add_child(VNodeId::new(2));
+        let all: HashSet<VNodeId> = [1u64, 2u64].iter().map(|&n| VNodeId::new(n)).collect();
+        assert_eq!(trim_to_topmost(&all, &t), vec![VNodeId::new(1)]);
     }
 }
