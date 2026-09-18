@@ -1,33 +1,54 @@
-// 012-stopwatch → Clock 四 tab 应用（os-003 / origin PLAN-554）。
-// PLAN-637 B2 Phase B 映射（2026-09-17）：开始 bg-green-500/text-white→bg-primary/
-// text-primary-foreground（主行动）；停止 bg-red-500/text-white→bg-destructive/
-// text-destructive-foreground；暂停 bg-yellow-500/text-white→bg-secondary 族。
-// T2 骨架：tab 化外壳 + 秒表面板迁入 stopwatch tab；计时器/世界时钟/闹钟
-// 占位（T4-T6 落）。T1 契约：开关避名 `running`（vue 轨 watch(running) 会
-// 把 setInterval 整只门死，iced 轨无门控——双端一致取恒 tick+handler 自管）。
-// PLAN-637 B2 Phase A：重复 class 串提取为本地配方（体 ≡ 原字面量，
-// 展开后逐字节等价；单类短串按不过度抽象口径豁免）。
-style tab_active = "px-4 py-1.5 rounded-full bg-primary/15 text-foreground text-sm font-medium"
-style tab_idle = "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent"
-style stepper_btn = "px-3 py-1 bg-secondary rounded"
-style stepper_val = "text-2xl font-mono w-10 text-center text-foreground"
-style mono_row = "text-foreground font-mono py-1.5 text-lg"
-style del_btn = "text-muted-foreground hover:text-destructive px-2"
+// 012-clock — 现代全功能时钟应用（Plan 644 重塑）
+// 包含：时钟（传统手表 ⌚ SVG 表盘与数显）/ 世界时钟 / 闹钟 / 秒表 / 倒计时
+// 适配系统深浅主题与 AutoUI Design Tokens；桌面小组件 view mini 传统手表表盘支持。
+
+style tab_active = "px-4 py-1.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold shadow-sm"
+style tab_idle = "px-4 py-1.5 rounded-full text-muted-foreground text-sm hover:bg-accent font-medium"
+style card_panel = "bg-card text-card-foreground border border-border/60 rounded-2xl p-6 shadow-sm w-full max-w-xl items-center gap-4"
+style dial_btn_active = "px-3 py-1 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm"
+style dial_btn_idle = "px-3 py-1 rounded-full text-muted-foreground text-xs hover:bg-accent font-medium"
+style preset_btn = "px-3 py-1.5 rounded-full bg-secondary text-secondary-foreground text-xs font-medium hover:bg-secondary/80"
+style stepper_btn = "px-3 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded font-bold text-sm"
+style stepper_val = "text-2xl font-mono w-10 text-center text-foreground font-semibold"
+style unit_label = "text-muted-foreground self-center text-sm"
 style step_col = "items-center gap-1"
-style unit_label = "text-muted-foreground self-center"
-style list_col = "gap-1 items-center"
-style disp_hint = "text-muted-foreground font-mono"
-style sw_secondary_btn = "px-10 py-4 bg-secondary text-secondary-foreground rounded-full text-lg font-semibold"
-style panel_shell = "items-center py-6 gap-4"
+style list_col = "gap-2 items-center w-full"
+style disp_hint = "text-muted-foreground font-mono text-sm"
+style del_btn = "text-muted-foreground hover:text-destructive px-2 text-base font-bold"
+style city_row = "bg-card border border-border/50 rounded-xl px-5 py-3 w-full justify-between items-center hover:bg-accent/30"
+style alarm_row = "bg-card border border-border/50 rounded-xl px-5 py-3 w-full justify-between items-center hover:bg-accent/30"
+style mono_row = "text-foreground font-mono text-base font-semibold"
+style action_primary = "px-8 py-3 bg-primary text-primary-foreground rounded-full text-base font-semibold shadow hover:opacity-90"
+style action_secondary = "px-8 py-3 bg-secondary text-secondary-foreground rounded-full text-base font-semibold hover:bg-secondary/80"
+style action_destructive = "px-8 py-3 bg-destructive text-destructive-foreground rounded-full text-base font-semibold shadow hover:opacity-90"
+style sw_secondary_btn = "px-10 py-3.5 bg-secondary text-secondary-foreground rounded-full text-lg font-semibold hover:bg-secondary/80"
 
 widget App {
-    msg { Init, Start, Stop, Reset, DoLap, SelectTab(str), Tick,
-      SetTH(str), SetTM(str), SetTS(str), TStart, TPause, TCancel,
-      SetLocal(int), AAdd, ADel(str), DismissBanner,
-      TUpH, TDnH, TUpM, TDnM, TUpS, TDnS, AUpH, ADnH, AUpM, ADnM }
+    msg {
+        Init, SelectTab(str), Tick, SetDialMode(str), DismissBanner,
+        Start, Stop, Reset, DoLap,
+        SetTH(str), SetTM(str), SetTS(str), TStart, TPause, TCancel,
+        TUpH, TDnH, TUpM, TDnM, TUpS, TDnS, TQuick(int),
+        SetLocal(int),
+        AAdd, ADel(str), AUpH, ADnH, AUpM, ADnM, AQuick(int, int)
+    }
 
     model {
-        var tab str = "stopwatch"
+        var tab str = "clock"
+        var dial_mode str = "both"
+
+        // 表盘动态旋转与时间
+        var h_rot str = "rotate(0 120 120)"
+        var m_rot str = "rotate(0 120 120)"
+        var s_rot str = "rotate(0 120 120)"
+        var mini_h_rot str = "rotate(0 50 50)"
+        var mini_m_rot str = "rotate(0 50 50)"
+        var mini_s_rot str = "rotate(0 50 50)"
+        var w_local str = "--:--:--"
+        var local_city int = 0
+        var local_date_str str = "2026年9月18日"
+        var w_tick int = 0
+
         // 秒表（T1：sw_on 替代 running；差值法锚点 T3 接 Tick）
         var sw_on str = "false"
         var elapsed int = 0
@@ -38,8 +59,8 @@ widget App {
         var lap3 str = ""
         var lap4 str = ""
         var lap5 str = ""
-        // 计时器（T4；步进器 int 形态——VM 状态 str .to_int() 接收者坏，
-        // 文本 input+解析留框架修后升级，执行期裁定注记）
+
+        // 计时器（T4；步进器 int 形态）
         var t_set_h int = 0
         var t_set_m int = 0
         var t_set_s int = 1
@@ -50,14 +71,13 @@ widget App {
         var t_left int = 0            // 剩余 ms
         var t_on str = "false"
         var t_disp str = "00:00:01"
-        // 世界时钟（T5；固定偏移表 v1——DST 限制见计划待澄清 #2）
+
+        // 世界时钟（T5；固定偏移表 v1）
         var cities []str = ["Beijing", "London", "New York", "Tokyo", "Sydney", "Paris", "Moscow", "Los Angeles"]
         var offsets []int = [8, 0, -5, 9, 11, 1, 3, -8]
         var w_rows []str = []
-        var w_local str = "--:--:--"
-        var local_city int = 0
-        var w_tick int = 0
-        // 闹钟（T6；storage 定长 5 槽持久化——028 惯例；步进器 int 同上）
+
+        // 闹钟（T6；storage 定长 5 槽持久化）
         var a_h int = 7
         var a_m int = 30
         var a_set_disp str = "07:30"
@@ -70,195 +90,314 @@ widget App {
         var alarm5 str = ""
         var fired str = ""            // 当日已触发 "HH:MM," 累记
         var last_day int = 0
+
         // 通用覆盖横幅（空=隐藏；timer 到零/闹钟到点共用）
         var banner str = ""
-        // Tick 周期（T3 起 .Tick 接管；250ms 基准=025 先例）
+        // Tick 周期（250ms）
         var interval int = 250
     }
 
     view {
         col {
-            // 标题 + 四 tab 胶囊
+            // 顶栏：标题 + 时钟胶囊导航
             row {
-                text "Clock" {
-                    style: "text-2xl font-bold text-foreground"
+                row {
+                    text "时钟 Clock" {
+                        style: "text-2xl font-bold text-foreground tracking-tight"
+                    }
+                    text "Pro" {
+                        style: "text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary font-semibold"
+                    }
+                    style: "items-center gap-2"
                 }
-                style: "items-center justify-between"
+                row {
+                    text .w_local {
+                        style: "text-sm font-mono text-muted-foreground font-medium"
+                    }
+                    style: "items-center"
+                }
+                style: "items-center justify-between w-full pb-2 border-b border-border/40"
             }
+
+            // 导航胶囊条（5 个 Tab）
             row {
-                button "秒表" {
-                    onclick: .SelectTab("stopwatch"),
-                    style: if .tab == "stopwatch" {
-                        tab_active
-                    } else {
-                        tab_idle
-                    }
-                }
-                button "计时器" {
-                    onclick: .SelectTab("timer"),
-                    style: if .tab == "timer" {
-                        tab_active
-                    } else {
-                        tab_idle
-                    }
+                button "时钟" {
+                    onclick: .SelectTab("clock"),
+                    style: if .tab == "clock" { tab_active } else { tab_idle }
                 }
                 button "世界时钟" {
                     onclick: .SelectTab("world"),
-                    style: if .tab == "world" {
-                        tab_active
-                    } else {
-                        tab_idle
-                    }
+                    style: if .tab == "world" { tab_active } else { tab_idle }
                 }
                 button "闹钟" {
                     onclick: .SelectTab("alarm"),
-                    style: if .tab == "alarm" {
-                        tab_active
-                    } else {
-                        tab_idle
-                    }
+                    style: if .tab == "alarm" { tab_active } else { tab_idle }
                 }
-                style: "gap-2"
+                button "秒表" {
+                    onclick: .SelectTab("stopwatch"),
+                    style: if .tab == "stopwatch" { tab_active } else { tab_idle }
+                }
+                button "计时器" {
+                    onclick: .SelectTab("timer"),
+                    style: if .tab == "timer" { tab_active } else { tab_idle }
+                }
+                style: "gap-1 p-1 bg-muted/40 rounded-full border border-border/40 w-fit self-center"
             }
 
-            // 通用横幅顶栏（timer 到零/闹钟到点）：恒在结构，文本重绑驱动
-            // （VM 轨 Tick 后结构/样式 if 均不重渲染——执行期实测注记）。
+            // 通用横幅顶栏（timer 到零/闹钟到点）
             row {
-                text .banner { style: "text-2xl font-bold text-primary" }
-                button "知道了" { onclick: .DismissBanner, style: "px-4 py-1 bg-secondary text-secondary-foreground rounded-full text-sm" }
+                text .banner { style: "text-xl font-bold text-primary" }
+                button "知道了" {
+                    onclick: .DismissBanner,
+                    style: "px-4 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-full text-sm font-medium transition-colors"
+                }
                 style: "items-center justify-center gap-3 min-h-9"
             }
 
-            // ---- tab 内容 ----
+            // ==================== Tab 1: 时钟 (Clock 首屏) ====================
+            if .tab == "clock" {
+                col {
+                    // 传统机械手表 ⌚ SVG 表盘
+                    if .dial_mode != "digital" {
+                        svg (viewBox: "0 0 240 240", style: "w-56 h-56 mx-auto my-2 drop-shadow-md") {
+                            // 表壳外圈与内表圈
+                            circle (cx: "120", cy: "120", r: "114", fill: "#111827", stroke: "#374151", stroke-width: "5") {}
+                            circle (cx: "120", cy: "120", r: "106", fill: "none", stroke: "#1f2937", stroke-width: "1.5") {}
+                            // 12 个小时刻度
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", stroke: "#f3f4f6", stroke-width: "3.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(30 120 120)", stroke: "#9ca3af", stroke-width: "2.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(60 120 120)", stroke: "#9ca3af", stroke-width: "2.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(90 120 120)", stroke: "#f3f4f6", stroke-width: "3.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(120 120 120)", stroke: "#9ca3af", stroke-width: "2.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(150 120 120)", stroke: "#9ca3af", stroke-width: "2.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(180 120 120)", stroke: "#f3f4f6", stroke-width: "3.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(210 120 120)", stroke: "#9ca3af", stroke-width: "2.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(240 120 120)", stroke: "#9ca3af", stroke-width: "2.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(270 120 120)", stroke: "#f3f4f6", stroke-width: "3.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(300 120 120)", stroke: "#9ca3af", stroke-width: "2.5", stroke-linecap: "round") {}
+                            line (x1: "120", y1: "16", x2: "120", y2: "28", transform: "rotate(330 120 120)", stroke: "#9ca3af", stroke-width: "2.5", stroke-linecap: "round") {}
+                            // 时针
+                            line (x1: "120", y1: "120", x2: "120", y2: "66", transform: .h_rot, stroke: "#f9fafb", stroke-width: "4.5", stroke-linecap: "round") {}
+                            // 分针
+                            line (x1: "120", y1: "120", x2: "120", y2: "40", transform: .m_rot, stroke: "#e5e7eb", stroke-width: "3", stroke-linecap: "round") {}
+                            // 秒针（橙红色，带延长尾）
+                            line (x1: "120", y1: "142", x2: "120", y2: "24", transform: .s_rot, stroke: "#f97316", stroke-width: "1.5", stroke-linecap: "round") {}
+                            // 中心轴帽
+                            circle (cx: "120", cy: "120", r: "4.5", fill: "#f97316") {}
+                            circle (cx: "120", cy: "120", r: "2", fill: "#ffffff") {}
+                        }
+                    }
+
+                    // 数字时钟展示
+                    if .dial_mode != "analog" {
+                        col {
+                            text .w_local {
+                                style: "text-6xl font-mono font-bold text-foreground tracking-widest text-center"
+                            }
+                            text .local_date_str {
+                                style: "text-sm text-muted-foreground font-medium text-center"
+                            }
+                            style: "items-center gap-1 py-3"
+                        }
+                    }
+
+                    // 表盘模式切换切换器
+                    row {
+                        button "传统表盘" {
+                            onclick: .SetDialMode("analog"),
+                            style: if .dial_mode == "analog" { dial_btn_active } else { dial_btn_idle }
+                        }
+                        button "数字时钟" {
+                            onclick: .SetDialMode("digital"),
+                            style: if .dial_mode == "digital" { dial_btn_active } else { dial_btn_idle }
+                        }
+                        button "双显" {
+                            onclick: .SetDialMode("both"),
+                            style: if .dial_mode == "both" { dial_btn_active } else { dial_btn_idle }
+                        }
+                        style: "gap-2 items-center justify-center pt-2"
+                    }
+
+                    style: "items-center py-4 gap-2 w-full"
+                }
+            }
+
+            // ==================== Tab 2: 世界时钟 ====================
+            if .tab == "world" {
+                col {
+                    text .w_local { style: "text-5xl font-mono font-bold text-foreground py-4 text-center" }
+                    col {
+                        for r in .w_rows {
+                            row {
+                                text r { style: mono_row }
+                                style: city_row
+                            }
+                        }
+                        style: list_col
+                    }
+                    text "点击城市设为本地（v1 固定偏移，不含夏令时）" { style: "text-muted-foreground text-xs pt-2" }
+                    style: "items-center py-4 gap-2 w-full"
+                }
+            }
+
+            // ==================== Tab 3: 闹钟 ====================
+            if .tab == "alarm" {
+                col {
+                    // 新增闹钟卡片
+                    col {
+                        row {
+                            col {
+                                button "时−" { onclick: .ADnH, style: stepper_btn }
+                                text .a_h_str { style: stepper_val }
+                                button "时+" { onclick: .AUpH, style: stepper_btn }
+                                style: step_col
+                            }
+                            text ":" { style: "text-2xl font-mono self-center text-foreground font-bold" }
+                            col {
+                                button "分−" { onclick: .ADnM, style: stepper_btn }
+                                text .a_m_str { style: stepper_val }
+                                button "分+" { onclick: .AUpM, style: stepper_btn }
+                                style: step_col
+                            }
+                            button "添加" { onclick: .AAdd, style: "ml-2 px-6 py-2 bg-primary text-primary-foreground rounded-full font-semibold shadow hover:opacity-90" }
+                            style: "gap-3 items-center"
+                        }
+                        row {
+                            button "07:00" { onclick: .AQuick(7, 0), style: preset_btn }
+                            button "07:30" { onclick: .AQuick(7, 30), style: preset_btn }
+                            button "08:00" { onclick: .AQuick(8, 0), style: preset_btn }
+                            button "08:30" { onclick: .AQuick(8, 30), style: preset_btn }
+                            style: "gap-2 pt-2 items-center justify-center"
+                        }
+                        text .a_set_disp { style: disp_hint }
+                        style: "bg-card border border-border/50 rounded-2xl p-5 items-center gap-3 w-full"
+                    }
+
+                    // 闹钟列表
+                    col {
+                        if .alarm1 != "" { row { text .alarm1 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm1), style: del_btn }
+                            style: alarm_row } }
+                        if .alarm2 != "" { row { text .alarm2 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm2), style: del_btn }
+                            style: alarm_row } }
+                        if .alarm3 != "" { row { text .alarm3 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm3), style: del_btn }
+                            style: alarm_row } }
+                        if .alarm4 != "" { row { text .alarm4 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm4), style: del_btn }
+                            style: alarm_row } }
+                        if .alarm5 != "" { row { text .alarm5 { style: mono_row }
+                            button "×" { onclick: .ADel(.alarm5), style: del_btn }
+                            style: alarm_row } }
+                        style: list_col
+                    }
+                    style: "items-center py-4 gap-4 w-full"
+                }
+            }
+
+            // ==================== Tab 4: 秒表 ====================
             if .tab == "stopwatch" {
                 col {
                     col {
                         text .time_display {
-                            style: "text-7xl font-mono font-bold text-foreground tracking-wider"
+                            style: "text-7xl font-mono font-extrabold text-foreground tracking-wider"
                         }
                         text .ms_display {
-                            style: "text-3xl font-mono text-muted-foreground"
+                            style: "text-3xl font-mono text-muted-foreground font-semibold"
                         }
-                        style: "items-center gap-1 py-10"
+                        style: "items-center gap-1 py-8"
                     }
                     row {
                         if .sw_on == "true" {
-                            button "停止" { onclick: .Stop, style: "px-10 py-4 bg-destructive text-destructive-foreground rounded-full text-lg font-semibold" }
+                            button "停止" { onclick: .Stop, style: "px-10 py-3.5 bg-destructive text-destructive-foreground rounded-full text-lg font-semibold shadow hover:opacity-90" }
                             button "计圈" { onclick: .DoLap, style: sw_secondary_btn }
                         } else {
-                            button "开始" { onclick: .Start, style: "px-10 py-4 bg-primary text-primary-foreground rounded-full text-lg font-semibold" }
+                            button "开始" { onclick: .Start, style: "px-10 py-3.5 bg-primary text-primary-foreground rounded-full text-lg font-semibold shadow hover:opacity-90" }
                             button "复位" { onclick: .Reset, style: sw_secondary_btn }
                         }
                         style: "gap-4 items-center"
                     }
                     col {
-                        text "Laps" { style: "text-sm font-semibold text-muted-foreground uppercase" }
-                        text .lap1 { style: "text-foreground font-mono py-2" }
-                        text .lap2 { style: "text-foreground font-mono py-2" }
-                        text .lap3 { style: "text-foreground font-mono py-2" }
-                        text .lap4 { style: "text-foreground font-mono py-2" }
-                        text .lap5 { style: "text-foreground font-mono py-2" }
-                        style: "w-full max-w-xs mt-6 gap-2 items-center"
+                        text "Laps 计圈记录" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-widest pb-1" }
+                        text .lap1 { style: "text-foreground font-mono py-1.5" }
+                        text .lap2 { style: "text-foreground font-mono py-1.5" }
+                        text .lap3 { style: "text-foreground font-mono py-1.5" }
+                        text .lap4 { style: "text-foreground font-mono py-1.5" }
+                        text .lap5 { style: "text-foreground font-mono py-1.5" }
+                        style: "w-full max-w-sm mt-4 gap-1 items-center bg-card border border-border/50 rounded-2xl p-4 shadow-sm"
                     }
-                    style: "items-center py-6"
+                    style: "items-center py-4 w-full"
                 }
             }
+
+            // ==================== Tab 5: 倒计时 (计时器) ====================
             if .tab == "timer" {
                 col {
-                    text .t_disp { style: "text-6xl font-mono font-bold text-foreground py-8" }
+                    text .t_disp { style: "text-6xl font-mono font-extrabold text-foreground py-6 text-center" }
+                    // 步进调节
                     row {
-                        col { button "时−" { onclick: .TDnH, style: stepper_btn }
+                        col {
+                            button "时−" { onclick: .TDnH, style: stepper_btn }
                             text .t_h_str { style: stepper_val }
                             button "时+" { onclick: .TUpH, style: stepper_btn }
-                            style: step_col }
+                            style: step_col
+                        }
                         text "时" { style: unit_label }
-                        col { button "分−" { onclick: .TDnM, style: stepper_btn }
+                        col {
+                            button "分−" { onclick: .TDnM, style: stepper_btn }
                             text .t_m_str { style: stepper_val }
                             button "分+" { onclick: .TUpM, style: stepper_btn }
-                            style: step_col }
+                            style: step_col
+                        }
                         text "分" { style: unit_label }
-                        col { button "秒−" { onclick: .TDnS, style: stepper_btn }
+                        col {
+                            button "秒−" { onclick: .TDnS, style: stepper_btn }
                             text .t_s_str { style: stepper_val }
                             button "秒+" { onclick: .TUpS, style: stepper_btn }
-                            style: step_col }
+                            style: step_col
+                        }
                         text "秒" { style: unit_label }
-                        style: "gap-3"
+                        style: "gap-3 items-center"
+                    }
+                    // 快捷时间预设
+                    row {
+                        button "1分钟" { onclick: .TQuick(60), style: preset_btn }
+                        button "5分钟" { onclick: .TQuick(300), style: preset_btn }
+                        button "10分钟" { onclick: .TQuick(600), style: preset_btn }
+                        button "25分钟" { onclick: .TQuick(1500), style: preset_btn }
+                        button "30分钟" { onclick: .TQuick(1800), style: preset_btn }
+                        style: "gap-2 items-center justify-center pt-2"
                     }
                     text .t_set_disp { style: disp_hint }
                     row {
                         if .t_on == "false" {
-                            button "开始" { onclick: .TStart, style: "px-8 py-3 bg-primary text-primary-foreground rounded-full font-semibold" }
+                            button "开始" { onclick: .TStart, style: action_primary }
                         } else {
-                            button "暂停" { onclick: .TPause, style: "px-8 py-3 bg-secondary text-secondary-foreground rounded-full font-semibold" }
+                            button "暂停" { onclick: .TPause, style: action_secondary }
                         }
-                        button "取消" { onclick: .TCancel, style: "px-8 py-3 bg-secondary text-secondary-foreground rounded-full font-semibold" }
-                        style: "gap-4"
+                        button "取消" { onclick: .TCancel, style: action_secondary }
+                        style: "gap-4 pt-2 items-center"
                     }
-                    style: panel_shell
-                }
-            }
-            if .tab == "world" {
-                col {
-                    text .w_local { style: "text-5xl font-mono font-bold text-foreground py-6" }
-                    col {
-                        for r in .w_rows {
-                            text r { style: mono_row }
-                        }
-                        style: list_col
-                    }
-                    text "点击城市设为本地（v1 固定偏移，不含夏令时）" { style: "text-muted-foreground text-xs" }
-                    style: "items-center py-6 gap-2"
-                }
-            }
-            if .tab == "alarm" {
-                col {
-                    row {
-                        col { button "时−" { onclick: .ADnH, style: stepper_btn }
-                            text .a_h_str { style: stepper_val }
-                            button "时+" { onclick: .AUpH, style: stepper_btn }
-                            style: step_col }
-                        text ":" { style: "text-2xl font-mono self-center text-foreground" }
-                        col { button "分−" { onclick: .ADnM, style: stepper_btn }
-                            text .a_m_str { style: stepper_val }
-                            button "分+" { onclick: .AUpM, style: stepper_btn }
-                            style: step_col }
-                        button "添加" { onclick: .AAdd, style: "ml-2 px-6 py-2 bg-primary text-primary-foreground rounded-full font-semibold" }
-                        style: "gap-3"
-                    }
-                    text .a_set_disp { style: disp_hint }
-                    col {
-                        if .alarm1 != "" { row { text .alarm1 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm1), style: del_btn } } }
-                        if .alarm2 != "" { row { text .alarm2 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm2), style: del_btn } } }
-                        if .alarm3 != "" { row { text .alarm3 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm3), style: del_btn } } }
-                        if .alarm4 != "" { row { text .alarm4 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm4), style: del_btn } } }
-                        if .alarm5 != "" { row { text .alarm5 { style: mono_row }
-                            button "×" { onclick: .ADel(.alarm5), style: del_btn } } }
-                        style: list_col
-                    }
-                    style: panel_shell
+                    style: "items-center py-4 gap-3 w-full"
                 }
             }
 
-            style: "relative max-w-2xl w-full p-8 gap-4 bg-background text-foreground items-stretch"
+            style: "relative max-w-2xl w-full p-8 gap-4 bg-background text-foreground items-stretch rounded-3xl border border-border/40 shadow-lg"
         }
     }
 
     on {
         .Init -> {
-            // T6：闹钟 5 槽 storage 恢复（028 定长槽惯例；空串=空槽）
             .alarm1 = storage.get("clock.alarms.0")
             .alarm2 = storage.get("clock.alarms.1")
             .alarm3 = storage.get("clock.alarms.2")
             .alarm4 = storage.get("clock.alarms.3")
             .alarm5 = storage.get("clock.alarms.4")
-            .SelectTab("world")
-            .SelectTab("stopwatch")
+            .SelectTab("clock")
         }
         .SelectTab(t) -> { .tab = t }
+        .SetDialMode(m) -> { .dial_mode = m }
         .Start -> { .sw_on = "true" }
         .Stop -> { .sw_on = "false" }
         .Reset -> {
@@ -272,10 +411,6 @@ widget App {
             .ms_display = ".00"
             .elapsed = 0
         }
-        // T3 实测：消息名 `Lap` 在 VM 轨被内置动词劫持（handler 结果被自动
-        // 包上 "Lap {n}: " 前缀——.lap1 出现 "Lap 0: 00:01.25" 形态）→ 改名
-        // DoLap 规避；旧 012 的 .Lap 同病（vm 轨从未实测过计圈）。框架层
-        // 劫持面待查（os-003 执行期发现，注记在案）。
         .DoLap -> {
             .lap5 = .lap4
             .lap4 = .lap3
@@ -283,9 +418,8 @@ widget App {
             .lap2 = .lap1
             .lap1 = .time_display + .ms_display
         }
-        // T3：累计法 v1（计划主文方案——+=250/tick，双端零原生依赖；
-        // 差值法升级条件=vue 轨 Time 桥确认，待澄清 #3 注记维持）。
         .Tick -> {
+            // ---- 秒表走表 ----
             if .sw_on == "true" {
                 .elapsed += 250
                 var total_cs = .elapsed / 10
@@ -303,7 +437,7 @@ widget App {
                 .time_display = mm_str + ":" + ss_str
             }
 
-            // ---- T4 计时器 ----
+            // ---- 倒计时走字 ----
             if .t_on == "true" {
                 if .t_left > 250 {
                     .t_left -= 250
@@ -324,7 +458,7 @@ widget App {
                 .t_disp = th_str + ":" + tm_str + ":" + ts_str
             }
 
-            // 设定汇总行（步进器汇总显示）
+            // 设定汇总行
             var shh = f"${.t_set_h}"
             if .t_set_h < 10 { shh = "0" + shh }
             var smm = f"${.t_set_m}"
@@ -343,31 +477,11 @@ widget App {
             .a_m_str = amm
             .a_set_disp = ahh + ":" + amm
 
-            // ---- T5 世界时钟 + T6 闹钟比对（每 4 tick=1s）----
+            // ---- 世界时钟 + 表盘角度更新（每 tick 刷新）----
             .w_tick += 1
-            if .w_tick >= 4 {
-                .w_tick = 0
+            if .w_tick >= 1 {
                 var secs = Time.now_sec()
-                var rows []str = []
-                var idx int = 0
-                for c in .cities {
-                    var cs = secs + .offsets[idx] * 3600
-                    var ch = (cs / 3600) % 24
-                    var cm = (cs / 60) % 60
-                    var csec = cs % 60
-                    var ch_str = f"${ch}"
-                    if ch < 10 { ch_str = "0" + ch_str }
-                    var cm_str = f"${cm}"
-                    if cm < 10 { cm_str = "0" + cm_str }
-                    var csec_str = f"${csec}"
-                    if csec < 10 { csec_str = "0" + csec_str }
-                    var mark = ""
-                    if idx == .local_city { mark = " ●" }
-                    rows.push(c + "  " + ch_str + ":" + cm_str + ":" + csec_str + mark)
-                    idx += 1
-                }
-                .w_rows = rows
-                // 本地城大表
+                // 本地城市时间与指针角度
                 var ls = secs + .offsets[.local_city] * 3600
                 var lh = (ls / 3600) % 24
                 var lm = (ls / 60) % 60
@@ -380,38 +494,82 @@ widget App {
                 if lsec < 10 { lsec_str = "0" + lsec_str }
                 .w_local = lh_str + ":" + lm_str + ":" + lsec_str
 
-                // ---- T6 闹钟分钟比对（本地城时区）----
-                var day = ls / 86400
-                if day != .last_day {
-                    .last_day = day
-                    .fired = ""
-                }
-                var cur = lh_str + ":" + lm_str
-                if .alarm1 == cur && .fired.contains(cur) == false && .alarm1 != "" { .banner = "⏰ 闹钟 " + cur
-                    .fired = .fired + cur + ","
-                }
-                if .alarm2 == cur && .fired.contains(cur) == false && .alarm2 != "" { .banner = "⏰ 闹钟 " + cur
-                    .fired = .fired + cur + ","
-                }
-                if .alarm3 == cur && .fired.contains(cur) == false && .alarm3 != "" { .banner = "⏰ 闹钟 " + cur
-                    .fired = .fired + cur + ","
-                }
-                if .alarm4 == cur && .fired.contains(cur) == false && .alarm4 != "" { .banner = "⏰ 闹钟 " + cur
-                    .fired = .fired + cur + ","
-                }
-                if .alarm5 == cur && .fired.contains(cur) == false && .alarm5 != "" { .banner = "⏰ 闹钟 " + cur
-                    .fired = .fired + cur + ","
+                var s_deg = (lsec * 6) % 360
+                var m_deg = (lm * 6 + lsec / 10) % 360
+                var h_deg = ((lh % 12) * 30 + lm / 2) % 360
+                .s_rot = f"rotate(${s_deg} 120 120)"
+                .m_rot = f"rotate(${m_deg} 120 120)"
+                .h_rot = f"rotate(${h_deg} 120 120)"
+                .mini_s_rot = f"rotate(${s_deg} 50 50)"
+                .mini_m_rot = f"rotate(${m_deg} 50 50)"
+                .mini_h_rot = f"rotate(${h_deg} 50 50)"
+
+                // 每 4 tick (1s) 刷新世界城市列表与闹钟比对
+                if .w_tick >= 4 {
+                    .w_tick = 0
+                    var rows []str = []
+                    var idx int = 0
+                    for c in .cities {
+                        var cs = secs + .offsets[idx] * 3600
+                        var ch = (cs / 3600) % 24
+                        var cm = (cs / 60) % 60
+                        var csec = cs % 60
+                        var ch_str = f"${ch}"
+                        if ch < 10 { ch_str = "0" + ch_str }
+                        var cm_str = f"${cm}"
+                        if cm < 10 { cm_str = "0" + cm_str }
+                        var csec_str = f"${csec}"
+                        if csec < 10 { csec_str = "0" + csec_str }
+                        var mark = ""
+                        if idx == .local_city { mark = " ●" }
+                        rows.push(c + "  " + ch_str + ":" + cm_str + ":" + csec_str + mark)
+                        idx += 1
+                    }
+                    .w_rows = rows
+
+                    // 闹钟分钟比对
+                    var day = ls / 86400
+                    if day != .last_day {
+                        .last_day = day
+                        .fired = ""
+                    }
+                    var cur = lh_str + ":" + lm_str
+                    if .alarm1 == cur && .fired.contains(cur) == false && .alarm1 != "" {
+                        .banner = "⏰ 闹钟 " + cur
+                        .fired = .fired + cur + ","
+                    }
+                    if .alarm2 == cur && .fired.contains(cur) == false && .alarm2 != "" {
+                        .banner = "⏰ 闹钟 " + cur
+                        .fired = .fired + cur + ","
+                    }
+                    if .alarm3 == cur && .fired.contains(cur) == false && .alarm3 != "" {
+                        .banner = "⏰ 闹钟 " + cur
+                        .fired = .fired + cur + ","
+                    }
+                    if .alarm4 == cur && .fired.contains(cur) == false && .alarm4 != "" {
+                        .banner = "⏰ 闹钟 " + cur
+                        .fired = .fired + cur + ","
+                    }
+                    if .alarm5 == cur && .fired.contains(cur) == false && .alarm5 != "" {
+                        .banner = "⏰ 闹钟 " + cur
+                        .fired = .fired + cur + ","
+                    }
                 }
             }
         }
 
-        // ---- T4 handlers（步进器 0..23/0..59/0..59 边界钳制）----
+        // ---- 倒计时 handlers ----
         .TUpH -> { .t_set_h = (.t_set_h + 1) % 24 }
         .TDnH -> { .t_set_h = (.t_set_h + 23) % 24 }
         .TUpM -> { .t_set_m = (.t_set_m + 1) % 60 }
         .TDnM -> { .t_set_m = (.t_set_m + 59) % 60 }
         .TUpS -> { .t_set_s = (.t_set_s + 1) % 60 }
         .TDnS -> { .t_set_s = (.t_set_s + 59) % 60 }
+        .TQuick(secs) -> {
+            .t_set_h = secs / 3600
+            .t_set_m = (secs % 3600) / 60
+            .t_set_s = secs % 60
+        }
         .TStart -> {
             .t_left = (.t_set_h * 3600 + .t_set_m * 60 + .t_set_s) * 1000
             if .t_left > 0 { .t_on = "true" }
@@ -423,12 +581,16 @@ widget App {
             .t_disp = "00:00:00"
         }
 
-        // ---- T5/T6 handlers ----
+        // ---- 闹钟与世界时钟 handlers ----
         .SetLocal(i) -> { .local_city = i }
         .AUpH -> { .a_h = (.a_h + 1) % 24 }
         .ADnH -> { .a_h = (.a_h + 23) % 24 }
         .AUpM -> { .a_m = (.a_m + 1) % 60 }
         .ADnM -> { .a_m = (.a_m + 59) % 60 }
+        .AQuick(h, m) -> {
+            .a_h = h
+            .a_m = m
+        }
         .AAdd -> {
             var hh_str = f"${.a_h}"
             if .a_h < 10 { hh_str = "0" + hh_str }
@@ -469,18 +631,35 @@ widget App {
         .DismissBanner -> { .banner = "" }
     }
 
-    // PLAN-024 试点：桌面 dashboard 时钟卡（T-06）——活渲染面，与主窗
-    // 同 model/Tick（w_local 250ms 走秒）；纯前端（Time natives），pac 无
-    // 后端依赖 → dashboard 召唤期静默孵化（无窗会话，D4）。
+    // 桌面 dashboard 小组件卡片（PLAN-024 活渲染面）：传统手表 ⌚ 迷你表盘 + 本地时钟
     view mini {
         col {
-            style: "w-full items-center justify-center gap-1 h-full"
-            text .w_local {
-                style: "text-4xl font-mono font-bold text-foreground tabular-nums text-center"
-            }
-            text "Local time" {
-                style: "text-xs text-muted-foreground"
+            style: "w-full h-full items-center justify-center p-3 gap-2"
+            row {
+                style: "items-center justify-center gap-3 w-full"
+                svg (viewBox: "0 0 100 100", style: "w-16 h-16 shrink-0") {
+                    circle (cx: "50", cy: "50", r: "47", fill: "#111827", stroke: "#374151", stroke-width: "3") {}
+                    circle (cx: "50", cy: "50", r: "42", fill: "none", stroke: "#1f2937", stroke-width: "1") {}
+                    line (x1: "50", y1: "8", x2: "50", y2: "14", stroke: "#f3f4f6", stroke-width: "2") {}
+                    line (x1: "92", y1: "50", x2: "86", y2: "50", stroke: "#f3f4f6", stroke-width: "2") {}
+                    line (x1: "50", y1: "92", x2: "50", y2: "86", stroke: "#f3f4f6", stroke-width: "2") {}
+                    line (x1: "8", y1: "50", x2: "14", y2: "50", stroke: "#f3f4f6", stroke-width: "2") {}
+                    line (x1: "50", y1: "50", x2: "50", y2: "26", transform: .mini_h_rot, stroke: "#f9fafb", stroke-width: "2.5", stroke-linecap: "round") {}
+                    line (x1: "50", y1: "50", x2: "50", y2: "16", transform: .mini_m_rot, stroke: "#e5e7eb", stroke-width: "1.8", stroke-linecap: "round") {}
+                    line (x1: "50", y1: "58", x2: "50", y2: "12", transform: .mini_s_rot, stroke: "#f97316", stroke-width: "1", stroke-linecap: "round") {}
+                    circle (cx: "50", cy: "50", r: "2.5", fill: "#f97316") {}
+                }
+                col {
+                    style: "items-start justify-center gap-0.5"
+                    text .w_local {
+                        style: "text-2xl font-mono font-bold text-foreground tabular-nums tracking-tight"
+                    }
+                    text .local_date_str {
+                        style: "text-xs text-muted-foreground font-medium"
+                    }
+                }
             }
         }
     }
 }
+
