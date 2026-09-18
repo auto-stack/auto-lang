@@ -261,6 +261,9 @@ widget App {
 
 /// PLAN-024 走查诊断：面板 chrome 样式串逐类解析——w-[920px] 任意值类
 /// 必须落 Width(920)（渲染实机面板曾收缩为内容宽，定位用）。
+/// PLAN-643：`crate::ui` 为 `ui` feature 门控模块，本测试随门内联 gating
+/// （tv 档 test-vm-files 不带 ui feature，此前整档编译被此文件阻断）。
+#[cfg(feature = "ui")]
 #[test]
 fn dashboard_panel_classes_parse() {
     use crate::ui::style::Style;

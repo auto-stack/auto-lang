@@ -8,6 +8,9 @@
 //! 3. 测试物化契约:with_charts reference 以消费方约定 `from "components"`
 //!    引官方包——bp 目录不携带第 4 份 chart 组件副本（§5.2 选项 A 零物理
 //!    搬运），测试用 scratch 目录拷贝物化（禁 symlink，worktree 红线）。
+//!
+//! 双轨断言依赖 `ui-iced`——与 plan640_bp_tests 同款门控。
+#![cfg(feature = "ui-iced")]
 
 use std::path::{Path, PathBuf};
 
