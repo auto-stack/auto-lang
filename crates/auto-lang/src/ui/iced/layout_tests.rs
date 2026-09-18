@@ -2500,3 +2500,67 @@ fn p625_uigallery_sidebar_pills_visible() {
     eprintln!("[p625][no-height] pill 全部 bounds=({x2},,{w2}x{h2})");
     assert_eq!((w2, h2), (0.0, 0.0), "无高度类形态应保持 0×0（渲染器缺口哨兵）");
 }
+
+/// PLAN-021 T-05 回归钉(线 B 根修):iced 0.14 mouse_area layout 直通子件,
+/// 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类挂外层容器时
+/// (空内容 → 自身 0×0 bounds)press 全死,渲染却正常(020 双区探针
+/// 计数 0 与 split 分隔条拖拽死的根因)。red/green:修复前(无内容侧
+/// 尺寸镜像)本测试必红;修复后命中区=可视区,块中心点击必发 on_click。
+#[test]
+fn ma_press_hits_sized_empty_content() {
+    #[derive(Clone, Debug, PartialEq)]
+    enum Msg {
+        Hit,
+    }
+    let view = View::<Msg>::MouseArea {
+        content: Box::new(View::Empty),
+        on_enter: None,
+        on_exit: None,
+        on_double_click: None,
+        on_click: Some(Msg::Hit),
+        on_context_menu: None,
+        on_release: None,
+        on_move: None,
+        logical_extent: None,
+        style: Style::parse("w-[300px] h-[300px] bg-[#3366aa]").ok(),
+    };
+    let mut ui = simulator(view.into_iced());
+    // 点可视块中心 (150,150):尺寸镜像若在位,mouse_area 自身 bounds
+    // 应覆盖此点;0×0 缺陷形态下 is_over 不成立,消息零发射。
+    ui.point_at(iced::Point::new(150.0, 150.0));
+    ui.simulate(iced_test::simulator::click());
+    let hit = ui.into_messages().any(|m| m == Msg::Hit);
+    assert!(
+        hit,
+        "mouse_area press 应在可视块中心发 on_click(021 线 B 根修回归钉)"
+    );
+}
+
+/// 同钉的对照面:细条形态(10×300,020 细条臂)块外点击不发消息——
+/// 修复不得把命中区扩成全行(命中区必须等于可视区,不吞邻居)。
+#[test]
+fn ma_press_outside_sized_content_stays_silent() {
+    #[derive(Clone, Debug, PartialEq)]
+    enum Msg {
+        Hit,
+    }
+    let view = View::<Msg>::MouseArea {
+        content: Box::new(View::Empty),
+        on_enter: None,
+        on_exit: None,
+        on_double_click: None,
+        on_click: Some(Msg::Hit),
+        on_context_menu: None,
+        on_release: None,
+        on_move: None,
+        logical_extent: None,
+        style: Style::parse("w-[10px] h-[300px] bg-[#8899aa]").ok(),
+    };
+    let mut ui = simulator(view.into_iced());
+    // 点 (150,150):在 10px 宽条之外(修复后)——不应命中;
+    // (0×0 缺陷形态下同样不命中,本测试防修复走"整块 Fill"歧路。)
+    ui.point_at(iced::Point::new(150.0, 150.0));
+    ui.simulate(iced_test::simulator::click());
+    let hit = ui.into_messages().any(|m| m == Msg::Hit);
+    assert!(!hit, "块外点击不得命中(命中区=可视区,不吞邻居)");
+}
