@@ -4365,8 +4365,32 @@ fn build_dynamic_component_inner(
         // child_decls（handlers 一并编译进单 VM 模块）。
         for wd in &ext_widget_decls {
             if let Ok(w) = crate::aura::extract_widget_from_decl(wd) {
-
-                all_child_decls.push(wd.clone());
+                // PLAN-642 R642-F3: `.Tick` handler + `interval` 模型变量的
+                // 子件（027/012/025 惯用法——Init 轻量、重 FS/时钟活延后到
+                // Tick）在合并 VM 无 tick 源：根件（画廊宿主）无 tick →
+                // view.tick_interval 订阅不存在，子件 Tick 永不派发（027
+                // 内嵌永久"正在加载..."实证；chart 的 timer{} 块另有 051 C7
+                // 通路不受影响）。按 051 C7 timer 条目形态为该子件合成
+                // `Tick (every_ms: interval)` 定时条目，走既有 fire_timer
+                // 门控派发（handler_<Widget>_Tick 语义不变）。
+                let mut wd_owned = wd.clone();
+                if let Some(ms) = w.tick_interval {
+                    let has_tick_timer = wd_owned
+                        .timer
+                        .as_ref()
+                        .map(|tb| tb.entries.iter().any(|e| e.event.as_str() == "Tick"))
+                        .unwrap_or(false);
+                    if !has_tick_timer {
+                        let mut tb = crate::ast::ui::TimerBlock { entries: Vec::new() };
+                        tb.entries.push(crate::ast::ui::TimerEntry {
+                            event: crate::ast::Name::from("Tick"),
+                            every_ms: ms.max(16) as u64,
+                            when: None,
+                        });
+                        wd_owned.timer = Some(tb);
+                    }
+                }
+                all_child_decls.push(wd_owned);
                 registry.register(w);
             }
         }
@@ -4384,6 +4408,96 @@ fn build_dynamic_component_inner(
                     &mut all_child_decls,
                     &mut tw_visited,
                 );
+            }
+        }
+        // PLAN-642 R642-F2: use.web 适配器自带 `use { package: X from "dir" }`
+        // 的包组件注册。上方的包装载走查（435 P8-6）只覆盖根件——彼时
+        // registry 尚无适配器 widget，适配器的包导入永远错过装载且无任何
+        // 告警 → 包内 widget 全部缺注册，实例落 builtin 桩（024 chart 内嵌
+        // 空画布实证；独立臂根件自带包导入 → 同语料正常出图）。适配器注册
+        // 后补一轮包装载：dir 优先相对适配器文件目录（ext_adapter_paths
+        // 同源），回退根 base_dir；包组件 fn 模块链按 435 P8-6 同款收集。
+        {
+            let mut pkg_seen_dirs: std::collections::HashSet<std::path::PathBuf> =
+                Default::default();
+            let mut pkg_reg = crate::ui_gen::widget::ComponentRegistry::new();
+            for wd in &ext_widget_decls {
+                for imp in &wd.ext_imports {
+                    if !matches!(imp.kind, crate::ast::ui::ExtImportKind::Package) {
+                        continue;
+                    }
+                    let dir = std::path::PathBuf::from(imp.path.as_str());
+                    if !pkg_seen_dirs.insert(dir.clone()) {
+                        continue;
+                    }
+                    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+                    for adapter_path in &ext_adapter_paths {
+                        if let Some(adapter_dir) = adapter_path.parent() {
+                            candidates.push(adapter_dir.join(&dir));
+                        }
+                    }
+                    candidates.push(base_dir.join(&dir));
+                    let mut loaded: Option<
+                        (
+                            Vec<(crate::ast::ui::WidgetDecl, crate::aura::AuraWidget)>,
+                            std::path::PathBuf,
+                        ),
+                    > = None;
+                    for cand in &candidates {
+                        if cand.is_dir() {
+                            if let Ok(pkg) = pkg_reg.load_package(cand, base_dir) {
+                                // load_package 返回注册表内缓存引用（&mut self
+                                // 借续）——立即抽走所需列表，避免借用跨迭代。
+                                loaded = Some((pkg.full_widgets.clone(), cand.clone()));
+                                break;
+                            }
+                        }
+                    }
+                    match loaded {
+                        Some((pkg_full, loaded_dir)) => {
+                            for (d, aw) in &pkg_full {
+                                all_child_decls.push(d.clone());
+                                registry.register(aw.clone());
+                            }
+                            if let Ok(entries) = std::fs::read_dir(&loaded_dir) {
+                                for entry in entries.flatten() {
+                                    let p = entry.path();
+                                    if !p.extension().map(|e| e == "at").unwrap_or(false) {
+                                        continue;
+                                    }
+                                    crate::collect_module_imports(
+                                        &p,
+                                        &mut visited,
+                                        &mut import_stmts,
+                                        &mut seen_symbols,
+                                        &mut import_session,
+                                        None,
+                                    );
+                                    if let Ok(code) = std::fs::read_to_string(&p) {
+                                        for us in crate::use_scanner::scan_use_statements(&code) {
+                                            let qualifier = us
+                                                .module
+                                                .split('.')
+                                                .last()
+                                                .unwrap_or(&us.module);
+                                            for item in &us.items {
+                                                import_aliases.insert(
+                                                    item.clone(),
+                                                    format!("{}.{}", qualifier, item),
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        None => log::warn!(
+                            "package `{}` load failed (VM adapter) (tried {:?})",
+                            imp.path,
+                            candidates
+                        ),
+                    }
+                }
             }
         }
         // PLAN-632 F1: 装载顺序缺陷收口——use.web demo 适配器链带来的
