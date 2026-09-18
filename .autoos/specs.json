@@ -1085,6 +1085,16 @@
             "PLAN-633"
           ],
           "status": "published"
+        },
+        {
+          "id": "P648-2",
+          "title": "split 模式 api-over-HTTP 改写覆盖限定名调用 — 变更摘要",
+          "content": "VM split 模式（AUTO_VM_MERGE=0）的 #[api] 调用改写此前仅匹配裸名（Expr::Ident）——限定名调用（api.get_lines()，use back.api 惯例=545 规范形态）绕过改写、静默回落 back 链扁平体进程内执行，宿主进程引擎缺席时全空返回（auto-term dev 跑法空屏/T-10 委托断供定因）。现两合成入口（synthesize_widget_module/synthesize_from_decl）api_funcs 注册限定名键（扁平化全名+别名末段.fn 双形态），codegen 门卫放行 Dot(Ident,fn)；db.* 等非 api 限定名不命中表不受影响，merged 路径零改动（plan340 回归双断言锁定）。AUTO_LANG_HTTP_TRACE=1 仪器常驻 simple_http_json（api 改写家族 HTTP 汇聚点：方法/URL/状态/响应摘要）。次生登记 P648-D1：事件 handler 在 HTTP yield 期间被再入会破坏任务状态（单槽 waiting_http_request_id+同任务帧覆写→循环上界失效无界自旋，纯窗口事件即可触发），交互稳定性独立立项。",
+          "file": "docs/specs/auto-lang/vm/plans.md",
+          "related": [
+            "PLAN-648"
+          ],
+          "status": "published"
         }
       ]
     },
@@ -6449,6 +6459,16 @@
           "file": "docs/plans/archive/649-bp-consumption-groundwork.md",
           "related": [
             "PLAN-649"
+          ],
+          "status": "published"
+        },
+        {
+          "id": "P648-1",
+          "title": "run-gate-codegen-defects — 复审与合并收据",
+          "content": "复审 pass（/auto-plan:review，2026-09-19，执行会话内复审·独立性声明在案·工件重建裁定）：AC-01..05 全 pass 独立复现（AC-02 独立复跑 40s/4083 响应全 200+tab-title='shell 1'+pane-lines 真实 banner+循环零爬升；在库截图亲验 Tab '● shell 1'）；门禁复跑 tv fail-fast 2727 绿（唯一红=display_family 已知闪红家族）/vm_file 47/47/plan340 12/12/merged 2/2；F-R1..R4 全 info（P648-D1 再入缺陷移交合规；host-bridge 臂裸名-only 对称性观察；alias_form 理论碰撞不可达；no-fail-fast tv 组合门禁替代）。规范增量冻结=无（缺陷整备不改已发布契约面；限定名改写追齐 545 bare=命名空间规范形态）。reviewed_commit=6422eb267@plan-648-dev（base 4817b51e1；依赖 .wt/lang-648/auto-down@b1c88de 只读）。",
+          "file": "docs/plans/archive/648-run-gate-codegen-defects.md",
+          "related": [
+            "PLAN-648"
           ],
           "status": "published"
         }
