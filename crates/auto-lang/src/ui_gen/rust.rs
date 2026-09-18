@@ -2410,6 +2410,68 @@ impl RustGenerator {
                     }
                 }
 
+                // PLAN-027 T-04 扩面（普查修正 C）：mouse-area codegen 臂——
+                // 设计 §3a-a5 误记"shell 未直接用"，实勘五件 26 处（desktop
+                // ×12/shell ×7/notification ×5/dashboard ×2）。映射与解释臂
+                // convert_mouse_area_untracked（aura_view_builder.rs:11637）
+                // 全同源：onmouseenter|onhover→on_enter、onmouseleave|
+                // onhoverout→on_exit、ondblclick→on_double_click、
+                // onmousedown|onclick→on_click、onmouseup→on_release、
+                // oncontextmenu(.prevent)→on_context_menu。事件槽 = Option<M>
+                // 直发消息（非闭包）。onmousemove+coords 坐标面 shell 未用
+                // 不译（落入拒绝门）。
+                if tag == "mouse-area" || tag == "mouse_area" {
+                    let content = if children.is_empty() {
+                        "auto_lang::ui::view::View::Empty".to_string()
+                    } else if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for c in children {
+                            col = format!("{}.child({})", col, self.generate_view_tree(c));
+                        }
+                        format!("{col}.build()")
+                    };
+                    let ev = |names: &[&str]| -> Option<String> {
+                        events.iter().find(|(k, _)| {
+                            let base = k.split('.').next().unwrap_or(k);
+                            names.contains(&base)
+                        }).map(|(_, h)| {
+                            format!(
+                                "Some({})",
+                                self.handler_to_rust_direct_msg(&h.handler, &h.params)
+                            )
+                        })
+                    };
+                    let user_style = props
+                        .get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        });
+                    let style_expr = match user_style {
+                        Some(s) => {
+                            format!("auto_lang::ui::style::Style::parse(\"{s}\").ok()")
+                        }
+                        None => "None".to_string(),
+                    };
+                    return format!(
+                        "View::MouseArea {{ content: Box::new({content}), on_enter: {}, on_exit: {}, on_double_click: {}, on_click: {}, on_context_menu: {}, on_release: {}, on_move: None, logical_extent: None, style: {} }}",
+                        ev(&["onmouseenter", "onhover"]).unwrap_or_else(|| "None".to_string()),
+                        ev(&["onmouseleave", "onhoverout"]).unwrap_or_else(|| "None".to_string()),
+                        ev(&["ondblclick"]).unwrap_or_else(|| "None".to_string()),
+                        ev(&["onmousedown", "onclick", "onClick", "on_click"])
+                            .unwrap_or_else(|| "None".to_string()),
+                        ev(&["oncontextmenu"]).unwrap_or_else(|| "None".to_string()),
+                        ev(&["onmouseup"]).unwrap_or_else(|| "None".to_string()),
+                        style_expr
+                    );
+                }
+
                 // PLAN-027 T-02: 裸 popover 臂 —— View::Popover 直发（此前
                 // 落 tag_to_view_fn `_ => "col"` 降级，open/placement/
                 // ondismiss/x/y 静默丢弃）。语义与解释侧 convert_popover
@@ -4615,7 +4677,11 @@ impl RustGenerator {
             preset.push_str(&size_preset);
         }
         if preset.is_empty() {
-            return std::borrow::Cow::Borrowed(props);
+            // PLAN-027 T-04：variant/size 已消费词汇仍剥除（拒绝门一致面）。
+            let mut merged = props.clone();
+            merged.remove("variant");
+            merged.remove("size");
+            return std::borrow::Cow::Owned(merged);
         }
         // 动态 class/style（非字面量）：无法静态合并，保持现状不注入。
         let literal_class = |v: Option<&AuraPropValue>| -> Option<String> {
@@ -4627,7 +4693,12 @@ impl RustGenerator {
         if props.get("style").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
             || props.get("class").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
         {
-            return std::borrow::Cow::Borrowed(props);
+            // PLAN-027 T-04：动态 class/style 不注入（PLAN-571 文档化先例），
+            // 但 variant/size 已消费词汇仍剥除。
+            let mut merged = props.clone();
+            merged.remove("variant");
+            merged.remove("size");
+            return std::borrow::Cow::Owned(merged);
         }
         let mut merged = props.clone();
         let key = if merged.contains_key("style") { "style" } else { "class" };
@@ -4637,6 +4708,10 @@ impl RustGenerator {
             key.to_string(),
             AuraPropValue::Expr(crate::ast::Expr::Str(auto_val::AutoStr::from(combined))),
         );
+        // PLAN-027 T-04：preset 注入后剥除 variant/size（拒绝门一致面；
+        // shell pack 按钮 ×38 携 variant）。
+        merged.remove("variant");
+        merged.remove("size");
         std::borrow::Cow::Owned(merged)
     }
 
@@ -4647,7 +4722,10 @@ impl RustGenerator {
         _tag: &str,
         props: &'a std::collections::HashMap<String, AuraPropValue>,
     ) -> std::borrow::Cow<'a, std::collections::HashMap<String, AuraPropValue>> {
-        std::borrow::Cow::Borrowed(props)
+        let mut merged = props.clone();
+        merged.remove("variant");
+        merged.remove("size");
+        std::borrow::Cow::Owned(merged)
     }
 
     fn generate_modal_button(
@@ -5263,10 +5341,15 @@ impl RustGenerator {
             // Layout
             "col" | "column" => "col",
             "row" => "row",
+            // PLAN-027 T-04 扩面：taskbar = row（解释臂 aura_view_builder.rs
+            // :1711 convert_row 同源——任务栏横向条，缺省 col 会纵向堆叠）。
+            "taskbar" => "row",
             "grid" => "grid",
             // PLAN-026 T-02：scroll 走 display 降级臂（View::scrollable），
             // 断裂映射移除。
-            "container" => "container",
+            // PLAN-027 T-04 扩面：div 与 container 同源（解释臂
+            // set_layout_events"container|div"同律——View::Container 承载）。
+            "container" | "div" => "container",
             "center" => "center",
 
             // Content
@@ -5369,7 +5452,18 @@ impl RustGenerator {
                     }
                     "padding" => format!("{}.padding({})", builder, value_str),
                     "spacing" => format!("{}.spacing({})", builder, value_str),
-                    _ => builder.to_string(),
+                    _ => {
+                        // PLAN-027 T-04: 显式拒绝门（设计 §3a-a4）——未知
+                        // prop 由静默丢弃改编译期错（防"看似编译过实缺件"
+                        // 的 shell 生成物）。编译期错形态 = 表达式位
+                        // compile_error! 块（generate_view_tree 为 String
+                        // 管线，生成期 hard error 需全链 Result 化——
+                        // 成本不成比例，且编译期错同样拦截产物入库）。
+                        let msg = format!(
+                            "a2r codegen: prop `{key}` not in the recognized vocabulary (PLAN-027 explicit rejection gate)"
+                        );
+                        format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+                    }
                 }
             }
             AuraPropValue::StyleBinding(bindings) => {
@@ -5416,7 +5510,20 @@ impl RustGenerator {
             "onchange" | "onChange" | "oninput" | "onInput" => {
                 format!("{}.on_change({})", builder, handler_fn)
             }
-            _ => builder.to_string(),
+            // PLAN-027 T-04: 认知且双轨同弃层——View IR 布局件无 hover
+            // 事件槽，解释臂 set_layout_events（aura_view_builder.rs:1328
+            // 只收 onclick/oncontextmenu）同弃。switcher.at row 的
+            // onmouseenter 两轨一致落空（parity 锚）——非拒绝面。
+            "onmouseenter" | "onmouseleave" | "onhover" | "onhoverout" => builder.to_string(),
+            _ => {
+                // PLAN-027 T-04: 显式拒绝门（同 add_prop_to_builder 臂注）
+                // ——未知事件不再静默丢弃（shell 依赖的 ondismiss 等此前
+                // 无译无警；视图事件槽丢失 = 交互缺件编译不可见）。
+                let msg = format!(
+                    "a2r codegen: event `{event}` not in the recognized vocabulary (PLAN-027 explicit rejection gate)"
+                );
+                format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+            }
         }
     }
 
@@ -8083,6 +8190,245 @@ widget Probe {
         assert!(
             code.contains("View::WindowThumbnail { wid: \"7\".to_string(), fallback_icon: \"app-window\".to_string(), style: None }"),
             "literal wid + bare tag defaults:\n{}", code
+        );
+    }
+
+    /// PLAN-027 T-04: 显式拒绝门 —— 未知 prop/事件不再静默丢弃，发射
+    /// compile_error!（编译期错拦截"看似编译过实缺件"的生成物）。
+    #[test]
+    fn test_codegen_rejects_unknown_prop_and_event() {
+        // prop 与事件分源断言——同源时事件块的拒绝发射会覆盖 prop 块
+        //（builder 链后写胜），rustc 仍红但诊断只剩一条。
+        let prop_src = r#"
+widget Probe {
+    msg { Ping }
+    view {
+        col {
+            frobnicate: "yes"
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(prop_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+        assert!(
+            code.contains("compile_error!(\"a2r codegen: prop `frobnicate`"),
+            "unknown prop must compile_error (was silently dropped):
+{}", code
+        );
+
+        let event_src = r#"
+widget Probe2 {
+    msg { Ping }
+    view {
+        col {
+            onwiggle: .Ping
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(event_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+        assert!(
+            code.contains("compile_error!(\"a2r codegen: event `onwiggle`"),
+            "unknown event must compile_error (was silently dropped):
+{}", code
+        );
+    }
+
+    /// PLAN-027 T-04: shell pack 全量 tag/prop/事件清单编译门 —— 真源
+    /// 五件（shell/desktop/switcher/notification_center/dashboard.at）视图
+    /// 每一对 (tag, prop) / (tag, event-base) 都必须落在 a2r 认知表内
+    /// （防 pack 演进引入"解释态能跑、a2r 缺译"的面）。表即合同：pack
+    /// 新词汇须同步扩 rust.rs 臂 + 本表（复审门）。solo（pack 不可解析）
+    /// 跳过 pass。handler 侧词汇（while/push/len/contains/storage.*/）不
+    /// 在本表——真实编译门 = T-07 shell-lib crate cargo build。
+    #[test]
+    fn test_shell_pack_codegen_vocabulary_gate() {
+        let Some(dir) = crate::os_paths::resolve_os_top_dir(
+            &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+            "shell",
+        ) else {
+            eprintln!("test_shell_pack_vocabulary_gate: SKIPPED — auto-os/shell 未解析(solo 检出)");
+            return;
+        };
+        const NAMES: [&str; 5] = [
+            "shell.at",
+            "desktop.at",
+            "switcher.at",
+            "notification_center.at",
+            "dashboard.at",
+        ];
+
+        // (tag, prop) 认知表 —— 每项 = rust.rs 对应臂的已译 prop。
+        let known_props: &[(&str, &str)] = &[
+            ("col", "style"),
+            ("col", "class"),
+            ("row", "style"),
+            ("row", "class"),
+            ("row", "onclick"),
+            ("row", "onmouseenter"),
+            ("taskbar", "style"),
+            ("div", "style"),
+            ("spacer", "style"),
+            ("grid", "cols"),
+            ("grid", "gap"),
+            ("grid", "style"),
+            ("button", "text"),
+            ("button", "icon"),
+            ("button", "variant"),
+            ("button", "style"),
+            ("button", "onclick"),
+            ("text", "style"),
+            ("icon", "name"),
+            ("icon", "style"),
+            ("icon", "size"),
+            ("image", "src"),
+            ("image", "alt"),
+            ("image", "fit"),
+            ("image", "style"),
+            ("mouse-area", "style"),
+            ("popover", "open"),
+            ("popover", "placement"),
+            ("popover", "ondismiss"),
+            ("popover", "x"),
+            ("popover", "y"),
+            ("popover", "class"),
+            ("popover", "style"),
+            ("window_thumbnail", "wid"),
+            ("window_thumbnail", "fallback_icon"),
+            ("window_thumbnail", "style"),
+            ("workspace_preview", "ws"),
+            ("workspace_preview", "fallback"),
+            ("workspace_preview", "style"),
+            // text 主 prop 简写（`text .state` → props["text"]，primary
+            // prop 铸造；parser.rs get_primary_prop）。
+            ("text", "text"),
+        ];
+        // tag → 事件认知（base 名；.prevent 等后缀剥离后比对）。
+        let known_events: &[(&str, &str)] = &[
+            ("button", "onclick"),
+            ("button", "oncontextmenu"),
+            ("icon", "onclick"),
+            ("mouse-area", "onclick"),
+            ("mouse-area", "onmousedown"),
+            ("mouse-area", "onmouseenter"),
+            ("mouse-area", "onmouseleave"),
+            ("mouse-area", "ondblclick"),
+            ("mouse-area", "onmouseup"),
+            ("mouse-area", "oncontextmenu"),
+            ("row", "onclick"),
+            ("col", "oncontextmenu"),
+            ("popover", "ondismiss"),
+            // 认知且双轨同弃（View IR 布局件无 hover 槽，解释臂同弃）。
+            ("row", "onmouseenter"),
+        ];
+        let known_tags: &[&str] = &[
+            "col", "row", "taskbar", "div", "spacer", "grid", "button", "text", "icon",
+            "image", "mouse-area", "popover", "window_thumbnail", "workspace_preview",
+        ];
+
+        fn walk(node: &crate::aura::AuraNode, out: &mut Vec<(String, String, bool)>) {
+            use crate::aura::AuraNode;
+            match node {
+                AuraNode::Element { tag, props, events, children, .. } => {
+                    for k in props.keys() {
+                        out.push((tag.clone(), k.clone(), true));
+                    }
+                    for k in events.keys() {
+                        out.push((tag.clone(), k.clone(), false));
+                    }
+                    for c in children {
+                        walk(c, out);
+                    }
+                }
+                AuraNode::ForLoop { body, .. } => {
+                    for c in body {
+                        walk(c, out);
+                    }
+                }
+                AuraNode::Conditional { then_body, else_body, .. } => {
+                    for c in then_body {
+                        walk(c, out);
+                    }
+                    if let Some(els) = else_body {
+                        for c in els {
+                            walk(c, out);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut violations: Vec<String> = Vec::new();
+        for name in NAMES {
+            let path = dir.join(name);
+            let src = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    violations.push(format!("{name}: read failed {e}"));
+                    continue;
+                }
+            };
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(e) => {
+                    violations.push(format!("{name}: parse failed {e}"));
+                    continue;
+                }
+            };
+            for stmt in &ast.stmts {
+                let crate::ast::Stmt::WidgetDecl(d) = stmt else { continue };
+                let Ok(widget) = crate::aura::extract::extract_widget_from_decl(d) else {
+                    continue;
+                };
+                let mut trees = vec![&widget.view_tree];
+                for (_, nv) in &widget.named_views {
+                    trees.push(nv);
+                }
+                for tree in trees {
+                    let mut found = Vec::new();
+                    walk(tree, &mut found);
+                    for (tag, key, is_prop) in found {
+                        let base = key.split('.').next().unwrap_or(&key).to_string();
+                        let table = if is_prop { known_props } else { known_events };
+                        let ok = table.iter().any(|(t, k)| *t == tag && *k == base)
+                            // 布局/容器 style 的 class 别名（add_prop_to_builder
+                            // 认知集）+ 动态 style 表达式（.style(expr.as_str())）。
+                            || (is_prop && (base == "style" || base == "class"));
+                        if !ok {
+                            violations.push(format!(
+                                "{name}: {tag} {} `{base}` 不在 a2r 认知表",
+                                if is_prop { "prop" } else { "event" }
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "shell pack a2r 词汇门违例（在 rust.rs 补臂 + 扩本表，或修正 pack）：\n{}",
+            violations.join("\n")
         );
     }
 

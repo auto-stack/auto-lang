@@ -1402,21 +1402,27 @@ impl<M: Clone + Debug> ViewBuilder<M> {
     }
 
     /// Build the final View
-    pub fn build(self) -> View<M> {
+    pub fn build(mut self) -> View<M> {
         match self.kind {
+            // PLAN-027 T-04：布局件 onclick/on_right_click 落字段（此前
+            // 硬编码 None 丢件——ViewBuilder.on_click 存进 button_onclick
+            // 后只有 Button 臂消费，row/col 点击"编译过实无行为"）。
+            // 解释侧 set_layout_events（aura_view_builder.rs:1328）同语义
+            // 已在 VM 轨生效；into_iced 布局臂以 mouse_area 包装发射
+            //（Plan 490 G4）。take() = 布局件无 onclick 合法（None）。
             ViewBuilderKind::Row => View::Row {
                 children: self.children,
                 spacing: self.spacing,
                 padding: self.padding,
                 style: self.style,
-            onclick: None, on_right_click: None,
+            onclick: self.button_onclick.take(), on_right_click: self.button_on_right_click.take(),
         },
             ViewBuilderKind::Column => View::Column {
                 children: self.children,
                 spacing: self.spacing,
                 padding: self.padding,
                 style: self.style,
-            onclick: None, on_right_click: None,
+            onclick: self.button_onclick.take(), on_right_click: self.button_on_right_click.take(),
         },
             ViewBuilderKind::Text => View::Text {
                 content: self.text_content,
