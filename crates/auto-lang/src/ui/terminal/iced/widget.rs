@@ -31,7 +31,7 @@ use iced::advanced::{
 };
 use iced::advanced::Renderer as _;
 use iced::keyboard::{self, Modifiers};
-use iced::{alignment, Background, Border, Color, Element, Font, Length, Point, Rectangle, Size, Theme, mouse::ScrollDelta};
+use iced::{alignment, Background, Border, Color, Element, Font, Length, Point, Rectangle, Size, Theme};
 use cosmic_text::{Attrs, Family};
 
 use crate::ui::terminal::{
@@ -114,7 +114,6 @@ const MENU_ITEM_W: f32 = 80.0;
 /// IME 英文起步重试上限(update tick 数;~20×50ms ≈ 1s,兜底防泄漏)。
 const IME_FORCE_TICKS: u8 = 20;
 const MULTI_CLICK_WINDOW: Duration = Duration::from_millis(500);
-const WHEEL_LINES_PER_NOTCH: i32 = 3;
 
 /// 一行的保留缓存:shaping 产物 + 内容 digest(auto-term RowEntry)。
 struct RowEntry {
@@ -129,6 +128,14 @@ static ROW_CACHES: OnceLock<Mutex<HashMap<String, Vec<Option<RowEntry>>>>> = Onc
 
 fn row_caches() -> &'static Mutex<HashMap<String, Vec<Option<RowEntry>>>> {
     ROW_CACHES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// PLAN-022 虚拟模式:每 key 上帧视口高(draw 记账,layout 的 014 探针
+/// 消费——scrollable 内子件的可用高约束为无穷,探针改吃此值)。
+static VIEWPORT_H: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+
+fn viewport_h_register() -> &'static Mutex<HashMap<String, f32>> {
+    VIEWPORT_H.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 /// Terminal widget — draws the engine grid carried by `core` and maps
@@ -150,6 +157,10 @@ pub struct Terminal<M> {
     pub shortcuts: Vec<(String, M)>,
     pub width: Length,
     pub height: Length,
+    /// PLAN-022 T-02 官方滚动条换装:虚拟滚动模式。真 = 组件占据
+    /// (rows+history)×CELL_H 的虚拟画布,快照窗按引擎 display_offset
+    /// 落位(scrollbar 视觉/交互归外层 iced scrollable;自绘条退役)。
+    pub virtual_scroll: bool,
 }
 
 /// Multi-click type ruling (005 T2 纯函数):Alt 恒为 Block;2=Sematic 词选、
@@ -305,15 +316,99 @@ impl<M: Clone> Terminal<M> {
             shortcuts: Vec::new(),
             width: Length::Fixed(cols as f32 * cell_w() + 2.0 * PAD),
             height: Length::Fixed(rows as f32 * CELL_H + 2.0 * PAD),
+            virtual_scroll: false,
         }
     }
 
-    /// 像素坐标 → 视口格 (row, col);越界 clamp 到边缘格。
+    /// 引擎回滚历史行数(core 缓存,泵回读)。
+    fn history(&self) -> usize {
+        crate::ui::terminal::terminal_history(self.core)
+    }
+
+    /// 引擎 display_offset(core 缓存,泵回写)。
+    fn engine_offset(&self) -> usize {
+        crate::ui::terminal::terminal_scroll_offset(self.core)
+    }
+
+    /// PLAN-022 虚拟画布上的快照窗位移(px):窗口顶 = (history−offset)
+    /// ×CELL_H——offset 0(贴底实时)落画布底、offset=history(最早)
+    /// 落画布顶。非虚拟模式恒 0(窗口贴组件顶,019 形态)。
+    fn window_shift(&self) -> f32 {
+        if !self.virtual_scroll {
+            return 0.0;
+        }
+        (self.history().saturating_sub(self.engine_offset())) as f32 * CELL_H
+    }
+
+    /// 虚拟画布总高(px):可见窗 + 历史。非虚拟模式即网格高。
+    fn canvas_height(&self) -> f32 {
+        if !self.virtual_scroll {
+            return self.core.rows as f32 * CELL_H + 2.0 * PAD;
+        }
+        (self.core.rows as usize + self.history()) as f32 * CELL_H + 2.0 * PAD
+    }
+
+    /// 虚拟滚动坐标换算(纯函数):视图 y(画布内容坐标 px)→ 引擎
+    /// display_offset(行)。终端回滚语义:y=0 = 最旧(offset=history)、
+    /// y=history×CELL_H = 贴底实时(offset=0);CELL_H 行量化。
+    pub(crate) fn view_y_to_offset(view_y: f32, history: usize) -> usize {
+        let lines = (view_y / CELL_H).round() as i64;
+        (history as i64)
+            .saturating_sub(lines.clamp(0, history as i64))
+            .max(0) as usize
+    }
+
+    /// 逆换算:引擎 display_offset → 视图 y(画布内容坐标 px)。
+    pub(crate) fn offset_to_view_y(offset: usize, history: usize) -> f32 {
+        (history.saturating_sub(offset)) as f32 * CELL_H
+    }
+
+    /// 读出臂状态机(draw 期 viewport 观察调用;headless 可测):视图 y
+    /// → 目标 offset,返回需回灌引擎的行增量(None = 无增量/回声吞没)。
+    /// scroll_to 回声经 bind_suppress 吞一次(仅对齐基线,不回灌)。
+    pub(crate) fn observe_view_scroll(
+        core: &crate::ui::terminal::TerminalCore,
+        view_y: f32,
+        history: usize,
+    ) -> Option<i32> {
+        let target = Self::view_y_to_offset(view_y, history) as i64;
+        if core.take_scroll_bind_suppress() {
+            core.set_scroll_view_target(target);
+            return None;
+        }
+        let delta = target - core.scroll_view_target();
+        if delta != 0 {
+            core.set_scroll_view_target(target);
+            Some(delta as i32)
+        } else {
+            None
+        }
+    }
+
+    /// 写臂状态机(build 期调用;headless 可测):引擎 display_offset
+    /// ≠ 上次绑定值 → 返回需程序化绑定的视图 y(调用方经 pending 队列
+    /// 发 scroll_to),并置抑制吞读出臂的下一次回声。
+    pub(crate) fn bind_request_y(
+        core: &crate::ui::terminal::TerminalCore,
+    ) -> Option<f32> {
+        let d = crate::ui::terminal::terminal_scroll_offset(core) as i64;
+        if d == core.scroll_bound_offset() {
+            return None;
+        }
+        core.set_scroll_bound_offset(d);
+        core.set_scroll_bind_suppress();
+        let history = crate::ui::terminal::terminal_history(core);
+        Some(Self::offset_to_view_y(d.max(0) as usize, history))
+    }
+
+    /// 像素坐标 → 视口格 (row, col);越界 clamp 到边缘格。PLAN-022:
+    /// 虚拟模式下 pos 是画布坐标(iced scrollable 平移后的内容坐标),
+    /// 先扣除快照窗位移再映射;窗外(历史留白区)clamp 到边缘格。
     fn pixel_to_cell(&self, pos: Point, bounds: Rectangle) -> (usize, usize) {
         let cols = self.core.cols.max(1) as usize;
         let rows = self.core.rows.max(1) as usize;
         let fx = (pos.x - bounds.x - PAD) / cell_w();
-        let fy = (pos.y - bounds.y - PAD) / CELL_H;
+        let fy = (pos.y - bounds.y - self.window_shift() - PAD) / CELL_H;
         let col = (fx.floor() as i32).clamp(0, cols as i32 - 1) as usize;
         let row = (fy.floor() as i32).clamp(0, rows as i32 - 1) as usize;
         (row, col)
@@ -368,16 +463,36 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // 灌给引擎会把满滚动历史网格折叠重排成 GB 级瞬态分配(alacritty
         // shrink_columns 路径,autoterm-core DEBTS #15)。最小化=可见性
         // 事件,网格逻辑尺寸应保持不变。
+        //
+        // PLAN-022 虚拟模式:组件在 iced scrollable 内,滚动轴子件约束
+        // 无穷——可用高不可 finite,014 探针改吃 VIEWPORT_H 记账(draw
+        // 收到的 viewport 高 = 视口高;换算后一帧滞后收敛,与 014
+        // "View cols/rows 随帧更新" 同款)。
         let max = limits.max();
-        if max.width.is_finite() && max.height.is_finite() {
-            let cols = (((max.width - 2.0 * PAD) / cell_w()).floor() as u16).max(1);
-            let rows = (((max.height - 2.0 * PAD) / CELL_H).floor() as u16).max(1);
-            if cols >= 2 {
-                crate::ui::terminal::terminal_request_resize(self.core, cols, rows);
+        if max.width.is_finite() {
+            let viewport_h = if max.height.is_finite() {
+                max.height
+            } else {
+                viewport_h_register()
+                    .lock()
+                    .unwrap()
+                    .get(&self.key)
+                    .copied()
+                    .unwrap_or(0.0)
+            };
+            if viewport_h.is_finite() && viewport_h > 0.0 {
+                let cols = (((max.width - 2.0 * PAD) / cell_w()).floor() as u16).max(1);
+                let rows = (((viewport_h - 2.0 * PAD) / CELL_H).floor() as u16).max(1);
+                if cols >= 2 {
+                    crate::ui::terminal::terminal_request_resize(self.core, cols, rows);
+                }
             }
         }
-        let limits = limits.width(self.width).height(self.height);
-        Node::new(limits.resolve(self.width, self.height, Size::default()))
+        // 虚拟模式高度 = 虚拟画布(可见窗 + 历史);写臂按引擎 offset
+        // 变化把 scrollable scroll_to 到同位(键入贴底/缩放跟随)。
+        let height = Length::Fixed(self.canvas_height());
+        let limits = limits.width(self.width).height(height);
+        Node::new(limits.resolve(self.width, height, Size::default()))
     }
 
     // PLAN-010 T8: expose the widget's layout bounds to test Operations —
@@ -488,10 +603,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 // 首站——组件收到 press 即留痕(bounds/落点/命中带判定),
                 // 与 [MA_BUILD]/[UI_EVENT] 对读定位断点层级。
                 if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                    eprintln!("[TERM_PRESS] pos={:?} bounds={:?} hit_band={}",
+                    eprintln!("[TERM_PRESS] pos={:?} bounds={:?}",
                         cursor.position().map(|p| (p.x, p.y)),
-                        (bounds.x, bounds.y, bounds.width, bounds.height),
-                        cursor.position().map(|p| p.x > bounds.x + bounds.width - SCROLLBAR_HIT_W).unwrap_or(false));
+                        (bounds.x, bounds.y, bounds.width, bounds.height));
                 }
                 let Some(pos) = cursor.position_over(bounds) else {
                     // 点在组件外:失焦(键入归他处,标准终端焦点语义)。
@@ -515,29 +629,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     state.menu_open = None;
                     return;
                 }
-                // 滚动条命中:拇指拖拽大范围跳转(优先于选区;仅历史区
-                // 存在时右缘命中带生效)。抓点式定格:拇指随指针平移,
-                // 不跳变;移动增量经滚动队列回灌引擎。
-                let history = crate::ui::terminal::terminal_history(core);
-                let offset = crate::ui::terminal::terminal_scroll_offset(core);
-                let in_hit_band =
-                    pos.x > bounds.x + bounds.width - SCROLLBAR_HIT_W && history > 0;
-                if in_hit_band {
-                    match scrollbar_metrics(bounds, core.rows as usize, history, offset) {
-                        Some((track_y, track_h, thumb_y, thumb_h)) => {
-                            state.scrollbar_drag = Some(ScrollbarDrag {
-                                grab: pos.y - thumb_y,
-                                track_y,
-                                thumb_h,
-                                travel: (track_h - thumb_h).max(1.0),
-                                history: history as f32,
-                                last_target: offset as i32,
-                            });
-                            return;
-                        }
-                        None => {}
-                    }
-                }
+                // PLAN-022:滚动条命中带/拖拽态随自绘条退役——滚动归外层
+                // iced scrollable,press 只剩选区链。
                 // 多击判定(500ms 窗口 + 同格)。
                 let now = Instant::now();
                 let cell = self.pixel_to_cell(pos, bounds);
@@ -561,22 +654,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 state.dragging = true;
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                // 滚动条拖拽:拇指中心跟随指针(grab 抓点平移),拇指位置
-                // 反解目标 offset(0=贴底)后增量回灌引擎;优先于选区扩展。
-                if let Some(drag) = state.scrollbar_drag.as_mut() {
-                    if let Some(pos) = cursor.position() {
-                        let thumb_y = pos.y - drag.grab;
-                        let center = thumb_y + drag.thumb_h * 0.5;
-                        let t = ((center - drag.track_y) / drag.travel).clamp(0.0, 1.0);
-                        let target = ((1.0 - t) * drag.history).round() as i32;
-                        let delta = target - drag.last_target;
-                        drag.last_target = target;
-                        if delta != 0 {
-                            crate::ui::terminal::terminal_queue_scroll_delta(core, delta);
-                        }
-                    }
-                    return;
-                }
+                // PLAN-022:滚动条拖拽臂随自绘条退役;CursorMoved 只剩
+                // 选区扩展与菜单悬停。
                 if state.dragging {
                     if let Some(pos) = cursor.position_over(bounds) {
                         let cell = self.pixel_to_cell(pos, bounds);
@@ -594,10 +673,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 }
             }
             iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                // 滚动条拖拽结束(优先于选区完成)。
-                if state.scrollbar_drag.take().is_some() {
-                    return;
-                }
+                // PLAN-022:滚动条拖拽收尾臂随自绘条退役;只剩选区完成。
                 if state.dragging {
                     state.dragging = false;
                     crate::ui::terminal::terminal_selection_finish(core);
@@ -612,54 +688,29 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     state.menu_open = Some((pos.x - bounds.x, pos.y - bounds.y));
                 }
             }
-            iced::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
-                // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):wheel 子路径——
-                // 与 press 死法差异是断点定位证据(两条独立子路径)。
-                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                    eprintln!("[TERM_WHEEL] delta={delta:?} bounds={:?}",
-                        (bounds.x, bounds.y, bounds.width, bounds.height));
-                }
-                let lines: i32 = match delta {
-                    ScrollDelta::Lines { y, .. } => *y as i32,
-                    ScrollDelta::Pixels { y, .. } => (*y / CELL_H) as i32,
-                };
-                if lines != 0 {
-                    crate::ui::terminal::terminal_scroll(
-                        core,
-                        -lines * WHEEL_LINES_PER_NOTCH,
-                    );
-                    // PLAN-019 滚轮回灌:引擎约定正=上翻历史(iced y>0=滚轮向上),
-                    // 引擎泵排水后调 display_offset,同拍快照即历史视图。
-                    crate::ui::terminal::terminal_queue_scroll_delta(core, lines * WHEEL_LINES_PER_NOTCH);
-                    if let Some(msg) = self.on_select.clone() {
-                        shell.publish(msg);
-                    }
-                }
+            iced::Event::Mouse(mouse::Event::WheelScrolled { .. }) => {
+                // PLAN-022 T-02 换装:滚轮臂随自绘条退役——滚轮由外层
+                // iced scrollable 原生消费(全程可滚,无半屏钳位),视图
+                // offset 经 draw 期 viewport 观察回灌引擎(display_offset
+                // 单源契约,见 widget draw 尾部 observe 块)。旧臂的
+                // terminal_scroll + queue_scroll_delta 双写路径一并移除。
             }
             _ => {}
         }
     }
 
-    /// 指针形态:滚动条拖拽中 Grabbing;右缘命中带悬停 Grab(拇指可抓);
-    /// 内容区 Text(选区);组件外默认。AutoUI 滚动条交互惯例(editor 同)。
+    /// 指针形态:内容区 Text(选区);组件外默认。PLAN-022:滚动条
+    /// Grab/Grabbing 臂随自绘条退役(thumb 悬停/拖拽形态归 iced
+    /// scrollable 官方实现)。
     fn mouse_interaction(
         &self,
-        tree: &Tree,
+        _tree: &Tree,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         _viewport: &Rectangle,
         _renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        let state = tree.state.downcast_ref::<TerminalState>();
-        if state.scrollbar_drag.is_some() {
-            return mouse::Interaction::Grabbing;
-        }
-        if let Some(pos) = cursor.position_in(layout.bounds()) {
-            let history = crate::ui::terminal::terminal_history(self.core);
-            if history > 0 && pos.x > layout.bounds().x + layout.bounds().width - SCROLLBAR_HIT_W
-            {
-                return mouse::Interaction::Grab;
-            }
+        if cursor.position_in(layout.bounds()).is_some() {
             return mouse::Interaction::Text;
         }
         mouse::Interaction::default()
@@ -673,10 +724,29 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         _defaults: &renderer::Style,
         layout: Layout<'_>,
         _cursor: mouse::Cursor,
-        _viewport: &Rectangle,
+        viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
         let state = tree.state.downcast_ref::<TerminalState>();
+
+        // PLAN-022 T-02 虚拟滚动读出臂(draw 期 viewport 观察;iced
+        // scrollable 传给子件的 viewport = 内容坐标的可见区):
+        // 1) 视口高记账 → 下一帧 014 几何随动探针消费(scrollable 内
+        //    子件 layout 拿不到 finite 可用高);
+        // 2) 视图 y → 目标 offset(行量化),与视图目标基线的差值回灌
+        //    引擎(display_offset 单源;scroll_to 回声由 bind_suppress
+        //    吞一次,防回灌环路)。
+        let shift = if self.virtual_scroll {
+            viewport_h_register().lock().unwrap().insert(self.key.clone(), viewport.height);
+            let view_y = viewport.y - bounds.y;
+            let history = self.history();
+            if let Some(delta) = Self::observe_view_scroll(self.core, view_y, history) {
+                crate::ui::terminal::terminal_queue_scroll_delta(self.core, delta);
+            }
+            self.window_shift()
+        } else {
+            0.0
+        };
 
         // PLAN-018 D10: scheme → [18] rgb 每帧解析一次(零每格开销)。
         // 显式 scheme prop 覆盖;缺省跟随桌面主题(dark→0/light→1)。
@@ -686,6 +756,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let pal_bg = rgb_u32(palette[1]);
 
         // 全幅底色:底部两角随窗框圆角(适配虚拟桌面;顶部归 chrome 不圆)。
+        // PLAN-022 虚拟模式 bounds = 虚拟画布,全画布涂底(滚进历史区
+        // 不露宿主底色)。
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
@@ -720,9 +792,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         }
 
         // 背景层:非默认 bg 的 run(每帧 emit;无形状成本;PAD 内缩——
-        // 此前 x/y 均缺内缩,色块相对文本错位 1px)。
+        // 此前 x/y 均缺内缩,色块相对文本错位 1px)。PLAN-022:虚拟模式
+        // 行 y 加快照窗位移(shift)。
         for (y, line) in cells.iter().enumerate() {
-            let line_y = bounds.y + PAD + y as f32 * CELL_H;
+            let line_y = bounds.y + PAD + shift + y as f32 * CELL_H;
             if line_y > bounds.y + bounds.height {
                 break;
             }
@@ -772,7 +845,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                         bounds: Rectangle::new(
                             Point::new(
                                 bounds.x + PAD + col_begin as f32 * cell_w(),
-                                bounds.y + PAD + row as f32 * CELL_H,
+                                bounds.y + PAD + shift + row as f32 * CELL_H,
                             ),
                             Size::new(
                                 (col_last - col_begin + 1) as f32 * cell_w(),
@@ -794,7 +867,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             cache.resize_with(cells.len(), || None);
         }
         for (y, line) in cells.iter().enumerate() {
-            let line_y = bounds.y + PAD + y as f32 * CELL_H;
+            let line_y = bounds.y + PAD + shift + y as f32 * CELL_H;
             if line_y > bounds.y + bounds.height {
                 break;
             }
@@ -818,10 +891,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
 
         // 光标层:块/竖线/下划线(Hidden 或闪烁熄灭相不画)。块色 = 方案
         // 前景色带 alpha(classic-dark 下 e8e8e8@0.85 与旧 0.91 常量逐字节
-        // 同值;light 方案自动变深块)。
+        // 同值;light 方案自动变深块)。PLAN-022:行 y 加快照窗位移。
         let cursor = self.core.cursor();
         if cursor.shape != TermCursorShape::Hidden && cursor.on {
-            let row = cursor.row as f32 * CELL_H;
+            let row = shift + cursor.row as f32 * CELL_H;
             let col = cursor.col as f32 * cell_w();
             let (rect, color) = match cursor.shape {
                 TermCursorShape::Block => (
@@ -864,7 +937,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // preedit 自绘覆盖层(#11 绕行):光标格锚定,下划线标记组合串。
         if let Some(preedit) = self.preedit.as_deref().filter(|p| !p.is_empty()) {
             let cursor = self.core.cursor();
-            let y = bounds.y + PAD + cursor.row as f32 * CELL_H;
+            let y = bounds.y + PAD + shift + cursor.row as f32 * CELL_H;
             let x = bounds.x + PAD + cursor.col as f32 * cell_w();
             let w = preedit.chars().count() as f32 * cell_w();
             renderer.fill_quad(
@@ -877,43 +950,20 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         fill_cached_para(renderer, preedit, w, Point::new(x, y), pal_fg, bounds);
     }
 
-        // 滚动条:AutoUI 官方形态(scrollbar_style 同款)——3px 圆角拇指
-        // rgba(0.9,0.9,0.9,0.3)、透明轨道、右缘内缩;历史区存在才画。
-        // 拖拽交互见 update(命中带宽于视觉宽)。拖拽中拇指画【拖拽目标
-        // 位置】(last_target,跟手 1:1)而非引擎回读值——回读滞后泵一拍,
-        // 按回读写拇指会明显落后指针(用户实测"拖拽时拇指不跟着走")。
-        let history = crate::ui::terminal::terminal_history(self.core);
-        let eng_off = match state.scrollbar_drag.as_ref() {
-            Some(drag) => drag.last_target.max(0) as usize,
-            None => crate::ui::terminal::terminal_scroll_offset(self.core),
-        };
-        if let Some((_, _, thumb_y, thumb_h)) =
-            scrollbar_metrics(bounds, self.core.rows as usize, history, eng_off)
-        {
-            let thumb_x = bounds.x + bounds.width - SCROLLBAR_W - 4.0;
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: Rectangle::new(
-                        Point::new(thumb_x, thumb_y),
-                        Size::new(SCROLLBAR_W, thumb_h),
-                    ),
-                    border: iced::Border {
-                        radius: 3.0.into(),
-                        ..iced::Border::default()
-                    },
-                    ..renderer::Quad::default()
-                },
-                Background::Color(Color::from_rgba(0.9, 0.9, 0.9, 0.3)),
-            );
-        }
+        // PLAN-022 T-02:自绘拇指绘制随退役移除(scrollbar 视觉归外层
+        // iced scrollable 官方 rail/scroller)。
 
         // 滚动偏移 badge(offset > 0 时右上角指示;auto-term 同款)。
+        // PLAN-022:虚拟模式锚快照窗顶(bounds.y + shift),随视图走。
         let offset = self.scroll_offset;
         if offset > 0 {
             let badge = format!("↑{offset}");
             let badge_w = badge.chars().count() as f32 * cell_w() + cell_w();
             let bg_bounds = Rectangle::new(
-                Point::new(bounds.x + bounds.width - badge_w - cell_w(), bounds.y),
+                Point::new(
+                    bounds.x + bounds.width - badge_w - cell_w(),
+                    bounds.y + shift,
+                ),
                 Size::new(badge_w, CELL_H),
             );
             renderer.fill_quad(
@@ -995,54 +1045,13 @@ pub struct TerminalState {
     hover_item: Option<usize>,
     /// 键入焦点(点击本组件获得、点击他处失去;键盘捕获的门控)。
     focused: bool,
-    /// PLAN-019 滚动条拖拽态(Some = 拖拽中,抓点式拇指跟手)。
-    scrollbar_drag: Option<ScrollbarDrag>,
 }
 
-/// 滚动条拖拽参数(Left press 命中右缘命中带时定格;抓点式——拇指跟随
-/// 指针不跳变):grab=按点相对拇指顶的偏移,track_y/thumb_h/travel=
-/// 几何定格,history=引擎历史行数,last_target=上次目标 offset(增量
-/// 回灌引擎的基准)。
-#[derive(Clone, Copy)]
-struct ScrollbarDrag {
-    grab: f32,
-    track_y: f32,
-    thumb_h: f32,
-    travel: f32,
-    history: f32,
-    last_target: i32,
-}
-
-/// 滚动条几何(AutoUI 官方形态:3px 圆角拇指、透明轨道、右缘内缩):
-/// 返回 (track_y, track_h, thumb_y, thumb_h)。拇指高 = 视口/全量比例
-/// (下限 `SCROLLBAR_MIN_THUMB`),位置 = display_offset 反比——
-/// offset 0=贴底实时(拇指最下),history=翻到最上(终端回滚语义与
-/// 文本生长方向相反)。history = 0 → None(无历史不画)。
-fn scrollbar_metrics(
-    bounds: Rectangle,
-    rows: usize,
-    history: usize,
-    offset: usize,
-) -> Option<(f32, f32, f32, f32)> {
-    if history == 0 {
-        return None;
-    }
-    let track_y = bounds.y + PAD;
-    let track_h = bounds.height - 2.0 * PAD;
-    if track_h <= SCROLLBAR_MIN_THUMB {
-        return None;
-    }
-    let thumb_h = (track_h * rows as f32 / (rows + history) as f32)
-        .max(SCROLLBAR_MIN_THUMB)
-        .min(track_h);
-    let travel = track_h - thumb_h;
-    let ratio_from_bottom = (offset as f32 / history as f32).clamp(0.0, 1.0);
-    Some((track_y, track_h, track_y + (1.0 - ratio_from_bottom) * travel, thumb_h))
-}
-
-const SCROLLBAR_W: f32 = 3.0;
-const SCROLLBAR_HIT_W: f32 = 14.0;
-const SCROLLBAR_MIN_THUMB: f32 = 16.0;
+/// PLAN-022 T-02 自绘滚动条退役:ScrollbarDrag 拖拽态、scrollbar_metrics
+/// 几何、SCROLLBAR_W/HIT_W/MIN_THUMB 常量与 press/move/release/wheel
+/// 四臂随官方滚动条(scrollable 包装)换装一并移除——度量/拖拽/跟随
+/// 归 iced 官方实现,滚动状态单源仍归引擎 display_offset(见 §5 决策
+/// 工件 evidence/022/t00-decision.md)。
 
 impl<'a, M: Clone + std::fmt::Debug + 'static> From<Terminal<M>> for Element<'a, M> {
     fn from(widget: Terminal<M>) -> Self {
@@ -1050,11 +1059,115 @@ impl<'a, M: Clone + std::fmt::Debug + 'static> From<Terminal<M>> for Element<'a,
     }
 }
 
+/// PLAN-022 T-01 虚拟滚动语义单测(纯函数/headless):坐标换算往返、
+/// 读出臂状态机(视图 y → 引擎增量)、写臂状态机(引擎 offset → 绑定
+/// y + 回声抑制)。Run: `cargo t virtual_scroll`。
+#[cfg(test)]
+mod virtual_scroll_tests {
+    use super::Terminal;
+    use crate::ui::terminal::TerminalCore;
+
+    /// 每测试独立 key(core 是按 key 注册的进程级 static,共用会串线)。
+    fn core(key: &str) -> &'static TerminalCore {
+        let core = crate::ui::terminal::terminal(key, 80, 24);
+        crate::ui::terminal::terminal_set_scroll_offset(core, 0);
+        crate::ui::terminal::terminal_set_history(core, 0);
+        core.set_scroll_view_target(0);
+        core.set_scroll_bound_offset(0);
+        core.set_scroll_bind_suppress();
+        let _ = core.take_scroll_bind_suppress();
+        core
+    }
+
+    #[test]
+    fn view_offset_round_trip_and_clamps() {
+        let history = 100usize;
+        // 贴底实时:画布底 → offset 0;最旧:画布顶 → offset = history。
+        assert_eq!(Terminal::<u8>::view_y_to_offset(100.0 * 16.0, history), 0);
+        assert_eq!(Terminal::<u8>::view_y_to_offset(0.0, history), 100);
+        assert_eq!(Terminal::<u8>::offset_to_view_y(0, history), 100.0 * 16.0);
+        assert_eq!(Terminal::<u8>::offset_to_view_y(100, history), 0.0);
+        // 半行取整 + 越界钳制(上方负区/下方超出画布)。
+        assert_eq!(Terminal::<u8>::view_y_to_offset(50.4, history), 97);
+        assert_eq!(Terminal::<u8>::view_y_to_offset(-100.0, history), 100);
+        assert_eq!(Terminal::<u8>::view_y_to_offset(99999.0, history), 0);
+        // 往返一致性(行量化内)。
+        for offset in [0usize, 1, 37, 99, 100] {
+            let back = Terminal::<u8>::view_y_to_offset(
+                Terminal::<u8>::offset_to_view_y(offset, history),
+                history,
+            );
+            assert_eq!(back, offset, "offset {offset} 往返漂移");
+        }
+        // 无历史:任意视图位恒 offset 0。
+        assert_eq!(Terminal::<u8>::view_y_to_offset(123.0, 0), 0);
+    }
+
+    #[test]
+    fn observe_queues_delta_and_tracks_target() {
+        let core = core("p022-observe");
+        let history = 50usize;
+        // draw 契约:observe 返回的增量由调用方入队(镜像 draw)。
+        let mut observe =
+            |y: f32| match Terminal::<u8>::observe_view_scroll(core, y, history) {
+                Some(delta) => {
+                    crate::ui::terminal::terminal_queue_scroll_delta(core, delta);
+                    Some(delta)
+                }
+                None => None,
+            };
+        // 贴底起步(基线 0)。滚轮上翻 3 行 → 视图 y 减 3×CELL_H。
+        let delta = observe((history - 3) as f32 * 16.0);
+        assert_eq!(delta, Some(3), "上翻 3 行应回灌 +3");
+        assert_eq!(crate::ui::terminal::terminal_take_scroll_delta(core), 3);
+        // 同位重复观察:零增量(幂等)。
+        let delta = observe((history - 3) as f32 * 16.0);
+        assert_eq!(delta, None, "同位重复观察不得重复回灌");
+        // 快速连滚一拍内:增量相对基线累积,不超调。
+        let delta = observe((history - 8) as f32 * 16.0);
+        assert_eq!(delta, Some(5), "3→8 行应只回灌差值 +5");
+        assert_eq!(crate::ui::terminal::terminal_take_scroll_delta(core), 5);
+    }
+
+    #[test]
+    fn bind_follows_engine_and_suppresses_echo() {
+        let core = core("p022-bind");
+        let history = 40usize;
+        // 引擎侧滚动(键入贴底模拟):回写 offset=0 后 bound 变化 → 绑定 y。
+        crate::ui::terminal::terminal_set_history(core, history);
+        crate::ui::terminal::terminal_set_scroll_offset(core, 10);
+        // 首次:bound(0)≠10 → 绑定 y = (40−10)×CELL_H,并置抑制。
+        let y = Terminal::<u8>::bind_request_y(core);
+        assert_eq!(y, Some(30.0 * 16.0), "引擎 offset 10 应绑定到画布 y 480");
+        assert!(core.take_scroll_bind_suppress(), "绑定应吞一次读出回声");
+        // 回声观察:目标对齐但零回灌。
+        let delta = Terminal::<u8>::observe_view_scroll(core, 30.0 * 16.0, history);
+        assert_eq!(delta, None, "scroll_to 回声不得回灌增量");
+        // 稳态:同 offset 重复 bind → None(不重复发 scroll_to)。
+        let y = Terminal::<u8>::bind_request_y(core);
+        assert_eq!(y, None, "稳态不得重复绑定");
+        // 用户滚回顶:观察 y=0 → 目标 40 → 回灌 +30(10→40)。
+        let delta = Terminal::<u8>::observe_view_scroll(core, 0.0, history);
+        assert_eq!(delta, Some(30));
+    }
+
+    #[test]
+    fn first_bind_targets_bottom_live_view() {
+        let core = core("p022-first-bind");
+        // 模拟首帧(bound 初始 -1):history 未回读(0)→ 绑定 y=0。
+        // history=0 时 y=0(贴底=画布底,无历史时画布=视口,scroll_to(0)
+        // 无位移,无害);历史回读后 bound 差值驱动真正的贴底绑定。
+        core.set_scroll_bound_offset(-1);
+        let y = Terminal::<u8>::bind_request_y(core);
+        assert_eq!(y, Some(0.0));
+        assert!(core.take_scroll_bind_suppress());
+    }
+}
+
 #[cfg(test)]
 mod key_to_vt_tests {
     use super::key_event_to_vt;
     use iced::keyboard::{Key, Modifiers, key::Named};
-
     fn vt(key: Key, text: Option<&str>, mods: Modifiers) -> Option<String> {
         key_event_to_vt(&key, text, mods)
     }
@@ -1152,6 +1265,7 @@ mod key_to_vt_tests {
             ],
             width: Length::Fixed(0.0),
             height: Length::Fixed(0.0),
+            virtual_scroll: false,
         };
         // 命中 → 消息。
         assert_eq!(t.shortcut_hit("ctrl.shift.t"), Some(1u8));

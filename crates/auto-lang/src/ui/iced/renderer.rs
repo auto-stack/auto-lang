@@ -4045,17 +4045,49 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Row { children, spacing, padding, style, onclick, on_right_click } => {
                 // 轴向修正(概要页对拍,EDGE-16 家族):见 axis_fix_row_child。
-                let els: Vec<iced::Element<'static, M>> =
-                    children.into_iter().map(axis_fix_row_child).map(|c| c.into_iced()).collect();
+                // PLAN-022 T-03:absolute 子脱流叠层(镜像 render_dynamic_view
+                // Row 臂/PLAN-530 步骤3)——into_iced 此前无分区,absolute 子
+                // 落流式布局(rust 轨 Component 路径专有缺口;app.at 分屏槽位
+                // 实测全叠原点/挤出视口,槽位矩形模型侧正确)。
+                let hover = layout_hover_flag(style.as_ref());
+                let mut normal: Vec<iced::Element<'static, M>> = Vec::new();
+                let mut absolute: Vec<AbstractView<M>> = Vec::new();
+                for child in children {
+                    let is_abs = extract_view_style(&child)
+                        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
+                        .unwrap_or(false);
+                    if is_abs {
+                        absolute.push(child);
+                    } else {
+                        normal.push(axis_fix_row_child(child).into_iced());
+                    }
+                }
+                let base = build_row(normal, spacing, padding, style.as_ref(), None, hover.clone());
+                let el: iced::Element<'static, M> = if absolute.is_empty() {
+                    base
+                } else {
+                    let mut stk = iced::widget::Stack::new().push(base);
+                    for child in absolute {
+                        // PLAN-051 P2: 空层不渲染不入栈(同 render_dynamic_view)。
+                        if is_empty_stack_layer(&child) { continue; }
+                        // PLAN-536 T10: 偏移判定在 move 前取好(child 随分区 move)。
+                        let pos = dynamic_abs_layer_position(&child);
+                        let abs_el = child.into_iced();
+                        // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上)。
+                        let abs_el = match pos {
+                            Some(pos) => build_floating_layer(abs_el, pos),
+                            None => abs_el,
+                        };
+                        stk = stk.push(iced::widget::opaque(abs_el));
+                    }
+                    let clip = style.as_ref()
+                        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                        .unwrap_or(false);
+                    stk.clip(clip).into()
+                };
                 // Plan 490 G4：布局件点击（row/col/div onclick parity）。
                 // PLAN-002 B：右键 + hover 同包装点（wrap_layout_events）。
-                let hover = layout_hover_flag(style.as_ref());
-                wrap_layout_events(
-                    build_row(els, spacing, padding, style.as_ref(), None, hover.clone()),
-                    onclick,
-                    on_right_click,
-                    hover,
-                )
+                wrap_layout_events(el, onclick, on_right_click, hover)
             }
 
             AbstractView::Column { children, spacing, padding, style, onclick, on_right_click } => {
@@ -4068,19 +4100,24 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // PLAN-642 T-11: distributed 列（justify-between 族）子项 grow
                 // 剥离,防 iced 0.14 配给制 0×0 隐没（见 axis_fix_col_child_distributed）。
                 let distributed = style_is_distributed(style.as_ref());
+                // PLAN-022 T-03:absolute 子脱流叠层(镜像 render_dynamic_view
+                // Column 臂/PLAN-530 步骤3;同 Row 臂注——rust 轨 Component
+                // 路径 app.at 分屏槽位/分隔条全靠它)。
+                let (flow_idx, abs_idx) = column_layer_partition(&children);
                 let mut els: Vec<iced::Element<'static, M>> = Vec::new();
-                for c in children {
-                    let mt_auto = extract_view_style(&c)
+                for i in &flow_idx {
+                    let c = &children[*i];
+                    let mt_auto = extract_view_style(c)
                         .map_or(false, |s| plan050_mt_auto_spacer(&s.classes));
                     if mt_auto {
                         els.push(iced::widget::Space::new().height(iced::Length::Fill).into());
                     }
-                    let align_self = extract_view_style(&c)
+                    let align_self = extract_view_style(c)
                         .and_then(|s| crate::ui::style::iced_adapter::IcedStyle::from_style(s).align_self);
                     let el = if distributed {
-                        axis_fix_col_child_distributed(c)
+                        axis_fix_col_child_distributed(c.clone())
                     } else {
-                        axis_fix_col_child(c)
+                        axis_fix_col_child(c.clone())
                     }
                     .into_iced();
                     let el = match align_self
@@ -4109,12 +4146,29 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
                 // Plan 490 G4：同 Row（PLAN-002 B：右键 + hover 同包装点）。
                 let hover = layout_hover_flag(style.as_ref());
-                wrap_layout_events(
-                    build_column(els, spacing, padding, style.as_ref(), None, hover.clone()),
-                    onclick,
-                    on_right_click,
-                    hover,
-                )
+                let base = build_column(els, spacing, padding, style.as_ref(), None, hover.clone());
+                let el: iced::Element<'static, M> = if abs_idx.is_empty() {
+                    base
+                } else {
+                    let mut stk = iced::widget::Stack::new().push(base);
+                    for &i in &abs_idx {
+                        // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
+                        if is_empty_stack_layer(&children[i]) { continue; }
+                        let abs_el = children[i].clone().into_iced();
+                        // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上根修);
+                        // 零偏移(inset-0 ghost 族)保持落原点。
+                        let abs_el = match dynamic_abs_layer_position(&children[i]) {
+                            Some(pos) => build_floating_layer(abs_el, pos),
+                            None => abs_el,
+                        };
+                        stk = stk.push(iced::widget::opaque(abs_el));
+                    }
+                    let clip = style.as_ref()
+                        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                        .unwrap_or(false);
+                    stk.clip(clip).into()
+                };
+                wrap_layout_events(el, onclick, on_right_click, hover)
             }
 
             AbstractView::Input {
@@ -4264,7 +4318,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // -1 = 跟随主题,绘制期解析)。
                 core.set_scheme(scheme);
                 crate::ui::terminal::terminal_feed(core, &lines);
-                crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
+                // PLAN-022 T-03 探针(DBG 门控):喂入面数值(key/行数/首行)。
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    let first = lines.first().map(|l| l.chars().take(40).collect::<String>())
+                        .unwrap_or_default();
+                    eprintln!("[P22-FEED] key={key} lines={} cols={cols} rows={rows} first={first:?}",
+                        lines.len());
+                }
+                // PLAN-022:scroll_offset prop 非零才落位(014 光标哨兵同
+                // 款)——0 恒写会把引擎泵回写的 display_offset 每帧清零,
+                // 官方滚动条的读出基线(scroll_view_target)随之断裂。
+                if scroll_offset != 0 {
+                    crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
+                }
                 // 014:光标格随帧落注册表(app 从引擎回读喂入;preedit/光标
                 // 层同源)。形状恒 Block;非零才落位——(0,0) 是未喂入哨兵,
                 // 直接设在 core 上的光标(测试/宿主策略)不被覆写。
@@ -4278,13 +4344,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
                 let el: iced::Element<'static, M> = crate::ui::terminal::iced::Terminal {
                     core,
-                    key,
+                    key: key.clone(),
                     scroll_offset,
                     preedit: preedit.clone(),
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
                     on_input: on_input.clone(),
                     shortcuts: shortcuts.clone(),
+                    // PLAN-022 T-02 换装:虚拟滚动模式 + 官方 scrollable
+                    // 包装(见下);width 仍为 016 网格公式。
+                    virtual_scroll: true,
                     width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0 * crate::ui::terminal::iced::PAD),
                     height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0 * crate::ui::terminal::iced::PAD),
                 }
@@ -4301,13 +4370,39 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     crate::ui::terminal::iced::rgb_u32(v)
                 };
                 let el: iced::Element<'static, M> = iced::widget::container(el)
+                    // PLAN-022:容器入 scrollable(滚动轴内容高=虚拟画布,
+                    // Shrink=自然高;Fill 在无穷轴会塌 0)。宽 Fill 仍吃
+                    // 视口宽,右缘余量条由容器同色涂满。
                     .width(iced::Length::Fill)
-                    .height(iced::Length::Fill)
+                    .height(iced::Length::Shrink)
                     .align_x(iced::alignment::Horizontal::Left)
                     .align_y(iced::alignment::Vertical::Top)
                     .style(move |_: &iced::Theme| iced::widget::container::Style {
                         background: Some(iced::Background::Color(margin_bg)),
                         ..Default::default()
+                    })
+                    .into();
+                // PLAN-022 T-02 写臂(引擎 → 视图):引擎 display_offset
+                // 变化(键入贴底/方案切换/引擎侧滚动)≠ 上次绑定值 → 经
+                // Plan 043 pending 队列发 scroll_to,thumb 跟随、单拍收敛;
+                // 绑定即 scroll_to 回声,置抑制让读出臂(draw 期 viewport
+                // 观察)吞一次,防回灌环路。首帧 bound=-1 → 强制绑定贴底
+                // (终端惯例:打开即实时视图)。
+                let scroll_key = format!("terminal_scroll_{}", key);
+                if let Some(y) =
+                    <crate::ui::terminal::iced::Terminal<M>>::bind_request_y(core)
+                {
+                    note_scroll_offset(&scroll_key, (0.0, y));
+                }
+                // 官方 scrollable 包装:滚动条视觉/交互(scrollbar_style
+                // 现款)归 iced;读出臂在 widget draw 期(PLAN-022 语义:
+                // scrollable offset = 视图投影,引擎 display_offset 单源)。
+                let el: iced::Element<'static, M> = iced::widget::scrollable(el)
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill)
+                    .id(scroll_key)
+                    .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                        scrollbar_style()
                     })
                     .into();
                 if let Some(ref s) = style {
@@ -22500,13 +22595,30 @@ pub(crate) fn column_layer_partition<M: Clone + std::fmt::Debug>(
 /// 渲染=纯空容器)叠在 textarea 上方会挡死其点击聚焦(C1/C2 单变量实验
 /// 实证:同结构有 backdrop 即不可输,无则可输)。vue 轨该层有 v-html 内容
 /// 不受影响——本判定仅存在于 VM 渲染层。
+/// PLAN-022 T-03 加固:声明了背景色的容器/布局件**不再判空**——bg 即
+/// 可见 chrome(021 实测:分隔条 = bg-[#8899aa] 定尺寸 div + mouse-area
+/// 子件,rust codegen 丢 mouse-area 后内层空 col 臂本判定跳过整层,
+/// 分隔条消失)。纯透明空层(backdrop 族无 bg 声明)语义不变。
 fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
     use AbstractView as AV;
+    fn has_declared_background(style: Option<&crate::ui::style::Style>) -> bool {
+        style.is_some_and(|s| {
+            s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::BackgroundColor(_)))
+        })
+    }
     match view {
         AV::Empty => true,
         AV::Text { content, .. } => content.trim().is_empty(),
-        AV::Container { child, .. } => is_empty_stack_layer(child),
-        AV::Column { children, .. } | AV::Row { children, .. } => {
+        AV::Container { child, style, .. } => {
+            if has_declared_background(style.as_ref()) {
+                return false;
+            }
+            is_empty_stack_layer(child)
+        }
+        AV::Column { children, style, .. } | AV::Row { children, style, .. } => {
+            if has_declared_background(style.as_ref()) {
+                return false;
+            }
             children.iter().all(is_empty_stack_layer)
         }
         _ => false,
@@ -23524,21 +23636,34 @@ where
 {
     if let Some(t) = title {
         let t: String = t.to_string();
-        return iced::application(
-            TickWrap::<C>::default,
-            TickWrap::<C>::update,
-            view_wrapped::<C>,
-        )
-        .subscription(|c: &TickWrap<C>| {
-            // Plan 407: tick 订阅(修复后形态,见上注)。
-            if let Some(ms) = c.inner.tick_interval_ms() {
-                iced::time::every(std::time::Duration::from_millis(ms as u64))
-                    .map(|_| TickWrapMsg::<C::Msg>::Tick)
-            } else {
-                iced::Subscription::none()
+    // PLAN-022 T-03:窗口尺寸面启动种子——thread_local 先落 startup 值,
+    // 开窗后由 WindowResized 漏斗保活(无 resize 事件也有正确初值)。
+    let seed = startup_window_size();
+    crate::ui::style::theme::set_window_width(seed.width);
+    crate::ui::style::theme::set_window_height(seed.height);
+    return iced::application(
+        TickWrap::<C>::default,
+        TickWrap::<C>::update,
+        view_wrapped::<C>,
+    )
+    .subscription(|c: &TickWrap<C>| {
+        // Plan 407: tick 订阅(修复后形态,见上注)。
+        let tick = if let Some(ms) = c.inner.tick_interval_ms() {
+            iced::time::every(std::time::Duration::from_millis(ms as u64))
+                .map(|_| TickWrapMsg::<C::Msg>::Tick)
+        } else {
+            iced::Subscription::none()
+        };
+        // PLAN-022 T-03:窗口尺寸面(Resized → thread_local,见枚举注)。
+        let win = iced::event::listen_with(|event, _status, _window_id| match event {
+            iced::Event::Window(iced::window::Event::Resized(size)) => {
+                Some(TickWrapMsg::<C::Msg>::WindowResized(size.width, size.height))
             }
-        })
-        .window_size(startup_window_size())
+            _ => None,
+        });
+        iced::Subscription::batch(vec![tick, win])
+    })
+    .window_size(seed)
         // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
         .font(INTER_FONT_REGULAR)
         .font(INTER_FONT_MEDIUM)
@@ -23548,20 +23673,31 @@ where
         .run()
         .map_err(|e| e.into());
     }
+    let seed = startup_window_size();
+    crate::ui::style::theme::set_window_width(seed.width);
+    crate::ui::style::theme::set_window_height(seed.height);
     iced::application(
         TickWrap::<C>::default,
         TickWrap::<C>::update,
         view_wrapped::<C>,
     )
     .subscription(|c: &TickWrap<C>| {
-        if let Some(ms) = c.inner.tick_interval_ms() {
+        let tick = if let Some(ms) = c.inner.tick_interval_ms() {
             iced::time::every(std::time::Duration::from_millis(ms as u64))
                 .map(|_| TickWrapMsg::<C::Msg>::Tick)
         } else {
             iced::Subscription::none()
-        }
+        };
+        // PLAN-022 T-03:窗口尺寸面(Resized → thread_local,见枚举注)。
+        let win = iced::event::listen_with(|event, _status, _window_id| match event {
+            iced::Event::Window(iced::window::Event::Resized(size)) => {
+                Some(TickWrapMsg::<C::Msg>::WindowResized(size.width, size.height))
+            }
+            _ => None,
+        });
+        iced::Subscription::batch(vec![tick, win])
     })
-    .window_size(startup_window_size())
+    .window_size(seed)
     .font(INTER_FONT_REGULAR)
     .font(INTER_FONT_MEDIUM)
     .font(INTER_FONT_SEMIBOLD)
@@ -23589,6 +23725,12 @@ where
 enum TickWrapMsg<M: Clone + Debug> {
     Inner(M),
     Tick,
+    /// PLAN-022 T-03 窗口尺寸面(逻辑 px):iced Resized 事件直通。普通
+    /// run_app 路径不走 dynamic_view_impl 的尺寸同步——theme thread_local
+    /// 停在默认 1024×768,mux_window_width/height(020 T-00b D7 面)读到
+    /// 假值 → 分屏矩形投影 px 类几何全错(021 T-07 右面板错位蓝屏的定界
+    /// 根因,evidence/022/t00-decision.md §3)。
+    WindowResized(f32, f32),
 }
 
 /// run_app 的内部组件包装(DevToolsWrapper 同款手法,不动 VM 轨)。
@@ -23608,6 +23750,16 @@ where
             TickWrapMsg::Tick => {
                 if let Some(m) = self.inner.tick_msg() {
                     self.inner.on(m);
+                }
+            }
+            // PLAN-022 T-03:update 与 view 同在主线程 → thread_local 写读
+            // 同线程,下一拍 api.mux_window_* 即真值。退化尺寸(Windows 开窗
+            // /过渡态 winit 会发 Resized(0,0))拒收——0 会把投影 px 全归零
+            // (分屏面板全蓝实录),保号上次真值。
+            TickWrapMsg::WindowResized(w, h) => {
+                if w >= 1.0 && h >= 1.0 {
+                    crate::ui::style::theme::set_window_width(w);
+                    crate::ui::style::theme::set_window_height(h);
                 }
             }
         }
@@ -23867,6 +24019,16 @@ fn apply_debug_event(dt: &mut DevToolsState, raw: &str) -> bool {
                 let w: f32 = w.parse().unwrap_or(800.0);
                 let h: f32 = h.parse().unwrap_or(600.0);
                 *dt.window_size.borrow_mut() = iced::Size::new(w, h);
+                // PLAN-022 T-03 窗口尺寸面:term.rs 的 auto.term.window_width/
+                // height(mux_window_* 投影标定源)读 theme thread_local——
+                // 此前仅更新 DevTools 自身 state,thread_local 恒默认
+                // 1024×768 → 分屏矩形投影 px 全错(021 T-07 右面板错位
+                // 蓝屏定界根因)。update 在主线程,写读同 thread_local。
+                // 退化尺寸(0×0 过渡态)拒收,保号上次真值。
+                if w >= 1.0 && h >= 1.0 {
+                    crate::ui::style::theme::set_window_width(w);
+                    crate::ui::style::theme::set_window_height(h);
+                }
                 // PLAN-046-B: keep .at-visible viewport height fresh.
                 crate::vm::ffi::stdlib::storage_host_publish(
                     "vm.window_inner_height",
@@ -24555,20 +24717,26 @@ where
     };
     drop(tick);
 
+    // PLAN-022 T-03:窗口尺寸面启动种子(dev 跑法无 Resized 事件时也有
+    // 真值;见 devtools_update __window_resized 臂同源同步)。
+    let seed = startup_window_size();
+    crate::ui::style::theme::set_window_width(seed.width);
+    crate::ui::style::theme::set_window_height(seed.height);
+
     iced::application(
         DevToolsWrapper::<C>::default,
         devtools_update,
         devtools_view,
     )
-    .subscription(move |w| {
+    .subscription(|w| {
         let mut subs: Vec<iced::Subscription<WrapperMsg<C>>> = vec![devtools_subscription(w)];
         // Plan 407: add tick subscription. Cannot use Subscription::map in
         // generic code (const check fails for non-concrete C). Instead,
         // emit a periodic WrapperMsg::Debug("__tick__") via a 'static recipe.
-        if w.inner.tick_msg().is_some() {
+        if let Some(ms) = w.inner.tick_interval_ms() {
             // Use a custom subscription that doesn't go through .map().
             // Recipe: a struct implementing Hash + recipe pattern.
-            subs.push(tick_subscription::<C>(interval.unwrap_or(std::time::Duration::from_secs(999999))));
+            subs.push(tick_subscription::<C>(std::time::Duration::from_millis(ms as u64)));
         }
         iced::Subscription::batch(subs)
     })
@@ -25556,6 +25724,35 @@ mod tests {
         let (flow, floating) = super::column_layer_partition(&children);
         assert_eq!(floating, vec![3], "仅 absolute 子脱流入叠层");
         assert_eq!(flow, vec![0, 1, 2], "z-index-only 子保持流内（每子恰渲染一次）");
+    }
+
+    /// PLAN-022 T-03 空层判定加固:声明背景色的空容器(分隔条 = bg div
+    /// + mouse-area 子件;codegen 缺臂时代内层落空 col)不再判空入栈
+    /// 跳过——bg 即可见 chrome。纯透明空层(backdrop 族)语义不变。
+    #[test]
+    fn plan022_empty_layer_with_background_stays_in_stack() {
+        use crate::ui::style::Style;
+        let empty_col = |classes: &'static str| AbstractView::<IcedMessage>::Column {
+            children: vec![],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(classes).ok(),
+            onclick: None, on_right_click: None,
+        };
+        // 分隔条内层形态:bg 薄条 + Fill 空子(空 col)。
+        let divider_inner = AbstractView::<IcedMessage>::Column {
+            children: vec![empty_col("w-full h-full")],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("absolute z-20 w-[8px] h-[410px] bg-[#8899aa]").ok(),
+            onclick: None, on_right_click: None,
+        };
+        assert!(
+            !super::is_empty_stack_layer(&divider_inner),
+            "带 bg 的空容器不得判空(分隔条 chrome 消失回归)"
+        );
+        // 无 bg 的纯空 col(旧 backdrop 形态):保持判空。
+        assert!(super::is_empty_stack_layer(&empty_col("w-full h-full")));
     }
 
     /// PLAN-526 T6：boot 对齐匹配核——双向后缀命中（相对源路径 vs 绝对

@@ -2615,4 +2615,23 @@ mod tests {
         assert_eq!(StyleClass::parse_single("text-end"), Ok(StyleClass::TextRight));
     }
 
+    /// PLAN-022 T-03 探针(app.at 槽位 div 样式串):多类 parse 后
+    /// Absolute/TopOffset/LeftOffset 全部保留(槽位绝对定位的消费前提)。
+    #[test]
+    fn p022_slot_style_string_keeps_absolute_and_offsets() {
+        let s = crate::ui::style::Style::parse(
+            "absolute z-10 top-[640px] left-[0px] w-[640px] h-[760px]",
+        )
+        .expect("slot style must parse");
+        let has = |name: &str| s.classes.iter().any(|c| format!("{c:?}").contains(name));
+        assert!(has("Absolute"), "absolute lost: {:?}", s.classes);
+        assert!(has("TopOffset"), "top-[640px] lost: {:?}", s.classes);
+        assert!(has("LeftOffset"), "left-[0px] lost: {:?}", s.classes);
+        let top = s.classes.iter().find_map(|c| match c {
+            StyleClass::TopOffset(v) => Some(*v),
+            _ => None,
+        });
+        assert_eq!(top, Some(640.0), "top value wrong");
+    }
+
 }
