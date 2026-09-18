@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-643
-status: reviewed               # drafting → executing → execution_done → reviewed → archived（2026-09-18 review pass）
+status: archived              # drafting → executing → execution_done → reviewed → archived（终态，2026-09-18 merge 落地）
 feature_name: chart-tag-unify（chart 裸名归属统一与 bp palette 包词汇面）
 author: [agent]
 created_at: 2026-09-18
@@ -466,3 +466,44 @@ next: merge（/auto-plan:merge；merge 时按 R643-F1 与 642 对账，勿双落
    **已排除**：T-01 代码级归因证实主因 = 装载链 package 分支缺失 + 空壳
    builtin 压制（D4 是 027 tree 同名异容问题，另一断面）；G1 未缩范围，
    合并臂 A/B 出图实证在案。
+
+### merge 收据（PLAN-643:r1，2026-09-18 /auto-plan:merge）
+
+```yaml
+stage: merge
+plan_id: PLAN-643:r1
+outcome: pass
+checkpoints:
+  prepared: 受审基线 85d4d10b4（reviewed，worktree clean）；canonical Spec diff
+    已随分支提交（SD-01/SD-02 冻结哈希 2e85c8e1/209bd358）；master 推进 47 提交
+    对账合并（091ec969b）——plan024 ui 门控同义双写取 master 版；filetree
+    palette 置空顺带修复 master 预存漂移红（5c401fe00，icon 缺口挂 P643-D1）
+  landed: master bc3ec4d8b（--no-ff 合 plan-643-dev，14 文件 +700/-38）；
+    冒烟 plan643 3/3 + bp::registry 5/5（主检出）+ 合并树 mini 宿主出图
+    （merged_smoke 月轴/图例全真）
+  ledger_refreshed: specs.json（runtime 台账）P643-1（architecture）/
+    P643-2（reviews）upsert 并回读验证；spec-index.py 再生 INDEX.md（卡片级
+    无差异）；模块回写 blueprint/project.md 判定③ + ui/overview.md +
+    ui/plans.md + goals.md GOAL-007（master 216b7d4d1）
+  archived: docs/plans/archive/643-chart-tag-unify.md，status: archived
+  cleaned: 见下节（guard + worktree/分支/组目录移除）
+notes:
+  - R643-F1 对账：642 R642-F2（09bb8e218 未合）与本计划装载修复语义冗余——
+    642 后续落地时必须裁撤其 lib.rs 第二轮包装载 hunk（保 F3/F4/语料），
+    勿双落（642 计划 §10 已留协作注记）。
+  - 证据可解析性：截图/快照留档于组目录 evidence/（随组目录清理退役），
+    结论性结构证据已在本计划 §8/§9 文字化（刻度节点 base 0/fix 5、
+    VM_EXEC handler 名、marker 布尔、提交 SHA）——沿 642 先例截图不入库。
+```
+
+### spec-sync 回写记录（v1 惯例）
+
+- SD-01（modify）：docs/specs/auto-lang/ui/design/chart-components.md 新增
+  "tag 双态归属（schema 声明面 × 包实现面，PLAN-643 补章）"——落地于
+  bc3ec4d8b（随分支），冻结哈希 2e85c8e1e3946978af22eabde8be92b55eb4bf6c。
+- SD-02（modify）：docs/specs/blueprint/contract.md 验证面 palette 合法集
+  规则改写——同批落地，冻结哈希 209bd358cf0f12a37196148802ab80af463ef2b8。
+- 模块回写：blueprint/project.md 判定标准③、auto-lang/ui/overview.md 图表段
+  双态归属句、auto-lang/ui/plans.md 643 行、goals.md GOAL-007 追加——
+  216b7d4d1。
+- 台账：specs.json P643-1/P643-2（runtime 发布）；INDEX.md 再生无差异。
