@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 13
+current_step: 14
 total_steps: 19
 ---
 
@@ -423,9 +423,23 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
 - [ ] **T-17 (P2-024) 024 空画布结案**（rev2）
       最新构建（09bb8e218+）已出图（u2_024.png 实证）——用户侧为旧构建；
       记录结案 + 请用户以新构建复验。
-- [ ] **T-18 (P2-附带) 027 错误 toast 跨 demo 残留**（rev2）
-      u2_008 右下角残留 027 的"无法定位主目录"toast——toast 过期/清理
-      修复（与 T-06 同族，14263 toast 修正先例）。
+- [✅] **T-18 (P2-附带) 027 错误 toast 跨 demo 残留**（rev2）[✅ 已完成（证伪结案——触发源灭绝，无修复面）]
+      实机定性（t18_repro/t18_lifecycle 脚本，端口 2303/2304 双实例）：
+      ①**触发源已随 T-05 修复批次灭绝**——027 内嵌 boot 链现正确解析
+      home（state: booted=true, home=C:\Users\zhaop），"无法定位主目录"不再
+      触发；打开 027 停 3s 无 toast，切 008 后 +1/+5/+10s 快照均无 toast
+      文本（t18_A/B1/B5/B10 截图在案）。②**生命周期机制健全**（代码走查+
+      单测）：ToastReq 自带 shown_at+duration_ms（默认 4000，vue-sonner
+      对齐）；push 后置 view_dirty；250ms __toast_tick 订阅（仅有 toast 时
+      订阅）按 retain 清扫、移除再置 dirty；__toast state 消费即清空——
+      合并轨跨 demo 无残留通道；plan412_toast_call_rewrites_to_state_assign
+      单测锁定重写。③切走后 ≤4s 存留属设计内瞬态（标准 toast 语义）。
+      附带发现（登记 P642-D14）：MCP fixture 派发不可达任意 handler
+      （AddrGo 实证不执行、SetAddr 走 input 绑定可达）——toast 类 E2E 在
+      合并轨无人造触发通道（右键菜单/鼠标区均非 MCP 可寻址）；
+      fs.canonical 失败返回原路径（unwrap_or(path)，native.rs:9397）而非
+      空串——语料 `can == ""` 失败哨兵分支（027 NavTo 两条 toast.error
+      路径）VM 臂不可达，语义漂移小债。
 - [ ] **T-19 多后端 proxy 机制**（rev2）[↪ 移交独立计划（用户裁定 2026-09-19）]
       单进程 axum 多后端宿主：per-app VM session + 子 URL `/apps/<id>/api/*`
       路由；生成器 baseURL 子前缀适配（PLAN-617 AUTO_HTTP_BASE 相对展开
@@ -755,6 +769,28 @@ rulings:
       新增。详见 P642-D3 枚举小步执行结果段
 queue_after_ruling: T-18 → T-15 → T-17 (+T-14 a/c 可选,既定授权面内)
   → 复审 → merge 收口;proxy 独立计划与崩溃专项另行立项
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-18 证伪结案)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-18 单任务,定性=无修复面;计划整体仍 executing
+code_commit:
+  auto-lang: 无代码改动（零 diff）
+  auto-os:   T-18 验证脚本批次（t18_repro/t18_lifecycle 入 tests/）
+task_ids: [T-18]
+evidence:
+  - 触发源灭绝:027 内嵌 boot 链正确解析 home（state booted=true
+    home=C:\Users\zhaop）,"无法定位主目录"不再触发;027 开 3s 无 toast,
+    切 008 后 +1/+5/+10s 快照零 toast 文本（t18_A/B1/B5/B10）
+  - 机制健全:ToastReq shown_at+duration(4000ms) + __toast_tick 订阅
+    retain 清扫 + __toast 消费即清空;重写单测在案（plan412）
+  - 附带发现两条登记 P642-D14:fixture 派发不可达任意 handler（AddrGo
+    实证）;fs.canonical 失败返原路径使 can=="" 哨兵分支 VM 臂不可达
+next: T-15（015 种子数据合并链归因）→ T-17（024 结案）→ 复审
 ```
 
 ---
