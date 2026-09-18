@@ -2930,6 +2930,16 @@ export default router
                         let file_store_deps = auto_lang::extract_store_deps_from_file(
                             path.to_str().unwrap()
                         );
+                        // PLAN-645 T-02: dep 文件（bp reference 等）自己的跨文件
+                        // fn 导入（`use tree_util: flatten_tree` bare/bps 限定）须
+                        // 转译进 SFC——否则只有调用无定义（vue-tsc TS2304，
+                        // filetree 组合形态 046 断裂复现）。与 components/bps
+                        // 通道（上方 Plan 522 臂）同一收集器：首遍编译已在
+                        // api.rs 挂过池，但这里逐 widget 重生成，必须重挂。
+                        let dep_comp_code =
+                            fs::read_to_string(&path).unwrap_or_default();
+                        let (dep_use_fns, dep_imported_names) =
+                            auto_lang::ui_gen::api::collect_use_module_fns(&path, &dep_comp_code);
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
@@ -2944,6 +2954,7 @@ export default router
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
+                                .with_use_module_fns(dep_use_fns.clone(), dep_imported_names.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );
@@ -2975,8 +2986,21 @@ export default router
                         }
                     }
                     Err(e) => {
+                        // Plan 041a(strict 收口): fn-only 文件同降级(见上)。
                         let fn_only = e.to_string().contains("No widget or store declarations");
-                        if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
+                        // PLAN-645 T-02: 库形态 dep（bps 包库——collect_dep_front_dirs
+                        // else 臂的原目录直推，无 src/front、无 front/）是模板源，
+                        // 不按独立应用门禁：bp reference 可携带消费方契约导入
+                        // （with_charts `use { package: official from "components" }`
+                        // 由消费方供给），在包内 standalone strict 编译必然
+                        // S003（046 基线实红）。消费方只 import 所用变体，未用
+                        // 变体的 SFC 缺席由 vite import 解析兜底，告警不硬炸。
+                        let library_dep = !dep_front.join("src").join("front").is_dir()
+                            && !dep_front.join("front").is_dir();
+                        if auto_lang::ui_gen::validators::strict_enabled()
+                            && !fn_only
+                            && !library_dep
+                        {
                             return Err(format!("Failed to compile dep file {}: {}", path.display(), e).into());
                         }
                         println!("{} Failed to compile dep file {}: {}", "Warning:".bright_yellow(), path.display(), e);
