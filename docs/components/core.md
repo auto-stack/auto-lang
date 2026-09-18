@@ -1109,14 +1109,18 @@ Horizontal layout container
 
 [demo →](/examples/widgets-gallery/scroll)
 
-Scrollable container
+Universal scroll viewport (PLAN-656 scroll-pane; scrollable/scroll are aliases)
 
-别名:`Scroll` `scrollable`
+别名:`Scroll` `scrollable` `scroll-pane`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
-| `direction` | `one_of: vertical|horizontal|both` | vertical | Scroll direction |
+| `axis` | `one_of: y|x|both` | y | Scroll axes (PLAN-656 scroll-pane; recommended over legacy direction) |
+| `scrollbar` | `one_of: auto|always|hidden` | auto | Scrollbar visibility policy (PLAN-656; hidden = no visible rail/thumb and no scrollbar hit target, scrolling still works) |
+| `controller` | `string` | — | Scroll controller handle from scroll_controller() (PLAN-656; pairs with scroll_to_end/scroll_by/... native family) |
+| `onscroll` | `closure` | — | Scroll observation callback |state| with record { offset_x, offset_y, viewport_w, viewport_h, content_w, content_h, progress_x, progress_y } (PLAN-656; observe-only, not a control protocol) |
+| `direction` | `one_of: vertical|horizontal|both` | vertical | Legacy scroll direction (PLAN-656: maps to axis; axis wins when both present) |
 
 子件:`scrollarea` `scrollareascrollbar` `scrollareathumb` `scrollareaviewport`
 

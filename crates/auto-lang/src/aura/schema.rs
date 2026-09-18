@@ -489,10 +489,14 @@ impl AuraSchema {
             category: ElementCategory::Layout,
             props: vec![
                 PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
-                PropDef { name: "direction", type_: PropType::OneOf(vec!["vertical", "horizontal", "both"]), required: false, default: Some("vertical"), description: "Scroll direction" },
+                PropDef { name: "axis", type_: PropType::OneOf(vec!["y", "x", "both"]), required: false, default: Some("y"), description: "Scroll axes (PLAN-656 scroll-pane)" },
+                PropDef { name: "scrollbar", type_: PropType::OneOf(vec!["auto", "always", "hidden"]), required: false, default: Some("auto"), description: "Scrollbar visibility policy (PLAN-656)" },
+                PropDef { name: "controller", type_: PropType::String, required: false, default: None, description: "Scroll controller handle from scroll_controller() (PLAN-656)" },
+                PropDef { name: "onscroll", type_: PropType::Closure, required: false, default: None, description: "Scroll observation callback (PLAN-656; record args)" },
+                PropDef { name: "direction", type_: PropType::OneOf(vec!["vertical", "horizontal", "both"]), required: false, default: Some("vertical"), description: "Legacy scroll direction (PLAN-656: maps to axis; axis wins)" },
             ],
             allows_children: true,
-            description: "Scrollable container",
+            description: "Universal scroll viewport (PLAN-656 scroll-pane; scrollable/scroll are aliases)",
         });
 
         elements.insert("container", ElementDef {
@@ -3134,6 +3138,33 @@ mod tests {
         assert!(schema.get_element("col").is_some());
         assert!(schema.get_element("input").is_some());
         assert!(schema.get_element("nonexistent").is_none());
+    }
+
+    /// PLAN-656 T-02：scroll-pane 新 props 在 fallback 表可解析；alias 解析
+    /// 经 aura.at meta（load_default_schema）。
+    #[test]
+    fn scroll_pane_props_and_alias() {
+        let schema = AuraSchema::new();
+        let scroll = schema.get_element("scroll").expect("fallback scroll element");
+        let axis = scroll.get_prop("axis").expect("axis prop");
+        assert_eq!(axis.default, Some("y"));
+        assert!(matches!(&axis.type_, PropType::OneOf(opts) if opts == &vec!["y", "x", "both"]));
+        let scrollbar = scroll.get_prop("scrollbar").expect("scrollbar prop");
+        assert_eq!(scrollbar.default, Some("auto"));
+        assert!(scroll.get_prop("controller").is_some());
+        assert!(scroll.get_prop("onscroll").is_some());
+        // legacy direction 保留（axis 优先映射在 view-builder 层）。
+        assert!(scroll.get_prop("direction").is_some());
+
+        let loaded = crate::aura::load_default_schema().expect("aura.at loads");
+        for tag in ["scroll-pane", "scrollable", "scroll", "Scroll"] {
+            let (canonical, _) = loaded.resolve_tag(tag).unwrap_or_else(|| panic!("{tag} must resolve"));
+            assert_eq!(canonical, "scroll", "{tag} should fold to canonical scroll");
+        }
+        // 载入 schema 的 props 同步（fallback 与 .at 双源一致）。
+        let (_, def) = loaded.resolve_tag("scroll-pane").unwrap();
+        assert!(def.get_prop("axis").is_some());
+        assert!(def.get_prop("scrollbar").is_some());
     }
 
     #[test]
