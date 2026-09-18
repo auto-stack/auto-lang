@@ -1464,9 +1464,46 @@ impl<'a> AuraViewBuilder<'a> {
                         self.extract_string_with(tp, "text", bindings)
                             .or_else(|| self.extract_string_with(tp, "label", bindings))
                             .or_else(|| {
+                                // 子件文本：直接 Text 子件 + text-like 元素
+                                // 子件（`tabstrigger { text "Alpha" }` 的
+                                // 解析形态是 Element{text}——复审 P641-R1
+                                // 抓漏：浅层 Text 匹配漏掉该形态，标签
+                                // 静默回退 "Tab N"）。同
+                                // convert_text_element 的子件折叠链。
                                 tch.iter().find_map(|c| match c {
                                     AuraNode::Text(AuraTextContent::Literal(s)) => {
                                         Some(s.clone())
+                                    }
+                                    AuraNode::Text(
+                                        AuraTextContent::Interpolated {
+                                            template,
+                                            bindings: tpl_bindings,
+                                        },
+                                    ) => Some(self.resolve_interpolation_with(
+                                        template,
+                                        tpl_bindings,
+                                        bindings,
+                                    )),
+                                    AuraNode::Element {
+                                        tag,
+                                        props: cprops,
+                                        children: cch,
+                                        ..
+                                    }
+                                        if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) =>
+                                    {
+                                        // child_element_text 只扫 props；
+                                        // `text "Alpha"` 的字面量在元素自身
+                                        // 子件里，须再落一层。
+                                        self.child_element_text(cprops, bindings)
+                                            .or_else(|| {
+                                                cch.iter().find_map(|d| match d {
+                                                    AuraNode::Text(
+                                                        AuraTextContent::Literal(s),
+                                                    ) => Some(s.clone()),
+                                                    _ => None,
+                                                })
+                                            })
                                     }
                                     _ => None,
                                 })
@@ -12814,6 +12851,34 @@ mod tests {
         }
         match p641_run_fold(&builder, mk(vec![("active", crate::ast::Expr::Int(9))])) {
             View::Tabs { selected, .. } => assert_eq!(selected, 1),
+            other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+    }
+
+    /// 复审 P641-R1 回归：trigger 文本走 text-like 元素子件形态
+    /// （`tabstrigger (value: "a") { text "Alpha" }`）时标签不得回退 "Tab N"。
+    #[test]
+    fn plan641_tabs_fold_trigger_text_child_element() {
+        let widget = make_test_widget("App", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+
+        let tabs = AuraNode::element("tabs")
+            .with_child(
+                AuraNode::element("tabstrigger")
+                    .with_prop("value", crate::ast::Expr::Str("a".into()))
+                    .with_child(AuraNode::element("text").with_child(AuraNode::text("Alpha"))),
+            )
+            .with_child(
+                AuraNode::element("tabstrigger")
+                    .with_prop("value", crate::ast::Expr::Str("b".into()))
+                    .with_child(AuraNode::element("text").with_child(AuraNode::text("Beta"))),
+            )
+            .with_child(p641_content())
+            .with_child(p641_content());
+
+        match p641_run_fold(&builder, tabs) {
+            View::Tabs { labels, .. } => assert_eq!(labels, vec!["Alpha", "Beta"]),
             other => panic!("Expected View::Tabs, got {:?}", other),
         }
     }
