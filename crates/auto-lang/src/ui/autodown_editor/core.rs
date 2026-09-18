@@ -7589,9 +7589,14 @@ $details(summary: \"展开\", open: true) {
 细节正文。
 }
 
-| a | b |
-| --- | --- |
-| 1 | 2 |
+$details(summary: \"收起项\") {
+折叠正文。
+}
+
+| 任务 | 状态 | 分数 |
+| :--- | ---: | :---: |
+| 写作 | 进行 | 80 |
+{cols:[120,\"auto\",\"auto\"]}
 ";
     let c = core_for("t651c", corpus);
     let e1 = c.emit_document();
@@ -7612,6 +7617,11 @@ $details(summary: \"展开\", open: true) {
     assert!(e1.contains("$embed(src: \"^emb\")"), "{e1}");
     assert!(e1.contains("$callout(type:\"warning\", title:\"注意\") {"), "{e1}");
     assert!(e1.contains("$details(summary:\"展开\", open:true) {"), "{e1}");
+    // T-02 扩面：align/IAL 表格 + 闭合 details。
+    assert!(e1.contains("| :--- | ---: | :---: |"), "{e1}");
+    assert!(e1.contains("{cols:[120,\"auto\",\"auto\"]}"), "{e1}");
+    assert!(e1.contains("$details(summary:\"收起项\") {"), "{e1}");
+    assert!(e1.contains("折叠正文。"), "{e1}");
 }
 
 // ── PLAN-651 T-02：红项闭合第二批 ─────────────────────────────────────
