@@ -122,40 +122,40 @@ fn rqhost_auto_binary() -> std::io::Result<std::path::PathBuf> {
     ))
 }
 
-/// 发现与孵化序（G6/D2）：直试 adopt（在线即成功——连接即探测）→ 失败
-/// spawn `auto rqhost` → 就绪退避重试（100ms 起倍增，预算 15s）。返回
-/// per-app 管道名（`ClientTarget::Rqhost` 直连同管）。
-pub fn ensure_rqhost(app_name: &str) -> Result<String, String> {
-    let spawner: RqhostSpawner = Arc::new(spawn_rqhost_default);
-    ensure_rqhost_with(&spawner, app_name)
+/// 发现与孵化序（G6/D2；T-05 测试暴露的设计修正：**不在此采纳**——
+/// per-app 管道实例一次性，ensure 若连后即弃会烧掉实例，真正客户端
+/// 转连即死管。本函数只保证 daemon 在线）：直试探测（连上即关——
+/// serve 环吞 ping）→ 不在 spawn `auto rqhost` → 就绪退避重试（100ms
+/// 起倍增，预算 15s）。rendezvous 采纳由各轨客户端自办（vm 轨 = lib.rs
+/// 分岔 `ClientTarget::Rqhost` 内建；rust 轨 = 子进程生成 gate）。
+pub fn ensure_rqhost_ready() -> Result<(), String> {
+    ensure_ready_with(&{
+        let spawner: RqhostSpawner = Arc::new(spawn_rqhost_default);
+        spawner
+    })
 }
 
-/// 可测性缝形态：孵化器注入（生产 [`ensure_rqhost`]；测试以进程内
+/// [`ensure_rqhost_ready`] 的可测性缝（孵化器注入——测试以进程内
 /// `RqServe` 替身覆盖 spawn+就绪全序，零真实进程）。
-pub fn ensure_rqhost_with(
-    spawner: &RqhostSpawner,
-    app_name: &str,
-) -> Result<String, String> {
+pub fn ensure_ready_with(spawner: &RqhostSpawner) -> Result<(), String> {
     let wellknown = wellknown_pipe();
-    // 直试（短超时：daemon 在 = 秒成；不在 = ~500ms 内失败）。
-    if let Ok((pipe, _)) = adopt(&wellknown, app_name, 500) {
-        return Ok(pipe);
+    // 直试探测（短超时：daemon 在 = 秒成；不在 = ~500ms 内失败）。
+    if transport::connect(&wellknown, 500).is_ok() {
+        return Ok(());
     }
     spawner(&wellknown).map_err(|e| format!("spawn rqhost 失败: {e}"))?;
-    // 就绪退避：adopt 内建 FILE_NOT_FOUND 重试，间隔即单次超时预算。
+    // 就绪退避：connect 内建 FILE_NOT_FOUND 重试，间隔即单次超时预算。
     let started = std::time::Instant::now();
     let mut backoff_ms: u32 = 100;
     loop {
-        match adopt(&wellknown, app_name, backoff_ms) {
-            Ok((pipe, _)) => return Ok(pipe),
-            Err(_) => {
-                if started.elapsed() >= std::time::Duration::from_secs(15) {
-                    return Err("rqhost 孵化后 15s 未就绪（adopt 重试预算耗尽）".to_string());
-                }
-                std::thread::sleep(std::time::Duration::from_millis(backoff_ms as u64 / 4));
-                backoff_ms = (backoff_ms * 2).min(1600);
-            }
+        if transport::connect(&wellknown, backoff_ms).is_ok() {
+            return Ok(());
         }
+        if started.elapsed() >= std::time::Duration::from_secs(15) {
+            return Err("rqhost 孵化后 15s 未就绪（探测重试预算耗尽）".to_string());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(backoff_ms as u64 / 4));
+        backoff_ms = (backoff_ms * 2).min(1600);
     }
 }
 
@@ -170,14 +170,22 @@ pub struct PendingAdoption {
     listener: transport::PendingServer,
 }
 
-/// 解析 `adopt␟<app_name>`（探测 ping/异记录 = Ok(None) 吞掉重听）。
+/// 解析采纳记录（探测 ping/异记录 = None 吞掉重听）。双动词兼容
+/// （T-05 设计修正）：`adopt␟<name>`（rqhost 本尊——queue 唯一档）与
+/// broker 族 `incubate␟<name>␟<mode>`（旧生成物 `--autodesk-incubate`
+/// 直连 rqhost 零改接驳；mode 字段忽略——pixels 诉求记观测行，宿主
+/// 仍按 Welcome=Commands 定档）。
 fn parse_adopt_record(msg: &ProtocolMsg) -> Option<String> {
     let ProtocolMsg::Control(ControlMsg::DesktopBus { record, .. }) = msg else {
         return None;
     };
     let mut parts = record.split('\u{1f}');
     match (parts.next(), parts.next()) {
-        (Some("adopt"), Some(name)) if !name.is_empty() => Some(name.to_string()),
+        (Some("adopt"), Some(name)) | (Some("incubate"), Some(name))
+            if !name.is_empty() =>
+        {
+            Some(name.to_string())
+        }
         _ => None,
     }
 }
@@ -539,6 +547,53 @@ pub fn pump_client(client: &mut RqClient, ids: &mut RqIds) -> (Vec<RqEvent>, boo
 /// 该客户端当前合成面（view/断言口——DrawListPainter 取帧点）。
 pub fn composed(client: &RqClient) -> Option<&DrawList> {
     client.inner.composed()
+}
+
+// ---------------------------------------------------------------------------
+// -q vm 轨客户端分岔（T-05/D6）：装载链零改
+// ---------------------------------------------------------------------------
+
+/// vm 轨 -q 客户端（`auto run -r vm -q`）：run_vm_ui 的 CWD/主题/后端序
+/// 上游照常执行后，本函数替代 `run_dynamic_iced` 的"自开 OS 窗"——组件
+/// 原地转 rqhost 客户端（AppProjector 产帧，exit-on-EOF 档）。
+/// rendezvous 采纳内建（`ClientTarget::Rqhost`——不预连不烧管道实例）；
+/// Hello 凭据：title = `AUTO_VM_TITLE` env 缺省 widget 名；尺寸 =
+/// `AUTO_VM_WINDOW` 解析（[`vm_window_size`]）。
+pub fn run_vm_rqhost_client(
+    component: crate::ui::dynamic::DynamicComponent,
+    wellknown: &str,
+) -> Result<String, String> {
+    use super::client_entry::{self, ClientOpts, ClientTarget};
+    use super::message::FrameMode;
+    let app_name = component.widget_name().to_string();
+    let title = std::env::var("AUTO_VM_TITLE").unwrap_or_else(|_| app_name.clone());
+    let (width, height) = vm_window_size();
+    let opts = ClientOpts {
+        app_name: app_name.clone(),
+        title,
+        width,
+        height,
+        frame_mode: FrameMode::Commands,
+        auto_downgraded: false,
+    };
+    let target = ClientTarget::Rqhost { wellknown: wellknown.to_string(), app_name };
+    client_entry::run_dynamic_client(component, opts, target)
+        .map(|_| "rqhost client exited".to_string())
+}
+
+/// `AUTO_VM_WINDOW` 解析（renderer.rs `startup_window_size` 同式边界
+/// 校验；缺席/非法/"fit" = 480×320——rqhost 档 broker 子缺省，D6）。
+pub fn vm_window_size() -> (f32, f32) {
+    if let Ok(spec) = std::env::var("AUTO_VM_WINDOW") {
+        if let Some((w, h)) = spec.trim().split_once(['x', 'X']) {
+            if let (Ok(w), Ok(h)) = (w.trim().parse::<f32>(), h.trim().parse::<f32>()) {
+                if w >= 200.0 && h >= 200.0 && w <= 7680.0 && h <= 4320.0 {
+                    return (w, h);
+                }
+            }
+        }
+    }
+    (480.0, 320.0)
 }
 
 // ---------------------------------------------------------------------------
@@ -1165,30 +1220,27 @@ mod tests {
         serve.stop(&pipe);
     }
 
-    /// T-02：ensure_rqhost 全序（注入孵化器替身——进程内起 serve 模拟
-    /// spawn 延迟）：不在 → 孵化 → 退避 → 成。
+    /// T-02/T-05：ensure 就绪全序（注入孵化器替身——进程内延迟起 serve
+    /// 模拟 spawn 就绪窗）：不在 → 孵化 → 探活退避 → 就绪。不采纳——
+    /// per-app 管道实例一次性，ensure 只保 daemon 在线（设计修正实证：
+    /// 采纳后弃端 = 烧实例，真客户端转连即死管）。
     #[test]
-    fn ensure_rqhost_spawns_with_backoff() {
+    fn ensure_ready_spawns_with_backoff() {
         let pipe = pid_pipe("ensure");
-        // well-known env 缝注入（测试隔离）。
         std::env::set_var(RQHOST_WELLKNOWN_ENV, &pipe);
-        // 孵化器替身：延迟 300ms 起进程内 serve（模拟 daemon 启动就绪窗）。
         let spawn_pipe = pipe.clone();
         let spawner: RqhostSpawner = Arc::new(move |_wellknown: &str| {
             let pipe = spawn_pipe.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(300));
-                // serve 不停——本测试末尾统一停；句柄泄漏进线程无害
-                // （进程随测试退出）。
                 let _ = RqServe::start(&pipe);
             });
             Ok(())
         });
-        let got = ensure_rqhost_with(&spawner, "counter").expect("ensure");
-        assert!(got.contains("-app-"), "per-app 管道 {got}");
+        ensure_ready_with(&spawner).expect("ensure ready");
+        // 探活直连成功（daemon 在线；serve 线程留进程退出回收）。
+        assert!(transport::connect(&pipe, 2000).is_ok());
         std::env::remove_var(RQHOST_WELLKNOWN_ENV);
-        // 清理：探测连接使 serve 环退出难（句柄在线程内）——留进程退出
-        // 回收（单测进程隔离，管道名 pid 后缀不串扰）。
     }
 
     /// T-03 集成：rqhost 装配 ×真客户端泵全循环（`native_client_full_
@@ -1398,6 +1450,100 @@ mod tests {
         // B 端静默（200ms 无串扰到达）。
         assert!(ends[1].recv_wait(200).is_none(), "B 端不应收到 A 窗输入");
 
+        serve.stop(&pipe);
+    }
+
+    /// T-05：策略档选择（I2 断言面）——Rqhost=None（exit-on-EOF）；
+    /// Direct/Broker = 30s/50ms 既有默认不变。
+    #[test]
+    fn reconnect_policy_variants() {
+        use crate::ui::desktop_protocol::client_entry::{reconnect_for, ClientTarget};
+        assert!(reconnect_for(
+            &ClientTarget::Rqhost { wellknown: "w".into(), app_name: "a".into() },
+            "p".into()
+        )
+        .is_none(), "rqhost 档 = exit-on-EOF");
+        for target in [
+            ClientTarget::Direct("p".into()),
+            ClientTarget::Broker { broker_pipe: "b".into() },
+        ] {
+            let policy = reconnect_for(&target, "p".into()).expect("桌面档保持重连");
+            assert_eq!(policy.budget_ms, 30_000);
+            assert_eq!(policy.interval_ms, 50);
+            assert_eq!(policy.pipe, "p");
+        }
+    }
+
+    /// T-05：vm 轨分岔客户端（run_vm_rqhost_client）——凭据 env 消费
+    /// （AUTO_VM_TITLE/AUTO_VM_WINDOW → Hello）+ 完整生命周期到 Close
+    /// 干净退出；含 vm_window_size 解析档位。
+    #[test]
+    fn vm_fork_client_credentials_and_lifecycle() {
+        // vm_window_size 档位（先于 env 设置断言缺省臂）。
+        std::env::remove_var("AUTO_VM_WINDOW");
+        assert_eq!(vm_window_size(), (480.0, 320.0), "缺席 = broker 子缺省");
+        std::env::set_var("AUTO_VM_WINDOW", "640x480");
+        assert_eq!(vm_window_size(), (640.0, 480.0), "WxH 解析");
+        std::env::set_var("AUTO_VM_WINDOW", "fit");
+        assert_eq!(vm_window_size(), (480.0, 320.0), "fit = 缺省档（非 480x680 独立窗语义）");
+        std::env::set_var("AUTO_VM_WINDOW", "99x99");
+        assert_eq!(vm_window_size(), (480.0, 320.0), "越界 = 缺省档");
+        std::env::set_var("AUTO_VM_WINDOW", "640x480");
+
+        let pipe = pid_pipe("vmfork");
+        let (serve, _claim) = start_serve(&pipe);
+        std::env::set_var("AUTO_VM_TITLE", "vm 轨测试窗");
+
+        const SRC: &str = "widget VmForkCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n    }\n}\n";
+        // vm fork 传 well-known：rendezvous 采纳内建（connect 臂）——
+        // 宿主侧 serve 收到 adopt 记录后 pending 落端点。
+        let fork_pipe = pipe.clone();
+        let app = std::thread::spawn(move || {
+            let comp = crate::build_dynamic_component(SRC, None).expect("build");
+            run_vm_rqhost_client(comp, &fork_pipe)
+        });
+
+        // 宿主侧：采纳到 Active——Adopted 凭据来自 env（title/尺寸）。
+        let (name, end) = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                let got = serve.pending.lock().unwrap().pop();
+                if let Some(x) = got {
+                    break x;
+                }
+                assert!(std::time::Instant::now() < deadline, "pending 5s 未落");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        };
+        assert_eq!(name, "VmForkCounter", "app_name = widget 名");
+        let mut ids = RqIds::default();
+        let (mut client, events) = adopt_one(name, end, &mut ids, 3000).expect("泵到 Active");
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                RqEvent::Adopted { title, width, height, .. }
+                    if title == "vm 轨测试窗" && *width == 640.0 && *height == 480.0
+            )),
+            "Hello 凭据 = env 消费: {events:?}"
+        );
+
+        // 宿主 Close → vm 客户端干净退出。
+        let close = client.inner.endpoint.close().expect("close");
+        client.inner.end.send(&close).expect("close 下发");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let _ = pump_client(&mut client, &mut ids);
+            if app.is_finished() {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "vm 客户端 5s 未退出");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let outcome = app.join().expect("vm 线程").expect("vm 客户端 Ok");
+        assert_eq!(outcome, "rqhost client exited");
+
+        std::env::remove_var("AUTO_VM_TITLE");
+        std::env::remove_var("AUTO_VM_WINDOW");
         serve.stop(&pipe);
     }
 }
