@@ -40,16 +40,17 @@ pub(crate) const INPUT_BORDER: Rgba8 = Rgba8::new(90, 90, 100, 255);
 pub(crate) const PLACEHOLDER_FG: Rgba8 = Rgba8::new(130, 130, 140, 255);
 /// 输入框底色（未声明样式时）。
 pub(crate) const INPUT_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
-/// image 占位底色（保真边界：位图内容归 Stage 5）。
-const IMAGE_PLACEHOLDER: Rgba8 = Rgba8::new(60, 60, 70, 255);
+/// image 占位底色（保真边界：位图内容归 Stage 5）。PLAN-026 T-03
+/// pub(crate) 化——native_projector display 臂复用（同值镜像禁再立）。
+pub(crate) const IMAGE_PLACEHOLDER: Rgba8 = Rgba8::new(60, 60, 70, 255);
 
 // Plan 507 T3 —— Tier1 display 族常量（未声明样式时的缺省观感）。
 /// badge 药丸底（accent 基调，与按钮同族）。
 const BADGE_BG: Rgba8 = Rgba8::new(48, 96, 200, 255);
 /// avatar 占位底（圆角直角化——保真边界同 image）。
 const AVATAR_BG: Rgba8 = Rgba8::new(70, 70, 82, 255);
-/// progress 轨道底。
-const PROGRESS_TRACK: Rgba8 = Rgba8::new(45, 45, 52, 255);
+/// progress 轨道底。PLAN-026 T-03 pub(crate) 化（native 臂复用）。
+pub(crate) const PROGRESS_TRACK: Rgba8 = Rgba8::new(45, 45, 52, 255);
 /// divider/分隔线。
 const DIVIDER_BG: Rgba8 = Rgba8::new(80, 80, 90, 255);
 /// 禁用态前景（前景/底色统一乘暗系数的近似——命令差分见 form 族）。

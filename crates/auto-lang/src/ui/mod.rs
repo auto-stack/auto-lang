@@ -72,6 +72,7 @@ pub mod handler_codegen;
 pub mod child_emit;
 #[cfg(feature = "ui-iced")]
 pub mod session;
+pub mod shell_projection;
 // PLAN-615 T-06: OS 系统主题读取（深/浅色个人化跟随地基；纯 std 全平台可编译）。
 pub mod system_theme;
 

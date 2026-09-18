@@ -327,7 +327,7 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
         all_components.push_str(&generate_api_client(project_dir, &all_api_imports));
     }
 
-    let full_code = wrap_example(&project_name, &all_components);
+    let full_code = wrap_example(&project_name, &all_components, project_dir);
     let main_rs = rust_dir.join("src").join("main.rs");
     fs::write(&main_rs, &full_code)
         .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
@@ -456,7 +456,7 @@ pub fn generate_rust_ui(
 
     // Wrap in main() boilerplate
     let main_widget = extract_main_widget(&all_components);
-    let full_code = wrap_example(&project_name, &all_components);
+    let full_code = wrap_example(&project_name, &all_components, project_dir);
 
     // Write output as a Cargo project
     let src_dir = output.join("src");
@@ -1740,7 +1740,7 @@ fn ws_close(handle: i32) {
 }
 
 /// Wrap generated components in a main() function with ICED/GPUI backend selection.
-fn wrap_example(project_name: &str, components: &str) -> String {
+fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> String {
     let main_widget = extract_main_widget(components);
     let main_msg = format!("{}Msg", main_widget);
 
@@ -1824,8 +1824,9 @@ fn wrap_example(project_name: &str, components: &str) -> String {
     // Plan 020 T-05 —— native 桌面客户端臂：孵化参数在册（
     // `--autodesk-client=<pipe>` 直连 / `--autodesk-incubate` broker 孵化）
     // → `client_entry::run_native_client` 协议 client（三态裁决：spawn
-    // `--autodesk-render=` 透传 > auto 缺省 independent——T-04 待澄清③
-    // 定案；pac `desktop_render:` 档由宿主 spawn 侧读取透传，生成物无
+    // `--autodesk-render=` 透传 > auto 缺省 = 覆盖扫描制（PLAN-026 T-06
+    // 翻转：Covered → queue；NotCovered → 降级 independent 留痕）；
+    // pac `desktop_render:` 档由宿主 spawn 侧读取透传，生成物无
     // pac 位置感知）。无标记 = 独立窗现行行为零变化（I1 零删除不变式）。
     // v1 边界：async-init App 经孵化臂以 `default()` 态起（初始化 API
     // 加载不接协议 client 面——超覆盖 App 走 auto 降级 independent）。
@@ -1858,10 +1859,14 @@ fn wrap_example(project_name: &str, components: &str) -> String {
                 __render.as_deref(),
                 None,
             );
+            // PLAN-026 T-06 翻转：组件先行构造（auto 裁决 = 覆盖扫描制
+            // ——queue 优先 + NotCovered 降级 independent 留痕）。
+            let __component = {main_widget}::default();
             let (__frame_mode, __downgraded, __log) =
                 auto_lang::ui::desktop_protocol::client_entry::resolve_native_frame_mode(
                     __mode,
                     "{main_widget}",
+                    &__component.view(),
                 );
             if let Some(__l) = &__log {{
                 eprintln!("[autodesk-client] {{__l}}");
@@ -1881,7 +1886,7 @@ fn wrap_example(project_name: &str, components: &str) -> String {
                 auto_downgraded: __downgraded,
             }};
             return auto_lang::ui::desktop_protocol::client_entry::run_native_client(
-                {main_widget}::default(),
+                __component,
                 __opts,
                 __target,
             )
@@ -1890,6 +1895,30 @@ fn wrap_example(project_name: &str, components: &str) -> String {
         main_widget = main_widget,
         project_name_snake = to_snake_case(project_name),
     );
+
+    let pac_path = project_dir.join("pac.at");
+    let pac_window = parse_pac_window(&pac_path);
+    let pac_title = parse_pac_title(&pac_path);
+
+    let mut env_inits = String::new();
+    if let Some(win) = pac_window {
+        env_inits.push_str(&format!(
+            r#"        if std::env::var("AUTO_VM_WINDOW").is_err() {{
+            std::env::set_var("AUTO_VM_WINDOW", "{}");
+        }}
+"#,
+            win
+        ));
+    }
+    if let Some(t) = pac_title {
+        env_inits.push_str(&format!(
+            r#"        if std::env::var("AUTO_VM_TITLE").is_err() {{
+            std::env::set_var("AUTO_VM_TITLE", "{}");
+        }}
+"#,
+            t.replace('\\', "\\\\").replace('"', "\\\"")
+        ));
+    }
 
     format!(
         r#"// Auto-generated from Auto language by a2rust-ui
@@ -1906,7 +1935,7 @@ static GUARD_ALLOC: auto_lang::ui::mem_guard::GuardAlloc = auto_lang::ui::mem_gu
 fn main() -> auto_lang::ui::AppResult<()> {{
     #[cfg(feature = "ui-iced")]
     {{
-        // Plan 020 T-05：孵化参数在册 → native 协议 client 臂（返回即走）；
+{env_inits}        // Plan 020 T-05：孵化参数在册 → native 协议 client 臂（返回即走）；
         // 无标记 → 独立窗（下行 iced_entry 现行行为零变化）。
         {native_client_gate}
         {iced_entry}
@@ -1928,6 +1957,7 @@ fn main() -> auto_lang::ui::AppResult<()> {{
 }}
 "#,
         cleaned = cleaned.trim(),
+        env_inits = env_inits,
         native_client_gate = native_client_gate,
         iced_entry = iced_entry,
         main_widget = main_widget,
@@ -2055,6 +2085,51 @@ fn parse_pac_exe_name(pac_path: &Path) -> Option<String> {
         }
     }
     None
+}
+
+/// Parse window setting from pac.at file (e.g. "fit" or "1280x800").
+fn parse_pac_window(pac_path: &Path) -> Option<String> {
+    let content = fs::read_to_string(pac_path).ok()?;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("window:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim();
+                let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Parse display title from pac.at file (prefers title_zh if available).
+fn parse_pac_title(pac_path: &Path) -> Option<String> {
+    let content = fs::read_to_string(pac_path).ok()?;
+    let mut title = None;
+    let mut title_zh = None;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("title_zh:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim().trim_end_matches(',').trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    title_zh = Some(value.to_string());
+                }
+            }
+        } else if line.starts_with("title:") {
+            if let Some(colon_pos) = line.find(':') {
+                let value = line[colon_pos + 1..].trim().trim_end_matches(',').trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    title = Some(value.to_string());
+                }
+            }
+        }
+    }
+    title_zh.or(title)
 }
 
 /// Convert CamelCase to snake_case.

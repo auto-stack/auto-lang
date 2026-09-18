@@ -38,6 +38,8 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 027 | 解释臂缺陷候选（基线红在册） | `p010_popover_ondismiss_extracted_from_events` 全量跑红（PLAN-027 work 期 stash 对照实证为改前基线红，非 027 回归）：桌面 surface 视图 5 枚 popover 中 1 枚 ondismiss 落 `__popover_close` 合成兜底（VM 态无此处理语义，测试断言红）。疑因 = desktop.at 拖拽幽灵 popover（open+x/y、无 ondismiss，desktop.at:269）在解释臂被判为 widget 形态（`resolve_expr_to_value` 对 cursor 浮点态求值路径）走首子锚分支。影响面 = 解释轨拖拽幽灵 popover 外点关闭语义 + 测试基线；修复面在 `aura_view_builder.rs convert_popover` 坐标锚判定，PLAN-027 零触碰解释轨未修。 | `ui/iced/renderer.rs:29252`（断言点）；`aura_view_builder.rs convert_popover`；PLAN-027 T-02 证据（stash 对照） |
+| 027 | 双轨视觉分歧候选（B parity 线复核项） | a2r 按钮动态 style + variant：preset 不注入（PLAN-571 文档化先例"动态表达式无法静态合并则不注入"），VM 臂恒注入——shell 按钮 ×38 携 variant（ghost/primary）且多为动态 if-style，编译轨按钮缺 preset chrome。PLAN-027 T-04 拒绝门配套将 variant/size 改为已消费词汇剥除（四臂双 feature 一致），消除误伤但保留不注入分歧。shell 编译化（B 程序）双轨对拍时需实测定级。 | `ui_gen/rust.rs with_button_preset`（四臂）；PLAN-571 记录；PLAN-027 T-04 证据 |
 | 377 | heap-aware 遗漏 | stdlib.rs 有 10 处 `push_i64(handle/server)` 未改用 `push_i64_vm`。值是 heap ID（< 2^48），实际安全，但不符合 Plan 377 的"所有 64 位值走 heap-aware"一致性目标。 | `vm/ffi/stdlib.rs:3092,3105,3115,3125,3135,3146,3478,3493,3511,3531` |
 | 377 | TYPE_CAST_U64 | engine.rs:2690 的 TYPE_CAST_U64 用 `push_u64(v as u32 as u64)`，值 < 2^32 安全，但未走 heap-aware 路径。 | `vm/engine.rs:2690` |
 | 340 | reduce init_val 类型 | shim_list_reduce 的 Value path 中 init_val 仍是 `pop_i32()`（而非 `pop_nv()`+`nv_to_value`）。若 reduce 初始值是 struct/str 会丢类型。常见用例（init=0/""）不受影响。 | `vm/native.rs shim_list_reduce` |
@@ -647,6 +649,11 @@
   setInterval/调度器无条件起拍,handler 早退。功能正确但每图族常驻
   ~30Hz 空事件(全 gallery 合计可观数量)。偿还路径:timer 调度器在
   派发前求值 when(状态变化时启停 interval),或 handler 空转计数熔断。
+  **→ PLAN-650 E-1 订阅层清偿（2026-09-18 merge）**：VM/iced 轨
+  `DynamicComponent::timer_when_allows_subscription` + renderer 订阅循环
+  `when` 假时不挂 `widget_event_tick`；`fire_timer` 派发门保留为双保险。
+  vue 轨 handler 体内门控（原有形态）不在 650 范围、行为不变。
+  实机静止 CPU 对照仍待后续量测（650 §10/R650-5）。
 - **P499-2 donut tooltip 角落锚定不跟随(max-w-md 缩放对位风险)**：donut
   tooltip 维持 `absolute top-[20px] right-[20px]` 角落锚定(M4 决议)——
   line 的跟随定位(cx-80 钳制)不适用于 donut 的 max-w-md 随宽缩放(逻辑
@@ -1149,6 +1156,10 @@
   4.1 万次全重建）。iced Element 不可 Clone，注释承诺的"同 Element 复用"
   不可达；偿还路径：评估 iced `lazy`/组件化包层做帧间跳过，或接受重建
   但以 D2 退订消除空转触发源。
+  **→ PLAN-650 裁定延期 D-1（2026-09-18 merge）**：easy wins（E-2/E-4
+  旁路减负）已落，架构级帧间缓存不在 650；设计选项/取舍见
+  `docs/design/autoui/vm-frame-budget.md` §5.1。本债保持在案，待 D-1
+  独立计划清偿。P530-D2 路由退订同批延期 D-2（E-1 对 when 假场景已够）。
 - **P530-D4 诊断门控留档**：`P530_TRACE=1`（LayoutCollector 重复 id 记录
   + view/resize 宽度轨迹）、`P530_NOMCP=1`（跳过 per-frame MCP 同步/
   capture 路径，A/B 判别用）两 env 门控留存于 renderer/layout_collector，
@@ -2248,6 +2259,9 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P020-D4 | low | 测试基建 | **桌面画布↔屏幕变换未文档化，OS 级点击自动化未打通**（DPI 2x + canvas 缩放系数非恒定——ui_desktop 真机冒烟三次坐标假设均未命中窗内按钮）；窗内点击/× 关闭的 GUI 级自动化待 acceptance channel 增 pointer verb（现仅 bus/handler），期间点击闭环/回收由协议级 p020_native_exe_arm 承载 | mcp_server.rs autoui_desktop；scripts/smoke-020-native-exe.sh（os 仓）随注 |
 | P025-D1 | low | 协议边界 | **live iced 桌面壳无键盘/滚轮事件订阅通道**（session.rs 零键盘事件臂——PLAN-025 D4 调查证据）；broker_key_event/broker_char/broker_scroll 生产路径已落（协议/broker 层），live 接线需 DesktopMessage 扩展 + iced 事件映射（Key::Named→VK u32、WheelScrolled→Scroll{dx,dy}、Key text→CharTyped）另立；期间真机键入链路由协议级 p025_native_input_arm 承载（P020-D4 同口径） | session.rs broker_* 生产路径；desktop-protocol-v1.md §1.7 输入路由两端 |
 | P025-D2 | low | 保真边界 | **native 聚焦身份 = 槽位序（D1-A）**——动态增删 input 致焦点前插入的结构变化下槽位越界即失焦（不猜测对位）；同族 not-yet 随注：slider 拖拽连续派发、select 键盘跳项、input on_submit/Enter、密码掩码、多行自动换行 | native_projector.rs focused_input 重定位；desktop-protocol-v1.md §1.7 聚焦与编辑闭环 |
+| P026-D1 | low | 保真边界 | **图像/字形真渲 not-yet（占位保真口径在册）**——DrawOp 无图像算子，image/icon/avatar/divider 走占位 Quad（解释态 queue 臂同级，非单臂超集）；icon 字形（lucide 渲染）native 通道缺位——位图/字形共享（shm 块）归 shell a2r 设计 §4-B 图像通道独立线 | native_projector.rs Image/ProgressBar 臂随注；desktop-protocol-v1.md §1.8 |
+| P026-D2 | low | 生成器 | **a2r 断裂映射残余（display 族外）**——tag_to_view_fn 仍映射 modal/tooltip/spinner/option/toggle/radiogroup/tab 至不存在构造器（含这些标签的样本 a2r 编译失败）；显式拒绝策略归 shell a2r 设计 S1（026 修面 = badge/card/scroll/icon/a + image src 绑定容差 + Link 子件组合） | ui_gen/rust.rs tag_to_view_fn；§5.1 D1 定案 |
+| P026-D3 | low | 协议边界 | **native auto 缺省维持 independent（复测未达标）**——examples 全量 judged 76.2% < 95% 阈值（缺项 opacity/hidden/样式版 grid/popover/定位族全在册）；翻转点已备（resolve_native_frame_mode Covered 臂 one-line），随 ramp v3 复评；live iced 壳 IME 订阅缺口并入 P025-D1 | desktop-protocol-v1.md §1.8；docs/plans/reports/p026-native-flip-data-row.md |
 
 ## 2026-09-17 增补（PLAN-633 复审登记）
 
@@ -2279,3 +2293,16 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P642-D9 [子件主题魔法变量污染宿主]**：016 `dark_mode=false` 打开后宿主全局持久变浅色（u2 序列实证）。T-13 隔离（主题只认根件）。
 - **P642-D10 [020 媒体扫描依赖独立 HTTP 后端]**：`Http.get_json("/api/media/scan")` 内嵌无后端进程即空曲库（player_store.at:92）——T-19 proxy 的直接用例。
 - **P642-D11 [plan606 029 data-URL 断言]**：见 P642-D5——补记：该测试期望视图层含 data URL，但语料已演进为"路径引用 + 渲染端内嵌"契约（Plan 617/628），断言过时；候选修法 = 更新断言到现契约或恢复视图层内联，属测试契约决策。
+
+## 2026-09-18 增补三（PLAN-647 核销与移交）
+
+- **P639-D3 ✅ 核销（PLAN-647，2026-09-18）**：bp 包多版本/锁面正式裁定为 **Option A 单版本 MVP 转正**——五项终版规则落 `docs/specs/blueprint/contract.md` Q5（①单版本滚动权威源 ②升版=全体消费方下次构建重构建 ③pac.at `version`=展示元数据非约束面 ④跨仓对齐走 git 层（CI pin commit/同 commit 检出）⑤锁面触发条件三选一即立项 Option B）。配套双护栏堵半吊子口子：spec frontmatter 顶层版本键与 pac.at `dep` 版本类键均显式报错（`plan647_bp_version_tests` 负测试；此前两者皆静默忽略）。
+- **070 侧承接事项（移交 auto-down，不越仓改文件）**：①PLAN-070 消费侧铺开按 Q5 单版本假设执行（MVP 假设转正，无版本键依赖声明——`dep bps { path }` 纯 path 形态）；②跨仓对齐落点=auto-down CI/构建脚本 pin auto-lang commit 或同 commit 家族检出（git 层，非 bp 层）；③若后续出现仓族外消费者/独立发版需求，按 Q5 ⑤触发条件提出 Option B 立项。
+
+## 2026-09-18 增补四（PLAN-645 登记与核销）
+
+- **DEBTS 070 第一行 ✅ 核销（PLAN-645 T-01）**：`BlueprintRegistry::with_defaults` 扫描根由编译期 `CARGO_MANIFEST_DIR` 改为运行时三级解析（`AUTO_BLUEPRINTS_ROOT` env → cwd 向上找 `blueprints/` → 编译期兜底）——`auto bp list/show/add/check` 在 worktree/外部检出内可见本仓包库。对照实证：同 cwd（worktree 内）master 二进制读主检出包库（filetree variants=[]），plan645 二进制读 worktree 包库（variants=["default"]）；env 指向空目录列举跟随为空。契约行落 `docs/specs/blueprint/contract.md` 验证面；测试 `registry::root_resolution_tests` 4 件。
+- **DEBTS 070 第二行 ✅ 核销（PLAN-645 T-02/T-03）**：vue 轨 bps 扫描发射路径（auto-man Plan 475 dep 通道）补 plan522 式 fn 转译——`collect_use_module_fns` 池挂接逐 widget 重生成，bp reference 跨文件 fn 导入（bare/bps 限定）按被引符号闭包内联进 SFC（TS2304 `Cannot find name 'flatten_tree'` 断裂面修复）。filetree 组合形态 `default` 变体恢复（af8c72a84 原样 bare 形态）+ 047-bp-compose 回归夹具 `auto build`+vue-tsc+vite 全绿；`plan645_bp_tests` 正（闭包到不动点）/负（未导入不入 SFC）断言。contract.md SD-01 契约行落笔。
+- **PLAN-643 基线红修复成文（PLAN-645 T-02 附带）**：046-bp-import 全量 `auto build` 在 master（1fc4772d9）即红——PLAN-643 with_charts.at 的 `use { package: official from "components" }` 消费方契约导入在包内 standalone strict 编译必然 S003（Plan 475 dep 通道硬炸；643 门禁 `cargo t plan643` 不覆盖全量构建故漏检）。修复 = 库形态 dep（无 src/front、无 front/）strict 降为告警（Plan 041a fn_only 先例同向延伸）；data-table 语料 R006（v-for 缺 `:key`）同类浮出为告警。修复后 046 gen-only+vue-tsc+vite 全绿。
+- **P645-D1 [data-table-crud 语料 R006：v-for 缺 `:key`（语料质量，非阻塞）]**：`data-display/data-table-crud/reference/{minimal,with_dialog}.at` 的表格 v-for 无 `:key`（R006 WARNING，Vue 列表身份语义）。此前被 with_charts S003 硬炸截停从未浮出；PLAN-645 软化后以告警面在案。修向 = 语料补 `:key`（属 bp 语料整备，随下次消费该包的计划顺带）。引用：`/tmp/build645.log` R006 ×2（2026-09-18 repro 实测）。
+- **P645-D2 [musk_vm_track p053_4 预存红归因（环境，非本计划）]**：`musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode` 在 master 基点 1fc4772d9 对照复现同败（detached worktree 控制实验）——564-Q6 预存红家族成员，非 PLAN-645 回归（本计划改动面：registry 扫描根/auto-man dep 通道/bp 语料/047 夹具，与 musk VM codegen 零交集）。归 musk 域后续计划排查。

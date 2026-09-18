@@ -1,0 +1,25 @@
+// PLAN-645 AC-01 回归样本：组合形态 bp（FileTree）vue 轨消费。
+// FileTree reference 自身 bare 导入包内支撑件（tree_util fn + tree_icon
+// widget）——bps 扫描发射器须按 plan522 式 helper 转译把被引 fn 闭包内联
+// 进 FileTree.vue（SFC 自包含），否则 vue-tsc TS2304（070 实勘断裂面）。
+use bps.navigation.filetree.reference.default: FileTree
+
+widget App {
+    model {
+        var ftNodes List = [
+            { id: "src", label: "src", children: [
+                { id: "src/main", label: "main.rs", children: [], kind: "file", icon: "", is_leaf: true, badge: "" },
+                { id: "src/components", label: "components", children: [
+                    { id: "src/components/app", label: "app.at", children: [], kind: "file", icon: "", is_leaf: true, badge: "" }
+                ], kind: "dir", icon: "", is_leaf: false, badge: "" }
+            ], kind: "dir", icon: "", is_leaf: false, badge: "" },
+            { id: "Cargo.toml", label: "Cargo.toml", children: [], kind: "file", icon: "", is_leaf: true, badge: "" }
+        ]
+        var ftExpanded List = ["src"]
+    }
+    view {
+        col (class: "w-80 border rounded-lg p-2") {
+            FileTree (nodes: .ftNodes, default_expanded: .ftExpanded) {}
+        }
+    }
+}

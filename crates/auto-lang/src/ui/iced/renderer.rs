@@ -6230,6 +6230,10 @@ pub fn startup_window_size() -> iced::Size {
                     resolved = iced::Size::new(w, h);
                 }
             }
+        } else if spec.trim().eq_ignore_ascii_case("fit") {
+            // Plan 644 follow-up: fit mode defaults to compact card dimensions
+            // before content measurement completes, avoiding large desktop window flash.
+            resolved = iced::Size::new(480.0, 680.0);
         }
     }
     // PLAN-046-B (auto-musk T7): baseline height lands in session KV so .at
@@ -6240,6 +6244,26 @@ pub fn startup_window_size() -> iced::Size {
         format!("{}", resolved.height),
     );
     resolved
+}
+
+/// Extract initial content size from root view's style when `window: "fit"` is declared.
+pub fn extract_root_view_fit_size<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<iced::Size> {
+    let style = match view {
+        AbstractView::Column { style, .. } | AbstractView::Row { style, .. } | AbstractView::Container { style, .. } => style.as_ref(),
+        _ => None,
+    }?;
+    let layout = crate::ui::style::BoxLayout::from_style(style);
+    let w = match layout.width {
+        Some(SizeValue::Pixels(px)) if px > 0.0 => Some(px),
+        Some(SizeValue::Fixed(units)) if units > 0 => Some((units as f32) * 4.0),
+        _ => None,
+    }?;
+    let h = match layout.height {
+        Some(SizeValue::Pixels(px)) if px > 0.0 => px,
+        Some(SizeValue::Fixed(units)) if units > 0 => (units as f32) * 4.0,
+        _ => (w * 1.4).clamp(320.0, 720.0),
+    };
+    Some(iced::Size::new(w.max(200.0), h.max(200.0)))
 }
 
 /// Plan 504: startup window fit-to-content mode. Source:
@@ -7174,14 +7198,15 @@ fn widget_event_tick(
     })
 }
 
-/// Periodic tick subscription for hot-reload file watching (per-App).
-///
-/// Emits `DM::App(app, HOT_RELOAD_EVENT)` every 500ms. The update handler
-/// checks `check_file_changed()` and reloads if the source file was modified.
-fn hot_reload_tick(
-    app: crate::ui::session::AppId,
-) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    app_tick(app, HOT_RELOAD_EVENT, 500)
+/// PLAN-650 E-3：hot_reload 轮询间隔。
+/// `AUTOUI_HOT_RELOAD=0` → None（不订阅）；`=1` → 500ms；缺省 debug 500ms /
+/// 非 debug 2000ms——浏览/静止场景显著降低 update→view 泵频率，开发热重载仍可用。
+fn hot_reload_interval_ms(debug_mode: bool) -> Option<u64> {
+    match std::env::var("AUTOUI_HOT_RELOAD").as_deref() {
+        Ok("0") => None,
+        Ok("1") => Some(500),
+        _ => Some(if debug_mode { 500 } else { 2000 }),
+    }
 }
 
 /// Periodic tick subscription for widget .Tick handlers (per-App).
@@ -13465,13 +13490,6 @@ fn boot_entry_matches(src_norm: &str, entry_norm: &str) -> bool {
 /// "N{slot}:{focused},"。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
-    // PLAN-012 O1：primary=特权 shell（boot 分配序）后，MCP 截图守卫与
-    // 响应式布局读 shell_fields.window_size——层 App 无窗事件可靠喂给
-    //（实机 MCP 截图被零尺寸守卫拒死），此处随 tick 镜像宿主 viewport
-    //（变化才写，稳态零成本）。借序：须在 host 不可变借用之前。
-    // PLAN-012 O3：镜像面扩至全部特权层字段（launcher/switcher/
-    // notification）——通知面板根高/max-h 类在零尺寸上下文解析失真
-    //（实机 mt-auto/根高塌缩、贴顶复验三连），根因与截图守卫同源。
     {
         let vp = state.host_viewport();
         if let Some(host_mut) = state.host.as_mut() {
@@ -13497,14 +13515,32 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             }
         }
     }
-    let Some(host) = state.host.as_ref() else { return };
+
+    // PLAN-027 T-05：投影派生单源化——快照构建（typed 载体
+    // shell_projection::ShellProjection）与解释轨回写（指纹门控保留 +
+    // 写集逐字节一致）拆分；本函数 = 调度点。desktop 层
+    // __wm_running/RunningSync 推送随 apply；workspace_preview 数据发布
+    // 独立（PLAN-012 W3 400ms 节拍面，不入指纹组）。
+    let proj = build_shell_projection(state);
+    apply_shell_projection_interpreted(state, shell, &proj);
+    publish_workspace_previews(state);
+}
+
+/// PLAN-027 T-05：shell（任务栏）面投影快照构建——原 sync_shell_windows
+/// 内联派生逻辑逐行平移（wins/native 槽位/分区/mru/notes/pinned/running/
+/// meta + 指纹段式），leaf 形态由 shell_projection 载体承载。native_icon
+/// ensure 幂等缓存副作用保留在构建点（Plan 515 D1）。
+pub(crate) fn build_shell_projection(
+    state: &crate::ui::session::DesktopSession,
+) -> crate::ui::shell_projection::ShellProjection {
+    use crate::ui::shell_projection::{
+        DockPin, ShellNote, ShellProjection, ShellWin, ShellWorkspace,
+    };
+    let mut proj = ShellProjection::default();
+    let Some(host) = state.host.as_ref() else { return proj };
     let mut fp = String::new();
-    let mut wins: Vec<auto_val::Value> = Vec::new();
-    // Plan 505 B2（债 P497-1）v1.5：分区缩略 pager 派生面——.at 无"过滤后
-    // 截断"原语（for+if 过滤无局部计数器），每分区 z_order 前 4 窗以
-    // `pager:"1"` 旗标标记、溢出以 `ws.more` "+N" 标签投影（I9 宿主单一
-    // 事实源，同 __wm_running 先例）。旗标/标签均为既有指纹 win 段的纯
-    // 函数（逐窗 workspace 已入指纹），指纹不需扩段。
+    // Plan 505 B2（债 P497-1）v1.5：分区缩略 pager 派生面（宿主单一事实源，
+    // 指纹不需扩段——逐窗 workspace 已入指纹）。
     let mut pager_shown = std::collections::HashSet::new();
     let mut ws_more: Vec<String> = vec![String::new(); host.wm.workspaces.len()];
     // PLAN-012 O2：同 app 首见追踪（z_order 序；dup_app 派生源）。
@@ -13522,19 +13558,14 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             }
         }
     }
+    // PLAN-012 W1：常驻隐藏窗投影全排除（__wm_wins/pager/指纹/运行集）。
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
-        // PLAN-012 W1：常驻隐藏窗投影全排除（__wm_wins/pager/指纹/运行集
-        // ——"真关了"感知 + W7 齿轮高亮随 `__wm_running` 回落）。
         if v.hidden.get() {
             continue;
         }
         let focused = host.wm.focused == Some(wid);
-        // PLAN-012 O2：dock 去重判据宿主派生——pinned = 本窗 app 在固定
-        // 集；dup_app = 同 app 已有更前位（z_order 序首见之外）非隐藏窗。
-        // shell 侧 view 条件无 contains/聚合原语（O2 实机双图标根因），
-        // 等式消费此二字段。"同类 app 共享一图标"（用户裁定）由 dup_app
-        // 承接：非固定多窗仅首见窗出条目。
+        // PLAN-012 O2：dock 去重判据宿主派生（pinned/dup_app，等式消费）。
         let (pinned_flag, dup_flag) = match v.registry_id.as_deref() {
             Some(id) => (
                 state.desktop.dock_pinned.iter().any(|p| p == id),
@@ -13542,41 +13573,47 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             ),
             None => (false, false),
         };
-        wins.push(projection_win_entry(
-            &state.desktop.registry_entries,
-            v,
+        let icon = v
+            .registry_id
+            .as_ref()
+            .and_then(|id| state.desktop.registry_entries.iter().find(|e| &e.id == id))
+            .map(|e| e.icon.clone())
+            .unwrap_or_else(|| "app-window".to_string());
+        proj.wins.push(ShellWin {
+            wid: wid.0.to_string(),
+            title: v.title.clone(),
             focused,
-            if pager_shown.contains(&wid) { "1" } else { "" },
-            pinned_flag,
-            dup_flag,
-        ));
+            workspace: Some(v.workspace),
+            native: false,
+            app: v.registry_id.clone().unwrap_or_default(),
+            icon,
+            pager: pager_shown.contains(&wid),
+            pinned: pinned_flag,
+            dup_app: dup_flag,
+        });
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
     }
-    // Plan 486 v1.3：native 槽位条目——wid="N<slot_id>" 独立编码空间（与
-    // App wid 隔离，协议 §字段表）；仅 Docked 态投影（瞬时态不进任务栏）；
-    // title 取缓存、icon 占位；focused 恒空——native 焦点域在 OS 层，WM
-    // 不代管（473 apply_layout 同裁定）。不进 __wm_running（条目本身即
-    // 运行态）。指纹并入窗段同型 "{wid}:{focused},"。App 条目的 native
-    // 字段恒空串（shell.at 分支判据统一，避免缺失字段访问）。
+    // Plan 486 v1.3：native 槽位条目（wid="N<slot_id>"；仅 Docked 态投影；
+    // focused 恒空——native 焦点域在 OS 层）。Plan 515 D1：HICON 真图标
+    // 幂等提取入缓存。
     for (id, slot) in &host.wm.native_slots {
         if slot.state != crate::ui::native_dock::SlotState::Docked {
             continue;
         }
-        // Plan 515 D1：HICON 真图标（486 占位清偿）——幂等提取入缓存，
-        // icon 字段有真图标时 = "hicon:<slot>"（渲染臂换 image）。
         crate::ui::iced::native_icon::ensure(id.0, slot.hwnd);
-        wins.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
-            ("wid", auto_val::Value::Str(format!("N{}", id.0).into())),
-            ("title", auto_val::Value::Str(slot.title_cache.clone().into())),
-            ("focused", auto_val::Value::Str(String::new().into())),
-            ("native", auto_val::Value::Str("1".into())),
-            ("icon", auto_val::Value::Str(
-                crate::ui::iced::native_icon::icon_field(id.0).into(),
-            )),
-            // v1.5：native 无分区归属，pager 恒空串（判据统一不缺字段）。
-            ("pager", auto_val::Value::Str(String::new().into())),
-        ]))));
+        proj.wins.push(ShellWin {
+            wid: format!("N{}", id.0),
+            title: slot.title_cache.clone(),
+            focused: false,
+            workspace: None,
+            native: true,
+            app: String::new(),
+            icon: crate::ui::iced::native_icon::icon_field(id.0).to_string(),
+            pager: false,
+            pinned: false,
+            dup_app: false,
+        });
         fp.push_str(&format!("N{}:{},", id.0, 0));
     }
     let layout_name = match host.wm.layout {
@@ -13587,13 +13624,13 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let focused_wid = host.wm.focused.map(|w| w.0.to_string()).unwrap_or_default();
     let meta = format!("{}\t{}", layout_name, focused_wid);
     fp.push_str(&format!("|{}", meta));
-    // Plan 472 T4：运行中 app 集合派生串（",id1,id2,"；pinned 运行指示的
-    // view 条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实源）。
+    proj.meta = meta;
+    // Plan 472 T4：运行中 app 集合派生串（",id1,id2,"）。
     let mut running = String::from(",");
     let mut seen: Vec<&str> = Vec::new();
     for &wid in &host.wm.z_order {
         if let Some(v) = host.wm.wins.get(&wid) {
-            // PLAN-012 W1：常驻隐藏窗不入运行集（齿轮高亮语义，AC-12）。
+            // PLAN-012 W1：常驻隐藏窗不入运行集（齿轮高亮语义）。
             if v.hidden.get() {
                 continue;
             }
@@ -13606,221 +13643,192 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             }
         }
     }
-    // PLAN-012 W7 v1.6：聚焦 app id（聚焦窗 registry_id；"" = 无聚焦或聚焦
-    // 在 native 槽位）——pinned 图标聚焦底条 + 底色高亮的标量判据面（.at
-    // 无法跨列表表达"存在聚焦窗"量词）。fp 不扩段：聚焦变化必经 meta 段
-    // focused_wid 翻转触发重写，本字段随写同步。
-    let focused_app = host
+    proj.running_csv = running.clone();
+    // PLAN-012 W7 v1.6：聚焦 app id（fp 不扩段——聚焦变化必经 meta 段）。
+    proj.focused_app = host
         .wm
         .focused
         .and_then(|wid| host.wm.wins.get(&wid))
         .and_then(|v| v.registry_id.clone())
         .unwrap_or_default();
-    // PLAN-012 O2：⚙️ 高亮判据标量（存在非隐藏 os-config 窗 = "1"）——
-    // 原 shell 侧 `__wm_running.contains(",os-config,")` 为 view 条件方法
-    // 调用死点（O2 实机探针定性：设置窗在场齿轮仍无高亮）。窗开/关/hide
-    // 均翻 win 指纹段，本标量随写同步。语义同 __wm_running 的 os-config
-    // 成员（hidden 排除互证）。
-    let settings_open = host
+    // PLAN-012 O2：⚙️ 高亮判据标量（非隐藏 os-config 窗在场）。
+    proj.settings_open = host
         .wm
         .wins
         .values()
         .any(|v| !v.hidden.get() && v.registry_id.as_deref() == Some(OSCONFIG_APP_ID));
-    // PLAN-019 v1.7：__wm_showdesk 标量（当前分区 = 负一屏）——sliver
-    // 两态高亮与 toggle 判据（等式消费）。进入/返回必翻分区指纹段（同
-    // settings_open 的随写同步模式），无独立指纹段。
-    let showdesk_on = host.wm.on_showdesk();
-    // Plan 472 T3：workspace 分区投影段（协议 v1 §2.2/§2.3）。
-    // Plan 478 T3 v1.1：条目增 `label`（1 基人读标签，宿主投影——避开 .at
-    // 字符串算术）；指纹分区段扩展 "{id}:{current},{label};"。
-    let mut workspaces: Vec<auto_val::Value> = Vec::new();
+    // PLAN-019 v1.7：__wm_showdesk 标量（当前分区 = 负一屏）。
+    proj.showdesk = host.wm.on_showdesk();
+    // Plan 472 T3 / 478 T3 v1.1：分区投影段 + 指纹段。
     fp.push('|');
     for ws in &host.wm.workspaces {
-        // PLAN-019 v1.7：负一屏保留分区不入投影（pager 切换条不可见——
-        // 常规分区导航永不路过空屏；进出负一屏必翻常规分区 current 位，
-        // 指纹照常差分，`__wm_showdesk` 随写同步）。
+        // PLAN-019 v1.7：负一屏保留分区不入投影。
         if host.wm.showdesk_ws == Some(ws.id) {
             continue;
         }
         let current = host.wm.current_workspace == ws.id;
         let label = (ws.id + 1).to_string();
-        workspaces.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
-            ("id", auto_val::Value::Str(ws.id.to_string().into())),
-            ("name", auto_val::Value::Str(ws.name.clone().into())),
-            ("current", auto_val::Value::Str(if current { "1" } else { "".into() }.into())),
-            ("label", auto_val::Value::Str(label.clone().into())),
-            // Plan 505 B2 v1.5：分区缩略溢出标签（"+N"；无溢出空串——
-            // 空串哨兵同 __wm_notes_unread，badge 条件消费先例）。
-            (
-                "more",
-                auto_val::Value::Str(ws_more.get(ws.id).cloned().unwrap_or_default().into()),
-            ),
-        ]))));
+        proj.workspaces.push(ShellWorkspace {
+            id: ws.id,
+            name: ws.name.clone(),
+            current,
+            label: label.clone(),
+            more: ws_more.get(ws.id).cloned().unwrap_or_default(),
+        });
         fp.push_str(&format!("{}:{},{};", ws.id, current as u8, label));
     }
-    // Plan 478 T3 v1.1：__wm_mru 段——当前分区 MRU 序（switcher 消费，
-    // dock 不受影响；焦点环不跨分区 472 语义延续）。指纹尾段逐窗 "{wid};"。
-    let mut mru: Vec<auto_val::Value> = Vec::new();
+    // Plan 478 T3 v1.1：__wm_mru 段（switcher 消费；隐藏窗不入；
+    // pinned/dup/pager 判据恒空——投影判据面统一约定）。
     fp.push('|');
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
         if let Some(v) = host.wm.wins.get(&wid) {
-            // PLAN-012 W1：常驻隐藏窗不进切换器。
             if v.hidden.get() {
                 continue;
             }
             let focused = host.wm.focused == Some(wid);
-            // mru 条目非 dock 消费面：pinned/dup_app 判据恒空（switcher 无
-            // 此语义，字段不缺——投影判据面统一约定）。
-            mru.push(projection_win_entry(
-                &state.desktop.registry_entries,
-                v,
+            let icon = v
+                .registry_id
+                .as_ref()
+                .and_then(|id| state.desktop.registry_entries.iter().find(|e| &e.id == id))
+                .map(|e| e.icon.clone())
+                .unwrap_or_else(|| "app-window".to_string());
+            proj.mru.push(ShellWin {
+                wid: v.wid.0.to_string(),
+                title: v.title.clone(),
                 focused,
-                "",
-                false,
-                false,
-            ));
+                workspace: Some(v.workspace),
+                native: false,
+                app: v.registry_id.clone().unwrap_or_default(),
+                icon,
+                pager: false,
+                pinned: false,
+                dup_app: false,
+            });
         }
         fp.push_str(&format!("{};", wid.0));
     }
-    // Plan 479 T4 v1.2：__wm_notes 段——通知历史全量 Obj 数组（badge 消费
-    // unread 串；通知中心面板本体走快照注入，switcher __wm_mru 同型）。
-    // 指纹尾段 "|notes:{len}:{front_id}:{unread};"（T1 定案 6——len/front_id
-    // 双段覆盖 cap 环绕与 dismiss 组合，unread 独立第三段）。
-    let mut notes_objs: Vec<auto_val::Value> = Vec::new();
+    // Plan 479 T4 v1.2：__wm_notes 段 + 指纹尾段
+    // "|notes:{len}:{front_id}:{unread}:{visible};"。
     let notes_snapshot: Vec<crate::ui::session::NotificationEntry> =
         state.desktop.notifications.borrow().clone();
     for n in &notes_snapshot {
-        notes_objs.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
-            ("id", auto_val::Value::Str(n.id.to_string().into())),
-            ("kind", auto_val::Value::Str(n.kind.clone().into())),
-            ("msg", auto_val::Value::Str(n.msg.clone().into())),
-            ("at", auto_val::Value::Str(n.at.clone().into())),
-            // PLAN-014 W-08（协议 v1.8）：来源 app id（合同面字段；宿主
-            // 内部通知/历史恢复为 ""）。
-            ("app", auto_val::Value::Str(n.app.clone().into())),
-        ]))));
+        proj.notes.push(ShellNote {
+            id: n.id,
+            kind: n.kind.clone(),
+            msg: n.msg.clone(),
+            at: n.at.clone(),
+            app: n.app.clone(),
+        });
     }
     let notes_front = notes_snapshot
         .first()
         .map(|n| n.id.to_string())
         .unwrap_or_else(|| "0".to_string());
     let notes_unread = state.desktop.notes_unread.get();
-    // PLAN-012 W7 v1.6：通知面板可见性投影（"1"/""；铃铛打开态高亮的
-    // 唯一事实源在宿主 overlay 组件——外点/×/Esc 任意路径自隐后投影
-    // 同步翻转）。指纹并入 notes 段尾 `:v`——visible 翻转即触发重写。
-    let notes_visible = if state.notification_visible() { "1" } else { "" };
+    proj.notes_unread = notes_unread;
+    // PLAN-012 W7 v1.6：通知面板可见性。
+    let notes_visible = state.notification_visible();
+    proj.notes_visible = notes_visible;
     fp.push_str(&format!(
         "|notes:{}:{}:{}:{};",
         notes_snapshot.len(),
         notes_front,
         notes_unread,
-        notes_visible
+        if notes_visible { "1" } else { "" }
     ));
-    // PLAN-012 W4 v1.6：__dock_pinned_csv 派生串（",id1,id2,"；shell view
-    // 条件 `contains` 消费——dock 窗口条目与固定图标去重合并的判据面，
-    // .at 读不到 `__dock_pinned` Obj 数组字段，B12 同族规避）。指纹尾段
-    // "|pinned:{csv};"——pin/unpin 执行臂改会话域后由指纹差分拾取刷新。
+    // PLAN-012 W4 v1.6：__dock_pinned_csv 派生串 + 指纹尾段。
     let mut pinned_csv = String::from(",");
     for id in &state.desktop.dock_pinned {
         pinned_csv.push_str(id);
         pinned_csv.push(',');
     }
-    // 指纹段剥前后逗号封边（空表 csv = "," → 段空串）。
     if pinned_csv.len() > 1 {
         fp.push_str(&format!("|pinned:{};", &pinned_csv[1..pinned_csv.len() - 1]));
     } else {
         fp.push_str("|pinned:;");
     }
-    // PLAN-012 O2：__dock_pinned 随 fp 差分刷新（running 字段跟窗开合；
-    // inject_dock_pinned 为 pin/unpin 即时臂，两写者同形幂等）。
-    // 借序：构建须在 apps.get_mut 借用期之前。
-    let dock_pinned = dock_pinned_objs(state);
-    // PLAN-024 v1.8 借序：dashboard 可见性判定位同样先于 get_mut 读取。
-    let dashboard_visible = state.dashboard_visible();
-    let app = match state.apps.get_mut(&shell) {
-        Some(a) => a,
-        None => return,
-    };
-    if matches!(
-        app.component.read_state("__wm_fp"),
-        Ok(auto_val::Value::Str(ref s)) if s.to_string() == fp
-    ) {
-        return;
+    proj.dock_pinned_csv = pinned_csv;
+    // PLAN-012 O2：__dock_pinned Obj 数组（icon 宿主自注册表解析；
+    // running = 非隐藏运行窗在场）。
+    for id in &state.desktop.dock_pinned {
+        let icon = state
+            .desktop
+            .registry_entries
+            .iter()
+            .find(|e| &e.id == id)
+            .map(|e| e.icon.clone())
+            .unwrap_or_else(|| "app-window".to_string());
+        let running = host
+            .wm
+            .wins
+            .values()
+            .any(|v| !v.hidden.get() && v.registry_id.as_deref() == Some(id.as_str()));
+        proj.dock_pinned.push(DockPin {
+            id: id.clone(),
+            icon,
+            running,
+        });
     }
-    let _ = app.component.write_state_vec("__wm_wins", wins);
-    let _ = app.component.write_state_vec("__wm_workspaces", workspaces);
-    let _ = app.component.write_state_vec("__wm_mru", mru);
-    let _ = app.component.write_state_vec("__wm_notes", notes_objs);
-    let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
-    let _ = app.component.write_state("__wm_running", auto_val::Value::str(&running));
-    let _ = app
-        .component
-        .write_state("__wm_focused_app", auto_val::Value::str(&focused_app));
-    let _ = app
-        .component
-        .write_state("__wm_notes_unread", auto_val::Value::Str(notes_unread.to_string().into()));
-    // PLAN-014 W-07（协议 v1.8）：badge 显示串宿主派生（>9 → "9+"、0 →
-    // ""——.at 视图无数值比较/截断原语，I9 单一事实；等式消费在 shell.at）。
-    let notes_badge = if notes_unread > 9 {
+    // PLAN-024 v1.8：dashboard 可见性投影。
+    proj.dashboard_visible = state.dashboard_visible();
+    // PLAN-014 W-07：badge 显示串宿主派生（>9 → "9+"、0 → ""）。
+    proj.notes_badge = if notes_unread > 9 {
         "9+".to_string()
     } else if notes_unread > 0 {
         notes_unread.to_string()
     } else {
         String::new()
     };
-    let _ = app
-        .component
-        .write_state("__wm_notes_badge", auto_val::Value::str(&notes_badge));
-    let _ = app
-        .component
-        .write_state("__wm_notes_visible", auto_val::Value::str(notes_visible));
-    let _ = app
-        .component
-        .write_state("__dock_pinned_csv", auto_val::Value::str(&pinned_csv));
-    let _ = app
-        .component
-        .write_state_vec("__dock_pinned", dock_pinned);
-    let _ = app
-        .component
-        .write_state("__wm_settings_open", auto_val::Value::str(if settings_open { "1" } else { "" }));
-    // PLAN-019 v1.7：__wm_showdesk 随指纹差分同步（进入/返回必翻 current
-    // 位；等式消费——sliver toggle 判据，见 §2 字段表）。
-    let _ = app
-        .component
-        .write_state("__wm_showdesk", auto_val::Value::str(if showdesk_on { "1" } else { "" }));
-    // PLAN-024 v1.8：__wm_dashboard 可见性投影（"1"/""；dock Dashboard 钮
-    // 打开态高亮判据——__wm_showdesk 同型标量；面板自隐后随指纹差分翻转）。
-    let _ = app
-        .component
-        .write_state("__wm_dashboard", auto_val::Value::str(if dashboard_visible { "1" } else { "" }));
-    // PLAN-012 F2 复验：布局名标量投影——任务栏布局钮（grid/master-stack）
-    // 高亮判据（等式消费；同 __wm_settings_open 模式。布局切换翻 meta 段
-    // → 指纹重写随写同步；free = 两钮均不亮 = 手动排布态）。
-    let _ = app
-        .component
-        .write_state("__wm_layout", auto_val::Value::str(layout_name));
-    let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
+    // PLAN-012 F2 复验：布局名标量投影。
+    proj.layout = layout_name.to_string();
+    proj.fp = fp;
+    proj
+}
+
+/// PLAN-027 T-05：解释轨回写（指纹门控保留——fp 不变整组跳写；有变按
+/// interpreted_writes 序列整组原子换装 + view_dirty）。desktop 层
+/// __wm_running 推送 + RunningSync 召唤随行（PLAN-014 W-04）。行为与
+/// 改造前逐写点一致；编译轨替换点 = T-08 ShellSurface::apply_projection。
+pub(crate) fn apply_shell_projection_interpreted(
+    state: &mut crate::ui::session::DesktopSession,
+    shell: crate::ui::session::AppId,
+    proj: &crate::ui::shell_projection::ShellProjection,
+) {
+    use crate::ui::shell_projection::ShellWrite;
+    let app = match state.apps.get_mut(&shell) {
+        Some(a) => a,
+        None => return,
+    };
+    if matches!(
+        app.component.read_state("__wm_fp"),
+        Ok(auto_val::Value::Str(ref s)) if s.to_string() == proj.fp
+    ) {
+        return;
+    }
+    for w in proj.interpreted_writes() {
+        match w {
+            ShellWrite::Scalar(k, v) => {
+                let _ = app.component.write_state(k, v);
+            }
+            ShellWrite::Array(k, vs) => {
+                let _ = app.component.write_state_vec(k, vs);
+            }
+        }
+    }
     *app.state.view_dirty.borrow_mut() = true;
-    // PLAN-014 W-04（协议 v1.8）：__wm_running 注入面扩注 desktop 层——
-    // launching ack 判据数据面（desktop.at ActivateApp 置 launching，
-    // running 含该 id 即清）。随写显式召唤 RunningSync（宿主写状态不触发
-    // handler——RebuildMru/RebuildNotes 同律）；启动失败场景 running 永不
-    // 含 launching id，残态由 Init/重注入求差自愈（desktop.at Init 臂）。
+    // PLAN-014 W-04：__wm_running 注入面扩注 desktop 层 + RunningSync 召唤
+    // （宿主写状态不触发 handler；启动失败残态由 Init/重注入求差自愈）。
     if let Some(desktop_id) = state.desktop.desktop_app {
         if let Some(dapp) = state.apps.get_mut(&desktop_id) {
             let _ = dapp
                 .component
-                .write_state("__wm_running", auto_val::Value::str(&running));
+                .write_state("__wm_running", auto_val::Value::str(&proj.running_csv));
             if let Err(err) = dapp.component.bridge_mut().call_handler("RunningSync", &[]) {
                 eprintln!("[session] desktop RunningSync failed: {err}");
             }
             *dapp.state.view_dirty.borrow_mut() = true;
         }
     }
-    // PLAN-012 W3：workspace_preview 数据发布（SD-02 宿主合成 widget）。
-    // 2026-09-15：抽独立 fn——切换预览面板开着时 400ms 节拍直发（快照
-    // 补抓后的下一拍即可见）；sync 指纹未变时也保持预览数据新鲜。
-    publish_workspace_previews(state);
 }
 
 /// 2026-09-15：workspace_preview 数据发布（原 sync_shell_windows 内联块）。
@@ -18860,8 +18868,14 @@ fn compare_pngs(
             let mut subs: Vec<iced::Subscription<DM>> = Vec::new();
             for (app_id, app) in state.apps.iter() {
                 let app_id = *app_id;
+                // PLAN-650 E-3：hot_reload 降频/门控——AUTOUI_HOT_RELOAD=0 全关；
+                // =1 强制 500ms；缺省 debug 500ms / 非 debug 2000ms（静止泵 ÷4）。
                 if app.component.source_path().is_some() {
-                    subs.push(hot_reload_tick(app_id));
+                    if let Some(interval_ms) =
+                        hot_reload_interval_ms(app.state.devtools.debug_mode)
+                    {
+                        subs.push(app_tick(app_id, HOT_RELOAD_EVENT, interval_ms));
+                    }
                 }
                 if let Some(interval_ms) = app.component.tick_interval() {
                     // R5：孵化 mini 会话 Tick 门控（面板隐藏/非活动 tab 停订
@@ -18877,7 +18891,14 @@ fn compare_pngs(
                 }
                 // Plan 051 C7: timer 块条目订阅（每条目一订阅，身份含
                 // widget/event/ms 三元组互不去重）。
+                // PLAN-650 E-1：when 假不订阅（调度器层门控；P499-1）。
                 for t in app.component.timer_entries() {
+                    if !app
+                        .component
+                        .timer_when_allows_subscription(&t.widget, &t.event)
+                    {
+                        continue;
+                    }
                     subs.push(widget_event_tick(app_id, &t.widget, &t.event, t.every_ms));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
@@ -19418,8 +19439,19 @@ fn dynamic_view_impl(
     // opening F12. Visual overlays (hover/selected highlight, inspect mouse_area)
     // remain gated on `debug_mode` alone (see `wrap_debug`'s `if !self.debug_mode`
     // early-return), so MCP-only capture never perturbs the rendered layout.
+    // PLAN-650 E-2/E-4：capture 以 F12 为主；MCP 仅在 **dirty 重建帧** 追加
+    //（静止 fall-through 帧不再为 MCP 付 live_vtree/needs_bounds——快照走
+    // 既有 gate_dirty/gate_ws 同步，视图未变时仍然准确）。
     let mcp_active = !p530_nomcp && state.desktop.mcp_shared.is_some();
-    let capture_debug = state.app.devtools.debug_mode || mcp_active;
+    let mcp_wants_live = mcp_active
+        && (dirty
+            || state
+                .desktop
+                .mcp_shared
+                .as_ref()
+                .map(|m| m.lock().unwrap().mcp_active_recently(30))
+                .unwrap_or(false));
+    let capture_debug = state.app.devtools.debug_mode || mcp_wants_live;
 
     // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
     // are capturing DevTools/MCP data. `update()` checks `needs_bounds` at its
@@ -19430,7 +19462,8 @@ fn dynamic_view_impl(
     // Element at the fast path above), so it bounds the round-trips to ~one per
     // changed frame, not every frame. Gated on `capture_debug` so ordinary
     // non-debug/non-MCP runs pay zero bounds-collection overhead.
-    if capture_debug {
+    // PLAN-650 E-2：非 dirty 帧不请求 bounds（结构未变，沿用上次测量）。
+    if capture_debug && dirty {
         *state.app.devtools.needs_bounds.borrow_mut() = true;
     }
 
@@ -19509,7 +19542,9 @@ fn dynamic_view_impl(
     // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
     // here (before `converted` is moved into render_dynamic_view and before
     // `debug_id_map` is moved into debug_ctx) as a side-effect snapshot only.
-    if !p530_nomcp {
+    // PLAN-650 E-2/E-4：仅 debug_mode 或 dirty 重建帧构建；静止 fall-through
+    // 非 F12 帧跳过（MCP 快照仍由 gate_dirty 同步块提供，视图未变即准确）。
+    if !p530_nomcp && (state.app.devtools.debug_mode || dirty) {
         if let Some(id_map) = &debug_id_map {
             let span_map = state.component.span_map().clone();
             let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
@@ -19560,7 +19595,8 @@ fn dynamic_view_impl(
 
     // Plan 483: 脏重建时清填 input Id 登记(DFS 序同渲染侧;缓存帧沿用
     // 上次登记——结构未变)。
-    {
+    // PLAN-650 E-2：仅 dirty 帧刷新；非 dirty fall-through 沿用上次（结构未变）。
+    if dirty {
         let mut ids = Vec::new();
         collect_input_ids(&converted, &mut ids);
         *state.app.devtools.input_ids.borrow_mut() = ids;
@@ -23575,6 +23611,7 @@ struct DevToolsState {
     // Plan 371 Task 11: MCP support for rust mode
     mcp_shared: std::cell::RefCell<Option<crate::ui::mcp_server::SharedStateHandle>>,
     mcp_widget_name: String,
+    pub fit_pending: std::cell::Cell<bool>,
 }
 
 impl Default for DevToolsState {
@@ -23607,6 +23644,7 @@ impl Default for DevToolsState {
             dragging_inner_divider: std::cell::RefCell::new(false),
             mcp_shared: std::cell::RefCell::new(Some(mcp_shared)),
             mcp_widget_name: widget_name,
+            fit_pending: std::cell::Cell::new(startup_window_fit()),
         }
     }
 }
@@ -24000,6 +24038,27 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
 
         let app_el: iced::Element<'static, WrapperMsg<C>> = app_view.into_iced();
 
+        let app_el = if startup_window_fit() {
+            container(
+                scrollable(
+                    container(app_el)
+                        .width(iced::Length::Shrink)
+                        .height(iced::Length::Shrink)
+                        .id(iced::widget::Id::from("aura_fit_root_rust")),
+                )
+                .direction(scrollable::Direction::Vertical(scrollable::Scrollbar::hidden()))
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Shrink),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .center_x(iced::Length::Fill)
+            .center_y(iced::Length::Fill)
+            .into()
+        } else {
+            app_el
+        };
+
         if *self.dt.devtools_open.borrow() {
             let panel = rdt_devtools_panel::<C>(&self.dt);
             row![app_el, panel]
@@ -24052,10 +24111,30 @@ where
     }
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
+        WrapperMsg::Debug(ref s) if s.starts_with("__fit_measured|") => {
+            if let Some(payload) = s.strip_prefix("__fit_measured|") {
+                let bounds: std::collections::HashMap<String, (f32, f32, f32, f32)> =
+                    serde_json::from_str(payload).unwrap_or_default();
+                if let Some((_x, _y, w_val, h_val)) = bounds.get("aura_fit_root_rust") {
+                    if *w_val >= 50.0 && *h_val >= 50.0 {
+                        w.dt.fit_pending.set(false);
+                        let size = iced::Size::new((*w_val).max(200.0), (*h_val).max(200.0));
+                        return iced::window::latest().then(move |opt_id| match opt_id {
+                            Some(id) => iced::window::resize(id, size),
+                            None => iced::Task::none(),
+                        });
+                    }
+                }
+            }
+        }
         WrapperMsg::Debug(ref s) if s == "__tick__" => {
             // Plan 407: tick event — dispatch Tick to inner component.
             if let Some(msg) = w.inner.tick_msg() {
                 w.inner.on(msg);
+            }
+            if w.dt.fit_pending.get() {
+                return iced::advanced::widget::operate(crate::ui::iced::LayoutCollector::new())
+                    .map(|bounds| WrapperMsg::Debug(format!("__fit_measured|{}", serde_json::to_string(&bounds).unwrap_or_default())));
             }
         }
         WrapperMsg::Debug(s) => {
@@ -24336,10 +24415,15 @@ where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    // Check tick interval at startup
+    // Check tick interval and initial fit size at startup
     let tick = C::default();
     let (tick_ms, tick_msg) = (tick.tick_interval_ms(), tick.tick_msg());
     let interval = tick_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
+    let initial_fit_size = if startup_window_fit() {
+        extract_root_view_fit_size(&tick.view())
+    } else {
+        None
+    };
     drop(tick);
 
     iced::application(
@@ -24359,7 +24443,7 @@ where
         }
         iced::Subscription::batch(subs)
     })
-    .window_size(startup_window_size())
+    .window_size(initial_fit_size.unwrap_or_else(startup_window_size))
     // Plan 411: pac window/title envs(AUTO_VM_WINDOW/AUTO_VM_TITLE)对
     // rust 轨同语义生效(VM 轨同款读取面);DevTools 面板不受影响。
     .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))

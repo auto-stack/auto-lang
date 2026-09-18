@@ -160,14 +160,16 @@ impl Coverage {
     /// （渲染/命中/聚焦/键入回写臂同落 native_projector）。**switch 无
     /// native 对象**——View 枚举无 Switch 变体（解释态 aura 标签专属，
     /// T-01 §5.1 调查证据），native 轨无可产该 kind 的构造（I4 分表，
-    /// 非缺口）。slider/select 随 T-03/T-04 扩容。kind = text/button +
-    /// form 族 + 线性堆叠布局族（col/row/container/list）+ 布局样式子集
-    /// （padding/gap/margin/尺寸/圆角/底色/前景色/对齐/字号字重）。
-    /// payload 族残余（table/tabs 等）与 display 族（image/icon/badge/…）
-    /// 显式 **not-yet**——native 显式 queue 遇未覆盖 = 拒绝退出留痕
-    /// （AC-04，非静默错绘）。与解释态 [`Coverage::target_set`] 分表：
-    /// native 投影器渲染面按投影器臂爬坡同步扩表（单一事实源纪律同
-    /// 500 §1.3.1）。
+    /// 非缺口）。slider/select 随 T-03/T-04 扩容。PLAN-026 T-03 扩容：
+    /// display 族 image/progress 入册（占位保真臂）；icon/badge/avatar/
+    /// divider/separator/spacer/a/img 经 a2r codegen 降级归一（D1/D1'
+    /// 定案）。kind = text/button + form 族 + display 占位族 + 线性堆叠
+    /// 布局族（col/row/container/list）+ 布局样式子集（padding/gap/
+    /// margin/尺寸/圆角/底色/前景色/对齐/字号字重）。payload 族残余
+    /// （table/tabs 等）与 imagesurface 显式 **not-yet**——native 显式
+    /// queue 遇未覆盖 = 拒绝退出留痕（AC-04，非静默错绘）。与解释态
+    /// [`Coverage::target_set`] 分表：native 投影器渲染面按投影器臂
+    /// 爬坡同步扩表（单一事实源纪律同 500 §1.3.1）。
     pub fn native_queue_set() -> Self {
         let kinds: BTreeSet<String> = [
             "text",
@@ -181,6 +183,14 @@ impl Coverage {
             "slider",
             // PLAN-025 T-04 —— payload 族 select。
             "select",
+            // PLAN-026 T-03 —— display 族占位保真臂（View::Image /
+            // View::ProgressBar 变体在场）。icon/badge/avatar/divider/
+            // separator/spacer/a/img 经 a2r codegen 降级归一到 image/
+            // text/row/container/empty（§5.1 D1/D1' 定案——分表非缺口，
+            // 025"switch 无 View 变体"口径）；imagesurface 整 kind
+            // not-yet（D5：交互回调无采集面，登记即静默放行——I3）。
+            "image",
+            "progress",
         ]
         .into_iter()
         .map(String::from)
@@ -191,6 +201,10 @@ impl Coverage {
             "empty", "anchorslot",
             // PLAN-025 T-05 —— scrollable（Scissor 裁剪 + on_scroll 滚轮）。
             "scroll",
+            // PLAN-026 T-04 —— grid（View::Grid walker 两遍网格）。
+            // "center" 不入册：View::center 归一 Container（scan 无
+            // "center" kind 产出点——登记即违反防漏钉钉②）。
+            "grid",
         ]
         .into_iter()
         .map(String::from)
@@ -211,6 +225,29 @@ impl Coverage {
             // 非静默扩权：003-converter 真源 gate 通过所需。
             "flex-1",
             "shadow",
+            // PLAN-026 T-06（§5.1 D3）降级放行批——解释态 target_set
+            // 同款保真边界，非静默扩权：
+            // ① overflow-：queue 臂裁剪渲染面 not-yet（块流静态帧无
+            //   溢出面；004 真源 gate 所需）。
+            // ② min-w-/min-h-：native 最小尺寸约束渲染 not-yet（解释态
+            //   target_set 同在册）。
+            // ③ leading-：行高倍率渲染 not-yet（Text op 固定 LINE_H
+            //   档；PLAN-527 后 typed parse 可达，需显式放行）。
+            // ④ flex/block 裸 display 类：块流语义 no-op（方向类布局
+            //   即 col/row 构造面）。
+            // ⑤ underline/no-underline/line-through：文本装饰渲染
+            //   not-yet（Text op 无装饰通道；解释态 target_set 同册
+            //   underline）。
+            "overflow-",
+            "min-w-", "min-h-",
+            "leading-",
+            "flex", "block",
+            "underline", "no-underline", "line-through",
+            // ⑥ 静态帧 no-op 提示类（cursor/outline/transition/抗锯齿/
+            // shrink/whitespace——queue 命令帧无对应通道，零视觉差）。
+            "cursor-", "outline-", "transition", "antialiased",
+            "shrink-", "whitespace-", "relative", "tracking-",
+            "backdrop-",
         ]
         .into_iter()
         .map(String::from)
@@ -630,6 +667,66 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         | SC::Shadow2Xl
         | SC::ShadowNone => "shadow".into(),
         SC::Opacity(_) => "opacity-50".into(),
+        // PLAN-026 T-06：overflow 家族 → 降级放行 token（渲染 no-op）。
+        SC::OverflowAuto
+        | SC::OverflowHidden
+        | SC::OverflowVisible
+        | SC::OverflowScroll
+        | SC::OverflowXAuto
+        | SC::OverflowYAuto
+        | SC::OverflowXHidden
+        | SC::OverflowYHidden
+        | SC::OverflowXScroll
+        | SC::OverflowYScroll => "overflow-hidden".into(),
+        // 行高倍率：native Text op 行高 = 字号×LINE_H_FACTOR 固定档——
+        // leading-* 渲染未实现，判定降级放行（解释态 target_set 同册）。
+        SC::LineHeight(_) | SC::LineHeightNone => "leading-1".into(),
+        // PLAN-026 T-06 字重族补全（FontBold 同族——TextStyled weight
+        // 700 档近似/正常档随注；判定放行 = font- 前缀）。
+        SC::FontSemiBold | SC::FontLight | SC::FontExtraLight | SC::FontExtraBold
+        | SC::FontThin => "font-bold".into(),
+        // backdrop-*（518 G8 冻结词汇——共享 parser 识别，queue 臂渲染
+        // no-op；解释态 target_set 同册放行）。
+        SC::BackdropBlur(_) | SC::BackdropSaturate(_) => "backdrop-blur".into(),
+        // 字距（tracking-*）：Text op 无字距通道——渲染 no-op 放行。
+        SC::Tracking(_) => "tracking-1".into(),
+        // 交互态/渲染提示类：静态帧 no-op（queue 命令帧无 cursor/outline/
+        // transition/抗锯齿通道）——判定放行。
+        SC::CursorPointer => "cursor-pointer".into(),
+        SC::OutlineNone => "outline-none".into(),
+        SC::Antialiased => "antialiased".into(),
+        SC::TransitionColors | SC::TransitionDuration(_) => "transition".into(),
+        SC::Shrink0 => "shrink-0".into(),
+        SC::WhitespaceNowrap => "whitespace-nowrap".into(),
+        // position:relative（无 offset 配对）/ items-stretch（块流缺省
+        // 交叉轴）= 布局 no-op——判定放行（absolute+offset 族仍 not-yet）。
+        SC::Relative => "relative".into(),
+        SC::ItemsStretch => "items-stretch".into(),
+        SC::TextArbitrary(_) => "text-1".into(),
+        SC::ShadowArbitrary(_) => "shadow".into(),
+        // —— 语义承载未实现面：显式 not-yet（语义名缺项载荷——缺项清单
+        // 自描述；026 数据行缺项面）。定位族（absolute/fixed/sticky/
+        // offset/z-index）、rotate（视觉变换）、hidden（display:none
+        // 语义）、truncate/break-words（文本裁剪）、list-none（列表
+        // 标记）、accent（表单强调色）、stroke（lucide 描边——native
+        // 位图/字形通道 not-yet 同册）、样式版 grid（display:grid/
+        // grid-cols 布局语义——View::Grid 变体臂不覆盖 style 路径）。
+        SC::Grid | SC::GridCols(_) | SC::GridRows(_) => "style-grid".into(),
+        SC::Hidden => "hidden".into(),
+        SC::Absolute => "absolute".into(),
+        SC::Fixed => "fixed".into(),
+        SC::Sticky => "sticky".into(),
+        SC::TopOffset(_) => "top-1".into(),
+        SC::LeftOffset(_) => "left-1".into(),
+        SC::RightOffset(_) => "right-1".into(),
+        SC::BottomOffset(_) => "bottom-1".into(),
+        SC::ZIndex(_) => "z-1".into(),
+        SC::Rotate(_) => "rotate-1".into(),
+        SC::Truncate => "truncate".into(),
+        SC::BreakWords => "break-words".into(),
+        SC::ListNone => "list-none".into(),
+        SC::AccentColor(_) => "accent-1".into(),
+        SC::StrokeWidth(_) => "stroke-1".into(),
         _ => "native-unstyled".into(),
     }
 }
@@ -992,6 +1089,159 @@ mod tests {
                 coverage.style_token_supported(token),
                 "003 token 应放行: {token}"
             );
+        }
+    }
+
+    /// PLAN-026 T-06 + 004-profile-card 真源样式 token 全放行（native
+    /// gate——overflow- 降级放行定案；AC-02 覆盖翻转样本）。leading-/
+    /// hover: 走 parser 静默丢弃/variant 通道（不入 scan—— gate 无感）。
+    #[test]
+    fn native_gate_accepts_004_style_tokens() {
+        let coverage = Coverage::native_queue_set();
+        // PLAN-026 T-06 探针：逐 token 走 typed parse → native_style_token，
+        // 无 native-unstyled 混入（未映射类显式排查）。
+        for tok in ["w-full", "h-20", "bg-gradient-to-r", "from-blue-500",
+            "to-purple-600", "rounded-t-lg", "rounded-full", "border-4",
+            "border-border", "shadow-md", "-mt-10", "items-center", "w-3",
+            "h-3", "bg-green-400", "gap-2", "text-xl", "text-sm",
+            "text-center", "font-bold", "font-medium", "px-3", "py-1",
+            "px-4", "py-2", "px-6", "pb-6", "bg-secondary", "w-96",
+            "overflow-hidden", "bg-card", "shadow-lg", "rounded-lg"] {
+            if let Ok(sc) = crate::ui::style::StyleClass::parse_single(tok) {
+                let t = native_style_token(&sc);
+                assert!(t != "native-unstyled", "token {tok} → native-unstyled");
+            }
+        }
+        for token in [
+            "w-full", "h-20", "bg-gradient-to-r", "from-blue-500",
+            "to-purple-600", "rounded-t-lg", "rounded-full", "-mt-10",
+            "items-center", "w-3", "h-3", "bg-green-400", "gap-2", "gap-1",
+            "gap-3", "gap-4", "text-xl", "text-sm", "text-center",
+            "font-bold", "font-medium", "px-3", "py-1", "px-4", "py-2",
+            "px-6", "pb-6", "bg-secondary", "text-secondary-foreground",
+            "text-muted-foreground", "bg-primary", "text-primary-foreground",
+            "bg-card", "shadow-lg", "shadow-md", "border", "border-border",
+            "w-96", "overflow-hidden", "leading-relaxed",
+        ] {
+            assert!(
+                coverage.style_token_supported(token) || token == "leading-relaxed",
+                "004 token 应放行（或 parser 静默丢弃面）: {token}"
+            );
+        }
+    }
+
+    /// PLAN-026 T-06：覆盖翻转数据行（§5.1 D3 定案仪器）——examples/ui
+    /// 全量 .at → AuraViewBuilder（VM 轨运行时 aura→View 构造器，与
+    /// a2r codegen 同以"降级到 View IR"为口径）→ scan_native_view ×
+    /// judge(native_queue_set)。数据行入 026 报告；阈值 = ≥95% 且缺项
+    /// 全在册 not-yet（AC-06 双出口的达标腿判据）。
+    #[test]
+    fn native_flip_coverage_data_row() {
+        use crate::ui::aura_view_builder::AuraViewBuilder;
+        use crate::ui::vm_bridge::VmBridge;
+
+        let examples_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui");
+        // (name, covered, 缺项/失败原因)
+        let mut rows: Vec<(String, bool, String)> = Vec::new();
+        let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(&examples_dir)
+            .expect("examples dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
+        dirs.sort();
+        for dir in dirs {
+            let front = dir.join("src/front");
+            if !front.is_dir() {
+                continue;
+            }
+            let mut srcs: Vec<std::path::PathBuf> = std::fs::read_dir(&front)
+                .expect("front dir")
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "at"))
+                .collect();
+            srcs.sort();
+            if srcs.is_empty() {
+                continue;
+            }
+            let name = dir.file_name().unwrap().to_string_lossy().to_string();
+            let mut combined = String::new();
+            for s in &srcs {
+                combined.push_str(&std::fs::read_to_string(s).unwrap_or_default());
+                combined.push('\n');
+            }
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(combined.as_str()).with_session(session);
+            let Ok(ast) = parser.parse() else {
+                rows.push((name, false, "parse-fail".into()));
+                continue;
+            };
+            // App widget 优先（examples 惯例），缺省首个 WidgetDecl。
+            let mut app_decl: Option<&crate::ast::WidgetDecl> = None;
+            let mut first_decl: Option<&crate::ast::WidgetDecl> = None;
+            for st in &ast.stmts {
+                if let crate::ast::Stmt::WidgetDecl(d) = st {
+                    if first_decl.is_none() {
+                        first_decl = Some(d);
+                    }
+                    if d.name.as_str() == "App" {
+                        app_decl = Some(d);
+                        break;
+                    }
+                }
+            }
+            let Some(decl) = app_decl.or(first_decl) else {
+                rows.push((name, false, "no-widget".into()));
+                continue;
+            };
+            let Ok(widget) = crate::aura::extract::extract_widget_from_decl(decl) else {
+                rows.push((name, false, "extract-fail".into()));
+                continue;
+            };
+            let bridge = VmBridge::new_from_decls(
+                decl,
+                &[],
+                vec![],
+                &std::collections::HashMap::new(),
+                false,
+            );
+            let Ok(bridge) = bridge else {
+                rows.push((name, false, "bridge-fail".into()));
+                continue;
+            };
+            let view = AuraViewBuilder::new(&bridge, &widget.name).build(&widget.view_tree);
+            let scan = scan_native_view(&view);
+            match judge(&scan, &Coverage::native_queue_set()) {
+                Verdict::Covered => rows.push((name, true, String::new())),
+                Verdict::NotCovered(missing) => {
+                    rows.push((name, false, missing.join(", ")))
+                }
+            }
+        }
+        let total = rows.len();
+        let covered = rows.iter().filter(|(_, c, _)| *c).count();
+        let pct = covered as f64 / total.max(1) as f64 * 100.0;
+        eprintln!("[native-flip-data] covered {covered}/{total} = {pct:.1}%");
+        for (name, c, why) in &rows {
+            if !c {
+                eprintln!("[native-flip-data]   {name}: {why}");
+            }
+        }
+        assert!(total > 0, "样本集非空");
+        // AC-06 不翻出口裁定钉：本批数据 < 95% 阈值 → 维持 auto=
+        // independent；缺项（opacity/hidden/样式版 grid/popover/定位族）
+        // 全在册 not-yet。ramp v3 复测达标时改钉达标出口 +
+        // resolve_native_frame_mode Covered 臂翻 Commands（§1.8 翻转点）。
+        let flip = pct >= 95.0;
+        assert!(
+            !flip,
+            "Covered 比例达 95% 阈值（{covered}/{total}）——应走翻转向下任（§1.8 翻转点 + 台账裁定行），禁静默达标配平"
+        );
+        // 缺项清单非空不变式（NotCovered 行必载缺项载荷）。
+        for (name, covered_row, why) in &rows {
+            assert!(!(!covered_row && why.is_empty()), "{name} NotCovered 缺项空载荷");
         }
     }
 

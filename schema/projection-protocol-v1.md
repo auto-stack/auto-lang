@@ -1,6 +1,7 @@
-# AutoShell 状态投影协议 v1.9（S2 接缝合同）
+# AutoShell 状态投影协议 v1.10（S2 接缝合同）
 
-> **版本**：v1.9（2026-09-18，双增量并行协调叠号——486/487 先例）：
+> **版本**：v1.10（2026-09-18，auto-os PLAN-027 rev2：**typed 快照通道**——投影语义的 plain-data 载体入册（`ShellProjection`/`ShellEvent`/`ShellClock`/懒挂载 payload/`ShellManifest`），指纹门控/原子换装/召唤事件/clock 独立脏帧**语义零漂移**，解释态通道双轨期不动（双载体并存）；命令上行 typed 接缝 `DesktopBusHandle`（§4 词表不变，枚举载荷单方法 + send_record = parse_records 单点分型）。详见 §6 v1.10 节）；
+> v1.9（2026-09-18，双增量并行协调叠号——486/487 先例）：
 > v1.8 = auto-os PLAN-014 shell-ux-polish-v2（纯字段 + 总线语义增量、
 > **零新动词**——`__wm_date`、`__wm_running` desktop 扩注、
 > `__wm_notes[].app`/`note_apps`、`__wm_notes_badge`、`__desktop_cmd`
@@ -215,6 +216,46 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
   `__wm_notes_badge` 为新只读面；追加语义对既有单写点行为等价（单命令
   串不变）；`__wm_running` desktop 层扩注对 shell 层零影响。vue 端以
   本版为对拍基线（§5）。
+### v1.10（2026-09-18，auto-os PLAN-027 rev2：typed 快照通道——投影语义 plain-data 载体入册）
+
+- **背景**：PLAN-027 S1/S2（shell a2r 编译化，形态无关资产面；§10-① 裁定
+  后 shell 编译产物 = B 形态 outproc exe，本通道即其 wire payload 词汇
+  基础）。实现锚：auto-lang plan-027-dev（`ui/shell_projection.rs` 新模块
+  + `renderer.rs` sync 单源化 + `session.rs` 总线/storage trait）。
+- **typed 载体 `ShellProjection`**：shell 面指纹门控组（§2 字段表全量）
+  的 plain-data 快照——`wins`/`workspaces`/`mru`/`notes`（typed 容器
+  `ShellWin`/`ShellWorkspace`/`ShellNote`，native 槽位条目以 `native`
+  位承载，字段集分支与 §2 逐字段一致）+ 派生标量面（running_csv/
+  focused_app/notes_unread/notes_badge/dock_pinned_csv/settings_open/
+  showdesk/dashboard/layout）+ `fp`（§3 指纹串随载体，门控判定留宿主
+  apply 侧）。**wire 叶面保形**：bool→"1"/"" 等 wire 形态 lowering 单点
+  （`interpreted_writes`）——与 §2 状态变量写集逐字节一致（零漂移锚）。
+- **apply 推送语义（与 §3 等价，载体换 typed）**：指纹门控保留（fp 不变
+  整组跳写；有变按 `interpreted_writes` 序列整组原子换装 + view_dirty）；
+  召唤事件 = `ShellEvent` 位（RebuildMru/RebuildNotes/RunningSync/
+  ApplyFilter/RebuildFaces）随快照显式携带，替换 call_handler 直调；
+  `__wm_clock`/`__wm_date` = 独立通道 `ShellClock`（§3 独立脏帧语义保位，
+  不入指纹组）；cursor/drag 等"只写不置脏"字段不入快照组（逐事件写
+  语义保持）。
+- **懒挂载面 payload**：`SwitcherSnapshot`/`NotesSnapshot`/
+  `LauncherSnapshot`/`DashboardSnapshot`（召唤期注入面的 typed 形态——
+  平行字符串列表 + 合同面 Obj 数组归并结构化载荷）+ `DesktopSurfaceSync`
+  （desktop 层 `__wm_running`/RunningSync 随行面）。
+- **装配清单 `ShellManifest`**：pack 五件（shell/desktop 常驻 +
+  switcher/notification_center/dashboard 懒挂载）装配事实源。
+- **命令上行 typed 接缝 `DesktopBusHandle`**：枚举载荷单方法
+  `send(DesktopCommand)` + provided `send_record`（= §4 词表经
+  `parse_records` 同一单点分型——记录级 wire 词表不变，双轨零分叉）；
+  `DesktopBusQueue` 进程内队列实现（B 形态换线载体时视图/命令层零重写）。
+  storage 双轨同后端（shim_storage_*，`HostStorage`/`ShimHostStorage`
+  为显式注入面）。
+- **对拍**：52 动词 roundtrip 全量对拍（显式枚举——捕获并修复
+  `SetThemeName` encode 死词，PLAN-601 漏逆向）；投影门控族 8 测 +
+  词汇门/载体单测（PLAN-027 T-05/T-06 证据）。
+- **双载体并存声明**：解释态通道（§2/§3 语义）双轨期**原样不动**
+  （零回归锚，desktop_mcp 五套承证）；typed 通道为等价语义的
+  plain-data 形态，可序列化（B-ready）——B 形态演进时接缝直换载体。
+
 ### v1.9（2026-09-18，auto-os PLAN-024：dashboard 常驻小组件层——v1.8 并行协调叠号）
 
 - **dashboard 面板 = 第四 overlay 槽**（设置面板退役后继任；**常驻语义**（用户裁定 R2/R21）：z 高于

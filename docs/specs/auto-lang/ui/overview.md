@@ -1,7 +1,8 @@
 # ui（AURA / UI 引擎 / 桌面运行时）
 
 > **Status**: active（主战场：vue 轨 codegen 成熟化 + VM 轨视觉 parity + 虚拟桌面线推进中）
-> 最近刷新：2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
+> 最近刷新：2026-09-18（PLAN-027 rev2 回写：shell a2r 接缝面 S1/S2 落地——codegen 臂族 + 显式拒绝门/词汇门 + ShellProjection/DesktopBusHandle typed 载体，详见 design/shell-a2r-seams.md（provisional）；design 文档 desktop-shell-a2r.md 裁定落定 = B 形态 + 双轨常驻）
+> 2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
 >
 > **资产位置注记（PLAN-590，Stage B P-5，2026-09-07）**：桌面域资产已随迁
 > auto-os——`ui-gallery`/`widgets-gallery` 在 **auto-os 顶层**（框架侧
@@ -41,21 +42,33 @@ main.ts `import.meta.env.DEV` 动态引用）；MCP 工具 `autoui_select_rect`
 
 ## 现状（2026-09-18）
 
+**VM 空转渲染减负 easy wins（PLAN-650 落地）**：timer `when` 订阅层门控
+（P499-1 调度器半边清偿）+ dirty=false 非 debug 帧旁路（live_vtree/
+needs_bounds/input_ids）+ hot_reload 非 debug 默认 2000ms（`AUTOUI_HOT_RELOAD`
+0/1 门控）+ MCP 捕获按 dirty/近 30s 活跃收紧。架构级 Element 帧间缓存等
+D-1..D-5 延期，设计见 `docs/design/autoui/vm-frame-budget.md`。
+
 **012-clock 现代时钟应用重构与传统手表表盘（PLAN-644 落地）**：
 `examples/ui/012-stopwatch` 升级并重命名为 `examples/ui/012-clock`（Clock 现代时钟应用），深度重构为五大完整功能模块（时钟、世界时钟、闹钟、秒表、倒计时），首页呈现 SVG 矢量传统机械手表 ⌚ 指针表盘与动态角度换算，桌面小组件 `view mini` 升级为迷你手表表盘 + 数字时钟，全面适配 AutoUI Design Tokens 并消除 P642-D6 遗留横幅按钮债务。
 
 ## 现状（2026-09-15）
 
-**编译 exe 桌面客户端面（PLAN-020/PLAN-025，provisional）**：desktop_protocol
+**编译 exe 桌面客户端面（PLAN-020/025/026，provisional）**：desktop_protocol
 客户端臂自解释态 `DynamicComponent` 泛化到 `Component` seam——a2r 编译 exe
 经 `NativeProjector<C>`（View 运行期投影）作 compositor 一等客户端，native
-覆盖集（v1.7：form/payload 族 input/textarea/checkbox/radio/slider/select
-+ layouts scroll + flex-1/shadow 降级放行；View 无 Switch 变体不列——分表
-非缺口）与 `auto`=independent 缺省裁定、宿主 `desktop_exe:` 孵化分流、
-输入路由两端（投影器右键/滚轮/聚焦编辑消费 + 宿主
-`broker_key_event/broker_char/broker_scroll` 生产）随册。
-权威正文 = `docs/design/autoui/desktop-protocol-v1.md` §1.6–§1.7（本节仅
-指针，不重复）；度量 = `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
+覆盖集（v1.8：form/payload 族 input/textarea/checkbox/radio/slider/select
++ display 族 image/progress 占位保真 + layouts scroll/grid + 样式降级放行
+批（flex-1/shadow/overflow-/min-w-/min-h-/leading- 等——逐类随注
+`native_queue_set`）；icon/badge/avatar/divider/separator/spacer/a 经 a2r
+codegen 降级归一——分表非缺口；imagesurface 整 kind not-yet）与
+`auto`=independent 缺省裁定（026 复测 judged 76.2% < 95%，翻转点已备）、
+宿主 `desktop_exe:` 孵化分流、输入路由两端（投影器右键/滚轮/聚焦编辑/IME
+闭环消费 + 宿主 `broker_key_event/broker_char/broker_scroll/broker_ime_*`
+生产）随册。权威正文 =
+`docs/design/autoui/desktop-protocol-v1.md` §1.6–§1.8（本节仅指针，不
+重复）；翻转数据行 =
+`docs/plans/reports/p026-native-flip-data-row.md`；度量 =
+`docs/plans/reports/020-rust-exe-compositor-metrics.md`。
 
 ## 现状（2026-09-17）
 

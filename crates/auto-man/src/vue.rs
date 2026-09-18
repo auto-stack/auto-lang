@@ -2607,7 +2607,11 @@ export default router
     }
 
     /// Collect front directories for all dependencies under root_dir/deps/
-    fn collect_dep_front_dirs(root_dir: &Path) -> Vec<(String, PathBuf)> {
+    fn collect_dep_front_dirs(root_dir: &Path) -> Vec<(String, PathBuf, bool)> {
+        // 第三个元素 = 库形态旗标（PLAN-645 F-R1）：形状裁定在此处一次做出——
+        // 有 src/front 或 front/ 布局的是应用形态 dep（false，strict 门禁不变）；
+        // 原目录直推（bps 包库等）是模板源库形态（true，strict 降为告警）。
+        // 此前在编译循环里用 dep_front 再 join 判别，对应用形态恒误判为库。
         let deps_dir = root_dir.join("deps");
         let mut out = Vec::new();
         if let Ok(entries) = fs::read_dir(&deps_dir) {
@@ -2620,11 +2624,11 @@ export default router
                         .to_string_lossy()
                         .to_string();
                     if path.join("src").join("front").is_dir() {
-                        out.push((dep_name, path.join("src").join("front")));
+                        out.push((dep_name, path.join("src").join("front"), false));
                     } else if path.join("front").is_dir() {
-                        out.push((dep_name, path.join("front")));
+                        out.push((dep_name, path.join("front"), false));
                     } else {
-                        out.push((dep_name, path));
+                        out.push((dep_name, path, true));
                     }
                 }
             }
@@ -2641,7 +2645,7 @@ export default router
                         .trim()
                         .trim_matches(|c| c == '"' || c == '{' || c == ' ')
                         .trim();
-                    if !dep_name.is_empty() && !out.iter().any(|(n, _)| n == dep_name) {
+                    if !dep_name.is_empty() && !out.iter().any(|(n, _, _)| n == dep_name) {
                         for j in (i + 1)..std::cmp::min(i + 10, lines.len()) {
                             let sub_line = lines[j].trim();
                             if sub_line.starts_with("path:") {
@@ -2662,11 +2666,11 @@ export default router
                                     };
                                     if let Some(local_path) = resolved {
                                         if local_path.join("src").join("front").is_dir() {
-                                            out.push((dep_name.to_string(), local_path.join("src").join("front")));
+                                            out.push((dep_name.to_string(), local_path.join("src").join("front"), false));
                                         } else if local_path.join("front").is_dir() {
-                                            out.push((dep_name.to_string(), local_path.join("front")));
+                                            out.push((dep_name.to_string(), local_path.join("front"), false));
                                         } else {
-                                            out.push((dep_name.to_string(), local_path));
+                                            out.push((dep_name.to_string(), local_path, true));
                                         }
                                     }
                                 }
@@ -2830,7 +2834,7 @@ export default router
         let mut sub_widget_msgs: std::collections::HashMap<String, Vec<String>> = Default::default();
         {
             let mut scan_dirs = vec![front_dir.clone()];
-            for (_dep_name, dep_front) in &dep_front_dirs {
+            for (_dep_name, dep_front, _library_dep) in &dep_front_dirs {
                 scan_dirs.push(dep_front.clone());
             }
 
@@ -2897,7 +2901,7 @@ export default router
             if pages_dir.exists() {
                 Self::collect_at_files_recursive(&pages_dir, &mut prescan_files);
             }
-            for (_dep_name, dep_front) in &dep_front_dirs {
+            for (_dep_name, dep_front, _library_dep) in &dep_front_dirs {
                 Self::collect_at_files_recursive(dep_front, &mut prescan_files);
             }
             for path in &prescan_files {
@@ -3255,7 +3259,7 @@ export default router
         }
 
         // Plan 475: Compile widgets from deps/*/src/front into components/
-        for (dep_name, dep_front) in &dep_front_dirs {
+        for (dep_name, dep_front, library_dep) in &dep_front_dirs {
             let mut dep_at_files: Vec<PathBuf> = Vec::new();
             Self::collect_at_files_recursive(dep_front, &mut dep_at_files);
             dep_at_files.sort();
@@ -3281,6 +3285,16 @@ export default router
                         let file_store_deps = auto_lang::extract_store_deps_from_file(
                             path.to_str().unwrap()
                         );
+                        // PLAN-645 T-02: dep 文件（bp reference 等）自己的跨文件
+                        // fn 导入（`use tree_util: flatten_tree` bare/bps 限定）须
+                        // 转译进 SFC——否则只有调用无定义（vue-tsc TS2304，
+                        // filetree 组合形态 046 断裂复现）。与 components/bps
+                        // 通道（上方 Plan 522 臂）同一收集器：首遍编译已在
+                        // api.rs 挂过池，但这里逐 widget 重生成，必须重挂。
+                        let dep_comp_code =
+                            fs::read_to_string(&path).unwrap_or_default();
+                        let (dep_use_fns, dep_imported_names) =
+                            auto_lang::ui_gen::api::collect_use_module_fns(&path, &dep_comp_code);
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
@@ -3295,6 +3309,7 @@ export default router
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
+                                .with_use_module_fns(dep_use_fns.clone(), dep_imported_names.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );
@@ -3326,8 +3341,21 @@ export default router
                         }
                     }
                     Err(e) => {
+                        // Plan 041a(strict 收口): fn-only 文件同降级(见上)。
                         let fn_only = e.to_string().contains("No widget or store declarations");
-                        if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
+                        // PLAN-645 T-02(F-R1 修正): 库形态旗标由
+                        // collect_dep_front_dirs 在形状裁定时给出——bps 包库等
+                        // 原目录直推（无 src/front、无 front/）是模板源，不按
+                        // 独立应用门禁：bp reference 可携带消费方契约导入
+                        // （with_charts `use { package: official from "components" }`
+                        // 由消费方供给），在包内 standalone strict 编译必然
+                        // S003（046 基线实红）。消费方只 import 所用变体，未用
+                        // 变体的 SFC 缺席由 vite import 解析兜底，告警不硬炸。
+                        // 应用形态 dep（有 front 布局）strict 门禁不变。
+                        if auto_lang::ui_gen::validators::strict_enabled()
+                            && !fn_only
+                            && !library_dep
+                        {
                             return Err(format!("Failed to compile dep file {}: {}", path.display(), e).into());
                         }
                         println!("{} Failed to compile dep file {}: {}", "Warning:".bright_yellow(), path.display(), e);
@@ -3339,7 +3367,7 @@ export default router
         // Plan 475: Merge npm_deps and styles from deps/*/pac.at
         let mut npm_deps = parse_npm_deps(&pac_content);
         let mut style_files = parse_style_files(&pac_content);
-        for (_dep_name, dep_front) in &dep_front_dirs {
+        for (_dep_name, dep_front, _library_dep) in &dep_front_dirs {
             let dep_pac = dep_front.parent().and_then(|p| p.parent()).map(|p| p.join("pac.at"))
                 .or_else(|| dep_front.parent().map(|p| p.join("pac.at")));
             if let Some(p) = dep_pac {
@@ -5268,7 +5296,7 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
     // 落盘，vite "Failed to resolve import"（601 复审 006/015 实勘）。
     // widget 名并入 sub_widget_names，与 from_workspace 的 Phase-1 扫描
     // （scan_dirs 含 dep fronts）同口径，双路径 App.vue 发射一致。
-    for (dep_name, dep_front) in VueProject::collect_dep_front_dirs(root_dir) {
+    for (dep_name, dep_front, library_dep) in VueProject::collect_dep_front_dirs(root_dir) {
         let mut dep_at_files: Vec<PathBuf> = Vec::new();
         VueProject::collect_at_files_recursive(&dep_front, &mut dep_at_files);
         dep_at_files.sort();
@@ -5316,7 +5344,10 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                     }
                     cache.update(path.clone(), hash, artifacts);
                 }
-                Err(e) => handle_compile_error(&path, &e)?,
+                // PLAN-645 (F-R2): dep 腿与 Plan 475 全量通道同律——库形态 dep
+                // strict 降为告警（bp reference 消费方契约导入 standalone 必然
+                // S003），否则消费组合形态 bp 的项目 `auto run` 硬炸。
+                Err(e) => handle_compile_error_with_dep_shape(&path, &e, library_dep)?,
             }
         }
     }
@@ -5847,6 +5878,20 @@ fn handle_compile_error(path: &Path, e: &str) -> Result<(), String> {
         return Ok(());
     }
     if auto_lang::ui_gen::validators::strict_enabled() {
+        return Err(format!("Failed to compile {}: {}", path.display(), e));
+    }
+    println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+    Ok(())
+}
+
+/// PLAN-645 (F-R2): Phase 1c dep 腿专用——库形态 dep（bps 包库，旗标由
+/// `collect_dep_front_dirs` 形状裁定给出）strict 降为告警不硬炸：bp reference
+/// 可携带消费方契约导入（with_charts `use { package: official from
+/// "components" }` 由消费方供给），standalone strict 编译必然 S003。应用形态
+/// dep（false）与项目自身源（`handle_compile_error`）strict 门禁不变。
+fn handle_compile_error_with_dep_shape(path: &Path, e: &str, library_dep: bool) -> Result<(), String> {
+    let fn_only = e.contains("No widget or store declarations");
+    if auto_lang::ui_gen::validators::strict_enabled() && !fn_only && !library_dep {
         return Err(format!("Failed to compile {}: {}", path.display(), e));
     }
     println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-646
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: select-anything
 author: [zcode-agent]
 created_at: 2026-09-18
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/auto-lang/ui/design/select-anything.md]
 touched_goals: [GOAL-007, GOAL-014, GOAL-015]   # 双端能力一致 / MCP 工具 / Agent 知识采集输入
 
 affects: [docs/specs/auto-lang/ui, docs/specs/auto-lang/mcp]
-current_step: 0
+current_step: 11
 total_steps: 11
 ---
 
@@ -293,57 +293,199 @@ pub struct SelectedNode {
 
 ### Phase A —— 选择语义与信封内核（纯函数）
 
-- **T-01** 新建 `crates/auto-lang/src/ui/selection/mod.rs`：`Rect` 复用
+- **[x] T-01** 新建 `crates/auto-lang/src/ui/selection/mod.rs`：`Rect` 复用
   `ui::debug::Rect`；`select_nodes` + `trim_to_topmost` + `Marquee` 几何；
   lib.rs/`ui/mod.rs` 挂模块。内联单测（AC-01）。
   验证：`cargo check -p auto-lang && cargo t selection`。
-- **T-02** 新建 `crates/auto-lang/src/ui/selection/output.rs`：
+  [✅ 已完成] commit f47012fb2；selection 模块门控 ui-interpreter（依赖
+  mcp_server/vtree_atom 同门控，default-features API 构建修复 79145ed32 后随
+  c6579082e 线收编）。
+- **[x] T-02** 新建 `crates/auto-lang/src/ui/selection/output.rs`：
   `SelectionResult`/`SelectedNode` + `build_selection_result(...)`（入参：
   surface/app/rect/topmost 节点、VTree、computed 映射、源码全文）+
   `node_to_json` walker + 三格式渲染（auto/json/atom）。内联单测（AC-02）。
   验证：`cargo t selection`。
+  [✅ 已完成] 同上 commit；`select_envelope` 一步式包装（VM 臂/MCP 共用）。
 
 ### Phase B —— VM/Iced 端交互
 
-- **T-03** `ui/session.rs` DevToolsState 扩展四字段 + 初始化；
+- **[x] T-03** `ui/session.rs` DevToolsState 扩展四字段 + 初始化；
   `renderer.rs` `GlobalPress`（alt_held 门控、抑制 WM 焦点抢占）、`__mouse_moved`、
   `__mouse_released` 三臂接入 marquee 状态机。验证：`cargo check` +
   `auto run -r vm` 冒烟（拖拽出现矩形轨迹日志）。
-- **T-04** marquee 绘制层（Stack+Canvas 或 View::Overlay 择一）+
+  [✅ 已完成] commit 096e52825。DevToolsState 实扩 6 字段（+last_cursor/
+  select_copy_feedback）；GlobalPress 臂经 `selection_press_anchor`（primary
+  App split_mut）。人工拖拽冒烟属 AC-03 残项（见 §9 走查记录）。
+- **[x] T-04** marquee 绘制层（Stack+Canvas 或 View::Overlay 择一）+
   release→needs_bounds→`__bounds_collected` 臂内延迟计算（pending_selection 消费）
   + desktop 模式 vwin 平移。验证：实机框选产出 selection_result 日志（AC-03 前置）。
-- **T-05** DevTools 面板新 `DevToolsTab::Select`：三视图切换 + Copy
+  [✅ 已完成] Stack+canvas（MarqueePainter，非 opaque 层穿透）。**vwin 平移
+  实证豁免**：LayoutCollector bounds 与订阅面 CursorMoved 同为窗口逻辑坐标
+  （desktop 模式 vwin 平移渲染已含在 bounds 内），直接同空间比较，无需平移
+  （语义等价，实现更简）。
+- **[x] T-05** DevTools 面板新 `DevToolsTab::Select`：三视图切换 + Copy
   （clipboard_set）+ Esc 关闭。验证：实机走查（AC-03/AC-04），截图留证。
+  [✅ 已完成] 「采集」chip + `__tab_select`/`__select_view_*`/`__select_copy`/
+  `__select_esc` 四臂；Esc 走 keyboard_event_message 尾部（app 级 Escape
+  binding 优先）；F12/✕ 关面板顺带清 marquee 在途态。
 
 ### Phase C —— MCP 工具
 
-- **T-06** `ui/mcp_server.rs`：`autoui_select_rect` 工具注册 + 实现（复用
+- **[x] T-06** `ui/mcp_server.rs`：`autoui_select_rect` 工具注册 + 实现（复用
   T-01/T-02 纯函数与 vtree 快照获取模式）；扩展
   `.agents/skills/autoui-verifier/scripts/test_vm_mcp.py` 用例。验证：
   `python .agents/skills/autoui-verifier/scripts/test_vm_mcp.py`（AC-07）。
+  [✅ 已完成] commit b777994f7 + 9a5ccd6c6 线。**参数面收敛**：include_box/
+  style/events/source 四 flag 未实现——信封 structure 由无 computed 快照构建
+  （盒模型/样式本就缺席，flag 恒 no-op，如实去掉）；信封新增 `id` 字段。
+  **走查修复**：SharedState 增 source_code 随帧发布（ensure_source_loaded）+
+  `__hot_reload` 泵臂代消费 needs_bounds（静默会话 bounds 采集闭环，Plan 282
+  补线）。e2e：013-todo 全窗 rect → nodes=1 kinds=['col']（顶层修剪语义）+
+  结构化错误路径全绿。
 
 ### Phase D —— Vue 端
 
-- **T-07** `ui_gen/vue.rs node_to_html` 注入 data-auto-{id,tag,span}；mod tests
+- **[x] T-07** `ui_gen/vue.rs node_to_html` 注入 data-auto-{id,tag,span}；mod tests
   新增快照断言。验证：`cargo t vue`（AC-05）。
-- **T-08** `crates/auto-man/src/vue.rs`：脚手架写 `src/auto-sources.ts`
+  [✅ 已完成] commit c6579082e。**偏离计划：AUTOUI_SELECT_MARKERS dev 门控**
+  （原定"无开关恒定输出"被实证证伪——304 项 vue 快照测试锚定精确 HTML，恒定
+  注入大面积破坏；产物构建不设 env 保持逐字节不变，语义等价 dev-only）。
+  走查增注 `data-auto-src`（源 .at stem——子件 span 归各自源文）。
+- **[x] T-08** `crates/auto-man/src/vue.rs`：脚手架写 `src/auto-sources.ts`
   （run_vue_project + incremental_compile_changed 同步、hash 防抖）；
   dev-only overlay 资产（overlay.ts + 面板样式）+ main.ts 接线。
   验证：`auto run` 启动无错，页面含 overlay 注入（AC-06 前置）。
-- **T-09** overlay.ts 交互逻辑：Alt+drag marquee、DOM 采集（中心包含+顶层修剪）、
+  [✅ 已完成] commit 444b87fec + 9a5ccd6c6。main.ts 以
+  `import.meta.env.DEV` 动态引用（产物 tree-shake）；overlay 资产随
+  run_vue_project 自愈刷新（旧工程 scaffold 停旧版 overlay 实证后补）。
+- **[x] T-09** overlay.ts 交互逻辑：Alt+drag marquee、DOM 采集（中心包含+顶层修剪）、
   切片+JSON、复制。扩展 `test_vue_playwright.mjs` 用例。
   验证：`node .agents/skills/autoui-verifier/scripts/test_vue_playwright.mjs`（AC-06）。
+  [✅ 已完成] playwright 增 altDrag/assertDataAuto/assertPanel 三动作；
+  015-notes e2e 全绿（93 标记元素 → Alt 拖拽 → 面板切片=sidebar.at 字节
+  区间原文）。走查修复：**UTF-8 字节切片**（.at span 字节口径 vs JS UTF-16
+  码元，中文注释错位实证）。
 
 ### Phase E —— 收口
 
-- **T-10** 双端实机走查留证（截图/录屏入 plan）；`cargo tf` 全量门禁（AC-08）。
-- **T-11** spec 沉淀：SD-01 新建设计文档、SD-02/03 回写；`.autoos/specs.json`
+- **[x] T-10** 双端实机走查留证（截图/录屏入 plan）；`cargo tf` 全量门禁（AC-08）。
+  [✅ 已完成] Vue 端 e2e 截图 `docs/plans/reports/p646/`（initial + panel：
+  面板 span=4193..12730 切片=sidebar.at 原文）；VM 端 MCP e2e（013-todo）。
+  tf 全绿（唯一红 plan367 real_sidebar_at_parses_with_navtree=master 预存，
+  sidebar.at PLAN-637 内容漂移 vs plan367 测试，与本计划无关——两文件在
+  master/分支逐字节一致实证）。
+- **[x] T-11** spec 沉淀：SD-01 新建设计文档、SD-02/03 回写；`.autoos/specs.json`
   upsert + `python scripts/spec-index.py`。
+  [✅ 已完成（worktree 侧）] SD-01 `docs/specs/auto-lang/ui/design/
+  select-anything.md` + SD-02 ui/overview + SD-03 mcp/overview 已落 worktree
+  随分支合并；specs.json upsert + spec-index.py 属主检出台账面，归
+  /auto-plan:merge 执行。
 
 ## 复审记录
 
 - 2026-09-18 /auto-plan:new 起草：基于双端代码勘察定稿 v1 契约，提交用户确认。
   stage: new，outcome: pass（待用户确认后转 executing），next: work（T-01 起）。
+
+### 9.1 work 记录（2026-09-18，T-01..T-11）
+
+`stage: work | plan_id: PLAN-646 | plan_revision: 1 | outcome: pass（附 3 项
+人工走查残项，见 §10.6） | code_commit: 911c6a93d（worktree plan-646-dev，
+base 1f4e3e32c）| task_ids: T-01..T-11 全闭环`
+
+- **提交链**（worktree `D:/autostack/.wt/lang-646/auto-lang`，依赖兄弟
+  auto-down detached @fae21d90 仅解 cargo path）：
+  f47012fb2（T-01/02 selection 纯函数内核）→ 096e52825（T-03/04/05 VM 交互）
+  → b777994f7（T-06 MCP 工具）→ c6579082e（T-07 vue 标记注入）→ 444b87fec
+  （T-08 脚手架资产）→ bfb654a37（T-09 playwright 动作）→ c7e725324
+  （selection 门控修复）→ 9a5ccd6c6（走查三修）→ eba552e50（needs_bounds
+  泵臂代消费）→ 911c6a93d（T-11 spec）。
+- **验证证据**：`cargo t selection` 24/24；vue 生成器 304/304（含
+  plan646 标记测试）；mcp select_rect 5/5；tf 门禁见 §9.2；Vue e2e 截图
+  `docs/plans/reports/p646/`（93 标记元素，面板 span=4193..12730 切片=
+  sidebar.at 字节原文）；VM MCP e2e 013-todo（全窗 rect → nodes=1
+  kinds=['col'] = 顶层修剪语义直证 + 结构化错误路径）。
+- **AC 对账**：AC-01/02（selection 单测+字节锚点）✅；AC-05（生成器快照）✅；
+  AC-06（Vue e2e 机器驱动，截图留证）✅；AC-07（test_vm_mcp.py 机器驱动）✅；
+  AC-08（tf 预存红除外全绿，见 §9.2）✅。**AC-03/AC-04 半开放**：交互链路
+  逻辑核（GlobalPress 起笔→marquee→release 定稿→bounds 臂信封→面板/Copy）
+  与 MCP 路径共用同一信封代码且 MCP 侧机器实证；人工 Alt+拖拽与剪贴板
+  粘贴核对属 30 秒目视残项（§10.6），复审时用户一拖即验。
+
+### 9.2 tf 全量门禁（AC-08）
+
+- `cargo tf` 全档（3616 测）：两预存红均与本计划无关——
+  ①`plan367 real_sidebar_at_parses_with_navtree`：sidebar.at（PLAN-637 B1
+  内容漂移，undefined `caption_text`）vs plan367 测试；**master 同红实证**
+  （两文件 master/分支逐字节一致）。②`ffi_dual_019`（+并发批跑时
+  dep_parity_018/ffi_dual_018 同 flake）：**master 隔离复跑同红**、本分支
+  三测隔离全绿——在案预存并发 flaky（Plan 621/634 同族记录）。
+  排除①后带 --retries 2 全量复跑（§9.1 证据行，3.7k+ 测）最终绿。
+- 走查顺带修复两处非本计划破损面：selection 模块门控（default-features
+  API 构建断裂）、`__hot_reload` 泵臂代消费 needs_bounds（静默会话 bounds
+  采集闭环——Plan 282 既有链路缺口，非本计划引入，实机 trace armed 4/
+  consumed 0 定罪后修复）。
+
+### 9.3 review 记录（2026-09-18）
+
+`stage: review | plan_id: PLAN-646 | plan_revision: 1 | outcome: pass |
+reviewed_commit: 738ec4ecd（worktree plan-646-dev） | base_commit: 1f4e3e32c |
+dependency_revisions: auto-down detached @fae21d90（仅 cargo path 解析） |
+spec_inputs: docs/specs/auto-lang/ui/design/select-anything.md（新件，
+SD-01/02/03 已落 worktree 提交 911c6a93d）`
+
+**独立性声明**：复审在实现会话内进行（无独立会话可用），结论全部从工件
+重建——复审期新增/复跑的命令与截图均在本节记录，不采信执行期摘要。
+
+**复审期修复（回 work 两小项，均已验证）**：
+- R646-F1（defect，已修 738ec4ecd）：Select 面板正文在深色主题下白字白底
+  隐身（text 缺省色随主题，面板浅底硬编码）——实机合成输入驱动真窗口后
+  截图定罪，正文加显式深灰。
+- R646-F2（style，已修 65976a912）：selection 新件 rustfmt 归位。
+
+**验收对账（复审复跑证据）**：
+- AC-01 ✅ pass：`cargo t selection`（复审批 25/25，含中心包含/边缘扫过
+  不命中/顶层修剪/文档序/死区/空集安全）。
+- AC-02 ✅ pass：切片逐字节锚点（`slice_is_byte_exact_substring`）、JSON
+  字段完整、Atom Display、node_to_json 往返。
+- AC-03 ✅ pass（实机机器驱动）：PowerShell SendInput 合成 Alt+拖拽驱动
+  真窗口（"待办清单"，013-todo），trace 全链 `GlobalPress alt=true →
+  released drag=true → select bounds=12 nodes=1`；截图证明采集 tab 激活+
+  信封头可见（`docs/plans/reports/p646/`）；R646-F1 修复后正文可视（修复
+  后面板终态截图因桌面物理输入竞争未捕获，行为层由修复版 trace + 单行
+  颜色 diff 佐证——证据层瑕疵已如实标注）。
+- AC-04 ✅ pass（附人工残项）：clipboard 原语有 roundtrip 单测
+  （clipboard.rs set_then_get），按钮→`__select_copy`→`clipboard_set`→
+  `render(当前视图)` 接线经代码审查；物理粘贴核对留用户目视（§10.6）。
+- AC-05 ✅ pass：`plan646_vue_emits_data_auto_markers`（tag/src/id/span+
+  off:len 形态断言）；vue 生成器 304/304。
+- AC-06 ✅ pass：playwright e2e 复审复跑全绿（assertDataAuto 30 元素 →
+  altDrag → assertPanel surface=vue/span=），截图
+  `docs/plans/reports/p646/p646-review-vue-*.png`。
+- AC-07 ✅ pass：test_vm_mcp.py 复审复跑（envelope surface=vm nodes=1
+  kinds=['col'] + 结构化错误路径）。
+- AC-08 ✅ pass：**复审提交点 738ec4ecd 全量 tf 3615/3615 绿**（排除
+  plan367 sidebar——master 同红实证；ffi_dual_019 flaky 一次重试过=在案
+  预存并发 flake，Plan 621/634 同族）；scoped 25/25。
+
+**知识增量复审**：SD-01/02/03 描述与实现一致（含走查修订：data-auto-src、
+UTF-8 字节切片、AUTOUI_SELECT_MARKERS 门控、泵臂代消费）；`new_spec_
+components`/`touched_goals`（GOAL-007/014/015，goals.md 注册在案）核对
+无误；台账 upsert 留 merge。
+
+**发现汇总**：R646-F1/F2 已修复；无未决 finding。**残项**（§10.6）：
+VM 物理粘贴核对、Vue 面板 Copy（headless 剪贴板权限不可驱）——人工 30 秒
+目视项，不阻塞。
+
+`next: merge`
+
+### 9.4 worktree 事件记录（外来 WIP 冲突）
+
+执行中段发现**另一会话的 PLAN-022 terminal WIP 落入本 worktree 工作树**
+（renderer.rs 片段曾误入一次本计划提交，已 reset --soft 撤销并恢复）。
+外来改动已全额保全至 `D:/autostack/.wt/lang-646/foreign-wip-plan022-terminal.patch`
+（terminal/{mod,iced/widget}.rs + renderer.rs 片段，608 行），本分支工作树
+已还原为仅含本计划改动。**归属裁定待用户**：该 patch 归 PLAN-022 属主认领
+（pop 恢复或弃置）；本计划未据其构建、未携带其任何行。
 
 ## 待澄清事项
 
@@ -357,3 +499,14 @@ pub struct SelectedNode {
 4. **桌面多虚拟窗**：v1 仅聚焦窗（vwin 平移），跨窗框选不支持——符合预期否？
 5. **默认视图**：面板默认展示 Auto 源码（JSON/Atom 切换）。若知识采集场景期望
    默认 JSON，请指出。
+6. **work 残项（复审时 30 秒目视确认，非阻塞）**：①VM 端人工 Alt+拖拽
+   （交互臂逻辑与 MCP 共用信封代码且 MCP 侧机器实证，拖拽手势本身无头不可
+   驱动）；②VM 面板 Copy 后剪贴板粘贴核对（clipboard_set 与 code_editor
+   同一既通路径）；③Vue 面板 Copy 按钮（headless 剪贴板权限不可驱，按钮
+   在截图在案）。**外来 WIP 归属**：`D:/autostack/.wt/lang-646/
+   foreign-wip-plan022-terminal.patch`（PLAN-022 terminal 虚拟滚动，608 行）
+   待属主认领或弃置（§9.3）。
+7. **MCP include_* 参数面收敛**：原计划的 include_box/style/events/source
+   四 flag 未实现（信封 structure 无 computed 快照，flag 恒 no-op，如实
+   去掉）；信封新增 `id`（vnode_N）字段。若 agent 侧需要盒模型/样式入信封，
+   后续迭代以 computed 注入实现。
