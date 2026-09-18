@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-642
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: executing             # 复审 needs_fix → 由 execution_done 回退（R642-1）
+plan_revision: 1              # 复审基线迁移：初版契约无 revision 字段，按 auto-plan-new 规约补记为 1
 feature_name: uigallery-vm-embed-repair
 author: [agent]
 created_at: 2026-09-18
@@ -12,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 10
+current_step: 7
 total_steps: 10
 ---
 
@@ -218,20 +219,20 @@ MCP 驱动（`auto run -r vm` + autoui-verifier 工具链）对 34 个侧栏条�
       + lambda 改 msg 带参形式（P625 T-06 既定惯例）。实证：独立臂 91 行
       出齐（Maria Anders 等）+ 分页交互；内嵌臂同律（语料修复随适配器再生
       生效）。
-- [✅] **T-03 029 崩溃归因与修复**（族 C，G-3）[✅ 已完成（无复现闭环）]
-      T-01 修复后 029 复验序列（press→screenshot）进程存活且渲染真实图库
-      （t03_029_after_press.png）——崩溃未再复现。崩溃类有两个来源实例：
-      ①029 占位符→screenshot 死亡；②并发 auto build + 窗口交互后死亡；
-      另 standalone 026 端口占用时 MCP bind FATAL 127（mcp_server.rs:540）。
-      归因细节与缓解候选登记 P642-D3（KNOWN-DEBT）。
-- [✅] **T-04 024-charts 空白画布修复**（族 B/D，G-2）[⚠ 部分完成]
+- [✅] **T-03 029 崩溃归因与修复**（族 C，G-3）[⚠ 复审重开——复现已证]
+      执行期结论（029 单序列 press→screenshot 存活）被复审推翻：复审实例在
+      全量矩阵中于**第二次** SelectDemo(029)（handler OK 后）静默死亡
+      exit 127（ug_review.log:855-858 死前日志，之后仅心跳行）。间歇性、
+      疑渲染/异步照片装载竞态。修复待做：029 二次打开路径归因 + 防护；
+      MCP bind FATAL 127 假象（mcp_server.rs:540）另见 P642-D3。
+- [⚠] **T-04 024-charts 空白画布修复**（族 B/D，G-2）[⚠ 复审重开——内嵌面未达]
       语料面：四个 chart 组件 `cap`/`hint` 笔误（→caption_text/hint_text，
       93 处）修复后 from_workspace strict 复活（19→21 loadable），独立臂
       VM 完整出图（三系列折线截图）。内嵌面 residual：包组件在合并 VM 臂
       `shadows builtin tag — builtin wins` → 实例落 builtin 桩 → 画布空；
       发射器已补包目录级联 + 包内 fn 模块链（chart_geom）收集，画布仍空。
       登记 P642-D1（含独立/内嵌对照截图与 Plan 408/435 优先序假设）。
-- [✅] **T-05 027-file-manager 永久加载态修复**（族 A/B，G-2）[⚠ 部分完成]
+- [⚠] **T-05 027-file-manager 永久加载态修复**（族 A/B，G-2）[⚠ 复审重开——内嵌面未达]
       语料/装载面：tree_icon recipe 预注册修复（T-01）+ from_workspace strict
       复活 + 包目录级联；独立臂完整出图（真实目录 62 项截图）。内嵌面
       residual：Init/异步装载不完成，永久"正在加载..."；伴生 kept-first 包
@@ -268,15 +269,101 @@ MCP 驱动（`auto run -r vm` + autoui-verifier 工具链）对 34 个侧栏条�
 
 - AC-01 部分达成：024 内嵌画布空（P642-D1）、027 内嵌加载态（P642-D2）
   两页 residual；其余 21 个 VM-live 页全部 OK。
-- AC-02 达成（029 存活 + 出真图；崩溃类残余观测风险登记 P642-D3）。
+- AC-02 **未达成（复审复现）**：029 二次打开触发 exit 127 静默死亡
+  （见 T-03 重开记录）；"存活"结论仅对单次打开序列成立。
 - AC-03 达成。AC-04 达成。AC-05 修订达成（内联为登记过的确定性变换）。
-- AC-06 达成（无新增红；008 有结论）。
+- AC-06 达成（无新增红；008 有结论；tv 3744/3745，唯一红为 master 预存
+  `real_sidebar_at_parses_with_navtree`，同 parse 族候选同法修复）。
+
+### 规范增量（复审整理，merge 时沉淀）
+
+- **registry.at loadable 语义（modify）**：`docs/specs/auto-lang/ui/overview.md`
+  ui-gallery registry 契约——registry.at 的 `loadable` 字段语义 = "VM 臂内嵌
+  可交互"（`loadable || fullstack`），web 臂 `demos-registry.ts.loadable` =
+  Vue 动态挂载能力；两臂数据源分离为 enduring 决策。依据 AC-03 证据。
+- **适配器 stylekit 内联（new）**：`emit_gallery_vm_demos` 把跨包
+  `use stylekit.styles: ...` 确定性内联为适配器本地 `pub style` 声明（画廊
+  上下文无跨包解析通道 + 装载路径无 recipe 预注册的既定事实下，适配器
+  自足性为 enduring 形态）；教程/源码 tab 展示语料原文不变。依据 T-01 归因
+  与 AC-05 等价性检查。
+- **组件包目录级联（new）**：475 组件包（`use { package: ... from "dir" }`）
+  的包目录随适配器级联拷贝进 demos/（package.at 清单跳过；包内组件 fn 模块
+  链同链收集；同名异容 kept-first 告警）。依据 T-04/T-05 证据。
+- **parse_package_widgets recipe 预注册义务（modify）**：475 包装载器 parse
+  前必须执行 `prepare_style_recipe_imports`（与编译入口同契约）。依据
+  tree_icon 修复证据。
 
 ## 9. 复审记录
 
-（待 /auto-plan:review——执行证据齐备：本文件 §8 回填、双仓提交
-ba009076f / ddd0fe2、KNOWN-DEBT P642 段、截图集
-`auto-os/ui-gallery/src/front/tests/screenshots/{inv,fix,fix2,fix3,final,t03}_*.png`）
+```yaml
+stage: review
+plan_id: PLAN-642
+plan_revision: 1            # 复审基线迁移补记（初版无 revision 字段）
+outcome: needs_fix
+reviewed_commit:
+  auto-lang: ba009076f2a0553529a17b7bb5f709748e351c9d   # plan-642-dev, worktree .wt/lang-642/auto-lang, clean
+  auto-os:   ddd0fe2                                     # plan-642-dev, worktree .wt/lang-642/auto-os, clean
+base_commit:
+  auto-lang: b9e9f6899   # 分组 worktree 创建基
+  auto-os:   a6f3eb5
+dependency_revisions:
+  auto-down: 60b038f (detached 组内兄弟，仅满足 path 依赖)
+spec_inputs:
+  - docs/specs/auto-lang/ui/overview.md（registry 契约/内嵌形态节，未在本审中改写；
+    规范增量草案已入本计划 §8.1，merge 时沉淀）
+acceptance_results:
+  AC-01: partial — 复审独立矩阵（port 2160 实例）21 VM-live 页 OK、10 设计回退
+         命中清单；024 画布空、027 加载态 residual（P642-D1/D2）
+  AC-02: fail — 029 二次打开复现 exit 127 静默死亡（F-1，见下）
+  AC-03: pass — 013/015 侧栏角标"可交互"（复审快照 text 节点实证）
+  AC-04: pass — KNOWN-DEBT P642-D1..D6 + P633-D2 核销（master e352437b0）
+  AC-05: pass — 适配器 vs 语料差异仅 widget 改名 + stylekit 内联 + 空行
+         （003/016/031-paint/029/045 五件抽查，参数化 pill 多行声明完整）
+  AC-06: pass — cargo t ui_gen 792/792；cargo tv --no-fail-fast 3744/3745
+         （唯一红 plan367 real_sidebar_at_parses_with_navtree 为 master 预存，
+         本仓主检出同红实证）；008 快照 18 特性行有内容，巨字为语料设计
+findings:
+  - id: R642-F1
+    severity: high
+    affects: [AC-02, T-03]
+    evidence: 复审实例（2160）全量矩阵中第二次 SelectDemo(029-photo-gallery)
+      handler OK 后进程静默死亡 exit 127，死前日志仅剩 MCP 心跳行
+      （ug_review.log:855-858）；执行期"单序列存活"结论不充分。
+    correction: 回 worktree 归因 029 二次打开/异步照片装载渲染竞态，加防护
+      （渲染失败降级），修复后复验需覆盖"重复打开 029 ≥2 次 + 矩阵全遍历"。
+  - id: R642-F2
+    severity: medium
+    affects: [AC-01, T-04]
+    evidence: 024 内嵌画布空；包组件在合并臂 `shadows builtin tag — builtin
+      wins`（Plan 408/435），独立臂正常（P642-D1）。
+    correction: 合并臂包组件/builtin 优先序归因与修复（或显式降级设计）。
+  - id: R642-F3
+    severity: medium
+    affects: [AC-01, T-05]
+    evidence: 027 内嵌永久"正在加载..."；独立臂真实目录 62 项（P642-D2，
+      伴生 kept-first 包冲突 P642-D4）。
+    correction: 合并臂 Init/异步装载链归因；包 per-demo 命名空间化候选。
+  - id: R642-F4
+    severity: low
+    affects: [AC-06]
+    evidence: plan367 real_sidebar_at_parses_with_navtree master 预存红
+      （同 parse-recipe 族）。
+    correction: 修复循环中按 plan370_test_support 同法补预注册（非回归，
+      可并入 F-1 修复批次）。
+evidence:
+  - 本计划 §8 执行回填 + §8.1 偏差面 + 规范增量草案
+  - 截图集 auto-os/ui-gallery/src/front/tests/screenshots/
+    （inv_*/fix_*/fix2_*/fix3_*/final_*/t03_*/rv_* ，gitignore 不入库，
+    结论性截图已在 §8 以文件名引用）
+  - KNOWN-DEBT-AND-RISKS.md 2026-09-18 PLAN-642 段
+  - 复审复现日志摘录：SelectDemo(029)→VM_HANDLER_OK→（仅心跳）→exit 127
+next: needs_fix → work（worktree .wt/lang-642/ 续用）；重开 T-03/T-04/T-05
+  （current_step=7）；修复后重审（plan_revision 仍 1，修复不改变语义契约）
+```
+
+（复审限制声明：本次复审在实现同会话执行，非独立角色；结论全部基于
+复审期新鲜命令输出——独立矩阵重跑、tv 全量重跑、badge/029 快照、
+五件适配器等价性 diff——而非执行期总结。）
 
 ## 10. 待澄清事项
 
