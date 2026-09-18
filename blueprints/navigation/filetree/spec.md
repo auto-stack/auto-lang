@@ -1,7 +1,7 @@
 +++
 kind = "navigation"
 name = "filetree"
-palette = []
+palette = ["icon", "text"]
 extension_points = ["nodes", "default_expanded", "selection", "toggle"]
 variants = ["default"]
 
@@ -16,14 +16,12 @@ nodes = "[]Node"
 fs 形态数据（id=路径 node schema）自动映射目录/文件图标（folder/folder-open
 按展开态；file 按扩展名），内部持有展开/选中态，零配置开箱即用。
 
-> **palette = [] 注记（PLAN-643 merge 对账修正）**：原声明 `["icon", "text"]`
-> 中 `icon` 虽为 schema `builtin_widget`（VM 原生渲染），但不在 vue 轨
-> `WidgetRegistry` 注册表内，违反本契约"palette 必须在 AURA registry"规则
-> （`palette_drift` 实红，被 070 实勘的 CARGO_MANIFEST_DIR 扫描根限制掩盖）。
-> 组合形态 reference 恢复（PLAN-645）后包面仍由 TreeIcon（包内支撑件，
-> registry 不扫描）组合，palette 维持置空；`icon` 词汇面缺口（schema
-> builtin_widget ∉ vue registry）挂 KNOWN-DEBT 由 vocabulary-face 归属
-> 计划统一裁定。
+> **palette 恢复注记（PLAN-649）**：原声明 `["icon", "text"]` 曾因 `icon`
+> 不在 vue 轨 `WidgetRegistry` 注册表内（`palette_drift` 实红）在 PLAN-643
+> merge 对账时置空回避。PLAN-649 SD-02 落地 icon 注册（schema
+> `builtin_widget` 首个进 palette 的案例，vue 轨专臂发射 Lucide 组件，
+> 注册仅补词汇面准入）后恢复最小集 `["icon", "text"]`。spec 本义的演进
+> （palette 扩写）仍归 PLAN-070。
 
 # What this blueprint absorbs
 

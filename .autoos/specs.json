@@ -3128,6 +3128,21 @@
           "status": "published",
           "created": "2026-09-18",
           "last_modified": "2026-09-18"
+        },
+        {
+          "id": "P649-1",
+          "title": "bp-consumption-groundwork — L1 连字符变体探测 + icon 词汇面注册 + data-table 复核（契约行沉淀）",
+          "content": "contract.md 两处增量：①Q5 解析链连字符变体规则（SD-01）——点号 use 路径字面量未命中时对下划线段按段序枚举 kebab 变体再探（字面量优先保序，变体组合上限 4），覆盖本地 probe/back 根映射/dep probe_pkg 三探测点，VM/vue 双轨同链（vue 轨经 resolve_use_module→resolve_module_path）；bp 包磁盘 kebab 命名与 use 下划线书写各自不变——640 登记 8/13 包 L1 直连不可达由此销号（plan649_bp_tests t01-t05 probe 单测+t08-t10 双轨端到端锁定）。②验证面 palette 词面 icon 归属落点（SD-02）——schema builtin_widget 内建进 palette 的归属=WidgetRegistry 注册补齐（候选①落地：Icon spec ark/iced/vue import=None，ImageSurface 同 precedent；vue 轨 node_to_html icon 专臂前置返回，注册仅词面准入零发射扰动；候选② builtin_widget tier 白名单未采纳，unclassified 杂音防线不放松）；filetree palette 恢复最小集 [icon,text]（t06 正/负断言）。data-table 复核为簿记非 spec：alias 注册在案+schema datatable 折叠键经 P4-4 overlay 实灌（t07 锁定），palette 回避真实理由=vue 语料零消费。",
+          "file": "docs/specs/blueprint/contract.md",
+          "related": [
+            "PLAN-649",
+            "PLAN-645",
+            "PLAN-643",
+            "PLAN-640"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
         }
       ]
     },
