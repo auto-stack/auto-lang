@@ -395,6 +395,11 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// Plan 508 G4：远程镜像会话在册表（Welcome/HitTable/帧推送 + 输入
     /// 路由，见 desktop_protocol::remote）。
     pub remote_mirrors: Vec<crate::ui::desktop_protocol::remote::RemoteMirror>,
+    /// PLAN-030 D4：DesktopBus 上行收集（`source` = registry_id 归因；壳
+    /// 伪窗 = 面名）。renderer ServiceTick 臂在 pump_broker_clients 之后
+    /// 排空直调 execute_desktop_commands——同拍生效（drain 排空点先于
+    /// 泵，走 in-proc `__desktop_cmd` 桥会拖到下拍）。
+    pub desktop_bus_inbox: Vec<(String, DesktopCommand)>,
 }
 
 impl DesktopState {
@@ -452,6 +457,7 @@ impl DesktopState {
             outproc_children: Vec::new(),
             remote_listener: None,
             remote_mirrors: Vec::new(),
+            desktop_bus_inbox: Vec::new(),
         }
     }
 
@@ -3686,6 +3692,22 @@ fn spawn_outproc_child(
         let mut to_app = Vec::new();
         for action in actions {
             match action {
+                HostAction::DesktopBus { wid, record } => {
+                    // PLAN-030 D4（v1.11）：52 动词上行执行臂——此前该变体
+                    // 在端点丢弃臂无声消失（desktop.* wire 化缺口）。记录
+                    // 解析走 parse_records 单点（I4 词表零变化）；归因按
+                    // wid → VWinState.registry_id（壳伪窗 = 面名，T-04 落
+                    // 位时回填）。执行归 renderer ServiceTick 泵后排空。
+                    let source = self
+                        .host
+                        .as_ref()
+                        .and_then(|h| h.wm.wins.get(&Wid(wid)))
+                        .and_then(|w| w.registry_id.clone())
+                        .unwrap_or_default();
+                    for cmd in DesktopCommand::parse_records(&record) {
+                        self.desktop.desktop_bus_inbox.push((source.clone(), cmd));
+                    }
+                }
                 HostAction::ResolveAndAttach { app_name, title, width, height, .. } => {
                     // 注册表解析 → 编译装载（ResolveFailed = 弃连）。
                     let component = (|| {

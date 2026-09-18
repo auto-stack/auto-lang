@@ -222,6 +222,613 @@ pub struct DesktopSurfaceSync {
     pub events: Vec<ShellEvent>,
 }
 
+/// desktop 本体面 outproc 全量快照（PLAN-030：in-proc 写集的 typed 化
+/// ——`inject_desktop_surface` 八键 + `__wm_running`；cursor/drag 维持
+/// 事件通道[ShellCursorMove]不入快照，与解释轨"只写不置脏"语义同册）。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DesktopSurfaceSnapshot {
+    /// `__desktop_icons`（F2 自定义列表 − hidden）。
+    pub icons: Vec<DesktopIconEntry>,
+    /// `__desktop_cells`（含 spacer 填充，行主序）。
+    pub cells: Vec<DesktopCellEntry>,
+    /// 平行字符串列表（B12 规避——handler 下标读）。
+    pub cell_ids: Vec<String>,
+    pub cell_cs: Vec<String>,
+    pub cell_rs: Vec<String>,
+    /// `__desktop_bg`（"#RRGGBB" → 消费侧拼 bg-[..]；纯色分支空串）。
+    pub bg: String,
+    /// `__desktop_label_dark`（暗壁纸白字旗标）。
+    pub label_dark: bool,
+    /// `__desktop_hidden` csv。
+    pub hidden: String,
+    /// `__wm_running`（launching ack 求差数据面）。
+    pub running_csv: String,
+    pub events: Vec<ShellEvent>,
+    /// 指纹门（per-face 宿主侧缓存比较——与 ShellProjection.fp 同册）。
+    pub fp: String,
+}
+
+/// `__desktop_icons` 条目（typed 叶）。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DesktopIconEntry {
+    pub id: String,
+    pub icon: String,
+    pub label: String,
+    /// custom（F2 后唯一来源）。
+    pub src: String,
+    pub color: String,
+}
+
+/// `__desktop_cells` 条目（spacer 与图标位同形；spacer = true 时仅 c/r
+/// 有效——与 lowering 键集逐字段一致）。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DesktopCellEntry {
+    pub spacer: bool,
+    pub id: String,
+    pub icon: String,
+    /// 满幅 tile 旗标（iconfile: 真位图）。
+    pub full: bool,
+    pub label: String,
+    pub src: String,
+    pub color: String,
+    pub c: usize,
+    pub r: usize,
+}
+
+// ====================== wire 编解码（PLAN-030 T-02）======================
+//
+// 027 休眠 typed 载体的 wire 激活：LE 原语直用 desktop_protocol::codec，
+// 叶面保形（bool 载体 bool、字符串载体 string——"1"/"" lowering 单点
+// 留在解释轨/child 侧 apply）。载荷走 ControlMsg::ShellProjectionPush
+// {face, payload}；clock/cursor 独立变体字段直载（不入快照语义）。
+
+#[cfg(feature = "ui-iced")]
+pub mod wire {
+    use super::*;
+    use crate::ui::desktop_protocol::codec::{put_bool, put_string, put_u32, put_u64, put_u8, Reader};
+
+    type CResult<T> = Result<T, crate::ui::desktop_protocol::CodecError>;
+
+    fn put_usize(out: &mut Vec<u8>, v: usize) {
+        put_u64(out, v as u64);
+    }
+
+    fn usize_of(r: &mut Reader<'_>) -> CResult<usize> {
+        Ok(r.u64()? as usize)
+    }
+
+    fn put_str_vec(out: &mut Vec<u8>, v: &[String]) {
+        put_u32(out, v.len() as u32);
+        for s in v {
+            put_string(out, s);
+        }
+    }
+
+    fn str_vec_of(r: &mut Reader<'_>) -> CResult<Vec<String>> {
+        let n = r.u32()? as usize;
+        let mut v = Vec::with_capacity(n.min(4096));
+        for _ in 0..n {
+            v.push(r.string()?);
+        }
+        Ok(v)
+    }
+
+    fn shell_event_tag(e: &ShellEvent) -> u8 {
+        match e {
+            ShellEvent::RebuildMru => 1,
+            ShellEvent::RebuildNotes => 2,
+            ShellEvent::RunningSync => 3,
+            ShellEvent::ApplyFilter => 4,
+            ShellEvent::RebuildFaces => 5,
+        }
+    }
+
+    fn shell_event_of(tag: u8) -> CResult<ShellEvent> {
+        Ok(match tag {
+            1 => ShellEvent::RebuildMru,
+            2 => ShellEvent::RebuildNotes,
+            3 => ShellEvent::RunningSync,
+            4 => ShellEvent::ApplyFilter,
+            5 => ShellEvent::RebuildFaces,
+            other => {
+                return Err(crate::ui::desktop_protocol::CodecError::UnknownTag(other))
+            }
+        })
+    }
+
+    fn put_events(out: &mut Vec<u8>, events: &[ShellEvent]) {
+        put_u32(out, events.len() as u32);
+        for e in events {
+            put_u8(out, shell_event_tag(e));
+        }
+    }
+
+    fn events_of(r: &mut Reader<'_>) -> CResult<Vec<ShellEvent>> {
+        let n = r.u32()? as usize;
+        let mut v = Vec::with_capacity(n.min(64));
+        for _ in 0..n {
+            v.push(shell_event_of(r.u8()?)?);
+        }
+        Ok(v)
+    }
+
+    impl ShellWin {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_string(out, &self.wid);
+            put_string(out, &self.title);
+            put_bool(out, self.focused);
+            match self.workspace {
+                Some(ws) => {
+                    put_bool(out, true);
+                    put_usize(out, ws);
+                }
+                None => put_bool(out, false),
+            }
+            put_bool(out, self.native);
+            put_string(out, &self.app);
+            put_string(out, &self.icon);
+            put_bool(out, self.pager);
+            put_bool(out, self.pinned);
+            put_bool(out, self.dup_app);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self {
+                wid: r.string()?,
+                title: r.string()?,
+                focused: r.bool()?,
+                workspace: if r.bool()? { Some(usize_of(r)?) } else { None },
+                native: r.bool()?,
+                app: r.string()?,
+                icon: r.string()?,
+                pager: r.bool()?,
+                pinned: r.bool()?,
+                dup_app: r.bool()?,
+            })
+        }
+    }
+
+    impl ShellWorkspace {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_usize(out, self.id);
+            put_string(out, &self.name);
+            put_bool(out, self.current);
+            put_string(out, &self.label);
+            put_string(out, &self.more);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self {
+                id: usize_of(r)?,
+                name: r.string()?,
+                current: r.bool()?,
+                label: r.string()?,
+                more: r.string()?,
+            })
+        }
+    }
+
+    impl ShellNote {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_u64(out, self.id);
+            put_string(out, &self.kind);
+            put_string(out, &self.msg);
+            put_string(out, &self.at);
+            put_string(out, &self.app);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self {
+                id: r.u64()?,
+                kind: r.string()?,
+                msg: r.string()?,
+                at: r.string()?,
+                app: r.string()?,
+            })
+        }
+    }
+
+    impl DockPin {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_string(out, &self.id);
+            put_string(out, &self.icon);
+            put_bool(out, self.running);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self { id: r.string()?, icon: r.string()?, running: r.bool()? })
+        }
+    }
+
+    fn put_wins(out: &mut Vec<u8>, wins: &[ShellWin]) {
+        put_u32(out, wins.len() as u32);
+        for w in wins {
+            w.wire_encode(out);
+        }
+    }
+
+    fn wins_of(r: &mut Reader<'_>) -> CResult<Vec<ShellWin>> {
+        let n = r.u32()? as usize;
+        let mut v = Vec::with_capacity(n.min(512));
+        for _ in 0..n {
+            v.push(ShellWin::wire_decode(r)?);
+        }
+        Ok(v)
+    }
+
+    impl ShellProjection {
+        /// shell 面 payload（`ShellProjectionPush{face: SHELL, ..}`）。
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_wins(out, &self.wins);
+            put_u32(out, self.workspaces.len() as u32);
+            for w in &self.workspaces {
+                w.wire_encode(out);
+            }
+            put_wins(out, &self.mru);
+            put_u32(out, self.notes.len() as u32);
+            for n in &self.notes {
+                n.wire_encode(out);
+            }
+            put_string(out, &self.meta);
+            put_string(out, &self.running_csv);
+            put_string(out, &self.focused_app);
+            put_u64(out, self.notes_unread);
+            put_string(out, &self.notes_badge);
+            put_bool(out, self.notes_visible);
+            put_string(out, &self.dock_pinned_csv);
+            put_u32(out, self.dock_pinned.len() as u32);
+            for p in &self.dock_pinned {
+                p.wire_encode(out);
+            }
+            put_bool(out, self.settings_open);
+            put_bool(out, self.showdesk);
+            put_bool(out, self.dashboard_visible);
+            put_string(out, &self.layout);
+            put_string(out, &self.fp);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            let wins = wins_of(r)?;
+            let n = r.u32()? as usize;
+            let mut workspaces = Vec::with_capacity(n.min(64));
+            for _ in 0..n {
+                workspaces.push(ShellWorkspace::wire_decode(r)?);
+            }
+            let mru = wins_of(r)?;
+            let n = r.u32()? as usize;
+            let mut notes = Vec::with_capacity(n.min(1024));
+            for _ in 0..n {
+                notes.push(ShellNote::wire_decode(r)?);
+            }
+            let meta = r.string()?;
+            let running_csv = r.string()?;
+            let focused_app = r.string()?;
+            let notes_unread = r.u64()?;
+            let notes_badge = r.string()?;
+            let notes_visible = r.bool()?;
+            let dock_pinned_csv = r.string()?;
+            let n = r.u32()? as usize;
+            let mut dock_pinned = Vec::with_capacity(n.min(256));
+            for _ in 0..n {
+                dock_pinned.push(DockPin::wire_decode(r)?);
+            }
+            let settings_open = r.bool()?;
+            let showdesk = r.bool()?;
+            let dashboard_visible = r.bool()?;
+            let layout = r.string()?;
+            let fp = r.string()?;
+            Ok(Self {
+                wins,
+                workspaces,
+                mru,
+                notes,
+                meta,
+                running_csv,
+                focused_app,
+                notes_unread,
+                notes_badge,
+                notes_visible,
+                dock_pinned_csv,
+                dock_pinned,
+                settings_open,
+                showdesk,
+                dashboard_visible,
+                layout,
+                fp,
+            })
+        }
+    }
+
+    impl DesktopIconEntry {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_string(out, &self.id);
+            put_string(out, &self.icon);
+            put_string(out, &self.label);
+            put_string(out, &self.src);
+            put_string(out, &self.color);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self {
+                id: r.string()?,
+                icon: r.string()?,
+                label: r.string()?,
+                src: r.string()?,
+                color: r.string()?,
+            })
+        }
+    }
+
+    impl DesktopCellEntry {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_bool(out, self.spacer);
+            put_string(out, &self.id);
+            put_string(out, &self.icon);
+            put_bool(out, self.full);
+            put_string(out, &self.label);
+            put_string(out, &self.src);
+            put_string(out, &self.color);
+            put_usize(out, self.c);
+            put_usize(out, self.r);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self {
+                spacer: r.bool()?,
+                id: r.string()?,
+                icon: r.string()?,
+                full: r.bool()?,
+                label: r.string()?,
+                src: r.string()?,
+                color: r.string()?,
+                c: usize_of(r)?,
+                r: usize_of(r)?,
+            })
+        }
+    }
+
+    impl DesktopSurfaceSnapshot {
+        /// desktop 面 payload（`ShellProjectionPush{face: DESKTOP_SURFACE,
+        /// ..}`）——解释轨 inject_desktop_surface 写集的 typed 全量。
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_u32(out, self.icons.len() as u32);
+            for e in &self.icons {
+                e.wire_encode(out);
+            }
+            put_u32(out, self.cells.len() as u32);
+            for e in &self.cells {
+                e.wire_encode(out);
+            }
+            put_str_vec(out, &self.cell_ids);
+            put_str_vec(out, &self.cell_cs);
+            put_str_vec(out, &self.cell_rs);
+            put_string(out, &self.bg);
+            put_bool(out, self.label_dark);
+            put_string(out, &self.hidden);
+            put_string(out, &self.running_csv);
+            put_events(out, &self.events);
+            put_string(out, &self.fp);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            let n = r.u32()? as usize;
+            let mut icons = Vec::with_capacity(n.min(4096));
+            for _ in 0..n {
+                icons.push(DesktopIconEntry::wire_decode(r)?);
+            }
+            let n = r.u32()? as usize;
+            let mut cells = Vec::with_capacity(n.min(8192));
+            for _ in 0..n {
+                cells.push(DesktopCellEntry::wire_decode(r)?);
+            }
+            let cell_ids = str_vec_of(r)?;
+            let cell_cs = str_vec_of(r)?;
+            let cell_rs = str_vec_of(r)?;
+            let bg = r.string()?;
+            let label_dark = r.bool()?;
+            let hidden = r.string()?;
+            let running_csv = r.string()?;
+            let events = events_of(r)?;
+            let fp = r.string()?;
+            Ok(Self {
+                icons,
+                cells,
+                cell_ids,
+                cell_cs,
+                cell_rs,
+                bg,
+                label_dark,
+                hidden,
+                running_csv,
+                events,
+                fp,
+            })
+        }
+    }
+
+    impl DesktopSurfaceSync {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_string(out, &self.running_csv);
+            put_events(out, &self.events);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self { running_csv: r.string()?, events: events_of(r)? })
+        }
+    }
+
+    impl ShellClock {
+        /// 仅供参考——生产 clock 走 `ControlMsg::ShellClockTick` 变体
+        /// 字段直载（不入 payload）。
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_string(out, &self.time);
+            put_string(out, &self.date);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self { time: r.string()?, date: r.string()? })
+        }
+    }
+
+    impl SwitcherSnapshot {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_bool(out, self.hosted);
+            put_bool(out, self.visible);
+            put_str_vec(out, &self.mru_wids);
+            put_str_vec(out, &self.mru_titles);
+            put_str_vec(out, &self.mru_icons);
+            put_str_vec(out, &self.mru_thumbs);
+            put_wins(out, &self.wm_mru);
+            put_events(out, &self.events);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self {
+                hosted: r.bool()?,
+                visible: r.bool()?,
+                mru_wids: str_vec_of(r)?,
+                mru_titles: str_vec_of(r)?,
+                mru_icons: str_vec_of(r)?,
+                mru_thumbs: str_vec_of(r)?,
+                wm_mru: wins_of(r)?,
+                events: events_of(r)?,
+            })
+        }
+    }
+
+    impl NotesSnapshot {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_bool(out, self.hosted);
+            put_bool(out, self.visible);
+            put_u32(out, self.panel_max_h);
+            put_str_vec(out, &self.note_ids);
+            put_str_vec(out, &self.note_kinds);
+            put_str_vec(out, &self.note_msgs);
+            put_str_vec(out, &self.note_ats);
+            put_str_vec(out, &self.note_apps);
+            put_u32(out, self.wm_notes.len() as u32);
+            for n in &self.wm_notes {
+                n.wire_encode(out);
+            }
+            put_u64(out, self.wm_notes_unread);
+            put_events(out, &self.events);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            let hosted = r.bool()?;
+            let visible = r.bool()?;
+            let panel_max_h = r.u32()?;
+            let note_ids = str_vec_of(r)?;
+            let note_kinds = str_vec_of(r)?;
+            let note_msgs = str_vec_of(r)?;
+            let note_ats = str_vec_of(r)?;
+            let note_apps = str_vec_of(r)?;
+            let n = r.u32()? as usize;
+            let mut wm_notes = Vec::with_capacity(n.min(1024));
+            for _ in 0..n {
+                wm_notes.push(ShellNote::wire_decode(r)?);
+            }
+            let wm_notes_unread = r.u64()?;
+            let events = events_of(r)?;
+            Ok(Self {
+                hosted,
+                visible,
+                panel_max_h,
+                note_ids,
+                note_kinds,
+                note_msgs,
+                note_ats,
+                note_apps,
+                wm_notes,
+                wm_notes_unread,
+                events,
+            })
+        }
+    }
+
+    impl LauncherSnapshot {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_bool(out, self.hosted);
+            put_bool(out, self.visible);
+            put_str_vec(out, &self.app_ids);
+            put_str_vec(out, &self.app_titles);
+            put_str_vec(out, &self.app_icons);
+            put_str_vec(out, &self.app_cats);
+            put_str_vec(out, &self.app_lns);
+            put_str_vec(out, &self.app_lts);
+            put_str_vec(out, &self.app_colors);
+            put_events(out, &self.events);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self {
+                hosted: r.bool()?,
+                visible: r.bool()?,
+                app_ids: str_vec_of(r)?,
+                app_titles: str_vec_of(r)?,
+                app_icons: str_vec_of(r)?,
+                app_cats: str_vec_of(r)?,
+                app_lns: str_vec_of(r)?,
+                app_lts: str_vec_of(r)?,
+                app_colors: str_vec_of(r)?,
+                events: events_of(r)?,
+            })
+        }
+    }
+
+    impl DashboardFace {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_string(out, &self.id);
+            put_string(out, &self.title);
+            put_string(out, &self.icon);
+            put_string(out, &self.status);
+            put_string(out, &self.span);
+            put_string(out, &self.tab);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            Ok(Self {
+                id: r.string()?,
+                title: r.string()?,
+                icon: r.string()?,
+                status: r.string()?,
+                span: r.string()?,
+                tab: r.string()?,
+            })
+        }
+    }
+
+    impl DashboardSnapshot {
+        pub fn wire_encode(&self, out: &mut Vec<u8>) {
+            put_bool(out, self.hosted);
+            put_bool(out, self.visible);
+            put_u32(out, self.panel_w);
+            put_u32(out, self.panel_h);
+            put_u32(out, self.panel_top);
+            put_u32(out, self.faces.len() as u32);
+            for f in &self.faces {
+                f.wire_encode(out);
+            }
+            put_events(out, &self.events);
+        }
+
+        pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
+            let hosted = r.bool()?;
+            let visible = r.bool()?;
+            let panel_w = r.u32()?;
+            let panel_h = r.u32()?;
+            let panel_top = r.u32()?;
+            let n = r.u32()? as usize;
+            let mut faces = Vec::with_capacity(n.min(256));
+            for _ in 0..n {
+                faces.push(DashboardFace::wire_decode(r)?);
+            }
+            let events = events_of(r)?;
+            Ok(Self { hosted, visible, panel_w, panel_h, panel_top, faces, events })
+        }
+    }
+}
+
 // ====================== 解释轨 lowering（单点构造）======================
 
 /// 解释轨回写项——write_state（Scalar）/ write_state_vec（Array）双形态。
@@ -302,8 +909,7 @@ impl DockPin {
 impl ShellProjection {
     /// 解释轨回写序列——与 sync_shell_windows 现行写集逐一对应
     /// （调用方按序 write_state[_vec] 后置 view_dirty）。
-    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {
-        let badge: auto_val::Value = s(self.notes_badge.clone());
+    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {        let badge: auto_val::Value = s(self.notes_badge.clone());
         vec![
             ShellWrite::Array("__wm_wins", self.wins.iter().map(|w| w.to_value()).collect()),
             ShellWrite::Array(
@@ -337,6 +943,68 @@ impl ShellProjection {
             ),
             ShellWrite::Scalar("__wm_layout", s(self.layout.clone())),
             ShellWrite::Scalar("__wm_fp", s(self.fp.clone())),
+        ]
+    }
+}
+
+impl DesktopIconEntry {
+    fn to_value(&self) -> auto_val::Value {
+        auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+            ("id", s(self.id.clone())),
+            ("icon", s(self.icon.clone())),
+            ("label", s(self.label.clone())),
+            ("src", s(self.src.clone())),
+            ("color", s(self.color.clone())),
+        ])))
+    }
+}
+
+impl DesktopCellEntry {
+    fn to_value(&self) -> auto_val::Value {
+        if self.spacer {
+            return auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+                ("spacer", s("1")),
+                ("c", s(self.c.to_string())),
+                ("r", s(self.r.to_string())),
+            ])));
+        }
+        auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+            ("id", s(self.id.clone())),
+            ("icon", s(self.icon.clone())),
+            ("full", s(if self.full { "1" } else { "" })),
+            ("label", s(self.label.clone())),
+            ("src", s(self.src.clone())),
+            ("color", s(self.color.clone())),
+            ("c", s(self.c.to_string())),
+            ("r", s(self.r.to_string())),
+        ])))
+    }
+}
+
+impl DesktopSurfaceSnapshot {
+    /// 解释轨回写序列——与 inject_desktop_surface 现行写集逐一对应
+    /// （outproc child 侧 apply：按序 write_state[_vec] 后置 view_dirty；
+    /// `__desktop_cursor_*` 事件通道独立，不在本组）。
+    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {
+        vec![
+            ShellWrite::Array("__desktop_icons", self.icons.iter().map(|e| e.to_value()).collect()),
+            ShellWrite::Array("__desktop_cells", self.cells.iter().map(|e| e.to_value()).collect()),
+            ShellWrite::Array(
+                "__desktop_cell_ids",
+                self.cell_ids.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "__desktop_cell_cs",
+                self.cell_cs.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "__desktop_cell_rs",
+                self.cell_rs.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Scalar("__desktop_bg", s(self.bg.clone())),
+            ShellWrite::Scalar("__desktop_label_dark", s(if self.label_dark { "1" } else { "0" })),
+            ShellWrite::Scalar("__desktop_hidden", s(self.hidden.clone())),
+            ShellWrite::Scalar("__wm_running", s(self.running_csv.clone())),
         ]
     }
 }
@@ -519,5 +1187,222 @@ mod tests {
             assert_eq!(SHELL_MANIFEST.face(lazy).unwrap().mount, ShellMount::LazyOverlay);
         }
         assert!(SHELL_MANIFEST.face("nope").is_none());
+    }
+
+    /// PLAN-030 T-02：wire 编解码 round-trip——全家族（叶面保形：bool
+    /// 载体 bool、字符串载体 string）。overlay 三面 v1 不下行（D6 边界）
+    /// 但编码在册（AC-01 五面载体）。
+    #[cfg(feature = "ui-iced")]
+    #[test]
+    fn wire_round_trip_full_family() {
+        use crate::ui::desktop_protocol::codec::Reader;
+        let win = ShellWin {
+            wid: "3".into(),
+            title: "编辑器".into(),
+            focused: true,
+            workspace: Some(2),
+            native: false,
+            app: "041-auto-edit".into(),
+            icon: "lucide:app-window".into(),
+            pager: true,
+            pinned: false,
+            dup_app: true,
+        };
+        let proj = ShellProjection {
+            wins: vec![win.clone()],
+            workspaces: vec![ShellWorkspace {
+                id: 1,
+                name: "w1".into(),
+                current: true,
+                label: "2".into(),
+                more: "+7".into(),
+            }],
+            mru: vec![win],
+            notes: vec![ShellNote {
+                id: 9,
+                kind: "toast".into(),
+                msg: "你好".into(),
+                at: "12:00".into(),
+                app: "002-counter".into(),
+            }],
+            meta: "grid\t3".into(),
+            running_csv: ",002-counter,".into(),
+            focused_app: "002-counter".into(),
+            notes_unread: 12,
+            notes_badge: "9+".into(),
+            notes_visible: true,
+            dock_pinned_csv: ",a,".into(),
+            dock_pinned: vec![DockPin { id: "a".into(), icon: "i".into(), running: false }],
+            settings_open: false,
+            showdesk: true,
+            dashboard_visible: false,
+            layout: "master-stack".into(),
+            fp: "3:1,|grid\t3|".into(),
+        };
+        let mut buf = Vec::new();
+        proj.wire_encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        let back = ShellProjection::wire_decode(&mut r).expect("decode");
+        assert!(r.remaining() == 0, "载荷恰好耗尽");
+        assert_eq!(back, proj);
+
+        let desk = DesktopSurfaceSnapshot {
+            icons: vec![DesktopIconEntry {
+                id: "002-counter".into(),
+                icon: "iconfile:x.ico".into(),
+                label: "计数器".into(),
+                src: "custom".into(),
+                color: "#ff00aa".into(),
+            }],
+            cells: vec![
+                DesktopCellEntry {
+                    spacer: true,
+                    c: 0,
+                    r: 1,
+                    ..Default::default()
+                },
+                DesktopCellEntry {
+                    spacer: false,
+                    id: "002-counter".into(),
+                    icon: "app-window".into(),
+                    full: true,
+                    label: "计数器".into(),
+                    src: "custom".into(),
+                    color: "#ff00aa".into(),
+                    c: 1,
+                    r: 0,
+                },
+            ],
+            cell_ids: vec![String::new(), "002-counter".into()],
+            cell_cs: vec!["0".into(), "1".into()],
+            cell_rs: vec!["1".into(), "0".into()],
+            bg: "#101014".into(),
+            label_dark: true,
+            hidden: "003-x".into(),
+            running_csv: ",a,".into(),
+            events: vec![ShellEvent::RunningSync],
+            fp: "desk-fp".into(),
+        };
+        let mut buf = Vec::new();
+        desk.wire_encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        let back = DesktopSurfaceSnapshot::wire_decode(&mut r).expect("decode");
+        assert!(r.remaining() == 0, "载荷恰好耗尽");
+        assert_eq!(back, desk);
+
+        let sync = DesktopSurfaceSync {
+            running_csv: ",x,".into(),
+            events: vec![ShellEvent::RunningSync, ShellEvent::RebuildMru],
+        };
+        let mut buf = Vec::new();
+        sync.wire_encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        assert_eq!(DesktopSurfaceSync::wire_decode(&mut r).unwrap(), sync);
+
+        let clock = ShellClock { time: "09:05".into(), date: "9月19日 周六".into() };
+        let mut buf = Vec::new();
+        clock.wire_encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        assert_eq!(ShellClock::wire_decode(&mut r).unwrap(), clock);
+
+        let sw = SwitcherSnapshot {
+            hosted: true,
+            visible: true,
+            mru_wids: vec!["3".into()],
+            mru_titles: vec!["t".into()],
+            mru_icons: vec!["i".into()],
+            mru_thumbs: vec!["thumbnail://3!app-window".into()],
+            wm_mru: vec![],
+            events: vec![ShellEvent::RebuildMru],
+        };
+        let mut buf = Vec::new();
+        sw.wire_encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        assert_eq!(SwitcherSnapshot::wire_decode(&mut r).unwrap(), sw);
+
+        let notes = NotesSnapshot {
+            hosted: true,
+            visible: false,
+            panel_max_h: 600,
+            note_ids: vec!["9".into()],
+            note_kinds: vec!["toast".into()],
+            note_msgs: vec!["m".into()],
+            note_ats: vec!["12:00".into()],
+            note_apps: vec![String::new()],
+            wm_notes: vec![],
+            wm_notes_unread: 1,
+            events: vec![],
+        };
+        let mut buf = Vec::new();
+        notes.wire_encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        assert_eq!(NotesSnapshot::wire_decode(&mut r).unwrap(), notes);
+
+        let launcher = LauncherSnapshot {
+            hosted: false,
+            visible: false,
+            app_ids: vec!["a".into()],
+            app_titles: vec!["A".into()],
+            app_icons: vec!["i".into()],
+            app_cats: vec!["tools".into()],
+            app_lns: vec!["a".into()],
+            app_lts: vec!["a".into()],
+            app_colors: vec!["#fff".into()],
+            events: vec![],
+        };
+        let mut buf = Vec::new();
+        launcher.wire_encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        assert_eq!(LauncherSnapshot::wire_decode(&mut r).unwrap(), launcher);
+
+        let dash = DashboardSnapshot {
+            hosted: true,
+            visible: true,
+            panel_w: 320,
+            panel_h: 480,
+            panel_top: 60,
+            faces: vec![DashboardFace {
+                id: "f".into(),
+                title: "F".into(),
+                icon: "i".into(),
+                status: "running".into(),
+                span: "1".into(),
+                tab: "main".into(),
+            }],
+            events: vec![ShellEvent::RebuildFaces],
+        };
+        let mut buf = Vec::new();
+        dash.wire_encode(&mut buf);
+        let mut r = Reader::new(&buf);
+        assert_eq!(DashboardSnapshot::wire_decode(&mut r).unwrap(), dash);
+    }
+
+    /// PLAN-030 T-02：DesktopSurfaceSnapshot 解释轨 lowering 键集 = 
+    /// inject_desktop_surface 现行写集（`__desktop_cursor_*` 除外——事件
+    /// 通道独立）。
+    #[test]
+    fn desktop_surface_snapshot_lowering_keys() {
+        let desk = DesktopSurfaceSnapshot::default();
+        let keys: Vec<&str> = desk
+            .interpreted_writes()
+            .iter()
+            .map(|w| match w {
+                ShellWrite::Scalar(k, _) | ShellWrite::Array(k, _) => *k,
+            })
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                "__desktop_icons",
+                "__desktop_cells",
+                "__desktop_cell_ids",
+                "__desktop_cell_cs",
+                "__desktop_cell_rs",
+                "__desktop_bg",
+                "__desktop_label_dark",
+                "__desktop_hidden",
+                "__wm_running",
+            ]
+        );
     }
 }
