@@ -125,6 +125,27 @@ covered` 五件 Covered（B 覆盖门预演）；翻转复测 judged 72.7% < 95%
 arm`/`p029_shell_face_arm`（AUTO_DESKTOP_E2E）；复测行 =
 `docs/plans/reports/p029-native-flip-retest-row.md`。
 
+**rqhost 共享合成器原生窗——第四运行形态（PLAN-031，provisional）**：
+`ui/desktop_protocol/rqhost.rs`（rendezvous 采纳——well-known
+`autodesk-rqhost` + `adopt␟<name>` 管道串记录 + 锁管道
+FILE_FLAG_FIRST_PIPE_INSTANCE 单实例仲裁 + per-adoption wait_connect
+线程化；RqClient 客户端权威装配——无 resolver，Hello 凭据直接
+activate；RqServe/RqDaemon——15ms 帧泵 + 末窗 `iced::exit` 自退 +
+resize 下发；输入按窗路由——listen_with 四族事件 window_id 路由键 +
+029 LiveInput 族直调）+ `client_entry`：`ClientTarget::Rqhost{wellknown,
+app_name}`（rendezvous 内建 + `reconnect_for` 策略档——exit-on-EOF
+vs 桌面 30s 重连）+ `client_runtime`：大帧超 16KiB shm 槽回退管道内联
+FrameReady（静默弃帧冻结的根修，桌面 broker 同益）+ `transport`：
+`try_claim_pipe/PipeClaim`（单实例声明面）+ lib.rs
+`run_file_dynamic_ui_inner` env 门 vm 轨分岔（`AUTO_RQHOST_PIPE`，
+装载链零改）+ CLI（`auto run -q/--render-queue` 双轨 + `auto rqhost
+[--pipe]` 子命令 + rust 轨 `--autodesk-rqhost` 标记注入 + cargo `--`
+分隔符）+ `broker_surface` 泛型化接驳（DrawListPainter<M>）。
+权威正文 = `docs/design/autoui/desktop-protocol-v1.md` §1.11（本节
+仅指针）；测试面 = rqhost 单测/集成 11 + `p031_rqhost_arm` 六腿
+（AUTO_DESKTOP_E2E；留痕 `docs/plans/reports/assets/031/`）+ os 侧
+`scripts/smoke-031-rqhost.sh`。
+
 ## 现状（2026-09-17）
 
 **examples/ui 全量 Style Recipe 配方化 + 裸调色板色门禁（plan-637 落地，GOAL-007）**：

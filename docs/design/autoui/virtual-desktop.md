@@ -86,13 +86,18 @@ Host ②（libcosmic）保留为"在 COSMIC 里当好公民"的入口，与 457 
 | 安卓 / 鸿蒙 | A（单原生窗口内嵌） | 进程即隔离 |
 | Win/Mac · 内置/可信 App | A（Element 子树） | panic 边界 |
 | Win/Mac · 第三方/需隔离 App | B（D3D shared handle / IOSurface） | 进程外 |
+| Win/Mac · AutoUI App · rqhost 共享合成器（第四运行形态，PLAN-031） | B（RenderQueue 命令帧 + shm） | 进程外（共享 rqhost daemon 单渲染宿主，`auto run -q`；用户裁定砍 standalone——单 app shared 自动孵化等价，多 app 省 N-1 渲染进程） |
 | Linux 原生 · AutoUI App（内置） | A | 进程内 |
 | Linux 原生 · AutoUI App（独立进程） | B（RenderCommand） | 进程外 |
 | Linux 原生 · 任意 Wayland/X11 客户端 | B（Wayland surface / dmabuf） | 天然 |
 
 内存目标（doc 20 的 1-5MB/App）只有 B 的进程外形态达成；A 形态下 N 个 App
 共享单个 iced/wgpu 足迹（约 100MB + 每 App 边际），这是可接受的中间态，
-由 386 复活后消除。
+由 386 复活后消除。rqhost 形态（PLAN-031，2026-09-19 实测：daemon
+~314MB + 每 app 边际 ~7-9MB private）= B 形态在 Win 缺省渲染栈上的
+兑现——单共享渲染宿主 + 轻客户端；协议面见
+`desktop-protocol-v1.md` §1.11（rendezvous 采纳 + 客户端权威 +
+exit-on-EOF 策略档）。
 
 ## 5. 与存量文档的关系与同步清单
 
