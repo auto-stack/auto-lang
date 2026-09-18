@@ -9,7 +9,8 @@ plan_revision: 1
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
+new_spec_components:
+  - docs/design/autoui/vm-frame-budget.md  # 设计层：问题分析+复杂机制路线（非 specs 现状；review 时按需改挂 design）
 touched_goals: [GOAL-007]
 
 affects: [auto-lang/ui]
@@ -33,6 +34,11 @@ total_steps: 8
 **本计划策略**：先把「默认就能降 CPU、行为可解释、改动面小」的 easy wins 落地；
 架构级 Element 缓存 / 列表虚拟化 / 路由级退订记入延期清单，另立项。
 
+> **设计层沉淀（2026-09-18）**：问题分析、渲染模型分层、双因模型与
+> **D-1..D-5 复杂机制的设计选项/取舍** 已写入
+> [docs/design/autoui/vm-frame-budget.md](../design/autoui/vm-frame-budget.md)。
+> 本计划只承载 easy wins 的过程与证据；架构机制以设计文档为准。
+
 ### Easy wins（本计划落地）
 
 | ID | 内容 | 预期效果 |
@@ -46,7 +52,7 @@ total_steps: 8
 
 | ID | 内容 | 原因 |
 |----|------|------|
-| D-1 | **P530-D3 Element 帧间缓存**：`Rc<RefCell<Option<Element>>>` + 自定义 Widget 持有复用，或 iced `lazy` 子树 memo | iced 0.14 `Element` 不可 Clone；需 Widget/Tree 生命周期设计，回归面大 |
+| D-1 | **P530-D3 Element 帧间缓存**（候选 A SharedSlot Widget / B lazy / C 压成本）——**设计见 [vm-frame-budget](../design/autoui/vm-frame-budget.md) §5.1** | iced 0.14 `Element` 不可 Clone；需 Widget/Tree 生命周期设计，回归面大 |
 | D-2 | **P530-D2 路由/组件卸载退订**（子件 timer 生命周期与挂载绑定） | 需挂载记账 + 订阅身份演进，与 E-1 部分重叠，留 E-1 验证后再做 |
 | D-3 | **for 列表虚拟化**（scroll 视口 windowing） | 结构题：path 稳定 id / MCP / hit-test 联动 |
 | D-4 | **ServiceTick 空拍完全零成本** / desktop 多窗 dirty 跳层 | desktop 帧泵语义复杂，易误伤 fit/snapshot/bus |
@@ -253,3 +259,5 @@ fn hot_reload_interval_ms(debug_mode: bool) -> Option<u64> {
   D:/autostack/.wt/lang-650/auto-lang | evidence: cargo check ui-iced OK + nextest 3/3 PASS`。
   待确认：hot_reload 默认非 debug 2000ms 是否可接受（§10）；确认后 `/auto-plan:work` 收尾
   或直接 `/auto-plan:review`。
+- 2026-09-18 设计层补录：分析与复杂机制 → `docs/design/autoui/vm-frame-budget.md`
+  （autoui README 索引已登记）。后续 D-1+ 实现计划引用该设计文档节号，不在本 plan 扩写。
