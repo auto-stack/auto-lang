@@ -1,9 +1,8 @@
-name: "stopwatch"
-version: "1.1.0"
+name: "clock"
+version: "2.0.0"
 scene: "ui"
 render: "vue"
-# os-003（origin PLAN-554）：012 原地升级 Clock 四 tab——目录名/registry id
-# 保持 012-stopwatch 稳定（recent 槽/dock pinned 不破坏）。
+# PLAN-644：012 原地升级并重命名为 012-clock，全功能时钟与传统手表表盘
 title: "Clock"
 title_zh: "时钟"
 icon: "clock"

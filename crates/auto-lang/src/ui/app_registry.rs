@@ -701,7 +701,7 @@ mod tests {
             .collect();
         let want = [
             "011-calculator",
-            "012-stopwatch",
+            "012-clock",
             "013-todo",
             "014-weather",
             "015-notes",
