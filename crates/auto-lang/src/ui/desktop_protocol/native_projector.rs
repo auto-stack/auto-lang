@@ -2068,15 +2068,17 @@ mod tests {
             fn on(&mut self, _msg: Self::Msg) {}
             fn view(&self) -> View<Self::Msg> {
                 // shadow/underline 均降级放行（025 T-06 / 026 T-06——
-                // 解释态同款保真边界）；样本换 opacity（视觉语义未实现
-                // 面——alpha 合成无通道，解释态 target_set 同 not-yet）。
-                View::text_styled("x", "opacity-50")
+                // 解释态同款保真边界）；opacity 亦放行（029 T-08 前缀⑦
+                // ——alpha 合成无通道的显式降级）。样本换 hidden（显隐
+                // 通道 not-yet——静态帧无 show/hide 面，018/021/041 行
+                // 同册缺项）。
+                View::text_styled("x", "hidden")
             }
         }
 
         let p = NativeProjector::new(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("style:opacity-50"), "native 无 opacity 渲染: {err}");
+        assert!(err.contains("style:hidden"), "native 无 hidden 渲染: {err}");
     }
 
     #[test]
