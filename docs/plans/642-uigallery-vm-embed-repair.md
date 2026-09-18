@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 12
+current_step: 11
 total_steps: 19
 ---
 
@@ -363,30 +363,41 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       贴底（t11_008_fixed.png）,007/013/024/026/029 抽样零回归,6 次切页
       零崩溃。双仓提交：auto-lang 50f623e5c、auto-os 98613b0（产物再生成
       012-clock 改名/046 新增/013+020 随语料,合并对齐非 T-11 生成器变化）。
-- [✅] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）[✅ 已完成（归因修正）]
-      归因修正：原判"min-h-screen=窗口高而非容器高"经实证证伪——scratch
-      实测 h-[300px] frame 精确生效（行 13+ 在框底截断）、headless
-      1024×768/900/1250 三档窗口全钳 720、条件式/字面量/双 widget 真实
-      管线均一致。真正根因 = iced 0.14 flex 定高列子项按剩余量逐个配给：
-      demo 内容超出 frame 高的部分被压成 0×0——不可见、不可滚（009 无
-      滚动条的根因）；自由尺寸 demo 根被钳在 frame 高但内容塌缩呈左上
-      截断（016）。
-      修复：`apply_column_style` justify-Center/End 容器路径对
-      overflow-y:hidden 列插入 Shrink 高度 Scrollable——短内容被容器
-      center_y 垂直居中（016）、长内容封顶滚动（009）。作用域限定
-      justify-Center/End（非 justify 列 height/Fill 与 Shrink scroll
-      组合会整页塌缩——画廊根 h-screen 首版实测，随即收窄）。CSS 偏差
-      overflow-hidden≈overflow-y:auto 登记。
-      实证：headless 回归 p642_t12_overflow_frame_scrolls_and_centers
-      （40 行全布局 + 3 行垂直居中）；layout_tests 55 绿（2 红=master
-      预存）；cargo t ui 2101 全跑 22 败全落 master 基线内零新增；实机
-      009 frame 内滚动条出现（t12v5_009.png）、016 垂直居中恢复
-      （t12v5_016_clean.png）；水平居中受 P2-016a 主题污染干扰（light-
-      on-light）留 T-13 一并复验。auto-lang 2c96c5e40。
-- [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）
-      016 的 `dark_mode=false` 驱动宿主主题运行时（u2_008 深 → u2_016 起
-      全浅色持久实证）——合并 VM 子件主题魔法变量与宿主隔离（主题只认
-      根件）；016 默认主题语料评估（跟随宿主或改深色，其有深色样式分支）。
+- [⚠] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）[⚠ needs_replan——已交付方案回退]
+      归因修正（实证资产保留）：原判"min-h-screen=窗口高"证伪——scratch
+      h-[300px] 精确生效、headless 三档窗口全钳 720、条件式/字面量/双
+      widget 管线一致；frame 高度语义从来正确。真问题 = iced 0.14 定高列
+      配给：009 内容超出 720 的行被压成 0×0（不可见不可滚）。
+      已交付并回退的方案：apply_column_style justify-Center/End 路径对
+      overflow-y:hidden 列包 Shrink Scrollable（2c96c5e40）——headless
+      全绿（40 行全布局+短内容居中）且 009/016 实机达标，但实机回归
+      008 定价卡整列消失：scroll 内容臂主轴无界，Fill 高度子孙
+      （items-stretch 拉伸容器、flex-1 子树）解析塌缩——009/016 恰好无
+      此类结构故幸存；items-stretch 发射期剥离不足（flex-1 同毒）。
+      iced 0.14 下 Shrink scroll 与 Fill 拉伸语料不可调和，267d76904
+      回退至 T-11 已验证形态（008 三卡 18 行恢复确认）。
+      replan 方向（待裁定）：①生成器按 demo 内容高度知识 per-demo 决定
+      scroll/clip（需 headless 布局测量进 emit）；②语料侧去 Fill 高度
+      依赖（008/012 items-stretch/flex-1 改自然高，双端 parity 让渡）；
+      ③接受 009 现状登记 debt。008 恢复截图 t12revert_008.png。
+- [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）[⚠ needs_replan——写隔离未阻断翻转]
+      归因进展（本轮实证）：污染链上半段确认——合并 VM 轨统一状态对象
+      （Plan 419 ensure_child_state 返回 root_id,子件读写全落 App 根堆
+      对象）→ demo 写 `.dark_mode` 直接覆写宿主 App 同名字段 → 渲染器
+      每帧状态→主题同步（renderer sync dark 块）将全局翻向 demo 档；
+      execute_set_theme 落盘 config.dark_theme → 污染跨会话持久（重启
+      仍浅,需设置面板或清配置恢复）。
+      已试并回退：生成器发射期写端改名（`.dark_mode =` →
+      `.demo_dark_mode =`,读端保持读宿主实现跟随主题）——单测过、适配器
+      改名落地,但实机 A/B（008→016→008）仍翻浅：真写入者未明（剩余
+      候选:store 模块 var 链、Init 派发链其他写点、accent 联动）,需
+      VM 写点级追踪（dump App 堆对象写者/地址断点）。随 T-12 回退一并
+      摘除发射变换（vue.rs 还原,单测同撤）。
+      replan 方向（待裁定）：①VM 层写点追踪定位真写入者后精准隔离；
+      ②gallery App 改名自家魔法变量（dark_mode→host_dark_mode,宿主侧
+      让渡, demo 保持原名——反向隔离）；③主题同步面加"仅根件声明期"
+      门控。016 语料默认主题评估：保持 light 默认（其自有分支）,跟随
+      宿主依赖②/③落地。
 - [ ] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）
       (a) routes 单页族（018/019/021/022/023）：VM 内嵌支持 `routes {}`
       首页路由 stub 渲染；(b) back 链 native-ns/stream 族（017）：
