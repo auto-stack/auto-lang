@@ -416,19 +416,23 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
 - [ ] **T-15 (P2-015) 015 种子数据合并链归因**（rev2）
       db.at 有 6 条种子（List<Note>.new）但内嵌视图"No notes yet"——
       合并 VM back 链模块级堆初始化/`api.list_notes` 调用链断点归因修复。
-- [ ] **T-16 (P2-020) 020 媒体扫描后端接入**（rev2，依赖 T-19 或独立挂载）
+- [ ] **T-16 (P2-020) 020 媒体扫描后端接入**（rev2）[↪ 移交独立计划（用户裁定 2026-09-19）]
       `Http.get_json("/api/media/scan")` 在内嵌无后端进程（player_store.at:92
-      实证）——经 T-19 proxy 子 URL 或内嵌进程内扫描适配后出曲库。
+      实证）。**裁定：随 P642-D13 proxy 独立计划一并解决，不走 per-demo 窄路
+      特例**；过渡期 020 内嵌保持诚实空态。本计划内不再执行。
 - [ ] **T-17 (P2-024) 024 空画布结案**（rev2）
       最新构建（09bb8e218+）已出图（u2_024.png 实证）——用户侧为旧构建；
       记录结案 + 请用户以新构建复验。
 - [ ] **T-18 (P2-附带) 027 错误 toast 跨 demo 残留**（rev2）
       u2_008 右下角残留 027 的"无法定位主目录"toast——toast 过期/清理
       修复（与 T-06 同族，14263 toast 修正先例）。
-- [ ] **T-19 多后端 proxy 机制**（rev2，可行性分析见 §8.2，立项待用户裁定）
+- [ ] **T-19 多后端 proxy 机制**（rev2）[↪ 移交独立计划（用户裁定 2026-09-19）]
       单进程 axum 多后端宿主：per-app VM session + 子 URL `/apps/<id>/api/*`
       路由；生成器 baseURL 子前缀适配（PLAN-617 AUTO_HTTP_BASE 相对展开
-      先例）；风险项：session 崩溃隔离、stream/WS 转发、binary 响应。
+      先例）。**裁定：不塞入 642——收尾后另立独立计划（P642-D13）**，范围
+      明示扩大：不止 020，**017-chat / 031-image-viewer 的 native-ns/stream
+      后端为一等公民目标**（stream/WS 转发从"首期风险排除项"升为立项范围）。
+      T-14(b) 臂随本条目：proxy 落地前 back 链族维持回退页诚实空态。
 
 ## 8.3 新会话续作指南（T-11..T-19 冷启动手册）
 
@@ -722,6 +726,29 @@ evidence:
 next: T-18(toast 过期) → T-15 → T-17;T-14 分档覆盖与 T-16+T-19 仍待
   用户裁定立项;R642-F1 崩溃族 blocked 不变(本轮启动期遇 1 次 exit 127
   重试即过,长会话复现率特征不变)
+```
+
+---
+
+```yaml
+stage: ruling (两项待裁定事项落定——用户 2026-09-19)
+plan_id: PLAN-642
+plan_revision: 1
+rulings:
+  - item: T-16+T-19 多后端 proxy 立项
+    decision: 独立立项,不塞入 642——642 收尾后另立计划(KNOWN-DEBT P642-D13)
+    scope_note: 用户明示范围扩大——不止 020,017-chat/031-image-viewer 的
+      native-ns/stream 后端为一等公民目标(stream/WS 转发入立项范围,
+      非首期排除项);T-16 随之移交(不走 per-demo 窄路特例);T-14(b) 臂
+      过渡期维持回退页诚实空态
+  - item: R642-F1 崩溃族处置
+    decision: 方案 a——预存间歇性原生不稳定立足 P642-D3,642 修复面照常
+      收口(不为 F1 押后 landing),崩溃根因另立专项
+    immediate_step: exit(127) 主动退出点全仓枚举 + AUTO_DEBUG_EXIT_TRACE
+      门控追踪(POLLTRACE 先例形态)——判定死亡是否混有未被识破的主动
+      退出路径;本会话执行,结果记入 P642-D3
+queue_after_ruling: T-18 → T-15 → T-17 (+T-14 a/c 可选,既定授权面内)
+  → 复审 → merge 收口;proxy 独立计划与崩溃专项另行立项
 ```
 
 ---
