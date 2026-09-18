@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: [GOAL-007]
 
 affects: [auto-lang/ui]
-current_step: 1
+current_step: 7
 total_steps: 8
 ---
 
@@ -220,14 +220,19 @@ fn hot_reload_interval_ms(debug_mode: bool) -> Option<u64> {
 
 ## 8. 执行步骤
 
-- [ ] T-01 master 取号 + plan 骨架（new-plan.sh）+ 本文件填齐 rev1。
-- [ ] T-02 commit 计划簿记（master：`.next-id` + `docs/plans/650-*.md`）。
-- [ ] T-03 worktree `D:/autostack/.wt/lang-650/auto-lang`（`plan-650-dev`）。
-- [ ] T-04 E-1：`dynamic.rs` 谓词 + `renderer.rs` 订阅过滤 + 单测。
-- [ ] T-05 E-2/E-4：`dynamic_view_impl` 旁路门控。
-- [ ] T-06 E-3：hot_reload 间隔/env。
-- [ ] T-07 验证：check + scoped test；（可选）实机对照。
-- [ ] T-08 交 work/review（`/auto-plan:work` → `/auto-plan:review`）。
+- [✅] T-01 master 取号 + plan 骨架（new-plan.sh）+ 本文件填齐 rev1。
+- [✅] T-02 commit 计划簿记（master：`.next-id` + `docs/plans/650-*.md`，`29aa22d70`）。
+- [✅] T-03 隔离检出：会话守卫拦 `git worktree add`，改用 `git clone --shared` →
+      `D:/autostack/.wt/lang-650/auto-lang` + `plan-650-dev`（兄弟 `auto-down` 同组 clone）。
+      注：非 `git worktree` 注册条目；merge 时从该 clone fetch `plan-650-dev`。
+- [✅] T-04 E-1：`timer_when_allows_subscription` + 订阅过滤 + `plan650_timer_when_subscription_gate`。
+- [✅] T-05 E-2/E-4：`capture_debug`/`live_vtree`/`needs_bounds`/`collect_input_ids` 门控。
+- [✅] T-06 E-3：`hot_reload_interval_ms`（0 关 / 1=500ms / 缺省 debug 500·非 debug 2000）。
+- [✅] T-07 验证：`cargo check -p auto-lang --features ui-iced` 通过（仅存量 warning）；
+      nextest `plan650_timer_when_subscription_gate` + `fire_timer_noop_does_not_dirty` +
+      `mutation_seq_bumps_on_write_not_read` **3/3 PASS**。实机 CPU 对照待用户/后续 work。
+- [ ] T-08 交 work/review（`/auto-plan:work` → `/auto-plan:review`）——本会话已先落 easy wins，
+      status 仍 `drafting`，待用户确认后翻 `executing` 并走正式 review/merge。
 
 ## 9. 复审记录
 
@@ -242,4 +247,9 @@ fn hot_reload_interval_ms(debug_mode: bool) -> Option<u64> {
 ## 11. Handoff
 
 - 2026-09-18 /auto-plan:new 起草：`stage: new | plan_id: PLAN-650 | plan_revision: 1 |
-  outcome: pass（草稿）`。easy wins=E-1..E-4；延期=D-1..D-5。待用户确认后 `/auto-plan:work`。
+  outcome: pass（草稿）`。easy wins=E-1..E-4；延期=D-1..D-5。
+- 2026-09-18 easy wins 先行落地（用户要求「最容易实现的先做出来」）：
+  `stage: new+partial-work | code_commit: plan-650-dev @ clone
+  D:/autostack/.wt/lang-650/auto-lang | evidence: cargo check ui-iced OK + nextest 3/3 PASS`。
+  待确认：hot_reload 默认非 debug 2000ms 是否可接受（§10）；确认后 `/auto-plan:work` 收尾
+  或直接 `/auto-plan:review`。
