@@ -3975,17 +3975,49 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Row { children, spacing, padding, style, onclick, on_right_click } => {
                 // 轴向修正(概要页对拍,EDGE-16 家族):见 axis_fix_row_child。
-                let els: Vec<iced::Element<'static, M>> =
-                    children.into_iter().map(axis_fix_row_child).map(|c| c.into_iced()).collect();
+                // PLAN-022 T-03:absolute 子脱流叠层(镜像 render_dynamic_view
+                // Row 臂/PLAN-530 步骤3)——into_iced 此前无分区,absolute 子
+                // 落流式布局(rust 轨 Component 路径专有缺口;app.at 分屏槽位
+                // 实测全叠原点/挤出视口,槽位矩形模型侧正确)。
+                let hover = layout_hover_flag(style.as_ref());
+                let mut normal: Vec<iced::Element<'static, M>> = Vec::new();
+                let mut absolute: Vec<AbstractView<M>> = Vec::new();
+                for child in children {
+                    let is_abs = extract_view_style(&child)
+                        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
+                        .unwrap_or(false);
+                    if is_abs {
+                        absolute.push(child);
+                    } else {
+                        normal.push(axis_fix_row_child(child).into_iced());
+                    }
+                }
+                let base = build_row(normal, spacing, padding, style.as_ref(), None, hover.clone());
+                let el: iced::Element<'static, M> = if absolute.is_empty() {
+                    base
+                } else {
+                    let mut stk = iced::widget::Stack::new().push(base);
+                    for child in absolute {
+                        // PLAN-051 P2: 空层不渲染不入栈(同 render_dynamic_view)。
+                        if is_empty_stack_layer(&child) { continue; }
+                        // PLAN-536 T10: 偏移判定在 move 前取好(child 随分区 move)。
+                        let pos = dynamic_abs_layer_position(&child);
+                        let abs_el = child.into_iced();
+                        // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上)。
+                        let abs_el = match pos {
+                            Some(pos) => build_floating_layer(abs_el, pos),
+                            None => abs_el,
+                        };
+                        stk = stk.push(iced::widget::opaque(abs_el));
+                    }
+                    let clip = style.as_ref()
+                        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                        .unwrap_or(false);
+                    stk.clip(clip).into()
+                };
                 // Plan 490 G4：布局件点击（row/col/div onclick parity）。
                 // PLAN-002 B：右键 + hover 同包装点（wrap_layout_events）。
-                let hover = layout_hover_flag(style.as_ref());
-                wrap_layout_events(
-                    build_row(els, spacing, padding, style.as_ref(), None, hover.clone()),
-                    onclick,
-                    on_right_click,
-                    hover,
-                )
+                wrap_layout_events(el, onclick, on_right_click, hover)
             }
 
             AbstractView::Column { children, spacing, padding, style, onclick, on_right_click } => {
@@ -3995,16 +4027,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // PLAN-054 T4 (A6): 子项 self-end/start/center → 交叉轴(横向)
                 // Fill+align 包裹——iced 列无 per-child 对齐,消息行
                 // `self-end` 右对齐此前被静默丢弃。
+                // PLAN-022 T-03:absolute 子脱流叠层(镜像 render_dynamic_view
+                // Column 臂/PLAN-530 步骤3;同 Row 臂注——rust 轨 Component
+                // 路径 app.at 分屏槽位/分隔条全靠它)。
+                let (flow_idx, abs_idx) = column_layer_partition(&children);
                 let mut els: Vec<iced::Element<'static, M>> = Vec::new();
-                for c in children {
-                    let mt_auto = extract_view_style(&c)
+                for i in &flow_idx {
+                    let c = &children[*i];
+                    let mt_auto = extract_view_style(c)
                         .map_or(false, |s| plan050_mt_auto_spacer(&s.classes));
                     if mt_auto {
                         els.push(iced::widget::Space::new().height(iced::Length::Fill).into());
                     }
-                    let align_self = extract_view_style(&c)
+                    let align_self = extract_view_style(c)
                         .and_then(|s| crate::ui::style::iced_adapter::IcedStyle::from_style(s).align_self);
-                    let el = axis_fix_col_child(c).into_iced();
+                    let el = axis_fix_col_child(c.clone()).into_iced();
                     let el = match align_self
                     {
                         Some(crate::ui::style::iced_adapter::IcedAlign::End) => {
@@ -4031,12 +4068,29 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
                 // Plan 490 G4：同 Row（PLAN-002 B：右键 + hover 同包装点）。
                 let hover = layout_hover_flag(style.as_ref());
-                wrap_layout_events(
-                    build_column(els, spacing, padding, style.as_ref(), None, hover.clone()),
-                    onclick,
-                    on_right_click,
-                    hover,
-                )
+                let base = build_column(els, spacing, padding, style.as_ref(), None, hover.clone());
+                let el: iced::Element<'static, M> = if abs_idx.is_empty() {
+                    base
+                } else {
+                    let mut stk = iced::widget::Stack::new().push(base);
+                    for &i in &abs_idx {
+                        // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
+                        if is_empty_stack_layer(&children[i]) { continue; }
+                        let abs_el = children[i].clone().into_iced();
+                        // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上根修);
+                        // 零偏移(inset-0 ghost 族)保持落原点。
+                        let abs_el = match dynamic_abs_layer_position(&children[i]) {
+                            Some(pos) => build_floating_layer(abs_el, pos),
+                            None => abs_el,
+                        };
+                        stk = stk.push(iced::widget::opaque(abs_el));
+                    }
+                    let clip = style.as_ref()
+                        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                        .unwrap_or(false);
+                    stk.clip(clip).into()
+                };
+                wrap_layout_events(el, onclick, on_right_click, hover)
             }
 
             AbstractView::Input {
@@ -4186,6 +4240,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // -1 = 跟随主题,绘制期解析)。
                 core.set_scheme(scheme);
                 crate::ui::terminal::terminal_feed(core, &lines);
+                // PLAN-022 T-03 探针(DBG 门控):喂入面数值(key/行数/首行)。
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    let first = lines.first().map(|l| l.chars().take(40).collect::<String>())
+                        .unwrap_or_default();
+                    eprintln!("[P22-FEED] key={key} lines={} cols={cols} rows={rows} first={first:?}",
+                        lines.len());
+                }
                 // PLAN-022:scroll_offset prop 非零才落位(014 光标哨兵同
                 // 款)——0 恒写会把引擎泵回写的 display_offset 每帧清零,
                 // 官方滚动条的读出基线(scroll_view_target)随之断裂。
@@ -24070,14 +24131,13 @@ where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    // Check tick interval at startup
-    let tick = C::default();
-    let (tick_ms, tick_msg) = (tick.tick_interval_ms(), tick.tick_msg());
-    let interval = tick_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
-    drop(tick);
-
-    // PLAN-022 T-03:窗口尺寸面启动种子(开窗若无后续 resize 也有真值;
-    // 见 devtools_update __window_resized 臂的同源同步)。
+    // PLAN-022 T-03:单次构造契约——生成的 App 构造内联 `on(Init)`
+    // (codegen 惯例),任何多余 `C::default()` 的构造副作用(全局动作队列
+    // enqueue/引擎 spawn)都会双触发(一次 Init 出两次 split 实录)。
+    // tick 配置因此改在订阅闭包里从**活实例**读(iced 每次注册订阅时
+    // 以实例调用),boot 保持 `DevToolsWrapper::<C>::default` 单次构造。
+    // 窗口尺寸面启动种子(开窗若无后续 resize 也有真值;见 devtools_update
+    // __window_resized 臂的同源同步)。
     let seed = startup_window_size();
     crate::ui::style::theme::set_window_width(seed.width);
     crate::ui::style::theme::set_window_height(seed.height);
@@ -24087,15 +24147,15 @@ where
         devtools_update,
         devtools_view,
     )
-    .subscription(move |w| {
+    .subscription(|w| {
         let mut subs: Vec<iced::Subscription<WrapperMsg<C>>> = vec![devtools_subscription(w)];
         // Plan 407: add tick subscription. Cannot use Subscription::map in
         // generic code (const check fails for non-concrete C). Instead,
         // emit a periodic WrapperMsg::Debug("__tick__") via a 'static recipe.
-        if w.inner.tick_msg().is_some() {
+        if let Some(ms) = w.inner.tick_interval_ms() {
             // Use a custom subscription that doesn't go through .map().
             // Recipe: a struct implementing Hash + recipe pattern.
-            subs.push(tick_subscription::<C>(interval.unwrap_or(std::time::Duration::from_secs(999999))));
+            subs.push(tick_subscription::<C>(std::time::Duration::from_millis(ms as u64)));
         }
         iced::Subscription::batch(subs)
     })
