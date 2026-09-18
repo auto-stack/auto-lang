@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-651
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived（2026-09-18 用户授权执行，/auto-plan:work）
 feature_name: autodown-editor-block-closure（编辑器 block 类型三态矩阵与闭合）
 author: [zhaopuming]
 created_at: 2026-09-18
-updated_at: 2026-09-18
-plan_revision: 1
+updated_at: 2026-09-18（T-00 完成，矩阵+定价落盘）
+plan_revision: 2
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -15,7 +15,7 @@ new_spec_components: []
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（编辑器=一致性最深单元，RC-E）"]
 
 affects: [autodown-editor]
-current_step: 0
+current_step: 1
 total_steps: 4
 ---
 
@@ -119,13 +119,28 @@ T-03 对拍 gate 常驻化（tests/ 套件）+ jade gallery RC-E 联动
 > worktree：`.wt/lang-651/{auto-lang, auto-down}` 组布局（autodown-core 与
 > engine TS 在 auto-down 仓）。
 
-- **T-00** [调查/决策工件] 三态矩阵盘点：类型集合（069 manifest 23 起点 +
-  语料实测增删）× 三态 × 双实现逐格标定；红项清单 + 优先级定价 + 工期估计
-  （A' 解冻时间盒的输入）。产物：`attachments/651-matrix.md`。
-  依赖：无。→ AC-01，并定价 T-01/T-02
-- **T-01** [改/新] 红项闭合第一批（T-00 定价的高优类型；每格 = Rust 侧
-  闭合 + TS 对照锚 + 对拍测试）。依赖：T-00。→ AC-02
-- **T-02** [改/新] 红项闭合第二批（余项）。依赖：T-01。→ AC-02
+- **T-00** [✅ 已完成] 三态矩阵盘点：产物 `attachments/651-matrix.md`
+  （2026-09-18）。类型集合 = 模型 17 kind + 任务标记态/Image 两个特殊行
+  （069 的 23 类型中 TODO/DOING/DONE/NOW/LATER/Priority A-C 为 ListItem 字面
+  标记非独立 kind，实测确认）。逐格标定 + 红项清单 5 项（R1 fence 丢语言/
+  R2 query+embed 空段回写/R3 mermaid 丢围栏/R4 math 丢 `%{ }%`/R-ANCH 块锚
+  `^id` 丢失——全在 VM emit 路径，jade 语料定价）+ 余项 3（R5 details 折叠/
+  R6 行首规则/R7 表格 align/IAL）+ DEBTS 提案 5 + 豁免维持 2。
+  Q-1 裁定=矩阵 §0；Q-2 裁定=修复面 100% auto-lang 主通道，autodown-core
+  与 TS 零改动，auto-down worktree 仅 T-03 gallery 联动；Q-3 未触发。
+  → AC-01 达成（矩阵在案+双实现交叉校验：红格经主会话代码复核，双侧盘点
+  独立进行后对表）。证据：`attachments/651-matrix.md` §2/§3。
+- **T-01** [改/新] 红项闭合第一批（VM core.rs，矩阵 §3 T-01 表）：
+  R1 fence 语言随 syntax 发射；R2 query/embed 进 Seg::Raw 冻结源行
+  （`$query(..)`/`$embed(src: "..")`，对齐 TS 冻结预览裁定）；R3 闭合
+  mermaid 进 Fence 族叶（syntax="mermaid"）；R4 新 LeafKind::Math
+  （emit `%{\n..\n}%` + Fence 同族守卫）；R-ANCH BlockBuf.anchor 通道
+  （build_walk 收 attr、emit 段 Leaf 尾补 ` ^id`、拆分随头块/合并保头锚）。
+  验收：逐项行为测试 + `t651_closure_corpus` 幂等锚；`cargo t` 局部绿。
+  依赖：T-00。→ AC-02（第一批）
+- **T-02** [改/新] 红项闭合第二批（矩阵 §3 T-02 表）：R5 details 折叠
+  交互（open 消费 + 点击翻转）；R6 行首规则（`1. ` 有序、`#`→h6）；
+  R7 表格 emit align/IAL 还原。依赖：T-01。→ AC-02（第二批）
 - **T-03** [改] 对拍 gate 常驻化（矩阵驱动的外科对拍组进 tests 套件）+
   jade gallery RC-E 占位联动（auto-down 侧小改，随本计划折回通道）+
   回归（demo 双轨/vm-smoke/parser parity）。依赖：T-01/T-02。→ AC-03/04
@@ -138,11 +153,19 @@ T-03 对拍 gate 常驻化（tests/ 套件）+ jade gallery RC-E 联动
 - 2026-09-18 draft handoff：`stage: new | plan_id: PLAN-651 | plan_revision: 1 |
   outcome: pass（起草完成；执行未授权） | next: review → work（T-00 可独立
   先行，其产出定价整个统一期时间盒）`。
+- 2026-09-18 work 授权进场：`stage: work | plan_id: PLAN-651 | plan_revision: 2 |
+  outcome: T-00 done（矩阵+定价落盘 attachments/651-matrix.md；Q-1/Q-2 裁定在
+  案，Q-4 DEBTS 提案新增） | code_commit: master 簿记（worktree
+  .wt/lang-651/{auto-lang,auto-down} 建组，base 9886ba901 / b1c88def） |
+  task_ids: T-00 | evidence: 矩阵 §2 双实现逐格 + §3 红项定价（主会话复核
+  catch-all/emit_seg/serializer 关键格） | blockers: 无 | next: T-01（VM
+  core.rs 红项闭合第一批，auto-lang worktree plan-651-dev）`。
 
 ## 9. 待澄清事项
 
 | # | 事项 | 影响 | owner/下一步 |
 | --- | --- | --- | --- |
-| Q-1 | "完善"的判定口径（三态各自：view=渲染结构对拍/edit=行为锚/streaming=增量语义） | T-00 标尺 | T-00 矩阵首列裁定 |
-| Q-2 | autodown-core 修复的落地通道（随本计划折回 vs auto-down 侧独立通道） | 跨仓布局 | T-00 后与 auto-down 侧对齐 |
-| Q-3 | 红项中出现工具链级硬骨头（非类型覆盖而是引擎能力缺口）时的升级路径 | 时间盒 | 触发即回 A' 复查点（auto-down ARCHITECTURE §8.4） |
+| Q-1 | "完善"的判定口径（三态各自：view=渲染结构对拍/edit=行为锚/streaming=增量语义） | T-00 标尺 | **已裁定**（T-00）：见 `attachments/651-matrix.md` §0——view=结构对拍（豁免记绿(豁)）、edit=roundtrip 模型无损、streaming=三态机语义一致 |
+| Q-2 | autodown-core 修复的落地通道（随本计划折回 vs auto-down 侧独立通道） | 跨仓布局 | **已裁定**（T-00）：autodown-core parse/serialize 实测全绿零改动；修复面 100% auto-lang VM 壳 → 本计划 auto-lang 主通道；auto-down worktree 仅 T-03 gallery 联动 |
+| Q-3 | 红项中出现工具链级硬骨头（非类型覆盖而是引擎能力缺口）时的升级路径 | 时间盒 | 未触发（math/mermaid 图形渲染为已登记豁免，非新增硬骨头） |
+| Q-4 | （T-00 新增）DEBTS 提案 5 项（矩阵 §3：R8 死 kind/R9 query 编辑增强/R10 tasks 死代码/R11 image 行内/D1 view 面板注册层级）待 review 时用户逐项裁定 | AC-02 处置完整性 | review 阶段裁定；工作阶段按提案记录不实施 |
