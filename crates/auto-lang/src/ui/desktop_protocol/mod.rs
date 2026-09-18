@@ -55,6 +55,10 @@ pub mod native_projector;
 pub mod pixels;
 #[cfg(feature = "ui-iced")]
 pub mod remote;
+/// PLAN-031 —— rqhost：共享合成器原生窗运行时（rendezvous 采纳 +
+/// 多窗 daemon + 输入路由；`auto run -q` 第四形态）。
+#[cfg(feature = "ui-iced")]
+pub mod rqhost;
 /// PLAN-029 T-03（D2）：Windows SendInput FFI（真机合成键入基建；内部
 /// 自带 `#![cfg(windows)]`，非 Windows 平台为空模块）。
 #[cfg(feature = "ui-iced")]
