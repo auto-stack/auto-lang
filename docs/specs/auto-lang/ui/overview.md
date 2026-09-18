@@ -360,6 +360,18 @@ pointer 三包装（`setPointerCapture`，拖出条外仍跟手，判据取 `e.c
 [icon-data-source-and-parity](../../../design/autoui/icon-data-source-and-parity.md)。
 尺寸口径见 ⑤ 与 617/619 段（显式类 > `size:` > 默认 20px），此处不重复。
 
+## ui-gallery VM 内嵌健康度契约（PLAN-642）
+
+VM 画廊内嵌形态（AppViewport.vm.at + demos/*.at 适配器 + registry.at）的 enduring 契约，2026-09-18 落地：
+
+1. **registry `loadable` 语义（modify）**：registry.at 的 `loadable` = "VM 臂内嵌可交互"（`loadable || fullstack`）；web 臂 `demos-registry.ts.loadable` = Vue 动态挂载能力——两臂数据源分离为 enduring 决策（P633-D2 核销）。
+2. **适配器 stylekit 配方内联（add）**：`emit_gallery_vm_demos` 发射期把跨包 `use stylekit.styles` 配方内联为适配器本地 `pub style`（画廊上下文无跨包解析通道）；教程/源码 tab 展示语料原文。
+3. **组件包目录级联（add）**：475 组件包（`use { package: ... from "dir" }`）目录随适配器级联拷贝进 demos/（package.at 清单跳过；包内 fn 模块链同链收集；同名异容 kept-first 告警）。
+4. **parse_package_widgets recipe 预注册义务（modify）**：475 包装载器 parse 前必须执行 `prepare_style_recipe_imports`（与编译入口同契约；tree_icon 修复实证）。
+5. **distributed 列 grow 剥离（add，T-11）**：justify-between/around/evenly 列的直接子剥 Flex1/FlexAuto/Grow 且不补 Height(Full)——iced 0.14 flex 对 FillPortion 子 min=max=份额硬钉 + 列内子项按剩余量配给，grow 子与垫片竞争时内容 0×0 隐没（008 特性行实证）；CSS grow 的 min-content 钳制 iced 无对应，distributed 列 grow 让渡给垫片。
+6. **frame scroll 兜底 + 内嵌语料 Fill 高度约定（add，T-12）**：overflow-y:hidden + justify-Center/End 列的内容包 Shrink 高度 Scrollable——短内容被容器 center_y 垂直居中、长内容封顶滚动（009/016）。配套语料约定：**内嵌 demo 避免 Fill 高度技巧**（items-stretch 等高拉伸、定高滚动上下文中的 flex-1——Fill 在 scroll 无界主轴下解析塌缩，008 实证）；等高需求待 PLAN-655 StretchLine 原语（P642-D12 近期处置）。
+7. **已知开放项**：子件主题魔法变量统一状态覆写链（016 打开翻转宿主主题持久）在案未修（T-13 needs_replan，见债账 P642-D9/D12）；008 卡片 scroll 折叠线下滚轮可达性待人工复验。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
