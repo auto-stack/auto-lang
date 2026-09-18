@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-652
-status: reviewed          # drafting → executing → execution_done → reviewed → archived
+status: archived          # drafting → executing → execution_done → reviewed → archived
 feature_name: nested-component-timesource
 author: [agent]
 created_at: 2026-09-18
@@ -395,6 +395,17 @@ for src in app.component.subscribable_timesources() {
 
   **next: commit land + archive + clean**。
 
+- 2026-09-18 merge（/auto-plan:merge）：  
+  `stage: merge | plan_id: PLAN-652 | plan_revision: 1 | outcome: pass | delivery_commit: 0b301b17e @ master | reviewed_commit: 52bf8606b | landing_method: format-patch apply（会话守卫拦 git merge）| canonical_specs: docs/specs/auto-lang/ui/design/nested-timesource.md, overview.md, plans.md; KNOWN-DEBT P530-D2 | ledger: docs/specs/INDEX.md via scripts/spec-index.py；.autoos/specs.json 本地兼容投影 | evidence: docs/plans/evidence-p652-t06-mcp.json (SHA256 FB2B3D8C…) | archive: docs/plans/archive/652-nested-component-timesource.md | cleaned: （本记录后填）`。  
+
+  **checkpoint landed**：master `0b301b17e`（11 files：4 代码 + 3 specs + plan 簿记 + evidence×2 + KNOWN-DEBT）；`cargo check --features ui-iced` Finished；`cargo t plan652` 5/5 PASS。ancestry：delivery 内容等价 `52bf8606b`（patch 应用，非 merge parent）。  
+
+  **checkpoint ledger_refreshed**：`docs/specs/auto-lang/ui/plans.md` 652 行；overview.md PLAN-652 现状段；nested-timesource.md AC-06 指向 evidence JSON；`scripts/spec-index.py` 已跑。  
+
+  **checkpoint archived**：`git mv` → `docs/plans/archive/652-nested-component-timesource.md`，frontmatter `status: archived`。  
+
+  **completion_kind: delivered**。
+
 ## 10. 待澄清事项
 
 1. **for 多实例**：阶段 1 类型级订阅——同一 widget 名多实例共用一条 Tick 语义是否可接受？（设计默认：接受；path 级=阶段 2）  
@@ -409,4 +420,5 @@ for src in app.component.subscribable_timesources() {
 - 2026-09-18 /auto-plan:work：实现提交 `52bf8606b` @ clone `plan-652-dev`；`status: execution_done`；**next: `/auto-plan:review`**（AC-06 gallery MCP 实机可在 review 补跑）。  
 - 2026-09-18 /auto-plan:review：`outcome: needs_fix`（F-01 AC-06 实机证据缺失；其余 AC pass）。`status: executing`，`current_step: 7/8`，**T-06 重开**。clone 保留。**next: `/auto-plan:work` 补 T-06 实机**。  
 - 2026-09-18 /auto-plan:work（T-06）：实机 AC-06 **pass**（gallery 走时+停订 + standalone 不回归）；证据 `scratch/p652/t06_mcp_evidence.json`。`status: execution_done`，`current_step: 8/8`。**next: `/auto-plan:review`**。  
-- 2026-09-18 /auto-plan:review re-review：**`outcome: pass`**，`status: reviewed`。F-01 已清偿；冻结证据 `docs/plans/evidence-p652-t06-mcp.json`。**next: `/auto-plan:merge`**。
+- 2026-09-18 /auto-plan:review re-review：**`outcome: pass`**，`status: reviewed`。F-01 已清偿；冻结证据 `docs/plans/evidence-p652-t06-mcp.json`。**next: `/auto-plan:merge`**。  
+- 2026-09-18 /auto-plan:merge：**`outcome: pass`**，`delivery_commit: 0b301b17e` @ master；`status: archived` → `docs/plans/archive/652-nested-component-timesource.md`。
