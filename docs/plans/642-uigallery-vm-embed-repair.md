@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 11
+current_step: 12
 total_steps: 19
 ---
 
@@ -363,11 +363,26 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       贴底（t11_008_fixed.png）,007/013/024/026/029 抽样零回归,6 次切页
       零崩溃。双仓提交：auto-lang 50f623e5c、auto-os 98613b0（产物再生成
       012-clock 改名/046 新增/013+020 随语料,合并对齐非 T-11 生成器变化）。
-- [ ] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）
-      `min-h-screen`/`h-screen` 在内嵌上下文 = 窗口高而非容器高（009 溢出
-      被裁、016 不居中同根因，app.at:252/40 实证）——VM 渲染器对
-      screen 类的解析在内嵌装配时改映射容器高，frame 加 scroll 兜底；
-      009 出滚动条、016 居中截图验收。
+- [✅] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）[✅ 已完成（归因修正）]
+      归因修正：原判"min-h-screen=窗口高而非容器高"经实证证伪——scratch
+      实测 h-[300px] frame 精确生效（行 13+ 在框底截断）、headless
+      1024×768/900/1250 三档窗口全钳 720、条件式/字面量/双 widget 真实
+      管线均一致。真正根因 = iced 0.14 flex 定高列子项按剩余量逐个配给：
+      demo 内容超出 frame 高的部分被压成 0×0——不可见、不可滚（009 无
+      滚动条的根因）；自由尺寸 demo 根被钳在 frame 高但内容塌缩呈左上
+      截断（016）。
+      修复：`apply_column_style` justify-Center/End 容器路径对
+      overflow-y:hidden 列插入 Shrink 高度 Scrollable——短内容被容器
+      center_y 垂直居中（016）、长内容封顶滚动（009）。作用域限定
+      justify-Center/End（非 justify 列 height/Fill 与 Shrink scroll
+      组合会整页塌缩——画廊根 h-screen 首版实测，随即收窄）。CSS 偏差
+      overflow-hidden≈overflow-y:auto 登记。
+      实证：headless 回归 p642_t12_overflow_frame_scrolls_and_centers
+      （40 行全布局 + 3 行垂直居中）；layout_tests 55 绿（2 红=master
+      预存）；cargo t ui 2101 全跑 22 败全落 master 基线内零新增；实机
+      009 frame 内滚动条出现（t12v5_009.png）、016 垂直居中恢复
+      （t12v5_016_clean.png）；水平居中受 P2-016a 主题污染干扰（light-
+      on-light）留 T-13 一并复验。auto-lang 2c96c5e40。
 - [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）
       016 的 `dark_mode=false` 驱动宿主主题运行时（u2_008 深 → u2_016 起
       全浅色持久实证）——合并 VM 子件主题魔法变量与宿主隔离（主题只认
