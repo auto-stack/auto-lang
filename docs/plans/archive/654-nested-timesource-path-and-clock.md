@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-654
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
+completion_kind: delivered
 feature_name: nested-timesource-path-and-clock
 author: [agent]
 created_at: 2026-09-18
@@ -442,6 +443,17 @@ pub struct InstanceTimeSource {
   - `docs/plans/evidence-p654-gallery-live.json`：gallery ac6_pass/clock/stop=true；standalone clock_running=true；path Demo012Clock@0；handler 类型级
   - 代码锚：InstancePath/InstanceTimeSource/subscribable_instance_timesources/timesource_debug_rows/CLOCK_*/wants_framework_clock；renderer path 订阅+__clock_tick；vm_bridge write_or_insert_state
   | next: **`/auto-plan:merge`**（overall **reviewed**；worktree/clone 与 auto-down sibling 留 merge 清理；foreign WIP 仍不在本计划范围）`。
+
+- **2026-09-18 merge 收据（/auto-plan:merge，key: PLAN-654:r1）**：
+  `stage: merge | plan_id: PLAN-654 | plan_revision: 1 | outcome: pass` |
+  **prepared**: reviewed@`4817b51e1`；canonical Spec 三件已在 master（A land `b13af5927` / B land `4817b51e1`，format-patch）；evidence `docs/plans/evidence-p654-gallery-live.json` |
+  **landed**: master ancestry 验证 `b13af5927`+`4817b51e1` 均为 HEAD 祖先；specs nested-timesource/clock-service/overview 在盘；复审簿记 `bc676a8fa` |
+  **ledger_refreshed**: `docs/specs/auto-lang/ui/plans.md` 增 654 行；`docs/specs/INDEX.md` 经 `scripts/spec-index.py`；`.autoos/specs.json` upsert `P654-1..5`（reports/goals/architecture/designs/reviews，file 指向 archive 与 canonical specs）；KNOWN-DEBT **P530-D2** 注记 path 级退订已由 654 落地 |
+  **archived**: `docs/plans/archive/654-nested-timesource-path-and-clock.md`；`status: archived`；`completion_kind: delivered` |
+  **cleaned**: wt-guard `auto-lang`/`auto-down`/组目录均 **clean**（exit 0）；
+  clone 目录 `.wt/lang-654/{auto-lang,auto-down}` 与 patches/临时文件已删除；
+  组目录 `.wt/lang-654` 移除；主仓无 `plan-654*` 分支/无注册 worktree 残留。
+  foreign WIP 未触碰（`examples/rust-workspace/Cargo.toml` 等） |
 
 - **2026-09-18 T-B00 Clock 选型**（stage: work | plan_id: PLAN-654）：
 
