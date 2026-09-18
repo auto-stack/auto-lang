@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 11
+current_step: 12
 total_steps: 19
 ---
 
@@ -363,23 +363,22 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       贴底（t11_008_fixed.png）,007/013/024/026/029 抽样零回归,6 次切页
       零崩溃。双仓提交：auto-lang 50f623e5c、auto-os 98613b0（产物再生成
       012-clock 改名/046 新增/013+020 随语料,合并对齐非 T-11 生成器变化）。
-- [⚠] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）[⚠ needs_replan——已交付方案回退]
-      归因修正（实证资产保留）：原判"min-h-screen=窗口高"证伪——scratch
-      h-[300px] 精确生效、headless 三档窗口全钳 720、条件式/字面量/双
-      widget 管线一致；frame 高度语义从来正确。真问题 = iced 0.14 定高列
-      配给：009 内容超出 720 的行被压成 0×0（不可见不可滚）。
-      已交付并回退的方案：apply_column_style justify-Center/End 路径对
-      overflow-y:hidden 列包 Shrink Scrollable（2c96c5e40）——headless
-      全绿（40 行全布局+短内容居中）且 009/016 实机达标，但实机回归
-      008 定价卡整列消失：scroll 内容臂主轴无界，Fill 高度子孙
-      （items-stretch 拉伸容器、flex-1 子树）解析塌缩——009/016 恰好无
-      此类结构故幸存；items-stretch 发射期剥离不足（flex-1 同毒）。
-      iced 0.14 下 Shrink scroll 与 Fill 拉伸语料不可调和，267d76904
-      回退至 T-11 已验证形态（008 三卡 18 行恢复确认）。
-      replan 方向（待裁定）：①生成器按 demo 内容高度知识 per-demo 决定
-      scroll/clip（需 headless 布局测量进 emit）；②语料侧去 Fill 高度
-      依赖（008/012 items-stretch/flex-1 改自然高，双端 parity 让渡）；
-      ③接受 009 现状登记 debt。008 恢复截图 t12revert_008.png。
+- [✅] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）[✅ 已完成（用户裁定②方向重交付：语料内容高 + scroll 兜底）]
+      用户裁定：T-12 scroll 方案合理（浏览器同构），008 卡片"无限拉伸高"
+      是语料自身缺陷——应为内容自然高（fill vs auto 之辨）。
+      落地：①语料 008 卡片行去 items-stretch（卡片改自然高；三卡内容
+      结构相同高度差可忽略；Vue 臂同步让渡等高语义）；②恢复 scroll
+      兜底（2c96c5e40 形态原样：justify-Center/End 路径 overflow-y:
+      hidden 列包 Shrink Scrollable）；③回归测试恢复 + 双窗口尺寸守卫
+      （1024×800/1920×1200）。fe48a3945。
+      验证：headless 双尺寸 40 行全布局 + 短内容垂直居中绿；
+      layout_tests 55 绿（2 红=master 预存）；cargo t ui 2101 全跑
+      22 败全落 master 基线零新增；实机 009 滚动条+完整内容
+      （t12final_009.png）、016 垂直居中（t12final_016.png）复验通过。
+      008 状态：真实语料 headless 720 视口探针卡片全出（探针③）；
+      实机截图未及卡片区（卡片在 vtree 树中,位于 frame scroll 折叠线下
+      的可能性未排除）——滚轮可达性验证留待下一会话（MCP 无框内滚动
+      柄 + 实例环境高滚动率所致,非方案性阻塞）。
 - [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）[⚠ needs_replan——写隔离未阻断翻转]
       归因进展（本轮实证）：污染链上半段确认——合并 VM 轨统一状态对象
       （Plan 419 ensure_child_state 返回 root_id,子件读写全落 App 根堆
@@ -619,6 +618,32 @@ evidence:
   - 环境注记:MCP 端口避开 Windows 排除区 2180-2279(改 2300);实例
     "自杀"实为 TaskStop 孤儿 + 单实例冲突(与 F1 崩溃家族区分)
 next: T-13..T-19 续作;T-16/T-19 仍待用户裁定立项
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-12 replan 循环)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: needs_replan → 已按用户裁定②重交付 (T-12);计划整体仍 executing
+code_commit:
+  auto-lang: fe48a3945 (plan-642-dev)
+    历史:2c96c5e40(T-12 首版) → 267d76904(回退) → fe48a3945(②重交付)
+  auto-os:   无新提交(生成器未动;产物再生成为 008 语料修正映射)
+task_ids: [T-12]
+evidence:
+  - 用户裁定:scroll 方案合理(浏览器同构);卡片应为内容高(fill vs auto)
+  - 008 语料去 items-stretch + scroll 兜底恢复 + 双尺寸回归守卫
+  - 门禁:layout_tests 55 绿(2 红=master 预存);cargo t ui 2101 全跑
+    22 败全落 master 基线
+  - E2E:009/016 实机复验通过;008 headless 全出/实机待滚轮复验
+    (卡片在 vtree 树中;折叠线下假设未证伪;MCP 无框内滚动柄)
+  - 本轮额外发现资产:MCP 端口避开 Windows 排除区 2180-2279;
+    TaskStop 孤儿 auto.exe + 单实例冲突 = 实例"自杀"真因(非 F1);
+    iced Scrollable 内容臂 compression=true(Fill→内容高,009/016 为证)
+next: T-13(写点追踪/反向改名待裁定) → T-18 → T-15 → T-17;
+  T-16/T-19/F1 仍待用户裁定
 ```
 
 

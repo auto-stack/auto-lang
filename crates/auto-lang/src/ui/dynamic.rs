@@ -153,6 +153,45 @@ pub struct DynamicComponent {
     /// Plan 051 C7: timer 块条目（root widget + store-as-child decl 三源
     /// 收集；renderer 据此建订阅、update 据此走 fire_timer 门控派发）。
     timers: Vec<TimerEntryRuntime>,
+
+    /// PLAN-652: TimeSource 候选表（root/child/store 的 `.Tick` + `timer`）。
+    timesources: Vec<TimeSourceRuntime>,
+
+    /// PLAN-652: 恒挂载名（root + store-as-child）。装配帧不从该集合移除。
+    always_mounted: std::collections::HashSet<String>,
+
+    /// PLAN-652: 本帧/最近装配期实际实例化的 widget 名（条件臂命中时写入）。
+    /// `&self` 视图路径经 RefCell 回写；订阅查询只读。
+    mounted_types: std::cell::RefCell<std::collections::HashSet<String>>,
+
+    /// PLAN-652: 上次视图重建是否改变了 mounted 集合（订阅刷新提示）。
+    mounted_changed: std::cell::Cell<bool>,
+}
+
+/// PLAN-652 阶段 1: 时间源种类。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeSourceKind {
+    /// `.Tick` handler + `model.interval`（缺省 1000ms）。
+    Tick,
+    /// `timer { … }` 块条目（when 门在订阅层 + fire 双保险）。
+    Timer,
+}
+
+/// PLAN-652 阶段 1: 运行期时间源候选。
+///
+/// 身份键 = widget 类型名（与 `TimerEntryRuntime.widget` 一致）。
+/// 条件实例化未命中 ⇒ 该名不在 `mounted_types` ⇒ 不订阅（类型级 D-2）。
+#[derive(Debug, Clone)]
+pub struct TimeSourceRuntime {
+    pub kind: TimeSourceKind,
+    /// 归属 widget/store 名（派发目标命名空间）。
+    pub widget: String,
+    /// 消息事件名（Tick 源恒为 "Tick"）。
+    pub event: String,
+    /// 周期毫秒。
+    pub every_ms: u64,
+    /// timer 的 when 门源文本；Tick 无 when → None。
+    pub when: Option<String>,
 }
 
 /// Plan 051 C7: 运行期计时器条目（widget 名 + 事件名 + 周期 + 门控）。
@@ -236,7 +275,7 @@ impl DynamicComponent {
             named_templates: widget.named_views.iter()
                 .map(|(n, v)| (n.clone(), v.clone()))
                 .collect(),
-            widget_name,
+            widget_name: widget_name.clone(),
             import_stmts: Vec::new(),
             dirty: true,
             source_path: None,
@@ -252,6 +291,18 @@ impl DynamicComponent {
             nav_group_states: Default::default(),
             route_history: Default::default(),
             timers: Vec::new(),
+            timesources: Vec::new(),
+            always_mounted: {
+                let mut s = std::collections::HashSet::new();
+                s.insert(widget_name.clone());
+                s
+            },
+            mounted_types: std::cell::RefCell::new({
+                let mut s = std::collections::HashSet::new();
+                s.insert(widget_name.clone());
+                s
+            }),
+            mounted_changed: std::cell::Cell::new(false),
         })
     }
 
@@ -313,7 +364,7 @@ impl DynamicComponent {
             named_templates: widget.named_views.iter()
                 .map(|(n, v)| (n.clone(), v.clone()))
                 .collect(),
-            widget_name,
+            widget_name: widget_name.clone(),
             import_stmts,
             dirty: true,
             source_path: None,
@@ -329,6 +380,30 @@ impl DynamicComponent {
             nav_group_states: Default::default(),
             route_history: Default::default(),
             timers: Vec::new(),
+            timesources: {
+                let mut ts = Vec::new();
+                if let Some(ms) = view.tick_interval {
+                    ts.push(TimeSourceRuntime {
+                        kind: TimeSourceKind::Tick,
+                        widget: widget_name.clone(),
+                        event: "Tick".to_string(),
+                        every_ms: ms as u64,
+                        when: None,
+                    });
+                }
+                ts
+            },
+            always_mounted: {
+                let mut s = std::collections::HashSet::new();
+                s.insert(widget_name.clone());
+                s
+            },
+            mounted_types: std::cell::RefCell::new({
+                let mut s = std::collections::HashSet::new();
+                s.insert(widget_name.clone());
+                s
+            }),
+            mounted_changed: std::cell::Cell::new(false),
         })
     }
 
@@ -436,6 +511,59 @@ impl DynamicComponent {
             }
         }
 
+        // PLAN-652 T-02: TimeSource 候选收集——root/child/store 的 `.Tick`
+        // + 既有 timer 条目并入同一表。store-as-child（view.is_none()）恒挂载。
+        let mut timesources: Vec<TimeSourceRuntime> = Vec::new();
+        let mut always_mounted: std::collections::HashSet<String> = Default::default();
+        {
+            always_mounted.insert(root_decl.name.to_string());
+            if let Some(ms) =
+                crate::ui::handler_codegen::extract_tick_interval_from_decl(root_decl)
+            {
+                timesources.push(TimeSourceRuntime {
+                    kind: TimeSourceKind::Tick,
+                    widget: root_decl.name.to_string(),
+                    event: "Tick".to_string(),
+                    every_ms: ms as u64,
+                    when: None,
+                });
+            }
+            for d in child_decls {
+                let always = d.view.is_none();
+                if always {
+                    always_mounted.insert(d.name.to_string());
+                }
+                if let Some(ms) =
+                    crate::ui::handler_codegen::extract_tick_interval_from_decl(d)
+                {
+                    timesources.push(TimeSourceRuntime {
+                        kind: TimeSourceKind::Tick,
+                        widget: d.name.to_string(),
+                        event: "Tick".to_string(),
+                        every_ms: ms as u64,
+                        when: None,
+                    });
+                }
+            }
+            for stmt in import_stmts.iter() {
+                if let crate::ast::Stmt::StoreDecl(sd) = stmt {
+                    always_mounted.insert(sd.name.to_string());
+                }
+            }
+            for t in &timers {
+                timesources.push(TimeSourceRuntime {
+                    kind: TimeSourceKind::Timer,
+                    widget: t.widget.clone(),
+                    event: t.event.clone(),
+                    every_ms: t.every_ms,
+                    when: t.when.clone(),
+                });
+            }
+        }
+
+        let mut mounted_init = always_mounted.clone();
+        mounted_init.insert(root_decl.name.to_string());
+
         Ok(Self {
             bridge,
             view_template,
@@ -458,6 +586,10 @@ impl DynamicComponent {
             nav_group_states: Default::default(),
             route_history: Default::default(),
             timers,
+            timesources,
+            always_mounted,
+            mounted_types: std::cell::RefCell::new(mounted_init),
+            mounted_changed: std::cell::Cell::new(false),
         })
     }
     /// Create a new DynamicComponent with a pre-configured AutoVM instance.
@@ -485,7 +617,7 @@ impl DynamicComponent {
             named_templates: widget.named_views.iter()
                 .map(|(n, v)| (n.clone(), v.clone()))
                 .collect(),
-            widget_name,
+            widget_name: widget_name.clone(),
             import_stmts: Vec::new(),
             dirty: true,
             source_path: None,
@@ -501,6 +633,30 @@ impl DynamicComponent {
             nav_group_states: Default::default(),
             route_history: Default::default(),
             timers: Vec::new(),
+            timesources: {
+                let mut ts = Vec::new();
+                if let Some(ms) = widget.tick_interval {
+                    ts.push(TimeSourceRuntime {
+                        kind: TimeSourceKind::Tick,
+                        widget: widget_name.clone(),
+                        event: "Tick".to_string(),
+                        every_ms: ms as u64,
+                        when: None,
+                    });
+                }
+                ts
+            },
+            always_mounted: {
+                let mut s = std::collections::HashSet::new();
+                s.insert(widget_name.clone());
+                s
+            },
+            mounted_types: std::cell::RefCell::new({
+                let mut s = std::collections::HashSet::new();
+                s.insert(widget_name.clone());
+                s
+            }),
+            mounted_changed: std::cell::Cell::new(false),
         })
     }
     // ========================================================================
@@ -520,6 +676,82 @@ impl DynamicComponent {
     /// Plan 051 C7: timer 条目表（renderer 建订阅用）。
     pub fn timer_entries(&self) -> &[TimerEntryRuntime] {
         &self.timers
+    }
+
+    /// PLAN-652: 全部时间源候选（装载期静态收集；未过 mount/when 过滤）。
+    pub fn timesources(&self) -> &[TimeSourceRuntime] {
+        &self.timesources
+    }
+
+    /// PLAN-652: 当前挂载中的 widget 名集合快照。
+    pub fn mounted_types(&self) -> std::collections::HashSet<String> {
+        self.mounted_types.borrow().clone()
+    }
+
+    /// PLAN-652: (widget, event) 是否时间源候选。
+    pub fn is_timesource(&self, widget: &str, event: &str) -> bool {
+        self.timesources
+            .iter()
+            .any(|s| s.widget == widget && s.event == event)
+    }
+
+    /// PLAN-652: 订阅层过滤——挂载中且 when 通过的时间源。
+    ///
+    /// - Tick：无 when；仅 `mounted_types` 过滤。
+    /// - Timer：`timer_when_allows_subscription` + mounted 过滤。
+    /// - root / store-as-child（`always_mounted`）恒视为挂载。
+    pub fn subscribable_timesources(&self) -> Vec<TimeSourceRuntime> {
+        let mounted = self.mounted_types.borrow();
+        self.timesources
+            .iter()
+            .filter(|s| {
+                if !self.always_mounted.contains(&s.widget) && !mounted.contains(&s.widget) {
+                    return false;
+                }
+                match s.kind {
+                    TimeSourceKind::Tick => true,
+                    TimeSourceKind::Timer => {
+                        self.timer_when_allows_subscription(&s.widget, &s.event)
+                    }
+                }
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// PLAN-652: 装配帧开始——清空动态 mounted，保留 always_mounted。
+    /// 在视图重建前调用；builder 在 child 实例化时 insert。
+    pub fn begin_mount_frame(&self) {
+        let mut m = self.mounted_types.borrow_mut();
+        *m = self.always_mounted.clone();
+        m.insert(self.widget_name.clone());
+    }
+
+    /// PLAN-652: 装配帧结束——比较 mounted 是否相对帧前变化。
+    /// `prev` 为帧前快照；变化时置 `mounted_changed`。
+    pub fn end_mount_frame(&self, prev: &std::collections::HashSet<String>) {
+        let changed = *self.mounted_types.borrow() != *prev;
+        self.mounted_changed.set(changed);
+    }
+
+    /// PLAN-652: 取走「mounted 集合已变化」标志（订阅刷新提示）。
+    pub fn take_mounted_changed(&self) -> bool {
+        self.mounted_changed.replace(false)
+    }
+
+    /// PLAN-652: 供 builder 装配期写入 mounted 的 sink（与组件共享）。
+    pub fn mounted_sink(&self) -> &std::cell::RefCell<std::collections::HashSet<String>> {
+        &self.mounted_types
+    }
+
+    fn view_mount_frame_prepare(&self) -> std::collections::HashSet<String> {
+        let prev = self.mounted_types.borrow().clone();
+        self.begin_mount_frame();
+        prev
+    }
+
+    fn view_mount_frame_finish(&self, prev: std::collections::HashSet<String>) {
+        self.end_mount_frame(&prev);
     }
 
     /// PLAN-650 E-1：订阅层 `when` 门——假则本拍不挂 tick（iced 在 update
@@ -792,8 +1024,15 @@ impl DynamicComponent {
     /// zero-overhead capture bypass (Plan 307 Task 18), use
     /// [`view_with_debug_gated`] with `capture_probe = false`.
     pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_preview_states(&self.preview_states).with_nav_group_states(&self.nav_group_states);
-        builder.build_with_debug(&self.view_template)
+        let prev = self.view_mount_frame_prepare();
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts)
+            .with_routes(&self.routes)
+            .with_preview_states(&self.preview_states)
+            .with_nav_group_states(&self.nav_group_states)
+            .with_mounted_sink(&self.mounted_types);
+        let out = builder.build_with_debug(&self.view_template);
+        self.view_mount_frame_finish(prev);
+        out
     }
 
     /// Gated variant of [`view_with_debug`] (Plan 307 Task 18 perf gate).
@@ -806,8 +1045,16 @@ impl DynamicComponent {
         &self,
         capture_probe: bool,
     ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_computed(&self.computed).with_preview_states(&self.preview_states).with_nav_group_states(&self.nav_group_states);
-        builder.build_with_debug_gated(&self.view_template, capture_probe)
+        let prev = self.view_mount_frame_prepare();
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts)
+            .with_routes(&self.routes)
+            .with_computed(&self.computed)
+            .with_preview_states(&self.preview_states)
+            .with_nav_group_states(&self.nav_group_states)
+            .with_mounted_sink(&self.mounted_types);
+        let out = builder.build_with_debug_gated(&self.view_template, capture_probe);
+        self.view_mount_frame_finish(prev);
+        out
     }
 
     /// PLAN-024: names of the declared named views (`view mini { ... }`).
@@ -833,7 +1080,8 @@ impl DynamicComponent {
             &self.widget_name,
             &self.widget_registry,
             &self.import_stmts,
-        ).with_routes(&self.routes);
+        ).with_routes(&self.routes)
+            .with_mounted_sink(&self.mounted_types);
         Some(builder.build(template))
     }
 
@@ -1216,13 +1464,16 @@ impl Component for DynamicComponent {
     /// state references from the VmBridge at build time. After rendering,
     /// the dirty flag is cleared.
     fn view(&self) -> View<Self::Msg> {
+        let prev = self.view_mount_frame_prepare();
         let builder = AuraViewBuilder::with_registry_and_imports(
             &self.bridge,
             &self.widget_name,
             &self.widget_registry,
             &self.import_stmts,
-        ).with_routes(&self.routes);
+        ).with_routes(&self.routes)
+            .with_mounted_sink(&self.mounted_types);
         let view = builder.build(&self.view_template);
+        self.view_mount_frame_finish(prev);
 
         view
     }
@@ -3750,5 +4001,284 @@ widget Demo002Counter {
         let _ = comp.write_state("selected_id", auto_val::Value::str("002-counter"));
         let (view3, _, _) = comp.view_with_debug_gated(false);
         assert!(count_text_nodes(&view3, "Counter: 0") > 0, "demo branch re-instantiates on switch-back");
+    }
+}
+
+// ============================================================================
+// PLAN-652: nested-component-timesource —— TimeSource 收集 / mounted 过滤 / 派发
+// ============================================================================
+
+#[cfg(test)]
+mod plan652_timesource {
+    use super::{DynamicComponent, TimeSourceKind};
+    use crate::parser::Parser;
+
+    /// Gallery 形态宿主 + 带 `.Tick` 的 demo child（012-clock 缩影）。
+    const HOST_CLOCK: &str = r#"
+widget GalleryHost652 {
+    model {
+        var selected_id str = "012-clock"
+    }
+    view {
+        col {
+            text "CHROME"
+            if .selected_id == "012-clock" {
+                DemoClock652 {}
+            } else if .selected_id == "002-counter" {
+                DemoPlain652 {}
+            } else {
+                text "no-demo"
+            }
+        }
+    }
+}
+"#;
+
+    const DEMO_CLOCK: &str = r#"
+widget DemoClock652 {
+    model {
+        var interval int = 250
+        var w_local str = "--:--:--"
+        var w_tick int = 0
+    }
+    view {
+        col {
+            text .w_local
+        }
+    }
+    on {
+        .Tick -> {
+            .w_tick += 1
+            .w_local = "T" + f"${.w_tick}"
+        }
+    }
+}
+"#;
+
+    const DEMO_PLAIN: &str = r#"
+widget DemoPlain652 {
+    model {
+        var count int = 0
+    }
+    view {
+        col {
+            text "Plain"
+        }
+    }
+}
+"#;
+
+    const HOST_TIMER: &str = r#"
+widget TimerHost652 {
+    msg { Beat }
+    model {
+        var on str = "true"
+        var beat int = 0
+    }
+    timer { Beat (every_ms: 100, when: .on) }
+    view {
+        col {
+            text "timer-host"
+            TimerChild652 {}
+        }
+    }
+    on {
+        .Beat -> {
+            .beat += 1
+        }
+    }
+}
+"#;
+
+    const TIMER_CHILD: &str = r#"
+widget TimerChild652 {
+    model {
+        var pulse int = 0
+    }
+    view {
+        col {
+            text "child"
+        }
+    }
+}
+"#;
+
+    fn build(src: &str) -> DynamicComponent {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse plan652 corpus");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        for s in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = s {
+                decls.push(d.clone());
+            }
+        }
+        assert!(decls.len() >= 2, "host + at least one child");
+        let root = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        for d in &decls[1..] {
+            let w = crate::aura::extract_widget_from_decl(d).expect("extract child");
+            registry.register(w);
+        }
+        DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root,
+            registry,
+            Vec::new(),
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("plan652 component")
+    }
+
+    /// AC-01: child `.Tick` 进入 timesources，every_ms 与 interval 一致。
+    #[test]
+    fn plan652_child_tick_collected_in_timesources() {
+        let src = format!("{HOST_CLOCK}\n{DEMO_CLOCK}\n{DEMO_PLAIN}");
+        let comp = build(&src);
+        let ticks: Vec<_> = comp
+            .timesources()
+            .iter()
+            .filter(|s| s.kind == TimeSourceKind::Tick)
+            .collect();
+        assert!(
+            ticks.iter().any(|s| s.widget == "DemoClock652" && s.every_ms == 250),
+            "child Tick must enter timesources with interval=250; got {:?}",
+            ticks
+        );
+        // 无 .Tick 的 child 不得凭空登记。
+        assert!(
+            !ticks.iter().any(|s| s.widget == "DemoPlain652"),
+            "child without .Tick must not appear as Tick source"
+        );
+        // 宿主无 .Tick → 不登记 root Tick。
+        assert!(
+            !ticks.iter().any(|s| s.widget == "GalleryHost652"),
+            "root without .Tick must not invent a Tick source"
+        );
+        assert!(comp.is_timesource("DemoClock652", "Tick"));
+        assert!(!comp.is_timesource("DemoPlain652", "Tick"));
+    }
+
+    /// AC-02: 未 mounted ⇒ 订阅查询不含该 Tick；装配实例化后含；切走后不含。
+    #[test]
+    fn plan652_mounted_filter_gates_child_tick_subscription() {
+        let src = format!("{HOST_CLOCK}\n{DEMO_CLOCK}\n{DEMO_PLAIN}");
+        let mut comp = build(&src);
+
+        // 构造后 mounted 仅 root（always）；条件实例化前 child Tick 不可订阅。
+        // 首帧视图前先手工清空动态 mounted（模拟尚未装配）。
+        *comp.mounted_sink().borrow_mut() = [comp.widget_name().to_string()].into_iter().collect();
+        let before = comp.subscribable_timesources();
+        assert!(
+            !before.iter().any(|s| s.widget == "DemoClock652"),
+            "unmounted child Tick must not be subscribable; got {:?}",
+            before
+        );
+
+        // 视图装配：selected_id 默认 012-clock → DemoClock652 实例化。
+        let _ = comp.view_with_debug_gated(false);
+        let mounted = comp.mounted_types();
+        assert!(
+            mounted.contains("DemoClock652"),
+            "clock demo must be mounted after view; got {:?}",
+            mounted
+        );
+        let after = comp.subscribable_timesources();
+        assert!(
+            after.iter().any(|s| s.widget == "DemoClock652" && s.event == "Tick"),
+            "mounted child Tick must be subscribable; got {:?}",
+            after
+        );
+
+        // 切到 002-counter：条件臂换 demo → clock 不再 mounted。
+        let _ = comp.write_state("selected_id", auto_val::Value::str("002-counter"));
+        let _ = comp.view_with_debug_gated(false);
+        let mounted2 = comp.mounted_types();
+        assert!(
+            !mounted2.contains("DemoClock652"),
+            "clock must unmount after switch; got {:?}",
+            mounted2
+        );
+        assert!(
+            mounted2.contains("DemoPlain652"),
+            "plain demo mounts after switch; got {:?}",
+            mounted2
+        );
+        let after2 = comp.subscribable_timesources();
+        assert!(
+            !after2.iter().any(|s| s.widget == "DemoClock652"),
+            "unmounted clock Tick must drop out of subscription; got {:?}",
+            after2
+        );
+        assert!(
+            comp.take_mounted_changed(),
+            "mount-set change must be reported for subscription refresh"
+        );
+        assert!(
+            !comp.take_mounted_changed(),
+            "mounted_changed flag is edge-triggered"
+        );
+    }
+
+    /// AC-03: when 假的 timer 不订阅；真时订阅。root timer 恒挂载。
+    #[test]
+    fn plan652_timer_when_gate_still_applies() {
+        let src = format!("{HOST_TIMER}\n{TIMER_CHILD}");
+        let mut comp = build(&src);
+
+        // root timer 无条件 → 恒可订阅（always_mounted）。
+        let subs = comp.subscribable_timesources();
+        assert!(
+            subs.iter()
+                .any(|s| s.widget == "TimerHost652" && s.event == "Beat" && s.kind == TimeSourceKind::Timer),
+            "root timer always subscribable; got {:?}",
+            subs
+        );
+
+        // when=.on 默认 "true" → 订阅。
+        assert!(comp.timer_when_allows_subscription("TimerHost652", "Beat"));
+        let _ = comp.write_state("on", auto_val::Value::str("false"));
+        assert!(!comp.timer_when_allows_subscription("TimerHost652", "Beat"));
+        let subs_off = comp.subscribable_timesources();
+        assert!(
+            !subs_off
+                .iter()
+                .any(|s| s.widget == "TimerHost652" && s.event == "Beat"),
+            "when=false timer must not subscribe; got {:?}",
+            subs_off
+        );
+    }
+
+    /// AC-04: 装配中的 child Tick 派发执行 handler 并写状态。
+    #[test]
+    fn plan652_child_tick_dispatch_updates_state() {
+        let src = format!("{HOST_CLOCK}\n{DEMO_CLOCK}\n{DEMO_PLAIN}");
+        let mut comp = build(&src);
+        let _ = comp.view_with_debug_gated(false);
+
+        let w0 = comp.read_state("w_tick").expect("w_tick").as_int();
+        comp.on_with_input_for("DemoClock652", "Tick", None);
+        let w1 = comp.read_state("w_tick").expect("w_tick after Tick").as_int();
+        assert!(w1 == w0 + 1, "child Tick handler must run in single VM ({} -> {})", w0, w1);
+        let local = comp.read_state("w_local").expect("w_local").as_str().to_string();
+        assert!(local.starts_with('T'), "w_local updated by Tick; got {:?}", local);
+    }
+
+    /// 静止不劣化：未装配的 child Tick 源不得进入订阅（禁止全量 child 常订）。
+    #[test]
+    fn plan652_idle_gallery_no_child_tick_subscription() {
+        let src = format!("{HOST_CLOCK}\n{DEMO_CLOCK}\n{DEMO_PLAIN}");
+        let mut comp = build(&src);
+        // 静止在无 Tick demo。
+        let _ = comp.write_state("selected_id", auto_val::Value::str("002-counter"));
+        let _ = comp.view_with_debug_gated(false);
+        let subs = comp.subscribable_timesources();
+        assert!(
+            !subs.iter().any(|s| s.kind == TimeSourceKind::Tick),
+            "idle (no Tick demo) gallery must have zero Tick subscriptions; got {:?}",
+            subs
+        );
     }
 }

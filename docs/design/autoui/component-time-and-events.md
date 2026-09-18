@@ -206,9 +206,9 @@ vue 轨：`on`/`timer` 生成侧已有闭包 when 与组件自有 interval 语�
 
 | 阶段 | 内容 | 计划 |
 |------|------|------|
-| **1** | child Tick 收集 + mounted 类型过滤 + 订阅/派发打通 + gallery 012-clock 实机 + D-2 类型级退订 + 单测 | **PLAN-652** |
-| 2 | InstancePath 订阅身份、for 多实例、mounted path、MCP 可观察 TimeSource 表、ui specs 回写 | 待立项 |
-| 3 | Clock 服务 / 与 desktop `__wm_clock` 对齐、示例迁移指南 | 待立项 |
+| **1** | child Tick 收集 + mounted 类型过滤 + 订阅/派发打通 + gallery 012-clock 实机 + D-2 类型级退订 + 单测 | **PLAN-652**（已 merge/archived） |
+| **2** | InstancePath 订阅身份、for 多实例、mounted path、MCP 可观察 TimeSource 表、ui specs 回写 | **PLAN-654 阶段 A** |
+| **3** | Clock 服务 / 与 desktop `__wm_clock` 对齐、示例迁移指南 | **PLAN-654 阶段 B**（与阶段 2 同契约、分阶段执行） |
 
 ---
 
@@ -226,3 +226,4 @@ vue 轨：`on`/`timer` 生成侧已有闭包 when 与组件自有 interval 语�
 | 日期 | 说明 |
 |------|------|
 | 2026-09-18 | 首稿：根因定性、TimeSource+mount 架构、交互契约、阶段划分；关联 gallery 时钟实机与 PLAN-652 |
+| 2026-09-18 | PLAN-652 merge/archived；阶段 2+3 合并立项 **PLAN-654**（A=InstancePath，B=Clock），路线表已链 |

@@ -18877,29 +18877,35 @@ fn compare_pngs(
                         subs.push(app_tick(app_id, HOT_RELOAD_EVENT, interval_ms));
                     }
                 }
-                if let Some(interval_ms) = app.component.tick_interval() {
-                    // R5：孵化 mini 会话 Tick 门控（面板隐藏/非活动 tab 停订
-                    // ——常驻零轮询开销）。
-                    if dashboard_hatched_tick_allowed(state, app_id) {
-                        subs.push(widget_tick(app_id, interval_ms));
+                // PLAN-652: Tick/timer 统一走 timesources + mounted/when 过滤。
+                // 根 `tick_interval()` 不再单独订阅（避免与 root Tick 源双订）。
+                for src in app.component.subscribable_timesources() {
+                    match src.kind {
+                        crate::ui::dynamic::TimeSourceKind::Tick => {
+                            // R5：孵化 mini 会话 Tick 门控仍适用于 Tick 源。
+                            if dashboard_hatched_tick_allowed(state, app_id) {
+                                subs.push(widget_event_tick(
+                                    app_id,
+                                    &src.widget,
+                                    &src.event,
+                                    src.every_ms,
+                                ));
+                            }
+                        }
+                        crate::ui::dynamic::TimeSourceKind::Timer => {
+                            subs.push(widget_event_tick(
+                                app_id,
+                                &src.widget,
+                                &src.event,
+                                src.every_ms,
+                            ));
+                        }
                     }
                 }
                 // Plan 442 A5: one-shot timer tick — only while set_timeout timers
                 // are pending; due callbacks fire in update's __timer_tick arm.
                 if app.component.has_pending_timers() {
                     subs.push(app_tick(app_id, "__timer_tick", 16));
-                }
-                // Plan 051 C7: timer 块条目订阅（每条目一订阅，身份含
-                // widget/event/ms 三元组互不去重）。
-                // PLAN-650 E-1：when 假不订阅（调度器层门控；P499-1）。
-                for t in app.component.timer_entries() {
-                    if !app
-                        .component
-                        .timer_when_allows_subscription(&t.widget, &t.event)
-                    {
-                        continue;
-                    }
-                    subs.push(widget_event_tick(app_id, &t.widget, &t.event, t.every_ms));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
                 if let Some(win) = state.window_of_app(app_id) {

@@ -151,6 +151,9 @@ pub struct AuraViewBuilder<'a> {
     /// （新会话直达 breadcrumb 页 100% 复现）。命中环时渲染 Empty 占位；
     /// 集合按分支克隆传递，兄弟复用同一 widget 不受影响。
     active_child_widgets: RefCell<HashSet<String>>,
+    /// PLAN-652: 装配期 mounted 登记 sink（与 DynamicComponent 共享）。
+    /// `render_child_widget*` 每实例化一个 registry 命中的 child 即 insert 其名。
+    mounted_sink: Option<&'a RefCell<HashSet<String>>>,
 }
 
 /// Plan 476: widget 调用位的 slot 填充集。
@@ -278,6 +281,7 @@ impl<'a> AuraViewBuilder<'a> {
             nav_group_states: None,
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
+            mounted_sink: None,
         }
     }
 
@@ -300,6 +304,7 @@ impl<'a> AuraViewBuilder<'a> {
             nav_group_states: None,
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
+            mounted_sink: None,
         }
     }
 
@@ -326,7 +331,17 @@ impl<'a> AuraViewBuilder<'a> {
             nav_group_states: None,
             slot_fills: None,
             active_child_widgets: RefCell::new(HashSet::new()),
+            mounted_sink: None,
         }
+    }
+
+    /// PLAN-652: 挂载登记 sink（DynamicComponent.mounted_types 共享 RefCell）。
+    pub fn with_mounted_sink(
+        mut self,
+        sink: &'a RefCell<HashSet<String>>,
+    ) -> Self {
+        self.mounted_sink = Some(sink);
+        self
     }
 
     /// PLAN-066: 注入自有 NativeWidgetRegistry（测试隔离面；生产构造器缺省
@@ -6076,6 +6091,10 @@ let tabs_inner = View::Row {
         if cycling {
             return View::Empty;
         }
+        // PLAN-652: 实例化即登记 mounted（条件臂命中路径）。
+        if let Some(sink) = self.mounted_sink {
+            sink.borrow_mut().insert(child_widget.name.clone());
+        }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
@@ -6107,6 +6126,7 @@ let tabs_inner = View::Row {
                 active.insert(child_widget.name.clone());
                 RefCell::new(active)
             },
+            mounted_sink: self.mounted_sink,
         };
 
         child_builder.build(&child_widget.view_tree)
@@ -6141,6 +6161,10 @@ let tabs_inner = View::Row {
         if cycling {
             return View::Empty;
         }
+        // PLAN-652: 实例化即登记 mounted（tracked 双胎同款）。
+        if let Some(sink) = self.mounted_sink {
+            sink.borrow_mut().insert(child_widget.name.clone());
+        }
         Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
 
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
@@ -6166,6 +6190,7 @@ let tabs_inner = View::Row {
                 active.insert(child_widget.name.clone());
                 RefCell::new(active)
             },
+            mounted_sink: self.mounted_sink,
         };
 
         child_builder.convert_node_tracked_ctx(
