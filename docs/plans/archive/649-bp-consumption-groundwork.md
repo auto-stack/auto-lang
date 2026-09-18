@@ -350,7 +350,10 @@ checkpoints:
   archived: git mv docs/plans/649-bp-consumption-groundwork.md →
     docs/plans/archive/（本仓归档目录 archive/，非技能书写的 archived/）+
     status: archived + 本收据 + spec-sync 回写记录节
-  cleaned: 待回填（wt-guard 双守卫 → worktree/分支/组目录移除）
+  cleaned: wt-guard 双 clean（auto-lang wt + auto-down 兄弟 b1c88def 零改动，均无
+    reparse point）→ auto-lang worktree 移除 + 分支 plan-649-dev 删除（@a19ecf7b4，
+    已含于 master 7bdab0eba 祖先）→ auto-down 兄弟移除（auto-down 仓侧）→
+    组目录 .wt/lang-649 移除；git worktree list 零 649 残留
 ```
 
 ## spec-sync 回写记录
