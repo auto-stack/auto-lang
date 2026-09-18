@@ -660,6 +660,9 @@ pub struct VueGenerator {
     /// Drained in generate_script to emit
     /// `watch(() => props.<prop>, () => nextTick(() => sentinel.scrollIntoView()))`.
     scroll_auto_scroll: Vec<(String, String)>,
+    /// PLAN-656 T-07: 需要注入 scroll controller JS helper 族（snake_case
+    /// 同名直通——ts 转译对未知原生是蛇形名原样输出，注入同名函数即接通）。
+    pub(crate) scroll_ctl_helpers_needed: bool,
 
     /// Pending sentinel ref name set by the scroll arm of generate_shadcn_attrs
     /// and consumed (taken) in node_to_html right before child recursion, so the
@@ -942,6 +945,7 @@ impl VueGenerator {
             surface_pans: Vec::new(),
             component_ref_names: HashSet::new(),
             scroll_auto_scroll: Vec::new(),
+            scroll_ctl_helpers_needed: false,
             pending_scroll_sentinel: None,
             canvas_specs: Vec::new(),
             video_specs: Vec::new(),
@@ -3505,6 +3509,34 @@ impl VueGenerator {
                 "watch(() => props.{}, () => {{ nextTick(() => {{ {}.value?.scrollIntoView({{ block: 'end' }}) }}) }}, {{ deep: true }})\n\n",
                 src, ref_name
             ));
+        }
+
+        // PLAN-656 T-07: scroll controller helper 族——.at 端 snake_case
+        // 原生调用（scroll_to_end(scroll) 等）经 ts 转译蛇形名直通，此处
+        // 注入同名 JS 函数接通（双端语义：与 VM natives 族一一对应；DOM
+        // 寻址经 pane 的 data-scroll-ctl 锚）。
+        if self.scroll_ctl_helpers_needed {
+            script.push_str(
+                r#"let __scrollCtlSeq = 0
+function scroll_controller() { return '__scrollctl_' + (++__scrollCtlSeq) }
+function __scrollCtlEl(k) { return document.querySelector('[data-scroll-ctl="' + k + '"]') }
+function scroll_to_start(k, ax) { const e = __scrollCtlEl(k); if (!e) return; if (ax === 'x') e.scrollTo({ left: 0 }); else e.scrollTo({ top: 0 }) }
+function scroll_to_end(k, ax) { const e = __scrollCtlEl(k); if (!e) return; if (ax === 'x') e.scrollTo({ left: e.scrollWidth }); else e.scrollTo({ top: e.scrollHeight }) }
+function scroll_by(k, a, b) { const e = __scrollCtlEl(k); if (!e) return; if (typeof a === 'string') { if (a === 'x') e.scrollLeft += b; else e.scrollTop += b } else { e.scrollTop += a } }
+function scroll_to(k, a, b) { const e = __scrollCtlEl(k); if (!e) return; if (typeof a === 'string') { if (a === 'x') e.scrollLeft = b; else e.scrollTop = b } else { e.scrollTo(a, b) } }
+function scroll_state(k) {
+  const e = __scrollCtlEl(k)
+  if (!e) return { offset_x: 0, offset_y: 0, viewport_w: 0, viewport_h: 0, content_w: 0, content_h: 0, progress_x: 0, progress_y: 0 }
+  return {
+    offset_x: e.scrollLeft, offset_y: e.scrollTop,
+    viewport_w: e.clientWidth, viewport_h: e.clientHeight,
+    content_w: e.scrollWidth, content_h: e.scrollHeight,
+    progress_x: Math.min(1, e.scrollLeft / Math.max(1, e.scrollWidth - e.clientWidth)),
+    progress_y: Math.min(1, e.scrollTop / Math.max(1, e.scrollHeight - e.clientHeight)),
+  }
+}
+
+"#);
         }
 
         // PLAN-493: textarea mentions backdrop 的 HTML helper —— template
@@ -7096,6 +7128,39 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     }
                     // Plan 408 P12 §10.1: style and class now have independent
                     // channels — no more __style__ marker / strip_prefix.
+                    // PLAN-656 T-07/T-08: scroll-pane plain 模式增强——
+                    // controller 寻址锚 + hidden 滚动条内联样式（现代浏览器
+                    // scrollbar-width:none；滚动能力保留——§8.3 无命中目标）；
+                    // scroll-test-content = logical spacer（managed bridge v1:
+                    // 内联逻辑尺寸 + 条纹背景，节点数恒 1，不随逻辑 extent
+                    // 膨胀——§10.4-5）。
+                    if matches!(tag.as_str(), "scroll" | "scrollable" | "scroll-pane") {
+                        if let Some(crate::ast::Expr::Ident(name)) = props.get("controller").map(|v| match v {
+                            AuraPropValue::Expr(e) => Some(e.clone()),
+                            _ => None,
+                        }).flatten() {
+                            self.scroll_ctl_helpers_needed = true;
+                            attrs.push(format!(":data-scroll-ctl=\"{}\"", name));
+                        }
+                        if let Some(v) = props.get("scrollbar") {
+                            if self.extract_string_value(v).as_deref() == Some("hidden") {
+                                attrs.push("style=\"scrollbar-width:none\"".to_string());
+                            }
+                        }
+                    }
+                    if matches!(tag.as_str(), "scroll-test-content" | "scroll_test_content") {
+                        let get_num = |key: &str, default: &'static str| -> String {
+                            props.get(key)
+                                .and_then(|v| self.extract_string_value(v))
+                                .unwrap_or(default)
+                                .to_string()
+                        };
+                        let w = get_num("extent_w", "2000000");
+                        let h = get_num("extent_h", "10000000");
+                        attrs.push(format!(
+                            "style=\"width:{w}px;height:{h}px;background:repeating-linear-gradient(to bottom, rgba(255,255,255,0.05) 0 2px, transparent 2px 40px);background-color:rgb(18,23,28)\""
+                        ));
+                    }
                     if let Some(dc) = dynamic_class {
                         attrs.push(format!(":class=\"{}\"", dc));
                     }
@@ -7371,6 +7436,24 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         // Plan 408 P10 / §7.3 缺陷 4: callback prop short-circuit.
                         if let Some(attr) = self.try_callback_prop_attr(aura_event, &vue_event) {
                             attrs.push(attr);
+                            continue;
+                        }
+                        // PLAN-656 T-07: scroll-pane onscroll → 8 位置实参
+                        //（顺序 = record 字段序 offset_x..progress_y，与 VM 端
+                        // aura_view_builder 双端同形契约一致）。
+                        if matches!(tag.as_str(), "scroll" | "scrollable" | "scroll-pane")
+                            && Self::split_event_key(event).0 == "onscroll"
+                        {
+                            let call = self.handler_to_function_call_with_params(
+                                &aura_event.handler,
+                                &aura_event.params,
+                            );
+                            self.used_handlers
+                                .insert(self.handler_to_function_call(&aura_event.handler));
+                            attrs.push(format!(
+                                "@scroll=\"e => {{ const el = e.currentTarget as HTMLElement; {}(el.scrollLeft, el.scrollTop, el.clientWidth, el.clientHeight, el.scrollWidth, el.scrollHeight, Math.min(1, el.scrollLeft / Math.max(1, el.scrollWidth - el.clientWidth)), Math.min(1, el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight))) }}\"",
+                                call
+                            ));
                             continue;
                         }
                         // Plan 499 M2: mouse-area onmousemove → 内联箭头换算逻辑
@@ -8861,7 +8944,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "grid" | "Grid" => "div".to_string(),
             // Plan 412 §4.3: demo 占位块(色块 + flex 居中数字)
             "square" | "Square" => "div".to_string(),
-            "scroll" | "Scroll" => "div".to_string(),
+            "scroll" | "Scroll" | "scrollable" | "scroll-pane" | "scroll-test-content" | "scroll_test_content" => "div".to_string(),
             "container" | "Container" => "div".to_string(),
             "center" | "Center" => "div".to_string(),
 
@@ -9321,7 +9404,28 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         c = color
                     ));
                 }
-                "scroll" => classes.push("overflow-auto".to_string()),
+                // PLAN-656 T-07: axis 三值 → overflow 类（y/x/both）；
+                // scrollbar: always → *-scroll。
+                "scroll" | "scrollable" | "scroll-pane" => {
+                    let axis = props
+                        .get("axis")
+                        .and_then(|v| self.extract_string_value(v))
+                        .or_else(|| {
+                            props.get("direction").and_then(|v| self.extract_string_value(v))
+                        })
+                        .unwrap_or("y");
+                    let always = props
+                        .get("scrollbar")
+                        .and_then(|v| self.extract_string_value(v))
+                        .map(|p| p == "always")
+                        .unwrap_or(false);
+                    let suffix = if always { "scroll" } else { "auto" };
+                    match axis {
+                        "x" | "horizontal" => classes.push(format!("overflow-x-{suffix}")),
+                        "both" => classes.push(format!("overflow-{suffix}")),
+                        _ => classes.push(format!("overflow-y-{suffix}")),
+                    }
+                }
                 "container" => classes.push("max-w-7xl mx-auto".to_string()),
                 "center" => classes.push("flex flex-col items-center justify-center h-full".to_string()),
 
@@ -11879,10 +11983,34 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // ScrollArea support (Plan 105)
                 // viewport class for styling
                 self.push_style_class(&mut attrs, props);
-                // orientation (vertical, horizontal, both)
-                if let Some(value) = props.get("orientation") {
-                    let orientation = self.extract_string_value(value).unwrap_or("vertical");
+                // orientation (vertical, horizontal, both)——PLAN-656:
+                // legacy orientation 缺席时由 axis 映射（y→vertical,
+                // x→horizontal；both 超出 ScrollArea 表达面——语义完整形态
+                // 在 plain 模式 overflow-auto，spec 记录 shadcn 限制）。
+                let orientation: Option<String> = props
+                    .get("orientation")
+                    .and_then(|v| self.extract_string_value(v).map(|s| s.to_string()))
+                    .or_else(|| {
+                        props
+                            .get("axis")
+                            .and_then(|v| self.extract_string_value(v).map(|s| s.to_string()))
+                            .map(|a| if a == "x" { "horizontal".to_string() } else { "vertical".to_string() })
+                    });
+                if let Some(orientation) = orientation {
                     attrs.push(format!("orientation=\"{}\"", orientation));
+                }
+                // PLAN-656 T-07: controller 寻址锚 + hidden 内联样式。
+                if let Some(crate::ast::Expr::Ident(name)) = props.get("controller").map(|v| match v {
+                    AuraPropValue::Expr(e) => Some(e.clone()),
+                    _ => None,
+                }).flatten() {
+                    self.scroll_ctl_helpers_needed = true;
+                    attrs.push(format!(":data-scroll-ctl=\"{}\"", name));
+                }
+                if let Some(v) = props.get("scrollbar") {
+                    if self.extract_string_value(v).as_deref() == Some("hidden") {
+                        attrs.push("style=\"scrollbar-width:none\"".to_string());
+                    }
                 }
                 // scroll hide delay
                 if let Some(value) = props.get("hide_delay") {
@@ -20642,6 +20770,49 @@ widget W {
     // ========================================
     // Phase 3: Layout & Navigation Tests
     // ========================================
+
+    /// PLAN-656 T-07: scroll-pane vue codegen 黄金——axis 映射（plain 类 +
+    /// shadcn orientation）、hidden 内联样式、controller 锚 + helper 注入
+    /// 置位、onscroll 8 位置实参箭头、T-08 spacer（managed bridge）内联
+    /// 逻辑尺寸。
+    #[test]
+    fn p656_scroll_pane_vue_codegen() {
+        use crate::ast::Expr;
+        // plain: axis 三值 → overflow 类。
+        let mut gen = VueGenerator::new();
+        let cls = |axis: &str, sb: Option<&str>| {
+            let mut props = HashMap::new();
+            props.insert("axis".to_string(), AuraPropValue::Expr(Expr::Str(axis.into())));
+            if let Some(sb) = sb {
+                props.insert("scrollbar".to_string(), AuraPropValue::Expr(Expr::Str(sb.into())));
+            }
+            gen.extract_classes("scroll-pane", &props).0
+        };
+        assert!(cls("y", None).contains("overflow-y-auto"), "{}", cls("y", None));
+        assert!(cls("x", None).contains("overflow-x-auto"), "{}", cls("x", None));
+        assert!(cls("both", None).contains("overflow-auto"), "{}", cls("both", None));
+        assert!(cls("y", Some("always")).contains("overflow-y-scroll"));
+        // legacy direction 映射（axis 缺席）。
+        let mut props = HashMap::new();
+        props.insert("direction".to_string(), AuraPropValue::Expr(Expr::Str("horizontal".into())));
+        assert!(gen.extract_classes("scroll", &props).0.contains("overflow-x-auto"));
+
+        // shadcn: axis → orientation；controller 锚 + helper 置位 + hidden。
+        let mut gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        props.insert("axis".to_string(), AuraPropValue::Expr(Expr::Str("x".into())));
+        let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
+        assert!(attrs.iter().any(|a| a.contains("orientation=\"horizontal\"")), "{:?}", attrs);
+        props.insert(
+            "controller".to_string(),
+            AuraPropValue::Expr(Expr::Ident("sc".into())),
+        );
+        props.insert("scrollbar".to_string(), AuraPropValue::Expr(Expr::Str("hidden".into())));
+        let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
+        assert!(attrs.iter().any(|a| a.contains(":data-scroll-ctl=\"sc\"")), "{:?}", attrs);
+        assert!(attrs.iter().any(|a| a.contains("scrollbar-width:none")), "{:?}", attrs);
+        assert!(gen.scroll_ctl_helpers_needed, "controller helper injection flag");
+    }
 
     #[test]
     fn test_generate_shadcn_attrs_scroll() {
