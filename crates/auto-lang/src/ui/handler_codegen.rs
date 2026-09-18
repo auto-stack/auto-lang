@@ -1364,21 +1364,41 @@ pub fn synthesize_widget_module(
         for stmt in &import_stmts {
             if let Stmt::Fn(f) = stmt {
                 if let Some(api) = &f.api_attrs {
-                    let bare = f.name.to_string().split('.').last()
-                        .unwrap_or(&f.name.to_string()).to_string();
-                    // Skip ambiguous bare names — caller must qualify them.
-                    if bare_counts.get(&bare).copied().unwrap_or(0) > 1 {
-                        continue;
-                    }
+                    let qualified = f.name.to_string();
+                    let bare = qualified.split('.').last()
+                        .unwrap_or(&qualified).to_string();
                     let params: Vec<String> = f.params.iter()
                         .map(|p| p.name.to_string()).collect();
-                    codegen.api_funcs.insert(bare, crate::vm::codegen::ApiCallInfo {
-                        fn_name: f.name.to_string(),
+                    let info = crate::vm::codegen::ApiCallInfo {
+                        fn_name: qualified.clone(),
                         method: api.method.clone(),
                         path: api.path.clone(),
                         params,
                         ret_type: f.ret.clone(),
-                    });
+                    };
+                    // Skip ambiguous bare names — caller must qualify them.
+                    // (限定名键无歧义,仍注册。)
+                    if bare_counts.get(&bare).copied().unwrap_or(0) == 1 {
+                        codegen.api_funcs.insert(bare, info.clone());
+                    }
+                    // PLAN-648 T-01: 限定名调用点(`api.get_lines()` 形态,
+                    // Expr::Dot(模块别名 Ident, fn))与裸名调用同权改写——
+                    // 此前仅裸名注册,auto-term 前台全限定调用在 split 模式
+                    // 下绕过 HTTP 改写、静默回落 back 链进程内执行(宿主
+                    // 进程引擎缺席 → 全空返回)。
+                    // 键形态:①扁平化全名(如 back.api.get_lines)②调用点
+                    // 拼写(别名末段.fn,如 api.get_lines)——两种命名惯例都
+                    // 覆盖,值共享同一 ApiCallInfo。
+                    codegen.api_funcs.insert(qualified.clone(), info.clone());
+                    let segments: Vec<&str> = qualified.split('.').collect();
+                    if segments.len() >= 2 {
+                        let alias_form = format!(
+                            "{}.{}",
+                            segments[segments.len() - 2],
+                            segments[segments.len() - 1]
+                        );
+                        codegen.api_funcs.insert(alias_form, info);
+                    }
                 }
             }
         }
@@ -2046,20 +2066,37 @@ pub fn synthesize_from_decl(
         for stmt in &import_stmts {
             if let Stmt::Fn(f) = stmt {
                 if let Some(api) = &f.api_attrs {
-                    let bare = f.name.to_string().split('.').last()
-                        .unwrap_or(&f.name.to_string()).to_string();
-                    if bare_counts.get(&bare).copied().unwrap_or(0) > 1 {
-                        continue;
-                    }
+                    let qualified = f.name.to_string();
+                    let bare = qualified.split('.').last()
+                        .unwrap_or(&qualified).to_string();
                     let params: Vec<String> = f.params.iter()
                         .map(|p| p.name.to_string()).collect();
-                    codegen.api_funcs.insert(bare, crate::vm::codegen::ApiCallInfo {
-                        fn_name: f.name.to_string(),
+                    let info = crate::vm::codegen::ApiCallInfo {
+                        fn_name: qualified.clone(),
                         method: api.method.clone(),
                         path: api.path.clone(),
                         params,
                         ret_type: f.ret.clone(),
-                    });
+                    };
+                    // Plan 340 audit: skip ambiguous bare names (see first
+                    // synth site above).限定名键无歧义,仍注册。
+                    if bare_counts.get(&bare).copied().unwrap_or(0) == 1 {
+                        codegen.api_funcs.insert(bare, info.clone());
+                    }
+                    // PLAN-648 T-01: 限定名键(与第一合成点同步)——
+                    // synthesize_from_decl 是 iced VM 轨真实合成入口,
+                    // 缺此注册则 `api.*` 限定调用在 split 模式下绕过
+                    // HTTP 改写(auto-term dev 跑法空屏定因)。
+                    codegen.api_funcs.insert(qualified.clone(), info.clone());
+                    let segments: Vec<&str> = qualified.split('.').collect();
+                    if segments.len() >= 2 {
+                        let alias_form = format!(
+                            "{}.{}",
+                            segments[segments.len() - 2],
+                            segments[segments.len() - 1]
+                        );
+                        codegen.api_funcs.insert(alias_form, info);
+                    }
                 }
             }
         }
