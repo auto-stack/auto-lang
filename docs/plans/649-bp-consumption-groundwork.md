@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-649
-status: execution_done    # drafting → executing → execution_done → reviewed → archived
+status: executing            # drafting → executing → execution_done → reviewed → archived（R1 needs_fix 回工修 F-649-1）
 feature_name: bp-consumption-groundwork（bp 消费地基：L1 连字符解析 + icon 词汇面 + data-table 半句复核）
 author: [agent]
 created_at: 2026-09-18
@@ -11,10 +11,10 @@ supersedes_spec_components:
   - docs/specs/blueprint/contract.md#Q5-解析链规则（补连字符变体探测）
 new_spec_components:
   - docs/specs/blueprint/contract.md#验证面-palette-词面（icon 归属落点）
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: [GOAL-011]     # 引用 docs/specs/goals.md 的 GOAL-NNN——L1 import 零副本主通道（复审 R1 终定）
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 5
+current_step: 4
 total_steps: 5
 ---
 
@@ -220,13 +220,17 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
   KNOWN-DEBT 640 行按事实改写（"未入 registry/缺 vue 映射"两说不成立，
   回避维持理由更正为零消费）；同批核销 KNOWN-DEBT:90（L1 行）与
   P643-D1（icon 词面）。验证：DEBT diff（commit 20789bec1）。
-- **T-05 [x] 端到端与门禁兜底**：t08-t10 双轨端到端——empty-state
-  （640 AC-08"全黑"对照转绿，VM view 文案断言 + vue SFC import 断言）、
-  sidebar-shell、data-table-crud（≥3 连字符包）+ signup 不回归；裸
-  `cargo tv` = 3785/3786 绿，**唯一红 `test_display_family_codegen_arm_fixture`
-  为预存**（stash 全部 649 改动在干净基线 b13af592 同红，A/B 归因；
-  `b13af592..master` rust.rs/fixture 零提交 → master 同带；未在案，
-  已登记 DEBT 649 行）。门禁档位=Category B 全过。
+- **T-05 [ ] 端到端与门禁兜底**（R1 needs_fix 重开——修复 F-649-1 后复裁）：
+  原完成面：t08-t10 双轨端到端——empty-state（640 AC-08"全黑"对照转绿，
+  VM view 文案断言 + vue SFC import 断言）、sidebar-shell、data-table-crud
+  （≥3 连字符包）+ signup 不回归；裸 `cargo tv` = 3785/3786 绿，唯一红
+  `test_display_family_codegen_arm_fixture` 经 A/B 证实为基线预存（非本
+  计划引入）；门禁档位=Category B 全过。
+  **R1 修正点（F-649-1）**：T-05 期间登记的 DEBT 649 行有两处失实——
+  "此前零登记"不成立（PLAN-654 §9 F-R2 在 master bc676a8fa 已记录同一红；
+  工作树基线 b13af592 早于该提交致 grep 落空），"分诊方向=size 提取链"
+  被 F-R2 定性取代（无 ui-iced 必红/有 ui-iced 必绿的预存 feature 配置债，
+  R1 双态独立复现证实）。修复=DEBT 649 行按 F-R2 机制改写。
 
 依赖链：T-01 → T-03/T-04；T-02 无依赖；T-05 最后。
 
@@ -248,9 +252,48 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
   对账核实（逐 diff 核对 + T-01 结论代码实证抽查）后续跑门禁、补登记、
   提交。AC 映射：AC-01=t08/t09/t10、AC-02=t06+SD-02、AC-03=DEBT 改写+t07、
   AC-04=DEBT diff、AC-05=SD 落地（specs.json upsert 归 merge）。
-  协同注记：工作树基线 b13af592 落后 master（4817b51e），merge 前需
-  rebase/合并 master 刷新（070 filetree 交叠面在基线..master 区间无
-  提交，冲突风险低）。
+  协同注记：工作树基线 b13af592 落后 master（merge 时点已至 bc676a8fa），
+  merge 前需 rebase/合并 master 刷新（070 filetree 交叠面在基线..master 区间无
+  提交，冲突风险低）。依赖面：本组新建 auto-down 依赖 worktree
+  `D:/autostack/.wt/lang-649/auto-down`（detached @ b1c88de，仅满足
+  autodown-core path 依赖的 manifest 解析，零改动）。
+- 2026-09-18 review R1（/auto-plan:review；同会话复审——独立性受限，结论自
+  工件重建：提交 diff、测试断言原文、门禁复跑、代码链路实证）：
+  stage: review | PLAN-649 | plan_revision 1 | outcome: **needs_fix** |
+  reviewed_commit: 20789bec1 | base_commit: b13af5927 |
+  dependency_revisions: 无外部代码依赖（组内 auto-down worktree @ b1c88def
+  零改动，仅 manifest 解析） | spec_inputs: docs/specs/blueprint/contract.md
+  （Q5/验证面，随分支 SD-01/SD-02 已核）+ docs/specs/goals.md（GOAL-011 终定）。
+  acceptance_results: AC-01 **pass**（复审复跑 `cargo t plan649` 10/10；
+  t10 断言非空洞实证——vue 轨链 `generate_component_from_file`→
+  `collect_use_module_fns`(api.rs:586/702)→`resolve_use_module`→
+  `resolve_module_path`，解析失败不进池/不发射 import 行）；AC-02 **pass**
+  （t06 正/负+palette 11/11+SD-02 成文+vue icon 专臂 node_to_html 前置返回
+  在案）；AC-03 **pass**（DEBT 改写事实链复核：aura.at:3993 `element
+  datatable` 在案、t07 overlay 断言绿、语料零消费核实）；AC-04 **pass**
+  （三债行 diff 核验：KNOWN-DEBT:90 清偿/P643-D1 核销/640-D89 改写）；
+  AC-05 **pass**（SD-01/SD-02 落地成文且与实现一致；touched_goals 复审
+  终定 GOAL-011；specs.json upsert 归 merge）。
+  全量门禁：`cargo tf --no-fail-fast` **3640/3641**（唯一红=
+  display_family，与 PLAN-654 F-R2 复审基线完全一致）；tv 复用工作档证据
+  （同内容提交前实测 3785/3786 同红）；fmt 13304 处漂移全为仓级预存、
+  本计划三文件 0 命中；调试残留零。
+  findings: **F-649-1（minor，docs-only，阻断）**——T-05 登记的 DEBT 649
+  行两处失实：(a)"此前零登记"不成立：PLAN-654 §9 F-R2（master bc676a8fa）
+  已记录同一红，工作树基线早于该提交致工作阶段 grep 落空；(b)"分诊方向=
+  size 提取链/引入窗口 09-06~09-17"被 F-R2 已定性机制取代：**无 ui-iced
+  必红/有 ui-iced 必绿**（R1 双态独立复现：`--features test-vm-files` 红 /
+  `--features ui-iced` 绿）——预存 feature 配置债，非代码回归，A/B 归因
+  （预存、非本计划引入）仍成立。修正动作：DEBT 649 行按 F-R2 机制改写
+  （引 PLAN-654 记录+本复审双态复现，删除误导性分诊方向）。
+  F-649-2（info，非阻断）：sidebar-shell/data-table-crud 仅 VM 轨断言，
+  empty-state 双轨齐全——§6 测试设计即如此规定（双轨验证聚焦 empty-state
+  640 对照），vue 轨同链由 t10 锁定，非缺口。F-649-3（info）：§9 work
+  handoff 中"未在案预存红"表述由本记录更正（历史记录不改写）。
+  evidence: 本节 + `git show 20789bec1` + 双态复现命令摘录（nextest
+  test_display_family_codegen_arm_fixture：test-vm-files FAIL 0.058s /
+  ui-iced PASS 0.085s）+ tf 摘要行 | next: **work 修复 F-649-1**
+  （docs-only，代码/测试/门禁零假设变化，无需重跑）→ R2 复裁。
 
 ## 10. 待澄清事项
 
