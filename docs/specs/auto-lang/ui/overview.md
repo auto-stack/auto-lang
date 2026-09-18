@@ -904,3 +904,14 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 
 
 **641 tabs variant 形态词表（default/enclosed 连通形态）**：`tabs` 根节点 `variant` 两值词表——`default`=按钮托盘（零回归），`enclosed`=连通形态（激活 tab 与内容面板共享背景无缝、非激活扁平等高 cell 仅背景色差、条与面板层次分明）；Chrome（顶圆角）/IDE（直角）观感差异归 token 层（Vue `rounded-t-*` class、VM 根 style `effective_border_radius` 顶角），不扩词表（SD-02 治理：新增取值须双端同落+gallery 覆盖）。VM 轨从无 tabs 到全链：`convert_tabs` 复合标签折叠（受控最小集——`active`/`value`/`defaultvalue` 解析序 + `resolve_expr_to_value` 状态引用穿透 + `onselect`/trigger `onclick` 注参索引回调）、`convert_view_messages` 显式 Tabs 臂（除名 `_ => Empty` 折叠）、iced 渲染臂双形态（theme token + 顶角半径 + button 命中面透明化）；A2UI 线协议 `Tabs.variant`（Option 缺省省略，向后兼容）。Vue 轨：registry 四件 variant provide/inject（`autoTabsVariant`）——顺修两处既有隐患（wrapper 自闭合丢 slot、`defineEmits()` 未类型化断 v-model 转发）；**tabs SFC 三源同步纪律**（registry 手工源 / vue.rs WidgetTemplate 库模式 / auto-man assets 脚手架快照〔`@/lib/utils`+reactiveOmit 风格，patch 记 SNAPSHOT.md〕）。schema/aura.at + schema.rs 双源 prop 词表（value/active/defaultvalue/variant/onselect，iced partial），五表漂移围栏过栅（baseline 裁剪 tabs 孤儿两条）。契约细节见 [design/tabs-components.md](design/tabs-components.md)；双端验证 046-tabs-variants + vue-gallery tabs 页。
+
+## shell outproc 客户端（PLAN-030，provisional）
+
+B 程序主体交付（v1.11）：壳 outproc client（`ui/desktop_protocol/
+shell_client.rs`——双表面协商 + 投影下行消费 + DesktopBus 上行 +
+queue 臂内联帧）+ 宿主孵化/双表面层位/投影泵改推（指纹门宿主侧）+
+看门兵（退避 respawn + 全量重推）+ `shell.apps.shell_model` 双轨开关
+（缺省 inproc）。协议权威：`docs/design/autoui/desktop-protocol-v1.md`
+§1.11；e2e `p030_shell_outproc_arm` 四腿（assets/030/ 留痕）。
+v1 边界：常驻双面 outproc，overlay 三面 + launcher 维持 in-proc；
+a2r 编译面轨随缺省翻转计划另立。

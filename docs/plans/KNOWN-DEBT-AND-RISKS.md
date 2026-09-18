@@ -2342,3 +2342,12 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 
 - **P642-D13 [多后端 proxy 机制——独立立项裁定（用户 2026-09-19），PLAN-642 收尾后另立计划]**：画廊内嵌 fullstack demo 的后端半身无宿主进程——单进程多后端宿主（per-app VM session + 子 URL `/apps/<id>/api/*` 路由 + 生成器 baseURL 子前缀适配，PLAN-617 `AUTO_HTTP_BASE` 相对展开先例）。**范围裁定（用户明示）**：不止解决 020 媒体扫描（P642-D10/T-16），**必须一并解决 017-chat / 031-image-viewer 的 native-ns/stream 后端**——即 stream/WebSocket 转发是独立计划的一等公民目标，不是首期风险排除项。可行性四依据与工期估计（proxy 本体 2-3 天 + 生成器适配 1 天 + gallery 集成 1 天）见 PLAN-642 §8.2 可行性分析节；风险项（session 崩溃隔离 per-session catch + 重启、binary 响应转发、可观测性让渡）在独立计划的设计文档中作一等公民展开。T-14(b) 臂（back 链族内嵌）随本条目：proxy 落地前维持回退页诚实空态。
 - **P642-D3 处置裁定补录**：见 2026-09-18 增补一 P642-D3 条目内裁定段（方案 a + exit(127) 枚举先行动作）。
+
+## 2026-09-19 增补三（PLAN-030 登记与核销）
+
+- **SendInput 真机腿挂账（029）✅ 按计划清偿口径收口（PLAN-030）**：启动序基建交付（boot 孵化序 + child e2e 观察[desktop_bus_inbox/帧断言]在册）——SendInput FFI 侧前台断言/组装层 029 已就绪；真桌面整窗 SendInput e2e 腿维持 dual 口径（协议级断言 p030 e2e 四腿承载 + os smoke 截图留痕），OS 级合成键入自动化仍受 P020-D4（DPI/画布变换）约束。
+- **P030-D1 [a2r 编译面轨 not-yet（shell-lib 组件库生成模式）]**：PLAN-030 v1 交付 = 解释面 outproc child（shell_source 同源装载 + NativeProjector View 全展开——AppProjector 队列臂对 ForLoop/Conditional no-op[client_runtime.rs layout walker]，shell 面 dock/窗口条目不可渲染，e2e 腿 3 实测定轨）。a2r 接缝就位（NativeProjector 替换点）；组件库形生成模式（run_rust_ui 为 app 工程形）随缺省翻转计划另立。
+- **P030-D2 [壳表面 resize not-yet]**：壳双表面尺寸 boot 定档（AUTO_SHELL_GEOM）；视口运行期变更随 respawn 生效（ControlMsg::Resize 壳臂显式 no-op 留痕）。
+- **P030-D3 [overlay 三面 + launcher outproc 化 not-yet（D6 边界裁定）]**：switcher/notification/dashboard + launcher 维持 in-proc（dashboard z 带在 App 窗下与置顶 chrome 冲突 + face 卡宿主活渲染无投影材料；launcher 保 iced 聚焦链）。随缺省翻转计划另立。
+- **P030-D4 [TS decode tag 12-14 not-yet]**：v1.11 三变体无 TS 消费面（远程镜像线不转发壳投影）；drawlist-renderer 接入时补。
+- **P030-D5 [AppProjector 队列臂 ForLoop/Conditional no-op（既有缺口，P030 发现）]**：解释态 queue 臂（auto re-exec --autodesk-incubate queue 档）渲染不展开 for/conditional——列表驱动 app 经该档失真；shell 面已定轨 NativeProjector，AppProjector 展开补齐独立评估（消费面 = 解释 queue 档 app，现无 e2e 载体）。
