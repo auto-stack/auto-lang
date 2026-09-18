@@ -389,6 +389,11 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// Plan 508 G1：outproc 子进程句柄驻留（测试收尾 kill 用；宿主退出后
     /// 子进程经重连预算自然退出——显式生命周期管理非 v1 面）。
     pub outproc_children: Vec<std::process::Child>,
+    /// PLAN-030 T-08：壳 outproc spawner 注入位（None = 生产形态 re-exec
+    /// `auto run --autodesk-shell`；e2e 注入 re-exec 测试体——
+    /// outproc_spawner 同型先例）。
+    pub shell_spawner:
+        Option<Arc<dyn Fn(&crate::ui::desktop_protocol::shell_client::ShellGeometry, &str) -> std::io::Result<std::process::Child> + Send + Sync>>,
     /// Plan 508 G4：远程 WS 监听（boot 读 `shell.remote.token` 有值才开；
     /// None = 无远程面——缺省拒绝）。受理队列由 ServiceTick 泵消费。
     pub remote_listener: Option<crate::ui::desktop_protocol::transport::ws::WsListener>,
@@ -474,6 +479,7 @@ impl DesktopState {
             process_model: ProcessModel::default(),
             outproc_spawner: None,
             outproc_children: Vec::new(),
+            shell_spawner: None,
             remote_listener: None,
             remote_mirrors: Vec::new(),
             desktop_bus_inbox: Vec::new(),
@@ -3596,8 +3602,11 @@ fn spawn_shell_outproc(
             .broker_pipe
             .clone()
             .ok_or("broker 未启动（enable_broker 先行）")?;
-        let child =
-            Self::spawn_shell_outproc(&geometry, &broker_pipe).map_err(|e| e.to_string())?;
+        let child = match &self.desktop.shell_spawner {
+            Some(spawn) => spawn(&geometry, &broker_pipe).map_err(|e| e.to_string())?,
+            None => Self::spawn_shell_outproc(&geometry, &broker_pipe)
+                .map_err(|e| e.to_string())?,
+        };
         self.desktop.outproc_children.push(child);
         Ok(())
     }

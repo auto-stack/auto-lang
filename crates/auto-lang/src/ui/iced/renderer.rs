@@ -13588,11 +13588,40 @@ fn projection_win_entry(
 /// 按钮的同一执行路径）；Handler 直呼特权 App handler（onclick 同一
 /// 管线）。入队面见 [`crate::ui::session::desktop_inject_push`]（MCP
 /// `autoui_desktop` 工具，AUTOUI_ACCEPTANCE=1 门控）。
+/// PLAN-030 T-06：DesktopBus inbox 排空（ServiceTick 泵后调用 + 单测口）——
+/// 直调 execute_desktop_commands（同拍生效）；归因 notify_source 随末段。
+pub(crate) fn drain_desktop_bus_inbox(
+    state: &mut crate::ui::session::DesktopSession,
+) -> Vec<iced::Task<crate::ui::session::DesktopMessage>> {
+    let inbox = std::mem::take(&mut state.desktop.desktop_bus_inbox);
+    if inbox.is_empty() {
+        return Vec::new();
+    }
+    let cmds: Vec<_> = inbox.iter().map(|(_, c)| c.clone()).collect();
+    let source = inbox.last().map(|(s, _)| s.clone()).unwrap_or_default();
+    state.desktop.notify_source.replace(Some(source));
+    let (_, tasks) = execute_desktop_commands(state, cmds);
+    tasks
+}
+
 pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSession) {
     use crate::ui::session::DesktopInject;
     for inj in crate::ui::session::desktop_inject_take() {
         match inj {
             DesktopInject::Bus(record) => {
+                // PLAN-030 T-06：outproc 壳改道——验收 Bus 记录与生产上行
+                // 同臂（desktop_bus_inbox → 泵后排空执行；in-proc 镜像组件
+                // 写入对 outproc 壳恒空[D4-5 实锤]）。in-proc 轨原路径零
+                // 变化（I1）。
+                if state.desktop.shell_pipe.is_some() {
+                    for cmd in crate::ui::session::DesktopCommand::parse_records(&record) {
+                        state
+                            .desktop
+                            .desktop_bus_inbox
+                            .push(("shell".to_string(), cmd));
+                    }
+                    continue;
+                }
                 let Some(shell) = state.desktop.shell_app else { continue };
                 let Some(app) = state.apps.get_mut(&shell) else { continue };
                 let cur = match app.component.read_state("__desktop_cmd") {
@@ -14521,11 +14550,21 @@ fn compare_pngs(
                 // 前移到壳装载之前，§5.1 D7）；outproc = 跳过 in-proc 装载
                 // （spawn 挪到 enable_broker 之后——broker 倒挂实锤），失败
                 // 回退 in-proc（降级链）。
+                // PLAN-030 T-04/T-07：壳进程模型分叉——boot 读一次（读取点
+                // 前移到壳装载之前，§5.1 D7）；读序 = env AUTO_SHELL_MODEL
+                // （e2e/smoke 便捷注入）> storage `shell.apps.shell_model`；
+                // outproc = 跳过 in-proc 装载（spawn 挪到 enable_broker 之后
+                // ——broker 倒挂实锤），失败回退 in-proc（降级链）。
                 session.desktop.shell_model =
-                    crate::ui::session::ShellModel::from_storage(
-                        crate::vm::ffi::stdlib::storage_host_read("shell.apps.shell_model")
-                            .as_deref(),
-                    );
+                    crate::ui::session::ShellModel::from_storage(std::env::var(
+                        "AUTO_SHELL_MODEL"
+                    )
+                        .ok()
+                        .as_deref()
+                        .or(crate::vm::ffi::stdlib::storage_host_read(
+                            "shell.apps.shell_model",
+                        )
+                        .as_deref()));
                 if session.desktop.shell_model
                     == crate::ui::session::ShellModel::Outproc
                 {
@@ -17856,20 +17895,8 @@ fn compare_pngs(
                             }
                         }
                         {
-                            let inbox =
-                                std::mem::take(&mut state.desktop.desktop_bus_inbox);
-                            if !inbox.is_empty() {
-                                let cmds =
-                                    inbox.iter().map(|(_, c)| c.clone()).collect();
-                                let source = inbox
-                                    .last()
-                                    .map(|(s, _)| s.clone())
-                                    .unwrap_or_default();
-                                state.desktop.notify_source.replace(Some(source));
-                                let (_, tasks) =
-                                    execute_desktop_commands(state, cmds);
-                                drain_tasks.extend(tasks);
-                            }
+                            let tasks = drain_desktop_bus_inbox(state);
+                            drain_tasks.extend(tasks);
                         }
                         // Plan 508 G4：远程 WS 镜像泵（帧源=上方合成产物；
                         // 无监听/无在册镜像两调用皆空转）。
@@ -18575,6 +18602,28 @@ fn compare_pngs(
                                             drag_active = true;
                                         }
                                     }
+                                    // PLAN-030 T-06：outproc 壳 cursor 接泵
+                                    // （app 借用外执行——消费门 = 命中
+                                    // background 伪窗[桌面空白区 = 空白菜单/
+                                    // 拖拽作用域；菜单开态在 child 面内 host
+                                    // 不可见，空白区语义精确覆盖]或拖拽进行中，
+                                    // D3 节流定案）。
+                                    let mut shell_cursor_push = false;
+                                    if state.desktop.shell_pipe.is_some() {
+                                        let bg_hit = state
+                                            .desktop
+                                            .shell_pseudo_wids
+                                            .first()
+                                            .copied()
+                                            .is_some_and(|w| {
+                                                state
+                                                    .host
+                                                    .as_ref()
+                                                    .and_then(|h| h.wm.hit_test(x, y))
+                                                    == Some(w)
+                                            });
+                                        shell_cursor_push = drag_active || bg_hit;
+                                    }
                                     if let Some(surface) = state.desktop.desktop_app {
                                         if let Some(app) = state.apps.get_mut(&surface) {
                                             let _ = app.component.write_state(
@@ -18612,6 +18661,19 @@ fn compare_pngs(
                                                 *app.state.view_dirty.borrow_mut() = true;
                                             }
                                         }
+                                    }
+                                    if shell_cursor_push {
+                                        use crate::ui::desktop_protocol::message::{
+                                            shell_face, ControlMsg, ProtocolMsg,
+                                        };
+                                        let msg = ProtocolMsg::Control(
+                                            ControlMsg::ShellCursorMove {
+                                                face: shell_face::DESKTOP_SURFACE,
+                                                x,
+                                                y,
+                                            },
+                                        );
+                                        let _ = state.push_shell_control(&msg);
                                     }
                                     let host_size = state
                                         .host
@@ -27442,6 +27504,114 @@ mod tests {
         // 排空后再无残余（幂等取尽）。
         apply_desktop_injects(&mut ds);
         assert!(ds.drain_desktop_commands().is_empty());
+    }
+
+    /// PLAN-030 T-06：DesktopBus 上行全链（inbox → drain → execute +
+    /// 归因）——词表单点 encode 产记录逐族抽样（布局族/通知族/壁纸族；
+    /// 召唤/设置/窗口族经 p030 e2e 腿 2 真按钮动词覆盖）。
+    #[test]
+    fn desktop_bus_inbox_drains_through_real_arms() {
+        use crate::ui::layout::LayoutMode;
+        use crate::ui::session::{DesktopCommand, DesktopSession};
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let samples: Vec<(&str, DesktopCommand)> = vec![
+            ("shell", DesktopCommand::SetLayout(LayoutMode::Grid)),
+            ("shell", DesktopCommand::Notify("toast".into(), "bus 全链".into())),
+            ("desktop-face", DesktopCommand::SetWallpaper("#101014".into())),
+        ];
+        for (src, cmd) in &samples {
+            ds.desktop.desktop_bus_inbox.push((src.to_string(), cmd.clone()));
+        }
+        let _ = drain_desktop_bus_inbox(&mut ds);
+        // 布局族：SetLayout 落 wm.layout。
+        assert!(matches!(
+            ds.host.as_ref().unwrap().wm.layout,
+            LayoutMode::Grid
+        ));
+        // 通知族：Notify 落通知历史（归因 app = 末段 source）。
+        assert_eq!(ds.desktop.notifications.borrow().len(), 1);
+        assert_eq!(
+            ds.desktop.notifications.borrow()[0].app,
+            "desktop-face",
+            "registry_id 归因随段（D4）"
+        );
+        // 壁纸族：SetWallpaper 落桌面壁纸态。
+        assert_eq!(ds.desktop.desktop_wallpaper, "#101014");
+        // inbox 取尽（幂等）。
+        assert!(drain_desktop_bus_inbox(&mut ds).is_empty());
+    }
+
+    /// PLAN-030 T-06：投影推送指纹门（未变不推/变了推/强制失效全量推）。
+    #[test]
+    fn shell_projection_push_fingerprint_gate() {
+        use crate::ui::desktop_protocol::stage3::BrokerClient;
+        use crate::ui::desktop_protocol::transport::Transport;
+        use crate::ui::session::DesktopSession;
+        use std::collections::VecDeque;
+        use std::sync::{Arc, Mutex};
+
+        /// 测试传输对（Send 版 loopback——LoopbackEnd 为 Rc 不可入
+        /// BrokerClient）。
+        struct MockPipe(Arc<Mutex<VecDeque<Vec<u8>>>>);
+        impl Transport for MockPipe {
+            fn send(
+                &mut self,
+                msg: &crate::ui::desktop_protocol::message::ProtocolMsg,
+            ) -> Result<(), crate::ui::desktop_protocol::TransportError> {
+                self.0.lock().unwrap().push_back(msg.encode());
+                Ok(())
+            }
+            fn try_recv(&mut self) -> Option<Result<crate::ui::desktop_protocol::message::ProtocolMsg, crate::ui::desktop_protocol::CodecError>> {
+                let mut q = self.0.lock().unwrap();
+                q.pop_front().map(|bytes| {
+                    crate::ui::desktop_protocol::message::ProtocolMsg::decode(&bytes)
+                })
+            }
+            fn pending(&self) -> usize {
+                self.0.lock().unwrap().len()
+            }
+        }
+        let (tx, rx) = {
+            let shared: Arc<Mutex<VecDeque<Vec<u8>>>> = Arc::new(Mutex::new(VecDeque::new()));
+            let rx: Arc<Mutex<VecDeque<Vec<u8>>>> = Arc::clone(&shared);
+            (MockPipe(shared), MockPipe(rx))
+        };
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let mut client = BrokerClient::new("shell-test".into(), Box::new(tx));
+        client.app_name = Some("shell".into());
+        ds.broker_clients.insert("shell-test".into(), client);
+        ds.desktop.shell_pipe = Some("shell-test".into());
+
+        let mut rx = rx;
+        let recv_pushes = |rx: &mut MockPipe| -> usize {
+            let mut n = 0;
+            while let Some(Ok(msg)) = rx.try_recv() {
+                if matches!(
+                    &msg,
+                    crate::ui::desktop_protocol::message::ProtocolMsg::Control(
+                        crate::ui::desktop_protocol::message::ControlMsg::ShellProjectionPush { .. }
+                    )
+                ) {
+                    n += 1;
+                }
+            }
+            n
+        };
+
+        // 首推：指纹空 → 全量（shell 面 + desktop 面）。
+        push_shell_projection_outproc(&mut ds);
+        assert_eq!(recv_pushes(&mut rx), 2, "首拍 shell+desktop 两面各一推");
+        assert!(ds.desktop.shell_push_fp.is_some());
+        assert!(ds.desktop.shell_desk_fp.is_some());
+        // 未变不推（指纹门）。
+        push_shell_projection_outproc(&mut ds);
+        assert_eq!(recv_pushes(&mut rx), 0, "指纹未变零推送");
+        // 强制失效（respawn attach 同位）→ 全量重推。
+        ds.desktop.shell_push_fp = None;
+        push_shell_projection_outproc(&mut ds);
+        assert_eq!(recv_pushes(&mut rx), 1, "失效后 shell 面重推");
     }
 
     /// Plan 505 B1 回归：单份任务栏结构——根 col 承载位置类（bottom 缺省
