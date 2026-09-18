@@ -165,7 +165,14 @@ impl SelectionResult {
         for (i, node) in self.nodes.iter().enumerate() {
             match (node.span, &node.source) {
                 (Some((off, len)), Some(src)) => {
-                    out.push_str(&format!("\n// [{}/{}] {}  span={}..{}\n", i + 1, n, node.kind, off, off + len));
+                    out.push_str(&format!(
+                        "\n// [{}/{}] {}  span={}..{}\n",
+                        i + 1,
+                        n,
+                        node.kind,
+                        off,
+                        off + len
+                    ));
                     out.push_str(src);
                     if !src.ends_with('\n') {
                         out.push('\n');
@@ -248,7 +255,10 @@ pub fn dedent(text: String) -> String {
         .unwrap_or(0);
     let trimmed: &[&str] = {
         let first = lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
-        let last = lines.iter().rposition(|l| !l.trim().is_empty()).unwrap_or(0);
+        let last = lines
+            .iter()
+            .rposition(|l| !l.trim().is_empty())
+            .unwrap_or(0);
         &lines[first..=last]
     };
     trimmed
@@ -357,12 +367,16 @@ mod tests {
         let mut t = VTree::new();
         let root = VNode::new(VNodeId::new(1), VNodeKind::Column, VNodeProps::Empty);
         t.set_root(root);
-        let mut text =
-            VNode::new(VNodeId::new(2), VNodeKind::Text, VNodeProps::Empty)
-                .with_parent(VNodeId::new(1));
-        text.source_span = Some(SourceSpan { offset: TEXT_SPAN.0, len: TEXT_SPAN.1 });
+        let mut text = VNode::new(VNodeId::new(2), VNodeKind::Text, VNodeProps::Empty)
+            .with_parent(VNodeId::new(1));
+        text.source_span = Some(SourceSpan {
+            offset: TEXT_SPAN.0,
+            len: TEXT_SPAN.1,
+        });
         t.add_node(text);
-        t.get_mut(VNodeId::new(1)).unwrap().add_child(VNodeId::new(2));
+        t.get_mut(VNodeId::new(1))
+            .unwrap()
+            .add_child(VNodeId::new(2));
         t
     }
 
@@ -441,7 +455,10 @@ mod tests {
         assert_eq!(j["surface"], "vm");
         assert_eq!(j["nodes"][0]["kind"], "text");
         assert_eq!(j["nodes"][0]["span"], json!([30, 19]));
-        assert!(j["nodes"][0]["source"].as_str().unwrap().starts_with("text"));
+        assert!(j["nodes"][0]["source"]
+            .as_str()
+            .unwrap()
+            .starts_with("text"));
         assert_eq!(j["nodes"][0]["structure"]["tag"], "text");
         // Atom 视图可输出
         assert!(res.render_atom().contains("text vnode_2"));
@@ -488,7 +505,14 @@ mod tests {
         let mut bounds = HashMap::new();
         bounds.insert(VNodeId::new(1), Rect::new(0.0, 0.0, 100.0, 100.0));
         bounds.insert(VNodeId::new(2), Rect::new(10.0, 10.0, 50.0, 20.0));
-        let res = select_envelope("vm", "N", Rect::new(0.0, 0.0, 100.0, 100.0), &bounds, &t, None);
+        let res = select_envelope(
+            "vm",
+            "N",
+            Rect::new(0.0, 0.0, 100.0, 100.0),
+            &bounds,
+            &t,
+            None,
+        );
         assert_eq!(res.nodes.len(), 1);
         assert_eq!(res.nodes[0].kind, "col");
     }

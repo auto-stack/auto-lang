@@ -15,14 +15,14 @@
 pub mod output;
 
 pub use output::{
-    build_selection_result, node_to_json, select_envelope, value_to_json, SelectionFormat,
-    SelectionResult, SelectedNode,
+    build_selection_result, node_to_json, select_envelope, value_to_json, SelectedNode,
+    SelectionFormat, SelectionResult,
 };
 
 use std::collections::{HashMap, HashSet};
 
 use crate::ui::debug::Rect;
-use crate::ui::vnode::{VTree, VNodeId};
+use crate::ui::vnode::{VNodeId, VTree};
 
 /// 拖拽死区：位移小于该值视同点击，不触发框选。
 pub const MARQUEE_DRAG_THRESHOLD: f32 = 4.0;
@@ -128,15 +128,14 @@ mod tests {
         // root(1) → child(2)；root → other(4)（存储序 = 文档序 1,2,4）
         let mut t = VTree::new();
         use crate::ui::vnode::VNodeKind;
-        let root = VNode::new(VNodeId::new(1), VNodeKind::Column, VNodeProps::Empty)
-            .with_label("root");
+        let root =
+            VNode::new(VNodeId::new(1), VNodeKind::Column, VNodeProps::Empty).with_label("root");
         let r = t.set_root(root);
-        let child = VNode::new(VNodeId::new(2), VNodeKind::Row, VNodeProps::Empty)
-            .with_parent(r);
+        let child = VNode::new(VNodeId::new(2), VNodeKind::Row, VNodeProps::Empty).with_parent(r);
         t.add_node(child);
         t.get_mut(r).unwrap().add_child(VNodeId::new(2));
-        let other = VNode::new(VNodeId::new(4), VNodeKind::Button, VNodeProps::Empty)
-            .with_parent(r);
+        let other =
+            VNode::new(VNodeId::new(4), VNodeKind::Button, VNodeProps::Empty).with_parent(r);
         t.add_node(other);
         t.get_mut(r).unwrap().add_child(VNodeId::new(4));
         t
@@ -232,9 +231,19 @@ mod tests {
     fn trim_derives_ancestry_from_children_not_parent_field() {
         // 夹具/构造器可能不回填 VNode.parent——children 列表是拓扑事实源。
         let mut t = VTree::new();
-        t.set_root(VNode::new(VNodeId::new(1), crate::ui::vnode::VNodeKind::Column, VNodeProps::Empty));
-        t.add_node(VNode::new(VNodeId::new(2), crate::ui::vnode::VNodeKind::Row, VNodeProps::Empty));
-        t.get_mut(VNodeId::new(1)).unwrap().add_child(VNodeId::new(2));
+        t.set_root(VNode::new(
+            VNodeId::new(1),
+            crate::ui::vnode::VNodeKind::Column,
+            VNodeProps::Empty,
+        ));
+        t.add_node(VNode::new(
+            VNodeId::new(2),
+            crate::ui::vnode::VNodeKind::Row,
+            VNodeProps::Empty,
+        ));
+        t.get_mut(VNodeId::new(1))
+            .unwrap()
+            .add_child(VNodeId::new(2));
         let all: HashSet<VNodeId> = [1u64, 2u64].iter().map(|&n| VNodeId::new(n)).collect();
         assert_eq!(trim_to_topmost(&all, &t), vec![VNodeId::new(1)]);
     }
