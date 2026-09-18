@@ -8,7 +8,7 @@
 use crate::ui::view::View as AbstractView;
 use crate::ui::component::Component;
 use crate::ui::app::AppResult;
-use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedFontSize, IcedShadowSize};
+use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedFontSize, IcedShadowSize, IcedOverflow};
 use crate::ui::style::{Style, StyleClass, Color, SizeValue};
 use std::fmt::Debug;
 use std::collections::HashMap;
@@ -1669,7 +1669,32 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
 
     let el = if needs_wrap {
-        let mut cont = container(col);
+        // PLAN-642 T-12: overflow-hidden + justify-Center/End 列的 scroll 兜底。
+        // iced 0.14 flex 对定高列的子项按"剩余量"逐个配给,超出列高的内容被
+        // 压成 0×0 隐没(内嵌画廊 frame 内 demo 超出 720 的内容不可见且不可
+        // 滚动——P2-009 根因;scratch 实测 h-[300px] frame 行 13+ 全塌缩)。
+        // 此处把该类列的内容包进 Shrink 高度 Scrollable:内容矮于列高时被
+        // 容器 center_y/align_y 垂直居中(016 自由尺寸 app 居中验收),高于
+        // 列高时 Shrink 被定高封顶、内容完整布局并滚动(009 滚动验收)。
+        // CSS 语义偏差:overflow-hidden ≈ overflow-y:auto(登记于计划)。
+        // 作用域限定:仅 justify-Center/End(此处 needs_v_align 已把列高让渡给
+        // 容器,scroll 以 Shrink 接管剩余量语义);非 justify 列自身的
+        // height/Fill 语义与 Shrink scroll 组合会破坏布局(画廊根 h-screen
+        // 实测整页塌缩),维持原状。
+        let overflow_fallback = (justify_center || justify_end)
+            && iced_style
+                .as_ref()
+                .map_or(false, |is| matches!(is.overflow_y, Some(IcedOverflow::Hidden)));
+        let inner: iced::Element<'static, M> = if overflow_fallback {
+            let col_el: iced::Element<'static, M> = col.into();
+            let sc = iced::widget::scrollable(col_el)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Shrink);
+            sc.into()
+        } else {
+            col.into()
+        };
+        let mut cont = container(inner);
         cont = cont.padding(pd);
         if justify_center {
             let col_w = if let Some(ref is) = iced_style {

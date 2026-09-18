@@ -338,7 +338,8 @@ widget App {
                             "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-sm justify-between"
                         }
                     }
-                    style: "gap-6 max-w-5xl w-full items-stretch"
+                    // PLAN-642 T-12: 去 items-stretch——卡片改内容自然高(scroll 兜底兼容;等高让渡)
+                    style: "gap-6 max-w-5xl w-full"
                 }
                 style: "w-full flex-1 px-8 py-6 gap-4 items-center justify-center max-w-6xl mx-auto"
             }
