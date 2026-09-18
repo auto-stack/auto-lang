@@ -5199,6 +5199,12 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 /// 6. Copy public assets
 /// 7. Start dev server
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    // PLAN-646: dev 运行面开启 Select Anything DOM 标记（data-auto-*）——
+    // SFC 注入 data-auto-{tag,id,span} 供 overlay 框选采集；产物构建
+    // （build_vue_project）不设，保持输出逐字节不变。VueGenerator::new()
+    // 构造期读取（AUTO_API_FUNCTIONS 同款进程级 env 通道）。
+    // SAFETY: edition 2021——set_var 安全；在任一 VueGenerator::new() 之前设置。
+    std::env::set_var("AUTOUI_SELECT_MARKERS", "1");
     println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
 
     let changed_count = incremental_compile_changed(root_dir)?;

@@ -381,6 +381,10 @@ fn derive_mention_backdrop_class(ta_class: &str) -> String {
 
 /// Vue3 SFC generator
 pub struct VueGenerator {
+    /// PLAN-646: Select Anything DOM 标记（data-auto-*）开关——dev 运行面
+    /// （`auto run` 经 AUTOUI_SELECT_MARKERS=1）开启；产物构建保持输出
+    /// 逐字节不变（既有快照测试锚定精确 HTML，恒定注入会大面积破坏）。
+    select_markers: bool,
     /// Current widget name
     current_widget: Option<String>,
 
@@ -860,6 +864,7 @@ impl VueGenerator {
     /// Create a new Vue generator (Plain Tailwind mode, TypeScript output)
     pub fn new() -> Self {
         Self {
+            select_markers: std::env::var("AUTOUI_SELECT_MARKERS").as_deref() == Ok("1"),
             current_widget: None,
             imports: Vec::new(),
             state_names: Vec::new(),
@@ -6324,7 +6329,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         let ind = "  ".repeat(indent);
 
         match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
+            AuraNode::Element { tag, props, events, children, span, debug_id, .. } => {
                 // Plan 012 Batch A (gap 30): a stray comma between view children
                 // parses as an element with the literal tag "," and used to fall
                 // through to the unknown-tag `<div />` fallback — silently
@@ -7491,6 +7496,20 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
                     (attrs, text_content, None)
                 };
+
+                // PLAN-646: Select Anything DOM 标记注入——data-auto-*。
+                // dev 运行面开启（AUTOUI_SELECT_MARKERS=1）；产物构建与
+                // 既有快照测试保持逐字节不变。组件壳路径（known_sub_widget/
+                // 外部组件）在上方早退不经此处——标记面由内层通用元素携带。
+                if self.select_markers {
+                    attrs.push(format!("data-auto-tag=\"{}\"", tag));
+                    if let Some(id) = debug_id {
+                        attrs.push(format!("data-auto-id=\"aura_{}\"", id.0));
+                    }
+                    if let Some((off, len)) = span {
+                        attrs.push(format!("data-auto-span=\"{}:{}\"", off, len));
+                    }
+                }
 
                 // reka-ui TooltipTrigger renders its own <button>; as-child
                 // avoids nesting when it wraps a <Button> (invalid HTML,
@@ -21598,6 +21617,57 @@ widget IconProbe {
             "iconfile 前缀不得泄入 Lucide 推导: {sfc}"
         );
         assert!(sfc.contains("<Calculator"), "lucide 组件照旧: {sfc}");
+    }
+
+    /// PLAN-646 T-07: Select Anything DOM 标记——通用元素注入
+    /// data-auto-tag / data-auto-id / data-auto-span；span 值为 off:len
+    /// 数字形态（与 AuraNode.span 字节区间一致）；text 子节点不注入
+    /// （归父元素）。
+    #[test]
+    fn plan646_vue_emits_data_auto_markers() {
+        // dev 运行面开关（nextest 每测试一进程，env 设置无串扰）。
+        std::env::set_var("AUTOUI_SELECT_MARKERS", "1");
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget SelectMarkers {
+    view {
+        col {
+            text "hello"
+        }
+    }
+}
+"#,
+        );
+        assert!(sfc.contains("data-auto-tag=\"col\""), "col tag marker:
+{sfc}");
+        assert!(sfc.contains("data-auto-id=\"aura_"), "debug_id marker:
+{sfc}");
+        // span 形态 off:len（数字:数字）
+        let span_vals: Vec<String> = sfc
+            .split("data-auto-span=\"")
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next().map(str::to_string))
+            .collect();
+        assert!(!span_vals.is_empty(), "span marker 存在:
+{sfc}");
+        for v in &span_vals {
+            let (off, len) = v.split_once(':').unwrap_or_else(|| {
+                panic!("span 必须为 off:len 形态, got {v}:
+{{sfc}}")
+            });
+            assert!(
+                !off.is_empty() && off.bytes().all(|b| b.is_ascii_digit())
+                    && !len.is_empty() && len.bytes().all(|b| b.is_ascii_digit()),
+                "span off:len 必须全数字, got {v}"
+            );
+        }
+        // `text "hello" {}` 是 tag="text" 的 Element（有自己的 span）——
+        // 照常注入；不注入的是 AuraNode::Text（DOM 文本，不经 Element 臂）。
+        assert!(
+            sfc.contains("data-auto-tag=\"text\""),
+            "text 元素自身照常注入:
+{sfc}"
+        );
     }
 
     /// Same as gen_sfc_from_widget_src, but in shadcn-vue mode (real widgets
