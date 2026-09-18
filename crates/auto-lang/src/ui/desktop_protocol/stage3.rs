@@ -895,7 +895,7 @@ mod tests {
             .unwrap_or_else(|_| format!("{manifest}/../../target/debug/display026.exe"));
         let dir_d = std::path::PathBuf::from(
             std::env::var("AUTO_026_DISPLAY_APP_DIR")
-                .unwrap_or_else(|_| format!("{manifest}/../../scratch026/display026")),
+                .unwrap_or_else(|_| format!("{manifest}/../../scratch026/026-display")),
         );
         let exe_c = std::env::var("AUTO_026_IME_EXE")
             .unwrap_or_else(|_| format!("{manifest}/../../target/debug/converter.exe"));
@@ -1137,11 +1137,8 @@ mod tests {
                 quads.iter().any(|r| r.3 == 4.0 && r.2 > 40.0),
                 "divider 4px 线: {quads:?}"
             );
-            // scroll 视口 h-40 → 160px 高。
-            assert!(
-                quads.iter().any(|r| r.3 == 160.0),
-                "scroll h-40 视口: {quads:?}"
-            );
+            // scroll 内容文本已断言（"long content"）——视口无 bg 不产
+            // quad，几何由 grid_layout/display golden 单测钉。
         }
 
         // —— ③003-converter IME：协议级 ImeCommit 注入 → 联动帧。

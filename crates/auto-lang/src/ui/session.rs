@@ -2633,9 +2633,11 @@ fn spawn_exe_child(
     if let Some(v) = render {
         cmd.arg(format!("--autodesk-render={v}"));
     }
+    // AUTO_OUTPROC_STDERR=1 诊断口：继承宿主 stderr（子进程 panic 可见）。
+    let inherit = std::env::var("AUTO_OUTPROC_STDERR").is_ok();
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(if inherit { std::process::Stdio::inherit() } else { std::process::Stdio::null() });
     for (key, _) in std::env::vars() {
         if key.starts_with("NEXTEST_") {
             cmd.env_remove(&key);

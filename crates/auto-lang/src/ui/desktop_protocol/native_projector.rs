@@ -1168,8 +1168,15 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
         Dir::Vertical,
         style,
     );
+    // PLAN-026 T-07：w-full（Width(Full)）= 块级满宽（iced 消费面同语义
+    // ——divider/spacer 降级形态的宽度承载；无尺寸声明仍收内容宽）。
+    let fills_w = matches!(
+        style.box_layout.width,
+        Some(crate::ui::style::SizeValue::Full)
+    );
     let outer_w = match style.fixed_w().or_else(|| legacy_width.map(f32::from)) {
         Some(fw) => fw,
+        None if fills_w => avail_w.max(0.0),
         None => (laid.size.0 + pad.0 + pad.2).max(0.0),
     };
     let outer_h = match style.fixed_h().or_else(|| legacy_height.map(f32::from)) {
