@@ -9230,7 +9230,11 @@ fn push_desktop_toast(state: &mut crate::ui::session::DesktopSession, kind: &str
 /// 保守避让。无 Alt / 编辑中 = false，GlobalPress 照常走 WM 命中聚焦。
 /// v1 落在 primary App（跨窗框选为非目标；单 App/独立模式即目标 App）。
 fn selection_press_anchor(state: &mut crate::ui::session::DesktopSession) -> bool {
-    if !state.desktop.current_modifiers.borrow().alt() {
+    let alt = state.desktop.current_modifiers.borrow().alt();
+    if std::env::var("AUTO_SELECT_TRACE").is_ok() {
+        eprintln!("[PLAN-646] GlobalPress seen, alt={alt}");
+    }
+    if !alt {
         return false;
     }
     let Some(app_id) = state.primary_app() else {
@@ -15816,6 +15820,9 @@ fn compare_pngs(
                 // 并请求一轮 bounds 采集（__bounds_collected 臂延迟计算信封
                 // + 打开 Select 标签页）。
                 if let Some(m) = state.app.devtools.marquee.borrow_mut().take() {
+                    if std::env::var("AUTO_SELECT_TRACE").is_ok() {
+                        eprintln!("[PLAN-646] released, drag={}", m.is_drag());
+                    }
                     if m.is_drag() {
                         *state.app.devtools.pending_selection.borrow_mut() = Some(m.rect());
                         *state.app.devtools.needs_bounds.borrow_mut() = true;
@@ -20047,9 +20054,11 @@ fn render_select_tab(state: crate::ui::session::SessionViewRef) -> iced::Element
                     r.nodes.len()
                 );
                 let content = r.render(fmt);
+                // 正文显式深灰——面板浅色底为硬编码，text 缺省色随 app 主题
+                // （深色主题=白字）会白底白字隐身（复审实机截图定罪）。
                 column![
                     text(header).size(11).color(iced::Color::from_rgb(0.35, 0.35, 0.4)),
-                    text(content).size(11),
+                    text(content).size(11).color(iced::Color::from_rgb(0.15, 0.15, 0.18)),
                 ]
                 .spacing(6)
                 .into()
