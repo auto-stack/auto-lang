@@ -65,11 +65,12 @@ pub fn resolve_shell_pack_dir() -> Option<std::path::PathBuf> {
 /// 环境与现状逐字节一致）。
 pub fn shell_source(name: &str) -> std::borrow::Cow<'static, str> {
     use std::borrow::Cow;
-    const EMBEDDED: [(&str, &str); 4] = [
+    const EMBEDDED: [(&str, &str); 5] = [
         ("shell.at", SHELL_AT),
         ("desktop.at", DESKTOP_AT),
         ("switcher.at", SWITCHER_AT),
         ("notification_center.at", NOTIFICATION_CENTER_AT),
+        ("dashboard.at", DASHBOARD_AT),
     ];
     let embedded = EMBEDDED
         .iter()
@@ -123,6 +124,18 @@ pub const NOTIFICATION_CENTER_AT: &str = include_str!("../../assets/notification
 pub fn build_notification_center_component(
 ) -> Result<crate::ui::dynamic::DynamicComponent, crate::error::AutoError> {
     crate::build_dynamic_component(shell_source("notification_center.at").as_ref(), None)
+}
+
+/// PLAN-024：dashboard 面板 overlay 源码（进程内嵌；shell pack 同级特权
+/// 组件，不进注册表/examples——设置面板退役后的第四 overlay 槽继任）。
+pub const DASHBOARD_AT: &str = include_str!("../../assets/dashboard.at");
+
+/// 进程内编译装载 dashboard 面板组件（dashboard_toggle 召唤期懒挂载调用；
+/// 失败由调用方 toast 降级）。
+#[cfg(feature = "ui-iced")]
+pub fn build_dashboard_component(
+) -> Result<crate::ui::dynamic::DynamicComponent, crate::error::AutoError> {
+    crate::build_dynamic_component(shell_source("dashboard.at").as_ref(), None)
 }
 
 /// Plan 496 M5：桌面本体面源码（进程内嵌；shell pack 同级特权组件，不进
@@ -191,6 +204,7 @@ mod p7_loader_tests {
             ("desktop.at", DESKTOP_AT),
             ("switcher.at", SWITCHER_AT),
             ("notification_center.at", NOTIFICATION_CENTER_AT),
+            ("dashboard.at", DASHBOARD_AT),
         ] {
             let path = pack.join(name);
             if !path.is_file() {

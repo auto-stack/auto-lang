@@ -3179,6 +3179,121 @@ pub(crate) fn load_ext_imports_for_vm(
         }
     }
 
+    // PLAN-643: 已装载模块自身 widget 级 `use { package: x from "dir" }` 的
+    // 装载。demo 适配器（AppViewport.vm.at → demos/<id>.at）内的包导入此前
+    // 无任何装载分支——模块链只处理 `use <mod>`/`use.web`，package 仅根组件
+    // 动态分支（build_dynamic_component_inner）处理——包组件（024-charts 的
+    // LineChart/BarChart/AreaChart/DonutChart）不进 registry/child_decls，
+    // 实例 tag 落 schema builtin 空壳桩 → 画布空（P642-D1 根因）。扫 visited
+    // 全集（与上方 use.web/632-F3 收集同集），镜像动态分支同语义：
+    // load_package → decls 入 ext_widget_decls（调用方统一注册
+    // registry+child_decls，handler 随之编译进单 VM）+ 包文件 use 依赖
+    // collect_module_imports 入编译单元 + 裸名别名。schema package_origin
+    // 分类（PLAN-643 双态归属）保证同名 tag 不再被 builtin 臂截胡。
+    {
+        let mut swept_pkgs: std::collections::HashSet<String> = ext_widget_decls
+            .iter()
+            .map(|wd| wd.name.to_string())
+            .collect();
+        for wd in all_child_decls {
+            swept_pkgs.insert(wd.name.to_string());
+        }
+        swept_pkgs.insert(root_decl.name.to_string());
+        let mut seen_pkg_dirs: std::collections::HashSet<std::path::PathBuf> = Default::default();
+        // 快照迭代:collect_module_imports 会向 visited 追加包文件自身 use 链,
+        // 不能在 visited.iter() 借用下调用(新装载模块的包导入由后续调用方的
+        // 下一轮装载自然覆盖——与根环一次性 sweep 语义一致)。
+        let visited_snap: Vec<std::path::PathBuf> = visited.iter().cloned().collect();
+        for path in visited_snap.iter() {
+            if path.extension().and_then(|e| e.to_str()) != Some("at") {
+                continue;
+            }
+            let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+            let Ok(mod_ast) = parser.parse() else { continue };
+            let mod_dir = path
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            for wd in mod_ast.stmts.iter().filter_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            }) {
+                for imp in &wd.ext_imports {
+                    if !matches!(imp.kind, crate::ast::ui::ExtImportKind::Package) {
+                        continue;
+                    }
+                    let dir = std::path::PathBuf::from(imp.path.as_str());
+                    if !seen_pkg_dirs.insert(dir.clone()) {
+                        continue;
+                    }
+                    let candidates = [
+                        mod_dir.join(&dir),
+                        mod_dir.join("pages").join(&dir),
+                    ];
+                    let mut pkg_reg = crate::ui_gen::widget::ComponentRegistry::new();
+                    let first = pkg_reg.load_package(&candidates[0], &mod_dir);
+                    let (loaded, loaded_dir, load_err) = match first {
+                        Ok(p) => (Ok(p), Some(candidates[0].clone()), String::new()),
+                        Err(_) => match pkg_reg.load_package(&candidates[1], &mod_dir) {
+                            Ok(p) => (Ok(p), Some(candidates[1].clone()), String::new()),
+                            Err(e) => (Err(()), None, e),
+                        },
+                    };
+                    if loaded.is_err() {
+                        log::warn!(
+                            "package `{}` load failed (VM module chain): {} (tried {:?})",
+                            imp.path,
+                            load_err,
+                            candidates
+                        );
+                        continue;
+                    }
+                    let pkg = loaded.unwrap();
+                    for (d, _aw) in &pkg.full_widgets {
+                        if swept_pkgs.insert(d.name.to_string()) {
+                            ext_widget_decls.push(d.clone());
+                        }
+                    }
+                    // 包组件文件自身的 use 依赖入编译单元 + 裸名别名
+                    //（与动态分支 Plan 522 同规则）。
+                    if let Some(pkg_dir) = loaded_dir {
+                        if let Ok(entries) = std::fs::read_dir(&pkg_dir) {
+                            for entry in entries.flatten() {
+                                let p = entry.path();
+                                if p.extension().map(|e| e != "at").unwrap_or(true) {
+                                    continue;
+                                }
+                                crate::collect_module_imports(
+                                    &p,
+                                    visited,
+                                    import_stmts,
+                                    seen_symbols,
+                                    import_session,
+                                    None,
+                                );
+                                if let Ok(pc) = std::fs::read_to_string(&p) {
+                                    for us in crate::use_scanner::scan_use_statements(&pc) {
+                                        let qualifier =
+                                            us.module.split('.').last().unwrap_or(&us.module);
+                                        for item in &us.items {
+                                            import_aliases
+                                                .entry(item.clone())
+                                                .or_insert_with(|| {
+                                                    format!("{}.{}", qualifier, item)
+                                                });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if !crate::ui::ext_stubs::ext_stubs_enabled() {
         return Ok(());
     }
@@ -3256,6 +3371,7 @@ fn store_decl_as_widget_decl(
         model: store_decl.model.clone(),
         computed: store_decl.computed.clone(),
         view: None,
+        named_views: Vec::new(),
         on: store_decl.on.clone(),
         bind: None,
         props: Vec::new(),
@@ -3983,6 +4099,7 @@ fn build_dynamic_component_inner(
                                     model: store_decl.model.clone(),
                                     computed: store_decl.computed.clone(),
                                     view: None,
+                                    named_views: Vec::new(),
                                     on: store_decl.on.clone(),
                                     bind: None,
                                     props: Vec::new(),
@@ -4098,6 +4215,7 @@ fn build_dynamic_component_inner(
                                     model: store_decl.model.clone(),
                                     computed: store_decl.computed.clone(),
                                     view: None,
+                                    named_views: Vec::new(),
                                     on: store_decl.on.clone(),
                                     bind: None,
                                     props: Vec::new(),
@@ -4167,6 +4285,7 @@ fn build_dynamic_component_inner(
                 model: store_decl.model.clone(),
                 computed: store_decl.computed.clone(),
                 view: None,  // stores have no view
+                named_views: Vec::new(),
                 on: store_decl.on.clone(),
                 bind: None,
                 props: Vec::new(),
@@ -4201,6 +4320,7 @@ fn build_dynamic_component_inner(
                     model: store_decl.model.clone(),
                     computed: store_decl.computed.clone(),
                     view: None,
+                    named_views: Vec::new(),
                     on: store_decl.on.clone(),
                     bind: None,
                     props: Vec::new(),
@@ -6523,7 +6643,14 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
     default_classes: Option<bool>,
     bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
     sub_widget_msgs: Option<std::collections::HashMap<String, Vec<String>>>,
-) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
+) -> AutoResult<(
+    String,
+    Vec<crate::aura::AuraWidget>,
+    Vec<(String, String)>,
+    Vec<(String, String, String)>,
+)> {
+    // PLAN-024：第四返回段 = named_view_codes（widget, view, SFC code）——
+    // 桌面 vue 宿主 Mini.vue 产物源（仅本 fn 的唯一调用方 auto-man 消费）。
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let at_path = std::path::Path::new(path);
@@ -6563,7 +6690,12 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
         }
     }
 
-    Ok((result.vue_code, result.widgets, store_composables))
+    Ok((
+        result.vue_code,
+        result.widgets,
+        store_composables,
+        result.named_view_codes,
+    ))
 }
 
 pub fn ui_build_shadcn_with_sub_widgets_and_stores(
@@ -6907,6 +7039,11 @@ mod plan627_qualified_api_tests;
 #[cfg(test)]
 mod plan634_block_tail_semi_tests;
 
+// PLAN-024: named view (`view mini { ... }`) parsing corpus — desktop
+// dashboard language extension.
+#[cfg(test)]
+mod plan024_named_view_tests;
+
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;
@@ -7206,6 +7343,15 @@ mod plan632_demo_bridge_tests;
 // PLAN-639: 跨包 blueprint .at 解析双轨消费门（VM 渲染结构 + vue 发射面）。
 #[cfg(test)]
 mod plan639_bp_tests;
+
+// PLAN-640: Tier-0 官方默认集扩容门禁（全包契约完整面 + 代表包双轨断言）。
+#[cfg(test)]
+mod plan640_bp_tests;
+
+// PLAN-643: chart 裸名归属统一（tag 双态归属）——with_charts 变体双轨 +
+// palette 包词汇面正断言。
+#[cfg(test)]
+mod plan643_chart_tag_tests;
 
 // PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
 // 回归。

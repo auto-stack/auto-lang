@@ -1,0 +1,359 @@
+---
+plan_id: PLAN-646
+status: drafting               # drafting → executing → execution_done → reviewed → archived
+feature_name: select-anything
+author: [zcode-agent]
+created_at: 2026-09-18
+updated_at: 2026-09-18
+plan_revision: 1
+
+supersedes_spec_components: []
+new_spec_components: [docs/specs/auto-lang/ui/design/select-anything.md]
+touched_goals: [GOAL-007, GOAL-014, GOAL-015]   # 双端能力一致 / MCP 工具 / Agent 知识采集输入
+
+affects: [docs/specs/auto-lang/ui, docs/specs/auto-lang/mcp]
+current_step: 0
+total_steps: 11
+---
+
+# [PLAN-646] Select Anything —— 任意 AutoUI 基面框选 → 结构化 Auto/JSON 回吐
+
+## 变更摘要
+
+为 AutoUI 增加"Select Anything"通用能力：用户在**任意 AutoUI 基面**（VM/Iced 桌面端 +
+Vue 浏览器端）对任意范围 **Alt+拖拽框选**，系统按组件组织结构返回选中组件的
+**Auto 源码切片 + 结构化 JSON + Atom 结构文本**，一键复制。同时新增 MCP 工具
+`autoui_select_rect`，让 AI agent 可程序化按矩形采集界面知识。这是把 AutoOS
+升级为个人知识库系统的"划词采集"地基：任何界面上所见的信息，都可被选中、
+结构化、复制，作为知识采集或问答输入。
+
+## 目标
+
+1. **统一选择语义**（双端一致）：框选矩形 → 中心点命中的节点集合 → 修剪为最顶层
+   （父不在集合内）→ 按 VTree/DOM 文档序输出。
+2. **统一结果信封**：`{surface, app, rect, nodes[{kind, span, source, structure}]}`，
+   三种呈现——Auto 源码文本（原始 .at 切片、去公共缩进）、JSON、Atom。
+3. **VM/Iced 端可用**：Alt+拖拽框选（免开 F12），松开后 DevTools 新 Select 标签页
+   展示结果，复制按钮写剪贴板。
+4. **Vue 端可用**：`auto run` 开发页上 Alt+拖拽，浮动结果面板展示同格式结果并可复制。
+5. **MCP 程序化采集**：`autoui_select_rect(x,y,w,h,format)` 返回同一信封。
+
+### 非目标（v1 明确不做）
+
+- 桌面多虚拟窗**跨窗**框选（v1 只作用于聚焦/命中的单个 App，坐标经 vwin 矩形平移）。
+- gallery/desktop 宿主、生产构建的常驻 UI（Vue 端仅 dev 脚手架接线；宿主接入为后续）。
+- 文本级划词选择（组件粒度即可；文本选择已有 SelectableText）。
+- 知识库的存储/检索/问答系统本身（本计划只做"采集出口"）。
+- Vue 端浮动面板与 VM 端 DevTools 标签页的 UI 形态统一（语义一致即可）。
+
+## 架构方案
+
+```
+                     ┌─ 选择语义(纯函数) ─┐
+框选矩形 rect ──────►│ center-inside 命中 │──► 顶层修剪 ──► 文档序排列 ──► topmost 节点集
+ (Alt+拖拽)          └───────────────────┘                                      │
+                                                                              ▼
+   ┌────────────────────────── 结果构建(纯函数) ──────────────────────────────┐
+   │ per node: source_span 切片 AppState.source_code(.at 原文,去公共缩进)      │
+   │           VTreeAtomBuilder(scope=node) → Atom 文本 / node_to_json → JSON  │
+   │ envelope: {surface, app, rect, nodes[{kind, span, source, structure}]}   │
+   └──────────────────────────────────────────────────────────────────────────┘
+        │                    │                          │
+        ▼                    ▼                          ▼
+  VM/Iced 端            Vue 端                     MCP autoui_select_rect
+  DevTools Select tab   浮动面板+clipboard          agent 程序化采集
+  (clipboard_set)
+```
+
+- **VM 端挂点**：全局鼠标三段流已就绪（`GlobalPress` / `__mouse_moved|x,y` /
+  `__mouse_released`，renderer.rs:18869/18853/18860）；bounds 按需收集
+  （`needs_bounds` → LayoutCollector → `__bounds_collected`，renderer.rs:16884）；
+  复制走现成 `clipboard_set`（ui/clipboard.rs:13）。
+- **Vue 端挂点**：`ui_gen/vue.rs node_to_html`（:6323）注入 `data-auto-{id,tag,span}`
+  （AuraNode 自带 debug_id+span，当前被丢弃——唯一注入点）；`auto-man/src/vue.rs`
+  脚手架（main.ts/index.html 每次重写）注入 dev-only overlay 资产与源码映射。
+- **MCP 挂点**：`ui/mcp_server.rs` dispatch_static（:1120）现有 `autoui_vtree`
+  （:929）模式直接复制扩展。
+
+## 需求分析与背景调查
+
+（来源：用户需求描述 2026-09-18 + 两轮代码勘察；ChatGPT 讨论链接在当前环境不可达——
+空白页，见 §10。设计以用户文字描述为准。）
+
+### 用户需求原文要点
+
+- 对任意 AutoUI 基面的**任意范围**选取，app 自动返回**符合结构的 Auto/JSON 格式文本**，
+  方便复制——"相当于把用户选中的组件（按照它们的组织结构）把 AutoUI 源码返回"。
+- 未来做通用划词查询工具：从 AutoUI 系统随时划取信息，作为**知识采集或用户问答的输入**；
+  是 AutoOS 升级为**个人知识库系统**的重要一步。
+
+### VM/Iced 端现状（勘察结论，路径相对 `crates/auto-lang/src/`）
+
+- **span→源码反查链已全通**：`AuraNode` 每变体带 `span + debug_id`
+  （aura/types.rs:857）；`AuraWidget.span_map`（types.rs:110）；`DebugIdMap`
+  View path→AuraNodeId（ui/debug_id_map.rs:17）；`VNode.source_span`（ui/vnode.rs:312，
+  填充于 renderer.rs:19060-19070）；源码全文缓存 `AppState.source_code` +
+  `source_line_offsets`（ui/session.rs:51-52）。**选中节点→切片原文零新增基建**。
+- **bounds 基建**：`InspectorCache.by_id: HashMap<VNodeId, ComputedNode>` 含 bounds
+  （ui/debug/inspector_cache.rs:101）；采集 `LayoutCollector`（ui/iced/layout_collector.rs:20，
+  识别 `aura_N`/`vnode_<hash>` 两种 id 约定）；按需触发 `needs_bounds`
+  （renderer.rs:16884→15204 `__bounds_collected`→backfill_bounds）。
+- **点级 hit-test 参照**：`ui/debug/hit_test.rs:23`（含点最小面积节点）；本计划
+  将其推广为矩形+中心语义。
+- **全局鼠标流**：窗口订阅 CursorMoved/ButtonReleased/ButtonPressed(Left→`WmCommand::GlobalPress`)
+  （renderer.rs:18853-18880）；修饰键 `current_modifiers` 已持续维护（Alt 检测可用）；
+  F12 inspect 拾取器（INSPECT_CAPTURE，renderer.rs:38/19008）是交互参照。
+- **序列化**：`VTreeAtomBuilder`（ui/vtree_atom.rs:66）拓扑 1:1、支持 `scope` 子树裁剪、
+  经 `auto_val::Node` Display 输出 Atom 文本——结构化输出直接复用。
+- **剪贴板**：`clipboard_set(text) -> bool`（ui/clipboard.rs:13，code_editor 已用）。
+
+### Vue 端现状（勘察结论）
+
+- 渲染链：.at → AuraWidget → `VueGenerator`（ui_gen/vue.rs:383）→ SFC →
+  `gen/front/vue/` → Vite dev（auto-man/src/vue.rs:5201 `run_vue_project` 六步）。
+- **生成的 DOM 无任何可反查标记**；但 AST 层信息齐备（同上 span/debug_id）且
+  `ui_gen/vue.rs` 引用 debug_id 次数为 0——`node_to_html`（:6323）是唯一注入点。
+- **浏览器→宿主无反向通道**（无 ws/postMessage），故 Vue 端结果面板在页内自闭环
+  （overlay TS + DOM 采集 + 页内源码映射），不经宿主。
+- 脚手架自愈：index.html/main.ts/package.json 每次 `auto run` 重写
+  （vue.rs:1122-1220 main.ts 等）——dev-only 资产注入点现成。
+- 增量编译：`incremental_compile_changed`（vue.rs:4747）按 hash 增量重写 SFC——
+  源码映射文件同法防抖。
+- gallery 模式 demo 已内嵌完整 .at `source` 字段（demos-registry，vue.rs:6555）——
+  "源码随身携带"有先例，非目标范围但佐证可行。
+
+### 授权与约束记录
+
+- 用户已授权：按标准 L1 流程立项（本计划）。执行范围：本仓 auto-lang
+  （crates/auto-lang、crates/auto-man）+ 脚手架生成的 dev 资产。
+- 预算/自动续跑限制：未指定。
+- 红线遵守：worktree 内禁止 junction/symlink；实现全部在
+  `D:/autostack/.wt/lang-646/auto-lang` 进行。
+
+## 详细设计
+
+### 1. 选择语义（纯函数，双端各自实现、语义同一）
+
+新模块 `crates/auto-lang/src/ui/selection/mod.rs`：
+
+```rust
+/// 中心点包含：节点 bounds 矩形中心落在框选矩形内 → 命中。
+/// 部分被框选边缘扫过但中心不在 → 不选中（避免框到半个大容器就吞掉整容器）。
+pub fn select_nodes(rect: Rect, bounds: &HashMap<VNodeId, Rect>) -> HashSet<VNodeId>
+
+/// 顶层修剪：命中集合中父节点也命中的子节点剔除；输出按 VTree 文档序排列。
+/// （框选完整覆盖卡片 → 卡片命中、其子也命中 → 只输出卡片本身 = 组织结构语义）
+pub fn trim_to_topmost(selected: &HashSet<VNodeId>, vtree: &VTree) -> Vec<VNodeId>
+```
+
+- 依据：DevTools 深度优先取最深的直觉（hit_test.rs:1 注释）与"整块覆盖返回整块"
+  的组织结构语义，中心包含是两者的平衡（完全包含判定会在"覆盖 95% 的大卡片"
+  场景退化为返回其父容器）。
+- 无 bounds 的节点（LayoutCollector 只覆盖挂 id 的 widget）不参与命中，但作为
+  选中节点的子孙出现在 structure/source 输出中（VTree 拓扑本身完整）。
+
+### 2. 结果信封（纯函数，`ui/selection/output.rs`）
+
+```rust
+pub struct SelectionResult {
+    pub surface: &'static str,        // "vm" | "vue"
+    pub app: String,                  // App 名/id
+    pub rect: (f32, f32, f32, f32),   // x,y,w,h
+    pub nodes: Vec<SelectedNode>,      // 文档序
+}
+pub struct SelectedNode {
+    pub kind: String,                  // kind_keyword / data-auto-tag
+    pub span: Option<(usize, usize)>,  // .at 字节偏移+长度
+    pub source: Option<String>,        // 原始切片（去公共缩进）
+    pub structure: auto_val::Node,     // VTreeAtomBuilder 子树（VM）/ DOM 子树（Vue JSON）
+}
+```
+
+- **Auto 文本**（面板默认视图）：
+
+  ```
+  // ── AutoUI Select Anything ── surface=vm app=<app> rect=(x,y,w,h) nodes=N
+  // [1/N] card  span=off..off+len
+  <去公共缩进后的 .at 原文切片>
+  // [2/N] ...
+  ```
+
+  切片取自 `AppState.source_code`（VM）或页内源码映射（Vue）按 span 字节区间；
+  span=None 的合成节点标注 `// (synthetic, no source span)` 并仅输出结构。
+- **JSON**：`SelectionResult` 直接 serde 序列化；`structure` 经本地
+  `node_to_json(&auto_val::Node) -> serde_json::Value` walker 转换
+  （~40 行；不动 auto-val crate——`Value::Node` 的 JSON serde 面不确证，本地转换零风险）。
+- **Atom**：`VTreeAtomBuilder::build(snap, VTreeAtomOptions{scope: Some(node), ..})`
+  的 Display 文本，逐节点拼接。
+- `source` 切片与源文件一致性是验收锚点（切片必须逐字节等于源码子串，再缩进归一）。
+
+### 3. VM/Iced 端交互
+
+- **状态**（`DevToolsState` 扩展，ui/session.rs:108）：
+  `marquee: RefCell<Option<Marquee{anchor,current}>>`、
+  `pending_selection: RefCell<Option<Rect>>`、
+  `selection_result: RefCell<Option<SelectionResult>>`、
+  `select_tab: RefCell<SelectionView>`（auto/json/atom 三视图切换）。
+- **进入**：无独立模式开关——`GlobalPress` 且 `alt_held` 且无文本编辑焦点 → 置位
+  marquee.anchor（=last_cursor），同时抑制本次 GlobalPress 的 WM 焦点抢占
+  （Alt+拖拽是专用手势，与 inspect 模式的 Alt-click passthrough 互斥域不同层）。
+- **拖拽**：`__mouse_moved|x,y` 更新 marquee.current；视图层在 marquee 激活时于根
+  注入绘制层（Stack+Canvas 程序或 View::Overlay，实现择一）画半透明矩形+边框；
+  不捕获事件（纯绘制）。
+- **结束**：`__mouse_released` → 定稿 rect → `needs_bounds=true` + 暂存
+  pending_selection → `__bounds_collected` 臂中若有 pending 则执行
+  select_nodes → trim → build_selection_result（保证 bounds 新鲜）→ 打开
+  DevTools 到 Select 标签页（`__toggle_inspect` 同款联动：debug_mode=true、
+  devtools_open=true，renderer.rs:15517 模式）。
+- **坐标**：independent 模式窗口坐标直通；desktop 模式按聚焦窗 `vwin_rect` 平移到
+  App 本地系（跨窗不支持，见非目标）。
+- **复制**：Copy 按钮调 `clipboard_set(&当前视图文本)`；面板按钮态给出成功/失败反馈。
+- **Esc**：关闭面板并清 marquee。
+
+### 4. MCP 工具 `autoui_select_rect`（ui/mcp_server.rs）
+
+- 注册进 `dispatch_tool_static`（:1120）与工具清单（`autoui_vtree` :929 同款）。
+- 参数：`{x, y, w, h, format?: "auto"|"json"|"atom" (默认 "json"), include_box/style/events/source?: bool}`。
+- 实现：读共享快照（`autoui_vtree` 同源）+ `layout_bounds` → 调 §1/§2 纯函数 →
+  返回信封文本/JSON。agent 侧即获得与人工框选完全一致的采集通道。
+
+### 5. Vue 端
+
+- **标记注入**（ui_gen/vue.rs `node_to_html` :6323）：元素型 AuraNode 统一追加
+  `data-auto-tag="<widget 关键字>"`、`data-auto-id="aura_N"`（有 debug_id 时）、
+  `data-auto-span="off:len"`（有 span 时）。无开关、恒定输出（属性惰性无害，
+  避免新配置面）；text 节点不注入（归父元素）。
+- **源码映射**（auto-man/src/vue.rs）：脚手架新增
+  `gen/front/vue/src/auto-sources.ts`——`export const AUTO_SOURCES: Record<string,string>`
+  （key=App 名，value=完整 .at 源文）。`run_vue_project` 与
+  `incremental_compile_changed` 同步重写（内容 hash 防抖，同 SFC 增量法）。
+- **overlay 资产**（脚手架 dev-only 写入，非产物构建面）：
+  - `src/auto-select/overlay.ts`：Alt+mousedown 全页（capture 阶段）起笔，画
+    position:fixed 蒙层矩形；mouseup 收割
+    `document.querySelectorAll('[data-auto-span]')`，`getBoundingClientRect()`
+    中心包含 + parentElement 链顶层修剪（同 §1 语义）→ 按 data-auto-span 切片
+    AUTO_SOURCES + DOM 子树→JSON（剥 data-auto-* 后的 tag/attrs/text/children）→
+    浮动面板（fixed 右下，tab：Auto/JSON，Copy 按钮
+    `navigator.clipboard.writeText`）。
+  - `main.ts` 顶部 dev-only `import './auto-select/overlay'`。
+- **多 App 页面**（desktop/gallery 宿主）：v1 不接（非目标）；overlay 按
+  data-auto-span 所在 App 源映射键取源，单 App 场景天然成立。
+
+### 6. 规范增量
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-01 | add | auto-lang/ui/design/select-anything.md | before：无此能力契约 → after：选择语义（中心包含+顶层修剪+文档序）、结果信封三格式、双端交互键位与面板行为、MCP 工具契约定型 | 双端+MCP 三消费面必须共享同一语义契约，防止后续漂移 | AC-01/02/07 |
+| SD-02 | modify | auto-lang/ui/overview.md | before：无 Select Anything 叙述 → after：现状段落补记能力、挂点（ui/selection、node_to_html 标记、脚手架资产） | module spec 现状跟踪义务（规约 §4） | AC-03/06 |
+| SD-03 | modify | auto-lang/mcp/overview.md | before：工具清单无 select → after：登记 `autoui_select_rect` 参数与信封返回 | MCP 工具面登记 | AC-07 |
+
+## 测试设计
+
+- **纯函数单测**（`ui/selection/` 内联 #[cfg(test)]，进日常档）：
+  - select_nodes：空 bounds、中心包含/边缘扫过不命中、嵌套全命中；
+  - trim_to_topmost：全命中返回顶层单节点、分散命中返回多节点、文档序；
+  - 信封构建：切片==源码子串（锚点断言）、去公共缩进、span=None 降级标注、
+    node_to_json 结构往返、Atom Display 可输出。
+- **vue 生成器测试**（ui_gen/vue.rs:18254 mod tests 内新增）：生成模板含
+  `data-auto-tag`/`data-auto-span` 且 span 值与 AuraNode.span 一致。
+- **VM 交互**：交互臂以实机走查为准（无头不可达），逻辑核心已抽纯函数；
+  走查用 autoui-verifier 技能（`auto run -r vm` + MCP 脚本）。
+- **端到端**：
+  - `scripts`（autoui-verifier）：`test_vm_mcp.py` 扩展 `autoui_select_rect` 用例
+    （rect→JSON 信封→节点 kind 集合断言）；
+  - `test_vue_playwright.mjs` 扩展：断言示例页存在 data-auto-span 元素、
+    Alt+拖拽后面板出现且切片文本出现在面板中。
+- **门禁分级**（AGENTS.md Category B）：
+  - 日常：`cargo check -p auto-lang`；局部 `cargo t selection`、`cargo t vue`；
+  - UI 生成器/VM 改动收敛后：`cargo t iced` 局部 + review 前一次 `cargo tf`。
+  - 不触碰 aavm/trans/book 面 → 不跑 taa/tt/tb。
+
+## 验收标准
+
+- **AC-01 选择语义**：`ui/selection` 纯函数单测全绿（中心包含、顶层修剪、文档序、
+  空集安全）。验证：`cargo t selection`。
+- **AC-02 结果信封**：单测断言 Auto 切片逐字节等于源文件子串（缩进归一前）、
+  JSON 信封字段完整、Atom 可序列化。验证：`cargo t selection`。
+- **AC-03 VM 端框选**：`auto run -r vm examples/ui/015-notes`（或等价示例）实机
+  Alt+拖拽后，DevTools Select 标签页出现结果，Auto 视图内容可在对应 .at 源文件中
+  找到（人工/走查记录截图）。
+- **AC-04 VM 复制**：Copy 按钮后剪贴板内容==当前视图全文（走查断言
+  clipboard_set 返回 true 并粘贴核对）。
+- **AC-05 Vue 标记注入**：`cargo t vue` 快照断言生成模板含 data-auto-tag/span。
+- **AC-06 Vue 端框选**：`auto run` Vue 模式实机/Playwright：Alt+拖拽 → 浮动面板
+  出现，Auto 视图切片可在 .at 源文件找到，Copy 后剪贴板一致。
+- **AC-07 MCP 工具**：`test_vm_mcp.py` 调 `autoui_select_rect` 返回 JSON 信封，
+  命中节点 kind 集合与 AC-01 语义人工核对一致；错误参数返回结构化错误。
+- **AC-08 无回归**：`cargo tf` 全绿（在案预存红除外）；走查双端原有交互无破坏。
+
+## 执行步骤
+
+（在 worktree `D:/autostack/.wt/lang-646/auto-lang`（分支 plan-646-dev）执行；
+计划簿记留在主检出。）
+
+### Phase A —— 选择语义与信封内核（纯函数）
+
+- **T-01** 新建 `crates/auto-lang/src/ui/selection/mod.rs`：`Rect` 复用
+  `ui::debug::Rect`；`select_nodes` + `trim_to_topmost` + `Marquee` 几何；
+  lib.rs/`ui/mod.rs` 挂模块。内联单测（AC-01）。
+  验证：`cargo check -p auto-lang && cargo t selection`。
+- **T-02** 新建 `crates/auto-lang/src/ui/selection/output.rs`：
+  `SelectionResult`/`SelectedNode` + `build_selection_result(...)`（入参：
+  surface/app/rect/topmost 节点、VTree、computed 映射、源码全文）+
+  `node_to_json` walker + 三格式渲染（auto/json/atom）。内联单测（AC-02）。
+  验证：`cargo t selection`。
+
+### Phase B —— VM/Iced 端交互
+
+- **T-03** `ui/session.rs` DevToolsState 扩展四字段 + 初始化；
+  `renderer.rs` `GlobalPress`（alt_held 门控、抑制 WM 焦点抢占）、`__mouse_moved`、
+  `__mouse_released` 三臂接入 marquee 状态机。验证：`cargo check` +
+  `auto run -r vm` 冒烟（拖拽出现矩形轨迹日志）。
+- **T-04** marquee 绘制层（Stack+Canvas 或 View::Overlay 择一）+
+  release→needs_bounds→`__bounds_collected` 臂内延迟计算（pending_selection 消费）
+  + desktop 模式 vwin 平移。验证：实机框选产出 selection_result 日志（AC-03 前置）。
+- **T-05** DevTools 面板新 `DevToolsTab::Select`：三视图切换 + Copy
+  （clipboard_set）+ Esc 关闭。验证：实机走查（AC-03/AC-04），截图留证。
+
+### Phase C —— MCP 工具
+
+- **T-06** `ui/mcp_server.rs`：`autoui_select_rect` 工具注册 + 实现（复用
+  T-01/T-02 纯函数与 vtree 快照获取模式）；扩展
+  `.agents/skills/autoui-verifier/scripts/test_vm_mcp.py` 用例。验证：
+  `python .agents/skills/autoui-verifier/scripts/test_vm_mcp.py`（AC-07）。
+
+### Phase D —— Vue 端
+
+- **T-07** `ui_gen/vue.rs node_to_html` 注入 data-auto-{id,tag,span}；mod tests
+  新增快照断言。验证：`cargo t vue`（AC-05）。
+- **T-08** `crates/auto-man/src/vue.rs`：脚手架写 `src/auto-sources.ts`
+  （run_vue_project + incremental_compile_changed 同步、hash 防抖）；
+  dev-only overlay 资产（overlay.ts + 面板样式）+ main.ts 接线。
+  验证：`auto run` 启动无错，页面含 overlay 注入（AC-06 前置）。
+- **T-09** overlay.ts 交互逻辑：Alt+drag marquee、DOM 采集（中心包含+顶层修剪）、
+  切片+JSON、复制。扩展 `test_vue_playwright.mjs` 用例。
+  验证：`node .agents/skills/autoui-verifier/scripts/test_vue_playwright.mjs`（AC-06）。
+
+### Phase E —— 收口
+
+- **T-10** 双端实机走查留证（截图/录屏入 plan）；`cargo tf` 全量门禁（AC-08）。
+- **T-11** spec 沉淀：SD-01 新建设计文档、SD-02/03 回写；`.autoos/specs.json`
+  upsert + `python scripts/spec-index.py`。
+
+## 复审记录
+
+- 2026-09-18 /auto-plan:new 起草：基于双端代码勘察定稿 v1 契约，提交用户确认。
+  stage: new，outcome: pass（待用户确认后转 executing），next: work（T-01 起）。
+
+## 待澄清事项
+
+1. **ChatGPT 讨论链接不可达**（chatgpt.com 分享页在本环境渲染为空白，多种方式
+   尝试失败）。本设计以需求文字描述为准；若讨论中已有既定决策（如输出格式细节、
+   交互方式），请指出差异，我将按讨论内容修订计划（plan_revision +1）。
+2. **交互键位**：双端统一 **Alt+拖拽**（VM 端免开 F12；浏览器端 Alt 无冲突）。
+   备选：VM 端 F11 独立模式 / Vue 端 Ctrl+Shift+S。若你偏好其他键位请指定。
+3. **结果面板形态**：v1 VM 端复用 DevTools 标签页（基建最短）、Vue 端浮动面板；
+   语义一致。统一为双端浮动面板可作后续迭代。
+4. **桌面多虚拟窗**：v1 仅聚焦窗（vwin 平移），跨窗框选不支持——符合预期否？
+5. **默认视图**：面板默认展示 Auto 源码（JSON/Atom 切换）。若知识采集场景期望
+   默认 JSON，请指出。

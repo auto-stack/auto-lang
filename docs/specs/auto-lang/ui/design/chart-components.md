@@ -59,6 +59,38 @@
 - **质量基线（484 用户）**：Auto 实现效果须与 shadcn 版基本相当——以新旧
   charts-gallery 视觉对拍为验收口径。
 
+## tag 双态归属（schema 声明面 × 包实现面，PLAN-643 补章）
+
+chart 四裸名 tag 的"归属"分两个正交的面，缺一即出压制事故（P642-D1）：
+
+- **声明面（schema）**：`schema/aura.at` 中 `area-chart`/`bar-chart`/`line-chart`/
+  `donut-chart` 四元素分类为 **`tier: "package_origin"`**——语义是"此 tag 的实现
+  由 official 组件包提供，schema 只登记名与契约（palette 词汇面/lsp 补全/
+  文档参考表），**不参与 builtin 压制**"。历史形态是 `tier: "unclassified"` +
+  `backends: none` 空壳（PLAN-484 退役 shadcn 七注册后遗留的 implicit fallback），
+  曾让四 tag 仍是"builtin tag"。
+- **实现面（包）**：官方 chart 组件（`LineChart/BarChart/AreaChart/DonutChart`，
+  折叠键与四 tag 同形）活于组件包目录（现三副本：`auto-os/widgets-gallery`、
+  `examples/charts-gallery`、`examples/ui/024-charts` 各 `src/front/components/`），
+  484 "不回引擎内置"裁定维持——**不把 chart 注册回 WidgetRegistry 内置**
+  （PLAN-640 AC-09 DEBT 草稿中"注册 chart tag 进 WidgetRegistry"的方向由本裁定
+  证伪：正解是 palette 词汇面认识"包即官方组件"，见 blueprint contract 验证面）。
+
+**压制判定语义（enduring）**：
+
+- `ComponentRegistry`（ui_gen/widget/component_registry.rs）的 builtin 判定
+  （`is_builtin_fold`/`resolve` 的 schema 臂）**排除 package_origin 元素**——
+  本地/包组件与四 tag 同名折叠时合法接管，S004（builtin wins）对四 tag 不再
+  出现。Plan 408/435 "Builtin > Local > Package" 通用规则与其余 tier 元素
+  **不变**（a2vue Card 等合法 shadow 生态保护照旧）。
+- **合并臂（ui-gallery 内嵌）装载语义**：demo 适配器内 `use { package: … }`
+  必须与独立臂（`build_dynamic_component_inner` package 分支）同源装载——
+  适配器经 ext-stub 链装载时同样展开包组件进 registry/child_decls。
+  （P642-D1 根因即此链缺 package 分支：四组件不进编译单元，实例 tag 无组件
+  可落，退回 builtin 空壳桩 → 画布空。）
+- 运行时兜底序不因 package_origin 改变：组件名（fold 桥接）优先，miss 才落
+  builtin；package_origin 保证的是"不再有 builtin 桩截胡"。
+
 ## 组件契约 v2
 
 视口约定（不变）：`viewBox "0 0 560 300"`，绘图区内边距 left=40 / right=550 /

@@ -4322,6 +4322,7 @@ mod tests_plan483_d4 {
             position: TabsPosition::Top,
             on_select: None,
             style: None,
+            variant: crate::ui::view::TabsVariant::Default,
         };
         assert_nth_input_dispatches(&view, 0, "PasswordChanged");
     }

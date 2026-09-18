@@ -71,7 +71,7 @@ const highlighted = computed(() =>
 
     <section class="bp-section">
       <h3 class="section-title">Gotchas</h3>
-      <pre class="gotchas-body">{{ bp.gotchas }}</pre>
+      <pre class="gotchas-body">{{ bp.gotchas || '—' }}</pre>
     </section>
   </div>
   <div v-else>

@@ -366,7 +366,15 @@ fn export_element(
                     }
                 }
             }
-            Ok(A2UIComponentBody::Tabs { tabs })
+            // PLAN-641：variant prop round-trip（缺省 → None，JSON 面省略）。
+            let variant = get_prop("variant")
+                .and_then(|v| match &v {
+                    A2UIValue::LiteralString { literal_string } => {
+                        Some(literal_string.clone())
+                    }
+                    _ => None,
+                });
+            Ok(A2UIComponentBody::Tabs { tabs, variant })
         }
 
         // Unknown tag
@@ -478,6 +486,7 @@ mod tests {
         };
 
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
@@ -558,6 +567,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Test".to_string(),

@@ -1,0 +1,7 @@
+name: "tabs-variants"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+title: "Tabs Variants"
+title_zh: "Tabs 形态"
+window: "fit"

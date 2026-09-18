@@ -98,7 +98,7 @@ opt-in 语义：新示例不加字段即不上架；外部自含根（os-config 
 | 009 | article-feed | 文章卡片流 | — | — | 基础 |
 | 010 | contact-form | 联系表单 + 提交反馈 | — | — | 基础 |
 | 011 | calculator | 四则计算器 | — | ✓ | 🔀 升级拆出（Plan 401） |
-| 012 | stopwatch（**Clock**） | Clock 四 tab：秒表（真走表 Tick 250ms+5 计圈）/计时器（到零横幅）/世界时钟（8 城固定偏移）/闹钟（storage 5 槽持久化）——os-003 原地升级，id 保持 012-stopwatch | — | ✓ | ✅ [os-003](../../docs/plans/INDEX.md)（origin Plan 554；desktop_mcp 12/12） |
+| 012 | clock（**Clock**） | 全功能时钟五 tab：传统手表 ⌚ SVG 表盘+数显/世界时钟（8 城时差）/闹钟（storage 5 槽持久化）/秒表（真走表 Tick 250ms+计圈高亮）/倒计时（快捷预设+环形通知）——Plan 644 现代时钟重塑，id 升格 012-clock | — | ✓ | ✅ [Plan 644](../../docs/plans/INDEX.md)（origin os-003/Plan 554；desktop_mcp） |
 | 013 | todo | TodoMVC 完整实现 | — | ✓ | ✅ 有 MCP 测试 |
 | 014 | weather | 天气仪表盘 | — | ✓ | 基础 |
 | 015 | notes | 两栏笔记（真实应用形态） | — | ✓ | ✅ Plan 354 升级 |
@@ -181,9 +181,8 @@ Basic/Premium/Enterprise 三档 + 月付/年付 `switch` 开关切换价格，
 不是玩具。已在 Plan 401 纲领下拆出专项升级（grid 重构 + MCP 桌面测试 +
 多模式）。操作系统默认应用候选。
 
-**[012-stopwatch](012-stopwatch/) — 秒表 + 计圈**
-MM:SS.cc 显示、起/停/重置三态控制、计圈列表。随 `.Tick` 定时器机制
-（setInterval 驱动）落地而生，是该特性的实机载体。
+**[012-clock](012-clock/) — 现代全功能时钟（传统手表表盘 + 世界时钟 + 闹钟 + 秒表 + 倒计时）**
+传统手表 ⌚ SVG 矢量指针表盘（时分秒针平滑旋转）、本地数显、世界时钟（8 城时差）、闹钟多槽持久化、高精度秒表与计圈极值高亮、倒计时快捷预设，桌面小组件 view mini 传统表盘支持。
 
 **[013-todo](013-todo/) — TodoMVC** 
 完整 [TodoMVC](https://todomvc.com) 规格：增删、勾选、全选、筛选

@@ -1,0 +1,81 @@
+widget App {
+    model {
+        var s1 str = "a"
+        var s2 str = "a"
+        var s3 str = "a"
+    }
+
+    msg { SelectS1(str), SelectS2(str), SelectS3(str) }
+
+    on {
+        .SelectS1(t) -> { .s1 = t }
+        .SelectS2(t) -> { .s2 = t }
+        .SelectS3(t) -> { .s3 = t }
+    }
+
+    // PLAN-641：tabs variant 双端对照——default（按钮托盘）/ enclosed 直角
+    // （IDE 观感）/ enclosed + rounded-t-lg（Chrome 观感）。tab 本身可点：
+    // onselect 回调携带选中 tab 的 value 字符串，on 块直绑写 store（受控）。
+    // 注：VM 轨标签用小写惯用形（col/text/row/h1/h3）。
+    view {
+        col {
+            style: "p-8 gap-8 max-w-2xl"
+
+            h1 "Tabs Variants"
+
+            // ── Section 1：default（按钮托盘，零回归形态）──
+            col {
+                style: "gap-3"
+                h3 "default tray"
+                tabs (value: .s1, onselect: .SelectS1("a")) {
+                    tabslist {
+                        tabstrigger (value: "a") { text "Alpha" }
+                        tabstrigger (value: "b") { text "Beta" }
+                    }
+                    tabscontent (value: "a", class: "p-4 text-sm") {
+                        text "Alpha panel - default tray (status quo)"
+                    }
+                    tabscontent (value: "b", class: "p-4 text-sm") {
+                        text "Beta panel - default tray (status quo)"
+                    }
+                }
+            }
+
+            // ── Section 2：enclosed 直角（IDE 编辑器 tab 观感）──
+            col {
+                style: "gap-3"
+                h3 "enclosed flat (IDE)"
+                tabs (value: .s2, variant: "enclosed", onselect: .SelectS2("a")) {
+                    tabslist {
+                        tabstrigger (value: "a") { text "Alpha" }
+                        tabstrigger (value: "b") { text "Beta" }
+                    }
+                    tabscontent (value: "a", class: "p-4 text-sm") {
+                        text "Alpha panel - active tab merges with this panel"
+                    }
+                    tabscontent (value: "b", class: "p-4 text-sm") {
+                        text "Beta panel - active tab merges with this panel"
+                    }
+                }
+            }
+
+            // ── Section 3：enclosed + 顶部圆角（Chrome 观感；圆角走 token）──
+            col {
+                style: "gap-3"
+                h3 "enclosed rounded (Chrome)"
+                tabs (value: .s3, variant: "enclosed", style: "rounded-t-lg", onselect: .SelectS3("a")) {
+                    tabslist {
+                        tabstrigger (value: "a", class: "rounded-t-lg") { text "Alpha" }
+                        tabstrigger (value: "b", class: "rounded-t-lg") { text "Beta" }
+                    }
+                    tabscontent (value: "a", class: "p-4 text-sm") {
+                        text "Alpha panel - Chrome rounded look"
+                    }
+                    tabscontent (value: "b", class: "p-4 text-sm") {
+                        text "Beta panel - Chrome rounded look"
+                    }
+                }
+            }
+        }
+    }
+}

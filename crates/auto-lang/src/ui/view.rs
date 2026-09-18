@@ -189,6 +189,35 @@ pub enum TabsPosition {
     Right,
 }
 
+/// Tabs 形态（PLAN-641）：default = 按钮托盘（现状）；enclosed = 连通形态
+/// （激活 tab 与内容面板共享背景无缝，非激活 tab 扁平方块仅背景色差）。
+/// Chrome 圆角观感与 IDE 直角观感是 enclosed 的装饰差异，由圆角 token 承载，
+/// 不入词表。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TabsVariant {
+    #[default]
+    Default,
+    Enclosed,
+}
+
+impl TabsVariant {
+    /// 线协议/属性字符串解析；未知值回退 [`TabsVariant::Default`]（不 panic，
+    /// PLAN-641 AC-01）。
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "enclosed" => TabsVariant::Enclosed,
+            _ => TabsVariant::Default,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TabsVariant::Default => "default",
+            TabsVariant::Enclosed => "enclosed",
+        }
+    }
+}
+
 /// Accordion item (collapsible section)
 #[derive(Debug, Clone)]
 pub struct AccordionItem<M: Clone + Debug> {
@@ -771,6 +800,8 @@ pub enum View<M: Clone + Debug> {
         position: TabsPosition,
         on_select: Option<TabsSelectCallback<M>>,
         style: Option<Style>,
+        /// PLAN-641：形态（default=按钮托盘，enclosed=连通）。
+        variant: TabsVariant,
     },
 
     /// NavigationRail (compact side navigation) with optional styling
@@ -1898,6 +1929,7 @@ impl<M: Clone + Debug> View<M> {
             position: TabsPosition::Top,
             on_select: None,
             style: None,
+            variant: TabsVariant::Default,
         }
     }
 
@@ -2271,7 +2303,7 @@ impl<M: Clone + Debug> View<M> {
                 position,
                 style,
             },
-            View::Tabs { labels, contents, selected, position, on_select, style } => View::Tabs {
+            View::Tabs { labels, contents, selected, position, on_select, style, variant } => View::Tabs {
                 labels,
                 contents: contents.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 selected,
@@ -2281,6 +2313,7 @@ impl<M: Clone + Debug> View<M> {
                     TabsSelectCallback::new(move |idx| f(cb.call(idx)))
                 }),
                 style,
+                variant,
             },
             View::NavigationRail { items, selected, width, show_labels, on_select, style } => View::NavigationRail {
                 items,
@@ -3109,6 +3142,7 @@ pub struct TabsBuilder<M: Clone + Debug> {
     position: TabsPosition,
     on_select: Option<TabsSelectCallback<M>>,
     style: Option<Style>,
+    variant: TabsVariant,
 }
 
 impl<M: Clone + Debug> TabsBuilder<M> {
@@ -3124,6 +3158,12 @@ impl<M: Clone + Debug> TabsBuilder<M> {
 
     pub fn position(mut self, position: TabsPosition) -> Self {
         self.position = position;
+        self
+    }
+
+    /// PLAN-641：形态（default=按钮托盘，enclosed=激活 tab 与内容连通）。
+    pub fn variant(mut self, variant: TabsVariant) -> Self {
+        self.variant = variant;
         self
     }
 
@@ -3148,6 +3188,7 @@ impl<M: Clone + Debug> TabsBuilder<M> {
             position: self.position,
             on_select: self.on_select,
             style: self.style,
+            variant: self.variant,
         }
     }
 }
@@ -3297,6 +3338,38 @@ mod tests {
 
     // Type alias for convenience
     type TestView = View<TestMsg>;
+
+    // ========== PLAN-641: TabsVariant 词表与 Builder 默认值 ==========
+
+    #[test]
+    fn test_tabs_variant_parse_and_default() {
+        // Default 缺省；未知值安全回退（AC-01 panic 兜底）。
+        assert_eq!(TabsVariant::default(), TabsVariant::Default);
+        assert_eq!(TabsVariant::parse("default"), TabsVariant::Default);
+        assert_eq!(TabsVariant::parse("enclosed"), TabsVariant::Enclosed);
+        assert_eq!(TabsVariant::parse("bogus"), TabsVariant::Default);
+        assert_eq!(TabsVariant::parse(""), TabsVariant::Default);
+        assert_eq!(TabsVariant::Default.as_str(), "default");
+        assert_eq!(TabsVariant::Enclosed.as_str(), "enclosed");
+    }
+
+    #[test]
+    fn test_tabs_builder_variant_default_and_explicit() {
+        // Builder 缺省 Default。
+        let v: TestView = View::tabs(vec!["A".to_string(), "B".to_string()]).build();
+        match v {
+            View::Tabs { variant, .. } => assert_eq!(variant, TabsVariant::Default),
+            _ => panic!("Expected View::Tabs"),
+        }
+        // .variant(Enclosed) 生效。
+        let v: TestView = View::tabs(vec!["A".to_string()])
+            .variant(TabsVariant::Enclosed)
+            .build();
+        match v {
+            View::Tabs { variant, .. } => assert_eq!(variant, TabsVariant::Enclosed),
+            _ => panic!("Expected View::Tabs"),
+        }
+    }
 
     // ========== Task 4.1: Test View enum style fields ==========
 

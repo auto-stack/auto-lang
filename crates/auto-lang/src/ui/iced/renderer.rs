@@ -4434,7 +4434,34 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // px → coords 逻辑幅面)+ ≤30Hz 限频 + 量化去重;不带 on_move
             // 的存量 mouse-area 映射零改动。
             AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
-                let mut ma = mouse_area(content.into_iced());
+                // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):构建面接线状态。
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    let (sw, sh) = style.as_ref().map(|s| {
+                        let is = IcedStyle::from_style(s);
+                        (format!("{:?}", is.width), format!("{:?}", is.height))
+                    }).unwrap_or_else(|| ("None".into(), "None".into()));
+                    eprintln!("[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
+                        on_click.is_some(), on_release.is_some(), on_double_click.is_some(),
+                        on_context_menu.is_some(), on_move.is_some());
+                }
+                // PLAN-021 线 B 根修:iced 0.14 mouse_area layout 直通子件,
+                // 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类原挂
+                // 外层 build_container(空内容 → 自身 0×0 bounds),press/
+                // hover 全死而渲染正常(020 双区探针计数 0 与 split 分隔条
+                // 拖拽死的断点)。内容侧镜像一个仅承载宽高的透明容器,使命
+                // 中区=可视区;外层树形与样式归属不动(absolute 抬升/z-order
+                // /绘制均不感知本改动)。
+                let sized_content = match style.as_ref() {
+                    Some(s) => {
+                        let is = IcedStyle::from_style(s);
+                        let mut c = iced::widget::container(content.into_iced());
+                        if let Some(ref ws) = is.width { c = c.width(iced_length(ws)); }
+                        if let Some(ref hs) = is.height { c = c.height(iced_length(hs)); }
+                        c.into()
+                    }
+                    None => content.into_iced(),
+                };
+                let mut ma = mouse_area(sized_content);
                 if let Some(msg) = on_enter {
                     ma = ma.on_enter(msg);
                 }
@@ -4882,33 +4909,192 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 contents,
                 selected,
                 position: _,
-                on_select: _,
-                style: _,
+                on_select,
+                style,
+                variant,
             } => {
                 use iced::widget::container;
 
-                let mut tabs_widget = column([]);
+                // PLAN-641：enclosed 圆角 token——tabs 根 style 的 rounded-*
+                // 类驱动激活 cell 顶部圆角（有值→Chrome 观感；无→IDE 直角
+                // 观感）；底部圆角恒 0（与内容面板连通）。
+                let top_radius = style.as_ref().map(|s| {
+                    let r = IcedStyle::from_style(s).effective_border_radius();
+                    iced::border::Radius {
+                        top_left: r.top_left,
+                        top_right: r.top_right,
+                        bottom_right: 0.0,
+                        bottom_left: 0.0,
+                    }
+                });
 
-                let mut tab_buttons_row = row([]);
-                for (idx, label) in labels.iter().enumerate() {
-                    let is_selected = idx == selected;
-                    let label_text = if is_selected {
-                        format!("[{}]", label)
-                    } else {
-                        label.clone()
-                    };
+                let dark = crate::ui::style::theme::dark_mode();
+                let token_rgb = |t: crate::design_tokens::registry::TokenName| {
+                    crate::ui::style::theme::active_theme_rgb(t, dark)
+                        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                };
 
-                    let tab_button = button(text(label_text));
-                    tab_buttons_row = tab_buttons_row.push(tab_button);
+                match variant {
+                    crate::ui::view::TabsVariant::Default => {
+                        // default：按钮托盘形态（PLAN-641 零回归口径——现状
+                        // 原样保留，含 [label] 选中标记；点击接 on_select）。
+                        let mut tabs_widget = column([]);
+
+                        let mut tab_buttons_row = row([]);
+                        for (idx, label) in labels.iter().enumerate() {
+                            let is_selected = idx == selected;
+                            let label_text = if is_selected {
+                                format!("[{}]", label)
+                            } else {
+                                label.clone()
+                            };
+
+                            let mut tab_button = button(text(label_text));
+                            if let Some(cb) = &on_select {
+                                tab_button = tab_button.on_press(cb.call(idx));
+                            }
+                            tab_buttons_row = tab_buttons_row.push(tab_button);
+                        }
+
+                        tabs_widget = tabs_widget.push(tab_buttons_row);
+
+                        if let Some(content) = contents.get(selected) {
+                            tabs_widget = tabs_widget
+                                .push(container(content.clone().into_iced()).padding(20));
+                        }
+
+                        container(tabs_widget).into()
+                    }
+                    crate::ui::view::TabsVariant::Enclosed => {
+                        // enclosed 连通形态结构契约（Zed 式，fix-tabs-merged-look
+                        // 重构——交付版"激活底色=页面底色"在无框面板上不可辨，
+                        // merged 无视觉锚点）：
+                        // ① 每个 cell 自带 1px 边框（padding-reveal：外层
+                        //    container bg=边框色，内衬 1px 露出）；
+                        // ② 激活 cell 底部开口（padding-bottom 0）+ 背景=面板
+                        //    背景 → 与下方内容面板无边框区直接连通；
+                        // ③ 内容面板自带边框（左/右/下，顶部开口）→ 边框的
+                        //    连接可见。
+                        let bg = token_rgb(crate::design_tokens::registry::TokenName::Background);
+                        let strip_bg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Muted);
+                        let cell_bg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Secondary);
+                        let active_fg =
+                            token_rgb(crate::design_tokens::registry::TokenName::Foreground);
+                        let inactive_fg =
+                            token_rgb(crate::design_tokens::registry::TokenName::MutedForeground);
+                        // 边框色：Border token，缺省走 iced adapter 的边框解析。
+                        let frame_rgb = crate::ui::style::theme::active_theme_rgb(
+                            crate::design_tokens::registry::TokenName::Border,
+                            dark,
+                        )
+                        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                        .unwrap_or_else(|| {
+                            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+                            iced::Color::from_rgb8(r, g, b)
+                        });
+
+                        let mut strip = row([]);
+                        for (idx, label) in labels.iter().enumerate() {
+                            let is_active = idx == selected;
+                            let label_color =
+                                if is_active { active_fg } else { inactive_fg };
+                            let cell_fill = if is_active { bg } else { cell_bg };
+                            let radius = if is_active {
+                                top_radius.unwrap_or_default()
+                            } else {
+                                iced::border::Radius::default()
+                            };
+                            // 激活 cell 底部开口：padding-bottom 0（其余三边
+                            // 1px 内衬露出边框色）。
+                            let frame_pad = if is_active {
+                                iced::Padding { top: 1.0, right: 1.0, bottom: 0.0, left: 1.0 }
+                            } else {
+                                iced::Padding { top: 1.0, right: 1.0, bottom: 1.0, left: 1.0 }
+                            };
+
+                            // cell 本体：外层 frame（bg=边框色，padding 内衬）
+                            // > 内层 fill（bg=cell 填充）。button 仅作点击命
+                            // 中面，样式透明化（覆盖 iced 默认 primary 底色）。
+                            let inner = container(
+                                text(label.clone())
+                                    .color(label_color.unwrap_or(iced::Color::WHITE)),
+                            )
+                            .center_y(iced::Length::Fill)
+                            .style(move |_| container::Style {
+                                background: cell_fill.map(iced::Background::Color),
+                                border: iced::Border {
+                                    radius,
+                                    ..iced::Border::default()
+                                },
+                                ..container::Style::default()
+                            });
+                            let cell = container(inner)
+                                .padding(frame_pad)
+                                .center_y(iced::Length::Fill)
+                                .style(move |_| container::Style {
+                                    background: Some(iced::Background::Color(frame_rgb)),
+                                    border: iced::Border {
+                                        radius,
+                                        ..iced::Border::default()
+                                    },
+                                    ..container::Style::default()
+                                });
+
+                            let mut cell_hit = button(cell).padding(0);
+                            if let Some(cb) = &on_select {
+                                cell_hit = cell_hit.on_press(cb.call(idx));
+                            }
+                            cell_hit = cell_hit.style(move |_theme, _status| {
+                                iced::widget::button::Style {
+                                    background: None,
+                                    text_color: label_color
+                                        .unwrap_or(iced::Color::WHITE),
+                                    border: iced::Border {
+                                        radius,
+                                        ..iced::Border::default()
+                                    },
+                                    ..iced::widget::button::Style::default()
+                                }
+                            });
+                            strip = strip.push(cell_hit);
+                        }
+
+                        let mut tabs_widget = column([]);
+                        tabs_widget = tabs_widget.push(container(strip).height(36.0).style(
+                            move |_| container::Style {
+                                background: strip_bg.map(iced::Background::Color),
+                                ..container::Style::default()
+                            },
+                        ));
+
+                        if let Some(content) = contents.get(selected) {
+                            // 面板自带边框：外层 bg=边框色 + padding
+                            // [0,1,1,1]（顶部开口，激活 tab 连通处无横线），
+                            // 内层 bg=背景色。
+                            tabs_widget = tabs_widget.push(
+                                container(
+                                    container(content.clone().into_iced())
+                                        .padding(12)
+                                        .width(iced::Length::Fill)
+                                        .style(move |_| container::Style {
+                                            background: bg.map(iced::Background::Color),
+                                            ..container::Style::default()
+                                        }),
+                                )
+                                .width(iced::Length::Fill)
+                                .padding(iced::Padding { top: 0.0, right: 1.0, bottom: 1.0, left: 1.0 })
+                                .style(move |_| container::Style {
+                                    background: Some(iced::Background::Color(frame_rgb)),
+                                    ..container::Style::default()
+                                }),
+                            );
+                        }
+
+                        tabs_widget.into()
+                    }
                 }
-
-                tabs_widget = tabs_widget.push(tab_buttons_row);
-
-                if let Some(content) = contents.get(selected) {
-                    tabs_widget = tabs_widget.push(container(content.clone().into_iced()).padding(20));
-                }
-
-                container(tabs_widget).into()
             }
 
             AbstractView::NavigationRail {
@@ -6831,7 +7017,32 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             }
         }
 
-        // Select, Slider, Accordion, Sidebar, Tabs, NavigationRail use
+        // PLAN-641：Tabs 显式臂——on_select 是 Arc 回调，与 PointerMoveHandler
+        // 同款 from_dynamic 包装即可跨消息类型转换（此前落 `_ => Empty`，VM
+        // live 树中 Tabs 整枝被折空）。
+        AbstractView::Tabs {
+            labels,
+            contents,
+            selected,
+            position,
+            on_select,
+            style,
+            variant,
+        } => AbstractView::Tabs {
+            labels,
+            contents: contents.into_iter().map(convert_view_messages).collect(),
+            selected,
+            position,
+            on_select: on_select.map(|cb| {
+                crate::ui::view::TabsSelectCallback::new(move |idx| {
+                    IcedMessage::from_dynamic(&cb.call(idx))
+                })
+            }),
+            style,
+            variant,
+        },
+
+        // Select, Slider, Accordion, Sidebar, NavigationRail use
         // callback types (SelectCallback, fn pointers, Arc<...>) that
         // cannot be trivially converted. Map them to Empty as fallback.
         _ => AbstractView::Empty,
@@ -9403,7 +9614,7 @@ fn summon_launcher(
 fn launcher_brand_color(id: &str) -> &'static str {
     match id {
         "011-calculator" => "#7c9a6d",
-        "012-stopwatch" => "#b88c61",
+        "012-clock" | "012-stopwatch" => "#b88c61",
         "013-todo" => "#6a8bad",
         "014-weather" => "#7d9ec4",
         "015-notes" => "#c9a77e",
@@ -9583,6 +9794,532 @@ fn toggle_notification_center(
     }
     state.desktop.notes_unread.set(0);
     iced::Task::none()
+}
+
+// ============================================================================
+// PLAN-024：dashboard 面板（第四 overlay 槽——设置面板退役后继任；通知层
+// 邻位顶层）。面板 chrome = dashboard.at 特权面（懒挂载）；face 卡 = 各
+// App `view mini` 命名视图的宿主拆借渲染（活渲染面，DM::App 打标直达该
+// App 会话）。配置 `shell.dashboard.*` storage（§5.6：面板 Init 读回 +
+// 宿主注入两段式，单一事实在宿主侧读回）。
+// ============================================================================
+
+/// dashboard 面板布局常量（stella 骨架比例简化：等宽 3 列起步，span 表达
+/// 宽卡）。宿主计算单一事实，面板 .at 经 `__panel_*` 注入镜像；face 格位
+/// 由同一算式产出（像素级一致，零漂移）。
+const DASH_COLS: usize = 3;
+const DASH_CELL_H: f32 = 132.0;
+const DASH_GAP: f32 = 12.0;
+const DASH_PAD: f32 = 16.0;
+const DASH_HEADER_H: f32 = 48.0;
+const DASH_PANEL_MAX_W: f32 = 920.0;
+
+/// face 卡片（格位算式输入）：registry id + 列跨度 + 所属 tab。
+/// R5：tab 由注册表 category 派生（"system" → 系统页，其余 → 小组件页）
+/// ——实时轮询类组件住系统页，非活动页宿主不渲染且孵化 Tick 停订。
+struct DashFace {
+    id: String,
+    title: String,
+    icon: String,
+    status: &'static str, // running | hatched | placeholder
+    span: usize,
+    tab: &'static str,    // main | system
+}
+
+/// PLAN-024：face 卡 spacer 链定位（viewport 绝对格位 → 全幅层）——
+/// row[h-space(x), col[v-space(y), card]]，家法（真实 Stack 子层
+/// padding/align 不可依赖）。
+fn spare_position<M: Clone + std::fmt::Debug + 'static>(
+    card: iced::Element<'_, M>,
+    rect: iced::Rectangle,
+) -> iced::Element<'_, M> {
+    let placed = iced::widget::container(
+        iced::widget::row![
+            iced::widget::Space::new()
+                .width(iced::Length::Fixed(rect.x))
+                .height(iced::Length::Shrink),
+            iced::widget::column![
+                iced::widget::Space::new()
+                    .width(iced::Length::Shrink)
+                    .height(iced::Length::Fixed(rect.y)),
+                card,
+            ],
+        ],
+    )
+    .width(iced::Length::Fill)
+    .height(iced::Length::Fill);
+    placed.into()
+}
+
+/// 面板布局算式（宿主/面板几何单一事实）——返回 (panel_w, panel_h,
+/// panel_top, 每张 face 的视口绝对格位矩形，行主序 next-fit：span 大于
+/// 余量即换行)。面板 = 顶部居中（x 居中，top 注入）；高 = 标题行 + 行数
+/// ×格高 + (行数+1)×gap + 2×pad。
+#[cfg(test)]
+mod plan024_dashboard_layout_tests {
+    use super::*;
+
+    fn face(id: &str, span: usize) -> DashFace {
+        DashFace {
+            id: id.to_string(),
+            title: id.to_string(),
+            icon: "app-window".into(),
+            status: "hatched",
+            span,
+            tab: "main",
+        }
+    }
+
+    const VP: iced::Rectangle = iced::Rectangle {
+        x: 0.0,
+        y: 0.0,
+        width: 1280.0,
+        height: 800.0,
+    };
+
+    /// 空清单：面板最小高，无格位。
+    #[test]
+    fn empty_faces_min_panel() {
+        let (w, h, _top, cells) = dashboard_layout(VP, &[]);
+        assert!(w > 0.0 && h > 0.0);
+        assert!(cells.is_empty());
+    }
+
+    /// 三张 span=1 恰好一行；第四张换行。
+    #[test]
+    fn three_fit_one_row_fourth_wraps() {
+        let faces = vec![face("a", 1), face("b", 1), face("c", 1), face("d", 1)];
+        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 4);
+        // 行主序：前三同 y，第四换行 y 更大。
+        assert_eq!(cells[0].y, cells[1].y);
+        assert_eq!(cells[1].y, cells[2].y);
+        assert!(cells[3].y > cells[0].y);
+    }
+
+    /// span=2 宽卡占两列：后续 1 卡同行，再下张换行。
+    #[test]
+    fn span2_occupies_two_columns() {
+        let faces = vec![face("wide", 2), face("n", 1), face("next", 1)];
+        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 3);
+        assert!(cells[0].width > cells[2].width, "span2 宽卡更宽");
+        assert_eq!(cells[0].y, cells[1].y, "span2+1 同行");
+        assert!(cells[2].y > cells[0].y, "第三张换行");
+    }
+
+    /// span 越界 clamp 防御（storage 坏值不 panic、不错位越界）。
+    #[test]
+    fn span_clamped_to_cols() {
+        let faces = vec![face("x", 99)];
+        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 1);
+        assert!(cells[0].width <= VP.width);
+    }
+}
+
+fn dashboard_layout(
+    viewport: iced::Rectangle,
+    faces: &[DashFace],
+) -> (f32, f32, f32, Vec<iced::Rectangle>) {
+    let panel_w = DASH_PANEL_MAX_W.min(viewport.width - 32.0).max(320.0);
+    let inner_w = panel_w - 2.0 * DASH_PAD;
+    let cell_w = (inner_w - (DASH_COLS as f32 - 1.0) * DASH_GAP) / DASH_COLS as f32;
+    // 行主序 next-fit 装箱（span ∈ 1..=3；越界 clamp——storage 坏值防御）。
+    let mut cells = Vec::with_capacity(faces.len());
+    let mut col = 0usize;
+    let mut row = 0usize;
+    for f in faces {
+        let span = f.span.clamp(1, DASH_COLS).min(DASH_COLS - col).max(1);
+        let x = DASH_PAD + col as f32 * (cell_w + DASH_GAP);
+        // 网格区起点 = 标题行之下（面板 .at 头行 + p-4 同源算式）。
+        let y = DASH_HEADER_H + DASH_PAD + row as f32 * (DASH_CELL_H + DASH_GAP);
+        let w = span as f32 * cell_w + (span as f32 - 1.0) * DASH_GAP;
+        cells.push(iced::Rectangle {
+            x,
+            y,
+            width: w,
+            height: DASH_CELL_H,
+        });
+        col += span;
+        if col >= DASH_COLS {
+            col = 0;
+            row += 1;
+        }
+    }
+    let rows = if faces.is_empty() {
+        0
+    } else if col > 0 {
+        row + 1 // 末行有内容未换行
+    } else {
+        row
+    };
+    let panel_h = if faces.is_empty() {
+        (DASH_HEADER_H + DASH_PAD + 64.0).clamp(160.0, viewport.height - 96.0)
+    } else {
+        // 标题行 + 网格（rows 行 + 行间 gap）+ 底垫。
+        DASH_HEADER_H + DASH_PAD + rows as f32 * DASH_CELL_H
+            + (rows as f32 - 1.0) * DASH_GAP
+            + DASH_PAD
+    };
+    let panel_top = 64.0_f32.min((viewport.height - panel_h).max(8.0));
+    // 格位 = 面板相对坐标（落位 panel_x 由调用方单一注入——chrome 与
+    // face 永远同源；R7 伴随修正：此前内部居中导致 wrapper 挪位后
+    // chrome/face 分家）。
+    (panel_w, panel_h, panel_top, cells)
+}
+
+/// `shell.dashboard.enabled`（csv）读回——None = 未配置（首次召唤自动
+/// 纳入全部候选，§5.6 默认策略）；Some = 用户显式清单（单一事实）。
+fn dashboard_enabled_list() -> Option<Vec<String>> {
+    crate::vm::ffi::stdlib::storage_host_read("shell.dashboard.enabled")
+        .map(|csv| csv.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+}
+
+/// `shell.dashboard.span.<id>` 读回（"1"|"2"，坏值/缺席 = 1）。
+fn dashboard_span_of(id: &str) -> usize {
+    match crate::vm::ffi::stdlib::storage_host_read(&format!("shell.dashboard.span.{id}")) {
+        Some(v) if v.trim() == "2" => 2,
+        _ => 1,
+    }
+}
+
+/// face 候选清单推导（§5.3 两级）：①注册表全量扫 `view mini` 文本探测
+/// （grep 级，含未运行——占位卡/孵化判定输入）；②会话确认——有会话者
+/// 以 `has_named_view("mini")` 精确生效（文本误报兜底）。产出按注册表序。
+fn dashboard_face_candidates(
+    state: &mut crate::ui::session::DesktopSession,
+) -> Vec<(String, String, String, String)> {
+    let mut out = Vec::new();
+    for entry in state.desktop.registry_entries.iter() {
+        // ①文本探测：resolver 直读源（registry_entries 不携带源码）。
+        let has_mini = state
+            .desktop
+            .app_resolver
+            .as_ref()
+            .and_then(|r| r(&entry.id))
+            .map(|spec| spec.code.contains("view mini"))
+            .unwrap_or(false);
+        if has_mini {
+            out.push((
+                entry.id.clone(),
+                entry.title.clone(),
+                entry.icon.clone(),
+                entry.category.clone(),
+            ));
+        }
+    }
+    out
+}
+
+/// R5：注册表 category → tab（"system" → 系统页，其余 → 小组件页）。
+fn dashboard_tab_of_category(category: &str) -> &'static str {
+    if category == "system" { "system" } else { "main" }
+}
+
+/// 注册表 id → 活会话 AppId（有窗运行中：vwin.registry_id 反查）。
+fn dashboard_running_app(state: &crate::ui::session::DesktopSession, id: &str) -> Option<crate::ui::session::AppId> {
+    let host = state.host.as_ref()?;
+    for v in host.wm.wins.values() {
+        if v.registry_id.as_deref() == Some(id) {
+            return Some(v.app);
+        }
+    }
+    None
+}
+
+/// R5：孵化 mini 会话的 Tick 门控——face 当前不可见（面板隐藏或所在
+/// tab 非活动）→ 停订 .Tick（实时轮询类组件常驻零开销；stella tab 语义
+/// ——“平时不看，也就不影响 CPU”）。非孵化 app 恒允许（自己的窗自己
+/// 驱动）。
+fn dashboard_hatched_tick_allowed(
+    state: &crate::ui::session::DesktopSession,
+    app_id: crate::ui::session::AppId,
+) -> bool {
+    let Some(host) = state.host.as_ref() else { return true };
+    if !host.face_fields.contains_key(&app_id.0) {
+        return true; // 非孵化会话：正常 app，Tick 恒订。
+    }
+    // 面板隐藏 → face 不渲染 → 停订。
+    if !state.dashboard_visible() {
+        return false;
+    }
+    // 注册表 id 反查 → category → tab；面板活动 tab 匹配才订。
+    let Some(panel) = state.desktop.dashboard_app else { return false };
+    let reg_id = state
+        .desktop
+        .hatched_minis
+        .iter()
+        .find(|(_, a)| **a == app_id)
+        .map(|(name, _)| name.clone());
+    let Some(reg_id) = reg_id else { return false };
+    let tab = state
+        .desktop
+        .registry_entries
+        .iter()
+        .find(|e| e.id == reg_id)
+        .map(|e| dashboard_tab_of_category(&e.category))
+        .unwrap_or("main");
+    let active_tab = state
+        .apps
+        .get(&panel)
+        .and_then(|a| a.component.read_state("active_tab").ok())
+        .and_then(|v| match v {
+            auto_val::Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "main".to_string());
+    tab == active_tab
+}
+
+/// view 侧 faces 清单（装配层消费）——只读面板注入的平行快照（零源
+/// 扫描/零文件 IO），重构 DashFace 供 [`dashboard_layout`] 同算式复算
+/// 格位。面板未挂载/快照空 → 空。
+fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<DashFace> {
+    let Some(panel) = state.desktop.dashboard_app else {
+        return Vec::new();
+    };
+    let Some(app) = state.apps.get(&panel) else {
+        return Vec::new();
+    };
+    // write_state_vec 落 VM 堆（读回 = VmRef 引用）——必须走物化读
+    // （read_state_as_vec），Value::Array 直匹配恒空（实机诊断定位）。
+    let read_vec = |key: &str| -> Vec<String> {
+        app.component
+            .read_state_as_vec(key)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|v| match v {
+                auto_val::Value::Str(s) => s.to_string(),
+                other => format!("{other:?}"),
+            })
+            .collect()
+    };
+    let ids = read_vec("face_ids");
+    if ids.is_empty() {
+        return Vec::new();
+    }
+    let titles = read_vec("face_titles");
+    let icons = read_vec("face_icons");
+    let statuses = read_vec("face_statuses");
+    let spans = read_vec("face_spans");
+    let tabs = read_vec("face_tabs");
+    // R5：只渲染面板 .at 活动 tab 的 face（宿主 wrapper 尺寸随活动页
+    // 行数变化——dashboard_layout 同算式重算）。
+    let active_tab = app
+        .component
+        .read_state("active_tab")
+        .ok()
+        .and_then(|v| match v {
+            auto_val::Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "main".to_string());
+    ids.iter()
+        .enumerate()
+        .filter(|(i, _)| tabs.get(*i).map(|t| t == &active_tab).unwrap_or(false))
+        .map(|(i, id)| DashFace {
+            id: id.clone(),
+            title: titles.get(i).cloned().unwrap_or_else(|| id.clone()),
+            icon: icons.get(i).cloned().unwrap_or_else(|| "app-window".into()),
+            status: match statuses.get(i).map(|s| s.as_str()) {
+                Some("running") => "running",
+                Some("hatched") => "hatched",
+                _ => "placeholder",
+            },
+            span: spans
+                .get(i)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(1),
+            tab: match tabs.get(i).map(|t| t.as_str()) {
+                Some("system") => "system",
+                _ => "main",
+            },
+        })
+        .collect()
+}
+
+
+/// dashboard 面板 faces 快照注入（召唤 + 打开期间活更新同体）：
+/// 孵化臂（无会话 + 无后端 → windowless mini 会话）+ 平行列表注入 +
+/// `__dashboard_faces` 合同面 + 几何 px 注入 + RebuildFaces。
+fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
+    let Some(panel) = state.desktop.dashboard_app else {
+        return;
+    };
+    if !state.dashboard_visible() {
+        return;
+    }
+    // 1. 候选 + 配置清单 + 会话/孵化三态解析。
+    let candidates = dashboard_face_candidates(state);
+    let enabled_cfg = dashboard_enabled_list();
+    let mut faces: Vec<DashFace> = Vec::new();
+    for (id, title, icon, category) in candidates {
+        // 配置门：显式清单单一事实；未配置 = 全纳入（默认策略）。
+        if let Some(list) = &enabled_cfg {
+            if !list.iter().any(|s| s == &id) {
+                continue;
+            }
+        }
+        let status = if dashboard_running_app(state, &id).is_some() {
+            "running"
+        } else if state.hatched_mini_of(&id).is_some() {
+            "hatched"
+        } else {
+            // ②静默孵化臂（D4）：无后端依赖才孵化；有后端 = 占位卡。
+            match state.hatch_mini_app(&id) {
+                Ok(Some(app_id)) => {
+                    state.register_hatched_mini(&id, app_id);
+                    "hatched"
+                }
+                _ => "placeholder",
+            }
+        };
+        faces.push(DashFace {
+            id,
+            title,
+            icon,
+            status,
+            span: 0,
+            tab: dashboard_tab_of_category(&category),
+        });
+    }
+    for f in faces.iter_mut() {
+        f.span = dashboard_span_of(&f.id);
+    }
+
+    // 2. 几何（宿主单一事实）+ 注入。
+    let viewport = state.host_viewport();
+    let (panel_w, panel_h, panel_top, _cells) = dashboard_layout(viewport, &faces);
+
+    // 3. 快照注入（平行列表 + 合同面 + 几何）。
+    let mut ids: Vec<auto_val::Value> = Vec::new();
+    let mut titles: Vec<auto_val::Value> = Vec::new();
+    let mut icons: Vec<auto_val::Value> = Vec::new();
+    let mut statuses: Vec<auto_val::Value> = Vec::new();
+    let mut spans: Vec<auto_val::Value> = Vec::new();
+    let mut tabs: Vec<auto_val::Value> = Vec::new();
+    let mut objs: Vec<auto_val::Value> = Vec::new();
+    for f in &faces {
+        ids.push(auto_val::Value::Str(f.id.clone().into()));
+        titles.push(auto_val::Value::Str(f.title.clone().into()));
+        icons.push(auto_val::Value::Str(f.icon.clone().into()));
+        statuses.push(auto_val::Value::Str(f.status.into()));
+        spans.push(auto_val::Value::Str(f.span.to_string().into()));
+        tabs.push(auto_val::Value::Str(f.tab.into()));
+        objs.push(auto_val::Value::Str(f.id.clone().into()));
+    }
+    eprintln!(
+        "[dashboard] refresh: faces={} statuses={:?} panel={panel_w}x{panel_h}@{panel_top}",
+        faces.len(),
+        faces.iter().map(|f| (f.id.as_str(), f.status)).collect::<Vec<_>>(),
+    );
+    if let Some(app) = state.apps.get_mut(&panel) {
+        let _ = app.component.write_state_vec("face_ids", ids);
+        let _ = app.component.write_state_vec("face_titles", titles);
+        let _ = app.component.write_state_vec("face_icons", icons);
+        let _ = app.component.write_state_vec("face_statuses", statuses);
+        let _ = app.component.write_state_vec("face_spans", spans);
+        let _ = app.component.write_state_vec("face_tabs", tabs);
+        let _ = app.component.write_state("__dashboard_faces", auto_val::Value::Array(auto_val::Array::from(objs)));
+        let _ = app
+            .component
+            .write_state("__panel_w", auto_val::Value::Int(panel_w as i32));
+        let _ = app
+            .component
+            .write_state("__panel_h", auto_val::Value::Int(panel_h as i32));
+        let _ = app
+            .component
+            .write_state("__panel_top", auto_val::Value::Int(panel_top as i32));
+        if let Err(err) = app.component.bridge_mut().call_handler("RebuildFaces", &[]) {
+            eprintln!("[session] dashboard RebuildFaces failed: {err}");
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+}
+
+/// PLAN-024：dashboard 面板开合执行体（dock 钮 / Esc / × / scrim 同落；
+/// 二态翻转——可见再召唤即关）。懒挂载：首次召唤编译装载 dashboard.at
+/// （switcher/通知同型），召唤即 faces 快照注入（含静默孵化臂）。
+fn toggle_dashboard(
+    state: &mut crate::ui::session::DesktopSession,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // 1. 懒挂载
+    if state.desktop.dashboard_app.is_none() {
+        match crate::ui::shell::build_dashboard_component() {
+            Ok(comp) => {
+                let app_id = state.allocate_app(comp);
+                state.desktop.dashboard_app = Some(app_id);
+            }
+            Err(err) => {
+                push_notification(state, "error", &format!("dashboard 装载失败: {err}"));
+                return iced::Task::none();
+            }
+        }
+    }
+    // 2. toggle：可见 → 自隐。
+    if state.dashboard_visible() {
+        close_dashboard(state);
+        return iced::Task::none();
+    }
+    // 3. 打开：visible 置位 + faces 快照注入（孵化/几何/平行列表）。
+    let panel = state.desktop.dashboard_app.expect("dashboard mounted");
+    if let Some(app) = state.apps.get_mut(&panel) {
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    refresh_dashboard_panel(state);
+    iced::Task::none()
+}
+
+/// PLAN-024：dashboard 面板关闭执行体（× / scrim / Esc / 再点 dock 钮
+/// 四路径同一入口；孵化会话常驻不回收——notification 槽先例）。
+fn close_dashboard(state: &mut crate::ui::session::DesktopSession) {
+    if let Some(panel) = state.desktop.dashboard_app {
+        if let Some(app) = state.apps.get_mut(&panel) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("0"));
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+    }
+}
+
+/// PLAN-024 T-05：面板编辑——纳入/移除（storage `shell.dashboard.enabled`
+/// csv 直写 + 面板活刷新）。首次显式编辑把「未配置」升级为「显式清单」
+/// （默认全纳入 → 以编辑后清单为单一事实）。
+fn dashboard_set_pinned(state: &mut crate::ui::session::DesktopSession, id: &str, pin: bool) {
+    let mut list = dashboard_enabled_list().unwrap_or_default();
+    // 未配置态的首次编辑：以当前候选清单为底（全纳入），再做增量。
+    if !dashboard_enabled_list_from_storage() {
+        list = dashboard_face_candidates(state)
+            .into_iter()
+            .map(|(id, _, _, _)| id)
+            .collect();
+    }
+    if pin {
+        if !list.iter().any(|s| s == id) {
+            list.push(id.to_string());
+        }
+    } else {
+        list.retain(|s| s != id);
+    }
+    crate::vm::ffi::stdlib::storage_host_publish("shell.dashboard.enabled", list.join(","));
+    refresh_dashboard_panel(state);
+}
+
+/// `shell.dashboard.enabled` 是否已在 storage 显式配置。
+fn dashboard_enabled_list_from_storage() -> bool {
+    crate::vm::ffi::stdlib::storage_host_read("shell.dashboard.enabled").is_some()
+}
+
+/// PLAN-024 T-05：面板编辑——列跨度（storage `shell.dashboard.span.<id>`
+/// 直写 + 面板活刷新）。
+fn dashboard_set_span(state: &mut crate::ui::session::DesktopSession, id: &str, span: u8) {
+    let span = span.clamp(1, 2);
+    crate::vm::ffi::stdlib::storage_host_publish(
+        &format!("shell.dashboard.span.{id}"),
+        span.to_string(),
+    );
+    refresh_dashboard_panel(state);
 }
 
 /// Plan 551：⚙️/open_settings 的 launch-or-focus 靶 = os-config 统一设置
@@ -10098,6 +10835,15 @@ fn execute_desktop_commands(
             // Plan 540 T7：open_settings（齿轮/菜单）——launch-or-focus
             // 设置窗（execute_open_settings）。
             DC::OpenSettings => execute_open_settings(state),
+            // PLAN-024 v1.8：dashboard 面板开合/编辑/launch 执行臂。
+            DC::DashboardToggle => {
+                tasks.push(toggle_dashboard(state));
+            }
+            DC::DashboardClose => close_dashboard(state),
+            DC::DashboardPin(app) => dashboard_set_pinned(state, &app, true),
+            DC::DashboardUnpin(app) => dashboard_set_pinned(state, &app, false),
+            DC::DashboardSpan(app, span) => dashboard_set_span(state, &app, span),
+            DC::DashboardLaunch(app) => execute_launch_app(state, &app),
             // Plan 487 M4：dock 几何驱动动词（I7：热改 dock_edges + relayout
             // + storage 写回；执行体见下）。
             DC::SetDockPosition(top) => execute_set_dock_position(state, top),
@@ -12949,6 +13695,8 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     // inject_dock_pinned 为 pin/unpin 即时臂，两写者同形幂等）。
     // 借序：构建须在 apps.get_mut 借用期之前。
     let dock_pinned = dock_pinned_objs(state);
+    // PLAN-024 v1.8 借序：dashboard 可见性判定位同样先于 get_mut 读取。
+    let dashboard_visible = state.dashboard_visible();
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
         None => return,
@@ -13000,6 +13748,11 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app
         .component
         .write_state("__wm_showdesk", auto_val::Value::str(if showdesk_on { "1" } else { "" }));
+    // PLAN-024 v1.8：__wm_dashboard 可见性投影（"1"/""；dock Dashboard 钮
+    // 打开态高亮判据——__wm_showdesk 同型标量；面板自隐后随指纹差分翻转）。
+    let _ = app
+        .component
+        .write_state("__wm_dashboard", auto_val::Value::str(if dashboard_visible { "1" } else { "" }));
     // PLAN-012 F2 复验：布局名标量投影——任务栏布局钮（grid/master-stack）
     // 高亮判据（等式消费；同 __wm_settings_open 模式。布局切换翻 meta 段
     // → 指纹重写随写同步；free = 两钮均不亮 = 手动排布态）。
@@ -13642,7 +14395,11 @@ fn compare_pngs(
                     crate::ui::desktop_protocol::broker::BROKER_PIPE,
                     std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 );
-                (session, open_task.discard())
+                // PLAN-024：常驻小组件层——boot 即挂载并显示（用户裁定
+                // 2026-09-17：桌面常驻，× = 隐藏 / dock ▦ 切换恢复；
+                // toggle 在未挂载态首次调用即挂载+显示，幂等）。
+                let dash_boot_task = toggle_dashboard(&mut session);
+                (session, open_task.discard().chain(dash_boot_task))
             }
             RunMode::Standalone => {
                 let mut open_tasks = Vec::new();
@@ -16749,6 +17506,74 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::App(app_id, m) => {
+                // PLAN-024：dashboard 占位卡一键 launch 拦截臂——face 叠合层
+                // 宿主合成消息（`__dashboard_launch:<registry-id>`）直投面板
+                // App；写入面板 `__dashboard_cmd` 后走同周期 bus 排空统一
+                // 执行（面板 .at 零感知、无 handler 不产生派发噪音）。尾与
+                // 常规臂同形（exit/sync/batch）。
+                if let Some(launch_id) =
+                    m.event.strip_prefix("__dashboard_launch:").map(str::to_string)
+                {
+                    if state.desktop.dashboard_app == Some(app_id) {
+                        if let Some(panel) = state.desktop.dashboard_app {
+                            if let Some(app) = state.apps.get_mut(&panel) {
+                                let _ = app.component.write_state(
+                                    "__dashboard_cmd",
+                                    auto_val::Value::str(&format!(
+                                        "dashboard_launch\t{launch_id}"
+                                    )),
+                                );
+                                *app.state.view_dirty.borrow_mut() = true;
+                            }
+                        }
+                        let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+                        if exit {
+                            state.shutdown_broker();
+                            return iced::exit();
+                        }
+                        if state.desktop.shell_app.is_some() {
+                            sync_shell_windows(state);
+                        }
+                        return iced::Task::batch(tasks);
+                    }
+                }
+                // PLAN-024 R20：卡片点击打开 app——合成消息
+                // `__dashboard_open:<registry-id>`（face 层 mouse-area 发
+                // 出，带 face app 标签）。三态：孵化会话 → 升格开窗
+                // （face/窗同会话零分家）；已有窗 → activate 聚焦（跨分区
+                // 语义复用）；无会话 → launch。尾与常规臂同形。
+                if let Some(open_id) =
+                    m.event.strip_prefix("__dashboard_open:").map(str::to_string)
+                {
+                    // 判定顺序 = 去重语义（R21）：已有窗 → 聚焦（多次打开
+                    // 不重复开窗）；其次孵化会话 → 升格开窗；最后 → launch。
+                    if dashboard_running_app(state, &open_id).is_some() {
+                        if let Some(panel) = state.desktop.dashboard_app {
+                            if let Some(app) = state.apps.get_mut(&panel) {
+                                let _ = app.component.write_state(
+                                    "__dashboard_cmd",
+                                    auto_val::Value::str(&format!("activate	{open_id}")),
+                                );
+                                *app.state.view_dirty.borrow_mut() = true;
+                            }
+                        }
+                    } else if let Some(hatched) = state.hatched_mini_of(&open_id) {
+                        if let Err(err) = state.open_window_for_session(&open_id, hatched) {
+                            eprintln!("[session] dashboard promote failed: {err}");
+                        }
+                    } else {
+                        execute_launch_app(state, &open_id);
+                    }
+                    let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+                    if exit {
+                        state.shutdown_broker();
+                        return iced::exit();
+                    }
+                    if state.desktop.shell_app.is_some() {
+                        sync_shell_windows(state);
+                    }
+                    return iced::Task::batch(tasks);
+                }
                 // PLAN-002 N6b 取证探针（AUTO_POPOVER_DEBUG=1；定案后移除）。
                 if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1")
                     && (m.event == "MenuClose"
@@ -17353,10 +18178,6 @@ fn compare_pngs(
                 // Plan 503 M3：壁纸罩层（可读性 scrim，紧贴壁纸之上）。
                 layers.push(desktop_wallpaper_scrim());
             }
-            // Plan 496 M5：桌面本体层（463 预留桌面层 z 槽消费）——Stack
-            // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口
-            // 之下（G3 层级：窗口拖过时图标自然被覆盖）。shell 层同型
-            // catch_unwind 视图边界（453 T6）。
             if state.desktop.desktop_app.is_some() {
                 let surface_app = state.desktop.desktop_app.expect("surface checked");
                 let build = || state.split_ref_desktop().map(|v| dynamic_view(v, false));
@@ -17374,6 +18195,172 @@ fn compare_pngs(
                 };
                 layers.push(surface_client.map(move |m| DM::App(surface_app, m)));
             }
+            // PLAN-024：dashboard 常驻小组件层（用户裁定 2026-09-17）——
+            // z 高于桌面图标层、低于全部 app 窗（R12：图标层全屏
+            // BlankPress mouse-area 会吞面板 click，必须在图标层之上才可
+            // 交互；视觉右上与图标网格不重叠，app 窗照常遮挡——R3 保持）；
+            // 常驻非召唤：× = 隐藏 / dock ▦ 切换。
+            // chrome wrapper 与 face 卡共用 dashboard_layout 算式定位
+            // 定尺寸（px spacer 链，像素一致——.at 侧尺寸类不参与的根修）。
+            if state.dashboard_visible() {
+                let faces_view = dashboard_faces_for_view(state);
+                let viewport = state.host_viewport();
+                let (pw0, ph0, ptop, cells_rel) = dashboard_layout(viewport, &faces_view);
+                // R10：面板外框吸附桌面图标网格（列距 88 = 80+8，行距 80 =
+                // 72+8，原点 12）——宽 10 列高 3 行，右上对齐 12px 边距；
+                // 内部格位按实际面板宽等比缩放。
+                let gcol: f32 = 88.0;
+                let grow: f32 = 80.0;
+                let gpad: f32 = 12.0;
+                let pw = (10.0 * gcol - 8.0).min(viewport.width - 2.0 * gpad);
+                let ph = (3.0 * grow - 8.0).max(160.0);
+                let sx = pw / pw0.max(1.0);
+                let sy = ph / ph0.max(1.0);
+                let panel_x = (viewport.width - gpad - pw).max(gpad);
+                let cells: Vec<iced::Rectangle> = cells_rel
+                    .iter()
+                    .map(|r| iced::Rectangle {
+                        x: r.x * sx + panel_x,
+                        y: r.y * sy + ptop,
+                        width: r.width * sx,
+                        height: r.height * sy,
+                    })
+                    .collect();
+                // R4：卡面 glass 底（stella dash-card 语言——主题感知半透
+                // 明填充，dark=轻提亮/light=白玻璃）。
+                let card_fill = if crate::ui::style::iced_adapter::dark_mode() {
+                    iced::Color::from_rgba(1.0, 1.0, 1.0, 0.04)
+                } else {
+                    iced::Color::from_rgba(1.0, 1.0, 1.0, 0.45)
+                };
+                let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
+                let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
+                let dash_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] dashboard 缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] dashboard view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                // chrome wrapper：panel 矩形 spacer 链定位定尺寸，.at 内部
+                // w-full h-full 填充（chrome 不再自带尺寸类）。
+                let chrome = iced::widget::container(
+                    iced::widget::row![
+                        iced::widget::Space::new()
+                            .width(iced::Length::Fixed(panel_x))
+                            .height(iced::Length::Shrink),
+                        iced::widget::column![
+                            iced::widget::Space::new()
+                                .width(iced::Length::Shrink)
+                                .height(iced::Length::Fixed(ptop)),
+                            iced::widget::container(
+                                dash_client.map(move |m| DM::App(dash_app, m)),
+                            )
+                            .width(iced::Length::Fixed(pw))
+                            .height(iced::Length::Fixed(ph)),
+                        ],
+                    ],
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill);
+                layers.push(chrome.into());
+                // face 卡叠合（viewport 绝对格位；占位卡 = 宿主合成面）。
+                for (f, rect) in faces_view.iter().zip(cells.iter()) {
+                    if f.status != "running" && f.status != "hatched" {
+                        let launch_msg = IcedMessage {
+                            widget: String::new(),
+                            event: format!("__dashboard_launch:{}", f.id),
+                            input_value: None,
+                        };
+                        let hint: iced::Element<'_, IcedMessage> =
+                            iced::widget::mouse_area(
+                                iced::widget::column![
+                                    iced::widget::text("▸").size(22),
+                                    iced::widget::text(f.title.clone()).size(12),
+                                    iced::widget::text("未运行 — 点击启动").size(11),
+                                ]
+                                .align_x(iced::alignment::Horizontal::Center)
+                                .spacing(4),
+                            )
+                            .on_press(launch_msg)
+                            .into();
+                        let placeholder_client = hint.map(move |m| DM::App(dash_app, m));
+                        let card = iced::widget::container(placeholder_client)
+                            .width(iced::Length::Fixed(rect.width))
+                            .height(iced::Length::Fixed(rect.height))
+                            .align_x(iced::alignment::Horizontal::Center)
+                            .align_y(iced::alignment::Vertical::Center)
+                            .style(move |_t| iced::widget::container::Style {
+                                background: Some(card_fill.into()),
+                                border: iced::Border {
+                                    color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.25),
+                                    width: 1.0,
+                                    radius: 12.0.into(),
+                                },
+                                ..Default::default()
+                            });
+                        layers.push(spare_position(card.into(), *rect));
+                        continue;
+                    }
+                    let Some(app_id) = (match f.status {
+                        "running" => dashboard_running_app(state, &f.id),
+                        "hatched" => state.hatched_mini_of(&f.id),
+                        _ => None,
+                    }) else {
+                        continue;
+                    };
+                    let build_face =
+                        || state.split_ref_face(app_id, "mini").map(|v| dynamic_view(v, false));
+                    let face_el: iced::Element<'_, IcedMessage> = match
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(build_face))
+                    {
+                        Ok(Some(el)) => el,
+                        Ok(None) => iced::widget::text("").size(1).into(),
+                        Err(payload) => {
+                            eprintln!(
+                                "[session] face view panicked (plan-453 T6 boundary): {payload:?}"
+                            );
+                            desktop_crash_element()
+                        }
+                    };
+                    let face_client = face_el.map(move |m| DM::App(app_id, m));
+                    // R20：卡体点击 → 打开对应 app（内层按钮/交互优先命中，
+                    // 空白区落到本 mouse_area——N6d 内外层同款机制）。
+                    // R21：双击打开（桌面图标同款交互；单击留给卡片内部
+                    // 交互/无动作）。
+                    let face_wrapped = iced::widget::mouse_area(face_client)
+                        .on_double_click(DM::App(
+                            app_id,
+                            IcedMessage {
+                                widget: String::new(),
+                                event: format!("__dashboard_open:{}", f.id),
+                                input_value: None,
+                            },
+                        ));
+                    let card = iced::widget::container(face_wrapped)
+                        .width(iced::Length::Fixed(rect.width))
+                        .height(iced::Length::Fixed(rect.height))
+                        .align_x(iced::alignment::Horizontal::Center)
+                        .align_y(iced::alignment::Vertical::Center)
+                        .style(move |_t| iced::widget::container::Style {
+                            background: Some(card_fill.into()),
+                            border: iced::Border {
+                                color: iced::Color::from_rgba(0.5, 0.5, 0.5, 0.35),
+                                width: 1.0,
+                                radius: 12.0.into(),
+                            },
+                            ..Default::default()
+                        });
+                    layers.push(spare_position(card.into(), *rect));
+                }
+            }
+            // Plan 496 M5：桌面本体层（463 预留桌面层 z 槽消费）——Stack
+            // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口
+            // 之下（G3 层级：窗口拖过时图标自然被覆盖）。shell 层同型
+            // catch_unwind 视图边界（453 T6）。
             for &wid in &host.wm.z_order {
                 let Some(vwin) = host.wm.wins.get(&wid) else { continue };
                 // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。
@@ -17663,7 +18650,11 @@ fn compare_pngs(
                     subs.push(hot_reload_tick(app_id));
                 }
                 if let Some(interval_ms) = app.component.tick_interval() {
-                    subs.push(widget_tick(app_id, interval_ms));
+                    // R5：孵化 mini 会话 Tick 门控（面板隐藏/非活动 tab 停订
+                    // ——常驻零轮询开销）。
+                    if dashboard_hatched_tick_allowed(state, app_id) {
+                        subs.push(widget_tick(app_id, interval_ms));
+                    }
                 }
                 // Plan 442 A5: one-shot timer tick — only while set_timeout timers
                 // are pending; due callbacks fire in update's __timer_tick arm.
@@ -17988,6 +18979,26 @@ fn dynamic_view_impl(
     sync_mcp: bool,
     round_bottom: bool,
 ) -> iced::Element<'_, IcedMessage> {
+    // PLAN-024：face（命名视图活渲染面）渲染分支——dashboard 面板的格位
+    // 直显。与主视图管线完全分离：不走 app 级 dirty/cached 缓存（与该 app
+    // 主窗的渲染缓存互不踩踏）、不做 MCP 同步、不碰 DevTools 捕获——每帧
+    // 经 view_named 新鲜构建（与 app 主窗共享同一 component/VM 桥，状态
+    // 一致即视觉一致 = 活渲染面本体）。面板关闭即不推 face 层（装配层
+    // 门控），重建成本只在面板打开期发生（§10.4 度量点留 T-08）。
+    if let Some(face_name) = state.view_name {
+        let mut path: Vec<usize> = Vec::new();
+        return match state.component.view_named(face_name) {
+            Some(view) => {
+                let converted = convert_view_messages(view);
+                render_dynamic_view(converted, None, &mut path)
+            }
+            None => iced::widget::text(format!(
+                "[dashboard] face `{face_name}` missing"
+            ))
+            .size(14)
+            .into(),
+        };
+    }
 
     // Plan 309 续篇 II: set the single INSPECT_CAPTURE flag read by
     // `into_iced` + `wrap_debug` during this build. Plain click/hover =
@@ -21733,8 +22744,34 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // 实测"聚焦了但打不出字"）。IcedMessage 专用递归渲染保住
         // on_input → on_with_input_for 的文本载荷。
         AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
-            let inner = render_dynamic_view(*content, debug_ctx, path);
-            let mut ma = mouse_area(inner);
+            // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):构建面接线状态。
+            if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                let (sw, sh) = style.as_ref().map(|s| {
+                    let is = IcedStyle::from_style(s);
+                    (format!("{:?}", is.width), format!("{:?}", is.height))
+                }).unwrap_or_else(|| ("None".into(), "None".into()));
+                eprintln!("[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
+                    on_click.is_some(), on_release.is_some(), on_double_click.is_some(),
+                    on_context_menu.is_some(), on_move.is_some());
+            }
+            // PLAN-021 线 B 根修:iced 0.14 mouse_area layout 直通子件,
+            // 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类原挂
+            // 外层 build_container(空内容 → 自身 0×0 bounds),press/
+            // hover 全死而渲染正常(020 双区探针计数 0 与 split 分隔条
+            // 拖拽死的断点)。内容侧镜像一个仅承载宽高的透明容器,使命
+            // 中区=可视区;外层树形与样式归属不动(absolute 抬升/z-order
+            // /绘制均不感知本改动)。
+            let sized_content: iced::Element<'static, IcedMessage> = match style.as_ref() {
+                Some(s) => {
+                    let is = IcedStyle::from_style(s);
+                    let mut c = iced::widget::container(render_dynamic_view(*content, debug_ctx, path));
+                    if let Some(ref ws) = is.width { c = c.width(iced_length(ws)); }
+                    if let Some(ref hs) = is.height { c = c.height(iced_length(hs)); }
+                    c.into()
+                }
+                None => render_dynamic_view(*content, debug_ctx, path),
+            };
+            let mut ma = mouse_area(sized_content);
             if let Some(msg) = on_enter {
                 ma = ma.on_enter(msg);
             }

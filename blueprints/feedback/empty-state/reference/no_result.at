@@ -1,0 +1,54 @@
+// reference/no_result.at — EmptyState blueprint, "no_result" variant.
+// Filters matched nothing: offer relief (clear filters). Consumer wires
+// actions.primary to its filter-reset semantics.
+
+widget EmptyStateNoResult {
+    msg {
+        PrimaryClicked
+    }
+
+    model {
+        var illustration str = "" // prop: media source override
+    }
+
+    view {
+        col {
+            // ── EDIT: media ──
+            if .illustration != "" {
+                image {
+                    src: .illustration
+                    alt: "No results"
+                    style: "w-40 h-40 object-contain"
+                }
+            } else {
+                text "⌕" { style: "text-4xl text-gray-300" }
+            }
+
+            // ── EDIT: headline ──
+            col {
+                text "No results found" { style: "text-lg font-semibold" }
+                text "Try adjusting or clearing your filters." {
+                    style: "text-sm text-gray-500"
+                }
+                style: "gap-1 items-center"
+            }
+
+            separator { style: "w-16 my-2" }
+
+            // ── EDIT: actions ──
+            button "Clear filters" {
+                onclick: .PrimaryClicked
+                variant: "outline"
+                style: "px-4 py-2 border rounded-lg"
+            }
+
+            style: "items-center justify-center gap-3 py-16"
+        }
+    }
+
+    on {
+        .PrimaryClicked -> {
+            // actions.primary: consumer clears filters + re-runs its query
+        }
+    }
+}

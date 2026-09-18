@@ -124,11 +124,19 @@ icons / folders / statusbar / dock / launcher / notice / switcher … }`——�
 （I4）+ 同一 DesktopBus 协议"，不来自新语法；语法扩展留有明确触发条件，
 属于可逆决策。
 
-### 4.2 S10 Dashboard 与 App mini 视图（2026-09-01 设计记录，未立项）
+### 4.2 S10 Dashboard 与 App mini 视图（2026-09-01 设计记录；auto-os PLAN-024 已立项落地）
 
 > 来源：stella 对比轮（视觉二期 518 期间）用户提出桌面小组件面板需求并
 > 裁定独立计划。本节记录 UI/UX 与实现设计，立项（排期：518 合入后）时
 > 以本节为设计依据。
+> **落地注记（2026-09-17，auto-os PLAN-024）**：已按本节实现——`view mini`
+> 语言扩展 + SessionViewRef.view_name 第二渲染面 + 第四 overlay 槽
+> （dashboard.at 面板，设置面板退役后继任）+ `shell.dashboard.*` storage
+> 配置 + 协议 v1.8。实现裁定差异：格位装配 = 面板 chrome 层 + face 子层
+> Stack 叠合（§5.2 预案形态）；静默孵化 gate = daemon/back_root/exe
+> （outproc 族）——inproc 合并 VM 内 `back_port` 不构成外部依赖（025
+> sys-monitor 以孵化形态直显真数据活面）。试点 clock/025-sys-monitor 实机
+> 走秒/真数据 PASS（auto-os docs/plans/evidence/024/）。
 
 **核心决策——mini 界面从哪来：App 声明式 mini 视图（`view mini`），否决
 两个替代方案。**
@@ -213,8 +221,9 @@ shell-track（立项时分配计划号，提案依赖 463/464）
       472/478 注入通道先例 headless 指针成文，铃铛渲染/落盘/boot 恢复实机 PASS）
   M4 系统 settings（S7，接 auto-os-config）
   M5 桌面本体（S9：壁纸/图标/虚拟文件夹）
-  S10 Dashboard（桌面小组件面板，§4.2）——立项排期：视觉二期[518]合入后
-      （观感依赖主题/图标资产定稿）
+  S10 Dashboard（桌面小组件面板，§4.2）——✅ auto-os PLAN-024 已落地
+      （2026-09-17，view mini + 第四 overlay 槽 + 协议 v1.8；试点
+      clock/sys-monitor 实机活面 PASS）
   ⏸ 缩略管理（S3 真缩略）→ 挂 386 复活（离屏快照=路线 B lite；v1 图标占位）
   ⏸ shell IME UI（S8）→ 挂 457（Linux 合成器）；近期仅 452 两项 IME 残留（463 前置）
 ```

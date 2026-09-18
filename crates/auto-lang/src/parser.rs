@@ -12686,6 +12686,7 @@ impl<'a> Parser<'a> {
         let mut model = None;
         let mut computed = None;
         let mut view = None;
+        let mut named_views: Vec<(Name, ViewBlock)> = Vec::new();
         let mut on = None;
         let mut bind = None;
         let mut routes = None;
@@ -12717,7 +12718,44 @@ impl<'a> Parser<'a> {
                     computed = Some(self.parse_computed_block_inner()?);
                 }
                 "view" => {
-                    view = Some(self.parse_view_block_inner()?);
+                    // PLAN-024: `view` 后 peek 分派——`{` → 主视图（重复声明
+                    // 报错，原为静默覆盖）；Ident → 命名视图 `view mini { … }`
+                    // （同名报错，样式沿 setup/actions 臂）。`fn` 是独立关键
+                    // 字 token，`view fn` 片段仍只在顶层位分派（widget 体内
+                    // 维持原报错行为），`fn f(view x)` 参数位不进此臂。
+                    self.expect_ident("view")?;
+                    if self.is_kind(TokenKind::LBrace) {
+                        self.next(); // consume `{` — parse_view_root_nodes expects it gone
+                        let root = self.parse_view_root_nodes()?;
+                        if view.replace(ViewBlock { root }).is_some() {
+                            return Err(SyntaxError::Generic {
+                                message: "duplicate `view` block in widget".into(),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                    } else if self.is_kind(TokenKind::Ident) {
+                        let vname = self.cur.text.clone();
+                        self.next();
+                        self.expect(TokenKind::LBrace)?;
+                        let root = self.parse_view_root_nodes()?;
+                        if named_views.iter().any(|(n, _)| n.as_str() == vname.as_str()) {
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "duplicate named view `view {}` in widget", vname
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                        named_views.push((vname, ViewBlock { root }));
+                    } else {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Expected '{{' or a view name after `view` in widget, got '{}'",
+                                self.cur.text
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
                 }
                 "on" => {
                     on = Some(self.parse_on_block()?);
@@ -12828,6 +12866,7 @@ impl<'a> Parser<'a> {
             model,
             computed,
             view,
+            named_views,
             on,
             bind,
             props,
@@ -15363,6 +15402,7 @@ impl<'a> Parser<'a> {
             model,
             computed,
             view: Some(ViewBlock { root: body }),
+            named_views: Vec::new(),
             on,
             bind: None,
             props: params.into_iter()

@@ -353,6 +353,10 @@ pub struct GeneratedComponent {
     pub detected_store_deps: Vec<String>,
     /// All extracted AURA widgets.
     pub widgets: Vec<crate::aura::AuraWidget>,
+    /// PLAN-024: named view SFCs — one per `view mini { ... }` declaration.
+    /// (widget_name, view_name, SFC code). Desktop vue hosts emit each entry
+    /// as `Mini.vue` next to the app's App.vue.
+    pub named_view_codes: Vec<(String, String, String)>,
     /// Plan 443: model-channel bindings discovered in THIS file
     /// (widget name -> bound channels). Workspace drivers aggregate this
     /// across all .at files and feed it back via
@@ -386,14 +390,19 @@ pub struct GeneratedComponent {
 /// Any failure (no pac.at, no prop, missing/unparseable file) yields `None` —
 /// never fatal, mirroring the use-module fallback tolerance.
 #[cfg(feature = "ui")]
-fn load_ui_config_actions(at_path: &std::path::Path) -> Option<crate::ast::ui::ActionsBlock> {
-    // App-level config: only the app shell (app.at) inherits the external
-    // action registry. Sub-widgets / bind artifacts compile their own handlers
-    // and must not synthesize menus for actions they don't declare
-    // (046-bp-import LoginBind TS2304 实测)。
-    if at_path.file_stem().and_then(|s| s.to_str()) != Some("app") {
-        return None;
-    }
+fn load_ui_config_actions(
+    at_path: &std::path::Path,
+    widgets: &[crate::aura::AuraWidget],
+) -> Option<crate::ast::ui::ActionsBlock> {
+    // PLAN-070 T-05: uniform handler-intersection participation gate — the
+    // synthesis emits handler fns + a shortcut keymap that reference the
+    // hosting file's own handlers, so ANY file (app shell or component)
+    // inherits the external action registry only when it declares handlers
+    // for at least one configured action. Two failure classes die here:
+    // components without matching handlers (046 LoginBind TS2304) and
+    // placeholder app shells whose real host lives elsewhere (jade web:
+    // app.at is a never-deployed placeholder — unconditional inheritance
+    // re-leaked TS2304 on the first real try).
     let mut dir = at_path.parent()?.to_path_buf();
     let pac_content = (0..4).find_map(|_| {
         let candidate = dir.join("pac.at");
@@ -432,11 +441,25 @@ fn load_ui_config_actions(at_path: &std::path::Path) -> Option<crate::ast::ui::A
     for w in warnings {
         log::debug!("ui_config action: {w}");
     }
-    Some(cfg.to_actions_block())
+    let block = cfg.to_actions_block();
+    let participates = block.actions.iter().any(|a| {
+        let name = a.handler.trim_start_matches('.');
+        !name.is_empty()
+            && widgets
+                .iter()
+                .any(|w| w.handlers.keys().any(|k| k.contains(name)))
+    });
+    if !participates {
+        return None;
+    }
+    Some(block)
 }
 
 #[cfg(not(feature = "ui"))]
-fn load_ui_config_actions(_at_path: &std::path::Path) -> Option<crate::ast::ui::ActionsBlock> {
+fn load_ui_config_actions(
+    _at_path: &std::path::Path,
+    _widgets: &[crate::aura::AuraWidget],
+) -> Option<crate::ast::ui::ActionsBlock> {
     None
 }
 
@@ -744,8 +767,9 @@ pub fn generate_component_from_file(
         // PLAN-639 T-05: lowest priority — pac.at `ui_config:` file (Plan 418
         // auto-atom form) converted to the DSL shape. Web builds now pick up
         // the same command system the VM/desktop runtime loads from the same
-        // file (jade-web 无命令系统的根因补齐)。
-        .or_else(|| load_ui_config_actions(at_path));
+        // file (jade-web 无命令系统的根因补齐)。PLAN-070 T-05: component
+        // files participate selectively (handler intersection gate).
+        .or_else(|| load_ui_config_actions(at_path, &widgets));
     if let Some(acts) = fallback_actions {
         for w in widgets.iter_mut() {
             if w.actions.is_none() {
@@ -790,6 +814,7 @@ pub fn generate_component_from_file(
             vue_code: String::new(),
             widgets: Vec::new(),
             all_widget_codes: Vec::new(),
+            named_view_codes: Vec::new(),
             store_composables,
             detected_api_imports: api_imports.clone(),
             detected_store_deps: store_deps.clone(),
@@ -911,6 +936,7 @@ pub fn generate_component_from_file(
 
     // Generate SFC for each widget
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
+    let mut all_named_view_codes: Vec<(String, String, String)> = Vec::new();
     // Plan 435 P2:schema 驱动校验(未知 tag/prop)排最前,其后是既有 store/生成告警
     let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> =
         crate::ui_gen::validators::validate_aura_against_schema(&widgets, &all_sub_widgets);
@@ -1018,6 +1044,18 @@ pub fn generate_component_from_file(
         for w in &gen.last_validation_warnings {
             all_validation_warnings.push(w.clone());
         }
+
+        // PLAN-024: named views (`view mini { ... }`) — generate one SFC per
+        // named face through the same pipeline (script segment/store wiring
+        // shared), only the template root differs. A clone with the named
+        // node swapped into `view_tree` reuses generate() verbatim.
+        for (vname, vnode) in &widget.named_views {
+            let mut mini_widget = widget.clone();
+            mini_widget.view_tree = vnode.clone();
+            let mini_code = gen.generate(&mini_widget)
+                .map_err(|e| format!("Failed to generate {}/view {}: {}", widget.name, vname, e))?;
+            all_named_view_codes.push((widget.name.clone(), vname.clone(), mini_code));
+        }
     }
 
     let vue_code = all_widget_codes
@@ -1041,6 +1079,7 @@ pub fn generate_component_from_file(
     Ok(GeneratedComponent {
         vue_code,
         all_widget_codes,
+        named_view_codes: all_named_view_codes,
         store_composables,
         detected_api_imports: api_imports,
         detected_store_deps: store_deps,

@@ -162,6 +162,10 @@ pub enum A2UIComponentBody {
     Tabs {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         tabs: Vec<A2UITab>,
+        /// PLAN-641：形态（"default"/"enclosed"）；缺省 None → 渲染端回退
+        /// Default。字符串直传，未知值由 TabsVariant::parse 兜底（AC-01）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        variant: Option<String>,
     },
     #[serde(rename = "Navigation")]
     Navigation {
@@ -432,5 +436,58 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         let restored: A2UIMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(original, restored);
+    }
+
+    /// PLAN-641 AC-05：Tabs variant round-trip 保真。
+    #[test]
+    fn test_tabs_variant_roundtrip() {
+        let original = A2UIMessage::SurfaceUpdate(
+            A2UISurfaceUpdate::new("tabs-demo").with_components(vec![A2UIComponent::new(
+                "tabs1",
+                A2UIComponentBody::Tabs {
+                    tabs: vec![],
+                    variant: Some("enclosed".to_string()),
+                },
+            )]),
+        );
+
+        let json = serde_json::to_string(&original).unwrap();
+        assert!(json.contains(r#""variant":"enclosed""#));
+        let restored: A2UIMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    /// PLAN-641 AC-05：旧 JSON（无 variant 字段）解析不破，None 缺省且
+    /// 序列化时字段省略（线协议向后兼容）。
+    #[test]
+    fn test_tabs_no_variant_backward_compat() {
+        let json = r#"{
+            "type": "surfaceUpdate",
+            "surfaceId": "legacy",
+            "components": [
+                {
+                    "id": "tabs1",
+                    "component": "Tabs",
+                    "tabs": []
+                }
+            ]
+        }"#;
+
+        let msg: A2UIMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            A2UIMessage::SurfaceUpdate(update) => match &update.components[0].body {
+                A2UIComponentBody::Tabs { tabs, variant } => {
+                    assert!(tabs.is_empty());
+                    assert_eq!(variant.as_deref(), None);
+                }
+                _ => panic!("Expected Tabs component"),
+            },
+            _ => panic!("Expected SurfaceUpdate"),
+        }
+
+        // None → 序列化省略 variant 字段。
+        let bare = A2UIComponentBody::Tabs { tabs: vec![], variant: None };
+        let json = serde_json::to_string(&bare).unwrap();
+        assert!(!json.contains("variant"));
     }
 }

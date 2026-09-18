@@ -76,6 +76,12 @@ pub struct AuraWidget {
     /// View tree: pure layout and bindings, no logic
     pub view_tree: AuraNode,
 
+    /// PLAN-024: named views (`view mini { ... }`) — additional render faces
+    /// sharing this widget's state/handlers. Extracted alongside `view_tree`;
+    /// consumers: desktop dashboard faces (auto-os shell), other backends
+    /// ignore.
+    pub named_views: Vec<(String, AuraNode)>,
+
     /// Event handlers: mapped by event pattern (e.g., "Msg::Inc")
     pub handlers: std::collections::BTreeMap<String, LogicPayload>,
 
@@ -1181,6 +1187,7 @@ mod tests {
     #[test]
     fn test_aura_widget() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
@@ -1286,6 +1293,7 @@ mod tests {
     fn test_widget_logic_and_view_split() {
         // PR-3: 验证 logic()/view_data() 引用视图正确拆分 AuraWidget 的逻辑/视图两部分。
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Counter".to_string(),
