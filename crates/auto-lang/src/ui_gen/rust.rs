@@ -1346,7 +1346,10 @@ impl RustGenerator {
                     && self.state_types.contains_key("ms_display")
                 {
                     // Ensure prior statement ends with semicolon
-                    code.push_str("                    ;\n");
+                    let trimmed = code.trim_end();
+                    if !trimmed.ends_with(';') && !trimmed.ends_with('}') {
+                        code.push_str(";\n");
+                    }
                     code.push_str(
                         "                    let total_cs = self.elapsed / 10;\n\
                          \x20                   let cs = total_cs % 100;\n\
@@ -2106,6 +2109,11 @@ impl RustGenerator {
                 // Handle custom widget references (e.g., EditorPanel, Sidebar)
                 if self.is_custom_widget(tag) {
                     return self.generate_child_component(tag, props);
+                }
+
+                // SVG support: compile into View::image_styled("svgdoc:<svg>...</svg>", style)
+                if tag == "svg" {
+                    return self.generate_svg_element(node);
                 }
 
                 // grid-item is transparent — emit its child(ren) directly. A
@@ -4755,6 +4763,173 @@ impl RustGenerator {
         )
     }
 
+    /// Plan 644 follow-up: compile SVG elements into View::image_styled("svgdoc:<svg>...</svg>", style).
+    /// Serializes the SVG DOM tree, converting dynamic property expressions into format! arguments.
+    fn generate_svg_element(&self, node: &AuraNode) -> String {
+        let (props, _) = match node {
+            AuraNode::Element { props, children, .. } => (props, children),
+            _ => return "View::Empty".to_string(),
+        };
+
+        let style_str = props
+            .get("style")
+            .or_else(|| props.get("class"))
+            .and_then(|v| match v {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => Some(s.to_string()),
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        let mut template = String::new();
+        let mut args = Vec::new();
+        self.serialize_svg_node(node, true, &mut template, &mut args);
+
+        if args.is_empty() {
+            if style_str.is_empty() {
+                format!("View::image(\"svgdoc:{}\")", template)
+            } else {
+                format!("View::image_styled(\"svgdoc:{}\", \"{}\")", template, style_str)
+            }
+        } else {
+            let args_joined = args.join(", ");
+            if style_str.is_empty() {
+                format!("View::image(format!(\"svgdoc:{}\", {}))", template, args_joined)
+            } else {
+                format!("View::image_styled(format!(\"svgdoc:{}\", {}), \"{}\")", template, args_joined, style_str)
+            }
+        }
+    }
+
+    fn serialize_svg_node(
+        &self,
+        node: &AuraNode,
+        is_root: bool,
+        template: &mut String,
+        args: &mut Vec<String>,
+    ) {
+        match node {
+            AuraNode::Element { tag, props, children, .. } => {
+                template.push('<');
+                template.push_str(tag);
+
+                let mut sorted_props: Vec<_> = props.iter().collect();
+                sorted_props.sort_by_key(|(k, _)| *k);
+
+                for (key, val) in sorted_props {
+                    if is_root && (key == "style" || key == "class") {
+                        continue;
+                    }
+                    if tag == "text" && key == "text" {
+                        continue;
+                    }
+
+                    template.push(' ');
+                    template.push_str(key);
+                    template.push_str("=\\\"");
+
+                    match val {
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                            let escaped = s.as_str()
+                                .replace('&', "&amp;")
+                                .replace('"', "&quot;")
+                                .replace('<', "&lt;")
+                                .replace('>', "&gt;")
+                                .replace('{', "{{")
+                                .replace('}', "}}");
+                            template.push_str(&escaped);
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => {
+                            let escaped = s.as_str()
+                                .replace('&', "&amp;")
+                                .replace('"', "&quot;")
+                                .replace('<', "&lt;")
+                                .replace('>', "&gt;")
+                                .replace('{', "{{")
+                                .replace('}', "}}");
+                            template.push_str(&escaped);
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Int(n)) => {
+                            template.push_str(&n.to_string());
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::I64(n)) => {
+                            template.push_str(&n.to_string());
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::U64(n)) => {
+                            template.push_str(&n.to_string());
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => {
+                            template.push_str(&f.to_string());
+                        }
+                        AuraPropValue::Expr(expr) => {
+                            template.push_str("{}");
+                            args.push(self.ast_expr_to_rust(expr));
+                        }
+                        AuraPropValue::StyleBinding(_) => {}
+                    }
+                    template.push_str("\\\"");
+                }
+
+                let text_prop = if tag == "text" { props.get("text") } else { None };
+
+                if children.is_empty() && text_prop.is_none() {
+                    template.push_str("/>");
+                } else {
+                    template.push('>');
+                    if let Some(val) = text_prop {
+                        match val {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                                let escaped = s.as_str()
+                                    .replace('&', "&amp;")
+                                    .replace('<', "&lt;")
+                                    .replace('>', "&gt;")
+                                    .replace('{', "{{")
+                                    .replace('}', "}}");
+                                template.push_str(&escaped);
+                            }
+                            AuraPropValue::Expr(expr) => {
+                                template.push_str("{}");
+                                args.push(self.ast_expr_to_rust(expr));
+                            }
+                            _ => {}
+                        }
+                    }
+                    for child in children {
+                        self.serialize_svg_node(child, false, template, args);
+                    }
+                    template.push_str("</");
+                    template.push_str(tag);
+                    template.push('>');
+                }
+            }
+            AuraNode::Text(content) => match content {
+                crate::aura::AuraTextContent::Literal(s) => {
+                    let escaped = s.as_str()
+                        .replace('&', "&amp;")
+                        .replace('<', "&lt;")
+                        .replace('>', "&gt;")
+                        .replace('{', "{{")
+                        .replace('}', "}}");
+                    template.push_str(&escaped);
+                }
+                crate::aura::AuraTextContent::Interpolated { template: tpl, bindings } => {
+                    let mut fmt = tpl.clone();
+                    for name in bindings {
+                        if let Some(start) = fmt.find("${") {
+                            if let Some(end) = fmt[start..].find('}') {
+                                fmt.replace_range(start..=start + end, "{}");
+                            }
+                        }
+                        let stripped = name.trim_start_matches('.');
+                        args.push(format!("self.{}", stripped));
+                    }
+                    template.push_str(&fmt);
+                }
+            },
+            _ => {}
+        }
+    }
+
     fn generate_child_component(&self, tag: &str, props: &std::collections::HashMap<String, crate::aura::AuraPropValue>) -> String {
         let msg_name = self.current_msg_name();
 
@@ -6587,7 +6762,7 @@ impl RustGenerator {
                         args.get(1).cloned().unwrap_or_else(|| "String::new()".to_owned())
                     ),
                     "Time.now_sec" | "time.now_sec" | "time_now_sec" => {
-                        "(auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32)".to_string()
+                        "auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32".to_string()
                     }
                     "Time.now_ms" | "time.now_ms" | "time_now_ms" => {
                         "auto_lang::vm::ffi::stdlib::shim_time_now_ms()".to_string()
@@ -9297,6 +9472,26 @@ fn main() {{}}
         let code = gen.generate_view_tree(&node);
         assert!(code.contains("View::text(\"Hello, World!\".to_string())"), "got: {}", code);
         assert!(!code.contains(".build()"), "View::text(str) returns View directly, got: {}", code);
+    }
+
+    #[test]
+    fn test_svg_lowering_in_rust_view() {
+        let circle = AuraNode::element("circle")
+            .with_prop("cx", crate::ast::Expr::Str("120".into()))
+            .with_prop("cy", crate::ast::Expr::Str("120".into()))
+            .with_prop("r", crate::ast::Expr::Str("114".into()));
+        let svg_node = AuraNode::element("svg")
+            .with_prop("viewBox", crate::ast::Expr::Str("0 0 240 240".into()))
+            .with_prop("style", crate::ast::Expr::Str("w-56 h-56".into()))
+            .with_child(circle);
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate_view_tree(&svg_node);
+        assert!(code.contains("View::image_styled("), "got: {}", code);
+        assert!(code.contains("svgdoc:<svg"), "got: {}", code);
+        assert!(code.contains("viewBox=\\\"0 0 240 240\\\""), "got: {}", code);
+        assert!(code.contains("<circle cx=\\\"120\\\" cy=\\\"120\\\" r=\\\"114\\\"/>"), "got: {}", code);
+        assert!(code.contains("\"w-56 h-56\""), "got: {}", code);
     }
 
     /// Plan 043 M5 #1: multi-param msg variants emit a multi-field Rust enum.

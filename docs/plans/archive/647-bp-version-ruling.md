@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-647
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: bp-version-ruling（blueprints 多版本/锁面裁定——P639-D3 收口）
 author: [agent]
 created_at: 2026-09-18
@@ -325,6 +325,47 @@ P639-D3 悬置债收口：**blueprints 包库的版本语义正式裁定**。现
     1f4e3e32c）；规范增量冻结=contract.md@92bd47a7c 的 SD-01/02 hunk。
   - **next**：merge（/auto-plan:merge——specs.json upsert + spec-index.py +
     归档 + worktree 清理守闸）。
+- 2026-09-18 merge receipt（/auto-plan:merge，key: **PLAN-647:r1**）：
+  stage: merge | outcome: **pass**（逐 checkpoint 见下）。
+  - `prepared`：受审基线 reviewed@92bd47a7c（r1，pass）；canonical delta=
+    contract.md SD-01/02（worktree 分支内已提交）；rebase 吸收并行 fc8264f4a
+    （026 back-sync：stage3.rs+profile-card，与本分支零文件交集）后 rebased
+    delta 与受审版逐行一致（4 文件/205 行核验）→ delivery 提交族
+    fae8782a7..2808c551a 无需复审重开；module 回写（blueprint/project.md
+    版本面 bullet + ui/plans.md 647 行）以 2808c551a 提交。
+  - `landed`：master `--ff-only` 合并 plan-647-dev 至 **2808c551a**；祖先链
+    核验（master contains 2808c551a）；`git show master:docs/specs/blueprint/
+    contract.md` 含 Q5 终版裁定行；main 冒烟 `cargo t plan647 ui_gen::bp`
+    17/17 绿。落地时会话外部脏文件仅 docs/plans/646（他会话簿记，master
+    允许面，未触碰保留）。
+  - `ledger_refreshed`：`.autoos/specs.json`（git-ignored 本地投影）原子
+    upsert——**P639-1**（architecture，同 target 复用规则）折叠 PLAN-647
+    版本面句 + related 增 PLAN-647；新建 **P647-1**（reviews 收据，
+    file=docs/plans/archive/647-bp-version-ruling.md，id 形态有 P637-1/P014-1
+    先例）；写前 json.loads 校验、tmp+os.replace 原子替换（999,628B）。
+    `python scripts/spec-index.py` 再生 INDEX.md（26 projects）——零 diff，
+    无需提交。
+  - `archived`：`git mv docs/plans/647-bp-version-ruling.md → docs/plans/
+    archive/`（本仓归档目录为 archive/，AGENTS.md 路径映射）+ status:
+    archived（终态）+ 本收据与文末 spec-sync 回写记录。
+  - `cleaned`：（待清理完成后补记）
+
+- **cleaned 补记（2026-09-18）**：移除前复核——worktree 零脏区、HEAD=
+  2808c551a 且为 master 祖先（ALL COMMITS LANDED）；wt-guard 双过闸
+  （`.wt/lang-647/auto-lang` 与依赖兄弟 `.wt/lang-647/auto-down`@d8f11bf 均
+  "clean — 无任何 reparse point"）→ `git worktree remove` ×2（主检出 +
+  auto-down 属仓）→ `git branch -d plan-647-dev`（was 2808c551a）→ 组目录
+  rmdir。复核：worktree list 无 lang-647 条目、无 plan-647* 分支、
+  `.wt/` 无 lang-647 组目录。
+
+## spec-sync 回写记录（v1 惯例）
+
+- 规范增量：SD-01（contract.md Q5"MVP 半句"→五项终版段）+ SD-02（验证面节
+  "版本键面护栏"句）——落地于 contract.md@2808c551a。
+- module 回写：`docs/specs/blueprint/project.md` 目标与范围增"版本面"bullet；
+  `docs/specs/auto-lang/ui/plans.md` 追加 647 行。
+- 账本：specs.json P639-1 折叠更新 + P647-1 收据新建；INDEX.md 再生零 diff。
+- 债务：KNOWN-DEBT 增补三——P639-D3 ✅ 核销 + 070 三项承接事项（92bd47a7c）。
 
 ## 10. 待澄清事项
 

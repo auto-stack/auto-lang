@@ -6230,6 +6230,10 @@ pub fn startup_window_size() -> iced::Size {
                     resolved = iced::Size::new(w, h);
                 }
             }
+        } else if spec.trim().eq_ignore_ascii_case("fit") {
+            // Plan 644 follow-up: fit mode defaults to compact card dimensions
+            // before content measurement completes, avoiding large desktop window flash.
+            resolved = iced::Size::new(480.0, 680.0);
         }
     }
     // PLAN-046-B (auto-musk T7): baseline height lands in session KV so .at
@@ -6240,6 +6244,26 @@ pub fn startup_window_size() -> iced::Size {
         format!("{}", resolved.height),
     );
     resolved
+}
+
+/// Extract initial content size from root view's style when `window: "fit"` is declared.
+pub fn extract_root_view_fit_size<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<iced::Size> {
+    let style = match view {
+        AbstractView::Column { style, .. } | AbstractView::Row { style, .. } | AbstractView::Container { style, .. } => style.as_ref(),
+        _ => None,
+    }?;
+    let layout = crate::ui::style::BoxLayout::from_style(style);
+    let w = match layout.width {
+        Some(SizeValue::Pixels(px)) if px > 0.0 => Some(px),
+        Some(SizeValue::Fixed(units)) if units > 0 => Some((units as f32) * 4.0),
+        _ => None,
+    }?;
+    let h = match layout.height {
+        Some(SizeValue::Pixels(px)) if px > 0.0 => px,
+        Some(SizeValue::Fixed(units)) if units > 0 => (units as f32) * 4.0,
+        _ => (w * 1.4).clamp(320.0, 720.0),
+    };
+    Some(iced::Size::new(w.max(200.0), h.max(200.0)))
 }
 
 /// Plan 504: startup window fit-to-content mode. Source:
@@ -7174,14 +7198,15 @@ fn widget_event_tick(
     })
 }
 
-/// Periodic tick subscription for hot-reload file watching (per-App).
-///
-/// Emits `DM::App(app, HOT_RELOAD_EVENT)` every 500ms. The update handler
-/// checks `check_file_changed()` and reloads if the source file was modified.
-fn hot_reload_tick(
-    app: crate::ui::session::AppId,
-) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    app_tick(app, HOT_RELOAD_EVENT, 500)
+/// PLAN-650 E-3：hot_reload 轮询间隔。
+/// `AUTOUI_HOT_RELOAD=0` → None（不订阅）；`=1` → 500ms；缺省 debug 500ms /
+/// 非 debug 2000ms——浏览/静止场景显著降低 update→view 泵频率，开发热重载仍可用。
+fn hot_reload_interval_ms(debug_mode: bool) -> Option<u64> {
+    match std::env::var("AUTOUI_HOT_RELOAD").as_deref() {
+        Ok("0") => None,
+        Ok("1") => Some(500),
+        _ => Some(if debug_mode { 500 } else { 2000 }),
+    }
 }
 
 /// Periodic tick subscription for widget .Tick handlers (per-App).
@@ -18629,8 +18654,14 @@ fn compare_pngs(
             let mut subs: Vec<iced::Subscription<DM>> = Vec::new();
             for (app_id, app) in state.apps.iter() {
                 let app_id = *app_id;
+                // PLAN-650 E-3：hot_reload 降频/门控——AUTOUI_HOT_RELOAD=0 全关；
+                // =1 强制 500ms；缺省 debug 500ms / 非 debug 2000ms（静止泵 ÷4）。
                 if app.component.source_path().is_some() {
-                    subs.push(hot_reload_tick(app_id));
+                    if let Some(interval_ms) =
+                        hot_reload_interval_ms(app.state.devtools.debug_mode)
+                    {
+                        subs.push(app_tick(app_id, HOT_RELOAD_EVENT, interval_ms));
+                    }
                 }
                 if let Some(interval_ms) = app.component.tick_interval() {
                     // R5：孵化 mini 会话 Tick 门控（面板隐藏/非活动 tab 停订
@@ -18646,7 +18677,14 @@ fn compare_pngs(
                 }
                 // Plan 051 C7: timer 块条目订阅（每条目一订阅，身份含
                 // widget/event/ms 三元组互不去重）。
+                // PLAN-650 E-1：when 假不订阅（调度器层门控；P499-1）。
                 for t in app.component.timer_entries() {
+                    if !app
+                        .component
+                        .timer_when_allows_subscription(&t.widget, &t.event)
+                    {
+                        continue;
+                    }
                     subs.push(widget_event_tick(app_id, &t.widget, &t.event, t.every_ms));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
@@ -19181,8 +19219,19 @@ fn dynamic_view_impl(
     // opening F12. Visual overlays (hover/selected highlight, inspect mouse_area)
     // remain gated on `debug_mode` alone (see `wrap_debug`'s `if !self.debug_mode`
     // early-return), so MCP-only capture never perturbs the rendered layout.
+    // PLAN-650 E-2/E-4：capture 以 F12 为主；MCP 仅在 **dirty 重建帧** 追加
+    //（静止 fall-through 帧不再为 MCP 付 live_vtree/needs_bounds——快照走
+    // 既有 gate_dirty/gate_ws 同步，视图未变时仍然准确）。
     let mcp_active = !p530_nomcp && state.desktop.mcp_shared.is_some();
-    let capture_debug = state.app.devtools.debug_mode || mcp_active;
+    let mcp_wants_live = mcp_active
+        && (dirty
+            || state
+                .desktop
+                .mcp_shared
+                .as_ref()
+                .map(|m| m.lock().unwrap().mcp_active_recently(30))
+                .unwrap_or(false));
+    let capture_debug = state.app.devtools.debug_mode || mcp_wants_live;
 
     // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
     // are capturing DevTools/MCP data. `update()` checks `needs_bounds` at its
@@ -19193,7 +19242,8 @@ fn dynamic_view_impl(
     // Element at the fast path above), so it bounds the round-trips to ~one per
     // changed frame, not every frame. Gated on `capture_debug` so ordinary
     // non-debug/non-MCP runs pay zero bounds-collection overhead.
-    if capture_debug {
+    // PLAN-650 E-2：非 dirty 帧不请求 bounds（结构未变，沿用上次测量）。
+    if capture_debug && dirty {
         *state.app.devtools.needs_bounds.borrow_mut() = true;
     }
 
@@ -19272,7 +19322,9 @@ fn dynamic_view_impl(
     // `converted` is the exact View<IcedMessage> tree about to be rendered. Built
     // here (before `converted` is moved into render_dynamic_view and before
     // `debug_id_map` is moved into debug_ctx) as a side-effect snapshot only.
-    if !p530_nomcp {
+    // PLAN-650 E-2/E-4：仅 debug_mode 或 dirty 重建帧构建；静止 fall-through
+    // 非 F12 帧跳过（MCP 快照仍由 gate_dirty 同步块提供，视图未变即准确）。
+    if !p530_nomcp && (state.app.devtools.debug_mode || dirty) {
         if let Some(id_map) = &debug_id_map {
             let span_map = state.component.span_map().clone();
             let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
@@ -19323,7 +19375,8 @@ fn dynamic_view_impl(
 
     // Plan 483: 脏重建时清填 input Id 登记(DFS 序同渲染侧;缓存帧沿用
     // 上次登记——结构未变)。
-    {
+    // PLAN-650 E-2：仅 dirty 帧刷新；非 dirty fall-through 沿用上次（结构未变）。
+    if dirty {
         let mut ids = Vec::new();
         collect_input_ids(&converted, &mut ids);
         *state.app.devtools.input_ids.borrow_mut() = ids;
@@ -23191,6 +23244,7 @@ struct DevToolsState {
     // Plan 371 Task 11: MCP support for rust mode
     mcp_shared: std::cell::RefCell<Option<crate::ui::mcp_server::SharedStateHandle>>,
     mcp_widget_name: String,
+    pub fit_pending: std::cell::Cell<bool>,
 }
 
 impl Default for DevToolsState {
@@ -23223,6 +23277,7 @@ impl Default for DevToolsState {
             dragging_inner_divider: std::cell::RefCell::new(false),
             mcp_shared: std::cell::RefCell::new(Some(mcp_shared)),
             mcp_widget_name: widget_name,
+            fit_pending: std::cell::Cell::new(startup_window_fit()),
         }
     }
 }
@@ -23616,6 +23671,27 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
 
         let app_el: iced::Element<'static, WrapperMsg<C>> = app_view.into_iced();
 
+        let app_el = if startup_window_fit() {
+            container(
+                scrollable(
+                    container(app_el)
+                        .width(iced::Length::Shrink)
+                        .height(iced::Length::Shrink)
+                        .id(iced::widget::Id::from("aura_fit_root_rust")),
+                )
+                .direction(scrollable::Direction::Vertical(scrollable::Scrollbar::hidden()))
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Shrink),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .center_x(iced::Length::Fill)
+            .center_y(iced::Length::Fill)
+            .into()
+        } else {
+            app_el
+        };
+
         if *self.dt.devtools_open.borrow() {
             let panel = rdt_devtools_panel::<C>(&self.dt);
             row![app_el, panel]
@@ -23668,10 +23744,30 @@ where
     }
     match msg {
         WrapperMsg::Inner(m) => w.inner.on(m),
+        WrapperMsg::Debug(ref s) if s.starts_with("__fit_measured|") => {
+            if let Some(payload) = s.strip_prefix("__fit_measured|") {
+                let bounds: std::collections::HashMap<String, (f32, f32, f32, f32)> =
+                    serde_json::from_str(payload).unwrap_or_default();
+                if let Some((_x, _y, w_val, h_val)) = bounds.get("aura_fit_root_rust") {
+                    if *w_val >= 50.0 && *h_val >= 50.0 {
+                        w.dt.fit_pending.set(false);
+                        let size = iced::Size::new((*w_val).max(200.0), (*h_val).max(200.0));
+                        return iced::window::latest().then(move |opt_id| match opt_id {
+                            Some(id) => iced::window::resize(id, size),
+                            None => iced::Task::none(),
+                        });
+                    }
+                }
+            }
+        }
         WrapperMsg::Debug(ref s) if s == "__tick__" => {
             // Plan 407: tick event — dispatch Tick to inner component.
             if let Some(msg) = w.inner.tick_msg() {
                 w.inner.on(msg);
+            }
+            if w.dt.fit_pending.get() {
+                return iced::advanced::widget::operate(crate::ui::iced::LayoutCollector::new())
+                    .map(|bounds| WrapperMsg::Debug(format!("__fit_measured|{}", serde_json::to_string(&bounds).unwrap_or_default())));
             }
         }
         WrapperMsg::Debug(s) => {
@@ -23952,10 +24048,15 @@ where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    // Check tick interval at startup
+    // Check tick interval and initial fit size at startup
     let tick = C::default();
     let (tick_ms, tick_msg) = (tick.tick_interval_ms(), tick.tick_msg());
     let interval = tick_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
+    let initial_fit_size = if startup_window_fit() {
+        extract_root_view_fit_size(&tick.view())
+    } else {
+        None
+    };
     drop(tick);
 
     iced::application(
@@ -23975,7 +24076,7 @@ where
         }
         iced::Subscription::batch(subs)
     })
-    .window_size(startup_window_size())
+    .window_size(initial_fit_size.unwrap_or_else(startup_window_size))
     // Plan 411: pac window/title envs(AUTO_VM_WINDOW/AUTO_VM_TITLE)对
     // rust 轨同语义生效(VM 轨同款读取面);DevTools 面板不受影响。
     .title(|_: &DevToolsWrapper<C>| window_title(String::from("Auto Lang - Iced")))

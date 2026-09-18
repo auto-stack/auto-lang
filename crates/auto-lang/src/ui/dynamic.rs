@@ -522,9 +522,27 @@ impl DynamicComponent {
         &self.timers
     }
 
+    /// PLAN-650 E-1：订阅层 `when` 门——假则本拍不挂 tick（iced 在 update
+    /// 后重算订阅，字段变真自动挂上）。无 when / 条目未知 → true（保守订阅，
+    /// 保留 fire_timer 派发门双保险）。清偿 KD P499-1 的调度器层半边。
+    pub fn timer_when_allows_subscription(&self, widget: &str, event: &str) -> bool {
+        let Some(entry) = self
+            .timers
+            .iter()
+            .find(|t| t.widget == widget && t.event == event)
+        else {
+            return true;
+        };
+        match &entry.when {
+            None => true,
+            Some(when) => self.timer_guard_passes(when),
+        }
+    }
+
     /// Plan 051 C7: 派发一条计时器拍——`when` 门控在派发前对根态求值，
     /// 假则丢弃本拍（底层计时不停）。返回是否实际派发；条目不存在
     /// 返回 false（update 侧据此走通用事件路径或不动作）。
+    /// PLAN-650 E-1 后：when 假时订阅层已不挂 tick；本门保留为双保险。
     pub fn fire_timer(&mut self, widget: &str, event: &str) -> bool {
         let Some(entry) = self
             .timers
@@ -3201,30 +3219,83 @@ mod tests {
         assert_eq!(state.get("y"), Some(&auto_val::Value::Int(2)));
     }
 
-    // ── PLAN-062 T1: timer 空转拍不应置脏 ─────────────────────────────
-    //
-    // 现场（2026-09-05 实机定罪）：musk PollStream when 门摘除后每 500ms
-    // 空转拍经 call_handler Ok → dirty=true 无条件置脏 → 整树重建 ×
-    // retain 泄漏。本测钉死"零状态写的拍不得失效视图"。
+        // ── PLAN-062 T1: timer 空转拍不应置脏 ─────────────────────────────
+        //
+        // 现场（2026-09-05 实机定罪）：musk PollStream when 门摘除后每 500ms
+        // 空转拍经 call_handler Ok → dirty=true 无条件置脏 → 整树重建 ×
+        // retain 泄漏。本测钉死"零状态写的拍不得失效视图"。
 
-    #[cfg(feature = "ui-interpreter")]
-    fn locate_plan062_corpus() -> Option<std::path::PathBuf> {
-        let rel = "test/ui/plan062_memleak/src/front/app.at";
-        [
-            std::env::var("CARGO_MANIFEST_DIR")
-                .ok()
-                .map(|d| std::path::PathBuf::from(d).join(rel)),
-            Some(std::path::PathBuf::from(rel)),
-            Some(std::path::PathBuf::from(format!("../../{}", rel))),
-        ]
-        .into_iter()
-        .flatten()
-        .find(|p| p.exists())
-    }
+        #[cfg(feature = "ui-interpreter")]
+        fn locate_plan062_corpus() -> Option<std::path::PathBuf> {
+            let rel = "test/ui/plan062_memleak/src/front/app.at";
+            [
+                std::env::var("CARGO_MANIFEST_DIR")
+                    .ok()
+                    .map(|d| std::path::PathBuf::from(d).join(rel)),
+                Some(std::path::PathBuf::from(rel)),
+                Some(std::path::PathBuf::from(format!("../../{}", rel))),
+            ]
+            .into_iter()
+            .flatten()
+            .find(|p| p.exists())
+        }
 
-    #[cfg(feature = "ui-interpreter")]
-    #[test]
-    fn fire_timer_noop_does_not_dirty() {
+        /// PLAN-650 E-1：订阅层 when 门谓词。
+        #[cfg(feature = "ui-interpreter")]
+        #[test]
+        fn plan650_timer_when_subscription_gate() {
+            let Some(path) = locate_plan062_corpus() else {
+                eprintln!("plan650: SKIPPED — corpus not found");
+                return;
+            };
+            let mut dc = crate::plan370_test_support::build_component_from_app(&path)
+                .expect("plan062 corpus builds");
+
+            assert!(
+                dc.timer_when_allows_subscription("NoSuch", "NoEvent"),
+                "unknown timer entry must default to subscribe"
+            );
+
+            // 无 when → 恒订阅。
+            for t in dc.timer_entries() {
+                if t.when.is_none() {
+                    assert!(
+                        dc.timer_when_allows_subscription(&t.widget, &t.event),
+                        "{}::{} no when → subscribe",
+                        t.widget,
+                        t.event
+                    );
+                }
+            }
+
+            // 显式对照：running 翻转驱动订阅门（与 fire_timer 同源 timer_guard_passes）。
+            let gated = dc
+                .timer_entries()
+                .iter()
+                .find(|t| {
+                    t.when
+                        .as_deref()
+                        .map(|w| w.trim().trim_start_matches('.') == "running")
+                        .unwrap_or(false)
+                })
+                .map(|t| (t.widget.clone(), t.event.clone()));
+            if let Some((widget, event)) = gated {
+                let _ = dc.write_state("running", auto_val::Value::str("false"));
+                assert!(
+                    !dc.timer_when_allows_subscription(&widget, &event),
+                    "when=.running + running=false → must not subscribe"
+                );
+                let _ = dc.write_state("running", auto_val::Value::str("true"));
+                assert!(
+                    dc.timer_when_allows_subscription(&widget, &event),
+                    "when=.running + running=true → must subscribe"
+                );
+            }
+        }
+
+        #[cfg(feature = "ui-interpreter")]
+        #[test]
+        fn fire_timer_noop_does_not_dirty() {
         let Some(path) = locate_plan062_corpus() else {
             eprintln!("plan062: SKIPPED — corpus not found");
             return;
