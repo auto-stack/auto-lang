@@ -631,6 +631,7 @@ fn compile_at_file(
             model: store.model.clone(),
             computed: store.computed.clone(),
             view: None,
+            named_views: Vec::new(),
             on: store.on.clone(),
             bind: None,
             props: Vec::new(),
@@ -823,6 +824,17 @@ fn generate_api_client(project_dir: &Path, api_imports: &[String]) -> String {
     }
 
     // Split mode: generate HTTP client functions.
+    // PLAN-021 T-09 根修:本函数唯一消费方 = rust 轨前台 crate(单 exe)。
+    // api:rust 此前经 AUTO_VM_MERGE=0 强制走下方 split-HTTP——生成
+    // Value 型 HTTP wrapper,从零构建必炸(auto-term 253 错)且使单 exe
+    // 依赖外部 back 进程。017 merged 承诺 = db.at 吸收进 front crate
+    // 进程内直调:凡 db.at 可吸收(全部端点有同名 db fn 且标量面)一律
+    // 优先走 merged 直调;吸收不可用才回落 split-HTTP。
+    if let Some(module) = &api_module {
+        if merged_db_impl(project_dir, module).is_some() {
+            return generate_merged_api_client(module, project_dir);
+        }
+    }
     if let Some(module) = &api_module {
         let mut code = String::new();
         // Plan 349 step 1: Generate a TLS-aware HTTP client helper.
@@ -954,10 +966,15 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
         .collect();
     let param_list = params.join(", ");
 
-    // Return type — use serde_json::Value for the Rust UI since widgets work with Value
+    // Return type — typed per the api.at declaration (PLAN-021 T-09 根修)。
+    // 此前除 bool 外一律 serde_json::Value,而调用点生成按 .at 声明类型
+    // (int→i32/[]str→Vec<String>)消费 → 生成的 crate 从零构建必炸
+    // (auto-term 253 错;曾长期被 skip-if-exists 的化石 main.rs 掩盖)。
+    // JSON 线格式即声明类型的 serde 形(back api.rs 按同一声明序列化),
+    // 直接反序列化为该类型。未知/自定义类型名回落 Value(Plan 388 的
+    // Note 类消费面不受扰)。bool 特例保留:写结果作为 UI 控制流值。
     let return_type = &endpoint.return_type;
     let is_void = return_type == "void";
-    let is_vec = return_type.starts_with("[]");
     let is_option = return_type.starts_with("?");
 
     // Boolean write results are control-flow values for the UI (for example,
@@ -968,14 +985,9 @@ fn generate_endpoint_fn(endpoint: &ApiEndpoint, base_url: &str) -> String {
     let is_bool = return_type == "bool";
     let (rust_return_type, value_type) = if is_void {
         (String::new(), String::new())
-    } else if is_bool {
-        ("bool".to_string(), "bool".to_string())
-    } else if is_vec {
-        ("Vec<serde_json::Value>".to_string(), "Vec<serde_json::Value>".to_string())
-    } else if is_option {
-        ("Option<serde_json::Value>".to_string(), "Option<serde_json::Value>".to_string())
     } else {
-        ("serde_json::Value".to_string(), "serde_json::Value".to_string())
+        let rt = auto_type_to_rust(return_type);
+        (rt.clone(), rt)
     };
 
     // Generate function body based on HTTP method
@@ -1009,10 +1021,12 @@ fn generate_get_fn_body(method: String, url_expr: String, is_void: bool, return_
             method, url_expr, return_type
         )
     } else if return_type.starts_with("Option<") {
-        // Deserialize as Value, let .ok() produce Option<Value> naturally
+        // PLAN-021 T-09:声明类型直反序列化(serde 原生支持 Option<T>),
+        // `.ok().flatten()` 归一外层 Result——此前硬编码 Value 使返回面
+        // 与声明(Option<T>)错位。
         format!(
-            "    _http_client().{}({})\n        .send().ok()\n        .and_then(|r| r.json::<serde_json::Value>().ok())\n",
-            method, url_expr
+            "    _http_client().{}({})\n        .send().ok()\n        .and_then(|r| r.json::<{}>().ok())\n        .flatten()\n",
+            method, url_expr, return_type
         )
     } else {
         format!(
@@ -1079,8 +1093,16 @@ fn generate_write_fn_body(method: String, url_expr: String, body_params: &[&auto
             "    _http_client().{}({})\n        .json(&{})\n        .send().ok()\n        .and_then(|r| r.json::<bool>().ok())\n        .unwrap_or_default()\n",
             method, url_expr, json_body
         )
+    } else if matches!(return_type.trim(), "int" | "i32" | "i64" | "str" | "String" | "float" | "f32" | "double" | "f64") {
+        // PLAN-021 T-09:声明标量返回(int/str 等)→ 阻塞反序列化为该
+        // 类型——.at 调用方按声明消费返回值(term_pump_input 的泵送计数
+        // 等),占位 Value 会破坏类型契约。语义 = 与 GET 同款同步读。
+        format!(
+            "    _http_client().{}({})\n        .json(&{})\n        .send().ok()\n        .and_then(|r| r.json::<{}>().ok())\n        .unwrap_or_default()\n",
+            method, url_expr, json_body, return_type
+        )
     } else {
-        // Value return (e.g., create_note → serde_json::Value)
+        // Value/未知自定义类型返回(如 create_note → Value/Note)
         // Non-blocking: return a local placeholder with the params, POST in background.
         // The actual server-generated ID won't be available, but the UI works immediately.
         let local_fields: Vec<String> = body_params.iter()
@@ -3435,15 +3457,27 @@ pub struct Timer {
     fn test_w1_get_body_uses_reqwest_client() {
         // GET body must route through _http_client() and reqwest's .send()/.json(),
         // never emit `ureq::`.
+        // PLAN-021 T-09:Option 返回改声明类型直反序列化 + .flatten() 归一
+        // (此前硬编码 Value 使返回面与声明错位)。
         for (ret, expected) in [
             ("serde_json::Value", "_http_client().get("),
             ("Vec<serde_json::Value>", "r.json::<Vec<serde_json::Value>>().ok()"),
-            ("Option<serde_json::Value>", "r.json::<serde_json::Value>().ok()"),
+            (
+                "Option<serde_json::Value>",
+                "r.json::<Option<serde_json::Value>>().ok()",
+            ),
         ] {
             let body = generate_get_fn_body("get".into(), "&format!(\"http://x/{}\", id)".into(), false, ret);
             assert!(body.contains(expected), "GET({ret}) missing {expected}: {body}");
             assert!(!body.contains("ureq"), "GET({ret}) still emits ureq: {body}");
         }
+        let option = generate_get_fn_body(
+            "get".into(),
+            "&format!(\"http://x/{}\", id)".into(),
+            false,
+            "Option<serde_json::Value>",
+        );
+        assert!(option.contains(".flatten()"), "GET(Option) must flatten: {option}");
         let void = generate_get_fn_body("get".into(), "\"http://x\"".into(), true, "");
         assert!(void.contains("_http_client().get(\"http://x\").send()"), "void GET: {void}");
         assert!(!void.contains("ureq"), "void GET still emits ureq: {void}");
@@ -3469,6 +3503,18 @@ pub struct Timer {
         assert!(blocking.contains("_http_client().post(&url).json(&body).send()"), "blocking POST: {blocking}");
         assert!(blocking.contains("local_result"), "blocking POST must return placeholder: {blocking}");
         assert!(!blocking.contains("ureq"), "blocking POST still emits ureq: {blocking}");
+
+        // PLAN-021 T-09:声明标量返回(int)的 POST 改阻塞反序列化——
+        // 调用方按声明消费返回值,占位 Value 破坏类型契约。
+        let scalar_blocking = generate_write_fn_body(
+            "post".into(),
+            "\"http://x\"".into(),
+            &params,
+            false,
+            "i32",
+        );
+        assert!(scalar_blocking.contains("r.json::<i32>().ok()"), "scalar POST must block+deserialize: {scalar_blocking}");
+        assert!(!scalar_blocking.contains("local_result"), "scalar POST must not return placeholder: {scalar_blocking}");
 
         let bool_result = generate_write_fn_body(
             "post".into(),

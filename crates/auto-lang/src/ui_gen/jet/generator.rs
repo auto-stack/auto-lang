@@ -2221,6 +2221,7 @@ mod tests {
 
         // Create a simple Counter widget
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
@@ -2270,6 +2271,7 @@ mod tests {
 
         // Create a widget with multiple state variables
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "UserProfile".to_string(),
@@ -2331,6 +2333,7 @@ mod tests {
 
         // Create a stateless widget
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "StaticHeader".to_string(),
@@ -2446,6 +2449,7 @@ mod tests {
         use crate::aura::{AuraWidget, AuraNode};
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "TestWidget".to_string(),
@@ -2512,6 +2516,7 @@ mod tests {
         use crate::aura::{AuraWidget, AuraNode};
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "TraitTest".to_string(),
@@ -2962,6 +2967,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "TestCardVariant".to_string(),
@@ -3016,6 +3022,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "TestCardOutlined".to_string(),
@@ -3066,6 +3073,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "TestCardDefault".to_string(),
@@ -3227,6 +3235,7 @@ widget TestCardVariant {
         };
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "TestNestedCard".to_string(),
@@ -3300,6 +3309,7 @@ fn test_text_with_flex_style() {
     };
 
     let widget = AuraWidget {
+        named_views: Vec::new(),
         actions: None,
         timers: Vec::new(),
         name: "TestTextStyle".to_string(),

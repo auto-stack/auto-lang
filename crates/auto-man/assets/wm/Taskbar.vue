@@ -8,7 +8,11 @@ import { computed } from 'vue'
 import { wm, close, focus, setLayout, cycleFocus, type LayoutModeName } from './store'
 import { findApp } from '../apps-registry'
 
-const emit = defineEmits<{ summon: []; settings: [] }>()
+const emit = defineEmits<{ summon: []; settings: []; dashboard: [] }>()
+
+// PLAN-024：dashboard 面板开合（vm 轨 dock Dashboard 钮对拍面）——
+// 打开态高亮判据由宿主 `dashboardOpen` prop 直读（__wm_dashboard 同型）。
+const props = defineProps<{ dashboardOpen?: boolean }>()
 
 // Plan 559 W4: ⚙️ settings entry — vue-track parity of the vm shell's gear
 // (551 T2 semantics: opens the os-config window). Presence-gated on the
@@ -41,6 +45,18 @@ defineExpose({ onAltTab })
       @click="emit('summon')"
     >
       ⊞
+    </button>
+    <!-- PLAN-024 v1.8：Dashboard 钮（vm shell.at widgets-gallery 字形对拍
+         面；二态高亮 = dashboardOpen）。 -->
+    <button
+      class="h-9 w-10 px-0 text-sm rounded-xl"
+      :class="props.dashboardOpen ? 'text-primary bg-primary/15' : 'hover:bg-primary/10'"
+      title="Toggle dashboard"
+      aria-label="toggle dashboard"
+      data-testid="taskbar-dashboard"
+      @click="emit('dashboard')"
+    >
+      ▦
     </button>
     <template v-for="w in sorted" :key="w.wid">
       <span v-if="w.focused" class="w-0.5 h-5 rounded-full bg-primary" />

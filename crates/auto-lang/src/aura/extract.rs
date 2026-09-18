@@ -788,12 +788,24 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     wire_form_submit(&mut view_tree);
     let span_map = assign_node_ids(&mut view_tree);
 
+    // PLAN-024: named views (`view mini { ... }`) — extract each named face
+    // through the same pipeline as the main view tree (fragment expansion,
+    // form-submit wiring, node-id assignment all apply verbatim).
+    let mut named_views = Vec::with_capacity(decl.named_views.len());
+    for (vname, vblock) in &decl.named_views {
+        let mut node = extract_view_block(vblock)?;
+        wire_form_submit(&mut node);
+        assign_node_ids(&mut node);
+        named_views.push((vname.as_str().to_string(), node));
+    }
+
     Ok(AuraWidget {
         name: decl.name.as_str().to_string(),
         state_vars,
         computed,
         messages,
         view_tree,
+        named_views,
         handlers,
         handler_params,
         props,

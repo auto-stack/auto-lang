@@ -600,6 +600,8 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 position: _,
                 on_select: _,
                 style: _,
+                // PLAN-641：gpui enclosed 非目标（编译适配，降级保持现状渲染）。
+                variant: _,
             } => {
                 // Simplified Tabs without click handling
                 let mut tabs = div().flex().flex_col().gap_2().p_4();

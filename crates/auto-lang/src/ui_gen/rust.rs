@@ -5222,6 +5222,7 @@ impl RustGenerator {
         let bodies: Vec<String> = stmts
             .iter()
             .map(|s| self.ast_stmt_to_rust(s))
+            .filter(|b| !b.trim().is_empty())
             .collect();
         let mut joined = bodies.join(sep);
         if let Some(last) = stmts.last() {
@@ -5949,6 +5950,28 @@ impl RustGenerator {
                         args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned()),
                         args.get(1).cloned().unwrap_or_else(|| "String::new()".to_owned())
                     ),
+                    "Time.now_sec" | "time.now_sec" | "time_now_sec" => {
+                        "(auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32)".to_string()
+                    }
+                    "Time.now_ms" | "time.now_ms" | "time_now_ms" => {
+                        "auto_lang::vm::ffi::stdlib::shim_time_now_ms()".to_string()
+                    }
+                    "Time.now" | "time.now" => {
+                        "auto_lang::vm::ffi::stdlib::shim_time_now()".to_string()
+                    }
+                    "storage.get" | "Storage.get" => {
+                        let key = args.first().cloned().unwrap_or_else(|| "\"\"".to_string());
+                        format!("auto_lang::vm::ffi::stdlib::shim_storage_get(({}).to_string())", key)
+                    }
+                    "storage.set" | "Storage.set" => {
+                        let key = args.get(0).cloned().unwrap_or_else(|| "\"\"".to_string());
+                        let val = args.get(1).cloned().unwrap_or_else(|| "\"\"".to_string());
+                        format!("auto_lang::vm::ffi::stdlib::shim_storage_set(({}).to_string(), ({}).to_string())", key, val)
+                    }
+                    "storage.remove" | "Storage.remove" => {
+                        let key = args.first().cloned().unwrap_or_else(|| "\"\"".to_string());
+                        format!("auto_lang::vm::ffi::stdlib::shim_storage_remove(({}).to_string())", key)
+                    }
                     _ => {
                         // Plan 374: Callback prop calls (on_delete, on_toggle_pin, etc.)
                         // are no-ops in Rust — child-to-parent communication uses enum wrapping.
@@ -6642,6 +6665,7 @@ mod tests {
             payload: vec![],
         };
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "ImageViewer".to_string(),
@@ -6732,6 +6756,7 @@ widget App {
     #[test]
     fn test_setup_block_rejected_on_rust_target() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "SetupWidget".to_string(),
             state_vars: vec![],
@@ -6772,6 +6797,7 @@ widget App {
     #[test]
     fn test_simple_counter() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Counter".to_string(),
@@ -6823,6 +6849,7 @@ widget App {
     /// 组合 View(与 VM 侧 aura_view_builder 面板臂同款降级)。
     fn autodown_panel_widget(view_tree: AuraNode) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             name: "PanelDoc".to_string(),
             state_vars: vec![],
             messages: vec![],
@@ -7528,6 +7555,7 @@ widget LoginForm {
         }
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Playground".to_string(),
@@ -7662,6 +7690,7 @@ widget LoginForm {
         }
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Playground".to_string(),
@@ -7765,6 +7794,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_scalar_override() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "App".to_string(),
@@ -7837,6 +7867,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_no_scalars_no_override() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "OnlyCollections".to_string(),
@@ -7878,6 +7909,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_recurses_into_store() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "App".to_string(),
@@ -7927,6 +7959,7 @@ fn main() {{}}
         // The store struct itself should NOT recurse into a `store` field
         // (avoid NotesStore { store: NotesStore } infinite recursion).
         let store_widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "NotesStore".to_string(),
@@ -8111,6 +8144,7 @@ fn main() {{}}
     /// Plan 043 M5 #1: multi-param msg variants emit a multi-field Rust enum.
     fn widget_with_msg(variants: Vec<AuraMsgVariant>) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Shell".to_string(),
@@ -8408,6 +8442,47 @@ widget TabBar {
             !code.contains("View::row().child(View::col().children("),
             "row 内不得再出现 for 的 col 包装单子:\n{code}"
         );
+    }
+
+    #[test]
+    fn test_time_and_storage_builtins_lowering() {
+        let src = r#"
+widget StorageDemo {
+    msg { Save, Load, Tick }
+    model {
+        var x str = ""
+        var t int = 0
+    }
+    view { col { button "ok" { onclick: .Save } } }
+    on {
+        .Save -> {
+            storage.set("k", "v")
+            storage.remove("k")
+        }
+        .Load -> {
+            .x = storage.get("k")
+        }
+        .Tick -> {
+            .t = Time.now_sec()
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut code = String::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                let widget = crate::aura::extract::extract_widget_from_decl(decl).unwrap();
+                let mut gen = RustGenerator::new();
+                code = gen.generate(&widget).unwrap();
+            }
+        }
+        assert!(code.contains("auto_lang::vm::ffi::stdlib::shim_storage_set"), "storage.set lowered:\n{code}");
+        assert!(code.contains("auto_lang::vm::ffi::stdlib::shim_storage_get"), "storage.get lowered:\n{code}");
+        assert!(code.contains("auto_lang::vm::ffi::stdlib::shim_storage_remove"), "storage.remove lowered:\n{code}");
+        assert!(code.contains("auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32"), "Time.now_sec lowered:\n{code}");
     }
 }
 

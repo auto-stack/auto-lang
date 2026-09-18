@@ -60,6 +60,20 @@ widget App {
         }
     }
 
+    // PLAN-024 R18：桌面 dashboard 待办卡——active_count 大字 + 标签，
+    // 与主窗同 store（活渲染面）；纯前端无后端 → 静默孵化主 tab 场景。
+    view mini {
+        col {
+            style: "w-full h-full items-center justify-center gap-1"
+            text .store.active_count {
+                style: "text-4xl font-semibold text-foreground tabular-nums text-center"
+            }
+            text "待办未完成" {
+                style: "text-xs text-muted-foreground"
+            }
+        }
+    }
+
     on {
         .Init -> {
             store.Init()

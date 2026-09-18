@@ -11,16 +11,18 @@ blueprints/<kind>/<name>/
   gotchas.md           # anti-examples ({wrong, why, right})
 ```
 
-Kinds: `form`, `data-display`, `feedback`, `layout`, `composite`.
+Kinds: `form`, `navigation`, `dashboard`, `data-display`, `feedback`, `editor`,
+`layout`, `composite` (governed by
+[docs/specs/blueprint/contract.md](../docs/specs/blueprint/contract.md) Q5).
 
 ## Browse
 
 ```bash
-auto blueprint list                       # catalog, grouped by kind
+auto bp list                       # catalog, grouped by kind
 auto bp show form/login            # full spec + variants + gotchas
 ```
 
-Or visually: `examples/blueprints-gallery` (renders spec + reference source +
+Or visually: `examples/bps-gallery` (renders spec + reference source +
 gotchas).
 
 ## Consume (two paths)
@@ -56,5 +58,5 @@ palette-drift guard checks every `palette` entry exists in the AURA
 - **apps** (Design 16): `app = shell + route→blueprint selection + blueprint data wiring`.
 
 See [Design 17](../docs/design/blueprints/blueprints-first-class.md) and
-[Plan 342](../docs/plans/archive/342-blueprint-tier-phase-a-package-foundation.md) /
-[Plan 343](../docs/plans/archive/343-blueprint-tier-phase-b-generator-and-cli.md).
+[Plan 342](../docs/plans/archive/342-block-tier-phase-a-package-foundation.md) /
+[Plan 343](../docs/plans/archive/343-block-tier-phase-b-generator-and-cli.md).

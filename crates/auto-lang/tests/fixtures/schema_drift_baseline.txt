@@ -282,7 +282,6 @@ render_not_in_vb	slider
 render_not_in_vb	switch
 render_not_in_vb	tab
 render_not_in_vb	table
-render_not_in_vb	tabs
 render_not_in_vb	tabs-content
 render_not_in_vb	tabs-list
 render_not_in_vb	tabs-trigger
@@ -595,7 +594,6 @@ rs_not_in_vb	stepper_item
 rs_not_in_vb	stepper_separator
 rs_not_in_vb	stepper_title
 rs_not_in_vb	stepper_trigger
-rs_not_in_vb	tabs
 rs_not_in_vb	tabscontent
 rs_not_in_vb	tabslist
 rs_not_in_vb	tabstrigger
@@ -619,6 +617,7 @@ vb_not_in_render	HoverCard
 vb_not_in_render	Select
 vb_not_in_render	Sheet
 vb_not_in_render	Slot
+vb_not_in_render	Tabs
 vb_not_in_render	a
 vb_not_in_render	alert-dialog
 vb_not_in_render	alert-dialog-action
@@ -765,6 +764,7 @@ vb_not_in_rs	ImageSurface
 vb_not_in_rs	Select
 vb_not_in_rs	Sheet
 vb_not_in_rs	Slot
+vb_not_in_rs	Tabs
 vb_not_in_rs	Terminal
 vb_not_in_rs	Video
 vb_not_in_rs	a

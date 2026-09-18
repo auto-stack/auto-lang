@@ -1,0 +1,12 @@
+name: "clock"
+version: "2.0.0"
+scene: "ui"
+render: "vue"
+# PLAN-644：012 原地升级并重命名为 012-clock，全功能时钟与传统手表表盘
+title: "Clock"
+title_zh: "时钟"
+icon: "clock"
+category: "tool"
+# Plan 506: 窗口随内容自然尺寸收缩（独立 VM 窗 / 虚拟桌面窗双路径）。
+window: "fit"
+desktop: "true"

@@ -315,26 +315,37 @@ impl ComponentRegistry {
 
     fn is_builtin_fold(&self, fold_key: &str) -> bool {
         match crate::aura::default_schema_cached() {
-            Some(schema) => schema
-                .elements
-                .keys()
-                .any(|t| fold(t) == fold_key)
-                || schema
-                    .meta
-                    .values()
-                    .any(|m| m.aliases.iter().any(|a| fold(a) == fold_key)),
+            Some(schema) => {
+                // PLAN-643 tag 双态归属:package_origin 元素(official 组件包
+                // 供给,首批 chart 四 tag)不参与 builtin 压制——本地/包组件
+                // 同名折叠合法接管(Plan 408/435 通用规则对其余 tier 不变)。
+                let suppressing = |canonical: &str| {
+                    schema.meta.get(canonical).map(|m| m.tier)
+                        != Some(crate::aura::schema::ElementTier::PackageOrigin)
+                };
+                schema.elements.keys().any(|t| fold(t) == fold_key && suppressing(t))
+                    || schema.meta.iter().any(|(t, m)| {
+                        suppressing(t)
+                            && m.aliases.iter().any(|a| fold(a) == fold_key)
+                    })
+            }
             None => false,
         }
     }
 
-    /// 解析 tag(优先级:Builtin > Local > Package)。
+    /// 解析 tag(优先级:Builtin > Local > Package;package_origin 元素跳过
+    /// builtin 臂——PLAN-643,组件包同名折叠优先接管)。
     pub fn resolve(&self, tag: &str) -> ComponentResolution {
-        // 1) 内置(schema 三级折叠解析)
+        // 1) 内置(schema 三级折叠解析;package_origin 非压制源,继续下沉)
         if let Some(schema) = crate::aura::default_schema_cached() {
             if let Some((canonical, _)) = schema.resolve_tag(tag) {
-                return ComponentResolution::Builtin {
-                    canonical: canonical.to_string(),
-                };
+                if schema.meta.get(canonical).map(|m| m.tier)
+                    != Some(crate::aura::schema::ElementTier::PackageOrigin)
+                {
+                    return ComponentResolution::Builtin {
+                        canonical: canonical.to_string(),
+                    };
+                }
             }
         }
         let key = fold(tag);
