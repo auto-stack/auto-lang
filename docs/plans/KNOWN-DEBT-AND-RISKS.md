@@ -2343,3 +2343,13 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P642-D13 [多后端 proxy 机制——独立立项裁定（用户 2026-09-19），PLAN-642 收尾后另立计划]**：画廊内嵌 fullstack demo 的后端半身无宿主进程——单进程多后端宿主（per-app VM session + 子 URL `/apps/<id>/api/*` 路由 + 生成器 baseURL 子前缀适配，PLAN-617 `AUTO_HTTP_BASE` 相对展开先例）。**范围裁定（用户明示）**：不止解决 020 媒体扫描（P642-D10/T-16），**必须一并解决 017-chat / 031-image-viewer 的 native-ns/stream 后端**——即 stream/WebSocket 转发是独立计划的一等公民目标，不是首期风险排除项。可行性四依据与工期估计（proxy 本体 2-3 天 + 生成器适配 1 天 + gallery 集成 1 天）见 PLAN-642 §8.2 可行性分析节；风险项（session 崩溃隔离 per-session catch + 重启、binary 响应转发、可观测性让渡）在独立计划的设计文档中作一等公民展开。T-14(b) 臂（back 链族内嵌）随本条目：proxy 落地前维持回退页诚实空态。
 - **P642-D14 [T-18 证伪结案附带发现两条（2026-09-19）]**：①MCP fixture 派发不可达任意 handler——`on_with_input_for(widget, event)` 仅 input 绑定路径 handler 可达（SetAddr 实证执行），AddrGo 一类 msg handler 派发静默无操作（addr_editing 翻转判别实证）——toast/导航类 E2E 在合并轨无人造触发通道（右键上下文菜单、mouse-area 空白点击均非 MCP 快照可寻址）。修向：fixture trigger 扩展为直查 handler 注册表（namespaced_handler_fn_name 同键）。②`fs.canonical` 失败返回**原路径**（`unwrap_or(path)`，native.rs:9397-9402）而非空串——语料以 `can == ""` 作失败哨兵的分支（027 NavTo 的"无法打开/不是目录"两条 toast.error 路径）在 VM 臂不可达；修向：shim 失败返回 ""（对齐语料哨兵语义）或语料改用 `fs.exists` 前置门控——涉及既有语料行为面，需单独评估。
 - **P642-D3 处置裁定补录**：见 2026-09-18 增补一 P642-D3 条目内裁定段（方案 a + exit(127) 枚举先行动作）。
+
+## 2026-09-19 增补三（PLAN-651 收尾登记：5 项 DEBTS 提案 + 2 项转介）
+
+- **P651-D1 [WikilinkBlock 块级死 kind（双侧一致，模型卫生）]**：17 BlockType 中的 WikilinkBlock 双侧 parser 均不产出（仅行内 wikilink span），TS 侧仅 serializer 认识（serializer.ts:479）、VM 侧编辑壳 catch-all 降级。对拍一致故非编辑器红格；处置需模型层裁定（退役该 kind 或补块级语法），随 autodown 模型层计划处置。
+- **P651-D2 [TS Query/Embed 编辑面=冻结预览（v1 裁定在案）]**：host-controller.ts isEditableLeaf 显式排除（281-282），聚焦降级 frozen preview，query attr 就地不可改。PLAN-651 VM 侧已按同裁定对齐（Seg::Raw 冻结源行）；增强=query attr 就地编辑，随编辑器功能计划另行立项。
+- **P651-D3 [TS tasks.ts 轮换/优先级助手零消费方]**：cycleTaskMarker/setPriority/SCHEDULED-DEADLINE 逻辑完备但 engine 内零调用（疑留 Vue 应用侧接线）。归 auto-down 侧：接线或退役清理。
+- **P651-D4 [Image 行内 span 编辑宿主内降纯文本（双侧同口径 v1）]**：TS rich-html.ts v1 ruling；行内层富编辑（选区/预览）= EDITOR-CONTRACT §9 路线图行内层计划范围。
+- **P651-D5 [TS 扩展块 view 面板依赖 EngineEditor 加载]**：Details/Math/Mermaid/Query/Embed 五类型面板注册在 EngineEditor 侧（EngineEditor.vue:261-264），纯渲染消费者降级 unknown-node（测试被迫 void EngineEditor 补注册）。改注册层级动导入图且涉及 loader 数据通道依赖；对拍不暴露数据丢失，登记为结构性注记。
+- **P651-D6 [vm-smoke 稳定性转介（Q-5）]**：group 4 拖拽臂=069 已登记预存红（de86e1d8e，pristine master 复现）；group 11 全量 smoke 挂但 vm-069-probe 同场景五臂 ALL PASS（2026-09-19 实机，worktree 二进制）——判环境/时序。归 auto-down 侧 smoke 稳定性排查（重试隔离/端口 Collision 防护——本次实测 9247 被旧进程占用致首跑连错窗口）。
+- **P651-F1 [折叠 details 隐藏叶仍入 doc_sel/copy 全序（v1 细节，非阻断）]**：编辑核 Seg 树含闭合 details 内叶（不可见/不可聚焦/布局零矩形），跨块选区与 copy 走 dfs 全序会含隐藏文本。TS 折叠同样排除选区；对齐属增强面，随编辑器交互计划顺带。
