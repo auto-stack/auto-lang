@@ -15,6 +15,18 @@ stdio 上的 JSON-RPC 2.0 创建隔离 VM 会话、执行/校验 Auto 代码、�
 桌面进程里、走 HTTP、操作运行中的 UI，与本模块（操作源代码/VM 会话）是两个
 独立实现，归 ui 模块管。本目录只覆盖 `crates/auto-lang/src/mcp/`。
 
+## AutoUI Select Anything 工具（PLAN-646，2026-09-18）
+
+AutoUI MCP 在 `ui/mcp_server.rs` 提供 `autoui_select_rect(x, y, w, h,
+format?)`——按矩形程序化采集运行中 UI，返回与人工 Alt+拖拽框选同一信封
+（`{surface, app, rect, nodes:[{id, kind, span, source, structure}]}`）：
+中心点包含命中 → 顶层修剪 → 文档序（语义契约归 ui 模块
+`docs/specs/auto-lang/ui/design/select-anything.md`）。数据源 =
+`autoui_vtree` 同源 styled_vtree 快照 + `layout_bounds`（`vnode_N` 键）+
+随帧发布的 .at 源码全文（`SharedState::source_code`）。`format` 支持
+`auto`/`json`(默认)/`atom` 三种渲染；缺参/非法矩形/无快照返回结构化
+`isError`。只读（readOnlyHint），无测试夹具门控。
+
 ## AutoUI 测试夹具（Plan 623）
 
 AutoUI MCP 在 `ui/mcp_server.rs` 额外提供 `autoui_fixture`，供 VM 的自动化

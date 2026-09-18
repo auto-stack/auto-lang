@@ -9078,6 +9078,15 @@ fn keyboard_event_message(
                     event: event_name,
                     input_value: None,
                 })
+            } else if key_str == "Escape" {
+                // PLAN-646: Esc → 采集面板关闭/清 marquee。app 级 Escape
+                // binding 优先（上方 handler 命中即短路）；无 binding 时
+                // 发 __select_esc，update 臂在无采集态时忽略（no-op）。
+                Some(IcedMessage {
+                    widget: String::new(),
+                    event: "__select_esc".to_string(),
+                    input_value: None,
+                })
             } else if key_str == "Tab" {
                 // Plan 491（057 语义收窄为「无 input 聚焦时」）：事件到达
                 // 这里 = 未被任何聚焦件捕获（iced text_input 无 Tab 臂；
@@ -9139,6 +9148,8 @@ const DEBUG_INSPECTOR_SUBTAB_PREFIX: &str = "__inspector_subtab_";
 /// Toggle a collapsible section inside the 检视 sub-tab (Plan 307 续篇 IV):
 /// `__inspector_section_<box|computed|props>`.
 const DEBUG_INSPECTOR_SECTION_PREFIX: &str = "__inspector_section_";
+/// PLAN-646 Select Anything: switch the Select tab view — `__select_view_<Auto|Json|Atom>`.
+const SELECT_VIEW_PREFIX: &str = "__select_view_";
 
 /// DevTools panel top-level mode (Plan 309 续篇: 元素树与检视已统一为同屏
 /// 分屏，不再是互斥 tab；控制台仍为独立整宽模式).
@@ -9148,6 +9159,8 @@ pub(crate) enum DevToolsTab {
     Inspect,
     /// 控制台占满整宽.
     Console,
+    /// PLAN-646 Select Anything：框选结果信封（Auto/JSON/Atom 三视图 + 复制）。
+    Select,
 }
 
 /// Inspector right-panel inner sub-tab (Plan 307 Task 15; 续篇 IV collapsed
@@ -9235,6 +9248,33 @@ fn push_desktop_toast(state: &mut crate::ui::session::DesktopSession, kind: &str
             *v.app.view_dirty.borrow_mut() = true;
         }
     }
+}
+
+/// PLAN-646: Alt+GlobalPress 框选起笔。返回 true = 已吞事件（抑制 WM 焦点
+/// 抢占）。锚点取 `last_cursor`（`__mouse_moved` 臂持续回写）；编辑壳在途
+/// 保守避让。无 Alt / 编辑中 = false，GlobalPress 照常走 WM 命中聚焦。
+/// v1 落在 primary App（跨窗框选为非目标；单 App/独立模式即目标 App）。
+fn selection_press_anchor(state: &mut crate::ui::session::DesktopSession) -> bool {
+    let alt = state.desktop.current_modifiers.borrow().alt();
+    if std::env::var("AUTO_SELECT_TRACE").is_ok() {
+        eprintln!("[PLAN-646] GlobalPress seen, alt={alt}");
+    }
+    if !alt {
+        return false;
+    }
+    let Some(app_id) = state.primary_app() else {
+        return false;
+    };
+    let Some(mut v) = state.split_mut(app_id) else {
+        return false;
+    };
+    if v.app.devtools.editing_element.borrow().is_some() {
+        return false;
+    }
+    let (x, y) = v.app.devtools.last_cursor.get();
+    *v.app.devtools.marquee.borrow_mut() = Some(crate::ui::selection::Marquee::new(x, y));
+    *v.app.view_dirty.borrow_mut() = true;
+    true
 }
 
 /// Plan 479 T2：通知入史唯一入口（S6 双面一体——「史」入列 +「浮」toast）。
@@ -15219,6 +15259,66 @@ fn compare_pngs(
                     if let Some(cache) = state.app.live_cache.borrow_mut().as_mut() {
                         crate::ui::debug::backfill_bounds(cache, &bounds_map);
                     }
+                    // PLAN-646: 框选定稿后的延迟计算——此刻 bounds 刚采集
+                    // （新鲜），执行 select→trim→envelope 并打开 Select 标签页
+                    //（__toggle_inspect 同款联动：debug_mode + devtools_open）。
+                    // 先于 mcp 块消费（下方 set_layout_bounds 会 move bounds_map）。
+                    let sel_rect = state.app.devtools.pending_selection.borrow_mut().take();
+                    if let Some(sel_rect) = sel_rect {
+                        let vnode_bounds: std::collections::HashMap<
+                            crate::ui::vnode::VNodeId,
+                            crate::ui::debug::Rect,
+                        > = bounds_map
+                            .iter()
+                            .filter_map(|(k, (x, y, w, h))| {
+                                let vid = state
+                                    .app
+                                    .live_cache
+                                    .borrow()
+                                    .as_ref()
+                                    .and_then(|c| c.iced_to_vnode(k))?;
+                                Some((vid, crate::ui::debug::Rect::new(*x, *y, *w, *h)))
+                            })
+                            .collect();
+                        // Plan 483 D4 同源裁定：vtree 取 mcp_sync_vtree（裸
+                        // View 快照），缺缓存退 live_vtree（id 为 path 派生，
+                        // 结构稳定时两树 id 一致）。
+                        let vtree_src = state
+                            .app
+                            .mcp_sync_vtree
+                            .borrow()
+                            .clone()
+                            .or_else(|| state.app.live_vtree.borrow().clone());
+                        if let Some(vtree) = vtree_src {
+                            ensure_source_loaded(state.as_ref_view());
+                            let source = state.app.source_code.borrow().clone();
+                            let app_name = state.component.widget_name().to_string();
+                            let result = crate::ui::selection::select_envelope(
+                                "vm",
+                                &app_name,
+                                sel_rect,
+                                &vnode_bounds,
+                                &vtree,
+                                source.as_deref(),
+                            );
+                            if std::env::var("AUTO_SELECT_TRACE").is_ok() {
+                                eprintln!(
+                                    "[PLAN-646] select rect=({:.0},{:.0},{:.0},{:.0}) bounds={} nodes={}",
+                                    sel_rect.x, sel_rect.y, sel_rect.width, sel_rect.height,
+                                    vnode_bounds.len(),
+                                    result.nodes.len()
+                                );
+                            }
+                            *state.app.devtools.selection_result.borrow_mut() = Some(result);
+                            *state.app.devtools.select_copy_feedback.borrow_mut() = None;
+                            *state.app.devtools.select_view.borrow_mut() =
+                                crate::ui::selection::SelectionFormat::Auto;
+                            state.app.devtools.debug_mode = true;
+                            *state.app.devtools.devtools_open.borrow_mut() = true;
+                            *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Select;
+                            *state.app.view_dirty.borrow_mut() = true;
+                        }
+                    }
                     if let Some(ref mcp) = state.desktop.mcp_shared {
                         let mut handle = mcp.lock().unwrap();
                         handle.set_layout_bounds(bounds_map);
@@ -15327,6 +15427,9 @@ fn compare_pngs(
                 *state.app.devtools.inspect_mode.borrow_mut() = false;
                 *state.app.devtools.devtools_open.borrow_mut() = false;
                 state.app.devtools.pending_hovers.borrow_mut().clear();
+                // PLAN-646: F12 关面板顺带清 marquee 在途态（结果保留）。
+                *state.app.devtools.marquee.borrow_mut() = None;
+                *state.app.devtools.pending_selection.borrow_mut() = None;
             }
             // Plan 371: force view rebuild so the DevTools panel appears/disappears.
             *state.app.view_dirty.borrow_mut() = true;
@@ -15512,11 +15615,73 @@ fn compare_pngs(
                 };
                 return iced::Task::none();
             }
+            // PLAN-646: 切到 Select（采集）标签页。
+            "__tab_select" => {
+                *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Select;
+                return iced::Task::none();
+            }
+            // PLAN-646: Select 标签页三视图切换（`__select_view_<label>`）。
+            e if e.starts_with(SELECT_VIEW_PREFIX) => {
+                match &e[SELECT_VIEW_PREFIX.len()..] {
+                    "Auto" => *state.app.devtools.select_view.borrow_mut() =
+                        crate::ui::selection::SelectionFormat::Auto,
+                    "Json" | "JSON" => *state.app.devtools.select_view.borrow_mut() =
+                        crate::ui::selection::SelectionFormat::Json,
+                    "Atom" => *state.app.devtools.select_view.borrow_mut() =
+                        crate::ui::selection::SelectionFormat::Atom,
+                    _ => {}
+                }
+                *state.app.view_dirty.borrow_mut() = true;
+                return iced::Task::none();
+            }
+            // PLAN-646: 复制当前视图全文到剪贴板（按钮态反馈）。
+            "__select_copy" => {
+                let fmt = *state.app.devtools.select_view.borrow();
+                let text = state
+                    .app
+                    .devtools
+                    .selection_result
+                    .borrow()
+                    .as_ref()
+                    .map(|r| r.render(fmt));
+                let ok = match text {
+                    Some(t) => {
+                        #[cfg(feature = "ui-clipboard")]
+                        {
+                            crate::ui::clipboard::clipboard_set(&t)
+                        }
+                        #[cfg(not(feature = "ui-clipboard"))]
+                        {
+                            let _ = t;
+                            false
+                        }
+                    }
+                    None => false,
+                };
+                *state.app.devtools.select_copy_feedback.borrow_mut() = Some(ok);
+                *state.app.view_dirty.borrow_mut() = true;
+                return iced::Task::none();
+            }
+            // PLAN-646: Esc = 关闭采集面板并清 marquee（结果保留，重开可看）。
+            "__select_esc" => {
+                let selecting = state.app.devtools.selection_result.borrow().is_some()
+                    || state.app.devtools.marquee.borrow().is_some();
+                if selecting {
+                    *state.app.devtools.marquee.borrow_mut() = None;
+                    *state.app.devtools.pending_selection.borrow_mut() = None;
+                    *state.app.devtools.devtools_open.borrow_mut() = false;
+                    *state.app.view_dirty.borrow_mut() = true;
+                }
+                return iced::Task::none();
+            }
             "__close_devtools" => {
                 *state.app.devtools.devtools_open.borrow_mut() = false;
                 // Plan 309 Phase 5: closing the panel also exits the picker so
                 // no always-on overlay renders behind a closed panel.
                 *state.app.devtools.inspect_mode.borrow_mut() = false;
+                // PLAN-646: 关面板顺带清 marquee 在途态（结果保留）。
+                *state.app.devtools.marquee.borrow_mut() = None;
+                *state.app.devtools.pending_selection.borrow_mut() = None;
                 return iced::Task::none();
             }
             // Plan 309 Phase 5.1: Chrome-style inspect-element cursor toggle.
@@ -15617,12 +15782,22 @@ fn compare_pngs(
             // the inner Tree|Inspector split ratio when dragging the INNER divider.
             "__mouse_moved" => {
                 if let Some(ref val) = msg.input_value {
-                    let (mx, _my) = {
+                    let (mx, my) = {
                         let mut it = val.split(',');
                         let x: f32 = it.next().unwrap_or("0").parse().unwrap_or(0.0);
                         let y: f32 = it.next().unwrap_or("0").parse().unwrap_or(0.0);
                         (x, y)
                     };
+                    // PLAN-646: cursor 追踪（起笔锚点源）+ marquee 拖拽跟随。
+                    // 拖拽中置 view_dirty——下一帧根 Stack 注入 marquee 蒙层。
+                    state.app.devtools.last_cursor.set((mx, my));
+                    let marquee_active = state.app.devtools.marquee.borrow().is_some();
+                    if marquee_active {
+                        if let Some(m) = state.app.devtools.marquee.borrow_mut().as_mut() {
+                            m.update(mx, my);
+                        }
+                        *state.app.view_dirty.borrow_mut() = true;
+                    }
                     if *state.app.devtools.dragging_divider.borrow() {
                         let win_w = state.window_size.borrow().width;
                         let new_width = (win_w - mx).max(200.0).min(win_w - 200.0);
@@ -15648,6 +15823,19 @@ fn compare_pngs(
                 }
                 if *state.app.devtools.dragging_inner_divider.borrow() {
                     *state.app.devtools.dragging_inner_divider.borrow_mut() = false;
+                }
+                // PLAN-646: marquee 定稿——死区内 = 点击清态；实拖 = 暂存矩形
+                // 并请求一轮 bounds 采集（__bounds_collected 臂延迟计算信封
+                // + 打开 Select 标签页）。
+                if let Some(m) = state.app.devtools.marquee.borrow_mut().take() {
+                    if std::env::var("AUTO_SELECT_TRACE").is_ok() {
+                        eprintln!("[PLAN-646] released, drag={}", m.is_drag());
+                    }
+                    if m.is_drag() {
+                        *state.app.devtools.pending_selection.borrow_mut() = Some(m.rect());
+                        *state.app.devtools.needs_bounds.borrow_mut() = true;
+                    }
+                    *state.app.view_dirty.borrow_mut() = true;
                 }
                 return iced::Task::none();
             }
@@ -15716,6 +15904,24 @@ fn compare_pngs(
         }
 
         if msg.event == HOT_RELOAD_EVENT {
+            // PLAN-646/Plan 282 补线：needs_bounds 的消费点原本只在 app 消息
+            // 尾部批处理臂——静默会话（无交互、MCP 心跳在问）只有 500ms 泵
+            // 消息到达，走早退分支，采集器永不分发，MCP layout_bounds 常驻
+            // 空（实机 trace：armed 4 次 / consumed 0 次）。泵臂代为消费，
+            // 让无交互会话的 layout_bounds/styled_vtree 回路照常闭环。
+            if *state.app.devtools.needs_bounds.borrow()
+                && state.app.devtools.screenshot_request.borrow().is_none()
+            {
+                *state.app.devtools.needs_bounds.borrow_mut() = false;
+                use crate::ui::iced::LayoutCollector;
+                return iced::advanced::widget::operate(LayoutCollector::new()).map(|bounds_map| {
+                    IcedMessage {
+                        widget: String::new(),
+                        event: "__bounds_collected".to_string(),
+                        input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                    }
+                });
+            }
             if let Ok(Some(_)) = state.component.check_file_changed() {
                 if let Some(path) = state.component.source_path() {
                     if let Ok(code) = std::fs::read_to_string(path) {
@@ -17626,6 +17832,14 @@ fn compare_pngs(
             DM::Wm(cmd) => {
                 // Plan 462：WM 命令臂。独立模式不产生该变体（防御性忽略，
                 // I3：不设第二管线，仅配置位门控）。
+                // PLAN-646：Alt+左键按下 = Select Anything 框选起笔（双模式
+                // 生效，先于 is_desktop 门）。命中即吞掉本次 GlobalPress——
+                // 抑制 WM 焦点抢占/命中聚焦，避免起笔瞬间 z 序重排。
+                if matches!(cmd, crate::ui::session::WmCommand::GlobalPress)
+                    && selection_press_anchor(state)
+                {
+                    return iced::Task::none();
+                }
                 if !state.is_desktop() {
                     return iced::Task::none();
                 }
@@ -19101,6 +19315,12 @@ fn dynamic_view_impl(
             *state.app.mcp_sync_vtree.borrow_mut() = Some(vtree);
         }
         mcp.update(view, id_map, state_vals, input_map, view_template, state.component.key_bindings().clone());
+        // PLAN-646: 源码全文随帧发布——`autoui_select_rect` 信封切片用
+        //（ensure 幂等：装载过零开销；未装载过此处读盘一次）。
+        ensure_source_loaded(state);
+        if let Some(ref code) = *state.app.source_code.borrow() {
+            mcp.set_source_code(code.clone());
+        }
         // Sync window size for layout annotations (Plan 281)
         let ws = state.window_size.borrow();
         let iced::Size { width, height } = *ws;
@@ -19422,9 +19642,21 @@ fn dynamic_view_impl(
     // Plan 512：fit 窗常驻 Shrink + 测量锚点（fit_enabled）——动态重测
     // 才能量到内容自然尺寸（首测后回 Fill 会把重测钉回窗口尺寸）。
     let fit_pending = state.fit_pending.get() || state.fit_enabled.get();
-    let stack = iced::widget::Stack::new()
+    let mut stack = iced::widget::Stack::new()
         .push(rendered)
         .push(toast_el);
+    // PLAN-646: marquee 拖拽中注入全窗蒙层（canvas 纯绘制；非 opaque 层
+    // 命中测试穿透——toast 层同款，不夺焦点不拦截交互）。零尺寸不注入。
+    if let Some(m) = *state.app.devtools.marquee.borrow() {
+        let r = m.rect();
+        if r.width > 0.5 || r.height > 0.5 {
+            stack = stack.push(
+                iced::widget::canvas(MarqueePainter { rect: r })
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill),
+            );
+        }
+    }
     let rendered: iced::Element<'static, IcedMessage> = if fit_pending {
         stack
             .width(iced::Length::Shrink)
@@ -19617,6 +19849,45 @@ fn fit_aware_root(
     }
 }
 
+/// PLAN-646: marquee 框选蒙层绘制程序——半透明填充 + 边框，纯绘制不捕获
+/// 事件（broker_surface DrawListPainter 同款 canvas::Program 形态）。
+struct MarqueePainter {
+    rect: crate::ui::debug::Rect,
+}
+
+impl iced::widget::canvas::Program<IcedMessage> for MarqueePainter {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &iced::Renderer,
+        _theme: &iced::Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        use iced::widget::canvas::{Frame, Path, Stroke};
+        let mut frame = Frame::new(renderer, bounds.size());
+        // 蒙层铺满整窗（层坐标 = 窗口坐标，原点一致），矩形按 marquee 画。
+        let rect = iced::Rectangle::new(
+            iced::Point::new(self.rect.x, self.rect.y),
+            iced::Size::new(self.rect.width.max(1.0), self.rect.height.max(1.0)),
+        );
+        frame.fill_rectangle(
+            rect.position(),
+            rect.size(),
+            iced::Color::from_rgba(0.30, 0.50, 0.90, 0.12),
+        );
+        frame.stroke(
+            &Path::rectangle(rect.position(), rect.size()),
+            Stroke::default()
+                .with_color(iced::Color::from_rgba(0.30, 0.50, 0.90, 0.9))
+                .with_width(1.5),
+        );
+        vec![frame.into_geometry()]
+    }
+}
+
 /// Render the DevTools panel on the right side of the window.
 ///
 /// Plan 309 续篇: 元素树 (VTree) 与检视 (面包屑 + 子标签) 合并为同屏分屏 ——
@@ -19649,6 +19920,18 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
         .style(tab_style_fn(current_tab == DevToolsTab::Console))
         .padding(iced::Padding::new(4.0));
 
+    // PLAN-646: Select（采集）标签页 chip。
+    let tab_select = container(
+        mouse_area(text("采集").size(11))
+            .on_press(IcedMessage {
+                widget: String::new(),
+                event: "__tab_select".to_string(),
+                input_value: None,
+            })
+    )
+        .style(tab_style_fn(current_tab == DevToolsTab::Select))
+        .padding(iced::Padding::new(4.0));
+
     let close_btn = container(
         mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)))
             .on_press(IcedMessage {
@@ -19667,7 +19950,7 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
         })
         .padding(iced::Padding::new(4.0));
 
-    let tab_bar = row![tab_inspect, tab_console]
+    let tab_bar = row![tab_inspect, tab_console, tab_select]
         .spacing(2)
         .width(iced::Length::Fill);
     let header = row![tab_bar, close_btn]
@@ -19728,6 +20011,15 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
         .into(),
+        // PLAN-646: Select（采集）标签页——框选结果信封三视图 + 复制。
+        DevToolsTab::Select => container(
+            scrollable(render_select_tab(state))
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .into(),
     };
 
     let panel_col = column![header, content]
@@ -19749,6 +20041,81 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
         .width(panel_width)
         .height(iced::Length::Fill)
         .into()
+}
+
+/// PLAN-646: Select（采集）标签页内容——信封头、三视图切换 chips、复制
+/// 按钮（带反馈），以及当前视图全文（Auto 切片 / JSON / Atom）。
+fn render_select_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+    let fmt = *state.app.devtools.select_view.borrow();
+    let feedback = *state.app.devtools.select_copy_feedback.borrow();
+    let feedback_el = match feedback {
+        Some(true) => text("已复制 ✓").size(11).color(iced::Color::from_rgb(0.16, 0.55, 0.30)),
+        Some(false) => text("复制失败 ✕").size(11).color(iced::Color::from_rgb(0.75, 0.25, 0.25)),
+        None => text("").size(11),
+    };
+
+    let mut chips = row![].spacing(4);
+    for f in [
+        crate::ui::selection::SelectionFormat::Auto,
+        crate::ui::selection::SelectionFormat::Json,
+        crate::ui::selection::SelectionFormat::Atom,
+    ] {
+        let chip = container(
+            mouse_area(text(f.label()).size(11)).on_press(IcedMessage {
+                widget: String::new(),
+                event: format!("{}{}", SELECT_VIEW_PREFIX, f.label()),
+                input_value: None,
+            })
+        )
+        .style(tab_style_fn(fmt == f))
+        .padding(iced::Padding::new(3.0));
+        chips = chips.push(chip);
+    }
+    let copy_btn = container(
+        mouse_area(text("复制").size(11)).on_press(IcedMessage {
+            widget: String::new(),
+            event: "__select_copy".to_string(),
+            input_value: None,
+        })
+    )
+    .style(tab_style_fn(false))
+    .padding(iced::Padding::new(3.0));
+
+    let body: iced::Element<'static, IcedMessage> =
+        match state.app.devtools.selection_result.borrow().as_ref() {
+            Some(r) => {
+                let header = format!(
+                    "surface={} app={} rect=({:.0},{:.0},{:.0},{:.0}) nodes={}",
+                    r.surface, r.app, r.rect.0, r.rect.1, r.rect.2, r.rect.3,
+                    r.nodes.len()
+                );
+                let content = r.render(fmt);
+                // 正文显式深灰——面板浅色底为硬编码，text 缺省色随 app 主题
+                // （深色主题=白字）会白底白字隐身（复审实机截图定罪）。
+                column![
+                    text(header).size(11).color(iced::Color::from_rgb(0.35, 0.35, 0.4)),
+                    text(content).size(11).color(iced::Color::from_rgb(0.15, 0.15, 0.18)),
+                ]
+                .spacing(6)
+                .into()
+            }
+            None => text(
+                "Alt+拖拽框选任意区域采集组件源码；或经 MCP autoui_select_rect 程序化采集。",
+            )
+            .size(11)
+            .color(iced::Color::from_rgb(0.45, 0.45, 0.5))
+            .into(),
+        };
+
+    column![
+        row![chips, copy_btn, feedback_el]
+            .spacing(6)
+            .align_y(iced::Alignment::Center),
+        body,
+    ]
+    .spacing(6)
+    .width(iced::Length::Fill)
+    .into()
 }
 
 fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {

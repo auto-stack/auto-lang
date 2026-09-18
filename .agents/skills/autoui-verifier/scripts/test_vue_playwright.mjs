@@ -120,6 +120,40 @@ async function main() {
       } else if (action === 'dblclick') {
         await page.dblclick(step.selector, { position: step.position });
         console.log(`[+] Double-clicked: ${step.selector}`);
+      } else if (action === 'altDrag') {
+        // PLAN-646: Select Anything Alt+drag marquee (same semantics as a
+        // human Alt+drag on the page). {action:'altDrag', from:[x,y], to:[x,y], steps:N}
+        const [fx, fy] = step.from;
+        const [tx, ty] = step.to;
+        await page.keyboard.down('Alt');
+        await page.mouse.move(fx, fy);
+        await page.mouse.down();
+        const steps = step.steps || 8;
+        for (let i = 1; i <= steps; i++) {
+          await page.mouse.move(fx + (tx - fx) * i / steps, fy + (ty - fy) * i / steps);
+        }
+        await page.mouse.up();
+        await page.keyboard.up('Alt');
+        console.log(`[+] Alt-dragged (${fx},${fy}) -> (${tx},${ty})`);
+      } else if (action === 'assertDataAuto') {
+        // PLAN-646 AC-06 前置: 页面存在 data-auto-span 标记元素。
+        const min = step.min || 1;
+        const count = await page.evaluate(() => document.querySelectorAll('[data-auto-span]').length);
+        if (count < min) {
+          throw new Error(`[?] PLAN-646 assertDataAuto failed: expected >= ${min} [data-auto-span] elements, got ${count}`);
+        }
+        console.log(`[+] data-auto markers ok: ${count} elements (>= ${min})`);
+      } else if (action === 'assertPanel') {
+        // PLAN-646 AC-06: Alt+拖拽后面板出现且切片文本出现。
+        await page.waitForSelector('#__auto-select-panel', { timeout: step.timeout || 2000 });
+        const text = await page.evaluate(() => document.getElementById('__auto-select-panel').textContent);
+        for (const needle of step.contains || []) {
+          if (!text.includes(needle)) {
+            throw new Error(`[?] PLAN-646 assertPanel failed: panel text missing ${JSON.stringify(needle)}
+panel: ${text.slice(0, 400)}`);
+          }
+        }
+        console.log(`[+] Select panel ok: ${text.length} chars, all needles present`);
       }
     }
   } else {

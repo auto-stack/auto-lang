@@ -151,6 +151,19 @@ pub struct DevToolsState {
     pub screenshot_request: RefCell<Option<crate::ui::mcp_server::ScreenshotRequest>>,
     pub devtools_panel_width: RefCell<f32>,
     pub dragging_divider: RefCell<bool>,
+    /// PLAN-646 Select Anything：最近窗口光标（订阅面 CursorMoved 持续
+    /// 回写；Alt+GlobalPress 起笔锚点源——订阅回调无法读状态，走消息臂）。
+    pub last_cursor: Cell<(f32, f32)>,
+    /// Alt+拖拽 marquee 进行态（None = 未在拖拽）。
+    pub marquee: RefCell<Option<crate::ui::selection::Marquee>>,
+    /// 松开待算的框选矩形——`__bounds_collected` 臂消费，保证 bounds 新鲜。
+    pub pending_selection: RefCell<Option<crate::ui::debug::Rect>>,
+    /// 最近一次框选结果信封（Select 标签页渲染/复制源）。
+    pub selection_result: RefCell<Option<crate::ui::selection::SelectionResult>>,
+    /// Select 标签页当前视图格式（Auto/JSON/Atom 三视图循环）。
+    pub select_view: RefCell<crate::ui::selection::SelectionFormat>,
+    /// Copy 按钮反馈（Some(true)=成功 / Some(false)=失败；新选区清空）。
+    pub select_copy_feedback: RefCell<Option<bool>>,
 }
 
 impl DevToolsState {
@@ -194,6 +207,12 @@ impl DevToolsState {
             screenshot_request: RefCell::new(None),
             devtools_panel_width: RefCell::new(600.0),
             dragging_divider: RefCell::new(false),
+            last_cursor: Cell::new((0.0, 0.0)),
+            marquee: RefCell::new(None),
+            pending_selection: RefCell::new(None),
+            selection_result: RefCell::new(None),
+            select_view: RefCell::new(crate::ui::selection::SelectionFormat::Auto),
+            select_copy_feedback: RefCell::new(None),
         }
     }
 }

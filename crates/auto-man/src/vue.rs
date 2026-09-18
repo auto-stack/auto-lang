@@ -1209,13 +1209,17 @@ Prism.languages.auto = {{
     };
     let app_use_router = if has_routes { "app.use(router)\n" } else { "" };
     let app_use_i18n = if i18n.enabled { "app.use(i18n)\n" } else { "" };
+    // PLAN-646: Select Anything overlay — dev-only dynamic import (Vite
+    // tree-shakes the DEV=false branch (and this module) from prod builds).
+    let select_overlay = "\n// PLAN-646: Select Anything overlay (dev-only; tree-shaken from prod builds).\nif (import.meta.env.DEV) {\n  import('./auto-select/overlay')\n}\n";
     format!(
-        "{base}{i18n_setup}{router_import}\n\nconst app = createApp(App)\n{app_use_i18n}{app_use_router}app.mount('#app')\n",
+        "{base}{i18n_setup}{router_import}\n\nconst app = createApp(App)\n{app_use_i18n}{app_use_router}app.mount('#app')\n{select_overlay}\n",
         base = base,
         i18n_setup = i18n_setup,
         router_import = router_import,
         app_use_i18n = app_use_i18n,
         app_use_router = app_use_router,
+        select_overlay = select_overlay,
     )
 }
 
@@ -1228,6 +1232,344 @@ fn basename(path: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or(path)
         .to_string()
+}
+
+/// PLAN-646: Select Anything overlay 资产（dev-only 采集层）。main.ts 以
+/// `import.meta.env.DEV` 动态引用，Vite 产物构建 tree-shake 掉。
+fn generate_select_overlay_ts() -> &'static str {
+    r##"// PLAN-646: Select Anything overlay —— 任意 AutoUI Vue 页面 Alt+拖拽框选，
+// 返回与 VM/MCP 端同一契约的结构化信封（中心包含命中 → 顶层修剪 → 文档序）。
+// dev-only：main.ts 在 import.meta.env.DEV 下动态 import，Vite 产物构建
+// tree-shake 掉本模块，不进 bundle。
+
+import { AUTO_SOURCES } from '../auto-sources'
+
+const DRAG_THRESHOLD = 4
+
+interface SelectedNode {
+  id: string
+  kind: string
+  span: [number, number] | null
+  source: string | null
+  structure: unknown
+}
+
+function sourceFor(el: Element): string {
+  // 子件元素的 span 归各自 .at（data-auto-src=stem）；缺省回落 app/首个。
+  const key = el.getAttribute('data-auto-src')
+  if (key && AUTO_SOURCES[key] != null) return AUTO_SOURCES[key]
+  const keys = Object.keys(AUTO_SOURCES)
+  if (keys.length === 0) return ''
+  return AUTO_SOURCES['app'] ?? AUTO_SOURCES[keys[0]] ?? ''
+}
+
+const UTF8 = new TextEncoder()
+const UTF8D = new TextDecoder()
+
+/// .at span 是字节偏移（Rust 侧口径）；JS 字符串按 UTF-16 码元索引，
+/// 中文注释会让两种单位错位——统一走 UTF-8 字节切片。
+function sliceBytes(src: string, off: number, len: number): string | null {
+  const bytes = UTF8.encode(src)
+  if (off + len > bytes.length || off < 0 || len < 0) return null
+  return UTF8D.decode(bytes.subarray(off, off + len))
+}
+
+function appName(): string {
+  const keys = Object.keys(AUTO_SOURCES)
+  return keys.length > 0 ? keys[0] : 'app'
+}
+
+function dedent(text: string): string {
+  const lines = text.split('\n')
+  const nonEmpty = lines.filter((l) => l.trim().length > 0)
+  if (nonEmpty.length === 0) return ''
+  const prefix = Math.min(...nonEmpty.map((l) => l.length - l.trimStart().length))
+  const first = lines.findIndex((l) => l.trim().length > 0)
+  let last = 0
+  lines.forEach((l, i) => {
+    if (l.trim().length > 0) last = i
+  })
+  return lines
+    .slice(first, last + 1)
+    .map((l) => l.slice(prefix))
+    .join('\n')
+}
+
+function buildStructure(el: Element): unknown {
+  // DOM 子树 → {tag, props, children}（剥 data-auto-* 标记；文本子节点为字符串）。
+  const props: Record<string, string> = {}
+  for (const attr of Array.from(el.attributes)) {
+    if (!attr.name.startsWith('data-auto-')) props[attr.name] = attr.value
+  }
+  const children: unknown[] = []
+  el.childNodes.forEach((n) => {
+    if (n.nodeType === Node.ELEMENT_NODE) {
+      children.push(buildStructure(n as Element))
+    } else if (n.nodeType === Node.TEXT_NODE) {
+      const t = (n as Text).textContent?.trim()
+      if (t) children.push(t)
+    }
+  })
+  const out: Record<string, unknown> = { tag: el.tagName.toLowerCase() }
+  if (Object.keys(props).length > 0) out.props = props
+  if (children.length > 0) out.children = children
+  return out
+}
+
+function collectSelection(rect: { left: number; top: number; right: number; bottom: number }): SelectedNode[] {
+  const hits: Element[] = []
+  document.querySelectorAll('[data-auto-span]').forEach((el) => {
+    const r = el.getBoundingClientRect()
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    if (rect.left <= cx && cx <= rect.right && rect.top <= cy && cy <= rect.bottom) {
+      hits.push(el)
+    }
+  })
+  // 顶层修剪：祖先链上有命中元素 → 被吸收（组织结构语义）。
+  const hitSet = new Set<Element>(hits)
+  const topmost = hits.filter((el) => {
+    let p = el.parentElement
+    while (p) {
+      if (hitSet.has(p)) return false
+      p = p.parentElement
+    }
+    return true
+  })
+  return topmost.map((el) => {
+    const kind = el.getAttribute('data-auto-tag') ?? el.tagName.toLowerCase()
+    const id = el.getAttribute('data-auto-id') ?? ''
+    let span: [number, number] | null = null
+    let source: string | null = null
+    const raw = el.getAttribute('data-auto-span')
+    if (raw) {
+      const parts = raw.split(':')
+      const off = Number(parts[0])
+      const len = Number(parts[1])
+      const src = sourceFor(el)
+      if (Number.isFinite(off) && Number.isFinite(len) && src.length > 0) {
+        const sliced = sliceBytes(src, off, len)
+        if (sliced !== null) {
+          span = [off, len]
+          source = dedent(sliced)
+        }
+      }
+    }
+    return { id, kind, span, source, structure: buildStructure(el) }
+  })
+}
+
+function envelopeHeader(rect: { x: number; y: number; w: number; h: number }, n: number): string {
+  return `// ── AutoUI Select Anything ── surface=vue app=${appName()} rect=(${Math.round(rect.x)},${Math.round(rect.y)},${Math.round(rect.w)},${Math.round(rect.h)}) nodes=${n}`
+}
+
+function renderAuto(rect: { x: number; y: number; w: number; h: number }, nodes: SelectedNode[]): string {
+  const n = nodes.length
+  let out = envelopeHeader(rect, n) + '\n'
+  if (n === 0) {
+    out += '// (no nodes selected)\n'
+    return out
+  }
+  nodes.forEach((nd, i) => {
+    if (nd.span && nd.source !== null) {
+      out += `\n// [${i + 1}/${n}] ${nd.kind}  span=${nd.span[0]}..${nd.span[0] + nd.span[1]}\n`
+      out += nd.source + (nd.source.endsWith('\n') ? '' : '\n')
+    } else {
+      out += `\n// [${i + 1}/${n}] ${nd.kind}  (synthetic, no source span)\n`
+      out += JSON.stringify(nd.structure, null, 2) + '\n'
+    }
+  })
+  return out
+}
+
+function renderJson(rect: { x: number; y: number; w: number; h: number }, nodes: SelectedNode[]): string {
+  return JSON.stringify(
+    { surface: 'vue', app: appName(), rect: [rect.x, rect.y, rect.w, rect.h], nodes },
+    null,
+    2,
+  )
+}
+
+function showPanel(autoText: string, jsonText: string): void {
+  const old = document.getElementById('__auto-select-panel')
+  if (old) old.remove()
+
+  const panel = document.createElement('div')
+  panel.id = '__auto-select-panel'
+  panel.style.cssText =
+    'position:fixed;right:16px;bottom:16px;width:460px;max-height:60vh;z-index:2147483647;' +
+    'background:#fafafa;border:1px solid #d4d4d4;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);' +
+    'display:flex;flex-direction:column;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#222'
+
+  const bar = document.createElement('div')
+  bar.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #e5e5e5'
+  let view: 'auto' | 'json' = 'auto'
+  const body = document.createElement('pre')
+  body.style.cssText = 'margin:0;padding:8px;overflow:auto;flex:1;white-space:pre-wrap;word-break:break-all'
+  const show = (): void => {
+    body.textContent = view === 'auto' ? autoText : jsonText
+    tabAuto.style.background = view === 'auto' ? '#fff' : '#ececec'
+    tabJson.style.background = view === 'json' ? '#fff' : '#ececec'
+  }
+  const mkChip = (label: string, onClick: () => void): HTMLButtonElement => {
+    const b = document.createElement('button')
+    b.textContent = label
+    b.style.cssText = 'border:1px solid #d4d4d4;border-radius:4px;padding:2px 8px;cursor:pointer;font:inherit'
+    b.addEventListener('click', onClick)
+    return b
+  }
+  const tabAuto = mkChip('Auto', () => {
+    view = 'auto'
+    show()
+  })
+  const tabJson = mkChip('JSON', () => {
+    view = 'json'
+    show()
+  })
+  const copyBtn = mkChip('复制', () => {
+    const text = view === 'auto' ? autoText : jsonText
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        copyBtn.textContent = '已复制 ✓'
+        setTimeout(() => (copyBtn.textContent = '复制'), 1500)
+      })
+      .catch(() => {
+        copyBtn.textContent = '复制失败 ✕'
+        setTimeout(() => (copyBtn.textContent = '复制'), 1500)
+      })
+  })
+  const closeBtn = mkChip('✕', () => panel.remove())
+  bar.append(tabAuto, tabJson, copyBtn, closeBtn)
+  panel.append(bar, body)
+  document.body.appendChild(panel)
+  show()
+}
+
+let marqueeEl: HTMLDivElement | null = null
+let anchor: { x: number; y: number } | null = null
+
+function ensureMarqueeEl(): HTMLDivElement {
+  if (!marqueeEl) {
+    marqueeEl = document.createElement('div')
+    marqueeEl.id = '__auto-select-marquee'
+    marqueeEl.style.cssText =
+      'position:fixed;z-index:2147483646;pointer-events:none;background:rgba(76,128,230,.12);border:1.5px solid rgba(76,128,230,.9)'
+    document.body.appendChild(marqueeEl)
+  }
+  return marqueeEl
+}
+
+function onMove(e: MouseEvent): void {
+  if (!anchor) return
+  const el = ensureMarqueeEl()
+  const x = Math.min(anchor.x, e.clientX)
+  const y = Math.min(anchor.y, e.clientY)
+  el.style.left = `${x}px`
+  el.style.top = `${y}px`
+  el.style.width = `${Math.abs(e.clientX - anchor.x)}px`
+  el.style.height = `${Math.abs(e.clientY - anchor.y)}px`
+  // 框选期间抑制原生文本选择。
+  e.preventDefault()
+}
+
+function onUp(e: MouseEvent): void {
+  if (!anchor) return
+  const a = anchor
+  anchor = null
+  document.removeEventListener('mousemove', onMove, true)
+  document.removeEventListener('mouseup', onUp, true)
+  marqueeEl?.remove()
+  marqueeEl = null
+
+  const dx = Math.abs(e.clientX - a.x)
+  const dy = Math.abs(e.clientY - a.y)
+  if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return // 死区内 = 点击
+
+  const rect = {
+    left: Math.min(a.x, e.clientX),
+    top: Math.min(a.y, e.clientY),
+    right: Math.max(a.x, e.clientX),
+    bottom: Math.max(a.y, e.clientY),
+  }
+  const nodes = collectSelection(rect)
+  const size = { x: rect.left, y: rect.top, w: rect.right - rect.left, h: rect.bottom - rect.top }
+  showPanel(renderAuto(size, nodes), renderJson(size, nodes))
+}
+
+function onDown(e: MouseEvent): void {
+  // Alt+左键 = 框选起笔；capture 阶段拦截，抑制原生点击/拖拽。
+  if (!e.altKey || e.button !== 0) return
+  anchor = { x: e.clientX, y: e.clientY }
+  const el = ensureMarqueeEl()
+  el.style.left = `${e.clientX}px`
+  el.style.top = `${e.clientY}px`
+  el.style.width = '0px'
+  el.style.height = '0px'
+  document.addEventListener('mousemove', onMove, true)
+  document.addEventListener('mouseup', onUp, true)
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+function onKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    document.getElementById('__auto-select-panel')?.remove()
+    anchor = null
+    marqueeEl?.remove()
+    marqueeEl = null
+  }
+}
+
+document.addEventListener('mousedown', onDown, true)
+document.addEventListener('keydown', onKey, true)
+
+export const __selectAnythingActive = true
+"##
+}
+
+/// PLAN-646: 汇集 front_dir/*.at 源文 → `src/auto-sources.ts`
+/// （`AUTO_SOURCES: Record<stem, 全文>`）。内容 hash 防抖——不变不写，
+/// 保持增量工具链（vite watcher）安静。
+fn write_auto_sources_ts(front_dir: &Path, output_dir: &Path) {
+    let mut entries: Vec<(String, String)> = Vec::new();
+    if let Ok(dirs) = fs::read_dir(front_dir) {
+        for entry in dirs.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "at").unwrap_or(false) {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let stem = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("app")
+                        .to_string();
+                    entries.push((stem, content));
+                }
+            }
+        }
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut ts = String::from(
+        "// auto-sources.ts — PLAN-646 Select Anything source map (dev-only).\n// key = .at file stem, value = full source text. Rewritten by `auto run`;\n// content-hash debounced (unchanged files are not rewritten).\n\nexport const AUTO_SOURCES: Record<string, string> = {\n",
+    );
+    for (stem, content) in &entries {
+        ts.push_str(&format!(
+            "  {}: {},\n",
+            serde_json::json!(stem),
+            serde_json::json!(content)
+        ));
+    }
+    ts.push_str("}\n\n");
+    let path = output_dir.join("src").join("auto-sources.ts");
+    if let Ok(existing) = fs::read_to_string(&path) {
+        if existing == ts {
+            return;
+        }
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    fs::write(&path, ts).ok();
 }
 
 fn generate_app_vue(vue_code: &str) -> String {
@@ -1561,6 +1903,15 @@ fn write_project_files(
     let utils_ts = generate_utils_ts();
     fs::write(output_path.join("src/lib/utils.ts"), utils_ts)
         .map_err(|e| format!("Failed to write src/lib/utils.ts: {}", e))?;
+
+    // PLAN-646: Select Anything overlay（dev-only 采集层资产；main.ts 以
+    // import.meta.env.DEV 动态引用，产物构建 tree-shake 掉）。
+    fs::create_dir_all(output_path.join("src").join("auto-select")).ok();
+    fs::write(
+        output_path.join("src").join("auto-select").join("overlay.ts"),
+        generate_select_overlay_ts(),
+    )
+    .map_err(|e| format!("Failed to write src/auto-select/overlay.ts: {}", e))?;
 
     Ok(())
 }
@@ -5216,6 +5567,9 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
         }
     }
 
+    // PLAN-646: 源码映射随增量编译同步（内容 hash 防抖）。
+    write_auto_sources_ts(&front_dir, &output_dir);
+
     Ok(changed_count)
 }
 
@@ -5230,7 +5584,31 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 /// 6. Copy public assets
 /// 7. Start dev server
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    // PLAN-646: dev 运行面开启 Select Anything DOM 标记（data-auto-*）——
+    // SFC 注入 data-auto-{tag,id,span} 供 overlay 框选采集；产物构建
+    // （build_vue_project）不设，保持输出逐字节不变。VueGenerator::new()
+    // 构造期读取（AUTO_API_FUNCTIONS 同款进程级 env 通道）。
+    // SAFETY: edition 2021——set_var 安全；在任一 VueGenerator::new() 之前设置。
+    std::env::set_var("AUTOUI_SELECT_MARKERS", "1");
     println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
+
+    // PLAN-646: 源码映射随每次运行刷新（内容 hash 防抖，覆盖首启/全量生成路径
+    // ——incremental_compile_changed 内的同步点只在有增量时触达）。
+    let p646_vue_root = root_dir.join("gen").join("front").join("vue");
+    write_auto_sources_ts(&resolve_front_dir(root_dir), &p646_vue_root);
+    // PLAN-646: overlay 资产自愈刷新（旧工程 scaffold 停在旧版 overlay）。
+    {
+        let overlay_path = p646_vue_root.join("src").join("auto-select").join("overlay.ts");
+        let overlay_new = generate_select_overlay_ts();
+        let stale = match std::fs::read_to_string(&overlay_path) {
+            Ok(existing) => existing != overlay_new,
+            Err(_) => true,
+        };
+        if stale {
+            std::fs::create_dir_all(overlay_path.parent().unwrap()).ok();
+            std::fs::write(&overlay_path, overlay_new).ok();
+        }
+    }
 
     let changed_count = incremental_compile_changed(root_dir)?;
 
