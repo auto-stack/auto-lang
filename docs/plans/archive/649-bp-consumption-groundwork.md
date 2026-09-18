@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-649
-status: reviewed             # drafting → executing → execution_done → reviewed → archived（R2 pass）
+status: archived             # drafting → executing → execution_done → reviewed → archived（终态，merge 收据见文末）
 feature_name: bp-consumption-groundwork（bp 消费地基：L1 连字符解析 + icon 词汇面 + data-table 半句复核）
 author: [agent]
 created_at: 2026-09-18
@@ -323,3 +323,43 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
    T-02 加一个前缀门槛即可（一行差异，执行期按默认走）。
 3. （记录性）filetree palette 终值默认最小集 `["icon","text"]`；其 spec 本义
    演进归 070，本计划不越界扩写。
+
+## 11. merge 收据（PLAN-649:r1，2026-09-19）
+
+```yaml
+stage: merge
+plan_id: PLAN-649:r1
+outcome: pass
+completion_kind: delivered
+checkpoints:
+  prepared: reviewed 350c2ac0d（R2 pass, rev1）+ delivery a19ecf7b4（自 reviewed 仅
+    master 同步 merge 3cf93b11c + specs.json P649-1 投影行，实现/依赖零变化；
+    同步后 cargo t plan649 10/10 复验）+ canonical delta 随分支（contract.md
+    SD-01/SD-02 @20789bec1）+ ledger P649-1 保格式原子写 upsert+读回校验
+  landed: master 7bdab0eba（merge plan-649-dev --no-ff，+520/-42 七文件）；
+    祖先验证 350c2ac0d/a19ecf7b4 均可达；main smoke：cargo t plan649 10/10 +
+    contract.md SD-01/SD-02 双节在位 + specs.json P649-1 读回。执行期 master
+    两次前进（654 收据 0c3ccbe0a / 022 合并 029eacada）与分支均零文件交叠；
+    落地等 022 会话释放 MERGE_HEAD（轮询 ~4 分钟）后执行，无竞争写入
+  ledger_refreshed: specs.json architecture 段 P649-1（file=
+    docs/specs/blueprint/contract.md，related=[PLAN-649,PLAN-645,PLAN-643,
+    PLAN-640]，随分支 7bdab0eba 落地）+ reviews 段 P649-2（本收据提交）+
+    INDEX.md spec-index.py 再生无内容 diff；blueprint 模块无 plans.md，
+    plans.md 行 N/A（回写面=contract.md 本体，已在分支）；goals.md GOAL-011
+    plans 列表追加 649 行（随收据提交）
+  archived: git mv docs/plans/649-bp-consumption-groundwork.md →
+    docs/plans/archive/（本仓归档目录 archive/，非技能书写的 archived/）+
+    status: archived + 本收据 + spec-sync 回写记录节
+  cleaned: 待回填（wt-guard 双守卫 → worktree/分支/组目录移除）
+```
+
+## spec-sync 回写记录
+
+- `docs/specs/blueprint/contract.md`：Q5 解析链补连字符变体规则（SD-01）
+  + 验证面 palette 词面补 icon 归属落点（SD-02）——随 plan-649-dev 落地
+  （20789bec1 → master 7bdab0eba）。
+- `.autoos/specs.json`：architecture 段 P649-1（分支内预备，随 merge 落地）+
+  reviews 段 P649-2（收据提交）。
+- `docs/specs/INDEX.md`：spec-index.py 再生，无内容 diff。
+- `docs/specs/goals.md`：GOAL-011 plans 列表追加 649。
+- 全局件：无新模块/crate/状态翻转；blueprint 模块无 plans.md（回写 N/A）。

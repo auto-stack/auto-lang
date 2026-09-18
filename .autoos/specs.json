@@ -6428,6 +6428,16 @@
             "GOAL-007"
           ],
           "status": "published"
+        },
+        {
+          "id": "P649-2",
+          "title": "bp-consumption-groundwork — 复审与合并收据",
+          "content": "复审 pass（同会话复审，独立性受限已声明、工件重建裁定）：R1 needs_fix（AC-01..05 复现全 pass，tf 3640/3641 与 654 F-R2 基线一致；F-649-1=DEBT 649 行“此前零登记/size 提取链分诊”失实——654 复审 F-R2 已在案且定性为 feature 配置债，R1 双态复现 test-vm-files 红/ui-iced 绿）→ 修复 350c2ac0d（docs-only 单行）→ R2 pass。landing=master 7bdab0eba（--no-ff 合 plan-649-dev；delivery a19ecf7b4=reviewed 后仅 master 同步+P649-1 投影；main smoke plan649 10/10+contract.md 双节读回）。执行注记：前会话遗留未提交实现经对账核实后续跑门禁；主检出两次并发占用（654 收据暂存裹挟经软重置拆分；022 合并 MERGE_HOLD 轮询让路）。三债收口：KNOWN-DEBT:90 清偿/P643-D1 核销/640-D89 改写；预存红 DEBT 649 行登记（F-R2 同族）。",
+          "file": "docs/plans/archive/649-bp-consumption-groundwork.md",
+          "related": [
+            "PLAN-649"
+          ],
+          "status": "published"
         }
       ]
     }
