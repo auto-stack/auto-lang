@@ -2,8 +2,8 @@
 
 > 设计层：[component-time-and-events](../../../../design/autoui/component-time-and-events.md)
 > 计划：阶段 1 `docs/plans/archive/652-nested-component-timesource.md`；
-> **阶段 2+3** `docs/plans/654-nested-timesource-path-and-clock.md`（executing）
-> 状态：阶段 1 已 merge；阶段 2 path 级订阅 **已实现于 plan-654-dev**（待 fold）；Clock 服务见阶段 B
+> **阶段 2+3** `docs/plans/654-nested-timesource-path-and-clock.md`（execution_done）
+> 状态：阶段 1+2 已 fold master；path 级订阅 current-state 见下；Clock 见 [clock-service.md](clock-service.md)
 
 ## 问题（已定罪）
 
