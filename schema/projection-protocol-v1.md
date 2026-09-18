@@ -1,11 +1,16 @@
-# AutoShell 状态投影协议 v1.8（S2 接缝合同）
+# AutoShell 状态投影协议 v1.9（S2 接缝合同）
 
-> **版本**：v1.8（2026-09-17，auto-os PLAN-014 shell-ux-polish-v2 落码；
-> 纯字段 + 总线语义增量、**零新动词**——`__wm_date` 新字段、
-> `__wm_running` 注入面扩注 desktop 层、`__wm_notes[].app`/`note_apps`
-> 来源面、`__wm_notes_badge` 派生显示面、`__desktop_cmd` 追加语义、
-> `__desktop_icons[].color`/`__desktop_cells[].full` 字段表审计补记。
-> 详见 §6 v1.8 节）。
+> **版本**：v1.9（2026-09-18，双增量并行协调叠号——486/487 先例）：
+> v1.8 = auto-os PLAN-014 shell-ux-polish-v2（纯字段 + 总线语义增量、
+> **零新动词**——`__wm_date`、`__wm_running` desktop 扩注、
+> `__wm_notes[].app`/`note_apps`、`__wm_notes_badge`、`__desktop_cmd`
+> 追加语义、`__desktop_icons[].color`/`__desktop_cells[].full` 审计
+> 补记，详见 §6 v1.8 节）；
+> v1.9 = auto-os PLAN-024 dashboard 常驻小组件层（入向
+> `__dashboard_faces`/`__wm_dashboard`/几何注入 + 出向
+> `__dashboard_cmd` 六动词词表（toggle/close/pin/unpin/span/launch）+
+> `__dashboard_open` 合成消息 + `shell.dashboard.*` storage 键空间，
+> 详见 §6 v1.9 节）。
 > v1.7（2026-09-14，双增量并行落码——PLAN-016：`open_with` 打开
 > 文件动词（普通注册表窗上行排空面 + pac `opens:` 关联校验面）；auto-os
 > PLAN-019：负一屏显示桌面（保留分区 + origin 往返）与壁纸选择 carousel
@@ -210,6 +215,42 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
   `__wm_notes_badge` 为新只读面；追加语义对既有单写点行为等价（单命令
   串不变）；`__wm_running` desktop 层扩注对 shell 层零影响。vue 端以
   本版为对拍基线（§5）。
+### v1.9（2026-09-18，auto-os PLAN-024：dashboard 常驻小组件层——v1.8 并行协调叠号）
+
+- **dashboard 面板 = 第四 overlay 槽**（设置面板退役后继任；**常驻语义**（用户裁定 R2/R21）：z 高于
+  桌面图标层、低于全部 app 窗，boot 常显、× 隐藏 / dock ▦ 切换，
+  无 scrim/外点关闭；**face 卡双击 = 三态打开**（升格开窗原语
+  open_window_for_session / activate 聚焦 / launch））。面板本体 = 特权面
+  `dashboard.at`（shell pack 第五件，hash-lock 双写）；face 卡 = 各 App
+  `view mini` 命名视图的**宿主拆借渲染**（`SessionViewRef.view_name` 选择
+  器 + `DynamicComponent.view_named`——活渲染面：与主窗同 component/同
+  VM 桥，输入/Tick/重渲染全通，非截图/缩放）。
+- **入向 `__dashboard_faces`**（面板 App 合同面 Obj 数组，声明不 handler
+  消费——handler 侧走 `face_ids/face_titles/face_icons/face_statuses/
+  face_spans` 平行字符串列表 + `RebuildFaces`，B12 规避同族）：face 快照
+  `{id,title,icon,status,span}`，`status` ∈ running/hatched/placeholder
+  （D4 门：daemon/back_root/exe 缺一才孵化——inproc 合并 VM 内
+  back_port 不构成外部依赖；tab 派生 = 注册表 category，system →
+  系统页）。
+- **入向 `__wm_dashboard`**（shell 标量 "1"/""）：面板可见性投影——dock
+  Dashboard 钮两态高亮判据（`__wm_notes_visible` 同型）。
+- **入向几何注入** `__panel_w/__panel_h/__panel_top`（px）：面板布局单一
+  事实在宿主（`dashboard_layout` 行主序 next-fit：等宽 3 列 + span 1|2 宽卡），
+  面板 .at 经 style 插值镜像（`__panel_max_h` 同型）。
+- **出向 `__dashboard_cmd`**（面板 App 上行总线，宿主读+清）：六动词
+  `dashboard_toggle`/`dashboard_close`/`dashboard_pin <id>`/
+  `dashboard_unpin <id>`/`dashboard_span <id> <1|2>`/`dashboard_launch
+  <id>`（`__desktop_cmd` 同一 parse_records 解析，DesktopCommand 六新变体）。
+  shell.at dock 钮走 `__desktop_cmd` 的 `dashboard_toggle` 无参动词。
+- **配置键空间 `shell.dashboard.*`**：`enabled`（csv 纳入清单；缺席 =
+  未配置 = 首次召唤自动纳入全部候选）+`span.<app>`（"1"|"2"）。
+- **降耗（R5）**：非活动 tab/面板隐藏时孵化会话 `.Tick` 停订（订阅随
+  消息周期重评估）。
+- **栅格进度条三态（R17d）**：接近即占位（空白块） / 段内过半点亮 /
+  未到不渲染；段色四分位（≤25 绿 / ≤50 蓝 / ≤75 黄 / >75 红）。宿主侧
+  `storage_host_read`/`storage_host_publish` 直读写（非几何无动词，boot
+  生效——既定判定）。
+- **新动词（§4 词表扩）**：上述六 dashboard 动词。
 
 ### v1.7（2026-09-14，双增量并行落码：PLAN-016 + auto-os PLAN-019）
 

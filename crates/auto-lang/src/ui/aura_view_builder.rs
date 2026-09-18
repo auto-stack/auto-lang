@@ -12453,6 +12453,7 @@ mod tests {
     /// Helper: create a minimal AuraWidget for testing.
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: name.to_string(),
             state_vars,
@@ -17315,6 +17316,7 @@ mod plan571_button_default_variant_tests {
 
     fn make_test_widget(name: &str) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: name.to_string(),
             state_vars: vec![],

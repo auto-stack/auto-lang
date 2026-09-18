@@ -63,6 +63,50 @@ widget App {
         }
     }
 
+    // PLAN-024 R19：桌面音乐卡（stella mini-player 设计语言：圆盘 glyph +
+    // 曲名/艺人居中 + 进度时间标签 + ⏮⏯⏭ 控制——face 事件直达本 app 会话，
+    // PlayPause 无曲目时自动 SelectIndex(0) 开播）。category=media → 主 tab。
+    view mini {
+        col {
+            style: "w-full h-full items-center justify-center gap-2 px-4"
+            col {
+                style: "w-14 h-14 rounded-full bg-primary/15 items-center justify-center"
+                text "♪" {
+                    style: "text-2xl text-primary"
+                }
+            }
+            text .store.current_title {
+                style: "text-sm font-semibold text-foreground text-center"
+            }
+            text .store.current_artist {
+                style: "text-xs text-muted-foreground text-center"
+            }
+            text .store.time_progress_label {
+                style: "text-xs text-muted-foreground tabular-nums"
+            }
+            row {
+                style: "items-center gap-5"
+                button (onclick: .PrevTrack) {
+                    text { "⏮" }
+                    style: "text-muted-foreground text-base"
+                }
+                button (onclick: .PlayPause) {
+                    if .store.is_playing {
+                        text { "⏸" }
+                        style: "text-primary text-xl"
+                    } else {
+                        text { "▶" }
+                        style: "text-primary text-xl"
+                    }
+                }
+                button (onclick: .NextTrack) {
+                    text { "⏭" }
+                    style: "text-muted-foreground text-base"
+                }
+            }
+        }
+    }
+
     on {
         .Init -> {
             store.Load()

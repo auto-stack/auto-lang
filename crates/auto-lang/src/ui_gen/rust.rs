@@ -6642,6 +6642,7 @@ mod tests {
             payload: vec![],
         };
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "ImageViewer".to_string(),
@@ -6732,6 +6733,7 @@ widget App {
     #[test]
     fn test_setup_block_rejected_on_rust_target() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             name: "SetupWidget".to_string(),
             state_vars: vec![],
@@ -6772,6 +6774,7 @@ widget App {
     #[test]
     fn test_simple_counter() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Counter".to_string(),
@@ -6823,6 +6826,7 @@ widget App {
     /// 组合 View(与 VM 侧 aura_view_builder 面板臂同款降级)。
     fn autodown_panel_widget(view_tree: AuraNode) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             name: "PanelDoc".to_string(),
             state_vars: vec![],
             messages: vec![],
@@ -7528,6 +7532,7 @@ widget LoginForm {
         }
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Playground".to_string(),
@@ -7662,6 +7667,7 @@ widget LoginForm {
         }
 
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Playground".to_string(),
@@ -7765,6 +7771,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_scalar_override() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "App".to_string(),
@@ -7837,6 +7844,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_no_scalars_no_override() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "OnlyCollections".to_string(),
@@ -7878,6 +7886,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_recurses_into_store() {
         let widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "App".to_string(),
@@ -7927,6 +7936,7 @@ fn main() {{}}
         // The store struct itself should NOT recurse into a `store` field
         // (avoid NotesStore { store: NotesStore } infinite recursion).
         let store_widget = AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "NotesStore".to_string(),
@@ -8111,6 +8121,7 @@ fn main() {{}}
     /// Plan 043 M5 #1: multi-param msg variants emit a multi-field Rust enum.
     fn widget_with_msg(variants: Vec<AuraMsgVariant>) -> AuraWidget {
         AuraWidget {
+            named_views: Vec::new(),
             actions: None,
             timers: Vec::new(),
             name: "Shell".to_string(),

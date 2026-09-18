@@ -3256,6 +3256,7 @@ fn store_decl_as_widget_decl(
         model: store_decl.model.clone(),
         computed: store_decl.computed.clone(),
         view: None,
+        named_views: Vec::new(),
         on: store_decl.on.clone(),
         bind: None,
         props: Vec::new(),
@@ -3983,6 +3984,7 @@ fn build_dynamic_component_inner(
                                     model: store_decl.model.clone(),
                                     computed: store_decl.computed.clone(),
                                     view: None,
+                                    named_views: Vec::new(),
                                     on: store_decl.on.clone(),
                                     bind: None,
                                     props: Vec::new(),
@@ -4098,6 +4100,7 @@ fn build_dynamic_component_inner(
                                     model: store_decl.model.clone(),
                                     computed: store_decl.computed.clone(),
                                     view: None,
+                                    named_views: Vec::new(),
                                     on: store_decl.on.clone(),
                                     bind: None,
                                     props: Vec::new(),
@@ -4167,6 +4170,7 @@ fn build_dynamic_component_inner(
                 model: store_decl.model.clone(),
                 computed: store_decl.computed.clone(),
                 view: None,  // stores have no view
+                named_views: Vec::new(),
                 on: store_decl.on.clone(),
                 bind: None,
                 props: Vec::new(),
@@ -4201,6 +4205,7 @@ fn build_dynamic_component_inner(
                     model: store_decl.model.clone(),
                     computed: store_decl.computed.clone(),
                     view: None,
+                    named_views: Vec::new(),
                     on: store_decl.on.clone(),
                     bind: None,
                     props: Vec::new(),
@@ -6523,7 +6528,14 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
     default_classes: Option<bool>,
     bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
     sub_widget_msgs: Option<std::collections::HashMap<String, Vec<String>>>,
-) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
+) -> AutoResult<(
+    String,
+    Vec<crate::aura::AuraWidget>,
+    Vec<(String, String)>,
+    Vec<(String, String, String)>,
+)> {
+    // PLAN-024：第四返回段 = named_view_codes（widget, view, SFC code）——
+    // 桌面 vue 宿主 Mini.vue 产物源（仅本 fn 的唯一调用方 auto-man 消费）。
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let at_path = std::path::Path::new(path);
@@ -6563,7 +6575,12 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
         }
     }
 
-    Ok((result.vue_code, result.widgets, store_composables))
+    Ok((
+        result.vue_code,
+        result.widgets,
+        store_composables,
+        result.named_view_codes,
+    ))
 }
 
 pub fn ui_build_shadcn_with_sub_widgets_and_stores(
@@ -6906,6 +6923,11 @@ mod plan627_qualified_api_tests;
 // PLAN-634 T-03: a2r 语句位置块尾分号语料（auto-term DEBTS #18 根修）。
 #[cfg(test)]
 mod plan634_block_tail_semi_tests;
+
+// PLAN-024: named view (`view mini { ... }`) parsing corpus — desktop
+// dashboard language extension.
+#[cfg(test)]
+mod plan024_named_view_tests;
 
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]

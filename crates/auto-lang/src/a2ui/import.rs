@@ -68,6 +68,7 @@ fn import_surface_update(
     };
 
     Ok(AuraWidget {
+        named_views: Vec::new(),
         name: update.surface_id.clone(),
         timers: Vec::new(),
         state_vars,

@@ -353,6 +353,10 @@ pub struct GeneratedComponent {
     pub detected_store_deps: Vec<String>,
     /// All extracted AURA widgets.
     pub widgets: Vec<crate::aura::AuraWidget>,
+    /// PLAN-024: named view SFCs — one per `view mini { ... }` declaration.
+    /// (widget_name, view_name, SFC code). Desktop vue hosts emit each entry
+    /// as `Mini.vue` next to the app's App.vue.
+    pub named_view_codes: Vec<(String, String, String)>,
     /// Plan 443: model-channel bindings discovered in THIS file
     /// (widget name -> bound channels). Workspace drivers aggregate this
     /// across all .at files and feed it back via
@@ -790,6 +794,7 @@ pub fn generate_component_from_file(
             vue_code: String::new(),
             widgets: Vec::new(),
             all_widget_codes: Vec::new(),
+            named_view_codes: Vec::new(),
             store_composables,
             detected_api_imports: api_imports.clone(),
             detected_store_deps: store_deps.clone(),
@@ -911,6 +916,7 @@ pub fn generate_component_from_file(
 
     // Generate SFC for each widget
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
+    let mut all_named_view_codes: Vec<(String, String, String)> = Vec::new();
     // Plan 435 P2:schema 驱动校验(未知 tag/prop)排最前,其后是既有 store/生成告警
     let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> =
         crate::ui_gen::validators::validate_aura_against_schema(&widgets, &all_sub_widgets);
@@ -1018,6 +1024,18 @@ pub fn generate_component_from_file(
         for w in &gen.last_validation_warnings {
             all_validation_warnings.push(w.clone());
         }
+
+        // PLAN-024: named views (`view mini { ... }`) — generate one SFC per
+        // named face through the same pipeline (script segment/store wiring
+        // shared), only the template root differs. A clone with the named
+        // node swapped into `view_tree` reuses generate() verbatim.
+        for (vname, vnode) in &widget.named_views {
+            let mut mini_widget = widget.clone();
+            mini_widget.view_tree = vnode.clone();
+            let mini_code = gen.generate(&mini_widget)
+                .map_err(|e| format!("Failed to generate {}/view {}: {}", widget.name, vname, e))?;
+            all_named_view_codes.push((widget.name.clone(), vname.clone(), mini_code));
+        }
     }
 
     let vue_code = all_widget_codes
@@ -1041,6 +1059,7 @@ pub fn generate_component_from_file(
     Ok(GeneratedComponent {
         vue_code,
         all_widget_codes,
+        named_view_codes: all_named_view_codes,
         store_composables,
         detected_api_imports: api_imports,
         detected_store_deps: store_deps,
