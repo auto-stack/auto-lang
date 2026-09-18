@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-649
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done    # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-consumption-groundwork（bp 消费地基：L1 连字符解析 + icon 词汇面 + data-table 半句复核）
 author: [agent]
 created_at: 2026-09-18
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -197,23 +197,36 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
 > worktree `D:/autostack/.wt/lang-649/auto-lang`（分支 `plan-649-dev`）；
 > plan 簿记留主检出。T-02 独立可先行。
 
-- **T-01 [有界调查] icon 发射面与 data-table 消费面**（0.5d）
-  无依赖。操作：①vue 轨对 `icon` 的实际发射现状（schema `web: "native"`
-  的消费方是谁——a2ts 发射臂实测小语料）；②DataTable 在 vue 语料的消费/
-  发射现状盘点。产出：§5.2 修向裁定（①/②）+ §5.3 复核结论 + filetree
-  palette 恢复终值。验证：结论与实测输出记入本节。→ AC-02/03 前置
-- **T-02 连字符变体探测**：`lib.rs` probe 扩候选 + 单测（§6 第一组）。
-  验证：`cargo check -p auto-lang`；probe 单测绿。→ AC-01
-- **T-03 icon 修向落地 + filetree 恢复**：按 T-01 裁定走 ①或② +
-  `blueprints/navigation/filetree/spec.md` palette 恢复 + palette 正/负测试
-  （注意与 070 在途提交的 rebase 协同）。
-  验证：`cargo t plan649`。→ AC-02
-- **T-04 data-table 债行复核改写**（+ 若裁定的 aura 映射补齐）。
-  验证：DEBT diff。→ AC-03
-- **T-05 端到端与门禁兜底（review 前）**：L1 直连端到端（empty-state 等
-  ≥3 包双轨）；裸 `cargo tv`；三债核销/改写落 DEBT 文件；门禁档位复核
-  （Category B）。
-  验证：输出留档本节。→ AC-01/04 及全 AC 兜底
+- **T-01 [x] 有界调查：icon 发射面与 data-table 消费面**（2026-09-18，
+  commit 20789bec1）
+  裁定=**候选①**（registry 补注册）：vue 轨 `node_to_html` 有 icon 专臂
+  （`tag == "icon" || "Icon"` 前置返回 + `lucide_icons` 收集机制，
+  vue.rs:1610 一带实测）——注册不截胡发射，仅补词面准入；候选②不需要。
+  data-table 复核：alias 注册在案 + vue 映射经 schema `datatable` 元素
+  （折叠键）由 P4-4 overlay（apply_schema_vue_mappings）实灌进 spec
+  （t07 运行时断言 `get_primary_component("vue","data-table")==DataTable` 锁定）；
+  回避真实理由=vue 语料零消费（唯一提及 026-database 实为原生 table），
+  **不补新映射**。filetree palette 终值=`["icon","text"]`。
+- **T-02 [x] 连字符变体探测**：`module_path_candidates`（字面量优先，
+  下划线段按段序枚举 kebab 变体，上限 4）+ probe/`back` 根映射/probe_pkg
+  三探测点接入。验证：`cargo check -p auto-lang` 零新警告（181 警告均
+  预存 vm/ffi 面）；`plan649_bp_tests` t01-t05 probe 单测绿。
+- **T-03 [x] icon 修向落地 + filetree 恢复**：候选①——
+  `register_display_widgets` media 段 Icon spec（ark/iced/vue
+  `BackendMapping::new("Icon", None)`，ImageSurface 同 precedent）；
+  filetree `spec.md` palette 恢复 + 注记改写。验证：t06 正/负 +
+  `cargo t palette` 11/11（含 plan643 既有 `palette_has_no_drift` 不回归）。
+- **T-04 [x] data-table 债行复核改写**：不补映射（映射已在，见 T-01）；
+  KNOWN-DEBT 640 行按事实改写（"未入 registry/缺 vue 映射"两说不成立，
+  回避维持理由更正为零消费）；同批核销 KNOWN-DEBT:90（L1 行）与
+  P643-D1（icon 词面）。验证：DEBT diff（commit 20789bec1）。
+- **T-05 [x] 端到端与门禁兜底**：t08-t10 双轨端到端——empty-state
+  （640 AC-08"全黑"对照转绿，VM view 文案断言 + vue SFC import 断言）、
+  sidebar-shell、data-table-crud（≥3 连字符包）+ signup 不回归；裸
+  `cargo tv` = 3785/3786 绿，**唯一红 `test_display_family_codegen_arm_fixture`
+  为预存**（stash 全部 649 改动在干净基线 b13af592 同红，A/B 归因；
+  `b13af592..master` rust.rs/fixture 零提交 → master 同带；未在案，
+  已登记 DEBT 649 行）。门禁档位=Category B 全过。
 
 依赖链：T-01 → T-03/T-04；T-02 无依赖；T-05 最后。
 
@@ -222,6 +235,22 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
 - 2026-09-18 draft handoff（/auto-plan:new）：plan_revision 1，stage: new，
   outcome: pass（授权范围内可交付 work），next: work。
   待用户确认项见 §10（两项，均有默认裁定，不阻塞开工）。
+- 2026-09-18 work handoff（/auto-plan:work）：plan_revision 1（无契约变更，
+  §10 两项均按预授权默认落地——变体探测作用域=全解析链、icon 落候选①），
+  stage: work，outcome: **pass**，code_commit: **20789bec1**
+  （plan-649-dev @ worktree `D:/autostack/.wt/lang-649/auto-lang`，base
+  b13af5927），task_ids: T-01..T-05 全 [x]，evidence: `cargo t plan649`
+  10/10、`cargo t palette` 11/11、裸 `cargo tv` 3785/3786（唯一红=
+  预存 display_family golden，基线 A/B 归因非本计划引入，已登记 DEBT
+  649 行）、DEBT 三债核销/改写 diff、SD-01/SD-02 落 contract.md（随分支
+  合入），blockers: 无，next: **review**。
+  执行注记：前会话已在工作树留下 T-02/T-03/T-04 未提交实现，本会话按技能
+  对账核实（逐 diff 核对 + T-01 结论代码实证抽查）后续跑门禁、补登记、
+  提交。AC 映射：AC-01=t08/t09/t10、AC-02=t06+SD-02、AC-03=DEBT 改写+t07、
+  AC-04=DEBT diff、AC-05=SD 落地（specs.json upsert 归 merge）。
+  协同注记：工作树基线 b13af592 落后 master（4817b51e），merge 前需
+  rebase/合并 master 刷新（070 filetree 交叠面在基线..master 区间无
+  提交，冲突风险低）。
 
 ## 10. 待澄清事项
 
