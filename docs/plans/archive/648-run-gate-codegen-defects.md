@@ -265,3 +265,9 @@ CLI runner / vm_bridge / 生成面)。tf 门禁 = 测试文件 feature 门控
 - 规范增量=无(canonical specs 零改动,理由见 §5 与 review 冻结复述);
 - KNOWN-DEBT-AND-RISKS.md:P648-D1(handler 再入缺陷,交互阻断级,
   三次实证)/P648-D2(musk 预存红复核)——移交后续计划。
+  **cleaned**=wt-guard 双 clean(lang-648/auto-lang+lang-648/auto-down 均
+  过闸后移除);worktree D:/autostack/.wt/lang-648/auto-lang + 分支
+  plan-648-dev(was 6422eb267,merge-base 祖先校验全并)移除;只读依赖
+  worktree lang-648/auto-down(detached@b1c88de,零自有提交)随组移除;
+  组目录 .wt/lang-648 rmdir 空——五 checkpoint 全闭环,overall:
+  **delivered**。
