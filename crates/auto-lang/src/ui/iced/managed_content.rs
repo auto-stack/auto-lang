@@ -23,7 +23,7 @@ use iced::advanced::widget::Tree;
 use iced::advanced::widget::Widget;
 use iced::advanced::Renderer as _;
 use iced::{
-    Background, Border, Color, Element, Event, Length, Point, Rectangle, Size, Theme, mouse,
+    Background, Border, Color, Element, Length, Point, Rectangle, Size, Theme, mouse,
 };
 
 use crate::ui::scroll::host::ScrollContentHost;
