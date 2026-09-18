@@ -2937,6 +2937,13 @@ impl VueGenerator {
                 self.extract_api_calls_from_payload(&lc.payload);
             }
         }
+        // PLAN-074: watch 块体的 API 调用与 handlers/lifecycle 同权注册——
+        // 缺此扫描时 watch 内的契约调用（`use back.api:` → '@/lib/api'
+        // import 行）有 emission 无 import（TS2304；jade backlinks_panel
+        // 下沉首件实证：on 块调用绿、watch 块调用 TS2304）。
+        for w in &widget.watchers {
+            self.extract_api_calls_from_payload(&w.payload);
+        }
 
         // Plan 053 M5/P5-6: identify debounced complete-handlers (body calls
         // `complete`). Their function bodies get wrapped in setTimeout(80ms)
@@ -10438,6 +10445,22 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 Stmt::Block(body) => {
                     for stmt in &body.stmts {
                         walk_stmt(stmt, api_fns, used);
+                    }
+                }
+                // PLAN-074: try/catch/finally 体同样入扫描——watch 的契约
+                // 调用沉入 try 块（DSL ≥ c5b5fecf）后，`_ => {}` 兜底把整段
+                // 吞掉，import 行仍不发射（backlinks 首件实证的最后一环）。
+                Stmt::Try(t) => {
+                    for stmt in &t.body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                    for stmt in &t.catch_body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                    if let Some(finally_body) = &t.finally_body {
+                        for stmt in &finally_body.stmts {
+                            walk_stmt(stmt, api_fns, used);
+                        }
                     }
                 }
                 _ => {}
