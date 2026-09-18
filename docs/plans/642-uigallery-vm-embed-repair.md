@@ -581,6 +581,35 @@ evidence:
 next: T-12..T-19 续作（worktree 续用;T-16/T-19 仍待用户裁定立项）
 ```
 
+---
+
+```yaml
+stage: work (rev2 波次)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-12 单任务;计划整体仍 executing（T-13..T-19 在途）
+code_commit:
+  auto-lang: 2c96c5e40 (plan-642-dev, 含 T-11 批次 50f623e5c + master 合并 e1f79db2d)
+  auto-os:   无新提交   (生成器未动,产物零变化)
+task_ids: [T-12]
+evidence:
+  - 归因修正:scratch 双变体实测(h-300 精确生效/行 13+ 框底截断)证伪
+    "screen=窗口高"原判;headless 768/900/1250 三窗口 + 条件式/字面量/
+    双 widget 管线全部钳 720 → 真因 = iced 0.14 定高列配给塌缩
+  - 修复:apply_column_style justify-Center/End 路径 overflow-y:hidden
+    列包 Shrink Scrollable(短内容居中/长内容滚动);首版未限作用域致
+    画廊根 h-screen 整页塌缩,随即收窄并重验
+  - headless 回归 p642_t12_overflow_frame_scrolls_and_centers 绿
+  - layout_tests 55 绿(2 红=master 预存同前);cargo t ui 2101 全跑
+    22 败全落 master 基线(零新增)
+  - E2E:009 frame 内滚动条(t12v5_009.png)+ 016 垂直居中恢复
+    (t12v5_016_clean.png);水平居中受 P2-016a light-on-light 干扰,
+    留 T-13 复验
+  - 环境注记:MCP 端口避开 Windows 排除区 2180-2279(改 2300);实例
+    "自杀"实为 TaskStop 孤儿 + 单实例冲突(与 F1 崩溃家族区分)
+next: T-13..T-19 续作;T-16/T-19 仍待用户裁定立项
+```
+
 
 ## 10. 待澄清事项
 
