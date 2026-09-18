@@ -398,6 +398,13 @@ enum Commands {
         #[arg(long, help = "Keep building despite codegen validation warnings (vue backend); restores the pre-015 default")]
         lenient: bool,
     },
+    /// PLAN-031：rqhost 共享合成器 daemon——`auto run -q` 客户端的宿主 OS
+    /// 原生窗承载（多 app 共享单实例；末窗自退）。
+    #[command(about = "PLAN-031: rqhost shared compositor daemon (native OS windows for `run -q` clients)")]
+    Rqhost {
+        #[arg(long, help = "Well-known pipe override (default: autodesk-rqhost; $AUTO_RQHOST_WELLKNOWN also honored)")]
+        pipe: Option<String>,
+    },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
         #[arg(short, long)]
@@ -920,6 +927,27 @@ fn real_main(cli: Cli) -> Result<()> {
             if ai_mode {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
+        }
+        // PLAN-031：rqhost daemon——阻塞直至末窗退出（锁管道被占 =
+        // 第二实例干净退出码 0）。
+        Some(Commands::Rqhost { pipe }) => {
+            let wellknown = pipe
+                .unwrap_or_else(|| auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe());
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
+            auto_lang::ui::desktop_protocol::rqhost::run_daemon(&wellknown).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e)));
+                    std::process::exit(1);
+                }
+                miette::miette!("{e}")
+            })?;
+            if !ai_mode {
+                println!("------------- end --------------");
+            }
+            return Ok(());
         }
         Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, gallery, apps, merged, args }) => {
             if !ai_mode {

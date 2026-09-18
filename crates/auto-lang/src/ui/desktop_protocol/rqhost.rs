@@ -542,6 +542,238 @@ pub fn composed(client: &RqClient) -> Option<&DrawList> {
 }
 
 // ---------------------------------------------------------------------------
+// daemon 装配（T-03）：iced 多窗宿主 + 泵循环 + 末窗退出
+// ---------------------------------------------------------------------------
+
+/// daemon 消息面（listen_with 事件带发生窗——D4 路由键）。
+#[derive(Debug, Clone)]
+pub enum RqMessage {
+    /// 帧泵节拍（15ms：pending 消费 + 日常泵；桌面 400ms ServiceTick 对
+    /// 原生窗输入→帧响应太钝，D3 定案）。
+    Tick,
+    /// OS 窗 resize → `FrameMsg::Resize` 下发客户端重排（AC-06）。
+    WindowResized { window: iced::window::Id, width: f32, height: f32 },
+    /// OS 窗关闭：宿主 Close 下发（app ExitRequest → Reclaim 既有状态机，
+    /// 退出码 0）；末窗 = daemon 退出（iced 空窗不自动退出的反面，D5）。
+    WindowClosed { window: iced::window::Id },
+}
+
+/// daemon 状态：客户端表（窗注册表即 `client.window`）+ serve 柄。
+pub struct RqDaemon {
+    pub serve: Arc<RqServe>,
+    /// 锁管道守卫——与 daemon 同寿命（Drop = 让出单实例声明）。
+    pub claim: Option<transport::PipeClaim>,
+    pub wellknown: String,
+    pub ids: RqIds,
+    pub clients: Vec<RqClient>,
+    /// 曾开过窗（末窗退出门——boot 零窗待命不退）。
+    had_window: bool,
+    /// 开窗级联序（多窗不叠死）。
+    opened: u64,
+}
+
+impl RqDaemon {
+    /// 按发生窗找客户端（输入/resize/关窗路由键——D4）。
+    fn client_of(&mut self, window: iced::window::Id) -> Option<&mut RqClient> {
+        self.clients.iter_mut().find(|c| c.window == Some(window))
+    }
+
+    /// 该窗标题（`.title` 装配面）。
+    pub fn title_of(&self, window: iced::window::Id) -> String {
+        self.clients
+            .iter()
+            .find(|c| c.window == Some(window))
+            .map(|c| c.title.clone())
+            .unwrap_or_else(|| "rqhost".to_string())
+    }
+}
+
+/// 开窗（Adopted 事件消费）：Hello 凭据 → OS 窗（级联偏移防叠死）。
+/// 登记即刻生效（`window::open` 同步返回 Id）；Task 随 update 返回派发。
+fn open_window_for(client: &mut RqClient, cascade: u64) -> iced::Task<RqMessage> {
+    let (win_id, task) = iced::window::open(iced::window::Settings {
+        size: iced::Size::new(client.width.max(160.0), client.height.max(120.0)),
+        position: iced::window::Position::Specific(iced::Point::new(
+            80.0 + 36.0 * (cascade % 10) as f32,
+            80.0 + 36.0 * (cascade % 10) as f32,
+        )),
+        ..Default::default()
+    });
+    client.window = Some(win_id);
+    eprintln!(
+        "[rqhost] window opened for `{}` ({:.0}x{:.0})",
+        client.app_name, client.width, client.height
+    );
+    task.map(|_| RqMessage::Tick)
+}
+
+/// daemon update：Tick（采纳+泵）/ resize / 关窗。
+fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
+    match msg {
+        RqMessage::Tick => {
+            let mut tasks = Vec::new();
+            // ① 待定采纳消费（serve 线程生产——队列 drain）。
+            let pending: Vec<_> = state.serve.pending.lock().unwrap().drain(..).collect();
+            for (name, end) in pending {
+                match adopt_one(name, end, &mut state.ids, 2000) {
+                    Some((mut client, events)) => {
+                        for ev in events {
+                            if matches!(ev, RqEvent::Adopted { .. }) {
+                                state.opened += 1;
+                                state.had_window = true;
+                                tasks.push(open_window_for(&mut client, state.opened));
+                            }
+                        }
+                        state.clients.push(client);
+                    }
+                    None => eprintln!("[rqhost] adoption 未达 Active（预算耗尽弃置）"),
+                }
+            }
+            // ② 日常泵（帧合成/回收；EOF 判死）。
+            let mut dead: Vec<usize> = Vec::new();
+            for idx in 0..state.clients.len() {
+                let (events, alive) = pump_client(&mut state.clients[idx], &mut state.ids);
+                for ev in events {
+                    match ev {
+                        RqEvent::Adopted { .. } => {
+                            state.opened += 1;
+                            state.had_window = true;
+                            tasks.push(open_window_for(&mut state.clients[idx], state.opened));
+                        }
+                        RqEvent::Reclaimed { .. } => {
+                            if let Some(w) = state.clients[idx].window.take() {
+                                tasks.push(iced::window::close(w));
+                            }
+                        }
+                    }
+                }
+                if !alive {
+                    dead.push(idx);
+                }
+            }
+            for idx in dead.into_iter().rev() {
+                let mut client = state.clients.remove(idx);
+                if let Some(w) = client.window.take() {
+                    tasks.push(iced::window::close(w));
+                }
+                eprintln!("[rqhost] client `{}` 断连（EOF）——窗回收", client.app_name);
+            }
+            iced::Task::batch(tasks)
+        }
+        RqMessage::WindowResized { window, width, height } => {
+            if let Some(client) = state.client_of(window) {
+                client.width = width;
+                client.height = height;
+                if let Some(surface) = client.inner.endpoint.surface {
+                    let _ = client.inner.end.send(&ProtocolMsg::Frame(FrameMsg::Resize {
+                        surface,
+                        width,
+                        height,
+                    }));
+                }
+            }
+            iced::Task::none()
+        }
+        RqMessage::WindowClosed { window } => {
+            // 用户关窗 → 宿主 Close 下发（app ExitRequest → Reclaim →
+            // 退出码 0——端点状态机既有，D5②）。
+            if let Some(client) = state.client_of(window) {
+                client.window = None;
+                if let Ok(close) = client.inner.endpoint.close() {
+                    let _ = client.inner.end.send(&close);
+                }
+            }
+            // 末窗退出（D5①）：无在册窗 + 无待定采纳 + 曾开过窗。
+            let no_windows = state.clients.iter().all(|c| c.window.is_none());
+            let no_pending = state.serve.pending.lock().unwrap().is_empty();
+            if no_windows && no_pending && state.had_window {
+                eprintln!("[rqhost] 末窗关闭——daemon 退出");
+                state.serve.stop(&state.wellknown);
+                return iced::exit();
+            }
+            iced::Task::none()
+        }
+    }
+}
+
+/// daemon view：按窗路由——注册表命中 = DrawListPainter 栅格化当前
+/// 合成面；未登记窗 = 占位（renderer.rs view_desktop_fn 先例，D3）。
+fn rq_view(state: &RqDaemon, window: iced::window::Id) -> iced::Element<'_, RqMessage> {
+    let frame = state
+        .clients
+        .iter()
+        .find(|c| c.window == Some(window))
+        .and_then(composed);
+    match frame {
+        Some(list) => crate::ui::iced::broker_surface::drawlist_element(list),
+        None => iced::widget::container(
+            iced::widget::text("[rqhost] 窗口未登记").size(14),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .center(iced::Length::Fill)
+        .into(),
+    }
+}
+
+/// daemon 订阅：15ms 帧泵 + 窗事件流（resize/关窗；输入臂随 T-04 扩）。
+fn rq_subscription(_state: &RqDaemon) -> iced::Subscription<RqMessage> {
+    iced::Subscription::batch(vec![
+        iced::time::every(std::time::Duration::from_millis(15)).map(|_| RqMessage::Tick),
+        iced::event::listen_with(|e, _status, window_id| match e {
+            iced::Event::Window(iced::window::Event::Resized(size)) => Some(
+                RqMessage::WindowResized { window: window_id, width: size.width, height: size.height },
+            ),
+            iced::Event::Window(iced::window::Event::Closed) => {
+                Some(RqMessage::WindowClosed { window: window_id })
+            }
+            _ => None,
+        }),
+    ])
+}
+
+/// rqhost daemon 主入口（`auto rqhost` 子命令消费）。
+///
+/// 单实例仲裁：锁管道被占（已有实例）→ 观测行 + 干净退出（码 0）。
+/// 阻塞直至末窗退出（iced 空窗不自动退出——`iced::exit` 自建，D5）。
+pub fn run_daemon(wellknown: &str) -> Result<(), String> {
+    let (serve, claim) = match RqServe::start(wellknown) {
+        Ok(x) => x,
+        Err(RqServeError::AlreadyRunning) => {
+            eprintln!("[rqhost] 已有实例在服（{wellknown}-lock 被占）——第二实例退出");
+            return Ok(());
+        }
+        Err(RqServeError::Transport(e)) => {
+            return Err(format!("rqhost serve 启动失败: {e:?}"));
+        }
+    };
+    eprintln!("[rqhost] serving on {wellknown}");
+    let state = RqDaemon {
+        serve,
+        claim: Some(claim),
+        wellknown: wellknown.to_string(),
+        ids: RqIds::default(),
+        clients: Vec::new(),
+        had_window: false,
+        opened: 0,
+    };
+    // boot 闭包 Fn 约束——RefCell 一次性提取（renderer.rs run_session 同型）。
+    let init = std::cell::RefCell::new(Some(state));
+    let boot = move || -> (RqDaemon, iced::Task<RqMessage>) {
+        let state = init
+            .borrow_mut()
+            .take()
+            .expect("boot should only be called once");
+        (state, iced::Task::none())
+    };
+    iced::daemon(boot, rq_update, rq_view)
+        .title(|state: &RqDaemon, window| state.title_of(window))
+        .subscription(rq_subscription)
+        .run()
+        .map_err(|e| format!("rqhost daemon 退出异常: {e:?}"))
+}
+
+// ---------------------------------------------------------------------------
 // 测试
 // ---------------------------------------------------------------------------
 
@@ -822,5 +1054,111 @@ mod tests {
         std::env::remove_var(RQHOST_WELLKNOWN_ENV);
         // 清理：探测连接使 serve 环退出难（句柄在线程内）——留进程退出
         // 回收（单测进程隔离，管道名 pid 后缀不串扰）。
+    }
+
+    /// T-03 集成：rqhost 装配 ×真客户端泵全循环（`native_client_full_
+    /// cycle_over_pipe` 形态）——rendezvous 采纳 → Hello/Welcome/
+    /// BufferAlloc → 帧 → resize 下发 → 宿主 Close → ExitRequest →
+    /// BufferRelease → ClientExit::Closed（关窗 = app 退出码 0 的协议级
+    /// 前身，D5②）。
+    #[test]
+    fn rqhost_full_cycle_over_pipe() {
+        use crate::ui::desktop_protocol::client_runtime::{
+            AppProjector, ClientConfig, ClientExit, ClientPump,
+        };
+
+        const SRC: &str = "widget RqCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
+        let pipe = pid_pipe("cycle");
+        let (serve, _claim) = start_serve(&pipe);
+
+        // app 侧线程：采纳 → ClientPump（exit-on-EOF 档 = reconnect None）。
+        let client_pipe = pipe.clone();
+        let app = std::thread::spawn(move || {
+            let (_, app_end) = adopt(&client_pipe, "rq-counter", 2000).expect("adopt");
+            let component = crate::build_dynamic_component(SRC, None).expect("build");
+            let projector = AppProjector::new(component, 480.0, 320.0);
+            let config = ClientConfig {
+                app_name: "rq-counter".into(),
+                title: "rq-counter".into(),
+                width: 480.0,
+                height: 320.0,
+            };
+            let (exit, _p) = ClientPump::new(app_end, projector, config, None).run();
+            exit
+        });
+
+        // 宿主侧：等 pending → 采纳到 Active。
+        let (name, end) = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                let got = serve.pending.lock().unwrap().pop();
+                if let Some(x) = got {
+                    break x;
+                }
+                assert!(std::time::Instant::now() < deadline, "pending 5s 未落");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        };
+        assert_eq!(name, "rq-counter");
+        let mut ids = RqIds::default();
+        let (mut client, events) =
+            adopt_one(name, end, &mut ids, 3000).expect("泵到 Active");
+        assert!(events.iter().any(|e| matches!(e, RqEvent::Adopted { .. })));
+
+        // 帧合成：ClientPump 首帧（BufferAlloc 后自动产）→ pump 收 FrameAck
+        // 回发 → 客户端持续供帧；宿主侧到 frames ≥ 1。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let (events, alive) = pump_client(&mut client, &mut ids);
+            assert!(alive, "客户端泵中死亡");
+            assert!(events.is_empty(), "稳态无事件: {events:?}");
+            if client.frames >= 1 {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "首帧未到");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(composed(&client).is_some(), "合成面可取");
+
+        // resize 下发（AC-06 协议级腿）：客户端 on_control 消费不炸、
+        // 后续帧持续（AppProjector 重排）。
+        let surface = client.inner.endpoint.surface.expect("surface");
+        client
+            .inner
+            .end
+            .send(&ProtocolMsg::Frame(FrameMsg::Resize {
+                surface,
+                width: 640.0,
+                height: 400.0,
+            }))
+            .expect("resize 下发");
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        let (_, alive) = pump_client(&mut client, &mut ids);
+        assert!(alive, "resize 后客户端存活");
+
+        // 宿主 Close（用户关窗宿主侧动作，D5②）→ app ExitRequest →
+        // Reclaim → BufferRelease → ClientExit::Closed。
+        let close = client.inner.endpoint.close().expect("close 产出");
+        client.inner.end.send(&close).expect("close 下发");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut reclaimed = false;
+        loop {
+            let (events, alive) = pump_client(&mut client, &mut ids);
+            if events
+                .iter()
+                .any(|e| matches!(e, RqEvent::Reclaimed { .. }))
+            {
+                let _ = alive; // 端点回 Listening，连接仍开
+                reclaimed = true;
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "回收握手 5s 未收敛");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(reclaimed, "ReclaimWindow 落地");
+        let exit = app.join().expect("app 线程");
+        assert_eq!(exit, ClientExit::Closed, "关窗 = 干净退出（码 0 语义）");
+
+        serve.stop(&pipe);
     }
 }
