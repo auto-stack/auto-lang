@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-641
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: tabs-variant（Tabs 组件 variant 扩展：enclosed 连通形态）
 author: [agent]
 created_at: 2026-09-18
@@ -13,7 +13,7 @@ new_spec_components:
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径
-current_step: 1
+current_step: 6
 total_steps: 6
 ---
 
@@ -253,7 +253,7 @@ variant、两端渲染器落实连通结构、gallery 加示例覆盖两种观�
 - [✅ 已完成] 2026-09-18：三项定案 + convert_view_messages 新发现见 §9 work
   收执行；gallery 落位改 vue-gallery + examples/ui/046（等价实现，scope 内）。
 
-### T-02 Rust 类型 + 线协议
+### T-02 Rust 类型 + 线协议 [x]
 
 - 操作：§5.1 全部（TabsVariant 枚举、View::Tabs/TabsBuilder/Clone 臂、
   a2ui schema/import/export、§4-8 机械穿透清单、gpui 降级注释）。
@@ -262,36 +262,69 @@ variant、两端渲染器落实连通结构、gallery 加示例覆盖两种观�
   `src/ui/gpui/{renderer,auto_render}.rs`。
 - 验证：`cargo check -p auto-lang` 零警告零错误。
 - 依赖：T-01（仅 Q1 结论不影响本任务则可并行启动）。关联：AC-01/05。
+- [✅ 已完成] worktree 75cfcd47c：TabsVariant(parse/as_str/Default) +
+  View::Tabs/TabsBuilder.variant() + A2UI serde（None 省略，旧 JSON 兼容）+
+  import 折叠 tabs 根 prop/export round-trip + 机械穿透 8 处（gpui 降级注释）；
+  单测 4 过（parse 兜底/builder 缺省/wire round-trip/向后兼容）。触碰文件
+  cargo check 零新增警告。
 
-### T-03 iced 渲染臂
+### T-03 iced 渲染臂 [x]
 
 - 操作：§5.2（renderer.rs:4871 重写双形态、render_support 支持级别升级、
   VM 侧复合标签折叠）；Rust 单测（round-trip/builder/非法值回退）。
 - 验证：`cargo check -p auto-lang`；`cargo tv`；`cargo t iced`（或 ui 模块滤串）；
   VM 模式示例目检截图（AC-02 初验）。
 - 依赖：T-02。关联：AC-01/02/05/07。
+- [✅ 已完成] worktree ee5a666f0：双形态臂（default 零回归 + enclosed 连通
+  结构/theme token/顶角半径/透明化命中面）+ convert_view_messages 显式臂 +
+  convert_tabs 折叠（tracked/untracked 双臂镜像）+ render_support partial +
+  折叠单测×3。tv 3746/3747（唯一红=real_sidebar_at_parses_with_navtree
+  基线预存，主检出对照复证）。VM 实机截图
+  examples/ui/046-tabs-variants/src/front/tests/screenshots/p641_vm_v2.png
+  （三形态 + 受控切换断言 s2 a→b）。
 
-### T-04 Vue 端
+### T-04 Vue 端 [x]
 
 - 操作：§5.3（aura schema prop、vue.rs 生成器与 class fallback、registry 四件
   variant 化；docs_gen 触发判断）。
 - 验证：`cargo check -p auto-lang`；Vue 模式示例目检截图（AC-03 初验）。
 - 依赖：T-01（Q1 provenance 结论）、T-02（TabsVariant 无需——Vue 侧独立字符串
   prop，可并行）。关联：AC-01/03/04/07。
+- [✅ 已完成] worktree c98fcbb36 + 5bba77fbe + 4271b4e5b：schema.rs tabs
+  prop 词表（variant/active/onselect/value）+ vue.rs tabs 臂
+  variant/defaultvalue 直传 + registry 四件 variant provide/inject + vue.rs
+  内嵌 WidgetTemplate 同步（Q1 补全：库模式生成源头）+ registry 三件补
+  slot（顺修自闭和丢子件隐患）+ typed emits 修 update:modelValue 转发；
+  vue-tsc 零错误。
 
-### T-05 gallery 示例 + 双端验证
+### T-05 gallery 示例 + 双端验证 [x]
 
 - 操作：§5.4（三观感示例、autoui-verifier 双端跑通、截图存档）。
 - 验证：AC-02/03/04/06 终验（截图）。
 - 依赖：T-03、T-04。关联：AC-02/03/04/06。
+- [✅ 已完成] worktree 4271b4e5b + 0be62de85：046-tabs-variants 双端示例
+  （default/enclosed 直角/enclosed+rounded-t-lg Chrome）+ vue-gallery tabs
+  页三观感 demo。双端实机：VM 截图（三形态 + 按钮受控切换
+  s2 "a"→"b" 断言 + Beta 激活连通视觉）；Vue 截图（shots/p641_vue_final2.png
+  + 点击切换断言 + computed bg rgb(9,14,26)/白字）。schema/aura.at tabs 族
+  同步（variant/active/onselect/value props；五件 iced partial）+
+  auto-man assets baked patch（第三拷贝源，SNAPSHOT.md 记录）。执行期新发现
+  已回写 §9。
 
-### T-06 spec 沉淀 + 复审收口
+### T-06 spec 沉淀 + 复审收口 [x]
 
 - 操作：SD-01/SD-02 落 tree-components.md；`.autoos/specs.json` upsert +
   `python scripts/spec-index.py`；§3 独立复审（checklist audit / 遗漏与
   workaround 扫描 / 零警告 health check）+ 终门 `cargo tf`。
 - 验证：AC-07/08。
 - 依赖：T-05。关联：AC-07/08。
+- [✅ 已完成] worktree e111554e0：规格落位调整——tree-components.md 为树
+  组件专文，tabs 契约改落新 design 文档
+  `docs/specs/auto-lang/ui/design/tabs-components.md`（variant 词表/VM 折叠
+  契约/三源同步纪律/验证基线）+ overview.md 641 条目（等价落位，SD 目标
+  面不变）。docs_gen core.md 再生（tab iced partial，Category C 门禁抓漏
+  闭环）。`.autoos/specs.json` upsert 留待 /auto-plan:merge 沉淀（本技能
+  不动 live ledger）。终门 tf 3600/3601（唯一红=基线预存）。
 
 ## 9. 复审记录
 
@@ -327,6 +360,27 @@ variant、两端渲染器落实连通结构、gallery 加示例覆盖两种观�
   - outcome: pass（scope 内调整：convert_view_messages 显式臂 + gallery
     落位改 vue-gallery/ui-046，均属等价实现，不增 plan_revision）；
     next: T-02。
+- 2026-09-18 work 收执（execution_done）：stage: work | PLAN-641 | rev1 |
+  outcome: **pass** | code_commit: 4271b4e5b+0be62de85+e111554e0（worktree
+  `D:/autostack/.wt/lang-641/auto-lang`，branch `plan-641-dev`，基线
+  e352437b0）| task_ids: T-01..T-06 全勾 | evidence:
+  - AC-01 variant 语义+非法回退：单测 test_tabs_variant_parse_and_default
+    等 4 测 + 折叠单测×3 绿；
+  - AC-02 VM enclosed：046 VM 截图 p641_vm_v2.png（三形态+连通结构）；
+  - AC-03 Vue enclosed：p641_vue_final2.png（结构契约三条 + computed
+    bg=rgb(9,14,26)/白字断言）；
+  - AC-04 圆角 token 两观感：enclosed 直角 vs rounded-t-lg 双例截图；
+  - AC-05 线协议：test_tabs_variant_roundtrip/test_tabs_no_variant_backward_compat 绿；
+  - AC-06 双端一致性：VM 受控切换断言（press Beta → s2 a→b）+ Vue trigger
+    点击切换断言，autoui-verifier 脚本双端跑通；
+  - AC-07 零回归：default 形态原样（含 [label] 标记）；tf 3600/3601，唯一
+    红=real_sidebar_at_parses_with_navtree 基线预存（主检出对照复证）；
+  - AC-08 spec 沉淀：design/tabs-components.md + overview.md 条目
+    （specs.json upsert 留 merge）。
+  | blockers: 无 | next: review（/auto-plan:review 独立复审；worktree 留存）。
+  执行期新增债/发现：①VM 轨大写标签（Col/H1/Row/Button）子树丢失（既有
+  行为，046 以小写规避，KNOWN-DEBT 候选）；②docs SFC 三源同步纪律入
+  tabs-components.md（registry/vue.rs 模板/auto-man assets，Q1 完整答案）。
 
 ## 10. 待澄清事项
 
