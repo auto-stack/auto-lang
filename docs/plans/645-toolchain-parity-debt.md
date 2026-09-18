@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-645
-status: execution_done               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: toolchain-parity-debt（bps fn 转译缺口 + with_defaults 扫描根）
 author: [zhaopuming]
 created_at: 2026-09-18
@@ -121,6 +121,11 @@ with_defaults 实勘）；PLAN-522（use fn 双端同源转译先例）、PLAN-6
   （证据见 T-04 基线红）。提交 13fa93205。Q-1 裁定 = 默认案：仅被引符号闭包
   （负断言 filter_tree/collect_ids 不入 SFC；闭包到不动点正断言
   has_id/ext_icon 入）。
+  [🔶 review r1 修正 2026-09-18] 首版 library 判别式在编译循环对 dep_front
+  再 join（应用形态恒误判为库，软化越权覆盖所有 dep）+ Phase 1c 增量腿缺
+  软化——r1 needs_fix 后修复（49bd351da）：旗标随 collect_dep_front_dirs
+  形状裁定携带 + handle_compile_error_with_dep_shape；双向负测实证
+  （应用形 S003 硬炸保持/库形 warn-only）。
 - **T-03** [x] [新] filetree 组合形态回归样本（恢复 reference/default.at，
   适配转译语义；`use` 形态按 T-02 实现定 bare/bps 限定）。依赖：T-02。→ AC-01
   [✅ 已完成 2026-09-18] reference/default.at 按 af8c72a84 原样恢复（bare
@@ -156,6 +161,52 @@ with_defaults 实勘）；PLAN-522（use fn 双端同源转译先例）、PLAN-6
   本计划 40 failed（unique 35，净新增=空集；少的 1 个=iced renderer
   external_config_poll flaky）+7 新测试全绿 |
   blockers: 无 | next: review`。
+- 2026-09-18 review r1（实现会话内复审——基于工件重建，非采信执行摘要）：
+  `stage: review | plan_id: PLAN-645 | plan_revision: 1 | outcome: needs_fix |
+  reviewed_commit: 0c46b23bc | base_commit: 1fc4772d9 |
+  dependency_revisions: auto-down fae21d9（clean，未改动） |
+  spec_inputs: docs/specs/blueprint/contract.md @0c46b23bc |
+  acceptance_results: AC-01 pass（发射面+构建门实证）、AC-02 pass（双二进制
+  对照+env 跟随）、AC-03 partial（见 F-R1 门禁越权与 F-R2 run 腿缺口） |
+  findings:
+  - **F-R1（high，T-02/contract 第三行）**：auto-man vue.rs 库形态判别式
+    `library_dep = !dep_front.join("src/front") && !dep_front.join("front")`
+    判错对象——collect_dep_front_dirs 对应用形态 dep 推入的 dep_front 本身就
+    是 front 目录，join 结果恒假 → library_dep 恒真 → 软化覆盖**所有 dep**，
+    Plan 475 对应用形态 dep 的 strict 门禁被无声削弱，与代码注释及
+    contract.md"应用形态 dep（有 front 布局）strict 门禁不变"声明矛盾。
+    修正：库形态旗标在 collect_dep_front_dirs 做形状裁定时随元组携带。
+  - **F-R2（medium，T-02/AC-01 目标面）**：Phase 1c（Plan 475 通道的
+    `auto run` 增量腿，vue.rs handle_compile_error 硬升级臂）未随 F-R1 修复
+    一并软化——消费组合形态 bp 的项目 `auto run` 仍会在 with_charts.at
+    S003 上硬炸，dev 环路不可用。修正：dep 腿错误处理按库形态旗标软化，
+    Phase 1b（项目自身组件）保持 strict。
+  evidence: diff 逐行复审（0c46b23bc vs 1fc4772d9）；vue.rs:2986-3003/
+    4936-4944/5526；collect_dep_front_dirs 形状裁定 vue.rs:2271-2319 |
+  next: work（F-R1/F-R2 修复后重审；重开 T-02）`。
+- 2026-09-18 review r2（r1 findings 修复后重审）：
+  `stage: review | plan_id: PLAN-645 | plan_revision: 1 | outcome: pass |
+  reviewed_commit: 49bd351da（r1 修复：F-R1 库形态旗标随
+  collect_dep_front_dirs 形状裁定携带 + F-R2 Phase 1c 增量腿
+  handle_compile_error_with_dep_shape 软化） | base_commit: 1fc4772d9 |
+  dependency_revisions: auto-down fae21d9（clean） |
+  spec_inputs: docs/specs/blueprint/contract.md @49bd351da（SD-01/SD-02 +
+  库包 dep 扫描纪律行——修复后代码与"应用形态 dep strict 门禁不变"声明一致） |
+  acceptance_results: AC-01 pass（修复后复验：047 gen-only+vue-tsc+vite 绿、
+  FileTree.vue fn 闭包内联+TreeIcon 导入、负断言 filter_tree/collect_ids
+  不入 SFC）；AC-02 pass（双二进制对照+env 跟随+registry::root_resolution_tests
+  4/4）；AC-03 pass（046 gen-only 0 硬错、bp 谱系 plan639/640/645 绿、
+  auto-man 298/298、cargo tf 3631/3632——唯一红 plan367 navtree 为基点
+  1fc4772d9 即红的预存项（r1 对照集在案）、jade 双工具链 gen 逐字节一致）|
+  findings: F-R1/F-R2 已修复并双向实证（应用形 dep S003 strict 硬炸
+  EXIT=1 保持 / 库形 dep warn-only EXIT=0）——判别式语义与 contract
+  声明对齐；无新增 findings |
+  evidence: diff 复审 0c46b23bc..49bd351da；负测/对照 fixture 实测记录于
+  review r1/r2 条目；持久工件=plan645_bp_tests（仓内）+ root_resolution_tests
+  （仓内）+ 047 夹具（仓内） | next: merge`。
+- r2 复审范围声明：本复审在实现会话内完成（独立会话不可用）——结论由
+  工件重建（逐行 diff、可复现命令、双向负测对照、基点对照集），非采信
+  执行摘要；局限已如实记录。
 - 执行摘要：两债均按三级序/plan522 先例偿还；实勘修正一处（bps 扫描
   发射路径 = auto-man Plan 475 dep 通道，非草案所写 ui_gen/vue.rs）；
   附带修复 PLAN-643 引入的 046 全量构建基线红（with_charts S003 strict，
