@@ -4105,4 +4105,555 @@ mod tests {
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = transport::connect(&broker_pipe, 500);
     }
+
+    // -----------------------------------------------------------------------
+    // PLAN-031 T-07 —— rqhost 第四形态 e2e（AUTO_DESKTOP_E2E=1 门）
+    // -----------------------------------------------------------------------
+
+    /// Win32 窗口枚举/截图/搬动 FFI（零新依赖——stage3 mem_ffi 同型）。
+    #[cfg(windows)]
+    mod win_ffi {
+        use std::cell::RefCell;
+
+        #[link(name = "user32")]
+        extern "system" {
+            fn EnumWindows(lpEnumFunc: isize, lParam: isize) -> i32;
+            fn GetWindowThreadProcessId(hwnd: isize, lpdwProcessId: *mut u32) -> u32;
+            fn GetWindowTextW(hwnd: isize, lpString: *mut u16, nMaxCount: i32) -> i32;
+            fn IsWindowVisible(hwnd: isize) -> i32;
+            fn PrintWindow(hwnd: isize, hdc: isize, flags: u32) -> i32;
+            fn GetClientRect(hwnd: isize, lprect: *mut RECT) -> i32;
+            fn SetWindowPos(
+                hwnd: isize, after: isize, x: i32, y: i32, cx: i32, cy: i32,
+                flags: u32,
+            ) -> i32;
+            fn GetDC(hwnd: isize) -> isize;
+            fn ReleaseDC(hwnd: isize, hdc: isize) -> i32;
+        }
+        #[link(name = "gdi32")]
+        extern "system" {
+            fn CreateCompatibleDC(hdc: isize) -> isize;
+            fn DeleteDC(hdc: isize) -> i32;
+            fn CreateCompatibleBitmap(hdc: isize, w: i32, h: i32) -> isize;
+            fn SelectObject(hdc: isize, h: isize) -> isize;
+            fn DeleteObject(h: isize) -> i32;
+            fn GetDIBits(
+                hdc: isize, hbmp: isize, start: u32, lines: u32, bits: *mut u8,
+                bmi: *mut BITMAPINFO, usage: u32,
+            ) -> i32;
+        }
+
+        #[repr(C)]
+        struct RECT {
+            left: i32,
+            top: i32,
+            right: i32,
+            bottom: i32,
+        }
+        #[repr(C)]
+        struct BITMAPINFOHEADER {
+            biSize: u32,
+            biWidth: i32,
+            biHeight: i32,
+            biPlanes: u16,
+            biBitCount: u16,
+            biCompression: u32,
+            biSizeImage: u32,
+            biXPelsPerMeter: i32,
+            biYPelsPerMeter: i32,
+            biClrUsed: u32,
+            biClrImportant: u32,
+        }
+        #[repr(C)]
+        struct BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER,
+            bmiColors: [u32; 3],
+        }
+
+        /// 进程的可见顶层窗（标题非空）——owner pid 精确过滤。
+        pub fn windows_of(pid: u32) -> Vec<(isize, String)> {
+            struct Ctx {
+                pid: u32,
+                found: Vec<(isize, String)>,
+            }
+            let ctx = RefCell::new(Ctx { pid, found: Vec::new() });
+            extern "system" fn on_enum(hwnd: isize, lparam: isize) -> i32 {
+                let ctx = unsafe { &*(lparam as *const RefCell<Ctx>) };
+                let mut owner = 0u32;
+                unsafe { GetWindowThreadProcessId(hwnd, &mut owner) };
+                if owner != ctx.borrow().pid || unsafe { IsWindowVisible(hwnd) } == 0 {
+                    return 1;
+                }
+                let mut buf = [0u16; 256];
+                let n = unsafe { GetWindowTextW(hwnd, buf.as_mut_ptr(), 256) };
+                if n <= 0 {
+                    return 1;
+                }
+                let title = String::from_utf16_lossy(&buf[..n as usize]);
+                ctx.borrow_mut().found.push((hwnd, title));
+                1
+            }
+            unsafe {
+                EnumWindows(on_enum as isize, &ctx as *const RefCell<Ctx> as isize);
+            }
+            ctx.into_inner().found
+        }
+
+        /// PrintWindow → BMP 文件（PW_CLIENTONLY = 1）。返回 (w, h)。
+        pub fn capture_window_bmp(hwnd: isize, out: &std::path::Path) -> Option<(i32, i32)> {
+            let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            if unsafe { GetClientRect(hwnd, &mut rect) } == 0 {
+                return None;
+            }
+            let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+            if w <= 0 || h <= 0 {
+                return None;
+            }
+            unsafe {
+                let hdc = GetDC(hwnd);
+                let mem = CreateCompatibleDC(hdc);
+                let bmp = CreateCompatibleBitmap(hdc, w, h);
+                let old = SelectObject(mem, bmp);
+                let ok = PrintWindow(hwnd, mem, 1); // PW_CLIENTONLY
+                SelectObject(mem, old);
+                let _ = ReleaseDC(hwnd, hdc);
+                if ok == 0 {
+                    let _ = DeleteObject(bmp);
+                    let _ = DeleteDC(mem);
+                    return None;
+                }
+                // 自底向上 BGR → 顶向下 RGB BMP。
+                let mut bmi = BITMAPINFO {
+                    bmiHeader: BITMAPINFOHEADER {
+                        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                        biWidth: w,
+                        biHeight: -h, // 顶向下
+                        biPlanes: 1,
+                        biBitCount: 32,
+                        biCompression: 0, // BI_RGB
+                        biSizeImage: 0,
+                        biXPelsPerMeter: 0,
+                        biYPelsPerMeter: 0,
+                        biClrUsed: 0,
+                        biClrImportant: 0,
+                    },
+                    bmiColors: [0; 3],
+                };
+                let mut pixels = vec![0u8; (w * h * 4) as usize];
+                let got = GetDIBits(
+                    mem, bmp, 0, h as u32, pixels.as_mut_ptr(), &mut bmi, 0,
+                );
+                let _ = DeleteObject(bmp);
+                let _ = DeleteDC(mem);
+                if got == 0 {
+                    return None;
+                }
+                let row_pad = ((w * 4) + 3) & !3; // 32bpp 已 4 对齐
+                let data_size = (row_pad * h) as u32;
+                let file_size = 54 + data_size;
+                let mut file = Vec::with_capacity(file_size as usize);
+                file.extend_from_slice(b"BM");
+                file.extend_from_slice(&file_size.to_le_bytes());
+                file.extend_from_slice(&0u32.to_le_bytes());
+                file.extend_from_slice(&54u32.to_le_bytes());
+                file.extend_from_slice(&40u32.to_le_bytes());
+                file.extend_from_slice(&(w).to_le_bytes());
+                file.extend_from_slice(&(h).to_le_bytes());
+                file.extend_from_slice(&1u16.to_le_bytes());
+                file.extend_from_slice(&32u16.to_le_bytes());
+                file.extend_from_slice(&0u32.to_le_bytes());
+                file.extend_from_slice(&data_size.to_le_bytes());
+                file.extend_from_slice(&0u32.to_le_bytes());
+                file.extend_from_slice(&0u32.to_le_bytes());
+                file.extend_from_slice(&0u32.to_le_bytes());
+                file.extend_from_slice(&0u32.to_le_bytes());
+                file.extend_from_slice(&pixels);
+                std::fs::write(out, file).ok()?;
+                Some((w, h))
+            }
+        }
+
+        /// 客户区尺寸搬动（SWP_NOMOVE|SWP_NOZORDER = 0x2|0x4）。
+        pub fn resize_window(hwnd: isize, w: i32, h: i32) -> bool {
+            unsafe { SetWindowPos(hwnd, 0, 0, 0, w, h, 0x2 | 0x4) != 0 }
+        }
+    }
+
+    /// 子进程 stderr 收集器（读线程 → 共享行缓冲）。
+    struct LineTail {
+        lines: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl LineTail {
+        fn spawn(child: &mut std::process::Child) -> Self {
+            use std::io::BufRead;
+            let stderr = child.stderr.take().expect("stderr piped");
+            let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let sink = std::sync::Arc::clone(&lines);
+            std::thread::spawn(move || {
+                let reader = std::io::BufReader::new(stderr);
+                for line in reader.lines().map_while(Result::ok) {
+                    sink.lock().unwrap().push(line);
+                }
+            });
+            Self { lines }
+        }
+
+        fn wait_contains(&self, needle: &str, what: &str, timeout_ms: u64) {
+            let deadline =
+                std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+            loop {
+                if self
+                    .lines
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|l| l.contains(needle))
+                {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时（等 `{needle}`）；已见行:\n{}",
+                    self.lines.lock().unwrap().join("\n")
+                );
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+
+        fn count_of(&self, needle: &str) -> usize {
+            self.lines.lock().unwrap().iter().filter(|l| l.contains(needle)).count()
+        }
+
+        fn wait_count(&self, needle: &str, want: usize, what: &str, timeout_ms: u64) {
+            let deadline =
+                std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+            while self.count_of(needle) < want {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时（等 `{needle}` x{want}）；已见行:
+{}",
+                    self.lines.lock().unwrap().join("
+")
+                );
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+
+        fn snapshot(&self) -> Vec<String> {
+            self.lines.lock().unwrap().clone()
+        }
+    }
+
+    /// panic 清场守卫：断言失败时 kill 全部子进程（失败轮曾漏 daemon）。
+    struct KillGuard(Vec<std::process::Child>);
+
+    impl KillGuard {
+        fn push(&mut self, child: std::process::Child) {
+            self.0.push(child);
+        }
+
+        /// 按 pid kill+收尸（所有权已在守卫——e2e 各腿以 pid 操作）。
+        fn kill_pid(&mut self, pid: u32) {
+            if let Some(child) = self.0.iter_mut().find(|c| c.id() == pid) {
+                if matches!(child.try_wait(), Ok(None)) {
+                    let _ = child.kill();
+                }
+                let _ = child.wait();
+            }
+        }
+
+        /// 按 pid 等退出（10s 预算——挂等即断言）。
+        fn wait_pid(&mut self, pid: u32, what: &str) -> std::process::ExitStatus {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                if let Some(child) = self.0.iter_mut().find(|c| c.id() == pid) {
+                    if let Some(status) = child.try_wait().expect("try_wait") {
+                        return status;
+                    }
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 10s 未退出"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+
+        fn release(&mut self) {
+            for child in self.0.iter_mut() {
+                if matches!(child.try_wait(), Ok(None)) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+            self.0.clear();
+        }
+    }
+
+    impl Drop for KillGuard {
+        fn drop(&mut self) {
+            self.release();
+        }
+    }
+
+    /// PLAN-031 T-07 —— rqhost 第四形态 e2e（`AUTO_DESKTOP_E2E=1` 门）：
+    /// 真进程全景 = `auto rqhost` daemon（真 iced 原生窗）+ `auto run -q`
+    /// 双 app 客户端。腿：
+    /// ① AC-01 单 app（vm 003-converter）：ensure 探活→采纳→开窗→首帧；
+    /// ② AC-02 多 app 共享：01-helloworld 并发入同一 daemon（双窗）+
+    /// AC-03 竞态：第二 daemon 实例锁管道干净退 0；
+    /// ③ AC-06 resize：SetWindowPos → daemon 观测行；
+    /// ④ AC-04 kill 双向：app kill→EOF 窗回收观测 / daemon kill→app
+    ///    exit-on-EOF（观测行 + 退出非挂等）；
+    /// ⑤ AC-07 降级显式：未解析 img vm demo → [drawlist-image] 观测行；
+    /// ⑥ 度量（rqhost+N app 内存数据行）+ 截图/进程清单留痕
+    ///    `docs/plans/reports/assets/031/`（AUTO_031_ASSETS=1）。
+    #[test]
+    fn p031_rqhost_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let repo = std::path::Path::new(manifest).join("../../");
+        let dir_converter = repo.join("examples/ui/003-converter");
+        let dir_hello = repo.join("examples/ui/001-helloworld");
+        if !dir_converter.join("src/front/app.at").is_file()
+            || !dir_hello.join("src/front/app.at").is_file()
+        {
+            eprintln!("[p031] skip: 载体缺席");
+            return;
+        }
+        let auto_exe = crate::ui::desktop_protocol::e2e_exe::locate_with_stale_guard();
+        let wellknown = format!("autodesk-rqhost-p031-{}", std::process::id());
+
+        // ---- daemon 起服（真 iced 事件循环 + 原生窗）。----
+        let mut daemon = std::process::Command::new(&auto_exe)
+            .args(["rqhost", "--pipe", &wellknown])
+            .env("AUTO_RQHOST_WELLKNOWN", &wellknown)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn auto rqhost");
+        let daemon_tail = LineTail::spawn(&mut daemon);
+        let daemon_pid = daemon.id();
+        let mut guard = KillGuard(Vec::new());
+        guard.push(daemon);
+        daemon_tail.wait_contains("serving on", "daemon 起服", 20_000);
+
+        // 子进程 env：well-known 缝 + NEXTEST 剥除（spawn_outproc_child 同则）。
+        fn child_env(cmd: &mut std::process::Command, wellknown: &str) {
+            cmd.env("AUTO_RQHOST_WELLKNOWN", wellknown)
+                .env("AUTOUI_MCP_DISABLE", "1");
+            for (key, _) in std::env::vars() {
+                if key.starts_with("NEXTEST_") {
+                    cmd.env_remove(&key);
+                }
+            }
+        }
+        fn spawn_q(
+            auto_exe: &std::path::Path,
+            dir: &std::path::Path,
+            wellknown: &str,
+        ) -> (std::process::Child, LineTail) {
+            let mut cmd = std::process::Command::new(auto_exe);
+            cmd.args(["run", "-r", "vm", "-q"])
+                .current_dir(dir)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped());
+            child_env(&mut cmd, wellknown);
+            let mut child = cmd.spawn().expect("spawn auto run -q");
+            let tail = LineTail::spawn(&mut child);
+            (child, tail)
+        }
+
+        // ---- ① 单 app：003-converter 采纳→开窗→首帧（AC-01）。----
+        // 两载体 widget 名同名 App（examples 约定）——断言走计数制；
+        // 窗标题面（AUTO_VM_TITLE=pac title）在 resize 腿按标题找窗。
+        let (mut app_c, _app_c_tail) = spawn_q(&auto_exe, &dir_converter, &wellknown);
+        let app_c_pid = app_c.id();
+        guard.push(app_c);
+        daemon_tail.wait_count(
+            "[rqhost] window opened for `App`",
+            1,
+            "003 开窗（Hello 凭据）",
+            30_000,
+        );
+        daemon_tail.wait_count("[rqhost] first frame `App`", 1, "003 首帧", 30_000);
+
+        // ---- ② 多 app 共享 + 竞态（AC-02/03）。----
+        let (mut app_h, app_h_tail) = spawn_q(&auto_exe, &dir_hello, &wellknown);
+        let app_h_pid = app_h.id();
+        guard.push(app_h);
+        daemon_tail.wait_count(
+            "[rqhost] window opened for `App`",
+            2,
+            "helloworld 二窗（共享 daemon——AC-02）",
+            30_000,
+        );
+        daemon_tail.wait_count("[rqhost] first frame `App`", 2, "双 app 首帧", 30_000);
+        // 竞态：第二 daemon 实例 → 锁管道 → 干净退 0。
+        let mut daemon2 = std::process::Command::new(&auto_exe)
+            .args(["rqhost", "--pipe", &wellknown])
+            .env("AUTO_RQHOST_WELLKNOWN", &wellknown)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn 第二 daemon");
+        let daemon2_tail = LineTail::spawn(&mut daemon2);
+        let daemon2_pid = daemon2.id();
+        guard.push(daemon2);
+        let daemon2_status =
+            guard.wait_pid(daemon2_pid, "第二 daemon 未退出（锁管道未仲裁）");
+        assert!(daemon2_status.success(), "第二实例码 0");
+        daemon2_tail.wait_contains("已有实例在服", "第二实例观测行", 2_000);
+
+        // ---- ③ resize 闭环（AC-06）：SetWindowPos → 观测行。----
+        #[cfg(windows)]
+        {
+            let wins = win_ffi::windows_of(daemon_pid);
+            let conv = wins
+                .iter()
+                .find(|(_, t)| t.contains("转换") || t.contains("Converter"))
+                .expect("Converter 原生窗在场（EnumWindows，pac title zh/en）");
+            assert!(win_ffi::resize_window(conv.0, 700, 520), "SetWindowPos");
+            // SetWindowPos 是外框尺寸——客户区 = 外框 − 边框/标题栏（实测
+            // 627x444 这类差值，随系统 DPI/边框版本浮动）——断言口径 =
+            // 出现任意≠初始（480x320）的 resize 观测行。
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                let resized = daemon_tail
+                    .snapshot()
+                    .iter()
+                    .filter_map(|l| l.split_once("resized "))
+                    .filter(|(pre, _)| pre.contains("window `App`"))
+                    .any(|(_, size)| !size.starts_with("480x320"));
+                if resized {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "resize 观测行超时（OS resize→协议 Resize 下发）"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            // 度量 + 截图/进程清单留痕（AUTO_031_ASSETS=1 → reports/assets/031）。
+            let mut inventory = String::from("[p031] 进程清单\n");
+            let mut total_private = 0u64;
+            for (pid, name) in [
+                (daemon_pid, "rqhost"),
+                (app_c_pid, "003-converter(vm -q)"),
+                (app_h_pid, "01-helloworld(vm -q)"),
+            ] {
+                if let Ok(s) = crate::ui::desktop_protocol::stage3::sample_process_memory(pid) {
+                    total_private += s.private_bytes;
+                    inventory.push_str(&format!(
+                        "{name} pid={pid} working_set={}KB private={}KB\n",
+                        s.working_set / 1024,
+                        s.private_bytes / 1024
+                    ));
+                }
+            }
+            inventory.push_str(&format!(
+                "total_private={}KB（rqhost + 2 app；对照口径：2×inproc 直挂 ≈ 2×独立 iced 进程）\n",
+                total_private / 1024
+            ));
+            println!("{inventory}");
+            if std::env::var("AUTO_031_ASSETS").as_deref() == Ok("1") {
+                let assets = repo.join("docs/plans/reports/assets/031");
+                std::fs::create_dir_all(&assets).expect("mkdir assets/031");
+                std::fs::write(assets.join("inventory.txt"), &inventory).expect("写进程清单");
+                for (hwnd, title) in win_ffi::windows_of(daemon_pid) {
+                    let safe: String = title
+                        .chars()
+                        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                        .collect();
+                    let out = assets.join(format!("window-{safe}.bmp"));
+                    if let Some((w, h)) = win_ffi::capture_window_bmp(hwnd, &out) {
+                        println!("[p031] screenshot {title} -> {} ({w}x{h})", out.display());
+                    }
+                }
+                std::fs::write(
+                    assets.join("daemon-stderr.log"),
+                    daemon_tail.snapshot().join("\n"),
+                )
+                .expect("写 daemon stderr");
+            }
+        }
+
+        // ---- ④ kill 双向（AC-04）。----
+        // app → daemon：kill 003 → EOF → 窗回收观测。
+        guard.kill_pid(app_c_pid);
+        daemon_tail.wait_contains(
+            "断连（EOF）——窗回收",
+            "kill app → 窗回收观测",
+            15_000,
+        );
+        // daemon → app：kill daemon → hello app exit-on-EOF（观测行 + 退出）。
+        guard.kill_pid(daemon_pid);
+        app_h_tail.wait_contains(
+            "[rqhost-client] host lost",
+            "kill daemon → app 观测行（exit-on-EOF）",
+            15_000,
+        );
+        let app_h_status = guard.wait_pid(app_h_pid, "daemon 死后 app 未退出（exit-on-EOF 失效）");
+        assert!(app_h_status.success(), "exit-on-EOF 干净退出（码 0）");
+
+        // ---- ⑤ 降级显式（AC-07）：未解析 img → [drawlist-image] 观测行。----
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("p031-img");
+        std::fs::create_dir_all(app.join("src/front")).unwrap();
+        std::fs::write(
+            app.join("src/front/app.at"),
+            "widget P031Img {\n    view {\n        image (src: \"Z:/definitely/missing-031.png\") {\n            style: \"w-[120px] h-[80px]\"\n        }\n    }\n}\n",
+        )
+        .unwrap();
+        // pac.at 缺席则 Automan::new 即失败（子进程未起就死——降级腿
+        // 首跑根因）；最小 pac 同 001-helloworld 形状。
+        std::fs::write(
+            app.join("pac.at"),
+            "name: \"p031-img\"\nversion: \"1.0.0\"\nscene: \"ui\"\nrender: \"vm\"\ntitle: \"P031Img\"\nwindow: \"480x320\"\n",
+        )
+        .unwrap();
+        let mut daemon3 = std::process::Command::new(&auto_exe)
+            .args(["rqhost", "--pipe", &format!("{wellknown}-d3")])
+            .env("AUTO_RQHOST_WELLKNOWN", &format!("{wellknown}-d3"))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn daemon3");
+        let daemon3_tail = LineTail::spawn(&mut daemon3);
+        guard.push(daemon3);
+        daemon3_tail.wait_contains("serving on", "daemon3 起服", 20_000);
+        let (mut app_i, app_i_tail) = spawn_q(
+            &auto_exe,
+            &app,
+            &format!("{wellknown}-d3"),
+        );
+        guard.push(app_i);
+        // 手动等待（失败转储含子进程 stderr——首跑 pac.at 缺席即靠此
+        // 定位路径）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while !daemon3_tail
+            .snapshot()
+            .iter()
+            .any(|l| l.contains("[rqhost] first frame `P031Img`"))
+        {
+            if std::time::Instant::now() >= deadline {
+                panic!(
+                    "降级 demo 首帧超时；daemon3:\n{}\nchild:\n{}",
+                    daemon3_tail.snapshot().join("\n"),
+                    app_i_tail.snapshot().join("\n")
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        daemon3_tail.wait_contains(
+            "[drawlist-image] unresolved src (placeholder fallback): Z:/definitely/missing-031.png",
+            "未解析 img 占位 + 观测行（I3 禁静默）",
+            15_000,
+        );
+        // 清场。
+        guard.release();
+    }
 }

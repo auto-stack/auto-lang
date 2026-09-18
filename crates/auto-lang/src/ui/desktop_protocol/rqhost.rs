@@ -320,6 +320,8 @@ pub struct RqClient {
     pub window: Option<iced::window::Id>,
     /// 已合成帧数（观测/e2e 断言面）。
     pub frames: u64,
+    /// 首帧观测行已打（e2e 断言锚点——[rqhost] first frame）。
+    first_frame_observed: bool,
 }
 
 /// rqhost 域 id 分配器（app_id/wid 与桌面会话无关的自增序）。
@@ -482,6 +484,7 @@ pub fn adopt_one(
         height: 320.0,
         window: None,
         frames: 0,
+        first_frame_observed: false,
     };
     let deadline =
         std::time::Instant::now() + std::time::Duration::from_millis(budget_ms as u64);
@@ -747,6 +750,12 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
                         }
                     }
                 }
+                // 首帧观测行（e2e 断言锚点：帧已到宿主并合成）。
+                let client = &mut state.clients[idx];
+                if client.frames >= 1 && !client.first_frame_observed {
+                    client.first_frame_observed = true;
+                    eprintln!("[rqhost] first frame `{}`", client.app_name);
+                }
                 if !alive {
                     dead.push(idx);
                 }
@@ -770,6 +779,11 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
                         width,
                         height,
                     }));
+                    // 观测行（e2e resize 腿断言锚点——AC-06）。
+                    eprintln!(
+                        "[rqhost] window `{}` resized {width:.0}x{height:.0}",
+                        client.app_name
+                    );
                 }
             }
             iced::Task::none()
@@ -1545,5 +1559,101 @@ mod tests {
         std::env::remove_var("AUTO_VM_TITLE");
         std::env::remove_var("AUTO_VM_WINDOW");
         serve.stop(&pipe);
+    }
+
+    /// T-07 回归钉：超大帧（20KB 文本，超 16KiB shm 槽）经管道内联回退
+    /// 仍达宿主合成——push_frame 修复（此前 `if let Ok` 静默弃帧 = 冻结；
+    /// e2e 首跑 003 卡死暴露）的进程内钉子。合成源替代 003 实例——
+    /// 其首帧实测 558B 不走溢出路径（原前置断言证伪后的改型）。
+    #[test]
+    fn large_frame_falls_back_to_pipe_payload() {
+        use crate::ui::desktop_protocol::client_runtime::{
+            ClientConfig, ClientPump,
+        };
+        use crate::ui::desktop_protocol::endpoint::FrameSource;
+        use crate::ui::desktop_protocol::message::{
+            DrawOp, InputMsg as Msg, Rgba8,
+        };
+
+        struct BigSource;
+        impl FrameSource for BigSource {
+            fn revision(&self) -> u64 {
+                1
+            }
+            fn render_frame(&mut self) -> DrawList {
+                DrawList {
+                    clear: None,
+                    ops: vec![DrawOp::Text {
+                        x: 0.0,
+                        y: 0.0,
+                        size: 14.0,
+                        line_height: 18.0,
+                        color: Rgba8::new(255, 255, 255, 255),
+                        text: "x".repeat(20_000),
+                    }],
+                }
+            }
+            fn on_input(&mut self, _input: &Msg) {}
+            fn on_control(&mut self, _control: &ControlMsg) {}
+        }
+
+        let pipe = pid_pipe("bigframe");
+        let (serve, _claim) = start_serve(&pipe);
+        let client_pipe = pipe.clone();
+        let app = std::thread::spawn(move || {
+            let (_, app_end) = adopt(&client_pipe, "App", 2000).expect("adopt");
+            let config = ClientConfig {
+                app_name: "App".into(),
+                title: "big".into(),
+                width: 480.0,
+                height: 320.0,
+            };
+            let (exit, _) =
+                ClientPump::new(app_end, BigSource, config, None).run();
+            exit
+        });
+
+        let (name, end) = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                let got = serve.pending.lock().unwrap().pop();
+                if let Some(x) = got {
+                    break x;
+                }
+                assert!(std::time::Instant::now() < deadline, "pending 5s 未落");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        };
+        let mut ids = RqIds::default();
+        let (mut client, _) = adopt_one(name, end, &mut ids, 3000).expect("泵到 Active");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let (events, alive) = pump_client(&mut client, &mut ids);
+            assert!(alive);
+            assert!(events.is_empty());
+            if client.frames >= 1 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "超槽帧未合成（回退失效？）；frames={}",
+                client.frames
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        serve.stop(&pipe);
+        // 客户端收尾：宿主 Close 握手（无此则泵循环永续——join 挂死）。
+        let close = client.inner.endpoint.close().expect("close 产出");
+        let _ = client.inner.end.send(&close);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !app.is_finished() {
+            let _ = pump_client(&mut client, &mut ids);
+            assert!(
+                std::time::Instant::now() < deadline,
+                "大帧客户端 Close 握手 5s 未收敛"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let _ = app.join();
     }
 }
