@@ -9,7 +9,7 @@
 | 值 | 结构契约 |
 |---|---|
 | `default`（缺省） | 按钮托盘形态——shadcn 默认观感（muted 托盘 + 激活浮起芯片）；VM(iced) 侧为按钮排 + `[label]` 选中标记（现状零回归） |
-| `enclosed` | 连通形态——①激活 tab 与内容面板共享背景、无接缝；②非激活 tab 扁平等高 cell，仅背景色差（非按钮/浮起芯片）；③tab 条（muted 底）与内容区（background 底）层次分明 |
+| `enclosed` | 连通形态——①激活 tab 与内容面板共享背景、无接缝；②非激活 tab 扁平等高 cell，仅背景色差（非按钮/浮起芯片）；③tab 条（muted 底）与内容区（background 底）层次分明。**连通的视觉锚点 = 边框**：每个 cell 自带 1px 边框（Vue `border border-border`；iced padding-reveal 外衬），激活 cell 底部开口（Vue `data-[state=active]:border-b-0`；iced padding-bottom 0），内容面板自带左/右/下边框、顶部开口（Vue `border border-t-0`；iced padding-reveal [0,1,1,1]）——激活 tab 从开口处融进面板 |
 
 **装饰差异不入词表**（SD-02 治理规则）：Chrome 观感（激活 tab 顶部大圆角 +
 留缝）与 JetBrains IDE 观感（直角 + 1px 竖分隔）是同一 `enclosed` 的装饰
@@ -30,9 +30,10 @@
   prop 值经 `resolve_expr_to_value` 解析——静态字面量与状态引用（`.store`
   字段）均穿透。
 - **点击切换**：根 `onselect` 或首个 trigger `onclick` →
-  `DynamicMessage::Typed{widget_name, event_name, args:[选中索引]}`（handler
-  契约：首参=索引，details_onclick 运行时注参同款）。无绑定则点击不切换
-  （受控语义，对齐 Vue 端受控 v-model）。
+  `DynamicMessage::Typed{widget_name, event_name, args:[选中 tab 的 value
+  字符串]}`（handler 契约：首参=值字符串，`on { .Select(t) -> { .state = t } }`
+  直绑；details_onclick 运行时注参同款）。无绑定则点击不切换（受控语义，
+  对齐 Vue 端受控 v-model）。
 - **`convert_view_messages` 显式臂**：`on_select` 为 Arc 回调，按
   `IcedMessage::from_dynamic` 包装转换（此前落 `_ => Empty` 通配臂，VM live
   树 Tabs 整枝折空）。

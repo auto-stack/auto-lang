@@ -4966,10 +4966,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         container(tabs_widget).into()
                     }
                     crate::ui::view::TabsVariant::Enclosed => {
-                        // enclosed 连通形态结构契约（AC-02）：
-                        // ① 激活 cell 背景 = 内容面板背景，条与面板间无分隔线；
-                        // ② 非激活 cell 扁平等高，仅背景色差（非按钮/浮起芯片）；
-                        // ③ 条（muted 底）与内容区（background 底）层次分明。
+                        // enclosed 连通形态结构契约（Zed 式，fix-tabs-merged-look
+                        // 重构——交付版"激活底色=页面底色"在无框面板上不可辨，
+                        // merged 无视觉锚点）：
+                        // ① 每个 cell 自带 1px 边框（padding-reveal：外层
+                        //    container bg=边框色，内衬 1px 露出）；
+                        // ② 激活 cell 底部开口（padding-bottom 0）+ 背景=面板
+                        //    背景 → 与下方内容面板无边框区直接连通；
+                        // ③ 内容面板自带边框（左/右/下，顶部开口）→ 边框的
+                        //    连接可见。
                         let bg = token_rgb(crate::design_tokens::registry::TokenName::Background);
                         let strip_bg =
                             token_rgb(crate::design_tokens::registry::TokenName::Muted);
@@ -4979,6 +4984,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             token_rgb(crate::design_tokens::registry::TokenName::Foreground);
                         let inactive_fg =
                             token_rgb(crate::design_tokens::registry::TokenName::MutedForeground);
+                        // 边框色：Border token，缺省走 iced adapter 的边框解析。
+                        let frame_rgb = crate::ui::style::theme::active_theme_rgb(
+                            crate::design_tokens::registry::TokenName::Border,
+                            dark,
+                        )
+                        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                        .unwrap_or_else(|| {
+                            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+                            iced::Color::from_rgb8(r, g, b)
+                        });
 
                         let mut strip = row([]);
                         for (idx, label) in labels.iter().enumerate() {
@@ -4991,15 +5006,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             } else {
                                 iced::border::Radius::default()
                             };
+                            // 激活 cell 底部开口：padding-bottom 0（其余三边
+                            // 1px 内衬露出边框色）。
+                            let frame_pad = if is_active {
+                                iced::Padding { top: 1.0, right: 1.0, bottom: 0.0, left: 1.0 }
+                            } else {
+                                iced::Padding { top: 1.0, right: 1.0, bottom: 1.0, left: 1.0 }
+                            };
 
-                            // cell 本体：container 持背景填充 + 顶角半径；
-                            // button 仅作点击命中面，样式透明化（覆盖 iced
-                            // 默认 primary 底色，保"非按钮"扁平观感）。
-                            let cell = container(
+                            // cell 本体：外层 frame（bg=边框色，padding 内衬）
+                            // > 内层 fill（bg=cell 填充）。button 仅作点击命
+                            // 中面，样式透明化（覆盖 iced 默认 primary 底色）。
+                            let inner = container(
                                 text(label.clone())
                                     .color(label_color.unwrap_or(iced::Color::WHITE)),
                             )
-                            .padding([0, 16])
                             .center_y(iced::Length::Fill)
                             .style(move |_| container::Style {
                                 background: cell_fill.map(iced::Background::Color),
@@ -5009,6 +5030,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 },
                                 ..container::Style::default()
                             });
+                            let cell = container(inner)
+                                .padding(frame_pad)
+                                .center_y(iced::Length::Fill)
+                                .style(move |_| container::Style {
+                                    background: Some(iced::Background::Color(frame_rgb)),
+                                    border: iced::Border {
+                                        radius,
+                                        ..iced::Border::default()
+                                    },
+                                    ..container::Style::default()
+                                });
 
                             let mut cell_hit = button(cell).padding(0);
                             if let Some(cb) = &on_select {
@@ -5038,14 +5070,25 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         ));
 
                         if let Some(content) = contents.get(selected) {
+                            // 面板自带边框：外层 bg=边框色 + padding
+                            // [0,1,1,1]（顶部开口，激活 tab 连通处无横线），
+                            // 内层 bg=背景色。
                             tabs_widget = tabs_widget.push(
-                                container(content.clone().into_iced())
-                                    .padding(12)
-                                    .width(iced::Length::Fill)
-                                    .style(move |_| container::Style {
-                                        background: bg.map(iced::Background::Color),
-                                        ..container::Style::default()
-                                    }),
+                                container(
+                                    container(content.clone().into_iced())
+                                        .padding(12)
+                                        .width(iced::Length::Fill)
+                                        .style(move |_| container::Style {
+                                            background: bg.map(iced::Background::Color),
+                                            ..container::Style::default()
+                                        }),
+                                )
+                                .width(iced::Length::Fill)
+                                .padding(iced::Padding { top: 0.0, right: 1.0, bottom: 1.0, left: 1.0 })
+                                .style(move |_| container::Style {
+                                    background: Some(iced::Background::Color(frame_rgb)),
+                                    ..container::Style::default()
+                                }),
                             );
                         }
 
