@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-644
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: 012-clock-app-redesign
 author: [Antigravity]
 created_at: 2026-09-18
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 6
 total_steps: 6
 ---
 
@@ -207,18 +207,25 @@ total_steps: 6
 
 ## 8. 执行步骤
 
-- [ ] **T-01 计划入库与独立 Worktree 建立**：在 master 提交本计划与 `.next-id`，基于 Plan 529 布局创建 `D:/autostack/.wt/lang-644/auto-lang` 工作树。
-- [ ] **T-02 目录迁移与元数据同步**：在 worktree 内执行 `git mv examples/ui/012-stopwatch examples/ui/012-clock`，更新 `pac.at`、`crates/auto-lang/src/ui/app_registry.rs`、`crates/auto-lang/src/ui/iced/renderer.rs`、`scripts/style_palette_manifest.json` 与 `examples/ui/README.md`。
-- [ ] **T-03 传统手表表盘与时钟首页实现**：在 `012-clock/src/front/app.at` 实现 SVG 矢量手表表盘（外圈、刻度、时/分/秒针平滑换算）与日期数字显式。
-- [ ] **T-04 现代 UI/UX 与五大功能重构**：实现现代胶囊 Tab、优化世界时钟卡片、闹钟列表与持久化、秒表计圈极值高亮、倒计时快捷预设与到期提示，全面落地 Design Tokens。
-- [ ] **T-05 桌面小组件 `view mini` 升级**：在 `app.at` 中重塑 `view mini`，集成传统指针手表表盘与紧凑数字时间。
-- [ ] **T-06 自动化测试适配与门禁验证**：升级并运行 `tests/desktop_mcp.py`，运行注册表单元测试与语法检查，完成双端验证。
+- [x] **T-01 计划入库与独立 Worktree 建立**：在 master 提交本计划与 `.next-id`，基于 Plan 529 布局创建 `D:/autostack/.wt/lang-644/auto-lang` 工作树。[✅ commit 257754a1d + worktree 就绪]
+- [x] **T-02 目录迁移与元数据同步**：在 worktree 内执行 `git mv examples/ui/012-stopwatch examples/ui/012-clock`，更新 `pac.at`、`crates/auto-lang/src/ui/app_registry.rs`、`crates/auto-lang/src/ui/iced/renderer.rs`、`scripts/style_palette_manifest.json` 与 `examples/ui/README.md`。[✅ commit 7d96ad378]
+- [x] **T-03 传统手表表盘与时钟首页实现**：在 `012-clock/src/front/app.at` 实现 SVG 矢量手表表盘（外圈、刻度、时/分/秒针平滑换算）与日期数字显式。[✅ commit 33114fb35]
+- [x] **T-04 现代 UI/UX 与五大功能重构**：实现现代胶囊 Tab、优化世界时钟卡片、闹钟列表与持久化、秒表计圈极值高亮、倒计时快捷预设与到期提示，全面落地 Design Tokens。[✅ commit 33114fb35]
+- [x] **T-05 桌面小组件 `view mini` 升级**：在 `app.at` 中重塑 `view mini`，集成传统指针手表表盘与紧凑数字时间。[✅ commit 33114fb35]
+- [x] **T-06 自动化测试适配与门禁验证**：升级并运行 `tests/desktop_mcp.py`，运行注册表单元测试与语法检查，完成双端验证。[✅ commit 33114fb35, 15/15 checks pass]
 
 ---
 
 ## 9. 复审记录
 
-- stage: new | plan_id: PLAN-644 | plan_revision: 1 | outcome: pass | next: work
+- stage: reviewed | plan_id: PLAN-644 | plan_revision: 1 | outcome: pass | next: merge
+  - commit: 33114fb35396e978370d88c2fe7e0b6e5d7cacf3
+  - baseline: 257754a1d
+  - verification:
+    - `desktop_mcp.py`: 15/15 passed (T0: 时钟表盘, T1: 秒表, T2: 计时器, T3: 世界时钟, T4: 闹钟, T4b: 重启恢复)
+    - `cargo test -p auto-lang scan_examples_ui_curation_set --features ui-iced`: 1/1 passed
+    - `auto build --gen-only`: 0 errors
+    - P642-D6 遗留债务消除确认（无残余按钮）
 
 ---
 
