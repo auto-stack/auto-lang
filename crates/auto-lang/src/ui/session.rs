@@ -1624,8 +1624,13 @@ impl DesktopCommand {
                 )
             }
             // PLAN-601 T-05：命名主题动词（值域 = registry 内置五名）。
+            // PLAN-027 T-06 对拍修正：encode 搭 `set_theme` 线上词（该词
+            // parse 臂按窄值域分流——内置名 → SetThemeName、dark/light →
+            // SetTheme）。此前发无人解析的 `set_theme_name` 死词——线上
+            // 发件面走 set_theme\t<名>，encode 是唯一不对称点，被
+            // roundtrip 全量对拍捕获（AC-03 门的设计意图实证）。
             DesktopCommand::SetThemeName(name) => {
-                format!("set_theme_name{}{}", Self::FIELD_SEP, name)
+                format!("set_theme{}{}", Self::FIELD_SEP, name)
             }
             // Plan 540 T3：配置写动词族（值域窄——transparency 三档、
             // notes 1/0、pinned csv、wallpapers_dir 直传）。
@@ -4779,8 +4784,178 @@ fn key_eq(spec_key: KeyName, event: &iced::keyboard::Key) -> bool {
 // 测试：路由表/退化桌面对等性/M1 访问器
 // ---------------------------------------------------------------------------
 
+/// PLAN-027 T-06：命令上行 typed 接缝（定案记录 D3——枚举载荷单方法
+/// 形态）。DesktopCommand（46+ 动词，encode/parse_records 双向）即词表
+/// 类型化单源；per-verb trait 方法会把 arg 型决策复制出第二份（I2 漂移
+/// 面），故接缝收敛单方法。B-ready（I3）：enum plain data 可序列化——
+/// B 形态演进时本 trait 换线载体，shell 视图/命令层零重写。
+pub trait DesktopBusHandle {
+    /// 类型化发送（装配层实现：进程内队列 / outproc 线载体）。
+    fn send(&mut self, cmd: DesktopCommand);
+
+    /// 记录级入口——SendCmd 锚的落点。与解释轨 `__desktop_cmd` 同一
+    /// [`DesktopCommand::parse_records`] 单点分型（双轨零分叉：动词分型
+    /// 不在 codegen 复制，运行时单源）。
+    fn send_record(&mut self, rec: &str) {
+        for cmd in DesktopCommand::parse_records(rec) {
+            self.send(cmd);
+        }
+    }
+}
+
+/// 进程内队列实现（T-08 编译壳装配用；drain 后交既有命令执行臂）。
+#[derive(Debug, Default)]
+pub struct DesktopBusQueue {
+    queue: std::collections::VecDeque<DesktopCommand>,
+}
+
+impl DesktopBusHandle for DesktopBusQueue {
+    fn send(&mut self, cmd: DesktopCommand) {
+        self.queue.push_back(cmd);
+    }
+}
+
+impl DesktopBusQueue {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 排空（保持序；与解释轨"读+清"幂等语义同型）。
+    pub fn drain(&mut self) -> Vec<DesktopCommand> {
+        self.queue.drain(..).collect()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+}
+
+/// PLAN-027 T-06：storage KV typed 接缝。a2r codegen 的 storage.get/set/
+/// remove 现译 `vm::ffi::stdlib::shim_storage_*`（与解释轨原生位同一后端
+/// ——**普查修正 D**：设计 §3b-b2"零支持/编译失败"已过时）；本 trait 供
+/// 装配层显式注入/测试替身，[`ShimHostStorage`] 为 shim 单源委托实现。
+pub trait HostStorage: Send + Sync {
+    fn get(&self, key: &str) -> String;
+    fn set(&self, key: &str, val: &str);
+    fn remove(&self, key: &str);
+}
+
+/// shim 单源委托（双轨同后端；B 形态换 wire 时此为替换点）。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ShimHostStorage;
+
+impl HostStorage for ShimHostStorage {
+    fn get(&self, key: &str) -> String {
+        crate::vm::ffi::stdlib::shim_storage_get(key.to_string())
+    }
+    fn set(&self, key: &str, val: &str) {
+        crate::vm::ffi::stdlib::shim_storage_set(key.to_string(), val.to_string());
+    }
+    fn remove(&self, key: &str) {
+        crate::vm::ffi::stdlib::shim_storage_remove(key.to_string());
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// PLAN-027 T-06：46+ 动词全量清单 roundtrip 对拍（记录级 ↔ 类型化
+    /// 双向）——encode → parse_records 恒等。显式逐变体枚举：新增动词
+    /// 漏 encode/parse 臂时本测试红（清单即合同）。
+    #[test]
+    fn desktop_command_roundtrip_full_vocabulary() {
+        use DesktopCommand as C;
+        let samples: Vec<C> = vec![
+            C::LaunchApp("011-calculator".into()),
+            C::CloseWindow(Wid(3)),
+            C::FocusWindow(Wid(12)),
+            C::SetLayout(crate::ui::layout::LayoutMode::Grid),
+            C::SetLayout(crate::ui::layout::LayoutMode::MasterStack),
+            C::TogglePresetLayout(crate::ui::layout::LayoutMode::Grid),
+            C::SummonLauncher,
+            C::SetWorkspace(2),
+            C::NextWorkspace,
+            C::ActivateApp("013-todo".into()),
+            C::OpenWith("015-notes".into(), "D:/tmp/a.md".into()),
+            C::DockNative(NativeTarget::ByPid(4242)),
+            C::DockNative(NativeTarget::ByHwnd(0x1a2b)),
+            C::UndockNative(7),
+            C::FocusNative(9),
+            C::CloseNative(11),
+            C::WorkspaceAdd,
+            C::WorkspaceClose(1),
+            C::SendTo(Wid(5), 2),
+            C::Notify("info".into(), "hello world".into()),
+            C::NotesToggle,
+            C::NotesClear,
+            C::NotesDismiss(42),
+            C::OpenSettings,
+            C::SetDockPosition(true),
+            C::SetDockPosition(false),
+            C::SetDockEnabled(true),
+            C::SetDockEnabled(false),
+            C::SetTheme(true),
+            C::SetTheme(false),
+            C::SetThemeName("stella".into()),
+            C::MinWindow(Wid(8)),
+            C::Shutdown,
+            C::SetWallpaper("D:/wp/hill.jpg".into()),
+            C::SetWallpaper("#101828".into()),
+            C::SetTransparency("off".into()),
+            C::SetNotesEnabled(true),
+            C::SetNotesEnabled(false),
+            C::SetDockPinned("".into()),
+            C::SetDockPinned(",a,b,".into()),
+            C::DockPin("025-dashboard".into()),
+            C::DockUnpin("025-dashboard".into()),
+            C::RefreshDesktopIcons,
+            C::DesktopIconDrop("a".into(), "b".into()),
+            C::DesktopIconDropAt("a".into(), "3,4".into()),
+            C::DesktopIconDragStart("a".into()),
+            C::SetWallpapersDir("D:/wp".into()),
+            C::ShowDesktop,
+            C::ShowdeskReturn,
+            C::WallpaperPick,
+            C::WallpaperClose,
+            C::WallpaperBrowseDir,
+            C::WallpaperNav("prev".into()),
+            C::WallpaperNav("next".into()),
+            // 空参动词（desktop.at PickerBack 同型——trailing 	 保形）。
+            C::WallpaperPreview(String::new()),
+            C::WallpaperPreview("D:/wp/x.png".into()),
+            C::DashboardToggle,
+            C::DashboardClose,
+            C::DashboardPin("020-music-player".into()),
+            C::DashboardUnpin("020-music-player".into()),
+            C::DashboardSpan("020-music-player".into(), 2),
+            C::DashboardLaunch("013-todo".into()),
+        ];
+        assert!(
+            samples.len() >= 46,
+            "词表规模守门（v1.8 后 52 变体；防清单缩水）"
+        );
+        for cmd in samples {
+            let rec = cmd.encode();
+            let parsed = DesktopCommand::parse_records(&rec);
+            assert_eq!(
+                parsed.len(),
+                1,
+                "{rec:?} 应解析为单记录（词表缺臂？）"
+            );
+            assert_eq!(parsed[0], cmd, "roundtrip 失败：{rec:?}");
+        }
+        // DesktopBusHandle：send_record 与直发同队列语义（SendCmd 锚契约）。
+        let mut q = DesktopBusQueue::new();
+        q.send_record(&format!("{}
+{}", C::FocusWindow(Wid(1)).encode(), C::Shutdown.encode()));
+        q.send(C::SummonLauncher);
+        let drained = q.drain();
+        assert_eq!(
+            drained,
+            vec![C::FocusWindow(Wid(1)), C::Shutdown, C::SummonLauncher]
+        );
+        assert!(q.is_empty());
+    }
     use super::*;
     use crate::ast::Expr;
     use crate::aura::{AuraNode, AuraStateDef, AuraWidget};
