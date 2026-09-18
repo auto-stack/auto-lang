@@ -6607,7 +6607,13 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
     let method = method.to_string();
     let url = url.to_string();
     let body = body.map(|s| s.to_string());
+    // PLAN-648 T-00 仪器:AUTO_LANG_HTTP_TRACE=1 时在 stderr 打印每次
+    // api-改写家族请求的方法/URL/状态/响应摘要(split 模式排障用)。
+    let trace = std::env::var("AUTO_LANG_HTTP_TRACE").ok().as_deref() == Some("1");
     let result = std::thread::spawn(move || {
+        if trace {
+            eprintln!("[HTTP-TRACE] {} {} body={:?}", method, url, body.as_deref().unwrap_or(""));
+        }
         let client = reqwest::blocking::Client::new();
         // Plan 446 E4 / PLAN-048: get_json/post_json 是 #[api] 契约改写
         // (emit_api_http_call)的两条主臂,必须与通用 request 汇聚点同样应用
@@ -6632,6 +6638,10 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
             let status = r.status().as_u16();
             // Non-2xx → wrap as error object so it isn't mistaken for data.
             let text = r.text().unwrap_or_default();
+            if trace {
+                let summary: String = text.chars().take(120).collect();
+                eprintln!("[HTTP-TRACE] <- {} status={} body~{}", url, status, summary);
+            }
             if (200..300).contains(&status) {
                 // Plan 057 (ash-gui 双执行修复): void 端点(如 /api/run_command)
                 // 返回空 body —— 直接把空串喂给 json.to_value 会 parse error,

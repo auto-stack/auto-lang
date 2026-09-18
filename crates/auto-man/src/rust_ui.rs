@@ -1254,6 +1254,15 @@ fn generate_json_initial_data(module: &auto_lang::api::ApiModule) -> String {
 /// 「db 同名实现 + 标量/[]str 参数返回面」时,把 db 转译件以 `mod db`
 /// 嵌入,endpoint fn 直接委托 `db::<fn>(…)`——merged 模式从此运行
 /// .at 真实现而非 JSON CRUD 脚手架(未覆盖的 endpoint 仍走原脚手架)。
+///
+/// PLAN-648 T-03 契约裁定:API_DATA JSON CRUD 原型 = **明示保留**的
+/// demo 脚手架兜底,非缺陷待清——优先级恒为 ①db.at 吸收(真实现)
+/// ②/api/viewer/* 媒体面(宿主共享控制面)③CRUD 脚手架(仅覆盖前
+/// 两臂都不覆盖的端点)。在库消费方 = 无 db.at 的演示应用
+/// (examples/ui/020-music-player、031-image-viewer);带 db.at 的
+/// 应用(auto-term、013/015 等)全部走吸收臂。行为锁定测试:
+/// merged_api_client_db_absorption_wins_over_crud /
+/// merged_api_client_crud_fallback_for_uncovered_endpoints。
 fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &Path) -> String {
     let mut code = String::new();
     code.push_str("// API functions (auto-generated, in-process merged mode — no HTTP)\n\n");
@@ -3451,6 +3460,93 @@ pub struct Timer {
             Ok(()) => println!("Generation succeeded!"),
             Err(e) => panic!("Generation failed: {}", e),
         }
+    }
+
+    /// PLAN-648 T-03 生成器行为锁定 ①:db.at 吸收臂优先于 CRUD 原型。
+    /// api.at 端点在 db.at 有同名实现且标量面 → 生成的 merged client
+    /// 直接委托 `db::<fn>`,零 API_DATA 运行时触碰(路由语义 = 真实现)。
+    #[test]
+    fn merged_api_client_db_absorption_wins_over_crud() {
+        let tmp = tempfile::tempdir().unwrap();
+        let back = tmp.path().join("src").join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+#[api(method = "GET", path = "/api/ping")]
+pub fn ping() int {
+    return 0
+}
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            back.join("db.at"),
+            r#"
+pub fn ping() int {
+    return 42
+}
+"#,
+        )
+        .unwrap();
+        let module = super::parse_api_module(tmp.path()).expect("api module parses");
+        let code = super::generate_merged_api_client(&module, tmp.path());
+        assert!(
+            code.contains("db::ping"),
+            "absorption arm should delegate ping to db::ping, got:\n{}",
+            code
+        );
+        // 端点 fn 区段(static 声明之后)不得触碰 API_DATA 运行时。
+        let endpoint_section = code.split("static API_NEXT_ID").nth(1).unwrap_or("");
+        assert!(
+            !endpoint_section.contains("API_DATA"),
+            "absorbed endpoint must not touch API_DATA, got:\n{}",
+            code
+        );
+    }
+
+    /// PLAN-648 T-03 生成器行为锁定 ②:CRUD 原型 = 明示保留的 demo
+    /// 脚手架兜底(消费方 = 无 db.at 演示应用,如 020-music-player /
+    /// 031-image-viewer)。吸收臂不覆盖的端点回落 API_DATA 脚手架,
+    /// 形态锁定:GET 无参 = 全量列表、POST = 增记录。
+    #[test]
+    fn merged_api_client_crud_fallback_for_uncovered_endpoints() {
+        let tmp = tempfile::tempdir().unwrap();
+        let back = tmp.path().join("src").join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        // 无 db.at —— 全部端点走 CRUD 兜底。
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+#[api(method = "GET", path = "/api/items")]
+pub fn list_items() []str {
+    return []
+}
+
+#[api(method = "POST", path = "/api/items")]
+pub fn create_item(name str) str {
+    return ""
+}
+"#,
+        )
+        .unwrap();
+        let module = super::parse_api_module(tmp.path()).expect("api module parses");
+        let code = super::generate_merged_api_client(&module, tmp.path());
+        assert!(
+            code.contains("static API_DATA"),
+            "CRUD fallback must keep the API_DATA scaffold, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("fn list_items() -> Vec<Value>"),
+            "GET no-param fallback = list-all over API_DATA, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("fn create_item(") && code.contains("API_NEXT_ID"),
+            "POST fallback = id-allocating insert over API_DATA, got:\n{}",
+            code
+        );
     }
 
     /// Stage B P-2 V4：仓外项目完整生成链——member 落 project-local，框架

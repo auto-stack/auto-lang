@@ -8329,14 +8329,23 @@ impl Codegen {
                 };
 
                 // Plan 340: API-over-HTTP rewriting (VM+VM split mode). When
-                // api_over_http is set, rewrite bare calls to #[api] functions
+                // api_over_http is set, rewrite calls to #[api] functions
                 // into HTTP requests. Must come BEFORE any native/local/external
                 // resolution so the call never reaches the normal CALL path.
+                // PLAN-648 T-01: 候选除裸名(Expr::Ident)外,增加模块别名
+                // 限定形态 Expr::Dot(Ident, fn)(`api.get_lines()`)——此前
+                // 仅裸名可改写,限定调用静默回落 back 链进程内执行(auto-term
+                // dev 跑法空屏定因)。db.* 等非 api 限定名不命中 api_funcs,
+                // 天然不受影响。
                 if self.api_over_http {
                     if let Some(name) = func_name.as_ref() {
-                        // Only bare-name calls (Expr::Ident) are candidates;
-                        // qualified calls (db.all_notes) skip rewriting.
-                        if matches!(call.name.as_ref(), Expr::Ident(_)) {
+                        let rewritable = matches!(call.name.as_ref(), Expr::Ident(_))
+                            || matches!(
+                                call.name.as_ref(),
+                                Expr::Dot(obj, _)
+                                    if matches!(obj.as_ref(), Expr::Ident(_))
+                            );
+                        if rewritable {
                             if let Some(api) = self.api_funcs.get(name).cloned() {
                                 return self.emit_api_http_call(&api, call);
                             }
