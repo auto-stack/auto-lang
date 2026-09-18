@@ -671,7 +671,13 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         SC::OverflowAuto
         | SC::OverflowHidden
         | SC::OverflowVisible
-        | SC::OverflowScroll => "overflow-hidden".into(),
+        | SC::OverflowScroll
+        | SC::OverflowXAuto
+        | SC::OverflowYAuto
+        | SC::OverflowXHidden
+        | SC::OverflowYHidden
+        | SC::OverflowXScroll
+        | SC::OverflowYScroll => "overflow-hidden".into(),
         // 行高倍率：native Text op 行高 = 字号×LINE_H_FACTOR 固定档——
         // leading-* 渲染未实现，判定降级放行（解释态 target_set 同册）。
         SC::LineHeight(_) | SC::LineHeightNone => "leading-1".into(),
@@ -698,11 +704,29 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         SC::ItemsStretch => "items-stretch".into(),
         SC::TextArbitrary(_) => "text-1".into(),
         SC::ShadowArbitrary(_) => "shadow".into(),
-        // —— 语义承载未实现面：显式 not-yet（稳定名无支持前缀）。
-        // absolute/relative+offset/z-index（定位族）、rotate（视觉变换）、
-        // hidden（display:none 语义）、truncate/break-words（文本裁剪）、
-        // list-none（列表标记）、accent（表单强调色）、stroke（lucide
-        // 描边——native 位图/字形通道 not-yet 同册）。
+        // —— 语义承载未实现面：显式 not-yet（语义名缺项载荷——缺项清单
+        // 自描述；026 数据行缺项面）。定位族（absolute/fixed/sticky/
+        // offset/z-index）、rotate（视觉变换）、hidden（display:none
+        // 语义）、truncate/break-words（文本裁剪）、list-none（列表
+        // 标记）、accent（表单强调色）、stroke（lucide 描边——native
+        // 位图/字形通道 not-yet 同册）、样式版 grid（display:grid/
+        // grid-cols 布局语义——View::Grid 变体臂不覆盖 style 路径）。
+        SC::Grid | SC::GridCols(_) | SC::GridRows(_) => "style-grid".into(),
+        SC::Hidden => "hidden".into(),
+        SC::Absolute => "absolute".into(),
+        SC::Fixed => "fixed".into(),
+        SC::Sticky => "sticky".into(),
+        SC::TopOffset(_) => "top-1".into(),
+        SC::LeftOffset(_) => "left-1".into(),
+        SC::RightOffset(_) => "right-1".into(),
+        SC::BottomOffset(_) => "bottom-1".into(),
+        SC::ZIndex(_) => "z-1".into(),
+        SC::Rotate(_) => "rotate-1".into(),
+        SC::Truncate => "truncate".into(),
+        SC::BreakWords => "break-words".into(),
+        SC::ListNone => "list-none".into(),
+        SC::AccentColor(_) => "accent-1".into(),
+        SC::StrokeWidth(_) => "stroke-1".into(),
         _ => "native-unstyled".into(),
     }
 }
@@ -1189,46 +1213,6 @@ mod tests {
             };
             let view = AuraViewBuilder::new(&bridge, &widget.name).build(&widget.view_tree);
             let scan = scan_native_view(&view);
-            if std::env::var("AUTO_FLIP_DEBUG").is_ok() {
-                eprintln!("[native-flip-data] {name} tags={:?} styles={:?}", scan.tags, scan.style_tokens);
-                // 逐节点 typed classes dump（native-unstyled 溯源用）。
-                fn dump_classes<M: Clone + std::fmt::Debug>(v: &crate::ui::view::View<M>, out: &mut Vec<String>) {
-                    use crate::ui::view::View;
-                    let classes: Vec<Option<&crate::ui::style::Style>> = match v {
-                        View::Text { style, .. } | View::Button { style, .. }
-                        | View::Row { style, .. } | View::Column { style, .. }
-                        | View::Container { style, .. } | View::Image { style, .. }
-                        | View::ProgressBar { style, .. } => vec![style.as_ref()],
-                        View::Grid { style, .. } => vec![style.as_ref()],
-                        _ => vec![],
-                    };
-                    for st in classes.into_iter().flatten() {
-                        for c in &st.classes {
-                            if native_style_token(c) == "native-unstyled" {
-                                out.push(format!("{c:?}"));
-                            }
-                        }
-                    }
-                    match v {
-                        View::Column { children, .. } | View::Row { children, .. } => {
-                            for c in children { dump_classes(c, out); }
-                        }
-                        View::Container { child, .. } => dump_classes(child, out),
-                        View::Grid { cells, .. } => {
-                            for c in cells { dump_classes(c, out); }
-                        }
-                        View::Button { content: Some(c), .. } => dump_classes(c, out),
-                        _ => {}
-                    }
-                }
-                if name.starts_with("013") || name.starts_with("014") || name.starts_with("018") || name.starts_with("019") || name.starts_with("021") || name.starts_with("024") || name.starts_with("041") {
-                    let mut out = Vec::new();
-                    dump_classes(&view, &mut out);
-                    for (i, c) in out.iter().enumerate() {
-                        eprintln!("[native-flip-data]   node{i} classes={c}");
-                    }
-                }
-            }
             match judge(&scan, &Coverage::native_queue_set()) {
                 Verdict::Covered => rows.push((name, true, String::new())),
                 Verdict::NotCovered(missing) => {
