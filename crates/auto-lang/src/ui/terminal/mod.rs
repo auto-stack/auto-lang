@@ -192,6 +192,15 @@ pub struct TerminalCore {
     scroll_delta: Mutex<i32>,
     /// 引擎回滚历史行数(泵回读;滚动条拇指比例用;0=无历史不画)。
     history: std::sync::atomic::AtomicUsize,
+    /// PLAN-022 T-01 官方滚动条虚拟滚动同步态(视图投影缓存,非状态源;
+    /// 引擎 display_offset 仍是滚动状态单源)。view_target = 观察臂
+    /// (视图 y 变化)与引擎回写共同维护的最后已知目标 offset(行);
+    /// bound = 写臂去重基线(上次程序化绑定的引擎 offset;初始 -1 =
+    /// 首帧强制绑定贴底);bind_suppress = 程序化绑定后吞一次视图观察
+    /// (iced scroll_to 回声,防回灌环路)。
+    scroll_view_target: std::sync::atomic::AtomicI64,
+    scroll_bound_offset: std::sync::atomic::AtomicI64,
+    scroll_bind_suppress: std::sync::atomic::AtomicBool,
 }
 
 /// PLAN-019 启动自动聚焦:窗口内焦点持有者(terminal key;None = 自由,
@@ -222,6 +231,9 @@ impl TerminalCore {
             scheme: AtomicI32::new(TERMINAL_SCHEME_FOLLOW_THEME),
             scroll_delta: Mutex::new(0),
             history: std::sync::atomic::AtomicUsize::new(0),
+            scroll_view_target: std::sync::atomic::AtomicI64::new(0),
+            scroll_bound_offset: std::sync::atomic::AtomicI64::new(-1),
+            scroll_bind_suppress: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -268,6 +280,34 @@ impl TerminalCore {
     pub fn cursor(&self) -> CursorState {
         *self.cursor.lock().unwrap()
     }
+
+    // ── PLAN-022 官方滚动条虚拟滚动同步态(pub(crate):iced widget/
+    //    renderer 臂消费;纯视图投影,引擎 display_offset 仍是单源)──
+
+    pub(crate) fn scroll_view_target(&self) -> i64 {
+        self.scroll_view_target.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_scroll_view_target(&self, v: i64) {
+        self.scroll_view_target.store(v, Ordering::Relaxed);
+    }
+
+    pub(crate) fn scroll_bound_offset(&self) -> i64 {
+        self.scroll_bound_offset.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_scroll_bound_offset(&self, v: i64) {
+        self.scroll_bound_offset.store(v, Ordering::Relaxed);
+    }
+
+    /// 取走并清除程序化绑定回声抑制(返回旧值)。
+    pub(crate) fn take_scroll_bind_suppress(&self) -> bool {
+        self.scroll_bind_suppress.swap(false, Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_scroll_bind_suppress(&self) {
+        self.scroll_bind_suppress.store(true, Ordering::Relaxed);
+    }
 }
 
 /// BTreeMap(非 HashMap):`terminal_drain_all_inputs` 的键序要稳定。
@@ -310,6 +350,18 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
             fresh
                 .scroll_offset
                 .store(core.scroll_offset.load(Ordering::Relaxed), Ordering::Relaxed);
+            fresh.scroll_view_target.store(
+                core.scroll_view_target.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+            fresh.scroll_bound_offset.store(
+                core.scroll_bound_offset.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+            fresh.scroll_bind_suppress.store(
+                core.scroll_bind_suppress.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
             fresh.generation.store(core.generation() + 1, Ordering::Relaxed);
             *fresh.pending.lock().unwrap() = TerminalDamage::Full;
             map.insert(key.to_owned(), fresh);
@@ -640,8 +692,11 @@ pub fn terminal_scroll(core: &TerminalCore, delta: i32) {
 }
 
 /// Explicit offset set (app round-trips the engine's scrollback position).
+/// PLAN-022:这也是引擎泵回写的唯一入口——回写即"引擎此刻在该 offset",
+/// 同步更新视图投影目标(官方滚动条虚拟滚动的读出基线)。
 pub fn terminal_set_scroll_offset(core: &TerminalCore, offset: usize) {
     core.scroll_offset.store(offset as u64, Ordering::Relaxed);
+    core.set_scroll_view_target(offset as i64);
 }
 
 /// PLAN-019 滚轮回灌:滚轮增量入队(引擎约定:**正=上翻历史**)。组件

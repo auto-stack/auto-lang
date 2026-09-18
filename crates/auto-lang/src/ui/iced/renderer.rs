@@ -4186,7 +4186,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // -1 = 跟随主题,绘制期解析)。
                 core.set_scheme(scheme);
                 crate::ui::terminal::terminal_feed(core, &lines);
-                crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
+                // PLAN-022:scroll_offset prop 非零才落位(014 光标哨兵同
+                // 款)——0 恒写会把引擎泵回写的 display_offset 每帧清零,
+                // 官方滚动条的读出基线(scroll_view_target)随之断裂。
+                if scroll_offset != 0 {
+                    crate::ui::terminal::terminal_set_scroll_offset(core, scroll_offset as usize);
+                }
                 // 014:光标格随帧落注册表(app 从引擎回读喂入;preedit/光标
                 // 层同源)。形状恒 Block;非零才落位——(0,0) 是未喂入哨兵,
                 // 直接设在 core 上的光标(测试/宿主策略)不被覆写。
@@ -4200,13 +4205,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
                 let el: iced::Element<'static, M> = crate::ui::terminal::iced::Terminal {
                     core,
-                    key,
+                    key: key.clone(),
                     scroll_offset,
                     preedit: preedit.clone(),
                     on_select: on_select.clone(),
                     on_menu: on_menu.clone(),
                     on_input: on_input.clone(),
                     shortcuts: shortcuts.clone(),
+                    // PLAN-022 T-02 换装:虚拟滚动模式 + 官方 scrollable
+                    // 包装(见下);width 仍为 016 网格公式。
+                    virtual_scroll: true,
                     width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0 * crate::ui::terminal::iced::PAD),
                     height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0 * crate::ui::terminal::iced::PAD),
                 }
@@ -4223,13 +4231,39 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     crate::ui::terminal::iced::rgb_u32(v)
                 };
                 let el: iced::Element<'static, M> = iced::widget::container(el)
+                    // PLAN-022:容器入 scrollable(滚动轴内容高=虚拟画布,
+                    // Shrink=自然高;Fill 在无穷轴会塌 0)。宽 Fill 仍吃
+                    // 视口宽,右缘余量条由容器同色涂满。
                     .width(iced::Length::Fill)
-                    .height(iced::Length::Fill)
+                    .height(iced::Length::Shrink)
                     .align_x(iced::alignment::Horizontal::Left)
                     .align_y(iced::alignment::Vertical::Top)
                     .style(move |_: &iced::Theme| iced::widget::container::Style {
                         background: Some(iced::Background::Color(margin_bg)),
                         ..Default::default()
+                    })
+                    .into();
+                // PLAN-022 T-02 写臂(引擎 → 视图):引擎 display_offset
+                // 变化(键入贴底/方案切换/引擎侧滚动)≠ 上次绑定值 → 经
+                // Plan 043 pending 队列发 scroll_to,thumb 跟随、单拍收敛;
+                // 绑定即 scroll_to 回声,置抑制让读出臂(draw 期 viewport
+                // 观察)吞一次,防回灌环路。首帧 bound=-1 → 强制绑定贴底
+                // (终端惯例:打开即实时视图)。
+                let scroll_key = format!("terminal_scroll_{}", key);
+                if let Some(y) =
+                    <crate::ui::terminal::iced::Terminal<M>>::bind_request_y(core)
+                {
+                    note_scroll_offset(&scroll_key, (0.0, y));
+                }
+                // 官方 scrollable 包装:滚动条视觉/交互(scrollbar_style
+                // 现款)归 iced;读出臂在 widget draw 期(PLAN-022 语义:
+                // scrollable offset = 视图投影,引擎 display_offset 单源)。
+                let el: iced::Element<'static, M> = iced::widget::scrollable(el)
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill)
+                    .id(scroll_key)
+                    .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                        scrollbar_style()
                     })
                     .into();
                 if let Some(ref s) = style {
