@@ -234,7 +234,10 @@ T-03 对拍 gate 常驻化（tests/ 套件）+ jade gallery RC-E 联动
   .autoos/specs.json reports/P651-1 上墙（校验+原子替换+回读 100 条；
   389cfcd08；INDEX 零漂移——无 canonical spec 变更） | archived:
   docs/plans/archive/651-autodown-editor-block-closure.md（git mv，status:
-  archived） | cleaned: （清理后补记）`。
+  archived；c8cd3cc8b） | cleaned: wt-guard 双 worktree clean → worktree/
+  分支移除（-D：cherry-pick 落盘新 SHA 故 -d 判未合并，内容等价已实证
+  ——auto-lang 尾 60e427854=被审提交、auto-down 尾 fd05981=a615d69）→
+  组目录 .wt/lang-651 移除，全链无残留`。
 
 ## 9. 待澄清事项
 
