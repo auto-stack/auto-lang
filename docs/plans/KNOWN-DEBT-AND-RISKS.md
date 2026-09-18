@@ -2243,9 +2243,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
 |---|---|---|---|---|
 | P020-D1 | medium | 架构 | **双投影器并存（AppProjector 解释态 / NativeProjector native）**——块流布局 walker ~150 行语义镜像重复（layout_view_block/layout_view_node vs layout_block/layout_node），样式双轨（字符串解析 vs typed StyleClass 适配）。统一方向 = 解释态投影器改写为 View 基（AuraViewBuilder 已产 View，双轨归一），待 native 覆盖集爬坡后立项 | desktop_protocol/client_runtime.rs layout_*；desktop_protocol/native_projector.rs |
-| P020-D2 | low | 协议边界 | **native queue 臂键盘/滚轮/右键不路由、L3 StateSnapshot 注入 not-yet**（v1.6 边界随注）——input 族入覆盖集时同步补路由臂；StateSnapshot 融合态迁移需 typed 组件字段写回通道另立 | native_projector.rs on_input/on_control；desktop-protocol-v1.md §1.6 边界 |
+| P020-D2 | low | 协议边界 | **✅ 键/滚轮/右键半句已核销（PLAN-025 T-05，§1.7）**——投影器 Right/Scroll/聚焦编辑消费臂 + 宿主 broker_key_event/broker_char/broker_scroll 生产路径落册；**StateSnapshot 半句保留**：L3 注入 native 仍 not-yet（typed 组件字段写回通道另立） | native_projector.rs on_input/wheel；session.rs broker_key_event/broker_char/broker_scroll；desktop-protocol-v1.md §1.7 |
 | P020-D3 | low | 生成器 | **async-init App 经孵化臂以 default() 态起**（初始化 API 加载不接协议 client 面）——超覆盖 App 的孵化形态缺省 auto→independent 可绕开，queue 档显式声明 async-init App 时启动态为空，待需要时立项 | rust_ui.rs wrap_example native_client_gate 随注 |
 | P020-D4 | low | 测试基建 | **桌面画布↔屏幕变换未文档化，OS 级点击自动化未打通**（DPI 2x + canvas 缩放系数非恒定——ui_desktop 真机冒烟三次坐标假设均未命中窗内按钮）；窗内点击/× 关闭的 GUI 级自动化待 acceptance channel 增 pointer verb（现仅 bus/handler），期间点击闭环/回收由协议级 p020_native_exe_arm 承载 | mcp_server.rs autoui_desktop；scripts/smoke-020-native-exe.sh（os 仓）随注 |
+| P025-D1 | low | 协议边界 | **live iced 桌面壳无键盘/滚轮事件订阅通道**（session.rs 零键盘事件臂——PLAN-025 D4 调查证据）；broker_key_event/broker_char/broker_scroll 生产路径已落（协议/broker 层），live 接线需 DesktopMessage 扩展 + iced 事件映射（Key::Named→VK u32、WheelScrolled→Scroll{dx,dy}、Key text→CharTyped）另立；期间真机键入链路由协议级 p025_native_input_arm 承载（P020-D4 同口径） | session.rs broker_* 生产路径；desktop-protocol-v1.md §1.7 输入路由两端 |
+| P025-D2 | low | 保真边界 | **native 聚焦身份 = 槽位序（D1-A）**——动态增删 input 致焦点前插入的结构变化下槽位越界即失焦（不猜测对位）；同族 not-yet 随注：slider 拖拽连续派发、select 键盘跳项、input on_submit/Enter、密码掩码、多行自动换行 | native_projector.rs focused_input 重定位；desktop-protocol-v1.md §1.7 聚焦与编辑闭环 |
 
 ## 2026-09-17 增补（PLAN-633 复审登记）
 
@@ -2258,3 +2260,13 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **PLAN-639-D1 [VM 三约束修复本体另立项]**：回调 props 编译中止/快照子树可见性/参数化条件求值三缺口的调查、修复方案选项（A/B/C）与工作量级估计见 `docs/plans/attachments/639-vm-constraints.md`（T-07 产物，含 2026-09-17 探针复核）；修复本体未实现，建议立项名 vm-component-parity。引用：attachments/639-vm-constraints.md §约束一/二/三；archive/449 §3.1-3.3。
 - **PLAN-639-D2 [消费应用副本迁移移交 PLAN-070]**：jade-garden / 041-auto-edit / musk / widgets-gallery 的 filetree/tabs_store 等副本收敛为 Blueprint 包 L1 消费，由 auto-down PLAN-070 承接（其 pac.at 已起草，依赖本计划 T-04/T-05 地基）。website "blocks" 专题页与 ui-gallery `#/blocks` 构建产物路由属消费侧产品面，随 PLAN-070 一并裁定。引用：auto-down PLAN-070 起草；639-rename-manifest.md §2.3 D8 改判注记。
 - **PLAN-639-D3 [bp 包多版本/锁面（Q-1 悬置）]**：blueprints 包库 MVP=主检出单版本（无 lock/registry 语义）；PLAN-070 消费侧铺开前须裁定多版本/锁面机制（升版即全体消费方重构建的语义是否可接受、跨仓 worktree 场景的版本对齐）。引用：docs/specs/blueprint/contract.md 六问⑤。
+
+## 2026-09-18 增补（PLAN-642 登记与核销）
+
+- **P633-D2 ✅ 核销（PLAN-642 T-08）**：registry.at 的 loadable 语义改为 VM 内嵌实态（`loadable || fullstack`），013/015 侧栏角标与工具栏徽标翻正为"可交互/运行中"；web 臂 demos-registry.ts 语义分离保持原状。引用：`auto-man/src/vue.rs` registry.at 序列化注记。
+- **P642-D1 [024-charts 内嵌画布空（独立臂正常）]**：包组件 AreaChart/BarChart/LineChart/DonutChart 在合并 VM 臂报 `local widget ... shadows builtin tag ... — builtin wins (Plan 408/435)`，实例 `area-chart` 等落 builtin 桩 → 画布空；独立 `auto run -r vm` 同语料出图正常（三系列折线截图在案）。候选方向：合并臂 package widget 对 builtin 的优先序反转（或 chart builtin 桩承接包组件几何）；涉及 Plan 408/435 既有裁定，需专窗归因。引用：`/tmp/ug_fix_run3.log:399-418`；修复前后截图 `fix3_024-charts.png`/`p642_024_standalone`（独立臂）。
+- **P642-D2 [027-file-manager 内嵌永久"正在加载..."（独立臂正常）]**：独立 VM 真实目录列表 62 项（真 auto.fs 扫描）；内嵌臂 Init/异步装载不完成。伴生面：包 kept-first 策略（P642-D4）使 027 内嵌拿到 026 版 treeview/filetree/tree_icon。候选方向：合并臂 per-demo 包命名空间化（fullstack per-demo stem 同思路）+ native fs 在 embed 上下文的 Init 链归因。引用：`fm027_vm.log`（独立臂 VM_EXEC 正常）；`fix3_027-file-manager.png`。
+- **P642-D3 [VM 实例 exit 127 无 panic 死亡类——P625 遗留，复审复现，未闭环]**：**复审（R642-F1）在受审提交 ba009076f 上复现**——全量矩阵中第二次 SelectDemo(029-photo-gallery) handler OK 后进程静默死亡 exit 127（死前日志仅剩 MCP 心跳行），间歇性（同会话首实例同序列存活）。另两类观测：MCP 端口被占时 bind FATAL 后进程静默退出（mcp_server.rs:540 FATAL 仅 return）、并发 auto build + 窗口交互后死亡。缓解候选：029 二次打开/异步照片装载渲染竞态归因 + 渲染失败降级防护；MCP bind 失败升级为显式错误面。引用：复审记录 R642-F1（PLAN-642 §9）；`/tmp/db026_vm.log`（bind FATAL 127 实证）。
+- **P642-D4 [包目录 kept-first 冲突策略]**：026/027 的 components/（filetree/treeview/tree_icon 同名异容）共用 demos/components/，首者（026）胜出——027 内嵌视觉树用 026 版组件。与 P642-D2 的 per-demo 命名空间化一并处理。引用：生成日志 `gallery package file conflict ... (kept first)` ×3。
+- **P642-D5 [plan606 029 缩略图 data-URL 断言预存红（环境相关）]**：`test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit` master 上即红（PLAN-637 收编 caption_text 后 test-support 解析路径缺 recipe 预注册）。PLAN-642 T-01 已补预注册（parse 面前进），现红于 data-URL 断言：src 停留文件路径未内联，路径指主检出（worktree 运行时定位到主检出语料）。引用：`plan370_test_support.rs` PLAN-642 注记；plan606_gallery_tests.rs:65。
+- **P642-D6 [012-stopwatch 横幅行恒在（双端同构，语料既定）]**："知道了"按钮所在 banner 行为"恒在结构"设计（源注释：VM 轨 Tick 后结构/样式 if 均不重渲染的既定 workaround），banner 空文本时按钮仍显示——Vue 臂同构。低成本修复受同一渲染限制阻断，随 VM 结构级重渲染能力另议。引用：`examples/ui/012-stopwatch/src/front/app.at:121-131`。

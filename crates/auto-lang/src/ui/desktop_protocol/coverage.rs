@@ -155,23 +155,42 @@ impl Coverage {
         self.style_prefixes.iter().any(|p| token.starts_with(p.as_str()))
     }
 
-    /// Plan 020 T-04 —— native queue 臂 v1 覆盖集（counter 级；§5.4 实现
-    /// 设计钉）：kind = text/button + 线性堆叠布局族（col/row/container/
-    /// list）+ 布局样式子集（padding/gap/margin/尺寸/圆角/底色/前景色/
-    /// 对齐/字号字重）。payload 族（input/slider/select/checkbox/…）与
-    /// display 族（image/icon/badge/…）显式 **not-yet**——native 显式
-    /// queue 遇未覆盖 = 拒绝退出留痕（AC-04，非静默错绘）。与解释态
-    /// [`Coverage::target_set`] 分表：native 投影器 v1 渲染面更窄，爬坡
-    /// 随投影器扩臂同步扩表（单一事实源纪律同 500 §1.3.1）。
+    /// Plan 020 T-04 —— native queue 臂覆盖集（§5.4 实现设计钉）。
+    /// PLAN-025 T-02 扩容：form 族 input/textarea/checkbox/radio 入册
+    /// （渲染/命中/聚焦/键入回写臂同落 native_projector）。**switch 无
+    /// native 对象**——View 枚举无 Switch 变体（解释态 aura 标签专属，
+    /// T-01 §5.1 调查证据），native 轨无可产该 kind 的构造（I4 分表，
+    /// 非缺口）。slider/select 随 T-03/T-04 扩容。kind = text/button +
+    /// form 族 + 线性堆叠布局族（col/row/container/list）+ 布局样式子集
+    /// （padding/gap/margin/尺寸/圆角/底色/前景色/对齐/字号字重）。
+    /// payload 族残余（table/tabs 等）与 display 族（image/icon/badge/…）
+    /// 显式 **not-yet**——native 显式 queue 遇未覆盖 = 拒绝退出留痕
+    /// （AC-04，非静默错绘）。与解释态 [`Coverage::target_set`] 分表：
+    /// native 投影器渲染面按投影器臂爬坡同步扩表（单一事实源纪律同
+    /// 500 §1.3.1）。
     pub fn native_queue_set() -> Self {
-        let kinds: BTreeSet<String> = ["text", "button"]
-            .into_iter()
-            .map(String::from)
-            .collect();
+        let kinds: BTreeSet<String> = [
+            "text",
+            "button",
+            // PLAN-025 T-02 —— native form 族（switch 无 View 变体不列）。
+            "input",
+            "textarea",
+            "checkbox",
+            "radio",
+            // PLAN-025 T-03 —— payload 族 slider。
+            "slider",
+            // PLAN-025 T-04 —— payload 族 select。
+            "select",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
         let layouts: BTreeSet<String> = [
             "col", "row", "container", "list",
             // 透传壳（View::Empty / AnchorSlot 块锚定槽——渲染透明）。
             "empty", "anchorslot",
+            // PLAN-025 T-05 —— scrollable（Scissor 裁剪 + on_scroll 滚轮）。
+            "scroll",
         ]
         .into_iter()
         .map(String::from)
@@ -186,6 +205,12 @@ impl Coverage {
             "items-", "justify-", "mx-auto",
             "text-", "font-",
             "bg-", "border", "rounded", "from-", "to-",
+            // PLAN-025 T-06（T-01 §5.1 定案 2）：flex-1/shadow 降级放行
+            // ——解释态 target_set 同款保真边界（shadow 渲染 no-op、
+            // flex 族自然宽——native_projector::node_style_of 随注），
+            // 非静默扩权：003-converter 真源 gate 通过所需。
+            "flex-1",
+            "shadow",
         ]
         .into_iter()
         .map(String::from)
@@ -948,6 +973,24 @@ mod tests {
             assert!(
                 line.contains(&evidence.trim_start_matches("tag:")),
                 "{family} 缺项清单随行: {line}"
+            );
+        }
+    }
+
+    /// PLAN-025 T-06：003-converter 真源样式 token 全放行（native gate
+    /// ——flex-1/shadow 降级放行定案；AC-05 覆盖翻转样本）。
+    #[test]
+    fn native_gate_accepts_003_style_tokens() {
+        let coverage = Coverage::native_queue_set();
+        for token in [
+            "flex-1", "gap-1.5", "max-w-md", "p-8", "bg-card", "border",
+            "rounded-2xl", "shadow-sm", "mx-auto", "text-2xl", "font-bold",
+            "text-primary", "text-center", "mb-6", "gap-4", "text-sm",
+            "font-medium", "text-muted-foreground", "text-xs", "mt-6",
+        ] {
+            assert!(
+                coverage.style_token_supported(token),
+                "003 token 应放行: {token}"
             );
         }
     }
