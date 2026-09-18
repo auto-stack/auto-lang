@@ -385,6 +385,33 @@ T-10 最后。T-03/T-04/T-05/T-06 相互独立可乱序。
   记录为准）；spec delta 文本冻结 hash 见 spec_inputs。next：merge
   （/auto-plan:merge——落 master、specs.json upsert + spec-index.py、归档清理）。
 
+### 合并收据（PLAN-640:r1）
+
+- **prepared**（2026-09-18）：reviewed 基线 c3817f0cb；canonical delta 已随 T-02..T-07
+  提交在 worktree（冻结 hash contract 3cc4fcc03786fa39 / project d52cfe744d734dc4）；
+  master 前移（plan-025/641/642）→ worktree merge master @ `a8ca7fd3c` 零冲突，
+  delta 目标零漂移、hash 与冻结一致（免复审），验证刷新全绿（plan640 5/5 + scan
+  三测 + bp list 13）。
+- **landed**：master merge `e53fd3a7e`（--no-ff，父 f1b44c8fd + a8ca7fd3c，含
+  c3817f0cb 祖先链）；master 上 canonical specs hash 复核 = 冻结值；master 烟雾
+  `cargo t plan640` 5/5 PASS。landing 前 wt-guard 两 worktree clean（gallery
+  pnpm node_modules 曾产生 137 junction——按守卫规程逐链接 rmdir 后过闸，
+  node_modules 可再生已清除）。
+- **ledger_refreshed**：`.autoos/specs.json` 本地投影 upsert P640-1
+  （architecture→docs/specs/blueprint/project.md）+ P640-2（reviews→本归档路径），
+  校验后原子替换；`python scripts/spec-index.py` 再生 INDEX.md（blueprint 模块
+  5→14 项），commit `12e0d213`。
+- **archived**：`git mv` → docs/plans/archive/640-blueprint-catalog.md +
+  status: archived（交付完成，completion_kind: delivered）。
+- **cleaned**：plan-640-dev 分支删除（@ a8ca7fd3c）；auto-lang worktree 移除；
+  auto-down 依赖 worktree（detached @ 2d27a0a5）移除；组目录 .wt/lang-640 删除
+  （含走查期 shots/ 草稿——signup_vue.png 已先归档主检出）。
+  补记：AC-08 截图曾误存 worktree 本地 tests/screenshots/（gitignore 不入库）随
+  worktree 移除丢失——已从幸存副本恢复 signup_vue.png，并按 walkthrough app 重录
+  plan640_signup_vm.png（MCP snapshot Name/Email 子树复现），双件落主检出
+  D:/autostack/auto-lang/tests/screenshots/（本地证据档，git 策略不入库）。
+  清理后三零复核：worktree list / .wt 组目录 / plan-640* 分支均 0。
+
 ## 10. 待澄清事项
 
 1. **chart 图表面**（默认裁定已给，如需 dashboard v0 内置真图表则扩 scope）：本计划
