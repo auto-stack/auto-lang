@@ -701,7 +701,9 @@ impl<'a> AuraViewBuilder<'a> {
         if first == "store" {
             return stripped.split('.').nth(1).map(|x| x.to_string());
         }
-        if crate::ui::handler_codegen::view_store_alias_real_name(first).is_some() {
+        if crate::ui::handler_codegen::view_store_alias_real_name(first).is_some()
+            || self.bridge.store_alias_real_name(first).is_some()
+        {
             return stripped.split('.').nth(1).map(|x| x.to_string());
         }
         None
@@ -10370,10 +10372,14 @@ let tabs_inner = View::Row {
                     // 裸字段——多 store 语境(画廊宿主)下泛型别名歧义,发射
                     // 期已真名化,视图侧须同口径。
                     if matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
-                        && crate::ui::handler_codegen::view_store_alias_real_name(
+                        && (crate::ui::handler_codegen::view_store_alias_real_name(
                             store_alias.as_str(),
                         )
                         .is_some()
+                            || self
+                                .bridge
+                                .store_alias_real_name(store_alias.as_str())
+                                .is_some())
                     {
                         return self.read_state_as_string_with(field.as_str(), bindings);
                     }
@@ -10602,10 +10608,14 @@ let tabs_inner = View::Row {
                 if let Expr::Dot(inner_obj, store_alias) = object.as_ref() {
                     // PLAN-633: 同上——真名限定形态与 `.store.X` 同读根态。
                     if matches!(inner_obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
-                        && crate::ui::handler_codegen::view_store_alias_real_name(
+                        && (crate::ui::handler_codegen::view_store_alias_real_name(
                             store_alias.as_str(),
                         )
                         .is_some()
+                            || self
+                                .bridge
+                                .store_alias_real_name(store_alias.as_str())
+                                .is_some())
                     {
                         return self.read_state(field.as_str()).ok();
                     }
@@ -11172,12 +11182,20 @@ let tabs_inner = View::Row {
         let mut lhs_nil = false;
         let lhs_val = if let Some(field_name) = lhs_normalized.strip_suffix(".len()") {
             // Strip leading dot from state ref (e.g., ".todos" → "todos")
-            let field_name = field_name.trim_start_matches('.');
-            match self.read_state(field_name) {
+            // PLAN-642 T-15: store 限定形态（`.NotesStore.notes.len()`，发射器
+            // store 接收者限定产物）此前把 "NotesStore.notes" 整段当单字段名
+            // read_state 必 miss → 恒 false（015 内嵌 "No notes yet" 实锤）。
+            // 经 store_source_field 展平为裸字段（`.store.X`/真名限定同口径，
+            // 含 bridge 存档查表）。
+            let mut field_name = field_name.trim_start_matches('.').to_string();
+            if let Some(bare) = self.store_source_field(&field_name) {
+                field_name = bare;
+            }
+            match self.read_state(&field_name) {
                 Ok(Value::Array(arr)) => arr.len().to_string(),
                 Ok(other) => {
                     // Also try read_state_as_vec for Value::Int(array_id) refs
-                    match self.read_state_as_vec(field_name) {
+                    match self.read_state_as_vec(&field_name) {
                         Ok(vec) => vec.len().to_string(),
                         Err(_) => value_to_display_string(&other),
                     }
@@ -13121,6 +13139,64 @@ mod tests {
             view_contains_text(&view, "${.store.nope}"),
             "unresolvable dotted path must keep the raw template (dots intact); got {:?}",
             view
+        );
+    }
+
+    /// PLAN-642 T-15: store 真名限定的 `.len() > 0` 视图条件——`.len()` 后缀
+    /// 快路径此前把 "Store.field" 整段当单字段名 read_state 必 miss → 恒
+    /// false（015 内嵌 "No notes yet" 实锤）。快路径经 store_source_field
+    /// 展平为根态裸字段后按长度求值；别名快照随 bridge 存档（多组件工程
+    /// 下线程级快照被后续合成覆盖）。
+    #[test]
+    fn plan642_store_qualified_len_condition_resolves() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "widget NotesStore {\n",
+            "    model {\n",
+            "        var notes List<str> = [\"a\", \"b\"]\n",
+            "    }\n",
+            "}\n",
+            "widget App {\n",
+            "    view {\n",
+            "        col {\n",
+            "            if .NotesStore.notes.len() > 0 {\n",
+            "                text \"HAS\"\n",
+            "            } else {\n",
+            "                text \"EMPTY\"\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls = ast.stmts.iter().filter_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        });
+        let store_decl = decls.next().expect("store decl");
+        let app_decl = decls.next().expect("app decl");
+        // 合并轨等价：root + store 子件同合成（store 无 view → 别名表注册）。
+        let bridge = VmBridge::new_from_decls(
+            app_decl,
+            std::slice::from_ref(store_decl),
+            Vec::new(),
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .unwrap();
+        let widget = crate::aura::extract::extract_widget_from_decl(app_decl).expect("extract");
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
+        assert!(
+            view_contains_text(&view, "HAS"),
+            "store-qualified len condition must resolve via root bare field; got {:?}",
+            view
+        );
+        assert!(
+            !view_contains_text(&view, "EMPTY"),
+            "else branch must not render when store list is seeded"
         );
     }
 
