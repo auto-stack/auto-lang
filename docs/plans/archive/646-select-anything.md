@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-646
-status: reviewed              # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: select-anything
 author: [zcode-agent]
 created_at: 2026-09-18
@@ -477,6 +477,33 @@ VM 物理粘贴核对、Vue 面板 Copy（headless 剪贴板权限不可驱）�
 目视项，不阻塞。
 
 `next: merge`
+
+### 9.5 merge 收据（2026-09-18，PLAN-646:r1）
+
+- **prepared** ✅：reviewed 基线 738ec4ecd；SD-01/02/03 已随 911c6a93d 在
+  worktree 落 docs/specs/；台账投影目标 = architecture P646-1（select-
+  anything.md）+ reviews P646-2（本件归档路径）。
+- **reconciled** ✅：落库前吸收 master 推进（PLAN-645/650/027 等）——
+  `Merge branch 'master' into plan-646-dev` 6aba1bd43（零冲突自动合），
+  合并后 scoped 25/25 + tf 3637/3637 全绿（/tmp/p646-tf-merge2.log；
+  预存红排除两项均 master 同红实证：plan367 sidebar、rust generator
+  display_family fixture=c48f6277d 引入）。
+- **landed** ✅：master 合并 `752228ccd`（--no-ff 落 plan-646-dev）；
+  祖先链含复审提交 738ec4ecd/65976a912/911c6a93d；select-anything.md 在
+  master 就位；master 冒烟 scoped 25/25。
+- **ledger_refreshed** ✅：`.autoos/specs.json` 原子 upsert（temp+os.replace，
+  读回验证 P646-1/P646-2 在册）+ `python scripts/spec-index.py`（INDEX.md
+  26 projects 幂等重生成）。
+- **archived** ✅：`git mv docs/plans/646-select-anything.md →
+  docs/plans/archive/646-select-anything.md` + status: archived。
+- **cleaned** ✅：wt-guard 两过（首过 BLOCKED=pnpm install runtime junctions
+  （015-notes gen/front/vue/node_modules + deps/stylekit），cmd rd 安全清除
+  （不穿透 reparse point）后复过 clean；`.wt/lang-646/auto-lang` git
+  worktree remove + 分支 plan-646-dev 删除 + auto-down 兄弟 detached
+  worktree（fae21d90，仅 cargo path 解析用）guard+remove + 组目录
+  `.wt/lang-646` 移除。他会话外来 WIP 两笔保全于组目录外 patch
+  （foreign-wip-plan022-terminal.patch / foreign-wip-rust-workspace.patch），
+  归属待认领。
 
 ### 9.4 worktree 事件记录（外来 WIP 冲突）
 
