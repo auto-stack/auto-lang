@@ -27,16 +27,22 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 
 ## 现状（2026-09-15）
 
-**编译 exe 桌面客户端面（PLAN-020/PLAN-025，provisional）**：desktop_protocol
+**编译 exe 桌面客户端面（PLAN-020/025/026，provisional）**：desktop_protocol
 客户端臂自解释态 `DynamicComponent` 泛化到 `Component` seam——a2r 编译 exe
 经 `NativeProjector<C>`（View 运行期投影）作 compositor 一等客户端，native
-覆盖集（v1.7：form/payload 族 input/textarea/checkbox/radio/slider/select
-+ layouts scroll + flex-1/shadow 降级放行；View 无 Switch 变体不列——分表
-非缺口）与 `auto`=independent 缺省裁定、宿主 `desktop_exe:` 孵化分流、
-输入路由两端（投影器右键/滚轮/聚焦编辑消费 + 宿主
-`broker_key_event/broker_char/broker_scroll` 生产）随册。
-权威正文 = `docs/design/autoui/desktop-protocol-v1.md` §1.6–§1.7（本节仅
-指针，不重复）；度量 = `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
+覆盖集（v1.8：form/payload 族 input/textarea/checkbox/radio/slider/select
++ display 族 image/progress 占位保真 + layouts scroll/grid + 样式降级放行
+批（flex-1/shadow/overflow-/min-w-/min-h-/leading- 等——逐类随注
+`native_queue_set`）；icon/badge/avatar/divider/separator/spacer/a 经 a2r
+codegen 降级归一——分表非缺口；imagesurface 整 kind not-yet）与
+`auto`=independent 缺省裁定（026 复测 judged 76.2% < 95%，翻转点已备）、
+宿主 `desktop_exe:` 孵化分流、输入路由两端（投影器右键/滚轮/聚焦编辑/IME
+闭环消费 + 宿主 `broker_key_event/broker_char/broker_scroll/broker_ime_*`
+生产）随册。权威正文 =
+`docs/design/autoui/desktop-protocol-v1.md` §1.6–§1.8（本节仅指针，不
+重复）；翻转数据行 =
+`docs/plans/reports/p026-native-flip-data-row.md`；度量 =
+`docs/plans/reports/020-rust-exe-compositor-metrics.md`。
 
 ## 现状（2026-09-17）
 

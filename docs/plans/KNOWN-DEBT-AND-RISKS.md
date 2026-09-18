@@ -2246,6 +2246,9 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P020-D4 | low | 测试基建 | **桌面画布↔屏幕变换未文档化，OS 级点击自动化未打通**（DPI 2x + canvas 缩放系数非恒定——ui_desktop 真机冒烟三次坐标假设均未命中窗内按钮）；窗内点击/× 关闭的 GUI 级自动化待 acceptance channel 增 pointer verb（现仅 bus/handler），期间点击闭环/回收由协议级 p020_native_exe_arm 承载 | mcp_server.rs autoui_desktop；scripts/smoke-020-native-exe.sh（os 仓）随注 |
 | P025-D1 | low | 协议边界 | **live iced 桌面壳无键盘/滚轮事件订阅通道**（session.rs 零键盘事件臂——PLAN-025 D4 调查证据）；broker_key_event/broker_char/broker_scroll 生产路径已落（协议/broker 层），live 接线需 DesktopMessage 扩展 + iced 事件映射（Key::Named→VK u32、WheelScrolled→Scroll{dx,dy}、Key text→CharTyped）另立；期间真机键入链路由协议级 p025_native_input_arm 承载（P020-D4 同口径） | session.rs broker_* 生产路径；desktop-protocol-v1.md §1.7 输入路由两端 |
 | P025-D2 | low | 保真边界 | **native 聚焦身份 = 槽位序（D1-A）**——动态增删 input 致焦点前插入的结构变化下槽位越界即失焦（不猜测对位）；同族 not-yet 随注：slider 拖拽连续派发、select 键盘跳项、input on_submit/Enter、密码掩码、多行自动换行 | native_projector.rs focused_input 重定位；desktop-protocol-v1.md §1.7 聚焦与编辑闭环 |
+| P026-D1 | low | 保真边界 | **图像/字形真渲 not-yet（占位保真口径在册）**——DrawOp 无图像算子，image/icon/avatar/divider 走占位 Quad（解释态 queue 臂同级，非单臂超集）；icon 字形（lucide 渲染）native 通道缺位——位图/字形共享（shm 块）归 shell a2r 设计 §4-B 图像通道独立线 | native_projector.rs Image/ProgressBar 臂随注；desktop-protocol-v1.md §1.8 |
+| P026-D2 | low | 生成器 | **a2r 断裂映射残余（display 族外）**——tag_to_view_fn 仍映射 modal/tooltip/spinner/option/toggle/radiogroup/tab 至不存在构造器（含这些标签的样本 a2r 编译失败）；显式拒绝策略归 shell a2r 设计 S1（026 修面 = badge/card/scroll/icon/a + image src 绑定容差 + Link 子件组合） | ui_gen/rust.rs tag_to_view_fn；§5.1 D1 定案 |
+| P026-D3 | low | 协议边界 | **native auto 缺省维持 independent（复测未达标）**——examples 全量 judged 76.2% < 95% 阈值（缺项 opacity/hidden/样式版 grid/popover/定位族全在册）；翻转点已备（resolve_native_frame_mode Covered 臂 one-line），随 ramp v3 复评；live iced 壳 IME 订阅缺口并入 P025-D1 | desktop-protocol-v1.md §1.8；docs/plans/reports/p026-native-flip-data-row.md |
 
 ## 2026-09-17 增补（PLAN-633 复审登记）
 
