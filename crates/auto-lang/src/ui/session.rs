@@ -2557,6 +2557,11 @@ pub enum DesktopInject {
         arg: Option<String>,
         widget: Option<String>,
     },
+    /// PLAN-029 T-03（D2 辅腿）：acceptance key verb——live 输入生产路由
+    /// （`route_live_input` → broker_* → 焦点/命中 child）。真桌面进程内
+    /// 经真实 update 循环（`apply_desktop_injects` 排空点）驱动 = 半真机
+    /// 证据口径（OS→iced 事件面由映射单测 + listen_with 既有事实合围）。
+    Key(LiveInput),
 }
 
 static DESKTOP_INJECT_QUEUE: Mutex<Vec<DesktopInject>> = Mutex::new(Vec::new());

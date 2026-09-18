@@ -1120,12 +1120,37 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["bus", "handler"],
-                        "description": "bus = DesktopBus verb record; handler = privileged app handler call"
+                        "enum": ["bus", "handler", "key"],
+                        "description": "bus = DesktopBus verb record; handler = privileged app handler call; key = live input routing (PLAN-029)"
                     },
                     "verb": {
                         "type": "string",
                         "description": "DesktopBus record for action=bus (e.g. \"open_settings\", \"layout\\tgrid\")"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["chars", "key", "ime_commit", "ime_preedit", "ime_cancelled", "wheel"],
+                        "description": "Live input shape for action=key (default chars)"
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text payload for kind=chars|ime_commit|ime_preedit"
+                    },
+                    "vk": {
+                        "type": "integer",
+                        "description": "Windows VK code for kind=key (e.g. 8 backspace, 13 enter, 27 escape)"
+                    },
+                    "modifiers": {
+                        "type": "integer",
+                        "description": "Wire modifier bits for kind=key (bit0 shift / bit1 ctrl / bit2 alt / bit3 logo)"
+                    },
+                    "dx": {
+                        "type": "number",
+                        "description": "Horizontal pixel delta for kind=wheel"
+                    },
+                    "dy": {
+                        "type": "number",
+                        "description": "Vertical pixel delta for kind=wheel (negative = up)"
                     },
                     "app": {
                         "type": "string",
@@ -2506,7 +2531,54 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                 error_result("autoui_desktop requires the ui-iced desktop host")
             }
         }
-        _ => error_result(format!("Unknown action: '{action}' (bus|handler)")),
+        // PLAN-029 T-03（D2 辅腿）：acceptance key verb——live 输入生产
+        // 路由（route_live_input → broker_* → 焦点/命中 child，真桌面
+        // update 循环内经 apply_desktop_injects 排空驱动）。
+        "key" => {
+            #[cfg(feature = "ui-iced")]
+            {
+                use crate::ui::session::LiveInput;
+                let kind = args.get("kind").and_then(|v| v.as_str()).unwrap_or("chars");
+                let input = match kind {
+                    "chars" => {
+                        let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                        LiveInput::Chars { text: text.to_string() }
+                    }
+                    "key" => {
+                        let vk = args.get("vk").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                        let modifiers =
+                            args.get("modifiers").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+                        LiveInput::KeyPressed { key: vk, modifiers }
+                    }
+                    "ime_commit" => LiveInput::ImeCommit {
+                        text: args.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    },
+                    "ime_preedit" => LiveInput::ImePreedit {
+                        text: args.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    },
+                    "ime_cancelled" => LiveInput::ImeCancelled,
+                    "wheel" => LiveInput::Wheel {
+                        dx: args.get("dx").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        dy: args.get("dy").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                    },
+                    other => {
+                        return error_result(format!(
+                            "Unknown kind: '{other}' (chars|key|ime_commit|ime_preedit|ime_cancelled|wheel)"
+                        ))
+                    }
+                };
+                crate::ui::session::desktop_inject_push(
+                    crate::ui::session::DesktopInject::Key(input),
+                );
+                text_result(format!("queued live input: {kind}"))
+            }
+            #[cfg(not(feature = "ui-iced"))]
+            {
+                let _ = args;
+                error_result("autoui_desktop requires the ui-iced desktop host")
+            }
+        }
+        _ => error_result(format!("Unknown action: '{action}' (bus|handler|key)")),
     }
 }
 

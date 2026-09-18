@@ -55,6 +55,10 @@ pub mod native_projector;
 pub mod pixels;
 #[cfg(feature = "ui-iced")]
 pub mod remote;
+/// PLAN-029 T-03（D2）：Windows SendInput FFI（真机合成键入基建；内部
+/// 自带 `#![cfg(windows)]`，非 Windows 平台为空模块）。
+#[cfg(feature = "ui-iced")]
+pub mod sendinput;
 #[cfg(feature = "ui-iced")]
 pub mod shm;
 #[cfg(feature = "ui-iced")]

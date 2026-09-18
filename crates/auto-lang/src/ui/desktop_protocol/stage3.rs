@@ -318,6 +318,96 @@ mod tests {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
     }
 
+    /// PLAN-029 T-03：native 档子进程共用体——孵化 + ensure_covered 门 +
+    /// NativeProjector + run_client_session（镜像 client_entry 生产分支）。
+    fn run_native_t3_child<C>(
+        broker_pipe: &str,
+        app: &str,
+        component: C,
+    ) where
+        C: crate::ui::Component + 'static,
+        C::Msg: Clone + std::fmt::Debug + Send + 'static,
+    {
+        let (_pipe, end) = broker::request_incubation_render(
+            broker_pipe,
+            app,
+            broker::RequestedRender::default(),
+            10_000,
+        )
+        .expect("incubate");
+        let config = ClientConfig {
+            app_name: app.to_string(),
+            title: app.to_string(),
+            width: T3_W,
+            height: T3_H,
+        };
+        let reconnect = ReconnectPolicy { pipe: _pipe, budget_ms: 30_000, interval_ms: 50 };
+        let projector = crate::ui::desktop_protocol::native_projector::NativeProjector::new(
+            component, T3_W, T3_H,
+        );
+        if let Err(gate) = projector.ensure_covered() {
+            panic!("native child 覆盖门拒绝: {gate}");
+        }
+        let (exit, proj) = crate::ui::desktop_protocol::client_runtime::run_client_session(
+            end, projector, config, Some(reconnect),
+        );
+        println!("AUTO029-CHILD exit={exit:?} rev={}", proj.revision());
+    }
+
+    /// PLAN-029 T-03：p029 live 输入 e2e 载体——typed Component（a2r 生成
+    /// 形态的手写等价）：单 input 绑定 `.buf`，on() 读 `last_input_text()`
+    /// 回写（a2r 输入合同，login 例 main.rs 同款）；echo 文本随 buf 联动
+    /// （帧断言面）。滚轮腿配一个 scrollable 使 Scroll 消费可断言。
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum P029Msg {
+        BufChanged,
+        ScrollMoved(f32, f32),
+    }
+
+    #[derive(Debug, Default)]
+    pub struct P029TypedInputs {
+        pub buf: String,
+        pub scroll_y: f32,
+    }
+
+    impl crate::ui::Component for P029TypedInputs {
+        type Msg = P029Msg;
+
+        fn on(&mut self, msg: Self::Msg) {
+            match msg {
+                P029Msg::BufChanged => {
+                    let text = crate::ui::iced::last_input_text();
+                    self.buf = text;
+                }
+                P029Msg::ScrollMoved(_x, y) => {
+                    self.scroll_y = y;
+                }
+            }
+        }
+
+        fn view(&self) -> crate::ui::View<Self::Msg> {
+            use crate::ui::View;
+            View::col()
+                .style("p-2 gap-2")
+                .child(
+                    View::input("type here")
+                        .value(self.buf.clone())
+                        .w_full()
+                        .on_change(P029Msg::BufChanged)
+                        .build(),
+                )
+                .child(View::text_styled(
+                    format!("echo:{}", self.buf),
+                    "text-sm",
+                ))
+                .child(View::text_styled(
+                    format!("scroll:{}", self.scroll_y),
+                    "text-sm",
+                ))
+                .build()
+        }
+    }
+
     /// T3 子进程体：三态裁决的 child 侧（queue = 真协议泵；independent =
     /// 真 iced 隐藏窗 + 截图泵）。直接跑套件（无 env）时跳过。
     #[test]
@@ -327,6 +417,14 @@ mod tests {
         };
         let app = std::env::var(T3_APP_ENV).expect("app env");
         let mode = std::env::var(T3_MODE_ENV).unwrap_or_else(|_| "queue".into());
+        // PLAN-029 T-03：p029 类型化语料——typed Component + a2r 输入合同
+        //（on() 读 last_input_text 回写绑定字段）。native+dynamic 组合无
+        // 生产形态（VM 桥不读 thread-local——store_input_text 合同为 a2r
+        // 生成侧专属），故 native 档键入语料走 typed 形态。
+        if mode == "native" && app == "p029-typed-inputs" {
+            run_native_t3_child(&broker_pipe, &app, P029TypedInputs::default());
+            return;
+        }
         let src = example_source(&app);
         let component = crate::build_dynamic_component(&src, None).expect("child build");
         match mode.as_str() {
@@ -342,6 +440,13 @@ mod tests {
                     end, component, &app, &app, T3_W, T3_H,
                 )
                 .expect("independent child");
+            }
+            // PLAN-029 T-03：native 档——View 树 native 投影器子进程
+            //（镜像 client_entry::run_native_client 的 Commands 生产分支：
+            // ensure_covered 门 + NativeProjector 全输入臂）。AppProjector
+            // 档（默认 queue）是解释投影器，无 IME/select 等后续输入面。
+            "native" => {
+                run_native_t3_child(&broker_pipe, &app, component);
             }
             _ => {
                 let (_pipe, end) = broker::request_incubation_render(
@@ -1455,6 +1560,225 @@ mod tests {
                         crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
                     let _ = std::fs::write(assets.join(file), out);
                 }
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// PLAN-029 T-03（D2 主腿）：live 输入泵 e2e——`DesktopEvent::LiveInput`
+    /// 的生产路由入口 `route_live_input`（真子进程 003-converter，queue 臂
+    /// re-exec 孵化——p028 免载体形态）驱动真键入语义链：⑤协议级直调腿
+    /// （broker_char 先例延续）+ live 四型腿（Chars 键入联动 / KeyPressed
+    /// 退格 / ImeCommit 并入 / Wheel last_cursor 命中窗路由）。
+    /// `AUTO_DESKTOP_E2E=1` 门。留痕 `AUTO_029_ASSETS=1` → assets/029/。
+    #[test]
+    fn p029_live_input_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
+        use crate::ui::session::{DesktopSession, LaunchSpec, LiveInput, ProcessModel};
+
+        let broker_pipe = format!("autodesk-broker-029-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            // code = 裁决/挂载用最小占位（host 侧 attach 建视图判定）；
+            // 子真身走 t3_child_body typed 分支（P029TypedInputs）。
+            (name == "p029-typed-inputs").then(|| LaunchSpec {
+                code: r#"widget t { view { text "x" } }"#.to_string(),
+                source_path: None,
+                title: Some("P029Inputs".into()),
+                name: Some("p029-inputs".into()),
+                fit: false,
+                daemon: None,
+                back_root: None,
+                exe: None,
+                opens: Vec::new(),
+                render_decl: Some("queue".into()),
+            })
+        }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let broker_for_spawn = broker_pipe.clone();
+        session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
+            Ok(spawn_t3_child(&broker_for_spawn, child_name, "native"))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| l.ops.iter().map(|o| format!("{o:?}")).collect::<Vec<_>>())
+                );
+                std::thread::yield_now();
+            }
+        }
+        fn quads_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Quad { rect, .. } => Some((rect.x, rect.y, rect.w, rect.h)),
+                    _ => None,
+                })
+                .collect()
+        }
+        fn texts_of(ops: &[DrawOp]) -> Vec<String> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // —— p029-typed-inputs：native queue 孵化 → 首帧（placeholder 在场）。
+        let wid_c = session.launch_app("p029-typed-inputs").expect("p029 inputs launch");
+        if let Some(host) = session.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid_c) {
+                let mut rect = *v.rect.borrow();
+                rect.x = 16.0;
+                rect.y = 16.0;
+                *v.rect.borrow_mut() = rect;
+            }
+        }
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t.contains("type here")),
+            "p029 首帧（placeholder 在场）",
+        );
+        let mode_c = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_c))
+            .map(|c| c.endpoint.frame_mode)
+            .expect("p029 client");
+        assert_eq!(mode_c, FrameMode::Commands, "p029 显式 queue → Commands");
+
+        let (ox, oy) = {
+            let host = session.host.as_ref().unwrap();
+            let r = *host.wm.wins.get(&wid_c).unwrap().rect.borrow();
+            (r.x, r.y)
+        };
+        // input 定位：placeholder 文本 op 坐标（首帧 buffer 空 → placeholder
+        // 显示在 input 内部左上）。
+        let (tx, ty) = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_c))
+            .and_then(|c| c.composed())
+            .and_then(|l| {
+                l.ops.iter().find_map(|op| match op {
+                    DrawOp::Text { x, y, text, .. } if text.contains("type here") => {
+                        Some((*x, *y))
+                    }
+                    _ => None,
+                })
+            })
+            .expect("placeholder 坐标");
+        assert!(session.broker_pointer_down(ox + tx + 4.0, oy + ty + 2.0, MouseButton::Left));
+
+        // —— ⑤协议级直调腿（broker_char 先例延续；p025 口径在册）。
+        assert!(session.broker_char('h'), "⑤ broker_char 路由");
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "echo:h"),
+            "⑤ 协议级键入（broker_char h -> echo:h）",
+        );
+        println!("AUTO029-LIVE protocol leg PASS (broker_char h -> echo:h)");
+
+        // —— live Chars 腿：LiveInput 泵入（生产路由入口）→ "i" 并入。
+        assert!(session.route_live_input(&LiveInput::Chars { text: "i".into() }));
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "echo:hi"),
+            "live Chars 键入联动（h+i -> echo:hi）",
+        );
+        println!("AUTO029-LIVE chars leg PASS (live Chars i -> echo:hi)");
+
+        // —— live KeyPressed 腿：VK_BACK(8) 退格 → "h"。
+        assert!(session.route_live_input(&LiveInput::KeyPressed { key: 8, modifiers: 0 }));
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "echo:h"),
+            "live VK_BACK 退格（hi -> echo:h）",
+        );
+        println!("AUTO029-LIVE key leg PASS (VK_BACK -> echo:h)");
+
+        // —— live ImeCommit 腿：组合串并入 buffer → "h文"。
+        assert!(session.route_live_input(&LiveInput::ImeCommit { text: "文".into() }));
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "echo:h文"),
+            "live ImeCommit 并入（h+文 -> echo:h文）",
+        );
+        println!("AUTO029-LIVE ime leg PASS (ImeCommit 文 -> echo:h文)");
+
+        // —— live Wheel 腿：last_cursor 置窗心 → 命中窗路由（载体无
+        //    Scrollable，路由成功 = child 管道投递 ok）。
+        if let Some(host) = session.host.as_mut() {
+            host.wm.last_cursor.set(iced::Point::new(ox + 100.0, oy + 100.0));
+        }
+        assert!(
+            session.route_live_input(&LiveInput::Wheel { dx: 0.0, dy: -40.0 }),
+            "live Wheel 命中窗路由"
+        );
+        println!("AUTO029-LIVE wheel leg PASS (routed to hit window)");
+
+        // 帧留痕（AUTO_029_ASSETS=1 → docs/plans/reports/assets/029/）。
+        if std::env::var("AUTO_029_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/029");
+            let _ = std::fs::create_dir_all(&assets);
+            if let Some(list) = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("p029-typed-inputs"))
+                .and_then(|c| c.composed())
+            {
+                let out =
+                    crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                let _ = std::fs::write(assets.join("live-input-frame.txt"), out);
             }
         }
 

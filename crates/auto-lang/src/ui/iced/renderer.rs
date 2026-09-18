@@ -13482,6 +13482,12 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                 }
                 *sess.state.view_dirty.borrow_mut() = true;
             }
+            // PLAN-029 T-03（D2 辅腿）：acceptance key verb——真桌面 update
+            // 循环内驱动 live 输入生产路由（与 DesktopEvent::LiveInput 臂
+            // 同一入口 `route_live_input`；AUTOUI_ACCEPTANCE 门在工具侧）。
+            DesktopInject::Key(input) => {
+                state.route_live_input(&input);
+            }
         }
     }
 }
