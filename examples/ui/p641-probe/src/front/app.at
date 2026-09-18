@@ -1,0 +1,19 @@
+widget App {
+    model { var s str = "a" }
+
+    msg { SetS(str) }
+
+    view {
+        Col {
+            style: "p-8 gap-8 max-w-2xl"
+            H1 "Tabs Variants (P641)"
+            H3 "default tray"
+            Row {
+                style: "gap-2"
+                Button (variant: "outline") "Alpha" { onclick: () => {.s = "a"} }
+                Button (variant: "outline") "Beta" { onclick: () => {.s = "b"} }
+            }
+            text "tail text"
+        }
+    }
+}

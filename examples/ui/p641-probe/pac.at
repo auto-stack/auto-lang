@@ -1,0 +1,6 @@
+name: "p641-probe"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+title: "Probe"
+window: "fit"

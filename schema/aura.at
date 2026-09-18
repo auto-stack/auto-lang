@@ -2049,7 +2049,7 @@ element tab {
     category: "unknown"
     tier: "native_html"
     aliases: ["Tab"]
-    backends: { web: "native", iced: "fallback", gpui: "unknown" }
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -5650,11 +5650,14 @@ element tabs {
     category: "navigation"
     tier: "web_component"
     aliases: ["Tabs"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "Tabs", import: "@/components/ui/tabs" }
     sub_widgets: ["tabscontent", "tabslist", "tabstrigger"]
     props: [
         { name: "defaultvalue", type: "string", description: "Default active tab" }
+        { name: "active", type: "union:string,int", description: "Active tab (index or value string); controlled selection (PLAN-641)" }
+        { name: "variant", type: "oneof:default,enclosed", description: "Tabs form variant; enclosed = active tab merges with content panel (flat inactive cells)" }
+        { name: "onselect", type: "string", description: "Handler receiving selected tab index (VM track)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
@@ -5666,7 +5669,7 @@ element tabscontent {
     category: "navigation"
     tier: "web_component"
     aliases: ["TabsContent", "tabs-content"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "TabsContent", import: "@/components/ui/tabs" }
     props: [
         { name: "value", type: "string", required: true, description: "Tab value identifier" }
@@ -5681,7 +5684,7 @@ element tabslist {
     category: "navigation"
     tier: "web_component"
     aliases: ["tabs-list"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "TabsList", import: "@/components/ui/tabs" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -5695,7 +5698,7 @@ element tabstrigger {
     category: "navigation"
     tier: "web_component"
     aliases: ["TabsTrigger", "tabs-trigger"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "TabsTrigger", import: "@/components/ui/tabs" }
     props: [
         { name: "value", type: "string", required: true, description: "Tab value identifier" }
