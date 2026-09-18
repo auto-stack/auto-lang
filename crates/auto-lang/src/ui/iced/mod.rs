@@ -49,6 +49,8 @@ pub mod workspace_preview;
 pub mod selection;
 // Plan 481: 可选文本 widget（text 的选择/复制变体，advanced Widget）。
 pub mod selectable_text;
+// PLAN-655: items-stretch 行两阶段等高布局（CSS align-items:stretch 原语）。
+pub mod stretch_line;
 
 // Plan 414 §8.2: headless layout testbench — `iced_test`-based bounds
 // assertions (feature `iced-layout-tests`; see layout_tests.rs header).

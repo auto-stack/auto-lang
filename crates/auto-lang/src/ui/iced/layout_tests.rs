@@ -2764,10 +2764,11 @@ fn p642_t12_overflow_frame_scrolls_and_centers() {
     }
 }
 
-/// PLAN-642 T-12 探针③:真实 008 语料(单 widget)挂进 overflow-hidden+
-/// justify-center frame(h-720)→ scroll 兜底路径 → 卡片是否渲染。
+/// PLAN-642 T-12 探针③ → PLAN-655 AC-02 断言化:真实 008 语料(单 widget)
+/// 挂 720 视口(frame scroll 兜底形态)→ 卡片文本全部渲染 + 三卡等高
+/// (justify-between 的三个 Buy Now 落同一条卡底线)。
 #[test]
-fn p642_t12_real_008_in_frame_probe() {
+fn p655_real_008_corpus_cards_visible_and_equal_height() {
     let src_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../examples/ui/008-pricing-table/src/front/app.at");
     let src = std::fs::read_to_string(&src_path).expect("008 source");
@@ -2781,16 +2782,9 @@ fn p642_t12_real_008_in_frame_probe() {
     let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
     let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
     let (view, _ids, _probe) = comp.view_with_debug_gated(false);
-    let frame = View::<()>::Column {
-        children: vec![View::Empty],
-        spacing: 0,
-        padding: 0,
-        style: Style::parse("w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center").ok(),
-        onclick: None, on_right_click: None,
-    };
-    // 把 demo 视图挂进 frame:用 Column 组合(frame 的孩子位置替换)。
-    // 简化:直接并排 simulator 两次 —— 外层 frame 由真实装配替代过于复杂,
-    // 这里直接量 demo 自身(等价于 frame 内布局,因为 frame 仅提供高度上限)。
+    // 外层 frame 由真实装配替代过于复杂,直接量 demo 自身(等价于 frame 内
+    // 布局,因为 frame 仅提供高度上限;scroll 兜底组合由 p655_stretch_in_
+    // overflow_frame_renders_equal 单元覆盖)。
     let mut ui = iced_test::Simulator::with_size(
         <iced_test::core::Settings as Default>::default(),
         (1024.0, 720.0),
@@ -2801,8 +2795,198 @@ fn p642_t12_real_008_in_frame_probe() {
             Ok(t) => {
                 let b = t.bounds();
                 eprintln!("T12D {probe}: x={:.1} y={:.1} w={:.1} h={:.1}", b.x, b.y, b.width, b.height);
+                assert!(
+                    b.width > 0.0 && b.height > 0.0,
+                    "008 卡片文本 {probe} 必须可见(P642-D12 塌缩形态 = 0×0),实测 {:.1}x{:.1}",
+                    b.width,
+                    b.height
+                );
             }
-            Err(_) => eprintln!("T12D {probe}: NOT FOUND"),
+            Err(_) => panic!("008 卡片文本 {probe} 未找到(items-stretch 还原后必须全渲染)"),
         }
+    }
+    // 三卡等高:收集三卡卡底 CTA 文本("Buy Now"×2 + "Contact Us";
+    // justify-between 落卡底),y 必须一致。
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(String, f32, f32, f32)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    struct CtaSink(std::sync::Arc<std::sync::Mutex<Vec<(String, f32, f32, f32)>>>);
+    impl iced_test::selector::Selector for CtaSink {
+        type Output = ();
+        fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+            if let Candidate::Text { content, bounds, .. } = candidate {
+                if content.contains("Buy Now") || content.contains("Contact Us") {
+                    self.0.lock().unwrap().push((
+                        content.to_string(),
+                        bounds.y,
+                        bounds.width,
+                        bounds.height,
+                    ));
+                }
+            }
+            None
+        }
+        fn description(&self) -> String {
+            "p655-cta-sink".into()
+        }
+    }
+    let _ = ui.find(CtaSink(store.clone()));
+    let ctas = store.lock().unwrap().clone();
+    eprintln!("[p655-008] CTA bounds: {ctas:?}");
+    assert_eq!(ctas.len(), 3, "008 必须有三张定价卡的卡底 CTA,实测 {}", ctas.len());
+    let ys: Vec<f32> = ctas.iter().map(|(_, y, _, _)| *y).collect();
+    assert!(
+        (ys[0] - ys[1]).abs() < 1.5 && (ys[1] - ys[2]).abs() < 1.5,
+        "三卡等高(StretchLine max 语义):CTA y 必须一致,实测 {ys:?}"
+    );
+}
+
+// ===== PLAN-655: items-stretch 两阶段等高行（StretchLine）=====
+
+/// 008 同构卡片:justify-between 列 [head, filler×N, foot]——拉伸生效时
+/// foot 落到卡底。filler 行数制造卡片内容高差（max 语义的测量素材）。
+fn p655_card(idx: usize, filler_lines: usize) -> View<()> {
+    let mut children = vec![View::Text {
+        content: format!("head{idx}"),
+        style: Style::parse("text-lg font-bold").ok(),
+        selectable: false,
+    }];
+    for f in 0..filler_lines {
+        children.push(View::Text {
+            content: format!("fill{idx}_{f}"),
+            style: Style::parse("text-sm").ok(),
+            selectable: false,
+        });
+    }
+    children.push(View::Text {
+        content: format!("foot{idx}"),
+        style: Style::parse("text-sm font-semibold").ok(),
+        selectable: false,
+    });
+    View::Column {
+        children,
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("bg-card rounded-xl p-4 flex-1 min-w-[80px] justify-between").ok(),
+        onclick: None,
+        on_right_click: None,
+    }
+}
+
+/// 008 同构行:items-stretch + flex-1 三卡。
+fn p655_cards_row() -> View<()> {
+    View::Row {
+        children: vec![p655_card(0, 0), p655_card(1, 5), p655_card(2, 12)],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("gap-6 w-full items-stretch").ok(),
+        onclick: None,
+        on_right_click: None,
+    }
+}
+
+fn p655_foot_bounds(ui: &mut iced_test::Simulator<'static, (), iced::Theme, iced::Renderer>, idx: usize) -> (f32, f32, f32, f32) {
+    let t = ui.find(format!("foot{idx}")).expect("foot text not found");
+    let b = t.bounds();
+    (b.x, b.y, b.width, b.height)
+}
+
+/// AC-01 主形态:stretch 行内内容高不等的子项（~1/6/13 行）渲染后等高 =
+/// max 内容高（justify-between foot 落到同一条卡底线）。
+#[test]
+fn p655_stretch_equal_height_max_semantics() {
+    let root = View::Column {
+        children: vec![p655_cards_row()],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse("w-full").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = simulator(root.into_iced());
+    let (_, y0, w0, h0) = p655_foot_bounds(&mut ui, 0);
+    let (_, y1, w1, _h1) = p655_foot_bounds(&mut ui, 1);
+    let (_, y2, w2, _h2) = p655_foot_bounds(&mut ui, 2);
+    eprintln!("[p655] feet y=({y0:.1},{y1:.1},{y2:.1}) w=({w0:.1},{w1:.1},{w2:.1})");
+    assert!(w0 > 0.0 && w1 > 0.0 && w2 > 0.0, "三卡必须可见");
+    assert!(
+        (y0 - y1).abs() < 1.5 && (y1 - y2).abs() < 1.5,
+        "justify-between foot 必须等 y（卡底对齐 = 等高 max 语义）"
+    );
+    // 短卡被拉伸:foot0 距 head0 必须远超其自然内容高（1 行内容 ≈ 40px）。
+    let t = ui.find("head0").expect("head0");
+    let hy = t.bounds().y;
+    assert!(
+        y0 - hy > 120.0,
+        "最短卡必须被拉伸到行高（foot0-head0 = {:.1}px，未拉伸形态 ≈ 40px）",
+        y0 - hy
+    );
+}
+
+/// AC-01 scroll 兜底组合:overflow-hidden + justify-center frame（h-300）内挂
+/// stretch 行（008 消失场景的回归守卫——P642-D12 的行高塌缩形态）。
+#[test]
+fn p655_stretch_in_overflow_frame_renders_equal() {
+    let frame = View::Column {
+        children: vec![
+            styled_view("TITLE"),
+            View::Column {
+                children: vec![p655_cards_row()],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("w-full px-8 py-6 items-center justify-center").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Style::parse(
+            "w-[1024px] max-w-full h-[300px] rounded-xl border border-border overflow-hidden bg-background flex flex-col items-center justify-center",
+        )
+        .ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = simulator(frame.into_iced());
+    let (_, y0, w0, h0) = p655_foot_bounds(&mut ui, 0);
+    let (_, y1, _w1, _h1) = p655_foot_bounds(&mut ui, 1);
+    let (_, y2, _w2, _h2) = p655_foot_bounds(&mut ui, 2);
+    eprintln!("[p655-frame] feet y=({y0:.1},{y1:.1},{y2:.1}) foot0={w0:.1}x{h0:.1}");
+    assert!(
+        w0 > 0.0 && h0 > 0.0,
+        "frame 内卡片必须完整布局（P642-D12 塌缩形态 = 0×0）"
+    );
+    assert!(
+        (y0 - y1).abs() < 1.5 && (y1 - y2).abs() < 1.5,
+        "scroll 兜底 frame 内等高语义必须保持"
+    );
+}
+
+/// AC-01 双窗口尺寸守卫:等高语义与视口尺寸无关（1024×800 / 1920×1200）。
+#[test]
+fn p655_stretch_equal_height_dual_window_sizes() {
+    for (w, h) in [(1024.0f32, 800.0f32), (1920.0, 1200.0)] {
+        let root = View::Column {
+            children: vec![p655_cards_row()],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("w-full").ok(),
+            onclick: None,
+            on_right_click: None,
+        };
+        let mut ui = iced_test::Simulator::with_size(
+            <iced_test::core::Settings as Default>::default(),
+            (w, h),
+            root.into_iced(),
+        );
+        let (_, y0, w0, _h0) = p655_foot_bounds(&mut ui, 0);
+        let (_, y1, w1, _h1) = p655_foot_bounds(&mut ui, 1);
+        let (_, y2, w2, _h2) = p655_foot_bounds(&mut ui, 2);
+        eprintln!("[p655-dual {w}x{h}] feet y=({y0:.1},{y1:.1},{y2:.1})");
+        assert!(w0 > 0.0 && w1 > 0.0 && w2 > 0.0, "{w}x{h}: 三卡必须可见");
+        assert!(
+            (y0 - y1).abs() < 1.5 && (y1 - y2).abs() < 1.5,
+            "{w}x{h}: 等高 max 语义必须成立"
+        );
     }
 }

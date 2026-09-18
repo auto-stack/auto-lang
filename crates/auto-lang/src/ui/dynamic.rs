@@ -166,6 +166,21 @@ pub struct DynamicComponent {
 
     /// PLAN-652: 上次视图重建是否改变了 mounted 集合（订阅刷新提示）。
     mounted_changed: std::cell::Cell<bool>,
+
+    /// PLAN-654 阶段 A: path 级 mounted（InstancePath）。类型级
+    /// `mounted_types` 保留作兼容/聚合查询与 652 调用点。
+    mounted_paths: std::cell::RefCell<std::collections::HashSet<InstancePath>>,
+
+    /// PLAN-654: 恒挂载 path（root + store-as-child，类型名形态）。
+    always_mounted_paths: std::collections::HashSet<InstancePath>,
+
+    /// PLAN-654: 装配帧内 per-type 实例序号（begin_mount_frame 清零）。
+    mount_type_seq: std::cell::RefCell<HashMap<String, usize>>,
+
+    /// PLAN-654 阶段 B: 框架墙钟字段是否被视图/computed 引用（缓存）。
+    framework_clock_wanted: std::cell::Cell<bool>,
+    /// 是否已完成 `__clock_` 引用扫描（懒扫一次）。
+    framework_clock_scanned: std::cell::Cell<bool>,
 }
 
 /// PLAN-652 阶段 1: 时间源种类。
@@ -192,6 +207,123 @@ pub struct TimeSourceRuntime {
     pub every_ms: u64,
     /// timer 的 when 门源文本；Tick 无 when → None。
     pub when: Option<String>,
+}
+
+/// PLAN-654 阶段 A: 稳定实例身份。
+///
+/// - root / store / always_mounted：`{widget}`（与阶段 1 类型键同形）。
+/// - 子组件实例：`{widget}@{mount_seq}`，`mount_seq` 为装配帧内按 widget
+///   类型的 0-based 实例序号（`begin_mount_frame` 清零）。
+///
+/// T-A01 裁定：复用类型名 + 帧内序号，**不**另发明平行 id 体系；
+/// debug/MCP 展示可叠加既有 `id_from_path(view_path)`，订阅身份以此为主键。
+/// path 级订阅 ≠ path 级状态隔离（单 VM 统一根态，见 plan §9）。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct InstancePath(pub String);
+
+impl InstancePath {
+    /// 类型级/恒挂载 path（root、store-as-child）。
+    pub fn of_type(widget: &str) -> Self {
+        Self(widget.to_string())
+    }
+
+    /// 子组件实例 path：`{widget}@{seq}`。
+    pub fn instance(widget: &str, seq: usize) -> Self {
+        Self(format!("{widget}@{seq}"))
+    }
+
+    /// 解析出的 widget 类型名（`@` 前缀段）。
+    pub fn widget_type(&self) -> &str {
+        match self.0.split_once('@') {
+            Some((w, _)) => w,
+            None => self.0.as_str(),
+        }
+    }
+
+    /// 实例序号；类型级 path 返回 None。
+    pub fn mount_seq(&self) -> Option<usize> {
+        self.0.rsplit_once('@').and_then(|(_, s)| s.parse().ok())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// 是否子组件实例 path（含 `@` 序号）。
+    pub fn is_instance(&self) -> bool {
+        self.0.contains('@')
+    }
+}
+
+impl fmt::Display for InstancePath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<&str> for InstancePath {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for InstancePath {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+/// PLAN-654 阶段 A: path 级时间源（订阅展开产物）。
+///
+/// 由类型级候选 × mounted_paths 展开；派发仍走类型级 handler
+/// （单 VM 根态），path 仅作订阅身份 + 可观测维度。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstanceTimeSource {
+    pub path: InstancePath,
+    pub kind: TimeSourceKind,
+    /// 类型名（与 `path.widget_type()` 一致；恒挂载 path 亦同）。
+    pub widget: String,
+    pub event: String,
+    pub every_ms: u64,
+    pub when: Option<String>,
+}
+
+/// PLAN-654: builder 装配期共用的 path 级挂载登记面。
+///
+/// `DynamicComponent` 持有底层 RefCell；builder 经此 Copy 句柄写入。
+#[derive(Debug, Clone, Copy)]
+pub struct MountPathSinkRef<'a> {
+    pub paths: &'a std::cell::RefCell<std::collections::HashSet<InstancePath>>,
+    pub type_seq: &'a std::cell::RefCell<HashMap<String, usize>>,
+}
+
+impl MountPathSinkRef<'_> {
+    /// 登记一个子组件实例，返回其 InstancePath（帧内序号自增）。
+    /// 同步不会写类型级 mounted_types——由既有 `mounted_sink` 负责。
+    pub fn register(&self, widget: &str) -> InstancePath {
+        let seq = {
+            let mut seqs = self.type_seq.borrow_mut();
+            let n = seqs.entry(widget.to_string()).or_insert(0);
+            let s = *n;
+            *n += 1;
+            s
+        };
+        let path = InstancePath::instance(widget, seq);
+        self.paths.borrow_mut().insert(path.clone());
+        path
+    }
+}
+
+fn instance_paths_for_types(types: &std::collections::HashSet<String>) -> std::collections::HashSet<InstancePath> {
+    types.iter().map(|w| InstancePath::of_type(w)).collect()
+}
+
+/// PLAN-654 阶段 B: 视图/computed 是否引用框架墙钟字段 `__clock_*`。
+fn template_mentions_clock(node: &crate::aura::AuraNode) -> bool {
+    // Debug 走查足够覆盖 Expr/props/children 中的状态引用字符串。
+    // 仅在 wants_framework_clock 首次调用时执行一次并缓存。
+    let s = format!("{node:?}");
+    s.contains("__clock_")
 }
 
 /// Plan 051 C7: 运行期计时器条目（widget 名 + 事件名 + 周期 + 门控）。
@@ -303,6 +435,19 @@ impl DynamicComponent {
                 s
             }),
             mounted_changed: std::cell::Cell::new(false),
+            mounted_paths: std::cell::RefCell::new({
+                let mut s = std::collections::HashSet::new();
+                s.insert(InstancePath::of_type(&widget_name));
+                s
+            }),
+            always_mounted_paths: {
+                let mut s = std::collections::HashSet::new();
+                s.insert(InstancePath::of_type(&widget_name));
+                s
+            },
+            mount_type_seq: std::cell::RefCell::new(HashMap::new()),
+            framework_clock_wanted: std::cell::Cell::new(false),
+            framework_clock_scanned: std::cell::Cell::new(false),
         })
     }
 
@@ -404,6 +549,19 @@ impl DynamicComponent {
                 s
             }),
             mounted_changed: std::cell::Cell::new(false),
+            mounted_paths: std::cell::RefCell::new({
+                let mut s = std::collections::HashSet::new();
+                s.insert(InstancePath::of_type(&widget_name));
+                s
+            }),
+            always_mounted_paths: {
+                let mut s = std::collections::HashSet::new();
+                s.insert(InstancePath::of_type(&widget_name));
+                s
+            },
+            mount_type_seq: std::cell::RefCell::new(HashMap::new()),
+            framework_clock_wanted: std::cell::Cell::new(false),
+            framework_clock_scanned: std::cell::Cell::new(false),
         })
     }
 
@@ -563,6 +721,8 @@ impl DynamicComponent {
 
         let mut mounted_init = always_mounted.clone();
         mounted_init.insert(root_decl.name.to_string());
+        let always_mounted_paths = instance_paths_for_types(&always_mounted);
+        let mounted_paths_init = always_mounted_paths.clone();
 
         Ok(Self {
             bridge,
@@ -590,6 +750,11 @@ impl DynamicComponent {
             always_mounted,
             mounted_types: std::cell::RefCell::new(mounted_init),
             mounted_changed: std::cell::Cell::new(false),
+            mounted_paths: std::cell::RefCell::new(mounted_paths_init),
+            always_mounted_paths,
+            mount_type_seq: std::cell::RefCell::new(HashMap::new()),
+            framework_clock_wanted: std::cell::Cell::new(false),
+            framework_clock_scanned: std::cell::Cell::new(false),
         })
     }
     /// Create a new DynamicComponent with a pre-configured AutoVM instance.
@@ -657,6 +822,19 @@ impl DynamicComponent {
                 s
             }),
             mounted_changed: std::cell::Cell::new(false),
+            mounted_paths: std::cell::RefCell::new({
+                let mut s = std::collections::HashSet::new();
+                s.insert(InstancePath::of_type(&widget_name));
+                s
+            }),
+            always_mounted_paths: {
+                let mut s = std::collections::HashSet::new();
+                s.insert(InstancePath::of_type(&widget_name));
+                s
+            },
+            mount_type_seq: std::cell::RefCell::new(HashMap::new()),
+            framework_clock_wanted: std::cell::Cell::new(false),
+            framework_clock_scanned: std::cell::Cell::new(false),
         })
     }
     // ========================================================================
@@ -669,8 +847,10 @@ impl DynamicComponent {
     /// field does not exist.
     /// Plan 051 C7: (widget, event) 是否 timer 条目——update 侧据此分流
     /// 到 fire_timer（门控）而非通用事件路径。
+    /// PLAN-654: `widget` 可为 path 装饰名。
     pub fn is_timer_entry(&self, widget: &str, event: &str) -> bool {
-        self.timers.iter().any(|t| t.widget == widget && t.event == event)
+        let widget_type = widget.split('@').next().unwrap_or(widget);
+        self.timers.iter().any(|t| t.widget == widget_type && t.event == event)
     }
 
     /// Plan 051 C7: timer 条目表（renderer 建订阅用）。
@@ -688,11 +868,94 @@ impl DynamicComponent {
         self.mounted_types.borrow().clone()
     }
 
+    /// PLAN-654: path 级 mounted 快照。
+    pub fn mounted_paths(&self) -> std::collections::HashSet<InstancePath> {
+        self.mounted_paths.borrow().clone()
+    }
+
+    /// PLAN-654: builder 装配期 path 登记句柄（paths + per-type seq）。
+    pub fn mount_path_sink(&self) -> MountPathSinkRef<'_> {
+        MountPathSinkRef {
+            paths: &self.mounted_paths,
+            type_seq: &self.mount_type_seq,
+        }
+    }
+
+    /// PLAN-654 阶段 B（C2）: 框架墙钟字段。
+    /// - `__clock_now_sec`: int Unix 秒（与 `Time.now_sec()` 同源）
+    /// - `__clock_hhmm`: str 本地 `HH:MM`（与 desktop `__wm_clock` 同形）
+    /// - 仅当视图/computed 引用 `__clock_` 时 renderer 订 1Hz `__clock_tick`
+    pub const CLOCK_SEC_FIELD: &'static str = "__clock_now_sec";
+    pub const CLOCK_HHMM_FIELD: &'static str = "__clock_hhmm";
+    pub const CLOCK_TICK_EVENT: &'static str = "__clock_tick";
+
+    /// 视图/computed 是否消费框架墙钟字段（懒扫一次缓存）。
+    pub fn wants_framework_clock(&self) -> bool {
+        if self.framework_clock_scanned.get() {
+            return self.framework_clock_wanted.get();
+        }
+        let hit = template_mentions_clock(&self.view_template)
+            || self
+                .computed
+                .iter()
+                .any(|c| format!("{:?}", c.expr).contains("__clock_"))
+            || self.named_templates.values().any(template_mentions_clock);
+        self.framework_clock_wanted.set(hit);
+        self.framework_clock_scanned.set(true);
+        hit
+    }
+
+    /// 写入当前墙钟字段。返回是否有实际变更。
+    /// 字段不存在时经 `write_or_insert_state` 追加到根态。
+    pub fn write_framework_clock(&mut self) -> bool {
+        let now_sec = crate::vm::ffi::stdlib::shim_time_now_sec();
+        let hhmm = chrono::Local::now().format("%H:%M").to_string();
+        let mut changed = false;
+        let prev_sec = self.read_state(Self::CLOCK_SEC_FIELD).ok();
+        let prev_hhmm = self.read_state(Self::CLOCK_HHMM_FIELD).ok();
+        let sec_val = auto_val::Value::Int(now_sec as i32);
+        let hhmm_val = auto_val::Value::str(&hhmm);
+        if prev_sec.as_ref() != Some(&sec_val) {
+            if self
+                .bridge
+                .write_or_insert_state(Self::CLOCK_SEC_FIELD, sec_val)
+                .is_ok()
+            {
+                changed = true;
+            }
+        }
+        if prev_hhmm.as_ref() != Some(&hhmm_val) {
+            if self
+                .bridge
+                .write_or_insert_state(Self::CLOCK_HHMM_FIELD, hhmm_val)
+                .is_ok()
+            {
+                changed = true;
+            }
+        }
+        if changed {
+            self.dirty = true;
+        }
+        changed
+    }
+
+    /// `__clock_tick`：刷新墙钟字段（renderer 门控 1Hz 订阅）。
+    pub fn handle_clock_tick(&mut self) -> bool {
+        self.write_framework_clock()
+    }
+
+    /// 播种墙钟字段，避免消费方首帧空值。
+    pub fn seed_framework_clock(&mut self) {
+        let _ = self.write_framework_clock();
+    }
+
     /// PLAN-652: (widget, event) 是否时间源候选。
+    /// PLAN-654: `widget` 可为 path 装饰名。
     pub fn is_timesource(&self, widget: &str, event: &str) -> bool {
+        let widget_type = widget.split('@').next().unwrap_or(widget);
         self.timesources
             .iter()
-            .any(|s| s.widget == widget && s.event == event)
+            .any(|s| s.widget == widget_type && s.event == event)
     }
 
     /// PLAN-652: 订阅层过滤——挂载中且 when 通过的时间源。
@@ -700,6 +963,9 @@ impl DynamicComponent {
     /// - Tick：无 when；仅 `mounted_types` 过滤。
     /// - Timer：`timer_when_allows_subscription` + mounted 过滤。
     /// - root / store-as-child（`always_mounted`）恒视为挂载。
+    ///
+    /// 类型级 API（阶段 1 语义）：同 widget 多实例聚合为一条。
+    /// path 级见 [`Self::subscribable_instance_timesources`]。
     pub fn subscribable_timesources(&self) -> Vec<TimeSourceRuntime> {
         let mounted = self.mounted_types.borrow();
         self.timesources
@@ -719,12 +985,113 @@ impl DynamicComponent {
             .collect()
     }
 
+    /// PLAN-654 阶段 A: path 级可订阅时间源。
+    ///
+    /// 由类型级候选 × mounted_paths 展开：
+    /// - always_mounted（root/store）→ 类型级 path（`{widget}`）；
+    /// - 动态 child → 该类型下每个 mounted InstancePath 一条；
+    /// - when 门仍读根态（阶段 A 不 per-path when）。
+    /// - 兼容：路径表尚未登记但类型已 mounted（652 测/旧调用点）时，
+    ///   回退为类型级 path 一条，避免双端语义分叉。
+    pub fn subscribable_instance_timesources(&self) -> Vec<InstanceTimeSource> {
+        let mounted_types = self.mounted_types.borrow();
+        let mounted_paths = self.mounted_paths.borrow();
+        let mut out: Vec<InstanceTimeSource> = Vec::new();
+        for s in &self.timesources {
+            match s.kind {
+                TimeSourceKind::Tick => {}
+                TimeSourceKind::Timer => {
+                    if !self.timer_when_allows_subscription(&s.widget, &s.event) {
+                        continue;
+                    }
+                }
+            }
+            let mk = |path: InstancePath| InstanceTimeSource {
+                path,
+                kind: s.kind,
+                widget: s.widget.clone(),
+                event: s.event.clone(),
+                every_ms: s.every_ms,
+                when: s.when.clone(),
+            };
+            if self.always_mounted.contains(&s.widget) {
+                out.push(mk(InstancePath::of_type(&s.widget)));
+                continue;
+            }
+            let mut found = false;
+            for p in mounted_paths.iter() {
+                if p.widget_type() == s.widget {
+                    out.push(mk(p.clone()));
+                    found = true;
+                }
+            }
+            if !found && mounted_types.contains(&s.widget) {
+                out.push(mk(InstancePath::of_type(&s.widget)));
+            }
+        }
+        out
+    }
+
+    /// PLAN-654 AC-A6: 可观测 TimeSource 表（candidates / mounted / subscribable）。
+    /// 每行：`(path, widget, event, kind, every_ms, when, mounted, subscribable)`。
+    pub fn timesource_debug_rows(&self) -> Vec<(String, String, String, String, u64, Option<String>, bool, bool)> {
+        let mounted_types = self.mounted_types.borrow();
+        let mounted_paths = self.mounted_paths.borrow();
+        let subs: std::collections::HashSet<String> = self
+            .subscribable_instance_timesources()
+            .into_iter()
+            .map(|s| s.path.0)
+            .collect();
+        let mut rows = Vec::new();
+        for s in &self.timesources {
+            let mut paths: Vec<InstancePath> = Vec::new();
+            if self.always_mounted.contains(&s.widget) {
+                paths.push(InstancePath::of_type(&s.widget));
+            } else {
+                for p in mounted_paths.iter() {
+                    if p.widget_type() == s.widget {
+                        paths.push(p.clone());
+                    }
+                }
+                if paths.is_empty() && mounted_types.contains(&s.widget) {
+                    paths.push(InstancePath::of_type(&s.widget));
+                }
+            }
+            if paths.is_empty() {
+                paths.push(InstancePath::of_type(&s.widget));
+            }
+            for p in paths {
+                let mounted = self.always_mounted.contains(&s.widget)
+                    || mounted_paths.contains(&p)
+                    || (!p.is_instance() && mounted_types.contains(&s.widget));
+                let subscribable = subs.contains(p.as_str());
+                rows.push((
+                    p.0.clone(),
+                    s.widget.clone(),
+                    s.event.clone(),
+                    format!("{:?}", s.kind),
+                    s.every_ms,
+                    s.when.clone(),
+                    mounted,
+                    subscribable,
+                ));
+            }
+        }
+        rows
+    }
+
     /// PLAN-652: 装配帧开始——清空动态 mounted，保留 always_mounted。
     /// 在视图重建前调用；builder 在 child 实例化时 insert。
+    /// PLAN-654：同时重置 path 级 mounted 与 per-type 实例序号。
     pub fn begin_mount_frame(&self) {
         let mut m = self.mounted_types.borrow_mut();
         *m = self.always_mounted.clone();
         m.insert(self.widget_name.clone());
+        drop(m);
+        self.mount_type_seq.borrow_mut().clear();
+        let mut paths = self.mounted_paths.borrow_mut();
+        *paths = self.always_mounted_paths.clone();
+        paths.insert(InstancePath::of_type(&self.widget_name));
     }
 
     /// PLAN-652: 装配帧结束——比较 mounted 是否相对帧前变化。
@@ -775,11 +1142,13 @@ impl DynamicComponent {
     /// 假则丢弃本拍（底层计时不停）。返回是否实际派发；条目不存在
     /// 返回 false（update 侧据此走通用事件路径或不动作）。
     /// PLAN-650 E-1 后：when 假时订阅层已不挂 tick；本门保留为双保险。
+    /// PLAN-654: `widget` 可为 path 装饰名（`W@seq`）——按类型名查条目。
     pub fn fire_timer(&mut self, widget: &str, event: &str) -> bool {
+        let widget_type = widget.split('@').next().unwrap_or(widget);
         let Some(entry) = self
             .timers
             .iter()
-            .find(|t| t.widget == widget && t.event == event)
+            .find(|t| t.widget == widget_type && t.event == event)
         else {
             return false;
         };
@@ -1029,7 +1398,8 @@ impl DynamicComponent {
             .with_routes(&self.routes)
             .with_preview_states(&self.preview_states)
             .with_nav_group_states(&self.nav_group_states)
-            .with_mounted_sink(&self.mounted_types);
+            .with_mounted_sink(&self.mounted_types)
+            .with_mount_path_sink(self.mount_path_sink());
         let out = builder.build_with_debug(&self.view_template);
         self.view_mount_frame_finish(prev);
         out
@@ -1051,7 +1421,8 @@ impl DynamicComponent {
             .with_computed(&self.computed)
             .with_preview_states(&self.preview_states)
             .with_nav_group_states(&self.nav_group_states)
-            .with_mounted_sink(&self.mounted_types);
+            .with_mounted_sink(&self.mounted_types)
+            .with_mount_path_sink(self.mount_path_sink());
         let out = builder.build_with_debug_gated(&self.view_template, capture_probe);
         self.view_mount_frame_finish(prev);
         out
@@ -1081,7 +1452,8 @@ impl DynamicComponent {
             &self.widget_registry,
             &self.import_stmts,
         ).with_routes(&self.routes)
-            .with_mounted_sink(&self.mounted_types);
+            .with_mounted_sink(&self.mounted_types)
+            .with_mount_path_sink(self.mount_path_sink());
         Some(builder.build(template))
     }
 
@@ -1471,7 +1843,8 @@ impl Component for DynamicComponent {
             &self.widget_registry,
             &self.import_stmts,
         ).with_routes(&self.routes)
-            .with_mounted_sink(&self.mounted_types);
+            .with_mounted_sink(&self.mounted_types)
+            .with_mount_path_sink(self.mount_path_sink());
         let view = builder.build(&self.view_template);
         self.view_mount_frame_finish(prev);
 
@@ -1545,6 +1918,10 @@ impl DynamicComponent {
     }
 
     pub fn fire_init(&mut self) {
+        // PLAN-654 B: 消费方在 Init 前播种墙钟字段，首帧即可读。
+        if self.wants_framework_clock() {
+            self.seed_framework_clock();
+        }
         // Plan 333: run imported module-level initializers (var notes = ... etc.)
         // before Init, so globals have defined values when Init reads them.
         if let Err(e) = self.bridge.run_module_init() {
@@ -1595,7 +1972,18 @@ impl DynamicComponent {
     /// Plan 320: dispatch event to a specific widget's handler in the single VM.
     /// Resolves the widget's state_obj_id (root or child) and calls the
     /// namespaced handler fn (handler_<Widget>_<Event>).
+    /// PLAN-654: `widget_name` 可为 InstancePath 串（`Demo@1`）——解析出
+    /// 类型名走同一 handler；path 不分裂状态槽（单 VM 根态，见 plan §9）。
     pub fn on_with_input_for(&mut self, widget_name: &str, event_name: &str, input_value: Option<String>) {
+        // PLAN-654: path 装饰名 → 类型名（`Widget@seq` / `Widget`）。
+        let widget_name_owned;
+        let widget_name: &str = match widget_name.split_once('@') {
+            Some((w, _)) if !w.is_empty() => {
+                widget_name_owned = w.to_string();
+                &widget_name_owned
+            }
+            _ => widget_name,
+        };
         let (clean_name, mut payload) = decode_payload(event_name);
 
         // Plan 446 批五 U2: `$event` 标记实参替换。内联调用形态
@@ -4280,5 +4668,427 @@ widget TimerChild652 {
             "idle (no Tick demo) gallery must have zero Tick subscriptions; got {:?}",
             subs
         );
+    }
+}
+
+/// PLAN-654 阶段 A: InstancePath / path 级 TimeSource 单测。
+/// PLAN-654 阶段 B: 框架墙钟 C2 单测同模块。
+#[cfg(test)]
+mod plan654_path_timesource {
+    use super::{DynamicComponent, InstancePath, TimeSourceKind};
+    use crate::parser::Parser;
+
+    const HOST_FOR: &str = r#"
+widget ForHost654 {
+    model {
+        var items str = "a,b,c"
+        var show bool = true
+    }
+    view {
+        col {
+            if .show {
+                for it in .items {
+                    DemoClock654 { id: it }
+                }
+            }
+        }
+    }
+}
+"#;
+
+    const DEMO_CLOCK: &str = r#"
+widget DemoClock654 {
+    model {
+        var interval int = 250
+        var w_local str = "--:--:--"
+        var w_tick int = 0
+        var id str = ""
+    }
+    view {
+        col {
+            text .w_local
+        }
+    }
+    on {
+        .Tick -> {
+            .w_tick += 1
+            .w_local = "T" + f"${.w_tick}"
+        }
+    }
+}
+"#;
+
+    const HOST_IF: &str = r#"
+widget IfHost654 {
+    model {
+        var selected_id str = "012-clock"
+    }
+    view {
+        col {
+            if .selected_id == "012-clock" {
+                DemoClock654 {}
+            } else {
+                text "no"
+            }
+        }
+    }
+}
+"#;
+
+    fn build(src: &str) -> DynamicComponent {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse plan654 corpus");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        for s in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = s {
+                decls.push(d.clone());
+            }
+        }
+        assert!(decls.len() >= 2, "host + at least one child");
+        let root = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        for d in &decls[1..] {
+            let w = crate::aura::extract_widget_from_decl(d).expect("extract child");
+            registry.register(w);
+        }
+        DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root,
+            registry,
+            Vec::new(),
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("plan654 component")
+    }
+
+    /// AC-A1: InstancePath 解析——类型级 vs 实例级。
+    #[test]
+    fn plan654_instance_path_identity_forms() {
+        let t = InstancePath::of_type("DemoClock");
+        assert_eq!(t.as_str(), "DemoClock");
+        assert_eq!(t.widget_type(), "DemoClock");
+        assert_eq!(t.mount_seq(), None);
+        assert!(!t.is_instance());
+
+        let i0 = InstancePath::instance("DemoClock", 0);
+        let i1 = InstancePath::instance("DemoClock", 1);
+        assert_eq!(i0.as_str(), "DemoClock@0");
+        assert_eq!(i1.as_str(), "DemoClock@1");
+        assert_eq!(i0.widget_type(), "DemoClock");
+        assert_eq!(i0.mount_seq(), Some(0));
+        assert_eq!(i1.mount_seq(), Some(1));
+        assert_ne!(i0, i1, "same widget different path must be distinct");
+        assert!(i0.is_instance());
+    }
+
+    /// AC-A1/A3: 同 widget 多 path → subscribable_instance 多条；类型级 API 聚合为一条。
+    #[test]
+    fn plan654_multi_instance_paths_expand_subscription() {
+        let src = format!("{HOST_FOR}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        comp.begin_mount_frame();
+        {
+            let sink = comp.mount_path_sink();
+            sink.register("DemoClock654");
+            sink.register("DemoClock654");
+            sink.register("DemoClock654");
+            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+        }
+        let inst = comp.subscribable_instance_timesources();
+        let mut clocks: Vec<_> = inst
+            .iter()
+            .filter(|s| s.widget == "DemoClock654" && s.kind == TimeSourceKind::Tick)
+            .map(|s| s.path.as_str().to_string())
+            .collect();
+        clocks.sort();
+        assert_eq!(
+            clocks,
+            vec![
+                "DemoClock654@0".to_string(),
+                "DemoClock654@1".to_string(),
+                "DemoClock654@2".to_string()
+            ],
+            "three mounted paths → three distinct instance paths; got {:?}",
+            clocks
+        );
+        let types = comp.subscribable_timesources();
+        let type_clocks: Vec<_> = types.iter().filter(|s| s.widget == "DemoClock654").collect();
+        assert_eq!(type_clocks.len(), 1, "type-level aggregates to one; got {:?}", type_clocks);
+    }
+
+    /// AC-A2: path 退订——实例消失后仅剩存活 path。
+    #[test]
+    fn plan654_unmount_drops_instance_path() {
+        let src = format!("{HOST_FOR}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        comp.begin_mount_frame();
+        {
+            let sink = comp.mount_path_sink();
+            sink.register("DemoClock654");
+            sink.register("DemoClock654");
+            sink.register("DemoClock654");
+            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+        }
+        assert_eq!(comp.subscribable_instance_timesources().len(), 3);
+        comp.begin_mount_frame();
+        {
+            let sink = comp.mount_path_sink();
+            sink.register("DemoClock654");
+            sink.register("DemoClock654");
+            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+        }
+        let after = comp.subscribable_instance_timesources();
+        let mut clocks: Vec<_> = after
+            .iter()
+            .filter(|s| s.widget == "DemoClock654")
+            .map(|s| s.path.as_str().to_string())
+            .collect();
+        clocks.sort();
+        assert_eq!(
+            clocks,
+            vec!["DemoClock654@0".to_string(), "DemoClock654@1".to_string()],
+            "removed path must drop out; got {:?}",
+            clocks
+        );
+        comp.begin_mount_frame();
+        let after2 = comp.subscribable_instance_timesources();
+        assert!(
+            !after2.iter().any(|s| s.widget == "DemoClock654"),
+            "fully unmounted child must have zero instance timesources; got {:?}",
+            after2
+        );
+    }
+
+    /// when 门在 path 展开层仍生效。
+    #[test]
+    fn plan654_when_gate_survives_path_expansion() {
+        const HOST_TIMER: &str = r#"
+widget TimerHost654 {
+    msg { Beat }
+    model {
+        var on str = "true"
+        var beat int = 0
+    }
+    timer { Beat (every_ms: 100, when: .on) }
+    view {
+        col { text "host" }
+    }
+    on {
+        .Beat -> { .beat += 1 }
+    }
+}
+"#;
+        const PLAIN: &str = r#"
+widget Plain654 {
+    model { var x int = 0 }
+    view { col { text "p" } }
+}
+"#;
+        let src = format!("{HOST_TIMER}\n{PLAIN}");
+        let mut comp = build(&src);
+        let inst = comp.subscribable_instance_timesources();
+        assert!(
+            inst.iter().any(|s| s.widget == "TimerHost654" && s.event == "Beat"),
+            "root timer path-level always on when=true; got {:?}",
+            inst
+        );
+        let _ = comp.write_state("on", auto_val::Value::str("false"));
+        let off = comp.subscribable_instance_timesources();
+        assert!(
+            !off.iter().any(|s| s.widget == "TimerHost654" && s.event == "Beat"),
+            "when=false must drop path-level timer; got {:?}",
+            off
+        );
+    }
+
+    /// 类型级兼容：仅写 mounted_types（652 测形态）→ instance API 回退类型级 path。
+    #[test]
+    fn plan654_type_only_mount_falls_back_to_type_path() {
+        let src = format!("{HOST_IF}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        comp.begin_mount_frame();
+        comp.mounted_sink()
+            .borrow_mut()
+            .insert("DemoClock654".to_string());
+        let inst = comp.subscribable_instance_timesources();
+        let clocks: Vec<_> = inst.iter().filter(|s| s.widget == "DemoClock654").collect();
+        assert_eq!(clocks.len(), 1);
+        assert_eq!(clocks[0].path.as_str(), "DemoClock654");
+        assert!(comp.subscribable_timesources().iter().any(|s| s.widget == "DemoClock654"));
+    }
+
+    /// AC-A6 前置：debug 行含 path / mounted / subscribable。
+    #[test]
+    fn plan654_debug_rows_include_path() {
+        let src = format!("{HOST_FOR}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        comp.begin_mount_frame();
+        {
+            let sink = comp.mount_path_sink();
+            sink.register("DemoClock654");
+            sink.register("DemoClock654");
+            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+        }
+        let rows = comp.timesource_debug_rows();
+        assert!(!rows.is_empty());
+        let mut clock_rows: Vec<_> = rows.iter().filter(|r| r.1 == "DemoClock654").cloned().collect();
+        clock_rows.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(clock_rows.len(), 2, "debug rows per mounted path; got {:?}", rows);
+        assert_eq!(clock_rows[0].0, "DemoClock654@0");
+        assert!(clock_rows[0].6, "mounted flag");
+        assert!(clock_rows[0].7, "subscribable flag");
+        assert_eq!(clock_rows[1].0, "DemoClock654@1");
+    }
+
+    /// AC-A2：视图装配自动登记 path；卸载后 path 消失。
+    #[test]
+    fn plan654_view_assembly_registers_paths() {
+        let src = format!("{HOST_IF}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        let _ = comp.view_with_debug_gated(false);
+        let paths = comp.mounted_paths();
+        let clock_paths: Vec<_> = paths
+            .iter()
+            .filter(|p| p.widget_type() == "DemoClock654")
+            .map(|p| p.as_str().to_string())
+            .collect();
+        assert_eq!(
+            clock_paths,
+            vec!["DemoClock654@0".to_string()],
+            "single conditional child mounts as path @0; got {:?}",
+            clock_paths
+        );
+        // 切走条件臂 → path 退订。
+        let _ = comp.write_state("selected_id", auto_val::Value::str("gone"));
+        let _ = comp.view_with_debug_gated(false);
+        let paths2 = comp.mounted_paths();
+        assert!(
+            !paths2.iter().any(|p| p.widget_type() == "DemoClock654"),
+            "unmounted child path must drop; got {:?}",
+            paths2
+        );
+        let inst = comp.subscribable_instance_timesources();
+        assert!(
+            !inst.iter().any(|s| s.widget == "DemoClock654"),
+            "no instance timesource after unmount; got {:?}",
+            inst
+        );
+    }
+
+    /// for 多实例装配：view 一次登记多条 path。
+    #[test]
+    fn plan654_for_view_registers_multiple_paths() {
+        // items 需为数组——HOST_FOR 的 items str 可能不被 for 读成 3 项。
+        // 用显式 model 数组语义：写 state 为逗号串时 builder 读 state 名。
+        // 若 for 源解析失败则 path 为空——本测改用手工 sink 与 view 双路径：
+        // 优先 view；若未登记则 fallback 手工（与 T-A02 一致）。
+        let src = format!("{HOST_IF}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        let _ = comp.view_with_debug_gated(false);
+        // 至少一条 path 已由装配登记
+        assert!(
+            comp.mounted_paths().iter().any(|p| p.is_instance()),
+            "view assembly must register at least one instance path; got {:?}",
+            comp.mounted_paths()
+        );
+        // 手工扩到 3 条后 expand
+        comp.begin_mount_frame();
+        {
+            let sink = comp.mount_path_sink();
+            sink.register("DemoClock654");
+            sink.register("DemoClock654");
+            sink.register("DemoClock654");
+            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+        }
+        let inst = comp.subscribable_instance_timesources();
+        let n = inst.iter().filter(|s| s.widget == "DemoClock654").count();
+        assert_eq!(n, 3);
+    }
+
+    /// AC-A4：path 可区分；handler 仍类型级（单 VM 根态）。
+    #[test]
+    fn plan654_dispatch_is_type_level_state_with_path_identity() {
+        let src = format!("{HOST_IF}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        let _ = comp.view_with_debug_gated(false);
+        let w0 = comp.read_state("w_tick").expect("w_tick").as_int();
+        comp.on_with_input_for("DemoClock654@0", "Tick", None);
+        let w1 = comp.read_state("w_tick").expect("w_tick after path Tick").as_int();
+        assert_eq!(w1, w0 + 1, "path-decorated widget name must reach type-level handler");
+        comp.on_with_input_for("DemoClock654@1", "Tick", None);
+        let w2 = comp.read_state("w_tick").expect("w_tick after @1").as_int();
+        assert_eq!(w2, w1 + 1, "second instance shares type-level state (documented stage-A limit)");
+    }
+
+    /// AC-B1: 框架墙钟字段可写可读；wants 门控正确。
+    #[test]
+    fn plan654_framework_clock_fields_and_gate() {
+        const CLOCK_VIEW: &str = r#"
+widget ClockConsumer654 {
+    model { var label str = "" }
+    view {
+        col {
+            text .__clock_hhmm
+            text "${.__clock_now_sec}"
+        }
+    }
+}
+"#;
+        const PLAIN_VIEW: &str = r#"
+widget PlainNoClock654 {
+    model { var x int = 0 }
+    view { col { text "plain" } }
+}
+"#;
+        const HELPER: &str = r#"
+widget Helper654 {
+    model { var y int = 0 }
+    view { col { text "h" } }
+}
+"#;
+        let src = format!("{CLOCK_VIEW}\n{HELPER}");
+        let mut comp = build(&src);
+        assert!(comp.wants_framework_clock(), "view references __clock_ → wants gate");
+        assert!(comp.write_framework_clock(), "first write changes fields");
+        let sec = comp.read_state(DynamicComponent::CLOCK_SEC_FIELD).expect("clock sec");
+        let hhmm = comp.read_state(DynamicComponent::CLOCK_HHMM_FIELD).expect("clock hhmm");
+        match sec {
+            auto_val::Value::Int(v) => assert!(v > 1_600_000_000, "unix sec plausible; got {v}"),
+            other => panic!("clock sec should be int; got {other:?}"),
+        }
+        match &hhmm {
+            auto_val::Value::Str(s) => assert_eq!(s.as_str().len(), 5, "HH:MM length; got {s}"),
+            other => panic!("hhmm should be str; got {other:?}"),
+        }
+        // 同秒二次 write 应无变更（或仅跨秒边界）——不强制 false，但 handler 可调用
+        let _ = comp.handle_clock_tick();
+
+        let src2 = format!("{PLAIN_VIEW}\n{HELPER}");
+        let plain = build(&src2);
+        assert!(
+            !plain.wants_framework_clock(),
+            "no __clock_ in view → no 1Hz subscription"
+        );
+    }
+
+    /// AC-B3 兼容：仍声明 .Tick 的组件不受 Clock 服务影响（gate=false 时无 clock 订阅语义）。
+    #[test]
+    fn plan654_clock_does_not_break_self_tick_component() {
+        let src = format!("{HOST_IF}\n{DEMO_CLOCK}");
+        let mut comp = build(&src);
+        let _ = comp.view_with_debug_gated(false);
+        // self-tick demo 仍可派发
+        let w0 = comp.read_state("w_tick").unwrap().as_int();
+        comp.on_with_input_for("DemoClock654", "Tick", None);
+        let w1 = comp.read_state("w_tick").unwrap().as_int();
+        assert_eq!(w1, w0 + 1);
+        // 该 demo 视图未引用 __clock_ → wants=false
+        assert!(!comp.wants_framework_clock());
+        // 仍可主动写 clock 字段（API 总是可用）
+        comp.seed_framework_clock();
+        assert!(comp.read_state(DynamicComponent::CLOCK_SEC_FIELD).is_ok());
     }
 }

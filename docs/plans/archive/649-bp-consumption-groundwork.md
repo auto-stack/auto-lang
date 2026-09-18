@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-649
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived             # drafting → executing → execution_done → reviewed → archived（终态，merge 收据见文末）
 feature_name: bp-consumption-groundwork（bp 消费地基：L1 连字符解析 + icon 词汇面 + data-table 半句复核）
 author: [agent]
 created_at: 2026-09-18
@@ -11,10 +11,10 @@ supersedes_spec_components:
   - docs/specs/blueprint/contract.md#Q5-解析链规则（补连字符变体探测）
 new_spec_components:
   - docs/specs/blueprint/contract.md#验证面-palette-词面（icon 归属落点）
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: [GOAL-011]     # 引用 docs/specs/goals.md 的 GOAL-NNN——L1 import 零副本主通道（复审 R1 终定）
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -197,23 +197,37 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
 > worktree `D:/autostack/.wt/lang-649/auto-lang`（分支 `plan-649-dev`）；
 > plan 簿记留主检出。T-02 独立可先行。
 
-- **T-01 [有界调查] icon 发射面与 data-table 消费面**（0.5d）
-  无依赖。操作：①vue 轨对 `icon` 的实际发射现状（schema `web: "native"`
-  的消费方是谁——a2ts 发射臂实测小语料）；②DataTable 在 vue 语料的消费/
-  发射现状盘点。产出：§5.2 修向裁定（①/②）+ §5.3 复核结论 + filetree
-  palette 恢复终值。验证：结论与实测输出记入本节。→ AC-02/03 前置
-- **T-02 连字符变体探测**：`lib.rs` probe 扩候选 + 单测（§6 第一组）。
-  验证：`cargo check -p auto-lang`；probe 单测绿。→ AC-01
-- **T-03 icon 修向落地 + filetree 恢复**：按 T-01 裁定走 ①或② +
-  `blueprints/navigation/filetree/spec.md` palette 恢复 + palette 正/负测试
-  （注意与 070 在途提交的 rebase 协同）。
-  验证：`cargo t plan649`。→ AC-02
-- **T-04 data-table 债行复核改写**（+ 若裁定的 aura 映射补齐）。
-  验证：DEBT diff。→ AC-03
-- **T-05 端到端与门禁兜底（review 前）**：L1 直连端到端（empty-state 等
-  ≥3 包双轨）；裸 `cargo tv`；三债核销/改写落 DEBT 文件；门禁档位复核
-  （Category B）。
-  验证：输出留档本节。→ AC-01/04 及全 AC 兜底
+- **T-01 [x] 有界调查：icon 发射面与 data-table 消费面**（2026-09-18，
+  commit 20789bec1）
+  裁定=**候选①**（registry 补注册）：vue 轨 `node_to_html` 有 icon 专臂
+  （`tag == "icon" || "Icon"` 前置返回 + `lucide_icons` 收集机制，
+  vue.rs:1610 一带实测）——注册不截胡发射，仅补词面准入；候选②不需要。
+  data-table 复核：alias 注册在案 + vue 映射经 schema `datatable` 元素
+  （折叠键）由 P4-4 overlay（apply_schema_vue_mappings）实灌进 spec
+  （t07 运行时断言 `get_primary_component("vue","data-table")==DataTable` 锁定）；
+  回避真实理由=vue 语料零消费（唯一提及 026-database 实为原生 table），
+  **不补新映射**。filetree palette 终值=`["icon","text"]`。
+- **T-02 [x] 连字符变体探测**：`module_path_candidates`（字面量优先，
+  下划线段按段序枚举 kebab 变体，上限 4）+ probe/`back` 根映射/probe_pkg
+  三探测点接入。验证：`cargo check -p auto-lang` 零新警告（181 警告均
+  预存 vm/ffi 面）；`plan649_bp_tests` t01-t05 probe 单测绿。
+- **T-03 [x] icon 修向落地 + filetree 恢复**：候选①——
+  `register_display_widgets` media 段 Icon spec（ark/iced/vue
+  `BackendMapping::new("Icon", None)`，ImageSurface 同 precedent）；
+  filetree `spec.md` palette 恢复 + 注记改写。验证：t06 正/负 +
+  `cargo t palette` 11/11（含 plan643 既有 `palette_has_no_drift` 不回归）。
+- **T-04 [x] data-table 债行复核改写**：不补映射（映射已在，见 T-01）；
+  KNOWN-DEBT 640 行按事实改写（"未入 registry/缺 vue 映射"两说不成立，
+  回避维持理由更正为零消费）；同批核销 KNOWN-DEBT:90（L1 行）与
+  P643-D1（icon 词面）。验证：DEBT diff（commit 20789bec1）。
+- **T-05 [x] 端到端与门禁兜底**（含 R1 修复）：t08-t10 双轨端到端——
+  empty-state（640 AC-08"全黑"对照转绿，VM view 文案断言 + vue SFC import
+  断言）、sidebar-shell、data-table-crud（≥3 连字符包）+ signup 不回归；
+  裸 `cargo tv` = 3785/3786 绿，唯一红 `test_display_family_codegen_arm_fixture`
+  为基线预存（A/B 归因）+ feature 配置债机制在案（R1 双态复现）；门禁
+  Category B 全过；**F-649-1 修复**（commit 350c2ac0d）：DEBT 649 行按
+  PLAN-654 F-R2 在案记录与机制改写，撤回"此前零登记/size 提取链分诊"
+  失实表述。
 
 依赖链：T-01 → T-03/T-04；T-02 无依赖；T-05 最后。
 
@@ -222,6 +236,82 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
 - 2026-09-18 draft handoff（/auto-plan:new）：plan_revision 1，stage: new，
   outcome: pass（授权范围内可交付 work），next: work。
   待用户确认项见 §10（两项，均有默认裁定，不阻塞开工）。
+- 2026-09-18 work handoff（/auto-plan:work）：plan_revision 1（无契约变更，
+  §10 两项均按预授权默认落地——变体探测作用域=全解析链、icon 落候选①），
+  stage: work，outcome: **pass**，code_commit: **20789bec1**
+  （plan-649-dev @ worktree `D:/autostack/.wt/lang-649/auto-lang`，base
+  b13af5927），task_ids: T-01..T-05 全 [x]，evidence: `cargo t plan649`
+  10/10、`cargo t palette` 11/11、裸 `cargo tv` 3785/3786（唯一红=
+  预存 display_family golden，基线 A/B 归因非本计划引入，已登记 DEBT
+  649 行）、DEBT 三债核销/改写 diff、SD-01/SD-02 落 contract.md（随分支
+  合入），blockers: 无，next: **review**。
+  执行注记：前会话已在工作树留下 T-02/T-03/T-04 未提交实现，本会话按技能
+  对账核实（逐 diff 核对 + T-01 结论代码实证抽查）后续跑门禁、补登记、
+  提交。AC 映射：AC-01=t08/t09/t10、AC-02=t06+SD-02、AC-03=DEBT 改写+t07、
+  AC-04=DEBT diff、AC-05=SD 落地（specs.json upsert 归 merge）。
+  协同注记：工作树基线 b13af592 落后 master（merge 时点已至 bc676a8fa），
+  merge 前需 rebase/合并 master 刷新（070 filetree 交叠面在基线..master 区间无
+  提交，冲突风险低）。依赖面：本组新建 auto-down 依赖 worktree
+  `D:/autostack/.wt/lang-649/auto-down`（detached @ b1c88de，仅满足
+  autodown-core path 依赖的 manifest 解析，零改动）。
+- 2026-09-18 review R1（/auto-plan:review；同会话复审——独立性受限，结论自
+  工件重建：提交 diff、测试断言原文、门禁复跑、代码链路实证）：
+  stage: review | PLAN-649 | plan_revision 1 | outcome: **needs_fix** |
+  reviewed_commit: 20789bec1 | base_commit: b13af5927 |
+  dependency_revisions: 无外部代码依赖（组内 auto-down worktree @ b1c88def
+  零改动，仅 manifest 解析） | spec_inputs: docs/specs/blueprint/contract.md
+  （Q5/验证面，随分支 SD-01/SD-02 已核）+ docs/specs/goals.md（GOAL-011 终定）。
+  acceptance_results: AC-01 **pass**（复审复跑 `cargo t plan649` 10/10；
+  t10 断言非空洞实证——vue 轨链 `generate_component_from_file`→
+  `collect_use_module_fns`(api.rs:586/702)→`resolve_use_module`→
+  `resolve_module_path`，解析失败不进池/不发射 import 行）；AC-02 **pass**
+  （t06 正/负+palette 11/11+SD-02 成文+vue icon 专臂 node_to_html 前置返回
+  在案）；AC-03 **pass**（DEBT 改写事实链复核：aura.at:3993 `element
+  datatable` 在案、t07 overlay 断言绿、语料零消费核实）；AC-04 **pass**
+  （三债行 diff 核验：KNOWN-DEBT:90 清偿/P643-D1 核销/640-D89 改写）；
+  AC-05 **pass**（SD-01/SD-02 落地成文且与实现一致；touched_goals 复审
+  终定 GOAL-011；specs.json upsert 归 merge）。
+  全量门禁：`cargo tf --no-fail-fast` **3640/3641**（唯一红=
+  display_family，与 PLAN-654 F-R2 复审基线完全一致）；tv 复用工作档证据
+  （同内容提交前实测 3785/3786 同红）；fmt 13304 处漂移全为仓级预存、
+  本计划三文件 0 命中；调试残留零。
+  findings: **F-649-1（minor，docs-only，阻断）**——T-05 登记的 DEBT 649
+  行两处失实：(a)"此前零登记"不成立：PLAN-654 §9 F-R2（master bc676a8fa）
+  已记录同一红，工作树基线早于该提交致工作阶段 grep 落空；(b)"分诊方向=
+  size 提取链/引入窗口 09-06~09-17"被 F-R2 已定性机制取代：**无 ui-iced
+  必红/有 ui-iced 必绿**（R1 双态独立复现：`--features test-vm-files` 红 /
+  `--features ui-iced` 绿）——预存 feature 配置债，非代码回归，A/B 归因
+  （预存、非本计划引入）仍成立。修正动作：DEBT 649 行按 F-R2 机制改写
+  （引 PLAN-654 记录+本复审双态复现，删除误导性分诊方向）。
+  F-649-2（info，非阻断）：sidebar-shell/data-table-crud 仅 VM 轨断言，
+  empty-state 双轨齐全——§6 测试设计即如此规定（双轨验证聚焦 empty-state
+  640 对照），vue 轨同链由 t10 锁定，非缺口。F-649-3（info）：§9 work
+  handoff 中"未在案预存红"表述由本记录更正（历史记录不改写）。
+  evidence: 本节 + `git show 20789bec1` + 双态复现命令摘录（nextest
+  test_display_family_codegen_arm_fixture：test-vm-files FAIL 0.058s /
+  ui-iced PASS 0.085s）+ tf 摘要行 | next: **work 修复 F-649-1**
+  （docs-only，代码/测试/门禁零假设变化，无需重跑）→ R2 复裁。
+- 2026-09-18 work 修复（F-649-1，needs_fix 回工）：stage: work | PLAN-649 |
+  plan_revision 1 | outcome: pass | code_commit: **350c2ac0d**（叠加于
+  20789bec1；docs-only 单行 DEBT 改写，代码/测试/spec 零变化）|
+  task_ids: T-05 | evidence: `git diff 20789bec1..350c2ac0d` = DEBT 单文件
+  单行；DEBT 649 行现文=引 F-R2 首次登记 + feature 配置债机制 + R1 双态
+  复现记录，失实表述撤回 | blockers: 无 | next: R2 复裁。
+- 2026-09-18 review R2（/auto-plan:review，R1 needs_fix 后复裁）：
+  stage: review | PLAN-649 | plan_revision 1 | outcome: **pass** |
+  reviewed_commit: **350c2ac0d**（tip；代码面=R1 已审 20789bec1 原样）|
+  base_commit: b13af5927 | dependency_revisions: 同 R1（auto-down @
+  b1c88def 零改动） | spec_inputs: 同 R1（contract.md SD-01/SD-02 已核；
+  touched_goals=GOAL-011 已终定）。
+  acceptance_results: AC-01..AC-05 全 **pass**（R1 逐项结论原样成立——
+  修复仅动 DEBT 簿记行，不触及任何 AC 载体；F-649-1 已修复核验：DEBT
+  649 行与 PLAN-654 §9 F-R2/master bc676a8fa 在案记录及双态复现事实
+  一致，误导性分诊方向已撤）。
+  findings: 无新发现；F-649-2/F-649-3 维持 info 不阻断。
+  evidence: R1 全部门禁证据沿用（明确理由：`git diff 20789bec1..350c2ac0d`
+  仅 DEBT 单文件单行，代码/测试/门禁配置零假设变化）+ 修复行文本核验 |
+  next: **/auto-plan:merge**（reviewed；工作树/分支保留归 merge 清理，
+  auto-down 依赖 worktree 一并归 merge 守卫流程）。
 
 ## 10. 待澄清事项
 
@@ -233,3 +323,46 @@ T-01 附带调查：vue 轨对 DataTable 的实际消费/发射现状（charts-g
    T-02 加一个前缀门槛即可（一行差异，执行期按默认走）。
 3. （记录性）filetree palette 终值默认最小集 `["icon","text"]`；其 spec 本义
    演进归 070，本计划不越界扩写。
+
+## 11. merge 收据（PLAN-649:r1，2026-09-19）
+
+```yaml
+stage: merge
+plan_id: PLAN-649:r1
+outcome: pass
+completion_kind: delivered
+checkpoints:
+  prepared: reviewed 350c2ac0d（R2 pass, rev1）+ delivery a19ecf7b4（自 reviewed 仅
+    master 同步 merge 3cf93b11c + specs.json P649-1 投影行，实现/依赖零变化；
+    同步后 cargo t plan649 10/10 复验）+ canonical delta 随分支（contract.md
+    SD-01/SD-02 @20789bec1）+ ledger P649-1 保格式原子写 upsert+读回校验
+  landed: master 7bdab0eba（merge plan-649-dev --no-ff，+520/-42 七文件）；
+    祖先验证 350c2ac0d/a19ecf7b4 均可达；main smoke：cargo t plan649 10/10 +
+    contract.md SD-01/SD-02 双节在位 + specs.json P649-1 读回。执行期 master
+    两次前进（654 收据 0c3ccbe0a / 022 合并 029eacada）与分支均零文件交叠；
+    落地等 022 会话释放 MERGE_HEAD（轮询 ~4 分钟）后执行，无竞争写入
+  ledger_refreshed: specs.json architecture 段 P649-1（file=
+    docs/specs/blueprint/contract.md，related=[PLAN-649,PLAN-645,PLAN-643,
+    PLAN-640]，随分支 7bdab0eba 落地）+ reviews 段 P649-2（本收据提交）+
+    INDEX.md spec-index.py 再生无内容 diff；blueprint 模块无 plans.md，
+    plans.md 行 N/A（回写面=contract.md 本体，已在分支）；goals.md GOAL-011
+    plans 列表追加 649 行（随收据提交）
+  archived: git mv docs/plans/649-bp-consumption-groundwork.md →
+    docs/plans/archive/（本仓归档目录 archive/，非技能书写的 archived/）+
+    status: archived + 本收据 + spec-sync 回写记录节
+  cleaned: wt-guard 双 clean（auto-lang wt + auto-down 兄弟 b1c88def 零改动，均无
+    reparse point）→ auto-lang worktree 移除 + 分支 plan-649-dev 删除（@a19ecf7b4，
+    已含于 master 7bdab0eba 祖先）→ auto-down 兄弟移除（auto-down 仓侧）→
+    组目录 .wt/lang-649 移除；git worktree list 零 649 残留
+```
+
+## spec-sync 回写记录
+
+- `docs/specs/blueprint/contract.md`：Q5 解析链补连字符变体规则（SD-01）
+  + 验证面 palette 词面补 icon 归属落点（SD-02）——随 plan-649-dev 落地
+  （20789bec1 → master 7bdab0eba）。
+- `.autoos/specs.json`：architecture 段 P649-1（分支内预备，随 merge 落地）+
+  reviews 段 P649-2（收据提交）。
+- `docs/specs/INDEX.md`：spec-index.py 再生，无内容 diff。
+- `docs/specs/goals.md`：GOAL-011 plans 列表追加 649。
+- 全局件：无新模块/crate/状态翻转；blueprint 模块无 plans.md（回写 N/A）。

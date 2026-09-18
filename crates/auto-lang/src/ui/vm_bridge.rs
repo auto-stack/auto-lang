@@ -647,6 +647,30 @@ impl VmBridge {
             .map_err(|e| VmBridgeError::InvalidState(e))
     }
 
+    /// PLAN-654 阶段 B: 写 state；字段不存在时在根态对象上追加（框架注入面）。
+    /// 与 `ensure_child_state` 同款「可缺字段」语义，供 `__clock_*` 使用。
+    pub fn write_or_insert_state(&mut self, field_name: &str, value: Value) -> Result<()> {
+        match self.write_state(field_name, value.clone()) {
+            Ok(()) => Ok(()),
+            Err(VmBridgeError::FieldNotFound(_)) => {
+                let obj = self.vm.get_heap_object_mut(self.state_obj_id)
+                    .ok_or_else(|| VmBridgeError::InvalidState(
+                        format!("state heap object {} not found", self.state_obj_id)
+                    ))?;
+                let mut guard = obj.write().unwrap();
+                let instance = guard.as_any_mut().downcast_mut::<GenericInstanceData>()
+                    .ok_or_else(|| VmBridgeError::InvalidState(
+                        "state object is not a GenericInstanceData".to_string()
+                    ))?;
+                instance.field_names.push(field_name.to_string());
+                instance.fields.push(value);
+                self.state_field_names.push(field_name.to_string());
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// PLAN-062 T12: state 值获得持有——顶层堆引用 + Array 内层各 +1。
     fn stake_state_value(&self, v: &Value) {
         match v {

@@ -2545,6 +2545,127 @@ impl RustGenerator {
                     return format!("{}.build()", g);
                 }
 
+                // PLAN-022 T-03(mouse-area rust 发射补齐):VM/vue 轨自
+                // Plan 484/499 起即有 mouse-area,本轨此前落 tag_to_view_fn
+                // 通配 "col" + 事件通配丢弃——021 T-07 实测分隔条不可见
+                // (空层跳过)且不可拖(onmousedown/move/up 全丢)的定界根因
+                // (evidence/022/t00-decision.md §3)。事件映射沿 iced 臂
+                // (renderer.rs MouseArea arm):onmousedown → on_click 槽
+                // (PLAN-043 T9 真按下语义)、onmouseup → on_release、
+                // onmousemove → PointerMoveHandler(coords "WxH" 声明逻辑
+                // 幅面,extent 归一与 iced PointerArea 同语义)。无参绑定
+                // (如 .Drag)转发事件坐标(变体须双 float 载荷,020 分隔条
+                // 契约形态);显式参绑定按既有一参闭包发射。
+                if tag == "mouse-area" || tag == "mouse_area" {
+                    let content_expr = match children.len() {
+                        0 => "View::Empty".to_string(),
+                        1 => self.generate_view_tree(&children[0]),
+                        _ => {
+                            let mut col = "View::col()".to_string();
+                            for c in children {
+                                col = format!("{}.child({})", col, self.generate_view_tree(c));
+                            }
+                            format!("{}.build()", col)
+                        }
+                    };
+                    // onmousedown 优先 → on_click 槽(真按下);onclick 兜底。
+                    // PLAN-022 修正:View 变体字段是**消息值**(Option<M>,
+                    // 019 terminal on_input 同款),非闭包——显式参直发
+                    // (AppMsg::Press(7)),无参裸变体(AppMsg::Drop)。
+                    let msg_expr = |h: &AuraEvent| -> String {
+                        let variant = self.extract_variant_name(&h.handler);
+                        let msg_name = self.current_msg_name();
+                        if h.params.is_empty() {
+                            format!("{msg_name}::{variant}")
+                        } else {
+                            let converted: Vec<String> = h.params.iter()
+                                .map(|p| self.convert_param_value_access(p, &variant))
+                                .collect();
+                            format!("{msg_name}::{variant}({})", converted.join(", "))
+                        }
+                    };
+                    let press = ["onmousedown", "on_press", "onclick", "onClick"]
+                        .iter()
+                        .find_map(|k| events.get(*k))
+                        .map(|h| msg_expr(h));
+                    let release = ["onmouseup", "on_release"]
+                        .iter()
+                        .find_map(|k| events.get(*k))
+                        .map(|h| msg_expr(h));
+                    let enter = ["onmouseenter", "onhover"]
+                        .iter()
+                        .find_map(|k| events.get(*k))
+                        .map(|h| msg_expr(h));
+                    let exit = ["onmouseleave", "onhoverout"]
+                        .iter()
+                        .find_map(|k| events.get(*k))
+                        .map(|h| msg_expr(h));
+                    let move_handler = ["onmousemove", "on_mouse_move"]
+                        .iter()
+                        .find_map(|k| events.get(*k))
+                        .map(|h| {
+                            let variant = self.extract_variant_name(&h.handler);
+                            let msg_name = self.current_msg_name();
+                            // 无参绑定 = 转发事件坐标(PointerArea 归一后
+                            // f32 对;020 分隔条 Drag(float,float) 契约)。
+                            if h.params.is_empty() {
+                                format!(
+                                    "auto_lang::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {msg_name}::{variant}(x, y))"
+                                )
+                            } else {
+                                // 显式参绑定:坐标弃用,按既有一参闭包语义
+                                // 内联消息构造(转换后的参数表达式直引)。
+                                let converted: Vec<String> = h.params.iter()
+                                    .map(|p| self.convert_param_value_access(p, &variant))
+                                    .collect();
+                                format!(
+                                    "auto_lang::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {{ let _ = (x, y); {msg_name}::{variant}({}) }})",
+                                    converted.join(", ")
+                                )
+                            }
+                        });
+                    let extent = props.get("coords").and_then(|v| match v {
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                            s.split_once(['x', 'X']).and_then(|(w, hh)| {
+                                match (w.trim().parse::<f32>(), hh.trim().parse::<f32>()) {
+                                    (Ok(w), Ok(hh)) if w > 0.0 && hh > 0.0 => {
+                                        // {:?}:f32 定点打印(1000.0),无后缀
+                                        // 整数字面量在约束位会推成 i32。
+                                        Some(format!("Some(({w:?}, {hh:?}))"))
+                                    }
+                                    _ => None,
+                                }
+                            })
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "None".to_string());
+                    let style_expr = props.get("style").or_else(|| props.get("class"))
+                        .map(|v| match v {
+                            // Style::parse 返回 Result;字段为 Option → .ok()。
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                                format!("auto_lang::ui::style::Style::parse(\"{s}\").ok()")
+                            }
+                            AuraPropValue::Expr(expr) => {
+                                let e = self.ast_expr_to_rust_no_to_string(expr);
+                                format!("auto_lang::ui::style::Style::parse(&{e}).ok()")
+                            }
+                            _ => "None".to_string(),
+                        })
+                        .unwrap_or_else(|| "None".to_string());
+                    return format!(
+                        "View::MouseArea {{ content: Box::new({content}), on_enter: {enter}, on_exit: {exit}, on_double_click: None, on_click: {press}, on_context_menu: None, on_release: {release}, on_move: {move_h}, logical_extent: {extent}, style: {style} }}",
+                        content = content_expr,
+                        enter = enter.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
+                        exit = exit.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
+                        press = press.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
+                        release = release.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
+                        move_h = move_handler.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
+                        extent = extent,
+                        style = style_expr,
+                    );
+                }
+
                 // PLAN-013 T3: terminal 臂——View::Terminal 真身组件(props-feed
                 // 形态甲)直达发射。key 为状态存储键;cols/rows 字面量或 .field
                 // 绑定;lines 为 Vec<String> 表达式(识别 .field → self.field.clone())。
@@ -9616,6 +9737,104 @@ widget TermApp {{
         assert!(
             without_menu.contains("on_menu: None"),
             "无 onmenu 时保持 None(缺省零扰):\n{without_menu}"
+        );
+    }
+
+    /// PLAN-022 T-03 金样(分隔条形态):`mouse-area` 不再落 "col" 通配
+    /// ——onmousedown → on_click 槽、onmouseup → on_release、onmousemove
+    /// → PointerMoveHandler 转发归一坐标(coords "WxH" → logical_extent);
+    /// 拖拽捕获层的 `absolute inset-0` 样式经 Style::parse 保留。
+    #[test]
+    fn mouse_area_emits_events_and_logical_extent() {
+        let src = r#"
+widget SplitApp {
+    msg { Press(int), Drag(float, float), Drop }
+
+    model {
+        var dragging int = 0
+    }
+
+    view {
+        mouse-area (coords: "1000x1000", style: "absolute inset-0 z-30", onmousemove: .Drag, onmouseup: .Drop) {}
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate_rust(&widget).expect("generate rust");
+
+        assert!(
+            code.contains("View::MouseArea {"),
+            "mouse-area 必须发射 View::MouseArea(不得落 col 通配):\n{code}"
+        );
+        assert!(
+            code.contains("PointerMoveHandler::new(move |x: f32, y: f32| SplitAppMsg::Drag(x, y))"),
+            "无参 onmousemove 必须转发归一坐标:\n{code}"
+        );
+        assert!(
+            code.contains("on_release: Some(SplitAppMsg::Drop)"),
+            "onmouseup 必须接 on_release 槽:\n{code}"
+        );
+        assert!(
+            code.contains("logical_extent: Some((1000.0, 1000.0))"),
+            "coords WxH 必须落 logical_extent(f32 字面量):\n{code}"
+        );
+        assert!(
+            code.contains("Style::parse(\"absolute inset-0 z-30\").ok()"),
+            "样式串必须经 Style::parse 保留(空层判定/定位依赖):\n{code}"
+        );
+    }
+
+    /// PLAN-022 T-03:带 onmousedown 的分隔条薄条形态(定尺寸 div +
+    /// mouse-area Fill 子件)——press 闭包发射 + Fill 样式。
+    #[test]
+    fn mouse_area_press_slot_emits_on_click() {
+        let src = r#"
+widget SplitApp {
+    msg { Press(int), Tick }
+
+    model {
+        var dragging int = 0
+    }
+
+    view {
+        mouse-area (style: "w-full h-full", onmousedown: .Press(7)) {}
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate_rust(&widget).expect("generate rust");
+
+        assert!(
+            code.contains("on_click: Some(SplitAppMsg::Press(7))"),
+            "onmousedown 必须接 on_click 槽(显式参消息值直发):\n{code}"
+        );
+        assert!(
+            code.contains("View::MouseArea {"),
+            "mouse-area 必须发射 View::MouseArea:\n{code}"
         );
     }
 

@@ -2804,6 +2804,41 @@ fn pac_dep_version_violation(content: &str, dep_name: &str) -> Option<String> {
     None
 }
 
+/// PLAN-649 SD-01 (contract Q5): candidate path forms for a dotted use
+/// module — the literal dot→separator conversion first, then hyphen variants
+/// of underscore segments. bp packages are kebab-case on disk
+/// (`blueprints/feedback/empty-state/`) while use paths are written with
+/// underscores (`bps.feedback.empty_state.reference.error`); literal-first
+/// keeps co-existing `foo_bar/` vs `foo-bar/` resolution deterministic.
+/// Variant combinations enumerate per eligible segment in segment order and
+/// cap at 4 (real bp paths carry 1-2 eligible segments; the cap only bounds
+/// pathological inputs). Single-element result for paths without underscore
+/// segments — callers loop and behave exactly as before in that case.
+fn module_path_candidates(rel: &str) -> Vec<String> {
+    const MAX_VARIANTS: usize = 4;
+    let mut out = vec![rel.to_string()];
+    let segs: Vec<&str> = rel.split(std::path::MAIN_SEPARATOR).collect();
+    let eligible: Vec<usize> = (0..segs.len()).filter(|&i| segs[i].contains('_')).collect();
+    if eligible.is_empty() || eligible.len() > 16 {
+        return out;
+    }
+    for mask in 1..(1usize << eligible.len()) {
+        if out.len() > MAX_VARIANTS {
+            break;
+        }
+        let cand: Vec<String> = segs
+            .iter()
+            .enumerate()
+            .map(|(i, s)| match eligible.iter().position(|&e| e == i) {
+                Some(bit) if mask & (1 << bit) != 0 => s.replace('_', "-"),
+                _ => s.to_string(),
+            })
+            .collect();
+        out.push(cand.join(std::path::MAIN_SEPARATOR_STR));
+    }
+    out
+}
+
 fn resolve_module_path(
     base_dir: &std::path::Path,
     module: &str,
@@ -2820,26 +2855,33 @@ fn resolve_module_path(
             String::new()
         };
         if !mapped.is_empty() {
-            let as_file = root.join(format!("{}.at", mapped));
-            if as_file.exists() {
-                return Some(as_file);
-            }
-            let as_mod = root.join(&mapped).join("mod.at");
-            if as_mod.exists() {
-                return Some(as_mod);
+            for cand in module_path_candidates(&mapped) {
+                let as_file = root.join(format!("{}.at", cand));
+                if as_file.exists() {
+                    return Some(as_file);
+                }
+                let as_mod = root.join(&cand).join("mod.at");
+                if as_mod.exists() {
+                    return Some(as_mod);
+                }
             }
         }
     }
     let rel = module.replace('.', std::path::MAIN_SEPARATOR_STR);
-    // Helper to probe a candidate directory for {rel}.at or {rel}/mod.at.
+    // Helper to probe a candidate directory for {rel}.at / {rel}/mod.at —
+    // literal form first, then kebab variants of underscore segments
+    // (PLAN-649 SD-01; candidates without underscores are literal-only, so
+    // existing behavior is untouched).
     let probe = |dir: &std::path::Path| -> Option<std::path::PathBuf> {
-        let as_file = dir.join(format!("{}.at", rel));
-        if as_file.exists() {
-            return Some(as_file);
-        }
-        let as_mod = dir.join(&rel).join("mod.at");
-        if as_mod.exists() {
-            return Some(as_mod);
+        for cand in module_path_candidates(&rel) {
+            let as_file = dir.join(format!("{}.at", cand));
+            if as_file.exists() {
+                return Some(as_file);
+            }
+            let as_mod = dir.join(&cand).join("mod.at");
+            if as_mod.exists() {
+                return Some(as_mod);
+            }
         }
         None
     };
@@ -2884,19 +2926,28 @@ fn resolve_module_path(
             candidates.into_iter().find(|c| c.exists())
         } else {
             let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
-            let candidates = [
-                pkg_root.join("src").join("front").join(format!("{}.at", sub_rel)),
-                pkg_root.join("src").join("front").join(&sub_rel).join("mod.at"),
-                pkg_root.join("src").join("back").join(format!("{}.at", sub_rel)),
-                pkg_root.join("src").join("back").join(&sub_rel).join("mod.at"),
-                pkg_root.join("src").join(format!("{}.at", sub_rel)),
-                pkg_root.join("src").join(&sub_rel).join("mod.at"),
-                pkg_root.join("front").join(format!("{}.at", sub_rel)),
-                pkg_root.join("front").join(&sub_rel).join("mod.at"),
-                pkg_root.join(format!("{}.at", sub_rel)),
-                pkg_root.join(&sub_rel).join("mod.at"),
-            ];
-            candidates.into_iter().find(|c| c.exists())
+            // PLAN-649 SD-01: literal sub-path candidates first, then kebab
+            // variants of underscore segments (`bps.feedback.empty_state...`
+            // reaches `feedback/empty-state/`). Layout priority (front/back/
+            // src/flat) is preserved within each candidate form.
+            for cand in module_path_candidates(&sub_rel) {
+                let candidates = [
+                    pkg_root.join("src").join("front").join(format!("{}.at", cand)),
+                    pkg_root.join("src").join("front").join(&cand).join("mod.at"),
+                    pkg_root.join("src").join("back").join(format!("{}.at", cand)),
+                    pkg_root.join("src").join("back").join(&cand).join("mod.at"),
+                    pkg_root.join("src").join(format!("{}.at", cand)),
+                    pkg_root.join("src").join(&cand).join("mod.at"),
+                    pkg_root.join("front").join(format!("{}.at", cand)),
+                    pkg_root.join("front").join(&cand).join("mod.at"),
+                    pkg_root.join(format!("{}.at", cand)),
+                    pkg_root.join(&cand).join("mod.at"),
+                ];
+                if let Some(hit) = candidates.into_iter().find(|c| c.exists()) {
+                    return Some(hit);
+                }
+            }
+            None
         }
     };
     let mut curr_dir = Some(base_dir);
@@ -7527,6 +7578,11 @@ mod plan645_bp_tests;
 // + pac.at dep 版本类键硬失败双负测试。
 #[cfg(test)]
 mod plan647_bp_version_tests;
+
+// PLAN-649: bp 消费地基——解析链连字符变体探测（SD-01/contract Q5）+ icon
+// 词汇面（SD-02）+ L1 直连端到端（AC-01 双轨）。
+#[cfg(test)]
+mod plan649_bp_tests;
 
 // PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
 // 回归。

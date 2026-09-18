@@ -13,7 +13,7 @@ new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌�
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 12
+current_step: 13
 total_steps: 19
 ---
 
@@ -379,24 +379,35 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       实机截图未及卡片区（卡片在 vtree 树中,位于 frame scroll 折叠线下
       的可能性未排除）——滚轮可达性验证留待下一会话（MCP 无框内滚动
       柄 + 实例环境高滚动率所致,非方案性阻塞）。
-- [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）[⚠ needs_replan——写隔离未阻断翻转]
-      归因进展（本轮实证）：污染链上半段确认——合并 VM 轨统一状态对象
-      （Plan 419 ensure_child_state 返回 root_id,子件读写全落 App 根堆
-      对象）→ demo 写 `.dark_mode` 直接覆写宿主 App 同名字段 → 渲染器
-      每帧状态→主题同步（renderer sync dark 块）将全局翻向 demo 档；
-      execute_set_theme 落盘 config.dark_theme → 污染跨会话持久（重启
-      仍浅,需设置面板或清配置恢复）。
-      已试并回退：生成器发射期写端改名（`.dark_mode =` →
-      `.demo_dark_mode =`,读端保持读宿主实现跟随主题）——单测过、适配器
-      改名落地,但实机 A/B（008→016→008）仍翻浅：真写入者未明（剩余
-      候选:store 模块 var 链、Init 派发链其他写点、accent 联动）,需
-      VM 写点级追踪（dump App 堆对象写者/地址断点）。随 T-12 回退一并
-      摘除发射变换（vue.rs 还原,单测同撤）。
-      replan 方向（待裁定）：①VM 层写点追踪定位真写入者后精准隔离；
-      ②gallery App 改名自家魔法变量（dark_mode→host_dark_mode,宿主侧
-      让渡, demo 保持原名——反向隔离）；③主题同步面加"仅根件声明期"
-      门控。016 语料默认主题评估：保持 light 默认（其自有分支）,跟随
-      宿主依赖②/③落地。
+- [✅] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）[✅ 已完成（①写点追踪路线，655 落地后执行）]
+      定罪（8 类写点探针 AUTO_DEBUG_THEME_TRACE=dark_mode，A/B 008→016→008
+      实机日志）：污染链 = 合并 VM 轨统一状态对象（Plan 419）下，016 挂载时
+      **两条 VM 直写**覆写宿主壳根态 `dark_mode`——①`handler_CalendarStore_Init`
+      （store 模块级 var 初始化）②匿名模块 init 帧（demo 模型 var 静态初始化）
+      → 渲染器每帧状态→主题同步（renderer.rs D-GAP-2 块）翻全局。SEED
+      （ensure_child_state）仅为回声非首犯；宿主壳 app.at:23 自声明
+      dark_mode=true（根因=字段合并冲突，非路由 bug——独立形态同写合法）。
+      v2 写端改名失败的机理同因：store var 与静态初始化不在赋值语句改名面内。
+      修复（用户裁定候选"store 模块 var 前缀"完整版）：发射期**全量 α-改名**
+      ——`rename_reserved_root_fields`（auto-man vue.rs，word-boundary 字节级）
+      把 demo 侧（适配器+自有模块+包级联文件）的 `dark_mode`/`accent_color`
+      （恰为渲染器消费的两个保留名）统一改 `<ns>_` 前缀（ns=demo_ns_prefix），
+      声明/读/写一体改名语义自洽；语料原文/宿主壳/宿主 deps
+      （settings_popover）不动——web 臂 demo 本就各自独立持主题态，改名对齐
+      双臂语义。改名安全性预检：14 语料 app 声明面清点、零字符串字面量命中、
+      零跨 demo 模块名碰撞（同名异容跳 demo 风险不存在）、package 目录单
+      demo 独享。A/B 复验（修复构建）：全序列仅剩 boot 宿主合法播种
+      （true→true），VM 直写/SEED/SYNC-FLIP 全消失；三截图（A 008 深/B 016
+      打开宿主仍深+日历完整渲染 June 2026 网格/C 008 仍深）+ 像素级壳亮度
+      分析（left≈32 dark）双重确认；boot 零 parse 失败；隔离 config 全程
+      零写入（无落盘路径触发——R642-P2 历史污染为前会话手动设置交互，
+      污染机制已随根态覆写消失而根除）。门禁：gallery 13/13（含新单测
+      test_emit_gallery_vm_demos_reserved_field_rename）；auto-man 全套
+      298 绿/1 红=master 预存 flaky（test_plan609 并行红隔离绿，master
+      同特征实证；P642-D5 的 plan606 红今日已绿）；探针 8 处全摘
+      （auto-lang core 与 master 零 diff）。双仓提交：auto-lang dfcc3bbe1、
+      auto-os T-13 批次（16 文件，11 适配器+calendar_store+d015notes 模块
+      改名映射+registry 语料漂移+A/B 脚本入 tests/）。
 - [ ] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）
       (a) routes 单页族（018/019/021/022/023）：VM 内嵌支持 `routes {}`
       首页路由 stub 渲染；(b) back 链 native-ns/stream 族（017）：
@@ -642,7 +653,7 @@ evidence:
   - 本轮额外发现资产:MCP 端口避开 Windows 排除区 2180-2279;
     TaskStop 孤儿 auto.exe + 单实例冲突 = 实例"自杀"真因(非 F1);
     iced Scrollable 内容臂 compression=true(Fill→内容高,009/016 为证)
-next: T-13(写点追踪/反向改名待裁定) → T-18 → T-15 → T-17;
+next: T-13 方向已裁定=①写点追踪(655 落地后执行) → T-18 → T-15 → T-17;
   T-16/T-19/F1 仍待用户裁定
 ```
 
@@ -685,6 +696,37 @@ next: merge(phase landing plan-642-dev → master);overall 仍 executing
 ---
 
 ```yaml
+stage: work (rev2 波次,T-13① 写点追踪路线)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-13 单任务;计划整体仍 executing（T-14..T-19 在途）
+code_commit:
+  auto-lang: dfcc3bbe1 (plan-642-dev, 自 master 4817b51e1 重建 worktree)
+  auto-os:   T-13① 批次 (plan-642-dev, 16 文件产物再生成 + A/B 脚本)
+task_ids: [T-13]
+evidence:
+  - 探针定罪:8 类写点(SEED/VM-SET×2/RUST-WRITE/CMD-SET_THEME/SYNC-FLIP/
+    CFG-HOTAPPLY/CFG-SAVE) AUTO_DEBUG_THEME_TRACE 门控;A/B 日志定罪
+    首犯=handler_CalendarStore_Init+匿名模块 init 两条 SET_FIELD 直写;
+    SEED 为回声;独立形态对照(016 standalone,store var 落自有根态=合法)
+    证明冲突仅在合并边界
+  - 修复:rename_reserved_root_fields 发射期全量 α-改名(声明/读/写/
+    包级联一体,<ns>_ 前缀);三接线点(适配器 6317/row_modules 统一单遍/
+    package 文件);语料原文与宿主壳/deps 不动
+  - A/B 复验:修复构建全序列仅剩 boot 合法播种(true→true),直写/SEED/
+    SYNC-FLIP 全消失;三截图视觉+壳亮度分析(全 DARK);016 本体完整渲染;
+    boot 零 parse 失败;隔离 config 零写入
+  - 门禁:gallery 13/13(含新单测 reserved_field_rename);auto-man 全套
+    1 红=master 预存 flaky(plan609 并行红隔离绿,master 同特征);探针
+    8 处全摘(auto-lang core 与 master 零 diff,唯一改动=auto-man vue.rs)
+next: T-18(toast 过期) → T-15 → T-17;T-14 分档覆盖与 T-16+T-19 仍待
+  用户裁定立项;R642-F1 崩溃族 blocked 不变(本轮启动期遇 1 次 exit 127
+  重试即过,长会话复现率特征不变)
+```
+
+---
+
+```yaml
 stage: merge (phase landing 收据——非归档;overall 计划保持 executing)
 plan_id: PLAN-642:r1
 outcome: pass (phase landing)
@@ -702,8 +744,9 @@ master_wip_note: master 存在他会话未提交 WIP(examples/rust-workspace/
   Cargo.toml 加 013/015-back members + docs/plans/evidence/653/)——非本
   计划产物,未纳入落地,已表面化待其属主路由
 next: 续作须重建 worktree(git worktree add D:/autostack/.wt/lang-642/
-  auto-lang -b plan-642-dev,自最新 master);队列=T-13 方向裁定/T-18/
-  T-15/T-17;计划外队列=PLAN-655 执行/T-14/T-16+T-19/F1
+  auto-lang -b plan-642-dev,自最新 master);队列=T-13①(655 落地后)/
+  T-18/T-15/T-17;计划外队列=PLAN-655 执行(另一 agent 进行中)/T-14/
+  T-16+T-19/F1
 ```
 
 
