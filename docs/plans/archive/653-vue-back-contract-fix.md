@@ -293,6 +293,14 @@ PLAN-022 §9/§10 + 受控浏览器/HTTP 实测,2026-09-18)定位三层缺陷,�
   **ledger_refreshed**=docs/specs/auto-lang/ui/plans.md 增 653 行
   (本提交);canonical spec 即 auto-term 仓文件本体(38477cf);
   **archived**=本件 git mv 至 docs/plans/archive/ + status: archived;
-  **cleaned**=待 wt-guard 双仓过闸后回填(见下)。
+  **cleaned**=双仓过闸:lang-653/auto-lang guard clean 一次过;
+  lang-653/auto-term 首扫 BLOCKED(gen/front/vue node_modules 内
+  pnpm junction ~50 枚,E2E 跑法产物)——按 guard 工序
+  `cmd /c rmdir <链接>` 逐枚只删链接不穿透目标,7 轮删扫后 guard
+  clean;两 worktree remove+分支删除完成(auto-lang plan-653-dev
+  @a4b3f9d89、auto-term plan-653-dev @38477cf,均先核祖先已落地);
+  本会话 scratch 目录移除(残留 vite 进程终结后)。组目录
+  .wt/lang-653/ 仅余他仓 auto-down worktree(auto-down6),不属本
+  计划,保留不动。
   归属面:653 无 auto-lang 仓 canonical spec 文本变更(增量目标仅
   auto-term 仓),故 auto-lang 侧台账=plans.md 回写,零虚构沉淀。
