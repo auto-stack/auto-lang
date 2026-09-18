@@ -129,3 +129,81 @@ fn read_manifest_render(app_dir: &std::path::Path) -> Option<String> {
     }
     None
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-031 T-06 —— `-q/--render-queue` gate（main.rs Run 臂消费）
+// ---------------------------------------------------------------------------
+
+/// -q gate 校验：出界组合显式报错（vue/tauri/jet/arkts 前端不支持
+/// rqhost 形态；`--rq-host` 参数面预留未实现——desktop 形态归 PLAN-030
+/// 线）。缺省（render 缺席）= vm 轨合法。
+pub fn rqhost_gate_validate(render: Option<&str>, args: &[String]) -> Result<(), String> {
+    if let Some(r) = render {
+        if !matches!(r, "vm" | "rust") {
+            return Err(format!(
+                "--render-queue 仅支持 vm/rust 前端目标（当前 --render={r}）"
+            ));
+        }
+    }
+    if let Some(a) = args.iter().find(|a| a.starts_with("--rq-host=")) {
+        return Err(format!("{a} 预留未实现（desktop 形态归 PLAN-030 线）"));
+    }
+    Ok(())
+}
+
+/// rust 轨注入 args（cargo `--` 透传 → 生成 gate 消费）：
+/// - `--autodesk-rqhost`：策略档标记——新 gate 选 `ClientTarget::Rqhost`
+///   （rendezvous 采纳 + exit-on-EOF）；旧生成物不识未知旗标（安全忽略）
+///   退化为 broker 孵化直连（渲染通、宿主死 30s 挂等——重生成后全语义）；
+/// - `--autodesk-render=queue`：定档 queue（跳过 auto 覆盖扫描裁决）；
+/// - `--autodesk-incubate --autodesk-broker=<wellknown>`：孵化入场
+///   （rqhost serve 双动词兼容 incubate 记录）。
+pub fn rqhost_injected_args(wellknown: &str, args: &[String]) -> Vec<String> {
+    let mut injected = vec![
+        "--autodesk-rqhost".to_string(),
+        "--autodesk-render=queue".to_string(),
+        "--autodesk-incubate".to_string(),
+        format!("--autodesk-broker={wellknown}"),
+    ];
+    injected.extend_from_slice(args);
+    injected
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T-06：gate 校验——vm/rust/缺省合法；vue/jet 等出界显式报错；
+    /// `--rq-host` 预留位显式拒绝。
+    #[test]
+    fn rqhost_gate_validate_variants() {
+        assert!(rqhost_gate_validate(None, &[]).is_ok(), "缺省 = vm 轨合法");
+        assert!(rqhost_gate_validate(Some("vm"), &[]).is_ok());
+        assert!(rqhost_gate_validate(Some("rust"), &[]).is_ok());
+        for bad in ["vue", "tauri", "jet", "arkts"] {
+            let err = rqhost_gate_validate(Some(bad), &[]).unwrap_err();
+            assert!(err.contains(bad), "报错含目标名: {err}");
+        }
+        let arg = "--rq-host=desktop".to_string();
+        let err = rqhost_gate_validate(Some("vm"), &[arg.clone()]).unwrap_err();
+        assert!(err.contains("--rq-host"), "预留位拒绝: {err}");
+    }
+
+    /// T-06：注入形状——四旗标前注 + 原尾参透传保序。
+    #[test]
+    fn rqhost_injected_args_shape() {
+        let args = vec!["--foo=1".to_string(), "positional".to_string()];
+        let injected = rqhost_injected_args("autodesk-rqhost-t1", &args);
+        assert_eq!(
+            injected,
+            vec![
+                "--autodesk-rqhost".to_string(),
+                "--autodesk-render=queue".to_string(),
+                "--autodesk-incubate".to_string(),
+                "--autodesk-broker=autodesk-rqhost-t1".to_string(),
+                "--foo=1".to_string(),
+                "positional".to_string(),
+            ]
+        );
+    }
+}
