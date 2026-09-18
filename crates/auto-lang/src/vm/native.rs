@@ -989,11 +989,13 @@ pub fn shim_scroll_controller(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     Ok(())
 }
 
-/// 弹出 controller 句柄实参（非句柄串返回 None 并清空队列路径）。
+/// 弹出 controller 句柄实参。句柄是不透明非空串（`scroll_controller()`
+/// 的 "@scrollctl:N" 形态，或 .at 侧直接以字符串状态字段作柄——两者等价；
+/// 绑定发生在 pane 的 `controller:` prop）。
 #[cfg(feature = "ui")]
 fn pop_controller_handle(task: &mut AutoTask, vm: &AutoVM) -> Option<String> {
     let s = pop_string_arg(task, vm);
-    crate::ui::scroll::is_controller_handle(&s).then_some(s)
+    (!s.is_empty()).then_some(s)
 }
 
 /// 弹出可选轴实参："x"/"y" → Axis；缺省 Y（单轴 pane 简写）。

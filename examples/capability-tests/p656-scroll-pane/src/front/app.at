@@ -17,7 +17,7 @@ widget App {
         var bumps int = 0
     }
 
-    msg C { ToEnd, ToStart, By, MToEnd, MBy, Probe, ProbeM, Bump }
+    msg C { ToEnd, ToStart, By, MToEnd, MBy, Probe, ProbeM, Bump, Observe(float, float, float, float, float, float, float, float) }
 
     on {
         .ToEnd -> {
@@ -42,6 +42,11 @@ widget App {
         .ProbeM -> {
             let s = scroll_state(.msc)
             .mprobe = s.offset_y
+        }
+        .Observe(ox, oy2, vw, vh, cw, ch, px, p2) -> {
+            .oy = oy2
+            .vy = vh
+            .py = p2
         }
         .Bump -> { .bumps += 1 }
     }
@@ -78,7 +83,7 @@ widget App {
                 }
             }
 
-            scroll-pane (axis: x, style: "h-12 border rounded") {
+            scroll-pane (axis: "x", style: "h-12 border rounded") {
                 row (style: "gap-2") {
                     text "x-cell-01"
                     text "x-cell-02"
@@ -91,7 +96,7 @@ widget App {
                 }
             }
 
-            scroll-pane (scrollbar: hidden, controller: "hiddenpane", style: "h-12 border rounded") {
+            scroll-pane (scrollbar: "hidden", controller: "hiddenpane", style: "h-12 border rounded") {
                 col {
                     text "hidden-1"
                     text "hidden-2"
@@ -102,7 +107,7 @@ widget App {
                 }
             }
 
-            scroll-pane (axis: both, controller: .msc, style: "h-56 border rounded") {
+            scroll-pane (axis: "both", controller: .msc, style: "h-56 border rounded") {
                 scroll-test-content (key: "cap", extent_h: 10000000.0, extent_w: 2000000.0) {}
             }
             row (style: "gap-2") {
@@ -112,11 +117,7 @@ widget App {
                 text `mprobe=${.mprobe}`
             }
 
-            scroll-pane (style: "h-24 border rounded", onscroll: |ox, oy2, vw, vh, cw, ch, px, p2| {
-                .oy = oy2
-                .vy = vh
-                .py = p2
-            }) {
+            scroll-pane (style: "h-24 border rounded", onscroll: .Observe) {
                 col (style: "gap-1") {
                     text "obs-1"
                     text "obs-2"

@@ -2164,6 +2164,9 @@ impl<'a> AuraViewBuilder<'a> {
                             auto_scroll: false,
                             offset,
                             on_scroll,
+                            axes: crate::ui::scroll::ScrollAxes::Y,
+                            scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
+                            controller: None,
                         };
                     }
                     return doc;
@@ -3555,6 +3558,9 @@ impl<'a> AuraViewBuilder<'a> {
                 auto_scroll: false,
                 offset,
                 on_scroll,
+                axes: crate::ui::scroll::ScrollAxes::Y,
+                scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
+                controller: None,
             };
         }
         View::AutodownEditor { key, value, is_final, on_change, on_focus, placeholder, style }
@@ -4053,6 +4059,9 @@ impl<'a> AuraViewBuilder<'a> {
                             auto_scroll: false,
                             offset,
                             on_scroll,
+                            axes: crate::ui::scroll::ScrollAxes::Y,
+                            scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
+                            controller: None,
                         };
                     }
                     return doc;

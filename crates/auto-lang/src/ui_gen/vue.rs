@@ -7135,12 +7135,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // 内联逻辑尺寸 + 条纹背景，节点数恒 1，不随逻辑 extent
                     // 膨胀——§10.4-5）。
                     if matches!(tag.as_str(), "scroll" | "scrollable" | "scroll-pane") {
-                        if let Some(crate::ast::Expr::Ident(name)) = props.get("controller").map(|v| match v {
-                            AuraPropValue::Expr(e) => Some(e.clone()),
-                            _ => None,
-                        }).flatten() {
+                        if let Some(AuraPropValue::Expr(expr)) = props.get("controller") {
                             self.scroll_ctl_helpers_needed = true;
-                            attrs.push(format!(":data-scroll-ctl=\"{}\"", name));
+                            let bound = self.bound_value_or_warn(
+                                expr,
+                                "element `scroll-pane` prop `controller`",
+                                "''",
+                            );
+                            attrs.push(format!(":data-scroll-ctl=\"{}\"", bound));
                         }
                         if let Some(v) = props.get("scrollbar") {
                             if self.extract_string_value(v).as_deref() == Some("hidden") {
@@ -12000,12 +12002,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     attrs.push(format!("orientation=\"{}\"", orientation));
                 }
                 // PLAN-656 T-07: controller 寻址锚 + hidden 内联样式。
-                if let Some(crate::ast::Expr::Ident(name)) = props.get("controller").map(|v| match v {
-                    AuraPropValue::Expr(e) => Some(e.clone()),
-                    _ => None,
-                }).flatten() {
+                if let Some(AuraPropValue::Expr(expr)) = props.get("controller") {
                     self.scroll_ctl_helpers_needed = true;
-                    attrs.push(format!(":data-scroll-ctl=\"{}\"", name));
+                    let bound = self.bound_value_or_warn(
+                        expr,
+                        "element `scroll-pane` prop `controller`",
+                        "''",
+                    );
+                    attrs.push(format!(":data-scroll-ctl=\"{}\"", bound));
                 }
                 if let Some(v) = props.get("scrollbar") {
                     if self.extract_string_value(v).as_deref() == Some("hidden") {
