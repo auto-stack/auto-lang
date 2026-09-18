@@ -48,12 +48,14 @@ needs_bounds/input_ids）+ hot_reload 非 debug 默认 2000ms（`AUTOUI_HOT_RELO
 0/1 门控）+ MCP 捕获按 dirty/近 30s 活跃收紧。架构级 Element 帧间缓存等
 D-1..D-5 延期，设计见 `docs/design/autoui/vm-frame-budget.md`。
 
-**嵌套组件 TimeSource + mounted 过滤订阅（PLAN-652 阶段 1）**：订阅不再
-只扫根 `tick_interval()`——装载期收集 root/child/store 的 `.Tick`+`timer`
+**嵌套组件 TimeSource + mounted 过滤订阅（PLAN-652 阶段 1 + PLAN-654 阶段 2 path 级）**：
+订阅不再只扫根 `tick_interval()`——装载期收集 root/child/store 的 `.Tick`+`timer`
 进 `timesources`；装配期 `AuraViewBuilder` 把实例化 child 名写入
-`mounted_types`；renderer 只对「挂载中且 when 通过」的源建
-`widget_event_tick` 订阅。条件分支切走后对应 Tick/timer **停订**（类型级
-D-2；同类型 for 多实例仍共一条，path 级=阶段 2）。详见
+`mounted_types`，同时登记 **InstancePath**（`{widget}@{mount_seq}`）到
+`mounted_paths`；renderer 对「挂载中且 when 通过」的源按 **path 级 identity**
+建 `widget_event_tick` 订阅（同 widget 多实例可分订阅/分退订）。派发消息携带
+path，handler 仍为类型级（单 VM 根态——path 级订阅 ≠ path 级状态隔离）。
+条件分支切走后对应 path **停订**。详见
 `docs/specs/auto-lang/ui/design/nested-timesource.md` 与设计
 `docs/design/autoui/component-time-and-events.md`。
 

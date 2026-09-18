@@ -18937,14 +18937,30 @@ fn compare_pngs(
                 }
                 // PLAN-652: Tick/timer 统一走 timesources + mounted/when 过滤。
                 // 根 `tick_interval()` 不再单独订阅（避免与 root Tick 源双订）。
-                for src in app.component.subscribable_timesources() {
+                // PLAN-654 T-A04: path 级订阅——identity 含 InstancePath；
+                // 同 widget 不同 path = 不同 iced Subscription（hash 区分）。
+                // 派发时 IcedMessage.widget = path 串；update 侧解析类型名。
+                // AUTOUI_TIMESOURCE_DEBUG=1 → 打印 path 级订阅表（AC-A6）。
+                let ts_debug = std::env::var("AUTOUI_TIMESOURCE_DEBUG").is_ok();
+                for src in app.component.subscribable_instance_timesources() {
+                    if ts_debug {
+                        eprintln!(
+                            "[TS_PATH] app={:?} path={} widget={} event={} kind={:?} ms={}",
+                            app_id,
+                            src.path.as_str(),
+                            src.widget,
+                            src.event,
+                            src.kind,
+                            src.every_ms
+                        );
+                    }
                     match src.kind {
                         crate::ui::dynamic::TimeSourceKind::Tick => {
                             // R5：孵化 mini 会话 Tick 门控仍适用于 Tick 源。
                             if dashboard_hatched_tick_allowed(state, app_id) {
                                 subs.push(widget_event_tick(
                                     app_id,
-                                    &src.widget,
+                                    src.path.as_str(),
                                     &src.event,
                                     src.every_ms,
                                 ));
@@ -18953,7 +18969,7 @@ fn compare_pngs(
                         crate::ui::dynamic::TimeSourceKind::Timer => {
                             subs.push(widget_event_tick(
                                 app_id,
-                                &src.widget,
+                                src.path.as_str(),
                                 &src.event,
                                 src.every_ms,
                             ));

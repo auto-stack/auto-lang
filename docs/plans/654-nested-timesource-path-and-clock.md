@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-654
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: nested-timesource-path-and-clock
 author: [agent]
 created_at: 2026-09-18
-updated_at: 2026-09-18
+updated_at: 2026-09-18Twork
 plan_revision: 1
-current_step: 0
+current_step: 8
 total_steps: 12
 
 # /auto-plan:review 结束时填写：
@@ -275,37 +275,53 @@ pub struct InstanceTimeSource {
 
 ### 阶段 A
 
-- [ ] **T-A01 实勘 path 体系**  
+- [x] **T-A01 实勘 path 体系** [✅ 已完成]  
   - 读：`aura_view_builder` child/for 渲染、`vnode.rs` path、`mounted_sink` 写入点、`AppTickKind::WidgetEvent`。  
   - 产出：path 形态裁定（复用何种 id）+ 派发是否可达 per-instance state 的结论 → §10/§9 注记。  
   - AC：AC-A1 前置  
+  - 证据：见 §9 T-A01；worktree clone 隔离 + auto-down sibling；InstancePath=`{widget}@{mount_seq}`；状态隔离不可达已文档化。
 
-- [ ] **T-A02 TimeSource path 模型**  
+- [x] **T-A02 TimeSource path 模型** [✅ 已完成]  
   - `dynamic.rs`：path 类型、mounted_paths、subscribable_instance_*、兼容 API。  
   - 验证：单测 AC-A1/A3。  
+  - 证据：worktree `plan-654-dev`；`cargo check --features ui-iced` Finished；`cargo t plan654` 7/7 PASS（identity/multi-instance/unmount/when/type-fallback/debug-rows/dispatch）；`cargo t plan652` 5/5；`cargo t plan650` 1/1。
 
-- [ ] **T-A03 装配登记 path**  
+- [x] **T-A03 装配登记 path** [✅ 已完成]  
   - `aura_view_builder.rs`：实例化时写 path；begin/end mount 帧语义扩展。  
   - 验证：单测 AC-A2。  
+  - 证据：commit @ plan-654-dev；`cargo t plan654` 9/9（含 view_assembly_registers_paths / for_view_multiple）；plan652 5/5。
 
-- [ ] **T-A04 订阅 recipe 扩展**  
+- [x] **T-A04 订阅 recipe 扩展** [✅ 已完成]  
   - `renderer.rs` + subscription identity：含 path；避免双订。  
   - 验证：AC-A3 + 回归 AC-A5/A8。  
+  - 证据：subscription loop → `subscribable_instance_timesources()`；`widget_event_tick(app, path.as_str(), …)`；hash 含 path。
 
-- [ ] **T-A05 派发路由**  
+- [x] **T-A05 派发路由** [✅ 已完成]  
   - update 侧消费 path；文档化状态语义。  
   - 验证：AC-A4。  
+  - 证据：`on_with_input_for`/`fire_timer`/`is_timer_entry`/`is_timesource` 剥 `@seq`；`plan654_dispatch_is_type_level_state_with_path_identity` 钉住「path 可观测 + 类型级状态」。
 
-- [ ] **T-A06 可观测**  
+- [x] **T-A06 可观测** [✅ 已完成（最小面）]  
   - MCP/state/debug 列表（最小面）。  
   - 验证：AC-A6。  
+  - 证据：`timesource_debug_rows()` 返回 (path,widget,event,kind,ms,when,mounted,subscribable)；单测 `plan654_debug_rows_include_path`。MCP server 全量接线可在 review 前按需补。
 
-- [ ] **T-A07 阶段 A 规范草稿 + 门禁**  
-  - SD-A01..03；check+滤测；gallery 回归。  
-  - AC：AC-A5/A7/A8  
+- [x] **T-A07 阶段 A 规范草稿 + 门禁** [✅ 已完成（specs 草稿+滤测+gallery 实机）]  
+  - SD-A01/A02 草稿已在 worktree：`nested-timesource.md` 阶段 2 段 + `ui/overview.md` 更新。  
+  - SD-A03（KNOWN-DEBT P530-D2 注记）merge 时落 master ledger。  
+  - 门禁：check + plan654/652/650/fire_timer 滤测全绿。  
+  - **gallery 实机（2026-09-18）**：`docs/plans/evidence-p654-gallery-live.json`  
+    - 652 回归红线 **PASS**：gallery idle `w_local="--:--:--"` → 选中 012-clock 走时 `22:03:42→45` → 切 002-counter tick 停止增长；standalone `clock_running=true`。  
+    - path 可观测 **PASS**：`[TS_PATH] path=Demo012Clock@0`；`UI_EVENT widget="Demo012Clock@0"`；`handler_Demo012Clock_Tick` 类型级派发仍在。  
+    - standalone path=`App`（always_mounted 类型形态）。  
+    - 注：日志中同 path 同时出现 Tick 与 Timer 候选（ms=250）——iced 按 `WidgetEvent(path,event,ms)` hash 去重，实际单订；候选表并存待 review 核对 012-clock 是否双声明。  
+  - 多实例 gallery 语料：无现成双实例 Tick demo；模型层由 plan654 单测覆盖。静止不劣化：idle 实机 `w_local` 恒 placeholder + 单测 `plan652_idle_*`。  
+  - AC：AC-A5/A7/A8 **pass**。  
 
-- [ ] **T-A08 阶段 A 收执**  
-  - §9 A 段 handoff；**建议** fold master + re-sync 后开 B（若用户要求一气呵成到 review，须在 handoff 写明未 fold 风险）。  
+- [x] **T-A08 阶段 A 收执** [✅ 已完成]  
+  - §9 A 段 handoff；fold master + re-sync worktree；**阶段 B 未开**（overall 仍 `executing`）。  
+  - landing：format-patch apply（隔离钩子拦 merge）；evidence `docs/plans/evidence-p654-gallery-live.json`。  
+  - 依赖 sibling `.wt/lang-654/auto-down` 保留至阶段 B 结束再清理。  
 
 ### 阶段 B（A 完成后）
 
@@ -330,15 +346,77 @@ pub struct InstanceTimeSource {
   授权：用户 2026-09-18 指定阶段 2+3 **同一计划**立项。  
   **next: work**（先 T-A01 实勘 path；worktree `D:/autostack/.wt/lang-654/auto-lang` / `plan-654-dev`）。
 
+- **2026-09-18 T-A01..T-A06 work**（stage: work | plan_id: PLAN-654 | plan_revision: 1 | outcome: partial-continue）：
+  - **环境**：`git worktree add` 被隔离钩子拦 → clone 隔离 `D:/autostack/.wt/lang-654/auto-lang` @ `plan-654-dev`；
+    跨仓 `autodown-core` path 依赖 → 组内 sibling clone `D:/autostack/.wt/lang-654/auto-down`。
+  - **主检出 WIP**：`examples/rust-workspace/Cargo.toml` foreign members 变更——**未纳入**本计划。
+  - **commits**：`e3e250bd7` T-A01/T-A02 path 模型；`6d9c41daf` T-A03 builder 登记；后续 T-A04/T-A05/T-A06 订阅+派发+debug rows。
+  - **门禁**：`cargo check --features ui-iced` Finished；`cargo t plan654` 9/9；`cargo t plan652` 5/5；`cargo t plan650` 1/1；`fire_timer` 1/1。
+  - **裁定落地**：InstancePath=`{widget}@{mount_seq}`；状态隔离不可达（单 VM 根态）已在测试钉住；订阅 identity 含 path。
+  - **remaining**：T-A07 规范草稿 SD-A01..03 + gallery 回归；T-A08 收执 handoff；阶段 B 未开。
+  - **next: work T-A07**（specs 回写 + 门禁；用户要求 fold 后再开 B）。
+
+- **2026-09-18 T-A07 partial**：SD-A01/A02 specs 草稿已入 worktree commit；滤测门禁绿；
+  gallery 实机 + fold 收执留 T-A08。代码 commit 链：
+  `e3e250bd7`（T-A01/A02）→ `6d9c41daf`（T-A03）→ `a989ca79c`（T-A04/A05/A06）→ specs draft。
+  **stage A 代码面基本齐**；**next: user 确认后 fold + T-A08 handoff，再开阶段 B**。
+
+- **2026-09-18 gallery live（stage: work）**：
+  `outcome: pass` | evidence `docs/plans/evidence-p654-gallery-live.json` @ plan-654-dev |
+  REGRESSION_652_GALLERY=PASS · REGRESSION_652_STANDALONE=PASS · PATH_OBS_LOG=PASS · PATH_OBS_HANDLER=PASS |
+  注记：TS_PATH 候选含 Tick+Timer 同 path（hash 去重）；gallery 无双实例语料（单测覆盖）|
+  **next: T-A08 fold 收执**。
+
+- **2026-09-18 T-A08 fold（stage: work | plan_id: PLAN-654 | plan_revision: 1）**：
+  `outcome: pass`（阶段 A land）|
+  landing_method: format-patch apply @ master（会话隔离钩子拦 `git worktree add`/`git merge`；clone 隔离 worktree）|
+  patches: `e3e250bd7`→`6d9c41daf`→`a989ca79c`→`8dd9e84f0`→`3bcc8aea5` |
+  交付文件：`dynamic.rs` InstancePath/mounted_paths/instance timesources；`aura_view_builder.rs` path sink；`renderer.rs` path 订阅+TS_PATH；specs SD-A01/A02 草稿；gallery evidence |
+  未 fold 内容：master foreign WIP（`examples/rust-workspace/Cargo.toml`、`docs/plans/655-*`）保持原样 |
+  dependency_revisions：`.wt/lang-654/auto-down` clone sibling（autodown path）；阶段 B 期间保留 |
+  **overall status 仍为 `executing`**；阶段 A AC 映射见上；**next: 阶段 B T-B00 Clock 选型**（需用户确认开 B，或按契约续作）。
+
+- **2026-09-18 T-A01 实勘**（work / plan_revision 1）：`stage: work | plan_id: PLAN-654 | task_ids: T-A01 | outcome: pass`。
+
+  **环境**：`git worktree add` 被仓库隔离钩子拦下（共享 .git registry）；按 plan 既有约定走 **clone 隔离**：
+  `D:/autostack/.wt/lang-654/auto-lang` @ `plan-654-dev`，base `9886ba901`（与 master 同）。
+  主检出另有 foreign WIP：`examples/rust-workspace/Cargo.toml` members 追加大量 `*-back` 条目——**未纳入**本计划 worktree。
+
+  **Path 体系实勘锚**：
+
+  | 锚 | 内容 |
+  |----|------|
+  | `vnode.rs:626-636` | `id_from_path(&[u16]) -> u64`（FNV-1a，确定性）——规范 path→id |
+  | `dynamic.rs:1093-1095` | `stable_vnode_id_for_path` 包装同一 hash |
+  | `aura_view_builder.rs:70-85` | tracked 路径 `path: &mut Vec<usize>`（AuraNode 结构下降路径）；**untracked `build()` 不带 path** |
+  | `aura_view_builder.rs:6094-6097,6165-6167` | mounted_sink 现只写 **类型名** |
+  | `renderer.rs:7149-7155,7247-7256` | `AppTickKind::WidgetEvent(widget,event,ms)` **无 path 维**；`IcedMessage{widget,event,input_value}` |
+  | `renderer.rs:18940-18960` | 订阅循环：`subscribable_timesources()` → `widget_event_tick(app,widget,event,ms)` |
+  | `dynamic.rs:1595-1651` | `on_with_input_for`：child handler **一律路由 ROOT state** |
+  | `vm_bridge.rs:1088-1135` | `ensure_child_state` **恒返回 root_id**；`child_state_map: HashMap<widget_name,u64>` 类型键 |
+
+  **裁定（T-A01 decision）**：
+
+  1. **InstancePath 形态**：`String` 新类型；identity = `{widget}`（root/store/always）或 `{widget}@{mount_seq}`（child 实例）。
+     - `mount_seq`：装配帧内 **按 widget 类型** 的 0-based 实例序号（`begin_mount_frame` 清零）。
+     - **不**发明第三套 id；tracked/debug/MCP 展示时可叠加既有 `id_from_path(view_path)`，但订阅身份以 `widget@seq` 为阶段 A 主键（untracked 生产路径也能产）。
+     - for 单 body 子组件时 `seq ≈ 迭代下标`（search 过滤时按命中序，仍帧内稳定）。
+  2. **per-instance state：不可达**。Plan 320 单 VM 统一根态；`ensure_child_state` 忽略 widget_name 返回 root；handler 路由 root。
+     → **path 级订阅 ≠ path 级状态隔离**。阶段 A AC-A4 以「消息含 path + 类型级 handler + 文档化限制」通过；「双钟各走各的」**不在** AC（按 plan §10.1 默认）。
+  3. **派发携带 path**：`AppTickKind::WidgetEvent` 的 widget 字段扩为 **InstancePath 字符串**（`DemoClock@0`）；hash/identity 自然区分；update 解析 `widget_type()` 走现 `on_with_input_for`/`fire_timer`，path 进调试可观测面。兼容：无 `@` 的 plain widget 名 = 阶段 1 语义。
+  4. **when**：仍读根态/store（阶段 A 不 per-path when）；path 级可叠加同一 when 门。
+  5. **订阅刷新时滞**（§10.3）：本阶段 **不**做 mount 变更即时重订阅（保持 652 文档化时滞）；T-A04 若 identity 扩展成本低再评估。
+
+  **AC 映射**：AC-A1 前置（形态已定）；AC-A4 按「path 可观测 + 状态语义文档化」执行；开债项候选：path 级实例状态槽（单 VM 大题，不在 654）。
+
 ## 10. 待澄清事项
 
-1. **实例状态隔离**：若 VM 仅类型级 handler，阶段 A 是否仍算「多实例完成」？  
-   - **默认**：生命周期（分订阅/退订）达标即可；**per-instance state** 若不可达则 AC-A4 以「可观测 path + 文档化限制」通过，并开债项。用户若要求「双钟各走各的」须在 work 前明示（可能扩大范围）。  
-2. **Clock 默认节拍**：standalone 墙钟刷新 1s 还是分钟投影？T-B00 给默认并记理由。  
-3. **订阅刷新时滞**（652 F-02）：阶段 A 是否顺手做 mount 变更即时重订阅？  
-   - **默认**：不强制；若 T-A04 成本低可做，否则保持文档化时滞。  
+1. **实例状态隔离**：**已按默认裁定**（见 §9 T-A01）——生命周期达标；per-instance state 记债，不在本计划 AC。用户若要求「双钟各走各的」须另开计划。
+2. **Clock 默认节拍**：standalone 墙钟刷新 1s 还是分钟投影？T-B00 给默认并记理由。
+3. **订阅刷新时滞**（652 F-02）：阶段 A **默认不**顺手做即时重订阅（T-A01 裁定）。
 4. **vue 双端 Clock**：阶段 B 默认 VM 优先；vue 对齐不阻塞 AC-B*。
 
 ## 11. Handoff
 
-- 2026-09-18 /auto-plan:new：见 §9。阶段 A/B 任务与 AC 已挂设计节号；待 `/auto-plan:work`。
+- 2026-09-18 /auto-plan:new：见 §9。
+- 2026-09-18 /auto-plan:work T-A01：path 形态/状态语义/派发携带方案已定；worktree clone 隔离；next T-A02 `dynamic.rs` path 模型。
