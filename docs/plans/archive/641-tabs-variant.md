@@ -434,5 +434,9 @@ variant、两端渲染器落实连通结构、gallery 加示例覆盖两种观�
 - 合并收据：master `727b7c9b1`（merge plan-641-dev，基线 e352437b0，实现
   提交 75cfcd47c..49d8be5d1 共 9 个）；主检出冒烟：tabs 单测 8/8 +
   schema_drift 2/2 + docs_gen 4/4。
-- 清理：wt-guard clean 后移除 worktree `D:/autostack/.wt/lang-641/auto-lang`
-  与分支 `plan-641-dev`（组内 auto-down detached 兄弟一并移除）。
+- 清理（已核实）：wt-guard 首扫 BLOCK——pnpm node_modules junction 364 枚
+  （gen 产物内），按处方 PowerShell ReparsePoint 逐链接 rmdir（round 2
+  归零）→ guard clean → 移除 worktree `D:/autostack/.wt/lang-641/auto-lang`
+  （首次 Permission denied=vite dev server 握柄，停 node 后组目录删除）；
+  分支 `plan-641-dev` 删除（was 49d8be5d1）；组内 auto-down detached 兄弟
+  同步注销；组目录 `D:/autostack/.wt/lang-641` 移除确认。`cleaned` ✓
