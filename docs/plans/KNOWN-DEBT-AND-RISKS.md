@@ -1150,6 +1150,12 @@
   （离页后日志持续刷 tick），`when` 门控丢弃但每条消息仍触发一次 view()
   全量树重建（空转功耗+泄漏倍增器）。偿还路径：路由/组件卸载时同步
   退订 widget_event_tick 订阅（renderer 订阅面按存活组件过滤）。
+  **→ PLAN-652 阶段 1（2026-09-18 work）**：类型级 mount 过滤落地——
+  `timesources` + `mounted_types`（装配期写入）+ `subscribable_timesources`
+  订阅过滤；条件臂未命中/widget 不再实例化 ⇒ 该名不在 mounted ⇒ 停订。
+  **范围**：widget **类型名** 身份（与 TimerEntryRuntime.widget 一致）；
+  同类型 for 多实例仍共一条订阅；path 级/精确实例退订仍开（设计阶段 2）。
+  实机 gallery 012-clock MCP 验收见 PLAN-652 T-06/AC-06。
 - **P530-D3 Element 缓存快速路径架构性失效（空转重建）**：dynamic_view
   末尾 store-then-take 使 cached_rendered 恒 None，`dirty=false` 帧仍走
   cached AbstractView → 全量 iced 树重建（实测 47k tick 仅 7 次 dirty，
@@ -2307,7 +2313,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P645-D1 [data-table-crud 语料 R006：v-for 缺 `:key`（语料质量，非阻塞）]**：`data-display/data-table-crud/reference/{minimal,with_dialog}.at` 的表格 v-for 无 `:key`（R006 WARNING，Vue 列表身份语义）。此前被 with_charts S003 硬炸截停从未浮出；PLAN-645 软化后以告警面在案。修向 = 语料补 `:key`（属 bp 语料整备，随下次消费该包的计划顺带）。引用：`/tmp/build645.log` R006 ×2（2026-09-18 repro 实测）。
 - **P645-D2 [musk_vm_track p053_4 预存红归因（环境，非本计划）]**：`musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode` 在 master 基点 1fc4772d9 对照复现同败（detached worktree 控制实验）——564-Q6 预存红家族成员，非 PLAN-645 回归（本计划改动面：registry 扫描根/auto-man dep 通道/bp 语料/047 夹具，与 musk VM codegen 零交集）。归 musk 域后续计划排查。
 
-## 2026-09-18 增补五（PLAN-028 登记与核销）
+## 2026-09-18 增补五（PLAN-642 rev2 引擎级债登记）
+
+- **P642-D12 [iced 0.14 flex 缺 CSS 两保证（引擎级，长期）]**：PLAN-642 三案同根因（T-11 分布式列塌缩 / T-12 定高列配给塌缩 / 008 items-stretch 等高卡消失）：①无两阶段行算法——stretch 用 Fill 容器模拟，无界/压缩上下文下 third pass 门控（`if !main_compress`，iced_widget-0.14.2 flex.rs）整体跳过 → Fill 子项 0×0 不排版；②无 min-content 保障——Fill 份额可低于内容高。CSS flexbox 默认语义（`align-items:stretch` + auto 高 = max(a,b,c) 等高）在 iced 无法用 styling 表达。**处置裁定（用户 2026-09-18）**：近期 = 自建 EqualHeightRow 控件（两遍测量：先量子项内容高取 max 再统一赋高；另立计划）；远期 = iced 升级时给 flex 算法打 CSS 补丁（min-content 钳制 + 真两阶段行算法，可考虑向上游发 PR）——届时 T-11/T-12/008 三案可一次性核销。过渡期约定：内嵌 demo 语料避免 Fill 高度技巧（items-stretch / 定高滚动上下文中的 flex-1），生成器 lint 候选。证据：008 实机卡消失 + headless 双尺寸对照（t12revert 前后）、Scrollable 内容臂 compression 位实证（Fill→内容高已正确,009/016 为证）。
+
+## 2026-09-18 增补六（PLAN-028 登记与核销）
 
 - **P026-D1 图像半句 ✅ 核销（PLAN-028，协议 §1.9）**：`DrawOp::Image`（tag 6 追加式）入册——src 引用 + 宿主侧解析（零位图过线），词汇表 = 本地文件/`builtin:`/`data:`/`http(s)`/`thumbnail://{wid}` 虚拟引用（snapshot 基建 SWR），未解析 = IMAGE_PLACEHOLDER 占位 + `[drawlist-image]` 观测（src 级去重，I3）；解释态 `layout_image` 与 native `View::Image` 臂同刻度升级（rect 推导零变化），p026 占位 Quad 断言改写归因。字形半句（lucide:/svgdoc: 栅格化）维持 not-yet。
 - **P028-D1 [位图字节过线通道 not-yet（协议边界）]**：Image op v1 = src 引用形态；app 运行时生成位图（图表 canvas/data URL 之外的动态图）与 TS 真位图的共同前置 = shm 位图上传/内嵌载荷通道，独立增量另立（B 形态 shell 需要时立项）。

@@ -363,30 +363,40 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       贴底（t11_008_fixed.png）,007/013/024/026/029 抽样零回归,6 次切页
       零崩溃。双仓提交：auto-lang 50f623e5c、auto-os 98613b0（产物再生成
       012-clock 改名/046 新增/013+020 随语料,合并对齐非 T-11 生成器变化）。
-- [✅] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）[✅ 已完成（归因修正）]
-      归因修正：原判"min-h-screen=窗口高而非容器高"经实证证伪——scratch
-      实测 h-[300px] frame 精确生效（行 13+ 在框底截断）、headless
-      1024×768/900/1250 三档窗口全钳 720、条件式/字面量/双 widget 真实
-      管线均一致。真正根因 = iced 0.14 flex 定高列子项按剩余量逐个配给：
-      demo 内容超出 frame 高的部分被压成 0×0——不可见、不可滚（009 无
-      滚动条的根因）；自由尺寸 demo 根被钳在 frame 高但内容塌缩呈左上
-      截断（016）。
-      修复：`apply_column_style` justify-Center/End 容器路径对
-      overflow-y:hidden 列插入 Shrink 高度 Scrollable——短内容被容器
-      center_y 垂直居中（016）、长内容封顶滚动（009）。作用域限定
-      justify-Center/End（非 justify 列 height/Fill 与 Shrink scroll
-      组合会整页塌缩——画廊根 h-screen 首版实测，随即收窄）。CSS 偏差
-      overflow-hidden≈overflow-y:auto 登记。
-      实证：headless 回归 p642_t12_overflow_frame_scrolls_and_centers
-      （40 行全布局 + 3 行垂直居中）；layout_tests 55 绿（2 红=master
-      预存）；cargo t ui 2101 全跑 22 败全落 master 基线内零新增；实机
-      009 frame 内滚动条出现（t12v5_009.png）、016 垂直居中恢复
-      （t12v5_016_clean.png）；水平居中受 P2-016a 主题污染干扰（light-
-      on-light）留 T-13 一并复验。auto-lang 2c96c5e40。
-- [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）
-      016 的 `dark_mode=false` 驱动宿主主题运行时（u2_008 深 → u2_016 起
-      全浅色持久实证）——合并 VM 子件主题魔法变量与宿主隔离（主题只认
-      根件）；016 默认主题语料评估（跟随宿主或改深色，其有深色样式分支）。
+- [✅] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）[✅ 已完成（用户裁定②方向重交付：语料内容高 + scroll 兜底）]
+      用户裁定：T-12 scroll 方案合理（浏览器同构），008 卡片"无限拉伸高"
+      是语料自身缺陷——应为内容自然高（fill vs auto 之辨）。
+      落地：①语料 008 卡片行去 items-stretch（卡片改自然高；三卡内容
+      结构相同高度差可忽略；Vue 臂同步让渡等高语义）；②恢复 scroll
+      兜底（2c96c5e40 形态原样：justify-Center/End 路径 overflow-y:
+      hidden 列包 Shrink Scrollable）；③回归测试恢复 + 双窗口尺寸守卫
+      （1024×800/1920×1200）。fe48a3945。
+      验证：headless 双尺寸 40 行全布局 + 短内容垂直居中绿；
+      layout_tests 55 绿（2 红=master 预存）；cargo t ui 2101 全跑
+      22 败全落 master 基线零新增；实机 009 滚动条+完整内容
+      （t12final_009.png）、016 垂直居中（t12final_016.png）复验通过。
+      008 状态：真实语料 headless 720 视口探针卡片全出（探针③）；
+      实机截图未及卡片区（卡片在 vtree 树中,位于 frame scroll 折叠线下
+      的可能性未排除）——滚轮可达性验证留待下一会话（MCP 无框内滚动
+      柄 + 实例环境高滚动率所致,非方案性阻塞）。
+- [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）[⚠ needs_replan——写隔离未阻断翻转]
+      归因进展（本轮实证）：污染链上半段确认——合并 VM 轨统一状态对象
+      （Plan 419 ensure_child_state 返回 root_id,子件读写全落 App 根堆
+      对象）→ demo 写 `.dark_mode` 直接覆写宿主 App 同名字段 → 渲染器
+      每帧状态→主题同步（renderer sync dark 块）将全局翻向 demo 档；
+      execute_set_theme 落盘 config.dark_theme → 污染跨会话持久（重启
+      仍浅,需设置面板或清配置恢复）。
+      已试并回退：生成器发射期写端改名（`.dark_mode =` →
+      `.demo_dark_mode =`,读端保持读宿主实现跟随主题）——单测过、适配器
+      改名落地,但实机 A/B（008→016→008）仍翻浅：真写入者未明（剩余
+      候选:store 模块 var 链、Init 派发链其他写点、accent 联动）,需
+      VM 写点级追踪（dump App 堆对象写者/地址断点）。随 T-12 回退一并
+      摘除发射变换（vue.rs 还原,单测同撤）。
+      replan 方向（待裁定）：①VM 层写点追踪定位真写入者后精准隔离；
+      ②gallery App 改名自家魔法变量（dark_mode→host_dark_mode,宿主侧
+      让渡, demo 保持原名——反向隔离）；③主题同步面加"仅根件声明期"
+      门控。016 语料默认主题评估：保持 light 默认（其自有分支）,跟随
+      宿主依赖②/③落地。
 - [ ] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）
       (a) routes 单页族（018/019/021/022/023）：VM 内嵌支持 `routes {}`
       首页路由 stub 渲染；(b) back 链 native-ns/stream 族（017）：
@@ -608,6 +618,32 @@ evidence:
   - 环境注记:MCP 端口避开 Windows 排除区 2180-2279(改 2300);实例
     "自杀"实为 TaskStop 孤儿 + 单实例冲突(与 F1 崩溃家族区分)
 next: T-13..T-19 续作;T-16/T-19 仍待用户裁定立项
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-12 replan 循环)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: needs_replan → 已按用户裁定②重交付 (T-12);计划整体仍 executing
+code_commit:
+  auto-lang: fe48a3945 (plan-642-dev)
+    历史:2c96c5e40(T-12 首版) → 267d76904(回退) → fe48a3945(②重交付)
+  auto-os:   无新提交(生成器未动;产物再生成为 008 语料修正映射)
+task_ids: [T-12]
+evidence:
+  - 用户裁定:scroll 方案合理(浏览器同构);卡片应为内容高(fill vs auto)
+  - 008 语料去 items-stretch + scroll 兜底恢复 + 双尺寸回归守卫
+  - 门禁:layout_tests 55 绿(2 红=master 预存);cargo t ui 2101 全跑
+    22 败全落 master 基线
+  - E2E:009/016 实机复验通过;008 headless 全出/实机待滚轮复验
+    (卡片在 vtree 树中;折叠线下假设未证伪;MCP 无框内滚动柄)
+  - 本轮额外发现资产:MCP 端口避开 Windows 排除区 2180-2279;
+    TaskStop 孤儿 auto.exe + 单实例冲突 = 实例"自杀"真因(非 F1);
+    iced Scrollable 内容臂 compression=true(Fill→内容高,009/016 为证)
+next: T-13(写点追踪/反向改名待裁定) → T-18 → T-15 → T-17;
+  T-16/T-19/F1 仍待用户裁定
 ```
 
 

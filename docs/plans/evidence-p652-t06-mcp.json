@@ -1,0 +1,264 @@
+{
+  "auto_bin": "D:\\autostack\\.wt\\lang-652\\auto-lang\\target\\debug\\auto.exe",
+  "bin_exists": true,
+  "ts": "2026-09-18T19:22:00",
+  "standalone": {
+    "port": 10993,
+    "log": "D:\\autostack\\.wt\\lang-652\\auto-lang\\scratch\\p652\\standalone_stdout.log",
+    "bin": "D:\\autostack\\.wt\\lang-652\\auto-lang\\target\\debug\\auto.exe",
+    "mcp_ready": true,
+    "first_state_text": "State:\n  w_local: \"19:22:01\" (str)\n  w_tick: 0 (int)\n",
+    "wait_samples_tail": [
+      {
+        "t": 0.53,
+        "text": "No state available yet — the application may not have rendered"
+      },
+      {
+        "t": 1.14,
+        "text": "State:\n  w_local: \"19:22:01\" (str)\n  w_tick: 0 (int)\n"
+      }
+    ],
+    "series": [
+      {
+        "i": 0,
+        "raw_head": "State:\n  w_local: \"19:22:02\" (str)\n  w_tick: 0 (int)\n",
+        "w_local": "19:22:02",
+        "w_tick": "0"
+      },
+      {
+        "i": 1,
+        "raw_head": "State:\n  w_local: \"19:22:02\" (str)\n  w_tick: 2 (int)\n",
+        "w_local": "19:22:02",
+        "w_tick": "2"
+      },
+      {
+        "i": 2,
+        "raw_head": "State:\n  w_local: \"19:22:03\" (str)\n  w_tick: 0 (int)\n",
+        "w_local": "19:22:03",
+        "w_tick": "0"
+      },
+      {
+        "i": 3,
+        "raw_head": "State:\n  w_local: \"19:22:03\" (str)\n  w_tick: 2 (int)\n",
+        "w_local": "19:22:03",
+        "w_tick": "2"
+      },
+      {
+        "i": 4,
+        "raw_head": "State:\n  w_local: \"19:22:04\" (str)\n  w_tick: 0 (int)\n",
+        "w_local": "19:22:04",
+        "w_tick": "0"
+      }
+    ],
+    "w_local_series": [
+      "19:22:02",
+      "19:22:02",
+      "19:22:03",
+      "19:22:03",
+      "19:22:04"
+    ],
+    "w_tick_series": [
+      "0",
+      "2",
+      "0",
+      "2",
+      "0"
+    ],
+    "clock_running": true,
+    "ok": true,
+    "log_len": 8470,
+    "log_has_first_sync": true,
+    "log_has_mcp": true,
+    "log_tail": " widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n[UI_EVENT] widget=\"App\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports\n[VM-HANDLER] App.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat\n[VM-HANDLER] App.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat\n[UI_EVENT] widget=\"App\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n[UI_EVENT] widget=\"App\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n[UI_EVENT] widget=\"App\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n[UI_EVENT] widget=\"App\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n[UI_EVENT] widget=\"App\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n[UI_EVENT] widget=\"App\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n[UI_EVENT] widget=\"App\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=App event=Tick args=[]\n[VM_EXEC] fn_name=handler_App_Tick state_obj_id=4000003 args=[]\n[VM_HANDLER_OK] widget=App event=Tick\n",
+    "log_markers": [
+      "AutoUI MCP: listening on http://127.0.0.1:10993",
+      "AutoUI MCP: first state sync in view()"
+    ]
+  },
+  "gallery": {
+    "port": 2091,
+    "log": "D:\\autostack\\.wt\\lang-652\\auto-lang\\scratch\\p652\\gallery_stdout.log",
+    "bin": "D:\\autostack\\.wt\\lang-652\\auto-lang\\target\\debug\\auto.exe",
+    "mcp_ready": true,
+    "first_state_text": "State:\n  selected_id: \"002-counter\" (str)\n  w_local: \"--:--:--\" (str)\n  w_tick: 0 (int)\n",
+    "wait_samples_tail": [
+      {
+        "t": 62.54,
+        "err": "URLError:<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"
+      },
+      {
+        "t": 65.18,
+        "err": "URLError:<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"
+      },
+      {
+        "t": 67.83,
+        "err": "URLError:<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"
+      },
+      {
+        "t": 70.45,
+        "err": "URLError:<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"
+      },
+      {
+        "t": 73.08,
+        "err": "URLError:<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"
+      },
+      {
+        "t": 75.73,
+        "err": "URLError:<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"
+      },
+      {
+        "t": 76.84,
+        "text": "No state available yet — the application may not have rendered"
+      },
+      {
+        "t": 77.44,
+        "text": "State:\n  selected_id: \"002-counter\" (str)\n  w_local: \"--:--:--\" (str)\n  w_tick: 0 (int)\n"
+      }
+    ],
+    "fixture_select": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"result\": {\"status\": \"applied\", \"request_id\": 1, \"changed\": [\"selected_id\"], \"trigger\": null}}",
+    "after_select_series": [
+      {
+        "i": 0,
+        "raw_head": "State:\n  selected_id: \"012-clock\" (str)\n  w_local: \"--:--:--\" (str)\n  w_tick: 0 (int)\n",
+        "selected_id": "012-clock",
+        "w_local": "--:--:--",
+        "w_tick": "0"
+      },
+      {
+        "i": 1,
+        "raw_head": "State:\n  selected_id: \"012-clock\" (str)\n  w_local: \"--:--:--\" (str)\n  w_tick: 0 (int)\n",
+        "selected_id": "012-clock",
+        "w_local": "--:--:--",
+        "w_tick": "0"
+      },
+      {
+        "i": 2,
+        "raw_head": "State:\n  selected_id: \"012-clock\" (str)\n  w_local: \"19:23:25\" (str)\n  w_tick: 3 (int)\n",
+        "selected_id": "012-clock",
+        "w_local": "19:23:25",
+        "w_tick": "3"
+      },
+      {
+        "i": 3,
+        "raw_head": "State:\n  selected_id: \"012-clock\" (str)\n  w_local: \"19:23:26\" (str)\n  w_tick: 1 (int)\n",
+        "selected_id": "012-clock",
+        "w_local": "19:23:26",
+        "w_tick": "1"
+      },
+      {
+        "i": 4,
+        "raw_head": "State:\n  selected_id: \"012-clock\" (str)\n  w_local: \"19:23:26\" (str)\n  w_tick: 0 (int)\n",
+        "selected_id": "012-clock",
+        "w_local": "19:23:26",
+        "w_tick": "0"
+      }
+    ],
+    "w_local_series": [
+      "--:--:--",
+      "--:--:--",
+      "19:23:25",
+      "19:23:26",
+      "19:23:26"
+    ],
+    "w_tick_series": [
+      "0",
+      "0",
+      "3",
+      "1",
+      "0"
+    ],
+    "ac6_clock_running": true,
+    "fixture_switch": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"result\": {\"status\": \"applied\", \"request_id\": 2, \"changed\": [\"selected_id\"], \"trigger\": null}}",
+    "after_switch_series": [
+      {
+        "i": 0,
+        "raw_head": "State:\n  selected_id: \"002-counter\" (str)\n  w_local: \"19:23:28\" (str)\n  w_tick: 1 (int)\n",
+        "selected_id": "002-counter",
+        "w_local": "19:23:28",
+        "w_tick": "1"
+      },
+      {
+        "i": 1,
+        "raw_head": "State:\n  selected_id: \"002-counter\" (str)\n  w_local: \"19:23:28\" (str)\n  w_tick: 1 (int)\n",
+        "selected_id": "002-counter",
+        "w_local": "19:23:28",
+        "w_tick": "1"
+      },
+      {
+        "i": 2,
+        "raw_head": "State:\n  selected_id: \"002-counter\" (str)\n  w_local: \"19:23:28\" (str)\n  w_tick: 1 (int)\n",
+        "selected_id": "002-counter",
+        "w_local": "19:23:28",
+        "w_tick": "1"
+      },
+      {
+        "i": 3,
+        "raw_head": "State:\n  selected_id: \"002-counter\" (str)\n  w_local: \"19:23:28\" (str)\n  w_tick: 1 (int)\n",
+        "selected_id": "002-counter",
+        "w_local": "19:23:28",
+        "w_tick": "1"
+      }
+    ],
+    "after_switch_w_local": [
+      "19:23:28",
+      "19:23:28",
+      "19:23:28",
+      "19:23:28"
+    ],
+    "after_switch_w_tick": [
+      "1",
+      "1",
+      "1",
+      "1"
+    ],
+    "tick_growth_after_switch": [],
+    "ac6_stopped_after_switch": true,
+    "ac6_pass": true,
+    "ok": true,
+    "log_len": 96567,
+    "log_has_first_sync": true,
+    "log_tail": "Tick state_obj_id=4000147 args=[]\n[VM_HANDLER_OK] widget=Demo012Clock event=Tick\n[UI_EVENT] widget=\"Demo012Clock\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=Demo012Clock event=Tick args=[]\n[VM_EXEC] fn_name=handler_Demo012Clock_Tick state_obj_id=4000147 args=[]\n[VM_HANDLER_OK] widget=Demo012Clock event=Tick\n[UI_EVENT] widget=\"Demo012Clock\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=Demo012Clock event=Tick args=[]\n[VM_EXEC] fn_name=handler_Demo012Clock_Tick state_obj_id=4000147 args=[]\n[VM_HANDLER_OK] widget=Demo012Clock event=Tick\n[UI_EVENT] widget=\"Demo012Clock\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=Demo012Clock event=Tick args=[]\n[VM_EXEC] fn_name=handler_Demo012Clock_Tick state_obj_id=4000147 args=[]\n[VM_HANDLER_OK] widget=Demo012Clock event=Tick\n[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports\n[VM-HANDLER] App.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat\n[VM-HANDLER] App.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat\n[UI_EVENT] widget=\"Demo012Clock\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=Demo012Clock event=Tick args=[]\n[VM_EXEC] fn_name=handler_Demo012Clock_Tick state_obj_id=4000147 args=[]\n[VM_HANDLER_OK] widget=Demo012Clock event=Tick\n[UI_EVENT] widget=\"Demo012Clock\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=Demo012Clock event=Tick args=[]\n[VM_EXEC] fn_name=handler_Demo012Clock_Tick state_obj_id=4000147 args=[]\n[VM_HANDLER_OK] widget=Demo012Clock event=Tick\n[UI_EVENT] widget=\"Demo012Clock\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=Demo012Clock event=Tick args=[]\n[VM_EXEC] fn_name=handler_Demo012Clock_Tick state_obj_id=4000147 args=[]\n[VM_HANDLER_OK] widget=Demo012Clock event=Tick\n[UI_EVENT] widget=\"Demo012Clock\" event=\"Tick\" input_val=None\n[VM_HANDLER_CALL] widget=Demo012Clock event=Tick args=[]\n[VM_EXEC] fn_name=handler_Demo012Clock_Tick state_obj_id=4000147 args=[]\n[VM_HANDLER_OK] widget=Demo012Clock event=Tick\n[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports\n[VM-HANDLER] App.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat\n[VM-HANDLER] App.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat\n[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler____mcp_heartbeat not in exports\n[VM-HANDLER] App.__mcp_heartbeat failed: handler not found: .__mcp_heartbeat\n[VM-HANDLER] App.__mcp_heartbeat legacy fallback also failed: handler not found: __mcp_heartbeat\n",
+    "log_markers": [
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "error: dependency '' is materialized at D:\\autostack\\auto-os\\ui-gallery\\deps but not declared in pac.at — declare it (`dep \"\" { path: ... }`) or add it to workspace members",
+      "AutoUI MCP: listening on http://127.0.0.1:2091",
+      "AutoUI MCP: first state sync in view()"
+    ]
+  }
+}

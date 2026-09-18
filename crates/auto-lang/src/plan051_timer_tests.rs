@@ -152,7 +152,7 @@ widget Clock {
     fn vue_imports_dedupe_onunmounted_when_timer_and_tick_coexist() {
         let at = r#"
 widget App {
-    msg { LocalTick }
+    msg { LocalTick, Tick }
     model { var n int = 0 }
     timer { Tick (every_ms: 50) }
     view { col { text f"n={.n}" } }

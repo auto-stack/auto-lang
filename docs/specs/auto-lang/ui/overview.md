@@ -48,6 +48,15 @@ needs_bounds/input_ids）+ hot_reload 非 debug 默认 2000ms（`AUTOUI_HOT_RELO
 0/1 门控）+ MCP 捕获按 dirty/近 30s 活跃收紧。架构级 Element 帧间缓存等
 D-1..D-5 延期，设计见 `docs/design/autoui/vm-frame-budget.md`。
 
+**嵌套组件 TimeSource + mounted 过滤订阅（PLAN-652 阶段 1）**：订阅不再
+只扫根 `tick_interval()`——装载期收集 root/child/store 的 `.Tick`+`timer`
+进 `timesources`；装配期 `AuraViewBuilder` 把实例化 child 名写入
+`mounted_types`；renderer 只对「挂载中且 when 通过」的源建
+`widget_event_tick` 订阅。条件分支切走后对应 Tick/timer **停订**（类型级
+D-2；同类型 for 多实例仍共一条，path 级=阶段 2）。详见
+`docs/specs/auto-lang/ui/design/nested-timesource.md` 与设计
+`docs/design/autoui/component-time-and-events.md`。
+
 **012-clock 现代时钟应用重构与传统手表表盘（PLAN-644 落地）**：
 `examples/ui/012-stopwatch` 升级并重命名为 `examples/ui/012-clock`（Clock 现代时钟应用），深度重构为五大完整功能模块（时钟、世界时钟、闹钟、秒表、倒计时），首页呈现 SVG 矢量传统机械手表 ⌚ 指针表盘与动态角度换算，桌面小组件 `view mini` 升级为迷你手表表盘 + 数字时钟，全面适配 AutoUI Design Tokens 并消除 P642-D6 遗留横幅按钮债务。
 
@@ -69,6 +78,22 @@ codegen 降级归一——分表非缺口；imagesurface 整 kind not-yet）与
 重复）；翻转数据行 =
 `docs/plans/reports/p026-native-flip-data-row.md`；度量 =
 `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
+
+**图像 DrawOp 通道（PLAN-028，provisional）**：`DrawOp::Image{rect, src,
+fit}`（tag 6 追加式，`ImageFit` v1 = Stretch，`PROTOCOL_VERSION` 仍 1）
+——src 引用 + 宿主侧解析（零位图字节过线、child 免解码）：词汇表 =
+本地文件 / `builtin:` / `data:` / `http(s)`（3s 超时）/ `thumbnail://{wid}`
+虚拟引用（snapshot SWR 每帧直查，不进永久句柄缓存）；宿主
+`broker_surface` 解析面 = 进程级 Handle 缓存（key=src 含负缓存）+
+`Frame::draw_image` 首用 + http miss 占位先行/后台解码/下帧翻真（零新增
+触发器）+ 未解析占位 + `[drawlist-image]` 观测去重（I3）；解释态
+`layout_image`（src 绑定 read_state 代入）与 native `View::Image` 臂同刻度
+真图升级（rect 推导零变化；icon lucide 降级形态随臂入线——宿主字形解析
+not-yet，P026-D1 字形半句维持）；TS decode tag 6 必达 + 占位渲染 +
+web 真位图 not-yet。权威正文 =
+`docs/design/autoui/desktop-protocol-v1.md` §1.9（本节仅指针）；测试面 =
+`t028_*` 宿主解析单测族 + `p028_image_arm`（AUTO_DESKTOP_E2E）+
+`IMAGE_FRAME_HEX` 双侧 golden。
 
 ## 现状（2026-09-17）
 

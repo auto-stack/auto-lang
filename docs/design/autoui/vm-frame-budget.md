@@ -223,6 +223,10 @@ DevTools wrap_debug / PointerPressArea / toast Stack 包装层需一并考虑身
 
 ### 5.2 D-2 — 挂载生命周期退订（P530-D2）
 
+> **2026-09-18 承接**：D-2 与「子组件 `.Tick` 不订阅」同族，系统设计见
+> [component-time-and-events](component-time-and-events.md)；阶段 1 实现计划
+> **PLAN-652**（TimeSource + mounted 类型过滤）。下文机制草案作历史输入。
+
 **问题**：LineChart/DonutChart 的 `AnimLnTick`（33ms）在路由离开后仍订阅；
 `when` 假时 650 后可不订，但 **when 真且组件已卸载** 时仍空转。
 
