@@ -34,6 +34,17 @@ pub enum ShellEvent {
     RebuildFaces,
 }
 
+/// 事件的 handler 名（child 侧消费——call_handler 单点映射）。
+pub fn shell_event_name(e: &ShellEvent) -> &'static str {
+    match e {
+        ShellEvent::RebuildMru => "RebuildMru",
+        ShellEvent::RebuildNotes => "RebuildNotes",
+        ShellEvent::RunningSync => "RunningSync",
+        ShellEvent::ApplyFilter => "ApplyFilter",
+        ShellEvent::RebuildFaces => "RebuildFaces",
+    }
+}
+
 /// 单窗投影条目（`__wm_wins`/`__wm_mru` 共用形态）。native 槽位条目
 /// （Plan 486 v1.3）以 `native == true` 表达：workspace/app/pager/
 /// pinned/dup_app 无义（lowering 按分支发出与现状逐字段一致的 Obj）。

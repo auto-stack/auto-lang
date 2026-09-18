@@ -3012,6 +3012,31 @@ fn spawn_outproc_child(
     cmd.spawn()
 }
 
+/// PLAN-030 T-03：壳 outproc spawner——re-exec auto 本体
+/// （`run --autodesk-shell --autodesk-broker=<pipe>`）+ 几何/pack env
+/// 注入。`AUTO_SHELL_PACK` 透传：宿主解析序命中 pack 目录时钉住（child
+/// 与 in-proc 轨同源；缺席 = child 侧内嵌 pin 快照兜底）。
+/// `AUTO_SHELL_GEOM=<W>x<H>x<BAND>`：双表面尺寸（background 全屏 +
+/// chrome 任务栏带——D1 定案）。
+fn spawn_shell_outproc(
+    geometry: &crate::ui::desktop_protocol::shell_client::ShellGeometry,
+    broker_pipe: &str,
+) -> std::io::Result<std::process::Child> {
+    let exe = Self::outproc_auto_binary()?;
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.args(["run", "--autodesk-shell", &format!("--autodesk-broker={broker_pipe}")]);
+    cmd.env("AUTO_SHELL_GEOM", geometry.encode());
+    if let Some(dir) = crate::ui::shell::resolve_shell_pack_dir() {
+        cmd.env("AUTO_SHELL_PACK", dir);
+    }
+    for (key, _) in std::env::vars() {
+        if key.starts_with("NEXTEST_") {
+            cmd.env_remove(&key);
+        }
+    }
+    cmd.spawn()
+}
+
 /// Plan 463 T4：LaunchApp 执行体（T1 报告 §5）—— 注册表解析 →
     /// `build_dynamic_component` 编译装载 → `allocate_app` → 新虚拟窗
     /// （free 模式级联初位；非 free 随即整场重排）→ 聚焦。失败返回

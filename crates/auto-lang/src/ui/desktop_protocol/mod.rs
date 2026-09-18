@@ -59,6 +59,10 @@ pub mod remote;
 /// 自带 `#![cfg(windows)]`，非 Windows 平台为空模块）。
 #[cfg(feature = "ui-iced")]
 pub mod sendinput;
+/// PLAN-030 T-03：壳 outproc 客户端装配（--autodesk-shell——双表面
+/// 协商 + 投影下行消费 + DesktopBus 上行 + queue 臂内联帧）。
+#[cfg(feature = "ui-iced")]
+pub mod shell_client;
 #[cfg(feature = "ui-iced")]
 pub mod shm;
 #[cfg(feature = "ui-iced")]
