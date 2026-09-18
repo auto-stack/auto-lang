@@ -589,6 +589,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 _ => None,
             };
             if let (Some(payload), Some(msg)) = (payload, self.on_input.clone()) {
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    eprintln!("[P22-KEY] key={} vt={:?}", self.key, payload);
+                }
                 crate::ui::terminal::terminal_push_input(core, &payload);
                 shell.publish(msg);
             }
@@ -603,9 +606,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 // 首站——组件收到 press 即留痕(bounds/落点/命中带判定),
                 // 与 [MA_BUILD]/[UI_EVENT] 对读定位断点层级。
                 if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                    eprintln!("[TERM_PRESS] pos={:?} bounds={:?}",
-                        cursor.position().map(|p| (p.x, p.y)),
-                        (bounds.x, bounds.y, bounds.width, bounds.height));
+                    eprintln!("[TERM_PRESS] cursor={:?} pos={:?} bounds={:?} key={}",
+                        cursor, cursor.position().map(|p| (p.x, p.y)),
+                        (bounds.x, bounds.y, bounds.width, bounds.height), self.key);
                 }
                 let Some(pos) = cursor.position_over(bounds) else {
                     // 点在组件外:失焦(键入归他处,标准终端焦点语义)。
@@ -615,6 +618,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 };
                 state.focused = true;
                 crate::ui::terminal::terminal_claim_focus(core);
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    eprintln!("[P22-FOCUS] key={} shift={:?}", self.key, (bounds.y, bounds.x, bounds.width, bounds.height));
+                }
                 // IME 英文起步:pending 置位(重试制),update 顶部逐 tick
                 // 消费直到上下文可查且强制落地(两拍竞态见 request_ime 块注记)。
                 state.ime_force_pending = IME_FORCE_TICKS;
@@ -741,6 +747,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             let view_y = viewport.y - bounds.y;
             let history = self.history();
             if let Some(delta) = Self::observe_view_scroll(self.core, view_y, history) {
+                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                    eprintln!("[P22-WHEEL] key={} view_y={:.0} delta={}", self.key, view_y, delta);
+                }
                 crate::ui::terminal::terminal_queue_scroll_delta(self.core, delta);
             }
             self.window_shift()

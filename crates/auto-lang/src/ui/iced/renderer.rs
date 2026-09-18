@@ -24722,6 +24722,9 @@ where
     let seed = startup_window_size();
     crate::ui::style::theme::set_window_width(seed.width);
     crate::ui::style::theme::set_window_height(seed.height);
+    if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+        eprintln!("[P22-SEED] {}x{} thread_now={:?}", seed.width, seed.height, std::thread::current().name());
+    }
 
     iced::application(
         DevToolsWrapper::<C>::default,
