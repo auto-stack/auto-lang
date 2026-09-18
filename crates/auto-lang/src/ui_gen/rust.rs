@@ -3084,6 +3084,62 @@ impl RustGenerator {
                         .unwrap_or_default()
                 };
 
+                // PLAN-027 T-03: 宿主合成件槽位 —— window_thumbnail /
+                // workspace_preview codegen 直发**既有** View 变体（定案
+                // 记录 D4/修正 B：变体已在册 view.rs:878/:890，iced 消费
+                // renderer.rs:5146/:5230 与解释轨同一 into_iced 面——双形态
+                // 快照渲染臂/miss request_capture/fallback 语义同源）。
+                // 解释侧构造同构 = aura_view_builder convert_window_
+                // thumbnail :6709 / convert_workspace_preview :6725：
+                // key prop（wid / ws）字面量或动态表达式；fallback 档
+                // 缺省 app-window；style 直传（None = 缺省）。
+                if tag == "window_thumbnail" || tag == "workspace_preview" {
+                    let key_prop = if tag == "window_thumbnail" { "wid" } else { "ws" };
+                    let key_expr = match props.get(key_prop) {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                            format!("\"{s}\".to_string()")
+                        }
+                        Some(AuraPropValue::Expr(e)) => {
+                            let e = self.ast_expr_to_rust(e);
+                            if e.starts_with("self.") {
+                                format!("{e}.clone()")
+                            } else {
+                                e
+                            }
+                        }
+                        _ => "String::new()".to_string(),
+                    };
+                    let fb_prop = if tag == "window_thumbnail" { "fallback_icon" } else { "fallback" };
+                    let fallback_expr = match props.get(fb_prop) {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                            format!("\"{s}\".to_string()")
+                        }
+                        Some(AuraPropValue::Expr(e)) => {
+                            let e = self.ast_expr_to_rust(e);
+                            if e.starts_with("self.") {
+                                format!("{e}.clone()")
+                            } else {
+                                e
+                            }
+                        }
+                        _ => "\"app-window\".to_string()".to_string(),
+                    };
+                    let user_style = user_style_str(props);
+                    let style_expr = if user_style.is_empty() {
+                        "None".to_string()
+                    } else {
+                        format!("auto_lang::ui::style::Style::parse(\"{}\").ok()", user_style)
+                    };
+                    if tag == "window_thumbnail" {
+                        return format!(
+                            "View::WindowThumbnail {{ wid: {key_expr}, fallback_icon: {fallback_expr}, style: {style_expr} }}"
+                        );
+                    }
+                    return format!(
+                        "View::WorkspacePreview {{ ws: {key_expr}, fallback_icon: {fallback_expr}, style: {style_expr} }}"
+                    );
+                }
+
                 // icon → View::image("lucide:{name}")（VM 同型：PLAN-018
                 // 前缀 iconfile:/hicon:/lucide: 透传，裸名补 lucide:）；
                 // 尺寸契约 = 显式 w-/h- 类 > size prop（精确 px，任意值
@@ -7970,6 +8026,63 @@ widget Taskbar {
         assert!(
             !panel_zone.contains(">anchor<"),
             "anchor text must not leak into panel:\n{}", code
+        );
+    }
+
+    /// PLAN-027 T-03: 宿主合成件槽位 codegen —— window_thumbnail（动态
+    /// wid 绑定，switcher 行循环同构）/ workspace_preview（静态 ws，
+    /// shell pager 面板同构）直发既有 View 变体（D4 修正 B）；fallback
+    /// 档缺省 app-window；style 直传。
+    #[test]
+    fn test_host_synth_slot_codegen() {
+        let src = r#"
+widget Probe {
+    model {
+        var rows = []
+        var __wp_current str = ""
+    }
+    view {
+        col {
+            for r in .rows {
+                window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border rounded" }
+            }
+            workspace_preview (ws: "2") { style: "w-44 h-16 rounded-lg" }
+            window_thumbnail (wid: "7") { }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("View::WindowThumbnail { wid: r[\"wid\"]"),
+            "dynamic wid binding (loop var Value index-read convention):\n{}", code
+        );
+        assert!(
+            code.contains("fallback_icon: r[\"icon\"]"),
+            "dynamic fallback_icon survives (no silent default):\n{}", code
+        );
+        assert!(
+            code.contains("style: auto_lang::ui::style::Style::parse(\"w-24 h-14 border rounded\").ok()"),
+            "style passthrough:\n{}", code
+        );
+        assert!(
+            code.contains("View::WorkspacePreview { ws: \"2\".to_string(), fallback_icon: \"app-window\".to_string()"),
+            "static ws + default fallback:\n{}", code
+        );
+        assert!(
+            code.contains("View::WindowThumbnail { wid: \"7\".to_string(), fallback_icon: \"app-window\".to_string(), style: None }"),
+            "literal wid + bare tag defaults:\n{}", code
         );
     }
 
