@@ -1,0 +1,183 @@
+// reference/with_charts.at — DashboardOverview blueprint, "with_charts" variant
+// (PLAN-643 promotion). default surface + charts region materialized with the
+// official chart package (schema package_origin vocabulary face — the tags are
+// NOT WidgetRegistry builtins, PLAN-484 stands). Consumer contract: the app's
+// front/components dir carries the official package (`from "components"`, 024
+// convention); chart data binds to metrics-shaped model fields the consumer's
+// `dataSource.metrics` populates — the bp never fakes chart markup.
+
+widget DashboardOverview {
+    use { package: official from "components" }
+
+    msg {
+        PeriodChanged,
+        RefreshClicked
+    }
+
+    model {
+        var period str = "30d" // prop
+        var total_users int = 0
+        var active_today int = 0
+        var revenue int = 0
+        // metrics-shaped chart feeds (consumer wires dataSource.metrics;
+        // seeds are the reference sample, not fetched data)
+        var monthly List = [
+            { m: "Jan", visitors: 820, users: 540, guests: 280 },
+            { m: "Feb", visitors: 932, users: 610, guests: 322 },
+            { m: "Mar", visitors: 1010, users: 660, guests: 350 },
+            { m: "Apr", visitors: 890, users: 590, guests: 300 },
+            { m: "May", visitors: 1120, users: 730, guests: 390 },
+            { m: "Jun", visitors: 1240, users: 810, guests: 430 }
+        ]
+        var channels List = [
+            { source: "organic", visits: 4215 },
+            { source: "direct", visits: 2830 },
+            { source: "referral", visits: 1398 }
+        ]
+        var loading bool = false
+        var error str = ""
+    }
+
+    view {
+        col {
+            header {
+                row {
+                    text "Overview" { style: "text-lg font-semibold" }
+                    select {
+                        value: .period
+                        onchange: .PeriodChanged
+                        option "7d" {}
+                        option "30d" {}
+                        option "90d" {}
+                        style: "w-24"
+                    }
+                    button "Refresh" {
+                        onclick: .RefreshClicked
+                        disabled: .loading
+                        variant: "outline"
+                        style: "px-3 py-1 border rounded-lg text-sm"
+                    }
+                    style: "w-full items-center gap-2"
+                }
+                style: "w-full px-4 py-3 border-b"
+            }
+
+            col {
+                // ── EDIT: stat_cards (skeleton until metrics resolve) ──
+                if .loading {
+                    row {
+                        skeleton { lines: 1, style: "w-48 h-24" }
+                        skeleton { lines: 1, style: "w-48 h-24" }
+                        skeleton { lines: 1, style: "w-48 h-24" }
+                        style: "gap-4"
+                    }
+                } else {
+                    row {
+                        card {
+                            col {
+                                text "Total users" { style: "text-xs text-gray-500" }
+                                text f"${.total_users}" { style: "text-2xl font-semibold" }
+                                badge "+12%" {
+                                    variant: "outline"
+                                }
+                                style: "gap-1"
+                            }
+                            style: "w-48 p-4 gap-1"
+                        }
+                        card {
+                            col {
+                                text "Active today" { style: "text-xs text-gray-500" }
+                                text f"${.active_today}" { style: "text-2xl font-semibold" }
+                                style: "gap-1"
+                            }
+                            style: "w-48 p-4 gap-1"
+                        }
+                        card {
+                            col {
+                                text "Revenue" { style: "text-xs text-gray-500" }
+                                text f"${.revenue}" { style: "text-2xl font-semibold" }
+                                style: "gap-1"
+                            }
+                            style: "w-48 p-4 gap-1"
+                        }
+                        style: "gap-4"
+                    }
+                }
+
+                // ── EDIT: charts (materialized: official chart components on
+                //    the package_origin vocabulary face; data binds to
+                //    metrics-shaped feeds, never fake markup) ──
+                card {
+                    col {
+                        text "Traffic" { style: "text-sm font-medium" }
+                        if .loading {
+                            skeleton { lines: 4, style: "w-full h-40" }
+                        } else {
+                            line-chart {
+                                data: .monthly
+                                index: "m"
+                                fields: ["visitors", "users", "guests"]
+                                labels: ["Visitors", "Users", "Guests"]
+                            }
+                            donut-chart {
+                                data: .channels
+                                index: "source"
+                                field: "visits"
+                            }
+                        }
+                        style: "gap-2"
+                    }
+                    style: "w-full p-4 gap-2"
+                }
+
+                // ── EDIT: table_region (recent activity) ──
+                card {
+                    col {
+                        text "Recent activity" { style: "text-sm font-medium" }
+                        table {
+                            row {
+                                text "User" { style: "text-xs text-gray-500" }
+                                text "Action" { style: "text-xs text-gray-500" }
+                                text "When" { style: "text-xs text-gray-500" }
+                            }
+                            row {
+                                text "—" { style: "text-sm" }
+                                text "No activity in this period" {
+                                    style: "text-sm text-gray-500"
+                                }
+                                text "—" { style: "text-sm" }
+                            }
+                            style: "w-full gap-1"
+                        }
+                        style: "gap-2"
+                    }
+                    style: "w-full p-4 gap-2"
+                }
+
+                if .error != "" {
+                    text f"error: ${.error}" { style: "text-sm text-red-600" }
+                }
+
+                style: "w-full gap-4 p-4"
+            }
+
+            style: "w-full"
+        }
+    }
+
+    on {
+        .PeriodChanged(p) -> {
+            .period = p
+            .loading = true
+            // consumer wires dataSource.metrics(period) here
+            .loading = false
+        }
+        .RefreshClicked -> {
+            .loading = true
+            .error = ""
+            // consumer wires dataSource.metrics(period) here;
+            // on failure -> set .error, .loading = false
+            .loading = false
+        }
+    }
+}

@@ -129,6 +129,39 @@ fn builtin_tags_cannot_be_shadowed() {
     }
 }
 
+/// PLAN-643:chart 四裸名 tag(package_origin 双态归属)不再作为 builtin
+/// 压制源——同名本地组件合法接管(P642-D1 修复面);真内置(Button)压制
+/// 语义对照不变(Plan 408/435 通用规则不动)。
+#[test]
+fn package_origin_tags_do_not_suppress_local_components() {
+    let mut reg = ComponentRegistry::new();
+    let rejected = reg.register_local(&[
+        minimal_widget("LineChart"),
+        minimal_widget("BarChart"),
+        minimal_widget("AreaChart"),
+        minimal_widget("DonutChart"),
+        minimal_widget("Button"), // 对照:真内置仍压制
+    ]);
+    assert_eq!(
+        rejected,
+        vec!["Button".to_string()],
+        "chart 四组件应放行,仅真 builtin 对照被拒: {rejected:?}"
+    );
+    for tag in ["line-chart", "bar-chart", "area-chart", "donut-chart"] {
+        match reg.resolve(tag) {
+            ComponentResolution::Component {
+                source: ComponentSource::Local,
+                ..
+            } => {}
+            other => panic!("`{tag}` 应解析为本地组件,得到 {other:?}"),
+        }
+    }
+    assert!(
+        matches!(reg.resolve("button"), ComponentResolution::Builtin { .. }),
+        "对照面:button 仍归内置"
+    );
+}
+
 #[test]
 fn official_package_bootstrap_via_unified_mechanism() {
     // 自举验收:官方包(gallery components)通过与第三方完全相同的

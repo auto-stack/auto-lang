@@ -2422,21 +2422,21 @@ element WrapBlock {
 element area-chart {
     tag: "area-chart"
     category: "unknown"
-    tier: "unclassified"
+    tier: "package_origin"
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "Official chart component (AreaChart) provided by the official components package; schema registers name-only contract (palette/lsp vocabulary face), not a builtin suppression source (PLAN-643 tag dual-ownership)"
 }
 
 element bar-chart {
     tag: "bar-chart"
     category: "unknown"
-    tier: "unclassified"
+    tier: "package_origin"
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "Official chart component (BarChart) provided by the official components package; schema registers name-only contract (palette/lsp vocabulary face), not a builtin suppression source (PLAN-643 tag dual-ownership)"
 }
 
 element blurAttrHost {
@@ -2543,11 +2543,11 @@ element details {
 element donut-chart {
     tag: "donut-chart"
     category: "unknown"
-    tier: "unclassified"
+    tier: "package_origin"
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "Official chart component (DonutChart) provided by the official components package; schema registers name-only contract (palette/lsp vocabulary face), not a builtin suppression source (PLAN-643 tag dual-ownership)"
 }
 
 element dyn {
@@ -2721,11 +2721,11 @@ element hostPaste {
 element line-chart {
     tag: "line-chart"
     category: "unknown"
-    tier: "unclassified"
+    tier: "package_origin"
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "Official chart component (LineChart) provided by the official components package; schema registers name-only contract (palette/lsp vocabulary face), not a builtin suppression source (PLAN-643 tag dual-ownership)"
 }
 
 element math_block {

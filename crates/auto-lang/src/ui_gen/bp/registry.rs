@@ -127,15 +127,25 @@ impl BlueprintRegistry {
     }
 
     /// Cross-check every package against the widget registry: each `palette`
-    /// entry must exist as an AURA widget tag (exact or prefix-grouped, as in
-    /// Plan 337). Returns the list of violations (empty = clean).
+    /// entry must exist in the legal set — AURA widget tags (exact or
+    /// prefix-grouped, as in Plan 337) ∪ schema `package_origin` tags
+    /// (PLAN-643: official 组件包词汇面,首批 chart 四 tag;484 裁定下 chart
+    /// 只以包形态存在,palette 经 schema 分类认识它,不注册回 WidgetRegistry).
+    /// Returns the list of violations (empty = clean).
     pub fn palette_drift(&self, widgets: &WidgetRegistry) -> Vec<String> {
-        let tags: std::collections::HashSet<&str> =
-            widgets.all_widgets().keys().map(|s| s.as_str()).collect();
+        let mut tags: std::collections::HashSet<String> =
+            widgets.all_widgets().keys().map(|s| s.to_string()).collect();
+        if let Some(schema) = crate::aura::default_schema_cached() {
+            for (tag, meta) in schema.meta.iter() {
+                if meta.tier == crate::aura::schema::ElementTier::PackageOrigin {
+                    tags.insert(tag.to_string());
+                }
+            }
+        }
         let mut drift = Vec::new();
         for pkg in &self.packages {
             for w in &pkg.spec.palette {
-                let known = tags.contains(w.as_str())
+                let known = tags.contains(w)
                     || tags.iter().any(|t| t.starts_with(&format!("{w}-")));
                 if !known {
                     drift.push(format!("{}: palette widget '{}' not in AURA registry", pkg.key(), w));
@@ -262,6 +272,59 @@ mod scan_tests {
         let widgets = WidgetRegistry::with_defaults();
         let drift = reg.palette_drift(&widgets);
         assert!(drift.is_empty(), "palette drift: {drift:?}");
+    }
+
+    /// PLAN-643 AC-02 正断言:chart 四 tag(package_origin 词汇面)进 palette
+    /// 零漂移;负断言:词表外未知名(pie-chart)与未移交名(data-table)仍报漂移。
+    #[test]
+    fn palette_accepts_package_origin_tags_but_rejects_unknown() {
+        let mut reg = BlueprintRegistry::with_defaults();
+        let widgets = WidgetRegistry::with_defaults();
+        // 合成包直接注入(测试构造,不走磁盘扫描)。
+        let pkg_dir = std::path::PathBuf::from("/synthetic/chart-consumer");
+        let spec = BlueprintSpec {
+            kind: "dashboard".into(),
+            name: "chart-consumer".into(),
+            palette: vec![
+                "col".into(),
+                "line-chart".into(),
+                "bar-chart".into(),
+                "area-chart".into(),
+                "donut-chart".into(),
+            ],
+            extension_points: vec![],
+            variants: vec![],
+            ..BlueprintSpec::default()
+        };
+        reg.packages.push(BlueprintPackage {
+            spec,
+            dir: pkg_dir,
+            references: Default::default(),
+            gotchas: None,
+        });
+        let drift = reg.palette_drift(&widgets);
+        assert!(drift.is_empty(), "chart package-origin tags must pass: {drift:?}");
+
+        let mut reg2 = BlueprintRegistry::with_defaults();
+        reg2.packages.push(BlueprintPackage {
+            spec: BlueprintSpec {
+                kind: "dashboard".into(),
+                name: "unknown-consumer".into(),
+                // pie-chart:词表外未知名(非 WidgetRegistry tag、非
+                // package_origin);data-table 实为 WidgetRegistry 内
+                // DataTable 的 alias,合法通过,不作负样本。
+                palette: vec!["pie-chart".into()],
+                extension_points: vec![],
+                variants: vec![],
+                ..BlueprintSpec::default()
+            },
+            dir: std::path::PathBuf::from("/synthetic/unknown-consumer"),
+            references: Default::default(),
+            gotchas: None,
+        });
+        let drift2 = reg2.palette_drift(&widgets);
+        assert_eq!(drift2.len(), 1, "unknown tags must still drift: {drift2:?}");
+        assert!(drift2.iter().any(|d| d.contains("pie-chart")));
     }
 
 }

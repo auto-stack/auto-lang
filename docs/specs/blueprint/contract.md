@@ -44,6 +44,6 @@ reka-ui（shadcn: off 项目如 jade-garden front 宿主化 ui/menubar+ui/button
 ## 验证面
 
 - 包完整性：registry 扫描（spec name ↔ 目录名一致、声明 variant 必有 reference 文件）。
-- palette 无漂移：palette 声明的每个 widget 必须在 AURA registry（`BlueprintRegistry::palette_drift`）。
+- palette 无漂移：palette 声明的每个 widget 必须在**合法集**内（`BlueprintRegistry::palette_drift`）——合法集 = **AURA registry（WidgetRegistry tags，含 alias）∪ schema `package_origin` tags**（official 组件包词汇面，PLAN-643：chart 四 tag `area-chart`/`bar-chart`/`line-chart`/`donut-chart` 首批；484 裁定下 chart 只以包形态存在，palette 面经 schema 分类认识它，不注册回 WidgetRegistry）。词表外未知名仍拒绝（负断言：`pie-chart` 等既非 registry tag 亦非 package_origin 者照常报漂移）。
 - L1 bind：GENERATED 头注 + slot/action id 与 spec 声明一致性（缺位即构建错）。
 - 双端：结构快照 + DOM 断言（vue 轨）与 vm-smoke（VM 轨）同绿。

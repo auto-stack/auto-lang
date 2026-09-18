@@ -211,6 +211,9 @@ fn ui_element_completions() -> Vec<CompletionItem> {
                 ElementTier::NativeHtml => 1,
                 ElementTier::WebComponent => 2,
                 ElementTier::Unclassified => 3,
+                // PLAN-643:official 组件包供给名——词汇面照常补全,排序与
+                // unclassified 同档(实现不在引擎,补全提示不带内置语义)。
+                ElementTier::PackageOrigin => 3,
             };
             let cat = match def.category {
                 ElementCategory::Layout => "layout",

@@ -1,7 +1,7 @@
 +++
 kind = "navigation"
 name = "filetree"
-palette = ["icon", "text"]
+palette = []
 extension_points = ["nodes", "default_expanded", "selection", "toggle"]
 variants = []
 
@@ -15,6 +15,14 @@ nodes = "[]Node"
 文件系统树展示——TreeView 语义的 fs 预设（Ant Design Tree directory 形态）：
 fs 形态数据（id=路径 node schema）自动映射目录/文件图标（folder/folder-open
 按展开态；file 按扩展名），内部持有展开/选中态，零配置开箱即用。
+
+> **palette = [] 注记（PLAN-643 merge 对账修正）**：原声明 `["icon", "text"]`
+> 中 `icon` 虽为 schema `builtin_widget`（VM 原生渲染），但不在 vue 轨
+> `WidgetRegistry` 注册表内，违反本契约"palette 必须在 AURA registry"规则
+> （`palette_drift` 实红，被 070 实勘的 CARGO_MANIFEST_DIR 扫描根限制掩盖）。
+> 组合形态暂缓期间包不组合任何 registry 可验 widget，palette 置空；
+> `icon` 词汇面缺口（schema builtin_widget ∉ vue registry）挂
+> KNOWN-DEBT 由 vocabulary-face 归属计划统一裁定。
 
 # What this blueprint absorbs
 
