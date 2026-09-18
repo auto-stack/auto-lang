@@ -4884,6 +4884,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 position: _,
                 on_select: _,
                 style: _,
+                // PLAN-641 T-03：enclosed 连通形态实现随行（当前编译适配占位）。
+                variant: _,
             } => {
                 use iced::widget::container;
 
