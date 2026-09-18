@@ -26,6 +26,7 @@
 | [desktop-shell-a2r](desktop-shell-a2r.md) | — | 桌面 Shell a2r 编译化形态（缺口普查 + A 链入宿主/B outproc 形态裁定输入 + 迁移路径草案 S1–S3） | 设计先行（待裁定拆 plan，§10） |
 | [vm-frame-budget](vm-frame-budget.md) | — | VM 帧预算与空转渲染：渲染模型分层（条件/for/可见性）、消息泵×Element 缓存双因、easy wins 边界、D-1..D-5 复杂机制设计选项（帧间缓存/挂载退订/列表虚拟化/desktop 层跳帧） | 650（easy wins）；D-1 起建议另拆 plan |
 | [component-time-and-events](component-time-and-events.md) | — | 嵌套组件时间源与交互契约：TimeSource 收集/挂载过滤订阅/多层 props·msg·store 路径；D-2 类型级退订；gallery 内嵌 Tick 缺口 | 652（阶段 1 ✅）；654（阶段 2 path + 阶段 3 Clock） |
+| [universal-scroll-architecture](universal-scroll-architecture.md) | — | 通用滚动架构（替代原 universal-scrollbar 设想）：scroll-pane primitive + ScrollContent/ScrollState/Intent/Controller/Anchor 协议；普通布局/虚拟内容/自管 buffer 三类宿主同语义；Phase A–G 落地路径与验收 | 设计先行（draft）；Phase A+B+C 立项 PLAN-656；Phase E（terminal 迁移）为后续消费端 |
 
 > \* 原 `25-a2ui-composer-analysis.md`。注：该文档已归位本目录为 `desktop-shell.md`（Design 25，曾用名 AutoShell），
 > 届时 25 号一并封存。
