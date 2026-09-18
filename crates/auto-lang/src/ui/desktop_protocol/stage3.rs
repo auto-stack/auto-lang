@@ -408,6 +408,92 @@ mod tests {
         }
     }
 
+    /// PLAN-029 T-09：shell 面语料——popover（锚按钮开合）/window_
+    /// thumbnail/workspace_preview/mouse-area/icon（lucide: src）五件套
+    ///（p029_shell_face_arm 载体；命中闭环 = 菜单开 → 面板项 → 关）。
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum ShellFaceMsg {
+        ToggleMenu,
+        MenuAction,
+        Dismiss,
+        AreaClick,
+    }
+
+    #[derive(Debug, Default)]
+    pub struct P029ShellFace {
+        pub open: bool,
+        pub log: String,
+    }
+
+    impl crate::ui::Component for P029ShellFace {
+        type Msg = ShellFaceMsg;
+
+        fn on(&mut self, msg: Self::Msg) {
+            match msg {
+                ShellFaceMsg::ToggleMenu => self.open = !self.open,
+                ShellFaceMsg::MenuAction => self.log = "action".into(),
+                ShellFaceMsg::Dismiss => {
+                    self.open = false;
+                    self.log = "dismissed".into();
+                }
+                ShellFaceMsg::AreaClick => self.log = "area".into(),
+            }
+        }
+
+        fn view(&self) -> crate::ui::View<Self::Msg> {
+            use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+            use crate::ui::View;
+            View::col()
+                .style("p-2 gap-2")
+                .child(View::Popover {
+                    anchor: PopoverAnchor::Widget(Box::new(
+                        View::button("menu").on_click(|_| ShellFaceMsg::ToggleMenu).build(),
+                    )),
+                    content: Box::new(
+                        View::col()
+                            .child(View::text("menu-item"))
+                            .child(
+                                View::button("act")
+                                    .on_click(|_| ShellFaceMsg::MenuAction)
+                                    .build(),
+                            )
+                            .build(),
+                    ),
+                    placement: PopoverPlacement::BottomStart,
+                    open: self.open,
+                    on_dismiss: Some(ShellFaceMsg::Dismiss),
+                })
+                .child(View::WindowThumbnail {
+                    wid: "42842".into(),
+                    fallback_icon: "app-window".into(),
+                    style: None,
+                })
+                .child(View::WorkspacePreview {
+                    ws: "0".into(),
+                    fallback_icon: "app-window".into(),
+                    style: None,
+                })
+                .child(View::image_styled("lucide:panel-top", "w-4 h-4"))
+                .child(View::MouseArea {
+                    content: Box::new(View::text("hit-area")),
+                    on_enter: None,
+                    on_exit: None,
+                    on_double_click: None,
+                    on_click: Some(ShellFaceMsg::AreaClick),
+                    on_context_menu: None,
+                    on_release: None,
+                    on_move: None,
+                    logical_extent: Some((120.0, 24.0)),
+                    style: None,
+                })
+                .child(View::text_styled(
+                    format!("log:{}", self.log),
+                    "text-sm",
+                ))
+                .build()
+        }
+    }
+
     /// T3 子进程体：三态裁决的 child 侧（queue = 真协议泵；independent =
     /// 真 iced 隐藏窗 + 截图泵）。直接跑套件（无 env）时跳过。
     #[test]
@@ -423,6 +509,12 @@ mod tests {
         // 生成侧专属），故 native 档键入语料走 typed 形态。
         if mode == "native" && app == "p029-typed-inputs" {
             run_native_t3_child(&broker_pipe, &app, P029TypedInputs::default());
+            return;
+        }
+        // PLAN-029 T-09：shell 面语料（popover/thumbnail/preview/mousearea/
+        // lucide icon 五件套——p029_shell_face_arm 载体）。
+        if mode == "native" && app == "p029-shell-face" {
+            run_native_t3_child(&broker_pipe, &app, P029ShellFace::default());
             return;
         }
         let src = example_source(&app);
@@ -1796,6 +1888,220 @@ mod tests {
         }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// PLAN-029 T-09：shell 面渲染 + 命中闭环 e2e——真 outproc native 子
+    /// 进程（p029-shell-face 五件套语料）经 wire 合成帧断言：thumbnail://
+    /// 与 lucide: 的 Image op 落 wire（宿主解析侧 T-07 单测在册）+
+    /// popover 命中闭环（锚开 → 面板项派发 → 外点 on_dismiss）+
+    /// mousearea 命中。留痕 `AUTO_029_ASSETS=1` → assets/029/。
+    #[test]
+    fn p029_shell_face_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
+        use crate::ui::session::{DesktopSession, LaunchSpec, ProcessModel};
+
+        let broker_pipe = format!("autodesk-broker-029f-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            (name == "p029-shell-face").then(|| LaunchSpec {
+                code: r#"widget t { view { text "x" } }"#.to_string(),
+                source_path: None,
+                title: Some("P029ShellFace".into()),
+                name: Some("p029-shell-face".into()),
+                fit: false,
+                daemon: None,
+                back_root: None,
+                exe: None,
+                opens: Vec::new(),
+                render_decl: Some("queue".into()),
+            })
+        }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let broker_for_spawn = broker_pipe.clone();
+        session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
+            Ok(spawn_t3_child(&broker_for_spawn, child_name, "native"))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| l.ops.iter().map(|o| format!("{o:?}")).collect::<Vec<_>>())
+                );
+                std::thread::yield_now();
+            }
+        }
+        fn texts_of(ops: &[DrawOp]) -> Vec<String> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+        fn image_srcs_of(ops: &[DrawOp]) -> Vec<String> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Image { src, .. } => Some(src.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+        // 命中区（text op 坐标 → 窗内点击点）。
+        fn text_pos_of(ops: &[DrawOp], needle: &str) -> Option<(f32, f32)> {
+            ops.iter().find_map(|op| match op {
+                DrawOp::Text { x, y, text, .. } if text.contains(needle) => Some((*x, *y)),
+                _ => None,
+            })
+        }
+
+        let wid = session.launch_app("p029-shell-face").expect("shell-face launch");
+        if let Some(host) = session.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid) {
+                let mut rect = *v.rect.borrow();
+                rect.x = 16.0;
+                rect.y = 16.0;
+                *v.rect.borrow_mut() = rect;
+            }
+        }
+        // ①首帧：thumbnail/lucide Image op 落 wire（五件套渲染面）。
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| {
+                let srcs = image_srcs_of(ops);
+                srcs.iter().any(|s| s.starts_with("thumbnail://42842!"))
+                    && srcs.iter().any(|s| s == "lucide:panel-top")
+                    && srcs.iter().any(|s| s.starts_with("workspace://0!"))
+            },
+            "shell 面五件套首帧（thumbnail/lucide/workspace Image op）",
+        );
+        let (ox, oy) = {
+            let host = session.host.as_ref().unwrap();
+            let r = *host.wm.wins.get(&wid).unwrap().rect.borrow();
+            (r.x, r.y)
+        };
+        println!("AUTO029-FACE five-kind ops PASS (thumbnail:// + lucide: + workspace:// on wire)");
+
+        // ②popover 命中闭环：点锚按钮（menu）→ 开 → 面板项在帧。
+        let ops = face_ops(&session);
+        let (mx, my) = text_pos_of(&ops, "menu").expect("锚按钮坐标");
+        assert!(session.broker_pointer_down(ox + mx + 2.0, oy + my + 2.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| texts_of(ops).iter().any(|t| *t == "menu-item"),
+            "popover 开态面板渲染",
+        );
+        println!("AUTO029-FACE popover open PASS (menu-item panel on wire)");
+
+        // ③面板项命中 → MenuAction 派发（log:action）——点面板内按钮
+        //（text 节点无命中项，点文本会落 catcher 关面板——按设计）。
+        let ops = face_ops(&session);
+        let (ax, ay) = text_pos_of(&ops, "act").expect("面板按钮坐标");
+        assert!(session.broker_pointer_down(ox + ax + 2.0, oy + ay + 2.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| texts_of(ops).iter().any(|t| t == "log:action"),
+            "面板项命中派发（MenuAction）",
+        );
+        println!("AUTO029-FACE popover item PASS (MenuAction dispatched)");
+
+        // ④外点 → on_dismiss（log:dismissed + 面板收）。
+        assert!(session.broker_pointer_down(ox + 460.0, oy + 300.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| {
+                texts_of(ops).iter().any(|t| t == "log:dismissed")
+                    && !texts_of(ops).iter().any(|t| *t == "menu-item")
+            },
+            "外点 on_dismiss + 面板收",
+        );
+        println!("AUTO029-FACE popover dismiss PASS (on_dismiss + panel closed)");
+
+        // ⑤mousearea 命中 → AreaClick。
+        let ops = face_ops(&session);
+        let (hx, hy) = text_pos_of(&ops, "hit-area").expect("area 坐标");
+        assert!(session.broker_pointer_down(ox + hx + 2.0, oy + hy + 2.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| texts_of(ops).iter().any(|t| t == "log:area"),
+            "mousearea 命中（AreaClick）",
+        );
+        println!("AUTO029-FACE mousearea PASS (AreaClick dispatched)");
+
+        // 帧留痕（AUTO_029_ASSETS=1 → docs/plans/reports/assets/029/）。
+        if std::env::var("AUTO_029_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/029");
+            let _ = std::fs::create_dir_all(&assets);
+            if let Some(list) = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("p029-shell-face"))
+                .and_then(|c| c.composed())
+            {
+                let out =
+                    crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                let _ = std::fs::write(assets.join("shell-face-frame.txt"), out);
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// p029_shell_face_arm：当前合成帧 ops（免借用冲突的快照取用）。
+    fn face_ops(session: &DesktopSession) -> Vec<DrawOp> {
+        session
+            .broker_clients
+            .values()
+            .find(|c| c.app_name.as_deref() == Some("p029-shell-face"))
+            .and_then(|c| c.composed())
+            .map(|l| l.ops.clone())
+            .unwrap_or_default()
     }
 
     fn composed_texts(session: &DesktopSession, app: &str) -> Vec<String> {

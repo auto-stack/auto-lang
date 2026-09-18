@@ -23,6 +23,7 @@
 | v1.7 | 2026-09-18 | native 覆盖爬坡（form/payload 族 + scroll 入册）+ 输入路由收口（见 §1.7；`PROTOCOL_VERSION` 仍 1） | PLAN-025（§1.7） |
 | v1.8 | 2026-09-18 | native 覆盖爬坡第二批（display 族 image/progress + grid）+ IME 闭环两端（v1.0 在册变体启用）+ auto 裁决复测（见 §1.8；`PROTOCOL_VERSION` 仍 1） | PLAN-026（§1.8） |
 | v1.9 | 2026-09-18 | 图像 DrawOp 通道——`DrawOp::Image`（tag 6 追加式，src 引用 + 宿主侧解析，零位图字节过线）+ src 词汇表（file/`builtin:`/`data:`/`http(s)`/`thumbnail://` 虚拟引用）+ 未解析降级纪律 + 两投影臂真图升级 + TS decode/占位（见 §1.9；`PROTOCOL_VERSION` 仍 1） | PLAN-028（§1.9） |
+| v1.10 | 2026-09-18 | live 输入接线（§1.7 壳侧缺口清偿：`desktop_window_events` 键盘/滚轮/IME 三族臂 + `DesktopEvent::LiveInput` 泵入 + `route_live_input` 生产路由）+ native 覆盖第三批（shell 面四 kind：popover/mousearea/windowthumbnail/workspacepreview）+ `lucide:` 词汇真渲 + `workspace://` 虚拟引用 + fallback 语法 `!{icon}` + acceptance key verb（见 §1.10；`PROTOCOL_VERSION` 仍 1——全部宿主侧/词汇表演进，零新 wire tag） | PLAN-029（§1.10） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -399,6 +400,94 @@ App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口
   thumbnail miss/命中/SWR 三路径）；`p028_image_arm` e2e（AUTO_DESKTOP_
   E2E 门）；p026 既有 image 占位 Quad 断言改写为 Image op 断言（随注
   归因）；TS 对拍 + 占位渲染测试。
+
+### §1.10 v1.10 增量：live 输入接线 + shell queue 面 + lucide 真渲（PLAN-029）
+
+**① live 输入接线两端入册（§1.7 壳侧缺口清偿，P025-D1 核销）**：
+
+- 壳侧订阅：`desktop_window_events()` 扩键盘/滚轮/IME 三族臂
+  （session.rs；`EventStatus::Ignored` 门——Captured = host 真 widget
+  已消费不转发，keyboard_subscription 先例）。
+- 映射纯函数（单测钉死）：`Key::Named(n)` → Windows VK u32（转发集 =
+  编辑/导航/功能键 Backspace 8/Tab 9/Enter 13/Escape 27/Space 32/
+  Page 33-34/End-Home 35-36/方向 37-40/Insert-Delete 45-46/F1-F12
+  0x70-0x7B；修饰键与其余 Named 不转发——热键链路
+  `desktop_hotkey_subscription` 自理）；`Key::Character`+text →
+  `Chars`（逐字符 `broker_char`）；`Event::InputMethod`：
+  Preedit/Commit/Closed → IME 三态（Opened 无子侧语义）；
+  `WheelScrolled`：Lines × **40px**（`WHEEL_LINE_PX` 新约定）/
+  Pixels 直通。修饰位 wire 布局 bit0 shift/bit1 ctrl/bit2 alt/
+  bit3 logo（`wire_modifiers`——iced 0.14 Modifiers 三位一段布局
+  不可直用）。
+- 泵入与路由：`DesktopEvent::LiveInput { window, input }`（携带
+  发生 OS 窗 id——update 臂按 `HostCtx.window` 桌面窗过滤 + picker
+  模态避让）→ `route_live_input` → broker_* 六函数**零改动直用**
+  （键盘/IME = 焦点窗、滚轮 = last_cursor 命中窗）。KeyReleased
+  不转发（无子侧消费者）。
+- 真机证据分层（D2 定案）：主腿 e2e `p029_live_input_arm`（真
+  outproc native 子进程五腿：⑤协议级/Chars/VK_BACK/ImeCommit 中文/
+  滚轮）；辅腿 acceptance channel 扩 **key verb**（`autoui_desktop
+  action=key` kind ∈ chars/key/ime_*/wheel——真桌面 update 循环内
+  半真机驱动，`DesktopInject::Key`）；`sendinput.rs` FFI 模块就绪
+  （user32 SendInput + KEYEVENTF_UNICODE 组装层 + 布局钉死单测；
+  **真桌面 SendInput e2e 腿 not-yet**——依赖 B 程序启动序 + child
+  观察 channel，启用前置 = `foreground_window()` 目标窗断言）。
+
+**② native 覆盖第三批：shell queue 面四 kind**：
+
+- `popover`：开态覆盖序渲染（`PopoverOverlay` 主块后追加 = paint
+  order 置顶，select 同序）；placement 全 14 枚举（Bottom/Top 族 ×
+  Start/End + Left/Right = 锚 rect 偏移 + 视口溢出对向翻转 + 边距
+  钳制；Modal = 半透明 scrim + 视口居中；Edge* = 贴边 sheet；Pointer
+  = 最近右键点）；Point 锚恒 BottomStart 语义（原点对齐）；命中 =
+  全屏 catcher（`PopoverDismiss`）先登记、面板项后登记（rev 序面板
+  项胜、外点/Esc → `on_dismiss` + 吞不落穿）；**开合零投影器状态**
+  （`open` = View 字段随帧）。
+- `mousearea`：透传渲染 + 命中序（area 命中先 push、content 子树后
+  push = content 项 rev 序优先、空白落 area）；click/contextmenu 族；
+  hover 族（on_enter/on_exit/on_move/on_release/on_double_click）
+  not-yet（投影器无 hover 态）。
+- `windowthumbnail`/`workspacepreview`：`DrawOp::Image` 桥接
+  （见 ③ 词汇增量）。
+- 覆盖表扩容 + `scan_native_node` Popover 双子树递归（:562 缺口）+
+  防漏钉矩阵四夹具；**shell pack 五件装载期 Covered**（B 程序覆盖
+  门预演断言 `shell_pack_native_covered`——解析序 $AUTO_OS_ROOT →
+  兄弟 auto-os → 主检出）。
+- 降级放行两枚（flex-1/shadow 同册先例）：`flex-col-reverse`（列序
+  渲染 not-yet）、`opacity-`（alpha 合成无通道——视觉全不透明降级）。
+- 翻转复测（D7）：overall 16/36 = 44.4% / judged 16/22 = 72.7%
+  （样本扩容稀释 + 046-tabs 入分母；009 opacity 翻绿、041 popover
+  半句清偿）→ **双口径均 <95% 维持不翻**（报告
+  `docs/plans/reports/p029-native-flip-retest-row.md`；shell 五件
+  单列不入 examples 分母）。
+
+**③ 词汇表增量（§1.9 词汇表扩展，零 wire 变化）**：
+
+- `lucide:{name}` / `lucide:{name}#{rrggbb}`——**字形真渲入册**
+  （P026-D1 字形半句核销）：`lucide_svg_doc_with`（stroke 按 size
+  推导 ≥48px→1.5 否则 2.0）→ currentColor 文档内替换 tint（缺省
+  `#FFFFFF` 深色壳面约定）→ resvg 0.45 + tiny-skia 0.11 Contain
+  栅格化 → RGBA Handle；缓存键 `{src}@{w}x{h}`（`resolve_drawlist_
+  image` 签名扩 `(w, h)`——尺寸维度入键）；未知名 → 负缓存 +
+  `[drawlist-image]` 观测（I3）。
+- `thumbnail://{wid}!{fallback}`——**fallback 后缀语法**：快照 miss
+  → 宿主转 `lucide:{fallback}` 占位图标真渲（灰 quad 降级升级；
+  无后缀 miss 维持占位 None——028 口径零回归）。
+- `workspace://{ws}!{fallback}`——**宿主合成虚拟引用**（D4-A）：
+  `workspace_preview::current()` 数据面（壁纸基色铺底 + 分区 tile
+  等比 Contain——`tile_rect` 复用 + tile 近邻缩放 blit/灰块）；
+  Published 缺席/分区空 → fallback 图标；逐帧合成不进永久缓存
+  （SWR 活语义）。
+- not-yet 维持：`svgdoc:`（通用内联 SVG 独立线——D5-b 定案）。
+
+**④ 验证面**：live_input 单测族 4（VK 表/键盘映射/IME+滚轮+修饰/
+生产路由落 wire）+ broker 回归 12；sendinput 组装单测 4；popover
+几何 14 枚举 + 开闭态渲染/命中/Esc/Modal scrim + 桥接语法 +
+MouseArea 命中序单测；broker_surface `t029_*` 3（ink/tint/缓存/
+负缓存 + fallback + 合成三路径）；`shell_pack_native_covered`
+（五件 Covered）；e2e `p029_live_input_arm` + `p029_shell_face_arm`
+（AUTO_DESKTOP_E2E 门；五件套 ops 落 wire + popover 命中闭环四腿 +
+mousearea；帧留痕 assets/029/）。
 
 
 ## 2. Wire Format（信封）

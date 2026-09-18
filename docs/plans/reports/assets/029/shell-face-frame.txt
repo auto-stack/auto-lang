@@ -1,0 +1,8 @@
+clear 24,24,28,255
+quad 10.0,10.0 120.0x36.0 48,96,200,255
+text 53.2,18.5 size=14.0 lh=18.9 255,255,255,255 "menu"
+image 10.0,54.0 192.0x112.0 fit=1 "thumbnail://42842!app-window"
+image 10.0,174.0 176.0x64.0 fit=1 "workspace://0!app-window"
+image 10.0,246.0 16.0x16.0 fit=1 "lucide:panel-top"
+text 10.0,270.0 size=16.0 lh=21.6 220,220,220,255 "hit-area"
+text 10.0,302.0 size=14.0 lh=18.9 220,220,220,255 "log:area"
