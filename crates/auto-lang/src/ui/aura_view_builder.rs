@@ -1370,8 +1370,9 @@ impl<'a> AuraViewBuilder<'a> {
     /// - contents：`tabs-content` 子件；`tab` 平铺形态（A2UI 折叠产物）取其子件；
     /// - selected 解析序：`active`（索引）→ `value`（索引或按值匹配）→
     ///   `defaultvalue`/`default` → 0；越界钳制到末 tab；
-    /// - on_select：根 `onselect` 或首个 trigger `onclick`，事件 args=[选中索引]；
-    ///   无绑定则点击不切换（受控语义，对齐 Vue 端受控 v-model 缺省）；
+    /// - on_select：根 `onselect` 或首个 trigger `onclick`，事件
+    ///   args=[选中 tab 的 value 字符串]；无绑定则点击不切换（受控语义，
+    ///   对齐 Vue 端受控 v-model 缺省）；
     /// - variant：`variant` prop → TabsVariant::parse（未知值回退 Default，
     ///   PLAN-641 AC-01 兜底）。
     fn convert_tabs(
@@ -1590,22 +1591,33 @@ impl<'a> AuraViewBuilder<'a> {
         }
 
         // on_select：根 onselect 优先，缺省取首个 trigger onclick；事件
-        // args 覆写为 [选中索引]（handler 契约：首参=索引，details_onclick
-        // 运行时注参同款）。
+        // args 覆写为 [选中 tab 的 value 字符串]（handler 契约：首参=值，
+        // details_onclick 运行时注参同款）。
         let root_onselect = aura_events_get_base(events, "onselect");
         let trigger_onclick = trigger_nodes.iter().find_map(|t| match t {
             AuraNode::Element { events: te, .. } => aura_events_get_base(te, "onclick"),
             _ => None,
         });
+        // 回调载荷契约（fix-tabs-merged-look 修订）：首参=被点 tab 的
+        // value 字符串（values 已含索引串兜底，点击时按索引现取），
+        // `.at` 侧 `on { .Select(t) -> { .state = t } }` 直绑，免索引→值换算。
+        let values_for_cb = values.clone();
         let on_select = root_onselect
             .or(trigger_onclick)
             .map(|ev| {
                 let handler = extract_handler_name(&ev.handler).to_string();
                 let widget = self.widget_name.clone();
-                crate::ui::view::TabsSelectCallback::new(move |idx| DynamicMessage::Typed {
-                    widget_name: widget.clone(),
-                    event_name: handler.clone(),
-                    args: vec![Value::Int(idx as i32)],
+                let values = values_for_cb;
+                crate::ui::view::TabsSelectCallback::new(move |idx| {
+                    let payload = values
+                        .get(idx)
+                        .cloned()
+                        .unwrap_or_else(|| idx.to_string());
+                    DynamicMessage::Typed {
+                        widget_name: widget.clone(),
+                        event_name: handler.clone(),
+                        args: vec![Value::Str(payload.into())],
+                    }
                 })
             });
 
@@ -12904,7 +12916,7 @@ mod tests {
                 match cb.call(1) {
                     DynamicMessage::Typed { event_name, args, .. } => {
                         assert_eq!(event_name, "SelectTab");
-                        assert_eq!(args, vec![Value::Int(1)]);
+                        assert_eq!(args, vec![Value::str("b")]);
                     }
                     other => panic!("Expected Typed message, got {:?}", other),
                 }
