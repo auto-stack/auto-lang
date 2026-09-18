@@ -400,6 +400,25 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// 排空直调 execute_desktop_commands——同拍生效（drain 排空点先于
     /// 泵，走 in-proc `__desktop_cmd` 桥会拖到下拍）。
     pub desktop_bus_inbox: Vec<(String, DesktopCommand)>,
+    /// PLAN-030 T-07：壳进程模型（boot 读 `shell.apps.shell_model`；
+    /// 缺省 inproc——I1 双轨零回归）。
+    pub shell_model: ShellModel,
+    /// PLAN-030：已 attach 的壳 outproc 客户端管道（投影推送定向）。
+    pub shell_pipe: Option<String>,
+    /// PLAN-030：壳伪窗 wid 集（background 垫底 + chrome 置顶）——投影
+    /// 派生与 vwin 渲染循环跳过（命中承接保留）。
+    pub shell_pseudo_wids: Vec<Wid>,
+    /// PLAN-030：投影下行宿主侧指纹门（per-face；None = 全量推——
+    /// respawn attach 时强制失效）。
+    pub shell_push_fp: Option<String>,
+    pub shell_desk_fp: Option<String>,
+    /// PLAN-030：壳几何缓存（boot 定档；respawn 复用）。
+    pub shell_geometry: Option<crate::ui::desktop_protocol::shell_client::ShellGeometry>,
+    /// PLAN-030 T-05：看门兵 respawn 现场（None = 无待重试）。
+    pub shell_respawn: Option<ShellRespawnState>,
+    /// PLAN-030 T-05：respawn 预算耗尽降级观测位（true = 已降级——
+    /// renderer 侧一次性回退 inproc 装载后置位）。
+    pub shell_degraded: bool,
 }
 
 impl DesktopState {
@@ -458,6 +477,14 @@ impl DesktopState {
             remote_listener: None,
             remote_mirrors: Vec::new(),
             desktop_bus_inbox: Vec::new(),
+            shell_model: ShellModel::default(),
+            shell_pipe: None,
+            shell_pseudo_wids: Vec::new(),
+            shell_push_fp: None,
+            shell_desk_fp: None,
+            shell_geometry: None,
+            shell_respawn: None,
+            shell_degraded: false,
         }
     }
 
@@ -812,9 +839,21 @@ impl WmState {
         wid
     }
 
+    /// PLAN-030 D1：垫底窗（壳 background 伪窗）——z_order 插序 0（命中
+    /// 序最低 = 桌面空白点击承接）；不抢焦点/不入 MRU（伪窗非用户窗）。
+    pub fn add_win_bottom(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
+        let wid = self.add_win(app, title, rect);
+        self.z_order.retain(|w| *w != wid);
+        self.z_order.insert(0, wid);
+        self.mru.retain(|w| *w != wid);
+        if self.focused == Some(wid) {
+            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+        }
+        wid
+    }
+
     /// 移除虚拟窗口，返回其 App（调用方决定 App 去留）。
-    pub fn remove_win(&mut self, wid: Wid) -> Option<AppId> {
-        let v = self.wins.remove(&wid)?;
+    pub fn remove_win(&mut self, wid: Wid) -> Option<AppId> {        let v = self.wins.remove(&wid)?;
         self.z_order.retain(|w| *w != wid);
         if self.focused == Some(wid) {
             // Plan 472 T2：焦点回退限当前分区（隐分区窗不抢焦点；单分区时
@@ -2075,6 +2114,39 @@ impl ProcessModel {
     }
 }
 
+/// PLAN-030 T-07：壳进程模型配置位（storage `shell.apps.shell_model`）——
+/// `inproc` = 解释壳进程内装载（缺省，路径字节级零变化 I1）；`outproc` =
+/// 壳 outproc 客户端（双表面 + 投影下行 + DesktopBus 上行）。装在失败
+/// 回退 inproc（降级链 §5.1 D7）；缺省翻转随实机浸润另立裁定（非目标⑥）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ShellModel {
+    #[default]
+    Inproc,
+    Outproc,
+}
+
+impl ShellModel {
+    /// storage 原值解析（缺席/坏值回退 Inproc——472 同型）。
+    pub fn from_storage(raw: Option<&str>) -> Self {
+        match raw.map(str::trim) {
+            Some("outproc") => Self::Outproc,
+            _ => Self::Inproc,
+        }
+    }
+}
+
+/// PLAN-030 T-05：看门兵 respawn 现场（ServiceTick 分拍消费——退避
+/// 1s/2s/5s 封顶、预算 3 次/60s 窗，§5.1 D5）。
+#[derive(Debug, Clone, Copy)]
+pub struct ShellRespawnState {
+    /// 到期时刻（switcher_until 先例形态）。
+    pub due: std::time::Instant,
+    /// 本窗口第几次尝试（0 基——退避档索引）。
+    pub attempt: u32,
+    /// 预算窗口起点。
+    pub window_start: std::time::Instant,
+}
+
 /// LaunchApp 的启动材料（单测内联注入；生产侧由 T7 注册表解析供给）。
 pub struct LaunchSpec {
     /// .at 源码（`auto run` 同管线编译装载）。
@@ -2649,6 +2721,12 @@ impl DesktopSession {
     pub fn wm_add_win(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
         let host = self.host.as_mut().expect("wm_add_win requires desktop mode");
         host.wm.add_win(app, title, rect)
+    }
+
+    /// PLAN-030 D1：垫底虚拟窗（壳 background 伪窗）。
+    pub fn wm_add_win_bottom(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
+        let host = self.host.as_mut().expect("wm_add_win_bottom requires desktop mode");
+        host.wm.add_win_bottom(app, title, rect)
     }
 
     /// PLAN-024 R20：孵化 mini 会话升格开窗——为**既有** AppSession 创建
@@ -3442,6 +3520,104 @@ fn spawn_shell_outproc(
         None
     }
 
+    /// PLAN-030 T-05：死亡检出后登记 respawn 意图（退避 1s/2s/5s 封顶；
+    /// 预算 3 次/60s 窗——窗口起点随首登基线，耗尽 = 降级观测不炸）。
+    #[cfg(feature = "ui-iced")]
+    fn schedule_shell_respawn(&mut self) {
+        if self.desktop.shell_model != ShellModel::Outproc || self.desktop.shell_degraded {
+            return;
+        }
+        const BACKOFF_MS: [u64; 3] = [1000, 2000, 5000];
+        const BUDGET: u32 = 3;
+        const WINDOW_MS: u64 = 60_000;
+        let now = std::time::Instant::now();
+        let attempt = match self.desktop.shell_respawn {
+            Some(ref st) if now.duration_since(st.window_start).as_millis() as u64 >= WINDOW_MS => 0,
+            Some(ref st) => st.attempt + 1,
+            None => 0,
+        };
+        if attempt >= BUDGET {
+            self.desktop.shell_respawn = None;
+            self.desktop.shell_degraded = true;
+            eprintln!(
+                "[autodesk-shell] 看门兵预算耗尽（{BUDGET} 次/{WINDOW_MS}ms 窗）——降级观测（renderer 回退 inproc）"
+            );
+            return;
+        }
+        let backoff = BACKOFF_MS[(attempt as usize).min(BACKOFF_MS.len() - 1)];
+        self.desktop.shell_respawn = Some(ShellRespawnState {
+            due: now + std::time::Duration::from_millis(backoff),
+            attempt,
+            window_start: match self.desktop.shell_respawn {
+                Some(ref st)
+                    if now.duration_since(st.window_start).as_millis() < u128::from(WINDOW_MS) =>
+                {
+                    st.window_start
+                }
+                _ => now,
+            },
+        });
+    }
+
+    /// PLAN-030 T-05：看门兵一步（ServiceTick 消费——到期 respawn；full
+    /// push 由 attach 侧指纹失效自动达成）。返回 true = 本次发起了 respawn。
+    #[cfg(feature = "ui-iced")]
+    pub fn shell_watchdog_step(&mut self) -> bool {
+        let Some(st) = self.desktop.shell_respawn else { return false };
+        if std::time::Instant::now() < st.due {
+            return false;
+        }
+        self.desktop.shell_respawn = None;
+        match self.launch_shell_outproc() {
+            Ok(()) => {
+                eprintln!(
+                    "[autodesk-shell] 看门兵 respawn（attempt {}）",
+                    st.attempt + 1
+                );
+                true
+            }
+            Err(err) => {
+                eprintln!("[autodesk-shell] respawn spawn 失败: {err}");
+                self.schedule_shell_respawn();
+                false
+            }
+        }
+    }
+
+    /// PLAN-030 T-04：壳 outproc 孵化（boot 序/看门兵共用——spawn + 句柄
+    /// 驻留；attach 走 tick 泵 attach_pending_incubations）。
+    #[cfg(feature = "ui-iced")]
+    pub fn launch_shell_outproc(&mut self) -> Result<(), String> {
+        let geometry = self
+            .desktop
+            .shell_geometry
+            .unwrap_or_else(crate::ui::desktop_protocol::shell_client::ShellGeometry::fallback);
+        let broker_pipe = self
+            .broker_pipe
+            .clone()
+            .ok_or("broker 未启动（enable_broker 先行）")?;
+        let child =
+            Self::spawn_shell_outproc(&geometry, &broker_pipe).map_err(|e| e.to_string())?;
+        self.desktop.outproc_children.push(child);
+        Ok(())
+    }
+
+    /// PLAN-030 T-04：向壳连接下行控制消息（投影/时钟/光标推送——update
+    /// 线程直发，与泵同线程无竞态）。false = 壳不在场（inproc 轨走原路径）。
+    #[cfg(feature = "ui-iced")]
+    pub fn push_shell_control(
+        &mut self,
+        msg: &crate::ui::desktop_protocol::message::ProtocolMsg,
+    ) -> bool {
+        let Some(pipe) = self.desktop.shell_pipe.clone() else {
+            return false;
+        };
+        let Some(client) = self.broker_clients.get_mut(&pipe) else {
+            return false;
+        };
+        client.end.send(msg).is_ok()
+    }
+
     /// Plan 480 S4：多 client 日常泵——drain 全部在册连接（帧合成/Ack、
     /// 回收、上行）；断连/协议错的连接摘除。ServiceTick 帧泵周期调用。
     #[cfg(feature = "ui-iced")]
@@ -3490,6 +3666,9 @@ fn spawn_shell_outproc(
             let Some(mut client) = clients.remove(&pipe) else {
                 continue;
             };
+            // PLAN-030 T-05：壳死亡检出——双伪窗回收 + respawn 登记（退避
+            // 1s/2s/5s 封顶、预算 3 次/60s 窗；耗尽 = 降级观测 I5）。
+            let is_shell = self.desktop.shell_pipe.as_deref() == Some(pipe.as_str());
             if let Some(wid) = client.wid {
                 let app_id = self.wm_remove_win(wid);
                 if let Some(app_id) = app_id {
@@ -3499,6 +3678,17 @@ fn spawn_shell_outproc(
                     client.shm.remove(&surface);
                     client.surfaces.release(surface);
                 }
+            }
+            if is_shell {
+                for wid in std::mem::take(&mut self.desktop.shell_pseudo_wids) {
+                    if Some(wid) != client.wid {
+                        let _ = self.wm_remove_win(wid);
+                    }
+                }
+                self.desktop.shell_pipe = None;
+                self.desktop.shell_push_fp = None;
+                self.desktop.shell_desk_fp = None;
+                self.schedule_shell_respawn();
             }
         }
         self.broker_clients = clients;
@@ -3533,7 +3723,42 @@ fn spawn_shell_outproc(
             modifiers: 0,
         });
         for client in self.broker_clients.values_mut() {
-            if client.wid == Some(wid) {
+            if client.owns_wid(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// PLAN-030 T-04：pointer release 生产路径（`broker_pointer_down` 的
+    /// 收尾镜像——不聚焦不动 z；press→release 对成 click 的 child 侧
+    /// 语义闭环）。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_pointer_up(
+        &mut self,
+        x: f32,
+        y: f32,
+        button: crate::ui::desktop_protocol::message::MouseButton,
+    ) -> bool {
+        use crate::ui::desktop_protocol::message::InputMsg;
+        use crate::ui::desktop_protocol::message::ProtocolMsg;
+        let (wid, rect) = {
+            let Some(host) = self.host.as_ref() else { return false };
+            let Some(wid) = host.wm.hit_test(x, y) else { return false };
+            let Some(rect) = host.wm.wins.get(&wid).map(|v| *v.rect.borrow()) else {
+                return false;
+            };
+            (wid, rect)
+        };
+        let input = ProtocolMsg::Input(InputMsg::PointerReleased {
+            wid: wid.0,
+            button,
+            x: x - rect.x,
+            y: y - rect.y,
+            modifiers: 0,
+        });
+        for client in self.broker_clients.values_mut() {
+            if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
             }
         }
@@ -3557,7 +3782,7 @@ fn spawn_shell_outproc(
         };
         let input = ProtocolMsg::Input(InputMsg::KeyPressed { wid: wid.0, key, modifiers });
         for client in self.broker_clients.values_mut() {
-            if client.wid == Some(wid) {
+            if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
             }
         }
@@ -3577,7 +3802,7 @@ fn spawn_shell_outproc(
         };
         let input = ProtocolMsg::Input(InputMsg::CharTyped { wid: wid.0, ch });
         for client in self.broker_clients.values_mut() {
-            if client.wid == Some(wid) {
+            if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
             }
         }
@@ -3599,7 +3824,7 @@ fn spawn_shell_outproc(
         };
         let input = ProtocolMsg::Input(InputMsg::ImeCommit { wid: wid.0, text: text.to_string() });
         for client in self.broker_clients.values_mut() {
-            if client.wid == Some(wid) {
+            if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
             }
         }
@@ -3624,7 +3849,7 @@ fn spawn_shell_outproc(
             cursor: crate::ui::desktop_protocol::message::WRect::new(0.0, 0.0, 0.0, 0.0),
         });
         for client in self.broker_clients.values_mut() {
-            if client.wid == Some(wid) {
+            if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
             }
         }
@@ -3644,7 +3869,7 @@ fn spawn_shell_outproc(
         };
         let input = ProtocolMsg::Input(InputMsg::ImeCancelled { wid: wid.0 });
         for client in self.broker_clients.values_mut() {
-            if client.wid == Some(wid) {
+            if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
             }
         }
@@ -3665,7 +3890,7 @@ fn spawn_shell_outproc(
         };
         let input = ProtocolMsg::Input(InputMsg::Scroll { wid: wid.0, dx, dy });
         for client in self.broker_clients.values_mut() {
-            if client.wid == Some(wid) {
+            if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
             }
         }
@@ -3711,7 +3936,9 @@ fn spawn_shell_outproc(
         actions: Vec<crate::ui::desktop_protocol::endpoint::HostAction>,
     ) -> Vec<crate::ui::desktop_protocol::message::ProtocolMsg> {
         use crate::ui::desktop_protocol::endpoint::HostAction;
-        use crate::ui::desktop_protocol::message::{FrameMsg, ProtocolMsg};
+        use crate::ui::desktop_protocol::message::{
+            surface_role, FrameMsg, ProtocolMsg, WelcomeSurface,
+        };
         use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
         use crate::ui::desktop_protocol::host::rect_to_wire;
         let mut to_app = Vec::new();
@@ -3733,7 +3960,83 @@ fn spawn_shell_outproc(
                         self.desktop.desktop_bus_inbox.push((source.clone(), cmd));
                     }
                 }
-                HostAction::ResolveAndAttach { app_name, title, width, height, .. } => {
+                HostAction::ResolveAndAttach { app_name, title, width, height, surfaces, .. } => {
+                    if app_name == "shell" && !surfaces.is_empty() {
+                        // PLAN-030 T-04（§5.1 D1/D7）：壳分支——不经注册表/
+                        // 无宿主侧镜像组件；双伪窗（background 垫底 + chrome
+                        // 置顶）+ 双表面 activate_multi；无 shm（内联帧）。
+                        // 归因：registry_id = 面名（DesktopBus 上行 source）。
+                        let Some(chrome_decl) =
+                            surfaces.iter().find(|s| s.role == surface_role::CHROME)
+                        else {
+                            continue;
+                        };
+                        let geometry =
+                            crate::ui::desktop_protocol::shell_client::ShellGeometry {
+                                viewport_w: width,
+                                viewport_h: height,
+                                band_h: chrome_decl.height,
+                            };
+                        client.app_name = Some("shell".into());
+                        // background 伪窗（领头声明 = 全屏）。
+                        let bg_rect = iced::Rectangle::new(
+                            iced::Point::new(0.0, 0.0),
+                            iced::Size::new(width, height),
+                        );
+                        let bg_wid =
+                            self.wm_add_win_bottom(AppId(0), "desktop-face".into(), bg_rect);
+                        let bg_surface = client.surfaces.alloc(width, height);
+                        client.wid_surface.insert(bg_wid.0, bg_surface);
+                        // chrome 伪窗（任务栏带——贴底；置顶 push）。
+                        let band_rect = iced::Rectangle::new(
+                            iced::Point::new(0.0, (height - chrome_decl.height).max(0.0)),
+                            iced::Size::new(width, chrome_decl.height),
+                        );
+                        let chrome_wid = self.wm_add_win(AppId(0), "shell".into(), band_rect);
+                        let chrome_surface =
+                            client.surfaces.alloc(width, chrome_decl.height);
+                        client.wid_surface.insert(chrome_wid.0, chrome_surface);
+                        for (wid, rid) in
+                            [(bg_wid, "desktop-face"), (chrome_wid, "shell")]
+                        {
+                            if let Some(host) = self.host.as_mut() {
+                                if let Some(v) = host.wm.wins.get_mut(&wid) {
+                                    v.registry_id = Some(rid.to_string());
+                                }
+                            }
+                        }
+                        let extras = vec![WelcomeSurface {
+                            role: surface_role::CHROME,
+                            wid: chrome_wid.0,
+                            surface: chrome_surface,
+                            rect: rect_to_wire(&band_rect),
+                        }];
+                        match client.endpoint.activate_multi(
+                            0,
+                            bg_wid.0,
+                            bg_surface,
+                            rect_to_wire(&bg_rect),
+                            client.endpoint.frame_mode,
+                            extras,
+                        ) {
+                            Ok(welcome) => {
+                                to_app.push(welcome);
+                                client.app_id = Some(AppId(0));
+                                client.wid = Some(bg_wid);
+                                self.desktop.shell_pipe = Some(client.pipe.clone());
+                                self.desktop.shell_pseudo_wids = vec![bg_wid, chrome_wid];
+                                self.desktop.shell_geometry = Some(geometry);
+                                // respawn/首连同位：指纹强制失效（下拍全量推）。
+                                self.desktop.shell_push_fp = None;
+                                self.desktop.shell_desk_fp = None;
+                                self.desktop.shell_respawn = None;
+                            }
+                            Err(err) => {
+                                eprintln!("[autodesk-broker] 壳 activate 失败: {err:?}");
+                            }
+                        }
+                        continue;
+                    }
                     // 注册表解析 → 编译装载（ResolveFailed = 弃连）。
                     let component = (|| {
                         let registry = self.desktop.app_resolver.as_ref()?;
@@ -3848,7 +4151,7 @@ fn spawn_shell_outproc(
                         client.surfaces.release(surface);
                         to_app.push(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface }));
                     }
-                    if client.wid == Some(wid) {
+                    if client.owns_wid(wid) {
                         client.wid = None;
                         client.app_id = None;
                     }

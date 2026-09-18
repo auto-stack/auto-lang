@@ -76,6 +76,12 @@ impl BrokerClient {
         self.surfaces.front(surface)
     }
 
+    /// PLAN-030：wid 归属判定（多表面客户端第二 wid 含于 wid_surface——
+    /// 输入路由去单值化）。
+    pub fn owns_wid(&self, wid: crate::ui::session::Wid) -> bool {
+        self.wid == Some(wid) || self.wid_surface.contains_key(&wid.0)
+    }
+
     /// 该 client 的像素前缓冲（v1.3 渲染臂/测试断言口）。
     pub fn composed_pixels(&self) -> Option<&PixelsSurface> {
         let surface = *self.wid_surface.get(&self.wid?.0)?;
