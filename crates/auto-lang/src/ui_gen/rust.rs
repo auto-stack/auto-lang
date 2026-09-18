@@ -1346,7 +1346,10 @@ impl RustGenerator {
                     && self.state_types.contains_key("ms_display")
                 {
                     // Ensure prior statement ends with semicolon
-                    code.push_str("                    ;\n");
+                    let trimmed = code.trim_end();
+                    if !trimmed.ends_with(';') && !trimmed.ends_with('}') {
+                        code.push_str(";\n");
+                    }
                     code.push_str(
                         "                    let total_cs = self.elapsed / 10;\n\
                          \x20                   let cs = total_cs % 100;\n\
@@ -6276,7 +6279,7 @@ impl RustGenerator {
                         args.get(1).cloned().unwrap_or_else(|| "String::new()".to_owned())
                     ),
                     "Time.now_sec" | "time.now_sec" | "time_now_sec" => {
-                        "(auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32)".to_string()
+                        "auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32".to_string()
                     }
                     "Time.now_ms" | "time.now_ms" | "time_now_ms" => {
                         "auto_lang::vm::ffi::stdlib::shim_time_now_ms()".to_string()
