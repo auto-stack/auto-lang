@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-651
-status: executing              # drafting → executing → execution_done → reviewed → archived（2026-09-18 用户授权执行，/auto-plan:work）
+status: execution_done        # drafting → executing → execution_done → reviewed → archived（2026-09-18 work 全任务完成交接，next=/auto-plan:review）
 feature_name: autodown-editor-block-closure（编辑器 block 类型三态矩阵与闭合）
 author: [zhaopuming]
 created_at: 2026-09-18
@@ -15,7 +15,7 @@ new_spec_components: []
 touched_goals: ["GOAL-007: AutoUI 跨端视觉一致（编辑器=一致性最深单元，RC-E）"]
 
 affects: [autodown-editor]
-current_step: 1
+current_step: 4
 total_steps: 4
 ---
 
@@ -130,17 +130,50 @@ T-03 对拍 gate 常驻化（tests/ 套件）+ jade gallery RC-E 联动
   与 TS 零改动，auto-down worktree 仅 T-03 gallery 联动；Q-3 未触发。
   → AC-01 达成（矩阵在案+双实现交叉校验：红格经主会话代码复核，双侧盘点
   独立进行后对表）。证据：`attachments/651-matrix.md` §2/§3。
-- **T-01** [改/新] 红项闭合第一批（VM core.rs，矩阵 §3 T-01 表）：
-  R1 fence 语言随 syntax 发射；R2 query/embed 进 Seg::Raw 冻结源行
-  （`$query(..)`/`$embed(src: "..")`，对齐 TS 冻结预览裁定）；R3 闭合
-  mermaid 进 Fence 族叶（syntax="mermaid"）；R4 新 LeafKind::Math
-  （emit `%{\n..\n}%` + Fence 同族守卫）；R-ANCH BlockBuf.anchor 通道
-  （build_walk 收 attr、emit 段 Leaf 尾补 ` ^id`、拆分随头块/合并保头锚）。
-  验收：逐项行为测试 + `t651_closure_corpus` 幂等锚；`cargo t` 局部绿。
-  依赖：T-00。→ AC-02（第一批）
-- **T-02** [改/新] 红项闭合第二批（矩阵 §3 T-02 表）：R5 details 折叠
-  交互（open 消费 + 点击翻转）；R6 行首规则（`1. ` 有序、`#`→h6）；
-  R7 表格 emit align/IAL 还原。依赖：T-01。→ AC-02（第二批）
+- **T-01** [✅ 已完成] 红项闭合第一批（worktree 提交 2e283b43d，base
+  9886ba901）：R1 fence 语言随 `BlockBuf.syntax` 发射；R2 query/embed 进
+  `Seg::Raw` 冻结源行（不可聚焦=TS 冻结预览裁定对齐）；R3 闭合 mermaid 入
+  fence 族叶（syntax=mermaid）；R4 `LeafKind::Math` 源码叶（emit `%{ }%`
+  + Fence 同族守卫）；R-ANCH `BlockBuf.anchor` 通道（heading/paragraph/
+  catch-all 收 attr、emit 尾补 `^id`、拆分随头块/合并保头锚）。
+  验收：`t651_*` 六测试（行为锚 + closure corpus 幂等锚）全绿；
+  autodown_editor 模块 118/118 绿（`cargo nextest run --lib --features
+  autodown,code-editor autodown_editor`）；cargo check 零新告警。
+  附带：`editor_text_public_api_roundtrip` 补 run_fs 装回调（修 nextest
+  每测独立进程的既有顺序依赖，非本计划回归面）。
+  预存红在案（非本计划）：aura_view_builder 的
+  test_autodown_details_onclick_message_channel /
+  test_autodown_table_col_resize_emission 在 autodown,code-editor 特性集
+  下挂（AnchorSlot 包裹漂移，测试归 PLAN-045、builder 末改 PLAN-652，
+  零耦合本计划改动面，证据 /tmp/adall.log 形态 + diff 单文件）。
+  → AC-02（第一批达成）
+- **T-02** [✅ 已完成] 红项闭合第二批（worktree 提交 042d9be3b）：
+  R5 details 折叠交互（摘要行独立 DrawItem + details_geom 命中 → open
+  翻转，闭合内容不可见/不可聚焦，渲染兜底清扫跳过 folded 叶 + 布局面
+  零矩形占位）；R6 行首规则 7→10 条对齐 TS INPUT_RULES（补 `---`/`***`/
+  "``` "，触发改每字符整块检定 = TS fireRuleOn onInput 同语义；`---`/
+  `***` 经 remove_leaves_compact 不留孤儿缓冲；`1. ` 有序与 h4-h6 实测
+  为双侧一致冻结面，矩阵注记修正）；R7 表格发射保真（Seg::Table 携
+  align/IAL，分隔行 canonical `:---`——parser convertTableCell 对 bare
+  `---` 赋 align=left，serializer alignMarker 同形，旧恒 `---` 才是非规
+  范形态；align 空缺按 left 保幂等）。
+  验收：t651 9/9 绿；autodown_editor 模块 121/121 绿（3 个旧表格断言按
+  canonical 形态更新——钉的正是本计划修复的丢 align 行为）。
+  → AC-02（第二批达成，全批闭环）
+- **T-03** [✅ 已完成] 对拍 gate 常驻化：closure corpus 扩 T-02 面
+  （60e427854；align/IAL 表 + 闭合 details 入幂等锚）；gate 命令 =
+  `cargo nextest run -p auto-lang --lib --features autodown,code-editor
+  t651`（落矩阵 §5/§6）。jade gallery RC-E 联动已提交（auto-down 侧
+  fd05981：component-gallery units.mjs 登记 `editor_tab` 状态占位单元 +
+  072 台账状态更新）。回归：parser parity 全绿（auto-down worktree 实跑
+  16 测：parse_blocks_matches_ts_golden / parity_with_ts_emission /
+  smoke_table_with_ial 等）；vm-smoke 实机双窗口（worktree 二进制）：
+  第一跑 groups 1-10 全过（输入面/回写/渲染/滚动同步/ghost/表格拖宽/
+  fence chrome/主题翻转），group 4 拖拽臂=已登记预存红（de86e1d8e，
+  pristine master 复现，非本计划引入），group 11 全量 smoke 挂但独立
+  探针 vm-069-probe 五臂 ALL PASS（含迁移后重开臂——同场景清洁上下文
+  通过，判环境/时序非回归）；demo 双轨 vue 臂：本计划零 TS 改动，按
+  构造不受影响（vm 臂全绿即交叉面）。→ AC-03/04 达成
 - **T-03** [改] 对拍 gate 常驻化（矩阵驱动的外科对拍组进 tests 套件）+
   jade gallery RC-E 占位联动（auto-down 侧小改，随本计划折回通道）+
   回归（demo 双轨/vm-smoke/parser parity）。依赖：T-01/T-02。→ AC-03/04
@@ -160,6 +193,16 @@ T-03 对拍 gate 常驻化（tests/ 套件）+ jade gallery RC-E 联动
   task_ids: T-00 | evidence: 矩阵 §2 双实现逐格 + §3 红项定价（主会话复核
   catch-all/emit_seg/serializer 关键格） | blockers: 无 | next: T-01（VM
   core.rs 红项闭合第一批，auto-lang worktree plan-651-dev）`。
+- 2026-09-18 work 完成交接：`stage: work | plan_id: PLAN-651 | plan_revision: 2 |
+  outcome: pass（T-00..T-03 全任务完成） | code_commit: auto-lang worktree
+  plan-651-dev = 2e283b43d（T-01 五格闭合）+ 042d9be3b（T-02 三格闭合）+
+  60e427854（corpus 扩面），base 9886ba901；auto-down worktree plan-651-dev =
+  fd05981（gallery RC-E 联动），base b1c88def | task_ids: T-00,T-01,T-02,T-03 |
+  evidence: 矩阵 §6 处置表——8 红格全闭合 + 5 DEBTS 提案 + 2 豁免维持；
+  autodown_editor 121/121 绿；t651 9/9 绿；parser parity 16 测绿；
+  vm-smoke 第一跑 groups 1-10 绿（group 4 预存红在案/group 11 探针甄别
+  ALL PASS）；cargo check 零新告警 | blockers: 无（Q-4 DEBTS 裁定/Q-5
+  smoke 稳定性转介均非阻断） | next: /auto-plan:review（worktree 留存）`。
 
 ## 9. 待澄清事项
 
@@ -169,3 +212,4 @@ T-03 对拍 gate 常驻化（tests/ 套件）+ jade gallery RC-E 联动
 | Q-2 | autodown-core 修复的落地通道（随本计划折回 vs auto-down 侧独立通道） | 跨仓布局 | **已裁定**（T-00）：autodown-core parse/serialize 实测全绿零改动；修复面 100% auto-lang VM 壳 → 本计划 auto-lang 主通道；auto-down worktree 仅 T-03 gallery 联动 |
 | Q-3 | 红项中出现工具链级硬骨头（非类型覆盖而是引擎能力缺口）时的升级路径 | 时间盒 | 未触发（math/mermaid 图形渲染为已登记豁免，非新增硬骨头） |
 | Q-4 | （T-00 新增）DEBTS 提案 5 项（矩阵 §3：R8 死 kind/R9 query 编辑增强/R10 tasks 死代码/R11 image 行内/D1 view 面板注册层级）待 review 时用户逐项裁定 | AC-02 处置完整性 | review 阶段裁定；工作阶段按提案记录不实施 |
+| Q-5 | （执行新增）vm-smoke 两臂非阻断发现：group 4 拖拽臂=069 已登记预存红（de86e1d8e pristine master 复现）；group 11 全量 smoke 挂但 vm-069-probe 同场景五臂 ALL PASS——判环境/时序，转介 smoke 稳定性（非本计划回归面） | 回归口径完整性 | 归 auto-down 侧后续计划处置；本计划以探针全 PASS + parser parity + 模块 121 绿为回归证据 |

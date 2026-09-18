@@ -110,3 +110,27 @@ units.mjs + App.vue + pages + VM twin）。Q-3 未触发（无新工具链级硬
   全绿即为对拍基准（本计划不改 TS）；golden 双跑既有 parse_parity 金标机制不动。
 - 常驻化：矩阵本文件 + 测试组命名 `t651_` 前缀可检索；jade gallery RC-E 单元
   状态转"对拍 gate 在库"（auto-down 侧联动提交）。
+
+## 6. 处置结果（执行后回填，2026-09-18）
+
+**闭合提交（auto-lang worktree plan-651-dev）**：T-01 2e283b43d（R1/R2/R3/R4/
+R-ANCH 五格）+ T-02 042d9be3b（R5/R6/R7 三格）+ corpus 扩面 60e427854。
+
+| # | 处置 | 证据 |
+| --- | --- | --- |
+| R1 fence 语言 | ✅ 闭合（emit 读 BlockBuf.syntax） | t651_fence_language_survives_edit_roundtrip |
+| R2 query/embed | ✅ 闭合（Seg::Raw 冻结源行，不可聚焦=TS v1 裁定对齐） | t651_query_embed_frozen_lines_preserved |
+| R3 mermaid | ✅ 闭合（入 Fence 族叶 syntax=mermaid） | t651_mermaid_closed_fence_keeps_structure |
+| R4 math | ✅ 闭合（LeafKind::Math + `%{ }%` 往返 + Fence 同族守卫） | t651_math_block_source_edit_and_wrap_roundtrip |
+| R-ANCH 块锚 | ✅ 闭合（BlockBuf.anchor；拆分随头块/合并保头锚） | t651_block_anchor_roundtrip_split_and_merge |
+| R5 details 折叠 | ✅ 闭合（DrawItem::DetailsSummary + details_geom 点击翻转；闭合内容不可见） | t651_details_fold_toggle_roundtrip |
+| R6 行首规则 | ✅ 闭合（**重新定标**：TS INPUT_RULES 实为 10 条含 `---`/`***`/"``` "，VM 补齐 + 每字符整块检定=TS fireRuleOn 同语义；`1. ` 有序与 h4-h6 为**双侧一致冻结面**——TS 亦无，§2 表该格修正为一致绿） | t651_input_rules_hr_and_fence_align_ts |
+| R7 表格 align/IAL | ✅ 闭合（canonical `:---`：parser 对 bare `---` 赋 align=left，旧恒 `---` 才是非规范形态；IAL `ialText` 还原） | t651_table_align_ial_roundtrip + closure corpus |
+| R8/R9/R10/R11/D1 | 维持 DEBTS 提案（Q-4，review 裁定） | 矩阵 §3 |
+| 豁免 ×2 | 维持（PARITY #9 / §10.5 平台面） | 矩阵 §3 |
+
+**gate 常驻证据**：autodown_editor 模块 121/121 绿（`cargo nextest run -p
+auto-lang --lib --features autodown,code-editor autodown_editor`）；t651 组
+9/9 绿；closure corpus 幂等锚含 T-01+T-02 全类型。auto-down 侧 parser parity
+16 测全绿（parse_blocks_matches_ts_golden / smoke_table_with_ial 等）。gallery
+RC-E 联动 = auto-down fd05981（units.mjs `editor_tab` 占位登记 + 072 台账）。
