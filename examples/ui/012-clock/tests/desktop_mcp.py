@@ -17,17 +17,19 @@ import subprocess
 import sys
 import time
 import urllib.request
-
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORT = 9247
+PORT = int(os.environ.get("AUTOUI_MCP_PORT", "9257"))
 
 
 def resolve_auto():
     if os.environ.get("AUTO_BIN"):
         return os.environ["AUTO_BIN"]
     for c in [
+        os.path.join(APP, "..", "..", "..", "target", "debug", "auto.exe"),
+        os.path.join(APP, "..", "..", "..", "target", "debug", "auto"),
         os.path.join(APP, "..", "..", "..", "..", "target", "debug", "auto.exe"),
         os.path.join(APP, "..", "..", "..", "..", "target", "debug", "auto"),
+        "D:\\autostack\\auto-lang\\target\\debug\\auto.exe",
         "auto",
     ]:
         if os.path.isfile(c):
@@ -111,6 +113,7 @@ def boot():
         os.remove(STORAGE_FILE) if not getattr(boot, "keep", False) else None
     env = dict(os.environ)
     env["AUTO_VM_STORAGE_FILE"] = STORAGE_FILE
+    env["AUTOUI_MCP_PORT"] = str(PORT)
     proc = subprocess.Popen([resolve_auto(), "run", "-r", "vm"], cwd=APP, env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     mcp = Mcp()
@@ -122,8 +125,22 @@ def main():
     ck = Check()
     proc, mcp = boot()
     try:
+        # ---- T0 时钟表盘 ----
+        print("T0: 时钟表盘")
+        s = mcp.state("tab", "dial_mode", "s_rot")
+        ck.ok("初始进入时钟 tab", s.get("tab") == '"clock"', s)
+        ck.ok("表盘角度格式", "rotate(" in s.get("s_rot", ""), s)
+        mcp.press("传统表盘")
+        time.sleep(0.3)
+        s = mcp.state("dial_mode")
+        ck.ok("切换表盘模式", s.get("dial_mode") == '"analog"', s)
+        mcp.press("双显")
+        time.sleep(0.3)
+
         # ---- T1 秒表 ----
         print("T1: 秒表")
+        mcp.press("秒表")
+        time.sleep(0.5)
         mcp.press("开始")
         time.sleep(1.4)
         s = mcp.state("elapsed", "time_display", "ms_display", "sw_on")

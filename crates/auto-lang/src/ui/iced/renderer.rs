@@ -9403,7 +9403,7 @@ fn summon_launcher(
 fn launcher_brand_color(id: &str) -> &'static str {
     match id {
         "011-calculator" => "#7c9a6d",
-        "012-stopwatch" => "#b88c61",
+        "012-clock" | "012-stopwatch" => "#b88c61",
         "013-todo" => "#6a8bad",
         "014-weather" => "#7d9ec4",
         "015-notes" => "#c9a77e",
