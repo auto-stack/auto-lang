@@ -27,6 +27,12 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 
 ## 现状（2026-09-18）
 
+**VM 空转渲染减负 easy wins（PLAN-650 落地）**：timer `when` 订阅层门控
+（P499-1 调度器半边清偿）+ dirty=false 非 debug 帧旁路（live_vtree/
+needs_bounds/input_ids）+ hot_reload 非 debug 默认 2000ms（`AUTOUI_HOT_RELOAD`
+0/1 门控）+ MCP 捕获按 dirty/近 30s 活跃收紧。架构级 Element 帧间缓存等
+D-1..D-5 延期，设计见 `docs/design/autoui/vm-frame-budget.md`。
+
 **012-clock 现代时钟应用重构与传统手表表盘（PLAN-644 落地）**：
 `examples/ui/012-stopwatch` 升级并重命名为 `examples/ui/012-clock`（Clock 现代时钟应用），深度重构为五大完整功能模块（时钟、世界时钟、闹钟、秒表、倒计时），首页呈现 SVG 矢量传统机械手表 ⌚ 指针表盘与动态角度换算，桌面小组件 `view mini` 升级为迷你手表表盘 + 数字时钟，全面适配 AutoUI Design Tokens 并消除 P642-D6 遗留横幅按钮债务。
 

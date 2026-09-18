@@ -194,10 +194,13 @@ colors 不足时复用末色（`ci >= ccount → ccount - 1`）。
   vue `transition-opacity duration-150` CSS 类。**vue tooltip 动态类必须走
   class 通道**（`class: f"…"` → `:class`）——style f-string 走 `:style` CSS
   声明通道,类串会被静默丢弃。
-- **已知边界（P499-1..4 均挂账）**：timer when 门在 handler 体内（调度器恒
-  30Hz 空转心跳）;donut tooltip 角落锚定不跟随（max-w-md 缩放对位风险）;
+- **已知边界（P499-1..4；P499-1 调度器半边已由 plan-650 E-1 清偿）**：
+  timer when 门在 VM/iced 轨现为**订阅层+handler 双保险**（`when` 假时
+  `timer_when_allows_subscription` 不挂 tick；vue 臂仍闭包内 `if (anim)` 早退）；
+  donut tooltip 角落锚定不跟随（max-w-md 缩放对位风险）；
   实机帧率数字未量化（autoui MCP 无 mousemove 注入,限频以单元级证据背书）;
   路线 B（两进程）widget 树输入注入不在本期（输入通道 PointerMoved 已备）。
+  空转渲染总设计见 [vm-frame-budget](../../../../design/autoui/vm-frame-budget.md)。
 
 ### 类型扩展（旧 gallery 形状对拍所必需）
 
