@@ -3960,7 +3960,7 @@ impl RustGenerator {
                 // 子),旧发射 View::container()+.child() 链对 div 大户
                 // (app.at 载具)编译不过且语义错。027 T-04 div→container
                 // 映射的配套缺口,归 027 面备案。
-                if tag == "container" || tag == "div" {
+                if tag == "container" {
                     let style_str = props.get("style")
                         .or_else(|| props.get("class"))
                         .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
@@ -5675,9 +5675,14 @@ impl RustGenerator {
             "grid" => "grid",
             // PLAN-026 T-02：scroll 走 display 降级臂（View::scrollable），
             // 断裂映射移除。
-            // PLAN-027 T-04 扩面：div 与 container 同源（解释臂
-            // set_layout_events"container|div"同律——View::Container 承载）。
-            "container" | "div" => "container",
+            // PLAN-022 T-06 复盘(2026-09-19):div 回退 col——027 T-04 的
+            // div→container 对多子流式 div(如 app 载具内容区 relative
+            // w-full flex-1)语义错:ViewContainerBuilder 无弹性类映射
+            // (flex-1/h-full 失效,布局塌缩)且 .child 为替换语义(多子
+            // 静默丢子)。container 标签保留一参包装形态(N 子装 col);
+            // 与 VM 解释臂"container|div 同律"的分歧归 027 面备案。
+            "container" => "container",
+            "div" => "col",
             "center" => "center",
 
             // Content
