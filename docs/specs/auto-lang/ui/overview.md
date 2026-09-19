@@ -446,13 +446,16 @@ pointer 三包装（`setPointerCapture`，拖出条外仍跟手，判据取 `e.c
 
 VM 画廊内嵌形态（AppViewport.vm.at + demos/*.at 适配器 + registry.at）的 enduring 契约，2026-09-18 落地：
 
-1. **registry `loadable` 语义（modify）**：registry.at 的 `loadable` = "VM 臂内嵌可交互"（`loadable || fullstack`）；web 臂 `demos-registry.ts.loadable` = Vue 动态挂载能力——两臂数据源分离为 enduring 决策（P633-D2 核销）。
+1. **registry `loadable` 语义（modify，T-08/T-14 扩）**：registry.at 的 `loadable` = "VM 臂内嵌可交互"（`loadable || fullstack || route_stub` 三档并集）；web 臂 `demos-registry.ts.loadable` = Vue 动态挂载能力——两臂数据源分离为 enduring 决策（P633-D2 核销）。
 2. **适配器 stylekit 配方内联（add）**：`emit_gallery_vm_demos` 发射期把跨包 `use stylekit.styles` 配方内联为适配器本地 `pub style`（画廊上下文无跨包解析通道）；教程/源码 tab 展示语料原文。
 3. **组件包目录级联（add）**：475 组件包（`use { package: ... from "dir" }`）目录随适配器级联拷贝进 demos/（package.at 清单跳过；包内 fn 模块链同链收集；同名异容 kept-first 告警）。
 4. **parse_package_widgets recipe 预注册义务（modify）**：475 包装载器 parse 前必须执行 `prepare_style_recipe_imports`（与编译入口同契约；tree_icon 修复实证）。
 5. **distributed 列 grow 剥离（add，T-11）**：justify-between/around/evenly 列的直接子剥 Flex1/FlexAuto/Grow 且不补 Height(Full)——iced 0.14 flex 对 FillPortion 子 min=max=份额硬钉 + 列内子项按剩余量配给，grow 子与垫片竞争时内容 0×0 隐没（008 特性行实证）；CSS grow 的 min-content 钳制 iced 无对应，distributed 列 grow 让渡给垫片。
 6. **frame scroll 兜底 + 内嵌语料 Fill 高度约定（add，T-12）**：overflow-y:hidden + justify-Center/End 列的内容包 Shrink 高度 Scrollable——短内容被容器 center_y 垂直居中、长内容封顶滚动（009/016）。配套语料约定：**内嵌 demo 避免 Fill 高度技巧**（items-stretch 等高拉伸、定高滚动上下文中的 flex-1——Fill 在 scroll 无界主轴下解析塌缩，008 实证）；等高需求待 PLAN-655 StretchLine 原语（P642-D12 近期处置）。
-7. **已知开放项**：子件主题魔法变量统一状态覆写链（016 打开翻转宿主主题持久）在案未修（T-13 needs_replan，见债账 P642-D9/D12）；008 卡片 scroll 折叠线下滚轮可达性待人工复验。
+7. **宿主保留字段 α-改名（add，T-13①）**：合并根态对象（Plan 419 统一状态）上宿主壳声明的主题魔法字段（`dark_mode`/`accent_color`——恰为渲染器每帧状态→主题同步与 `execute_set_theme` 写回消费的两个保留名）不被 demo 侧覆写：发射期 `rename_reserved_root_fields` 把 demo 适配器+自有模块+包级联文件的这两个名统一 `<ns>_` 前缀（声明/读/写一体 α-改名，语义自洽）；语料原文、宿主壳、宿主 deps 不动（web 臂 demo 本就各自独立持主题态，改名对齐双臂语义）。根因实证：demo store Init 与匿名模块 init 两条 SET_FIELD 直写覆写宿主字段（写点探针定罪）；此前的写端局部改名失败机理 = store var 与静态初始化不在赋值语句改名面内，全量 α-改名是完整形态。
+8. **视图侧 store 解析逐组件（add，T-15）**：视图求值的 `.Store.X` 展平判定查**本组件合成期存档**的别名快照（VmBridge `store_alias_snapshot`，合成同线程紧邻捕获）——线程级 `VIEW_STORE_ALIAS_SNAPSHOT` 单例在多组件工程（画廊合并轨）下被后续合成覆盖；`.len()` 后缀条件快路径同样经 `store_source_field` 展平（此前把 "Store.field" 整段当单字段名必 miss → 恒 false，015 "No notes yet" 实证）。
+9. **routes 首页 stub 档（add，T-14a）**：`routes {}` 否决的 demo（非 render:"vm"）以 route_stub 档入 VM 发射面——routes 块剔除 + `outlet` 行替换为 `/` 首页路由组件实例（无 `/` 时首个无参路由兜底）+ 首页页面文件 per-demo ns 级联（pages/ 跨 demo 同名异容）。配套：store 别名 use 行按声明文件 stem 重链（`use store: X` 别名 token ≠ 文件名 → 收集 miss → A1 歧义，021 实证）；带 back 种子的 stub 与 fullstack 同管线级联；**多 store demo 不入 stub 档**（泛型 `store.X` 语义分属多店，plan-446 A1 不可消解，023 降级回退）。路由语义进 VM 仍为非目标（导航链接不可用为 stub 既定边界）。
+10. **已知开放项（2026-09-19 收口态）**：017/031-image-viewer stream 后端与 020 媒体扫描 → proxy 独立计划（P642-D13，用户裁定范围含 stream 一等公民）；023 多 store routes → 随多 store 归属能力另议；F1 崩溃族（bash exit 127 = 栈溢出/fastfail 映射实验收窄；绕过 panic 钩子与 WER，审计日志判读法在册）→ 崩溃专项（P642-D3 裁定 a）；MCP fixture 派发不可达任意 handler + `fs.canonical` 失败返原路径语义漂移（P642-D14）；008 卡片 scroll 折叠线下滚轮可达性待人工复验。
 
 ## items-stretch 两阶段行语义（PLAN-655）
 

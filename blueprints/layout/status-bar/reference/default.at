@@ -1,0 +1,27 @@
+// blueprints/layout/status-bar/reference/default.at — StatusBarSkeleton 骨架
+// （PLAN-075 T-02，design 30 §6 通道③：jade 三版同名不同物 → 骨架+内容 slot）。
+//
+// 骨架收敛：h-8 高度 / border-t 分隔 / 左-中-右三区水平布局 / text-xs 节奏。
+// 内容 slot：left/center/right 值 props（desktop 形态）；富内容消费方 fork
+// 骨架在 EDIT 区填组件（web 形态）。fn-free（无模块 fn、无 use 导入）。
+//
+// # Usage
+// （消费方）use bps.layout.status_bar.reference.default: StatusBarSkeleton
+// StatusBarSkeleton (left: "3 个反向链接", center: "", right: "1,024 词") {}
+
+widget StatusBarSkeleton (left: str = "", center: str = "", right: str = "") {
+    view {
+        row (style: "flex h-8 shrink-0 items-center justify-between gap-3 border-t bg-background px-3 text-xs text-muted-foreground") {
+            // ── EDIT: left —— 左区内容（保存态/光标位等，消费方 slot）──
+            text .left {}
+
+            // ── EDIT: center —— 中间区内容（通知位等，消费方 slot）──
+            text .center { style: "truncate" }
+
+            separator {}
+
+            // ── EDIT: right —— 右区内容（统计位等，消费方 slot）──
+            text .right {}
+        }
+    }
+}

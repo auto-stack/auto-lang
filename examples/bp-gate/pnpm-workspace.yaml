@@ -1,0 +1,4 @@
+# pnpm-workspace.yaml — harness 独立安装根（jade gallery 惯例同款，
+# 隔离上层工作区吸收）。
+allowBuilds:
+  esbuild: true

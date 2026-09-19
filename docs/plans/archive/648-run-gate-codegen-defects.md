@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-648
-status: execution_done
+status: archived
 feature_name: 跑法/门禁/codegen 缺陷簇整备——dev 跑法 VM api 委托断供 + tf 门 E0433 谱系 + codegen 遗留面清理
 author: [zhaopuming/zcode-session]
 created_at: 2026-09-18T00:00:00Z
@@ -195,6 +195,38 @@ CLI runner / vm_bridge / 生成面)。tf 门禁 = 测试文件 feature 门控
   VM handler 再入缺陷(交互触发失控,P648-D1 三次实证)按路由记债
   独立立项,不并入本计划范围——无交互判据(AC-02)已达成,交互
   稳定性为独立缺陷面。
+- 2026-09-19 review stage:review | PLAN-648 | rev1 | outcome:**pass** |
+  reviewed_commit:6422eb2677382da7873ad91452699a8a8946f453 |
+  base_commit:4817b51e1e5268ae28fd9651f1b8aa1342d6ba86 | deps:
+  .wt/lang-648/auto-down@b1c88def9(detached 只读 path 依赖) |
+  spec_inputs:docs/specs/auto-lang/frontend/design/module-resolution.md
+  (545 bare=命名空间语义;限定调用=规范形态) |
+  acceptance_results:AC-01 pass(决策工件在库四节+佐证 7 件);
+  AC-02 pass(独立复跑 40s/4083 响应全 200,tab-title="shell 1",
+  pane-lines 真实 banner,循环零爬升;在库截图亲验 Tab "● shell 1"
+  +提示符);AC-03 pass(tf 全特性编译通过+3641 全装载,E0433 消除;
+  复用 6422eb267 同点工作期证据——代码/依赖/配置此后未变,本轮
+  plan340/vm_file/merged 定向复跑均绿佐证);AC-04 pass(t04-redset
+  在库,master 3 闪红⊇worktree,零新增红);AC-05 pass(契约注释+
+  双锁定测试复跑 2/2) | findings:F-R1..R4 全 info 无阻塞(见下)
+  | evidence:evidence/648/ 七件+本轮复跑(review-rerun 4083×200
+  摘录于本记录)+门禁复跑(tv fail-fast 2727 绿仅 display_family
+  闪红=已知家族;vm_file 47/47;plan340 12/12;merged 2/2;tt/tb
+  不适用零 trans/book 改动;aavm 触发条件零命中) | next:merge。
+  独立性声明:执行会话内复审——裁定自工件重建(diff 逐行审读/
+  测试断言核验/实机独立复跑/截图亲验),未采信执行者摘要。
+  F-R1[info] P648-D1 再入缺陷移交合规(KNOWN-DEBT+§10.4),AC-02
+  字面判据独立复现,非静默延后;F-R2[info] host-bridge/no-op 臂仍
+  裸名-only(ash-runner 形态限定调用不走 auto.host.call,G1 范围外
+  对称性观察,候选后续 parity);F-R3[info] alias_form 键与同名局部
+  变量方法调用的理论碰撞在模块别名遮蔽语义下不可达(1063+4083
+  请求全 200 行为反证);F-R4[info] 复审期 no-fail-fast tv 全量因
+  重档组限流+并行会话 cargo 竞争 45min 未收,以 fail-fast tv+
+  vm_file 定向+tf 全量(更宽集完整跑通)组合替代,证据充分。
+  规范增量冻结复述:无 add/modify/retire(§5 书面理由:缺陷整备
+  不改已发布契约面;T-01 使 codegen 追齐 545 限定调用规范形态,
+  与现行 spec 同向零冲突);frontmatter supersedes/new/touched=[]
+  与之一致。
 
 ## 10. 待澄清事项
 
@@ -209,3 +241,33 @@ CLI runner / vm_bridge / 生成面)。tf 门禁 = 测试文件 feature 门控
    与并行计划零交集);
 4. 新增移交:VM 事件 handler 再入缺陷(P648-D1,交互阻断级,
    三次实证)——dev 跑法 VM 轨实点交互前需先修,独立立项。
+
+- 2026-09-19 merge stage(PLAN-648:r1 五 checkpoint 收据):
+  **prepared**=规范增量冻结=无(复审 pass 书面理由在案);沉淀面=
+  docs/specs/auto-lang/vm/plans.md+docs/specs/auto-man/plans.md 各增
+  648 一句话沉淀行;账本 .autoos/specs.json upsert P648-1(reviews,
+  复审与合并收据)/P648-2(reports,限定名改写变更摘要)回读验证
+  (124/101 条);spec-index.py 再生 INDEX 字节同一(26 projects 零漂移)。
+  事故与矫正:首枚账本提交误 `git add -A` 裹挟并行会话三未提交件
+  (656 计划/015-notes main.rs/rust-workspace Cargo.toml)——软重置
+  拆分重提,外来件已还原工作区待归属会话认领。
+  **landed**=master 3d0d63345(--no-ff fold plan-648-dev;reviewed
+  6422eb267 祖先校验过;main smoke plan340 12/12 含新增回归)。
+  **ledger_refreshed**=.autoos/specs.json P648-1/P648-2(readback OK)。
+  **archived**=git mv docs/plans/648-run-gate-codegen-defects.md →
+  archive/ + status:archived;completion_kind:**delivered**。
+
+## 11. spec-sync 回写记录
+
+- vm/plans.md +648 行(限定名改写根修一句话沉淀);
+- auto-man/plans.md +648 行(CRUD 契约明示保留+锁定测试);
+- .autoos/specs.json:P648-1(reviews 收据)/P648-2(reports 变更摘要);
+- 规范增量=无(canonical specs 零改动,理由见 §5 与 review 冻结复述);
+- KNOWN-DEBT-AND-RISKS.md:P648-D1(handler 再入缺陷,交互阻断级,
+  三次实证)/P648-D2(musk 预存红复核)——移交后续计划。
+  **cleaned**=wt-guard 双 clean(lang-648/auto-lang+lang-648/auto-down 均
+  过闸后移除);worktree D:/autostack/.wt/lang-648/auto-lang + 分支
+  plan-648-dev(was 6422eb267,merge-base 祖先校验全并)移除;只读依赖
+  worktree lang-648/auto-down(detached@b1c88de,零自有提交)随组移除;
+  组目录 .wt/lang-648 rmdir 空——五 checkpoint 全闭环,overall:
+  **delivered**。

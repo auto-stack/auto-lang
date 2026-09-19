@@ -1820,6 +1820,18 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         // Must use transpile_expr (not delegate) so StateRef gets .value inside closures
         // Plan 367 P2-2: add ': any' type annotations for TS strict mode.
         Expr::Closure(closure) => {
+            // PLAN-076: api calls emit `await <fn>` unconditionally, so a
+            // closure whose (block) body contains one must be async —
+            // otherwise the emitted arrow has an await in a non-async fn
+            // (TS1308; jade search_panel sink: the debounced run closure's
+            // `use back.api: search_pages` call).
+            let mut needs_async = false;
+            if let Expr::Block(b) = closure.body.as_ref() {
+                needs_async = stmts_contain_api_call_with(&b.stmts, &ctx.api_functions);
+            }
+            if needs_async {
+                write!(out, "async ").ok();
+            }
             if closure.params.len() == 1 {
                 write!(out, "({}: any)", closure.params[0].name).ok();
             } else {

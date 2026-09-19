@@ -17,7 +17,8 @@
 // 为 .at 回环 payload 读数口。
 //
 // PLAN-048 收口：跨块选区（SelAnchor×2 + 逐叶渲染 + copy 拼接 + 跨块
-// 删除剪接）、行首输入规则（LINE_START_RULES 7 条）、跨容器合并
+// 删除剪接）、行首输入规则（LINE_START_RULES 10 条，651 对齐 TS 基线；
+// 每字符整块精确检定——`---`/`***` 无尾空格）、跨容器合并
 // （same_host 闸撤除；fence 维持不做）、undo 面（打字/删除级钉死，
 // 结构操作不入栈——overwrite 整换新缓冲防陈旧栈）。余量台账见 mod.rs。
 //
@@ -53,7 +54,7 @@ const LINE_H_PARA: f32 = 1.6;
 const LINE_H_FENCE: f32 = 1.5;
 fn line_h_mult(kind: LeafKind) -> f32 {
     match kind {
-        LeafKind::Fence => LINE_H_FENCE,
+        LeafKind::Fence | LeafKind::Math => LINE_H_FENCE,
         LeafKind::Heading(_) => LINE_H_HEADING,
         LeafKind::Paragraph => LINE_H_PARA,
     }
@@ -74,7 +75,7 @@ fn rgb8(c: (u8, u8, u8)) -> Rgba {
 fn kind_font_size(kind: LeafKind) -> f32 {
     match kind {
         LeafKind::Heading(l) => heading_size(l),
-        LeafKind::Fence => autodown_blocks::FENCE_SIZE,
+        LeafKind::Fence | LeafKind::Math => autodown_blocks::FENCE_SIZE,
         LeafKind::Paragraph => autodown_blocks::BODY_SIZE,
     }
 }
@@ -84,6 +85,10 @@ pub enum LeafKind {
     Paragraph,
     Heading(i64),
     Fence,
+    /// PLAN-651 T-01 R4：math 块源码叶（mono；emit `%{ }%` 往返——原
+    /// catch-all 拍平段落丢构造）。TS 编辑面=源码编辑器，同形；katex
+    /// 预览维持 web-only 豁免（PARITY #9）。
+    Math,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -185,6 +190,13 @@ enum Seg {
     Table {
         key: u64,
         rows: Vec<Vec<Vec<Seg>>>,
+        /// PLAN-651 T-02 R7：列对齐（表头 cell `align` attr 逐列；emit 分隔
+        /// 行 `:---`/`:---:`/`---:` 还原——serializer tableDelimMd 同形，
+        /// 原恒 `---` 回写丢对齐）。
+        align: Vec<String>,
+        /// PLAN-651 T-02 R7：表 IAL 尾（含花括号，serializer `\n{...}` 同
+        /// 形；空 = 无——原回写丢 cols/rows）。
+        ial: String,
     },
     /// 只读区段在建树时固化为文本（thematic break / 表格管道行）。
     Raw(String),
@@ -200,6 +212,11 @@ struct BlockBuf {
     /// 解析期扁平文本；渲染期与实时 buffer 文本比对——相等才启用区间切片。
     snapshot: String,
     intervals: Vec<MarkInterval>,
+    /// PLAN-651 T-01 R-ANCH：块锚（parser extractAnchorBlock 收 ` ^id` 进
+    /// anchor attr；emit 侧 serializer withIdSuffix 同形尾补往返）。拆分
+    /// 随头块（头块字段不动）、尾块新缓冲空锚；合并保头锚（尾块消亡，
+    /// 与 TS 模型 op 语义一致）。
+    anchor: String,
 }
 
 // SAFETY：与 Plan 413 SendEditor 同例——所有访问经所在 Mutex 串行化
@@ -593,6 +610,9 @@ pub struct AutodownEditorCore {
     col_drag: Mutex<Option<(u64, usize)>>,
     /// PLAN-055 T6：单表几何快照（render_frame 写、列边界命中读）。
     table_geom: Mutex<HashMap<u64, TableGeom>>,
+    /// PLAN-651 T-02 R5：details 摘要条几何（渲染期整帧替换；点击命中→
+    /// 折叠翻转）。
+    details_geom: Mutex<Vec<(Rect, bool)>>,
     /// PLAN-057：近期 emit 过的全文回声集（发布链每次 autodown_editor_text
     /// 读全文即记录）——逐键连发时中途落地的旧自回显据此甄别（回声绝
     /// 不 rebuild，见 sync_external 回声守卫）。有界环形，容量 32。
@@ -635,6 +655,7 @@ impl AutodownEditorCore {
             table_widths: Mutex::new(HashMap::new()),
             col_drag: Mutex::new(None),
             table_geom: Mutex::new(HashMap::new()),
+            details_geom: Mutex::new(Vec::new()),
             emitted_echo: Mutex::new(std::collections::VecDeque::new()),
             layout: Mutex::new(DocLayout { blocks: Vec::new() }),
             revision: AtomicU64::new(0),
@@ -777,6 +798,7 @@ impl AutodownEditorCore {
                 syntax: None,
                 snapshot: String::new(),
                 intervals: Vec::new(),
+                anchor: String::new(),
             });
             segs.push(Seg::Leaf(0));
         }
@@ -811,7 +833,7 @@ impl AutodownEditorCore {
         let theme = ce_highlight::hljs_theme_name(crate::ui::style::theme::dark_mode());
         let mut blocks = self.blocks.lock().unwrap();
         for b in blocks.iter_mut() {
-            if b.kind == LeafKind::Fence {
+            if b.kind == LeafKind::Fence || b.kind == LeafKind::Math {
                 b.editor.ed_mut().update_theme(&theme);
             }
         }
@@ -1170,10 +1192,10 @@ impl AutodownEditorCore {
                     return out.captured();
                 }
                 self.block_action(font_system, bi, Action::Insert(c));
-                if c == ' ' {
-                    // PLAN-048 T5：行首标记转换（整块精确命中检定）。
-                    self.try_line_start_rule(font_system, bi);
-                }
+                // PLAN-048 T5 / PLAN-651 T-02 R6：行首标记转换（整块精确
+                // 命中检定）。每字符检定——`---`/`***` 无尾空格，TS 侧
+                // fireRuleOn 亦在每次输入后整块匹配（host-controller onInput）。
+                self.try_line_start_rule(font_system, bi);
                 out.text_changed = true;
                 out.cursor_changed = true;
             }
@@ -1357,6 +1379,11 @@ impl AutodownEditorCore {
             *self.col_drag.lock().unwrap() = Some((key, col));
             return DocOutput { request_redraw: true, captured: true, ..Default::default() };
         }
+        // PLAN-651 T-02 R5：details 摘要条命中 → 折叠翻转（先于文本命中
+        // ——摘要行非编辑面；web marker 翻转同语义）。
+        if let Some(idx) = self.details_summary_hit(x, y) {
+            return self.toggle_details(idx);
+        }
         let layout = self.layout.lock().unwrap().clone();
         // PLAN-603 T-1：点击改严格口径——块矩形外（真空白/gap）无效果，
         // 撤「最近块回落」（PARITY #19 观察①对齐网页轨槽外无效果语义）。
@@ -1472,6 +1499,39 @@ impl AutodownEditorCore {
             }
         }
         None
+    }
+
+    /// PLAN-651 T-02 R5：details 摘要条命中（命中带=整行宽 ×
+    /// CONT_SUMMARY_H；返回可见序 index）。
+    fn details_summary_hit(&self, x: f32, y: f32) -> Option<usize> {
+        let geom = self.details_geom.lock().unwrap();
+        geom.iter()
+            .position(|(r, _)| r.contains(Pt::new(x, y)))
+    }
+
+    /// PLAN-651 T-02 R5：折叠翻转——可见序定位 details seg，open 取反
+    /// （一步语义，serializer open 往返同源）；收起时焦点在隐藏内容内
+    /// 则清退。不入 undo 栈（结构操作口径同族）。
+    fn toggle_details(&self, index: usize) -> DocOutput {
+        let mut segs = self.segs.lock().unwrap();
+        let mut counter = 0usize;
+        let Some((open, inner)) = details_at_visible(&mut segs, index, &mut counter) else {
+            return DocOutput::default();
+        };
+        let collapsing = *open;
+        let mut hidden_leaves = Vec::new();
+        if collapsing {
+            dfs_leaf_order(inner, &mut hidden_leaves);
+        }
+        *open = !*open;
+        drop(segs);
+        if collapsing
+            && self.focused_block().map(|f| hidden_leaves.contains(&f)).unwrap_or(false)
+        {
+            *self.focus.lock().unwrap() = None;
+        }
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        DocOutput { request_redraw: true, ..Default::default() }
     }
 
     /// PLAN-055 T6：拖拽改宽——新宽 = 拖点 x − 被拖列左缘（min 48px 钳
@@ -1600,6 +1660,8 @@ impl AutodownEditorCore {
         // 标题行/摘要行/首尾标注）。消费见下方布局循环。
         let mut render_items: Vec<DrawItem> = Vec::new();
         let mut attrib: HashMap<usize, LeafAttrib> = HashMap::new();
+        // PLAN-651 T-02 R5：折叠隐藏块（布局面零矩形占位）。
+        let mut hidden_blocks: std::collections::HashSet<usize> = std::collections::HashSet::new();
         // PLAN-055 T3：表格列宽状态快照（等分缺省在归因侧解算）。
         let widths_snap: HashMap<u64, Vec<f32>> = self.table_widths.lock().unwrap().clone();
         {
@@ -1611,6 +1673,8 @@ impl AutodownEditorCore {
         }
         {
             // 防御：不在骨架的块按 id 补尾（正常建树/结构操作后不发生）。
+            // PLAN-651 T-02 R5：折叠 details 的内容叶（folded 标记）跳过
+            // ——隐藏内容不补渲染；布局面以零矩形占位（永不命中）。
             let known: std::collections::HashSet<usize> = render_items
                 .iter()
                 .filter_map(|d| match d {
@@ -1619,9 +1683,14 @@ impl AutodownEditorCore {
                 })
                 .collect();
             for bi in 0..blocks.len() {
-                if !known.contains(&bi) {
-                    render_items.push(DrawItem::Leaf(bi));
+                if known.contains(&bi) {
+                    continue;
                 }
+                if attrib.get(&bi).map(|a| a.folded).unwrap_or(false) {
+                    hidden_blocks.insert(bi);
+                    continue;
+                }
+                render_items.push(DrawItem::Leaf(bi));
             }
         }
         // 跨块选区段表：块 id → (lo, hi)（T3 doc_sel_spans_in 复用）。
@@ -1730,6 +1799,9 @@ impl AutodownEditorCore {
         }
         let mut row_acc: Option<RowAcc> = None;
         let mut geom_acc: HashMap<u64, TableGeom> = HashMap::new();
+        // PLAN-651 T-02 R5：details 摘要条几何（渲染期写、命中读；可见序
+        // 与 items 一致——toggle 按同序定位 seg）。
+        let mut details_acc: Vec<(Rect, bool)> = Vec::new();
         // PLAN-600 T-1：callout 盒式 chrome 运行段累积器——连续 callout 叶
         // 同段（段界=带标题行/strip 色变/中断），段闭合一次推盒。
         let mut callout_run: Option<(u8, u8, u8, f32, f32)> = None;
@@ -1782,6 +1854,28 @@ impl AutodownEditorCore {
                         Rect::new(0.0, y + h / 2.0, viewport_w.max(1.0), 1.0),
                         Rgba { r: br as f32 / 255.0, g: bg_ as f32 / 255.0, b: bb as f32 / 255.0, a: 1.0 },
                     ));
+                    y += h + BLOCK_GAP;
+                    continue;
+                }
+                DrawItem::DetailsSummary { text, open } => {
+                    // PLAN-651 T-02 R5：摘要行绘制（muted 色）+ 几何登记
+                    // （整行宽命中带；点击翻转 open，鼠标钩子先于文本命中）。
+                    let h = CONT_SUMMARY_H;
+                    let (mr, mg, mb) = autodown_blocks::quote_muted_rgb();
+                    list.runs.push(DocRun {
+                        text: text.clone(),
+                        x: 0.0,
+                        y,
+                        size: BODY_SIZE,
+                        line_height: h,
+                        color: Rgba { r: mr as f32 / 255.0, g: mg as f32 / 255.0, b: mb as f32 / 255.0, a: 1.0 },
+                        bold: false,
+                        italic: false,
+                        mono: false,
+                        strike: false,
+                        underline: false,
+                    });
+                    details_acc.push((Rect::new(0.0, y, viewport_w.max(1.0), h), *open));
                     y += h + BLOCK_GAP;
                     continue;
                 }
@@ -1938,7 +2032,7 @@ impl AutodownEditorCore {
                 LeafKind::Heading(l) => autodown_blocks::heading_extra_margins(l),
                 _ => (0.0, 0.0),
             };
-            let mono_all = matches!(b.kind, LeafKind::Fence);
+            let mono_all = matches!(b.kind, LeafKind::Fence | LeafKind::Math);
             let styled_ok = {
                 let snapshot_eq = SendEdit::of(b).text() == b.snapshot;
                 snapshot_eq || b.snapshot.is_empty()
@@ -1946,6 +2040,7 @@ impl AutodownEditorCore {
             let fam = autodown_blocks::family_of(match b.kind {
                 LeafKind::Heading(_) => BlockType::Heading,
                 LeafKind::Fence => BlockType::Fence,
+                LeafKind::Math => BlockType::MathBlock,
                 LeafKind::Paragraph => BlockType::Paragraph,
             });
             // fenced = 文体形态（mono/语法着色，三态恒真）；
@@ -2200,6 +2295,7 @@ impl AutodownEditorCore {
             finalize_table_row(ra, BLOCK_GAP, &mut list, &mut layouts, &mut y, &mut geom_acc);
         }
         *self.table_geom.lock().unwrap() = geom_acc;
+        *self.details_geom.lock().unwrap() = details_acc;
         // PLAN-048 T7（W4）：空态占位——content 空 && 非聚焦时浅灰文案
         //（视图实例只读轨豁免；聚焦即隐；空白文案跳过；基色按 0.55 调光
         // 贴主题）。
@@ -2344,8 +2440,23 @@ impl AutodownEditorCore {
                 list.focus_frame = Some((lay.rect, frame_color));
             }
         }
-        *self.layout.lock().unwrap() =
-            DocLayout { blocks: layouts.into_iter().map(|l| l.expect("render covers every block")).collect() };
+        *self.layout.lock().unwrap() = DocLayout {
+            blocks: layouts
+                .into_iter()
+                .enumerate()
+                .map(|(bi, l)| match l {
+                    Some(l) => l,
+                    None if hidden_blocks.contains(&bi) => BlockLayout {
+                        // 折叠隐藏块：负坐标零矩形——任何点击不命中。
+                        rect: Rect::new(-1.0, -1.0, 0.0, 0.0),
+                        origin: Pt::new(0.0, 0.0),
+                        font_size: BODY_SIZE,
+                        line_height: LINE_H_PARA,
+                    },
+                    None => panic!("render covers every block"),
+                })
+                .collect(),
+        };
         DocFrame { list, height: (y - BLOCK_GAP).max(0.0) + banner_h + menu_h }
     }
 }
@@ -2645,12 +2756,16 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     LeafKind::Paragraph
                 };
                 let (text, ivs) = flatten_inlines(&node.inlines);
+                // PLAN-651 T-01 R-ANCH：块锚随骨架保形（emit withIdSuffix
+                // 往返；serializer headingMd/默认路径同源）。
+                let anchor = attrGetStr(node.attrs.clone(), "anchor", "");
                 blocks.push(BlockBuf {
                     editor: SendEditor(new_leaf_buffer(fs, &text, false, leaf_size(kind), None, line_h_mult(kind))),
                     kind,
                     syntax: None,
                     snapshot: text,
                     intervals: ivs,
+                    anchor,
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
             }
@@ -2679,8 +2794,71 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax,
                     snapshot: text,
                     intervals: Vec::new(),
+                    anchor: String::new(),
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
+            }
+            BlockType::Mermaid => {
+                // PLAN-651 T-01 R3：闭合 mermaid 进 fence 族叶（原 catch-all
+                // 拍平段落——emit 丢 ```mermaid 围栏，回写降级裸段落）。
+                // 编辑面 mono 源码（对齐 TS edit=源码编辑器）；图形预览维持
+                // web-only 豁免（PARITY #9）。语言随 syntax 进发射（R1 通道，
+                // serializer mermaidMd ` ```mermaid ` 同形）。
+                let (raw, _) = flatten_inlines(&node.inlines);
+                let text = raw.trim_end_matches('\n').to_owned();
+                blocks.push(BlockBuf {
+                    editor: SendEditor(new_leaf_buffer(
+                        fs,
+                        &text,
+                        true,
+                        autodown_blocks::FENCE_SIZE,
+                        Some("mermaid"),
+                        LINE_H_FENCE,
+                    )),
+                    kind: LeafKind::Fence,
+                    syntax: Some("mermaid".to_string()),
+                    snapshot: text,
+                    intervals: Vec::new(),
+                    anchor: String::new(),
+                });
+                segs.push(Seg::Leaf(blocks.len() - 1));
+            }
+            BlockType::MathBlock => {
+                // PLAN-651 T-01 R4：math 源码叶（原 catch-all 拍平——emit 丢
+                // `%{ }%` 回写降级段落）。mono 源码可编辑（对齐 TS edit=源码
+                // 编辑器）；katex 预览维持 web-only 豁免。Enter/合并/slash/
+                // 行首规则随 Fence 守卫（构造不拆）。
+                let (raw, _) = flatten_inlines(&node.inlines);
+                let text = raw.trim_end_matches('\n').to_owned();
+                blocks.push(BlockBuf {
+                    editor: SendEditor(new_leaf_buffer(
+                        fs,
+                        &text,
+                        true,
+                        autodown_blocks::FENCE_SIZE,
+                        None,
+                        LINE_H_FENCE,
+                    )),
+                    kind: LeafKind::Math,
+                    syntax: None,
+                    snapshot: text,
+                    intervals: Vec::new(),
+                    anchor: String::new(),
+                });
+                segs.push(Seg::Leaf(blocks.len() - 1));
+            }
+            BlockType::QueryBlock | BlockType::BlockEmbed => {
+                // PLAN-651 T-01 R2：query/embed 冻结源行（原 catch-all 拍平
+                // **空段**——attr 文本不可见且回写丢数据）。TS 基线=冻结预览
+                // 不可编辑（host-controller isEditableLeaf 显式排除）；VM 同
+                // 裁定：Raw 段不可聚焦、emit 原文保形（serializer queryMd/
+                // embedMd 同形）。
+                let line = if node.kind == BlockType::QueryBlock {
+                    format!("$query({})", attrGetStr(node.attrs.clone(), "query", ""))
+                } else {
+                    format!("$embed(src: \"{}\")", attrGetStr(node.attrs.clone(), "src", ""))
+                };
+                segs.push(Seg::Raw(line));
             }
             BlockType::Blockquote => {
                 let children: Vec<&BlockNode> = node.children.iter().collect();
@@ -2733,6 +2911,26 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 // cell 也建空 buffer，保持可聚焦）。key 占位 0，rebuild 侧
                 // reindex_table_keys 按结构位置落号。空行跳过（原口径）。
                 let mut rows: Vec<Vec<Vec<Seg>>> = Vec::new();
+                // PLAN-651 T-02 R7：列对齐随表头 cell attr 入骨架；表 IAL
+                // 经 serializer ialText 还原成 `\n{...}` 尾（发射保真）。
+                let align: Vec<String> = node
+                    .children
+                    .first()
+                    .map(|h| {
+                        h.children
+                            .iter()
+                            .map(|c| attrGetStr(c.attrs.clone(), "align", ""))
+                            .collect()
+                    })
+                    .unwrap_or_default();                let ial = match attrGet(node.attrs.clone(), "ial") {
+                    Some(v) => {
+                        let body = autodown_core::serializer::ialText(
+                            autodown_core::serializer::attrsOfValue(v),
+                        );
+                        if body.is_empty() { String::new() } else { format!("{{{body}}}") }
+                    }
+                    None => String::new(),
+                };
                 for row in &node.children {
                     let mut cells: Vec<Vec<Seg>> = Vec::new();
                     for cell in &row.children {
@@ -2750,6 +2948,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                             syntax: None,
                             snapshot: text,
                             intervals: ivs,
+                            anchor: String::new(),
                         });
                         cells.push(vec![Seg::Leaf(blocks.len() - 1)]);
                     }
@@ -2757,17 +2956,21 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                         rows.push(cells);
                     }
                 }
-                segs.push(Seg::Table { key: 0, rows });
+                segs.push(Seg::Table { key: 0, rows, align, ial });
             }
             // TableRow/TableCell 顶层不出现；未知种类降级段落叶子。
+            // PLAN-651 T-01 R-ANCH：降级叶仍携带块锚（serializer 默认路径
+            // withIdSuffix 同源——wikilink 等手工模型块的锚不因降级丢失）。
             _ => {
                 let (text, ivs) = flatten_inlines(&node.inlines);
+                let anchor = attrGetStr(node.attrs.clone(), "anchor", "");
                 blocks.push(BlockBuf {
                     editor: SendEditor(new_leaf_buffer(fs, &text, false, BODY_SIZE, None, LINE_H_PARA)),
                     kind: LeafKind::Paragraph,
                     syntax: None,
                     snapshot: text,
                     intervals: ivs,
+                    anchor,
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
             }
@@ -2782,7 +2985,7 @@ fn reindex_table_keys(segs: &mut [Seg]) {
     fn walk(segs: &mut [Seg], next: &mut u64) {
         for seg in segs {
             match seg {
-                Seg::Table { key, rows } => {
+                Seg::Table { key, rows, .. } => {
                     *key = *next;
                     *next += 1;
                     for row in rows {
@@ -2832,7 +3035,14 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 let live = SendEdit::of(b).text();
                 match b.kind {
                     LeafKind::Fence => {
-                        out.push_str("```\n");
+                        // PLAN-651 T-01 R1：语言随 syntax 发射（serializer
+                        // fenceMd ` ```{lang} ` 同形——原裸 ``` 编辑回写丢
+                        // ```rust 语言标注）。
+                        out.push_str("```");
+                        if let Some(lang) = &b.syntax {
+                            out.push_str(lang);
+                        }
+                        out.push('\n');
                         out.push_str(live.trim_end_matches('\n'));
                         out.push_str("\n```");
                     }
@@ -2840,8 +3050,19 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                         out.push_str(&"#".repeat(level.max(1) as usize));
                         out.push(' ');
                         out.push_str(&live);
+                        emit_anchor_suffix(out, &b.anchor, &live);
                     }
-                    LeafKind::Paragraph => out.push_str(&live),
+                    LeafKind::Paragraph => {
+                        out.push_str(&live);
+                        emit_anchor_suffix(out, &b.anchor, &live);
+                    }
+                    LeafKind::Math => {
+                        // PLAN-651 T-01 R4：`%{ }%` 往返（serializer mathMd
+                        // 同形）。
+                        out.push_str("%{\n");
+                        out.push_str(live.trim_end_matches('\n'));
+                        out.push_str("\n}%");
+                    }
                 }
             }
         }
@@ -2920,9 +3141,11 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
             emit_inner_joined(inner, blocks, out);
             out.push_str("\n}");
         }
-        Seg::Table { rows, .. } => {
-            // PLAN-055 T2：管道行发射（cell live text；首行后补 `| --- |`
-            // 分隔行；`\|` 转义沿用 cell_live_text 口径）。表键不进发射面。
+        Seg::Table { rows, align, ial, .. } => {
+            // PLAN-055 T2：管道行发射（cell live text；首行后补分隔行；
+            // `\|` 转义沿用 cell_live_text 口径）。表键不进发射面。
+            // PLAN-651 T-02 R7：分隔行按列对齐还原（tableDelimMd/alignMarker
+            // 同形），表 IAL 尾随管道行（serializer Table 臂 `\n{...}` 同形）。
             let pipe_join = |cells: &[String]| format!("| {} |", cells.join(" | "));
             let mut body = String::new();
             for (ri, row) in rows.iter().enumerate() {
@@ -2931,10 +3154,15 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 body.push_str(&pipe_join(&cells));
                 body.push('\n');
                 if ri == 0 {
-                    let seps: Vec<String> = cells.iter().map(|_| "---".to_string()).collect();
+                    let seps: Vec<String> = (0..cells.len())
+                        .map(|ci| align_marker(align.get(ci).map(String::as_str).unwrap_or("")).to_string())
+                        .collect();
                     body.push_str(&pipe_join(&seps));
                     body.push('\n');
                 }
+            }
+            if !ial.is_empty() {
+                body.push_str(ial);
             }
             // 尾 \n 摘除（emit_document 每 seg 后补 "\n\n"，与 Raw 无尾换行
             // 同口径）。
@@ -2945,6 +3173,78 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
         }
         Seg::Raw(text) => out.push_str(text),
     }
+}
+
+/// PLAN-651 T-02 R5：可见序定位第 target 个 details seg（计数与 items
+/// 走序一致——闭合 details 不递归内部；返回 open 与 inner 的可变引用）。
+fn details_at_visible<'a>(
+    segs: &'a mut [Seg],
+    target: usize,
+    counter: &mut usize,
+) -> Option<(&'a mut bool, &'a mut Vec<Seg>)> {
+    for seg in segs.iter_mut() {
+        match seg {
+            Seg::Details { open, inner, .. } => {
+                let k = *counter;
+                *counter += 1;
+                if k == target {
+                    return Some((open, inner));
+                }
+                if *open {
+                    if let Some(r) = details_at_visible(inner, target, counter) {
+                        return Some(r);
+                    }
+                }
+            }
+            Seg::Quote(inner) | Seg::Callout { inner, .. } => {
+                if let Some(r) = details_at_visible(inner, target, counter) {
+                    return Some(r);
+                }
+            }
+            Seg::List { items, .. } => {
+                for item in items.iter_mut() {
+                    if let Some(r) = details_at_visible(item, target, counter) {
+                        return Some(r);
+                    }
+                }
+            }
+            Seg::Table { rows, .. } => {
+                for row in rows.iter_mut() {
+                    for cell in row.iter_mut() {
+                        if let Some(r) = details_at_visible(cell, target, counter) {
+                            return Some(r);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// PLAN-651 T-02 R7：列对齐分隔标记（serializer alignMarker 同形；空 =
+/// parser 默认 left——convertTableCell unwrap_or("left")，保插入→编辑→
+/// 回写幂等）。
+fn align_marker(align: &str) -> &'static str {
+    match align {
+        "center" => ":---:",
+        "right" => "---:",
+        _ => ":---",
+    }
+}
+
+/// PLAN-651 T-01 R-ANCH：块锚发射（serializer withIdSuffix 同形——文本尾
+/// 已带 token 时不再追加，锚 attr 为空零开销）。
+fn emit_anchor_suffix(out: &mut String, anchor: &str, live: &str) {    if anchor.is_empty() {
+        return;
+    }
+    let tok = format!("^{anchor}");
+    if live.ends_with(&tok) {
+        return;
+    }
+    out.push(' ');
+    out.push_str(&tok);
 }
 
 /// PLAN-054 T8：容器内段以空行连接发射（Quote body / Callout/Details
@@ -2971,7 +3271,11 @@ fn emit_inner_joined(inner: &[Seg], blocks: &[BlockBuf], out: &mut String) {
 /// 等于 marker（空格键入后检定）。冻结：标题×3 / 无序列表×3 / 引用；
 /// ``` fence（代码块语义）、`---`/`***`（Raw 只读固化）、任务列表、
 /// `1. ` 有序（vue 亦无）不补——登记余量。
-const LINE_START_RULES: [&str; 7] = ["# ", "## ", "### ", "- ", "* ", "+ ", "> "];
+/// PLAN-651 T-02 R6：规则表对齐 TS 基线 10 条（editor/engine/input-rules.ts
+/// INPUT_RULES）——VM 原 7 条补 `---`/`***`（ThematicBreak）与 "``` "
+/// （Fence）。`1. ` 有序与 h4-h6 双侧均无（冻结面一致，t651 矩阵注记）。
+const LINE_START_RULES: [&str; 10] =
+    ["# ", "## ", "### ", "- ", "* ", "+ ", "> ", "``` ", "---", "***"];
 
 /// 骨架树内把叶子槽位原位替换为包装段（quote/list wrap 用；递归定位；
 /// wrap 以工厂闭包构造——Seg 非 Clone，递归多臂各建一次；闭包仅捕获
@@ -3166,6 +3470,9 @@ enum DrawItem {
     Leaf(usize),
     RawText(String),
     RawBreak,
+    /// PLAN-651 T-02 R5：details 摘要行（▸/▾ 随 open；几何入 details_geom
+    /// ——点击翻转折叠，serializer open 往返同源）。可见序 = items 序。
+    DetailsSummary { text: String, open: bool },
 }
 
 /// PLAN-055 T3：表格 cell 槽（网格定位 + 几何；LeafAttrib.cell）。x 为
@@ -3210,6 +3517,9 @@ struct LeafAttrib {
     x: f32,
     /// PLAN-055 T3：表格 cell 槽（网格定位 + 几何；None = 非表格叶）。
     cell: Option<CellSlot>,
+    /// PLAN-651 T-02 R5：折叠 details 的隐藏内容叶（不入 items/不可见；
+    /// 渲染兜底清扫跳过）。
+    folded: bool,
 }
 
 /// callout 图标（与只读臂 autodown_render 同表——T4 统一对）。
@@ -3374,16 +3684,28 @@ fn walk_seg(
                 inner, in_quote, x_base + CONT_PAD_X, 4.0, fs, frame_w, widths, attrib, items,
             )
         }
-        Seg::Details { summary, inner, .. } => {
+        Seg::Details { summary, open, inner, .. } => {
+            // PLAN-651 T-02 R5：折叠交互——摘要行独立 DrawItem（▸/▾ 随
+            // open，点击翻转）；闭合态内容不入 items（不可见/不可聚焦，
+            // TS 折叠同语义）；open 往返发射已有（PLAN-054 T8）。
+            let arrow = if *open { "\u{25BE}" } else { "\u{25B8}" }; // ▾ ▸
+            items.push(DrawItem::DetailsSummary {
+                text: format!("{arrow} {summary}"),
+                open: *open,
+            });
+            if !open {
+                // 闭合：内容叶标 folded（渲染兜底清扫跳过——不补渲染）。
+                let mut leaves = Vec::new();
+                dfs_leaf_order(inner, &mut leaves);
+                for leaf in leaves {
+                    attrib.entry(leaf).or_default().folded = true;
+                }
+                return None;
+            }
             let mut leaves = Vec::new();
             dfs_leaf_order(inner, &mut leaves);
-            let ttext = format!("\u{25B8} {summary}"); // ▸
             for (li, leaf) in leaves.iter().enumerate() {
                 let a = attrib.entry(*leaf).or_default();
-                if li == 0 {
-                    a.cont_title = Some((ttext.clone(), None));
-                    a.cont_extra_top = CONT_SUMMARY_H;
-                }
                 if li + 1 == leaves.len() {
                     a.cont_extra_bottom = CONT_PAD_B_DETAILS;
                 }
@@ -3392,7 +3714,7 @@ fn walk_seg(
                 inner, in_quote, x_base + CONT_PAD_X, 4.0, fs, frame_w, widths, attrib, items,
             )
         }
-        Seg::Table { key, rows } => {
+        Seg::Table { key, rows, .. } => {
             // PLAN-055 T3：网格几何归因——列宽解算（状态/等分缺省），逐
             // cell 递归 walk（内容 x = cell 左缘 + pad）；cell 槽挂每叶。
             // DrawItem 保持行主序叶序列（行高对齐由渲染循环按 key+row
@@ -3683,7 +4005,7 @@ impl AutodownEditorCore {
     /// 合并/规则转换后 Ctrl+Z 会把陈旧 Change 套在新文本上错乱；新缓冲
     /// 历史为空，undo 自然无操作。区间快照随之失效（保守清空）。
     fn overwrite_block_text(&self, fs: &mut FontSystem, buf: &mut BlockBuf, text: String) {
-        let mono = matches!(buf.kind, LeafKind::Fence);
+        let mono = matches!(buf.kind, LeafKind::Fence | LeafKind::Math);
         let syntax = buf.syntax.clone();
         buf.editor = SendEditor(new_leaf_buffer(
             fs,
@@ -3739,7 +4061,7 @@ impl AutodownEditorCore {
     /// 走 kind 迁移（字号/家族随 LeafKind 重置），列表/引用走骨架 wrap
     /// （replace_leaf_seg 原位替换）；marker 前缀消费，焦点/光标驻原块首。
     fn try_line_start_rule(&self, font_system: &mut FontSystem, bi: usize) {
-        if matches!(self.block_kind_of(bi), LeafKind::Fence) {
+        if matches!(self.block_kind_of(bi), LeafKind::Fence | LeafKind::Math) {
             return;
         }
         // PLAN-055 T5：表格 cell 不做行首标记转换（固定结构——不换 kind、
@@ -3770,6 +4092,34 @@ impl AutodownEditorCore {
                     Seg::List { ordered: false, start: 1, checked: vec![None], items: vec![vec![Seg::Leaf(bi)]] }
                 });
             }
+            // PLAN-651 T-02 R6：`---`/`***` → ThematicBreak（TS 规则同款；
+            // 块本身转换为 Raw 分隔——叶缓冲经紧凑删除出表（不留孤儿：
+            // 兜底清扫不再补渲染死叶），焦点/选区清退）。
+            "---" | "***" => {
+                {
+                    let mut segs = self.segs.lock().unwrap();
+                    replace_leaf_seg(&mut segs, bi, || Seg::Raw("---".into()));
+                }
+                *self.focus.lock().unwrap() = None;
+                *self.doc_sel.lock().unwrap() = None;
+                *self.shift_anchor.lock().unwrap() = None;
+                *self.nav_goal_x.lock().unwrap() = None;
+                remove_leaves_compact(
+                    &mut self.blocks.lock().unwrap(),
+                    &mut self.segs.lock().unwrap(),
+                    &[bi],
+                );
+                self.revision.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+            // "``` " → Fence（TS 规则同款；mono/行高随 kind 迁移，公共尾
+            // 剥前缀后文本为空）。
+            "``` " => {
+                let mut blocks = self.blocks.lock().unwrap();
+                if let Some(b) = blocks.get_mut(bi) {
+                    b.kind = LeafKind::Fence;
+                }
+            }
             _ => {
                 let level = marker.trim().len().min(3) as i64; // "# "→1 … "### "→3
                 let mut blocks = self.blocks.lock().unwrap();
@@ -3792,9 +4142,10 @@ impl AutodownEditorCore {
 
     /// Enter 输入规则主入口。true = 已做结构拆分（调用方跳过软换行）。
     fn enter_split(&self, font_system: &mut FontSystem, bi: usize) -> bool {
-        // 围栏内维持软换行（fence 不拆）。
+        // 围栏内维持软换行（fence 不拆；PLAN-651 math 源码叶同守卫——
+        // `%{ }%` 构造不拆）。
         *self.nav_goal_x.lock().unwrap() = None;
-        if matches!(self.block_kind_of(bi), LeafKind::Fence) {
+        if matches!(self.block_kind_of(bi), LeafKind::Fence | LeafKind::Math) {
             return false;
         }
         let slot = {
@@ -3861,7 +4212,7 @@ impl AutodownEditorCore {
         let new_id = {
             let mut blocks = self.blocks.lock().unwrap();
             let id = blocks.len();
-            let mono = matches!(kind, LeafKind::Fence);
+            let mono = matches!(kind, LeafKind::Fence | LeafKind::Math);
             let size = leaf_size(kind);
             blocks.push(BlockBuf {
                 editor: SendEditor(new_leaf_buffer(font_system, &right, mono, size, None, if mono { LINE_H_FENCE } else { LINE_H_PARA })),
@@ -3869,6 +4220,9 @@ impl AutodownEditorCore {
                 syntax: None,
                 snapshot: right,
                 intervals: Vec::new(),
+                // PLAN-651 T-01 R-ANCH：拆分尾块空锚（锚随头块——头块字段
+                // 不动即自然保锚；TS 模型 op 同语义）。
+                anchor: String::new(),
             });
             id
         };
@@ -3955,6 +4309,7 @@ impl AutodownEditorCore {
                 syntax: None,
                 snapshot: String::new(),
                 intervals: Vec::new(),
+                anchor: String::new(),
             });
             id
         };
@@ -4012,8 +4367,8 @@ impl AutodownEditorCore {
             let prev = order[pos - 1];
             (prev, locate_leaf(&segs, bi), locate_leaf(&segs, prev))
         };
-        if matches!(self.block_kind_of(prev_bi), LeafKind::Fence)
-            || matches!(self.block_kind_of(bi), LeafKind::Fence)
+        if matches!(self.block_kind_of(prev_bi), LeafKind::Fence | LeafKind::Math)
+            || matches!(self.block_kind_of(bi), LeafKind::Fence | LeafKind::Math)
         {
             return false;
         }
@@ -4152,7 +4507,7 @@ impl AutodownEditorCore {
     /// 触发判定：焦点块非 fence、非表格 cell、无选区态，且光标位于块首
     /// 或前一字符为空白（web slashQueryAt 同语义）。
     fn slash_should_trigger(&self, bi: usize) -> bool {
-        if matches!(self.block_kind_of(bi), LeafKind::Fence) {
+        if matches!(self.block_kind_of(bi), LeafKind::Fence | LeafKind::Math) {
             return false;
         }
         if self.doc_selection().is_some() {
@@ -4452,6 +4807,7 @@ impl AutodownEditorCore {
                         syntax: None,
                         snapshot: String::new(),
                         intervals: Vec::new(),
+                        anchor: String::new(),
                     });
                     cell_ids[r][c] = id;
                 }
@@ -4464,13 +4820,13 @@ impl AutodownEditorCore {
             let mut segs = self.segs.lock().unwrap();
             let ok = match slot {
                 LeafSlot::TopLevel(pos) => {
-                    segs.insert(pos + 1, Seg::Table { key: u64::MAX, rows });
+                    segs.insert(pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
                     true
                 }
                 LeafSlot::QuoteInner { quote_pos, inner_pos } => {
                     match segs.get_mut(quote_pos) {
                         Some(Seg::Quote(inner)) => {
-                            inner.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows });
+                            inner.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
                             true
                         }
                         _ => false,
@@ -4480,7 +4836,7 @@ impl AutodownEditorCore {
                     match segs.get_mut(list_pos) {
                         Some(Seg::List { items, .. }) => match items.get_mut(item_idx) {
                             Some(item) => {
-                                item.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows });
+                                item.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
                                 true
                             }
                             None => false,
@@ -5296,7 +5652,10 @@ mod tests {
         let doc = c.emit_document();
         assert_eq!(
             doc,
-            "表前\n\n|  |  |  |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |",
+            // PLAN-651 T-02 R7：分隔行 canonical `:---`（parser 对 bare ---
+            // 赋 align=left，serializer tableDelimMd 同形——旧恒 --- 才是
+            // 非规范形态）。
+            "表前\n\n|  |  |  |\n| :--- | :--- | :--- |\n|  |  |  |\n|  |  |  |",
             "焦点叶保留 + 空表管道行（3 行含 header + 分隔行）"
         );
         run_fs(|fs| c.rebuild(&doc, fs));
@@ -5976,6 +6335,9 @@ $callout(type: \"info\", title: \"B\") {
     #[test]
     fn editor_text_public_api_roundtrip() {
         let raw = "pubdoc";
+        // PLAN-651：先装字体回调（core_for 同款）——nextest 每测独立进程，
+        // 本测试不经 core_for，原依赖 libtest 下其它测试先装的回调。
+        run_fs(|_fs| {});
         let sk = storage_key(raw);
         registry().lock().unwrap().remove(&sk);
         let c = autodown_editor(raw);
@@ -6034,6 +6396,7 @@ $callout(type: \"info\", title: \"B\") {
             let fam = autodown_blocks::family_of(match b.kind {
                 LeafKind::Heading(_) => BlockType::Heading,
                 LeafKind::Fence => BlockType::Fence,
+                LeafKind::Math => BlockType::MathBlock,
                 LeafKind::Paragraph => BlockType::Paragraph,
             });
             let fenced = matches!(b.kind, LeafKind::Fence);
@@ -6696,10 +7059,11 @@ fn main() { let s = \"hi\"; }
             .filter(|(r, _)| (r.w - autodown_blocks::TABLE_RULE).abs() < 0.2 && r.h > 20.0)
             .count();
         assert!(col_rules >= 3, "列分隔线在册（列间+右缘×2 行）：{col_rules}");
-        // emit 往返：管道行结构保留。
+        // emit 往返：管道行结构保留。分隔行 canonical `:---`（PLAN-651
+        // T-02 R7：parser align=left 默认 → alignMarker）。
         let out = c.emit_document();
         assert!(out.contains("| Name | Value | Note |"), "emit 往返保留表头：{out:?}");
-        assert!(out.contains("| --- | --- | --- |"), "emit 保留分隔行：{out:?}");
+        assert!(out.contains("| :--- | :--- | :--- |"), "emit 保留分隔行：{out:?}");
         assert!(out.contains("| Foo | 1 | A |"), "emit 往返保留数据行：{out:?}");
     }
 
@@ -6812,9 +7176,10 @@ fn main() { let s = \"hi\"; }
         let n2 = { c.blocks.lock().unwrap().len() };
         assert_eq!(n2, n0, "块首 Backspace 禁合并：{n2}");
         assert!(!out.text_changed || c.live_text(2).starts_with('1'), "cell 文本不并入前叶");
-        // emit 往返：表格结构保留（软换行折叠空格）。
+        // emit 往返：表格结构保留（软换行折叠空格）。分隔行 canonical
+        // `:---`（PLAN-651 T-02 R7：parser align=left 默认 → alignMarker）。
         let md = c.emit_document();
-        assert!(md.contains("| --- | --- |"), "分隔行保留：{md:?}");
+        assert!(md.contains("| :--- | :--- |"), "分隔行保留：{md:?}");
         assert!(md.contains("| 1x"), "cell 编辑往返：{md:?}");
         assert!(md.contains("正文段"), "表后段落往返：{md:?}");
     }
@@ -7027,4 +7392,341 @@ fn plan066_streaming_banner_in_draw_list() {
         f0.height
     );
 }
+
+// ── PLAN-651 T-01：红项闭合第一批（attachments/651-matrix.md §3；行为锚 +
+// closure corpus 幂等锚；TS 基线=既有 serializer-roundtrip/stream-tri-state
+// 全绿，本组只钉 VM 臂）─────────────────────────────────────────────────
+
+fn type_str(core: &AutodownEditorCore, s: &str) {
+    for ch in s.chars() {
+        press(core, EditorKey::Char(ch));
+    }
 }
+
+/// R1：fence 语言随发射保形（原裸 ``` 回写丢 ```rust 标注；serializer
+/// fenceMd ` ```{lang} ` 同形）。
+#[test]
+fn t651_fence_language_survives_edit_roundtrip() {
+    let c = core_for("t651f", "```rust\nlet a = 1;\n```\n");
+    assert_eq!(c.block_count(), 1);
+    {
+        let blocks = c.blocks.lock().unwrap();
+        assert_eq!(blocks[0].kind, LeafKind::Fence);
+        assert_eq!(blocks[0].syntax.as_deref(), Some("rust"));
+    }
+    // 编辑代码文本后发射仍带语言标注。
+    *c.focus.lock().unwrap() = Some(0);
+    press(c, EditorKey::End);
+    type_str(c, "  // tail");
+    let doc = c.emit_document();
+    assert!(doc.starts_with("```rust\nlet a = 1;  // tail\n```"), "{doc}");
+    // 无语言 fence 维持裸发射。
+    let c2 = core_for("t651f2", "```\nplain\n```\n");
+    assert_eq!(c2.emit_document(), "```\nplain\n```");
+}
+
+/// R3：闭合 mermaid 进 fence 族叶（原 catch-all 拍平段落——emit 丢
+/// ```mermaid 围栏回写降级）。编辑面=mono 源码（TS 编辑=源码编辑器同形）。
+#[test]
+fn t651_mermaid_closed_fence_keeps_structure() {
+    let c = core_for("t651mm", "```mermaid\ngraph TD; A-->B;\n```\n");
+    assert_eq!(c.block_count(), 1);
+    {
+        let blocks = c.blocks.lock().unwrap();
+        assert_eq!(blocks[0].kind, LeafKind::Fence);
+        assert_eq!(blocks[0].syntax.as_deref(), Some("mermaid"));
+    }
+    *c.focus.lock().unwrap() = Some(0);
+    press(c, EditorKey::End);
+    type_str(c, " C;");
+    let doc = c.emit_document();
+    assert!(doc.starts_with("```mermaid\ngraph TD; A-->B; C;\n```"), "{doc}");
+    // 流式开 fence（未闭合→Fence loading, language=mermaid）同通道保形。
+    let c2 = core_for("t651mm2", "```mermaid\ngraph TD\n");
+    {
+        let blocks = c2.blocks.lock().unwrap();
+        assert_eq!(blocks[0].kind, LeafKind::Fence);
+        assert_eq!(blocks[0].syntax.as_deref(), Some("mermaid"));
+    }
+    assert!(c2.emit_document().starts_with("```mermaid\ngraph TD\n```"));
+}
+
+/// R4：math 块源码叶（mono）+ `%{ }%` 往返（原 catch-all 拍平丢构造）。
+#[test]
+fn t651_math_block_source_edit_and_wrap_roundtrip() {
+    let c = core_for("t651m", "%{\nE = mc^2\n}%\n");
+    assert_eq!(c.block_count(), 1);
+    {
+        let blocks = c.blocks.lock().unwrap();
+        assert_eq!(blocks[0].kind, LeafKind::Math);
+    }
+    assert_eq!(c.live_text(0), "E = mc^2");
+    *c.focus.lock().unwrap() = Some(0);
+    press(c, EditorKey::End);
+    type_str(c, "+1");
+    let doc = c.emit_document();
+    assert!(doc.contains("%{\nE = mc^2+1\n}%"), "{doc}");
+    // 发射幂等：再解析再发射同形（不降级段落、不丢包裹）。
+    let c2 = core_for("t651m2", &doc);
+    assert_eq!(c2.block_count(), 1);
+    {
+        let blocks = c2.blocks.lock().unwrap();
+        assert_eq!(blocks[0].kind, LeafKind::Math);
+    }
+    assert_eq!(c2.emit_document(), doc);
+    // math 源码叶 Enter 软换行不拆块（fence 同守卫）。
+    *c.focus.lock().unwrap() = Some(0);
+    press(c, EditorKey::End);
+    press(c, EditorKey::Enter);
+    assert_eq!(c.block_count(), 1, "math leaf must soft-wrap, not split");
+}
+
+/// R2：query/embed 冻结源行——attr 文本可见、不进可聚焦块表、emit 原文
+/// 保形（原 catch-all 空段回写丢数据；TS 基线=冻结预览 v1 裁定对齐）。
+#[test]
+fn t651_query_embed_frozen_lines_preserved() {
+    let src = "前置段。\n\n$query(status = \"done\")\n\n$embed(src: \"^abc\")\n\n尾段。\n";
+    let c = core_for("t651q", src);
+    // 仅两个可聚焦叶；query/embed 为 Raw 冻结行不建缓冲。
+    assert_eq!(c.block_count(), 2);
+    assert_eq!(c.live_text(0), "前置段。");
+    assert_eq!(c.live_text(1), "尾段。");
+    let doc = c.emit_document();
+    assert!(doc.contains("$query(status = \"done\")"), "{doc}");
+    assert!(doc.contains("$embed(src: \"^abc\")"), "{doc}");
+    // 幂等：冻结行再解析再发射原文不动。
+    let c2 = core_for("t651q2", &doc);
+    assert_eq!(c2.emit_document(), doc);
+}
+
+/// R-ANCH：块锚随骨架往返（原 emit 丢 ` ^id`——jade 块引用断链）。
+/// 拆分锚随头块（尾块空锚）；合并保头锚；serializer withIdSuffix 同形。
+#[test]
+fn t651_block_anchor_roundtrip_split_and_merge() {
+    let c = core_for("t651a", "见此段 ^abc123\n\n## 标题 ^hdr9\n");
+    {
+        let blocks = c.blocks.lock().unwrap();
+        assert_eq!(blocks[0].kind, LeafKind::Paragraph);
+        assert_eq!(blocks[0].anchor, "abc123");
+        assert_eq!(blocks[1].kind, LeafKind::Heading(2));
+        assert_eq!(blocks[1].anchor, "hdr9");
+    }
+    let doc = c.emit_document();
+    assert!(doc.contains("见此段 ^abc123"), "{doc}");
+    assert!(doc.contains("## 标题 ^hdr9"), "{doc}");
+
+    // 拆分：头块保锚，尾块空锚（新缓冲 append 在 blocks Vec 尾部——
+    // 创建序 ≠ dfs 序，seg 位置由骨架插入决定）。
+    *c.focus.lock().unwrap() = Some(0);
+    press(c, EditorKey::Home);
+    press(c, EditorKey::Right);
+    press(c, EditorKey::Right);
+    press(c, EditorKey::Enter);
+    assert_eq!(c.block_count(), 3);
+    {
+        let blocks = c.blocks.lock().unwrap();
+        assert_eq!(blocks[0].anchor, "abc123", "anchor stays with head block");
+        assert_eq!(blocks[2].anchor, "", "tail block carries no anchor");
+    }
+    let doc2 = c.emit_document();
+    assert!(doc2.contains("见此 ^abc123"), "{doc2}");
+
+    // 合并：尾块（dfs 序在头块之后）并回头块，头锚保留（尾块消亡，与
+    // TS 模型 op 同语义）。注意 live_text 不得在 blocks 锁块内调用
+    // （Mutex 不可重入）。
+    *c.focus.lock().unwrap() = Some(2);
+    press(c, EditorKey::Backspace);
+    assert_eq!(c.block_count(), 2);
+    {
+        let blocks = c.blocks.lock().unwrap();
+        assert_eq!(blocks[0].anchor, "abc123", "head anchor survives merge");
+    }
+    assert_eq!(c.live_text(0), "见此段");
+}
+
+/// closure corpus 幂等锚（T-01 全类型一网）：parse→emit→parse→emit 稳定，
+/// 结构锚逐类型断言。T-02 批次随其闭合面扩表（align/IAL 等）。
+#[test]
+fn t651_closure_corpus_emit_idempotent() {
+    let corpus = "\
+# 计划 ^plan-root
+
+开场段，带 **粗体** 与 [[首页]] 行内链。 ^intro-anchor
+
+## 背景 {#block-bg} ^bg-anchor
+
+- 普通项
+- 任务项 ^task-anchor
+
+1. 有序甲
+2. 有序乙
+
+> 引用内的锚段 ^quote-anchor
+
+```rust
+fn main() {}
+```
+
+```mermaid
+graph TD; A-->B;
+```
+
+%{
+L = mc^2
+}%
+
+---
+
+$query(status = \"done\")
+
+$embed(src: \"^emb\")
+
+$callout(type: \"warning\", title: \"注意\") {
+警示正文。
+}
+
+$details(summary: \"展开\", open: true) {
+细节正文。
+}
+
+$details(summary: \"收起项\") {
+折叠正文。
+}
+
+| 任务 | 状态 | 分数 |
+| :--- | ---: | :---: |
+| 写作 | 进行 | 80 |
+{cols:[120,\"auto\",\"auto\"]}
+";
+    let c = core_for("t651c", corpus);
+    let e1 = c.emit_document();
+    let c2 = core_for("t651c2", &e1);
+    let e2 = c2.emit_document();
+    assert_eq!(e1, e2, "emit must be idempotent over closure corpus");
+    // 结构锚：逐类型不降级（红项闭合前 mermaid/math 降级段落、query/embed
+    // 变空段、锚丢失——本测试即对拍 gate 的 Rust 臂）。
+    assert!(e1.contains("# 计划 ^plan-root"), "{e1}");
+    assert!(e1.contains(" ^intro-anchor"), "{e1}");
+    assert!(e1.contains(" ^bg-anchor"), "{e1}");
+    assert!(e1.contains("- 任务项 ^task-anchor"), "{e1}");
+    assert!(e1.contains("> 引用内的锚段 ^quote-anchor"), "{e1}");
+    assert!(e1.contains("```rust\nfn main() {}\n```"), "{e1}");
+    assert!(e1.contains("```mermaid\ngraph TD; A-->B;\n```"), "{e1}");
+    assert!(e1.contains("%{\nL = mc^2\n}%"), "{e1}");
+    assert!(e1.contains("$query(status = \"done\")"), "{e1}");
+    assert!(e1.contains("$embed(src: \"^emb\")"), "{e1}");
+    assert!(e1.contains("$callout(type:\"warning\", title:\"注意\") {"), "{e1}");
+    assert!(e1.contains("$details(summary:\"展开\", open:true) {"), "{e1}");
+    // T-02 扩面：align/IAL 表格 + 闭合 details。
+    assert!(e1.contains("| :--- | ---: | :---: |"), "{e1}");
+    assert!(e1.contains("{cols:[120,\"auto\",\"auto\"]}"), "{e1}");
+    assert!(e1.contains("$details(summary:\"收起项\") {"), "{e1}");
+    assert!(e1.contains("折叠正文。"), "{e1}");
+}
+
+// ── PLAN-651 T-02：红项闭合第二批 ─────────────────────────────────────
+
+/// R6：`---`/`***` → thematic break、'``` ' → Fence（TS INPUT_RULES 同款
+/// 三条补齐；`1. `/h4-6 维持双侧冻结面）。
+#[test]
+fn t651_input_rules_hr_and_fence_align_ts() {
+    let c = core_empty("t651hr");
+    *c.focus.lock().unwrap() = Some(0);
+    for k in ['-', '-', '-'] {
+        press(c, EditorKey::Char(k));
+    }
+    assert_eq!(c.emit_document(), "---", "--- converts to thematic break");
+    let c2 = core_empty("t651hr2");
+    *c2.focus.lock().unwrap() = Some(0);
+    for k in ['*', '*', '*'] {
+        press(c2, EditorKey::Char(k));
+    }
+    assert_eq!(c2.emit_document(), "---", "*** also converts to thematic break");
+    let c3 = core_empty("t651hr3");
+    *c3.focus.lock().unwrap() = Some(0);
+    for k in ['`', '`', '`', ' '] {
+        press(c3, EditorKey::Char(k));
+    }
+    assert_eq!(c3.block_kind_of(0), LeafKind::Fence, "'``` ' converts to fence");
+    // 空体 fence 发射恒带体行（既有 fence emit 口径）。
+    assert_eq!(c3.emit_document(), "```\n\n```");
+}
+
+/// R7：表格列对齐 + IAL 随发射还原（原恒 `---`/丢 cols/rows——回写降级）。
+#[test]
+fn t651_table_align_ial_roundtrip() {
+    let src = "| a | b | c |\n| :--- | ---: | :---: |\n| 1 | 2 | 3 |\n{cols:[120,\"auto\"], rows:[40,\"auto\"]}\n";
+    let c = core_for("t651tbl", src);
+    let e1 = c.emit_document();
+    assert!(e1.contains("| :--- | ---: | :---: |"), "{e1}");
+    assert!(e1.contains("{cols:"), "{e1}");
+    assert!(e1.contains("\"auto\""), "{e1}");
+    // 幂等：再解析再发射同形（IAL 重挂 + align 重收）。
+    let c2 = core_for("t651tbl2", &e1);
+    assert_eq!(c2.emit_document(), e1, "align/IAL must roundtrip stably");
+    // cell 编辑后 align/IAL 仍随行发射。
+    *c.focus.lock().unwrap() = Some(0);
+    press(c, EditorKey::End);
+    type_str(c, "!");
+    assert!(c.emit_document().contains("| a! | b | c |"), "{:?}", c.emit_document());
+}
+
+/// R5：details 折叠交互——摘要条点击翻转 open（▸/▾ 随态），闭合内容
+/// 不可见，emit 往返保形；折叠隐藏内容内焦点清退。
+#[test]
+fn t651_details_fold_toggle_roundtrip() {
+    let src = "$details(summary:\"展开\", open: true) {\n内容甲。\n}\n\n尾段。\n";
+    let c = core_for("t651det", src);
+    let f0 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+    assert!(f0.list.runs.iter().any(|r| r.text.contains("▾ 展开")), "open summary ▾");
+    assert!(f0.list.runs.iter().any(|r| r.text.contains("内容甲")), "open content drawn");
+
+    // 聚焦内容叶（块 0）后点击摘要条 → 折叠 + 焦点清退。
+    *c.focus.lock().unwrap() = Some(0);
+    let (rect, open0) = c.details_geom.lock().unwrap()[0];
+    assert!(open0);
+    let out = run_fs(|fs| {
+        c.handle_input(
+            fs,
+            DocInput::MousePressed {
+                button: EditorButton::Left,
+                x: rect.x + 5.0,
+                y: rect.y + 5.0,
+            },
+            &mut NullClipboard,
+        )
+    });
+    assert!(out.request_redraw, "toggle requests redraw");
+    assert_eq!(c.focused_block(), None, "focus inside collapsed content clears");
+    let f1 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+    assert!(f1.list.runs.iter().any(|r| r.text.contains("▸ 展开")), "folded summary ▸");
+    assert!(
+        !f1.list.runs.iter().any(|r| r.text.contains("内容甲")),
+        "folded content hidden"
+    );
+    // emit 往返：open 翻转落发射（open:true → 摘除）。
+    let doc = c.emit_document();
+    assert!(doc.contains("$details(summary:\"展开\") {"), "{doc}");
+    assert!(!doc.contains("open:true"), "{doc}");
+    assert!(doc.contains("内容甲。"), "emit keeps inner content");
+
+    // 再点击 → 展开，内容复显。
+    let (rect2, open1) = c.details_geom.lock().unwrap()[0];
+    assert!(!open1);
+    let _ = run_fs(|fs| {
+        c.handle_input(
+            fs,
+            DocInput::MousePressed {
+                button: EditorButton::Left,
+                x: rect2.x + 5.0,
+                y: rect2.y + 5.0,
+            },
+            &mut NullClipboard,
+        )
+    });
+    let f2 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+    assert!(f2.list.runs.iter().any(|r| r.text.contains("内容甲")), "re-expanded");
+    assert!(c.emit_document().contains("open:true"), "re-open roundtrips");
+}
+}
+

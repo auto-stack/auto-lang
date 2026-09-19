@@ -247,6 +247,135 @@ widget App {
         );
     }
 
+    /// PLAN-648 T-01（T-10 定因收口）：split 模式的 api-over-HTTP 改写必须
+    /// 覆盖**模块别名限定调用**（`api.list_notes()`，Expr::Dot(Ident, fn)），
+    /// 不得只认裸名。修复前限定调用绕过改写、静默回落 back 链扁平体进程内
+    /// 执行——auto-term dev 跑法（`auto run -r vm`）宿主进程引擎缺席 →
+    /// api 全空返回 → Tab 无标签/面板空白（vm-delegation-break.log 定因）。
+    /// 断言面与 test_codegen_rewrites_api_call_to_http_when_split 同构：
+    /// split = 无 CALL reloc（已改写 HTTP）；merge = 保留 CALL reloc。
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_rewrites_qualified_api_call_to_http_when_split() {
+        use crate::compile::CompileSession;
+        use crate::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+        use std::path::PathBuf;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type Note = { id int, title str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note {
+    return []
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        // 调用点 = 限定名 api.list_notes()（镜像 auto-term 前台 `use back.api`
+        // + `api.*` 全限定调用惯例）。
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api
+
+widget App {
+    msg Msg { Load }
+
+    model {
+        var notes = []
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Load -> {
+            .notes = api.list_notes()
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    crate::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
+            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        // SPLIT: 限定名调用同样改写为 HTTP（无 list_notes CALL reloc）。
+        let (module_split, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget, &[], import_stmts.clone(), &aliases, true,
+        )
+        .expect("synthesize split");
+        let has_list_notes_reloc = module_split.relocs.iter().any(|r| {
+            r.reloc_type == crate::vm::loader::RelocType::FuncCall
+                && (r.symbol_name == "list_notes" || r.symbol_name.ends_with(".list_notes"))
+        });
+        eprintln!(
+            "plan648 qualified split-mode relocs: {:?}",
+            module_split.relocs.iter().map(|r| &r.symbol_name).collect::<Vec<_>>()
+        );
+        assert!(
+            !has_list_notes_reloc,
+            "split mode: qualified api.list_notes() should be rewritten to HTTP, not a CALL reloc"
+        );
+
+        // MERGE: 限定名调用保留进程内 CALL reloc（back 链扁平体直调）。
+        let (module_merge, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget, &[], import_stmts, &aliases, false,
+        )
+        .expect("synthesize merge");
+        let has_list_notes_reloc_merge = module_merge.relocs.iter().any(|r| {
+            r.reloc_type == crate::vm::loader::RelocType::FuncCall
+                && (r.symbol_name == "list_notes" || r.symbol_name.ends_with(".list_notes"))
+        });
+        assert!(
+            has_list_notes_reloc_merge,
+            "merge mode: qualified api.list_notes() should remain a CALL reloc"
+        );
+    }
+
     /// PLAN-048 T2 (musk VM 数据桥): `emit_api_http_call` 必须支持 `{param}`
     /// 花括号路径模板（musk back/api.at 与 vue 轨 client 的约定，如
     /// `/api/chats/session/{id}`）。修复前只认 `:param`，花括号路径整段落入

@@ -4,6 +4,19 @@
       "id": "reports",
       "items": [
         {
+          "id": "P651-1",
+          "title": "autodown-editor-block-closure — 变更摘要",
+          "content": "编辑器 block 类型三态矩阵与闭合（RC-E 引擎对拍单元）。T-00 三态支持矩阵在案（attachments/651-matrix.md：17 kind × view/edit/streaming × engine-TS/core-Rust 逐格，双实现独立盘点交叉校验）；T-01+T-02 红项 8 格全闭合（VM 编辑壳 core.rs：fence 语言发射/query+embed 冻结源行/mermaid 入 fence 族/math 叶 %{ }% 往返/块锚 ^id 通道/details 折叠点击翻转/行首规则 7→10 对齐 TS INPUT_RULES/表格 align+IAL canonical :--- 还原）+ 5 项 DEBTS 提案（Q-4）+ 2 豁免维持；T-03 对拍 gate 常驻（t651_* 9/9 + autodown_editor 121/121 + closure corpus 幂等锚；gallery editor_tab 状态占位登记=auto-down a615d69）。回归：parser parity 16 测绿 + vm-smoke groups 1-10 绿（group 4 预存红在案/group 11 探针甄别 PASS）+ tf 2568/2569（唯一败=ui_gen 预存红 master 复现）。landing=master ff3c85b25..86b020ece（cherry-pick 等价落盘）。",
+          "file": "docs/plans/archive/651-autodown-editor-block-closure.md",
+          "related": [
+            "PLAN-651",
+            "GOAL-007"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
+        },
+        {
           "id": "P654-1",
           "title": "nested-timesource-path-and-clock — 变更摘要",
           "content": "PLAN-654（阶段 2+3 同契约）：TimeSource path 级订阅 + 框架 Clock 服务。阶段 A InstancePath=`{widget}@{mount_seq}`（always/root 为类型名）；装配期 mounted_paths 与类型 mounted_types 并行；renderer 订阅 identity 含 path（同 widget 多实例分订阅/分退订）；派发 IcedMessage.widget 带 path，on_with_input_for/fire_timer 剥 @seq 走类型级 handler（单 VM 根态——path 级订阅 ≠ path 级状态隔离，已文档化+单测钉住）。阶段 B Clock C1+C2：Time.now_sec() handler 路径 + 视图引用 __clock_ 时框架 1Hz 注入 __clock_now_sec/__clock_hhmm（与 desktop __wm_clock 分钟级对照见 clock-service.md）；无引用零额外泵；.Tick 兼容不回归。实机 gallery 012-clock：652 回归红线 PASS + path 可观测 TS_PATH Demo012Clock@0。landing master A=b13af5927 B=4817b51e1（format-patch apply；隔离钩子拦 merge）。",
@@ -1070,6 +1083,16 @@
           "file": "docs/plans/archive/633-gallery-fullstack-backend-mount.md",
           "related": [
             "PLAN-633"
+          ],
+          "status": "published"
+        },
+        {
+          "id": "P648-2",
+          "title": "split 模式 api-over-HTTP 改写覆盖限定名调用 — 变更摘要",
+          "content": "VM split 模式（AUTO_VM_MERGE=0）的 #[api] 调用改写此前仅匹配裸名（Expr::Ident）——限定名调用（api.get_lines()，use back.api 惯例=545 规范形态）绕过改写、静默回落 back 链扁平体进程内执行，宿主进程引擎缺席时全空返回（auto-term dev 跑法空屏/T-10 委托断供定因）。现两合成入口（synthesize_widget_module/synthesize_from_decl）api_funcs 注册限定名键（扁平化全名+别名末段.fn 双形态），codegen 门卫放行 Dot(Ident,fn)；db.* 等非 api 限定名不命中表不受影响，merged 路径零改动（plan340 回归双断言锁定）。AUTO_LANG_HTTP_TRACE=1 仪器常驻 simple_http_json（api 改写家族 HTTP 汇聚点：方法/URL/状态/响应摘要）。次生登记 P648-D1：事件 handler 在 HTTP yield 期间被再入会破坏任务状态（单槽 waiting_http_request_id+同任务帧覆写→循环上界失效无界自旋，纯窗口事件即可触发），交互稳定性独立立项。",
+          "file": "docs/specs/auto-lang/vm/plans.md",
+          "related": [
+            "PLAN-648"
           ],
           "status": "published"
         }
@@ -3090,6 +3113,17 @@
           "last_modified": "2026-09-18"
         },
         {
+          "id": "P075-1",
+          "title": "l2-bp-extract-batch0 — 蓝图级双端 gate 首证 + 两件骨架 bp + G-6 同文件模块 fn 收口",
+          "content": "design 30 §2 L2 门首次落地：examples/bp-gate/ 独立最小双端 harness（vue 臂=仓库外沙箱 auto build gen→G-7 补件→vue-tsc→vite→playwright 截图基线；VM 臂=auto run -r vm 单 boot+MCP autoui_state/snapshot root 投影断言——F-1 子件子树不可见，R-C 裁定）。沙箱纪律（R-B）：auto build 在 dep 工程内物化 deps/<name> junction（Plan 529 红线）——凡构建类验证一律仓库外沙箱+退出摘链（KNOWN-DEBT P075-D1 成文）。两件骨架 bp 入库：layout/status-bar（三版同名不同物按 §6 通道③收敛为骨架+内容 slot）+ data-display/row-list（面板行族 7 使用位）；骨架 bp 对 640 准入标准的例外经批准意图和解落 project.md 第 4 条注记。G-6 收口（074-sink-mode 未修面）：components//bps 与 dep 重生成臂补 same_file_module_fns 池重挂（src/front 兄弟臂同款；空池零发射=存量输入零影响，jade gen 双二进制对拍逐字节一致）；首个真实消费方=examples/capability-tests/048-bp-module-fn（fixture 本地 mini bp 库+库 pac.at 清单）+ plan075_bp_tests 红→绿。DEBTS 070 两行划销补记（主体 645 落地、本体漏划销致 075 起草误判——判定记录 auto-down 075-bp-extraction-record.md §5）。9 单元判定记录（design 30 §6 四通道首执）=auto-down docs/plans/attachments/075-bp-extraction-record.md。",
+          "file": "docs/specs/blueprint/project.md",
+          "related": [
+            "PLAN-075",
+            "PLAN-645"
+          ],
+          "status": "published"
+        },
+        {
           "id": "P646-1",
           "title": "select-anything — 任意基面框选→结构化回吐契约（语义/信封/双端/MCP）",
           "content": "Select Anything 三消费面同一契约（PLAN-646）：①选择语义纯函数——中心点包含命中（节点 bounds 中心入框选矩形才命中，边缘扫过不算）+顶层修剪（祖先链从 children 列表派生不依赖 parent 回填）+文档序；无 bounds 节点不参与命中但入 structure（VM 端非容器 widget 探测容器仅 F12 挂载，容器级 vnode_N id 恒在）。②结果信封 {surface, app, rect, nodes[{id,kind,span,source,structure}]} 三格式渲染（Auto 切片头注释+逐节点 span 原文去公共缩进/JSON pretty/Atom 拼接）；span 为字节口径——JS 侧切片必须经 UTF-8 字节（TextEncoder/Decoder），中文注释下 UTF-16 码元索引错位（实测定罪）。③VM 端：Alt+拖拽（GlobalPress 臂起笔吞事件抑制 WM 焦点抢占+4px 死区）→ canvas 蒙层（非 opaque 层命中穿透）→ release 暂存 pending_selection + needs_bounds → __bounds_collected 臂延迟计算（bounds 新鲜保证）→ DevTools 采集标签页（Auto/JSON/Atom 三视图+复制反馈+Esc/F12 关）。④Vue dev 端：node_to_html 注入 data-auto-{tag,src,id,span}（AUTOUI_SELECT_MARKERS=1 门控——恒定注入被 304 项快照测试证伪，产物构建不设 env 逐字节不变；data-auto-src=源 .at stem，子件 span 归各自源文）；脚手架 auto-sources.ts 源映射（hash 防抖）+ auto-select/overlay.ts（main.ts import.meta.env.DEV 动态引用，产物 tree-shake）。⑤MCP autoui_select_rect(x,y,w,h,format?)：autoui_vtree 同源 styled_vtree + layout_bounds（vnode_N 键直解析）+ 随帧 source_code；结构化 isError。⑥Plan 282 补线：needs_bounds 消费点原在 app 消息尾部臂，静默会话永不分发（trace armed 4/consumed 0 定罪）——__hot_reload 500ms 泵臂代消费闭环。语义载体 crates/auto-lang/src/ui/selection/；面板正文文字需显式深色（深色主题 text 缺省白字落面板浅底隐身，R646-F1）。",
@@ -3105,8 +3139,8 @@
         },
         {
           "id": "P642-1",
-          "title": "ui-gallery VM 内嵌健康度契约（registry 语义/适配器内联/包级联/recipe 预注册/grow 剥离/scroll 兜底）",
-          "content": "docs/specs/auto-lang/ui/overview.md「ui-gallery VM 内嵌健康度契约（PLAN-642）」节七条：①registry.at loadable=VM 臂内嵌可交互（loadable||fullstack），web 臂 demos-registry 分离；②适配器 stylekit 配方发射期内联（教程/源码 tab 原文）；③475 组件包目录级联（kept-first 告警）；④parse_package_widgets parse 前 recipe 预注册义务；⑤distributed 列 grow 剥离（iced 0.14 FillPortion 份额硬钉+配给，grow 竞争内容 0×0——008 实证）；⑥overflow-y:hidden+justify-Center/End 列 scroll 兜底（Shrink Scrollable，短居中/长滚动）+内嵌语料避免 Fill 高度技巧（等高待 PLAN-655 StretchLine，P642-D12）；⑦开放项：子件主题魔法变量统一状态覆写链（T-13 needs_replan）+008 滚轮可达性复验。证据：fe48a3945/7375cd027；tf 3615/3615、tv 3760/3760、ui 零新增红；009/016 实机验收。",
+          "title": "ui-gallery VM 内嵌健康度契约（registry 三档语义/适配器内联/包级联/recipe 预注册/grow 剥离/scroll 兜底/保留字段 α-改名/store 逐组件解析/routes 首页 stub）",
+          "content": "docs/specs/auto-lang/ui/overview.md「ui-gallery VM 内嵌健康度契约（PLAN-642）」节十条（2026-09-19 终稿）：①registry.at loadable=VM 臂内嵌可交互（loadable||fullstack||route_stub 三档并集），web 臂 demos-registry 分离；②适配器 stylekit 配方发射期内联；③475 组件包目录级联（kept-first 告警）；④parse_package_widgets parse 前 recipe 预注册义务；⑤distributed 列 grow 剥离（iced 0.14 FillPortion 份额硬钉+配给，grow 竞争内容 0×0）；⑥overflow-y:hidden+justify-Center/End 列 scroll 兜底+内嵌语料避免 Fill 高度技巧（等高已由 PLAN-655 StretchLine 交付）；⑦宿主保留字段 α-改名（T-13①）：dark_mode/accent_color 发射期 <ns>_ 前缀化，声明/读/写一体，语料原文与宿主壳不动——合并根态上 demo store Init/匿名模块 init 双直写覆写宿主主题字段的根修；⑧视图侧 store 解析逐组件（T-15）：别名快照随 VmBridge 存档（线程级单例被多组件合成覆盖）+.len() 快路径 store 展平；⑨routes 首页 stub 档（T-14a）：routes 块剔除+outlet→首页组件+页面 ns 级联+store 别名 use 重链+back 级联同管线+多 store 边界降级（023）；⑩开放项收口态：017/031-stream+020→P642-D13 proxy 独立计划；F1 崩溃族（bash127=栈溢出/fastfail）→D3 专项；D14 fixture 派发/fs.canonical 语义。证据：终 landing bec264449（dfcc3bbe1/d70662244/d19190a11/17f2ab8b3 链）；终审 tf 3640/3641+独立 E2E 矩阵 13 页。",
           "file": "docs/specs/auto-lang/ui/overview.md",
           "related": [
             "PLAN-642",
@@ -6438,6 +6472,22 @@
             "PLAN-649"
           ],
           "status": "published"
+        },
+        {
+          "id": "P648-1",
+          "title": "run-gate-codegen-defects — 复审与合并收据",
+          "content": "复审 pass（/auto-plan:review，2026-09-19，执行会话内复审·独立性声明在案·工件重建裁定）：AC-01..05 全 pass 独立复现（AC-02 独立复跑 40s/4083 响应全 200+tab-title='shell 1'+pane-lines 真实 banner+循环零爬升；在库截图亲验 Tab '● shell 1'）；门禁复跑 tv fail-fast 2727 绿（唯一红=display_family 已知闪红家族）/vm_file 47/47/plan340 12/12/merged 2/2；F-R1..R4 全 info（P648-D1 再入缺陷移交合规；host-bridge 臂裸名-only 对称性观察；alias_form 理论碰撞不可达；no-fail-fast tv 组合门禁替代）。规范增量冻结=无（缺陷整备不改已发布契约面；限定名改写追齐 545 bare=命名空间规范形态）。reviewed_commit=6422eb267@plan-648-dev（base 4817b51e1；依赖 .wt/lang-648/auto-down@b1c88de 只读）。",
+          "file": "docs/plans/archive/648-run-gate-codegen-defects.md",
+          "related": [
+            "PLAN-648"
+          ],
+          "status": "published"
+        },
+        {
+          "id": "P642-R2",
+          "title": "PLAN-642 终审 pass（2026-09-19）",
+          "content": "终审 @ 17f2ab8b3（auto-os 8d376c6）：AC-01/03/04/05 pass、AC-02 registered-deviation（F1→P642-D3 裁定 a）、AC-06 partial-registered（Vue 臂 folder-music×lucide0.312 预存红 R642-R5，时间线归因早于 T-10）。发现 R5/R6/R7/R8/R9 登记 P642-D15 与 D12 核销标记。归档 docs/plans/archive/642-uigallery-vm-embed-repair.md。",
+          "file": "docs/plans/archive/642-uigallery-vm-embed-repair.md"
         }
       ]
     }
