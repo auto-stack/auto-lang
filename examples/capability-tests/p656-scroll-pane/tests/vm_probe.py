@@ -13,6 +13,9 @@ p656-scroll-pane VM(MCP) 验证驱动 —— PLAN-656 AC-16 实机腿。
 """
 import json, os, socket, subprocess, sys, time, urllib.request
 
+# --archive：通过后把快照/截图刷入 tests/（AC-16 归档物刷新档，review F-R2）。
+ARCHIVE = "--archive" in sys.argv
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -176,10 +179,30 @@ def main():
         else:
             fails.append("obs pane not found for scroll action")
 
-        # 5. 截图归档
+        # 5. 截图归档（--archive：快照+截图刷入 tests/，AC-16 归档物保持
+        # 交付态布局——review F-R2；默认仅打印不落盘，避免日常探针脏化归档）。
         try:
+            if ARCHIVE:
+                snap_now = c.text("autoui_snapshot")
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "vm_snapshot.txt"), "w", encoding="utf-8") as f:
+                    f.write(snap_now)
+                print("[*] snapshot archived -> tests/vm_snapshot.txt")
             res = c.text("autoui_screenshot", {"name": "p656_vm_review"})
             print(f"[*] screenshot: {res[:160]}")
+            if ARCHIVE:
+                import re as _re, shutil as _shutil
+                m = _re.search(r"([A-Za-z]:\\\\[^\"]+?autoui-screenshot-\d+\.png|[A-Za-z]:\\[^\"]+?autoui-screenshot-\d+\.png)", res)
+                if m:
+                    src_path = m.group(1).replace("\\\\", "\\")
+                    if os.path.exists(src_path):
+                        _shutil.copyfile(src_path, os.path.join(
+                            os.path.dirname(os.path.abspath(__file__)), "vm_review.png"))
+                        print("[*] screenshot archived -> tests/vm_review.png")
+                    else:
+                        print(f"[!] archive source missing: {src_path}")
+                else:
+                    print("[!] screenshot path not parsed from result")
         except Exception as e:
             print(f"[!] screenshot failed: {e}")
 

@@ -20,10 +20,10 @@
 
 use std::collections::HashMap;
 
-use iced::advanced::widget::Operation;
 use iced::advanced::widget::operation::{Outcome, Scrollable};
-use iced::{Rectangle, Vector};
+use iced::advanced::widget::Operation;
 use iced::widget::Id;
+use iced::{Rectangle, Vector};
 
 /// 读回结果：widget id 串 → (offset_x, offset_y, viewport_w, viewport_h, content_w, content_h)。
 pub type ScrollStateMap = HashMap<String, (f32, f32, f32, f32, f32, f32)>;
@@ -45,7 +45,9 @@ pub struct ScrollStateReader {
 
 impl ScrollStateReader {
     pub fn new() -> Self {
-        Self { out: HashMap::new() }
+        Self {
+            out: HashMap::new(),
+        }
     }
 }
 
