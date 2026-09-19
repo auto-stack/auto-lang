@@ -2028,3 +2028,42 @@ CodeEditor
   `evidence`: tests/{vm_probe.py,vm_snapshot.txt,vm_review.png}、
   p656_scroll_controller_natives_end_to_end、p656_scroll_pane_vue_codegen。
   `next`: **merge**。
+
+- 2026-09-19 /auto-plan:review 补充独立复核（第二会话，与上条终审并发——本计划
+  第二次双会话竞态，process 观察：同一 plan 的 work/review 在两会话并行推进，
+  本条在 merge 278efbea7 落地后追加）：`stage: review | PLAN-656 | r2 |
+  outcome: **pass（旁证）** | reviewed_commit: 9f05683fc | base: c52f6fdfa`。
+  独立重跑非沿用：tf --no-fail-fast 3642/3645（三红单跑隔离：display_family/
+  ffi_dual_019 双绿=并行顺序性；mouse_area 单跑仍红但其测试源 ui_gen/rust.rs
+  上次改动=029eacada plan-022 合并、本计划 diff 仅触 vue.rs，前两轮基线对照
+  在案=master 预存）；scroll 63/63；natives 端到端/vue 黄金单跑绿。
+  **用户指定两项裁决（独立到达，与上条终审一致）**：
+  ① spec 陷阱节改写与上轮终判衔接——**pass**。全仓 grep 伪理论零残留
+  （「重建重置/重置后的 0」仅存于历史记录文本）；spec 只载真机制（iced 0.14
+  translation=正向 offset 符号约定+offset 跨重建持久实证+写臂防御定位+
+  extent-only 真理由）；§9 记录链完整可读（收敛轮终判→修正轮三证证伪+改写）；
+  上轮交付机制（写臂/extent-only/__mcp_scroll 复用）全部保留且行为不受
+  理论修正影响。
+  ② v1 两处执行裁定——**accept（独立证据更强）**。语义契约保全（logical
+  handle/单轴简写/双轴显式/8 字段集），仅 surface syntax 偏离 r2 §5.1 示意；
+  本审新增 Vue 轿实机证据：controller 链 probe=142（iced 101.6，物理差异
+  §14.8 容许）、managed mprobe=9999793、onscroll 8 实参派发
+  oy=60 vy=94 py=0.857（=60/70 数学正确）、spacer 单节点
+  （style.height=1e+07px 零子，AC-11 node count 实证）；阻断项为真实语言层
+  缺口且 KNOWN-DEBT 656 登记（含精确理由/位置/迁移路径）；方法糖=纯增量，
+  record 形需独立裁定（arity 变化，字段序已按 record 序冻结铺垫）。
+  **AC-16 补充证据与跟进项（对上条终审的增补，非推翻）**：上条以 codegen
+  黄金替代 Vue 实机并留「merge 前抽查建议」——本审执行了该抽查并全绿
+  （上述 Vue 轿四项），但发现：F-R1[P2] Vue 轿可复现脚本未交付（T-09 设计的
+  test_vue_playwright.mjs 从未落地）+ vue dev 启动被 prismjs 1.30.0 上游漂移
+  全域阻断（环境级，auto-man 面，已入 KNOWN-DEBT）；F-R2[P3] 归档物过期——
+  vm_snapshot.txt/vm_review.png 停在 a0d068d01 旧布局（外层定高容器 idiom
+  前），上条终审证据引用失实（引用了过期归档）；F-R3[P3] scroll_state_reader.rs
+  （F-4 轮新文件）rustfmt 不干净（import 序+结构体字面量，T-10 只格式化了
+  T-10 前文件）；F-R4[P4] IAB webview 程序化 scrollTop 赋值不派发 scroll 事件
+  （vue 探针脚本须用 dispatchEvent/真实滚轮）。四项均非语义缺陷（双端语义
+  已经本审实机确认），路由为合并后跟进：F-R1/F-R2 由 fix worktree 补 vue
+  探针脚本+归档刷新，F-R3 一遍 rustfmt，F-R4 并入 F-R1 脚本方法论。
+  `evidence`: 本地 tf/隔离单跑输出；Vue 轿实机核验（prismjs 1.29.0 钉版
+  workaround + dispatchEvent）四项数值如上；prismjs 复现记录见 KNOWN-DEBT
+  656 行。 `next`: merge 继续（上条终审路由不变）；F-R1..R4 合并后跟进。
