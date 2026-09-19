@@ -252,6 +252,13 @@ def main() -> int:
                 print(f"  {'PASS' if ok else 'FAIL'}: forecast_tab daily")
                 if not ok:
                     failed += 1
+                # F-660-R3：Tab 切换后断言日卡内容可见（非仅按钮文本）
+                snap_d = mcp.snapshot()
+                ok_d = "今天" in snap_d and "周二" in snap_d
+                results.append(("daily tab renders day cards (今天/周二)", ok_d))
+                print(f"  {'PASS' if ok_d else 'FAIL'}: daily content 今天/周二")
+                if not ok_d:
+                    failed += 1
         except Exception as e:
             results.append(("forecast tab switch", False))
             print(f"  FAIL: forecast tab {e}")

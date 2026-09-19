@@ -41,7 +41,6 @@ style day_card = "w-16 shrink-0 items-center gap-0.5 py-2.5 rounded-2xl bg-muted
 style forecast_card = "bg-muted/40 border border-border/60 rounded-2xl p-3 gap-2 w-full"
 style fc_tab_on = "h-7 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
 style fc_tab_off = "h-7 px-3 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-style day_row = "w-full items-center gap-2 py-2.5 px-1"
 style refresh_busy = "h-8 px-3 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
 style refresh_idle = "h-8 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
 style layout_btn_on = "h-7 px-2.5 rounded-full text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
