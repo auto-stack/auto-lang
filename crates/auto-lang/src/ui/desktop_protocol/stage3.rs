@@ -4727,15 +4727,23 @@ mod tests {
 
             // 强制重生成：删生成 main.rs（needs_regeneration 全量臂）；
             // 原件恢复守卫（生成物属仓内容——断言成败均写回，panic 走 Drop）。
+            // P031-R5：恢复集**必须含 workspace 根 Cargo.toml**——生成会
+            // 改 members（+002-counter），漏护即留脏（曾实证击穿 tf 全量
+            // 门）；另以 git status 前后对照断言腿末零残留。
             let counter_ws = repo.join("examples/rust-workspace/counter");
+            let ws_root = repo.join("examples/rust-workspace");
             let main_rs = counter_ws.join("src/main.rs");
             let member_toml = counter_ws.join("Cargo.toml");
+            let ws_toml = ws_root.join("Cargo.toml");
             let saved_main = std::fs::read(&main_rs).expect("读 counter main.rs");
             let saved_toml = std::fs::read(&member_toml).expect("读 counter Cargo.toml");
+            let saved_ws = std::fs::read(&ws_toml).expect("读 workspace Cargo.toml");
+            let ws_dirty_before = git_status_porcelain(&repo, "examples/rust-workspace");
             std::fs::remove_file(&main_rs).expect("删生成 main.rs（强制重生成）");
-            let _restore = RestoreFiles(vec![
+            let restore = RestoreFiles(vec![
                 (main_rs, saved_main),
                 (member_toml, saved_toml),
+                (ws_toml, saved_ws),
             ]);
 
             let mut rust_cmd = std::process::Command::new(&auto_exe);
@@ -4786,12 +4794,37 @@ child:
             }
             let rust_status = guard.wait_pid(rust_pid, "rust 轨关窗后未退出");
             assert!(rust_status.success(), "rust 轨关窗 = exe 退出码 0");
-            eprintln!("[p031] rust-track leg PASS（重生成→注入→采纳→窗→关窗码 0）");
+            // 先显式恢复再断言（Drop 守卫在作用域尾——断言时序先于 Drop，
+            // 首跑即被自身打穿）。
+            restore.run();
+            // P031-R5：腿末清洁断言——rust-workspace 下 git 状态与腿前
+            // 全等（恢复守卫补全 workspace 清单后应为空集对照空集）。
+            let ws_dirty_after = git_status_porcelain(&repo, "examples/rust-workspace");
+            assert_eq!(
+                ws_dirty_before, ws_dirty_after,
+                "rust 腿残留脏文件（RestoreFiles 覆盖不足）：{ws_dirty_after:?}"
+            );
+            eprintln!("[p031] rust-track leg PASS（重生成→注入→采纳→窗→关窗码 0+零残留）");
         }
 
         // 清场。
         guard.release();
     }
+}
+
+/// 路径域的 git 脏状态清单（e2e 腿卫生断言口——P031-R5）。git 缺席
+/// 或非仓场景返回空串（e2e 恒在仓内运行，缺省不可达）。
+fn git_status_porcelain(repo: &std::path::Path, scope: &str) -> Vec<String> {
+    std::process::Command::new("git")
+        .args(["-C", &repo.to_string_lossy(), "status", "--porcelain", "--", scope])
+        .output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// e2e 文件恢复守卫（rust 腿生成物——断言成败/panic 路径均恢复仓内容）。

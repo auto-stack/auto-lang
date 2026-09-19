@@ -142,9 +142,11 @@ FrameReady（静默弃帧冻结的根修，桌面 broker 同益）+ `transport`�
 [--pipe]` 子命令 + rust 轨 `--autodesk-rqhost` 标记注入 + cargo `--`
 分隔符）+ `broker_surface` 泛型化接驳（DrawListPainter<M>）。
 权威正文 = `docs/design/autoui/desktop-protocol-v1.md` §1.11（本节
-仅指针）；测试面 = rqhost 单测/集成 11 + `p031_rqhost_arm` 六腿
-（AUTO_DESKTOP_E2E；留痕 `docs/plans/reports/assets/031/`）+ os 侧
-`scripts/smoke-031-rqhost.sh`。
+仅指针）；测试面 = rqhost 单测/集成 13（含末窗门四态/键入闭环）+
+`p031_rqhost_arm` 七腿（AUTO_DESKTOP_E2E；含关窗 X/末窗自退/自动
+孵化/rust 轨四腿；留痕 `docs/plans/reports/assets/031/`）+ os 侧
+`scripts/smoke-031-rqhost.sh`。输入闭环承载裁定与 ToDesk 环境注记
+见 §1.11（键入联动 = 集成测试承载）。
 
 ## 现状（2026-09-17）
 

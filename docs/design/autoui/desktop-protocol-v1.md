@@ -546,12 +546,24 @@ ad-hoc attach 同源**：PLAN-030（shell-outproc）的采纳协议与本节
 rendezvous 同族不同宿主——接口演进互链（`--rq-host=desktop` 参数位
 预留，实现归 030 线）。
 
-**验证面**：rqhost 单测/集成 11（rendezvous 往返/锁仲裁/零装载采纳/
+**验证面**：rqhost 单测/集成 13（rendezvous 往返/锁仲裁/零装载采纳/
 并发接纳/泵回收 EOF/ensure 退避/全循环×真 ClientPump/输入不串扰/
-策略档/vm fork 凭据/大帧回退）+ e2e `p031_rqhost_arm`（六腿全景：
-单/多 app、竞态、resize、kill 双向、降级显式；AUTO_DESKTOP_E2E 门，
-截图/进程清单留痕 `docs/plans/reports/assets/031/`）+ os 侧
-`scripts/smoke-031-rqhost.sh`（生产 well-known 演示位）。
+策略档/vm fork 凭据/大帧回退/末窗门四态/键入闭环[键入 100→宿主合成
+帧文本 212 联动 + 零串扰]）+ e2e `p031_rqhost_arm`（七腿全景：
+单/多 app、竞态、resize、kill 双向、**用户关窗 X→app 码 0**、
+**末窗自退→daemon 退出**、**真实自动孵化[锁持有→自退→锁让出]**、
+**rust 轨[a2r 重生成→注入→采纳→关窗码 0]**、降级显式；AUTO_DESKTOP_
+E2E 门，留痕 `docs/plans/reports/assets/031/`[进程清单+daemon stderr]）
++ os 侧 `scripts/smoke-031-rqhost.sh`（生产 well-known 演示位）。
+
+**输入闭环承载裁定**（2026-09-19 修复轮）：真机合成输入（SendInput
+全局队列 / PostMessage legacy 鼠标消息）在 ToDesk 输入钩子类环境不可
+用（SendInput 零送达 + winit 0.30 WM_POINTER 路径忽略 legacy 投递；
+native_dock_e2e T4 同款环境事实先例）——键入→换算联动闭环由**集成
+测试承载**（vm_typing_loop_over_pipe：真管道×真源×真 ClientPump×
+rq_update 输入臂，断言宿主合成帧文本 212）；宿主侧 revision 观测行
+（`[rqhost] revision` 仅变化打行）为帧变断言锚点。工程注：子进程
+stderr PIPE 必须排水——构建期警告超管道缓冲即阻塞写端（假死）。
 
 **保真口径**：-q 渲染面 = DrawListPainter → vm 轨解释态全保真
 （AppProjector 全 vocabulary 投影，无覆盖门）；not-yet 词汇（popover
