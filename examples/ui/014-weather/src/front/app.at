@@ -1,25 +1,26 @@
-// app.at — 014-weather 天气仪表盘（PLAN-660 UI 刷新）
+// app.at — 014-weather 天气仪表盘（PLAN-660 r2）
 //
-// 设计锚点：Apple Weather × 墨迹——居中移动密度卡片、条件感知 hero、
-// 横滑小时条、五日温度区间条。
+// r1 → r2（用户反馈 2026-09-20）：
+//   1. 优先适配网页/桌面横屏；竖屏布局保留为 layout_mode=="portrait" 分支
+//      （未来手机版可直接切换/响应式扩展）。
+//   2. 滚动一律改用 AutoUI `scroll`（别名 scrollable → Vue ScrollArea / VM
+//      iced scrollable），不再手写 overflow-x-auto。
 //
-// 主题契约（Plan 458 / Design 19/29）：根组件 dark_mode / accent_color
-// 状态变量名为双端运行时契约，禁止改名。pac.at 不写死 theme，跟随宿主。
-//
-// 城市选择：不用 aura select（selectitem iced:none），用 pill 芯片按钮，
-// 双端 button 可用。数据为内置 mock，不接真实气象 API。
+// 设计锚点：桌面天气仪表盘（横屏）+ Apple Weather 竖屏（保留）。
+// 主题契约：dark_mode / accent_color（Plan 458），变量名勿改。
+// 城市选择：pill 芯片（不用 select —— selectitem iced:none）。
+// Hero 渐变：view 内按 condition 条件 class（勿把 Tailwind 串绑到 style:，
+// 生成器会落到 :style 导致渐变失效）。
 
-use weather_data: name_for, condition_for, cond_zh_for, icon_for, temp_for, feels_for, humidity_for, wind_for, uv_for, aqi_for, aqi_level_for, pressure_for, visibility_for, hourly_for, daily_for, hero_grad, aqi_badge_style
+use weather_data: name_for, condition_for, cond_zh_for, icon_for, temp_for, feels_for, humidity_for, wind_for, uv_for, aqi_for, aqi_level_for, pressure_for, visibility_for, hourly_for, daily_for
 use stylekit.styles: hint_text
 
 style page = "min-h-screen bg-background text-foreground"
-style shell = "w-full max-w-md mx-auto p-4 gap-4"
 style city_pill_on = "px-3 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground shadow-sm shrink-0"
 style city_pill_off = "px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shrink-0 transition-colors"
 style icon_btn = "w-9 h-9 items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
 style section_title = "text-sm font-semibold text-foreground"
-style metric_card = "bg-card border border-border rounded-2xl p-3 gap-1"
-style metric_card_mid = "bg-card border border-border rounded-2xl p-3 gap-1 justify-center"
+style metric_card = "bg-card border border-border rounded-2xl p-3 gap-1 min-w-0"
 style metric_label = "text-[10px] text-muted-foreground uppercase tracking-wider"
 style metric_value = "text-sm font-semibold text-foreground"
 style hour_card_now = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl bg-primary/15 border border-primary/30"
@@ -27,6 +28,12 @@ style hour_card = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl border bo
 style day_row = "w-full items-center gap-2 py-2.5 px-1"
 style refresh_busy = "h-8 px-3 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
 style refresh_idle = "h-8 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+style layout_btn_on = "h-7 px-2.5 rounded-full text-[11px] font-medium bg-primary text-primary-foreground"
+style layout_btn_off = "h-7 px-2.5 rounded-full text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80"
+style card_surface = "bg-card border border-border rounded-2xl"
+style aqi_good = "text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-medium"
+style aqi_warn = "text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-medium"
+style aqi_mid = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium"
 
 widget App {
     msg {
@@ -35,13 +42,15 @@ widget App {
         ToggleTheme,
         SetTheme(str),
         SetAccent(str),
+        SetLayout(str),
         Init
     }
 
     model {
-        // 双端主题契约变量名（勿改）
         var dark_mode bool = true
         var accent_color str = "indigo"
+        // landscape = 网页/桌面优先；portrait = 保留的手机版竖屏设计
+        var layout_mode str = "landscape"
 
         var city_id str = "beijing"
         var city_zh str = "北京"
@@ -59,8 +68,6 @@ widget App {
         var visibility str = "12 km"
         var updated_at str = "14:30"
         var refreshing bool = false
-        var hero_style str = "bg-gradient-to-br from-sky-400 to-blue-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
-        var aqi_badge str = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium"
 
         var cities = [
             { id: "beijing", zh: "北京" },
@@ -75,7 +82,6 @@ widget App {
             { id: "sanya", zh: "三亚" }
         ]
 
-        // 预报列表（Obj 字面量；字段在 view 以 h.time / d.day 访问）
         var hourly = [
             { time: "现在", icon: "⛅", temp: "23°", now: true },
             { time: "15:00", icon: "⛅", temp: "24°", now: false },
@@ -99,18 +105,32 @@ widget App {
         col {
             style: page
             col {
-                style: shell
+                style: "w-full max-w-6xl mx-auto p-4 lg:p-6 gap-4"
 
                 // ── Header ──
                 row {
-                    style: "w-full items-center gap-2"
+                    style: "w-full items-center gap-3"
                     col {
-                        style: "gap-0.5"
-                        text .city_zh { style: "text-2xl font-bold text-foreground tracking-tight" }
+                        style: "gap-0.5 min-w-0"
+                        text .city_zh { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
                         text f"更新于 ${.updated_at}" { style: hint_text }
                     }
                     row {
-                        style: "ml-auto items-center gap-2"
+                        style: "ml-auto items-center gap-2 shrink-0"
+                        // 布局切换：横屏（默认）/ 竖屏（手机版预览）
+                        row {
+                            style: "items-center gap-1 mr-1"
+                            if .layout_mode == "landscape" {
+                                button "横屏" { onclick: .SetLayout("landscape"), style: layout_btn_on }
+                            } else {
+                                button "横屏" { onclick: .SetLayout("landscape"), style: layout_btn_off }
+                            }
+                            if .layout_mode == "portrait" {
+                                button "竖屏" { onclick: .SetLayout("portrait"), style: layout_btn_on }
+                            } else {
+                                button "竖屏" { onclick: .SetLayout("portrait"), style: layout_btn_off }
+                            }
+                        }
                         button {
                             onclick: .Refresh
                             style: if .refreshing { refresh_busy } else { refresh_idle }
@@ -132,124 +152,21 @@ widget App {
                     }
                 }
 
-                // ── 城市 pill 横滑 ──
-                row {
-                    style: "w-full gap-2 overflow-x-auto pb-1"
-                    for c in .cities {
-                        if c.id == .city_id {
-                            button c.zh {
-                                onclick: .SelectCity(c.id)
-                                style: city_pill_on
-                            }
-                        } else {
-                            button c.zh {
-                                onclick: .SelectCity(c.id)
-                                style: city_pill_off
-                            }
-                        }
-                    }
-                }
-
-                // ── Hero 实况卡（条件装饰渐变）──
-                col {
-                    style: .hero_style
-                    text .icon { style: "text-5xl" }
-                    text .cond_zh { style: "text-base font-medium text-primary-foreground/90" }
-                    text .temp { style: "text-7xl font-light text-primary-foreground leading-none tracking-tight" }
-                    row {
-                        style: "items-center gap-3 text-primary-foreground/80 text-xs mt-1"
-                        text f"体感 ${.feels}" {}
-                        text f"湿度 ${.humidity}" {}
-                        text f"风 ${.wind}" {}
-                    }
-                }
-
-                // ── 指标网格 ──
-                col {
-                    style: "w-full gap-2"
-                    text "当前详情" { style: section_title }
-                    row {
-                        style: "w-full gap-2"
-                        col {
-                            style: metric_card
-                            text "湿度" { style: metric_label }
-                            text .humidity { style: metric_value }
-                        }
-                        col {
-                            style: metric_card
-                            text "风速" { style: metric_label }
-                            text .wind { style: metric_value }
-                        }
-                        col {
-                            style: metric_card
-                            text "体感" { style: metric_label }
-                            text .feels { style: metric_value }
-                        }
-                    }
-                    row {
-                        style: "w-full gap-2"
-                        col {
-                            style: metric_card
-                            text "紫外线" { style: metric_label }
-                            text .uv { style: metric_value }
-                        }
-                        col {
-                            style: metric_card
-                            row {
-                                style: "items-center gap-1"
-                                text "AQI" { style: metric_label }
-                                text .aqi_level { style: .aqi_badge }
-                            }
-                            text .aqi { style: metric_value }
-                        }
-                        col {
-                            style: metric_card
-                            text "能见度" { style: metric_label }
-                            text .visibility { style: metric_value }
-                        }
-                    }
-                    row {
-                        style: "w-full gap-2"
-                        col {
-                            style: metric_card
-                            text "气压" { style: metric_label }
-                            text .pressure { style: metric_value }
-                        }
-                        col {
-                            style: metric_card
-                            text "更新" { style: metric_label }
-                            text .updated_at { style: metric_value }
-                        }
-                        col {
-                            style: metric_card_mid
-                            text "数据" { style: metric_label }
-                            text "演示样本" { style: "text-xs text-muted-foreground" }
-                        }
-                    }
-                }
-
-                // ── 24 小时预报 ──
-                col {
-                    style: "w-full gap-2"
-                    text "24小时预报" { style: section_title }
-                    col {
-                        style: "bg-card border border-border rounded-2xl p-3"
+                // ── 城市 pill：AutoUI scroll（ScrollArea）横向 ──
+                container (style: "w-full h-11 shrink-0") {
+                    scroll (axis: "x", style: "h-full w-full") {
                         row {
-                            style: "w-full gap-2 overflow-x-auto"
-                            for h in .hourly {
-                                if h.now {
-                                    col {
-                                        style: hour_card_now
-                                        text h.time { style: "text-[10px] font-semibold text-primary" }
-                                        text h.icon { style: "text-lg" }
-                                        text h.temp { style: "text-sm font-bold text-primary" }
+                            style: "items-center gap-2 h-full pr-2"
+                            for c in .cities {
+                                if c.id == .city_id {
+                                    button c.zh {
+                                        onclick: .SelectCity(c.id)
+                                        style: city_pill_on
                                     }
                                 } else {
-                                    col {
-                                        style: hour_card
-                                        text h.time { style: "text-[10px] text-muted-foreground" }
-                                        text h.icon { style: "text-lg" }
-                                        text h.temp { style: "text-sm font-semibold text-foreground" }
+                                    button c.zh {
+                                        onclick: .SelectCity(c.id)
+                                        style: city_pill_off
                                     }
                                 }
                             }
@@ -257,32 +174,346 @@ widget App {
                     }
                 }
 
-                // ── 5 日预报 ──
-                col {
-                    style: "w-full gap-2"
-                    text "5日预报" { style: section_title }
+                // ==================== 横屏布局（网页/桌面优先） ====================
+                if .layout_mode == "landscape" {
                     col {
-                        style: "bg-card border border-border rounded-2xl px-3 py-1"
-                        for d in .daily {
-                            row {
-                                style: day_row
-                                text d.day { style: "w-10 text-sm font-medium text-foreground shrink-0" }
-                                text d.icon { style: "w-7 text-lg text-center shrink-0" }
-                                text d.cond { style: "w-14 text-xs text-muted-foreground shrink-0" }
-                                text d.tmin { style: "text-xs text-muted-foreground w-8 text-right shrink-0" }
-                                col {
-                                    style: "flex-1 h-1.5 mx-2 rounded-full bg-gradient-to-r from-sky-400 to-amber-400 opacity-80"
+                        style: "w-full gap-4"
+
+                        // 主区：左 Hero + 右指标/5日
+                        row {
+                            style: "w-full gap-4 items-stretch"
+
+                            // ── Hero 实况（左栏）──
+                            col {
+                                style: if .condition == "sunny" {
+                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                } else if .condition == "rain" {
+                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                } else if .condition == "storm" {
+                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                } else if .condition == "snow" {
+                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-cyan-300 to-sky-500 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                } else if .condition == "fog" {
+                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-gray-300 to-slate-500 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                } else if .condition == "cloudy" {
+                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-slate-400 to-slate-600 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                } else {
+                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-sky-400 to-blue-500 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
                                 }
-                                text d.tmax { style: "text-xs font-semibold text-foreground w-8 shrink-0" }
+                                text .icon { style: "text-6xl" }
+                                text .cond_zh { style: "text-lg font-medium text-white" }
+                                text .temp { style: "text-7xl font-light text-white leading-none tracking-tight" }
+                                row {
+                                    style: "items-center gap-3 text-white/90 text-xs mt-2 flex-wrap justify-center"
+                                    text f"体感 ${.feels}" {}
+                                    text f"湿度 ${.humidity}" {}
+                                    text f"风 ${.wind}" {}
+                                }
                             }
+
+                            // ── 右栏：指标 + 5 日 ──
+                            col {
+                                style: "flex-1 min-w-0 gap-4"
+
+                                col {
+                                    style: "w-full gap-2"
+                                    text "当前详情" { style: section_title }
+                                    row {
+                                        style: "w-full gap-2"
+                                        col {
+                                            style: metric_card
+                                            text "湿度" { style: metric_label }
+                                            text .humidity { style: metric_value }
+                                        }
+                                        col {
+                                            style: metric_card
+                                            text "风速" { style: metric_label }
+                                            text .wind { style: metric_value }
+                                        }
+                                        col {
+                                            style: metric_card
+                                            text "体感" { style: metric_label }
+                                            text .feels { style: metric_value }
+                                        }
+                                    }
+                                    row {
+                                        style: "w-full gap-2"
+                                        col {
+                                            style: metric_card
+                                            text "紫外线" { style: metric_label }
+                                            text .uv { style: metric_value }
+                                        }
+                                        col {
+                                            style: metric_card
+                                            row {
+                                                style: "items-center gap-1"
+                                                text "AQI" { style: metric_label }
+                                                if .aqi_level == "优" {
+                                                    text .aqi_level { style: aqi_good }
+                                                } else if .aqi_level == "轻度污染" {
+                                                    text .aqi_level { style: aqi_warn }
+                                                } else {
+                                                    text .aqi_level { style: aqi_mid }
+                                                }
+                                            }
+                                            text .aqi { style: metric_value }
+                                        }
+                                        col {
+                                            style: metric_card
+                                            text "能见度" { style: metric_label }
+                                            text .visibility { style: metric_value }
+                                        }
+                                    }
+                                    row {
+                                        style: "w-full gap-2"
+                                        col {
+                                            style: metric_card
+                                            text "气压" { style: metric_label }
+                                            text .pressure { style: metric_value }
+                                        }
+                                        col {
+                                            style: metric_card
+                                            text "更新" { style: metric_label }
+                                            text .updated_at { style: metric_value }
+                                        }
+                                        col {
+                                            style: metric_card
+                                            text "数据" { style: metric_label }
+                                            text "演示样本" { style: "text-xs text-muted-foreground" }
+                                        }
+                                    }
+                                }
+
+                                // 5 日预报（右栏）
+                                col {
+                                    style: "w-full gap-2"
+                                    text "5日预报" { style: section_title }
+                                    col {
+                                        style: "bg-card border border-border rounded-2xl px-3 py-1"
+                                        for d in .daily {
+                                            row {
+                                                style: day_row
+                                                text d.day { style: "w-10 text-sm font-medium text-foreground shrink-0" }
+                                                text d.icon { style: "w-7 text-lg text-center shrink-0" }
+                                                text d.cond { style: "w-14 text-xs text-muted-foreground shrink-0" }
+                                                text d.tmin { style: "text-xs text-muted-foreground w-8 text-right shrink-0" }
+                                                col {
+                                                    style: "flex-1 h-1.5 mx-2 rounded-full bg-gradient-to-r from-sky-400 to-amber-400 opacity-80"
+                                                }
+                                                text d.tmax { style: "text-xs font-semibold text-foreground w-8 shrink-0" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 底部：24h 横滑（AutoUI scroll / ScrollArea）
+                        col {
+                            style: "w-full gap-2"
+                            text "24小时预报" { style: section_title }
+                            container (style: "w-full h-40") {
+                                scroll (axis: "x", style: "h-full w-full") {
+                                    col {
+                                        style: "h-full justify-center"
+                                        row {
+                                            style: "items-center gap-2 h-full pr-2"
+                                            for h in .hourly {
+                                                if h.now {
+                                                    col {
+                                                        style: hour_card_now
+                                                        text h.time { style: "text-[10px] font-semibold text-primary" }
+                                                        text h.icon { style: "text-lg" }
+                                                        text h.temp { style: "text-sm font-bold text-primary" }
+                                                    }
+                                                } else {
+                                                    col {
+                                                        style: hour_card
+                                                        text h.time { style: "text-[10px] text-muted-foreground" }
+                                                        text h.icon { style: "text-lg" }
+                                                        text h.temp { style: "text-sm font-semibold text-foreground" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70 pt-1" }
+
+                        style: "w-full gap-4"
+                    }
+                }
+
+                // ==================== 竖屏布局（保留：未来手机版） ====================
+                if .layout_mode == "portrait" {
+                    scroll (axis: "y", style: "w-full flex-1 min-h-0") {
+                        col {
+                            style: "w-full max-w-md mx-auto gap-4 pb-6"
+
+                            // Hero
+                            col {
+                                style: if .condition == "sunny" {
+                                    "bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+                                } else if .condition == "rain" {
+                                    "bg-gradient-to-br from-blue-400 to-blue-600 rounded-3xl p-6 items-center gap-2 shadow-lg"
+                                } else if .condition == "storm" {
+                                    "bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-6 items-center gap-2 shadow-lg"
+                                } else if .condition == "snow" {
+                                    "bg-gradient-to-br from-cyan-300 to-sky-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+                                } else if .condition == "fog" {
+                                    "bg-gradient-to-br from-gray-300 to-slate-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+                                } else if .condition == "cloudy" {
+                                    "bg-gradient-to-br from-slate-400 to-slate-600 rounded-3xl p-6 items-center gap-2 shadow-lg"
+                                } else {
+                                    "bg-gradient-to-br from-sky-400 to-blue-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+                                }
+                                text .icon { style: "text-5xl" }
+                                text .cond_zh { style: "text-base font-medium text-white" }
+                                text .temp { style: "text-7xl font-light text-white leading-none tracking-tight" }
+                                row {
+                                    style: "items-center gap-3 text-white/90 text-xs mt-1"
+                                    text f"体感 ${.feels}" {}
+                                    text f"湿度 ${.humidity}" {}
+                                    text f"风 ${.wind}" {}
+                                }
+                            }
+
+                            // 指标
+                            col {
+                                style: "w-full gap-2"
+                                text "当前详情" { style: section_title }
+                                row {
+                                    style: "w-full gap-2"
+                                    col {
+                                        style: metric_card
+                                        text "湿度" { style: metric_label }
+                                        text .humidity { style: metric_value }
+                                    }
+                                    col {
+                                        style: metric_card
+                                        text "风速" { style: metric_label }
+                                        text .wind { style: metric_value }
+                                    }
+                                    col {
+                                        style: metric_card
+                                        text "体感" { style: metric_label }
+                                        text .feels { style: metric_value }
+                                    }
+                                }
+                                row {
+                                    style: "w-full gap-2"
+                                    col {
+                                        style: metric_card
+                                        text "紫外线" { style: metric_label }
+                                        text .uv { style: metric_value }
+                                    }
+                                    col {
+                                        style: metric_card
+                                        row {
+                                            style: "items-center gap-1"
+                                            text "AQI" { style: metric_label }
+                                            if .aqi_level == "优" {
+                                                text .aqi_level { style: aqi_good }
+                                            } else if .aqi_level == "轻度污染" {
+                                                text .aqi_level { style: aqi_warn }
+                                            } else {
+                                                text .aqi_level { style: aqi_mid }
+                                            }
+                                        }
+                                        text .aqi { style: metric_value }
+                                    }
+                                    col {
+                                        style: metric_card
+                                        text "能见度" { style: metric_label }
+                                        text .visibility { style: metric_value }
+                                    }
+                                }
+                                row {
+                                    style: "w-full gap-2"
+                                    col {
+                                        style: metric_card
+                                        text "气压" { style: metric_label }
+                                        text .pressure { style: metric_value }
+                                    }
+                                    col {
+                                        style: metric_card
+                                        text "更新" { style: metric_label }
+                                        text .updated_at { style: metric_value }
+                                    }
+                                    col {
+                                        style: metric_card
+                                        text "数据" { style: metric_label }
+                                        text "演示样本" { style: "text-xs text-muted-foreground" }
+                                    }
+                                }
+                            }
+
+                            // 24h
+                            col {
+                                style: "w-full gap-2"
+                                text "24小时预报" { style: section_title }
+                                container (style: "w-full h-40") {
+                                    scroll (axis: "x", style: "h-full w-full") {
+                                        col {
+                                            style: "h-full justify-center"
+                                            row {
+                                                style: "items-center gap-2 h-full pr-2"
+                                                for h in .hourly {
+                                                    if h.now {
+                                                        col {
+                                                            style: hour_card_now
+                                                            text h.time { style: "text-[10px] font-semibold text-primary" }
+                                                            text h.icon { style: "text-lg" }
+                                                            text h.temp { style: "text-sm font-bold text-primary" }
+                                                        }
+                                                    } else {
+                                                        col {
+                                                            style: hour_card
+                                                            text h.time { style: "text-[10px] text-muted-foreground" }
+                                                            text h.icon { style: "text-lg" }
+                                                            text h.temp { style: "text-sm font-semibold text-foreground" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 5 日
+                            col {
+                                style: "w-full gap-2"
+                                text "5日预报" { style: section_title }
+                                col {
+                                    style: "bg-card border border-border rounded-2xl px-3 py-1"
+                                    for d in .daily {
+                                        row {
+                                            style: day_row
+                                            text d.day { style: "w-10 text-sm font-medium text-foreground shrink-0" }
+                                            text d.icon { style: "w-7 text-lg text-center shrink-0" }
+                                            text d.cond { style: "w-14 text-xs text-muted-foreground shrink-0" }
+                                            text d.tmin { style: "text-xs text-muted-foreground w-8 text-right shrink-0" }
+                                            col {
+                                                style: "flex-1 h-1.5 mx-2 rounded-full bg-gradient-to-r from-sky-400 to-amber-400 opacity-80"
+                                            }
+                                            text d.tmax { style: "text-xs font-semibold text-foreground w-8 shrink-0" }
+                                        }
+                                    }
+                                }
+                            }
+
+                            text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70 pt-1" }
+
+                            style: "w-full max-w-md mx-auto gap-4 pb-6"
                         }
                     }
                 }
 
-                // ── 页脚 ──
-                text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70 pt-1 pb-2" }
-
-                style: shell
+                style: "w-full max-w-6xl mx-auto p-4 lg:p-6 gap-4"
             }
             style: page
         }
@@ -290,6 +521,7 @@ widget App {
 
     on {
         .Init -> {
+            .layout_mode = "landscape"
             .city_id = "beijing"
             .city_zh = name_for("beijing")
             .condition = condition_for("beijing")
@@ -304,11 +536,13 @@ widget App {
             .aqi_level = aqi_level_for("beijing")
             .pressure = pressure_for("beijing")
             .visibility = visibility_for("beijing")
-            .hero_style = hero_grad("beijing")
-            .aqi_badge = aqi_badge_style(aqi_level_for("beijing"))
             .hourly = hourly_for("beijing")
             .daily = daily_for("beijing")
             .updated_at = "14:30"
+        }
+
+        .SetLayout(mode) -> {
+            .layout_mode = mode
         }
 
         .SelectCity(id) -> {
@@ -326,8 +560,6 @@ widget App {
             .aqi_level = aqi_level_for(id)
             .pressure = pressure_for(id)
             .visibility = visibility_for(id)
-            .hero_style = hero_grad(condition_for(id))
-            .aqi_badge = aqi_badge_style(aqi_level_for(id))
             .hourly = hourly_for(id)
             .daily = daily_for(id)
         }
@@ -348,8 +580,6 @@ widget App {
             .aqi_level = aqi_level_for(id)
             .pressure = pressure_for(id)
             .visibility = visibility_for(id)
-            .hero_style = hero_grad(condition_for(id))
-            .aqi_badge = aqi_badge_style(aqi_level_for(id))
             .hourly = hourly_for(id)
             .daily = daily_for(id)
             if .updated_at == "14:30" {
@@ -380,4 +610,3 @@ widget App {
         }
     }
 }
-

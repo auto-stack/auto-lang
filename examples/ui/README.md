@@ -189,10 +189,9 @@ Basic/Premium/Enterprise 三档 + 月付/年付 `switch` 开关切换价格，
 （all/active/completed）、双击编辑、清除已完成。是 `tests/desktop_mcp.py`
 MCP 桌面测试惯例（"013 惯例"）的发源地。
 
-**[014-weather](014-weather/) — 天气仪表盘** ✅ [Plan 660](../../docs/plans/660-014-weather-ui-refresh.md) 刷新
-中国 10 城 mock 天气：条件感知 hero、指标网格（湿度/风/AQI…）、24h 横滑
-与 5 日温度区间条、深浅主题切换（`dark_mode` 契约）+ 城市 pill 芯片。
-数据为演示样本，不接真实气象 API。
+**[014-weather](014-weather/) — 天气仪表盘** ✅ [Plan 660](../../docs/plans/660-014-weather-ui-refresh.md)
+横屏（网页/桌面）优先 + 竖屏保留可切换；10 城 mock、条件 Hero、指标网格、
+24h/5 日预报；滚动用 AutoUI `scroll`（ScrollArea），深浅主题契约。
 
 **[015-notes](015-notes/) — 两栏笔记** ✅ [Plan 354](../../docs/plans/archive/354-015-notes-real-app.md) 升级
 树状文件夹/笔记导航 + AutoDown（Tiptap）所见即所得编辑器 + 后端 CRUD
