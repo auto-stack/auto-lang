@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-09-19
 updated_at: 2026-09-19
 plan_revision: 1
-current_step: 1
+current_step: 4
 total_steps: 8
 supersedes_spec_components: []
 new_spec_components: []
@@ -149,18 +149,24 @@ HTTP 前端 vs auto run 宿主内嵌 proxy 线程——按"gallery 一键体验
   merged CALL，返回值无人消费）；真实曲库来自宿主原生 media 路由。
   013/015/020(status)/022 全族维持 merged CALL 零回归。
 
-### 5.3 前端适配（T-02）
+### 5.3 前端适配（T-02；实施裁定收敛）
 
-- 020（语料不动，相对 URL `Http.get_json("/api/media/scan")`）：画廊
-  runner 在 proxy 绑定后设 `AUTO_HTTP_BASE=http://127.0.0.1:<port>/apps/
-  020-music-player`（resolve_http_base_url stdlib.rs:6695 既有展开，
-  语义零改动；独立形态不受影响——那是各自进程自己的 env）。
+- 实施裁定（2026-09-19 T-02）：**不经 AUTO_HTTP_BASE**——画廊 runner
+  在 proxy 绑定后将 base 以线程局部传给发射器，发射器对拷入 demos/ 的
+  per-demo 语料做 `/api/` 字面量前缀化（相对 → 绝对
+  `http://127.0.0.1:<port>/apps/<id>/api/...`）；proxy 原生 media scan
+  响应里的 `url` 字段直接发绝对 URL。理由：AUTO_HTTP_BASE 是进程单值
+  env，多 app 各需各的前缀无法表达；字面量前缀化 per-app 精确、独立
+  形态零触及（仅画廊发射路径），且 `resolve_http_base_url` 语义零改动
+  （绝对 URL 透传）。
+- 020（语料不动，画廊拷贝件被前缀化）：`Http.get_json("/api/media/
+  scan")` → 绝对子前缀 URL；曲库条目 url 由 proxy 发绝对值。
 - 017/031（发射期改写）：发射器为每 demo 生成 client 模块
   `demos/<ns>_client.at`（把 `use back.api:` 的 fn 逐个实现为
-  Http.*_json 绝对 URL `http://127.0.0.1:<port>/apps/<id><path>`；类型
-  定义自 back api.at 的 pub type/tag 摘出随行）——merged 编译单元内
-  纯 .at 可编译，api 调用不经 codegen 三态决策（非 api import）。
-  发射顺序约束：proxy 先绑端口 → 发射器拿端口 → run_file。
+  Http.*_json 绝对 URL；类型定义自 back api.at 的 pub type/tag 摘出
+  随行）——merged 编译单元内纯 .at 可编译，api 调用不经 codegen 三态
+  决策（非 api import）。发射顺序约束：proxy 先绑端口 → 发射器拿
+  端口 → run_file。
 
 ### 5.4 stream 转发时序（017，T-04）
 
@@ -278,16 +284,55 @@ HTTP 前端 vs auto run 宿主内嵌 proxy 线程——按"gallery 一键体验
       （CompiledPackage.api_routes）、stdlib.rs:3481（全局路由表约束）、
       vm_bridge.rs:1295（marshalling 范本）、api_gen.rs:1817/2092（SSE
       发射+broadcast 语义）、stdlib.rs:6255（sse_get_stream）。
-- [ ] **T-01 proxy 骨架 + 纯 JSON API 面**
+- [x] **T-01 proxy 骨架 + 纯 JSON API 面**
       axum 单宿主 + `HashMap<app_id, VmSession>` 注册表 + 子 URL 前缀解析
       + session 内 `#[api]` fn 表动态分发（Plan 312 路由清单）+ JSON
       响应。冒烟：020 `/api/player/status` 经子前缀返回真实状态。
-- [ ] **T-02 生成器 baseURL 子前缀适配**
+      [✅ 已完成 2026-09-19] commit 6270bda92：`crates/auto-lang/src/
+      back_proxy.rs`（crate 根，镜像 autovm_daemon 先例；手写 HTTP/1.1
+      前端 std TcpListener，**非 axum**——设计定案 §5.2 无新依赖；per-
+      session 专线程 + mpsc；路由表取自 Codegen api_routes 绕过全局单表；
+      按名参数绑定路径占位符/body 字段/query；__module_init 会话态）。
+      测试 `tests/back_proxy_tests.rs`（挂 test-http-e2e 门 + http_e2e_
+      前缀 → `cargo th` 收录）4/4 PASS：①种子列表+跨请求态存续
+      （POST 后 GET 见第二记录）②404 三面 ③缺参 400 ④**020 真实语料
+      冒烟 `/apps/020-music-player/api/player/status` → 200 `[]`**（T-01
+      验收句达成）。auto-down 依赖 worktree 补建于组目录（detached @
+      7c0b774，跨仓 path 依赖 `../../../auto-down` 解析需要）。
+- [x] **T-02 生成器 baseURL 子前缀适配**
       auto-man api baseURL `:port` → `/apps/<id>`（PLAN-617 AUTO_HTTP_BASE
       相对展开先例，五臂覆盖）；独立形态零变化（形态开关判定）。
-- [ ] **T-03 gallery 集成 + 020 曲库端到端**
+      [✅ 已完成 2026-09-19] commit e40b3d496：实施裁定收敛（§5.3 回填）
+      ——**不经 AUTO_HTTP_BASE**（进程单值 env 无法表达 per-app 前缀），
+      改为发射器字面量前缀化：`GALLERY_PROXY_ROOT` 线程局部（rust_ui 在
+      proxy 绑定后、refresh_gallery_registry 前注入；None=独立形态零
+      改写）+ `prefix_api_url_literals`（仅含 `Http.` 的行改 `"/api/` →
+      绝对 `<root>/apps/<id>/api/`；五臂天然覆盖——按行不按方法）。
+      语料实证：三 demo 前端全部相对调用点仅 020 player_store.at:92 一处。
+      测试 `test_emit_gallery_vm_demos_proxy_url_prefixing` 双臂（前缀化
+      生效 + #[api] 属性路径保持相对 + 独立形态零改写）；gallery 发射
+      15/15 全过零回归。resolve_http_base_url 语义零触碰（绝对 URL 透传）。
+- [x] **T-03 gallery 集成 + 020 曲库端到端**
       auto-os 启动编排（proxy 随画廊拉起）+ registry/适配器注入子 URL +
       内嵌 020 出曲库（AC-01 全链）；P642-D10 核销。
+      [✅ 已完成 2026-09-19] commit 571dcf4c6（auto-lang worktree；auto-os
+      侧零代码改动——编排钩子全在 lang 侧 rust_ui 画廊位，启动编排=
+      `auto run -r vm` 既有单命令不变）。实现：①proxy 原生 media 路由
+      （cfg ui；scan 三态语义镜像 api_gen + url 字段发绝对值；stream 单区
+      间 Range 200/206/416 + 流式写出不整读）；②`start_gallery_back_proxy`
+      编排（注册判定镜像 registry loadable 三档并集——020 为 loadable 档
+      fullstack=false，按 fullstack 过滤漏注册的实测修正；行缓存消两次
+      分钟级扫描；失败降级不阻断画廊）；③rust_ui 画廊钩子 proxy 先于发射
+      启动。**AC-01 全链 MCP 实证**（evidence/p658/：t03_020_library.png
+      + t03_020_scan.json + range headers）：画廊 VM 臂窗口侧栏点选 020 →
+      `共 393 首歌曲 · 默认路径 E:\Music` + 真实曲目渲染（粉雪/Adele/
+      BEYOND），press 的 state_changes 显示 `current_url` 直指
+      `http://127.0.0.1:3358/apps/020-music-player/api/media/stream/...`；
+      发射产物 demos/player_store.at:92 前缀化实证；Range 206 窗口与真文件
+      逐字节一致（bytes 0-511/7759377）。e2e 双配置：
+      `test-http-e2e,ui-iced` 6/6 + `test-http-e2e` 4/4。
+      **P642-D10 核销**（曲库非空达成）。CI 挂靠（media e2e 需 ui-iced
+      feature 组合）记 T-07 收口。
 - [ ] **T-04 stream 转发一等公民（017）**
       session 内 ~Stream 执行 + HTTP chunk/SSE 逐事件转发 + 前端事件流
       消费；内嵌 017 双向收发（AC-02）；017 否决解除（发射器 unsupported
