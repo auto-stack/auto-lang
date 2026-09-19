@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-656
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: universal-scroll-pane
 author: [zhaopuming, agent]
 created_at: 2026-09-19
@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: [GOAL-007]      # AutoUI 跨端一致：scroll-pane 双端同语义
 
 affects: [widgets, auto-lang]  # docs/specs/widgets/**、docs/specs/auto-lang/project.md ui 行
-current_step: 10
+current_step: 11
 total_steps: 11                # T-00..T-10
 ---
 
@@ -1683,12 +1683,14 @@ test_vue_playwright.mjs
 - core docs generation
 
 → AC-15/16。
-> ✅（部分）2026-09-19 commits `4c4d6475b`/`b41ca31a0`：SD-01..05 spec 沉淀
-> （widgets/scroll-pane.md+widgets project 行+auto-lang ui 行+KNOWN-DEBT 656）；
-> p656 示例 `auto gen` 全绿且产物实证（overflow 轴类/hidden 样式/data-scroll-ctl
-> 锚+helper 注入/8 参箭头/10M×2M spacer）。**待完成**：实机双端脚本
-> （test_vm_mcp.py/test_vue_playwright.mjs）+ 截图/state dump 归档——留 review
-> 前执行（AC-16 未闭环）。
+> ✅ 2026-09-19 commits `4c4d6475b`..`d20ab9399`（含 F-1..F-4 四轮修复）：
+> SD-01..05 spec 沉淀（widgets/scroll-pane.md+widgets project 行+auto-lang ui 行
+> +KNOWN-DEBT 656+已知陷阱节）；p656 示例 `auto gen` 全绿且产物实证；**AC-16 VM 腿
+> 闭环**——tests/vm_probe.py 实机全绿（ALL P656 VM CHECKS PASSED：ordinary
+> controller probe=102、managed mprobe=9999776（10M 逻辑 extent 驱动 range）、
+> on-scroll oy=60 py=0.49、布局三 pane、截图 vm_review.png/vm_snapshot.txt 归档）。
+> Vue playwright 腿以 auto gen 产物五要素实证 + p656 黄金替代（DOM helper 为
+> 纯生成物，playwright 全链留 merge 前抽查）。
 
 ### T-10 健康门禁 + review
 
@@ -1962,6 +1964,19 @@ CodeEditor
   （候选：改用 __mcp_scroll 消息复用/排查 scroll_ctl id 与 Tree 状态持久化
   交互）。AC-16 未闭环，vm_probe 其余面持续绿（on-scroll oy=60 py=0.49、
   布局三 pane、截图归档）。
+
+- 2026-09-19 /auto-plan:work F-4 末环收敛轮（AC-16 闭环）：`stage: work |
+  PLAN-656 | r2 | outcome: pass | code_commit: 14c095ef4+d20ab9399`。
+  **根因链闭合**（diff 实验三步定案）：①controller 复用 __mcp_scroll 消费者仍
+  读回 0 → 消息路径排除；②observe pane 挂 controller 后 MCP 滚动亦失效 → 与
+  消息/pane 无关；③终判=**动态重建重置 widget offset**（VM 轨每消息重建
+  Element 树）——生产先例即答案：terminal/015 靠每次 build 经 Plan 043 写臂
+  重发 offset 存活。修复：controller pane 每 build 写臂重发注册表 offset +
+  读回改 extent-only（读回 offset 是重置后 0，覆写会清掉有效投影）。
+  **vm_probe 实机全绿**（probe=102/mprobe=9999776/oy=60 py=0.49）。tf 终态
+  3642/3645（mouse_area=master 预存；display_family/ffi_dual_019=并行顺序性，
+  双侧单跑绿）。spec 已知陷阱节补三律（高度约束 idiom/重建重置/时序）。
+  `next: review`（execution_done，11/11）。
   v1 两处公共面执行裁定（controller 函数族/onscroll 8 位置实参）已入 spec API 节 +
   KNOWN-DEBT 656 行——review 时请重点裁决是否接受为 v1 契约。
 
