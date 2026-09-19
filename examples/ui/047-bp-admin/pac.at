@@ -1,0 +1,15 @@
+name: "bp-admin"
+version: "0.1.0"
+description: "PLAN-657: L1 multi-package blueprint assembly sample — four bp packages, zero copy"
+scene: "ui"
+render: "vue"
+title: "BP Admin"
+title_zh: "蓝图管理台"
+api: "rust"
+desktop: "true"
+
+// PLAN-657: 共享 blueprint 包库依赖声明（635 声明门控，046-bp-import 同形；
+// 647 裁定：纯 path，无版本键）。
+dep bps {
+    path: "../../../blueprints"
+}

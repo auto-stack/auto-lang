@@ -304,9 +304,96 @@ impl PixelFormat {
 // 通道 1：孵化/握手
 // ---------------------------------------------------------------------------
 
+/// 表面 z 平面角色（v1.11 壳双表面声明；线格式 u8）。
+pub mod surface_role {
+    /// 常规 app 窗表面（缺省——旧端线等价）。
+    pub const WINDOW: u8 = 0;
+    /// 壳 background 表面：壁纸上、全部窗口下（全屏）。
+    pub const BACKGROUND: u8 = 1;
+    /// 壳 chrome 表面：全部窗口上（v1 = 任务栏带矩形，非全屏）。
+    pub const CHROME: u8 = 2;
+
+    pub fn name(v: u8) -> &'static str {
+        match v {
+            WINDOW => "window",
+            BACKGROUND => "background",
+            CHROME => "chrome",
+            _ => "unknown",
+        }
+    }
+}
+
+/// 壳投影下行推的 face 寻址字节（v1.11；`ControlMsg::ShellProjectionPush`
+/// 族）。值域对齐 `SHELL_MANIFEST` 五件（shell_projection.rs）。
+pub mod shell_face {
+    pub const SHELL: u8 = 1;
+    pub const DESKTOP_SURFACE: u8 = 2;
+    pub const SWITCHER: u8 = 3;
+    pub const NOTIFICATION_CENTER: u8 = 4;
+    pub const DASHBOARD: u8 = 5;
+
+    pub fn name(v: u8) -> &'static str {
+        match v {
+            SHELL => "shell",
+            DESKTOP_SURFACE => "desktop",
+            SWITCHER => "switcher",
+            NOTIFICATION_CENTER => "notification_center",
+            DASHBOARD => "dashboard",
+            _ => "unknown",
+        }
+    }
+}
+
+/// 客户端表面声明（v1.11：`Hello` 尾部追加，多表面协商）。单表面客户端
+/// （既有全部 app）不发送该尾段 = 单 window 声明，零行为变化。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SurfaceDecl {
+    /// `surface_role` 常量。
+    pub role: u8,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl SurfaceDecl {
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        put_u8(out, self.role);
+        put_f32(out, self.width);
+        put_f32(out, self.height);
+    }
+
+    pub fn decode(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self { role: r.u8()?, width: r.f32()?, height: r.f32()? })
+    }
+}
+
+/// `Welcome` 尾部的逐表面分配结果（v1.11）。首表面仍走 Welcome 既有
+/// 领头字段（wid/surface/rect）——旧端线无尾段即单表面。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WelcomeSurface {
+    pub role: u8,
+    pub wid: u64,
+    pub surface: u64,
+    pub rect: WRect,
+}
+
+impl WelcomeSurface {
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        put_u8(out, self.role);
+        put_u64(out, self.wid);
+        put_u64(out, self.surface);
+        self.rect.encode(out);
+    }
+
+    pub fn decode(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self { role: r.u8()?, wid: r.u64()?, surface: r.u64()?, rect: WRect::decode(r)? })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum HandshakeMsg {
     /// app→host。spawn/反向连接后的第一跳：上报身份 + 初始尺寸 + 字体。
+    /// `surfaces`（v1.11 尾部追加）：多表面声明（壳双表面）；空 = 单
+    /// window 表面（旧端线等价）。
     Hello {
         version: u16,
         app_name: String,
@@ -315,11 +402,20 @@ pub enum HandshakeMsg {
         width: f32,
         height: f32,
         fonts: Vec<FontBlob>,
+        surfaces: Vec<SurfaceDecl>,
     },
     /// host→app。分配结果：AppId + 虚拟窗 Wid + surface 句柄 + 初始矩形。
     /// `frame_mode`（v1.3 尾部追加）：该表面的帧载荷解释位——旧端载荷
-    /// 缺此字段时解码缺省 Commands。
-    Welcome { app_id: u64, wid: u64, surface: u64, rect: WRect, frame_mode: FrameMode },
+    /// 缺此字段时解码缺省 Commands。`extra_surfaces`（v1.11 尾部追加）：
+    /// 第二及以后表面（多表面客户端）；领头字段 = 首表面。
+    Welcome {
+        app_id: u64,
+        wid: u64,
+        surface: u64,
+        rect: WRect,
+        frame_mode: FrameMode,
+        extra_surfaces: Vec<WelcomeSurface>,
+    },
     /// app→host。握手完成确认（状态机 Active 的入场合）。
     Ready,
 }
@@ -331,7 +427,7 @@ impl HandshakeMsg {
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
-            Self::Hello { version, app_name, title, icon, width, height, fonts } => {
+            Self::Hello { version, app_name, title, icon, width, height, fonts, surfaces } => {
                 put_u8(out, Self::HELLO);
                 put_u16(out, *version);
                 put_string(out, app_name);
@@ -350,14 +446,30 @@ impl HandshakeMsg {
                     put_string(out, &f.family);
                     put_bytes(out, &f.data);
                 }
+                // v1.11 尾部追加：多表面声明（空则不写尾段——既有消息
+                // 字节级不变；旧端线无此段 = 单 window）。
+                if !surfaces.is_empty() {
+                    put_u32(out, surfaces.len() as u32);
+                    for s in surfaces {
+                        s.encode(out);
+                    }
+                }
             }
-            Self::Welcome { app_id, wid, surface, rect, frame_mode } => {
+            Self::Welcome { app_id, wid, surface, rect, frame_mode, extra_surfaces } => {
                 put_u8(out, Self::WELCOME);
                 put_u64(out, *app_id);
                 put_u64(out, *wid);
                 put_u64(out, *surface);
                 rect.encode(out);
                 put_u8(out, frame_mode.as_u8());
+                // v1.11 尾部追加：第二及以后表面（空则不写尾段——既有
+                // 消息字节级不变）。
+                if !extra_surfaces.is_empty() {
+                    put_u32(out, extra_surfaces.len() as u32);
+                    for s in extra_surfaces {
+                        s.encode(out);
+                    }
+                }
             }
             Self::Ready => put_u8(out, Self::READY),
         }
@@ -379,7 +491,18 @@ impl HandshakeMsg {
                     let data = r.bytes()?;
                     fonts.push(FontBlob { family, data });
                 }
-                Self::Hello { version, app_name, title, icon, width, height, fonts }
+                // v1.11 尾部追加：旧端（v1.10 线）无此段 → 单 window 等价。
+                let surfaces = if r.remaining() > 0 {
+                    let n = r.u32()? as usize;
+                    let mut surfaces = Vec::with_capacity(n.min(8));
+                    for _ in 0..n {
+                        surfaces.push(SurfaceDecl::decode(r)?);
+                    }
+                    surfaces
+                } else {
+                    Vec::new()
+                };
+                Self::Hello { version, app_name, title, icon, width, height, fonts, surfaces }
             }
             Self::WELCOME => {
                 let app_id = r.u64()?;
@@ -392,7 +515,18 @@ impl HandshakeMsg {
                 } else {
                     FrameMode::Commands
                 };
-                Self::Welcome { app_id, wid, surface, rect, frame_mode }
+                // v1.11 尾部追加：多表面（旧端线无此段 = 空）。
+                let extra_surfaces = if r.remaining() > 0 {
+                    let n = r.u32()? as usize;
+                    let mut extras = Vec::with_capacity(n.min(8));
+                    for _ in 0..n {
+                        extras.push(WelcomeSurface::decode(r)?);
+                    }
+                    extras
+                } else {
+                    Vec::new()
+                };
+                Self::Welcome { app_id, wid, surface, rect, frame_mode, extra_surfaces }
             }
             Self::READY => Self::Ready,
             tag => return Err(CodecError::UnknownTag(tag)),
@@ -865,6 +999,17 @@ pub enum ControlMsg {
     /// 状态快照注入恢复。载荷编码 = client_runtime 的 encode_state_snapshot
     /// （revision + 原始状态字段）。
     StateSnapshot { wid: u64, payload: Vec<u8> },
+    /// host→app（v1.11 壳投影下行推）。face = `shell_face` 常量；payload =
+    /// ShellProjection 家族 typed 载体 wire 编码（叶面保形——宿主侧
+    /// `shell_projection::wire` 单源）。连接级寻址（非窗口），`wid()` = 0。
+    ShellProjectionPush { face: u8, payload: Vec<u8> },
+    /// host→app（v1.11 壳时钟）。分钟门数据（time = "HH:MM"、date =
+    /// "M月D日 周X"）——独立脏帧通道，不入投影指纹门控组。
+    ShellClockTick { face: u8, time: String, date: String },
+    /// host→app（v1.11 壳光标事件）。事件级数据（设计上不入快照——
+    /// 空白菜单坐标锚等）；节拍由宿主消费门控制（blank_menu/拖拽期 +
+    /// tick 兜底）。坐标 = 宿主视口系。
+    ShellCursorMove { face: u8, x: f32, y: f32 },
 }
 
 impl ControlMsg {
@@ -881,6 +1026,10 @@ impl ControlMsg {
             | Self::L2Detached { wid }
             | Self::L2AttachRequest { wid }
             | Self::StateSnapshot { wid, .. } => *wid,
+            // v1.11 壳投影族：连接级寻址（非窗口）——0 哨兵。
+            Self::ShellProjectionPush { .. }
+            | Self::ShellClockTick { .. }
+            | Self::ShellCursorMove { .. } => 0,
         }
     }
 
@@ -938,6 +1087,23 @@ impl ControlMsg {
                 put_u64(out, *wid);
                 put_bytes(out, payload);
             }
+            Self::ShellProjectionPush { face, payload } => {
+                put_u8(out, 12);
+                put_u8(out, *face);
+                put_bytes(out, payload);
+            }
+            Self::ShellClockTick { face, time, date } => {
+                put_u8(out, 13);
+                put_u8(out, *face);
+                put_string(out, time);
+                put_string(out, date);
+            }
+            Self::ShellCursorMove { face, x, y } => {
+                put_u8(out, 14);
+                put_u8(out, *face);
+                put_f32(out, *x);
+                put_f32(out, *y);
+            }
         }
     }
 
@@ -979,6 +1145,23 @@ impl ControlMsg {
                 let wid = r.u64()?;
                 let payload = r.bytes()?;
                 Self::StateSnapshot { wid, payload }
+            }
+            12 => {
+                let face = r.u8()?;
+                let payload = r.bytes()?;
+                Self::ShellProjectionPush { face, payload }
+            }
+            13 => {
+                let face = r.u8()?;
+                let time = r.string()?;
+                let date = r.string()?;
+                Self::ShellClockTick { face, time, date }
+            }
+            14 => {
+                let face = r.u8()?;
+                let x = r.f32()?;
+                let y = r.f32()?;
+                Self::ShellCursorMove { face, x, y }
             }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
@@ -1163,6 +1346,21 @@ mod tests {
                 FontBlob { family: "JetBrains Mono".into(), data: vec![1, 2, 3, 4] },
                 FontBlob { family: "Sans".into(), data: Vec::new() },
             ],
+            surfaces: Vec::new(),
+        }));
+        round_trip(ProtocolMsg::Handshake(HandshakeMsg::Hello {
+            version: super::super::PROTOCOL_VERSION,
+            app_name: "shell".into(),
+            title: "shell".into(),
+            icon: None,
+            width: 1280.0,
+            height: 800.0,
+            fonts: Vec::new(),
+            // v1.11 壳双表面声明（Hello 尾段）。
+            surfaces: vec![
+                SurfaceDecl { role: surface_role::BACKGROUND, width: 1280.0, height: 800.0 },
+                SurfaceDecl { role: surface_role::CHROME, width: 1280.0, height: 48.0 },
+            ],
         }));
         round_trip(ProtocolMsg::Handshake(HandshakeMsg::Welcome {
             app_id: 1,
@@ -1170,6 +1368,7 @@ mod tests {
             surface: 42,
             rect: WRect::new(16.0, 16.0, 480.0, 320.0),
             frame_mode: FrameMode::Commands,
+            extra_surfaces: Vec::new(),
         }));
         round_trip(ProtocolMsg::Handshake(HandshakeMsg::Welcome {
             app_id: 2,
@@ -1177,6 +1376,21 @@ mod tests {
             surface: 43,
             rect: WRect::new(0.0, 0.0, 100.0, 80.0),
             frame_mode: FrameMode::Pixels,
+            extra_surfaces: Vec::new(),
+        }));
+        round_trip(ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+            app_id: 9,
+            wid: 100,
+            surface: 900,
+            rect: WRect::new(0.0, 0.0, 1280.0, 800.0),
+            frame_mode: FrameMode::Commands,
+            // v1.11 多表面 Welcome（尾段：chrome 面）。
+            extra_surfaces: vec![WelcomeSurface {
+                role: surface_role::CHROME,
+                wid: 101,
+                surface: 901,
+                rect: WRect::new(0.0, 752.0, 1280.0, 48.0),
+            }],
         }));
         round_trip(ProtocolMsg::Handshake(HandshakeMsg::Ready));
     }
@@ -1283,6 +1497,7 @@ mod tests {
                 surface: 42,
                 rect: WRect::new(16.0, 16.0, 480.0, 320.0),
                 frame_mode: FrameMode::Commands,
+                extra_surfaces: Vec::new(),
             }),
             "旧端缺省 = Commands"
         );
@@ -1300,6 +1515,7 @@ mod tests {
                 surface: 42,
                 rect: WRect::new(16.0, 16.0, 480.0, 320.0),
                 frame_mode: FrameMode::Pixels,
+                extra_surfaces: Vec::new(),
             })
         );
 
@@ -1410,6 +1626,31 @@ mod tests {
             assert_eq!(m.wid(), 3, "wid 提取器");
             round_trip(ProtocolMsg::Control(m));
         }
+        // v1.11 壳投影族（连接级寻址——wid() = 0 哨兵）。
+        let shell_msgs = vec![
+            ControlMsg::ShellProjectionPush { face: shell_face::SHELL, payload: vec![1, 2, 3] },
+            ControlMsg::ShellClockTick { face: shell_face::SHELL, time: "09:05".into(), date: "9月19日 周六".into() },
+            ControlMsg::ShellCursorMove { face: shell_face::DESKTOP_SURFACE, x: 128.5, y: 300.0 },
+        ];
+        for m in shell_msgs {
+            assert_eq!(m.wid(), 0, "壳投影族连接级寻址");
+            round_trip(ProtocolMsg::Control(m));
+        }
+    }
+
+    /// PLAN-030 T-02：v1.11 壳投影族 golden 字节冻结锚（tag 12/13/14，
+    /// face 字节 + 载荷——结构漂移哨兵；载荷级，不含信封头）。
+    #[test]
+    fn shell_projection_golden_bytes() {
+        let mut p = Vec::new();
+        ControlMsg::ShellProjectionPush { face: shell_face::SHELL, payload: vec![0xde, 0xad] }.encode(&mut p);
+        assert_eq!(p, vec![12, 1, 2, 0, 0, 0, 0xde, 0xad]);
+        let mut p = Vec::new();
+        ControlMsg::ShellClockTick { face: shell_face::SHELL, time: "09:05".into(), date: "周六".into() }.encode(&mut p);
+        assert_eq!(p, vec![13, 1, 5, 0, 0, 0, b'0', b'9', b':', b'0', b'5', 6, 0, 0, 0, 0xe5, 0x91, 0xa8, 0xe5, 0x85, 0xad]);
+        let mut p = Vec::new();
+        ControlMsg::ShellCursorMove { face: shell_face::DESKTOP_SURFACE, x: 0.0, y: 0.0 }.encode(&mut p);
+        assert_eq!(p, vec![14, 2, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
     #[test]

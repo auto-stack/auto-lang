@@ -1,0 +1,13 @@
+name: "bp-module-fn"
+version: "0.1.0"
+description: "PLAN-075 G-6: same-file module fns in a dep-channel bp reference (first real consumer)"
+scene: "ui"
+render: "vue"
+title: "BP Module Fn"
+title_zh: "蓝图同文件函数"
+
+// PLAN-075: fixture 本地 mini bp 包（库形态：无 src/front、无 front/）。
+// 与 046/047 共享包库声明同形——635 声明门控，物化在仓库外沙箱进行。
+dep bplocal {
+    path: "./local-bps"
+}

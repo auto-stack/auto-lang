@@ -24,7 +24,8 @@
 | v1.8 | 2026-09-18 | native 覆盖爬坡第二批（display 族 image/progress + grid）+ IME 闭环两端（v1.0 在册变体启用）+ auto 裁决复测（见 §1.8；`PROTOCOL_VERSION` 仍 1） | PLAN-026（§1.8） |
 | v1.9 | 2026-09-18 | 图像 DrawOp 通道——`DrawOp::Image`（tag 6 追加式，src 引用 + 宿主侧解析，零位图字节过线）+ src 词汇表（file/`builtin:`/`data:`/`http(s)`/`thumbnail://` 虚拟引用）+ 未解析降级纪律 + 两投影臂真图升级 + TS decode/占位（见 §1.9；`PROTOCOL_VERSION` 仍 1） | PLAN-028（§1.9） |
 | v1.10 | 2026-09-18 | live 输入接线（§1.7 壳侧缺口清偿：`desktop_window_events` 键盘/滚轮/IME 三族臂 + `DesktopEvent::LiveInput` 泵入 + `route_live_input` 生产路由）+ native 覆盖第三批（shell 面四 kind：popover/mousearea/windowthumbnail/workspacepreview）+ `lucide:` 词汇真渲 + `workspace://` 虚拟引用 + fallback 语法 `!{icon}` + acceptance key verb（见 §1.10；`PROTOCOL_VERSION` 仍 1——全部宿主侧/词汇表演进，零新 wire tag） | PLAN-029（§1.10） |
-| v1.11 | 2026-09-19 | rqhost 第四运行形态——rendezvous 采纳协议（well-known 管道 + `adopt␟<name>` 记录 + 锁管道单实例仲裁）+ 客户端权威采纳（宿主零装载）+ rqhost 生命周期语义（末窗退出/app EOF 回收/宿主死 exit-on-EOF 策略档）+ 大帧 shm 超槽回退管道内联（见 §1.11；rendezvous 记录 = 传输层管道串约定，零 codec 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-031（§1.11） |
+| v1.11 | 2026-09-19 | B 程序主体（shell outproc client）：投影下行推（`ShellProjectionPush` tag 12 / `ShellClockTick` tag 13 / `ShellCursorMove` tag 14——typed 载体 wire 编码 + per-face 宿主侧指纹门）+ 命令上行执行（`DesktopBus` 端点拆臂 + registry_id 归因 + `desktop_bus_inbox` 泵后同拍执行）+ 表面 z 平面声明（Hello/Welcome 尾段多表面协商：background/chrome）+ 壳看门兵（死亡检出 → 退避 respawn → 全量重推）+ pointer 生产接线（press/release 命中 broker wid 路由）+ `shell.apps.shell_model` 双轨开关（缺省 inproc；见 §1.11；`PROTOCOL_VERSION` 仍 1——ControlMsg/Handshake 追加式，空尾段字节级不变） | PLAN-030（§1.11） |
+| v1.12 | 2026-09-19 | rqhost 第四运行形态——rendezvous 采纳协议（well-known 管道 + `adopt␟<name>` 记录 + 锁管道单实例仲裁）+ 客户端权威采纳（宿主零装载）+ rqhost 生命周期语义（末窗退出/app EOF 回收/宿主死 exit-on-EOF 策略档）+ 大帧 shm 超槽回退管道内联（见 §1.12；rendezvous 记录 = 传输层管道串约定，零 codec 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-031（§1.12） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -490,7 +491,72 @@ MouseArea 命中序单测；broker_surface `t029_*` 3（ink/tint/缓存/
 （AUTO_DESKTOP_E2E 门；五件套 ops 落 wire + popover 命中闭环四腿 +
 mousearea；帧留痕 assets/029/）。
 
-## §1.11 v1.11 增量：rqhost 第四运行形态（PLAN-031）
+### §1.11 v1.11 增量：B 程序主体——shell outproc client（PLAN-030）
+
+**①投影下行推（宿主→壳连接级，tag 12–14 追加式）**：
+
+- `ShellProjectionPush{face, payload}`——face = `shell_face` 常量
+  （1 shell/2 desktop/3 switcher/4 notification_center/5 dashboard，对齐
+  `SHELL_MANIFEST`）；payload = 027 typed 载体 wire 编码
+  （`shell_projection::wire` 单源：ShellProjection 家族/DesktopSurface
+  Snapshot，叶面保形——bool 载体 bool，"1"/"" lowering 单点在 child 侧
+  apply）。指纹门宿主侧缓存（per-face；respawn attach 强制失效 = 全量
+  重推）；节拍 = 事件驱动（update 排空点邻位）+ ServiceTick 400ms 兜底。
+- `ShellClockTick{face, time, date}`——分钟门独立脏帧通道（不入指纹组）。
+- `ShellCursorMove{face, x, y}`——事件级数据（设计上不入快照）；宿主
+  消费门 = 命中 background 伪窗（桌面空白区语义）或拖拽中。
+- 连接级寻址（`wid()` = 0 哨兵）；golden 字节冻结锚 + 全家族 round-trip。
+
+**②命令上行执行（app→host 既有变体落地）**：`DesktopBus{wid, record}`
+自端点丢弃臂拆出（`HostAction::DesktopBus`——此前 `let _ = control`
+无声消失，desktop.* wire 化缺口清偿）→ `parse_records` 单点解析（52
+动词词表零变化）→ registry_id 归因（wid → VWinState；壳伪窗 = 面名
+  "shell"/"desktop-face"）→ `desktop_bus_inbox` → renderer ServiceTick
+泵后同拍直调 `execute_desktop_commands`（drain 排空点先于泵，桥式写
+  会拖到下拍）。acceptance Bus verb 在 outproc 壳下改道同一 inbox。
+
+**③表面 z 平面声明（Hello/Welcome 尾段，追加式）**：`Hello` 尾部
+`surfaces: Vec<SurfaceDecl{role,w,h}>`（role ∈ window[缺省/旧端线]/
+background/chrome）；`Welcome` 尾部 `WelcomeSurface{role,wid,surface,
+rect}`。空则不写尾段——既有消息字节级不变。端点多表面态：`HostEndpoint
+.extra_surfaces` wid→surface 路由（帧按消息 wid 定面）+ `activate_multi`；
+输入路由 `BrokerClient::owns_wid` 去单值化。**壳双表面 = 宿主 Stack
+层槽**（background 替 desktop 面槽[壁纸上/dashboard 下]、chrome 替
+任务栏槽[vwin 上/overlay 下]）+ 双伪窗承载 WM 命中（background 垫底
+`z_order.insert(0)`、chrome 置顶带矩形——`hit_test` 无透明直通，全屏
+chrome 会吞带外点击）。
+
+**④壳客户端与双轨**：`--autodesk-shell` 入口（`shell_client.rs`：双
+表面协商 + 投影消费[NativeProjector View 全展开——AppProjector 队列臂
+对 ForLoop/Conditional no-op] + `__desktop_cmd` 读走 child 化 + 内联帧
+免 shm）；spawn = re-exec auto 本体 + `AUTO_SHELL_GEOM`/`AUTO_SHELL_
+PACK` env。`shell.apps.shell_model: inproc|outproc`（缺省 inproc——
+I1 双轨零回归；读序 env AUTO_SHELL_MODEL > storage）。装在失败回退
+in-proc。**v1 边界（D6）**：仅常驻双面（shell taskbar + desktop
+surface）outproc；switcher/notification/dashboard + launcher 维持
+in-proc（dashboard z 带在 App 窗下与置顶 chrome 冲突 + face 卡宿主活
+渲染；launcher 保 iced 聚焦链）。
+
+**⑤看门兵**：pump EOF 死亡检出 → respawn 登记分拍消费（退避 1s/2s/5s
+封顶、预算 3 次/60s 窗；不内联 launch——UI 线程阻塞 ~25s）→ attach
+指纹失效全量重推；预算耗尽 = 降级观测 + 一次性回退 in-proc（I5）。
+
+**⑥pointer 生产接线（D3 缺口清偿）**：GlobalPress/release 臂
+`hit_test` 命中 broker wid（含壳伪窗）时 `broker_pointer_down/up`
+（坐标平移窗局部系）。
+
+**验证面**：wire round-trip/golden + 全家族编解码 + 端点多表面路由 +
+DesktopBus 拆臂单测；inbox 全链（布局/通知/壁纸族 + 归因 + 幂等）+
+指纹门三态；双轨断言（from_storage 缺省 inproc + 垫底窗 z 序/焦点/
+MRU）；e2e `p030_shell_outproc_arm` 四腿（双表面首帧 / 真按钮点击 →
+DesktopBus → 归因执行 / 投影推送帧变 / kill → 看门兵 → respawn →
+全量重推恢复；帧留痕 assets/030/）；回归门 261/262（唯一红 = 基线
+预存 imagesurface）。**债务随注**：a2r 编译面轨（shell-lib 组件库
+生成模式）not-yet——v1 交付 = 解释面 outproc child（AppProjector/
+NativeProjector 接缝即替换点）；TS decode tag 12–14 not-yet（无 TS
+消费面）。
+
+## §1.12 v1.12 增量：rqhost 第四运行形态（PLAN-031）
 
 **形态定位**：`auto run -r vm -q`（`-r rust -q` 同族）= 宿主 OS
 **普通原生窗**运行——不启虚拟桌面，app 进程只产 RenderQueue 帧，一个
@@ -534,7 +600,7 @@ ExitRequest → Reclaim（退出码 0）；app 死 → EOF → 窗回收；**末
 hit_test/焦点语义——原生窗 OS 自理）；坐标 = 窗内坐标即表面坐标；
 键盘/IME/滚轮走 029 LiveInput 映射族（Ignored 门），指针全事件直订。
 
-**⑤ 大帧回退**（v1.11 附带根修，桌面 broker 同益）：shm 槽 16KiB
+**⑤ 大帧回退**（v1.12 附带根修，桌面 broker 同益）：shm 槽 16KiB
 （Commands 档）装不下的帧载荷，客户端回退**管道内联** `FrameReady`
 （v1 合法变体）——此前 `if let Ok` 静默弃帧 = 冻结。
 

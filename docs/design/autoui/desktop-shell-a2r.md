@@ -274,8 +274,13 @@ S3 生成目标 + 宿主装配 + parity 切换（**已改道**：A 形态 S3 经
   未被采纳，裁定记录与事实注记见 §5。B 前置序列：图像 DrawOp 通道
   ✅（PLAN-028，v1.9）→ live 输入接线 + shell queue 面覆盖 ✅
   （PLAN-029，v1.10——键盘/滚轮/IME live 接线清偿 P025-D1 + 四 kind
-  入册 + lucide: 真渲 + shell 五件 Covered）→ **剩余 = shell outproc
-  client + 启动序/看门兵**（B 程序主体，可立项）。
+  入册 + lucide: 真渲 + shell 五件 Covered）→ **shell outproc client +
+  启动序/看门兵 ✅（PLAN-030，v1.11——前置序列三件全闭环）**。
+  **v1 交付形态注记（PLAN-030 定案）**：壳 outproc child 双常驻面
+  （shell taskbar + desktop surface）经解释装载（shell_source 同源）+
+  NativeProjector View 全展开渲染；a2r 编译面轨（shell-lib 组件库
+  生成模式——run_rust_ui 为 app 工程形，组件库形需新生成模式）随
+  缺省翻转计划另立；D6 边界 = overlay 三面 + launcher 维持 in-proc。
 - **② 解释装载路径去留：✅ 已裁定 = 双轨常驻**（开发态解释 fallback +
   编译态；退役另立裁定）。
 - **③ S1 与覆盖二批的拆分：✅ S1 已落地**（PLAN-027 T-02..T-04，独立

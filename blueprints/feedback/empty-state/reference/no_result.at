@@ -1,14 +1,15 @@
 // reference/no_result.at — EmptyState blueprint, "no_result" variant.
 // Filters matched nothing: offer relief (clear filters). Consumer wires
 // actions.primary to its filter-reset semantics.
+//
+// PLAN-657 参数化修整（reference 实现对齐 frontmatter 契约面，frontmatter
+// 零改动）：illustration props 经 widget 参数接入（缺省 ""——frontmatter
+// 声明的默认值，裸实例化渲染形态不变）；actions.primary 经 on_primary
+// 回调上抛（契约 Q2 action 点）。
 
-widget EmptyStateNoResult {
+widget EmptyStateNoResult (illustration: str = "", on_primary: msg) {
     msg {
         PrimaryClicked
-    }
-
-    model {
-        var illustration str = "" // prop: media source override
     }
 
     view {
@@ -48,7 +49,7 @@ widget EmptyStateNoResult {
 
     on {
         .PrimaryClicked -> {
-            // actions.primary: consumer clears filters + re-runs its query
+            on_primary() // actions.primary: consumer clears filters + re-runs its query
         }
     }
 }

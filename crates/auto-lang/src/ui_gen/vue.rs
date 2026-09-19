@@ -10521,6 +10521,19 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         walk_stmt(stmt, api_fns, used);
                     }
                 }
+                // PLAN-076: closure/lambda bodies also walk — `let run =
+                // () => { ... }` in an on-handler stores the closure as the
+                // Store expr; without these arms the api call inside the
+                // closure body has emission but no '@/lib/api' import line
+                // (TS2304; jade search_panel sink first evidence: the
+                // debounced run closure's `use back.api: search_pages`
+                // call — on-block direct calls green, closure-nested red).
+                Expr::Closure(c) => walk_expr(&c.body, api_fns, used),
+                Expr::Lambda(l) => {
+                    for stmt in &l.body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                }
                 _ => {}
             }
         }

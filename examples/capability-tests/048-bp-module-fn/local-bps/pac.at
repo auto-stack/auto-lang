@@ -1,0 +1,9 @@
+// local-bps —— 048 夹具本地 mini bp 包库（PLAN-075，blueprints/pac.at 同形）。
+// dep 物化后构建层要读本清单；库内包 = feedback/module-fn-demo（同文件模块
+// fn 携带件，G-6 首个真实消费方）。
+name: "bplocal"
+version: "0.1.0"
+scene: "ui"
+render: "vue"
+title: "Local BPs"
+title_zh: "本地蓝图库"

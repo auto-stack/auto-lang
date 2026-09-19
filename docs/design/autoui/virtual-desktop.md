@@ -96,7 +96,7 @@ Host ②（libcosmic）保留为"在 COSMIC 里当好公民"的入口，与 457 
 由 386 复活后消除。rqhost 形态（PLAN-031，2026-09-19 实测：daemon
 ~314MB + 每 app 边际 ~7-9MB private）= B 形态在 Win 缺省渲染栈上的
 兑现——单共享渲染宿主 + 轻客户端；协议面见
-`desktop-protocol-v1.md` §1.11（rendezvous 采纳 + 客户端权威 +
+`desktop-protocol-v1.md` §1.12（rendezvous 采纳 + 客户端权威 +
 exit-on-EOF 策略档）。
 
 ## 5. 与存量文档的关系与同步清单

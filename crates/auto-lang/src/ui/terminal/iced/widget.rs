@@ -526,14 +526,20 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // PLAN-019: 启动自动聚焦——尚无任何 terminal 持焦时,首个 terminal
         // 自动持有(整窗即终端,开窗即可打字,无需先点一下)。全局注册表
         // 防多 pane 双持;点击换焦/点击他处释放照旧。
-        if !state.focused && crate::ui::terminal::terminal_focus_free() {
-            state.focused = true;
+        // PLAN-023 T-04 用户门根修:焦点单一事实源 = 注册表 owner;
+        // state.focused 仅作本拍缓存同步(渲染/IME 消费)。他端换焦后
+        // 本端残留 true 曾致双 pane 同键入(键盘门控改查 owner)。
+        if !crate::ui::terminal::terminal_is_focused(core)
+            && crate::ui::terminal::terminal_focus_free()
+        {
             crate::ui::terminal::terminal_claim_focus(core);
         }
+        let focused = crate::ui::terminal::terminal_is_focused(core);
+        state.focused = focused;
 
         // 任意事件到达即刷新 IME 声明(幂等;auto-term T8 同款)——聚焦时
         // 以光标格锚定,未聚焦声明 Disabled(键入归焦点组件)。
-        if state.focused {
+        if focused {
             self.request_ime(shell, layout.bounds());
             // PLAN-015 附带修复(用户 2026-09-15 实测:AutoTerm 聚焦即
             // 中文输入,其他应用默认英文):聚焦点击置 pending,**重试制**
@@ -577,7 +583,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
 
         // 键入捕获:聚焦(点击过本组件)且菜单未开时,把按键翻译成 VT 串
         // 入队并上抛 on_input(载荷走 TerminalCore 队列,消息只当触发器)。
-        if state.focused && state.menu_open.is_none() {
+        if focused && state.menu_open.is_none() {
             let payload = match event {
                 iced::Event::Keyboard(keyboard::Event::KeyPressed { key, text, modifiers, .. }) => {
                     key_event_to_vt(key, text.as_deref(), *modifiers)
@@ -711,15 +717,17 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
     fn mouse_interaction(
         &self,
         _tree: &Tree,
-        layout: Layout<'_>,
-        cursor: mouse::Cursor,
+        _layout: Layout<'_>,
+        _cursor: mouse::Cursor,
         _viewport: &Rectangle,
         _renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        if cursor.position_in(layout.bounds()).is_some() {
-            return mouse::Interaction::Text;
-        }
-        mouse::Interaction::default()
+        // PLAN-022 T-05:恒 None——终端在 Stack 浮层里,非 None 交互形态
+        // 会令 iced Stack 对**下层所有面板**抬升光标(Cursor::Levitating,
+        // position()=None)→ 下层终端的点击/滚轮/滚动条全部失联(实测:
+        // 分屏后仅 slot1 可交互,右侧无法聚焦输入)。代价:光标悬停图标
+        // 不变 I-beam(纯外观)。
+        mouse::Interaction::None
     }
 
     fn draw(

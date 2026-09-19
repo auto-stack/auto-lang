@@ -193,6 +193,7 @@ impl DesktopSession {
             surface: 0,
             rect: crate::ui::desktop_protocol::host::rect_to_wire(&rect),
             frame_mode: crate::ui::desktop_protocol::message::FrameMode::Commands,
+            extra_surfaces: Vec::new(),
         });
         let _ = mirror.end.send(&welcome);
         // HitTable：宿主孪生（同源 resolver → 同布局）。
@@ -319,6 +320,7 @@ mod tests {
                 width: 480.0,
                 height: 320.0,
                 fonts: Vec::new(),
+                surfaces: Vec::new(),
             }));
         };
         remote_hello(&mut remote);
@@ -426,6 +428,8 @@ mod ts_fixtures {
             width: 480.0,
             height: 320.0,
             fonts: Vec::new(),
+            // v1.11：空声明不写尾段——字节与 v1.10 锚恒等（追加式纪律）。
+            surfaces: Vec::new(),
         });
         let expect_hello: Vec<u8> = vec![
             0x41, 0x50, 0x44, 0x4c, 0x01, 0x00, 0x01, 0x00, 0x2e, 0x00, 0x00, 0x00, 0x01, 0x01,

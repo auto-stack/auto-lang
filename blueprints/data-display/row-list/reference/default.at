@@ -1,0 +1,36 @@
+// blueprints/data-display/row-list/reference/default.at — RowListSkeleton 骨架
+// （PLAN-075 T-02，jade 面板行族 7 使用位的公共形状收敛）。
+//
+// 骨架收敛：列表容器 / 行布局（label 主文 + badge 右挂）/ 行间分隔线 /
+// 空态显式分支。行内容与数据编排（watch 拉取/过滤/排序）归消费方——
+// fn-free（无模块 fn、无 use 导入）。
+//
+// row schema（全键书写——缺键字段访问 = VM 硬错，filetree gotcha#3 同型）：
+// { label: str, badge: str }（badge 空串 = 不渲染右挂徽标）
+//
+// # Usage
+// （消费方）use bps.data_display.row_list.reference.default: RowListSkeleton
+// RowListSkeleton (rows: .myRows, empty_text: "暂无反向链接") {}
+
+widget RowListSkeleton (rows: List = [], empty_text: str = "No items yet.") {
+    view {
+        col (style: "w-full") {
+            // ── EDIT: empty —— 空态显式分支（显式 UI 态，非空白）──
+            if .rows.len() == 0 {
+                text .empty_text { style: "px-3 py-6 text-center text-sm text-muted-foreground" }
+            }
+
+            // ── EDIT: rows —— 行列表（样本数据自持，消费方 watch 拉取后覆写）──
+            for r in .rows {
+                row (style: "flex items-center gap-2 px-3 py-2 text-sm") {
+                    // ── EDIT: row —— 行 slot（默认 label 主文 + badge 右挂）──
+                    text r.label { style: "truncate" }
+                    if r.badge != "" {
+                        badge { text: r.badge, variant: "outline", style: "ml-auto text-xs" }
+                    }
+                }
+                separator {}
+            }
+        }
+    }
+}

@@ -204,3 +204,10 @@ graph TD
 - 备选：截图/缩放（否——字不可读，Design 24 早已否决）；shell 重画（否——双份维护违反所有权）；主窗会话开窗（否——同 app 双会话状态分裂）。
 - 后果：`.as(int)` 对 float 产出垃圾值（CPU 44% 整条红实证）——浮点阈值判定一律累加比较绕行；styled text 节点宽度行为使 items-center 对其失效——`text-center` 显式声明；.at 对象键 `on` 撞关键字（seg 表键名 `lit`）；vue 轨需 API-client-glue 的 app（013-todo）被宿主门跳过（iced 轨正常）。**float→int 转换在 VM 内不可靠**升格为通用教训。
 - 状态：active（vue 轨 autoui-verifier 真跑对拍延后——F-02，unblock=pnpm install + 浏览器）
+
+### ADR-22: 浮层投递语义单源化——opaque 捕获边界=内容矩形,几何 spacer 留在边界外
+- 日期 / 来源：PLAN-023 T-01 判决工件(auto-term `docs/plans/evidence/023/t01-verdict.md`,2026-09-19;根修 plan-023-dev fc6ccc810)
+- 决策：absolute/Overlay → iced Stack + opaque 的浮层映射中,`opaque` 只包浮层内容元素(捕获边界=内容矩形,CSS absolute 命中语义),几何 spacer/padding 留在边界外;top 偏移一律 Column padding(零宽 Space 主轴高度被 flex 吞,R8 实录),left 偏移行内非零宽 Space;交互测试断言面一律消息流(`on_click` 闭包构建期调用一次,计数副作用不可用)。细则篇:`design/overlay-interaction.md`。
+- 备选：iced 上游 vendored patch(否——T-01 判本仓映射误用,Stack/opaque/capture 语义自洽,Shell 每事件新建即复位);每浮层自绘命中检测(否——重复发明 Stack 逆序投递)。
+- 后果：分屏双浮层"首轮交互后全灭"终结(实车三动作探针全活:双槽 TERM_PRESS/FOCUS/KEY + pane-2 WHEEL + 拖拽几何随动);PLAN-022 T-05"移除 opaque 轨迹不变"实验确认为测量伪影致盲(on_click 伪影),opaque 边界过宽即元凶;022 T-06 门由本 ADR 解锁。
+- 状态：active

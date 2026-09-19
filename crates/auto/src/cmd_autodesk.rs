@@ -37,19 +37,22 @@ use auto_lang::ui::desktop_protocol::coverage::{self, RenderMode};
 pub fn run_if_client_entry(args: &[String]) -> Option<Result<(), String>> {
     let has_client = args.iter().any(|a| a.starts_with("--autodesk-client="));
     let has_incubate = args.iter().any(|a| a == "--autodesk-incubate");
-    if !has_client && !has_incubate {
+    let has_shell = args.iter().any(|a| a == "--autodesk-shell");
+    if !has_client && !has_incubate && !has_shell {
         return None;
     }
     Some(run_client_entry(args))
 }
 
 /// 协议 client 形态全流程：三态裁决 → 装载 App → 端点 → 主循环/像素臂
-/// → 出口落 stdout。
+/// → 出口落 stdout。PLAN-030：`--autodesk-shell` = 壳 outproc 客户端
+/// （双表面 + 投影下行 + DesktopBus 上行——broker 管道必填）。
 fn run_client_entry(args: &[String]) -> Result<(), String> {
     let mut pipe: Option<String> = None;
     let mut app_name: Option<String> = None;
     let mut broker_pipe = BROKER_PIPE.to_string();
     let mut render_arg: Option<String> = None;
+    let mut shell_entry = false;
     for arg in args {
         if let Some(v) = arg.strip_prefix("--autodesk-client=") {
             pipe = Some(v.to_string());
@@ -59,7 +62,12 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
             broker_pipe = v.to_string();
         } else if let Some(v) = arg.strip_prefix("--autodesk-render=") {
             render_arg = Some(v.to_string());
+        } else if arg == "--autodesk-shell" {
+            shell_entry = true;
         }
+    }
+    if shell_entry {
+        return auto_lang::ui::desktop_protocol::shell_client::run_shell_outproc(&broker_pipe);
     }
     let app_name = app_name
         .ok_or("--app386=<name> 必填（孵化 App 名 = <app-root>/<name>）")?

@@ -157,6 +157,14 @@ pub struct VmBridge {
     /// 求值面的裸 fn 调用经 [`VmBridge::call_vm_fn`] 按此解析真实导出名。
     import_aliases: std::collections::HashMap<String, String>,
 
+    /// PLAN-642 T-15: 本组件合成期的视图侧 store 别名快照（alias→真名）。
+    /// 单组件形态曾依赖 handler_codegen 的线程级 VIEW_STORE_ALIAS_SNAPSHOT
+    /// （合成后残留供同线程视图求值）；多组件工程（画廊合并 VM 轨）下该
+    /// 快照被后续组件的合成覆盖——`.TodoStore.X` 一类真名限定读在视图层
+    /// 解析失败短路（015 "No notes yet"、013 footer 字面模板实锤）。视图
+    /// 求值改为查自身 bridge 的存档（[`VmBridge::store_alias_real_name`]）。
+    store_alias_snapshot: std::collections::HashMap<String, String>,
+
     /// PLAN-536 T3(题2 收敛): 已派发过 Init 的子件名集合——Init 收敛为
     /// 挂载语义(每组件生命周期一次),不随脏重建帧重放。子件 state 走统一
     /// 根态、无独立堆对象可挂"首建"信号,故以名字集合在 bridge(唯一跨帧
@@ -303,6 +311,10 @@ impl VmBridge {
             .map_err(|e| VmBridgeError::InvalidState(format!(
                 "handler synthesis failed for '{}': {}", widget_name, e
             )))?;
+        // PLAN-642 T-15: 合成同线程紧邻捕获视图侧 store 别名快照（线程级
+        // 快照会被多组件工程的后续合成覆盖，须随 bridge 存档）。
+        let store_alias_snapshot =
+            crate::ui::handler_codegen::capture_view_store_alias_snapshot();
 
         // Metadata we still need after handing the module to the linker.
         let object_keys = module.object_keys.clone();
@@ -363,6 +375,7 @@ impl VmBridge {
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
             handler_param_counts,
             import_aliases: import_aliases.clone(),
+            store_alias_snapshot,
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
@@ -401,8 +414,13 @@ impl VmBridge {
             api_over_http,
         )
         .map_err(|e| VmBridgeError::InvalidState(format!(
-            "handler synthesis failed for '{}': {}", widget_name, e
+            "handler synthesis failed for '{}': {}",
+            widget_name, e
         )))?;
+        // PLAN-642 T-15: 同 new_with_children——快照随 bridge 存档
+        // （线程级快照会被多组件工程的后续合成覆盖）。
+        let store_alias_snapshot =
+            crate::ui::handler_codegen::capture_view_store_alias_snapshot();
 
         // Metadata we still need after handing the module to the linker.
         let object_keys = module.object_keys.clone();
@@ -536,6 +554,7 @@ impl VmBridge {
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
             handler_param_counts,
             import_aliases: import_aliases.clone(),
+            store_alias_snapshot,
             child_last_init_identity: std::cell::RefCell::new(std::collections::HashMap::new()),
             frame_retains_cur: std::sync::Mutex::new(Vec::new()),
             frame_retains_prev: std::sync::Mutex::new(Vec::new()),
@@ -1072,6 +1091,21 @@ impl VmBridge {
         self.vm
             .call_fn_by_name(&mut task, fn_name, 0)
             .map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
+    }
+
+    /// PLAN-642 T-15: 本组件的视图侧 store 别名解析（`.Store.X` 展平判定）。
+    /// 语义同 handler_codegen::view_store_alias_real_name，但读**本组件**
+    /// 合成期存档的快照——多组件工程下线程级快照被后续合成覆盖，视图
+    /// 求值若查全局会拿到他件的映射（015 "No notes yet"/013 footer 字面
+    /// 模板实锤）。空表语义与全局版一致（无 store 工程不展平）。
+    pub fn store_alias_real_name(&self, alias: &str) -> Option<String> {
+        if let Some(real) = self.store_alias_snapshot.get(alias) {
+            return Some(real.clone());
+        }
+        if !self.store_alias_snapshot.is_empty() && alias == "store" {
+            return Some("store".to_string());
+        }
+        None
     }
 
     /// Call a handler by name with arguments.

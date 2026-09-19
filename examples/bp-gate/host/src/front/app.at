@@ -1,0 +1,71 @@
+// app.at — bp-gate 宿主（PLAN-075 T-03）。三单元同页固定高度堆叠：
+//   unit: status_bar —— layout/status-bar 骨架（fn-free）
+//   unit: row_list   —— data-display/row-list 骨架（fn-free）
+//   unit: filetree   —— navigation/filetree 组合形态（跨文件 fn 携带件，
+//                        645 转译；075 G-6 后同文件 fn 通道亦在库）
+// 单元标记行（"unit: <id>"）在 root 视图——VM 臂 snapshot 可见（F-1：bp
+// 子件子树不可见，内容断言走 root 投影字段：sb_*/rl_count/ft_count）。
+// fixture 刻意三单元互斥词表（playwright 全页 needle 无歧义定位）。
+use bps.layout.status_bar.reference.default: StatusBarSkeleton
+use bps.data_display.row_list.reference.default: RowListSkeleton
+use bps.navigation.filetree.reference.default: FileTree
+use bps.navigation.filetree.tree_util: flatten_tree
+
+widget App {
+    msg { Init }
+
+    model {
+        // unit: status_bar —— 值 props 形态（desktop 版同款）
+        var sb_left str = "3 backlinks"
+        var sb_center str = "saved"
+        var sb_right str = "1,024 words"
+
+        // unit: row_list —— ASCII 词表（VM 字符串语义纪律 G-2：CJK 域禁索引算术）
+        var rl_rows List = [
+            { label: "alpha row", badge: "2" },
+            { label: "beta row", badge: "" },
+            { label: "gamma row", badge: "1" }
+        ]
+        var rl_count int = 3
+
+        // unit: filetree —— node schema 全键书写（gotcha#3）
+        var ft_nodes List = [
+            { id: "wiki", label: "wiki", children: [
+                { id: "wiki/方法", label: "方法", children: [
+                    { id: "wiki/方法/探针.ad", label: "探针.ad", children: [], kind: "file", icon: "", is_leaf: true, badge: "" }
+                ], kind: "dir", icon: "", is_leaf: false, badge: "" },
+                { id: "wiki/引言.ad", label: "引言.ad", children: [], kind: "file", icon: "", is_leaf: false, badge: "" }
+            ], kind: "dir", icon: "", is_leaf: false, badge: "" },
+            { id: "另页.ad", label: "另页.ad", children: [], kind: "file", icon: "", is_leaf: true, badge: "" }
+        ]
+        var ft_expanded List = ["wiki"]
+        var ft_rows List = []
+        var ft_count int = 0
+    }
+
+    on {
+        .Init -> {
+            // VM 臂投影：root 级消费 tree_util 支撑件（组合件内部另有闭包副本，
+            // 双处消费互不依赖）——展开态可见行数 = 4。
+            .ft_rows = flatten_tree(.ft_nodes, .ft_expanded, true, "")
+            .ft_count = .ft_rows.len()
+        }
+    }
+
+    view {
+        col (style: "flex flex-col") {
+            col (style: "flex h-52 flex-col justify-end border-b") {
+                text "unit: status_bar" { style: "px-3 pt-2 text-xs text-muted-foreground" }
+                StatusBarSkeleton (left: .sb_left, center: .sb_center, right: .sb_right) {}
+            }
+            col (style: "flex h-52 flex-col border-b") {
+                text "unit: row_list" { style: "px-3 pt-2 text-xs text-muted-foreground" }
+                RowListSkeleton (rows: .rl_rows, empty_text: "No items yet.") {}
+            }
+            col (style: "flex h-52 flex-col border-b") {
+                text "unit: filetree" { style: "px-3 pt-2 text-xs text-muted-foreground" }
+                FileTree (nodes: .ft_nodes, default_expanded: .ft_expanded) {}
+            }
+        }
+    }
+}
