@@ -1063,8 +1063,12 @@ pub enum View<M: Clone + Debug> {
     /// pen 事件三件套 (x, y) 逻辑坐标(coords prop "WxH" 声明值域,499 同型);
     /// move 仅 pen-down 期派发,门控 + ≤30Hz 限频在底层承载;离开画布
     /// bounds 即收笔(双端统一语义,T1d 裁定)。allows_children = false。
+    /// PLAN-661 T-05: 场景扩容图元三表族（nodes/edges/labels，`<前缀>_nodes`
+    /// 等平行串表）+ `onhit` 命中契约（tap → 命中元素 id 字符串载荷上报，
+    /// v1 命中域 = nodes only，声明序 topmost）。
     Canvas {
-        /// builder 帧内已解析的场景快照(pts/meta 双表 → 结构化笔画)。
+        /// builder 帧内已解析的场景快照(pts/meta 双表 → 结构化笔画 +
+        /// 图元三表 → 结构化 nodes/edges/labels)。
         scene: CanvasScene,
         /// coords "WxH" 逻辑幅面(None = raw px)。
         logical_extent: Option<(f32, f32)>,
@@ -1073,6 +1077,9 @@ pub enum View<M: Clone + Debug> {
         on_pen_start: Option<PointerMoveHandler<M>>,
         on_pen_move: Option<PointerMoveHandler<M>>,
         on_pen_end: Option<PointerMoveHandler<M>>,
+        /// PLAN-661 T-05（R-1）：tap 命中回调——收命中元素 id 字符串载荷
+        ///（`.OnNodeTap(id string)` 范式，与 pen 坐标通道分立）。
+        on_hit: Option<ElementHitHandler<M>>,
         style: Option<Style>,
     },
 }
@@ -1090,11 +1097,127 @@ pub struct CanvasStroke {
     pub eraser: bool,
 }
 
+/// PLAN-661 T-05: 图元节点 —— `<前缀>_nodes` 项
+/// `"id,x,y,shape,color[,r|w,h]"` 解析后的结构化形态（shape =
+/// circle|rect；circle 用 r，rect 用 w/h；坐标为逻辑坐标）。
+#[derive(Debug, Clone)]
+pub struct CanvasNode {
+    /// 元素 id（onhit 命中上报的载荷）。
+    pub id: String,
+    pub x: f32,
+    pub y: f32,
+    /// "circle" | "rect"（其他值按 circle 容错）。
+    pub shape: String,
+    /// CSS 色串。
+    pub color: String,
+    /// circle 半径（rect 为 None）。
+    pub r: Option<f32>,
+    /// rect 宽（circle 为 None）。
+    pub w: Option<f32>,
+    /// rect 高（circle 为 None）。
+    pub h: Option<f32>,
+}
+
+/// PLAN-661 T-05: 图元边 —— `<前缀>_edges` 项
+/// `"x1,y1,x2,y2[,color[,width]]"`（线段；from/to 语义归上游坐标计算，
+/// 契约只收绝对坐标——R-3 布局上游下发裁定）。
+#[derive(Debug, Clone)]
+pub struct CanvasEdge {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub color: String,
+    pub width: f32,
+}
+
+/// PLAN-661 T-05: 图元标签 —— `<前缀>_labels` 项 `"x,y,text[,color[,size]]"`。
+#[derive(Debug, Clone)]
+pub struct CanvasLabel {
+    pub x: f32,
+    pub y: f32,
+    pub text: String,
+    pub color: String,
+    pub size: f32,
+}
+
+/// PLAN-661 T-05（R-1）：nodes 命中判定纯函数——声明序**倒序 topmost**
+///（后声明者覆盖先声明者）；circle 含 r、rect 含 w/h（x/y 为图元中心，
+/// rect 以中心 ±w/2、±h/2 判定）。命中域 = nodes only（edges/labels
+/// 后置，§10 债）。逻辑坐标系。
+pub fn canvas_hit_test(nodes: &[CanvasNode], x: f32, y: f32) -> Option<String> {
+    for node in nodes.iter().rev() {
+        let hit = if node.shape == "rect" {
+            let (w, h) = (node.w.unwrap_or(40.0), node.h.unwrap_or(40.0));
+            (x - node.x).abs() <= w / 2.0 && (y - node.y).abs() <= h / 2.0
+        } else {
+            let r = node.r.unwrap_or(16.0);
+            let (dx, dy) = (x - node.x, y - node.y);
+            dx * dx + dy * dy <= r * r
+        };
+        if hit {
+            return Some(node.id.clone());
+        }
+    }
+    None
+}
+
 /// Plan 563: 画布场景快照 —— builder 每帧从 VM 状态求值解析;
-/// 双端渲染都是它的纯函数(线帽/拐角 round 为映射规约一部分)。
+/// 双端渲染都是它的纯函数(线帽/拐角 round 为映射规约的一部分)。
+/// PLAN-661 T-05: 扩容图元三表族（缺省空 = strokes-only 现行为
+/// 逐字节等价，043 消费方零回归）。
 #[derive(Debug, Clone, Default)]
 pub struct CanvasScene {
     pub strokes: Vec<CanvasStroke>,
+    pub nodes: Vec<CanvasNode>,
+    pub edges: Vec<CanvasEdge>,
+    pub labels: Vec<CanvasLabel>,
+}
+
+/// PLAN-661 T-05（R-1）：canvas tap 命中回调 —— 收命中元素 id 字符串
+/// 载荷（[`PointerMoveHandler`] 同款 newtype 形态，Arc<dyn Fn> 可跨消息
+/// 类型包装）。
+#[derive(Clone)]
+pub struct ElementHitHandler<M> {
+    callback: Arc<dyn Fn(String) -> M + Send + Sync>,
+    /// 事件名旁路（快照 actions 挂 press 的 handler 名来源，
+    /// SliderChangeHandler 标签同款机制；None = 匿名）。
+    label: Option<Arc<str>>,
+}
+
+impl<M> std::fmt::Debug for ElementHitHandler<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.label {
+            Some(name) => f.debug_struct("ElementHitHandler").field("event", name).finish(),
+            None => f.debug_struct("ElementHitHandler").finish(),
+        }
+    }
+}
+
+impl<M> ElementHitHandler<M> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(String) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f), label: None }
+    }
+
+    /// 带事件名标签构造（快照 actions 挂 press 的 handler 名来源）。
+    pub fn new_labeled<F>(f: F, label: &str) -> Self
+    where
+        F: Fn(String) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f), label: Some(Arc::from(label)) }
+    }
+
+    pub fn call(&self, element_id: String) -> M {
+        (self.callback)(element_id)
+    }
+
+    /// 事件名标签（匿名 = None）。
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
 }
 
 /// Plan 422: 弹层锚定方式。
@@ -2129,7 +2252,7 @@ impl<M: Clone + Debug> View<M> {
             },
             // Plan 563: Canvas 无子视图;三个 pen handler 复合映射
             // (handler 产出 M 经 f 转 N,MouseArea.on_move 同型)。
-            View::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, style } => View::Canvas {
+            View::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, on_hit, style } => View::Canvas {
                 scene,
                 logical_extent,
                 clear,
@@ -2144,6 +2267,12 @@ impl<M: Clone + Debug> View<M> {
                 on_pen_end: on_pen_end.map(|h| {
                     let f = std::sync::Arc::clone(f);
                     PointerMoveHandler::new(move |x, y| f(h.call(x, y)))
+                }),
+                // PLAN-661 T-05: on_hit 换型包装（标签随闭包克隆丢失是
+                // 可接受的——VM 轨标签只在 builder 原树快照面消费）。
+                on_hit: on_hit.map(|h| {
+                    let f = std::sync::Arc::clone(f);
+                    ElementHitHandler::new(move |id| f(h.call(id)))
                 }),
                 style,
             },
@@ -3770,9 +3899,44 @@ mod tests {
         }
     }
 
+    /// PLAN-661 T-05：canvas 命中判定纯函数——circle 含边界、rect 含
+    /// 边界（中心 ±w/2）、声明序倒序 topmost、未命中 None。
     #[test]
-    fn test_slider_map_msg_remaps_change_handler() {
-        // PLAN-661 T-02: map_msg 换型——on_change 经 SliderChangeHandler
+    fn plan661_t05_canvas_hit_test() {
+        use super::{canvas_hit_test, CanvasNode};
+        let node = |id: &str, x: f32, y: f32, shape: &str, r: Option<f32>, w: Option<f32>, h: Option<f32>| CanvasNode {
+            id: id.to_string(),
+            x,
+            y,
+            shape: shape.to_string(),
+            color: "#3b82f6".to_string(),
+            r,
+            w,
+            h,
+        };
+        let nodes = vec![
+            node("a", 100.0, 100.0, "circle", Some(20.0), None, None),
+            node("b", 200.0, 100.0, "rect", None, Some(40.0), Some(20.0)),
+        ];
+        // circle 圆心与含边界命中。
+        assert_eq!(canvas_hit_test(&nodes, 100.0, 100.0), Some("a".to_string()));
+        assert_eq!(canvas_hit_test(&nodes, 120.0, 100.0), Some("a".to_string()), "circle 含边界");
+        assert_eq!(canvas_hit_test(&nodes, 120.1, 100.0), None, "出界不命中");
+        // rect 中心 ±w/2、±h/2。
+        assert_eq!(canvas_hit_test(&nodes, 220.0, 110.0), Some("b".to_string()), "rect 边界内");
+        assert_eq!(canvas_hit_test(&nodes, 220.0, 110.1), None, "rect 高度出界");
+        // topmost：重叠时后声明者胜（倒序扫描）。
+        let stacked = vec![
+            node("bottom", 300.0, 300.0, "circle", Some(30.0), None, None),
+            node("top", 300.0, 300.0, "circle", Some(30.0), None, None),
+        ];
+        assert_eq!(canvas_hit_test(&stacked, 300.0, 300.0), Some("top".to_string()));
+        // 空表 = 未命中。
+        assert_eq!(canvas_hit_test(&[], 0.0, 0.0), None);
+    }
+
+    #[test]
+    fn test_slider_map_msg_remaps_change_handler() {        // PLAN-661 T-02: map_msg 换型——on_change 经 SliderChangeHandler
         // newtype 包装不丢（此前 fn 指针形态该臂为 panic 占位）；
         // Clone/Debug 携带；None 透传 None。
         #[derive(Debug, Clone, PartialEq)]

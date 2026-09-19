@@ -1631,6 +1631,59 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         ));
     }
 
+    // PLAN-661 T-05（R-1）：canvas press(value=<node_id>)——tap 命中合成。
+    // 与真实 PenArea tap 产出的消息同构：ElementHitHandler →
+    // Typed{args:[Str(id)]} → from_dynamic → "event␟s␟id" 编码事件直达
+    // on_with_input_for（计划 §5.5 的 id→坐标→pen 合成草图让位于消息
+    // 同构直达——§10 执行期裁量，handler 语义等价且零合成面）。
+    if action_type == UiActionType::Press && action_str == "press" {
+        let canvas_hit = {
+            let shared = shared_handle.lock().unwrap();
+            match element_id {
+                ElementId::Vnode(vnode_id) => shared
+                    .styled_vtree
+                    .as_ref()
+                    .and_then(|s| s.vtree.get(vnode_id))
+                    .filter(|n| format!("{}", n.kind) == "Canvas")
+                    .and_then(|vnode| {
+                        let view = shared.view.as_ref()?;
+                        let target_view = find_view_by_path(view, &vnode.path)?;
+                        let (widget, event) = extract_action_from_view(target_view, "press")?;
+                        Some((widget, event, shared.widget_name.clone()))
+                    }),
+                ElementId::Aura(_) => None,
+            }
+        };
+        if let Some((widget, event, root_widget)) = canvas_hit {
+            let id = match value.as_ref() {
+                Some(auto_val::Value::Str(s)) => s.as_str().to_string(),
+                Some(other) => other.to_string(),
+                None => {
+                    return error_result(
+                        "Action 'press' on canvas requires 'value' = hit node id (scene nodes 表 id 列)",
+                    )
+                }
+            };
+            let dispatch_event = format!("{}\u{1F}s\u{1F}{}", event, id);
+            let widget = if widget.is_empty() { root_widget } else { widget };
+            let msg = ActionMessage {
+                target: ActionTarget::Event { widget, event: dispatch_event },
+                action: UiActionType::Press,
+                value: Some(id.clone()),
+            };
+            {
+                let shared = shared_handle.lock().unwrap();
+                if let Err(e) = shared.send_action(msg) {
+                    return error_result(e);
+                }
+            }
+            return text_result(format!(
+                "Pressed canvas node '{}' via .{} (onhit dispatch) (status: ok)",
+                id, event
+            ));
+        }
+    }
+
     // PLAN-043 T10: drag——mouse-area 无 vnode 可寻址（styled vtree 映射为
     // Text），拖拽按 widget 寻址经合成事件 __mcp_drag（input_value =
     // "W␟Down␟Move␟Up␟x0,y0;x1,y1;..."）在 update_inner 连发
@@ -3293,6 +3346,13 @@ fn extract_action_from_view(
         // new_labeled 供给）；widget 名留空由调用方补根组件名。
         View::Slider { on_change, .. } if action_name == "set_value" => {
             on_change
+                .as_ref()
+                .and_then(|h| h.label().map(|name| (String::new(), name.to_string())))
+        }
+        // PLAN-661 T-05（R-1）：canvas press → onhit（ElementHitHandler 标签
+        // 旁路；命中元素 id 由调用方经 "s" 载荷编码进事件串）。
+        View::Canvas { on_hit, .. } if action_name == "press" => {
+            on_hit
                 .as_ref()
                 .and_then(|h| h.label().map(|name| (String::new(), name.to_string())))
         }

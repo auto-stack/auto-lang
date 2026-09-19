@@ -4810,7 +4810,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // DrawListPainter 形态参考但独立实现:不经 DrawOp 线协议,v1
             // 无路径 op)+ PenArea 事件层(pen 三件套,按下门控/限频/出界
             // 收笔)。inspect 捕获态丢事件臂(与其余 handler 同规则)。
-            AbstractView::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, style } => {
+            // PLAN-661 T-05：PenArea 增 tap 命中层（onhit + canvas_hit_test）。
+            AbstractView::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, on_hit, style } => {
                 let painter = CanvasPainter {
                     scene: scene.clone(),
                     clear: clear.clone(),
@@ -4823,7 +4824,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .height(iced::Length::Fill)
                     .into();
                 let wrapped: iced::Element<'static, M> =
-                    if !inspect_capture_active() && (on_pen_start.is_some() || on_pen_move.is_some() || on_pen_end.is_some()) {
+                    if !inspect_capture_active() && (on_pen_start.is_some() || on_pen_move.is_some() || on_pen_end.is_some() || on_hit.is_some()) {
                         let mut pa = crate::ui::iced::pen_area::PenArea::new(canvas_el);
                         if let Some((w, h)) = logical_extent {
                             pa = pa.extent(w, h);
@@ -4839,6 +4840,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if let Some(h) = on_pen_end {
                             let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
                             pa = pa.on_pen_end(f);
+                        }
+                        // PLAN-661 T-05：tap 命中（R-1）——hit_test 从 scene
+                        // nodes 构建（声明序倒序 topmost），PenArea 容差
+                        // tap 判定后派发 onhit(id)。
+                        if let Some(h) = on_hit {
+                            let nodes = scene.nodes.clone();
+                            let f = std::sync::Arc::new(move |id: String| h.call(id));
+                            pa = pa
+                                .on_hit(f)
+                                .hit_test(std::sync::Arc::new(move |x: f32, y: f32| {
+                                    crate::ui::view::canvas_hit_test(&nodes, x, y)
+                                }));
                         }
                         pa.into()
                     } else {
@@ -7318,7 +7331,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
 
         // Plan 563: 画布 —— 显式臂(缺臂落 Empty 兜底,496 MouseArea
         // 同坑);pen handler 包装同 on_move。
-        AbstractView::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, style } => {
+        AbstractView::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, on_hit, style } => {
             AbstractView::Canvas {
                 scene,
                 logical_extent,
@@ -7336,6 +7349,12 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 on_pen_end: on_pen_end.map(|h| {
                     crate::ui::view::PointerMoveHandler::new(move |x, y| {
                         IcedMessage::from_dynamic(&h.call(x, y))
+                    })
+                }),
+                // PLAN-661 T-05：onhit 换型包装（ElementHitHandler）。
+                on_hit: on_hit.map(|h| {
+                    crate::ui::view::ElementHitHandler::new(move |id| {
+                        IcedMessage::from_dynamic(&h.call(id))
                     })
                 }),
                 style,
@@ -7695,6 +7714,44 @@ impl<M: Clone + 'static> iced::widget::canvas::Program<M> for CanvasPainter {
                     .with_line_cap(LineCap::Round)
                     .with_line_join(LineJoin::Round),
             );
+        }
+        // PLAN-661 T-05: 图元三表绘制——edges（线段）→ nodes（circle/rect）
+        // → labels（文本），声明序；extent 缩放复用 strokes 现行换算。
+        for edge in &self.scene.edges {
+            let path = Path::new(|b| {
+                b.move_to(iced::Point::new(edge.x1 * sx, edge.y1 * sy));
+                b.line_to(iced::Point::new(edge.x2 * sx, edge.y2 * sy));
+            });
+            frame.stroke(
+                &path,
+                Stroke::default()
+                    .with_color(canvas_css_color(&edge.color))
+                    .with_width(edge.width)
+                    .with_line_cap(LineCap::Round),
+            );
+        }
+        for node in &self.scene.nodes {
+            let center = iced::Point::new(node.x * sx, node.y * sy);
+            let color = canvas_css_color(&node.color);
+            if node.shape == "rect" {
+                let (w, h) = (node.w.unwrap_or(40.0) * sx, node.h.unwrap_or(40.0) * sy);
+                frame.fill_rectangle(
+                    iced::Point::new(center.x - w / 2.0, center.y - h / 2.0),
+                    iced::Size::new(w, h),
+                    color,
+                );
+            } else {
+                frame.fill(&Path::circle(center, node.r.unwrap_or(16.0) * sx), color);
+            }
+        }
+        for label in &self.scene.labels {
+            frame.fill_text(iced::widget::canvas::Text {
+                content: label.text.clone(),
+                position: iced::Point::new(label.x * sx, label.y * sy),
+                color: canvas_css_color(&label.color),
+                size: iced::Pixels(label.size.clamp(1.0, 96.0)),
+                ..Default::default()
+            });
         }
         vec![frame.into_geometry()]
     }

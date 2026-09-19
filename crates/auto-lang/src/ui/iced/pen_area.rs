@@ -32,6 +32,17 @@ use std::time::Instant;
 
 type PenFn<Message> = Arc<dyn Fn(f32, f32) -> Message + Send + Sync>;
 
+/// PLAN-661 T-05（R-1）：tap 命中回调——收命中元素 id 字符串。
+type HitFn<Message> = Arc<dyn Fn(String) -> Message + Send + Sync>;
+
+/// PLAN-661 T-05：命中判定闭包（逻辑坐标 → 命中元素 id；None = 未命中）。
+/// 闭包由 renderer 臂从 scene.nodes 构建（canvas_hit_test 纯函数包装）。
+pub type HitTestFn = Arc<dyn Fn(f32, f32) -> Option<String> + Send + Sync>;
+
+/// PLAN-661 T-05：tap 判定容差（逻辑 px）——pen 释放点距按下点 ≤ 此值
+/// 视为 tap（命中派发），超出视为拖拽笔画（不派发）。
+pub const TAP_TOLERANCE: f32 = 4.0;
+
 /// PenArea 的本地状态(tree::Tag 标识)。throttle 复用 PointerArea 的
 /// 限频核心(33ms 时间闸 + 0.5px 量化去重);last_logical 同时承担
 /// "出界收笔"的最后已知界内坐标。
@@ -39,6 +50,8 @@ type PenFn<Message> = Arc<dyn Fn(f32, f32) -> Message + Send + Sync>;
 pub struct State {
     is_down: bool,
     throttle: super::pointer_area::State,
+    /// PLAN-661 T-05：按下点逻辑坐标（tap 判定基准）。
+    down_start: Option<(f32, f32)>,
 }
 
 pub struct PenArea<'a, Message>
@@ -50,6 +63,8 @@ where
     on_pen_start: Option<PenFn<Message>>,
     on_pen_move: Option<PenFn<Message>>,
     on_pen_end: Option<PenFn<Message>>,
+    on_hit: Option<HitFn<Message>>,
+    hit_test: Option<HitTestFn>,
 }
 
 impl<'a, Message> PenArea<'a, Message>
@@ -63,6 +78,8 @@ where
             on_pen_start: None,
             on_pen_move: None,
             on_pen_end: None,
+            on_hit: None,
+            hit_test: None,
         }
     }
 
@@ -84,6 +101,18 @@ where
 
     pub fn on_pen_end(mut self, f: PenFn<Message>) -> Self {
         self.on_pen_end = Some(f);
+        self
+    }
+
+    /// PLAN-661 T-05：tap 命中派发（与 hit_test 成对挂载）。
+    pub fn on_hit(mut self, f: HitFn<Message>) -> Self {
+        self.on_hit = Some(f);
+        self
+    }
+
+    /// PLAN-661 T-05：命中判定闭包（canvas_hit_test 的场景包装）。
+    pub fn hit_test(mut self, f: HitTestFn) -> Self {
+        self.hit_test = Some(f);
         self
     }
 
@@ -155,6 +184,9 @@ where
                     if let Some(local) = cursor.position_in(bounds) {
                         let logical = to_logical(local, &bounds, self.extent);
                         state.is_down = true;
+                        // PLAN-661 T-05：按下点记账（tap 判定基准；无
+                        // penstart 消费者的 onhit-only 画布也要记）。
+                        state.down_start = Some(logical);
                         // 起笔即重置限频窗(新笔画首 move 不受上笔尾闸压制)。
                         state.throttle = super::pointer_area::State::default();
                         state.throttle.last_logical = Some(logical);
@@ -162,6 +194,12 @@ where
                         shell.publish(f(logical.0, logical.1));
                         // 按下即绘画:吞掉事件,防外层 scrollable 抢拖动。
                         shell.capture_event();
+                    }
+                } else if self.on_hit.is_some() && cursor.is_over(bounds) {
+                    // onhit-only 画布（无 pen 消费者）：仍记账按下点。
+                    if let Some(local) = cursor.position_in(bounds) {
+                        state.is_down = true;
+                        state.down_start = Some(to_logical(local, &bounds, self.extent));
                     }
                 }
             }
@@ -186,20 +224,35 @@ where
                                 shell.publish(f(last.0, last.1));
                             }
                             state.is_down = false;
+                            state.down_start = None;
                         }
                     }
                 }
             }
             Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
                 if state.is_down {
+                    let release = cursor
+                        .position_in(bounds)
+                        .map(|local| to_logical(local, &bounds, self.extent))
+                        .unwrap_or_else(|| Self::last_known(state, &bounds, &self.extent));
                     if let Some(f) = &self.on_pen_end {
-                        let logical = cursor
-                            .position_in(bounds)
-                            .map(|local| to_logical(local, &bounds, self.extent))
-                            .unwrap_or_else(|| Self::last_known(state, &bounds, &self.extent));
-                        shell.publish(f(logical.0, logical.1));
+                        shell.publish(f(release.0, release.1));
+                    }
+                    // PLAN-661 T-05（R-1）：tap 命中——释放点距按下点 ≤
+                    // TAP_TOLERANCE 且命中判定返回元素 id → onhit 派发
+                    //（字符串载荷；与 pen 坐标通道分立，未命中不派发）。
+                    if let (Some(hit_f), Some(test), Some(start)) =
+                        (&self.on_hit, &self.hit_test, state.down_start)
+                    {
+                        let moved = (release.0 - start.0).hypot(release.1 - start.1);
+                        if moved <= TAP_TOLERANCE {
+                            if let Some(id) = test(start.0, start.1) {
+                                shell.publish(hit_f(id));
+                            }
+                        }
                     }
                     state.is_down = false;
+                    state.down_start = None;
                 }
             }
             _ => {}

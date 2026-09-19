@@ -129,12 +129,27 @@ impl SnapshotBuilder {
                 children: vec![],
             },
 
-            View::Canvas { scene, .. } => UiNode {
-                id,
-                kind: "Canvas".to_string(),
-                props: vec![("strokes".to_string(), scene.strokes.len().to_string())],
-                actions: vec![],
-                children: vec![],
+            // PLAN-661 T-05: 图元场景快照——nodes 计数 + ids 暴露（MCP 寻址
+            // 面，press(value=id) 可达）+ onhit 时挂 press action（R-1：命中
+            // 派发语义 = tap → 元素 id 载荷）。
+            View::Canvas { scene, on_hit, .. } => {
+                let mut props = vec![
+                    ("strokes".to_string(), scene.strokes.len().to_string()),
+                    ("nodes".to_string(), scene.nodes.len().to_string()),
+                ];
+                if !scene.nodes.is_empty() {
+                    let ids: Vec<&str> = scene.nodes.iter().map(|n| n.id.as_str()).collect();
+                    props.push(("node_ids".to_string(), ids.join(",")));
+                }
+                let actions = on_hit
+                    .as_ref()
+                    .and_then(|h| h.label())
+                    .map(|name| vec![UiAction {
+                        name: "press".to_string(),
+                        handler: format!(".{}", name),
+                    }])
+                    .unwrap_or_default();
+                UiNode { id, kind: "Canvas".to_string(), props, actions, children: vec![] }
             },
 
             // Plan 422: 弹层完整展开 —— MCP 需要看见面板项才能点击。

@@ -11878,6 +11878,10 @@ let tabs_inner = View::Row {
             .map(|e| self.pen_handler(e, bindings));
         let on_pen_end = aura_events_get_base(events, "onpenend")
             .map(|e| self.pen_handler(e, bindings));
+        // PLAN-661 T-05（R-1）：onhit → ElementHitHandler（命中元素 id
+        // 字符串载荷；标签旁路供快照 actions 挂 press）。
+        let on_hit = aura_events_get_base(events, "onhit")
+            .map(|e| self.hit_handler(e, bindings));
         let style = self.extract_style_with(props, bindings);
         View::Canvas {
             scene,
@@ -11886,6 +11890,7 @@ let tabs_inner = View::Row {
             on_pen_start,
             on_pen_move,
             on_pen_end,
+            on_hit,
             style,
         }
     }
@@ -11893,6 +11898,9 @@ let tabs_inner = View::Row {
     /// scene prop(`scene: .strokes`)→ 读 `<name>_pts` / `<name>_meta`
     /// 双表并解析。`.field` 在 parser 层解析为 Dot(Ident("self"|"."),
     /// field),legacy 裸名/点整体 Ident 兼收;其余形态 → None(空画布)。
+    /// PLAN-661 T-05：扩读图元三表族 `<name>_nodes` / `<name>_edges` /
+    /// `<name>_labels`（平行串表 → 结构化图元；缺表 = 空，strokes-only
+    /// 现行为逐字节等价）。
     fn extract_canvas_scene(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -11918,8 +11926,47 @@ let tabs_inner = View::Row {
         let meta = self
             .read_state_as_vec(&format!("{prefix}_meta"))
             .unwrap_or_default();
+        let nodes = self
+            .read_state_as_vec(&format!("{prefix}_nodes"))
+            .unwrap_or_default();
+        let edges = self
+            .read_state_as_vec(&format!("{prefix}_edges"))
+            .unwrap_or_default();
+        let labels = self
+            .read_state_as_vec(&format!("{prefix}_labels"))
+            .unwrap_or_default();
         let _ = bindings;
-        Some(parse_canvas_scene(&pts, &meta))
+        let mut scene = parse_canvas_scene(&pts, &meta);
+        scene.nodes = parse_canvas_nodes(&nodes);
+        scene.edges = parse_canvas_edges(&edges);
+        scene.labels = parse_canvas_labels(&labels);
+        Some(scene)
+    }
+
+    /// PLAN-661 T-05（R-1）：onhit 事件 → ElementHitHandler——调用现场把
+    /// 命中元素 id 作为 Str 实参追加（`.OnNodeTap(id string)` 范式）。
+    fn hit_handler(
+        &self,
+        event: &AuraEvent,
+        bindings: &Bindings,
+    ) -> crate::ui::view::ElementHitHandler<DynamicMessage> {
+        let base = self.event_to_message_with(event, bindings);
+        let label = extract_handler_name(&event.handler).to_string();
+        crate::ui::view::ElementHitHandler::new_labeled(
+            move |id: String| match &base {
+                DynamicMessage::Typed { widget_name, event_name, args } => {
+                    let mut new_args = args.clone();
+                    new_args.push(Value::Str(id.into()));
+                    DynamicMessage::Typed {
+                        widget_name: widget_name.clone(),
+                        event_name: event_name.clone(),
+                        args: new_args,
+                    }
+                }
+                other => other.clone(),
+            },
+            &label,
+        )
     }
 
     /// Plan 484: hover 命中区 untracked 臂(convert_mouse_area 的镜像)。
@@ -12826,7 +12873,137 @@ fn parse_canvas_scene(
             .unwrap_or(false);
         strokes.push(crate::ui::view::CanvasStroke { points, color, width, eraser });
     }
-    crate::ui::view::CanvasScene { strokes }
+    crate::ui::view::CanvasScene { strokes, ..Default::default() }
+}
+
+/// PLAN-661 T-05: `<前缀>_nodes` 项 `"id,x,y,shape,color[,r|w,h]"` →
+/// CanvasNode。宽容解析：畸形项跳过（pts/meta 现行容错同款）；shape 非
+/// circle|rect 按 circle 收；尺寸缺省 r=16 / w=h=40。
+pub(crate) fn parse_canvas_nodes(items: &[Value]) -> Vec<crate::ui::view::CanvasNode> {
+    let val_str = canvas_val_str;
+    let mut nodes = Vec::with_capacity(items.len());
+    for item in items {
+        let s = val_str(item);
+        if s.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = s.split(',').map(str::trim).collect();
+        if parts.len() < 5 || parts[0].is_empty() {
+            continue;
+        }
+        let (Ok(x), Ok(y)) = (parts[1].parse::<f32>(), parts[2].parse::<f32>()) else {
+            continue;
+        };
+        let shape = parts[3].to_ascii_lowercase();
+        let shape = if shape == "rect" { "rect" } else { "circle" }.to_string();
+        let color = if parts[4].is_empty() { "#3b82f6" } else { parts[4] }.to_string();
+        let (r, w, h) = if shape == "rect" {
+            let w = parts.get(5).and_then(|s| s.parse::<f32>().ok()).unwrap_or(40.0);
+            let h = parts.get(6).and_then(|s| s.parse::<f32>().ok()).unwrap_or(w);
+            (None, Some(w), Some(h))
+        } else {
+            (Some(parts.get(5).and_then(|s| s.parse::<f32>().ok()).unwrap_or(16.0)), None, None)
+        };
+        nodes.push(crate::ui::view::CanvasNode {
+            id: parts[0].to_string(),
+            x,
+            y,
+            shape,
+            color,
+            r,
+            w,
+            h,
+        });
+    }
+    nodes
+}
+
+/// PLAN-661 T-05: `<前缀>_edges` 项 `"x1,y1,x2,y2[,color[,width]]"` →
+/// CanvasEdge（线段；绝对坐标——from/to 语义归上游，R-3）。
+pub(crate) fn parse_canvas_edges(items: &[Value]) -> Vec<crate::ui::view::CanvasEdge> {
+    let val_str = canvas_val_str;
+    let mut edges = Vec::with_capacity(items.len());
+    for item in items {
+        let s = val_str(item);
+        if s.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = s.split(',').map(str::trim).collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        let (Ok(x1), Ok(y1), Ok(x2), Ok(y2)) = (
+            parts[0].parse::<f32>(),
+            parts[1].parse::<f32>(),
+            parts[2].parse::<f32>(),
+            parts[3].parse::<f32>(),
+        ) else {
+            continue;
+        };
+        let color = parts
+            .get(4)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&"#9ca3af")
+            .to_string();
+        let width = parts
+            .get(5)
+            .and_then(|s| s.parse::<f32>().ok())
+            .filter(|w| *w > 0.0)
+            .unwrap_or(2.0);
+        edges.push(crate::ui::view::CanvasEdge { x1, y1, x2, y2, color, width });
+    }
+    edges
+}
+
+/// PLAN-661 T-05: `<前缀>_labels` 项 `"x,y,text[,color[,size]]"` →
+/// CanvasLabel（text 段含逗号时仅在恰 3/5 段形态下取 color/size——
+/// 宽容优先保文本完整）。
+pub(crate) fn parse_canvas_labels(items: &[Value]) -> Vec<crate::ui::view::CanvasLabel> {
+    let val_str = canvas_val_str;
+    let mut labels = Vec::with_capacity(items.len());
+    for item in items {
+        let s = val_str(item);
+        if s.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = s.split(',').map(str::trim).collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let (Ok(x), Ok(y)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>()) else {
+            continue;
+        };
+        // 严格形态 x,y,text[,color[,size]]：恰 3 段 = 纯文本；4 段带色；
+        // 5 段带色带字号；更多段 = 文本含逗号，color/size 走默认。
+        let (text, color, size) = match parts.len() {
+            3 => (parts[2].to_string(), "#111827".to_string(), 14.0),
+            4 => {
+                let c = if parts[3].is_empty() { "#111827".to_string() } else { parts[3].to_string() };
+                (parts[2].to_string(), c, 14.0)
+            }
+            5 => {
+                let c = if parts[3].is_empty() { "#111827".to_string() } else { parts[3].to_string() };
+                let sz = parts[4].parse::<f32>().ok().filter(|s| *s > 0.0).unwrap_or(14.0);
+                (parts[2].to_string(), c, sz)
+            }
+            _ => (parts[2..].join(","), "#111827".to_string(), 14.0),
+        };
+        if text.is_empty() {
+            continue;
+        }
+        labels.push(crate::ui::view::CanvasLabel { x, y, text, color, size });
+    }
+    labels
+}
+
+fn canvas_val_str(v: &Value) -> String {
+    match v {
+        Value::Str(s) => s.as_str().to_string(),
+        Value::Int(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Bool(b) => b.to_string(),
+        _ => String::new(),
+    }
 }
 
 
@@ -13155,6 +13332,53 @@ mod tests {
             View::Slider { on_change: None, .. } => {}
             other => panic!("Expected bare slider with no handler, got {:?}", other),
         }
+    }
+
+    /// PLAN-661 T-05: 图元三表解析——规范项全字段、畸形项跳过（宽容）、
+    /// 缺省值（r=16/w=40/color 三族各自缺省、edge width=2、label size=14）。
+    #[test]
+    fn plan661_t05_parse_canvas_primitive_tables() {
+        use auto_val::Value;
+        let nodes = vec![
+            Value::str("n1,100,200,circle,#ff0000,12"),
+            Value::str("n2,300,400,rect,#00ff00,80,50"),
+            Value::str("bogus"),             // <5 段 → 跳过
+            Value::str("n3,xx,400,rect"),    // 坐标非数值 → 跳过
+            Value::Int(0),                   // 空串形态 → 跳过
+        ];
+        let parsed = parse_canvas_nodes(&nodes);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].id, "n1");
+        assert_eq!(parsed[0].shape, "circle");
+        assert_eq!(parsed[0].r, Some(12.0));
+        assert_eq!(parsed[0].color, "#ff0000");
+        assert_eq!(parsed[1].shape, "rect");
+        assert_eq!((parsed[1].w, parsed[1].h), (Some(80.0), Some(50.0)));
+
+        let edges = vec![
+            Value::str("0,0,100,100"),
+            Value::str("10,20,30,40,#123456,1.5"),
+            Value::str("bad"),
+        ];
+        let edges = parse_canvas_edges(&edges);
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0].color, "#9ca3af", "edge color 缺省");
+        assert_eq!(edges[0].width, 2.0, "edge width 缺省");
+        assert_eq!(edges[1].width, 1.5);
+
+        let labels = vec![
+            Value::str("50,60,hello"),
+            Value::str("70,80,world,#ff8800,18"),
+            Value::str("90,100,a,b,c,d"), // 文本含逗号 → 余段合并
+            Value::str("bad"),
+        ];
+        let labels = parse_canvas_labels(&labels);
+        assert_eq!(labels.len(), 3);
+        assert_eq!(labels[0].text, "hello");
+        assert_eq!(labels[0].size, 14.0, "label size 缺省");
+        assert_eq!(labels[1].color, "#ff8800");
+        assert_eq!(labels[1].size, 18.0);
+        assert_eq!(labels[2].text, "a,b,c,d", "含逗号文本合并");
     }
 
     #[test]

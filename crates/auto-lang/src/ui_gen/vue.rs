@@ -816,6 +816,15 @@ struct CanvasSpec {
     on_start: Option<String>,
     on_move: Option<String>,
     on_end: Option<String>,
+    /// PLAN-661 T-05（R-1）：onhit handler 函数名（收命中元素 id 字符串；
+    /// tap 判定 = pointerdown→pointerup 位移 ≤ 4px，nodes 声明序倒序
+    /// topmost，与 iced PenArea 同语义不共享代码）。
+    on_hit: Option<String>,
+    /// PLAN-661 T-05：图元三表是否在 model 声明（未声明 → 重绘/命中空集，
+    /// 不引用未声明 ref 防 vue-tsc 编译红）。
+    nodes_declared: bool,
+    edges_declared: bool,
+    labels_declared: bool,
 }
 
 /// PLAN-617 T-07: 受控 `video` 元素登记（模板臂收集、script 臂消费）。
@@ -5046,6 +5055,16 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         let on_start = handler_name("onpenstart");
         let on_move = handler_name("onpenmove");
         let on_end = handler_name("onpenend");
+        // PLAN-661 T-05（R-1）：onhit handler（命中元素 id 字符串载荷）。
+        let on_hit = handler_name("onhit");
+        if let Some(h) = &on_hit {
+            self.used_handlers.insert(h.clone());
+        }
+        let has_hit = on_hit.is_some();
+        // 图元三表声明探测（未声明 → 运行时空集，不引用未声明 ref）。
+        let nodes_declared = self.state_names.contains(&format!("{prefix}_nodes"));
+        let edges_declared = self.state_names.contains(&format!("{prefix}_edges"));
+        let labels_declared = self.state_names.contains(&format!("{prefix}_labels"));
         let idx = self.canvas_specs.len();
         let ref_name = format!("__canvas_ref_{idx}");
         self.template_refs.push(ref_name.clone());
@@ -5058,6 +5077,10 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             on_start,
             on_move,
             on_end,
+            on_hit: on_hit.clone(),
+            nodes_declared,
+            edges_declared,
+            labels_declared,
         });
         let (class_str, _, _) = self.extract_classes("canvas", props);
         let class_attr = if class_str.is_empty() {
@@ -5071,8 +5094,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         } else {
             String::new()
         };
+        // PLAN-661 T-05：tap 命中走 pointer 事件（与 pen 的 mouse 事件
+        // 互不占位——双通道并存零属性冲突）。
+        let hit_attr = if has_hit {
+            format!(
+                " @pointerdown=\"__canvasHitDown_{idx}\" @pointerup=\"__canvasHitUp_{idx}\""
+            )
+        } else {
+            String::new()
+        };
         Ok(format!(
-            "{ind}<canvas ref=\"{ref_name}\"{class_attr}{down_attr}></canvas>\n"
+            "{ind}<canvas ref=\"{ref_name}\"{class_attr}{down_attr}{hit_attr}></canvas>\n"
         ))
     }
 
@@ -5525,6 +5557,25 @@ onMounted(() => {{
         // ---- redraw:场景契约 → 2D(状态 ref 引用为 <prefix>_pts/_meta)。
         let pts_ref = format!("{prefix}_pts");
         let meta_ref = format!("{prefix}_meta");
+        // PLAN-661 T-05: 图元三表 ref（未声明 → 空数组字面量，不引用）。
+        let nodes_ref = format!("{prefix}_nodes");
+        let edges_ref = format!("{prefix}_edges");
+        let labels_ref = format!("{prefix}_labels");
+        let nodes_expr = if spec.nodes_declared {
+            format!("{nodes_ref}.value")
+        } else {
+            "[]".to_string()
+        };
+        let edges_expr = if spec.edges_declared {
+            format!("{edges_ref}.value")
+        } else {
+            "[]".to_string()
+        };
+        let labels_expr = if spec.labels_declared {
+            format!("{labels_ref}.value")
+        } else {
+            "[]".to_string()
+        };
         let scale_decl = match spec.extent {
             Some((w, h)) => format!("  const sx = r.width / {w}, sy = r.height / {h}\n"),
             None => "  const sx = 1, sy = 1\n".to_string(),
@@ -5575,6 +5626,46 @@ onMounted(() => {{
       else ctx.lineTo(px, py)
     }}
     ctx.stroke()
+  }}
+  // PLAN-661 T-05: 图元三表——edges（线段）→ nodes（circle/rect）→
+  // labels（文本），声明序；与 iced CanvasPainter 同规约不共享代码。
+  const edges = {edges_expr}
+  for (let k = 0; k < edges.length; k++) {{
+    const p = String(edges[k]).split(',')
+    if (p.length < 4) continue
+    ctx.strokeStyle = p[4] || '#9ca3af'
+    ctx.lineWidth = parseFloat(p[5]) || 2
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(parseFloat(p[0]) * sx, parseFloat(p[1]) * sy)
+    ctx.lineTo(parseFloat(p[2]) * sx, parseFloat(p[3]) * sy)
+    ctx.stroke()
+  }}
+  const nodes = {nodes_expr}
+  for (let k = 0; k < nodes.length; k++) {{
+    const p = String(nodes[k]).split(',')
+    if (p.length < 5 || !p[0]) continue
+    const nx = parseFloat(p[1]) * sx, ny = parseFloat(p[2]) * sy
+    ctx.fillStyle = p[4] || '#3b82f6'
+    if (p[3] === 'rect') {{
+      const w = (parseFloat(p[5]) || 40) * sx, h = (parseFloat(p[6]) || 40) * sy
+      ctx.fillRect(nx - w / 2, ny - h / 2, w, h)
+    }} else {{
+      ctx.beginPath()
+      ctx.arc(nx, ny, (parseFloat(p[5]) || 16) * sx, 0, Math.PI * 2)
+      ctx.fill()
+    }}
+  }}
+  const labels = {labels_expr}
+  for (let k = 0; k < labels.length; k++) {{
+    const p = String(labels[k]).split(',')
+    if (p.length < 3 || !p[2]) continue
+    ctx.fillStyle = (p.length >= 4 && p[3]) ? p[3] : '#111827'
+    const fs = (p.length >= 5 && parseFloat(p[4])) || 14
+    ctx.font = fs + 'px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(p.slice(2).join(','), parseFloat(p[0]) * sx, parseFloat(p[1]) * sy)
   }}
 }}
 "
@@ -5690,9 +5781,71 @@ function __canvasUp_{i}(e: MouseEvent) {{
             });
         }
 
+        // ---- PLAN-661 T-05（R-1）：tap 命中三包装（pointer 事件通道，
+        // 与 pen 的 mouse 通道分立；位移 ≤4px 视为 tap，nodes 声明序
+        // 倒序 topmost，未命中不派发——iced PenArea 同语义不共享代码）。
+        if let Some(hit_handler) = &spec.on_hit {
+            let to_logical_hit = match spec.extent {
+                Some((w, h)) => format!(
+                    "const x = (e.clientX - r.left) / r.width * {w}, y = (e.clientY - r.top) / r.height * {h}"
+                ),
+                None => "const x = e.clientX - r.left, y = e.clientY - r.top".to_string(),
+            };
+            s.push_str(&format!(
+"let __canvas_hit_start_{i}: {{ x: number, y: number }} | null = null
+function __canvasHitDown_{i}(e: PointerEvent) {{
+  const el = {refn}.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  __canvas_hit_start_{i} = {{ x: e.clientX - r.left, y: e.clientY - r.top }}
+}}
+function __canvasHitUp_{i}(e: PointerEvent) {{
+  const start = __canvas_hit_start_{i}
+  __canvas_hit_start_{i} = null
+  const el = {refn}.value
+  if (!el || !start) return
+  const r = el.getBoundingClientRect()
+  const dx = (e.clientX - r.left) - start.x, dy = (e.clientY - r.top) - start.y
+  if (Math.hypot(dx, dy) > 4) return
+  {to_logical_hit}
+  const nodes = {nodes_expr}
+  for (let k = nodes.length - 1; k >= 0; k--) {{
+    const p = String(nodes[k]).split(',')
+    if (p.length < 5 || !p[0]) continue
+    const nx = parseFloat(p[1]), ny = parseFloat(p[2])
+    let hit = false
+    if (p[3] === 'rect') {{
+      const w = parseFloat(p[5]) || 40, h = parseFloat(p[6]) || w
+      hit = Math.abs(x - nx) <= w / 2 && Math.abs(y - ny) <= h / 2
+    }} else {{
+      const rr = parseFloat(p[5]) || 16
+      hit = (x - nx) * (x - nx) + (y - ny) * (y - ny) <= rr * rr
+    }}
+    if (hit) {{
+      {hit_handler}(p[0])
+      return
+    }}
+  }}
+}}
+"
+            ));
+        }
+
         // ---- 状态驱动重绘:watch deep(T1b 复用先例)+ onMounted 初绘。
+        // PLAN-661 T-05: watch 源扩图元三表（仅已声明者——未声明 ref 不进
+        // watch 数组防 vue-tsc 编译红）。
+        let mut watch_sources = format!("{pts_ref}, {meta_ref}");
+        if spec.nodes_declared {
+            watch_sources.push_str(&format!(", {nodes_ref}"));
+        }
+        if spec.edges_declared {
+            watch_sources.push_str(&format!(", {edges_ref}"));
+        }
+        if spec.labels_declared {
+            watch_sources.push_str(&format!(", {labels_ref}"));
+        }
         s.push_str(&format!(
-"watch([{pts_ref}, {meta_ref}], () => {{ nextTick(__canvasRedraw_{i}) }}, {{ deep: true }})
+"watch([{watch_sources}], () => {{ nextTick(__canvasRedraw_{i}) }}, {{ deep: true }})
 onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 "
         ));

@@ -2421,20 +2421,23 @@ impl AuraSchema {
 
         // Plan 563: 状态驱动画布(scene 前缀双表契约;详规见 schema/aura.at
         // canvas 条目与 043-canvas-paint SPEC.md)。
+        // PLAN-661 T-05: 场景契约扩容——图元三表族（nodes/edges/labels）+
+        // onhit 命中契约（详规 docs/specs/auto-lang/ui/design/canvas-scene.md）。
         elements.insert("canvas", ElementDef {
             tag: "canvas",
             category: ElementCategory::Media,
             props: vec![
-                PropDef { name: "scene", type_: PropType::StateRef, required: false, default: None, description: "Stroke-scene state PREFIX binding (engine reads <prefix>_pts + <prefix>_meta parallel string lists)" },
+                PropDef { name: "scene", type_: PropType::StateRef, required: false, default: None, description: "Scene state PREFIX binding (engine reads <prefix>_pts + <prefix>_meta stroke tables, plus PLAN-661 primitive tables <prefix>_nodes / <prefix>_edges / <prefix>_labels; absent tables = empty)" },
                 PropDef { name: "coords", type_: PropType::String, required: false, default: None, description: "Logical extent \"WxH\" for pen-event coordinates (mouse-area coords same form; default = raw px)" },
                 PropDef { name: "clear", type_: PropType::String, required: false, default: None, description: "Optional background color (CSS hex); eraser strokes render as background-color strokes in v1" },
                 PropDef { name: "onpenstart", type_: PropType::MsgRef, required: false, default: None, description: "Pen down; handler receives (x, y) float logical coords" },
                 PropDef { name: "onpenmove", type_: PropType::MsgRef, required: false, default: None, description: "Pen drag while pressed (engine-gated, <=30Hz); handler receives (x, y)" },
                 PropDef { name: "onpenend", type_: PropType::MsgRef, required: false, default: None, description: "Pen up or leaving the canvas bounds; handler receives (x, y)" },
+                PropDef { name: "onhit", type_: PropType::MsgRef, required: false, default: None, description: "PLAN-661 (R-1): tap hit callback; handler receives the hit element id (string). Hit domain = nodes only (declaration order, topmost wins); tap tolerance ~4px; misses dispatch nothing. MCP: press(value=id)" },
                 PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: false,
-            description: "State-driven drawing canvas (Plan 563). Content renders from the scene state binding (parallel-string-list stroke model, B12-style); both backends render independently (vue <canvas> 2D / iced canvas::Program) sharing only the scene data contract. Pen trio fires with logical coords; leaving the bounds ends the stroke on both backends.",
+            description: "State-driven drawing canvas (Plan 563 + PLAN-661 scene v2). Content renders from the scene state binding: stroke tables (<prefix>_pts/_meta, B12-style parallel string lists) plus primitive tables — nodes \"id,x,y,shape,color[,r|w,h]\" (circle uses r, rect uses w/h; x/y are shape CENTERS), edges \"x1,y1,x2,y2[,color[,width]]\" (absolute coords; layout is upstream data, R-3), labels \"x,y,text[,color[,size]]\". Both backends render independently (vue <canvas> 2D / iced canvas::Program) sharing only the scene data contract; absent primitive tables render as strokes-only (byte-identical legacy behavior). Pen trio fires with logical coords; leaving the bounds ends the stroke on both backends. onhit (R-1) receives the tapped node id; viewport zoom/pan and edges/labels hit reporting are deferred (KNOWN-DEBT).",
         });
 
         // === Collapsible ===
