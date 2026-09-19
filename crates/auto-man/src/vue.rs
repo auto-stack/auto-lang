@@ -6247,20 +6247,111 @@ pub fn demo_field_str(id str, field str, fallback str) str {
     Ok(())
 }
 
+/// PLAN-658 T-03: pac 文本抽取 `media_root`（引号值；缺省 None）。
+/// 走文本而非 Pac 解析器——rows 已带 pac 原文，重解析只为一个键不划算。
+fn pac_media_root(pac_text: &str) -> Option<String> {
+    let pos = pac_text.find("media_root")?;
+    let after = pac_text[pos + "media_root".len()..].trim_start();
+    let after = after.strip_prefix(':')?.trim_start();
+    let quote = after.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = &after[1..];
+    let end = rest.find(quote)?;
+    let v = &rest[..end];
+    if v.is_empty() { None } else { Some(v.to_string()) }
+}
+
+/// PLAN-658 T-03: 画廊 demo 行缓存——start_gallery_back_proxy 与
+/// refresh_gallery_registry 同线程背靠背跑（rust_ui 画廊钩子），scan_apps +
+/// gallery_demo_row 的逐 demo SFC 编译约分钟级，二次扫描不可接受。键 =
+/// apps_dir 绝对路径；read 后即清（一次性，防跨 run 陈旧）。
+thread_local! {
+    static GALLERY_ROWS_CACHE: std::cell::RefCell<
+        Option<(PathBuf, Vec<GalleryDemoRow>)>,
+    > = const { std::cell::RefCell::new(None) };
+}
+
+fn gallery_rows_via_cache(apps_dir: &Path) -> Vec<GalleryDemoRow> {
+    GALLERY_ROWS_CACHE.with(|c| {
+        if let Some((cached_dir, rows)) = c.borrow_mut().take() {
+            if cached_dir == apps_dir {
+                return rows;
+            }
+        }
+        let entries = auto_lang::ui::app_registry::scan_apps(
+            apps_dir,
+            &auto_lang::ui::app_registry::ScanOptions::default(),
+        );
+        entries
+            .iter()
+            .map(|e| gallery_demo_row(apps_dir, e).0)
+            .collect()
+    })
+}
+
+/// PLAN-658 T-03: 画廊多后端 proxy 启动编排（rust_ui 画廊钩子在
+/// refresh_gallery_registry **之前**调用——发射器 T-02 前缀化消费线程局部
+/// 根）。v1 注册面：全部内嵌档 demo 的宿主原生 media 路由
+/// （`/api/media/scan` + `/api/media/stream/:id`，media_root 取自各自
+/// pac.at；无 root 亦注册——诚实空列表与生成器一致）。注册判定镜像
+/// registry.at 的 loadable 三档并集（write_registry_at 同式）——020 为
+/// loadable 档（前端语料无 `@/lib/api`，fullstack=false），按 fullstack
+/// 过滤会漏（T-03 实测修正）。T-04/T-05 起 stream/native-ns demo 的 VM
+/// session 在此追加。失败降级：告警 + None（画廊继续跑，内嵌 demo 维持
+/// 静态诚实空态，不阻断一键体验）。
+pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
+    let Ok(apps_dir) = gallery_apps_dir(project_dir) else {
+        return None;
+    };
+    let native_media: Vec<auto_lang::back_proxy::NativeMediaApp> = gallery_rows_via_cache(&apps_dir)
+        .into_iter()
+        .filter(|row| row.loadable || row.fullstack || row.route_stub)
+        .map(|row| auto_lang::back_proxy::NativeMediaApp {
+            app_id: row.id.clone(),
+            media_root: pac_media_root(&row.pac),
+        })
+        .collect();
+    if native_media.is_empty() {
+        return None;
+    }
+    let app_count = native_media.len();
+    let config = auto_lang::back_proxy::BackProxyConfig {
+        port: 0,
+        sessions: Vec::new(),
+        native_media,
+    };
+    match auto_lang::back_proxy::start(config) {
+        Ok(proxy) => {
+            let base = format!("http://127.0.0.1:{}", proxy.port);
+            set_gallery_proxy_root(Some(base.clone()));
+            println!(
+                "  {} Gallery back-proxy: {base} ({app_count} fullstack apps)",
+                "✓".bright_green(),
+            );
+            Some(proxy.port)
+        }
+        Err(e) => {
+            set_gallery_proxy_root(None);
+            println!(
+                "  {} Gallery back-proxy failed to start: {e} (embedded demos stay static)",
+                "⚠".bright_yellow()
+            );
+            None
+        }
+    }
+}
+
 /// PLAN-625: VM 臂 registry 刷新入口——`run_vm_ui`(rust_ui.rs)在编译
 /// app.at 前调用。vue 臂 run/build 每次 run 都刷 generate_gallery_host
 /// (vue.rs run_vue_project 先例),VM 臂此前不产任何 registry,app.at 的
 /// `use registry:` 产物将无从解析。返回发射条数供启动日志。
 pub fn refresh_gallery_registry(project_dir: &Path) -> AutoResult<usize> {
     let apps_dir = gallery_apps_dir(project_dir)?;
-    let entries = auto_lang::ui::app_registry::scan_apps(
-        &apps_dir,
-        &auto_lang::ui::app_registry::ScanOptions::default(),
-    );
-    let mut rows = Vec::with_capacity(entries.len());
-    for e in &entries {
-        rows.push(gallery_demo_row(&apps_dir, e).0);
-    }
+    // PLAN-658 T-03: 消费 start_gallery_back_proxy 的行缓存（同线程背靠背，
+    // 免二次分钟级逐 demo SFC 扫描）；冷路径（vue 臂 build 等）自扫。
+    let rows = gallery_rows_via_cache(&apps_dir);
     write_registry_at(&project_dir.join("src").join("front"), &rows)?;
     // T-10b 产物（demos/*.at + AppViewport.vm.at）与 registry.at 同源同刷：
     // VM 臂此前只刷 registry,语料演进后视口适配器停留旧版（vue 臂 run 才

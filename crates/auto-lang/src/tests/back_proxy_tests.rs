@@ -14,12 +14,28 @@ use crate::back_proxy::{start, BackProxyConfig, SessionSpec};
 
 /// 原始 socket HTTP 客户端（避免测试对 reqwest blocking 的额外依赖面）。
 fn http_request(port: u16, method: &str, path: &str, body: Option<&str>) -> (u16, String) {
+    let (status, _headers, body) = http_request_raw(port, method, path, body, &[]);
+    (status, String::from_utf8_lossy(&body).into_owned())
+}
+
+/// 带请求头与原始字节应答的形态（media 字节保真/Range 断言用）。
+fn http_request_raw(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    req_headers: &[(&str, &str)],
+) -> (u16, Vec<(String, String)>, Vec<u8>) {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect proxy");
     let body = body.unwrap_or("");
-    let req = format!(
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+    let mut req = format!(
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
         body.len()
     );
+    for (k, v) in req_headers {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    req.push_str(&format!("\r\n{body}"));
     stream.write_all(req.as_bytes()).expect("write request");
     let mut reader = BufReader::new(stream);
     let mut status_line = String::new();
@@ -30,6 +46,7 @@ fn http_request(port: u16, method: &str, path: &str, body: Option<&str>) -> (u16
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
     let mut content_length = 0usize;
+    let mut headers = Vec::new();
     loop {
         let mut line = String::new();
         reader.read_line(&mut line).expect("read header");
@@ -40,13 +57,14 @@ fn http_request(port: u16, method: &str, path: &str, body: Option<&str>) -> (u16
             if k.trim().eq_ignore_ascii_case("content-length") {
                 content_length = v.trim().parse().unwrap_or(0);
             }
+            headers.push((k.trim().to_string(), v.trim().to_string()));
         }
     }
     let mut body_buf = vec![0u8; content_length];
     if content_length > 0 {
         reader.read_exact(&mut body_buf).expect("read body");
     }
-    (status, String::from_utf8_lossy(&body_buf).into_owned())
+    (status, headers, body_buf)
 }
 
 /// 临时 back 链（api.at + db.at，use 链 + module-level var + 增改路径）。
@@ -108,6 +126,8 @@ fn fixture_config(tag: &str, port: u16) -> (BackProxyConfig, PathBuf) {
             app_id: "fixture".to_string(),
             back_entry: dir.join("api.at"),
         }],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
     };
     (config, dir)
 }
@@ -200,10 +220,112 @@ fn http_e2e_back_proxy_real_020_status_route() {
             app_id: "020-music-player".to_string(),
             back_entry: entry,
         }],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
     };
     let proxy = start(config).expect("start back proxy for 020");
     let (status, body) =
         http_request(proxy.port, "GET", "/apps/020-music-player/api/player/status", None);
     assert_eq!(status, 200, "020 status route, body: {body}");
     assert_eq!(body, "[]", "020 player/status returns empty PlayerInfo list");
+}
+
+/// PLAN-658 T-03: 原生 media 路由——scan 绝对 URL + 字节保真 + Range 语义。
+/// （cfg ui：media_service 在 ui 门后；th 档已含 ui feature。）
+#[cfg(feature = "ui")]
+#[test]
+fn http_e2e_back_proxy_native_media_routes() {
+    let dir = std::env::temp_dir().join(format!(
+        "p658-back-proxy-media-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("media dir");
+    let payload: Vec<u8> = b"ID3-fake-mp3-payload-0123456789abcdef".to_vec();
+    std::fs::write(dir.join("song.mp3"), &payload).expect("write mp3");
+
+    let config = BackProxyConfig {
+        port: 3998,
+        sessions: Vec::new(),
+        native_media: vec![crate::back_proxy::NativeMediaApp {
+            app_id: "020-t".to_string(),
+            media_root: Some(dir.to_string_lossy().into_owned()),
+        }],
+    };
+    let proxy = start(config).expect("start back proxy (media)");
+
+    // scan：条目齐 + 绝对 url（画廊内嵌前端无 env 展开，§5.3）。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/020-t/api/media/scan", None);
+    assert_eq!(status, 200, "scan status, body: {body}");
+    let scan: serde_json::Value = serde_json::from_str(&body).expect("scan json");
+    let entries = scan["entries"].as_array().expect("entries");
+    assert_eq!(entries.len(), 1, "one fixture file");
+    let entry = &entries[0];
+    assert_eq!(entry["extension"].as_str(), Some("mp3"));
+    assert_eq!(entry["bytes"].as_u64(), Some(payload.len() as u64));
+    let id = entry["id"].as_str().expect("id").to_string();
+    let expected_url = format!("http://127.0.0.1:{}/apps/020-t/api/media/stream/{id}", proxy.port);
+    assert_eq!(entry["url"].as_str(), Some(expected_url.as_str()), "absolute url");
+    // 原始 socket 请求用 path 段（绝对 URL 是浏览器/reqwest 展开后的形态）。
+    let stream_path = format!("/apps/020-t/api/media/stream/{id}");
+
+    // 全量流：200 + 字节保真 + Content-Type。
+    let (status, headers, bytes) = http_request_raw(proxy.port, "GET", &stream_path, None, &[]);
+    assert_eq!(status, 200, "full stream status");
+    assert_eq!(bytes, payload, "byte fidelity");
+    let ct = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    assert_eq!(ct, "audio/mpeg", "content type");
+
+    // 区间流：206 + 窗口字节 + Content-Range。
+    let (status, headers, bytes) = http_request_raw(
+        proxy.port,
+        "GET",
+        &stream_path,
+        None,
+        &[("Range", "bytes=4-11")],
+    );
+    assert_eq!(status, 206, "partial status");
+    assert_eq!(bytes, &payload[4..=11], "window bytes");
+    let cr = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("content-range"))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    assert_eq!(
+        cr,
+        format!("bytes 4-11/{}", payload.len()),
+        "content range"
+    );
+
+    // 未知 id → 404；未配置 root 的 app → 诚实空列表。
+    let (status, body) = http_request(
+        proxy.port,
+        "GET",
+        "/apps/020-t/api/media/stream/deadbeef",
+        None,
+    );
+    assert_eq!(status, 404, "unknown id, body: {body}");
+}
+
+/// PLAN-658 T-03: 未配置 media root 的 app——诚实空列表（与生成器
+/// auto_media_scan 三态语义一致），不是 500。
+#[cfg(feature = "ui")]
+#[test]
+fn http_e2e_back_proxy_native_media_no_root_honest_empty() {
+    let config = BackProxyConfig {
+        port: 3999,
+        sessions: Vec::new(),
+        native_media: vec![crate::back_proxy::NativeMediaApp {
+            app_id: "no-root-t".to_string(),
+            media_root: Some("Z:/definitely/not/a/real/dir".to_string()),
+        }],
+    };
+    let proxy = start(config).expect("start back proxy (no root)");
+    let (status, body) = http_request(proxy.port, "GET", "/apps/no-root-t/api/media/scan", None);
+    assert_eq!(status, 200, "no-root scan status");
+    assert_eq!(body, "{\"entries\":[],\"root_missing\":true}", "honest empty");
 }

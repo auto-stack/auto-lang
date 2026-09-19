@@ -50,6 +50,17 @@ pub struct SessionSpec {
     pub back_entry: std::path::PathBuf,
 }
 
+/// PLAN-658 T-03: 宿主原生 media 路由注册（生成器对全部后端无条件发射的
+/// `/api/media/scan` + `/api/media/stream/:id`，§5.7-3——不在 .at 语料，
+/// 由宿主 Rust 直答）。020 形态：无 session，仅原生路由。
+#[cfg(feature = "ui")]
+#[derive(Debug, Clone)]
+pub struct NativeMediaApp {
+    pub app_id: String,
+    /// pac.at `media_root`（None → resolve_root(None) 语义：env → 平台默认）。
+    pub media_root: Option<String>,
+}
+
 /// proxy 启动配置。
 #[derive(Debug, Clone, Default)]
 pub struct BackProxyConfig {
@@ -57,6 +68,10 @@ pub struct BackProxyConfig {
     /// 自动回退）。
     pub port: u16,
     pub sessions: Vec<SessionSpec>,
+    /// 原生 media 路由（cfg ui；无 root 的 app 也注册——诚实空列表语义
+    /// 与生成器一致）。
+    #[cfg(feature = "ui")]
+    pub native_media: Vec<NativeMediaApp>,
 }
 
 /// 运行中的 proxy 句柄。drop 不自动停机（宿主进程生命周期即 proxy 生命周期）。
@@ -69,6 +84,22 @@ pub struct RunningProxy {
 struct ProxyShared {
     /// app_id → session 请求通道。
     sessions: HashMap<String, mpsc::Sender<ProxyRequest>>,
+    /// PLAN-658 T-03: 宿主原生 media 路由状态（cfg ui）。
+    #[cfg(feature = "ui")]
+    native_media: HashMap<String, NativeMediaState>,
+}
+
+/// PLAN-658 T-03: 一个 app 的原生 media 服务面（惰性索引 + 绝对 URL base）。
+#[cfg(feature = "ui")]
+struct NativeMediaState {
+    app_id: String,
+    /// 已解析根（None = 未配置 → 诚实空列表）。
+    root: Option<std::path::PathBuf>,
+    /// `http://127.0.0.1:<port>`——scan 响应 url 字段发绝对值（画廊内嵌
+    /// 前端无 env 展开机制，§5.3）。
+    base: String,
+    /// 进程内一次性索引（镜像生成器 OnceLock<MEDIA_INDEX> 语义）。
+    index: std::sync::Mutex<Option<crate::ui::media_service::MediaIndex>>,
 }
 
 struct ProxyRequest {
@@ -89,6 +120,15 @@ enum ProxyReply {
         status: u16,
         content_type: &'static str,
         body: Vec<u8>,
+    },
+    /// 大体量字节流（media 文件窗口）——头 + 定长 reader，逐块写出不整读。
+    #[cfg(feature = "ui")]
+    Stream {
+        status: u16,
+        content_type: &'static str,
+        extra_headers: Vec<(String, String)>,
+        content_length: u64,
+        reader: Box<dyn std::io::Read + Send>,
     },
 }
 
@@ -135,7 +175,27 @@ pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
         sessions.insert(app_id, tx);
     }
 
-    let shared = Arc::new(ProxyShared { sessions });
+    let shared = Arc::new(ProxyShared {
+        sessions,
+        #[cfg(feature = "ui")]
+        native_media: {
+            let base = format!("http://127.0.0.1:{port}");
+            let mut map = HashMap::new();
+            for app in &config.native_media {
+                let root = crate::ui::media_service::resolve_root(app.media_root.as_deref());
+                map.insert(
+                    app.app_id.clone(),
+                    NativeMediaState {
+                        app_id: app.app_id.clone(),
+                        root,
+                        base: base.clone(),
+                        index: std::sync::Mutex::new(None),
+                    },
+                );
+            }
+            map
+        },
+    });
     let listener_shared = shared.clone();
     std::thread::Builder::new()
         .name("back-proxy-listener".to_string())
@@ -267,10 +327,14 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
             )
         }
     };
+    // PLAN-658 T-03: 宿主原生 media 路由先于 session 分发（020 无 session）。
+    #[cfg(feature = "ui")]
+    if let Some(reply) = shared.try_native_media(&app_id, &sub_path, req) {
+        return reply;
+    }
     let Some(tx) = shared.sessions.get(&app_id) else {
         return ProxyReply::json(404, error_json(&format!("back-proxy: unknown app `{app_id}`")));
-    };
-    let (reply_tx, reply_rx) = mpsc::channel::<ProxyReply>();
+    };    let (reply_tx, reply_rx) = mpsc::channel::<ProxyReply>();
     let sent = tx.send(ProxyRequest {
         method: req.method.clone(),
         path: sub_path,
@@ -295,27 +359,228 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
 }
 
 fn write_response(stream: &mut TcpStream, reply: ProxyReply) -> std::io::Result<()> {
-    let ProxyReply::Response { status, content_type, body } = reply;
+    let (status, content_type, extra_headers, body_source) = match reply {
+        ProxyReply::Response { status, content_type, body } => {
+            (status, content_type, Vec::<(String, String)>::new(), BodySource::Bytes(body))
+        }
+        #[cfg(feature = "ui")]
+        ProxyReply::Stream { status, content_type, extra_headers, content_length, reader } => (
+            status,
+            content_type,
+            extra_headers,
+            BodySource::Reader { content_length, reader },
+        ),
+    };
     let reason = match status {
         200 => "OK",
+        206 => "Partial Content",
         400 => "Bad Request",
         404 => "Not Found",
+        416 => "Range Not Satisfiable",
         500 => "Internal Server Error",
         502 => "Bad Gateway",
         503 => "Service Unavailable",
         _ => "OK",
     };
-    let head = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
+    let mut head = format!(
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nConnection: close\r\n"
     );
-    stream.write_all(head.as_bytes())?;
-    stream.write_all(&body)?;
+    for (k, v) in &extra_headers {
+        head.push_str(&format!("{k}: {v}\r\n"));
+    }
+    match body_source {
+        BodySource::Bytes(body) => {
+            head.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+            stream.write_all(head.as_bytes())?;
+            stream.write_all(&body)?;
+        }
+        BodySource::Reader { content_length, mut reader } => {
+            head.push_str(&format!("Content-Length: {content_length}\r\n\r\n"));
+            stream.write_all(head.as_bytes())?;
+            let mut buf = [0u8; 64 * 1024];
+            let mut remaining = content_length;
+            while remaining > 0 {
+                let want = buf.len().min(remaining as usize);
+                let n = reader.read(&mut buf[..want])?;
+                if n == 0 {
+                    break;
+                }
+                stream.write_all(&buf[..n])?;
+                remaining -= n as u64;
+            }
+        }
+    }
     stream.flush()
+}
+
+enum BodySource {
+    Bytes(Vec<u8>),
+    #[allow(dead_code)]
+    Reader {
+        content_length: u64,
+        reader: Box<dyn std::io::Read + Send>,
+    },
 }
 
 fn error_json(msg: &str) -> String {
     format!("{{\"error\":{}}}", serde_json::json!(msg))
+}
+
+// ---------------------------------------------------------------------------
+// 宿主原生 media 路由（PLAN-658 T-03，cfg ui）
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "ui")]
+impl ProxyShared {
+    /// `/api/media/scan` + `/api/media/stream/:id` 直答。未命中返回 None
+    /// （回落 session 分发）。
+    fn try_native_media(
+        &self,
+        app_id: &str,
+        sub_path: &str,
+        req: &ParsedRequest,
+    ) -> Option<ProxyReply> {
+        let state = self.native_media.get(app_id)?;
+        if sub_path == "/api/media/scan" && req.method == "GET" {
+            return Some(Self::media_scan(state));
+        }
+        if let Some(id) = sub_path
+            .strip_prefix("/api/media/stream/")
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+        {
+            if req.method == "GET" || req.method == "HEAD" {
+                let range = req
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k == "range")
+                    .map(|(_, v)| v.clone());
+                return Some(Self::media_stream(state, &id, range.as_deref(), req.method == "HEAD"));
+            }
+        }
+        None
+    }
+
+    /// 镜像 api_gen auto_media_scan 的 JSON 形态（字段逐一齐平），差异仅
+    /// 一处：url/audio_url/video_url 发绝对值（画廊内嵌前端无 env 展开，
+    /// §5.3 实施裁定）。
+    fn media_scan(state: &NativeMediaState) -> ProxyReply {
+        let Some(root) = &state.root else {
+            return ProxyReply::json(
+                200,
+                "{\"entries\":[],\"root_missing\":false}".to_string(),
+            );
+        };
+        if !root.exists() {
+            return ProxyReply::json(200, "{\"entries\":[],\"root_missing\":true}".to_string());
+        }
+        let mut guard = state.index.lock().unwrap();
+        let index = guard.get_or_insert_with(|| {
+            crate::ui::media_service::index_directory(root).unwrap_or_default()
+        });
+        let mut out = String::from("{\"entries\":[");
+        for (i, e) in index.entries.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            let (artist, song_title) =
+                crate::ui::media_service::parse_artist_and_title(&e.name);
+            let album = if e.rel_dir.is_empty() {
+                "本地单曲".to_string()
+            } else {
+                e.rel_dir.clone()
+            };
+            let index_str = format!("{:02}", i + 1);
+            let abs = format!("{}/apps/{}/api/media/stream/{}", state.base, state.app_id, e.id);
+            out.push_str(
+                &serde_json::json!({
+                    "id": &e.id,
+                    "index": i + 1,
+                    "index_str": index_str,
+                    "title": crate::ui::media_service::display_title(&e.name),
+                    "song_title": song_title,
+                    "artist": artist,
+                    "album": album,
+                    "is_liked": false,
+                    "name": &e.name,
+                    "rel_dir": &e.rel_dir,
+                    "relative_path": &e.relative_path,
+                    "extension": &e.extension,
+                    "bytes": e.bytes,
+                    "size_str": crate::ui::media_service::human_size(e.bytes),
+                    "url": abs,
+                    "audio_url": abs,
+                    "video_url": abs,
+                })
+                .to_string(),
+            );
+        }
+        out.push_str("],\"root_missing\":false}");
+        ProxyReply::json(200, out)
+    }
+
+    /// 镜像 api_gen auto_media_stream：单区间 Range 语义（Full 200 /
+    /// Partial 206 + Content-Range / Unsatisfiable 416），GET 才带 body。
+    fn media_stream(
+        state: &NativeMediaState,
+        id: &str,
+        range: Option<&str>,
+        head_only: bool,
+    ) -> ProxyReply {
+        use crate::ui::media_service::{content_range, content_type, find, parse_range, StreamPlan};
+        let Some(root) = &state.root else {
+            return ProxyReply::json(503, error_json("media root not configured"));
+        };
+        let mut guard = state.index.lock().unwrap();
+        let index = guard.get_or_insert_with(|| {
+            crate::ui::media_service::index_directory(root).unwrap_or_default()
+        });
+        let Some(entry) = find(index, id) else {
+            return ProxyReply::json(404, error_json(&format!("unknown media id `{id}`")));
+        };
+        let path = root.join(&entry.relative_path);
+        let Ok(file) = std::fs::File::open(&path) else {
+            return ProxyReply::json(404, error_json(&format!("media file missing: {}", entry.name)));
+        };
+        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        let plan = parse_range(range, len);
+        if matches!(plan, StreamPlan::Unsatisfiable) {
+            return ProxyReply::Response {
+                status: 416,
+                content_type: "application/json",
+                body: error_json("range not satisfiable").into_bytes(),
+            };
+        }
+        let (status, start, end) = match &plan {
+            StreamPlan::Full => (200u16, 0u64, len.saturating_sub(1)),
+            StreamPlan::Partial { start, end } => (206u16, *start, *end),
+            StreamPlan::Unsatisfiable => unreachable!(),
+        };
+        let content_length = plan.content_length(len);
+        let ct = content_type(&entry.extension);
+        let mut extra_headers = vec![
+            ("Accept-Ranges".to_string(), "bytes".to_string()),
+            ("Cache-Control".to_string(), "no-store".to_string()),
+        ];
+        if status == 206 {
+            extra_headers.push(("Content-Range".to_string(), content_range(start, end, len)));
+        }
+        let _ = head_only; // HEAD：Content-Length 已声明，连接即关——省 body
+        ProxyReply::Stream {
+            status,
+            content_type: ct,
+            extra_headers,
+            content_length: if head_only { 0 } else { content_length },
+            reader: if head_only {
+                Box::new(std::io::empty())
+            } else {
+                use std::io::{Seek, SeekFrom};
+                let mut f = file;
+                let _ = f.seek(SeekFrom::Start(start));
+                Box::new(f.take(content_length))
+            },
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

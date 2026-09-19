@@ -3079,6 +3079,9 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     if project_dir.file_name().and_then(|n| n.to_str()) == Some("ui-gallery")
         || crate::vue::gallery_mode()
     {
+        // PLAN-658 T-03: 多后端 proxy 先于发射启动（发射器 /api/ 字面量
+        // 前缀化消费线程局部根，T-02）；失败降级不阻断画廊。
+        crate::vue::start_gallery_back_proxy(project_dir);
         let n = crate::vue::refresh_gallery_registry(project_dir)?;
         println!(
             "  {} Gallery registry: src/front/registry.at ({} demos)",
