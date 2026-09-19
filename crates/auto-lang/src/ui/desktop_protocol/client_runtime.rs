@@ -2270,6 +2270,32 @@ impl<S: FrameSource> ClientPump<S> {
         if app.session.revision() != before {
             self.push_frame();
         }
+        // PLAN-033 T-03③（D3）：timer 拍的 handler 可能写 `__desktop_cmd`
+        // ——周期拍后读走上行。
+        self.drain_desktop_bus();
+    }
+
+    /// PLAN-033 T-03③（D3）：`__desktop_cmd` 读走上行——输入派发与周期
+    /// 拍后各读走一次（shell_client.rs:404-448 同款语义泛化到任意 VM -q
+    /// client）。宿主消费 = 控制上行收件箱（DesktopBus 与既有
+    /// DesktopCommand 解析互通，host.rs）。
+    fn drain_desktop_bus(&mut self) {
+        let (wid, records) = {
+            let Some(app) = self.endpoint.as_mut() else { return };
+            if app.state != AppState::Active {
+                return;
+            }
+            let records = app.session.drain_desktop_commands();
+            if records.is_empty() {
+                return;
+            }
+            let wid = app.wid.unwrap_or(0);
+            (wid, records)
+        };
+        for record in records {
+            let _ =
+                self.app_end.send(&ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record }));
+        }
     }
 
     /// 单条消息派发；到出口时返回 `Some((出口, projector))`。
@@ -2283,6 +2309,9 @@ impl<S: FrameSource> ClientPump<S> {
                 if app.state == AppState::Active {
                     self.push_frame();
                 }
+                // PLAN-033 T-03③（D3）：输入可能写命令（按钮 handler）——
+                // 读走 + 上行。
+                self.drain_desktop_bus();
                 None
             }
             ProtocolMsg::Frame(FrameMsg::BufferAlloc { shm: Some(ref name), .. }) => {

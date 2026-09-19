@@ -93,6 +93,14 @@ pub trait FrameSource {
     /// `component.on(tick_msg)` + revision 前进（`Component::tick_interval_ms`
     /// 配方，run_app_devtools 同源）。revision 变化由泵侧对账产帧。
     fn poll_tick(&mut self) {}
+
+    /// PLAN-033 T-03③（D3）：`__desktop_cmd` 命令读走（泵在读走点消费
+    /// 后上行 `ControlMsg::DesktopBus`）。缺省空——无命令面的会话零实现
+    /// 负担；native 投影器经 [`crate::ui::Component::drain_desktop_commands`]
+    /// 转发（VM 组件 c4 语义实现）。
+    fn drain_desktop_commands(&mut self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// app 侧端点。泛型 [`FrameSource`] 是会话的最小接缝。

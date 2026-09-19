@@ -73,6 +73,22 @@ pub trait Component: Sized + Debug {
         None
     }
 
+    /// PLAN-033 T-03②（D2=B）：多 timer 声明驱动的组件（VM 轨）周期泵——
+    /// 到期条目逐条派发（`when` 门控在组件内求值，与 renderer 订阅轨的
+    /// fire_timer 同门）。返回 true = 本拍有派发（消费端据此前进
+    /// revision）。缺省 false——a2r 编译结构体沿用单通道
+    /// [`Component::tick_interval_ms`]/[`Component::tick_msg`] 配方，零影响。
+    fn fire_due_timers(&mut self) -> bool {
+        false
+    }
+
+    /// PLAN-033 T-03③（D3）：`__desktop_cmd` 命令读走（read_state + 清空 +
+    /// `'\n'` 分行——shell_client c4 语义 child 化泛化到任意投影臂）。缺省
+    /// 空——无命令面的组件零实现负担。
+    fn drain_desktop_commands(&mut self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Snapshot of this component's scalar state fields, keyed by field name.
     ///
     /// Used by the rust-mode MCP `autoui_state` tool (Plan 371 Task 21): in

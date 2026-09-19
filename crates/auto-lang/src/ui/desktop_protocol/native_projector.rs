@@ -573,9 +573,23 @@ impl<C: Component> FrameSource for NativeProjector<C> {
         }
     }
 
-    /// 周期拍（`FrameSource::poll_tick`）：interval 到期 →
-    /// `component.on(tick_msg)` + revision 前进（泵侧对账产帧）。
+    /// PLAN-033 T-03③（D3）：`__desktop_cmd` 读走转发（经
+    /// [`Component::drain_desktop_commands`]——VM 组件 c4 语义实现，a2r
+    /// 缺省空）。泵在读走点消费后上行 `ControlMsg::DesktopBus`。
+    fn drain_desktop_commands(&mut self) -> Vec<String> {
+        self.component.drain_desktop_commands()
+    }
+
+    /// 周期拍（`FrameSource::poll_tick`）：
+    /// - PLAN-033 T-03②（D2=B）：组件侧多 timer 泵优先——VM 轨
+    ///   （`DynamicComponent`）的 timesources 逐条到期派发；返回 true =
+    ///   revision 前进（泵侧对账产帧）。a2r 编译组件缺省 false 零开销。
+    /// - 既有单通道 tick：interval 到期 → `component.on(tick_msg)` +
+    ///   revision 前进。
     fn poll_tick(&mut self) {
+        if self.component.fire_due_timers() {
+            self.rev += 1;
+        }
         let Some(interval) = self.component.tick_interval_ms() else {
             return;
         };
@@ -4556,5 +4570,153 @@ mod tests {
             modifiers: 0,
         });
         assert_eq!(p.component.last, Some(BridgeMsg::Ctx), "右键 contextmenu");
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-033 T-03：VM 三补（D1 回写 / D2 timer / D3 命令读走）
+    // ------------------------------------------------------------------
+
+    /// PLAN-033 T-03①（AC-02）：003-converter 真源——零参内联闭包 oninput
+    /// 的 input_state_map 回写闭环。native 臂键入路径：聚焦 → CharTyped →
+    /// INPUT_TEXT 代写 → on()（D1=A：绑定字段类型保值回写[零参闭包读它]
+    /// + 单参注入）。键入 "1" 后：击中 Celsius 框 → fahrenheit = 1×9/5+32
+    /// = 33.8；击中 Fahrenheit 框 → celsius = (1-32)×5/9 ≈ -13.89（两向
+    /// 皆证回写——零参闭包读的就是回写后的绑定字段）。
+    #[test]
+    fn p033_vm_input_writeback_zero_param() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/003-converter/src/front/app.at"
+        );
+        let Ok(src) = std::fs::read_to_string(path) else {
+            eprintln!("[p033] skip: 003-converter 载体缺席");
+            return;
+        };
+        let comp = crate::build_dynamic_component(&src, None).expect("build 003");
+        let mut p = NativeProjector::new(comp, 480.0, 320.0);
+        p.ensure_covered().expect("003 native 覆盖门");
+        p.render_frame();
+        // 逐命中矩形试探：点中心 → 键入 "1" → 检查双向换算落点。
+        let rects = p.hit_rects();
+        assert!(!rects.is_empty(), "003 有命中区");
+        for r in &rects {
+            p.on_input(&InputMsg::PointerPressed {
+                wid: 1,
+                button: MouseButton::Left,
+                x: r.x + r.w / 2.0,
+                y: r.y + r.h / 2.0,
+                modifiers: 0,
+            });
+            p.on_input(&InputMsg::CharTyped { wid: 1, ch: '1' });
+            let f = num_state(&p, "fahrenheit");
+            let c = num_state(&p, "celsius");
+            if f == Some(33.8) {
+                assert!(
+                    (c.unwrap_or(0.0) - 1.0).abs() < 0.01,
+                    "celsius 绑定字段同步 = 1（回写实证）: {c:?}"
+                );
+                return;
+            }
+            if (c.unwrap_or(0.0) + 13.888888).abs() < 0.01 {
+                assert!(
+                    (f.unwrap_or(0.0) - 1.0).abs() < 0.01,
+                    "fahrenheit 绑定字段同步 = 1（回写实证）: {f:?}"
+                );
+                return;
+            }
+        }
+        panic!("003 双 input 均未落换算（回写缺失）");
+    }
+
+    /// PLAN-033 T-03①（AC-02）：单参 oninput 形态——注入臂（PLAN-013 W2）
+    /// 与回写臂叠加（on_with_input_for 语义位对位）：t 收全量文本 + 绑定
+    /// 字段类型保值同步。
+    #[test]
+    fn p033_vm_input_writeback_single_param() {
+        let src = "widget P {\n    model {\n        var q double = 0\n        var out str = \"\"\n    }\n    view { input (value: .q) { oninput: .SetQ } }\n    on { .SetQ(t) -> { .out = t } }\n}\n";
+        let comp = crate::build_dynamic_component(src, None).expect("build");
+        let mut p = NativeProjector::new(comp, 480.0, 320.0);
+        p.render_frame();
+        let r = p.hit_rects()[0];
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: r.x + 4.0,
+            y: r.y + 4.0,
+            modifiers: 0,
+        });
+        for ch in "21".chars() {
+            p.on_input(&InputMsg::CharTyped { wid: 1, ch });
+        }
+        assert_eq!(num_state(&p, "q"), Some(21.0), "绑定字段 double 保值回写");
+        let out = p.component().read_state("out").ok().map(|v| match v {
+            auto_val::Value::Str(s) => s.as_str().to_string(),
+            other => format!("{other:?}"),
+        });
+        // buffer 自视图值初始化（double 0 → "0"）再追加键入——native 臂
+        // 编辑语义（a2r 同构）；注入 t = 全量 buffer 文本。
+        assert_eq!(out, Some("021".to_string()), "单参注入 t = 全量 buffer 文本");
+    }
+
+    /// PLAN-033 T-03②（AC-02）：VM timer 经泵侧周期拍派发（D2=B）——首拍
+    /// 对齐 interval 不立即拍；到期拍 → handler 执行 + revision 前进。
+    #[test]
+    fn p033_vm_timer_poll_tick() {
+        let src = "widget T {\n    msg { Beat }\n    model { var beat int = 0 }\n    timer { Beat (every_ms: 60) }\n    view { text `beat: ${.beat}` }\n    on { .Beat -> { .beat += 1 } }\n}\n";
+        let comp = crate::build_dynamic_component(src, None).expect("build");
+        let mut p = NativeProjector::new(comp, 480.0, 320.0);
+        let rev0 = p.revision();
+        p.poll_tick();
+        assert_eq!(int_state(&p, "beat"), Some(0), "首拍对齐 interval（不立即拍）");
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        p.poll_tick();
+        assert_eq!(int_state(&p, "beat"), Some(1), "到期拍派发 handler");
+        assert!(p.revision() > rev0, "派发驱动 revision（泵对账产帧）");
+    }
+
+    /// PLAN-033 T-03③（AC-02）：`__desktop_cmd` 读走（c4 语义——read +
+    /// 清空 + 分行；D3 组件面）。
+    #[test]
+    fn p033_desktop_cmd_drain() {
+        let src = "widget D {\n    model {\n        var n int = 0\n        var __desktop_cmd str = \"\"\n    }\n    view { text \"d\" }\n}\n";
+        let comp = crate::build_dynamic_component(src, None).expect("build");
+        let mut p = NativeProjector::new(comp, 480.0, 320.0);
+        assert!(p.drain_desktop_commands().is_empty(), "空态幂等");
+        p.component_mut()
+            .write_state("__desktop_cmd", auto_val::Value::str("launch\u{1f}counter\nnotify\u{1f}hi"))
+            .expect("write");
+        assert_eq!(
+            p.drain_desktop_commands(),
+            vec![
+                "launch\u{1f}counter".to_string(),
+                "notify\u{1f}hi".to_string()
+            ],
+            "两命令分行读走"
+        );
+        assert!(p.drain_desktop_commands().is_empty(), "读走即清空（幂等）");
+    }
+
+    fn num_state(
+        p: &NativeProjector<crate::ui::dynamic::DynamicComponent>,
+        field: &str,
+    ) -> Option<f64> {
+        p.component().read_state(field).ok().and_then(|v| match v {
+            auto_val::Value::Double(d) => Some(d),
+            auto_val::Value::Float(f) => Some(f as f64),
+            auto_val::Value::Int(i) => Some(i as f64),
+            auto_val::Value::Str(s) => s.parse::<f64>().ok(),
+            _ => None,
+        })
+    }
+
+    fn int_state(
+        p: &NativeProjector<crate::ui::dynamic::DynamicComponent>,
+        field: &str,
+    ) -> Option<i64> {
+        p.component().read_state(field).ok().and_then(|v| match v {
+            auto_val::Value::Int(i) => Some(i as i64),
+            auto_val::Value::Str(s) => s.parse::<i64>().ok(),
+            _ => None,
+        })
     }
 }

@@ -157,6 +157,10 @@ pub struct DynamicComponent {
     /// PLAN-652: TimeSource 候选表（root/child/store 的 `.Tick` + `timer`）。
     timesources: Vec<TimeSourceRuntime>,
 
+    /// PLAN-033 T-03②（D2=B）：timesources 逐条 next-fire 簿记（与表等长
+    /// 对齐；fire_due_timers 消费——泵侧 VM timer 驱动的到期面）。
+    timesource_next: Vec<Option<std::time::Instant>>,
+
     /// PLAN-652: 恒挂载名（root + store-as-child）。装配帧不从该集合移除。
     always_mounted: std::collections::HashSet<String>,
 
@@ -424,6 +428,7 @@ impl DynamicComponent {
             route_history: Default::default(),
             timers: Vec::new(),
             timesources: Vec::new(),
+            timesource_next: Vec::new(),
             always_mounted: {
                 let mut s = std::collections::HashSet::new();
                 s.insert(widget_name.clone());
@@ -538,6 +543,7 @@ impl DynamicComponent {
                 }
                 ts
             },
+            timesource_next: Vec::new(),
             always_mounted: {
                 let mut s = std::collections::HashSet::new();
                 s.insert(widget_name.clone());
@@ -746,6 +752,7 @@ impl DynamicComponent {
             nav_group_states: Default::default(),
             route_history: Default::default(),
             timers,
+            timesource_next: vec![None; timesources.len()],
             timesources,
             always_mounted,
             mounted_types: std::cell::RefCell::new(mounted_init),
@@ -811,6 +818,7 @@ impl DynamicComponent {
                 }
                 ts
             },
+            timesource_next: Vec::new(),
             always_mounted: {
                 let mut s = std::collections::HashSet::new();
                 s.insert(widget_name.clone());
@@ -1171,6 +1179,90 @@ impl DynamicComponent {
             self.dirty = false;
         }
         true
+    }
+
+    /// PLAN-033 T-03②（D2=B）：泵侧 VM timer 驱动——timesources 逐条到期
+    /// 派发。渲染轨（自开窗）= iced 订阅驱动（renderer.rs:19774-19807）；
+    /// 投影臂（native `-q`）经 [`Component::fire_due_timers`] 钩子在泵空拍
+    /// 调用本面。挂载过滤 = always_mounted ∪ mounted_types 含 widget 类型
+    ///（订阅级条件实例化过滤的近似——path 级实例展开不在此面，差异随
+    /// 注）。Timer 条目走 [`Self::fire_timer`]（when 门内置双保险）；Tick
+    /// 条目走 `on_with_input_for`（renderer.rs update 侧同分流）。首见对
+    /// 齐 interval（不立即拍——native poll_tick 同相式）。返回 true =
+    /// 本拍有派发。
+    pub fn fire_due_vm_timers(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        // 簿记自愈（构造位未对齐的面——等长补 None）。
+        while self.timesource_next.len() < self.timesources.len() {
+            self.timesource_next.push(None);
+        }
+        // 挂载过滤 + 到期判定 → 待派发快照（脱离借用——派发走 &mut self）。
+        // 首见条目（next=None）只初始化相位（now + every，首拍对齐
+        // interval——native poll_tick 同相式），不立即拍。
+        let mut due: Vec<(usize, TimeSourceKind)> = Vec::new();
+        {
+            let mounted = self.mounted_types.borrow();
+            for i in 0..self.timesources.len() {
+                let every_ms = {
+                    let src = &self.timesources[i];
+                    if !self.always_mounted.contains(&src.widget)
+                        && !mounted.contains(&src.widget)
+                    {
+                        continue;
+                    }
+                    src.every_ms
+                };
+                if self.timesource_next[i].is_none() {
+                    self.timesource_next[i] =
+                        Some(now + std::time::Duration::from_millis(every_ms.max(1)));
+                } else if now >= self.timesource_next[i].unwrap_or(now) {
+                    due.push((i, self.timesources[i].kind));
+                }
+            }
+        }
+        let mut fired = false;
+        for (i, kind) in due {
+            let (widget, event, every_ms) = {
+                let src = &self.timesources[i];
+                (src.widget.clone(), src.event.clone(), src.every_ms)
+            };
+            self.timesource_next[i] =
+                Some(now + std::time::Duration::from_millis(every_ms.max(1)));
+            let dispatched = match kind {
+                TimeSourceKind::Timer => self.fire_timer(&widget, &event),
+                TimeSourceKind::Tick => {
+                    self.on_with_input_for(&widget, &event, None);
+                    true
+                }
+            };
+            if dispatched {
+                fired = true;
+            }
+        }
+        fired
+    }
+
+    /// PLAN-033 T-03③（D3）：`__desktop_cmd` 命令读走——shell_client
+    /// drain_commands（c4 语义：read_state + 清空 + '\n' 分行）的组件侧
+    /// 泛化，供 [`Component::drain_desktop_commands`] 钩子消费（投影臂
+    /// 泵在读走点上行 DesktopBus）。
+    pub fn drain_vm_desktop_commands(&mut self) -> Vec<String> {
+        let cur = self
+            .read_state("__desktop_cmd")
+            .ok()
+            .and_then(|v| match v {
+                auto_val::Value::Str(s) => Some(s.as_str().to_string()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        if cur.is_empty() {
+            return Vec::new();
+        }
+        let _ = self.write_state("__desktop_cmd", auto_val::Value::str(""));
+        cur.split('\n')
+            .filter(|r| !r.trim().is_empty())
+            .map(|r| r.trim_end_matches('\r').to_string())
+            .collect()
     }
 
     /// Plan 051 C7: when 门控求值——store→child 转换把 store 字段平面
@@ -1800,16 +1892,35 @@ impl Component for DynamicComponent {
             DynamicMessage::String(name) => (name.clone(), Vec::new()),
         };
 
+        // 通道文本单次读面（两消费臂共用：绑定字段回写 + 单参注入）。
+        let channel_text = crate::ui::iced::renderer::last_input_text();
+
+        // PLAN-033 T-03①（D1=A）：input_state_map 绑定字段回写——native
+        // 投影臂（INPUT_TEXT 通道代写后经 on() 派发）下零参内联闭包
+        // oninput（003-converter `oninput: () => {...}`）读绑定字段的落
+        // 点。与 a2r 生成 on() 同构（ui_gen/rust.rs：输入事件先
+        // last_input_text 写全绑定字段[类型保值]再跑 handler 体）；逻辑
+        // 同 on_with_input_for 的回写位。**单写点声明**：on()（投影臂
+        // 入口）与 on_with_input_for（renderer 入口）互斥派发——每条输入
+        // 事件恰好走其一、各写一次，无同事件双写路径。
+        if !channel_text.is_empty() {
+            if let Some(state_field) = self.input_state_map.get(&event_name).cloned() {
+                let value =
+                    parse_input_value_for_field(&channel_text, &state_field, &self.bridge);
+                let _ = self.bridge.write_state(&state_field, value);
+                self.dirty = true;
+            }
+        }
+
         // PLAN-013 W2：input on_input 文本注入——单参 handler 且 dispatch 空
         // 实参时，补 INPUT_TEXT 侧通道文本（`.SetQ(t)` 的 t；overlay 挂载面
         // 此前文本在泛型转换层丢失，search 打字恒无效）。仅"声明 1 参 + 空
         // 实参 + 通道非空"三条件同时成立才注入，其余调用零影响。
         if args.is_empty() {
-            let text = crate::ui::iced::renderer::last_input_text();
-            if !text.is_empty()
+            if !channel_text.is_empty()
                 && self.bridge.handler_param_count(&self.widget_name, &event_name) == Some(1)
             {
-                args.push(auto_val::Value::Str(text.into()));
+                args.push(auto_val::Value::Str(channel_text.into()));
             }
         }
 
@@ -1830,11 +1941,22 @@ impl Component for DynamicComponent {
         }
     }
 
+    /// PLAN-033 T-03②（D2=B）：VM 多 timer 声明的泵侧驱动钩子（native
+    /// 投影臂消费；a2r 编译结构体走缺省 false 不受影响）。
+    fn fire_due_timers(&mut self) -> bool {
+        self.fire_due_vm_timers()
+    }
+
+    /// PLAN-033 T-03③（D3）：`__desktop_cmd` 读走钩子（投影臂泵消费）。
+    fn drain_desktop_commands(&mut self) -> Vec<String> {
+        self.drain_vm_desktop_commands()
+    }
+
     /// Render the view by building from the AuraNode template.
     ///
     /// Uses [`AuraViewBuilder`] to traverse the view template, resolving
-    /// state references from the VmBridge at build time. After rendering,
-    /// the dirty flag is cleared.
+    /// state references from the VmBridge at build time. After rendering, the
+    /// dirty flag is cleared.
     fn view(&self) -> View<Self::Msg> {
         let prev = self.view_mount_frame_prepare();
         let builder = AuraViewBuilder::with_registry_and_imports(
