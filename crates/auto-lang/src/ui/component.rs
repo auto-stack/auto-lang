@@ -89,6 +89,17 @@ pub trait Component: Sized + Debug {
         Vec::new()
     }
 
+    /// PLAN-033 T-04：L3 v2a 快照注入（融合态 → child 状态迁移落点）——
+    /// 逐字段写回 + 续接快照 revision。返回 false = 组件无状态写回路径
+    ///（a2r typed 结构体缺省；消费端维持 not-yet 留痕）。
+    fn apply_state_snapshot(
+        &mut self,
+        _revision: u64,
+        _fields: &[(String, auto_val::Value)],
+    ) -> bool {
+        false
+    }
+
     /// Snapshot of this component's scalar state fields, keyed by field name.
     ///
     /// Used by the rust-mode MCP `autoui_state` tool (Plan 371 Task 21): in

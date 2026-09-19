@@ -245,25 +245,9 @@ pub fn take_launch() -> Option<PixelsChild> {
     launch_slot().lock().unwrap().take()
 }
 
-/// independent 臂 child 入口：真 iced 渲染宿主（run_session Standalone
-/// 管线，窗口隐藏）+ 像素桥。阻塞至宿主 Close（Detached → iced::exit）
-/// 或宿主窗全部关闭。cmd_autodesk 三态裁决（步骤 6）在 `independent`
-/// 档调用本入口。
-pub fn run_independent_child(
-    transport: Box<dyn Transport + Send>,
-    component: crate::ui::dynamic::DynamicComponent,
-    app_name: &str,
-    title: &str,
-    width: f32,
-    height: f32,
-) -> Result<String, String> {
-    let transport = Arc::new(Mutex::new(transport));
-    let child = PixelsChild::new(Arc::clone(&transport), app_name, title, width, height);
-    *launch_slot().lock().unwrap() = Some(child);
-    let _ = PIXELS_POLL.set(Arc::clone(&transport));
-    crate::ui::iced::run_dynamic_iced_pixels(component)
-        .map_err(|e| format!("pixels child: {e}"))
-}
+/// ~~independent 臂解释 child 入口~~ **已退役**（PLAN-033 T-04：解释态
+/// 两合法形态 = inproc 直挂 / `-q` 经 native 臂——
+/// [`run_independent_native_child`] 为 a2r 轨像素兜底不受影响）。
 
 /// Plan 020 T-03 —— independent 臂 native child 入口（`Component` 泛型）：
 /// 像素桥/生命周期语义与 [`run_independent_child`] 一致，渲染宿主为 native

@@ -12937,14 +12937,6 @@ fn load_native_hole_mode() -> bool {
     crate::vm::ffi::stdlib::storage_host_read("shell.native.hole").as_deref() == Some("true")
 }
 
-/// Plan 508 G1：App 进程模型读入（storage `shell.apps.process_model`，
-/// "outproc" 开进程外孵化；缺席/坏值 = inproc——坏配置不炸桌面，472 同型）。
-fn load_process_model() -> crate::ui::session::ProcessModel {
-    crate::ui::session::ProcessModel::from_storage(
-        crate::vm::ffi::stdlib::storage_host_read("shell.apps.process_model").as_deref(),
-    )
-}
-
 /// Plan 508 G4：远程 WS token 读入（storage `shell.remote.token`；空值/
 /// 缺席 = None 不监听——缺省拒绝，远程面零暴露）。
 fn load_remote_token() -> Option<String> {
@@ -14968,10 +14960,20 @@ fn compare_pngs(
                     for (k, v) in load_hotkey_overrides() {
                         session.desktop.hotkeys.apply_override(&k, &v);
                     }
-                    // Plan 508 G1：App 进程模型配置位（storage
-                    // `shell.apps.process_model`；缺省 inproc = 现状零变化）。
-                    // outproc = launch 走 broker 孵化链（G2 对比实测的开关）。
-                    session.desktop.process_model = load_process_model();
+                    // PLAN-033 T-04（D6）：`shell.apps.process_model` 配置位
+                    // 退役（解释态两合法形态 = inproc 直挂 / `-q` 经 native
+                    // 臂）。读到 outproc 时忽略留痕（I3 退役非静默）——不
+                    // 再影响 launch 路由。
+                    if crate::vm::ffi::stdlib::storage_host_read("shell.apps.process_model")
+                        .as_deref()
+                        .map(str::trim)
+                        == Some("outproc")
+                    {
+                        eprintln!(
+                            "[session] shell.apps.process_model=outproc 已退役（PLAN-033）——
+                             解释态两合法形态 = inproc 直挂 / -q 经 native 臂；键值忽略"
+                        );
+                    }
                     // Plan 508 G4：远程 WS 面（storage `shell.remote.token`
                     // 有值才监听 :17800——回环 + token，缺省拒绝=零远程面）。
                     if let Some(token) = load_remote_token() {

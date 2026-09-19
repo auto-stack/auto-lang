@@ -400,6 +400,42 @@ impl<C: Component> NativeProjector<C> {
     }
 }
 
+/// PLAN-033 T-05（D4=A）：VM 组件的字符串命中区表（remote 宿主孪生
+/// 消费——`AppProjector::hit_regions` 退役后的等价断言口）。分型提取：
+/// Msg 命中 → 物化消息的 event_name（button:<name>）；Input 命中 →
+/// on_change 消息的 event_name 经 `input_state_map` 反查绑定字段
+///（input:<field>）。Toggle/Select 等 kind 在孪生面无消费者（原表
+/// `filter(kind != 0)` 只留 button/input），不镜像。
+impl NativeProjector<crate::ui::dynamic::DynamicComponent> {
+    pub fn hit_regions(&self) -> Vec<(WRect, String)> {
+        use crate::ui::interpreter::DynamicMessage;
+        self.hits
+            .iter()
+            .filter_map(|e| match e {
+                HitEntry::Msg { rect, msg, .. } => match msg {
+                    DynamicMessage::Typed { event_name, .. } => {
+                        Some((*rect, format!("button:{event_name}")))
+                    }
+                    DynamicMessage::String(name) => Some((*rect, format!("button:{name}"))),
+                },
+                HitEntry::Input { rect, on_change: Some(msg), .. } => match msg {
+                    DynamicMessage::Typed { event_name, .. } => {
+                        let field = self
+                            .component
+                            .input_state_map()
+                            .get(event_name)
+                            .cloned()
+                            .unwrap_or_else(|| event_name.clone());
+                        Some((*rect, format!("input:{field}")))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+}
+
 impl<C: Component> FrameSource for NativeProjector<C> {
     fn revision(&self) -> u64 {
         self.rev
@@ -567,8 +603,18 @@ impl<C: Component> FrameSource for NativeProjector<C> {
                 self.width = *width;
                 self.height = *height;
             }
-            // L3 StateSnapshot 注入：native not-yet（T-03 像素臂同册——
-            // typed 组件无字段写回路径；融合态迁移另立）。
+            // PLAN-033 T-04：L3 v2a 快照注入（AppProjector 退役语义平移）
+            // ——经 Component::apply_state_snapshot（VM 组件实现；a2r
+            // typed 缺省 false 维持 not-yet 留痕）；revision 续接快照值。
+            ControlMsg::StateSnapshot { payload, .. } => {
+                if let Ok((rev, fields)) =
+                    crate::ui::desktop_protocol::client_runtime::decode_state_snapshot(payload)
+                {
+                    if self.component.apply_state_snapshot(rev, &fields) {
+                        self.rev = rev;
+                    }
+                }
+            }
             _ => {}
         }
     }

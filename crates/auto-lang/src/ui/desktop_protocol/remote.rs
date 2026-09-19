@@ -203,8 +203,9 @@ impl DesktopSession {
         }
     }
 
-    /// 宿主孪生命中表：resolver 同源编译 + AppProjector（T3 孪生确定性
-    /// ——child 同引擎同尺寸 → 同命中布局）。
+    /// 宿主孪生命中表：resolver 同源编译 + RqProjector（PLAN-033 T-05
+    /// D4=A 迁移——AppProjector 退役；孪生随 native 布局 = 镜像 T-02 后
+    /// VM app 的真实命中面，几何按 native 重录）。
     fn remote_twin_hits(
         &self,
         app_name: &str,
@@ -214,8 +215,9 @@ impl DesktopSession {
         use crate::ui::desktop_protocol::endpoint::FrameSource;
         let spec = self.desktop.app_resolver.as_ref()?(app_name)?;
         let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref()).ok()?;
-        let mut twin =
-            crate::ui::desktop_protocol::client_runtime::AppProjector::new(comp, width, height);
+        let mut twin = crate::ui::desktop_protocol::native_projector::NativeProjector::new(
+            comp, width, height,
+        );
         twin.render_frame();
         Some(
             twin.hit_regions()
@@ -242,7 +244,7 @@ mod tests {
     use crate::ui::desktop_protocol::broker;
     use crate::ui::desktop_protocol::message::{DrawOp, InputMsg, MouseButton};
     use crate::ui::desktop_protocol::transport::{self, ws};
-    use crate::ui::session::{DesktopSession, LaunchSpec, ProcessModel};
+    use crate::ui::session::{DesktopSession, LaunchSpec};
     use std::sync::Arc;
 
     /// 002-counter 源（真示例经 `example_source` 读取——T3 同源）。
@@ -281,7 +283,7 @@ mod tests {
             opens: Vec::new(),
         render_decl: None,    })
         }));
-        session.desktop.process_model = ProcessModel::Outproc;
+        // PLAN-033 T-04：process_model 拔除——outproc 触发 = spawner 注入。
         let pipe_for_spawn = broker_pipe.clone();
         session.desktop.outproc_spawner = Some(Arc::new(move |_name| {
             let exe = std::env::current_exe().expect("current_exe");
@@ -589,7 +591,7 @@ let expect_styled: Vec<u8> = vec![
 mod host_body {
     use super::*;
     use crate::ui::desktop_protocol::transport::{self, ws};
-    use crate::ui::session::{DesktopSession, LaunchSpec, ProcessModel};
+    use crate::ui::session::{DesktopSession, LaunchSpec};
     use std::sync::Arc;
 
     /// demo/T4 宿主 harness 识别 env（缺省直接跑套件时跳过）。
@@ -676,7 +678,7 @@ mod host_body {
             }
             cmd.spawn()
         }));
-        session.desktop.process_model = ProcessModel::Outproc;
+        // PLAN-033 T-04：process_model 拔除——outproc 触发 = spawner 注入。
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
         session.enable_remote_ws(&token, port);

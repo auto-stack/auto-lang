@@ -284,8 +284,11 @@ mod tests {
         let report = run_counter_loopback(3);
 
         // 孵化：真实 462 对象获得句柄。
-        assert_eq!(report.wid, 1, "首个虚拟窗 Wid(1)");
-        assert_eq!(report.surface, 1);
+        // PLAN-033 T-05 重录：Wid 为进程级窗口计数（套件序依赖——绝对值
+        // 断言改非零有效窗号）。
+        assert!(report.wid >= 1, "孵化落地窗号有效: {}", report.wid);
+        // PLAN-033 T-05 重录：surface 同为进程级计数（非零有效即可）。
+        assert!(report.surface >= 1);
 
         // 帧：帧 0 = "count: 0"，三次点击后 = "count: 3"。
         assert_eq!(report.composed.len(), 4, "帧 0 + 每击一帧");

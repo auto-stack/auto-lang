@@ -85,7 +85,8 @@ pub fn connect(
 /// - `Commands` → [`NativeProjector`] 投影（PLAN-033 T-02 改接：View 全
 ///   展开渲染 + 启动覆盖门，与 native 轨同臂——`-q` 对两轨一视同仁，
 ///   解释组件免每 app iced/wgpu 后端）+ 泛型泵命令帧；
-/// - `Pixels` → [`pixels::run_independent_child`] 隐藏 iced 窗自渲 + screenshot。
+/// - `Pixels` → **已退役**（PLAN-033 T-04：解释态两合法形态 = inproc
+///   直挂 / `-q` 经 native 臂——拒绝退出留痕；a2r 轨像素兜底不受影响）。
 pub fn run_dynamic_client(
     component: DynamicComponent,
     opts: ClientOpts,
@@ -94,18 +95,12 @@ pub fn run_dynamic_client(
     let render =
         RequestedRender { mode: opts.frame_mode, auto_downgraded: opts.auto_downgraded };
     let reconnect_pipe_target = matches!(target, ClientTarget::Rqhost { .. });
-    let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
     match opts.frame_mode {
-        FrameMode::Pixels => pixels::run_independent_child(
-            app_end,
-            component,
-            &opts.app_name,
-            &opts.title,
-            opts.width,
-            opts.height,
-        )
-        .map(|_| ()),
+        FrameMode::Pixels => Err(
+            "[render] 解释轨 pixels 臂已退役（PLAN-033）——VM 轨两合法形态 = inproc 直挂 / -q 经 native 臂".to_string(),
+        ),
         FrameMode::Commands => {
+            let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
             let mut projector = NativeProjector::new(component, opts.width, opts.height);
             if let Err(gate) = projector.ensure_covered() {
                 eprintln!("[render] {gate}");

@@ -232,9 +232,8 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use crate::ui::desktop_protocol::broker;
-    use crate::ui::desktop_protocol::client_runtime::{
-        run_client, AppProjector, ClientConfig, ReconnectPolicy,
-    };
+    use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ReconnectPolicy};
+    use crate::ui::desktop_protocol::native_projector::NativeProjector;
     use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
     use crate::ui::desktop_protocol::transport;
     use crate::ui::session::{DesktopSession, LaunchSpec};
@@ -267,8 +266,13 @@ mod tests {
         };
         let reconnect =
             ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
-        let projector = AppProjector::new(component, 480.0, 320.0);
-        let (exit, proj) = run_client(end, projector, config, Some(reconnect));
+        // PLAN-033 T-04 迁移：压测子进程走 native 投影臂（AppProjector 退役）。
+        let mut projector = NativeProjector::new(component, 480.0, 320.0);
+        projector.ensure_covered().expect("stress covered");
+        let (exit, proj) =
+            crate::ui::desktop_protocol::client_runtime::run_client_session(
+                end, projector, config, Some(reconnect),
+            );
         println!("{CHILD_MARKER} exit={exit:?} rev={}", proj.revision());
     }
 
@@ -588,41 +592,17 @@ mod tests {
         let src = example_source(&app);
         let component = crate::build_dynamic_component(&src, None).expect("child build");
         match mode.as_str() {
-            "independent" => {
-                let render = broker::RequestedRender {
-                    mode: crate::ui::desktop_protocol::message::FrameMode::Pixels,
-                    auto_downgraded: false,
-                };
-                let (_pipe, end) =
-                    broker::request_incubation_render(&broker_pipe, &app, render, 10_000)
-                        .expect("incubate");
-                crate::ui::desktop_protocol::pixels::run_independent_child(
-                    end, component, &app, &app, T3_W, T3_H,
-                )
-                .expect("independent child");
-            }
             // PLAN-029 T-03：native 档——View 树 native 投影器子进程
             //（镜像 client_entry::run_native_client 的 Commands 生产分支：
-            // ensure_covered 门 + NativeProjector 全输入臂）。AppProjector
-            // 档（默认 queue）是解释投影器，无 IME/select 等后续输入面。
+            // ensure_covered 门 + NativeProjector 全输入臂）。
             "native" => {
                 run_native_t3_child(&broker_pipe, &app, component);
             }
+            // PLAN-033 T-04 迁移：默认 queue 档 = native 投影臂（解释投影
+            // 器退役——`-q`/孵化链统一单投影器；"independent" 档随解释
+            // pixels 臂退役删除）。
             _ => {
-                let (_pipe, end) = broker::request_incubation_render(
-                    &broker_pipe,
-                    &app,
-                    broker::RequestedRender::default(),
-                    10_000,
-                )
-                .expect("incubate");
-                let config =
-                    ClientConfig { app_name: app.clone(), title: app, width: T3_W, height: T3_H };
-                let reconnect =
-                    ReconnectPolicy { pipe: _pipe, budget_ms: 30_000, interval_ms: 50 };
-                let projector = AppProjector::new(component, T3_W, T3_H);
-                let (exit, proj) = run_client(end, projector, config, Some(reconnect));
-                println!("AUTO500-CHILD exit={exit:?} rev={}", proj.revision());
+                run_native_t3_child(&broker_pipe, &app, component);
             }
         }
     }
@@ -687,7 +667,7 @@ mod tests {
         }
 
         use crate::ui::desktop_protocol::message::{DrawOp, FrameMode};
-        use crate::ui::session::{LaunchSpec, ProcessModel};
+        use crate::ui::session::LaunchSpec;
         let broker_pipe = format!("autodesk-broker-025-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
@@ -730,7 +710,6 @@ mod tests {
                 }),
                 _ => None,
             }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -1489,7 +1468,7 @@ mod tests {
         }
 
         use crate::ui::desktop_protocol::message::{DrawOp, FrameMode};
-        use crate::ui::session::{LaunchSpec, ProcessModel};
+        use crate::ui::session::LaunchSpec;
         let broker_pipe = format!("autodesk-broker-026-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
@@ -1549,7 +1528,6 @@ mod tests {
                 }),
                 _ => None,
             }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -1818,7 +1796,6 @@ mod tests {
             return;
         }
         use crate::ui::desktop_protocol::message::DrawOp;
-        use crate::ui::session::ProcessModel;
         fn images_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32, String)> {
             ops.iter()
                 .filter_map(|op| match op {
@@ -1890,7 +1867,6 @@ mod tests {
                         render_decl: Some("queue".into()),
                     })
             }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let broker_for_spawn = broker_pipe.clone();
         session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
             Ok(spawn_t3_child(&broker_for_spawn, child_name, "queue"))
@@ -2055,7 +2031,7 @@ mod tests {
             return;
         }
         use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
-        use crate::ui::session::{DesktopSession, LaunchSpec, LiveInput, ProcessModel};
+        use crate::ui::session::{DesktopSession, LaunchSpec, LiveInput};
 
         let broker_pipe = format!("autodesk-broker-029-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
@@ -2077,7 +2053,6 @@ mod tests {
                 render_decl: Some("queue".into()),
             })
         }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let broker_for_spawn = broker_pipe.clone();
         session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
             Ok(spawn_t3_child(&broker_for_spawn, child_name, "native"))
@@ -2273,7 +2248,7 @@ mod tests {
             return;
         }
         use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
-        use crate::ui::session::{DesktopSession, LaunchSpec, ProcessModel};
+        use crate::ui::session::{DesktopSession, LaunchSpec};
 
         let broker_pipe = format!("autodesk-broker-029f-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
@@ -2293,7 +2268,6 @@ mod tests {
                 render_decl: Some("queue".into()),
             })
         }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let broker_for_spawn = broker_pipe.clone();
         session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
             Ok(spawn_t3_child(&broker_for_spawn, child_name, "native"))
@@ -2544,14 +2518,15 @@ mod tests {
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
-        // 孪生投影器（同源布局 → 命中坐标）。
-        let twins: Vec<(String, crate::ui::desktop_protocol::client_runtime::AppProjector)> =
+        // 孪生投影器（同源布局 → 命中坐标；PLAN-033 T-04 迁 native——
+        // 与子进程同布局引擎）。
+        let twins: Vec<(String, NativeProjector<crate::ui::dynamic::DynamicComponent>)> =
             names
                 .iter()
                 .map(|n| {
                     let src = example_source(n);
                     let comp = crate::build_dynamic_component(&src, None).expect("twin build");
-                    let mut p = crate::ui::desktop_protocol::client_runtime::AppProjector::new(
+                    let mut p = NativeProjector::new(
                         comp, T3_W, T3_H,
                     );
                     {
@@ -2712,10 +2687,13 @@ mod tests {
                     "broker_char 路由（焦点窗 = 前次 broker_pointer_down 聚焦）"
                 );
             }
+            // PLAN-033 重录：native 输入框渲染键入 buffer 原文（"0"+"100"
+            // = "0100"——与 a2r 轨同构；旧解释投影器渲染解析后字段 "100"）。
+            // 换算正确性以 fahrenheit = 212 为证（.celsius 字段 = 100）。
             assert!(
                 wait_frames(&mut session, |s| {
                     let t = composed_texts(s, "003-converter");
-                    t.iter().any(|x| x == "212") && t.iter().any(|x| x == "100")
+                    t.iter().any(|x| x == "212") && t.iter().any(|x| x == "0100")
                 }),
                 "003 输入换算联动: {:?}",
                 composed_texts(&session, "003-converter")
@@ -2769,7 +2747,9 @@ mod tests {
                 "p507 首帧 Tier1+2 文本到位: {:?}",
                 composed_texts(&session, "p507-tier-coverage")
             );
-            let (hx, hy) = twin_hit("p507-tier-coverage", "checkbox:ok")
+            // PLAN-033 重录：native 命中表 checkbox = Msg 物化（"checkbox:ok"
+            // Toggle 形态退役）——具名 handler .ToggleOk 等位寻址。
+            let (hx, hy) = twin_hit("p507-tier-coverage", "button:ToggleOk")
                 .expect("p507 checkbox 坐标");
             let (ox, oy) = origin_of(&session, "p507-tier-coverage").expect("p507 窗原点");
             assert!(
@@ -2830,133 +2810,11 @@ mod tests {
         // 强制重建）。
         crate::ui::desktop_protocol::e2e_exe::locate_with_stale_guard()
     }
-
-    /// T3 主体二：independent 像素帧合成 + **双模并存**（同宿主一 queue
-    /// 一 independent）：queue 臂 re-exec 测试二进制（真协议泵）；
-    /// independent 臂 = 真 `auto run` 生产二进制（`--autodesk-render=
-    /// independent` 三态参数 + iced 隐藏窗主线程约束）。断言两臂帧同达
-    /// 宿主（DrawList / 像素前缓冲）。
-    #[test]
-    fn t3_independent_pixels_and_dual_mode() {
-        let broker_pipe = format!("autodesk-broker-t3d-{}", std::process::id());
-        let mut session = DesktopSession::__test_session();
-        session.open_desktop(iced::window::Id::unique());
-        let src = example_source("001-helloworld");
-        let known: Vec<&str> = vec!["001-helloworld"];
-        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
-            known
-                .iter()
-                .find(|n| **n == name)
-                .map(|n| LaunchSpec {
-                    code: src.clone(),
-                    source_path: None,
-                    title: Some(n.to_string()),
-                    name: None,
-                    fit: false,
-                    daemon: None,
-                    back_root: None,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
-        }));
-        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        session.enable_broker(&broker_pipe, Arc::clone(&stop));
-
-        let mut queue_child = spawn_t3_child(&broker_pipe, "001-helloworld", "queue");
-        // independent 臂 = 生产二进制（cwd = 仓根，examples/ui 相对解析）。
-        let exe = auto_exe();
-        let mut pixels_child = std::process::Command::new(&exe)
-            .args([
-                "run",
-                "--autodesk-incubate",
-                "--app386=001-helloworld",
-                "--autodesk-render=independent",
-                &format!("--autodesk-broker={broker_pipe}"),
-            ])
-            .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::inherit())
-            .spawn()
-            .expect("spawn auto independent child");
-
-        attach_until(&mut session, 2);
-        assert_eq!(
-            session.broker_clients.values().filter_map(|c| c.wid).count(),
-            2,
-            "双 child 孵化落地"
-        );
-        // 双模并存：一 Commands 一 Pixels。
-        let modes: Vec<_> =
-            session.broker_clients.values().map(|c| c.endpoint.frame_mode).collect();
-        assert!(modes.contains(&crate::ui::desktop_protocol::message::FrameMode::Commands));
-        assert!(modes.contains(&crate::ui::desktop_protocol::message::FrameMode::Pixels));
-
-        // queue 臂：DrawList 帧（"Hello, World!"）。
-        assert!(
-            wait_frames(&mut session, |s| {
-                s.broker_clients.values().any(|c| {
-                    c.endpoint.frame_mode
-                        == crate::ui::desktop_protocol::message::FrameMode::Commands
-                        && c.composed().is_some_and(|l| {
-                            l.ops.iter().any(|op| matches!(op,
-                                crate::ui::desktop_protocol::message::DrawOp::Text { text, .. }
-                                | crate::ui::desktop_protocol::message::DrawOp::TextStyled { text, .. }
-                                    if text == "Hello, World!"))
-                        })
-                })
-            }),
-            "queue 臂 DrawList 帧到位"
-        );
-        // independent 臂：像素前缓冲（隐藏窗截图经降采样达宿主）。
-        assert!(
-            wait_frames(&mut session, |s| {
-                s.broker_clients.values().any(|c| {
-                    c.endpoint.frame_mode
-                        == crate::ui::desktop_protocol::message::FrameMode::Pixels
-                        && c.composed_pixels().is_some_and(|p| p.w > 0 && p.h > 0)
-                })
-            }),
-            "independent 臂像素帧达宿主"
-        );
-
-        // 收尾。
-        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
-            session
-                .broker_clients
-                .values_mut()
-                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
-                .collect();
-        for (pipe, close) in closes {
-            if let Some(close) = close {
-                if let Some(c) = session.broker_clients.get_mut(&pipe) {
-                    let _ = c.end.send(&close);
-                }
-            }
-        }
-        for _ in 0..300 {
-            session.pump_broker_clients();
-            if session.apps.is_empty() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        for child in [&mut queue_child, &mut pixels_child] {
-            let start = std::time::Instant::now();
-            let status = loop {
-                if let Some(s) = child.try_wait().expect("try_wait") {
-                    break s;
-                }
-                assert!(
-                    start.elapsed() < std::time::Duration::from_secs(45),
-                    "像素臂 child 收尾超时"
-                );
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            };
-            assert!(status.success(), "child 退出码 {status}");
-        }
-        stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        let _ = transport::connect(&broker_pipe, 500);
-    }
+    // PLAN-033 T-04：t3_independent_pixels_and_dual_mode 退役删除——解释
+    // pixels 臂（run_independent_child）随 AppProjector 拔根（解释态两合
+    // 法形态 = inproc 直挂 / -q 经 native 臂；a2r 轨像素兜底 =
+    // run_independent_native_child 不受影响，native 像素覆盖在
+    // p020_native_exe_arm 族）。归因：D5 删清单。
 
     /// re-exec 子进程（剥离 NEXTEST_* 守护）。
     fn spawn_children(broker_pipe: &str, names: &[String]) -> Vec<std::process::Child> {
@@ -3193,7 +3051,7 @@ mod tests {
             app_end,
             {
                 let component = crate::build_dynamic_component(SRC, None).expect("build");
-                AppProjector::new(component, 480.0, 320.0)
+                NativeProjector::new(component, 480.0, 320.0)
             },
             config.clone(),
             Some(ReconnectPolicy { pipe: pipe.clone(), budget_ms: 10_000, interval_ms: 20 }),
@@ -3327,7 +3185,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         };
         assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
-        assert_eq!(projector.read_state("count").unwrap(), auto_val::Value::Int(2), "count 连续");
+        assert_eq!(projector.component().read_state("count").unwrap(), auto_val::Value::Int(2), "count 连续");
         assert_eq!(projector.revision(), 3, "revision 连续（1 + 2 次点击）");
     }
 
@@ -3377,7 +3235,7 @@ mod tests {
             app_end,
             {
                 let component = crate::build_dynamic_component(SRC, None).expect("child build");
-                AppProjector::new(component, 480.0, 320.0)
+                NativeProjector::new(component, 480.0, 320.0)
             },
             config,
             None,
@@ -3463,7 +3321,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         };
         assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
-        assert_eq!(projector.read_state("count").unwrap(), auto_val::Value::Int(43));
+        assert_eq!(projector.component().read_state("count").unwrap(), auto_val::Value::Int(43));
         assert_eq!(projector.revision(), 42, "revision 延续（快照 41 + 点击 1）");
     }
 
@@ -3680,13 +3538,13 @@ mod tests {
         "009-article-feed",
     ];
 
-    /// 002-counter 孪生投影器（命中坐标 + inproc 交互探针引擎）。
-    fn g2_counter_twin() -> crate::ui::desktop_protocol::client_runtime::AppProjector {
+    /// 002-counter 孪生投影器（命中坐标 + inproc 交互探针引擎；
+    /// PLAN-033 T-04 迁 native）。
+    fn g2_counter_twin() -> NativeProjector<crate::ui::dynamic::DynamicComponent> {
         use crate::ui::desktop_protocol::endpoint::FrameSource;
         let src = example_source("002-counter");
         let comp = crate::build_dynamic_component(&src, None).expect("twin build");
-        let mut p =
-            crate::ui::desktop_protocol::client_runtime::AppProjector::new(comp, 480.0, 900.0);
+        let mut p = NativeProjector::new(comp, 480.0, 900.0);
         p.render_frame();
         p
     }
@@ -3817,7 +3675,6 @@ mod tests {
     /// 端到端（broker_pointer_down → 帧文本变化，自旋泵）。
     #[test]
     fn p508_g2_outproc_arm() {
-        use crate::ui::session::ProcessModel;
         let broker_pipe = format!("autodesk-broker-508g2-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
@@ -3845,7 +3702,6 @@ mod tests {
             }
             cmd.spawn()
         }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
         let base = sample_process_memory(std::process::id()).expect("windows 采样");
@@ -4064,7 +3920,6 @@ mod tests {
         }
         let code = std::fs::read_to_string(&source).expect("read counter source");
 
-        use crate::ui::session::ProcessModel;
         let broker_pipe = format!("autodesk-broker-020-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
@@ -4089,7 +3944,6 @@ mod tests {
                     opens: Vec::new(),
                 })
             }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -4296,7 +4150,6 @@ mod tests {
         }
         let code = std::fs::read_to_string(&source).expect("read counter source");
 
-        use crate::ui::session::ProcessModel;
         let broker_pipe = format!("autodesk-broker-020m-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
@@ -4318,7 +4171,6 @@ mod tests {
                     opens: Vec::new(),
                 })
             }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -4493,7 +4345,7 @@ mod tests {
             return;
         }
         use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
-        use crate::ui::session::{DesktopSession, LaunchSpec, ProcessModel};
+        use crate::ui::session::{DesktopSession, LaunchSpec};
 
         // (例, 子进程档, 首帧钩子文本)。运行时视图 Covered 四例走进程
         // 腿（012 = auto 档翻转抽样腿）；018（truncate）/041（codeeditor）
@@ -4524,7 +4376,6 @@ mod tests {
                 render_decl: Some("queue".into()),
             })
         }));
-        session.desktop.process_model = ProcessModel::Outproc;
         let broker_for_spawn = broker_pipe.clone();
         let mode_of = |name: &str| {
             legs.iter()

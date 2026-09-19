@@ -14,12 +14,12 @@
 // pac.at `desktop_render:` > auto）。spawn 参数名带 autodesk 前缀：CLI
 // `run` 已有具名 `--render`（前端后端，clap 具名先吞）——撞名第二处，
 // 与 --autodesk-client/-broker 同族避让：
-// - `queue` → 既有 ClientPump（DrawList 命令帧，AppProjector 投影）；
-// - `independent` → [`pixels::run_independent_child`]（自带 iced 隐藏窗
-//   自渲染 + screenshot 像素帧）；
-// - `auto` → 装载期覆盖度探测（coverage::effective_frame_mode）：
-//   Covered → queue；NotCovered → 降级 independent（孵化记录带
-//   `pixels:auto` 标记，宿主观测行留痕）。
+// - `queue` → ClientPump（DrawList 命令帧，NativeProjector 投影——
+//   PLAN-033 T-02 改接，与 native 轨同臂）；
+// - `independent` → **解释轨已退役**（PLAN-033 T-04：装载后报错留痕；
+//   a2r 轨像素兜底 run_independent_native_child 不受影响）；
+// - `auto` → queue（启动覆盖门在 client_entry::run_dynamic_client 权威
+//   裁决——native 门拒即拒绝渲染退出留痕，禁静默错绘）。
 //
 // Plan 020 T-02 —— 端点解析 + 帧二态分派抽壳至
 // [`client_entry::run_dynamic_client`]（本文件保留解释轨专属的 .at 装载与

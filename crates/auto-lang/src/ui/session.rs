@@ -379,9 +379,6 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// Plan 501：外部后端 cdylib 句柄（launch 声明 back.project 的 App 时
     /// 装载；驻会话——丢弃即卸载致 vtable 悬垂，见 backend_abi 文档）。
     pub back_keepalive: Option<crate::vm::backend_abi::LoadedBackend>,
-    /// Plan 508 G1：App 进程模型（boot 期读 `shell.apps.process_model`，
-    /// 缺省 inproc）。outproc 时 launch_app 走 broker 孵化链。
-    pub process_model: ProcessModel,
     /// Plan 508 G1：outproc 子进程 spawn 钩子（None = 生产形态 re-exec
     /// `auto run --autodesk-incubate`；单测注入 re-exec 测试体）。
     pub outproc_spawner:
@@ -476,7 +473,6 @@ impl DesktopState {
             config_poll_sampled: false,
             osconfig_daemon_probe: None,
             back_keepalive: None,
-            process_model: ProcessModel::default(),
             outproc_spawner: None,
             outproc_children: Vec::new(),
             shell_spawner: None,
@@ -2097,29 +2093,6 @@ fn load_back_cdylib(
     )
 }
 
-/// Plan 508 G1：App 进程模型配置位（storage `shell.apps.process_model`）——
-/// `inproc` = 进程内直挂（缺省，现状零变化）；`outproc` = broker 孵化
-/// （子进程 + RenderQueue 帧通道：隔离 + 统一路径 + 独立内存账）。
-/// boot 读入一次；shell 特权面（dock/switcher/settings/desktop 本体）
-/// boot 直装载不经 launch，恒 inproc。I3 纪律：App 装载管线两形态同链，
-/// 差异仅在进程归属与帧通道。
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum ProcessModel {
-    #[default]
-    Inproc,
-    Outproc,
-}
-
-impl ProcessModel {
-    /// storage 原值解析（缺席/坏值回退 Inproc——坏配置不炸桌面，472 同型）。
-    pub fn from_storage(raw: Option<&str>) -> Self {
-        match raw.map(str::trim) {
-            Some("outproc") => Self::Outproc,
-            _ => Self::Inproc,
-        }
-    }
-}
-
 /// PLAN-030 T-07：壳进程模型配置位（storage `shell.apps.shell_model`）——
 /// `inproc` = 解释壳进程内装载（缺省，路径字节级零变化 I1）；`outproc` =
 /// 壳 outproc 客户端（双表面 + 投影下行 + DesktopBus 上行）。装在失败
@@ -3067,35 +3040,6 @@ fn outproc_auto_binary() -> std::io::Result<std::path::PathBuf> {
     ))
 }
 
-/// Plan 508 G1：生产 outproc spawner——re-exec auto 本体
-/// （`run --autodesk-incubate --app386=<dir>` = 双模入口 ②，broker 管道
-/// 显式传参与桌面 boot 同源）+ 装载根 env（AUTO_386_APP_ROOT；
-/// cmd_autodesk 缺省 ./examples/ui 同主根）。NEXTEST_* 剥除防测试
-/// 上下文串染（spawn_t3_child 同款）。
-fn spawn_outproc_child(
-    child_name: &str,
-    app_root: Option<&std::path::Path>,
-    broker_pipe: &str,
-) -> std::io::Result<std::process::Child> {
-    let exe = Self::outproc_auto_binary()?;
-    let mut cmd = std::process::Command::new(&exe);
-    cmd.args([
-        "run",
-        "--autodesk-incubate",
-        &format!("--app386={child_name}"),
-        &format!("--autodesk-broker={broker_pipe}"),
-    ]);
-    if let Some(root) = app_root {
-        cmd.env("AUTO_386_APP_ROOT", root);
-    }
-    for (key, _) in std::env::vars() {
-        if key.starts_with("NEXTEST_") {
-            cmd.env_remove(&key);
-        }
-    }
-    cmd.spawn()
-}
-
 /// PLAN-030 T-03：壳 outproc spawner——re-exec auto 本体
 /// （`run --autodesk-shell --autodesk-broker=<pipe>`）+ 几何/pack env
 /// 注入。`AUTO_SHELL_PACK` 透传：宿主解析序命中 pack 目录时钉住（child
@@ -3126,9 +3070,12 @@ fn spawn_shell_outproc(
     /// （free 模式级联初位；非 free 随即整场重排）→ 聚焦。失败返回
     /// Err（调用方转 toast，不阻断桌面）。
     pub fn launch_app(&mut self, name: &str) -> Result<Wid, String> {
-        // Plan 508 G1：outproc 配置位 → broker 孵化链（spawn 子进程 +
-        // RenderQueue 帧通道；宿主侧装载仍走同一 resolver——I3 同链）。
-        if self.desktop.process_model == ProcessModel::Outproc {
+        // PLAN-033 T-04：process_model=outproc 全局配置拔除（用户裁定
+        // 2026-09-19：解释态两合法形态 = inproc 直挂 / `-q` 经 native 臂）。
+        // 孵化链保留两消费者：测试注入 spawner（P508/stage3 断言面）+
+        // native exe App（desktop_exe/约定发现——"exe App 天然 outproc"
+        // Plan 020 G1 裁定不变）。
+        if self.desktop.outproc_spawner.is_some() {
             eprintln!("[session] launch_app(outproc) {name}");
             return self.launch_app_outproc(name);
         }
@@ -3330,20 +3277,24 @@ fn spawn_shell_outproc(
         let native_exe = Self::outproc_native_exe(&spec);
         let child = match self.desktop.outproc_spawner.clone() {
             Some(spawn) => spawn(&child_name).map_err(|e| format!("spawn outproc child: {e}"))?,
-            None => match native_exe.as_deref() {
-                Some(exe) => {
-                    eprintln!("[session] launch_app(outproc-native) {name} <- {}", exe.display());
-                    Self::spawn_exe_child(
-                        exe,
-                        &child_name,
-                        &broker_pipe,
-                        spec.render_decl.as_deref(),
+            None => {
+                let exe = native_exe.as_deref().ok_or_else(|| {
+                    // PLAN-033 T-04：解释 re-exec 臂已退役（两消费者之外的
+                    // 第三形态不再存在——纯解释 App 走 inproc 直挂）。
+                    format!(
+                        "outproc spawn 无可用形态（spawner/native exe 双缺席；
+                         解释态两合法形态 = inproc 直挂 / `-q` 经 native 臂——PLAN-033）"
                     )
-                    .map_err(|e| format!("spawn outproc child: {e}"))?
-                }
-                None => Self::spawn_outproc_child(&child_name, app_root.as_deref(), &broker_pipe)
-                    .map_err(|e| format!("spawn outproc child: {e}"))?,
-            },
+                })?;
+                eprintln!("[session] launch_app(outproc-native) {name} <- {}", exe.display());
+                Self::spawn_exe_child(
+                    exe,
+                    &child_name,
+                    &broker_pipe,
+                    spec.render_decl.as_deref(),
+                )
+                .map_err(|e| format!("spawn outproc child: {e}"))?
+            }
         };
         self.desktop.outproc_children.push(child);
         // 等受理（子进程 spawn + connect，冷启可达数秒）→ attach 到 Active
@@ -4953,10 +4904,6 @@ fn spawn_shell_outproc(
         if let Some(existing) = self.hatched_mini_of(name) {
             return Ok(Some(existing));
         }
-        // outproc 进程模型 / native exe 不孵化（face 需要 inproc component）。
-        if self.desktop.process_model == crate::ui::session::ProcessModel::Outproc {
-            return Ok(None);
-        }
         let resolver = self
             .desktop
             .app_resolver
@@ -5418,7 +5365,7 @@ mod tests {
         assert_eq!(ShellModel::from_storage(Some("inproc")), ShellModel::Inproc);
         assert_eq!(ShellModel::from_storage(Some("outproc")), ShellModel::Outproc);
         assert_eq!(ShellModel::from_storage(Some(" junk ")), ShellModel::Inproc);
-        // 显式 outproc 但带空白容差与 process_model 同册（trim 后判定）。
+        // 显式 outproc 但带空白容差（trim 后判定）。
         assert_eq!(ShellModel::from_storage(Some("outproc")), ShellModel::Outproc);
     }
 
@@ -6518,16 +6465,6 @@ mod tests {
     const P508_CHILD_BROKER_ENV: &str = "AUTO_508_BROKER";
     const P508_CHILD_APP_ENV: &str = "AUTO_508_APP";
 
-    /// Plan 508 G1：storage 原值解析（缺席/坏值回退 inproc，472 同型）。
-    #[test]
-    fn process_model_storage_parse() {
-        assert_eq!(ProcessModel::from_storage(None), ProcessModel::Inproc);
-        assert_eq!(ProcessModel::from_storage(Some("inproc")), ProcessModel::Inproc);
-        assert_eq!(ProcessModel::from_storage(Some("outproc")), ProcessModel::Outproc);
-        assert_eq!(ProcessModel::from_storage(Some("  outproc ")), ProcessModel::Outproc);
-        assert_eq!(ProcessModel::from_storage(Some("bogus")), ProcessModel::Inproc);
-    }
-
     /// Plan 020 T-06：native exe 发现序单测——pac `desktop_exe:` 声明 >
     /// rust-workspace 约定路径（release > debug；exe 名 pac name 蛇形 >
     /// 目录名）；两者皆无 → None（解释态 outproc 臂）。
@@ -6608,9 +6545,8 @@ mod tests {
             return;
         };
         let app_name = std::env::var(P508_CHILD_APP_ENV).expect("app env");
-        use crate::ui::desktop_protocol::client_runtime::{
-            self, AppProjector, ClientConfig, ReconnectPolicy,
-        };
+        use crate::ui::desktop_protocol::client_runtime::{self, ClientConfig, ReconnectPolicy};
+        use crate::ui::desktop_protocol::native_projector::NativeProjector;
         let (per_app_pipe, end) = crate::ui::desktop_protocol::broker::request_incubation(
             &broker_pipe,
             &app_name,
@@ -6622,8 +6558,10 @@ mod tests {
             ClientConfig { app_name: app_name.clone(), title: app_name, width: 480.0, height: 320.0 };
         let reconnect =
             ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
-        let projector = AppProjector::new(component, 480.0, 320.0);
-        let _ = client_runtime::run_client(end, projector, config, Some(reconnect));
+        // PLAN-033 T-04 迁移：native 投影臂（AppProjector/run_client 退役）。
+        let mut projector = NativeProjector::new(component, 480.0, 320.0);
+        projector.ensure_covered().expect("probe covered");
+        let _ = client_runtime::run_client_session(end, projector, config, Some(reconnect));
     }
 
     /// Plan 508 G1：outproc 配置位 → launch_app 走 broker 孵化链落地
@@ -6645,8 +6583,8 @@ mod tests {
             opens: Vec::new(),
         render_decl: None,    })
         }));
-        ds.desktop.process_model = ProcessModel::Outproc;
-        // spawn 钩子注入：re-exec 测试体（生产 = spawn_outproc_child）。
+        // PLAN-033 T-04：outproc 触发 = spawner 注入在场（process_model
+        // 配置位已拔除；解释 re-exec 臂退役——生产纯解释 App 走 inproc）。
         let pipe_for_spawn = broker_pipe.clone();
         ds.desktop.outproc_spawner = Some(std::sync::Arc::new(move |_name| {
             let exe = std::env::current_exe().expect("current_exe");

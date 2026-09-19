@@ -877,20 +877,13 @@ pub fn effective_frame_mode(
     match mode {
         RenderMode::Queue => (super::message::FrameMode::Commands, None),
         RenderMode::Independent => (super::message::FrameMode::Pixels, None),
-        RenderMode::Auto => {
-            let scan = scan_view(component.view_template());
-            match judge(&scan, &Coverage::target_set()) {
-                Verdict::Covered => (super::message::FrameMode::Commands, None),
-                Verdict::NotCovered(missing) => (
-                    super::message::FrameMode::Pixels,
-                    Some(format!(
-                        "[render] auto -> independent downgrade ({} not covered: {})",
-                        component.widget_name(),
-                        missing.join(", ")
-                    )),
-                ),
-            }
-        }
+        // PLAN-033 T-04：Auto 探测改走 native 门（scan_native_view ×
+        // native_queue_set——与 run_dynamic_client 的 ensure_covered 同
+        // 法官；旧 target_set 是解释投影器时代的覆盖表，随其退役）。
+        // 两态均 Commands 且无降级标记（解释 pixels 降级臂已退役）——
+        // NotCovered 由臂启动覆盖门权威拒绝（eprintln + Err，禁静默
+        // 错绘）。
+        RenderMode::Auto => (super::message::FrameMode::Commands, None),
     }
 }
 
@@ -1106,17 +1099,17 @@ mod tests {
         assert_eq!(effective_frame_mode(RM::Queue, &covered), (FrameMode::Commands, None));
         assert_eq!(effective_frame_mode(RM::Independent, &covered), (FrameMode::Pixels, None), "显式 independent 不探测");
 
-        // 未覆盖视图（select 弹层族——Plan 507 T4 后 checkbox 已覆盖）→
-        // Pixels + 降级行。
+        // PLAN-033 T-04 重录：解释 pixels 降级臂退役——auto 未覆盖视图
+        // 仍返 Commands（无降级标记），由 run_dynamic_client 启动覆盖门
+        // 权威拒绝（"拒绝渲染，禁静默错绘"）；native 覆盖事实另由
+        // ensure_covered 断言面钉（native_projector::coverage_gate_*）。
         let uncovered = crate::build_dynamic_component(
             "widget U { view { select (value: .mode) { onchange: .Pick } } }",
             None,
         ).expect("build");
         let (mode, downgrade) = effective_frame_mode(RM::Auto, &uncovered);
-        assert_eq!(mode, FrameMode::Pixels, "auto 未覆盖降级 independent");
-        let line = downgrade.expect("降级观测行");
-        assert!(line.contains("auto -> independent"), "{line}");
-        assert!(line.contains("select"), "缺项清单随行: {line}");
+        assert_eq!(mode, FrameMode::Commands, "auto 恒 queue（门权威裁决）");
+        assert!(downgrade.is_none(), "无降级标记（pixels 降级臂退役）: {downgrade:?}");
     }
 
     /// Plan 507 T2/T3 一致性钉：元素登记表的 covered 条目必须落在
@@ -1139,32 +1132,28 @@ mod tests {
         }
     }
 
-    /// Plan 507 T7 —— Tier3 not-yet 族 auto 降级链路复核：代表族逐一
-    /// 构造 → Pixels + 观测行（缺项清单即载荷——禁止静默错绘的机制证）。
+    /// PLAN-033 T-04 重录（原 t7_not_yet_families_auto_downgrade）：解释
+    /// pixels 降级臂退役 + 032 翻转后 native 词表全族过门（六族探测实证
+    /// 2026-09-19）——not-yet 语义面从"auto 降级 independent"转轨为
+    /// "queue 过门 + 运行期 uncovered_seen 降级观测"（native_projector
+    /// 显式留痕面）。
     #[test]
-    fn t7_not_yet_families_auto_downgrade() {
-        use super::RenderMode as RM;
-        use crate::ui::desktop_protocol::message::FrameMode;
-        // (族, 源, 缺项证词)
-        let cases: &[(&str, &str, &str)] = &[
-            ("overlay 弹层", "widget O { view { select (value: .m) { onchange: .P } } }", "tag:select"),
-            ("chart/diagram", "widget C { view { svg { path {} } } }", "tag:svg"),
-            ("复合编辑器", "widget E { view { markdown (content: .doc) } }", "tag:markdown"),
-            ("nav 系", "widget N { view { nav-item (label: \"x\") { onclick: .Go } } }", "tag:navitem"),
-            ("表格族", "widget T { view { table { text \"r\" } } }", "tag:table"),
-            ("瞬态浮层", "widget F { view { toaster {} } }", "tag:toaster"),
+    fn t7_families_all_pass_native_gate() {
+        use crate::ui::desktop_protocol::native_projector::NativeProjector;
+        let cases: &[(&str, &str)] = &[
+            ("overlay 弹层", "widget O { view { select (value: .m) { onchange: .P } } }"),
+            ("chart/diagram", "widget C { view { svg { path {} } } }"),
+            ("复合编辑器", "widget E { view { markdown (content: .doc) } }"),
+            ("nav 系", "widget N { view { nav-item (label: \"x\") { onclick: .Go } } }"),
+            ("表格族", "widget T { view { table { text \"r\" } } }"),
+            ("瞬态浮层", "widget F { view { toaster {} } }"),
         ];
-        for (family, src, evidence) in cases {
+        for (family, src) in cases {
             let component = crate::build_dynamic_component(src, None)
                 .unwrap_or_else(|e| panic!("{family} build: {e}"));
-            let (mode, downgrade) = effective_frame_mode(RM::Auto, &component);
-            assert_eq!(mode, FrameMode::Pixels, "{family} 应降级 independent");
-            let line = downgrade.unwrap_or_else(|| panic!("{family} 应有降级观测行"));
-            assert!(line.contains("auto -> independent"), "{family}: {line}");
-            assert!(
-                line.contains(&evidence.trim_start_matches("tag:")),
-                "{family} 缺项清单随行: {line}"
-            );
+            let p = NativeProjector::new(component, 480.0, 320.0);
+            p.ensure_covered()
+                .unwrap_or_else(|gate| panic!("{family} 应过 native 门（词表全族在册）: {gate}"));
         }
     }
 

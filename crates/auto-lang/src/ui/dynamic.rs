@@ -1952,6 +1952,20 @@ impl Component for DynamicComponent {
         self.drain_vm_desktop_commands()
     }
 
+    /// PLAN-033 T-04：L3 v2a 快照注入（D 融合态迁移）——逐字段写回根态
+    /// + 置脏；revision 续接由投影器侧处理（on_control 消费返回值）。
+    fn apply_state_snapshot(
+        &mut self,
+        _revision: u64,
+        fields: &[(String, auto_val::Value)],
+    ) -> bool {
+        for (field, value) in fields {
+            let _ = self.write_state(field, value.clone());
+        }
+        self.dirty = true;
+        true
+    }
+
     /// Render the view by building from the AuraNode template.
     ///
     /// Uses [`AuraViewBuilder`] to traverse the view template, resolving
