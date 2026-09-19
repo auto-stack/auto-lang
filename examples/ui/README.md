@@ -100,7 +100,7 @@ opt-in 语义：新示例不加字段即不上架；外部自含根（os-config 
 | 011 | calculator | 四则计算器 | — | ✓ | 🔀 升级拆出（Plan 401） |
 | 012 | clock（**Clock**） | 全功能时钟五 tab：传统手表 ⌚ SVG 表盘+数显/世界时钟（8 城时差）/闹钟（storage 5 槽持久化）/秒表（真走表 Tick 250ms+计圈高亮）/倒计时（快捷预设+环形通知）——Plan 644 现代时钟重塑，id 升格 012-clock | — | ✓ | ✅ [Plan 644](../../docs/plans/INDEX.md)（origin os-003/Plan 554；desktop_mcp） |
 | 013 | todo | TodoMVC 完整实现 | — | ✓ | ✅ 有 MCP 测试 |
-| 014 | weather | 天气仪表盘（10 城/主题/结构化预报） | — | ✓ | 基础→升级 |
+| 014 | weather | 天气仪表盘（横屏优先/10城/ScrollArea） | — | ✓ | 基础→升级 |
 | 015 | notes | 两栏笔记（真实应用形态） | — | ✓ | ✅ Plan 354 升级 |
 | 016 | calendar | 月历 + 事件高亮 | — | ✓ | 基础 |
 | 017 | chat | 微信风即时聊天 | — | ✓ | ✅ 有 playwright/ATD 验收 |
