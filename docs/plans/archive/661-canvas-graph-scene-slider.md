@@ -682,7 +682,11 @@ jade-garden graph_view 真渲染消费 = jade/auto-down 侧后续计划（§10 �
   file 指向本归档路径 ✓）；plans.md 661 行在 master。
 - **archived**：docs/plans/archive/661-canvas-graph-scene-slider.md
   （git mv），status: archived，completion_kind: **delivered**。
-- **cleaned**：见后补（worktree/分支清理后落）。
+- **cleaned**：wt-guard 双净（auto-lang/auto-down 均 clean——049 gen/
+  pnpm junction 群先经 cmd rmdir /s 摘除后过闸）；worktree
+  D:/autostack/.wt/lang-661/auto-lang 与依赖位 auto-down 移除、分支
+  plan-661-dev 删除（was 7b0982d07=落地位）、组目录 lang-661 无存、
+  worktree prune 零残留。
 - 里程碑外记：R-F4（主检出他方 TRACE 残留）在本合并启动时已由归属
   会话（PLAN-033 并行轨）自行处置核验（工作区净、TRACE 行不在）——
   非 661 动作；rebase 冲突唯一一处=KNOWN-DEBT 并集（docs）。
