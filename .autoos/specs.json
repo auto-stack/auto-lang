@@ -1103,6 +1103,17 @@
           "file": "docs/specs/widgets/scroll-pane.md",
           "related": "['PLAN-656']",
           "status": "published"
+        },
+        {
+          "id": "P659-1",
+          "title": "crash-forensics-verify-infra — 变更摘要",
+          "content": "P642 稳定性/验证基建债合成专项。块A：F1 崩溃族三场 cdb 托管 soak（编排器 p659_cdb_soak.py 常驻 auto-os ui-gallery tests）三族归因——(a) wgpu offscreen 零维 create_texture panic 为死亡轮主因（主进程+child 双形态），三路截图守卫根修（MCP window::size 二段跳/pixels 桥 host_ok/native_pixels size 复核），修复后 9 轮零复现零新增同型；(b) virt_memory.rs:409/:519 越界索引 panic 族（索引=HEAP_ID_BASE+偏移=堆 id 误作栈地址，tokio 捕获）——定罪方向在册、深根因开放债 P659-D1（panic-bp 器械 bu auto!core::panicking 常驻，复现即得全栈）；(c) 原生 F1 本体修复后 17 轮零复现（护栏在位呈报）。min>max dash clamp 上界守卫（audit min=160/max=-96 精确根因）。块B：MCP fixture trigger 双形态（{handler} 裸名 widgets_declaring_handler 跨名空间解析+未命中响亮报错 handler_not_found/ambiguous_handler——AddrGo 静默无操作根除）；fs.canonical 失败返空哨兵（契约沉淀 vm/native-fs.md）；020 folder-music→disc-3/list-music/music（lucide 0.312 有效集，auto build 绿+020 web 挂载可视）；flaky 三成员定罪（plan609 RAII 守卫+generate_rust_ui 成员缺席断言根修+display_family 特性面差异归因修正=非 flaky）；022 门控债清偿。门禁：t×3 A/B 对照 master 基点零新增红+tf×2+auto-man×3。",
+          "file": "docs/plans/archive/659-crash-forensics-verify-infra.md",
+          "related": [
+            "PLAN-659"
+          ],
+          "status": "published",
+          "created": "2026-09-19"
         }
       ]
     },

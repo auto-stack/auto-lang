@@ -516,6 +516,59 @@ VM 画廊内嵌形态（AppViewport.vm.at + demos/*.at 适配器 + registry.at�
 4. **旧 Fill 包装形态退役（retire）**：build_row 不再用「子项包 height:Fill 容器」模拟 stretch（该形态依赖有界祖先，无界下塌缩 0 高）；上节第 6 条「内嵌 demo 避免 items-stretch」约定自本节起解除，008 语料还原 items-stretch。scroll 兜底本身（overflow-hidden 列包 Shrink Scrollable）不受影响。
 5. **非目标**：012-clock 横向 stretch 行（列交叉轴=宽度，现实现无害）；iced 引擎级 flex 补丁（P642-D12 远期路线 B，iced 升级时处理）。
 
+## MCP fixture trigger 派发契约（PLAN-659）
+
+`autoui_fixture`（`AUTOUI_TEST_FIXTURES=1` 门控，VM-only）的 trigger
+双形态（互斥校验，混用 invalid_schema）：
+
+- `{widget, event, input?}`——widget 限定派发：`on_with_input_for`
+  （namespaced 键 `handler_<Widget>_<Event>`）；派发前
+  `has_handler_for` 注册表直查，未命中回执 `handler_not_found`
+  （**响亮报错**，附点名——AddrGo 静默无操作病灶根除）。
+- `{handler}`——裸名直查：`widgets_declaring_handler` 扫描 exports
+  全部 namespaced 键按事件名后缀解析 widget 归属（嵌入画廊形态根
+  组件=宿主 App、目标 handler 在子 demo 名空间——根名空间双查不可达
+  是 P642-D14① 的根因）；单候选与 widget 形态同路派发，零候选
+  `handler_not_found`（附前 12 可用名），多候选 `ambiguous_handler`
+  （点名候选，驱动侧改 widget 形态消歧）。
+
+回执 trigger 字段：widget 形态 `<widget>.<event>`，handler 形态
+`handler:<name>`。timer 条目（`is_timer_entry`）仍走 `fire_timer`
+（双形态归一后保持）。
+
+## F1 崩溃族判读法与三族归因（PLAN-659）
+
+画廊 VM 实例静默死亡（bash exit 127 族）的取证实战结论（2026-09-19
+三场 cdb 托管 soak；编排器常驻 `auto-os ui-gallery/src/front/tests/
+p659_cdb_soak.py`，探针 `p659_probe.rs`）：
+
+- **工具链形态**：cdb 启动托管（非事后 attach——零竞态）。
+  `-G -hd -lines -logo <file> -c "<sxe 双链四死法; bu panic 断点; g>"`。
+  三个坑：`-hd` 必需（调试器创建的进程默认 debug heap，画廊生成期即
+  静默 exit 1）；`-c2` 必需（fastfail 0xC0000409 只以 second-chance
+  送达，first-chance 链对它不触发）；`-g` 会连带跳过 `-c` 初始化
+  （sxe 注册必须在初始断点处执行后 `g`）。Rust panic（unwind 非
+  SEH，sxe 链不可达）用 `bu auto!core::panicking::panic_fmt/
+  panic_bounds_check "<dump>; g"` 延迟断点+续跑捕获（tokio 捕获语义
+  保持，进程不杀）。
+- **判读流程**（三方交叉）：cdb 独立行标记 → 异常码映射死法
+  （FD=栈溢出/409=fastfail/005=AV/374=堆损坏）+ `kv` 故障帧；
+  cdb 退出无标记 → 看原生退出码（cdb rc=debuggee rc）；审计日志
+  差分（死亡窗口 code=101 行=panic 有痕 / 零新增=绕过 panic 钩子）。
+- **三族归因**：(a) wgpu offscreen 零维 `create_texture` panic——
+  soak 死亡轮主因（主进程+outproc child 双形态），三路截图守卫根修
+  （MCP 路径 `iced::window::size` 二段跳 / pixels 桥 host_ok /
+  native_pixels size 复核）；(b) `virt_memory.rs` read_nv/read_i32
+  索引越界 panic——索引 = `HEAP_ID_BASE(4,000,000)+偏移` = **堆对象
+  id 误作栈地址**（类型混淆定罪方向；tokio 捕获线程不杀进程）——深
+  根因开放债 P659-D1（KNOWN-DEBT），panic-bp 器械常驻，复现即得全栈；
+  (c) 原生 F1 本体（fastfail/栈溢出）修复后 17 轮长会话零复现——
+  护栏在位口径呈报（归档计划 659 §10）。
+- **关联守卫**：dash 空面板 clamp 上界求值守卫
+  （`viewport.height=0` 时 min>max panic——audit `min=160.0,
+  max=-96.0` 精确根因）；调试体僵尸泄漏（taskkill 偶发漏杀）由
+  编排器 kill 兜底清扫按可执行路径匹配补杀。
+
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
