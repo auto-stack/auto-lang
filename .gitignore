@@ -123,6 +123,9 @@ examples/**/rust-workspace/
 # AutoUI test screenshots & artifacts (local only, do not track binary images in git)
 examples/ui/**/tests/screenshots/
 examples/ui/**/src/front/tests/screenshots/
+examples/capability-tests/**/tests/shots/
+examples/capability-tests/**/tests/screenshots/
+examples/capability-tests/**/src/front/tests/
 examples/ui/**/shots/
 tests/screenshots/
 tests/playwright-report/

@@ -1,0 +1,7 @@
+name: "canvas-graph"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+icon: "circle"
+title: "Canvas Graph"
+category: "tool"

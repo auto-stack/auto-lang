@@ -84,6 +84,8 @@ const DOC_EXCLUDE: &[&str] = &[
     // Plan 563:状态驱动画布(引擎原语,能力样板轨道——不设 gallery 页);
     // 场景数据契约与双端映射规约文档化于
     // examples/capability-tests/043-canvas-paint/SPEC.md + schema 描述。
+    // PLAN-661 T-05: 场景 v2（图元三表+onhit）详规沉淀于
+    // docs/specs/auto-lang/ui/design/canvas-scene.md（样板 049-canvas-graph）。
     "canvas",
     // Plan 562:nav 家族已退役(superseded_by sidebar 族,见 schema/aura.at
     // 标注与 docs/plans/562-nav-to-sidebar-migration.md),gallery 页

@@ -14,6 +14,9 @@
 > 表述作废）——形态自「Auto 图元列表→iced canvas」修订为「scene 前缀双表契约→vue/iced
 > 双端独立渲染」；对拍锁定 IoU 0.9793/RGB 距 3.0。详规：schema/aura.at canvas 条目 +
 > examples/capability-tests/043-canvas-paint/SPEC.md。
+> **PLAN-661（2026-09-19）**：canvas 场景契约扩容（图元三表族 nodes/edges/labels +
+> onhit 命中）已落地——详规转 `docs/specs/auto-lang/ui/design/canvas-scene.md`
+>（本档 563 头保留笔笔画桥接史实；样板 049-canvas-graph）。
 
 ## 范围
 

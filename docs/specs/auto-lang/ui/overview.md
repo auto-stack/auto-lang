@@ -71,6 +71,8 @@ handler 侧用 `Time.now_sec()`；desktop dock 仍用分钟级 `__wm_clock`。�
 客户端臂自解释态 `DynamicComponent` 泛化到 `Component` seam——a2r 编译 exe
 经 `RqProjector<C>`（View 运行期投影）作 compositor 一等客户端，native
 覆盖集（v1.8：form/payload 族 input/textarea/checkbox/radio/slider/select
+（slider 三轨已由 PLAN-661 补全：VM/aura 臂 SliderChangeHandler + vue 原生
+range（R-5，shadcn 组件路径退役）+ MCP set_value 闭环，2026-09-19）
 + display 族 image/progress 占位保真 + layouts scroll/grid + 样式降级放行
 批（flex-1/shadow/overflow-/min-w-/min-h-/leading- 等——逐类随注
 `native_queue_set`）；icon/badge/avatar/divider/separator/spacer/a 经 a2r

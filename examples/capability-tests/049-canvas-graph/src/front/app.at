@@ -1,0 +1,120 @@
+// app.at — 049-canvas-graph 图元场景样板（PLAN-661 T-06）。
+//
+// canvas 场景契约 v2 能力样板：图元三表族（nodes/edges/labels）+ onhit
+// tap 命中 + slider 控制图元参数 + map 括号写（T-01 语义就地复现）。
+// 四能力合一样板——上游布局裁定（R-3）：坐标由 .at 侧循环+三角函数
+// 算好写入三表，渲染端只收绝对坐标。
+//
+// 场景数据契约（schema/aura.at canvas 条目 + design/canvas-scene.md）：
+//   .graph_nodes  = ["id,x,y,shape,color[,r|w,h]", ...]   circle 用 r / rect 用 w,h
+//   .graph_edges  = ["x1,y1,x2,y2[,color[,width]]", ...]  线段（绝对坐标）
+//   .graph_labels = ["x,y,text[,color[,size]]", ...]
+//   （strokes 双表 .graph_pts/.graph_meta 缺省 = 空表，本样板无笔迹面）
+
+widget App {
+    msg {
+        Init, NodeTap(str), SetRadius(float), DoWrite, Reset
+    }
+
+    model {
+        // ---- 场景三表（scene 前缀 graph；strokes 双表留空）----
+        var graph_pts list = []
+        var graph_meta list = []
+        var graph_nodes list = []
+        var graph_edges list = []
+        var graph_labels list = []
+
+        // ---- 参数/状态 ----
+        var radius float = 80.0
+        var radius_label str = "80"
+        var selected str = "-"
+        var hit_count int = 0
+        var readback str = "init"
+        // map 括号写演示载体（T-01：VM 轨 `m[k]=v` 写臂）
+        var cfg map = { scale: 1 }
+    }
+
+    on {
+        .Init -> {
+            .graph_pts = []
+            .graph_meta = []
+            .SetRadius(80.0)
+        }
+
+        // ---- 上游布局（R-3）：环形 6 节点 + 中心矩形 + 中心辐条 ----
+        .SetRadius(r float) -> {
+            .radius = r
+            .radius_label = f"${r}"
+            var nodes list = []
+            var edges list = []
+            var labels list = []
+            var i int = 0
+            while i < 6 {
+                var fi float = i
+                var a float = 6.283185307179586 * fi / 6.0
+                var x float = 150.0 + .radius * math.cos(a)
+                var y float = 150.0 + .radius * math.sin(a)
+                nodes.push("n" + i.to_string() + "," + x.to_string() + "," + y.to_string() + ",circle,#3b82f6,16")
+                edges.push("150,150," + x.to_string() + "," + y.to_string() + ",#94a3b8,2")
+                labels.push(x.to_string() + "," + (y + 26.0).to_string() + ",n" + i.to_string())
+                i = i + 1
+            }
+            nodes.push("c,150,150,rect,#f59e0b,52,28")
+            labels.push("150,150,center")
+            .graph_nodes = nodes
+            .graph_edges = edges
+            .graph_labels = labels
+        }
+
+        // ---- onhit（R-1）：tap 命中元素 id 字符串载荷 ----
+        .NodeTap(id str) -> {
+            .selected = id
+            .hit_count = .hit_count + 1
+        }
+
+        // ---- map 括号写（T-01）+ 写后读回 + 写后语句续行 ----
+        .DoWrite -> {
+            .cfg["scale"] = .radius / 80.0
+            var cur = .cfg["scale"]
+            .readback = f"${cur}"
+            .hit_count = .hit_count + 1
+        }
+
+        .Reset -> {
+            .selected = "-"
+            .readback = "init"
+            .hit_count = 0
+        }
+    }
+
+    view {
+        col {
+            style: "w-full max-w-xl bg-card border rounded-2xl shadow-2xl p-4 gap-3"
+
+            // ---- 标题 + 命中/写回读出 ----
+            row {
+                style: "items-center gap-2"
+                text "Canvas Graph" { style: "text-base font-semibold text-foreground" }
+                text .selected { style: "text-xs text-muted-foreground" }
+                text .readback { style: "text-xs text-muted-foreground" }
+            }
+
+            // ---- 图元画布（coords 300x300；onhit tap 命中）----
+            canvas (scene: .graph, coords: "300x300", clear: "#f8fafc", onhit: .NodeTap) {
+                style: "w-full h-[300px] border rounded-lg cursor-pointer"
+            }
+
+            // ---- 控制行：slider 半径（图元参数）+ map 写按钮 ----
+            row {
+                style: "items-center gap-2"
+                text "radius" { style: "text-xs text-muted-foreground" }
+                text .radius_label { style: "text-xs text-muted-foreground" }
+                slider (value: .radius, min: 50.0, max: 110.0, step: 5.0) { onchange: .SetRadius }
+                button "Write" { onclick: .DoWrite, style: " border " }
+                button "Reset" { onclick: .Reset, style: " border " }
+            }
+
+            text .hit_count.to_string() { style: "text-xs text-muted-foreground" }
+        }
+    }
+}

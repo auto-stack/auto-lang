@@ -2418,3 +2418,41 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P033-D2 | low | 协议边界 | **remote 孪生重基线形态**——宿主孪生（remote_twin_hits）迁 RqProjector（D4=A）：命中矩形随 native 布局新值（孪生本义 = 镜像真实命中面，T-02 后 VM app 真实渲染即 native）；WS HitTable 仅镜像端 UX（权威命中在 app 侧）——语义不变、几何重录 | remote.rs remote_twin_hits；native_projector.rs hit_regions() |
 | P033-D3 | low | 度量口径 | **-q app 内存门载体口径**——≤10MB 门沿用为简单载体（003 = 8016KB 过门）参考线；027-file-manager -q private 20400KB（富 app 数据行，popover/图标/双栏面）——批量门口径随 M7-c app 批量化另裁 | p033 e2e 内存对照行；reports/assets/033/memory-comparison.txt |
 | P033-D4 | low | 在册红注记 | **covered_elements_within_target_set 红（PLAN-656 尾巴，非本计划引入）**——element 表登记 imagesurface=Covered 而 queue 臂 target_set 显式 not-yet（:171 注记），登记/能力表脱钩；stash 对照 base 同败实证；归 PLAN-656 表同步收口 | aura/element_coverage.rs :43；coverage.rs target_set |
+
+
+## P661 债务（canvas-graph-scene-slider，2026-09-19 执行登记）
+
+- **P661-D1 canvas 缩放/平移后置**：viewport 字段与交互回路未进 v1 契约
+  （078 终裁：cytoscape 对位首批子集 = 节点/边/标签/tap）。场景表绝对
+  坐标；上游重算坐标即重绘（状态驱动天然支持）。schema 描述已留扩展
+  注记；详规见 docs/specs/auto-lang/ui/design/canvas-scene.md 非目标节。
+- **P661-D2 edges/labels 命中上报后置**：v1 命中域 = nodes only
+  （tap 打开页语义）；onhit 契约面（id 载荷 + press 可达）设计为面向
+  全部图元，后续扩展为边命中需补 id 列（edges 表 v1 无 id）。
+- **P661-D3 fcose 力导近似后置（上游布局侧）**：布局归属裁定（R-3）
+  = 场景坐标由上游下发，VM/渲染端不自算布局；力导近似归 jade graph
+  store 侧后续计划（环形/网格 .at 侧循环生成已由 049 样板证明可行）。
+- **P661-D4 消费侧交接（jade/auto-down 后续计划，非本仓）**：
+  jade-garden graph_view 真渲染（布局 .at 侧生成→三表灌入→onhit 打开
+  页；VM twin 断言域从壳+过滤派生计数投影扩至真渲染面）；auto-down
+  component-gallery 第三单元转正；desktop 图谱页装配。上游依赖 =
+  PLAN-661 AC-01/02/05/06 全绿（已达成，2026-09-19）。
+- **P661-D5 图元对拍文本像素口径**：049 对拍实录 IoU 0.8677/RGB 42.95
+  （画布区 300×300 对齐）——缺口主因 = 标签文本跨端字体差异（既有
+  跨端边界，非本计划回归）；几何像素（节点/边/中心块）结构完全一致
+  （像素量差 0.8%，量比 ≈ DPR²）。后续样板收紧阈值时以几何像素子集
+  口径为准（canvas-scene.md 对拍口径节）。
+- **P661-D6 执行期裁量备案**：①T-01 修复落点 = engine SET_ELEM 三臂
+  （镜像 GET_ELEM 运行时臂）非计划 §5.1 草图的 codegen CALL_NAT 路由
+  ——实勘证伪「读臂走 native 路由」前提（读臂实走 GET_ELEM
+  ObjectData/GenericInstanceData 臂，078 复现对象为 GenericInstanceData
+  表示，CALL_NAT shim 仅吃 SpecializedHashMap 会静默漏写）；②T-05 MCP
+  canvas press = 消息同构直派（`event␟s␟id` 编码）非 pen 坐标合成
+  ——与真实 tap 产出消息逐位同构，零合成面。
+- **P661-D7 master 预存红发现（2026-09-19 本计划基线对跑实录，非 661 引入）**：
+  HEAD 72ab08941 基线实测——①`cargo tv`：`ui_gen::rust::tests::mouse_area_emits_
+  events_and_logical_extent` + `test_autodown_panel_heading_codegen` 2 红（a2r
+  发射断言，疑 660 系 rust/a2r 轨合入漂移）；②`cargo t iced`：4 红（lucide_icon_
+  coverage / external_config_poll / conditional_style_hover / p010_popover_ondismiss）；
+  ③`cargo t ui` 滤串 ~50-52 红（含上述+layout snap/osconfig real-TCP flaky 等，
+  全部 HEAD 同红在案）。修复归后续 L0/专项，非本计划范围。
