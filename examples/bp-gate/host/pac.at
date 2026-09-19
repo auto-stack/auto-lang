@@ -1,0 +1,21 @@
+// pac.at — bp-gate 宿主工程（PLAN-075 T-03，蓝图级双端 gate 首证）。
+//
+// L2 隔离面：消费 blueprints 包库的最小宿主——三单元（status-bar 骨架 /
+// row-list 骨架 / filetree 组合形态）同页固定高度堆叠（clip 截图基线稳定）。
+// vue 臂 = 沙箱内 auto build（gen-only + G-7 补件 + vue-tsc + vite）→ dist
+// serve → playwright；VM 臂 = 沙箱内 auto run -r vm boot → MCP state/snapshot
+// （F-1：子件子树不可见，断言走 root 投影 + 单元标记行）。
+//
+// ⚠ 本工程只在仓库外沙箱构建（gate.mjs 复制后执行）——`auto build` 会物化
+// deps/bps junction（Plan 529 worktree 红线），严禁在本仓内直接 build。
+name: "bp-gate-host"
+version: "0.1.0"
+description: "PLAN-075: blueprint-level dual-arm gate host (sandbox-built)"
+scene: "ui"
+render: "vue"
+title: "BP Gate Host"
+title_zh: "蓝图门宿主"
+
+dep bps {
+    path: "../../../blueprints"
+}

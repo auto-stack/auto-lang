@@ -1,0 +1,19 @@
+// PLAN-075 AC-02 行为锚（G-6）：dep 通道 bp reference 携带同文件模块 fn 的
+// vue 轨消费——ModuleFnDemo 的 SFC 须内联 `function count_badge`（同文件
+// fn 池重挂），否则 vue-tsc TS2304。
+use bplocal.feedback.module_fn_demo.reference.default: ModuleFnDemo
+
+widget App {
+    model {
+        var demoRows List = [
+            { id: "a", label: "alpha" },
+            { id: "b", label: "beta" },
+            { id: "c", label: "gamma" }
+        ]
+    }
+    view {
+        col (class: "w-80 border rounded-lg p-2") {
+            ModuleFnDemo (rows: .demoRows) {}
+        }
+    }
+}

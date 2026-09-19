@@ -1,0 +1,22 @@
+{
+  "name": "auto-lang-bp-gate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PLAN-075: blueprint-level dual-arm gate (vue: sandbox auto build + playwright; vm: MCP boot assertions)",
+  "scripts": {
+    "gate": "node scripts/gate.mjs",
+    "gate:vue": "node scripts/gate.mjs --arm vue",
+    "gate:vm": "node scripts/gate.mjs --arm vm",
+    "gate:update": "node scripts/gate.mjs --update-snapshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "typescript": "^5.3.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
