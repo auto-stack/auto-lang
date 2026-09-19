@@ -141,10 +141,19 @@ def main():
         else:
             print(f"[+] ordinary controller chain: probe={v1:.0f} (>0)")
 
-        # 3. managed controller 全链（10M 逻辑 extent）
-        press("m-to-end"); time.sleep(2.6); press("m-probe")
-        stm = get_state("mprobe")
-        vm_ = extract_float(stm, "mprobe")
+        # 3. managed controller 全链（10M 逻辑 extent）。managed wrapper 的
+        # 物化同步使 offset 多帧收敛（读回实证 360→180→…→9999776 族中间值，
+        # on_scroll 回声会把中间值短暂写进注册表投影）——单次读会撞上收敛
+        # 窗口（实测 1/8 概率读到 120），轮询直至稳定或超时。
+        press("m-to-end")
+        vm_ = None
+        for _ in range(6):
+            time.sleep(1.2)
+            press("m-probe")
+            stm = get_state("mprobe")
+            vm_ = extract_float(stm, "mprobe")
+            if vm_ is not None and vm_ >= 9_000_000:
+                break
         print(f"[*] mprobe after m-to-end: {stm[:160]}")
         if vm_ is None or vm_ < 9_000_000:
             fails.append(f"managed controller chain: mprobe={stm[:80]}")

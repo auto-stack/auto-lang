@@ -222,9 +222,10 @@ pub fn controller_snapshot(handle: &str) -> ControllerPaneSnapshot {
         .unwrap_or_default()
 }
 
-/// 读回通道的 extent-only 落库（F-4 终段）：动态重建会重置 widget 滚动
-/// offset——读回的 offset 是重置后的 0，不得覆写注册表（注册表 offset 由
-/// 写臂回填/on_scroll 回声/用户滚动维护；读回只补 viewport/content 基线）。
+/// 读回通道的 extent-only 落库（F-4 终段）：offset 语义单源纪律——注册表
+/// offset 由写臂回填/on_scroll 回声/用户滚动维护，读回只补 viewport/content
+/// 基线（读回 offset 与注册表同源同号已修正，v1 保留 extent-only 是
+/// 投影链已闭合 + 避免排空同帧的 pre-scroll 读值回写竞态，非读不准）。
 pub fn note_controller_extents(handle: &str, viewport: (f64, f64), content: (f64, f64)) {
     let mut reg = REGISTRY.lock().unwrap();
     if let Some(entry) = reg.panes.get_mut(handle) {

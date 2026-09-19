@@ -2433,9 +2433,10 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     let controller_widget_id = controller.map(|c| format!("scroll_ctl_{}", c.key()));
     if let (Some(c), Some(id)) = (controller, &controller_widget_id) {
         crate::ui::scroll::bind_controller(c.key(), id);
-        // F-4 终段：动态重建重置 widget offset——按 terminal/015 生产先例，
-        // 每次 build 经 Plan 043 写臂重发注册表 offset（同值去抖，重建后
-        // offset 归 0 ≠ 上次值 → 重入队 → 滚动位跨重建保持）。
+        // F-4 终段：写臂重发注册表 offset（terminal/015 生产先例）。offset 在
+        // 同构重建下由 iced Tree 状态保持（obs pane 无写臂跨重建保持滚动位，
+        // 截图实证）；重发是结构性重建/极端序列下的防御，同值去抖使其在
+        // 常规路径零开销。
         let snap = crate::ui::scroll::controller::controller_snapshot(c.key());
         if snap.viewport_w > 0.0 {
             note_scroll_offset(id, (snap.offset_x as f32, snap.offset_y as f32));
@@ -15524,8 +15525,10 @@ fn compare_pngs(
                     for (id, (ox, oy, vw, vh, cw, ch)) in map {
                         if std::env::var("P656_DEBUG").is_ok() { eprintln!("[P656-READ] id={id} vals={:?}", (ox, oy, vw, vh, cw, ch)); }
                         for handle in crate::ui::scroll::controller::handles_for_widget(&id) {
-                            // F-4 终段：extent-only——offset 由写臂/on_scroll 维护
-                            //（读回的 offset 是重建重置后的 0，覆写会清掉有效投影）。
+                            // F-4 终段：extent-only——offset 语义单源在注册表
+                            //（写臂回填/on_scroll 回声/用户滚动）；读回 offset
+                            // 同号修正后虽已可信，v1 不回写（排空同帧的
+                            // pre-scroll 读值会短暂覆盖命令值投影）。
                             crate::ui::scroll::controller::note_controller_extents(
                                 &handle,
                                 (vw as f64, vh as f64),
