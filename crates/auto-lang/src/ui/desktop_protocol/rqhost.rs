@@ -300,6 +300,12 @@ impl RqServe {
         self.stop.store(true, Ordering::Relaxed);
         let _ = transport::connect(wellknown, 500);
     }
+
+    /// 停机旗标已置位（P031-R3：末窗退出门的单测观测口——rq_update
+    /// 经 `iced::exit` 收尾前先置本旗标）。
+    pub fn stop_requested(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +326,8 @@ pub struct RqClient {
     pub window: Option<iced::window::Id>,
     /// 已合成帧数（观测/e2e 断言面）。
     pub frames: u64,
+    /// 最近帧 revision（前进时打观测行——输入驱动帧变的 e2e 断言锚点）。
+    pub last_revision: u64,
     /// 首帧观测行已打（e2e 断言锚点——[rqhost] first frame）。
     first_frame_observed: bool,
 }
@@ -344,6 +352,15 @@ pub enum RqEvent {
     Adopted { app_name: String, title: String, width: f32, height: f32 },
     /// 窗应回收（ExitRequest→ReclaimWindow 握手完成，BufferRelease 已回发）。
     Reclaimed { wid: u64 },
+}
+
+/// 帧版本观测（P031-R2 e2e 断言锚点）：revision 前进 = 客户端内容
+/// 变化（输入驱动帧变的宿主侧证据）；仅变化时打行——静态 app 零噪声。
+fn note_revision(client: &mut RqClient, revision: u64) {
+    if revision != client.last_revision {
+        eprintln!("[rqhost] revision `{}` {revision}", client.title);
+        client.last_revision = revision;
+    }
 }
 
 /// HostAction 落 RqClient（session.rs broker_apply_actions 同构，减会话
@@ -400,9 +417,10 @@ fn apply_actions(
                     Err(_) => continue,
                 }
             }
-            HostAction::ComposeFrame { surface, wid, frame_id, slot, payload, .. } => {
+            HostAction::ComposeFrame { surface, wid, frame_id, slot, revision, payload, .. } => {
                 if let Some(freed) = client.inner.surfaces.compose(surface, slot, payload) {
                     client.frames += 1;
+                    note_revision(client, revision);
                     to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
                         wid,
                         frame_id,
@@ -410,7 +428,7 @@ fn apply_actions(
                     }));
                 }
             }
-            HostAction::ComposeFrameShared { surface, wid, frame_id, slot, .. } => {
+            HostAction::ComposeFrameShared { surface, wid, frame_id, slot, revision, .. } => {
                 let ready = client
                     .inner
                     .shm
@@ -422,6 +440,7 @@ fn apply_actions(
                 if let Some(payload) = ready {
                     if let Some(freed) = client.inner.surfaces.compose(surface, slot, payload) {
                         client.frames += 1;
+                        note_revision(client, revision);
                         to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
                             wid,
                             frame_id,
@@ -484,6 +503,7 @@ pub fn adopt_one(
         height: 320.0,
         window: None,
         frames: 0,
+        last_revision: 0,
         first_frame_observed: false,
     };
     let deadline =
@@ -1467,6 +1487,97 @@ mod tests {
         serve.stop(&pipe);
     }
 
+    /// T-07/P031-R3：末窗退出门单测——rq_update 真行为驱动（WindowClosed
+    /// 消息），三负一正：双窗在册不退 / 单窗在册不退 / 曾有窗但有待定
+    /// 采纳不退 / 末窗且无待定且曾有窗 → 停机旗标置位（iced::exit 的
+    /// 可观测前身）。
+    #[test]
+    fn last_window_close_exits_daemon() {
+        let pipe = pid_pipe("lastwin");
+        let (serve, _claim) = start_serve(&pipe);
+
+        // 采纳双客户端到 Active 并手工挂窗。
+        let mut ends = Vec::new();
+        for name in ["alpha", "beta"] {
+            let (_, mut app_end) = adopt(&pipe, name, 2000).expect("adopt");
+            app_end.send(&hello(name, name)).unwrap();
+            ends.push(app_end);
+        }
+        let mut state = RqDaemon {
+            serve: Arc::clone(&serve),
+            claim: None,
+            wellknown: pipe.clone(),
+            ids: RqIds::default(),
+            clients: Vec::new(),
+            had_window: false,
+            opened: 0,
+            last_cursor: BTreeMap::new(),
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state.clients.len() < 2 {
+            let pending: Vec<_> = state.serve.pending.lock().unwrap().drain(..).collect();
+            for (name, end) in pending {
+                if let Some((client, _)) = adopt_one(name, end, &mut state.ids, 3000) {
+                    state.clients.push(client);
+                }
+            }
+            assert!(std::time::Instant::now() < deadline, "双客户端 5s 未落地");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let win_a = iced::window::Id::unique();
+        let win_b = iced::window::Id::unique();
+        state.clients[0].window = Some(win_a);
+        state.clients[1].window = Some(win_b);
+        // 手工挂窗绕过了 open_window_for——had_window 需同刻置位（真
+        // 路径由开窗臂维护）。
+        state.had_window = true;
+
+        // ① 双窗在册：关 A 不退。
+        let _ = rq_update(&mut state, RqMessage::WindowClosed { window: win_a });
+        assert!(!state.serve.stop_requested(), "双窗在册不退");
+        // ② 单窗在册：关 B 前不退（① 已闭 A）——此刻关 B = 末窗。
+        //    先注入待定采纳占位验证 ③：pending 非空 → 不退。
+        state.serve.pending.lock().unwrap().push({
+            // 真实在途采纳占位（adopt 已转连未 Hello——per-adoption 线程
+            // 交付形态；不发 Hello 即驻 pending）。
+            let (_, end) = adopt(&pipe, "gamma", 2000).expect("adopt gamma");
+            ("gamma".into(), end)
+        });
+        let _ = rq_update(&mut state, RqMessage::WindowClosed { window: win_b });
+        assert!(!state.serve.stop_requested(), "有待定采纳不退（关 B 暂缓退出）");
+        // ④ 待定清空 → 再无在册窗（A/B 均已 Closed）→ 下一轮关窗语义：
+        //    直接驱动门（再关一次任意已闭窗不触发——门看全局态，本腿
+        //    以清空 pending 后驱动一次 A（已闭窗）验证全局态判定）。
+        state.serve.pending.lock().unwrap().clear();
+        let _ = rq_update(&mut state, RqMessage::WindowClosed { window: win_a });
+        assert!(
+            state.serve.stop_requested(),
+            "无在册窗∧无待定∧曾有窗 → 停机旗标置位（末窗退出）"
+        );
+
+        // 负例：从未开过窗（boot 待命）——独立小现场。
+        let pipe2 = pid_pipe("lastwin2");
+        let (serve2, _claim2) = start_serve(&pipe2);
+        let mut state2 = RqDaemon {
+            serve: Arc::clone(&serve2),
+            claim: None,
+            wellknown: pipe2.clone(),
+            ids: RqIds::default(),
+            clients: Vec::new(),
+            had_window: false,
+            opened: 0,
+            last_cursor: BTreeMap::new(),
+        };
+        let ghost = iced::window::Id::unique();
+        let _ = rq_update(&mut state2, RqMessage::WindowClosed { window: ghost });
+        assert!(
+            !state2.serve.stop_requested(),
+            "曾有窗=false（boot 零窗待命）不退"
+        );
+        serve2.stop(&pipe2);
+        serve.stop(&pipe);
+    }
+
     /// T-05：策略档选择（I2 断言面）——Rqhost=None（exit-on-EOF）；
     /// Direct/Broker = 30s/50ms 既有默认不变。
     #[test]
@@ -1559,6 +1670,234 @@ mod tests {
         std::env::remove_var("AUTO_VM_TITLE");
         std::env::remove_var("AUTO_VM_WINDOW");
         serve.stop(&pipe);
+    }
+
+    /// P031-R2/AC-01·02：vm 键入闭环（集成承载——e2e 真机合成输入在
+    /// ToDesk 输入钩子类环境不生效，native_dock_e2e T4 同款环境事实）：
+    /// 真管道 ×真 003-converter 源 ×真 ClientPump ×rq_update 输入臂
+    ///（消息层臂 = listen_with 事件到达后的同一落点）——点击聚焦 +
+    /// 键入 "100" → 客户端重排 → 宿主合成帧文本 212（p025 同级语义
+    /// 证据）；hello 双客户端零串扰（帧文本不含 212 且无新 revision）。
+    #[test]
+    fn vm_typing_loop_over_pipe() {
+        use crate::ui::desktop_protocol::client_runtime::{AppProjector, ClientConfig, ClientPump};
+        use crate::ui::desktop_protocol::endpoint::FrameSource;
+        use crate::ui::desktop_protocol::message::DrawOp;
+
+        let conv_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/003-converter/src/front/app.at"
+        );
+        let hello_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/001-helloworld/src/front/app.at"
+        );
+        let conv_src = match std::fs::read_to_string(conv_path) {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("[p031] skip: 003-converter 载体缺席");
+                return;
+            }
+        };
+        let hello_src = std::fs::read_to_string(hello_path).expect("read hello");
+
+        let pipe = pid_pipe("typing");
+        let (serve, _claim) = start_serve(&pipe);
+
+        // 客户端线程 ×2（真 ClientPump，exit-on-EOF 档）。
+        let cp = pipe.clone();
+        let conv_app = std::thread::spawn(move || {
+            let (_, end) = adopt(&cp, "App", 2000).expect("adopt conv");
+            let comp = crate::build_dynamic_component(&conv_src, None).expect("build conv");
+            let proj = AppProjector::new(comp, 480.0, 320.0);
+            let (exit, _) = ClientPump::new(
+                end,
+                proj,
+                ClientConfig {
+                    app_name: "App".into(),
+                    title: "003".into(),
+                    width: 480.0,
+                    height: 320.0,
+                },
+                None,
+            )
+            .run();
+            exit
+        });
+        let hp = pipe.clone();
+        let hello_app = std::thread::spawn(move || {
+            let (_, end) = adopt(&hp, "App", 2000).expect("adopt hello");
+            let comp = crate::build_dynamic_component(&hello_src, None).expect("build hello");
+            let proj = AppProjector::new(comp, 480.0, 320.0);
+            let (exit, _) = ClientPump::new(
+                end,
+                proj,
+                ClientConfig {
+                    app_name: "App".into(),
+                    title: "hello".into(),
+                    width: 480.0,
+                    height: 320.0,
+                },
+                None,
+            )
+            .run();
+            exit
+        });
+
+        // 宿主：采纳双端 + 挂窗。
+        let mut state = RqDaemon {
+            serve: Arc::clone(&serve),
+            claim: None,
+            wellknown: pipe.clone(),
+            ids: RqIds::default(),
+            clients: Vec::new(),
+            had_window: false,
+            opened: 0,
+            last_cursor: BTreeMap::new(),
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state.clients.len() < 2 {
+            let pending: Vec<_> = state.serve.pending.lock().unwrap().drain(..).collect();
+            for (name, end) in pending {
+                if let Some((client, _)) = adopt_one(name, end, &mut state.ids, 3000) {
+                    state.clients.push(client);
+                }
+            }
+            assert!(std::time::Instant::now() < deadline, "双客户端 5s 未落地");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        // 客户端顺序 = pending 交付序（conv 先 adopt）。以标题区分。
+        let idx_of = |s: &RqDaemon, title: &str| {
+            s.clients
+                .iter()
+                .position(|c| c.title == title)
+                .unwrap_or_else(|| panic!("客户端 `{title}` 不在: {:?}", s.clients.iter().map(|c| &c.title).collect::<Vec<_>>()))
+        };
+        let conv_idx = idx_of(&state, "003");
+        let hello_idx = idx_of(&state, "hello");
+        let win_conv = iced::window::Id::unique();
+        let win_hello = iced::window::Id::unique();
+        state.clients[conv_idx].window = Some(win_conv);
+        state.clients[hello_idx].window = Some(win_hello);
+        state.had_window = true;
+
+        // 输入盒几何：宿主侧现算（同投影器同尺寸——客户端首帧同源）。
+        // conv_src 已 move 进客户端线程——重读文件。
+        let geom_src = std::fs::read_to_string(conv_path).expect("re-read conv");
+        let comp = crate::build_dynamic_component(&geom_src, None).expect("build for geom");
+        let mut probe = AppProjector::new(comp, 480.0, 320.0);
+        let frame0 = probe.render_frame();
+        let (bx, by) = frame0
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Quad { rect, .. } if rect.w == 320.0 && rect.h == 32.0 => {
+                    Some((rect.x, rect.y))
+                }
+                _ => None,
+            })
+            .expect("celsius 输入盒");
+
+        fn texts_of(list: &DrawList) -> Vec<String> {
+            list.ops
+                .iter()
+                .filter_map(|op| match op {
+                    crate::ui::desktop_protocol::message::DrawOp::Text { text, .. }
+                    | crate::ui::desktop_protocol::message::DrawOp::TextStyled { text, .. } => {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+        // 双端首帧落地后再取样（hello_before 早于其首帧 = 空表 vs 后值
+        // 假阳性——首拍即败的现场）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while composed(&state.clients[hello_idx]).is_none()
+            || composed(&state.clients[conv_idx]).is_none()
+        {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            assert!(
+                std::time::Instant::now() < deadline,
+                "双端首帧 5s 未齐"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        let hello_before: Vec<String> = composed(&state.clients[hello_idx])
+            .map(texts_of)
+            .unwrap_or_default();
+
+        // 键入序（rq_update 输入臂 = listen_with 事件到达后的同一落点）：
+        // 光标 → 点击聚焦（宿主坐标 = 表面坐标 + 输入盒中心）→ "100"。
+        let (cx, cy) = (bx + 160.0, by + 16.0);
+        let _ = rq_update(&mut state, RqMessage::CursorMoved { window: win_conv, x: cx, y: cy });
+        let _ = rq_update(&mut state, RqMessage::PointerPressed { window: win_conv, button: iced::mouse::Button::Left });
+        let _ = rq_update(&mut state, RqMessage::PointerReleased { window: win_conv, button: iced::mouse::Button::Left });
+        for ch in "100".chars() {
+            let _ = rq_update(
+                &mut state,
+                RqMessage::Live {
+                    window: win_conv,
+                    input: crate::ui::session::LiveInput::Chars { text: ch.to_string() },
+                },
+            );
+            // Tick 泵一轮（输入 → 客户端重排 → 新帧回宿主）。
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
+
+        // converter 帧文本 212（键入→换算联动——p025 同级语义）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+        loop {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            let hit = composed(&state.clients[conv_idx])
+                .map(|l| texts_of(l).iter().any(|t| t.starts_with("212")))
+                .unwrap_or(false);
+            if hit {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "003 键入→212 帧文本超时；当前帧: {:?}",
+                composed(&state.clients[conv_idx]).map(texts_of)
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // hello 零串扰：帧文本不变 + revision 观测行零前进（client.last_revision
+        // 直读——观测行打点同源）。
+        let _ = rq_update(&mut state, RqMessage::Tick);
+        let hello_after: Vec<String> = composed(&state.clients[hello_idx])
+            .map(texts_of)
+            .unwrap_or_default();
+        assert_eq!(hello_before, hello_after, "hello 帧文本不变（不串扰）");
+        let hello_rev = state.clients[hello_idx].last_revision;
+        let _ = rq_update(&mut state, RqMessage::Tick);
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let _ = rq_update(&mut state, RqMessage::Tick);
+        assert_eq!(
+            state.clients[hello_idx].last_revision, hello_rev,
+            "hello revision 零前进（输入零串扰）"
+        );
+
+        // 收尾：Close 双端 + Tick 泵到收敛（join 前握手必须走完——
+        // 单发 Tick 不够会挂 join）。
+        for idx in [conv_idx, hello_idx] {
+            if let Ok(close) = state.clients[idx].inner.endpoint.close() {
+                let _ = state.clients[idx].inner.end.send(&close);
+            }
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !conv_app.is_finished() || !hello_app.is_finished() {
+            let _ = rq_update(&mut state, RqMessage::Tick);
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Close 握手 5s 未收敛"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        serve.stop(&pipe);
+        let _ = conv_app.join();
+        let _ = hello_app.join();
     }
 
     /// T-07 回归钉：超大帧（20KB 文本，超 16KiB shm 槽）经管道内联回退
