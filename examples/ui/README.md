@@ -100,7 +100,7 @@ opt-in 语义：新示例不加字段即不上架；外部自含根（os-config 
 | 011 | calculator | 四则计算器 | — | ✓ | 🔀 升级拆出（Plan 401） |
 | 012 | clock（**Clock**） | 全功能时钟五 tab：传统手表 ⌚ SVG 表盘+数显/世界时钟（8 城时差）/闹钟（storage 5 槽持久化）/秒表（真走表 Tick 250ms+计圈高亮）/倒计时（快捷预设+环形通知）——Plan 644 现代时钟重塑，id 升格 012-clock | — | ✓ | ✅ [Plan 644](../../docs/plans/INDEX.md)（origin os-003/Plan 554；desktop_mcp） |
 | 013 | todo | TodoMVC 完整实现 | — | ✓ | ✅ 有 MCP 测试 |
-| 014 | weather | 天气仪表盘 | — | ✓ | 基础 |
+| 014 | weather | 天气仪表盘（10 城/主题/结构化预报） | — | ✓ | 基础→升级 |
 | 015 | notes | 两栏笔记（真实应用形态） | — | ✓ | ✅ Plan 354 升级 |
 | 016 | calendar | 月历 + 事件高亮 | — | ✓ | 基础 |
 | 017 | chat | 微信风即时聊天 | — | ✓ | ✅ 有 playwright/ATD 验收 |
@@ -189,9 +189,10 @@ Basic/Premium/Enterprise 三档 + 月付/年付 `switch` 开关切换价格，
 （all/active/completed）、双击编辑、清除已完成。是 `tests/desktop_mcp.py`
 MCP 桌面测试惯例（"013 惯例"）的发源地。
 
-**[014-weather](014-weather/) — 天气仪表盘**
-当前天气卡（渐变背景）+ daily/hourly 标签页切换 + 湿度风速信息，
-`divider` 分隔与 tab 条件渲染。
+**[014-weather](014-weather/) — 天气仪表盘** ✅ [Plan 660](../../docs/plans/660-014-weather-ui-refresh.md) 刷新
+中国 10 城 mock 天气：条件感知 hero、指标网格（湿度/风/AQI…）、24h 横滑
+与 5 日温度区间条、深浅主题切换（`dark_mode` 契约）+ 城市 pill 芯片。
+数据为演示样本，不接真实气象 API。
 
 **[015-notes](015-notes/) — 两栏笔记** ✅ [Plan 354](../../docs/plans/archive/354-015-notes-real-app.md) 升级
 树状文件夹/笔记导航 + AutoDown（Tiptap）所见即所得编辑器 + 后端 CRUD

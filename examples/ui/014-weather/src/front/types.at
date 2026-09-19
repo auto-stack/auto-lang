@@ -1,0 +1,24 @@
+// types.at — 014-weather 预报条目类型（PLAN-660）。
+// 注意：VM view 字段访问更稳妥的是 Obj 字面量列表（Plan 323 惯例，
+// 见 016-calendar calendar_util 注记）；这些 type 主要用于文档与
+// Vue/双端可读性，实际列表字段在 weather_data 里以 Obj 构造。
+
+type CityMeta {
+    id str
+    zh str
+}
+
+type HourPoint {
+    time str
+    icon str
+    temp str
+    now bool
+}
+
+type DayPoint {
+    day str
+    icon str
+    cond str
+    tmin str
+    tmax str
+}

@@ -1,81 +1,383 @@
-// PLAN-637 B2 Phase B 映射（2026-09-17）：bg-blue-500/text-white→bg-primary/
-// text-primary-foreground；蓝卡上浅字 text-blue-100/white/blue-200→
-// text-primary-foreground（/80、/70 降档）；gray-800/700→foreground、gray-400→
-// muted-foreground；tab_idle→secondary 族；页底 bg-gray-50→bg-background。
-// 豁免：天气卡 from-blue-400/to-blue-600 渐变（装饰性，r2 口径）。
+// app.at — 014-weather 天气仪表盘（PLAN-660 UI 刷新）
+//
+// 设计锚点：Apple Weather × 墨迹——居中移动密度卡片、条件感知 hero、
+// 横滑小时条、五日温度区间条。
+//
+// 主题契约（Plan 458 / Design 19/29）：根组件 dark_mode / accent_color
+// 状态变量名为双端运行时契约，禁止改名。pac.at 不写死 theme，跟随宿主。
+//
+// 城市选择：不用 aura select（selectitem iced:none），用 pill 芯片按钮，
+// 双端 button 可用。数据为内置 mock，不接真实气象 API。
 
-// PLAN-637 B2（A+B 合并）：配方体直接落 Phase B 定案值。
-style tab_active = "px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground"   // 原 bg-blue-500/text-white
-style tab_idle = "px-4 py-2 rounded-lg text-sm font-medium bg-secondary text-secondary-foreground"   // 原 bg-gray-200/text-gray-600
-style panel_title = "text-sm font-semibold text-muted-foreground uppercase mt-2"   // 原 gray-400
-style panel_body = "text-foreground py-2"   // 原 gray-700
+use weather_data: name_for, condition_for, cond_zh_for, icon_for, temp_for, feels_for, humidity_for, wind_for, uv_for, aqi_for, aqi_level_for, pressure_for, visibility_for, hourly_for, daily_for, hero_grad, aqi_badge_style
+use stylekit.styles: hint_text
+
+style page = "min-h-screen bg-background text-foreground"
+style shell = "w-full max-w-md mx-auto p-4 gap-4"
+style city_pill_on = "px-3 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground shadow-sm shrink-0"
+style city_pill_off = "px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shrink-0 transition-colors"
+style icon_btn = "w-9 h-9 items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+style section_title = "text-sm font-semibold text-foreground"
+style metric_card = "bg-card border border-border rounded-2xl p-3 gap-1"
+style metric_card_mid = "bg-card border border-border rounded-2xl p-3 gap-1 justify-center"
+style metric_label = "text-[10px] text-muted-foreground uppercase tracking-wider"
+style metric_value = "text-sm font-semibold text-foreground"
+style hour_card_now = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl bg-primary/15 border border-primary/30"
+style hour_card = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl border border-transparent"
+style day_row = "w-full items-center gap-2 py-2.5 px-1"
+style refresh_busy = "h-8 px-3 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
+style refresh_idle = "h-8 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
 
 widget App {
-    msg { TabDaily, TabHourly, Refresh }
+    msg {
+        SelectCity(str),
+        Refresh,
+        ToggleTheme,
+        SetTheme(str),
+        SetAccent(str),
+        Init
+    }
 
     model {
-        var tab str = "daily"
-        var city str = "Beijing"
+        // 双端主题契约变量名（勿改）
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+
+        var city_id str = "beijing"
+        var city_zh str = "北京"
+        var condition str = "partly"
+        var cond_zh str = "多云"
+        var icon str = "⛅"
         var temp str = "23°"
-        var condition str = "Partly Cloudy"
-        var info str = "Humidity: 65% | Wind: 12 km/h"
-        var forecast str = "Mon 18~25°  Tue 20~28°  Wed 16~22°  Thu 17~24°  Fri 19~27°"
-        var hourly str = "14:00 24°  15:00 25°  16:00 24°  17:00 22°  18:00 20°"
+        var feels str = "25°"
+        var humidity str = "65%"
+        var wind str = "12 km/h"
+        var uv str = "中等"
+        var aqi str = "68"
+        var aqi_level str = "良"
+        var pressure str = "1012 hPa"
+        var visibility str = "12 km"
+        var updated_at str = "14:30"
+        var refreshing bool = false
+        var hero_style str = "bg-gradient-to-br from-sky-400 to-blue-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+        var aqi_badge str = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium"
+
+        var cities = [
+            { id: "beijing", zh: "北京" },
+            { id: "shanghai", zh: "上海" },
+            { id: "guangzhou", zh: "广州" },
+            { id: "shenzhen", zh: "深圳" },
+            { id: "hangzhou", zh: "杭州" },
+            { id: "chengdu", zh: "成都" },
+            { id: "xian", zh: "西安" },
+            { id: "wuhan", zh: "武汉" },
+            { id: "harbin", zh: "哈尔滨" },
+            { id: "sanya", zh: "三亚" }
+        ]
+
+        // 预报列表（Obj 字面量；字段在 view 以 h.time / d.day 访问）
+        var hourly = [
+            { time: "现在", icon: "⛅", temp: "23°", now: true },
+            { time: "15:00", icon: "⛅", temp: "24°", now: false },
+            { time: "16:00", icon: "⛅", temp: "24°", now: false },
+            { time: "17:00", icon: "☁️", temp: "23°", now: false },
+            { time: "18:00", icon: "☁️", temp: "22°", now: false },
+            { time: "19:00", icon: "☁️", temp: "21°", now: false },
+            { time: "20:00", icon: "☁️", temp: "20°", now: false },
+            { time: "21:00", icon: "⛅", temp: "20°", now: false }
+        ]
+        var daily = [
+            { day: "今天", icon: "⛅", cond: "多云", tmin: "18°", tmax: "25°" },
+            { day: "周二", icon: "☀️", cond: "晴", tmin: "20°", tmax: "28°" },
+            { day: "周三", icon: "☁️", cond: "阴", tmin: "16°", tmax: "22°" },
+            { day: "周四", icon: "🌧️", cond: "小雨", tmin: "17°", tmax: "24°" },
+            { day: "周五", icon: "⛅", cond: "多云", tmin: "19°", tmax: "27°" }
+        ]
     }
 
     view {
-        center {
+        col {
+            style: page
             col {
+                style: shell
+
+                // ── Header ──
                 row {
-                    text .city { style: "text-2xl font-bold text-foreground" }
-                    button "Refresh" { onclick: .Refresh, style: "ml-auto px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm" }
-                    style: "w-full items-center"
+                    style: "w-full items-center gap-2"
+                    col {
+                        style: "gap-0.5"
+                        text .city_zh { style: "text-2xl font-bold text-foreground tracking-tight" }
+                        text f"更新于 ${.updated_at}" { style: hint_text }
+                    }
+                    row {
+                        style: "ml-auto items-center gap-2"
+                        button {
+                            onclick: .Refresh
+                            style: if .refreshing { refresh_busy } else { refresh_idle }
+                            if .refreshing {
+                                text "刷新中…" {}
+                            } else {
+                                text "刷新" {}
+                            }
+                        }
+                        button {
+                            onclick: .ToggleTheme
+                            style: icon_btn
+                            if .dark_mode {
+                                text "☀️" { style: "text-sm" }
+                            } else {
+                                text "🌙" { style: "text-sm" }
+                            }
+                        }
+                    }
                 }
+
+                // ── 城市 pill 横滑 ──
+                row {
+                    style: "w-full gap-2 overflow-x-auto pb-1"
+                    for c in .cities {
+                        if c.id == .city_id {
+                            button c.zh {
+                                onclick: .SelectCity(c.id)
+                                style: city_pill_on
+                            }
+                        } else {
+                            button c.zh {
+                                onclick: .SelectCity(c.id)
+                                style: city_pill_off
+                            }
+                        }
+                    }
+                }
+
+                // ── Hero 实况卡（条件装饰渐变）──
                 col {
-                    text .condition { style: "text-lg text-primary-foreground/80" }
-                    text .temp { style: "text-8xl font-thin text-primary-foreground" }
-                    text .info { style: "text-sm text-primary-foreground/70" }
-                    style: "bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-6 mt-4 items-center gap-2 py-6"
+                    style: .hero_style
+                    text .icon { style: "text-5xl" }
+                    text .cond_zh { style: "text-base font-medium text-primary-foreground/90" }
+                    text .temp { style: "text-7xl font-light text-primary-foreground leading-none tracking-tight" }
+                    row {
+                        style: "items-center gap-3 text-primary-foreground/80 text-xs mt-1"
+                        text f"体感 ${.feels}" {}
+                        text f"湿度 ${.humidity}" {}
+                        text f"风 ${.wind}" {}
+                    }
                 }
-                row {
-                    if .tab == "daily" {
-                        button "Daily" { onclick: .TabDaily, style: tab_active }
+
+                // ── 指标网格 ──
+                col {
+                    style: "w-full gap-2"
+                    text "当前详情" { style: section_title }
+                    row {
+                        style: "w-full gap-2"
+                        col {
+                            style: metric_card
+                            text "湿度" { style: metric_label }
+                            text .humidity { style: metric_value }
+                        }
+                        col {
+                            style: metric_card
+                            text "风速" { style: metric_label }
+                            text .wind { style: metric_value }
+                        }
+                        col {
+                            style: metric_card
+                            text "体感" { style: metric_label }
+                            text .feels { style: metric_value }
+                        }
                     }
-                    if .tab != "daily" {
-                        button "Daily" { onclick: .TabDaily, style: tab_idle }
+                    row {
+                        style: "w-full gap-2"
+                        col {
+                            style: metric_card
+                            text "紫外线" { style: metric_label }
+                            text .uv { style: metric_value }
+                        }
+                        col {
+                            style: metric_card
+                            row {
+                                style: "items-center gap-1"
+                                text "AQI" { style: metric_label }
+                                text .aqi_level { style: .aqi_badge }
+                            }
+                            text .aqi { style: metric_value }
+                        }
+                        col {
+                            style: metric_card
+                            text "能见度" { style: metric_label }
+                            text .visibility { style: metric_value }
+                        }
                     }
-                    if .tab == "hourly" {
-                        button "Hourly" { onclick: .TabHourly, style: tab_active }
+                    row {
+                        style: "w-full gap-2"
+                        col {
+                            style: metric_card
+                            text "气压" { style: metric_label }
+                            text .pressure { style: metric_value }
+                        }
+                        col {
+                            style: metric_card
+                            text "更新" { style: metric_label }
+                            text .updated_at { style: metric_value }
+                        }
+                        col {
+                            style: metric_card_mid
+                            text "数据" { style: metric_label }
+                            text "演示样本" { style: "text-xs text-muted-foreground" }
+                        }
                     }
-                    if .tab != "hourly" {
-                        button "Hourly" { onclick: .TabHourly, style: tab_idle }
-                    }
-                    style: "gap-2 mt-6"
                 }
-                if .tab == "daily" {
+
+                // ── 24 小时预报 ──
+                col {
+                    style: "w-full gap-2"
+                    text "24小时预报" { style: section_title }
                     col {
-                        text "5-Day Forecast" { style: panel_title }
-                        divider {}
-                        text .forecast { style: panel_body }
-                        style: "w-full"
+                        style: "bg-card border border-border rounded-2xl p-3"
+                        row {
+                            style: "w-full gap-2 overflow-x-auto"
+                            for h in .hourly {
+                                if h.now {
+                                    col {
+                                        style: hour_card_now
+                                        text h.time { style: "text-[10px] font-semibold text-primary" }
+                                        text h.icon { style: "text-lg" }
+                                        text h.temp { style: "text-sm font-bold text-primary" }
+                                    }
+                                } else {
+                                    col {
+                                        style: hour_card
+                                        text h.time { style: "text-[10px] text-muted-foreground" }
+                                        text h.icon { style: "text-lg" }
+                                        text h.temp { style: "text-sm font-semibold text-foreground" }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                if .tab == "hourly" {
+
+                // ── 5 日预报 ──
+                col {
+                    style: "w-full gap-2"
+                    text "5日预报" { style: section_title }
                     col {
-                        text "Today" { style: panel_title }
-                        divider {}
-                        text .hourly { style: panel_body }
-                        style: "w-full"
+                        style: "bg-card border border-border rounded-2xl px-3 py-1"
+                        for d in .daily {
+                            row {
+                                style: day_row
+                                text d.day { style: "w-10 text-sm font-medium text-foreground shrink-0" }
+                                text d.icon { style: "w-7 text-lg text-center shrink-0" }
+                                text d.cond { style: "w-14 text-xs text-muted-foreground shrink-0" }
+                                text d.tmin { style: "text-xs text-muted-foreground w-8 text-right shrink-0" }
+                                col {
+                                    style: "flex-1 h-1.5 mx-2 rounded-full bg-gradient-to-r from-sky-400 to-amber-400 opacity-80"
+                                }
+                                text d.tmax { style: "text-xs font-semibold text-foreground w-8 shrink-0" }
+                            }
+                        }
                     }
                 }
-                style: "w-full max-w-md p-6 bg-background min-h-screen"
+
+                // ── 页脚 ──
+                text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70 pt-1 pb-2" }
+
+                style: shell
             }
+            style: page
         }
     }
 
     on {
-        .TabDaily -> { .tab = "daily" }
-        .TabHourly -> { .tab = "hourly" }
-        .Refresh -> { }
+        .Init -> {
+            .city_id = "beijing"
+            .city_zh = name_for("beijing")
+            .condition = condition_for("beijing")
+            .cond_zh = cond_zh_for("beijing")
+            .icon = icon_for("beijing")
+            .temp = temp_for("beijing")
+            .feels = feels_for("beijing")
+            .humidity = humidity_for("beijing")
+            .wind = wind_for("beijing")
+            .uv = uv_for("beijing")
+            .aqi = aqi_for("beijing")
+            .aqi_level = aqi_level_for("beijing")
+            .pressure = pressure_for("beijing")
+            .visibility = visibility_for("beijing")
+            .hero_style = hero_grad("beijing")
+            .aqi_badge = aqi_badge_style(aqi_level_for("beijing"))
+            .hourly = hourly_for("beijing")
+            .daily = daily_for("beijing")
+            .updated_at = "14:30"
+        }
+
+        .SelectCity(id) -> {
+            .city_id = id
+            .city_zh = name_for(id)
+            .condition = condition_for(id)
+            .cond_zh = cond_zh_for(id)
+            .icon = icon_for(id)
+            .temp = temp_for(id)
+            .feels = feels_for(id)
+            .humidity = humidity_for(id)
+            .wind = wind_for(id)
+            .uv = uv_for(id)
+            .aqi = aqi_for(id)
+            .aqi_level = aqi_level_for(id)
+            .pressure = pressure_for(id)
+            .visibility = visibility_for(id)
+            .hero_style = hero_grad(condition_for(id))
+            .aqi_badge = aqi_badge_style(aqi_level_for(id))
+            .hourly = hourly_for(id)
+            .daily = daily_for(id)
+        }
+
+        .Refresh -> {
+            .refreshing = true
+            var id = .city_id
+            .city_zh = name_for(id)
+            .condition = condition_for(id)
+            .cond_zh = cond_zh_for(id)
+            .icon = icon_for(id)
+            .temp = temp_for(id)
+            .feels = feels_for(id)
+            .humidity = humidity_for(id)
+            .wind = wind_for(id)
+            .uv = uv_for(id)
+            .aqi = aqi_for(id)
+            .aqi_level = aqi_level_for(id)
+            .pressure = pressure_for(id)
+            .visibility = visibility_for(id)
+            .hero_style = hero_grad(condition_for(id))
+            .aqi_badge = aqi_badge_style(aqi_level_for(id))
+            .hourly = hourly_for(id)
+            .daily = daily_for(id)
+            if .updated_at == "14:30" {
+                .updated_at = "14:31"
+            } else if .updated_at == "14:31" {
+                .updated_at = "14:32"
+            } else {
+                .updated_at = "14:30"
+            }
+            .refreshing = false
+        }
+
+        .ToggleTheme -> {
+            .dark_mode = !.dark_mode
+        }
+
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+
+        .SetAccent(name) -> {
+            .accent_color = name
+        }
     }
 }
+

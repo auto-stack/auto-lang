@@ -1,0 +1,402 @@
+// weather_data.at — 中国主要城市天气 mock 目录（PLAN-660）。
+// 纯 Auto 函数，Vue/VM 双端可消费。数据为演示用静态样本，不接真实 API。
+
+pub fn city_ids() []str {
+    return ["beijing", "shanghai", "guangzhou", "shenzhen", "hangzhou",
+            "chengdu", "xian", "wuhan", "harbin", "sanya"]
+}
+
+pub fn city_names() []str {
+    return ["北京", "上海", "广州", "深圳", "杭州",
+            "成都", "西安", "武汉", "哈尔滨", "三亚"]
+}
+
+pub fn name_for(id str) str {
+    if id == "beijing" { return "北京" }
+    if id == "shanghai" { return "上海" }
+    if id == "guangzhou" { return "广州" }
+    if id == "shenzhen" { return "深圳" }
+    if id == "hangzhou" { return "杭州" }
+    if id == "chengdu" { return "成都" }
+    if id == "xian" { return "西安" }
+    if id == "wuhan" { return "武汉" }
+    if id == "harbin" { return "哈尔滨" }
+    if id == "sanya" { return "三亚" }
+    return "北京"
+}
+
+pub fn condition_for(id str) str {
+    if id == "shanghai" || id == "hangzhou" { return "rain" }
+    if id == "shenzhen" { return "storm" }
+    if id == "guangzhou" || id == "xian" || id == "sanya" { return "sunny" }
+    if id == "chengdu" { return "fog" }
+    if id == "harbin" { return "snow" }
+    return "partly"
+}
+
+pub fn cond_zh_for(id str) str {
+    if id == "shanghai" { return "小雨" }
+    if id == "hangzhou" { return "小雨" }
+    if id == "shenzhen" { return "雷阵雨" }
+    if id == "guangzhou" || id == "sanya" { return "晴" }
+    if id == "xian" { return "晴" }
+    if id == "chengdu" { return "雾" }
+    if id == "harbin" { return "小雪" }
+    if id == "wuhan" { return "多云" }
+    return "多云"
+}
+
+pub fn icon_for(id str) str {
+    if id == "shanghai" || id == "hangzhou" { return "🌧️" }
+    if id == "shenzhen" { return "⛈️" }
+    if id == "guangzhou" || id == "xian" || id == "sanya" { return "☀️" }
+    if id == "chengdu" { return "🌫️" }
+    if id == "harbin" { return "❄️" }
+    return "⛅"
+}
+
+pub fn temp_for(id str) str {
+    if id == "shanghai" { return "21°" }
+    if id == "guangzhou" { return "30°" }
+    if id == "shenzhen" { return "28°" }
+    if id == "hangzhou" { return "22°" }
+    if id == "chengdu" { return "20°" }
+    if id == "xian" { return "25°" }
+    if id == "wuhan" { return "27°" }
+    if id == "harbin" { return "-2°" }
+    if id == "sanya" { return "31°" }
+    return "23°"
+}
+
+pub fn feels_for(id str) str {
+    if id == "shanghai" { return "22°" }
+    if id == "guangzhou" { return "33°" }
+    if id == "shenzhen" { return "31°" }
+    if id == "hangzhou" { return "23°" }
+    if id == "chengdu" { return "21°" }
+    if id == "xian" { return "24°" }
+    if id == "wuhan" { return "29°" }
+    if id == "harbin" { return "-6°" }
+    if id == "sanya" { return "34°" }
+    return "25°"
+}
+
+pub fn humidity_for(id str) str {
+    if id == "shanghai" { return "82%" }
+    if id == "guangzhou" { return "70%" }
+    if id == "shenzhen" { return "78%" }
+    if id == "hangzhou" { return "74%" }
+    if id == "chengdu" { return "85%" }
+    if id == "xian" { return "48%" }
+    if id == "wuhan" { return "66%" }
+    if id == "harbin" { return "80%" }
+    if id == "sanya" { return "72%" }
+    return "65%"
+}
+
+pub fn wind_for(id str) str {
+    if id == "shanghai" { return "15 km/h" }
+    if id == "guangzhou" { return "8 km/h" }
+    if id == "shenzhen" { return "18 km/h" }
+    if id == "hangzhou" { return "10 km/h" }
+    if id == "chengdu" { return "6 km/h" }
+    if id == "xian" { return "14 km/h" }
+    if id == "wuhan" { return "11 km/h" }
+    if id == "harbin" { return "20 km/h" }
+    if id == "sanya" { return "16 km/h" }
+    return "12 km/h"
+}
+
+pub fn uv_for(id str) str {
+    if id == "guangzhou" || id == "sanya" || id == "xian" { return "很强" }
+    if id == "harbin" || id == "chengdu" { return "弱" }
+    return "中等"
+}
+
+pub fn aqi_for(id str) str {
+    if id == "shanghai" { return "55" }
+    if id == "guangzhou" { return "42" }
+    if id == "shenzhen" { return "35" }
+    if id == "hangzhou" { return "60" }
+    if id == "chengdu" { return "95" }
+    if id == "xian" { return "78" }
+    if id == "wuhan" { return "72" }
+    if id == "harbin" { return "50" }
+    if id == "sanya" { return "28" }
+    return "68"
+}
+
+pub fn aqi_level_for(id str) str {
+    if id == "guangzhou" || id == "shenzhen" || id == "sanya" { return "优" }
+    if id == "chengdu" { return "轻度污染" }
+    return "良"
+}
+
+pub fn pressure_for(id str) str {
+    if id == "harbin" { return "1028 hPa" }
+    if id == "sanya" { return "1006 hPa" }
+    if id == "chengdu" { return "1008 hPa" }
+    return "1012 hPa"
+}
+
+pub fn visibility_for(id str) str {
+    if id == "chengdu" { return "3 km" }
+    if id == "shanghai" || id == "hangzhou" { return "8 km" }
+    if id == "harbin" { return "5 km" }
+    return "12 km"
+}
+
+pub fn updated_at_for(id str) str {
+    return "14:30"
+}
+
+// 小时预报：每城 8 点，首点为「现在」
+pub fn hourly_for(id str) List {
+    if id == "shanghai" {
+        return [
+            { time: "现在", icon: "🌧️", temp: "21°", now: true },
+            { time: "15:00", icon: "🌧️", temp: "21°", now: false },
+            { time: "16:00", icon: "🌧️", temp: "20°", now: false },
+            { time: "17:00", icon: "☁️", temp: "20°", now: false },
+            { time: "18:00", icon: "☁️", temp: "19°", now: false },
+            { time: "19:00", icon: "🌧️", temp: "19°", now: false },
+            { time: "20:00", icon: "🌧️", temp: "18°", now: false },
+            { time: "21:00", icon: "☁️", temp: "18°", now: false }
+        ]
+    }
+    if id == "guangzhou" {
+        return [
+            { time: "现在", icon: "☀️", temp: "30°", now: true },
+            { time: "15:00", icon: "☀️", temp: "31°", now: false },
+            { time: "16:00", icon: "☀️", temp: "31°", now: false },
+            { time: "17:00", icon: "⛅", temp: "30°", now: false },
+            { time: "18:00", icon: "⛅", temp: "29°", now: false },
+            { time: "19:00", icon: "☁️", temp: "28°", now: false },
+            { time: "20:00", icon: "☁️", temp: "28°", now: false },
+            { time: "21:00", icon: "☁️", temp: "27°", now: false }
+        ]
+    }
+    if id == "shenzhen" {
+        return [
+            { time: "现在", icon: "⛈️", temp: "28°", now: true },
+            { time: "15:00", icon: "⛈️", temp: "28°", now: false },
+            { time: "16:00", icon: "🌧️", temp: "27°", now: false },
+            { time: "17:00", icon: "🌧️", temp: "27°", now: false },
+            { time: "18:00", icon: "☁️", temp: "27°", now: false },
+            { time: "19:00", icon: "☁️", temp: "26°", now: false },
+            { time: "20:00", icon: "⛅", temp: "26°", now: false },
+            { time: "21:00", icon: "⛅", temp: "26°", now: false }
+        ]
+    }
+    if id == "hangzhou" {
+        return [
+            { time: "现在", icon: "🌧️", temp: "22°", now: true },
+            { time: "15:00", icon: "🌧️", temp: "22°", now: false },
+            { time: "16:00", icon: "🌧️", temp: "21°", now: false },
+            { time: "17:00", icon: "☁️", temp: "21°", now: false },
+            { time: "18:00", icon: "☁️", temp: "20°", now: false },
+            { time: "19:00", icon: "☁️", temp: "20°", now: false },
+            { time: "20:00", icon: "🌧️", temp: "19°", now: false },
+            { time: "21:00", icon: "🌧️", temp: "19°", now: false }
+        ]
+    }
+    if id == "chengdu" {
+        return [
+            { time: "现在", icon: "🌫️", temp: "20°", now: true },
+            { time: "15:00", icon: "🌫️", temp: "21°", now: false },
+            { time: "16:00", icon: "☁️", temp: "21°", now: false },
+            { time: "17:00", icon: "☁️", temp: "20°", now: false },
+            { time: "18:00", icon: "☁️", temp: "20°", now: false },
+            { time: "19:00", icon: "🌫️", temp: "19°", now: false },
+            { time: "20:00", icon: "🌫️", temp: "19°", now: false },
+            { time: "21:00", icon: "☁️", temp: "18°", now: false }
+        ]
+    }
+    if id == "xian" {
+        return [
+            { time: "现在", icon: "☀️", temp: "25°", now: true },
+            { time: "15:00", icon: "☀️", temp: "26°", now: false },
+            { time: "16:00", icon: "☀️", temp: "26°", now: false },
+            { time: "17:00", icon: "☀️", temp: "25°", now: false },
+            { time: "18:00", icon: "⛅", temp: "24°", now: false },
+            { time: "19:00", icon: "⛅", temp: "22°", now: false },
+            { time: "20:00", icon: "☁️", temp: "21°", now: false },
+            { time: "21:00", icon: "☁️", temp: "20°", now: false }
+        ]
+    }
+    if id == "wuhan" {
+        return [
+            { time: "现在", icon: "⛅", temp: "27°", now: true },
+            { time: "15:00", icon: "⛅", temp: "28°", now: false },
+            { time: "16:00", icon: "⛅", temp: "28°", now: false },
+            { time: "17:00", icon: "☁️", temp: "27°", now: false },
+            { time: "18:00", icon: "☁️", temp: "26°", now: false },
+            { time: "19:00", icon: "☁️", temp: "25°", now: false },
+            { time: "20:00", icon: "☁️", temp: "24°", now: false },
+            { time: "21:00", icon: "⛅", temp: "24°", now: false }
+        ]
+    }
+    if id == "harbin" {
+        return [
+            { time: "现在", icon: "❄️", temp: "-2°", now: true },
+            { time: "15:00", icon: "❄️", temp: "-2°", now: false },
+            { time: "16:00", icon: "❄️", temp: "-3°", now: false },
+            { time: "17:00", icon: "☁️", temp: "-4°", now: false },
+            { time: "18:00", icon: "☁️", temp: "-5°", now: false },
+            { time: "19:00", icon: "❄️", temp: "-6°", now: false },
+            { time: "20:00", icon: "❄️", temp: "-7°", now: false },
+            { time: "21:00", icon: "☁️", temp: "-7°", now: false }
+        ]
+    }
+    if id == "sanya" {
+        return [
+            { time: "现在", icon: "☀️", temp: "31°", now: true },
+            { time: "15:00", icon: "☀️", temp: "32°", now: false },
+            { time: "16:00", icon: "☀️", temp: "32°", now: false },
+            { time: "17:00", icon: "☀️", temp: "31°", now: false },
+            { time: "18:00", icon: "⛅", temp: "30°", now: false },
+            { time: "19:00", icon: "⛅", temp: "29°", now: false },
+            { time: "20:00", icon: "☁️", temp: "29°", now: false },
+            { time: "21:00", icon: "☁️", temp: "28°", now: false }
+        ]
+    }
+    // beijing 默认
+    return [
+        { time: "现在", icon: "⛅", temp: "23°", now: true },
+        { time: "15:00", icon: "⛅", temp: "24°", now: false },
+        { time: "16:00", icon: "⛅", temp: "24°", now: false },
+        { time: "17:00", icon: "☁️", temp: "23°", now: false },
+        { time: "18:00", icon: "☁️", temp: "22°", now: false },
+        { time: "19:00", icon: "☁️", temp: "21°", now: false },
+        { time: "20:00", icon: "☁️", temp: "20°", now: false },
+        { time: "21:00", icon: "⛅", temp: "20°", now: false }
+    ]
+}
+
+// 5 日预报
+pub fn daily_for(id str) List {
+    if id == "shanghai" {
+        return [
+            { day: "今天", icon: "🌧️", cond: "小雨", tmin: "18°", tmax: "23°" },
+            { day: "周二", icon: "🌧️", cond: "中雨", tmin: "17°", tmax: "21°" },
+            { day: "周三", icon: "☁️", cond: "阴", tmin: "17°", tmax: "22°" },
+            { day: "周四", icon: "⛅", cond: "多云", tmin: "18°", tmax: "24°" },
+            { day: "周五", icon: "☀️", cond: "晴", tmin: "19°", tmax: "26°" }
+        ]
+    }
+    if id == "guangzhou" {
+        return [
+            { day: "今天", icon: "☀️", cond: "晴", tmin: "26°", tmax: "32°" },
+            { day: "周二", icon: "☀️", cond: "晴", tmin: "26°", tmax: "33°" },
+            { day: "周三", icon: "⛅", cond: "多云", tmin: "27°", tmax: "33°" },
+            { day: "周四", icon: "⛈️", cond: "雷阵雨", tmin: "26°", tmax: "31°" },
+            { day: "周五", icon: "🌧️", cond: "阵雨", tmin: "25°", tmax: "30°" }
+        ]
+    }
+    if id == "shenzhen" {
+        return [
+            { day: "今天", icon: "⛈️", cond: "雷阵雨", tmin: "25°", tmax: "30°" },
+            { day: "周二", icon: "🌧️", cond: "中雨", tmin: "25°", tmax: "29°" },
+            { day: "周三", icon: "⛅", cond: "多云", tmin: "26°", tmax: "30°" },
+            { day: "周四", icon: "☀️", cond: "晴", tmin: "26°", tmax: "31°" },
+            { day: "周五", icon: "☀️", cond: "晴", tmin: "27°", tmax: "32°" }
+        ]
+    }
+    if id == "hangzhou" {
+        return [
+            { day: "今天", icon: "🌧️", cond: "小雨", tmin: "17°", tmax: "23°" },
+            { day: "周二", icon: "🌧️", cond: "小雨", tmin: "16°", tmax: "22°" },
+            { day: "周三", icon: "☁️", cond: "阴", tmin: "16°", tmax: "23°" },
+            { day: "周四", icon: "⛅", cond: "多云", tmin: "17°", tmax: "25°" },
+            { day: "周五", icon: "☀️", cond: "晴", tmin: "18°", tmax: "27°" }
+        ]
+    }
+    if id == "chengdu" {
+        return [
+            { day: "今天", icon: "🌫️", cond: "雾", tmin: "17°", tmax: "22°" },
+            { day: "周二", icon: "☁️", cond: "阴", tmin: "17°", tmax: "22°" },
+            { day: "周三", icon: "🌧️", cond: "小雨", tmin: "16°", tmax: "20°" },
+            { day: "周四", icon: "☁️", cond: "阴", tmin: "16°", tmax: "21°" },
+            { day: "周五", icon: "⛅", cond: "多云", tmin: "17°", tmax: "23°" }
+        ]
+    }
+    if id == "xian" {
+        return [
+            { day: "今天", icon: "☀️", cond: "晴", tmin: "16°", tmax: "27°" },
+            { day: "周二", icon: "☀️", cond: "晴", tmin: "15°", tmax: "28°" },
+            { day: "周三", icon: "⛅", cond: "多云", tmin: "16°", tmax: "26°" },
+            { day: "周四", icon: "☁️", cond: "阴", tmin: "15°", tmax: "24°" },
+            { day: "周五", icon: "🌧️", cond: "小雨", tmin: "14°", tmax: "22°" }
+        ]
+    }
+    if id == "wuhan" {
+        return [
+            { day: "今天", icon: "⛅", cond: "多云", tmin: "23°", tmax: "29°" },
+            { day: "周二", icon: "☀️", cond: "晴", tmin: "23°", tmax: "30°" },
+            { day: "周三", icon: "⛅", cond: "多云", tmin: "24°", tmax: "30°" },
+            { day: "周四", icon: "🌧️", cond: "阵雨", tmin: "22°", tmax: "28°" },
+            { day: "周五", icon: "☁️", cond: "阴", tmin: "22°", tmax: "27°" }
+        ]
+    }
+    if id == "harbin" {
+        return [
+            { day: "今天", icon: "❄️", cond: "小雪", tmin: "-8°", tmax: "-1°" },
+            { day: "周二", icon: "❄️", cond: "小雪", tmin: "-9°", tmax: "-2°" },
+            { day: "周三", icon: "☁️", cond: "阴", tmin: "-10°", tmax: "-3°" },
+            { day: "周四", icon: "☀️", cond: "晴", tmin: "-11°", tmax: "-4°" },
+            { day: "周五", icon: "☀️", cond: "晴", tmin: "-9°", tmax: "-2°" }
+        ]
+    }
+    if id == "sanya" {
+        return [
+            { day: "今天", icon: "☀️", cond: "晴", tmin: "27°", tmax: "32°" },
+            { day: "周二", icon: "☀️", cond: "晴", tmin: "27°", tmax: "33°" },
+            { day: "周三", icon: "⛅", cond: "多云", tmin: "27°", tmax: "32°" },
+            { day: "周四", icon: "⛅", cond: "多云", tmin: "26°", tmax: "31°" },
+            { day: "周五", icon: "☀️", cond: "晴", tmin: "27°", tmax: "33°" }
+        ]
+    }
+    // beijing 默认
+    return [
+        { day: "今天", icon: "⛅", cond: "多云", tmin: "18°", tmax: "25°" },
+        { day: "周二", icon: "☀️", cond: "晴", tmin: "20°", tmax: "28°" },
+        { day: "周三", icon: "☁️", cond: "阴", tmin: "16°", tmax: "22°" },
+        { day: "周四", icon: "🌧️", cond: "小雨", tmin: "17°", tmax: "24°" },
+        { day: "周五", icon: "⛅", cond: "多云", tmin: "19°", tmax: "27°" }
+    ]
+}
+
+// AQI 等级徽标样式
+pub fn aqi_badge_style(level str) str {
+    if level == "优" {
+        return "text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-medium"
+    }
+    if level == "轻度污染" {
+        return "text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-medium"
+    }
+    return "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium"
+}
+
+// 条件 → hero 装饰渐变（PLAN-637 r2 豁免口径：装饰性允许保留具体色）
+pub fn hero_grad(condition str) str {
+    if condition == "sunny" {
+        return "bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+    }
+    if condition == "rain" {
+        return "bg-gradient-to-br from-blue-400 to-blue-600 rounded-3xl p-6 items-center gap-2 shadow-lg"
+    }
+    if condition == "storm" {
+        return "bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-6 items-center gap-2 shadow-lg"
+    }
+    if condition == "snow" {
+        return "bg-gradient-to-br from-cyan-300 to-sky-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+    }
+    if condition == "fog" {
+        return "bg-gradient-to-br from-gray-300 to-slate-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+    }
+    if condition == "cloudy" {
+        return "bg-gradient-to-br from-slate-400 to-slate-600 rounded-3xl p-6 items-center gap-2 shadow-lg"
+    }
+    // partly 默认
+    return "bg-gradient-to-br from-sky-400 to-blue-500 rounded-3xl p-6 items-center gap-2 shadow-lg"
+}
