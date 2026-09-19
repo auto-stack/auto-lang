@@ -6015,6 +6015,48 @@ pub fn gallery_mode() -> bool {
     std::env::var("AUTO_GALLERY").ok().as_deref() == Some("1")
 }
 
+// PLAN-658 T-02: 画廊 back-proxy 根 URL（如 `http://127.0.0.1:3358`）。
+// rust_ui 在 proxy 绑定后、refresh_gallery_registry 之前设置（线程局部
+// ——发射与本轮 run 同线程）；None = proxy 未运行（独立形态/Vue 臂），
+// 发射器零改写。消费点：emit_gallery_vm_demos 对拷入 demos/ 的语料做
+// `/api/` 字面量前缀化（详见 prefix_api_url_literals）。
+thread_local! {
+    static GALLERY_PROXY_ROOT: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// 设置/清除画廊 back-proxy 根 URL（rust_ui 画廊钩子调用）。
+pub fn set_gallery_proxy_root(root: Option<String>) {
+    GALLERY_PROXY_ROOT.with(|c| *c.borrow_mut() = root);
+}
+
+fn gallery_proxy_root() -> Option<String> {
+    GALLERY_PROXY_ROOT.with(|c| c.borrow().clone())
+}
+
+/// PLAN-658 T-02: `/api/` 字面量子前缀化——仅当行内出现 `Http.`（HTTP
+/// 调用行）时，把该行的 `"/api/...` 引号字面量改写为绝对 URL
+/// `<root>/apps/<app_id>/api/...`。
+///
+/// 精确性依据（T-02 语料实证）：三 demo 前端全部相对调用点仅
+/// 020 player_store.at:92 一处（单行、同行含 `Http.`）；注释行不含
+/// `Http.` 不受影响；back 模块的 `#[api(path = "/api/...")]` 属性行
+/// 不含 `Http.`，路由收集零污染。多行调用形态（字面量与 Http. 不同行）
+/// 不在改写面——当前语料无此形态，出现时按 §5.3 回补。
+fn prefix_api_url_literals(content: &str, root: &str, app_id: &str) -> String {
+    let marker = "\"/api/";
+    let replacement = format!("\"{root}/apps/{app_id}/api/");
+    let mut out = String::with_capacity(content.len());
+    for line in content.split_inclusive('\n') {
+        if line.contains("Http.") && line.contains(marker) {
+            out.push_str(&line.replace(marker, &replacement));
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
+}
+
 /// Apps directory for the gallery demos registry:
 /// AUTO_GALLERY_APPS env wins; next is `<root_dir>/../ui` (sibling in examples/),
 /// then `<workspace>/examples/ui`.
@@ -6679,13 +6721,20 @@ pub fn emit_gallery_vm_demos(
         for (_, c) in row_modules.iter_mut() {
             *c = rename_reserved_root_fields(c, &reserved_ns);
         }
+        // PLAN-658 T-02: 落盘前 `/api/` 字面量子前缀化（proxy 根未设 =
+        // 独立形态，零改写）。module_files 冲突比对保持原文（双侧一致）。
+        let proxy_root = gallery_proxy_root();
         for (m, c) in &row_modules {
             module_files.entry(m.clone()).or_insert_with(|| c.clone());
             let target = demos_dir.join(m.replace('.', "/")).with_extension("at");
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent).map_err(|e| format!("demos mkdir: {}", e))?;
             }
-            fs::write(&target, c).map_err(|e| format!("write demos/{m}: {}", e))?;
+            let out = match &proxy_root {
+                Some(root) => prefix_api_url_literals(c, root, &r.id),
+                None => c.clone(),
+            };
+            fs::write(&target, out).map_err(|e| format!("write demos/{m}: {}", e))?;
         }
         let Some(pos) = emit_source.find("widget App") else {
             skipped.push(r.id.clone());
@@ -6705,6 +6754,10 @@ pub fn emit_gallery_vm_demos(
             &emit_source[pos + "widget App".len()..]
         );
         let fname = format!("{}.at", r.id);
+        let renamed = match &proxy_root {
+            Some(root) => prefix_api_url_literals(&renamed, root, &r.id),
+            None => renamed,
+        };
         fs::write(demos_dir.join(&fname), &renamed)
             .map_err(|e| format!("write demos/{fname}: {}", e))?;
         imports.push_str(&format!(
@@ -10342,6 +10395,74 @@ widget Helper {
         // 视口接线含该 demo
         let vm_at = fs::read_to_string(gallery.join("AppViewport.vm.at")).unwrap();
         assert!(vm_at.contains("if .app == \"013-x\" {"), "branch wired");
+    }
+
+    /// PLAN-658 T-02: `/api/` 字面量子前缀化——proxy 根设置时发射语料的
+    /// HTTP 调用行改写为绝对子前缀 URL；`#[api(path=...)]` 属性行与注释
+    /// 行不受影响。020-music-player 形态夹具（player_store.at:92 实证）。
+    #[test]
+    fn test_emit_gallery_vm_demos_proxy_url_prefixing() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let front = apps.join("020-x").join("src").join("front");
+        let back = apps.join("020-x").join("src").join("back");
+        fs::create_dir_all(&front).unwrap();
+        fs::create_dir_all(&back).unwrap();
+        fs::write(
+            front.join("app.at"),
+            "use my_store: MyStore\n\nwidget App {\n    view {\n        text \"hi\"\n    }\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            front.join("my_store.at"),
+            "use back.api: status\n\nstore MyStore {\n    model {\n        var items []int = []\n    }\n    on {\n        .Init -> {\n            let data = json.to_value(Http.get_json(\"/api/media/scan\"))\n            .items = data\n        }\n    }\n}\n",
+        )
+        .unwrap();
+        // 020 形态 back：#[api] 路由（属性路径不得被子前缀化污染）。
+        fs::write(
+            back.join("api.at"),
+            "#[api(method = \"GET\", path = \"/api/player/status\")]\npub fn status() []int {\n    return []\n}\n",
+        )
+        .unwrap();
+        let rows = vec![fullstack_demo_row(
+            "020-x",
+            "use my_store: MyStore\n\nwidget App {\n    view {\n        text \"hi\"\n    }\n}\n",
+        )];
+        let gallery = dir.path().join("src").join("gallery");
+        let demos = gallery.join("demos");
+
+        // 臂一：proxy 根已设（rust_ui 绑定后注入形态）。
+        set_gallery_proxy_root(Some("http://127.0.0.1:3358".to_string()));
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
+        set_gallery_proxy_root(None);
+        assert_eq!(emitted, 1, "demo must be emitted: {skipped:?}");
+        let store_src = fs::read_to_string(demos.join("d020x_my_store.at")).unwrap();
+        assert!(
+            store_src.contains(
+                "Http.get_json(\"http://127.0.0.1:3358/apps/020-x/api/media/scan\")"
+            ),
+            "call-site literal prefixed: {store_src}"
+        );
+        assert!(
+            !store_src.contains("\"/api/media/scan\""),
+            "relative literal gone: {store_src}"
+        );
+        // back 模块 #[api] 属性路径保持相对（proxy 路由表按相对路径匹配）。
+        let api_src = fs::read_to_string(demos.join("d020x_api.at")).unwrap();
+        assert!(
+            api_src.contains("path = \"/api/player/status\""),
+            "#[api] attr path must stay relative: {api_src}"
+        );
+
+        // 臂二：proxy 根未设（独立形态）——零改写。
+        let gallery2 = dir.path().join("src2").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery2).unwrap();
+        assert_eq!(emitted, 1, "demo must be emitted: {skipped:?}");
+        let store_src = fs::read_to_string(gallery2.join("demos").join("d020x_my_store.at")).unwrap();
+        assert!(
+            store_src.contains("Http.get_json(\"/api/media/scan\")"),
+            "standalone form untouched: {store_src}"
+        );
     }
 
     /// PLAN-633 AC-04/T-01: fullstack 标记——back 语料（`@/lib/api`）把
