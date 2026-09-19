@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-660
-status: execution_done
+status: executing
 feature_name: 014-weather-ui-refresh
 author: [agent]
 created_at: 2026-09-19
@@ -393,9 +393,15 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
 | review | PLAN-660 | 2 | **needs_fix** | 49975bdf2（worktree HEAD，worktree clean；复审基点 b69c7344c，r1..r5 六提交） | T-04/T-06 重开（current_step 4/6） | **AC 结果**：AC-01 pass（app.at 零灰阶硬编码文案色，grep text-gray/slate/zinc/neutral 零命中，hero 装饰豁免）；AC-02 pass（dark_mode/accent_color 在册，VM 实测翻转 false→true）；AC-03 pass（10 城 pills+weather_data 目录，数据差异抽查 三亚晴31°/北京多云23°）；AC-04 pass（VM 点上海→shanghai/上海/21°/rain）；**AC-05 fail（F-660-R1）**——r5 日卡片=星期/emoji/最高/最低，条件中文（d.cond）不渲染、温度区间条移除；AC-06 pass（hourly 结构/现在 primary 高亮不变）；AC-07 pass（指标 3×3、refresh_busy/idle、updated_at）；AC-08 pass（auto build 生成绿 + vite 直跑绿 634 模块 + VM 冒烟 **16/16 PASS** 含 r5 Tab 断言；vue-tsc 红为 §10 已备案脚手架缺口）。**发现**：F-660-R1（high，AC-05）r5 与验收字面冲突，修复二选一——(a) 日卡内补条件中文+mini 区间条（保留 r5 卡片语态）或 (b) 用户裁准简化形态→needs_replan 有界修 AC-05；F-660-R2（medium）014 README 布局描述停在 r2（SD-02 不同步）；F-660-R3（low，非阻塞）vm_smoke T1 地标弱化为 Tab 按钮文本（T2b 状态断言部分补偿，建议切 daily 后补内容断言）；F-660-R4（trivial）死样式 day_row/card_surface 随 R1 修复顺手清。**独立性声明**：与执行收尾同会话，运行时验收全部于 49975bdf2 复跑取证（非采信执行摘要）。spec 增量复核：SD-01 none 成立（零 crates/specs 触碰，diff 全量 examples/ui/014-weather + examples/ui/README.md 状态行）；SD-02 README 目标在但内容过时（=F-660-R2）；touched_goals GOAL-010 真实（docs/specs/goals.md）。债候选已登记 KNOWN-DEBT P660-D1..D3 | r5 为 execution_done 之后他方会话新落提交（19:05，计划簿记此前未录，本行补记） | **needs_fix → work**（携 F-660-R1/R2/R4；R1 修复路径若用户选 (b) 则转 new 有界修约） |
 | new | PLAN-660 | 3 | pass | —（契约修订，无代码变更） | T-04 复勾（AC-05r3 达标）；T-06 扩域保持开放（F-660-R2/R4/R3 余留） | 用户裁定 2026-09-19（复审裁决问询）：F-660-R1 选路径 (b)——认可 r5 简化日卡片为最终形态，AC-05 有界修订（Tab 互斥+日卡片要件，去条件中文+区间条字面要件）；rev 2 的 AC-05 fail 判定按旧约保留为历史（受影响验证标记 stale）。G-3/§2 布局/§5.3 区间条原案同步标注取代关系；current_step 5/6 | 无 | **work**（T-06 余留：README 同步 + 死样式 + 冒烟内容断言） |
 | work | PLAN-660 | 3 | pass | 65fbe867a@plan-660-dev（HEAD，r1..r8 九提交） | T-06 余留收口（全任务闭环 6/6） | 执行期他方会话续迭代 r6（0c73cb2ef fit 窗+app 框+紧凑 hero）→ r7（e0a12502e 弃 fit 改固定窗 960x680，Plan 512 iced 量测塌缩边界；宽度全固定刻度；城市条去 container）——rev 3 契约（Tab 互斥+日卡片）在 r6/r7 中保留，AC-05r3 持续成立。本会话 r8 收口：README 同步 r7、day_row 死样式清除（card_surface 已被 r6/r7 先行清）、vm_smoke 补「daily tab renders day cards (今天/周二)」内容断言（F-660-R3 闭）。验证三面于 65fbe867a：auto build 生成绿 + vite 直跑绿（634 模块）+ **vm_smoke 17/17 PASS**。worktree clean（余他方 scratch tests/dump_snap.py 未跟踪，不属本计划） | 无阻塞（vue-tsc 脚手架缺口 P660-D1 在册非本计划域） | **execution_done** → review |
+| review | PLAN-660 | 3 | **blocked**（程序性阻塞，无验收失败） | 65fbe867a（HEAD 未动；基点 b69c7344c） | 全任务保持勾选（无 AC 失败，不重开任务） | 终审基线固定后（19:19:49）检出 worktree 存在**他方会话在途未提交迭代**（5 文件：app.at/pac.at + rust-workspace/014-weather 三文件，+262/-33）——性质 = rust/a2r 轨移植：移除 `dep stylekit`（rust/a2r 不解析包导入，hint_text UndefinedVariable）改本地内联 recipe、rust-workspace 生成物侧同步改写。100 秒有界等待重查（19:22:14）仍未落提交。按复审规则「HEAD 之上存在在测未提交实现时不得签发 pass」——r1..r8 已提交实现本身满足 rev 3 全部 AC（证据见上行），但终审 pass 会被在途改动即刻失效 | **阻断项：他方会话在途 WIP 未落**。解锁 = ①该会话提交（或撤回）其 rust/a2r 轨迭代 → ②终审以新 HEAD 重跑（rev 3 口径）→ ③若 rust 轨移植定型且 dep stylekit 移除保留，属实现语义变化（T-04 记录含「dep stylekit 声明」），需 review 行注记或 rev 4 小修约，并确认 rust-workspace 生成物随 merge 走的口径 | **blocked → 解锁后重跑终审** |
 
 ## 10. 待澄清事项
 
+- **（终审 blocked 2026-09-19 19:19）他方会话在途 rust/a2r 轨移植 WIP 未落**：
+  app.at/pac.at（移除 dep stylekit → hint_text 本地内联）+ rust-workspace/
+  014-weather 三文件，+262/-33，未提交。终审 pass 不得在在测未提交实现
+  之上签发。解锁 = 该会话落提交/撤回 → 终审以新 HEAD 重跑；若移植定型，
+  dep stylekit 移除属实现语义变化需 review 行注记或 rev 4 小修约。
 - ~~（review 新增）r5 日卡片形态与 AC-05 字面要件冲突，修复路径需用户裁决~~
   **已裁决（2026-09-19）**：选路径 (b)——认可简化卡片为最终形态，AC-05
   已随 rev 3 修订；余留（README 同步/死样式/冒烟内容断言）归 T-06。
