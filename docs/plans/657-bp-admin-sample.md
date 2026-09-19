@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-657
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-admin-sample（L1 组装样板：四包全直连 admin 示例 + 两笔语料债顺带收口）
 author: [agent]
 created_at: 2026-09-19
@@ -10,7 +10,7 @@ updated_at: 2026-09-19
 supersedes_spec_components: []
 new_spec_components:
   - docs/specs/blueprint/project.md#消费面（L1 组装样板 047 登记与组装结论）
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: [GOAL-011, GOAL-010]  # 复审修正（原空）：L1 主通道多包实证=GOAL-011 延续；047 入 examples/ui 矩阵=GOAL-010
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 5
@@ -387,6 +387,31 @@ Design 16 论点 "app = shell + route→blueprint selection + blueprint data wir
     AC-06 素材就绪（§5.3），SD-01 落地归 merge。
   - 预检披露：主检出一处他源 WIP（examples/rust-workspace/015-notes/…
     + Cargo.toml，非本计划路径）——未触碰未收纳，需其属主自行路由。
+
+- 2026-09-19 独立复审（/auto-plan:review）：
+  `stage: review | PLAN-657 | plan_revision 1 | **pass** | reviewed_commit:
+  1f109f454b636fbbd3ca7c1fed6f5a3088366c49 | base: b4b04c5cd618b0a0dda652f5fa6de44377046ab6
+  | dep: auto-down a615d693be9aca82922633858709856e196f4c5f (detached) |
+  spec_inputs: docs/specs/blueprint/{project.md,contract.md} 现行版 |
+  acceptance: AC-01 partial·vue 全量+VM 渲染/交互受 P657-D1 限（§4 风险条款
+  预授权"登记不修"，非未验证）；AC-02/04/05/07 pass；AC-03 pass·vue ≥4 断言
+  全链+VM 同 P657-D1 限；AC-06 pass（delta 已验，落地归 merge） |
+  findings: F-01[P3 已修] touched_goals 空值→[GOAL-011, GOAL-010]（复审终局化）；
+  F-02[P3 记录] rust-workspace/Cargo.toml 提交含 013-todo-back/012-clock 工具
+  副作用（基线对照跑 13 所致，工具自管清单，无害）；F-03[P3 操作性] worktree
+  含工具物化 junction（deps/bps）+pnpm 链接场——wt-guard 判非清洁，merge
+  清理须按守门程序先 rmdir 仅链接；F-04[P2 已债] P657-D1 VM 回调载荷；
+  F-05[P3 观测] 截图为工作树件（仓级 ignore 惯例），证据耐久性靠计划记录
+  +可重跑脚本 | evidence（复审重跑非沿用自述）: cargo t plan657 3/3、
+  cargo t plan649 10/10、cargo tf 2556/2557（唯一红 mouse_area 经
+  b4b04c5cd 基线还原对照实验证为 master 预存；tv 2710/2712 的 display_family
+  经双态单跑隔离证为顺序敏感型非回归）、046 全量 build R006=0 且 TS 面仅剩
+  2 预存共享基建错（master 时代的 pagination TS2345 与 dialog 'id' 两错被
+  本计划顺带修复——基线 5 错对照）、047 gen-only EXIT=0、frontmatter
+  零改动（spec.md diff=0）、无 bind 工件（src/front/bps 不存在）、证据档
+  17 件 + vm_walkthrough_657.json、探针零残留 | 独立性声明：与执行同会话，
+  结论自工件重建（门禁重跑 + 基线归因实验 + diff 实读），未采信执行自述 |
+  next: merge（/auto-plan:merge）`
 
 ## 10. 待澄清事项
 
