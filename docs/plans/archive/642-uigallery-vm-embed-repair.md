@@ -1008,3 +1008,32 @@ next: 续作须重建 worktree(git worktree add D:/autostack/.wt/lang-642/
   有 bug，T-04/T-05 顺带给出结论。
 - 族 A 修复若牵动 parser 全局 name-check 语义，需评估对 aavm/VM 语料的
   级联（触发 `cargo tv` 档）。
+
+---
+
+```yaml
+stage: merge (终 landing 收据——overall delivered/archived)
+plan_id: PLAN-642:r1
+outcome: pass
+checkpoints:
+  prepared: 终审 pass @ 17f2ab8b3（reviewed_commit 链 dfcc3bbe1/d70662244/
+    d19190a11/17f2ab8b3;spec 终稿 7→10 条随行;auto-os 8d376c6）
+  landed: auto-lang master bec264449（merge plan-642-dev,master cargo check
+    绿）;auto-os main 962bfb3（merge plan-642-dev,产物终链随行）。auto-os
+    merge 前置处置:主检出他会话在途 WIP 双保全——tracked 产物漂移 stash
+    （"P642-merge前保全…"）+ 31 件 untracked 生成残留备份 /tmp/p642_t13/
+    os_untracked_backup;031 会话 docs/plans 簿记未触碰原地保留
+  ledger_refreshed: .autoos/specs.json P642-1 终稿 upsert（十条契约+终
+    landing 证据,读回验证）+ reviews 节 P642-R2 历史条（读回验证）;
+    docs/specs/INDEX.md 重算（26 projects）
+  archived: docs/plans/archive/642-uigallery-vm-embed-repair.md（git mv +
+    status: archived;completion_kind: delivered）
+  cleaned: wt-guard ×3 过闸（auto-os 288 件 pnpm/dep junction 按处方
+    MSYS_NO_PATHCONV=1 cmd /c rmdir 分 6 轮摘除后 clean）→ 三 worktree
+    移除 + 双分支删除（lang 17f2ab8b3/os 8d376c6 均已含于主分支）+
+    组目录 .wt/lang-642 移除
+follow_ups: P642-D13 proxy 独立计划（020+017/031 stream 一等公民,用户
+  裁定范围）;P642-D3 崩溃专项（bash127=栈溢出/fastfail 收窄+审计判读法
+  +cdb/WinDbg 工具建议在册）;P642-D15（Vue folder-music 预存红/并行
+  flaky 三成员/画廊 deps 噪音）随所属域处置
+```
