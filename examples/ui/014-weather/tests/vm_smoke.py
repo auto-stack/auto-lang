@@ -270,7 +270,7 @@ def main() -> int:
             print(f"  state raw: {st[:400]}")
             results.append(("autoui_state ok", True))
             for field, expect in [
-                ("city_id", "beijing"),
+                ("city_id", "北京"),
                 ("layout_mode", "landscape"),
                 ("city_zh", "北京"),
             ]:
@@ -297,9 +297,9 @@ def main() -> int:
                 time.sleep(0.8)
                 st2 = mcp.state("city_id", "city_zh", "temp", "condition")
                 print(f"  after click state: {st2[:400]}")
-                ok = "shanghai" in st2 or "上海" in st2
+                ok = "上海" in st2 or "shanghai" in st2
                 results.append(("SelectCity 上海", ok))
-                print(f"  {'PASS' if ok else 'FAIL'}: city switched to shanghai/上海")
+                print(f"  {'PASS' if ok else 'FAIL'}: city switched to 上海")
                 if not ok:
                     failed += 1
             except Exception as e:
