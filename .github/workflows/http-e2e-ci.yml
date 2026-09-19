@@ -48,4 +48,6 @@ jobs:
       - name: Install nextest
         run: cargo install cargo-nextest --locked || true
       - name: Run HTTP e2e tests (serial, process-isolated, retry flakes)
-        run: cargo nextest run -p auto-lang --lib --features test-http-e2e http_e2e --test-threads 1 --retries 2
+        # PLAN-658: +ui-iced — back_proxy media/031/media-uri e2e 挂此档
+        #（cfg ui-iced 门）；既有 7 例语义与 feature 无关，仅编译面变大。
+        run: cargo nextest run -p auto-lang --lib --features test-http-e2e,ui-iced http_e2e --test-threads 1 --retries 2

@@ -478,7 +478,33 @@ VM 画廊内嵌形态（AppViewport.vm.at + demos/*.at 适配器 + registry.at�
 7. **宿主保留字段 α-改名（add，T-13①）**：合并根态对象（Plan 419 统一状态）上宿主壳声明的主题魔法字段（`dark_mode`/`accent_color`——恰为渲染器每帧状态→主题同步与 `execute_set_theme` 写回消费的两个保留名）不被 demo 侧覆写：发射期 `rename_reserved_root_fields` 把 demo 适配器+自有模块+包级联文件的这两个名统一 `<ns>_` 前缀（声明/读/写一体 α-改名，语义自洽）；语料原文、宿主壳、宿主 deps 不动（web 臂 demo 本就各自独立持主题态，改名对齐双臂语义）。根因实证：demo store Init 与匿名模块 init 两条 SET_FIELD 直写覆写宿主字段（写点探针定罪）；此前的写端局部改名失败机理 = store var 与静态初始化不在赋值语句改名面内，全量 α-改名是完整形态。
 8. **视图侧 store 解析逐组件（add，T-15）**：视图求值的 `.Store.X` 展平判定查**本组件合成期存档**的别名快照（VmBridge `store_alias_snapshot`，合成同线程紧邻捕获）——线程级 `VIEW_STORE_ALIAS_SNAPSHOT` 单例在多组件工程（画廊合并轨）下被后续合成覆盖；`.len()` 后缀条件快路径同样经 `store_source_field` 展平（此前把 "Store.field" 整段当单字段名必 miss → 恒 false，015 "No notes yet" 实证）。
 9. **routes 首页 stub 档（add，T-14a）**：`routes {}` 否决的 demo（非 render:"vm"）以 route_stub 档入 VM 发射面——routes 块剔除 + `outlet` 行替换为 `/` 首页路由组件实例（无 `/` 时首个无参路由兜底）+ 首页页面文件 per-demo ns 级联（pages/ 跨 demo 同名异容）。配套：store 别名 use 行按声明文件 stem 重链（`use store: X` 别名 token ≠ 文件名 → 收集 miss → A1 歧义，021 实证）；带 back 种子的 stub 与 fullstack 同管线级联；**多 store demo 不入 stub 档**（泛型 `store.X` 语义分属多店，plan-446 A1 不可消解，023 降级回退）。路由语义进 VM 仍为非目标（导航链接不可用为 stub 既定边界）。
-10. **已知开放项（2026-09-19 收口态）**：017/031-image-viewer stream 后端与 020 媒体扫描 → proxy 独立计划（P642-D13，用户裁定范围含 stream 一等公民）；023 多 store routes → 随多 store 归属能力另议；F1 崩溃族（bash exit 127 = 栈溢出/fastfail 映射实验收窄；绕过 panic 钩子与 WER，审计日志判读法在册）→ 崩溃专项（P642-D3 裁定 a）；MCP fixture 派发不可达任意 handler + `fs.canonical` 失败返原路径语义漂移（P642-D14）；008 卡片 scroll 折叠线下滚轮可达性待人工复验。
+10. **已知开放项（2026-09-19 收口态）**：~~017/031-image-viewer stream 后端与 020 媒体扫描 → proxy 独立计划（P642-D13）~~ **已核销（PLAN-658，2026-09-19）**——见第 11 条；023 多 store routes → 随多 store 归属能力另议；F1 崩溃族（bash exit 127 = 栈溢出/fastfail 映射实验收窄；绕过 panic 钩子与 WER，审计日志判读法在册）→ 崩溃专项（P642-D3 裁定 a）；MCP fixture 派发不可达任意 handler + `fs.canonical` 失败返原路径语义漂移（P642-D14）；008 卡片 scroll 折叠线下滚轮可达性待人工复验。
+
+## ui-gallery 内嵌后端经 back-proxy 服务（PLAN-658）
+
+内嵌 fullstack demo 的后端半身契约（2026-09-19 落地；宿主形态/路由/崩溃隔离的
+完整规范见 [vm/back-proxy.md](../vm/back-proxy.md)）：
+
+1. **stream/native-ns 后端解否决（modify）**：`use auto.*` 与 `~Stream`/`~Promise`
+   后端在 back-proxy 运行时（proxy 根已注入发射器）不再否决内嵌——back 链**不进
+   画廊编译单元**（bus 死码体/native 面在 merged 单元不可编译），改走 proxy 路径：
+   发射 `<ns>_api_client` 模块（#[api] fn → `Http.*_json` 绝对子前缀 URL；POST body
+   镜像 emit_api_http_call 的 `json.from_value` STR_CAT 构造）+ 前端 use 改指
+   client。proxy 未运行时维持静态面板否决（独立形态零变化）。
+2. **流端点前端接线（add）**：有 `~Stream` 端点的 demo 注入 widget 级 `.Tick`
+   SSE 消费——`http.sse_open`（惰性）+ `http.sse_poll` 有界排水（8 帧/拍）+ 按
+   广播判别分派 `store.<Msg>`；配套 msg 块补 `Tick` 变体（缺变体 TimeSource 不
+   触发，012 对照实证）。非流 demo（031 族）不注入。
+3. **URL 适配（modify）**：发射器对拷入 demos/ 的语料做 `/api/` 字面量前缀化
+   （仅含 `Http.` 的行 → 绝对 `<proxy>/apps/<id>/api/...`）；原生 media scan 的
+   url 字段由 proxy 发绝对值。不经 `AUTO_HTTP_BASE`（进程单值 env 无法表达
+   per-app 前缀；`resolve_http_base_url` 语义零改动）。
+4. **相对路径锚定（add）**：proxy 路径 demo 拷贝件的 `../../tests/` 字面量改锚
+   apps_dir 下绝对路径（画廊 CWD ≠ demo CWD，session 侧 open 落空——031
+   fixtures 实证）；语料原文不动。
+5. **曲库/图库回退页解除**：017/031 的"暂无内嵌形态"静态回退页解除条件 =
+   back-proxy 运行（第 1 条）；020 曲库空态解除条件 = proxy 原生 media 路由
+   （media_root 取自 demo pac.at）。
 
 ## items-stretch 两阶段行语义（PLAN-655）
 
