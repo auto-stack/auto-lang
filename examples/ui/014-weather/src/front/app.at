@@ -11,12 +11,18 @@
 // 城市选择：pill 芯片（不用 select —— selectitem iced:none）。
 // Hero 渐变：view 内按 condition 条件 class（勿把 Tailwind 串绑到 style:，
 // 生成器会落到 :style 导致渐变失效）。
+//
+// r3：选中态（*_on）必须自带 hover 提亮。button 默认 variant 是
+// `bg-muted … hover:bg-muted/70`（见 gen/.../button/index.ts）；若 active
+// 样式只写 bg-primary 不写 hover，cn 合并后 hover 仍是 muted 底 +
+// primary-foreground 字 → 选中项 hover 发白不可读。与未选中对称：
+// off → hover:bg-secondary/80，on → hover:bg-primary/90。
 
 use weather_data: name_for, condition_for, cond_zh_for, icon_for, temp_for, feels_for, humidity_for, wind_for, uv_for, aqi_for, aqi_level_for, pressure_for, visibility_for, hourly_for, daily_for
 use stylekit.styles: hint_text
 
 style page = "min-h-screen bg-background text-foreground"
-style city_pill_on = "px-3 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground shadow-sm shrink-0"
+style city_pill_on = "px-3 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm shrink-0 transition-colors"
 style city_pill_off = "px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shrink-0 transition-colors"
 style icon_btn = "w-9 h-9 items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
 style section_title = "text-sm font-semibold text-foreground"
@@ -27,9 +33,9 @@ style hour_card_now = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl bg-pr
 style hour_card = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl border border-transparent"
 style day_row = "w-full items-center gap-2 py-2.5 px-1"
 style refresh_busy = "h-8 px-3 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
-style refresh_idle = "h-8 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-style layout_btn_on = "h-7 px-2.5 rounded-full text-[11px] font-medium bg-primary text-primary-foreground"
-style layout_btn_off = "h-7 px-2.5 rounded-full text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80"
+style refresh_idle = "h-8 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
+style layout_btn_on = "h-7 px-2.5 rounded-full text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+style layout_btn_off = "h-7 px-2.5 rounded-full text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
 style card_surface = "bg-card border border-border rounded-2xl"
 style aqi_good = "text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-medium"
 style aqi_warn = "text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-medium"
@@ -121,18 +127,19 @@ widget App {
                         row {
                             style: "items-center gap-1 mr-1"
                             if .layout_mode == "landscape" {
-                                button "横屏" { onclick: .SetLayout("landscape"), style: layout_btn_on }
+                                button "横屏" { onclick: .SetLayout("landscape"), variant: "primary", style: layout_btn_on }
                             } else {
-                                button "横屏" { onclick: .SetLayout("landscape"), style: layout_btn_off }
+                                button "横屏" { onclick: .SetLayout("landscape"), variant: "secondary", style: layout_btn_off }
                             }
                             if .layout_mode == "portrait" {
-                                button "竖屏" { onclick: .SetLayout("portrait"), style: layout_btn_on }
+                                button "竖屏" { onclick: .SetLayout("portrait"), variant: "primary", style: layout_btn_on }
                             } else {
-                                button "竖屏" { onclick: .SetLayout("portrait"), style: layout_btn_off }
+                                button "竖屏" { onclick: .SetLayout("portrait"), variant: "secondary", style: layout_btn_off }
                             }
                         }
                         button {
                             onclick: .Refresh
+                            variant: "primary"
                             style: if .refreshing { refresh_busy } else { refresh_idle }
                             if .refreshing {
                                 text "刷新中…" {}
@@ -161,11 +168,13 @@ widget App {
                                 if c.id == .city_id {
                                     button c.zh {
                                         onclick: .SelectCity(c.id)
+                                        variant: "primary"
                                         style: city_pill_on
                                     }
                                 } else {
                                     button c.zh {
                                         onclick: .SelectCity(c.id)
+                                        variant: "secondary"
                                         style: city_pill_off
                                     }
                                 }
