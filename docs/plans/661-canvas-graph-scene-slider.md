@@ -2,13 +2,13 @@
 
 ---
 plan_id: PLAN-661
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: canvas-graph-scene-slider
 author: [zcode]
 created_at: 2026-09-19
 updated_at: 2026-09-19
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 6
 
 # /auto-plan:review 结束时填写：
@@ -386,21 +386,44 @@ jade-garden graph_view 真渲染消费 = jade/auto-down 侧后续计划（§10 �
 > 执行；plan 簿记留主检出。依赖：T-01 独立；T-02 → T-03；T-04 独立；
 > T-05 独立（可与 T-01..04 并行）；T-06 收口（依赖全部）。
 
-- **T-01 VM map 括号写路由**
+- **T-01 VM map 括号写路由** [✅ 已完成]
   文件：`vm/codegen.rs`（Expr::Index 赋值臂 ~6942；读臂 ~3405 参照）、
   `vm/native.rs`（仅核对栈约定，不改）。
   动作：index-assign 臂识别 map 容器 → 发 `CALL_NAT auto.hashmap.set`
   （栈序按 native 实现）；078 复现包 probe 收编仓内回归（vm 语料）。
   验证：`cargo check -p auto-lang`；新回归绿；`cargo tv`。
   → AC-01。
-- **T-02 SliderChangeHandler newtype**
+  **执行实录**（2026-09-19，worktree 499c433a7）：方案调整——实勘证伪
+  §5.1 前提（读臂 `m[k]` 不走 native 路由：仅 for-in 循环发 CALL_NAT，
+  普通读走 engine GET_ELEM 的 ObjectData（Plan 437）/GenericInstanceData
+  （Plan 445 M3）运行时臂；078 复现对象=UI 轨 model 字面量的
+  GenericInstanceData 表示，`auto.hashmap.set` shim 仅吃 SpecializedHashMap
+  会静默漏写）。**落点改为 engine `SET_ELEM` 补三臂**（ObjectData 开键
+  插入=SET_FIELD PLAN-057 同语义 / GenericInstanceData 平行追加
+  fields+field_names / SpecializedHashMap 同 native 插入），与 GET_ELEM
+  读臂逐臂镜像——index 保串 tag（`pop_i32` → `pop_nv`+decode），列表路径
+  行为不变（负索引错误消息更可读）。回归：vm_bridge 往返单测（字面量键
+  新键+var 键覆写+写后语句续行，复现错误逐字复现后转绿）+ 07_objects/
+  010_map_bracket_write 语料（ObjectData 轨）；`cargo tv --no-fail-fast`
+  3793 跑 3791 绿（2 红=master 预存，基线 worktree 实证同红）。
+  备案：KNOWN-DEBT P661-D6①。
+- **T-02 SliderChangeHandler newtype** [✅ 已完成]
   文件：`ui/view.rs`（新 type+Slider 变体+map_msg 臂+构造器）、
   `ui/iced/renderer.rs:5050` 臂、`ui_gen/rust.rs:3701-3742` 发射+golden。
   动作：如 §5.2；a2r golden 刷新（fixture .at 源零改动）。
   验证：`cargo t iced`；`cargo test -p auto-lang` 滑窗单测；
   golden diff 审（语义等价——载荷/step/value 不变，仅 handler 包装形态）。
   → AC-04。
-- **T-03 aura slider 臂 + 快照 + MCP 闭环**
+  **执行实录**（26170be9c）：newtype + label 旁路（T-03 快照面）双字段；
+  构造器改双参 + `.on_change()` builder（scrollable/on_scroll 同款）；无
+  onchange = None（旧占位零参闭合退役）；map_msg panic 占位清除（单测
+  `test_slider_map_msg_remaps_change_handler` 含 None 透传）；消费臂迁移
+  iced（None→静态读出，泛型 M 无凭空 no-op 消息）/gpui（None 不订阅）/
+  vnode（None 不注册）/native_projector（HitEntry None 不登记命中）+
+  3 例；a2r 发射 `.on_change(|v| Msg::Variant(v))` + golden 钉新形态
+  （`test_slider_codegen_arm_fixture` 绿，fixture 零改动）。iced 档 4 红
+  全部 HEAD 同红（基线 worktree 实证）。
+- **T-03 aura slider 臂 + 快照 + MCP 闭环** [✅ 已完成]
   文件：`aura/schema.rs`（slider ElementDef）、
   `aura/element_coverage.rs`（登记）、`ui/aura_view_builder.rs`
   （convert_slider 双臂）、`ui/snapshot_builder.rs:348`（actions）、
@@ -409,14 +432,37 @@ jade-garden graph_view 真渲染消费 = jade/auto-down 侧后续计划（§10 �
   验证：`cargo t ui`；VM 冒烟（025 fixture 形态 .at 走 autoui-verifier
   VM 脚本：snapshot→set_value→断言）。
   → AC-02。
-- **T-04 vue slider 原生 range 统一**
+  **执行实录**（0f2ae29d7）：schema slider ElementDef（Form 族）+ builder
+  双派发臂（convert_slider 直构 View::Slider——不经 builder 闭包重包以保
+  标签旁路）+ payload 臂（progress_seek_arm 同款，Float(v) 无 epsilon——
+  实机无整值腐坏）+ snapshot actions set_value（标签旁路供名）+ MCP **双
+  路径**载荷（execute_action_vnode VM 轨 extract_action_from_view Slider
+  臂 + execute_action_on_shared legacy 轨）：`event␟f␟<v>` 编码直达
+  `.SetVol(v float)`。schema_drift 双围栏绿（coverage 沿 aura.at 既有
+  NotConsumed 条目，T-04 随消费升 Covered）。VM 实机冒烟（025 形态 fixture
+  + 技能 MCP client）：set_value(75) → `.App.SetVol` → state
+  `vol: 30 → 75.00` 闭环实证。`cargo t ui` 滤档 50 红 vs HEAD 基线 52 红
+  零新增（基线多出=osconfig real-TCP flaky）。
+- **T-04 vue slider 原生 range 统一** [✅ 已完成]
   文件：`ui_gen/vue.rs`（map_tag 9061、属性发射分支、shadcn 路径退役、
   断言 20671/21259 更新）。
   动作：如 §5.4。
   验证：`cargo t vue`（若该滤串无别名单测则滑窗 `cargo test -p
   auto-lang vue_`）；playwright DOM 断言（临时 fixture 或并入 T-06 样板）。
   → AC-03。
-- **T-05 canvas 图元场景 + onhit**
+  **执行实录**（96b8790f1）：map_tag shadcn 模式早退 slider→input（组件
+  路径退役 R-5）；原生路径 type="range" 注入（checkbox 同款）+ 数值四件
+  特臂（value :绑定/字面量、min/max/step 静态缺省 0/100/1）+ onchange →
+  `@input="H(($event.target as HTMLInputElement).valueAsNumber)"` 载荷
+  派发；generate_shadcn_attrs slider 臂同步重写原生面；aura.at slider
+  条目改 builtin_widget/web:native（vue 组件行退役）+ render_support
+  partial + coverage 升 Covered + 断言三处随裁定 + 发射单测
+  （`test_slider_native_range_attrs_and_payload`）；docs_gen core.md/
+  kitchen-sink 再生成（kitchen-sink 落 auto-os 仓，顺带吸收 656 scroll
+  累积漂移，归该仓会话落提交）。生成 SFC 实物（049 样板）：
+  `<input class="w-full" type="range" max min step :value @input=...>` 全
+  要件在场。
+- **T-05 canvas 图元场景 + onhit** [✅ 已完成]
   文件：`ui/view.rs`（CanvasScene 扩+on_hit handler）、
   `ui/aura_view_builder.rs`（extract_canvas_scene 三表+onhit 提取）、
   `ui/iced/renderer.rs`（CanvasPainter 绘制+tap 命中）、
@@ -428,7 +474,19 @@ jade-garden graph_view 真渲染消费 = jade/auto-down 侧后续计划（§10 �
   验证：`cargo t iced` + `cargo t ui`；单测（解析/命中纯函数）；
   `cargo test -p auto-lang --test docs_gen`（schema 描述改动）。
   → AC-05/06。
-- **T-06 样板 + 双轨验证 + 沉淀**
+  **执行实录**（4b301f6cc）：CanvasNode/Edge/Label + 三解析宽容函数
+  （畸形跳过/缺省 r16·w40·edge2·label14）+ CanvasScene 三表（Default 空
+  =逐字节等价）；`ElementHitHandler` newtype（String 载荷+标签旁路）；
+  iced CanvasPainter 三表绘制（edges→nodes→labels 声明序，extent x/y
+  独立缩放）+ PenArea tap 命中层（pointer 容差 4px+hit_test 闭包+
+  `canvas_hit_test` 纯函数：倒序 topmost/circle 含 r/rect ±wh——单测
+  含边界与叠序）；vue redraw 三表+watch 扩源（state_names 条件引用防
+  未声明 ref 编译红）+ pointerdown/up 命中同语义（与 pen mouse 通道
+  分立零属性冲突）；snapshot press action+nodes 计数/ids；MCP canvas
+  press(id) 前置分支=消息同构直派（`event␟s␟id`，pen 坐标合成草图
+  让位——§10 裁量，P661-D6②）；schema canvas 条目 onhit+三表详规。
+  iced 档 4 红/ui 滤档均零新增（基线同红）。
+- **T-06 样板 + 双轨验证 + 沉淀** [✅ 已完成]
   文件：`examples/capability-tests/0NN-canvas-graph/`（新）、
   `docs/specs/auto-lang/ui/design/canvas-scene.md`（新）、
   `docs/specs/auto-lang/ui/design/chart-components.md`、
@@ -438,8 +496,57 @@ jade-garden graph_view 真渲染消费 = jade/auto-down 侧后续计划（§10 �
   验证：双轨脚本全绿（VM MCP + vue playwright）+ 截图对拍 +
   `cargo tf`（fold 前全量）。
   → AC-07/08。
+  **执行实录**（086deecdf）：样板 **049**-canvas-graph（顺延现序，四能力
+  合一：环形 6 节点+中心 rect+辐条 math.cos 上游布局（R-3）+onhit 选中+
+  slider 半径重算+map 括号写读回）+ SPEC.md 契约成文；VM 轨
+  `tests/desktop_mcp.py` **11/11**（三表初始态/press(n2·c) 命中/
+  set_value(110) 表重算 n0→260/Write map 写 readback=1）；vue 轨
+  `tests/desktop_vue.mjs` **7/7**（range 属性面 min/max/step/value/
+  坐标点击 n0 命中/空区不派发/fill 110 状态回灌/重建坐标 260 再命中）；
+  截图对拍实录：结构等价（双端 6 蓝斑+辐条+中心橙块、各向异性同构、
+  像素量比≈DPR²、画布区像素量差 0.8%）+ 画布区对齐 IoU 0.8677/交集
+  RGB 42.95（标签文本跨端字体差异主导——几何像素一致，P661-D5 口径
+  注记）；SD-01 canvas-scene.md 新档 + SD-02/03 注记落地（SD-04=schema
+  描述已随 T-03/05 落）；KNOWN-DEBT P661-D1..D7；`cargo tf --no-fail-fast`
+  3648 跑 3645 绿（2 红=mouse_area/autodown_panel a2r 断言 master 预存
+  基线实证同红；ffi_dual_019 flaky 重跑绿）；截图入库违反仓规已摘除并
+  扩 .gitignore（capability-tests shots/screenshots 路径）。
 
 ## 9. 复审记录
+
+- 2026-09-19（draft handoff，/auto-plan:new）：
+  - stage: new；plan_revision: 1。
+  - 实勘记录：078 转引 file:line 全部按当前 master 857235623 复核
+    （E-1..E-16，行号漂移已修正——view.rs CanvasScene 1031→1044 等）；
+    复现包与终裁档原文已读（auto-down worktree down-078 在位）。
+  - 起草裁定四项：R-1 onhit 独立契约（id 载荷+press 可达）、R-2 缩放
+    平移 v1 非目标、R-3 布局上游下发、R-4 SliderChangeHandler newtype
+    （+R-5 vue 原生 range 统一）——依据 §2.2/§4.2 证据，无待用户裁决
+    阻塞项。
+  - outcome: pass（authorization 边界=起草；执行待用户 `/auto-plan:work`
+    授权）。
+  - next: work（T-01 起步或 T-05 并行开臂均可）。
+- 2026-09-19（work 执行完毕，/auto-plan:work）：
+  - stage: work；plan_revision: 1；outcome: pass。
+  - code_commit: plan-661-dev 086deecdf（六任务六提交：499c433a7 /
+    26170be9c / 0f2ae29d7 / 96b8790f1 / 4b301f6cc / 086deecdf）；
+    worktree `D:/autostack/.wt/lang-661/auto-lang`（base 72ab08941，
+    组内 auto-down 依赖位 detached@10da13b 只读）。
+  - task_ids: T-01..T-06 全勾（证据见 §8 执行实录）。
+  - evidence 摘要：AC-01 vm_bridge 往返+语料绿 / cargo tv 仅 2 预存红
+    （基线同红实证）；AC-02 VM 实机 set_value(75)→vol 30→75.00 闭环；
+    AC-03 SFC range 全要件 + vue 7/7（fill 回灌+派发）；AC-04 golden
+    钉新形态绿 + map_msg 单测绿（fixture 零改动）；AC-05 双轨三表渲染
+    + 结构等价对拍（IoU 0.8677，文本差异注记 P661-D5）；AC-06 VM
+    press(id) 命中 11/11 内含 + vue 坐标点击命中/空区不派发；AC-07
+    049 SPEC.md 成文（DOC_EXCLUDE canvas 既有条目补注）；AC-08 SD-01..04
+    预演落地 + schema_drift/queue_coverage/docs_gen 全绿 + KNOWN-DEBT
+    P661-D1..D7；cargo tf 3645/3648（仅 master 预存红）。
+  - 方案调整备案（P661-D6）：T-01 落点=engine SET_ELEM 三臂（§5.1
+    codegen CALL_NAT 前提被实勘证伪——见 T-01 执行实录）；T-05 MCP
+    press=消息同构直派（pen 坐标合成让位）。目标/AC 全部按原案达成。
+  - blockers: 无。
+  - next: review（/auto-plan:review）。
 
 - 2026-09-19（draft handoff，/auto-plan:new）：
   - stage: new；plan_revision: 1。
