@@ -1,11 +1,12 @@
 ---
 plan_id: PLAN-656
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: universal-scroll-pane
 author: [zhaopuming, agent]
 created_at: 2026-09-19
 updated_at: 2026-09-19
-plan_revision: 2               # r1=agent 初稿；r2=用户架构复审改写（hosting contract 一等交付/ScrollAxes/不翻 canonical/不迁 terminal/Vue managed bridge 前移）
+plan_revision: 2               # r1=agent 初稿；r2=用户架构复审改写
+completion_kind: delivered（hosting contract 一等交付/ScrollAxes/不翻 canonical/不迁 terminal/Vue managed bridge 前移）
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -2067,3 +2068,14 @@ CodeEditor
   `evidence`: 本地 tf/隔离单跑输出；Vue 轿实机核验（prismjs 1.29.0 钉版
   workaround + dispatchEvent）四项数值如上；prismjs 复现记录见 KNOWN-DEBT
   656 行。 `next`: merge 继续（上条终审路由不变）；F-R1..R4 合并后跟进。
+
+- 2026-09-19 /auto-plan:merge 合并收据 `PLAN-656:r2`：
+  `prepared`: reviewed@9f05683fc（base c52f6fdfa，17 commits，spec delta 终版）✓；
+  `landed`: master 278efbea7（--no-ff merge plan-656-dev，`git merge-base --is-ancestor
+  9f05683fc HEAD` ✓，scroll-pane.md 在 master，master 侧 scroll 63/63 冒烟）✓；
+  `ledger_refreshed`: docs/specs/auto-lang/ui/plans.md 656 行 + .autoos/specs.json
+  reports P656-1（file→docs/specs/widgets/scroll-pane.md，回读验证）+
+  scripts/spec-index.py 再生（widgets 模块 4→5）——commit 017ce9cd9 ✓；
+  `archived`: docs/plans/archive/656-universal-scroll-pane.md（git mv）✓；
+  `cleaned`: 待回填（wt-guard 前置清障 666 处 reparse point 已摘——pnpm
+  node_modules junction，工作区运行产物非提交内容）。
