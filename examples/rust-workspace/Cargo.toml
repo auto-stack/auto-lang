@@ -1,13 +1,14 @@
 [workspace]
 members = [
     "011-calculator",
-    "012-clock",
     "012-stopwatch",
     "013-todo",
+    "013-todo-back",
     "014-weather",
     "015-notes",
     "015-notes-back",
     "016-calendar",
+    "047-bp-admin-back",
     "auto-musk-back",
     "contact-form",
     "counter",

@@ -1,0 +1,179 @@
+// front/app.at — PLAN-657 L1 组装样板主体。
+//
+// 四包五变体全部经 `use bps.<kind>.<name>.reference.<variant>` 直连导入
+// （零副本、无 bind 工件；连字符包走 649 下划线探测）：
+//   navigation/sidebar-shell (default)     —— 应用壳（nav + user menu + content slot）
+//   data-display/data-table-crud (with_dialog) —— 查询表格 CRUD（受控 rows + 四回调）
+//   form/settings (default)                —— 设置页（sections + cfg 播种 + save/reset）
+//   feedback/empty-state (first_use + no_result) —— 报告演示位（状态机切换）
+//
+// 契约接线（G3）：
+// - props：nav_tree/user/columns/rows/total/sections/cfg_* 由 app model 供给
+//   （Init 经 use back.api mock 取数播种）；
+// - actions：sign_out/save/reset/primary 经 on_* msg 回调注册到 app handler；
+// - dataSource：counts/query/create/update/delete/load/save 全部物化为
+//   back/api.at 的 mock #[api]（L1 无 bp→app 逆向调用通道——app 取数经
+//   props 回填，PLAN-657 组装摩擦记录）。
+//
+// nav 状态机：app model 字段 active_nav（契约 Q3——选中项属 app 状态，
+// 不落 bp 私有 store）；主区四分支经 sidebar-shell 的 content slot 注入。
+
+use bps.navigation.sidebar_shell.reference.default: SidebarShell
+use bps.data_display.data_table_crud.reference.with_dialog: DataTableCrudDialog
+use bps.form.settings.reference.default: SettingsScreen
+use bps.feedback.empty_state.reference.first_use: EmptyStateFirstUse
+use bps.feedback.empty_state.reference.no_result: EmptyStateNoResult
+use back.api: nav_count, query_rows, count_rows, create_row, update_row, delete_row, get_display_name, get_notifications, get_language, save_config
+
+widget App {
+    msg {
+        Init,
+        NavSelected(str),
+        SignOut,
+        TableQuery(str, int),
+        TableCreate(str),
+        TableUpdate(str, str),
+        TableDelete(str),
+        SettingsSave(str, bool, str),
+        SettingsReset,
+        ReportsPrimary
+    }
+
+    model {
+        // nav 状态机（Q3：app 状态）
+        var active_nav str = "data"
+        var nav_tree List = []
+        var user_name str = "Ada Lovelace"
+        var user_email str = "ada@acme.dev"
+        // toast 面（sign_out 等 no-op 落点）
+        var ui_note str = ""
+        // data-table-crud 契约数据面（受控）
+        var columns List = []
+        var rows List = []
+        var total int = 0
+        var q_search str = ""
+        var q_page int = 1
+        // settings 契约数据面
+        var sections List = []
+        var cfg_name str = ""
+        var cfg_notifications bool = true
+        var cfg_language str = "en"
+        // reports 演示位状态机：first_use → no_result → refresh 重试回环
+        var reports_state str = "first_use"
+    }
+
+    view {
+        SidebarShell (nav_tree: .nav_tree, user_name: .user_name, user_email: .user_email, on_nav: .NavSelected, on_sign_out: .SignOut) {
+            // ── content slot：主区按 app nav 状态切换 ──
+            col {
+                if .active_nav == "data" {
+                    DataTableCrudDialog (columns: .columns, rows: .rows, total: .total, on_query: .TableQuery, on_create: .TableCreate, on_update: .TableUpdate, on_delete: .TableDelete) {}
+                }
+                if .active_nav == "settings" {
+                    SettingsScreen (sections: .sections, cfg_name: .cfg_name, cfg_notifications: .cfg_notifications, cfg_language: .cfg_language, on_save: .SettingsSave, on_reset: .SettingsReset) {}
+                }
+                if .active_nav == "reports" {
+                    if .reports_state == "first_use" {
+                        EmptyStateFirstUse (illustration: "", on_primary: .ReportsPrimary) {}
+                    } else {
+                        EmptyStateNoResult (illustration: "", on_primary: .ReportsPrimary) {}
+                    }
+                }
+                if .active_nav == "about" {
+                    col {
+                        text "About" { style: "text-lg font-semibold" }
+                        text "047-bp-admin — PLAN-657 L1 assembly sample (non-bp control page)" {
+                            style: "text-sm text-gray-500"
+                        }
+                        style: "p-8 gap-2"
+                    }
+                }
+                if .ui_note != "" {
+                    text f"toast: ${.ui_note}" { style: "text-xs text-gray-400 px-4 py-2" }
+                }
+                style: "flex-1 min-h-0"
+            }
+        }
+    }
+
+    on {
+        .Init -> {
+            var badge_data str = nav_count("data")
+            var badge_settings str = nav_count("settings")
+            var badge_reports str = nav_count("reports")
+            var badge_about str = nav_count("about")
+            .nav_tree = [
+                { id: "data", label: "Data", badge: badge_data },
+                { id: "settings", label: "Settings", badge: badge_settings },
+                { id: "reports", label: "Reports", badge: badge_reports },
+                { id: "about", label: "About", badge: badge_about }
+            ]
+            .columns = [
+                { id: "name", title: "Name" },
+                { id: "actions", title: "Actions" }
+            ]
+            .rows = query_rows("", 1)
+            .total = count_rows("")
+            .sections = [
+                { id: "profile", title: "Profile" },
+                { id: "notifications", title: "Notifications" },
+                { id: "danger", title: "Danger zone" }
+            ]
+            .cfg_name = get_display_name()
+            .cfg_notifications = get_notifications()
+            .cfg_language = get_language()
+        }
+
+        .NavSelected(id) -> { .active_nav = id }
+
+        .SignOut -> { .ui_note = "signed out (mock no-op)" }
+
+        .TableQuery(search, page) -> {
+            .q_search = search
+            .q_page = page
+            .rows = query_rows(search, page)
+            .total = count_rows(search)
+        }
+
+        .TableCreate(name) -> {
+            create_row(name)
+            .rows = query_rows(.q_search, .q_page)
+            .total = count_rows(.q_search)
+            .ui_note = f"created: ${name}"
+        }
+
+        .TableUpdate(id, name) -> {
+            update_row(id, name)
+            .rows = query_rows(.q_search, .q_page)
+            .total = count_rows(.q_search)
+            .ui_note = f"updated: ${name}"
+        }
+
+        .TableDelete(id) -> {
+            delete_row(id)
+            .rows = query_rows(.q_search, .q_page)
+            .total = count_rows(.q_search)
+            .ui_note = f"deleted: ${id}"
+        }
+
+        .SettingsSave(name, notify, lang) -> {
+            save_config(name, notify, lang)
+            .cfg_name = name
+            .cfg_notifications = notify
+            .cfg_language = lang
+            .ui_note = "settings saved"
+        }
+
+        .SettingsReset -> { .ui_note = "settings reset" }
+
+        .ReportsPrimary -> {
+            if .reports_state == "first_use" {
+                .reports_state = "no_result"
+                .ui_note = "report created; query matched nothing"
+            } else {
+                .reports_state = "first_use"
+                .ui_note = "filters cleared (refresh retry)"
+            }
+        }
+    }
+}

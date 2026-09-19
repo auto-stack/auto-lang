@@ -1,0 +1,91 @@
+// back/api.at — PLAN-657 mock API Interface。
+// 四包 dataSource 契约的 app 侧物化（全部 mock，无真实后端）：
+// - sidebar-shell counts → nav_count（badge 文本，空串 = 无 badge）
+// - data-table-crud query → query_rows/count_rows + create/update/delete
+// - settings load/save → cfg_* 三读 + save_config
+// In rust merged mode these are in-process direct calls (not HTTP)。
+
+// ═══════════════════════════════════════════════════════════
+// Types (shared between frontend and backend)
+// ═══════════════════════════════════════════════════════════
+
+/// 表格行（data-table-crud rows 数据面）
+pub type Row = {
+    id: str
+    name: str
+}
+
+// ═══════════════════════════════════════════════════════════
+// API Endpoints
+// ═══════════════════════════════════════════════════════════
+
+use db
+
+/// sidebar-shell dataSource.counts（per-node badge）
+/// GET /api/nav-count/:id
+#[api(method = "GET", path = "/api/nav-count/:id")]
+pub fn nav_count(id str) str {
+    return db.nav_count(id)
+}
+
+/// data-table-crud dataSource.query（分页行）
+/// GET /api/rows
+#[api(method = "GET", path = "/api/rows")]
+pub fn query_rows(search str, page int) []Row {
+    return db.filter_rows(search, page)
+}
+
+/// data-table-crud dataSource.query（过滤总数，驱动 empty 分支与分页）
+/// GET /api/rows/count
+#[api(method = "GET", path = "/api/rows/count")]
+pub fn count_rows(search str) int {
+    return db.count_rows(search)
+}
+
+/// data-table-crud actions.create
+/// POST /api/rows
+#[api(method = "POST", path = "/api/rows")]
+pub fn create_row(name str) Row {
+    return db.create_row(name)
+}
+
+/// data-table-crud actions.update
+/// PUT /api/rows/:id
+#[api(method = "PUT", path = "/api/rows/:id")]
+pub fn update_row(id str, name str) ?Row {
+    return db.update_row(id, name)
+}
+
+/// data-table-crud actions.delete
+/// DELETE /api/rows/:id
+#[api(method = "DELETE", path = "/api/rows/:id")]
+pub fn delete_row(id str) bool {
+    return db.delete_row(id)
+}
+
+/// settings dataSource.load（平铺三读——map 字段点读无 front 语料先例，
+/// 见 PLAN-657 摩擦清单）
+/// GET /api/config/display-name
+#[api(method = "GET", path = "/api/config/display-name")]
+pub fn get_display_name() str {
+    return db.get_display_name()
+}
+
+/// GET /api/config/notifications
+#[api(method = "GET", path = "/api/config/notifications")]
+pub fn get_notifications() bool {
+    return db.get_notifications()
+}
+
+/// GET /api/config/language
+#[api(method = "GET", path = "/api/config/language")]
+pub fn get_language() str {
+    return db.get_language()
+}
+
+/// settings dataSource.save + actions.save
+/// PUT /api/config
+#[api(method = "PUT", path = "/api/config")]
+pub fn save_config(display_name str, notifications bool, language str) bool {
+    return db.save_config(display_name, notifications, language)
+}

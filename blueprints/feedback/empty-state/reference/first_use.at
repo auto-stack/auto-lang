@@ -1,14 +1,15 @@
 // reference/first_use.at — EmptyState blueprint, "first_use" variant.
 // Nothing here yet: invite the user's first creation. Consumer wires
 // actions.primary (the create affordance) and supplies copy + illustration.
+//
+// PLAN-657 参数化修整（reference 实现对齐 frontmatter 契约面，frontmatter
+// 零改动）：illustration props 经 widget 参数接入（缺省 ""——frontmatter
+// 声明的默认值，裸实例化渲染形态不变）；actions.primary 经 on_primary
+// 回调上抛（契约 Q2 action 点）。
 
-widget EmptyStateFirstUse {
+widget EmptyStateFirstUse (illustration: str = "", on_primary: msg) {
     msg {
         PrimaryClicked
-    }
-
-    model {
-        var illustration str = "" // prop: media source override
     }
 
     view {
@@ -47,7 +48,7 @@ widget EmptyStateFirstUse {
 
     on {
         .PrimaryClicked -> {
-            // actions.primary: consumer opens the create surface
+            on_primary() // actions.primary: consumer opens the create surface
         }
     }
 }
