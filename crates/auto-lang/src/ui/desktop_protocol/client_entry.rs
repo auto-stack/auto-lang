@@ -12,9 +12,7 @@
 
 use crate::ui::component::Component;
 use crate::ui::desktop_protocol::broker::{self, RequestedRender};
-use crate::ui::desktop_protocol::client_runtime::{
-    self, AppProjector, ClientConfig, ReconnectPolicy,
-};
+use crate::ui::desktop_protocol::client_runtime::{self, ClientConfig, ReconnectPolicy};
 use crate::ui::desktop_protocol::coverage::{Coverage, RenderMode, Verdict};
 use crate::ui::desktop_protocol::message::FrameMode;
 use crate::ui::desktop_protocol::native_projector::NativeProjector;
@@ -84,7 +82,9 @@ pub fn connect(
 }
 
 /// 解释轨客户端（`DynamicComponent`）：
-/// - `Commands` → [`AppProjector`] 投影 + [`client_runtime::run_client`] 命令帧；
+/// - `Commands` → [`NativeProjector`] 投影（PLAN-033 T-02 改接：View 全
+///   展开渲染 + 启动覆盖门，与 native 轨同臂——`-q` 对两轨一视同仁，
+///   解释组件免每 app iced/wgpu 后端）+ 泛型泵命令帧；
 /// - `Pixels` → [`pixels::run_independent_child`] 隐藏 iced 窗自渲 + screenshot。
 pub fn run_dynamic_client(
     component: DynamicComponent,
@@ -106,6 +106,11 @@ pub fn run_dynamic_client(
         )
         .map(|_| ()),
         FrameMode::Commands => {
+            let mut projector = NativeProjector::new(component, opts.width, opts.height);
+            if let Err(gate) = projector.ensure_covered() {
+                eprintln!("[render] {gate}");
+                return Err(gate);
+            }
             let config = ClientConfig {
                 app_name: opts.app_name.clone(),
                 title: opts.title,
@@ -113,14 +118,49 @@ pub fn run_dynamic_client(
                 height: opts.height,
             };
             let reconnect = reconnect_for(&target, per_app_pipe);
-            let projector = AppProjector::new(component, config.width, config.height);
             let (exit, projector) =
-                client_runtime::run_client(app_end, projector, config, reconnect);
+                client_runtime::run_client_session(app_end, projector, config, reconnect);
             if reconnect_pipe_target && matches!(exit, client_runtime::ClientExit::HostLost) {
                 eprintln!("[rqhost-client] host lost → exit（exit-on-EOF 策略档）");
             }
             println!("[autodesk-client] exit={exit:?} revision={}", projector.revision());
             Ok(())
+        }
+    }
+}
+
+// ================================ 测试 ================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::desktop_protocol::endpoint::FrameSource;
+
+    fn example_source(dir: &str) -> Option<String> {
+        let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/");
+        let path = format!("{base}{dir}/src/front/app.at");
+        std::fs::read_to_string(&path).ok()
+    }
+
+    /// PLAN-033 T-02 冒烟：VM 源（`DynamicComponent`）经 Commands 臂新装配
+    /// （NativeProjector + ensure_covered + 产帧）——001/003 两载体 Covered
+    /// 且帧非空（AC-01 单元级证据；全链 e2e 在 T-07 p033_rq_unify_arm）。
+    #[test]
+    fn vm_queue_arm_assembly_covered() {
+        for dir in ["001-helloworld", "003-converter"] {
+            let Some(src) = example_source(dir) else {
+                eprintln!("[p033] skip: {dir} 载体缺席");
+                return;
+            };
+            let component =
+                crate::build_dynamic_component(&src, None).unwrap_or_else(|e| panic!("{dir}: {e}"));
+            let mut projector = NativeProjector::new(component, 480.0, 320.0);
+            projector
+                .ensure_covered()
+                .unwrap_or_else(|gate| panic!("{dir} 未过覆盖门: {gate}"));
+            let frame = projector.render_frame();
+            assert!(!frame.ops.is_empty(), "{dir} 空帧");
+            assert!(projector.revision() >= 1);
         }
     }
 }
