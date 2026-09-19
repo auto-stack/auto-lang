@@ -58,12 +58,12 @@ widget DataTableCrudDialog (columns: List, rows: List, total: int, on_query: msg
             }
 
             table {
-                // header row per props.columns
+                // header row per props.columns（含操作列——消费方经
+                // columns 供给，不再硬编码）
                 row {
                     for col in .columns {
                         text (key: col.id) f"${col.title}" { style: "text-sm font-medium" }
                     }
-                    text "Actions" { style: "text-sm font-medium" }
                 }
                 for row in .rows {
                     row (key: row.id) {
