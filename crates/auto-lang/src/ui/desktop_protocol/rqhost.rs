@@ -479,6 +479,12 @@ fn apply_actions(
                 }
                 events.push(RqEvent::Reclaimed { wid });
             }
+            // PLAN-030 增臂（master 调和补面）：desktop.* 命令上行——
+            // 执行体是桌面宿主的 DesktopBus broker 臂；rqhost 客户端为
+            // 普通 app（非特权 shell），v1 不执行仅观测行留痕。
+            HostAction::DesktopBus { record, .. } => {
+                eprintln!("[rqhost] desktop-bus 上行（普通 app 不执行）: {record}");
+            }
             HostAction::ObserveUp { .. } => {
                 // 观测上行：v1 不消费（桌面 MCP 代理线归桌面）。
             }
@@ -1019,6 +1025,7 @@ mod tests {
             width: 480.0,
             height: 320.0,
             fonts: vec![],
+            surfaces: Vec::new(),
         })
     }
 
