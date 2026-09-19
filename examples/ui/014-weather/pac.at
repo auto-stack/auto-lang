@@ -4,8 +4,9 @@ scene: "ui"
 render: "vue"
 title: "Weather"
 title_zh: "天气"
-# PLAN-660 r6：窗口随内容自然尺寸（011-calculator Plan 504 同型）。
-window: "fit"
+# PLAN-660 r7：不用 window:"fit"（Plan 512：fit + max-w/lg: 在 iced 可能
+# 把窗量成极小，UI「只剩一张卡」）。天气仪表盘给显式初窗尺寸。
+window: "960x680"
 desktop: "true"
 # 不写死 theme/accent —— 跟随宿主/CLI；应用内 ToggleTheme 翻转 dark_mode。
 
