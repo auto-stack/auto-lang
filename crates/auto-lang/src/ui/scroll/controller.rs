@@ -117,7 +117,7 @@ pub fn enqueue_intent(handle: &str, intent: ScrollIntent) {
 /// renderer update 期排空：同 handle 的 intent 序列对快照状态顺序折叠成
 /// 双轴终态 offset，产出 (widget_id, x, y)。无绑定/无测量的 handle 静默
 /// 丢弃（pane 未 build 或尚未布局——controller 允许先于 pane 使用，非错误）。
-pub fn drain_resolved_intents() -> Vec<(String, f64, f64)> {
+pub fn drain_resolved_intents() -> Vec<(String, String, f64, f64)> {
     let mut reg = REGISTRY.lock().unwrap();
     let queued = std::mem::take(&mut reg.intents);
     // handle → 终态聚合（同帧多条 intent 顺序应用；跨轴独立叠加）。
@@ -157,7 +157,7 @@ pub fn drain_resolved_intents() -> Vec<(String, f64, f64)> {
         .filter_map(|handle| {
             let (x, y) = folded.get(&handle).copied()?;
             let widget_id = reg.panes.get(&handle)?.widget_id.clone();
-            Some((widget_id, x, y))
+            Some((handle, widget_id, x, y))
         })
         .collect()
 }
@@ -178,6 +178,17 @@ pub fn controller_snapshot(handle: &str) -> ControllerPaneSnapshot {
         .get(handle)
         .cloned()
         .unwrap_or_default()
+}
+
+/// drain 消费端回填：controller 意图落盘 scroll_to 后，把已解析的双轴目标
+/// offset 写回注册表投影（iced 程序化 scroll_to 不触发 on_scroll 回声——
+/// 043 写臂同款盲区；用户滚动后 on_scroll 测量会校正 viewport/content）。
+pub fn note_controller_offset(handle: &str, offset_x: f64, offset_y: f64) {
+    let mut reg = REGISTRY.lock().unwrap();
+    if let Some(entry) = reg.panes.get_mut(handle) {
+        entry.offset_x = offset_x;
+        entry.offset_y = offset_y;
+    }
 }
 
 /// 测试/调试面：intent 队列长度（不消费）。
@@ -222,8 +233,8 @@ mod tests {
         );
         let drained = drain_resolved_intents();
         assert_eq!(drained.len(), 1);
-        assert_eq!(drained[0].0, "pane_a");
-        assert_eq!(drained[0].2, 0.0); // (x, y)：y 终态
+        assert_eq!(drained[0].0, h.as_str()); // handle 复用（四元组 handle,id,x,y）
+        assert_eq!(drained[0].3, 0.0); // y 终态
 
         note_controller_state(&h, (0.0, 100.0), (300.0, 200.0), (500.0, 1000.0));
         enqueue_intent(
@@ -247,8 +258,8 @@ mod tests {
             1,
             "same-handle intents fold into one final state"
         );
-        assert_eq!(drained[0].2, 800.0); // range 1000-200（第二条覆盖第一条）
-        assert_eq!(drained[0].1, 0.0); // x 轴不受 y intent 影响
+        assert_eq!(drained[0].3, 800.0); // range 1000-200（第二条覆盖第一条）
+        assert_eq!(drained[0].2, 0.0); // x 轴不受 y intent 影响
         assert_eq!(pending_intent_count(), 0, "drain empties queue");
 
         // 双轴独立叠加：x by → x 终态变化、y 保持。
@@ -270,8 +281,8 @@ mod tests {
             },
         );
         let drained = drain_resolved_intents();
-        assert_eq!(drained[0].1, 100.0);
-        assert_eq!(drained[0].2, 50.0);
+        assert_eq!(drained[0].2, 100.0);
+        assert_eq!(drained[0].3, 50.0);
     }
 
     #[test]

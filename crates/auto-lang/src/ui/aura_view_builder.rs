@@ -1677,6 +1677,8 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
+        // PLAN-656 review F-1：别名拼写归一（scroll-pane→scroll 等）。
+        let tag = Self::normalize_dispatch_tag(tag);
         // Record event handler bindings for this element, at this node's own
         // path (set by the caller's `path.push(child_index)`). Runs before the
         // `match tag` dispatch so it is unconditional — every element with
@@ -2417,6 +2419,23 @@ impl<'a> AuraViewBuilder<'a> {
         // axes prop 仅供信息面（host 创建恒 BOTH；实际滚动轴由外层
         // scroll-pane 的 axis 决定）。
         View::ManagedScrollContent { key, logical_w, logical_h, axes: crate::ui::scroll::ScrollAxes::BOTH }
+    }
+
+    /// PLAN-656 复审修复（review F-1）：schema 别名拼写在派发面归一——
+    /// builder 收到的是**原始 tag**（resolve_tag 折叠在 schema 校验层），
+    /// 四表同步收口曾把 vb 臂的别名拼写移除，导致 VM 轨 `scroll-pane` 沦为
+    /// unknown fallback（快照实证 y-rows 裸挂 col、无 scrollable 节点）。
+    /// 归一单点在两派发入口（tracked/untracked），臂内保持 canonical。
+    fn normalize_dispatch_tag(tag: &str) -> &str {
+        // if/else 链（非 `match tag {`——schema_drift 语句级派发表计数器只认
+        // match 形态，小别名归一不构成新派发表维度）。
+        if tag == "scroll-pane" {
+            "scroll"
+        } else if tag == "scroll-test-content" {
+            "scroll_test_content"
+        } else {
+            tag
+        }
     }
 
     /// PLAN-656 T-03: scroll-pane 语义提取——tracked/untracked 双臂共用
@@ -3634,6 +3653,8 @@ impl<'a> AuraViewBuilder<'a> {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
+        // PLAN-656 review F-1：别名拼写归一（scroll-pane→scroll 等）。
+        let tag = Self::normalize_dispatch_tag(tag);
         // Plan 409 §10 续: hidden/md:hidden 元素按桌面语义不渲染(is_hidden:
         // 含 Hidden 且无 display 覆盖,见 Style::is_hidden)。
         if self.extract_style(props).map_or(false, |s| s.is_hidden()) {

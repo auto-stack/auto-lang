@@ -17381,10 +17381,14 @@ fn compare_pngs(
         // PLAN-656 T-05: 排空 scroll-pane controller intent 队列
         //（natives 侧 scroll_to_end/scroll_by/... 入队；同 handle 折叠成
         // 双轴终态，一次 scroll_to 落盘——R1 时延=一次 build+update）。
-        for (id, x, y) in crate::ui::scroll::drain_resolved_intents() {
+        for (handle, id, x, y) in crate::ui::scroll::drain_resolved_intents() {
             if std::env::var("P656_DEBUG").is_ok() {
                 eprintln!("[P656-DRAIN] scroll_to id={id} x={x} y={y}");
             }
+            // review F-2：程序化 scroll_to 无 on_scroll 回声——已解析目标
+            // offset 同步写回注册表投影，scroll_state() 读数与命令一致；
+            // 用户滚动后 on_scroll 测量会以真实值校正。
+            crate::ui::scroll::controller::note_controller_offset(&handle, x, y);
             tail_tasks.push(iced::widget::operation::scroll_to(
                 id,
                 iced::widget::scrollable::AbsoluteOffset { x: x as f32, y: y as f32 },

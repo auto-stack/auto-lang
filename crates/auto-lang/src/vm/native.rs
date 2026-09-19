@@ -1034,6 +1034,9 @@ pub fn shim_scroll_to_end(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let arity = task.pending_native_arg_count as usize;
     if let Some(handle) = pop_controller_handle(task, vm) {
         let axis = if arity >= 2 { pop_axis_arg(task, vm) } else { crate::ui::scroll::Axis::Y };
+        if std::env::var("P656_DEBUG").is_ok() {
+            eprintln!("[P656-NATIVE] to_end handle={handle}");
+        }
         enqueue_intent(&handle, ScrollIntent::ToEnd { axis, source: ScrollSource::Programmatic });
     }
     task.ram.push_nv(auto_val::encode_bool(true));
@@ -1100,6 +1103,9 @@ pub fn shim_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_scroll_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::generic_registry::GenericInstanceData;
     let handle = pop_string_arg(task, vm);
+    if std::env::var("P656_DEBUG").is_ok() {
+        eprintln!("[P656-NATIVE] state handle={handle}");
+    }
     let snap = crate::ui::scroll::controller::controller_snapshot(&handle);
     let x = crate::ui::scroll::ScrollAxisState {
         offset: snap.offset_x,
