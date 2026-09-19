@@ -28,7 +28,7 @@ style hint_text = "text-[10px] text-muted-foreground"
 // r9：a2r 不把 `use weather_data: fn` 内联进 main.rs（E0425）。函数同文件
 // 放在 widget 之后；城市选择用中文名字符串键，避免 Obj id 被推成 i62。
 
-style page = "bg-background text-foreground w-full"
+style page = "w-full h-full bg-background text-foreground"
 style app_frame = "w-full bg-card border border-border rounded-2xl p-4 gap-4 shadow-lg"
 style city_pill_on = "px-3 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm shrink-0 transition-colors"
 style city_pill_off = "px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shrink-0 transition-colors"
@@ -72,7 +72,7 @@ widget App {
         // 预报区 Tab：hourly | daily（默认窗口不高，二者互斥显示）
         var forecast_tab str = "hourly"
 
-        var city_id str = "北京"
+        var city_id str = "beijing"
         var city_zh str = "北京"
         var condition str = "partly"
         var cond_zh str = "多云"
@@ -139,24 +139,16 @@ widget App {
                                 button "竖屏" { onclick: .SetLayout("portrait"), variant: "secondary", style: layout_btn_off }
                             }
                         }
-                        button {
-                            onclick: .Refresh
-                            variant: "primary"
-                            style: if .refreshing { refresh_busy } else { refresh_idle }
-                            if .refreshing {
-                                text "刷新中…" {}
-                            } else {
-                                text "刷新" {}
-                            }
+                        // a2r：参数形按钮（子节点 text 会生成 button("")）
+                        if .refreshing {
+                            button "刷新中…" { onclick: .Refresh, variant: "primary", style: refresh_busy }
+                        } else {
+                            button "刷新" { onclick: .Refresh, variant: "primary", style: refresh_idle }
                         }
-                        button {
-                            onclick: .ToggleTheme
-                            style: icon_btn
-                            if .dark_mode {
-                                text "☀️" { style: "text-sm" }
-                            } else {
-                                text "🌙" { style: "text-sm" }
-                            }
+                        if .dark_mode {
+                            button "☀️" { onclick: .ToggleTheme, style: icon_btn }
+                        } else {
+                            button "🌙" { onclick: .ToggleTheme, style: icon_btn }
                         }
                     }
                 }
@@ -169,55 +161,55 @@ widget App {
                             style: "items-center gap-2 h-full pr-2"
                             // a2r：[]str for 循环元素类型为 Value，与 String 比较失败；
                             // 城市按钮全部展开，避免 for + 列表元素。
-                            if .city_zh == "北京" {
-                                button "北京" { onclick: .SelectCity("北京"), variant: "primary", style: city_pill_on }
+                            if .city_id == "beijing" {
+                                button "北京" { onclick: .SelectCity("beijing"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "北京" { onclick: .SelectCity("北京"), variant: "secondary", style: city_pill_off }
+                                button "北京" { onclick: .SelectCity("beijing"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "上海" {
-                                button "上海" { onclick: .SelectCity("上海"), variant: "primary", style: city_pill_on }
+                            if .city_id == "shanghai" {
+                                button "上海" { onclick: .SelectCity("shanghai"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "上海" { onclick: .SelectCity("上海"), variant: "secondary", style: city_pill_off }
+                                button "上海" { onclick: .SelectCity("shanghai"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "广州" {
-                                button "广州" { onclick: .SelectCity("广州"), variant: "primary", style: city_pill_on }
+                            if .city_id == "guangzhou" {
+                                button "广州" { onclick: .SelectCity("guangzhou"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "广州" { onclick: .SelectCity("广州"), variant: "secondary", style: city_pill_off }
+                                button "广州" { onclick: .SelectCity("guangzhou"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "深圳" {
-                                button "深圳" { onclick: .SelectCity("深圳"), variant: "primary", style: city_pill_on }
+                            if .city_id == "shenzhen" {
+                                button "深圳" { onclick: .SelectCity("shenzhen"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "深圳" { onclick: .SelectCity("深圳"), variant: "secondary", style: city_pill_off }
+                                button "深圳" { onclick: .SelectCity("shenzhen"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "杭州" {
-                                button "杭州" { onclick: .SelectCity("杭州"), variant: "primary", style: city_pill_on }
+                            if .city_id == "hangzhou" {
+                                button "杭州" { onclick: .SelectCity("hangzhou"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "杭州" { onclick: .SelectCity("杭州"), variant: "secondary", style: city_pill_off }
+                                button "杭州" { onclick: .SelectCity("hangzhou"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "成都" {
-                                button "成都" { onclick: .SelectCity("成都"), variant: "primary", style: city_pill_on }
+                            if .city_id == "chengdu" {
+                                button "成都" { onclick: .SelectCity("chengdu"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "成都" { onclick: .SelectCity("成都"), variant: "secondary", style: city_pill_off }
+                                button "成都" { onclick: .SelectCity("chengdu"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "西安" {
-                                button "西安" { onclick: .SelectCity("西安"), variant: "primary", style: city_pill_on }
+                            if .city_id == "xian" {
+                                button "西安" { onclick: .SelectCity("xian"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "西安" { onclick: .SelectCity("西安"), variant: "secondary", style: city_pill_off }
+                                button "西安" { onclick: .SelectCity("xian"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "武汉" {
-                                button "武汉" { onclick: .SelectCity("武汉"), variant: "primary", style: city_pill_on }
+                            if .city_id == "wuhan" {
+                                button "武汉" { onclick: .SelectCity("wuhan"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "武汉" { onclick: .SelectCity("武汉"), variant: "secondary", style: city_pill_off }
+                                button "武汉" { onclick: .SelectCity("wuhan"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "哈尔滨" {
-                                button "哈尔滨" { onclick: .SelectCity("哈尔滨"), variant: "primary", style: city_pill_on }
+                            if .city_id == "harbin" {
+                                button "哈尔滨" { onclick: .SelectCity("harbin"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "哈尔滨" { onclick: .SelectCity("哈尔滨"), variant: "secondary", style: city_pill_off }
+                                button "哈尔滨" { onclick: .SelectCity("harbin"), variant: "secondary", style: city_pill_off }
                             }
-                            if .city_zh == "三亚" {
-                                button "三亚" { onclick: .SelectCity("三亚"), variant: "primary", style: city_pill_on }
+                            if .city_id == "sanya" {
+                                button "三亚" { onclick: .SelectCity("sanya"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "三亚" { onclick: .SelectCity("三亚"), variant: "secondary", style: city_pill_off }
+                                button "三亚" { onclick: .SelectCity("sanya"), variant: "secondary", style: city_pill_off }
                             }
                         }
                     }
@@ -608,7 +600,7 @@ widget App {
         .Init -> {
             .layout_mode = "landscape"
             .forecast_tab = "hourly"
-            .city_id = "北京"
+            .city_id = "beijing"
             .city_zh = "北京"
             .condition = "partly"
             .cond_zh = "多云"
@@ -652,7 +644,28 @@ widget App {
 
         .SelectCity(id) -> {
             .city_id = id
-            .city_zh = id
+            // ASCII id → 中文名 + 数据（避免 a2r 中文比较 mojibake）
+            if id == "shanghai" {
+                .city_zh = "上海"
+            } else if id == "guangzhou" {
+                .city_zh = "广州"
+            } else if id == "shenzhen" {
+                .city_zh = "深圳"
+            } else if id == "hangzhou" {
+                .city_zh = "杭州"
+            } else if id == "chengdu" {
+                .city_zh = "成都"
+            } else if id == "xian" {
+                .city_zh = "西安"
+            } else if id == "wuhan" {
+                .city_zh = "武汉"
+            } else if id == "harbin" {
+                .city_zh = "哈尔滨"
+            } else if id == "sanya" {
+                .city_zh = "三亚"
+            } else {
+                .city_zh = "北京"
+            }
             if id == "上海" {
                 .condition = "rain"
                 .cond_zh = "小雨"
