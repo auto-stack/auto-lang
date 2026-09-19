@@ -1,0 +1,22 @@
+clear 24,24,28,255
+text-styled 10.0,10.0 size=36.0 lh=48.6 w=700 it=false 147,148,245,255 "Tabs Variants"
+text 10.0,90.6 size=20.0 lh=27.0 147,148,245,255 "default tray"
+quad 10.0,129.6 230.0x26.9 30,30,36,255
+text 104.0,133.6 size=14.0 lh=18.9 130,130,140,255 "Alpha"
+quad 240.0,129.6 230.0x26.9 48,96,200,255
+text 338.2,133.6 size=14.0 lh=18.9 255,255,255,255 "Beta"
+text 10.0,156.5 size=16.0 lh=21.6 220,220,220,255 "Beta panel - default tray (status quo)"
+text 10.0,210.1 size=20.0 lh=27.0 147,148,245,255 "enclosed flat (IDE)"
+quad 10.0,249.1 230.0x26.9 30,30,36,255
+quad 10.0,274.0 230.0x2.0 48,96,200,255
+text 104.0,253.1 size=14.0 lh=18.9 255,255,255,255 "Alpha"
+quad 240.0,249.1 230.0x26.9 30,30,36,255
+text 338.2,253.1 size=14.0 lh=18.9 130,130,140,255 "Beta"
+text 10.0,276.0 size=16.0 lh=21.6 220,220,220,255 "Alpha panel - active tab merges with this panel"
+text 10.0,329.6 size=20.0 lh=27.0 147,148,245,255 "enclosed rounded (Chrome)"
+quad 10.0,368.6 230.0x26.9 30,30,36,255
+quad 10.0,393.5 230.0x2.0 48,96,200,255
+text 104.0,372.6 size=14.0 lh=18.9 255,255,255,255 "Alpha"
+quad 240.0,368.6 230.0x26.9 30,30,36,255
+text 338.2,372.6 size=14.0 lh=18.9 130,130,140,255 "Beta"
+text 10.0,395.5 size=16.0 lh=21.6 220,220,220,255 "Alpha panel - Chrome rounded look"

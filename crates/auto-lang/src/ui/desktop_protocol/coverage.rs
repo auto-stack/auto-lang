@@ -299,6 +299,10 @@ impl Coverage {
             "right-",
             "bottom-",
             "z-",
+            // PLAN-032 T-07（D5 族）：inset- 四向偏移（真渲——NodeStyle
+            // 四槽填充）/ line-clamp- 行数截断（降级放行 no-op 随注）。
+            "inset-",
+            "line-clamp-",
         ]
         .into_iter()
         .map(String::from)
@@ -775,6 +779,16 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         // PLAN-032 T-02（D5）：self-center（交叉轴自对齐）——投影器
         // NodeStyle.center_children 通道真渲（012 映射缺口清偿；非降级）。
         SC::SelfCenter => "self-center".into(),
+        // PLAN-032 T-07（D5 族运行时面补臂）：inset-N（四向偏移归一——
+        // iced :1209 同语义）——NodeStyle 四槽填充真渲（与 absolute 组合
+        // = 全覆盖锚定；024 chart 模态纱 inset-0）；line-clamp-N（行数
+        // 截断——iced :1263 有实现，DrawOp 无裁剪通道）——判定降级
+        // 放行（渲染 no-op 随注，underline 先例；真渲债随 KNOWN-DEBT）。
+        SC::Inset(_) => "inset-1".into(),
+        SC::LineClamp(_) | SC::LineClampNone => "line-clamp-1".into(),
+        // flex-wrap（行折行）——native Row 单行无折行通道：token 归
+        /// "flex-wrap"（既有 "flex" 前缀命中），渲染 no-op 单行随注。
+        SC::FlexWrap => "flex-wrap".into(),
         SC::TextArbitrary(_) => "text-1".into(),
         SC::ShadowArbitrary(_) => "shadow".into(),
         // —— 语义承载未实现面：显式 not-yet（语义名缺项载荷——缺项清单
@@ -1309,6 +1323,50 @@ mod tests {
         assert_eq!(mode2, FrameMode::Pixels, "未覆盖降级 independent 不变");
         let line2 = line2.expect("降级观测行");
         assert!(line2.contains("truncate"), "缺项清单随行: {line2}");
+    }
+
+    /// PLAN-032 T-07：六例**运行时视图**（path 上下文装载 + Component::
+    /// view()——路由解析后子树含页组件样式）覆盖判定钉——与仪器静态
+    /// App 壳扫描（native_flip_coverage_data_row，026 D3 口径）的差在
+    /// 案：018 truncate（文本裁剪）/ 041 codeeditor（整 kind）两真
+    /// not-yet 家族运行时拒收（I3 留痕腿——queue 门拒绝退出，AC-04）；
+    /// D5 族运行时面补臂（Inset/LineClamp/FlexWrap）后 021/024 亦
+    /// Covered。生产 auto 裁决（a2r main resolve_native_frame_mode 消费
+    /// component.view()）即本口径。
+    #[test]
+    fn native_gate_runtime_views_of_six() {
+        let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/");
+        // (例, 期望缺项——None = Covered)。
+        let expect: &[(&str, Option<&str>)] = &[
+            ("012-clock", None),
+            ("018-book-reader", Some("style:truncate")),
+            ("021-blog-viewer", None),
+            ("024-charts", None),
+            ("041-auto-edit", Some("tag:codeeditor")),
+            ("046-tabs-variants", None),
+        ];
+        for (dir, missing) in expect {
+            let path = format!("{base}{dir}/src/front/app.at");
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {path}: {e}"));
+            let comp = crate::build_dynamic_component(&src, Some(&path))
+                .unwrap_or_else(|e| panic!("build {dir}: {e:?}"));
+            let view = crate::ui::Component::view(&comp);
+            let scan = scan_native_view(&view);
+            match judge(&scan, &Coverage::native_queue_set()) {
+                Verdict::Covered => assert!(
+                    missing.is_none(),
+                    "{dir} 运行时应 Covered（口径差入案）"
+                ),
+                Verdict::NotCovered(m) => {
+                    let want = missing.unwrap_or_else(|| panic!("{dir} 应 Covered: {m:?}"));
+                    assert!(
+                        m.iter().any(|x| x.contains(want)),
+                        "{dir} 运行时缺项应含 {want}: {m:?}"
+                    );
+                }
+            }
+        }
     }
 
     /// PLAN-026 T-06：覆盖翻转数据行（§5.1 D3 定案仪器）——examples/ui

@@ -324,6 +324,27 @@ mod tests {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
     }
 
+    /// PLAN-032 T-07：front 全源语料——`src/front/*.at` 合并（多文件例
+    /// 018/021/024/041 的组件/页面引用需合体解析；仪器 native_flip_
+    /// coverage_data_row 同径）。
+    fn example_source_all(dir: &str) -> String {
+        let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/");
+        let front = format!("{base}{dir}/src/front");
+        let mut srcs: Vec<std::path::PathBuf> = std::fs::read_dir(&front)
+            .unwrap_or_else(|e| panic!("read {front}: {e}"))
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "at"))
+            .collect();
+        srcs.sort();
+        let mut combined = String::new();
+        for s in &srcs {
+            combined.push_str(&std::fs::read_to_string(s).unwrap_or_default());
+            combined.push('\u{a}');
+        }
+        combined
+    }
+
     /// PLAN-029 T-03：native 档子进程共用体——孵化 + ensure_covered 门 +
     /// NativeProjector + run_client_session（镜像 client_entry 生产分支）。
     fn run_native_t3_child<C>(
@@ -526,6 +547,42 @@ mod tests {
         // PLAN-030 T-08：p030 壳装配子进程——shell_client 真身 + 点击钩子。
         if mode == "shell" && app == "p030-shell" {
             run_p030_shell_child(&broker_pipe);
+            return;
+        }
+        // PLAN-032 T-07：六例全源档——native-full = 显式 queue（front 全
+        /// .at 合并解析 + ensure_covered 门 + NativeProjector）；native-
+        /// auto-full = auto 档翻转抽样腿（resolve_native_frame_mode
+        ///（Auto）裁决断言 Commands——flipped@ramp3 后缺省 queue，观测
+        /// 行随行）。
+        if mode == "native-full" || mode == "native-auto-full" {
+            // 生产同型装载：单 app.at + path 上下文（`use` 模块声明由
+            // loader 按 path 兄弟文件解析——018 book_store/021 页组件）。
+            let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/");
+            let path = format!("{base}{app}/src/front/app.at");
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {path}: {e}"));
+            let component = crate::build_dynamic_component(&src, Some(&path))
+                .unwrap_or_else(|e| panic!("child build (path ctx {app}): {e:?}"));
+            if mode == "native-auto-full" {
+                use crate::ui::desktop_protocol::client_entry::resolve_native_frame_mode;
+                use crate::ui::desktop_protocol::coverage::RenderMode;
+                use crate::ui::desktop_protocol::message::FrameMode;
+                let view = crate::ui::Component::view(&component);
+                let (frame_mode, _downgraded, line) =
+                    resolve_native_frame_mode(RenderMode::Auto, &app, &view);
+                if let Some(l) = &line {
+                    println!("[p032-auto] {l}");
+                }
+                assert_eq!(
+                    frame_mode, FrameMode::Commands,
+                    "auto 档翻转后缺省 queue（flipped@ramp3）"
+                );
+                assert!(
+                    line.as_deref().is_some_and(|l| l.contains("flipped@ramp3")),
+                    "翻转观测行: {line:?}"
+                );
+            }
+            run_native_t3_child(&broker_pipe, &app, component);
             return;
         }
         let src = example_source(&app);
@@ -4422,6 +4479,268 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    /// PLAN-032 T-07 —— 六例 queue 全链 + auto 档翻转抽样腿
+    ///（AUTO_DESKTOP_E2E=1 门；留痕 AUTO_032_ASSETS=1 → assets/032/）。
+    /// 六例 = ramp v3 六缺项载体（012 SelfCenter / 018 hidden+定位族 /
+    /// 021 sticky / 024 样式 grid / 041 hidden / 046 tabs）：native(-auto)
+    /// -full 子进程经 wire 合成帧断言（首帧钩子 + frame_mode=Commands）+
+    /// 046 tabs on_select 交互闭环（Beta 托盘项点击 → panel 切换）+
+    /// 024 样式 grid 布局几何（Line/Bar 同行异列）+ 012 auto 档翻转腿
+    ///（子进程侧 resolve 裁决断言 + 宿主 Commands）。
+    #[test]
+    fn p032_ramp3_flip_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
+        use crate::ui::session::{DesktopSession, LaunchSpec, ProcessModel};
+
+        // (例, 子进程档, 首帧钩子文本)。运行时视图 Covered 四例走进程
+        // 腿（012 = auto 档翻转抽样腿）；018（truncate）/041（codeeditor）
+        // 运行时视图真 not-yet——进程腿必被 queue 门拒收，改走进程内
+        /// 拒收留痕腿（见尾部——native_gate_runtime_views_of_six 钉）。
+        let legs: &[(&str, &str, &str)] = &[
+            ("012-clock", "native-auto-full", "时钟 Clock"),
+            ("021-blog-viewer", "native-full", "My Blog"),
+            ("024-charts", "native-full", "图表工坊"),
+            ("046-tabs-variants", "native-full", "Alpha panel"),
+        ];
+        let broker_pipe = format!("autodesk-broker-032-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        let names: Vec<String> = legs.iter().map(|(n, _, _)| n.to_string()).collect();
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            names.iter().position(|n| n.as_str() == name).map(|_| LaunchSpec {
+                code: r#"widget t { view { text "x" } }"#.to_string(),
+                source_path: None,
+                title: Some(name.to_string()),
+                name: Some(name.to_string()),
+                fit: false,
+                daemon: None,
+                back_root: None,
+                exe: None,
+                opens: Vec::new(),
+                render_decl: Some("queue".into()),
+            })
+        }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let broker_for_spawn = broker_pipe.clone();
+        let mode_of = |name: &str| {
+            legs.iter()
+                .find(|(n, _, _)| *n == name)
+                .map(|(_, m, _)| m.to_string())
+                .unwrap_or_else(|| "native-full".into())
+        };
+        session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
+            Ok(spawn_t3_child(&broker_for_spawn, child_name, &mode_of(child_name)))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| {
+                            l.ops
+                                .iter()
+                                .map(|o| format!("{o:?}"))
+                                .take(24)
+                                .collect::<Vec<_>>()
+                        })
+                );
+                std::thread::yield_now();
+            }
+        }
+        // PLAN-032：TextStyled 同收（加粗文本走 Styled 臂——012 标题
+        /// "时钟 Clock" 即此形态）。
+        fn texts_of(ops: &[DrawOp]) -> Vec<&str> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { text, .. } | DrawOp::TextStyled { text, .. } => {
+                        Some(text.as_str())
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+        fn text_pos(ops: &[DrawOp], needle: &str) -> Option<(f32, f32)> {
+            ops.iter().find_map(|op| match op {
+                DrawOp::Text { x, y, text, .. } | DrawOp::TextStyled { x, y, text, .. }
+                    if text.contains(needle) =>
+                {
+                    Some((*x, *y))
+                }
+                _ => None,
+            })
+        }
+
+        // —— 六例首帧 + frame_mode=Commands（012 = auto 档翻转腿：子进程
+        //    侧 resolve 裁决断言已在 t3_child_body；宿主侧帧模式同
+        //    Commands——缺省 queue 生效面）。
+        let mut origins: Vec<(String, (f32, f32))> = Vec::new();
+        for (name, _, hook) in legs {
+            let wid =
+                session.launch_app(name).unwrap_or_else(|e| panic!("launch {name}: {e:?}"));
+            let (ox, oy) = {
+                let host = session.host.as_ref().unwrap();
+                let r = *host.wm.wins.get(&wid).unwrap().rect.borrow();
+                (r.x, r.y)
+            };
+            origins.push((name.to_string(), (ox, oy)));
+            wait_frame(
+                &mut session,
+                name,
+                |ops| texts_of(ops).iter().any(|t| t.contains(hook)),
+                &format!("{name} 首帧（钩子 {hook}）"),
+            );
+            let mode = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some(name))
+                .map(|c| c.endpoint.frame_mode)
+                .unwrap_or_else(|| panic!("{name} client 缺席"));
+            assert_eq!(mode, FrameMode::Commands, "{name} 帧模式 = Commands");
+            println!("[p032] {name} 首帧 PASS (frame_mode=Commands)");
+        }
+
+        // —— 018/041 拒收留痕腿（进程内）：运行时视图真 not-yet 家族
+        ///（truncate/codeeditor）——queue 门 ensure_covered 拒绝退出，
+        /// 缺项载荷逐字断言（I3/AC-04 纪律的 e2e 面）。
+        {
+            let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/");
+            for (name, want) in [
+                ("018-book-reader", "style:truncate"),
+                ("041-auto-edit", "tag:codeeditor"),
+            ] {
+                let path = format!("{base}{name}/src/front/app.at");
+                let src = std::fs::read_to_string(&path).expect("read");
+                let comp = crate::build_dynamic_component(&src, Some(&path))
+                    .unwrap_or_else(|e| panic!("build {name}: {e:?}"));
+                let projector = crate::ui::desktop_protocol::native_projector::NativeProjector::new(
+                    comp,
+                    480.0,
+                    320.0,
+                );
+                let err = projector.ensure_covered().expect_err("queue 门应拒收");
+                assert!(err.contains(want), "{name} 拒收载荷应含 {want}: {err}");
+                println!("[p032] {name} 拒收留痕 PASS ({want})");
+            }
+        }
+
+        // —— 046 tabs on_select 交互闭环：Beta 托盘项点击 → panel 切换。
+        {
+            let (ox, oy) = origins
+                .iter()
+                .find(|(n, _)| n == "046-tabs-variants")
+                .map(|(_, p)| (p.0, p.1))
+                .unwrap();
+            let ops = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("046-tabs-variants"))
+                .and_then(|c| c.composed())
+                .expect("046 帧");
+            let (bx, by) = ops
+                .ops
+                .iter()
+                .find_map(|op| match op {
+                    DrawOp::Text { x, y, text, .. } | DrawOp::TextStyled { x, y, text, .. }
+                        if text == "Beta" =>
+                    {
+                        Some((*x, *y))
+                    }
+                    _ => None,
+                })
+                .expect("Beta 托盘项坐标");
+            assert!(
+                session.broker_pointer_down(ox + bx + 6.0, oy + by + 6.0, MouseButton::Left)
+            );
+            wait_frame(
+                &mut session,
+                "046-tabs-variants",
+                |ops| texts_of(ops)
+                    .iter()
+                    .any(|t| *t == "Beta panel - default tray (status quo)"),
+                "046 tabs on_select 交互（Beta panel 切入）",
+            );
+            println!("[p032] 046 tabs on_select 闭环 PASS");
+        }
+
+        // —— 024 样式 grid 布局几何：Line/Bar 同行异列（grid-cols-2）。
+        {
+            let ops = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("024-charts"))
+                .and_then(|c| c.composed())
+                .expect("024 帧");
+            let l = text_pos(&ops.ops, "Line").expect("Line 按钮");
+            let b = text_pos(&ops.ops, "Bar").expect("Bar 按钮");
+            assert!(
+                (l.1 - b.1).abs() < 2.0 && b.0 > l.0,
+                "grid-cols-2 同行异列: Line={l:?} Bar={b:?}"
+            );
+            println!("[p032] 024 样式 grid 布局 PASS (Line/Bar 同行异列)");
+        }
+
+        // 帧留痕（AUTO_032_ASSETS=1 → docs/plans/reports/assets/032/）。
+        if std::env::var("AUTO_032_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/032");
+            let _ = std::fs::create_dir_all(&assets);
+            for (name, _, _) in legs {
+                if let Some(list) = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(name))
+                    .and_then(|c| c.composed())
+                {
+                    let out =
+                        crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                    let _ = std::fs::write(assets.join(format!("{name}-frame.txt")), out);
+                }
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+        println!("AUTO032-RAMP3-FLIP arm PASS (six examples + auto flip leg)");
+    }
+
     // PLAN-031 T-07 —— rqhost 第四形态 e2e（AUTO_DESKTOP_E2E=1 门）
     // -----------------------------------------------------------------------
 

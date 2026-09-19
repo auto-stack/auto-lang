@@ -2104,6 +2104,25 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
         StyleClass::RightOffset(px) => s.offset_right = Some(*px),
         StyleClass::BottomOffset(px) => s.offset_bottom = Some(*px),
         StyleClass::ZIndex(z) => s.z_index = Some(*z),
+        // PLAN-032 T-07（D5 族）：inset-N 四向偏移归一（未设槽填充——
+        // 显式 offset 类优先；与 absolute 组合 = 全覆盖锚定）。
+        StyleClass::Inset(px) => {
+            if s.offset_top.is_none() {
+                s.offset_top = Some(*px);
+            }
+            if s.offset_left.is_none() {
+                s.offset_left = Some(*px);
+            }
+            if s.offset_right.is_none() {
+                s.offset_right = Some(*px);
+            }
+            if s.offset_bottom.is_none() {
+                s.offset_bottom = Some(*px);
+            }
+        }
+        // line-clamp：DrawOp 无行数裁剪通道——判定放行渲染 no-op
+        ///（underline 先例；真渲债 KNOWN-DEBT 随注）。
+        StyleClass::LineClamp(_) | StyleClass::LineClampNone => {}
         _ => {}
     }
 }
