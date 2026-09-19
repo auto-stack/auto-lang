@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-657
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-admin-sample（L1 组装样板：四包全直连 admin 示例 + 两笔语料债顺带收口）
 author: [agent]
 created_at: 2026-09-19
@@ -412,6 +412,26 @@ Design 16 论点 "app = shell + route→blueprint selection + blueprint data wir
   17 件 + vm_walkthrough_657.json、探针零残留 | 独立性声明：与执行同会话，
   结论自工件重建（门禁重跑 + 基线归因实验 + diff 实读），未采信执行自述 |
   next: merge（/auto-plan:merge）`
+- 2026-09-19 合并收据（/auto-plan:merge，`PLAN-657:r1`，completion_kind:
+  delivered）：
+  - `prepared`：delivery_commit **8e2f4102b**（reviewed_commit 1f109f454 的
+    doc-only 后裔——SD-01 落 docs/specs/blueprint/project.md「消费面与组装
+    样板」节 + goals.md GOAL-011/GOAL-010 回写 + 账本 P657-1（architecture）/
+    P657-2（reviews→archive 路径）upsert（原子写+读回校验）；spec-index.py
+    再生 INDEX 无内容 diff；冻结 delta 对照无越界（project.md +32/goals ±2/
+    specs.json +27）。
+  - `landed`：master merge **19ae53fc5**（ANCESTRY_OK——8e2f4102b ⊆ master）；
+    双冲突并集解（KNOWN-DEBT：master 侧 642 终审+075 执行期两节保留 +
+    657 节改号增补六；specs.json：ours 重放 P657-1/2，075 条目保留实证）；
+    落地后验证：spec 节在案 + 账本读回（591 items 含 P657-1/2）+ 047
+    app.at 六条 use bps 直连 + master 冒烟 `cargo t plan657` 3/3。
+  - `ledger_refreshed`：`.autoos/specs.json`（workspace=主检出，P657-1/
+    P657-2，来源=canonical project.md/archive plan，created/last_modified
+    2026-09-19）。
+  - `archived`：git mv → docs/plans/archive/657-bp-admin-sample.md，status:
+    archived 本提交。
+  - `cleaned`：（待回填——摘链守门程序后）。
+
 
 ## 10. 待澄清事项
 
