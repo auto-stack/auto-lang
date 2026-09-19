@@ -2690,25 +2690,64 @@ fn build_floating_layer<M: Clone + Debug + 'static>(
     // container(Fill)+align_x 在 Stack 子路径不生效(× 落左上,musk 会话卡
     // 实测),spacer 是不会说谎的几何：top spacer 垂直定位,水平方向
     // Fill-spacer + 定宽 right/left spacer 夹出水平位置。
-    let top_space = iced::widget::Space::new()
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fixed(position.top.unwrap_or(0.0) as f32));
-    let mut row = iced::widget::Row::<M>::new().width(iced::Length::Fill);
-    if let Some(left) = position.left {
-        if left > 0.0 {
-            row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(left)));
+    // PLAN-022 T-05(2026-09-19)：悬浮层根改**贴内容紧致(Shrink)**——
+    // 根若 Fill,Stack 内 Opaque 包装(helpers.rs opaque:update 尾对
+    // ButtonPressed `cursor.is_over(layout.bounds())` 即 capture_event)
+    // 的捕获边界=整个 Stack 矩形 → 顶层浮层吞掉全窗口按压,下层
+    // (第二槽/基础层)交互全灭(auto-term 分屏实测:仅 slot1 可交互,
+    // 右面板无法聚焦输入/滚动条死)。top/left 锚 → Shrink 根贴内容,
+    // Opaque 捕获=内容矩形,与 CSS absolute 命中语义一致;right 锚需
+    // Fill 行做右夹持,保留 Fill 根退路(捕获过宽为已知代价,当前无
+    // 消费方)。
+    // PLAN-023 T-02(2026-09-19)根修:Opaque **下沉到 content 级**——
+    // T-01 判决(docs/plans/evidence/023/t01-verdict.md):opaque 边界
+    // =整条 spacer 行矩形(0..left+w),Stack 子层共原点 → 带偏移浮层
+    // 吞掉从原点起全部按压(下层槽位死,探针 R1/R3 确证)。本函数
+    // 改为对 content 包 opaque、spacer 留在捕获边界外(命中语义:
+    // spacer 空白区穿透到下层);调用点(四 Stack 臂/Overlay 臂)对
+    // 本函数返回值不再包外层 opaque,零偏移分支维持 opaque(层)。
+    // PLAN-023 T-02 续:top 偏移改 **Column padding**——零宽 Space(w=0,
+    // h=top)在 Shrink 列内主轴高度被 flex 吞(探针 R8 实测:w=0 → 子件
+    // y 不动;w=1 → 正确 +100;iced_core-0.14.0 flex.rs 源码推演与二进
+    // 制矛盾,零宽空间主轴尺寸失效,归因记判决工件)。padding 是 flex
+    // 一等语义(pad.1 起始偏移),实车槽位 top-[y] 全依赖此路径。
+    let top = position.top.unwrap_or(0.0) as f32;
+    let right_anchored = position.left.is_none() && position.right.is_some();
+    let mut row = iced::widget::Row::<M>::new();
+    match position.left {
+        Some(left) => {
+            if left > 0.0 {
+                row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(left)));
+            }
+            row = row.push(iced::widget::opaque(content));
         }
-        row = row.push(content);
-    } else {
-        row = row.push(iced::widget::Space::new().width(iced::Length::Fill));
-        row = row.push(content);
-        if let Some(right) = position.right {
-            if right > 0.0 {
-                row = row.push(iced::widget::Space::new().width(iced::Length::Fixed(right)));
+        None => {
+            if right_anchored {
+                row = iced::widget::Row::<M>::new().width(iced::Length::Fill);
+                row = row.push(iced::widget::Space::new().width(iced::Length::Fill));
+                row = row.push(iced::widget::opaque(content));
+                if let Some(right) = position.right {
+                    if right > 0.0 {
+                        row = row.push(iced::widget::Space::new().width(
+                            iced::Length::Fixed(right),
+                        ));
+                    }
+                }
+            } else {
+                row = row.push(iced::widget::opaque(content));
             }
         }
     }
-    iced::widget::column![top_space, row].width(iced::Length::Fill).into()
+    let column = iced::widget::column![row].padding(iced::Padding {
+        top,
+        ..iced::Padding::ZERO
+    });
+    let column = if right_anchored {
+        column.width(iced::Length::Fill)
+    } else {
+        column.width(iced::Length::Shrink).height(iced::Length::Shrink)
+    };
+    column.into()
 }
 
 /// PLAN-536 T10(D1 根修): 动态路径 abs 拆分层的偏移消费判定。
@@ -4074,11 +4113,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let pos = dynamic_abs_layer_position(&child);
                         let abs_el = child.into_iced();
                         // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上)。
+                        // PLAN-023 T-02: 带偏移分支的 opaque 已在
+                        // build_floating_layer 内下沉到 content 级(spacer
+                        // 空白区穿透);零偏移层无 spacer,外层 opaque 边界
+                        // 本=内容矩形,保持。
                         let abs_el = match pos {
                             Some(pos) => build_floating_layer(abs_el, pos),
-                            None => abs_el,
+                            None => iced::widget::opaque(abs_el),
                         };
-                        stk = stk.push(iced::widget::opaque(abs_el));
+                        stk = stk.push(abs_el);
                     }
                     let clip = style.as_ref()
                         .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
@@ -4157,11 +4200,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let abs_el = children[i].clone().into_iced();
                         // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上根修);
                         // 零偏移(inset-0 ghost 族)保持落原点。
+                        // PLAN-023 T-02: 同 Row 臂——opaque 下沉 content 级,
+                        // 零偏移分支维持外层 opaque。
                         let abs_el = match dynamic_abs_layer_position(&children[i]) {
                             Some(pos) => build_floating_layer(abs_el, pos),
-                            None => abs_el,
+                            None => iced::widget::opaque(abs_el),
                         };
-                        stk = stk.push(iced::widget::opaque(abs_el));
+                        stk = stk.push(abs_el);
                     }
                     let clip = style.as_ref()
                         .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
@@ -4596,8 +4641,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // 在上层(按 position 定位),不挤压 base 布局。opaque 吃点击穿透。
             AbstractView::Overlay { base, content, position } => {
                 let base_el = base.into_iced();
+                // PLAN-023 T-02: build_floating_layer 已含 content 级 opaque,
+                // 不再包外层(spacer 空白区穿透到 base,命中=内容矩形)。
                 let content_el = build_floating_layer(content.into_iced(), position);
-                iced::widget::stack![base_el, iced::widget::opaque(content_el)].into()
+                iced::widget::stack![base_el, content_el].into()
             }
 
             // Plan 484: hover 命中区 —— iced mouse_area 透明包裹,仅转发
@@ -23439,9 +23486,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     // 零偏移(inset-0 ghost 族)保持落原点。
                     let abs_el = match dynamic_abs_layer_position(&children[i]) {
                         Some(pos) => build_floating_layer(abs_el, pos),
-                        None => abs_el,
+                        // PLAN-023 T-02: opaque 下沉 content 级(同 builder 臂)。
+                        None => iced::widget::opaque(abs_el),
                     };
-                    stk = stk.push(iced::widget::opaque(abs_el));
+                    stk = stk.push(abs_el);
                 }
 
                 let clip = style.as_ref()
@@ -23553,9 +23601,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     // 零偏移(inset-0 ghost 族)保持落原点。
                     let abs_el = match pos {
                         Some(pos) => build_floating_layer(abs_el, pos),
-                        None => abs_el,
+                        None => iced::widget::opaque(abs_el),
                     };
-                    stk = stk.push(iced::widget::opaque(abs_el));
+                    stk = stk.push(abs_el);
                 }
                 let clip = style.as_ref()
                     .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
