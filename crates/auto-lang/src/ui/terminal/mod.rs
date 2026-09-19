@@ -201,6 +201,15 @@ pub struct TerminalCore {
     scroll_view_target: std::sync::atomic::AtomicI64,
     scroll_bound_offset: std::sync::atomic::AtomicI64,
     scroll_bind_suppress: std::sync::atomic::AtomicBool,
+    // PLAN-022 T-06 回声判别(用户实点 2026-09-19:滚轮上翻一格即卡、
+    // 下翻阶梯卡顿):一次性 suppress 无法区分 scroll_to 回声与用户
+    // 下一格滚轮(iced 键盘/滚轮事件广播,读出臂先到先吞)→ 用户增量
+    // 被吞、引擎不动、下一格跳两格。改判别式:bind 时记录期望回声位与
+    // 当时的滚轮代数,observe 时对照——代数未变且落点贴合=回声;
+    // 代数已进=用户增量,不得吞。
+    wheel_gen: std::sync::atomic::AtomicU64,
+    bind_gen: std::sync::atomic::AtomicU64,
+    bind_echo_y_px: std::sync::atomic::AtomicI32,
 }
 
 /// PLAN-019 启动自动聚焦:窗口内焦点持有者(terminal key;None = 自由,
@@ -234,6 +243,9 @@ impl TerminalCore {
             scroll_view_target: std::sync::atomic::AtomicI64::new(0),
             scroll_bound_offset: std::sync::atomic::AtomicI64::new(-1),
             scroll_bind_suppress: std::sync::atomic::AtomicBool::new(false),
+            wheel_gen: std::sync::atomic::AtomicU64::new(0),
+            bind_gen: std::sync::atomic::AtomicU64::new(0),
+            bind_echo_y_px: std::sync::atomic::AtomicI32::new(0),
         }
     }
 
@@ -307,6 +319,37 @@ impl TerminalCore {
 
     pub(crate) fn set_scroll_bind_suppress(&self) {
         self.scroll_bind_suppress.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn clear_scroll_bind_suppress(&self) {
+        self.scroll_bind_suppress.store(false, Ordering::Relaxed);
+    }
+
+    pub(crate) fn scroll_bind_suppress_pending(&self) -> bool {
+        self.scroll_bind_suppress.load(Ordering::Relaxed)
+    }
+
+    /// 用户滚轮活动计数(WheelScrolled 事件即 bump,方向无关)。
+    pub(crate) fn bump_wheel_gen(&self) -> u64 {
+        self.wheel_gen.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
+    pub(crate) fn wheel_gen(&self) -> u64 {
+        self.wheel_gen.load(Ordering::Relaxed)
+    }
+
+    /// bind 时登记期望回声位(px)并快照滚轮代数。
+    pub(crate) fn record_bind_echo(&self, y_px: f32) {
+        self.bind_gen
+            .store(self.wheel_gen.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.bind_echo_y_px.store(y_px.round() as i32, Ordering::Relaxed);
+    }
+
+    pub(crate) fn bind_echo(&self) -> (u64, i32) {
+        (
+            self.bind_gen.load(Ordering::Relaxed),
+            self.bind_echo_y_px.load(Ordering::Relaxed),
+        )
     }
 }
 
