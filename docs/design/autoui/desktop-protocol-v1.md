@@ -26,6 +26,7 @@
 | v1.10 | 2026-09-18 | live 输入接线（§1.7 壳侧缺口清偿：`desktop_window_events` 键盘/滚轮/IME 三族臂 + `DesktopEvent::LiveInput` 泵入 + `route_live_input` 生产路由）+ native 覆盖第三批（shell 面四 kind：popover/mousearea/windowthumbnail/workspacepreview）+ `lucide:` 词汇真渲 + `workspace://` 虚拟引用 + fallback 语法 `!{icon}` + acceptance key verb（见 §1.10；`PROTOCOL_VERSION` 仍 1——全部宿主侧/词汇表演进，零新 wire tag） | PLAN-029（§1.10） |
 | v1.11 | 2026-09-19 | B 程序主体（shell outproc client）：投影下行推（`ShellProjectionPush` tag 12 / `ShellClockTick` tag 13 / `ShellCursorMove` tag 14——typed 载体 wire 编码 + per-face 宿主侧指纹门）+ 命令上行执行（`DesktopBus` 端点拆臂 + registry_id 归因 + `desktop_bus_inbox` 泵后同拍执行）+ 表面 z 平面声明（Hello/Welcome 尾段多表面协商：background/chrome）+ 壳看门兵（死亡检出 → 退避 respawn → 全量重推）+ pointer 生产接线（press/release 命中 broker wid 路由）+ `shell.apps.shell_model` 双轨开关（缺省 inproc；见 §1.11；`PROTOCOL_VERSION` 仍 1——ControlMsg/Handshake 追加式，空尾段字节级不变） | PLAN-030（§1.11） |
 | v1.12 | 2026-09-19 | rqhost 第四运行形态——rendezvous 采纳协议（well-known 管道 + `adopt␟<name>` 记录 + 锁管道单实例仲裁）+ 客户端权威采纳（宿主零装载）+ rqhost 生命周期语义（末窗退出/app EOF 回收/宿主死 exit-on-EOF 策略档）+ 大帧 shm 超槽回退管道内联（见 §1.12；rendezvous 记录 = 传输层管道串约定，零 codec 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-031（§1.12） |
+| v1.13 | 2026-09-19 | native 覆盖 ramp v3 + **缺省翻转**——六缺项五族补齐（tabs 整 kind 全链[a2r 断裂修复]/hidden display:none[display 族响应式覆盖]/样式版 grid[GridCols→Grid walker 分岔]/定位族分层[absolute+offset 覆盖序真渲 + fixed/sticky 降级放行随注]/012 SelfCenter 映射臂 + D5 族运行时面[Inset/LineClamp/FlexWrap]）+ 复测 judged 22/22 = 100% ≥ 95% 过门 → `resolve_native_frame_mode` Covered 臂翻 Commands（auto 缺省 queue）+ 仪器 judged 口径升级与防漏断言反转（见 §1.13；零 wire 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-032（§1.13） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -635,6 +636,72 @@ stderr PIPE 必须排水——构建期警告超管道缓冲即阻塞写端（�
 （AppProjector 全 vocabulary 投影，无覆盖门）；not-yet 词汇（popover
 族/lucide 未知名/未解析 src）占位盒 + 观测行既有纪律承袭；native 轨
 `-q` 走 `ensure_covered` 既有门（queue 档拒 NotCovered 退出留痕）。
+
+## §1.13 v1.13 增量：native 覆盖 ramp v3 + 缺省翻转（PLAN-032）
+
+**裁定**：复测（2026-09-19，仪器 `native_flip_coverage_data_row`）
+judged **22/22 = 100% ≥ 95%** 阈值 → **native `Auto` 缺省 = queue**
+（`resolve_native_frame_mode` Covered 臂 `FrameMode::Pixels` →
+`Commands`；观测行 `native auto -> queue … default flipped@ramp3`）。
+026/029 两复测未达标维持 independent 的在案裁定由 p032 报告收束
+（`docs/plans/reports/p032-native-flip-row.md`——对差表/保真边界/翻转
+清单）。翻转前缀：覆盖判定/投影器/宿主侧全部为追加式演进，**零 wire
+变体**，`PROTOCOL_VERSION` 仍 1。
+
+**数据门口径升级**：仪器本批补 judged 计算（剔除仪器桶 parse-fail/
+extract-fail/bridge-fail/no-widget——026 D3 剔除集同源）；
+`assert!(!flip)`（达标即红逼翻转的向下任）**反转**为 `assert!(flip)`
+——翻转后 judged 跌破 95% 门即红（降级需显式裁定：台账裁定行 +
+报告更新，禁静默回归）。
+
+**五族补齐口径**（缺项清偿 = 判定翻绿；真渲/降级分层明示）：
+
+1. **tabs 整 kind**：kinds 入册 + `View::Tabs` 投影臂（等宽托盘 ×
+   default/enclosed[选中下划线]两变体 + Top/Bottom + 内容区
+   contents[selected] + `on_select` 逐项命中 `TabSelect` →
+   `TabsSelectCallback.call(index)` 物化——VM 轨首参 = value 串在
+   回调内包装）。a2r 断裂映射修复：`ui_gen/rust.rs` 专属臂
+   （labels/contents 折叠、value 绑定运行时 position、variant
+   full-path、onselect 闭包物化载荷——select 臂先例）；
+   `tag_to_view_fn` 的 "tabs"/"tab" 断裂映射移除。M7-c②（jade-garden
+   tab×27 / auto-musk tab×16）依赖解锁。
+2. **hidden = display:none 真渲**：`NodeStyle.hidden` 布尔 +
+   `layout_view_node` 单一 choke（子树整体不渲染不占位）+ 块流 gap
+   序整段跳过（兄弟间只留一个 gap）。**display 族响应式覆盖规则**：
+   parser 剥 sm/md/lg/xl/2xl 前缀（class.rs）——"hidden md:flex" 解析
+   为 [Hidden, Flex]，display 族类在场清位 = 桌面档可见（CSS 生成序
+   + 桌面目标假设）；裸 md:hidden = 隐藏。
+3. **样式版 grid 真渲**：`NodeStyle.grid_cols/grid_rows` +
+   `layout_view_block` 入口单一分岔 choke（堆叠族/容器/scrollable 全
+   路径）复用 Grid walker（`layout_grid_cells` 单源——`View::Grid`
+   变体臂同构零变化）。解析序：GridCols(n) 优先 / GridRows(m) →
+   ceil(cells/m) / 裸 Grid 不记档（无模板单列与纵向堆叠等价）。
+4. **定位族分层**（D1 定案）：`absolute` + offset **真渲**——
+   `place_absolute_children` 延迟放置（脱离流零占位不贡献父高 /
+   left-top 优先·right-bottom 按父盒尺寸反算 / 同层 z 稳定排序 /
+   ops-hits 追加主序之后 = 覆盖序置顶——Popover 平移臂先例）；
+   `fixed`/`sticky` **降级放行**（渲染 in-flow 原位 no-op——视口锚定
+   真渲债另立；opacity/overflow 先例）。`top-/left-/right-/bottom-/z-`
+   前缀族放行。
+5. **映射兜底族**（D5 + 运行时面）：`SelfCenter` → center_children
+   真渲（012）；`Inset(N)` → 四槽偏移填充真渲（组合 absolute =
+   全覆盖锚定；024 模态纱）；`LineClamp` / `FlexWrap` → 判定放行
+   渲染 no-op 随注（DrawOp 无行数裁剪/折行通道——真渲债登记）。
+
+**运行时口径差**（T-07 发现，`native_gate_runtime_views_of_six` 钉）：
+生产 auto 裁决（a2r main / VM 孵化）消费 `component.view()`——**路由
+解析后**子树含页组件样式，较仪器静态 App 壳扫描宽。021/024 的运行时
+缺项经 D5 族补臂清偿；**018（truncate——文本裁剪）/ 041（codeeditor
+——整 kind）为真 not-yet 家族**，运行时 auto 裁决维持降级
+independent + queue 门拒收留痕（I3——禁静默错绘），家族债登记
+KNOWN-DEBT（M7-c 撞面立项）。
+
+**保真边界随注**（判定翻绿 ≠ 渲染全真）：fixed/sticky in-flow 降级；
+z 完整栈序（in-flow z / 跨层栈序 not-yet——absolute 同层相对层级已
+渲）；absolute 锚定最近父块内容盒（CSS nearest positioned ancestor
+爬升近似）；堆叠族自身 fixed 高度既有丢弃边界（锚定按内容盒自洽）；
+tabs position Left/Right 渲染降级 Top；line-clamp/flex-wrap 渲染
+no-op。
 
 ## 2. Wire Format（信封）
 
