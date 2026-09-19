@@ -14,7 +14,7 @@
 // pac.at `desktop_render:` > auto）。spawn 参数名带 autodesk 前缀：CLI
 // `run` 已有具名 `--render`（前端后端，clap 具名先吞）——撞名第二处，
 // 与 --autodesk-client/-broker 同族避让：
-// - `queue` → ClientPump（DrawList 命令帧，NativeProjector 投影——
+// - `queue` → ClientPump（DrawList 命令帧，RqProjector 投影——
 //   PLAN-033 T-02 改接，与 native 轨同臂）；
 // - `independent` → **解释轨已退役**（PLAN-033 T-04：装载后报错留痕；
 //   a2r 轨像素兜底 run_independent_native_child 不受影响）；

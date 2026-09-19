@@ -74,7 +74,7 @@ pub(crate) const TEXT_SIZE: f32 = 16.0;
 pub(crate) const LINE_H_FACTOR: f32 = 1.35;
 
 /// 节点样式参数（`ui/style::BoxLayout` 同源 + 装饰/对齐/字体扩展）。
-/// `pub(crate)`：native 投影器（`native_projector::NativeProjector`）的
+/// `pub(crate)`：native 投影器（`native_projector::RqProjector`）的
 /// StyleClass 适配器复用同一参数面（Plan 020 T-04——typed 源直接填字段,
 /// 不复刻字符串解析）。
 #[derive(Default, Clone)]
@@ -383,7 +383,7 @@ pub struct ReconnectPolicy {
 /// 件持 AST（Rc）非 Send，二者均不跨线程。
 ///
 /// 会话参数 `S: FrameSource`（Plan 020 T-04）：解释态 = [`AppProjector`]
-/// （缺省类型参数，既有调用点零改动）；native = [`super::native_projector::NativeProjector`]
+/// （缺省类型参数，既有调用点零改动）；native = [`super::native_projector::RqProjector`]
 /// （a2r 编译 Component 的 queue 臂）。消息处理与 Stage 2
 /// `dual_mode_child_body` 一致：Input → 端点派发（on_with_input）→ shm
 /// 产帧回发；BufferAlloc → 开段 + Active 首帧；L2Detach → Standalone
@@ -731,7 +731,7 @@ impl<S: FrameSource> ClientPump<S> {
 }
 
 /// 泛型会话主循环（Plan 020 T-04）：[`run_client`] 的 FrameSource 泛型
-/// 形——native queue 臂（[`super::native_projector::NativeProjector`]）经此驱动；[`run_client`]
+/// 形——native queue 臂（[`super::native_projector::RqProjector`]）经此驱动；[`run_client`]
 /// 公签名不动（解释态既有消费面零改动）。
 pub fn run_client_session<S: FrameSource>(
     app_end: Box<dyn Transport + Send>,
@@ -751,14 +751,14 @@ pub(crate) mod tests {
     use super::*;
     use crate::ui::desktop_protocol::endpoint::FrameSource;
     use crate::ui::desktop_protocol::host::ProtocolHost;
-    use crate::ui::desktop_protocol::native_projector::NativeProjector;
+    use crate::ui::desktop_protocol::native_projector::RqProjector;
     use crate::ui::session::DesktopSession;
 
     /// PLAN-033 T-04 迁移：VM 计数器 → native 投影器（原 AppProjector
     /// 形——run_client_full_cycle/client 布局两测试的装配底座）。
-    fn counter_projector() -> NativeProjector<crate::ui::dynamic::DynamicComponent> {
+    fn counter_projector() -> RqProjector<crate::ui::dynamic::DynamicComponent> {
         let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
-        NativeProjector::new(component, 480.0, 320.0)
+        RqProjector::new(component, 480.0, 320.0)
     }
 
     const COUNTER_SRC: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
@@ -803,13 +803,13 @@ pub(crate) mod tests {
         out
     }
 
-    /// PLAN-033 T-04 测试迁移（D5）：VM 源计数器经 NativeProjector 装配的
+    /// PLAN-033 T-04 测试迁移（D5）：VM 源计数器经 RqProjector 装配的
     /// 布局/命中对账（AppProjector 版语义平移——几何按 native 布局重录）。
     #[test]
     fn projector_counter_layout_and_hits() {
         let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
         let mut p =
-            crate::ui::desktop_protocol::native_projector::NativeProjector::new(component, 480.0, 320.0);
+            crate::ui::desktop_protocol::native_projector::RqProjector::new(component, 480.0, 320.0);
         let frame = p.render_frame();
 
         assert_eq!(frame.clear, Some(BG));
@@ -864,7 +864,7 @@ pub(crate) mod tests {
     fn projector_click_dispatches_vm_handler() {
         let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
         let mut p =
-            crate::ui::desktop_protocol::native_projector::NativeProjector::new(component, 480.0, 320.0);
+            crate::ui::desktop_protocol::native_projector::RqProjector::new(component, 480.0, 320.0);
         p.render_frame();
         let (rect, _) = p.hit_regions()[0].clone();
         p.on_input(&InputMsg::PointerPressed {
@@ -978,9 +978,9 @@ pub(crate) mod tests {
             server_end: &mut Box<dyn Transport + Send>,
             ph: &mut ProtocolHost<'_>,
             client: &mut ClientPump<
-                NativeProjector<crate::ui::dynamic::DynamicComponent>,
+                RqProjector<crate::ui::dynamic::DynamicComponent>,
             >,
-        ) -> Option<(ClientExit, NativeProjector<crate::ui::dynamic::DynamicComponent>)> {
+        ) -> Option<(ClientExit, RqProjector<crate::ui::dynamic::DynamicComponent>)> {
             pump(server_end, ph);
             client.step()
         }

@@ -215,7 +215,7 @@ impl DesktopSession {
         use crate::ui::desktop_protocol::endpoint::FrameSource;
         let spec = self.desktop.app_resolver.as_ref()?(app_name)?;
         let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref()).ok()?;
-        let mut twin = crate::ui::desktop_protocol::native_projector::NativeProjector::new(
+        let mut twin = crate::ui::desktop_protocol::native_projector::RqProjector::new(
             comp, width, height,
         );
         twin.render_frame();

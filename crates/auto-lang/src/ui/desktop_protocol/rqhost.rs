@@ -1294,7 +1294,7 @@ mod tests {
         use crate::ui::desktop_protocol::client_runtime::{
             ClientConfig, ClientExit, ClientPump,
         };
-        use crate::ui::desktop_protocol::native_projector::NativeProjector;
+        use crate::ui::desktop_protocol::native_projector::RqProjector;
 
         const SRC: &str = "widget RqCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
         let pipe = pid_pipe("cycle");
@@ -1305,7 +1305,7 @@ mod tests {
         let app = std::thread::spawn(move || {
             let (_, app_end) = adopt(&client_pipe, "rq-counter", 2000).expect("adopt");
             let component = crate::build_dynamic_component(SRC, None).expect("build");
-            let projector = NativeProjector::new(component, 480.0, 320.0);
+            let projector = RqProjector::new(component, 480.0, 320.0);
             let config = ClientConfig {
                 app_name: "rq-counter".into(),
                 title: "rq-counter".into(),
@@ -1689,7 +1689,7 @@ mod tests {
     #[test]
     fn vm_typing_loop_over_pipe() {
         use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientPump};
-        use crate::ui::desktop_protocol::native_projector::NativeProjector;
+        use crate::ui::desktop_protocol::native_projector::RqProjector;
         use crate::ui::desktop_protocol::endpoint::FrameSource;
         use crate::ui::desktop_protocol::message::DrawOp;
 
@@ -1718,7 +1718,7 @@ mod tests {
         let conv_app = std::thread::spawn(move || {
             let (_, end) = adopt(&cp, "App", 2000).expect("adopt conv");
             let comp = crate::build_dynamic_component(&conv_src, None).expect("build conv");
-            let proj = NativeProjector::new(comp, 480.0, 320.0);
+            let proj = RqProjector::new(comp, 480.0, 320.0);
             let (exit, _) = ClientPump::new(
                 end,
                 proj,
@@ -1737,7 +1737,7 @@ mod tests {
         let hello_app = std::thread::spawn(move || {
             let (_, end) = adopt(&hp, "App", 2000).expect("adopt hello");
             let comp = crate::build_dynamic_component(&hello_src, None).expect("build hello");
-            let proj = NativeProjector::new(comp, 480.0, 320.0);
+            let proj = RqProjector::new(comp, 480.0, 320.0);
             let (exit, _) = ClientPump::new(
                 end,
                 proj,
@@ -1794,7 +1794,7 @@ mod tests {
         // conv_src 已 move 进客户端线程——重读文件。
         let geom_src = std::fs::read_to_string(conv_path).expect("re-read conv");
         let comp = crate::build_dynamic_component(&geom_src, None).expect("build for geom");
-        let mut probe = NativeProjector::new(comp, 480.0, 320.0);
+        let mut probe = RqProjector::new(comp, 480.0, 320.0);
         let frame0 = probe.render_frame();
         let (bx, by) = frame0
             .ops

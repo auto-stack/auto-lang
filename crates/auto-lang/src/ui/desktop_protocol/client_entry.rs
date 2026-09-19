@@ -15,7 +15,7 @@ use crate::ui::desktop_protocol::broker::{self, RequestedRender};
 use crate::ui::desktop_protocol::client_runtime::{self, ClientConfig, ReconnectPolicy};
 use crate::ui::desktop_protocol::coverage::{Coverage, RenderMode, Verdict};
 use crate::ui::desktop_protocol::message::FrameMode;
-use crate::ui::desktop_protocol::native_projector::NativeProjector;
+use crate::ui::desktop_protocol::native_projector::RqProjector;
 use crate::ui::desktop_protocol::pixels;
 use crate::ui::desktop_protocol::transport;
 use crate::ui::dynamic::DynamicComponent;
@@ -82,7 +82,7 @@ pub fn connect(
 }
 
 /// 解释轨客户端（`DynamicComponent`）：
-/// - `Commands` → [`NativeProjector`] 投影（PLAN-033 T-02 改接：View 全
+/// - `Commands` → [`RqProjector`] 投影（PLAN-033 T-02 改接：View 全
 ///   展开渲染 + 启动覆盖门，与 native 轨同臂——`-q` 对两轨一视同仁，
 ///   解释组件免每 app iced/wgpu 后端）+ 泛型泵命令帧；
 /// - `Pixels` → **已退役**（PLAN-033 T-04：解释态两合法形态 = inproc
@@ -101,7 +101,7 @@ pub fn run_dynamic_client(
         ),
         FrameMode::Commands => {
             let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
-            let mut projector = NativeProjector::new(component, opts.width, opts.height);
+            let mut projector = RqProjector::new(component, opts.width, opts.height);
             if let Err(gate) = projector.ensure_covered() {
                 eprintln!("[render] {gate}");
                 return Err(gate);
@@ -138,7 +138,7 @@ mod tests {
     }
 
     /// PLAN-033 T-02 冒烟：VM 源（`DynamicComponent`）经 Commands 臂新装配
-    /// （NativeProjector + ensure_covered + 产帧）——001/003 两载体 Covered
+    /// （RqProjector + ensure_covered + 产帧）——001/003 两载体 Covered
     /// 且帧非空（AC-01 单元级证据；全链 e2e 在 T-07 p033_rq_unify_arm）。
     #[test]
     fn vm_queue_arm_assembly_covered() {
@@ -149,7 +149,7 @@ mod tests {
             };
             let component =
                 crate::build_dynamic_component(&src, None).unwrap_or_else(|e| panic!("{dir}: {e}"));
-            let mut projector = NativeProjector::new(component, 480.0, 320.0);
+            let mut projector = RqProjector::new(component, 480.0, 320.0);
             projector
                 .ensure_covered()
                 .unwrap_or_else(|gate| panic!("{dir} 未过覆盖门: {gate}"));
@@ -171,7 +171,7 @@ mod tests {
 /// auto 降级标记）。防漏钉 = `native_flip_coverage_data_row` 断言反转
 ///（judged < 95% 即红——跌破门需显式裁定，禁静默回归）。显式
 /// `Queue` 不在此裁决（覆盖门在 [`run_native_client`] 消费
-/// [`NativeProjector::ensure_covered`]——拒绝退出留痕）；`Independent`
+/// [`RqProjector::ensure_covered`]——拒绝退出留痕）；`Independent`
 /// 直通。
 /// 返回 `(帧模式, auto 降级标记, Option<观测行>)`。
 pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
@@ -211,7 +211,7 @@ pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
 }
 
 /// native 轨客户端（a2r 编译 `Component`，Plan 020 T-04）：
-/// - `Commands` → [`NativeProjector`] 投影 + 泛型泵命令帧（启动覆盖门：
+/// - `Commands` → [`RqProjector`] 投影 + 泛型泵命令帧（启动覆盖门：
 ///   not-yet = 拒绝退出留痕，AC-04）；
 /// - `Pixels` → [`pixels::run_independent_native_child`] 隐藏窗自渲
 ///   （T-03 入口）。
@@ -240,7 +240,7 @@ where
             opts.height,
         ),
         FrameMode::Commands => {
-            let projector = NativeProjector::new(component, opts.width, opts.height);
+            let projector = RqProjector::new(component, opts.width, opts.height);
             if let Err(gate) = projector.ensure_covered() {
                 eprintln!("[render] {gate}");
                 return Err(gate);

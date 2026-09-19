@@ -18,7 +18,7 @@
 //! ReconnectPolicy 30s 自愈不对称的显式取舍，I5 桌面不炸）。
 
 use crate::ui::desktop_protocol::broker::{self, RequestedRender};
-use crate::ui::desktop_protocol::native_projector::NativeProjector;
+use crate::ui::desktop_protocol::native_projector::RqProjector;
 use crate::ui::desktop_protocol::codec::Reader;
 use crate::ui::desktop_protocol::endpoint::FrameSource;
 use crate::ui::desktop_protocol::message::{
@@ -68,13 +68,13 @@ impl ShellGeometry {
 /// 双常驻面会话（face → AppProjector；AppProjector 接缝 = 渲染/命中/
 /// 输入/revision 全套——编译面轨替换点）。
 pub struct ShellFaces {
-    /// chrome 面（shell.at 任务栏）。投影器 = NativeProjector（View 树
+    /// chrome 面（shell.at 任务栏）。投影器 = RqProjector（View 树
     /// 全展开渲染——for/conditional 驱动的 dock/窗口条目；AppProjector
     /// 队列臂对 ForLoop/Conditional 为 no-op[client_runtime.rs layout
     /// walker]，shell 面不可用——p030 e2e 腿 3 实测定轨）。
-    chrome: NativeProjector<crate::ui::dynamic::DynamicComponent>,
+    chrome: RqProjector<crate::ui::dynamic::DynamicComponent>,
     /// background 面（desktop.at 桌面图标）。
-    background: NativeProjector<crate::ui::dynamic::DynamicComponent>,
+    background: RqProjector<crate::ui::dynamic::DynamicComponent>,
     geometry: ShellGeometry,
 }
 
@@ -89,9 +89,9 @@ impl ShellFaces {
         let background = crate::build_dynamic_component(&bg_src, None)
             .map_err(|e| format!("壳 background 面装载失败: {e}"))?;
         let mut chrome =
-            NativeProjector::new(chrome, geometry.viewport_w, geometry.band_h);
+            RqProjector::new(chrome, geometry.viewport_w, geometry.band_h);
         let mut background =
-            NativeProjector::new(background, geometry.viewport_w, geometry.viewport_h);
+            RqProjector::new(background, geometry.viewport_w, geometry.viewport_h);
         if let Err(gate) = chrome.ensure_covered() {
             return Err(format!("壳 chrome 面 {gate}"));
         }
@@ -108,7 +108,7 @@ impl ShellFaces {
     fn projector_mut(
         &mut self,
         face: u8,
-    ) -> Option<&mut NativeProjector<crate::ui::dynamic::DynamicComponent>> {
+    ) -> Option<&mut RqProjector<crate::ui::dynamic::DynamicComponent>> {
         match face {
             shell_face::SHELL => Some(&mut self.chrome),
             shell_face::DESKTOP_SURFACE => Some(&mut self.background),
@@ -248,7 +248,7 @@ impl ShellFaces {
 }
 
 fn apply_writes(
-    p: &mut NativeProjector<crate::ui::dynamic::DynamicComponent>,
+    p: &mut RqProjector<crate::ui::dynamic::DynamicComponent>,
     writes: Vec<ShellWrite>,
 ) {
     for w in writes {

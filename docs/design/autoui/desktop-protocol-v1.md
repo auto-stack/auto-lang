@@ -19,7 +19,7 @@
 | v1.3 | 2026-08-31 | RenderQueue 并行渲染模式——帧载荷二态化（Commands \| Pixels）+ 三态渲染开关（auto/queue/independent）+ `AppProjector` 覆盖爬坡 + 宿主两态合成 + 三臂 parity 纪律（见 §1.3；T1 定案 D1–D4 + 497 快照结论复核） | Plan 500（Stage 4） |
 | v1.4 | 2026-09-01 | Stage 6 收官：默认策略裁定（`shell.apps.process_model` 配置位；实测维持 inproc 缺省、outproc 为隔离选项，见 §1.4）+ 远程 command 流消费（WS transport 第五实现 + 镜像会话 + `HitTable` tag 9 追加 + `packages/drawlist-renderer` TS/Canvas2D + 浏览器点击闭环；`PROTOCOL_VERSION` 仍 1） | Plan 508（Stage 6） |
 | v1.5 | 2026-09-01 | queue 臂保真收口——scissor 裁剪算子（`Scissor` tag 3 / `ScissorPop` tag 4 追加式，栈语义取交）+ typography 差分（`TextStyled` tag 5 追加式，weight/italic；见 §1.5；`PROTOCOL_VERSION` 仍 1） | Plan 515（§1.5） |
-| v1.6 | 2026-09-15 | 编译 exe 一等客户端——`Component` seam 双投影器（解释态 `AppProjector` + native `NativeProjector<C>`；a2r 产物经孵化参数接入 compositor；见 §1.6） | Plan 020（§1.6） |
+| v1.6 | 2026-09-15 | 编译 exe 一等客户端——`Component` seam 双投影器（解释态 `AppProjector` + native `RqProjector<C>`；a2r 产物经孵化参数接入 compositor；见 §1.6） | Plan 020（§1.6） |
 | v1.7 | 2026-09-18 | native 覆盖爬坡（form/payload 族 + scroll 入册）+ 输入路由收口（见 §1.7；`PROTOCOL_VERSION` 仍 1） | PLAN-025（§1.7） |
 | v1.8 | 2026-09-18 | native 覆盖爬坡第二批（display 族 image/progress + grid）+ IME 闭环两端（v1.0 在册变体启用）+ auto 裁决复测（见 §1.8；`PROTOCOL_VERSION` 仍 1） | PLAN-026（§1.8） |
 | v1.9 | 2026-09-18 | 图像 DrawOp 通道——`DrawOp::Image`（tag 6 追加式，src 引用 + 宿主侧解析，零位图字节过线）+ src 词汇表（file/`builtin:`/`data:`/`http(s)`/`thumbnail://` 虚拟引用）+ 未解析降级纪律 + 两投影臂真图升级 + TS decode/占位（见 §1.9；`PROTOCOL_VERSION` 仍 1） | PLAN-028（§1.9） |
@@ -176,7 +176,7 @@ App 载体选项；协议 `PROTOCOL_VERSION` 全程为 1（追加式演进出口
   `Component` seam——a2r 编译产物（`auto build -r rust` 的独立 exe）经
   孵化参数（`--autodesk-incubate` / `--autodesk-client=` /
   `--autodesk-render=`）作为一等客户端接入 compositor。双投影器并存：
-  `AppProjector`（解释态 AuraNode，零改动）+ `NativeProjector<C>`（新，
+  `AppProjector`（解释态 AuraNode，零改动）+ `RqProjector<C>`（新，
   `View<C::Msg>` 运行期投影——策略 B：prop/handler/条件/插值在 view()
   构建期已物化，投影器即 `View` 的协议后端；命中表
   `Vec<(WRect, C::Msg)>` 物化消息 clone 派发）。`FrameSource` 追加缺省
@@ -528,7 +528,7 @@ rect}`。空则不写尾段——既有消息字节级不变。端点多表面�
 chrome 会吞带外点击）。
 
 **④壳客户端与双轨**：`--autodesk-shell` 入口（`shell_client.rs`：双
-表面协商 + 投影消费[NativeProjector View 全展开——AppProjector 队列臂
+表面协商 + 投影消费[RqProjector View 全展开——AppProjector 队列臂
 对 ForLoop/Conditional no-op] + `__desktop_cmd` 读走 child 化 + 内联帧
 免 shm）；spawn = re-exec auto 本体 + `AUTO_SHELL_GEOM`/`AUTO_SHELL_
 PACK` env。`shell.apps.shell_model: inproc|outproc`（缺省 inproc——
@@ -554,7 +554,7 @@ DesktopBus → 归因执行 / 投影推送帧变 / kill → 看门兵 → respaw
 全量重推恢复；帧留痕 assets/030/）；回归门 261/262（唯一红 = 基线
 预存 imagesurface）。**债务随注**：a2r 编译面轨（shell-lib 组件库
 生成模式）not-yet——v1 交付 = 解释面 outproc child（AppProjector/
-NativeProjector 接缝即替换点）；TS decode tag 12–14 not-yet（无 TS
+RqProjector 接缝即替换点）；TS decode tag 12–14 not-yet（无 TS
 消费面）。
 
 ## §1.12 v1.12 增量：rqhost 第四运行形态（PLAN-031）

@@ -69,7 +69,7 @@ handler 侧用 `Time.now_sec()`；desktop dock 仍用分钟级 `__wm_clock`。�
 
 **编译 exe 桌面客户端面（PLAN-020/025/026，provisional）**：desktop_protocol
 客户端臂自解释态 `DynamicComponent` 泛化到 `Component` seam——a2r 编译 exe
-经 `NativeProjector<C>`（View 运行期投影）作 compositor 一等客户端，native
+经 `RqProjector<C>`（View 运行期投影）作 compositor 一等客户端，native
 覆盖集（v1.8：form/payload 族 input/textarea/checkbox/radio/slider/select
 + display 族 image/progress 占位保真 + layouts scroll/grid + 样式降级放行
 批（flex-1/shadow/overflow-/min-w-/min-h-/leading- 等——逐类随注

@@ -1139,7 +1139,7 @@ mod tests {
     /// 显式留痕面）。
     #[test]
     fn t7_families_all_pass_native_gate() {
-        use crate::ui::desktop_protocol::native_projector::NativeProjector;
+        use crate::ui::desktop_protocol::native_projector::RqProjector;
         let cases: &[(&str, &str)] = &[
             ("overlay 弹层", "widget O { view { select (value: .m) { onchange: .P } } }"),
             ("chart/diagram", "widget C { view { svg { path {} } } }"),
@@ -1151,7 +1151,7 @@ mod tests {
         for (family, src) in cases {
             let component = crate::build_dynamic_component(src, None)
                 .unwrap_or_else(|e| panic!("{family} build: {e}"));
-            let p = NativeProjector::new(component, 480.0, 320.0);
+            let p = RqProjector::new(component, 480.0, 320.0);
             p.ensure_covered()
                 .unwrap_or_else(|gate| panic!("{family} 应过 native 门（词表全族在册）: {gate}"));
         }

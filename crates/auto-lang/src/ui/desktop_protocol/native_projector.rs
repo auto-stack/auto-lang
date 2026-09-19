@@ -1,4 +1,7 @@
 // Plan 020 T-04 —— native queue 投影臂：`View<C::Msg>` → DrawList 投影器。
+// PLAN-033 T-06：更名 RqProjector（NativeProjector → RqProjector——单投影
+// 器统一，P020-D1 销账）；原"与解释态 AppProjector 并存"已收束——AppProjector
+// 退役（T-04），VM 轨经物化 View 入本投影器（a2r/解释同律）。
 //
 // §5.1 定案（策略 B，运行期 View 投影）：a2r 编译 Component 的 `view()`
 // 产物是**全物化 IR**——prop 已解析、handler 已是 `M` 值、条件/循环/插值
@@ -293,7 +296,7 @@ fn rect_contains(r: &WRect, x: f32, y: f32) -> bool {
 /// View 枚举 → DrawList 投影器（实现 [`FrameSource`]，作
 /// `AppEndpoint` 的会话——[`super::client_runtime::ClientPump`] 泛型泵
 /// 驱动，native queue 臂全链）。
-pub struct NativeProjector<C: Component> {
+pub struct RqProjector<C: Component> {
     component: C,
     /// 最近一帧的分型命中表（渲染时刷新；左键按型派发）。
     hits: Vec<HitEntry<C::Msg>>,
@@ -326,7 +329,7 @@ pub struct NativeProjector<C: Component> {
     tick_last: Option<Instant>,
 }
 
-impl<C: Component> NativeProjector<C> {
+impl<C: Component> RqProjector<C> {
     pub fn new(component: C, width: f32, height: f32) -> Self {
         Self {
             component,
@@ -406,7 +409,7 @@ impl<C: Component> NativeProjector<C> {
 /// on_change 消息的 event_name 经 `input_state_map` 反查绑定字段
 ///（input:<field>）。Toggle/Select 等 kind 在孪生面无消费者（原表
 /// `filter(kind != 0)` 只留 button/input），不镜像。
-impl NativeProjector<crate::ui::dynamic::DynamicComponent> {
+impl RqProjector<crate::ui::dynamic::DynamicComponent> {
     pub fn hit_regions(&self) -> Vec<(WRect, String)> {
         use crate::ui::interpreter::DynamicMessage;
         self.hits
@@ -436,7 +439,7 @@ impl NativeProjector<crate::ui::dynamic::DynamicComponent> {
     }
 }
 
-impl<C: Component> FrameSource for NativeProjector<C> {
+impl<C: Component> FrameSource for RqProjector<C> {
     fn revision(&self) -> u64 {
         self.rev
     }
@@ -657,7 +660,7 @@ impl<C: Component> FrameSource for NativeProjector<C> {
     }
 }
 
-impl<C: Component> NativeProjector<C> {
+impl<C: Component> RqProjector<C> {
     /// 左键按下：分型派发（倒序 = 绘制序置顶优先）。
     fn pointer_down_left(&mut self, x: f32, y: f32) {
         // select 开态命中互斥（T-01 D3）：仅选项项 + 关闭区——命中选项
@@ -2243,8 +2246,8 @@ mod tests {
         }
     }
 
-    fn counter() -> NativeProjector<Counter> {
-        NativeProjector::new(Counter { count: 0 }, 480.0, 320.0)
+    fn counter() -> RqProjector<Counter> {
+        RqProjector::new(Counter { count: 0 }, 480.0, 320.0)
     }
 
     fn texts_of(frame: &DrawList) -> Vec<&str> {
@@ -2338,7 +2341,7 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(D, 480.0, 320.0);
+        let mut p = RqProjector::new(D, 480.0, 320.0);
         let frame = p.render_frame();
         // 禁用观感：底盒仍在但压暗（alpha ≤ DISABLED_ALPHA——命令差分同款）。
         let DrawOp::Quad { color, .. } = frame.ops[0] else {
@@ -2381,7 +2384,7 @@ mod tests {
             }
         }
 
-        let p = NativeProjector::new(WithSlider, 480.0, 320.0);
+        let p = RqProjector::new(WithSlider, 480.0, 320.0);
         p.ensure_covered().expect("slider 入覆盖集（020 拒面反转）");
 
         // PLAN-026 T-04 语义反转：grid 已入 native 覆盖集 → Covered
@@ -2402,7 +2405,7 @@ mod tests {
             }
         }
 
-        let p = NativeProjector::new(WithGrid, 480.0, 320.0);
+        let p = RqProjector::new(WithGrid, 480.0, 320.0);
         p.ensure_covered().expect("grid 入覆盖集（025 拒面反转）");
 
         // 新拒样本：imagesurface（PLAN-026 §5.1 D5 定案——渲染占位顺带
@@ -2419,7 +2422,7 @@ mod tests {
             }
         }
 
-        let p = NativeProjector::new(WithImageSurface, 480.0, 320.0);
+        let p = RqProjector::new(WithImageSurface, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
         assert!(err.contains("imagesurface"), "缺项清单随行: {err}");
     }
@@ -2445,7 +2448,7 @@ mod tests {
             }
         }
 
-        let p = NativeProjector::new(Shadowed, 480.0, 320.0);
+        let p = RqProjector::new(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
         assert!(err.contains("style:truncate"), "native 无 truncate 渲染: {err}");
     }
@@ -2472,7 +2475,7 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(HiddenBox, 480.0, 320.0);
+        let mut p = RqProjector::new(HiddenBox, 480.0, 320.0);
         p.ensure_covered().expect("hidden 放行（prefixes ⑧）");
         let frame = p.render_frame();
         // B 整体缺席；且布局与"B 从未存在"逐坐标等价（对照组件同帧金样
@@ -2500,7 +2503,7 @@ mod tests {
                     .build()
             }
         }
-        let mut q = NativeProjector::new(ControlBox, 480.0, 320.0);
+        let mut q = RqProjector::new(ControlBox, 480.0, 320.0);
         let control = q.render_frame();
         let yc_control = control
             .ops
@@ -2544,7 +2547,7 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(OverrideBox, 480.0, 320.0);
+        let mut p = RqProjector::new(OverrideBox, 480.0, 320.0);
         p.ensure_covered().expect("hidden/响应式覆盖两形态均放行");
         let frame = p.render_frame();
         let texts = texts_of(&frame);
@@ -2584,7 +2587,7 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(AbsBox, 480.0, 320.0);
+        let mut p = RqProjector::new(AbsBox, 480.0, 320.0);
         p.ensure_covered().expect("定位族放行（prefixes ⑪）");
         let frame = p.render_frame();
         let ops: Vec<(f32, f32, &str)> = frame
@@ -2664,10 +2667,10 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(DegradedBox, 480.0, 320.0);
+        let mut p = RqProjector::new(DegradedBox, 480.0, 320.0);
         p.ensure_covered().expect("fixed/sticky 降级放行（prefixes ⑪）");
         let frame = p.render_frame();
-        let mut q = NativeProjector::new(ControlBox, 480.0, 320.0);
+        let mut q = RqProjector::new(ControlBox, 480.0, 320.0);
         let control = q.render_frame();
         fn coords(f: &DrawList) -> Vec<(f32, f32, &str)> {
             f.ops
@@ -2743,10 +2746,10 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(StyleGrid, 480.0, 320.0);
+        let mut p = RqProjector::new(StyleGrid, 480.0, 320.0);
         p.ensure_covered().expect("style-grid 放行（prefixes ⑩）");
         let style_frame = p.render_frame();
-        let mut q = NativeProjector::new(VariantGrid, 480.0, 320.0);
+        let mut q = RqProjector::new(VariantGrid, 480.0, 320.0);
         let variant_frame = q.render_frame();
         // 同构断言：文本坐标逐项相等（024 真源 = 左面板 2×2 按钮组）。
         let coords = |f: &DrawList| -> Vec<(f32, f32, String)> {
@@ -2765,7 +2768,7 @@ mod tests {
         assert_eq!(a.1, b.1, "a/b 同行");
         assert!(c.1 > a.1, "c 次行");
         // GridRows(2) × 4 cells → 2 列（与 cols-2 同布局）。
-        let mut r = NativeProjector::new(RowsGrid, 480.0, 320.0);
+        let mut r = RqProjector::new(RowsGrid, 480.0, 320.0);
         let rows_frame = r.render_frame();
         assert_eq!(coords(&rows_frame), coords(&style_frame), "grid-rows-2 × 4 = 2 列同构");
     }
@@ -2818,7 +2821,7 @@ mod tests {
         }
 
         // default：托盘两等宽按钮 + 选中面板；切换闭环。
-        let mut p = NativeProjector::new(TabsBox { which: 0, sel: 0, seen: vec![] }, 480.0, 320.0);
+        let mut p = RqProjector::new(TabsBox { which: 0, sel: 0, seen: vec![] }, 480.0, 320.0);
         p.ensure_covered().expect("tabs 入覆盖集");
         let frame = p.render_frame();
         assert_eq!(
@@ -2842,7 +2845,7 @@ mod tests {
         );
 
         // enclosed：托盘底 + 选中下划线（2px 底缘条）。
-        let mut q = NativeProjector::new(TabsBox { which: 1, sel: 1, seen: vec![] }, 480.0, 320.0);
+        let mut q = RqProjector::new(TabsBox { which: 1, sel: 1, seen: vec![] }, 480.0, 320.0);
         let frame = q.render_frame();
         assert_eq!(texts_of(&frame), vec!["Alpha", "Beta", "panel-b"], "enclosed：内容同律");
         assert!(
@@ -2874,7 +2877,7 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(SelfCenterBox, 480.0, 320.0);
+        let mut p = RqProjector::new(SelfCenterBox, 480.0, 320.0);
         p.ensure_covered().expect("self- 放行（prefixes ⑨）");
         let frame = p.render_frame();
         let xs: Vec<(f32, &str)> = frame
@@ -2933,7 +2936,7 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(Branchy { show_grid: false }, 480.0, 320.0);
+        let mut p = RqProjector::new(Branchy { show_grid: false }, 480.0, 320.0);
         assert!(p.ensure_covered().is_ok(), "门时刻无未覆盖变体");
         let _ = p.render_frame();
         assert!(p.uncovered_seen().is_empty());
@@ -2980,7 +2983,7 @@ mod tests {
             }
         }
 
-        let mut p = NativeProjector::new(Ticky { ticks: 0 }, 480.0, 320.0);
+        let mut p = RqProjector::new(Ticky { ticks: 0 }, 480.0, 320.0);
         let before = p.revision();
         p.poll_tick(); // 首拍只对相位（不派发）。
         assert_eq!(p.revision(), before);
@@ -3045,7 +3048,7 @@ mod tests {
     /// 色 op）；Cancelled 消解；无聚焦丢弃 + ime_dropped 留痕）。
     #[test]
     fn ime_commit_preedit_cancelled_loop() {
-        let mut p = NativeProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        let mut p = RqProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
         p.ensure_covered().expect("converter Covered");
         let _ = p.render_frame(); // 命中表首帧（click 消费上一帧 hits）
         // 聚焦 celsius（首 input 槽位——003 金样同位坐标）。
@@ -3087,7 +3090,7 @@ mod tests {
         );
         // ④ 无聚焦 Commit = 丢弃留痕。
         p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 }); // Esc 不失焦——改走结构变化失焦：省略，直接测无聚焦路径
-        let mut p2 = NativeProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        let mut p2 = RqProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
         p2.on_input(&InputMsg::ImeCommit { wid: 1, text: "x".into() });
         p2.on_input(&InputMsg::ImePreedit { wid: 1, text: "y".into(), cursor: WRect::new(0.0, 0.0, 0.0, 0.0) });
         assert_eq!(p2.ime_dropped(), 2, "无聚焦丢弃留痕");
@@ -3104,7 +3107,7 @@ mod tests {
             .collect()
     }
 
-    fn click<C: Component>(p: &mut NativeProjector<C>, x: f32, y: f32) {
+    fn click<C: Component>(p: &mut RqProjector<C>, x: f32, y: f32) {
         p.on_input(&InputMsg::PointerPressed {
             wid: 1,
             button: MouseButton::Left,
@@ -3134,7 +3137,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = NativeProjector::new(OneInput, 480.0, 320.0);
+        let mut p = RqProjector::new(OneInput, 480.0, 320.0);
         p.ensure_covered().expect("input 级入覆盖集");
         let frame = p.render_frame();
         // 盒 (10,10,320,32) + 1px 边框 + 值文本（未聚焦 = 视图值）。
@@ -3150,7 +3153,7 @@ mod tests {
                 View::input("your name").build()
             }
         }
-        let frame = NativeProjector::new(Empty, 480.0, 320.0).render_frame();
+        let frame = RqProjector::new(Empty, 480.0, 320.0).render_frame();
         assert_eq!(texts_of(&frame), vec!["your name"]);
         let ph_color = frame.ops.iter().find_map(|op| match op {
             DrawOp::Text { color, text, .. } if text == "your name" => Some(*color),
@@ -3158,7 +3161,7 @@ mod tests {
         });
         assert_eq!(ph_color, Some(PLACEHOLDER_FG), "placeholder 灰");
         // 聚焦 → 描边变蓝（FOCUS_BORDER 顶边 quad）。
-        let mut p = NativeProjector::new(OneInput, 480.0, 320.0);
+        let mut p = RqProjector::new(OneInput, 480.0, 320.0);
         let _ = p.render_frame(); // 首帧建命中表（点击寻址前提）。
         click(&mut p, 100.0, 26.0);
         let frame = p.render_frame();
@@ -3177,7 +3180,7 @@ mod tests {
 
     #[test]
     fn focus_edit_closure_converter() {
-        let mut p = NativeProjector::new(
+        let mut p = RqProjector::new(
             Converter { celsius: 0.0, fahrenheit: 32.0 },
             480.0,
             320.0,
@@ -3251,7 +3254,7 @@ mod tests {
 
     #[test]
     fn slider_geometry_golden() {
-        let mut p = NativeProjector::new(SliderBox { vol: 25.0 }, 480.0, 320.0);
+        let mut p = RqProjector::new(SliderBox { vol: 25.0 }, 480.0, 320.0);
         p.ensure_covered().expect("slider 入覆盖集");
         let frame = p.render_frame();
         // track (10, 18, 320, 4) 底；fill (10,18,80,4)（25%）；knob
@@ -3266,7 +3269,7 @@ mod tests {
 
     #[test]
     fn slider_track_click_dispatch() {
-        let mut p = NativeProjector::new(SliderBox { vol: 0.0 }, 480.0, 320.0);
+        let mut p = RqProjector::new(SliderBox { vol: 0.0 }, 480.0, 320.0);
         let _ = p.render_frame();
         // 轨道 50% 处点击（(170, 20)）→ vol = 50 → 帧文本联动。
         click(&mut p, 170.0, 20.0);
@@ -3302,7 +3305,7 @@ mod tests {
                 View::slider(0.0..=100.0, self.seen, SMsg::Vol).step(30.0).build()
             }
         }
-        let mut sp = NativeProjector::new(Stepper { seen: 0.0 }, 480.0, 320.0);
+        let mut sp = RqProjector::new(Stepper { seen: 0.0 }, 480.0, 320.0);
         let _ = sp.render_frame();
         click(&mut sp, 90.0, 20.0); // 25% → raw 25 → step 30
         let frame = sp.render_frame();
@@ -3353,7 +3356,7 @@ mod tests {
 
     #[test]
     fn select_closed_golden_and_open() {
-        let mut p = NativeProjector::new(
+        let mut p = RqProjector::new(
             SelectBox { pick: "Small".into(), open_seen: false },
             480.0,
             320.0,
@@ -3381,7 +3384,7 @@ mod tests {
 
     #[test]
     fn select_option_dispatch_and_close() {
-        let mut p = NativeProjector::new(
+        let mut p = RqProjector::new(
             SelectBox { pick: "Small".into(), open_seen: false },
             480.0,
             320.0,
@@ -3405,7 +3408,7 @@ mod tests {
 
     #[test]
     fn select_outside_click_closes_only() {
-        let mut p = NativeProjector::new(
+        let mut p = RqProjector::new(
             SelectBox { pick: "Small".into(), open_seen: false },
             480.0,
             320.0,
@@ -3427,7 +3430,7 @@ mod tests {
 
     #[test]
     fn select_esc_closes() {
-        let mut p = NativeProjector::new(
+        let mut p = RqProjector::new(
             SelectBox { pick: "Small".into(), open_seen: false },
             480.0,
             320.0,
@@ -3483,7 +3486,7 @@ mod tests {
 
     #[test]
     fn scrollable_scissor_frame_and_wheel() {
-        let mut p = NativeProjector::new(Scroller { offset_y: 0.0 }, 480.0, 320.0);
+        let mut p = RqProjector::new(Scroller { offset_y: 0.0 }, 480.0, 320.0);
         p.ensure_covered().expect("scroll 入覆盖集（layouts + scroll）");
         let frame = p.render_frame();
         // 溢出（内容 72.9 > 视口 40）→ Scissor push/pop 对在册。
@@ -3551,7 +3554,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = NativeProjector::new(RClick { lefts: 0, rights: 0 }, 480.0, 320.0);
+        let mut p = RqProjector::new(RClick { lefts: 0, rights: 0 }, 480.0, 320.0);
         let _ = p.render_frame();
         // 按钮盒 (10,10,120,36) 中心右键 → Right 派发（帧文本 l0 r1）。
         p.on_input(&InputMsg::PointerPressed {
@@ -3679,7 +3682,7 @@ mod tests {
             }
         }
 
-        let p = NativeProjector::new(Matrix, 480.0, 320.0);
+        let p = RqProjector::new(Matrix, 480.0, 320.0);
         let scan = coverage::scan_native_view(&p.component.view());
         let set = Coverage::native_queue_set();
 
@@ -3697,7 +3700,7 @@ mod tests {
         // 每个登记 kind 都有真臂）。反向钉：native_kind_of 全变体
         // 映射逐一入表 or 显式 not-yet（无第三态——表外 kind 渲染即
         // 占位留痕，由 dynamic_branch 测试钉住）。
-        let mut p = NativeProjector::new(Matrix, 480.0, 320.0);
+        let mut p = RqProjector::new(Matrix, 480.0, 320.0);
         let _ = p.render_frame();
         assert!(
             p.uncovered_seen().is_empty(),
@@ -3725,7 +3728,7 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("test/parity/native");
         std::fs::create_dir_all(&dir).expect("mkdir parity/native");
-        let mut p = NativeProjector::new(
+        let mut p = RqProjector::new(
             Converter { celsius: 0.0, fahrenheit: 32.0 },
             480.0,
             320.0,
@@ -3769,7 +3772,7 @@ mod tests {
                 View::textarea("note").value("a\nb".to_string()).build()
             }
         }
-        let mut p = NativeProjector::new(Note, 480.0, 320.0);
+        let mut p = RqProjector::new(Note, 480.0, 320.0);
         p.ensure_covered().expect("textarea 入覆盖集");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["a", "b"], "按 '\\n' 分行");
@@ -3797,7 +3800,7 @@ mod tests {
                     .build()
             }
         }
-        let quads = |p: &mut NativeProjector<Disp>| -> Vec<(f32, f32, f32, f32, Rgba8)> {
+        let quads = |p: &mut RqProjector<Disp>| -> Vec<(f32, f32, f32, f32, Rgba8)> {
             p.render_frame()
                 .ops
                 .iter()
@@ -3810,7 +3813,7 @@ mod tests {
                 .collect()
         };
         // PLAN-028：image op 定位器（真图升级断言面）。
-        let images = |p: &mut NativeProjector<Disp>| -> Vec<(f32, f32, f32, f32, String)> {
+        let images = |p: &mut RqProjector<Disp>| -> Vec<(f32, f32, f32, f32, String)> {
             p.render_frame()
                 .ops
                 .iter()
@@ -3822,7 +3825,7 @@ mod tests {
                 })
                 .collect()
         };
-        let mut p = NativeProjector::new(Disp, 480.0, 320.0);
+        let mut p = RqProjector::new(Disp, 480.0, 320.0);
         p.ensure_covered().expect("display 族入覆盖集");
         let ims = images(&mut p);
         // styled image：w-16 h-16（Tailwind 刻度 16×4=64px）→ 64×64 Image op。
@@ -3903,7 +3906,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = NativeProjector::new(GridApp { hits: 0 }, 480.0, 320.0);
+        let mut p = RqProjector::new(GridApp { hits: 0 }, 480.0, 320.0);
         p.ensure_covered().expect("grid 入覆盖集");
         let frame = p.render_frame();
         let quads: Vec<(f32, f32, f32, f32)> = frame
@@ -3952,7 +3955,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = NativeProjector::new(CApp, 480.0, 320.0);
+        let mut p = RqProjector::new(CApp, 480.0, 320.0);
         let frame = p.render_frame();
         let quads: Vec<(f32, f32, f32, f32)> = frame
             .ops
@@ -4005,7 +4008,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = NativeProjector::new(Toggles { on: false, picked: false }, 480.0, 320.0);
+        let mut p = RqProjector::new(Toggles { on: false, picked: false }, 480.0, 320.0);
         p.ensure_covered().expect("toggle 族入覆盖集");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["opt", "pick", "no handler"], "标签随盒渲染");
@@ -4062,7 +4065,7 @@ mod tests {
 
         // child 泵（native queue 臂——单线程，无 Send 需求）。
         let app_end = transport::connect(&pipe, 2000).expect("connect");
-        let projector = NativeProjector::new(Counter { count: 0 }, 480.0, 320.0);
+        let projector = RqProjector::new(Counter { count: 0 }, 480.0, 320.0);
         projector.ensure_covered().expect("counter 级入覆盖集");
         let reconnect = ReconnectPolicy { pipe: pipe.clone(), budget_ms: 30_000, interval_ms: 50 };
         let mut client =
@@ -4093,8 +4096,8 @@ mod tests {
         fn drive(
             server_end: &mut Box<dyn transport::Transport + Send>,
             ph: &mut ProtocolHost<'_>,
-            client: &mut ClientPump<NativeProjector<Counter>>,
-        ) -> Option<(ClientExit, NativeProjector<Counter>)> {
+            client: &mut ClientPump<RqProjector<Counter>>,
+        ) -> Option<(ClientExit, RqProjector<Counter>)> {
             pump(server_end, ph);
             client.step()
         }
@@ -4176,7 +4179,7 @@ mod tests {
         };
 
         let app_end = transport::connect(&pipe, 2000).expect("connect");
-        let projector = NativeProjector::new(
+        let projector = RqProjector::new(
             Converter { celsius: 0.0, fahrenheit: 32.0 },
             480.0,
             320.0,
@@ -4207,7 +4210,7 @@ mod tests {
         fn drive(
             server_end: &mut Box<dyn transport::Transport + Send>,
             ph: &mut ProtocolHost<'_>,
-            client: &mut ClientPump<NativeProjector<Converter>>,
+            client: &mut ClientPump<RqProjector<Converter>>,
         ) {
             pump(server_end, ph);
             if let Some((exit, _)) = client.step() {
@@ -4368,7 +4371,7 @@ mod tests {
     /// 面板 ops（open 随帧）。
     #[test]
     fn popover_open_closed_render_and_hit_semantics() {
-        let mut p = NativeProjector::new(PopHost::widget(true, PopoverPlacement::BottomStart), 480.0, 320.0);
+        let mut p = RqProjector::new(PopHost::widget(true, PopoverPlacement::BottomStart), 480.0, 320.0);
         p.ensure_covered().expect("popover 载体 Covered");
         let frame = p.render_frame();
         // 开态：面板底 Quad（POP_BG）+ 面板文本在场。
@@ -4444,7 +4447,7 @@ mod tests {
     /// Modal scrim：全屏半透明 Quad 先于面板 ops。
     #[test]
     fn popover_modal_scrim_order() {
-        let mut p = NativeProjector::new(
+        let mut p = RqProjector::new(
             PopHost::widget(true, PopoverPlacement::Modal),
             480.0,
             320.0,
@@ -4525,7 +4528,7 @@ mod tests {
     /// 在册，本测钉投影器桥接语法。
     #[test]
     fn thumbnail_preview_bridge_src_grammar() {
-        let mut p = NativeProjector::new(BridgeHost { last: None }, 480.0, 320.0);
+        let mut p = RqProjector::new(BridgeHost { last: None }, 480.0, 320.0);
         p.ensure_covered().expect("桥接载体 Covered");
         let frame = p.render_frame();
         let srcs: Vec<&str> = frame
@@ -4550,7 +4553,7 @@ mod tests {
     /// 空白落 area（click）；右键 → contextmenu。
     #[test]
     fn mousearea_hit_priority_and_context_menu() {
-        let mut p = NativeProjector::new(BridgeHost { last: None }, 480.0, 320.0);
+        let mut p = RqProjector::new(BridgeHost { last: None }, 480.0, 320.0);
         let frame = p.render_frame();
         // area 命中盒（200×60 逻辑_extent）。
         let area_rect = frame
@@ -4639,7 +4642,7 @@ mod tests {
             return;
         };
         let comp = crate::build_dynamic_component(&src, None).expect("build 003");
-        let mut p = NativeProjector::new(comp, 480.0, 320.0);
+        let mut p = RqProjector::new(comp, 480.0, 320.0);
         p.ensure_covered().expect("003 native 覆盖门");
         p.render_frame();
         // 逐命中矩形试探：点中心 → 键入 "1" → 检查双向换算落点。
@@ -4681,7 +4684,7 @@ mod tests {
     fn p033_vm_input_writeback_single_param() {
         let src = "widget P {\n    model {\n        var q double = 0\n        var out str = \"\"\n    }\n    view { input (value: .q) { oninput: .SetQ } }\n    on { .SetQ(t) -> { .out = t } }\n}\n";
         let comp = crate::build_dynamic_component(src, None).expect("build");
-        let mut p = NativeProjector::new(comp, 480.0, 320.0);
+        let mut p = RqProjector::new(comp, 480.0, 320.0);
         p.render_frame();
         let r = p.hit_rects()[0];
         p.on_input(&InputMsg::PointerPressed {
@@ -4710,7 +4713,7 @@ mod tests {
     fn p033_vm_timer_poll_tick() {
         let src = "widget T {\n    msg { Beat }\n    model { var beat int = 0 }\n    timer { Beat (every_ms: 60) }\n    view { text `beat: ${.beat}` }\n    on { .Beat -> { .beat += 1 } }\n}\n";
         let comp = crate::build_dynamic_component(src, None).expect("build");
-        let mut p = NativeProjector::new(comp, 480.0, 320.0);
+        let mut p = RqProjector::new(comp, 480.0, 320.0);
         let rev0 = p.revision();
         p.poll_tick();
         assert_eq!(int_state(&p, "beat"), Some(0), "首拍对齐 interval（不立即拍）");
@@ -4726,7 +4729,7 @@ mod tests {
     fn p033_desktop_cmd_drain() {
         let src = "widget D {\n    model {\n        var n int = 0\n        var __desktop_cmd str = \"\"\n    }\n    view { text \"d\" }\n}\n";
         let comp = crate::build_dynamic_component(src, None).expect("build");
-        let mut p = NativeProjector::new(comp, 480.0, 320.0);
+        let mut p = RqProjector::new(comp, 480.0, 320.0);
         assert!(p.drain_desktop_commands().is_empty(), "空态幂等");
         p.component_mut()
             .write_state("__desktop_cmd", auto_val::Value::str("launch\u{1f}counter\nnotify\u{1f}hi"))
@@ -4743,7 +4746,7 @@ mod tests {
     }
 
     fn num_state(
-        p: &NativeProjector<crate::ui::dynamic::DynamicComponent>,
+        p: &RqProjector<crate::ui::dynamic::DynamicComponent>,
         field: &str,
     ) -> Option<f64> {
         p.component().read_state(field).ok().and_then(|v| match v {
@@ -4756,7 +4759,7 @@ mod tests {
     }
 
     fn int_state(
-        p: &NativeProjector<crate::ui::dynamic::DynamicComponent>,
+        p: &RqProjector<crate::ui::dynamic::DynamicComponent>,
         field: &str,
     ) -> Option<i64> {
         p.component().read_state(field).ok().and_then(|v| match v {

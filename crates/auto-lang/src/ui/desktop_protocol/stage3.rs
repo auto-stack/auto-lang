@@ -233,7 +233,7 @@ mod tests {
     use std::sync::Arc;
     use crate::ui::desktop_protocol::broker;
     use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ReconnectPolicy};
-    use crate::ui::desktop_protocol::native_projector::NativeProjector;
+    use crate::ui::desktop_protocol::native_projector::RqProjector;
     use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
     use crate::ui::desktop_protocol::transport;
     use crate::ui::session::{DesktopSession, LaunchSpec};
@@ -267,7 +267,7 @@ mod tests {
         let reconnect =
             ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
         // PLAN-033 T-04 迁移：压测子进程走 native 投影臂（AppProjector 退役）。
-        let mut projector = NativeProjector::new(component, 480.0, 320.0);
+        let mut projector = RqProjector::new(component, 480.0, 320.0);
         projector.ensure_covered().expect("stress covered");
         let (exit, proj) =
             crate::ui::desktop_protocol::client_runtime::run_client_session(
@@ -350,7 +350,7 @@ mod tests {
     }
 
     /// PLAN-029 T-03：native 档子进程共用体——孵化 + ensure_covered 门 +
-    /// NativeProjector + run_client_session（镜像 client_entry 生产分支）。
+    /// RqProjector + run_client_session（镜像 client_entry 生产分支）。
     fn run_native_t3_child<C>(
         broker_pipe: &str,
         app: &str,
@@ -373,7 +373,7 @@ mod tests {
             height: T3_H,
         };
         let reconnect = ReconnectPolicy { pipe: _pipe, budget_ms: 30_000, interval_ms: 50 };
-        let projector = crate::ui::desktop_protocol::native_projector::NativeProjector::new(
+        let projector = crate::ui::desktop_protocol::native_projector::RqProjector::new(
             component, T3_W, T3_H,
         );
         if let Err(gate) = projector.ensure_covered() {
@@ -554,7 +554,7 @@ mod tests {
             return;
         }
         // PLAN-032 T-07：六例全源档——native-full = 显式 queue（front 全
-        /// .at 合并解析 + ensure_covered 门 + NativeProjector）；native-
+        /// .at 合并解析 + ensure_covered 门 + RqProjector）；native-
         /// auto-full = auto 档翻转抽样腿（resolve_native_frame_mode
         ///（Auto）裁决断言 Commands——flipped@ramp3 后缺省 queue，观测
         /// 行随行）。
@@ -594,7 +594,7 @@ mod tests {
         match mode.as_str() {
             // PLAN-029 T-03：native 档——View 树 native 投影器子进程
             //（镜像 client_entry::run_native_client 的 Commands 生产分支：
-            // ensure_covered 门 + NativeProjector 全输入臂）。
+            // ensure_covered 门 + RqProjector 全输入臂）。
             "native" => {
                 run_native_t3_child(&broker_pipe, &app, component);
             }
@@ -2520,13 +2520,13 @@ mod tests {
 
         // 孪生投影器（同源布局 → 命中坐标；PLAN-033 T-04 迁 native——
         // 与子进程同布局引擎）。
-        let twins: Vec<(String, NativeProjector<crate::ui::dynamic::DynamicComponent>)> =
+        let twins: Vec<(String, RqProjector<crate::ui::dynamic::DynamicComponent>)> =
             names
                 .iter()
                 .map(|n| {
                     let src = example_source(n);
                     let comp = crate::build_dynamic_component(&src, None).expect("twin build");
-                    let mut p = NativeProjector::new(
+                    let mut p = RqProjector::new(
                         comp, T3_W, T3_H,
                     );
                     {
@@ -3051,7 +3051,7 @@ mod tests {
             app_end,
             {
                 let component = crate::build_dynamic_component(SRC, None).expect("build");
-                NativeProjector::new(component, 480.0, 320.0)
+                RqProjector::new(component, 480.0, 320.0)
             },
             config.clone(),
             Some(ReconnectPolicy { pipe: pipe.clone(), budget_ms: 10_000, interval_ms: 20 }),
@@ -3235,7 +3235,7 @@ mod tests {
             app_end,
             {
                 let component = crate::build_dynamic_component(SRC, None).expect("child build");
-                NativeProjector::new(component, 480.0, 320.0)
+                RqProjector::new(component, 480.0, 320.0)
             },
             config,
             None,
@@ -3540,11 +3540,11 @@ mod tests {
 
     /// 002-counter 孪生投影器（命中坐标 + inproc 交互探针引擎；
     /// PLAN-033 T-04 迁 native）。
-    fn g2_counter_twin() -> NativeProjector<crate::ui::dynamic::DynamicComponent> {
+    fn g2_counter_twin() -> RqProjector<crate::ui::dynamic::DynamicComponent> {
         use crate::ui::desktop_protocol::endpoint::FrameSource;
         let src = example_source("002-counter");
         let comp = crate::build_dynamic_component(&src, None).expect("twin build");
-        let mut p = NativeProjector::new(comp, 480.0, 900.0);
+        let mut p = RqProjector::new(comp, 480.0, 900.0);
         p.render_frame();
         p
     }
@@ -4491,7 +4491,7 @@ mod tests {
                 let src = std::fs::read_to_string(&path).expect("read");
                 let comp = crate::build_dynamic_component(&src, Some(&path))
                     .unwrap_or_else(|e| panic!("build {name}: {e:?}"));
-                let projector = crate::ui::desktop_protocol::native_projector::NativeProjector::new(
+                let projector = crate::ui::desktop_protocol::native_projector::RqProjector::new(
                     comp,
                     480.0,
                     320.0,
@@ -5268,7 +5268,7 @@ child:
             }
             daemon4_tail.wait_contains(
                 "[rqhost] first frame `counter`",
-                "rust 轨首帧（NativeProjector queue 臂）",
+                "rust 轨首帧（RqProjector queue 臂）",
                 60_000,
             );
             #[cfg(windows)]

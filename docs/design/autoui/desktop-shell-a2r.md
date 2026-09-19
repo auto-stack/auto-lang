@@ -92,7 +92,7 @@ DesktopState 特权槽: shell_app/desktop_app 常驻（boot 先于 App, renderer
 
 | # | 缺口 | 证据 |
 |---|---|---|
-| c1 | **外部写态 seam [双]**：`__wm_*`/`__desktop_*`/`__wp_*` ~31 字段全部经 `write_state/write_state_vec` + 指纹门控 + view_dirty 注入（renderer.rs:12953-13000）；typed Component 的 `state_snapshot()` 只读（component.rs:87-89），NativeProjector 明记 StateSnapshot 注入 not-yet（P020-D2 后半笔）。补法 = ShellProjection typed 快照 + 组件消费入口（§6-S2） | renderer.rs:12671-13022 |
+| c1 | **外部写态 seam [双]**：`__wm_*`/`__desktop_*`/`__wp_*` ~31 字段全部经 `write_state/write_state_vec` + 指纹门控 + view_dirty 注入（renderer.rs:12953-13000）；typed Component 的 `state_snapshot()` 只读（component.rs:87-89），RqProjector 明记 StateSnapshot 注入 not-yet（P020-D2 后半笔）。补法 = ShellProjection typed 快照 + 组件消费入口（§6-S2） | renderer.rs:12671-13022 |
 | c2 | **call_handler 召唤模式 [双]**：RebuildMru/RebuildNotes/RunningSync + 平行字符串列表（B12 规避）——typed 组件无"宿主显式调 handler"通道。链入形态可改直接方法调用（codegen 生成公开入口） | renderer.rs:9247/:9498/:9570/:13012 |
 | c3 | **每帧 WM 状态节拍 [双]**：解释态 shell 每 dirty 重建即读最新投影；typed `view()` 只读 self——宿主必须在 view 构建前推送（链入形态保序自然成立；B 形态需帧同步协议语义） | 同 c1 |
 | c4 | **命令上行读走 [B]**：宿主 `read_state + write_state("")`（session.rs:2536-2542）依赖进程内共享态；outproc 需命令上行消息 + registry_id 归因（DesktopBus wire 化） | session.rs:2530-2544 |
@@ -278,7 +278,7 @@ S3 生成目标 + 宿主装配 + parity 切换（**已改道**：A 形态 S3 经
   启动序/看门兵 ✅（PLAN-030，v1.11——前置序列三件全闭环）**。
   **v1 交付形态注记（PLAN-030 定案）**：壳 outproc child 双常驻面
   （shell taskbar + desktop surface）经解释装载（shell_source 同源）+
-  NativeProjector View 全展开渲染；a2r 编译面轨（shell-lib 组件库
+  RqProjector View 全展开渲染；a2r 编译面轨（shell-lib 组件库
   生成模式——run_rust_ui 为 app 工程形，组件库形需新生成模式）随
   缺省翻转计划另立；D6 边界 = overlay 三面 + launcher 维持 in-proc。
 - **② 解释装载路径去留：✅ 已裁定 = 双轨常驻**（开发态解释 fallback +

@@ -4181,7 +4181,7 @@
     {
      "id": "P020-1",
      "title": "rust-desktop-exe-compositor — 规范承载",
-     "content": "SD-01→docs/design/autoui/desktop-protocol-v1.md §1.6 v1.6 增量（编译 exe 一等客户端：Component seam 双投影器 NativeProjector/AppProjector；native_queue_set 覆盖集与 auto=independent 安全缺省；desktop_exe: 声明>rust-workspace 约定发现序+\"exe App 天然 outproc\"路由；spawn stdio 静默；PROTOCOL_VERSION 仍 1 零 wire 变体）。SD-02→auto-os docs/plans/autos-desktop-program.md 3a 行（已随 os main 86e0581 发布）。SD-03→docs/specs/auto-lang/ui/overview.md 现状节指针。",
+     "content": "SD-01→docs/design/autoui/desktop-protocol-v1.md §1.6 v1.6 增量（编译 exe 一等客户端：Component seam 双投影器 RqProjector/AppProjector；native_queue_set 覆盖集与 auto=independent 安全缺省；desktop_exe: 声明>rust-workspace 约定发现序+\"exe App 天然 outproc\"路由；spawn stdio 静默；PROTOCOL_VERSION 仍 1 零 wire 变体）。SD-02→auto-os docs/plans/autos-desktop-program.md 3a 行（已随 os main 86e0581 发布）。SD-03→docs/specs/auto-lang/ui/overview.md 现状节指针。",
      "file": "docs/plans/archive/020-rust-desktop-exe-compositor.md",
      "related": [
       "PLAN-020"

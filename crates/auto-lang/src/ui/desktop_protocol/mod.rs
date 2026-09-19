@@ -80,7 +80,7 @@ pub const PROTOCOL_VERSION: u16 = 1;
 
 pub use codec::{CodecError, Channel};
 pub use endpoint::{AppEndpoint, FrameSource, HostEndpoint, HostAction, HostState, ProtocolError};
-pub use native_projector::NativeProjector;
+pub use native_projector::RqProjector;
 pub use host::{ProtocolHost, SurfaceStore};
 pub use loopback::{loopback_pair, LoopbackEnd};
 pub use transport::{Transport, TransportError};

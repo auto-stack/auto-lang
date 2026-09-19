@@ -6546,7 +6546,7 @@ mod tests {
         };
         let app_name = std::env::var(P508_CHILD_APP_ENV).expect("app env");
         use crate::ui::desktop_protocol::client_runtime::{self, ClientConfig, ReconnectPolicy};
-        use crate::ui::desktop_protocol::native_projector::NativeProjector;
+        use crate::ui::desktop_protocol::native_projector::RqProjector;
         let (per_app_pipe, end) = crate::ui::desktop_protocol::broker::request_incubation(
             &broker_pipe,
             &app_name,
@@ -6559,7 +6559,7 @@ mod tests {
         let reconnect =
             ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
         // PLAN-033 T-04 迁移：native 投影臂（AppProjector/run_client 退役）。
-        let mut projector = NativeProjector::new(component, 480.0, 320.0);
+        let mut projector = RqProjector::new(component, 480.0, 320.0);
         projector.ensure_covered().expect("probe covered");
         let _ = client_runtime::run_client_session(end, projector, config, Some(reconnect));
     }
