@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-09-19
 updated_at: 2026-09-19
 plan_revision: 1
-current_step: 0
+current_step: 1
 total_steps: 8
 supersedes_spec_components: []
 new_spec_components: []
@@ -115,11 +115,116 @@ HTTP 前端 vs auto run 宿主内嵌 proxy 线程——按"gallery 一键体验
 
 ## 5. 详细设计
 
-（T-00 决策产物回填：session 模型对比表、路由分发序列、stream 转发时序、
-崩溃隔离边界。骨架方向：proxy 宿主持有 `HashMap<app_id, VmSession>`；
-每 session 装载该 demo back 链（P633 级联产物）；HTTP 请求 → 子前缀解析
-→ session 内路由表命中 → CALL 语义执行 → 响应（JSON 直返 / stream 逐
-chunk 转发 / binary 字节转发）。）
+（T-00 决策产物 2026-09-19 回填定案；调研证据：四路并行探索 + 主线核实，
+关键行号见各节。）
+
+### 5.1 进程形态裁定：auto run 宿主内嵌 proxy 线程（方案 B）
+
+| 维度 | A：auto serve daemon 扩展 HTTP 前端 | **B：宿主内嵌 proxy 线程（选定）** |
+|---|---|---|
+| 一键体验 | 需额外拉起/发现 daemon 进程 | `auto run -r vm` 单进程即含全部后端 |
+| 启动编排 | 双进程生命周期（spawn/健康/清理） | run_vm_ui 内一个钩子位（rust_ui.rs:3075-3088 画廊钩子旁） |
+| 授权面 | 改 daemon 公共协议 → 越本计划授权（§10 呈报项） | 零新安装面、零协议变更 |
+| 先例 | named-pipe REPL 服务 | start_vm_server（rust_ui.rs:2680，VM HTTP 线程）+ Plan 061 外部后端，同为进程内后端先例 |
+| session 线程模型 | 复用 daemon 两线程模式 | 同样复用：IO 线程 + 每 session 专线程（AutoVM 线程亲和，autovm_daemon.rs:129-131 先例） |
+
+### 5.2 session 模型与路由分发
+
+- 模块：`crates/auto-lang/src/ui/back_proxy.rs`（新）。宿主 = 手写
+  HTTP/1.1 前端（std TcpListener + 每连接一线程，仿 http_server.rs
+  serve_blocking_stdnet 先例；无新依赖——axum 为可选 dep 且需 tokio
+  桥接，收益不足）。端口 `AUTO_GALLERY_PROXY_PORT`（默认 3358，冲突
+  回退 +1..+10，仿 MCP 9247 先例）。
+- `HashMap<app_id, SessionHandle>`；SessionHandle = 专线程 + mpsc 请求
+  通道（daemon 模式）。每 session 装载该 demo back 链编译产物
+  （CompiledPackage 自带 `api_routes: Vec<(method,path,fn_name)>`，
+  loader.rs:45-47）→ AutoVM。**绕过进程级全局 HTTP_ROUTES 表**
+  （stdlib.rs:3481 覆盖式单表，多 session 不能共用）。
+- 路由分发序列：请求 → 剥 `/apps/<id>` 前缀 → session 路由表命中
+  （复用 http_server.rs match_route 的 :param/query 语义）→
+  `call_fn_by_name`（参数 marshalling 仿 VmBridge::call_vm_fn，
+  vm_bridge.rs:1295-1382；位置参数约定仿 build_handler_args）→
+  nv_to_json 返回。路由未命中 .at 表 → 宿主原生存（§5.4/5.5）。
+- **020 不建 session**：其 .at back 仅 `status()->[]`（gallery 内已
+  merged CALL，返回值无人消费）；真实曲库来自宿主原生 media 路由。
+  013/015/020(status)/022 全族维持 merged CALL 零回归。
+
+### 5.3 前端适配（T-02）
+
+- 020（语料不动，相对 URL `Http.get_json("/api/media/scan")`）：画廊
+  runner 在 proxy 绑定后设 `AUTO_HTTP_BASE=http://127.0.0.1:<port>/apps/
+  020-music-player`（resolve_http_base_url stdlib.rs:6695 既有展开，
+  语义零改动；独立形态不受影响——那是各自进程自己的 env）。
+- 017/031（发射期改写）：发射器为每 demo 生成 client 模块
+  `demos/<ns>_client.at`（把 `use back.api:` 的 fn 逐个实现为
+  Http.*_json 绝对 URL `http://127.0.0.1:<port>/apps/<id><path>`；类型
+  定义自 back api.at 的 pub type/tag 摘出随行）——merged 编译单元内
+  纯 .at 可编译，api 调用不经 codegen 三态决策（非 api import）。
+  发射顺序约束：proxy 先绑端口 → 发射器拿端口 → run_file。
+
+### 5.4 stream 转发时序（017，T-04）
+
+- wire 形态查证：独立 Axum 形态 = SSE（api_gen.rs:1817-1833，events.rs
+  broadcast channel）；VM HTTP server 对 iterator 返回值同样 SSE 化
+  （http_server.rs:2666-2700）。**本计划 proxy 亦用 SSE**——前端消费
+  语义与独立形态一致。
+- 关键实证：`bus` 无 VM 原生实现（全仓 grep 零命中）——`stream()`
+  函数体 `bus.subscribe()` 在 VM 侧是死码；两个生成器均按**签名**
+  （返回类型含 `Stream<`）特路处理、忽略函数体，SSE 广播由宿主在
+  POST 处理器完成（api_gen.rs:2092-2101 broadcast + discriminator 推断
+  broadcast_event_name:1226）。proxy 复刻同语义：~Stream 端点按签名
+  特路 → 每 session 宿主侧事件总线 → SSE 连接逐事件转发；POST 成功
+  后按 create/typing 惯例广播。**语料零改动**。
+- 前端 VM 臂接线（新增能力）：`http.sse_get_stream(url)` 原生已存在
+  （Plan 341，stdlib.rs:6255，reqwest async + mpsc + AsyncHttpStream
+  迭代器）但无 codegen 接线；`store.Msg(args)` 发送语法存在
+  （app.at:87 `store.Init()`）。T-04 落地形态（三选一按实证定）：
+  发射器注入消费循环 / client 模块提供 stream 接线 / store 级注入。
+  Vue 臂 EventSource 接线（ts_adapter.rs:1273）不动。
+
+### 5.5 native-ns/binary（031，T-05）
+
+- `auto.image` 17 natives 全部进程内可用（stdlib.rs:4055-4226，cfg
+  ui-iced——VM 臂 auto 二进制满足；注册进进程级 BIGVM_NATIVES，session
+  VM 同样可调）。宿主 image pipeline 实为 **PLAN-547**（非计划原文
+  的 PLAN-646——646 是 select-anything，已核实修正）。
+- 字节服务：快照返回不透明 URI `/api/__auto/media/{id}/{rev}`；proxy
+  增宿主短路路由委托 `media_http_response`（image_pipeline.rs:1232，
+  原始编码字节 + Content-Type/ETag/304 保真）——AC-03 字节级校验经
+  此路由取证。
+- 渲染快路径注记：VM 臂 renderer 对 media URI 有进程内解析
+  （resolve_media_uri renderer.rs:6066）——session 与画廊宿主同进程
+  共享 pipeline，窗口内出图可不经 HTTP；proxy 路由保证字节面可独立
+  取证 + 未来消费方（Vue 臂）可用。
+
+### 5.6 崩溃隔离与可观测性（T-06）
+
+- 每 session 专线程 `catch_unwind` 包请求执行：panic → 500 + JSON
+  error + session 标记 degraded；重启策略 = 退避重建（back 链重编译
+  装载，状态归零——后端本就内存态）。VMError（非 panic）同样 500 +
+  日志，不重启。宿主线程与其余 session 不受影响。
+- 可观测性：每 session 日志通道 `[proxy:<app_id>]` 前缀 + 环形缓冲；
+  `AUTO_BACK_PROXY_TRACE=1` 打开请求级打点（仿 AUTO_LANG_HTTP_TRACE）。
+
+### 5.7 调研修正记录（对计划原文的三处校准）
+
+1. "PLAN-646 形态"提法与仓库事实不符——image pipeline 实为 PLAN-547
+   （archive/547-image-viewer-pipeline.md + design/autoui/
+   image-viewer-pipeline.md，标注 Implemented）。
+2. "3049..3050+N"是本计划对假设现状的概括记法，两仓无该区间分配
+   代码；实际端口带：画廊前端口 3049（auto-os/ui-gallery/pac.at:15）、
+   demo 独立 back 8xxx。
+3. 020 的 /api/media/scan 与 /api/media/stream/:id **不在 .at 语料**——
+   是生成器对全部后端无条件发射的宿主原生路由（api_gen.rs:2604-2636；
+   media_service.rs 扫描/Range 语义）。proxy 侧这两路由由宿主 Rust
+   直接实现（media_root 自 demo pac.at 读出，resolve_root 显式传参），
+   不经 VM session。
+
+### 5.8 任务集校准
+
+原 T-01..T-07 任务集保持不变（无裂变）；T-03 含 proxy 宿主原生 media
+路由实现，T-04 含 VM 臂 store 流接线新能力，T-05 含发射器解除 017/031
+否决 + client 模块发射（T-04/T-05 各自验收内完成）。
 
 ### 规范增量
 
@@ -157,12 +262,22 @@ chunk 转发 / binary 字节转发）。）
 
 （原子任务；每步完成后追加 [✅] 证据行）
 
-- [ ] **T-00 有界调研定案：session 模型与进程形态**
+- [x] **T-00 有界调研定案：session 模型与进程形态**
       决策产物回填 §5：①auto serve daemon 扩展 HTTP 前端 vs auto run 宿主
       内嵌 proxy 线程（一键体验/启动编排/生命周期对比表+裁定）；②017
       stream 的 wire 形态查证（~Stream 在既有 Axum 生成器的落线方式——
       SSE/长连接）；③031 auto.image 的进程内可用面（宿主 image pipeline
       PLAN-646 形态）。产出：设计决策记录 + 任务集校准（如需裂变在册）。
+      [✅ 已完成 2026-09-19] §5.1-5.8 回填定案：形态=宿主内嵌 proxy 线程
+      （§5.1 五维对比）；017=SSE wire + bus 无 VM 实现的死码实证 +
+      sse_get_stream(Plan 341)/store.Msg() 两个先例（§5.4）；031=
+      auto.image 17 natives 进程内可用 + media_http_response 字节短路
+      （§5.5）；三处调研修正（§5.7：PLAN-646→实为 547、3049..3050+N
+      为假设记法、020 media 路由是宿主原生存）。任务集无裂变（§5.8）。
+      证据锚：autovm_daemon.rs:129（session 线程模型）、loader.rs:45
+      （CompiledPackage.api_routes）、stdlib.rs:3481（全局路由表约束）、
+      vm_bridge.rs:1295（marshalling 范本）、api_gen.rs:1817/2092（SSE
+      发射+broadcast 语义）、stdlib.rs:6255（sse_get_stream）。
 - [ ] **T-01 proxy 骨架 + 纯 JSON API 面**
       axum 单宿主 + `HashMap<app_id, VmSession>` 注册表 + 子 URL 前缀解析
       + session 内 `#[api]` fn 表动态分发（Plan 312 路由清单）+ JSON
