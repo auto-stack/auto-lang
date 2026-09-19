@@ -2,7 +2,7 @@
 
 ---
 plan_id: PLAN-661
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: canvas-graph-scene-slider
 author: [zcode]
 created_at: 2026-09-19
@@ -547,6 +547,84 @@ jade-garden graph_view 真渲染消费 = jade/auto-down 侧后续计划（§10 �
     press=消息同构直派（pen 坐标合成让位）。目标/AC 全部按原案达成。
   - blockers: 无。
   - next: review（/auto-plan:review）。
+- 2026-09-20（独立复审，/auto-plan:review）：
+  - stage: review；plan_revision: 1；outcome: **pass**。
+  - reviewed_commit: plan-661-dev `086deecdfa54e2cf5bc17656e199128409aee85a`
+    （worktree 净、6 提交）；base_commit: `72ab08941d`；dependency_revisions:
+    auto-down detached@`10da13b7`（组内只读依赖位）；计划簿记 master@`eb74d814e`。
+  - **独立性声明**：本复审在执行会话内进行——按技能要求以工件重建裁决，
+    全部验证为复审期新跑命令/文件实勘，不采信执行期叙述；diff 面 35 文件
+    +2136/-152 逐类对六任务授权面（codegen/native 零触碰与 P661-D6① 备案
+    一致；gpui/vnode/native_projector 为 T-02 编译必经消费臂迁移；tests/
+    fixtures/025 零触碰——AC-04「fixture 源零改动」经 diff 审证）。
+  - spec_inputs: docs/specs/goals.md（GOAL-007/008 实在性核验）、
+    docs/specs/auto-lang/ui/{overview,design/chart-components}.md、
+    schema/aura.at（评审基线=worktree HEAD 版本）。
+  - acceptance_results（复审期新证据）：
+    - **AC-01 pass**——`plan661_t01_map_bracket_write_roundtrip` +
+      `test_07_objects_010_map_bracket_write`（tf/tv 内绿）；078 复现形态
+      （字面量/var 键、写后续行）断言在测；vue 轨零回归（vue 模块 308 绿 +
+      engine 改动不触 vue 发射面）；`cargo tv` 3794 跑 3792 绿（2 红
+      mouse_area/autodown_panel 基线 72ab08941 逐项重证同红）。
+    - **AC-02 pass**——复审专形冒烟（025 fixture 同形 .at + 技能 MCP
+      client）：`set_value(75)` → 渲染 `vol: 75` + state `vol: 75.00
+      (float)`；049 T3 段同证（set_value(110)→radius/表重算）。
+    - **AC-03 pass**——生成 SFC 实物核验（049 App.vue:218：
+      `<input type="range" max min step :value @input="SetRadius(…
+      valueAsNumber)"`）+ vue 轨 7/7（attrs 面/value 80 绑定/fill 110 状态
+      回灌/载荷派发链——dev server 复审期重启重跑）。
+    - **AC-04 pass**——`test_slider_codegen_arm_fixture`（tf 内绿，钉
+      `.on_change(|v| 变体(v))` 新形态）+ `test_slider_map_msg_
+      remaps_change_handler`（panic 占位消除+None 透传）+ fixture .at
+      diff 审零触碰。
+    - **AC-05 pass**——049 双轨渲染（VM 11/11 + vue 7/7，含三表初始态
+      断言）+ **043-canvas-paint 回归冒烟 14/14**（strokes 兼容实机）+
+      tv 全量；对拍实录口径在册（结构等价/像素量差 0.8%/IoU 0.8677——
+      文本跨端差异注记 P661-D5）。
+    - **AC-06 pass**——VM `press(value=n2/c)` 命中（049 T2 段）+ vue 坐标
+      点击 n0 命中 + **空区点击不派发**（真实 tap 层强制）。
+    - **AC-07 pass**——049 SPEC.md 契约成文（四语义各一节+对拍口径）；
+      DOC_EXCLUDE canvas 既有条目补注（docs_gen 4/4 绿）。
+    - **AC-08 pass**——SD-01（canvas-scene.md 76 行新档，描述与验证行为
+      一致）+ SD-02/03（chart-components/overview 注记）+ SD-04（schema
+      描述随 T-03/05 落，docs_gen 锚）；schema_drift 2/2 +
+      queue_coverage + component_registry 8/8 全绿；KNOWN-DEBT
+      P661-D1..D7；**账本三件套（plans.md 台账行/specs.json upsert/
+      spec-index 再生）按计划 §5.6 与 auto-plan 范式归 merge 技能**
+      （复审技能明令复审期不触 live ledger——非缺口，路由在案）。
+  - 全量门禁（复审期重跑）：`cargo tf` 3646/3648（2 预存）；`cargo tv`
+    3792/3794（同 2）；`cargo tt` 4011/4017（6 红全部基线逐项重证预存：
+    mouse_area/autodown_panel/modules_007_shared_var/c_abi_003/c_abi_004/
+    a2r_rustc_real_compile_gate——a2r 工具链环境类）；单测滑窗
+    plan661+slider+canvas 20/20。
+  - findings（全部 nonblocking，已登记/路由）：
+    - **R-F1**（观察）：rendered v2（styled VTree）快照/inspect 面对任何
+      kind 均不展示 props/actions——nodes 计数/ids 与 press/set_value
+      actions 挂在 legacy UiNode 快照面（aura_N/源模板回退）；MCP 寻址
+      经 kind+工具文档+视图树提取不受影响。预存面形态，非本计划缺口。
+    - **R-F2**（语义注记）：MCP press 直派对任意 id 派发 handler（载荷
+      直达，不重跑命中判定）；「未命中不派发」在真实 tap 层（PenArea/
+      vue pointer 容差判定）强制并经测试验证——合成派发与真实交互的
+      分工已由工具描述与 049 测试承载。
+    - **R-F3**（预存红台账）：tv 2/tt 6/iced 4/ui 滤档 ~50 全部基线同红
+      （复审期对其余未逐项重跑者沿用执行期基线 worktree 实证 + 本复审
+      tt/tf/tv 新证）——P661-D7 在册，修复归后续 L0/专项。
+    - **R-F4**（merge 前置条件）：主检出 `crates/auto-lang/src/ui/iced/
+      renderer.rs` 有他方会话 2 行 `[TRACE]` 调试残留（未提交）——与本
+      worktree 提交无涉、不影响本复审裁决基线，但与本计划 T-02/T-05 大
+      改同文件，**merge 落 master 前须其归属会话处置**。
+    - **R-F5**（跨仓注记）：docs_gen kitchen-sink 再生成写至 auto-os 仓
+      工作区（未提交，顺带吸收 656 scroll 漂移）——归该仓会话落提交。
+  - 元数据定稿：`supersedes_spec_components: []`（无整件被替代——
+    SD-02/03 为增量注记；退役物=shadcn slider 组件路径，已记 aura.at/
+    coverage/render_support 三表，非 canonical spec 组件整件）；
+    `new_spec_components: [auto-lang/ui/design/canvas-scene.md]`（实在）；
+    `touched_goals: [GOAL-007, GOAL-008]`（goals.md 实在性核验通过）。
+  - evidence 汇：本记录内嵌命令/结果摘录（resolvable）；worktree 工件
+    049 样板/tests/SPEC.md 为持久仓内证据；对拍截图不入库（gitignore
+    仓规），数字以本记录+P661-D5 为准。
+  - next: **merge**（/auto-plan:merge；R-F4 主检出残留处置为落 master
+    前置）。
 
 - 2026-09-19（draft handoff，/auto-plan:new）：
   - stage: new；plan_revision: 1。
