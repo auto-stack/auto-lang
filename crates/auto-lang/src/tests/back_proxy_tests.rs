@@ -455,3 +455,124 @@ fn http_e2e_back_proxy_real_017_sse_stream() {
         "new-message frame: {f2}"
     );
 }
+
+/// PLAN-658 T-05: 031-image-viewer 真实 back（use auto.image）装载进
+/// session——auto.image 原生经进程级注册表在 session 内可用，open/snapshot
+/// 走真实 image_pipeline（fixtures 目录）。
+#[cfg(feature = "ui-iced")]
+#[test]
+fn http_e2e_back_proxy_real_031_native_ns_session() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let base = repo_root.join("examples/ui/031-image-viewer");
+    if !base.join("src/back/api.at").exists() {
+        eprintln!("skip: 031 corpus not present");
+        return;
+    }
+    let config = BackProxyConfig {
+        port: 3958,
+        sessions: vec![SessionSpec {
+            app_id: "031-image-viewer".to_string(),
+            back_entry: base.join("src/back/api.at"),
+        }],
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("start proxy 031");
+
+    // health：纯字面路由。
+    let (status, body) = http_request(proxy.port, "GET", "/apps/031-image-viewer/api/viewer/health", None);
+    assert_eq!(status, 200, "health, body: {body}");
+    assert!(body.contains("Ready"), "health body: {body}");
+
+    // open-directory：session 内 image.open_session 真实执行（fixtures 目录）。
+    let fixtures = repo_root
+        .join("examples/ui/031-image-viewer/tests/fixtures")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let (status, body) = http_request(
+        proxy.port,
+        "POST",
+        "/apps/031-image-viewer/api/viewer/open-directory",
+        Some(&format!("{{\"path\":\"{fixtures}\"}}")),
+    );
+    assert_eq!(status, 200, "open-directory, body: {body}");
+    let sess: serde_json::Value = serde_json::from_str(&body).expect("session handle json");
+
+    // names：目录条目（GET + query 绑定 session；jpg/png 过滤后非空）。
+    let sid = sess.as_str().unwrap_or_default().to_string();
+    let (status, body) = http_request(
+        proxy.port,
+        "GET",
+        &format!("/apps/031-image-viewer/api/viewer/names?session={sid}"),
+        None,
+    );
+    assert_eq!(status, 200, "names, body: {body}");
+    assert!(body.len() > 10, "names non-empty: {body}");
+    println!("031 names sample: {body}");
+}
+
+/// PLAN-658 T-05: `/api/__auto/media/{id}/{rev}` 字节保真——经 image_pipeline
+/// registry 直接发布资产，proxy 转发路由逐字节一致 + Content-Type 保真
+/// + ETag/304 语义（AC-03 字节级校验面）。
+#[cfg(feature = "ui-iced")]
+#[test]
+fn http_e2e_back_proxy_media_uri_byte_fidelity() {
+    use crate::ui::image_pipeline::{
+        global_media_registry, MediaAssetKey, MediaAssetState, MediaMetadata, RenditionSpec,
+    };
+    let registry = global_media_registry();
+    let ticket = registry.queue(
+        MediaAssetKey {
+            source_fingerprint: "p658-proxy-fixture".into(),
+            orientation: Default::default(),
+            rendition: RenditionSpec::original(),
+            revision: 1,
+        },
+        MediaMetadata {
+            mime_type: "image/png".to_string(),
+            ..Default::default()
+        },
+    );
+    registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
+    registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
+    registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+    let payload: std::sync::Arc<[u8]> = std::sync::Arc::from([7u8, 255, 0, 128, 42, 99]);
+    registry
+        .publish_ready(ticket.id, ticket.revision, payload.clone())
+        .unwrap();
+
+    let config = BackProxyConfig {
+        port: 3938,
+        sessions: Vec::new(),
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("start proxy (media uri)");
+    let path = format!("/apps/031-image-viewer/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+
+    // GET：字节一致 + Content-Type。
+    let (status, headers, bytes) = http_request_raw(proxy.port, "GET", &path, None, &[]);
+    assert_eq!(status, 200, "media uri status");
+    assert_eq!(&bytes[..], &payload[..], "byte fidelity");
+    let ct = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    assert_eq!(ct, "image/png", "content type preserved");
+
+    // ETag 命中 → 304。
+    let etag = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("etag"))
+        .map(|(_, v)| v.clone());
+    if let Some(etag) = etag {
+        let (status, _, _) = http_request_raw(
+            proxy.port,
+            "GET",
+            &path,
+            None,
+            &[("If-None-Match", etag.as_str())],
+        );
+        assert_eq!(status, 304, "etag revalidation");
+    }
+}

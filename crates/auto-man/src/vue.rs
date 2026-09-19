@@ -6518,13 +6518,18 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
     let native_media: Vec<auto_lang::back_proxy::NativeMediaApp> = gallery_rows_via_cache(&apps_dir, true)
         .into_iter()
         .filter_map(|row| {
-            // PLAN-658 T-04: stream 后端 demo 加载为 VM session（~Stream 签名
-            // 按 proxy 特路服务，CRUD 在 session 内执行）。
+            // PLAN-658 T-04/T-05: stream（~Stream）与 native-ns（use auto.*）
+            // 后端 demo 加载为 VM session——#[api] CRUD 在 session 内执行，
+            // 流端点按 proxy 签名特路服务，原生命名空间经进程级注册表可用。
             let back_api = apps_dir.join(&row.id).join("src").join("back").join("api.at");
-            let is_stream = std::fs::read_to_string(&back_api)
-                .map(|c| c.contains("~Stream") || c.contains("~Promise"))
+            let needs_session = std::fs::read_to_string(&back_api)
+                .map(|c| {
+                    c.contains("~Stream")
+                        || c.contains("~Promise")
+                        || c.lines().any(|l| l.trim_start().starts_with("use auto."))
+                })
                 .unwrap_or(false);
-            if is_stream && back_api.is_file() {
+            if needs_session && back_api.is_file() {
                 sessions.push(auto_lang::back_proxy::SessionSpec {
                     app_id: row.id.clone(),
                     back_entry: back_api,
@@ -6869,19 +6874,15 @@ pub fn emit_gallery_vm_demos(
             for (m, c) in back_modules.iter() {
                 let native_ns = c.lines().any(|l| l.trim_start().starts_with("use auto."));
                 let stream_sig = c.contains("~Stream") || c.contains("~Promise");
-                if native_ns {
-                    println!(
-                        "  {} gallery demo `{}`: back module `{m}` uses native-ns backend — not embeddable yet, static panel",
-                        "⚠".bright_yellow(),
-                        r.id
-                    );
-                    back_ok = false;
-                } else if stream_sig {
+                if native_ns || stream_sig {
+                    // PLAN-658 T-04/T-05: stream（~Stream）与 native-ns
+                    // （use auto.*）后端在 proxy 运行时都走 proxy 路径
+                    // （back 进 session，前端用发射 client 模块）。
                     if gallery_proxy_root().is_some() {
                         stream_proxy_demo = true;
                     } else {
                         println!(
-                            "  {} gallery demo `{}`: back module `{m}` uses stream backend (no back-proxy) — static panel",
+                            "  {} gallery demo `{}`: back module `{m}` uses native-ns/stream backend (no back-proxy) — static panel",
                             "⚠".bright_yellow(),
                             r.id
                         );
@@ -6906,25 +6907,53 @@ pub fn emit_gallery_vm_demos(
                     .filter(|e| e.return_type.contains("Stream"))
                     .map(|e| e.fn_name.clone())
                     .collect();
-                if stream_fns.is_empty() {
-                    skipped.push(format!("{}(未识别 ~Stream 端点)", r.id));
-                    continue;
-                }
-                let stream_path = api_mod
-                    .endpoints
-                    .iter()
-                    .find(|e| e.return_type.contains("Stream"))
-                    .map(|e| e.path())
-                    .unwrap_or_else(|| "/api/stream".to_string());
+                // T-05: native-ns 族（031）无流端点——只发 client，不注入
+                // Tick 消费；stream 族（017）才有流接线。
+                let stream_path = if stream_fns.is_empty() {
+                    String::new()
+                } else {
+                    api_mod
+                        .endpoints
+                        .iter()
+                        .find(|e| e.return_type.contains("Stream"))
+                        .map(|e| e.path())
+                        .unwrap_or_else(|| "/api/stream".to_string())
+                };
                 let root = gallery_proxy_root().unwrap_or_default();
                 let client_stem = format!("{ns}_api_client");
                 let stream_url = format!("{root}/apps/{}/{}", r.id, stream_path.trim_start_matches('/'));
                 // ① 前端 use 行剔除流项（client 无流 fn——流消费走 Tick 注入）。
                 let sf: Vec<&str> = stream_fns.iter().map(|s| s.as_str()).collect();
-                let source_ds = drop_use_items(source, "back.api", &sf);
+                // ①b 相对 fixtures 字面量锚定（T-05）：`../../tests/` 相对
+                // demo CWD——画廊宿主 CWD 不同，session 侧 open 即落空。proxy
+                // 路径 demo 的拷贝件改锚到 apps_dir 下绝对路径（语料不动）。
+                let demo_root = apps_dir.join(&r.id);
+                let rel_anchor = "../../tests/";
+                let abs_anchor = format!(
+                    "{}/tests/",
+                    demo_root.to_string_lossy().replace('\\', "/")
+                );
+                let absolutize = |c: &str| {
+                    if c.contains(rel_anchor) {
+                        c.replace(rel_anchor, &abs_anchor)
+                    } else {
+                        c.to_string()
+                    }
+                };
+                let source_ds = if sf.is_empty() {
+                    absolutize(source)
+                } else {
+                    absolutize(&drop_use_items(source, "back.api", &sf))
+                };
                 let row_ds: std::collections::BTreeMap<String, String> = row_modules
                     .iter()
-                    .map(|(k, v)| (k.clone(), drop_use_items(v, "back.api", &sf)))
+                    .map(|(k, v)| {
+                        if sf.is_empty() {
+                            (k.clone(), absolutize(v))
+                        } else {
+                            (k.clone(), absolutize(&drop_use_items(v, "back.api", &sf)))
+                        }
+                    })
                     .collect();
                 // ② 改名：自有模块 ns 化；back.api（含裸 back 别名）→ client stem。
                 for m in row_ds.keys() {
@@ -6938,7 +6967,9 @@ pub fn emit_gallery_vm_demos(
                 // ③ 前端/自有模块改写 + Tick 注入（store.X 接收者交给下游
                 // store_qualify_source 统一限定——注入先于它）。
                 source_rw = rewrite_use_modules(&source_ds, &renames, &back_names);
-                source_rw = inject_sse_tick(&source_rw, &stream_url);
+                if !stream_path.is_empty() {
+                    source_rw = inject_sse_tick(&source_rw, &stream_url);
+                }
                 let mut ns_modules: std::collections::BTreeMap<String, String> =
                     Default::default();
                 for (m, c) in row_ds {
@@ -10957,6 +10988,105 @@ widget Helper {
             skipped.iter().any(|s| s.contains("back 链不可内嵌")),
             "skip reason: {skipped:?}"
         );
+    }
+
+    /// PLAN-658 T-05: native-ns demo（use auto.*）proxy 路径发射——与
+    /// stream 族同管线（client 模块 + back 不进画廊），差异：无流端点 →
+    /// 不注入 Tick、不剔除 use 项。
+    #[test]
+    fn test_emit_gallery_vm_demos_native_ns_proxy_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let front = apps.join("031-v").join("src").join("front");
+        let back = apps.join("031-v").join("src").join("back");
+        fs::create_dir_all(&front).unwrap();
+        fs::create_dir_all(&back).unwrap();
+        fs::write(
+            front.join("app.at"),
+            "use viewer_store: ViewerStore
+
+widget App {
+    on {
+        .Init -> {
+            store.Init()
+        }
+    }
+    view {
+        text \"viewer\"
+    }
+}
+",
+        )
+        .unwrap();
+        fs::write(
+            front.join("viewer_store.at"),
+            "use back.api: viewer_health, open_file
+
+store ViewerStore {
+    model {
+        var status str = \"\"
+    }
+    on {
+        .Init -> {
+            .status = viewer_health()
+        }
+    }
+}
+",
+        )
+        .unwrap();
+        fs::write(
+            back.join("api.at"),
+            "use auto.image
+
+#[api(method = \"GET\", path = \"/api/viewer/health\")]
+pub fn viewer_health() str {
+    return \"Ready\"
+}
+
+#[api(method = \"POST\", path = \"/api/viewer/open-file\")]
+pub fn open_file(path str) str {
+    return image.open_session(path)
+}
+",
+        )
+        .unwrap();
+
+        let rows = vec![fullstack_demo_row(
+            "031-v",
+            &fs::read_to_string(front.join("app.at")).unwrap(),
+        )];
+        let gallery = dir.path().join("src").join("gallery");
+        let demos = gallery.join("demos");
+
+        set_gallery_proxy_root(Some("http://127.0.0.1:3358".to_string()));
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
+        set_gallery_proxy_root(None);
+        assert_eq!(emitted, 1, "native-ns demo emitted via proxy path: {skipped:?}");
+
+        // client 模块：GET 字面 + POST from_value body。
+        let client = fs::read_to_string(demos.join("d031v_api_client.at")).unwrap();
+        assert!(
+            client.contains(
+                "Http.get_json(\"http://127.0.0.1:3358/apps/031-v/api/viewer/health\")"
+            ),
+            "health url: {client}"
+        );
+        assert!(
+            client.contains("json.from_value(path)"),
+            "post body from_value: {client}"
+        );
+
+        // 无流端点：demo 本体无 Tick 注入、use 项全保。
+        let demo_src = fs::read_to_string(demos.join("031-v.at")).unwrap();
+        assert!(!demo_src.contains(".Tick"), "no tick for non-stream demo");
+        let store_src = fs::read_to_string(demos.join("d031v_viewer_store.at")).unwrap();
+        assert!(
+            store_src.contains("use d031v_api_client: viewer_health, open_file"),
+            "use rewritten keeping all items: {store_src}"
+        );
+        // back 不进发射面。
+        assert!(!demos.join("d031v_api.at").exists(), "back not merged");
     }
 
     /// PLAN-633 AC-04/T-01: fullstack 标记——back 语料（`@/lib/api`）把

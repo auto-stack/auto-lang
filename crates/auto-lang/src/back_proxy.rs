@@ -125,7 +125,7 @@ enum ProxyReply {
     #[cfg(feature = "ui")]
     Stream {
         status: u16,
-        content_type: &'static str,
+        content_type: String,
         extra_headers: Vec<(String, String)>,
         content_length: u64,
         reader: Box<dyn std::io::Read + Send>,
@@ -335,6 +335,40 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
     if let Some(reply) = shared.try_native_media(&app_id, &sub_path, req) {
         return reply;
     }
+    // PLAN-658 T-05: 031 族图片字节路由（image_pipeline 共享 registry 的
+    // 不透明 `/api/__auto/media/{id}/{rev}` URI，session 内 auto.image 原生
+    // 创建的条目同进程可读——字节保真 + ETag/304 语义直答）。
+    #[cfg(feature = "ui-iced")]
+    if sub_path.starts_with("/api/__auto/media/") {
+        let if_none = req
+            .headers
+            .iter()
+            .find(|(k, _)| k == "if-none-match")
+            .map(|(_, v)| v.clone());
+        if let Some(resp) = crate::vm::ffi::stdlib::media_response_for_vm_request(
+            &req.method,
+            &sub_path,
+            if_none.as_deref(),
+        ) {
+            let mut content_type = "application/octet-stream".to_string();
+            let mut extra_headers = Vec::new();
+            for (k, v) in &resp.headers {
+                if k.eq_ignore_ascii_case("content-type") {
+                    content_type = v.clone();
+                } else {
+                    extra_headers.push((k.clone(), v.clone()));
+                }
+            }
+            let body = resp.body.unwrap_or_else(|| Arc::from(Vec::new()));
+            return ProxyReply::Stream {
+                status: resp.status,
+                content_type,
+                extra_headers,
+                content_length: body.len() as u64,
+                reader: Box::new(std::io::Cursor::new(body)),
+            };
+        }
+    }
     let Some(tx) = shared.sessions.get(&app_id) else {
         return ProxyReply::json(404, error_json(&format!("back-proxy: unknown app `{app_id}`")));
     };    let (reply_tx, reply_rx) = mpsc::channel::<ProxyReply>();
@@ -381,7 +415,7 @@ fn write_response(stream: &mut TcpStream, reply: ProxyReply) -> std::io::Result<
     };
     let (status, content_type, extra_headers, body_source) = match reply {
         ProxyReply::Response { status, content_type, body } => {
-            (status, content_type, Vec::<(String, String)>::new(), BodySource::Bytes(body))
+            (status, content_type.to_string(), Vec::<(String, String)>::new(), BodySource::Bytes(body))
         }
         ProxyReply::Sse(_) => unreachable!("Sse handled in the outer match"),
         #[cfg(feature = "ui")]
@@ -589,7 +623,7 @@ impl ProxyShared {
         let _ = head_only; // HEAD：Content-Length 已声明，连接即关——省 body
         ProxyReply::Stream {
             status,
-            content_type: ct,
+            content_type: ct.to_string(),
             extra_headers,
             content_length: if head_only { 0 } else { content_length },
             reader: if head_only {

@@ -4286,7 +4286,7 @@ pub fn shim_http_server_static(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// The listen loop is identical to shim_http_server_listen but creates its own
 /// handler tasks internally, avoiding the need for a caller-provided task.
 #[cfg(feature = "ui-iced")]
-fn media_response_for_vm_request(
+pub(crate) fn media_response_for_vm_request(
     method: &str,
     path: &str,
     if_none_match: Option<&str>,
