@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-642
-status: reviewed             # 终审 pass（2026-09-19 收口复审）——待 merge
+status: archived             # 终态（2026-09-19 终审 pass + merge 收口）
 plan_revision: 1              # 复审基线迁移：初版契约无 revision 字段，按 auto-plan-new 规约补记为 1
 feature_name: uigallery-vm-embed-repair
 author: [agent]
