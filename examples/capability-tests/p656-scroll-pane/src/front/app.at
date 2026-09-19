@@ -55,7 +55,8 @@ widget App {
         col (style: "gap-3 p-3") {
             b "PLAN-656 scroll-pane capability"
 
-            scroll-pane (controller: .sc, style: "h-48 border rounded") {
+            container (style: "h-48") {
+                scroll-pane (controller: .sc, style: "border rounded h-full w-full") {
                 col (style: "gap-1") {
                     text "y-row-01"
                     text "y-row-02"
@@ -70,6 +71,7 @@ widget App {
                     text "y-row-11"
                     text "y-row-12"
                 }
+                }
             }
             col (style: "gap-1") {
                 row (style: "gap-2") {
@@ -83,7 +85,8 @@ widget App {
                 }
             }
 
-            scroll-pane (axis: "x", style: "h-12 border rounded") {
+            container (style: "h-12") {
+                scroll-pane (axis: "x", style: "border rounded h-full w-full") {
                 row (style: "gap-2") {
                     text "x-cell-01"
                     text "x-cell-02"
@@ -94,9 +97,11 @@ widget App {
                     text "x-cell-07"
                     text "x-cell-08"
                 }
+                }
             }
 
-            scroll-pane (scrollbar: "hidden", controller: "hiddenpane", style: "h-12 border rounded") {
+            container (style: "h-12") {
+                scroll-pane (scrollbar: "hidden", controller: "hiddenpane", style: "border rounded h-full w-full") {
                 col {
                     text "hidden-1"
                     text "hidden-2"
@@ -105,10 +110,13 @@ widget App {
                     text "hidden-5"
                     text "hidden-6"
                 }
+                }
             }
 
-            scroll-pane (axis: "both", controller: .msc, style: "h-56 border rounded") {
+            container (style: "h-56") {
+                scroll-pane (axis: "both", controller: .msc, style: "border rounded h-full w-full") {
                 scroll-test-content (key: "cap", extent_h: 10000000.0, extent_w: 2000000.0) {}
+                }
             }
             row (style: "gap-2") {
                 button "m-to-end" { onclick: .MToEnd }
@@ -117,7 +125,8 @@ widget App {
                 text `mprobe=${.mprobe}`
             }
 
-            scroll-pane (style: "h-24 border rounded", onscroll: .Observe) {
+            container (style: "h-24") {
+                scroll-pane (style: "border rounded h-full w-full", onscroll: .Observe) {
                 col (style: "gap-1") {
                     text "obs-1"
                     text "obs-2"
@@ -125,6 +134,7 @@ widget App {
                     text "obs-4"
                     text "obs-5"
                     text "obs-6"
+                }
                 }
             }
             button "bump" { onclick: .Bump }

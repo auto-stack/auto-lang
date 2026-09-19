@@ -124,12 +124,15 @@ def main():
         def get_state(*f):
             return c.state(*f)
 
-        # 2. ordinary controller 全链
+        # 2. ordinary controller 全链（bind 预热与 intent 排空由 2s 心跳
+        # 节拍驱动——update 早退使 tail 块只在心跳等长路径执行；等待窗
+        # 覆盖预热+排空两拍）。
+        time.sleep(2.6)
         st = get_state("probe")
         print(f"[*] initial state: {st[:120]}")
         press("probe")
         st0 = get_state("probe")
-        press("to-end"); time.sleep(0.3); press("probe")
+        press("to-end"); time.sleep(2.6); press("probe")
         st1 = get_state("probe")
         print(f"[*] probe after to-end: {st1[:160]}")
         v1 = extract_float(st1, "probe")
@@ -139,7 +142,7 @@ def main():
             print(f"[+] ordinary controller chain: probe={v1:.0f} (>0)")
 
         # 3. managed controller 全链（10M 逻辑 extent）
-        press("m-to-end"); time.sleep(0.3); press("m-probe")
+        press("m-to-end"); time.sleep(2.6); press("m-probe")
         stm = get_state("mprobe")
         vm_ = extract_float(stm, "mprobe")
         print(f"[*] mprobe after m-to-end: {stm[:160]}")

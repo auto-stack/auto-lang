@@ -10334,8 +10334,13 @@ print(st.offset_y)
             &key,
             crate::ui::scroll::ScrollIntent::ToEnd { axis: crate::ui::scroll::Axis::Y, source: crate::ui::scroll::ScrollSource::Programmatic },
         );
-        let drained = crate::ui::scroll::controller::drain_resolved_intents();
-        assert_eq!(drained.as_slice(), [(key.clone(), "pane_x".to_string(), 0.0, 800.0)], "to_end → range 1000-200");
+        let (drained, prime) = crate::ui::scroll::controller::drain_resolved_intents();
+        assert!(prime.is_empty(), "noted snapshot is primed");
+        assert_eq!(
+            drained.as_slice(),
+            [(key.clone(), "pane_x".to_string(), 0.0, 800.0)],
+            "to_end → range 1000-200"
+        );
     }
 
     // ── Plan 413 follow-up: console natives (in-app Console panel) ──────

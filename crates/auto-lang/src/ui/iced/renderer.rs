@@ -2529,8 +2529,11 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     // Plan 409 §10 续 4: 半透明悬浮滚动条(接近 vue:thumb 半透明、track 透明、细)。
     s = s.style(|_theme: &iced::Theme, _status: scrollable::Status| scrollbar_style());
     // PLAN-656: controller pane 的句柄派生 id 优先（scroll_to 目标必须命中；
-    // 该节点让出 bounds 采集 id，与 auto_scroll 固定 id 同款取舍）。
-    let widget_id = widget_id.or(controller_widget_id);
+    // 该节点让出 bounds 采集 id，与 auto_scroll 固定 id 同款取舍）。review
+    // F-4 修复：原 `.or()` 顺序写反——vnode bounds id 优先吞掉 controller
+    // id，注册表绑定的 scroll_ctl_* 永远匹配不到真实 widget（读回键为
+    // vnode_*，scroll_to 落空，预热循环空转）。
+    let widget_id = controller_widget_id.or(widget_id);
     if let Some(id) = widget_id {
         s = s.id(id);
     }
@@ -15108,6 +15111,23 @@ fn compare_pngs(
             }
             return iced::Task::none();
         }
+        // PLAN-656 F-4 终段：controller scroll_to 经回环消息在头部直返
+        //（MCP __mcp_scroll 同款机制——tail_tasks 批内的 scroll_to 不落地，
+        // 头部 return 的才生效；input_value = "widget_id␟x␟y"）。
+        if msg.event == "__scroll_ctl_exec" {
+            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            if let (Some(id), Some(x), Some(y)) = (
+                parts.next(),
+                parts.next().and_then(|s| s.parse::<f32>().ok()),
+                parts.next().and_then(|s| s.parse::<f32>().ok()),
+            ) {
+                return iced::Task::batch([iced::widget::operation::scroll_to(
+                    id.to_string(),
+                    iced::widget::scrollable::AbsoluteOffset { x, y },
+                )]);
+            }
+            return iced::Task::none();
+        }
         if msg.event == "__mcp_scroll" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
             if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
@@ -15492,6 +15512,30 @@ fn compare_pngs(
             if let Some(ref mcp_handle) = state.desktop.mcp_shared {
                 if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
                     *state.app.devtools.screenshot_request.borrow_mut() = Some(req);
+                }
+            }
+        }
+
+        // PLAN-656 review F-4: scroll 状态读回落库——ScrollStateReader 的
+        // 六测量按 widget id 反查 handle 写入 controller 注册表（预热/校正）。
+        if msg.event == "__scroll_state_read" {
+                if let Some(ref json) = msg.input_value {
+                if let Ok(map) = serde_json::from_str::<std::collections::HashMap<
+                    String,
+                    (f32, f32, f32, f32, f32, f32),
+                >>(json)
+                {
+                    for (id, (ox, oy, vw, vh, cw, ch)) in map {
+                        if std::env::var("P656_DEBUG").is_ok() { eprintln!("[P656-READ] id={id} vals={:?}", (ox, oy, vw, vh, cw, ch)); }
+                        for handle in crate::ui::scroll::controller::handles_for_widget(&id) {
+                            crate::ui::scroll::note_controller_state(
+                                &handle,
+                                (ox as f64, oy as f64),
+                                (vw as f64, vh as f64),
+                                (cw as f64, ch as f64),
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -17378,21 +17422,48 @@ fn compare_pngs(
             ));
         }
 
-        // PLAN-656 T-05: 排空 scroll-pane controller intent 队列
-        //（natives 侧 scroll_to_end/scroll_by/... 入队；同 handle 折叠成
-        // 双轴终态，一次 scroll_to 落盘——R1 时延=一次 build+update）。
-        for (handle, id, x, y) in crate::ui::scroll::drain_resolved_intents() {
+        // PLAN-656 T-05 + review F-4: controller intent 队列排空与测量回读。
+        // ① 新绑定 handle 的预热请求 → 读回操作补首用基线；
+        // ② 未预热 handle 的 intents 由 drain 留队（返回 prime 名单）——
+        //    先读回、下一 tick 重解析（首用动作晚一拍而非解析为 0）；
+        // ③ 已解析终态 → scroll_to 落盘 + 投影写回 + 读回校正（iced 的
+        //    实际 clamp 结果覆盖 F-2 的命令值投影）。
+        let scroll_read_task = || {
+            iced::advanced::widget::operate(
+                crate::ui::iced::scroll_state_reader::ScrollStateReader::new(),
+            )
+            .map(|state_map| IcedMessage {
+                widget: String::new(),
+                event: "__scroll_state_read".to_string(),
+                input_value: Some(serde_json::to_string(&state_map).unwrap_or_default()),
+            })
+        };
+        let has_prime_requests = !crate::ui::scroll::controller::take_prime_requests().is_empty();
+        if has_prime_requests {
+            tail_tasks.push(scroll_read_task());
+        }
+        let (finals, prime) = crate::ui::scroll::drain_resolved_intents();
+        let finals_done = !finals.is_empty();
+        for (handle, id, x, y) in finals {
             if std::env::var("P656_DEBUG").is_ok() {
                 eprintln!("[P656-DRAIN] scroll_to id={id} x={x} y={y}");
             }
-            // review F-2：程序化 scroll_to 无 on_scroll 回声——已解析目标
-            // offset 同步写回注册表投影，scroll_state() 读数与命令一致；
-            // 用户滚动后 on_scroll 测量会以真实值校正。
+            // review F-2：命令值先行投影（读回一 tick 后以真实 clamp 校正）。
             crate::ui::scroll::controller::note_controller_offset(&handle, x, y);
-            tail_tasks.push(iced::widget::operation::scroll_to(
-                id,
-                iced::widget::scrollable::AbsoluteOffset { x: x as f32, y: y as f32 },
-            ));
+            // scroll_to 经 __scroll_ctl_exec 回环消息走头部直返（上见）。
+            tail_tasks.push(iced::Task::done(IcedMessage {
+                widget: String::new(),
+                event: "__scroll_ctl_exec".to_string(),
+                input_value: Some(format!("{id}{sep}{x}{sep}{y}", sep = PAYLOAD_SEP)),
+            }));
+        }
+        // 读回节拍：预热/排空后立即读 + 心跳持续读（程序化 scroll_to 的
+        // 落盘 offset 在下一帧才可见，单次读会取到旧值——心跳读收敛投影；
+        // 读消息自身不再触发读，防自激环）。
+        if msg.event != "__scroll_state_read"
+            && (!prime.is_empty() || finals_done || msg.event == "__mcp_heartbeat")
+        {
+            tail_tasks.push(scroll_read_task());
         }
 
         // PLAN-063 T-04d-2: 块锚定同步目标消费——锚块变化时经注册表把

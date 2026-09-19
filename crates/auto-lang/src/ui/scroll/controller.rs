@@ -73,12 +73,16 @@ impl ControllerPaneSnapshot {
 struct ControllerRegistry {
     panes: HashMap<String, ControllerPaneSnapshot>,
     intents: Vec<(String, ScrollIntent)>,
+    /// PLAN-656 F-4：新绑定 handle 的测量预热请求（update 期取走 → 推
+    /// ScrollStateReader 读回操作补首用基线）。
+    prime_requests: Vec<String>,
 }
 
 lazy_static::lazy_static! {
     static ref REGISTRY: Mutex<ControllerRegistry> = Mutex::new(ControllerRegistry {
         panes: HashMap::new(),
         intents: Vec::new(),
+        prime_requests: Vec::new(),
     });
 }
 
@@ -86,6 +90,10 @@ lazy_static::lazy_static! {
 /// 有 controller 时调用；绑定早于首次测量，snapshot 其余字段为零）。
 pub fn bind_controller(handle: &str, widget_id: &str) {
     let mut reg = REGISTRY.lock().unwrap();
+    // 新绑定或换绑：请求一次测量预热（稳定句柄重建不重复请求）。
+    if reg.panes.get(handle).map(|s| s.widget_id.as_str()) != Some(widget_id) {
+        reg.prime_requests.push(handle.to_string());
+    }
     let entry = reg.panes.entry(handle.to_string()).or_default();
     entry.widget_id = widget_id.to_string();
 }
@@ -117,17 +125,50 @@ pub fn enqueue_intent(handle: &str, intent: ScrollIntent) {
 /// renderer update 期排空：同 handle 的 intent 序列对快照状态顺序折叠成
 /// 双轴终态 offset，产出 (widget_id, x, y)。无绑定/无测量的 handle 静默
 /// 丢弃（pane 未 build 或尚未布局——controller 允许先于 pane 使用，非错误）。
-pub fn drain_resolved_intents() -> Vec<(String, String, f64, f64)> {
+/// 快照是否已有测量基线（F-4：viewport 无测量 = 未预热）。
+fn snapshot_primed(s: &ControllerPaneSnapshot) -> bool {
+    s.viewport_w > 0.0 || s.viewport_h > 0.0
+}
+
+/// 取走预热请求（update 期消费——推读回操作）。
+pub fn take_prime_requests() -> Vec<String> {
+    let mut reg = REGISTRY.lock().unwrap();
+    std::mem::take(&mut reg.prime_requests)
+}
+
+/// 反查：widget id → 持有该绑定 id 的全部 handle（读回结果落库寻址）。
+pub fn handles_for_widget(widget_id: &str) -> Vec<String> {
+    let reg = REGISTRY.lock().unwrap();
+    reg.panes
+        .iter()
+        .filter(|(_, s)| s.widget_id == widget_id)
+        .map(|(h, _)| h.clone())
+        .collect()
+}
+
+/// drain 消费端语义（F-4 后）：已预热 handle 的 intent 序列折叠为双轴终态
+/// scroll_to；**未预热 handle 的 intents 留队**（返回 prime 名单——下一
+/// tick 读回补基线后 drain 正常解析，首用动作晚一拍而非解析为 0）。
+pub fn drain_resolved_intents() -> (Vec<(String, String, f64, f64)>, Vec<String>) {
     let mut reg = REGISTRY.lock().unwrap();
     let queued = std::mem::take(&mut reg.intents);
     // handle → 终态聚合（同帧多条 intent 顺序应用；跨轴独立叠加）。
     let mut folded: HashMap<String, (f64, f64)> = HashMap::new();
     let mut order: Vec<String> = Vec::new();
+    let mut prime: Vec<String> = Vec::new();
     for (handle, intent) in queued {
         let Some(snapshot) = reg.panes.get(&handle) else {
             continue;
         };
         if snapshot.widget_id.is_empty() {
+            continue;
+        }
+        // F-4：未预热——intent 回队（保持顺序），handle 进 prime 名单。
+        if !snapshot_primed(snapshot) {
+            reg.intents.push((handle.clone(), intent));
+            if !prime.contains(&handle) {
+                prime.push(handle.clone());
+            }
             continue;
         }
         // 每条 intent 对「当前聚合态」resolve（首条用快照基线）。
@@ -152,14 +193,15 @@ pub fn drain_resolved_intents() -> Vec<(String, String, f64, f64)> {
         }
         folded.insert(handle, (nx, ny));
     }
-    order
+    let finals: Vec<(String, String, f64, f64)> = order
         .into_iter()
         .filter_map(|handle| {
             let (x, y) = folded.get(&handle).copied()?;
             let widget_id = reg.panes.get(&handle)?.widget_id.clone();
             Some((handle, widget_id, x, y))
         })
-        .collect()
+        .collect();
+    (finals, prime)
 }
 
 /// 单轴 pane 语义辅助：唯一启用轴（natives 的 axis 简写与 pane 配置对齐
@@ -223,7 +265,9 @@ mod tests {
         reset_for_test();
         let h = next_controller_handle();
         bind_controller(&h, "pane_a");
-        // 未测量时 resolve 仍 total（退化态 → to_end 落 0）。
+        // F-4：未预热（无测量基线）→ intent 留队 + prime 名单（不再解析为 0）。
+        assert!(!take_prime_requests().is_empty(), "new binding requests priming");
+        assert!(take_prime_requests().is_empty(), "stable rebuild does not re-request");
         enqueue_intent(
             &h,
             ScrollIntent::ToEnd {
@@ -231,10 +275,10 @@ mod tests {
                 source: ScrollSource::Programmatic,
             },
         );
-        let drained = drain_resolved_intents();
-        assert_eq!(drained.len(), 1);
-        assert_eq!(drained[0].0, h.as_str()); // handle 复用（四元组 handle,id,x,y）
-        assert_eq!(drained[0].3, 0.0); // y 终态
+        let (drained, prime) = drain_resolved_intents();
+        assert!(drained.is_empty(), "unprimed handle defers resolution");
+        assert_eq!(prime.as_slice(), [h.clone()], "handle flagged for priming");
+        assert_eq!(pending_intent_count(), 1, "intent stays queued");
 
         note_controller_state(&h, (0.0, 100.0), (300.0, 200.0), (500.0, 1000.0));
         enqueue_intent(
@@ -252,7 +296,8 @@ mod tests {
                 source: ScrollSource::Programmatic,
             },
         );
-        let drained = drain_resolved_intents();
+        let (drained, prime) = drain_resolved_intents();
+        assert!(prime.is_empty(), "primed handle resolves immediately");
         assert_eq!(
             drained.len(),
             1,
@@ -280,7 +325,7 @@ mod tests {
                 source: ScrollSource::Programmatic,
             },
         );
-        let drained = drain_resolved_intents();
+        let (drained, _) = drain_resolved_intents();
         assert_eq!(drained[0].2, 100.0);
         assert_eq!(drained[0].3, 50.0);
     }
@@ -295,7 +340,8 @@ mod tests {
                 source: ScrollSource::Programmatic,
             },
         );
-        assert!(drain_resolved_intents().is_empty());
+        let (drained, _) = drain_resolved_intents();
+        assert!(drained.is_empty());
         reset_for_test();
     }
 }
