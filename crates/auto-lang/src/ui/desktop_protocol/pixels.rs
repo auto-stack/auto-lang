@@ -448,6 +448,7 @@ mod tests {
                 surface: 42,
                 rect: WRect::new(0.0, 0.0, 64.0, 32.0),
                 frame_mode: FrameMode::Pixels,
+                extra_surfaces: Vec::new(),
             }))
             .unwrap();
         host_end
@@ -671,6 +672,7 @@ mod tests {
                 surface: 42,
                 rect: WRect::new(0.0, 0.0, 64.0, 32.0),
                 frame_mode: FrameMode::Pixels,
+                extra_surfaces: Vec::new(),
             }))
             .unwrap();
         host_end

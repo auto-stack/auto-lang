@@ -9506,7 +9506,7 @@ fn service_snapshot_requests(
 /// 写；跨天分钟/日期同翻无害幂等），稳态零重建口径不变。
 fn update_shell_clock(state: &mut crate::ui::session::DesktopSession) {
     use chrono::Datelike;
-    let Some(shell_id) = state.desktop.shell_app else { return };
+    let shell_id = state.desktop.shell_app;
     let now = chrono::Local::now();
     let hhmm = now.format("%H:%M").to_string();
     let weekday = match now.weekday() {
@@ -9536,6 +9536,19 @@ fn update_shell_clock(state: &mut crate::ui::session::DesktopSession) {
     if date_changed {
         state.desktop.date_text.replace(date.clone());
     }
+    // PLAN-030 T-04：outproc 壳臂——ShellClockTick 独立变体（分钟门
+    // 语义保持）；in-proc 轨零变化（I1）。
+    if state.desktop.shell_pipe.is_some() {
+        use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
+        let msg = ProtocolMsg::Control(ControlMsg::ShellClockTick {
+            face: shell_face::SHELL,
+            time: hhmm,
+            date,
+        });
+        let _ = state.push_shell_control(&msg);
+        return;
+    }
+    let Some(shell_id) = shell_id else { return };
     if let Some(app) = state.apps.get_mut(&shell_id) {
         if minute_changed {
             let _ = app
@@ -13351,8 +13364,14 @@ fn desktop_wallpaper_dark(wallpaper: &str) -> bool {
     dark
 }
 
-fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
-    let Some(surface) = state.desktop.desktop_app else { return };
+/// PLAN-030 T-04：desktop 面快照构建（单源——in-proc 写集与 outproc
+/// wire 推送共用；纯派生，无 App 会话触碰）。
+fn build_desktop_surface_snapshot(
+    state: &crate::ui::session::DesktopSession,
+) -> crate::ui::shell_projection::DesktopSurfaceSnapshot {
+    use crate::ui::shell_projection::{
+        DesktopCellEntry, DesktopIconEntry, DesktopSurfaceSnapshot,
+    };
     let hidden = load_desktop_id_list("shell.desktop.hidden");
     let customs = load_desktop_id_list("shell.desktop.icons");
     // PLAN-012 F2（用户裁定）：dock 固定与桌面快捷方式**分离**——桌面图标
@@ -13362,25 +13381,22 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
         .iter()
         .map(|id| (id.clone(), "custom"))
         .collect();
-    let entries: Vec<auto_val::Value> = order
+    let icons: Vec<DesktopIconEntry> = order
         .iter()
         .filter(|(id, _)| !hidden.contains(id))
-        .map(|(id, src)| {
+        .map(|(id, _)| {
             let reg = state.desktop.registry_entries.iter().find(|e| &e.id == id);
-            let icon = reg
-                .map(|e| e.icon.clone())
-                .unwrap_or_else(|| "app-window".to_string());
-            let label = reg
-                .map(|e| e.display_title().to_string())
-                .unwrap_or_else(|| id.clone());
-            let color = crate::ui::app_registry::badge_color_for(id);
-            auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
-                ("id", auto_val::Value::Str(id.clone().into())),
-                ("icon", auto_val::Value::Str(icon.into())),
-                ("label", auto_val::Value::Str(label.into())),
-                ("src", auto_val::Value::Str((*src).into())),
-                ("color", auto_val::Value::Str(color.into())),
-            ])))
+            DesktopIconEntry {
+                id: id.clone(),
+                icon: reg
+                    .map(|e| e.icon.clone())
+                    .unwrap_or_else(|| "app-window".to_string()),
+                label: reg
+                    .map(|e| e.display_title().to_string())
+                    .unwrap_or_else(|| id.clone()),
+                src: "custom".to_string(),
+                color: crate::ui::app_registry::badge_color_for(id).to_string(),
+            }
         })
         .collect();
     let bg = if state.desktop.desktop_wallpaper.starts_with('#') {
@@ -13388,58 +13404,92 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
     } else {
         String::new()
     };
-    let hidden_str = hidden.join(",");
-    // PLAN-012 W5：格子分配（拖拽换位数据面——cells Obj 数组供 view 渲染，
-    // ids/cs/rs 平行字符串列表供 handler 下标读，B12 规避）。
-    // PLAN-019 T-06：布局键控——当前壁纸键优先（切换壁纸布局跟随）。
+    // PLAN-012 W5：格子分配（拖拽换位数据面）；PLAN-019 T-06：布局键控
+    // ——当前壁纸键优先。rows 随视口高度（2026-09-15 裁定）。
     let layout_key = current_wallpaper_layout_key(state);
-    // 2026-09-15：rows 随视口高度（80px 行距 = 72px 格 + gap 8，扣任务栏
-    // 预留）——列主序默认排布的纵向上限。
     let rows = {
         let viewport = state.host_viewport();
         let reserved = desktop_dock_edges(&state.desktop.config);
-        (((viewport.height - reserved.top - reserved.bottom) / 80.0).floor()
-            as usize)
+        (((viewport.height - reserved.top - reserved.bottom) / 80.0).floor() as usize)
             .clamp(4, 24)
     };
-    let (cells, cell_ids, cell_cs, cell_rs) = desktop_icon_cells(
-        &order,
-        &hidden,
-        &state.desktop.registry_entries,
-        layout_key.as_deref(),
-        rows,
-    );
+    let (cells, cell_ids, cell_cs, cell_rs) =
+        desktop_icon_cells(&order, &hidden, &state.desktop.registry_entries, layout_key.as_deref(), rows);
+    let cells: Vec<DesktopCellEntry> = cells
+        .iter()
+        .map(|v| match v {
+            auto_val::Value::Obj(obj) => {
+                let get = |k: &str| {
+                    obj.get(k)
+                        .and_then(|v| match v {
+                            auto_val::Value::Str(s) => Some(s.as_str().to_string()),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                };
+                let spacer = obj.get("spacer").is_some();
+                DesktopCellEntry {
+                    spacer,
+                    id: get("id"),
+                    icon: get("icon"),
+                    full: !get("full").is_empty(),
+                    label: get("label"),
+                    src: get("src"),
+                    color: get("color"),
+                    c: get("c").parse().unwrap_or(0),
+                    r: get("r").parse().unwrap_or(0),
+                }
+            }
+            _ => DesktopCellEntry::default(),
+        })
+        .collect();
+    let val_str = |v: &auto_val::Value| match v {
+        auto_val::Value::Str(s) => s.as_str().to_string(),
+        _ => String::new(),
+    };
+    DesktopSurfaceSnapshot {
+        icons,
+        cells,
+        cell_ids,
+        cell_cs: cell_cs.iter().map(val_str).collect(),
+        cell_rs: cell_rs.iter().map(val_str).collect(),
+        bg,
+        label_dark: desktop_wallpaper_dark(&state.desktop.desktop_wallpaper),
+        hidden: hidden.join(","),
+        // __wm_running 由 shell 面投影组同拍带入（apply 侧同源）。
+        running_csv: String::new(),
+        events: Vec::new(),
+        fp: String::new(),
+    }
+}
+
+/// PLAN-030 T-04：壳表面内容（伪窗 wid → 壳连接对应表面合成帧 canvas；
+/// background[0] / chrome[1]，Layer 序见 view_desktop_fn 两槽位）。
+fn shell_surface_element(
+    state: &crate::ui::session::DesktopSession,
+    wid: crate::ui::session::Wid,
+) -> Option<iced::Element<'_, crate::ui::session::DesktopMessage>> {
+    let pipe = state.desktop.shell_pipe.as_ref()?;
+    let client = state.broker_clients.get(pipe)?;
+    let surface = client.wid_surface.get(&wid.0)?;
+    let list = client.surfaces.front(*surface)?;
+    Some(crate::ui::iced::broker_surface::drawlist_element(list))
+}
+
+fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
+    let Some(surface) = state.desktop.desktop_app else { return };
+    let snap = build_desktop_surface_snapshot(state);
     let Some(app) = state.apps.get_mut(&surface) else { return };
-    let _ = app.component.write_state_vec("__desktop_icons", entries);
-    let _ = app.component.write_state_vec("__desktop_cells", cells);
-    let _ = app.component.write_state_vec(
-        "__desktop_cell_ids",
-        cell_ids
-            .into_iter()
-            .map(|s| auto_val::Value::Str(s.into()))
-            .collect(),
-    );
-    let _ = app
-        .component
-        .write_state_vec("__desktop_cell_cs", cell_cs);
-    let _ = app
-        .component
-        .write_state_vec("__desktop_cell_rs", cell_rs);
-    let _ = app.component.write_state("__desktop_bg", auto_val::Value::Str(bg.into()));
-    // 2026-09-15：壁纸亮度 → 标签配色旗标（暗壁纸白字，否则语义前景色）
-    // ——text-foreground 随主题不随壁纸，深色壁纸上黑字不可读。
-    let _ = app.component.write_state(
-        "__desktop_label_dark",
-        auto_val::Value::str(if desktop_wallpaper_dark(&state.desktop.desktop_wallpaper) {
-            "1"
-        } else {
-            "0"
-        }),
-    );
-    let _ = app.component.write_state(
-        "__desktop_hidden",
-        auto_val::Value::Str(hidden_str.into()),
-    );
+    for w in snap.interpreted_writes() {
+        match w {
+            crate::ui::shell_projection::ShellWrite::Scalar(k, v) => {
+                let _ = app.component.write_state(k, v);
+            }
+            crate::ui::shell_projection::ShellWrite::Array(k, vs) => {
+                let _ = app.component.write_state_vec(k, vs);
+            }
+        }
+    }
     *app.state.view_dirty.borrow_mut() = true;
 }
 
@@ -13538,11 +13588,40 @@ fn projection_win_entry(
 /// 按钮的同一执行路径）；Handler 直呼特权 App handler（onclick 同一
 /// 管线）。入队面见 [`crate::ui::session::desktop_inject_push`]（MCP
 /// `autoui_desktop` 工具，AUTOUI_ACCEPTANCE=1 门控）。
+/// PLAN-030 T-06：DesktopBus inbox 排空（ServiceTick 泵后调用 + 单测口）——
+/// 直调 execute_desktop_commands（同拍生效）；归因 notify_source 随末段。
+pub(crate) fn drain_desktop_bus_inbox(
+    state: &mut crate::ui::session::DesktopSession,
+) -> Vec<iced::Task<crate::ui::session::DesktopMessage>> {
+    let inbox = std::mem::take(&mut state.desktop.desktop_bus_inbox);
+    if inbox.is_empty() {
+        return Vec::new();
+    }
+    let cmds: Vec<_> = inbox.iter().map(|(_, c)| c.clone()).collect();
+    let source = inbox.last().map(|(s, _)| s.clone()).unwrap_or_default();
+    state.desktop.notify_source.replace(Some(source));
+    let (_, tasks) = execute_desktop_commands(state, cmds);
+    tasks
+}
+
 pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSession) {
     use crate::ui::session::DesktopInject;
     for inj in crate::ui::session::desktop_inject_take() {
         match inj {
             DesktopInject::Bus(record) => {
+                // PLAN-030 T-06：outproc 壳改道——验收 Bus 记录与生产上行
+                // 同臂（desktop_bus_inbox → 泵后排空执行；in-proc 镜像组件
+                // 写入对 outproc 壳恒空[D4-5 实锤]）。in-proc 轨原路径零
+                // 变化（I1）。
+                if state.desktop.shell_pipe.is_some() {
+                    for cmd in crate::ui::session::DesktopCommand::parse_records(&record) {
+                        state
+                            .desktop
+                            .desktop_bus_inbox
+                            .push(("shell".to_string(), cmd));
+                    }
+                    continue;
+                }
                 let Some(shell) = state.desktop.shell_app else { continue };
                 let Some(app) = state.apps.get_mut(&shell) else { continue };
                 let cur = match app.component.read_state("__desktop_cmd") {
@@ -13670,6 +13749,15 @@ fn boot_entry_matches(src_norm: &str, entry_norm: &str) -> bool {
 /// App 条目部分相交——workspace/app 不适用省略）；指纹窗段并入
 /// "N{slot}:{focused},"。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
+    // PLAN-030 T-04：outproc 壳臂——typed 载体 wire 推送（ShellProjection
+    // shell 面 + DesktopSurfaceSnapshot desktop 面，per-face 指纹门宿主侧
+    // 缓存；None = 全量推——respawn attach 强制失效）。in-proc 轨字节级
+    // 零变化（I1：下方原路径全保留）。
+    if state.desktop.shell_pipe.is_some() {
+        push_shell_projection_outproc(state);
+        publish_workspace_previews(state);
+        return;
+    }
     let Some(shell) = state.desktop.shell_app else { return };
     {
         let vp = state.host_viewport();
@@ -13705,6 +13793,81 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let proj = build_shell_projection(state);
     apply_shell_projection_interpreted(state, shell, &proj);
     publish_workspace_previews(state);
+}
+
+/// PLAN-030 T-04：outproc 壳投影推送泵（sync_shell_windows 壳臂体）——
+/// shell 面（17 键指纹门）+ desktop 面（快照指纹门）分面增量；推送失败
+/// 不清指纹（下拍重推）。
+pub(crate) fn push_shell_projection_outproc(state: &mut crate::ui::session::DesktopSession) {
+    use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
+    let proj = build_shell_projection(state);
+    if std::env::var("AUTO030_TRACE").is_ok() {
+        eprintln!(
+            "[p030-host] push gate: fp_prev={:?} fp_now={} wins={} running={}",
+            state.desktop.shell_push_fp,
+            proj.fp,
+            proj.wins.len(),
+            proj.running_csv
+        );
+    }
+    if state.desktop.shell_push_fp.as_deref() != Some(proj.fp.as_str()) {
+        let mut payload = Vec::new();
+        crate::ui::shell_projection::ShellProjection::wire_encode(&proj, &mut payload);
+        let msg = ProtocolMsg::Control(ControlMsg::ShellProjectionPush {
+            face: shell_face::SHELL,
+            payload,
+        });
+        if state.push_shell_control(&msg) {
+            state.desktop.shell_push_fp = Some(proj.fp.clone());
+        }
+    }
+    push_desktop_surface_outproc(state, &proj.running_csv);
+}
+
+/// PLAN-030 T-04：desktop 面 outproc 推送（inject_desktop_surface 壳臂
+/// 等价——快照构建单源 build_desktop_surface_snapshot；指纹 = 叶面拼接）。
+/// `running_csv` 随 shell 面投影组同拍带入（in-proc apply 同源）。
+fn push_desktop_surface_outproc(
+    state: &mut crate::ui::session::DesktopSession,
+    running_csv: &str,
+) {
+    use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
+    let mut snap = build_desktop_surface_snapshot(state);
+    snap.running_csv = running_csv.to_string();
+    let mut fp = String::new();
+    for e in &snap.icons {
+        fp.push_str(&e.id);
+        fp.push('|');
+    }
+    for e in &snap.cells {
+        if !e.spacer {
+            fp.push_str(&e.id);
+            fp.push('@');
+            fp.push_str(&e.c.to_string());
+            fp.push(',');
+            fp.push_str(&e.r.to_string());
+            fp.push(';');
+        }
+    }
+    fp.push_str(&snap.bg);
+    fp.push('|');
+    fp.push_str(&snap.hidden);
+    fp.push('|');
+    fp.push_str(if snap.label_dark { "d" } else { "l" });
+    fp.push('|');
+    fp.push_str(&snap.running_csv);
+    if state.desktop.shell_desk_fp.as_deref() == Some(fp.as_str()) {
+        return;
+    }
+    let mut payload = Vec::new();
+    crate::ui::shell_projection::DesktopSurfaceSnapshot::wire_encode(&snap, &mut payload);
+    let msg = ProtocolMsg::Control(ControlMsg::ShellProjectionPush {
+        face: shell_face::DESKTOP_SURFACE,
+        payload,
+    });
+    if state.push_shell_control(&msg) {
+        state.desktop.shell_desk_fp = Some(fp);
+    }
 }
 
 /// PLAN-027 T-05：shell（任务栏）面投影快照构建——原 sync_shell_windows
@@ -13743,6 +13906,11 @@ pub(crate) fn build_shell_projection(
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
         if v.hidden.get() {
+            continue;
+        }
+        // PLAN-030：壳伪窗不入投影（background/chrome 承接面——任务栏/
+        // 运行集零污染）。
+        if state.desktop.shell_pseudo_wids.contains(&wid) {
             continue;
         }
         let focused = host.wm.focused == Some(wid);
@@ -13813,6 +13981,11 @@ pub(crate) fn build_shell_projection(
         if let Some(v) = host.wm.wins.get(&wid) {
             // PLAN-012 W1：常驻隐藏窗不入运行集（齿轮高亮语义）。
             if v.hidden.get() {
+                continue;
+            }
+            // PLAN-030：壳伪窗不入运行集（面名非 app——p030 e2e 腿 3
+            // trace 实锤泄漏，T-06 收口）。
+            if state.desktop.shell_pseudo_wids.contains(&wid) {
                 continue;
             }
             if let Some(id) = v.registry_id.as_deref() {
@@ -14387,32 +14560,66 @@ fn compare_pngs(
                 }
                 let (win_id, open_task) = iced::window::open(settings);
                 session.open_desktop(win_id);
-                // PLAN-012 O1：特权 App 先于直挂 comps 分配——desktop 模式的
-                // "单 App 语义"锚点（primary = BTreeMap 首 App，app_of_window /
-                // MCP 快照同步 / toast 等）此前落在首个直挂窗（如 459 探针、
-                // calculator），MCP 验收通道（autoui_state/autoui_vtree）因此
-                // 只见直挂 App，shell 投影面（__wm_wins 等）与任务栏几何不可
-                // 观测——O1"真实链路 bounds 探针"被此阻断。shell 装载失败时
-                // 依 桌面面 → 首个直挂 comp 顺次回退（语义不变，锚点仍唯一）。
-                // Plan 463 T5：shell 特权 App —— 进程内编译装载（R1/R8
-                // 首落）。装载失败不阻断桌面（无任务栏的退化桌面，stderr 可见）。
-                match crate::ui::shell::build_shell_component() {
-                    Ok(shell_comp) => {
-                        session.desktop.shell_app = Some(session.allocate_app(shell_comp));
+                // PLAN-030 T-04/T-07：壳进程模型分叉——boot 读一次（读取点
+                // 前移到壳装载之前，§5.1 D7）；outproc = 跳过 in-proc 装载
+                // （spawn 挪到 enable_broker 之后——broker 倒挂实锤），失败
+                // 回退 in-proc（降级链）。
+                // PLAN-030 T-04/T-07：壳进程模型分叉——boot 读一次（读取点
+                // 前移到壳装载之前，§5.1 D7）；读序 = env AUTO_SHELL_MODEL
+                // （e2e/smoke 便捷注入）> storage `shell.apps.shell_model`；
+                // outproc = 跳过 in-proc 装载（spawn 挪到 enable_broker 之后
+                // ——broker 倒挂实锤），失败回退 in-proc（降级链）。
+                session.desktop.shell_model =
+                    crate::ui::session::ShellModel::from_storage(std::env::var(
+                        "AUTO_SHELL_MODEL"
+                    )
+                        .ok()
+                        .as_deref()
+                        .or(crate::vm::ffi::stdlib::storage_host_read(
+                            "shell.apps.shell_model",
+                        )
+                        .as_deref()));
+                if session.desktop.shell_model
+                    == crate::ui::session::ShellModel::Outproc
+                {
+                    // 几何缓存（boot 定档：viewport × dock 预留带高）。
+                    let reserved =
+                        desktop_dock_edges(&session.desktop.config);
+                    let geometry = crate::ui::desktop_protocol::shell_client::ShellGeometry {
+                        viewport_w: host_size.width,
+                        viewport_h: host_size.height,
+                        band_h: reserved.bottom.max(36.0),
+                    };
+                    session.desktop.shell_geometry = Some(geometry);
+                } else {
+                    // PLAN-012 O1：特权 App 先于直挂 comps 分配——desktop 模式的
+                    // "单 App 语义"锚点（primary = BTreeMap 首 App，app_of_window /
+                    // MCP 快照同步 / toast 等）此前落在首个直挂窗（如 459 探针、
+                    // calculator），MCP 验收通道（autoui_state/autoui_vtree）因此
+                    // 只见直挂 App，shell 投影面（__wm_wins 等）与任务栏几何不可
+                    // 观测——O1"真实链路 bounds 探针"被此阻断。shell 装载失败时
+                    // 依 桌面面 → 首个直挂 comp 顺次回退（语义不变，锚点仍唯一）。
+                    // Plan 463 T5：shell 特权 App —— 进程内编译装载（R1/R8
+                    // 首落）。装载失败不阻断桌面（无任务栏的退化桌面，stderr 可见）。
+                    match crate::ui::shell::build_shell_component() {
+                        Ok(shell_comp) => {
+                            session.desktop.shell_app = Some(session.allocate_app(shell_comp));
+                        }
+                        Err(err) => {
+                            eprintln!("[session] shell load failed (desktop continues): {err}")
+                        }
                     }
-                    Err(err) => {
-                        eprintln!("[session] shell load failed (desktop continues): {err}")
-                    }
-                }
-                // Plan 496 M5：桌面本体面（第五面，常驻不召唤——与 overlay
-                // 懒挂载不同，boot 期装载）。装载失败不阻断桌面（无图标
-                // 桌面退化，shell 同型降级）。
-                match crate::ui::shell::build_desktop_surface_component() {
-                    Ok(surface_comp) => {
-                        session.desktop.desktop_app = Some(session.allocate_app(surface_comp));
-                    }
-                    Err(err) => {
-                        eprintln!("[session] desktop surface load failed (desktop continues): {err}")
+                    // Plan 496 M5：桌面本体面（第五面，常驻不召唤——与 overlay
+                    // 懒挂载不同，boot 期装载）。装载失败不阻断桌面（无图标
+                    // 桌面退化，shell 同型降级）。
+                    match crate::ui::shell::build_desktop_surface_component() {
+                        Ok(surface_comp) => {
+                            session.desktop.desktop_app =
+                                Some(session.allocate_app(surface_comp));
+                        }
+                        Err(err) => {
+                            eprintln!("[session] desktop surface load failed (desktop continues): {err}")
+                        }
                     }
                 }
                 let mut entries: Vec<(crate::ui::session::AppId, String)> = Vec::new();
@@ -14624,6 +14831,36 @@ fn compare_pngs(
                     crate::ui::desktop_protocol::broker::BROKER_PIPE,
                     std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 );
+                // PLAN-030 T-04：outproc 壳孵化——broker 就位后 spawn（boot
+                // 序倒挂清偿）；attach 走 tick 泵。spawn 失败 = 回退 in-proc
+                // 装载（降级链 D7——开发友好）+ stderr 留痕，桌面不炸（I5）。
+                if session.desktop.shell_model
+                    == crate::ui::session::ShellModel::Outproc
+                {
+                    if let Err(err) = session.launch_shell_outproc() {
+                        eprintln!(
+                            "[session] shell outproc spawn failed (fallback inproc): {err}"
+                        );
+                        match crate::ui::shell::build_shell_component() {
+                            Ok(shell_comp) => {
+                                session.desktop.shell_app =
+                                    Some(session.allocate_app(shell_comp));
+                            }
+                            Err(err2) => eprintln!(
+                                "[session] fallback shell load failed (desktop continues): {err2}"
+                            ),
+                        }
+                        match crate::ui::shell::build_desktop_surface_component() {
+                            Ok(surface_comp) => {
+                                session.desktop.desktop_app =
+                                    Some(session.allocate_app(surface_comp));
+                            }
+                            Err(err2) => eprintln!(
+                                "[session] fallback desktop surface load failed: {err2}"
+                            ),
+                        }
+                    }
+                }
                 // PLAN-024：常驻小组件层——boot 即挂载并显示（用户裁定
                 // 2026-09-17：桌面常驻，× = 隐藏 / dock ▦ 切换恢复；
                 // toggle 在未挂载态首次调用即挂载+显示，幂等）。
@@ -17641,6 +17878,40 @@ fn compare_pngs(
                             state.attach_pending_incubations(5000);
                         }
                         state.pump_broker_clients();
+                        // PLAN-030 T-05/T-06：泵后三件——①壳看门兵（到期
+                        // respawn，D5 分拍）；②respawn 预算耗尽降级 = 一次性
+                        // 回退 in-proc 装载（shell_degraded 位置位防重入）；
+                        // ③DesktopBus inbox 排空直调执行（D4——泵后同拍，
+                        // 归因 notify_source 随段）。
+                        if state.desktop.shell_model
+                            == crate::ui::session::ShellModel::Outproc
+                        {
+                            state.shell_watchdog_step();
+                            if state.desktop.shell_degraded
+                                && state.desktop.shell_app.is_none()
+                            {
+                                state.desktop.shell_degraded = false;
+                                eprintln!(
+                                    "[autodesk-shell] 降级回退 in-proc 装载（respawn 预算耗尽）"
+                                );
+                                if let Ok(shell_comp) =
+                                    crate::ui::shell::build_shell_component()
+                                {
+                                    state.desktop.shell_app =
+                                        Some(state.allocate_app(shell_comp));
+                                }
+                                if let Ok(surface_comp) =
+                                    crate::ui::shell::build_desktop_surface_component()
+                                {
+                                    state.desktop.desktop_app =
+                                        Some(state.allocate_app(surface_comp));
+                                }
+                            }
+                        }
+                        {
+                            let tasks = drain_desktop_bus_inbox(state);
+                            drain_tasks.extend(tasks);
+                        }
                         // Plan 508 G4：远程 WS 镜像泵（帧源=上方合成产物；
                         // 无监听/无在册镜像两调用皆空转）。
                         if state.pending_remote_connections() > 0 {
@@ -18100,6 +18371,21 @@ fn compare_pngs(
                             .and_then(|h| h.wm.hit_test(cursor.x, cursor.y))
                         {
                             state.wm_focus_soft(wid);
+                            // PLAN-030 T-04：pointer 生产接线（D3 缺口清偿）——
+                            // 命中窗属 broker 客户端（含壳伪窗）时投递
+                            // PointerPressed（坐标平移窗局部系；软聚焦不动
+                            // z——与 in-proc 按钮在途语义一致）。
+                            let is_broker = state
+                                .broker_clients
+                                .values()
+                                .any(|c| c.owns_wid(wid));
+                            if is_broker {
+                                state.broker_pointer_down(
+                                    cursor.x,
+                                    cursor.y,
+                                    crate::ui::desktop_protocol::message::MouseButton::Left,
+                                );
+                            }
                         }
                     }
                     // PLAN-526 T37：标题栏右键菜单开/关（chrome 自绘浮层，
@@ -18330,6 +18616,28 @@ fn compare_pngs(
                                             drag_active = true;
                                         }
                                     }
+                                    // PLAN-030 T-06：outproc 壳 cursor 接泵
+                                    // （app 借用外执行——消费门 = 命中
+                                    // background 伪窗[桌面空白区 = 空白菜单/
+                                    // 拖拽作用域；菜单开态在 child 面内 host
+                                    // 不可见，空白区语义精确覆盖]或拖拽进行中，
+                                    // D3 节流定案）。
+                                    let mut shell_cursor_push = false;
+                                    if state.desktop.shell_pipe.is_some() {
+                                        let bg_hit = state
+                                            .desktop
+                                            .shell_pseudo_wids
+                                            .first()
+                                            .copied()
+                                            .is_some_and(|w| {
+                                                state
+                                                    .host
+                                                    .as_ref()
+                                                    .and_then(|h| h.wm.hit_test(x, y))
+                                                    == Some(w)
+                                            });
+                                        shell_cursor_push = drag_active || bg_hit;
+                                    }
                                     if let Some(surface) = state.desktop.desktop_app {
                                         if let Some(app) = state.apps.get_mut(&surface) {
                                             let _ = app.component.write_state(
@@ -18367,6 +18675,19 @@ fn compare_pngs(
                                                 *app.state.view_dirty.borrow_mut() = true;
                                             }
                                         }
+                                    }
+                                    if shell_cursor_push {
+                                        use crate::ui::desktop_protocol::message::{
+                                            shell_face, ControlMsg, ProtocolMsg,
+                                        };
+                                        let msg = ProtocolMsg::Control(
+                                            ControlMsg::ShellCursorMove {
+                                                face: shell_face::DESKTOP_SURFACE,
+                                                x,
+                                                y,
+                                            },
+                                        );
+                                        let _ = state.push_shell_control(&msg);
                                     }
                                     let host_size = state
                                         .host
@@ -18420,6 +18741,33 @@ fn compare_pngs(
                             // 在途点击，重排无害），再判定拖拽/缩放交互收尾
                             //——两分支语义互不干扰（pending 过期 = no-op）。
                             state.wm_apply_pending_raise();
+                            // PLAN-030 T-04：pointer release 接线——命中窗属
+                            // broker 客户端（含壳伪窗）时投递 PointerReleased
+                            //（press→release 对成 click）。
+                            {
+                                let cursor = state
+                                    .host
+                                    .as_ref()
+                                    .map(|h| h.wm.last_cursor.get())
+                                    .unwrap_or_default();
+                                let hit = state
+                                    .host
+                                    .as_ref()
+                                    .and_then(|h| h.wm.hit_test(cursor.x, cursor.y));
+                                if let Some(wid) = hit {
+                                    if state
+                                        .broker_clients
+                                        .values()
+                                        .any(|c| c.owns_wid(wid))
+                                    {
+                                        state.broker_pointer_up(
+                                            cursor.x,
+                                            cursor.y,
+                                            crate::ui::desktop_protocol::message::MouseButton::Left,
+                                        );
+                                    }
+                                }
+                            }
                             if state
                                 .host
                                 .as_mut()
@@ -18600,7 +18948,14 @@ fn compare_pngs(
                 // Plan 503 M3：壁纸罩层（可读性 scrim，紧贴壁纸之上）。
                 layers.push(desktop_wallpaper_scrim());
             }
-            if state.desktop.desktop_app.is_some() {
+            if state.desktop.shell_pipe.is_some() {
+                // PLAN-030 T-04：background 表面帧（壳 outproc 双表面之一——
+                // 本槽位 = 壁纸之上/dashboard 之下，替代 in-proc desktop 面）。
+                let bg_wid = state.desktop.shell_pseudo_wids.first().copied();
+                if let Some(el) = bg_wid.and_then(|w| shell_surface_element(state, w)) {
+                    layers.push(el);
+                }
+            } else if state.desktop.desktop_app.is_some() {
                 let surface_app = state.desktop.desktop_app.expect("surface checked");
                 let build = || state.split_ref_desktop().map(|v| dynamic_view(v, false));
                 let surface_client: iced::Element<'_, IcedMessage> = match
@@ -18793,6 +19148,11 @@ fn compare_pngs(
                 // WinFocus → focus 即还原）。
                 // PLAN-012 W1：常驻隐藏窗不推层（close→hide；__wm_wins 已
                 // 投影排除——任务栏无条目）。
+                // PLAN-030：壳伪窗不进 vwin 循环——background 走桌面面槽、
+                // chrome 走任务栏槽（层位 §5.1 D1；WM 命中承接保留）。
+                if state.desktop.shell_pseudo_wids.contains(&wid) {
+                    continue;
+                }
                 if vwin.minimized.get() || vwin.hidden.get() {
                     continue;
                 }
@@ -18888,6 +19248,30 @@ fn compare_pngs(
             // 根是 Fill×Fill toast-Stack，装配层 align 无从发力（实测）。
             // Plan 464 overlay 槽：launcher/通知层追加在本层之后（Stack 顶层，
             // 消费 DM::Desktop(SummonLauncher)）；v1 无消费者，不推空层。
+            if state.desktop.shell_pipe.is_some() {
+                // PLAN-030 T-04：chrome 表面帧（壳 outproc 双表面之二——
+                // 本槽位 = 虚拟窗之上/launcher overlay 之下，替代 in-proc
+                // shell 任务栏层；表面 = 任务栏带矩形，坐标带局部）。
+                let band = state
+                    .desktop
+                    .shell_geometry
+                    .map(|g| g.band_h)
+                    .unwrap_or(48.0);
+                let chrome_wid = state.desktop.shell_pseudo_wids.get(1).copied();
+                if let Some(el) = chrome_wid.and_then(|w| shell_surface_element(state, w)) {
+                    let band_el = iced::widget::container(el)
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fixed(band))
+                        .clip(true);
+                    layers.push(
+                        iced::widget::container(band_el)
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill)
+                            .align_y(iced::alignment::Vertical::Bottom)
+                            .into(),
+                    );
+                }
+            }
             if state.desktop.shell_app.is_some() {
                 let shell_app = state.desktop.shell_app.expect("shell checked");
                 // PLAN-012 O1：primary = 特权 shell（boot 分配序，见 boot 注
@@ -27134,6 +27518,114 @@ mod tests {
         // 排空后再无残余（幂等取尽）。
         apply_desktop_injects(&mut ds);
         assert!(ds.drain_desktop_commands().is_empty());
+    }
+
+    /// PLAN-030 T-06：DesktopBus 上行全链（inbox → drain → execute +
+    /// 归因）——词表单点 encode 产记录逐族抽样（布局族/通知族/壁纸族；
+    /// 召唤/设置/窗口族经 p030 e2e 腿 2 真按钮动词覆盖）。
+    #[test]
+    fn desktop_bus_inbox_drains_through_real_arms() {
+        use crate::ui::layout::LayoutMode;
+        use crate::ui::session::{DesktopCommand, DesktopSession};
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let samples: Vec<(&str, DesktopCommand)> = vec![
+            ("shell", DesktopCommand::SetLayout(LayoutMode::Grid)),
+            ("shell", DesktopCommand::Notify("toast".into(), "bus 全链".into())),
+            ("desktop-face", DesktopCommand::SetWallpaper("#101014".into())),
+        ];
+        for (src, cmd) in &samples {
+            ds.desktop.desktop_bus_inbox.push((src.to_string(), cmd.clone()));
+        }
+        let _ = drain_desktop_bus_inbox(&mut ds);
+        // 布局族：SetLayout 落 wm.layout。
+        assert!(matches!(
+            ds.host.as_ref().unwrap().wm.layout,
+            LayoutMode::Grid
+        ));
+        // 通知族：Notify 落通知历史（归因 app = 末段 source）。
+        assert_eq!(ds.desktop.notifications.borrow().len(), 1);
+        assert_eq!(
+            ds.desktop.notifications.borrow()[0].app,
+            "desktop-face",
+            "registry_id 归因随段（D4）"
+        );
+        // 壁纸族：SetWallpaper 落桌面壁纸态。
+        assert_eq!(ds.desktop.desktop_wallpaper, "#101014");
+        // inbox 取尽（幂等）。
+        assert!(drain_desktop_bus_inbox(&mut ds).is_empty());
+    }
+
+    /// PLAN-030 T-06：投影推送指纹门（未变不推/变了推/强制失效全量推）。
+    #[test]
+    fn shell_projection_push_fingerprint_gate() {
+        use crate::ui::desktop_protocol::stage3::BrokerClient;
+        use crate::ui::desktop_protocol::transport::Transport;
+        use crate::ui::session::DesktopSession;
+        use std::collections::VecDeque;
+        use std::sync::{Arc, Mutex};
+
+        /// 测试传输对（Send 版 loopback——LoopbackEnd 为 Rc 不可入
+        /// BrokerClient）。
+        struct MockPipe(Arc<Mutex<VecDeque<Vec<u8>>>>);
+        impl Transport for MockPipe {
+            fn send(
+                &mut self,
+                msg: &crate::ui::desktop_protocol::message::ProtocolMsg,
+            ) -> Result<(), crate::ui::desktop_protocol::TransportError> {
+                self.0.lock().unwrap().push_back(msg.encode());
+                Ok(())
+            }
+            fn try_recv(&mut self) -> Option<Result<crate::ui::desktop_protocol::message::ProtocolMsg, crate::ui::desktop_protocol::CodecError>> {
+                let mut q = self.0.lock().unwrap();
+                q.pop_front().map(|bytes| {
+                    crate::ui::desktop_protocol::message::ProtocolMsg::decode(&bytes)
+                })
+            }
+            fn pending(&self) -> usize {
+                self.0.lock().unwrap().len()
+            }
+        }
+        let (tx, rx) = {
+            let shared: Arc<Mutex<VecDeque<Vec<u8>>>> = Arc::new(Mutex::new(VecDeque::new()));
+            let rx: Arc<Mutex<VecDeque<Vec<u8>>>> = Arc::clone(&shared);
+            (MockPipe(shared), MockPipe(rx))
+        };
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let mut client = BrokerClient::new("shell-test".into(), Box::new(tx));
+        client.app_name = Some("shell".into());
+        ds.broker_clients.insert("shell-test".into(), client);
+        ds.desktop.shell_pipe = Some("shell-test".into());
+
+        let mut rx = rx;
+        let recv_pushes = |rx: &mut MockPipe| -> usize {
+            let mut n = 0;
+            while let Some(Ok(msg)) = rx.try_recv() {
+                if matches!(
+                    &msg,
+                    crate::ui::desktop_protocol::message::ProtocolMsg::Control(
+                        crate::ui::desktop_protocol::message::ControlMsg::ShellProjectionPush { .. }
+                    )
+                ) {
+                    n += 1;
+                }
+            }
+            n
+        };
+
+        // 首推：指纹空 → 全量（shell 面 + desktop 面）。
+        push_shell_projection_outproc(&mut ds);
+        assert_eq!(recv_pushes(&mut rx), 2, "首拍 shell+desktop 两面各一推");
+        assert!(ds.desktop.shell_push_fp.is_some());
+        assert!(ds.desktop.shell_desk_fp.is_some());
+        // 未变不推（指纹门）。
+        push_shell_projection_outproc(&mut ds);
+        assert_eq!(recv_pushes(&mut rx), 0, "指纹未变零推送");
+        // 强制失效（respawn attach 同位）→ 全量重推。
+        ds.desktop.shell_push_fp = None;
+        push_shell_projection_outproc(&mut ds);
+        assert_eq!(recv_pushes(&mut rx), 1, "失效后 shell 面重推");
     }
 
     /// Plan 505 B1 回归：单份任务栏结构——根 col 承载位置类（bottom 缺省

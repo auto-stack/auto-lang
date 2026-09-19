@@ -106,11 +106,16 @@ pub struct AppEndpoint<S: FrameSource> {
     width: f32,
     height: f32,
     fonts: Vec<super::message::FontBlob>,
+    /// v1.11 多表面声明（壳双表面客户端经 [`Self::with_surfaces`] 注入；
+    /// 空 = 单 window 表面，既有行为）。
+    surfaces: Vec<super::message::SurfaceDecl>,
     /// 握手结果。
     pub app_id: Option<u64>,
     pub wid: Option<u64>,
     pub surface: Option<u64>,
     pub rect: Option<WRect>,
+    /// v1.11 第二及以后表面的分配结果（Welcome 尾段；壳客户端消费）。
+    pub extra_surfaces: Vec<super::message::WelcomeSurface>,
     /// 表面帧载荷模式（v1.3：Welcome 协商结果；缺省 Commands）。
     pub frame_mode: FrameMode,
     /// 观测汇（Attach/Detach 维护）。
@@ -135,10 +140,12 @@ impl<S: FrameSource> AppEndpoint<S> {
             width,
             height,
             fonts: Vec::new(),
+            surfaces: Vec::new(),
             app_id: None,
             wid: None,
             surface: None,
             rect: None,
+            extra_surfaces: Vec::new(),
             frame_mode: FrameMode::Commands,
             observe_sink: None,
             next_frame_id: 0,
@@ -151,6 +158,12 @@ impl<S: FrameSource> AppEndpoint<S> {
     /// 注册自带字体（413 §7.2；随 Hello 上传）。
     pub fn with_fonts(mut self, fonts: Vec<super::message::FontBlob>) -> Self {
         self.fonts = fonts;
+        self
+    }
+
+    /// 注册多表面声明（v1.11 壳双表面客户端；随 Hello 尾段上行）。
+    pub fn with_surfaces(mut self, surfaces: Vec<super::message::SurfaceDecl>) -> Self {
+        self.surfaces = surfaces;
         self
     }
 
@@ -173,6 +186,7 @@ impl<S: FrameSource> AppEndpoint<S> {
             width: self.width,
             height: self.height,
             fonts: self.fonts.clone(),
+            surfaces: self.surfaces.clone(),
         }))
     }
 
@@ -282,12 +296,13 @@ impl<S: FrameSource> AppEndpoint<S> {
         use AppState::*;
         match (&self.state, msg) {
             // --- 握手 ---
-            (Handshaking, ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect, frame_mode })) => {
+            (Handshaking, ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect, frame_mode, extra_surfaces })) => {
                 self.app_id = Some(app_id);
                 self.wid = Some(wid);
                 self.surface = Some(surface);
                 self.rect = Some(rect);
                 self.frame_mode = frame_mode;
+                self.extra_surfaces = extra_surfaces;
                 self.state = Active;
                 self.slot_count = 2;
                 self.free_slots = vec![1]; // 槽 0 视为在写首帧
@@ -387,6 +402,7 @@ pub enum HostState {
 pub enum HostAction {
     /// 收到合法 Hello：解析 app_name → 编译装载 → allocate + wm_add_win，
     /// 然后回调 [`HostEndpoint::activate`] 取 Welcome 回发。
+    /// `surfaces`（v1.11）：多表面声明（空 = 单 window 既有行为）。
     ResolveAndAttach {
         version: u16,
         app_name: String,
@@ -394,6 +410,7 @@ pub enum HostAction {
         width: f32,
         height: f32,
         fonts: Vec<super::message::FontBlob>,
+        surfaces: Vec<super::message::SurfaceDecl>,
     },
     /// 帧合成：写入 surface 的 slot（双缓冲翻面）；适配层随合成回 FrameAck
     /// （frame_id 原样回带）。
@@ -414,6 +431,11 @@ pub enum HostAction {
     },
     /// app 确认退出/请求退出：回收虚拟窗（462 Close 语义）。
     ReclaimWindow { wid: u64 },
+    /// app→host 命令上行（v1.11 落地）：`record` = `DesktopCommand` 单记录
+    /// 编码串（`verb␟arg`）——适配层 parse_records 单点解析执行；归因按
+    /// wid → registry_id。此前在端点丢弃臂中无声消失（desktop.* wire 化
+    /// 缺口，PLAN-030 D4 清偿）。
+    DesktopBus { wid: u64, record: String },
     /// 观测上行转发（MCP 代理的最小落点）。
     ObserveUp { msg: ObserveMsg },
 }
@@ -425,6 +447,8 @@ pub struct HostEndpoint {
     pub app_id: Option<u64>,
     pub wid: Option<u64>,
     pub surface: Option<u64>,
+    /// v1.11 第二及以后表面（多表面客户端；帧路由按 wid 查此表）。
+    pub extra_surfaces: Vec<(u64, u64)>,
     /// 表面帧载荷模式（v1.3：activate 时随裁决结果定档）。
     pub frame_mode: FrameMode,
 }
@@ -436,7 +460,18 @@ impl HostEndpoint {
             app_id: None,
             wid: None,
             surface: None,
+            extra_surfaces: Vec::new(),
             frame_mode: FrameMode::Commands,
+        }
+    }
+
+    /// Active 帧路由：消息 wid → surface 句柄（多表面客户端第二及以后
+    /// 表面查 `extra_surfaces`；主表面走既有单值字段）。
+    fn surface_for(&self, wid: u64) -> Option<u64> {
+        if self.wid == Some(wid) {
+            self.surface
+        } else {
+            self.extra_surfaces.iter().find(|(w, _)| *w == wid).map(|(_, s)| *s)
         }
     }
 
@@ -454,6 +489,7 @@ impl HostEndpoint {
                     width,
                     height,
                     fonts,
+                    surfaces,
                 }),
             ) => {
                 if version != super::PROTOCOL_VERSION {
@@ -462,7 +498,7 @@ impl HostEndpoint {
                 if app_name.is_empty() {
                     return Err(ProtocolError::WrongState { state: "Listening", msg: "empty app_name" });
                 }
-                Ok(vec![HostAction::ResolveAndAttach { version, app_name, title, width, height, fonts }])
+                Ok(vec![HostAction::ResolveAndAttach { version, app_name, title, width, height, fonts, surfaces }])
             }
             // --- Active：帧/输入确认/控制/观测 ---
             (
@@ -476,7 +512,7 @@ impl HostEndpoint {
                     payload,
                 }),
             ) => {
-                let surface = self.surface.expect("Active 即有 surface");
+                let surface = self.surface_for(wid).expect("Active 即有 surface");
                 Ok(vec![HostAction::ComposeFrame {
                     surface,
                     wid,
@@ -497,7 +533,7 @@ impl HostEndpoint {
                     len,
                 }),
             ) => {
-                let surface = self.surface.expect("Active 即有 surface");
+                let surface = self.surface_for(wid).expect("Active 即有 surface");
                 Ok(vec![HostAction::ComposeFrameShared {
                     surface,
                     wid,
@@ -522,7 +558,7 @@ impl HostEndpoint {
                     format: _,
                 }),
             ) => {
-                let surface = self.surface.expect("Active 即有 surface");
+                let surface = self.surface_for(wid).expect("Active 即有 surface");
                 Ok(vec![HostAction::ComposeFramePixels {
                     surface,
                     wid,
@@ -549,6 +585,7 @@ impl HostEndpoint {
                 self.app_id = None;
                 self.wid = None;
                 self.surface = None;
+                self.extra_surfaces = Vec::new();
                 Ok(vec![HostAction::ReclaimWindow { wid }])
             }
             // L2 确认：app 已切自管表面 → 回收虚拟窗（462 Close 语义），
@@ -558,13 +595,20 @@ impl HostEndpoint {
                 self.app_id = None;
                 self.wid = None;
                 self.surface = None;
+                self.extra_surfaces = Vec::new();
                 Ok(vec![HostAction::ReclaimWindow { wid }])
             }
             // L2 重挂意向（信息性；真正的孵化凭随后的 Hello）。
             (_, ProtocolMsg::Control(ControlMsg::L2AttachRequest { .. })) => Ok(vec![]),
-            (HostState::Active, ProtocolMsg::Control(control @ (ControlMsg::TitleChanged { .. } | ControlMsg::Notify { .. } | ControlMsg::DesktopBus { .. }))) => {
+            // v1.11（PLAN-030 D4）：命令上行拆出执行臂——此前与
+            // TitleChanged/Notify 同在丢弃臂（假透传，desktop.* wire 化
+            // 缺口）。Title/Notify 维持端点丢弃（落点在适配层，另行清偿）。
+            (HostState::Active, ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record })) => {
+                Ok(vec![HostAction::DesktopBus { wid, record }])
+            }
+            (HostState::Active, ProtocolMsg::Control(control @ (ControlMsg::TitleChanged { .. } | ControlMsg::Notify { .. }))) => {
                 // 控制上行在此端点只做透传记录；落点在适配层（title→chrome、
-                // notify→通知中心、bus→DesktopCommand 执行体）。
+                // notify→通知中心）。
                 let _ = control;
                 Ok(vec![])
             }
@@ -600,7 +644,47 @@ impl HostEndpoint {
         self.wid = Some(wid);
         self.surface = Some(surface);
         self.frame_mode = frame_mode;
-        Ok(ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect, frame_mode }))
+        Ok(ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+            app_id,
+            wid,
+            surface,
+            rect,
+            frame_mode,
+            extra_surfaces: Vec::new(),
+        }))
+    }
+
+    /// 多表面版 activate（v1.11 壳双表面客户端）：首表面走既有领头
+    /// 字段，其余表面随 Welcome 尾段；端点登记 wid→surface 路由表。
+    pub fn activate_multi(
+        &mut self,
+        app_id: u64,
+        wid: u64,
+        surface: u64,
+        rect: WRect,
+        frame_mode: FrameMode,
+        extras: Vec<super::message::WelcomeSurface>,
+    ) -> Result<ProtocolMsg, ProtocolError> {
+        if self.state != HostState::Listening {
+            return Err(ProtocolError::WrongState {
+                state: host_name(&self.state),
+                msg: "activate_multi()",
+            });
+        }
+        self.state = HostState::Active;
+        self.app_id = Some(app_id);
+        self.wid = Some(wid);
+        self.surface = Some(surface);
+        self.extra_surfaces = extras.iter().map(|e| (e.wid, e.surface)).collect();
+        self.frame_mode = frame_mode;
+        Ok(ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+            app_id,
+            wid,
+            surface,
+            rect,
+            frame_mode,
+            extra_surfaces: extras,
+        }))
     }
 
     /// L2"独立出去"：产出 L2Detach（发往 app；回收等 L2Detached 回来）。
@@ -669,6 +753,9 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             ControlMsg::L2Detached { .. } => "Control::L2Detached",
             ControlMsg::L2AttachRequest { .. } => "Control::L2AttachRequest",
             ControlMsg::StateSnapshot { .. } => "Control::StateSnapshot",
+            ControlMsg::ShellProjectionPush { .. } => "Control::ShellProjectionPush",
+            ControlMsg::ShellClockTick { .. } => "Control::ShellClockTick",
+            ControlMsg::ShellCursorMove { .. } => "Control::ShellCursorMove",
         },
         ProtocolMsg::Observe(m) => match m {
             ObserveMsg::Attach { .. } => "Observe::Attach",
@@ -955,7 +1042,8 @@ mod tests {
                 wid: 1,
                 surface: 1,
                 rect: WRect::default(),
-                frame_mode: FrameMode::Commands
+                frame_mode: FrameMode::Commands,
+                extra_surfaces: Vec::new(),
             })),
             Err(ProtocolError::WrongState { state: "Detached", msg: "Handshake::Welcome" })
         );
@@ -996,7 +1084,147 @@ mod tests {
             width: 10.0,
             height: 10.0,
             fonts: vec![],
+            surfaces: Vec::new(),
         }));
         assert_eq!(mismatch, Err(ProtocolError::VersionMismatch(99)));
+    }
+
+    /// PLAN-030 T-02（D4）：DesktopBus 上行拆出执行臂——此前与
+    /// Title/Notify 同在丢弃臂（`let _ = control`）无声消失。
+    #[test]
+    fn desktop_bus_uplink_produces_action() {
+        use super::super::message::{ControlMsg, ProtocolMsg};
+        let mut host = HostEndpoint::listen();
+        let mut app = AppEndpoint::new(StubSource::new(), "counter", "c", 480.0, 320.0);
+        activate_pair(&mut app, &mut host);
+
+        // Title/Notify 维持丢弃（落点另行清偿）；DesktopBus 产动作。
+        let up = host
+            .on_message(ProtocolMsg::Control(ControlMsg::DesktopBus {
+                wid: 3,
+                record: "launch\u{1f}counter".into(),
+            }))
+            .unwrap();
+        assert_eq!(
+            up,
+            vec![HostAction::DesktopBus { wid: 3, record: "launch\u{1f}counter".into() }]
+        );
+        let drop_title = host
+            .on_message(ProtocolMsg::Control(ControlMsg::TitleChanged {
+                wid: 3,
+                title: "t".into(),
+            }))
+            .unwrap();
+        assert!(drop_title.is_empty());
+    }
+
+    /// PLAN-030 T-02（D1）：多表面握手——Hello 尾段声明 → ResolveAndAttach
+    /// 携带 → activate_multi 登记 wid→surface 路由 + Welcome 尾段；第二
+    /// 表面帧按消息 wid 路由到对应 surface。
+    #[test]
+    fn multi_surface_handshake_and_frame_routing() {
+        use super::super::message::{
+            surface_role, ControlMsg, FrameMsg, ProtocolMsg, SurfaceDecl, WelcomeSurface,
+        };
+        let mut host = HostEndpoint::listen();
+
+        // 壳 Hello：双表面声明（background 全屏 + chrome 任务栏带）。
+        let hello = ProtocolMsg::Handshake(HandshakeMsg::Hello {
+            version: super::super::PROTOCOL_VERSION,
+            app_name: "shell".into(),
+            title: "shell".into(),
+            icon: None,
+            width: 1280.0,
+            height: 800.0,
+            fonts: vec![],
+            surfaces: vec![
+                SurfaceDecl { role: surface_role::BACKGROUND, width: 1280.0, height: 800.0 },
+                SurfaceDecl { role: surface_role::CHROME, width: 1280.0, height: 48.0 },
+            ],
+        });
+        let actions = host.on_message(hello).unwrap();
+        match &actions[0] {
+            HostAction::ResolveAndAttach { app_name, surfaces, .. } => {
+                assert_eq!(app_name, "shell");
+                assert_eq!(surfaces.len(), 2);
+                assert_eq!(surfaces[1].role, surface_role::CHROME);
+            }
+            other => panic!("期待 ResolveAndAttach，得到 {other:?}"),
+        }
+
+        // 适配层分配两窗两表面后 activate_multi：首表面领头 + 尾段第二表面。
+        let welcome = host
+            .activate_multi(
+                9,
+                100,
+                900,
+                WRect::new(0.0, 0.0, 1280.0, 800.0),
+                FrameMode::Commands,
+                vec![WelcomeSurface {
+                    role: surface_role::CHROME,
+                    wid: 101,
+                    surface: 901,
+                    rect: WRect::new(0.0, 752.0, 1280.0, 48.0),
+                }],
+            )
+            .unwrap();
+        let ProtocolMsg::Handshake(HandshakeMsg::Welcome { wid, extra_surfaces, .. }) = &welcome
+        else {
+            panic!("期待 Welcome");
+        };
+        assert_eq!(*wid, 100);
+        assert_eq!(extra_surfaces.len(), 1);
+        assert_eq!(extra_surfaces[0].surface, 901);
+
+        // 第二表面（wid=101）的帧路由到 surface=901，而非主表面 900。
+        let frame = host
+            .on_message(ProtocolMsg::Frame(FrameMsg::FrameReady {
+                wid: 101,
+                frame_id: 1,
+                slot: 0,
+                damage: None,
+                revision: 1,
+                payload: Default::default(),
+            }))
+            .unwrap();
+        match &frame[0] {
+            HostAction::ComposeFrame { surface, wid, .. } => {
+                assert_eq!(*surface, 901, "按 wid 路由到第二表面");
+                assert_eq!(*wid, 101);
+            }
+            other => panic!("期待 ComposeFrame，得到 {other:?}"),
+        }
+        // 主表面（wid=100）帧仍路由 900。
+        let frame = host
+            .on_message(ProtocolMsg::Frame(FrameMsg::FrameReady {
+                wid: 100,
+                frame_id: 2,
+                slot: 0,
+                damage: None,
+                revision: 2,
+                payload: Default::default(),
+            }))
+            .unwrap();
+        match &frame[0] {
+            HostAction::ComposeFrame { surface, .. } => assert_eq!(*surface, 900),
+            other => panic!("期待 ComposeFrame，得到 {other:?}"),
+        }
+
+        // 旧端线 Hello（无尾段）→ 空 surfaces 声明（既有行为零变化）。
+        let mut host2 = HostEndpoint::listen();
+        let legacy = ProtocolMsg::Handshake(HandshakeMsg::Hello {
+            version: super::super::PROTOCOL_VERSION,
+            app_name: "counter".into(),
+            title: "c".into(),
+            icon: None,
+            width: 10.0,
+            height: 10.0,
+            fonts: vec![],
+            surfaces: Vec::new(),
+        });
+        match host2.on_message(legacy).unwrap()[0] {
+            HostAction::ResolveAndAttach { ref surfaces, .. } => assert!(surfaces.is_empty()),
+            ref other => panic!("期待 ResolveAndAttach，得到 {other:?}"),
+        }
     }
 }

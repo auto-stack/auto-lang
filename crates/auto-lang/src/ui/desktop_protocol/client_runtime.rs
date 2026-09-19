@@ -134,6 +134,12 @@ impl AppProjector {
         &mut self.component
     }
 
+    /// 外部状态变化登记（PLAN-030：壳投影下行 apply 后调用——
+    /// revision 前进 = 泵对账产帧）。
+    pub fn bump_revision(&mut self) {
+        self.rev += 1;
+    }
+
     pub fn width(&self) -> f32 {
         self.width
     }

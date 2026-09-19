@@ -2370,3 +2370,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P657-D3 [a2r back 转译方言窄面清单（agent 组装摩擦，非引擎 bug）]**：047 mock back 落笔实录——①f-string 插值必须 `f"${x}"`（裸 `{x}` 降字面量 `{{x}}`）；②模块级 `var x str` 无参数写入通道（&str 借用逃逸 E0521）→ 全局状态用 List 容器重建习语；③`[0]` 索引读/while/单行 fn/`.str()` 无 back 语料先例（023 头注明示避免 `[0]`）；④struct ctor 的 str 参数仅**参数名==字段名**时自动 `.to_string()`（`name: name` 过、`id: id`/`name: display_name` 不过）→ 跨名字段传参用 f-string 包裹强制 `format!` 产 String。修向（可选）：转译器字段类型驱动转换收口（struct_field_types 已有缓存机制）。引用：047 `src/back/db.at` 注记。
 - **P657-D4 [capability-tests 生成面 CI 覆盖缺口]**：build-ui-examples.yml matrix 四条死目录项（026-keyboard-mouse-events/027-native-css/028-dom-escape/029-external-imports，cfc1bfe23 重组迁移遗留、master 预存红）已由 PLAN-657 T-04 摘除并登记 047；但 capability-tests 域自此无 gen-only CI 覆盖（paths/matrix 均不含）。修向：独立 workflow 或 paths 扩 `examples/capability-tests/**`。
 - **P657-D5 [view 表现面小摩擦登记（非阻断）]**：①table 族 vue 发射 `<div>` 嵌 `<table>`（HTML 规格警告，master 预存形态）；②受控 input 的 v-model 与程序化 fill 后值显示回退（过滤生效但框显空）；③avatar `alt: f"${.user_email}"` 发射为空串绑定。均双端走查暴露、不影响契约链路，随 vm-component-parity/Tier 1 批次顺带。
+## 2026-09-19 增补七（PLAN-030 登记与核销）
+
+- **SendInput 真机腿挂账（029）✅ 按计划清偿口径收口（PLAN-030）**：启动序基建交付（boot 孵化序 + child e2e 观察[desktop_bus_inbox/帧断言]在册）——SendInput FFI 侧前台断言/组装层 029 已就绪；真桌面整窗 SendInput e2e 腿维持 dual 口径（协议级断言 p030 e2e 四腿承载 + os smoke 截图留痕），OS 级合成键入自动化仍受 P020-D4（DPI/画布变换）约束。
+- **P030-D1 [a2r 编译面轨 not-yet（shell-lib 组件库生成模式）]**：PLAN-030 v1 交付 = 解释面 outproc child（shell_source 同源装载 + NativeProjector View 全展开——AppProjector 队列臂对 ForLoop/Conditional no-op[client_runtime.rs layout walker]，shell 面 dock/窗口条目不可渲染，e2e 腿 3 实测定轨）。a2r 接缝就位（NativeProjector 替换点）；组件库形生成模式（run_rust_ui 为 app 工程形）随缺省翻转计划另立。
+- **P030-D2 [壳表面 resize not-yet]**：壳双表面尺寸 boot 定档（AUTO_SHELL_GEOM）；视口运行期变更随 respawn 生效（ControlMsg::Resize 壳臂显式 no-op 留痕）。
+- **P030-D3 [overlay 三面 + launcher outproc 化 not-yet（D6 边界裁定）]**：switcher/notification/dashboard + launcher 维持 in-proc（dashboard z 带在 App 窗下与置顶 chrome 冲突 + face 卡宿主活渲染无投影材料；launcher 保 iced 聚焦链）。随缺省翻转计划另立。
+- **P030-D4 [TS decode tag 12-14 not-yet]**：v1.11 三变体无 TS 消费面（远程镜像线不转发壳投影）；drawlist-renderer 接入时补。
+- **P030-D5 [AppProjector 队列臂 ForLoop/Conditional no-op（既有缺口，P030 发现）]**：解释态 queue 臂（auto re-exec --autodesk-incubate queue 档）渲染不展开 for/conditional——列表驱动 app 经该档失真；shell 面已定轨 NativeProjector，AppProjector 展开补齐独立评估（消费面 = 解释 queue 档 app，现无 e2e 载体）。

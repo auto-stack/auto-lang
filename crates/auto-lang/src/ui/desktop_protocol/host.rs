@@ -236,6 +236,9 @@ impl<'a> ProtocolHost<'a> {
                     }
                 }
                 HostAction::ObserveUp { msg } => self.observe_inbox.push(msg),
+                // v1.11 命令上行：loopback 路径的收件箱落点在下方的原始
+                // ControlMsg 分流（DesktopBus 同族）——此处零动作。
+                HostAction::DesktopBus { .. } => {}
             }
         }
         // 控制上行（端点只透传，这里落收件箱）。
@@ -536,6 +539,7 @@ mod tests {
             width: 480.0,
             height: 320.0,
             fonts: vec![],
+            surfaces: Vec::new(),
         });
         host.handle(&hello).unwrap();
         assert_eq!(host.endpoint.state, super::super::endpoint::HostState::Active);

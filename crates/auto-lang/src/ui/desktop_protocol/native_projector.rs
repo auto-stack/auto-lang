@@ -364,6 +364,26 @@ impl<C: Component> NativeProjector<C> {
         self.rev
     }
 
+    /// PLAN-030 T-03：组件访问口（壳装配——投影 lowering 写状态/命令
+    /// 读走消费；AppProjector 同形）。
+    pub fn component(&self) -> &C {
+        &self.component
+    }
+
+    pub fn component_mut(&mut self) -> &mut C {
+        &mut self.component
+    }
+
+    /// 外部状态变化登记（投影 apply 后调用——revision 前进 = 泵对账产帧）。
+    pub fn bump_revision(&mut self) {
+        self.rev += 1;
+    }
+
+    /// 命中区矩形快照（e2e 点击注入消费——宿主 pointer 路由的等价载荷）。
+    pub fn hit_rects(&self) -> Vec<crate::ui::desktop_protocol::message::WRect> {
+        self.hits.iter().map(|h| *h.rect()).collect()
+    }
+
     pub fn width(&self) -> f32 {
         self.width
     }
