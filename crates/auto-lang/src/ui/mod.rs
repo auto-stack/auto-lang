@@ -41,6 +41,10 @@ pub mod code_editor;
 // PLAN-009 P1: native `terminal` component (auto-term engine grid; core is
 // iced-free, `iced/` is the only iced point — code_editor layering).
 pub mod terminal;
+// PLAN-656: AutoUI 通用滚动架构核心语义层（backend-independent——
+// State/Intent/Viewport 三通道 + geometry 纯函数 + hosting contract；
+// iced/Vue adapter 在各自 backend 内，不在此处）。
+pub mod scroll;
 // Plan 418: OS clipboard bridge (arboard) behind `ui-clipboard`.
 #[cfg(feature = "ui-clipboard")]
 pub mod clipboard;

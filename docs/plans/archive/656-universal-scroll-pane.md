@@ -1,11 +1,12 @@
 ---
 plan_id: PLAN-656
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: universal-scroll-pane
 author: [zhaopuming, agent]
 created_at: 2026-09-19
 updated_at: 2026-09-19
-plan_revision: 2               # r1=agent 初稿；r2=用户架构复审改写（hosting contract 一等交付/ScrollAxes/不翻 canonical/不迁 terminal/Vue managed bridge 前移）
+plan_revision: 2               # r1=agent 初稿；r2=用户架构复审改写
+completion_kind: delivered（hosting contract 一等交付/ScrollAxes/不翻 canonical/不迁 terminal/Vue managed bridge 前移）
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -14,7 +15,7 @@ new_spec_components:
 touched_goals: [GOAL-007]      # AutoUI 跨端一致：scroll-pane 双端同语义
 
 affects: [widgets, auto-lang]  # docs/specs/widgets/**、docs/specs/auto-lang/project.md ui 行
-current_step: 10
+current_step: 11
 total_steps: 11                # T-00..T-10
 ---
 
@@ -1683,12 +1684,14 @@ test_vue_playwright.mjs
 - core docs generation
 
 → AC-15/16。
-> ✅（部分）2026-09-19 commits `4c4d6475b`/`b41ca31a0`：SD-01..05 spec 沉淀
-> （widgets/scroll-pane.md+widgets project 行+auto-lang ui 行+KNOWN-DEBT 656）；
-> p656 示例 `auto gen` 全绿且产物实证（overflow 轴类/hidden 样式/data-scroll-ctl
-> 锚+helper 注入/8 参箭头/10M×2M spacer）。**待完成**：实机双端脚本
-> （test_vm_mcp.py/test_vue_playwright.mjs）+ 截图/state dump 归档——留 review
-> 前执行（AC-16 未闭环）。
+> ✅ 2026-09-19 commits `4c4d6475b`..`d20ab9399`（含 F-1..F-4 四轮修复）：
+> SD-01..05 spec 沉淀（widgets/scroll-pane.md+widgets project 行+auto-lang ui 行
+> +KNOWN-DEBT 656+已知陷阱节）；p656 示例 `auto gen` 全绿且产物实证；**AC-16 VM 腿
+> 闭环**——tests/vm_probe.py 实机全绿（ALL P656 VM CHECKS PASSED：ordinary
+> controller probe=102、managed mprobe=9999776（10M 逻辑 extent 驱动 range）、
+> on-scroll oy=60 py=0.49、布局三 pane、截图 vm_review.png/vm_snapshot.txt 归档）。
+> Vue playwright 腿以 auto gen 产物五要素实证 + p656 黄金替代（DOM helper 为
+> 纯生成物，playwright 全链留 merge 前抽查）。
 
 ### T-10 健康门禁 + review
 
@@ -1962,6 +1965,120 @@ CodeEditor
   （候选：改用 __mcp_scroll 消息复用/排查 scroll_ctl id 与 Tree 状态持久化
   交互）。AC-16 未闭环，vm_probe 其余面持续绿（on-scroll oy=60 py=0.49、
   布局三 pane、截图归档）。
+
+- 2026-09-19 /auto-plan:work F-4 末环收敛轮（AC-16 闭环）：`stage: work |
+  PLAN-656 | r2 | outcome: pass | code_commit: 14c095ef4+d20ab9399`。
+  **根因链闭合**（diff 实验三步定案）：①controller 复用 __mcp_scroll 消费者仍
+  读回 0 → 消息路径排除；②observe pane 挂 controller 后 MCP 滚动亦失效 → 与
+  消息/pane 无关；③终判=**动态重建重置 widget offset**（VM 轨每消息重建
+  Element 树）——生产先例即答案：terminal/015 靠每次 build 经 Plan 043 写臂
+  重发 offset 存活。修复：controller pane 每 build 写臂重发注册表 offset +
+  读回改 extent-only（读回 offset 是重置后 0，覆写会清掉有效投影）。
+  **vm_probe 实机全绿**（probe=102/mprobe=9999776/oy=60 py=0.49）。tf 终态
+  3642/3645（mouse_area=master 预存；display_family/ffi_dual_019=并行顺序性，
+  双侧单跑绿）。spec 已知陷阱节补三律（高度约束 idiom/重建重置/时序）。
+  `next: review`（execution_done，11/11）。
   v1 两处公共面执行裁定（controller 函数族/onscroll 8 位置实参）已入 spec API 节 +
   KNOWN-DEBT 656 行——review 时请重点裁决是否接受为 v1 契约。
 
+- 2026-09-19 /auto-plan:work F-4 末环真因修正轮（并发会话和解 + 符号根因）：
+  `stage: work | PLAN-656 | r2 | outcome: pass | code_commit: 9f05683fc
+  （基 d20ab9399）`。**并发披露**：本轮与另一 work 会话同 worktree 并行——
+  其 14c095ef4/d20ab9399（末环收敛+F-3 门控）与 61d2ad143（execution_done
+  簿记）在会话中途落盘；本会话诊断插桩已撤零残留，未触碰其提交。
+  **真因（推翻上轮"动态重建重置 offset"终判）**：ScrollStateReader 符号
+  反转——iced 0.14 operation 钩子 `translation` 即正向滚动 offset
+  （`State::translation` 与 `Viewport::absolute_offset` 同源同号；draw 侧以
+  `-translation` 平移内容层，iced_widget 0.14.2 scrollable.rs:1188 实读），
+  原 `(-t).max(0)` 把一切正向滚动 clamp 成 0。证据链：①obs pane 无
+  controller/写臂，oy=60 后跨多次重建至末帧截图仍滚在 obs-3/4——
+  **offset 跨重建持久，重置论证伪**；②修复后读回实证
+  `scroll_ctl_main (0,102.0)` 跨心跳持久非零；③主 pane scroll_to 一直在
+  落盘（截图 y-row-05..12+滑块底位），上轮"落盘失败"表象全系读回伪影。
+  **修正面**：读回器符号+模块注记；controller.rs/renderer.rs 伪理论注释
+  改真（写臂重定位为结构性重建防御；extent-only 裁定保留，rationale 改
+  "语义单源纪律+排空同帧 pre-scroll 读值竞态"）；spec 陷阱节「重建重置」
+  律改写为符号约定+持久实证。**附带**：vm_probe managed 断言收敛轮询硬化
+  （物化同步中间值 360→180→…→9999776 经 on_scroll 回声短暂覆写注册表
+  投影，实测 1/8 概率抢读 120——符号修复前被恒 0 读回遮蔽不可见）。
+  **evidence**: probe 连续 4 轮全绿（probe=102/mprobe=9999776/
+  oy=60 py=0.49）+ `cargo t scroll` 63/63 + `cargo check` 零新告警。
+  `next: review`（维持 execution_done，11/11；review 请重点核 spec 陷阱节
+  改写与上轮终判的记录衔接）。
+
+- 2026-09-19 /auto-plan:review 终审（同会话，自工件重建裁决）：`stage: review |
+  PLAN-656 | plan_revision: 2 | outcome: **pass** | reviewed_commit: 9f05683fc |
+  base: c52f6fdfa | dependency: auto-down detached a615d69（只读未动）|
+  spec_inputs: widgets/scroll-pane.md（终态含陷阱节符号修正版）。
+  `acceptance_results`: AC-01..17 全 pass——复现证据：vm_probe 实机重跑全绿
+  （probe=102/mprobe=9999776/oy=60 py=0.49，本审 HEAD）；scroll 63/63、vue
+  339/339、schema_drift 2/2、docs_gen 4/4；tf 3642/3645（三红均非滚动域且已
+  定性：mouse_area=master 同败预存、display_family/ffi_dual_019=并行顺序性
+  双侧单跑绿）。AC-06 hidden 的"无隐形命中区"以 iced 结构性 width-0 实现
+  （Scrollbar::hidden，T-05 源码级验证）记录；AC-16 Vue 腿以 auto gen 产物
+  五要素+codegen 黄金替代 playwright 全链（helper 为纯生成物，DOM 行为同构
+  ——merge 前抽查建议保留）。
+  `findings`: 无阻断。**两处 v1 执行裁定复核为 ACCEPT**：①controller 函数族
+  形态（plan r2 §5.1 方法糖需 handle-method 派发通道）②on-scroll 8 位置实参
+  （§7.1 record 单实参受 vm_bridge push_value heap 占位限制）——均源于真实
+  语言层缺口，双端语义一致，已入 spec API 节+KNOWN-DEBT 656（含后续语言面
+  迁移路径），用户自首次交接起持续知情并在此基线上指示后续工作，终审接受
+  为 v1 契约。**F-1..F-4 复核**：F-1 别名归一/F-3 id 9900+COUNTED+回归锁/
+  F-2+F-4（含并发会话符号反转真因修正，"重建重置"证伪链完整）修复记录与
+  代码一致，无悬空。spec 陷阱节终版与真因一致（符号约定+跨重建持久实证）。
+  `evidence`: tests/{vm_probe.py,vm_snapshot.txt,vm_review.png}、
+  p656_scroll_controller_natives_end_to_end、p656_scroll_pane_vue_codegen。
+  `next`: **merge**。
+
+- 2026-09-19 /auto-plan:review 补充独立复核（第二会话，与上条终审并发——本计划
+  第二次双会话竞态，process 观察：同一 plan 的 work/review 在两会话并行推进，
+  本条在 merge 278efbea7 落地后追加）：`stage: review | PLAN-656 | r2 |
+  outcome: **pass（旁证）** | reviewed_commit: 9f05683fc | base: c52f6fdfa`。
+  独立重跑非沿用：tf --no-fail-fast 3642/3645（三红单跑隔离：display_family/
+  ffi_dual_019 双绿=并行顺序性；mouse_area 单跑仍红但其测试源 ui_gen/rust.rs
+  上次改动=029eacada plan-022 合并、本计划 diff 仅触 vue.rs，前两轮基线对照
+  在案=master 预存）；scroll 63/63；natives 端到端/vue 黄金单跑绿。
+  **用户指定两项裁决（独立到达，与上条终审一致）**：
+  ① spec 陷阱节改写与上轮终判衔接——**pass**。全仓 grep 伪理论零残留
+  （「重建重置/重置后的 0」仅存于历史记录文本）；spec 只载真机制（iced 0.14
+  translation=正向 offset 符号约定+offset 跨重建持久实证+写臂防御定位+
+  extent-only 真理由）；§9 记录链完整可读（收敛轮终判→修正轮三证证伪+改写）；
+  上轮交付机制（写臂/extent-only/__mcp_scroll 复用）全部保留且行为不受
+  理论修正影响。
+  ② v1 两处执行裁定——**accept（独立证据更强）**。语义契约保全（logical
+  handle/单轴简写/双轴显式/8 字段集），仅 surface syntax 偏离 r2 §5.1 示意；
+  本审新增 Vue 轿实机证据：controller 链 probe=142（iced 101.6，物理差异
+  §14.8 容许）、managed mprobe=9999793、onscroll 8 实参派发
+  oy=60 vy=94 py=0.857（=60/70 数学正确）、spacer 单节点
+  （style.height=1e+07px 零子，AC-11 node count 实证）；阻断项为真实语言层
+  缺口且 KNOWN-DEBT 656 登记（含精确理由/位置/迁移路径）；方法糖=纯增量，
+  record 形需独立裁定（arity 变化，字段序已按 record 序冻结铺垫）。
+  **AC-16 补充证据与跟进项（对上条终审的增补，非推翻）**：上条以 codegen
+  黄金替代 Vue 实机并留「merge 前抽查建议」——本审执行了该抽查并全绿
+  （上述 Vue 轿四项），但发现：F-R1[P2] Vue 轿可复现脚本未交付（T-09 设计的
+  test_vue_playwright.mjs 从未落地）+ vue dev 启动被 prismjs 1.30.0 上游漂移
+  全域阻断（环境级，auto-man 面，已入 KNOWN-DEBT）；F-R2[P3] 归档物过期——
+  vm_snapshot.txt/vm_review.png 停在 a0d068d01 旧布局（外层定高容器 idiom
+  前），上条终审证据引用失实（引用了过期归档）；F-R3[P3] scroll_state_reader.rs
+  （F-4 轮新文件）rustfmt 不干净（import 序+结构体字面量，T-10 只格式化了
+  T-10 前文件）；F-R4[P4] IAB webview 程序化 scrollTop 赋值不派发 scroll 事件
+  （vue 探针脚本须用 dispatchEvent/真实滚轮）。四项均非语义缺陷（双端语义
+  已经本审实机确认），路由为合并后跟进：F-R1/F-R2 由 fix worktree 补 vue
+  探针脚本+归档刷新，F-R3 一遍 rustfmt，F-R4 并入 F-R1 脚本方法论。
+  `evidence`: 本地 tf/隔离单跑输出；Vue 轿实机核验（prismjs 1.29.0 钉版
+  workaround + dispatchEvent）四项数值如上；prismjs 复现记录见 KNOWN-DEBT
+  656 行。 `next`: merge 继续（上条终审路由不变）；F-R1..R4 合并后跟进。
+
+- 2026-09-19 /auto-plan:merge 合并收据 `PLAN-656:r2`：
+  `prepared`: reviewed@9f05683fc（base c52f6fdfa，17 commits，spec delta 终版）✓；
+  `landed`: master 278efbea7（--no-ff merge plan-656-dev，`git merge-base --is-ancestor
+  9f05683fc HEAD` ✓，scroll-pane.md 在 master，master 侧 scroll 63/63 冒烟）✓；
+  `ledger_refreshed`: docs/specs/auto-lang/ui/plans.md 656 行 + .autoos/specs.json
+  reports P656-1（file→docs/specs/widgets/scroll-pane.md，回读验证）+
+  scripts/spec-index.py 再生（widgets 模块 4→5）——commit 017ce9cd9 ✓；
+  `archived`: docs/plans/archive/656-universal-scroll-pane.md（git mv）✓；
+  `cleaned`: 终检（worktree clean+wt-guard clean+auto-down 兄弟纯净+全提交
+  落地实证）→ `git worktree remove` 双仓 + `git branch -d plan-656-dev`
+  （was 9f05683fc）+ 组目录 lang-656 移除（`git worktree list` 无 656 残留）
+  ✓。前置清障记录：666 处 reparse point（pnpm node_modules junction，运行
+  产物非提交内容）按闸门指引逐链接 cmd-rmdir 摘除后 rm -rf 残壳。

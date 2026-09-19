@@ -25,6 +25,7 @@
 | v1.9 | 2026-09-18 | 图像 DrawOp 通道——`DrawOp::Image`（tag 6 追加式，src 引用 + 宿主侧解析，零位图字节过线）+ src 词汇表（file/`builtin:`/`data:`/`http(s)`/`thumbnail://` 虚拟引用）+ 未解析降级纪律 + 两投影臂真图升级 + TS decode/占位（见 §1.9；`PROTOCOL_VERSION` 仍 1） | PLAN-028（§1.9） |
 | v1.10 | 2026-09-18 | live 输入接线（§1.7 壳侧缺口清偿：`desktop_window_events` 键盘/滚轮/IME 三族臂 + `DesktopEvent::LiveInput` 泵入 + `route_live_input` 生产路由）+ native 覆盖第三批（shell 面四 kind：popover/mousearea/windowthumbnail/workspacepreview）+ `lucide:` 词汇真渲 + `workspace://` 虚拟引用 + fallback 语法 `!{icon}` + acceptance key verb（见 §1.10；`PROTOCOL_VERSION` 仍 1——全部宿主侧/词汇表演进，零新 wire tag） | PLAN-029（§1.10） |
 | v1.11 | 2026-09-19 | B 程序主体（shell outproc client）：投影下行推（`ShellProjectionPush` tag 12 / `ShellClockTick` tag 13 / `ShellCursorMove` tag 14——typed 载体 wire 编码 + per-face 宿主侧指纹门）+ 命令上行执行（`DesktopBus` 端点拆臂 + registry_id 归因 + `desktop_bus_inbox` 泵后同拍执行）+ 表面 z 平面声明（Hello/Welcome 尾段多表面协商：background/chrome）+ 壳看门兵（死亡检出 → 退避 respawn → 全量重推）+ pointer 生产接线（press/release 命中 broker wid 路由）+ `shell.apps.shell_model` 双轨开关（缺省 inproc；见 §1.11；`PROTOCOL_VERSION` 仍 1——ControlMsg/Handshake 追加式，空尾段字节级不变） | PLAN-030（§1.11） |
+| v1.12 | 2026-09-19 | rqhost 第四运行形态——rendezvous 采纳协议（well-known 管道 + `adopt␟<name>` 记录 + 锁管道单实例仲裁）+ 客户端权威采纳（宿主零装载）+ rqhost 生命周期语义（末窗退出/app EOF 回收/宿主死 exit-on-EOF 策略档）+ 大帧 shm 超槽回退管道内联（见 §1.12；rendezvous 记录 = 传输层管道串约定，零 codec 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-031（§1.12） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -554,6 +555,86 @@ DesktopBus → 归因执行 / 投影推送帧变 / kill → 看门兵 → respaw
 生成模式）not-yet——v1 交付 = 解释面 outproc child（AppProjector/
 NativeProjector 接缝即替换点）；TS decode tag 12–14 not-yet（无 TS
 消费面）。
+
+## §1.12 v1.12 增量：rqhost 第四运行形态（PLAN-031）
+
+**形态定位**：`auto run -r vm -q`（`-r rust -q` 同族）= 宿主 OS
+**普通原生窗**运行——不启虚拟桌面，app 进程只产 RenderQueue 帧，一个
+**共享后台合成器进程 rqhost**（`auto rqhost`，iced daemon）为每客户端
+开一枚真实 OS 窗、栅格化（DrawListPainter，与桌面 broker 窗同一
+栅格化器）、转发输入。多 app 共享单实例（compositor 架构，虚拟桌面
+同型；用户裁定不做 standalone——单 app 由 shared 自动孵化等价）。
+
+**① rendezvous 采纳协议**（传输层管道串约定，零 codec 变体）：
+
+- well-known 管道 `autodesk-rqhost`（`autodesk-broker` 同族；测试缝
+  env `AUTO_RQHOST_WELLKNOWN`，P489 `adjudicate_on` 同型）。**单实例
+  仲裁**：锁管道 `<well-known>-lock` 以 `FILE_FLAG_FIRST_PIPE_INSTANCE`
+  声明（tokio `ServerOptions::first_pipe_instance`）——第二实例创建即
+  PermissionDenied → 干净退出（码 0）；OS 级原子零竞态窗口。
+- 采纳记录（DesktopBus 载荷，`incubate␟<name>␟<mode>` 约定族）：
+  `adopt␟<app_name>` → 应答 `adopt␟<per-app pipe>`；per-app 管道
+  `<wellknown>-app-<n>` 先行 listen（broker 同型）。**双动词兼容**：
+  兼收 `incubate␟<name>␟<mode>`（broker 族记录——旧生成物
+  `--autodesk-incubate` 直连 rqhost 零改接驳；mode 字段忽略，宿主恒
+  Welcome=Commands）。探测 ping（连上即关）吞掉不占名额。
+- per-app `wait_connect` 线程化（broker serve_once 的阻塞第二等连
+  不适用——rust 轨 cargo build 分钟级延迟不得阻塞 adopt 环路）。
+
+**② 客户端权威采纳**（与桌面"宿主内容权威"的对偶）：rqhost 侧
+`ResolveAndAttach` **无 resolver**——Hello 凭据（title/width/height）
+直接 `activate`（app_id/wid = rqhost 自有计数器，rect=(0,0,w,h) 窗口
+本地坐标）。桌面 `broker_apply_actions` 的 resolver MISS 弃连路径
+零牵连。**策略档**：`ClientTarget::Rqhost{wellknown,app_name}`
+（rendezvous 采纳内建）→ `reconnect=None` = **exit-on-EOF**（宿主死
+= 客户端干净退出 + `[rqhost-client] host lost` 观测行；原生 app 心智）；
+桌面档（Direct/Broker）30s/50ms 重连缺省不变。
+
+**③ rqhost 生命周期语义**：用户关窗 → 宿主 `Close` → app
+ExitRequest → Reclaim（退出码 0）；app 死 → EOF → 窗回收；**末窗
+关闭 → daemon 退出**（iced daemon 空窗不自动退出的反面——自建
+`iced::exit`；门 = 无在册窗 ∧ 无待定采纳 ∧ 曾开过窗）；帧泵 15ms
+（400ms ServiceTick 对原生窗输入→帧响应太钝）。
+
+**④ 输入按窗路由**：事件自带 window_id 即路由键（免桌面 WM
+hit_test/焦点语义——原生窗 OS 自理）；坐标 = 窗内坐标即表面坐标；
+键盘/IME/滚轮走 029 LiveInput 映射族（Ignored 门），指针全事件直订。
+
+**⑤ 大帧回退**（v1.12 附带根修，桌面 broker 同益）：shm 槽 16KiB
+（Commands 档）装不下的帧载荷，客户端回退**管道内联** `FrameReady`
+（v1 合法变体）——此前 `if let Ok` 静默弃帧 = 冻结。
+
+**边界注记**：Hello.icon（编码字节）v1 忽略（iced Settings 有 icon
+位但需 RGBA+尺寸元数据）；多用户终端服务器下 well-known 全局命名
+空间（`autodesk-broker` 同口径，单实例 = 单机器域）；job object 级
+宿主亡兜底仍为 KD 债（协议级 exit-on-EOF v1 够用）。**与桌面
+ad-hoc attach 同源**：PLAN-030（shell-outproc）的采纳协议与本节
+rendezvous 同族不同宿主——接口演进互链（`--rq-host=desktop` 参数位
+预留，实现归 030 线）。
+
+**验证面**：rqhost 单测/集成 13（rendezvous 往返/锁仲裁/零装载采纳/
+并发接纳/泵回收 EOF/ensure 退避/全循环×真 ClientPump/输入不串扰/
+策略档/vm fork 凭据/大帧回退/末窗门四态/键入闭环[键入 100→宿主合成
+帧文本 212 联动 + 零串扰]）+ e2e `p031_rqhost_arm`（七腿全景：
+单/多 app、竞态、resize、kill 双向、**用户关窗 X→app 码 0**、
+**末窗自退→daemon 退出**、**真实自动孵化[锁持有→自退→锁让出]**、
+**rust 轨[a2r 重生成→注入→采纳→关窗码 0]**、降级显式；AUTO_DESKTOP_
+E2E 门，留痕 `docs/plans/reports/assets/031/`[进程清单+daemon stderr]）
++ os 侧 `scripts/smoke-031-rqhost.sh`（生产 well-known 演示位）。
+
+**输入闭环承载裁定**（2026-09-19 修复轮）：真机合成输入（SendInput
+全局队列 / PostMessage legacy 鼠标消息）在 ToDesk 输入钩子类环境不可
+用（SendInput 零送达 + winit 0.30 WM_POINTER 路径忽略 legacy 投递；
+native_dock_e2e T4 同款环境事实先例）——键入→换算联动闭环由**集成
+测试承载**（vm_typing_loop_over_pipe：真管道×真源×真 ClientPump×
+rq_update 输入臂，断言宿主合成帧文本 212）；宿主侧 revision 观测行
+（`[rqhost] revision` 仅变化打行）为帧变断言锚点。工程注：子进程
+stderr PIPE 必须排水——构建期警告超管道缓冲即阻塞写端（假死）。
+
+**保真口径**：-q 渲染面 = DrawListPainter → vm 轨解释态全保真
+（AppProjector 全 vocabulary 投影，无覆盖门）；not-yet 词汇（popover
+族/lucide 未知名/未解析 src）占位盒 + 观测行既有纪律承袭；native 轨
+`-q` 走 `ensure_covered` 既有门（queue 档拒 NotCovered 退出留痕）。
 
 ## 2. Wire Format（信封）
 

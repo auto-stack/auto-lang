@@ -4837,8 +4837,17 @@ fn run_file_dynamic_ui_inner(
     override_scenario: Option<&crate::session::CompilerSession>,
 ) -> AutoResult<String> {
     use crate::ui::iced::run_dynamic_iced;
-    // 4. Run iced (blocks until all windows close; plan-459 daemon semantics)
     let comp = build_dynamic_component_inner(code, path, override_scenario)?;
+    // PLAN-031 T-05：-q vm 轨分岔（env 门）——装载链零改：CWD/主题/后端
+    // 序由 run_vm_ui 上游照常执行（组件已按同链装载），仅"自开 OS 窗"
+    // 换 rqhost 客户端（build_dynamic_component 后、run_dynamic_iced
+    // 前——§5.1 D6 定案位）。env 值 = well-known 管道名（rendezvous
+    // 采纳内建在 ClientTarget::Rqhost——不预连不烧一次性管道实例）。
+    if let Ok(pipe) = std::env::var("AUTO_RQHOST_PIPE") {
+        return crate::ui::desktop_protocol::rqhost::run_vm_rqhost_client(comp, &pipe)
+            .map_err(crate::error::AutoError::Msg);
+    }
+    // 4. Run iced (blocks until all windows close; plan-459 daemon semantics)
     run_dynamic_iced(comp)
         .map_err(|e| crate::error::AutoError::Msg(format!("{}", e)))
 }

@@ -51,6 +51,12 @@ pub mod selection;
 pub mod selectable_text;
 // PLAN-655: items-stretch 行两阶段等高布局（CSS align-items:stretch 原语）。
 pub mod stretch_line;
+// PLAN-656 T-06: synthetic managed scroll content iced widget（logical
+// extent 布局 + draw 期 viewport 观察；capability-test 专用，非 public widget）。
+pub mod managed_content;
+// PLAN-656 review F-4: scrollable 六测量读回 operation（controller 注册表
+// 预热/校正通道）。
+pub mod scroll_state_reader;
 
 // Plan 414 §8.2: headless layout testbench — `iced_test`-based bounds
 // assertions (feature `iced-layout-tests`; see layout_tests.rs header).

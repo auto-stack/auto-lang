@@ -1095,6 +1095,14 @@
       "PLAN-648"
      ],
      "status": "published"
+    },
+    {
+     "id": "P656-1",
+     "title": "universal-scroll-pane 通用滚动架构 scroll-pane（Phase A+B+C） — 变更摘要",
+     "content": "AutoUI 通用滚动架构 primitive 落地：ui/scroll 后端无关语义层（ScrollState/Intent/Source/Viewport 三通道 hosting contract+geometry）+ scroll-pane 四拼写 alias 与 axis/scrollbar/controller/onscroll + controller 原生族（id 9900 高段避动态分配器覆写）+ iced Direction 三值/结构性 hidden/读回 operation（translation 正向符号约定）/写臂重发 + Vue plain/shadcn 双模式与 logical spacer（managed 节点恒 1）；p656 示例实机全绿（10M 逻辑 extent 驱动 range）；两处 v1 执行裁定（controller 函数族/on-scroll 8 位置实参）入 spec+KNOWN-DEBT 656；spec=docs/specs/widgets/scroll-pane.md（含已知陷阱节：pane 高度外层容器 idiom）。",
+     "file": "docs/specs/widgets/scroll-pane.md",
+     "related": "['PLAN-656']",
+     "status": "published"
     }
    ]
   },

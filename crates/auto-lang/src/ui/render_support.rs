@@ -157,10 +157,13 @@ fn get_support_details(tag: &str) -> TagSupport {
         // produced the 60 false-positive `unknown tag` errors in
         // autoui_check (scroll/aside/header/icon/badge/table/nav-link are
         // all real conversions now; see aura_view_builder tag dispatch).
-        "scroll" | "scrollable" => TagSupport::partial(
-            &["direction"],
-            "renders a scrollable column; direction prop ignored",
-        ),
+        // PLAN-656: scroll-pane 语义——axis 三值/scrollbar 策略/controller/
+        // onscroll 双端生效（hidden=Scrollbar::hidden() 结构性无命中区）；
+        // legacy direction 映射 axis（axis 优先）。
+        "scroll" | "scrollable" => TagSupport::full(),
+        // PLAN-656 T-06: capability-test 专用 synthetic managed content
+        //（logical extent 自绘 widget；非 public widget）。
+        "scroll_test_content" => TagSupport::full(),
         "aside" | "main" | "header" | "nav" | "section" | "footer" | "article" => {
             TagSupport::full()
         }
