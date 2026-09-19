@@ -1071,7 +1071,9 @@ mod tests {
             max: 100.0,
             value: 50.0,
             step: Some(1.0),
-            on_change: |_v| TestMsg::Change,
+            on_change: Some(crate::ui::view::SliderChangeHandler::new(
+                |_v| TestMsg::Change,
+            )),
             style: None,
         };
 
@@ -1456,17 +1458,21 @@ where
         }
 
         // Slider on_change 事件
+        // PLAN-661 T-02: on_change 转 Option<SliderChangeHandler>——None 不
+        // 注册（无动作面）。
         View::Slider { on_change, .. } => {
-            let msg = if is_dynamic_message {
-                unsafe {
-                    let any_msg = on_change as *const _ as *const DynamicMessage;
-                    (*any_msg).clone()
-                }
-            } else {
-                DynamicMessage::String(format!("slider_change:{}", std::any::type_name::<M>()))
-            };
+            if let Some(change_handler) = on_change {
+                let msg = if is_dynamic_message {
+                    unsafe {
+                        let any_msg = change_handler as *const _ as *const DynamicMessage;
+                        (*any_msg).clone()
+                    }
+                } else {
+                    DynamicMessage::String(format!("slider_change:{}", std::any::type_name::<M>()))
+                };
 
-            router.register_change(node_id, move |_ctx| msg.clone());
+                router.register_change(node_id, move |_ctx| msg.clone());
+            }
         }
 
         // Select on_select 事件

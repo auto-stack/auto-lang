@@ -5058,11 +5058,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // Plan 309 续篇 II: in inspect-capture mode render a static
                 // read-out instead of the interactive slider (iced's slider
                 // requires a callback). Cosmetic-only; 015-notes has no sliders.
-                if inspect_capture_active() {
+                // PLAN-661 T-02: 无 on_change 同理——iced slider 强制
+                // Fn(f32) -> Message 回调，泛型 M 无凭空 no-op 消息可造，
+                // 无 handler = 无交互 = 静态读出（值可见）。
+                if inspect_capture_active() || on_change.is_none() {
                     text(format!("{}", value)).into()
                 } else {
                     use iced::widget::slider;
-                    let mut slider_widget = slider(min..=max, value, on_change);
+                    let Some(change_handler) = on_change else {
+                        unreachable!("guarded above");
+                    };
+                    let mut slider_widget = slider(min..=max, value, move |v| change_handler.call(v));
 
                     if let Some(step_value) = step {
                         slider_widget = slider_widget.step(step_value);

@@ -42,7 +42,9 @@ impl Component for SliderExample {
                     .padding(20)
                     .child(View::text("Value:"))
                     .child(View::text(format!("{:.2}", self.value)))
-                    .child(View::slider(0.0..=100.0, self.value, Message::ValueChanged).build())
+                    .child(View::slider(0.0..=100.0, self.value)
+                            .on_change(Message::ValueChanged)
+                            .build())
                     .build()
             )
             .child(
@@ -53,7 +55,8 @@ impl Component for SliderExample {
                     .child(View::text("Volume:"))
                     .child(View::text(format!("{:.1}%", self.volume * 100.0)))
                     .child(
-                        View::slider(0.0..=1.0, self.volume, Message::VolumeChanged)
+                        View::slider(0.0..=1.0, self.volume)
+                            .on_change(Message::VolumeChanged)
                             .step(0.01)
                             .build()
                     )

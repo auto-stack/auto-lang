@@ -423,7 +423,8 @@ impl GalleryApp {
             .child(View::text("滑块输入组件".to_string()))
             .child(View::text("范围: 0-100, 当前值: 50".to_string()))
             .child(
-                View::slider(0.0..=100.0, 50.0, |value| Message::SliderChanged(value))
+                View::slider(0.0..=100.0, 50.0)
+                    .on_change(|value| Message::SliderChanged(value))
                     .build()
             )
             .build()

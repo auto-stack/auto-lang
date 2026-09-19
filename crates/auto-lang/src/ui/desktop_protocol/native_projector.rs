@@ -80,13 +80,15 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
     /// 回写物化消息（None = 只显不编——登记省略）。
     Input { rect: WRect, value: String, on_change: Option<M>, slot: usize },
     /// slider：轨道点击 → 几何换算 f32（min..=max 线性 + step 取整）→
-    /// fn 指针物化派发（T-01 附带定案：v1 点击定位，拖拽 not-yet）。
+    /// 回调物化派发（T-01 附带定案：v1 点击定位，拖拽 not-yet；
+    /// PLAN-661 T-02：on_change 转 `Option<SliderChangeHandler>`——None
+    /// 不登记命中）。
     Slider {
         rect: WRect,
         min: f32,
         max: f32,
         step: Option<f32>,
-        on_change: fn(f32) -> M,
+        on_change: Option<crate::ui::view::SliderChangeHandler<M>>,
     },
     /// select 闭态盒：点击开（无消息派发——开合是投影器侧状态，D3）。
     SelectBox { rect: WRect, slot: usize },
@@ -698,7 +700,7 @@ impl<C: Component> RqProjector<C> {
                 self.rev += 1;
             }
             // 轨道点击 → f32 = min + clamp((x-x0)/w)×range（step 取整）→
-            // fn 指针物化派发（零 thread-local——载荷自足）。
+            // 回调物化派发（零 thread-local——载荷自足；登记时已滤 None）。
             Some(HitEntry::Slider { rect, min, max, step, on_change }) => {
                 let t = if rect.w > 0.0 {
                     ((x - rect.x) / rect.w).clamp(0.0, 1.0)
@@ -710,7 +712,9 @@ impl<C: Component> RqProjector<C> {
                     Some(st) if st > 0.0 => min + ((raw - min) / st).round() * st,
                     _ => raw,
                 };
-                self.component.on(on_change(v.clamp(min, max)));
+                if let Some(handler) = on_change {
+                    self.component.on(handler.call(v.clamp(min, max)));
+                }
                 self.rev += 1;
             }
             // select 闭态盒点击 → 开（无消息——投影器侧状态，D3）。
@@ -1316,13 +1320,16 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 WRect::new(vx - SLIDER_KNOB / 2.0, cy - SLIDER_KNOB / 2.0, SLIDER_KNOB, SLIDER_KNOB),
                 LABEL_FG,
             );
-            ctx.hits.push(HitEntry::Slider {
-                rect: WRect::new(x, y, w, h),
-                min: *min,
-                max: *max,
-                step: *step,
-                on_change: *on_change,
-            });
+            // None 不登记（无动作面——HitEntry::Slider 文档同口径）。
+            if on_change.is_some() {
+                ctx.hits.push(HitEntry::Slider {
+                    rect: WRect::new(x, y, w, h),
+                    min: *min,
+                    max: *max,
+                    step: *step,
+                    on_change: on_change.clone(),
+                });
+            }
             Laid { size: (w, h) }
         }
         // PLAN-025 T-04 select 臂（D3）：闭态 = 值盒 + ▾ + 点击开；开态
@@ -2380,7 +2387,7 @@ mod tests {
             type Msg = WMsg;
             fn on(&mut self, _msg: Self::Msg) {}
             fn view(&self) -> View<Self::Msg> {
-                View::slider(0.0..=1.0, 0.5, |_| WMsg::Nop).build()
+                View::slider(0.0..=1.0, 0.5).on_change(|_| WMsg::Nop).build()
             }
         }
 
@@ -3246,7 +3253,7 @@ mod tests {
         }
         fn view(&self) -> View<Self::Msg> {
             View::col()
-                .child(View::slider(0.0..=100.0, self.vol, SMsg::Vol).build())
+                .child(View::slider(0.0..=100.0, self.vol).on_change(SMsg::Vol).build())
                 .child(View::text(format!("vol: {}", self.vol)))
                 .build()
         }
@@ -3302,7 +3309,7 @@ mod tests {
                 }
             }
             fn view(&self) -> View<Self::Msg> {
-                View::slider(0.0..=100.0, self.seen, SMsg::Vol).step(30.0).build()
+                View::slider(0.0..=100.0, self.seen).on_change(SMsg::Vol).step(30.0).build()
             }
         }
         let mut sp = RqProjector::new(Stepper { seen: 0.0 }, 480.0, 320.0);
@@ -3615,7 +3622,7 @@ mod tests {
                     .child(View::textarea("ta").build())
                     .child(View::checkbox(true, "cb"))
                     .child(View::radio(false, "r"))
-                    .child(View::slider(0.0..=1.0, 0.5, |_| MMsg::Nop).build())
+                    .child(View::slider(0.0..=1.0, 0.5).on_change(|_| MMsg::Nop).build())
                     .child(View::Select {
                         options: vec!["o".into()],
                         selected_index: Some(0),

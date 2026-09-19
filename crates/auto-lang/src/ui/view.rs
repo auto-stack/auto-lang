@@ -352,6 +352,36 @@ impl<M> ScrollCallback<M> {
     }
 }
 
+/// PLAN-661 T-02: Slider 值变更回调（[`ScrollCallback`] 同款 newtype 形态）。
+///
+/// 收新值（f32）返回宿主消息。Arc<dyn Fn> 使其可跨消息类型包装——VM 轨
+/// view 树是 `View<DynamicMessage>` 经 map_msg 转 `View<IcedMessage>`，
+/// 此前的 `fn(f32) -> M` 裸指针做不到（map_msg Slider 臂为 panic 占位，
+/// view.rs:327-330 注记点名的存量缺陷）。`None` = 无 onchange 动作面。
+#[derive(Clone)]
+pub struct SliderChangeHandler<M> {
+    callback: Arc<dyn Fn(f32) -> M + Send + Sync>,
+}
+
+impl<M> std::fmt::Debug for SliderChangeHandler<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SliderChangeHandler").finish()
+    }
+}
+
+impl<M> SliderChangeHandler<M> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(f32) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f) }
+    }
+
+    pub fn call(&self, value: f32) -> M {
+        (self.callback)(value)
+    }
+}
+
 /// Plan 044 T2: AutodownEditor 块聚焦事件测量（`View::AutodownEditor::on_focus`
 /// 载荷）。焦点块顶层索引 + 该块 DocLayout 实测高（px）；`block: None` 为
 /// 失焦变体（高度无意义置 0）。高度在 widget 焦点变化现场从 layout 快照
@@ -793,7 +823,9 @@ pub enum View<M: Clone + Debug> {
         min: f32,
         max: f32,
         value: f32,
-        on_change: fn(f32) -> M,  // Function that creates message from new value
+        /// PLAN-661 T-02: 值变更回调（newtype，可跨消息类型包装）。
+        /// None = 无 onchange 动作。
+        on_change: Option<SliderChangeHandler<M>>,
         step: Option<f32>,
         style: Option<Style>,
     },
@@ -1801,14 +1833,16 @@ impl<M: Clone + Debug> View<M> {
     /// # use auto_ui::View;
     /// # #[derive(Clone, Copy, Debug)]
     /// # enum Msg { ValueChanged(f32) }
-    /// View::slider(0.0..=100.0, 50.0, Msg::ValueChanged)
+    /// View::slider(0.0..=100.0, 50.0)
+    ///     .on_change(Msg::ValueChanged)
+    ///     .build()
     /// ```
-    pub fn slider(range: std::ops::RangeInclusive<f32>, value: f32, on_change: fn(f32) -> M) -> ViewSliderBuilder<M> {
+    pub fn slider(range: std::ops::RangeInclusive<f32>, value: f32) -> ViewSliderBuilder<M> {
         ViewSliderBuilder {
             min: *range.start(),
             max: *range.end(),
             value,
-            on_change,
+            on_change: None,
             step: None,
             style: None,
         }
@@ -2328,20 +2362,19 @@ impl<M: Clone + Debug> View<M> {
                     ColResizeCallback::new(move |m| f(cb.call(m)))
                 }),
             },
-            View::Slider { min, max, value, on_change, step, style } => {
-                // Slider uses fn(f32) -> M which can't be wrapped into fn(f32) -> N.
-                // We need to convert to a dynamic callback. For now, panic at runtime
-                // if map_msg is used on a Slider view. This can be improved later.
-                let _ = on_change;
-                View::Slider {
-                    min,
-                    max,
-                    value,
-                    on_change: |_| panic!("map_msg not supported for Slider views"),
-                    step,
-                    style,
-                }
-            }
+            View::Slider { min, max, value, on_change, step, style } => View::Slider {
+                min,
+                max,
+                value,
+                step,
+                style,
+                // PLAN-661 T-02: SliderChangeHandler newtype 可包装换型
+                // （ScrollCallback 同款）；panic 占位清除。
+                on_change: on_change.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    SliderChangeHandler::new(move |v| f(cb.call(v)))
+                }),
+            },
             View::Accordion { items, allow_multiple, on_toggle, style } => View::Accordion {
                 items: items.into_iter().map(|item| AccordionItem {
                     title: item.title,
@@ -2959,7 +2992,7 @@ pub struct ViewSliderBuilder<M: Clone + Debug> {
     min: f32,
     max: f32,
     value: f32,
-    on_change: fn(f32) -> M,
+    on_change: Option<SliderChangeHandler<M>>,
     step: Option<f32>,
     style: Option<Style>,
 }
@@ -2968,6 +3001,15 @@ impl<M: Clone + Debug> ViewSliderBuilder<M> {
     /// Set step increment for the slider
     pub fn step(mut self, step: f32) -> Self {
         self.step = Some(step);
+        self
+    }
+
+    /// PLAN-661 T-02: 绑定值变更回调（新值 → 宿主消息；fn 指针/闭包均可）。
+    pub fn on_change<F>(mut self, f: F) -> Self
+    where
+        F: Fn(f32) -> M + Send + Sync + 'static,
+    {
+        self.on_change = Some(SliderChangeHandler::new(f));
         self
     }
 
@@ -3705,6 +3747,35 @@ mod tests {
                 assert_eq!(cb.call(ColResizeMetrics { col: 0, width: 90.0 }), B::R(0, 90.0));
             }
             _ => panic!("Expected mapped View::Table"),
+        }
+    }
+
+    #[test]
+    fn test_slider_map_msg_remaps_change_handler() {
+        // PLAN-661 T-02: map_msg 换型——on_change 经 SliderChangeHandler
+        // newtype 包装不丢（此前 fn 指针形态该臂为 panic 占位）；
+        // Clone/Debug 携带；None 透传 None。
+        #[derive(Debug, Clone, PartialEq)]
+        enum A { SetVol(f32) }
+        #[derive(Debug, Clone, PartialEq)]
+        enum B { SetVol(f32) }
+        let view = View::slider(0.0..=100.0, 30.0)
+            .step(1.0)
+            .on_change(|v| A::SetVol(v))
+            .build();
+        let mapped: View<B> = view.map_msg(|a| match a { A::SetVol(v) => B::SetVol(v) });
+        match mapped {
+            View::Slider { min, max, value, step, on_change: Some(cb), .. } => {
+                assert_eq!((min, max, value, step), (0.0, 100.0, 30.0, Some(1.0)));
+                assert_eq!(cb.call(75.0), B::SetVol(75.0));
+            }
+            _ => panic!("Expected mapped View::Slider with on_change"),
+        }
+        // None（无 onchange）透传——map_msg 不凭空造动作面。
+        let bare: View<A> = View::slider(0.0..=1.0, 0.5).build();
+        match bare.map_msg(|a| a) {
+            View::Slider { on_change: None, .. } => {}
+            _ => panic!("Expected bare View::Slider with on_change None"),
         }
     }
 

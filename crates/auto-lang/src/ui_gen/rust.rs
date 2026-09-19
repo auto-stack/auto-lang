@@ -3698,10 +3698,10 @@ impl RustGenerator {
                     return result;
                 }
 
-                // PLAN-025 T-03: slider — View::slider(min..=max, value, fn
-                // 指针)。载荷回写 = f32 载荷变体的构造器 fn 指针（物化
-                // 自足——零 thread-local，与 input 的 INPUT_TEXT 通道相
-                // 比"回写通道更干净"）；on() 侧载荷臂由 msg 声明 + on 块
+                // PLAN-025 T-03（PLAN-661 T-02 形态迁移）: slider —
+                // View::slider(min..=max, value) + .on_change(闭包)。载荷
+                // 回写 = f32 载荷变体的构造器闭包（SliderChangeHandler newtype
+                // 包装——可跨消息类型映射）；on() 侧载荷臂由 msg 声明 + on 块
                 // 模式（.SetVol(v float) -> {...}）既有机制承担。
                 if tag == "slider" {
                     let numeric = |v: Option<&AuraPropValue>, default: f64| -> String {
@@ -3729,21 +3729,21 @@ impl RustGenerator {
                         }
                         _ => numeric(props.get("value"), 0.0),
                     };
-                    let mut builder = format!("View::slider({min}..={max}, {value_expr}");
-                    // onchange → fn 指针 = 变体构造器（载荷变体）。
+                    let mut builder = format!("View::slider({min}..={max}, {value_expr})");
+                    // onchange → 载荷变体构造器闭包（SliderChangeHandler
+                    // 由 builder .on_change 包装）。
                     if let Some((_, handler)) = events
                         .iter()
                         .find(|(e, _)| matches!(e.as_str(), "onchange" | "onChange"))
                     {
                         let variant = self.extract_variant_name(&handler.handler);
                         let msg_name = self.current_msg_name();
-                        builder = format!("{builder}, {msg_name}::{variant}");
-                    } else {
-                        // 无 onchange：占位零参闭合（View::slider 的 fn 槽
-                        // 必填——不被消费即无行为面）。
-                        builder = format!("{builder}, |_| {{ unreachable!() }}");
+                        builder = format!(
+                            "{builder}\n                .on_change(|v| {msg_name}::{variant}(v))"
+                        );
                     }
-                    builder = format!("{builder})");
+                    // 无 onchange：不挂 .on_change（None = 无动作面，语义
+                    // 等价且更净——旧占位零参闭合退役）。
                     if let Some(st) = props.get("step") {
                         builder = format!("{builder}.step({})", numeric(Some(st), 0.0));
                     }
@@ -8264,7 +8264,8 @@ widget Counter {
 
     /// PLAN-025 T-03: slider codegen golden（fixture 真源：
     /// tests/fixtures/025-native-input/slider.at——View::slider 构造 +
-    /// f32 载荷变体 fn 指针 + on() 载荷臂，零 thread-local 回写）。
+    /// f32 载荷变体闭包（PLAN-661 T-02: SliderChangeHandler newtype，
+    /// .on_change 包装）+ on() 载荷臂，零 thread-local 回写）。
     #[test]
     fn test_slider_codegen_arm_fixture() {
         let src = std::fs::read_to_string(concat!(
@@ -8292,8 +8293,17 @@ widget Counter {
             code
         );
         assert!(
+            // PLAN-661 T-02 新发射形态：构造器双参 + .on_change 闭包
+            // （SliderChangeHandler 由 builder 包装），旧 fn 指针三参
+            // 形态退役。
+            code.contains(".on_change(|v| SliderBoxMsg::SetVol(v))"),
+            "on_change 闭包 = 载荷变体构造器包装:
+{}",
+            code
+        );
+        assert!(
             code.contains("SliderBoxMsg::SetVol"),
-            "fn 指针 = 载荷变体构造器:
+            "载荷变体构造器在册:
 {}",
             code
         );

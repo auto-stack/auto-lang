@@ -34,7 +34,9 @@ impl Component for ProgressExample {
             .child(View::text("Progress Bar Example"))
             .child(View::text(format!("{:.1}%", self.progress * 100.0)))
             .child(View::progress_bar(self.progress))
-            .child(View::slider(0.0..=1.0, self.progress, Message::ProgressChanged).build())
+            .child(View::slider(0.0..=1.0, self.progress)
+            .on_change(Message::ProgressChanged)
+            .build())
             .child(View::text("Use the slider to adjust the progress"))
             .build()
     }

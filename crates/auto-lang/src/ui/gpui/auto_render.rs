@@ -537,7 +537,7 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 table_div.into_any()
             }
 
-            View::Slider { min, max, value, on_change, step: _, style } => {
+            View::Slider { min, max, value, on_change: _, step: _, style } => {
                 // Calculate percentage
                 let range = max - min;
                 let percentage = ((value - min) / range).clamp(0.0, 1.0);
@@ -1107,26 +1107,28 @@ impl<M: Clone + Debug + 'static> IntoGpuiElementWithHandler<M> for View<M> {
                 );
 
                 // Subscribe to slider change events
+                // PLAN-661 T-02: on_change 为 Option<SliderChangeHandler>——
+                // None 不订阅（无动作面）。
                 {
-                    let msg_callback = on_change.clone();
+                    if let Some(change_handler) = on_change.clone() {
+                        // Subscribe to slider change events
+                        let subscription = cx.subscribe(&slider_state, move |comp_state, _entity, event, cx| {
+                            match event {
+                                SliderEvent::Change(slider_value) => {
+                                    // Extract the value from the SliderValue enum
+                                    let new_value = slider_value.start();
 
-                    // Subscribe to slider change events
-                    let subscription = cx.subscribe(&slider_state, move |comp_state, _entity, event, cx| {
-                        match event {
-                            SliderEvent::Change(slider_value) => {
-                                // Extract the value from the SliderValue enum
-                                let new_value = slider_value.start();
-
-                                // Call the user's callback with the new value
-                                let msg = msg_callback(new_value);
-                                comp_state.handle(msg);
-                                cx.notify();
+                                    // Call the user's callback with the new value
+                                    let msg = change_handler.call(new_value);
+                                    comp_state.handle(msg);
+                                    cx.notify();
+                                }
                             }
-                        }
-                    });
+                        });
 
-                    // Keep the subscription alive
-                    std::mem::forget(subscription);
+                        // Keep the subscription alive
+                        std::mem::forget(subscription);
+                    }
                 }
 
                 // Create the slider using gpui-component's Slider widget
