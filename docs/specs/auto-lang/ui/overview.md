@@ -1,7 +1,8 @@
 # ui（AURA / UI 引擎 / 桌面运行时）
 
 > **Status**: active（主战场：vue 轨 codegen 成熟化 + VM 轨视觉 parity + 虚拟桌面线推进中）
-> 最近刷新：2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
+> 最近刷新：2026-09-18（PLAN-027 rev2 回写：shell a2r 接缝面 S1/S2 落地——codegen 臂族 + 显式拒绝门/词汇门 + ShellProjection/DesktopBusHandle typed 载体，详见 design/shell-a2r-seams.md（provisional）；design 文档 desktop-shell-a2r.md 裁定落定 = B 形态 + 双轨常驻）
+> 2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
 >
 > **资产位置注记（PLAN-590，Stage B P-5，2026-09-07）**：桌面域资产已随迁
 > auto-os——`ui-gallery`/`widgets-gallery` 在 **auto-os 顶层**（框架侧
@@ -25,7 +26,41 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
+## 现状（2026-09-18）——Select Anything（PLAN-646）
+
+任意 AutoUI 基面框选 → 结构化 Auto/JSON 回吐（知识采集地基）：选择语义
+纯函数（中心点包含命中 + 顶层修剪 + 文档序，`ui/selection/`）、结果信封
+三格式（Auto 切片/JSON/Atom，`ui/selection/output.rs`）。挂点：VM 端
+Alt+拖拽 marquee（`GlobalPress` 臂起笔 + canvas 蒙层 + `__bounds_collected`
+延迟计算 + DevTools「采集」标签页三视图+复制）；Vue 端 dev overlay
+（`node_to_html` 注入 `data-auto-{tag,src,id,span}`，`AUTOUI_SELECT_MARKERS=1`
+门控；脚手架 `auto-sources.ts` 源映射 + `auto-select/overlay.ts`，
+main.ts `import.meta.env.DEV` 动态引用）；MCP 工具 `autoui_select_rect`
+（共享 styled_vtree + layout_bounds + 随帧 source_code）。契约：
+`design/select-anything.md`。`__hot_reload` 泵臂代消费 `needs_bounds`
+（静默会话 bounds 采集闭环，Plan 282 补线）。
+
 ## 现状（2026-09-18）
+
+**VM 空转渲染减负 easy wins（PLAN-650 落地）**：timer `when` 订阅层门控
+（P499-1 调度器半边清偿）+ dirty=false 非 debug 帧旁路（live_vtree/
+needs_bounds/input_ids）+ hot_reload 非 debug 默认 2000ms（`AUTOUI_HOT_RELOAD`
+0/1 门控）+ MCP 捕获按 dirty/近 30s 活跃收紧。架构级 Element 帧间缓存等
+D-1..D-5 延期，设计见 `docs/design/autoui/vm-frame-budget.md`。
+
+**嵌套组件 TimeSource + mounted 过滤订阅（PLAN-652 阶段 1 + PLAN-654 阶段 2 path 级）**：
+订阅不再只扫根 `tick_interval()`——装载期收集 root/child/store 的 `.Tick`+`timer`
+进 `timesources`；装配期 `AuraViewBuilder` 把实例化 child 名写入
+`mounted_types`，同时登记 **InstancePath**（`{widget}@{mount_seq}`）到
+`mounted_paths`；renderer 对「挂载中且 when 通过」的源按 **path 级 identity**
+建 `widget_event_tick` 订阅（同 widget 多实例可分订阅/分退订）。派发消息携带
+path，handler 仍为类型级（单 VM 根态——path 级订阅 ≠ path 级状态隔离）。
+条件分支切走后对应 path **停订**。**框架墙钟（阶段 B）**：视图引用
+`__clock_hhmm`/`__clock_now_sec` 时框架 1Hz 注入，组件可不自起高频 Tick；
+handler 侧用 `Time.now_sec()`；desktop dock 仍用分钟级 `__wm_clock`。详见
+`docs/specs/auto-lang/ui/design/nested-timesource.md`、
+`docs/specs/auto-lang/ui/design/clock-service.md` 与设计
+`docs/design/autoui/component-time-and-events.md`。
 
 **012-clock 现代时钟应用重构与传统手表表盘（PLAN-644 落地）**：
 `examples/ui/012-stopwatch` 升级并重命名为 `examples/ui/012-clock`（Clock 现代时钟应用），深度重构为五大完整功能模块（时钟、世界时钟、闹钟、秒表、倒计时），首页呈现 SVG 矢量传统机械手表 ⌚ 指针表盘与动态角度换算，桌面小组件 `view mini` 升级为迷你手表表盘 + 数字时钟，全面适配 AutoUI Design Tokens 并消除 P642-D6 遗留横幅按钮债务。
@@ -48,6 +83,47 @@ codegen 降级归一——分表非缺口；imagesurface 整 kind not-yet）与
 重复）；翻转数据行 =
 `docs/plans/reports/p026-native-flip-data-row.md`；度量 =
 `docs/plans/reports/020-rust-exe-compositor-metrics.md`。
+
+**图像 DrawOp 通道（PLAN-028，provisional）**：`DrawOp::Image{rect, src,
+fit}`（tag 6 追加式，`ImageFit` v1 = Stretch，`PROTOCOL_VERSION` 仍 1）
+——src 引用 + 宿主侧解析（零位图字节过线、child 免解码）：词汇表 =
+本地文件 / `builtin:` / `data:` / `http(s)`（3s 超时）/ `thumbnail://{wid}`
+虚拟引用（snapshot SWR 每帧直查，不进永久句柄缓存）；宿主
+`broker_surface` 解析面 = 进程级 Handle 缓存（key=src 含负缓存）+
+`Frame::draw_image` 首用 + http miss 占位先行/后台解码/下帧翻真（零新增
+触发器）+ 未解析占位 + `[drawlist-image]` 观测去重（I3）；解释态
+`layout_image`（src 绑定 read_state 代入）与 native `View::Image` 臂同刻度
+真图升级（rect 推导零变化；icon lucide 降级形态随臂入线——宿主字形解析
+not-yet，P026-D1 字形半句维持）；TS decode tag 6 必达 + 占位渲染 +
+web 真位图 not-yet。权威正文 =
+`docs/design/autoui/desktop-protocol-v1.md` §1.9（本节仅指针）；测试面 =
+`t028_*` 宿主解析单测族 + `p028_image_arm`（AUTO_DESKTOP_E2E）+
+`IMAGE_FRAME_HEX` 双侧 golden。
+
+
+**live 输入接线 + shell queue 面（PLAN-029，provisional）**：①live 输入
+两端（P025-D1 核销）——`desktop_window_events` 扩键盘/滚轮/IME 三族臂
+（`EventStatus::Ignored` 门）+ 映射纯函数（Named→VK 转发表/Character→
+Chars/IME 三态/Lines×`WHEEL_LINE_PX`=40px；修饰位 wire 布局 bit0-3）+
+`DesktopEvent::LiveInput{window, input}` 泵入（带发生 OS 窗——update 臂
+`HostCtx.window` 桌面窗过滤 + picker 模态避让）+ `route_live_input` →
+broker_* 六函数零改动直用（键盘/IME=焦点窗、滚轮=last_cursor 命中窗）；
+真机证据分层（`p029_live_input_arm` 五腿 + acceptance key verb +
+`sendinput.rs` FFI 组装层——真桌面 SendInput e2e 腿 not-yet）。②shell
+面四 kind 入册（popover 覆盖序渲染/全 14 placement 几何/命中互斥 catcher/
+Esc→on_dismiss/零开合状态机；mousearea 命中序；windowthumbnail·
+workspacepreview 桥接）。③词汇增量——`lucide:{name}[#{rrggbb}]` 真渲
+（resvg 0.45 + tiny-skia 0.11 Contain 栅格化，缓存键 `{src}@{w}x{h}`，
+P026-D1 字形半句核销；`svgdoc:` 维持 not-yet）+ `thumbnail://{wid}!
+{fallback}` miss→图标 + `workspace://{ws}!{fallback}` 宿主合成
+（`workspace_preview` 数据面 + `tile_rect`）。④`shell_pack_native_
+covered` 五件 Covered（B 覆盖门预演）；翻转复测 judged 72.7% < 95%
+维持不翻。权威正文 =
+`docs/design/autoui/desktop-protocol-v1.md` §1.10（本节仅指针，不
+重复）；测试面 = `live_input_tests` + `sendinput` 组装 + popover 几何/
+命中族 + `t029_*` + `shell_pack_native_covered` + `p029_live_input_
+arm`/`p029_shell_face_arm`（AUTO_DESKTOP_E2E）；复测行 =
+`docs/plans/reports/p029-native-flip-retest-row.md`。
 
 ## 现状（2026-09-17）
 
@@ -365,6 +441,31 @@ pointer 三包装（`setPointerCapture`，拖出条外仍跟手，判据取 `e.c
 找不到安装包/版本未知时跳过）。口径细节见
 [icon-data-source-and-parity](../../../design/autoui/icon-data-source-and-parity.md)。
 尺寸口径见 ⑤ 与 617/619 段（显式类 > `size:` > 默认 20px），此处不重复。
+
+## ui-gallery VM 内嵌健康度契约（PLAN-642）
+
+VM 画廊内嵌形态（AppViewport.vm.at + demos/*.at 适配器 + registry.at）的 enduring 契约，2026-09-18 落地：
+
+1. **registry `loadable` 语义（modify，T-08/T-14 扩）**：registry.at 的 `loadable` = "VM 臂内嵌可交互"（`loadable || fullstack || route_stub` 三档并集）；web 臂 `demos-registry.ts.loadable` = Vue 动态挂载能力——两臂数据源分离为 enduring 决策（P633-D2 核销）。
+2. **适配器 stylekit 配方内联（add）**：`emit_gallery_vm_demos` 发射期把跨包 `use stylekit.styles` 配方内联为适配器本地 `pub style`（画廊上下文无跨包解析通道）；教程/源码 tab 展示语料原文。
+3. **组件包目录级联（add）**：475 组件包（`use { package: ... from "dir" }`）目录随适配器级联拷贝进 demos/（package.at 清单跳过；包内 fn 模块链同链收集；同名异容 kept-first 告警）。
+4. **parse_package_widgets recipe 预注册义务（modify）**：475 包装载器 parse 前必须执行 `prepare_style_recipe_imports`（与编译入口同契约；tree_icon 修复实证）。
+5. **distributed 列 grow 剥离（add，T-11）**：justify-between/around/evenly 列的直接子剥 Flex1/FlexAuto/Grow 且不补 Height(Full)——iced 0.14 flex 对 FillPortion 子 min=max=份额硬钉 + 列内子项按剩余量配给，grow 子与垫片竞争时内容 0×0 隐没（008 特性行实证）；CSS grow 的 min-content 钳制 iced 无对应，distributed 列 grow 让渡给垫片。
+6. **frame scroll 兜底 + 内嵌语料 Fill 高度约定（add，T-12）**：overflow-y:hidden + justify-Center/End 列的内容包 Shrink 高度 Scrollable——短内容被容器 center_y 垂直居中、长内容封顶滚动（009/016）。配套语料约定：**内嵌 demo 避免 Fill 高度技巧**（items-stretch 等高拉伸、定高滚动上下文中的 flex-1——Fill 在 scroll 无界主轴下解析塌缩，008 实证）；等高需求待 PLAN-655 StretchLine 原语（P642-D12 近期处置）。
+7. **宿主保留字段 α-改名（add，T-13①）**：合并根态对象（Plan 419 统一状态）上宿主壳声明的主题魔法字段（`dark_mode`/`accent_color`——恰为渲染器每帧状态→主题同步与 `execute_set_theme` 写回消费的两个保留名）不被 demo 侧覆写：发射期 `rename_reserved_root_fields` 把 demo 适配器+自有模块+包级联文件的这两个名统一 `<ns>_` 前缀（声明/读/写一体 α-改名，语义自洽）；语料原文、宿主壳、宿主 deps 不动（web 臂 demo 本就各自独立持主题态，改名对齐双臂语义）。根因实证：demo store Init 与匿名模块 init 两条 SET_FIELD 直写覆写宿主字段（写点探针定罪）；此前的写端局部改名失败机理 = store var 与静态初始化不在赋值语句改名面内，全量 α-改名是完整形态。
+8. **视图侧 store 解析逐组件（add，T-15）**：视图求值的 `.Store.X` 展平判定查**本组件合成期存档**的别名快照（VmBridge `store_alias_snapshot`，合成同线程紧邻捕获）——线程级 `VIEW_STORE_ALIAS_SNAPSHOT` 单例在多组件工程（画廊合并轨）下被后续合成覆盖；`.len()` 后缀条件快路径同样经 `store_source_field` 展平（此前把 "Store.field" 整段当单字段名必 miss → 恒 false，015 "No notes yet" 实证）。
+9. **routes 首页 stub 档（add，T-14a）**：`routes {}` 否决的 demo（非 render:"vm"）以 route_stub 档入 VM 发射面——routes 块剔除 + `outlet` 行替换为 `/` 首页路由组件实例（无 `/` 时首个无参路由兜底）+ 首页页面文件 per-demo ns 级联（pages/ 跨 demo 同名异容）。配套：store 别名 use 行按声明文件 stem 重链（`use store: X` 别名 token ≠ 文件名 → 收集 miss → A1 歧义，021 实证）；带 back 种子的 stub 与 fullstack 同管线级联；**多 store demo 不入 stub 档**（泛型 `store.X` 语义分属多店，plan-446 A1 不可消解，023 降级回退）。路由语义进 VM 仍为非目标（导航链接不可用为 stub 既定边界）。
+10. **已知开放项（2026-09-19 收口态）**：017/031-image-viewer stream 后端与 020 媒体扫描 → proxy 独立计划（P642-D13，用户裁定范围含 stream 一等公民）；023 多 store routes → 随多 store 归属能力另议；F1 崩溃族（bash exit 127 = 栈溢出/fastfail 映射实验收窄；绕过 panic 钩子与 WER，审计日志判读法在册）→ 崩溃专项（P642-D3 裁定 a）；MCP fixture 派发不可达任意 handler + `fs.canonical` 失败返原路径语义漂移（P642-D14）；008 卡片 scroll 折叠线下滚轮可达性待人工复验。
+
+## items-stretch 两阶段行语义（PLAN-655）
+
+`items-stretch` 行的 enduring 渲染契约，2026-09-18 落地（P642-D12 路线 A）：
+
+1. **等高原语（add）**：stretch 行由 `ui/iced/stretch_line.rs` 的 `StretchLine` 控件承载——两阶段布局：measure 遍按各子项**最终份额宽** + 子项主轴 compression 取内容自然高（`h_line = max(子项内容高)`）；final 遍以 `effective = 有界父上下文 min(h_line, 入射上限) / 无界 h_line` 落位。行高 = max 子项内容高，子项等高 = 行高（CSS `align-items:stretch` 同构），**任意祖先上下文成立**（scroll 内容臂无界下不再塌缩——P642-D12 008 定价卡消失根修）。
+2. **交叉轴拉伸载体（add）**：Shrink 高子项以 `min_h = effective` 拉伸到行高（CSS auto 高 flex 项语义；justify-between 列因此在行高内分布内容，008 卡底 CTA 对齐实证）；Fixed 高子项不拉伸（CSS：显式高不参与 stretch），自然钳制；Fill 高子项解析到行高。
+3. **主轴配给（add）**：行内 Fill/FillPortion 子项按 third-pass 数学均分剩余宽（justify 垫片即 FillPortion Space，并入同一配给）；宽度探测先于测高（文本换行行数依赖最终宽——宽度未定时测高会把最高卡测短，内容下溢钳裁）。
+4. **旧 Fill 包装形态退役（retire）**：build_row 不再用「子项包 height:Fill 容器」模拟 stretch（该形态依赖有界祖先，无界下塌缩 0 高）；上节第 6 条「内嵌 demo 避免 items-stretch」约定自本节起解除，008 语料还原 items-stretch。scroll 兜底本身（overflow-hidden 列包 Shrink Scrollable）不受影响。
+5. **非目标**：012-clock 横向 stretch 行（列交叉轴=宽度，现实现无害）；iced 引擎级 flex 补丁（P642-D12 远期路线 B，iced 升级时处理）。
 
 ## 关键入口
 

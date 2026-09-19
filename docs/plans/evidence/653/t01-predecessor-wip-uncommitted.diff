@@ -1,0 +1,59 @@
+diff --git a/crates/auto-man/src/api_gen.rs b/crates/auto-man/src/api_gen.rs
+index 89b629f9d..5b42916f5 100644
+--- a/crates/auto-man/src/api_gen.rs
++++ b/crates/auto-man/src/api_gen.rs
+@@ -1568,6 +1568,23 @@ fn generate_api_rs(
+             if db_active {
+                 let fns = db_fns.unwrap();
+                 lines.push("// db-covered scalar service endpoints (PLAN-013 T2)".to_string());
++                // PLAN-653 T-01: 带参 GET 的 query 提取助手——此前带参端点
++                // 一律发 `Json` 提取器,GET 路由(axum 无 JSON body)恒 400
++                // ("Expected request with Content-Type: application/json",
++                // auto-term vue 轨 tab-id-at 族实测),前端轮询每拍断链。
++                // query 串里的标量恒为字符串,助手兼收数字/字符串两种形态。
++                lines.push("#[allow(dead_code)]".to_string());
++                lines.push("fn query_i64(q: &serde_json::Value, k: &str) -> i64 {".to_string());
++                lines.push("    q.get(k).and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or_default()".to_string());
++                lines.push("}".to_string());
++                lines.push("#[allow(dead_code)]".to_string());
++                lines.push("fn query_bool(q: &serde_json::Value, k: &str) -> bool {".to_string());
++                lines.push("    q.get(k).and_then(|v| v.as_bool().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or_default()".to_string());
++                lines.push("}".to_string());
++                lines.push("#[allow(dead_code)]".to_string());
++                lines.push("fn query_str(q: &serde_json::Value, k: &str) -> String {".to_string());
++                lines.push("    q.get(k).and_then(|v| v.as_str()).unwrap_or_default().to_string()".to_string());
++                lines.push("}".to_string());
+                 for endpoint in &api_module.endpoints {
+                     lines.push("".to_string());
+                     if !fns.contains(&endpoint.fn_name) {
+@@ -1581,8 +1598,30 @@ fn generate_api_rs(
+                         .iter()
+                         .filter(|p| !endpoint.path().contains(&format!(":{}", p.name)))
+                         .collect();
++                    // PLAN-653 T-01:method 分流——带参 GET 走 Query 提取
++                    // (query 串标量恒为字符串,经助手兼容数字/字符串两形态),
++                    // POST 及其余方法维持 Json body 提取不变。
++                    let is_get = endpoint.method() == "GET";
+                     let (sig, call_args) = if body_params.is_empty() {
+                         (String::new(), String::new())
++                    } else if is_get {
++                        (
++                            "query: axum::extract::Query<serde_json::Value>".to_string(),
++                            body_params
++                                .iter()
++                                .map(|p| {
++                                    let get = if p.ty.contains("int") || p.ty.contains("i64") {
++                                        format!("query_i64(&query, \"{}\")", p.name)
++                                    } else if p.ty.contains("bool") {
++                                        format!("query_bool(&query, \"{}\")", p.name)
++                                    } else {
++                                        format!("query_str(&query, \"{}\").as_str()", p.name)
++                                    };
++                                    get
++                                })
++                                .collect::<Vec<_>>()
++                                .join(", "),
++                        )
+                     } else {
+                         (
+                             "Json(body): Json<serde_json::Value>".to_string(),

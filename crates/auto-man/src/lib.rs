@@ -41,6 +41,11 @@ pub mod pac;
 // Phase 5: Vue project support
 pub mod vue;
 
+// PLAN-075: G-6 收口定向测——dep/components//bps 重生成臂同文件模块 fn 池
+// （夹具 examples/capability-tests/048-bp-module-fn，首个真实消费方）。
+#[cfg(test)]
+mod plan075_bp_tests;
+
 // PLAN-457: bundled shadcn-vue ui component snapshots (offline cold start)
 pub mod vue_shadcn;
 pub mod wm_assets;

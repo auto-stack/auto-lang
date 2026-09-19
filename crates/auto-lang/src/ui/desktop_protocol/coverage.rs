@@ -161,9 +161,11 @@ impl Coverage {
     /// native 对象**——View 枚举无 Switch 变体（解释态 aura 标签专属，
     /// T-01 §5.1 调查证据），native 轨无可产该 kind 的构造（I4 分表，
     /// 非缺口）。slider/select 随 T-03/T-04 扩容。PLAN-026 T-03 扩容：
-    /// display 族 image/progress 入册（占位保真臂）；icon/badge/avatar/
+    /// display 族 image/progress 入册；PLAN-028 真图升级（image 占位
+    /// 保真臂 → `DrawOp::Image` 真渲，未解析降级转兜底——随注见下）；
+    /// icon/badge/avatar/
     /// divider/separator/spacer/a/img 经 a2r codegen 降级归一（D1/D1'
-    /// 定案）。kind = text/button + form 族 + display 占位族 + 线性堆叠
+    /// 定案）。kind = text/button + form 族 + display 族 + 线性堆叠
     /// 布局族（col/row/container/list）+ 布局样式子集（padding/gap/
     /// margin/尺寸/圆角/底色/前景色/对齐/字号字重）。payload 族残余
     /// （table/tabs 等）与 imagesurface 显式 **not-yet**——native 显式
@@ -183,14 +185,27 @@ impl Coverage {
             "slider",
             // PLAN-025 T-04 —— payload 族 select。
             "select",
-            // PLAN-026 T-03 —— display 族占位保真臂（View::Image /
+            // PLAN-026 T-03 —— display 族臂（View::Image /
             // View::ProgressBar 变体在场）。icon/badge/avatar/divider/
             // separator/spacer/a/img 经 a2r codegen 降级归一到 image/
             // text/row/container/empty（§5.1 D1/D1' 定案——分表非缺口，
             // 025"switch 无 View 变体"口径）；imagesurface 整 kind
             // not-yet（D5：交互回调无采集面，登记即静默放行——I3）。
+            // PLAN-028 真图升级：image 臂占位保真注释核销——src 在场即发
+            // `DrawOp::Image`（tag 6 真渲；未解析降级占位转宿主侧兜底
+            // 语义）；icon 降级形态（lucide:）随臂入线、宿主字形解析
+            // not-yet（P026-D1 后半维持）→ 未解析降级同兜底。
             "image",
             "progress",
+            // PLAN-029 T-04/T-05/T-06 —— shell queue 面四 kind（B 前置
+            // 序列第二件）：popover（覆盖序渲染 + on_dismiss 命中，open =
+            // View 态）/ mousearea（透传 + click/contextmenu 命中）/
+            // windowthumbnail·workspacepreview（thumbnail:// ·
+            // workspace:// 虚拟引用桥接，宿主侧解析）。
+            "popover",
+            "mousearea",
+            "windowthumbnail",
+            "workspacepreview",
         ]
         .into_iter()
         .map(String::from)
@@ -248,6 +263,11 @@ impl Coverage {
             "cursor-", "outline-", "transition", "antialiased",
             "shrink-", "whitespace-", "relative", "tracking-",
             "backdrop-",
+            // PLAN-029 T-08 降级放行：⑦ opacity- 子树透明渲染 not-yet
+            //（DrawOp 无 alpha 通道——色彩 alpha 逐子树改写另立；壳
+            // pack 拖拽幽灵/通知卡半透明面经此放行，视觉全不透明降级
+            //——flex-1/shadow 同册先例）。
+            "opacity-",
         ]
         .into_iter()
         .map(String::from)
@@ -553,6 +573,14 @@ fn scan_native_node<M: Clone + std::fmt::Debug>(
             scan_native_node(content, scan);
         }
         View::MouseArea { content, .. } => scan_native_node(content, scan),
+        // PLAN-029 T-04：Popover 双子树递归（anchor + content——:562 缺口
+        // 清偿；open 闭态 content 子树同扫——覆盖判定与开合态无关）。
+        View::Popover { anchor, content, .. } => {
+            if let crate::ui::view::PopoverAnchor::Widget(child) = anchor {
+                scan_native_node(child, scan);
+            }
+            scan_native_node(content, scan);
+        }
         _ => {}
     }
 }
@@ -652,7 +680,9 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         | SC::RoundedBR(_) => "rounded".into(),
         // —— 渲染未实现面：稳定名不含支持前缀 → not-yet（显式缺项）。
         SC::Flex1 => "flex-1".into(),
-        SC::Flex | SC::FlexRow | SC::FlexCol => "flex".into(),
+        // PLAN-029 T-08：FlexColReverse 降级放行（列序渲染 not-yet——
+        // flex-col 同 token，025 flex-1/shadow-sm 降级先例同口径）。
+        SC::Flex | SC::FlexRow | SC::FlexCol | SC::FlexColReverse => "flex".into(),
         SC::Block | SC::Inline | SC::InlineBlock | SC::InlineFlex => "block".into(),
         SC::MinWidth(_) => "min-w-1".into(),
         SC::MinHeight(_) => "min-h-1".into(),
@@ -723,6 +753,8 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         SC::ZIndex(_) => "z-1".into(),
         SC::Rotate(_) => "rotate-1".into(),
         SC::Truncate => "truncate".into(),
+        // PLAN-029 T-08：opacity 降级放行 token（渲染 not-yet，prefixes ⑦）。
+        SC::Opacity(_) => "opacity-50".into(),
         SC::BreakWords => "break-words".into(),
         SC::ListNone => "list-none".into(),
         SC::AccentColor(_) => "accent-1".into(),
@@ -1242,6 +1274,100 @@ mod tests {
         // 缺项清单非空不变式（NotCovered 行必载缺项载荷）。
         for (name, covered_row, why) in &rows {
             assert!(!(!covered_row && why.is_empty()), "{name} NotCovered 缺项空载荷");
+        }
+    }
+
+    /// PLAN-029 T-08（D6/D7）：shell pack 五件装载期 native 判定 Covered
+    ///——B 程序覆盖门预演（View 树扫描断言，popover/mousearea/
+    /// thumbnail/preview 四 kind 扩容后的硬前置验证）。auto-os 检出解析
+    /// 序：`$AUTO_OS_ROOT` → 本仓根兄弟 `../auto-os`（worktree 组内 = 组内
+    /// auto-os；主检出 = 主 auto-os）→ `D:/autostack/auto-os` 主检出兜底
+    ///（AGENTS §2 跨仓解析序，零链接红线）。检出/文件缺席 → skip 留痕
+    /// 不 fail（pac.at 静默门先例——独立仓检出状态不炸本仓门）。
+    #[test]
+    fn shell_pack_native_covered() {
+        use crate::ui::aura_view_builder::AuraViewBuilder;
+        use crate::ui::vm_bridge::VmBridge;
+
+        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("repo root");
+        let candidates: Vec<std::path::PathBuf> = [
+            std::env::var("AUTO_OS_ROOT").ok().map(std::path::PathBuf::from),
+            repo_root.parent().map(|p| p.join("auto-os")),
+            Some(std::path::PathBuf::from("D:/autostack/auto-os")),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let Some(os_root) = candidates
+            .iter()
+            .find(|p| p.join("shell/shell.at").is_file())
+            .cloned()
+        else {
+            eprintln!(
+                "[p029-shell-pack] skip: auto-os 检出缺席（候选: {:?}）",
+                candidates
+            );
+            return;
+        };
+        for name in [
+            "shell.at",
+            "desktop.at",
+            "switcher.at",
+            "dashboard.at",
+            "notification_center.at",
+        ] {
+            let path = os_root.join("shell").join(name);
+            let Ok(code) = std::fs::read_to_string(&path) else {
+                eprintln!("[p029-shell-pack] skip: {name} 缺席（{}）", path.display());
+                continue;
+            };
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+            let Ok(ast) = parser.parse() else {
+                panic!("{name} 解析失败（shell pack 是 B 覆盖门硬前置——解析红必拦）");
+            };
+            let mut app_decl: Option<&crate::ast::WidgetDecl> = None;
+            let mut first_decl: Option<&crate::ast::WidgetDecl> = None;
+            for st in &ast.stmts {
+                if let crate::ast::Stmt::WidgetDecl(d) = st {
+                    if first_decl.is_none() {
+                        first_decl = Some(d);
+                    }
+                    if d.name.as_str() == "App" {
+                        app_decl = Some(d);
+                        break;
+                    }
+                }
+            }
+            let Some(decl) = app_decl.or(first_decl) else {
+                panic!("{name} 无 widget 声明");
+            };
+            let Ok(widget) = crate::aura::extract::extract_widget_from_decl(decl) else {
+                panic!("{name} widget 抽取失败");
+            };
+            let bridge = VmBridge::new_from_decls(
+                decl,
+                &[],
+                vec![],
+                &std::collections::HashMap::new(),
+                false,
+            );
+            let Ok(bridge) = bridge else {
+                panic!("{name} VmBridge 构建失败");
+            };
+            let view = AuraViewBuilder::new(&bridge, &widget.name).build(&widget.view_tree);
+            let scan = scan_native_view(&view);
+            match judge(&scan, &Coverage::native_queue_set()) {
+                Verdict::Covered => {
+                    eprintln!("[p029-shell-pack] {name}: Covered");
+                }
+                Verdict::NotCovered(missing) => {
+                    panic!("{name} 未覆盖（B 覆盖门硬前置）: {}", missing.join(", "));
+                }
+            }
         }
     }
 

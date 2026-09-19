@@ -1,9 +1,9 @@
 +++
 kind = "navigation"
 name = "filetree"
-palette = []
+palette = ["icon", "text"]
 extension_points = ["nodes", "default_expanded", "selection", "toggle"]
-variants = []
+variants = ["default"]
 
 [dataSource]
 nodes = "[]Node"
@@ -16,13 +16,12 @@ nodes = "[]Node"
 fs 形态数据（id=路径 node schema）自动映射目录/文件图标（folder/folder-open
 按展开态；file 按扩展名），内部持有展开/选中态，零配置开箱即用。
 
-> **palette = [] 注记（PLAN-643 merge 对账修正）**：原声明 `["icon", "text"]`
-> 中 `icon` 虽为 schema `builtin_widget`（VM 原生渲染），但不在 vue 轨
-> `WidgetRegistry` 注册表内，违反本契约"palette 必须在 AURA registry"规则
-> （`palette_drift` 实红，被 070 实勘的 CARGO_MANIFEST_DIR 扫描根限制掩盖）。
-> 组合形态暂缓期间包不组合任何 registry 可验 widget，palette 置空；
-> `icon` 词汇面缺口（schema builtin_widget ∉ vue registry）挂
-> KNOWN-DEBT 由 vocabulary-face 归属计划统一裁定。
+> **palette 恢复注记（PLAN-649）**：原声明 `["icon", "text"]` 曾因 `icon`
+> 不在 vue 轨 `WidgetRegistry` 注册表内（`palette_drift` 实红）在 PLAN-643
+> merge 对账时置空回避。PLAN-649 SD-02 落地 icon 注册（schema
+> `builtin_widget` 首个进 palette 的案例，vue 轨专臂发射 Lucide 组件，
+> 注册仅补词汇面准入）后恢复最小集 `["icon", "text"]`。spec 本义的演进
+> （palette 扩写）仍归 PLAN-070。
 
 # What this blueprint absorbs
 
@@ -43,18 +42,10 @@ fs 形态数据（id=路径 node schema）自动映射目录/文件图标（fold
 
 # References
 
-（暂无——组合形态 FileTree 暂缓，见下）
-
-## 组合形态暂缓（PLAN-070 T-03 实证）
-
-FileTree 组合 widget（自持展开/选中态，源码见 git af8c72a84 的
-reference/default.at）在 vue 轨 bps 扫描下不可构建：扫描发射器不转译
-`.at` 跨文件 fn 导入（`use bps...tree_util:`/bare 形态均实测
-`Cannot find name 'flatten_tree'/'toggle_id'`，046-bp-import 构建断裂
-复现），且单文件内联会撞单文件单 widget 纪律/制造 fn 双份漂移面。
-待发射器补 plan522 式 fn 转译后回归（auto-lang DEBTS 070 第二行）。
-本包当前交付 = 支撑件（tree_util/tree_icon）+ 契约 + gotchas——活消费面
-（jade desktop/041）全部经支撑件符号导入，不受影响。
+- `default` — FileTree 组合形态（自持展开/选中态）。跨文件依赖经包内支撑件
+  bare 导入（`use tree_util:` / `use tree_icon:`，父目录解析）；vue 轨 bps
+  扫描发射器按 plan522 式 helper 转译把被引 fn 闭包内联进 SFC（PLAN-645
+  恢复 DEBTS 070 第二行销号；回归样本 `examples/capability-tests/047-bp-compose`）。
 
 # 包内支撑件（格式扩展，PLAN-070）
 

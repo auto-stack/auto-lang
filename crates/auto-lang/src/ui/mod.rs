@@ -61,6 +61,10 @@ pub mod app;
 pub mod widget;
 pub mod style;
 pub mod debug;
+// PLAN-646 Select Anything——框选语义纯函数 + 结果信封。依赖
+// mcp_server/vtree_atom（StyledNodeSnapshot/VTreeAtomBuilder），同门控。
+#[cfg(feature = "ui-interpreter")]
+pub mod selection;
 pub mod vm_bridge;
 pub mod handler_codegen;
 // PLAN-051 C2：子→父 msg 参数回调通用路由表（handler_codegen 无 feature 门，
@@ -68,6 +72,7 @@ pub mod handler_codegen;
 pub mod child_emit;
 #[cfg(feature = "ui-iced")]
 pub mod session;
+pub mod shell_projection;
 // PLAN-615 T-06: OS 系统主题读取（深/浅色个人化跟随地基；纯 std 全平台可编译）。
 pub mod system_theme;
 

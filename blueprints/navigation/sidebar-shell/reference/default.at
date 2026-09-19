@@ -2,18 +2,25 @@
 // App frame: header (brand + user menu) over sidebar + content slot.
 // Consumer fills nav_tree/user props and owns actions.sign_out.
 // EDIT regions mark where per-app customization is expected.
+//
+// PLAN-657 参数化修整（reference 实现对齐 frontmatter 契约面，frontmatter
+// 零改动）：nav_tree/user props 经 widget 参数接入（047-bp-admin 首次多包
+// L1 直连消费）；actions.sign_out 经 `on_sign_out: msg` 回调上抛（契约 Q2
+// action 点，k2/k3 回调契约形态）；dataSource.counts 无 L1 逆向调用通道，
+// 由消费方烘焙进 nav_tree 节点的 badge 字段（组装摩擦记录于 PLAN-657）。
+// content EDIT 区改为 slot 出口（fallback 保留原占位文案——裸实例化
+// 渲染形态不变，plan649 t09 锚兼容）。
 
-widget SidebarShell {
+widget SidebarShell (nav_tree: List, user_name: str, user_email: str, on_nav: msg, on_sign_out: msg) {
     msg {
-        NavSelected,
-        MenuSignOut
+        NavSelected(str),
+        MenuSignOut,
+        Nav(str),
+        SignOut
     }
 
     model {
-        var active_nav str = "" // selected nav node id
-        var badge_counts map = [] // from dataSource.counts
-        var user_name str = ""  // prop: user.name
-        var user_email str = "" // prop: user.email
+        var active_nav str = "" // bp-private selected nav node id
     }
 
     view {
@@ -27,14 +34,13 @@ widget SidebarShell {
                     dropdown-menu {
                         dropdown-menu-trigger {
                             avatar {
-                                src: "" // prop: user.avatar_url
-                                alt: f"${.user_name}"
+                                src: "" // prop: user.avatar_url (avatar 未接线——见 gotchas)
+                                alt: f"${.user_email}"
                                 style: "w-7 h-7 rounded-full"
                             }
                         }
                         dropdown-menu-content {
-                            dropdown-menu-item "Profile"
-                            dropdown-menu-item "Settings"
+                            dropdown-menu-item f"${.user_name}"
                             dropdown-menu-separator {}
                             dropdown-menu-item "Sign out" { onclick: .MenuSignOut }
                         }
@@ -48,28 +54,24 @@ widget SidebarShell {
                 // ── sidebar ──
                 sidebar {
                     col {
-                        // ── EDIT: nav_items (recursive over props.nav_tree) ──
+                        // ── EDIT: nav_items (recursive over props.nav_tree;
+                        //    badge counts baked by the consumer from
+                        //    dataSource.counts) ──
                         col {
-                            button "Home" {
-                                onclick: .NavSelected
-                                variant: "default"
-                                style: "w-full px-3 py-2 rounded-lg text-sm"
-                            }
-                            row {
-                                button "Projects" {
-                                    onclick: .NavSelected
-                                    variant: "ghost"
-                                    style: "flex-1 px-3 py-2 rounded-lg text-sm"
+                            for node in .nav_tree {
+                                row (key: node.id) {
+                                    button f"${node.label}" {
+                                        onclick: .NavSelected(node.id)
+                                        variant: "ghost"
+                                        style: "flex-1 px-3 py-2 rounded-lg text-sm"
+                                    }
+                                    if node.badge != "" {
+                                        badge f"${node.badge}" {
+                                            variant: "outline"
+                                        }
+                                    }
+                                    style: "gap-2 items-center pr-2"
                                 }
-                                badge "3" {
-                                    variant: "outline"
-                                }
-                                style: "gap-2 items-center pr-2"
-                            }
-                            button "Settings" {
-                                onclick: .NavSelected
-                                variant: "ghost"
-                                style: "w-full px-3 py-2 rounded-lg text-sm"
                             }
                             style: "gap-1"
                         }
@@ -82,12 +84,18 @@ widget SidebarShell {
 
                 // ── EDIT: content (routed app surface; single slot —
                 //    route-level loading/error states belong to the routed
-                //    bp, not to this shell) ──
+                //    bp, not to this shell. Slot children land here;
+                //    fallback keeps the bare-mount placeholder) ──
                 col {
-                    text "App content mounts here" {
-                        style: "text-sm text-gray-400"
+                    style: "flex-1 min-h-0"
+                    slot {
+                        col {
+                            style: "flex-1 items-center justify-center"
+                            text "App content mounts here" {
+                                style: "text-sm text-gray-400"
+                            }
+                        }
                     }
-                    style: "flex-1 items-center justify-center"
                 }
 
                 style: "flex-1 min-h-0"
@@ -100,10 +108,12 @@ widget SidebarShell {
     on {
         .NavSelected(id) -> {
             .active_nav = id
-            // consumer routes to the node; refresh dataSource.counts()
+            on_nav(id) // consumer routes to the node; refresh dataSource.counts()
         }
         .MenuSignOut -> {
-            // actions.sign_out: consumer ends the session + navigates
+            on_sign_out() // actions.sign_out: consumer ends the session + navigates
         }
+        .Nav(id) -> {}
+        .SignOut -> {}
     }
 }

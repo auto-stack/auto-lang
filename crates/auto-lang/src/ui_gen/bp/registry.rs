@@ -92,15 +92,16 @@ impl BlueprintRegistry {
         Ok(Self { packages })
     }
 
-    /// Scan the default `<repo>/blueprints` directory, resolving the repo root from
-    /// this crate's `CARGO_MANIFEST_DIR` (`crates/auto-lang`).
+    /// Scan the default blueprints package library, resolved at runtime
+    /// (PLAN-645 T-01, three-tier order mirroring the cross-repo resolution
+    /// order in AGENTS.md): `AUTO_BLUEPRINTS_ROOT` env override → walk up
+    /// from the current directory for a `<root>/blueprints` dir → compile-time
+    /// `CARGO_MANIFEST_DIR` fallback. The compile-time constant alone made
+    /// `auto bp list/show/add/check` blind to the library inside worktrees and
+    /// foreign checkouts (PLAN-070 实勘).
     pub fn with_defaults() -> Self {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2) // crates/auto-lang -> crates -> <repo>
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."));
-        let blueprints_root = repo_root.join("blueprints");
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let blueprints_root = resolve_blueprints_root(&cwd);
         Self::scan_dir(&blueprints_root).unwrap_or_else(|errors| {
             // Surface scan errors at runtime via debug; return empty for resilience.
             log::debug!("blueprint scan errors: {errors:?}");
@@ -154,6 +155,35 @@ impl BlueprintRegistry {
         }
         drift
     }
+}
+
+/// PLAN-645 T-01: runtime blueprints-root resolution, three-tier order:
+/// 1. `AUTO_BLUEPRINTS_ROOT` env — used as-is (must point at the blueprints
+///    library dir itself).
+/// 2. Walk up from `cwd` for the nearest dir with a `blueprints/` subdir —
+///    the `<repo>/blueprints` layout shared by git checkouts, worktrees
+///    (`.git` file, not dir), and plain fixture dirs.
+/// 3. Compile-time `CARGO_MANIFEST_DIR` ancestors (`crates/auto-lang` →
+///    `<repo>`) — the pre-645 behavior, kept as the last resort.
+pub fn resolve_blueprints_root(cwd: &Path) -> PathBuf {
+    if let Some(root) = std::env::var_os("AUTO_BLUEPRINTS_ROOT") {
+        let root = PathBuf::from(root);
+        if !root.as_os_str().is_empty() {
+            return root;
+        }
+    }
+    for dir in cwd.ancestors() {
+        let candidate = dir.join("blueprints");
+        if candidate.is_dir() {
+            return candidate;
+        }
+    }
+    let compile_time = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2) // crates/auto-lang -> crates -> <repo>
+        .map(|repo| repo.join("blueprints"))
+        .unwrap_or_else(|| PathBuf::from("blueprints"));
+    compile_time
 }
 
 fn load_package(dir: &Path) -> Result<BlueprintPackage, String> {
@@ -327,4 +357,87 @@ mod scan_tests {
         assert!(drift2.iter().any(|d| d.contains("pie-chart")));
     }
 
+}
+
+/// PLAN-645 T-01: with_defaults 三级解析根（env → cwd 向上找 blueprints/ →
+/// 编译期兜底）。env 断言依赖进程级环境变量——nextest 每测试独立进程天然
+/// 隔离；守卫结构保证 bare cargo test 下也恢复现场。
+mod root_resolution_tests {
+    use super::*;
+
+    struct EnvGuard(&'static str);
+    impl EnvGuard {
+        fn set(var: &'static str, value: &std::ffi::OsStr) -> Self {
+            std::env::set_var(var, value);
+            EnvGuard(var)
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            std::env::remove_var(self.0);
+        }
+    }
+
+    #[test]
+    fn env_override_wins_and_is_used_as_is() {
+        let tmp = std::env::temp_dir().join(format!("plan645-env-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let _guard = EnvGuard::set("AUTO_BLUEPRINTS_ROOT", tmp.as_os_str());
+        // cwd 在无关深层目录下,env 仍应原样生效(不要求物理存在)。
+        let cwd = tmp.join("unrelated").join("deep");
+        assert_eq!(resolve_blueprints_root(&cwd), tmp);
+    }
+
+    #[test]
+    fn walks_up_from_cwd_to_nearest_blueprints_dir() {
+        let tmp = std::env::temp_dir().join(format!("plan645-walk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let lib = tmp.join("repo").join("blueprints");
+        std::fs::create_dir_all(&lib).unwrap();
+        std::fs::create_dir_all(tmp.join("repo").join("src").join("front").join("pages")).unwrap();
+        let cwd = tmp.join("repo").join("src").join("front").join("pages");
+        assert_eq!(resolve_blueprints_root(&cwd), lib);
+    }
+
+    #[test]
+    fn falls_back_to_compile_time_root_when_no_blueprints_upwards() {
+        let tmp = std::env::temp_dir().join(format!("plan645-fallback-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let expected = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .unwrap()
+            .join("blueprints");
+        assert_eq!(resolve_blueprints_root(&tmp), expected);
+    }
+
+    /// AC-02 正断言:env 指向合法包库时 with_defaults 列举跟随(env →
+    /// scan 全链);负断言:env 指向空目录 → 空 registry(不回退、不炸)。
+    #[test]
+    fn with_defaults_follows_env_override() {
+        let tmp = std::env::temp_dir().join(format!("plan645-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let pkg = tmp.join("form").join("tiny");
+        std::fs::create_dir_all(pkg.join("reference")).unwrap();
+        std::fs::write(
+            pkg.join("spec.md"),
+            "+++\nkind = \"form\"\nname = \"tiny\"\npalette = []\nextension_points = []\nvariants = [\"default\"]\n\n+++\n\n# Tiny\n",
+        )
+        .unwrap();
+        std::fs::write(pkg.join("reference").join("default.at"), "widget Tiny {\n    view {\n        text \"t\"\n    }\n}\n").unwrap();
+
+        let _guard = EnvGuard::set("AUTO_BLUEPRINTS_ROOT", tmp.as_os_str());
+        let reg = BlueprintRegistry::with_defaults();
+        let keys: Vec<String> = reg.iter().map(|p| p.key()).collect();
+        assert!(keys.contains(&"form/tiny".to_string()), "env-rooted scan must list form/tiny; keys: {keys:?}");
+
+        let empty = std::env::temp_dir().join(format!("plan645-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).unwrap();
+        std::env::set_var("AUTO_BLUEPRINTS_ROOT", empty.as_os_str());
+        let reg2 = BlueprintRegistry::with_defaults();
+        assert!(reg2.packages().is_empty(), "empty override yields empty registry");
+    }
 }

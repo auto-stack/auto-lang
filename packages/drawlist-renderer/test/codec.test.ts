@@ -9,6 +9,7 @@ import {
 import {
   FRAME_HEX,
   HELLO_HEX,
+  IMAGE_FRAME_HEX,
   PRESS_HEX,
   SCISSOR_FRAME_HEX,
   STYLED_FRAME_HEX,
@@ -86,6 +87,29 @@ describe('对拍锚点（Rust codec 同源字节）', () => {
         text: 'Bold',
       },
     ]);
+  });
+
+  it('Image 算子帧解码与 Rust golden 恒等（PLAN-028 tag 6）', () => {
+    const msg = decodeServerMsg(new Uint8Array(IMAGE_FRAME_HEX));
+    expect(msg.kind).toBe('frame');
+    if (msg.kind !== 'frame') return;
+    expect(msg.frame.payload.ops).toEqual([
+      {
+        kind: 'image',
+        rect: { x: 8, y: 8, w: 100, h: 40 },
+        src: 'https://example.com/a.png',
+        fit: 1, // Stretch
+      },
+    ]);
+  });
+
+  it('未知 DrawOp tag 拒收（unknown tag throw 防线维持）', () => {
+    // 拷贝 Image 帧，op tag 字节（载荷内偏移固定锚点）改 0x7F → throw。
+    const bytes = Uint8Array.from(IMAGE_FRAME_HEX);
+    const opTagAt = 12 + 27 + 10; // 信封 + FrameReady 头 + DrawList 头
+    expect(bytes[opTagAt]).toBe(6);
+    bytes[opTagAt] = 0x7f;
+    expect(() => decodeServerMsg(bytes)).toThrow(/unknown drawop tag/);
   });
 });
 

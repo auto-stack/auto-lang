@@ -2804,6 +2804,41 @@ fn pac_dep_version_violation(content: &str, dep_name: &str) -> Option<String> {
     None
 }
 
+/// PLAN-649 SD-01 (contract Q5): candidate path forms for a dotted use
+/// module — the literal dot→separator conversion first, then hyphen variants
+/// of underscore segments. bp packages are kebab-case on disk
+/// (`blueprints/feedback/empty-state/`) while use paths are written with
+/// underscores (`bps.feedback.empty_state.reference.error`); literal-first
+/// keeps co-existing `foo_bar/` vs `foo-bar/` resolution deterministic.
+/// Variant combinations enumerate per eligible segment in segment order and
+/// cap at 4 (real bp paths carry 1-2 eligible segments; the cap only bounds
+/// pathological inputs). Single-element result for paths without underscore
+/// segments — callers loop and behave exactly as before in that case.
+fn module_path_candidates(rel: &str) -> Vec<String> {
+    const MAX_VARIANTS: usize = 4;
+    let mut out = vec![rel.to_string()];
+    let segs: Vec<&str> = rel.split(std::path::MAIN_SEPARATOR).collect();
+    let eligible: Vec<usize> = (0..segs.len()).filter(|&i| segs[i].contains('_')).collect();
+    if eligible.is_empty() || eligible.len() > 16 {
+        return out;
+    }
+    for mask in 1..(1usize << eligible.len()) {
+        if out.len() > MAX_VARIANTS {
+            break;
+        }
+        let cand: Vec<String> = segs
+            .iter()
+            .enumerate()
+            .map(|(i, s)| match eligible.iter().position(|&e| e == i) {
+                Some(bit) if mask & (1 << bit) != 0 => s.replace('_', "-"),
+                _ => s.to_string(),
+            })
+            .collect();
+        out.push(cand.join(std::path::MAIN_SEPARATOR_STR));
+    }
+    out
+}
+
 fn resolve_module_path(
     base_dir: &std::path::Path,
     module: &str,
@@ -2820,26 +2855,33 @@ fn resolve_module_path(
             String::new()
         };
         if !mapped.is_empty() {
-            let as_file = root.join(format!("{}.at", mapped));
-            if as_file.exists() {
-                return Some(as_file);
-            }
-            let as_mod = root.join(&mapped).join("mod.at");
-            if as_mod.exists() {
-                return Some(as_mod);
+            for cand in module_path_candidates(&mapped) {
+                let as_file = root.join(format!("{}.at", cand));
+                if as_file.exists() {
+                    return Some(as_file);
+                }
+                let as_mod = root.join(&cand).join("mod.at");
+                if as_mod.exists() {
+                    return Some(as_mod);
+                }
             }
         }
     }
     let rel = module.replace('.', std::path::MAIN_SEPARATOR_STR);
-    // Helper to probe a candidate directory for {rel}.at or {rel}/mod.at.
+    // Helper to probe a candidate directory for {rel}.at / {rel}/mod.at —
+    // literal form first, then kebab variants of underscore segments
+    // (PLAN-649 SD-01; candidates without underscores are literal-only, so
+    // existing behavior is untouched).
     let probe = |dir: &std::path::Path| -> Option<std::path::PathBuf> {
-        let as_file = dir.join(format!("{}.at", rel));
-        if as_file.exists() {
-            return Some(as_file);
-        }
-        let as_mod = dir.join(&rel).join("mod.at");
-        if as_mod.exists() {
-            return Some(as_mod);
+        for cand in module_path_candidates(&rel) {
+            let as_file = dir.join(format!("{}.at", cand));
+            if as_file.exists() {
+                return Some(as_file);
+            }
+            let as_mod = dir.join(&cand).join("mod.at");
+            if as_mod.exists() {
+                return Some(as_mod);
+            }
         }
         None
     };
@@ -2884,19 +2926,28 @@ fn resolve_module_path(
             candidates.into_iter().find(|c| c.exists())
         } else {
             let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
-            let candidates = [
-                pkg_root.join("src").join("front").join(format!("{}.at", sub_rel)),
-                pkg_root.join("src").join("front").join(&sub_rel).join("mod.at"),
-                pkg_root.join("src").join("back").join(format!("{}.at", sub_rel)),
-                pkg_root.join("src").join("back").join(&sub_rel).join("mod.at"),
-                pkg_root.join("src").join(format!("{}.at", sub_rel)),
-                pkg_root.join("src").join(&sub_rel).join("mod.at"),
-                pkg_root.join("front").join(format!("{}.at", sub_rel)),
-                pkg_root.join("front").join(&sub_rel).join("mod.at"),
-                pkg_root.join(format!("{}.at", sub_rel)),
-                pkg_root.join(&sub_rel).join("mod.at"),
-            ];
-            candidates.into_iter().find(|c| c.exists())
+            // PLAN-649 SD-01: literal sub-path candidates first, then kebab
+            // variants of underscore segments (`bps.feedback.empty_state...`
+            // reaches `feedback/empty-state/`). Layout priority (front/back/
+            // src/flat) is preserved within each candidate form.
+            for cand in module_path_candidates(&sub_rel) {
+                let candidates = [
+                    pkg_root.join("src").join("front").join(format!("{}.at", cand)),
+                    pkg_root.join("src").join("front").join(&cand).join("mod.at"),
+                    pkg_root.join("src").join("back").join(format!("{}.at", cand)),
+                    pkg_root.join("src").join("back").join(&cand).join("mod.at"),
+                    pkg_root.join("src").join(format!("{}.at", cand)),
+                    pkg_root.join("src").join(&cand).join("mod.at"),
+                    pkg_root.join("front").join(format!("{}.at", cand)),
+                    pkg_root.join("front").join(&cand).join("mod.at"),
+                    pkg_root.join(format!("{}.at", cand)),
+                    pkg_root.join(&cand).join("mod.at"),
+                ];
+                if let Some(hit) = candidates.into_iter().find(|c| c.exists()) {
+                    return Some(hit);
+                }
+            }
+            None
         }
     };
     let mut curr_dir = Some(base_dir);
@@ -4536,8 +4587,32 @@ fn build_dynamic_component_inner(
         // child_decls（handlers 一并编译进单 VM 模块）。
         for wd in &ext_widget_decls {
             if let Ok(w) = crate::aura::extract_widget_from_decl(wd) {
-
-                all_child_decls.push(wd.clone());
+                // PLAN-642 R642-F3: `.Tick` handler + `interval` 模型变量的
+                // 子件（027/012/025 惯用法——Init 轻量、重 FS/时钟活延后到
+                // Tick）在合并 VM 无 tick 源：根件（画廊宿主）无 tick →
+                // view.tick_interval 订阅不存在，子件 Tick 永不派发（027
+                // 内嵌永久"正在加载..."实证；chart 的 timer{} 块另有 051 C7
+                // 通路不受影响）。按 051 C7 timer 条目形态为该子件合成
+                // `Tick (every_ms: interval)` 定时条目，走既有 fire_timer
+                // 门控派发（handler_<Widget>_Tick 语义不变）。
+                let mut wd_owned = wd.clone();
+                if let Some(ms) = w.tick_interval {
+                    let has_tick_timer = wd_owned
+                        .timer
+                        .as_ref()
+                        .map(|tb| tb.entries.iter().any(|e| e.event.as_str() == "Tick"))
+                        .unwrap_or(false);
+                    if !has_tick_timer {
+                        let mut tb = crate::ast::ui::TimerBlock { entries: Vec::new() };
+                        tb.entries.push(crate::ast::ui::TimerEntry {
+                            event: crate::ast::Name::from("Tick"),
+                            every_ms: ms.max(16) as u64,
+                            when: None,
+                        });
+                        wd_owned.timer = Some(tb);
+                    }
+                }
+                all_child_decls.push(wd_owned);
                 registry.register(w);
             }
         }
@@ -4555,6 +4630,96 @@ fn build_dynamic_component_inner(
                     &mut all_child_decls,
                     &mut tw_visited,
                 );
+            }
+        }
+        // PLAN-642 R642-F2: use.web 适配器自带 `use { package: X from "dir" }`
+        // 的包组件注册。上方的包装载走查（435 P8-6）只覆盖根件——彼时
+        // registry 尚无适配器 widget，适配器的包导入永远错过装载且无任何
+        // 告警 → 包内 widget 全部缺注册，实例落 builtin 桩（024 chart 内嵌
+        // 空画布实证；独立臂根件自带包导入 → 同语料正常出图）。适配器注册
+        // 后补一轮包装载：dir 优先相对适配器文件目录（ext_adapter_paths
+        // 同源），回退根 base_dir；包组件 fn 模块链按 435 P8-6 同款收集。
+        {
+            let mut pkg_seen_dirs: std::collections::HashSet<std::path::PathBuf> =
+                Default::default();
+            let mut pkg_reg = crate::ui_gen::widget::ComponentRegistry::new();
+            for wd in &ext_widget_decls {
+                for imp in &wd.ext_imports {
+                    if !matches!(imp.kind, crate::ast::ui::ExtImportKind::Package) {
+                        continue;
+                    }
+                    let dir = std::path::PathBuf::from(imp.path.as_str());
+                    if !pkg_seen_dirs.insert(dir.clone()) {
+                        continue;
+                    }
+                    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+                    for adapter_path in &ext_adapter_paths {
+                        if let Some(adapter_dir) = adapter_path.parent() {
+                            candidates.push(adapter_dir.join(&dir));
+                        }
+                    }
+                    candidates.push(base_dir.join(&dir));
+                    let mut loaded: Option<
+                        (
+                            Vec<(crate::ast::ui::WidgetDecl, crate::aura::AuraWidget)>,
+                            std::path::PathBuf,
+                        ),
+                    > = None;
+                    for cand in &candidates {
+                        if cand.is_dir() {
+                            if let Ok(pkg) = pkg_reg.load_package(cand, base_dir) {
+                                // load_package 返回注册表内缓存引用（&mut self
+                                // 借续）——立即抽走所需列表，避免借用跨迭代。
+                                loaded = Some((pkg.full_widgets.clone(), cand.clone()));
+                                break;
+                            }
+                        }
+                    }
+                    match loaded {
+                        Some((pkg_full, loaded_dir)) => {
+                            for (d, aw) in &pkg_full {
+                                all_child_decls.push(d.clone());
+                                registry.register(aw.clone());
+                            }
+                            if let Ok(entries) = std::fs::read_dir(&loaded_dir) {
+                                for entry in entries.flatten() {
+                                    let p = entry.path();
+                                    if !p.extension().map(|e| e == "at").unwrap_or(false) {
+                                        continue;
+                                    }
+                                    crate::collect_module_imports(
+                                        &p,
+                                        &mut visited,
+                                        &mut import_stmts,
+                                        &mut seen_symbols,
+                                        &mut import_session,
+                                        None,
+                                    );
+                                    if let Ok(code) = std::fs::read_to_string(&p) {
+                                        for us in crate::use_scanner::scan_use_statements(&code) {
+                                            let qualifier = us
+                                                .module
+                                                .split('.')
+                                                .last()
+                                                .unwrap_or(&us.module);
+                                            for item in &us.items {
+                                                import_aliases.insert(
+                                                    item.clone(),
+                                                    format!("{}.{}", qualifier, item),
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        None => log::warn!(
+                            "package `{}` load failed (VM adapter) (tried {:?})",
+                            imp.path,
+                            candidates
+                        ),
+                    }
+                }
             }
         }
         // PLAN-632 F1: 装载顺序缺陷收口——use.web demo 适配器链带来的
@@ -7404,10 +7569,26 @@ mod plan640_bp_tests;
 #[cfg(test)]
 mod plan643_chart_tag_tests;
 
+// PLAN-645: bps 扫描 fn 转译（DEBTS 070 第二行）——组合形态 reference 跨文件
+// fn 内联正/负断言 + 047 组合夹具消费方面。
+#[cfg(test)]
+mod plan645_bp_tests;
+
 // PLAN-647: bp 版本面裁定护栏（contract Q5）——spec frontmatter 版本键拒绝
 // + pac.at dep 版本类键硬失败双负测试。
 #[cfg(test)]
 mod plan647_bp_version_tests;
+
+// PLAN-649: bp 消费地基——解析链连字符变体探测（SD-01/contract Q5）+ icon
+// 词汇面（SD-02）+ L1 直连端到端（AC-01 双轨）。
+#[cfg(test)]
+mod plan649_bp_tests;
+
+// PLAN-657: L1 组装样板（047-bp-admin）——四包五变体直连全量 VM/vue 双轨
+// 回归锚 + 参数化语料面（palette 零漂移 + dep 探测）。
+#[cfg(test)]
+mod plan657_bp_admin_tests;
+
 
 // PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
 // 回归。

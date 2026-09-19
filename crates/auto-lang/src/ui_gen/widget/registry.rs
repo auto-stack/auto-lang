@@ -746,6 +746,23 @@ impl WidgetRegistry {
         }
         self.register(image_surface);
 
+        // Icon — schema `builtin_widget` media primitive (aura.at, Plan
+        // 620/621 semantics; VM impl = ui/iced/native_icon.rs). PLAN-649
+        // SD-02/P643-D1: registration closes the palette vocabulary face —
+        // the vue track has its own dedicated emission arm (node_to_html
+        // icon → Lucide component / iconfile bitmap pair) which returns
+        // before any registry-driven mapping, so this spec is
+        // admission-only and changes no emission. Like ImageSurface: no
+        // schema `vue:` component exists to overlay (single-source rule
+        // N/A); import=None = native element on all backends.
+        let mut icon = WidgetSpec::new("Icon", WidgetCategory::Display);
+        icon.primary_prop = Some("name".to_string());
+        for backend in ["ark", "iced", "vue"] {
+            icon.backends
+                .insert(backend.to_string(), BackendMapping::new("Icon", None));
+        }
+        self.register(icon);
+
         // Badge
         let mut badge = WidgetSpec::new("Badge", WidgetCategory::Display)
             .with_alias("badge");

@@ -106,6 +106,48 @@ class AutoUiMcpClient:
         res = self.call("autoui_screenshot", args)
         return res.get("content", [{}])[0].get("text", "")
 
+    def select_rect(self, x: float, y: float, w: float, h: float, fmt: str = "json") -> dict:
+        """PLAN-646: rect-select capture — same envelope as the Alt+drag marquee.
+
+        Returns the raw MCP result dict (check `isError` / `content[0].text`).
+        """
+        return self.call("autoui_select_rect", {"x": x, "y": y, "w": w, "h": h, "format": fmt})
+
+def check_select_rect(client: AutoUiMcpClient) -> bool:
+    """PLAN-646 AC-07: autoui_select_rect returns the structured envelope,
+    and bad parameters return a structured error. Best-effort semantics probe:
+    a huge rect hits whatever is rendered (center-inside + topmost trim)."""
+    print("[*] PLAN-646: calling autoui_select_rect (full-window rect)...")
+    res = client.select_rect(0.0, 0.0, 100000.0, 100000.0)
+    text = res.get("content", [{}])[0].get("text", "")
+    if res.get("isError"):
+        print(f"[-] select_rect errored: {text}")
+        return False
+    try:
+        env = json.loads(text)
+    except json.JSONDecodeError:
+        print(f"[-] select_rect returned non-JSON envelope: {text[:200]}")
+        return False
+    for key in ("surface", "app", "rect", "nodes"):
+        if key not in env:
+            print(f"[-] envelope missing key: {key} in {list(env)}")
+            return False
+    kinds = [n.get("kind") for n in env.get("nodes", [])]
+    for n in env.get("nodes", []):
+        if "kind" not in n or "id" not in n or "structure" not in n:
+            print(f"[-] node missing kind/id/structure: {n}")
+            return False
+    print(f"[+] envelope ok: surface={env['surface']} app={env['app']} nodes={len(env['nodes'])} kinds={kinds[:10]}")
+
+    print("[*] PLAN-646: calling autoui_select_rect with bad params (expect structured error)...")
+    bad = client.call("autoui_select_rect", {"x": 1.0})
+    if not bad.get("isError"):
+        print(f"[-] bad params did not error: {bad}")
+        return False
+    print("[+] structured error ok")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="AutoUI VM Mode MCP Test Driver")
     parser.add_argument("--auto-bin", default="auto", help="Path to auto executable")
@@ -149,6 +191,10 @@ def main():
             print(f"[*] Saving initial screenshot '{args.initial_screenshot}'...")
             res = client.screenshot(args.initial_screenshot)
             print(f"[+] {res}")
+
+        if not check_select_rect(client):
+            print("[-] PLAN-646 autoui_select_rect checks FAILED", file=sys.stderr)
+            sys.exit(2)
 
     finally:
         print("[*] Terminating VM process...")

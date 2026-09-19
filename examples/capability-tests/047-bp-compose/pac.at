@@ -1,0 +1,12 @@
+name: "bp-compose"
+version: "0.1.0"
+description: "PLAN-645 AC-01: composition-form blueprint consumption on the vue track (FileTree + cross-file fn transpilation)"
+scene: "ui"
+render: "vue"
+title: "BP Compose"
+title_zh: "蓝图组合"
+
+// PLAN-645: 共享 blueprint 包库依赖声明（635 声明门控，与 046 同形）。
+dep bps {
+    path: "../../../blueprints"
+}

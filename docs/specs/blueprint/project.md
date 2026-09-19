@@ -25,6 +25,14 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
   pin/lock，锁面触发条件见 contract Q5⑤）；pac.at `version` 仅展示元数据
   非约束面；spec frontmatter 顶层与 pac.at `dep` 声明的版本类键均显式报错
   （双护栏，contract Q5 五项）。
+- **蓝图级双端 gate 与骨架 bp（PLAN-075，design 30 §2 L2 门首证）**：
+  `examples/bp-gate/` = bp 包库的自动化双臂门（vue 臂沙箱构建+playwright
+  截图基线 × VM 臂 MCP boot 断言；`auto build` 物化 deps junction → 一律
+  仓库外沙箱构建，纪律见 KNOWN-DEBT P075-D1）；首批三单元 =
+  `layout/status-bar` + `data-display/row-list` 两件**骨架 bp**（fn-free
+  纯布局+slot）+ filetree 组合形态（跨文件 fn 携带件）。抽取判定记录
+  （design 30 §6 四通道，9 单元首批判定）= auto-down
+  `docs/plans/attachments/075-bp-extraction-record.md`。
 - 不做：`auto bp` 命令实现本体在 auto-cli（cmd_bp）；组件原语在 packages/widgets；
   运行时动态插件/manifest 加载（终态另议）。
 
@@ -44,6 +52,11 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
    且 vue 发射轨与 VM 解释轨均可产出产物。
 4. **状态机含量 ≥ 三态**：包内至少承载三态行为（如 loading/empty/error、
    step 分步、success/error）——防"静态摆件"混入 blueprint 层。
+   **骨架 bp 例外（PLAN-075 和解注记）**：design 30 §6 通道③"同名不同物
+   → 骨架+内容 slot"裁定的**骨架 bp**（如 layout/status-bar）以布局骨架+
+   slot 为契约本体，不适用本条与第 2 条的 dataSource 门槛——准入依据 =
+   判定记录的使用位证据与 slot 契约（075 判定记录 §1），状态语义归消费方
+   slot 变体。
 5. **NL spec 可描述、可被 agent 组装**：六问可答（contract.md），L3 通道
    （agent 读 spec → 组装 `.at` → `auto bp check`）可走通。
 
@@ -109,3 +122,35 @@ graph LR
 | feedback/empty-state | 空态三分法 blueprint | active |
 | feedback/result-page | 结果页 blueprint | active |
 | editor/note-editor | 笔记编辑器 blueprint | active |
+
+## 消费面与组装样板（PLAN-657）
+
+**L1 组装样板**：`examples/ui/047-bp-admin` 是 L1 主通道的首次**多包**直连
+实证——`navigation/sidebar-shell`(default) + `data-display/data-table-crud`
+(with_dialog) + `form/settings`(default) + `feedback/empty-state`
+(first_use/no_result) 四包五变体全部经 `use bps.<kind>.<name>.reference.<variant>`
+导入（连字符 key 走 PLAN-649 变体探测），零副本、无 bind 工件；Design 16 的
+"app = shell + route→blueprint selection + blueprint data wiring" 形态落地：
+sidebar 壳承载导航（content slot 注入主区）、主区按 app model `active_nav`
+状态机切换、四包 props/actions/dataSource 契约由 app 侧 mock `#[api]` 全接线。
+
+**消费接线形态（本次实注定式，后续包参照）**：
+
+- **props** → widget 参数直供（app model 数据面，Init 经 `use back.api` 取数播种）；
+- **actions**（契约 Q2 action 点）→ `on_*: msg` 回调参数上抛（k2/k3 回调契约：
+  子件配 Pascal 载体变体承载 emit 载荷声明，parent 绑 `.Msg`）；
+- **dataSource** → L1 无 bp→app 逆向调用通道，**app 取数经 props 回填物化**
+  （counts 烘焙进 nav_tree badge、query 受控 rows/total、load 平铺 cfg 参数）。
+
+**参数化修整先例（PLAN-657，frontmatter 契约面零改动）**：被消费的 5 个
+reference 变体参数化对齐各自 frontmatter 已声明契约（`FileTree(nodes, …)`
+filetree 先例的推广）；官方集 14 包其余 reference 仍为无参脚手架——
+**参数化规范成文是 Tier 1 扩容前置项**。
+
+**组装摩擦结论（Tier 1 / vm-component-parity 排期输入，完整清单与分级见
+PLAN-657 §5.3 与 KNOWN-DEBT P657-D1..D5）**：P0 = VM 轨跨 widget 回调
+载荷字面量化（vue 全绿、VM `active_nav: "id"` 实证——639-D1 族第四实证，
+vm-component-parity 第一优先）；P1 = reference 参数化缺位、a2r back 转译
+方言窄面；P2 = examples npm 阶段共享基建双预存红（auto-sources phase
+ordering + main.ts env types）、跨包结构体类型无通道（契约退化为平铺原子
+参数）；P3 = view 表现面小摩擦、capability-tests 生成面 CI 缺口。

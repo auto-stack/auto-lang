@@ -1,0 +1,6 @@
+clear 24,24,28,255
+image 18.0,18.0 40.0x40.0 fit=1 "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+image 18.0,66.0 64.0x36.0 fit=1 "builtin:ricepaper"
+image 18.0,110.0 128.0x72.0 fit=1 "thumbnail://42842"
+image 18.0,190.0 48.0x48.0 fit=1 "examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg"
+image 18.0,246.0 32.0x32.0 fit=1 "http://127.0.0.1:1/zero28.png"

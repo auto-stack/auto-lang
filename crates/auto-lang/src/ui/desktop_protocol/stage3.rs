@@ -318,6 +318,182 @@ mod tests {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
     }
 
+    /// PLAN-029 T-03：native 档子进程共用体——孵化 + ensure_covered 门 +
+    /// NativeProjector + run_client_session（镜像 client_entry 生产分支）。
+    fn run_native_t3_child<C>(
+        broker_pipe: &str,
+        app: &str,
+        component: C,
+    ) where
+        C: crate::ui::Component + 'static,
+        C::Msg: Clone + std::fmt::Debug + Send + 'static,
+    {
+        let (_pipe, end) = broker::request_incubation_render(
+            broker_pipe,
+            app,
+            broker::RequestedRender::default(),
+            10_000,
+        )
+        .expect("incubate");
+        let config = ClientConfig {
+            app_name: app.to_string(),
+            title: app.to_string(),
+            width: T3_W,
+            height: T3_H,
+        };
+        let reconnect = ReconnectPolicy { pipe: _pipe, budget_ms: 30_000, interval_ms: 50 };
+        let projector = crate::ui::desktop_protocol::native_projector::NativeProjector::new(
+            component, T3_W, T3_H,
+        );
+        if let Err(gate) = projector.ensure_covered() {
+            panic!("native child 覆盖门拒绝: {gate}");
+        }
+        let (exit, proj) = crate::ui::desktop_protocol::client_runtime::run_client_session(
+            end, projector, config, Some(reconnect),
+        );
+        println!("AUTO029-CHILD exit={exit:?} rev={}", proj.revision());
+    }
+
+    /// PLAN-029 T-03：p029 live 输入 e2e 载体——typed Component（a2r 生成
+    /// 形态的手写等价）：单 input 绑定 `.buf`，on() 读 `last_input_text()`
+    /// 回写（a2r 输入合同，login 例 main.rs 同款）；echo 文本随 buf 联动
+    /// （帧断言面）。滚轮腿配一个 scrollable 使 Scroll 消费可断言。
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum P029Msg {
+        BufChanged,
+        ScrollMoved(f32, f32),
+    }
+
+    #[derive(Debug, Default)]
+    pub struct P029TypedInputs {
+        pub buf: String,
+        pub scroll_y: f32,
+    }
+
+    impl crate::ui::Component for P029TypedInputs {
+        type Msg = P029Msg;
+
+        fn on(&mut self, msg: Self::Msg) {
+            match msg {
+                P029Msg::BufChanged => {
+                    let text = crate::ui::iced::last_input_text();
+                    self.buf = text;
+                }
+                P029Msg::ScrollMoved(_x, y) => {
+                    self.scroll_y = y;
+                }
+            }
+        }
+
+        fn view(&self) -> crate::ui::View<Self::Msg> {
+            use crate::ui::View;
+            View::col()
+                .style("p-2 gap-2")
+                .child(
+                    View::input("type here")
+                        .value(self.buf.clone())
+                        .w_full()
+                        .on_change(P029Msg::BufChanged)
+                        .build(),
+                )
+                .child(View::text_styled(
+                    format!("echo:{}", self.buf),
+                    "text-sm",
+                ))
+                .child(View::text_styled(
+                    format!("scroll:{}", self.scroll_y),
+                    "text-sm",
+                ))
+                .build()
+        }
+    }
+
+    /// PLAN-029 T-09：shell 面语料——popover（锚按钮开合）/window_
+    /// thumbnail/workspace_preview/mouse-area/icon（lucide: src）五件套
+    ///（p029_shell_face_arm 载体；命中闭环 = 菜单开 → 面板项 → 关）。
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum ShellFaceMsg {
+        ToggleMenu,
+        MenuAction,
+        Dismiss,
+        AreaClick,
+    }
+
+    #[derive(Debug, Default)]
+    pub struct P029ShellFace {
+        pub open: bool,
+        pub log: String,
+    }
+
+    impl crate::ui::Component for P029ShellFace {
+        type Msg = ShellFaceMsg;
+
+        fn on(&mut self, msg: Self::Msg) {
+            match msg {
+                ShellFaceMsg::ToggleMenu => self.open = !self.open,
+                ShellFaceMsg::MenuAction => self.log = "action".into(),
+                ShellFaceMsg::Dismiss => {
+                    self.open = false;
+                    self.log = "dismissed".into();
+                }
+                ShellFaceMsg::AreaClick => self.log = "area".into(),
+            }
+        }
+
+        fn view(&self) -> crate::ui::View<Self::Msg> {
+            use crate::ui::view::{PopoverAnchor, PopoverPlacement};
+            use crate::ui::View;
+            View::col()
+                .style("p-2 gap-2")
+                .child(View::Popover {
+                    anchor: PopoverAnchor::Widget(Box::new(
+                        View::button("menu").on_click(|_| ShellFaceMsg::ToggleMenu).build(),
+                    )),
+                    content: Box::new(
+                        View::col()
+                            .child(View::text("menu-item"))
+                            .child(
+                                View::button("act")
+                                    .on_click(|_| ShellFaceMsg::MenuAction)
+                                    .build(),
+                            )
+                            .build(),
+                    ),
+                    placement: PopoverPlacement::BottomStart,
+                    open: self.open,
+                    on_dismiss: Some(ShellFaceMsg::Dismiss),
+                })
+                .child(View::WindowThumbnail {
+                    wid: "42842".into(),
+                    fallback_icon: "app-window".into(),
+                    style: None,
+                })
+                .child(View::WorkspacePreview {
+                    ws: "0".into(),
+                    fallback_icon: "app-window".into(),
+                    style: None,
+                })
+                .child(View::image_styled("lucide:panel-top", "w-4 h-4"))
+                .child(View::MouseArea {
+                    content: Box::new(View::text("hit-area")),
+                    on_enter: None,
+                    on_exit: None,
+                    on_double_click: None,
+                    on_click: Some(ShellFaceMsg::AreaClick),
+                    on_context_menu: None,
+                    on_release: None,
+                    on_move: None,
+                    logical_extent: Some((120.0, 24.0)),
+                    style: None,
+                })
+                .child(View::text_styled(
+                    format!("log:{}", self.log),
+                    "text-sm",
+                ))
+                .build()
+        }
+    }
+
     /// T3 子进程体：三态裁决的 child 侧（queue = 真协议泵；independent =
     /// 真 iced 隐藏窗 + 截图泵）。直接跑套件（无 env）时跳过。
     #[test]
@@ -327,6 +503,20 @@ mod tests {
         };
         let app = std::env::var(T3_APP_ENV).expect("app env");
         let mode = std::env::var(T3_MODE_ENV).unwrap_or_else(|_| "queue".into());
+        // PLAN-029 T-03：p029 类型化语料——typed Component + a2r 输入合同
+        //（on() 读 last_input_text 回写绑定字段）。native+dynamic 组合无
+        // 生产形态（VM 桥不读 thread-local——store_input_text 合同为 a2r
+        // 生成侧专属），故 native 档键入语料走 typed 形态。
+        if mode == "native" && app == "p029-typed-inputs" {
+            run_native_t3_child(&broker_pipe, &app, P029TypedInputs::default());
+            return;
+        }
+        // PLAN-029 T-09：shell 面语料（popover/thumbnail/preview/mousearea/
+        // lucide icon 五件套——p029_shell_face_arm 载体）。
+        if mode == "native" && app == "p029-shell-face" {
+            run_native_t3_child(&broker_pipe, &app, P029ShellFace::default());
+            return;
+        }
         let src = example_source(&app);
         let component = crate::build_dynamic_component(&src, None).expect("child build");
         match mode.as_str() {
@@ -342,6 +532,13 @@ mod tests {
                     end, component, &app, &app, T3_W, T3_H,
                 )
                 .expect("independent child");
+            }
+            // PLAN-029 T-03：native 档——View 树 native 投影器子进程
+            //（镜像 client_entry::run_native_client 的 Commands 生产分支：
+            // ensure_covered 门 + NativeProjector 全输入臂）。AppProjector
+            // 档（默认 queue）是解释投影器，无 IME/select 等后续输入面。
+            "native" => {
+                run_native_t3_child(&broker_pipe, &app, component);
             }
             _ => {
                 let (_pipe, end) = broker::request_incubation_render(
@@ -1044,19 +1241,32 @@ mod tests {
                 })
                 .collect()
         }
+        // PLAN-028：image op 定位器（帧内定位法扩展——真图升级断言面）。
+        fn images_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32, String)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Image { rect, src, .. } => {
+                        Some((rect.x, rect.y, rect.w, rect.h, src.clone()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
 
-        // —— ①profile-card（004 真源）：queue 孵化 + image 占位/渐变 col/按钮。
+        // —— ①profile-card（004 真源）：queue 孵化 + image 真图 op/
+        // 渐变 col/按钮。PLAN-028 归因：原 80×80 占位 Quad 断言改写为
+        // Image op 断言（占位保真 → 真图 op 同位替换，rect 推导零变化）。
         let wid_p = session.launch_app("profile-card").expect("profile launch");
         place_window(&mut session, wid_p, 0);
         wait_frame(
             &mut session,
             "profile-card",
             |ops| {
-                quads_of(ops)
+                images_of(ops)
                     .iter()
-                    .any(|r| r.2 == 80.0 && r.3 == 80.0)
+                    .any(|r| r.2 == 80.0 && r.3 == 80.0 && r.4.contains("cravatar"))
             },
-            "004 image 占位帧",
+            "004 image 真图 op 帧",
         );
         let mode_p = session
             .broker_clients
@@ -1127,10 +1337,16 @@ mod tests {
                     "display 帧 text {want}: {texts:?}"
                 );
             }
-            // icon size 14 → 14×14 占位方块（lucide 字形占位口径）。
+            // PLAN-028 归因：icon 原 14×14 占位方块断言改写为 Image op
+            // 断言——icon a2r 降级形态（lucide:）随图像通道升级入线，
+            // 宿主字形解析 not-yet（P026-D1 后半维持）→ 未解析降级占位
+            // 仍兜底，解释态/native 行为连续。
             assert!(
-                quads.iter().any(|r| r.2 == 14.0 && r.3 == 14.0),
-                "icon 14×14 占位方块: {quads:?}"
+                images_of(&frame.ops)
+                    .iter()
+                    .any(|r| r.2 == 14.0 && r.3 == 14.0 && r.4.starts_with("lucide:")),
+                "icon 14×14 image op（lucide 降级形态）: {:?}",
+                images_of(&frame.ops)
             );
             // divider h-1 → 4px 线 quad。
             assert!(
@@ -1212,6 +1428,680 @@ mod tests {
         }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// PLAN-028 T-07 —— 图像通道 e2e（`AUTO_DESKTOP_E2E=1` 门；t3 真子
+    /// 进程 re-exec 模式）。腿：①004（http 远程 URL src——真子进程 queue
+    /// 帧含 80×80 Image op + src 代入）；②p028 语料（capability-tests
+    /// 构造件——data:/builtin:/thumbnail://vault/本地文件/不可达 http 五
+    /// 形态一帧全数入帧；029-photo-gallery 源解释态编译器不可 parse
+    /// （探针实证 20 错），本地文件腿按计划 §5.6 "029/fixture" 措辞由
+    /// fixture 承载 + 直接消费 029 缩略文件）；③宿主侧解析三路径实驱
+    /// （thumbnail 命中/本地文件/离线负缓存——快照替身注入）+ 度量行
+    /// （解码成本 ms / 帧字节增量 ≈ src 串长）。帧留痕 AUTO_028_ASSETS=1
+    /// → docs/plans/reports/assets/028/。
+    #[test]
+    fn p028_image_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::DrawOp;
+        use crate::ui::session::ProcessModel;
+        fn images_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32, String)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Image { rect, src, .. } => {
+                        Some((rect.x, rect.y, rect.w, rect.h, src.clone()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+        // p026 同款帧谓词轮询（局部 helper——同模块各 e2e 自带）。
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| l.ops.iter().map(|o| format!("{o:?}")).collect::<Vec<_>>())
+                );
+                std::thread::yield_now();
+            }
+        }
+        let broker_pipe = format!("autodesk-broker-028-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        // 载体源：004 + p028 语料（example_source 双根解析命中
+        // capability-tests）。
+        let names = ["004-profile-card", "p028-image-channel"];
+        let sources: Vec<(String, String)> = names
+            .iter()
+            .map(|n| (n.to_string(), example_source(n)))
+            .collect();
+        session.desktop.app_resolver =
+            Some(std::sync::Arc::new(move |name: &str| {
+                sources
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(n, src)| LaunchSpec {
+                        code: src.clone(),
+                        source_path: None,
+                        title: Some(n.to_string()),
+                        name: None,
+                        fit: false,
+                        daemon: None,
+                        back_root: None,
+                        exe: None,
+                        opens: Vec::new(),
+                        render_decl: Some("queue".into()),
+                    })
+            }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let broker_for_spawn = broker_pipe.clone();
+        session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
+            Ok(spawn_t3_child(&broker_for_spawn, child_name, "queue"))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        // —— ①004：http 远程 URL src → 80×80 Image op + src 代入。
+        let wid_p = session.launch_app("004-profile-card").expect("profile launch");
+        place_window(&mut session, wid_p, 0);
+        wait_frame(
+            &mut session,
+            "004-profile-card",
+            |ops| {
+                images_of(ops)
+                    .iter()
+                    .any(|r| r.2 == 80.0 && r.3 == 80.0 && r.4.contains("cravatar"))
+            },
+            "004 image 真图 op 帧",
+        );
+
+        // —— ②p028 语料：五 src 形态一帧全数入帧（rect = Tailwind 刻度
+        // 40×40 / 64×36 / 128×72 / 48×48 / 32×32——占位同位推导零变化）。
+        let wid_i = session.launch_app("p028-image-channel").expect("corpus launch");
+        place_window(&mut session, wid_i, 1);
+        wait_frame(
+            &mut session,
+            "p028-image-channel",
+            |ops| images_of(ops).len() == 5,
+            "p028 语料五 Image op 帧",
+        );
+        {
+            let frame = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("p028-image-channel"))
+                .and_then(|c| c.composed())
+                .expect("corpus composed");
+            let ims = images_of(&frame.ops);
+            for (w, h) in [(40.0, 40.0), (64.0, 36.0), (128.0, 72.0), (48.0, 48.0), (32.0, 32.0)] {
+                assert!(
+                    ims.iter().any(|r| r.2 == w && r.3 == h),
+                    "image rect {w}x{h}: {ims:?}"
+                );
+            }
+            assert!(
+                ims.iter().any(|r| r.4.starts_with("data:image/png;base64,")),
+                "data: 形态: {ims:?}"
+            );
+            assert!(ims.iter().any(|r| r.4 == "builtin:ricepaper"), "builtin: 形态");
+            assert!(ims.iter().any(|r| r.4 == "thumbnail://42842"), "thumbnail:// 形态");
+            assert!(
+                ims.iter().any(|r| r.4.ends_with("thumb_001.jpg")),
+                "本地文件形态: {ims:?}"
+            );
+            assert!(
+                ims.iter().any(|r| r.4 == "http://127.0.0.1:1/zero28.png"),
+                "不可达 http 形态（帧内合法——降级归宿主侧）"
+            );
+            // 度量行：帧字节增量 ≈ src 串长（编码帧长 vs src 长度合计）。
+            let mut buf = Vec::new();
+            frame.encode(&mut buf);
+            let src_bytes: usize = ims.iter().map(|r| r.4.len()).sum();
+            eprintln!(
+                "[p028-metric] frame_bytes={} src_bytes={src_bytes} ops={}",
+                buf.len(),
+                frame.ops.len()
+            );
+        }
+
+        // —— ③宿主侧解析三路径实驱（快照替身注入；解码/缓存/降级语义
+        // 单测面 = broker_surface t028_*，此处为 e2e 进程内实证）。
+        crate::ui::iced::snapshot::cache_put(
+            crate::ui::session::Wid(42842),
+            crate::ui::iced::snapshot::WindowSnapshot {
+                rgba: vec![1, 2, 3, 255],
+                w: 1,
+                h: 1,
+            },
+        );
+        let handle =
+            crate::ui::iced::broker_surface::resolve_drawlist_image("thumbnail://42842", 96, 56)
+                .expect("thumbnail 命中（cache_put 注入替身后直出）");
+        drop(handle);
+        // 命中后 SNAPSHOT_TTL 2s 内为新鲜——清除请求队列作 SWR 断言基线。
+        let _ = crate::ui::iced::snapshot::take_capture_requests();
+        // 本地文件腿：nextest cwd = crate manifest 目录——仓库根相对形
+        // 态经 manifest 拼绝对路径驱动（语料内相对字面量仅承载帧级断言）。
+        let thumb_abs = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/029-photo-gallery/src/front/thumbnails/thumb_001.jpg"
+        );
+        let t0 = std::time::Instant::now();
+        let file_handle =
+            crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs, 96, 56)
+                .expect("本地文件解析（绝对路径）");
+        drop(file_handle);
+        let decode_ms = t0.elapsed().as_millis();
+        eprintln!("[p028-metric] local file resolve = {decode_ms} ms（缓存命中后重复解析 <1ms）");
+        let t1 = std::time::Instant::now();
+        assert!(
+            crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs, 96, 56).is_some(),
+            "二次解析 = 缓存命中"
+        );
+        eprintln!("[p028-metric] cached resolve = {} ms", t1.elapsed().as_millis());
+        // 离线降级腿：不可达 http → 当帧占位（None）+ 后台负缓存落地。
+        assert!(
+            crate::ui::iced::broker_surface::resolve_drawlist_image(
+                "http://127.0.0.1:1/zero28.png",
+                96,
+                56
+            )
+            .is_none(),
+            "不可达 http 首帧 = 占位（不阻塞）"
+        );
+
+        // 帧留痕（AUTO_028_ASSETS=1 → docs/plans/reports/assets/028/）。
+        if std::env::var("AUTO_028_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/028");
+            let _ = std::fs::create_dir_all(&assets);
+            for (app, file) in [
+                ("004-profile-card", "profile-card-frame.txt"),
+                ("p028-image-channel", "image-channel-frame.txt"),
+            ] {
+                if let Some(list) = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                {
+                    let out =
+                        crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                    let _ = std::fs::write(assets.join(file), out);
+                }
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// PLAN-029 T-03（D2 主腿）：live 输入泵 e2e——`DesktopEvent::LiveInput`
+    /// 的生产路由入口 `route_live_input`（真子进程 003-converter，queue 臂
+    /// re-exec 孵化——p028 免载体形态）驱动真键入语义链：⑤协议级直调腿
+    /// （broker_char 先例延续）+ live 四型腿（Chars 键入联动 / KeyPressed
+    /// 退格 / ImeCommit 并入 / Wheel last_cursor 命中窗路由）。
+    /// `AUTO_DESKTOP_E2E=1` 门。留痕 `AUTO_029_ASSETS=1` → assets/029/。
+    #[test]
+    fn p029_live_input_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
+        use crate::ui::session::{DesktopSession, LaunchSpec, LiveInput, ProcessModel};
+
+        let broker_pipe = format!("autodesk-broker-029-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            // code = 裁决/挂载用最小占位（host 侧 attach 建视图判定）；
+            // 子真身走 t3_child_body typed 分支（P029TypedInputs）。
+            (name == "p029-typed-inputs").then(|| LaunchSpec {
+                code: r#"widget t { view { text "x" } }"#.to_string(),
+                source_path: None,
+                title: Some("P029Inputs".into()),
+                name: Some("p029-inputs".into()),
+                fit: false,
+                daemon: None,
+                back_root: None,
+                exe: None,
+                opens: Vec::new(),
+                render_decl: Some("queue".into()),
+            })
+        }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let broker_for_spawn = broker_pipe.clone();
+        session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
+            Ok(spawn_t3_child(&broker_for_spawn, child_name, "native"))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| l.ops.iter().map(|o| format!("{o:?}")).collect::<Vec<_>>())
+                );
+                std::thread::yield_now();
+            }
+        }
+        fn quads_of(ops: &[DrawOp]) -> Vec<(f32, f32, f32, f32)> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Quad { rect, .. } => Some((rect.x, rect.y, rect.w, rect.h)),
+                    _ => None,
+                })
+                .collect()
+        }
+        fn texts_of(ops: &[DrawOp]) -> Vec<String> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // —— p029-typed-inputs：native queue 孵化 → 首帧（placeholder 在场）。
+        let wid_c = session.launch_app("p029-typed-inputs").expect("p029 inputs launch");
+        if let Some(host) = session.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid_c) {
+                let mut rect = *v.rect.borrow();
+                rect.x = 16.0;
+                rect.y = 16.0;
+                *v.rect.borrow_mut() = rect;
+            }
+        }
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t.contains("type here")),
+            "p029 首帧（placeholder 在场）",
+        );
+        let mode_c = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_c))
+            .map(|c| c.endpoint.frame_mode)
+            .expect("p029 client");
+        assert_eq!(mode_c, FrameMode::Commands, "p029 显式 queue → Commands");
+
+        let (ox, oy) = {
+            let host = session.host.as_ref().unwrap();
+            let r = *host.wm.wins.get(&wid_c).unwrap().rect.borrow();
+            (r.x, r.y)
+        };
+        // input 定位：placeholder 文本 op 坐标（首帧 buffer 空 → placeholder
+        // 显示在 input 内部左上）。
+        let (tx, ty) = session
+            .broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid_c))
+            .and_then(|c| c.composed())
+            .and_then(|l| {
+                l.ops.iter().find_map(|op| match op {
+                    DrawOp::Text { x, y, text, .. } if text.contains("type here") => {
+                        Some((*x, *y))
+                    }
+                    _ => None,
+                })
+            })
+            .expect("placeholder 坐标");
+        assert!(session.broker_pointer_down(ox + tx + 4.0, oy + ty + 2.0, MouseButton::Left));
+
+        // —— ⑤协议级直调腿（broker_char 先例延续；p025 口径在册）。
+        assert!(session.broker_char('h'), "⑤ broker_char 路由");
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "echo:h"),
+            "⑤ 协议级键入（broker_char h -> echo:h）",
+        );
+        println!("AUTO029-LIVE protocol leg PASS (broker_char h -> echo:h)");
+
+        // —— live Chars 腿：LiveInput 泵入（生产路由入口）→ "i" 并入。
+        assert!(session.route_live_input(&LiveInput::Chars { text: "i".into() }));
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "echo:hi"),
+            "live Chars 键入联动（h+i -> echo:hi）",
+        );
+        println!("AUTO029-LIVE chars leg PASS (live Chars i -> echo:hi)");
+
+        // —— live KeyPressed 腿：VK_BACK(8) 退格 → "h"。
+        assert!(session.route_live_input(&LiveInput::KeyPressed { key: 8, modifiers: 0 }));
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "echo:h"),
+            "live VK_BACK 退格（hi -> echo:h）",
+        );
+        println!("AUTO029-LIVE key leg PASS (VK_BACK -> echo:h)");
+
+        // —— live ImeCommit 腿：组合串并入 buffer → "h文"。
+        assert!(session.route_live_input(&LiveInput::ImeCommit { text: "文".into() }));
+        wait_frame(
+            &mut session,
+            "p029-typed-inputs",
+            |ops| texts_of(ops).iter().any(|t| t == "echo:h文"),
+            "live ImeCommit 并入（h+文 -> echo:h文）",
+        );
+        println!("AUTO029-LIVE ime leg PASS (ImeCommit 文 -> echo:h文)");
+
+        // —— live Wheel 腿：last_cursor 置窗心 → 命中窗路由（载体无
+        //    Scrollable，路由成功 = child 管道投递 ok）。
+        if let Some(host) = session.host.as_mut() {
+            host.wm.last_cursor.set(iced::Point::new(ox + 100.0, oy + 100.0));
+        }
+        assert!(
+            session.route_live_input(&LiveInput::Wheel { dx: 0.0, dy: -40.0 }),
+            "live Wheel 命中窗路由"
+        );
+        println!("AUTO029-LIVE wheel leg PASS (routed to hit window)");
+
+        // 帧留痕（AUTO_029_ASSETS=1 → docs/plans/reports/assets/029/）。
+        if std::env::var("AUTO_029_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/029");
+            let _ = std::fs::create_dir_all(&assets);
+            if let Some(list) = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("p029-typed-inputs"))
+                .and_then(|c| c.composed())
+            {
+                let out =
+                    crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                let _ = std::fs::write(assets.join("live-input-frame.txt"), out);
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// PLAN-029 T-09：shell 面渲染 + 命中闭环 e2e——真 outproc native 子
+    /// 进程（p029-shell-face 五件套语料）经 wire 合成帧断言：thumbnail://
+    /// 与 lucide: 的 Image op 落 wire（宿主解析侧 T-07 单测在册）+
+    /// popover 命中闭环（锚开 → 面板项派发 → 外点 on_dismiss）+
+    /// mousearea 命中。留痕 `AUTO_029_ASSETS=1` → assets/029/。
+    #[test]
+    fn p029_shell_face_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
+        use crate::ui::session::{DesktopSession, LaunchSpec, ProcessModel};
+
+        let broker_pipe = format!("autodesk-broker-029f-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            (name == "p029-shell-face").then(|| LaunchSpec {
+                code: r#"widget t { view { text "x" } }"#.to_string(),
+                source_path: None,
+                title: Some("P029ShellFace".into()),
+                name: Some("p029-shell-face".into()),
+                fit: false,
+                daemon: None,
+                back_root: None,
+                exe: None,
+                opens: Vec::new(),
+                render_decl: Some("queue".into()),
+            })
+        }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let broker_for_spawn = broker_pipe.clone();
+        session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
+            Ok(spawn_t3_child(&broker_for_spawn, child_name, "native"))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        fn wait_frame(
+            session: &mut DesktopSession,
+            app: &str,
+            pred: impl Fn(&[DrawOp]) -> bool,
+            what: &str,
+        ) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                session.pump_broker_clients();
+                let hit = session
+                    .broker_clients
+                    .values()
+                    .find(|c| c.app_name.as_deref() == Some(app))
+                    .and_then(|c| c.composed())
+                    .is_some_and(|l| pred(&l.ops));
+                if hit {
+                    return;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "{what} 超时: {:?}",
+                    session
+                        .broker_clients
+                        .values()
+                        .find(|c| c.app_name.as_deref() == Some(app))
+                        .and_then(|c| c.composed())
+                        .map(|l| l.ops.iter().map(|o| format!("{o:?}")).collect::<Vec<_>>())
+                );
+                std::thread::yield_now();
+            }
+        }
+        fn texts_of(ops: &[DrawOp]) -> Vec<String> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+        fn image_srcs_of(ops: &[DrawOp]) -> Vec<String> {
+            ops.iter()
+                .filter_map(|op| match op {
+                    DrawOp::Image { src, .. } => Some(src.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+        // 命中区（text op 坐标 → 窗内点击点）。
+        fn text_pos_of(ops: &[DrawOp], needle: &str) -> Option<(f32, f32)> {
+            ops.iter().find_map(|op| match op {
+                DrawOp::Text { x, y, text, .. } if text.contains(needle) => Some((*x, *y)),
+                _ => None,
+            })
+        }
+
+        let wid = session.launch_app("p029-shell-face").expect("shell-face launch");
+        if let Some(host) = session.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid) {
+                let mut rect = *v.rect.borrow();
+                rect.x = 16.0;
+                rect.y = 16.0;
+                *v.rect.borrow_mut() = rect;
+            }
+        }
+        // ①首帧：thumbnail/lucide Image op 落 wire（五件套渲染面）。
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| {
+                let srcs = image_srcs_of(ops);
+                srcs.iter().any(|s| s.starts_with("thumbnail://42842!"))
+                    && srcs.iter().any(|s| s == "lucide:panel-top")
+                    && srcs.iter().any(|s| s.starts_with("workspace://0!"))
+            },
+            "shell 面五件套首帧（thumbnail/lucide/workspace Image op）",
+        );
+        let (ox, oy) = {
+            let host = session.host.as_ref().unwrap();
+            let r = *host.wm.wins.get(&wid).unwrap().rect.borrow();
+            (r.x, r.y)
+        };
+        println!("AUTO029-FACE five-kind ops PASS (thumbnail:// + lucide: + workspace:// on wire)");
+
+        // ②popover 命中闭环：点锚按钮（menu）→ 开 → 面板项在帧。
+        let ops = face_ops(&session);
+        let (mx, my) = text_pos_of(&ops, "menu").expect("锚按钮坐标");
+        assert!(session.broker_pointer_down(ox + mx + 2.0, oy + my + 2.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| texts_of(ops).iter().any(|t| *t == "menu-item"),
+            "popover 开态面板渲染",
+        );
+        println!("AUTO029-FACE popover open PASS (menu-item panel on wire)");
+
+        // ③面板项命中 → MenuAction 派发（log:action）——点面板内按钮
+        //（text 节点无命中项，点文本会落 catcher 关面板——按设计）。
+        let ops = face_ops(&session);
+        let (ax, ay) = text_pos_of(&ops, "act").expect("面板按钮坐标");
+        assert!(session.broker_pointer_down(ox + ax + 2.0, oy + ay + 2.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| texts_of(ops).iter().any(|t| t == "log:action"),
+            "面板项命中派发（MenuAction）",
+        );
+        println!("AUTO029-FACE popover item PASS (MenuAction dispatched)");
+
+        // ④外点 → on_dismiss（log:dismissed + 面板收）。
+        assert!(session.broker_pointer_down(ox + 460.0, oy + 300.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| {
+                texts_of(ops).iter().any(|t| t == "log:dismissed")
+                    && !texts_of(ops).iter().any(|t| *t == "menu-item")
+            },
+            "外点 on_dismiss + 面板收",
+        );
+        println!("AUTO029-FACE popover dismiss PASS (on_dismiss + panel closed)");
+
+        // ⑤mousearea 命中 → AreaClick。
+        let ops = face_ops(&session);
+        let (hx, hy) = text_pos_of(&ops, "hit-area").expect("area 坐标");
+        assert!(session.broker_pointer_down(ox + hx + 2.0, oy + hy + 2.0, MouseButton::Left));
+        wait_frame(
+            &mut session,
+            "p029-shell-face",
+            |ops| texts_of(ops).iter().any(|t| t == "log:area"),
+            "mousearea 命中（AreaClick）",
+        );
+        println!("AUTO029-FACE mousearea PASS (AreaClick dispatched)");
+
+        // 帧留痕（AUTO_029_ASSETS=1 → docs/plans/reports/assets/029/）。
+        if std::env::var("AUTO_029_ASSETS").is_ok() {
+            let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/plans/reports/assets/029");
+            let _ = std::fs::create_dir_all(&assets);
+            if let Some(list) = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("p029-shell-face"))
+                .and_then(|c| c.composed())
+            {
+                let out =
+                    crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                let _ = std::fs::write(assets.join("shell-face-frame.txt"), out);
+            }
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// p029_shell_face_arm：当前合成帧 ops（免借用冲突的快照取用）。
+    fn face_ops(session: &DesktopSession) -> Vec<DrawOp> {
+        session
+            .broker_clients
+            .values()
+            .find(|c| c.app_name.as_deref() == Some("p029-shell-face"))
+            .and_then(|c| c.composed())
+            .map(|l| l.ops.clone())
+            .unwrap_or_default()
     }
 
     fn composed_texts(session: &DesktopSession, app: &str) -> Vec<String> {

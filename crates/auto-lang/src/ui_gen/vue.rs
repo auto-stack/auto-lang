@@ -381,6 +381,13 @@ fn derive_mention_backdrop_class(ta_class: &str) -> String {
 
 /// Vue3 SFC generator
 pub struct VueGenerator {
+    /// PLAN-646: Select Anything DOM 标记（data-auto-*）开关——dev 运行面
+    /// （`auto run` 经 AUTOUI_SELECT_MARKERS=1）开启；产物构建保持输出
+    /// 逐字节不变（既有快照测试锚定精确 HTML，恒定注入会大面积破坏）。
+    select_markers: bool,
+    /// PLAN-646: 本生成器实例对应的 .at 源文件 stem（data-auto-src 注入，
+    /// overlay 据此在 AUTO_SOURCES 中选对源文——子件 span 归各自 .at）。
+    source_stem: String,
     /// Current widget name
     current_widget: Option<String>,
 
@@ -860,6 +867,8 @@ impl VueGenerator {
     /// Create a new Vue generator (Plain Tailwind mode, TypeScript output)
     pub fn new() -> Self {
         Self {
+            select_markers: std::env::var("AUTOUI_SELECT_MARKERS").as_deref() == Ok("1"),
+            source_stem: "app".to_string(),
             current_widget: None,
             imports: Vec::new(),
             state_names: Vec::new(),
@@ -1159,6 +1168,12 @@ impl VueGenerator {
     /// Set the `default_classes` toggle (pac.at `default_classes: off`).
     /// When false, `extract_classes` skips the doc-theme default Tailwind
     /// classes for everything except layout primitives (row/col/grid/...).
+    /// PLAN-646: 设置源文件 stem（data-auto-src 注入）。
+    pub fn with_source_stem(mut self, stem: impl Into<String>) -> Self {
+        self.source_stem = stem.into();
+        self
+    }
+
     pub fn with_default_classes(mut self, default_classes: bool) -> Self {
         self.default_classes = default_classes;
         self
@@ -2921,6 +2936,13 @@ impl VueGenerator {
             for lc in &widget.lifecycle {
                 self.extract_api_calls_from_payload(&lc.payload);
             }
+        }
+        // PLAN-074: watch 块体的 API 调用与 handlers/lifecycle 同权注册——
+        // 缺此扫描时 watch 内的契约调用（`use back.api:` → '@/lib/api'
+        // import 行）有 emission 无 import（TS2304；jade backlinks_panel
+        // 下沉首件实证：on 块调用绿、watch 块调用 TS2304）。
+        for w in &widget.watchers {
+            self.extract_api_calls_from_payload(&w.payload);
         }
 
         // Plan 053 M5/P5-6: identify debounced complete-handlers (body calls
@@ -6324,7 +6346,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         let ind = "  ".repeat(indent);
 
         match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
+            AuraNode::Element { tag, props, events, children, span, debug_id, .. } => {
                 // Plan 012 Batch A (gap 30): a stray comma between view children
                 // parses as an element with the literal tag "," and used to fall
                 // through to the unknown-tag `<div />` fallback — silently
@@ -7491,6 +7513,21 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
                     (attrs, text_content, None)
                 };
+
+                // PLAN-646: Select Anything DOM 标记注入——data-auto-*。
+                // dev 运行面开启（AUTOUI_SELECT_MARKERS=1）；产物构建与
+                // 既有快照测试保持逐字节不变。组件壳路径（known_sub_widget/
+                // 外部组件）在上方早退不经此处——标记面由内层通用元素携带。
+                if self.select_markers {
+                    attrs.push(format!("data-auto-tag=\"{}\"", tag));
+                    attrs.push(format!("data-auto-src=\"{}\"", self.source_stem));
+                    if let Some(id) = debug_id {
+                        attrs.push(format!("data-auto-id=\"aura_{}\"", id.0));
+                    }
+                    if let Some((off, len)) = span {
+                        attrs.push(format!("data-auto-span=\"{}:{}\"", off, len));
+                    }
+                }
 
                 // reka-ui TooltipTrigger renders its own <button>; as-child
                 // avoids nesting when it wraps a <Button> (invalid HTML,
@@ -9090,6 +9127,106 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         Some((statics, parts.join(" + ")))
     }
 
+    /// Plan 653 D4: Tailwind 类串模板 → 真 inline CSS 声明串。
+    ///
+    /// app 源惯用 `style: f"absolute z-10 top-[${.y}px] …"`(Tailwind 类
+    /// 表,几何值是运行时插值)。该串按 CSS 声明语义发成 `:style` 会被
+    /// 浏览器整串忽略(类名不是合法 CSS),槽位 div 零定位零尺寸落文档
+    /// 流,页面塌成纵向文档(653 实测 2209px 翻页);运行时插值又排除
+    /// :class 任意值路线(任意值类是编译期字面量)。全部 token 可识别
+    /// 时翻译为等价 inline CSS;任一 token 未知/形态不符则整体放弃
+    /// (返回 None,回退原语义)——不静默丢样式,不做部分翻译。
+    ///
+    /// 输入是已渲染的 JS 表达式串(模板字面量/引号串);`${…}` 插值
+    /// 原样保留。识别集 = 本仓 app 惯用面:position 关键字、z-{n}、
+    /// top/left/right/bottom/w/h/min-w/min-h/max-w/max-h/inset-[…]、
+    /// bg-[…]。
+    fn tailwind_class_template_to_inline_style(expr: &str) -> Option<String> {
+        let content = expr.trim();
+        let (content, quote) = if let Some(inner) =
+            content.strip_prefix('`').and_then(|c| c.strip_suffix('`'))
+        {
+            (inner, '`')
+        } else if let Some(inner) = content.strip_prefix('"').and_then(|c| c.strip_suffix('"')) {
+            (inner, '"')
+        } else if let Some(inner) = content.strip_prefix('\'').and_then(|c| c.strip_suffix('\'')) {
+            (inner, '\'')
+        } else {
+            // 拼接/函数调用等非字面量形态不在此层处理。
+            return None;
+        };
+        if content.is_empty() {
+            return None;
+        }
+        // 按空白切 token;`${…}` 插值内部不切。
+        let mut tokens: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        let mut in_interp = false;
+        for ch in content.chars() {
+            if in_interp {
+                cur.push(ch);
+                if ch == '}' {
+                    in_interp = false;
+                }
+            } else {
+                match ch {
+                    '$' => {
+                        in_interp = true;
+                        cur.push(ch);
+                    }
+                    c if c.is_whitespace() => {
+                        if !cur.is_empty() {
+                            tokens.push(std::mem::take(&mut cur));
+                        }
+                    }
+                    c => cur.push(c),
+                }
+            }
+        }
+        if !cur.is_empty() {
+            tokens.push(cur);
+        }
+        // 含 CSS 冒号的串(如 "color: rgb(…)")是声明串不是类串,不翻译。
+        if tokens.iter().any(|t| t.contains(':')) {
+            return None;
+        }
+        let mut decls: Vec<String> = Vec::new();
+        for t in &tokens {
+            decls.push(Self::tailwind_token_to_css(t)?);
+        }
+        Some(format!("{}{}{}", quote, decls.join(";"), quote))
+    }
+
+    /// 单个 Tailwind token → CSS 声明。未知 token 返回 None(上层整体放弃)。
+    fn tailwind_token_to_css(token: &str) -> Option<String> {
+        match token {
+            "absolute" => return Some("position:absolute".to_string()),
+            "relative" => return Some("position:relative".to_string()),
+            "fixed" => return Some("position:fixed".to_string()),
+            "sticky" => return Some("position:sticky".to_string()),
+            _ => {}
+        }
+        let (prop, val) = token.split_once('-')?;
+        let v = |val: &str| -> Option<String> {
+            val.strip_prefix('[')
+                .and_then(|s| s.strip_suffix(']'))
+                .map(|s| s.to_string())
+        };
+        match prop {
+            "z" => Some(format!("z-index:{}", val)),
+            "top" | "left" | "right" | "bottom" => Some(format!("{}:{}", prop, v(val)?)),
+            "w" => Some(format!("width:{}", v(val)?)),
+            "h" => Some(format!("height:{}", v(val)?)),
+            "min-w" => Some(format!("min-width:{}", v(val)?)),
+            "min-h" => Some(format!("min-height:{}", v(val)?)),
+            "max-w" => Some(format!("max-width:{}", v(val)?)),
+            "max-h" => Some(format!("max-height:{}", v(val)?)),
+            "inset" => Some(format!("inset:{}", v(val)?)),
+            "bg" => Some(format!("background:{}", v(val)?)),
+            _ => None,
+        }
+    }
+
     fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>, Option<String>) {
         let mut classes = Vec::new();
         let mut dynamic_class: Option<String> = None;
@@ -9396,6 +9533,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     } else {
                         match self.expr_to_vue_bound_value(other_expr) {
                             Ok(expr_str) => {
+                                // Plan 653 D4: 插值类串(f-string)落到此通道时
+                                // 是 Tailwind 类表而非 CSS 声明——`:style` 整串
+                                // 被浏览器忽略,槽位零定位(653 D4 病灶)。
+                                // 全 token 可识别的类串模板翻译为等价
+                                // inline CSS;其余形态原样保留。
+                                let expr_str =
+                                    Self::tailwind_class_template_to_inline_style(&expr_str)
+                                        .unwrap_or(expr_str);
                                 dynamic_style = Some(expr_str);
                             }
                             // Plan 012 P0#13 follow-up: used to be silently
@@ -10376,6 +10521,19 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         walk_stmt(stmt, api_fns, used);
                     }
                 }
+                // PLAN-076: closure/lambda bodies also walk — `let run =
+                // () => { ... }` in an on-handler stores the closure as the
+                // Store expr; without these arms the api call inside the
+                // closure body has emission but no '@/lib/api' import line
+                // (TS2304; jade search_panel sink first evidence: the
+                // debounced run closure's `use back.api: search_pages`
+                // call — on-block direct calls green, closure-nested red).
+                Expr::Closure(c) => walk_expr(&c.body, api_fns, used),
+                Expr::Lambda(l) => {
+                    for stmt in &l.body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                }
                 _ => {}
             }
         }
@@ -10408,6 +10566,22 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 Stmt::Block(body) => {
                     for stmt in &body.stmts {
                         walk_stmt(stmt, api_fns, used);
+                    }
+                }
+                // PLAN-074: try/catch/finally 体同样入扫描——watch 的契约
+                // 调用沉入 try 块（DSL ≥ c5b5fecf）后，`_ => {}` 兜底把整段
+                // 吞掉，import 行仍不发射（backlinks 首件实证的最后一环）。
+                Stmt::Try(t) => {
+                    for stmt in &t.body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                    for stmt in &t.catch_body.stmts {
+                        walk_stmt(stmt, api_fns, used);
+                    }
+                    if let Some(finally_body) = &t.finally_body {
+                        for stmt in &finally_body.stmts {
+                            walk_stmt(stmt, api_fns, used);
+                        }
                     }
                 }
                 _ => {}
@@ -18255,6 +18429,80 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    /// Plan 653 D4:Tailwind 类串模板 → 真 inline CSS 翻译器单测。
+    /// 语料取自 auto-term app.at 槽位/divider 实际写法。
+    #[test]
+    fn test_tailwind_class_template_to_inline_style() {
+        // 槽位浮层:position/z/几何插值全识别 → 翻译。
+        assert_eq!(
+            Some(
+                "`position:absolute;z-index:10;top:${y1}px;left:${x1}px;width:${w1}px;height:${h1}px`"
+                    .to_string()
+            ),
+            VueGenerator::tailwind_class_template_to_inline_style(
+                "`absolute z-10 top-[${y1}px] left-[${x1}px] w-[${w1}px] h-[${h1}px]`"
+            )
+        );
+        // divider:定值 + bg 色。
+        assert_eq!(
+            Some("`position:absolute;z-index:20;top:${dY1}px;left:8px;width:8px;height:${dH1}px;background:#8899aa`".to_string()),
+            VueGenerator::tailwind_class_template_to_inline_style(
+                "`absolute z-20 top-[${dY1}px] left-[8px] w-[8px] h-[${dH1}px] bg-[#8899aa]`"
+            )
+        );
+        // CSS 声明串(含冒号)不翻译,回退原语义。
+        assert_eq!(
+            None,
+            VueGenerator::tailwind_class_template_to_inline_style("`color: rgb(1,2,3)`")
+        );
+        // 未知 token → 整体放弃(不部分翻译)。
+        assert_eq!(
+            None,
+            VueGenerator::tailwind_class_template_to_inline_style(
+                "`absolute top-[${y}px] shadow-lg`"
+            )
+        );
+        // 非字面量形态(拼接表达式)不处理。
+        assert_eq!(
+            None,
+            VueGenerator::tailwind_class_template_to_inline_style("('a' + b)")
+        );
+    }
+
+    /// Plan 653 D4 生成级:widget 里 `style: f"absolute z-10 top-…"` 类
+    /// 串必须落成含 `position:absolute;…` 的真 inline `:style`,而非把
+    /// 类名串原样塞进 `:style`(浏览器整串忽略,槽位零定位,页面塌成
+    /// 2209px 纵向文档)。
+    #[test]
+    fn test_slot_style_class_string_becomes_real_inline_style() {
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
+widget TermView {
+    model {
+        var y1 int = 0
+        var x1 int = 0
+        var w1 int = 0
+        var h1 int = 0
+        var visible1 int = 1
+    }
+    view {
+        div {
+            style: f"absolute z-10 top-[${.y1}px] left-[${.x1}px] w-[${.w1}px] h-[${.h1}px]"
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains(":style=\"`position:absolute;z-index:10;top:${y1}px;left:${x1}px;width:${w1}px;height:${h1}px`\""),
+            "slot style must become real inline CSS in :style:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(":style=\"`absolute"),
+            "raw tailwind class list must not reach :style:\n{sfc}"
+        );
+    }
+
     /// Form submit 布线（extract 层 `variant: "submit"` → input onenter）
     /// 在 vue 轨的落地：未声明 onenter 的 input 全部得到
     /// `@keyup.enter="Submit"`；且 `submit` 是行为语义不是视觉变体——
@@ -21598,6 +21846,59 @@ widget IconProbe {
             "iconfile 前缀不得泄入 Lucide 推导: {sfc}"
         );
         assert!(sfc.contains("<Calculator"), "lucide 组件照旧: {sfc}");
+    }
+
+    /// PLAN-646 T-07: Select Anything DOM 标记——通用元素注入
+    /// data-auto-tag / data-auto-id / data-auto-span；span 值为 off:len
+    /// 数字形态（与 AuraNode.span 字节区间一致）；text 子节点不注入
+    /// （归父元素）。
+    #[test]
+    fn plan646_vue_emits_data_auto_markers() {
+        // dev 运行面开关（nextest 每测试一进程，env 设置无串扰）。
+        std::env::set_var("AUTOUI_SELECT_MARKERS", "1");
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget SelectMarkers {
+    view {
+        col {
+            text "hello"
+        }
+    }
+}
+"#,
+        );
+        assert!(sfc.contains("data-auto-tag=\"col\""), "col tag marker:
+{sfc}");
+        assert!(sfc.contains("data-auto-id=\"aura_"), "debug_id marker:
+{sfc}");
+        assert!(sfc.contains("data-auto-src=\"app\""), "source stem marker:
+{sfc}");
+        // span 形态 off:len（数字:数字）
+        let span_vals: Vec<String> = sfc
+            .split("data-auto-span=\"")
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next().map(str::to_string))
+            .collect();
+        assert!(!span_vals.is_empty(), "span marker 存在:
+{sfc}");
+        for v in &span_vals {
+            let (off, len) = v.split_once(':').unwrap_or_else(|| {
+                panic!("span 必须为 off:len 形态, got {v}:
+{{sfc}}")
+            });
+            assert!(
+                !off.is_empty() && off.bytes().all(|b| b.is_ascii_digit())
+                    && !len.is_empty() && len.bytes().all(|b| b.is_ascii_digit()),
+                "span off:len 必须全数字, got {v}"
+            );
+        }
+        // `text "hello" {}` 是 tag="text" 的 Element（有自己的 span）——
+        // 照常注入；不注入的是 AuraNode::Text（DOM 文本，不经 Element 臂）。
+        assert!(
+            sfc.contains("data-auto-tag=\"text\""),
+            "text 元素自身照常注入:
+{sfc}"
+        );
     }
 
     /// Same as gen_sfc_from_widget_src, but in shadcn-vue mode (real widgets
@@ -28793,4 +29094,5 @@ mod plan571_variants_cva_interlock_tests {
             "defaultVariants.variant 应保持 'default'"
         );
     }
+
 }

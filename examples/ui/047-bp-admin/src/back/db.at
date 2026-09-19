@@ -1,0 +1,203 @@
+// back/db.at — PLAN-657 mock 数据服务（内存存储 + 种子数据）。
+// 四包契约面的 dataSource 全部物化在此：sidebar-shell 的 counts、
+// data-table-crud 的 query、settings 的 load/save。013-todo/015-notes
+// db.at 先例习语（for-in 重建列表 + 无 while/索引赋值/单行 fn——
+// back 转译方言窄面，见 PLAN-657 摩擦清单）。
+
+use api: Row
+
+// ── 表格种子数据（20 行）──
+
+var rows List<Row> = List<Row>.new([
+    Row { id: "r01", name: "Analytical Engine" },
+    Row { id: "r02", name: "Difference Engine" },
+    Row { id: "r03", name: "Jacquard Loom" },
+    Row { id: "r04", name: "Hollerith Tabulator" },
+    Row { id: "r05", name: "Zuse Z3" },
+    Row { id: "r06", name: "ENIAC" },
+    Row { id: "r07", name: "UNIVAC I" },
+    Row { id: "r08", name: "IBM 704" },
+    Row { id: "r09", name: "PDP-11" },
+    Row { id: "r10", name: "Altair 8800" },
+    Row { id: "r11", name: "Apple II" },
+    Row { id: "r12", name: "IBM PC 5150" },
+    Row { id: "r13", name: "Commodore 64" },
+    Row { id: "r14", name: "Macintosh 128K" },
+    Row { id: "r15", name: "Amiga 1000" },
+    Row { id: "r16", name: "ThinkPad 700C" },
+    Row { id: "r17", name: "iMac G3" },
+    Row { id: "r18", name: "Nokia 9000" },
+    Row { id: "r19", name: "iPhone" },
+    Row { id: "r20", name: "Raspberry Pi" }
+])
+
+var nextnum int = 21
+
+// ── 设置页 mock 配置（单 List<Row> 容器——a2r 方言窄面：全局 str 无参数
+// 写入通道（&str 借用逃逸）、避免 [0] 索引读（Plan 401 §技术约定），
+// for-in 读 + let-ctor 重建写为 013/023 同款习语；bool 经 "true"/"false"
+// 字符串化）──
+
+var cfg List<Row> = List<Row>.new([
+    Row { id: "display_name", name: "Ada Lovelace" },
+    Row { id: "notifications", name: "true" },
+    Row { id: "language", name: "en" }
+])
+
+// ── 表格查询（search 过滤 + page 分页，per_page 8 对齐 reference pagination）──
+
+pub fn filter_rows(search str, page int) []Row {
+    var matched List<Row> = List<Row>.new([])
+    for row in rows {
+        if search == "" || row.name.contains(search) {
+            matched.push(row)
+        }
+    }
+    var page_rows List<Row> = List<Row>.new([])
+    var idx int = 0
+    var start int = (page - 1) * 8
+    for row in matched {
+        if idx >= start {
+            if idx < start + 8 {
+                page_rows.push(row)
+            }
+        }
+        idx = idx + 1
+    }
+    return page_rows
+}
+
+pub fn count_rows(search str) int {
+    var n int = 0
+    for row in rows {
+        if search == "" || row.name.contains(search) {
+            n = n + 1
+        }
+    }
+    return n
+}
+
+pub fn create_row(name str) Row {
+    let row = Row {
+        id: f"r${nextnum}",
+        name: name,
+    }
+    nextnum = nextnum + 1
+    rows.push(row)
+    return row
+}
+
+pub fn update_row(id str, name str) ?Row {
+    var new_rows List<Row> = List<Row>.new([])
+    var found ?Row = None
+    for row in rows {
+        if row.id == id {
+            let updated = Row {
+                id: row.id,
+                name: name,
+            }
+            new_rows.push(updated)
+            found = Some(updated)
+        } else {
+            new_rows.push(row)
+        }
+    }
+    rows = new_rows
+    return found
+}
+
+pub fn delete_row(id str) bool {
+    var kept List<Row> = List<Row>.new([])
+    var removed bool = false
+    for row in rows {
+        if row.id == id {
+            removed = true
+        } else {
+            kept.push(row)
+        }
+    }
+    rows = kept
+    return removed
+}
+
+// ── sidebar counts（badge 文本；空串 = 无 badge）──
+
+pub fn nav_count(id str) str {
+    if id == "data" {
+        var n int = count_rows("")
+        return f"${n}"
+    }
+    if id == "reports" {
+        return "3"
+    }
+    return ""
+}
+
+// ── 设置页 load/save ──
+
+pub fn get_display_name() str {
+    var out str = ""
+    for c in cfg {
+        if c.id == "display_name" {
+            out = f"${c.name}"
+        }
+    }
+    return out
+}
+
+pub fn get_notifications() bool {
+    var out bool = true
+    for c in cfg {
+        if c.id == "notifications" {
+            if c.name == "true" {
+                out = true
+            } else {
+                out = false
+            }
+        }
+    }
+    return out
+}
+
+pub fn get_language() str {
+    var out str = "en"
+    for c in cfg {
+        if c.id == "language" {
+            out = f"${c.name}"
+        }
+    }
+    return out
+}
+
+pub fn save_config(display_name str, notifications bool, language str) bool {
+    var notify_str str = "false"
+    if notifications {
+        notify_str = "true"
+    }
+    var new_cfg List<Row> = List<Row>.new([])
+    for c in cfg {
+        if c.id == "display_name" {
+            let updated = Row {
+                id: c.id,
+                name: f"${display_name}",
+            }
+            new_cfg.push(updated)
+        } else {
+            if c.id == "notifications" {
+                let updated = Row {
+                    id: c.id,
+                    name: f"${notify_str}",
+                }
+                new_cfg.push(updated)
+            } else {
+                let updated = Row {
+                    id: c.id,
+                    name: f"${language}",
+                }
+                new_cfg.push(updated)
+            }
+        }
+    }
+    cfg = new_cfg
+    return true
+}

@@ -2111,6 +2111,11 @@ impl RustGenerator {
                     return self.generate_child_component(tag, props);
                 }
 
+                // SVG support: compile into View::image_styled("svgdoc:<svg>...</svg>", style)
+                if tag == "svg" {
+                    return self.generate_svg_element(node);
+                }
+
                 // grid-item is transparent — emit its child(ren) directly. A
                 // wrapping col would be Shrink-width and break the enclosing
                 // grid's equal-column Fill distribution.
@@ -2411,6 +2416,79 @@ impl RustGenerator {
                         }
                         _ => {}
                     }
+                }
+
+                // PLAN-027 T-04 扩面（普查修正 C）：mouse-area codegen 臂——
+                // 设计 §3a-a5 误记"shell 未直接用"，实勘五件 26 处（desktop
+                // ×12/shell ×7/notification ×5/dashboard ×2）。映射与解释臂
+                // convert_mouse_area_untracked（aura_view_builder.rs:11637）
+                // 全同源：onmouseenter|onhover→on_enter、onmouseleave|
+                // onhoverout→on_exit、ondblclick→on_double_click、
+                // onmousedown|onclick→on_click、onmouseup→on_release、
+                // oncontextmenu(.prevent)→on_context_menu。事件槽 = Option<M>
+                // 直发消息（非闭包）。onmousemove+coords 坐标面 shell 未用
+                // 不译（落入拒绝门）。
+                if tag == "mouse-area" || tag == "mouse_area" {
+                    let content = if children.is_empty() {
+                        "auto_lang::ui::view::View::Empty".to_string()
+                    } else if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for c in children {
+                            col = format!("{}.child({})", col, self.generate_view_tree(c));
+                        }
+                        format!("{col}.build()")
+                    };
+                    let ev = |names: &[&str]| -> Option<String> {
+                        events.iter().find(|(k, _)| {
+                            let base = k.split('.').next().unwrap_or(k);
+                            names.contains(&base)
+                        }).map(|(_, h)| {
+                            format!(
+                                "Some({})",
+                                self.handler_to_rust_direct_msg(&h.handler, &h.params)
+                            )
+                        })
+                    };
+                    let user_style = props
+                        .get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        });
+                    let style_expr = match user_style {
+                        Some(s) => {
+                            format!("auto_lang::ui::style::Style::parse(\"{s}\").ok()")
+                        }
+                        None => "None".to_string(),
+                    };
+                    return format!(
+                        "View::MouseArea {{ content: Box::new({content}), on_enter: {}, on_exit: {}, on_double_click: {}, on_click: {}, on_context_menu: {}, on_release: {}, on_move: None, logical_extent: None, style: {} }}",
+                        ev(&["onmouseenter", "onhover"]).unwrap_or_else(|| "None".to_string()),
+                        ev(&["onmouseleave", "onhoverout"]).unwrap_or_else(|| "None".to_string()),
+                        ev(&["ondblclick"]).unwrap_or_else(|| "None".to_string()),
+                        ev(&["onmousedown", "onclick", "onClick", "on_click"])
+                            .unwrap_or_else(|| "None".to_string()),
+                        ev(&["oncontextmenu"]).unwrap_or_else(|| "None".to_string()),
+                        ev(&["onmouseup"]).unwrap_or_else(|| "None".to_string()),
+                        style_expr
+                    );
+                }
+
+                // PLAN-027 T-02: 裸 popover 臂 —— View::Popover 直发（此前
+                // 落 tag_to_view_fn `_ => "col"` 降级，open/placement/
+                // ondismiss/x/y 静默丢弃）。语义与解释侧 convert_popover
+                // （aura_view_builder.rs:8449）对齐（PLAN-027 parity 锚）：
+                // x/y 双全 = 坐标锚（placement 缺省 BottomStart，children
+                // 全为面板）；否则首 plain 子 = 锚件（placement 缺省
+                // Bottom，其余子 = 面板列）。详见 generate_bare_popover。
+                if tag == "popover" {
+                    return self.generate_bare_popover(props, events, children);
                 }
 
                 // grid → View::grid() builder. iced has no native grid; the
@@ -3196,6 +3274,62 @@ impl RustGenerator {
                         })
                         .unwrap_or_default()
                 };
+
+                // PLAN-027 T-03: 宿主合成件槽位 —— window_thumbnail /
+                // workspace_preview codegen 直发**既有** View 变体（定案
+                // 记录 D4/修正 B：变体已在册 view.rs:878/:890，iced 消费
+                // renderer.rs:5146/:5230 与解释轨同一 into_iced 面——双形态
+                // 快照渲染臂/miss request_capture/fallback 语义同源）。
+                // 解释侧构造同构 = aura_view_builder convert_window_
+                // thumbnail :6709 / convert_workspace_preview :6725：
+                // key prop（wid / ws）字面量或动态表达式；fallback 档
+                // 缺省 app-window；style 直传（None = 缺省）。
+                if tag == "window_thumbnail" || tag == "workspace_preview" {
+                    let key_prop = if tag == "window_thumbnail" { "wid" } else { "ws" };
+                    let key_expr = match props.get(key_prop) {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                            format!("\"{s}\".to_string()")
+                        }
+                        Some(AuraPropValue::Expr(e)) => {
+                            let e = self.ast_expr_to_rust(e);
+                            if e.starts_with("self.") {
+                                format!("{e}.clone()")
+                            } else {
+                                e
+                            }
+                        }
+                        _ => "String::new()".to_string(),
+                    };
+                    let fb_prop = if tag == "window_thumbnail" { "fallback_icon" } else { "fallback" };
+                    let fallback_expr = match props.get(fb_prop) {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                            format!("\"{s}\".to_string()")
+                        }
+                        Some(AuraPropValue::Expr(e)) => {
+                            let e = self.ast_expr_to_rust(e);
+                            if e.starts_with("self.") {
+                                format!("{e}.clone()")
+                            } else {
+                                e
+                            }
+                        }
+                        _ => "\"app-window\".to_string()".to_string(),
+                    };
+                    let user_style = user_style_str(props);
+                    let style_expr = if user_style.is_empty() {
+                        "None".to_string()
+                    } else {
+                        format!("auto_lang::ui::style::Style::parse(\"{}\").ok()", user_style)
+                    };
+                    if tag == "window_thumbnail" {
+                        return format!(
+                            "View::WindowThumbnail {{ wid: {key_expr}, fallback_icon: {fallback_expr}, style: {style_expr} }}"
+                        );
+                    }
+                    return format!(
+                        "View::WorkspacePreview {{ ws: {key_expr}, fallback_icon: {fallback_expr}, style: {style_expr} }}"
+                    );
+                }
 
                 // icon → View::image("lucide:{name}")（VM 同型：PLAN-018
                 // 前缀 iconfile:/hicon:/lucide: 透传，裸名补 lucide:）；
@@ -4498,6 +4632,143 @@ impl RustGenerator {
         )
     }
 
+    /// PLAN-027 T-02: 裸 `popover` 元素 → `View::Popover` 发射（shell pack
+    /// 右键菜单/壁纸选择器/拖拽幽灵 ×9 消费面；解释侧同构 =
+    /// aura_view_builder convert_popover）。双形态：
+    /// - **坐标锚**（x/y prop 双全）：`PopoverAnchor::Point{x,y}`，children
+    ///   全为面板内容，placement 缺省 BottomStart（contextmenu 落点约定）。
+    /// - **首子锚**（缺省）：plain[0] = 锚件，plain[1..] = 面板列，placement
+    ///   缺省 Bottom。shadcn popover-trigger/content 嵌套形态不在此消化
+    ///   （shell pack 无此形态；误入按 plain 逐子直译，不静默丢件）。
+    ///
+    /// 其余对齐点：open 缺省 false（解释臂 __popover_toggle 自管开合为 VM
+    /// 交互特性，codegen 面不合成——shell pack 九处全显式带 open）；
+    /// ondismiss 取 events 桶（parser on* 升格同源），缺省 None（解释臂
+    /// 合成 __popover_close 同为自管专属）；class 缺省给 shadcn
+    /// PopoverContent chrome；有 class 缺 Width 类注入 `w-auto`（解释臂
+    /// StyleClass::Width(Auto) 注入同语义——面板列被宿主宽拉满的 T27 修）。
+    fn generate_bare_popover(
+        &mut self,
+        props: &std::collections::HashMap<String, AuraPropValue>,
+        events: &std::collections::HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+    ) -> String {
+        let expr_str = |name: &str| -> Option<String> {
+            props.get(name).and_then(|v| match v {
+                AuraPropValue::Expr(e) => Some(self.ast_expr_to_rust(e)),
+                _ => None,
+            })
+        };
+        let (x_expr, y_expr) = (expr_str("x"), expr_str("y"));
+        let point_anchor = x_expr.is_some() && y_expr.is_some();
+
+        let open_expr = match props.get("open") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => b.to_string(),
+            Some(AuraPropValue::Expr(e)) => self.ast_expr_to_rust(e),
+            _ => "false".to_string(),
+        };
+
+        // placement 串映射（解释臂表同源）；字面量静态选臂，动态表达式发
+        // 全臂 match（纯表达式形态，autodown heading 同款纪律）。缺省 =
+        // 坐标锚 BottomStart / 锚件 Bottom（PLAN-528 W9 对齐语义）。
+        let default_placement = if point_anchor { "BottomStart" } else { "Bottom" };
+        let placement_lit = |s: &str| -> Option<&'static str> {
+            match s.to_ascii_lowercase().as_str() {
+                "bottom" => Some("Bottom"),
+                "bottom-start" | "bottomstart" => Some("BottomStart"),
+                "bottom-end" | "bottomend" => Some("BottomEnd"),
+                "top" => Some("Top"),
+                "top-start" | "topstart" => Some("TopStart"),
+                "top-end" | "topend" => Some("TopEnd"),
+                "left" => Some("Left"),
+                "right" => Some("Right"),
+                "pointer" => Some("Pointer"),
+                _ => None,
+            }
+        };
+        let placement_expr = match props.get("placement") {
+            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                let lit = placement_lit(s).unwrap_or(default_placement);
+                format!("auto_lang::ui::view::PopoverPlacement::{lit}")
+            }
+            Some(AuraPropValue::Expr(e)) => {
+                let k = self.ast_expr_to_rust(e);
+                let arms = [
+                    "bottom", "bottom-start", "bottom-end", "top", "top-start", "top-end",
+                    "left", "right", "pointer",
+                ]
+                .iter()
+                .filter_map(|p| {
+                    placement_lit(p).map(|lit| format!("\"{p}\" => auto_lang::ui::view::PopoverPlacement::{lit},"))
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+                format!(
+                    "match {k}.to_ascii_lowercase().as_str() {{ {arms} _ => auto_lang::ui::view::PopoverPlacement::{default_placement} }}"
+                )
+            }
+            _ => format!("auto_lang::ui::view::PopoverPlacement::{default_placement}"),
+        };
+
+        // ondismiss：events 桶基名（.prevent 等后缀容忍）。
+        let on_dismiss_expr = events
+            .iter()
+            .find(|(k, _)| k.as_str() == "ondismiss" || k.starts_with("ondismiss."))
+            .map(|(_, ev)| {
+                format!(
+                    "Some({})",
+                    self.handler_to_rust_direct_msg(&ev.handler, &ev.params)
+                )
+            })
+            .unwrap_or_else(|| "None".to_string());
+
+        // 面板列：内容子件（坐标锚 = 全部 children；锚件形态 = plain[1..]）。
+        let content_nodes: Vec<&AuraNode> = if point_anchor {
+            children.iter().collect()
+        } else {
+            children.iter().skip(1).collect()
+        };
+        let mut content = "View::col()".to_string();
+        for c in &content_nodes {
+            content = format!("{}.child({})", content, self.generate_view_tree(c));
+        }
+        let class_str = props
+            .get("class")
+            .or_else(|| props.get("style"))
+            .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                Some(s.trim().to_string())
+            } else {
+                None
+            })
+            .unwrap_or_default();
+        let panel_style = if class_str.is_empty() {
+            "w-72 bg-popover border border-border rounded-md shadow-md p-4".to_string()
+        } else if class_str.split_whitespace().any(|t| t.starts_with("w-")) {
+            class_str
+        } else {
+            format!("{class_str} w-auto")
+        };
+        content = format!("{}.style(\"{}\").build()", content, panel_style);
+
+        let anchor_expr = if point_anchor {
+            format!(
+                "auto_lang::ui::view::PopoverAnchor::Point {{ x: ({} ) as f32, y: ({} ) as f32 }}",
+                x_expr.unwrap(),
+                y_expr.unwrap()
+            )
+        } else if children.is_empty() {
+            "auto_lang::ui::view::PopoverAnchor::Widget(Box::new(auto_lang::ui::view::View::Empty))".to_string()
+        } else {
+            let anchor_code = self.generate_view_tree(&children[0]);
+            format!("auto_lang::ui::view::PopoverAnchor::Widget(Box::new({anchor_code}))")
+        };
+
+        format!(
+            "View::Popover {{ anchor: {}, content: Box::new({}), placement: {}, open: {}, on_dismiss: {} }}",
+            anchor_expr, content, placement_expr, open_expr, on_dismiss_expr
+        )
+    }
+
     /// PLAN-533 T3: cancel/action/close 子件 → 按钮。variant 预设与解释器
     /// convert_button 同表（outline/primary + h-10 px-4 尺寸档）;onclick 走
     /// 既有消息派发形态（Msg::Variant 闭包），缺省 no-op 防恐慌。
@@ -4535,7 +4806,11 @@ impl RustGenerator {
             preset.push_str(&size_preset);
         }
         if preset.is_empty() {
-            return std::borrow::Cow::Borrowed(props);
+            // PLAN-027 T-04：variant/size 已消费词汇仍剥除（拒绝门一致面）。
+            let mut merged = props.clone();
+            merged.remove("variant");
+            merged.remove("size");
+            return std::borrow::Cow::Owned(merged);
         }
         // 动态 class/style（非字面量）：无法静态合并，保持现状不注入。
         let literal_class = |v: Option<&AuraPropValue>| -> Option<String> {
@@ -4547,7 +4822,12 @@ impl RustGenerator {
         if props.get("style").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
             || props.get("class").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
         {
-            return std::borrow::Cow::Borrowed(props);
+            // PLAN-027 T-04：动态 class/style 不注入（PLAN-571 文档化先例），
+            // 但 variant/size 已消费词汇仍剥除。
+            let mut merged = props.clone();
+            merged.remove("variant");
+            merged.remove("size");
+            return std::borrow::Cow::Owned(merged);
         }
         let mut merged = props.clone();
         let key = if merged.contains_key("style") { "style" } else { "class" };
@@ -4557,6 +4837,10 @@ impl RustGenerator {
             key.to_string(),
             AuraPropValue::Expr(crate::ast::Expr::Str(auto_val::AutoStr::from(combined))),
         );
+        // PLAN-027 T-04：preset 注入后剥除 variant/size（拒绝门一致面；
+        // shell pack 按钮 ×38 携 variant）。
+        merged.remove("variant");
+        merged.remove("size");
         std::borrow::Cow::Owned(merged)
     }
 
@@ -4567,7 +4851,10 @@ impl RustGenerator {
         _tag: &str,
         props: &'a std::collections::HashMap<String, AuraPropValue>,
     ) -> std::borrow::Cow<'a, std::collections::HashMap<String, AuraPropValue>> {
-        std::borrow::Cow::Borrowed(props)
+        let mut merged = props.clone();
+        merged.remove("variant");
+        merged.remove("size");
+        std::borrow::Cow::Owned(merged)
     }
 
     fn generate_modal_button(
@@ -4595,6 +4882,173 @@ impl RustGenerator {
             "View::button(\"{}\").style(\"{}\").on_click({}).build()",
             label, class, onclick
         )
+    }
+
+    /// Plan 644 follow-up: compile SVG elements into View::image_styled("svgdoc:<svg>...</svg>", style).
+    /// Serializes the SVG DOM tree, converting dynamic property expressions into format! arguments.
+    fn generate_svg_element(&self, node: &AuraNode) -> String {
+        let (props, _) = match node {
+            AuraNode::Element { props, children, .. } => (props, children),
+            _ => return "View::Empty".to_string(),
+        };
+
+        let style_str = props
+            .get("style")
+            .or_else(|| props.get("class"))
+            .and_then(|v| match v {
+                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => Some(s.to_string()),
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        let mut template = String::new();
+        let mut args = Vec::new();
+        self.serialize_svg_node(node, true, &mut template, &mut args);
+
+        if args.is_empty() {
+            if style_str.is_empty() {
+                format!("View::image(\"svgdoc:{}\")", template)
+            } else {
+                format!("View::image_styled(\"svgdoc:{}\", \"{}\")", template, style_str)
+            }
+        } else {
+            let args_joined = args.join(", ");
+            if style_str.is_empty() {
+                format!("View::image(format!(\"svgdoc:{}\", {}))", template, args_joined)
+            } else {
+                format!("View::image_styled(format!(\"svgdoc:{}\", {}), \"{}\")", template, args_joined, style_str)
+            }
+        }
+    }
+
+    fn serialize_svg_node(
+        &self,
+        node: &AuraNode,
+        is_root: bool,
+        template: &mut String,
+        args: &mut Vec<String>,
+    ) {
+        match node {
+            AuraNode::Element { tag, props, children, .. } => {
+                template.push('<');
+                template.push_str(tag);
+
+                let mut sorted_props: Vec<_> = props.iter().collect();
+                sorted_props.sort_by_key(|(k, _)| *k);
+
+                for (key, val) in sorted_props {
+                    if is_root && (key == "style" || key == "class") {
+                        continue;
+                    }
+                    if tag == "text" && key == "text" {
+                        continue;
+                    }
+
+                    template.push(' ');
+                    template.push_str(key);
+                    template.push_str("=\\\"");
+
+                    match val {
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                            let escaped = s.as_str()
+                                .replace('&', "&amp;")
+                                .replace('"', "&quot;")
+                                .replace('<', "&lt;")
+                                .replace('>', "&gt;")
+                                .replace('{', "{{")
+                                .replace('}', "}}");
+                            template.push_str(&escaped);
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => {
+                            let escaped = s.as_str()
+                                .replace('&', "&amp;")
+                                .replace('"', "&quot;")
+                                .replace('<', "&lt;")
+                                .replace('>', "&gt;")
+                                .replace('{', "{{")
+                                .replace('}', "}}");
+                            template.push_str(&escaped);
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Int(n)) => {
+                            template.push_str(&n.to_string());
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::I64(n)) => {
+                            template.push_str(&n.to_string());
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::U64(n)) => {
+                            template.push_str(&n.to_string());
+                        }
+                        AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => {
+                            template.push_str(&f.to_string());
+                        }
+                        AuraPropValue::Expr(expr) => {
+                            template.push_str("{}");
+                            args.push(self.ast_expr_to_rust(expr));
+                        }
+                        AuraPropValue::StyleBinding(_) => {}
+                    }
+                    template.push_str("\\\"");
+                }
+
+                let text_prop = if tag == "text" { props.get("text") } else { None };
+
+                if children.is_empty() && text_prop.is_none() {
+                    template.push_str("/>");
+                } else {
+                    template.push('>');
+                    if let Some(val) = text_prop {
+                        match val {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                                let escaped = s.as_str()
+                                    .replace('&', "&amp;")
+                                    .replace('<', "&lt;")
+                                    .replace('>', "&gt;")
+                                    .replace('{', "{{")
+                                    .replace('}', "}}");
+                                template.push_str(&escaped);
+                            }
+                            AuraPropValue::Expr(expr) => {
+                                template.push_str("{}");
+                                args.push(self.ast_expr_to_rust(expr));
+                            }
+                            _ => {}
+                        }
+                    }
+                    for child in children {
+                        self.serialize_svg_node(child, false, template, args);
+                    }
+                    template.push_str("</");
+                    template.push_str(tag);
+                    template.push('>');
+                }
+            }
+            AuraNode::Text(content) => match content {
+                crate::aura::AuraTextContent::Literal(s) => {
+                    let escaped = s.as_str()
+                        .replace('&', "&amp;")
+                        .replace('<', "&lt;")
+                        .replace('>', "&gt;")
+                        .replace('{', "{{")
+                        .replace('}', "}}");
+                    template.push_str(&escaped);
+                }
+                crate::aura::AuraTextContent::Interpolated { template: tpl, bindings } => {
+                    let mut fmt = tpl.clone();
+                    for name in bindings {
+                        if let Some(start) = fmt.find("${") {
+                            if let Some(end) = fmt[start..].find('}') {
+                                fmt.replace_range(start..=start + end, "{}");
+                            }
+                        }
+                        let stripped = name.trim_start_matches('.');
+                        args.push(format!("self.{}", stripped));
+                    }
+                    template.push_str(&fmt);
+                }
+            },
+            _ => {}
+        }
     }
 
     fn generate_child_component(&self, tag: &str, props: &std::collections::HashMap<String, crate::aura::AuraPropValue>) -> String {
@@ -5183,10 +5637,15 @@ impl RustGenerator {
             // Layout
             "col" | "column" => "col",
             "row" => "row",
+            // PLAN-027 T-04 扩面：taskbar = row（解释臂 aura_view_builder.rs
+            // :1711 convert_row 同源——任务栏横向条，缺省 col 会纵向堆叠）。
+            "taskbar" => "row",
             "grid" => "grid",
             // PLAN-026 T-02：scroll 走 display 降级臂（View::scrollable），
             // 断裂映射移除。
-            "container" => "container",
+            // PLAN-027 T-04 扩面：div 与 container 同源（解释臂
+            // set_layout_events"container|div"同律——View::Container 承载）。
+            "container" | "div" => "container",
             "center" => "center",
 
             // Content
@@ -5289,7 +5748,18 @@ impl RustGenerator {
                     }
                     "padding" => format!("{}.padding({})", builder, value_str),
                     "spacing" => format!("{}.spacing({})", builder, value_str),
-                    _ => builder.to_string(),
+                    _ => {
+                        // PLAN-027 T-04: 显式拒绝门（设计 §3a-a4）——未知
+                        // prop 由静默丢弃改编译期错（防"看似编译过实缺件"
+                        // 的 shell 生成物）。编译期错形态 = 表达式位
+                        // compile_error! 块（generate_view_tree 为 String
+                        // 管线，生成期 hard error 需全链 Result 化——
+                        // 成本不成比例，且编译期错同样拦截产物入库）。
+                        let msg = format!(
+                            "a2r codegen: prop `{key}` not in the recognized vocabulary (PLAN-027 explicit rejection gate)"
+                        );
+                        format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+                    }
                 }
             }
             AuraPropValue::StyleBinding(bindings) => {
@@ -5336,7 +5806,20 @@ impl RustGenerator {
             "onchange" | "onChange" | "oninput" | "onInput" => {
                 format!("{}.on_change({})", builder, handler_fn)
             }
-            _ => builder.to_string(),
+            // PLAN-027 T-04: 认知且双轨同弃层——View IR 布局件无 hover
+            // 事件槽，解释臂 set_layout_events（aura_view_builder.rs:1328
+            // 只收 onclick/oncontextmenu）同弃。switcher.at row 的
+            // onmouseenter 两轨一致落空（parity 锚）——非拒绝面。
+            "onmouseenter" | "onmouseleave" | "onhover" | "onhoverout" => builder.to_string(),
+            _ => {
+                // PLAN-027 T-04: 显式拒绝门（同 add_prop_to_builder 臂注）
+                // ——未知事件不再静默丢弃（shell 依赖的 ondismiss 等此前
+                // 无译无警；视图事件槽丢失 = 交互缺件编译不可见）。
+                let msg = format!(
+                    "a2r codegen: event `{event}` not in the recognized vocabulary (PLAN-027 explicit rejection gate)"
+                );
+                format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+            }
         }
     }
 
@@ -7838,6 +8321,413 @@ widget Demo {
         assert!(code.contains("DemoMsg::cancelAction"), "cancel onclick dispatch:\n{}", code);
     }
 
+    /// PLAN-027 T-02: 裸 popover codegen 臂 golden —— 坐标锚形态（desktop.at
+    /// 空白菜单/拖拽幽灵同构）：x/y → Point 锚、open 动态表达式、ondismiss
+    /// 消息、placement 缺省 BottomStart、class 落面板 + w-auto 注入。此前
+    /// 落 `_ => "col"` 降级 + props 静默丢弃（shell pack a2r 编译阻断面）。
+    #[test]
+    fn test_bare_popover_point_anchor_codegen() {
+        let src = r#"
+widget Probe {
+    msg { BlankClose }
+    model {
+        var blank_menu str = ""
+        var cx float = 0.0
+        var cy float = 0.0
+    }
+    view {
+        popover (open: .blank_menu != "", x: .cx, y: .cy, ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
+            text "menu"
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(code.contains("View::Popover {"), "Popover variant literal:\n{}", code);
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverAnchor::Point { x: (self.cx"),
+            "Point anchor bound to cursor state:\n{}", code
+        );
+        assert!(
+            code.contains("open: self.blank_menu !="),
+            "open bound to state expression:\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: Some(ProbeMsg::BlankClose)"),
+            "ondismiss → on_dismiss message:\n{}", code
+        );
+        assert!(
+            code.contains("placement: auto_lang::ui::view::PopoverPlacement::BottomStart,"),
+            "point anchor default placement (PLAN-528 W9):\n{}", code
+        );
+        assert!(
+            code.contains("p-1 border rounded bg-card w-auto"),
+            "user class on panel + w-auto width injection:\n{}", code
+        );
+    }
+
+    /// PLAN-027 T-02: 裸 popover 首子锚形态（shell.at 任务栏右键菜单同构）：
+    /// plain[0] = 锚件、plain[1..] = 面板列、placement "top" 直译、缺省
+    /// Bottom 不误落 Modal。
+    #[test]
+    fn test_bare_popover_widget_anchor_codegen() {
+        let src = r#"
+widget Taskbar {
+    msg { WinMenuClose, Ping }
+    model { var win_menu str = "" }
+    view {
+        popover (open: .win_menu == "1", placement: "top", ondismiss: .WinMenuClose, class: "p-1 border rounded bg-card") {
+            text "anchor"
+            col {
+                text "menu item"
+            }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new("),
+            "first plain child becomes widget anchor:\n{}", code
+        );
+        assert!(
+            code.contains("placement: auto_lang::ui::view::PopoverPlacement::Top,"),
+            "literal top placement (not TopStart/TopEnd):\n{}", code
+        );
+        assert!(
+            code.contains("on_dismiss: Some(TaskbarMsg::WinMenuClose)"),
+            "ondismiss handler:\n{}", code
+        );
+        // 内容列 = plain[1..]（锚件不进面板）；面板内子件存活。
+        let panel_zone = code.split("content: Box::new(").nth(1).unwrap_or("");
+        assert!(
+            panel_zone.contains("menu item"),
+            "second plain child lands in panel:\n{}", code
+        );
+        assert!(
+            !panel_zone.contains(">anchor<"),
+            "anchor text must not leak into panel:\n{}", code
+        );
+    }
+
+    /// PLAN-027 T-03: 宿主合成件槽位 codegen —— window_thumbnail（动态
+    /// wid 绑定，switcher 行循环同构）/ workspace_preview（静态 ws，
+    /// shell pager 面板同构）直发既有 View 变体（D4 修正 B）；fallback
+    /// 档缺省 app-window；style 直传。
+    #[test]
+    fn test_host_synth_slot_codegen() {
+        let src = r#"
+widget Probe {
+    model {
+        var rows = []
+        var __wp_current str = ""
+    }
+    view {
+        col {
+            for r in .rows {
+                window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border rounded" }
+            }
+            workspace_preview (ws: "2") { style: "w-44 h-16 rounded-lg" }
+            window_thumbnail (wid: "7") { }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("View::WindowThumbnail { wid: r[\"wid\"]"),
+            "dynamic wid binding (loop var Value index-read convention):\n{}", code
+        );
+        assert!(
+            code.contains("fallback_icon: r[\"icon\"]"),
+            "dynamic fallback_icon survives (no silent default):\n{}", code
+        );
+        assert!(
+            code.contains("style: auto_lang::ui::style::Style::parse(\"w-24 h-14 border rounded\").ok()"),
+            "style passthrough:\n{}", code
+        );
+        assert!(
+            code.contains("View::WorkspacePreview { ws: \"2\".to_string(), fallback_icon: \"app-window\".to_string()"),
+            "static ws + default fallback:\n{}", code
+        );
+        assert!(
+            code.contains("View::WindowThumbnail { wid: \"7\".to_string(), fallback_icon: \"app-window\".to_string(), style: None }"),
+            "literal wid + bare tag defaults:\n{}", code
+        );
+    }
+
+    /// PLAN-027 T-04: 显式拒绝门 —— 未知 prop/事件不再静默丢弃，发射
+    /// compile_error!（编译期错拦截"看似编译过实缺件"的生成物）。
+    #[test]
+    fn test_codegen_rejects_unknown_prop_and_event() {
+        // prop 与事件分源断言——同源时事件块的拒绝发射会覆盖 prop 块
+        //（builder 链后写胜），rustc 仍红但诊断只剩一条。
+        let prop_src = r#"
+widget Probe {
+    msg { Ping }
+    view {
+        col {
+            frobnicate: "yes"
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(prop_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+        assert!(
+            code.contains("compile_error!(\"a2r codegen: prop `frobnicate`"),
+            "unknown prop must compile_error (was silently dropped):
+{}", code
+        );
+
+        let event_src = r#"
+widget Probe2 {
+    msg { Ping }
+    view {
+        col {
+            onwiggle: .Ping
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(event_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+        assert!(
+            code.contains("compile_error!(\"a2r codegen: event `onwiggle`"),
+            "unknown event must compile_error (was silently dropped):
+{}", code
+        );
+    }
+
+    /// PLAN-027 T-04: shell pack 全量 tag/prop/事件清单编译门 —— 真源
+    /// 五件（shell/desktop/switcher/notification_center/dashboard.at）视图
+    /// 每一对 (tag, prop) / (tag, event-base) 都必须落在 a2r 认知表内
+    /// （防 pack 演进引入"解释态能跑、a2r 缺译"的面）。表即合同：pack
+    /// 新词汇须同步扩 rust.rs 臂 + 本表（复审门）。solo（pack 不可解析）
+    /// 跳过 pass。handler 侧词汇（while/push/len/contains/storage.*/）不
+    /// 在本表——真实编译门 = T-07 shell-lib crate cargo build。
+    #[test]
+    fn test_shell_pack_codegen_vocabulary_gate() {
+        let Some(dir) = crate::os_paths::resolve_os_top_dir(
+            &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+            "shell",
+        ) else {
+            eprintln!("test_shell_pack_vocabulary_gate: SKIPPED — auto-os/shell 未解析(solo 检出)");
+            return;
+        };
+        const NAMES: [&str; 5] = [
+            "shell.at",
+            "desktop.at",
+            "switcher.at",
+            "notification_center.at",
+            "dashboard.at",
+        ];
+
+        // (tag, prop) 认知表 —— 每项 = rust.rs 对应臂的已译 prop。
+        let known_props: &[(&str, &str)] = &[
+            ("col", "style"),
+            ("col", "class"),
+            ("row", "style"),
+            ("row", "class"),
+            ("row", "onclick"),
+            ("row", "onmouseenter"),
+            ("taskbar", "style"),
+            ("div", "style"),
+            ("spacer", "style"),
+            ("grid", "cols"),
+            ("grid", "gap"),
+            ("grid", "style"),
+            ("button", "text"),
+            ("button", "icon"),
+            ("button", "variant"),
+            ("button", "style"),
+            ("button", "onclick"),
+            ("text", "style"),
+            ("icon", "name"),
+            ("icon", "style"),
+            ("icon", "size"),
+            ("image", "src"),
+            ("image", "alt"),
+            ("image", "fit"),
+            ("image", "style"),
+            ("mouse-area", "style"),
+            ("popover", "open"),
+            ("popover", "placement"),
+            ("popover", "ondismiss"),
+            ("popover", "x"),
+            ("popover", "y"),
+            ("popover", "class"),
+            ("popover", "style"),
+            ("window_thumbnail", "wid"),
+            ("window_thumbnail", "fallback_icon"),
+            ("window_thumbnail", "style"),
+            ("workspace_preview", "ws"),
+            ("workspace_preview", "fallback"),
+            ("workspace_preview", "style"),
+            // text 主 prop 简写（`text .state` → props["text"]，primary
+            // prop 铸造；parser.rs get_primary_prop）。
+            ("text", "text"),
+        ];
+        // tag → 事件认知（base 名；.prevent 等后缀剥离后比对）。
+        let known_events: &[(&str, &str)] = &[
+            ("button", "onclick"),
+            ("button", "oncontextmenu"),
+            ("icon", "onclick"),
+            ("mouse-area", "onclick"),
+            ("mouse-area", "onmousedown"),
+            ("mouse-area", "onmouseenter"),
+            ("mouse-area", "onmouseleave"),
+            ("mouse-area", "ondblclick"),
+            ("mouse-area", "onmouseup"),
+            ("mouse-area", "oncontextmenu"),
+            ("row", "onclick"),
+            ("col", "oncontextmenu"),
+            ("popover", "ondismiss"),
+            // 认知且双轨同弃（View IR 布局件无 hover 槽，解释臂同弃）。
+            ("row", "onmouseenter"),
+        ];
+        let known_tags: &[&str] = &[
+            "col", "row", "taskbar", "div", "spacer", "grid", "button", "text", "icon",
+            "image", "mouse-area", "popover", "window_thumbnail", "workspace_preview",
+        ];
+
+        fn walk(node: &crate::aura::AuraNode, out: &mut Vec<(String, String, bool)>) {
+            use crate::aura::AuraNode;
+            match node {
+                AuraNode::Element { tag, props, events, children, .. } => {
+                    for k in props.keys() {
+                        out.push((tag.clone(), k.clone(), true));
+                    }
+                    for k in events.keys() {
+                        out.push((tag.clone(), k.clone(), false));
+                    }
+                    for c in children {
+                        walk(c, out);
+                    }
+                }
+                AuraNode::ForLoop { body, .. } => {
+                    for c in body {
+                        walk(c, out);
+                    }
+                }
+                AuraNode::Conditional { then_body, else_body, .. } => {
+                    for c in then_body {
+                        walk(c, out);
+                    }
+                    if let Some(els) = else_body {
+                        for c in els {
+                            walk(c, out);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut violations: Vec<String> = Vec::new();
+        for name in NAMES {
+            let path = dir.join(name);
+            let src = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    violations.push(format!("{name}: read failed {e}"));
+                    continue;
+                }
+            };
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+            let ast = match parser.parse() {
+                Ok(a) => a,
+                Err(e) => {
+                    violations.push(format!("{name}: parse failed {e}"));
+                    continue;
+                }
+            };
+            for stmt in &ast.stmts {
+                let crate::ast::Stmt::WidgetDecl(d) = stmt else { continue };
+                let Ok(widget) = crate::aura::extract::extract_widget_from_decl(d) else {
+                    continue;
+                };
+                let mut trees = vec![&widget.view_tree];
+                for (_, nv) in &widget.named_views {
+                    trees.push(nv);
+                }
+                for tree in trees {
+                    let mut found = Vec::new();
+                    walk(tree, &mut found);
+                    for (tag, key, is_prop) in found {
+                        let base = key.split('.').next().unwrap_or(&key).to_string();
+                        let table = if is_prop { known_props } else { known_events };
+                        let ok = table.iter().any(|(t, k)| *t == tag && *k == base)
+                            // 布局/容器 style 的 class 别名（add_prop_to_builder
+                            // 认知集）+ 动态 style 表达式（.style(expr.as_str())）。
+                            || (is_prop && (base == "style" || base == "class"));
+                        if !ok {
+                            violations.push(format!(
+                                "{name}: {tag} {} `{base}` 不在 a2r 认知表",
+                                if is_prop { "prop" } else { "event" }
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "shell pack a2r 词汇门违例（在 rust.rs 补臂 + 扩本表，或修正 pack）：\n{}",
+            violations.join("\n")
+        );
+    }
+
     /// PLAN-534 T9: sheet/drawer/hovercard 经真实管线发射——placement/
     /// chrome 与解释器臂同串（双轨一致断言）:sheet 缺省 EdgeRight + 横条
     /// chrome + 铸造 dismiss 折算;drawer bottom → EdgeBottom + 贴缘圆角 +
@@ -8703,6 +9593,26 @@ fn main() {{}}
         let code = gen.generate_view_tree(&node);
         assert!(code.contains("View::text(\"Hello, World!\".to_string())"), "got: {}", code);
         assert!(!code.contains(".build()"), "View::text(str) returns View directly, got: {}", code);
+    }
+
+    #[test]
+    fn test_svg_lowering_in_rust_view() {
+        let circle = AuraNode::element("circle")
+            .with_prop("cx", crate::ast::Expr::Str("120".into()))
+            .with_prop("cy", crate::ast::Expr::Str("120".into()))
+            .with_prop("r", crate::ast::Expr::Str("114".into()));
+        let svg_node = AuraNode::element("svg")
+            .with_prop("viewBox", crate::ast::Expr::Str("0 0 240 240".into()))
+            .with_prop("style", crate::ast::Expr::Str("w-56 h-56".into()))
+            .with_child(circle);
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate_view_tree(&svg_node);
+        assert!(code.contains("View::image_styled("), "got: {}", code);
+        assert!(code.contains("svgdoc:<svg"), "got: {}", code);
+        assert!(code.contains("viewBox=\\\"0 0 240 240\\\""), "got: {}", code);
+        assert!(code.contains("<circle cx=\\\"120\\\" cy=\\\"120\\\" r=\\\"114\\\"/>"), "got: {}", code);
+        assert!(code.contains("\"w-56 h-56\""), "got: {}", code);
     }
 
     /// Plan 043 M5 #1: multi-param msg variants emit a multi-field Rust enum.

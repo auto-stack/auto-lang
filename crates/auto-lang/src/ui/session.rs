@@ -151,6 +151,19 @@ pub struct DevToolsState {
     pub screenshot_request: RefCell<Option<crate::ui::mcp_server::ScreenshotRequest>>,
     pub devtools_panel_width: RefCell<f32>,
     pub dragging_divider: RefCell<bool>,
+    /// PLAN-646 Select Anything：最近窗口光标（订阅面 CursorMoved 持续
+    /// 回写；Alt+GlobalPress 起笔锚点源——订阅回调无法读状态，走消息臂）。
+    pub last_cursor: Cell<(f32, f32)>,
+    /// Alt+拖拽 marquee 进行态（None = 未在拖拽）。
+    pub marquee: RefCell<Option<crate::ui::selection::Marquee>>,
+    /// 松开待算的框选矩形——`__bounds_collected` 臂消费，保证 bounds 新鲜。
+    pub pending_selection: RefCell<Option<crate::ui::debug::Rect>>,
+    /// 最近一次框选结果信封（Select 标签页渲染/复制源）。
+    pub selection_result: RefCell<Option<crate::ui::selection::SelectionResult>>,
+    /// Select 标签页当前视图格式（Auto/JSON/Atom 三视图循环）。
+    pub select_view: RefCell<crate::ui::selection::SelectionFormat>,
+    /// Copy 按钮反馈（Some(true)=成功 / Some(false)=失败；新选区清空）。
+    pub select_copy_feedback: RefCell<Option<bool>>,
 }
 
 impl DevToolsState {
@@ -194,6 +207,12 @@ impl DevToolsState {
             screenshot_request: RefCell::new(None),
             devtools_panel_width: RefCell::new(600.0),
             dragging_divider: RefCell::new(false),
+            last_cursor: Cell::new((0.0, 0.0)),
+            marquee: RefCell::new(None),
+            pending_selection: RefCell::new(None),
+            selection_result: RefCell::new(None),
+            select_view: RefCell::new(crate::ui::selection::SelectionFormat::Auto),
+            select_copy_feedback: RefCell::new(None),
         }
     }
 }
@@ -1624,8 +1643,13 @@ impl DesktopCommand {
                 )
             }
             // PLAN-601 T-05：命名主题动词（值域 = registry 内置五名）。
+            // PLAN-027 T-06 对拍修正：encode 搭 `set_theme` 线上词（该词
+            // parse 臂按窄值域分流——内置名 → SetThemeName、dark/light →
+            // SetTheme）。此前发无人解析的 `set_theme_name` 死词——线上
+            // 发件面走 set_theme\t<名>，encode 是唯一不对称点，被
+            // roundtrip 全量对拍捕获（AC-03 门的设计意图实证）。
             DesktopCommand::SetThemeName(name) => {
-                format!("set_theme_name{}{}", Self::FIELD_SEP, name)
+                format!("set_theme{}{}", Self::FIELD_SEP, name)
             }
             // Plan 540 T3：配置写动词族（值域窄——transparency 三档、
             // notes 1/0、pinned csv、wallpapers_dir 直传）。
@@ -2278,6 +2302,140 @@ pub enum DesktopEvent {
     /// OS 剪贴板（418 文本 → 485 文件/图片）→ on_native_paste 注入焦点
     /// App。490（桌面热键清理）后合收编本臂键位（热键域协调条款）。
     NativePaste,
+    /// PLAN-029 T-02（D1）：宿主 live 输入泵入——`desktop_window_events`
+    /// 扩臂产出（键盘/滚轮/IME，Ignored 门）。window = 发生 OS 窗（update
+    /// 臂按 `HostCtx.window` 桌面窗过滤，防独立 app 窗未捕获键漏路由）；
+    /// 路由零新增：`route_live_input` → broker_* 既有语义（键盘/IME =
+    /// 焦点窗、滚轮 = last_cursor 命中窗）。
+    LiveInput {
+        window: iced::window::Id,
+        input: LiveInput,
+    },
+}
+
+/// PLAN-029 T-02（D1）：宿主 live 输入六型——listen_with 键盘/滚轮/IME
+/// 臂的映射产物（纯函数构造，单测钉死），生产路由见
+/// [`DesktopSession::route_live_input`]。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LiveInput {
+    /// Named 键 → Windows VK（`InputMsg::KeyPressed.key` 语义；投影器现
+    /// 消费 8=Backspace/27=Escape）。
+    KeyPressed { key: u32, modifiers: u8 },
+    /// 可打印 text（逐字符 `broker_char`——CharTyped 语义；控制字符在
+    /// 投影器 char_typed 侧被滤，此处原样透传）。
+    Chars { text: String },
+    ImeCommit { text: String },
+    ImePreedit { text: String },
+    ImeCancelled,
+    /// 像素化滚轮增量（Lines×[`WHEEL_LINE_PX`]；投影器 on_scroll 像素
+    /// 消费——editor_frame WheelScrolled 直通同号）。
+    Wheel { dx: f32, dy: f32 },
+}
+
+/// Lines→像素换算约定（D1 定案：1 行 = 40px；§1.10 入册）。
+pub const WHEEL_LINE_PX: f32 = 40.0;
+
+/// iced 修饰 → wire 修饰位（bit0 shift / bit1 ctrl / bit2 alt / bit3 logo
+/// ——`editor_frame::wire_mods` 反向同表；iced 0.14 `Modifiers::bits` 是
+/// 三位一段布局不可直用）。
+pub fn wire_modifiers(m: &iced::keyboard::Modifiers) -> u8 {
+    let mut bits = 0u8;
+    if m.shift() {
+        bits |= 1;
+    }
+    if m.control() {
+        bits |= 1 << 1;
+    }
+    if m.alt() {
+        bits |= 1 << 2;
+    }
+    if m.logo() {
+        bits |= 1 << 3;
+    }
+    bits
+}
+
+/// Named 键 → Windows VK 转发表（D1 定案转发集：编辑/导航/功能键；
+/// 修饰键与其余 Named 不转发——无子侧消费者，热键链路另有
+/// `desktop_hotkey_subscription` 自理）。
+pub fn named_key_vk(name: &iced::keyboard::key::Named) -> Option<u32> {
+    use iced::keyboard::key::Named as N;
+    Some(match name {
+        N::Backspace => 8,
+        N::Tab => 9,
+        N::Enter => 13,
+        N::Escape => 27,
+        N::Space => 32,
+        N::PageUp => 33,
+        N::PageDown => 34,
+        N::End => 35,
+        N::Home => 36,
+        N::ArrowLeft => 37,
+        N::ArrowUp => 38,
+        N::ArrowRight => 39,
+        N::ArrowDown => 40,
+        N::Insert => 45,
+        N::Delete => 46,
+        N::F1 => 0x70,
+        N::F2 => 0x71,
+        N::F3 => 0x72,
+        N::F4 => 0x73,
+        N::F5 => 0x74,
+        N::F6 => 0x75,
+        N::F7 => 0x76,
+        N::F8 => 0x77,
+        N::F9 => 0x78,
+        N::F10 => 0x79,
+        N::F11 => 0x7A,
+        N::F12 => 0x7B,
+        _ => return None,
+    })
+}
+
+/// 键盘事件 → live 输入（纯函数）：`KeyPressed` Named → VK 转发；
+/// Character 且有 text → `Chars`；`KeyReleased`/`ModifiersChanged` 不
+/// 转发（broker 无 key_released、修饰态由 `__modifiers_changed` 独立
+/// 维护）。
+pub fn live_inputs_from_keyboard(kb: &iced::keyboard::Event) -> Vec<LiveInput> {
+    match kb {
+        iced::keyboard::Event::KeyPressed { key, text, modifiers, .. } => match key {
+            iced::keyboard::Key::Named(name) => named_key_vk(name)
+                .map(|key| {
+                    vec![LiveInput::KeyPressed { key, modifiers: wire_modifiers(modifiers) }]
+                })
+                .unwrap_or_default(),
+            iced::keyboard::Key::Character(_) => text
+                .as_ref()
+                .filter(|t| !t.is_empty())
+                .map(|t| vec![LiveInput::Chars { text: t.to_string() }])
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+/// IME（input_method）事件 → live 输入（纯函数）：Preedit/Commit/Closed
+/// → 三态；Opened 无子侧语义不转发。
+pub fn live_input_from_input_method(
+    im: &iced::advanced::input_method::Event,
+) -> Option<LiveInput> {
+    use iced::advanced::input_method::Event as Ime;
+    Some(match im {
+        Ime::Preedit(text, _) => LiveInput::ImePreedit { text: text.clone() },
+        Ime::Commit(text) => LiveInput::ImeCommit { text: text.clone() },
+        Ime::Closed => LiveInput::ImeCancelled,
+        Ime::Opened => return None,
+    })
+}
+
+/// 滚轮增量 → live 输入（纯函数）：Lines × 40px 像素化 / Pixels 直通。
+pub fn live_input_from_wheel(delta: &iced::mouse::ScrollDelta) -> Option<LiveInput> {
+    let (dx, dy) = match delta {
+        iced::mouse::ScrollDelta::Lines { x, y } => (x * WHEEL_LINE_PX, y * WHEEL_LINE_PX),
+        iced::mouse::ScrollDelta::Pixels { x, y } => (*x, *y),
+    };
+    Some(LiveInput::Wheel { dx, dy })
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
@@ -2399,6 +2557,11 @@ pub enum DesktopInject {
         arg: Option<String>,
         widget: Option<String>,
     },
+    /// PLAN-029 T-03（D2 辅腿）：acceptance key verb——live 输入生产路由
+    /// （`route_live_input` → broker_* → 焦点/命中 child）。真桌面进程内
+    /// 经真实 update 循环（`apply_desktop_injects` 排空点）驱动 = 半真机
+    /// 证据口径（OS→iced 事件面由映射单测 + listen_with 既有事实合围）。
+    Key(LiveInput),
 }
 
 static DESKTOP_INJECT_QUEUE: Mutex<Vec<DesktopInject>> = Mutex::new(Vec::new());
@@ -3476,6 +3639,36 @@ fn spawn_outproc_child(
             }
         }
         false
+    }
+
+    /// PLAN-029 T-02（D1）：live 输入生产路由——`DesktopEvent::LiveInput`
+    /// update 臂唯一入口；broker_* 六函数零改动直用（键盘/IME = 焦点窗、
+    /// 滚轮 = last_cursor 命中窗）。返回是否路由成功（观测/e2e 断言用）。
+    #[cfg(feature = "ui-iced")]
+    pub fn route_live_input(&mut self, input: &LiveInput) -> bool {
+        match input {
+            LiveInput::KeyPressed { key, modifiers } => self.broker_key_event(*key, *modifiers),
+            LiveInput::Chars { text } => {
+                let mut routed = false;
+                for ch in text.chars() {
+                    routed |= self.broker_char(ch);
+                }
+                routed
+            }
+            LiveInput::ImeCommit { text } => self.broker_ime_commit(text),
+            LiveInput::ImePreedit { text } => self.broker_ime_preedit(text),
+            LiveInput::ImeCancelled => self.broker_ime_cancelled(),
+            LiveInput::Wheel { dx, dy } => {
+                // 滚轮路由指针命中窗（hover 语义）——listen_with 回调不带
+                // 光标位，取 WM 持续回写的 last_cursor（GlobalPress 同源）。
+                let cursor = self
+                    .host
+                    .as_ref()
+                    .map(|h| h.wm.last_cursor.get())
+                    .unwrap_or_default();
+                self.broker_scroll(cursor.x, cursor.y, *dx, *dy)
+            }
+        }
     }
 
     /// 宿主动作落会话（与 `host::ProtocolHost::handle` 的动作臂同构；
@@ -4779,8 +4972,178 @@ fn key_eq(spec_key: KeyName, event: &iced::keyboard::Key) -> bool {
 // 测试：路由表/退化桌面对等性/M1 访问器
 // ---------------------------------------------------------------------------
 
+/// PLAN-027 T-06：命令上行 typed 接缝（定案记录 D3——枚举载荷单方法
+/// 形态）。DesktopCommand（46+ 动词，encode/parse_records 双向）即词表
+/// 类型化单源；per-verb trait 方法会把 arg 型决策复制出第二份（I2 漂移
+/// 面），故接缝收敛单方法。B-ready（I3）：enum plain data 可序列化——
+/// B 形态演进时本 trait 换线载体，shell 视图/命令层零重写。
+pub trait DesktopBusHandle {
+    /// 类型化发送（装配层实现：进程内队列 / outproc 线载体）。
+    fn send(&mut self, cmd: DesktopCommand);
+
+    /// 记录级入口——SendCmd 锚的落点。与解释轨 `__desktop_cmd` 同一
+    /// [`DesktopCommand::parse_records`] 单点分型（双轨零分叉：动词分型
+    /// 不在 codegen 复制，运行时单源）。
+    fn send_record(&mut self, rec: &str) {
+        for cmd in DesktopCommand::parse_records(rec) {
+            self.send(cmd);
+        }
+    }
+}
+
+/// 进程内队列实现（T-08 编译壳装配用；drain 后交既有命令执行臂）。
+#[derive(Debug, Default)]
+pub struct DesktopBusQueue {
+    queue: std::collections::VecDeque<DesktopCommand>,
+}
+
+impl DesktopBusHandle for DesktopBusQueue {
+    fn send(&mut self, cmd: DesktopCommand) {
+        self.queue.push_back(cmd);
+    }
+}
+
+impl DesktopBusQueue {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 排空（保持序；与解释轨"读+清"幂等语义同型）。
+    pub fn drain(&mut self) -> Vec<DesktopCommand> {
+        self.queue.drain(..).collect()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+}
+
+/// PLAN-027 T-06：storage KV typed 接缝。a2r codegen 的 storage.get/set/
+/// remove 现译 `vm::ffi::stdlib::shim_storage_*`（与解释轨原生位同一后端
+/// ——**普查修正 D**：设计 §3b-b2"零支持/编译失败"已过时）；本 trait 供
+/// 装配层显式注入/测试替身，[`ShimHostStorage`] 为 shim 单源委托实现。
+pub trait HostStorage: Send + Sync {
+    fn get(&self, key: &str) -> String;
+    fn set(&self, key: &str, val: &str);
+    fn remove(&self, key: &str);
+}
+
+/// shim 单源委托（双轨同后端；B 形态换 wire 时此为替换点）。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ShimHostStorage;
+
+impl HostStorage for ShimHostStorage {
+    fn get(&self, key: &str) -> String {
+        crate::vm::ffi::stdlib::shim_storage_get(key.to_string())
+    }
+    fn set(&self, key: &str, val: &str) {
+        crate::vm::ffi::stdlib::shim_storage_set(key.to_string(), val.to_string());
+    }
+    fn remove(&self, key: &str) {
+        crate::vm::ffi::stdlib::shim_storage_remove(key.to_string());
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// PLAN-027 T-06：46+ 动词全量清单 roundtrip 对拍（记录级 ↔ 类型化
+    /// 双向）——encode → parse_records 恒等。显式逐变体枚举：新增动词
+    /// 漏 encode/parse 臂时本测试红（清单即合同）。
+    #[test]
+    fn desktop_command_roundtrip_full_vocabulary() {
+        use DesktopCommand as C;
+        let samples: Vec<C> = vec![
+            C::LaunchApp("011-calculator".into()),
+            C::CloseWindow(Wid(3)),
+            C::FocusWindow(Wid(12)),
+            C::SetLayout(crate::ui::layout::LayoutMode::Grid),
+            C::SetLayout(crate::ui::layout::LayoutMode::MasterStack),
+            C::TogglePresetLayout(crate::ui::layout::LayoutMode::Grid),
+            C::SummonLauncher,
+            C::SetWorkspace(2),
+            C::NextWorkspace,
+            C::ActivateApp("013-todo".into()),
+            C::OpenWith("015-notes".into(), "D:/tmp/a.md".into()),
+            C::DockNative(NativeTarget::ByPid(4242)),
+            C::DockNative(NativeTarget::ByHwnd(0x1a2b)),
+            C::UndockNative(7),
+            C::FocusNative(9),
+            C::CloseNative(11),
+            C::WorkspaceAdd,
+            C::WorkspaceClose(1),
+            C::SendTo(Wid(5), 2),
+            C::Notify("info".into(), "hello world".into()),
+            C::NotesToggle,
+            C::NotesClear,
+            C::NotesDismiss(42),
+            C::OpenSettings,
+            C::SetDockPosition(true),
+            C::SetDockPosition(false),
+            C::SetDockEnabled(true),
+            C::SetDockEnabled(false),
+            C::SetTheme(true),
+            C::SetTheme(false),
+            C::SetThemeName("stella".into()),
+            C::MinWindow(Wid(8)),
+            C::Shutdown,
+            C::SetWallpaper("D:/wp/hill.jpg".into()),
+            C::SetWallpaper("#101828".into()),
+            C::SetTransparency("off".into()),
+            C::SetNotesEnabled(true),
+            C::SetNotesEnabled(false),
+            C::SetDockPinned("".into()),
+            C::SetDockPinned(",a,b,".into()),
+            C::DockPin("025-dashboard".into()),
+            C::DockUnpin("025-dashboard".into()),
+            C::RefreshDesktopIcons,
+            C::DesktopIconDrop("a".into(), "b".into()),
+            C::DesktopIconDropAt("a".into(), "3,4".into()),
+            C::DesktopIconDragStart("a".into()),
+            C::SetWallpapersDir("D:/wp".into()),
+            C::ShowDesktop,
+            C::ShowdeskReturn,
+            C::WallpaperPick,
+            C::WallpaperClose,
+            C::WallpaperBrowseDir,
+            C::WallpaperNav("prev".into()),
+            C::WallpaperNav("next".into()),
+            // 空参动词（desktop.at PickerBack 同型——trailing 	 保形）。
+            C::WallpaperPreview(String::new()),
+            C::WallpaperPreview("D:/wp/x.png".into()),
+            C::DashboardToggle,
+            C::DashboardClose,
+            C::DashboardPin("020-music-player".into()),
+            C::DashboardUnpin("020-music-player".into()),
+            C::DashboardSpan("020-music-player".into(), 2),
+            C::DashboardLaunch("013-todo".into()),
+        ];
+        assert!(
+            samples.len() >= 46,
+            "词表规模守门（v1.8 后 52 变体；防清单缩水）"
+        );
+        for cmd in samples {
+            let rec = cmd.encode();
+            let parsed = DesktopCommand::parse_records(&rec);
+            assert_eq!(
+                parsed.len(),
+                1,
+                "{rec:?} 应解析为单记录（词表缺臂？）"
+            );
+            assert_eq!(parsed[0], cmd, "roundtrip 失败：{rec:?}");
+        }
+        // DesktopBusHandle：send_record 与直发同队列语义（SendCmd 锚契约）。
+        let mut q = DesktopBusQueue::new();
+        q.send_record(&format!("{}
+{}", C::FocusWindow(Wid(1)).encode(), C::Shutdown.encode()));
+        q.send(C::SummonLauncher);
+        let drained = q.drain();
+        assert_eq!(
+            drained,
+            vec![C::FocusWindow(Wid(1)), C::Shutdown, C::SummonLauncher]
+        );
+        assert!(q.is_empty());
+    }
     use super::*;
     use crate::ast::Expr;
     use crate::aura::{AuraNode, AuraStateDef, AuraWidget};
@@ -6889,8 +7252,11 @@ mod tests {
 /// Plan 453 T4b/T4c：桌面级窗口事件订阅 —— 原生产出 DesktopMessage（不经
 /// App 打标通路的桌面事件），与业务订阅在批量点并列合并。窗口生命周期
 /// 统一由此产出（T4c 起含 Opened/Focused，业务订阅侧不再重复捕获）。
+/// PLAN-029 T-02（D1）：扩键盘/滚轮/IME 三族 live 臂——Ignored 门
+/// （Captured = host 真 widget 已消费不转发，keyboard_subscription 先例）；
+/// 映射纯函数单测钉死；window 位随行（update 臂按桌面窗过滤）。
 pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
-    iced::event::listen_with(|e, _status, wid| match e {
+    iced::event::listen_with(|e, status, wid| match e {
         iced::Event::Window(iced::window::Event::Opened { size, .. }) => {
             Some(DesktopMessage::Desktop(DesktopEvent::WindowOpened(wid, size)))
         }
@@ -6902,6 +7268,21 @@ pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
         }
         iced::Event::Window(iced::window::Event::Unfocused) => {
             Some(DesktopMessage::Desktop(DesktopEvent::WindowUnfocused(wid)))
+        }
+        iced::Event::Keyboard(kb) if status == iced::event::Status::Ignored => {
+            live_inputs_from_keyboard(&kb).into_iter().next().map(|input| {
+                DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input })
+            })
+        }
+        iced::Event::InputMethod(im) if status == iced::event::Status::Ignored => {
+            live_input_from_input_method(&im)
+                .map(|input| DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input }))
+        }
+        iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })
+            if status == iced::event::Status::Ignored =>
+        {
+            live_input_from_wheel(&delta)
+                .map(|input| DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input }))
         }
         _ => None,
     })
@@ -7083,5 +7464,222 @@ mod hotkey_tests {
 
         assert!(t.apply_override("cycle_window", "alt+tab"), "G1 逃生舱：显式复活 Alt+Tab");
         assert!(t.matches(HotkeyAction::CycleWindow, &mods(false, true, false), &named(iced::keyboard::key::Named::Tab)));
+    }
+}
+
+#[cfg(test)]
+mod live_input_tests {
+    use super::*;
+
+    /// PLAN-029 T-02：VK 转发表全覆盖（D1 定案转发集逐键钉死）。
+    #[test]
+    fn vk_table_covers_forwarding_set() {
+        use iced::keyboard::key::Named as N;
+        let table = [
+            (N::Backspace, 8u32),
+            (N::Tab, 9),
+            (N::Enter, 13),
+            (N::Escape, 27),
+            (N::Space, 32),
+            (N::PageUp, 33),
+            (N::PageDown, 34),
+            (N::End, 35),
+            (N::Home, 36),
+            (N::ArrowLeft, 37),
+            (N::ArrowUp, 38),
+            (N::ArrowRight, 39),
+            (N::ArrowDown, 40),
+            (N::Insert, 45),
+            (N::Delete, 46),
+            (N::F1, 0x70),
+            (N::F6, 0x75),
+            (N::F12, 0x7B),
+        ];
+        for (name, vk) in table {
+            assert_eq!(named_key_vk(&name), Some(vk), "{name:?}");
+        }
+        // 修饰键与其余 Named 不转发（热键链路自理）。
+        for name in [N::Shift, N::Control, N::Alt, N::CapsLock, N::ContextMenu] {
+            assert_eq!(named_key_vk(&name), None, "{name:?} 不转发");
+        }
+    }
+
+    /// 键盘映射：Named → KeyPressed（含 wire 修饰位）；Character+text →
+    /// Chars；KeyReleased/ModifiersChanged/修饰 Named 不转发。
+    #[test]
+    fn keyboard_mapping_shapes() {
+        use iced::keyboard::{Event as Kb, Key, Modifiers, key::Named as N};
+        let mut m = Modifiers::default();
+        m |= Modifiers::CTRL;
+        assert_eq!(
+            live_inputs_from_keyboard(&Kb::KeyPressed {
+                key: Key::Named(N::Escape),
+                modified_key: Key::Named(N::Escape),
+                physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+                location: iced::keyboard::Location::Standard,
+                modifiers: m,
+                text: None,
+                repeat: false,
+            }),
+            vec![LiveInput::KeyPressed { key: 27, modifiers: 0b10 }]
+        );
+        assert_eq!(
+            live_inputs_from_keyboard(&Kb::KeyPressed {
+                key: Key::Character("1".into()),
+                modified_key: Key::Character("1".into()),
+                physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+                location: iced::keyboard::Location::Standard,
+                modifiers: Modifiers::default(),
+                text: Some("1".into()),
+                repeat: false,
+            }),
+            vec![LiveInput::Chars { text: "1".into() }]
+        );
+        // 修饰 Named 键按下（如 Shift）不产生转发。
+        assert!(live_inputs_from_keyboard(&Kb::KeyPressed {
+            key: Key::Named(N::Shift),
+            modified_key: Key::Named(N::Shift),
+            physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+            location: iced::keyboard::Location::Standard,
+            modifiers: Modifiers::default(),
+            text: None,
+            repeat: false,
+        })
+        .is_empty());
+        assert!(live_inputs_from_keyboard(&Kb::KeyReleased {
+            key: Key::Named(N::Enter),
+            modified_key: Key::Named(N::Enter),
+            physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+            location: iced::keyboard::Location::Standard,
+            modifiers: Modifiers::default(),
+        })
+        .is_empty());
+        assert!(live_inputs_from_keyboard(&Kb::ModifiersChanged(Modifiers::default())).is_empty());
+    }
+
+    /// IME 三态 + Opened 不转发；滚轮 Lines×40/Pixels 直通；wire 修饰位
+    /// 四键位组合。
+    #[test]
+    fn ime_wheel_and_modifiers_shapes() {
+        use iced::advanced::input_method::Event as Ime;
+        use iced::keyboard::Modifiers;
+        use iced::mouse::ScrollDelta;
+        assert_eq!(
+            live_input_from_input_method(&Ime::Preedit("中".into(), None)),
+            Some(LiveInput::ImePreedit { text: "中".into() })
+        );
+        assert_eq!(
+            live_input_from_input_method(&Ime::Commit("中文".into())),
+            Some(LiveInput::ImeCommit { text: "中文".into() })
+        );
+        assert_eq!(live_input_from_input_method(&Ime::Closed), Some(LiveInput::ImeCancelled));
+        assert_eq!(live_input_from_input_method(&Ime::Opened), None);
+
+        assert_eq!(
+            live_input_from_wheel(&ScrollDelta::Lines { x: 0.0, y: -3.0 }),
+            Some(LiveInput::Wheel { dx: 0.0, dy: -120.0 })
+        );
+        assert_eq!(
+            live_input_from_wheel(&ScrollDelta::Pixels { x: 4.0, y: -9.5 }),
+            Some(LiveInput::Wheel { dx: 4.0, dy: -9.5 })
+        );
+
+        let mut m = Modifiers::default();
+        m |= Modifiers::SHIFT | Modifiers::ALT | Modifiers::LOGO;
+        assert_eq!(wire_modifiers(&m), 0b1101);
+        assert_eq!(wire_modifiers(&Modifiers::default()), 0);
+    }
+
+    /// route_live_input 生产路由：键盘/字符/IME 走焦点窗、滚轮走
+    /// last_cursor 命中窗——真管道对端落 wire 断言（D1 路由语义零新增，
+    /// 与 broker_input_production_routes 同 harness 形态）。
+    #[test]
+    fn route_live_input_routes_to_focus_and_hover() {
+        use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
+        use crate::ui::desktop_protocol::transport;
+
+        let pipe = format!("autodesk-live-input-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+
+        let component = crate::build_dynamic_component(
+            r#"widget t { view { text "x" } }"#,
+            None,
+        )
+        .expect("build");
+        let app_id = session.allocate_app(component);
+        let wid = session.wm_add_win(
+            app_id,
+            "t".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(480.0, 320.0)),
+        );
+        session.wm_focus(wid);
+        let mut child_end = transport::connect(&pipe, 2000).expect("child connect");
+        let host_end = listener.wait_connect().expect("host accept");
+        let mut client =
+            crate::ui::desktop_protocol::stage3::BrokerClient::new(pipe.clone(), host_end);
+        client.wid = Some(wid);
+        session.broker_clients.insert(pipe.clone(), client);
+
+        fn wait_msg(
+            child_end: &mut Box<dyn transport::Transport + Send>,
+        ) -> Option<ProtocolMsg> {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                if let Some(loaded) = child_end.try_recv() {
+                    return Some(loaded.expect("解码"));
+                }
+                if std::time::Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+
+        // 键盘（VK）→ 焦点窗 KeyPressed 落 wire。
+        assert!(session.route_live_input(&LiveInput::KeyPressed { key: 13, modifiers: 0 }));
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::KeyPressed { wid: w, key, .. })) => {
+                assert_eq!((w, key), (wid.0, 13));
+            }
+            other => panic!("KeyPressed 未落 wire: {other:?}"),
+        }
+
+        // 字符 → 焦点窗 CharTyped 落 wire（Chars 逐字符）。
+        assert!(session.route_live_input(&LiveInput::Chars { text: "10".into() }));
+        for expect in ['1', '0'] {
+            match wait_msg(&mut child_end) {
+                Some(ProtocolMsg::Input(InputMsg::CharTyped { wid: w, ch })) => {
+                    assert_eq!((w, ch), (wid.0, expect));
+                }
+                other => panic!("CharTyped({expect}) 未落 wire: {other:?}"),
+            }
+        }
+
+        // IME commit → 焦点窗 ImeCommit 落 wire。
+        assert!(session.route_live_input(&LiveInput::ImeCommit { text: "文".into() }));
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::ImeCommit { wid: w, text })) => {
+                assert_eq!((w, text.as_str()), (wid.0, "文"));
+            }
+            other => panic!("ImeCommit 未落 wire: {other:?}"),
+        }
+
+        // 滚轮 → last_cursor 命中窗（hover 语义）。
+        session.host.as_mut().unwrap().wm.last_cursor.set(iced::Point::new(100.0, 100.0));
+        assert!(session.route_live_input(&LiveInput::Wheel { dx: 0.0, dy: -40.0 }));
+        match wait_msg(&mut child_end) {
+            Some(ProtocolMsg::Input(InputMsg::Scroll { wid: w, dx, dy })) => {
+                assert_eq!((w, dx, dy), (wid.0, 0.0, -40.0));
+            }
+            other => panic!("Scroll 未落 wire: {other:?}"),
+        }
+
+        // 焦点窗回收后键盘不路由。
+        let host = session.host.as_mut().unwrap();
+        host.wm.wins.clear();
+        host.wm.focused = None;
+        assert!(!session.route_live_input(&LiveInput::Chars { text: "y".into() }));
     }
 }

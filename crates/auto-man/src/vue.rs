@@ -1209,13 +1209,17 @@ Prism.languages.auto = {{
     };
     let app_use_router = if has_routes { "app.use(router)\n" } else { "" };
     let app_use_i18n = if i18n.enabled { "app.use(i18n)\n" } else { "" };
+    // PLAN-646: Select Anything overlay — dev-only dynamic import (Vite
+    // tree-shakes the DEV=false branch (and this module) from prod builds).
+    let select_overlay = "\n// PLAN-646: Select Anything overlay (dev-only; tree-shaken from prod builds).\nif (import.meta.env.DEV) {\n  import('./auto-select/overlay')\n}\n";
     format!(
-        "{base}{i18n_setup}{router_import}\n\nconst app = createApp(App)\n{app_use_i18n}{app_use_router}app.mount('#app')\n",
+        "{base}{i18n_setup}{router_import}\n\nconst app = createApp(App)\n{app_use_i18n}{app_use_router}app.mount('#app')\n{select_overlay}\n",
         base = base,
         i18n_setup = i18n_setup,
         router_import = router_import,
         app_use_i18n = app_use_i18n,
         app_use_router = app_use_router,
+        select_overlay = select_overlay,
     )
 }
 
@@ -1228,6 +1232,344 @@ fn basename(path: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or(path)
         .to_string()
+}
+
+/// PLAN-646: Select Anything overlay 资产（dev-only 采集层）。main.ts 以
+/// `import.meta.env.DEV` 动态引用，Vite 产物构建 tree-shake 掉。
+fn generate_select_overlay_ts() -> &'static str {
+    r##"// PLAN-646: Select Anything overlay —— 任意 AutoUI Vue 页面 Alt+拖拽框选，
+// 返回与 VM/MCP 端同一契约的结构化信封（中心包含命中 → 顶层修剪 → 文档序）。
+// dev-only：main.ts 在 import.meta.env.DEV 下动态 import，Vite 产物构建
+// tree-shake 掉本模块，不进 bundle。
+
+import { AUTO_SOURCES } from '../auto-sources'
+
+const DRAG_THRESHOLD = 4
+
+interface SelectedNode {
+  id: string
+  kind: string
+  span: [number, number] | null
+  source: string | null
+  structure: unknown
+}
+
+function sourceFor(el: Element): string {
+  // 子件元素的 span 归各自 .at（data-auto-src=stem）；缺省回落 app/首个。
+  const key = el.getAttribute('data-auto-src')
+  if (key && AUTO_SOURCES[key] != null) return AUTO_SOURCES[key]
+  const keys = Object.keys(AUTO_SOURCES)
+  if (keys.length === 0) return ''
+  return AUTO_SOURCES['app'] ?? AUTO_SOURCES[keys[0]] ?? ''
+}
+
+const UTF8 = new TextEncoder()
+const UTF8D = new TextDecoder()
+
+/// .at span 是字节偏移（Rust 侧口径）；JS 字符串按 UTF-16 码元索引，
+/// 中文注释会让两种单位错位——统一走 UTF-8 字节切片。
+function sliceBytes(src: string, off: number, len: number): string | null {
+  const bytes = UTF8.encode(src)
+  if (off + len > bytes.length || off < 0 || len < 0) return null
+  return UTF8D.decode(bytes.subarray(off, off + len))
+}
+
+function appName(): string {
+  const keys = Object.keys(AUTO_SOURCES)
+  return keys.length > 0 ? keys[0] : 'app'
+}
+
+function dedent(text: string): string {
+  const lines = text.split('\n')
+  const nonEmpty = lines.filter((l) => l.trim().length > 0)
+  if (nonEmpty.length === 0) return ''
+  const prefix = Math.min(...nonEmpty.map((l) => l.length - l.trimStart().length))
+  const first = lines.findIndex((l) => l.trim().length > 0)
+  let last = 0
+  lines.forEach((l, i) => {
+    if (l.trim().length > 0) last = i
+  })
+  return lines
+    .slice(first, last + 1)
+    .map((l) => l.slice(prefix))
+    .join('\n')
+}
+
+function buildStructure(el: Element): unknown {
+  // DOM 子树 → {tag, props, children}（剥 data-auto-* 标记；文本子节点为字符串）。
+  const props: Record<string, string> = {}
+  for (const attr of Array.from(el.attributes)) {
+    if (!attr.name.startsWith('data-auto-')) props[attr.name] = attr.value
+  }
+  const children: unknown[] = []
+  el.childNodes.forEach((n) => {
+    if (n.nodeType === Node.ELEMENT_NODE) {
+      children.push(buildStructure(n as Element))
+    } else if (n.nodeType === Node.TEXT_NODE) {
+      const t = (n as Text).textContent?.trim()
+      if (t) children.push(t)
+    }
+  })
+  const out: Record<string, unknown> = { tag: el.tagName.toLowerCase() }
+  if (Object.keys(props).length > 0) out.props = props
+  if (children.length > 0) out.children = children
+  return out
+}
+
+function collectSelection(rect: { left: number; top: number; right: number; bottom: number }): SelectedNode[] {
+  const hits: Element[] = []
+  document.querySelectorAll('[data-auto-span]').forEach((el) => {
+    const r = el.getBoundingClientRect()
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    if (rect.left <= cx && cx <= rect.right && rect.top <= cy && cy <= rect.bottom) {
+      hits.push(el)
+    }
+  })
+  // 顶层修剪：祖先链上有命中元素 → 被吸收（组织结构语义）。
+  const hitSet = new Set<Element>(hits)
+  const topmost = hits.filter((el) => {
+    let p = el.parentElement
+    while (p) {
+      if (hitSet.has(p)) return false
+      p = p.parentElement
+    }
+    return true
+  })
+  return topmost.map((el) => {
+    const kind = el.getAttribute('data-auto-tag') ?? el.tagName.toLowerCase()
+    const id = el.getAttribute('data-auto-id') ?? ''
+    let span: [number, number] | null = null
+    let source: string | null = null
+    const raw = el.getAttribute('data-auto-span')
+    if (raw) {
+      const parts = raw.split(':')
+      const off = Number(parts[0])
+      const len = Number(parts[1])
+      const src = sourceFor(el)
+      if (Number.isFinite(off) && Number.isFinite(len) && src.length > 0) {
+        const sliced = sliceBytes(src, off, len)
+        if (sliced !== null) {
+          span = [off, len]
+          source = dedent(sliced)
+        }
+      }
+    }
+    return { id, kind, span, source, structure: buildStructure(el) }
+  })
+}
+
+function envelopeHeader(rect: { x: number; y: number; w: number; h: number }, n: number): string {
+  return `// ── AutoUI Select Anything ── surface=vue app=${appName()} rect=(${Math.round(rect.x)},${Math.round(rect.y)},${Math.round(rect.w)},${Math.round(rect.h)}) nodes=${n}`
+}
+
+function renderAuto(rect: { x: number; y: number; w: number; h: number }, nodes: SelectedNode[]): string {
+  const n = nodes.length
+  let out = envelopeHeader(rect, n) + '\n'
+  if (n === 0) {
+    out += '// (no nodes selected)\n'
+    return out
+  }
+  nodes.forEach((nd, i) => {
+    if (nd.span && nd.source !== null) {
+      out += `\n// [${i + 1}/${n}] ${nd.kind}  span=${nd.span[0]}..${nd.span[0] + nd.span[1]}\n`
+      out += nd.source + (nd.source.endsWith('\n') ? '' : '\n')
+    } else {
+      out += `\n// [${i + 1}/${n}] ${nd.kind}  (synthetic, no source span)\n`
+      out += JSON.stringify(nd.structure, null, 2) + '\n'
+    }
+  })
+  return out
+}
+
+function renderJson(rect: { x: number; y: number; w: number; h: number }, nodes: SelectedNode[]): string {
+  return JSON.stringify(
+    { surface: 'vue', app: appName(), rect: [rect.x, rect.y, rect.w, rect.h], nodes },
+    null,
+    2,
+  )
+}
+
+function showPanel(autoText: string, jsonText: string): void {
+  const old = document.getElementById('__auto-select-panel')
+  if (old) old.remove()
+
+  const panel = document.createElement('div')
+  panel.id = '__auto-select-panel'
+  panel.style.cssText =
+    'position:fixed;right:16px;bottom:16px;width:460px;max-height:60vh;z-index:2147483647;' +
+    'background:#fafafa;border:1px solid #d4d4d4;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);' +
+    'display:flex;flex-direction:column;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#222'
+
+  const bar = document.createElement('div')
+  bar.style.cssText = 'display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #e5e5e5'
+  let view: 'auto' | 'json' = 'auto'
+  const body = document.createElement('pre')
+  body.style.cssText = 'margin:0;padding:8px;overflow:auto;flex:1;white-space:pre-wrap;word-break:break-all'
+  const show = (): void => {
+    body.textContent = view === 'auto' ? autoText : jsonText
+    tabAuto.style.background = view === 'auto' ? '#fff' : '#ececec'
+    tabJson.style.background = view === 'json' ? '#fff' : '#ececec'
+  }
+  const mkChip = (label: string, onClick: () => void): HTMLButtonElement => {
+    const b = document.createElement('button')
+    b.textContent = label
+    b.style.cssText = 'border:1px solid #d4d4d4;border-radius:4px;padding:2px 8px;cursor:pointer;font:inherit'
+    b.addEventListener('click', onClick)
+    return b
+  }
+  const tabAuto = mkChip('Auto', () => {
+    view = 'auto'
+    show()
+  })
+  const tabJson = mkChip('JSON', () => {
+    view = 'json'
+    show()
+  })
+  const copyBtn = mkChip('复制', () => {
+    const text = view === 'auto' ? autoText : jsonText
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        copyBtn.textContent = '已复制 ✓'
+        setTimeout(() => (copyBtn.textContent = '复制'), 1500)
+      })
+      .catch(() => {
+        copyBtn.textContent = '复制失败 ✕'
+        setTimeout(() => (copyBtn.textContent = '复制'), 1500)
+      })
+  })
+  const closeBtn = mkChip('✕', () => panel.remove())
+  bar.append(tabAuto, tabJson, copyBtn, closeBtn)
+  panel.append(bar, body)
+  document.body.appendChild(panel)
+  show()
+}
+
+let marqueeEl: HTMLDivElement | null = null
+let anchor: { x: number; y: number } | null = null
+
+function ensureMarqueeEl(): HTMLDivElement {
+  if (!marqueeEl) {
+    marqueeEl = document.createElement('div')
+    marqueeEl.id = '__auto-select-marquee'
+    marqueeEl.style.cssText =
+      'position:fixed;z-index:2147483646;pointer-events:none;background:rgba(76,128,230,.12);border:1.5px solid rgba(76,128,230,.9)'
+    document.body.appendChild(marqueeEl)
+  }
+  return marqueeEl
+}
+
+function onMove(e: MouseEvent): void {
+  if (!anchor) return
+  const el = ensureMarqueeEl()
+  const x = Math.min(anchor.x, e.clientX)
+  const y = Math.min(anchor.y, e.clientY)
+  el.style.left = `${x}px`
+  el.style.top = `${y}px`
+  el.style.width = `${Math.abs(e.clientX - anchor.x)}px`
+  el.style.height = `${Math.abs(e.clientY - anchor.y)}px`
+  // 框选期间抑制原生文本选择。
+  e.preventDefault()
+}
+
+function onUp(e: MouseEvent): void {
+  if (!anchor) return
+  const a = anchor
+  anchor = null
+  document.removeEventListener('mousemove', onMove, true)
+  document.removeEventListener('mouseup', onUp, true)
+  marqueeEl?.remove()
+  marqueeEl = null
+
+  const dx = Math.abs(e.clientX - a.x)
+  const dy = Math.abs(e.clientY - a.y)
+  if (dx < DRAG_THRESHOLD && dy < DRAG_THRESHOLD) return // 死区内 = 点击
+
+  const rect = {
+    left: Math.min(a.x, e.clientX),
+    top: Math.min(a.y, e.clientY),
+    right: Math.max(a.x, e.clientX),
+    bottom: Math.max(a.y, e.clientY),
+  }
+  const nodes = collectSelection(rect)
+  const size = { x: rect.left, y: rect.top, w: rect.right - rect.left, h: rect.bottom - rect.top }
+  showPanel(renderAuto(size, nodes), renderJson(size, nodes))
+}
+
+function onDown(e: MouseEvent): void {
+  // Alt+左键 = 框选起笔；capture 阶段拦截，抑制原生点击/拖拽。
+  if (!e.altKey || e.button !== 0) return
+  anchor = { x: e.clientX, y: e.clientY }
+  const el = ensureMarqueeEl()
+  el.style.left = `${e.clientX}px`
+  el.style.top = `${e.clientY}px`
+  el.style.width = '0px'
+  el.style.height = '0px'
+  document.addEventListener('mousemove', onMove, true)
+  document.addEventListener('mouseup', onUp, true)
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+function onKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    document.getElementById('__auto-select-panel')?.remove()
+    anchor = null
+    marqueeEl?.remove()
+    marqueeEl = null
+  }
+}
+
+document.addEventListener('mousedown', onDown, true)
+document.addEventListener('keydown', onKey, true)
+
+export const __selectAnythingActive = true
+"##
+}
+
+/// PLAN-646: 汇集 front_dir/*.at 源文 → `src/auto-sources.ts`
+/// （`AUTO_SOURCES: Record<stem, 全文>`）。内容 hash 防抖——不变不写，
+/// 保持增量工具链（vite watcher）安静。
+fn write_auto_sources_ts(front_dir: &Path, output_dir: &Path) {
+    let mut entries: Vec<(String, String)> = Vec::new();
+    if let Ok(dirs) = fs::read_dir(front_dir) {
+        for entry in dirs.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "at").unwrap_or(false) {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let stem = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("app")
+                        .to_string();
+                    entries.push((stem, content));
+                }
+            }
+        }
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut ts = String::from(
+        "// auto-sources.ts — PLAN-646 Select Anything source map (dev-only).\n// key = .at file stem, value = full source text. Rewritten by `auto run`;\n// content-hash debounced (unchanged files are not rewritten).\n\nexport const AUTO_SOURCES: Record<string, string> = {\n",
+    );
+    for (stem, content) in &entries {
+        ts.push_str(&format!(
+            "  {}: {},\n",
+            serde_json::json!(stem),
+            serde_json::json!(content)
+        ));
+    }
+    ts.push_str("}\n\n");
+    let path = output_dir.join("src").join("auto-sources.ts");
+    if let Ok(existing) = fs::read_to_string(&path) {
+        if existing == ts {
+            return;
+        }
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    fs::write(&path, ts).ok();
 }
 
 fn generate_app_vue(vue_code: &str) -> String {
@@ -1561,6 +1903,15 @@ fn write_project_files(
     let utils_ts = generate_utils_ts();
     fs::write(output_path.join("src/lib/utils.ts"), utils_ts)
         .map_err(|e| format!("Failed to write src/lib/utils.ts: {}", e))?;
+
+    // PLAN-646: Select Anything overlay（dev-only 采集层资产；main.ts 以
+    // import.meta.env.DEV 动态引用，产物构建 tree-shake 掉）。
+    fs::create_dir_all(output_path.join("src").join("auto-select")).ok();
+    fs::write(
+        output_path.join("src").join("auto-select").join("overlay.ts"),
+        generate_select_overlay_ts(),
+    )
+    .map_err(|e| format!("Failed to write src/auto-select/overlay.ts: {}", e))?;
 
     Ok(())
 }
@@ -2256,7 +2607,11 @@ export default router
     }
 
     /// Collect front directories for all dependencies under root_dir/deps/
-    fn collect_dep_front_dirs(root_dir: &Path) -> Vec<(String, PathBuf)> {
+    fn collect_dep_front_dirs(root_dir: &Path) -> Vec<(String, PathBuf, bool)> {
+        // 第三个元素 = 库形态旗标（PLAN-645 F-R1）：形状裁定在此处一次做出——
+        // 有 src/front 或 front/ 布局的是应用形态 dep（false，strict 门禁不变）；
+        // 原目录直推（bps 包库等）是模板源库形态（true，strict 降为告警）。
+        // 此前在编译循环里用 dep_front 再 join 判别，对应用形态恒误判为库。
         let deps_dir = root_dir.join("deps");
         let mut out = Vec::new();
         if let Ok(entries) = fs::read_dir(&deps_dir) {
@@ -2269,11 +2624,11 @@ export default router
                         .to_string_lossy()
                         .to_string();
                     if path.join("src").join("front").is_dir() {
-                        out.push((dep_name, path.join("src").join("front")));
+                        out.push((dep_name, path.join("src").join("front"), false));
                     } else if path.join("front").is_dir() {
-                        out.push((dep_name, path.join("front")));
+                        out.push((dep_name, path.join("front"), false));
                     } else {
-                        out.push((dep_name, path));
+                        out.push((dep_name, path, true));
                     }
                 }
             }
@@ -2290,7 +2645,7 @@ export default router
                         .trim()
                         .trim_matches(|c| c == '"' || c == '{' || c == ' ')
                         .trim();
-                    if !dep_name.is_empty() && !out.iter().any(|(n, _)| n == dep_name) {
+                    if !dep_name.is_empty() && !out.iter().any(|(n, _, _)| n == dep_name) {
                         for j in (i + 1)..std::cmp::min(i + 10, lines.len()) {
                             let sub_line = lines[j].trim();
                             if sub_line.starts_with("path:") {
@@ -2311,11 +2666,11 @@ export default router
                                     };
                                     if let Some(local_path) = resolved {
                                         if local_path.join("src").join("front").is_dir() {
-                                            out.push((dep_name.to_string(), local_path.join("src").join("front")));
+                                            out.push((dep_name.to_string(), local_path.join("src").join("front"), false));
                                         } else if local_path.join("front").is_dir() {
-                                            out.push((dep_name.to_string(), local_path.join("front")));
+                                            out.push((dep_name.to_string(), local_path.join("front"), false));
                                         } else {
-                                            out.push((dep_name.to_string(), local_path));
+                                            out.push((dep_name.to_string(), local_path, true));
                                         }
                                     }
                                 }
@@ -2479,7 +2834,7 @@ export default router
         let mut sub_widget_msgs: std::collections::HashMap<String, Vec<String>> = Default::default();
         {
             let mut scan_dirs = vec![front_dir.clone()];
-            for (_dep_name, dep_front) in &dep_front_dirs {
+            for (_dep_name, dep_front, _library_dep) in &dep_front_dirs {
                 scan_dirs.push(dep_front.clone());
             }
 
@@ -2546,7 +2901,7 @@ export default router
             if pages_dir.exists() {
                 Self::collect_at_files_recursive(&pages_dir, &mut prescan_files);
             }
-            for (_dep_name, dep_front) in &dep_front_dirs {
+            for (_dep_name, dep_front, _library_dep) in &dep_front_dirs {
                 Self::collect_at_files_recursive(dep_front, &mut prescan_files);
             }
             for path in &prescan_files {
@@ -2787,6 +3142,11 @@ export default router
                                 let comp_code = fs::read_to_string(&path).unwrap_or_default();
                                 let (use_fns, imported_names) =
                                     auto_lang::ui_gen::api::collect_use_module_fns(&path, &comp_code);
+                                // PLAN-075 (074-sink-mode G-6 未修面): 同文件模块 fn
+                                // (Plan 367 P2-4) 在本臂同病——逐 widget 裸重生成时
+                                // 文件顶层 fn 定义被丢弃,调用点有 emission 无定义
+                                // (vue-tsc TS2304)。与 src/front 兄弟臂同款重挂。
+                                let comp_module_fns = same_file_module_fns(&comp_code);
                                 for widget in &widgets {
                                     let gen = if shadcn {
                                         VueGenerator::new_shadcn()
@@ -2795,7 +3155,8 @@ export default router
                                     };
                                     let mut gen = gen
                                         .with_default_classes(default_classes)
-                                        .with_use_module_fns(use_fns.clone(), imported_names.clone());
+                                        .with_use_module_fns(use_fns.clone(), imported_names.clone())
+                                        .with_module_fns(comp_module_fns.clone());
                                     match gen.generate(widget) {
                                         Ok(widget_code) => {
                                             let stem = path.file_stem()
@@ -2846,6 +3207,16 @@ export default router
                         let file_store_deps = auto_lang::extract_store_deps_from_file(
                             path.to_str().unwrap()
                         );
+                        // PLAN-074: src/front 兄弟通道与 components//bps（上方
+                        // Plan 522 臂）同病——首遍 vue_code 被丢弃、逐 widget 裸
+                        // 重生成丢 fn 池：use 导入池（Plan 522）与同文件模块 fn
+                        // （Plan 367 P2-4）都必须重挂，否则调用点有 emission 无
+                        // 定义（vue-tsc TS2304；jade outline_panel 下沉首件实证
+                        // ——app 根通道发射正常、兄弟通道 TS2304 的不对称即本缺口）。
+                        let sib_code = fs::read_to_string(&path).unwrap_or_default();
+                        let (sib_use_fns, sib_imported_names) =
+                            auto_lang::ui_gen::api::collect_use_module_fns(&path, &sib_code);
+                        let sib_module_fns = same_file_module_fns(&sib_code);
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
@@ -2861,6 +3232,8 @@ export default router
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
+                                .with_use_module_fns(sib_use_fns.clone(), sib_imported_names.clone())
+                                .with_module_fns(sib_module_fns.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );
@@ -2904,7 +3277,7 @@ export default router
         }
 
         // Plan 475: Compile widgets from deps/*/src/front into components/
-        for (dep_name, dep_front) in &dep_front_dirs {
+        for (dep_name, dep_front, library_dep) in &dep_front_dirs {
             let mut dep_at_files: Vec<PathBuf> = Vec::new();
             Self::collect_at_files_recursive(dep_front, &mut dep_at_files);
             dep_at_files.sort();
@@ -2930,6 +3303,21 @@ export default router
                         let file_store_deps = auto_lang::extract_store_deps_from_file(
                             path.to_str().unwrap()
                         );
+                        // PLAN-645 T-02: dep 文件（bp reference 等）自己的跨文件
+                        // fn 导入（`use tree_util: flatten_tree` bare/bps 限定）须
+                        // 转译进 SFC——否则只有调用无定义（vue-tsc TS2304，
+                        // filetree 组合形态 046 断裂复现）。与 components/bps
+                        // 通道（上方 Plan 522 臂）同一收集器：首遍编译已在
+                        // api.rs 挂过池，但这里逐 widget 重生成，必须重挂。
+                        let dep_comp_code =
+                            fs::read_to_string(&path).unwrap_or_default();
+                        let (dep_use_fns, dep_imported_names) =
+                            auto_lang::ui_gen::api::collect_use_module_fns(&path, &dep_comp_code);
+                        // PLAN-075 (074-sink-mode G-6 未修面): dep 文件自身的
+                        // 同文件模块 fn（Plan 367 P2-4）在重生成臂同样被丢弃——
+                        // bp reference 携带文件顶层 fn 时调用点 TS2304（048
+                        // 夹具为首个消费方）。与 src/front 兄弟臂同款重挂。
+                        let dep_module_fns = same_file_module_fns(&dep_comp_code);
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
                                 all_routes.extend(routes.routes.clone());
@@ -2944,6 +3332,8 @@ export default router
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
+                                .with_use_module_fns(dep_use_fns.clone(), dep_imported_names.clone())
+                                .with_module_fns(dep_module_fns.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );
@@ -2975,8 +3365,21 @@ export default router
                         }
                     }
                     Err(e) => {
+                        // Plan 041a(strict 收口): fn-only 文件同降级(见上)。
                         let fn_only = e.to_string().contains("No widget or store declarations");
-                        if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
+                        // PLAN-645 T-02(F-R1 修正): 库形态旗标由
+                        // collect_dep_front_dirs 在形状裁定时给出——bps 包库等
+                        // 原目录直推（无 src/front、无 front/）是模板源，不按
+                        // 独立应用门禁：bp reference 可携带消费方契约导入
+                        // （with_charts `use { package: official from "components" }`
+                        // 由消费方供给），在包内 standalone strict 编译必然
+                        // S003（046 基线实红）。消费方只 import 所用变体，未用
+                        // 变体的 SFC 缺席由 vite import 解析兜底，告警不硬炸。
+                        // 应用形态 dep（有 front 布局）strict 门禁不变。
+                        if auto_lang::ui_gen::validators::strict_enabled()
+                            && !fn_only
+                            && !library_dep
+                        {
                             return Err(format!("Failed to compile dep file {}: {}", path.display(), e).into());
                         }
                         println!("{} Failed to compile dep file {}: {}", "Warning:".bright_yellow(), path.display(), e);
@@ -2988,7 +3391,7 @@ export default router
         // Plan 475: Merge npm_deps and styles from deps/*/pac.at
         let mut npm_deps = parse_npm_deps(&pac_content);
         let mut style_files = parse_style_files(&pac_content);
-        for (_dep_name, dep_front) in &dep_front_dirs {
+        for (_dep_name, dep_front, _library_dep) in &dep_front_dirs {
             let dep_pac = dep_front.parent().and_then(|p| p.parent()).map(|p| p.join("pac.at"))
                 .or_else(|| dep_front.parent().map(|p| p.join("pac.at")));
             if let Some(p) = dep_pac {
@@ -4917,7 +5320,7 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
     // 落盘，vite "Failed to resolve import"（601 复审 006/015 实勘）。
     // widget 名并入 sub_widget_names，与 from_workspace 的 Phase-1 扫描
     // （scan_dirs 含 dep fronts）同口径，双路径 App.vue 发射一致。
-    for (dep_name, dep_front) in VueProject::collect_dep_front_dirs(root_dir) {
+    for (dep_name, dep_front, library_dep) in VueProject::collect_dep_front_dirs(root_dir) {
         let mut dep_at_files: Vec<PathBuf> = Vec::new();
         VueProject::collect_at_files_recursive(&dep_front, &mut dep_at_files);
         dep_at_files.sort();
@@ -4965,7 +5368,10 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                     }
                     cache.update(path.clone(), hash, artifacts);
                 }
-                Err(e) => handle_compile_error(&path, &e)?,
+                // PLAN-645 (F-R2): dep 腿与 Plan 475 全量通道同律——库形态 dep
+                // strict 降为告警（bp reference 消费方契约导入 standalone 必然
+                // S003），否则消费组合形态 bp 的项目 `auto run` 硬炸。
+                Err(e) => handle_compile_error_with_dep_shape(&path, &e, library_dep)?,
             }
         }
     }
@@ -5185,6 +5591,9 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
         }
     }
 
+    // PLAN-646: 源码映射随增量编译同步（内容 hash 防抖）。
+    write_auto_sources_ts(&front_dir, &output_dir);
+
     Ok(changed_count)
 }
 
@@ -5199,7 +5608,31 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 /// 6. Copy public assets
 /// 7. Start dev server
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    // PLAN-646: dev 运行面开启 Select Anything DOM 标记（data-auto-*）——
+    // SFC 注入 data-auto-{tag,id,span} 供 overlay 框选采集；产物构建
+    // （build_vue_project）不设，保持输出逐字节不变。VueGenerator::new()
+    // 构造期读取（AUTO_API_FUNCTIONS 同款进程级 env 通道）。
+    // SAFETY: edition 2021——set_var 安全；在任一 VueGenerator::new() 之前设置。
+    std::env::set_var("AUTOUI_SELECT_MARKERS", "1");
     println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
+
+    // PLAN-646: 源码映射随每次运行刷新（内容 hash 防抖，覆盖首启/全量生成路径
+    // ——incremental_compile_changed 内的同步点只在有增量时触达）。
+    let p646_vue_root = root_dir.join("gen").join("front").join("vue");
+    write_auto_sources_ts(&resolve_front_dir(root_dir), &p646_vue_root);
+    // PLAN-646: overlay 资产自愈刷新（旧工程 scaffold 停在旧版 overlay）。
+    {
+        let overlay_path = p646_vue_root.join("src").join("auto-select").join("overlay.ts");
+        let overlay_new = generate_select_overlay_ts();
+        let stale = match std::fs::read_to_string(&overlay_path) {
+            Ok(existing) => existing != overlay_new,
+            Err(_) => true,
+        };
+        if stale {
+            std::fs::create_dir_all(overlay_path.parent().unwrap()).ok();
+            std::fs::write(&overlay_path, overlay_new).ok();
+        }
+    }
 
     let changed_count = incremental_compile_changed(root_dir)?;
 
@@ -5475,6 +5908,39 @@ fn handle_compile_error(path: &Path, e: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// PLAN-645 (F-R2): Phase 1c dep 腿专用——库形态 dep（bps 包库，旗标由
+/// `collect_dep_front_dirs` 形状裁定给出）strict 降为告警不硬炸：bp reference
+/// 可携带消费方契约导入（with_charts `use { package: official from
+/// "components" }` 由消费方供给），standalone strict 编译必然 S003。应用形态
+/// dep（false）与项目自身源（`handle_compile_error`）strict 门禁不变。
+fn handle_compile_error_with_dep_shape(path: &Path, e: &str, library_dep: bool) -> Result<(), String> {
+    let fn_only = e.contains("No widget or store declarations");
+    if auto_lang::ui_gen::validators::strict_enabled() && !fn_only && !library_dep {
+        return Err(format!("Failed to compile {}: {}", path.display(), e));
+    }
+    println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+    Ok(())
+}
+
+/// PLAN-074: same-file module fns (`fn` at .at top level, Plan 367 P2-4)
+/// for the secondary generation passes that re-generate per widget with a
+/// bare VueGenerator. Mirrors the in-file collection in
+/// ui_gen::api::generate_component_from_file — parse failures yield an
+/// empty pool (the first pass already reported the real error).
+fn same_file_module_fns(code: &str) -> Vec<auto_lang::aura::AuraModuleFn> {
+    let session = auto_lang::session::CompilerSession::ui();
+    let mut parser = auto_lang::parser::Parser::from(code).with_session(session);
+    let Ok(ast) = parser.parse() else {
+        return Vec::new();
+    };
+    ast.stmts.iter()
+        .filter_map(|s| match s {
+            auto_lang::ast::Stmt::Fn(f) => auto_lang::aura::extract_module_fn(f),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
 ///
 /// Returns (vue_code, widget_names, store_composables). The store composables
@@ -5642,7 +6108,14 @@ pub fn write_registry_at(front_dir: &Path, rows: &[GalleryDemoRow]) -> AutoResul
             at_str_lit(&r.doc),
             at_str_lit(&r.source),
             at_str_lit(&r.pac),
-            r.loadable,
+            // PLAN-642 T-08: registry.at 是 VM 臂唯一元数据源——此处 loadable
+            // 语义 = "VM 内嵌可交互"（loadable || fullstack）。此前纯 loadable
+            // 使 fullstack 档（013/015）侧栏标"独立"、工具栏标"静态说明"，
+            // 而视口实际运行中（G-4 元数据漂移实证）。web 臂 demos-registry.ts
+            // 保持原语义（动态挂载能力），两臂数据源分离。
+            // PLAN-642 T-14a: routes 首页 stub 档同入（页面真实渲染+可交互，
+            // 导航不可用为既定 stub 边界）。
+            r.loadable || r.fullstack || r.route_stub,
             at_str_lit(&search_lc),
         ));
     }
@@ -5849,10 +6322,62 @@ pub fn emit_gallery_vm_demos(
     let mut emitted = 0usize;
     for r in rows {
         // PLAN-633: 纯前端档（loadable）与全栈内嵌档（fullstack）共用发射面。
-        if !r.loadable && !r.fullstack {
+        // PLAN-642 T-14a: routes 首页 stub 档同入发射面。
+        if !r.loadable && !r.fullstack && !r.route_stub {
             continue;
         }
-        let source = &r.source;
+        // PLAN-642 T-13①: 宿主保留字段 α-改名前缀（全档位统一，非 fullstack
+        // 独有——纯前端 demo 的模型/store var 同样落合并根态对象）。
+        let reserved_ns = demo_ns_prefix(&r.id);
+        // PLAN-642 T-14a: routes stub 变换——routes 块剔除 + outlet 行替换为
+        // 首页组件实例 + 首页页面文件 per-demo 命名空间级联（pages/home.at
+        // 跨 demo 同名异容，平面模块名必撞 modules_conflict 跳 demo）。
+        // (module_key, 页面原文)——原文在统一改名遍历前插入 row_modules，
+        // 与其他模块同管道（stylekit 内联 + 保留字段改名）。
+        let mut stub_page: Option<(String, String)> = None;
+        let stub_source: String = if r.route_stub {
+            match rewrite_routes_stub(&r.source) {
+                Some((rewritten, home_w)) => {
+                    let page_path = apps_dir
+                        .join(&r.id)
+                        .join("src")
+                        .join("front")
+                        .join("pages")
+                        .join(format!("{home_w}.at"));
+                    match fs::read_to_string(&page_path) {
+                        Ok(page_src) => {
+                            let module_key = format!("{reserved_ns}_{home_w}_page");
+                            // PLAN-642 T-14a: `use store: X` 别名 use 行重链
+                            // （021 实证：别名 token ≠ 声明文件名 → 收集 miss →
+                            // store 不入池 → A1 歧义）——适配器与页面同链。
+                            let front_dir = apps_dir.join(&r.id).join("src").join("front");
+                            let relinked = relink_store_use_lines(&rewritten, &front_dir);
+                            let page_src = relink_store_use_lines(&page_src, &front_dir);
+                            stub_page = Some((module_key.clone(), page_src));
+                            format!("use {module_key}: {home_w}\n{relinked}")
+                        }
+                        Err(_) => {
+                            skipped.push(format!("{}(route stub 首页组件缺失: {home_w})", r.id));
+                            continue;
+                        }
+                    }
+                }
+                None => {
+                    skipped.push(format!("{}(route stub routes 块解析失败)", r.id));
+                    continue;
+                }
+            }
+        } else {
+            r.source.clone()
+        };
+        // PLAN-642 T-01: 跨包 stylekit 配方内联（适配器 + 自有模块副本），
+        // 根因与形态见 inline_stylekit_recipes 文档。
+        let recipes = stylekit_pub_recipes(&apps_dir.join(&r.id));
+        let source_owned = rename_reserved_root_fields(
+            &inline_stylekit_recipes(&stub_source, recipes.as_ref()),
+            &reserved_ns,
+        );
+        let source: &str = &source_owned;
         // widget 声明判定按行首匹配（注释中的 "widget " 字样不算——002-counter
         // 的 Plan 506 注释曾误触);多声明(宿主+工具 widget 同文件)跳过。
         let widget_decls = source
@@ -5865,6 +6390,32 @@ pub fn emit_gallery_vm_demos(
         let mut row_modules: std::collections::BTreeMap<String, String> = Default::default();
         let app_dir = apps_dir.join(&r.id).join("src").join("front");
         collect_own_modules(source, &app_dir, deps_dir.as_deref(), &mut row_modules);
+        // PLAN-642 T-14a: 首页页面文件入模块池——须在 store 限定改写
+        // （scan_store_decls/store_qualify_source）之前插入：页面组件的
+        // `store.X` 泛型接收者要参与本 demo 的真名限定（多 store 合并单元
+        // 下未限定即 plan-446 A1 歧义硬错，五 stub 页 A1 实证）。
+        if let Some((key, page_src)) = &stub_page {
+            row_modules.insert(key.clone(), inline_stylekit_recipes(page_src, recipes.as_ref()));
+        }
+        // PLAN-642 T-14a 边界：多 store demo（023-realworld：AuthStore +
+        // ArticleStore，泛型 store.X 调用语义分属）超出 stub 档的单 store
+        // 真名限定能力——A1 歧义无法消解，降级回退页（记录原因）。
+        if r.route_stub {
+            let stores = scan_store_decls(
+                std::iter::once(source.to_string()).chain(row_modules.values().cloned()),
+            );
+            if stores.len() > 1 {
+                skipped.push(format!(
+                    "{}(route stub 多 store 不支持: {})",
+                    r.id,
+                    stores.len()
+                ));
+                continue;
+            }
+        }
+        for (_, c) in row_modules.iter_mut() {
+            *c = inline_stylekit_recipes(c, recipes.as_ref());
+        }
         let modules_conflict = row_modules.iter().any(|(m, c)| {
             module_files
                 .get(m)
@@ -5884,12 +6435,30 @@ pub fn emit_gallery_vm_demos(
         // back 链任何缺失/解析失败 → 跳过该 demo（回静态面板并上报），绝不
         // 把装载不了的 back 源放上行发射面（plan-446：模块解析失败宿主启动
         // 即致命）。
+        // PLAN-642 T-14a: back 种子预扫——route_stub 纯前端形态（无 back 链）
+        // 不进级联块（块内对 row_modules 施加 ns 键改名并与 store 限定 base
+        // 耦合；seeds 可来自 store 模块行，须扫 source+row_modules 全集）。
+        let has_back_seed = std::iter::once(source.to_string())
+            .chain(row_modules.values().cloned())
+            .any(|c| {
+                c.lines().any(|l| {
+                    let t = l.trim_start();
+                    if !t.starts_with("use ") {
+                        return false;
+                    }
+                    let m = t[4..]
+                        .split(|c: char| c == ':' || c.is_whitespace())
+                        .next()
+                        .unwrap_or("");
+                    m == "back" || m.starts_with("back.")
+                })
+            });
         let mut source_rw = String::new();
-        if r.fullstack {
+        if r.fullstack || (r.route_stub && has_back_seed) {
             let ns = demo_ns_prefix(&r.id);
             let mut back_modules: std::collections::BTreeMap<String, String> = Default::default();
             let mut seeds: Vec<(String, String)> = Vec::new();
-            for content in std::iter::once(source).chain(row_modules.values()) {
+            for content in std::iter::once(source).chain(row_modules.values().map(|s| s.as_str())) {
                 for l in content.lines() {
                     let t = l.trim_start();
                     if !t.starts_with("use ") {
@@ -6016,26 +6585,100 @@ pub fn emit_gallery_vm_demos(
         // 对带 store 的内嵌 demo（纯前端 016 与全栈 013/015/017 同律）统一
         // 改写真名限定形态。
         let store_names = scan_store_decls(
-            std::iter::once(source)
-                .chain(row_modules.values())
-                .cloned(),
+            std::iter::once(source.to_string()).chain(row_modules.values().cloned()),
         );
         if store_names.len() == 1 {
-            let base = if r.fullstack {
-                source_rw.clone()
+            // PLAN-642 T-14a: base 取"级联改写产物优先"——back 级联跑过
+            // （fullstack 或带 back 种子的 route_stub）用 source_rw（模块
+            // token 已 ns 改名），否则用原文；source_rw 空串判级联未跑。
+            let base = if source_rw.is_empty() {
+                source.to_string()
             } else {
-                source.clone()
+                source_rw.clone()
             };
             source_rw = store_qualify_source(&base, &store_names);
             for (_, c) in row_modules.iter_mut() {
                 *c = store_qualify_source(c, &store_names);
             }
         }
-        let emit_source: &str = if r.fullstack || store_names.len() == 1 {
-            &source_rw
-        } else {
+        // PLAN-642 T-14a: emit_source 同判——级联未跑且无单 store 限定改写
+        // 时（source_rw 空）回原文，避免发射空串。
+        let emit_source: &str = if source_rw.is_empty() {
             source
+        } else {
+            &source_rw
         };
+        // PLAN-642 T-04/T-05: 475 组件包级联——widget 内
+        // `use { package: X from "dir" }` 的包目录整拷进 demos/<dir>
+        // （package.at 清单跳过），包内 widget 才能进嵌入 VM 注册
+        // （024 chart 画布空 / 026 文件树空实证：包目录缺席 → 包内
+        // widget 全部缺注册 → 实例渲染 Empty）。同名异容沿用模块冲突
+        // 策略：保持首者 + 告警跳过后来者。
+        for l in source.lines() {
+            let t = l.trim_start();
+            if !(t.starts_with("use { package:") || t.starts_with("use{package:")) {
+                continue;
+            }
+            let Some(from_pos) = t.find("from") else { continue };
+            let seg = t[from_pos + 4..].trim();
+            let Some(q) = seg.find('"') else { continue };
+            let rest = &seg[q + 1..];
+            let Some(end) = rest.find('"') else { continue };
+            let pkg_rel = &rest[..end];
+            let pkg_dir = app_dir.join(pkg_rel.trim_start_matches("./"));
+            let Ok(entries) = fs::read_dir(&pkg_dir) else {
+                println!(
+                    "  {} gallery demo `{}`: package dir `{}` not found — widgets not embedded",
+                    "⚠".bright_yellow(),
+                    r.id,
+                    pkg_dir.display()
+                );
+                continue;
+            };
+            let target_dir = demos_dir.join(pkg_rel.trim_start_matches("./"));
+            fs::create_dir_all(&target_dir).map_err(|e| format!("demos pkg mkdir: {}", e))?;
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.extension().map(|x| x != "at").unwrap_or(true) {
+                    continue;
+                }
+                if p.file_name().map_or(false, |n| n == "package.at") {
+                    continue;
+                }
+                let Some(fname) = p.file_name().and_then(|n| n.to_str()) else { continue };
+                let target = target_dir.join(fname);
+                if target.exists() {
+                    let prev = fs::read_to_string(&target).unwrap_or_default();
+                    let cur = fs::read_to_string(&p).unwrap_or_default();
+                    if prev != cur {
+                        println!(
+                            "  {} gallery package file conflict: {} (kept first)",
+                            "⚠".bright_yellow(),
+                            target.display()
+                        );
+                        continue;
+                    }
+                }
+                let raw = fs::read_to_string(&p).unwrap_or_default();
+                // PLAN-642 T-04: 包内组件自身的 `use <mod>:` fn 模块链
+                // （024 chart_geom 实证）必须同样进 demos/ + 嵌入 VM 模块池，
+                // 否则组件 Init 的几何计算 CALL reloc miss → 画布空。
+                // PLAN-642 T-13①: 包文件同 ns 改名保留字段（015 子件读
+                // 父态 dark_mode 一类引用须与适配器改名后字段对齐）。
+                let content = rename_reserved_root_fields(
+                    &inline_stylekit_recipes(&raw, recipes.as_ref()),
+                    &reserved_ns,
+                );
+                collect_own_modules(&content, &app_dir, deps_dir.as_deref(), &mut row_modules);
+                fs::write(&target, content).map_err(|e| format!("write pkg {fname}: {}", e))?;
+            }
+        }
+        // PLAN-642 T-13①: 自有模块统一保留字段改名——置于全部收集点
+        // （主收集 + 包级联 fn 链 + stub 页面）之后单遍执行，避免两批内容
+        // 不一致；fullstack ns 改名/store 限定是模块级改写，与字段名正交。
+        for (_, c) in row_modules.iter_mut() {
+            *c = rename_reserved_root_fields(c, &reserved_ns);
+        }
         for (m, c) in &row_modules {
             module_files.entry(m.clone()).or_insert_with(|| c.clone());
             let target = demos_dir.join(m.replace('.', "/")).with_extension("at");
@@ -6088,7 +6731,7 @@ pub fn emit_gallery_vm_demos(
     vm_at.push_str("\nwidget AppViewport(app: str, reloadKey: int, viewportMode: str) {\n    view {\n        col {\n            style: \"w-full flex flex-col items-center\"\n            col {\n                style: if .viewportMode == \"desktop\" { \"w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else if .viewportMode == \"tablet\" { \"w-[768px] max-w-full h-[1024px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else { \"w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" }\n");
     vm_at.push_str(&branches);
     vm_at.push_str(
-            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-2\"\n                    text \"该示例暂无 VM 内嵌形态\" { style: \"text-xs text-muted-foreground\" }\n                    text \"完整交互请使用 auto run（Vue 端）查看\" { style: \"text-xs text-muted-foreground/80\" }\n                }\n            }\n            }\n        }\n    }\n}\n",
+            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-3\"\n                    text \"该示例暂无内嵌形态（依赖独立运行的后端进程或原生能力）\" { style: \"text-xs text-muted-foreground\" }\n                    text f\"独立运行：cd examples/ui/${.app}\" { style: \"text-xs text-muted-foreground/80 font-mono\" }\n                    text \"然后执行 auto run（Vue 臂）或 auto run -r vm（VM 臂）\" { style: \"text-xs text-muted-foreground/60 font-mono\" }\n                }\n            }\n            }\n        }\n    }\n}\n",
     );
     fs::write(gallery_dir.join("AppViewport.vm.at"), vm_at)
         .map_err(|e| format!("write AppViewport.vm.at: {}", e))?;
@@ -6105,6 +6748,345 @@ pub fn demo_widget_name(id: &str) -> String {
             out.extend(first.to_uppercase());
             out.push_str(chars.as_str());
         }
+    }
+    out
+}
+
+/// PLAN-642 T-01: 解析示例声明的 `dep stylekit` → 样式源 styles.at →
+/// pub 配方名 → 声明原文（多行块整体）。demo 适配器/自有模块副本在画廊
+/// 宿主上下文解析不到跨包 stylekit（ui-gallery pac.at 无该 dep；且
+/// collect_module_imports 模块装载路径没有根路径 prepare_style_recipe_imports
+/// 的预注册——PLAN-607/635 的 name-check 会对未注册配方名报 undefined
+/// variable 硬错，整模块丢弃 →"Web 臂组件"占位符，016/029/031/045/
+/// d015notes_editor/d015notes_sidebar 六文件实证）。发射期把命名导入的
+/// 配方内联为本地声明（parse 期 register_style_recipe 自注册，渲染期配方
+/// 真值生效）；教程/源码 tab 展示的仍是示例原文（r.source），不受影响。
+/// 返回 None = 该示例未声明 stylekit dep 或 styles.at 缺失（沿用现状，
+/// 生成日志已有 not-found 告警）。
+fn stylekit_pub_recipes(app_root: &Path) -> Option<std::collections::BTreeMap<String, String>> {
+    let pac = fs::read_to_string(app_root.join("pac.at")).ok()?;
+    // dep stylekit { path: "../stylekit" } —— 行级扫描取 path 值。
+    let mut dep_path: Option<String> = None;
+    let mut in_stylekit_dep = false;
+    for l in pac.lines() {
+        let t = l.trim();
+        if t.starts_with("dep stylekit") {
+            in_stylekit_dep = true;
+            continue;
+        }
+        if in_stylekit_dep {
+            if t.starts_with("path:") {
+                dep_path = t["path:".len()..]
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches(',')
+                    .to_string()
+                    .into();
+            }
+            if t.starts_with('}') {
+                in_stylekit_dep = false;
+            }
+        }
+    }
+    let rel = dep_path?;
+    let base = app_root.join(rel.trim_end_matches(['/', '\\']));
+    let styles_at = [
+        base.join("src").join("front").join("styles.at"),
+        base.join("styles.at"),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())?;
+    let text = fs::read_to_string(&styles_at).ok()?;
+    // 块提取：`pub style <name>` 起始，续行 = 缩进行；列 0 非空行收束块
+    // （styles.at 格式约定：续行/值行均有缩进）。
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = std::collections::BTreeMap::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let t = lines[i].trim_start();
+        if let Some(rest) = t.strip_prefix("pub style ") {
+            let name = rest
+                .split(|c: char| c == '=' || c == '(' || c.is_whitespace())
+                .find(|s| !s.is_empty())
+                .unwrap_or("");
+            let mut end = i + 1;
+            while end < lines.len()
+                && (lines[end].is_empty()
+                    || lines[end].starts_with(' ')
+                    || lines[end].starts_with('\t'))
+            {
+                end += 1;
+            }
+            if !name.is_empty() {
+                out.insert(name.to_string(), lines[i..end].join("\n"));
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+/// PLAN-642 T-13①: 合并画廊 demo 的宿主保留字段 α-改名。根因（实机
+/// 写点追踪定罪）：合并 VM 轨统一状态对象（Plan 419）下，demo 适配器
+/// 的模型 var / store 模块级 var 初始化（`handler_CalendarStore_Init`
+/// 与匿名模块 init 两条 SET_FIELD 直写）会覆写宿主壳根态声明的
+/// `dark_mode`/`accent_color`——正是渲染器每帧状态→主题同步
+/// （renderer.rs D-GAP-2 块）与 `execute_set_theme` 写回消费的两个
+/// 保留名。独立形态下 demo 自己就是根、该写合法；画廊合并形态下即
+/// 主题污染（P2-016a）。修复：发射期把 demo 侧（适配器 + 自有模块 +
+/// 包级联文件）这两个保留名统一 α-改名为 `<ns>_` 前缀字段（声明/
+/// 读/写一体改名，语义自洽；语料原文不动——教程/源码 tab 与独立运行
+/// 不受影响，web 臂 demo 本就各自独立持主题态，此改名恰对齐双臂语
+/// 义）。宿主壳与宿主 deps（settings_popover 等）不经本变换，保留名
+/// 语义不变。改名为 word-boundary：前后均非 ident 字符才命中（
+/// `.dark_mode`/`var dark_mode`/`.store.accent_color` 全覆盖；语料
+/// 无字符串字面量含此二词，实证安全）。
+fn rename_reserved_root_fields(source: &str, ns: &str) -> String {
+    const RESERVED: [&str; 2] = ["dark_mode", "accent_color"];
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let bytes = source.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(source.len() + 64);
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let mut matched = false;
+        for word in RESERVED {
+            let w = word.as_bytes();
+            if bytes[i..].starts_with(w) {
+                let prev_ok = i == 0 || !is_ident(bytes[i - 1]);
+                let next_ok = i + w.len() >= bytes.len() || !is_ident(bytes[i + w.len()]);
+                if prev_ok && next_ok {
+                    out.extend_from_slice(ns.as_bytes());
+                    out.push(b'_');
+                    out.extend_from_slice(w);
+                    i += w.len();
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        if !matched {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    // reserved 全 ASCII 且仅在 char 边界命中，拼接不可能破坏 UTF-8；
+    // 防御性回退原串（理论不可达）。
+    String::from_utf8(out).unwrap_or_else(|_| source.to_string())
+}
+
+/// PLAN-642 T-14a: routes 首页 stub 变换——`routes {}` 块剔除 + 视图
+/// `outlet` 行替换为 `/` 首页路由组件实例（静态导航 stub：路由语义进
+/// VM 仍为非目标，本变换只让首页以真实组件渲染）。文本级变换：
+/// ①routes 块（`routes {` 起至配对 `}` 行，条目无嵌套花括号）整块删除；
+/// ②首页组件 = `"/" -> use <name>`（无 `/` 条目时取首条）；
+/// ③缩进保持的 `outlet` 行 → `<name> {}` 行。
+/// 返回 (变换后源, 首页组件名)；无 routes 块或无条目时原样返回 None。
+fn rewrite_routes_stub(source: &str) -> Option<(String, String)> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out = String::with_capacity(source.len());
+    let mut home_widget: Option<String> = None;
+    let mut i = 0usize;
+    while i < lines.len() {
+        let t = lines[i].trim_start();
+        if t == "routes {" || t.starts_with("routes {") {
+            // 块内扫描：`"<path>" -> use <name>` 条目；块止于 trimmed == "}" 行。
+            i += 1;
+            while i < lines.len() {
+                let bt = lines[i].trim();
+                if bt == "}" {
+                    break;
+                }
+                if let Some(rest) = bt.strip_prefix('"') {
+                    if let Some((path, tail)) = rest.split_once('"') {
+                        if let Some(w) = tail.split("->").nth(1).and_then(|s| {
+                            s.trim().strip_prefix("use ").map(|x| x.trim().to_string())
+                        }) {
+                            // 首页优先级：精确 "/" 命中即锁定；否则首个
+                            // 无参条目（路径不含 ":param"）兜底——参数化
+                            // 页面无路由上下文不可独立渲染。
+                            if path == "/" {
+                                home_widget = Some(w);
+                            } else if home_widget.is_none()
+                                && !path.contains(':')
+                                && !w.is_empty()
+                            {
+                                home_widget = Some(w.clone());
+                            }
+                        }
+                    }
+                }
+                i += 1;
+            }
+            i += 1; // 跳过 "}"
+            continue;
+        }
+        if t == "outlet" {
+            if let Some(w) = &home_widget {
+                let indent = &lines[i][..lines[i].len() - t.len()];
+                out.push_str(indent);
+                out.push_str(w);
+                out.push_str(" {}\n");
+                i += 1;
+                continue;
+            }
+        }
+        out.push_str(lines[i]);
+        out.push('\n');
+        i += 1;
+    }
+    home_widget.map(|w| (out, w))
+}
+
+/// PLAN-642 T-14a: `use store: X` 别名形态的 store 导入重链——别名 token
+/// 无同名模块文件（021 `use store: BlogStore` vs blog_store.at），收集器
+/// 按 token 找文件必 miss → store 声明不入池 → scan_store_decls 空表 →
+/// 真名限定不跑 → 合并单元 plan-446 A1 歧义硬错。按声明文件 stem 重写
+/// use token（仅当 token 无同名文件且声明可定位时）。
+fn relink_store_use_lines(source: &str, app_dir: &Path) -> String {
+    // 声明表：`store <Name>` → 声明文件 stem（首声明胜）。
+    let mut decl_stems: std::collections::HashMap<String, String> = Default::default();
+    if let Ok(entries) = fs::read_dir(app_dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().map(|x| x != "at").unwrap_or(true) {
+                continue;
+            }
+            if let Ok(c) = fs::read_to_string(&p) {
+                for l in c.lines() {
+                    let t = l.trim_start();
+                    if let Some(rest) = t.strip_prefix("store ") {
+                        let name = rest
+                            .split(|c: char| c.is_whitespace() || c == '{')
+                            .next()
+                            .unwrap_or("")
+                            .trim();
+                        if !name.is_empty() {
+                            decl_stems.entry(name.to_string()).or_insert_with(|| {
+                                p.file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("")
+                                    .to_string()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut out = String::with_capacity(source.len());
+    for l in source.lines() {
+        let t = l.trim_start();
+        let mut line = l.to_string();
+        if let Some(rest) = t.strip_prefix("use ") {
+            if let Some((tok, names)) = rest.split_once(':') {
+                let tok = tok.trim();
+                if !tok.is_empty() && !app_dir.join(format!("{tok}.at")).is_file() {
+                    for name in names.split(',') {
+                        let name = name.trim();
+                        if let Some(stem) = decl_stems.get(name) {
+                            if !stem.is_empty() && stem != tok {
+                                if let Some(pos) = l.find(tok) {
+                                    line = format!(
+                                        "{}{}{}",
+                                        &l[..pos],
+                                        stem,
+                                        &l[pos + tok.len()..]
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+/// PLAN-642 T-01: 把 source 中 `use stylekit.styles: a, b`（或 `: *`）行
+/// 内联为对应 pub 配方的本地声明原文。仅当**全部**请求名可解析时改写
+/// （部分缺名维持现状响亮失败，不让坏行静默过解析）；无该 use 行原样返回。
+fn inline_stylekit_recipes(
+    source: &str,
+    recipes: Option<&std::collections::BTreeMap<String, String>>,
+) -> String {
+    let requested: Vec<String> = match recipes {
+        Some(r) => {
+            let mut names = Vec::new();
+            for l in source.lines() {
+                let t = l.trim_start();
+                if let Some(rest) = t.strip_prefix("use stylekit.styles:") {
+                    if rest.trim() == "*" {
+                        names = r.keys().cloned().collect();
+                        break;
+                    }
+                    for n in rest.split(',') {
+                        let n = n.trim();
+                        if !n.is_empty() {
+                            names.push(n.to_string());
+                        }
+                    }
+                }
+            }
+            names
+        }
+        None => Vec::new(),
+    };
+    if requested.is_empty() {
+        return source.to_string();
+    }
+    let table = recipes.unwrap();
+    if !requested.iter().all(|n| table.contains_key(n)) {
+        let missing: Vec<String> = requested
+            .iter()
+            .filter(|n| !table.contains_key(*n))
+            .cloned()
+            .collect();
+        println!(
+            "  {} stylekit recipes not found for inline: {} — use line kept (will fail parse loudly)",
+            "⚠".bright_yellow(),
+            missing.join(", ")
+        );
+        return source.to_string();
+    }
+    let mut emitted: std::collections::BTreeSet<String> = Default::default();
+    let mut out = String::with_capacity(source.len() + 256);
+    for l in source.lines() {
+        let t = l.trim_start();
+        if let Some(rest) = t.strip_prefix("use stylekit.styles:") {
+            let names: Vec<String> = if rest.trim() == "*" {
+                table.keys().cloned().collect()
+            } else {
+                rest.split(',')
+                    .map(|n| n.trim().to_string())
+                    .filter(|n| !n.is_empty())
+                    .collect()
+            };
+            for n in names {
+                if emitted.insert(n.clone()) {
+                    if let Some(decl) = table.get(&n) {
+                        out.push_str(decl);
+                        out.push('\n');
+                    }
+                }
+            }
+        } else {
+            out.push_str(l);
+            out.push('\n');
+        }
+    }
+    // 保留源尾随换行形态（lines() 逐行重建后多出/缺失的末尾换行归一）。
+    if !source.ends_with('\n') && out.ends_with('\n') {
+        out.pop();
     }
     out
 }
@@ -6513,6 +7495,19 @@ fn gallery_demo_row(
         None => (false, false),
     };
 
+    // PLAN-642 T-14a: routes 首页 stub 档判定——app.at 声明 `routes {}` 块
+    // 且非 vm-only（render:"vm" 走独立 vm 形态，041/043/044 家族）。不依赖
+    // vp：018 的 from_workspace strict 失败是 Vue 装配臂问题，VM stub 只
+    // 需要 .at 源（五家实证均无 i18n/ext 面——`t("` 命中为 SetAccent(
+    // 误配，src/locales 无一存在）。
+    let route_stub = {
+        let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
+        let has_routes_block = source
+            .lines()
+            .any(|l| l.trim_start() == "routes {" || l.trim_start().starts_with("routes {"));
+        has_routes_block && !is_vm_only
+    };
+
     (
         GalleryDemoRow {
             id: e.id.clone(),
@@ -6527,6 +7522,7 @@ fn gallery_demo_row(
             pac,
             loadable,
             fullstack,
+            route_stub,
         },
         vp,
     )
@@ -6550,6 +7546,12 @@ pub struct GalleryDemoRow {
     /// 仅 emit_gallery_vm_demos 消费：fullstack demo 以 per-demo 唯一 stem
     /// 命名空间级联 back 链后进入 VM 内嵌发射面。
     pub fullstack: bool,
+    /// PLAN-642 T-14a: routes 首页 stub 档——否决集仅为 `routes {}` 块的
+    /// demo（018/019/021/022/023 实证：五家均无 i18n/ext/vm-only 面）。
+    /// VM 臂发射"壳视图 + outlet 替换为 `/` 首页路由组件"的静态导航
+    /// stub（路由语义进 VM 仍为非目标）；Vue 臂语义不变（web 端维持
+    /// 静态面板）。registry.at 的 loadable 取 loadable||fullstack||本档。
+    pub route_stub: bool,
 }
 
 fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
@@ -8769,6 +9771,7 @@ fn test_plan_549_ui_gallery_registry_and_package_json() {
             pac: "name: \"counter\"".to_string(),
             loadable: true,
             fullstack: false,
+            route_stub: false,
         },
         GalleryDemoRow {
             id: "041-auto-edit".to_string(),
@@ -8782,6 +9785,7 @@ fn test_plan_549_ui_gallery_registry_and_package_json() {
             pac: "name: \"auto-edit\"\nrender: \"vm\"".to_string(),
             loadable: false,
             fullstack: false,
+            route_stub: false,
         },
     ];
 
@@ -8934,6 +9938,7 @@ mod gallery_registry_at_tests {
                 pac: "name: \"001-helloworld\"".into(),
                 loadable: true,
                 fullstack: false,
+                route_stub: false,
             },
             GalleryDemoRow {
                 id: "024-charts".into(),
@@ -8947,6 +9952,7 @@ mod gallery_registry_at_tests {
                 pac: String::new(),
                 loadable: false,
                 fullstack: false,
+                route_stub: false,
             },
         ]
     }
@@ -9009,6 +10015,7 @@ mod gallery_registry_at_tests {
             pac: String::new(),
             loadable,
             fullstack: false,
+            route_stub: false,
         }
     }
 
@@ -9049,7 +10056,9 @@ mod gallery_registry_at_tests {
             "widget AppViewport(app: str, reloadKey: int, viewportMode: str)",
             "if .app == \"002-counter\" {",
             "Demo002Counter {}",
-            "该示例暂无 VM 内嵌形态",
+            // PLAN-642 T-14c: 回退文案精确化——独立运行命令（${.app} 插值）。
+            "该示例暂无内嵌形态（依赖独立运行的后端进程或原生能力）",
+            "独立运行：cd examples/ui/${.app}",
             // 视口 frame 三态(对齐 AppViewport.vue viewportStyle;缺失=桌面/
             // 平板档无尺寸变化)
             "if .viewportMode == \"desktop\"",
@@ -9064,6 +10073,62 @@ mod gallery_registry_at_tests {
             assert!(vm_at.contains(needle), "missing `{needle}`");
         }
         assert!(!gallery.join("demos").join("024-charts.at").exists(), "non-loadable not emitted");
+    }
+
+    /// PLAN-642 T-14a: routes 首页 stub 档——routes 块剔除 + outlet 行替换
+    /// 为 `/` 首页组件实例 + 首页页面文件 per-demo 命名空间级联。参数化
+    /// 路由（":param"）不作首页兜底（无路由上下文不可独立渲染）。
+    #[test]
+    fn test_emit_gallery_vm_demos_route_stub() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let front = apps.join("022-x").join("src").join("front");
+        fs::create_dir_all(front.join("pages")).unwrap();
+        fs::write(
+            front.join("app.at"),
+            "use board_store: BoardStore\n\nwidget App {\n    routes {\n        \"/\" -> use board\n        \"/other/:id\" -> use other\n    }\n    msg { Init }\n    view {\n        col {\n            outlet\n        }\n    }\n    on {\n        .Init -> { store.Init() }\n    }\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            front.join("pages").join("board.at"),
+            "use store: BoardStore\n\nwidget board {\n    msg { Init }\n    view {\n        text \"board page\"\n    }\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            front.join("board_store.at"),
+            "store BoardStore {\n    model {\n        var cards List<str> = []\n    }\n}\n",
+        )
+        .unwrap();
+
+        let mut row = vm_demo_row(
+            "022-x",
+            false,
+            &fs::read_to_string(front.join("app.at")).unwrap(),
+        );
+        row.route_stub = true;
+        let gallery = dir.path().join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &[row], &gallery).unwrap();
+        assert_eq!(emitted, 1, "route stub demo must be emitted");
+        assert!(skipped.is_empty(), "skipped: {skipped:?}");
+
+        let demo_src = std::fs::read_to_string(gallery.join("demos").join("022-x.at")).unwrap();
+        assert!(!demo_src.contains("routes {"), "routes block removed: {demo_src}");
+        assert!(!demo_src.contains("outlet"), "outlet replaced: {demo_src}");
+        assert!(demo_src.contains("board {}"), "outlet → home widget instance: {demo_src}");
+        assert!(
+            demo_src.contains("use d022x_board_page: board"),
+            "namespaced page module use line: {demo_src}"
+        );
+
+        // 首页页面文件按 per-demo ns 级联（跨 demo 同名 pages/board.at 不再撞）。
+        let page_out =
+            std::fs::read_to_string(gallery.join("demos").join("d022x_board_page.at")).unwrap();
+        assert!(page_out.contains("widget board"), "page widget cascaded: {page_out}");
+
+        // AppViewport 分支接入（stub 档入发射面）。
+        let vm_at = std::fs::read_to_string(gallery.join("AppViewport.vm.at")).unwrap();
+        assert!(vm_at.contains("if .app == \"022-x\""), "branch emitted");
+        assert!(vm_at.contains("Demo022X {}"), "widget wired");
     }
 
     /// 多 widget 声明(工具 widget 同文件)的示例 v1 跳过,不入 live 集。
@@ -9139,6 +10204,56 @@ widget Helper {
         assert!(skipped.is_empty());
         assert!(gallery.join("demos").join("011-x.at").exists());
         assert!(gallery.join("demos").join("prog_util.at").exists());
+    }
+
+    /// PLAN-642 T-13①: 宿主保留字段 α-改名——demo 适配器与自有模块（store）
+    /// 的 `dark_mode`/`accent_color` 统一 `<ns>_` 前缀（合并根态对象上宿主
+    /// 声明的主题魔法字段不被 demo 初始化/handler 写覆写）；边界词
+    /// （`dark_mode_x`/`xdark_mode`）不误改。语料原文（r.source）不动。
+    #[test]
+    fn test_emit_gallery_vm_demos_reserved_field_rename() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let front = apps.join("016-x").join("src").join("front");
+        fs::create_dir_all(&front).unwrap();
+        let store_src = "store MyStore {\n    model {\n        var dark_mode bool = false\n    }\n    on {\n        .Init -> {\n            .dark_mode = false\n        }\n    }\n}\n";
+        fs::write(front.join("my_store.at"), store_src).unwrap();
+        let rows = vec![vm_demo_row(
+            "016-x",
+            true,
+            "use my_store: MyStore\n\nwidget App {\n    model {\n        var dark_mode bool = false\n        var dark_mode_x int = 1\n    }\n    view {\n        text \"hi\" { style: if .dark_mode { \"a\" } else { \"b\" } }\n    }\n    on {\n        .Init -> {\n            .dark_mode = .MyStore.dark_mode\n        }\n    }\n}\n",
+        )];
+        let gallery = dir.path().join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1);
+        assert!(skipped.is_empty());
+
+        let demo_src = std::fs::read_to_string(gallery.join("demos").join("016-x.at")).unwrap();
+        assert!(
+            demo_src.contains("var d016x_dark_mode bool = false"),
+            "adapter decl renamed: {demo_src}"
+        );
+        assert!(
+            demo_src.contains(".d016x_dark_mode = .MyStore.d016x_dark_mode"),
+            "read/write refs renamed: {demo_src}"
+        );
+        assert!(
+            demo_src.contains("var dark_mode_x int = 1"),
+            "boundary-suffixed ident untouched: {demo_src}"
+        );
+        assert!(
+            !demo_src.contains(" .dark_mode") && !demo_src.contains(".dark_mode "),
+            "no bare dark_mode ref remains: {demo_src}"
+        );
+
+        let store_out = std::fs::read_to_string(gallery.join("demos").join("my_store.at")).unwrap();
+        assert!(
+            store_out.contains("var d016x_dark_mode bool = false") && store_out.contains(".d016x_dark_mode = false"),
+            "own module renamed with same ns: {store_out}"
+        );
+
+        // 语料原文不动：r.source 之外的输入文件保持原样（教程/源码 tab 语义）。
+        assert!(store_src.contains("var dark_mode bool"));
     }
 
     /// PLAN-633: 全栈档 row 构造帮手（fullstack=true、loadable=false ——

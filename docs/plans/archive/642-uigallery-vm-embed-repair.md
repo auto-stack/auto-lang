@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-642
-status: executing             # 复审 needs_fix → 由 execution_done 回退（R642-1）
+status: archived             # 终态（2026-09-19 终审 pass + merge 收口）
 plan_revision: 1              # 复审基线迁移：初版契约无 revision 字段，按 auto-plan-new 规约补记为 1
 feature_name: uigallery-vm-embed-repair
 author: [agent]
@@ -9,11 +9,11 @@ updated_at: 2026-09-18
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌健康度（PLAN-642）]
+new_spec_components: [docs/specs/auto-lang/ui/overview.md#ui-gallery-vm-内嵌健康度契约（PLAN-642）, docs/specs/auto-lang/ui/overview.md#items-stretch-两阶段行语义（PLAN-655）]
 touched_goals: [GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/parser, auto-man, parity]
-current_step: 11
+current_step: 17
 total_steps: 19
 ---
 
@@ -363,36 +363,129 @@ gallery 集成（启动 proxy + registry 注入子 URL）1 天。
       贴底（t11_008_fixed.png）,007/013/024/026/029 抽样零回归,6 次切页
       零崩溃。双仓提交：auto-lang 50f623e5c、auto-os 98613b0（产物再生成
       012-clock 改名/046 新增/013+020 随语料,合并对齐非 T-11 生成器变化）。
-- [ ] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）
-      `min-h-screen`/`h-screen` 在内嵌上下文 = 窗口高而非容器高（009 溢出
-      被裁、016 不居中同根因，app.at:252/40 实证）——VM 渲染器对
-      screen 类的解析在内嵌装配时改映射容器高，frame 加 scroll 兜底；
-      009 出滚动条、016 居中截图验收。
-- [ ] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）
-      016 的 `dark_mode=false` 驱动宿主主题运行时（u2_008 深 → u2_016 起
-      全浅色持久实证）——合并 VM 子件主题魔法变量与宿主隔离（主题只认
-      根件）；016 默认主题语料评估（跟随宿主或改深色，其有深色样式分支）。
-- [ ] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）
-      (a) routes 单页族（018/019/021/022/023）：VM 内嵌支持 `routes {}`
-      首页路由 stub 渲染；(b) back 链 native-ns/stream 族（017）：
-      进程内 stub/诚实空态降级或接 T-19 proxy；(c) 030/041/043/044 保持
-      独立、回退文案精确化（列独立运行命令）。
-- [ ] **T-15 (P2-015) 015 种子数据合并链归因**（rev2）
-      db.at 有 6 条种子（List<Note>.new）但内嵌视图"No notes yet"——
-      合并 VM back 链模块级堆初始化/`api.list_notes` 调用链断点归因修复。
-- [ ] **T-16 (P2-020) 020 媒体扫描后端接入**（rev2，依赖 T-19 或独立挂载）
+- [✅] **T-12 (P2-009/P2-016b) 内嵌 screen 单位语义修正**（rev2）[✅ 已完成（用户裁定②方向重交付：语料内容高 + scroll 兜底）]
+      用户裁定：T-12 scroll 方案合理（浏览器同构），008 卡片"无限拉伸高"
+      是语料自身缺陷——应为内容自然高（fill vs auto 之辨）。
+      落地：①语料 008 卡片行去 items-stretch（卡片改自然高；三卡内容
+      结构相同高度差可忽略；Vue 臂同步让渡等高语义）；②恢复 scroll
+      兜底（2c96c5e40 形态原样：justify-Center/End 路径 overflow-y:
+      hidden 列包 Shrink Scrollable）；③回归测试恢复 + 双窗口尺寸守卫
+      （1024×800/1920×1200）。fe48a3945。
+      验证：headless 双尺寸 40 行全布局 + 短内容垂直居中绿；
+      layout_tests 55 绿（2 红=master 预存）；cargo t ui 2101 全跑
+      22 败全落 master 基线零新增；实机 009 滚动条+完整内容
+      （t12final_009.png）、016 垂直居中（t12final_016.png）复验通过。
+      008 状态：真实语料 headless 720 视口探针卡片全出（探针③）；
+      实机截图未及卡片区（卡片在 vtree 树中,位于 frame scroll 折叠线下
+      的可能性未排除）——滚轮可达性验证留待下一会话（MCP 无框内滚动
+      柄 + 实例环境高滚动率所致,非方案性阻塞）。
+- [✅] **T-13 (P2-016a) 子件主题魔法变量隔离**（rev2）[✅ 已完成（①写点追踪路线，655 落地后执行）]
+      定罪（8 类写点探针 AUTO_DEBUG_THEME_TRACE=dark_mode，A/B 008→016→008
+      实机日志）：污染链 = 合并 VM 轨统一状态对象（Plan 419）下，016 挂载时
+      **两条 VM 直写**覆写宿主壳根态 `dark_mode`——①`handler_CalendarStore_Init`
+      （store 模块级 var 初始化）②匿名模块 init 帧（demo 模型 var 静态初始化）
+      → 渲染器每帧状态→主题同步（renderer.rs D-GAP-2 块）翻全局。SEED
+      （ensure_child_state）仅为回声非首犯；宿主壳 app.at:23 自声明
+      dark_mode=true（根因=字段合并冲突，非路由 bug——独立形态同写合法）。
+      v2 写端改名失败的机理同因：store var 与静态初始化不在赋值语句改名面内。
+      修复（用户裁定候选"store 模块 var 前缀"完整版）：发射期**全量 α-改名**
+      ——`rename_reserved_root_fields`（auto-man vue.rs，word-boundary 字节级）
+      把 demo 侧（适配器+自有模块+包级联文件）的 `dark_mode`/`accent_color`
+      （恰为渲染器消费的两个保留名）统一改 `<ns>_` 前缀（ns=demo_ns_prefix），
+      声明/读/写一体改名语义自洽；语料原文/宿主壳/宿主 deps
+      （settings_popover）不动——web 臂 demo 本就各自独立持主题态，改名对齐
+      双臂语义。改名安全性预检：14 语料 app 声明面清点、零字符串字面量命中、
+      零跨 demo 模块名碰撞（同名异容跳 demo 风险不存在）、package 目录单
+      demo 独享。A/B 复验（修复构建）：全序列仅剩 boot 宿主合法播种
+      （true→true），VM 直写/SEED/SYNC-FLIP 全消失；三截图（A 008 深/B 016
+      打开宿主仍深+日历完整渲染 June 2026 网格/C 008 仍深）+ 像素级壳亮度
+      分析（left≈32 dark）双重确认；boot 零 parse 失败；隔离 config 全程
+      零写入（无落盘路径触发——R642-P2 历史污染为前会话手动设置交互，
+      污染机制已随根态覆写消失而根除）。门禁：gallery 13/13（含新单测
+      test_emit_gallery_vm_demos_reserved_field_rename）；auto-man 全套
+      298 绿/1 红=master 预存 flaky（test_plan609 并行红隔离绿，master
+      同特征实证；P642-D5 的 plan606 红今日已绿）；探针 8 处全摘
+      （auto-lang core 与 master 零 diff）。双仓提交：auto-lang dfcc3bbe1、
+      auto-os T-13 批次（16 文件，11 适配器+calendar_store+d015notes 模块
+      改名映射+registry 语料漂移+A/B 脚本入 tests/）。
+- [✅] **T-14 (P2-017 族) 回退页内嵌覆盖分档**（rev2）[✅ 已完成（a/c 两臂；(b) 随 P642-D13 proxy 独立计划）]
+      **(a) routes 首页 stub 档**：新 `route_stub` 档（判定 = app.at 含
+      `routes {}` 块且非 render:"vm"；不依赖 vp——018 的 from_workspace
+      strict 失败是 Vue 装配臂问题）。发射变换（vue.rs `rewrite_routes_
+      stub`）：routes 块剔除 + `outlet` 行替换为 `/` 首页路由组件实例
+      （无 `/` 时首个无参路由兜底）+ 首页页面文件 per-demo ns 级联
+      （pages/home.at 跨 demo 同名异容，平面名必撞 modules_conflict）。
+      **三处配套挖掘（迭代三轮实证）**：①store 别名 use 行重链
+      （`relink_store_use_lines`——021 `use store: BlogStore` 别名 token
+      ≠声明文件名 → 收集 miss → store 不入池 → scan 空表 → 真名限定
+      不跑 → 合并单元 plan-446 A1 歧义硬错）；②back 级联接入（四家
+      store 数据全走 `use back.api:`——route_stub 与 fullstack 同管线
+      级联；纯前端无种子 stub 跳过级联不跳 demo）；③多 store 边界
+      降级（023 AuthStore+ArticleStore 泛型调用语义分属，A1 不可消解
+      → 回退页，发射期记录原因）。**(c) 回退文案精确化**：AppViewport
+      else 分支三行——标题（依赖说明）+ `f"独立运行：cd examples/ui/
+      ${.app}"`（插值注意 AutoLang f-string 是 `${}` 非 `{}`）+ 双臂
+      运行命令。registry.at loadable 三档并集（loadable||fullstack||
+      route_stub——T-08 元数据=VM 实态原则延伸；web 臂 demos-registry
+      .ts 不变）。**E2E**：四页 stub 首页真实渲染（022 "Project Board"/
+      018 "Library"/021/019 "Home"）+ 三回退页命令插值正确（023/030/
+      017）。门禁：gallery 15/15（含新 route_stub 单测）；auto-man 全套
+      2 红 = 并行 flaky（plan609+generate_rust_ui_out_of_repo，双测
+      隔离重跑绿、master 同特征）。双仓提交：auto-lang d19190a11、
+      auto-os T-14 产物批次（4 适配器+页面/链模块+registry+AppViewport）。
+- [✅] **T-15 (P2-015) 015 种子数据合并链归因**（rev2）[✅ 已完成（归因反转：数据链通，视图层双断点）]
+      归因（state 工具 + 探针实证）：db.at 6 条种子**在内嵌态完整落地**根态
+      （notes=6 vmref，store.Init→list_notes→db.all_notes 全链通）——任务
+      预设的"back 链断点"不成立，真断点在**视图层求值**：①`.len()` 后缀
+      快路径（aura_view_builder eval_condition）把 `.NotesStore.notes.len()`
+      剥掉 `.len()` 后的 "NotesStore.notes" **整段当单字段名** read_state
+      必 miss → 条件恒 false → 空态分支（015 "No notes yet" 实锤；026
+      `.schemaIndexes.len()` 恰为裸字段故幸存）；②store 别名快照
+      （VIEW_STORE_ALIAS_SNAPSHOT）为线程级单例——多组件画廊下被后续合成
+      覆盖/错主，`.TodoStore.X` 真名限定读在字符串/值解析三消费点落空
+      （013 footer f-string 渲染字面模板实锤；探针证实快照内容含全部
+      真名自映射但条件求值路径根本不经展平臂=零 MISS）。修复：①快路径
+      经 store_source_field 展平为根态裸字段；②快照随 VmBridge 存档
+      （合成同线程紧邻捕获）+ 三消费点 bridge 查表兜底。复验：015
+      "No notes yet" 消失、Welcome 种子可见（t15_lenfix_015.png）；013
+      footer 插值 "3 items left" 正确（t15_lenfix_013.png；快照中另一
+      "f\"${...}\"" 节点为教程说明字面量非缺陷）。门禁：新单测
+      plan642_store_qualified_len_condition_resolves 绿；cargo t ui
+      --no-fail-fast 2155/2177，22 败全落 master 基线（零新增）。
+      auto-lang d70662244。
+- [ ] **T-16 (P2-020) 020 媒体扫描后端接入**（rev2）[↪ 移交独立计划（用户裁定 2026-09-19）]
       `Http.get_json("/api/media/scan")` 在内嵌无后端进程（player_store.at:92
-      实证）——经 T-19 proxy 子 URL 或内嵌进程内扫描适配后出曲库。
-- [ ] **T-17 (P2-024) 024 空画布结案**（rev2）
-      最新构建（09bb8e218+）已出图（u2_024.png 实证）——用户侧为旧构建；
-      记录结案 + 请用户以新构建复验。
-- [ ] **T-18 (P2-附带) 027 错误 toast 跨 demo 残留**（rev2）
-      u2_008 右下角残留 027 的"无法定位主目录"toast——toast 过期/清理
-      修复（与 T-06 同族，14263 toast 修正先例）。
-- [ ] **T-19 多后端 proxy 机制**（rev2，可行性分析见 §8.2，立项待用户裁定）
+      实证）。**裁定：随 P642-D13 proxy 独立计划一并解决，不走 per-demo 窄路
+      特例**；过渡期 020 内嵌保持诚实空态。本计划内不再执行。
+- [✅] **T-17 (P2-024) 024 空画布结案**（rev2）[✅ 已完成（结案记录）]
+      最新构建（09bb8e218+，含 P642-D1 核销与 PLAN-643 修复链）内嵌已
+      完整出图（u2_024.png 三系列折线实证；本会话 soak 4 轮遍历含 024
+      均正常渲染）——用户侧所见为旧构建。**结案：024 以最新构建复验
+      即可**；若仍见空画布，以 `auto build` 重新生成产物后复验。
+- [✅] **T-18 (P2-附带) 027 错误 toast 跨 demo 残留**（rev2）[✅ 已完成（证伪结案——触发源灭绝，无修复面）]
+      实机定性（t18_repro/t18_lifecycle 脚本，端口 2303/2304 双实例）：
+      ①**触发源已随 T-05 修复批次灭绝**——027 内嵌 boot 链现正确解析
+      home（state: booted=true, home=C:\Users\zhaop），"无法定位主目录"不再
+      触发；打开 027 停 3s 无 toast，切 008 后 +1/+5/+10s 快照均无 toast
+      文本（t18_A/B1/B5/B10 截图在案）。②**生命周期机制健全**（代码走查+
+      单测）：ToastReq 自带 shown_at+duration_ms（默认 4000，vue-sonner
+      对齐）；push 后置 view_dirty；250ms __toast_tick 订阅（仅有 toast 时
+      订阅）按 retain 清扫、移除再置 dirty；__toast state 消费即清空——
+      合并轨跨 demo 无残留通道；plan412_toast_call_rewrites_to_state_assign
+      单测锁定重写。③切走后 ≤4s 存留属设计内瞬态（标准 toast 语义）。
+      附带发现（登记 P642-D14）：MCP fixture 派发不可达任意 handler
+      （AddrGo 实证不执行、SetAddr 走 input 绑定可达）——toast 类 E2E 在
+      合并轨无人造触发通道（右键菜单/鼠标区均非 MCP 可寻址）；
+      fs.canonical 失败返回原路径（unwrap_or(path)，native.rs:9397）而非
+      空串——语料 `can == ""` 失败哨兵分支（027 NavTo 两条 toast.error
+      路径）VM 臂不可达，语义漂移小债。
+- [ ] **T-19 多后端 proxy 机制**（rev2）[↪ 移交独立计划（用户裁定 2026-09-19）]
       单进程 axum 多后端宿主：per-app VM session + 子 URL `/apps/<id>/api/*`
       路由；生成器 baseURL 子前缀适配（PLAN-617 AUTO_HTTP_BASE 相对展开
-      先例）；风险项：session 崩溃隔离、stream/WS 转发、binary 响应。
+      先例）。**裁定：不塞入 642——收尾后另立独立计划（P642-D13）**，范围
+      明示扩大：不止 020，**017-chat / 031-image-viewer 的 native-ns/stream
+      后端为一等公民目标**（stream/WS 转发从"首期风险排除项"升为立项范围）。
+      T-14(b) 臂随本条目：proxy 落地前 back 链族维持回退页诚实空态。
 
 ## 8.3 新会话续作指南（T-11..T-19 冷启动手册）
 
@@ -566,6 +659,347 @@ evidence:
 next: T-12..T-19 续作（worktree 续用;T-16/T-19 仍待用户裁定立项）
 ```
 
+---
+
+```yaml
+stage: work (rev2 波次)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-12 单任务;计划整体仍 executing（T-13..T-19 在途）
+code_commit:
+  auto-lang: 2c96c5e40 (plan-642-dev, 含 T-11 批次 50f623e5c + master 合并 e1f79db2d)
+  auto-os:   无新提交   (生成器未动,产物零变化)
+task_ids: [T-12]
+evidence:
+  - 归因修正:scratch 双变体实测(h-300 精确生效/行 13+ 框底截断)证伪
+    "screen=窗口高"原判;headless 768/900/1250 三窗口 + 条件式/字面量/
+    双 widget 管线全部钳 720 → 真因 = iced 0.14 定高列配给塌缩
+  - 修复:apply_column_style justify-Center/End 路径 overflow-y:hidden
+    列包 Shrink Scrollable(短内容居中/长内容滚动);首版未限作用域致
+    画廊根 h-screen 整页塌缩,随即收窄并重验
+  - headless 回归 p642_t12_overflow_frame_scrolls_and_centers 绿
+  - layout_tests 55 绿(2 红=master 预存同前);cargo t ui 2101 全跑
+    22 败全落 master 基线(零新增)
+  - E2E:009 frame 内滚动条(t12v5_009.png)+ 016 垂直居中恢复
+    (t12v5_016_clean.png);水平居中受 P2-016a light-on-light 干扰,
+    留 T-13 复验
+  - 环境注记:MCP 端口避开 Windows 排除区 2180-2279(改 2300);实例
+    "自杀"实为 TaskStop 孤儿 + 单实例冲突(与 F1 崩溃家族区分)
+next: T-13..T-19 续作;T-16/T-19 仍待用户裁定立项
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-12 replan 循环)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: needs_replan → 已按用户裁定②重交付 (T-12);计划整体仍 executing
+code_commit:
+  auto-lang: fe48a3945 (plan-642-dev)
+    历史:2c96c5e40(T-12 首版) → 267d76904(回退) → fe48a3945(②重交付)
+  auto-os:   无新提交(生成器未动;产物再生成为 008 语料修正映射)
+task_ids: [T-12]
+evidence:
+  - 用户裁定:scroll 方案合理(浏览器同构);卡片应为内容高(fill vs auto)
+  - 008 语料去 items-stretch + scroll 兜底恢复 + 双尺寸回归守卫
+  - 门禁:layout_tests 55 绿(2 红=master 预存);cargo t ui 2101 全跑
+    22 败全落 master 基线
+  - E2E:009/016 实机复验通过;008 headless 全出/实机待滚轮复验
+    (卡片在 vtree 树中;折叠线下假设未证伪;MCP 无框内滚动柄)
+  - 本轮额外发现资产:MCP 端口避开 Windows 排除区 2180-2279;
+    TaskStop 孤儿 auto.exe + 单实例冲突 = 实例"自杀"真因(非 F1);
+    iced Scrollable 内容臂 compression=true(Fill→内容高,009/016 为证)
+next: T-13 方向已裁定=①写点追踪(655 落地后执行) → T-18 → T-15 → T-17;
+  T-16/T-19/F1 仍待用户裁定
+```
+
+---
+
+```yaml
+stage: review (phase landing——wave1 + T-11 + T-12②;overall 仍 executing)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass (phase verdict;非终审——T-13/T-14..T-19 不在本审范围)
+reviewed_commit:
+  auto-lang: fe48a3945 (plan-642-dev, worktree clean)
+base_commit:
+  auto-lang: 1f4e3e32c (phase 前 master);phase diff = 50f623e5c(T-11)
+  + e1f79db2d(master 合并) + 2c96c5e40/267d76904/fe48a3945(T-12 循环)
+dependency_revisions:
+  auto-os: 98613b0+ (plan-642-dev, 产物随语料同步)
+  auto-down: 60b038f (detached 兄弟, path 依赖)
+acceptance_results:
+  - cargo tf 3615/3615 全绿(本审全新,复审全量门)
+  - cargo tv 3760/3760 全绿(008 语料修正 golden)
+  - cargo t ui 2101: 2079 绿/22 红 全落 master 基线(零新增)
+  - layout_tests 55 绿(2 红=master 预存);auto-man gallery 22/23
+    (1 红=P642-D5 master 预存)
+  - E2E: 009 滚动条+完整内容(t12final_009.png);016 垂直居中
+    (t12final_016.png);008 卡片 headless 全出(探针③)+live 滚轮
+    可达性待复验(R642-P1)
+  - wave1 AC-01..06 与 T-11 证据沿用前审记录(同基线未变)
+findings:
+  - R642-F1 (沿用): 间歇性 exit 127——本轮部分实例退出已查明为
+    TaskStop 孤儿+单实例冲突(环境),崩溃家族死亡仍在案;F1 债处置
+  - R642-P1 (new, low): 008 卡片实机滚轮可达性未复验(MCP 无框内
+    滚动柄);headless 已证卡片全出
+  - R642-P2 (new, info): 主题配置持久污染——修复前会话曾存
+    dark_theme=false,新会话默认浅色,需设置面板手动恢复一次
+next: merge(phase landing plan-642-dev → master);overall 仍 executing
+  (剩余: T-13 方向裁定 / T-18 / T-15 / T-17 / T-14 / T-16+T-19 / F1)
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-13① 写点追踪路线)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-13 单任务;计划整体仍 executing（T-14..T-19 在途）
+code_commit:
+  auto-lang: dfcc3bbe1 (plan-642-dev, 自 master 4817b51e1 重建 worktree)
+  auto-os:   T-13① 批次 (plan-642-dev, 16 文件产物再生成 + A/B 脚本)
+task_ids: [T-13]
+evidence:
+  - 探针定罪:8 类写点(SEED/VM-SET×2/RUST-WRITE/CMD-SET_THEME/SYNC-FLIP/
+    CFG-HOTAPPLY/CFG-SAVE) AUTO_DEBUG_THEME_TRACE 门控;A/B 日志定罪
+    首犯=handler_CalendarStore_Init+匿名模块 init 两条 SET_FIELD 直写;
+    SEED 为回声;独立形态对照(016 standalone,store var 落自有根态=合法)
+    证明冲突仅在合并边界
+  - 修复:rename_reserved_root_fields 发射期全量 α-改名(声明/读/写/
+    包级联一体,<ns>_ 前缀);三接线点(适配器 6317/row_modules 统一单遍/
+    package 文件);语料原文与宿主壳/deps 不动
+  - A/B 复验:修复构建全序列仅剩 boot 合法播种(true→true),直写/SEED/
+    SYNC-FLIP 全消失;三截图视觉+壳亮度分析(全 DARK);016 本体完整渲染;
+    boot 零 parse 失败;隔离 config 零写入
+  - 门禁:gallery 13/13(含新单测 reserved_field_rename);auto-man 全套
+    1 红=master 预存 flaky(plan609 并行红隔离绿,master 同特征);探针
+    8 处全摘(auto-lang core 与 master 零 diff,唯一改动=auto-man vue.rs)
+next: T-18(toast 过期) → T-15 → T-17;T-14 分档覆盖与 T-16+T-19 仍待
+  用户裁定立项;R642-F1 崩溃族 blocked 不变(本轮启动期遇 1 次 exit 127
+  重试即过,长会话复现率特征不变)
+```
+
+---
+
+```yaml
+stage: ruling (两项待裁定事项落定——用户 2026-09-19)
+plan_id: PLAN-642
+plan_revision: 1
+rulings:
+  - item: T-16+T-19 多后端 proxy 立项
+    decision: 独立立项,不塞入 642——642 收尾后另立计划(KNOWN-DEBT P642-D13)
+    scope_note: 用户明示范围扩大——不止 020,017-chat/031-image-viewer 的
+      native-ns/stream 后端为一等公民目标(stream/WS 转发入立项范围,
+      非首期排除项);T-16 随之移交(不走 per-demo 窄路特例);T-14(b) 臂
+      过渡期维持回退页诚实空态
+  - item: R642-F1 崩溃族处置
+    decision: 方案 a——预存间歇性原生不稳定立足 P642-D3,642 修复面照常
+      收口(不为 F1 押后 landing),崩溃根因另立专项
+    immediate_step: exit(127) 主动退出点全仓枚举 + AUTO_DEBUG_EXIT_TRACE
+      门控追踪(POLLTRACE 先例形态)——判定死亡是否混有未被识破的主动
+      退出路径;本会话执行,结果记入 P642-D3
+    result: 枚举判定完成(2026-09-19)——全仓零 deliberate exit(127),代码
+      侧无可 trace 点,转向 crashprobe 退出码映射控制实验:F1 的 bash 127
+      = fastfail/栈溢出(AV 报 139,panic 报 101,均排除);审计日志 959 行
+      零 F1 时刻记录吻合"绕过 panic 钩子"死法;另录 wgpu offscreen 纹理
+      与 min>max 布局两条 panic 线索;修复构建 soak 4 轮全遍历存活零审计
+      新增。详见 P642-D3 枚举小步执行结果段
+queue_after_ruling: T-18 → T-15 → T-17 (+T-14 a/c 可选,既定授权面内)
+  → 复审 → merge 收口;proxy 独立计划与崩溃专项另行立项
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-18 证伪结案)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-18 单任务,定性=无修复面;计划整体仍 executing
+code_commit:
+  auto-lang: 无代码改动（零 diff）
+  auto-os:   T-18 验证脚本批次（t18_repro/t18_lifecycle 入 tests/）
+task_ids: [T-18]
+evidence:
+  - 触发源灭绝:027 内嵌 boot 链正确解析 home（state booted=true
+    home=C:\Users\zhaop）,"无法定位主目录"不再触发;027 开 3s 无 toast,
+    切 008 后 +1/+5/+10s 快照零 toast 文本（t18_A/B1/B5/B10）
+  - 机制健全:ToastReq shown_at+duration(4000ms) + __toast_tick 订阅
+    retain 清扫 + __toast 消费即清空;重写单测在案（plan412）
+  - 附带发现两条登记 P642-D14:fixture 派发不可达任意 handler（AddrGo
+    实证）;fs.canonical 失败返原路径使 can=="" 哨兵分支 VM 臂不可达
+next: T-15（015 种子数据合并链归因）→ T-17（024 结案）→ 复审
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-15 归因反转 + T-17 结案)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-15/T-17 两任务;计划整体仍 executing（T-14 a/c 可选在途）
+code_commit:
+  auto-lang: d70662244 (plan-642-dev;T-17 无代码改动)
+task_ids: [T-15, T-17]
+evidence:
+  - T-15 归因反转:state 工具证实种子数据全链落地根态(notes=6 vmref);
+    真断点=视图层——.len() 快路径整段字段名 miss + store 别名快照
+    线程级单例被多组件合成覆盖(015 No notes yet/013 footer 字面模板双实锤)
+  - 修复:len() 快路径 store 展平 + 快照随 VmBridge 存档 + 三消费点
+    bridge 兜底;E2E 015 Welcome 可见/013 footer "3 items left" 插值正确
+  - 门禁:plan642_store_qualified_len_condition_resolves 新单测绿;
+    cargo t ui --no-fail-fast 22 败全落 master 基线(零新增)
+  - T-17:024 最新构建出图实证在案(u2_024 + 本会话 soak 4 轮),
+    结案=用户以新构建复验
+next: 剩余 T-14 a/c(可选,授权面内) → 复审 → merge 收口
+```
+
+---
+
+```yaml
+stage: work (rev2 波次,T-14 a/c 完成——计划执行面收官)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass            # T-14 a/c;全部执行任务完成,计划待复审收口
+code_commit:
+  auto-lang: d19190a11 (plan-642-dev, auto-man vue.rs +319/-14)
+  auto-os:   T-14 产物批次 (plan-642-dev, 4 stub 适配器+页面/链模块+
+    registry+AppViewport 文案)
+task_ids: [T-14]
+evidence:
+  - (a) route_stub 档:rewrite_routes_stub(routes 剔除/outlet→首页组件)+
+    页面 ns 级联 + relink_store_use_lines(别名 use 重链,021 实证) +
+    back 级联接入(四家 store 全走 back.api) + 多 store 边界降级(023)
+  - (c) 回退文案三行:依赖说明 + cd 命令 ${.app} 插值 + 双臂运行命令
+  - E2E:022"Project Board"/018"Library"/021/019"Home" 四页 stub 真实
+    渲染;023/030/017 回退页命令插值正确
+  - 门禁:gallery 15/15(新 route_stub 单测);auto-man 全套 2 红并行
+    flaky(隔离重跑绿,master 同特征,零新增)
+remaining: 无执行任务——T-16/T-19 移交 P642-D13 独立计划,T-14(b) 随之;
+  全部在途任务(T-01..T-18)完成或定性结案
+next: /auto-plan:review 复审 → merge 收口（landing 后按 P642-D13 立
+  proxy 独立计划、按 P642-D3 裁定立崩溃专项）
+```
+
+---
+
+```yaml
+stage: review (终审——执行面收官后收口复审)
+plan_id: PLAN-642
+plan_revision: 1
+outcome: pass           # 附 registered deviations（AC-02 裁定债 / AC-06
+                        # Vue 臂预存红，均非本计划 diff 交集）
+reviewed_commit:
+  auto-lang: 17f2ab8b3 (plan-642-dev, worktree clean; 实现链 dfcc3bbe1
+    T-13 + d70662244 T-15 + d19190a11 T-14 + 17f2ab8b3 spec 终稿)
+  auto-os:   8d376c6 (plan-642-dev, T-14 产物批次 head)
+base_commit:
+  auto-lang: 4817b51e1 (worktree 重建基,含 wave1 phase landing 链)
+  auto-os:   98613b0 (T-11 批次;本 phase 产物链 8b75d9f..8d376c6)
+dependency_revisions:
+  auto-down: 60b038f (detached 组内兄弟, path 依赖)
+spec_inputs:
+  - docs/specs/auto-lang/ui/overview.md §ui-gallery VM 内嵌健康度契约
+    （收口终稿 7→10 条已落 worktree 17f2ab8b3,merge 时随行发布）
+acceptance_results:
+  AC-01: pass — 复审独立抽查 13 页全 EMBED 正常（stub 018/019/021/022
+    首页真实渲染;015 Welcome 种子;013 footer "3 items left" 插值;024
+    图表/027 目录列表(修正驱动 stale-id 假阴后)/045/031-paint/016/020）;
+    012 banner = P642-D6 语料既定（在案偏差,非 VM 缺陷）
+  AC-02: registered-deviation — F1 崩溃族按用户裁定(a)立足 P642-D3
+    （预存 P625 时代;本会话收窄 bash127=栈溢出/fastfail+审计判读法+soak
+    脚本常驻;029 序列 soak 4 轮存活）
+  AC-03: pass — registry 三档 loadable（T-08+T-14）;022 侧栏角标"可交互"
+    实态复验
+  AC-04: pass — 11 回退页全部归因:4 页升级 stub/3 页精确文案（独立复验
+    插值）/其余 T-09 归因行 + D13 移交在案
+  AC-05: pass — α-改名 = 发射器确定性变换族（AC-05 修订版契约）
+  AC-06: partial-registered — cargo tf 3640/3641（1 红 display_family_
+    codegen_arm_fixture = 并行 flaky,worktree/master 隔离重跑双绿）;
+    gallery 15/15;ui 档 22 红=master 基线;008 有结论（T-07 证伪+T-11
+    根修+PLAN-655 StretchLine 落地）;**Vue 臂构建预存红**（folder-music
+    × lucide-vue-next 0.312.0 无导出;时间线归因:语料 a5e26d558 09-17
+    早于 wave1 T-10 09-18,与本计划 diff 零交集）→ R642-R5 债,非回归
+findings:
+  - id: R642-R5
+    severity: medium
+    affects: [AC-06]
+    evidence: vue 臂 vite 构建 NavSidebar.vue "FolderMusic" is not exported
+      by lucide-vue-next@0.312.0;语料 icon folder-music 由 a5e26d558
+      （09-17,早于 T-10）引入;本计划 diff 不触 vue 转译/icon 映射
+    correction: 语料换图标名或升级 lucide lock（归 auto-os/语料域;登记
+      债册 P642-D15）
+  - id: R642-R6
+    severity: low
+    affects: [AC-06]
+    evidence: 并行 flaky 家族三成员（plan609_unresolved_dep_import_guard/
+      generate_rust_ui_out_of_repo/test_display_family_codegen_arm_fixture
+      ）——全套并行红、隔离绿,master 同特征
+    correction: 并行 tempdir/资源竞争排查（环境债,登记 P642-D15）
+  - id: R642-R7
+    severity: info
+    evidence: P642-D12 近期臂（EqualHeightRow 两遍测量）已由 PLAN-655
+      StretchLine 落地交付（master 契约节在案）
+    correction: merge 时债册 D12 标记近期臂核销（远期 iced 升级补丁臂留）
+  - id: R642-R8
+    severity: info
+    affects: [验证方法论]
+    evidence: 复审驱动脚本复用过期 vnode id → press 误开宿主设置弹窗,
+      027 首验假阴;fresh-id 重 press 即真
+    correction: MCP press 前必须重 snapshot 取新 id（驱动脚本纪律,已注
+      记于 tests/ 脚本使用面）
+  - id: R642-R9
+    severity: info
+    evidence: 画廊 boot 噪音 "dependency '' is materialized at deps but
+      not declared in pac.at" ×N（wave1 起各会话均在,auto-os 工作区卫生）
+    correction: 归 auto-os 域清理（不阻塞,随 D15 登记）
+evidence:
+  - 复审期新鲜命令输出:tf 全量/E2E 独立矩阵（2320 实例）/isolated 重跑
+    对照/vue build 归因链/角标快照——非执行期总结复用
+  - 执行期同会话同 binary 的 E2E（T-13 A/B 三截图/T-15 双页/T-14 四页+
+    三回退）与复审矩阵基线一致（worktree HEAD 未变）,声明复用理由成立
+  - 债册 P642-D1..D14 状态核对:D1(643 核销)/D7-D9(T-11/12/13 核销)/
+    D12(近期臂 655 交付)/D3+D10+D13(裁定在案)/D2+D4+D5+D6+D11+D14(开放
+    债,均已归因)
+  - 唯一工作树脏文件（rust-workspace 生成物）已 checkout 还原——审基
+    全提交（17f2ab8b3）
+next: merge（plan-642-dev → master 终landing;spec 终稿随行;D12 近期臂
+  核销标记 + D15 登记）;landing 后按裁定立 P642-D13 proxy 独立计划与
+  P642-D3 崩溃专项
+```
+
+（终审限制声明：本复审与执行同会话执行，非独立角色；全部结论基于复审期
+新鲜命令输出——tf 全量重跑、2320 实例独立 E2E 矩阵、隔离重跑对照、vue
+build 归因链、角标/快照复验——而非执行期总结。）
+
+---
+
+```yaml
+stage: merge (phase landing 收据——非归档;overall 计划保持 executing)
+plan_id: PLAN-642:r1
+outcome: pass (phase landing)
+checkpoints:
+  prepared: reviewed fe48a3945 + spec delta 落 worktree
+  landed: master merge 1039d998e（含 fe48a3945 全链）+ 7375cd027(spec 节)
+    经并发 PLAN-074 merge ffe2dac6d 一并入主;master cargo check 绿
+  ledger_refreshed: .autoos/specs.json P642-1 upsert(读回验证,gitignore
+    运行时数据就地发布);docs/specs/INDEX.md 重算无变化;spec 节已入主
+  archived: N/A——分阶段落地,overall 保持 executing(T-13/T-14..T-19 在途)
+  cleaned: wt-guard clean(024-charts/deps/stylekit junction 系 auto run
+    产物,已按规程 os.rmdir 摘除)→ worktree 移除 + branch plan-642-dev
+    删除(was 7375cd027,已含于 master)→ 组目录 .wt/lang-642 移除
+master_wip_note: master 存在他会话未提交 WIP(examples/rust-workspace/
+  Cargo.toml 加 013/015-back members + docs/plans/evidence/653/)——非本
+  计划产物,未纳入落地,已表面化待其属主路由
+next: 续作须重建 worktree(git worktree add D:/autostack/.wt/lang-642/
+  auto-lang -b plan-642-dev,自最新 master);队列=T-13①(655 落地后)/
+  T-18/T-15/T-17;计划外队列=PLAN-655 执行(另一 agent 进行中)/T-14/
+  T-16+T-19/F1
+```
+
+
+
 
 ## 10. 待澄清事项
 
@@ -574,3 +1008,32 @@ next: T-12..T-19 续作（worktree 续用;T-16/T-19 仍待用户裁定立项）
   有 bug，T-04/T-05 顺带给出结论。
 - 族 A 修复若牵动 parser 全局 name-check 语义，需评估对 aavm/VM 语料的
   级联（触发 `cargo tv` 档）。
+
+---
+
+```yaml
+stage: merge (终 landing 收据——overall delivered/archived)
+plan_id: PLAN-642:r1
+outcome: pass
+checkpoints:
+  prepared: 终审 pass @ 17f2ab8b3（reviewed_commit 链 dfcc3bbe1/d70662244/
+    d19190a11/17f2ab8b3;spec 终稿 7→10 条随行;auto-os 8d376c6）
+  landed: auto-lang master bec264449（merge plan-642-dev,master cargo check
+    绿）;auto-os main 962bfb3（merge plan-642-dev,产物终链随行）。auto-os
+    merge 前置处置:主检出他会话在途 WIP 双保全——tracked 产物漂移 stash
+    （"P642-merge前保全…"）+ 31 件 untracked 生成残留备份 /tmp/p642_t13/
+    os_untracked_backup;031 会话 docs/plans 簿记未触碰原地保留
+  ledger_refreshed: .autoos/specs.json P642-1 终稿 upsert（十条契约+终
+    landing 证据,读回验证）+ reviews 节 P642-R2 历史条（读回验证）;
+    docs/specs/INDEX.md 重算（26 projects）
+  archived: docs/plans/archive/642-uigallery-vm-embed-repair.md（git mv +
+    status: archived;completion_kind: delivered）
+  cleaned: wt-guard ×3 过闸（auto-os 288 件 pnpm/dep junction 按处方
+    MSYS_NO_PATHCONV=1 cmd /c rmdir 分 6 轮摘除后 clean）→ 三 worktree
+    移除 + 双分支删除（lang 17f2ab8b3/os 8d376c6 均已含于主分支）+
+    组目录 .wt/lang-642 移除
+follow_ups: P642-D13 proxy 独立计划（020+017/031 stream 一等公民,用户
+  裁定范围）;P642-D3 崩溃专项（bash127=栈溢出/fastfail 收窄+审计判读法
+  +cdb/WinDbg 工具建议在册）;P642-D15（Vue folder-music 预存红/并行
+  flaky 三成员/画廊 deps 噪音）随所属域处置
+```

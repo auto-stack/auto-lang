@@ -1568,6 +1568,30 @@ fn generate_api_rs(
             if db_active {
                 let fns = db_fns.unwrap();
                 lines.push("// db-covered scalar service endpoints (PLAN-013 T2)".to_string());
+                // PLAN-653 T-01: GET/DELETE 带参读走 Query 提取,复用主类型
+                // 路径的 {Fn}Query-struct 机制(endpoint_query_params 一族)。
+                // 此前无差别发 `Json` 提取器,axum 对无 body 的 GET 一律
+                // 400("Expected request with Content-Type: application/json",
+                // auto-term vue 轨 tab-id-at 族实测),前端轮询链路整体中断。
+                for endpoint in &api_module.endpoints {
+                    if !fns.contains(&endpoint.fn_name) {
+                        continue;
+                    }
+                    let query_params = endpoint_query_params(endpoint);
+                    if query_params.is_empty() {
+                        continue;
+                    }
+                    let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
+                    lines.push("".to_string());
+                    lines.push("#[derive(serde::Deserialize, Default)]".to_string());
+                    lines.push("#[serde(default)]".to_string());
+                    lines.push(format!("pub struct {} {{", struct_name));
+                    for param in &query_params {
+                        let rust_type = auto_type_to_rust(&param.ty);
+                        lines.push(format!("    pub {}: {},", param.name, rust_type));
+                    }
+                    lines.push("}".to_string());
+                }
                 for endpoint in &api_module.endpoints {
                     lines.push("".to_string());
                     if !fns.contains(&endpoint.fn_name) {
@@ -1576,14 +1600,25 @@ fn generate_api_rs(
                         lines.push("}".to_string());
                         continue;
                     }
-                    let body_params: Vec<&ApiParam> = endpoint
-                        .params
-                        .iter()
-                        .filter(|p| !endpoint.path().contains(&format!(":{}", p.name)))
-                        .collect();
-                    let (sig, call_args) = if body_params.is_empty() {
-                        (String::new(), String::new())
-                    } else {
+                    let query_params = endpoint_query_params(endpoint);
+                    let body_params = endpoint_body_params(endpoint);
+                    let (sig, call_args) = if !query_params.is_empty() {
+                        let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
+                        (
+                            format!("Query(query): Query<{}>", struct_name),
+                            query_params
+                                .iter()
+                                .map(|p| {
+                                    if p.ty.contains("str") {
+                                        format!("&query.{}", p.name)
+                                    } else {
+                                        format!("query.{}", p.name)
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        )
+                    } else if !body_params.is_empty() {
                         (
                             "Json(body): Json<serde_json::Value>".to_string(),
                             body_params
@@ -1601,6 +1636,8 @@ fn generate_api_rs(
                                 .collect::<Vec<_>>()
                                 .join(", "),
                         )
+                    } else {
+                        (String::new(), String::new())
                     };
                     let ret = endpoint.return_type.trim();
                     let (ret_clause, call_suffix) = if ret == "void" || ret.is_empty() {

@@ -98,15 +98,17 @@ pub fn run_dynamic_client(
 }
 
 /// native 轨三态 → 二态分派（Plan 020 T-04；PLAN-026 T-06 复测后裁定
-/// **维持不翻**）：native `Auto` 缺省 = **independent**（025 语义不变），
-/// 升级点 = 观测行携带**真扫描缺项清单**（原 v1 恒定文案 → 逐 App 缺项
-/// 载荷）+ queue-covered 命名（queue 化可行性逐 App 可见）。**翻转点
-/// 已备**：三闸数据门 = examples 全量 Covered ≥95%（026 数据行
-/// overall 45.7% / judged 76.2%，缺项全在册 not-yet——报告
-/// `docs/plans/reports/p026-native-flip-data-row.md`）；达标时 Covered
-/// 臂改返值即为翻转（one-line，随 ramp v3 复评）。显式 `Queue` 不在
-/// 此裁决（覆盖门在 [`run_native_client`] 消费 [`NativeProjector::
-/// ensure_covered`]——拒绝退出留痕）；`Independent` 直通。
+/// **维持不翻**；PLAN-029 T-08 复测同裁定）：native `Auto` 缺省 =
+/// **independent**（025 语义不变），升级点 = 观测行携带**真扫描缺项
+/// 清单**（原 v1 恒定文案 → 逐 App 缺项载荷）+ queue-covered 命名
+///（queue 化可行性逐 App 可见）。**翻转点已备**：三闸数据门 =
+/// examples 全量 Covered ≥95%（029 复测行 overall 44.4% / judged
+/// 72.7%——样本 36 扩容稀释 + 046-tabs 入分母；009 opacity 放行翻绿、
+/// 041 popover 半句清偿；报告 `docs/plans/reports/
+/// p029-native-flip-retest-row.md`）；达标时 Covered 臂改返值即为翻转
+///（one-line，随 ramp v3 复评）。显式 `Queue` 不在此裁决（覆盖门在
+/// [`run_native_client`] 消费 [`NativeProjector::ensure_covered`]——
+/// 拒绝退出留痕）；`Independent` 直通。
 /// 返回 `(帧模式, auto 降级标记, Option<观测行>)`。
 pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
     mode: RenderMode,

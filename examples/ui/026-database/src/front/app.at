@@ -209,7 +209,8 @@ widget App {
         dbNodes => filter_tree(.dbNodesFull, .treeFilter)
     }
 
-    on { -> {
+    on {
+        .Init -> {
             // 初始化表头与元数据
             .hId = "ID ↑"
             .hCol1 = "Company Name"
@@ -1051,7 +1052,7 @@ widget App {
                                                 }
                                                 table-cell (style: "text-right") {
                                                     button "🗑" {
-                                                        onclick: () => { .DeleteRow(i) },
+                                                        onclick: .DeleteRow(i),
                                                         style: "px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10 rounded"
                                                     }
                                                 }

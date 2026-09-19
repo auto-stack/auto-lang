@@ -625,6 +625,13 @@ pub fn generate_component_from_file(
     let code = std::fs::read_to_string(at_path)
         .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
 
+    // PLAN-646: 源文件 stem——data-auto-src 注入，overlay 据此选 AUTO_SOURCES 源。
+    let source_stem = at_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("app")
+        .to_string();
+
     // PLAN-635: pre-register use-imported recipes before the parse (parser
     // symbol-checker hook), then replay after the parse.
     let base_dir = at_path
@@ -980,6 +987,7 @@ pub fn generate_component_from_file(
         for widget in &widgets {
             let mut gen = VueGenerator::new()
                 .with_mode(vue_mode)
+                .with_source_stem(source_stem.clone())
                 .with_default_classes(default_classes)
                 .with_store_deps(store_deps.clone())
                 .with_store_import_prefix(store_import_prefix.clone())
@@ -1018,6 +1026,7 @@ pub fn generate_component_from_file(
     for widget in &widgets {
         let mut gen = VueGenerator::new()
             .with_mode(vue_mode)
+            .with_source_stem(source_stem.clone())
             .with_default_classes(default_classes)
             .with_store_deps(store_deps.clone())
             .with_store_import_prefix(store_import_prefix.clone())
