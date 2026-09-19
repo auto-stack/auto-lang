@@ -2077,5 +2077,8 @@ CodeEditor
   reports P656-1（file→docs/specs/widgets/scroll-pane.md，回读验证）+
   scripts/spec-index.py 再生（widgets 模块 4→5）——commit 017ce9cd9 ✓；
   `archived`: docs/plans/archive/656-universal-scroll-pane.md（git mv）✓；
-  `cleaned`: 待回填（wt-guard 前置清障 666 处 reparse point 已摘——pnpm
-  node_modules junction，工作区运行产物非提交内容）。
+  `cleaned`: 终检（worktree clean+wt-guard clean+auto-down 兄弟纯净+全提交
+  落地实证）→ `git worktree remove` 双仓 + `git branch -d plan-656-dev`
+  （was 9f05683fc）+ 组目录 lang-656 移除（`git worktree list` 无 656 残留）
+  ✓。前置清障记录：666 处 reparse point（pnpm node_modules junction，运行
+  产物非提交内容）按闸门指引逐链接 cmd-rmdir 摘除后 rm -rf 残壳。
