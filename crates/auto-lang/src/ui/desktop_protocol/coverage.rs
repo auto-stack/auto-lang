@@ -268,6 +268,14 @@ impl Coverage {
             // pack 拖拽幽灵/通知卡半透明面经此放行，视觉全不透明降级
             //——flex-1/shadow 同册先例）。
             "opacity-",
+            // PLAN-032 T-02（D3/D5）放行批：
+            // ⑧ hidden（display:none）——投影器 NodeStyle.hidden 单一
+            //   choke 跳过子树**真渲**（display 族在场 = 响应式覆盖可
+            //   见——018 侧栏/移动头、041 条件行）。
+            // ⑨ self-（交叉轴自对齐）——center_children 通道真渲（012
+            //   步进值/单位标签映射缺口清偿）。
+            "hidden",
+            "self-",
         ]
         .into_iter()
         .map(String::from)
@@ -734,15 +742,20 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         // 交叉轴）= 布局 no-op——判定放行（absolute+offset 族仍 not-yet）。
         SC::Relative => "relative".into(),
         SC::ItemsStretch => "items-stretch".into(),
+        // PLAN-032 T-02（D5）：self-center（交叉轴自对齐）——投影器
+        // NodeStyle.center_children 通道真渲（012 映射缺口清偿；非降级）。
+        SC::SelfCenter => "self-center".into(),
         SC::TextArbitrary(_) => "text-1".into(),
         SC::ShadowArbitrary(_) => "shadow".into(),
         // —— 语义承载未实现面：显式 not-yet（语义名缺项载荷——缺项清单
         // 自描述；026 数据行缺项面）。定位族（absolute/fixed/sticky/
-        // offset/z-index）、rotate（视觉变换）、hidden（display:none
-        // 语义）、truncate/break-words（文本裁剪）、list-none（列表
-        // 标记）、accent（表单强调色）、stroke（lucide 描边——native
-        // 位图/字形通道 not-yet 同册）、样式版 grid（display:grid/
-        // grid-cols 布局语义——View::Grid 变体臂不覆盖 style 路径）。
+        // offset/z-index）、rotate（视觉变换）、truncate/break-words
+        //（文本裁剪）、list-none（列表标记）、accent（表单强调色）、
+        // stroke（lucide 描边——native 位图/字形通道 not-yet 同册）、
+        // 样式版 grid（display:grid/grid-cols 布局语义——View::Grid
+        // 变体臂不覆盖 style 路径）。hidden 原 in-not-yet——PLAN-032
+        // T-02（D3）转真渲放行（NodeStyle.hidden 布局 choke + display
+        // 族响应式覆盖规则；prefixes ⑧）。
         SC::Grid | SC::GridCols(_) | SC::GridRows(_) => "style-grid".into(),
         SC::Hidden => "hidden".into(),
         SC::Absolute => "absolute".into(),
@@ -1161,6 +1174,75 @@ mod tests {
                 coverage.style_token_supported(token) || token == "leading-relaxed",
                 "004 token 应放行（或 parser 静默丢弃面）: {token}"
             );
+        }
+    }
+
+    /// PLAN-032 T-02：native 轨逐例扫描 helper（仪器 native_flip_
+    /// coverage_data_row 路径单例化——front 全 .at 合并解析 → App 声明
+    /// 优先 → VmBridge → AuraViewBuilder（VM 轨）→ scan_native_view）。
+    fn scan_example_native(dir: &str) -> ViewScan {
+        use crate::ui::aura_view_builder::AuraViewBuilder;
+        use crate::ui::vm_bridge::VmBridge;
+
+        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui")
+            .join(dir)
+            .join("src/front");
+        let mut srcs: Vec<std::path::PathBuf> = std::fs::read_dir(&front)
+            .unwrap_or_else(|e| panic!("read {front:?}: {e}"))
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "at"))
+            .collect();
+        srcs.sort();
+        let mut combined = String::new();
+        for s in &srcs {
+            combined.push_str(&std::fs::read_to_string(s).unwrap_or_default());
+            combined.push('\n');
+        }
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(combined.as_str()).with_session(session);
+        let ast = parser.parse().unwrap_or_else(|e| panic!("parse {dir}: {e:?}"));
+        let mut app_decl: Option<&crate::ast::WidgetDecl> = None;
+        let mut first_decl: Option<&crate::ast::WidgetDecl> = None;
+        for st in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = st {
+                if first_decl.is_none() {
+                    first_decl = Some(d);
+                }
+                if d.name.as_str() == "App" {
+                    app_decl = Some(d);
+                    break;
+                }
+            }
+        }
+        let decl = app_decl
+            .or(first_decl)
+            .unwrap_or_else(|| panic!("{dir} 无 WidgetDecl"));
+        let widget = crate::aura::extract::extract_widget_from_decl(decl)
+            .unwrap_or_else(|e| panic!("extract {dir}: {e:?}"));
+        let bridge = VmBridge::new_from_decls(
+            decl,
+            &[],
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .unwrap_or_else(|e| panic!("bridge {dir}: {e:?}"));
+        let view = AuraViewBuilder::new(&bridge, &widget.name).build(&widget.view_tree);
+        scan_native_view(&view)
+    }
+
+    /// PLAN-032 T-02（D3/D5）：012/041 native 判定 Covered——SelfCenter
+    /// 映射臂 + hidden 放行（display 族响应式覆盖）后的两例翻绿（VM
+    /// 轨扫描与仪器同径；T-03..T-05 逐族扩列至六例）。
+    #[test]
+    fn native_gate_examples_012_041_covered() {
+        let coverage = Coverage::native_queue_set();
+        for dir in ["012-clock", "041-auto-edit"] {
+            let scan = scan_example_native(dir);
+            let verdict = judge(&scan, &coverage);
+            assert!(verdict.is_covered(), "{dir} 应 Covered: {verdict:?}");
         }
     }
 

@@ -845,6 +845,13 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
     let mut cross_max = 0.0f32;
     let mut first = true;
     for view in views {
+        // PLAN-032 T-02（D3）：hidden 子级整段跳过——不占主轴 cursor 也
+        // 不参与 gap 序（CSS display:none：兄弟间只留一个 gap，非每
+        // 缺席位一个）。节点级 choke 保留兜底（单子引用/网格 cell 等
+        // 直调 layout_view_node 的路径）。
+        if node_style_of_view(view).hidden {
+            continue;
+        }
         if !first {
             cursor += gap;
         }
@@ -880,6 +887,9 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
         let mut cross_max = 0.0f32;
         let mut first = true;
         for view in views {
+            if node_style_of_view(view).hidden {
+                continue;
+            }
             if !first {
                 cursor += gap;
             }
@@ -909,6 +919,12 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
     avail_w: f32,
 ) -> Laid {
     let style = node_style_of_view(view);
+    // PLAN-032 T-02（D3）：hidden 单一 choke——display:none 子树整体
+    // 不渲染不占位（零 ops 零尺寸；兄弟节点如同不存在——flex-1/居中
+    // 两遍法聚合连锁零贡献自然成立）。
+    if style.hidden {
+        return Laid { size: (0.0, 0.0) };
+    }
     match view {
         View::Empty => Laid { size: (0.0, 0.0) },
         // 块锚定槽：VM 轨专用透传壳（native 生成物不产——防御透传）。
@@ -920,7 +936,10 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let size = style.font_size.unwrap_or(TEXT_SIZE);
             let line_h = size * LINE_H_FACTOR;
             let w = measure_text(content, size);
-            let tx = if style.text_center {
+            // PLAN-032 T-02（D5）：text_center 之外，center_children
+            //（SelfCenter/mx-auto 族）同作水平居中——收缩文本（自然宽）
+            // 的居中在臂内消费（块流 center_children 通道只覆盖固定宽子级）。
+            let tx = if style.text_center || style.center_children {
                 x + (avail_w - w).max(0.0) / 2.0
             } else {
                 x
@@ -1786,6 +1805,11 @@ fn node_style_of_view<M: Clone + std::fmt::Debug>(view: &View<M>) -> NodeStyle {
         // 尺寸/bg——scan_native_node 变体样式收集面同册）。
         | View::Image { style, .. }
         | View::ProgressBar { style, .. } => style.as_ref(),
+        // PLAN-032 T-02：hidden/样式 grid choke 收集面扩容——Grid/
+        // Scrollable/MouseArea 自带 style（Tabs 随 T-03 kind 臂入列）。
+        | View::Grid { style, .. }
+        | View::Scrollable { style, .. }
+        | View::MouseArea { style, .. } => style.as_ref(),
         _ => None,
     };
     node_style_of(style)
@@ -1834,6 +1858,24 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
             s.text_center = true;
         }
         // rounded 档：命令帧无圆角 op——直角化（解释态保真边界同款）。
+        // PLAN-032 T-02（D3）：hidden = display:none（布局单一 choke 跳过
+        // 子树）；display 族类清位——"hidden md:flex" 经 parser 剥响应式
+        // 前缀（class.rs sm/md/lg/xl/2xl）成 [Hidden, Flex]，类序后者胜
+        // = CSS 桌面档覆盖语义（Tailwind 生成序 + 桌面目标假设；018
+        // app.at:24 侧栏/md:hidden 移动头两形态皆此）。
+        StyleClass::Hidden => s.hidden = true,
+        StyleClass::Flex
+        | StyleClass::FlexRow
+        | StyleClass::FlexCol
+        | StyleClass::FlexColReverse
+        | StyleClass::Block
+        | StyleClass::Inline
+        | StyleClass::InlineBlock
+        | StyleClass::InlineFlex => s.hidden = false,
+        // PLAN-032 T-02（D5）：self-center = 交叉轴自对齐——块流单列 =
+        // 父宽居中（layout_view_block 子级 center_children 通道既有，
+        // 真渲非降级；012 步进值/单位标签）。
+        StyleClass::SelfCenter => s.center_children = true,
         _ => {}
     }
 }
@@ -2089,16 +2131,164 @@ mod tests {
             fn view(&self) -> View<Self::Msg> {
                 // shadow/underline 均降级放行（025 T-06 / 026 T-06——
                 // 解释态同款保真边界）；opacity 亦放行（029 T-08 前缀⑦
-                // ——alpha 合成无通道的显式降级）。样本换 hidden（显隐
-                // 通道 not-yet——静态帧无 show/hide 面，018/021/041 行
-                // 同册缺项）。
-                View::text_styled("x", "hidden")
+                // ——alpha 合成无通道的显式降级）。PLAN-032 T-02 起
+                // hidden 转真渲放行（D3 display:none）——防漏钉样本换
+                // truncate（文本裁剪渲染 not-yet，§1.8 在册稳定缺项）。
+                View::text_styled("x", "truncate")
             }
         }
 
         let p = NativeProjector::new(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("style:hidden"), "native 无 hidden 渲染: {err}");
+        assert!(err.contains("style:truncate"), "native 无 truncate 渲染: {err}");
+    }
+
+    /// PLAN-032 T-02（D3）：hidden = display:none——子树整体不渲染不占位
+    ///（零 ops 零行高痕迹，兄弟节点如同其不存在）。
+    #[test]
+    fn hidden_display_none_golden() {
+        #[derive(Debug)]
+        struct HiddenBox;
+
+        #[derive(Debug, Clone)]
+        enum HMsg {}
+
+        impl Component for HiddenBox {
+            type Msg = HMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::text_styled("A", "text-sm"))
+                    .child(View::text_styled("B", "text-sm hidden"))
+                    .child(View::text_styled("C", "text-sm"))
+                    .build()
+            }
+        }
+
+        let mut p = NativeProjector::new(HiddenBox, 480.0, 320.0);
+        p.ensure_covered().expect("hidden 放行（prefixes ⑧）");
+        let frame = p.render_frame();
+        // B 整体缺席；且布局与"B 从未存在"逐坐标等价（对照组件同帧金样
+        //——gap 序/行高零痕迹；display:none 非留白）。
+        let lines: Vec<(f32, &str)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { y, text, .. } => Some((*y, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(lines.iter().map(|(_, t)| *t).collect::<Vec<_>>(), vec!["A", "C"]);
+        let yc = lines[1].0;
+
+        #[derive(Debug)]
+        struct ControlBox;
+        impl Component for ControlBox {
+            type Msg = HMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::text_styled("A", "text-sm"))
+                    .child(View::text_styled("C", "text-sm"))
+                    .build()
+            }
+        }
+        let mut q = NativeProjector::new(ControlBox, 480.0, 320.0);
+        let control = q.render_frame();
+        let yc_control = control
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { y, text, .. } if text == "C" => Some(*y),
+                _ => None,
+            })
+            .next()
+            .expect("对照帧含 C");
+        assert!(
+            (yc - yc_control).abs() < 0.01,
+            "C 落位与 B 不存在的对照等价: hidden={yc} control={yc_control}"
+        );
+    }
+
+    /// PLAN-032 T-02（D3）：响应式覆盖——"hidden md:flex" 经 parser 剥
+    /// 响应式前缀成 [Hidden, Flex]，display 族在场清位 → 桌面档可见
+    ///（018 侧栏形态；对照裸 md:hidden = 隐藏）。
+    #[test]
+    fn hidden_responsive_override_visible() {
+        #[derive(Debug)]
+        struct OverrideBox;
+
+        #[derive(Debug, Clone)]
+        enum OMsg {}
+
+        impl Component for OverrideBox {
+            type Msg = OMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(
+                        View::row()
+                            .style("hidden md:flex items-center gap-2")
+                            .child(View::text_styled("S", "text-sm"))
+                            .build(),
+                    )
+                    .child(View::text_styled("M", "text-sm md:hidden"))
+                    .build()
+            }
+        }
+
+        let mut p = NativeProjector::new(OverrideBox, 480.0, 320.0);
+        p.ensure_covered().expect("hidden/响应式覆盖两形态均放行");
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"S"), "hidden md:flex = 桌面可见: {texts:?}");
+        assert!(!texts.contains(&"M"), "md:hidden = 桌面隐藏: {texts:?}");
+    }
+
+    /// PLAN-032 T-02（D5）：self-center 交叉轴自对齐——块流单列 = 父宽
+    /// 居中（center_children 通道真渲；012 步进值/单位标签映射清偿）。
+    #[test]
+    fn self_center_aligns_golden() {
+        #[derive(Debug)]
+        struct SelfCenterBox;
+
+        #[derive(Debug, Clone)]
+        enum SCMsg {}
+
+        impl Component for SelfCenterBox {
+            type Msg = SCMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::text_styled("L", "text-sm self-center"))
+                    .child(View::text_styled("R", "text-sm"))
+                    .build()
+            }
+        }
+
+        let mut p = NativeProjector::new(SelfCenterBox, 480.0, 320.0);
+        p.ensure_covered().expect("self- 放行（prefixes ⑨）");
+        let frame = p.render_frame();
+        let xs: Vec<(f32, &str)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { x, text, .. } => Some((*x, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        let (l, r) = (
+            xs.iter().find(|(_, t)| *t == "L").unwrap(),
+            xs.iter().find(|(_, t)| *t == "R").unwrap(),
+        );
+        let lw = measure_text("L", 14.0);
+        assert!(
+            (l.0 - (480.0 - lw) / 2.0).abs() < 0.01,
+            "L 父宽居中: x={} 期望={}（measure={lw}）",
+            l.0,
+            (480.0 - lw) / 2.0
+        );
+        assert!(r.0 == 10.0, "R 缺省左对齐: {}", r.0);
     }
 
     #[test]

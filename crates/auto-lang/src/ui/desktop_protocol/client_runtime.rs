@@ -229,6 +229,12 @@ pub(crate) struct NodeStyle {
     pub(crate) center_children: bool,
     /// 文本水平居中（text-center）。
     pub(crate) text_center: bool,
+    /// PLAN-032 T-02（D3）：hidden（display:none）——native 投影器布局
+    /// 单一 choke 消费（子树整体跳过零占位）。display 族类在场清位
+    /// （"hidden md:flex" 响应式覆盖——见 native_projector::
+    /// apply_style_class）。解释态 queue 臂 parse 不设置（I4 分表恒
+    /// false，零行为差）。
+    pub(crate) hidden: bool,
 }
 
 impl NodeStyle {
