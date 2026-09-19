@@ -1933,6 +1933,20 @@ CodeEditor
   `evidence`: examples/capability-tests/p656-scroll-pane/tests/{vm_probe.py,vm_snapshot.txt,vm_review.png}；
   P656_DEBUG/P043_DEBUG 门控 trace（native.rs/renderer.rs）。
   `next`: work 修 F-3（T-09 重开,AC-06/07/16 iced 侧随之复验）→ 再入 review。
+
+- 2026-09-19 /auto-plan:work F-3 修复轮（review needs_fix 后）：
+  `stage: work | PLAN-656 | r2 | outcome: pass(F-3)/needs_fix(F-4 新发现) |
+  code_commit: e637c9448`。**F-3 根因**：scroll 原生族 catalog id 2960-2965 落入
+  `register_stdlib_ffi` 动态分配器（BIGVM next_id 顺序增长）可达区间——其
+  `register_shim_by_name` 经 register_static 覆写静态表（回溯实证 stdlib.rs:8105；
+  codegen 发射正确、引擎执行正确、被顶掉的恰是我的 shim）。修复=id 迁 9900-9905
+  高段 + scroll 族 COUNTED 发射（可选轴实参依赖 pending_native_arg_count）；
+  回归锁 `p656_scroll_controller_natives_end_to_end`（shim ENTER/句柄/true/注册表
+  drain 终态）。**F-4（新，开放）**：controller 首用无测量基线——iced 程序化
+  scroll_to 不触发 on_scroll 回声，且 pane 无用户滚动前注册表 viewport/content
+  恒 0 → to_end 首点解析为 0（vm_probe 实机 probe/mprobe=0.00 复现；on-scroll
+  观察链持续绿 oy=60 py=0.820）。修复方向：scroll_to 后自定义回读 operation
+  （iced State 可读）或布局期 metrics 预热。AC-06/07/16 iced 侧仍开。
   v1 两处公共面执行裁定（controller 函数族/onscroll 8 位置实参）已入 spec API 节 +
   KNOWN-DEBT 656 行——review 时请重点裁决是否接受为 v1 契约。
 
