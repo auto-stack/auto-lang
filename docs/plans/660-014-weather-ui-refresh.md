@@ -5,8 +5,8 @@ feature_name: 014-weather-ui-refresh
 author: [agent]
 created_at: 2026-09-19
 updated_at: 2026-09-19
-plan_revision: 2
-current_step: 4
+plan_revision: 3
+current_step: 5
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components: []
@@ -32,9 +32,11 @@ affects: [examples/ui/014-weather]
 
 **r5（用户走查反馈 2026-09-19，49975bdf2）**：预报卡改 Tab 互斥
 （`forecast_tab` hourly|daily，24小时/5日 两 chip）；5 日预报改与小时卡
-同构的**日卡片**（星期/emoji/最高/最低，今天高亮）。**复审裁定：r5 形态
-与 AC-05 字面要件冲突**（条件中文、温度区间条被移除）——见 §9 review 行
-F-660-R1 与 §10 待裁决项。
+同构的**日卡片**（星期/emoji/最高/最低，今天高亮）。
+**rev 3（用户裁定 2026-09-19）**：认可 r5 简化卡片为最终形态——AC-05
+有界修订（去条件中文+温度区间条字面要件），rev 2 口径下 AC-05 的
+fail 判定按旧约保留为历史；余留 = README 同步（F-660-R2）+
+死样式清理（F-660-R4）+ 冒烟内容断言（F-660-R3）。
 
 **设计锚点**：桌面天气仪表盘（横屏）+ Apple Weather 竖屏（保留）。
 
@@ -46,7 +48,8 @@ F-660-R1 与 §10 待裁决项。
 - **G-2 中国城市选择**：≥10 个中国主要城市（中文名），以 pill 芯片切换；
   切换后当前实况、指标、小时与 5 日预报全部更新。
 - **G-3 预报界面美化**：5 日预报与小时预报从纯文本改为结构化卡片——
-  天气 emoji/图标、条件中文、温度区间条、小时横滑条（“现在”高亮）。
+  预报 Tab（24小时/5日）互斥切换、日卡片（星期/emoji/最高/最低/今天
+  高亮，rev 3 裁定形态）、小时横滑条（“现在”高亮）。
 - **G-4 综合信息架构**（常见天气 App 对齐）：hero 实况（城市/大温度/条件/
   体感）、指标网格（湿度/风速/能见度/气压/紫外线/AQI）、更新时间戳、
   Refresh 带可见反馈、中文文案。
@@ -106,13 +109,16 @@ examples/ui/014-weather/
 哈尔滨、三亚。每城条件/温度/风湿度等应有差异（体现切换有意义），小时 8–12
 点、5 日各 5 条。
 
-**布局（移动端密度，max-w-md 居中，可滚动）**：
+**布局（r1 竖屏原案；实际形态以 §0 r2/r4/r5 迭代为准——横屏优先 +
+预报 Tab）**：
 1. Header：城市名 + 更新时间 + 主题切换 + Refresh
 2. 城市 pill 横滑条
 3. Hero 实况卡（条件渐变）：emoji + 条件中文 + 大温度 + 体感/湿度/风
 4. 指标 2×3 网格卡（token 卡面）
 5. 小时预报卡：横滑 `for` 条目（时间/emoji/温度，“现在”primary 高亮）
-6. 5 日预报卡：竖列表（星期/emoji/条件/低温—渐变条—高温）
+6. 5 日预报卡：~~竖列表（星期/emoji/条件/低温—渐变条—高温）~~ →
+   rev 3 形态：与小时卡同构的横滑日卡片（星期/emoji/最高/最低，
+   今天高亮），经预报 Tab 与 24h 互斥切换
 
 ## 3. 技术栈
 
@@ -248,9 +254,11 @@ Init 时用默认 `beijing` 装载（可在声明处直接填默认 mock，或 `
   其余透明边框 + `text-muted-foreground`。
 - hero 容器：按 `condition` 的 `style: if .condition == "sunny" { "..." } else if ...`
 
-温度区间条（5 日）：每行
-`低温 | 轨道（bg-muted rounded-full h-1.5 flex-1 内嵌 bg-gradient-to-r from-sky-400 to-amber-400）| 高温`。
-不做动态像素定位（双端约束），全宽渐变条 + 两侧温度即可读。
+温度区间条（5 日，~~r1 原案~~ **已被 rev 3 用户裁定取代**——日卡片两行
+温度替代区间条，样式 `day_card`/`day_card_now` 与 `hour_card` 同构）：
+~~`低温 | 轨道（bg-muted rounded-full h-1.5 flex-1 内嵌 bg-gradient-to-r
+from-sky-400 to-amber-400）| 高温`~~。rev 2 复审的 AC-05 fail 判定
+以本原案为口径，rev 3 后不再适用。
 
 ### 5.4 信息密度与文案
 
@@ -292,7 +300,7 @@ Category A（纯示例资产）：
 | AC-02 | `dark_mode` + `accent_color` 状态存在且可切换 | 代码 + 运行时点主题按钮 | 深浅两主题均可读，变量名未改 |
 | AC-03 | ≥10 个中国城市可选 | UI 与数据源 | 至少北京/上海/广州/深圳/杭州/成都/西安/武汉/哈尔滨/三亚 |
 | AC-04 | 切换城市后实况与预报数据变化 | 点击 ≥3 个城市 | 温度/条件/小时/5日均切换为该城 mock |
-| AC-05 | 5 日预报为结构化卡片 | 目视 | 每行含星期、emoji、条件中文、最低~最高（含区间条），非单段文本 |
+| AC-05 | 5 日预报为结构化卡片（**rev 3 修订**：r5 日卡形态经用户裁准 2026-09-19） | 目视/代码 | 预报区 Tab（24小时/5日）互斥切换；日卡片含星期、emoji、最高/最低（两行）、今天高亮，非单段文本。~~rev 2 原案：每行含星期、emoji、条件中文、最低~最高（含区间条）~~ |
 | AC-06 | 小时预报为结构化横滑条 | 目视 | 含时间、emoji、温度；“现在”或首项高亮；非单段文本 |
 | AC-07 | 指标与刷新反馈 | 目视/点击 | 体感、湿度、风速、AQI 等可见；Refresh 有状态反馈；有更新时间 |
 | AC-08 | `auto build` 成功 | worktree 执行 | 无解析/生成错误；Category A 未跑 cargo t |
@@ -326,16 +334,17 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
   - 验证：生成器将函数内联进 App.vue（hero_grad/hourly_for/SelectCity 可见）
   - [✅ 已完成] 10 城 mock 落盘；App.vue 内联证实（AC-03/04 数据面）
 
-- [ ] **T-04 UI 刷新：app.at 全量重写**（review needs_fix 重开，F-660-R1）
+- [x] **T-04 UI 刷新：app.at 全量重写**（rev 3 复勾——AC-05 修订后 r5 达标）
   - 路径：`examples/ui/014-weather/src/front/app.at`、`pac.at`、`README.md`
   - 操作：dark_mode/accent_color、城市 pills、条件 hero、指标网格、小时条、
     5 日区间条、中文文案、Refresh/ToggleTheme；语义 token
   - 语法适配：view 无 `list[i]`；model 无 `var x [] = []`；动态样式放 model
     （`hero_style`/`aqi_badge`）；`dep stylekit` 声明；城市用 Obj 列表
   - 验证：`auto build` 解析通过并生成 `gen/front/vue`
-  - [⚠️ review 重开 2026-09-19] r5（49975bdf2）日卡片缺 AC-05 字面要件
-    ——`d.cond`（条件中文）不再渲染、温度区间条移除、`day_row`/`card_surface`
-    成死样式。修复路径见 §9 F-660-R1（卡内补 cond+区间条，或用户裁准改 AC）
+  - [✅ 已完成] 2026-09-19 生成成功（AC-01/02/05/06/07 源码面）；
+    review needs_fix 曾重开（rev 2 口径 F-660-R1）——rev 3 用户裁准
+    AC-05 修订后，49975bdf2 r5 形态达标（Tab 互斥+日卡片+今天高亮，
+    复审取证在案），复勾。死样式清理（F-660-R4）随 T-06 顺手清
 
 - [x] **T-05 交互与双主题走查（生成/构建面 + VM MCP）**
   - 操作：auto build + `pnpm exec vite build`；**VM：`auto run -r vm` +**
@@ -350,14 +359,15 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
   - 遗留：Vue 浏览器像素走查仍可选；vue-tsc 脚手架 `import.meta.env` 与 demo 无关
   - [✅ 已完成] 2026-09-19 VM 冒烟全绿；脚本已入库
 
-- [ ] **T-06 文档与源码提交**（review needs_fix 重开，F-660-R2）
+- [ ] **T-06 文档与源码提交**（review needs_fix 重开 F-660-R2；rev 3 扩域）
   - 路径：`examples/ui/014-weather/README.md`、`examples/ui/README.md`
-  - 操作：文档同步；clone 内 commit
+  - 操作（rev 3 余留）：①014 README 布局表同步 r4/r5 实际形态（右栏预报
+    Tab + 指标，横屏 Tab 卡片描述）；②app.at 死样式 `day_row`/`card_surface`
+    清理（F-660-R4）；③vm_smoke 补 daily Tab 内容断言（F-660-R3，切 5日后
+    快照含日卡内容如「今天」）
   - 验证：`904ca840a feat(examples/ui): refresh 014-weather dashboard UI (Plan 660)`
-  - [⚠️ review 重开 2026-09-19] 014-weather/README.md 布局表（§布局 L10）
-    仍述 r2 形态「底部 24h 横滑；右指标/5日」——r4/r5 的「右栏预报 Tab +
-    指标」未同步（SD-02 要求 README 与实现同步）；examples/ui/README.md
-    状态行无需改
+  - [进行中] review 重开 2026-09-19（F-660-R2 README 布局停 r2）；
+    rev 3 并入 R4/R3 余留
 
 依赖：T-01 → T-02 → T-03 → T-04 → T-05 → T-06。
 
@@ -373,13 +383,13 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
 | work-r4 | PLAN-660 | 2 | pass | 4727529aa@plan-660-dev | T-04/T-05 补强（用户走查反馈） | 横屏 24h 上移右栏顶部 + `scroll` 直包 `row`（去 container/多余 col，修 max-w-7xl 注入与 ScrollArea 视口塌陷「只见 5 日」）+ 小时卡 `bg-muted/50` 实体底色 + 24h/5日统一 `forecast_card`。验证三面：`auto build` 生成绿（gen App.vue:878 横屏 ScrollArea 直包 row、:1044 竖屏保留 container）；`pnpm exec vite build` 绿（634 模块，dist 产出）；VM 冒烟 vm_smoke.py **14/14 PASS**（2026-09-19 复跑，含城市切换/布局切换/主题翻转） | 无 | review（execution_done） |
 | work | PLAN-660 | 2 | pass | 4727529aa@plan-660-dev（HEAD，r1..r4 五提交） | T-01..T-06 全闭环 | 全任务勾选 + 验证三面在 HEAD 复核通过；r3/r4 走查反馈补强并入且已提交，worktree clean（gen/ 已 ignore） | ①master specs.json 冲突已解除（658 收口），簿记本次落 commit；②vue-tsc `import.meta.env` 脚手架缺口留 §10（014 源码不依赖，vite 产物可用）；③Vue 浏览器像素走查仍可选非门禁 | **execution_done** → review |
 | review | PLAN-660 | 2 | **needs_fix** | 49975bdf2（worktree HEAD，worktree clean；复审基点 b69c7344c，r1..r5 六提交） | T-04/T-06 重开（current_step 4/6） | **AC 结果**：AC-01 pass（app.at 零灰阶硬编码文案色，grep text-gray/slate/zinc/neutral 零命中，hero 装饰豁免）；AC-02 pass（dark_mode/accent_color 在册，VM 实测翻转 false→true）；AC-03 pass（10 城 pills+weather_data 目录，数据差异抽查 三亚晴31°/北京多云23°）；AC-04 pass（VM 点上海→shanghai/上海/21°/rain）；**AC-05 fail（F-660-R1）**——r5 日卡片=星期/emoji/最高/最低，条件中文（d.cond）不渲染、温度区间条移除；AC-06 pass（hourly 结构/现在 primary 高亮不变）；AC-07 pass（指标 3×3、refresh_busy/idle、updated_at）；AC-08 pass（auto build 生成绿 + vite 直跑绿 634 模块 + VM 冒烟 **16/16 PASS** 含 r5 Tab 断言；vue-tsc 红为 §10 已备案脚手架缺口）。**发现**：F-660-R1（high，AC-05）r5 与验收字面冲突，修复二选一——(a) 日卡内补条件中文+mini 区间条（保留 r5 卡片语态）或 (b) 用户裁准简化形态→needs_replan 有界修 AC-05；F-660-R2（medium）014 README 布局描述停在 r2（SD-02 不同步）；F-660-R3（low，非阻塞）vm_smoke T1 地标弱化为 Tab 按钮文本（T2b 状态断言部分补偿，建议切 daily 后补内容断言）；F-660-R4（trivial）死样式 day_row/card_surface 随 R1 修复顺手清。**独立性声明**：与执行收尾同会话，运行时验收全部于 49975bdf2 复跑取证（非采信执行摘要）。spec 增量复核：SD-01 none 成立（零 crates/specs 触碰，diff 全量 examples/ui/014-weather + examples/ui/README.md 状态行）；SD-02 README 目标在但内容过时（=F-660-R2）；touched_goals GOAL-010 真实（docs/specs/goals.md）。债候选已登记 KNOWN-DEBT P660-D1..D3 | r5 为 execution_done 之后他方会话新落提交（19:05，计划簿记此前未录，本行补记） | **needs_fix → work**（携 F-660-R1/R2/R4；R1 修复路径若用户选 (b) 则转 new 有界修约） |
+| new | PLAN-660 | 3 | pass | —（契约修订，无代码变更） | T-04 复勾（AC-05r3 达标）；T-06 扩域保持开放（F-660-R2/R4/R3 余留） | 用户裁定 2026-09-19（复审裁决问询）：F-660-R1 选路径 (b)——认可 r5 简化日卡片为最终形态，AC-05 有界修订（Tab 互斥+日卡片要件，去条件中文+区间条字面要件）；rev 2 的 AC-05 fail 判定按旧约保留为历史（受影响验证标记 stale）。G-3/§2 布局/§5.3 区间条原案同步标注取代关系；current_step 5/6 | 无 | **work**（T-06 余留：README 同步 + 死样式 + 冒烟内容断言） |
 
 ## 10. 待澄清事项
 
-- **（review 新增，阻断 merge）r5 日卡片形态与 AC-05 字面要件冲突，修复路径
-  需用户裁决**：(a) 日卡内补回条件中文 + 温度区间条（保留 r5 Tab/卡片语态，
-  work 直接修）；或 (b) 认可简化卡片为最终形态 → needs_replan 有界修订
-  AC-05（/auto-plan:new 出 rev 3）。
+- ~~（review 新增）r5 日卡片形态与 AC-05 字面要件冲突，修复路径需用户裁决~~
+  **已裁决（2026-09-19）**：选路径 (b)——认可简化卡片为最终形态，AC-05
+  已随 rev 3 修订；余留（README 同步/死样式/冒烟内容断言）归 T-06。
 - 真实天气 API 是否二期接入？本计划默认 mock（非目标已声明）。
 - 是否强制 Playwright 冒烟？当前 Category A 目视 + build 为门禁。
 - ~~master `.autoos/specs.json`（plan-022-dev 账本）未完成合并由谁收口？~~
