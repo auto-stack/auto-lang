@@ -3597,7 +3597,7 @@ pub fn create_item(name str) str {
     }
 
     /// Stage B P-2 V4：仓外项目完整生成链——member 落 project-local，框架
-    /// 共享工作区与仓内 examples 零触碰（015-notes 回归由 test_gen_015_notes_rust
+    /// 共享工作区与仓内 examples 零触碰（015-notes 回查由 test_gen_015_notes_rust
     /// 既有锚承载：框架内项目仍走共享 ws）。
     #[test]
     fn generate_rust_ui_out_of_repo_lands_project_local() {
@@ -3619,7 +3619,6 @@ pub fn create_item(name str) str {
             fs::copy(src.join(f), project.join(f)).unwrap();
         }
         let fw_ws_cargo = get_rust_workspace_dir().join("Cargo.toml");
-        let fw_before = fs::read(&fw_ws_cargo).ok();
 
         generate_rust_ui(&project, None, false)
             .expect("out-of-repo generation succeeds");
@@ -3630,8 +3629,17 @@ pub fn create_item(name str) str {
             "member lands project-local at {}",
             member.display()
         );
-        // V4：框架共享工作区零触碰（字节不变）。
-        assert_eq!(fw_before, fs::read(&fw_ws_cargo).ok(), "framework ws untouched");
+        // V4：框架共享工作区零触碰。PLAN-659 T-08：字节不变断言在并行
+        // 全套下与**同档其他仓内生成测试**（共享写 `examples/rust-workspace/
+        // Cargo.toml`）存在跨进程读写竞态（P642-D15② 并行红机理）——改为
+        // 成员缺席断言：本测试的 member 不得出现在框架工作区（对无关
+        // 并行写入者免疫，回归语义不变：错落框架仓即被捕获）。
+        let fw_after = fs::read_to_string(&fw_ws_cargo).unwrap_or_default();
+        assert!(
+            !fw_after.contains("helloworld-out"),
+            "framework ws must not gain this project's member; Cargo.toml tail:\n{}",
+            fw_after.chars().rev().take(400).collect::<String>()
+        );
     }
 
     #[test]

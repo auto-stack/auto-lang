@@ -2980,7 +2980,13 @@ fn resolve_module_path(
                 if let Some(p) = probe_pkg(&deps_candidate.join(dep_name)) {
                     return Some(p);
                 }
-            } else if member_entry.is_none() && deps_candidate.join(dep_name).exists() {
+            } else if !dep_name.is_empty()
+                && member_entry.is_none()
+                && deps_candidate.join(dep_name).exists()
+            {
+                // PLAN-659 T-09：空名模块探测不触发幽灵依赖守卫——
+                // deps/"" 恒为 deps/ 本体（exists 恒真），画廊 boot 期
+                // 空名解析批次曾把该守卫刷成 "dependency ''" 噪音 ×N。
                 eprintln!(
                     "error: dependency '{}' is materialized at {} but not declared in pac.at — declare it (`dep \"{}\" {{ path: ... }}`) or add it to workspace members",
                     dep_name,

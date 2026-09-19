@@ -10063,6 +10063,27 @@ widget App {
     .unwrap();
     let dead = std::env::temp_dir().join(format!("auto609-dead-os-{}", std::process::id()));
     std::fs::create_dir_all(&dead).unwrap();
+    // PLAN-659 T-08：进程级全局态（env + strict 校验旗）RAII 恢复守卫——
+    // 此前清理在函数尾，任一 expect/assert 提前 panic 即泄漏 poisoned 状态
+    // （同进程并行测试形态下殃及后续 vue/workspace 用例；P642-D15② 家族）。
+    struct Plan609Restore {
+        prev_root: Option<String>,
+        dead: std::path::PathBuf,
+    }
+    impl Drop for Plan609Restore {
+        fn drop(&mut self) {
+            auto_lang::ui_gen::validators::set_strict(false);
+            match &self.prev_root {
+                Some(v) => std::env::set_var("AUTO_OS_ROOT", v),
+                None => std::env::remove_var("AUTO_OS_ROOT"),
+            }
+            let _ = std::fs::remove_dir(&self.dead);
+        }
+    }
+    let _restore = Plan609Restore {
+        prev_root: std::env::var("AUTO_OS_ROOT").ok(),
+        dead: dead.clone(),
+    };
     std::env::set_var("AUTO_OS_ROOT", &dead);
 
     let project = crate::vue::VueProject::from_workspace(&root)
@@ -10085,9 +10106,6 @@ widget App {
         Err(e) => e,
         Ok(_) => panic!("strict: unresolved component import must fail the workspace"),
     };
-    auto_lang::ui_gen::validators::set_strict(false);
-    std::env::remove_var("AUTO_OS_ROOT");
-    let _ = std::fs::remove_dir(&dead);
     assert!(
         err.to_string().contains("SettingsPopover"),
         "guard error must name the missing component:\n{err}"
