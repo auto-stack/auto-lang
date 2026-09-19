@@ -1980,3 +1980,28 @@ CodeEditor
   v1 两处公共面执行裁定（controller 函数族/onscroll 8 位置实参）已入 spec API 节 +
   KNOWN-DEBT 656 行——review 时请重点裁决是否接受为 v1 契约。
 
+- 2026-09-19 /auto-plan:work F-4 末环真因修正轮（并发会话和解 + 符号根因）：
+  `stage: work | PLAN-656 | r2 | outcome: pass | code_commit: 9f05683fc
+  （基 d20ab9399）`。**并发披露**：本轮与另一 work 会话同 worktree 并行——
+  其 14c095ef4/d20ab9399（末环收敛+F-3 门控）与 61d2ad143（execution_done
+  簿记）在会话中途落盘；本会话诊断插桩已撤零残留，未触碰其提交。
+  **真因（推翻上轮"动态重建重置 offset"终判）**：ScrollStateReader 符号
+  反转——iced 0.14 operation 钩子 `translation` 即正向滚动 offset
+  （`State::translation` 与 `Viewport::absolute_offset` 同源同号；draw 侧以
+  `-translation` 平移内容层，iced_widget 0.14.2 scrollable.rs:1188 实读），
+  原 `(-t).max(0)` 把一切正向滚动 clamp 成 0。证据链：①obs pane 无
+  controller/写臂，oy=60 后跨多次重建至末帧截图仍滚在 obs-3/4——
+  **offset 跨重建持久，重置论证伪**；②修复后读回实证
+  `scroll_ctl_main (0,102.0)` 跨心跳持久非零；③主 pane scroll_to 一直在
+  落盘（截图 y-row-05..12+滑块底位），上轮"落盘失败"表象全系读回伪影。
+  **修正面**：读回器符号+模块注记；controller.rs/renderer.rs 伪理论注释
+  改真（写臂重定位为结构性重建防御；extent-only 裁定保留，rationale 改
+  "语义单源纪律+排空同帧 pre-scroll 读值竞态"）；spec 陷阱节「重建重置」
+  律改写为符号约定+持久实证。**附带**：vm_probe managed 断言收敛轮询硬化
+  （物化同步中间值 360→180→…→9999776 经 on_scroll 回声短暂覆写注册表
+  投影，实测 1/8 概率抢读 120——符号修复前被恒 0 读回遮蔽不可见）。
+  **evidence**: probe 连续 4 轮全绿（probe=102/mprobe=9999776/
+  oy=60 py=0.49）+ `cargo t scroll` 63/63 + `cargo check` 零新告警。
+  `next: review`（维持 execution_done，11/11；review 请重点核 spec 陷阱节
+  改写与上轮终判的记录衔接）。
+
