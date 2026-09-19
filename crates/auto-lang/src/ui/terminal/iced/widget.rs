@@ -588,6 +588,11 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 if !name.is_empty() {
                     if let Some(msg) = self.shortcut_hit(&name) {
                         shell.publish(msg);
+                        // T-06(2026-09-19):捷径命中即捕获——分屏多终端
+                        // 挂同一捷径表时,事件广播到全树,不捕获则每实例
+                        // 各发一次(方向导航一次连跳多格)。捕获后 Stack
+                        // 停止向低层分发,单次按键单次触发。
+                        shell.capture_event();
                         return;
                     }
                 }
@@ -1219,6 +1224,74 @@ mod virtual_scroll_tests {
         // 错位(无滚轮事件但落点偏离期望位)= 真实观察,回灌差值。
         let delta = Terminal::<u8>::observe_view_scroll(core, 20.0 * 16.0, history);
         assert_eq!(delta, Some(7), "错位偏离应回灌 13→20 差值");
+    }
+
+    #[test]
+    fn shortcut_hit_captures_single_fire_across_stack() {
+        // T-06(2026-09-19):分屏双终端挂同一捷径表(Alt+WASD),一次按键
+        // 必须只触发一次——命中即 capture,Stack 停止向低层分发。
+        use crate::ui::iced::renderer::IntoIcedElement;
+        use crate::ui::terminal::{terminal, terminal_dispose};
+        use crate::ui::view::View;
+        use iced_test::simulator;
+        terminal_dispose("p023-sc-a");
+        terminal_dispose("p023-sc-b");
+        #[derive(Clone, Debug, PartialEq)]
+        enum M {
+            Hit,
+        }
+        let term = |key: &str| View::Terminal {
+            key: key.to_string(),
+            cols: 40,
+            rows: 10,
+            lines: vec![],
+            scroll_offset: 0,
+            preedit: None,
+            scheme: crate::ui::terminal::TERMINAL_SCHEME_FOLLOW_THEME,
+            shortcuts: vec![("alt.w".to_string(), M::Hit)],
+            on_select: None,
+            on_menu: None,
+            on_input: None,
+            cursor_row: 0,
+            cursor_col: 0,
+            style: None,
+        };
+        let root = View::col()
+            .style("relative w-[600px] h-[300px] bg-background")
+            .child(
+                View::col()
+                    .style("absolute top-0 left-0 w-[300px] h-[300px]")
+                    .child(term("p023-sc-a"))
+                    .build(),
+            )
+            .child(
+                View::col()
+                    .style("absolute top-0 left-[300px] w-[300px] h-[300px]")
+                    .child(term("p023-sc-b"))
+                    .build(),
+            )
+            .build();
+        let mut ui = simulator(root.into_iced());
+        let alt_w = iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+            key: iced::keyboard::Key::Character("w".into()),
+            modified_key: iced::keyboard::Key::Character("w".into()),
+            physical_key: iced::keyboard::key::Physical::Unidentified(
+                iced::keyboard::key::NativeCode::Unidentified,
+            ),
+            location: iced::keyboard::Location::Standard,
+            modifiers: iced::keyboard::Modifiers::ALT,
+            repeat: false,
+            text: None,
+        });
+        let _ = ui.simulate([alt_w]);
+        let hits = ui
+            .into_messages()
+            .into_iter()
+            .filter(|m| *m == M::Hit)
+            .count();
+        assert_eq!(hits, 1, "捷径命中必须单次触发(禁止多重分发)");
+        terminal_dispose("p023-sc-a");
+        terminal_dispose("p023-sc-b");
     }
 
     #[test]
