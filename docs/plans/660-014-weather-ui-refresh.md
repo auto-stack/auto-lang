@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-660
-status: execution_done
+status: executing
 feature_name: 014-weather-ui-refresh
 author: [agent]
 created_at: 2026-09-19
 updated_at: 2026-09-19
 plan_revision: 2
-current_step: 6
+current_step: 4
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components: []
@@ -29,6 +29,12 @@ affects: [examples/ui/014-weather]
 架构调整——24h 预报上移右栏顶部，`scroll` 直包 `row`（去掉 container/
 多余 col，修 ScrollArea 视口塌陷致「只见 5 日」），小时卡实体底色，
 24h/5日统一 `forecast_card` 卡面。
+
+**r5（用户走查反馈 2026-09-19，49975bdf2）**：预报卡改 Tab 互斥
+（`forecast_tab` hourly|daily，24小时/5日 两 chip）；5 日预报改与小时卡
+同构的**日卡片**（星期/emoji/最高/最低，今天高亮）。**复审裁定：r5 形态
+与 AC-05 字面要件冲突**（条件中文、温度区间条被移除）——见 §9 review 行
+F-660-R1 与 §10 待裁决项。
 
 **设计锚点**：桌面天气仪表盘（横屏）+ Apple Weather 竖屏（保留）。
 
@@ -320,14 +326,16 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
   - 验证：生成器将函数内联进 App.vue（hero_grad/hourly_for/SelectCity 可见）
   - [✅ 已完成] 10 城 mock 落盘；App.vue 内联证实（AC-03/04 数据面）
 
-- [x] **T-04 UI 刷新：app.at 全量重写**
+- [ ] **T-04 UI 刷新：app.at 全量重写**（review needs_fix 重开，F-660-R1）
   - 路径：`examples/ui/014-weather/src/front/app.at`、`pac.at`、`README.md`
   - 操作：dark_mode/accent_color、城市 pills、条件 hero、指标网格、小时条、
     5 日区间条、中文文案、Refresh/ToggleTheme；语义 token
   - 语法适配：view 无 `list[i]`；model 无 `var x [] = []`；动态样式放 model
     （`hero_style`/`aqi_badge`）；`dep stylekit` 声明；城市用 Obj 列表
   - 验证：`auto build` 解析通过并生成 `gen/front/vue`
-  - [✅ 已完成] 2026-09-19 生成成功（AC-01/02/05/06/07 源码面）
+  - [⚠️ review 重开 2026-09-19] r5（49975bdf2）日卡片缺 AC-05 字面要件
+    ——`d.cond`（条件中文）不再渲染、温度区间条移除、`day_row`/`card_surface`
+    成死样式。修复路径见 §9 F-660-R1（卡内补 cond+区间条，或用户裁准改 AC）
 
 - [x] **T-05 交互与双主题走查（生成/构建面 + VM MCP）**
   - 操作：auto build + `pnpm exec vite build`；**VM：`auto run -r vm` +**
@@ -342,11 +350,14 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
   - 遗留：Vue 浏览器像素走查仍可选；vue-tsc 脚手架 `import.meta.env` 与 demo 无关
   - [✅ 已完成] 2026-09-19 VM 冒烟全绿；脚本已入库
 
-- [x] **T-06 文档与源码提交**
+- [ ] **T-06 文档与源码提交**（review needs_fix 重开，F-660-R2）
   - 路径：`examples/ui/014-weather/README.md`、`examples/ui/README.md`
   - 操作：文档同步；clone 内 commit
   - 验证：`904ca840a feat(examples/ui): refresh 014-weather dashboard UI (Plan 660)`
-  - [✅ 已完成] 2026-09-19 clone 工作树干净（gen/ 已 ignore）
+  - [⚠️ review 重开 2026-09-19] 014-weather/README.md 布局表（§布局 L10）
+    仍述 r2 形态「底部 24h 横滑；右指标/5日」——r4/r5 的「右栏预报 Tab +
+    指标」未同步（SD-02 要求 README 与实现同步）；examples/ui/README.md
+    状态行无需改
 
 依赖：T-01 → T-02 → T-03 → T-04 → T-05 → T-06。
 
@@ -361,9 +372,14 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
 | work-r3 | PLAN-660 | 2 | pass | 07a88c917@plan-660-dev | T-04 补强（用户走查反馈） | 选中态 city_pill_on / refresh_idle / layout_btn_on 补 `variant:"primary"` + `hover:bg-primary/90`，与 off 态 `hover:bg-secondary/80` 对称——button 默认 variant 的 `hover:bg-muted/70` 会与 active 样式 cn 合并残留 muted 底致选中项 hover 发白（证据 gen button/index.ts 默认 variant）；07a88c917 17 行 | 无 | 续 r4 |
 | work-r4 | PLAN-660 | 2 | pass | 4727529aa@plan-660-dev | T-04/T-05 补强（用户走查反馈） | 横屏 24h 上移右栏顶部 + `scroll` 直包 `row`（去 container/多余 col，修 max-w-7xl 注入与 ScrollArea 视口塌陷「只见 5 日」）+ 小时卡 `bg-muted/50` 实体底色 + 24h/5日统一 `forecast_card`。验证三面：`auto build` 生成绿（gen App.vue:878 横屏 ScrollArea 直包 row、:1044 竖屏保留 container）；`pnpm exec vite build` 绿（634 模块，dist 产出）；VM 冒烟 vm_smoke.py **14/14 PASS**（2026-09-19 复跑，含城市切换/布局切换/主题翻转） | 无 | review（execution_done） |
 | work | PLAN-660 | 2 | pass | 4727529aa@plan-660-dev（HEAD，r1..r4 五提交） | T-01..T-06 全闭环 | 全任务勾选 + 验证三面在 HEAD 复核通过；r3/r4 走查反馈补强并入且已提交，worktree clean（gen/ 已 ignore） | ①master specs.json 冲突已解除（658 收口），簿记本次落 commit；②vue-tsc `import.meta.env` 脚手架缺口留 §10（014 源码不依赖，vite 产物可用）；③Vue 浏览器像素走查仍可选非门禁 | **execution_done** → review |
+| review | PLAN-660 | 2 | **needs_fix** | 49975bdf2（worktree HEAD，worktree clean；复审基点 b69c7344c，r1..r5 六提交） | T-04/T-06 重开（current_step 4/6） | **AC 结果**：AC-01 pass（app.at 零灰阶硬编码文案色，grep text-gray/slate/zinc/neutral 零命中，hero 装饰豁免）；AC-02 pass（dark_mode/accent_color 在册，VM 实测翻转 false→true）；AC-03 pass（10 城 pills+weather_data 目录，数据差异抽查 三亚晴31°/北京多云23°）；AC-04 pass（VM 点上海→shanghai/上海/21°/rain）；**AC-05 fail（F-660-R1）**——r5 日卡片=星期/emoji/最高/最低，条件中文（d.cond）不渲染、温度区间条移除；AC-06 pass（hourly 结构/现在 primary 高亮不变）；AC-07 pass（指标 3×3、refresh_busy/idle、updated_at）；AC-08 pass（auto build 生成绿 + vite 直跑绿 634 模块 + VM 冒烟 **16/16 PASS** 含 r5 Tab 断言；vue-tsc 红为 §10 已备案脚手架缺口）。**发现**：F-660-R1（high，AC-05）r5 与验收字面冲突，修复二选一——(a) 日卡内补条件中文+mini 区间条（保留 r5 卡片语态）或 (b) 用户裁准简化形态→needs_replan 有界修 AC-05；F-660-R2（medium）014 README 布局描述停在 r2（SD-02 不同步）；F-660-R3（low，非阻塞）vm_smoke T1 地标弱化为 Tab 按钮文本（T2b 状态断言部分补偿，建议切 daily 后补内容断言）；F-660-R4（trivial）死样式 day_row/card_surface 随 R1 修复顺手清。**独立性声明**：与执行收尾同会话，运行时验收全部于 49975bdf2 复跑取证（非采信执行摘要）。spec 增量复核：SD-01 none 成立（零 crates/specs 触碰，diff 全量 examples/ui/014-weather + examples/ui/README.md 状态行）；SD-02 README 目标在但内容过时（=F-660-R2）；touched_goals GOAL-010 真实（docs/specs/goals.md）。债候选已登记 KNOWN-DEBT P660-D1..D3 | r5 为 execution_done 之后他方会话新落提交（19:05，计划簿记此前未录，本行补记） | **needs_fix → work**（携 F-660-R1/R2/R4；R1 修复路径若用户选 (b) 则转 new 有界修约） |
 
 ## 10. 待澄清事项
 
+- **（review 新增，阻断 merge）r5 日卡片形态与 AC-05 字面要件冲突，修复路径
+  需用户裁决**：(a) 日卡内补回条件中文 + 温度区间条（保留 r5 Tab/卡片语态，
+  work 直接修）；或 (b) 认可简化卡片为最终形态 → needs_replan 有界修订
+  AC-05（/auto-plan:new 出 rev 3）。
 - 真实天气 API 是否二期接入？本计划默认 mock（非目标已声明）。
 - 是否强制 Playwright 冒烟？当前 Category A 目视 + build 为门禁。
 - ~~master `.autoos/specs.json`（plan-022-dev 账本）未完成合并由谁收口？~~
@@ -373,3 +389,4 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
   014 应用源码不依赖该修复（vite 产物已可用）；`auto build` 的
   `pnpm run build`（vue-tsc && vite build）在该缺口修复前会红，
   绕行 = `pnpm exec vite build` 直跑（本计划验证口径）。
+  已登记 KNOWN-DEBT P660-D1。

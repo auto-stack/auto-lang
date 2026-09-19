@@ -2397,3 +2397,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P658-C3 | low | 画廊内嵌 | gallery 内嵌 `timer {}` 块（自定义事件计时器）不触发——017 clock_secs 恒 0 实证；`.Tick`+interval 形态正常（012 对照）。timer 块 demo 内嵌首例，PLAN-652 TimeSource 收集面缺口 | ui/dynamic.rs TimeSource 收集；017-chat.at timer 块 |
 | P658-C4 | low | 渲染 | 031 侧栏缩略图名列表渲染空——view for-loop over json-object vmref list 零迭代（`for item in .thumbnails`）；工具栏导航腿可用（NextImage 实证） | 031-image-viewer app.at:109 for item 块 |
 | P659-D1 | medium | VM virt_memory | **腐坏索引 panic 族深根因开放**——soak#1 审计实录 `virt_memory.rs:409(read_i32)/:519(read_nv)` 越界 panic 同 pid 反复（tokio 捕获线程不杀进程）；越界索引 4002656/4006765/4007358 全部 = `HEAP_ID_BASE(4,000,000)+偏移` = **堆对象 id 被误作栈地址**（类型混淆定罪方向；另有符号扩展负值 -32684847 同族）。修复构建（wgpu 守卫+僵尸清扫后）9 轮 panic-bp 武装零命中——复现消失无法定位确切 opcode。护栏在位：编排器 panic 断点臂（`bu auto!core::panicking::*`+续跑）常驻 auto-os `ui-gallery/src/front/tests/p659_cdb_soak.py`，复现即得全栈。疑关联：画廊选中态 "-1" 坏条目截图（659 §10 P659-Q1）、toast 可视面间歇缺失 | audit log 历史行（%LOCALAPPDATA%/auto-desktop/exit-audit.log 2026-09-19 16:16-16:19 段）；复现器械：p659_cdb_soak.py --rounds N --all |
+
+## PLAN-660 复审登记（2026-09-19 落册，review needs_fix 伴随债——非 660 域内缺陷，均非阻塞）
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P660-D1 | low | 生成器脚手架（master 预存） | gen `main.ts` 用 `import.meta.env` 但脚手架 tsconfig 未含 vite/client 类型 → `vue-tsc` TS2339，致全部示例 `auto build` 的 `pnpm run build`（vue-tsc && vite build）红；绕行 = `pnpm exec vite build` 直跑（vite 本体不查类型）。修法归生成器（auto-man/ui_gen 面）：tsconfig types 加 `"vite/client"` 或 main.ts 改用具名导入 | 任一 example `gen/front/vue/src/main.ts:29`；复现：cd examples/ui/014-weather && auto build（生成绿、vue-tsc 红） |
+| P660-D2 | low | stylekit/按钮契约 | button 自定义 style 串只写底色不写 hover 时，默认 variant 的 `hover:bg-muted/70` 经 cn 合并残留——选中态（bg-primary+primary-foreground 字）hover 呈 muted 底发白不可读；规避 = 选中/激活样式显式 `variant:"primary"` + 自带 `hover:bg-primary/90`。根修候选：active 态样式优先级或 variant hover 覆盖语义 | 014-weather r3（07a88c917）实证；gen `button/index.ts` 默认 variant |
+| P660-D3 | low | 生成器/布局注入 | AutoUI `scroll` 外包 `container`（生成器注入 `max-w-7xl mx-auto`）+ 内层多余 col 会致 Vue ScrollArea 视口塌陷（内容区不可见，014 r4 走查「只见 5 日」实锤）；可靠形态 = `scroll` 直包 `row`。候选根修：container 注入与 scroll 视口的交互审计 | 014-weather r4（4727529aa）注记；app.at 横屏 24h 块 |
