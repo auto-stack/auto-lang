@@ -427,7 +427,10 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("sidebar_provider", QueueStatus::NotYet("Plan 561：aura/iced 契约子集已落地（结构等价）——queue 臂不消费，同 nav-item 先例")),
         ("sidebar_trigger", QueueStatus::NotConsumed("VM 子集外（sidebar-family-and-nav-retirement §3.3 不做清单）——queue 臂不消费")),
         ("skeleton", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
-        ("slider", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
+        // PLAN-661 T-04（R-5）：slider 统一原生 <input type="range">——vue
+        // 发射面消费（map_tag 双模式原生 + 属性/事件臂），shadcn 组件路径
+        // 退役；VM/aura 臂同计划 T-03 落地。
+        ("slider", QueueStatus::Covered),
         ("slot", QueueStatus::NotYet("长尾——按需升格（登记即过，未登记即红）")),
         ("small", QueueStatus::Covered),
         ("sonner", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),

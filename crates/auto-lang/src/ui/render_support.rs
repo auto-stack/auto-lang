@@ -262,9 +262,12 @@ fn get_support_details(tag: &str) -> TagSupport {
             &["value", "group", "checked", "style"],
             "radio button not implemented",
         ),
-        "slider" => TagSupport::fallback(
+        // PLAN-661 T-04：iced 侧 iced::widget::slider 真渲染（renderer
+        // Slider 臂 + SliderChangeHandler 派发，T-02/T-03 落地）——
+        // fallback（"not implemented" 占位）升级 partial。
+        "slider" => TagSupport::partial(
             &["value", "min", "max", "step", "style"],
-            "slider not implemented",
+            "iced::widget::slider native rendering (PLAN-661 T-02/T-03: SliderChangeHandler dispatch + aura convert_slider arm)",
         ),
         "toggle" | "switch" => TagSupport::fallback(
             &["checked", "style"],

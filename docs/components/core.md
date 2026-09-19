@@ -1506,6 +1506,28 @@ Sidebar menu sub-button (nested collapsible trigger; 561 full contract)
 
 ---
 
+### `slider`
+
+`builtin_widget` · `slider` · web: `native` · iced: `partial` · category: `form`
+
+[demo →](/examples/widgets-gallery/slider)
+
+Numeric slider control (native range input; PLAN-661 R-5: shadcn Slider component path retired)
+
+别名:`Slider`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | `state_ref` | — | Bound numeric value (float state field) |
+| `min` | `float` | 0 | Range minimum |
+| `max` | `float` | 100 | Range maximum |
+| `step` | `float` | — | Step increment (None = continuous) |
+| `onchange` | `msg_ref` | — | Message on value change (payload variant carries f32) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `disabled` | `union: bool|state_ref` | false | Whether slider is disabled |
+
+---
+
 ### `slot`
 
 `builtin_widget` · `slot` · web: `none` · iced: `unknown` · category: `content`

@@ -99,7 +99,7 @@
 //! ### Form Components (Phase 6)
 //! | AURA Tag | shadcn-vue | Props |
 //! |----------|------------|-------|
-//! | `slider` | Slider | v-model, min, max, step, disabled |
+//! | `slider` | （无——PLAN-661 R-5 退役，原生 `<input type="range">`） | :value, min, max, step, disabled, @input 载荷 |
 //! | `radiogroup` | RadioGroup | v-model, name, disabled |
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
@@ -7201,6 +7201,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     if tag_lower_for_type == "checkbox" {
                         attrs.push("type=\"checkbox\"".to_string());
                     }
+                    // PLAN-661 T-04（R-5）：slider → 原生 <input type="range">
+                    //（shadcn Slider 组件路径退役；type 静态注入，checkbox 同款）。
+                    if tag_lower_for_type == "slider" {
+                        attrs.push("type=\"range\"".to_string());
+                    }
 
                     // Track value state ref for v-model optimization
                     // When input has both :value="stateRef" and @input handler,
@@ -7303,9 +7308,30 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             continue;
                         }
 
+                        // PLAN-661 T-04：slider 数值属性面（原生 range 语义）
+                        //——value 状态引用绑定/字面量静态；min/max/step 静态
+                        // 数值（缺省 0/100/1），不走通用 v-bind 透传。
+                        if tag == "slider" && matches!(key.as_str(), "value" | "min" | "max" | "step") {
+                            if key == "value" {
+                                if let Some(model) = self.extract_state_ref(value) {
+                                    attrs.push(format!(":value=\"{}\"", model));
+                                } else if let Some(f) = self.extract_float_value(value) {
+                                    attrs.push(format!("value=\"{}\"", f));
+                                }
+                            } else {
+                                let default = match key.as_str() {
+                                    "min" => 0.0,
+                                    "max" => 100.0,
+                                    _ => 1.0,
+                                };
+                                let v = self.extract_float_value(value).unwrap_or(default);
+                                attrs.push(format!("{}=\"{}\"", key, v));
+                            }
+                            continue;
+                        }
+
                         // Checkbox: native <input type="checkbox"> uses :checked, not :model-value
-                        if tag == "checkbox" && key == "checked" {
-                            if let Some(model) = self.extract_state_ref(value) {
+                        if tag == "checkbox" && key == "checked" {                            if let Some(model) = self.extract_state_ref(value) {
                                 attrs.push(format!(":checked=\"{}\"", model));
                             } else if let AuraPropValue::Expr(expr) = value {
                                 match self.expr_to_vue_bound_value(expr) {
@@ -7481,6 +7507,25 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             attrs.push(format!(
                                 "@scroll=\"e => {{ const el = e.currentTarget as HTMLElement; {}(el.scrollLeft, el.scrollTop, el.clientWidth, el.clientHeight, el.scrollWidth, el.scrollHeight, Math.min(1, el.scrollLeft / Math.max(1, el.scrollWidth - el.clientWidth)), Math.min(1, el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight))) }}\"",
                                 call
+                            ));
+                            continue;
+                        }
+                        // PLAN-661 T-04: slider onchange → @input 载荷派发
+                        //（valueAsNumber = f32 语义，对齐 a2r/VM 轨 .SetVol(v
+                        // float)；不用 v-model 双向——回写走 msg 派发链，状态
+                        // 驱动 :value 重渲染闭环，input 臂 041a⑤ 同款纪律）。
+                        if matches!(tag.as_str(), "slider" | "Slider")
+                            && matches!(
+                                Self::split_event_key(event).0.to_ascii_lowercase().as_str(),
+                                "onchange" | "change"
+                            )
+                        {
+                            let handler_name =
+                                self.handler_to_function_call(&aura_event.handler);
+                            self.used_handlers.insert(handler_name.clone());
+                            attrs.push(format!(
+                                "@input=\"{}(($event.target as HTMLInputElement).valueAsNumber)\"",
+                                handler_name
                             ));
                             continue;
                         }
@@ -8957,6 +9002,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // `col` collides with the Auto layout `col` (→ div/flex column).
             if matches!(tag, "table" | "thead" | "tbody" | "tfoot" | "tr" | "th" | "td") {
                 return tag.to_string();
+            }
+            // PLAN-661 T-04（R-5 裁定）：slider 双模式统一原生
+            // `<input type="range">`——shadcn-vue Slider 组件路径退役
+            //（Plan 408 :default-value 数组值不同步旧限让位；与 a2r/VM
+            // 轨语义对齐的最短路径，零组件依赖）。
+            if tag == "slider" || tag == "Slider" {
+                return "input".to_string();
             }
             if let Some(component_name) = self.shadcn_component_name(tag) {
                 self.register_shadcn_component(tag);
@@ -12824,37 +12876,43 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             }
 
             // === Slider ===
+            // PLAN-661 T-04（R-5）：原生 `<input type="range">` 属性面——
+            // shadcn-vue Slider 组件路径退役（Plan 408 :default-value 数组
+            // 值不同步旧限）。value 响应式单向绑定（:value），回写走事件
+            // 臂的 @input 载荷派发（valueAsNumber，对齐 a2r f32 语义）。
             "slider" => {
-                // Plan 408: shadcn-vue Slider v-model expects number[], but stdlib
-                // Slider value is int. Use :default-value with array wrapper to
-                // avoid TS2322. The slider is still visible and draggable;
-                // the value just isn't reactively synced to model state.
+                attrs.push("type=\"range\"".to_string());
                 if let Some(value) = props.get("value") {
                     if let Some(model) = self.extract_state_ref(value) {
-                        attrs.push(format!(":default-value=\"[{}]\"", model));
-                    } else if let Some(val) = self.extract_int_value(value) {
-                        attrs.push(format!(":default-value=\"[{}]\"", val));
+                        // prop 只读面单向绑定（v-model 同款纪律，041a⑤）。
+                        if self.prop_names.iter().any(|p| p == &model) {
+                            attrs.push(format!(":modelValue=\"{}\"", model));
+                        } else {
+                            attrs.push(format!(":value=\"{}\"", model));
+                        }
+                    } else if let Some(val) = self.extract_float_value(value) {
+                        attrs.push(format!("value=\"{}\"", val));
                     }
                 }
-                // min/max/step
                 if let Some(value) = props.get("min") {
-                    let min = self.extract_int_value(value).unwrap_or(0);
-                    attrs.push(format!(":min=\"{}\"", min));
+                    let min = self.extract_float_value(value).unwrap_or(0.0);
+                    attrs.push(format!("min=\"{}\"", min));
                 }
                 if let Some(value) = props.get("max") {
-                    let max = self.extract_int_value(value).unwrap_or(100);
-                    attrs.push(format!(":max=\"{}\"", max));
+                    let max = self.extract_float_value(value).unwrap_or(100.0);
+                    attrs.push(format!("max=\"{}\"", max));
                 }
                 if let Some(value) = props.get("step") {
-                    let step = self.extract_int_value(value).unwrap_or(1);
-                    attrs.push(format!(":step=\"{}\"", step));
+                    let step = self.extract_float_value(value).unwrap_or(1.0);
+                    attrs.push(format!("step=\"{}\"", step));
                 }
-                // disabled
                 if let Some(value) = props.get("disabled") {
                     if self.extract_bool_value(value) {
                         attrs.push("disabled".to_string());
                     }
                 }
+                // 原生元素——plain 路径 class 通道（label 臂同款）。
+                self.push_native_classes(&mut attrs, tag, props);
             }
 
             // === Progress ===
@@ -20668,7 +20726,9 @@ widget W {
         assert_eq!(gen.map_tag("badge", true), "Badge");
         assert_eq!(gen.map_tag("card", false), "Card");
         assert_eq!(gen.map_tag("avatar", true), "Avatar");
-        assert_eq!(gen.map_tag("slider", true), "Slider");
+        // PLAN-661 T-04（R-5）：slider 统一原生 range——shadcn 组件名退役，
+        // 双模式恒映射 input（属性面 type="range" 注入）。
+        assert_eq!(gen.map_tag("slider", true), "input");
 
         // Layout elements should still return div
         assert_eq!(gen.map_tag("col", false), "div");
@@ -21256,9 +21316,11 @@ widget W {
         let primary_component =
             |tag: &str| registry.get_primary_component("vue", tag);
 
-        assert!(has_component("slider"));
+        // PLAN-661 T-04（R-5）：slider 组件映射随 aura.at vue 行退役——
+        // DSL slider 恒走原生 input range，注册面不再持有 Slider 组件。
+        assert!(!has_component("slider"));
         assert!(has_component("radiogroup"));
-        assert_eq!(primary_component("slider"), Some("Slider".to_string()));
+        assert_eq!(primary_component("slider"), None);
         assert_eq!(primary_component("radiogroup"), Some("RadioGroup".to_string()));
         // radio 死表独有(a2ui/原生路径)
         assert!(!has_component("radio"));
@@ -26859,9 +26921,41 @@ widget SliderProbe {
 }
 "#);
         assert!(
-            sfc.contains("<Slider") && sfc.contains("class=\"w-48\""),
-            "Slider (form family) must forward its static class:\n{sfc}"
+            sfc.contains("<input") && sfc.contains("type=\"range\"") && sfc.contains("w-48"),
+            "slider (native range, PLAN-661 R-5) must forward its static class:\n{sfc}"
         );
+    }
+
+    /// PLAN-661 T-04（R-5）：slider 原生 range 全属性面——type/min/max/step
+    /// 静态、value 响应式绑定、onchange → @input valueAsNumber 载荷派发
+    /// （f32 语义对齐 a2r/VM 轨 .SetVol(v float)）。
+    #[test]
+    fn test_slider_native_range_attrs_and_payload() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget SliderProbe {
+    msg { SetVol(float) }
+    model { var vol float = 30.0 }
+    view {
+        col {
+            slider (value: .vol, min: 0.0, max: 100.0, step: 1.0) { onchange: .SetVol }
+        }
+    }
+    on {
+        .SetVol(v float) -> { .vol = v }
+    }
+}
+"#);
+        assert!(sfc.contains("type=\"range\""), "range type injected:\n{sfc}");
+        assert!(sfc.contains("min=\"0"), "min static:\n{sfc}");
+        assert!(sfc.contains("max=\"100"), "max static:\n{sfc}");
+        assert!(sfc.contains("step=\"1"), "step static:\n{sfc}");
+        assert!(sfc.contains(":value=\"vol\""), "value reactive binding:\n{sfc}");
+        assert!(
+            sfc.contains("@input=\"SetVol(($event.target as HTMLInputElement).valueAsNumber)\""),
+            "onchange → @input valueAsNumber payload dispatch:\n{sfc}"
+        );
+        assert!(!sfc.contains("<Slider"), "shadcn Slider component path retired:\n{sfc}");
+        assert!(!sfc.contains("default-value"), "Plan 408 :default-value array form retired:\n{sfc}");
     }
 
     #[test]

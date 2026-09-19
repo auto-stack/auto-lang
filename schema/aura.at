@@ -5419,18 +5419,21 @@ element skeleton {
 
 element slider {
     tag: "slider"
-    category: "unknown"
-    tier: "web_component"
+    category: "form"
+    tier: "builtin_widget"
     aliases: ["Slider"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
-    vue: { component: "Slider", import: "@/components/ui/slider" }
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
     props: [
-        { name: "min", type: "float", default: "0", description: "Minimum value" }
-        { name: "max", type: "float", default: "100", description: "Maximum value" }
-        { name: "step", type: "float", default: "1", description: "Step increment" }
+        { name: "value", type: "state_ref", description: "Bound numeric value (float state field)" }
+        { name: "min", type: "float", default: "0", description: "Range minimum" }
+        { name: "max", type: "float", default: "100", description: "Range maximum" }
+        { name: "step", type: "float", description: "Step increment (None = continuous)" }
+        { name: "onchange", type: "msg_ref", description: "Message on value change (payload variant carries f32)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "disabled", type: "union:bool,state_ref", default: "false", description: "Whether slider is disabled" }
     ]
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    allows_children: false
+    description: "Numeric slider control (native range input; PLAN-661 R-5: shadcn Slider component path retired)"
 }
 
 element sonner {
