@@ -124,7 +124,7 @@ widget Stage {
                             text "·" {}
                             row {
                                 style: "items-center gap-1.5"
-                                icon (name: "folder-music", size: 14)
+                                icon (name: "music", size: 14)
                                 text "E:\\Music\\" { style: "font-mono text-xs" }
                             }
                         }

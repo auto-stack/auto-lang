@@ -1947,12 +1947,38 @@ impl DynamicComponent {
         self.bridge.has_handler(event)
     }
 
+    /// PLAN-659 T-05：widget 限定 handler 存在性（namespaced 键，同
+    /// call_handler_for 查找口径）。fixture 派发未命中的响亮报错依据。
+    pub fn has_handler_for(&self, widget: &str, event: &str) -> bool {
+        self.bridge.has_handler_for(widget, event)
+    }
+
+    /// PLAN-659 T-05：裸名 handler 的 widget 候选解析（跨名空间扫描
+    /// exports）。fixture trigger `handler` 形态的归属解析面。
+    pub fn widgets_declaring_handler(&self, name: &str) -> Vec<String> {
+        self.bridge.widgets_declaring_handler(name)
+    }
+
+    /// PLAN-659 T-05：handler 名录（裸名，handler_ 前缀已剥）——未命中
+    /// 报错的可用名提示。
+    pub fn msg_handler_names(&self) -> Vec<String> {
+        self.bridge.handler_names().into_iter().map(String::from).collect()
+    }
+
     /// PLAN-626 T-03: fire CloseRequest——语义同 fire_init 的 handler 直调
     /// （成功置 dirty 触发重建）。确认弹层/退出动作由应用 handler 自行
     /// 驱动（如脏检查后弹 alert-dialog 或 Process.exit）。
     pub fn fire_close_request(&mut self) -> Result<(), String> {
+        self.fire_msg_handler("CloseRequest")
+    }
+
+    /// PLAN-659 T-05：按裸名直调根 widget 名空间的 msg handler
+    /// （`call_handler` 的 namespaced/legacy 双查——与渲染路径同构）。
+    /// MCP fixture trigger 的 `handler` 形态派发臂：驱动侧无需感知
+    /// widget/event 键形即可触达任意 msg handler（AddrGo 类）。
+    pub fn fire_msg_handler(&mut self, name: &str) -> Result<(), String> {
         self.bridge
-            .call_handler("CloseRequest", &[])
+            .call_handler(name, &[])
             .map(|_| {
                 self.dirty = true;
             })

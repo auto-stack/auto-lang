@@ -8016,28 +8016,87 @@ fn apply_mcp_fixture(
     }
     changed.sort();
 
-    let trigger = root.get("trigger").and_then(|value| value.as_object()).map(|trigger| {
-        let widget = trigger.get("widget").and_then(|value| value.as_str()).unwrap_or_default();
-        let event = trigger.get("event").and_then(|value| value.as_str()).unwrap_or_default();
-        let input = trigger.get("input").and_then(|value| value.as_str()).map(str::to_string);
-        (widget.to_string(), event.to_string(), input)
-    });
-    if let Some((widget, event, input)) = trigger.as_ref() {
-        if widget.is_empty() || event.is_empty() {
-            return crate::ui::mcp_server::FixtureAck::Error {
-                code: "invalid_schema".to_string(),
-                message: "trigger requires non-empty widget and event".to_string(),
-            };
+    // PLAN-659 T-05：trigger 双形态——{handler}（裸名直查注册表）或
+    // {widget, event, input?}（namespaced 键派发）。
+    enum FixtureTrigger {
+        Handler(String),
+        WidgetEvent { widget: String, event: String, input: Option<String> },
+    }
+    let trigger = root.get("trigger").and_then(|value| value.as_object()).and_then(|trigger| {
+        let handler = trigger.get("handler").and_then(|value| value.as_str()).filter(|s| !s.is_empty());
+        if let Some(handler) = handler {
+            return Some(FixtureTrigger::Handler(handler.to_string()));
         }
-        if component.is_timer_entry(widget, event) {
-            component.fire_timer(widget, event);
+        let widget = trigger.get("widget").and_then(|value| value.as_str()).filter(|s| !s.is_empty())?;
+        let event = trigger.get("event").and_then(|value| value.as_str()).filter(|s| !s.is_empty())?;
+        let input = trigger.get("input").and_then(|value| value.as_str()).map(str::to_string);
+        Some(FixtureTrigger::WidgetEvent { widget: widget.to_string(), event: event.to_string(), input })
+    });
+    let trigger_label = trigger.as_ref().map(|t| match t {
+        FixtureTrigger::Handler(name) => format!("handler:{name}"),
+        FixtureTrigger::WidgetEvent { widget, event, .. } => format!("{widget}.{event}"),
+    });
+    if let Some(trigger) = trigger {
+        // PLAN-659 T-05：handler 裸名形态——跨名空间扫描 exports 解析
+        // widget 归属（嵌入画廊形态根组件是宿主 App，目标 handler 在子
+        // demo 名空间），解析后与 widget 形态同路派发；未命中/歧义响亮
+        // 报错（此前静默无操作）。
+        let trigger = match trigger {
+            FixtureTrigger::Handler(name) => {
+                let mut widgets = component.widgets_declaring_handler(&name);
+                match widgets.len() {
+                    1 => FixtureTrigger::WidgetEvent {
+                        widget: widgets.remove(0),
+                        event: name,
+                        input: None,
+                    },
+                    0 => {
+                        let sample: Vec<String> =
+                            component.msg_handler_names().into_iter().take(12).collect();
+                        return crate::ui::mcp_server::FixtureAck::Error {
+                            code: "handler_not_found".to_string(),
+                            message: format!(
+                                "msg handler '{name}' not in registry; available (first 12): {sample:?}"
+                            ),
+                        };
+                    }
+                    _ => {
+                        return crate::ui::mcp_server::FixtureAck::Error {
+                            code: "ambiguous_handler".to_string(),
+                            message: format!(
+                                "msg handler '{name}' declared by multiple widgets {widgets:?}; use the {{widget, event}} trigger form"
+                            ),
+                        };
+                    }
+                }
+            }
+            widget_event => widget_event,
+        };
+        // 正规化后必为 WidgetEvent（handler 形态已解析归属或提前回错）。
+        let (widget, event, input) = match trigger {
+            FixtureTrigger::WidgetEvent { widget, event, input } => (widget, event, input),
+            FixtureTrigger::Handler(_) => {
+                unreachable!("handler form normalized to widget form above")
+            }
+        };
+        if component.is_timer_entry(&widget, &event) {
+            component.fire_timer(&widget, &event);
+        } else if !component.has_handler_for(&widget, &event) {
+            // PLAN-659 T-05：namespaced 键注册表直查（与 call_handler_for
+            // 同键）——未命中响亮报错而非静默无操作（AddrGo 病灶）。
+            return crate::ui::mcp_server::FixtureAck::Error {
+                code: "handler_not_found".to_string(),
+                message: format!(
+                    "no handler '{event}' in widget '{widget}' (namespaced registry miss)"
+                ),
+            };
         } else {
-            component.on_with_input_for(widget, event, input.clone());
+            component.on_with_input_for(&widget, &event, input);
         }
     }
     crate::ui::mcp_server::FixtureAck::Applied {
         changed,
-        trigger: trigger.map(|(widget, event, _)| format!("{widget}.{event}")),
+        trigger: trigger_label,
     }
 }
 
@@ -10328,7 +10387,11 @@ fn dashboard_layout(
         row
     };
     let panel_h = if faces.is_empty() {
-        (DASH_HEADER_H + DASH_PAD + 64.0).clamp(160.0, viewport.height - 96.0)
+        // PLAN-659 T-04：上界求值守卫——viewport.height=0（最小化/未布局
+        // 期的 draw pass）时 `height-96=-96 < min 160` 触发 f32::clamp
+        // panic（audit 在案 min=160.0/max=-96.0）。上界夹到 ≥min，零视口
+        // 降级为 min 高度的占位面板。
+        (DASH_HEADER_H + DASH_PAD + 64.0).clamp(160.0, (viewport.height - 96.0).max(160.0))
     } else {
         // 标题行 + 网格（rows 行 + 行间 gap）+ 底垫。
         DASH_HEADER_H + DASH_PAD + rows as f32 * DASH_CELL_H
@@ -15959,17 +16022,36 @@ fn compare_pngs(
                 .then(move |maybe_id: Option<iced::window::Id>| {
                     match maybe_id {
                         Some(id) => {
-                            let tx = reply_tx.clone();
+                            let reply_tx = reply_tx.clone();
                             let name = name.clone();
-                            iced::window::screenshot(id)
-                                .then(move |ss: iced::window::Screenshot| {
-                                    let result = process_screenshot(
-                                        &ss, &name, baseline, diff, threshold,
-                                    );
-                                    let tx = tx.lock().unwrap().take().unwrap();
-                                    let _ = tx.send(result);
-                                    iced::Task::none()
-                                })
+                            // PLAN-659 T-03：size 二段跳守卫——前置
+                            // window_size 借记是快照值，跳变（最小化/关窗
+                            // 竞态）后 iced_wgpu offscreen 仍会以零维
+                            // create_texture panic（audit 在案 Dimension X
+                            // is zero ×4）。截图 Task 派发前以窗口实时
+                            // 尺寸复核，零维降级为回错。
+                            iced::window::size(id).then(move |size| {
+                                if size.width <= 0.0 || size.height <= 0.0 {
+                                    let tx = reply_tx.lock().unwrap().take().unwrap();
+                                    let _ = tx.send(Err(
+                                        "Screenshot skipped: window size is zero (minimized or not yet laid out)".to_string(),
+                                    ));
+                                    return iced::Task::none();
+                                }
+                                // 内层 then 再各取一份所有权（FnMut 闭包捕获
+                                // 变量不能跨两级 move）。
+                                let reply_tx = reply_tx.clone();
+                                let name = name.clone();
+                                iced::window::screenshot(id)
+                                    .then(move |ss: iced::window::Screenshot| {
+                                        let result = process_screenshot(
+                                            &ss, &name, baseline, diff, threshold,
+                                        );
+                                        let tx = reply_tx.lock().unwrap().take().unwrap();
+                                        let _ = tx.send(result);
+                                        iced::Task::none()
+                                    })
+                            })
                         }
                         None => {
                             let tx = reply_tx.lock().unwrap().take().unwrap();
@@ -18161,11 +18243,25 @@ fn compare_pngs(
                                 .primary_app()
                                 .and_then(|app| state.window_of_app(app))
                             {
-                                tasks.push(iced::window::screenshot(win).map(|ss| {
-                                    crate::ui::session::DesktopMessage::Desktop(
-                                        crate::ui::session::DesktopEvent::PixelsShot(ss),
-                                    )
-                                }));
+                                // PLAN-659 T-03：零维守卫（同 9652 host_ok
+                                // 形态）——pixels 桥截图此前无守卫，最小化/
+                                // 未布局窗直达 iced_wgpu offscreen 零维
+                                // create_texture panic。
+                                let win_ok = state
+                                    .windows
+                                    .get(&win)
+                                    .map(|w| {
+                                        let s = w.window_size.borrow();
+                                        s.width > 0.0 && s.height > 0.0
+                                    })
+                                    .unwrap_or(false);
+                                if win_ok {
+                                    tasks.push(iced::window::screenshot(win).map(|ss| {
+                                        crate::ui::session::DesktopMessage::Desktop(
+                                            crate::ui::session::DesktopEvent::PixelsShot(ss),
+                                        )
+                                    }));
+                                }
                             }
                         }
                         let detached = bridge.is_detached();
@@ -25443,8 +25539,16 @@ where
     C: Component + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
+    // PLAN-659 T-03：size 二段跳守卫——零维窗（最小化/关窗竞态）不发起
+    // screenshot（iced_wgpu offscreen 零维 create_texture panic 防线）。
     iced::window::latest().then(|id| match id {
-        Some(win) => iced::window::screenshot(win).map(NativePixelsMsg::Shot),
+        Some(win) => iced::window::size(win).then(move |size| {
+            if size.width <= 0.0 || size.height <= 0.0 {
+                iced::Task::none()
+            } else {
+                iced::window::screenshot(win).map(NativePixelsMsg::Shot)
+            }
+        }),
         None => iced::Task::none(),
     })
 }

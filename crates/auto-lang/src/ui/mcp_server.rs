@@ -794,7 +794,7 @@ fn tool_definitions() -> Vec<serde_json::Value> {
         json!({
             "name": "autoui_fixture",
             "title": "Apply Test Fixture",
-            "description": "Apply a deterministic runtime state fixture to the VM for automated tests. Disabled unless AUTOUI_TEST_FIXTURES=1. VM-only; does not add UI controls or persist state. Optionally dispatches an existing handler after the state write and waits for an applied/error acknowledgement.",
+            "description": "Apply a deterministic runtime state fixture to the VM for automated tests. Disabled unless AUTOUI_TEST_FIXTURES=1. VM-only; does not add UI controls or persist state. Optionally dispatches a handler after the state write and waits for an applied/error acknowledgement. Trigger forms (mutually exclusive): {widget, event, input?} dispatches the namespaced widget handler; {handler} dispatches any msg handler by bare name (PLAN-659).",
             "inputSchema": {
                 "type": "object",
                 "required": ["schema_version", "state"],
@@ -2355,6 +2355,11 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
     let trigger_data = match trigger {
         None => None,
         Some(t) => {
+            // PLAN-659 T-05：双形态。{widget, event, input?}——widget 限定
+            // 派发（on_with_input_for，namespaced 键）；{handler}——裸名
+            // 直查注册表（call_handler 双查，驱动侧无需感知 widget 键形，
+            // AddrGo 类 msg handler 全量可达）。两形态互斥。
+            let handler = t.get("handler").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
             let widget = t.get("widget").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
             let event = t.get("event").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
             let input = match t.get("input") {
@@ -2362,9 +2367,17 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
                 Some(serde_json::Value::String(value)) => Some(value.to_string()),
                 Some(_) => return fixture_error("invalid_schema", "trigger.input must be a string or null"),
             };
-            match (widget, event) {
-                (Some(widget), Some(event)) => Some((widget.to_string(), event.to_string(), input)),
-                _ => return fixture_error("invalid_schema", "trigger requires non-empty widget and event"),
+            match (handler, widget, event) {
+                (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
+                    return fixture_error("invalid_schema", "trigger: use either {handler} or {widget, event}, not both")
+                }
+                (Some(handler), None, None) => Some(json!({ "handler": handler })),
+                (None, Some(widget), Some(event)) => Some(json!({
+                    "widget": widget,
+                    "event": event,
+                    "input": input,
+                })),
+                _ => return fixture_error("invalid_schema", "trigger requires non-empty widget+event or handler"),
             }
         }
     };
@@ -2393,11 +2406,7 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
         let request_id = shared.next_fixture_id();
         let payload = json!({
             "state": state_obj,
-            "trigger": trigger_data.as_ref().map(|(widget, event, input)| json!({
-                "widget": widget,
-                "event": event,
-                "input": input,
-            })),
+            "trigger": trigger_data,
         }).to_string();
         if let Err(e) = shared.send_action(ActionMessage {
             target: ActionTarget::Fixture { request_id },

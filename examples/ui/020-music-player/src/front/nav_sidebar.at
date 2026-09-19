@@ -90,7 +90,7 @@ widget NavSidebar {
                         } else {
                             "w-full h-10 items-center justify-start gap-3 px-3.5 rounded-xl text-muted-foreground hover:bg-muted/70 hover:text-foreground font-medium text-xs cursor-pointer transition-all"
                         }
-                        icon (name: "folder-music", size: 16, style: "shrink-0")
+                        icon (name: "list-music", size: 16, style: "shrink-0")
                         text "本地音乐" {
                             style: "flex-1 text-left font-medium"
                         }

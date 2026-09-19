@@ -9614,12 +9614,14 @@ pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     // PLAN-016 T-05：剥 Windows 扩展长度前缀 \\\\?\\（canonicalize 原样返回，
     // 面包屑/地址栏/拼接面不消费该形态）。
+    // PLAN-659 T-06：失败返 ""（语料哨兵权威——027 NavTo 的 `can == ""`
+    // 判空分支可达；与族内 Path.canonicalize 的 unwrap_or_default 对齐）。
     let canonical = std::fs::canonicalize(&path)
         .map(|p| {
             let s = p.to_string_lossy().to_string();
             s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
         })
-        .unwrap_or(path);
+        .unwrap_or_default();
     let str_idx = vm.add_string(canonical.into_bytes());
     vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())

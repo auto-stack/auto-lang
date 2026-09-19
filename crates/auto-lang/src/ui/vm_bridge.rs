@@ -1752,6 +1752,38 @@ impl VmBridge {
         self.vm.flash.exports_by_name.contains_key(&fn_name)
     }
 
+    /// PLAN-659 T-05：指定 widget 名下 handler 存在性探测——与
+    /// [`call_handler_for`] 的 namespaced 查找同键（不含 legacy 兜底——
+    /// widget 限定的派发路径只走 namespaced 形态）。MCP fixture trigger
+    /// 派发前直查本表：未命中即响亮报错（此前 `on_with_input_for` 未
+    /// 命中静默无操作，AddrGo 实证病灶）。
+    pub fn has_handler_for(&self, widget_name: &str, event_name: &str) -> bool {
+        let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
+        self.vm.flash.exports_by_name.contains_key(&fn_name)
+    }
+
+    /// PLAN-659 T-05：裸名 handler 的 widget 归属解析——扫描 exports 的
+    /// 全部 namespaced 键（handler_&lt;Widget&gt;_&lt;Event&gt;），取事件名
+    /// 后缀匹配的候选 widget 集。嵌入画廊形态下根组件是宿主 App、目标
+    /// handler 在子 demo 名空间（如 handler_Demo027FileManager_AddrGo），
+    /// 裸名派发必须跨名空间解析。空=未命中；多候选=歧义（回执点名，
+    /// 驱动侧改用 widget 形态消歧）。
+    pub fn widgets_declaring_handler(&self, event_name: &str) -> Vec<String> {
+        let suffix = format!("_{event_name}");
+        let mut widgets: Vec<String> = self
+            .vm
+            .flash
+            .exports_by_name
+            .keys()
+            .filter_map(|k| k.strip_prefix("handler_"))
+            .filter(|rest| rest.ends_with(&suffix) && rest.len() > suffix.len())
+            .map(|rest| rest[..rest.len() - suffix.len()].to_string())
+            .collect();
+        widgets.sort();
+        widgets.dedup();
+        widgets
+    }
+
     /// List all registered handler names (bare names, without the `handler_` prefix).
     pub fn handler_names(&self) -> Vec<&str> {
         let mut names: Vec<&str> = self

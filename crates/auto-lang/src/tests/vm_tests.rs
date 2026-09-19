@@ -351,6 +351,22 @@ fn main() {
     assert_eq!(result, "arr:3");
 }
 
+// PLAN-659 T-06：fs.canonical 失败语义 = 返 ""（语料哨兵权威——027
+// NavTo 的 `can == ""` 判空分支；与族内 Path.canonicalize 的
+// unwrap_or_default 对齐）。非法字符路径在 Windows 上 canonicalize
+// 确定性失败，golden 稳定。
+#[test]
+fn test_plan659_fs_canonical_failure_returns_empty_sentinel() {
+    let code = r#"
+fn main() {
+    let can str = fs.canonical("!definitely_invalid::<>")
+    print("[" + can + "]")
+}
+"#;
+    let (_result, stdout) = crate::run_with_capture(code).unwrap();
+    assert_eq!(stdout, "[]\n");
+}
+
 // ============================================================================
 // Ignored Tests (kept for future reference)
 // ============================================================================
