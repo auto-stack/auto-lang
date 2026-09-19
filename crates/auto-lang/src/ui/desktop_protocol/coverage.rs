@@ -285,6 +285,20 @@ impl Coverage {
             // grid-cols-N/grid-rows-N 布局语义）——投影器 layout_view_
             // block 入口分岔复用 Grid walker 真渲（024 图表工坊）。
             "style-grid",
+            // PLAN-032 T-05（D1 分层）放行：⑪ 定位族——absolute + offset
+            // 真渲（脱离流覆盖序锚定父内容盒 + z 同层相对层级）；fixed/
+            // sticky **降级放行**（in-flow no-op 渲染——视口锚定真渲债
+            /// §10-④ 另立，opacity/overflow 先例；018 fixed×2/021
+            /// sticky×2 判定翻绿，保真边界显式随注）；top-/left-/right-/
+            // bottom-/z- 偏移与层级 token。
+            "absolute",
+            "fixed",
+            "sticky",
+            "top-",
+            "left-",
+            "right-",
+            "bottom-",
+            "z-",
         ]
         .into_iter()
         .map(String::from)
@@ -771,6 +785,10 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         // hidden/样式版 grid 原 in-not-yet——PLAN-032 T-02/T-04（D3/D4）
         // 转真渲放行（NodeStyle.hidden 布局 choke + display 族响应式
         // 覆盖规则；grid_cols/rows 分岔复用 Grid walker；prefixes ⑧⑩）。
+        // 定位族原 not-yet——PLAN-032 T-05（D1 分层）：absolute+offset
+        // 真渲（覆盖序锚定）+ fixed/sticky 降级放行随注（in-flow 渲染，
+        // 真渲债另立；prefixes ⑪）；z 完整栈序仍 not-yet（absolute 同层
+        // 相对层级已渲）。
         SC::Grid | SC::GridCols(_) | SC::GridRows(_) => "style-grid".into(),
         SC::Hidden => "hidden".into(),
         SC::Absolute => "absolute".into(),
@@ -1248,9 +1266,10 @@ mod tests {
         scan_native_view(&view)
     }
 
-    /// PLAN-032 T-02..T-04（D3/D5/D2/D4）：逐例翻绿累积——SelfCenter
-    /// 映射臂 + hidden 放行（012/041）+ tabs kind（046）+ 样式 grid
-    ///（024）。VM 轨扫描与仪器同径；T-05 扩列至六例。
+    /// PLAN-032 T-02..T-05（六缺项全清偿）：逐例翻绿——SelfCenter 映射
+    ///（012）+ hidden（012/041/018）+ tabs kind（046）+ 样式 grid（024）
+    /// + 定位族（018/021——absolute 真渲 + fixed/sticky 降级放行）。
+    /// VM 轨扫描与仪器同径；六例 = ramp v3 judged 22/22 的逐例金钉。
     #[test]
     fn native_gate_examples_012_041_covered() {
         let coverage = Coverage::native_queue_set();
@@ -1259,6 +1278,8 @@ mod tests {
             "041-auto-edit",
             "046-tabs-variants",
             "024-charts",
+            "018-book-reader",
+            "021-blog-viewer",
         ] {
             let scan = scan_example_native(dir);
             let verdict = judge(&scan, &coverage);

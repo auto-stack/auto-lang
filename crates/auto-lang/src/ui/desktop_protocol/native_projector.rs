@@ -839,6 +839,72 @@ impl<M: Clone + std::fmt::Debug> NativeCtx<M> {
     }
 }
 
+/// 走线期临时 ctx（子树 @0,0 渲染后平移——Popover 臂同款快照字段透传，
+/// 槽位计数接续）。
+fn detached_ctx<M: Clone + std::fmt::Debug>(ctx: &NativeCtx<M>) -> NativeCtx<M> {
+    NativeCtx {
+        ops: Vec::new(),
+        hits: Vec::new(),
+        uncovered: Vec::new(),
+        input_slots: ctx.input_slots,
+        focused_input: ctx.focused_input,
+        input_buffer: ctx.input_buffer.clone(),
+        ime_preedit: ctx.ime_preedit.clone(),
+        select_slots: ctx.select_slots,
+        select_open: ctx.select_open,
+        overlays: Vec::new(),
+        popover_overlays: Vec::new(),
+        viewport: ctx.viewport,
+        last_right_click: ctx.last_right_click,
+        right_hits: Vec::new(),
+    }
+}
+
+/// PLAN-032 T-05（D1 分层）：absolute 延迟放置——脱离流子级在父块尺寸
+/// 已知后按 offsets 锚定父内容盒（left/top 优先——CSS 过约束 left 胜；
+/// right/bottom 按父盒尺寸反算；无 offset 取流起点近似）@0,0 走线渲染
+/// → shift 平移，ops/hits 追加主序之后（覆盖序置顶——Popover 平移臂
+/// 先例 :1370-1383）。同层按 z 稳定排序（文档序同 z 保持）；in-flow z
+/// 与完整栈序 out of scope（I3 随注）。父盒尺寸 = 块流内容尺寸
+///（absolute 子级不贡献父高——CSS 同语义）。
+fn place_absolute_children<M: Clone + std::fmt::Debug>(
+    ctx: &mut NativeCtx<M>,
+    children: &[&View<M>],
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    let mut ordered: Vec<&View<M>> = children.to_vec();
+    ordered.sort_by_key(|v| node_style_of_view(v).z_index.unwrap_or(0));
+    for view in ordered {
+        let st = node_style_of_view(view);
+        let mut tmp = detached_ctx(ctx);
+        let laid = layout_view_node(&mut tmp, view, 0.0, 0.0, w);
+        let ax = match (st.offset_left, st.offset_right) {
+            (Some(l), _) => x + l,
+            (None, Some(r)) => x + w - laid.size.0 - r,
+            (None, None) => x,
+        };
+        let ay = match (st.offset_top, st.offset_bottom) {
+            (Some(t), _) => y + t,
+            (None, Some(b)) => y + h - laid.size.1 - b,
+            (None, None) => y,
+        };
+        ctx.ops.extend(tmp.ops.iter().map(|op| shift_draw_op(op, ax, ay)));
+        ctx.hits.extend(tmp.hits.into_iter().map(|hh| hh.shifted(ax, ay)));
+        ctx.right_hits.extend(tmp.right_hits.into_iter().map(|(mut r, m)| {
+            r.x += ax;
+            r.y += ay;
+            (r, m)
+        }));
+        ctx.uncovered.extend(tmp.uncovered);
+        ctx.input_slots = tmp.input_slots;
+        ctx.select_slots = tmp.select_slots;
+        ctx.popover_overlays.extend(tmp.popover_overlays);
+    }
+}
+
 /// PLAN-032 T-04（D4）：Grid walker 单源（View::Grid 变体臂与样式版
 /// grid 分岔共用——026 T-04 两遍网格原实现提取；等宽列 row-major 行序、
 /// 行高 = 行内最大、bg 两遍法置子级之下，语义零变化）。
@@ -930,6 +996,9 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
     }
     let ops_mark = ctx.ops.len();
     let hits_mark = ctx.hits.len();
+    // PLAN-032 T-05（D1）：absolute 子级收集延后（不入流不占位——尺寸
+    // 已知后在块返回前锚定放置）。
+    let mut absolute_children: Vec<&View<M>> = Vec::new();
     let mut cursor = 0.0f32;
     let mut cross_max = 0.0f32;
     let mut first = true;
@@ -937,15 +1006,20 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
         // PLAN-032 T-02（D3）：hidden 子级整段跳过——不占主轴 cursor 也
         // 不参与 gap 序（CSS display:none：兄弟间只留一个 gap，非每
         // 缺席位一个）。节点级 choke 保留兜底（单子引用/网格 cell 等
-        // 直调 layout_view_node 的路径）。
-        if node_style_of_view(view).hidden {
+        // 直调 layout_view_node 的路径）。T-05：absolute 同跳过并收集
+        ///（延迟放置见块尾）。
+        let style = node_style_of_view(view);
+        if style.hidden {
+            continue;
+        }
+        if style.absolute {
+            absolute_children.push(view);
             continue;
         }
         if !first {
             cursor += gap;
         }
         first = false;
-        let style = node_style_of_view(view);
         let my = style.margin_y();
         match dir {
             Dir::Vertical => {
@@ -976,26 +1050,29 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
         let mut cross_max = 0.0f32;
         let mut first = true;
         for view in views {
-            if node_style_of_view(view).hidden {
+            let style = node_style_of_view(view);
+            if style.hidden || style.absolute {
                 continue;
             }
             if !first {
                 cursor += gap;
             }
             first = false;
-            let style = node_style_of_view(view);
             let my = style.margin_y();
             let laid = layout_view_node(ctx, view, x + cursor, y + my, w);
             cursor += laid.size.0;
             cross_max = cross_max.max(my + laid.size.1);
         }
-        return Laid { size: (w.max(cursor - slack), cross_max) };
+        let size = (w.max(cursor - slack), cross_max);
+        place_absolute_children(ctx, &absolute_children, x, y, w, size.1);
+        return Laid { size };
     }
     // 垂直块高度 = cursor（主轴累计）——515 G1 修正同源。
     let size = match dir {
         Dir::Vertical => (cross_max.max(0.0), cursor.max(0.0)),
         Dir::Horizontal => (cursor.max(0.0), cross_max.max(0.0)),
     };
+    place_absolute_children(ctx, &absolute_children, x, y, w, size.1);
     Laid { size }
 }
 
@@ -2017,6 +2094,16 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
         ///（token "style-grid" 判定面不受影响）。
         StyleClass::GridCols(n) => s.grid_cols = Some(usize::from(*n)),
         StyleClass::GridRows(n) => s.grid_rows = Some(usize::from(*n)),
+        // PLAN-032 T-05（D1 分层）：absolute 真渲标记 + offset/z 记档
+        ///（layout_view_block 延迟放置消费）；fixed/sticky 降级放行
+        ///（in-flow no-op——opacity/overflow 先例，真渲债 §10-④）。
+        StyleClass::Absolute => s.absolute = true,
+        StyleClass::Fixed | StyleClass::Sticky => s.position_degraded = true,
+        StyleClass::TopOffset(px) => s.offset_top = Some(*px),
+        StyleClass::LeftOffset(px) => s.offset_left = Some(*px),
+        StyleClass::RightOffset(px) => s.offset_right = Some(*px),
+        StyleClass::BottomOffset(px) => s.offset_bottom = Some(*px),
+        StyleClass::ZIndex(z) => s.z_index = Some(*z),
         _ => {}
     }
 }
@@ -2384,6 +2471,135 @@ mod tests {
         let texts = texts_of(&frame);
         assert!(texts.contains(&"S"), "hidden md:flex = 桌面可见: {texts:?}");
         assert!(!texts.contains(&"M"), "md:hidden = 桌面隐藏: {texts:?}");
+    }
+
+    /// PLAN-032 T-05（D1 分层）：absolute 真渲——脱离流不占位（不贡献
+    /// 父高）、offsets 锚定父内容盒（top/left 直加；bottom/right 按父
+    /// 盒尺寸反算——018 bookshelf 封面徽条 "absolute bottom-0 left-0
+    /// right-0" 形态）、覆盖序追加主序之后、同层 z 稳定排序。
+    #[test]
+    fn absolute_overlay_golden() {
+        #[derive(Debug)]
+        struct AbsBox;
+
+        #[derive(Debug, Clone)]
+        enum AMsg {
+            Noop,
+        }
+
+        impl Component for AbsBox {
+            type Msg = AMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                // 定高流内件（button h-32=128px——叶子臂消费 fixed_h；堆
+                // 叠族自身 fixed 高为既有丢弃边界，锚定按内容盒自洽）+
+                // absolute 徽条（bottom 反算）+ absolute 顶标（top/left
+                // 直加，z-20 后绘置顶）。
+                View::col()
+                    .style("relative w-full")
+                    .child(View::button("cover").style("h-32 w-full").on_click(|_| AMsg::Noop).build())
+                    .child(View::text_styled("badge", "absolute bottom-0 left-0 right-0 text-xs"))
+                    .child(View::text_styled("tag", "absolute top-1 left-2 z-20 text-xs"))
+                    .child(View::text_styled("under", "absolute top-1 left-2 z-10 text-xs"))
+                    .build()
+            }
+        }
+
+        let mut p = NativeProjector::new(AbsBox, 480.0, 320.0);
+        p.ensure_covered().expect("定位族放行（prefixes ⑪）");
+        let frame = p.render_frame();
+        let ops: Vec<(f32, f32, &str)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { x, y, text, .. } => Some((*x, *y, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        let find = |t: &str| {
+            let e = ops.iter().find(|(_, _, n)| *n == t).expect(t);
+            (e.0, e.1)
+        };
+        // 流内 button h-32=128 撑父内容盒：badge bottom-0 → y = 10 + 128
+        // - 行高(12×1.35=16.2) = 121.8；right-0 反算被 left-0 过约束覆盖
+        ///（left 胜——CSS ltr 同语义），x = 父左 10。
+        let (bx, by) = find("badge");
+        assert!((by - (10.0 + 128.0 - 16.2)).abs() < 0.01, "badge bottom 反算: {by}");
+        assert!((bx - 10.0).abs() < 0.01, "badge left-0（right 过约束让位）: {bx}");
+        // tag/under：top-1(4px)/left-2(8px) 直加；z-10 先绘、z-20 后绘
+        ///（ops 序 = 覆盖序，稳定排序文档序同 z）。
+        let (tx, ty) = find("tag");
+        let (ux, uy) = find("under");
+        assert!((tx - 18.0).abs() < 0.01 && (ty - 14.0).abs() < 0.01, "tag top/left 直加: {tx},{ty}");
+        assert!((ux - 18.0).abs() < 0.01 && (uy - 14.0).abs() < 0.01, "under 同锚");
+        assert!(
+            ops.iter().position(|(_, _, n)| *n == "under") < ops.iter().position(|(_, _, n)| *n == "tag"),
+            "z-20 tag 后绘置顶（z-10 under 先绘）"
+        );
+        // 覆盖序：absolutes 追加主序之后（cover 按钮文本在前）。
+        assert!(
+            ops.iter().position(|(_, _, n)| *n == "cover")
+                < ops.iter().position(|(_, _, n)| *n == "badge"),
+            "absolute 追加主序之后"
+        );
+        // absolutes 零流内占位：badge 之前仅 cover 一项文本（tag/under 均
+        /// 延后），父内容高 = 纯流内件（button 128）。
+        assert_eq!(ops.iter().take_while(|(_, _, n)| *n != "badge").count(), 1, "absolutes 零流内占位");
+    }
+
+    /// PLAN-032 T-05（D1 分层）：fixed/sticky 降级放行——in-flow no-op
+    /// 渲染（坐标与无类对照逐项等价；真渲债 §10-④ 另立——保真边界
+    /// 显式钉：降级不是错绘成隐藏，而是原位渲染）。
+    #[test]
+    fn fixed_sticky_degraded_inflow_golden() {
+        #[derive(Debug)]
+        struct DegradedBox;
+
+        #[derive(Debug, Clone)]
+        enum DMsg {}
+
+        impl Component for DegradedBox {
+            type Msg = DMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::text_styled("nav", "sticky top-0 z-30 text-sm"))
+                    .child(View::text_styled("side", "fixed inset-y-0 z-40 text-sm"))
+                    .child(View::text_styled("body", "text-sm"))
+                    .build()
+            }
+        }
+
+        #[derive(Debug)]
+        struct ControlBox;
+
+        impl Component for ControlBox {
+            type Msg = DMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::text_styled("nav", "text-sm"))
+                    .child(View::text_styled("side", "text-sm"))
+                    .child(View::text_styled("body", "text-sm"))
+                    .build()
+            }
+        }
+
+        let mut p = NativeProjector::new(DegradedBox, 480.0, 320.0);
+        p.ensure_covered().expect("fixed/sticky 降级放行（prefixes ⑪）");
+        let frame = p.render_frame();
+        let mut q = NativeProjector::new(ControlBox, 480.0, 320.0);
+        let control = q.render_frame();
+        fn coords(f: &DrawList) -> Vec<(f32, f32, &str)> {
+            f.ops
+                .iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { x, y, text, .. } => Some((*x, *y, text.as_str())),
+                    _ => None,
+                })
+                .collect()
+        }
+        assert_eq!(coords(&frame), coords(&control), "fixed/sticky = in-flow 原位渲染（降级随注非错绘）");
     }
 
     /// PLAN-032 T-04（D4）：样式版 grid 分岔——`col (style: "grid

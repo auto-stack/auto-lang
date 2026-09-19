@@ -240,6 +240,19 @@ pub(crate) struct NodeStyle {
     ///（复用 Grid walker）。解释态 queue 臂 parse 不设置（I4 分表）。
     pub(crate) grid_cols: Option<usize>,
     pub(crate) grid_rows: Option<usize>,
+    /// PLAN-032 T-05（D1 分层）：定位族。absolute = 真渲（脱离流，
+    /// 覆盖序锚定父内容盒——layout_view_block 延迟放置）；offsets =
+    /// top/left/right/bottom px（left/top 优先，right/bottom 按父盒
+    /// 尺寸反算）；z = 同层 absolutes 相对层级（完整栈序 out of
+    /// scope——I3 随注）。fixed/sticky = 降级放行（in-flow no-op 渲
+    /// 染——视口锚定真渲债另立 §10-④；记档仅供防御/随注）。
+    pub(crate) absolute: bool,
+    pub(crate) position_degraded: bool,
+    pub(crate) offset_top: Option<f32>,
+    pub(crate) offset_left: Option<f32>,
+    pub(crate) offset_right: Option<f32>,
+    pub(crate) offset_bottom: Option<f32>,
+    pub(crate) z_index: Option<i16>,
 }
 
 impl NodeStyle {
