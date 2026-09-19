@@ -3213,6 +3213,19 @@
           "status": "published",
           "created": "2026-09-19",
           "last_modified": "2026-09-19"
+        },
+        {
+          "id": "P022-2",
+          "title": "终端 chrome 命中区归属五规则",
+          "content": "terminal-widget-chrome.md(PLAN-022 SD-01):内容矩形规则;分隔条接缝 8px 专属命中(Press/Drop,拖拽期全窗捕获层=期望语义);终端 pixel_to_cell 画布映射(扣快照窗位移,窗外 clamp);捷径命中即捕获(多终端同表防多发);mouse_interaction 恒 None(Stack 抬升光标会断下层交互)。上篇互引 overlay-interaction.md(PLAN-023 浮层投递)。",
+          "file": "docs/specs/terminal-widget-chrome.md",
+          "related": [
+            "PLAN-022",
+            "PLAN-023"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
         }
       ]
     },
@@ -4190,6 +4203,18 @@
           "file": "docs/specs/auto-lang/ui/design/overlay-interaction.md",
           "related": [
             "PLAN-023",
+            "PLAN-022"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
+        },
+        {
+          "id": "P022-1",
+          "title": "终端 Mux 虚拟滚动契约(§V1.10)",
+          "content": "terminal-mux-model.md(PLAN-022 SD-02)六条:display_offset 单源;画布=(rows+history)×CELL_H 投影 + scrollable 原生像素滚动(自绘条退役);view_y⇄offset 行量化(CELL_H=16);读出写臂双臂(draw 观察 viewport 行差值回灌/build 期 offset 变化 scroll_to 绑回);回声抑制=判别式(T-06 用户实点修订:bind 登记期望回声位+滚轮代数,代数未进且落点贴合±4px 才吞,用户增量不吞——旧一次性吞没致上翻卡死/下翻跳格);键入贴底。KD:极快连滚行量化粒度感。",
+          "file": "docs/specs/terminal-mux-model.md",
+          "related": [
             "PLAN-022"
           ],
           "status": "published",
@@ -6559,6 +6584,20 @@
             "PLAN-023",
             "PLAN-022",
             "PLAN-653"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
+        },
+        {
+          "id": "P022-3",
+          "title": "官方滚动条虚拟滚动+分屏渲染 — 复审与合并收据",
+          "content": "复审 pass(实现会话内,独立性限制声明,verdict 自工件重构)。AC-01..08:虚拟滚动语义/契约/换装/滚轮行为(T-06 回声判别修后用户实点 OK)/命中区/分屏渲染/磁吸钳位/回归面(rust 轨全项;020 t01 vue 轨=外部归属 642/643+653 备案)。DEBT §10.7=Alt+WASD 骨架未生效(模型焦点≠组件键盘焦点)。合并:reviewed 基线 8b0ec0fed、base e5ddf41ba、fold 5f5f1b6a6、dep auto-down fae21d9 只读;master tip 红归 656(eee04e787 Scrollable 增字段未同步 layout_tests,fix-p656-vue-probe 在修)。计划归档于 auto-term 仓。",
+          "file": "auto-term:docs/plans/archived/022-autoui-scrollbar-virtualization.md",
+          "related": [
+            "PLAN-022",
+            "PLAN-020",
+            "PLAN-023"
           ],
           "status": "published",
           "created": "2026-09-19",

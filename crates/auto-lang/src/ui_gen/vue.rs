@@ -3554,6 +3554,17 @@ function scroll_state(k) {
             } else {
                 "const isWord = (ch) => /[A-Za-z0-9_]/.test(ch)"
             };
+            // PLAN-493 r9（musk-073 消费）：引用 token（@plan/001、@spec/<path>
+            // 等，含 . / - 的非纯词 token）高亮——token 字符集扩展扫描 +
+            // 名单最长匹配；命中含非 \w 字符者 span 附加 `mention-token`
+            // 语义类（宿主全局样式差异化着色；类名零宽度，backdrop 与
+            // textarea 逐字对齐不受影响）。纯 \w 词命中走原类串（Agent @词
+            // 口径不变）。
+            let is_token_char_def = if self.use_typescript {
+                "const isTokenChar = (ch: string) => /[A-Za-z0-9_./-]/.test(ch)"
+            } else {
+                "const isTokenChar = (ch) => /[A-Za-z0-9_./-]/.test(ch)"
+            };
             script.push_str("function __autoMentionHtml");
             script.push_str(fn_sig);
             script.push_str(
@@ -3564,6 +3575,8 @@ function scroll_state(k) {
   "#,
             );
             script.push_str(is_word_def);
+            script.push_str("\n  ");
+            script.push_str(is_token_char_def);
             script.push_str(
                 r#"
   let out = ''
@@ -3571,11 +3584,24 @@ function scroll_state(k) {
   while (i < escaped.length) {
     if (escaped[i] === '@') {
       let j = i + 1
+      while (j < escaped.length && isTokenChar(escaped[j])) { j += 1 }
+      let hitEnd = 0
+      for (let k = j; k > i + 1; k--) {
+        if (known.has(escaped.slice(i + 1, k).toLowerCase())) { hitEnd = k; break }
+      }
+      if (hitEnd > 0) {
+        const tok = escaped.slice(i + 1, hitEnd)
+        const isRef = /[^A-Za-z0-9_]/.test(tok)
+        out += `<span class="${cls}${isRef ? ' mention-token' : ''}">@${tok}</span>`
+        i = hitEnd
+        continue
+      }
+      let w = i + 1
       let word = ''
-      while (j < escaped.length && isWord(escaped[j])) { word += escaped[j]; j += 1 }
+      while (w < escaped.length && isWord(escaped[w])) { word += escaped[w]; w += 1 }
       if (word !== '' && known.has(word.toLowerCase())) {
         out += `<span class="${cls}">@${word}</span>`
-        i = j
+        i = w
       } else { out += '@'; i += 1 }
     } else { out += escaped[i]; i += 1 }
   }
@@ -18764,7 +18790,14 @@ widget MentionComposer {
         }
         // helper 随 script 恰一次。
         assert_eq!(sfc.matches("function __autoMentionHtml").count(), 1);
-        assert!(sfc.contains("known.has(word.toLowerCase())"), "helper 必须词级小写匹配");
+        // r9（musk-073 消费）：token 级小写匹配（扩展字符集扫描 + 名单最长
+        // 匹配）+ 引用 token 的 mention-token 语义类。
+        assert!(
+            sfc.contains("known.has(escaped.slice(i + 1, k).toLowerCase())"),
+            "helper 必须 token 级小写匹配（最长匹配）"
+        );
+        assert!(sfc.contains("isTokenChar"), "helper 必须含扩展 token 字符集判定");
+        assert!(sfc.contains("' mention-token'"), "引用 token 命中须附加 mention-token 类");
         // mentions/mention_class 不作 attr 透传。
         assert!(!sfc.contains("mentions="));
         assert!(!sfc.contains("mention_class="));

@@ -1,15 +1,15 @@
 ---
 plan_id: PLAN-658
-status: executing
+status: reviewed
 feature_name: uigallery-multi-backend-proxy
 author: [agent]
 created_at: 2026-09-19
 updated_at: 2026-09-19
 plan_revision: 1
-current_step: 4
+current_step: 7
 total_steps: 8
 supersedes_spec_components: []
-new_spec_components: []
+new_spec_components: [vm/back-proxy.md（SD-01 新建）, ui/overview.md §ui-gallery 内嵌后端经 back-proxy 服务（SD-02 增补 5 条）, vm/plans.md PLAN-658 行（SD-03）]
 touched_goals: [GOAL-010]
 affects: [auto-lang/vm, auto-lang/ui, auto-man, auto-os/ui-gallery]
 ---
@@ -333,20 +333,100 @@ HTTP 前端 vs auto run 宿主内嵌 proxy 线程——按"gallery 一键体验
       `test-http-e2e,ui-iced` 6/6 + `test-http-e2e` 4/4。
       **P642-D10 核销**（曲库非空达成）。CI 挂靠（media e2e 需 ui-iced
       feature 组合）记 T-07 收口。
-- [ ] **T-04 stream 转发一等公民（017）**
+- [x] **T-04 stream 转发一等公民（017）**
       session 内 ~Stream 执行 + HTTP chunk/SSE 逐事件转发 + 前端事件流
       消费；内嵌 017 双向收发（AC-02）；017 否决解除（发射器 unsupported
       判定按 demo 通路放宽）。
-- [ ] **T-05 native-ns/binary 转发（031）**
+      [✅ 已完成 2026-09-19] commit b55e9cba4。四层落地：①proxy SSE 面
+      （per-session 宿主事件总线 + ~Stream 端点按签名特路订阅 + POST 广播
+      镜像 api_gen 判别约定[typing→Typing/create→New<Type>] + listener
+      逐帧 `data:` 转发）；②三新原生——`auto.bus.subscribe`(3144,编译
+      seam:017 back 的 `bus.subscribe()` 死码体在 VM 侧可编译,被实际执行
+      则压 -1 响亮失败)/`auto.http.sse_open`(3145,句柄形)/`sse_poll`
+      (3146,非阻塞 try_recv——实测修正:i64 双槽编码在 int 赋值链丢值,
+      改单槽 i32)；③发射器 stream proxy 路径（~Stream 否决按 proxy 根
+      注入解除——back 不进画廊,发射 client 模块[类型随行+#[api] fn →
+      Http.*_json,POST body 镜像 emit_api_http_call 的 json.from_value
+      STR_CAT 构造] + 前端 use 改指 client 剔除流项 + widget 注入
+      `.Tick` SSE 消费[惰性 sse_open+有界排水+ChatStore.NewMessage/Typing
+      分派,msg 块补 Tick 变体——实测缺变体则 TimeSource 不触发;计数器
+      需 var——.at let 不可重赋值]）；④017 session 注册进
+      start_gallery_back_proxy。**AC-02 MCP 实证**（evidence/p658/
+      t04_017_bidirectional.png + t04_017_ac02_drive.py）：选中内嵌 017 →
+      种子消息渲染（client 经 proxy 拉数据）→ fixture draft + Send →
+      **新消息窗口渲染（messages 5→7）+ session 持久化（6 条，POST 真实
+      到达）**；Typing 腿：oninput → set_typing → SSE Typing 帧 → Tick
+      排水 → `typing_name: "You"` **≤400ms 到达**。e2e：真 017 语料
+      SSE 双事件帧测试（Typing/NewMessage 实时断言）过；back_proxy 8/8
+      (ui-iced)+6/6(th)；gallery 发射 16/16。**顺带发现两项预存债候选**
+      （T-07 记账）：017 自带 `timer {}` 块（ClockTick 秒表）在画廊内嵌
+      形态不触发（clock_secs 恒 0——timer 块 demo 内嵌首例，此前无观测
+      面）；VM 侧 `json.encode` 对对象字面量降格池索引串（占位 shim，
+      PLAN-053 家族——本计划绕行 json.from_value，未修根因）。
+- [x] **T-05 native-ns/binary 转发（031）**
       `use auto.image` in-session 执行（宿主 image pipeline）+ 图片字节
       转发（Content-Type 保真）；内嵌 031 图库出图（AC-03）；031 否决解除。
-- [ ] **T-06 崩溃隔离与可观测性**
+      [✅ 已完成 2026-09-19] commit c733bb8c7。①031 back 进 session——
+      auto.image 17 natives 经进程级注册表在 session 内可用（e2e：真实
+      fixtures 目录 open+names 全通）；②proxy 图片字节路由
+      `/apps/<id>/api/__auto/media/{id}/{rev}` 委托 media_http_response
+      （cfg ui-iced；字节/Content-Type/ETag 304 保真——e2e registry 发布
+      资产逐字节断言）；③发射器 native-ns 否决解除（与 stream 同 proxy
+      管线；无流端点不注入 Tick/use 项全保——独立测试钉住）；④fixtures
+      相对路径 `../../tests/` 锚定（画廊 CWD≠demo CWD 实测修正，仅拷贝
+      件）；⑤session 注册泛化（stream OR use auto.*）。**AC-03 MCP 实证**
+      （evidence/p658/t05_031_gallery.png + t05_031_viewport.png +
+      t05_031_byte2.bin）：目录开 **6 图**（真实 fixtures）+ view ready +
+      工具栏渲染；NextImage 点击 → 大图切换（selected_index 0→1，
+      media_src 新 URI）；**双文件字节级 MATCH**——alpha-2x1.png 77B +
+      orientation-6.jpg 631B 经 proxy 取回与磁盘文件逐字节一致（含
+      Content-Type image/png + ETag + immutable 缓存头）。侧栏缩略图名
+      列表（view for-loop over json-object vmref）渲染空——预存缺口记
+      债候选。e2e 10/10×2 + gallery 17/17。
+- [x] **T-06 崩溃隔离与可观测性**
       per-session panic catch + 重启策略（退避）+ 每 session 日志通道；
       panic 注入验收（AC-05）。
+      [✅ 已完成 2026-09-19] commit 67e50f61e。①session 线程 catch_unwind
+      边界（隔离由构造保证——线程即边界）：单请求 panic → 500 可诊断
+      JSON + 指数退避（500ms×2^n 封顶 8s）+ back 链重装载**状态归零**
+      （e2e 断言 hits 2→panic→0）；VMError（非 unwind）走 500 错误臂不
+      重启；②测试面原生 `auto.sys.panic_hard`（目录 id 3147）——VM 内建
+      `panic` 有意映射 RuntimeError 走错误臂，真 unwind 边界需专用面；
+      **动态 id 撞号实测修正**（动态注册的 native id 与既有 id 冲突跨
+      session 泄漏 panic——固定目录 id 同 bus.subscribe 形态）；③每
+      session 日志环（容量 256）+ `/__backproxy/log` 只读观测路由。
+      **AC-05 e2e 全断言**：panic 注入（boom-app）→ 500+kaboom 消息+
+      restart 提示+退避 ≥400ms 实测；healthy-app 同 proxy 存活 200；
+      boom-app 恢复且状态归零；日志环 PANIC/RESTART 在案。7/7 + 11/11
+      双配置。
 - [ ] **T-07 E2E 全矩阵 + 债核销 + 门禁收口**
       AC-01..06 全量复验；KNOWN-DEBT 核销/部分核销（D10 全销、D13 主体
       核销留远期项、031 家族债核）；spec 增量落稿；`cargo t` 日常档 +
       触发面档；独立形态回归三件套。
+      [🔶 工程面完成 2026-09-19，簿记提交被并发会话阻塞] 
+      **最终矩阵 E2E**（evidence/p658/t07_final_matrix.json+脚本）：
+      单画廊进程 overall=true——AC-01 393 曲库 / AC-02 双向+Typing /
+      AC-03 6 图+media URI / AC-04 同 PID(35724) 单后端端口 3358+MCP
+      9247、无 3049 直连；skip 列表仅剩 023 预存。**门禁**：th 7/7 +
+      th,ui-iced 11/11；tv 3786/3788（2 红=mouse_area/display_family
+      master 预存，656/657 会话归因在案）；gallery 17/17；`cargo t`
+      编译红=master fork 基预存（terminal iced/widget.rs 的 iced_test
+      测试缺 iced-layout-tests 门——修复恰在并发会话 in-flight 的 022
+      二次合并中，不越权重复修，归因记录）；CI 挂靠 http-e2e-ci.yml
+      +ui-iced（media e2e 入档）。**独立形态三件套**：020 ✓（393 条 +
+      相对 url 语义不变 + status 路由）；031 ✓（后端起 + open-file 真
+      实 session）；017 ✗——生成 db.rs 转译 &str vs String 编译红
+      （api_gen/a2r 面，diff 零触及，**master 预存**记债候选 P658-C1）。
+      **spec 增量**：SD-01 vm/back-proxy.md（新建）+ SD-02 ui/overview
+      §PLAN-658（5 条契约）+ SD-03 vm/plans.md 行——worktree 内已备
+      （spec 提交通常随 merge，held）。**债核销清单（备好待记）**：
+      P642-D10 全销 / P642-D13 主体核销（stream+native-ns+media 全通，
+      远期项=子 domain 路由）+ 031 静态回退债核；新增债候选：P658-C1
+      017 生成后端 db.rs 转译红（master 预存）、P658-C2 json.encode 对
+      象字面量降格（PLAN-053 家族）、P658-C3 timer{} 块画廊内嵌不触发、
+      P658-C4 031 侧栏 json-vmref for-loop 渲染空。**阻塞项**：主检出
+      处于并发会话（022 二次合并）unmerged 状态——本计划全部簿记提交
+      （勾记/证据/KNOWN-DEBT/账本）持有待合并落地后落。
 
 ## 9. 复审记录
 
@@ -372,6 +452,75 @@ task_ids: []         # T-00 起
 evidence: 用户会话指令确认契约；auto-lang 主检出 clean、auto-os 主检出
   WIP 定性为 widgets-gallery 生成漂移+会话产物（非 ui-gallery 面，已呈报不入本计划）
 next: 建 worktree 组 D:/autostack/.wt/lang-658/{auto-lang,auto-os} → T-00
+```
+
+```yaml
+stage: work
+plan_id: PLAN-658
+plan_revision: 1
+outcome: pass        # 工程面全交付（T-00..T-06 完成勾记，T-07 工程面完成）；簿记提交被并发会话阻塞（见 blockers）
+code_commit: 67e50f61e（T-06 末）；实现链 6270bda92→e40b3d496→571dcf4c6→b55e9cba4→c733bb8c7→67e50f61e→9918eb14f（master b69c7344c 同步合并）；worktree D:/autostack/.wt/lang-658/auto-lang @ plan-658-dev；auto-os 零代码改动
+task_ids: [T-00✅, T-01✅, T-02✅, T-03✅, T-04✅, T-05✅, T-06✅, T-07🔶]
+evidence: |-
+  AC-01 全链 MCP（393 曲库渲染+current_url 指 proxy 流+Range 206 逐字节一致）；
+  AC-02 MCP（fixture draft→发送渲染+Typing≤400ms；SSE e2e 双事件帧）；
+  AC-03 MCP（目录 6 图+NextImage 大图切换+双文件字节级 MATCH+Content-Type/ETag）；
+  AC-04 最终矩阵（同 PID 3358+9247，无 3049 直连）；
+  AC-05 e2e（panic 注入 500+退避≥400ms+重启状态归零+他 session 存活+日志环）；
+  AC-06 门禁（th 7/7+11/11；tv 3786/3788 两红归因 master 预存；gallery 17/17；
+  cargo t 编译红=fork 基预存 iced_test 门缺失，修复在并发 022 合并 in-flight；
+  独立三件套 020✓/031✓/017✗（生成 db.rs 转译红=master 预存 P658-C1））。
+  证据目录 docs/plans/evidence/p658/（截图×3+scan.json+range 头+字节样本+
+  驱动脚本×2+最终矩阵 JSON）。
+blockers: |-
+  主检出 D:/autostack/auto-lang 处于并发会话（plan-022 二次合并）unmerged
+  状态（.autoos/specs.json UU）——本计划全部簿记提交持有：T-04..T-07 勾记、
+  evidence 文件、KNOWN-DEBT 核销（P642-D10 全销/D13 主体/031 债 + 新增
+  P658-C1..C4）、spec 三件（worktree 已备）。解除动作=并发合并落地后
+  一次性提交上述簿记（内容已全部就绪于工作区）。
+next: 复审（/auto-plan:review）——簿记落库后 execution_done 翻转；或先复审
+  worktree 代码面（评审不依赖主检出簿记）
+```
+
+```yaml
+stage: review
+plan_id: PLAN-658
+plan_revision: 1
+outcome: pass
+reviewed_commit: d76491caf（= a62d4af5c + cherry-pick 2733c0879 iced_test 门控基线修复，仅解基线编译红；658 实现面即 a62d4af5c）
+base_commit: a4e4b291f（fork 点；分支另并入 b69c7344c=master 同步，diff b69c7344c..HEAD 即本计划 12 文件）
+dependency_revisions: auto-down detached @84c9897（构建依赖）；auto-os worktree 零代码改动
+spec_inputs: docs/specs/auto-lang/vm/back-proxy.md（新）+ ui/overview.md §PLAN-658 + vm/plans.md 行（worktree a62d4af5c 已提交；复审逐条对码——退避曲线/目录 id 3144-3147/路由表/判别约定全一致）
+acceptance_results: |-
+  AC-01 pass（复跑：活体矩阵二次独立驱动 overall=true，393 曲库渲染+Range 字节一致 e2e 在档）
+  AC-02 pass（复跑：活体双向+Typing≤400ms；SSE e2e 双事件帧 11/11 档内复跑通过）
+  AC-03 pass（复跑：6 图+ready+media_src；字节级 e2e×2 双文件 MATCH 在档）
+  AC-04 pass（复跑：同 PID 单端口 3358+9247；发射语料 grep 全量指向 3358 零旁路）
+  AC-05 pass（复跑：panic 隔离 e2e 7/7 档内——500+退避≥400ms+重启归零+他 session 存活+日志环）
+  AC-06 pass（复审重建：th 子档 7/7+th,ui-iced 11/11×2；tv 3788/3790[2 红=656/657 在案预存]；
+    tf 3642/3645[3 红=ffi_dual_019/mouse_area/display_family 全在案预存]；cargo t 818/821
+    [3 红 musk p053=**基线定责实证**：master b69c7344c+同门控修复下单跑 4 红⊃本分支 3 红]；
+    auto-man 全量 308/308；http_e2e 老档=本机负载环境红[基线与分支同集漂移，三次受控对照
+    含 e2e_int_path 双侧 3/3 同红，零新增]；独立三件套 020✓/031✓/017 基线红[生成器 db.rs
+    &str/String，diff 对 api_gen 零触及，P658-C1]；内嵌矩阵 36 demos 零回归[skip 仅 023 预存]）
+findings: |-
+  零阻塞发现。非阻塞注记三条：
+  R1[注记] 分支含 cherry-pick d76491caf（=2733c0879 iced_test 门控修复，原提交在并发 022
+    二次合并 in-flight 中）——为复审可跑 ui-iced 门禁；与 in-flight 同文本，后续调和无冲突面。
+  R2[基线债 surfaced] kitchen_sink_page_in_sync 红=656 schema 落地后 kitchen-sink.at 未再生成
+    （master b69c7344c 预存；与开场 auto-os widgets-gallery WIP 漂移同源；本 diff 对
+    schema/examples 零触及）——建议记入 KNOWN-DEBT 归 656 收尾。
+  R3[证据复用] 无——全部验收以复跑重建（活体矩阵二次驱动+全套件复跑+三次基线定责实验），
+  未复用实施期自述；独立性限制（同会话实施+复审）以受控基线对照实验缓解并在案。
+evidence: |-
+  docs/plans/evidence/p658/（t07_final_matrix.json=复审轮二次独立驱动 overall=true 覆写；
+  t03/t04/t05 截图与字节样本；两驱动脚本可复现）+ 本记录内嵌的定责实验：
+  ①e2e_notes_list 三方对照（a4e4b291f 红/b69c7344c 波动绿→3/3 红/a62d4af5c 红=环境红）
+  ②全滤失败集对照（基线 14 红 vs 分支 12 红，漂移集）③musk p053 基线定责（b69c7344c+
+  门控修复=4 红⊃分支 3 红）。worktree D:/autostack/.wt/lang-658/auto-lang @ plan-658-dev
+  保留待 merge；定责用抛弃 worktree 已 guard-clean 移除。
+next: merge（前置=并发 022 合并落地后先补本计划持有簿记[勾记/证据/债核销/spec 账本]再走
+  /auto-plan:merge；cherry-pick d76491caf 与 in-flight 同文本自动调和）
 ```
 
 ## 10. 待澄清事项
