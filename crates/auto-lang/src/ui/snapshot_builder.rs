@@ -345,7 +345,7 @@ impl SnapshotBuilder {
                 UiNode { id, kind: "Select".to_string(), props, actions: vec![], children: vec![] }
             },
 
-            View::Slider { min, max, value, step, .. } => {
+            View::Slider { min, max, value, step, on_change, .. } => {
                 let mut props = vec![
                     ("min".to_string(), min.to_string()),
                     ("max".to_string(), max.to_string()),
@@ -354,8 +354,17 @@ impl SnapshotBuilder {
                 if let Some(s) = step {
                     props.push(("step".to_string(), s.to_string()));
                 }
-                // Slider's on_change is a fn(f32) -> M, not directly extractable
-                UiNode { id, kind: "Slider".to_string(), props, actions: vec![], children: vec![] }
+                // PLAN-661 T-03: actions 挂 set_value——handler 名取 onchange
+                // 事件名（SliderChangeHandler 标签旁路供给；MCP SetValue 经
+                // decode_payload "f" 载荷把 f32 实参送达 `.SetVol(v float)`）。
+                let actions = on_change.as_ref()
+                    .and_then(|h| h.label())
+                    .map(|name| vec![UiAction {
+                        name: "set_value".to_string(),
+                        handler: format!(".{}", name),
+                    }])
+                    .unwrap_or_default();
+                UiNode { id, kind: "Slider".to_string(), props, actions, children: vec![] }
             },
 
             View::ProgressBar { progress, .. } => UiNode {

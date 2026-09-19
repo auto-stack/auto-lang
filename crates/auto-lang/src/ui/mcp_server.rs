@@ -3129,6 +3129,23 @@ fn execute_action_on_shared(
         .map(|a| a.handler.trim_start_matches('.').to_string())
         .ok_or_else(|| format!("No '{}' handler found on element #{}", action_name, element_id))?;
 
+    // PLAN-661 T-03: set_value 的 f32 载荷编码进事件串（dynamic.rs
+    // decode_payload 的 "f" 型 typechar）——on_with_input_for 解码为
+    // Float 实参，`.SetVol(v float)` 收到数值而非空参（此前 SetValue
+    // 不带载荷即空转的根因）。
+    let dispatch_event = if matches!(action, UiActionType::SetValue) {
+        let v = value.as_ref().and_then(|v| match v {
+            auto_val::Value::Float(f) => Some(*f as f64),
+            auto_val::Value::Double(d) => Some(*d),
+            auto_val::Value::Int(i) => Some(*i as f64),
+            auto_val::Value::Str(s) => s.as_str().trim().parse::<f64>().ok(),
+            _ => None,
+        }).ok_or_else(|| "Action 'set_value' requires a numeric value parameter".to_string())?;
+        format!("{}\u{1F}f\u{1F}{}", handler, v)
+    } else {
+        handler.clone()
+    };
+
     // Build the ActionMessage to inject into iced event loop
     let input_value = match &action {
         UiActionType::TypeText => {
@@ -3145,7 +3162,7 @@ fn execute_action_on_shared(
     let msg = ActionMessage {
         target: ActionTarget::Event {
             widget: shared.widget_name.clone(),
-            event: handler.clone(),
+            event: dispatch_event,
         },
         action: action.clone(),
         value: input_value,
@@ -3270,6 +3287,14 @@ fn extract_action_from_view(
         }
         View::Checkbox { on_toggle, .. } if action_name == "toggle" => {
             on_toggle.as_ref().and_then(|m| extract_dyn_msg(m))
+        }
+        // PLAN-661 T-03: slider set_value → onchange——事件名经
+        // SliderChangeHandler 标签旁路（闭包内值不可提取，标签由 aura 臂
+        // new_labeled 供给）；widget 名留空由调用方补根组件名。
+        View::Slider { on_change, .. } if action_name == "set_value" => {
+            on_change
+                .as_ref()
+                .and_then(|h| h.label().map(|name| (String::new(), name.to_string())))
         }
         // PLAN-043 T4: 布局件 onclick（row/col/div parity，renderer 侧
         // wrap_layout_onclick 消费面）——press 通道可达 layout onclick 件
@@ -3464,8 +3489,22 @@ fn execute_action_vnode(
             }
         }
         let widget = if widget_name.is_empty() { shared.widget_name.clone() } else { widget_name };
+        // PLAN-661 T-03: set_value 的 f32 载荷编码进事件串（decode_payload
+        // "f" 型）——on_with_input_for 解码为 Float 实参送达 `.SetVol(v float)`。
+        let dispatch_event = if action == UiActionType::SetValue {
+            let v = value.as_ref().and_then(|v| match v {
+                auto_val::Value::Float(f) => Some(*f as f64),
+                auto_val::Value::Double(d) => Some(*d),
+                auto_val::Value::Int(i) => Some(*i as f64),
+                auto_val::Value::Str(s) => s.as_str().trim().parse::<f64>().ok(),
+                _ => None,
+            }).ok_or_else(|| "Action 'set_value' requires a numeric value parameter".to_string())?;
+            format!("{}\u{1F}f\u{1F}{}", event_name, v)
+        } else {
+            event_name.clone()
+        };
         ActionMessage {
-            target: ActionTarget::Event { widget, event: event_name.clone() },
+            target: ActionTarget::Event { widget, event: dispatch_event },
             action: action.clone(),
             value: input_value.clone(),
         }

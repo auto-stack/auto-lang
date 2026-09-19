@@ -361,11 +361,17 @@ impl<M> ScrollCallback<M> {
 #[derive(Clone)]
 pub struct SliderChangeHandler<M> {
     callback: Arc<dyn Fn(f32) -> M + Send + Sync>,
+    /// PLAN-661 T-03: 事件名旁路——handler 名不在闭包内可提取，快照
+    /// actions 面由 aura 臂构造时以标签供给；None = 匿名（宿主自建）。
+    label: Option<Arc<str>>,
 }
 
 impl<M> std::fmt::Debug for SliderChangeHandler<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SliderChangeHandler").finish()
+        match &self.label {
+            Some(name) => f.debug_struct("SliderChangeHandler").field("event", name).finish(),
+            None => f.debug_struct("SliderChangeHandler").finish(),
+        }
     }
 }
 
@@ -374,11 +380,25 @@ impl<M> SliderChangeHandler<M> {
     where
         F: Fn(f32) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f) }
+        Self { callback: Arc::new(f), label: None }
+    }
+
+    /// PLAN-661 T-03: 带事件名标签构造（快照 actions 挂 set_value 的
+    /// handler 名来源）。
+    pub fn new_labeled<F>(f: F, label: &str) -> Self
+    where
+        F: Fn(f32) -> M + Send + Sync + 'static,
+    {
+        Self { callback: Arc::new(f), label: Some(Arc::from(label)) }
     }
 
     pub fn call(&self, value: f32) -> M {
         (self.callback)(value)
+    }
+
+    /// 事件名标签（匿名 = None）。
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 }
 

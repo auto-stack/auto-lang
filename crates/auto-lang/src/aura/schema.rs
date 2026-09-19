@@ -576,6 +576,25 @@ impl AuraSchema {
             description: "Checkbox control",
         });
 
+        // PLAN-661 T-03: slider 进 schema（语义基准 = a2r 轨 025 fixture：
+        // value 绑 float 字段、onchange 载荷 msg、step）。VM/aura 臂 +
+        // vue 原生 range + MCP set_value 闭环同计划落地。
+        elements.insert("slider", ElementDef {
+            tag: "slider",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "value", type_: PropType::StateRef, required: false, default: None, description: "Bound numeric value (float state field)" },
+                PropDef { name: "min", type_: PropType::Float, required: false, default: Some("0"), description: "Range minimum" },
+                PropDef { name: "max", type_: PropType::Float, required: false, default: Some("100"), description: "Range maximum" },
+                PropDef { name: "step", type_: PropType::Float, required: false, default: None, description: "Step increment (None = continuous)" },
+                PropDef { name: "onchange", type_: PropType::MsgRef, required: false, default: None, description: "Message on value change (payload variant carries f32)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "disabled", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Whether slider is disabled" },
+            ],
+            allows_children: false,
+            description: "Numeric slider control (value + f32 payload onchange)",
+        });
+
         elements.insert("toggle", ElementDef {
             tag: "toggle",
             category: ElementCategory::Content,

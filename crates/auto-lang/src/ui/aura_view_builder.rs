@@ -2074,8 +2074,11 @@ impl<'a> AuraViewBuilder<'a> {
             "badge" => self.convert_badge(props, children, bindings),
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
+            // PLAN-661 T-03: slider（025 fixture 语义基准——value/onchange
+            // 载荷/step；SliderChangeHandler 经 T-02 newtype 可跨消息映射）。
+            "slider" => self.convert_slider(props, events, bindings),
             // Plan 413: code editor widget (syntax highlighting, line
-            // numbers, wrap, vi/undo, IME).
+            // numbers, wrap, vi, undo, IME).
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
@@ -4012,6 +4015,8 @@ impl<'a> AuraViewBuilder<'a> {
             // Input widgets
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
+            // PLAN-661 T-03: slider（双表镜像纪律——表二臂）。
+            "slider" => self.convert_slider(props, events, bindings),
             // Plan 446 批五 U4: select 控件 VM 端渲染。此前 view-builder 无
             // select 路由——快照结构在（源树回退）、渲染丢（os-config §P/U4
             // 被迫"select renders as free text"）。iced 侧 AbstractView::Select
@@ -9760,6 +9765,63 @@ let tabs_inner = View::Row {
         builder.build()
     }
 
+    /// PLAN-661 T-03: `slider` → View::Slider（a2r 轨 025 fixture 语义基准：
+    /// value 绑 float 字段（int 容差降级）、onchange 载荷 msg（f32 实参）、
+    /// step）。value/min/max/step 经 extract_f64_with 解析（StateRef/字面量
+    /// 两形态）；缺省 0/100/None 对齐 vue 轨现行缺省。
+    fn convert_slider(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let value = self.extract_f64_with(props, "value", bindings).unwrap_or(0.0) as f32;
+        let min = self.extract_f64_with(props, "min", bindings).unwrap_or(0.0) as f32;
+        let max = self.extract_f64_with(props, "max", bindings).unwrap_or(100.0) as f32;
+        let step = self.extract_f64_with(props, "step", bindings).map(|s| s as f32);
+
+        // 直构 View::Slider（不经 builder .on_change——闭包重包会丢
+        // SliderChangeHandler 的标签旁路，快照 actions 面）。
+        View::Slider {
+            min,
+            max,
+            value,
+            step,
+            style: self.extract_style_with(props, bindings),
+            on_change: self.slider_change_arm(events, bindings),
+        }
+    }
+
+    /// `slider` 的 `onchange` 臂——[`Self::progress_seek_arm`] 同款载荷通道：
+    /// event_to_message_with 出基消息，[`SliderChangeHandler`] 把新值作为
+    /// Float 实参追加（`.SetVol(v float)` 形态，025 语义）。
+    fn slider_change_arm(
+        &self,
+        events: &HashMap<String, crate::aura::AuraEvent>,
+        bindings: &Bindings,
+    ) -> Option<crate::ui::view::SliderChangeHandler<DynamicMessage>> {
+        let event = aura_events_get_base(events, "onchange")
+            .or_else(|| aura_events_get_base(events, "change"))?;
+        let base = self.event_to_message_with(event, bindings);
+        // 标签旁路：快照 actions 挂 set_value 的 handler 名（§5.3）。
+        let label = extract_handler_name(&event.handler).to_string();
+        Some(crate::ui::view::SliderChangeHandler::new_labeled(
+            move |v: f32| match &base {
+                DynamicMessage::Typed { widget_name, event_name, args } => {
+                    let mut new_args = args.clone();
+                    new_args.push(Value::Float(v as f64));
+                    DynamicMessage::Typed {
+                        widget_name: widget_name.clone(),
+                        event_name: event_name.clone(),
+                        args: new_args,
+                    }
+                }
+                other => other.clone(),
+            },
+            &label,
+        ))
+    }
+
     /// Convert a select element.
     /// Plan 446 批五 U4: `select { option "a" {} … }` → View::Select。
     /// OS-016（os-config 走查衍生）三契约补齐：
@@ -13040,6 +13102,58 @@ mod tests {
                 assert_eq!(variant, crate::ui::view::TabsVariant::Default);
             }
             other => panic!("Expected View::Tabs, got {:?}", other),
+        }
+    }
+
+    /// PLAN-661 T-03: slider 臂闭环——convert_slider 产 View::Slider（min/
+    /// max/step/value 提取）+ SliderChangeHandler 标签旁路（快照 actions 的
+    /// handler 名）+ f32 载荷派发（`.SetVol(v float)` 语义，025 基准）。
+    #[test]
+    fn plan661_t03_slider_arm_payload_and_label() {
+        let widget = make_test_widget("App", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+
+        let node = AuraNode::element("slider")
+            .with_prop("min", crate::ast::Expr::Int(0))
+            .with_prop("max", crate::ast::Expr::Int(100))
+            .with_prop("step", crate::ast::Expr::Float(1.0, Default::default()))
+            .with_prop("value", crate::ast::Expr::Float(30.0, Default::default()))
+            .with_event("onchange", ".SetVol");
+        let (props, events, _children) = match &node {
+            AuraNode::Element { props, events, children, .. } => {
+                (props.clone(), events.clone(), children.clone())
+            }
+            _ => panic!("slider node must be an element"),
+        };
+        match builder.convert_slider(&props, &events, &Bindings::new()) {
+            View::Slider { min, max, value, step, on_change: Some(handler), .. } => {
+                assert_eq!((min, max, value, step), (0.0, 100.0, 30.0, Some(1.0)));
+                assert_eq!(handler.label(), Some("SetVol"), "label bypass feeds snapshot actions");
+                match handler.call(75.0) {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "SetVol");
+                        assert_eq!(args, vec![Value::Float(75.0)], "f32 payload as first arg");
+                    }
+                    other => panic!("expected Typed message, got {other:?}"),
+                }
+            }
+            View::Slider { on_change: None, .. } => panic!("onchange declared but handler missing"),
+            other => panic!("Expected View::Slider, got {:?}", other),
+        }
+
+        // 无 onchange：无动作面（handler None——a2r/旧占位闭合形态退役）。
+        let bare = AuraNode::element("slider")
+            .with_prop("value", crate::ast::Expr::Float(7.0, Default::default()));
+        let (props2, events2, _) = match &bare {
+            AuraNode::Element { props, events, children, .. } => {
+                (props.clone(), events.clone(), children.clone())
+            }
+            _ => panic!("bare node must be an element"),
+        };
+        match builder.convert_slider(&props2, &events2, &Bindings::new()) {
+            View::Slider { on_change: None, .. } => {}
+            other => panic!("Expected bare slider with no handler, got {:?}", other),
         }
     }
 
