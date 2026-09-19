@@ -27,6 +27,7 @@
 | v1.11 | 2026-09-19 | B 程序主体（shell outproc client）：投影下行推（`ShellProjectionPush` tag 12 / `ShellClockTick` tag 13 / `ShellCursorMove` tag 14——typed 载体 wire 编码 + per-face 宿主侧指纹门）+ 命令上行执行（`DesktopBus` 端点拆臂 + registry_id 归因 + `desktop_bus_inbox` 泵后同拍执行）+ 表面 z 平面声明（Hello/Welcome 尾段多表面协商：background/chrome）+ 壳看门兵（死亡检出 → 退避 respawn → 全量重推）+ pointer 生产接线（press/release 命中 broker wid 路由）+ `shell.apps.shell_model` 双轨开关（缺省 inproc；见 §1.11；`PROTOCOL_VERSION` 仍 1——ControlMsg/Handshake 追加式，空尾段字节级不变） | PLAN-030（§1.11） |
 | v1.12 | 2026-09-19 | rqhost 第四运行形态——rendezvous 采纳协议（well-known 管道 + `adopt␟<name>` 记录 + 锁管道单实例仲裁）+ 客户端权威采纳（宿主零装载）+ rqhost 生命周期语义（末窗退出/app EOF 回收/宿主死 exit-on-EOF 策略档）+ 大帧 shm 超槽回退管道内联（见 §1.12；rendezvous 记录 = 传输层管道串约定，零 codec 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-031（§1.12） |
 | v1.13 | 2026-09-19 | native 覆盖 ramp v3 + **缺省翻转**——六缺项五族补齐（tabs 整 kind 全链[a2r 断裂修复]/hidden display:none[display 族响应式覆盖]/样式版 grid[GridCols→Grid walker 分岔]/定位族分层[absolute+offset 覆盖序真渲 + fixed/sticky 降级放行随注]/012 SelfCenter 映射臂 + D5 族运行时面[Inset/LineClamp/FlexWrap]）+ 复测 judged 22/22 = 100% ≥ 95% 过门 → `resolve_native_frame_mode` Covered 臂翻 Commands（auto 缺省 queue）+ 仪器 judged 口径升级与防漏断言反转（见 §1.13；零 wire 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-032（§1.13） |
+| v1.14 | 2026-09-19 | **单投影器统一（rq-projector-unify）**——`-q` VM 轨改接 RqProjector（View 全展开投影 + 启动覆盖门，a2r/解释同律）+ VM 轨三补（input_state_map 绑定字段回写[on() 单写点，a2r 生成物同构]/多 timer 泵侧驱动[Component::fire_due_timers 钩子]/`__desktop_cmd` 读走上行[DesktopBus 泛化]）+ `AppProjector` 退役（解释 re-exec 臂/pixels 臂/process_model=outproc 选项拔除——解释态两合法形态 = inproc 直挂 / `-q` 经 native 臂）+ `NativeProjector` 更名 `RqProjector`（见 §1.14；客户端臂内部演进零 wire 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-033（§1.14） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -702,6 +703,63 @@ z 完整栈序（in-flow z / 跨层栈序 not-yet——absolute 同层相对层�
 爬升近似）；堆叠族自身 fixed 高度既有丢弃边界（锚定按内容盒自洽）；
 tabs position Left/Right 渲染降级 Top；line-clamp/flex-wrap 渲染
 no-op。
+
+## §1.14 v1.14 增量：单投影器统一——rq-projector-unify（PLAN-033）
+
+**裁定背景**（用户 2026-09-19 定调）：`-q` = `--render-queue` 对两轨
+一视同仁——VM 版经 `-q` 走 RqProjector 获得**省内存**（免每 app
+iced/wgpu 后端）+ **native 保真**（View 全展开渲染——popover/图标/
+图像面真渲，对照解释降级投影形态）。更名决策同拍授权
+（NativeProjector → RqProjector，P020-D1 销账）。
+
+**① 改接**：`run_dynamic_client` Commands 臂换 RqProjector 装配
+（`ensure_covered` 启动门 + `run_client_session` 泛型泵）——调用面零
+改动（cmd_autodesk/rqhost/lib.rs 直车）；`auto run -r vm -q` 全链经
+物化 View 入投影器，与 a2r 编译轨同律。
+
+**② VM 轨三补**（改接暴露的缺口）：
+
+- **input_state_map 回写**：`DynamicComponent::on()` 内绑定字段类型
+  保值回写（D1=A 单写点——与 a2r 生成 on() 同构：输入事件先
+  last_input_text 写全绑定字段再跑 handler 体）。零参内联闭包
+  oninput（003-converter 双向换算）与单参 handler 两形态闭环；
+  on()（投影臂入口）与 on_with_input_for（renderer 自开窗入口）
+  互斥派发——无同事件双写路径。
+- **VM 定时器泵侧驱动**（D2=B）：`Component::fire_due_timers` 缺省
+  钩子（false）+ DynamicComponent override（timesources 逐条到期
+  派发：Timer 条目走 fire_timer[when 门内置]/Tick 条目走
+  on_with_input_for；首拍对齐 interval；mount 过滤近似）。RqProjector
+  的 `poll_tick` 首行消费（true → revision 前进）；a2r 结构体走缺省
+  零影响。
+- **`__desktop_cmd` 读走上行**（D3）：`Component::
+  drain_desktop_commands` 缺省钩子 + FrameSource 转发 + ClientPump
+  双读走点（输入派发后/周期拍后）→ `ControlMsg::DesktopBus`——
+  shell_client c4 语义泛化到任意 VM `-q` client。
+
+**③ AppProjector 退役**：生产消费者清零——解释 re-exec 臂
+（spawn_outproc_child）+ `process_model=outproc` 全局配置位拔除
+（storage 键读到 outproc = 忽略留痕迁移注记，I3；**解释态两合法
+形态 = inproc 直挂 / `-q` 经 native 臂**）；解释 pixels 臂
+（run_independent_child）退役（a2r 轨像素兜底
+run_independent_native_child 不受影响）；本体 + 块流 walker 删除，
+ClientPump 缺省泛参收口；remote.rs 宿主孪生迁 RqProjector（D4=A
+——孪生随 native 布局 = 镜像真实命中面）。
+
+**④ 更名**：NativeProjector → RqProjector（代码 + canonical 文档 +
+两侧 specs.json 派生同步；归档零改动——AGENTS 纪律）。
+
+**⑤ L3 v2a 快照面平移**：`Component::apply_state_snapshot` 钩子
+（VM 组件实现；a2r typed 缺省 false 维持 not-yet）——RqProjector
+on_control 的 StateSnapshot 臂经钩子写回 + revision 续接
+（AppProjector 退役语义不丢）。
+
+**验收口径**：003/001/027 `-q` 经 RqProjector 渲染（e2e
+p033_rq_unify_arm：027 开窗+首帧+覆盖门零拒；vm_typing 集成断言
+键入→换算帧 212）；VM 内存对照行 = 003 直挂 225088KB vs `-q`
+8016KB（省 217072KB/合 212MB——免每 app iced/wgpu 后端；≤10MB 门
+沿用）；回归门 = desktop_protocol 173/174（唯一红 covered_elements_
+within_target_set 为 PLAN-656 表同步尾巴在册红，与本计划无关——
+stash 对照同败实证）。
 
 ## 2. Wire Format（信封）
 
