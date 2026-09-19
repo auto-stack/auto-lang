@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-658
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: uigallery-multi-backend-proxy
 author: [agent]
 created_at: 2026-09-19
@@ -521,6 +522,25 @@ evidence: |-
   保留待 merge；定责用抛弃 worktree 已 guard-clean 移除。
 next: merge（前置=并发 022 合并落地后先补本计划持有簿记[勾记/证据/债核销/spec 账本]再走
   /auto-plan:merge；cherry-pick d76491caf 与 in-flight 同文本自动调和）
+```
+
+```yaml
+stage: merge
+plan_id: PLAN-658
+plan_revision: 1
+outcome: pass
+delivery_commit: 3dab57f9a（= reviewed d76491caf + master 同步 e61430c70 + docs-only 账本/债 prepare——实现面与复审基线零变化，scoped 复验 11/11+17/17）
+receipt: PLAN-658:r1
+checkpoints:
+  prepared: 3dab57f9a——canonical Spec diff（SD-01 vm/back-proxy.md 新建/SD-02 ui/overview §五契约/SD-03 vm/plans.md 行）已在 reviewed_commit 链内提交（a62d4af5c）；projection 目标 .autoos/specs.json P658-1(architecture)/P658-2(designs)/P658-3(reviews)，读回 601 items
+  landed: master 3dab57f9a fast-forward（merge-base --is-ancestor 实证）；主检出冒烟 back_proxy e2e 11/11 + auto-man check 0 错；他方会话 KNOWN-DEBT 在途编辑 stash→pop→EOF 并集保全（其 022 行+656/P020/RQ 各 hunks 工作区原样）
+  ledger_refreshed: ".autoos/specs.json@master 3dab57f9a——P658-1/2/3 入位读回（601 items，P022-1/2/3+P656-1 共存），跟踪文件经 worktree Git 提交"
+  archived: docs/plans/archive/658-uigallery-multi-backend-proxy.md（git mv）+ status archived + completion_kind delivered
+  cleaned: 待回填
+canonical_spec_paths: [docs/specs/auto-lang/vm/back-proxy.md, docs/specs/auto-lang/ui/overview.md §PLAN-658, docs/specs/auto-lang/vm/plans.md]
+ledger_targets: [.autoos/specs.json]
+debt: P642-D10 全销 / P642-D13 主体核销（远期项留册）/ P658-C1..C4 落册（KNOWN-DEBT 3dab57f9a）
+next: 终态（cleaned 回填后）
 ```
 
 ## 10. 待澄清事项
