@@ -217,7 +217,7 @@ def main() -> int:
             time.sleep(1)
 
         print("\n=== T1 snapshot landmarks ===")
-        for needle in ["北京", "横屏", "竖屏", "当前详情", "24小时预报", "5日预报", "刷新"]:
+        for needle in ["北京", "横屏", "竖屏", "当前详情", "24小时", "5日", "刷新"]:
             ok = needle in snap
             results.append((f"snapshot contains {needle}", ok))
             print(f"  {'PASS' if ok else 'FAIL'}: {needle}")
@@ -226,6 +226,36 @@ def main() -> int:
         if len(snap) < 80:
             print(f"  WARN: snapshot very short ({len(snap)} chars)")
             print(snap[:500])
+
+        print("\n=== T2b forecast tab daily ===")
+        try:
+            stf = mcp.state("forecast_tab")
+            print(f"  forecast_tab init: {stf[:200]}")
+            ok = "hourly" in stf
+            results.append(("forecast_tab default hourly", ok))
+            print(f"  {'PASS' if ok else 'FAIL'}: default hourly")
+            if not ok:
+                failed += 1
+            snapf = mcp.snapshot()
+            tid = find_clickable_for_label(snapf, "5日")
+            print(f"  5日 tab element: {tid}")
+            if not tid:
+                results.append(("find 5日 tab", False))
+                failed += 1
+            else:
+                mcp.click(tid)
+                time.sleep(0.6)
+                stf2 = mcp.state("forecast_tab")
+                print(f"  after click 5日: {stf2[:200]}")
+                ok = "daily" in stf2
+                results.append(("forecast_tab daily", ok))
+                print(f"  {'PASS' if ok else 'FAIL'}: forecast_tab daily")
+                if not ok:
+                    failed += 1
+        except Exception as e:
+            results.append(("forecast tab switch", False))
+            print(f"  FAIL: forecast tab {e}")
+            failed += 1
 
         print("\n=== T2 autoui_state ===")
         try:

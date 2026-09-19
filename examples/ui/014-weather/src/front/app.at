@@ -31,7 +31,11 @@ style metric_label = "text-[10px] text-muted-foreground uppercase tracking-wider
 style metric_value = "text-sm font-semibold text-foreground"
 style hour_card_now = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl bg-primary/15 border border-primary/30"
 style hour_card = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl bg-muted/50 border border-border/40"
+style day_card_now = "w-16 shrink-0 items-center gap-0.5 py-2.5 rounded-2xl bg-primary/15 border border-primary/30"
+style day_card = "w-16 shrink-0 items-center gap-0.5 py-2.5 rounded-2xl bg-muted/50 border border-border/40"
 style forecast_card = "bg-card border border-border rounded-2xl p-3 gap-2"
+style fc_tab_on = "h-7 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+style fc_tab_off = "h-7 px-3 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
 style day_row = "w-full items-center gap-2 py-2.5 px-1"
 style refresh_busy = "h-8 px-3 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border"
 style refresh_idle = "h-8 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
@@ -50,6 +54,7 @@ widget App {
         SetTheme(str),
         SetAccent(str),
         SetLayout(str),
+        SetForecastTab(str),
         Init
     }
 
@@ -58,6 +63,8 @@ widget App {
         var accent_color str = "indigo"
         // landscape = 网页/桌面优先；portrait = 保留的手机版竖屏设计
         var layout_mode str = "landscape"
+        // 预报区 Tab：hourly | daily（默认窗口不高，二者互斥显示）
+        var forecast_tab str = "hourly"
 
         var city_id str = "beijing"
         var city_zh str = "北京"
@@ -223,31 +230,74 @@ widget App {
                                 }
                             }
 
-                            // ── 右栏：24h（置顶）→ 指标 → 5日 ──
+                            // ── 右栏：预报 Tab（24h/5日 互斥）→ 指标 ──
                             col {
                                 style: "flex-1 min-w-0 gap-4"
 
-                                // 24 小时预报（横屏优先展示）
+                                // 预报卡：tab 切换，一次只显示一种
                                 col {
                                     style: forecast_card
-                                    text "24小时预报" { style: section_title }
-                                    scroll (axis: "x", style: "w-full h-36") {
-                                        row {
-                                            style: "items-center gap-2 h-36"
-                                            for h in .hourly {
-                                                if h.now {
-                                                    col {
-                                                        style: hour_card_now
-                                                        text h.time { style: "text-[10px] font-semibold text-primary" }
-                                                        text h.icon { style: "text-lg" }
-                                                        text h.temp { style: "text-sm font-bold text-primary" }
+                                    row {
+                                        style: "w-full items-center gap-2"
+                                        if .forecast_tab == "hourly" {
+                                            button "24小时" { onclick: .SetForecastTab("hourly"), variant: "primary", style: fc_tab_on }
+                                        } else {
+                                            button "24小时" { onclick: .SetForecastTab("hourly"), variant: "secondary", style: fc_tab_off }
+                                        }
+                                        if .forecast_tab == "daily" {
+                                            button "5日" { onclick: .SetForecastTab("daily"), variant: "primary", style: fc_tab_on }
+                                        } else {
+                                            button "5日" { onclick: .SetForecastTab("daily"), variant: "secondary", style: fc_tab_off }
+                                        }
+                                    }
+
+                                    if .forecast_tab == "hourly" {
+                                        scroll (axis: "x", style: "w-full h-36") {
+                                            row {
+                                                style: "items-center gap-2 h-36"
+                                                for h in .hourly {
+                                                    if h.now {
+                                                        col {
+                                                            style: hour_card_now
+                                                            text h.time { style: "text-[10px] font-semibold text-primary" }
+                                                            text h.icon { style: "text-lg" }
+                                                            text h.temp { style: "text-sm font-bold text-primary" }
+                                                        }
+                                                    } else {
+                                                        col {
+                                                            style: hour_card
+                                                            text h.time { style: "text-[10px] text-muted-foreground" }
+                                                            text h.icon { style: "text-lg" }
+                                                            text h.temp { style: "text-sm font-semibold text-foreground" }
+                                                        }
                                                     }
-                                                } else {
-                                                    col {
-                                                        style: hour_card
-                                                        text h.time { style: "text-[10px] text-muted-foreground" }
-                                                        text h.icon { style: "text-lg" }
-                                                        text h.temp { style: "text-sm font-semibold text-foreground" }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if .forecast_tab == "daily" {
+                                        // 与小时卡同构；温度两行：最高 / 最低
+                                        scroll (axis: "x", style: "w-full h-36") {
+                                            row {
+                                                style: "items-center gap-2 h-36"
+                                                for d in .daily {
+                                                    if d.day == "今天" {
+                                                        col {
+                                                            style: day_card_now
+                                                            text d.day { style: "text-[10px] font-semibold text-primary" }
+                                                            text d.icon { style: "text-lg" }
+                                                            text d.tmax { style: "text-sm font-bold text-primary" }
+                                                            text d.tmin { style: "text-[10px] text-primary/70" }
+                                                        }
+                                                    } else {
+                                                        col {
+                                                            style: day_card
+                                                            text d.day { style: "text-[10px] text-muted-foreground" }
+                                                            text d.icon { style: "text-lg" }
+                                                            text d.tmax { style: "text-sm font-semibold text-foreground" }
+                                                            text d.tmin { style: "text-[10px] text-muted-foreground" }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -321,28 +371,6 @@ widget App {
                                             style: metric_card
                                             text "数据" { style: metric_label }
                                             text "演示样本" { style: "text-xs text-muted-foreground" }
-                                        }
-                                    }
-                                }
-
-                                // 5 日预报
-                                col {
-                                    style: forecast_card
-                                    text "5日预报" { style: section_title }
-                                    col {
-                                        style: "w-full"
-                                        for d in .daily {
-                                            row {
-                                                style: day_row
-                                                text d.day { style: "w-10 text-sm font-medium text-foreground shrink-0" }
-                                                text d.icon { style: "w-7 text-lg text-center shrink-0" }
-                                                text d.cond { style: "w-14 text-xs text-muted-foreground shrink-0" }
-                                                text d.tmin { style: "text-xs text-muted-foreground w-8 text-right shrink-0" }
-                                                col {
-                                                    style: "flex-1 h-1.5 mx-2 rounded-full bg-gradient-to-r from-sky-400 to-amber-400 opacity-80"
-                                                }
-                                                text d.tmax { style: "text-xs font-semibold text-foreground w-8 shrink-0" }
-                                            }
                                         }
                                     }
                                 }
@@ -459,51 +487,69 @@ widget App {
                                 }
                             }
 
-                            // 24h（与横屏同构：card + scroll 直包 row）
+                            // 预报 Tab（与横屏同构）
                             col {
                                 style: forecast_card
-                                text "24小时预报" { style: section_title }
-                                scroll (axis: "x", style: "w-full h-36") {
-                                    row {
-                                        style: "items-center gap-2 h-36"
-                                        for h in .hourly {
-                                            if h.now {
-                                                col {
-                                                    style: hour_card_now
-                                                    text h.time { style: "text-[10px] font-semibold text-primary" }
-                                                    text h.icon { style: "text-lg" }
-                                                    text h.temp { style: "text-sm font-bold text-primary" }
-                                                }
-                                            } else {
-                                                col {
-                                                    style: hour_card
-                                                    text h.time { style: "text-[10px] text-muted-foreground" }
-                                                    text h.icon { style: "text-lg" }
-                                                    text h.temp { style: "text-sm font-semibold text-foreground" }
+                                row {
+                                    style: "w-full items-center gap-2"
+                                    if .forecast_tab == "hourly" {
+                                        button "24小时" { onclick: .SetForecastTab("hourly"), variant: "primary", style: fc_tab_on }
+                                    } else {
+                                        button "24小时" { onclick: .SetForecastTab("hourly"), variant: "secondary", style: fc_tab_off }
+                                    }
+                                    if .forecast_tab == "daily" {
+                                        button "5日" { onclick: .SetForecastTab("daily"), variant: "primary", style: fc_tab_on }
+                                    } else {
+                                        button "5日" { onclick: .SetForecastTab("daily"), variant: "secondary", style: fc_tab_off }
+                                    }
+                                }
+                                if .forecast_tab == "hourly" {
+                                    scroll (axis: "x", style: "w-full h-36") {
+                                        row {
+                                            style: "items-center gap-2 h-36"
+                                            for h in .hourly {
+                                                if h.now {
+                                                    col {
+                                                        style: hour_card_now
+                                                        text h.time { style: "text-[10px] font-semibold text-primary" }
+                                                        text h.icon { style: "text-lg" }
+                                                        text h.temp { style: "text-sm font-bold text-primary" }
+                                                    }
+                                                } else {
+                                                    col {
+                                                        style: hour_card
+                                                        text h.time { style: "text-[10px] text-muted-foreground" }
+                                                        text h.icon { style: "text-lg" }
+                                                        text h.temp { style: "text-sm font-semibold text-foreground" }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
-
-                            // 5 日
-                            col {
-                                style: forecast_card
-                                text "5日预报" { style: section_title }
-                                col {
-                                    style: "w-full"
-                                    for d in .daily {
+                                if .forecast_tab == "daily" {
+                                    scroll (axis: "x", style: "w-full h-36") {
                                         row {
-                                            style: day_row
-                                            text d.day { style: "w-10 text-sm font-medium text-foreground shrink-0" }
-                                            text d.icon { style: "w-7 text-lg text-center shrink-0" }
-                                            text d.cond { style: "w-14 text-xs text-muted-foreground shrink-0" }
-                                            text d.tmin { style: "text-xs text-muted-foreground w-8 text-right shrink-0" }
-                                            col {
-                                                style: "flex-1 h-1.5 mx-2 rounded-full bg-gradient-to-r from-sky-400 to-amber-400 opacity-80"
+                                            style: "items-center gap-2 h-36"
+                                            for d in .daily {
+                                                if d.day == "今天" {
+                                                    col {
+                                                        style: day_card_now
+                                                        text d.day { style: "text-[10px] font-semibold text-primary" }
+                                                        text d.icon { style: "text-lg" }
+                                                        text d.tmax { style: "text-sm font-bold text-primary" }
+                                                        text d.tmin { style: "text-[10px] text-primary/70" }
+                                                    }
+                                                } else {
+                                                    col {
+                                                        style: day_card
+                                                        text d.day { style: "text-[10px] text-muted-foreground" }
+                                                        text d.icon { style: "text-lg" }
+                                                        text d.tmax { style: "text-sm font-semibold text-foreground" }
+                                                        text d.tmin { style: "text-[10px] text-muted-foreground" }
+                                                    }
+                                                }
                                             }
-                                            text d.tmax { style: "text-xs font-semibold text-foreground w-8 shrink-0" }
                                         }
                                     }
                                 }
@@ -525,6 +571,7 @@ widget App {
     on {
         .Init -> {
             .layout_mode = "landscape"
+            .forecast_tab = "hourly"
             .city_id = "beijing"
             .city_zh = name_for("beijing")
             .condition = condition_for("beijing")
@@ -546,6 +593,10 @@ widget App {
 
         .SetLayout(mode) -> {
             .layout_mode = mode
+        }
+
+        .SetForecastTab(tab) -> {
+            .forecast_tab = tab
         }
 
         .SelectCity(id) -> {
