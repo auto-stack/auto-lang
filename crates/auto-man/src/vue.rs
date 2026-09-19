@@ -6057,6 +6057,206 @@ fn prefix_api_url_literals(content: &str, root: &str, app_id: &str) -> String {
     out
 }
 
+/// PLAN-658 T-04: 从 `use <module>: a, b, c` 行剔除指定 item（流端点 fn
+/// 不进 client——流消费走 Tick 注入）。非匹配行原样保留。
+fn drop_use_items(content: &str, module_prefix: &str, items: &[&str]) -> String {
+    let mut out = String::with_capacity(content.len());
+    for line in content.split_inclusive('\n') {
+        let t = line.trim_start();
+        let hit = t.starts_with("use ")
+            && t[4..]
+                .split(|c: char| c == ':' || c.is_whitespace())
+                .next()
+                .map(|m| m == module_prefix)
+                .unwrap_or(false);
+        if !hit {
+            out.push_str(line);
+            continue;
+        }
+        let Some((head, list)) = line.rsplit_once(':') else {
+            out.push_str(line);
+            continue;
+        };
+        let kept: Vec<String> = list
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty() && !items.contains(&s))
+            .map(|s| format!(" {}", s))
+            .collect();
+        if kept.is_empty() {
+            // 整行只剩流项 → 连 use 行一起删（避免空 import）。
+            let trimmed_end = line.trim_end();
+            if trimmed_end.ends_with(',') || trimmed_end.ends_with(':') {
+                continue;
+            }
+            continue;
+        }
+        out.push_str(&format!("{}:{}{}\n", head.trim_end(), kept.join(","), ""));
+    }
+    out
+}
+
+/// PLAN-658 T-04: widget 源注入 SSE 消费——model 增 `__p658_sse`/`interval`
+/// 两 var，on 增 `.Tick` 处理器（惰性 sse_open + 有界 sse_poll 排水，事件
+/// 按 api_gen 广播判别分派 `store.<Msg>`）。标记缺失时原样返回（告警）。
+fn inject_sse_tick(source: &str, stream_url: &str) -> String {
+    let tick = format!(
+        r#"    .Tick -> {{
+        if .__p658_sse < 0 {{
+            .__p658_sse = http.sse_open("{stream_url}")
+        }}
+        var __n = 0
+        while __n < 8 {{
+            let __evt = http.sse_poll(.__p658_sse)
+            if __evt == "" {{
+                break
+            }}
+            if __evt == "[DONE]" {{
+                .__p658_sse = -1
+                break
+            }}
+            let __v = json.to_value(__evt)
+            if __v.event == "NewMessage" {{
+                store.NewMessage(__v)
+            }} else {{
+                if __v.event == "Typing" {{
+                    store.Typing(__v)
+                }}
+            }}
+            __n = __n + 1
+        }}
+    }}
+"#
+    );
+    let mut out = String::with_capacity(source.len() + tick.len());
+    let mut msg_done = false;
+    let mut model_done = false;
+    let mut on_done = false;
+    for line in source.split_inclusive('\n') {
+        out.push_str(line);
+        let t = line.trim_start();
+        // Tick 作为消息变体声明（012-clock 形态——TimeSource 以消息派发，
+        // msg 枚举缺变体则不触发）。
+        if !msg_done && t.starts_with("msg {") {
+            out.push_str("        Tick,\n");
+            msg_done = true;
+        }
+        if !model_done && t.starts_with("model {") {
+            out.push_str("        var __p658_sse int = -1\n        var interval int = 200\n");
+            model_done = true;
+        }
+        if !on_done && t.starts_with("on {") {
+            out.push_str(&tick);
+            on_done = true;
+        }
+    }
+    if !model_done || !on_done {
+        println!(
+            "  {} gallery stream demo: model/on marker missing — SSE tick not injected",
+            "⚠".bright_yellow()
+        );
+        return source.to_string();
+    }
+    out
+}
+
+/// PLAN-658 T-04: 生成 back client 模块——#[api] fn 逐个实现为
+/// Http.*_json 绝对子前缀 URL 调用（merged 画廊编译单元内纯 .at 可编译，
+/// api 调用不经 codegen 三态决策）。类型/标签声明自 api.at 原文随行。
+fn build_back_client_module(
+    root: &str,
+    app_id: &str,
+    api_mod: &auto_lang::api::ApiModule,
+    api_content: &str,
+) -> String {
+    let mut out = String::from("// PLAN-658 T-04: gallery back-proxy client (generated, 勿手改)\n");
+    // pub type/pub tag 声明块逐字随行（花括号深度扫描）。
+    let mut lines = api_content.lines().peekable();
+    while let Some(line) = lines.next() {
+        let t = line.trim_start();
+        if t.starts_with("pub type") || t.starts_with("pub tag") {
+            out.push_str(line);
+            out.push('\n');
+            let mut depth = line.matches('{').count() as i32 - line.matches('}').count() as i32;
+            while depth > 0 {
+                match lines.next() {
+                    Some(l) => {
+                        depth += l.matches('{').count() as i32 - l.matches('}').count() as i32;
+                        out.push_str(l);
+                        out.push('\n');
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+    for ep in &api_mod.endpoints {
+        if ep.return_type.contains("Stream") {
+            continue;
+        }
+        let method = ep.method().to_uppercase();
+        let path = ep.path();
+        let url = format!("{root}/apps/{app_id}{}", path);
+        let params: Vec<&auto_lang::api::ApiParam> = ep.params.iter().collect();
+        let void = matches!(ep.return_type.as_str(), "void" | "" | "()");
+        let params_sig: Vec<String> = params.iter().map(|p| format!("{} {}", p.name, p.ty)).collect();
+        let ret_ann = if void { String::new() } else { format!(" {}", ep.return_type) };
+        // 路径参数拼接（{p}/:p 占位）。v1 语料无路径参数形态——命中时保守
+        // 走整 URL 字面量（拼参形态留待实装语料出现时补）。
+        let body_params: Vec<&&auto_lang::api::ApiParam> =
+            params.iter().filter(|p| !path.contains(&format!(":{}", p.name))).collect();
+        // POST/PUT/PATCH body：镜像 emit_api_http_call 的既有构造——字面 key +
+        // `json.from_value(arg)` 值序列化 + STR_CAT 链（split 模式同款，值经
+        // VM 感知序列化不降格）。不用 json.encode 组对象（占位 encode 把堆
+        // 引用降格为池索引串，T-04 实测）。GET 带参走 query（url.encode）。
+        let needs_body = matches!(method.as_str(), "POST" | "PUT" | "PATCH");
+        let call = if needs_body {
+            let native = match method.as_str() {
+                "POST" => "post_json",
+                "PUT" => "put_json",
+                _ => "patch_json",
+            };
+            if body_params.is_empty() {
+                format!("Http.{native}(\"{url}\")")
+            } else {
+                let mut body = String::from("\"{\"");
+                for (i, p) in body_params.iter().enumerate() {
+                    if i > 0 {
+                        body.push_str(" + \",\"");
+                    }
+                    body.push_str(&format!(
+                        " + \"\\\"{}\\\":\" + json.from_value({})",
+                        p.name, p.name
+                    ));
+                }
+                body.push_str(" + \"}\"");
+                format!("Http.{native}(\"{url}\", {body})")
+            }
+        } else if body_params.is_empty() {
+            format!("Http.get_json(\"{url}\")")
+        } else {
+            let mut q = format!("\"{url}?\"");
+            for (i, p) in body_params.iter().enumerate() {
+                let sep = if i > 0 { "&" } else { "" };
+                q.push_str(&format!(" + \"{sep}{}=\" + url.encode({})", p.name, p.name));
+            }
+            format!("Http.get_json({q})")
+        };
+        out.push_str(&format!(
+            "\npub fn {}({}){} {{\n",
+            ep.fn_name,
+            params_sig.join(", "),
+            ret_ann
+        ));
+        if void {
+            out.push_str(&format!("    {call}\n    return\n}}\n"));
+        } else {
+            out.push_str(&format!("    return json.to_value({call})\n}}\n"));
+        }
+    }
+    out
+}
+
 /// Apps directory for the gallery demos registry:
 /// AUTO_GALLERY_APPS env wins; next is `<root_dir>/../ui` (sibling in examples/),
 /// then `<workspace>/examples/ui`.
@@ -6273,7 +6473,12 @@ thread_local! {
     > = const { std::cell::RefCell::new(None) };
 }
 
-fn gallery_rows_via_cache(apps_dir: &Path) -> Vec<GalleryDemoRow> {
+/// PLAN-658 T-03: 画廊 demo 行缓存——start_gallery_back_proxy 与
+/// refresh_gallery_registry 同线程背靠背跑（rust_ui 画廊钩子），scan_apps +
+/// gallery_demo_row 的逐 demo SFC 编译约分钟级，二次扫描不可接受。键 =
+/// apps_dir 绝对路径；命中即取走（一次性，防跨 run 陈旧）；冷扫描在
+/// fill=true 时回填（首个消费者），后续消费者零成本命中。
+fn gallery_rows_via_cache(apps_dir: &Path, fill: bool) -> Vec<GalleryDemoRow> {
     GALLERY_ROWS_CACHE.with(|c| {
         if let Some((cached_dir, rows)) = c.borrow_mut().take() {
             if cached_dir == apps_dir {
@@ -6284,10 +6489,14 @@ fn gallery_rows_via_cache(apps_dir: &Path) -> Vec<GalleryDemoRow> {
             apps_dir,
             &auto_lang::ui::app_registry::ScanOptions::default(),
         );
-        entries
+        let rows: Vec<GalleryDemoRow> = entries
             .iter()
             .map(|e| gallery_demo_row(apps_dir, e).0)
-            .collect()
+            .collect();
+        if fill {
+            *c.borrow_mut() = Some((apps_dir.to_path_buf(), rows.clone()));
+        }
+        rows
     })
 }
 
@@ -6305,21 +6514,39 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
     let Ok(apps_dir) = gallery_apps_dir(project_dir) else {
         return None;
     };
-    let native_media: Vec<auto_lang::back_proxy::NativeMediaApp> = gallery_rows_via_cache(&apps_dir)
+    let mut sessions: Vec<auto_lang::back_proxy::SessionSpec> = Vec::new();
+    let native_media: Vec<auto_lang::back_proxy::NativeMediaApp> = gallery_rows_via_cache(&apps_dir, true)
         .into_iter()
-        .filter(|row| row.loadable || row.fullstack || row.route_stub)
-        .map(|row| auto_lang::back_proxy::NativeMediaApp {
-            app_id: row.id.clone(),
-            media_root: pac_media_root(&row.pac),
+        .filter_map(|row| {
+            // PLAN-658 T-04: stream 后端 demo 加载为 VM session（~Stream 签名
+            // 按 proxy 特路服务，CRUD 在 session 内执行）。
+            let back_api = apps_dir.join(&row.id).join("src").join("back").join("api.at");
+            let is_stream = std::fs::read_to_string(&back_api)
+                .map(|c| c.contains("~Stream") || c.contains("~Promise"))
+                .unwrap_or(false);
+            if is_stream && back_api.is_file() {
+                sessions.push(auto_lang::back_proxy::SessionSpec {
+                    app_id: row.id.clone(),
+                    back_entry: back_api,
+                });
+            }
+            if !(row.loadable || row.fullstack || row.route_stub) {
+                return None;
+            }
+            Some(auto_lang::back_proxy::NativeMediaApp {
+                app_id: row.id.clone(),
+                media_root: pac_media_root(&row.pac),
+            })
         })
         .collect();
-    if native_media.is_empty() {
+    if native_media.is_empty() && sessions.is_empty() {
         return None;
     }
     let app_count = native_media.len();
+    let session_count = sessions.len();
     let config = auto_lang::back_proxy::BackProxyConfig {
         port: 0,
-        sessions: Vec::new(),
+        sessions,
         native_media,
     };
     match auto_lang::back_proxy::start(config) {
@@ -6327,7 +6554,7 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
             let base = format!("http://127.0.0.1:{}", proxy.port);
             set_gallery_proxy_root(Some(base.clone()));
             println!(
-                "  {} Gallery back-proxy: {base} ({app_count} fullstack apps)",
+                "  {} Gallery back-proxy: {base} ({app_count} apps, {session_count} sessions)",
                 "✓".bright_green(),
             );
             Some(proxy.port)
@@ -6351,7 +6578,7 @@ pub fn refresh_gallery_registry(project_dir: &Path) -> AutoResult<usize> {
     let apps_dir = gallery_apps_dir(project_dir)?;
     // PLAN-658 T-03: 消费 start_gallery_back_proxy 的行缓存（同线程背靠背，
     // 免二次分钟级逐 demo SFC 扫描）；冷路径（vue 臂 build 等）自扫。
-    let rows = gallery_rows_via_cache(&apps_dir);
+    let rows = gallery_rows_via_cache(&apps_dir, false);
     write_registry_at(&project_dir.join("src").join("front"), &rows)?;
     // T-10b 产物（demos/*.at + AppViewport.vm.at）与 registry.at 同源同刷：
     // VM 臂此前只刷 registry,语料演进后视口适配器停留旧版（vue 臂 run 才
@@ -6634,23 +6861,97 @@ pub fn emit_gallery_vm_demos(
                 _ => back_ok = false,
             }
             // 已知不受支持的 backend 形态（§5 失败模式：降级回静态面板并告警，
-            // 不得拖垮宿主）——① native 命名空间后端（`use auto.*`：宿主侧
-            // image/fs 面在 VM 臂无内嵌等价物）；② SSE/异步流签名
-            // （`~Stream`/`~Promise`）。v1 全栈档仅收纯 .at 内存后端
-            // （013/015 族）。
+            // 不得拖垮宿主）——① native 命名空间后端（`use auto.*`：T-05 解除）；
+            // ② SSE/异步流签名（`~Stream`/`~Promise`）——PLAN-658 T-04 起，在
+            // back-proxy 运行（proxy 根已注入）时转 **proxy 路径**：back 不进
+            // 画廊（bus 体不可编译），发射 client 模块 + Tick SSE 消费。
+            let mut stream_proxy_demo = false;
             for (m, c) in back_modules.iter() {
-                let unsupported = c.lines().any(|l| l.trim_start().starts_with("use auto."))
-                    || c.contains("~Stream")
-                    || c.contains("~Promise");
-                if unsupported {
+                let native_ns = c.lines().any(|l| l.trim_start().starts_with("use auto."));
+                let stream_sig = c.contains("~Stream") || c.contains("~Promise");
+                if native_ns {
                     println!(
-                        "  {} gallery demo `{}`: back module `{m}` uses native-ns/stream backend — not embeddable yet, static panel",
+                        "  {} gallery demo `{}`: back module `{m}` uses native-ns backend — not embeddable yet, static panel",
                         "⚠".bright_yellow(),
                         r.id
                     );
                     back_ok = false;
+                } else if stream_sig {
+                    if gallery_proxy_root().is_some() {
+                        stream_proxy_demo = true;
+                    } else {
+                        println!(
+                            "  {} gallery demo `{}`: back module `{m}` uses stream backend (no back-proxy) — static panel",
+                            "⚠".bright_yellow(),
+                            r.id
+                        );
+                        back_ok = false;
+                    }
                 }
             }
+            let mut renames: std::collections::BTreeMap<String, String> = Default::default();
+            if back_ok && stream_proxy_demo {
+                // PLAN-658 T-04 proxy 路径。
+                let Some(api_content) = back_modules.get("api").cloned() else {
+                    skipped.push(format!("{}(back 链缺 api 模块)", r.id));
+                    continue;
+                };
+                let Some(api_mod) = crate::api_gen::extract_api_lenient(&api_content) else {
+                    skipped.push(format!("{}(api 端点解析失败)", r.id));
+                    continue;
+                };
+                let stream_fns: Vec<String> = api_mod
+                    .endpoints
+                    .iter()
+                    .filter(|e| e.return_type.contains("Stream"))
+                    .map(|e| e.fn_name.clone())
+                    .collect();
+                if stream_fns.is_empty() {
+                    skipped.push(format!("{}(未识别 ~Stream 端点)", r.id));
+                    continue;
+                }
+                let stream_path = api_mod
+                    .endpoints
+                    .iter()
+                    .find(|e| e.return_type.contains("Stream"))
+                    .map(|e| e.path())
+                    .unwrap_or_else(|| "/api/stream".to_string());
+                let root = gallery_proxy_root().unwrap_or_default();
+                let client_stem = format!("{ns}_api_client");
+                let stream_url = format!("{root}/apps/{}/{}", r.id, stream_path.trim_start_matches('/'));
+                // ① 前端 use 行剔除流项（client 无流 fn——流消费走 Tick 注入）。
+                let sf: Vec<&str> = stream_fns.iter().map(|s| s.as_str()).collect();
+                let source_ds = drop_use_items(source, "back.api", &sf);
+                let row_ds: std::collections::BTreeMap<String, String> = row_modules
+                    .iter()
+                    .map(|(k, v)| (k.clone(), drop_use_items(v, "back.api", &sf)))
+                    .collect();
+                // ② 改名：自有模块 ns 化；back.api（含裸 back 别名）→ client stem。
+                for m in row_ds.keys() {
+                    renames.insert(m.clone(), format!("{ns}_{}", m.replace('.', "_")));
+                }
+                renames.insert("back.api".to_string(), client_stem.clone());
+                renames.insert("back".to_string(), client_stem.clone());
+                let mut back_names: std::collections::BTreeSet<String> = Default::default();
+                back_names.insert("back.api".to_string());
+                back_names.insert("api".to_string());
+                // ③ 前端/自有模块改写 + Tick 注入（store.X 接收者交给下游
+                // store_qualify_source 统一限定——注入先于它）。
+                source_rw = rewrite_use_modules(&source_ds, &renames, &back_names);
+                source_rw = inject_sse_tick(&source_rw, &stream_url);
+                let mut ns_modules: std::collections::BTreeMap<String, String> =
+                    Default::default();
+                for (m, c) in row_ds {
+                    ns_modules.insert(
+                        renames.get(&m).cloned().unwrap_or_else(|| m.clone()),
+                        rewrite_use_modules(&c, &renames, &back_names),
+                    );
+                }
+                // ④ client 模块入发射面。
+                let client_src = build_back_client_module(&root, &r.id, &api_mod, &api_content);
+                ns_modules.insert(client_stem, client_src);
+                row_modules = ns_modules;
+            } else {
             // 改写映射：原始模块路径 → `<ns>_<mod>`（`.` 折叠 `_`，与
             // resolve_module_path 的 rel 同形）；种子别名形式（back.api）
             // 指向与其 canonical（api）同一目标。
@@ -6663,7 +6964,6 @@ pub fn emit_gallery_vm_demos(
             for k in back_aliases.keys() {
                 back_names.insert(k.clone());
             }
-            let mut renames: std::collections::BTreeMap<String, String> = Default::default();
             for m in row_modules.keys() {
                 renames.insert(m.clone(), format!("{ns}_{}", m.replace('.', "_")));
             }
@@ -6711,6 +7011,7 @@ pub fn emit_gallery_vm_demos(
             for (m, c) in back_modules {
                 let key = renames.get(&m).cloned().unwrap_or_else(|| m.clone());
                 row_modules.insert(key, c);
+            }
             }
         }
         // PLAN-633: store 接收者限定——画廊宿主 VM 编译单元汇集全部 demo
@@ -10553,6 +10854,108 @@ widget Helper {
         assert!(
             store_src.contains("Http.get_json(\"/api/media/scan\")"),
             "standalone form untouched: {store_src}"
+        );
+    }
+
+    /// PLAN-658 T-04: stream demo proxy 路径发射——~Stream 后端在 proxy 根
+    /// 注入时不再否决：发射 client 模块（Http.*_json 绝对 URL + 类型随行）、
+    /// 前端 use 改指 client 且剔除流项、widget 注入 .Tick SSE 消费。
+    /// proxy 根未设时维持静态面板否决。
+    #[test]
+    fn test_emit_gallery_vm_demos_stream_proxy_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let front = apps.join("017-c").join("src").join("front");
+        let back = apps.join("017-c").join("src").join("back");
+        fs::create_dir_all(&front).unwrap();
+        fs::create_dir_all(&back).unwrap();
+        fs::write(
+            front.join("app.at"),
+            "use chat_store: ChatStore\n\nwidget App {\n    model {\n        var draft str = \"\"\n    }\n    msg { Send(str) }\n    on {\n        .Init -> {\n            store.Init()\n        }\n        .Send(t) -> {\n            send_message(\"You\", t)\n        }\n    }\n    view {\n        text \"chat\"\n    }\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            front.join("chat_store.at"),
+            "use back.api: list_messages, send_message, stream\n\ntype TypingEvent { name str }\n\nstore ChatStore {\n    model {\n        var messages []Message = []\n        var typing_name str = \"\"\n    }\n    on {\n        .Init -> {\n            .messages = list_messages()\n        }\n    }\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            back.join("api.at"),
+            "pub type Message = {\n    id: int\n    text: str\n}\n\nuse db\n\n#[api(method = \"GET\", path = \"/api/messages\")]\npub fn list_messages() []Message {\n    return db.all()\n}\n\n#[api(method = \"POST\", path = \"/api/messages\")]\npub fn send_message(sender str, text str) Message {\n    return db.add(sender, text)\n}\n\n#[api(method = \"GET\", path = \"/api/stream\")]\npub fn stream() ~Stream<Message> {\n    return bus.subscribe()\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            back.join("db.at"),
+            "use api\n\nvar messages List<Message> = List<Message>.new([])\n\npub fn all() []Message {\n    return messages\n}\n\npub fn add(sender str, text str) Message {\n    let m = Message { id: 1, text: text }\n    messages.push(m)\n    return m\n}\n",
+        )
+        .unwrap();
+
+        let rows = vec![fullstack_demo_row(
+            "017-c",
+            &fs::read_to_string(front.join("app.at")).unwrap(),
+        )];
+        let gallery = dir.path().join("src").join("gallery");
+        let demos = gallery.join("demos");
+
+        // 臂一：proxy 根已设——client 模块 + Tick 注入 + use 改写。
+        set_gallery_proxy_root(Some("http://127.0.0.1:3358".to_string()));
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
+        set_gallery_proxy_root(None);
+        assert_eq!(emitted, 1, "stream demo emitted via proxy path: {skipped:?}");
+
+        // client 模块：类型随行 + 绝对 URL + 流 fn 不在。
+        let client = fs::read_to_string(demos.join("d017c_api_client.at")).unwrap();
+        assert!(client.contains("pub type Message"), "types copied: {client}");
+        assert!(
+            client.contains(
+                "Http.get_json(\"http://127.0.0.1:3358/apps/017-c/api/messages\")"
+            ),
+            "get url: {client}"
+        );
+        assert!(
+            client.contains(
+                "Http.post_json(\"http://127.0.0.1:3358/apps/017-c/api/messages\", \"{\" + \"\\\"sender\\\":\" + json.from_value(sender) + \",\" + \"\\\"text\\\":\" + json.from_value(text) + \"}\")"
+            ),
+            "post url + from_value body: {client}"
+        );
+        assert!(!client.contains("~Stream"), "stream fn not in client");
+
+        // store 拷贝：use 改指 client 且流项剔除。
+        let store_src = fs::read_to_string(demos.join("d017c_chat_store.at")).unwrap();
+        assert!(
+            store_src.contains("use d017c_api_client: list_messages, send_message"),
+            "use rewritten: {store_src}"
+        );
+        assert!(!store_src.contains("stream"), "stream item dropped: {store_src}");
+
+        // demo 本体：Tick 注入（惰性 sse_open + sse_poll 排水 + store 分派）。
+        let demo_src = fs::read_to_string(demos.join("017-c.at")).unwrap();
+        assert!(demo_src.contains(".Tick -> {"), "tick injected");
+        assert!(
+            demo_src.contains("http.sse_open(\"http://127.0.0.1:3358/apps/017-c/api/stream\")"),
+            "sse url: {demo_src}"
+        );
+        assert!(demo_src.contains("http.sse_poll"), "poll drain");
+        // store 接收者已被 store_qualify_source 限定到真名（单 store）。
+        assert!(
+            demo_src.contains("ChatStore.NewMessage(__v)"),
+            "dispatch qualified: {}",
+            &demo_src[demo_src.find(".Tick").unwrap_or(0)..]
+                .chars()
+                .take(700)
+                .collect::<String>()
+        );
+
+        // back 链不进发射面。
+        assert!(!demos.join("d017c_api.at").exists(), "back not merged");
+
+        // 臂二：proxy 根未设——维持否决（静态面板）。
+        let gallery2 = dir.path().join("src2").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery2).unwrap();
+        assert_eq!(emitted, 0, "no-proxy: demo skipped");
+        assert!(
+            skipped.iter().any(|s| s.contains("back 链不可内嵌")),
+            "skip reason: {skipped:?}"
         );
     }
 

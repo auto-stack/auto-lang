@@ -329,3 +329,129 @@ fn http_e2e_back_proxy_native_media_no_root_honest_empty() {
     assert_eq!(status, 200, "no-root scan status");
     assert_eq!(body, "{\"entries\":[],\"root_missing\":true}", "honest empty");
 }
+
+/// PLAN-658 T-04 探针（临时）：017-chat 真实 back（含 ~Stream 死码体
+/// bus.subscribe()）能否装载进 session 并应答 CRUD 路由。
+#[test]
+fn http_e2e_back_proxy_real_017_crud_probe() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let entry = repo_root.join("examples/ui/017-chat/src/back/api.at");
+    if !entry.exists() {
+        eprintln!("skip: {} not present", entry.display());
+        return;
+    }
+    let config = BackProxyConfig {
+        port: 3978,
+        sessions: vec![SessionSpec {
+            app_id: "017-chat".to_string(),
+            back_entry: entry,
+        }],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("start proxy 017");
+    let (status, body) = http_request(proxy.port, "GET", "/apps/017-chat/api/contacts", None);
+    assert_eq!(status, 200, "017 contacts, body: {body}");
+    assert!(body.contains("Alice"), "contacts seeded: {body}");
+    let (status, body) = http_request(
+        proxy.port,
+        "POST",
+        "/apps/017-chat/api/messages",
+        Some(r#"{"sender":"You","text":"hello from proxy"}"#),
+    );
+    assert_eq!(status, 200, "017 send, body: {body}");
+    assert!(body.contains("hello from proxy"), "created msg: {body}");
+    let (status, body) = http_request(proxy.port, "GET", "/apps/017-chat/api/messages", None);
+    assert_eq!(status, 200);
+    assert!(body.contains("hello from proxy"), "persisted: {body}");
+}
+
+/// PLAN-658 T-04: stream 一等公民——真 017 语料经 proxy 的 SSE 转发：
+/// 订阅 /api/stream 长连接后，POST typing → Typing 帧、POST messages →
+/// NewMessage 帧实时到达（~Stream 端点按签名特路 + 宿主总线广播）。
+#[test]
+fn http_e2e_back_proxy_real_017_sse_stream() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let entry = repo_root.join("examples/ui/017-chat/src/back/api.at");
+    if !entry.exists() {
+        eprintln!("skip: {} not present", entry.display());
+        return;
+    }
+    let config = BackProxyConfig {
+        port: 3968,
+        sessions: vec![SessionSpec {
+            app_id: "017-chat".to_string(),
+            back_entry: entry,
+        }],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("start proxy 017 sse");
+
+    // 打开 SSE 长连接（独立 socket，读超时防挂死）。
+    let mut sse = TcpStream::connect(("127.0.0.1", proxy.port)).expect("connect sse");
+    sse.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+    let req = "GET /apps/017-chat/api/stream HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\nConnection: close\r\n\r\n";
+    sse.write_all(req.as_bytes()).unwrap();
+    let mut reader = BufReader::new(sse.try_clone().unwrap());
+    let mut status_line = String::new();
+    reader.read_line(&mut status_line).unwrap();
+    assert!(status_line.contains("200"), "sse status: {status_line}");
+    let mut content_type = String::new();
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        if line == "\r\n" {
+            break;
+        }
+        if line.to_ascii_lowercase().starts_with("content-type") {
+            content_type = line.trim().to_string();
+        }
+    }
+    assert!(
+        content_type.contains("text/event-stream"),
+        "sse content-type: {content_type}"
+    );
+
+    let read_frame = |reader: &mut BufReader<TcpStream>| -> String {
+        let mut frame = String::new();
+        loop {
+            let mut line = String::new();
+            let n = reader.read_line(&mut line).expect("read frame line");
+            assert!(n > 0, "sse stream closed prematurely");
+            frame.push_str(&line);
+            if frame.ends_with("\n\n") {
+                return frame;
+            }
+        }
+    };
+
+    // 触发两族事件，帧实时到达。
+    let (status, body) = http_request(
+        proxy.port,
+        "POST",
+        "/apps/017-chat/api/typing",
+        Some(r#"{"sender":"Alice"}"#),
+    );
+    assert_eq!(status, 200, "typing status, body: {body}");
+    let f1 = read_frame(&mut reader);
+    assert!(
+        f1.contains("\"event\":\"Typing\"") && f1.contains("Alice"),
+        "typing frame: {f1}"
+    );
+
+    let (status, body) = http_request(
+        proxy.port,
+        "POST",
+        "/apps/017-chat/api/messages",
+        Some(r#"{"sender":"You","text":"sse hello"}"#),
+    );
+    assert_eq!(status, 200, "send status, body: {body}");
+    let f2 = read_frame(&mut reader);
+    assert!(
+        f2.contains("\"event\":\"NewMessage\"") && f2.contains("sse hello"),
+        "new-message frame: {f2}"
+    );
+}

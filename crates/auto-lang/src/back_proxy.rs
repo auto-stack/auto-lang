@@ -130,6 +130,9 @@ enum ProxyReply {
         content_length: u64,
         reader: Box<dyn std::io::Read + Send>,
     },
+    /// PLAN-658 T-04: ~Stream 端点的 SSE 订阅——listener 写响应头后逐帧
+    /// 转发（`data: <json>\n\n`），连接断开即退订（recv 失败清订阅）。
+    Sse(std::sync::mpsc::Receiver<String>),
 }
 
 impl ProxyReply {
@@ -359,10 +362,28 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
 }
 
 fn write_response(stream: &mut TcpStream, reply: ProxyReply) -> std::io::Result<()> {
+    // PLAN-658 T-04: SSE 长连接——头后逐帧 `data: <json>\n\n`，断写即退订。
+    let reply = match reply {
+        ProxyReply::Sse(rx) => {
+            let head =
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
+            stream.write_all(head.as_bytes())?;
+            stream.flush()?;
+            for msg in rx {
+                let frame = format!("data: {msg}\n\n");
+                if stream.write_all(frame.as_bytes()).is_err() || stream.flush().is_err() {
+                    break;
+                }
+            }
+            return Ok(());
+        }
+        other => other,
+    };
     let (status, content_type, extra_headers, body_source) = match reply {
         ProxyReply::Response { status, content_type, body } => {
             (status, content_type, Vec::<(String, String)>::new(), BodySource::Bytes(body))
         }
+        ProxyReply::Sse(_) => unreachable!("Sse handled in the outer match"),
         #[cfg(feature = "ui")]
         ProxyReply::Stream { status, content_type, extra_headers, content_length, reader } => (
             status,
@@ -593,6 +614,39 @@ struct SessionRuntime {
     routes: Vec<HttpRoute>,
     /// fn 名 → 声明参数名有序表（按名绑定 body/query 用）。
     fn_params: HashMap<String, Vec<String>>,
+    /// PLAN-658 T-04: #[api] fn 名 → (HTTP method, 返回类型 Display 形)。
+    /// ~Stream 判定（含 "Stream<"）与 POST 广播判别（void/typing/New<Type>）
+    /// 都读它——镜像 api_gen broadcast_event_name 约定。
+    fn_meta: HashMap<String, (String, String)>,
+    /// PLAN-658 T-04: session 事件总线——~Stream 端点订阅、POST 广播。
+    bus: std::sync::Arc<SessionBus>,
+}
+
+/// PLAN-658 T-04: 每 session 宿主侧事件总线（镜像 api_gen events.rs 的
+/// broadcast channel 语义：POST 处理器广播，SSE 连接订阅）。
+struct SessionBus {
+    subs: std::sync::Mutex<Vec<mpsc::Sender<String>>>,
+}
+
+impl SessionBus {
+    fn new() -> Self {
+        SessionBus { subs: std::sync::Mutex::new(Vec::new()) }
+    }
+
+    fn subscribe(&self) -> mpsc::Receiver<String> {
+        let (tx, rx) = mpsc::channel();
+        self.subs.lock().unwrap().push(tx);
+        rx
+    }
+
+    fn broadcast(&self, msg: &str) {
+        let mut subs = self.subs.lock().unwrap();
+        subs.retain(|tx| tx.send(msg.to_string()).is_ok());
+    }
+
+    fn has_subscribers(&self) -> bool {
+        !self.subs.lock().unwrap().is_empty()
+    }
 }
 
 fn session_main(app_id: String, back_entry: std::path::PathBuf, rx: mpsc::Receiver<ProxyRequest>) {
@@ -626,6 +680,22 @@ fn session_main(app_id: String, back_entry: std::path::PathBuf, rx: mpsc::Receiv
 /// `collect_module_imports` 扁平化 → Codegen 有序编译（Use → 类型 →
 /// Store(var) 全局化 + `__module_init` → Fn）→ Linker → VirtualFlash →
 /// AutoVM → 显式跑 `__module_init` 激活模块级 `var`（contacts/messages 等）。
+/// #[api] fn 返回类型的**主类型名**（POST 广播 "New<Type>" 判别用）。
+/// 遍历包装层（List/?/!/引用）取首个命名类型；标量返回 None。
+fn primary_type_name(t: &crate::ast::Type) -> Option<String> {
+    use crate::ast::Type;
+    match t {
+        Type::User(d) => Some(d.name.to_string()),
+        Type::Enum(e) => Some(e.borrow().name.to_string()),
+        Type::Tag(tag) => Some(tag.borrow().name.to_string()),
+        Type::GenericInstance(inst) => Some(inst.base_name.to_string()),
+        Type::List(inner) | Type::Reference(inner) | Type::Option(inner) | Type::Result(inner) => {
+            primary_type_name(inner)
+        }
+        _ => None,
+    }
+}
+
 fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<SessionRuntime, String> {
     crate::vm::native_registry::register_builtin_natives();
 
@@ -712,9 +782,13 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
         }
     }
 
-    // 3. 路由表 + 参数名表（Plan 312 api_routes；参数名取自 AST 声明）。
+    // 3. 路由表 + 参数名表 + fn 元数据（Plan 312 api_routes；参数名取自 AST，
+    //    返回类型双形态：Display（`~Stream<T>` 呈 `linear<Stream<T>>`，流判定
+    //    用）+ 主类型名（POST 广播 "New<Type>" 判别用——Display 对 User 类型
+    //    印声明文本，不可直接抽名））。
     let api_routes: Vec<(String, String, String)> = codegen.api_routes.clone();
     let mut fn_params: HashMap<String, Vec<String>> = HashMap::new();
+    let mut fn_meta: HashMap<String, (String, String)> = HashMap::new();
     for stmt in &import_stmts {
         if let Stmt::Fn(f) = stmt {
             if f.api_attrs.is_some() {
@@ -722,6 +796,15 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                     f.name.to_string(),
                     f.params.iter().map(|p| p.name.to_string()).collect(),
                 );
+                let method = f
+                    .api_attrs
+                    .as_ref()
+                    .map(|a| a.method.clone())
+                    .unwrap_or_default();
+                let display = format!("{}", f.ret);
+                let primary = primary_type_name(&f.ret)
+                    .unwrap_or_else(|| display.clone());
+                fn_meta.insert(f.name.to_string(), (method, format!("{primary}|{display}")));
             }
         }
     }
@@ -757,6 +840,8 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
         vm,
         routes: rt_routes,
         fn_params,
+        fn_meta,
+        bus: std::sync::Arc::new(SessionBus::new()),
     };
 
     // 5. 激活模块级全局（var contacts = ... 等）。
@@ -795,6 +880,23 @@ impl SessionRuntime {
                 )),
             );
         };
+
+        // PLAN-658 T-04: ~Stream 端点按签名特路（两个生成器同语义：函数体
+        // 不在执行面——bus.subscribe 是宿主 seam）。订阅 session 事件总线，
+        // listener 侧逐帧 SSE 转发。
+        if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
+            if ret.contains("Stream<") {
+                let rx = self.bus.subscribe();
+                log::info!(
+                    "[back-proxy:{}] SSE subscribe {} {} (subs={})",
+                    self.app_id,
+                    req.method,
+                    req.path,
+                    self.bus.subs.lock().unwrap().len()
+                );
+                return ProxyReply::Sse(rx);
+            }
+        }
 
         // 请求体 JSON（POST/PUT/PATCH 按字段名绑定；解析失败按原始字符串
         // 透传给单参形态的兼容臂——与既有 split wire 的宽容度一致）。
@@ -863,6 +965,47 @@ impl SessionRuntime {
             "null".to_string()
         };
         self.vm.rc_release_task_stack(&mut task);
+
+        // PLAN-658 T-04: POST 广播（镜像 api_gen 广播约定——session 存在
+        // ~Stream 端点时才广播）：typing 型（fn 名含 "typing"）void POST →
+        // {"event":"Typing","name":<首参>}；create 型非 void POST → 返回实体
+        // 加 "event":"New<主类型>" 判别后广播。
+        let has_sse = self.fn_meta.values().any(|(_, r)| r.contains("Stream<"));
+        if has_sse {
+            if let Some((method, meta)) = self.fn_meta.get(&route_match.fn_name).cloned() {
+                let (primary, display) = meta.split_once('|').unwrap_or((meta.as_str(), ""));
+                if method.eq_ignore_ascii_case("POST") {
+                    let fn_bare = route_match
+                        .fn_name
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(&route_match.fn_name)
+                        .to_lowercase();
+                    if fn_bare.contains("typing") {
+                        let name = bound
+                            .first()
+                            .map(|v| v.as_str().unwrap_or_default().to_string())
+                            .unwrap_or_default();
+                        self.bus.broadcast(&format!(
+                            "{{\"event\":\"Typing\",\"name\":{}}}",
+                            serde_json::json!(name)
+                        ));
+                    } else if display != "void" && !display.contains("Stream<") {
+                        if let Ok(mut v) =
+                            serde_json::from_str::<serde_json::Value>(&body_json_str)
+                        {
+                            if let Some(obj) = v.as_object_mut() {
+                                obj.insert(
+                                    "event".to_string(),
+                                    serde_json::Value::String(format!("New{primary}")),
+                                );
+                                self.bus.broadcast(&v.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         if std::env::var("AUTO_BACK_PROXY_TRACE").is_ok() {
             log::info!(

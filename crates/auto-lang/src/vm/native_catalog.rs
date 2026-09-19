@@ -1401,6 +1401,18 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.clear_default_auth", 3141, Void),
             // PLAN-053 P-053-4: merged mode #[api] no-op warning
             ("auto.vm.warn_api_noop", 3142, Void),
+            // PLAN-658 T-04: ~Stream 端点的宿主事件总线 seam。语义：流端点
+            // 由宿主按签名特路服务（Axum 生成器与 back-proxy 同语义，函数体
+            // 不在执行面）；本 shim 仅为让 `bus.subscribe()` 体可编译——
+            // 被实际执行则压 -1 哨兵（iterator 查找响亮失败，不静默）。
+            ("auto.bus.subscribe", 3144, Void),
+            // PLAN-658 T-04: Plan 341 SSE 客户端的逐步拉取面（挂 auto.http.*
+            // ——`http` 已在 codegen 内建命名空间白名单，`http_stream` 前缀
+            // 不在，避免为此扩白名单）——sse_open 返回流句柄（非迭代器），
+            // sse_poll 非阻塞 try_recv（Data→载荷 / 缓冲空→"" / 结束→
+            // "[DONE]"），供 Tick 驱动的消费循环用。
+            ("auto.http.sse_open", 3145, Void),
+            ("auto.http.sse_poll", 3146, Void),
             ("auto.http.post", 2231, Void),
             ("auto.http.put", 2232, Void),
             ("auto.http.delete", 2233, Void),
@@ -2274,6 +2286,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.set_default_query", 3140),
     ("auto.http.clear_default_auth", 3141),
     ("auto.vm.warn_api_noop", 3142),
+    ("auto.bus.subscribe", 3144),
+    ("auto.http.sse_open", 3145),
+    ("auto.http.sse_poll", 3146),
     ("auto.http.post", 2231),
     ("auto.http.put", 2232),
     ("auto.http.delete", 2233),

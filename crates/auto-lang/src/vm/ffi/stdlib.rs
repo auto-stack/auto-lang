@@ -6281,6 +6281,68 @@ pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
+/// PLAN-658 T-04: `auto.http.sse_open(url) -> stream_id (i64)`
+///
+/// 与 `auto.http.sse_get_stream` 同源（同一 spawn_async_sse_stream 通道），
+/// 但返回**流句柄**而非迭代器 id——配合 sse_poll 供 Tick 驱动的逐步消费
+/// 循环用（迭代器形态只能整流 for-loop，无法分帧跨 Tick 拉取）。
+pub fn shim_http_stream_sse_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let stream_id = alloc_async_id();
+    let handle = spawn_async_sse_stream(url, stream_id);
+    if let Ok(mut map) = ASYNC_STREAMS.lock() {
+        map.insert(stream_id, handle);
+    }
+    // 单槽 i32（.at int 变量链）——i64 双槽编码在 int 赋值位会丢高位字。
+    task.ram.push_i32(stream_id as i32);
+    Ok(())
+}
+
+/// PLAN-658 T-04: `auto.http.sse_poll(stream_id) -> str`
+///
+/// 非阻塞 try_recv：Data → 载荷；缓冲空且未结束 → ""（pending 哨兵）；
+/// 结束/出错 → "[DONE]"（与句柄族 stream_next 的终止哨兵一致）。
+pub fn shim_http_stream_sse_poll(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let stream_id: i64 = task.ram.pop_i32() as i64;
+    let handle = ASYNC_STREAMS
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&(stream_id as u64)).cloned());
+    let Some(handle) = handle else {
+        return Err(VMError::RuntimeError(format!(
+            "Invalid SSE stream handle: {stream_id}"
+        )));
+    };
+    let out = match handle.rx.lock() {
+        Ok(mut rx) => match rx.try_recv() {
+            Ok(AsyncStreamEvent::Data(s)) => s,
+            Ok(AsyncStreamEvent::Done) => "[DONE]".to_string(),
+            Ok(AsyncStreamEvent::Error(_)) => "[DONE]".to_string(),
+            Err(_) => {
+                if handle.done.load(Ordering::SeqCst) {
+                    "[DONE]".to_string()
+                } else {
+                    String::new()
+                }
+            }
+        },
+        Err(_) => "[DONE]".to_string(),
+    };
+    out.push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+/// PLAN-658 T-04: `auto.bus.subscribe() -> iterator_id`（编译面 seam）
+///
+/// ~Stream 端点由宿主按签名特路服务（Axum 生成器与 back-proxy 同语义，
+/// 函数体不在执行面）；本 shim 让 `bus.subscribe()` 体可编译——被实际
+/// 执行则压 -1（iterator 查找响亮失败，不静默谎报空流）。
+pub fn shim_bus_subscribe_stub(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_i32(-1);
+    Ok(())
+}
+
 /// POST streaming with custom headers (Plan 159: AutoCode agent support).
 ///
 /// Stack args (bottom to top): url, body, headers_json
@@ -8236,6 +8298,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // Plan 341: 异步 SSE 流式接收 — 返回 iterator_id 供 for-in 消费。
     natives.register_shim_by_name("auto.http.sse_get_stream", shim_http_sse_get_stream);
+    // PLAN-658 T-04: SSE 逐步拉取面 + ~Stream 端点编译 seam。
+    natives.register_shim_by_name("auto.http.sse_open", shim_http_stream_sse_open);
+    natives.register_shim_by_name("auto.http.sse_poll", shim_http_stream_sse_poll);
+    natives.register_shim_by_name("auto.bus.subscribe", shim_bus_subscribe_stub);
     natives.register_shim_by_name("http.sse_get_stream", shim_http_sse_get_stream);
     natives.register_shim_by_name("http.sse_stream", shim_http_sse_get_stream);
 
