@@ -4,8 +4,8 @@ status: executing
 feature_name: 014-weather-ui-refresh
 author: [agent]
 created_at: 2026-09-19
-updated_at: 2026-09-19
-plan_revision: 3
+updated_at: 2026-09-20
+plan_revision: 4
 current_step: 6
 total_steps: 6
 supersedes_spec_components: []
@@ -37,6 +37,13 @@ affects: [examples/ui/014-weather]
 有界修订（去条件中文+温度区间条字面要件），rev 2 口径下 AC-05 的
 fail 判定按旧约保留为历史；余留 = README 同步（F-660-R2）+
 死样式清理（F-660-R4）+ 冒烟内容断言（F-660-R3）。
+
+**r7–r10（他方/本会话续迭代，见 §9）**：r6/r7 窗体与外壳（弃 fit→固定
+`window: "960x680"`，Plan 512 边界）；r8 文档与冒烟内容断言收口；
+**r9/r10 rust/a2r 轨**：clone 内 `auto build -r rust` / `auto run -r rust`
+打通（handler 字面量、ASCII city_id、参数形按钮文案）；**rev 4**：
+将 Rust vs VM 端差异与 a2r 缺口记入复审/债项（本文件 §9/§10），
+**不扩大本计划 AC 范围**（AC 仍以 Vue+VM 为主门；rust 轨 = 对拍观察面）。
 
 **r6..r8（他方会话迭代 + 本会话收口）**：r6（0c73cb2ef）fit 窗 + app
 card 框 + 紧凑 hero；r7（e0a12502e）放弃 fit 改固定窗 `window:"960x680"`
@@ -283,6 +290,40 @@ from-sky-400 to-amber-400）| 高温`~~。rev 2 复审的 AC-05 fail 判定
 `docs/specs/` 无增量：`supersedes_spec_components` / `new_spec_components` 保持空；
 `affects: [examples/ui/014-weather]`。
 
+### 5.6 Rust/a2r 轨观察面（rev 4 记录，非 AC 门）
+
+用户要求 `auto run -r rust` 对拍（截图：图1=Rust，图2=VM）。结果与处置：
+
+**已打通**：clone `plan-660-dev` 上 `auto build -r rust` → `Finished`；
+`auto run -r rust` 生成并运行 `weather.exe`（Iced，窗 960×680）。
+r9/r10 兼容改造（提交 `6d0cfa485` / `217958aaa`）：
+
+| 改造 | 原因（实证） |
+|---|---|
+| handler 全字面量 if/else，不 `use weather_data: fn` / 不调顶层 fn | a2r 不把 `use …: fn` 或 app.at 顶层 `fn` 发射进 `main.rs` → E0425 |
+| 城市逻辑键 ASCII `city_id`（beijing…），中文仅展示 | 中文比较字面量写入 main.rs 成 **mojibake**（`å¬`≠「北京」），选中态失效 |
+| 刷新/主题钮 `button "刷新"` 参数形 | `button { if … text "…" }` → `View::button("")`，子节点文案丢失 |
+| 城市 pill 10 路展开，不用 `for` + `[]str` | a2r 把循环元素当 `&Value`，与 `String` 比较/传参失败；`[]str` model 初始化亦期望 `Value` |
+| 根 `w-full h-full bg-background`，外层边距收敛 | 窗缘空白；尽量盖住 iced 默认底色 |
+
+**Rust vs VM 对拍表（用户截图 + 生成代码取证）**：
+
+| 项 | VM（图2） | Rust/a2r（图1） | 归因 | 债号 |
+|---|---|---|---|---|
+| 刷新/主题钮文案 | 有字 | 曾无字 → r10 参数形修复 | a2r button 子节点丢弃 | P660-D4 |
+| 城市选中态 | 北京 primary | 曾不亮 → r10 ASCII 键修复 | a2r 中文 literal mojibake | P660-D4 |
+| 窗缘一圈空白 | 有 | 有 | 窗尺寸 > 内容 + 外层 pad；r7 弃 fit | 部分 app 侧收敛 |
+| **底部多余一条** | **深色** | **白色** | **iced 默认窗底 vs VM `bg-background` 默认样式不一致**（非 app token 问题） | **P660-D5**（Design 22 域） |
+| 「现在/今天」高亮 | 有 | 可能无（比较 mojibake 残留） | 同 D4 | P660-D4 |
+| Hero 多条件渐变 | 全分支 | 生成常只剩 sunny/else | a2r if/else 收敛 | P660-D4 |
+| AQI 等级色（优/轻度） | 有 | 可能无 | 中文比较 mojibake | P660-D4 |
+| button preset 注入 | VM 注入 | 与 VM 可能不一致 | **已有 KNOWN-DEBT 027** | P027 |
+| `flex-wrap` | 降级日志 | 同 | Plan 412 既定 | — |
+
+**验证口径（rev 4）**：主 AC 门 = Vue 生成 + VM 冒烟（r8 HEAD 17/17 PASS
+口径在 r10 后复跑仍 17/17，state `city_id=beijing`）。Rust 轨 = 观察/对拍面，
+`Finished` + MCP 起窗为 rust 面最低门；**像素级 rust/VM 一致不纳入本计划 AC**。
+
 ## 6. 测试设计
 
 Category A（纯示例资产）：
@@ -394,24 +435,30 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
 | new | PLAN-660 | 3 | pass | —（契约修订，无代码变更） | T-04 复勾（AC-05r3 达标）；T-06 扩域保持开放（F-660-R2/R4/R3 余留） | 用户裁定 2026-09-19（复审裁决问询）：F-660-R1 选路径 (b)——认可 r5 简化日卡片为最终形态，AC-05 有界修订（Tab 互斥+日卡片要件，去条件中文+区间条字面要件）；rev 2 的 AC-05 fail 判定按旧约保留为历史（受影响验证标记 stale）。G-3/§2 布局/§5.3 区间条原案同步标注取代关系；current_step 5/6 | 无 | **work**（T-06 余留：README 同步 + 死样式 + 冒烟内容断言） |
 | work | PLAN-660 | 3 | pass | 65fbe867a@plan-660-dev（HEAD，r1..r8 九提交） | T-06 余留收口（全任务闭环 6/6） | 执行期他方会话续迭代 r6（0c73cb2ef fit 窗+app 框+紧凑 hero）→ r7（e0a12502e 弃 fit 改固定窗 960x680，Plan 512 iced 量测塌缩边界；宽度全固定刻度；城市条去 container）——rev 3 契约（Tab 互斥+日卡片）在 r6/r7 中保留，AC-05r3 持续成立。本会话 r8 收口：README 同步 r7、day_row 死样式清除（card_surface 已被 r6/r7 先行清）、vm_smoke 补「daily tab renders day cards (今天/周二)」内容断言（F-660-R3 闭）。验证三面于 65fbe867a：auto build 生成绿 + vite 直跑绿（634 模块）+ **vm_smoke 17/17 PASS**。worktree clean（余他方 scratch tests/dump_snap.py 未跟踪，不属本计划） | 无阻塞（vue-tsc 脚手架缺口 P660-D1 在册非本计划域） | **execution_done** → review |
 | review | PLAN-660 | 3 | **blocked**（程序性阻塞，无验收失败） | 65fbe867a（HEAD 未动；基点 b69c7344c） | 全任务保持勾选（无 AC 失败，不重开任务） | 终审基线固定后（19:19:49）检出 worktree 存在**他方会话在途未提交迭代**（5 文件：app.at/pac.at + rust-workspace/014-weather 三文件，+262/-33）——性质 = rust/a2r 轨移植：移除 `dep stylekit`（rust/a2r 不解析包导入，hint_text UndefinedVariable）改本地内联 recipe、rust-workspace 生成物侧同步改写。100 秒有界等待重查（19:22:14）仍未落提交。按复审规则「HEAD 之上存在在测未提交实现时不得签发 pass」——r1..r8 已提交实现本身满足 rev 3 全部 AC（证据见上行），但终审 pass 会被在途改动即刻失效 | **阻断项：他方会话在途 WIP 未落**。解锁 = ①该会话提交（或撤回）其 rust/a2r 轨迭代 → ②终审以新 HEAD 重跑（rev 3 口径）→ ③若 rust 轨移植定型且 dep stylekit 移除保留，属实现语义变化（T-04 记录含「dep stylekit 声明」），需 review 行注记或 rev 4 小修约，并确认 rust-workspace 生成物随 merge 走的口径 | **blocked → 解锁后重跑终审** |
+| work-rust | PLAN-660 | 4 | pass（rust 轨观察面；不改 rev 3 AC） | 217958aaa@plan-660-dev（HEAD；含 6d0ca/2c666/0c73c 等 r6–r10） | 上行「在途 WIP」= 本线 rust 移植，**已提交** | `auto build -r rust` Finished；`auto run -r rust` 起 `weather.exe`（MCP 9270，窗 960×680）。生成代码取证：`View::button("刷新")`、`city_id == "beijing"`、`button("北京")` 在 main.rs。VM 冒烟 r10 复跑 **17/17 PASS**。对拍表见 **§5.6**；债候选 **P660-D4/D5** 见 §10 | rust-workspace 生成物是否随 merge 入仓（.gitignore 通常忽略 gen 路径）待 merge 口径裁定 | **解锁 review**：以 217958aaa 为终审 HEAD，rev 3 AC（Vue+VM）重跑；rust 对拍差异记债不挡 AC |
+| review | PLAN-660 | 4 | （待终审） | 以 217958aaa 重跑 | — | 终审应在 **217958aaa** 上按 rev 3 AC 复跑（Vue+VM）；§5.6 对拍差异不计入 AC fail | 见 §10 D4/D5 与 rust-workspace merge 口径 | **review 终审** |
 
 ## 10. 待澄清事项
 
-- **（终审 blocked 2026-09-19 19:19）他方会话在途 rust/a2r 轨移植 WIP 未落**：
-  app.at/pac.at（移除 dep stylekit → hint_text 本地内联）+ rust-workspace/
-  014-weather 三文件，+262/-33，未提交。终审 pass 不得在在测未提交实现
-  之上签发。解锁 = 该会话落提交/撤回 → 终审以新 HEAD 重跑；若移植定型，
-  dep stylekit 移除属实现语义变化需 review 行注记或 rev 4 小修约。
-- ~~（review 新增）r5 日卡片形态与 AC-05 字面要件冲突，修复路径需用户裁决~~
-  **已裁决（2026-09-19）**：选路径 (b)——认可简化卡片为最终形态，AC-05
-  已随 rev 3 修订；余留（README 同步/死样式/冒烟内容断言）归 T-06。
+- **P660-D4（high，a2r codegen）**：rust 臂中文比较字面量 mojibake、
+  `button { text 子节点 }` 丢文案、`use …: fn` / 顶层 fn 不发射、
+  `[]str` model 期望 `Value`、for 元素 `&Value` vs `String`。014 已用
+  ASCII 键/参数形按钮/handler 字面量**规避**；根治在 `ui_gen/rust.rs` /
+  `trans/rust.rs`（与 KNOWN-DEBT 027 同族，宜并 a2r UI 债表）。
+- **P660-D5（medium，Design 22 / 引擎默认）**：窗口高度大于 app 内容时
+  **底部露出的窗底色**——Rust/iced 偏亮、VM 跟 `bg-background` 偏深。
+  非 014 token 问题；建议 `docs/design/autoui/base-styles-and-visual-parity.md`
+  登记「窗壳/chrome 默认色双端对齐」并另立引擎小计划。app 侧 r10 已用
+  `w-full h-full bg-background` 尽量覆盖。
+- **rust-workspace 生成物 merge 口径**：`examples/rust-workspace/**` 常被
+  gitignore；014 rust 产物是否入库/CI 缓存，merge 时裁定（本计划 clone
+  内为验证生成，非必入库资产）。
+- ~~（终审 blocked 2026-09-19 19:19）他方会话在途 rust/a2r 轨移植 WIP 未落~~
+  **已提交**（217958aaa，即 §9 work-rust 行）；解锁 review。
+- ~~（review 新增）r5 日卡片形态与 AC-05 字面要件冲突~~ **已裁决 rev 3**。
 - 真实天气 API 是否二期接入？本计划默认 mock（非目标已声明）。
 - 是否强制 Playwright 冒烟？当前 Category A 目视 + build 为门禁。
-- ~~master `.autoos/specs.json`（plan-022-dev 账本）未完成合并由谁收口？~~
-  **已解除**：Plan 658 merge 收口（3dab57f9a/7ebb3446b/92c8013a2），
-  本计划簿记已随之落 commit。
-- 生成器 `vue-tsc` 的 `import.meta.env` / `auto-sources` 缺口是否另立小计划？
-  014 应用源码不依赖该修复（vite 产物已可用）；`auto build` 的
-  `pnpm run build`（vue-tsc && vite build）在该缺口修复前会红，
-  绕行 = `pnpm exec vite build` 直跑（本计划验证口径）。
-  已登记 KNOWN-DEBT P660-D1。
+- ~~master `.autoos/specs.json` 冲突~~ **已解除**（Plan 658 merge）。
+- 生成器 `vue-tsc` 的 `import.meta.env` / `auto-sources` 缺口：
+  已登记 KNOWN-DEBT P660-D1；绕行 `pnpm exec vite build`。
+
