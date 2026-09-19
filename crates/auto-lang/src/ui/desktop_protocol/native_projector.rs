@@ -37,7 +37,8 @@ use super::message::{ControlMsg, DrawList, DrawOp, ImageFit, InputMsg, MouseButt
 use crate::ui::component::Component;
 use crate::ui::style::{Color, Style, StyleClass};
 use crate::ui::view::{
-    PopoverAnchor, PopoverPlacement, ScrollCallback, ScrollMetrics, SelectCallback, View,
+    PopoverAnchor, PopoverPlacement, ScrollCallback, ScrollMetrics, SelectCallback, TabsPosition,
+    TabsSelectCallback, TabsVariant, View,
 };
 
 /// 输入框几何（client_runtime 私有常量的 native 同值镜像——视觉规格
@@ -101,6 +102,10 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
     /// 任何落点即关；先于面板项登记 → rev 序面板项胜，锚/主块被吞）。
     /// Esc 同臂派发（key=27 且在场）。
     PopoverDismiss { rect: WRect, on_dismiss: Option<M> },
+    /// PLAN-032 T-03（D2）：tabs 托盘项——点击 → TabsSelectCallback::
+    /// call(index) 物化消息（VM 轨首参 = value 串在回调内包装；
+    /// on_select 缺席不登记——受控语义，convert_tabs 契约）。
+    TabSelect { rect: WRect, index: usize, on_select: TabsSelectCallback<M> },
 }
 
 /// select 开态覆盖序记录（主块渲染后统一追加——D3：DrawList paint
@@ -142,7 +147,8 @@ impl<M: Clone + std::fmt::Debug> HitEntry<M> {
             | HitEntry::SelectBox { rect, .. }
             | HitEntry::SelectOption { rect, .. }
             | HitEntry::Scroll { rect, .. }
-            | HitEntry::PopoverDismiss { rect, .. } => rect,
+            | HitEntry::PopoverDismiss { rect, .. }
+            | HitEntry::TabSelect { rect, .. } => rect,
         }
     }
 
@@ -159,7 +165,8 @@ impl<M: Clone + std::fmt::Debug> HitEntry<M> {
             | HitEntry::SelectBox { rect, .. }
             | HitEntry::SelectOption { rect, .. }
             | HitEntry::Scroll { rect, .. }
-            | HitEntry::PopoverDismiss { rect, .. } => move_rect(rect, dx, dy),
+            | HitEntry::PopoverDismiss { rect, .. }
+            | HitEntry::TabSelect { rect, .. } => move_rect(rect, dx, dy),
         }
         self
     }
@@ -658,6 +665,12 @@ impl<C: Component> NativeProjector<C> {
                 if let Some(msg) = on_dismiss {
                     self.component.on(msg);
                 }
+                self.rev += 1;
+            }
+            // PLAN-032 T-03（D2）：tabs 托盘项 → index 物化派发（回调内
+            // 包装 value 串载荷——受控切换由 app 状态经 view() 重入驱动）。
+            Some(HitEntry::TabSelect { index, on_select, .. }) => {
+                self.component.on(on_select.call(index));
                 self.rev += 1;
             }
             None => {}
@@ -1462,6 +1475,90 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let (ew, eh) = logical_extent.unwrap_or(laid.size);
             Laid { size: (ew, eh) }
         }
+        // PLAN-032 T-03（D2）：tabs kind 臂——标签托盘（等宽按钮态 Quad/
+        // Text，选中态 bg/fg 差分）+ 内容区子树（contents[selected]）+
+        // on_select 逐项命中（TabSelect.call(index) 物化——VM 轨首参 =
+        // value 串在回调内包装，convert_tabs 契约；缺席不登记 = 受控
+        // 点击不切换）。variant：default = 按钮托盘；enclosed = 连通
+        // 形态（托盘底 + 选中下划线，PLAN-641 视觉子集）。position：
+        // Top/Bottom = 托盘上/下；Left/Right 渲染降级 Top（not-yet 随注
+        //——扫描面不含 position 载荷，判定无感）。
+        View::Tabs { labels, contents, selected, position, on_select, variant, .. } => {
+            let n = labels.len().max(1);
+            let sel = (*selected).min(n - 1);
+            let font = style.font_size.unwrap_or(14.0);
+            let line_h = font * LINE_H_FACTOR;
+            // 托盘项高：一行文本 + 上下各 4px 呼吸。
+            let tab_h = line_h + 8.0;
+            let tab_w = (avail_w.max(0.0) / n as f32).max(0.0);
+            let draw_tray = |ctx: &mut NativeCtx<M>, tray_y: f32| {
+                for (i, label) in labels.iter().enumerate() {
+                    let tx = x + tab_w * i as f32;
+                    let rect = WRect::new(tx, tray_y, tab_w, tab_h);
+                    let active = i == sel;
+                    match variant {
+                        TabsVariant::Default => {
+                            ctx.push_quad(
+                                rect,
+                                if active { style.bg.unwrap_or(BUTTON_BG) } else { INPUT_BG },
+                            );
+                            if let Some(border) = style.border {
+                                ctx.push_border(rect, border);
+                            }
+                        }
+                        TabsVariant::Enclosed => {
+                            ctx.push_quad(rect, INPUT_BG);
+                            if active {
+                                ctx.push_quad(
+                                    WRect::new(tx, tray_y + tab_h - 2.0, tab_w, 2.0),
+                                    style.bg.unwrap_or(BUTTON_BG),
+                                );
+                            }
+                        }
+                    }
+                    let lw = measure_text(label, font);
+                    ctx.ops.push(DrawOp::Text {
+                        x: tx + (tab_w - lw).max(0.0) / 2.0,
+                        y: tray_y + 4.0,
+                        size: font,
+                        line_height: line_h,
+                        color: if active {
+                            style.fg.unwrap_or(LABEL_FG)
+                        } else {
+                            PLACEHOLDER_FG
+                        },
+                        text: label.clone(),
+                    });
+                    if let Some(cb) = on_select {
+                        ctx.hits.push(HitEntry::TabSelect { rect, index: i, on_select: cb.clone() });
+                    }
+                }
+            };
+            let tray_first = !matches!(position, TabsPosition::Bottom);
+            let (tray_y, content_y) = if tray_first { (y, y + tab_h) } else { (y + tab_h, y) };
+            // 内容区：空内容 = 透明占位（enclosed 连通边框 v1 以托盘下缘
+            // 线承载，内容边框 not-yet 随注——视觉子集，I3）。ops 序随
+            // position 自然阅读序：Top 托盘先、Bottom 内容先（几何不重叠，
+            // paint order 无牵连）。
+            let content_h = if tray_first {
+                draw_tray(ctx, tray_y);
+                contents
+                    .get(sel)
+                    .map(|child| layout_view_node(ctx, child, x, content_y, avail_w))
+                    .map(|l| l.size.1)
+                    .unwrap_or(0.0)
+            } else {
+                let h = contents
+                    .get(sel)
+                    .map(|child| layout_view_node(ctx, child, x, content_y, avail_w))
+                    .map(|l| l.size.1)
+                    .unwrap_or(0.0);
+                draw_tray(ctx, tray_y);
+                h
+            };
+            let outer_w = style.fixed_w().unwrap_or(avail_w.max(0.0));
+            Laid { size: (outer_w, tab_h + content_h) }
+        }
         // —— 覆盖门后动态分支防线：占位盒 + 留痕（I3：非静默错绘）。
         other => {
             let kind = coverage::native_kind_of(other);
@@ -1810,6 +1907,9 @@ fn node_style_of_view<M: Clone + std::fmt::Debug>(view: &View<M>) -> NodeStyle {
         | View::Grid { style, .. }
         | View::Scrollable { style, .. }
         | View::MouseArea { style, .. } => style.as_ref(),
+        // PLAN-032 T-03：Tabs 托盘视觉消费（bg/fg/border/font——variant
+        // 差分见 View::Tabs 臂）。
+        | View::Tabs { style, .. } => style.as_ref(),
         _ => None,
     };
     node_style_of(style)
@@ -2245,6 +2345,89 @@ mod tests {
         assert!(!texts.contains(&"M"), "md:hidden = 桌面隐藏: {texts:?}");
     }
 
+    /// PLAN-032 T-03（D2）：tabs kind golden——default/enclosed 两变体 ×
+    /// 选中态切换 on_select 闭环（点击托盘项 → TabSelect 物化 → 受控
+    /// 状态重入 view() → 内容区切换帧）。
+    #[test]
+    fn tabs_tray_golden_and_select_loopback() {
+        #[derive(Debug)]
+        struct TabsBox {
+            which: usize,
+            sel: usize,
+            seen: Vec<String>,
+        }
+
+        #[derive(Debug, Clone, PartialEq)]
+        enum TbMsg {
+            Pick(usize, String),
+        }
+
+        impl Component for TabsBox {
+            type Msg = TbMsg;
+            fn on(&mut self, msg: Self::Msg) {
+                if let TbMsg::Pick(i, v) = msg {
+                    self.sel = i;
+                    self.seen.push(v);
+                }
+            }
+            fn view(&self) -> View<Self::Msg> {
+                let labels = vec!["Alpha".to_string(), "Beta".to_string()];
+                let contents = vec![
+                    View::text_styled("panel-a", "text-sm"),
+                    View::text_styled("panel-b", "text-sm"),
+                ];
+                View::Tabs {
+                    labels,
+                    contents,
+                    selected: self.sel,
+                    position: TabsPosition::Top,
+                    on_select: Some(TabsSelectCallback::new(|idx| {
+                        // select 臂双载荷闭包先例（idx + value 串）。
+                        let val = if idx == 0 { "a" } else { "b" };
+                        TbMsg::Pick(idx, val.to_string())
+                    })),
+                    style: None,
+                    variant: if self.which == 0 { TabsVariant::Default } else { TabsVariant::Enclosed },
+                }
+            }
+        }
+
+        // default：托盘两等宽按钮 + 选中面板；切换闭环。
+        let mut p = NativeProjector::new(TabsBox { which: 0, sel: 0, seen: vec![] }, 480.0, 320.0);
+        p.ensure_covered().expect("tabs 入覆盖集");
+        let frame = p.render_frame();
+        assert_eq!(
+            texts_of(&frame),
+            vec!["Alpha", "Beta", "panel-a"],
+            "default：托盘 + 选中内容（panel-b 不渲染）"
+        );
+        let w = (480.0 - 20.0) / 2.0;
+        assert!(
+            quads_of(&frame).iter().any(|r| *r == WRect::new(10.0, 10.0, w, 26.9)),
+            "等宽托盘项: {:?}",
+            quads_of(&frame)
+        );
+        click(&mut p, 10.0 + w + 10.0, 18.0); // 第二项（Beta）
+        assert_eq!(p.component().seen, vec!["b".to_string()], "on_select value 串载荷");
+        let frame = p.render_frame();
+        assert_eq!(
+            texts_of(&frame),
+            vec!["Alpha", "Beta", "panel-b"],
+            "受控切换：内容区换 panel-b"
+        );
+
+        // enclosed：托盘底 + 选中下划线（2px 底缘条）。
+        let mut q = NativeProjector::new(TabsBox { which: 1, sel: 1, seen: vec![] }, 480.0, 320.0);
+        let frame = q.render_frame();
+        assert_eq!(texts_of(&frame), vec!["Alpha", "Beta", "panel-b"], "enclosed：内容同律");
+        assert!(
+            quads_of(&frame)
+                .iter()
+                .any(|r| *r == WRect::new(10.0 + w, 10.0 + 26.9 - 2.0, w, 2.0)),
+            "enclosed 选中下划线: {:?}",
+            quads_of(&frame)
+        );
+    }
     /// PLAN-032 T-02（D5）：self-center 交叉轴自对齐——块流单列 = 父宽
     /// 居中（center_children 通道真渲；012 步进值/单位标签映射清偿）。
     #[test]
@@ -3048,6 +3231,17 @@ mod tests {
                         ws: "0".into(),
                         fallback_icon: "app-window".into(),
                         style: None,
+                    })
+                    // PLAN-032 T-03 tabs kind 夹具（防漏钉矩阵双向更新——
+                    // 托盘/内容区/on_select 命中全链）。
+                    .child(View::Tabs {
+                        labels: vec!["tb".into()],
+                        contents: vec![View::text("tc")],
+                        selected: 0,
+                        position: TabsPosition::Top,
+                        on_select: Some(TabsSelectCallback::new(|_| MMsg::Nop)),
+                        style: None,
+                        variant: TabsVariant::Default,
                     })
                     .child(View::grid().cols(2).spacing(8).child(View::text("g1")).child(View::text("g2")).build())
                     .child(View::row().child(View::text("r1")).build())

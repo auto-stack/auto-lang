@@ -197,15 +197,20 @@ impl Coverage {
             // not-yet（P026-D1 后半维持）→ 未解析降级同兜底。
             "image",
             "progress",
-            // PLAN-029 T-04/T-05/T-06 —— shell queue 面四 kind（B 前置
-            // 序列第二件）：popover（覆盖序渲染 + on_dismiss 命中，open =
-            // View 态）/ mousearea（透传 + click/contextmenu 命中）/
-            // windowthumbnail·workspacepreview（thumbnail:// ·
-            // workspace:// 虚拟引用桥接，宿主侧解析）。
-            "popover",
-            "mousearea",
-            "windowthumbnail",
-            "workspacepreview",
+        // PLAN-029 T-04/T-05/T-06 —— shell queue 面四 kind（B 前置
+        // 序列第二件）：popover（覆盖序渲染 + on_dismiss 命中，open =
+        // View 态）/ mousearea（透传 + click/contextmenu 命中）/
+        // windowthumbnail·workspacepreview（thumbnail:// ·
+        // workspace:// 虚拟引用桥接，宿主侧解析）。
+        "popover",
+        "mousearea",
+        "windowthumbnail",
+        "workspacepreview",
+        // PLAN-032 T-03（D2）：payload 族 tabs——View::Tabs 投影臂（托盘
+        // /选中态/内容区/on_select 命中全链，native_projector 臂同册）。
+        // a2r 断裂映射同批修复（ui_gen/rust.rs 专属臂）；M7-c②（jade-
+        // garden tab×27 / auto-musk tab×16）依赖解锁。
+        "tabs",
         ]
         .into_iter()
         .map(String::from)
@@ -590,6 +595,13 @@ fn scan_native_node<M: Clone + std::fmt::Debug>(
                 scan_native_node(child, scan);
             }
             scan_native_node(content, scan);
+        }
+        // PLAN-032 T-03（D2）：Tabs contents 子树递归（防漏钉②纪律——
+        // 内容子树的未覆盖 kind/类必须入缺项清单；labels 纯数据无子树）。
+        View::Tabs { contents, .. } => {
+            for child in contents {
+                scan_native_node(child, scan);
+            }
         }
         _ => {}
     }
@@ -1233,13 +1245,13 @@ mod tests {
         scan_native_view(&view)
     }
 
-    /// PLAN-032 T-02（D3/D5）：012/041 native 判定 Covered——SelfCenter
-    /// 映射臂 + hidden 放行（display 族响应式覆盖）后的两例翻绿（VM
-    /// 轨扫描与仪器同径；T-03..T-05 逐族扩列至六例）。
+    /// PLAN-032 T-02/T-03（D3/D5/D2）：逐例翻绿累积——SelfCenter 映射臂
+    /// + hidden 放行（012/041）+ tabs kind（046）。VM 轨扫描与仪器同径；
+    /// T-04/T-05 逐族扩列至六例。
     #[test]
     fn native_gate_examples_012_041_covered() {
         let coverage = Coverage::native_queue_set();
-        for dir in ["012-clock", "041-auto-edit"] {
+        for dir in ["012-clock", "041-auto-edit", "046-tabs-variants"] {
             let scan = scan_example_native(dir);
             let verdict = judge(&scan, &coverage);
             assert!(verdict.is_covered(), "{dir} 应 Covered: {verdict:?}");

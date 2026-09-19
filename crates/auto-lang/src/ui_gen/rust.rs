@@ -3807,6 +3807,291 @@ impl RustGenerator {
                     return builder;
                 }
 
+                // PLAN-032 T-03（D2）：tabs 复合组件——a2r 断裂映射修复
+                //（tag_to_view_fn "tabs"→View::tabs() 缺 Vec<String> 实参
+                // / "tab"→View::tab() 不存在，046 a2r 轨不可编译——§1.8
+                // 在册半句清偿）。折叠契约镜像 VM 轨 convert_tabs
+                //（aura_view_builder.rs:1410）：tabslist 透明折叠 /
+                // tabstrigger 标签+value / tabscontent(value+子件) / tab
+                // 平铺；selected 解析 active（索引）→ value（按值匹配）
+                // → defaultvalue/default → 0；onselect 首参 = value 串
+                //（闭包物化载荷消息——select 臂先例）。M7-c②（jade-
+                // garden/auto-musk tab 面）依赖解锁。
+                if tag == "tabs" {
+                    fn tag_lc(tag: &str) -> String {
+                        tag.to_ascii_lowercase().replace('_', "-")
+                    }
+                    // 触发器/内容/平铺折叠（tabslist 透明）。
+                    fn fold_tabs<'a>(
+                        node: &'a crate::aura::AuraNode,
+                        triggers: &mut Vec<&'a crate::aura::AuraNode>,
+                        contents: &mut Vec<&'a crate::aura::AuraNode>,
+                        flats: &mut Vec<&'a crate::aura::AuraNode>,
+                    ) {
+                        let crate::aura::AuraNode::Element { tag, children, .. } = node else {
+                            return;
+                        };
+                        match tag_lc(tag).as_str() {
+                            "tab" => flats.push(node),
+                            "tabs-trigger" | "tabstrigger" => triggers.push(node),
+                            "tabs-content" | "tabscontent" => contents.push(node),
+                            "tabs-list" | "tabslist" | "tabrow" | "tab-row" => {
+                                for c in children {
+                                    fold_tabs(c, triggers, contents, flats);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    let mut triggers: Vec<&crate::aura::AuraNode> = Vec::new();
+                    let mut content_nodes: Vec<&crate::aura::AuraNode> = Vec::new();
+                    let mut flats: Vec<&crate::aura::AuraNode> = Vec::new();
+                    for c in children {
+                        fold_tabs(c, &mut triggers, &mut content_nodes, &mut flats);
+                    }
+                    // 标签/值：prop text/label → 直接 Text 子件 → text-like
+                    // 元素子件（convert_tabs 同序）；缺省 "Tab N"/索引串。
+                    fn node_text(node: &crate::aura::AuraNode) -> Option<String> {
+                        let crate::aura::AuraNode::Element { props, children, .. } = node else {
+                            return None;
+                        };
+                        for key in ["text", "label"] {
+                            if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get(key) {
+                                return Some(s.to_string());
+                            }
+                        }
+                        if let Some(crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(s))) =
+                            children.iter().next()
+                        {
+                            return Some(s.clone());
+                        }
+                        children.iter().find_map(|c| {
+                            let crate::aura::AuraNode::Element { tag, props, children, .. } = c else {
+                                return None;
+                            };
+                            if !matches!(tag.as_str(), "text" | "label" | "span" | "p" | "h1" | "h2" | "h3") {
+                                return None;
+                            }
+                            if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("text") {
+                                return Some(s.to_string());
+                            }
+                            children.iter().find_map(|d| match d {
+                                crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(s)) => {
+                                    Some(s.clone())
+                                }
+                                _ => None,
+                            })
+                        })
+                    }
+                    let use_flat = !flats.is_empty();
+                    let mut labels: Vec<String> = Vec::new();
+                    let mut values: Vec<String> = Vec::new();
+                    if use_flat {
+                        for (i, t) in flats.iter().enumerate() {
+                            let label = node_text(t).unwrap_or_else(|| format!("Tab {}", i + 1));
+                            let value = match t {
+                                crate::aura::AuraNode::Element { props, .. } => match props.get("value") {
+                                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+                                    _ => i.to_string(),
+                                },
+                                _ => i.to_string(),
+                            };
+                            labels.push(label);
+                            values.push(value);
+                        }
+                    } else {
+                        for (i, t) in triggers.iter().enumerate() {
+                            let label = node_text(t).unwrap_or_else(|| format!("Tab {}", i + 1));
+                            let value = match t {
+                                crate::aura::AuraNode::Element { props, .. } => match props.get("value") {
+                                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+                                    _ => i.to_string(),
+                                },
+                                _ => i.to_string(),
+                            };
+                            labels.push(label);
+                            values.push(value);
+                        }
+                    }
+                    // contents：文档序（VM convert_tabs 同款——trigger 与
+                    // content 序一致时索引映射成立）；多子件包 col。
+                    let content_sources: Vec<Vec<&crate::aura::AuraNode>> = if use_flat {
+                        flats
+                            .iter()
+                            .map(|t| match t {
+                                crate::aura::AuraNode::Element { children, .. } => {
+                                    children.iter().collect()
+                                }
+                                _ => Vec::new(),
+                            })
+                            .collect()
+                    } else {
+                        content_nodes
+                            .iter()
+                            .map(|c| match c {
+                                crate::aura::AuraNode::Element { children, .. } => {
+                                    children.iter().collect()
+                                }
+                                _ => Vec::new(),
+                            })
+                            .collect()
+                    };
+                    let mut content_exprs: Vec<String> = Vec::new();
+                    for parts in &content_sources {
+                        let mut views: Vec<String> = Vec::new();
+                        for n in parts {
+                            views.push(self.generate_view_tree(n));
+                        }
+                        let expr = if views.len() == 1 {
+                            views.into_iter().next().unwrap()
+                        } else if views.is_empty() {
+                            "View::Empty".to_string()
+                        } else {
+                            let mut col = "View::col()".to_string();
+                            for v in views {
+                                col = format!("{col}.child({v})");
+                            }
+                            format!("{col}.build()")
+                        };
+                        content_exprs.push(expr);
+                    }
+                    let labels_lit = format!(
+                        "vec![{}]",
+                        labels
+                            .iter()
+                            .map(|l| format!("\"{l}\".to_string()"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                    let contents_lit = format!(
+                        "vec![{}]",
+                        content_exprs.join(", ")
+                    );
+                    let mut builder = format!("View::tabs({labels_lit}).contents({contents_lit})");
+                    // selected：active（索引）→ value（字面量=编译期匹配 /
+                    // 绑定=运行时 position 表达式）→ defaultvalue/default
+                    //（同前）→ 0；越界钳制 min（sel.min(n-1) 运行时兜底）。
+                    let prop_str_lit = |key: &str| -> Option<String> {
+                        match props.get(key) {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s.to_string()),
+                            _ => None,
+                        }
+                    };
+                    let values_match_arm = |val: &str, values: &[String]| -> String {
+                        match values.iter().position(|v| v == val) {
+                            Some(idx) => idx.to_string(),
+                            // 非字面量值集合内无匹配 → 0（数值串 VM 侧另
+                            // 解析索引；a2r 简化为 0 兜底 + unwrap_or(0)
+                            // 运行时兜底同语义）。
+                            None => "0usize".to_string(),
+                        }
+                    };
+                    let value_binding = |key: &str| -> Option<String> {
+                        match props.get(key) {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
+                                let f = name.as_str().trim_start_matches('.');
+                                (!f.is_empty()).then(|| f.to_string())
+                            }
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => match obj
+                                .as_ref()
+                            {
+                                crate::ast::Expr::Ident(base)
+                                    if base.as_str() == "." || base.as_str() == "self" =>
+                                {
+                                    Some(field.as_str().to_string())
+                                }
+                                _ => None,
+                            },
+                            _ => None,
+                        }
+                    };
+                    let values_pos_expr = |field: &str, values: &[String]| -> String {
+                        let arr = format!(
+                            "[{}]",
+                            values
+                                .iter()
+                                .map(|v| format!("\"{v}\""))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                        format!("{arr}.iter().position(|v| *v == self.{field}.as_str()).unwrap_or(0)")
+                    };
+                    let has_active_or_value =
+                        props.keys().any(|k| matches!(k.as_str(), "active" | "value"));
+                    let selected_expr: Option<String> = if let Some(AuraPropValue::Expr(
+                        crate::ast::Expr::Int(i),
+                    )) = props.get("active")
+                    {
+                        Some(format!("({i} as usize)"))
+                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                        props.get("value")
+                    {
+                        Some(values_match_arm(s, &values))
+                    } else if let Some(field) = value_binding("value") {
+                        Some(values_pos_expr(&field, &values))
+                    } else if !has_active_or_value {
+                        prop_str_lit("defaultvalue")
+                            .or_else(|| prop_str_lit("default"))
+                            .map(|s| values_match_arm(&s, &values))
+                            .or_else(|| value_binding("defaultvalue").map(|f| values_pos_expr(&f, &values)))
+                    } else {
+                        None
+                    };
+                    if let Some(expr) = selected_expr {
+                        builder = format!("{builder}.selected({expr})");
+                    }
+                    // variant：TabsVariant::parse（full path——生成物预载
+                    // use 不含该类型；PointerMoveHandler 同款先例）。
+                    if let Some(v) = prop_str_lit("variant") {
+                        builder =
+                            format!("{builder}.variant(auto_lang::ui::view::TabsVariant::parse(\"{v}\"))");
+                    }
+                    // 样式（style/class prop → TabsBuilder.style）。
+                    if let Some(st) = prop_str_lit("style").or_else(|| prop_str_lit("class")) {
+                        builder = format!("{builder}.style(\"{st}\")");
+                    }
+                    // onselect：根事件优先，缺省取首个 trigger onclick；
+                    // 闭包物化载荷消息（首参 = value 串——convert_tabs
+                    // 回调契约；载荷数自适应 select 臂同款）。
+                    let onselect_handler = events
+                        .iter()
+                        .find(|(e, _)| matches!(e.as_str(), "onselect" | "onSelect"))
+                        .map(|(_, h)| h)
+                        .cloned()
+                        .or_else(|| {
+                            triggers.iter().find_map(|t| match t {
+                                crate::aura::AuraNode::Element { events: te, .. } => te
+                                    .iter()
+                                    .find(|(e, _)| matches!(e.as_str(), "onclick" | "onClick"))
+                                    .map(|(_, h)| h.clone()),
+                                _ => None,
+                            })
+                        });
+                    if let Some(handler) = onselect_handler {
+                        let variant = self.extract_variant_name(&handler.handler);
+                        let msg_name = self.current_msg_name();
+                        let closure = match self
+                            .message_variants
+                            .iter()
+                            .find(|v| v.name == variant)
+                            .map(|v| v.payload.len())
+                            .unwrap_or(0)
+                        {
+                            1 => format!(
+                                "{{ let vals = {labels_lit}; move |idx: usize| {msg_name}::{variant}(vals.get(idx).cloned().unwrap_or_else(|| idx.to_string())) }}"
+                            ),
+                            2 => format!(
+                                "{{ let vals = {labels_lit}; move |idx: usize| {msg_name}::{variant}(idx as i32, vals.get(idx).cloned().unwrap_or_else(|| idx.to_string())) }}"
+                            ),
+                            _ => format!(
+                                "move |idx: usize| {{ let _ = idx; {msg_name}::{variant}() }}"
+                            ),
+                        };
+                        builder = format!("{builder}.on_select({closure})");
+                    }
+                    return format!("{builder}.build()");
+                }
+
                 let builder_start = if self.is_leaf_tag(tag.as_str()) {
                     if let Some(ref name) = text_state_ref {
                         if tag == "button" {
@@ -5714,8 +5999,9 @@ impl RustGenerator {
             "tree_item" => "col",
 
             // Navigation
-            "tabs" => "tabs",
-            "tab" => "tab",
+            // PLAN-032 T-03（D2）：tabs/tab 断裂映射移除——tabs 走上方
+            // generate_view_tree 专属臂（View::tabs 折叠构造）；组外裸
+            // tab/残余形态落 `_ => "col"` 兜底（026 T-02 link/a 先例）。
 
             // Overlay
             "modal" => "modal",
@@ -9510,6 +9796,129 @@ fn main() {{}}
         assert_eq!(gen.tag_to_view_fn("col"), "col");
         assert_eq!(gen.tag_to_view_fn("button"), "button");
         assert_eq!(gen.tag_to_view_fn("text"), "text");
+        // PLAN-032 T-03（D2）：tabs/tab 断裂映射已移除——tabs 走专属臂，
+        // 残余形态落 `_ => "col"` 兜底。
+        assert_eq!(gen.tag_to_view_fn("tabs"), "col");
+        assert_eq!(gen.tag_to_view_fn("tab"), "col");
+    }
+
+    /// PLAN-032 T-03（D2）：tabs a2r 断裂映射修复——View::tabs 折叠构造
+    ///（labels/contents 文档序/value 绑定运行时 position/variant/onselect
+    /// 闭包物化 value 串载荷——convert_tabs 契约镜像）。
+    #[test]
+    fn test_tabs_codegen_view_tabs_folding() {
+        let src = r#"
+widget T {
+    msg { Select(str) }
+    model { var s str = "a" }
+    view {
+        tabs (value: .s, variant: "enclosed", onselect: .Select("a")) {
+            tabslist {
+                tabstrigger (value: "a") { text "Alpha" }
+                tabstrigger (value: "b") { text "Beta" }
+            }
+            tabscontent (value: "a") { text "Content A" }
+            tabscontent (value: "b") { text "Content B" }
+        }
+    }
+    on { .Select(t) -> { .s = t } }
+}
+"#;
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let code = RustGenerator::new().generate(&widget).expect("generate");
+
+        // labels/contents 折叠 + 文档序。
+        assert!(
+            code.contains("View::tabs(vec![\"Alpha\".to_string(), \"Beta\".to_string()])"),
+            "labels 折叠: {}",
+            &code[code.len().saturating_sub(4000)..]
+        );
+        assert!(code.contains(".contents(vec!["), "contents 折叠");
+        assert!(code.contains("Content A"), "内容子树生成");
+        // value 绑定 → 运行时 position 表达式（字面量串编译期匹配）。
+        assert!(
+            code.contains(".position(|v| *v == self.s.as_str()).unwrap_or(0)"),
+            "value 绑定运行时匹配: {}",
+            &code[code.len().saturating_sub(4000)..]
+        );
+        // variant full-path（生成物 use 预载不含 TabsVariant）。
+        assert!(
+            code.contains(".variant(auto_lang::ui::view::TabsVariant::parse(\"enclosed\"))"),
+            "variant 发射"
+        );
+        // onselect 闭包物化：首参 = value 串（vals 表捕获）。
+        assert!(
+            code.contains("::Select(vals.get(idx).cloned().unwrap_or_else(|| idx.to_string()))"),
+            "onselect 闭包载荷: {}",
+            &code[code.len().saturating_sub(4000)..]
+        );
+        // 断裂映射残留清零。
+        assert!(!code.contains("View::tabs()"), "无断裂 View::tabs() 空参");
+        assert!(!code.contains("View::tab()"), "无不存在方法 View::tab()");
+    }
+
+    /// PLAN-032 T-03（D2）：046-tabs-variants 真源 a2r 全量生成 + 编译
+    ///（code_editor e2e 先例：throwaway crate + cargo build——断言断裂
+    /// 修复后 046 a2r 轨可编译）。Ignored by default（编译依赖树分钟级）。
+    #[test]
+    #[ignore = "e2e compile: minutes on a cold target dir"]
+    fn test_tabs_codegen_046_compiles() {
+        let src = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/046-tabs-variants/src/front/app.at"
+        ))
+        .expect("read 046 app.at");
+        let session = crate::session::CompilerSession::ui().with_backend("rust");
+        let mut parser = crate::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let code = RustGenerator::new().generate(&widget).expect("generate");
+
+        let main_rs = format!(
+            "#![allow(dead_code, unused)]\n{}\nfn main() {{}}\n",
+            code
+        );
+        let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let root = std::path::Path::new(&root)
+            .ancestors()
+            .nth(2)
+            .unwrap()
+            .to_path_buf();
+        let tmp = root.join("target").join("tabs-046-e2e");
+        let src_dir = tmp.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("main.rs"), &main_rs).unwrap();
+        let auto_lang_path = root.join("crates").join("auto-lang");
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"tabs_046_e2e\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nauto-lang = {{ path = {:?}, features = [\"ui-iced\"] }}\n\n[workspace]\n",
+                auto_lang_path.to_string_lossy().replace("\\\\", "/")
+            ),
+        )
+        .unwrap();
+        let output = std::process::Command::new("cargo")
+            .arg("build")
+            .current_dir(&tmp)
+            .output()
+            .unwrap_or_else(|e| panic!("cargo build in {}: {}", tmp.display(), e));
+        assert!(
+            output.status.success(),
+            "046 a2r 生成物编译失败。\n--- main.rs 尾段 ---\n{}\n--- stderr ---\n{}",
+            &main_rs[main_rs.len().saturating_sub(6000)..],
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     // ========== Plan 180 Phase 7: tailwind_to_methods tests ==========
