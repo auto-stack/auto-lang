@@ -228,6 +228,8 @@ fn test_vm(case: &str) -> AutoResult<()> {
 #[test] #[ignore] fn test_07_objects_007_json() { test_vm("07_objects/007_json").unwrap(); }
 #[test] #[ignore] fn test_07_objects_008_last_block_or_object() { test_vm("07_objects/008_last_block_or_object").unwrap(); }
 #[test] #[ignore] fn test_07_objects_009_multiple_field_mutations() { test_vm("07_objects/009_multiple_field_mutations").unwrap(); }
+// PLAN-661 T-01: map bracket write（写/读对称，078 复现收编）——非 ignore 注册进 tv 档。
+#[test] fn test_07_objects_010_map_bracket_write() { test_vm("07_objects/010_map_bracket_write").unwrap(); }
 
 // === 08_strings ===
 #[test] #[ignore] fn test_08_strings_016_heaprc_string_pool() { test_vm("08_strings/016_heaprc_string_pool").unwrap(); }

@@ -5473,9 +5473,12 @@ impl AutoVM {
                 }
                 // Plan 073: Array element assignment (arr[index] = value)
                 OpCode::SET_ELEM => {
+                    use crate::vm::generic_registry::GenericInstanceData;
                     // Stack: value, array_id, index (compiled in this order by codegen)
-                    // Pop index first (top of stack)
-                    let index = task.ram.pop_i32() as usize;
+                    // PLAN-661 T-01: keep the raw index nanbox — map bracket writes
+                    // (`m[k] = v`) carry a string-tagged key, mirroring GET_ELEM's
+                    // Plan 437/445 read arms. The list path decodes i32 as before.
+                    let index_nv = task.ram.pop_nv();
                     let _ = task.ram.take_stake_at(task.ram.sp);
                     // Pop array_id. arrays still push raw i32 (H3 will migrate),
                     // but accept TAG_OBJECT too in case a heap List id reaches here.
@@ -5503,14 +5506,15 @@ impl AutoVM {
                     if let Some(list_ref) = self.get_heap_object(array_id) {
                         let mut guard = list_ref.write().unwrap();
                         if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
+                            let index = auto_val::decode_i32(index_nv);
                             // Check bounds
-                            if index < list.elems.len() {
+                            if index >= 0 && (index as usize) < list.elems.len() {
                                 // Plan 419: 记录旧元素引用,写锁释放后级联回收。
-                                old_elem_ref = match &list.elems[index] {
+                                old_elem_ref = match &list.elems[index as usize] {
                                     auto_val::Value::VmRef(r) => Some(r.id as u64),
                                     _ => None,
                                 };
-                                list.elems[index] = value;
+                                list.elems[index as usize] = value;
                             } else {
                                 // Plan 118: Return error for out-of-bounds assignment
                                 return Err(VMError::RuntimeError(format!(
@@ -5518,7 +5522,89 @@ impl AutoVM {
                                     index, list.elems.len()
                                 )));
                             }
-                        } else {
+                        }
+                        // PLAN-661 T-01: map 括号写 —— 读侧 m[k] 走 GET_ELEM 的
+                        // ObjectData（Plan 437）/GenericInstanceData（Plan 445 M3）
+                        // 臂，写侧 SET_ELEM 此前只有 ListData 臂，map 目标落
+                        // "Invalid array ID" 中止 handler（078 复现包实录）。
+                        // 三臂按名写，与 GET_ELEM 读臂一一镜像。
+                        else if let Some(obj) = guard.as_any_mut().downcast_mut::<crate::vm::types::ObjectData>() {
+                            if !auto_val::is_string(index_nv) {
+                                return Err(VMError::RuntimeError(
+                                    "TypeError: map key must be a string".to_string(),
+                                ));
+                            }
+                            // PLAN-062: map 写算状态面突变（与 SET_FIELD 同口径）。
+                            self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                            let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                            let key_name = self.strings.read().unwrap()
+                                .get(key_pool_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .ok_or_else(|| VMError::RuntimeError(format!(
+                                    "Invalid key string index: {}", key_pool_idx
+                                )))?;
+                            // 键语义镜像 SET_FIELD ObjectData 分支（PLAN-057）：
+                            // 开放 HashMap，set=insert（JS obj.newKey = v 语义）。
+                            let key = auto_val::ValueKey::Str(key_name.into());
+                            old_elem_ref = obj.get(&key).and_then(|v| match v {
+                                auto_val::Value::VmRef(r) => Some(r.id as u64),
+                                _ => None,
+                            });
+                            obj.set(key, value);
+                        }
+                        else if let Some(inst) = guard.as_any_mut().downcast_mut::<GenericInstanceData>() {
+                            if !auto_val::is_string(index_nv) {
+                                return Err(VMError::RuntimeError(
+                                    "TypeError: map key must be a string".to_string(),
+                                ));
+                            }
+                            self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                            let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                            let key_name = self.strings.read().unwrap()
+                                .get(key_pool_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .ok_or_else(|| VMError::RuntimeError(format!(
+                                    "Invalid key string index: {}", key_pool_idx
+                                )))?;
+                            // UI 轨 state map（StateObjectLit）表示。GET_ELEM 读臂
+                            // 按 field_names 名取，故新键平行追加 fields/field_names
+                            // （开键插入，镜像 PLAN-057 语义）；既有键走 set_field。
+                            match inst.field_names.iter().position(|n| *n == key_name) {
+                                Some(idx) => {
+                                    old_elem_ref = inst.fields.get(idx).and_then(|v| match v {
+                                        auto_val::Value::VmRef(r) => Some(r.id as u64),
+                                        _ => None,
+                                    });
+                                    inst.set_field(idx, value).map_err(VMError::RuntimeError)?;
+                                }
+                                None => {
+                                    inst.field_names.push(key_name);
+                                    inst.fields.push(value);
+                                }
+                            }
+                        }
+                        // auto.hashmap.new 建的 map：同 auto.hashmap.set native
+                        // （NATIVE_HASHMAP_INSERT_STR）的插入语义。
+                        else if let Some(map) = guard.as_any_mut().downcast_mut::<crate::vm::collections::SpecializedHashMap>() {
+                            if !auto_val::is_string(index_nv) {
+                                return Err(VMError::RuntimeError(
+                                    "TypeError: map key must be a string".to_string(),
+                                ));
+                            }
+                            self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                            let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                            let key_name = self.strings.read().unwrap()
+                                .get(key_pool_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .ok_or_else(|| VMError::RuntimeError(format!(
+                                    "Invalid key string index: {}", key_pool_idx
+                                )))?;
+                            if let Some(auto_val::Value::VmRef(r)) = map.get(&key_name) {
+                                old_elem_ref = Some(r.id as u64);
+                            }
+                            map.insert(key_name, value).map_err(VMError::RuntimeError)?;
+                        }
+                        else {
                             return Err(VMError::RuntimeError(format!(
                                 "Invalid array ID: {}",
                                 array_id

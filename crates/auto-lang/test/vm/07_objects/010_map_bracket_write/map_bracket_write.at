@@ -1,0 +1,8 @@
+// PLAN-661 T-01: map bracket write (m[k] = v) — write/read symmetry.
+// Before the fix, SET_ELEM only downcast ListData, so writing to an
+// object/map target aborted with "Invalid array ID" (078 repro).
+var obj = { x: 100 }
+obj["y"] = 200
+var k = "z"
+obj[k] = 300
+obj["y"] + obj[k] + obj["x"]

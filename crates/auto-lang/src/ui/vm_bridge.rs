@@ -2155,6 +2155,86 @@ mod tests {
         }
     }
 
+    /// PLAN-661 T-01: map 括号写往返（078 复现包收编，AC-01）。
+    /// `.m[k] = v` 此前在 SET_ELEM 只 downcast ListData →
+    /// `RuntimeError("Invalid array ID")` 中止整个 handler（写后语句全不
+    /// 执行，错误被 UI 静默吞掉）。修复后：写落在 state map
+    /// （StateObjectLit GenericInstanceData 表示）上，读回可见，后续语句
+    /// 续行；字面量键与 var 键同形（078 isolation A/D 两形态）。
+    #[test]
+    fn plan661_t01_map_bracket_write_roundtrip() {
+        use crate::aura::LogicPayload;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let mut widget = make_test_widget("MapWrite", vec![]);
+        let model_src = r#"
+            var m map = { a: 1 }
+            var count int = 0
+            var readback str = "init"
+        "#;
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(model_src).with_session(session);
+        let ast = parser.parse().expect("parse model");
+        let inits: Vec<_> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                crate::ast::Stmt::Store(st) => Some(st.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(inits.len(), 3, "expected three var decls");
+        for (i, name) in ["m", "count", "readback"].iter().enumerate() {
+            widget.state_vars.push(AuraStateDef {
+                name: name.to_string(),
+                type_info: Type::Unknown,
+                initial: inits[i].expr.clone(),
+                decorators: vec![],
+            });
+        }
+        // 字面量键形态 + 写后语句续行断言（count/readback 在写之后更新）。
+        let handler_src = r#"
+            .m["b"] = 2
+            var cur = .m["b"]
+            .readback = f"${cur}"
+            .count = .count + 1
+        "#;
+        let mut parser = Parser::from(handler_src).with_session(CompilerSession::ui());
+        let ast2 = parser.parse().expect("parse handler");
+        widget
+            .handlers
+            .insert(".DoIt".to_string(), LogicPayload::AstStmts(ast2.stmts));
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        bridge.call_handler("DoIt", &[]).expect("DoIt must not abort");
+        let count = bridge.read_state("count").expect("count");
+        assert_eq!(count, Value::Int(1), "statements after the map write must run");
+        match bridge.read_state("readback").expect("readback") {
+            Value::Str(s) => assert_eq!(s.as_str(), "2", "read-back of written key must observe the write"),
+            other => panic!("readback not a str: {other:?}"),
+        }
+        // var 键形态：既有键覆写 + var 键读回。
+        let handler2_src = r#"
+            var k str = "a"
+            .m[k] = .m[k] + 40
+            var cur2 = .m[k]
+            .readback = f"${cur2}"
+            .count = .count + 1
+        "#;
+        let mut widget2 = make_test_widget("MapWrite", vec![]);
+        widget2.state_vars = widget.state_vars.clone();
+        let mut parser = Parser::from(handler2_src).with_session(CompilerSession::ui());
+        let ast3 = parser.parse().expect("parse handler2");
+        widget2
+            .handlers
+            .insert(".Poke".to_string(), LogicPayload::AstStmts(ast3.stmts));
+        let mut bridge2 = VmBridge::new(&widget2).expect("bridge2");
+        bridge2.call_handler("Poke", &[]).expect("Poke must not abort");
+        match bridge2.read_state("readback").expect("readback2") {
+            Value::Str(s) => assert_eq!(s.as_str(), "41", "var-key overwrite of existing entry must land"),
+            other => panic!("readback2 not a str: {other:?}"),
+        }
+    }
+
     /// PLAN-626 T-03: CloseRequest 生命周期 handler 的存在性探测与直调。
     /// 声明了 `.CloseRequest` 的 widget 必须被 has_handler 命中（namespaced
     /// 导出），未声明的必须 miss——渲染器关窗臂据此决定拦截还是默认关窗。
