@@ -1226,6 +1226,9 @@ mod virtual_scroll_tests {
         assert_eq!(delta, Some(7), "错位偏离应回灌 13→20 差值");
     }
 
+    // iced_test 依赖面(模拟器/IntoIcedElement)挂 iced-layout-tests 门控
+    // ——裸 cargo t 无该特性,656 会话实录 E0432(master 预存归因在案)。
+    #[cfg(feature = "iced-layout-tests")]
     #[test]
     fn shortcut_hit_captures_single_fire_across_stack() {
         // T-06(2026-09-19):分屏双终端挂同一捷径表(Alt+WASD),一次按键
