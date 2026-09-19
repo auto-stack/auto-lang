@@ -22,8 +22,11 @@
 // 窗口用 pac 显式尺寸；外壳固定 Tailwind 刻度宽（w-96 系在 VM 可用）；
 // Hero 用 w-64（无 lg: 前缀）；城市条不用 container（避免 max-w-7xl 注入）。
 
-use weather_data: name_for, condition_for, cond_zh_for, icon_for, temp_for, feels_for, humidity_for, wind_for, uv_for, aqi_for, aqi_level_for, pressure_for, visibility_for, hourly_for, daily_for
-use stylekit.styles: hint_text
+// r8：rust/a2r 轨不解析 stylekit 包导入（hint_text UndefinedVariable）。
+// 本地 recipe，与 stylekit.styles.hint_text 字节等价。
+style hint_text = "text-[10px] text-muted-foreground"
+// r9：a2r 不把 `use weather_data: fn` 内联进 main.rs（E0425）。函数同文件
+// 放在 widget 之后；城市选择用中文名字符串键，避免 Obj id 被推成 i62。
 
 style page = "bg-background text-foreground w-full"
 style app_frame = "w-full bg-card border border-border rounded-2xl p-4 gap-4 shadow-lg"
@@ -69,7 +72,7 @@ widget App {
         // 预报区 Tab：hourly | daily（默认窗口不高，二者互斥显示）
         var forecast_tab str = "hourly"
 
-        var city_id str = "beijing"
+        var city_id str = "北京"
         var city_zh str = "北京"
         var condition str = "partly"
         var cond_zh str = "多云"
@@ -85,20 +88,6 @@ widget App {
         var visibility str = "12 km"
         var updated_at str = "14:30"
         var refreshing bool = false
-
-        var cities = [
-            { id: "beijing", zh: "北京" },
-            { id: "shanghai", zh: "上海" },
-            { id: "guangzhou", zh: "广州" },
-            { id: "shenzhen", zh: "深圳" },
-            { id: "hangzhou", zh: "杭州" },
-            { id: "chengdu", zh: "成都" },
-            { id: "xian", zh: "西安" },
-            { id: "wuhan", zh: "武汉" },
-            { id: "harbin", zh: "哈尔滨" },
-            { id: "sanya", zh: "三亚" }
-        ]
-
         var hourly = [
             { time: "现在", icon: "⛅", temp: "23°", now: true },
             { time: "15:00", icon: "⛅", temp: "24°", now: false },
@@ -178,20 +167,57 @@ widget App {
                     scroll (axis: "x", style: "w-full h-full") {
                         row {
                             style: "items-center gap-2 h-full pr-2"
-                            for c in .cities {
-                                if c.id == .city_id {
-                                    button c.zh {
-                                        onclick: .SelectCity(c.id)
-                                        variant: "primary"
-                                        style: city_pill_on
-                                    }
-                                } else {
-                                    button c.zh {
-                                        onclick: .SelectCity(c.id)
-                                        variant: "secondary"
-                                        style: city_pill_off
-                                    }
-                                }
+                            // a2r：[]str for 循环元素类型为 Value，与 String 比较失败；
+                            // 城市按钮全部展开，避免 for + 列表元素。
+                            if .city_zh == "北京" {
+                                button "北京" { onclick: .SelectCity("北京"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "北京" { onclick: .SelectCity("北京"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "上海" {
+                                button "上海" { onclick: .SelectCity("上海"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "上海" { onclick: .SelectCity("上海"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "广州" {
+                                button "广州" { onclick: .SelectCity("广州"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "广州" { onclick: .SelectCity("广州"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "深圳" {
+                                button "深圳" { onclick: .SelectCity("深圳"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "深圳" { onclick: .SelectCity("深圳"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "杭州" {
+                                button "杭州" { onclick: .SelectCity("杭州"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "杭州" { onclick: .SelectCity("杭州"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "成都" {
+                                button "成都" { onclick: .SelectCity("成都"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "成都" { onclick: .SelectCity("成都"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "西安" {
+                                button "西安" { onclick: .SelectCity("西安"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "西安" { onclick: .SelectCity("西安"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "武汉" {
+                                button "武汉" { onclick: .SelectCity("武汉"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "武汉" { onclick: .SelectCity("武汉"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "哈尔滨" {
+                                button "哈尔滨" { onclick: .SelectCity("哈尔滨"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "哈尔滨" { onclick: .SelectCity("哈尔滨"), variant: "secondary", style: city_pill_off }
+                            }
+                            if .city_zh == "三亚" {
+                                button "三亚" { onclick: .SelectCity("三亚"), variant: "primary", style: city_pill_on }
+                            } else {
+                                button "三亚" { onclick: .SelectCity("三亚"), variant: "secondary", style: city_pill_off }
                             }
                         }
                     }
@@ -262,7 +288,7 @@ widget App {
                                             row {
                                                 style: "items-center gap-2 h-36"
                                                 for h in .hourly {
-                                                    if h.now {
+                                                    if h.time == "现在" {
                                                         col {
                                                             style: hour_card_now
                                                             text h.time { style: "text-[10px] font-semibold text-primary" }
@@ -513,23 +539,23 @@ widget App {
                                     scroll (axis: "x", style: "w-full h-36") {
                                         row {
                                             style: "items-center gap-2 h-36"
-                                            for h in .hourly {
-                                                if h.now {
-                                                    col {
-                                                        style: hour_card_now
-                                                        text h.time { style: "text-[10px] font-semibold text-primary" }
-                                                        text h.icon { style: "text-lg" }
-                                                        text h.temp { style: "text-sm font-bold text-primary" }
-                                                    }
-                                                } else {
-                                                    col {
-                                                        style: hour_card
-                                                        text h.time { style: "text-[10px] text-muted-foreground" }
-                                                        text h.icon { style: "text-lg" }
-                                                        text h.temp { style: "text-sm font-semibold text-foreground" }
-                                                    }
-                                                }
-                                            }
+                            for h in .hourly {
+                                if h.time == "现在" {
+                                    col {
+                                        style: hour_card_now
+                                        text h.time { style: "text-[10px] font-semibold text-primary" }
+                                        text h.icon { style: "text-lg" }
+                                        text h.temp { style: "text-sm font-bold text-primary" }
+                                    }
+                                } else {
+                                    col {
+                                        style: hour_card
+                                        text h.time { style: "text-[10px] text-muted-foreground" }
+                                        text h.icon { style: "text-lg" }
+                                        text h.temp { style: "text-sm font-semibold text-foreground" }
+                                    }
+                                }
+                            }
                                         }
                                     }
                                 }
@@ -577,25 +603,42 @@ widget App {
     }
 
     on {
+        // r9：a2r 不发射 app.at 顶层 fn 进 main.rs（E0425），handler 一律
+        // 字面量 if/else 赋值，不调用 helper。键=中文城市名。
         .Init -> {
             .layout_mode = "landscape"
             .forecast_tab = "hourly"
-            .city_id = "beijing"
-            .city_zh = name_for("beijing")
-            .condition = condition_for("beijing")
-            .cond_zh = cond_zh_for("beijing")
-            .icon = icon_for("beijing")
-            .temp = temp_for("beijing")
-            .feels = feels_for("beijing")
-            .humidity = humidity_for("beijing")
-            .wind = wind_for("beijing")
-            .uv = uv_for("beijing")
-            .aqi = aqi_for("beijing")
-            .aqi_level = aqi_level_for("beijing")
-            .pressure = pressure_for("beijing")
-            .visibility = visibility_for("beijing")
-            .hourly = hourly_for("beijing")
-            .daily = daily_for("beijing")
+            .city_id = "北京"
+            .city_zh = "北京"
+            .condition = "partly"
+            .cond_zh = "多云"
+            .icon = "⛅"
+            .temp = "23°"
+            .feels = "25°"
+            .humidity = "65%"
+            .wind = "12 km/h"
+            .uv = "中等"
+            .aqi = "68"
+            .aqi_level = "良"
+            .pressure = "1012 hPa"
+            .visibility = "12 km"
+            .hourly = [
+                { time: "现在", icon: "⛅", temp: "23°", now: true },
+                { time: "15:00", icon: "⛅", temp: "23°", now: false },
+                { time: "16:00", icon: "⛅", temp: "23°", now: false },
+                { time: "17:00", icon: "☁️", temp: "23°", now: false },
+                { time: "18:00", icon: "☁️", temp: "23°", now: false },
+                { time: "19:00", icon: "☁️", temp: "23°", now: false },
+                { time: "20:00", icon: "☁️", temp: "23°", now: false },
+                { time: "21:00", icon: "⛅", temp: "23°", now: false }
+            ]
+            .daily = [
+                { day: "今天", icon: "⛅", cond: "多云", tmin: "18°", tmax: "25°" },
+                { day: "周二", icon: "☀️", cond: "晴", tmin: "20°", tmax: "28°" },
+                { day: "周三", icon: "☁️", cond: "阴", tmin: "16°", tmax: "22°" },
+                { day: "周四", icon: "🌧️", cond: "小雨", tmin: "17°", tmax: "24°" },
+                { day: "周五", icon: "⛅", cond: "多云", tmin: "19°", tmax: "27°" }
+            ]
             .updated_at = "14:30"
         }
 
@@ -609,41 +652,159 @@ widget App {
 
         .SelectCity(id) -> {
             .city_id = id
-            .city_zh = name_for(id)
-            .condition = condition_for(id)
-            .cond_zh = cond_zh_for(id)
-            .icon = icon_for(id)
-            .temp = temp_for(id)
-            .feels = feels_for(id)
-            .humidity = humidity_for(id)
-            .wind = wind_for(id)
-            .uv = uv_for(id)
-            .aqi = aqi_for(id)
-            .aqi_level = aqi_level_for(id)
-            .pressure = pressure_for(id)
-            .visibility = visibility_for(id)
-            .hourly = hourly_for(id)
-            .daily = daily_for(id)
+            .city_zh = id
+            if id == "上海" {
+                .condition = "rain"
+                .cond_zh = "小雨"
+                .icon = "🌧️"
+                .temp = "21°"
+                .feels = "22°"
+                .humidity = "82%"
+                .wind = "15 km/h"
+                .uv = "中等"
+                .aqi = "55"
+                .aqi_level = "良"
+                .pressure = "1012 hPa"
+                .visibility = "8 km"
+            } else if id == "广州" {
+                .condition = "sunny"
+                .cond_zh = "晴"
+                .icon = "☀️"
+                .temp = "30°"
+                .feels = "33°"
+                .humidity = "70%"
+                .wind = "8 km/h"
+                .uv = "很强"
+                .aqi = "42"
+                .aqi_level = "优"
+                .pressure = "1012 hPa"
+                .visibility = "12 km"
+            } else if id == "深圳" {
+                .condition = "storm"
+                .cond_zh = "雷阵雨"
+                .icon = "⛈️"
+                .temp = "28°"
+                .feels = "31°"
+                .humidity = "78%"
+                .wind = "18 km/h"
+                .uv = "中等"
+                .aqi = "35"
+                .aqi_level = "优"
+                .pressure = "1012 hPa"
+                .visibility = "12 km"
+            } else if id == "杭州" {
+                .condition = "rain"
+                .cond_zh = "小雨"
+                .icon = "🌧️"
+                .temp = "22°"
+                .feels = "23°"
+                .humidity = "74%"
+                .wind = "10 km/h"
+                .uv = "中等"
+                .aqi = "60"
+                .aqi_level = "良"
+                .pressure = "1012 hPa"
+                .visibility = "8 km"
+            } else if id == "成都" {
+                .condition = "fog"
+                .cond_zh = "雾"
+                .icon = "🌫️"
+                .temp = "20°"
+                .feels = "21°"
+                .humidity = "85%"
+                .wind = "6 km/h"
+                .uv = "弱"
+                .aqi = "95"
+                .aqi_level = "轻度污染"
+                .pressure = "1008 hPa"
+                .visibility = "3 km"
+            } else if id == "西安" {
+                .condition = "sunny"
+                .cond_zh = "晴"
+                .icon = "☀️"
+                .temp = "25°"
+                .feels = "24°"
+                .humidity = "48%"
+                .wind = "14 km/h"
+                .uv = "很强"
+                .aqi = "78"
+                .aqi_level = "良"
+                .pressure = "1012 hPa"
+                .visibility = "12 km"
+            } else if id == "武汉" {
+                .condition = "partly"
+                .cond_zh = "多云"
+                .icon = "⛅"
+                .temp = "27°"
+                .feels = "29°"
+                .humidity = "66%"
+                .wind = "11 km/h"
+                .uv = "中等"
+                .aqi = "72"
+                .aqi_level = "良"
+                .pressure = "1012 hPa"
+                .visibility = "12 km"
+            } else if id == "哈尔滨" {
+                .condition = "snow"
+                .cond_zh = "小雪"
+                .icon = "❄️"
+                .temp = "-2°"
+                .feels = "-6°"
+                .humidity = "80%"
+                .wind = "20 km/h"
+                .uv = "弱"
+                .aqi = "50"
+                .aqi_level = "优"
+                .pressure = "1028 hPa"
+                .visibility = "5 km"
+            } else if id == "三亚" {
+                .condition = "sunny"
+                .cond_zh = "晴"
+                .icon = "☀️"
+                .temp = "31°"
+                .feels = "34°"
+                .humidity = "72%"
+                .wind = "16 km/h"
+                .uv = "很强"
+                .aqi = "28"
+                .aqi_level = "优"
+                .pressure = "1006 hPa"
+                .visibility = "12 km"
+            } else {
+                .condition = "partly"
+                .cond_zh = "多云"
+                .icon = "⛅"
+                .temp = "23°"
+                .feels = "25°"
+                .humidity = "65%"
+                .wind = "12 km/h"
+                .uv = "中等"
+                .aqi = "68"
+                .aqi_level = "良"
+                .pressure = "1012 hPa"
+                .visibility = "12 km"
+            }
+            .hourly = [
+                { time: "现在", icon: .icon, temp: .temp, now: true },
+                { time: "15:00", icon: .icon, temp: .temp, now: false },
+                { time: "16:00", icon: .icon, temp: .temp, now: false },
+                { time: "17:00", icon: .icon, temp: .temp, now: false },
+                { time: "18:00", icon: .icon, temp: .temp, now: false },
+                { time: "19:00", icon: .icon, temp: .temp, now: false },
+                { time: "20:00", icon: .icon, temp: .temp, now: false },
+                { time: "21:00", icon: .icon, temp: .temp, now: false }
+            ]
+            .daily = [
+                { day: "今天", icon: .icon, cond: .cond_zh, tmin: .temp, tmax: .temp },
+                { day: "周二", icon: .icon, cond: .cond_zh, tmin: .temp, tmax: .temp },
+                { day: "周三", icon: "☁️", cond: "阴", tmin: .temp, tmax: .temp },
+                { day: "周四", icon: "🌧️", cond: "小雨", tmin: .temp, tmax: .temp },
+                { day: "周五", icon: "⛅", cond: "多云", tmin: .temp, tmax: .temp }
+            ]
         }
 
         .Refresh -> {
             .refreshing = true
-            var id = .city_id
-            .city_zh = name_for(id)
-            .condition = condition_for(id)
-            .cond_zh = cond_zh_for(id)
-            .icon = icon_for(id)
-            .temp = temp_for(id)
-            .feels = feels_for(id)
-            .humidity = humidity_for(id)
-            .wind = wind_for(id)
-            .uv = uv_for(id)
-            .aqi = aqi_for(id)
-            .aqi_level = aqi_level_for(id)
-            .pressure = pressure_for(id)
-            .visibility = visibility_for(id)
-            .hourly = hourly_for(id)
-            .daily = daily_for(id)
             if .updated_at == "14:30" {
                 .updated_at = "14:31"
             } else if .updated_at == "14:31" {
@@ -672,3 +833,4 @@ widget App {
         }
     }
 }
+

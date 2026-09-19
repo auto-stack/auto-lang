@@ -9,7 +9,4 @@ title_zh: "天气"
 window: "960x680"
 desktop: "true"
 # 不写死 theme/accent —— 跟随宿主/CLI；应用内 ToggleTheme 翻转 dark_mode。
-
-dep stylekit {
-    path: "../stylekit"
-}
+# r8：不声明 dep stylekit —— rust/a2r 轨不解析该导入；hint_text 内联。
