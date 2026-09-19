@@ -430,7 +430,13 @@ Design 16 论点 "app = shell + route→blueprint selection + blueprint data wir
     2026-09-19）。
   - `archived`：git mv → docs/plans/archive/657-bp-admin-sample.md，status:
     archived 本提交。
-  - `cleaned`：（待回填——摘链守门程序后）。
+  - `cleaned`：✅——守门程序执行实录：先按 P075-D1 程序 `cmd /c rmdir` 摘除
+    deps/bps junction ×2（047 + 046，链接本体删除、blueprints 完好实证）+
+    GNU rm 清 node_modules 链接场（1087 链接→0）→ **wt-guard: clean** 复跑
+    确认零 reparse point → worktree 移除（中途两处残留 vite 进程锁
+    PID 10136/21620 定点清除后完成）→ 分支 plan-657-dev 删除（was
+    8e2f4102b）→ auto-down 依赖位 guard clean 后移除 → 组目录
+    D:/autostack/.wt/lang-657 整体移除（磁盘 + 两仓 worktree 注册零残留）。
 
 
 ## 10. 待澄清事项
