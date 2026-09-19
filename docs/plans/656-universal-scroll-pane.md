@@ -1947,6 +1947,21 @@ CodeEditor
   恒 0 → to_end 首点解析为 0（vm_probe 实机 probe/mprobe=0.00 复现；on-scroll
   观察链持续绿 oy=60 py=0.820）。修复方向：scroll_to 后自定义回读 operation
   （iced State 可读）或布局期 metrics 预热。AC-06/07/16 iced 侧仍开。
+
+- 2026-09-19 /auto-plan:work F-4 修复轮：`stage: work | PLAN-656 | r2 |
+  outcome: blocked(末环) | code_commit: d28487af6`。**F-4 三个子层全部定位并修复**：
+  ①几何根因——Plan 057 双样式遗留（pane style 同时作用于内层内容列），h-* 类把
+  content 固定到 ==viewport（range=0）；示例改外层定高容器 idiom 后读回实证
+  main(192/293.6)/managed(2M×10M)/hidden(48/124.8)——语义陷阱已需入 spec；
+  ②id 优先序写反——controller id 被 vnode bounds id 吞掉（预热循环空转根因）；
+  ③读回基建——ScrollStateReader operation + bind 预热 + 未预热 intent 留队 +
+  心跳读回节拍 + __scroll_ctl_exec 头部直返。**drain 已实证正确解析**
+  （scroll_ctl_main y=101.6 == range）。**遗留末环**：scroll_to 落盘后
+  translation 读回仍恒 0——同位 MCP __mcp_scroll 头部直返对 vnode-id pane
+  有效而 __scroll_ctl_exec 对 scroll_ctl-id pane 无效；下轮直接 diff 两路径
+  （候选：改用 __mcp_scroll 消息复用/排查 scroll_ctl id 与 Tree 状态持久化
+  交互）。AC-16 未闭环，vm_probe 其余面持续绿（on-scroll oy=60 py=0.49、
+  布局三 pane、截图归档）。
   v1 两处公共面执行裁定（controller 函数族/onscroll 8 位置实参）已入 spec API 节 +
   KNOWN-DEBT 656 行——review 时请重点裁决是否接受为 v1 契约。
 
