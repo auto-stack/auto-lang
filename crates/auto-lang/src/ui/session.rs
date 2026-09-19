@@ -5422,6 +5422,51 @@ mod tests {
         assert_eq!(ShellModel::from_storage(Some("outproc")), ShellModel::Outproc);
     }
 
+    /// PLAN-030 T-10（R-2）：看门兵预算耗尽支路——窗口内第 3 次登记 =
+    /// 降级观测（respawn 清空 + degraded 位置位 + 后续登记早退）；
+    /// inproc 轨登记早退；窗口滑出后重开计数（degraded 不自愈——恢复
+    /// 走 renderer 一次性回退 in-proc 后清位，T-04 接线）。
+    #[test]
+    fn shell_respawn_budget_exhaustion_degrades() {
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        // inproc 轨：登记早退。
+        ds.desktop.shell_model = ShellModel::Inproc;
+        ds.schedule_shell_respawn();
+        assert!(ds.desktop.shell_respawn.is_none());
+        // outproc：首登 attempt 0。
+        ds.desktop.shell_model = ShellModel::Outproc;
+        ds.schedule_shell_respawn();
+        let st = ds.desktop.shell_respawn.expect("首登在册");
+        assert_eq!(st.attempt, 0);
+        // 窗口内推到预算边（attempt = BUDGET-1 = 2）→ 再登记 = 第 3 次
+        // → 耗尽：respawn 清空 + degraded 置位。
+        ds.desktop.shell_respawn.as_mut().unwrap().attempt = 2;
+        ds.schedule_shell_respawn();
+        assert!(ds.desktop.shell_respawn.is_none(), "耗尽清空 respawn");
+        assert!(ds.desktop.shell_degraded, "降级观测位置位");
+        // degraded 门：后续登记早退（不再重试）。
+        ds.schedule_shell_respawn();
+        assert!(ds.desktop.shell_respawn.is_none(), "degraded 门早退");
+        // degraded 门恒早退：即便植入"窗口已滑出"的 stale 现场，登记
+        // 不再动作（respawn 原样保留 = 未被改写；降级为一次性裁定，
+        // 恢复 = renderer 回退后清位）。
+        let stale = ShellRespawnState {
+            due: std::time::Instant::now(),
+            attempt: 5,
+            window_start: std::time::Instant::now()
+                - std::time::Duration::from_millis(61_000),
+        };
+        ds.desktop.shell_respawn = Some(stale);
+        ds.schedule_shell_respawn();
+        assert_eq!(
+            ds.desktop.shell_respawn.as_ref().map(|s| s.attempt),
+            Some(5),
+            "degraded 门早退：stale 现场未被改写（窗口滑出不自愈）"
+        );
+        assert!(ds.desktop.shell_degraded);
+    }
+
     /// PLAN-030 T-07（D1）：垫底窗——z_order 插序 0（命中序最低）、不抢
     /// 焦点、不入 MRU（伪窗非用户窗）。
     #[test]
