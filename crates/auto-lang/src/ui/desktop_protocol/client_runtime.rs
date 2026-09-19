@@ -2324,13 +2324,25 @@ impl<S: FrameSource> ClientPump<S> {
         }
     }
 
-    /// 产一帧（shm 段在册才可）并回发；发送失败不断连（下一轮 EOF 收敛）。
+    /// 产一帧并回发；发送失败不断连（下一轮 EOF 收敛）。PLAN-031 T-07
+    /// e2e 暴露的既有缝：载荷超 shm 槽（16KiB Commands 档）时
+    /// `produce_frame_shared` Err → 此前 `if let Ok` 静默弃帧 = 冻结
+    /// （真实 003-converter 首帧即超）。修复 = 回退管道内联 FrameReady
+    ///（v1 合法变体，宿主 ComposeFrame 臂现成）——大帧降档不丢帧，
+    /// 桌面 broker / rqhost 共享路径同益。
     fn push_frame(&mut self) {
-        let Some(shm) = self.shm.as_ref() else { return };
-        if let Some(app) = self.endpoint.as_mut() {
-            if let Ok(frame) = app.produce_frame_shared(shm, None) {
-                let _ = self.app_end.send(&frame);
-            }
+        if self.shm.is_none() {
+            return;
+        }
+        let Some(app) = self.endpoint.as_mut() else { return };
+        let shm = self.shm.as_ref().expect("上方已核");
+        let frame = match app.produce_frame_shared(shm, None) {
+            Ok(f) => Some(f),
+            Err(super::endpoint::ProtocolError::Shm(_)) => app.produce_frame(None).ok(),
+            Err(_) => None,
+        };
+        if let Some(frame) = frame {
+            let _ = self.app_end.send(&frame);
         }
     }
 

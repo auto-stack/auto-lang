@@ -461,6 +461,7 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("tabslist", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("tabstrigger", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("terminal", QueueStatus::NotYet("PLAN-009 P1：native terminal 组件（auto-term 引擎网格视口）刚落地——queue 臂不消费，行为对拍在 auto-term 侧")),
+        ("scroll_test_content", QueueStatus::NotYet("PLAN-656 T-06：capability-test 专用 synthetic managed content——非 public widget，queue 臂不消费；managed 对拍经 p656 示例双端脚本")),
         ("tag", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("tags_input", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("tags_input_delete", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),

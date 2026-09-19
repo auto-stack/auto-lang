@@ -116,6 +116,12 @@ pub fn send(inputs: &[Input]) -> u32 {
     }
 }
 
+/// PLAN-031 R2：可打印文本一键发射（`Input` 私有——pub 便捷口给 e2e
+/// 真机腿；返回成功注入条数 = 2×UTF-16 码元数）。
+pub fn send_unicode(text: &str) -> u32 {
+    send(&unicode_inputs(text))
+}
+
 // —— 组装级单测（零真实发射：send 不触，只验结构/字段）——
 #[cfg(test)]
 mod tests {

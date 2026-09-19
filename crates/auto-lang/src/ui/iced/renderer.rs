@@ -2405,6 +2405,11 @@ pub(crate) fn drain_pending_scroll_offsets() -> Vec<(String, (f32, f32))> {
 /// caller supplies one (VM path injects the aura id for bounds collection).
 /// Plan 043 T1: offset/on_scroll 为滚动位置写入/读出双臂——写入经 pending
 /// 队列（要求 widget_id 稳定），读出经 iced on_scroll 事件回调。
+/// PLAN-656 T-05: axes → iced Direction 三值（hidden 用 `Scrollbar::hidden()`
+/// 结构性归零 rail 命中区，非仅视觉透明）；controller 经
+/// ui::scroll::controller 注册表绑定稳定 id 并缓存测量（update 期
+/// drain_resolved_intents 排空消费）。
+#[allow(clippy::too_many_arguments)]
 fn build_scrollable<M: Clone + Debug + 'static>(
     child: iced::Element<'static, M>,
     width: Option<u16>,
@@ -2413,6 +2418,9 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     widget_id: Option<String>,
     offset: Option<(f32, f32)>,
     on_scroll: Option<crate::ui::view::ScrollCallback<M>>,
+    axes: crate::ui::scroll::ScrollAxes,
+    scrollbar_policy: crate::ui::scroll::ScrollbarPolicy,
+    controller: Option<&crate::ui::view::ScrollControllerBinding>,
 ) -> iced::Element<'static, M> {
     if let (Some(id), Some(off)) = (&widget_id, offset) {
         if std::env::var("P043_DEBUG").is_ok() {
@@ -2420,8 +2428,46 @@ fn build_scrollable<M: Clone + Debug + 'static>(
         }
         note_scroll_offset(id, off);
     }
+    // PLAN-656: controller pane 挂句柄派生稳定 id（跨重建不变、每 controller
+    // 唯一）并注册绑定；scroll_to 意图排空时经注册表回找该 id。
+    let controller_widget_id = controller.map(|c| format!("scroll_ctl_{}", c.key()));
+    if let (Some(c), Some(id)) = (controller, &controller_widget_id) {
+        crate::ui::scroll::bind_controller(c.key(), id);
+        // F-4 终段：写臂重发注册表 offset（terminal/015 生产先例）。offset 在
+        // 同构重建下由 iced Tree 状态保持（obs pane 无写臂跨重建保持滚动位，
+        // 截图实证）；重发是结构性重建/极端序列下的防御，同值去抖使其在
+        // 常规路径零开销。
+        let snap = crate::ui::scroll::controller::controller_snapshot(c.key());
+        if snap.viewport_w > 0.0 {
+            note_scroll_offset(id, (snap.offset_x as f32, snap.offset_y as f32));
+        }
+    }
     let mut cap: Option<f32> = None;
     let mut s = scrollable(child);
+    // PLAN-656: axis 三值 + hidden 策略（结构性 `Scrollbar::hidden()`：
+    // width 0 → rail total_bounds 零面积 → 无命中目标；wheel/keyboard/
+    // controller 滚动不受影响）。
+    let hidden = scrollbar_policy == crate::ui::scroll::ScrollbarPolicy::Hidden;
+    let make_scrollbar = || {
+        if hidden {
+            scrollable::Scrollbar::hidden()
+        } else {
+            scrollable::Scrollbar::new()
+        }
+    };
+    s = match axes {
+        crate::ui::scroll::ScrollAxes::Y => s, // iced 默认纵向
+        crate::ui::scroll::ScrollAxes::X => {
+            s.direction(scrollable::Direction::Horizontal(make_scrollbar()))
+        }
+        _other => s.direction(scrollable::Direction::Both {
+            horizontal: make_scrollbar(),
+            vertical: make_scrollbar(),
+        }),
+    };
+    // PLAN-656: 读出臂——controller pane 的测量缓存包装由（M 具体化的）
+    // 动态渲染臂合成（泛型路径无法凭空构造 M；其 controller 无用户
+    // on-scroll 时不缓存测量，见 plan r2 执行注记）。
     if let Some(cb) = on_scroll {
         // Viewport 六测量 → ScrollMetrics → 宿主消息（DSL 侧三测量
         // scrollTop/scrollHeight/clientHeight 对应 offset_y/content_h/viewport_h）。
@@ -2490,6 +2536,12 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     }
     // Plan 409 §10 续 4: 半透明悬浮滚动条(接近 vue:thumb 半透明、track 透明、细)。
     s = s.style(|_theme: &iced::Theme, _status: scrollable::Status| scrollbar_style());
+    // PLAN-656: controller pane 的句柄派生 id 优先（scroll_to 目标必须命中；
+    // 该节点让出 bounds 采集 id，与 auto_scroll 固定 id 同款取舍）。review
+    // F-4 修复：原 `.or()` 顺序写反——vnode bounds id 优先吞掉 controller
+    // id，注册表绑定的 scroll_ctl_* 永远匹配不到真实 widget（读回键为
+    // vnode_*，scroll_to 落空，预热循环空转）。
+    let widget_id = controller_widget_id.or(widget_id);
     if let Some(id) = widget_id {
         s = s.id(id);
     }
@@ -4357,6 +4409,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
+            // PLAN-656 T-06: synthetic managed content——logical extent 自绘
+            // widget（host 注册表 draw 期 viewport 观察）。
+            AbstractView::ManagedScrollContent { key, logical_w, logical_h, .. } => {
+                crate::ui::iced::managed_content::ManagedScrollContentWidget::new(key.clone(), logical_w, logical_h)
+                    .into_element()
+            }
+
             AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
@@ -4611,7 +4670,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
-            AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll } => {
+            AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll, axes, scrollbar_policy, controller } => {
                 // Plan 049 → 057 续:仅 `auto_scroll` 标记的主列表挂固定 Id
                 // (snap_to_end 目标)。此前所有 Scrollable 共享该 Id,块内 max-h
                 // 滚动区会抢先命中 snap/scroll 操作 → 自动滚动失灵。
@@ -4623,7 +4682,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 } else {
                     None
                 };
-                build_scrollable(child.into_iced(), width, height, style.as_ref(), scroll_id, offset, on_scroll)
+                // PLAN-656: 泛型路径 controller 直传（测量缓存包装仅在动态
+                // 臂可行——M 具体；此处无用户 on-scroll 时不缓存测量）。
+                build_scrollable(child.into_iced(), width, height, style.as_ref(), scroll_id, offset, on_scroll, axes, scrollbar_policy, controller.as_ref())
             }
 
             AbstractView::Grid { cols, gap, cells, style } => {
@@ -7024,6 +7085,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             auto_scroll,
             offset,
             on_scroll,
+            axes,
+            scrollbar_policy,
+            controller,
         } => AbstractView::Scrollable {
             child: Box::new(convert_view_messages(*child)),
             width,
@@ -7035,6 +7099,10 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_scroll: on_scroll.map(|cb| {
                 crate::ui::view::ScrollCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
             }),
+            // PLAN-656: 纯数据透传。
+            axes,
+            scrollbar_policy,
+            controller,
         },
 
         AbstractView::Radio {
@@ -7190,6 +7258,11 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // `_ => Empty` 兜底,视口整件消失(496 MouseArea 同坑)。select/
         // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
         // (数据已在 convert_terminal 物化)。
+        // PLAN-656 T-06: managed content 纯数据透传。
+        AbstractView::ManagedScrollContent { key, logical_w, logical_h, axes } => {
+            AbstractView::ManagedScrollContent { key, logical_w, logical_h, axes }
+        }
+
         AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => {
             AbstractView::Terminal {
                 key,
@@ -15332,10 +15405,16 @@ fn compare_pngs(
         }
         if msg.event == "__mcp_scroll" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
+            // PLAN-656 F-4 末环：可选第三段 x（controller 双轴回环复用本消费者；
+            // 既有 MCP 调用 "id␟y" 两段形态不变，x 缺省 0）。
             if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
+                let x = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                if std::env::var("P656_DEBUG").is_ok() {
+                    eprintln!("[P656-EXEC] mcp_scroll id={id} x={x} y={y}");
+                }
                 return iced::Task::batch([iced::widget::operation::scroll_to(
                     id.to_string(),
-                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y },
+                    iced::widget::scrollable::AbsoluteOffset { x, y },
                 )]);
             }
             return iced::Task::none();
@@ -15714,6 +15793,33 @@ fn compare_pngs(
             if let Some(ref mcp_handle) = state.desktop.mcp_shared {
                 if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
                     *state.app.devtools.screenshot_request.borrow_mut() = Some(req);
+                }
+            }
+        }
+
+        // PLAN-656 review F-4: scroll 状态读回落库——ScrollStateReader 的
+        // 六测量按 widget id 反查 handle 写入 controller 注册表（预热/校正）。
+        if msg.event == "__scroll_state_read" {
+                if let Some(ref json) = msg.input_value {
+                if let Ok(map) = serde_json::from_str::<std::collections::HashMap<
+                    String,
+                    (f32, f32, f32, f32, f32, f32),
+                >>(json)
+                {
+                    for (id, (ox, oy, vw, vh, cw, ch)) in map {
+                        if std::env::var("P656_DEBUG").is_ok() { eprintln!("[P656-READ] id={id} vals={:?}", (ox, oy, vw, vh, cw, ch)); }
+                        for handle in crate::ui::scroll::controller::handles_for_widget(&id) {
+                            // F-4 终段：extent-only——offset 语义单源在注册表
+                            //（写臂回填/on_scroll 回声/用户滚动）；读回 offset
+                            // 同号修正后虽已可信，v1 不回写（排空同帧的
+                            // pre-scroll 读值会短暂覆盖命令值投影）。
+                            crate::ui::scroll::controller::note_controller_extents(
+                                &handle,
+                                (vw as f64, vh as f64),
+                                (cw as f64, ch as f64),
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -17598,6 +17704,51 @@ fn compare_pngs(
                 id,
                 iced::widget::scrollable::AbsoluteOffset { x, y },
             ));
+        }
+
+        // PLAN-656 T-05 + review F-4: controller intent 队列排空与测量回读。
+        // ① 新绑定 handle 的预热请求 → 读回操作补首用基线；
+        // ② 未预热 handle 的 intents 由 drain 留队（返回 prime 名单）——
+        //    先读回、下一 tick 重解析（首用动作晚一拍而非解析为 0）；
+        // ③ 已解析终态 → scroll_to 落盘 + 投影写回 + 读回校正（iced 的
+        //    实际 clamp 结果覆盖 F-2 的命令值投影）。
+        let scroll_read_task = || {
+            iced::advanced::widget::operate(
+                crate::ui::iced::scroll_state_reader::ScrollStateReader::new(),
+            )
+            .map(|state_map| IcedMessage {
+                widget: String::new(),
+                event: "__scroll_state_read".to_string(),
+                input_value: Some(serde_json::to_string(&state_map).unwrap_or_default()),
+            })
+        };
+        let has_prime_requests = !crate::ui::scroll::controller::take_prime_requests().is_empty();
+        if has_prime_requests {
+            tail_tasks.push(scroll_read_task());
+        }
+        let (finals, prime) = crate::ui::scroll::drain_resolved_intents();
+        let finals_done = !finals.is_empty();
+        for (handle, id, x, y) in finals {
+            if std::env::var("P656_DEBUG").is_ok() {
+                eprintln!("[P656-DRAIN] scroll_to id={id} x={x} y={y}");
+            }
+            // review F-2：命令值先行投影（读回一 tick 后以真实 clamp 校正）。
+            crate::ui::scroll::controller::note_controller_offset(&handle, x, y);
+            // F-4 末环 diff 实验：复用 __mcp_scroll 消费者（载荷 "id␟y␟x"，
+            // 第三段 x 为本计划扩展）——该头部直返路径对 MCP 实证有效。
+            tail_tasks.push(iced::Task::done(IcedMessage {
+                widget: String::new(),
+                event: "__mcp_scroll".to_string(),
+                input_value: Some(format!("{id}{sep}{y}{sep}{x}", sep = PAYLOAD_SEP)),
+            }));
+        }
+        // 读回节拍：预热/排空后立即读 + 心跳持续读（程序化 scroll_to 的
+        // 落盘 offset 在下一帧才可见，单次读会取到旧值——心跳读收敛投影；
+        // 读消息自身不再触发读，防自激环）。
+        if msg.event != "__scroll_state_read"
+            && (!prime.is_empty() || finals_done || msg.event == "__mcp_heartbeat")
+        {
+            tail_tasks.push(scroll_read_task());
         }
 
         // PLAN-063 T-04d-2: 块锚定同步目标消费——锚块变化时经注册表把
@@ -22979,6 +23130,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::MouseArea { style, .. } => style.as_ref(),
         // PLAN-009 P1: terminal 的 style 参与常规定位/边距判定。
         AbstractView::Terminal { style, .. } => style.as_ref(),
+        AbstractView::ManagedScrollContent { .. } => None,
         // PLAN-617 T-19: video 的 style（尺寸/定位类）参与布线判定。
         AbstractView::Video { style, .. } => style.as_ref(),
         // Plan 563: Canvas 的 style(尺寸类)同 MouseArea 参与定位判定。
@@ -23103,6 +23255,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Textarea { .. } => "textarea",
         AbstractView::CodeEditor { .. } => "code_editor",
         AbstractView::Terminal { .. } => "terminal",
+        AbstractView::ManagedScrollContent { .. } => "managed_content",
         AbstractView::AutodownEditor { .. } => "autodown_editor",
         AbstractView::Input { .. } => "input",
         AbstractView::Accordion { .. } => "accordion",
@@ -23638,7 +23791,15 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             wrap_layout_events(el, onclick, on_right_click, hover)
         }
 
-        AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll } => {
+        // PLAN-656 T-06: managed content——dynamic 臂同 widget（debug 包裹
+        // 保 bounds 可见性；真渲染在 widget draw）。
+        AbstractView::ManagedScrollContent { key, logical_w, logical_h, .. } => {
+            let el = crate::ui::iced::managed_content::ManagedScrollContentWidget::new(key.clone(), logical_w, logical_h)
+                .into_element();
+            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "managed_content", el, vec![], None) } else { el }
+        }
+
+        AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll, axes, scrollbar_policy, controller } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
             if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
@@ -23657,7 +23818,35 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 widget_id
             };
-            let el = build_scrollable(child_el, width, height, style.as_ref(), widget_id, offset, on_scroll);
+            // PLAN-656 T-05: controller pane 的测量缓存包装——合成单一
+            // on_scroll 闭包（M 具体）：note_controller_state + 用户回调
+            //（无用户回调回发 noop 消息，update 层未知事件 catch-all 忽略）。
+            let on_scroll = match &controller {
+                Some(c) => {
+                    let key = c.key().to_string();
+                    let user = on_scroll;
+                    Some(crate::ui::view::ScrollCallback::new(
+                        move |m: crate::ui::view::ScrollMetrics| {
+                            crate::ui::scroll::note_controller_state(
+                                &key,
+                                (m.offset_x as f64, m.offset_y as f64),
+                                (m.viewport_w as f64, m.viewport_h as f64),
+                                (m.content_w as f64, m.content_h as f64),
+                            );
+                            match &user {
+                                Some(cb) => cb.call(m),
+                                None => IcedMessage {
+                                    widget: String::new(),
+                                    event: "__scroll_metrics_noop".to_string(),
+                                    input_value: None,
+                                },
+                            }
+                        },
+                    ))
+                }
+                None => on_scroll,
+            };
+            let el = build_scrollable(child_el, width, height, style.as_ref(), widget_id, offset, on_scroll, axes, scrollbar_policy, controller.as_ref());
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -26278,7 +26467,7 @@ mod tests {
             reg.remove(&id);
         }
         let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
-        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 100.0)), None);
+        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 100.0)), None, crate::ui::scroll::ScrollAxes::Y, crate::ui::scroll::ScrollbarPolicy::Auto, None);
         let drained = drain_pending_scroll_offsets();
         assert!(
             drained.iter().any(|(i, (x, y))| i == &id && *x == 0.0 && *y == 100.0),
@@ -26287,17 +26476,17 @@ mod tests {
         );
         // 同值重建 → 不再入队
         let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
-        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 100.0)), None);
+        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 100.0)), None, crate::ui::scroll::ScrollAxes::Y, crate::ui::scroll::ScrollbarPolicy::Auto, None);
         let drained = drain_pending_scroll_offsets();
         assert!(!drained.iter().any(|(i, _)| i == &id), "same-offset rebuild must not re-enqueue: got {:?}", drained);
         // 值变化（>0.5px）→ 再入队
         let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
-        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 250.0)), None);
+        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 250.0)), None, crate::ui::scroll::ScrollAxes::Y, crate::ui::scroll::ScrollbarPolicy::Auto, None);
         let drained = drain_pending_scroll_offsets();
         assert!(drained.iter().any(|(i, (_, y))| i == &id && *y == 250.0), "changed offset must re-enqueue");
         // 微抖（≤0.5px）→ 不入队
         let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
-        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 250.3)), None);
+        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 250.3)), None, crate::ui::scroll::ScrollAxes::Y, crate::ui::scroll::ScrollbarPolicy::Auto, None);
         let drained = drain_pending_scroll_offsets();
         assert!(!drained.iter().any(|(i, _)| i == &id), "sub-epsilon jitter must not re-enqueue");
     }

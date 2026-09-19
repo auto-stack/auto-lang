@@ -321,6 +321,19 @@ where
 
         // PLAN-009 P1: terminal 组件——检视层暴露为带几何标签的 Text
         // 占位(headless 断言据此识别 terminal 节点;真渲染在 iced 侧)。
+        // PLAN-656 T-06: managed content——检视层 Text 占位（terminal 同款；
+        // 真渲染在 iced widget / Vue bridge）。
+        View::ManagedScrollContent { key, logical_w, logical_h, .. } => (
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: format!(
+                    "managed_content key={} logical={}x{}",
+                    key, *logical_w as u64, *logical_h as u64
+                ),
+                selectable: false,
+            },
+        ),
+
         View::Terminal { key, cols, rows, lines, .. } => (
             VNodeKind::Text,
             VNodeProps::Text {
@@ -1013,6 +1026,9 @@ mod tests {
             style: None,
             offset: None,
             on_scroll: None,
+            axes: crate::ui::scroll::ScrollAxes::Y,
+            scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
+            controller: None,
         };
 
         let tree = view_to_vtree(view);

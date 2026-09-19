@@ -1105,20 +1105,40 @@ Horizontal layout container
 
 ### `scroll`
 
-`builtin_widget` · `scroll` · web: `component` · iced: `partial` · category: `layout`
+`builtin_widget` · `scroll` · web: `component` · iced: `full` · category: `layout`
 
 [demo →](/examples/widgets-gallery/scroll)
 
-Scrollable container
+Universal scroll viewport (PLAN-656 scroll-pane; scrollable/scroll are aliases)
 
-别名:`Scroll` `scrollable`
+别名:`Scroll` `scrollable` `scroll-pane`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
-| `direction` | `one_of: vertical|horizontal|both` | vertical | Scroll direction |
+| `axis` | `one_of: y|x|both` | y | Scroll axes (PLAN-656 scroll-pane; recommended over legacy direction) |
+| `scrollbar` | `one_of: auto|always|hidden` | auto | Scrollbar visibility policy (PLAN-656; hidden = no visible rail/thumb and no scrollbar hit target, scrolling still works) |
+| `controller` | `string` | — | Scroll controller handle from scroll_controller() (PLAN-656; pairs with scroll_to_end/scroll_by/... native family) |
+| `onscroll` | `closure` | — | Scroll observation callback |state| with record { offset_x, offset_y, viewport_w, viewport_h, content_w, content_h, progress_x, progress_y } (PLAN-656; observe-only, not a control protocol) |
+| `direction` | `one_of: vertical|horizontal|both` | vertical | Legacy scroll direction (PLAN-656: maps to axis; axis wins when both present) |
 
 子件:`scrollarea` `scrollareascrollbar` `scrollareathumb` `scrollareaviewport`
+
+---
+
+### `scroll_test_content`
+
+`builtin_widget` · `scroll_test_content` · web: `none` · iced: `full` · category: `layout`
+
+PLAN-656 capability-test-only synthetic managed scroll content (NOT a public widget) - host-owned logical extent, ~20 visible rows materialized; place inside scroll-pane
+
+别名:`scroll-test-content`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `key` | `string` | — | Stable host registry key (persist across rebuilds) |
+| `extent_w` | `float` | — | Logical extent width px (default 2000000) |
+| `extent_h` | `float` | — | Logical extent height px (default 10000000) |
 
 ---
 

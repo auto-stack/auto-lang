@@ -1,0 +1,5 @@
+[p031] 进程清单
+rqhost pid=3368 working_set=200504KB private=314136KB
+003-converter(vm -q) pid=12628 working_set=31780KB private=8532KB
+01-helloworld(vm -q) pid=24888 working_set=45516KB private=6876KB
+total_private=329544KB（rqhost + 2 app；对照口径：2×inproc 直挂 ≈ 2×独立 iced 进程）

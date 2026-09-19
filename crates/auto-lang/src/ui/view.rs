@@ -6,6 +6,26 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 use super::style::{Style, StyleClass, SizeValue, Color};
+use crate::ui::scroll::{ScrollAxes, ScrollbarPolicy};
+
+/// PLAN-656 T-03: scroll-pane controller 的 runtime 绑定句柄（IR 层私有形态，
+/// 非核心滚动语义——见 `ui/scroll/mod.rs` 头注记：controller 是 logical
+/// handle，其 runtime 绑定 key 在 IR 层）。
+///
+/// 值面来源：DSL `scroll_controller()` 原生族返回的句柄字符串（Value::Str），
+/// view-builder 捕获后与 pane 的稳定 widget id 关联（renderer 侧注册表）。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ScrollControllerBinding(pub Arc<str>);
+
+impl ScrollControllerBinding {
+    pub fn new(key: impl Into<Arc<str>>) -> Self {
+        Self(key.into())
+    }
+
+    pub fn key(&self) -> &str {
+        &self.0
+    }
+}
 
 /// Callback for select dropdown changes
 ///
@@ -666,6 +686,22 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// PLAN-656 T-06: synthetic managed scroll content（capability-test 专用，
+    /// plan r2 §11——非正式 public widget）。logical extent 巨大、真实绘制
+    /// 节点 ~20 行/列；host（`ui::scroll::managed` 注册表）单源持有 semantic
+    /// offset/extent，iced widget 在 draw 期观察 viewport 回灌（terminal
+    /// virtual_scroll 同款）。双轴几何独立（BOTH case 宽高各自逻辑值）。
+    ManagedScrollContent {
+        /// 宿主注册表键（跨 view 重建持久）。
+        key: String,
+        /// 逻辑宽度（px, f64 逻辑空间）。
+        logical_w: f64,
+        /// 逻辑高度（px）。
+        logical_h: f64,
+        /// 开启轴（host 创建参数）。
+        axes: ScrollAxes,
+    },
+
     /// Container wrapper for styling and layout
     Container {
         child: Box<View<M>>,
@@ -699,6 +735,13 @@ pub enum View<M: Clone + Debug> {
         /// 消息带出宿主(PointerMoveHandler 同款 newtype;可跨消息类型
         /// 包装,VM 轨 DynamicMessage→IcedMessage 转换不丢)。
         on_scroll: Option<ScrollCallback<M>>,
+        /// PLAN-656 T-03: 开启的滚动轴（`axis: y|x|both`；默认 Y）。
+        axes: ScrollAxes,
+        /// PLAN-656 T-03: `scrollbar:` 可见策略（auto/always/hidden）。
+        scrollbar_policy: ScrollbarPolicy,
+        /// PLAN-656 T-03: controller 绑定（`scroll_controller()` 句柄）；
+        /// None = 无程序化控制。
+        controller: Option<ScrollControllerBinding>,
     },
 
     /// Radio button with optional styling
@@ -1857,6 +1900,9 @@ impl<M: Clone + Debug> View<M> {
             auto_scroll: false,
             offset: None,
             on_scroll: None,
+            axes: ScrollAxes::Y,
+            scrollbar_policy: ScrollbarPolicy::Auto,
+            controller: None,
         }
     }
 
@@ -2131,6 +2177,10 @@ impl<M: Clone + Debug> View<M> {
                 search,
                 style,
             },
+            // PLAN-656 T-06: managed content 纯数据透传。
+            View::ManagedScrollContent { key, logical_w, logical_h, axes } => {
+                View::ManagedScrollContent { key, logical_w, logical_h, axes }
+            }
             View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, scheme, shortcuts, style } => View::Terminal {
                 key,
                 cols,
@@ -2178,9 +2228,10 @@ impl<M: Clone + Debug> View<M> {
                 onclick: onclick.map(|m| f(m)),
                 on_right_click: on_right_click.map(|m| f(m)),
             },
-            View::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll } => {
+            View::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll, axes, scrollbar_policy, controller } => {
                 // Plan 043 T1: offset 透传;on_scroll 为 ScrollCallback
                 // newtype,可包装换消息类型(PointerMoveHandler 同款)。
+                // PLAN-656: axes/policy/controller 为纯数据,直接透传。
                 View::Scrollable {
                     child: Box::new(child.map_msg_with_arc(f)),
                     width,
@@ -2192,6 +2243,9 @@ impl<M: Clone + Debug> View<M> {
                         let f = std::sync::Arc::clone(f);
                         ScrollCallback::new(move |m| f(cb.call(m)))
                     }),
+                    axes,
+                    scrollbar_policy,
+                    controller,
                 }
             }
             View::Radio { label, is_selected, on_select, style } => View::Radio {
@@ -2347,6 +2401,12 @@ pub struct ViewScrollableBuilder<M: Clone + Debug> {
     offset: Option<(f32, f32)>,
     /// Plan 043 T1: 滚动位置读出回调。
     on_scroll: Option<ScrollCallback<M>>,
+    /// PLAN-656 T-03: 开启轴（默认 Y）。
+    axes: ScrollAxes,
+    /// PLAN-656 T-03: scrollbar 可见策略（默认 Auto）。
+    scrollbar_policy: ScrollbarPolicy,
+    /// PLAN-656 T-03: controller 绑定句柄。
+    controller: Option<ScrollControllerBinding>,
 }
 
 impl<M: Clone + Debug> ViewScrollableBuilder<M> {
@@ -2395,6 +2455,24 @@ impl<M: Clone + Debug> ViewScrollableBuilder<M> {
         self
     }
 
+    /// PLAN-656 T-03: 开启轴（`axis: y|x|both`）。
+    pub fn axes(mut self, axes: ScrollAxes) -> Self {
+        self.axes = axes;
+        self
+    }
+
+    /// PLAN-656 T-03: scrollbar 可见策略。
+    pub fn scrollbar_policy(mut self, policy: ScrollbarPolicy) -> Self {
+        self.scrollbar_policy = policy;
+        self
+    }
+
+    /// PLAN-656 T-03: controller 绑定句柄。
+    pub fn controller(mut self, controller: ScrollControllerBinding) -> Self {
+        self.controller = Some(controller);
+        self
+    }
+
     /// Build the scrollable view
     pub fn build(self) -> View<M> {
         View::Scrollable {
@@ -2405,6 +2483,9 @@ impl<M: Clone + Debug> ViewScrollableBuilder<M> {
             auto_scroll: self.auto_scroll,
             offset: self.offset,
             on_scroll: self.on_scroll,
+            axes: self.axes,
+            scrollbar_policy: self.scrollbar_policy,
+            controller: self.controller,
         }
     }
 }

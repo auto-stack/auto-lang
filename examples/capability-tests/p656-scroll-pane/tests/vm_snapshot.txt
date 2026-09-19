@@ -1,0 +1,96 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  text #vnode_12642422519345821663 "PLAN-656 scroll-pane capability"
+  container #vnode_12642404927159776812 {
+    scrollable #vnode_4289760042030763204 {
+      col #vnode_12781790891868631308 {
+        col #vnode_15900409796501198692 {
+          text #vnode_8766178259980025580 "y-row-01"
+          text #vnode_8766195852166070431 "y-row-02"
+          text #vnode_8766213444352115282 "y-row-03"
+          text #vnode_8766231036538160133 "y-row-04"
+          text #vnode_8766107891235846176 "y-row-05"
+          text #vnode_8766125483421891027 "y-row-06"
+          text #vnode_8766143075607935878 "y-row-07"
+          text #vnode_8766160667793980729 "y-row-08"
+          text #vnode_8766318997468384388 "y-row-09"
+          text #vnode_8766336589654429239 "y-row-10"
+          text #vnode_8766354181840474090 "y-row-11"
+          text #vnode_8766371774026518941 "y-row-12"
+        }
+      }
+    }
+  }
+  col #vnode_12642457703717911365 {
+    row #vnode_4335675647607256639 {
+      button #vnode_5848235382988025101 "to-end"
+      button #vnode_5848217790801980250 "by-320"
+      button #vnode_5848200198615935399 "to-start"
+    }
+    row #vnode_4335658055421211788 {
+      button #vnode_5832930181129193956 "probe"
+      text #vnode_5832947773315238807 "oy=60 vy=23.20001220703125 py=0.4934210777282715 probe=101.60000610351563"
+    }
+  }
+  container #vnode_12642440111531866514 {
+    scrollable #vnode_4320370445748425494 {
+      col #vnode_14308335243851411042 {
+        row #vnode_15852418384584233094 {
+          text #vnode_1117584316012647346 "x-cell-01"
+          text #vnode_1117601908198692197 "x-cell-02"
+          text #vnode_1117549131640557644 "x-cell-03"
+          text #vnode_1117566723826602495 "x-cell-04"
+          text #vnode_1117513947268467942 "x-cell-05"
+          text #vnode_1117531539454512793 "x-cell-06"
+          text #vnode_1117478762896378240 "x-cell-07"
+          text #vnode_1117496355082423091 "x-cell-08"
+        }
+      }
+    }
+  }
+  container #vnode_12642352150601642259 {
+    scrollable #vnode_4243844436454269769 {
+      col #vnode_1268602327039685899 {
+        col #vnode_15972396914376647089 {
+          text #vnode_1792325102221541315 "hidden-1"
+          text #vnode_1792307510035496464 "hidden-2"
+          text #vnode_1792360286593631017 "hidden-3"
+          text #vnode_1792342694407586166 "hidden-4"
+          text #vnode_1792395470965720719 "hidden-5"
+          text #vnode_1792377878779675868 "hidden-6"
+        }
+      }
+    }
+  }
+  container #vnode_12642334558415597408 {
+    scrollable #vnode_4228539234595438624 {
+      col #vnode_9728702187903071840 {
+        text #vnode_15996392620335129888 "managed_content key=cap logical=2000000x10000000"
+      }
+    }
+  }
+  row #vnode_12642387334973731961 {
+    button #vnode_4274454840171932059 "m-to-end"
+    button #vnode_4274437247985887208 "m-by-4k"
+    button #vnode_4274490024544021761 "m-probe"
+    text #vnode_4274472432357976910 "mprobe=9999776"
+  }
+  container #vnode_12642369742787687110 {
+    scrollable #vnode_4259149638313100914 {
+      col #vnode_11255246539885851574 {
+        col #vnode_15948401208418164290 {
+          text #vnode_16414772203947403814 "obs-1"
+          text #vnode_16414789796133448665 "obs-2"
+          text #vnode_16414737019575314112 "obs-3"
+          text #vnode_16414754611761358963 "obs-4"
+          text #vnode_16414842572691583218 "obs-5"
+          text #vnode_16414860164877628069 "obs-6"
+        }
+      }
+    }
+  }
+  button #vnode_12642563256834180471 "bump"
+}

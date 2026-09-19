@@ -36,8 +36,11 @@ fn css_weight_to_iced(w: u16) -> iced::font::Weight {
 }
 
 /// DrawList → canvas 绘制程序（queue 臂栅格化：宿主 GPU 抗锯齿）。
-struct DrawListPainter {
+/// PLAN-031：消息类型泛型化 `<M>`（rqhost daemon 复用接驳——现绑死
+/// DesktopMessage 的唯一消费面改由类型推断承接，零行为差）。
+struct DrawListPainter<M> {
     list: DrawList,
+    _message: std::marker::PhantomData<fn() -> M>,
 }
 
 // ---------------------------------------------------------------------------
@@ -324,7 +327,7 @@ fn rasterize_svg_contain(doc: &str, w: u32, h: u32) -> Option<ImageHandle> {
     Some(ImageHandle::from_rgba(w, h, pm.take()))
 }
 
-impl iced::widget::canvas::Program<DesktopMessage> for DrawListPainter {
+impl<M> iced::widget::canvas::Program<M> for DrawListPainter<M> {
     type State = ();
 
     fn draw(
@@ -462,10 +465,11 @@ fn paint_ops(frame: &mut iced::widget::canvas::Frame, ops: &[DrawOp]) {
 }
 
 /// queue 臂内容：DrawList → canvas 元素（Fill×Fill 客户区）。
-pub fn drawlist_element(list: &DrawList) -> iced::Element<'_, DesktopMessage> {
-    iced::widget::canvas(
-        DrawListPainter { list: list.clone() },
-    )
+pub fn drawlist_element<'a, M: 'a>(list: &DrawList) -> iced::Element<'a, M> {
+    iced::widget::canvas(DrawListPainter::<M> {
+        list: list.clone(),
+        _message: std::marker::PhantomData,
+    })
     .width(iced::Length::Fill)
     .height(iced::Length::Fill)
     .into()
@@ -473,7 +477,7 @@ pub fn drawlist_element(list: &DrawList) -> iced::Element<'_, DesktopMessage> {
 
 /// independent 臂内容：RGBA 前缓冲 → Image（`from_rgba` 直接纳 straight
 /// 非预乘；预乘换算在 iced 渲染器内部，协议层不感知）。
-pub fn pixels_element(surface: &PixelsSurface) -> iced::Element<'_, DesktopMessage> {
+pub fn pixels_element<'a, M: 'a>(surface: &PixelsSurface) -> iced::Element<'a, M> {
     let handle = iced::widget::image::Handle::from_rgba(
         surface.w,
         surface.h,
