@@ -3103,8 +3103,8 @@ impl<'a> AuraViewBuilder<'a> {
         // titles / section headers use the accent — "主要操作和显眼的内容".
         if matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
             let default = match tag {
-                "h1" => Style::parse("text-4xl font-bold text-primary mb-4").ok(),
-                "h2" => Style::parse("text-3xl font-bold text-primary mt-8 mb-4").ok(),
+                "h1" => Style::parse("text-4xl font-bold tracking-tight text-primary mb-4").ok(),
+                "h2" => Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4").ok(),
                 "h3" => Style::parse("text-xl font-semibold text-primary mb-3").ok(),
                 "h4" => Style::parse("text-lg font-semibold mb-2").ok(),
                 "h5" => Style::parse("text-base font-semibold mb-1").ok(),
@@ -4570,8 +4570,8 @@ let tabs_inner = View::Row {
                     let level = self.extract_u16(props, "level").unwrap_or(1).clamp(1, 6);
                     // 与上方 h1..h6 默认样式同源(text-primary + 页边距,plan 409 §8)。
                     let style = match level {
-                        1 => "text-4xl font-bold text-primary mb-4",
-                        2 => "text-3xl font-bold text-primary mt-8 mb-4",
+                        1 => "text-4xl font-bold tracking-tight text-primary mb-4",
+                        2 => "text-3xl font-bold tracking-tight text-primary mt-8 mb-4",
                         3 => "text-xl font-semibold text-primary mb-3",
                         4 => "text-lg font-semibold mb-2",
                         5 => "text-base font-semibold mb-1",
@@ -9219,8 +9219,8 @@ let tabs_inner = View::Row {
         // titles / section headers use the accent — "主要操作和显眼的内容".
         if matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
             let default = match tag {
-                "h1" => Style::parse("text-4xl font-bold text-primary mb-4").ok(),
-                "h2" => Style::parse("text-3xl font-bold text-primary mt-8 mb-4").ok(),
+                "h1" => Style::parse("text-4xl font-bold tracking-tight text-primary mb-4").ok(),
+                "h2" => Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4").ok(),
                 "h3" => Style::parse("text-xl font-semibold text-primary mb-3").ok(),
                 "h4" => Style::parse("text-lg font-semibold mb-2").ok(),
                 "h5" => Style::parse("text-base font-semibold mb-1").ok(),
@@ -14005,7 +14005,7 @@ mod tests {
                         match &wrap[1] {
                             View::Text { content, style, .. } => {
                                 assert_eq!(content, "标题");
-                                let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
+                                let expected = Style::parse("text-4xl font-bold tracking-tight text-primary mb-4").unwrap();
                                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
                             }
                             _ => panic!("expected heading text inside ghost wrap"),

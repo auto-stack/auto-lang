@@ -5625,8 +5625,8 @@ impl RustGenerator {
     /// plan 409 §8 一致);level 钳位 1..6(palette_map.at panelHeading 同款)。
     fn autodown_heading_style(level: i32) -> &'static str {
         match level.clamp(1, 6) {
-            1 => "text-4xl font-bold text-primary mb-4",
-            2 => "text-3xl font-bold text-primary mt-8 mb-4",
+            1 => "text-4xl font-bold tracking-tight text-primary mb-4",
+            2 => "text-3xl font-bold tracking-tight text-primary mt-8 mb-4",
             3 => "text-xl font-semibold text-primary mb-3",
             4 => "text-lg font-semibold mb-2",
             5 => "text-base font-semibold mb-1",
