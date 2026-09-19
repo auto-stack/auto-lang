@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-660
-status: executing
+status: execution_done
 feature_name: 014-weather-ui-refresh
 author: [agent]
 created_at: 2026-09-19
 updated_at: 2026-09-19
 plan_revision: 3
-current_step: 5
+current_step: 6
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components: []
@@ -37,6 +37,12 @@ affects: [examples/ui/014-weather]
 有界修订（去条件中文+温度区间条字面要件），rev 2 口径下 AC-05 的
 fail 判定按旧约保留为历史；余留 = README 同步（F-660-R2）+
 死样式清理（F-660-R4）+ 冒烟内容断言（F-660-R3）。
+
+**r6..r8（他方会话迭代 + 本会话收口）**：r6（0c73cb2ef）fit 窗 + app
+card 框 + 紧凑 hero；r7（e0a12502e）放弃 fit 改固定窗 `window:"960x680"`
+（Plan 512：fit + `lg:`/`max-w` 在 iced 量测塌缩）、宽度全固定刻度
+（Hero `w-64`）、城市条去 container；r8（65fbe867a）复审余留收口——
+README 同步 r7、死样式 `day_row` 清除、vm_smoke 补日卡内容断言。
 
 **设计锚点**：桌面天气仪表盘（横屏）+ Apple Weather 竖屏（保留）。
 
@@ -359,15 +365,17 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
   - 遗留：Vue 浏览器像素走查仍可选；vue-tsc 脚手架 `import.meta.env` 与 demo 无关
   - [✅ 已完成] 2026-09-19 VM 冒烟全绿；脚本已入库
 
-- [ ] **T-06 文档与源码提交**（review needs_fix 重开 F-660-R2；rev 3 扩域）
+- [x] **T-06 文档与源码提交**（rev 3 余留收口 2026-09-19）
   - 路径：`examples/ui/014-weather/README.md`、`examples/ui/README.md`
   - 操作（rev 3 余留）：①014 README 布局表同步 r4/r5 实际形态（右栏预报
     Tab + 指标，横屏 Tab 卡片描述）；②app.at 死样式 `day_row`/`card_surface`
     清理（F-660-R4）；③vm_smoke 补 daily Tab 内容断言（F-660-R3，切 5日后
     快照含日卡内容如「今天」）
   - 验证：`904ca840a feat(examples/ui): refresh 014-weather dashboard UI (Plan 660)`
-  - [进行中] review 重开 2026-09-19（F-660-R2 README 布局停 r2）；
-    rev 3 并入 R4/R3 余留
+  - [✅ 已完成] 2026-09-19 r8（65fbe867a）：README 同步至 r7 固定窗形态；
+    day_row 清除（card_surface 已被 r6/r7 先行清除）；vm_smoke 新增
+    「daily tab renders day cards (今天/周二)」断言。验证三面于 r8 HEAD
+    复跑：auto build 生成绿 + vite 直跑绿 + **vm_smoke 17/17 PASS**
 
 依赖：T-01 → T-02 → T-03 → T-04 → T-05 → T-06。
 
@@ -384,6 +392,7 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
 | work | PLAN-660 | 2 | pass | 4727529aa@plan-660-dev（HEAD，r1..r4 五提交） | T-01..T-06 全闭环 | 全任务勾选 + 验证三面在 HEAD 复核通过；r3/r4 走查反馈补强并入且已提交，worktree clean（gen/ 已 ignore） | ①master specs.json 冲突已解除（658 收口），簿记本次落 commit；②vue-tsc `import.meta.env` 脚手架缺口留 §10（014 源码不依赖，vite 产物可用）；③Vue 浏览器像素走查仍可选非门禁 | **execution_done** → review |
 | review | PLAN-660 | 2 | **needs_fix** | 49975bdf2（worktree HEAD，worktree clean；复审基点 b69c7344c，r1..r5 六提交） | T-04/T-06 重开（current_step 4/6） | **AC 结果**：AC-01 pass（app.at 零灰阶硬编码文案色，grep text-gray/slate/zinc/neutral 零命中，hero 装饰豁免）；AC-02 pass（dark_mode/accent_color 在册，VM 实测翻转 false→true）；AC-03 pass（10 城 pills+weather_data 目录，数据差异抽查 三亚晴31°/北京多云23°）；AC-04 pass（VM 点上海→shanghai/上海/21°/rain）；**AC-05 fail（F-660-R1）**——r5 日卡片=星期/emoji/最高/最低，条件中文（d.cond）不渲染、温度区间条移除；AC-06 pass（hourly 结构/现在 primary 高亮不变）；AC-07 pass（指标 3×3、refresh_busy/idle、updated_at）；AC-08 pass（auto build 生成绿 + vite 直跑绿 634 模块 + VM 冒烟 **16/16 PASS** 含 r5 Tab 断言；vue-tsc 红为 §10 已备案脚手架缺口）。**发现**：F-660-R1（high，AC-05）r5 与验收字面冲突，修复二选一——(a) 日卡内补条件中文+mini 区间条（保留 r5 卡片语态）或 (b) 用户裁准简化形态→needs_replan 有界修 AC-05；F-660-R2（medium）014 README 布局描述停在 r2（SD-02 不同步）；F-660-R3（low，非阻塞）vm_smoke T1 地标弱化为 Tab 按钮文本（T2b 状态断言部分补偿，建议切 daily 后补内容断言）；F-660-R4（trivial）死样式 day_row/card_surface 随 R1 修复顺手清。**独立性声明**：与执行收尾同会话，运行时验收全部于 49975bdf2 复跑取证（非采信执行摘要）。spec 增量复核：SD-01 none 成立（零 crates/specs 触碰，diff 全量 examples/ui/014-weather + examples/ui/README.md 状态行）；SD-02 README 目标在但内容过时（=F-660-R2）；touched_goals GOAL-010 真实（docs/specs/goals.md）。债候选已登记 KNOWN-DEBT P660-D1..D3 | r5 为 execution_done 之后他方会话新落提交（19:05，计划簿记此前未录，本行补记） | **needs_fix → work**（携 F-660-R1/R2/R4；R1 修复路径若用户选 (b) 则转 new 有界修约） |
 | new | PLAN-660 | 3 | pass | —（契约修订，无代码变更） | T-04 复勾（AC-05r3 达标）；T-06 扩域保持开放（F-660-R2/R4/R3 余留） | 用户裁定 2026-09-19（复审裁决问询）：F-660-R1 选路径 (b)——认可 r5 简化日卡片为最终形态，AC-05 有界修订（Tab 互斥+日卡片要件，去条件中文+区间条字面要件）；rev 2 的 AC-05 fail 判定按旧约保留为历史（受影响验证标记 stale）。G-3/§2 布局/§5.3 区间条原案同步标注取代关系；current_step 5/6 | 无 | **work**（T-06 余留：README 同步 + 死样式 + 冒烟内容断言） |
+| work | PLAN-660 | 3 | pass | 65fbe867a@plan-660-dev（HEAD，r1..r8 九提交） | T-06 余留收口（全任务闭环 6/6） | 执行期他方会话续迭代 r6（0c73cb2ef fit 窗+app 框+紧凑 hero）→ r7（e0a12502e 弃 fit 改固定窗 960x680，Plan 512 iced 量测塌缩边界；宽度全固定刻度；城市条去 container）——rev 3 契约（Tab 互斥+日卡片）在 r6/r7 中保留，AC-05r3 持续成立。本会话 r8 收口：README 同步 r7、day_row 死样式清除（card_surface 已被 r6/r7 先行清）、vm_smoke 补「daily tab renders day cards (今天/周二)」内容断言（F-660-R3 闭）。验证三面于 65fbe867a：auto build 生成绿 + vite 直跑绿（634 模块）+ **vm_smoke 17/17 PASS**。worktree clean（余他方 scratch tests/dump_snap.py 未跟踪，不属本计划） | 无阻塞（vue-tsc 脚手架缺口 P660-D1 在册非本计划域） | **execution_done** → review |
 
 ## 10. 待澄清事项
 
