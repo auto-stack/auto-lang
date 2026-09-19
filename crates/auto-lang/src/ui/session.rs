@@ -3234,6 +3234,26 @@ fn spawn_shell_outproc(
                 app_key: name.to_string(),
             }))
         });
+        // PLAN-024 T-01 续:级联 rect 提前算——组件构建(Init 在
+        // build_dynamic_component 内运行)先于 wm_add_win,Init 期
+        // auto.term.window_width/height 若无注入则持有上一 App 的
+        // override 残值(启动实录:读到计算器 vwin 384 → 首拍投影错 →
+        // 引擎双重 resize 把 banner 重排抹掉)。构建前按本 App 将落位
+        // 的 vwin rect 注入内容区真值。
+        let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
+        // Plan 472 T2：级联 index 按当前分区窗数计（隐分区窗不占级联位）。
+        let index = self
+            .host
+            .as_ref()
+            .map(|h| h.wm.wins_in_workspace(h.wm.current_workspace).len())
+            .unwrap_or(0);
+        // 初位尺寸 = 可用区 60%（462 boot 同参），级联偏移随窗数推进。
+        let size = iced::Size::new(usable.width * 0.6, usable.height * 0.6);
+        let rect = crate::ui::layout::cascade_rect(index, size, usable);
+        {
+            let sz = crate::ui::iced::virtual_window::vwin_content_size(rect);
+            crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+        }
         let comp = crate::build_dynamic_component(&provisioned_code, spec.source_path.as_deref())
             .map_err(|e| {
                 // 编译失败回滚供给计数（app 未诞生无窗可 release——归零即
@@ -3261,16 +3281,6 @@ fn spawn_shell_outproc(
                 // 侧由 T6 mtime 轮询热应用,不再 launch 期播种。
             }
         }
-        let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
-        // Plan 472 T2：级联 index 按当前分区窗数计（隐分区窗不占级联位）。
-        let index = self
-            .host
-            .as_ref()
-            .map(|h| h.wm.wins_in_workspace(h.wm.current_workspace).len())
-            .unwrap_or(0);
-        // 初位尺寸 = 可用区 60%（462 boot 同参），级联偏移随窗数推进。
-        let size = iced::Size::new(usable.width * 0.6, usable.height * 0.6);
-        let rect = crate::ui::layout::cascade_rect(index, size, usable);
         let layout = self.host.as_ref().map(|h| h.wm.layout).unwrap_or_default();
         let wid = self.wm_add_win(app_id, title, rect);
         // Plan 504：内容自适应窗（pac `window: "fit"` 经 LaunchSpec.fit 透传）

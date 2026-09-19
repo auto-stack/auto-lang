@@ -503,6 +503,9 @@ fn engine_resize(handle: i64, cols: i64, rows: i64) {
     if h.is_null() {
         return;
     }
+    if std::env::var("P024_TRACE").is_ok() {
+        eprintln!("[P024-TRACE] engine_resize handle={handle} {cols}x{rows}");
+    }
     unsafe {
         let resize: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, c_int, c_int),
