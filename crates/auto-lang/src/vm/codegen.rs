@@ -9474,7 +9474,10 @@ impl Codegen {
                     // call-site arg count as an extra byte, so the Python shim pops
                     // the ACTUAL number of args (count cannot be introspected for
                     // C builtins like datetime.date, and struct.pack is variadic).
-                    if is_py_ffi_call {
+                    // PLAN-656 F-3 续：scroll 族（9900-9905）同样走 COUNTED——
+                    // 可选轴实参依赖 pending_native_arg_count 辨识调用形状
+                    //（plain CALL_NAT 不携带 arity，多弹/漏弹破坏栈平衡）。
+                    if is_py_ffi_call || (9900..=9905).contains(&resolved_id) {
                         self.emit(OpCode::CALL_NAT_COUNTED);
                         self.code.extend_from_slice(&resolved_id.to_le_bytes());
                         self.code.push(call.args.args.len().min(255) as u8);

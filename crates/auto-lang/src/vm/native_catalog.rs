@@ -484,13 +484,15 @@ macro_rules! for_each_native {
             (2948, NATIVE_TERM_ENGINE_IS_EXITED, shim_term_is_exited, "auto.term.engine_is_exited"),
             (2949, NATIVE_TERM_ENGINE_FREE, shim_term_free, "auto.term.engine_free"),
             // === PLAN-656: scroll-pane controller 原生族（ui::scroll::controller
-            // 队列；renderer update 期排空消费）===
-            (2960, NATIVE_SCROLL_CONTROLLER, shim_scroll_controller, "auto.scroll.controller"),
-            (2961, NATIVE_SCROLL_TO_START, shim_scroll_to_start, "auto.scroll.to_start"),
-            (2962, NATIVE_SCROLL_TO_END, shim_scroll_to_end, "auto.scroll.to_end"),
-            (2963, NATIVE_SCROLL_BY, shim_scroll_by, "auto.scroll.by"),
-            (2964, NATIVE_SCROLL_TO, shim_scroll_to, "auto.scroll.to"),
-            (2965, NATIVE_SCROLL_STATE, shim_scroll_state, "auto.scroll.state"),
+            // 队列；renderer update 期排空消费）。id 取 9900+ 高段：review F-3
+            // 实证 register_stdlib_ffi 的动态分配器（next_id 顺序增长）已越过
+            // 29xx 带，经 register_shim_by_name 覆写静态表——避开动态可达区间 ===
+            (9900, NATIVE_SCROLL_CONTROLLER, shim_scroll_controller, "auto.scroll.controller"),
+            (9901, NATIVE_SCROLL_TO_START, shim_scroll_to_start, "auto.scroll.to_start"),
+            (9902, NATIVE_SCROLL_TO_END, shim_scroll_to_end, "auto.scroll.to_end"),
+            (9903, NATIVE_SCROLL_BY, shim_scroll_by, "auto.scroll.by"),
+            (9904, NATIVE_SCROLL_TO, shim_scroll_to, "auto.scroll.to"),
+            (9905, NATIVE_SCROLL_STATE, shim_scroll_state, "auto.scroll.state"),
             // 014 直键入:terminal 键入队列 → 引擎裸写(键盘直键入泵)。
             (2957, NATIVE_TERM_ENGINE_PUMP_INPUT, shim_term_pump_input, "auto.term.engine_pump_input"),
             // 014:几何随动 + 光标格(apply_resize 取注册表待定几何;
