@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-658
-status: drafting
+status: executing
 feature_name: uigallery-multi-backend-proxy
 author: [agent]
 created_at: 2026-09-19
@@ -200,6 +200,18 @@ task_ids: []         # T-00..T-07 待执行
 evidence: 起草期核实（§4.2 三 demo back 形态证据表）+ P642-D13 承接链
 next: work（用户确认契约后：master commit 本计划 → 建 worktree 组
   D:/autostack/.wt/lang-658/{auto-lang,auto-os} → T-00 有界调研定案）
+```
+
+```yaml
+stage: work
+plan_id: PLAN-658
+plan_revision: 1
+outcome: pass        # 进入执行（2026-09-19 用户指令"实施它"=契约确认）
+code_commit: N/A     # worktree 未建前主检出仅簿记
+task_ids: []         # T-00 起
+evidence: 用户会话指令确认契约；auto-lang 主检出 clean、auto-os 主检出
+  WIP 定性为 widgets-gallery 生成漂移+会话产物（非 ui-gallery 面，已呈报不入本计划）
+next: 建 worktree 组 D:/autostack/.wt/lang-658/{auto-lang,auto-os} → T-00
 ```
 
 ## 10. 待澄清事项
