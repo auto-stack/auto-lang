@@ -1,0 +1,16 @@
+{
+  "ac01_library_header": "text #vnode_9478962600030891254 \"共 393 首歌曲 · 默认路径 E:\\Music\\ · FLAC / MP3 / WAV\"",
+  "ac01_pass": true,
+  "ac02_message_rendered": true,
+  "ac02_typing": true,
+  "ac02_pass": true,
+  "ac03_state": "State:   image_count: 6 (int)   media_src: \"/api/__auto/media/bfb34d28b51539295fb185e21f13f3dc/1\" (str)   view_state: \"ready\" (str) ",
+  "ac03_pass": true,
+  "ac04_listeners": [
+    "TCP    127.0.0.1:3358         0.0.0.0:0              LISTENING       12160",
+    "TCP    127.0.0.1:8090         0.0.0.0:0              LISTENING       5816",
+    "TCP    127.0.0.1:9247         0.0.0.0:0              LISTENING       12160"
+  ],
+  "ac04_pass": true,
+  "overall": true
+}
