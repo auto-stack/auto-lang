@@ -3954,6 +3954,38 @@ impl RustGenerator {
                     return format!("{}.build()", builder);
                 }
 
+                // PLAN-022 T-06 顺带修(2026-09-19):div/container 臂镜像
+                // center——View::container 已是 container(child) 一参形态
+                // (ViewContainerBuilder.child 为替换语义,多子链式静默丢
+                // 子),旧发射 View::container()+.child() 链对 div 大户
+                // (app.at 载具)编译不过且语义错。027 T-04 div→container
+                // 映射的配套缺口,归 027 面备案。
+                if tag == "container" || tag == "div" {
+                    let style_str = props.get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .unwrap_or_default();
+
+                    let child_view = if children.is_empty() {
+                        "View::Empty".to_string()
+                    } else if children.len() == 1 {
+                        self.generate_view_tree(&children[0])
+                    } else {
+                        let mut col = "View::col()".to_string();
+                        for child in children {
+                            let child_code = self.generate_view_tree(child);
+                            col = format!("{}.child({})", col, child_code);
+                        }
+                        format!("{}.build()", col)
+                    };
+
+                    let mut builder = format!("View::container({})", child_view);
+                    if !style_str.is_empty() {
+                        builder = format!("{}.style(\"{}\")", builder, style_str);
+                    }
+                    return format!("{}.build()", builder);
+                }
+
                 if children.is_empty() {
                     // Single element without children
                     let mut builder = builder_start;
