@@ -366,26 +366,45 @@ impl<M: Clone> Terminal<M> {
     /// 读出臂状态机(draw 期 viewport 观察调用;headless 可测):视图 y
     /// → 目标 offset,返回需回灌引擎的行增量(None = 无增量/回声吞没)。
     /// scroll_to 回声经 bind_suppress 吞一次(仅对齐基线,不回灌)。
+    /// PLAN-024 增长漂移判别:贴底基线(target 基线 0)+ 视图 y 未动 +
+    /// 滚轮代数未进,而历史增长 = iced scrollable 保持绝对像素位把贴底
+    /// 视口顶离底部(内容增长,非用户滚动)——不回灌引擎(保持贴底),
+    /// 挂 repin 由写臂绑回画布底。桌面轨实录:误回灌 + 绑定交替 =
+    /// 输出期滚动条反复抖动;base>0(已滚向上)路径不变(内容锚定语义)。
     pub(crate) fn observe_view_scroll(
         core: &crate::ui::terminal::TerminalCore,
         view_y: f32,
         history: usize,
     ) -> Option<i32> {
         let target = Self::view_y_to_offset(view_y, history) as i64;
-        // PLAN-022 T-06 回声判别:suppress 挂起时,只有"滚轮代数未进且
-        // 落点贴合期望位"才算 scroll_to 回声(吞没对齐基线);滚轮代数
-        // 已进(用户下一格滚轮先到)或错位超容差,一律按真实观察回灌——
-        // 旧一次性吞没把用户增量当回声吃掉(上翻卡住/下翻跳格实录)。
         if core.scroll_bind_suppress_pending() {
             let (bind_gen, echo_y) = core.bind_echo();
             let user_moved = core.wheel_gen() != bind_gen;
             let aligned = (view_y - echo_y as f32).abs() <= 4.0;
             if !user_moved && aligned {
                 core.clear_scroll_bind_suppress();
-                core.set_scroll_view_target(target);
+                // PLAN-024:基线取绑定登记的 offset(非按现时 hist 重算
+                // target)——重绑飞行期内容再增长时,重算值 = 增长量,
+                // 会把贴底基线污染成正偏移,增长漂移判别随之失效。
+                core.set_scroll_view_target(core.bind_echo_offset());
                 return None;
             }
             core.clear_scroll_bind_suppress();
+        }
+        // PLAN-024:增长漂移三条件判别(基线贴底/视图未动/滚轮未进),
+        // 判据先行落账(last_* 恒更新)再分支。
+        let last_hist = core.scroll_last_history();
+        let view_moved = (view_y - core.scroll_last_view_y()).abs() > 0.5;
+        let wheel_advanced = core.wheel_gen() != core.scroll_last_wheel_gen();
+        core.set_scroll_last_history(history);
+        core.set_scroll_last_view_y(view_y);
+        core.set_scroll_last_wheel_gen(core.wheel_gen());
+        if target > 0 && core.scroll_view_target() == 0 && !view_moved && !wheel_advanced {
+            let grew = history.saturating_sub(last_hist);
+            if grew > 0 {
+                core.set_scroll_repin_pending();
+                return None;
+            }
         }
         let delta = target - core.scroll_view_target();
         if delta != 0 {
@@ -399,9 +418,19 @@ impl<M: Clone> Terminal<M> {
     /// 写臂状态机(build 期调用;headless 可测):引擎 display_offset
     /// ≠ 上次绑定值 → 返回需程序化绑定的视图 y(调用方经 pending 队列
     /// 发 scroll_to),并置抑制吞读出臂的下一次回声。
+    /// PLAN-024:增长漂移贴底重绑优先——读出臂判别为内容增长漂移时挂
+    /// repin(引擎 offset 未变仍贴底,不走 offset≠bound 路径),此处
+    /// 绑到画布底(offset 0 ↔ y = history×CELL_H),回声抑制同常规绑定。
     pub(crate) fn bind_request_y(
         core: &crate::ui::terminal::TerminalCore,
     ) -> Option<f32> {
+        if core.take_scroll_repin_pending() {
+            let history = crate::ui::terminal::terminal_history(core);
+            let y = Self::offset_to_view_y(0, history);
+            core.set_scroll_bind_suppress();
+            core.record_bind_echo(y, 0);
+            return Some(y);
+        }
         let d = crate::ui::terminal::terminal_scroll_offset(core) as i64;
         if d == core.scroll_bound_offset() {
             return None;
@@ -410,7 +439,7 @@ impl<M: Clone> Terminal<M> {
         core.set_scroll_bind_suppress();
         let history = crate::ui::terminal::terminal_history(core);
         let y = Self::offset_to_view_y(d.max(0) as usize, history);
-        core.record_bind_echo(y);
+        core.record_bind_echo(y, d);
         Some(y)
     }
 
@@ -775,6 +804,18 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             viewport_h_register().lock().unwrap().insert(self.key.clone(), viewport.height);
             let view_y = viewport.y - bounds.y;
             let history = self.history();
+            if std::env::var("P024_TRACE").is_ok() {
+                eprintln!(
+                    "[P024-TRACE] observe key={} view_y={:.1} hist={} tgt={} base={} bound={} off={}",
+                    self.key,
+                    view_y,
+                    history,
+                    Self::view_y_to_offset(view_y, history),
+                    self.core.scroll_view_target(),
+                    self.core.scroll_bound_offset(),
+                    self.engine_offset()
+                );
+            }
             if let Some(delta) = Self::observe_view_scroll(self.core, view_y, history) {
                 if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
                     eprintln!("[P22-WHEEL] key={} view_y={:.0} delta={}", self.key, view_y, delta);
@@ -1187,6 +1228,46 @@ mod virtual_scroll_tests {
         // 用户滚回顶:观察 y=0 → 目标 40 → 回灌 +30(10→40)。
         let delta = Terminal::<u8>::observe_view_scroll(core, 0.0, history);
         assert_eq!(delta, Some(30));
+    }
+
+    #[test]
+    fn p024_growth_drift_repins_bottom_not_feed() {
+        // 桌面轨实录(2026-09-19):贴底基线下内容增长,iced scrollable
+        // 保持绝对像素位 → 视口被顶离底部;误判为用户滚动回灌会让引擎
+        // 跳到最旧端,输出期回灌/绑定交替 = 滚动条反复抖动。期望:判为
+        // 增长漂移 → 不回灌,挂贴底重绑,写臂绑到新画布底。
+        let core = core("p024-growth");
+        // 贴底稳态:hist=20,view_y=320(画布底)。
+        crate::ui::terminal::terminal_set_history(core, 20);
+        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 320.0, 20), None);
+        // 内容突发增长 20→50(泵回写缓存;视图 y 未动 = iced 绝对位)。
+        crate::ui::terminal::terminal_set_history(core, 50);
+        let d = Terminal::<u8>::observe_view_scroll(core, 320.0, 50);
+        assert_eq!(d, None, "增长漂移不得回灌引擎");
+        // 写臂消费 repin:绑到新画布底 y=50×CELL_H,回声登记 offset 0。
+        let y = Terminal::<u8>::bind_request_y(core);
+        assert_eq!(y, Some(50.0 * 16.0), "贴底重绑到新画布底");
+        assert!(core.scroll_bind_suppress_pending(), "重绑应置回声抑制");
+        // 回声落地:基线取登记 offset(0)——飞行期再增长(hist 55)
+        // 不得把基线污染成正偏移。
+        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 800.0, 55), None);
+        assert_eq!(core.scroll_view_target(), 0, "基线保持贴底");
+    }
+
+    #[test]
+    fn p024_user_wheel_beats_growth_repin() {
+        // 滚轮代数已进(事件已到、视图位尚未动)时内容增长:判用户
+        // 增量照常回灌,不落入增长漂移重绑——否则输出期用户上翻会被
+        // 贴底重绑吞掉(022 T-06 同型病灶)。
+        let core = core("p024-growth-wheel");
+        crate::ui::terminal::terminal_set_history(core, 20);
+        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 320.0, 20), None);
+        // 用户滚轮事件先到(视图 y 未动),内容同时增长 20→50。
+        core.bump_wheel_gen();
+        crate::ui::terminal::terminal_set_history(core, 50);
+        let d = Terminal::<u8>::observe_view_scroll(core, 320.0, 50);
+        assert_eq!(d, Some(30), "滚轮代数已进 → 照常回灌(内容锚定)");
+        assert!(!core.take_scroll_repin_pending(), "用户滚动不挂重绑");
     }
 
     #[test]

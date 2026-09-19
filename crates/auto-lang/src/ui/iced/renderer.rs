@@ -4782,6 +4782,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 if let Some(y) =
                     <crate::ui::terminal::iced::Terminal<M>>::bind_request_y(core)
                 {
+                    if std::env::var("P024_TRACE").is_ok() {
+                        eprintln!(
+                            "[P024-TRACE] bind key={key} scroll_to y={y:.1} hist={} off={}",
+                            crate::ui::terminal::terminal_history(core),
+                            crate::ui::terminal::terminal_scroll_offset(core)
+                        );
+                    }
                     note_scroll_offset(&scroll_key, (0.0, y));
                 }
                 // 官方 scrollable 包装:滚动条视觉/交互(scrollbar_style

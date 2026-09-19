@@ -210,6 +210,20 @@ pub struct TerminalCore {
     wheel_gen: std::sync::atomic::AtomicU64,
     bind_gen: std::sync::atomic::AtomicU64,
     bind_echo_y_px: std::sync::atomic::AtomicI32,
+    /// PLAN-024:绑定回声登记的引擎 offset(回声对齐时 view_target 基线
+    /// 取此值而非按现时 history 重算——重绑飞行期内容再增长时,重算会
+    /// 把基线污染成"增长量",增长漂移判别失效回灌复发)。
+    bind_echo_offset: std::sync::atomic::AtomicI64,
+    // PLAN-024 增长漂移判别(桌面轨实录:输出期滚动条反复抖动)——iced
+    // scrollable 内容增长时保持绝对像素位,贴底视口被"顶离"底部,读出臂
+    // 若误判为用户滚动回灌引擎,回灌与绑定交替 = 抖动。判别式:**贴底
+    // 基线(view_target==0)+ 视图 y 未动 + 滚轮代数未进** 下历史增长
+    // = 内容增长漂移 → 不回灌,挂贴底重绑(scroll_repin_pending)由写臂
+    // 把视口拉回画布底(跟随输出;已滚向上 base>0 的内容锚定路径不变)。
+    scroll_last_history: std::sync::atomic::AtomicUsize,
+    scroll_last_view_y_bits: std::sync::atomic::AtomicU32,
+    scroll_last_wheel_gen: std::sync::atomic::AtomicU64,
+    scroll_repin_pending: std::sync::atomic::AtomicBool,
 }
 
 /// PLAN-019 启动自动聚焦:窗口内焦点持有者(terminal key;None = 自由,
@@ -246,6 +260,11 @@ impl TerminalCore {
             wheel_gen: std::sync::atomic::AtomicU64::new(0),
             bind_gen: std::sync::atomic::AtomicU64::new(0),
             bind_echo_y_px: std::sync::atomic::AtomicI32::new(0),
+            bind_echo_offset: std::sync::atomic::AtomicI64::new(0),
+            scroll_last_history: std::sync::atomic::AtomicUsize::new(0),
+            scroll_last_view_y_bits: std::sync::atomic::AtomicU32::new(0),
+            scroll_last_wheel_gen: std::sync::atomic::AtomicU64::new(0),
+            scroll_repin_pending: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -338,11 +357,12 @@ impl TerminalCore {
         self.wheel_gen.load(Ordering::Relaxed)
     }
 
-    /// bind 时登记期望回声位(px)并快照滚轮代数。
-    pub(crate) fn record_bind_echo(&self, y_px: f32) {
+    /// bind 时登记期望回声位(px)+ 绑定 offset,并快照滚轮代数。
+    pub(crate) fn record_bind_echo(&self, y_px: f32, offset: i64) {
         self.bind_gen
             .store(self.wheel_gen.load(Ordering::Relaxed), Ordering::Relaxed);
         self.bind_echo_y_px.store(y_px.round() as i32, Ordering::Relaxed);
+        self.bind_echo_offset.store(offset, Ordering::Relaxed);
     }
 
     pub(crate) fn bind_echo(&self) -> (u64, i32) {
@@ -350,6 +370,45 @@ impl TerminalCore {
             self.bind_gen.load(Ordering::Relaxed),
             self.bind_echo_y_px.load(Ordering::Relaxed),
         )
+    }
+
+    pub(crate) fn bind_echo_offset(&self) -> i64 {
+        self.bind_echo_offset.load(Ordering::Relaxed)
+    }
+
+    // ── PLAN-024 增长漂移判别态(见字段注) ──────────────────────────
+
+    pub(crate) fn scroll_last_history(&self) -> usize {
+        self.scroll_last_history.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_scroll_last_history(&self, v: usize) {
+        self.scroll_last_history.store(v, Ordering::Relaxed);
+    }
+
+    pub(crate) fn scroll_last_view_y(&self) -> f32 {
+        f32::from_bits(self.scroll_last_view_y_bits.load(Ordering::Relaxed))
+    }
+
+    pub(crate) fn set_scroll_last_view_y(&self, v: f32) {
+        self.scroll_last_view_y_bits
+            .store(v.to_bits(), Ordering::Relaxed);
+    }
+
+    pub(crate) fn scroll_last_wheel_gen(&self) -> u64 {
+        self.scroll_last_wheel_gen.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_scroll_last_wheel_gen(&self, v: u64) {
+        self.scroll_last_wheel_gen.store(v, Ordering::Relaxed);
+    }
+
+    pub(crate) fn set_scroll_repin_pending(&self) {
+        self.scroll_repin_pending.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn take_scroll_repin_pending(&self) -> bool {
+        self.scroll_repin_pending.swap(false, Ordering::Relaxed)
     }
 }
 
