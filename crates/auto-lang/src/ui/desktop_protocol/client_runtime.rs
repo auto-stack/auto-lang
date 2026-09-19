@@ -235,6 +235,11 @@ pub(crate) struct NodeStyle {
     /// apply_style_class）。解释态 queue 臂 parse 不设置（I4 分表恒
     /// false，零行为差）。
     pub(crate) hidden: bool,
+    /// PLAN-032 T-04（D4）：样式版 grid（display:grid/grid-cols-N/
+    /// grid-rows-N）——native 投影器 layout_view_block 入口分岔消费
+    ///（复用 Grid walker）。解释态 queue 臂 parse 不设置（I4 分表）。
+    pub(crate) grid_cols: Option<usize>,
+    pub(crate) grid_rows: Option<usize>,
 }
 
 impl NodeStyle {

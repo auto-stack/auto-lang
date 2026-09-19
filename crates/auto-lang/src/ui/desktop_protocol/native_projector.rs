@@ -839,6 +839,66 @@ impl<M: Clone + std::fmt::Debug> NativeCtx<M> {
     }
 }
 
+/// PLAN-032 T-04（D4）：Grid walker 单源（View::Grid 变体臂与样式版
+/// grid 分岔共用——026 T-04 两遍网格原实现提取；等宽列 row-major 行序、
+/// 行高 = 行内最大、bg 两遍法置子级之下，语义零变化）。
+fn layout_grid_cells<M: Clone + std::fmt::Debug>(
+    ctx: &mut NativeCtx<M>,
+    cells: &[View<M>],
+    cols: usize,
+    gap: f32,
+    style: &NodeStyle,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+) -> Laid {
+    let cols = cols.max(1);
+    let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    let inner_w = (avail_w - pad.0 - pad.2).max(0.0);
+    let cell_w = if cells.is_empty() {
+        0.0
+    } else {
+        ((inner_w - gap * (cols.saturating_sub(1)) as f32) / cols as f32).max(0.0)
+    };
+    let place = |ctx: &mut NativeCtx<M>| -> (f32, f32) {
+        let mut row_y = 0.0f32;
+        for (ri, row) in cells.chunks(cols).enumerate() {
+            if ri > 0 {
+                row_y += gap;
+            }
+            let mut row_h = 0.0f32;
+            for (ci, cell) in row.iter().enumerate() {
+                let cell_x = ci as f32 * (cell_w + gap);
+                let laid = layout_view_node(ctx, cell, x + pad.0 + cell_x, y + pad.1 + row_y, cell_w);
+                row_h = row_h.max(laid.size.1);
+            }
+            row_y += row_h;
+        }
+        (cell_w * cols as f32 + gap * (cols.saturating_sub(1)) as f32, row_y)
+    };
+    let ops_mark = ctx.ops.len();
+    let hits_mark = ctx.hits.len();
+    let (content_w, content_h) = place(ctx);
+    let outer_w = match style.fixed_w() {
+        Some(fw) => fw,
+        None => content_w + pad.0 + pad.2,
+    };
+    let outer_h = match style.fixed_h() {
+        Some(fh) => fh,
+        None => content_h + pad.1 + pad.3,
+    };
+    if style.bg.is_some() {
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        ctx.push_quad(WRect::new(x, y, outer_w, outer_h), style.bg.unwrap());
+        place(ctx);
+    }
+    if let Some(border) = style.border {
+        ctx.push_border(WRect::new(x, y, outer_w, outer_h), border);
+    }
+    Laid { size: (outer_w, outer_h) }
+}
+
 /// 块流布局：把一列视图排进 `(x, y, w)` 内容盒，返回内容尺寸。
 /// 语义镜像 `client_runtime::layout_block`（纵向依序下排 / row 横排 /
 /// `center_children` 主轴居中两遍法）——子级已物化，无 flatten/条件求值。
@@ -852,6 +912,22 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
     parent: &NodeStyle,
 ) -> Laid {
     let gap = parent.gap();
+    // PLAN-032 T-04（D4）：样式版 grid 分岔单一 choke——容器/堆叠族
+    //（group/container/scrollable 等全路径经此）style 带 Grid/GridCols/
+    // GridRows 类时整体改走网格布局（复用 Grid walker，024 真源 =
+    // `col (style: "grid grid-cols-2 gap-2")`）。
+    if parent.grid_cols.is_some() || parent.grid_rows.is_some() {
+        let cols = parent
+            .grid_cols
+            .map(|c| c.max(1))
+            .unwrap_or_else(|| {
+                parent
+                    .grid_rows
+                    .map(|r| (views.len() + r - 1) / r.max(1))
+                    .expect("choke 条件保证 grid_cols/grid_rows 至少其一")
+            });
+        return layout_grid_cells(ctx, views, cols, gap, parent, x, y, w);
+    }
     let ops_mark = ctx.ops.len();
     let hits_mark = ctx.hits.len();
     let mut cursor = 0.0f32;
@@ -1190,54 +1266,12 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         // :831——cols 等宽格 × row-major 行序，行高 = 行内最大，bg 底色
         // 两遍法置子级之下）。
         View::Grid { cols, gap, cells, .. } => {
-            let cols = (*cols).max(1);
             // gap：Grid.gap 字段（a2r codegen .spacing() 通道）优先，
             // style gap- 类回退档（解释态 layout_grid 同序）。
+            // PLAN-032 T-04（D4）：walker 体提取为 layout_grid_cells
+            // 单源，样式版 grid 分岔共用（语义零变化）。
             let gap = if *gap > 0 { f32::from(*gap) } else { style.gap() };
-            let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
-            let inner_w = (avail_w - pad.0 - pad.2).max(0.0);
-            let cell_w = if cells.is_empty() {
-                0.0
-            } else {
-                ((inner_w - gap * (cols.saturating_sub(1)) as f32) / cols as f32).max(0.0)
-            };
-            let place = |ctx: &mut NativeCtx<M>| -> (f32, f32) {
-                let mut row_y = 0.0f32;
-                for (ri, row) in cells.chunks(cols).enumerate() {
-                    if ri > 0 {
-                        row_y += gap;
-                    }
-                    let mut row_h = 0.0f32;
-                    for (ci, cell) in row.iter().enumerate() {
-                        let cell_x = ci as f32 * (cell_w + gap);
-                        let laid = layout_view_node(ctx, cell, x + pad.0 + cell_x, y + pad.1 + row_y, cell_w);
-                        row_h = row_h.max(laid.size.1);
-                    }
-                    row_y += row_h;
-                }
-                (cell_w * cols as f32 + gap * (cols.saturating_sub(1)) as f32, row_y)
-            };
-            let ops_mark = ctx.ops.len();
-            let hits_mark = ctx.hits.len();
-            let (content_w, content_h) = place(ctx);
-            let outer_w = match style.fixed_w() {
-                Some(fw) => fw,
-                None => content_w + pad.0 + pad.2,
-            };
-            let outer_h = match style.fixed_h() {
-                Some(fh) => fh,
-                None => content_h + pad.1 + pad.3,
-            };
-            if style.bg.is_some() {
-                ctx.ops.truncate(ops_mark);
-                ctx.hits.truncate(hits_mark);
-                ctx.push_quad(WRect::new(x, y, outer_w, outer_h), style.bg.unwrap());
-                place(ctx);
-            }
-            if let Some(border) = style.border {
-                ctx.push_border(WRect::new(x, y, outer_w, outer_h), border);
-            }
-            Laid { size: (outer_w, outer_h) }
+            layout_grid_cells(ctx, cells, *cols, gap, &style, x, y, avail_w)
         }
         // PLAN-025 T-05 scrollable 臂：溢出裁剪（Scissor push/pop——镜像
         // client_runtime::layout_scroll :953-1020）+ 滚轮命中（on_scroll
@@ -1976,6 +2010,13 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
         // 父宽居中（layout_view_block 子级 center_children 通道既有，
         // 真渲非降级；012 步进值/单位标签）。
         StyleClass::SelfCenter => s.center_children = true,
+        // PLAN-032 T-04（D4）：样式版 grid（grid-cols/grid-rows）——记档
+        // 入 NodeStyle，layout_view_block 入口分岔复用 Grid walker。
+        // GridCols(n) 优先；GridRows(m) 主驱时列数 = ceil(cells/m)（布局
+        // 期定）；裸 Grid 不记档——无模板的单列网格与纵向堆叠视觉等价
+        ///（token "style-grid" 判定面不受影响）。
+        StyleClass::GridCols(n) => s.grid_cols = Some(usize::from(*n)),
+        StyleClass::GridRows(n) => s.grid_rows = Some(usize::from(*n)),
         _ => {}
     }
 }
@@ -2343,6 +2384,95 @@ mod tests {
         let texts = texts_of(&frame);
         assert!(texts.contains(&"S"), "hidden md:flex = 桌面可见: {texts:?}");
         assert!(!texts.contains(&"M"), "md:hidden = 桌面隐藏: {texts:?}");
+    }
+
+    /// PLAN-032 T-04（D4）：样式版 grid 分岔——`col (style: "grid
+    /// grid-cols-2 gap-2")` 与 View::Grid 变体臂同构（等宽列 row-major
+    /// × 行高=行内最大）；GridRows(m) → 列数 = ceil(cells/m)。
+    #[test]
+    fn style_grid_golden_isomorphic_to_variant() {
+        #[derive(Debug)]
+        struct StyleGrid;
+
+        #[derive(Debug, Clone)]
+        enum GMsg {}
+
+        impl Component for StyleGrid {
+            type Msg = GMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .style("grid grid-cols-2 gap-2")
+                    .child(View::text_styled("a", "text-sm"))
+                    .child(View::text_styled("b", "text-sm"))
+                    .child(View::text_styled("c", "text-sm"))
+                    .child(View::text_styled("d", "text-sm"))
+                    .build()
+            }
+        }
+
+        #[derive(Debug)]
+        struct VariantGrid;
+
+        impl Component for VariantGrid {
+            type Msg = GMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                // gap-2 = Tailwind 刻度（SizeValue::Fixed(2) → 8px）——
+                // 变体 spacing 字段为裸 px，同构对照取 8。
+                View::grid()
+                    .cols(2)
+                    .spacing(8)
+                    .child(View::text_styled("a", "text-sm"))
+                    .child(View::text_styled("b", "text-sm"))
+                    .child(View::text_styled("c", "text-sm"))
+                    .child(View::text_styled("d", "text-sm"))
+                    .build()
+            }
+        }
+
+        #[derive(Debug)]
+        struct RowsGrid;
+
+        impl Component for RowsGrid {
+            type Msg = GMsg;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .style("grid grid-rows-2 gap-2")
+                    .child(View::text_styled("a", "text-sm"))
+                    .child(View::text_styled("b", "text-sm"))
+                    .child(View::text_styled("c", "text-sm"))
+                    .child(View::text_styled("d", "text-sm"))
+                    .build()
+            }
+        }
+
+        let mut p = NativeProjector::new(StyleGrid, 480.0, 320.0);
+        p.ensure_covered().expect("style-grid 放行（prefixes ⑩）");
+        let style_frame = p.render_frame();
+        let mut q = NativeProjector::new(VariantGrid, 480.0, 320.0);
+        let variant_frame = q.render_frame();
+        // 同构断言：文本坐标逐项相等（024 真源 = 左面板 2×2 按钮组）。
+        let coords = |f: &DrawList| -> Vec<(f32, f32, String)> {
+            f.ops
+                .iter()
+                .filter_map(|op| match op {
+                    DrawOp::Text { x, y, text, .. } => Some((*x, *y, text.clone())),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(coords(&style_frame), coords(&variant_frame), "样式 grid 与变体 Grid 同构");
+        // 2 列几何：a/b 同行（y 相等），c/d 同行且 y 前进一行高。
+        let cs = coords(&style_frame);
+        let (a, b, c) = (cs[0].clone(), cs[1].clone(), cs[2].clone());
+        assert_eq!(a.1, b.1, "a/b 同行");
+        assert!(c.1 > a.1, "c 次行");
+        // GridRows(2) × 4 cells → 2 列（与 cols-2 同布局）。
+        let mut r = NativeProjector::new(RowsGrid, 480.0, 320.0);
+        let rows_frame = r.render_frame();
+        assert_eq!(coords(&rows_frame), coords(&style_frame), "grid-rows-2 × 4 = 2 列同构");
     }
 
     /// PLAN-032 T-03（D2）：tabs kind golden——default/enclosed 两变体 ×

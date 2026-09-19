@@ -281,6 +281,10 @@ impl Coverage {
             //   步进值/单位标签映射缺口清偿）。
             "hidden",
             "self-",
+            // PLAN-032 T-04（D4）放行：⑩ style-grid（display:grid/
+            // grid-cols-N/grid-rows-N 布局语义）——投影器 layout_view_
+            // block 入口分岔复用 Grid walker 真渲（024 图表工坊）。
+            "style-grid",
         ]
         .into_iter()
         .map(String::from)
@@ -763,11 +767,10 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         // 自描述；026 数据行缺项面）。定位族（absolute/fixed/sticky/
         // offset/z-index）、rotate（视觉变换）、truncate/break-words
         //（文本裁剪）、list-none（列表标记）、accent（表单强调色）、
-        // stroke（lucide 描边——native 位图/字形通道 not-yet 同册）、
-        // 样式版 grid（display:grid/grid-cols 布局语义——View::Grid
-        // 变体臂不覆盖 style 路径）。hidden 原 in-not-yet——PLAN-032
-        // T-02（D3）转真渲放行（NodeStyle.hidden 布局 choke + display
-        // 族响应式覆盖规则；prefixes ⑧）。
+        // stroke（lucide 描边——native 位图/字形通道 not-yet 同册）。
+        // hidden/样式版 grid 原 in-not-yet——PLAN-032 T-02/T-04（D3/D4）
+        // 转真渲放行（NodeStyle.hidden 布局 choke + display 族响应式
+        // 覆盖规则；grid_cols/rows 分岔复用 Grid walker；prefixes ⑧⑩）。
         SC::Grid | SC::GridCols(_) | SC::GridRows(_) => "style-grid".into(),
         SC::Hidden => "hidden".into(),
         SC::Absolute => "absolute".into(),
@@ -1245,13 +1248,18 @@ mod tests {
         scan_native_view(&view)
     }
 
-    /// PLAN-032 T-02/T-03（D3/D5/D2）：逐例翻绿累积——SelfCenter 映射臂
-    /// + hidden 放行（012/041）+ tabs kind（046）。VM 轨扫描与仪器同径；
-    /// T-04/T-05 逐族扩列至六例。
+    /// PLAN-032 T-02..T-04（D3/D5/D2/D4）：逐例翻绿累积——SelfCenter
+    /// 映射臂 + hidden 放行（012/041）+ tabs kind（046）+ 样式 grid
+    ///（024）。VM 轨扫描与仪器同径；T-05 扩列至六例。
     #[test]
     fn native_gate_examples_012_041_covered() {
         let coverage = Coverage::native_queue_set();
-        for dir in ["012-clock", "041-auto-edit", "046-tabs-variants"] {
+        for dir in [
+            "012-clock",
+            "041-auto-edit",
+            "046-tabs-variants",
+            "024-charts",
+        ] {
             let scan = scan_example_native(dir);
             let verdict = judge(&scan, &coverage);
             assert!(verdict.is_covered(), "{dir} 应 Covered: {verdict:?}");
