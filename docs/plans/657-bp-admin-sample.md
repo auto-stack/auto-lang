@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-657
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-admin-sample（L1 组装样板：四包全直连 admin 示例 + 两笔语料债顺带收口）
 author: [agent]
 created_at: 2026-09-19
@@ -13,7 +13,7 @@ new_spec_components:
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [blueprint]          # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -148,12 +148,67 @@ auto-down DEBTS）。
 
 ## 5. 详细设计
 
-### 5.1 装配骨架（T-01 定稿）
+### 5.1 装配骨架（T-01 已定稿，2026-09-19 实勘）
 
-app.at 分层：`use` 导入区（四包五变体）→ `#[api]` mock 区（counts/query/
-create/update/delete/load/save 签名对齐各包 dataSource）→ nav 状态
-（model 字段 `active_nav`）→ view 装配（sidebar-shell 壳 + 主区四分支
-if/else）→ actions 注册（sign_out/save/reset/primary → 状态翻转或 toast）。
+**形态**：
+
+```
+047-bp-admin/
+  pac.at               # scene ui / render vue / api "rust" / dep bps { path: "../../../blueprints" }
+  src/back/api.at      # mock #[api]：counts/query/create/update/delete/load_config/save_config
+  src/back/db.at       # 内存表数据（种子行 + CRUD 变更），013-todo 先例形态
+  src/front/app.at     # use 四包五变体直连 + App 壳（nav 状态机 + 主区四分支）
+```
+
+**T-01 五项结论**：
+
+1. **编号/CI**：examples/ui 最高 046-tabs-variants → 047 空闲；
+   `build-ui-examples.yml` matrix 为**显式列表** → T-04 登记 047。附带发现：
+   matrix 有 4 条死目录项（026-keyboard-mouse-events/027-native-css/
+   028-dom-escape/029-external-imports——cfc1bfe23 重组迁往 capability-tests
+   后未跟，预存红）；T-04 顺带摘除死项（CI-only 卫生修复，capability-tests
+   覆盖面缺口另行记账）。
+2. **nav 状态机**：app model 字段 `active_nav str = "data"`（§10.1 默认裁定；
+   契约 Q3——选中项属 app 状态）。SidebarShell 上抛 `on_nav(id)` → app 切
+   主区；shell 内部 active_nav 为 bp 私有选中态。
+3. **mock 形态**：013-todo 先例——pac `api: "rust"` + `src/back/api.at`
+   （`#[api]` 注解直调 db.at 内存数据）+ front `use back.api:` 直调；
+   VM 轨解释器进程内解析 back/api.at（api.rs:574 注记），vue 走 `@/lib/api`
+   客户端——双轨同源。
+4. **四包五变体清单**：`bps.navigation.sidebar_shell.reference.default:
+   SidebarShell`、`bps.data_display.data_table_crud.reference.with_dialog:
+   DataTableCrudDialog`、`bps.form.settings.reference.default: SettingsScreen`、
+   `bps.feedback.empty_state.reference.first_use: EmptyStateFirstUse`、
+   `...no_result: EmptyStateNoResult`（error 变体不做，§10.2 默认）。
+5. **核心发现——reference 未参数化（本计划最大组装摩擦）**：四包 reference
+   均为无参自含脚手架（spec props 以注释标注），而语言对未声明 props 报
+   compile_error（rust.rs:8520）。官方集 14 包仅 filetree 有参数化先例
+   （`FileTree(nodes: List, ...)` + Init 播种 + `.prop` 命名空间，PLAN-536）。
+   **裁定**：G3 的唯一可行接线 = 被消费的 5 个 reference 变体做参数化修整，
+   对齐**各自 frontmatter 已声明的契约面**（props 数据参数 + Q2 action 点的
+   msg 回调参数（k2/k3 契约：`on_x: msg` + 匹配变体 + `on_x()` 上抛）+
+   dataSource 的 L1 物化参数（counts/rows/config——L1 无 bp→app 逆向调用
+   通道，app 经 `#[api]` 取数后 props 回填，记摩擦信号））。**frontmatter
+   契约面零改动**（非目标边界内——"reference 实现修整"类）；minimal 变体
+   仅补 `:key` 不参数化（未被消费；变体间参数面一致性缺口记 Tier 1 信号）。
+   sidebar content 区改 `slot` 出口**带 fallback**（保 plan649 t09 裸实例化
+   文案绿）；t09 sidebar 用例 fixture 最小更新为传参实例化（意图不变：
+   kebab 直连可编译可渲染）。
+   - palette 预检：所需 widget 族（sidebar/header/avatar/dropdown-menu/
+     badge/table/dialog/pagination/alert-dialog/switch/tabs/form/label/
+     select/callout/image/separator）全部在 WidgetRegistry 注册面内；
+     dialog/pagination/alert-dialog/switch 的 **VM 行为面** T-03 双端实证，
+     撞 639-D1 族约束则登记不修（§4 风险既定）。
+
+**app.at 分层**：`use` 导入区（四包五变体）→ App model（`active_nav` +
+nav_tree/user/counts/columns/rows/total/sections 数据面，Init 经 `use back.api`
+取数播种）→ view 装配（`SidebarShell(nav_tree, user, counts, on_nav, on_sign_out)`
+壳，主区四分支 if/else 经 content slot 注入：data→DataTableCrudDialog（受控
+rows/total + on_query/on_create/on_update/on_delete 回调→app 调 api 刷新）、
+settings→SettingsScreen（sections + on_save/on_reset；config 经 Init 播种）、
+reports→EmptyStateFirstUse/NoResult（app 状态机 first_use→no_result，
+on_primary→refresh 重试闭环）、about→纯文本对照页（非 bp））→ actions
+（sign_out→no-op toast（ui_note）；save/reset/primary→状态翻转）。
 
 ### 5.2 语料与债收口
 
@@ -163,6 +218,40 @@ if/else）→ actions 注册（sign_out/save/reset/primary → 状态翻转或 t
   债行（预期：映射缺位或折叠键另有实态；回避是否维持按证据落笔）。
 - D2 债行注记：070 归档 + 残余两行归属 auto-down DEBTS + website/ui-gallery
   路由随其后续——本仓行改为"部分收口"。
+
+### 5.3 组装摩擦结论（T-05 汇总，SD-01 素材 / Tier 1 与 vm-component-parity 排期输入）
+
+Design 16 论点 "app = shell + route→blueprint selection + blueprint data wiring"
+首次多包实证成立（vue 轨全链绿：nav 切换/CRUD 建改查/设置保存/空态三态
+回环/对照页，9 张截图留档）。摩擦清单按信号强度排序：
+
+1. **[P0·引擎] VM 轨跨 widget 回调载荷字面量化（P657-D1）**：vue 全绿、
+   VM 回调链触发但载荷坏（`active_nav: "id"`、`created: ` 空名）。639-D1
+   约束一族的新形态——**vm-component-parity 的第一优先实证**（没有它，
+   任何"壳+路由+数据接线"样板只有单端完整性）。
+2. **[P1·词汇面] reference 参数化缺位（T-01 核心发现）**：官方集 14 包
+   仅 filetree 有参数化先例；spec frontmatter 的 props/actions/dataSource
+   契约与 reference 实现是"两张皮"。Tier 1 扩容前置项：**参数化规范**
+   （props→widget 参数、actions→`on_*: msg` 回调（k2/k3 契约）、
+   dataSource→无逆向通道时 props 回填物化）成文进 contract.md 或
+   reference 书写规约，避免每个消费计划重付参数化成本。
+3. **[P1·方言] a2r back 转译窄面（P657-D3）**：f-string `$` 前缀/全局 str
+   无参数写通道/`[0]`-while-单行 fn 无先验/str 参数 ctor 仅同名转换——
+   agent 写 mock back 需要一份"方言速查"，或转译器收口转换。
+4. **[P2·基建] examples npm 阶段双预存红（P657-D2）**：auto-sources 的
+   run-写/build-读 phase-ordering + main.ts env types——master 全例基线
+   红，修在 auto-man 生成器/脚手架面。
+5. **[P2·词汇面] 结构体契约无跨包类型通道**：User/Config/Row 等契约结构
+   无法作为 widget 参数类型跨 use 传递（front 语料无 map 字段点读先例）
+   ——本样板全部退化为平铺原子参数/标量端点（user_name/user_email 三参、
+   cfg 三读端点）。Tier 1 信号：跨包类型共享或 map 安全访问面。
+6. **[P3·表现] view 发射小摩擦（P657-D5）**：div-in-table 嵌套警告/
+   程序化 fill 后受控 input 显示回退/avatar alt 插值发射空。
+7. **[P3·CI] capability-tests 生成面覆盖缺口（P657-D4）**+ matrix 死项
+   （已摘）。
+
+**Tier 1 排期建议**（输入，不裁）：②参数化规范与 ①vm-component-parity
+并行为最高优先；③⑤随后；④⑥⑦搭车。
 
 ### 规范增量
 
@@ -205,23 +294,76 @@ if/else）→ actions 注册（sign_out/save/reset/primary → 状态翻转或 t
 > worktree `D:/autostack/.wt/lang-657/auto-lang`（分支 `plan-657-dev`）；
 > plan 簿记留主检出。
 
-- **T-01 [有界调查] 装配形态定案**（0.5d）
+- **T-01 [x] [✅ 已完成] 装配形态定案（0.5d）**（2026-09-19 work 会话）
   无依赖。操作：①examples/ui 编号与 CI matrix 形态确认（显式列表则 047 登记
   位）；②nav 状态机选型（app model vs scoped store，046/041 先例对齐）；
   ③`#[api]` mock 挂载形态（046/041 先例）；④四包 use 路径与变体选定清单；
   ⑤sidebar 布局族与主区组合的 widget 面预检（palette 交集无缺口）。产出：
   §5.1 装配草图定稿。验证：结论记入本节。→ AC-01/02/03 前置
-- **T-02 语料债先行**：data-table-crud 两变体 `:key` 补齐；form-field
-  三面复核（registry/aura/语料）。验证：`auto build`（046 fixture 全链）
-  R006 清零；复核结论记入。→ AC-04
-- **T-03 样板主体**：`examples/ui/047-bp-admin/{pac.at, src/front/app.at}`
-  全量落笔（四包直连 + mock + 状态机 + view 装配）。验证：`auto build` 绿；
-  双端启动冒烟。→ AC-01/02/03
-- **T-04 测试面**：`plan657_bp_admin_tests.rs` + lib.rs 注册 + CI 登记（如需）。
-  验证：`cargo check -p auto-lang` 零警告；`cargo t plan657` 绿。→ AC-07
-- **T-05 双端走查与收口（review 前）**：autoui-verifier 双端交互断言 + 截图
-  留档；P645-D1/form-field/D2 三债行落笔；裸 `cargo tv`；组装摩擦结论
-  汇总（§SD-01 素材）。验证：输出留档本节。→ AC-01/04/05/06 及全 AC 兜底
+  **[✅ 证据：五项结论全部落 §5.1——047 空闲+matrix 显式（4 死目录项附带
+  发现）；nav=app model（§10.1 默认）；mock=013-todo 形态（pac api:"rust"+
+  back/api.at+db.at，VM 轨进程内解析实证 api.rs:574）；五变体清单定稿；
+  核心发现=reference 未参数化→裁定被消费 5 变体参数化修整对齐自家
+  frontmatter（filetree 先例/k2-k3 msg 回调契约/slot fallback 保 t09），
+  frontmatter 零改动。]**
+- **T-02 [x] [✅ 已完成] 语料债先行**（2026-09-19 work 会话）
+  - `:key`：minimal/with_dialog 两变体 v-for 行补 `row (key: row.id)`（035-vfor-key/
+    026-database `table-row (key: i)` 先例形态）。
+  - form-field 三面复核：①registry——`FormField` 注册+alias `form-field` 在案
+    （registry.rs:655-659）；②schema——`element form_field` 带 vue 映射
+    `{ component: "FormField", import: "@/components/ui/form" }`（schema/aura.at:4341，
+    datatable 同款折叠键形态）+ `iced: "none"`；③语料——blueprints/** 零提及。
+    结论：债行两说（未注册/缺映射）皆不成立；回避真实理由=语料零消费+VM 轨
+    iced:none（消费时需评估双端）。债行改写落 T-05。
+  - 验证：`auto build`（046 fixture）**R006=0 清零**（/tmp/build657-t02b.log，
+    worktree 自建 auto.exe）。附带归因：046 npm 阶段 5 个 vue-tsc 错误为
+    **master 预存**（stash 对照两组错误集逐字一致 + 013-todo 基线亦红 3 个：
+    auto-sources TS2307/main.ts env TS2339/pagination itemsPerPage——共享
+    脚手架/发射面预存债，记 T-05 摩擦清单，不在本计划修；pagination
+    itemsPerPage 属 data-table-crud 语料面，随 T-03 参数化顺带补
+    `per_page`）。→ AC-04（债行落笔在 T-05）
+- **T-03 [x] [✅ 已完成] 样板主体**（2026-09-19 work 会话）
+  - 5 个被消费 reference 参数化（§5.1 裁定；frontmatter 零改动）+ minimal
+    顺带 per_page；047 四文件全量落笔（pac/back api+db/front app）。
+  - 验证：`auto build --gen-only` 绿（24 组件，R006=0）；全量 build 的
+    vue-tsc 面 = 仅 2 个预存共享基建错（auto-select/overlay.ts TS2307 +
+    main.ts TS2339——master 全例基线，013/046 同款；stash 对照归因）；
+    back rust 服务编译通过并监听 8080（vite 3000 联动，`auto run` 实跑）；
+    VM 轨 `auto run -r vm` 窗口起 + MCP 首状态同步（40s timeout 实证）。
+  - 方言适配记录（back 转译窄面，均入摩擦清单）：f-string 须 `f"${x}"`
+    （裸 `{x}` 降字面量）；全局 str 无参数写入通道（&str 借用逃逸）→
+    配置改单 List<Row> + for-in 读/f-string 包裹强制 format! 产 String；
+    `[0]`/while/单行 fn 无 back 语料先例。→ AC-01/02/03（VM/vue 断言进 T-04 测试）
+- **T-04 [x] [✅ 已完成] 测试面**（2026-09-19 work 会话）
+  - `plan657_bp_admin_tests.rs`（三锚：VM 全量四区域文案；vue 四包 import
+    + on_* 回调绑定 + 零副本负断言；五 reference SFC 生成 + palette 零漂移
+    + 047 dep 探测）+ lib.rs 注册。
+  - plan649 fixture 适配：e2e_host 增传参实例化面；t09 sidebar 用例随参数化
+    改传 nav_tree（意图不变：kebab 直连可编译可渲染）；**两处收集器补
+    `View::Container` 遍历臂**——header 语义容器文案首次入断言面（master
+    预存盲区：t09 旧断言从未覆盖 header 区，Acme 由此转绿）。
+  - CI：matrix 登记 047-bp-admin（--gen-only 实证 EXIT=0）+ 摘除 4 条
+    cfc1bfe23 重组死目录项（026-029）。
+  - 验证：`cargo t plan657` 3/3 绿；`cargo t plan649` 10/10 绿；
+    `cargo check -p auto-lang` 本计划文件零新增警告。→ AC-07
+- **T-05 [x] [✅ 已完成] 双端走查与收口（review 前）**（2026-09-19 work 会话）
+  - **vue 轨全链走查绿**：nav 四页切换 + CRUD（dialog 建+search 过滤重查）+
+    设置（编辑+保存 toast）+ 空态三态回环（first_use→no_result→retry）+
+    about 对照页——30 步动作零报错，9 截图留档
+    `examples/ui/047-bp-admin/tests/screenshots/047_vue_*.png`（AI 视觉
+    核验：nav badge=counts API 实值 20/3、CRUD toast、过滤单行、settings
+    toast/sections/danger 区全部确认）。
+  - **VM 轨走查**：四区域渲染 + dialog 交互 + 回调链触发 7/8 accounted
+    （`vm_walkthrough_657.json`）+ 6 截图；**核心发现 P657-D1**：跨 widget
+    回调载荷字面量化（`active_nav: "id"` state 探针实证，vue 绿）——639-D1
+    族第四实证，vm-component-parity 第一优先输入。
+  - **三债行落笔**：P645-D1 ✅ 核销；640 行 form-field 半句 ✅ 三面复核
+    核销（三半句全清）；639-D2 部分收口注记（070 归档+残余归 auto-down）；
+    新增 P657-D1..D5（2026-09-19 增补节）。
+  - **裸 `cargo tv`**：2710/2712 过，2 红 = PLAN-656 在案 master 预存
+    （mouse_area/display_family，非本计划域）。
+  - **摩擦结论**：§5.3 汇总（7 项分级 + Tier 1 排期建议）——SD-01 素材。
+  - 顺带修整：with_dialog 表头硬编码 Actions 删除（columns 供给）。→ AC-01/04/05/06 及全 AC 兜底
 
 依赖链：T-01 → T-03；T-02 独立可先行；T-03 → T-04 → T-05。
 
@@ -230,6 +372,21 @@ if/else）→ actions 注册（sign_out/save/reset/primary → 状态翻转或 t
 - 2026-09-19 draft handoff（/auto-plan:new）：plan_revision 1，stage: new，
   outcome: pass（授权范围内可交付 work），next: work。
   待用户确认项见 §10（三项，均有默认，不阻塞开工）。
+- 2026-09-19 work 收官（/auto-plan:work）：
+  `stage: work | PLAN-657 | rev 1（含 T-01 有界调查内的语义修订——§5.1
+  定稿 + §5.3 摩擦结论新增） | pass（execution_done） | code_commit:
+  plan-657-dev @3e190da3a/ad2f99922/1f109f454（基线 b4b04c5cd，worktree
+  D:/autostack/.wt/lang-657/auto-lang，依赖 auto-down @a615d69 detached） |
+  task_ids: T-01..T-05 全勾 | evidence: cargo t plan657 3/3 + plan649
+  10/10 + cargo check 零本计划警告 + 裸 cargo tv 2710/2712（2 红=PLAN-656
+  在案 master 预存）+ auto build gen-only 绿（24 组件 R006=0）+ back 服务
+  实跑（8080）+ 双端走查（vue 30 步全链 9 截图 AI 核验 / VM 7/8 accounted
+  6 截图 + vm_walkthrough_657.json） | blockers: 无 | next: review（/auto-plan:review）`
+  - AC 自检：AC-01/02/03/04/05/07 已证（AC-01/03 的 VM 侧 nav 切换受
+    P657-D1 限制——§4 风险既定的"登记不修"路径，vue 侧全量成立）；
+    AC-06 素材就绪（§5.3），SD-01 落地归 merge。
+  - 预检披露：主检出一处他源 WIP（examples/rust-workspace/015-notes/…
+    + Cargo.toml，非本计划路径）——未触碰未收纳，需其属主自行路由。
 
 ## 10. 待澄清事项
 

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-648
-status: reviewed
+status: archived
 feature_name: 跑法/门禁/codegen 缺陷簇整备——dev 跑法 VM api 委托断供 + tf 门 E0433 谱系 + codegen 遗留面清理
 author: [zhaopuming/zcode-session]
 created_at: 2026-09-18T00:00:00Z
@@ -241,3 +241,33 @@ CLI runner / vm_bridge / 生成面)。tf 门禁 = 测试文件 feature 门控
    与并行计划零交集);
 4. 新增移交:VM 事件 handler 再入缺陷(P648-D1,交互阻断级,
    三次实证)——dev 跑法 VM 轨实点交互前需先修,独立立项。
+
+- 2026-09-19 merge stage(PLAN-648:r1 五 checkpoint 收据):
+  **prepared**=规范增量冻结=无(复审 pass 书面理由在案);沉淀面=
+  docs/specs/auto-lang/vm/plans.md+docs/specs/auto-man/plans.md 各增
+  648 一句话沉淀行;账本 .autoos/specs.json upsert P648-1(reviews,
+  复审与合并收据)/P648-2(reports,限定名改写变更摘要)回读验证
+  (124/101 条);spec-index.py 再生 INDEX 字节同一(26 projects 零漂移)。
+  事故与矫正:首枚账本提交误 `git add -A` 裹挟并行会话三未提交件
+  (656 计划/015-notes main.rs/rust-workspace Cargo.toml)——软重置
+  拆分重提,外来件已还原工作区待归属会话认领。
+  **landed**=master 3d0d63345(--no-ff fold plan-648-dev;reviewed
+  6422eb267 祖先校验过;main smoke plan340 12/12 含新增回归)。
+  **ledger_refreshed**=.autoos/specs.json P648-1/P648-2(readback OK)。
+  **archived**=git mv docs/plans/648-run-gate-codegen-defects.md →
+  archive/ + status:archived;completion_kind:**delivered**。
+
+## 11. spec-sync 回写记录
+
+- vm/plans.md +648 行(限定名改写根修一句话沉淀);
+- auto-man/plans.md +648 行(CRUD 契约明示保留+锁定测试);
+- .autoos/specs.json:P648-1(reviews 收据)/P648-2(reports 变更摘要);
+- 规范增量=无(canonical specs 零改动,理由见 §5 与 review 冻结复述);
+- KNOWN-DEBT-AND-RISKS.md:P648-D1(handler 再入缺陷,交互阻断级,
+  三次实证)/P648-D2(musk 预存红复核)——移交后续计划。
+  **cleaned**=wt-guard 双 clean(lang-648/auto-lang+lang-648/auto-down 均
+  过闸后移除);worktree D:/autostack/.wt/lang-648/auto-lang + 分支
+  plan-648-dev(was 6422eb267,merge-base 祖先校验全并)移除;只读依赖
+  worktree lang-648/auto-down(detached@b1c88de,零自有提交)随组移除;
+  组目录 .wt/lang-648 rmdir 空——五 checkpoint 全闭环,overall:
+  **delivered**。

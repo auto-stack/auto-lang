@@ -2354,6 +2354,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P651-D6 [vm-smoke 稳定性转介（Q-5）]**：group 4 拖拽臂=069 已登记预存红（de86e1d8e，pristine master 复现）；group 11 全量 smoke 挂但 vm-069-probe 同场景五臂 ALL PASS（2026-09-19 实机，worktree 二进制）——判环境/时序。归 auto-down 侧 smoke 稳定性排查（重试隔离/端口 Collision 防护——本次实测 9247 被旧进程占用致首跑连错窗口）。
 - **P651-F1 [折叠 details 隐藏叶仍入 doc_sel/copy 全序（v1 细节，非阻断）]**：编辑核 Seg 树含闭合 details 内叶（不可见/不可聚焦/布局零矩形），跨块选区与 copy 走 dfs 全序会含隐藏文本。TS 折叠同样排除选区；对齐属增强面，随编辑器交互计划顺带。
 
-## 2026-09-19 增补四（PLAN-075 执行期登记）
+## 2026-09-19 增补四（PLAN-642 终审发现登记）
+
+- **P642-D15 [终审 R642-R5/R6/R9 三面（2026-09-19）]**：①**Vue 臂构建预存红**——`vite build` 于 NavSidebar.vue（020 nav_sidebar.at 转译产物）报 `"FolderMusic" is not exported by lucide-vue-next@0.312.0`；语料 `icon folder-music` 由 a5e26d558（09-17）引入，早于 PLAN-642 wave1 T-10（ba009076f 09-18），与本计划 diff 零交集（终审归因链 PLAN-642 §9 R642-R5）；修向 = 语料换图标名（lucide 0.312 有效集）或升级 lock（归 auto-os/语料域）。②**并行测试 flaky 家族**——`plan609_unresolved_dep_import_guard` / `rust_ui::tests::generate_rust_ui_out_of_repo_lands_project_local` / `ui_gen::rust::tests::test_display_family_codegen_arm_fixture` 三成员均"全套并行红、隔离绿、master 同特征"，疑 tempdir/资源并行竞争（环境债，跨 auto-man/ui_gen/rust_ui 三模块）。③**画廊 boot 噪音**——`dependency '' is materialized at deps but not declared in pac.at` ×N（wave1 起各会话均在），auto-os ui-gallery 工作区卫生，归 auto-os 域清理。
+- **P642-D12 近期臂核销标记（2026-09-19 终审 R642-R7）**：近期臂（EqualHeightRow 两遍测量原语）已由 **PLAN-655 StretchLine** 落地交付（`docs/specs/auto-lang/ui/overview.md` §items-stretch 两阶段行语义在案；008 定价卡等高消失根修）。远期臂（iced 升级给 flex 算法打 CSS 补丁：min-content 钳制 + 真两阶段行算法，可上游 PR）维持开放。
+
+## 2026-09-19 增补五（PLAN-075 执行期登记）
 
 - **P075-D1 [`auto build` 物化 deps junction——worktree 红线成文（纪律项）]**：PLAN-075 T-00 探针实证（`--gen-only` 同）：声明 `dep <name> { path }` 的工程在构建时经 pac.rs `materialize_local_dep` Mode B 在工程内物化 `deps/<name>` junction（mklink /J）——junction 落 worktree 内即 Plan 529 红线（wt-guard 拦移除、`git worktree remove` 穿透删除）。历史：PLAN-645 期 046/047 在 worktree 内构建曾留此类链接（074 merge 收据"摘链 2660 junction"同族），当时未成文。**裁定（075 R-B）**：凡 `auto build`/`Pac::resolve` 类验证一律在仓库外沙箱跑（复制 blueprints+工程 → 临时目录构建 → 退出先 rmdir 摘 deps 链接再整树删）；在库范式 = `examples/bp-gate/scripts/gate.mjs`（沙箱+摘链+重试清理）与 `crates/auto-man/src/plan075_bp_tests.rs`（tempdir+先摘链后删）。仓库内允许的构建类：vite/playwright/cargo/pnpm（node_modules 实勘无 reparse point）。

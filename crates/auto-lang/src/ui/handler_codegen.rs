@@ -169,6 +169,18 @@ pub fn view_store_alias_real_name(alias: &str) -> Option<String> {
     None
 }
 
+/// PLAN-642 T-15: 合成收尾时捕获当前视图侧别名快照——供 VmBridge 随组件
+/// 存档。多组件工程（画廊合并 VM 轨）下线程级 VIEW_STORE_ALIAS_SNAPSHOT
+/// 会被后续组件的合成覆盖（渲染 015 时快照已是他件的映射表），视图层
+/// `.Store.X` 真名限定读必须查**本组件**合成期的映射。与 synthesize*
+/// 同线程紧邻调用（合成内 set_store_context 刚落快照）。
+pub fn capture_view_store_alias_snapshot() -> std::collections::HashMap<String, String> {
+    if let Ok(snap) = VIEW_STORE_ALIAS_SNAPSHOT.lock() {
+        return snap.clone();
+    }
+    Default::default()
+}
+
 /// Set the store msg-variant map (VM multi-store fix).
 pub fn set_store_msg_map(msgs: HashMap<String, HashSet<String>>) {
     STORE_MSG_MAP.with(|s| *s.borrow_mut() = msgs);

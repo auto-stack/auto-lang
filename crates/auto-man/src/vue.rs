@@ -6113,7 +6113,9 @@ pub fn write_registry_at(front_dir: &Path, rows: &[GalleryDemoRow]) -> AutoResul
             // 使 fullstack 档（013/015）侧栏标"独立"、工具栏标"静态说明"，
             // 而视口实际运行中（G-4 元数据漂移实证）。web 臂 demos-registry.ts
             // 保持原语义（动态挂载能力），两臂数据源分离。
-            r.loadable || r.fullstack,
+            // PLAN-642 T-14a: routes 首页 stub 档同入（页面真实渲染+可交互，
+            // 导航不可用为既定 stub 边界）。
+            r.loadable || r.fullstack || r.route_stub,
             at_str_lit(&search_lc),
         ));
     }
@@ -6320,13 +6322,61 @@ pub fn emit_gallery_vm_demos(
     let mut emitted = 0usize;
     for r in rows {
         // PLAN-633: 纯前端档（loadable）与全栈内嵌档（fullstack）共用发射面。
-        if !r.loadable && !r.fullstack {
+        // PLAN-642 T-14a: routes 首页 stub 档同入发射面。
+        if !r.loadable && !r.fullstack && !r.route_stub {
             continue;
         }
+        // PLAN-642 T-13①: 宿主保留字段 α-改名前缀（全档位统一，非 fullstack
+        // 独有——纯前端 demo 的模型/store var 同样落合并根态对象）。
+        let reserved_ns = demo_ns_prefix(&r.id);
+        // PLAN-642 T-14a: routes stub 变换——routes 块剔除 + outlet 行替换为
+        // 首页组件实例 + 首页页面文件 per-demo 命名空间级联（pages/home.at
+        // 跨 demo 同名异容，平面模块名必撞 modules_conflict 跳 demo）。
+        // (module_key, 页面原文)——原文在统一改名遍历前插入 row_modules，
+        // 与其他模块同管道（stylekit 内联 + 保留字段改名）。
+        let mut stub_page: Option<(String, String)> = None;
+        let stub_source: String = if r.route_stub {
+            match rewrite_routes_stub(&r.source) {
+                Some((rewritten, home_w)) => {
+                    let page_path = apps_dir
+                        .join(&r.id)
+                        .join("src")
+                        .join("front")
+                        .join("pages")
+                        .join(format!("{home_w}.at"));
+                    match fs::read_to_string(&page_path) {
+                        Ok(page_src) => {
+                            let module_key = format!("{reserved_ns}_{home_w}_page");
+                            // PLAN-642 T-14a: `use store: X` 别名 use 行重链
+                            // （021 实证：别名 token ≠ 声明文件名 → 收集 miss →
+                            // store 不入池 → A1 歧义）——适配器与页面同链。
+                            let front_dir = apps_dir.join(&r.id).join("src").join("front");
+                            let relinked = relink_store_use_lines(&rewritten, &front_dir);
+                            let page_src = relink_store_use_lines(&page_src, &front_dir);
+                            stub_page = Some((module_key.clone(), page_src));
+                            format!("use {module_key}: {home_w}\n{relinked}")
+                        }
+                        Err(_) => {
+                            skipped.push(format!("{}(route stub 首页组件缺失: {home_w})", r.id));
+                            continue;
+                        }
+                    }
+                }
+                None => {
+                    skipped.push(format!("{}(route stub routes 块解析失败)", r.id));
+                    continue;
+                }
+            }
+        } else {
+            r.source.clone()
+        };
         // PLAN-642 T-01: 跨包 stylekit 配方内联（适配器 + 自有模块副本），
         // 根因与形态见 inline_stylekit_recipes 文档。
         let recipes = stylekit_pub_recipes(&apps_dir.join(&r.id));
-        let source_owned = inline_stylekit_recipes(&r.source, recipes.as_ref());
+        let source_owned = rename_reserved_root_fields(
+            &inline_stylekit_recipes(&stub_source, recipes.as_ref()),
+            &reserved_ns,
+        );
         let source: &str = &source_owned;
         // widget 声明判定按行首匹配（注释中的 "widget " 字样不算——002-counter
         // 的 Plan 506 注释曾误触);多声明(宿主+工具 widget 同文件)跳过。
@@ -6340,6 +6390,29 @@ pub fn emit_gallery_vm_demos(
         let mut row_modules: std::collections::BTreeMap<String, String> = Default::default();
         let app_dir = apps_dir.join(&r.id).join("src").join("front");
         collect_own_modules(source, &app_dir, deps_dir.as_deref(), &mut row_modules);
+        // PLAN-642 T-14a: 首页页面文件入模块池——须在 store 限定改写
+        // （scan_store_decls/store_qualify_source）之前插入：页面组件的
+        // `store.X` 泛型接收者要参与本 demo 的真名限定（多 store 合并单元
+        // 下未限定即 plan-446 A1 歧义硬错，五 stub 页 A1 实证）。
+        if let Some((key, page_src)) = &stub_page {
+            row_modules.insert(key.clone(), inline_stylekit_recipes(page_src, recipes.as_ref()));
+        }
+        // PLAN-642 T-14a 边界：多 store demo（023-realworld：AuthStore +
+        // ArticleStore，泛型 store.X 调用语义分属）超出 stub 档的单 store
+        // 真名限定能力——A1 歧义无法消解，降级回退页（记录原因）。
+        if r.route_stub {
+            let stores = scan_store_decls(
+                std::iter::once(source.to_string()).chain(row_modules.values().cloned()),
+            );
+            if stores.len() > 1 {
+                skipped.push(format!(
+                    "{}(route stub 多 store 不支持: {})",
+                    r.id,
+                    stores.len()
+                ));
+                continue;
+            }
+        }
         for (_, c) in row_modules.iter_mut() {
             *c = inline_stylekit_recipes(c, recipes.as_ref());
         }
@@ -6362,8 +6435,26 @@ pub fn emit_gallery_vm_demos(
         // back 链任何缺失/解析失败 → 跳过该 demo（回静态面板并上报），绝不
         // 把装载不了的 back 源放上行发射面（plan-446：模块解析失败宿主启动
         // 即致命）。
+        // PLAN-642 T-14a: back 种子预扫——route_stub 纯前端形态（无 back 链）
+        // 不进级联块（块内对 row_modules 施加 ns 键改名并与 store 限定 base
+        // 耦合；seeds 可来自 store 模块行，须扫 source+row_modules 全集）。
+        let has_back_seed = std::iter::once(source.to_string())
+            .chain(row_modules.values().cloned())
+            .any(|c| {
+                c.lines().any(|l| {
+                    let t = l.trim_start();
+                    if !t.starts_with("use ") {
+                        return false;
+                    }
+                    let m = t[4..]
+                        .split(|c: char| c == ':' || c.is_whitespace())
+                        .next()
+                        .unwrap_or("");
+                    m == "back" || m.starts_with("back.")
+                })
+            });
         let mut source_rw = String::new();
-        if r.fullstack {
+        if r.fullstack || (r.route_stub && has_back_seed) {
             let ns = demo_ns_prefix(&r.id);
             let mut back_modules: std::collections::BTreeMap<String, String> = Default::default();
             let mut seeds: Vec<(String, String)> = Vec::new();
@@ -6497,20 +6588,25 @@ pub fn emit_gallery_vm_demos(
             std::iter::once(source.to_string()).chain(row_modules.values().cloned()),
         );
         if store_names.len() == 1 {
-            let base = if r.fullstack {
-                source_rw.clone()
-            } else {
+            // PLAN-642 T-14a: base 取"级联改写产物优先"——back 级联跑过
+            // （fullstack 或带 back 种子的 route_stub）用 source_rw（模块
+            // token 已 ns 改名），否则用原文；source_rw 空串判级联未跑。
+            let base = if source_rw.is_empty() {
                 source.to_string()
+            } else {
+                source_rw.clone()
             };
             source_rw = store_qualify_source(&base, &store_names);
             for (_, c) in row_modules.iter_mut() {
                 *c = store_qualify_source(c, &store_names);
             }
         }
-        let emit_source: &str = if r.fullstack || store_names.len() == 1 {
-            &source_rw
-        } else {
+        // PLAN-642 T-14a: emit_source 同判——级联未跑且无单 store 限定改写
+        // 时（source_rw 空）回原文，避免发射空串。
+        let emit_source: &str = if source_rw.is_empty() {
             source
+        } else {
+            &source_rw
         };
         // PLAN-642 T-04/T-05: 475 组件包级联——widget 内
         // `use { package: X from "dir" }` 的包目录整拷进 demos/<dir>
@@ -6567,10 +6663,21 @@ pub fn emit_gallery_vm_demos(
                 // PLAN-642 T-04: 包内组件自身的 `use <mod>:` fn 模块链
                 // （024 chart_geom 实证）必须同样进 demos/ + 嵌入 VM 模块池，
                 // 否则组件 Init 的几何计算 CALL reloc miss → 画布空。
-                let content = inline_stylekit_recipes(&raw, recipes.as_ref());
+                // PLAN-642 T-13①: 包文件同 ns 改名保留字段（015 子件读
+                // 父态 dark_mode 一类引用须与适配器改名后字段对齐）。
+                let content = rename_reserved_root_fields(
+                    &inline_stylekit_recipes(&raw, recipes.as_ref()),
+                    &reserved_ns,
+                );
                 collect_own_modules(&content, &app_dir, deps_dir.as_deref(), &mut row_modules);
                 fs::write(&target, content).map_err(|e| format!("write pkg {fname}: {}", e))?;
             }
+        }
+        // PLAN-642 T-13①: 自有模块统一保留字段改名——置于全部收集点
+        // （主收集 + 包级联 fn 链 + stub 页面）之后单遍执行，避免两批内容
+        // 不一致；fullstack ns 改名/store 限定是模块级改写，与字段名正交。
+        for (_, c) in row_modules.iter_mut() {
+            *c = rename_reserved_root_fields(c, &reserved_ns);
         }
         for (m, c) in &row_modules {
             module_files.entry(m.clone()).or_insert_with(|| c.clone());
@@ -6624,7 +6731,7 @@ pub fn emit_gallery_vm_demos(
     vm_at.push_str("\nwidget AppViewport(app: str, reloadKey: int, viewportMode: str) {\n    view {\n        col {\n            style: \"w-full flex flex-col items-center\"\n            col {\n                style: if .viewportMode == \"desktop\" { \"w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else if .viewportMode == \"tablet\" { \"w-[768px] max-w-full h-[1024px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else { \"w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" }\n");
     vm_at.push_str(&branches);
     vm_at.push_str(
-            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-2\"\n                    text \"该示例暂无 VM 内嵌形态\" { style: \"text-xs text-muted-foreground\" }\n                    text \"完整交互请使用 auto run（Vue 端）查看\" { style: \"text-xs text-muted-foreground/80\" }\n                }\n            }\n            }\n        }\n    }\n}\n",
+            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-3\"\n                    text \"该示例暂无内嵌形态（依赖独立运行的后端进程或原生能力）\" { style: \"text-xs text-muted-foreground\" }\n                    text f\"独立运行：cd examples/ui/${.app}\" { style: \"text-xs text-muted-foreground/80 font-mono\" }\n                    text \"然后执行 auto run（Vue 臂）或 auto run -r vm（VM 臂）\" { style: \"text-xs text-muted-foreground/60 font-mono\" }\n                }\n            }\n            }\n        }\n    }\n}\n",
     );
     fs::write(gallery_dir.join("AppViewport.vm.at"), vm_at)
         .map_err(|e| format!("write AppViewport.vm.at: {}", e))?;
@@ -6723,6 +6830,186 @@ fn stylekit_pub_recipes(app_root: &Path) -> Option<std::collections::BTreeMap<St
     } else {
         Some(out)
     }
+}
+
+/// PLAN-642 T-13①: 合并画廊 demo 的宿主保留字段 α-改名。根因（实机
+/// 写点追踪定罪）：合并 VM 轨统一状态对象（Plan 419）下，demo 适配器
+/// 的模型 var / store 模块级 var 初始化（`handler_CalendarStore_Init`
+/// 与匿名模块 init 两条 SET_FIELD 直写）会覆写宿主壳根态声明的
+/// `dark_mode`/`accent_color`——正是渲染器每帧状态→主题同步
+/// （renderer.rs D-GAP-2 块）与 `execute_set_theme` 写回消费的两个
+/// 保留名。独立形态下 demo 自己就是根、该写合法；画廊合并形态下即
+/// 主题污染（P2-016a）。修复：发射期把 demo 侧（适配器 + 自有模块 +
+/// 包级联文件）这两个保留名统一 α-改名为 `<ns>_` 前缀字段（声明/
+/// 读/写一体改名，语义自洽；语料原文不动——教程/源码 tab 与独立运行
+/// 不受影响，web 臂 demo 本就各自独立持主题态，此改名恰对齐双臂语
+/// 义）。宿主壳与宿主 deps（settings_popover 等）不经本变换，保留名
+/// 语义不变。改名为 word-boundary：前后均非 ident 字符才命中（
+/// `.dark_mode`/`var dark_mode`/`.store.accent_color` 全覆盖；语料
+/// 无字符串字面量含此二词，实证安全）。
+fn rename_reserved_root_fields(source: &str, ns: &str) -> String {
+    const RESERVED: [&str; 2] = ["dark_mode", "accent_color"];
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let bytes = source.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(source.len() + 64);
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let mut matched = false;
+        for word in RESERVED {
+            let w = word.as_bytes();
+            if bytes[i..].starts_with(w) {
+                let prev_ok = i == 0 || !is_ident(bytes[i - 1]);
+                let next_ok = i + w.len() >= bytes.len() || !is_ident(bytes[i + w.len()]);
+                if prev_ok && next_ok {
+                    out.extend_from_slice(ns.as_bytes());
+                    out.push(b'_');
+                    out.extend_from_slice(w);
+                    i += w.len();
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        if !matched {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    // reserved 全 ASCII 且仅在 char 边界命中，拼接不可能破坏 UTF-8；
+    // 防御性回退原串（理论不可达）。
+    String::from_utf8(out).unwrap_or_else(|_| source.to_string())
+}
+
+/// PLAN-642 T-14a: routes 首页 stub 变换——`routes {}` 块剔除 + 视图
+/// `outlet` 行替换为 `/` 首页路由组件实例（静态导航 stub：路由语义进
+/// VM 仍为非目标，本变换只让首页以真实组件渲染）。文本级变换：
+/// ①routes 块（`routes {` 起至配对 `}` 行，条目无嵌套花括号）整块删除；
+/// ②首页组件 = `"/" -> use <name>`（无 `/` 条目时取首条）；
+/// ③缩进保持的 `outlet` 行 → `<name> {}` 行。
+/// 返回 (变换后源, 首页组件名)；无 routes 块或无条目时原样返回 None。
+fn rewrite_routes_stub(source: &str) -> Option<(String, String)> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out = String::with_capacity(source.len());
+    let mut home_widget: Option<String> = None;
+    let mut i = 0usize;
+    while i < lines.len() {
+        let t = lines[i].trim_start();
+        if t == "routes {" || t.starts_with("routes {") {
+            // 块内扫描：`"<path>" -> use <name>` 条目；块止于 trimmed == "}" 行。
+            i += 1;
+            while i < lines.len() {
+                let bt = lines[i].trim();
+                if bt == "}" {
+                    break;
+                }
+                if let Some(rest) = bt.strip_prefix('"') {
+                    if let Some((path, tail)) = rest.split_once('"') {
+                        if let Some(w) = tail.split("->").nth(1).and_then(|s| {
+                            s.trim().strip_prefix("use ").map(|x| x.trim().to_string())
+                        }) {
+                            // 首页优先级：精确 "/" 命中即锁定；否则首个
+                            // 无参条目（路径不含 ":param"）兜底——参数化
+                            // 页面无路由上下文不可独立渲染。
+                            if path == "/" {
+                                home_widget = Some(w);
+                            } else if home_widget.is_none()
+                                && !path.contains(':')
+                                && !w.is_empty()
+                            {
+                                home_widget = Some(w.clone());
+                            }
+                        }
+                    }
+                }
+                i += 1;
+            }
+            i += 1; // 跳过 "}"
+            continue;
+        }
+        if t == "outlet" {
+            if let Some(w) = &home_widget {
+                let indent = &lines[i][..lines[i].len() - t.len()];
+                out.push_str(indent);
+                out.push_str(w);
+                out.push_str(" {}\n");
+                i += 1;
+                continue;
+            }
+        }
+        out.push_str(lines[i]);
+        out.push('\n');
+        i += 1;
+    }
+    home_widget.map(|w| (out, w))
+}
+
+/// PLAN-642 T-14a: `use store: X` 别名形态的 store 导入重链——别名 token
+/// 无同名模块文件（021 `use store: BlogStore` vs blog_store.at），收集器
+/// 按 token 找文件必 miss → store 声明不入池 → scan_store_decls 空表 →
+/// 真名限定不跑 → 合并单元 plan-446 A1 歧义硬错。按声明文件 stem 重写
+/// use token（仅当 token 无同名文件且声明可定位时）。
+fn relink_store_use_lines(source: &str, app_dir: &Path) -> String {
+    // 声明表：`store <Name>` → 声明文件 stem（首声明胜）。
+    let mut decl_stems: std::collections::HashMap<String, String> = Default::default();
+    if let Ok(entries) = fs::read_dir(app_dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().map(|x| x != "at").unwrap_or(true) {
+                continue;
+            }
+            if let Ok(c) = fs::read_to_string(&p) {
+                for l in c.lines() {
+                    let t = l.trim_start();
+                    if let Some(rest) = t.strip_prefix("store ") {
+                        let name = rest
+                            .split(|c: char| c.is_whitespace() || c == '{')
+                            .next()
+                            .unwrap_or("")
+                            .trim();
+                        if !name.is_empty() {
+                            decl_stems.entry(name.to_string()).or_insert_with(|| {
+                                p.file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("")
+                                    .to_string()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut out = String::with_capacity(source.len());
+    for l in source.lines() {
+        let t = l.trim_start();
+        let mut line = l.to_string();
+        if let Some(rest) = t.strip_prefix("use ") {
+            if let Some((tok, names)) = rest.split_once(':') {
+                let tok = tok.trim();
+                if !tok.is_empty() && !app_dir.join(format!("{tok}.at")).is_file() {
+                    for name in names.split(',') {
+                        let name = name.trim();
+                        if let Some(stem) = decl_stems.get(name) {
+                            if !stem.is_empty() && stem != tok {
+                                if let Some(pos) = l.find(tok) {
+                                    line = format!(
+                                        "{}{}{}",
+                                        &l[..pos],
+                                        stem,
+                                        &l[pos + tok.len()..]
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
 }
 
 /// PLAN-642 T-01: 把 source 中 `use stylekit.styles: a, b`（或 `: *`）行
@@ -7208,6 +7495,19 @@ fn gallery_demo_row(
         None => (false, false),
     };
 
+    // PLAN-642 T-14a: routes 首页 stub 档判定——app.at 声明 `routes {}` 块
+    // 且非 vm-only（render:"vm" 走独立 vm 形态，041/043/044 家族）。不依赖
+    // vp：018 的 from_workspace strict 失败是 Vue 装配臂问题，VM stub 只
+    // 需要 .at 源（五家实证均无 i18n/ext 面——`t("` 命中为 SetAccent(
+    // 误配，src/locales 无一存在）。
+    let route_stub = {
+        let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
+        let has_routes_block = source
+            .lines()
+            .any(|l| l.trim_start() == "routes {" || l.trim_start().starts_with("routes {"));
+        has_routes_block && !is_vm_only
+    };
+
     (
         GalleryDemoRow {
             id: e.id.clone(),
@@ -7222,6 +7522,7 @@ fn gallery_demo_row(
             pac,
             loadable,
             fullstack,
+            route_stub,
         },
         vp,
     )
@@ -7245,6 +7546,12 @@ pub struct GalleryDemoRow {
     /// 仅 emit_gallery_vm_demos 消费：fullstack demo 以 per-demo 唯一 stem
     /// 命名空间级联 back 链后进入 VM 内嵌发射面。
     pub fullstack: bool,
+    /// PLAN-642 T-14a: routes 首页 stub 档——否决集仅为 `routes {}` 块的
+    /// demo（018/019/021/022/023 实证：五家均无 i18n/ext/vm-only 面）。
+    /// VM 臂发射"壳视图 + outlet 替换为 `/` 首页路由组件"的静态导航
+    /// stub（路由语义进 VM 仍为非目标）；Vue 臂语义不变（web 端维持
+    /// 静态面板）。registry.at 的 loadable 取 loadable||fullstack||本档。
+    pub route_stub: bool,
 }
 
 fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
@@ -9464,6 +9771,7 @@ fn test_plan_549_ui_gallery_registry_and_package_json() {
             pac: "name: \"counter\"".to_string(),
             loadable: true,
             fullstack: false,
+            route_stub: false,
         },
         GalleryDemoRow {
             id: "041-auto-edit".to_string(),
@@ -9477,6 +9785,7 @@ fn test_plan_549_ui_gallery_registry_and_package_json() {
             pac: "name: \"auto-edit\"\nrender: \"vm\"".to_string(),
             loadable: false,
             fullstack: false,
+            route_stub: false,
         },
     ];
 
@@ -9629,6 +9938,7 @@ mod gallery_registry_at_tests {
                 pac: "name: \"001-helloworld\"".into(),
                 loadable: true,
                 fullstack: false,
+                route_stub: false,
             },
             GalleryDemoRow {
                 id: "024-charts".into(),
@@ -9642,6 +9952,7 @@ mod gallery_registry_at_tests {
                 pac: String::new(),
                 loadable: false,
                 fullstack: false,
+                route_stub: false,
             },
         ]
     }
@@ -9704,6 +10015,7 @@ mod gallery_registry_at_tests {
             pac: String::new(),
             loadable,
             fullstack: false,
+            route_stub: false,
         }
     }
 
@@ -9744,7 +10056,9 @@ mod gallery_registry_at_tests {
             "widget AppViewport(app: str, reloadKey: int, viewportMode: str)",
             "if .app == \"002-counter\" {",
             "Demo002Counter {}",
-            "该示例暂无 VM 内嵌形态",
+            // PLAN-642 T-14c: 回退文案精确化——独立运行命令（${.app} 插值）。
+            "该示例暂无内嵌形态（依赖独立运行的后端进程或原生能力）",
+            "独立运行：cd examples/ui/${.app}",
             // 视口 frame 三态(对齐 AppViewport.vue viewportStyle;缺失=桌面/
             // 平板档无尺寸变化)
             "if .viewportMode == \"desktop\"",
@@ -9759,6 +10073,62 @@ mod gallery_registry_at_tests {
             assert!(vm_at.contains(needle), "missing `{needle}`");
         }
         assert!(!gallery.join("demos").join("024-charts.at").exists(), "non-loadable not emitted");
+    }
+
+    /// PLAN-642 T-14a: routes 首页 stub 档——routes 块剔除 + outlet 行替换
+    /// 为 `/` 首页组件实例 + 首页页面文件 per-demo 命名空间级联。参数化
+    /// 路由（":param"）不作首页兜底（无路由上下文不可独立渲染）。
+    #[test]
+    fn test_emit_gallery_vm_demos_route_stub() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let front = apps.join("022-x").join("src").join("front");
+        fs::create_dir_all(front.join("pages")).unwrap();
+        fs::write(
+            front.join("app.at"),
+            "use board_store: BoardStore\n\nwidget App {\n    routes {\n        \"/\" -> use board\n        \"/other/:id\" -> use other\n    }\n    msg { Init }\n    view {\n        col {\n            outlet\n        }\n    }\n    on {\n        .Init -> { store.Init() }\n    }\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            front.join("pages").join("board.at"),
+            "use store: BoardStore\n\nwidget board {\n    msg { Init }\n    view {\n        text \"board page\"\n    }\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            front.join("board_store.at"),
+            "store BoardStore {\n    model {\n        var cards List<str> = []\n    }\n}\n",
+        )
+        .unwrap();
+
+        let mut row = vm_demo_row(
+            "022-x",
+            false,
+            &fs::read_to_string(front.join("app.at")).unwrap(),
+        );
+        row.route_stub = true;
+        let gallery = dir.path().join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &[row], &gallery).unwrap();
+        assert_eq!(emitted, 1, "route stub demo must be emitted");
+        assert!(skipped.is_empty(), "skipped: {skipped:?}");
+
+        let demo_src = std::fs::read_to_string(gallery.join("demos").join("022-x.at")).unwrap();
+        assert!(!demo_src.contains("routes {"), "routes block removed: {demo_src}");
+        assert!(!demo_src.contains("outlet"), "outlet replaced: {demo_src}");
+        assert!(demo_src.contains("board {}"), "outlet → home widget instance: {demo_src}");
+        assert!(
+            demo_src.contains("use d022x_board_page: board"),
+            "namespaced page module use line: {demo_src}"
+        );
+
+        // 首页页面文件按 per-demo ns 级联（跨 demo 同名 pages/board.at 不再撞）。
+        let page_out =
+            std::fs::read_to_string(gallery.join("demos").join("d022x_board_page.at")).unwrap();
+        assert!(page_out.contains("widget board"), "page widget cascaded: {page_out}");
+
+        // AppViewport 分支接入（stub 档入发射面）。
+        let vm_at = std::fs::read_to_string(gallery.join("AppViewport.vm.at")).unwrap();
+        assert!(vm_at.contains("if .app == \"022-x\""), "branch emitted");
+        assert!(vm_at.contains("Demo022X {}"), "widget wired");
     }
 
     /// 多 widget 声明(工具 widget 同文件)的示例 v1 跳过,不入 live 集。
@@ -9834,6 +10204,56 @@ widget Helper {
         assert!(skipped.is_empty());
         assert!(gallery.join("demos").join("011-x.at").exists());
         assert!(gallery.join("demos").join("prog_util.at").exists());
+    }
+
+    /// PLAN-642 T-13①: 宿主保留字段 α-改名——demo 适配器与自有模块（store）
+    /// 的 `dark_mode`/`accent_color` 统一 `<ns>_` 前缀（合并根态对象上宿主
+    /// 声明的主题魔法字段不被 demo 初始化/handler 写覆写）；边界词
+    /// （`dark_mode_x`/`xdark_mode`）不误改。语料原文（r.source）不动。
+    #[test]
+    fn test_emit_gallery_vm_demos_reserved_field_rename() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("apps");
+        let front = apps.join("016-x").join("src").join("front");
+        fs::create_dir_all(&front).unwrap();
+        let store_src = "store MyStore {\n    model {\n        var dark_mode bool = false\n    }\n    on {\n        .Init -> {\n            .dark_mode = false\n        }\n    }\n}\n";
+        fs::write(front.join("my_store.at"), store_src).unwrap();
+        let rows = vec![vm_demo_row(
+            "016-x",
+            true,
+            "use my_store: MyStore\n\nwidget App {\n    model {\n        var dark_mode bool = false\n        var dark_mode_x int = 1\n    }\n    view {\n        text \"hi\" { style: if .dark_mode { \"a\" } else { \"b\" } }\n    }\n    on {\n        .Init -> {\n            .dark_mode = .MyStore.dark_mode\n        }\n    }\n}\n",
+        )];
+        let gallery = dir.path().join("src").join("gallery");
+        let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
+        assert_eq!(emitted, 1);
+        assert!(skipped.is_empty());
+
+        let demo_src = std::fs::read_to_string(gallery.join("demos").join("016-x.at")).unwrap();
+        assert!(
+            demo_src.contains("var d016x_dark_mode bool = false"),
+            "adapter decl renamed: {demo_src}"
+        );
+        assert!(
+            demo_src.contains(".d016x_dark_mode = .MyStore.d016x_dark_mode"),
+            "read/write refs renamed: {demo_src}"
+        );
+        assert!(
+            demo_src.contains("var dark_mode_x int = 1"),
+            "boundary-suffixed ident untouched: {demo_src}"
+        );
+        assert!(
+            !demo_src.contains(" .dark_mode") && !demo_src.contains(".dark_mode "),
+            "no bare dark_mode ref remains: {demo_src}"
+        );
+
+        let store_out = std::fs::read_to_string(gallery.join("demos").join("my_store.at")).unwrap();
+        assert!(
+            store_out.contains("var d016x_dark_mode bool = false") && store_out.contains(".d016x_dark_mode = false"),
+            "own module renamed with same ns: {store_out}"
+        );
+
+        // 语料原文不动：r.source 之外的输入文件保持原样（教程/源码 tab 语义）。
+        assert!(store_src.contains("var dark_mode bool"));
     }
 
     /// PLAN-633: 全栈档 row 构造帮手（fullstack=true、loadable=false ——

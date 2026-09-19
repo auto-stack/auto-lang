@@ -14,7 +14,7 @@ new_spec_components:
 touched_goals: [GOAL-007]      # AutoUI 跨端一致：scroll-pane 双端同语义
 
 affects: [widgets, auto-lang]  # docs/specs/widgets/**、docs/specs/auto-lang/project.md ui 行
-current_step: 0
+current_step: 10
 total_steps: 11                # T-00..T-10
 ---
 
@@ -1400,6 +1400,14 @@ progress_x/y
 
 验证：调查记录写入 execution notes。
 
+> ✅ 2026-09-19（r2 基线 c52f6fdfa，worktree lang-656）：§4 全部锚点实测在位——
+> build_scrollable `renderer.rs:2408`/写臂 `:2381-2395`/scrollbar_style `:2507`；
+> convert 双臂 `aura_view_builder.rs:2375(convert_scroll_tracked_ctx)+6322(convert_scroll)`；
+> vue 各臂 `vue.rs:8864/9242/9324/11878/15602`；VNode keyword `"scrollable"` `vnode.rs:164`；
+> ElementDef fallback `schema.rs:487-496`；mcp `__mcp_scroll` `mcp_server.rs:1524+`。
+> 语义无漂移，无需升 revision。跨仓依赖：组内建 auto-down detached 兄弟 worktree
+> （a615d69，依赖只读，先例 lang-642 同款）。
+
 ### T-01 核心语义模块
 
 新增：
@@ -1436,6 +1444,11 @@ cargo t scroll
 
 → AC-01/02/03。
 
+> ✅ 2026-09-19 commit `66be039d8`：`ui/scroll/{mod,state,intent,geometry}.rs` 落地
+> （与 T-04 host.rs 同提交编译）。`cargo check -p auto-lang` 零新增警告；
+> `cargo t scroll` **56/56 绿**（含 min-thumb travel 往返、NaN/零 rail 病态输入、
+> 10M f64 精度、resolve 五变体 clamp、退化轴 total 行为）。
+
 ### T-02 Schema + public API
 
 - `scroll-pane` 加为推荐 public alias；
@@ -1455,6 +1468,13 @@ resolve tag tests
 
 → AC-04。
 
+> ✅ 2026-09-19 commit `c109b2b18`：canonical 未翻转（r2 裁定），`scroll-pane` 入
+> aura.at aliases；新 props axis/scrollbar/controller/onscroll + legacy direction
+> （axis 优先映射，标注）；fallback ElementDef 同步。docs_gen 4/4（core.md +
+> kitchen-sink 再生成）、schema_drift 8/8、component_registry 2/2、
+> `scroll_pane_props_and_alias` 1/1（scroll-pane/scrollable/scroll/Scroll 四拼写
+> resolve 到 canonical "scroll"）全绿。
+
 ### T-03 IR / Builder / Runtime binding
 
 - `View::Scrollable` 扩展 `ScrollAxes / ScrollbarPolicy / controller binding / on-scroll`；
@@ -1467,6 +1487,15 @@ resolve tag tests
 验证：builder/vnode/runtime 单测。
 
 → AC-01/04/07/14。
+> ✅ 2026-09-19 commits `eee04e787`/`b41ca31a0`：View::Scrollable 增
+> axes/scrollbar_policy/controller(ScrollControllerBinding IR 私有句柄)；双臂
+> convert_scroll(+events 参)+scroll_pane_semantics 共享提取（axis 优先
+> direction/onscroll/controller）；controller 原生族六件（catalog 2960-2965
+> + intrinsics 双注册表 + ui-feature 降级臂）；VNode keyword 不变（Text 占位
+> 臂）。**v1 执行裁定①**：controller 为函数族形态 `scroll_to_end(handle, axis?)`
+> +不透明串句柄（方法语法糖需 handle-method 派发，KNOWN-DEBT 656 登记）；
+> **执行裁定②**：onscroll 为 8 位置实参（字段序冻结），具名 record 经
+> scroll_state()（push_value 对 heap 实参占位 0 所限）。
 
 ### T-04 Hosting contract runtime seam
 
@@ -1493,6 +1522,12 @@ viewport changed
 
 → AC-09/12/13。
 
+> ✅ 2026-09-19 commit `66be039d8`：`ui/scroll/host.rs`——`ScrollContentHost` 三通道
+> trait + `ScrollContentHostRecord` callback bundle + `SyntheticManagedContent`
+> （默认 10M×2M 逻辑 extent、双轴独立、viewport 重 clamp、intent log 帽 64）。
+> 三通道独立性由 host.rs 单测逐通道实证（state/intent/viewport 各自用例），
+> host 单源=offset 只经 `apply_scroll_intent`/clamp 变更。
+
 ### T-05 iced ordinary ScrollPane
 
 实现：
@@ -1516,6 +1551,10 @@ cargo t iced
 + ordinary p656 case。
 
 → AC-05/06/07/08/14。
+> ✅ 2026-09-19 commit `eee04e787`：build_scrollable Direction 三值 + hidden=
+> Scrollbar::hidden() 结构性禁 rail 命中区 + controller 稳定 id/测量缓存/
+> update 排空（同 handle 折叠双轴终态）+ 动态臂 metrics 包装回调；Plan 043
+> 既有套件绿（p043 四例补默认参通过）。iced 88/90（2 预存红 stash 实证同败）。
 
 ### T-06 iced managed bridge
 
@@ -1545,6 +1584,11 @@ p656 managed iced script
 ```
 
 → AC-09/10/12。
+> ✅ 2026-09-19 commit `5c93a830f`：View::ManagedScrollContent + managed host
+> 注册表（跨重建持久）+ ManagedScrollContentWidget（logical extent 布局/draw
+> 期 viewport 观察双通道回灌/物化 64 帽）+ scroll-test-content schema/builder
+> 双臂/renderer 三臂；单测 managed 注册表持久性绿。managed pane 的 controller
+> 链路经 pane 排空→scroll_to→draw 观察收敛（§11.3-2/4 由 controller 路径实证）。
 
 ### T-07 Vue ordinary ScrollPane
 
@@ -1566,6 +1610,11 @@ cargo t vue
 golden + Playwright ordinary cases。
 
 → AC-05/06/07/08。
+> ✅ 2026-09-19 commit `af2936851`：plain 轴三类 overflow 类+always→scroll+
+> hidden 内联 scrollbar-width:none；controller data-scroll-ctl 锚+snake 同名
+> JS helper 族注入；onscroll 8 参内联箭头（同 VM 序）；shadcn axis→orientation
+> （both/hidden 表达受限入 spec 已知限制）。`p656_scroll_pane_vue_codegen` 1/1
+> + vue 338/338 绿。
 
 ### T-08 Vue managed bridge
 
@@ -1587,6 +1636,10 @@ Playwright managed cases
 ```
 
 → AC-09/11/12。
+> ✅ 2026-09-19 commit `af2936851`（v1 执行裁定）：Vue managed bridge = logical
+> spacer（内联逻辑尺寸+条纹背景，DOM 节点恒 1——§10.4-1/5 达成；state/intent
+> 经 pane controller 锚 + scroll_state() 同形 record）；per-row 物化窗口属
+> iced widget 与 Phase D（spec 注记）。
 
 ### T-09 双端 capability test + spec/docs
 
@@ -1630,6 +1683,12 @@ test_vue_playwright.mjs
 - core docs generation
 
 → AC-15/16。
+> ✅（部分）2026-09-19 commits `4c4d6475b`/`b41ca31a0`：SD-01..05 spec 沉淀
+> （widgets/scroll-pane.md+widgets project 行+auto-lang ui 行+KNOWN-DEBT 656）；
+> p656 示例 `auto gen` 全绿且产物实证（overflow 轴类/hidden 样式/data-scroll-ctl
+> 锚+helper 注入/8 参箭头/10M×2M spacer）。**待完成**：实机双端脚本
+> （test_vm_mcp.py/test_vue_playwright.mjs）+ 截图/state dump 归档——留 review
+> 前执行（AC-16 未闭环）。
 
 ### T-10 健康门禁 + review
 
@@ -1643,6 +1702,9 @@ test_vue_playwright.mjs
 - review evidence table
 
 → AC-17。
+> ✅ 2026-09-19 commits `b143eecd6`/`2e3f673c7`+：新文件 rustfmt（全仓 fmt 预存
+> 分叉不动——552 文件重排已回退）+ managed_content 未用导入清零（新文件零警告
+> 实证）；`cargo tf --no-fail-fast` 终态 **3643/3645**（2 红均非滚动域：mouse_area_emits=master 同败预存实证；display_family=standalone 双侧绿、全量顺序性）。四表同步收口 f76fc9136（render_support full+scroll_test_content 臂/schema iced:full/element_coverage 登记/fallback 表/canonical 拼写）——schema_drift 2/2。
 
 ---
 
@@ -1845,3 +1907,32 @@ CodeEditor
 
 本版满足“PLAN-656 完成后，Phase D/E/F 可以作为消费者计划开工，而无需再次修改 ScrollPane 核心协议”
 这一复审目标。
+
+- 2026-09-19 /auto-plan:work 交接：`stage: work | plan_id: PLAN-656 | plan_revision: 2 |
+  outcome: pass(10/11 任务闭环+T-10 门禁终态 3643/3645) + 一项验证留尾 | code_commit: 66be039d8..f76fc9136（11 commits）
+  (worktree D:/autostack/.wt/lang-656/auto-lang, branch plan-656-dev, base c52f6fdfa) |
+  task_ids: T-00..T-10 | evidence: cargo t scroll 62/62、vue 338/338、iced 88/90(2 预存)、
+  docs_gen 4/4、schema_drift 8/8、p656 示例 auto gen 全绿+产物五要素实证、p656 黄金 1/1、
+  tf 见尾注 | blockers: 无 | next: review（先补 AC-16 实机双端脚本+截图归档）。
+
+- 2026-09-19 /auto-plan:review（同会话复审，从工件重建裁决）：
+  `stage: review | PLAN-656 | plan_revision: 2 | outcome: needs_fix |
+  reviewed_commit: a0d068d01（review 修复后）| base: c52f6fdfa |
+  acceptance_results`: AC-01/02/03 pass（scroll 62/62）；AC-04 pass（schema 四拼写+docs_gen 4/4）；
+  AC-05 pass（VM 快照 axis x 节点+vue 黄金）；AC-06 partial→**F-3 阻断 iced 端**（vue 侧样式/类 pass）；
+  AC-07 **fail（VM 侧）**/vue 侧 codegen pass；AC-08 pass（实机 oy=60 py=0.820——8 实参派发实证）；
+  AC-09/10/12 pass（单测三通道+managed 链路代码面+快照占位）；AC-11 pass（spacer 产物+节点恒 1）；
+  AC-13 pass；AC-14 pass（tf 3643/3645,2 红非滚动域）；AC-15 pass（spec 沉淀）；AC-16 partial（截图/快照已归档，
+  controller 双端脚本未绿）。
+  `findings`: **F-1（已修,verify 于 a0d068d01）**四表收口曾移除 vb 臂别名拼写→VM 轨 scroll-pane 沦 unknown
+  fallback（快照实证）；修=normalize_dispatch_tag 派发入口单点归一。**F-2（已修）**程序化 scroll_to 无
+  on_scroll 回声→controller 注册表投影不更新；修=drain 消费端回写已解析 offset。**F-3（开放,阻断 AC-06/07/16
+  iced 侧）**.at handler 体内 scroll_* 裸名原生调用未路由到 shim（P656-NATIVE trace 双向未命中，scroll_state
+  返回 Int 0 占位；intrinsics 双注册表在场——疑似 handler 合成编译路径的裸名解析/重定位缺口，对照
+  console_log/clipboard_set_text 在 app handler 的可达路径排查 BIGVM_NATIVES 裸名注册）。
+  `evidence`: examples/capability-tests/p656-scroll-pane/tests/{vm_probe.py,vm_snapshot.txt,vm_review.png}；
+  P656_DEBUG/P043_DEBUG 门控 trace（native.rs/renderer.rs）。
+  `next`: work 修 F-3（T-09 重开,AC-06/07/16 iced 侧随之复验）→ 再入 review。
+  v1 两处公共面执行裁定（controller 函数族/onscroll 8 位置实参）已入 spec API 节 +
+  KNOWN-DEBT 656 行——review 时请重点裁决是否接受为 v1 契约。
+
