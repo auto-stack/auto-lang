@@ -2353,3 +2353,8 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P651-D5 [TS 扩展块 view 面板依赖 EngineEditor 加载]**：Details/Math/Mermaid/Query/Embed 五类型面板注册在 EngineEditor 侧（EngineEditor.vue:261-264），纯渲染消费者降级 unknown-node（测试被迫 void EngineEditor 补注册）。改注册层级动导入图且涉及 loader 数据通道依赖；对拍不暴露数据丢失，登记为结构性注记。
 - **P651-D6 [vm-smoke 稳定性转介（Q-5）]**：group 4 拖拽臂=069 已登记预存红（de86e1d8e，pristine master 复现）；group 11 全量 smoke 挂但 vm-069-probe 同场景五臂 ALL PASS（2026-09-19 实机，worktree 二进制）——判环境/时序。归 auto-down 侧 smoke 稳定性排查（重试隔离/端口 Collision 防护——本次实测 9247 被旧进程占用致首跑连错窗口）。
 - **P651-F1 [折叠 details 隐藏叶仍入 doc_sel/copy 全序（v1 细节，非阻断）]**：编辑核 Seg 树含闭合 details 内叶（不可见/不可聚焦/布局零矩形），跨块选区与 copy 走 dfs 全序会含隐藏文本。TS 折叠同样排除选区；对齐属增强面，随编辑器交互计划顺带。
+
+## 2026-09-19 增补四（PLAN-642 终审发现登记）
+
+- **P642-D15 [终审 R642-R5/R6/R9 三面（2026-09-19）]**：①**Vue 臂构建预存红**——`vite build` 于 NavSidebar.vue（020 nav_sidebar.at 转译产物）报 `"FolderMusic" is not exported by lucide-vue-next@0.312.0`；语料 `icon folder-music` 由 a5e26d558（09-17）引入，早于 PLAN-642 wave1 T-10（ba009076f 09-18），与本计划 diff 零交集（终审归因链 PLAN-642 §9 R642-R5）；修向 = 语料换图标名（lucide 0.312 有效集）或升级 lock（归 auto-os/语料域）。②**并行测试 flaky 家族**——`plan609_unresolved_dep_import_guard` / `rust_ui::tests::generate_rust_ui_out_of_repo_lands_project_local` / `ui_gen::rust::tests::test_display_family_codegen_arm_fixture` 三成员均"全套并行红、隔离绿、master 同特征"，疑 tempdir/资源并行竞争（环境债，跨 auto-man/ui_gen/rust_ui 三模块）。③**画廊 boot 噪音**——`dependency '' is materialized at deps but not declared in pac.at` ×N（wave1 起各会话均在），auto-os ui-gallery 工作区卫生，归 auto-os 域清理。
+- **P642-D12 近期臂核销标记（2026-09-19 终审 R642-R7）**：近期臂（EqualHeightRow 两遍测量原语）已由 **PLAN-655 StretchLine** 落地交付（`docs/specs/auto-lang/ui/overview.md` §items-stretch 两阶段行语义在案；008 定价卡等高消失根修）。远期臂（iced 升级给 flex 算法打 CSS 补丁：min-content 钳制 + 真两阶段行算法，可上游 PR）维持开放。
