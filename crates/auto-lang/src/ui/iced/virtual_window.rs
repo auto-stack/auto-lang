@@ -53,6 +53,19 @@ pub(crate) fn vwin_fit_hidden(fit_pending: bool, hidden_ticks: u32) -> bool {
     fit_pending && hidden_ticks < FIT_HIDE_MAX_TICKS
 }
 
+/// PLAN-024 T-01：虚拟窗内容区尺寸（外沿 rect 扣 chrome = 标题条 +
+/// 左右/底边框；顶边框含在标题条带上）。app 可用几何的消费源
+/// （auto.term.window_width/height 桌面轨标定）由此派生——外沿 rect
+/// 由全部 WM 写入方（开窗/拖拽/八向缩放/最大化/布局）一致维护，
+/// 派生式读取不受 `VWinState::window_size` 字段多写入方语义漂移影响。
+/// 退化钳 ≥1（0 会把消费侧投影 px 归零，同 022 T-03 拒收语义）。
+pub(crate) fn vwin_content_size(rect: iced::Rectangle) -> iced::Size {
+    iced::Size::new(
+        (rect.width - 2.0 * BORDER).max(1.0),
+        (rect.height - TITLEBAR_H - BORDER).max(1.0),
+    )
+}
+
 /// PLAN-526 T25：窗体圆角分角化——顶部 WIN_RADIUS 圆角、底部方角。
 /// 根因：app 自绘背景方角且 iced 0.14 clip 为矩形（container.rs:351 仅
 /// bounds 求交），圆角环底部两角必露内容方角；用户认可降级「环随内容

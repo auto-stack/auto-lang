@@ -665,9 +665,47 @@ pub fn shim_term_menu_take(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMEr
 /// PLAN-020 T-00b:窗口尺寸面(逻辑 px)。读 iced_adapter 窗口全局
 /// (renderer 每帧 set_window_width/height),与引擎零耦合——分屏矩形
 /// 投影的前端 px 类几何标定源。非 ui 特性(无窗口)返缺省槽位值。
+///
+/// PLAN-024 T-01:读序 = 桌面轨 per-app override 优先(该 App 虚拟窗
+/// 内容区,session split 拆借时注入),缺省回落 theme 全局。独立窗轨
+/// (run_app/动态轨,022 T-03 写入路)与 vm 无窗口轨不注入 override,
+/// 读路径与既有行为零变化。
+#[cfg(feature = "ui")]
+thread_local! {
+    static APP_WINDOW_PX: std::cell::Cell<(f32, f32)> = const { std::cell::Cell::new((0.0, 0.0)) };
+}
+
+/// PLAN-024 T-01:桌面轨注入——值为该 App 虚拟窗内容区(逻辑 px,
+/// vwin rect 外沿扣 chrome)。退化尺寸(w/h < 1)拒收保号,语义同
+/// 022 T-03 退化拒收(0 会把投影 px 归零)。
+#[cfg(feature = "ui")]
+pub fn set_app_window_px(w: f32, h: f32) {
+    if w >= 1.0 && h >= 1.0 {
+        APP_WINDOW_PX.with(|c| c.set((w, h)));
+    }
+}
+
+/// PLAN-024 T-01:测试读子(注入语义断言用;非测试面不可见)。
+#[cfg(all(test, feature = "ui"))]
+pub(crate) fn app_window_px_for_test() -> (f32, f32) {
+    APP_WINDOW_PX.with(|c| c.get())
+}
+
 #[cfg(feature = "ui")]
 pub fn shim_term_window_width(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let w = crate::ui::style::theme::window_width();
+    let w = APP_WINDOW_PX.with(|c| c.get().0);
+    let w = if w >= 1.0 {
+        w
+    } else {
+        crate::ui::style::theme::window_width()
+    };
+    if std::env::var("P024_TRACE").is_ok() {
+        let ov = APP_WINDOW_PX.with(|c| c.get());
+        eprintln!(
+            "[P024-TRACE] window_width -> {w} (override={ov:?} theme={})",
+            crate::ui::style::theme::window_width()
+        );
+    }
     task.ram.push_nv(auto_val::encode_i32(w as i32));
     Ok(())
 }
@@ -680,7 +718,12 @@ pub fn shim_term_window_width(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
 
 #[cfg(feature = "ui")]
 pub fn shim_term_window_height(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let h = crate::ui::style::theme::window_height();
+    let h = APP_WINDOW_PX.with(|c| c.get().1);
+    let h = if h >= 1.0 {
+        h
+    } else {
+        crate::ui::style::theme::window_height()
+    };
     task.ram.push_nv(auto_val::encode_i32(h as i32));
     Ok(())
 }

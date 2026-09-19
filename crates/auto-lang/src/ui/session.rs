@@ -4949,6 +4949,16 @@ fn spawn_shell_outproc(
         if let Some(host) = self.host.as_mut() {
             let wid = host.wm.win_of_app(id)?;
             let v = host.wm.wins.get_mut(&wid)?;
+            // PLAN-024 T-01:桌面轨 per-app 几何注入——vwin 内容区(逻辑
+            // px,vwin_content_size 派生式),随本 App 的每次拆借刷新
+            // (全部 app 域 VM 入口/视图构建前必经)。auto.term.
+            // window_width/height shim(mux 投影标定源)由此读到本 App
+            // 真值,不再受进程级 theme thread_local 串扰;v.window_size
+            // 字段语义(Plan 409 响应式布局)不动。
+            {
+                let sz = crate::ui::iced::virtual_window::vwin_content_size(*v.rect.borrow());
+                crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+            }
             return Some(SessionViewMut {
                 app_id: id,
                 window: win,
@@ -4993,6 +5003,12 @@ fn spawn_shell_outproc(
         if let Some(host) = &self.host {
             let wid = host.wm.win_of_app(id)?;
             let v = host.wm.wins.get(&wid)?;
+            // PLAN-024 T-01:桌面轨 per-app 几何注入(同 split_mut_at
+            // desktop 分支——view/订阅闭包侧入口)。
+            {
+                let sz = crate::ui::iced::virtual_window::vwin_content_size(*v.rect.borrow());
+                crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+            }
             return Some(SessionViewRef {
                 app_id: id,
                 window: win,
@@ -5766,6 +5782,45 @@ mod tests {
         assert_eq!(ShellModel::from_storage(Some(" junk ")), ShellModel::Inproc);
         // 显式 outproc 但带空白容差（trim 后判定）。
         assert_eq!(ShellModel::from_storage(Some("outproc")), ShellModel::Outproc);
+    }
+
+    /// PLAN-024 T-01：vwin 内容区派生式——外沿扣 chrome（标题条 + 边
+    /// 框环），退化钳 ≥1（0 会把 mux 投影 px 归零，022 T-03 同语义）。
+    #[test]
+    fn p024_vwin_content_size_derivation() {
+        use crate::ui::iced::virtual_window::{vwin_content_size, BORDER, TITLEBAR_H};
+        let sz = vwin_content_size(iced::Rectangle::new(
+            iced::Point::new(10.0, 20.0),
+            iced::Size::new(800.0, 600.0),
+        ));
+        assert_eq!(sz.width, 800.0 - 2.0 * BORDER);
+        assert_eq!(sz.height, 600.0 - TITLEBAR_H - BORDER);
+        let degenerate = vwin_content_size(iced::Rectangle::new(
+            iced::Point::new(0.0, 0.0),
+            iced::Size::new(0.0, 0.0),
+        ));
+        assert_eq!((degenerate.width, degenerate.height), (1.0, 1.0));
+    }
+
+    /// PLAN-024 T-01：桌面轨几何 override 写入语义——退化尺寸拒收保号
+    /// （初始 (0,0) = 未注入，shim 回落 theme 全局 = 三轨零回归的读序锚）。
+    #[test]
+    fn p024_app_window_px_setter_semantics() {
+        assert_eq!(
+            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            (0.0, 0.0)
+        );
+        crate::vm::ffi::term_engine::set_app_window_px(0.0, 500.0);
+        assert_eq!(
+            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            (0.0, 0.0),
+            "退化拒收保号"
+        );
+        crate::vm::ffi::term_engine::set_app_window_px(777.0, 555.0);
+        assert_eq!(
+            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            (777.0, 555.0)
+        );
     }
 
     /// PLAN-030 T-10（R-2）：看门兵预算耗尽支路——窗口内第 3 次登记 =
