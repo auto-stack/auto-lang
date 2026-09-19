@@ -222,6 +222,19 @@ pub fn controller_snapshot(handle: &str) -> ControllerPaneSnapshot {
         .unwrap_or_default()
 }
 
+/// 读回通道的 extent-only 落库（F-4 终段）：动态重建会重置 widget 滚动
+/// offset——读回的 offset 是重置后的 0，不得覆写注册表（注册表 offset 由
+/// 写臂回填/on_scroll 回声/用户滚动维护；读回只补 viewport/content 基线）。
+pub fn note_controller_extents(handle: &str, viewport: (f64, f64), content: (f64, f64)) {
+    let mut reg = REGISTRY.lock().unwrap();
+    if let Some(entry) = reg.panes.get_mut(handle) {
+        entry.viewport_w = viewport.0;
+        entry.viewport_h = viewport.1;
+        entry.content_w = content.0;
+        entry.content_h = content.1;
+    }
+}
+
 /// drain 消费端回填：controller 意图落盘 scroll_to 后，把已解析的双轴目标
 /// offset 写回注册表投影（iced 程序化 scroll_to 不触发 on_scroll 回声——
 /// 043 写臂同款盲区；用户滚动后 on_scroll 测量会校正 viewport/content）。

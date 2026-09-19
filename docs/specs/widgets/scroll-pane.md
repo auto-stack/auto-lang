@@ -100,6 +100,22 @@ scroll-pane(onscroll: |ox, oy, vw, vh, cw, ch, px, py| { ... }) { ... }
 thumb/rail 的平台用 `ScrollSource::NativeScrollbar`；native inertia/overscroll
 保持 backend policy；core 不假设 intent 必然由本 pane 消费（为 nested scroll 预留）。
 
+## 已知语义陷阱与动态重建下的滚动位保持（review F-4 实证）
+
+- **pane 高度约束 idiom**：Plan 057 双样式遗留使 pane 的 style 同时作用于
+  内层内容列——pane 自身的 `h-*`/max-h 类会把 content 固定到 == viewport
+  （range=0，永不滚）。正确 idiom：外层 `container (style: "h-48")` 定高，
+  pane 自身只带视觉类（`border rounded h-full w-full`）。旧 scrollable 同样
+  受此影响。
+- **动态重建重置 widget offset**：VM 轨每消息重建 Element 树，iced 滚动
+  offset 不跨重建保持——controller pane 每次 build 经 Plan 043 写臂重发
+  注册表 offset（terminal/015-notes 生产同款先例）；`ScrollStateReader`
+  读回 operation 只补 viewport/content 基线（extent-only），不覆写 offset
+  （offset 由写臂回填/on_scroll 回声/用户滚动维护）。
+- **controller 时序**：intent 排空经 `__mcp_scroll` 回环消息在 update 头部
+  直返落盘（MCP 同款机制）；新绑定 handle 下一 tick 读回预热；未预热
+  intent 留队延迟解析（首用动作晚一拍而非解析为 0）。
+
 ## 兼容承诺
 
 - `scrollable`/`scroll`/`Scroll` 旧代码零改动（alias + legacy direction）；

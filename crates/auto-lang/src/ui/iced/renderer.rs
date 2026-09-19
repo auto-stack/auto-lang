@@ -2433,6 +2433,13 @@ fn build_scrollable<M: Clone + Debug + 'static>(
     let controller_widget_id = controller.map(|c| format!("scroll_ctl_{}", c.key()));
     if let (Some(c), Some(id)) = (controller, &controller_widget_id) {
         crate::ui::scroll::bind_controller(c.key(), id);
+        // F-4 终段：动态重建重置 widget offset——按 terminal/015 生产先例，
+        // 每次 build 经 Plan 043 写臂重发注册表 offset（同值去抖，重建后
+        // offset 归 0 ≠ 上次值 → 重入队 → 滚动位跨重建保持）。
+        let snap = crate::ui::scroll::controller::controller_snapshot(c.key());
+        if snap.viewport_w > 0.0 {
+            note_scroll_offset(id, (snap.offset_x as f32, snap.offset_y as f32));
+        }
     }
     let mut cap: Option<f32> = None;
     let mut s = scrollable(child);
@@ -15111,29 +15118,18 @@ fn compare_pngs(
             }
             return iced::Task::none();
         }
-        // PLAN-656 F-4 终段：controller scroll_to 经回环消息在头部直返
-        //（MCP __mcp_scroll 同款机制——tail_tasks 批内的 scroll_to 不落地，
-        // 头部 return 的才生效；input_value = "widget_id␟x␟y"）。
-        if msg.event == "__scroll_ctl_exec" {
+        if msg.event == "__mcp_scroll" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
-            if let (Some(id), Some(x), Some(y)) = (
-                parts.next(),
-                parts.next().and_then(|s| s.parse::<f32>().ok()),
-                parts.next().and_then(|s| s.parse::<f32>().ok()),
-            ) {
+            // PLAN-656 F-4 末环：可选第三段 x（controller 双轴回环复用本消费者；
+            // 既有 MCP 调用 "id␟y" 两段形态不变，x 缺省 0）。
+            if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
+                let x = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                if std::env::var("P656_DEBUG").is_ok() {
+                    eprintln!("[P656-EXEC] mcp_scroll id={id} x={x} y={y}");
+                }
                 return iced::Task::batch([iced::widget::operation::scroll_to(
                     id.to_string(),
                     iced::widget::scrollable::AbsoluteOffset { x, y },
-                )]);
-            }
-            return iced::Task::none();
-        }
-        if msg.event == "__mcp_scroll" {
-            let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
-            if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
-                return iced::Task::batch([iced::widget::operation::scroll_to(
-                    id.to_string(),
-                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y },
                 )]);
             }
             return iced::Task::none();
@@ -15528,9 +15524,10 @@ fn compare_pngs(
                     for (id, (ox, oy, vw, vh, cw, ch)) in map {
                         if std::env::var("P656_DEBUG").is_ok() { eprintln!("[P656-READ] id={id} vals={:?}", (ox, oy, vw, vh, cw, ch)); }
                         for handle in crate::ui::scroll::controller::handles_for_widget(&id) {
-                            crate::ui::scroll::note_controller_state(
+                            // F-4 终段：extent-only——offset 由写臂/on_scroll 维护
+                            //（读回的 offset 是重建重置后的 0，覆写会清掉有效投影）。
+                            crate::ui::scroll::controller::note_controller_extents(
                                 &handle,
-                                (ox as f64, oy as f64),
                                 (vw as f64, vh as f64),
                                 (cw as f64, ch as f64),
                             );
@@ -17450,11 +17447,12 @@ fn compare_pngs(
             }
             // review F-2：命令值先行投影（读回一 tick 后以真实 clamp 校正）。
             crate::ui::scroll::controller::note_controller_offset(&handle, x, y);
-            // scroll_to 经 __scroll_ctl_exec 回环消息走头部直返（上见）。
+            // F-4 末环 diff 实验：复用 __mcp_scroll 消费者（载荷 "id␟y␟x"，
+            // 第三段 x 为本计划扩展）——该头部直返路径对 MCP 实证有效。
             tail_tasks.push(iced::Task::done(IcedMessage {
                 widget: String::new(),
-                event: "__scroll_ctl_exec".to_string(),
-                input_value: Some(format!("{id}{sep}{x}{sep}{y}", sep = PAYLOAD_SEP)),
+                event: "__mcp_scroll".to_string(),
+                input_value: Some(format!("{id}{sep}{y}{sep}{x}", sep = PAYLOAD_SEP)),
             }));
         }
         // 读回节拍：预热/排空后立即读 + 心跳持续读（程序化 scroll_to 的
