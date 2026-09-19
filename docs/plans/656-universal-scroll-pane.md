@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-656
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: universal-scroll-pane
 author: [zhaopuming, agent]
 created_at: 2026-09-19
@@ -2005,3 +2005,26 @@ CodeEditor
   `next: review`（维持 execution_done，11/11；review 请重点核 spec 陷阱节
   改写与上轮终判的记录衔接）。
 
+- 2026-09-19 /auto-plan:review 终审（同会话，自工件重建裁决）：`stage: review |
+  PLAN-656 | plan_revision: 2 | outcome: **pass** | reviewed_commit: 9f05683fc |
+  base: c52f6fdfa | dependency: auto-down detached a615d69（只读未动）|
+  spec_inputs: widgets/scroll-pane.md（终态含陷阱节符号修正版）。
+  `acceptance_results`: AC-01..17 全 pass——复现证据：vm_probe 实机重跑全绿
+  （probe=102/mprobe=9999776/oy=60 py=0.49，本审 HEAD）；scroll 63/63、vue
+  339/339、schema_drift 2/2、docs_gen 4/4；tf 3642/3645（三红均非滚动域且已
+  定性：mouse_area=master 同败预存、display_family/ffi_dual_019=并行顺序性
+  双侧单跑绿）。AC-06 hidden 的"无隐形命中区"以 iced 结构性 width-0 实现
+  （Scrollbar::hidden，T-05 源码级验证）记录；AC-16 Vue 腿以 auto gen 产物
+  五要素+codegen 黄金替代 playwright 全链（helper 为纯生成物，DOM 行为同构
+  ——merge 前抽查建议保留）。
+  `findings`: 无阻断。**两处 v1 执行裁定复核为 ACCEPT**：①controller 函数族
+  形态（plan r2 §5.1 方法糖需 handle-method 派发通道）②on-scroll 8 位置实参
+  （§7.1 record 单实参受 vm_bridge push_value heap 占位限制）——均源于真实
+  语言层缺口，双端语义一致，已入 spec API 节+KNOWN-DEBT 656（含后续语言面
+  迁移路径），用户自首次交接起持续知情并在此基线上指示后续工作，终审接受
+  为 v1 契约。**F-1..F-4 复核**：F-1 别名归一/F-3 id 9900+COUNTED+回归锁/
+  F-2+F-4（含并发会话符号反转真因修正，"重建重置"证伪链完整）修复记录与
+  代码一致，无悬空。spec 陷阱节终版与真因一致（符号约定+跨重建持久实证）。
+  `evidence`: tests/{vm_probe.py,vm_snapshot.txt,vm_review.png}、
+  p656_scroll_controller_natives_end_to_end、p656_scroll_pane_vue_codegen。
+  `next`: **merge**。
