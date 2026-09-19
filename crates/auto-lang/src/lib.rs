@@ -62,6 +62,7 @@ pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod mcp; // Plan 265: MCP server for AI agent interaction
 pub mod autovm_daemon; // Plan 269: AutoVM daemon (serve/req)
 pub mod autovm_client; // Plan 269: AutoVM client for req command
+pub mod back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）
 #[cfg(test)]
 mod test_util; // Plan 266 Phase 4: Differential testing utilities
 pub mod compile;
@@ -7595,6 +7596,12 @@ mod plan657_bp_admin_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 #[path = "tests/plan633_fullstack_embed_tests.rs"]
 mod plan633_fullstack_embed_tests;
+
+// PLAN-658 T-01: back proxy 骨架回归（真 TCP，cargo th 档；测试名带
+// http_e2e 前缀以被 `cargo th` 的名字过滤器收录）。
+#[cfg(all(test, feature = "test-http-e2e"))]
+#[path = "tests/back_proxy_tests.rs"]
+mod back_proxy_tests;
 
 
 
