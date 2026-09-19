@@ -536,7 +536,7 @@ checkpoints:
   landed: master 3dab57f9a fast-forward（merge-base --is-ancestor 实证）；主检出冒烟 back_proxy e2e 11/11 + auto-man check 0 错；他方会话 KNOWN-DEBT 在途编辑 stash→pop→EOF 并集保全（其 022 行+656/P020/RQ 各 hunks 工作区原样）
   ledger_refreshed: ".autoos/specs.json@master 3dab57f9a——P658-1/2/3 入位读回（601 items，P022-1/2/3+P656-1 共存），跟踪文件经 worktree Git 提交"
   archived: docs/plans/archive/658-uigallery-multi-backend-proxy.md（git mv）+ status archived + completion_kind delivered
-  cleaned: 待回填
+  cleaned: "wt-guard ×3 clean（lang-658/{auto-lang,auto-os,auto-down}）→ 三 worktree 移除+双分支删除（plan-658-dev lang 3dab57f9a/os ba3ff80 已各自 landed）+组目录移除；auto-os 侧 ui-gallery 产物刷新经 os main b56afa7 落地（017/031/047 适配器,发射器确定性产物）——worktree list/branch 双零验证"
 canonical_spec_paths: [docs/specs/auto-lang/vm/back-proxy.md, docs/specs/auto-lang/ui/overview.md §PLAN-658, docs/specs/auto-lang/vm/plans.md]
 ledger_targets: [.autoos/specs.json]
 debt: P642-D10 全销 / P642-D13 主体核销（远期项留册）/ P658-C1..C4 落册（KNOWN-DEBT 3dab57f9a）
