@@ -4260,6 +4260,20 @@
      "status": "published",
      "created": "2026-09-19",
      "last_modified": "2026-09-19"
+    },
+    {
+     "id": "P661-1",
+     "title": "canvas 图元场景契约 v2（三表族+onhit 命中）",
+     "content": "design/canvas-scene.md(PLAN-661 SD-01,563 笔笔画详规让位独立成规):图元三表族 <前缀>_nodes[id,x,y,shape,color[,r|w,h]·中心坐标]/_edges[x1,y1,x2,y2[,color[,width]]·绝对坐标=R3 布局上游下发]/_labels[x,y,text[,color[,size]]],宽容解析,缺省空=strokes-only 逐字节等价;渲染=场景数据纯函数(双端独立绘制,extent x/y 独立缩放,circle r*sx 同式);onhit 命中(R-1):tap 位移≤4px+nodes only 声明序倒序 topmost+id 字符串载荷,MCP press(value=id) 消息同构直派;非目标:缩放平移/边标签命中后置(P661-D1/D2);对拍口径:结构等价+画布区 IoU 0.8677(文本跨端差异主导,P661-D5);姊妹沉淀:SD-02 chart-components 563 头转详规注记/SD-03 overview slider 三轨补全注记/SD-04 aura schema canvas+slider 条目(docs_gen 锚)",
+     "file": "docs/specs/auto-lang/ui/design/canvas-scene.md",
+     "related": [
+      "PLAN-661",
+      "PLAN-563",
+      "GOAL-007"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
     }
    ]
   },
@@ -6654,6 +6668,20 @@
      "status": "published",
      "created": "2026-09-19",
      "last_modified": "2026-09-19"
+    },
+    {
+     "id": "P661-3",
+     "title": "PLAN-661 复审合并收据",
+     "content": "review pass r1@086deecdf(worktree plan-661-dev 6 提交,base 72ab08941,复审 43a341fb7):AC-01..08 全 pass(map 写 SET_ELEM 三臂+078 复现收编/VM 实机 set_value vol 30→75.00/vue range 7:7/a2r golden 新形态+fixture 零改动/canvas 三表双轨+043 回归 14:14/onhit 双轨命中含空区不派发/049 SPEC/SD-01..04+三围栏绿+DEBT P661-D1..D7);复审期全量重跑 tf 3646:3648+tv 3792:3794+tt 4011:4017 全红基线逐项重证预存;findings R-F1..F5 全 nonblocking(R-F4 主检出他方 TRACE 残留已由归属会话处置核验清洁);方案调整备案 P661-D6(T-01 engine 臂非 codegen CALL_NAT/T-05 MCP 直派非 pen 合成);账本三件套=本收据+plans.md 661 行+spec-index 再生",
+     "file": "docs/plans/archive/661-canvas-graph-scene-slider.md",
+     "related": [
+      "PLAN-661",
+      "GOAL-007",
+      "GOAL-008"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
     }
    ]
   }
