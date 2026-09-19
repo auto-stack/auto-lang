@@ -17,11 +17,16 @@
 // 样式只写 bg-primary 不写 hover，cn 合并后 hover 仍是 muted 底 +
 // primary-foreground 字 → 选中项 hover 发白不可读。与未选中对称：
 // off → hover:bg-secondary/80，on → hover:bg-primary/90。
+//
+// r6：外壳对齐 calculator——pac `window: "fit"` + **去掉 min-h-screen**
+// （fit 按内容量高，min-h-screen 会把窗口撑满屏）。整 app 套一层 card 框；
+// 横向 mx-auto；Hero 压缩并与右栏 items-stretch 对齐底边。
 
 use weather_data: name_for, condition_for, cond_zh_for, icon_for, temp_for, feels_for, humidity_for, wind_for, uv_for, aqi_for, aqi_level_for, pressure_for, visibility_for, hourly_for, daily_for
 use stylekit.styles: hint_text
 
-style page = "min-h-screen bg-background text-foreground"
+style page = "bg-background text-foreground"
+style app_frame = "w-full max-w-4xl mx-auto bg-card border border-border rounded-2xl p-4 gap-4 shadow-lg"
 style city_pill_on = "px-3 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm shrink-0 transition-colors"
 style city_pill_off = "px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shrink-0 transition-colors"
 style icon_btn = "w-9 h-9 items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
@@ -33,7 +38,7 @@ style hour_card_now = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl bg-pr
 style hour_card = "w-16 shrink-0 items-center gap-1.5 py-3 rounded-2xl bg-muted/50 border border-border/40"
 style day_card_now = "w-16 shrink-0 items-center gap-0.5 py-2.5 rounded-2xl bg-primary/15 border border-primary/30"
 style day_card = "w-16 shrink-0 items-center gap-0.5 py-2.5 rounded-2xl bg-muted/50 border border-border/40"
-style forecast_card = "bg-card border border-border rounded-2xl p-3 gap-2"
+style forecast_card = "bg-muted/40 border border-border/60 rounded-2xl p-3 gap-2"
 style fc_tab_on = "h-7 px-3 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
 style fc_tab_off = "h-7 px-3 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
 style day_row = "w-full items-center gap-2 py-2.5 px-1"
@@ -119,7 +124,9 @@ widget App {
         col {
             style: page
             col {
-                style: "w-full max-w-6xl mx-auto p-4 lg:p-6 gap-4"
+                style: "w-full max-w-4xl mx-auto p-3 gap-3"
+                col {
+                    style: app_frame
 
                 // ── Header ──
                 row {
@@ -197,33 +204,33 @@ widget App {
                 // 避免 max-w-7xl 注入与 ScrollArea 视口塌陷导致「只见 5 日」）。
                 if .layout_mode == "landscape" {
                     col {
-                        style: "w-full gap-4"
+                        style: "w-full gap-3"
 
                         row {
-                            style: "w-full gap-4 items-start"
+                            style: "w-full gap-3 items-stretch"
 
-                            // ── Hero 实况（左栏）──
+                            // ── Hero 实况（左栏，高度对齐右栏）──
                             col {
                                 style: if .condition == "sunny" {
-                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                    "w-full lg:w-64 shrink-0 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-4 items-center justify-center gap-1.5 shadow-md"
                                 } else if .condition == "rain" {
-                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                    "w-full lg:w-64 shrink-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl p-4 items-center justify-center gap-1.5 shadow-md"
                                 } else if .condition == "storm" {
-                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                    "w-full lg:w-64 shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-4 items-center justify-center gap-1.5 shadow-md"
                                 } else if .condition == "snow" {
-                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-cyan-300 to-sky-500 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                    "w-full lg:w-64 shrink-0 bg-gradient-to-br from-cyan-300 to-sky-500 rounded-2xl p-4 items-center justify-center gap-1.5 shadow-md"
                                 } else if .condition == "fog" {
-                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-gray-300 to-slate-500 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                    "w-full lg:w-64 shrink-0 bg-gradient-to-br from-gray-300 to-slate-500 rounded-2xl p-4 items-center justify-center gap-1.5 shadow-md"
                                 } else if .condition == "cloudy" {
-                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-slate-400 to-slate-600 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                    "w-full lg:w-64 shrink-0 bg-gradient-to-br from-slate-400 to-slate-600 rounded-2xl p-4 items-center justify-center gap-1.5 shadow-md"
                                 } else {
-                                    "w-full lg:w-72 shrink-0 bg-gradient-to-br from-sky-400 to-blue-500 rounded-3xl p-6 items-center justify-center gap-2 shadow-lg"
+                                    "w-full lg:w-64 shrink-0 bg-gradient-to-br from-sky-400 to-blue-500 rounded-2xl p-4 items-center justify-center gap-1.5 shadow-md"
                                 }
-                                text .icon { style: "text-6xl" }
-                                text .cond_zh { style: "text-lg font-medium text-white" }
-                                text .temp { style: "text-7xl font-light text-white leading-none tracking-tight" }
+                                text .icon { style: "text-5xl" }
+                                text .cond_zh { style: "text-base font-medium text-white" }
+                                text .temp { style: "text-6xl font-light text-white leading-none tracking-tight" }
                                 row {
-                                    style: "items-center gap-3 text-white/90 text-xs mt-2 flex-wrap justify-center"
+                                    style: "items-center gap-2 text-white/90 text-xs mt-1 flex-wrap justify-center"
                                     text f"体感 ${.feels}" {}
                                     text f"湿度 ${.humidity}" {}
                                     text f"风 ${.wind}" {}
@@ -232,7 +239,7 @@ widget App {
 
                             // ── 右栏：预报 Tab（24h/5日 互斥）→ 指标 ──
                             col {
-                                style: "flex-1 min-w-0 gap-4"
+                                style: "flex-1 min-w-0 gap-3"
 
                                 // 预报卡：tab 切换，一次只显示一种
                                 col {
@@ -377,17 +384,17 @@ widget App {
                             }
                         }
 
-                        text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70 pt-1" }
+                        text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70" }
 
-                        style: "w-full gap-4"
+                        style: "w-full gap-3"
                     }
                 }
 
                 // ==================== 竖屏布局（保留：未来手机版） ====================
                 if .layout_mode == "portrait" {
-                    scroll (axis: "y", style: "w-full flex-1 min-h-0") {
+                    scroll (axis: "y", style: "w-full max-h-[520px]") {
                         col {
-                            style: "w-full max-w-md mx-auto gap-4 pb-6"
+                            style: "w-full max-w-md mx-auto gap-3"
 
                             // Hero
                             col {
@@ -555,14 +562,16 @@ widget App {
                                 }
                             }
 
-                            text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70 pt-1" }
+                            text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70" }
 
-                            style: "w-full max-w-md mx-auto gap-4 pb-6"
+                            style: "w-full max-w-md mx-auto gap-3"
                         }
                     }
                 }
 
-                style: "w-full max-w-6xl mx-auto p-4 lg:p-6 gap-4"
+                    style: app_frame
+                }
+                style: "w-full max-w-4xl mx-auto p-3 gap-3"
             }
             style: page
         }

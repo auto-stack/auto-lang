@@ -4,9 +4,10 @@ scene: "ui"
 render: "vue"
 title: "Weather"
 title_zh: "天气"
+# PLAN-660 r6：窗口随内容自然尺寸（011-calculator Plan 504 同型）。
+window: "fit"
 desktop: "true"
-# PLAN-660：不写死 theme/accent —— 跟随宿主/CLI（011-calculator Plan 615 同型）。
-# 应用内 ToggleTheme 翻转 dark_mode（双端契约变量）。
+# 不写死 theme/accent —— 跟随宿主/CLI；应用内 ToggleTheme 翻转 dark_mode。
 
 dep stylekit {
     path: "../stylekit"
