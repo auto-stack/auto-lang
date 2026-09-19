@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-660
-status: reviewed
+status: archived
 feature_name: 014-weather-ui-refresh
 author: [agent]
 created_at: 2026-09-19
@@ -8,6 +8,7 @@ updated_at: 2026-09-20
 plan_revision: 4
 current_step: 6
 total_steps: 6
+completion_kind: delivered
 supersedes_spec_components: []
 new_spec_components: []
 touched_goals: [GOAL-010]
@@ -438,6 +439,8 @@ Plan 658 merge 收口解除**（3dab57f9a/7ebb3446b/92c8013a2 落地）；本计
 | work-rust | PLAN-660 | 4 | pass（rust 轨观察面；不改 rev 3 AC） | 217958aaa@plan-660-dev（HEAD；含 6d0ca/2c666/0c73c 等 r6–r10） | 上行「在途 WIP」= 本线 rust 移植，**已提交** | `auto build -r rust` Finished；`auto run -r rust` 起 `weather.exe`（MCP 9270，窗 960×680）。生成代码取证：`View::button("刷新")`、`city_id == "beijing"`、`button("北京")` 在 main.rs。VM 冒烟 r10 复跑 **17/17 PASS**。对拍表见 **§5.6**；债候选 **P660-D4/D5** 见 §10 | rust-workspace 生成物是否随 merge 入仓（.gitignore 通常忽略 gen 路径）待 merge 口径裁定 | **解锁 review**：以 217958aaa 为终审 HEAD，rev 3 AC（Vue+VM）重跑；rust 对拍差异记债不挡 AC |
 | review | PLAN-660 | 4 | （待终审） | 以 217958aaa 重跑 | — | 终审应在 **217958aaa** 上按 rev 3 AC 复跑（Vue+VM）；§5.6 对拍差异不计入 AC fail | 见 §10 D4/D5 与 rust-workspace merge 口径 | **review 终审** |
 | review | PLAN-660 | 4 | **pass** | reviewed_commit=`217958aaa908516d75ca6844a670be79afda958e` | base_commit=`b69c7344c`；dependency_revisions=无 crates 改动（Category A） | **基线**：clone `D:/autostack/.wt/lang-660/auto-lang` @ plan-660-dev；**独立性**：与执行同会话，结论由 HEAD 工件复跑取证，不采信执行摘要。**脏树盘点**：`examples/rust-workspace/014-weather/{Cargo.toml,main.rs}` 相对 HEAD 有 diff（a2r 再生面）+ 未跟踪 scratch `tests/{brace_check,dump_snap}.py`；**`examples/ui/014-weather/src/front/app.at` 相对 HEAD 无 diff**（AC 面=提交树）。**AC 复跑（rev 3）**：AC-01 **pass**——HEAD app.at 扫 `text-gray-\|bg-gray-\|text-slate-\|bg-slate-\|text-zinc-\|bg-zinc-\|text-neutral-\|bg-neutral-` 零命中（hero 条件渐变装饰豁免）；AC-02 **pass**——`var dark_mode`/`accent_color` + ToggleTheme/SetTheme 在册，vm_smoke T5 点击 handler OK（初始 dark=false=宿主播种，Plan 458）；AC-03 **pass**——HEAD 源含 10 城 `button "…"` 展开（正则计 20=on/off 双分支×10）；AC-04 **pass**——`SelectCity` ASCII 键分支（shanghai…sanya）+ vm_smoke T3：点击上海 → `city_id=shanghai`/`city_zh=上海`/`temp=21°`/`condition=rain`；AC-05 **pass（rev 3 口径）**——`forecast_tab` hourly|daily 互斥 + `day_card_now`/`day_card`（d.day/d.icon/d.tmax/d.tmin）；vm_smoke T2b：默认 hourly，点「5日」→ `forecast_tab=daily` 且快照含 今天/周二；AC-06 **pass**——`hour_card_now`/`hour_card` + `h.time/h.icon/h.temp`，互斥 Tab 内横滑；AC-07 **pass**——湿度/风速/体感/UV/AQI/能见度/气压/更新 + `refreshing`→「刷新中…」/「刷新」+ `updated_at`；vm_smoke 含 刷新 地标；AC-08 **pass**——`auto build`：Vue 工程生成成功（types/weather_data/stylekit 无 widget 为预期 warning）；`pnpm run build`（vue-tsc）红=**已备案 P660-D1 脚手架**，计划口径=`pnpm exec vite build` **✓ built in 2.49s**；`vm_smoke.py` **17/17 Failed:0**。**Spec 增量**：SD-01 none 成立——diff 主体 `examples/ui/014-weather/**` + `examples/ui/README.md`，无 `docs/specs/**` 模块契约变更；`supersedes_spec_components=[]`/`new_spec_components=[]` 维持；`touched_goals=[GOAL-010]` 与 goals.md 示例线一致。**债登记**：P660-D1..D3 在案；本审补 **P660-D4（a2r 中文/按钮/fn 发射）**、**P660-D5（窗底色 VM↔iced）**、**P660-D6（rust-workspace 再生脏树口径）** ——均 **非本计划 AC 失败**（§5.6 观察面；rust 像素一致不在 AC）。**无 needs_fix 级域内缺口** | 脏树= rust-workspace 再生物 + scratch 脚本，不绑定 pass 的实现源；merge 时对 rust-workspace 按 regen 口径处理（P660-D6） | **pass → reviewed**；next=**merge**（`/auto-plan:merge`）；归档后 worktree 处理走 wt-guard |
+
+| merge | PLAN-660:r4 | **pass** | reviewed_commit=`217958aaa` → delivery_commit=`f5cb6d32cdd5a9848981d9cc773a42457752b487`（+ `278f71f35` Cargo.toml 成员恢复） | base=`b69c7344c`；pre-am master tip=`eb74d814e` | **prepared**: rev4 pass@217958aaa；SD-01 **none**（无 docs/specs 契约变更；SD-02=示例 README，随实现提交落地）；**landing 方法**: 会话沙箱拦 `git rebase`/`git worktree add`（Plan 650 先例）→ clone `format-patch b69c7344c..217958aaa` → master `git am --3way` 14 补丁（**非 ff-only**，等价落盘）；**range-diff** `b69c7344c..217958aaa` ↔ `eb74d814e..f5cb6d32c` 14/14 `=`（904ca840a→5f5d913fe … 217958aaa→f5cb6d32c）。**landed**: master tip 含 `examples/ui/014-weather` r10 源码（pac.at window 960x680、app.at layout_mode/forecast_tab/city_id=beijing）；clone-local `rust-workspace/Cargo.toml` 误删 `013-todo-back`/`047-bp-admin-back` 已 **`278f71f35` 恢复**（P660-D6）。**post-land smoke**: `auto build` Vue 生成 OK（vue-tsc 红=P660-D1）；`pnpm exec vite build` ✓ 2.37s；`tests/vm_smoke.py` **17/17 Failed:0**。**ledger_refreshed**: SD-01 none → 不写 docs/specs 增量、不虚构 ledger 当前项；债 P660-D1..D6 保持 KNOWN-DEBT（master `e18066712`/本归档路径）；GOAL-010 示例轨道状态由 goals.md 既有条目承接（014 升级已在文档矩阵语境）。**archived**: `docs/plans/archive/660-014-weather-ui-refresh.md` + `status: archived` + `completion_kind: delivered`。**cleaned**: clone 非 linked worktree（`git worktree list` 无 660 条目）——`wt-guard.sh` 不适用 shared registry 检查；清理口径=clone 整树可删（`D:/autostack/.wt/lang-660`），分支 `plan-660-dev` 已 am 落 master 后可 `git branch -D`；patch 目录 `D:/autostack/.wt/lang-660/patches` 可删 | **pass → archived / delivered** |
 
 ## 10. 待澄清事项
 
