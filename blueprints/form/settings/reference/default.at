@@ -2,10 +2,18 @@
 // Self-contained UI widget (no backend): the consumer wires `dataSource.load` /
 // `dataSource.save` and owns `actions.save` / `actions.reset` semantics.
 // EDIT regions mark where per-app customization is expected.
+//
+// PLAN-657 参数化修整（reference 实现对齐 frontmatter 契约面，frontmatter
+// 零改动）：sections props 经 widget 参数接入（分区标题带；分 tab 物化为
+// 变体提升候选，记 PLAN-657 组装摩擦）；dataSource.load/save 无 L1 逆向
+// 调用通道——load 初值经 cfg_* 平铺参数 + Init 播种（User/Config 结构在
+// widget 参数面无跨包类型通道），save 载荷经 on_save(name, notifications,
+// language) 多载荷回调上抛；actions.reset 经 on_reset 上抛。
 
-widget SettingsScreen {
+widget SettingsScreen (sections: List, cfg_name: str, cfg_notifications: bool, cfg_language: str, on_save: msg, on_reset: msg) {
     msg {
-        Save,
+        Init,
+        Save(str, bool, str),
         Reset,
         ConfirmReset,
         CancelReset,
@@ -19,7 +27,6 @@ widget SettingsScreen {
         var display_name str = ""
         var notifications bool = true
         var language str = "en"
-        var saved_language str = "en"
         var dirty bool = false
         var loading bool = false
         var error str = ""
@@ -29,6 +36,12 @@ widget SettingsScreen {
     view {
         col {
             // ── EDIT: custom_section (repeat per props.sections entry) ──
+            row {
+                for s in .sections {
+                    text (key: s.id) f"${s.title}" { style: "text-sm text-gray-500 px-2" }
+                }
+                style: "gap-1 pb-2"
+            }
             form {
                 col {
                     text "Profile" { style: "text-lg font-semibold" }
@@ -79,7 +92,7 @@ widget SettingsScreen {
 
             col {
                 button "Save changes" {
-                    onclick: .Save
+                    onclick: .Save(.display_name, .notifications, .language)
                     disabled: !.dirty
                     style: "px-4 py-2 bg-blue-600 text-white rounded-lg"
                 }
@@ -113,15 +126,19 @@ widget SettingsScreen {
     }
 
     on {
+        .Init -> {
+            .display_name = .cfg_name
+            .notifications = .cfg_notifications
+            .language = .cfg_language
+        }
         .EditDisplayName(s) -> { .display_name = s; .dirty = true }
         .ToggleNotifications -> { .notifications = !.notifications; .dirty = true }
         .SelectLanguage(lang) -> { .language = lang; .dirty = true }
 
-        .Save -> {
+        .Save(name, notify, lang) -> {
             .loading = true
             .error = ""
-            // consumer wires dataSource.save(draft) here;
-            // on success clear .dirty; on failure set .error
+            on_save(name, notify, lang) // consumer runs dataSource.save(draft)
             .dirty = false
             .loading = false
         }
@@ -133,7 +150,10 @@ widget SettingsScreen {
         .ConfirmReset -> {
             .confirm_open = false
             .dirty = false
-            // restore draft from last dataSource.load snapshot
+            .display_name = .cfg_name // restore draft from last dataSource.load snapshot
+            .notifications = .cfg_notifications
+            .language = .cfg_language
+            on_reset()
         }
     }
 }

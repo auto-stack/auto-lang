@@ -220,7 +220,9 @@ fn t07_data_table_vocabulary_face_locked() {
 
 /// tmp 宿主 fixture：pac.at 声明 `dep bps`（指向本仓 blueprints/）+ app.at
 /// 直连 `use bps.<dotted>: <Widget>` + 视图实例化。返回 app.at 路径。
-fn e2e_host(tag: &str, dotted: &str, widget: &str) -> PathBuf {
+/// PLAN-657 起 empty-state first_use 等被消费变体带必填回调参数——`props`
+/// 注入实例化面（如 `(on_primary: .Primary)`）；老的无参形态传 ""。
+fn e2e_host(tag: &str, dotted: &str, widget: &str, props: &str) -> PathBuf {
     let base = tmp_base(tag);
     let front = base.join("src/front");
     std::fs::create_dir_all(&front).unwrap();
@@ -236,7 +238,7 @@ fn e2e_host(tag: &str, dotted: &str, widget: &str) -> PathBuf {
     std::fs::write(
         &app,
         format!(
-            "use {dotted}: {widget}\n\nwidget App {{\n    model {{\n        var note str = \"\"\n    }}\n    view {{\n        col {{\n            {widget} {{}}\n            style: \"min-h-screen p-6\"\n        }}\n    }}\n}}\n"
+            "use {dotted}: {widget}\n\nwidget App {{\n    model {{\n        var nav List = [{{ id: \"h\", label: \"Home\", badge: \"\" }}]\n    }}\n    msg {{ Primary, NavSel }}\n    view {{\n        col {{\n            {widget}{props} {{}}\n            style: \"min-h-screen p-6\"\n        }}\n    }}\n}}\n"
         ),
     )
     .unwrap();
@@ -275,6 +277,9 @@ fn collect_view_texts(
                 collect_view_texts(c, out);
             }
         }
+        // PLAN-657：语义容器（header/footer/nav）落 View::Container——壳
+        // brand/user menu 文案在此层下（此前收集器不遍历，断言面未覆盖）。
+        View::Container { child, .. } => collect_view_texts(child, out),
         View::AnchorSlot { child, .. } => collect_view_texts(child, out),
         _ => {}
     }
@@ -289,6 +294,7 @@ fn t08_e2e_vm_track_empty_state_direct_import() {
         "t08",
         "bps.feedback.empty_state.reference.first_use",
         "EmptyStateFirstUse",
+        " (illustration: \"\", on_primary: .Primary)",
     );
     let src = std::fs::read_to_string(&app).unwrap();
     let dc = crate::build_dynamic_component(&src, Some(&app.to_string_lossy()))
@@ -313,25 +319,30 @@ fn t08_e2e_vm_track_empty_state_direct_import() {
 /// + form/signup（无连字符包）不回归。
 #[test]
 fn t09_e2e_vm_track_more_kebab_packages_and_no_regression() {
-    let cases: &[(&str, &str, &[&str])] = &[
+    let cases: &[(&str, &str, &str, &[&str])] = &[
         (
             "bps.navigation.sidebar_shell.reference.default",
             "SidebarShell",
-            &["Home", "Projects", "App content mounts here"],
+            // PLAN-657 参数化后 props 必填；nav 经 .nav 播种（Home 标签），
+            // content 区为 slot fallback（占位文案保留——裸形态断言不变义）。
+            " (nav_tree: .nav, user_name: \"u\", user_email: \"e\", on_nav: .NavSel, on_sign_out: .Primary)",
+            &["Home", "Acme", "App content mounts here"],
         ),
         (
             "bps.data_display.data_table_crud.reference.minimal",
             "DataTableCrud",
+            "",
             &["Search", "No results"],
         ),
         (
             "bps.form.signup.reference.minimal",
             "SignupForm",
+            "",
             &["Create account"],
         ),
     ];
-    for (i, (dotted, widget, expected)) in cases.iter().enumerate() {
-        let app = e2e_host(&format!("t09-{i}"), dotted, widget);
+    for (i, (dotted, widget, props, expected)) in cases.iter().enumerate() {
+        let app = e2e_host(&format!("t09-{i}"), dotted, widget, props);
         let src = std::fs::read_to_string(&app).unwrap();
         let dc = crate::build_dynamic_component(&src, Some(&app.to_string_lossy()))
             .unwrap_or_else(|e| panic!("{dotted} direct import must compile: {e}"));
@@ -359,6 +370,7 @@ fn t10_e2e_vue_track_direct_import() {
         "t10",
         "bps.feedback.empty_state.reference.first_use",
         "EmptyStateFirstUse",
+        " (illustration: \"\", on_primary: .Primary)",
     );
     let result = crate::ui_gen::generate_component_from_file(
         &app,

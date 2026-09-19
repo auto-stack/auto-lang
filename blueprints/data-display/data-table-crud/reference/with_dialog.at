@@ -2,8 +2,18 @@
 // minimal + the `form_dialog` extension point materialized: a create/edit
 // dialog over the table. Consumer wires `dataSource.query` and owns
 // actions.create/update/delete.
+//
+// PLAN-657 参数化修整（reference 实现对齐 frontmatter 契约面，frontmatter
+// 零改动）：columns props 经 widget 参数接入（表头循环）；受控数据面
+// rows/total 由消费方供给（dataSource.query 无 L1 逆向调用通道——app 侧
+// 取数回填，on_query 上抛查询意图）；actions.create/update/delete 经
+// on_create/on_update/on_delete 回调上抛（契约 Q2 action 点）。body 单元格
+// 仍按 scaffold 固定 name 列渲染——columns 驱动的动态单元格需 view 层
+// Index 表达式（492-R1 VM 轨缺口），记 PLAN-657 组装摩擦。
+// pagination 补 per_page（shadcn Pagination 必填 itemsPerPage——master
+// 预存 vue-tsc TS2345，随本参数化修整）。
 
-widget DataTableCrudDialog {
+widget DataTableCrudDialog (columns: List, rows: List, total: int, on_query: msg, on_create: msg, on_update: msg, on_delete: msg) {
     msg {
         SearchChanged,
         PageChanged,
@@ -11,14 +21,16 @@ widget DataTableCrudDialog {
         EditRow,
         DeleteRow,
         DialogNameChanged,
-        DialogSubmit
+        DialogSubmit,
+        Query(str, int),
+        Create(str),
+        Update(str, str),
+        Delete(str)
     }
 
     model {
         var search str = ""
         var page int = 1
-        var total int = 0
-        var rows []Row = []
         var loading bool = false
         var error str = ""
         // dialog state
@@ -46,12 +58,15 @@ widget DataTableCrudDialog {
             }
 
             table {
+                // header row per props.columns（含操作列——消费方经
+                // columns 供给，不再硬编码）
                 row {
-                    text "Name" { style: "text-sm font-medium" }
-                    text "Actions" { style: "text-sm font-medium" }
+                    for col in .columns {
+                        text (key: col.id) f"${col.title}" { style: "text-sm font-medium" }
+                    }
                 }
                 for row in .rows {
-                    row {
+                    row (key: row.id) {
                         text f"${row.name}" { style: "text-sm" }
                         dropdown-menu {
                             dropdown-menu-trigger {
@@ -61,9 +76,9 @@ widget DataTableCrudDialog {
                                 }
                             }
                             dropdown-menu-content {
-                                dropdown-menu-item "Edit" { onclick: .EditRow }
+                                dropdown-menu-item "Edit" { onclick: .EditRow(row.id) }
                                 dropdown-menu-separator {}
-                                dropdown-menu-item "Delete" { onclick: .DeleteRow }
+                                dropdown-menu-item "Delete" { onclick: .DeleteRow(row.id) }
                             }
                         }
                     }
@@ -87,6 +102,7 @@ widget DataTableCrudDialog {
             pagination {
                 page: .page
                 total: .total
+                per_page: 8
                 onchange: .PageChanged
                 style: "gap-1"
             }
@@ -127,11 +143,11 @@ widget DataTableCrudDialog {
         .SearchChanged(s) -> {
             .search = s
             .page = 1
-            // consumer wires dataSource.query(filter, page) here
+            on_query(s, 1) // consumer re-runs dataSource.query(filter, page)
         }
         .PageChanged(p) -> {
             .page = p
-            // consumer wires dataSource.query(filter, page) here
+            on_query(.search, p) // consumer re-runs dataSource.query(filter, page)
         }
         .CreateClicked -> {
             .dialog_editing = ""
@@ -146,11 +162,16 @@ widget DataTableCrudDialog {
         .DialogNameChanged(s) -> { .dialog_name = s }
         .DialogSubmit -> {
             // actions.create (dialog_editing == "") or actions.update
+            if .dialog_editing == "" {
+                on_create(.dialog_name)
+            } else {
+                on_update(.dialog_editing, .dialog_name)
+            }
             .dialog_open = false
             // then re-run dataSource.query
         }
         .DeleteRow(id) -> {
-            // actions.delete: confirm, then remove + re-run query
+            on_delete(id) // actions.delete: confirm, then remove + re-run query
         }
     }
 }

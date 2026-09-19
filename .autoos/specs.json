@@ -3177,6 +3177,21 @@
           "status": "published",
           "created": "2026-09-19",
           "last_modified": "2026-09-19"
+        },
+        {
+          "id": "P657-1",
+          "title": "bp-admin-sample — L1 多包组装样板（047）+ 消费接线形态定式 + 参数化修整先例",
+          "content": "project.md 消费面新节（PLAN-657 SD-01）：047-bp-admin 四包五变体纯 L1 直连零副本首证（sidebar-shell/data-table-crud/settings/empty-state，连字符 key 走 649 探测）；接线形态定式=props→widget 参数、actions→on_*: msg 回调（k2/k3 契约+Pascal 载体变体）、dataSource→app 取数 props 回填物化（无 L1 逆向通道）；五 reference 参数化修整对齐自家 frontmatter（frontmatter 零改动，filetree 先例推广）——参数化规范列为 Tier 1 前置；组装摩擦分级结论（P0 VM 回调载荷字面量化 P657-D1=vm-component-parity 第一优先输入）",
+          "file": "docs/specs/blueprint/project.md",
+          "related": [
+            "PLAN-657",
+            "PLAN-649",
+            "PLAN-639",
+            "PLAN-640"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
         }
       ]
     },
@@ -6488,6 +6503,18 @@
           "title": "PLAN-642 终审 pass（2026-09-19）",
           "content": "终审 @ 17f2ab8b3（auto-os 8d376c6）：AC-01/03/04/05 pass、AC-02 registered-deviation（F1→P642-D3 裁定 a）、AC-06 partial-registered（Vue 臂 folder-music×lucide0.312 预存红 R642-R5，时间线归因早于 T-10）。发现 R5/R6/R7/R8/R9 登记 P642-D15 与 D12 核销标记。归档 docs/plans/archive/642-uigallery-vm-embed-repair.md。",
           "file": "docs/plans/archive/642-uigallery-vm-embed-repair.md"
+        },
+        {
+          "id": "P657-2",
+          "title": "bp-admin-sample — 复审与合并收据",
+          "content": "复审 pass（同会话复审，独立性受限已声明、结论自工件重建：门禁重跑+基线归因实验+diff 实读）：AC-02/04/05/06/07 全过、AC-01/03 vue 全量+VM 侧 P657-D1 预授权限（§4 风险条款）；tf 2556/2557 唯一红 mouse_area 经 b4b04c5cd 还原对照证 master 预存、display_family 双态单跑隔离证顺序敏感非回归；frontmatter 零改动+无 bind 工件+R006=0 复验；F-01..F-05 落账。合并：reviewed_commit 1f109f454、base b4b04c5cd、dep auto-down a615d69",
+          "file": "docs/plans/archive/657-bp-admin-sample.md",
+          "related": [
+            "PLAN-657"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
         }
       ]
     }
