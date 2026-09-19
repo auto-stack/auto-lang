@@ -2307,7 +2307,7 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P642-D7 [008 特性行渲染缺失]**：树 18 ✓ 节点视觉只画 1 行（u2_008.png）——渲染层丢弃非数据缺失。T-11 归因修复。
 - **P642-D8 [内嵌 screen 单位语义=窗口高]**：`min-h-screen`/`h-screen` 内嵌时按窗口高解析（009 溢出被裁、016 不居中同根因）。T-12 修正映射 + scroll 兜底。
 - **P642-D9 [子件主题魔法变量污染宿主]**：016 `dark_mode=false` 打开后宿主全局持久变浅色（u2 序列实证）。T-13 隔离（主题只认根件）。
-- **P642-D10 [020 媒体扫描依赖独立 HTTP 后端]**：`Http.get_json("/api/media/scan")` 内嵌无后端进程即空曲库（player_store.at:92）——T-19 proxy 的直接用例。**处置裁定（用户 2026-09-19）**：随 P642-D13 独立计划一并解决（不走 per-demo 窄路特例，避免特判先例累积）；过渡期 020 内嵌保持诚实空态。
+- **P642-D10 [020 媒体扫描依赖独立 HTTP 后端——✅ 已核销（PLAN-658，2026-09-19）]**：~~内嵌无后端进程即空曲库~~ **AC-01 全链实证**：画廊 VM 臂 020 经 proxy 原生 media 路由出真实曲库（393 条，E:/Music；Range 206 与磁盘逐字节一致），P642-D13 承接链闭合。
 - **P642-D11 [plan606 029 data-URL 断言]**：见 P642-D5——补记：该测试期望视图层含 data URL，但语料已演进为"路径引用 + 渲染端内嵌"契约（Plan 617/628），断言过时；候选修法 = 更新断言到现契约或恢复视图层内联，属测试契约决策。
 
 ## 2026-09-18 增补三（PLAN-647 核销与移交）
@@ -2342,7 +2342,7 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 
 ## 2026-09-19 增补二（PLAN-642 用户裁定落地：proxy 独立立项 + F1 方案 a）
 
-- **P642-D13 [多后端 proxy 机制——独立立项裁定（用户 2026-09-19），PLAN-642 收尾后另立计划]**：画廊内嵌 fullstack demo 的后端半身无宿主进程——单进程多后端宿主（per-app VM session + 子 URL `/apps/<id>/api/*` 路由 + 生成器 baseURL 子前缀适配，PLAN-617 `AUTO_HTTP_BASE` 相对展开先例）。**范围裁定（用户明示）**：不止解决 020 媒体扫描（P642-D10/T-16），**必须一并解决 017-chat / 031-image-viewer 的 native-ns/stream 后端**——即 stream/WebSocket 转发是独立计划的一等公民目标，不是首期风险排除项。可行性四依据与工期估计（proxy 本体 2-3 天 + 生成器适配 1 天 + gallery 集成 1 天）见 PLAN-642 §8.2 可行性分析节；风险项（session 崩溃隔离 per-session catch + 重启、binary 响应转发、可观测性让渡）在独立计划的设计文档中作一等公民展开。T-14(b) 臂（back 链族内嵌）随本条目：proxy 落地前维持回退页诚实空态。
+- **P642-D13 [多后端 proxy 机制——✅ 主体核销（PLAN-658 delivered，2026-09-19）]**：**主体已交付**——per-app VM session + `/apps/<id>/` 子 URL 路由 + baseURL 适配（发射器字面量前缀化，§5.3 实施裁定）+ 017 stream（SSE 一等公民，双向+Typing≤400ms）+ 031 native-ns/binary（双文件字节 MATCH）+ 崩溃隔离/重启/日志环全落地（spec：docs/specs/auto-lang/vm/back-proxy.md）。**远期项留册**：子 domain 路由、WebSocket 转发形态（当前 SSE 满足语料）、proxy 热重载。原始立项裁定存档：画廊内嵌 fullstack demo 的后端半身无宿主进程——单进程多后端宿主（per-app VM session + 子 URL `/apps/<id>/api/*` 路由 + 生成器 baseURL 子前缀适配，PLAN-617 `AUTO_HTTP_BASE` 相对展开先例）。**范围裁定（用户明示）**：不止解决 020 媒体扫描（P642-D10/T-16），**必须一并解决 017-chat / 031-image-viewer 的 native-ns/stream 后端**——即 stream/WebSocket 转发是独立计划的一等公民目标，不是首期风险排除项。可行性四依据与工期估计（proxy 本体 2-3 天 + 生成器适配 1 天 + gallery 集成 1 天）见 PLAN-642 §8.2 可行性分析节；风险项（session 崩溃隔离 per-session catch + 重启、binary 响应转发、可观测性让渡）在独立计划的设计文档中作一等公民展开。T-14(b) 臂（back 链族内嵌）随本条目：proxy 落地前维持回退页诚实空态。
 - **P642-D14 [T-18 证伪结案附带发现两条（2026-09-19）]**：①MCP fixture 派发不可达任意 handler——`on_with_input_for(widget, event)` 仅 input 绑定路径 handler 可达（SetAddr 实证执行），AddrGo 一类 msg handler 派发静默无操作（addr_editing 翻转判别实证）——toast/导航类 E2E 在合并轨无人造触发通道（右键上下文菜单、mouse-area 空白点击均非 MCP 快照可寻址）。修向：fixture trigger 扩展为直查 handler 注册表（namespaced_handler_fn_name 同键）。②`fs.canonical` 失败返回**原路径**（`unwrap_or(path)`，native.rs:9397-9402）而非空串——语料以 `can == ""` 作失败哨兵的分支（027 NavTo 的"无法打开/不是目录"两条 toast.error 路径）在 VM 臂不可达；修向：shim 失败返回 ""（对齐语料哨兵语义）或语料改用 `fs.exists` 前置门控——涉及既有语料行为面，需单独评估。
 - **P642-D3 处置裁定补录**：见 2026-09-18 增补一 P642-D3 条目内裁定段（方案 a + exit(127) 枚举先行动作）。
 
@@ -2380,3 +2380,12 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 - **P030-D3 [overlay 三面 + launcher outproc 化 not-yet（D6 边界裁定）]**：switcher/notification/dashboard + launcher 维持 in-proc（dashboard z 带在 App 窗下与置顶 chrome 冲突 + face 卡宿主活渲染无投影材料；launcher 保 iced 聚焦链）。随缺省翻转计划另立。
 - **P030-D4 [TS decode tag 12-14 not-yet]**：v1.11 三变体无 TS 消费面（远程镜像线不转发壳投影）；drawlist-renderer 接入时补。
 - **P030-D5 [AppProjector 队列臂 ForLoop/Conditional no-op（既有缺口，P030 发现）]**：解释态 queue 臂（auto re-exec --autodesk-incubate queue 档）渲染不展开 for/conditional——列表驱动 app 经该档失真；shell 面已定轨 NativeProjector，AppProjector 展开补齐独立评估（消费面 = 解释 queue 档 app，现无 e2e 载体）。
+
+## PLAN-658 交付伴随债（2026-09-19 落册）
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P658-C1 | medium | 生成器（master 预存） | 017-chat 独立形态 rust 后端生成 db.rs 转译红（种子字面量 &str 落 String 槽，`"AutoBot"` 八处 E0308）——api_gen/a2r 面，PLAN-658 diff 零触及（diff-scope 实证）；画廊 proxy 路径不受影响（back 不经生成器） | examples/rust-workspace/017-chat-back/src/db.rs（再生现）；复现：cd examples/ui/017-chat && auto run -r vm |
+| P658-C2 | low | VM stdlib | `json.encode` 对 VM 对象字面量降格池索引串（占位 shim `shim_json_encode` 只收 String；PLAN-053 字符串降格家族）——658 client 模块已绕行 `json.from_value`（emit_api_http_call 同款），未修根因 | vm/ffi/stdlib.rs shim_json_encode；复现见 t04 实录（body="18443647848969737645"） |
+| P658-C3 | low | 画廊内嵌 | gallery 内嵌 `timer {}` 块（自定义事件计时器）不触发——017 clock_secs 恒 0 实证；`.Tick`+interval 形态正常（012 对照）。timer 块 demo 内嵌首例，PLAN-652 TimeSource 收集面缺口 | ui/dynamic.rs TimeSource 收集；017-chat.at timer 块 |
+| P658-C4 | low | 渲染 | 031 侧栏缩略图名列表渲染空——view for-loop over json-object vmref list 零迭代（`for item in .thumbnails`）；工具栏导航腿可用（NextImage 实证） | 031-image-viewer app.at:109 for item 块 |

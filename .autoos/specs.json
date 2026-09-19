@@ -3226,6 +3226,21 @@
           "status": "published",
           "created": "2026-09-19",
           "last_modified": "2026-09-19"
+        },
+        {
+          "id": "P658-1",
+          "title": "back-proxy 单进程多后端宿主契约",
+          "content": "back-proxy.md(PLAN-658 SD-01):画廊内嵌 fullstack demo 后端半身——每 app back 链独立 VM session(专线程+mpsc,api_routes 自持绕过全局单表)+子 URL /apps/<id>/ 路由(#[api] JSON 按名绑定/~Stream 签名特路 SSE+api_gen 同款 POST 广播/原生 media scan-stream/图片字节委托保真)+崩溃隔离(catch_unwind+指数退避 500ms..8s 重装载状态归零+日志环+__backproxy/log 观测)。四目录原生:bus.subscribe 3144(编译 seam)/http.sse_open 3145/sse_poll 3146(Tick 逐步拉取)/sys.panic_hard 3147(隔离测试面)。",
+          "file": "docs/specs/auto-lang/vm/back-proxy.md",
+          "related": [
+            "PLAN-658",
+            "PLAN-633",
+            "PLAN-642",
+            "GOAL-010"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
         }
       ]
     },
@@ -4216,6 +4231,20 @@
           "file": "docs/specs/terminal-mux-model.md",
           "related": [
             "PLAN-022"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
+        },
+        {
+          "id": "P658-2",
+          "title": "ui-gallery 内嵌后端经 back-proxy 服务五契约",
+          "content": "ui/overview.md §PLAN-658(SD-02):①stream/native-ns 后端解否决(-proxy 运行时 back 进 session+发射 client 模块,POST body 镜像 emit_api_http_call 的 json.from_value 构造)②流端点注入 .Tick SSE 消费(sse_open 惰性+sse_poll 有界排水+msg 块 Tick 变体,非流 demo 不注入)③/api/ 字面量前缀化(仅 Http. 行,独立形态零变化;不经 AUTO_HTTP_BASE)④../../tests/ fixtures 锚定(画廊 CWD≠demo CWD)⑤回退页解除条件=proxy 运行。P642-D13 核销。",
+          "file": "docs/specs/auto-lang/ui/overview.md",
+          "related": [
+            "PLAN-658",
+            "PLAN-642",
+            "GOAL-010"
           ],
           "status": "published",
           "created": "2026-09-19",
@@ -6598,6 +6627,18 @@
             "PLAN-022",
             "PLAN-020",
             "PLAN-023"
+          ],
+          "status": "published",
+          "created": "2026-09-19",
+          "last_modified": "2026-09-19"
+        },
+        {
+          "id": "P658-3",
+          "title": "PLAN-658 复审合并收据",
+          "content": "review pass r1@d76491caf(=a62d4af5c+cherry-pick 2733c0879 基线门控):AC-01..06 全 pass(020 393 曲库/017 双向+Typing≤400ms/031 双文件字节 MATCH/同 PID 单端口/panic 隔离重启归零);门禁零新增红三次基线定责实验(th 老档环境红双侧同集漂移/musk p053 基线 4红⊃分支 3红/tf 3 红全在案预存);auto-man 全量 308/308;活体矩阵两轮独立驱动 overall=true。基线债 surfaced:kitchen_sink 再生成漂移(656 域)。",
+          "file": "docs/plans/658-uigallery-multi-backend-proxy.md",
+          "related": [
+            "PLAN-658"
           ],
           "status": "published",
           "created": "2026-09-19",
