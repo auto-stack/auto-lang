@@ -48,6 +48,9 @@ fn fold(s: &str) -> String {
 
 /// 白名单:他处已文档化(fold 键)。
 const DOC_EXCLUDE: &[&str] = &[
+    // PLAN-656: capability-test 专用 synthetic managed content——非 public
+    // widget,文档化在 docs/specs/widgets/scroll-pane.md(架构验收工具节)。
+    "scrolltestcontent",
     // 语义 HTML/Layout 组页面(alignment/scroll/position/...)文档化
     "article", "aside", "footer", "header", "main", "nav", "section",
     "p", "span", "h1", "h2", "h3",

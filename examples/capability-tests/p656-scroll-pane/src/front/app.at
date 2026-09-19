@@ -1,0 +1,143 @@
+// p656-scroll-pane — PLAN-656 通用滚动架构 capability 示例（双端同源）：
+// ordinary y/x/both、scrollbar 策略、controller 程序化控制、on-scroll 观察
+// （8 位置实参，字段序 offset_x..progress_y）、managed logical extent
+// （10M×2M 逻辑 px，物化节点 ~20 行/列）。语义契约见
+// docs/specs/widgets/scroll-pane.md 与
+// docs/design/autoui/universal-scroll-architecture.md。
+
+widget App {
+    model {
+        var sc string = "main"
+        var msc string = "managed"
+        var oy float = 0.0
+        var vy float = 0.0
+        var py float = 0.0
+        var probe float = 0.0
+        var mprobe float = 0.0
+        var bumps int = 0
+    }
+
+    msg C { ToEnd, ToStart, By, MToEnd, MBy, Probe, ProbeM, Bump, Observe(float, float, float, float, float, float, float, float) }
+
+    on {
+        .ToEnd -> {
+            let ok = scroll_to_end(.sc)
+        }
+        .ToStart -> {
+            let ok = scroll_to_start(.sc)
+        }
+        .By -> {
+            let ok = scroll_by(.sc, 320.0)
+        }
+        .MToEnd -> {
+            let ok = scroll_to_end(.msc)
+        }
+        .MBy -> {
+            let ok = scroll_by(.msc, 4000.0)
+        }
+        .Probe -> {
+            let s = scroll_state(.sc)
+            .probe = s.offset_y
+        }
+        .ProbeM -> {
+            let s = scroll_state(.msc)
+            .mprobe = s.offset_y
+        }
+        .Observe(ox, oy2, vw, vh, cw, ch, px, p2) -> {
+            .oy = oy2
+            .vy = vh
+            .py = p2
+        }
+        .Bump -> { .bumps += 1 }
+    }
+
+    view {
+        col (style: "gap-3 p-3") {
+            b "PLAN-656 scroll-pane capability"
+
+            container (style: "h-48") {
+                scroll-pane (controller: .sc, style: "border rounded h-full w-full") {
+                col (style: "gap-1") {
+                    text "y-row-01"
+                    text "y-row-02"
+                    text "y-row-03"
+                    text "y-row-04"
+                    text "y-row-05"
+                    text "y-row-06"
+                    text "y-row-07"
+                    text "y-row-08"
+                    text "y-row-09"
+                    text "y-row-10"
+                    text "y-row-11"
+                    text "y-row-12"
+                }
+                }
+            }
+            col (style: "gap-1") {
+                row (style: "gap-2") {
+                    button "to-end" { onclick: .ToEnd }
+                    button "by-320" { onclick: .By }
+                    button "to-start" { onclick: .ToStart }
+                }
+                row (style: "gap-2") {
+                    button "probe" { onclick: .Probe }
+                    text `oy=${.oy} vy=${.vy} py=${.py} probe=${.probe}`
+                }
+            }
+
+            container (style: "h-12") {
+                scroll-pane (axis: "x", style: "border rounded h-full w-full") {
+                row (style: "gap-2") {
+                    text "x-cell-01"
+                    text "x-cell-02"
+                    text "x-cell-03"
+                    text "x-cell-04"
+                    text "x-cell-05"
+                    text "x-cell-06"
+                    text "x-cell-07"
+                    text "x-cell-08"
+                }
+                }
+            }
+
+            container (style: "h-12") {
+                scroll-pane (scrollbar: "hidden", controller: "hiddenpane", style: "border rounded h-full w-full") {
+                col {
+                    text "hidden-1"
+                    text "hidden-2"
+                    text "hidden-3"
+                    text "hidden-4"
+                    text "hidden-5"
+                    text "hidden-6"
+                }
+                }
+            }
+
+            container (style: "h-56") {
+                scroll-pane (axis: "both", controller: .msc, style: "border rounded h-full w-full") {
+                scroll-test-content (key: "cap", extent_h: 10000000.0, extent_w: 2000000.0) {}
+                }
+            }
+            row (style: "gap-2") {
+                button "m-to-end" { onclick: .MToEnd }
+                button "m-by-4k" { onclick: .MBy }
+                button "m-probe" { onclick: .ProbeM }
+                text `mprobe=${.mprobe}`
+            }
+
+            container (style: "h-24") {
+                scroll-pane (style: "border rounded h-full w-full", onscroll: .Observe) {
+                col (style: "gap-1") {
+                    text "obs-1"
+                    text "obs-2"
+                    text "obs-3"
+                    text "obs-4"
+                    text "obs-5"
+                    text "obs-6"
+                }
+                }
+            }
+            button "bump" { onclick: .Bump }
+        }
+    }
+}

@@ -31,3 +31,4 @@ graph LR
 | cli | `npx @auto-ui/widgets add/list` 命令 | active |
 | styles | Tailwind 配置与预编译 CSS 构建（build-styles.cjs / src/input.css） | active |
 | [terminal-iced-draw](terminal-iced-draw.md) | terminal iced widget 绘制期契约（draw 段落强引用规则 + 像素金样环境契约；auto-lang 侧,Plan 634） | active |
+| [scroll-pane](scroll-pane.md) | AutoUI 通用滚动架构（PLAN-656 Phase A+B+C）：ScrollState/Intent/Viewport 三通道语义层 + scroll-pane primitive + controller/on-scroll 双端契约 + managed content bridge | active |

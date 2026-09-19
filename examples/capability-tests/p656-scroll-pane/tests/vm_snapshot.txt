@@ -1,0 +1,65 @@
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  text #vnode_12642422519345821663 "PLAN-656 scroll-pane capability"
+  col #vnode_12642404927159776812 {
+    text #vnode_4289760042030763204 "y-row-01"
+    text #vnode_4289777634216808055 "y-row-02"
+    text #vnode_4289795226402852906 "y-row-03"
+    text #vnode_4289812818588897757 "y-row-04"
+    text #vnode_4289689673286583800 "y-row-05"
+    text #vnode_4289707265472628651 "y-row-06"
+    text #vnode_4289724857658673502 "y-row-07"
+    text #vnode_4289742449844718353 "y-row-08"
+    text #vnode_4289619304542404396 "y-row-09"
+    text #vnode_4289636896728449247 "y-row-10"
+    text #vnode_4289654488914494098 "y-row-11"
+    text #vnode_4289672081100538949 "y-row-12"
+  }
+  col #vnode_12642457703717911365 {
+    row #vnode_4335675647607256639 {
+      button #vnode_5848235382988025101 "to-end"
+      button #vnode_5848217790801980250 "by-320"
+      button #vnode_5848200198615935399 "to-start"
+    }
+    row #vnode_4335658055421211788 {
+      button #vnode_5832930181129193956 "probe"
+      text #vnode_5832947773315238807 "oy=0 vy=0 py=0 probe=0"
+    }
+  }
+  row #vnode_12642440111531866514 {
+    text #vnode_4320370445748425494 "x-cell-01"
+    text #vnode_4320388037934470345 "x-cell-02"
+    text #vnode_4320335261376335792 "x-cell-03"
+    text #vnode_4320352853562380643 "x-cell-04"
+    text #vnode_4320440814492604898 "x-cell-05"
+    text #vnode_4320458406678649749 "x-cell-06"
+    text #vnode_4320405630120515196 "x-cell-07"
+    text #vnode_4320423222306560047 "x-cell-08"
+  }
+  col #vnode_12642352150601642259 {
+    text #vnode_4243844436454269769 "hidden-1"
+    text #vnode_4243826844268224918 "hidden-2"
+    text #vnode_4243809252082180067 "hidden-3"
+    text #vnode_4243791659896135216 "hidden-4"
+    text #vnode_4243914805198449173 "hidden-5"
+    text #vnode_4243897213012404322 "hidden-6"
+  }
+  row #vnode_12642334558415597408 {
+    button #vnode_4228539234595438624 "m-to-end"
+    button #vnode_4228556826781483475 "m-by-4k"
+    button #vnode_4228574418967528326 "m-probe"
+    text #vnode_4228592011153573177 "mprobe=0"
+  }
+  col #vnode_12642387334973731961 {
+    text #vnode_4274454840171932059 "obs-1"
+    text #vnode_4274437247985887208 "obs-2"
+    text #vnode_4274490024544021761 "obs-3"
+    text #vnode_4274472432357976910 "obs-4"
+    text #vnode_4274525208916111463 "obs-5"
+    text #vnode_4274507616730066612 "obs-6"
+  }
+  button #vnode_12642369742787687110 "bump"
+}
