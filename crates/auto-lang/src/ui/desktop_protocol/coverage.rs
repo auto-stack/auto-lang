@@ -1287,6 +1287,30 @@ mod tests {
         }
     }
 
+    /// PLAN-032 T-06：翻转态钉——resolve_native_frame_mode Auto ×
+    /// Covered = Commands（缺省 queue；翻转前 Pixels——025-032 在案），
+    /// 观测行携带 flipped@ramp3；NotCovered 降级路径不变（Pixels +
+    /// 真扫描缺项清单）。
+    #[test]
+    fn native_auto_default_flipped_to_queue() {
+        use crate::ui::desktop_protocol::client_entry::resolve_native_frame_mode;
+        use crate::ui::desktop_protocol::message::FrameMode;
+        use super::RenderMode as RM;
+
+        let covered = crate::ui::view::View::<()>::text("t");
+        let (mode, downgraded, line) = resolve_native_frame_mode(RM::Auto, "T", &covered);
+        assert_eq!(mode, FrameMode::Commands, "Auto × Covered = queue（flipped@ramp3）");
+        assert!(downgraded, "auto 探测标记维持（观测行随行）");
+        let line = line.expect("观测行");
+        assert!(line.contains("flipped@ramp3"), "观测行文案: {line}");
+
+        let uncovered = crate::ui::view::View::<()>::text_styled("x", "truncate");
+        let (mode2, _, line2) = resolve_native_frame_mode(RM::Auto, "U", &uncovered);
+        assert_eq!(mode2, FrameMode::Pixels, "未覆盖降级 independent 不变");
+        let line2 = line2.expect("降级观测行");
+        assert!(line2.contains("truncate"), "缺项清单随行: {line2}");
+    }
+
     /// PLAN-026 T-06：覆盖翻转数据行（§5.1 D3 定案仪器）——examples/ui
     /// 全量 .at → AuraViewBuilder（VM 轨运行时 aura→View 构造器，与
     /// a2r codegen 同以"降级到 View IR"为口径）→ scan_native_view ×
@@ -1380,21 +1404,38 @@ mod tests {
         let total = rows.len();
         let covered = rows.iter().filter(|(_, c, _)| *c).count();
         let pct = covered as f64 / total.max(1) as f64 * 100.0;
-        eprintln!("[native-flip-data] covered {covered}/{total} = {pct:.1}%");
+        // PLAN-032 T-06（D6）：judged 口径——剔除仪器桶（parse-fail/
+        // extract-fail/bridge-fail/no-widget：样本装载失败非覆盖面缺项，
+        // 026 D3 沿承；029 报告的剔除行同集）。
+        let instrument_bucket =
+            |why: &str| matches!(why, "parse-fail" | "extract-fail" | "bridge-fail" | "no-widget");
+        let judged: Vec<&(String, bool, String)> = rows
+            .iter()
+            .filter(|(_, _, why)| !instrument_bucket(why))
+            .collect();
+        let judged_total = judged.len();
+        let judged_covered = judged.iter().filter(|(_, c, _)| *c).count();
+        let judged_pct = judged_covered as f64 / judged_total.max(1) as f64 * 100.0;
+        eprintln!("[native-flip-data] covered {covered}/{total} = {pct:.1}% (overall)");
+        eprintln!(
+            "[native-flip-data] judged covered {judged_covered}/{judged_total} = {judged_pct:.1}% (threshold >=95%)"
+        );
         for (name, c, why) in &rows {
             if !c {
                 eprintln!("[native-flip-data]   {name}: {why}");
             }
         }
         assert!(total > 0, "样本集非空");
-        // AC-06 不翻出口裁定钉：本批数据 < 95% 阈值 → 维持 auto=
-        // independent；缺项（opacity/hidden/样式版 grid/popover/定位族）
-        // 全在册 not-yet。ramp v3 复测达标时改钉达标出口 +
-        // resolve_native_frame_mode Covered 臂翻 Commands（§1.8 翻转点）。
-        let flip = pct >= 95.0;
+        assert!(judged_total > 0, "judged 样本非空");
+        // PLAN-032 T-06 翻转后防漏钉（断言反转——翻转前为 assert!(!flip)
+        // 的"达标即红逼翻转"向下任）：缺省已 queue
+        ///（resolve_native_frame_mode Covered 臂 Commands，p032 报告）
+        ///——judged 跌破 95% 门即红：降级需显式裁定（台账裁定行 + 报告
+        /// 更新），禁静默回归。
+        let flip = judged_pct >= 95.0;
         assert!(
-            !flip,
-            "Covered 比例达 95% 阈值（{covered}/{total}）——应走翻转向下任（§1.8 翻转点 + 台账裁定行），禁静默达标配平"
+            flip,
+            "judged Covered 比例跌破 95% 阈值（{judged_covered}/{judged_total}）——缺省 queue 已翻转（p032），跌破门需显式裁定降级（台账 + 报告），禁静默回归"
         );
         // 缺项清单非空不变式（NotCovered 行必载缺项载荷）。
         for (name, covered_row, why) in &rows {

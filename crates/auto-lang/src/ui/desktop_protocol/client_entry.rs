@@ -125,18 +125,19 @@ pub fn run_dynamic_client(
     }
 }
 
-/// native 轨三态 → 二态分派（Plan 020 T-04；PLAN-026 T-06 复测后裁定
-/// **维持不翻**；PLAN-029 T-08 复测同裁定）：native `Auto` 缺省 =
-/// **independent**（025 语义不变），升级点 = 观测行携带**真扫描缺项
-/// 清单**（原 v1 恒定文案 → 逐 App 缺项载荷）+ queue-covered 命名
-///（queue 化可行性逐 App 可见）。**翻转点已备**：三闸数据门 =
-/// examples 全量 Covered ≥95%（029 复测行 overall 44.4% / judged
-/// 72.7%——样本 36 扩容稀释 + 046-tabs 入分母；009 opacity 放行翻绿、
-/// 041 popover 半句清偿；报告 `docs/plans/reports/
-/// p029-native-flip-retest-row.md`）；达标时 Covered 臂改返值即为翻转
-///（one-line，随 ramp v3 复评）。显式 `Queue` 不在此裁决（覆盖门在
-/// [`run_native_client`] 消费 [`NativeProjector::ensure_covered`]——
-/// 拒绝退出留痕）；`Independent` 直通。
+/// native 轨三态 → 二态分派（Plan 020 T-04）。**PLAN-032 T-06 翻转**
+///（ramp v3 数据门达标——2026-09-19 复测 judged 22/22 = 100% ≥ 95%，
+/// 六缺项全清偿：012 SelfCenter / 018·041 hidden / 018·021 定位族
+///（absolute 真渲 + fixed/sticky 降级放行）/ 024 样式 grid / 046
+/// tabs kind；报告 `docs/plans/reports/p032-native-flip-row.md`）：
+/// native `Auto` 缺省 = **queue**（Covered → Commands；翻转前 025-032
+/// 期间缺省 independent——026/029 两复测未达标的在案裁定由 p032 收
+/// 束）。未覆盖降级路径不变（Pixels + 观测行携带真扫描缺项清单 +
+/// auto 降级标记）。防漏钉 = `native_flip_coverage_data_row` 断言反转
+///（judged < 95% 即红——跌破门需显式裁定，禁静默回归）。显式
+/// `Queue` 不在此裁决（覆盖门在 [`run_native_client`] 消费
+/// [`NativeProjector::ensure_covered`]——拒绝退出留痕）；`Independent`
+/// 直通。
 /// 返回 `(帧模式, auto 降级标记, Option<观测行>)`。
 pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
     mode: RenderMode,
@@ -150,14 +151,14 @@ pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
             let scan = crate::ui::desktop_protocol::coverage::scan_native_view(view);
             match crate::ui::desktop_protocol::coverage::judge(&scan, &Coverage::native_queue_set()) {
                 Verdict::Covered => (
-                    // 翻转点：数据门达标时本臂改返 Commands——026
-                    // 数据未达标（报告 p026-native-flip-data-row.md），
-                    // 维持 Auto→independent 缺省。
-                    FrameMode::Pixels,
+                    // PLAN-032 T-06 翻转执行（ramp v3 数据门达标——judged
+                    // 22/22 = 100%；翻转前本臂返 Pixels：026/029 两复测
+                    // 未达标维持不翻的在案裁定由 p032 报告收束）。
+                    FrameMode::Commands,
                     true,
                     Some(format!(
-                        "[render] native auto -> independent ({widget_name}; \
-                         queue-covered, default flip pending ramp v3 data gate)"
+                        "[render] native auto -> queue ({widget_name}; \
+                         queue-covered, default flipped@ramp3: judged 22/22 = 100%)"
                     )),
                 ),
                 Verdict::NotCovered(missing) => (
