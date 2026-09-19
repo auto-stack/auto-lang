@@ -10306,6 +10306,7 @@ print(hidden2)
     }
 
     // ── PLAN-656 review F-3: scroll controller natives 全管线复现 ──────
+    #[cfg(feature = "ui")]
     #[test]
     fn p656_scroll_controller_natives_end_to_end() {
         crate::ui::scroll::controller::reset_for_test();
