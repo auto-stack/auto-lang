@@ -5161,13 +5161,22 @@ impl RustGenerator {
         std::borrow::Cow::Owned(merged)
     }
 
-    /// `ui` feature 关闭时的恒等孪生（保持调用点无条件编译）。
+    /// `ui` feature 关闭时的恒等孪生（保持调用点无条件编译）。范围与
+    /// `ui` 孪生对齐 = **button-only**：button 的 variant/size 是 preset
+    /// 词汇（无 ui preset 表可依 → 剥除防误入通用 builder 路径）；其余
+    /// tag 恒等返回。PLAN-032 复审 R1 F-2：旧实现对全 tag 剥除——
+    /// PLAN-641 起 tabs 亦持 variant（enclosed 词表），tf/tt 档（无
+    /// ui-iced）下 `tabs variant:"enclosed"` 发射丢失；icon size 同族
+    /// 受害面一并恢复。
     #[cfg(not(feature = "ui"))]
     fn with_button_preset<'a>(
         &self,
-        _tag: &str,
+        tag: &str,
         props: &'a std::collections::HashMap<String, AuraPropValue>,
     ) -> std::borrow::Cow<'a, std::collections::HashMap<String, AuraPropValue>> {
+        if tag != "button" {
+            return std::borrow::Cow::Borrowed(props);
+        }
         let mut merged = props.clone();
         merged.remove("variant");
         merged.remove("size");

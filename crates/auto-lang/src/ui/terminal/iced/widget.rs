@@ -1228,7 +1228,7 @@ mod virtual_scroll_tests {
 
     // iced_test 依赖面(模拟器/IntoIcedElement)挂 iced-layout-tests 门控
     // ——裸 cargo t 无该特性,656 会话实录 E0432(master 预存归因在案)。
-    #[cfg(feature = "iced-layout-tests")] 87ed66ebd (fix(test): 032 T-01 随附——master 测试面两修复解锁仪器命令：022 iced_test 导入挂 iced-layout-tests 特性门(E0432) + layout_tests 三处 View::Scrollable 字面量补 PLAN-656 新字段缺省(E0063))
+    #[cfg(feature = "iced-layout-tests")]
     #[test]
     fn shortcut_hit_captures_single_fire_across_stack() {
         // T-06(2026-09-19):分屏双终端挂同一捷径表(Alt+WASD),一次按键
