@@ -318,6 +318,30 @@ fn read_request(stream: &mut TcpStream) -> std::io::Result<Option<ParsedRequest>
 }
 
 fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
+    // PLAN-658 T-06: 宿主观测面——会话日志环调试路由（只读）。
+    if req.path == "/__backproxy/log" {
+        let app = req
+            .query
+            .split('&')
+            .find_map(|p| p.strip_prefix("app="))
+            .map(|v| url_decode(v))
+            .unwrap_or_default();
+        let body = if app.is_empty() {
+            let logs = SESSION_LOGS.lock().unwrap();
+            serde_json::json!({
+                "apps": logs.keys().cloned().collect::<Vec<_>>(),
+            })
+            .to_string()
+        } else {
+            let logs = SESSION_LOGS.lock().unwrap();
+            let lines: Vec<String> = logs
+                .get(&app)
+                .map(|r| r.0.iter().cloned().collect())
+                .unwrap_or_default();
+            serde_json::json!({ "app": app, "lines": lines }).to_string()
+        };
+        return ProxyReply::json(200, body);
+    }
     let Some(rest) = req.path.strip_prefix("/apps/") else {
         return ProxyReply::json(404, error_json("back-proxy: path must start with /apps/<id>/"));
     };
@@ -683,28 +707,135 @@ impl SessionBus {
     }
 }
 
+/// PLAN-658 T-06: 测试面——`sys.panic_hard(msg)` 触发真 Rust panic（隔离
+/// 边界驱动；见 load_back_session 注册点注释）。
+fn shim_sys_panic_hard(task: &mut AutoTask, vm: &AutoVM) -> Result<(), crate::vm::engine::VMError> {
+    let nv = crate::vm::native::pop_arg_nv(task);
+    let msg = if auto_val::is_string(nv) {
+        vm.get_string(auto_val::decode_string(nv) as u32)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    panic!("{}", if msg.is_empty() { "panic_hard".to_string() } else { msg });
+}
+
+/// PLAN-658 T-06: panic 消息提取（&str/String 双态 downcast）。
+fn panic_payload_msg(p: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = p.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = p.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "(non-string panic)".to_string()
+    }
+}
+
+/// PLAN-658 T-06: 崩溃隔离 + 退避重启。线程即隔离边界（宿主与其他 session
+/// 不受影响由构造保证）；单请求 panic → 500 + 消息 → 指数退避重建 session
+/// （back 链重编译装载，状态归零——内存态后端语义诚实）；连续失败封顶
+/// 8s。重建失败维持降级应答（503），通道不关闭。
 fn session_main(app_id: String, back_entry: std::path::PathBuf, rx: mpsc::Receiver<ProxyRequest>) {
-    match load_back_session(&app_id, &back_entry) {
-        Ok(mut rt) => {
+    let mut rt = match load_back_session(&app_id, &back_entry) {
+        Ok(rt) => {
             log::info!("[back-proxy:{app_id}] session up ({} routes)", rt.routes.len());
-            for req in rx {
-                let reply = rt.handle_request(&req);
-                let _ = req.reply.send(reply);
-            }
+            Some(rt)
         }
         Err(e) => {
             // 装载失败：session 进 degraded 态——通道保持打开但一律 503，
             // 让前端拿到可诊断的错误而不是连接拒绝。
             log::error!("[back-proxy:{app_id}] session failed to load: {e}");
-            for req in rx {
-                let _ = req.reply.send(ProxyReply::json(
-                    503,
-                    error_json(&format!("back-proxy: session for `{app_id}` failed to load: {e}")),
-                ));
-            }
+            None
         }
+    };
+    let mut panic_streak: u32 = 0;
+    for req in rx {
+        let reply = match &mut rt {
+            Some(session) => {
+                let app_id_ref = &app_id;
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    session.handle_request(&req)
+                })) {
+                    Ok(reply) => {
+                        panic_streak = 0;
+                        reply
+                    }
+                    Err(p) => {
+                        let msg = panic_payload_msg(&p);
+                        log::error!("[back-proxy:{app_id_ref}] request panicked: {msg}");
+                        session_log(&app_id_ref, &format!("PANIC {msg}"));
+                        // 退避后重建（状态归零）。
+                        panic_streak += 1;
+                        let backoff_ms = backoff_ms(panic_streak);
+                        std::thread::sleep(std::time::Duration::from_millis(backoff_ms));
+                        match load_back_session(&app_id_ref, &back_entry) {
+                            Ok(fresh) => {
+                                log::warn!(
+                                    "[back-proxy:{app_id_ref}] session restarted after panic (streak={panic_streak}, backoff={backoff_ms}ms)"
+                                );
+                                session_log(&app_id_ref, &format!("RESTART streak={panic_streak}"));
+                                *session = fresh;
+                                panic_streak = 0;
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "[back-proxy:{app_id_ref}] session rebuild failed after panic: {e}"
+                                );
+                            }
+                        }
+                        ProxyReply::json(
+                            500,
+                            error_json(&format!(
+                                "back-proxy:{app_id_ref}: session panicked: {msg} (restart attempted)"
+                            )),
+                        )
+                    }
+                }
+            }
+            None => ProxyReply::json(
+                503,
+                error_json(&format!(
+                    "back-proxy: session for `{app_id}` failed to load (degraded)"
+                )),
+            ),
+        };
+        let _ = req.reply.send(reply);
     }
     log::info!("[back-proxy:{app_id}] session down");
+}
+
+/// PLAN-658 T-06: 退避曲线——500ms × 2^(n-1)，封顶 8s。
+fn backoff_ms(streak: u32) -> u64 {
+    (500u64.saturating_mul(1u64 << (streak - 1).min(4))).min(8000)
+}
+
+/// PLAN-658 T-06: 每 session 日志环（容量 256；宿主观测面 + 调试路由消费）。
+fn session_log(app_id: &str, line: &str) {
+    SESSION_LOGS.lock().unwrap().entry(app_id.to_string()).or_default().push(line);
+}
+
+#[derive(Default)]
+struct SessionLogRing(std::collections::VecDeque<String>);
+
+impl SessionLogRing {
+    fn push(&mut self, line: &str) {
+        if self.0.len() >= 256 {
+            self.0.pop_front();
+        }
+        self.0.push_back(format!(
+            "[{}] {line}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ));
+    }
+}
+
+lazy_static::lazy_static! {
+    static ref SESSION_LOGS: std::sync::Mutex<HashMap<String, SessionLogRing>> =
+        std::sync::Mutex::new(HashMap::new());
 }
 
 /// 装载一个 app 的 back 链为可服务的 VM session。
@@ -861,6 +992,10 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
         let mut ni = crate::vm::native::NativeInterface::new();
         ni.register_std_shims();
         crate::vm::ffi::stdlib::register_stdlib_ffi(&mut ni);
+        // PLAN-658 T-06: 崩溃隔离测试面——真 Rust panic 注入（VM 内建
+        // `panic` 有意映射 RuntimeError，走的是 500 错误臂而非 unwind 边界；
+        // 本原生专供 AC-05 隔离/重启路径的可控触发）。
+        ni.register_shim_by_name("auto.sys.panic_hard", shim_sys_panic_hard);
         vm.merge_native_interface(&ni);
     }
 

@@ -576,3 +576,100 @@ fn http_e2e_back_proxy_media_uri_byte_fidelity() {
         assert_eq!(status, 304, "etag revalidation");
     }
 }
+
+/// PLAN-658 T-06 / AC-05: 崩溃隔离——单 app 后端 panic 注入 → 500 可诊断
+/// 应答 + session 退避重启（状态归零）+ 宿主与其他 session 存活 + 日志环
+/// 记录 PANIC/RESTART。
+#[test]
+fn http_e2e_back_proxy_panic_isolation_and_restart() {
+    let dir = std::env::temp_dir().join(format!("p658-back-proxy-panic-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("panic fixture dir");
+    std::fs::write(
+        dir.join("api.at"),
+        r#"
+var hits int = 0
+
+#[api(method = "GET", path = "/api/hits")]
+pub fn hits_fn() int {
+    return hits
+}
+
+#[api(method = "POST", path = "/api/bump")]
+pub fn bump() int {
+    hits = hits + 1
+    return hits
+}
+
+#[api(method = "GET", path = "/api/boom")]
+pub fn boom() str {
+    sys.panic_hard("kaboom-p658")
+    return "unreachable"
+}
+"#,
+    )
+    .expect("write panic api.at");
+
+    let (healthy_dir, _) = {
+        let d = std::env::temp_dir().join(format!("p658-back-proxy-panic2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).expect("dir2");
+        std::fs::write(
+            d.join("api.at"),
+            "#[api(method = \"GET\", path = \"/api/ping\")]\npub fn ping() str {\n    return \"pong\"\n}\n",
+        )
+        .expect("write healthy api.at");
+        (d, ())
+    };
+
+    let config = BackProxyConfig {
+        port: 3928,
+        sessions: vec![
+            SessionSpec {
+                app_id: "boom-app".to_string(),
+                back_entry: dir.join("api.at"),
+            },
+            SessionSpec {
+                app_id: "healthy-app".to_string(),
+                back_entry: healthy_dir.join("api.at"),
+            },
+        ],
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("start proxy (panic isolation)");
+
+    // 前置：bump ×2 使会话态可观测（hits=2）。
+    let (s, _) = http_request(proxy.port, "POST", "/apps/boom-app/api/bump", Some("{}"));
+    assert_eq!(s, 200);
+    let (s, _) = http_request(proxy.port, "POST", "/apps/boom-app/api/bump", Some("{}"));
+    assert_eq!(s, 200);
+    let (s, body) = http_request(proxy.port, "GET", "/apps/boom-app/api/hits", None);
+    assert_eq!(s, 200);
+    assert_eq!(body.trim_matches(|c| c == '"'), "2", "hits state: {body}");
+
+    // panic 注入：500 + 可诊断消息 + （退避 500ms + 重建）随后恢复且状态归零。
+    let t0 = std::time::Instant::now();
+    let (s, body) = http_request(proxy.port, "GET", "/apps/boom-app/api/boom", None);
+    let elapsed = t0.elapsed();
+    assert_eq!(s, 500, "panic status, body: {body}");
+    assert!(body.contains("kaboom-p658"), "panic message: {body}");
+    assert!(body.contains("restart attempted"), "restart hint: {body}");
+    assert!(elapsed.as_millis() >= 400, "backoff applied: {elapsed:?}");
+
+    // 宿主与其他 session 存活。
+    let (s, body) = http_request(proxy.port, "GET", "/apps/healthy-app/api/ping", None);
+    assert_eq!(s, 200, "other session alive");
+    assert_eq!(body.trim_matches(|c| c == '"'), "pong");
+
+    // 重启后状态归零（hits 回 0）+ 路由恢复。
+    let (s, body) = http_request(proxy.port, "GET", "/apps/boom-app/api/hits", None);
+    assert_eq!(s, 200, "boom-app recovered, body: {body}");
+    assert_eq!(body.trim_matches(|c| c == '"'), "0", "state reset after restart: {body}");
+
+    // 日志环：PANIC + RESTART 记录。
+    let (s, body) = http_request(proxy.port, "GET", "/__backproxy/log?app=boom-app", None);
+    assert_eq!(s, 200);
+    assert!(body.contains("PANIC kaboom-p658"), "log ring panic: {body}");
+    assert!(body.contains("RESTART"), "log ring restart: {body}");
+}

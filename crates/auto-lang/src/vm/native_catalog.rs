@@ -1413,6 +1413,9 @@ macro_rules! for_each_bigvm_native {
             // "[DONE]"），供 Tick 驱动的消费循环用。
             ("auto.http.sse_open", 3145, Void),
             ("auto.http.sse_poll", 3146, Void),
+            // PLAN-658 T-06: 崩溃隔离测试面——真 Rust panic（VM 内建 panic
+            // 有意映射 RuntimeError；本原生专供 AC-05 隔离路径可控触发）。
+            ("auto.sys.panic_hard", 3147, Void),
             ("auto.http.post", 2231, Void),
             ("auto.http.put", 2232, Void),
             ("auto.http.delete", 2233, Void),
@@ -2289,6 +2292,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.bus.subscribe", 3144),
     ("auto.http.sse_open", 3145),
     ("auto.http.sse_poll", 3146),
+    ("auto.sys.panic_hard", 3147),
     ("auto.http.post", 2231),
     ("auto.http.put", 2232),
     ("auto.http.delete", 2233),
