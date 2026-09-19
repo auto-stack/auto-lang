@@ -1914,6 +1914,25 @@ CodeEditor
   task_ids: T-00..T-10 | evidence: cargo t scroll 62/62、vue 338/338、iced 88/90(2 预存)、
   docs_gen 4/4、schema_drift 8/8、p656 示例 auto gen 全绿+产物五要素实证、p656 黄金 1/1、
   tf 见尾注 | blockers: 无 | next: review（先补 AC-16 实机双端脚本+截图归档）。
+
+- 2026-09-19 /auto-plan:review（同会话复审，从工件重建裁决）：
+  `stage: review | PLAN-656 | plan_revision: 2 | outcome: needs_fix |
+  reviewed_commit: a0d068d01（review 修复后）| base: c52f6fdfa |
+  acceptance_results`: AC-01/02/03 pass（scroll 62/62）；AC-04 pass（schema 四拼写+docs_gen 4/4）；
+  AC-05 pass（VM 快照 axis x 节点+vue 黄金）；AC-06 partial→**F-3 阻断 iced 端**（vue 侧样式/类 pass）；
+  AC-07 **fail（VM 侧）**/vue 侧 codegen pass；AC-08 pass（实机 oy=60 py=0.820——8 实参派发实证）；
+  AC-09/10/12 pass（单测三通道+managed 链路代码面+快照占位）；AC-11 pass（spacer 产物+节点恒 1）；
+  AC-13 pass；AC-14 pass（tf 3643/3645,2 红非滚动域）；AC-15 pass（spec 沉淀）；AC-16 partial（截图/快照已归档，
+  controller 双端脚本未绿）。
+  `findings`: **F-1（已修,verify 于 a0d068d01）**四表收口曾移除 vb 臂别名拼写→VM 轨 scroll-pane 沦 unknown
+  fallback（快照实证）；修=normalize_dispatch_tag 派发入口单点归一。**F-2（已修）**程序化 scroll_to 无
+  on_scroll 回声→controller 注册表投影不更新；修=drain 消费端回写已解析 offset。**F-3（开放,阻断 AC-06/07/16
+  iced 侧）**.at handler 体内 scroll_* 裸名原生调用未路由到 shim（P656-NATIVE trace 双向未命中，scroll_state
+  返回 Int 0 占位；intrinsics 双注册表在场——疑似 handler 合成编译路径的裸名解析/重定位缺口，对照
+  console_log/clipboard_set_text 在 app handler 的可达路径排查 BIGVM_NATIVES 裸名注册）。
+  `evidence`: examples/capability-tests/p656-scroll-pane/tests/{vm_probe.py,vm_snapshot.txt,vm_review.png}；
+  P656_DEBUG/P043_DEBUG 门控 trace（native.rs/renderer.rs）。
+  `next`: work 修 F-3（T-09 重开,AC-06/07/16 iced 侧随之复验）→ 再入 review。
   v1 两处公共面执行裁定（controller 函数族/onscroll 8 位置实参）已入 spec API 节 +
   KNOWN-DEBT 656 行——review 时请重点裁决是否接受为 v1 契约。
 
