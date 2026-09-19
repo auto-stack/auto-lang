@@ -372,9 +372,20 @@ impl<M: Clone> Terminal<M> {
         history: usize,
     ) -> Option<i32> {
         let target = Self::view_y_to_offset(view_y, history) as i64;
-        if core.take_scroll_bind_suppress() {
-            core.set_scroll_view_target(target);
-            return None;
+        // PLAN-022 T-06 回声判别:suppress 挂起时,只有"滚轮代数未进且
+        // 落点贴合期望位"才算 scroll_to 回声(吞没对齐基线);滚轮代数
+        // 已进(用户下一格滚轮先到)或错位超容差,一律按真实观察回灌——
+        // 旧一次性吞没把用户增量当回声吃掉(上翻卡住/下翻跳格实录)。
+        if core.scroll_bind_suppress_pending() {
+            let (bind_gen, echo_y) = core.bind_echo();
+            let user_moved = core.wheel_gen() != bind_gen;
+            let aligned = (view_y - echo_y as f32).abs() <= 4.0;
+            if !user_moved && aligned {
+                core.clear_scroll_bind_suppress();
+                core.set_scroll_view_target(target);
+                return None;
+            }
+            core.clear_scroll_bind_suppress();
         }
         let delta = target - core.scroll_view_target();
         if delta != 0 {
@@ -398,7 +409,9 @@ impl<M: Clone> Terminal<M> {
         core.set_scroll_bound_offset(d);
         core.set_scroll_bind_suppress();
         let history = crate::ui::terminal::terminal_history(core);
-        Some(Self::offset_to_view_y(d.max(0) as usize, history))
+        let y = Self::offset_to_view_y(d.max(0) as usize, history);
+        core.record_bind_echo(y);
+        Some(y)
     }
 
     /// 像素坐标 → 视口格 (row, col);越界 clamp 到边缘格。PLAN-022:
@@ -706,6 +719,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 // offset 经 draw 期 viewport 观察回灌引擎(display_offset
                 // 单源契约,见 widget draw 尾部 observe 块)。旧臂的
                 // terminal_scroll + queue_scroll_delta 双写路径一并移除。
+                // PLAN-022 T-06:滚轮代数 +1——读出臂据此区分 scroll_to
+                // 回声与用户滚轮(bind 后代数已进 = 用户增量,不得吞)。
+                core.bump_wheel_gen();
             }
             _ => {}
         }
@@ -1166,6 +1182,43 @@ mod virtual_scroll_tests {
         // 用户滚回顶:观察 y=0 → 目标 40 → 回灌 +30(10→40)。
         let delta = Terminal::<u8>::observe_view_scroll(core, 0.0, history);
         assert_eq!(delta, Some(30));
+    }
+
+    #[test]
+    fn echo_does_not_eat_user_wheel() {
+        // T-06 用户实点(2026-09-19):上翻一格即卡——bind 后用户下一格
+        // 滚轮先于 scroll_to 回声到达,旧一次性 suppress 把用户增量当
+        // 回声吞掉。判别式修复:滚轮代数已进 → 真实增量回灌。
+        let core = core("p023-echo-wheel");
+        let history = 40usize;
+        crate::ui::terminal::terminal_set_history(core, history);
+        crate::ui::terminal::terminal_set_scroll_offset(core, 10);
+        let y = Terminal::<u8>::bind_request_y(core);
+        assert_eq!(y, Some(30.0 * 16.0));
+        assert!(core.take_scroll_bind_suppress(), "bind 应置抑制");
+        // bind 落地帧:回声对齐基线(offset 10),零回灌。
+        assert_eq!(
+            Terminal::<u8>::observe_view_scroll(core, 30.0 * 16.0, history),
+            None,
+            "回声对齐不得回灌"
+        );
+        // 用户再滚一格(代数已进),视图上移 3 行:必须按真实增量回灌。
+        core.bump_wheel_gen();
+        let delta = Terminal::<u8>::observe_view_scroll(core, 27.0 * 16.0, history);
+        assert_eq!(delta, Some(3), "用户滚轮增量不得被回声吞没");
+        // 镜像 draw 调用方:observe 返回 Some 即入队。
+        crate::ui::terminal::terminal_queue_scroll_delta(core, 3);
+        assert_eq!(crate::ui::terminal::terminal_take_scroll_delta(core), 3);
+        assert!(!core.scroll_bind_suppress_pending(), "消费后抑制应清除");
+        // 回声对齐路径仍吞没:引擎回写 13 → bind → 同位观察零回灌。
+        crate::ui::terminal::terminal_set_scroll_offset(core, 13);
+        let y2 = Terminal::<u8>::bind_request_y(core);
+        assert_eq!(y2, Some(27.0 * 16.0));
+        let delta = Terminal::<u8>::observe_view_scroll(core, 27.0 * 16.0, history);
+        assert_eq!(delta, None, "scroll_to 回声不得回灌增量");
+        // 错位(无滚轮事件但落点偏离期望位)= 真实观察,回灌差值。
+        let delta = Terminal::<u8>::observe_view_scroll(core, 20.0 * 16.0, history);
+        assert_eq!(delta, Some(7), "错位偏离应回灌 13→20 差值");
     }
 
     #[test]
