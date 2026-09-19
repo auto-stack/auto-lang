@@ -726,6 +726,18 @@ pub fn terminal_focus_free() -> bool {
     FOCUS_OWNER.lock().unwrap().is_none()
 }
 
+/// 本 core 是否当前持焦(键盘门控单一事实源)。
+/// PLAN-023 T-04 用户门实录(2026-09-19):widget Tree 级 `state.focused`
+/// 在他端换焦后残留 true(iced 键盘事件广播全树,无人清旧持者标志)→
+/// 双 pane 同键入同执行。输入门控必须查注册表 owner,禁用 per-widget 标志。
+pub fn terminal_is_focused(core: &TerminalCore) -> bool {
+    FOCUS_OWNER
+        .lock()
+        .unwrap()
+        .as_deref()
+        .is_some_and(|k| k == core.key.as_str())
+}
+
 /// 持焦(启动自动聚焦/点击换焦;后来者顶替先来者)。
 pub fn terminal_claim_focus(core: &TerminalCore) {
     *FOCUS_OWNER.lock().unwrap() = Some(core.key.clone());
