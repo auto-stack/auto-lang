@@ -486,5 +486,10 @@ checkpoints:
   archived: |
     git mv docs/plans/659-crash-forensics-verify-infra.md
     docs/plans/archive/ + status: archived（本提交）。
-  cleaned: 待补（worktree 移除后回填）
+  cleaned: |
+    三 worktree 移除前 wt-guard 全 clean（auto-os 侧 vue build 的 pnpm
+    junction 50+ 逐链 [System.IO.Directory]::Delete 剥净后过闸）；
+    auto-lang worktree+plan-659-dev 分支移除实证（Deleted branch was
+    d2566829f）；auto-os 同（7360835）；auto-down 依赖 detached 移除；
+    组目录 .wt/lang-659 整删（rmdir 成功）；worktree prune 三仓收尾。
 ```
