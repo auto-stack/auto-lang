@@ -25,6 +25,14 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
   pin/lock，锁面触发条件见 contract Q5⑤）；pac.at `version` 仅展示元数据
   非约束面；spec frontmatter 顶层与 pac.at `dep` 声明的版本类键均显式报错
   （双护栏，contract Q5 五项）。
+- **蓝图级双端 gate 与骨架 bp（PLAN-075，design 30 §2 L2 门首证）**：
+  `examples/bp-gate/` = bp 包库的自动化双臂门（vue 臂沙箱构建+playwright
+  截图基线 × VM 臂 MCP boot 断言；`auto build` 物化 deps junction → 一律
+  仓库外沙箱构建，纪律见 KNOWN-DEBT P075-D1）；首批三单元 =
+  `layout/status-bar` + `data-display/row-list` 两件**骨架 bp**（fn-free
+  纯布局+slot）+ filetree 组合形态（跨文件 fn 携带件）。抽取判定记录
+  （design 30 §6 四通道，9 单元首批判定）= auto-down
+  `docs/plans/attachments/075-bp-extraction-record.md`。
 - 不做：`auto bp` 命令实现本体在 auto-cli（cmd_bp）；组件原语在 packages/widgets；
   运行时动态插件/manifest 加载（终态另议）。
 
@@ -44,6 +52,11 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
    且 vue 发射轨与 VM 解释轨均可产出产物。
 4. **状态机含量 ≥ 三态**：包内至少承载三态行为（如 loading/empty/error、
    step 分步、success/error）——防"静态摆件"混入 blueprint 层。
+   **骨架 bp 例外（PLAN-075 和解注记）**：design 30 §6 通道③"同名不同物
+   → 骨架+内容 slot"裁定的**骨架 bp**（如 layout/status-bar）以布局骨架+
+   slot 为契约本体，不适用本条与第 2 条的 dataSource 门槛——准入依据 =
+   判定记录的使用位证据与 slot 契约（075 判定记录 §1），状态语义归消费方
+   slot 变体。
 5. **NL spec 可描述、可被 agent 组装**：六问可答（contract.md），L3 通道
    （agent 读 spec → 组装 `.at` → `auto bp check`）可走通。
 

@@ -3113,6 +3113,17 @@
           "last_modified": "2026-09-18"
         },
         {
+          "id": "P075-1",
+          "title": "l2-bp-extract-batch0 — 蓝图级双端 gate 首证 + 两件骨架 bp + G-6 同文件模块 fn 收口",
+          "content": "design 30 §2 L2 门首次落地：examples/bp-gate/ 独立最小双端 harness（vue 臂=仓库外沙箱 auto build gen→G-7 补件→vue-tsc→vite→playwright 截图基线；VM 臂=auto run -r vm 单 boot+MCP autoui_state/snapshot root 投影断言——F-1 子件子树不可见，R-C 裁定）。沙箱纪律（R-B）：auto build 在 dep 工程内物化 deps/<name> junction（Plan 529 红线）——凡构建类验证一律仓库外沙箱+退出摘链（KNOWN-DEBT P075-D1 成文）。两件骨架 bp 入库：layout/status-bar（三版同名不同物按 §6 通道③收敛为骨架+内容 slot）+ data-display/row-list（面板行族 7 使用位）；骨架 bp 对 640 准入标准的例外经批准意图和解落 project.md 第 4 条注记。G-6 收口（074-sink-mode 未修面）：components//bps 与 dep 重生成臂补 same_file_module_fns 池重挂（src/front 兄弟臂同款；空池零发射=存量输入零影响，jade gen 双二进制对拍逐字节一致）；首个真实消费方=examples/capability-tests/048-bp-module-fn（fixture 本地 mini bp 库+库 pac.at 清单）+ plan075_bp_tests 红→绿。DEBTS 070 两行划销补记（主体 645 落地、本体漏划销致 075 起草误判——判定记录 auto-down 075-bp-extraction-record.md §5）。9 单元判定记录（design 30 §6 四通道首执）=auto-down docs/plans/attachments/075-bp-extraction-record.md。",
+          "file": "docs/specs/blueprint/project.md",
+          "related": [
+            "PLAN-075",
+            "PLAN-645"
+          ],
+          "status": "published"
+        },
+        {
           "id": "P646-1",
           "title": "select-anything — 任意基面框选→结构化回吐契约（语义/信封/双端/MCP）",
           "content": "Select Anything 三消费面同一契约（PLAN-646）：①选择语义纯函数——中心点包含命中（节点 bounds 中心入框选矩形才命中，边缘扫过不算）+顶层修剪（祖先链从 children 列表派生不依赖 parent 回填）+文档序；无 bounds 节点不参与命中但入 structure（VM 端非容器 widget 探测容器仅 F12 挂载，容器级 vnode_N id 恒在）。②结果信封 {surface, app, rect, nodes[{id,kind,span,source,structure}]} 三格式渲染（Auto 切片头注释+逐节点 span 原文去公共缩进/JSON pretty/Atom 拼接）；span 为字节口径——JS 侧切片必须经 UTF-8 字节（TextEncoder/Decoder），中文注释下 UTF-16 码元索引错位（实测定罪）。③VM 端：Alt+拖拽（GlobalPress 臂起笔吞事件抑制 WM 焦点抢占+4px 死区）→ canvas 蒙层（非 opaque 层命中穿透）→ release 暂存 pending_selection + needs_bounds → __bounds_collected 臂延迟计算（bounds 新鲜保证）→ DevTools 采集标签页（Auto/JSON/Atom 三视图+复制反馈+Esc/F12 关）。④Vue dev 端：node_to_html 注入 data-auto-{tag,src,id,span}（AUTOUI_SELECT_MARKERS=1 门控——恒定注入被 304 项快照测试证伪，产物构建不设 env 逐字节不变；data-auto-src=源 .at stem，子件 span 归各自源文）；脚手架 auto-sources.ts 源映射（hash 防抖）+ auto-select/overlay.ts（main.ts import.meta.env.DEV 动态引用，产物 tree-shake）。⑤MCP autoui_select_rect(x,y,w,h,format?)：autoui_vtree 同源 styled_vtree + layout_bounds（vnode_N 键直解析）+ 随帧 source_code；结构化 isError。⑥Plan 282 补线：needs_bounds 消费点原在 app 消息尾部臂，静默会话永不分发（trace armed 4/consumed 0 定罪）——__hot_reload 500ms 泵臂代消费闭环。语义载体 crates/auto-lang/src/ui/selection/；面板正文文字需显式深色（深色主题 text 缺省白字落面板浅底隐身，R646-F1）。",
