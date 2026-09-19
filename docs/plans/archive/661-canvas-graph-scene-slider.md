@@ -2,7 +2,7 @@
 
 ---
 plan_id: PLAN-661
-status: reviewed                 # drafting → executing → execution_done → reviewed → archived
+status: archived                 # drafting → executing → execution_done → reviewed → archived
 feature_name: canvas-graph-scene-slider
 author: [zcode]
 created_at: 2026-09-19
@@ -656,3 +656,33 @@ jade-garden graph_view 真渲染消费 = jade/auto-down 侧后续计划（§10 �
 - 078 复现包路径依赖：auto-down plan-078-dev 分支（078 merge 前从
   worktree `D:/autostack/.wt/down-078/auto-down` 取；merge 后随该仓
   master）——T-01 收编仓内后本依赖解除。
+
+## 11. 合并收据（PLAN-661:r1，/auto-plan:merge 2026-09-20）
+
+- **prepared**：账本三件套于 worktree 提交（7b0982d07 首亲=9c8d7a3e4→
+  rebase 后=7b0982d07）：plans.md 661 表行 + specs.json P661-1（designs，
+  file=docs/specs/auto-lang/ui/design/canvas-scene.md）+ P661-3（reviews，
+  file=docs/plans/archive/661-canvas-graph-scene-slider.md）+ spec-index
+  再生（INDEX.md 内容幂等零 diff）；docs/projection-only descendant of
+  reviewed_commit 086deecdf（代码/依赖零改动核对）。
+- **landed**：master tip = **7b0982d07**（`git merge --ff-only
+  plan-661-dev`，零 merge 提交）。rebase 旧→新哈希映射：
+  499c433a7=04400a987 / 26170be9c=f39d09a1a(!) / 0f2ae29d7=c0c6975c7 /
+  96b8790f1=a27b9c3d9 / 4b301f6cc=f6d058bca / 086deecdf=6ba5f30c2(!) /
+  9c8d7a3e4=7b0982d07；`git range-diff 72ab08941..086deecdf master..HEAD`
+  五对逐字节等价（`=`），两处 `!` 均为预期——T-02=033 NativeProjector→
+  RqProjector 更名的上下文适配（patch 体不变）、T-06=KNOWN-DEBT 并集解
+  （033/660 侧 + P661 节共存）。**重放态复验**（033+661 合流新形态）：
+  日常档 38 红 vs master tip 39 红 mine-only 唯一 p508_g2_outproc_arm=
+  **工件过期假红**（harness 自警 auto.exe 陈旧，重建后绿 6.4s）；049 VM
+  冒烟 11/11（重建二进制重跑）；主检出落地后 plan661 单测 4/4 +
+  schema_drift 2/2。
+- **ledger_refreshed**：specs.json 经 ff-merge 随 delivery 落地；读回
+  验证 P661-1（designs，file 指向 canvas-scene.md ✓）/P661-3（reviews，
+  file 指向本归档路径 ✓）；plans.md 661 行在 master。
+- **archived**：docs/plans/archive/661-canvas-graph-scene-slider.md
+  （git mv），status: archived，completion_kind: **delivered**。
+- **cleaned**：见后补（worktree/分支清理后落）。
+- 里程碑外记：R-F4（主检出他方 TRACE 残留）在本合并启动时已由归属
+  会话（PLAN-033 并行轨）自行处置核验（工作区净、TRACE 行不在）——
+  非 661 动作；rebase 冲突唯一一处=KNOWN-DEBT 并集（docs）。
