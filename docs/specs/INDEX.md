@@ -25,7 +25,7 @@
 | vm | AutoVM：abt/codegen/engine/debugger/ffi/generic | implemented |
 | trans | 转译后端：C/Rust/TypeScript/Python/JavaScript/GDScript/tscn/r2a/s2s | implemented |
 | runtime | runtime/scope/session、libs/ 内建标准库绑定、ffi、database、sse、route | partial（Plan 064 分层迁移未收尾，`Scope` 遗留） |
-| ui | aura/、ui/（iced/gpui/headless 渲染 + code_editor/autodown 内建 + style 主题）、桌面运行时（session/wm/VirtualWindow）、ui_gen/（vue 主力/rust/ts/widget 契约/block）、a2ui/ | active（桌面线主战场；Plan 515：desktop_protocol DrawOp v1.5——Scissor 裁剪栈+TextStyled 字重/斜体差分（追加式 tag 3/4/5，TS 渲染器同步）、queue 臂投影保真（scroll 裁剪/typography 差分/layout_block 垂直高度修正）、native HICON 真图标链（win32 提取+native_icon 缓存）、e2e_exe 陈旧防护+queue-coverage 覆盖率 bin） |
+| ui | aura/、ui/（iced/gpui/headless 渲染 + code_editor/autodown 内建 + style 主题）、桌面运行时（session/wm/VirtualWindow）、ui_gen/（vue 主力/rust/ts/widget 契约/block）、a2ui/ | active（桌面线主战场；Plan 515：desktop_protocol DrawOp v1.5——Scissor 裁剪栈+TextStyled 字重/斜体差分（追加式 tag 3/4/5，TS 渲染器同步）、queue 臂投影保真（scroll 裁剪/typography 差分/layout_block 垂直高度修正）、native HICON 真图标链（win32 提取+native_icon 缓存）、e2e_exe 陈旧防护+queue-coverage 覆盖率 bin；Plan 656：scroll-pane 通用滚动架构——ui/scroll 语义层（State/Intent/Viewport 三通道）+axis/scrollbar/controller/on-scroll 双端 + managed bridge） |
 | mcp | MCP server 集成 | implemented（7 工具；sandbox/会话 GC/诊断为半完成） |
 
 </details>
@@ -245,7 +245,7 @@
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
 | auto-playground | active | 8 | [auto-playground/project.md](auto-playground/project.md) |
-| widgets | active | 4 | [widgets/project.md](widgets/project.md) |
+| widgets | active | 5 | [widgets/project.md](widgets/project.md) |
 | forge-ui | active | 4 | [forge-ui/project.md](forge-ui/project.md) |
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
 | playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
@@ -276,6 +276,7 @@
 | cli | `npx @auto-ui/widgets add/list` 命令 | active |
 | styles | Tailwind 配置与预编译 CSS 构建（build-styles.cjs / src/input.css） | active |
 | terminal-iced-draw | terminal iced widget 绘制期契约（draw 段落强引用规则 + 像素金样环境契约；auto-lang 侧,Plan 634） | active |
+| scroll-pane | AutoUI 通用滚动架构（PLAN-656 Phase A+B+C）：ScrollState/Intent/Viewport 三通道语义层 + scroll-pane primitive + controller/on-scroll 双端契约 + managed content bridge | active |
 
 </details>
 
