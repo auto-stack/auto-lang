@@ -5295,6 +5295,220 @@ child:
         // 清场。
         guard.release();
     }
+
+
+    // -------------------------------------------------------------------
+    // PLAN-033 T-07 —— rq-projector-unify e2e（AC-01/03）
+    // -------------------------------------------------------------------
+
+    /// PLAN-033 T-07（`AUTO_DESKTOP_E2E=1` 门）：
+    /// ① AC-01 027-file-manager `-q` 经 RqProjector 真渲——开窗 + 首帧
+    ///    + 覆盖门零拒（child stderr 无"未覆盖"拒绝行；popover/图标族
+    ///    单元级 Covered 由 client_entry::vm_queue_arm_assembly_covered
+    ///    027 腿钉）；
+    /// ② AC-01 003-converter `-q`（改接后 vm_typing 集成断言已绿——e2e
+    ///    钉开窗/首帧真链）；
+    /// ③ AC-03 VM 内存对照行：003 直挂（`auto run -r vm` 自开 iced 窗）
+    ///    vs `-q`（rqhost 客户端）app 进程 Private 对照 + ≤10MB 门沿用；
+    /// ④ 度量留痕 assets/033（AUTO_033_ASSETS=1 → reports/assets/033）。
+    #[test]
+    fn p033_rq_unify_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let repo = std::path::Path::new(manifest).join("../../");
+        let dir_fm = repo.join("examples/ui/027-file-manager");
+        let dir_conv = repo.join("examples/ui/003-converter");
+        if !dir_fm.join("src/front/app.at").is_file() || !dir_conv.join("src/front/app.at").is_file()
+        {
+            eprintln!("[p033] skip: 载体缺席");
+            return;
+        }
+        let auto_exe = crate::ui::desktop_protocol::e2e_exe::locate_with_stale_guard();
+        let wellknown = format!("autodesk-rqhost-p033-{}", std::process::id());
+
+        // ---- daemon 起服。----
+        let mut daemon = std::process::Command::new(&auto_exe)
+            .args(["rqhost", "--pipe", &wellknown])
+            .env("AUTO_RQHOST_WELLKNOWN", &wellknown)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn auto rqhost");
+        let daemon_tail = LineTail::spawn(&mut daemon);
+        let daemon_pid = daemon.id();
+        let mut guard = KillGuard(Vec::new());
+        guard.push(daemon);
+        daemon_tail.wait_contains("serving on", "daemon 起服", 20_000);
+
+        fn child_env(cmd: &mut std::process::Command, wellknown: &str) {
+            cmd.env("AUTO_RQHOST_WELLKNOWN", wellknown)
+                .env("AUTOUI_MCP_DISABLE", "1");
+            for (key, _) in std::env::vars() {
+                if key.starts_with("NEXTEST_") {
+                    cmd.env_remove(&key);
+                }
+            }
+        }
+        fn spawn_q(
+            auto_exe: &std::path::Path,
+            dir: &std::path::Path,
+            wellknown: &str,
+        ) -> (std::process::Child, LineTail) {
+            let mut cmd = std::process::Command::new(auto_exe);
+            cmd.args(["run", "-r", "vm", "-q"])
+                .current_dir(dir)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped());
+            child_env(&mut cmd, wellknown);
+            let mut child = cmd.spawn().expect("spawn auto run -q");
+            let tail = LineTail::spawn(&mut child);
+            (child, tail)
+        }
+
+        // ---- ① 027-file-manager -q 真渲（AC-01）。----
+        let (mut app_fm, app_fm_tail) = spawn_q(&auto_exe, &dir_fm, &wellknown);
+        let app_fm_pid = app_fm.id();
+        guard.push(app_fm);
+        daemon_tail.wait_count(
+            "[rqhost] window opened for `App`",
+            1,
+            "027 开窗（Hello 凭据）",
+            40_000,
+        );
+        daemon_tail.wait_count("[rqhost] first frame `App`", 1, "027 首帧", 40_000);
+        assert!(
+            !app_fm_tail
+                .snapshot()
+                .iter()
+                .any(|l| l.contains("未覆盖") || l.contains("已退役")),
+            "027 覆盖门零拒：{}",
+            app_fm_tail.snapshot().join("\n")
+        );
+
+        // ---- ② 003-converter -q（AC-01 真链；换算闭环 = vm_typing 集成承载）。----
+        let (mut app_c, _app_c_tail) = spawn_q(&auto_exe, &dir_conv, &wellknown);
+        let app_c_pid = app_c.id();
+        guard.push(app_c);
+        daemon_tail.wait_count(
+            "[rqhost] window opened for `App`",
+            2,
+            "003 二窗（共享 daemon）",
+            40_000,
+        );
+        daemon_tail.wait_count("[rqhost] first frame `App`", 2, "003 首帧", 40_000);
+
+        // ---- ③ AC-03 内存对照行：直挂 vs -q。----
+        // 直挂腿：auto run -r vm（自开 iced/wgpu 窗）→ 稳窗后采样 → 关窗收尾。
+        let mut direct = std::process::Command::new(&auto_exe);
+        direct
+            .args(["run", "-r", "vm"])
+            .current_dir(&dir_conv)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        for (key, _) in std::env::vars() {
+            if key.starts_with("NEXTEST_") {
+                direct.env_remove(&key);
+            }
+        }
+        let mut direct = direct.spawn().expect("spawn auto run -r vm 直挂");
+        let direct_pid = direct.id();
+        guard.push(direct);
+        // 直挂窗定位按进程枚举（标题与 daemon 的 003 窗同名——全局标题
+        // 搜索会错关 daemon 窗，首跑实证）。
+        #[cfg(windows)]
+        let direct_hwnd = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            loop {
+                let wins = win_ffi::windows_of(direct_pid);
+                if let Some((h, _)) = wins
+                    .iter()
+                    .find(|(_, t)| t.contains("转换") || t.contains("Converter"))
+                {
+                    break *h;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "直挂 003 窗未开（对照腿缺席）"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        };
+        std::thread::sleep(std::time::Duration::from_millis(800)); // 首帧+GPU 上载后稳态
+        let direct_mem = crate::ui::desktop_protocol::stage3::sample_process_memory(direct_pid);
+        let q_mem = crate::ui::desktop_protocol::stage3::sample_process_memory(app_c_pid);
+        let fm_mem = crate::ui::desktop_protocol::stage3::sample_process_memory(app_fm_pid);
+        let mut inventory = String::from("[p033] VM 内存对照行（app 进程 Private）\n");
+        let mut q_private_kb = 0u64;
+        if let (Ok(d), Ok(q), Ok(f)) = (&direct_mem, &q_mem, &fm_mem) {
+            q_private_kb = q.private_bytes / 1024;
+            inventory.push_str(&format!(
+                "003 直挂（-r vm 自开窗）pid={direct_pid} working_set={}KB private={}KB\n",
+                d.working_set / 1024,
+                d.private_bytes / 1024
+            ));
+            inventory.push_str(&format!(
+                "003 -q（rqhost 客户端）pid={app_c_pid} working_set={}KB private={}KB\n",
+                q.working_set / 1024,
+                q.private_bytes / 1024
+            ));
+            inventory.push_str(&format!(
+                "027 -q（rqhost 客户端）pid={app_fm_pid} working_set={}KB private={}KB\n",
+                f.working_set / 1024,
+                f.private_bytes / 1024
+            ));
+            inventory.push_str(&format!(
+                "对照：直挂 {}KB vs -q {}KB（省 {}KB = 免每 app iced/wgpu 后端收益）\n",
+                d.private_bytes / 1024,
+                q.private_bytes / 1024,
+                d.private_bytes.saturating_sub(q.private_bytes) / 1024
+            ));
+        } else {
+            inventory.push_str(&format!(
+                "采样缺席：direct={direct_mem:?} q={q_mem:?} fm={fm_mem:?}\n"
+            ));
+        }
+        // ≤10MB 门沿用（-q app 进程 Private）。
+        assert!(
+            q_private_kb > 0 && q_private_kb <= 10_240,
+            "AC-03 ≤10MB 门：003 -q app private={q_private_kb}KB"
+        );
+        println!("{inventory}");
+        // 直挂腿收尾（关窗 → 退出）。
+        #[cfg(windows)]
+        {
+            assert!(win_ffi::request_close(direct_hwnd), "直挂窗 WM_CLOSE");
+        }
+        #[cfg(not(windows))]
+        guard.kill_pid(direct_pid);
+        let direct_status = guard.wait_pid(direct_pid, "直挂 003 关窗未退");
+        assert!(direct_status.success(), "直挂关窗 = 码 0");
+
+        // ---- ④ 留痕（AUTO_033_ASSETS=1 → reports/assets/033）。----
+        if std::env::var("AUTO_033_ASSETS").as_deref() == Ok("1") {
+            let assets = repo.join("docs/plans/reports/assets/033");
+            std::fs::create_dir_all(&assets).expect("mkdir assets/033");
+            std::fs::write(assets.join("memory-comparison.txt"), &inventory)
+                .expect("写内存对照行");
+            std::fs::write(
+                assets.join("daemon-stderr.log"),
+                daemon_tail.snapshot().join("\n"),
+            )
+            .expect("写 daemon stderr");
+            std::fs::write(
+                assets.join("fm-child-stderr.log"),
+                app_fm_tail.snapshot().join("\n"),
+            )
+            .expect("写 027 child stderr");
+        }
+
+        // ---- 收尾：kill daemon → 双 app exit-on-EOF。----
+        guard.kill_pid(daemon_pid);
+        let app_c_status = guard.wait_pid(app_c_pid, "daemon 死后 003 未退（exit-on-EOF）");
+        let app_fm_status = guard.wait_pid(app_fm_pid, "daemon 死后 027 未退（exit-on-EOF）");
+        assert!(app_c_status.success() && app_fm_status.success(), "exit-on-EOF 干净退出");
+    }
 }
 
 /// 路径域的 git 脏状态清单（e2e 腿卫生断言口——P031-R5）。git 缺席

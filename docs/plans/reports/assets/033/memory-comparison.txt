@@ -1,0 +1,5 @@
+[p033] VM 内存对照行（app 进程 Private）
+003 直挂（-r vm 自开窗）pid=3472 working_set=205420KB private=225088KB
+003 -q（rqhost 客户端）pid=23296 working_set=54084KB private=8016KB
+027 -q（rqhost 客户端）pid=34888 working_set=50712KB private=20400KB
+对照：直挂 225088KB vs -q 8016KB（省 217072KB = 免每 app iced/wgpu 后端收益）

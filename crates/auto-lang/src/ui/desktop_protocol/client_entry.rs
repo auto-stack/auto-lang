@@ -138,8 +138,10 @@ mod tests {
     }
 
     /// PLAN-033 T-02 冒烟：VM 源（`DynamicComponent`）经 Commands 臂新装配
-    /// （RqProjector + ensure_covered + 产帧）——001/003 两载体 Covered
-    /// 且帧非空（AC-01 单元级证据；全链 e2e 在 T-07 p033_rq_unify_arm）。
+    /// （RqProjector + ensure_covered + 产帧）——001/003 单文件载体 Covered
+    /// 且帧非空（AC-01 单元级证据；027 多文件 front 的 Covered/真渲由
+    /// T-07 e2e 启动门承载——ensure_covered 即门，VM 全构建需真装载器
+    /// 路径语义，naive 合并不通）。
     #[test]
     fn vm_queue_arm_assembly_covered() {
         for dir in ["001-helloworld", "003-converter"] {
