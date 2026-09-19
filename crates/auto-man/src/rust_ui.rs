@@ -1839,6 +1839,9 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
     // pac 位置感知）。无标记 = 独立窗现行行为零变化（I1 零删除不变式）。
     // v1 边界：async-init App 经孵化臂以 `default()` 态起（初始化 API
     // 加载不接协议 client 面——超覆盖 App 走 auto 降级 independent）。
+    // PLAN-031 T-06：`--autodesk-rqhost` 标记 → `ClientTarget::Rqhost`
+    // （rendezvous 采纳内建 + exit-on-EOF 策略档——宿主 spawn 注入
+    // `auto run -r rust -q` 旗标族；旧生成物不识此旗标安全忽略）。
     let native_client_gate = format!(
         r#"let __autodesk_args: Vec<String> = std::env::args().collect();
         let __has_client = __autodesk_args.iter().any(|a| a.starts_with("--autodesk-client="));
@@ -1880,12 +1883,19 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
             if let Some(__l) = &__log {{
                 eprintln!("[autodesk-client] {{__l}}");
             }}
-            let __target = match __pipe {{
+            let __rqhost = __autodesk_args.iter().any(|a| a == "--autodesk-rqhost");
+            let __target = if __rqhost {{
+                // PLAN-031：rqhost 采纳（well-known rendezvous + exit-on-EOF）。
+                auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Rqhost {{
+                    wellknown: __broker.clone(),
+                    app_name: __app_name.clone(),
+                }}
+            }} else {{ match __pipe {{
                 Some(p) => auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Direct(p),
                 None => auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Broker {{
                     broker_pipe: __broker,
                 }},
-            }};
+            }} }};
             let __opts = auto_lang::ui::desktop_protocol::client_entry::ClientOpts {{
                 app_name: __app_name.clone(),
                 title: __app_name,
@@ -2847,6 +2857,12 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     let mut cmd = std::process::Command::new("cargo");
     cmd.args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")]);
+    // PLAN-031 T-06：`--` 分隔符——以 `-` 开头的透传参数（如 rqhost 注入
+    // 的 --autodesk-* 旗标）不加分隔符会被 cargo 自身吞掉报错；无参时
+    // 不加（保持既有命令行形状）。
+    if !args.is_empty() {
+        cmd.arg("--");
+    }
     for arg in &args {
         cmd.arg(arg);
     }
@@ -3218,6 +3234,34 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-031 T-06：生成 main 的 rqhost 臂在场——`--autodesk-rqhost`
+    /// 标记解析 + `ClientTarget::Rqhost`（rendezvous 采纳 + exit-on-EOF
+    /// 策略档）；直连/broker 既有臂零变化（I2 内容面）。
+    #[test]
+    fn generated_main_has_rqhost_gate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("p031-app");
+        std::fs::create_dir_all(project.join("src").join("front")).unwrap();
+        std::fs::write(
+            project.join("src").join("front").join("app.at"),
+            "widget P031Counter { model { var count int = 0 } view { text `c: ${.count}` } }\n",
+        )
+        .unwrap();
+        let components = "use auto_lang::ui::{Component, View};\npub struct P031Counter { pub count: i64 }\nimpl Component for P031Counter { type Msg = i64; fn view(&self) -> View<Self::Msg> { View::new() } }\n";
+        let main_rs = wrap_example("p031-app", components, &project);
+        assert!(
+            main_rs.contains(r##"--autodesk-rqhost""##),
+            "标记解析在场"
+        );
+        assert!(
+            main_rs.contains("ClientTarget::Rqhost"),
+            "Rqhost 目标臂在场"
+        );
+        // 既有直连/broker 臂不回退（I2）。
+        assert!(main_rs.contains("ClientTarget::Direct"));
+        assert!(main_rs.contains("ClientTarget::Broker"));
+    }
 
     /// PLAN-609 T-A1 三段：①theme{} 声明经 boot 路径激活合成主题
     /// （theme_name=声明名、resolve 走合成体、mode/accent 不被清写）；

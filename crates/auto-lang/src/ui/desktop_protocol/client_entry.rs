@@ -33,14 +33,35 @@ pub struct ClientOpts {
     pub auto_downgraded: bool,
 }
 
-/// 端点目标：① 直连 per-app 管道 ② broker 孵化（`--autodesk-broker` 可改）。
+/// 端点目标：① 直连 per-app 管道 ② broker 孵化（`--autodesk-broker` 可改）
+/// ③ rqhost 采纳（PLAN-031——rendezvous 内建 + exit-on-EOF 策略档）。
 pub enum ClientTarget {
     Direct(String),
     Broker { broker_pipe: String },
+    /// PLAN-031 D5：`auto run -q` 形态。connect = rendezvous 采纳
+    /// （连 well-known → `adopt␟<app_name>` → 转连 per-app 管道——
+    /// 采纳与使用同点，不预连不烧一次性管道实例）；差异在**宿主亡
+    /// 策略**——reconnect=None（`ClientExit::HostLost` 即退 + 观测行），
+    /// 区别于桌面档 30s 重连（原生 app 心智：宿主没了就干净退出）。
+    Rqhost { wellknown: String, app_name: String },
 }
 
-/// 端点解析：直连 / broker 孵化。返回 `(per_app_pipe, app_end)`——
-/// per_app_pipe 供 Commands 臂 ReconnectPolicy 重连同管道。
+/// 宿主亡策略选择（PLAN-031 T-05）：Rqhost 档 = exit-on-EOF（None）；
+/// 桌面档（Direct/Broker）= 既有 30s/50ms 重连不变（I2）。
+pub(crate) fn reconnect_for(target: &ClientTarget, per_app_pipe: String) -> Option<ReconnectPolicy> {
+    match target {
+        ClientTarget::Rqhost { .. } => None,
+        ClientTarget::Direct(_) | ClientTarget::Broker { .. } => Some(ReconnectPolicy {
+            pipe: per_app_pipe,
+            budget_ms: 30_000,
+            interval_ms: 50,
+        }),
+    }
+}
+
+/// 端点解析：直连 / broker 孵化 / rqhost 采纳。返回
+/// `(per_app_pipe, app_end)`——per_app_pipe 供 Commands 臂 ReconnectPolicy
+/// 重连同管道。
 pub fn connect(
     target: &ClientTarget,
     app_name: &str,
@@ -50,6 +71,10 @@ pub fn connect(
         ClientTarget::Direct(p) => {
             let end = transport::connect(p, 5000).map_err(|e| format!("连 {p}: {e:?}"))?;
             Ok((p.clone(), end))
+        }
+        ClientTarget::Rqhost { wellknown, app_name } => {
+            super::rqhost::adopt(wellknown, app_name, 5000)
+                .map_err(|e| format!("rqhost 采纳失败: {e:?}"))
         }
         ClientTarget::Broker { broker_pipe } => {
             broker::request_incubation_render(broker_pipe, app_name, render, 5000)
@@ -68,6 +93,7 @@ pub fn run_dynamic_client(
 ) -> Result<(), String> {
     let render =
         RequestedRender { mode: opts.frame_mode, auto_downgraded: opts.auto_downgraded };
+    let reconnect_pipe_target = matches!(target, ClientTarget::Rqhost { .. });
     let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
     match opts.frame_mode {
         FrameMode::Pixels => pixels::run_independent_child(
@@ -86,11 +112,13 @@ pub fn run_dynamic_client(
                 width: opts.width,
                 height: opts.height,
             };
-            let reconnect =
-                ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
+            let reconnect = reconnect_for(&target, per_app_pipe);
             let projector = AppProjector::new(component, config.width, config.height);
             let (exit, projector) =
-                client_runtime::run_client(app_end, projector, config, Some(reconnect));
+                client_runtime::run_client(app_end, projector, config, reconnect);
+            if reconnect_pipe_target && matches!(exit, client_runtime::ClientExit::HostLost) {
+                eprintln!("[rqhost-client] host lost → exit（exit-on-EOF 策略档）");
+            }
             println!("[autodesk-client] exit={exit:?} revision={}", projector.revision());
             Ok(())
         }
@@ -164,6 +192,7 @@ where
 {
     let render =
         RequestedRender { mode: opts.frame_mode, auto_downgraded: opts.auto_downgraded };
+    let rqhost_target = matches!(target, ClientTarget::Rqhost { .. });
     let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
     match opts.frame_mode {
         FrameMode::Pixels => pixels::run_independent_native_child(
@@ -186,14 +215,16 @@ where
                 width: opts.width,
                 height: opts.height,
             };
-            let reconnect =
-                ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
+            let reconnect = reconnect_for(&target, per_app_pipe);
             let (exit, projector) = client_runtime::run_client_session(
                 app_end,
                 projector,
                 config,
-                Some(reconnect),
+                reconnect,
             );
+            if rqhost_target && matches!(exit, client_runtime::ClientExit::HostLost) {
+                eprintln!("[rqhost-client] host lost → exit（exit-on-EOF 策略档）");
+            }
             println!("[autodesk-client] exit={exit:?} revision={}", projector.revision());
             Ok(())
         }

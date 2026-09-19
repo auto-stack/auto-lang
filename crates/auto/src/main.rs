@@ -398,6 +398,13 @@ enum Commands {
         #[arg(long, help = "Keep building despite codegen validation warnings (vue backend); restores the pre-015 default")]
         lenient: bool,
     },
+    /// PLAN-031：rqhost 共享合成器 daemon——`auto run -q` 客户端的宿主 OS
+    /// 原生窗承载（多 app 共享单实例；末窗自退）。
+    #[command(about = "PLAN-031: rqhost shared compositor daemon (native OS windows for `run -q` clients)")]
+    Rqhost {
+        #[arg(long, help = "Well-known pipe override (default: autodesk-rqhost; $AUTO_RQHOST_WELLKNOWN also honored)")]
+        pipe: Option<String>,
+    },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
         #[arg(short, long)]
@@ -410,6 +417,8 @@ enum Commands {
         front_port: Option<String>,
         #[arg(short, long, help = "Render target to use (vue, rust, vm, jet, arkts, tauri)")]
         render: Option<String>,
+        #[arg(short = 'q', long = "render-queue", action = clap::ArgAction::SetTrue, help = "PLAN-031: render via shared rqhost compositor (native OS window; vm/rust tracks)")]
+        render_queue: bool,
         #[arg(long, help = "Backend server mode: vm (AutoVM HTTP) or rust (a2r, default)")]
         server: Option<String>,
         #[arg(long, help = "Plan 340: merge frontend+backend VM in-process (default true). --no-merge uses HTTP between VMs")]
@@ -921,7 +930,28 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, gallery, apps, merged, args }) => {
+        // PLAN-031：rqhost daemon——阻塞直至末窗退出（锁管道被占 =
+        // 第二实例干净退出码 0）。
+        Some(Commands::Rqhost { pipe }) => {
+            let wellknown = pipe
+                .unwrap_or_else(|| auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe());
+            if !ai_mode {
+                init_logger();
+                println_logo();
+            }
+            auto_lang::ui::desktop_protocol::rqhost::run_daemon(&wellknown).map_err(|e| {
+                if ai_mode {
+                    eprintln!("{}", format_error_json(&AutoError::Msg(e)));
+                    std::process::exit(1);
+                }
+                miette::miette!("{e}")
+            })?;
+            if !ai_mode {
+                println!("------------- end --------------");
+            }
+            return Ok(());
+        }
+        Some(Commands::Run { dir, port, back_port, front_port, render, render_queue, server, no_merge, scene, theme, accent, desktop, gallery, apps, merged, mut args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -1171,6 +1201,32 @@ fn real_main(cli: Cli) -> Result<()> {
             // `name` (the DSL-actions id source when no ui_config file exists).
             if let Some(n) = am.pac_name() {
                 std::env::set_var("AUTO_APP_ID", &n);
+            }
+            // PLAN-031 T-06：-q 两轨分岔 gate（run_if_client_entry 同位族——
+            // 此处已过孵化 gate 与 pac/api 侦测）。ensure 保 daemon 在线
+            // （探活→spawn→退避）；vm 轨信号 = env（装载链内 lib.rs 分岔
+            // 认领）；rust 轨信号 = 前注 args（cargo `--` 透传 → 生成 gate
+            // 消费）。两信号并发注入，各轨只认各的；vue/jet/arkts/tauri
+            // 前端 = 出界显式报错（--rq-host 预留未实现）。
+            if render_queue {
+                cmd_autodesk::rqhost_gate_validate(render.as_deref(), &args).map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.clone())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{e}")
+                })?;
+                auto_lang::ui::desktop_protocol::rqhost::ensure_rqhost_ready().map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e.clone())));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{e}")
+                })?;
+                let wellknown = auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe();
+                std::env::set_var("AUTO_RQHOST_PIPE", &wellknown);
+                args = cmd_autodesk::rqhost_injected_args(&wellknown, &args);
+                println!("  render-queue: rqhost shared compositor ({wellknown})");
             }
             if !ai_mode {
                 info!("Running project ...");

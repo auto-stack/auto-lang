@@ -193,6 +193,39 @@ mod pipe {
         Ok(PendingServer { server, rt, addr: addr_of(name) })
     }
 
+    /// PLAN-031 D2：单实例声明——`FILE_FLAG_FIRST_PIPE_INSTANCE` 创建：
+    /// 名字下已有任何实例（无论哪个进程持有）即 `PermissionDenied`。
+    /// 守卫 `Drop` = 释放名字。永不 accept——纯注册语义（rqhost 锁
+    /// 管道专用；`listen` 的重听循环与 first-instance 互斥，不可混用）。
+    /// 占用错误统一为 [`CLAIM_DENIED_MARKER`]（io::ErrorKind 判定——OS
+    /// 消息文本随系统 locale 本地化，不可字面匹配）。
+    pub const CLAIM_DENIED_MARKER: &str = "pipe-first-instance-denied";
+
+    pub fn try_claim_pipe(name: &str) -> Result<PipeClaim, TransportError> {
+        let rt = std::sync::Arc::new(make_rt());
+        let server = rt
+            .block_on(async {
+                ServerOptions::new()
+                    .first_pipe_instance(true)
+                    .create(addr_of(name))
+            })
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    TransportError::Io(CLAIM_DENIED_MARKER.into())
+                } else {
+                    TransportError::Io(e.to_string())
+                }
+            })?;
+        Ok(PipeClaim { _server: server, _rt: rt })
+    }
+
+    /// [`try_claim_pipe`] 的守卫：持有命名管道服务端实例（名字占位即
+    /// 声明），存活期 = 结构生命期。
+    pub struct PipeClaim {
+        _server: NamedPipeServer,
+        _rt: std::sync::Arc<tokio::runtime::Runtime>,
+    }
+
     impl PendingServer {
         /// 等待客户端连入（孵化路径一次性），随后 split 出读写两半。
         pub fn wait_connect(mut self) -> Result<Box<dyn Transport + Send>, TransportError> {
@@ -351,7 +384,7 @@ mod pipe {
 }
 
 #[cfg(windows)]
-pub use pipe::{connect, listen, PendingServer, PipeEnd};
+pub use pipe::{connect, listen, try_claim_pipe, PendingServer, PipeClaim, PipeEnd, CLAIM_DENIED_MARKER};
 
 /// 非 Windows 占位（Plan 509 Linux 编译缺口修补）：接口形状与 pipe 模
 /// 块一致，调用即返回错误——真 Linux 传输（UDS）随 Smithay 宿主线生长
@@ -365,6 +398,10 @@ mod pipe_stub {
 
     pub struct PendingServer;
 
+    pub struct PipeClaim;
+
+    pub const CLAIM_DENIED_MARKER: &str = "pipe-first-instance-denied";
+
     pub fn listen(_name: &str) -> Result<PendingServer, TransportError> {
         Err(TransportError::Io(UNAVAILABLE.to_string()))
     }
@@ -373,6 +410,10 @@ mod pipe_stub {
         pub fn wait_connect(self) -> Result<Box<dyn super::Transport + Send>, TransportError> {
             Err(TransportError::Io(UNAVAILABLE.to_string()))
         }
+    }
+
+    pub fn try_claim_pipe(_name: &str) -> Result<PipeClaim, TransportError> {
+        Err(TransportError::Io(UNAVAILABLE.to_string()))
     }
 
     pub fn connect(
@@ -384,7 +425,7 @@ mod pipe_stub {
 }
 
 #[cfg(not(windows))]
-pub use pipe_stub::{connect, listen, PendingServer};
+pub use pipe_stub::{connect, listen, try_claim_pipe, PendingServer, PipeClaim};
 
 // ---------------------------------------------------------------------------
 // WebSocket（Plan 508 G3/G4 远程线）：tokio-tungstenite + 线程桥接同步
