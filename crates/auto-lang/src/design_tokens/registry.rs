@@ -299,6 +299,11 @@ pub const SCAFFOLD: ThemeSpec = ThemeSpec {
         (TokenName::SidebarAccentForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
         (TokenName::SidebarBorder, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::SidebarRing, ColorLit::Hsl("239 84% 67%")),
+        // PLAN-038 Phase B T6: scaffold extended functional colors (VM-parity)
+        (TokenName::Success, ColorLit::Rgb(34, 197, 94)),
+        (TokenName::Warning, ColorLit::Rgb(234, 179, 8)),
+        (TokenName::Info, ColorLit::Rgb(59, 130, 246)),
+        (TokenName::Error, ColorLit::Rgb(239, 68, 68)),
     ],
     dark: &[
         (TokenName::Background, ColorLit::Hsl("222.2 47% 7%")),
@@ -328,6 +333,10 @@ pub const SCAFFOLD: ThemeSpec = ThemeSpec {
         (TokenName::SidebarAccentForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::SidebarBorder, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::SidebarRing, ColorLit::Hsl("239 84% 77%")),
+        (TokenName::Success, ColorLit::Rgb(34, 197, 94)),
+        (TokenName::Warning, ColorLit::Rgb(234, 179, 8)),
+        (TokenName::Info, ColorLit::Rgb(59, 130, 246)),
+        (TokenName::Error, ColorLit::Rgb(239, 68, 68)),
     ],
 };
 
@@ -407,6 +416,11 @@ pub const TAURI: ThemeSpec = ThemeSpec {
         (TokenName::Border, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Input, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Ring, ColorLit::Hsl("222.2 84% 4.9%")),
+        // PLAN-038 Phase B: tauri CLI extended functional colors
+        (TokenName::Success, ColorLit::Rgb(34, 197, 94)),
+        (TokenName::Warning, ColorLit::Rgb(234, 179, 8)),
+        (TokenName::Info, ColorLit::Rgb(59, 130, 246)),
+        (TokenName::Error, ColorLit::Rgb(239, 68, 68)),
     ],
     dark: &[
         (TokenName::Background, ColorLit::Hsl("222.2 84% 4.9%")),
@@ -428,6 +442,10 @@ pub const TAURI: ThemeSpec = ThemeSpec {
         (TokenName::Border, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::Input, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::Ring, ColorLit::Hsl("212.7 26.8% 83.9%")),
+        (TokenName::Success, ColorLit::Rgb(34, 197, 94)),
+        (TokenName::Warning, ColorLit::Rgb(234, 179, 8)),
+        (TokenName::Info, ColorLit::Rgb(59, 130, 246)),
+        (TokenName::Error, ColorLit::Rgb(239, 68, 68)),
     ],
 };
 
@@ -461,6 +479,11 @@ pub const CLI_VUE: ThemeSpec = ThemeSpec {
         (TokenName::SidebarAccentForeground, ColorLit::Hsl("240 5.9% 10%")),
         (TokenName::SidebarBorder, ColorLit::Hsl("220 13% 91%")),
         (TokenName::SidebarRing, ColorLit::Hsl("239 84% 67%")),
+        // PLAN-038 Phase B：auto CLI vue 轨功能色同源。
+        (TokenName::Success, ColorLit::Rgb(34, 197, 94)),
+        (TokenName::Warning, ColorLit::Rgb(234, 179, 8)),
+        (TokenName::Info, ColorLit::Rgb(59, 130, 246)),
+        (TokenName::Error, ColorLit::Rgb(239, 68, 68)),
     ],
     dark: &[
         (TokenName::Background, ColorLit::Hsl("222 47% 11%")),
@@ -490,6 +513,10 @@ pub const CLI_VUE: ThemeSpec = ThemeSpec {
         (TokenName::SidebarAccentForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::SidebarBorder, ColorLit::Hsl("217 33% 18%")),
         (TokenName::SidebarRing, ColorLit::Hsl("239 84% 77%")),
+        (TokenName::Success, ColorLit::Rgb(34, 197, 94)),
+        (TokenName::Warning, ColorLit::Rgb(234, 179, 8)),
+        (TokenName::Info, ColorLit::Rgb(59, 130, 246)),
+        (TokenName::Error, ColorLit::Rgb(239, 68, 68)),
     ],
 };
 
@@ -526,10 +553,14 @@ pub fn token_lit(theme: &ThemeSpec, token: TokenName, is_dark: bool) -> Option<C
         .map(|(_, lit)| *lit)
 }
 
-/// CSS 面：核心 19 键 canonical 块（固定键序、4 空格缩进、每行
-/// `--name: value;`）。消费方模板自持非色脚手架（--radius 等）。
+/// CSS 面：核心 19 键 + AutoUI 扩展色（主题表持有则输出）canonical 块。
+/// 固定键序、4 空格缩进、每行 `--name: value;`。消费方模板自持非色脚手架
+/// （--radius 等）。CORE_ORDER 仍作「全主题必持」契约（themes_core_complete）；
+/// EXTENDED_ORDER 缺席键静默跳过（zinc 可不持）。
 pub fn render_core(theme: &ThemeSpec, is_dark: bool) -> String {
-    render_tokens(theme, is_dark, &CORE_ORDER)
+    let mut out = render_tokens(theme, is_dark, &CORE_ORDER);
+    out.push_str(&render_tokens(theme, is_dark, &EXTENDED_ORDER));
+    out
 }
 
 /// CSS 面：sidebar 8 键 canonical 块（无 sidebar 值的主题输出空串）。
@@ -553,6 +584,11 @@ pub const SIDEBAR_ORDER: [TokenName; 8] = [
     TokenName::SidebarPrimary, TokenName::SidebarPrimaryForeground,
     TokenName::SidebarAccent, TokenName::SidebarAccentForeground,
     TokenName::SidebarBorder, TokenName::SidebarRing,
+];
+/// PLAN-038 Phase B：AutoUI 扩展 4 键（功能色）CSS 渲染序——追加在 core 之后。
+/// 词表闭集内；scaffold/cli-vue/tauri/stella 持有，zinc 可缺席。
+pub const EXTENDED_ORDER: [TokenName; 4] = [
+    TokenName::Success, TokenName::Warning, TokenName::Info, TokenName::Error,
 ];
 
 fn render_tokens(theme: &ThemeSpec, is_dark: bool, order: &[TokenName]) -> String {
@@ -653,6 +689,8 @@ mod tests {
     fn render_fingerprint() {
         let z = builtin("zinc").unwrap();
         assert!(render_core(z, false).starts_with("    --background: 0 0% 100%;\n"));
+        // zinc 无扩展色 → render_core 不吐 success（缺席静默跳过）。
+        assert!(!render_core(z, false).contains("--success:"));
         let s = builtin("scaffold").unwrap();
         assert!(render_core(s, false).contains("--primary: 239 84% 67%;"));
         assert!(render_sidebar(s, false).contains("--sidebar-background: 0 0% 98%;"));
@@ -664,6 +702,40 @@ mod tests {
         // CLI 两表值指纹（T-09 装配前的值保真）
         assert!(render_core(builtin("tauri").unwrap(), false).contains("--primary: 222.2 47.4% 11.2%;"));
         assert!(render_core(builtin("cli-vue").unwrap(), false).contains("--ring: 239 84% 67%;"));
+    }
+
+    /// PLAN-038 Phase B T6：scaffold/cli-vue/tauri 持扩展 4 键；CSS 渲染面
+    /// 吐 `--success` 等；VM resolve 与 stella 同值（双端同源）。
+    #[test]
+    fn scaffold_extended_tokens_dual_face() {
+        let want = [
+            (TokenName::Success, (34u8, 197u8, 94u8)),
+            (TokenName::Warning, (234, 179, 8)),
+            (TokenName::Info, (59, 130, 246)),
+            (TokenName::Error, (239, 68, 68)),
+        ];
+        for name in ["scaffold", "cli-vue", "tauri", "stella"] {
+            let t = builtin(name).expect(name);
+            for dark in [false, true] {
+                for (tok, rgb) in want {
+                    assert_eq!(
+                        resolve_rgb(t, tok, dark),
+                        Some(rgb),
+                        "{name} @dark={dark} {:?} 应与 VM 投影同值",
+                        tok.css_var()
+                    );
+                }
+            }
+        }
+        let s = builtin("scaffold").unwrap();
+        let css = render_core(s, false);
+        assert!(css.contains("--success:"), "scaffold CSS 面须含 --success");
+        assert!(css.contains("--warning:"), "scaffold CSS 面须含 --warning");
+        assert!(css.contains("--info:"), "scaffold CSS 面须含 --info");
+        // 扩展键排在 core 之后（RING 之后）
+        let ring = css.find("--ring:").expect("ring");
+        let success = css.find("--success:").expect("success");
+        assert!(ring < success, "扩展键须追加在 core 序之后");
     }
 
     /// T-06：JS 值源发射——五主题全集可解析回每键值；zinc 无 sidebar 键、

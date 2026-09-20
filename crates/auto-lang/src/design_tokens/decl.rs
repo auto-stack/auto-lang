@@ -105,9 +105,13 @@ impl ComposedTheme {
             .and_then(|(_, v)| registry::hsl_str_to_rgb(v))
     }
 
-    /// CSS 面：canonical 核心块（键序与 builtin render_core 一致）。
+    /// CSS 面：canonical 核心块 + 扩展色（键序与 builtin render_core 一致，
+    /// PLAN-038 Phase B：composed 基座为 stella 时携带 success 等）。
     pub fn render_core(&self, is_dark: bool) -> String {
-        render_tokens(self.palette(is_dark), &registry::CORE_ORDER)
+        let pal = self.palette(is_dark);
+        let mut out = render_tokens(pal, &registry::CORE_ORDER);
+        out.push_str(&render_tokens(pal, &registry::EXTENDED_ORDER));
+        out
     }
 
     /// CSS 面：canonical sidebar 块。

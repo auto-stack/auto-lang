@@ -927,6 +927,11 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // PLAN-038 Phase B T7: AutoUI extended functional colors
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        info: "hsl(var(--info))",
+        error: "hsl(var(--error))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -1572,6 +1577,44 @@ fn write_auto_sources_ts(front_dir: &Path, output_dir: &Path) {
     fs::write(&path, ts).ok();
 }
 
+/// PLAN-038 Phase B T8 (P657-D2): vite/client types shim — scaffold/build 全路径写入。
+/// vue-tsc 面 `import.meta.env` 依赖此文件，不再依赖手工 stub 或 auto run 预生成。
+fn generate_vite_env_d_ts() -> &'static str {
+    "/// <reference types=\"vite/client\" />\n"
+}
+
+/// PLAN-038 Phase B T8 (P657-D2): overlay 的 auto-sources 类型依赖兜底。
+/// front 未知时写空 map，保证 TS2307 不因 phase-ordering 红。
+fn empty_auto_sources_ts() -> &'static str {
+    "// auto-sources.ts — empty placeholder (PLAN-038 Phase B / P657-D2).\nexport const AUTO_SOURCES: Record<string, string> = {}\n"
+}
+
+/// PLAN-038 Phase B T8: 脚手架/构建全路径写 vite-env.d.ts + auto-select/overlay.ts，
+/// 并在 auto-sources.ts 缺失时写空占位（front_dir 已知时调用方应先 write_auto_sources_ts）。
+fn ensure_vue_type_stubs(output_dir: &Path) {
+    let src = output_dir.join("src");
+    fs::create_dir_all(&src).ok();
+    fs::write(src.join("vite-env.d.ts"), generate_vite_env_d_ts()).ok();
+
+    let sources_path = src.join("auto-sources.ts");
+    if !sources_path.exists() {
+        fs::write(&sources_path, empty_auto_sources_ts()).ok();
+    }
+
+    let overlay_dir = src.join("auto-select");
+    fs::create_dir_all(&overlay_dir).ok();
+    let overlay_path = overlay_dir.join("overlay.ts");
+    let overlay_new = generate_select_overlay_ts();
+    let stale = match fs::read_to_string(&overlay_path) {
+        Ok(existing) => existing != overlay_new,
+        Err(_) => true,
+    };
+    if stale {
+        fs::write(&overlay_path, overlay_new).ok();
+    }
+}
+
+
 fn generate_app_vue(vue_code: &str) -> String {
     vue_code.to_string()
 }
@@ -1904,14 +1947,15 @@ fn write_project_files(
     fs::write(output_path.join("src/lib/utils.ts"), utils_ts)
         .map_err(|e| format!("Failed to write src/lib/utils.ts: {}", e))?;
 
-    // PLAN-646: Select Anything overlay（dev-only 采集层资产；main.ts 以
-    // import.meta.env.DEV 动态引用，产物构建 tree-shake 掉）。
-    fs::create_dir_all(output_path.join("src").join("auto-select")).ok();
-    fs::write(
-        output_path.join("src").join("auto-select").join("overlay.ts"),
-        generate_select_overlay_ts(),
-    )
-    .map_err(|e| format!("Failed to write src/auto-select/overlay.ts: {}", e))?;
+    // PLAN-646/038 Phase B T8: Select Anything overlay + vite-env + auto-sources
+    // 全路径落盘（P657-D2：build 不再依赖 auto run 预生成或手工 stub）。
+    ensure_vue_type_stubs(output_path);
+    // write_project_files 无 front_dir 时 overlay 仍可 import 空 map。
+    let sources_path = output_path.join("src").join("auto-sources.ts");
+    if !sources_path.exists() {
+        fs::write(&sources_path, empty_auto_sources_ts())
+            .map_err(|e| format!("Failed to write src/auto-sources.ts: {}", e))?;
+    }
 
     Ok(())
 }
@@ -4008,6 +4052,9 @@ export default router
         fs::write(output_path.join("tsconfig.json"), &tsconfig)
             .map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
 
+        // PLAN-038 Phase B T8 (P657-D2): vite-env + overlay + auto-sources on scaffold path.
+        ensure_vue_type_stubs(output_path);
+
         // Router file — main.ts imports './router' whenever routes exist.
         self.ensure_router_file()?;
 
@@ -4083,6 +4130,19 @@ export default router
         fs::write(&tsconfig_path, &tsconfig)
             .map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
         println!("{}", "  ✓ Regenerated tsconfig.json".bright_green());
+
+        // PLAN-038 Phase B T8 (P657-D2): build/regenerate 路径同样写类型 stub + overlay。
+        // 有 root front 目录时同步 auto-sources（相对 output_dir 回溯 workspace）。
+        ensure_vue_type_stubs(&self.output_dir);
+        {
+            let front = self.output_dir
+                .ancestors()
+                .skip(2)
+                .find(|d| d.join("src/front").exists() || d.join("pac.at").exists());
+            if let Some(root) = front {
+                write_auto_sources_ts(&resolve_front_dir(root), &self.output_dir);
+            }
+        }
 
         // Regenerate index.html (Plan 043 M5: carries `class="dark"` so the
         // shadcn `.dark` tokens in index.css actually apply; without it the
@@ -5002,6 +5062,11 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
         println!("▶ Regenerating source files...");
         project.regenerate_source_files()?;
     }
+
+    // PLAN-038 Phase B T8 (P657-D2): build 路径写 vite-env + Select Anything
+    // 源映射（overlay 硬依赖 auto-sources，此前仅 auto run 写入 → vue-tsc 红）。
+    write_auto_sources_ts(&resolve_front_dir(root_dir), &project.output_dir);
+    ensure_vue_type_stubs(&project.output_dir);
 
     // Step 2: Generate API client code (if api.at exists)
     println!();
@@ -10275,9 +10340,9 @@ fn plan609_theme_decl_dual_face_same_source() {
         "合成主题上槽"
     );
 
-    // ① vue 面：index.css 文本逐键携带——渲染词表 = core+sidebar
-    // （registry::CORE_ORDER/SIDEBAR_ORDER；AutoUI 扩展 4 键 success 等
-    // 为 VM 面承载，CSS 渲染面不含），词表内键 light+dark 全量断言。
+    // ① vue 面：index.css 文本逐键携带——渲染词表 = core+sidebar+扩展色
+    // （PLAN-038 Phase B：EXTENDED_ORDER 在主题表持有时亦入 CSS）。
+    // 本断言仍按 core+sidebar 抽查，避免 composed 基座缺扩展键时误伤。
     let css = generate_index_css(Some(&composed));
     let css_face = |t: auto_lang::ui::style::theme::registry::TokenName| {
         auto_lang::ui::style::theme::registry::CORE_ORDER.contains(&t)

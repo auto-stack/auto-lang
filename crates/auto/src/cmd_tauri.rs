@@ -630,6 +630,11 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // PLAN-038 Phase B T7: AutoUI extended functional colors
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        info: "hsl(var(--info))",
+        error: "hsl(var(--error))",
       },
       borderRadius: {
         lg: "var(--radius)",
