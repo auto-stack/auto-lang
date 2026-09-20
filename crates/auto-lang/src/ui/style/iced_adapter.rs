@@ -76,6 +76,7 @@ pub struct IcedStyle {
     pub margin_left: Option<f32>,     // ml-N: converted to external left spacing
     pub margin_right: Option<f32>,    // mr-N: converted to external right spacing
     pub margin_left_auto: bool,       // ml-auto: push element to right in row
+    pub margin_top_auto: bool,        // mt-auto: push element to bottom in column (PLAN-080)
     pub margin_right_auto: bool,      // mr-auto: push element to left in row
     /// PLAN-663 C2: my-auto/m-auto — 定高列内垂直安全居中标记
     pub margin_y_auto: bool,
@@ -362,6 +363,7 @@ impl IcedStyle {
             margin_left: None,
             margin_right: None,
             margin_left_auto: false,
+            margin_top_auto: false,
             margin_right_auto: false,
             margin_y_auto: false,
             gap: None,
@@ -599,6 +601,7 @@ impl IcedStyle {
             || self.margin_right.is_some()
             || self.margin_left_auto
             || self.margin_right_auto
+            || self.margin_top_auto
     }
 
     /// Apply a single StyleClass to this IcedStyle
@@ -639,7 +642,14 @@ impl IcedStyle {
                 self.margin_y = Some(size.to_pixels() as f32);
             }
             StyleClass::MarginTop(size) => {
-                self.margin_top = Some(size.to_pixels() as f32);
+                // PLAN-080: mt-auto 的推底语义——此前 Auto 落 to_pixels()=0
+                // 静默丢失（musk rail 底簇不被推到栏底，y 偏 ~310px 实机
+                // 对拍定罪）。像素值维持外部 padding 包装语义不变。
+                if matches!(size, super::SizeValue::Auto) {
+                    self.margin_top_auto = true;
+                } else {
+                    self.margin_top = Some(size.to_pixels() as f32);
+                }
             }
             StyleClass::MarginBottom(size) => {
                 self.margin_bottom = Some(size.to_pixels() as f32);

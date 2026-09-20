@@ -1910,7 +1910,7 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         .map(|is| is.effective_margin())
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
     let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
-        || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
+        || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto || is.margin_top_auto);
 
     let el = if needs_wrap {
         // PLAN-642 T-12: overflow-hidden + justify-Center/End 列的 scroll 兜底。
@@ -2081,8 +2081,13 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         if mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0 {
             cont = cont.padding(iced::Padding { top: mt, right: mr, bottom: mb, left: ml });
         }
-        // Handle mx-auto / ml-auto / mr-auto
+        // Handle mx-auto / ml-auto / mr-auto / mt-auto
         if let Some(ref is) = iced_style {
+            // PLAN-080: mt-auto 推底——列内自动上边距吃满剩余空间（CSS flex
+            // 语义），iced 无原生承载，套 Fill 高 + align_y(Bottom) 容器。
+            if is.margin_top_auto {
+                cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom);
+            }
             if is.margin_left_auto && is.margin_right_auto {
                 cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
             } else if is.margin_left_auto {
@@ -2248,7 +2253,7 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         .map(|is| is.effective_margin())
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
     let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
-        || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
+        || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto || is.margin_top_auto);
     let el = if needs_margin_wrap {
         let mut cont = container(el);
         if mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0 {
