@@ -46,3 +46,51 @@ for (const u of UNITS) {
     await expect(page).toHaveScreenshot(`${u.id}.png`, { clip: u.vue.clip })
   })
 }
+
+// PLAN-665 AC-04：sandwich 三层壳弹性语义自动化断言——041"只保留内容高"
+// 塌缩回归的正向锚（renderer 高度语义再变动时此测先红）。
+test('vue gate: sandwich geometry (AC-04) — 三层壳弹性/贴底/分栏断言', async ({ page }) => {
+  await page.goto(BASE)
+  await page.waitForSelector('text=unit: sandwich', { timeout: 15_000 })
+  const box = async (needle: string) => {
+    const el = page.locator(`text=${needle}`).first()
+    await el.waitFor({ state: 'visible', timeout: 10_000 })
+    const b = await el.boundingBox()
+    if (!b) throw new Error(`${needle}: no boundingBox`)
+    return b
+  }
+  const toolbar = await box('sw toolbar')
+  const sidebar = await box('sw sidebar')
+  const status = await box('sw status')
+  const content = await box('swf full content')
+  const nestedStatus = await box('swf status')
+  const vh = (await page.viewportSize())!.height
+
+  // ① statusbar 底缘贴视口底（±8px 文本基线容差）——满窗壳不被内容高反向决定
+  const statusBottom = status.y + status.height
+  if (vh - statusBottom > 8 || statusBottom > vh) {
+    throw new Error(`statusbar 底缘未贴视口底: bottom=${statusBottom}, viewport=${vh}`)
+  }
+
+  // ② content 弹性区高 ≥ 300px（default 壳 toolbar 底 → statusbar 顶）
+  const contentTop = toolbar.y + toolbar.height
+  const contentBottom = status.y
+  if (contentBottom - contentTop < 300) {
+    throw new Error(`content 弹性区高 ${contentBottom - contentTop}px < 300px（塌缩回归形态）`)
+  }
+
+  // ③ 三层序：toolbar 顶 / content 中 / statusbar 底
+  if (!(toolbar.y < content.y && content.y + content.height < status.y)) {
+    throw new Error('三层序断裂：toolbar/content/statusbar 垂直序不符')
+  }
+
+  // ④ 分栏落位：sidebar 左列（x 显著小于主区内容）
+  if (sidebar.x >= content.x - 100) {
+    throw new Error(`sidebar 未落左列: sidebar.x=${sidebar.x}, content.x=${content.x}`)
+  }
+
+  // ⑤ 组合形态：嵌套 full 壳 statusbar 在外层 statusbar 之上
+  if (!(nestedStatus.y + nestedStatus.height <= status.y + 8)) {
+    throw new Error('嵌套 full 壳 statusbar 越过外层 statusbar')
+  }
+})

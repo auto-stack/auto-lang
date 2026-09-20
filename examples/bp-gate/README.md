@@ -31,23 +31,24 @@ pnpm gate --update-snapshots             # 刷截图基线（e2e/baselines/）
   root 投影字段（`sb_*`/`rl_count`/`ft_count`）+ root 单元标记行 needle；
   需要驱动行交互的消费方走内联 twin（filetree gotchas#1 right 形态，
   未来交互断言扩展时启用）。
-- **单页同定 + clip**：宿主三单元固定高度（h-52=208px）堆叠、fixture
-  三单元互斥词表——playwright 全页 needle 无歧义 + per-unit clip 截图
+- **单页同定 + clip**：宿主单元固定高度堆叠（h-52=208px·sandwich 416px）、
+  fixture 单元互斥词表——playwright 全页 needle 无歧义 + per-unit clip 截图
   （几何在 units.mjs GEOMETRY 单源）。
 
 ## 单元台账
 
 `scripts/units.mjs`（配置驱动）：id/title/vue{needles,clip}/vm{state,
 snapshot}。新单元 = host app.at 加单元区（标记行+互斥词表 fixture）→
-units.mjs 登记（clip.y = 208×n）→ `--update-snapshots` 建基线 → `pnpm gate`。
+units.mjs 登记（clip.y=单元顶缘）→ `--update-snapshots` 建基线 → `pnpm gate`。
 
-首证三单元（design 30 §2 L2 门首批）：
+首证三单元（design 30 §2 L2 门首批）+ 第四单元（PLAN-665）：
 
 | 单元 | bp | 形态 |
 | --- | --- | --- |
-| status_bar | `layout/status-bar`（PLAN-075 骨架） | fn-free |
-| row_list | `data-display/row-list`（PLAN-075 骨架） | fn-free |
+| status_bar | `layout/status-bar`（PLAN-075 骨架） | fn-free 值 props |
+| row_list | `data-display/row-list`（PLAN-075 骨架） | fn-free 值 props |
 | filetree | `navigation/filetree`（组合形态） | 跨文件 fn 携带（645 转译） |
+| sandwich | `layout/sandwich`（PLAN-665 骨架） | fn-free slot 四出口；full 变体嵌 content 出口组合消费 |
 
 与 bps-gallery 的关系：gallery 是 vue-only 源浏览（live-render deferred，
 README scope note 维持）；gate 是自动化门——两者互补，互不替代。

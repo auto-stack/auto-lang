@@ -1,15 +1,22 @@
-// app.at — bp-gate 宿主（PLAN-075 T-03）。三单元同页固定高度堆叠：
-//   unit: status_bar —— layout/status-bar 骨架（fn-free）
-//   unit: row_list   —— data-display/row-list 骨架（fn-free）
+// app.at — bp-gate 宿主（PLAN-075 T-03；PLAN-665 T-02 增第四单元）。四单元
+// 同页固定高度堆叠：
+//   unit: status_bar —— layout/status-bar 骨架（fn-free 值 props）
+//   unit: row_list   —— data-display/row-list 骨架（fn-free 值 props）
 //   unit: filetree   —— navigation/filetree 组合形态（跨文件 fn 携带件，
 //                        645 转译；075 G-6 后同文件 fn 通道亦在库）
+//   unit: sandwich   —— layout/sandwich 骨架（fn-free slot 形态，PLAN-665；
+//                        default 含 sidebar + full 嵌 content 出口的组合形态）
 // 单元标记行（"unit: <id>"）在 root 视图——VM 臂 snapshot 可见（F-1：bp
-// 子件子树不可见，内容断言走 root 投影字段：sb_*/rl_count/ft_count）。
-// fixture 刻意三单元互斥词表（playwright 全页 needle 无歧义定位）。
+// 子件子树不可见，内容断言走 root 投影字段：sb_*/rl_count/ft_count/sw_*；
+// T-00 实证 snapshot v2(rendered) 已可见子树，sandwich 单元另加 slot 填充
+// needle 双保险）。
+// fixture 刻意四单元互斥词表（playwright 全页 needle 无歧义定位）。
 use bps.layout.status_bar.reference.default: StatusBarSkeleton
 use bps.data_display.row_list.reference.default: RowListSkeleton
 use bps.navigation.filetree.reference.default: FileTree
 use bps.navigation.filetree.tree_util: flatten_tree
+use bps.layout.sandwich.reference.default: SandwichShell
+use bps.layout.sandwich.reference.full: SandwichShellFull
 
 widget App {
     msg { Init }
@@ -41,6 +48,11 @@ widget App {
         var ft_expanded List = ["wiki"]
         var ft_rows List = []
         var ft_count int = 0
+
+        // unit: sandwich —— 四口投影（VM 断言面；ASCII 词表纪律 G-2）
+        var sw_slots str = "toolbar|sidebar|content|statusbar"
+        var sw_content_rows int = 1
+        var swf_slots str = "toolbar|content|statusbar"
     }
 
     on {
@@ -65,6 +77,33 @@ widget App {
             col (style: "flex h-52 flex-col border-b") {
                 text "unit: filetree" { style: "px-3 pt-2 text-xs text-muted-foreground" }
                 FileTree (nodes: .ft_nodes, default_expanded: .ft_expanded) {}
+            }
+            // sandwich 单元 416px（=2×208 网格节奏；AC-04 几何断言要求
+            // content 弹性区 ≥300px——h-52 单元容不下）。
+            col (style: "flex h-[416px] flex-col") {
+                text "unit: sandwich" { style: "px-3 pt-2 text-xs text-muted-foreground" }
+                SandwichShell {
+                    slot(name: "toolbar") {
+                        text "sw toolbar" {}
+                    }
+                    slot(name: "sidebar") {
+                        text "sw sidebar" {}
+                    }
+                    slot(name: "statusbar") {
+                        text "sw status" {}
+                    }
+                    // content 默认出口 = 嵌套 full 变体（组合形态消费：
+                    // 双变体同页 + G1 壳内壳证明）
+                    SandwichShellFull {
+                        slot(name: "toolbar") {
+                            text "swf toolbar" {}
+                        }
+                        slot(name: "statusbar") {
+                            text "swf status" {}
+                        }
+                        text "swf full content" {}
+                    }
+                }
             }
         }
     }
