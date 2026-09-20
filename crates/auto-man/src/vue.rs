@@ -2140,6 +2140,15 @@ fn write_project_files(
             .map_err(|e| format!("Failed to write src/auto-sources.ts: {}", e))?;
     }
 
+    // P660-D1（PLAN-080 F-R2 收口）：main.ts 的 import.meta.env 需 vite/client
+    // 环境类型，否则 vue-tsc TS2339。经 create-vue 惯例的 src/vite-env.d.ts
+    // 三斜线引用供给，不在 tsconfig 设 types（避免窄化 @types 自动包含）。
+    fs::write(
+        output_path.join("src").join("vite-env.d.ts"),
+        "/// <reference types=\"vite/client\" />\n",
+    )
+    .map_err(|e| format!("Failed to write src/vite-env.d.ts: {}", e))?;
+
     Ok(())
 }
 
@@ -4287,6 +4296,16 @@ export default router
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
         println!("{}", "  ✓ Regenerated main.ts".bright_green());
 
+        // P660-D1（PLAN-080 F-R2 收口）：main.ts 的 import.meta.env 需 vite/client
+        // 环境类型，否则 vue-tsc TS2339——write-if-missing src/vite-env.d.ts
+        //（create-vue 惯例三斜线引用；不在 tsconfig 设 types 以免窄化 @types）。
+        let vite_env_path = src_dir.join("vite-env.d.ts");
+        if !vite_env_path.exists() {
+            fs::write(&vite_env_path, "/// <reference types=\"vite/client\" />\n")
+                .map_err(|e| format!("Failed to write src/vite-env.d.ts: {}", e))?;
+            println!("{}", "  ✓ Restored src/vite-env.d.ts (P660-D1)".bright_green());
+        }
+
         // Regenerate src/assets/index.css
         let assets_dir = src_dir.join("assets");
         fs::create_dir_all(&assets_dir)
@@ -5404,6 +5423,11 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
         }
     }
 
+    // P660-D1（PLAN-080 F-R2 收口）：overlay.ts 无条件 import ../auto-sources，
+    // 而 vue-tsc 对 src/** 全量类型检查——build/gen-only 路径也必须发射该文件，
+    // 否则干净 gen 树上 vue-tsc TS2307（此前仅 auto run/incremental 路径发射）。
+    write_auto_sources_ts(&resolve_front_dir(root_dir), &project.output_dir);
+
     Ok(project)
 }
 
@@ -5901,6 +5925,14 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         if stale {
             std::fs::create_dir_all(overlay_path.parent().unwrap()).ok();
             std::fs::write(&overlay_path, overlay_new).ok();
+        }
+    }
+    // P660-D1 自愈：旧工程 scaffold 无 vite-env.d.ts（增量路径不重写 scaffold
+    // 文件）——缺即补，vue-tsc TS2339 防线。
+    {
+        let vite_env = p646_vue_root.join("src").join("vite-env.d.ts");
+        if !vite_env.exists() {
+            std::fs::write(&vite_env, "/// <reference types=\"vite/client\" />\n").ok();
         }
     }
 
