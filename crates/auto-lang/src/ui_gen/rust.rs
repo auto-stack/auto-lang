@@ -10836,25 +10836,27 @@ widget Demo {
 }
 "#;
         let code = gen_button_view(src);
+        // PLAN-080：缺省 button = preflight 等价 chromeless——无 variant/size
+        // 预设注入（原 PLAN-571 UA 中性 preset 改为显式 variant="default" 档）。
         assert!(
-            code.contains("bg-muted border border-border"),
-            "缺省 button 注入 UA 等价中性 preset:\n{}",
+            !code.contains("bg-muted"),
+            "缺省 button 不再注入 UA 中性 preset:\n{}",
             code
         );
         assert!(
-            code.contains("h-10 px-4"),
-            "缺省 size preset 前置:\n{}",
+            !code.contains("h-10"),
+            "缺省 size preset 不再前置:\n{}",
             code
         );
         assert!(
             !code.contains("bg-primary"),
-            "缺省 button 不得再落主题色填充:\n{}",
+            "缺省 button 不得落主题色填充:\n{}",
             code
         );
     }
 
     #[test]
-    fn user_class_stays_after_preset() {
+    fn user_class_stands_alone_without_preset() {
         let src = r#"
 widget Demo {
     msg { Tap }
@@ -10867,8 +10869,14 @@ widget Demo {
 "#;
         let code = gen_button_view(src);
         assert!(
-            code.contains("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 px-2.5 py-1.5 text-xs"),
-            "preset 前置 + user class 后置（后类胜）:\n{}",
+            code.contains("px-2.5 py-1.5 text-xs"),
+            "user class 保留:\n{}",
+            code
+        );
+        // PLAN-080：无 variant 时不再前置任何 preset——user class 独挑外观。
+        assert!(
+            !code.contains("bg-muted border border-border"),
+            "无 variant 不注入 UA preset:\n{}",
             code
         );
     }

@@ -18581,26 +18581,37 @@ mod plan571_button_default_variant_tests {
     }
 
     #[test]
-    fn default_variant_is_neutral_baseline_with_hairline_border() {
-        for v in [None, Some("default")] {
-            let view = build_button(v);
-            assert!(
-                has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Muted))),
-                "缺省按钮基线 = muted 中性填充 (variant={v:?})"
-            );
-            assert!(
-                has_class(&view, &|c| matches!(c, StyleClass::Border)),
-                "缺省按钮必须有发丝描边（UA 预填等价）(variant={v:?})"
-            );
-            assert!(
-                has_class(&view, &|c| matches!(c, StyleClass::BorderColor(Color::Border))),
-                "描边色 = border 语义色 (variant={v:?})"
-            );
-            assert!(
-                !has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Primary))),
-                "缺省按钮不得再用主题色填充 (variant={v:?})"
-            );
-        }
+    fn absent_variant_is_chromeless_vm_arm() {
+        // PLAN-080：缺省（无 variant prop）= preflight 等价 chromeless——
+        // 无填充/无边框预设，外观完全归显式类（双轨与 vue cva 无
+        // defaultVariants 互锁）。
+        let view = build_button(None);
+        assert!(
+            matches!(view, View::Button { style: None, .. }),
+            "缺省 button 无任何 preset 类（style=None → iced 透明贴内容）"
+        );
+    }
+
+    #[test]
+    fn explicit_default_is_neutral_baseline_with_hairline_border() {
+        let v = Some("default");
+        let view = build_button(v);
+        assert!(
+            has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Muted))),
+            "显式 default 基线 = muted 中性填充 (variant={v:?})"
+        );
+        assert!(
+            has_class(&view, &|c| matches!(c, StyleClass::Border)),
+            "显式 default 必须有发丝描边（UA 预填等价）(variant={v:?})"
+        );
+        assert!(
+            has_class(&view, &|c| matches!(c, StyleClass::BorderColor(Color::Border))),
+            "描边色 = border 语义色 (variant={v:?})"
+        );
+        assert!(
+            !has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Primary))),
+            "显式 default 不得再用主题色填充 (variant={v:?})"
+        );
     }
 
     #[test]

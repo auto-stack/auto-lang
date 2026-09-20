@@ -18549,10 +18549,9 @@ export const buttonVariants = cva(
         icon: 'h-10 w-10',
       },
     },
-    defaultVariants: {
-      variant: 'default',
-      size: 'default',
-    },
+    // PLAN-080: 缺省无预设（preflight 等价）——无 variant/size prop 的裸
+    // Button 不落任何 variant/size 类，与 Rust variants.rs 缺省 chromeless
+    // 互锁；显式 variant='default'/size='default' 才得 PLAN-571 基线。
   },
 )
 
@@ -29741,10 +29740,12 @@ mod plan571_variants_cva_interlock_tests {
                 );
             }
         }
-        // defaultVariants 仍为 'default'（语义变更不改缺省键名）。
+        // PLAN-080：Button cva 无 defaultVariants——裸 Button（无 variant/
+        // size prop）不落任何 variant/size 类，与 Rust variants.rs 缺省
+        // chromeless 互锁；显式 variant='default' 才得 PLAN-571 基线。
         assert!(
-            variants_ts.contains("variant: 'default'"),
-            "defaultVariants.variant 应保持 'default'"
+            !variants_ts.contains("defaultVariants"),
+            "button cva 不应再有 defaultVariants（PLAN-080 缺省 chromeless）"
         );
     }
 
