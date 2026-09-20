@@ -3906,6 +3906,18 @@ mod tests {
                         style: None,
                         variant: TabsVariant::Default,
                     })
+                    // PLAN-034 T-05 canvas kind 夹具（D4 裁定：位图快照
+                    // 过线——防漏钉矩阵双向更新）。
+                    .child(View::Canvas {
+                        scene: crate::ui::view::CanvasScene::default(),
+                        logical_extent: Some((8.0, 4.0)),
+                        clear: Some("#ffffff".into()),
+                        on_pen_start: None,
+                        on_pen_move: None,
+                        on_pen_end: None,
+                        on_hit: None,
+                        style: None,
+                    })
                     .child(View::grid().cols(2).spacing(8).child(View::text("g1")).child(View::text("g2")).build())
                     .child(View::row().child(View::text("r1")).build())
                     .child(View::container(View::text("c")).build())
