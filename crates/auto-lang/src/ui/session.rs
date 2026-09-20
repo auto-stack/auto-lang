@@ -5309,7 +5309,14 @@ fn spawn_shell_outproc(
             return Ok(None);
         }
         // 静默孵化仅限无后端依赖（D4：有后端 app 未运行显示占位卡）。
+        // PLAN-037 R1 真机复审（F-R3）：后端声明面扩至供给决策树全域——
+        // media_root（capability 臂）/ back 特形（session 臂）任一命中即
+        // 占位卡，不孵化（mini 走供给的档位留作后续裁定，复审可翻案）；
+        // 裁决经 plan_backend 单点承载（G-2 单一裁决点语义）。
         if spec.daemon.is_some() || spec.back_root.is_some() || spec.exe.is_some() {
+            return Ok(None);
+        }
+        if !crate::ui::back_provision::plan_backend(&spec, name).is_empty() {
             return Ok(None);
         }
         let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
@@ -5979,6 +5986,44 @@ mod tests {
         let face = ds.split_ref_face(app_id, "mini").expect("face ref");
         assert_eq!(face.app_id, app_id);
         assert_eq!(face.view_name, Some("mini"));
+    }
+
+    /// PLAN-037 R1 真机复审（F-R3）：带后端供给声明的 app 不静默孵化——
+    /// dashboard 音乐卡（020 形态）曲库 0 根因 = hatch 绕过供给决策树；
+    /// 门槛扩至 plan_backend 全域（media_root capability / back 特形
+    /// session）→ 占位卡。无后端同形 app 照常孵化。
+    #[test]
+    fn hatch_gate_excludes_backend_provisioned_apps() {
+        const MINI_SRC: &str = "widget Probe {\n    view {\n        text \"x\"\n    }\n    view mini {\n        text \"m\"\n    }\n}\n";
+        let mk_resolver = |media_root: bool| {
+            std::sync::Arc::new(move |name: &str| {
+                (name == "probe-app").then(|| LaunchSpec {
+                    code: MINI_SRC.to_string(),
+                    media_root: media_root.then(|| "E:\\Music\\".to_string()),
+                    ..Default::default()
+                })
+            })
+        };
+        let mut ds = DesktopSession::__test_session();
+        ds.__test_open_desktop();
+        // 无后端声明：正常孵化（named mini 面在册；映射注册是调用方
+        // 职责——dashboard 臂同型）。
+        ds.desktop.app_resolver = Some(mk_resolver(false));
+        let hatched = ds.hatch_mini_app("probe-app").expect("hatch ok");
+        assert!(hatched.is_some(), "无后端 mini 照常孵化");
+        ds.register_hatched_mini("probe-app", hatched.unwrap());
+        assert!(ds.hatched_mini_of("probe-app").is_some());
+
+        // media_root 声明（020 形态）：占位卡不孵化（plan_backend ②臂命中）。
+        let mut ds2 = DesktopSession::__test_session();
+        ds2.__test_open_desktop();
+        ds2.desktop.app_resolver = Some(mk_resolver(true));
+        assert_eq!(
+            ds2.hatch_mini_app("probe-app").expect("hatch ok"),
+            None,
+            "带后端供给声明 → 占位卡（不孵化）"
+        );
+        assert!(ds2.hatched_mini_of("probe-app").is_none());
     }
 
     #[test]
