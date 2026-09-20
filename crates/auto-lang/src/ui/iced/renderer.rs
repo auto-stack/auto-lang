@@ -1629,6 +1629,10 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                 col = col.width(iced::Length::Fill);
             }
             col = col.max_width(mw);
+        } else if is.max_width_pct.is_some() && is.width.is_none() {
+            // PLAN-077: max-w-[N%] 无显式 width 时同 px max-width 先吃满父宽，
+            // 实际收窄由尾部 MaxWidthPct 委托 widget 在 layout 期完成。
+            col = col.width(iced::Length::Fill);
         }
         // Height — skip when justify needs it on container instead
         let needs_v_align = matches!(is.justify_content, Some(IcedJustify::Center | IcedJustify::End));
@@ -1659,6 +1663,7 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     }
 
     let col_max_width = iced_style.as_ref().and_then(|is| is.max_width);
+    let col_max_width_pct = iced_style.as_ref().and_then(|is| is.max_width_pct);
     let needs_wrap = justify_center || justify_end || has_visual;
     // PLAN-619 R3: 单侧 > 轴 > 统一（`mx-*`/`my-*`/`m-*` 此前被丢弃）。
     let (mt, mr, mb, ml) = iced_style
@@ -1794,7 +1799,7 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         }
         if let Some(id) = widget_id { cont = cont.id(id); }
         cont.into()
-    } else if col_max_width.is_some() {
+    } else if col_max_width.is_some() || col_max_width_pct.is_some() {
         let mut cont = container(col.padding(pd));
         if let Some(ref is) = iced_style {
             let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
@@ -1827,7 +1832,7 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         col.padding(pd).into()
     };
 
-    if needs_margin_wrap {
+    let el = if needs_margin_wrap {
         let mut cont = container(el);
         if mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0 {
             cont = cont.padding(iced::Padding { top: mt, right: mr, bottom: mb, left: ml });
@@ -1845,6 +1850,12 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         cont.into()
     } else {
         el
+    };
+    // PLAN-077: max-w-[N%] 百分比上限——像素上限走 Container::max_width 快路径，
+    // 百分比在最终元素最外层套委托 widget（layout 期按父级 offered 宽度收窄）。
+    match col_max_width_pct {
+        Some(pct) => crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into(),
+        None => el,
     }
 }
 
@@ -1891,6 +1902,7 @@ fn apply_row_style<M: Clone + Debug + 'static>(
     let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is)) || hover_cs.is_some();
     let pd = iced_padding(padding, style);
     let row_max_width = iced_style.as_ref().and_then(|is| is.max_width);
+    let row_max_width_pct = iced_style.as_ref().and_then(|is| is.max_width_pct);
 
     // Apply width and alignment to row
     let mut r = row;
@@ -1935,7 +1947,7 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         }
         if let Some(id) = widget_id { cont = cont.id(id); }
         cont.into()
-    } else if row_max_width.is_some() {
+    } else if row_max_width.is_some() || row_max_width_pct.is_some() {
         r = r.padding(pd);
         let mut cont = container(r);
         // Propagate row's width/height to wrapping container
@@ -1971,7 +1983,7 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
     let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
         || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
-    if needs_margin_wrap {
+    let el = if needs_margin_wrap {
         let mut cont = container(el);
         if mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0 {
             cont = cont.padding(iced::Padding { top: mt, right: mr, bottom: mb, left: ml });
@@ -1988,6 +2000,11 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         cont.into()
     } else {
         el
+    };
+    // PLAN-077: max-w-[N%] 百分比上限（同 apply_column_style 尾部）。
+    match row_max_width_pct {
+        Some(pct) => crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into(),
+        None => el,
     }
 }
 
@@ -2003,6 +2020,7 @@ fn apply_container_style<M: Clone + Debug + 'static>(
     widget_id: Option<String>,
     hover: Option<crate::ui::iced::hover_area::HoverFlag>,
 ) -> iced::Element<'static, M> {
+    let max_width_pct = style.and_then(|s| IcedStyle::from_style(s).max_width_pct);
     cont = cont.padding(iced_padding(padding, style));
     // PLAN-002 B：hover 变体类 → 第二套已构建样式（同 apply_column_style）。
     let hover_cs = style
@@ -2096,10 +2114,16 @@ fn apply_container_style<M: Clone + Debug + 'static>(
         if center_y { cont = cont.height(iced::Length::Fill).align_y(iced::alignment::Vertical::Center); }
     }
 
-    if let Some(id) = widget_id {
+    let el: iced::Element<'static, M> = if let Some(id) = widget_id {
         cont.id(id).into()
     } else {
         cont.into()
+    };
+    match max_width_pct {
+        // PLAN-077: max-w-[N%] 百分比上限（同 col/row 臂尾部）——居中臂的
+        // width(Fill) 先行吃满父宽，收窄由本委托 widget 在 layout 期完成。
+        Some(pct) => crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into(),
+        None => el,
     }
 }
 
@@ -3553,6 +3577,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         || iced_style.padding_right.is_some()
                         || iced_style.max_width.is_some()
                         || iced_style.max_height.is_some()
+                        // PLAN-077: max-w-[N%] 同样要求盒承载（百分比收窄由
+                        // 下方 MaxWidthPct 委托 widget 完成）。
+                        || iced_style.max_width_pct.is_some()
                         || box_height.is_some()
                         || iced_style.shadow;
 
@@ -3577,18 +3604,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 cont = cont.align_y(iced::alignment::Vertical::Center);
                             }
                         }
-                        cont.into()
+                        let el: iced::Element<'static, M> = cont.into();
+                        match iced_style.max_width_pct {
+                            Some(pct) => crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into(),
+                            None => el,
+                        }
                     } else {
                         text_widget.into()
                     }
                 } else {
                     text_widget.into()
                 };
-                if let Some(ref s) = style {
+                let el = if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
                     wrap_with_margin(el, &iced_style)
                 } else {
                     el
+                };
+                match style.as_ref().and_then(|s| IcedStyle::from_style(s).max_width_pct) {
+                    Some(pct) => crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into(),
+                    None => el,
                 }
                 }
             }

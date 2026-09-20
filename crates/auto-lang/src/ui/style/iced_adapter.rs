@@ -118,6 +118,8 @@ pub struct IcedStyle {
     pub height: Option<IcedSize>,
     pub max_width: Option<f32>,  // pixels
     pub max_height: Option<f32>, // pixels
+    /// PLAN-077: `max-w-[N%]` 百分比上限（0-100，layout 期相对父级求值）。
+    pub max_width_pct: Option<f32>,
 
     // Border Radius (L1 + L2)
     pub rounded: bool,
@@ -378,6 +380,7 @@ impl IcedStyle {
             height: None,
             max_width: None,
             max_height: None,
+            max_width_pct: None,
             rounded: false,
             border_radius: None,
             border_radius_tl: None,
@@ -734,6 +737,9 @@ impl IcedStyle {
             }
             StyleClass::MaxWidth(px) => {
                 self.max_width = Some(*px);
+            }
+            StyleClass::MaxWidthPct(pct) => {
+                self.max_width_pct = Some(*pct);
             }
             StyleClass::MaxHeight(px) => {
                 self.max_height = Some(*px);

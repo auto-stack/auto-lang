@@ -235,6 +235,11 @@ pub enum StyleClass {
     /// Max width: max-w-{named|numeric} (pixels)
     MaxWidth(f32),
 
+    /// Max width percent: max-w-[N%] —— CSS 百分比上限（相对父级内容盒）。
+    /// PLAN-077 (auto-musk ChatMessage max-w-[70%])：像素 MaxWidth 无法表达，
+    /// 单独成变体走 layout 期委托 widget（iced/max_width.rs）。
+    MaxWidthPct(f32),
+
     /// Max height: max-h-{named|numeric} (pixels)
     MaxHeight(f32),
 
@@ -1367,7 +1372,14 @@ impl StyleClass {
         // ========== Max Sizing (L1) ==========
 
         // Parse max-width: max-w-{named|numeric} or max-w-[Npx]
+        // PLAN-077: max-w-[N%] → MaxWidthPct（父级宽度百分比，layout 期求值）。
         if let Some(rest) = class.strip_prefix("max-w-") {
+            if let Some(pct) = arbitrary_value
+                .and_then(|av| av.strip_suffix('%'))
+                .and_then(|n| n.parse::<f32>().ok())
+            {
+                return Ok(StyleClass::MaxWidthPct(pct));
+            }
             if let Some(px) = parse_max_size_value_arbitrary(rest, arbitrary_value) {
                 return Ok(StyleClass::MaxWidth(px));
             }
@@ -2535,6 +2547,9 @@ mod tests {
         assert!(matches!(StyleClass::parse_single("max-w-none"), Ok(StyleClass::MaxWidth(v)) if v == f32::INFINITY));
         assert!(matches!(StyleClass::parse_single("max-w-full"), Ok(StyleClass::MaxWidth(v)) if v == f32::INFINITY));
         assert_eq!(StyleClass::parse_single("max-w-0.5"), Ok(StyleClass::MaxWidth(2.0)));
+        // PLAN-077 (auto-musk ChatMessage): 百分比上限独立变体。
+        assert_eq!(StyleClass::parse_single("max-w-[70%]"), Ok(StyleClass::MaxWidthPct(70.0)));
+        assert_eq!(StyleClass::parse_single("max-w-[33.3%]"), Ok(StyleClass::MaxWidthPct(33.3)));
         assert_eq!(StyleClass::parse_single("max-h-px"), Ok(StyleClass::MaxHeight(1.0)));
         assert!(StyleClass::parse_single("max-w-fit").is_err());
         // grid 扩档:col-start 8..13 / col-end / row-end
