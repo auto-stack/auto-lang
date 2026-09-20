@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-668
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: baseline-red-clearance
 author: [zcode]
 created_at: 2026-09-20
@@ -319,6 +319,28 @@ test_aavm2_goldens_check` 全绿；抽样示例构建链绿；KNOWN-DEBT 中本�
 
 ## 9. 复审记录
 
+- **2026-09-21 review（/auto-plan:review，执行会话内复核——独立性声明：结论自工件重建）**：
+  stage: review | PLAN-668 | plan_revision 1 | outcome: **pass**（含一轮 needs_fix 闭环） |
+  reviewed_commit: plan-668-dev@08cd793a3（=a41a47fab merge + F-668-R1） | base_commit:
+  27c196c04（并流 master 至 002d74e29 世代：PLAN-036/038/669 簿记） | dependency_revisions:
+  组内 auto-down detached@fba6563 | spec_inputs: docs/specs/auto-man/project.md（SD 行
+  0198f814c 落笔+合并树复核） | acceptance_results: AC-01 pass（baseline.md R-01..R-26
+  机械核对零缺+四态零未分类；A-01..08 六行显式两行折叠全覆盖）/AC-02 pass（tv
+  3817/3817 新鲜复跑）/AC-03 pass（38 合并滤串新鲜全绿含 display_family 双态：
+  tv 无 ui-iced+daily 有 ui-iced 皆绿）/AC-04 pass（tt 4039/4039+实编门 0 unexpected，
+  bless 附人工核验记录）/AC-05 pass（taa 金样绿）/AC-06 pass（AC-02/03/06 滤串 38
+  测全绿+tf 3670/3670 含 docs_gen 面）/AC-07 pass（沙箱 7 例 vue-tsc 面+017/025 后端
+  cargo check 绿+SD 行在档）/AC-08 pass（台账 P668 节+21 处清偿标记+564-Q6 注销，
+  机械核对）/AC-09 pass（终验矩阵在案；merge 收尾即本记录后执行） | findings:
+  **F-668-R1**（medium→已闭环）：master 并流（PLAN-038 脚手架扩展功能色）致
+  ui_snapshots__app 字节漂移 19837→20509B（结构断言不变）——needs_fix 回 work
+  一轮 accept（08cd793a3，R-18 同款），ui_snapshots 3/3 复绿+tf 3670/3670 复验。
+  非阻塞观察：R-20 playwright 实跑未执行（环境无 browser，静态等价验证四资产
+  全符，AC-06"或按分类处置落册"口径内）；R-25/A-08 musk p054×2 新观测已呈报
+  转介 | evidence: docs/plans/evidence/p668/baseline.md（在库持久）+本记录内嵌
+  摘要（临时日志 .wt/lang-668/logs 随组清理，数字以本记录与 baseline.md 为准） |
+  next: merge（/auto-plan:merge——Conventional Commit 族+账本三件套+归档+wt-guard
+  三清，组内含 auto-down 依赖位）。
 - **2026-09-21 work handoff（/auto-plan:work）**：stage: work | PLAN-668 |
   plan_revision 1（+T-05..T-09 证据增补） | outcome: pass | code_commit:
   plan-668-dev @ merge a41a47fab（T-02=9ad405771/T-03=a8e44e3f9/T-04=acf22be45/
