@@ -1,14 +1,16 @@
 ---
 plan_id: PLAN-666
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed            # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-demo-repatriation
 author: [agent]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components:
+  - docs/specs/auto-lang/ui/overview.md#资产位置注记（PLAN-590 修订 2026-09-20）  # 旧"三 demo 在 auto-os/apps/"单一表述废止
+new_spec_components:
+  - docs/specs/auto-lang/ui/overview.md#ui-gallery-双轨事实源契约（PLAN-666）  # SD-01+SD-02（发射器缺席语义并入）
 touched_goals: [GOAL-010]
 
 affects: [ui/overview.md, auto-man/overview.md]
@@ -323,6 +325,40 @@ plan5.2 预设的"docs_gen 4 测/cmd_docs/gallery_golden/plan370/409/412/
   kitchen-sink/ui-cache 孤儿 WIP 留主未处置（他族 docs_gen 产物）。
   **观察**（不入债）：examples/ui README 表 043/044 行 stale（整编迁出后
   行未删，reorg 遗留）；047-bp-admin 无表行（657 遗留）。
+
+- 2026-09-20 review（stage: review, revision 1）：
+  `pass | PLAN-666 | r1 | reviewed_commit=c2fe8cb51
+  （plan-666-dev@.wt/lang-666/auto-lang） | base=e2ca18360 | dep:
+  auto-os@24aa01f（跨仓产物）+auto-down 只读依赖位 6a9df40 | spec_inputs:
+  ui/overview.md@e6589907c 前版 | AC: 01 pass / 02 pass / 03 pass /
+  04 pass / 05 pass / 06 pass | findings: R1-F1..F7（全非阻塞，见下） |
+  evidence: 见下 | next: merge`。
+  **独立性声明**：与实施同会话——结论自工件重建（提交链/diff 面/命令
+  复跑），不采信执行摘要；关键复跑项如下。
+  - **基线**：diff 面=e2ca18360..c2fe8cb51 恰四域（30 新文件+README+
+    app_registry.rs+specs+gitignore 34 files/5164+）；plan503 等 app 面
+    锚 diff=0（AC-05 结构证明）；worktree 无未提交实现（仅未跟踪 VM
+    截图证据件）。
+  - **AC-01 复跑**：diff -r 30 文件——29 全等 + 1 计划分歧（038 README
+    =T-06 反链 auto-os 侧 +5 行，5.3 授权；快照基准=反链提交前）；tracked
+    15/8/7；主检出残骸与入站 tracked 路径**零碰撞**（comm 空）。
+  - **AC-02 复跑**：038 vue 腿复现 HTTP 200（复审当次）；025/028 腿与
+    038 VM 腿沿用 T-05 记录（计划内数字+MCP envelope/截图在案）。
+  - **AC-03 复用理由**：末提交 c2fe8cb51 仅 docs/specs（--stat 1 file），
+    t/tv/tf 均跑于代码等价输入——t: 31⊆33 零新增（master 独有 2=本计划
+    转绿的预存红）；tv: 红集全等；tf: 差 1=ffi_dual_019 隔离双绿 flake。
+  - **AC-04 复验**：git grep @24aa01f registry.at 三 id 命中（durable）。
+  - **AC-06 复验**：五史录链接目标 ls 全存在。
+  - **健康检查**：rustfmt 基线 30 hunk=worktree 30 hunk（零新增，文件级
+    预存分叉）；无遗留 debug 输出；编译零新增告警。
+  - findings：R1-F1（注记）AC-01 单文件计划内分歧如上；R1-F2 P666-D1
+  025 后端 codegen 两侧对称坏；R1-F3 P666-D2 038 vue-tsc 对称红；
+  R1-F4 P666-D3 主检出残骸 merge 时清（已验零碰撞）；R1-F5 P666-D4
+  auto-os kitchen-sink 孤儿 WIP 留主；R1-F6 README 043/044 stale+047
+  缺行（域外观察）；R1-F7 gitignore 反选目录级——038 screenshots 目录
+  新增 png 显示为未跟踪（化妆级）。**规范增量**：SD-01/SD-02 文本与
+  实测行为核对一致（档位/退役/路径敏感面均有实证）；SD-02 目地调整
+  （auto-man 无 spec 模块→并入 ui/overview.md）合规先例 642/658/662。
 
 ## 10. 待澄清事项
 
