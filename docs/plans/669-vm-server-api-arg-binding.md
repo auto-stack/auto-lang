@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-669
-status: execution_done               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-server-api-arg-binding
 author: [zcode]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 2
-current_step: 6
+current_step: 4
 total_steps: 6
 
 # /auto-plan:review 结束时填写：
@@ -259,7 +259,7 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
   [✅ 已完成] worktree 43fd4eed8：check 0 错；
   `plan669_api_param_sigs_roundtrip` PASS；重置挂点=lib.rs 四处
   axum_adapter::reset 同位 + clear_http_routes 连清。
-- [x] **T-02** 共享绑定器 `bind_api_args_by_name`（§5.2 语义全量）
+- [ ] **T-02** 共享绑定器 `bind_api_args_by_name`（§5.2 语义全量）
   涉及：`vm/ffi/http_server.rs`。
   验证：绑定器单元矩阵（§6 列举项）绿。
   → AC-01..AC-04/AC-06/AC-07 逻辑源。
@@ -291,7 +291,7 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
   （同步助手+绑定失败 400/500 早返）；stdlib 两循环路由换共享
   match_route（原生 listen 路径 query 从未解析的附带修复）；
   find_route 死码移除；e2e 32/32 维持。
-- [x] **T-05** 规范增量落档 + ledger 元数据
+- [ ] **T-05** 规范增量落档 + ledger 元数据
   涉及：`docs/specs/stdlib/design/http-server.md`（SD-01/SD-02）、本文件
   frontmatter（`new_spec_components` 定稿）。
   验证：SD 表逐行对照 diff。
@@ -335,6 +335,28 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
   opt-in、whole-body 容忍扩展；b1/b6 夹具现代化。`blockers`: 无。
   `next: review`（/auto-plan:review 独立复审 → merge；merge 后通知
   auto-edit 复跑六端点探针收 PLAN-003 B1/r2/T-03，§10-4）。
+- 2026-09-21（review 第一轮）：`stage: review`，rev 2，reviewed_commit
+  83e1b68c3，base 5d5090e14，dep auto-down fba6563ed（detached）。
+  `outcome: needs_fix`（同会话复审，结论自工件重建：全量 diff 逐 hunk
+  审读 + 四门禁新鲜复跑——单测 13/13、th 32/32 空载 1.58s（SSE 族负载
+  flake 两次现身=债册 346/317+317 在案类，非本改动面）、tv 2735/2737
+  （2 红=master 在册 ui_gen 双测）、tf 3679/3682（ui_gen×2 在册+
+  plan394 c1_future_all 一次性负载 flake 单跑绿、同债册 447-① 类）。
+  `findings`:
+  - **F-669-R1**（AC-06 partial）：AC-06 承诺"单元测试直证绑定器回退臂"，
+    13 个单测全打按名路径，`bind_api_args_or_legacy` 的 legacy 位序臂
+    （无签名回退）零测试覆盖——e2e 全走 codegen 必有签名覆盖不到；该臂
+    虽为旧循环代码逐字节搬运（diff 审读证实），但承诺的验证方法未兑现。
+    → 重开 T-02：补回退臂单测（无签名注册→位序压参+i32 试探+body 直塞）。
+  - **F-669-R2**（规范增量缺口）：§4.1.1 未写明三条同步路径
+    （serve_blocking_stdnet/run_http_server_blocking/shim_http_server_listen）
+    无元数据源——活的 native listen 对 meta 形参 400 指名而 async 供给
+    cookies/auth，用户可见差异须落档。→ 重开 T-05：补一句。
+  - **F-669-R3**（非阻塞 nit，随 R1 顺清）：http_server.rs by-name 段
+    节头注释仍写"lone trailing unbound param receives metadata"未带
+    rev2 按名限定词（函数级文档准确）。
+  `next: work`（修 R1/R2/R3 → execution_done → 复审第二轮）。T-02/T-05
+  重开，current_step=4，status → executing。
 
 ## 10. 待澄清事项
 
