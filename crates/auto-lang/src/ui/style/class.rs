@@ -168,6 +168,15 @@ pub enum StyleClass {
     /// Margin X Auto: mx-auto — center horizontally (both margins auto)
     MarginXAuto,
 
+    /// PLAN-663 C2: Margin Y Auto: my-auto — 定高列内垂直安全居中（渲染前
+    /// 展开 h-full justify-center 包裹列：矮内容居中、超高内容溢出裁剪，
+    /// 即 CSS margin:auto 的 safe-center 语义）。
+    MarginYAuto,
+
+    /// PLAN-663 C2: Margin Auto: m-auto — 水平（沿用左右 auto flag）+ 垂直
+    /// （同 MarginYAuto）双向居中。
+    MarginAuto,
+
     /// Gap: gap-{0-12} (gap-0, gap-1, ..., gap-12)
     Gap(SizeValue),
 
@@ -824,6 +833,14 @@ impl StyleClass {
         if let Some(rest) = class.strip_prefix("pr-") {
             let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
             return Ok(StyleClass::PaddingRight(size));
+        }
+
+        // PLAN-663 C2: 垂直 auto margin 精确匹配（须置于 m-/my- 前缀臂之前）
+        if class == "my-auto" {
+            return Ok(StyleClass::MarginYAuto);
+        }
+        if class == "m-auto" {
+            return Ok(StyleClass::MarginAuto);
         }
 
         // Parse margin: m-{0-12} or m-[Npx]
@@ -2554,6 +2571,11 @@ mod tests {
         assert_eq!(StyleClass::parse_single("w-screen"), Ok(StyleClass::Width(SizeValue::Screen)));
         assert_eq!(StyleClass::parse_single("h-full"), Ok(StyleClass::Height(SizeValue::Full)));
         assert_eq!(StyleClass::parse_single("w-full"), Ok(StyleClass::Width(SizeValue::Full)));
+        // PLAN-663 C2: 垂直 auto margin
+        assert_eq!(StyleClass::parse_single("my-auto"), Ok(StyleClass::MarginYAuto));
+        assert_eq!(StyleClass::parse_single("m-auto"), Ok(StyleClass::MarginAuto));
+        assert_eq!(StyleClass::parse_single("mx-auto"), Ok(StyleClass::MarginXAuto));
+        assert_eq!(StyleClass::parse_single("ml-auto"), Ok(StyleClass::MarginLeftAuto));
         // basis 全档
         assert_eq!(StyleClass::parse_single("basis-4"), Ok(StyleClass::FlexBasis(SizeValue::Fixed(4))));
         assert_eq!(StyleClass::parse_single("basis-1/2"), Ok(StyleClass::FlexBasis(SizeValue::Half)));

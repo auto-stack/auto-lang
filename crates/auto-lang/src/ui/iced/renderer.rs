@@ -1228,7 +1228,108 @@ fn viewport_classes_mut<M: Clone + Debug>(v: &mut AbstractView<M>) -> Option<&mu
 
 /// 渲染入口调用：整树重写视口单位（见模块注释）。
 pub(crate) fn rewrite_viewport_units<M: Clone + Debug>(root: &mut AbstractView<M>) {
+    expand_margin_y_auto_walk(root);
     rewrite_viewport_walk(root, ViewportAnchor::NONE);
+}
+
+// ═══ PLAN-663 C2: my-auto/m-auto 垂直安全居中 ══
+//
+// CSS 中 `margin-top/bottom: auto` 在定高 flex 容器内吸收剩余空间（safe
+// center：内容矮→居中，高→贴顶溢出）。iced 无 margin-auto 布局原语，渲染
+// 前把「定高(px)且无 overflow 的 Column」内携带 my-auto/m-auto 的直接子改
+// 写为 h-full justify-center 包裹列：iced justify-center 让渡列高给外包
+// container（center_y），矮内容被垂直居中；高内容溢出裁剪——与 CSS 语义
+// 对齐（无滚动场景；滚动由调用方 frame 的 overflow 层承接，见 T-12 组
+// 合）。带 overflow 的列不展开（滚动交互动 T-12 机制，双重语义不可叠加）。
+
+fn column_definite_height_no_overflow(style: Option<&Style>) -> bool {
+    let Some(s) = style else { return false };
+    let mut definite = false;
+    for c in &s.classes {
+        match c {
+            StyleClass::Height(SizeValue::Pixels(px)) if *px > 0.0 => definite = true,
+            StyleClass::OverflowYAuto | StyleClass::OverflowYHidden | StyleClass::OverflowHidden => return false,
+            _ => {}
+        }
+    }
+    definite
+}
+
+fn child_has_margin_y_auto<M: Clone + Debug>(v: &AbstractView<M>) -> bool {
+    let style = match v {
+        AbstractView::Row { style, .. }
+        | AbstractView::Column { style, .. }
+        | AbstractView::Text { style, .. }
+        | AbstractView::Button { style, .. }
+        | AbstractView::Input { style, .. }
+        | AbstractView::Textarea { style, .. }
+        | AbstractView::CodeEditor { style, .. }
+        | AbstractView::Image { style, .. }
+        | AbstractView::Container { style, .. }
+        | AbstractView::Scrollable { style, .. } => style,
+        _ => return false,
+    };
+    let Some(s) = style else { return false };
+    s.classes.iter().any(|c| matches!(c, StyleClass::MarginYAuto | StyleClass::MarginAuto))
+}
+
+fn expand_margin_y_auto_walk<M: Clone + Debug>(v: &mut AbstractView<M>) {
+    let transform_children = matches!(v, AbstractView::Column { .. })
+        && {
+            let style = match &*v {
+                AbstractView::Column { style, .. } => style.as_ref(),
+                _ => None,
+            };
+            column_definite_height_no_overflow(style)
+        };
+    if transform_children {
+        if let AbstractView::Column { children, .. } = v {
+            for c in children.iter_mut() {
+                if child_has_margin_y_auto(c) {
+                    let inner = std::mem::replace(
+                        c,
+                        AbstractView::Empty,
+                    );
+                    *c = AbstractView::Column {
+                        children: vec![inner],
+                        spacing: 0,
+                        padding: 0,
+                        style: Style::parse("h-full w-full flex-col justify-center").ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    };
+                }
+            }
+        }
+    }
+    // 继续下潜（包裹列的子不再含 my-auto——刚从原位搬入；其余子照常扫描）
+    let style_owned = match &*v {
+        AbstractView::Column { style, .. } => style.clone(),
+        _ => None,
+    };
+    let _ = style_owned;
+    match v {
+        AbstractView::Row { children, .. } | AbstractView::Column { children, .. } => {
+            for c in children.iter_mut() {
+                expand_margin_y_auto_walk(c);
+            }
+        }
+        AbstractView::Grid { cells, .. } => {
+            for c in cells.iter_mut() {
+                expand_margin_y_auto_walk(c);
+            }
+        }
+        AbstractView::Container { child, .. }
+        | AbstractView::Scrollable { child, .. }
+        | AbstractView::MouseArea { content: child, .. } => {
+            expand_margin_y_auto_walk(child);
+        }
+        AbstractView::Overlay { base, content, .. } => {
+            expand_margin_y_auto_walk(base);
+            expand_margin_y_auto_walk(content);
+        }
+        _ => {}
+    }
 }
 
 /// 对 `v` 的直接子逐个：先按当前锚重写子自身视口类，再携锚下潜。
@@ -26700,6 +26801,45 @@ mod tests {
         rewrite_viewport_units(&mut root);
         let AbstractView::Column { children, .. } = &root else { panic!() };
         assert_eq!(height_of(&children[0]), SizeValue::Screen);
+    }
+
+    #[test]
+    fn p663_margin_y_auto_expands_in_definite_column() {
+        let mut root = col("w-full h-[600px] bg-background", vec![
+            col("h-10", vec![]),
+            col("my-auto w-40", vec![]),
+        ]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        assert!(matches!(classes_of(&children[0])[0], StyleClass::Height(_)), "非 auto 子不动");
+        // my-auto 子被包进 h-full justify-center 包裹列
+        let AbstractView::Column { children: wrap, style: Some(ws), .. } = &children[1] else {
+            panic!("my-auto 子应被包裹");
+        };
+        assert_eq!(wrap.len(), 1, "包裹列恰含原子");
+        assert!(
+            ws.classes.iter().any(|c| matches!(c, StyleClass::JustifyCenter)),
+            "包裹列须 justify-center"
+        );
+        assert!(
+            ws.classes.iter().any(|c| matches!(c, StyleClass::Height(SizeValue::Full))),
+            "包裹列须 h-full"
+        );
+    }
+
+    #[test]
+    fn p663_margin_y_auto_skips_indefinite_and_overflow_columns() {
+        // 无定高：不展开
+        let mut root = col("w-full", vec![col("my-auto", vec![])]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        assert!(matches!(classes_of(&children[0])[0], StyleClass::MarginYAuto));
+
+        // overflow-y-auto 定高列：不展开（滚动语义归 T-12 机制）
+        let mut root2 = col("h-[720px] overflow-y-auto", vec![col("my-auto", vec![])]);
+        rewrite_viewport_units(&mut root2);
+        let AbstractView::Column { children: c2, .. } = &root2 else { panic!() };
+        assert!(matches!(classes_of(&c2[0])[0], StyleClass::MarginYAuto));
     }
 
     #[test]

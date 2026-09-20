@@ -77,6 +77,8 @@ pub struct IcedStyle {
     pub margin_right: Option<f32>,    // mr-N: converted to external right spacing
     pub margin_left_auto: bool,       // ml-auto: push element to right in row
     pub margin_right_auto: bool,      // mr-auto: push element to left in row
+    /// PLAN-663 C2: my-auto/m-auto — 定高列内垂直安全居中标记
+    pub margin_y_auto: bool,
     pub gap: Option<f32>,
     // Plan 412: axis-specific gaps — Row consumes gap_x, Column consumes gap_y.
     pub gap_x: Option<f32>,
@@ -361,6 +363,7 @@ impl IcedStyle {
             margin_right: None,
             margin_left_auto: false,
             margin_right_auto: false,
+            margin_y_auto: false,
             gap: None,
             gap_x: None,
             gap_y: None,
@@ -657,6 +660,17 @@ impl IcedStyle {
                 // mx-auto = center horizontally: both flags set
                 self.margin_left_auto = true;
                 self.margin_right_auto = true;
+            }
+            StyleClass::MarginYAuto => {
+                // PLAN-663 C2: 垂直安全居中标记（渲染前由
+                // expand_margin_y_auto 消费,展开 h-full justify-center 包裹）
+                self.margin_y_auto = true;
+            }
+            StyleClass::MarginAuto => {
+                // PLAN-663 C2: 水平+垂直双向 auto
+                self.margin_left_auto = true;
+                self.margin_right_auto = true;
+                self.margin_y_auto = true;
             }
             StyleClass::Gap(size) => {
                 self.gap = Some(size.to_pixels() as f32);
