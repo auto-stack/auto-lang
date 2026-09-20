@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-666
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-demo-repatriation
 author: [agent]
 created_at: 2026-09-20
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-010]
 
 affects: [ui/overview.md, auto-man/overview.md]
-current_step: 0
+current_step: 5
 total_steps: 7
 ---
 
@@ -148,6 +148,37 @@ auto-os 侧 apps.manifest 不动（三 app 本就未登记为桌面 app）。
 gallery_pages_compile/schema_drift（widgets-gallery 锚）、os_paths 解析
 器、app_registry。
 
+**T-02 锚点普查决策清单（2026-09-20 实测，覆盖 cf103b70d 全 18 文件 +
+5525ccd16 全 7 文件）**——重要勘定：两提交的"九处画廊语料锚"实锚
+**widgets-gallery/charts-gallery**（590 批同迁 auto-os 顶层的画廊两件），
+并非三 demo；三 demo 在 crates/ 内的真实锚点只有 scan/C 档断言一处。
+plan5.2 预设的"docs_gen 4 测/cmd_docs/gallery_golden/plan370/409/412/
+492_m4 语料回读 examples/ui"经普查**不成立**（全部 widgets-gallery 面，
+维持 auto-os 解析序定位），实际回接面收窄为下表 R 系：
+
+| # | 锚点（文件） | 590 时的改动 | 面裁定 | 666 动作 |
+|---|---|---|---|---|
+| R-1 | `ui/app_registry.rs` mod tests scan 断言 | ≥34→≥33 | **demo 面** | 回接 ≥36（33+3 复刻回源） |
+| R-2 | 同文件 C 档 want 清单+消息 | 删三 id（20→17） | **demo 面** | 恢复三 id（17→20），消息补 PLAN-666 |
+| R-3 | `examples/ui/README.md` | 迁出 callout+空洞注记 | **demo 面** | T-04 改写（复刻回源+互链） |
+| R-4 | `docs/specs/auto-lang/ui/overview.md` 资产位置注记 | 三 demo 去向 auto-os/apps | **demo 面** | 注记改写（demo 轨回源）+SD-01 落册（T-07） |
+| K-1 | `os_paths.rs`+`lib.rs`+app_registry re-export | 新增解析器 | 基建 | 不动（两面共用） |
+| K-2 | docs_gen.rs/tests/docs_gen.rs/cmd_docs.rs（4 测+脚手架） | widgets-gallery 解析序 | widgets 面 | 不动（045/046 画廊两件维持 auto-os） |
+| K-3 | gallery_golden.rs / schema_drift.rs / gallery_pages_compile_tests.rs | widgets-gallery | widgets 面 | 不动 |
+| K-4 | plan370_test_support/plan409/plan412/plan502_diagram | widgets-gallery pages/components | widgets 面 | 不动 |
+| K-5 | plan492_m4 三副本（charts-gallery/024-charts/widgets-gallery） | 第三副本改 os_paths 解析 | widgets 面 | 不动（"第三副本"=widgets-gallery，与三 demo 无关，裁定闭合） |
+| K-6 | plan503_tests launcher 桌面料 | 重锚 auto-os/apps/028 | **app 面** | 维持 auto-os 原件（桌面注册表语义） |
+| K-7 | deploy-website.yml 画廊段 | checkout auto-os | 画廊面 | 不动（ui-gallery 物理在 auto-os） |
+| K-8 | auto-man/vue.rs gallery_apps_dir 兄弟探测 | 补 ../auto-lang/examples/ui | 发射机制 | 不动（正是三 demo 回流画廊的通道） |
+| K-9 | a2ts 探针 / ui_gen/rust.rs 533 断言 / component_registry_test / fixtures/pkg_app.at 删除 | widgets-gallery/tsc 归位 | widgets 面 | 不动（fixture 维持删除） |
+| K-10 | musk_vm_track/session/iced renderer/vm engine 字面量引用 | 非锚（字符串/注册表 id，不读盘） | 非锚 | 零动作 |
+
+**desktop_mcp.py 裁定**：三 demo 的 `tests/desktop_mcp.py` 为 app 自带
+手动 MCP 探针脚本，随快照携带，无 auto-lang cargo 门禁引用——零接入
+动作（demo 轨语义=能跑即可，不接入框架门禁）。
+**render_filter 断言**：三 demo pac 均 `render: "vue"`，vm 过滤腿提示
+"（041/024 等）"无需恢复 025（025 当年 vm 腿已被 590 前形态变更覆盖）。
+
 ### 5.3 README 与互链
 
 - `examples/ui/README.md`：PLAN-590 callout 改写为"025/028/038 已于
@@ -196,17 +227,50 @@ gallery_pages_compile/schema_drift（widgets-gallery 锚）、os_paths 解析
 
 ## 8. 执行步骤
 
-- **T-01** 拷贝与清损（5.1 清单；`git -C D:/autostack/auto-os ls-files`
+- [x] **T-01** 拷贝与清损（5.1 清单；`git -C D:/autostack/auto-os ls-files`
   取源清单 → 复制 → `git add`；清 025 空壳/038 残骸；diff -r 对账）。
   验证：AC-01。依赖：无。
-- **T-02** 锚点普查（bounded investigation）：`git show cf103b70d
+  [✅ 2026-09-20 commit `17bf19706`] 30 tracked 文件落位（025×15/028×8/
+  038×7），diff -r 字节级全等（零容差需求）；根 .gitignore 加 038 历史截图
+  反选（旧规则吞 png）；worktree 新检出自净无残骸，主检出磁盘残骸（025-
+  dashboard/.am、038 的 .am/.auto/examples/src 遗留，全未跟踪无入口 .at）
+  **待合并前清理**（已核 git ls-files 空 + find 无 app.at，零扫描面影响）。
+- [x] **T-02** 锚点普查（bounded investigation）：`git show cf103b70d
   5525ccd16` 全量锚点逐项标注 demo 面/app 面/不动，产出决策清单落本节
   下方（决策件；492_m4 第三副本语义、desktop_mcp.py 038 腿在此裁定）。
   验证：清单覆盖两提交全部锚点文件。依赖：T-01。
-- **T-03** 锚点回接（按 T-02 清单执行 5.2；scan/C 档计数重基线；docs_gen
+  [✅ 2026-09-20] §5.2 下方 R/K 决策清单落档，覆盖 cf103b70d 18 文件 +
+  5525ccd16 7 文件全量 25 项。关键勘定：两提交画廊语料锚实锚 widgets/
+  charts-gallery（非三 demo），回接面收窄至 R-1..R-4；492_m4"第三副本"
+  =widgets-gallery 经 os_paths 解析（K-5 不动）；desktop_mcp.py=app 自带
+  手动探针（快照携带、零门禁接入）。
+- [x] **T-03** 锚点回接（按 T-02 清单执行 5.2；scan/C 档计数重基线；docs_gen
   /golden/plan 语料回读 examples/ui）。验证：AC-03 定向集。依赖：T-02。
-- **T-04** README 恢复与互链（5.3）。验证：AC-06。依赖：T-01。
-- **T-05** 三 demo 冒烟四腿 + 定向门（6 节）。验证：AC-02。依赖：T-01。
+  [✅ 2026-09-20 commit `390b3d998`] app_registry scan 断言 ≥33→≥35（实测
+  定数=master 净盘 32+3；590 注记"36"为 ui 轨整编前旧基数，且 master 现值
+  32<33 系整编 043-046 迁出后未重基线的预存红——本改一并转绿）；C 档
+  want 17→21（复刻三 id + 补 047-bp-admin want 漏更[Plan 657 上桌未更，
+  9c6c27e86 同型预存红]）；render_filter 断言零动作（三 pac 均
+  render:vue）；docs_gen/golden/plan 语料锚经 T-02 勘定全为 widgets 面，
+  无需回读。app_registry 24/24 绿。
+- [x] **T-04** README 恢复与互链（5.3）。验证：AC-06。依赖：T-01。
+  [✅ 2026-09-20 commit `c9d2d8237`] PLAN-590 callout 改写分道扬镳注记；
+  表恢复 025/028/038 三行（端口/desktop✓/史录链接）；编号说明 025/038
+  行补复刻去向；独立应用节+毕业节改写；407 链接修 archive/ 路径。链接
+  目标全部存在（ls 核验 archive/541、438、464、441、407、445）。auto-os
+  侧反链归 T-06（038 有 README；025/028 仅 SPEC.md → 单向+pac 口径）。
+- [x] **T-05** 三 demo 冒烟四腿 + 定向门（6 节）。验证：AC-02。依赖：T-01。
+  [✅ 2026-09-20] 四腿：038 vue=HTTP 200（localhost:4038 Vite ready）；
+  028 vue=HTTP 200（4028）；025 vue=前端 200（4025）+后端 8425 编译红
+  （29 错 E0308/E0425/E0599——与 auto-os 原件同命令**对称同红**，CLI
+  codegen 演化致生成后端漂移，预存非复刻引入，债 P666-D1）；038 VM=
+  test_vm_mcp.py 绿（AURA 首帧快照"💣 10"、截图 examples/ui/038-
+  minesweeper/tests/screenshots/p666_038_vm_initial.png、PLAN-646
+  envelope 双查过、干净终止）。定向门：docs_gen 4/4、app_registry
+  24/24、plan370/412/492_m4 45 跑 43 过（红=plan370_015 d10+plan492_m4
+  c2，master 同命令同红集）、gallery_vue_golden 与 master 同红（590
+  在案基线漂移）。**零新增红**。另注：038 `auto build`（vue-tsc 档）红
+  =两侧对称预存（生成 useMinesweeperStore.ts 类型错，auto-os 同错）。
 - **T-06** auto-os 侧 ui-gallery 再发射 + 产物提交（跨仓单 commit，消息
   `gallery: PLAN-666 产物刷新——025/028/038 回源条目恢复`+3 app README
   反链若做则并入）。验证：AC-04。依赖：T-01/T-03。
