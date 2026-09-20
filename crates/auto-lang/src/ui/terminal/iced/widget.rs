@@ -133,6 +133,62 @@ fn row_caches() -> &'static Mutex<HashMap<String, Vec<Option<RowEntry>>>> {
     ROW_CACHES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// PLAN-025 T-01 重排计数:refresh_row_cache 实际重建的行 Paragraph 数
+/// (进程级累计,读数差分;p025 headless 复现器与实机诊断共用埋点)。
+static ROW_REBUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 重建计数读数(累计)。
+pub(crate) fn row_rebuilds() -> u64 {
+    ROW_REBUILDS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// 重建计数取走清零(测试差分用)。
+pub(crate) fn row_rebuilds_reset() -> u64 {
+    ROW_REBUILDS.swap(0, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// 保留式文本层的缓存步(draw 每帧调用;PLAN-025 T-01 从 draw 内联
+/// 提取为可 headless 复现的步进):视口槽位键 + digest 门控重建,返回
+/// 本次实际重建行数。`visible_rows` = 本帧可见行数上限(draw 的可见性
+/// 截断同源;headless 复现器传 cells.len())。
+pub(crate) fn refresh_row_cache(
+    key: &str,
+    cells: &[Vec<TermCell>],
+    digests: &[u64],
+    palette: &[u32; 18],
+    pal_key: u64,
+    visible_rows: usize,
+) -> usize {
+    let mut rebuilt = 0usize;
+    let mut caches = row_caches().lock().unwrap();
+    let cache = caches.entry(key.to_owned()).or_default();
+    if cache.len() != cells.len() {
+        cache.clear();
+        cache.resize_with(cells.len(), || None);
+    }
+    for (y, line) in cells.iter().enumerate() {
+        if y >= visible_rows {
+            break;
+        }
+        // palette 键混入:换表即失效(见 draw 内 pal_key 注)。
+        let digest = digests[y] ^ pal_key;
+        let stale = cache[y].as_ref().is_none_or(|e| e.digest != digest);
+        if stale {
+            let para = build_row_paragraph(line, palette);
+            cache[y] = Some(RowEntry { para, digest });
+            rebuilt += 1;
+        }
+    }
+    drop(caches);
+    ROW_REBUILDS.fetch_add(rebuilt as u64, std::sync::atomic::Ordering::Relaxed);
+    if rebuilt > 0
+        && std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false)
+    {
+        eprintln!("[P25-ROWS] key={key} visible={visible_rows} rebuilt={rebuilt}");
+    }
+    rebuilt
+}
+
 /// PLAN-022 虚拟模式:每 key 上帧视口高(draw 记账,layout 的 014 探针
 /// 消费——scrollable 内子件的可用高约束为无穷,探针改吃此值)。
 static VIEWPORT_H: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
@@ -1016,35 +1072,35 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             }
         }
 
-        // 保留式文本层:每行 Paragraph 缓存 + digest 门控重建。
-        let mut caches = row_caches().lock().unwrap();
-        let cache = caches.entry(self.key.clone()).or_default();
-        if cache.len() != cells.len() {
-            cache.clear();
-            cache.resize_with(cells.len(), || None);
+        // 保留式文本层:每行 Paragraph 缓存 + digest 门控重建。PLAN-025
+        // T-01:重建步提取为 refresh_row_cache(重排计数埋点),本段只
+        // 负责按可见性 emit(缓存已新鲜)。
+        let visible_rows = {
+            let bottom = bounds.y + bounds.height;
+            cells
+                .iter()
+                .enumerate()
+                .take_while(|(y, _)| {
+                    bounds.y + PAD + shift + *y as f32 * CELL_H <= bottom
+                })
+                .count()
+        };
+        refresh_row_cache(&self.key, &cells, &digests, &palette, pal_key, visible_rows);
+        {
+            let mut caches = row_caches().lock().unwrap();
+            let cache = caches.entry(self.key.clone()).or_default();
+            for y in 0..visible_rows.min(cells.len()) {
+                let line_y = bounds.y + PAD + shift + y as f32 * CELL_H;
+                if let Some(entry) = cache[y].as_ref() {
+                    renderer.fill_paragraph(
+                        &entry.para,
+                        Point::new(bounds.x + PAD, line_y),
+                        pal_fg,
+                        bounds,
+                    );
+                }
+            }
         }
-        for (y, line) in cells.iter().enumerate() {
-            let line_y = bounds.y + PAD + shift + y as f32 * CELL_H;
-            if line_y > bounds.y + bounds.height {
-                break;
-            }
-            // palette 键混入:换表即失效(见上 pal_key 注)。
-            let digest = digests[y] ^ pal_key;
-            let stale = cache[y].as_ref().is_none_or(|e| e.digest != digest);
-            if stale {
-                let para = build_row_paragraph(line, &palette);
-                cache[y] = Some(RowEntry { para, digest });
-            }
-            if let Some(entry) = cache[y].as_ref() {
-                renderer.fill_paragraph(
-                    &entry.para,
-                    Point::new(bounds.x + PAD, line_y),
-                    pal_fg,
-                    bounds,
-                );
-            }
-        }
-        drop(caches);
 
         // 光标层:块/竖线/下划线(Hidden 或闪烁熄灭相不画)。块色 = 方案
         // 前景色带 alpha(classic-dark 下 e8e8e8@0.85 与旧 0.91 常量逐字节
