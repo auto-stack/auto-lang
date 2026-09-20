@@ -169,11 +169,12 @@ impl<'a> ProtocolHost<'a> {
                     let shm = super::shm::SharedFrameBuffer::create(&shm_name, 2, 16384)
                         .map_err(ProtocolError::Shm)?;
                     self.shm_buffers.insert(surface, shm);
-                    // PLAN-034 D3：位图段双胞胎（专用第二段——槽尺寸按
-                    // 表面档；loopback 宿主同享通道）。
+                    // PLAN-034 D3：位图段双胞胎（专用第二段——槽尺寸
+                    // = 表面档 ×4 字节余量（2× 线性），rqhost 同则）。
                     let bm_name = format!("{shm_name}-bm");
                     let bm_slot_size = width.ceil().max(1.0) as u32
                         * height.ceil().max(1.0) as u32
+                        * 4
                         * 4
                         + 4;
                     let bm = match super::shm::SharedFrameBuffer::create(

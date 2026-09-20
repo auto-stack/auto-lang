@@ -273,6 +273,10 @@ impl Coverage {
             "cursor-", "outline-", "transition", "antialiased",
             "shrink-", "whitespace-", "relative", "tracking-",
             "backdrop-",
+            // PLAN-034 T-05：ring 族（focus 光圈装饰渲染 not-yet——
+            // 043 样板携带 ring-2/ring-primary/ring-offset-2；token
+            // 映射在 native_style_token，声明放行同 ⑥）。
+            "ring-",
             // PLAN-029 T-08 降级放行：⑦ opacity- 子树透明渲染 not-yet
             //（DrawOp 无 alpha 通道——色彩 alpha 逐子树改写另立；壳
             // pack 拖拽幽灵/通知卡半透明面经此放行，视觉全不透明降级
@@ -822,6 +826,12 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         SC::Truncate => "truncate".into(),
         // PLAN-029 T-08：opacity 降级放行 token（渲染 not-yet，prefixes ⑦）。
         SC::Opacity(_) => "opacity-50".into(),
+        // PLAN-034 T-05：ring 族降级放行 token（focus 光圈装饰渲染
+        // not-yet——043 样板携带 ring-2/ring-primary/ring-offset-2，
+        // 声明放行同 opacity 先例）。
+        SC::RingWidth(_) => "ring-2".into(),
+        SC::RingColor(_) => "ring-primary".into(),
+        SC::RingInset => "ring-inset".into(),
         SC::BreakWords => "break-words".into(),
         SC::ListNone => "list-none".into(),
         SC::AccentColor(_) => "accent-1".into(),
@@ -895,6 +905,24 @@ pub fn effective_frame_mode(
 // ---------------------------------------------------------------------------
 // T2 单测：能力表 vs 视图清单判定（覆盖/不覆盖/降级载荷）
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod p034_ring_probe {
+    /// PLAN-034：ring 族声明放行实测（043 样板样式）。
+    #[test]
+    fn p034_ring_tokens_admitted() {
+        let parser = crate::ui::style::StyleParser::default();
+        let parsed = parser.parse(" ring-2 ring-primary ring-offset-2 ").unwrap_or_default();
+        let cov = super::Coverage::native_queue_set();
+        for sc in &parsed {
+            let tok = super::native_style_token(sc);
+            assert!(
+                cov.style_token_supported(&tok),
+                "token {tok}（{sc:?}）未放行"
+            );
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

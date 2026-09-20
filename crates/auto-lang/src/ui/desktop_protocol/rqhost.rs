@@ -388,11 +388,15 @@ fn apply_actions(
                     continue;
                 };
                 client.inner.shm.insert(surface, shm);
-                // PLAN-034 D3：位图段（专用第二段——槽尺寸按表面档：
-                // ceil(w)×ceil(h)×4+4，v1 = 1× 逻辑分辨率）。
+                // PLAN-034 D3：位图段（专用第二段——槽尺寸按表面档
+                // ×4 字节余量（= 2× 线性：DPI 缩放与适度超面画布
+                // coords；commit-on-touch 使未写页不计驻留）；超档上传
+                // = 观测弃置（v1 显式边界，043 样板 560×360 in 480×320
+                // 表面实测过档）。
                 let bm_name = format!("{shm_name}-bm");
                 let bm_slot_size = width.ceil().max(1.0) as u32
                     * height.ceil().max(1.0) as u32
+                    * 4
                     * 4
                     + 4;
                 let bm = match SharedFrameBuffer::create(&bm_name, 2, bm_slot_size) {

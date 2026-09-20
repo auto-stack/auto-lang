@@ -4035,11 +4035,12 @@ fn spawn_shell_outproc(
                         continue;
                     };
                     client.shm.insert(surface, shm);
-                    // PLAN-034 D3：位图段双胞胎（专用第二段——槽尺寸按
-                    // 表面档；Commands/Pixels 两模式同享）。
+                    // PLAN-034 D3：位图段双胞胎（专用第二段——槽尺寸
+                    // = 表面档 ×4 字节余量（2× 线性），rqhost 同则）。
                     let bm_name = format!("{shm_name}-bm");
                     let bm_slot_size = width.ceil().max(1.0) as u32
                         * height.ceil().max(1.0) as u32
+                        * 4
                         * 4
                         + 4;
                     let bm = match SharedFrameBuffer::create(&bm_name, 2, bm_slot_size) {
