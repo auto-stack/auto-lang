@@ -391,6 +391,10 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// outproc_spawner 同型先例）。
     pub shell_spawner:
         Option<Arc<dyn Fn(&crate::ui::desktop_protocol::shell_client::ShellGeometry, &str) -> std::io::Result<std::process::Child> + Send + Sync>>,
+    /// PLAN-036 T-07/T-08：launcher exe spawner（e2e 注入 re-exec 测试体
+    ///——shell_spawner 同型；None = 生产 re-exec auto 本体）。
+    pub launcher_spawner:
+        Option<Arc<dyn Fn(&str) -> std::io::Result<std::process::Child> + Send + Sync>>,
     /// Plan 508 G4：远程 WS 监听（boot 读 `shell.remote.token` 有值才开；
     /// None = 无远程面——缺省拒绝）。受理队列由 ServiceTick 泵消费。
     pub remote_listener: Option<crate::ui::desktop_protocol::transport::ws::WsListener>,
@@ -501,6 +505,7 @@ impl DesktopState {
             outproc_spawner: None,
             outproc_children: Vec::new(),
             shell_spawner: None,
+            launcher_spawner: None,
             remote_listener: None,
             remote_mirrors: Vec::new(),
             desktop_bus_inbox: Vec::new(),
@@ -3659,6 +3664,13 @@ fn spawn_shell_outproc(
     /// auto 本体（`run --autodesk-launcher --autodesk-broker=<pipe>`）+
     /// 注册表源/几何 env 注入（launcher_entry boot 扫描在案）。
     pub(crate) fn spawn_launcher_outproc(&mut self) -> std::io::Result<()> {
+        // e2e 注入臂（T-08）：测试体 spawn（env 已含源/几何）。
+        if let Some(spawn) = self.desktop.launcher_spawner.clone() {
+            let child = spawn(&self.broker_pipe.clone().unwrap_or_default())?;
+            self.desktop.outproc_children.push(child);
+            self.desktop.launcher_spawned = true;
+            return Ok(());
+        }
         let Some(entry) = self.desktop.launcher_entry.clone() else {
             return Err(std::io::Error::other("注册表未含 launcher 条目"));
         };
@@ -4240,7 +4252,8 @@ fn spawn_shell_outproc(
                                 );
                                 self.desktop.launcher_pipe = Some(client.pipe.clone());
                                 self.desktop.launcher_wid = Some(lwid);
-                                self.desktop.launcher_open = false;
+                                // launcher_open 保持（首召唤挂起位——attach
+                                // 追赶推送消费；死亡臂复位）。
                                 self.desktop.launcher_fp = None;
                                 self.desktop.shell_pseudo_wids.push(lwid);
                             }

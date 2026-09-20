@@ -10307,7 +10307,7 @@ fn panel_max_h(state: &crate::ui::session::DesktopSession) -> f32 {
 /// （宿主写状态不触发 handler，须显式重算）；返回聚焦任务（打开即聚焦，
 /// P3；update_inner 尾部的 __focus_input 消费在下一 launcher 消息周期
 /// 再生效——双保险）。注册表无 launcher 时 toast 降级（441 fallback 边界）。
-fn summon_launcher(
+pub(crate) fn summon_launcher(
     state: &mut crate::ui::session::DesktopSession,
 ) -> iced::Task<crate::ui::session::DesktopMessage> {
     use crate::ui::session::DesktopMessage as DM;
@@ -14834,7 +14834,7 @@ pub(crate) fn push_shell_projection_outproc(state: &mut crate::ui::session::Desk
 /// PLAN-030 T-04：desktop 面 outproc 推送（inject_desktop_surface 壳臂
 /// 等价——快照构建单源 build_desktop_surface_snapshot；指纹 = 叶面拼接）。
 /// `running_csv` 随 shell 面投影组同拍带入（in-proc apply 同源）。
-fn push_desktop_surface_outproc(
+pub(crate) fn push_desktop_surface_outproc(
     state: &mut crate::ui::session::DesktopSession,
     running_csv: &str,
 ) {

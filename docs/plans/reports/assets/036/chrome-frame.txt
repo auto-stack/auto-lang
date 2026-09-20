@@ -1,0 +1,18 @@
+clear 24,24,28,255
+quad 10.0,10.0 44.0x44.0 0,0,0,255
+text -173.2,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:launcher\u{ee02}"
+quad 70.0,10.0 44.0x44.0 0,0,0,255
+text -178.0,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:desktop-switch\u{ee02}"
+quad 122.0,10.0 44.0x44.0 0,0,0,255
+text -93.6,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:layout-grid\u{ee02}"
+quad 174.0,10.0 44.0x44.0 0,0,0,255
+text -52.4,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:layout-stack\u{ee02}"
+quad 834.0,10.0 44.0x44.0 0,0,0,255
+text 607.6,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:notification\u{ee02}"
+quad 1494.0,10.0 44.0x44.0 0,0,0,255
+text 1235.2,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:widgets-gallery\u{ee02}"
+quad 1546.0,10.0 44.0x44.0 0,0,0,255
+text 1384.4,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:config\u{ee02}"
+quad 1598.0,10.0 44.0x44.0 0,0,0,255
+text 1414.8,7.7 size=36.0 lh=48.6 247,249,251,255 "\u{ee01}iconfile:shutdown\u{ee02}"
+text 1674.0,10.0 size=12.0 lh=16.2 148,163,183,255 "显示桌面"

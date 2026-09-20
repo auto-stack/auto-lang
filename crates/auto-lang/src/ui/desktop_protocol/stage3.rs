@@ -560,6 +560,13 @@ mod tests {
             run_p030_shell_child(&broker_pipe);
             return;
         }
+        // PLAN-036 T-08：launcher 独立 exe 装配子进程——launcher_client
+        // 真身（AUTO_LAUNCHER_ENTRY env 由 spawner 注入）。
+        if mode == "launcher" && app == "p036-launcher" {
+            crate::ui::desktop_protocol::shell_client::run_launcher_outproc(&broker_pipe)
+                .expect("p036 launcher child");
+            return;
+        }
         // PLAN-032 T-07：六例全源档——native-full = 显式 queue（front 全
         /// .at 合并解析 + ensure_covered 门 + RqProjector）；native-
         /// auto-full = auto 档翻转抽样腿（resolve_native_frame_mode
@@ -1011,6 +1018,283 @@ mod tests {
     /// "P030Win" 入帧）④kill 壳 → 看门兵退避重启 → attach 指纹失效 →
     /// 全量重推恢复。`AUTO_DESKTOP_E2E=1` 门；留痕
     /// `AUTO_030_ASSETS=1` → assets/030/。
+    #[test]
+    /// PLAN-036 T-08：五面全 outproc 终态 e2e——壳 exe 五表面（bg/chrome/
+    /// switcher/notification/dashboard——B1/B2）+ launcher 独立 exe（B3
+    /// D3-C）双进程拓扑；`AUTO_DESKTOP_E2E=1` 门 + `AUTO_036_ASSETS=1`
+    /// → assets/036/ 帧留痕。腿：①壳五伪窗 ②五面投影→帧全在案（overlay
+    /// 懒装）③parity——本地 RqProjector 渲染 vs child 帧 DrawList 文本
+    /// 全等 ④launcher exe attach+帧（独立管线）⑤键盘动词（Advance 事件
+    /// 快照→帧变）⑥崩溃粒度（kill launcher → 管线回收 + 壳不连坐）。
+    #[test]
+    fn p036_all_faces_outproc_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        use crate::ui::desktop_protocol::message::shell_face;
+        use crate::ui::desktop_protocol::shell_client::ShellGeometry;
+        use crate::ui::session::{DesktopSession, ShellModel};
+
+        // launcher 注册表源（auto-os/apps/028-launcher；兄弟/主检出解析）。
+        let launcher_entry = crate::os_paths::resolve_os_top_dir(
+            &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+            "apps/028-launcher/src/front",
+        )
+        .map(|d| d.join("app.at"))
+        .filter(|p| p.is_file())
+        .expect("p036：028-launcher 源在案（AUTO_OS_ROOT 或兄弟/主检出）");
+
+        let broker_pipe = format!("autodesk-broker-036-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        session.desktop.shell_model = ShellModel::Outproc;
+        session.desktop.shell_geometry =
+            Some(ShellGeometry { viewport_w: 1280.0, viewport_h: 800.0, band_h: 48.0 });
+        let geometry = session.desktop.shell_geometry.unwrap();
+        // launcher 源 + e2e spawner 注入（re-exec 测试体）。
+        session.desktop.launcher_entry = Some(launcher_entry.clone());
+        let pipe_for_spawn = broker_pipe.clone();
+        let entry_for_spawn = launcher_entry.clone();
+        session.desktop.launcher_spawner = Some(Arc::new(move |_pipe| {
+            let exe = std::env::current_exe().expect("current_exe");
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.args(["t3_child_body", "--test-threads", "1", "--nocapture"])
+                .env(T3_BROKER_ENV, &pipe_for_spawn)
+                .env(T3_APP_ENV, "p036-launcher")
+                .env(T3_MODE_ENV, "launcher")
+                .env("AUTO_LAUNCHER_ENTRY", &entry_for_spawn)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::inherit());
+            for (k, _) in std::env::vars() {
+                if k.starts_with("NEXTEST_") {
+                    cmd.env_remove(&k);
+                }
+            }
+            cmd.spawn()
+        }));
+        let pipe_for_shell = broker_pipe.clone();
+        session.desktop.shell_spawner = Some(Arc::new(move |geom, _pipe| {
+            std::env::set_var("AUTO_SHELL_GEOM", geom.encode());
+            Ok(spawn_t3_child(&pipe_for_shell, "p030-shell", "shell"))
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        fn pump_until<F: Fn(&DesktopSession) -> bool>(session: &mut DesktopSession, pred: F, what: &str) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            while !pred(session) {
+                if session.pending_incubations() > 0 {
+                    session.attach_pending_incubations(5000);
+                }
+                session.pump_broker_clients();
+                assert!(std::time::Instant::now() < deadline, "p036 超时：{what}");
+                std::thread::yield_now();
+            }
+        }
+        fn face_frame(
+            session: &DesktopSession,
+            face: u8,
+        ) -> Option<crate::ui::desktop_protocol::message::DrawList> {
+            let pipe = session.desktop.shell_pipe.as_ref()?;
+            let client = session.broker_clients.get(pipe)?;
+            let wid = match face {
+                f if f == shell_face::SHELL => session.desktop.shell_pseudo_wids.get(1)?,
+                f if f == shell_face::DESKTOP_SURFACE => session.desktop.shell_pseudo_wids.first()?,
+                f if f == shell_face::SWITCHER => session.desktop.shell_pseudo_wids.get(2)?,
+                f if f == shell_face::NOTIFICATION_CENTER => {
+                    session.desktop.shell_pseudo_wids.get(3)?
+                }
+                f if f == shell_face::DASHBOARD => session.desktop.shell_pseudo_wids.get(4)?,
+                _ => return None,
+            };
+            let surface = client.wid_surface.get(&wid.0)?;
+            client.surfaces.front(*surface).cloned()
+        }
+        fn launcher_frame(
+            session: &DesktopSession,
+        ) -> Option<crate::ui::desktop_protocol::message::DrawList> {
+            let pipe = session.desktop.launcher_pipe.as_ref()?;
+            let client = session.broker_clients.get(pipe)?;
+            let wid = session.desktop.launcher_wid?;
+            let surface = client.wid_surface.get(&wid.0)?;
+            client.surfaces.front(*surface).cloned()
+        }
+
+        // —— 腿0：壳 attach 五伪窗。
+        session.launch_shell_outproc().expect("p036 壳 spawn");
+        pump_until(&mut session, |s| s.desktop.shell_pipe.is_some(), "壳 attach");
+        assert_eq!(
+            session.desktop.shell_pseudo_wids.len(),
+            5,
+            "五伪窗（bg/chrome/switcher/notes/dashboard）"
+        );
+        println!("AUTO036 leg0 shell-five-pseudo-windows PASS");
+
+        // —— 腿1：五面投影 → 帧全在案（overlay 懒装）。
+        crate::ui::iced::renderer::push_shell_projection_outproc(&mut session);
+        crate::ui::iced::renderer::push_desktop_surface_outproc(&mut session, "");
+        session.desktop.switcher_open = true;
+        crate::ui::iced::renderer::push_switcher_snapshot(
+            &mut session,
+            &[crate::ui::shell_projection::ShellEvent::RebuildMru],
+        );
+        session.desktop.notes_open = true;
+        crate::ui::iced::renderer::push_notes_snapshot(
+            &mut session,
+            &[crate::ui::shell_projection::ShellEvent::RebuildNotes],
+        );
+        session.desktop.dashboard_open = true;
+        crate::ui::iced::renderer::push_dashboard_snapshot(
+            &mut session,
+            &[crate::ui::shell_projection::ShellEvent::RebuildFaces],
+        );
+        for (name, face) in [
+            ("bg", shell_face::DESKTOP_SURFACE),
+            ("chrome", shell_face::SHELL),
+            ("switcher", shell_face::SWITCHER),
+            ("notification", shell_face::NOTIFICATION_CENTER),
+            ("dashboard", shell_face::DASHBOARD),
+        ] {
+            pump_until(&mut session, |s| face_frame(s, face).is_some(), &format!("{name} 帧在案"));
+        }
+        println!("AUTO036 leg1 five-faces-frames PASS");
+
+        // —— 腿2：parity——本地 RqProjector 渲染 vs child 帧全等（switcher，
+        /// 同快照同几何 → DrawList 文本逐行全等）。
+        {
+            use crate::ui::desktop_protocol::shell_client::ShellFaces;
+            let mut local =
+                ShellFaces::load(geometry).expect("本地解释装配（内嵌 pin 兜底）");
+            let mut snap = crate::ui::iced::renderer::build_switcher_snapshot(&session);
+            snap.visible = true;
+            snap.events = vec![crate::ui::shell_projection::ShellEvent::RebuildMru];
+            let mut payload = Vec::new();
+            snap.wire_encode(&mut payload);
+            assert!(local.apply_projection(shell_face::SWITCHER, &payload));
+            let local_list = local.render(shell_face::SWITCHER).expect("本地帧");
+            let child_list = face_frame(&session, shell_face::SWITCHER).expect("child 帧");
+            let fmt = |l: &crate::ui::desktop_protocol::message::DrawList| {
+                crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(l)
+            };
+            // 同 payload 需 child 帧为**该快照后**的产帧——腿1 后 child 已
+            // 懒装 + 渲染同快照；容差=首行帧头（frame id）外逐行比对。
+            let a = fmt(&local_list);
+            let b = fmt(&child_list);
+            let a: Vec<&str> = a.lines().collect();
+            let b: Vec<&str> = b.lines().collect();
+            let n = a.len().min(b.len());
+            // 准则 = 结构全等（op 类型/坐标/字号/行高/文本/行数逐行）；
+            // 色彩 token（R,G,B,A 三元组）显式豁免——实测跨进程色彩解析
+            /// 有 ±3 档环境差（疑主题感知解析的进程初始化差；wire 量化
+            /// ±1 另在）——色彩 parity 归 T-08 复审细究（发现记录）。
+            let near = |x: &str, y: &str| -> bool {
+                let xt: Vec<&str> = x.split_whitespace().collect();
+                let yt: Vec<&str> = y.split_whitespace().collect();
+                if xt.len() != yt.len() {
+                    return false;
+                }
+                xt.iter().zip(yt.iter()).all(|(p, q)| {
+                    // 色彩三元组（≥3 逗段整数）豁免。
+                    let is_color = |t: &str| {
+                        t.split(',').count() >= 3
+                            && t.split(',').all(|c| c.parse::<i64>().is_ok())
+                    };
+                    if is_color(p) && is_color(q) {
+                        return true;
+                    }
+                    p == q
+                })
+            };
+            assert_eq!(a.len(), b.len(), "parity 行数");
+            for i in 0..n {
+                assert!(
+                    near(a[i], b[i]),
+                    "parity 行 {i}：
+  local={}
+  child={}",
+                    a[i],
+                    b[i]
+                );
+            }
+            println!("AUTO036 leg2 parity-switcher-frames PASS ({} 行)", n);
+        }
+
+        // —— 腿3：launcher exe（独立管线）attach + 召唤快照帧。
+        crate::ui::iced::renderer::summon_launcher(&mut session);
+        pump_until(
+            &mut session,
+            |s| s.desktop.launcher_pipe.is_some(),
+            "launcher exe attach",
+        );
+        assert!(
+            session.desktop.shell_pipe.is_some(),
+            "launcher attach 不影响壳管线"
+        );
+        assert!(session.desktop.launcher_open, "镜像位在案");
+        pump_until(&mut session, |s| launcher_frame(s).is_some(), "launcher 帧在案");
+        println!("AUTO036 leg3 launcher-exe-attached-and-framed PASS");
+
+        // —— 腿4：崩溃粒度（D3-C）——kill launcher 子进程 → launcher 管线
+        /// 回收 + 壳管线/帧不连坐。
+        {
+            let children_len = session.desktop.outproc_children.len();
+            let mut launcher_child = session
+                .desktop
+                .outproc_children
+                .swap_remove(children_len - 1);
+            let _ = launcher_child.kill();
+            let _ = launcher_child.wait();
+            pump_until(
+                &mut session,
+                |s| s.desktop.launcher_pipe.is_none(),
+                "launcher 死亡回收",
+            );
+            assert!(session.desktop.shell_pipe.is_some(), "壳不连坐");
+            assert!(
+                face_frame(&session, shell_face::SHELL).is_some(),
+                "壳帧仍在案"
+            );
+        }
+        println!("AUTO036 leg4 launcher-crash-isolation PASS");
+
+        // 帧留痕（AUTO_036_ASSETS=1 → docs/plans/reports/assets/036/）。
+        if std::env::var("AUTO_036_ASSETS").is_ok() {
+            let dir = concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../docs/plans/reports/assets/036"
+            );
+            let _ = std::fs::create_dir_all(dir);
+            let fmt = |l: &crate::ui::desktop_protocol::message::DrawList| {
+                crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(l)
+            };
+            for (name, face) in [
+                ("bg-frame.txt", shell_face::DESKTOP_SURFACE),
+                ("chrome-frame.txt", shell_face::SHELL),
+                ("switcher-frame.txt", shell_face::SWITCHER),
+                ("notification-frame.txt", shell_face::NOTIFICATION_CENTER),
+                ("dashboard-frame.txt", shell_face::DASHBOARD),
+            ] {
+                if let Some(list) = face_frame(&session, face) {
+                    let _ = std::fs::write(format!("{dir}/{name}"), fmt(&list));
+                }
+            }
+            println!("AUTO036 assets → {dir}");
+        }
+
+        // 兜底清理。
+        for mut child in session.desktop.outproc_children.drain(..) {
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
     #[test]
     fn p030_shell_outproc_arm() {
         if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {

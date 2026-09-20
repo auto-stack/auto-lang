@@ -1,0 +1,7 @@
+clear 24,24,28,255
+text 570.6,178.0 size=14.0 lh=18.9 247,249,251,255 "Switch Window"
+text 687.8,178.0 size=12.0 lh=16.2 148,163,183,255 "MRU"
+text 10.0,204.9 size=14.0 lh=18.9 148,163,183,255 "No windows"
+text 501.6,239.8 size=12.0 lh=16.2 148,163,183,255 "Tab/←→ select"
+text 611.2,239.8 size=12.0 lh=16.2 148,163,183,255 "Enter focus"
+text 706.4,239.8 size=12.0 lh=16.2 148,163,183,255 "Esc cancel"
