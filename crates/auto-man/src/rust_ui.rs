@@ -2575,6 +2575,25 @@ pub fn back_member_name(project_dir: &Path) -> String {
 /// Start the API backend server if a backend exists in the shared workspace.
 /// Returns the child process handle so the caller can clean it up on exit.
 pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
+    // daemon-ensure 语义（auto-os apps.manifest / pac.at back_port daemon 链）：
+    // AUTO_REUSE_BACKEND=1 且端口已有活监听时直接复用——不杀（Plan 354 的
+    // kill 会打断产品链先起好的真后端）、不重生成、不再 spawn 生成的
+    // axum stub。缺省行为不变（kill + 重生成 + spawn）。
+    if std::env::var("AUTO_REUSE_BACKEND").as_deref() == Ok("1") {
+        let port = crate::util::http_port();
+        let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+        if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1)).is_ok() {
+            println!();
+            println!(
+                "  {} Backend port {} already serving — reusing it (AUTO_REUSE_BACKEND=1)",
+                "✓".bright_green(), port
+            );
+            if std::env::var_os("AUTO_HTTP_BASE").is_none() {
+                std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", port));
+            }
+            return None;
+        }
+    }
     // Backend lives in the resolved workspace ({name}-back/ member; Stage B P-2:
     // in-framework = shared examples/rust-workspace, out-of-framework =
     // project-local rust-workspace).
