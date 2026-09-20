@@ -380,7 +380,13 @@ plan5.2 预设的"docs_gen 4 测/cmd_docs/gallery_golden/plan370/409/412/
     行；`docs/specs/INDEX.md` 再生——均随 delivery 落 master。
   - **archived**：`docs/plans/archive/666-ui-demo-repatriation.md`，
     status=archived，completion_kind=delivered。
-  - **cleaned**：见下条补记。
+  - **cleaned**：wt-guard 复跑 clean（gen pnpm junction 1082 件按 660
+    先例 cmd rmdir 整树清——目标全为树内 .pnpm 自指；smoke 残留
+    .am/.auto/dist 一并清）；worktree `lang-666/auto-lang` --force 移除
+    （未跟踪 VM 截图证据件随树消亡，数值已录档）+ 分支 plan-666-dev
+    删除（was ca7205a90）+ 只读依赖位 auto-down worktree 移除 + 组目录
+    `D:/autostack/.wt/lang-666` 删除；worktree list/prune/磁盘三查零
+    残留。**五 checkpoint 闭环。**
 
 ## 10. 待澄清事项
 
