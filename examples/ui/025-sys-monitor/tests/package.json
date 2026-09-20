@@ -1,0 +1,12 @@
+{
+  "name": "sys-monitor-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plan 541 acceptance tests for 025-sys-monitor",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

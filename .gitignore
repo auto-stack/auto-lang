@@ -123,6 +123,8 @@ examples/**/rust-workspace/
 # AutoUI test screenshots & artifacts (local only, do not track binary images in git)
 examples/ui/**/tests/screenshots/
 examples/ui/**/src/front/tests/screenshots/
+# PLAN-666: 038 snapshot carries its tracked historical fit screenshot from auto-os
+!examples/ui/038-minesweeper/src/front/tests/screenshots/
 examples/capability-tests/**/tests/shots/
 examples/capability-tests/**/tests/screenshots/
 examples/capability-tests/**/src/front/tests/

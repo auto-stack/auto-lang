@@ -1,0 +1,43 @@
+// src/front/types.at — System monitor shared front types
+
+type SysSummary {
+    cpu float
+    cpu_count int
+    cpu_brand str
+    mem_used_mb int
+    mem_total_mb int
+    net_sent_kbs float
+    net_recv_kbs float
+    proc_count int
+    os_name str
+    os_version str
+    kernel str
+    hostname str
+    uptime_s int
+}
+
+type ProcInfo {
+    pid int
+    name str
+    cpu float
+    mem_mb int
+    disk_kbs float
+    net_kbs float
+    status str
+    user str
+}
+
+type DiskInfo {
+    name str
+    mount str
+    total_mb int
+    avail_mb int
+}
+
+type Snapshot {
+    summary SysSummary
+    procs []ProcInfo
+    disks []DiskInfo
+    users []str
+    cores []float
+}

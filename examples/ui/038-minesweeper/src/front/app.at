@@ -1,0 +1,125 @@
+use minesweeper_store: MinesweeperStore
+
+widget App {
+    msg {
+        Reveal(int, int),
+        Flag(int, int),
+        SetDifficulty(str),
+        Reset,
+        Tick,
+        Init,
+    }
+
+    model {
+        var interval int = 1000
+        var mounted int = 0
+    }
+
+    // Plan 506 & Plan 017: 外壳"内容即页面"，配合 pac `window: "fit"` 窗口随内容收缩。
+    // PLAN-017 UI/UX 现代化重构：深色现代仪表板 + 表情状态机 + 分段难度控件 + 无缝网格。
+    view {
+        col {
+            // —— 顶栏信息与 LCD 仪表板 ——
+            row {
+                // 剩余雷数 LCD 盒
+                row {
+                    text .store.mines_label {
+                        style: "text-base font-bold font-mono text-rose-400"
+                    }
+                    style: "bg-zinc-950 border border-zinc-800 px-3 py-1.5 rounded-xl items-center shadow-inner"
+                }
+
+                // 表情重开按钮
+                button .store.face_icon {
+                    onclick: .Reset,
+                    style: "text-2xl px-3.5 py-1 bg-zinc-800 hover:bg-zinc-700 active:scale-95 rounded-xl border border-zinc-700 shadow-md"
+                }
+
+                // 计时器 LCD 盒
+                row {
+                    text .store.timer_label {
+                        style: "text-base font-bold font-mono text-amber-400"
+                    }
+                    style: "bg-zinc-950 border border-zinc-800 px-3 py-1.5 rounded-xl items-center shadow-inner"
+                }
+                style: "w-full items-center justify-between"
+            }
+
+            // —— 难度分段选择器 ——
+            row {
+                button "初级 9×9" {
+                    onclick: .SetDifficulty("beginner"),
+                    class: .store.beginner_class
+                }
+                button "中级 16×16" {
+                    onclick: .SetDifficulty("intermediate"),
+                    class: .store.intermediate_class
+                }
+                button "高级 30×16" {
+                    onclick: .SetDifficulty("expert"),
+                    class: .store.expert_class
+                }
+                style: "bg-zinc-900 border border-zinc-800 p-1 rounded-xl gap-1 items-center"
+            }
+
+            // —— 棋盘网格 ——
+            div {
+                grid {
+                    for cell in .store.board {
+                        button {
+                            text cell.display {
+                                style: cell.number_class
+                            }
+                            onclick: .Reveal(cell.x, cell.y),
+                            oncontextmenu.prevent: .Flag(cell.x, cell.y),
+                            class: cell.cell_class
+                        }
+                    }
+                    cols: .store.cols
+                    gap: 0
+                }
+                style: "p-1.5 bg-zinc-950/80 border border-zinc-800 rounded-xl shadow-2xl items-center"
+            }
+
+            // —— 游戏状态提示 ——
+            if .store.game_state == "won" {
+                text "🎉 胜利! 所有地雷已排除" {
+                    style: "text-lg font-bold text-emerald-400 mt-1"
+                }
+            }
+            if .store.game_state == "lost" {
+                text "💥 踩雷了! 点表情重开" {
+                    style: "text-lg font-bold text-rose-500 mt-1"
+                }
+            }
+
+            style: "max-w-fit p-4 items-center gap-3.5 bg-zinc-900/40 rounded-2xl border border-zinc-800/60"
+        }
+    }
+
+    on {
+        .Init -> {
+            store.Init()
+        }
+
+        .Reset -> {
+            store.Reset()
+        }
+
+        .SetDifficulty(d) -> {
+            store.SetDifficulty(d)
+        }
+
+        .Reveal(x, y) -> {
+            store.Reveal(x, y)
+        }
+
+        .Flag(x, y) -> {
+            store.Flag(x, y)
+        }
+
+        .Tick -> {
+            store.Tick()
+        }
+    }
+}

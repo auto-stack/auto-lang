@@ -1,0 +1,129 @@
+// src/back/api.at — System Monitor API interface
+// Shared types and endpoints between frontend and backend.
+
+pub type SysSummary = {
+    cpu: float
+    cpu_count: int
+    cpu_brand: str
+    mem_used_mb: int
+    mem_total_mb: int
+    net_sent_kbs: float
+    net_recv_kbs: float
+    proc_count: int
+    os_name: str
+    os_version: str
+    kernel: str
+    hostname: str
+    uptime_s: int
+}
+
+pub type ProcInfo = {
+    pid: int
+    name: str
+    cpu: float
+    mem_mb: int
+    disk_kbs: float
+    net_kbs: float
+    status: str
+    user: str
+}
+
+pub type DiskInfo = {
+    name: str
+    mount: str
+    total_mb: int
+    avail_mb: int
+}
+
+pub type Snapshot = {
+    summary: SysSummary
+    procs: []ProcInfo
+    disks: []DiskInfo
+    users: []str
+    cores: []float
+}
+
+#[api(method = "GET", path = "/api/system/snapshot")]
+pub fn system_snapshot() Snapshot {
+    let cpu = sys.cpu_usage()
+    let count = sys.cpu_count()
+    let brand = sys.cpu_brand()
+    let mem_used = sys.mem_used_mb()
+    let mem_total = sys.mem_total_mb()
+    let net_sent = sys.net_sent_kbs()
+    let net_recv = sys.net_recv_kbs()
+    let os_n = sys.os_name()
+    let os_v = sys.os_version()
+    let kern = sys.kernel_version()
+    let host = sys.hostname()
+    let up = sys.uptime_s()
+
+    var cores []float = []
+    var ci = 0
+    while ci < count {
+        cores.push(sys.cpu_core_usage(ci))
+        ci = ci + 1
+    }
+
+    var procs []ProcInfo = []
+    let raw_procs = sys.processes()
+    for p in raw_procs {
+        procs.push(ProcInfo {
+            pid: p.pid
+            name: p.name
+            cpu: p.cpu
+            mem_mb: p.mem_mb
+            disk_kbs: p.disk_kbs
+            net_kbs: p.net_kbs
+            status: p.status
+            user: p.user
+        })
+    }
+
+    var disks []DiskInfo = []
+    let raw_disks = sys.disks()
+    for d in raw_disks {
+        disks.push(DiskInfo {
+            name: d.name
+            mount: d.mount
+            total_mb: d.total_mb
+            avail_mb: d.avail_mb
+        })
+    }
+
+    var users []str = []
+    let raw_users = sys.users()
+    for u in raw_users {
+        users.push(u.name)
+    }
+
+    let summary = SysSummary {
+        cpu: cpu
+        cpu_count: count
+        cpu_brand: brand
+        mem_used_mb: mem_used
+        mem_total_mb: mem_total
+        net_sent_kbs: net_sent
+        net_recv_kbs: net_recv
+        proc_count: procs.len()
+        os_name: os_n
+        os_version: os_v
+        kernel: kern
+        hostname: host
+        uptime_s: up
+    }
+
+    let snap_out = Snapshot {
+        summary: summary
+        procs: procs
+        disks: disks
+        users: users
+        cores: cores
+    }
+    return snap_out
+}
+
+#[api(method = "POST", path = "/api/system/kill")]
+pub fn kill_process(pid int) bool {
+    return sys.kill(pid)
+}
