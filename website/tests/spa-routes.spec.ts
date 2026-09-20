@@ -1,7 +1,10 @@
 import { test, expect } from '@playwright/test';
 
 const SPA_ROUTES = [
-  { url: '/ui/gallery/', title: 'Auto Language - Components', name: 'Gallery' },
+  // PLAN-668 R-20：gallery 快照源自 auto-os/widgets-gallery（PLAN-590 迁移），
+  // 其 index.html title = 应用名 "widgets-gallery"（生成器以 app 名为 title），
+  // 非 auto-lang 侧资产名的 "Auto Language - Components"——断言跟现资产。
+  { url: '/ui/gallery/', title: 'widgets-gallery', name: 'Gallery' },
   { url: '/ui/blocks/', title: 'Auto Language - Blocks', name: 'Blocks' },
   { url: '/ui/charts/', title: 'Auto Language - Charts', name: 'Charts' },
   { url: '/ui/a2ui/', title: 'Auto Language - A2UI Demo', name: 'A2UI' },

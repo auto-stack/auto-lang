@@ -245,10 +245,14 @@ widget App {
 /// 组件实例按 props 展开视图子树。
 #[test]
 fn f2_embedded_dep_component_expands_with_props() {
+    // PLAN-668 A-03：夹具按 PLAN-635 D4/D5 声明门控契约补 pac.at——
+    // deps/<name> 物化但未声明 = 幽灵依赖，解析被阻断（632 夹具早于
+    // 635 契约，真实 demo（ui-gallery）均带 pac.at 声明）。
     let (mut comp, _keep) = build_embedded(&[
         ("host.at", F2_HOST),
         ("demo006.at", F2_DEMO),
         ("deps/settings/settings_popover.at", F2_POPOVER),
+        ("pac.at", "dep \"settings\" { path: \"deps/settings\" }"),
     ]);
     let (view, _, _) = comp.view_with_debug();
     let rendered = format!("{view:?}");
@@ -261,10 +265,14 @@ fn f2_embedded_dep_component_expands_with_props() {
 /// F3 隔离面：组件自身 handler 编译进单 VM（Close 派发不 HandlerNotFound）。
 #[test]
 fn f3_component_own_handler_compiles_into_vm() {
+    // PLAN-668 A-03：夹具按 PLAN-635 D4/D5 声明门控契约补 pac.at——
+    // deps/<name> 物化但未声明 = 幽灵依赖，解析被阻断（632 夹具早于
+    // 635 契约，真实 demo（ui-gallery）均带 pac.at 声明）。
     let (mut comp, _keep) = build_embedded(&[
         ("host.at", F2_HOST),
         ("demo006.at", F2_DEMO),
         ("deps/settings/settings_popover.at", F2_POPOVER),
+        ("pac.at", "dep \"settings\" { path: \"deps/settings\" }"),
     ]);
     let _ = comp.view_with_debug();
     // 不 panic / 不 Err 即为通过：Close 的 synthesized fn 必须可派发。

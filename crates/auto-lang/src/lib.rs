@@ -3161,6 +3161,11 @@ pub(crate) fn load_ext_imports_for_vm(
     // the root-AST walk above misses them; sweep every loaded module file.
     for path in visited.iter() {
         if let Ok(code) = std::fs::read_to_string(path) {
+            // PLAN-668 A-02：逐模块 stylekit 预注册（同主收集路径）。
+            let _ = crate::design_tokens::recipe::prepare_style_recipe_imports(
+                path.parent().unwrap_or(std::path::Path::new(".")),
+                &code,
+            );
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
             if let Ok(mod_ast) = parser.parse() {
@@ -3969,6 +3974,12 @@ fn register_transitive_widgets_inner(
             Err(_) => continue,
         };
 
+        // PLAN-668 A-02：逐模块 stylekit 预注册（同 4244 主路径——模块级
+        // `use stylekit.styles:` 缺预注册则整文件 parse 失败被静默吞）。
+        let _ = crate::design_tokens::recipe::prepare_style_recipe_imports(
+            sub_path.parent().unwrap_or(std::path::Path::new(".")),
+            &sub_code,
+        );
         let mod_session = crate::session::CompilerSession::ui();
         let mut mod_parser = crate::Parser::from(sub_code.as_str()).with_session(mod_session);
         if let Ok(sub_ast) = mod_parser.parse() {
@@ -4242,7 +4253,16 @@ fn build_dynamic_component_inner(
             // Register child widgets declared directly in this top-level module
             // (filtered by the use clause's item list). Transitive modules do
             // not register widgets here.
+            // PLAN-668 A-02：逐模块文件 stylekit 预注册——模块自身可携带
+            // `use stylekit.styles:`（PLAN-637 起 editor.at 实案），host 级
+            // 预注册只覆盖根 app.at；缺本步则模块 parse 落 UndefinedVariable
+            // 被 `if let Ok` 静默吞掉 → 子 widget/handler 整件丢失（015
+            // EditorPanel：handler_EditorPanel_EditTitle 不在 exports 实证）。
             if let Ok(module_code) = std::fs::read_to_string(&module_path) {
+                let _ = crate::design_tokens::recipe::prepare_style_recipe_imports(
+                    module_path.parent().unwrap_or(std::path::Path::new(".")),
+                    &module_code,
+                );
                 let mod_session = CompilerSession::ui();
                 let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
                 if let Ok(mod_ast) = mod_parser.parse() {

@@ -32,6 +32,10 @@ pub fn normalize_kind(tag: &str) -> String {
         | "quote" | "heading" | "codeblock" | "codepane" | "figcaption" => {
             "text".to_string()
         }
+        // PLAN-668 R-14：avatar 子件（os-007 升格——image/fallback 臂在
+        // avatar 投影器臂内消费）归一折叠到 avatar（覆盖判定用，同
+        // typography 族先例）。
+        | "avatarfallback" | "avatarimage" => "avatar".to_string(),
         _ => t,
     }
 }
@@ -63,6 +67,9 @@ impl Coverage {
             "img", "icon", "badge", "avatar", "progress", "divider", "separator", "spacer",
             // Plan 507 T4 —— Tier1 form 族。
             "checkbox", "switch", "radio", "textarea",
+            // PLAN-668 R-14：PLAN-661 T-03/T-04 slider 统一（VM/aura 臂
+            // 直构 View::Slider + vue 原生 range）落地的漏同步。
+            "slider",
         ]
         .into_iter()
         .map(String::from)
@@ -87,6 +94,8 @@ impl Coverage {
             ("switch", vec!["checked", "disabled", "style", "class"]),
             ("radio", vec!["checked", "disabled", "style", "class"]),
             ("textarea", vec!["value", "placeholder", "disabled", "rows", "style", "class"]),
+            // PLAN-668 R-14：slider props 面（661 T-04 vue 原生 range 属性集）。
+            ("slider", vec!["value", "min", "max", "step", "style", "class"]),
         ]
         .into_iter()
         .map(|(k, ps)| (k.to_string(), ps.into_iter().map(String::from).collect()))

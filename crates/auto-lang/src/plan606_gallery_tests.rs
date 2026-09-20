@@ -62,9 +62,15 @@ mod plan606_gallery_tests {
 
         for (i, (src, style)) in thumbnails.iter().enumerate() {
             assert!(!src.is_empty(), "Thumbnail {} src should NOT be empty (Plan 606 bugfix)", i);
+            // PLAN-668 R-16 (P642-D11 contract update): corpus has evolved to
+            // "path reference + render-side inlining" (Plan 617/628) -- view-layer
+            // src = resolved thumbnail file path (data-URL inlining is the
+            // renderer's job). Path may target the main checkout's corpus when
+            // run from a worktree (P642-D5), so no root anchor.
             assert!(
-                src.starts_with("data:image/"),
-                "Thumbnail {} src should be data URL (Plan 606): {}", i, src
+                src.contains("thumbnails") && src.ends_with(".jpg"),
+                "Thumbnail {} src should be resolved thumbnail path (path-ref contract): {}",
+                i, src
             );
 
             let s = style.as_ref().unwrap_or_else(|| panic!("Thumbnail {} should have style", i));
@@ -89,7 +95,13 @@ mod plan606_gallery_tests {
 
         assert_eq!(viewer_photos.len(), 1, "Viewer mode should have exactly 1 full image, got {}", viewer_photos.len());
         let (full_src, full_style) = &viewer_photos[0];
-        assert!(full_src.contains("1600/1200") || full_src.starts_with("data:image/"), "Full image should point to high-res: {}", full_src);
+        // PLAN-668 R-16：全图同"path 引用 + 渲染端内嵌"契约——src = 解析后
+        // 的原图路径（语料引用用户图片目录，环境相关不锚根），区别于缩略
+        // 图（thumbnails/ 段）即可。
+        assert!(
+            !full_src.is_empty() && !full_src.contains("thumbnails"),
+            "Full image should be the resolved original photo path: {}", full_src
+        );
         let s = full_style.as_ref().expect("Full image should have style");
         let has_contain = s.classes.iter().any(|c| matches!(c, StyleClass::ObjectFit(crate::ui::style::ObjectFit::Contain)));
         assert!(has_contain, "Full image should have StyleClass::ObjectFit(Contain) from fit: 'contain'");

@@ -8717,7 +8717,9 @@ let tabs_inner = View::Row {
                 "pointer" => Some(PopoverPlacement::Pointer),
                 _ => None,
             })
-            .unwrap_or(if px.is_some() && py.is_some() {
+            .unwrap_or(if props.contains_key("x") && props.contains_key("y") {
+                // PLAN-668 R-05：坐标锚缺省按**声明面**判（x/y props 在场即
+                // BottomStart 菜单约定）——运行期可求值性不改变锚形态。
                 PopoverPlacement::BottomStart
             } else {
                 PopoverPlacement::Bottom
@@ -8785,7 +8787,19 @@ let tabs_inner = View::Row {
                 })
         };
 
-        match (px, py) {
+        // PLAN-668 R-05（027 在册裁定方向）：坐标锚判定按声明面（x/y props
+        // 在场）而非运行期可求值——拖拽幽灵 popover（desktop.at，x/y 绑
+        // .__desktop_cursor_x/y 宿主回写态）在字段未填充的语境求值 None，
+        // 此前被误判 widget 锚形态走首子锚分支 + __popover_close 兜底
+        // （VM 态 popover 无此处理语义，外点/Esc 关闭语义受损）。声明了
+        // x/y 即坐标锚；不可求值时锚点退 (0,0)。
+        let coord_declared = props.contains_key("x") && props.contains_key("y");
+        let anchor_xy = if coord_declared {
+            (Some(px.unwrap_or(0.0)), Some(py.unwrap_or(0.0)))
+        } else {
+            (None, None)
+        };
+        match anchor_xy {
             (Some(x), Some(y)) => {
                 let open = open_prop.unwrap_or_else(self_managed_open);
                 let on_dismiss = ondismiss_handler()
@@ -13619,6 +13633,18 @@ mod tests {
             _ => None,
         }).expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        // PLAN-668 A-06：PLAN-633 起「无任何 store 工程时字面 `store` 别名
+        // 不展平」（view_store_alias_real_name 空快照语义）——裸装载单测
+        // 须镜像合成期的 set_store_context 落别名快照（真身语料 041
+        // status_bar.at 同式经全管线合成）。nextest 每测独立进程，无跨测
+        // 快照污染。
+        crate::ui::handler_codegen::set_store_context(
+            std::collections::HashMap::from([(
+                "EditorStore".to_string(),
+                vec!["line".to_string(), "col".to_string()],
+            )]),
+            std::collections::HashMap::from([("store".to_string(), "EditorStore".to_string())]),
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
         let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
@@ -17507,7 +17533,10 @@ mod tests {
     fn plan050_imported_component_icon_maps_to_lucide_image() {
         let ext = crate::ast::ui::ExtImport {
             kind: crate::ast::ui::ExtImportKind::Component,
-            symbols: vec![crate::ast::Name::from("Folder")],
+            symbols: vec![
+                crate::ast::Name::from("Folder"),
+                crate::ast::Name::from("Folder_icon"),
+            ],
             path: "src/front/ports/icons.at".into(),
             call_args: vec![],
             ref_fields: vec![],
@@ -17518,11 +17547,33 @@ mod tests {
         let registry = crate::ui::widget_registry::WidgetRegistry::new();
         let builder = AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &imports);
 
+        // PLAN-668 A-05：PLAN-625 T-09(b) 裁定后,非 "icon" 字样的导入组件
+        // 降级 web 占位卡（不再 lucide 化——icons.at 用法已退役,glyph 路径
+        // 仅保留含 "icon" 的 tag 向后兼容）。
         let node = AuraNode::element("Folder").with_prop("size", Expr::Int(14));
         let view = builder.build(&node);
-        match view {
+        match &view {
+            View::Column { children, .. } => {
+                let first_text = children.iter().find_map(|c| match c {
+                    View::Text { content, .. } => Some(content.clone()),
+                    _ => None,
+                });
+                assert_eq!(
+                    first_text.as_deref(),
+                    Some("⚙ Folder（Web 端组件）"),
+                    "非 icon tag 应降级占位卡; got {:?}",
+                    view
+                );
+            }
+            other => panic!("期望占位卡 Column,得到 {other:?}"),
+        }
+
+        // 含 "icon" 的 tag 保持 glyph 路径（625 向后兼容面）。
+        let node_i = AuraNode::element("Folder_icon").with_prop("size", Expr::Int(14));
+        let view_i = builder.build(&node_i);
+        match view_i {
             View::Image { src, style } => {
-                assert_eq!(src, "lucide:folder");
+                assert!(src.starts_with("lucide:"), "src 应为 lucide 合成名: {src}");
                 let s = style.expect("size 应产出样式");
                 assert!(
                     s.classes.iter().any(|c| matches!(c, StyleClass::Width(SizeValue::Pixels(p)) if (*p - 14.0).abs() < f32::EPSILON)),
@@ -17530,7 +17581,7 @@ mod tests {
                     s.classes
                 );
             }
-            other => panic!("期望 View::Image,得到非 Image 视图"),
+            other => panic!("icon 字样 tag 期望 View::Image,得到 {other:?}"),
         }
 
         // 未导入的同名 tag 不映射（registry/常规 fallback 优先语义不变）
@@ -17538,7 +17589,7 @@ mod tests {
         let bridge2 = VmBridge::new(&widget2).unwrap();
         let registry2 = crate::ui::widget_registry::WidgetRegistry::new();
         let builder2 = AuraViewBuilder::with_registry_and_imports(&bridge2, "Test2", &registry2, &[]);
-        let node2 = AuraNode::element("Folder").with_prop("size", Expr::Int(14));
+        let node2 = AuraNode::element("Folder_icon").with_prop("size", Expr::Int(14));
         assert!(
             !matches!(builder2.build(&node2), View::Image { .. }),
             "未导入的组件不得映射为图标"

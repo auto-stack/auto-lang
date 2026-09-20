@@ -2026,6 +2026,13 @@ fn synthesize_handler_fn_from_decl_with_store(
         let full = handler_fn_name(event_pattern);
         let bare_event = full.strip_prefix("handler_").unwrap_or(full.as_str()).to_string();
         crate::ui::child_emit::record_stripped(widget_name, &bare_event, stripped_calls);
+    } else {
+        // PLAN-668 A-04：根形态的回调 prop 调用（on_*）同样剥离——蓝图
+        // reference 变体（blueprints/*/reference/*.at）以 widget 参数
+        // `on_x: msg` 上抛，独立装载（根形态，无消费者）时链接期
+        // "Undefined symbol: on_x" 整件挂；剥为 no-op 与子件语义一致
+        // （child_emit 路由登记仍限子件——根无路由回送）。
+        strip_callback_calls(&mut stmts);
     }
 
     let body = Body {

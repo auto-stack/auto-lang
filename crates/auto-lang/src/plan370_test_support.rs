@@ -183,6 +183,11 @@ pub(crate) fn build_component_from_app_mode(
             crate::UseModuleResolution::None => continue,
         };
         if let Ok(module_code) = fs::read_to_string(&module_path) {
+            // PLAN-668 A-02：逐模块 stylekit 预注册（镜像 lib.rs 主路径）。
+            let _ = crate::design_tokens::recipe::prepare_style_recipe_imports(
+                module_path.parent().unwrap_or(Path::new(".")),
+                &module_code,
+            );
             let mod_session = CompilerSession::ui();
             let mut mod_parser =
                 crate::Parser::from(module_code.as_str()).with_session(mod_session);

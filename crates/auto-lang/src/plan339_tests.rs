@@ -392,6 +392,13 @@ pub fn create_note(title str, body str) Note {
         let base_dir = manifest.parent().unwrap_or(Path::new(".")).to_path_buf();
         let code = fs::read_to_string(&manifest).expect("read app.at");
 
+        // PLAN-668 R-17/A-01：stylekit 导入名 parse 前预注册（真实管线
+        // build_dynamic_component 同序）——016 的 `use stylekit.styles:
+        // caption_text` 此前裸 parse 落 UndefinedVariable + 恢复雪崩。
+        crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+            .map_err(|e| e.to_string())
+            .expect("stylekit 预注册");
+
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
         let ast = parser.parse().expect("parse app.at");

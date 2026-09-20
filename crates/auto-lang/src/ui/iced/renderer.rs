@@ -31263,6 +31263,11 @@ mod tests {
             "壁纸目录面同步"
         );
         // ③ 防回环:宿主自写(save)后 poll → mtime 变但内容相等早退。
+        // PLAN-668 R-06：②应用后 theme_source 归一化回 "system"，若照原样
+        // 自写，load() 会按跟随语义从 OS 派生 dark_theme——OS=light 机器
+        // 必红（P667 期"单跑绿"实为 OS=dark 的巧合）。本段断言的是防回环
+        // 非主题跟随语义，自写前显式 manual 源锚定存储值。
+        ds.desktop.config.theme_source = "manual".to_string();
         crate::ui::desktop_config::save(&ds.desktop.config);
         let snap = ds.desktop.config.clone();
         poll_external_config(&mut ds);

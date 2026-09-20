@@ -321,6 +321,16 @@ fn plan488_dnd_bridge_app_handlers() {
         "/../../examples/capability-tests/dnd-bridge/src/front/app.at"
     );
     let code = std::fs::read_to_string(path).expect("读 044 app.at");
+    // PLAN-668 R-17：真实示例源先过 stylekit 预注册再裸 parse 装载——
+    // `use stylekit.styles: caption_text` 的导入名须在 parse 前入 recipe
+    // 注册表（真实管线 build_dynamic_component 同序），否则 `style:
+    // caption_text` 落 UndefinedVariable + 恢复雪崩（20 RBrace 错）。
+    let base_dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    auto_lang::design_tokens::recipe::prepare_style_recipe_imports(base_dir, &code)
+        .map_err(|e| e.to_string())
+        .expect("stylekit 预注册");
     let mut dc = load_inline(&code);
     use auto_lang::ui::vm_bridge::RecordValue;
 

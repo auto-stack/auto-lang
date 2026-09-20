@@ -40,7 +40,12 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("image", QueueStatus::Covered),
         // Plan 547: ImageSurface is consumed by the dedicated media queue and
         // renderer rather than the legacy image loader/cache path.
-        ("imagesurface", QueueStatus::Covered),
+        // PLAN-668 R-14（P033-D4 表同步收口）：queue 投影器无 imagesurface
+        // 臂——PLAN-026 §5.1 D5 整 kind not-yet 在案（交互回调无采集面，
+        // 登记即静默放行），native 投影器以其为拒绝样本；本表 covered 契约
+        // =「投影器有臂且 auto 探测可上 queue」，故降 not-yet（media 专列
+        // 消费与 queue 臂覆盖判定无关）。
+        ("imagesurface", QueueStatus::NotYet("PLAN-026 D5 整 kind not-yet——queue 投影器无臂；media 专列消费（Plan 547）")),
         ("input", QueueStatus::Covered),
         ("label", QueueStatus::Covered),
         ("p", QueueStatus::Covered),
