@@ -3273,6 +3273,20 @@
   {
    "id": "designs",
    "items": [
+     {
+      "id": "P666-1",
+      "title": "ui-gallery 双轨事实源契约（demo 轨/app 轨分道扬镳）",
+      "file": "docs/specs/auto-lang/ui/overview.md",
+      "related": [
+       "PLAN-666",
+       "PLAN-590",
+       "PLAN-658"
+      ],
+      "status": "published",
+      "created": "2026-09-20",
+      "last_modified": "2026-09-20",
+      "content": "ui-gallery 数据源契约（PLAN-666 落地，用户裁定分道扬镳；025-sys-monitor/028-launcher/038-minesweeper 复刻回 examples/ui 为首个实践）：①demo 面 examples/ui 单一事实源——画廊发射（generate_gallery_host/refresh_gallery_registry 双臂 registry）、docs 语料锚、scan/策展断言（app_registry C 档恰等）读 examples/ui 副本，语料缺席即条目/断言缺席，无 auto-os 臂补位（590 期形态废止）；②app 面 auto-os apps/ 事实源——桌面注册表（apps.manifest extra roots）、桌面测试语料（plan503 launcher 料）、桌面 shell 装配读原件，与 demo 面零耦合；③发射器缺席语义——全量覆写为确定性函数，扫描集即条目集（语料缺席→适配器随下次发射退役；017/031 back 链 skip 与 045/046 整编退役为实证形态）；发射产物对扫描副本绝对路径敏感面仅存 fixture 引用 demo（031 形态），正式产物再发射以主检出为准；④两轨无同步义务——复刻即快照各自演化，README 双向互链无机制化同步；⑤非目标：同步机制/教学简洁度重写/widgets-gallery 归属。"
+     },
     {
      "id": "P664-1",
      "title": "menubar 快照可见性与开合持久性契约（四条硬规则）",
@@ -5324,6 +5338,19 @@
   {
    "id": "reviews",
    "items": [
+     {
+      "id": "P666-2",
+      "title": "ui-demo-repatriation 复审合并收据",
+      "file": "docs/plans/archive/666-ui-demo-repatriation.md",
+      "related": [
+       "PLAN-666",
+       "PLAN-590"
+      ],
+      "status": "published",
+      "created": "2026-09-20",
+      "last_modified": "2026-09-20",
+      "content": "work pass@execution_done（worktree 四提交：拷贝对账/锚点回接/README/SD 落册）→review pass@c2fe8cb51（同会话复审独立性受限声明+工件重建：diff 面恰四域 34 files/5164+；AC-01 复跑 diff -r 29 全等+1 计划分歧[038 README 反链]；AC-03 复用理由成立[末提交 docs-only]——t 31⊆33 零新增/tv 红集全等/tf 差 1=ffi_dual flake；rustfmt 基线 30 hunk=worktree 30 零新增）。跨仓 auto-os 24aa01f（35 demos/22 loadable/30 VM-live，档位 025=registry-only/028/038=loadable）。findings R1-F1..F7 全非阻塞；债 P666-D1..D4。规范增量=ui/overview.md 双轨事实源契约节；touched_goals=GOAL-010。"
+     },
     {
      "id": "P664-2",
      "title": "jade-consumer-upstream-package 复审合并收据",
