@@ -26,6 +26,20 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
+## 现状（2026-09-20）——menubar 快照可见性与开合持久性（PLAN-664 U-1）
+
+041 矩阵六失败根修：MCP 打开 menubar 后展开项不进 `autoui_snapshot` 的
+根因**不是**快照遍历（Popover `[anchor, content]` 双子收录 Plan 422 既有），
+而是"任意非 `__` 前缀消息关菜单"的自动关闭判据把 DSL TimeSource 泵事件
+（`Tick`/`timer{}` 处理器名）误判为用户交互——周期泵在下一次快照前关掉
+刚打开的菜单。修 = `DynamicComponent::is_timesource_event`（timesources
+声明全集事件名匹配）加入判据排除。契约：`design/menubar-snapshot.md`。
+同批（消费侧上游包）：use 导入 P-15/P-16 静默死面编译期告警化
+（`[AUTO-USE-DIAG]` 前缀 + `take_use_diags` 汇聚，lib.rs use 装载环）；
+jade 值域/strict 域词位勘定 = 全部已落地可组合（`test/vm/99_plan664/`
+语料锚：Array.isArray 全域 / `Json.type_of(JSON.stringify(v))` 值域
+typeof 分派 / storage str 域读回链）。
+
 ## 现状（2026-09-18）——Select Anything（PLAN-646）
 
 任意 AutoUI 基面框选 → 结构化 Auto/JSON 回吐（知识采集地基）：选择语义
