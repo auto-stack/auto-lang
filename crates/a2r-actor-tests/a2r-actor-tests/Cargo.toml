@@ -1,0 +1,11 @@
+[package]
+name = "a2r-actor-tests"
+version = "0.1.0"
+edition = "2021"
+description = "Plan 387: behavior-parity tests — transpile Auto actor .at → compile+run Rust → compare stdout to the VM actor suite"
+
+[dependencies]
+auto-lang = { path = "../auto-lang" }
+
+[dev-dependencies]
+# none — tests shell out to `cargo` to build the generated crate

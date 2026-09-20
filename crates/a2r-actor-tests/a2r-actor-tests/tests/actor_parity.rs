@@ -1,0 +1,264 @@
+//! Plan 387 W5b: behavior-parity tests for a2r actor translation.
+//!
+//! Each test transpiles an Auto actor `.at` to Rust, compiles+runs it as a
+//! standalone crate (linking a2r-std + tokio), and asserts stdout matches the
+//! VM actor golden output byte-for-byte. Slow (cargo build per case); #[ignore]d.
+
+use std::io::Read;
+use std::path::PathBuf;
+use std::process::Command;
+
+/// The a2r/VM test root, relative to the workspace root (CARGO_MANIFEST_DIR is
+/// crates/a2r-actor-tests, so workspace root is two levels up).
+fn workspace_root() -> PathBuf {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    dir.parent().and_then(|p| p.parent()).unwrap().to_path_buf()
+}
+
+/// Locate the `.at` and VM `.expected.out` for a case.
+/// `case` is like "001_start_hook"; the file stem inside matches the last segment.
+fn case_paths(case: &str) -> (PathBuf, PathBuf) {
+    let root = workspace_root();
+    let stem = case.rsplit('_').next().unwrap(); // "001_start_hook" → "start_hook"? No.
+    // The directory is `NNN_<name>` and files are `<name>.at`. Derive <name>
+    // by stripping the leading `NNN_`.
+    let name = case.split_once('_').map(|(_, n)| n).unwrap_or(case);
+    let at = root
+        .join("crates/auto-lang/test/a2r/22_actors")
+        .join(case)
+        .join(format!("{}.at", name));
+    let vm_out = root
+        .join("crates/auto-lang/test/vm/23_actor")
+        .join(case)
+        .join(format!("{}.expected.out", name));
+    let _ = stem; // silence unused
+    (at, vm_out)
+}
+
+/// Transpile the given `.at` to Rust source. Runs on a 32MB-stack thread
+/// (the Pratt parser overflows the default 2MB main thread stack).
+fn transpile(at_path: &std::path::Path) -> String {
+    let mut src = String::new();
+    std::fs::File::open(at_path)
+        .unwrap_or_else(|e| panic!("open {}: {}", at_path.display(), e))
+        .read_to_string(&mut src)
+        .unwrap();
+    // auto_lang::trans::rust::transpile_rust is pub; call it on a big-stack thread.
+    let src_clone = src.clone();
+    let child = std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(move || -> Vec<u8> {
+            let mut rcode = auto_lang::trans::rust::transpile_rust("test", &src_clone).unwrap();
+            let rs = rcode.done().unwrap();
+            rs.to_vec()
+        })
+        .unwrap();
+    let bytes = child.join().unwrap();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// Build the Cargo.toml for the throwaway crate. Each case gets a UNIQUE
+/// package name so cargo doesn't reuse a cached binary across cases when they
+/// share a target dir. Uses path deps against the in-tree a2r-std; the empty
+/// `[workspace]` table keeps it out of the host workspace.
+fn throwaway_cargo_toml(case: &str) -> String {
+    // Sanitize case name into a valid crate name (replace non-alnum with _).
+    let pkg = format!("actor_{}", case.replace(|c: char| !c.is_alphanumeric(), "_"));
+    format!(
+        r#"[package]
+name = "{pkg}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+a2r-std = {{ path = "../../../crates/a2r-std" }}
+tokio = {{ version = "1", features = ["full"] }}
+
+[[bin]]
+name = "{pkg}"
+path = "src/main.rs"
+
+[workspace]
+"#,
+        pkg = pkg
+    )
+}
+
+/// Transpile, compile, and run an actor case; assert stdout == VM golden.
+fn assert_actor_parity(case: &str) {
+    let (at, vm_out) = case_paths(case);
+    let expected = std::fs::read_to_string(&vm_out)
+        .unwrap_or_else(|e| panic!("read VM golden {}: {}", vm_out.display(), e));
+
+    let generated = transpile(&at);
+
+    // Write a throwaway crate into a temp dir under the workspace so it reuses
+    // the workspace target cache (and the a2r-std path dep resolves).
+    let root = workspace_root();
+    let tmp = root.join("target").join("a2r-actor-cases").join(case);
+    let src_dir = tmp.join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("main.rs"), &generated).unwrap();
+    std::fs::write(tmp.join("Cargo.toml"), throwaway_cargo_toml(case)).unwrap();
+
+    // Build + run via `cargo run` in the temp dir. All throwaway crates share a
+    // single CARGO_TARGET_DIR so tokio (and deps) compile only once across cases.
+    let shared_target = root.join("target").join("a2r-actor-cases-target");
+    let output = Command::new("cargo")
+        .arg("run")
+        .env("CARGO_TARGET_DIR", &shared_target)
+        .current_dir(&tmp)
+        .output()
+        .unwrap_or_else(|e| panic!("cargo run in {}: {}", tmp.display(), e));
+
+    if !output.status.success() {
+        panic!(
+            "actor case {} failed to compile/run.\n--- stderr ---\n{}",
+            case,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let actual = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        actual, expected,
+        "actor case {} stdout mismatch.\n--- generated main.rs ---\n{}\n--- expected (VM) ---\n{}\n--- actual ---\n{}",
+        case, generated, expected, actual
+    );
+}
+
+#[test]
+#[ignore] // slow: compiles a throwaway crate
+fn actor_001_start_hook() {
+    assert_actor_parity("001_start_hook");
+}
+
+#[test]
+#[ignore]
+fn actor_002_message_handler() {
+    assert_actor_parity("002_message_handler");
+}
+
+#[test]
+#[ignore]
+fn actor_003_multi_message() {
+    assert_actor_parity("003_multi_message");
+}
+
+#[test]
+#[ignore]
+fn actor_004_else_handler() {
+    assert_actor_parity("004_else_handler");
+}
+
+#[test]
+#[ignore]
+fn actor_005_state_write() {
+    assert_actor_parity("005_state_write");
+}
+
+#[test]
+#[ignore]
+fn actor_006_state_increment() {
+    assert_actor_parity("006_state_increment");
+}
+
+#[test]
+#[ignore]
+fn actor_007_named_variants() {
+    // Plan 387 W4: named message variants. VM does not support named-variant
+    // send (its send shim coerces to Value::Int), so the .expected.out here is
+    // hand-written (not VM-derived); this test verifies a2r produces the
+    // logically-correct stdout for the Add(val)/Reset enum dispatch.
+    assert_actor_parity("007_named_variants");
+}
+
+#[test]
+#[ignore]
+fn actor_008_string_pattern() {
+    // Plan 387 audit: string-message pattern ("ping"/"bye"). VM send shim
+    // coerces to Value::Int, so .expected.out is hand-written.
+    assert_actor_parity("008_string_pattern");
+}
+
+#[test]
+#[ignore]
+fn actor_009_stop_hook() {
+    // Plan 387 audit: stop hook with a body. VM's live path does NOT invoke
+    // stop on mailbox close, so the expected "stopped" line is hand-written
+    // (a2r wires stop after recv-None; this is intentional ahead-of-VM behavior).
+    assert_actor_parity("009_stop_hook");
+}
+
+#[test]
+#[ignore]
+fn actor_010_handle_cross_fn() {
+    // Plan 387 §16 P0-1: Task.spawn works inside a regular fn (not just main).
+    // .expected.out hand-written (VM uses a different spawn API).
+    assert_actor_parity("010_handle_cross_fn");
+}
+
+#[test]
+#[ignore]
+fn actor_011_handle_param() {
+    // Plan 387 §16 P0-2: TaskRef passed as a function parameter (move semantics,
+    // not cloned). .expected.out hand-written (VM uses a different API).
+    assert_actor_parity("011_handle_param");
+}
+
+#[test]
+#[ignore]
+fn actor_012_external_enum_msg() {
+    // Plan 387 §16 P0-3: external enum as actor message. VM send shim coerces
+    // to Value::Int, so .expected.out is hand-written.
+    assert_actor_parity("012_external_enum_msg");
+}
+
+#[test]
+#[ignore]
+fn actor_016_actor_methods() {
+    // Plan 387 follow-up: actor + user-type methods coexist — `type Worker` with
+    // a TaskRef<i64> field + `ext Worker` method sending through the handle, and
+    // a field read that MOVES (no clone). a2r-only (VM has no TaskRef struct
+    // field); .expected.out hand-written.
+    assert_actor_parity("016_actor_methods");
+}
+
+#[test]
+#[ignore]
+fn actor_017_cross_task_variants() {
+    // Plan 387 follow-up P2: two tasks both declaring an `Add` variant — the
+    // receiver's task must pick the right enum (`c.send` → CounterMsg, not
+    // LedgerMsg). a2r-only (VM send shim coerces to Value::Int); .expected.out
+    // hand-written.
+    assert_actor_parity("017_cross_task_variants");
+}
+
+#[test]
+#[ignore]
+fn actor_018_typed_bindings() {
+    // Plan 387 follow-up P3: declared binding types (`Greet(name: String)`) →
+    // `Greet(String)`; untyped → i64; string-literal arg sent as owned String.
+    // a2r-only (VM send shim coerces to Value::Int); .expected.out hand-written.
+    assert_actor_parity("018_typed_bindings");
+}
+
+#[test]
+#[ignore]
+fn actor_019_guards() {
+    // Plan 387 follow-up P5: guard expressions on handlers emit as Rust
+    // match-arm guards. a2r-only (VM does not execute guards); .expected.out
+    // hand-written.
+    assert_actor_parity("019_guards");
+}
+
+#[test]
+#[ignore]
+fn actor_021_handle_struct_field() {
+    // Plan 387 §16: a struct with a TaskRef field must derive only Debug (not
+    // Clone/Eq/Ord) because TaskRef is move-only (UnboundedSender isn't Clone).
+    // Verifies the transpiler downgrades the derive + TaskRef's manual Debug impl
+    // lets the containing struct still derive Debug. a2r-only (VM cannot run
+    // TaskRef-field spawns); .expected.out hand-written.
+    assert_actor_parity("021_handle_struct_field");
+}
