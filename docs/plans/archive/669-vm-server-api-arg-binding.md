@@ -407,7 +407,11 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
     `docs/specs/INDEX.md`（再生字节不变）。
   - **archived**：`git mv` → `docs/plans/archive/669-vm-server-api-arg-binding.md`，
     `status: archived`（本提交）。
-  - **cleaned**：见下一条（guard+移除回执）。
+  - **cleaned**：wt-guard clean（reparse 零命中）+ worktree
+    `D:/autostack/.wt/lang-669/auto-lang` 移除 + 分支 plan-669-dev 删
+    （was ac2bdcc85=delivery，全落验证 master 祖先链含之）+ 组内 auto-down
+    依赖位移除 + 组目录 lang-669 空删 + `git worktree list` 669 零残留。
+    五 checkpoint 闭环。
   - 主检出在途他方 WIP（668 会话：DEBTS.md/00-intro/668 计划文件未
     暂存）与本项目零重叠，按多会话礼仪保留不动。
   - 跨仓后续：通知 auto-edit 复跑六端点探针（PLAN-003 B1/r2/T-03）。
