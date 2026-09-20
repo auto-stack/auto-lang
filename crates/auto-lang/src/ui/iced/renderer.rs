@@ -11870,6 +11870,8 @@ fn execute_desktop_commands(
                 crate::ui::iced::snapshot::invalidate(wid);
                 if let Some(app) = state.wm_remove_win(wid) {
                     state.apps.remove(&app);
+                    // PLAN-037 T-04：后端供给随窗释放（计数归零即卸载）。
+                    state.release_backend(app);
                 }
                 if state.desktop.shell_app.is_none()
                     && state
@@ -19819,6 +19821,9 @@ fn compare_pngs(
                     WmCommand::Close(wid) => {
                         if let Some(app) = state.wm_remove_win(wid) {
                             state.apps.remove(&app);
+                            // PLAN-037 T-04：后端供给随窗释放（计数归零即
+                            // 卸载；标题栏 × 的 WM 主关闭路径）。
+                            state.release_backend(app);
                         }
                         if state.desktop.shell_app.is_none()
                             && state

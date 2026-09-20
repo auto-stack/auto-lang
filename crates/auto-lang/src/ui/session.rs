@@ -3210,10 +3210,31 @@ fn spawn_shell_outproc(
                 }
             }
         }
-        let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
-            .map_err(|e| format!("build `{name}` failed: {e}"))?;
+        // PLAN-037 T-04：后端供给决策树（②media capability / ③back 特形
+        // session；①daemon 已由上方 ensure_daemon_if_declared 消费，④空）
+        // ——懒启 proxy + 按需装载 + 计数。返回前缀化 root 时对 spec.code
+        // 做**内存态**字面量前缀化（不落盘不改语料；658 画廊同律——桌面
+        // 无独立重编译路径，重开窗即 relaunch 再过本变换）。
+        let provision_root = self.ensure_backend(&spec, name);
+        let provisioned_code = match &provision_root {
+            Some(root) => crate::ui::back_provision::prefix_api_url_literals(&spec.code, root, name),
+            None => spec.code.clone(),
+        };
+        let comp = crate::build_dynamic_component(&provisioned_code, spec.source_path.as_deref())
+            .map_err(|e| {
+                // 编译失败回滚供给计数（app 未诞生无窗可 release——归零即
+                // 卸载，防计数泄漏）。
+                if provision_root.is_some() {
+                    self.release_app_key(name);
+                }
+                format!("build `{name}` failed: {e}")
+            })?;
         let title = spec.title.unwrap_or_else(|| comp.widget_name().to_string());
         let app_id = self.allocate_app(comp);
+        // PLAN-037 T-04：AppId → app_key 供给归属绑定（关窗站点反查）。
+        if provision_root.is_some() {
+            self.bind_app_backend(app_id, name);
+        }
         // Plan 504 S7：os-config 应用配置播种（pac `name:` →
         // ~/.config/autoos/apps/<name>/config.at 只读）——对已声明
         // dark_mode/accent_color/mode state var 写初始值（语义同 Plan 458
@@ -3791,6 +3812,9 @@ fn spawn_shell_outproc(
                 let app_id = self.wm_remove_win(wid);
                 if let Some(app_id) = app_id {
                     self.apps.remove(&app_id);
+                    // PLAN-037 T-04：后端供给随窗释放（outproc App 无供给
+                    // 记录时为 no-op，防御性统一挂）。
+                    self.release_backend(app_id);
                 }
                 if let Some(surface) = client.wid_surface.remove(&wid.0) {
                     client.shm.remove(&surface);
@@ -4437,6 +4461,9 @@ fn spawn_shell_outproc(
                     let app_id = self.wm_remove_win(wid);
                     if let Some(app_id) = app_id {
                         self.apps.remove(&app_id);
+                        // PLAN-037 T-04：后端供给随窗释放（统一挂三站点之
+                        // ReclaimWindow 臂；无记录 no-op）。
+                        self.release_backend(app_id);
                     }
                     if let Some(surface) = client.wid_surface.remove(&wid.0) {
                         client.shm.remove(&surface);

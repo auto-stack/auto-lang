@@ -156,7 +156,13 @@ impl crate::ui::session::DesktopSession {
         let Some(app_key) = self.desktop.app_back.remove(&app_id) else {
             return;
         };
-        let exhausted = match self.desktop.back_refs.get_mut(&app_key) {
+        self.release_app_key(&app_key);
+    }
+
+    /// PLAN-037 T-04：按 app_key 卸载（`release_backend` 与 launch 编译
+    /// 失败回滚共享的核——计数 -1 归零即摘表卸载）。
+    pub(crate) fn release_app_key(&mut self, app_key: &str) {
+        let exhausted = match self.desktop.back_refs.get_mut(app_key) {
             Some(count) if *count > 1 => {
                 *count -= 1;
                 false
@@ -164,9 +170,9 @@ impl crate::ui::session::DesktopSession {
             _ => true,
         };
         if exhausted {
-            self.desktop.back_refs.remove(&app_key);
+            self.desktop.back_refs.remove(app_key);
             if let Some(proxy) = self.desktop.back_proxy.as_ref() {
-                drop(proxy.remove_app(&app_key));
+                drop(proxy.remove_app(app_key));
             }
         }
     }
@@ -292,5 +298,141 @@ mod tests {
         };
         assert!(plan_backend(&ghost, "ghost").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 极简 HTTP GET（探 proxy 路由；back_proxy_tests 同型——本模块测试
+    /// 自持，不跨 tests 目录引用）。
+    fn http_get_status_body(port: u16, path: &str) -> (u16, String) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+        stream.write_all(req.as_bytes()).expect("write");
+        let mut reader = BufReader::new(stream);
+        let mut status_line = String::new();
+        reader.read_line(&mut status_line).expect("status");
+        let status: u16 = status_line
+            .split_whitespace()
+            .nth(1)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let mut content_length = 0usize;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("header");
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            if let Some((k, v)) = line.split_once(':') {
+                if k.trim().eq_ignore_ascii_case("content-length") {
+                    content_length = v.trim().parse().unwrap_or(0);
+                }
+            }
+        }
+        let mut body = vec![0u8; content_length];
+        if content_length > 0 {
+            reader.read_exact(&mut body).expect("body");
+        }
+        (status, String::from_utf8_lossy(&body).into_owned())
+    }
+
+    /// PLAN-037 T-04 集成（AC-01/02/06 段）：headless 会话 launch 供给 →
+    /// proxy scan 200 + 绝对 url → 关窗（镜像 DC::CloseWindow 站点接线）
+    /// → 路由 404 → 复 launch 重建；双窗共享一份后端、全关才卸。
+    #[test]
+    fn launch_provision_lifecycle_via_resolver() {
+        use crate::ui::session::{DesktopSession, LaunchSpec};
+        // 合成测试根：media 目录 + 一枚 mp3。
+        let root = std::env::temp_dir().join(format!(
+            "p037-desktop-lifecycle-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("song.mp3"), b"ID3-p037-lifecycle").unwrap();
+        let media_root = root.to_string_lossy().into_owned();
+
+        let resolver = {
+            let media_root = media_root.clone();
+            std::sync::Arc::new(move |name: &str| {
+                (name == "020-fixture").then(|| LaunchSpec {
+                    code: "widget Probe {\n    model { var n int = 0 }\n    view { text \"${.n}\" }\n}\n"
+                        .to_string(),
+                    media_root: Some(media_root.clone()),
+                    ..Default::default()
+                })
+            })
+        };
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let win = ds.host.as_ref().unwrap().window;
+        let primary = {
+            let comp = crate::build_dynamic_component(
+                "widget HostProbe {\n    model { var n int = 0 }\n    view { text \"${.n}\" }\n}\n",
+                None,
+            )
+            .unwrap();
+            ds.allocate_app(comp)
+        };
+        ds.register_window(win, primary, iced::Size::new(1280.0, 800.0));
+        ds.desktop.app_resolver = Some(resolver);
+
+        // AC-06 懒启门：boot 后零 proxy。
+        assert!(ds.desktop.back_proxy.is_none(), "boot 零 back-proxy（懒启）");
+
+        // launch → 懒启 + scan 200 + entries 非空 + 绝对 url（AC-01 段）。
+        let wid1 = ds.launch_app("020-fixture").expect("launch 020-fixture");
+        let proxy = ds.desktop.back_proxy.as_ref().expect("懒启后 proxy 在册");
+        let port = proxy.port;
+        let (status, body) = http_get_status_body(port, "/apps/020-fixture/api/media/scan");
+        assert_eq!(status, 200, "scan via launch-provisioned proxy: {body}");
+        let scan: serde_json::Value = serde_json::from_str(&body).expect("scan json");
+        let entries = scan["entries"].as_array().expect("entries");
+        assert_eq!(entries.len(), 1, "合成根 1 条目");
+        let url = entries[0]["url"].as_str().expect("url").to_string();
+        assert!(
+            url.starts_with(&format!("http://127.0.0.1:{port}/apps/020-fixture/api/media/stream/")),
+            "绝对 url 指向 proxy：{url}"
+        );
+        assert_eq!(ds.desktop.back_refs.get("020-fixture"), Some(&1), "计数 1");
+        assert!(ds.desktop.app_back.values().any(|k| k == "020-fixture"), "归属绑定");
+
+        // 双窗：第二次 launch 共享一份后端（计数 2，proxy 不重复装载）。
+        let wid2 = ds.launch_app("020-fixture").expect("second launch");
+        assert_eq!(ds.desktop.back_refs.get("020-fixture"), Some(&2));
+        assert_eq!(ds.desktop.back_proxy.as_ref().unwrap().port, port, "同一 proxy 实例");
+
+        // 关第一窗（镜像 DC::CloseWindow / WmCommand::Close 站点接线）：
+        // 计数 2→1，路由仍在。
+        let app1 = ds.wm_remove_win(wid1).expect("app of wid1");
+        ds.apps.remove(&app1);
+        ds.release_backend(app1);
+        assert_eq!(ds.desktop.back_refs.get("020-fixture"), Some(&1));
+        let (status, _) = http_get_status_body(port, "/apps/020-fixture/api/media/scan");
+        assert_eq!(status, 200, "双窗关一，后端仍在服务");
+
+        // 关最后一窗：计数归零 → 卸载 → 路由 404（AC-02）。
+        let app2 = ds.wm_remove_win(wid2).expect("app of wid2");
+        ds.apps.remove(&app2);
+        ds.release_backend(app2);
+        assert!(ds.desktop.back_refs.get("020-fixture").is_none(), "计数清零");
+        assert!(
+            ds.desktop.app_back.values().all(|k| k != "020-fixture"),
+            "归属清空"
+        );
+        let (status, body) = http_get_status_body(port, "/apps/020-fixture/api/media/scan");
+        assert_eq!(status, 404, "全窗关闭后路由摘除：{body}");
+
+        // 复 launch 重建可用（AC-02 复 launch 段；proxy listener 常驻复用）。
+        let wid3 = ds.launch_app("020-fixture").expect("relaunch");
+        assert_eq!(ds.desktop.back_proxy.as_ref().unwrap().port, port, "listener 常驻");
+        let (status, _) = http_get_status_body(port, "/apps/020-fixture/api/media/scan");
+        assert_eq!(status, 200, "复 launch 重建");
+        let app3 = ds.wm_remove_win(wid3).expect("app of wid3");
+        ds.apps.remove(&app3);
+        ds.release_backend(app3);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
