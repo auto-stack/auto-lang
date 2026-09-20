@@ -62,14 +62,42 @@ widget App {
 
     // PLAN-024 R18：桌面 dashboard 待办卡——active_count 大字 + 标签，
     // 与主窗同 store（活渲染面）；纯前端无后端 → 静默孵化主 tab 场景。
+    // PLAN-035 T-06：3×2 声明（span 标记 = 宿主 dashboard_declared_span
+    // 文本探测契约）+ 双列布局——左计数 / 右未完成前三（store Recompute
+    // 派生，truncate 截断安全；AC-07）。
     view mini {
+        // dashboard span: 3
         col {
-            style: "w-full h-full items-center justify-center gap-1"
-            text .store.active_count {
-                style: "text-4xl font-semibold text-foreground tabular-nums text-center"
-            }
-            text "待办未完成" {
-                style: "text-xs text-muted-foreground"
+            style: "w-full h-full items-center justify-center p-3"
+            row {
+                style: "items-center justify-center gap-4 w-full"
+                col {
+                    style: "items-center gap-0.5 w-16"
+                    text .store.active_count {
+                        style: "text-3xl font-semibold text-foreground tabular-nums text-center"
+                    }
+                    text "待办未完成" {
+                        style: "text-xs text-muted-foreground"
+                    }
+                }
+                col {
+                    style: "gap-1 w-32"
+                    if .store.preview1 != "" {
+                        text f"· ${.store.preview1}" {
+                            style: "text-xs text-muted-foreground truncate"
+                        }
+                    }
+                    if .store.preview2 != "" {
+                        text f"· ${.store.preview2}" {
+                            style: "text-xs text-muted-foreground truncate"
+                        }
+                    }
+                    if .store.preview3 != "" {
+                        text f"· ${.store.preview3}" {
+                            style: "text-xs text-muted-foreground truncate"
+                        }
+                    }
+                }
             }
         }
     }

@@ -558,8 +558,16 @@ widget Desktop {
                     // PLAN-014 W-06'：时钟两行（上行 HH:MM / 下行 M月D日
                     // 周X——__wm_clock/__wm_date 独立注入独立脏帧；无点击
                     // 臂——注册表无日历 app，§10-Q3）。
+                    // PLAN-035 T-01：justify-center 退役——适配层对无 width
+                    // 类的 justify-center 列给包装容器 width=Fill（垂直居
+                    // 中实现副作用，renderer.rs apply_column_style），clock
+                    // 列由此成为任务栏行第二个 Fill 元素与 spacer 平分剩余
+                    // 空间，右组图标被夹屏幕中央（实机+headless 双证，
+                    // tmp/p035/attribution.md #1）。行 items-center 已承载
+                    // 垂直居中，列须 shrink 包裹（SD-05 布局合同：任务栏
+                    // 主轴 Fill 元素恰一）。
                     col {
-                        style: "items-center justify-center px-2"
+                        style: "items-center px-2"
                         text .__wm_clock {
                             style: "text-xs text-muted-foreground tabular-nums leading-tight"
                         }
@@ -568,13 +576,34 @@ widget Desktop {
                         }
                     }
                     // PLAN-019 v1.7：显示桌面 sliver（任务栏最右缘细条——
-                    // Win11 惯例；负一屏时高亮提示 toggle 语义。v1 hover
-                    // 底色 + 分隔线，文字 tooltip 作 stretch）。
+                    // Win11 惯例；负一屏时高亮提示 toggle 语义）。
+                    // PLAN-035 T-03 重构：①视觉类从 mouse-area 样式移入内容
+                    // col——原样式挂 mouse-area 时视觉包装容器被撑成任务栏全
+                    // 高（实测 13×56 @ x1259，hit 带仅 12×40）→「hover 高亮
+                    // 盖不满小块/条带越出任务栏」根因；现 hit 带 = 可视条带
+                    // （8×40，PLAN-021 线 B 合同）。②w-3→w-2 收窄（用户裁定）。
+                    // ③hover 提示 = 锚定 popover（DSL 无 tooltip 原语，
+                    // P548-D2 债不动）；文案随 __wm_showdesk 动态（Q3 初裁）。
                     mouse-area (onclick: .ShowDesktopToggle, onmouseenter: .SliverHover, onmouseleave: .SliverUnhover) {
-                        style: if .sliver_hover == "1" {
-                            "w-3 h-10 border-l border-border bg-foreground/10"
-                        } else {
-                            "w-3 h-10 border-l border-border"
+                        popover (open: .sliver_hover == "1", placement: "top", ondismiss: .SliverUnhover, class: "px-2 py-1 border rounded bg-card") {
+                            col {
+                                style: if .sliver_hover == "1" {
+                                    "w-2 h-10 border-l border-border bg-foreground/10"
+                                } else {
+                                    "w-2 h-10 border-l border-border"
+                                }
+                            }
+                            col {
+                                if .__wm_showdesk == "1" {
+                                    text "恢复桌面" {
+                                        style: "text-xs text-muted-foreground"
+                                    }
+                                } else {
+                                    text "显示桌面" {
+                                        style: "text-xs text-muted-foreground"
+                                    }
+                                }
+                            }
                         }
                     }
                 }

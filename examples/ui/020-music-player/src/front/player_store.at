@@ -109,8 +109,11 @@ store PlayerStore {
             } else {
                 .current_index = 0
                 .has_current = false
-                .current_title = "本地曲库为空"
-                .current_artist = "E:\\Music\\"
+                // PLAN-035 T-07：空曲库不再进小组件文案（AC-08）——title/
+                // artist 回默认占位，详细原因仍走主窗 status_text；系统通知
+                // 由 app.at Init 臂发（notify 词面 + 宿主孵化 drain 段）。
+                .current_title = "未选择歌曲"
+                .current_artist = "极光音乐"
                 .current_url = ""
                 if .root_missing {
                     .status_text = "音乐目录不存在：请检查 E:\\Music\\ 或 AUTO_MEDIA_ROOT"

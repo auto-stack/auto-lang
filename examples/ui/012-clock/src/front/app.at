@@ -629,12 +629,15 @@ widget App {
     }
 
     // 桌面 dashboard 小组件卡片（PLAN-024 活渲染面）：传统手表 ⌚ 迷你表盘 + 本地时钟
+    // PLAN-035 T-05：2×2 网格卡（168×152）收紧——svg 40px + 文本 text-xl，
+    // 内容总宽 ≤ 卡内宽；居中 = 外层 col items-center（内层行 shrink 由列
+    // 交叉轴居中；justify-center 行居中在窄卡内与溢出互涉，退役）。
     view mini {
         col {
-            style: "w-full h-full items-center justify-center p-3 gap-2"
+            style: "w-full h-full items-center justify-center p-2 gap-2"
             row {
-                style: "items-center justify-center gap-3 w-full"
-                svg (viewBox: "0 0 100 100", style: "w-16 h-16 shrink-0") {
+                style: "items-center gap-2"
+                svg (viewBox: "0 0 100 100", style: "w-10 h-10 shrink-0") {
                     circle (cx: "50", cy: "50", r: "47", fill: "#111827", stroke: "#374151", stroke-width: "3") {}
                     circle (cx: "50", cy: "50", r: "42", fill: "none", stroke: "#1f2937", stroke-width: "1") {}
                     line (x1: "50", y1: "8", x2: "50", y2: "14", stroke: "#f3f4f6", stroke-width: "2") {}
@@ -647,12 +650,12 @@ widget App {
                     circle (cx: "50", cy: "50", r: "2.5", fill: "#f97316") {}
                 }
                 col {
-                    style: "items-start justify-center gap-0.5"
+                    style: "items-start gap-0.5"
                     text .w_local {
-                        style: "text-2xl font-mono font-bold text-foreground tabular-nums tracking-tight"
+                        style: "text-xl font-mono font-bold text-foreground tabular-nums tracking-tight"
                     }
                     text .local_date_str {
-                        style: "text-xs text-muted-foreground font-medium"
+                        style: "text-[10px] text-muted-foreground font-medium"
                     }
                 }
             }

@@ -219,19 +219,25 @@ widget DesktopSurface {
                         }
                     }
                 }
-                                col {
-                                    style: "w-44 gap-1"
-                                    button (text: "打开", variant: "ghost") {
-                                        onclick: .MenuOpen
-                                        style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
-                                    }
-                                    button (text: "从桌面移除", variant: "ghost") {
-                                        onclick: .MenuRemove
-                                        style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
-                                    }
-                                    button (text: "更换壁纸…", variant: "ghost") {
-                                        onclick: .MenuWallpaper
-                                        style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
+                                // PLAN-035 T-02：菜单内容包 open 态守卫——
+                                // 关闭态 popover 内容在合成层泄漏（幽灵绘制/
+                                // 命中，attribution #2），内容不物化即无泄漏
+                                // 面。锚件（chip）不受守卫（网格视觉本体）。
+                                if .menu_id == e.id {
+                                    col {
+                                        style: "w-44 gap-1"
+                                        button (text: "打开", variant: "ghost") {
+                                            onclick: .MenuOpen
+                                            style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
+                                        }
+                                        button (text: "从桌面移除", variant: "ghost") {
+                                            onclick: .MenuRemove
+                                            style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
+                                        }
+                                        button (text: "更换壁纸…", variant: "ghost") {
+                                            onclick: .MenuWallpaper
+                                            style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
+                                        }
                                     }
                                 }
                             }
@@ -267,10 +273,13 @@ widget DesktopSurface {
             // 样式完全由 class 承载）。开门 = drag_moved（真拖起来才显示——
             // drag_id 按下即置位，单击/双击第一击不闪副本）。
             popover (open: .drag_moved == "1", x: .__desktop_cursor_x, y: .__desktop_cursor_y, class: "p-0 bg-transparent") {
-                col {
-                    style: "w-12 h-12 opacity-60"
-                    icon (name: .drag_icon) {
-                        style: "w-full h-full"
+                // PLAN-035 T-02：内容开态守卫（同 blank 菜单注）。
+                if .drag_moved == "1" {
+                    col {
+                        style: "w-12 h-12 opacity-60"
+                        icon (name: .drag_icon) {
+                            style: "w-full h-full"
+                        }
                     }
                 }
             }
@@ -283,6 +292,12 @@ widget DesktopSurface {
             // PLAN-012：坐标锚 popover（open 驱动 + x/y 落点；坐标锚形态
             // 无锚子件，children 全为面板内容）。
             popover (open: .blank_menu != "", x: .__desktop_cursor_x, y: .__desktop_cursor_y, ondismiss: .BlankClose, class: "p-1 border rounded bg-card") {
+            // PLAN-035 T-02：内容开态守卫——boot 期关闭态本 popover 在合成层
+            // 泄漏三按钮文本幽灵（桌面左下角常驻，T36 历史回归同位置复发；
+            // 实机 b0 截图在案 tmp/p035/attribution.md #2）。内容不物化即
+            // 无可泄漏绘制/命中面（锚定面板 bg 由 class 承载，空面板无
+            // 可视块）。
+            if .blank_menu != "" {
             col {
                 style: "w-44 gap-1"
                 button (text: "更换壁纸…", variant: "ghost") {
@@ -302,6 +317,7 @@ widget DesktopSurface {
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10"
                 }
             }
+            }
         }
             // PLAN-019 v1.7：壁纸选择 carousel 层（坐标锚 popover 浮置——
             // 负一屏无 App 窗，picker 与图标/真壁纸同屏合成。缩略图单击 =
@@ -309,6 +325,10 @@ widget DesktopSurface {
             // 二级态（←/→ 键导航宿主侧，Esc/返回退栅格）。ondiscard 即
             // ondismiss（外点/Esc）→ wallpaper_close，归属规则宿主收口）。
             popover (open: .__wp_picker == "1", x: .__wp_x, y: .__wp_y, ondismiss: .PickerDismiss, class: "p-4 border rounded-xl bg-card w-[720px] gap-3") {
+                // PLAN-035 T-02：面板内容包 open 态守卫（同 blank 菜单注）
+                // ——用户实机「任务栏白卡幽灵（浏览…可点击→弹目录对话框）」
+                // 即本面板关闭态内容泄漏；内容不物化即根治。
+                if .__wp_picker == "1" {
                 // 头部行：目录展示 + 浏览换目录 + 关闭。
                 row {
                     style: "w-full items-center gap-2"
@@ -391,6 +411,7 @@ widget DesktopSurface {
                             }
                         }
                     }
+                }
                 }
             }
     }

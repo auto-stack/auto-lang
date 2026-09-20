@@ -2999,3 +2999,144 @@ fn p655_stretch_equal_height_dual_window_sizes() {
         );
     }
 }
+
+// ============================================================================
+// PLAN-035 T-00/T-01：任务栏布局探针（shell.at taskbar 同构 View 镜像）。
+// 实机归因（tmp/p035/）：master 干净构建上右组图标仍被夹屏幕中央——
+// 静态分析（单 spacer Fill → 右对齐）与实机矛盾，本探针在 headless
+// testbench 逐件量 bbox 定案吞宽度元素。SD-05 回归守护挂本测试。
+// ============================================================================
+
+#[test]
+fn p035_taskbar_right_group_right_aligned() {
+    let icon_btn = |label: &str, extra: &str| View::<()>::Button {
+        label: label.to_string(),
+        onclick: (),
+        disabled: false,
+        style: Style::parse(&format!("h-11 w-11 px-0 text-4xl rounded-xl bg-transparent {extra}")).ok(),
+        on_right_click: None,
+        content: None,
+    };
+    // shell.at taskbar 子序（2026-09-20 现行）：launcher → [spacer flex-1] →
+    // switcher → layout×2 → bell(row 包 col) → dashboard → config →
+    // power(popover 锚) → 空托盘 row → clock col → sliver mouse-area。
+    // 探针裁剪与布局语义无关的 popover/for 循环臂，保留全部宽度语义件。
+    let taskbar: View<()> = View::Row {
+        children: vec![
+            icon_btn("L", ""),
+            // spacer：convert_spacer 家法 = Container(Empty) + flex-1 样式
+            View::Container {
+                child: Box::new(View::Empty),
+                padding: 0,
+                width: None,
+                height: None,
+                center_x: false,
+                center_y: false,
+                style: Style::parse("flex-1 h-8").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+            icon_btn("S", ""),
+            icon_btn("G", ""),
+            icon_btn("K", ""),
+            View::Row {
+                children: vec![View::Column {
+                    children: vec![icon_btn("B", "")],
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse("relative").ok(),
+                    onclick: None,
+                    on_right_click: None,
+                }],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("items-center gap-0").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+            icon_btn("D", ""),
+            icon_btn("C", ""),
+            icon_btn("P", ""),
+            // 空托盘 row（shell.at:555 既有）
+            View::Row {
+                children: vec![],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("items-center gap-0").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+            // clock col（两行文本）——PLAN-035 T-01 修复后结构：无
+            // justify-center（该类在无 width 列上 = 包装容器 Fill 宽，
+            // 与 spacer 平分主轴 = 右组居中 bug 根因，见 attribution #1）。
+            View::Column {
+                children: vec![
+                    View::Text { content: "11:03".into(), style: Style::parse("text-xs text-muted-foreground tabular-nums leading-tight").ok(), selectable: false },
+                    View::Text { content: "9月20日 周日".into(), style: Style::parse("text-[10px] text-muted-foreground leading-tight").ok(), selectable: false },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("items-center px-2").ok(),
+                onclick: None,
+                on_right_click: None,
+            },
+            // sliver mouse-area（w-3 h-10）
+            View::MouseArea {
+                content: Box::new(View::Empty),
+                on_enter: None,
+                on_exit: None,
+                on_double_click: None,
+                on_click: Some(()),
+                on_context_menu: None,
+                on_release: None,
+                on_move: None,
+                logical_extent: None,
+                style: Style::parse("w-3 h-10 border-l border-border").ok(),
+            },
+        ],
+        spacing: 8,
+        padding: 0,
+        style: Style::parse("h-14 w-full flex items-center gap-2 px-2 bg-card/95 border-t").ok(),
+        onclick: None,
+        on_right_click: None,
+    };
+    let mut ui = iced_test::Simulator::with_size(
+        <iced_test::core::Settings as Default>::default(),
+        (1280.0, 800.0),
+        taskbar.into_iced(),
+    );
+    // 逐件文本 bounds（L/S/G/K/B/D/C/P 标签即探针）
+    let mut report = String::new();
+    for tag in ["L", "S", "G", "K", "B", "D", "C", "P"] {
+        let (x, _y, w, _h) = bounds_of(&mut ui, tag);
+        report.push_str(&format!("{tag}=x{:.1}+w{:.1} ", x, w));
+    }
+    eprintln!("[p035-taskbar] {report}");
+    let (sx, _sy, _sw, _sh) = bounds_of(&mut ui, "9月20日 周日");
+    eprintln!("[p035-taskbar] clock_text=x{sx:.1}");
+    // 容器全量收集（根行 + spacer + 各包装）
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32, f32)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    struct Sink2(std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32, f32)>>>);
+    impl Selector for Sink2 {
+        type Output = ();
+        fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
+            if let Candidate::Container { bounds, .. } = candidate {
+                self.0.lock().unwrap().push((bounds.x, bounds.y, bounds.width, bounds.height));
+            }
+            None
+        }
+        fn description(&self) -> String { "p035-sink".into() }
+    }
+    let _ = ui.find(Sink2(store.clone()));
+    let mut boxes = store.lock().unwrap().clone();
+    boxes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    eprintln!("[p035-taskbar] containers={boxes:?}");
+    // 合同（SD-05）：右组末件 P（电源）右缘应贴时钟左邻（< 1600px 处；
+    // 居中 bug 形态 = P 落在 ~640 附近、与 clock 之间出现 ~半屏空隙）。
+    let (px, _py, pw, _ph) = bounds_of(&mut ui, "P");
+    assert!(
+        px + pw > 1000.0,
+        "任务栏右组必须右对齐贴时钟（P 右缘应 >1000，实测 x={px:.1} w={pw:.1}；{report}）"
+    );
+}

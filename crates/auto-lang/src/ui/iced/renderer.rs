@@ -10099,6 +10099,18 @@ fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str,
     if !state.desktop.config.notes_enabled {
         return;
     }
+    // PLAN-035 T-07（AC-09）：尾条去重——与史内最新条 kind+msg 全同即跳过
+    // （跨 boot 的 hatch 重扫描不刷屏；进程内同源去重在发件方旗标臂）。
+    if state
+        .desktop
+        .notifications
+        .borrow()
+        .first()
+        .map(|n| n.kind == kind && n.msg == msg)
+        .unwrap_or(false)
+    {
+        return;
+    }
     let id = {
         let next = state.desktop.notes_next_id.get();
         state.desktop.notes_next_id.set(next.wrapping_add(1));
@@ -10585,15 +10597,18 @@ fn toggle_notification_center(
 // 宿主注入两段式，单一事实在宿主侧读回）。
 // ============================================================================
 
-/// dashboard 面板布局常量（stella 骨架比例简化：等宽 3 列起步，span 表达
-/// 宽卡）。宿主计算单一事实，面板 .at 经 `__panel_*` 注入镜像；face 格位
-/// 由同一算式产出（像素级一致，零漂移）。
-const DASH_COLS: usize = 3;
-const DASH_CELL_H: f32 = 132.0;
-const DASH_GAP: f32 = 12.0;
-const DASH_PAD: f32 = 16.0;
-const DASH_HEADER_H: f32 = 48.0;
-const DASH_PANEL_MAX_W: f32 = 920.0;
+/// dashboard 面板布局常量（PLAN-035 T-04 v2：桌面图标网格吸附 8×3——
+/// 外框 = 屏幕右上 8 列×3 行网格块，widget 卡 = 网格单元整数倍（缺省
+/// 2×2、声明/存储 3×2），卡框线落 88/80 节距网格；头行 = 网格行 0）。
+/// 宿主计算单一事实，面板 .at 经 `__panel_*` 注入镜像；face 格位由同一
+/// 算式产出（像素级一致，零漂移）。
+const DASH_GRID_COL: f32 = 88.0; // w-20 80 + gap 8（桌面图标列距）
+const DASH_GRID_ROW: f32 = 80.0; // h-[72px] 72 + gap 8（桌面图标行距）
+const DASH_MARGIN: f32 = 12.0; // 屏幕边距（桌面内容 p-3 同源）
+const DASH_COLS: usize = 8; // 外框列数（用户裁定 8×3）
+const DASH_ROWS: usize = 3; // 外框行数
+const DASH_HEADER_H: f32 = 80.0; // 头行占位 = 行 0 格 72 + gap 8
+const DASH_WIDGET_H: f32 = 152.0; // widget 卡高 = 2 行格（2×72 + 8）
 
 /// face 卡片（格位算式输入）：registry id + 列跨度 + 所属 tab。
 /// R5：tab 由注册表 category 派生（"system" → 系统页，其余 → 小组件页）
@@ -10658,100 +10673,103 @@ mod plan024_dashboard_layout_tests {
         height: 800.0,
     };
 
-    /// 空清单：面板最小高，无格位。
+    /// 空清单：无格位，外框仍为 8×3 固定矩形（右上 12px 边距）。
     #[test]
-    fn empty_faces_min_panel() {
-        let (w, h, _top, cells) = dashboard_layout(VP, &[]);
-        assert!(w > 0.0 && h > 0.0);
+    fn empty_faces_fixed_frame() {
+        let (panel, cells) = dashboard_layout(VP, &[]);
         assert!(cells.is_empty());
+        assert_eq!(panel.width, 8.0 * DASH_GRID_COL - 8.0);
+        assert_eq!(panel.height, 3.0 * DASH_GRID_ROW - 8.0);
+        assert_eq!(panel.x, VP.width - DASH_MARGIN - panel.width);
+        assert_eq!(panel.y, DASH_MARGIN);
     }
 
-    /// 三张 span=1 恰好一行；第四张换行。
+    /// 网格算术：span2 卡宽 168、span3 卡宽 256；卡高 152（2 行格）；
+    /// 卡行 y = panel.y + 80（网格行 1 起）；x 落 88 节距。
     #[test]
-    fn three_fit_one_row_fourth_wraps() {
-        let faces = vec![face("a", 1), face("b", 1), face("c", 1), face("d", 1)];
-        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
-        assert_eq!(cells.len(), 4);
-        // 行主序：前三同 y，第四换行 y 更大。
-        assert_eq!(cells[0].y, cells[1].y);
-        assert_eq!(cells[1].y, cells[2].y);
-        assert!(cells[3].y > cells[0].y);
+    fn grid_unit_cell_geometry() {
+        let faces = vec![face("a", 2), face("b", 3)];
+        let (panel, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 2);
+        assert_eq!(cells[0].width, 2.0 * DASH_GRID_COL - 8.0);
+        assert_eq!(cells[1].width, 3.0 * DASH_GRID_COL - 8.0);
+        assert_eq!(cells[0].height, DASH_WIDGET_H);
+        assert_eq!(cells[0].y, panel.y + DASH_HEADER_H);
+        assert_eq!(cells[0].x, panel.x);
+        assert_eq!(cells[1].x, panel.x + 2.0 * DASH_GRID_COL);
     }
 
-    /// span=2 宽卡占两列：后续 1 卡同行，再下张换行。
+    /// 8 列单卡行容量：2+3+3 恰满；第 4 张裁剪（Q2 v1 策略）。
     #[test]
-    fn span2_occupies_two_columns() {
-        let faces = vec![face("wide", 2), face("n", 1), face("next", 1)];
-        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
-        assert_eq!(cells.len(), 3);
-        assert!(cells[0].width > cells[2].width, "span2 宽卡更宽");
-        assert_eq!(cells[0].y, cells[1].y, "span2+1 同行");
-        assert!(cells[2].y > cells[0].y, "第三张换行");
+    fn single_widget_row_capacity_and_clip() {
+        let faces = vec![face("a", 2), face("b", 3), face("c", 3), face("d", 2)];
+        let (panel, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 3, "2+3+3=8 恰满一行，第 4 张裁剪");
+        let last = cells.last().unwrap();
+        assert!(
+            last.x + last.width <= panel.x + panel.width + 0.5,
+            "卡不得越出外框右缘"
+        );
     }
 
-    /// span 越界 clamp 防御（storage 坏值不 panic、不错位越界）。
+    /// span 越界 clamp（0/99 直传不 panic、不越界——存储坏值防御）。
     #[test]
-    fn span_clamped_to_cols() {
-        let faces = vec![face("x", 99)];
-        let (_w, _h, _top, cells) = dashboard_layout(VP, &faces);
-        assert_eq!(cells.len(), 1);
-        assert!(cells[0].width <= VP.width);
+    fn span_clamped_and_frame_intact() {
+        let faces = vec![face("x", 99), face("y", 0)];
+        let (panel, cells) = dashboard_layout(VP, &faces);
+        assert_eq!(cells.len(), 2);
+        for c in &cells {
+            assert!(c.width <= panel.width);
+            assert!(c.x + c.width <= panel.x + panel.width + 0.5);
+        }
     }
 }
 
+/// 面板布局算式（PLAN-035 T-04 v2——宿主/面板几何单一事实）：外框 =
+/// 屏幕右上 8×3 图标网格块（696×232 @ 12px 边距，节距 88/80）；face 卡
+/// = 视口绝对格位，行主序单卡行 next-fit（span∈{2,3} 缺省 2，余量不足
+/// 裁剪 + dev 日志——3 行外框仅容一行 2 格高卡，Q2 v1 裁剪策略）。头行
+/// = 网格行 0（格 72 + gap 8 → 卡行起点 panel.y + DASH_HEADER_H）。
 fn dashboard_layout(
     viewport: iced::Rectangle,
     faces: &[DashFace],
-) -> (f32, f32, f32, Vec<iced::Rectangle>) {
-    let panel_w = DASH_PANEL_MAX_W.min(viewport.width - 32.0).max(320.0);
-    let inner_w = panel_w - 2.0 * DASH_PAD;
-    let cell_w = (inner_w - (DASH_COLS as f32 - 1.0) * DASH_GAP) / DASH_COLS as f32;
-    // 行主序 next-fit 装箱（span ∈ 1..=3；越界 clamp——storage 坏值防御）。
+) -> (iced::Rectangle, Vec<iced::Rectangle>) {
+    let panel_w = DASH_COLS as f32 * DASH_GRID_COL - 8.0;
+    let panel_h = DASH_ROWS as f32 * DASH_GRID_ROW - 8.0;
+    let panel_x = (viewport.width - DASH_MARGIN - panel_w).max(DASH_MARGIN);
+    let panel_y = DASH_MARGIN;
     let mut cells = Vec::with_capacity(faces.len());
     let mut col = 0usize;
-    let mut row = 0usize;
+    let mut clipped = 0usize;
     for f in faces {
-        let span = f.span.clamp(1, DASH_COLS).min(DASH_COLS - col).max(1);
-        let x = DASH_PAD + col as f32 * (cell_w + DASH_GAP);
-        // 网格区起点 = 标题行之下（面板 .at 头行 + p-4 同源算式）。
-        let y = DASH_HEADER_H + DASH_PAD + row as f32 * (DASH_CELL_H + DASH_GAP);
-        let w = span as f32 * cell_w + (span as f32 - 1.0) * DASH_GAP;
-        cells.push(iced::Rectangle {
-            x,
-            y,
-            width: w,
-            height: DASH_CELL_H,
-        });
-        col += span;
-        if col >= DASH_COLS {
-            col = 0;
-            row += 1;
+        let want = f.span.clamp(2, 3);
+        let remain = DASH_COLS - col;
+        if want > remain {
+            clipped += 1;
+            continue;
         }
+        cells.push(iced::Rectangle {
+            x: panel_x + col as f32 * DASH_GRID_COL,
+            y: panel_y + DASH_HEADER_H,
+            width: want as f32 * DASH_GRID_COL - 8.0,
+            height: DASH_WIDGET_H,
+        });
+        col += want;
     }
-    let rows = if faces.is_empty() {
-        0
-    } else if col > 0 {
-        row + 1 // 末行有内容未换行
-    } else {
-        row
-    };
-    let panel_h = if faces.is_empty() {
-        // PLAN-659 T-04：上界求值守卫——viewport.height=0（最小化/未布局
-        // 期的 draw pass）时 `height-96=-96 < min 160` 触发 f32::clamp
-        // panic（audit 在案 min=160.0/max=-96.0）。上界夹到 ≥min，零视口
-        // 降级为 min 高度的占位面板。
-        (DASH_HEADER_H + DASH_PAD + 64.0).clamp(160.0, (viewport.height - 96.0).max(160.0))
-    } else {
-        // 标题行 + 网格（rows 行 + 行间 gap）+ 底垫。
-        DASH_HEADER_H + DASH_PAD + rows as f32 * DASH_CELL_H
-            + (rows as f32 - 1.0) * DASH_GAP
-            + DASH_PAD
-    };
-    let panel_top = 64.0_f32.min((viewport.height - panel_h).max(8.0));
-    // 格位 = 面板相对坐标（落位 panel_x 由调用方单一注入——chrome 与
-    // face 永远同源；R7 伴随修正：此前内部居中导致 wrapper 挪位后
-    // chrome/face 分家）。
-    (panel_w, panel_h, panel_top, cells)
+    if clipped > 0 {
+        eprintln!(
+            "[dashboard] layout: {clipped} face(s) clipped — 8×3 外框仅容一行 2 格高卡（滚动/增高挂 v2 债）"
+        );
+    }
+    (
+        iced::Rectangle {
+            x: panel_x,
+            y: panel_y,
+            width: panel_w,
+            height: panel_h,
+        },
+        cells,
+    )
 }
 
 /// `shell.dashboard.enabled`（csv）读回——None = 未配置（首次召唤自动
@@ -10762,10 +10780,39 @@ fn dashboard_enabled_list() -> Option<Vec<String>> {
 }
 
 /// `shell.dashboard.span.<id>` 读回（"1"|"2"，坏值/缺席 = 1）。
-fn dashboard_span_of(id: &str) -> usize {
-    match crate::vm::ffi::stdlib::storage_host_read(&format!("shell.dashboard.span.{id}")) {
-        Some(v) if v.trim() == "2" => 2,
-        _ => 1,
+/// 存储覆写面（PLAN-035 SD-02：合法域 {2,3}——"3"→3；"1"/"2"→2 旧值
+/// 迁移；坏值/缺席 = None，由消费臂回落声明与缺省）。
+fn dashboard_span_from_storage(id: &str) -> Option<usize> {
+    crate::vm::ffi::stdlib::storage_host_read(&format!("shell.dashboard.span.{id}")).and_then(
+        |v| match v.trim() {
+            "3" => Some(3usize),
+            "1" | "2" => Some(2usize),
+            _ => None,
+        },
+    )
+}
+
+/// PLAN-035 SD-02：app 源 span 声明探测——`view mini (span: "3")` 文本级
+/// 扫描（grep 家法同 has_mini）；存储覆写仍胜（refresh 臂消费序）。
+fn dashboard_declared_span(
+    state: &crate::ui::session::DesktopSession,
+    id: &str,
+) -> Option<usize> {
+    let spec = state.desktop.app_resolver.as_ref().and_then(|r| r(id))?;
+    let code = spec.code.as_str();
+    let ix = code.find("view mini")?;
+    // 声明标记 = `view mini` 邻域 240 字符内的 `span: N`（N∈{2,3}；正文
+    // 首行注释形态 `// dashboard span: 3`——parser view-tag 无 props 通道，
+    // 文本级契约与 has_mini grep 同族）。
+    let end = code.len().min(ix + 240);
+    let window = &code[ix..end];
+    let p = window.find("span:")?;
+    let tail = window[p + 5..].trim_start().trim_start_matches('"');
+    let digits: String = tail.chars().take_while(|c| c.is_ascii_digit()).collect();
+    match digits.as_str() {
+        "3" => Some(3),
+        "2" => Some(2),
+        _ => None,
     }
 }
 
@@ -10915,7 +10962,7 @@ fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<D
             span: spans
                 .get(i)
                 .and_then(|s| s.parse::<usize>().ok())
-                .unwrap_or(1),
+                .unwrap_or(2),
             tab: match tabs.get(i).map(|t| t.as_str()) {
                 Some("system") => "system",
                 _ => "main",
@@ -10957,6 +11004,11 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
                     state.register_hatched_mini(&id, app_id);
                     "hatched"
                 }
+                // PLAN-035：孵化失败不再静默——错误串落日志（可诊断性）。
+                Err(err) => {
+                    eprintln!("[dashboard] hatch {id} failed: {err}");
+                    "placeholder"
+                }
                 _ => "placeholder",
             }
         };
@@ -10969,13 +11021,17 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
             tab: dashboard_tab_of_category(&category),
         });
     }
+    // PLAN-035 SD-02：存储覆写 → 源声明 → 缺省 2（旧 "1" 迁移在存储面）。
     for f in faces.iter_mut() {
-        f.span = dashboard_span_of(&f.id);
+        f.span = dashboard_span_from_storage(&f.id)
+            .or_else(|| dashboard_declared_span(state, &f.id))
+            .unwrap_or(2);
     }
 
     // 2. 几何（宿主单一事实）+ 注入。
     let viewport = state.host_viewport();
-    let (panel_w, panel_h, panel_top, _cells) = dashboard_layout(viewport, &faces);
+    let (panel_rect, _cells) = dashboard_layout(viewport, &faces);
+    let (panel_w, panel_h, panel_top) = (panel_rect.width, panel_rect.height, panel_rect.y);
 
     // 3. 快照注入（平行列表 + 合同面 + 几何）。
     let mut ids: Vec<auto_val::Value> = Vec::new();
@@ -11316,6 +11372,22 @@ fn drain_and_execute_desktop_commands(
             let seg = state.drain_app_desktop_commands(app_id);
             if !seg.is_empty() {
                 segments.push((registry_id, seg));
+            }
+        }
+        // PLAN-035 T-07（SD-03）：dashboard 孵化会话段——windowless mini
+        // 会话不在 wm.wins，其 __desktop_cmd（notify 词面）此前不可达；
+        // 并入联合排空，registry_id = 孵化映射键（归因沿用）。词表白名单
+        // 不变（DesktopCommand parse 门）。
+        let hatch: Vec<_> = state
+            .desktop
+            .hatched_minis
+            .iter()
+            .map(|(rid, aid)| (rid.clone(), *aid))
+            .collect();
+        for (registry_id, app_id) in hatch {
+            let seg = state.drain_app_desktop_commands(app_id);
+            if !seg.is_empty() {
+                segments.push((Some(registry_id), seg));
             }
         }
     }
@@ -19632,27 +19704,11 @@ fn compare_pngs(
             if state.dashboard_visible() {
                 let faces_view = dashboard_faces_for_view(state);
                 let viewport = state.host_viewport();
-                let (pw0, ph0, ptop, cells_rel) = dashboard_layout(viewport, &faces_view);
-                // R10：面板外框吸附桌面图标网格（列距 88 = 80+8，行距 80 =
-                // 72+8，原点 12）——宽 10 列高 3 行，右上对齐 12px 边距；
-                // 内部格位按实际面板宽等比缩放。
-                let gcol: f32 = 88.0;
-                let grow: f32 = 80.0;
-                let gpad: f32 = 12.0;
-                let pw = (10.0 * gcol - 8.0).min(viewport.width - 2.0 * gpad);
-                let ph = (3.0 * grow - 8.0).max(160.0);
-                let sx = pw / pw0.max(1.0);
-                let sy = ph / ph0.max(1.0);
-                let panel_x = (viewport.width - gpad - pw).max(gpad);
-                let cells: Vec<iced::Rectangle> = cells_rel
-                    .iter()
-                    .map(|r| iced::Rectangle {
-                        x: r.x * sx + panel_x,
-                        y: r.y * sy + ptop,
-                        width: r.width * sx,
-                        height: r.height * sy,
-                    })
-                    .collect();
+                // PLAN-035 T-04 v2：dashboard_layout 直出视口绝对矩形
+                // （外框 = 右上 8×3 网格块 696×232 @12px；face 卡 88/80
+                // 网格算术 2×2/3×2）——R10 十列外框 + 三等分内格 sx/sy
+                // 缩放路径退役。
+                let (panel, cells) = dashboard_layout(viewport, &faces_view);
                 // R4：卡面 glass 底（stella dash-card 语言——主题感知半透
                 // 明填充，dark=轻提亮/light=白玻璃）。
                 let card_fill = if crate::ui::style::iced_adapter::dark_mode() {
@@ -19677,17 +19733,17 @@ fn compare_pngs(
                 let chrome = iced::widget::container(
                     iced::widget::row![
                         iced::widget::Space::new()
-                            .width(iced::Length::Fixed(panel_x))
+                            .width(iced::Length::Fixed(panel.x))
                             .height(iced::Length::Shrink),
                         iced::widget::column![
                             iced::widget::Space::new()
                                 .width(iced::Length::Shrink)
-                                .height(iced::Length::Fixed(ptop)),
+                                .height(iced::Length::Fixed(panel.y)),
                             iced::widget::container(
                                 dash_client.map(move |m| DM::App(dash_app, m)),
                             )
-                            .width(iced::Length::Fixed(pw))
-                            .height(iced::Length::Fixed(ph)),
+                            .width(iced::Length::Fixed(panel.width))
+                            .height(iced::Length::Fixed(panel.height)),
                         ],
                     ],
                 )

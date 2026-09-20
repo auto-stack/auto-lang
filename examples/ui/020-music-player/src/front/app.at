@@ -28,6 +28,10 @@ widget App {
         // 主题魔法变量：保持在根 widget 以驱动生成器深浅色运行时
         var dark_mode bool = true
         var accent_color str = "emerald"
+        // PLAN-035 T-07：桌面通知上行总线（notify 词面；孵化会话排空段 =
+        // 宿主 drain 扩容）+ 空曲库去重旗标（rescan 结果不变不重发）。
+        var __desktop_cmd str = ""
+        var empty_notified bool = false
     }
 
     view {
@@ -64,52 +68,72 @@ widget App {
     }
 
     // PLAN-024 R19：桌面音乐卡（stella mini-player 设计语言：圆盘 glyph +
-    // 曲名/艺人居中 + 进度时间标签 + ⏮⏯⏭ 控制——face 事件直达本 app 会话，
+    // 曲名/艺人 + 进度时间标签 + ⏮⏯⏭ 控制——face 事件直达本 app 会话，
     // PlayPause 无曲目时自动 SelectIndex(0) 开播）。category=media → 主 tab。
+    // PLAN-035 T-07：2×2 网格卡（168×152）紧凑重排——disc 缩小挂左、
+    // 曲名/艺人右侧双行 truncate、时间 + ⏮⏯⏭ 横排，全部控件卡内可见
+    // （AC-08）；空曲库文案退役（走系统通知，store Load 臂回退占位）。
     view mini {
         col {
-            style: "w-full h-full items-center justify-center gap-2 px-4"
-            col {
-                style: "w-14 h-14 rounded-full bg-primary/15 items-center justify-center"
-                text "♪" {
-                    style: "text-2xl text-primary"
+            style: "w-full h-full items-center justify-center gap-1.5 px-2"
+            row {
+                style: "items-center gap-2 w-full px-1"
+                col {
+                    style: "w-9 h-9 rounded-full bg-primary/15 items-center justify-center"
+                    text "♪" {
+                        style: "text-base text-primary"
+                    }
+                }
+                col {
+                    style: "items-start gap-0 min-w-0"
+                    text .store.current_title {
+                        style: "text-xs font-semibold text-foreground truncate"
+                    }
+                    text .store.current_artist {
+                        style: "text-[10px] text-muted-foreground truncate"
+                    }
                 }
             }
-            text .store.current_title {
-                style: "text-sm font-semibold text-foreground text-center"
-            }
-            text .store.current_artist {
-                style: "text-xs text-muted-foreground text-center"
-            }
             text .store.time_progress_label {
-                style: "text-xs text-muted-foreground tabular-nums"
+                style: "text-[10px] text-muted-foreground tabular-nums"
             }
             row {
-                style: "items-center gap-5"
+                style: "items-center gap-3"
                 button (onclick: .PrevTrack) {
                     text { "⏮" }
-                    style: "text-muted-foreground text-base"
+                    style: "h-8 w-10 px-0 text-muted-foreground text-sm"
                 }
                 button (onclick: .PlayPause) {
                     if .store.is_playing {
                         text { "⏸" }
-                        style: "text-primary text-xl"
+                        style: "h-9 w-11 px-0 text-primary text-lg"
                     } else {
                         text { "▶" }
-                        style: "text-primary text-xl"
+                        style: "h-9 w-11 px-0 text-primary text-lg"
                     }
                 }
                 button (onclick: .NextTrack) {
                     text { "⏭" }
-                    style: "text-muted-foreground text-base"
+                    style: "h-8 w-10 px-0 text-muted-foreground text-sm"
                 }
             }
         }
     }
 
     on {
+        // PLAN-035 T-07：空曲库 → 系统通知流（AC-09）——Load 后读 store
+        // 计数（calendar Init 读 store 先例），空且未通知过才发 notify
+        // （一次性；曲库恢复非空即复位旗标，之后再空可再报）。
         .Init -> {
             store.Load()
+            if .store.item_count == 0 {
+                if .empty_notified == false {
+                    .empty_notified = true
+                    .__desktop_cmd = "notify	info	本地曲库为空：E:\\Music\\（FLAC / MP3 / WAV）"
+                }
+            } else {
+                .empty_notified = false
+            }
         }
         .ToggleDarkMode -> {
             .dark_mode = !.dark_mode

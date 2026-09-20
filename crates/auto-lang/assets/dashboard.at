@@ -61,7 +61,9 @@ widget DashboardPanel {
             // 常驻小组件层（R2）：宿主 wrapper 给定面板矩形，本面只画
             // chrome。R4 重设计（stella widget-tabs 语言）：居中 pill
             // tab（激活 bg-primary/15 text-primary）+ glass 底板；标题行
-            // 固定 h-12（48px = 宿主 DASH_HEADER_H，格位算式一致）。
+            // PLAN-035 T-04：固定 h-[72px] = 图标网格行 0 满格（宿主
+            // DASH_HEADER_H 80 = 72 格 + 8 gap，face 卡行 1 起——8×3
+            // 网格合同，SD-01）。
             col {
                 style: "w-full h-full"
                 mouse-area (onmouseenter: .ShowClose, onmouseleave: .HideClose) {
@@ -71,7 +73,7 @@ widget DashboardPanel {
                     // 标题行：居中 tab + 右缘 ×（R6：hover 面板才显现，
                     // 槽位 h-8 w-8 固定不跳版）
                     row {
-                        style: "w-full h-12 items-center px-3"
+                        style: "w-full h-[72px] items-center px-3"
                         col {
                             style: "w-full items-center"
                             row {
