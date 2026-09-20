@@ -16197,6 +16197,11 @@ fn compare_pngs(
             }
         } else if crate::ui::action_config::menubar_open().is_some()
             && !msg.event.starts_with("__")
+            // PLAN-664 U-1：TimeSource 泵事件（DSL Tick/timer{} 处理器名，
+            // 无 `__` 前缀）是框架周期消息而非用户交互——不参与"任意
+            // 非内部消息关菜单"。041 状态栏时钟每秒的 `Tick` 曾把刚打开
+            // 的 menubar 在下一次快照前关掉（041 矩阵六失败根因）。
+            && !state.component.is_timesource_event(&msg.event)
         {
             crate::ui::action_config::set_menubar_open(None);
             *state.app.view_dirty.borrow_mut() = true;

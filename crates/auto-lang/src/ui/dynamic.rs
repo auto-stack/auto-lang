@@ -993,6 +993,14 @@ impl DynamicComponent {
             .collect()
     }
 
+    /// PLAN-664 U-1：事件名是否为本组件声明的 TimeSource 泵事件
+    /// （DSL `Tick` / `timer{}` 处理器名）。这些名字不带 `__` 前缀但
+    /// 属框架周期消息而非用户交互——menubar 自动关闭判据须排除
+    /// （041 状态栏 `Tick` 曾每秒关掉刚打开的菜单）。
+    pub fn is_timesource_event(&self, event: &str) -> bool {
+        self.timesources.iter().any(|ts| ts.event == event)
+    }
+
     /// PLAN-654 阶段 A: path 级可订阅时间源。
     ///
     /// 由类型级候选 × mounted_paths 展开：
@@ -4709,6 +4717,25 @@ widget TimerChild652 {
         );
         assert!(comp.is_timesource("DemoClock652", "Tick"));
         assert!(!comp.is_timesource("DemoPlain652", "Tick"));
+    }
+
+    /// PLAN-664 U-1：is_timesource_event——menubar 自动关闭判据的框架泵
+    /// 排除面。DSL `Tick`（无 `__` 前缀）是 TimeSource 泵而非用户交互
+    /// （041 状态栏时钟每秒 `Tick` 曾把刚打开的 menubar 关掉，矩阵六失败
+    /// 根因）；用户处理器名不得误判为泵事件。
+    #[test]
+    fn plan664_timesource_event_name_discriminates_pump_from_user_action() {
+        let src = format!("{HOST_CLOCK}\n{DEMO_CLOCK}\n{DEMO_PLAIN}");
+        let comp = build(&src);
+        assert!(
+            comp.is_timesource_event("Tick"),
+            "DSL Tick must classify as a timesource pump event"
+        );
+        assert!(
+            !comp.is_timesource_event("ActNew"),
+            "a user handler name must not classify as a timesource pump event"
+        );
+        assert!(!comp.is_timesource_event("__menubar_toggle"));
     }
 
     /// AC-02: 未 mounted ⇒ 订阅查询不含该 Tick；装配实例化后含；切走后不含。
