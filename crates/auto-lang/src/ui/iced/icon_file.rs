@@ -42,8 +42,11 @@ fn cache() -> &'static Mutex<HashMap<(String, bool, u32), Option<Handle>>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// 资产根解析序：AUTO_OS_ICON_ROOT → AUTO_OS_ROOT/assets/icons → None。
-/// 均 env 缺席或目录不存在 → None（回退链下沉，不告警——未配置是常态）。
+/// 资产根解析序：AUTO_OS_ICON_ROOT → AUTO_OS_ROOT/assets/icons →
+/// CWD/assets/icons → P-3 OS 根解析序（`resolve_os_manifest_root`：
+/// 兄弟 → 主检出 `D:/autostack/auto-os`，PLAN-035 T-09——原双 env 臂外
+/// 无回退，裸 exec/缺 env 启动形态全部 iconfile 位图空白实机在案）。
+/// 均缺席或目录不存在 → None（回退链下沉，不告警——未配置是常态）。
 pub fn icon_root() -> Option<PathBuf> {
     if let Some(r) = std::env::var_os("AUTO_OS_ICON_ROOT") {
         let p = PathBuf::from(r);
@@ -53,6 +56,20 @@ pub fn icon_root() -> Option<PathBuf> {
     }
     if let Some(r) = std::env::var_os("AUTO_OS_ROOT") {
         let p = PathBuf::from(r).join("assets").join("icons");
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let p = cwd.join("assets").join("icons");
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
+    if let Some(os_root) =
+        crate::ui::app_registry::resolve_os_manifest_root(std::path::Path::new("."))
+    {
+        let p = os_root.join("assets").join("icons");
         if p.is_dir() {
             return Some(p);
         }

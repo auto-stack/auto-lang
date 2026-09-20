@@ -3656,6 +3656,11 @@ impl RustGenerator {
                                 };
                                 self.value_field_access(&obj_str, field.as_str())
                             }
+                            // PLAN-035 T-11：一般表达式（如 `.__wm_dashboard
+                            // == "1"` 比较）走既有 a2r 表达式渲染器——此前
+                            // 未知形态静默 false（勾选态恒错的根因）。
+                            AuraPropValue::Expr(other) => self
+                                .ast_expr_to_rust_with_value_params(other, &[]),
                             _ => "false".to_string(),
                         })
                         .unwrap_or_else(|| "false".to_string());
@@ -8949,6 +8954,9 @@ widget Probe2 {
             ("popover", "y"),
             ("popover", "class"),
             ("popover", "style"),
+            // PLAN-035 T-11：desktop.at 右键菜单「桌面小组件」checkbox。
+            ("checkbox", "checked"),
+            ("checkbox", "style"),
             ("window_thumbnail", "wid"),
             ("window_thumbnail", "fallback_icon"),
             ("window_thumbnail", "style"),
@@ -8973,6 +8981,8 @@ widget Probe2 {
             ("mouse-area", "oncontextmenu"),
             ("row", "onclick"),
             ("col", "oncontextmenu"),
+            // PLAN-035 T-11：desktop.at 右键菜单「桌面小组件」checkbox。
+            ("checkbox", "onclick"),
             ("popover", "ondismiss"),
             // 认知且双轨同弃（View IR 布局件无 hover 槽，解释臂同弃）。
             ("row", "onmouseenter"),

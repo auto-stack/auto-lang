@@ -43,6 +43,9 @@ widget DesktopSurface {
         // PLAN-019 v1.7：壁纸 picker（栅格点选即应用 / 预览二级态 /
         // 浏览换目录 / 关闭——语义全宿主收口，本面零分支）。
         PickerApply(str),
+        // PLAN-035 T-11：桌面右键菜单「桌面小组件」开关（dashboard_toggle
+        // v1.8 词面；可见性判据 = 宿主投影 __wm_dashboard）。
+        ToggleDashboardBlank,
         PickerPreview(str),
         PickerBack,
         PickerNav(str),
@@ -96,6 +99,9 @@ widget DesktopSurface {
         // PLAN-014 W-04：运行集合派生串（宿主 __wm_running 注入面扩注
         // desktop 层，协议 v1.8 登记——launching ack 判据数据面）。
         var __wm_running str = ""
+        // PLAN-035 T-11：dashboard 面板可见性投影（宿主注入；右键菜单
+        // checkbox 判据）。
+        var __wm_dashboard str = ""
         // PLAN-019 v1.7：壁纸 picker 注入面（协议 v1.7 §2.1——宿主写，
         // 本面只读消费；wp_paths 平行列表 = handler 侧数据合同面，本面
         // 消息均闭包带参，无下标读）。
@@ -300,6 +306,19 @@ widget DesktopSurface {
             if .blank_menu != "" {
             col {
                 style: "w-44 gap-1"
+                // PLAN-035 T-11：「桌面小组件」开关项（AC-11）——面板 ×
+                // 关闭后的常驻重开入口；checked 判据 = 宿主投影。
+                row {
+                    style: "items-center gap-2 px-2 h-8"
+                    checkbox {
+                        checked: .__wm_dashboard == "1"
+                        onclick: .ToggleDashboardBlank
+                        style: "w-4 h-4"
+                    }
+                    text "桌面小组件" {
+                        style: "text-sm text-foreground"
+                    }
+                }
                 button (text: "更换壁纸…", variant: "ghost") {
                     onclick: .MenuWallpaperBlank
                     style: "w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10"
@@ -527,6 +546,13 @@ widget DesktopSurface {
         .MenuWallpaper -> {
             .menu_id = ""
             .SendCmd("wallpaper_pick")
+        }
+
+        // PLAN-035 T-11：小组件面板开关（dashboard_toggle 词面；菜单消费
+        // 即收起，可见性回正由宿主投影下一拍同步）。
+        .ToggleDashboardBlank -> {
+            .blank_menu = ""
+            .SendCmd("dashboard_toggle")
         }
 
         // PLAN-019 v1.7：壁纸 picker 消息族（语义宿主收口——本面只发

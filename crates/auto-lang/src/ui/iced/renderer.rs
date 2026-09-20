@@ -14075,6 +14075,8 @@ fn shell_surface_element(
 fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
     let Some(surface) = state.desktop.desktop_app else { return };
     let snap = build_desktop_surface_snapshot(state);
+    // PLAN-035 T-11：boot 注入 __wm_dashboard（右键菜单 checkbox 判据）。
+    let dash = if state.dashboard_visible() { "1" } else { "" };
     let Some(app) = state.apps.get_mut(&surface) else { return };
     for w in snap.interpreted_writes() {
         match w {
@@ -14086,6 +14088,10 @@ fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
             }
         }
     }
+    // PLAN-035 T-11：__wm_dashboard boot 注入（见上）。
+    let _ = app
+        .component
+        .write_state("__wm_dashboard", auto_val::Value::str(dash));
     *app.state.view_dirty.borrow_mut() = true;
 }
 
@@ -14768,16 +14774,29 @@ pub(crate) fn apply_shell_projection_interpreted(
     *app.state.view_dirty.borrow_mut() = true;
     // PLAN-014 W-04：__wm_running 注入面扩注 desktop 层 + RunningSync 召唤
     // （宿主写状态不触发 handler；启动失败残态由 Init/重注入求差自愈）。
+    // PLAN-035 T-11：__wm_dashboard 投影注入 desktop 层（空白右键菜单
+    // 「桌面小组件」checkbox 判据；可见性随 shell 投影差分同步）。
+    let dash_visible = state.dashboard_visible();
     if let Some(desktop_id) = state.desktop.desktop_app {
         if let Some(dapp) = state.apps.get_mut(&desktop_id) {
             let _ = dapp
                 .component
                 .write_state("__wm_running", auto_val::Value::str(&proj.running_csv));
+            let _ = dapp
+                .component
+                .write_state("__wm_dashboard", auto_val::Value::str(if dash_visible { "1" } else { "" }));
             if let Err(err) = dapp.component.bridge_mut().call_handler("RunningSync", &[]) {
                 eprintln!("[session] desktop RunningSync failed: {err}");
             }
             *dapp.state.view_dirty.borrow_mut() = true;
         }
+    }
+    // PLAN-035 T-12：面板 faces 状态面随窗开合即时回正——投影 fp 变化
+    // 即窗开合/焦点变化，dashboard 可见时重推 faces（关窗 → 重孵化回
+    // 归孵化态；开窗 → 升格态），关窗不再连带 face 消失（AC-12）。
+    // refresh 自带 dashboard_visible 早退；此处先检避免无谓调用。
+    if state.dashboard_visible() {
+        refresh_dashboard_panel(state);
     }
 }
 

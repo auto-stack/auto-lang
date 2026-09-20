@@ -582,15 +582,17 @@ widget Desktop {
                     // 高（实测 13×56 @ x1259，hit 带仅 12×40）→「hover 高亮
                     // 盖不满小块/条带越出任务栏」根因；现 hit 带 = 可视条带
                     // （8×40，PLAN-021 线 B 合同）。②w-3→w-2 收窄（用户裁定）。
+                    // PLAN-035 T-10 走查回环：条带改 h-full——高亮/命中区 =
+                    // 分隔线右侧整个任务栏高（用户裁定「扩大到整个右侧」）。
                     // ③hover 提示 = 锚定 popover（DSL 无 tooltip 原语，
                     // P548-D2 债不动）；文案随 __wm_showdesk 动态（Q3 初裁）。
                     mouse-area (onclick: .ShowDesktopToggle, onmouseenter: .SliverHover, onmouseleave: .SliverUnhover) {
                         popover (open: .sliver_hover == "1", placement: "top", ondismiss: .SliverUnhover, class: "px-2 py-1 border rounded bg-card") {
                             col {
                                 style: if .sliver_hover == "1" {
-                                    "w-2 h-10 border-l border-border bg-foreground/10"
+                                    "w-2 h-full border-l border-border bg-foreground/10"
                                 } else {
-                                    "w-2 h-10 border-l border-border"
+                                    "w-2 h-full border-l border-border"
                                 }
                             }
                             col {
