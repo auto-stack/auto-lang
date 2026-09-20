@@ -151,6 +151,7 @@ RC 审计覆盖本次复现触及的 LOAD/STORE/POP/RET、容器替换和捕获�
 
 2026-09-20 merge 收据（auto-plan-merge，键 PLAN-667:r1）：
 - landed ✓：worktree rebase 到 54de4510e（旧→新映射 f181051ba→3ed52f03e / 5c8f5ce8e→5a664bf44 / faaeeaf0e→176b99e04 / bc186a39b→7b4652148 / 2bb8771cf→545f2967e；range-diff 五提交全 `=` 等价）；master `git merge --ff-only plan-667-dev` → tip=e6ebdfa88=delivery commit（无 merge commit）；spec 文件与账本条目在 main 验证在位；cargo check -p auto-lang smoke 绿（177 既有警告同基线）。
+- cleaned ✓：wt-guard 双 worktree clean（auto-lang+auto-down）→ git worktree remove×2 + branch -d plan-667-dev（e6ebdfa88）+ 组目录 .wt/lang-667 删除；worktree list/list --porcelain/磁盘三查零残留。
 - archived ✓：docs/plans/archive/667-memory-safety-baseline.md（git mv）+ status: archived + completion_kind: delivered
 - ledger_refreshed ✓：目标 .autoos/specs.json（repo 根，本 worktree 提交再 ff 落地）——designs += P667-1（file=docs/specs/auto-lang/vm/design/memory-safety-boundary.md）/reviews += P667-2（file=docs/plans/archive/667-memory-safety-baseline.md），614→616 items 读回验证；vm plans.md 667 表行；INDEX 再生（664 ui 注记 verbatim 回灌拦截 P665-D6 四复发）。
 
