@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-662
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
+completion_kind: delivered
 feature_name: gallery-fast-start-and-viewport
 author: [agent]
 created_at: 2026-09-20
@@ -321,6 +322,29 @@ standalone/Vue 臂连锁验证面。
   evidence/p662/（timing.md + 修复前后截图）。
 
 ## 9. 复审记录
+
+```yaml
+stage: merge
+plan_id: PLAN-662
+plan_revision: 1
+outcome: pass
+delivery_commit: a0bf33fe8（= reviewed 198ae949d 经 rebase 等价映射 480db2bc1/4fd115f2b/a0bf33fe8
+  [range-diff 3/3 全等]，仅叠加 docs-only 账本投影——实现面与复审基线零变化，master 定向冒烟 3/3）
+receipt: PLAN-662:r1
+checkpoints:
+  prepared: SD-01/SD-02 worktree 内备妥（198ae949d）；账本投影 P662-1(designs)/P662-2(reviews) 外科插入 .autoos/specs.json（+22 行最小 diff，604→606 items）+spec-index.py 再生（f64af22a6→rebase a0bf33fe8）
+  landed: "master a0bf33fe8 fast-forward（merge --ff-only 实证；rebase range-diff 3/3 等价）；
+    auto-os main 0778c28 fast-forward——他方 034 会话 WIP 占用同名再生文件（registry/014）经
+    stash→merge→pop 保全：其 docs/plans/034 与 019-video-app 等 WIP 原样恢复（diff=0 核对），
+    031-image-viewer.at 冲突取落地版（现行发射器重生成，其旧发射器残留被超集取代）后 stash drop"
+  ledger_refreshed: ".autoos/specs.json@master a0bf33fe8——P662-1/P662-2 入位（读回 606 items，P658/P661 各项共存）"
+  archived: docs/plans/archive/662-gallery-fast-start-and-viewport.md（git mv）+ status archived + completion_kind delivered
+  cleaned: "wt-guard ×3 clean（lang-662/{auto-lang,auto-os,auto-down}）→ 三 worktree 移除+双分支删除+组目录移除"
+canonical_spec_paths: [docs/specs/auto-lang/ui/overview.md §PLAN-662, docs/specs/auto-lang/vm/plans.md 662 行]
+ledger_targets: [.autoos/specs.json]
+debt: P662-D1（020 flex-wrap 排版降级登记）/ P662-D2（预存并行 env 竞争）落册 KNOWN-DEBT
+next: 终态（cleaned 回填后）
+```
 
 ```yaml
 stage: review
