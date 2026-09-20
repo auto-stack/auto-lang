@@ -1,10 +1,11 @@
 ---
 plan_id: PLAN-665
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                 # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-sandwich（layout/sandwich 应用壳蓝图）
 author: [agent]
 created_at: 2026-09-20
 updated_at: 2026-09-20
+completion_kind: delivered
 plan_revision: 1
 current_step: 5
 total_steps: 5
@@ -281,3 +282,21 @@ plan-665-dev`（本计划纯资产+examples，预计无 auto-down 依赖位；�
 | D-4 | **债候选（work 期发现，review 裁定入册）**：master 预存红 `plan640_bp_tests::t04_vm_track_empty_state_reference`——`Undefined symbol: on_primary in module EmptyStateFirstUse`（A/B 实证：主检出 172536658 同红，与 665 零交互）。疑 empty-state first_use 参数化（PLAN-657 族 on_* 回调）后 VM link 缺声明 | review 阶段登记 KNOWN-DEBT（归 empty-state/657 领地，非本计划修） |
 | D-5 | **债候选（work 期发现）**：`docs/specs/blueprint/project.md` 模块清单表落后于磁盘——缺 075 三包行（status-bar/row-list/filetree）；磁盘 17 包 vs 表 15 行（本计划补 sandwich 后）。665 只补自属行不越权回填 | review 阶段裁定：一行回填或登记 |
 | D-6 | **债候选（work 期发现）**：`scripts/spec-index.py` 再生会冲掉 INDEX.md 手插注记（664 ui 行实证——注记仅存 INDEX，未入再生源）。665 已外科恢复，最终 delta 干净 | review 阶段裁定：注记回灌再生源或改流程纪律 |
+
+- 2026-09-20 merge 收据（`PLAN-665:r1`，五 checkpoint）：
+  - **prepared**：reviewed 基线=review pass@53ba8b346（master 簿记 9c4067642）；
+    规范增量=project.md SD-01（含于 53ba8b346）；投影目标=.autoos/specs.json
+    P665-1（architecture）/P665-2（reviews）；delivery commit=9725d0c30
+    （投影型后代：specs.json +28 行，实现/依赖零变化）。
+  - **landed**：rebase plan-665-dev→master 后 range-diff 3/3 全等（映射
+    f2a8a2ce5→8bc2f114c、7f1fddef7→cd3c2861d、53ba8b346→37d2ae802）；
+    `git merge --ff-only` 零合并提交，master tip=9725d0c30=dev tip（SHA 同一）。
+    wt-guard clean（worktree 内 bp-gate node_modules pnpm junction 六链先行
+    摘除+node_modules 清除后过闸）。
+  - **ledger_refreshed**：specs.json 两条 append（+28/-0，字节格式保真
+    indent=1 无尾换行，读回验证过）；INDEX/project.md 随 37d2ae802 落地。
+    落地后主检出冒烟：auto bp list 绿（layout/sandwich 在册）+ bp-gate
+    双臂全绿（main 自身 exe+资产）。
+  - **archived**：本文件 git mv 至 docs/plans/archive/665-bp-sandwich.md，
+    status: archived，completion_kind: delivered。
+  - **cleaned**：（待清理完成后回填）
