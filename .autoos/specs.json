@@ -4380,6 +4380,11 @@
      "status": "published",
      "created": "2026-09-21",
      "last_modified": "2026-09-21"
+    },
+    {
+     "id": "P668-1",
+     "title": "baseline-red-clearance — 脚手架类型面与阶段契约（SD-01/SD-02）+存量红基线清零批设计摘要",
+     "content": "PLAN-668 把 KNOWN-DEBT 在册 master 预存测试红基线集成清偿（27 条清单+计划外 8 项，四态处置：修复 19/核销 4/环境豁免 2/域外转介 2），各档门禁从近六计划的相对基线口径回绝对全绿。规范增量两行：SD-01 gen 模板 tsconfig compilerOptions.types 显式含 vite/client（main.ts import.meta.env 依赖 Vite 注入全局，缺则 vue-tsc TS2339 全示例红）；SD-02 src/auto-sources.ts （PLAN-646 Select Anything 源码映射）由 write_auto_sources_ts 在 run 与 build 两阶段产出（内容 hash 防抖）——此前仅 auto run 写入，build 阶段 overlay.ts import 落 TS2307。同批根修复用面：.gitignore 全局 *.json 白名单补 27_c_abi use.c manifest（Plan 610 漏提交根因）；模块级 stylekit 导入逐文件预注册（lib.rs 三站点，015 EditorPanel VM 面板复活）；025 后端 sys 原生面（a2r_std::sys 直通+边界 i32/i64+局部 []T→Vec+a2r-std 依赖入模板）；nextest 0.9.138 默认 fail-fast 方法论注记（门禁必须 --no-fail-fast）。详档：archive/668 计划+docs/plans/evidence/p668/baseline.md。"
     }
    ]
   },
@@ -6878,6 +6883,11 @@
      "status": "published",
      "created": "2026-09-21",
      "last_modified": "2026-09-21"
+    },
+    {
+     "id": "P668-2",
+     "title": "baseline-red-clearance 复审与合并收据",
+     "content": "review pass@plan-668-dev（执行会话内复核，结论自工件重建）：work 六提交+并流 merge+F-668-R1 一轮闭环（PLAN-038 脚手架扩展色致 ui_snapshots__app 字节漂移 19837→20509B，R-18 同款 accept）；新鲜门禁 tv 3817/3817+tt 4039/4039+tf 3670/3670 全绿+38 合并滤串，日常档残余=musk 6 域外+ui::layout 14 环境豁免；AC-01..09 全 pass（AC-01 机械核对 R-01..R-26 零缺）。台账回写：P668 清偿批登记节+22 条在册划线+564-Q6 家族注销；musk p054×2 新观测转介呈报。非阻塞观察：R-20 playwright 实跑未执行（环境无 browser，静态等价验证四资产全符，AC-06 分类处置口径内）。rebase 落地：old 08cd793a3 → new tip（8 提交线性等价零冲突）。"
     }
    ]
   }
