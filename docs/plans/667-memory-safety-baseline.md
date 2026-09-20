@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-667
-status: executing
+status: reviewed
 feature_name: 现有内存安全底线加固与支持边界
 作者说明: 本计划仅处理当前机制漏洞；下一版内存模型另案设计。
 author: [Codex]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 1
-current_step: 4
+current_step: 5
 total_steps: 6
 supersedes_spec_components:
   - docs/specs/auto-lang/types/design/ownership.md
@@ -137,7 +137,7 @@ RC 审计覆盖本次复现触及的 LOAD/STORE/POP/RET、容器替换和捕获�
 | T-01 | revision 1 确认 | [x] worktree .wt/lang-667（组内补 auto-down 依赖位）；21 探针模块+evidence 报告；F-01..07 全部静态实锤（另发现 STORE_CAPTURED 双 pop/标签截断/env 漏 stake/祖父帧错锚 四个同族缺陷）；修复策略=帧身份表+RC 三重门+analyzer 下降/折叠/fail-closed | 调查决策不超过本计划范围；AC-01 | cargo check 绿；红基线 12 红 9 绿在案（evidence §1） |
 | T-02 | T-01 | [x] task.rs frame_ids 帧身份表+engine.rs 守卫/CLOSURE/LOAD/STORE_CAPTURED 重写；提交 f181051ba | 捕获矩阵 7/7 绿（正例 3 保护+拒绝 4）；AC-02 | cargo t plan667 绿；closures/known_limits 回归绿 |
 | T-03 | T-01,T-02 | [x] rc_stats 纯化+rc_retain_id 存在性门+rc_push_slot 份额出处门+防御补持收紧 tagged+stdlib 裸推迁移；提交 5c8f5ce8e | RC 矩阵 5/5 绿；P419_UAF_TRACE 事件链取证整数零 retain；AC-03 | cargo t plan667 绿；cargo t plan510 8/8 绿 |
-| T-04 | T-01 | [ ] analyzer 闭包自由变量下降+fold_to_root+Try/Reply+fail-closed+emit_borrow 双拒绝；提交 faaeeaf0e；**R-1 修复重开**（go 探针空泛通过） | a2r 矩阵 9/9 绿+rustc 实编正例绿；AC-04,AC-05 | cargo t plan667 绿；cargo tt 与 stash 基线零差 |
+| T-04 | T-01 | [x] analyzer 闭包自由变量下降+fold_to_root+Try/Reply+fail-closed+emit_borrow 双拒绝；提交 faaeeaf0e+2bb8771cf（R-1 修复） | a2r 矩阵 9/9 绿+rustc 实编正例绿；AC-04,AC-05 | cargo t plan667 绿；cargo tt 与 stash 基线零差 |
 | T-05 | T-02,T-03,T-04 | [x] SD-01..04（含新文件 memory-safety-boundary.md）+evidence 完整化+design/04 纠正+P667-D1/D2 债入册；提交 bc186a39b | 支持矩阵及门禁结果；AC-01..07 | tv 仅 2 预存红；tf(no-fail-fast) 仅 6 预存红（stash 双跑归因，零新增）|
 | T-06 | T-05 | auto-plan-review 独立复审，逐 AC/遗漏/workaround/警告检查；通过后 auto-plan-merge 沉淀 Specs、归档、guard 后清理 | 修订与代码版本绑定的 review pass；AC-07 | review/merge 规定检查；python scripts/spec-index.py；bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-667/auto-lang 必须 clean |
 
@@ -146,6 +146,21 @@ RC 审计覆盖本次复现触及的 LOAD/STORE/POP/RET、容器替换和捕获�
 ## 9. 复审记录
 
 
+
+
+2026-09-20 第二轮复审（R-1 修复后）：
+- stage: review
+- plan_id: PLAN-667
+- plan_revision: 1
+- outcome: pass
+- reviewed_commit: 2bb8771cf（=bc186a39b+R-1 探针修复；基线 21f0b7f72）
+- base_commit: 21f0b7f72
+- dependency_revisions: auto-down detached fba6563ed
+- spec_inputs（SHA256 前 16，@2bb8771cf）: ownership.md B376BC77A3C21D95 / escape-analysis-tiers.md D546B21028CFBC48 / vm architecture.md 8199EC6C93054B2A / memory-safety-boundary.md 825740A4E996D342
+- acceptance_results: AC-01..AC-07 全 pass
+- findings: R-1 已修复并哨兵法验证非空泛（SENTINEL_XYZ 替换即红，恢复即绿）；evidence §4/§7 同步真实边界（a2r 解析层即拒 `.go`）
+- evidence: cargo t plan667 21/21（@2bb8771cf 重跑）；tt 复验仅 6 预存红（stash 双跑归因在案）；rustc 实编门禁绿；diff 零调试输出；plan510 8/8；AC-03 live_shares 由 plan510 三处 ==0 覆盖
+- next: auto-plan:merge 沉淀 Specs、归档、wt-guard 后清理 worktree
 
 2026-09-20 第一轮复审（auto-plan-review，同会话声明：结论自工件/门禁重跑重建，不采信执行自述）：
 - stage: review
