@@ -2597,6 +2597,13 @@ fn generate_default_seed_data(api_module: &auto_lang::api::ApiModule) -> String 
 /// main.rs drops the `State<Db>` seed entirely (no `use api::Db`, no
 /// `.with_state(data)`). When false (no db.rs, or db.rs only partially covers
 /// endpoints), the legacy `State<Db>` seed path is used.
+///
+/// Plan 670 F-R1-A: the legacy seed path additionally requires the contract
+/// to actually define `Db` — `generate_api_rs` only emits `pub type Db` when
+/// a primary type exists (:1705). Scalar contracts without a type block get
+/// skeleton handlers with no `Db` anywhere, so the unconditional `use api::Db`
+/// produced E0432 in the generated project (auto-edit rust track). Such
+/// contracts take the stateless shape below.
 fn generate_main_rs(
     api_module: &auto_lang::api::ApiModule,
     db_at_content: Option<&str>,
@@ -2631,7 +2638,11 @@ fn generate_main_rs(
     // Plan 617 T-05: local media service handlers (same emission point).
     s.push_str(MEDIA_SERVICE_HANDLERS);
     s.push_str("\n");
-    if !db_full_cover {
+    // Plan 670 F-R1-A: `Db` exists in api.rs only when the contract has a
+    // primary type; without it the seed path would emit `use api::Db` against
+    // a type api.rs never defines (E0432).
+    let has_db_type = primary_type_name_pub(api_module).is_some();
+    if !db_full_cover && has_db_type {
         // Legacy seed-state path: handlers take State<Db>, main injects the seed.
         let initial_data = generate_initial_data_pub(api_module, db_at_content);
         s.push_str("use api::Db;\n");
@@ -2668,7 +2679,10 @@ fn generate_main_rs(
         s.push_str("        .with_state(data)\n");
         s.push_str("        .layer(cors);\n\n");
     } else {
-        // db.rs full-coverage path: no State<Db>, seed lives in db.rs Lazy globals.
+        // Stateless path. Plan 399: db.rs full coverage (seed lives in db.rs
+        // Lazy globals). Plan 670 F-R1-A: also contracts with no primary type
+        // — api.rs defines no Db, handlers are skeleton/db-delegated stubs
+        // that never take State, so no seed to inject.
         s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
         s.push_str("#[tokio::main]\n");
         s.push_str("async fn main() {\n");
@@ -3321,6 +3335,47 @@ pub fn list_notes() []Note { return db.all_notes() }
         // And the legacy path is preserved when db_full_cover is false.
         let main_legacy = generate_main_rs(&module, None, false);
         assert!(main_legacy.contains("with_state"), "legacy keeps state: {}", main_legacy);
+    }
+
+    /// Plan 670 F-R1-A: a contract with NO type block (scalar endpoints only,
+    /// no db.at) generates skeleton handlers that never define/take `Db` —
+    /// main.rs must NOT emit `use api::Db` / `with_state` (was E0432 in the
+    /// generated project; auto-edit rust track, survey p670-fr1b-survey §1).
+    #[test]
+    fn test_main_rs_stateless_when_no_db_type() {
+        let _a2r_env = a2r_env_lock();
+        // Shape mirrors auto-edit's back/api.at: scalar endpoints, no pub type.
+        let api = r#"
+#[api(method = "GET", path = "/api/ws_root")]
+pub fn ws_root() str { return fsys.root_dir() }
+
+#[api(method = "GET", path = "/api/exists")]
+pub fn exists(path str) bool { return fsys.path_exists(path) }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        assert!(module.types.is_empty(), "contract has no type block");
+        assert!(
+            primary_type_name_pub(&module).is_none(),
+            "no primary type"
+        );
+
+        // No db.at at all → db_full_cover=false; no Db type → stateless.
+        let main = generate_main_rs(&module, None, false);
+        assert!(!main.contains("use api::Db;"), "no Db import: {}", main);
+        assert!(!main.contains("with_state"), "no state injection: {}", main);
+        assert!(!main.contains("State<Db>"), "no State<Db>: {}", main);
+        assert!(main.contains("axum::Router::new()"), "router still built: {}", main);
+        // Routes for the scalar endpoints are still wired.
+        assert!(main.contains("axum::routing::get(api::ws_root)"), "route ws_root: {}", main);
+        assert!(main.contains("axum::routing::get(api::exists)"), "route exists: {}", main);
+
+        // Same shape with a db.at that only partially covers (allow-partial
+        // migration): handlers are db-delegated/TODO stubs, still no State.
+        let db_at = "pub fn other() str { return \"x\" }\n";
+        let main_partial = generate_main_rs(&module, Some(db_at), false);
+        assert!(!main_partial.contains("use api::Db;"), "partial: no Db import: {}", main_partial);
+        assert!(!main_partial.contains("with_state"), "partial: no state: {}", main_partial);
+        assert!(main_partial.contains("mod db;"), "partial: db module declared: {}", main_partial);
     }
 
     /// Plan 399 第 4-5 步: end-to-end on the real 017-chat db.at. Confirms the
