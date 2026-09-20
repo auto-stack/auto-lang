@@ -861,6 +861,14 @@ pub fn terminal_set_history(core: &TerminalCore, rows: usize) {
     core.history.store(rows, Ordering::Relaxed);
 }
 
+/// PLAN-024:虚拟画布总高(px;widget canvas_height 的 glue 侧镜像,
+/// 写臂 bind 无 widget self 时换算贴底钳位位置用)。与
+/// `Terminal::canvas_height` 虚拟分支同式(rows+history)×CELL_H+2PAD。
+pub fn terminal_canvas_height(core: &TerminalCore) -> f32 {
+    use crate::ui::terminal::iced::widget::{CELL_H, PAD};
+    (core.rows as usize + core.history.load(Ordering::Relaxed)) as f32 * CELL_H + 2.0 * PAD
+}
+
 /// 焦点空闲(无任何 terminal 持有):启动自动聚焦的门控。
 pub fn terminal_focus_free() -> bool {
     FOCUS_OWNER.lock().unwrap().is_none()

@@ -464,13 +464,18 @@ impl<M: Clone> Terminal<M> {
     /// 发 scroll_to),并置抑制吞读出臂的下一次回声。
     /// PLAN-024:增长漂移贴底重绑优先——读出臂判别为内容增长漂移时挂
     /// repin(引擎 offset 未变仍贴底,不走 offset≠bound 路径),此处
-    /// 绑到画布底(offset 0 ↔ y = history×CELL_H),回声抑制同常规绑定。
+    /// 绑到视口底=画布底(见下),回声抑制同常规绑定。
+    /// PLAN-024 圆角对齐:贴底 bind 目标 = **scrollable 钳位真值**
+    /// (canvas − 视口高,VIEWPORT_H 注册表;miss 回落 hist×CELL_H)而
+    /// 非快照窗顶 hist×CELL_H——两者差 8px(底部 PAD)使圆角弧下半段
+    /// 落在视口外,视觉≈直角(用户实机门实录:方角探出窗框)。offset
+    /// 换算是底隙口径,两种 y 的观察结果同为 offset 0,语义自洽。
     pub(crate) fn bind_request_y(
         core: &crate::ui::terminal::TerminalCore,
     ) -> Option<f32> {
         if core.take_scroll_repin_pending() {
             let history = crate::ui::terminal::terminal_history(core);
-            let y = Self::offset_to_view_y(0, history);
+            let y = Self::bottom_bind_y(core, history);
             core.set_scroll_bind_suppress();
             core.record_bind_echo(y, 0);
             return Some(y);
@@ -482,9 +487,30 @@ impl<M: Clone> Terminal<M> {
         core.set_scroll_bound_offset(d);
         core.set_scroll_bind_suppress();
         let history = crate::ui::terminal::terminal_history(core);
-        let y = Self::offset_to_view_y(d.max(0) as usize, history);
+        let y = if d <= 0 {
+            Self::bottom_bind_y(core, history)
+        } else {
+            Self::offset_to_view_y(d as usize, history)
+        };
         core.record_bind_echo(y, d);
         Some(y)
+    }
+
+    /// 贴底绑定位置:视口底 = 画布底(scroll_to 的钳位真值);视口高
+    /// 未记账(首帧/headless)时回落快照窗顶(hist×CELL_H)。
+    fn bottom_bind_y(core: &crate::ui::terminal::TerminalCore, history: usize) -> f32 {
+        let canvas = crate::ui::terminal::terminal_canvas_height(core);
+        let vh = viewport_h_register()
+            .lock()
+            .unwrap()
+            .get(core.key.as_str())
+            .copied()
+            .unwrap_or(0.0);
+        if vh > 0.0 && canvas > vh {
+            canvas - vh
+        } else {
+            Self::offset_to_view_y(0, history)
+        }
     }
 
     /// 像素坐标 → 视口格 (row, col);越界 clamp 到边缘格。PLAN-022:
