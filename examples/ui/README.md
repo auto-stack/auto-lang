@@ -12,10 +12,12 @@
 | ~~组件画廊~~ | → auto-os `widgets-gallery/`（顶层） | 全部 shadcn widgets 的文档画廊（原 024）；**PLAN-590（Stage B P-5）迁 auto-os** |
 
 > **PLAN-590（Stage B P-5，2026-09-07）**：桌面域资产随迁 auto-os——
-> `025-sys-monitor`、`028-launcher`、`038-minesweeper` → `auto-os/apps/`；
 > `ui-gallery`、`widgets-gallery` → auto-os 顶层；`common/settings` →
-> `auto-os/apps/common/`（去向详表见 `docs/plans/INDEX.md`）。本目录余下
-> 教学示例留架为框架默认注册表演示集（auto-os Design 01 §1-B）。
+> `auto-os/apps/common/`（去向详表见 `docs/plans/INDEX.md`）。
+> `025-sys-monitor`、`028-launcher`、`038-minesweeper` 三件已于
+> **PLAN-666（2026-09-20）以当前快照复刻回本目录**（demo/教学轨）；
+> 真实 app 轨在 `auto-os/apps/` 各自独立演化——两轨**分道扬镳**，
+> 无同步义务，仅 README 互链。
 
 ## 运行方式
 
@@ -26,8 +28,8 @@ auto run            # 构建并启动 dev server
 auto run --render vm   # 041 等支持：直接跑 AutoVM 解释器（原生窗口）
 ```
 
-- 默认 `render: vue`；`041-auto-edit` 支持 vm 模式（038-minesweeper 随
-  PLAN-590 迁 auto-os/apps/；043-clipboard-bridge/044-dnd-bridge 等
+- 默认 `render: vue`；`041-auto-edit`、`038-minesweeper` 支持
+  `auto run --render vm`（直接跑 AutoVM 解释器原生窗口；043/044 等
   能力样板 2026-09-20 迁 `examples/capability-tests/`）。
 - 带后端的示例（015/017/018/022/023）会同时起 `back_port`。
 - 测试设施（按各示例 README 惯例运行）：
@@ -65,10 +67,11 @@ auto run --theme light --accent ocean   # 同时指定主题主色
 即构建/复杂度顺序，详见 [Design 21 §2](../../docs/design/autoui/examples-app-track.md)）；
 填入时在本 README 加一行历史注记。历史去向：
 
-- **025**：原 notes 前端丰富度临时 fork，能力并入 015-notes 后删除（Plan 354 §7）；2026-08-26 由 Plan 438 系统监视器回填（原名 dashboard，2026-09-07 由 Plan 541 升级为真 sysinfo 任务管理器并更名 sys-monitor）。
+- **025**：原 notes 前端丰富度临时 fork，能力并入 015-notes 后删除（Plan 354 §7）；2026-08-26 由 Plan 438 系统监视器回填（原名 dashboard，2026-09-07 由 Plan 541 升级为真 sysinfo 任务管理器并更名 sys-monitor）；2026-09-07 随 PLAN-590 迁 auto-os/apps/，2026-09-20 由 PLAN-666 快照复刻回本目录（demo 轨）。
 - **029**：原能力样板 external-imports 已迁 [`examples/capability-tests/029-external-imports/`](../capability-tests/029-external-imports/)；2026-09-04 由 Plan 537 图库应用回填（同号共存）。
 - **038/041 保留**：撞号的 038-vshow 已随迁移离开，038 现在专指扫雷
-  （2026-09-07 扫雷本体随 PLAN-590 迁 auto-os/apps/，编号再次空洞）。
+  （2026-09-07 随 PLAN-590 迁 auto-os/apps/，2026-09-20 由 PLAN-666
+  快照复刻回本目录——demo 轨）。
 - **042-two-inputs-child、459-dual-app、overlay-probe、p051/p493/p507/p515/
   p518**：8 个测试探针（裸 id、无教程价值，连画廊都不该收录），2026-09-05
   由 [PLAN-552](../../docs/plans/552-desktop-app-curation.md) 整体迁至
@@ -112,14 +115,14 @@ opt-in 语义：新示例不加字段即不上架；外部自含根（os-config 
 | 022 | kanban | Trello 风看板 | 3022/8022 | ✓ | ✅ Plan 401 升级（playwright 6/6） |
 | 023 | realworld | Conduit（Medium 克隆） | 3023/8023 | — | ✅ Plan 405（playwright 14/14） |
 | 024 | charts | 图表工坊（四类图 + 系列开关 + 流式 + Reset 双模式；Y 轴刻度/图例） | 4024 | ✓ | ✅ [Plan 445](../../docs/plans/archive/445-024-charts.md)（vue+vm 双轨全链路，desktop_mcp 19/19） |
-| ~~025~~ | ~~sys-monitor~~ | → auto-os/apps/025-sys-monitor（PLAN-590 Stage B P-5 随迁；史录 [Plan 541](../../docs/plans/archive/541-025-sys-monitor.md)，前身 [438](../../docs/plans/archive/438-025-dashboard.md)） | | | |
+| 025 | sys-monitor | 系统监视器（真 sysinfo 任务管理器：进程/CPU/内存/用户，双后端；demo 轨快照，app 轨 auto-os/apps/ 演化中） | 4025/8425 | ✓ | ✅ [Plan 541](../../docs/plans/archive/541-025-sys-monitor.md) 史录（前身 [438](../../docs/plans/archive/438-025-dashboard.md)）；PLAN-666 复刻回源 |
 | 026 | database | SQLite 可视化客户端 | 4026/8026 | ✓ | 📋 [Plan 439](../../docs/plans/439-026-database.md) 立项中 |
 | 027 | file-manager | 文件管理器（双栏布局 + 目录面包屑 + 列表/网格双视图 + 排序搜索 + Plan 422 popover 右键/新建/删除确认 + 剪贴板 + 配置持久化） | 4027 | ✓ | ✅ [Plan 440](../../docs/plans/archive/440-027-file-manager.md)（vue 实机 build 0 错误 + vm desktop_mcp 49/49） |
-| ~~028~~ | ~~launcher~~ | → auto-os/apps/028-launcher（PLAN-590 Stage B P-5 随迁；史录 [Plan 464](../../docs/plans/archive/464-launcher-app.md)，吸收 [441](../../docs/plans/archive/441-028-launcher.md)） | | | |
+| 028 | launcher | 桌面应用启动器（463 SummonLauncher overlay 召唤 + 搜索过滤/分类；demo 轨快照，app 轨 auto-os/apps/ 演化中） | 4028 | ✓ | ✅ [Plan 464](../../docs/plans/archive/464-launcher-app.md) 史录（吸收 [441](../../docs/plans/archive/441-028-launcher.md)）；PLAN-666 复刻回源 |
 | 029 | photo-gallery | 图库（macOS 相册风：侧边栏相册导航 + 搜索/排序/密度工具栏 + 缩略图网格 + 大图查看器 prev/next/收藏；picsum 固定 seed 网络真实图片，image widget 首个应用级双端示范） | 4029 | ✓ | ✅ [Plan 537](../../docs/plans/537-photo-gallery.md)（vue+vm+ui_desktop） |
 | 030 | video-player | 原生视频播放器（chromeless 视口 + OSD 控制 + 播放列表，vue/vm 双端） | 3030 | ✓ | ✅ [Plan 542](../../docs/plans/542-030-video-player.md) |
 | 031 | paint | 像素画板（16×16 格染色 + 铅笔/橡皮/油漆桶/吸管 + undo/redo + storage 存取；AutoOS「画图」v1，真画布原语远期见 Plan 553 待澄清） | — | ✓ | ✅ [Plan 553](../../docs/plans/553-pixel-paint.md)（desktop_mcp VM 轨 30P/0F/1S + vue playwright 冒烟；P553-D1 VM 债登记） |
-| ~~038~~ | ~~minesweeper~~ | → auto-os/apps/038-minesweeper（PLAN-590 Stage B P-5 随迁，games-wave1 基底） | | | |
+| 038 | minesweeper | 扫雷（首击安全/洪水填充/插旗/三档难度/计时；vue+vm 双端，rust 第三后端史录；demo 轨快照，app 轨 auto-os/apps/ 演化中） | 4038 | ✓ | ✅ [Plan 407](../../docs/plans/archive/407-minesweeper-rust-backend.md) 史录；PLAN-666 复刻回源 |
 | 041 | auto-edit | 文本编辑器 | 4041 | ✓ | 🎯 严肃应用，持续扩展 |
 | 043 | clipboard-bridge | 原生剪贴板三族互通（text 418 对照 / files CF_HDROP / image DIBV5+PNG；Plan 485） | 4043 | — | ✅ [Plan 485](../../docs/plans/485-vm-native-clipboard.md)（实机 T4 五项 PASS） |
 | 044 | dnd-bridge | OLE 拖放双向互通冒烟（拖出 text/files/虚拟文件 + 拖入/Ctrl+V 事件面） | 4044 | — | ✅ Plan 488 T6 载具 |
@@ -241,13 +244,16 @@ playwright 6/6 全绿。
 文章 CRUD 编辑器、评论、关注、收藏、个人资料（分页与 markdown 渲染
 暂缓；stage 1/2 认证为 mock）。playwright 14/14 全绿。
 
-### 独立应用项目（041；038 已毕业随迁）
+### 独立应用项目（041；025/028/038 demo 轨快照）
 
 这些不是"教学示例"，而是**严肃应用**，持续迭代、未来扩展。
-**038-minesweeper 已随 PLAN-590（Stage B P-5，2026-09-07）毕业迁
-auto-os/apps/**（"毕业进 AutoOS"通道的首批实践——完整可玩：首击安全、
-洪水填充、右键插旗、三档难度、计时/计数；首个双后端示例，[Plan 407]
-(../../docs/plans/407-minesweeper-rust-backend.md) 加 rust 第三后端）。
+**025/028/038 三件曾随 PLAN-590（Stage B P-5，2026-09-07）毕业迁
+auto-os/apps/**（"毕业进 AutoOS"通道的首批实践），PLAN-666（2026-09-20）
+按用户裁定**分道扬镳**复刻回本目录：本目录为 demo/教学轨快照（复刻
+时点后不再跟进 auto-os 演化），auto-os/apps/ 为真实 app 轨原件。
+**038-minesweeper**：完整可玩——首击安全、洪水填充、右键插旗、
+三档难度、计时/计数；首个双后端示例，[Plan 407]
+(../../docs/plans/archive/407-minesweeper-rust-backend.md) 加 rust 第三后端。
 
 **[041-auto-edit](041-auto-edit/) — auto-edit 文本编辑器** 🎯（原 041-code-editor）
 我们自己的文本编辑器。原生 `code_editor` widget（CodeMirror 6 /
@@ -272,9 +278,9 @@ Stage 1 的 golden 对照样例。
   已完成 018/022/023（+011 拆出），待办 019/020/021。
 - **毕业进 AutoOS**：当示例开始被真实日常使用、且平台需要它作长期回归
   样板时，迁出本目录成为正式应用（pac 定名 + 动作对齐 auto-os-config +
-  MCP 测试纳入 CI）。**038-minesweeper 已走通此通道**（PLAN-590 迁
-  auto-os/apps/）；当前毕业候选：**auto-edit（041）**、计算器（011）、
-  日历（016）。
+  MCP 测试纳入 CI）。**025/028/038 已走通此通道**（PLAN-590 迁
+  auto-os/apps/；PLAN-666 起本目录保留 demo 轨快照，两轨分道）；当前
+  毕业候选：**auto-edit（041）**、计算器（011）、日历（016）。
 - **新示例**：优先填空洞（024–037、039/040，路线见 Design 21 §5，起点
   024-charts）；单特性样板一律进
   [`examples/capability-tests/`](../capability-tests/)，不进本目录。
