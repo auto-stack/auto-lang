@@ -4276,6 +4276,21 @@
      "last_modified": "2026-09-20"
     },
     {
+      "id": "P663-1",
+      "title": "VM/iced 视口边界与嵌入居中契约（两条）",
+      "content": "ui/iced 渲染前 pre-pass 双语义（PLAN-663）：①视口边界（iframe 语义）——SizeValue::Screen 与 Full 严格区分（h-screen/svh/lvh/dvh/w-screen 族 vs 父容器百分比）；rewrite_viewport_units 在定高(px)嵌入边界子树内把 Screen 族重写为 Pixels(边界)（min-h-screen 的 f32::MAX 标记→MinHeight(边界)），窗口根 Screen→Fill 满窗不变；边界判定仅认 arbitrary px（spacing 定高不建边界 P663-D2），宽/高轴独立、嵌套逐轴覆盖；下潜变体 Row/Column/Container/Scrollable/MouseArea/Overlay/Grid；修复 ui-gallery VM 臂全屏 demo 塌缩（Fill 失锚于 T-12 Shrink scroll/justify-center 让渡列高）②my-auto/m-auto 垂直安全居中——expand_margin_y_auto 把定高无 overflow 列内携带子展开为 h-full justify-center 包裹列（iced 缺 margin-auto 原语，CSS safe-center 对齐）；滚动列不展开。双入口接线 render_dynamic_view(path 空=根)+into_iced 三根点，幂等。T-12 不退役（与 Screen→Fixed 组合成立,P663-D1）。非目标:h-full 不重写(P663-D3)、多子项 my-auto 非精确(P663-D4)。",
+      "file": "docs/specs/widgets/viewport-boundary.md",
+      "related": [
+        "PLAN-663",
+        "PLAN-642",
+        "PLAN-662",
+        "PLAN-625"
+      ],
+      "status": "published",
+      "created": "2026-09-20",
+      "last_modified": "2026-09-20"
+    },
+    {
       "id": "P662-1",
       "title": "ui-gallery 启动性能与视口滚动契约（六条）",
       "content": "ui/overview.md §PLAN-662(SD-01):①行扫描磁盘缓存——per-demo 内容哈希仅文件行(relpath|len|mtime;目录 mtime NTFS 延迟落定实测漂移不入)走查 demo 目录+pac dep 路径依赖(stylekit memo),命中免 from_workspace;存储=~/.auto/auto-man/gallery-cache/<apps摘要>.json,AUTO_GALLERY_CACHE_DIR env 覆写,原子写+版本门+fail-open ②确定性守卫——命中/冷跑 registry.at 字节一致(serde 往返单测钉住) ③扫描并行——std::thread::scope 分块(每线程返回本块 join 合并),thread_local 注册表隔离+串并产物字节 diff 全等→默认核数,AUTO_GALLERY_SCAN_JOBS 覆写 ④VM 视口滚动——AppViewport.vm.at frame 内 overflow-y-auto 容器对齐 web 臂 demo-mount-root(demo h-screen 入定高 frame 底部不再裁死),frame 三态不变 ⑤apps 解析序补祖父级 auto-lang 探测(平铺主检出/worktree 组同形,主检出一键裸跑) ⑥非目标:懒加载证伪非靶(合并编译仅 3s)记远期/Vue vite 提速/语料高度链改写。实测:二次启动 83→5s、冷启 83→22s。",
@@ -6691,6 +6706,19 @@
      "status": "published",
      "created": "2026-09-20",
      "last_modified": "2026-09-20"
+    },
+    {
+      "id": "P663-2",
+      "title": "vm-viewport-boundary 复审合并收据",
+      "content": "review pass r1@3fba31cbe(实现会话自审,独立性限制声明+工件重建裁定):AC-01..08 全 pass——单测 p663_ 9/9 fresh 复跑(parse 分离/边界重写/嵌套换锚/安全居中)+五连截图验收(020 桌面满帧/平板 768×1024 满屏/027 满帧/001 居中不回归/独立窗满窗)+C2 终版复拍无回归;门禁 cargo t 817/820+tv 2713/2715+tf 2558/2560(红集=在册预存红差集空)。findings F-663-R1(生成物嵌套拷贝误入库)/R2(死代码)均已修;规范增量落点修正为新档 widgets/viewport-boundary.md。交付=rebase 全等(range-diff 8/8 =)后 ff-only。预存新发现 P663-D5:master auto-lang 无 ui-iced 特性编译 E0433(component.rs:97 无条件引用 desktop_protocol,034 位图通道引入)。",
+      "file": "docs/plans/archive/663-vm-viewport-boundary.md",
+      "related": [
+        "PLAN-663",
+        "PLAN-662"
+      ],
+      "status": "published",
+      "created": "2026-09-20",
+      "last_modified": "2026-09-20"
     },
     {
       "id": "P662-2",
