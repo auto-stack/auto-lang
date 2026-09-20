@@ -4817,8 +4817,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // PLAN-024(用户实机门实录):视口级底色容器——画布高
                 // (rows×CELL_H+2PAD)与视口高的**非整行残差**(DPI 下可达
                 // 一行)在 scrollable 底部露出 app 根浅色,该余量带在窗框
-                // 圆角处方角探出。外层 Fill 容器同色涂满视口 + 圆角 16
-                // (=窗框 WIN_RADIUS),余量隐形且圆角与窗框同心。
+                // 圆角处方角探出。外层 Fill 容器同色涂满视口 + 底角圆 16
+                // (=窗框 WIN_RADIUS);顶部保持方角(2026-09-20 复测裁定,
+                // 同根圆角机制)。
                 let el: iced::Element<'static, M> = iced::widget::container(el)
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill)
@@ -4827,7 +4828,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         border: iced::Border {
                             color: iced::Color::TRANSPARENT,
                             width: 0.0,
-                            radius: 16.0.into(),
+                            radius: iced::border::Radius {
+                                bottom_left: 16.0,
+                                bottom_right: 16.0,
+                                ..Default::default()
+                            },
                         },
                         ..Default::default()
                     })
@@ -21209,10 +21214,9 @@ fn round_bottom_root_default<M: Clone + std::fmt::Debug>(
     });
     if !has_radius {
         s.classes.push(StyleClass::RoundedB(Some(RoundedSize::Xxl)));
-        // PLAN-024(用户实机门):顶部两角同样与窗框圆角(16)对齐——
-        // 虚拟窗非最大化时四角全圆,根 bg 方角在顶部圆角区探出(app
-        // 浅色背景实录)。透明根/显式 radius 声明不干预的口径不变。
-        s.classes.push(StyleClass::RoundedT(Some(RoundedSize::Xxl)));
+        // PLAN-024 复测裁定(2026-09-20):顶部保持方角——顶部圆角在
+        // tab 条/工具栏区呈缺角观感(用户明确不要);顶部窗框圆角由
+        // 标题条 chrome 层视觉承载。
     }
 }
 
@@ -32968,8 +32972,8 @@ mod tests {
         use crate::ui::style::{RoundedSize, StyleClass};
         use crate::ui::style::Style;
         use crate::ui::view::View;
-        // 无 radius 类的 col 根 → 推 rounded-t/b-2xl(四角 16px 与窗框
-        // 对齐;PLAN-024 起顶部两角同弧,用户实录浅色根顶部探出)。
+        // 无 radius 类的 col 根 → 推 rounded-b-2xl(底角 16px 与窗框
+        // 对齐;顶部保持方角——2026-09-20 复测裁定,用户明确不要顶角)。
         let mut bare = View::Column {
             children: vec![],
             spacing: 0,
@@ -32987,8 +32991,8 @@ mod tests {
             "无 radius 声明的根应获得默认底角"
         );
         assert!(
-            s.classes.contains(&StyleClass::RoundedT(Some(RoundedSize::Xxl))),
-            "无 radius 声明的根应获得默认顶角(PLAN-024)"
+            !s.classes.contains(&StyleClass::RoundedT(Some(RoundedSize::Xxl))),
+            "顶部保持方角(PLAN-024 复测裁定)"
         );
         // 应用作者已声明 radius（任意角）→ 不干预。
         let mut authored = View::Column {
