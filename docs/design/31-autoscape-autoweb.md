@@ -213,8 +213,8 @@ resource://session/8dd7...
 
 | # | 要点 | 说明 |
 |---|---|---|
-| S1 | 粒度调和：per-tab vs per-identity | 沙箱根按 **app 身份/origin 键控**（持久）；普通 tab 拿该根的句柄（同站第二 tab 能看到第一 tab 存的数据，"保留"才成立）；**私有 tab 拿一次性根**（关闭即焚）。进程级隔离与身份级持久各归其位 |
-| S2 | Windows 逃逸面 | junction/symlink 是目录沙箱经典逃逸（本仓 worktree junction 事故同族教训）：包含检查必须 canonicalize 后前缀比对，**拒绝在沙箱内创建 symlink/junction**（或解析后仍须包含）；大小写不敏感入 canonical 形式 |
+| S1 | 粒度：**per-app（终裁，用户 2026-09-20）** | 沙箱根按 **app 身份**键控（非 per-tab）——同 app 的所有 tab/会话共享同一沙箱；"区分 local 和 host" = `app://` 本地应用与 `https://` 远程主机各自独立沙箱。私有 tab（一次性根）降为浏览器壳层可选 UX 特性，不进键控模型 |
+| S2 | 链接与共享缓存：**限定区 + 目标白名单（终裁，用户 2026-09-20）** | 软链接不做一刀切禁令——它是 cache **单例化**的主要工具（否则重蹈 npm 每 app 复制一份巨大 node_modules）。模型三律：①**限定目录**——沙箱内仅固定目录（如 `<sandbox>/deps/`）允许链接存在，他处创建 symlink/junction 一律拒收；②**目标白名单**——链接目标 canonicalize 后必须落在**托管共享缓存根**内（AutoUI 中间产物：依赖库/组件包/媒体/字体）；③**写权限单点**——共享缓存对 app 运行时 API **只读**，写入与建链仅经可信安装·依赖解析层（内容寻址、写后不可变）；app 代码创建链接恒拒收。**实现二选一**：A=真链接（Windows junction；pnpm 同款模型先例，仓内 pnpm junction 运维经验在册——工具链须 junction-aware）；B=虚拟挂载（文件 API 将 `deps/` 解析为只读虚拟根 `deps://` → 缓存条目，沙箱内零真实 NTFS 链接，包含由构造保证；native 提供者 spawn 需真文件处仍由可信层落真链）——**推荐 B 先行**。逃逸纪律不变：canonicalize 后前缀比对（含大小写归一）是一切路径检查的底座 |
 | S3 | 文件夹沙箱 ≠ API 门禁 | 路径包含只管文件系统；desktop bus / native catalog / shell_bridge / 任意网络访问仍需粗粒度关闸（网络来源关特权内建）。**两道门正交，缺一不可**（发行红线不变） |
 | S4 | 网络访问策略 v1 | 仅同 origin + ServiceBinding 显式声明的外部 endpoint 白名单（与 §9.3 logical service 天然衔接） |
 | S5 | 配额与管理面 | 沙箱要有配额上限（防填盘）+ 管理 UI（"该站占 X MB / 清除"）——归 Permission UI/Downloads 面，v0.6 最小做列出+删除 |
@@ -396,8 +396,8 @@ App/Service 语义，仅替换 Resolver/Deployment backend。
 **M2-lite — 网络最小面（v0.6 建议纳入，2026-09-20 复核；范围待用户终裁）**
 6. https 加载：Deployment Descriptor（JSON 清单）+ 制品下载进**安装式缓存**（§6.1 ④）+ 装载；
    服务端 = Auto HTTP Server 标准库自托管 demo 站（最强 dogfood，reqwest 已是依赖）；
-7. 存储沙箱 §6.1 全套（文件夹沙箱 + sqlite + per-identity 分区 + 安装缓存）+ 粗粒度 API 关闸
-   （S3 第二道门）；
+7. 存储沙箱 §6.1 全套（文件夹沙箱 + sqlite + per-app 分区 + 安装缓存 + S2 共享缓存单例化）+
+   粗粒度 API 关闸（S3 第二道门）；
 8. **发行红线（不可让步）**：关闸与 https 加载**同船发行**——不存在"先能加载、后补安全"；
    网络来源一律无特权内建。
 
@@ -437,8 +437,6 @@ RemoteProvider 产品化（技术预览除外）。
   上；AutoFrame 独立会话后启动体验需复测（编译仅 ~3s/全量的量级，风险可控但须数据行）。
 - **（新增）M1 的信任模型口径**：dev-only（inproc、无权限强制）是否作为 v0.6 发布口径明示，避免
   "AutoScape 已安全"的误读。
-- **（新增）沙箱粒度终裁**：§6.1 S1 提出的"身份键控持久 + 私有 tab 一次性根"是对"每 tab 独立
-  沙箱目录"与"站点数据保留"两说的调和方案，待用户终裁（或裁定真·每 tab 独立 + 显式共享语义）。
 - **（新增）Launcher 迁移时序**：统一 launch(Intent) 是 M1 内完成还是 M2（影响 028-launcher 与
   desktop_registry 的改造排期）。
 
