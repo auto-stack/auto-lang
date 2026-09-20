@@ -2748,7 +2748,16 @@ fn compute_target_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
             break;
         }
     }
-    "../../autostack/auto-lang/target".to_string()
+    // PLAN-039 T-05 发现臂⑤（台账 M7-c「缺口即发现即修」）：原 fallback
+    // "../../autostack/auto-lang/target" 为幻影路径——app 仓布局（auto-os
+    // apps/<app>）祖先链永无 crates/，生成物 .cargo/config.toml 恒重定向
+    // 到不存在布局（minesweeper 实测 exe 落 apps/autostack/auto-lang/
+    // target 幽灵目录；tetris 在役 exe 实为旧默认位产物）。改落
+    // workspace 本地默认 "target"（cargo 缺省）——desktop_exe 声明路径
+    // 布局无关可循；框架内项目（祖先含 crates/）共享 target 行为不变。
+    // 隔离需求由构建时 CARGO_TARGET_DIR env 覆盖（cargo 优先级高于
+    // config build.target-dir），不烘焙进持久化配置。
+    "target".to_string()
 }
 
 /// Absolute path of the repo-wide shared cargo target for a UI project:
@@ -3821,6 +3830,28 @@ mod tests {
         assert_eq!(fw_before, fw_after, "框架 ws Cargo.toml 字节不变");
         // 幂等：二次 ensure 落点不变。
         assert_eq!(ensure_shared_workspace(&project), ws);
+    }
+
+    /// PLAN-039 T-05 发现臂⑤：无框架祖先的 app 仓布局（temp 落点同构）
+    /// target-dir 落 workspace 本地默认 "target"——幻影 fallback
+    /// （"../../autostack/auto-lang/target"）废除（生成物重定向到不存
+    /// 在布局，desktop_exe 约定路径随之失配）。
+    #[test]
+    fn app_repo_layout_targets_workspace_local_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("minesweeper-fake");
+        std::fs::create_dir_all(&project).unwrap();
+        let ws = ensure_shared_workspace(&project);
+        let config = std::fs::read_to_string(ws.join(".cargo").join("config.toml"))
+            .expect("config.toml written");
+        assert!(
+            config.contains("target-dir = \"target\""),
+            "app 仓布局落本地默认 target:\n{config}"
+        );
+        assert!(
+            !config.contains("autostack"),
+            "幻影路径不得再出现:\n{config}"
+        );
     }
 
     #[test]

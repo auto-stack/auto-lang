@@ -4276,10 +4276,15 @@ impl RustGenerator {
                         }
                     } else if let Some(ref text) = text_rust_expr {
                         // Dynamic expression (FieldAccess, Index, etc.) as text content
+                        // PLAN-039 T-05 发现臂④（台账 M7-c「缺口即发现即修」）：
+                        // 动态标签表达式统一 format! 借用包裹——直发 store
+                        // String 字段（minesweeper `View::button(self.store.
+                        // face_icon)`）是 move 断点；format! 走 Display 借用，
+                        // 且数值型字段标签同型治愈。
                         if tag == "button" {
-                            format!("View::button({})", text)
+                            format!("View::button(format!(\"{{}}\", {}))", text)
                         } else {
-                            format!("View::text({})", text)
+                            format!("View::text(format!(\"{{}}\", {}))", text)
                         }
                     } else {
                         format!("View::{}(())", view_fn)
