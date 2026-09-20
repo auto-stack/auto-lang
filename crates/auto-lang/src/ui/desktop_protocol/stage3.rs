@@ -1018,14 +1018,41 @@ mod tests {
     /// "P030Win" 入帧）④kill 壳 → 看门兵退避重启 → attach 指纹失效 →
     /// 全量重推恢复。`AUTO_DESKTOP_E2E=1` 门；留痕
     /// `AUTO_030_ASSETS=1` → assets/030/。
-    #[test]
+    /// PLAN-036 复审 r1 F-036-R2：parity 结构全等比较器——逐行比对，
+    /// 色彩 token（≥3 逗段整数三元组）豁免（跨进程色彩解析 ±3 档环境差
+    /// 发现——P036-D5 在册；结构/坐标/字号/行高/文本全等）。
+    fn p036_lines_structural_eq(a: &str, b: &str) -> bool {
+        let a: Vec<&str> = a.lines().collect();
+        let b: Vec<&str> = b.lines().collect();
+        if a.len() != b.len() {
+            return false;
+        }
+        let is_color = |t: &str| {
+            t.split(",").count() >= 3 && t.split(",").all(|c| c.parse::<i64>().is_ok())
+        };
+        a.iter().zip(b.iter()).all(|(x, y)| {
+            let xt: Vec<&str> = x.split_whitespace().collect();
+            let yt: Vec<&str> = y.split_whitespace().collect();
+            if xt.len() != yt.len() {
+                return false;
+            }
+            xt.iter().zip(yt.iter()).all(|(p, q)| {
+                if is_color(p) && is_color(q) {
+                    return true;
+                }
+                p == q
+            })
+        })
+    }
+
     /// PLAN-036 T-08：五面全 outproc 终态 e2e——壳 exe 五表面（bg/chrome/
     /// switcher/notification/dashboard——B1/B2）+ launcher 独立 exe（B3
     /// D3-C）双进程拓扑；`AUTO_DESKTOP_E2E=1` 门 + `AUTO_036_ASSETS=1`
     /// → assets/036/ 帧留痕。腿：①壳五伪窗 ②五面投影→帧全在案（overlay
-    /// 懒装）③parity——本地 RqProjector 渲染 vs child 帧 DrawList 文本
-    /// 全等 ④launcher exe attach+帧（独立管线）⑤键盘动词（Advance 事件
-    /// 快照→帧变）⑥崩溃粒度（kill launcher → 管线回收 + 壳不连坐）。
+    /// 懒装）③parity（逐面结构全等——F-036-R2 五+一面）④launcher exe
+    /// attach+帧（独立管线）⑤键盘流（F-036-R1：Enter 路由→Pick→
+    /// DesktopBus 上行→宿主收件）⑥崩溃粒度（kill launcher → 管线回收
+    /// + 壳不连坐）。
     #[test]
     fn p036_all_faces_outproc_arm() {
         if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
@@ -1183,35 +1210,13 @@ mod tests {
             let a: Vec<&str> = a.lines().collect();
             let b: Vec<&str> = b.lines().collect();
             let n = a.len().min(b.len());
-            // 准则 = 结构全等（op 类型/坐标/字号/行高/文本/行数逐行）；
-            // 色彩 token（R,G,B,A 三元组）显式豁免——实测跨进程色彩解析
-            /// 有 ±3 档环境差（疑主题感知解析的进程初始化差；wire 量化
-            /// ±1 另在）——色彩 parity 归 T-08 复审细究（发现记录）。
-            let near = |x: &str, y: &str| -> bool {
-                let xt: Vec<&str> = x.split_whitespace().collect();
-                let yt: Vec<&str> = y.split_whitespace().collect();
-                if xt.len() != yt.len() {
-                    return false;
-                }
-                xt.iter().zip(yt.iter()).all(|(p, q)| {
-                    // 色彩三元组（≥3 逗段整数）豁免。
-                    let is_color = |t: &str| {
-                        t.split(',').count() >= 3
-                            && t.split(',').all(|c| c.parse::<i64>().is_ok())
-                    };
-                    if is_color(p) && is_color(q) {
-                        return true;
-                    }
-                    p == q
-                })
-            };
+            // 准则 = 结构全等（p036_lines_structural_eq——色彩 token
+            // 豁免，P036-D5 发现在册）。
             assert_eq!(a.len(), b.len(), "parity 行数");
             for i in 0..n {
                 assert!(
-                    near(a[i], b[i]),
-                    "parity 行 {i}：
-  local={}
-  child={}",
+                    p036_lines_structural_eq(a[i], b[i]),
+                    "parity 行 {i}：local={} child={}",
                     a[i],
                     b[i]
                 );
@@ -1233,6 +1238,169 @@ mod tests {
         assert!(session.desktop.launcher_open, "镜像位在案");
         pump_until(&mut session, |s| launcher_frame(s).is_some(), "launcher 帧在案");
         println!("AUTO036 leg3 launcher-exe-attached-and-framed PASS");
+
+        // —— 腿3.5（F-036-R1 前置）：伪注册表条目注入 + 清单重推——
+        // ranked 非空前提（launcher Pick 消费 ranked[sel].name；
+        // dashboard face 清单同步翻面——逐面 parity 在同拍数据上对拍）。
+        session.desktop.registry_entries.push(
+            crate::ui::app_registry::AppRegistryEntry {
+                id: "p036-fake-app".into(),
+                title: "P036 Fake".into(),
+                title_zh: None,
+                name: None,
+                icon: "app-window".into(),
+                category: "tools".into(),
+                entry: std::path::PathBuf::from("p036-fake-app/src/front/app.at"),
+                render: "vm".into(),
+                daemon: None,
+                desktop_exe: None,
+                desktop_render: None,
+                back_root: None,
+                fit: false,
+                desktop_visible: true,
+                opens: Vec::new(),
+            },
+        );
+        {
+            use crate::ui::shell_projection::ShellEvent;
+            session.desktop.dashboard_open = true;
+            crate::ui::iced::renderer::push_dashboard_snapshot(
+                &mut session,
+                &[ShellEvent::RebuildFaces],
+            );
+            session.desktop.launcher_open = true;
+            crate::ui::iced::renderer::push_launcher_snapshot(
+                &mut session,
+                &[ShellEvent::ApplyFilter],
+            );
+        }
+
+        // —— 腿3.6（F-036-R2）：五+一面 parity 对拍——本地装配（同款
+        // 快照重建）渲染 vs child 帧，结构全等（色彩 token 豁免——
+        // P036-D5）；child 帧经 pump 对账自同步（重推面轮询至匹配）。
+        {
+            use crate::ui::desktop_protocol::shell_client::ShellFaces;
+            use crate::ui::shell_projection::ShellEvent;
+            std::env::set_var("AUTO_LAUNCHER_ENTRY", &launcher_entry);
+            let mut local = ShellFaces::load(geometry).expect("本地解释装配");
+            let fmt = |l: &crate::ui::desktop_protocol::message::DrawList| {
+                crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(l)
+            };
+            // (面, 快照 payload) —— 与宿主推送臂同款单源重建。
+            let mut cases: Vec<(&str, u8, Vec<u8>)> = Vec::new();
+            {
+                let proj = crate::ui::iced::renderer::build_shell_projection(&session);
+                let mut p = Vec::new();
+                proj.wire_encode(&mut p);
+                cases.push(("shell-chrome", shell_face::SHELL, p));
+            }
+            {
+                let mut snap =
+                    crate::ui::iced::renderer::build_desktop_surface_snapshot(&session);
+                snap.running_csv = String::new();
+                let mut p = Vec::new();
+                snap.wire_encode(&mut p);
+                cases.push(("desktop-bg", shell_face::DESKTOP_SURFACE, p));
+            }
+            {
+                let mut snap = crate::ui::iced::renderer::build_switcher_snapshot(&session);
+                snap.visible = session.desktop.switcher_open;
+                snap.events = vec![ShellEvent::RebuildMru];
+                let mut p = Vec::new();
+                snap.wire_encode(&mut p);
+                cases.push(("switcher", shell_face::SWITCHER, p));
+            }
+            {
+                let mut snap = crate::ui::iced::renderer::build_notes_snapshot(&session);
+                snap.visible = session.desktop.notes_open;
+                snap.events = vec![ShellEvent::RebuildNotes];
+                let mut p = Vec::new();
+                snap.wire_encode(&mut p);
+                cases.push(("notification", shell_face::NOTIFICATION_CENTER, p));
+            }
+            {
+                let mut snap = crate::ui::iced::renderer::build_dashboard_snapshot(&mut session);
+                snap.visible = session.desktop.dashboard_open;
+                snap.events = vec![ShellEvent::RebuildFaces];
+                let mut p = Vec::new();
+                snap.wire_encode(&mut p);
+                cases.push(("dashboard", shell_face::DASHBOARD, p));
+            }
+            {
+                let mut snap = crate::ui::iced::renderer::build_launcher_snapshot(&session);
+                snap.visible = session.desktop.launcher_open;
+                snap.events = vec![ShellEvent::ApplyFilter];
+                let mut p = Vec::new();
+                snap.wire_encode(&mut p);
+                cases.push(("launcher", shell_face::LAUNCHER, p));
+            }
+            for (name, face, payload) in cases {
+                assert!(
+                    local.apply_projection(face, &payload),
+                    "本地 {name} 面快照应用"
+                );
+                let local_text = fmt(&local.render(face).expect("本地帧"));
+                // child 帧对账：重推面 pump 至匹配（首帧在案面即时绿）。
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                loop {
+                    let child = if face == shell_face::LAUNCHER {
+                        launcher_frame(&session)
+                    } else {
+                        face_frame(&session, face)
+                    };
+                    let matched = child
+                        .as_ref()
+                        .map(|c| p036_lines_structural_eq(&local_text, &fmt(c)))
+                        .unwrap_or(false);
+                    if matched {
+                        break;
+                    }
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "p036 parity 超时：{name}"
+                    );
+                    session.pump_broker_clients();
+                    std::thread::yield_now();
+                }
+                println!("AUTO036 leg3.6 parity-{name} PASS");
+            }
+        }
+
+        // —— 腿3.7（F-036-R1）：launcher 键盘流——伪窗聚焦 → Enter 键
+        // 路由（broker_key_event）→ child dispatch_key → Pick → Launch
+        // 写 __desktop_cmd → pump 排水 → DesktopBus 上行 → 宿主
+        // desktop_bus_inbox 收件（registry_id=launcher-face 归因）。
+        {
+            let lwid = session
+                .desktop
+                .launcher_wid
+                .expect("launcher 伪窗在案");
+            session.wm_focus(lwid);
+            assert!(
+                session.broker_key_event(0x0D, 0),
+                "Enter 注入路由到 launcher child（焦点伪窗）"
+            );
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while session.desktop.desktop_bus_inbox.is_empty() {
+                session.pump_broker_clients();
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "p036 键盘流上行超时（inbox 空）"
+                );
+                std::thread::yield_now();
+            }
+            let (source, cmd) = &session.desktop.desktop_bus_inbox[0];
+            assert_eq!(source, "launcher-face", "DesktopBus 归因");
+            assert!(
+                matches!(
+                    cmd,
+                    crate::ui::session::DesktopCommand::LaunchApp(id)
+                        if id == "p036-fake-app"
+                ),
+                "LaunchApp 上行：{cmd:?}"
+            );
+            println!("AUTO036 leg3.7 launcher-keyboard-enter-launch PASS");
+        }
 
         // —— 腿4：崩溃粒度（D3-C）——kill launcher 子进程 → launcher 管线
         /// 回收 + 壳管线/帧不连坐。

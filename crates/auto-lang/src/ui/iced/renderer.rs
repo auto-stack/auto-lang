@@ -14354,7 +14354,7 @@ fn desktop_wallpaper_dark(wallpaper: &str) -> bool {
 
 /// PLAN-030 T-04：desktop 面快照构建（单源——in-proc 写集与 outproc
 /// wire 推送共用；纯派生，无 App 会话触碰）。
-fn build_desktop_surface_snapshot(
+pub(crate) fn build_desktop_surface_snapshot(
     state: &crate::ui::session::DesktopSession,
 ) -> crate::ui::shell_projection::DesktopSurfaceSnapshot {
     use crate::ui::shell_projection::{
