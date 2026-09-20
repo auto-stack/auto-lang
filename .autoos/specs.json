@@ -3252,6 +3252,21 @@
      "status": "published",
      "created": "2026-09-19",
      "last_modified": "2026-09-19"
+    },
+    {
+     "id": "P665-1",
+     "title": "bp-sandwich — 桌面三层壳骨架（layout/sandwich）+ bp-gate slot 形态首证 + VM 快照断言面升级",
+     "content": "project.md 台账增第四单元 sandwich（PLAN-665 SD-01）：blueprints/layout/sandwich 桌面上中下三层壳骨架——fn-free 零 props + 四结构性出口（toolbar/sidebar/statusbar 命名 slot + content 默认槽；default 含 w-56 侧栏 / full 无侧栏，双变体同页消费须异名 SandwichShellFull=SidebarShellCompact 先例）；骨架根 h-full 填消费方容器（满窗由消费方根决定，h-screen 属全屏 demo 形态——嵌套固定高单元内 100vh 爆出）；AC-04 几何断言（statusbar 贴视口底/content≥300px/三层序/sidebar 左列/嵌套不越层）物化 655 StretchLine+663 视口契约教训为回归锚；F-1 观察修正：MCP snapshot v2(rendered) 完整暴露 bp 子件渲染子树（T-00 双臂实证），VM 断言= root 标记+投影+slot 填充 needle 三层叠加；准入=业界锚（VS Code/Eclipse workbench、PatternFly Page）+官方集桌面竖向壳缺位",
+     "file": "docs/specs/blueprint/project.md",
+     "related": [
+      "PLAN-665",
+      "PLAN-075",
+      "PLAN-639",
+      "PLAN-663"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
     }
    ]
   },
@@ -6761,6 +6776,19 @@
      "file": "docs/plans/662-gallery-fast-start-and-viewport.md",
      "related": [
       "PLAN-662"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
+    },
+    {
+     "id": "P665-2",
+     "title": "bp-sandwich — 复审与合并收据",
+     "content": "review pass@53ba8b346（与实施同会话——独立性受限声明+工件重建：全部验证命令重跑。AC 六项复现全过：auto bp list 绿+palette 零漂移 plan657 t03、bp-gate 双臂重跑全绿（vue 6/6 含 AC-04 五几何断言、VM boot+三投影+七 needle）、full.at 结构 grep 0 侧栏元素、SD-01 落档 53ba8b346；bp 域 46 测 45 绿唯红=master 预存 empty-state t04 A/B 定性）。F-1（低/预存文档漂移→P665-D7 README R-C F-1 修正注记）+F-2（info：AC-01 字面 auto bp check 对 fn-free 骨架不适用）。债登记 P665-D4..D7。range-diff 3/3 全等后 ff-only（映射 f2a8a2ce5→8bc2f114c、7f1fddef7→cd3c2861d、53ba8b346→37d2ae802）。touched_goals 空=blueprint 资产层不触及 GOAL 条目",
+     "file": "docs/plans/archive/665-bp-sandwich.md",
+     "related": [
+      "PLAN-665",
+      "PLAN-075"
      ],
      "status": "published",
      "created": "2026-09-20",
