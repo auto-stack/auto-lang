@@ -242,11 +242,13 @@ onMounted(() => {
                           <Circle class="w-5 h-5 text-white" />
                         </div>
                       </template>
-                      <div class="flex flex-col w-44 gap-1">
-                        <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-1-' + (((e as any)?.id ?? e))">打开</Button>
-                        <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-2-' + (((e as any)?.id ?? e))">从桌面移除</Button>
-                        <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-3-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
-                      </div>
+                      <template v-if="menu_id == e.id">
+                        <div class="flex flex-col w-44 gap-1">
+                          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuOpen(e)" :key="'Button-1-' + (((e as any)?.id ?? e))">打开</Button>
+                          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuRemove(e)" :key="'Button-2-' + (((e as any)?.id ?? e))">从桌面移除</Button>
+                          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="MenuWallpaper(e)" :key="'Button-3-' + (((e as any)?.id ?? e))">更换壁纸…</Button>
+                        </div>
+                      </template>
 </div>
                     <span :class="(__desktop_bg == '' ? 'text-xs text-white truncate w-full text-center rounded-md bg-black/30' : ((__desktop_label_dark == '1' ? 'text-xs text-white truncate w-full text-center' : 'text-xs text-foreground truncate w-full text-center')))">{{ e.label }}</span>
                     <template v-if="launching == e.id">
@@ -258,59 +260,65 @@ onMounted(() => {
             </div>
           </div>
 <div v-if="drag_moved == '1'" class="fixed z-50 p-0 bg-transparent" :style="{ left: __desktop_cursor_x + 'px', top: __desktop_cursor_y + 'px' }">
-            <div class="flex flex-col w-12 h-12 opacity-60">
-              <Circle class="w-full h-full" />
-            </div>
+            <template v-if="drag_moved == '1'">
+              <div class="flex flex-col w-12 h-12 opacity-60">
+                <Circle class="w-full h-full" />
+              </div>
+            </template>
 </div>
         </div>
       </div>
 <div v-if="blank_menu != ''" class="fixed inset-0 z-40" @click="BlankClose"></div>
 <div v-if="blank_menu != ''" class="fixed z-50 p-1 border rounded bg-card" :style="{ left: __desktop_cursor_x + 'px', top: __desktop_cursor_y + 'px' }">
-        <div class="flex flex-col w-44 gap-1">
-          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-4'">更换壁纸…</Button>
-          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-5'">显示设置</Button>
-          <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="ResetIconsBlank" :key="'Button-6'">恢复默认图标</Button>
-        </div>
+        <template v-if="blank_menu != ''">
+          <div class="flex flex-col w-44 gap-1">
+            <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-4'">更换壁纸…</Button>
+            <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-5'">显示设置</Button>
+            <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="ResetIconsBlank" :key="'Button-6'">恢复默认图标</Button>
+          </div>
+        </template>
 </div>
 <div v-if="__wp_picker == '1'" class="fixed inset-0 z-40" @click="PickerDismiss"></div>
 <div v-if="__wp_picker == '1'" class="fixed z-50 p-4 border rounded-xl bg-card w-[720px] gap-3" :style="{ left: __wp_x + 'px', top: __wp_y + 'px' }">
-        <div class="flex flex-row w-full items-center gap-2">
-          <Image class="w-4 h-4 text-muted-foreground" />
-          <span class="text-xs text-muted-foreground flex-1 truncate">{{ __wp_dir }}</span>
-          <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBrowse" :key="'Button-7'">浏览…</Button>
-          <Button variant="ghost" class="h-7 w-7 px-0 rounded-lg text-muted-foreground hover:bg-primary/10" @click="PickerDismiss" :key="'Button-8'">
-            <X class="h-4 w-4" />          </Button>
-        </div>
-        <template v-if="__wp_preview == ''">
+        <template v-if="__wp_picker == '1'">
           <div class="flex flex-row w-full items-center gap-2">
-            <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-9'">
-              <ChevronLeft class="h-4 w-4" />            </Button>
-            <div class="flex flex-col gap-1" v-for="e in __wp_visible" :key="(((e as any)?.id ?? e))">
-              <div @click="PickerApply(e.path)">
-                <div :class="(e.path == __wp_current ? 'w-[120px] h-[68px] rounded-lg border-2 border-primary' : 'w-[120px] h-[68px] rounded-lg border-2 border-transparent')" class="flex flex-col">
-                  <img :src="e.path" :alt="e.name" class="w-full h-full rounded-lg object-cover" />
+            <Image class="w-4 h-4 text-muted-foreground" />
+            <span class="text-xs text-muted-foreground flex-1 truncate">{{ __wp_dir }}</span>
+            <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBrowse" :key="'Button-7'">浏览…</Button>
+            <Button variant="ghost" class="h-7 w-7 px-0 rounded-lg text-muted-foreground hover:bg-primary/10" @click="PickerDismiss" :key="'Button-8'">
+              <X class="h-4 w-4" />            </Button>
+          </div>
+          <template v-if="__wp_preview == ''">
+            <div class="flex flex-row w-full items-center gap-2">
+              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-9'">
+                <ChevronLeft class="h-4 w-4" />              </Button>
+              <div class="flex flex-col gap-1" v-for="e in __wp_visible" :key="(((e as any)?.id ?? e))">
+                <div @click="PickerApply(e.path)">
+                  <div :class="(e.path == __wp_current ? 'w-[120px] h-[68px] rounded-lg border-2 border-primary' : 'w-[120px] h-[68px] rounded-lg border-2 border-transparent')" class="flex flex-col">
+                    <img :src="e.path" :alt="e.name" class="w-full h-full rounded-lg object-cover" />
+                  </div>
+                </div>
+                <div class="flex flex-row w-[120px] items-center justify-between">
+                  <span class="text-[10px] text-muted-foreground truncate">{{ e.name }}</span>
+                  <Button variant="ghost" class="h-5 px-1 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="PickerPreview(e.path)" :key="'Button-10-' + (((e as any)?.id ?? e))">预览</Button>
                 </div>
               </div>
-              <div class="flex flex-row w-[120px] items-center justify-between">
-                <span class="text-[10px] text-muted-foreground truncate">{{ e.name }}</span>
-                <Button variant="ghost" class="h-5 px-1 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="PickerPreview(e.path)" :key="'Button-10-' + (((e as any)?.id ?? e))">预览</Button>
-              </div>
-            </div>
-            <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-11'">
-              <ChevronRight class="h-4 w-4" />            </Button>
-          </div>
-        </template>
-        <template v-else>
-          <div class="flex flex-col w-full gap-2 items-center">
-            <img :src="__wp_preview" alt="preview" class="w-full h-[440px] rounded-lg bg-black/40 object-contain" />
-            <div class="flex flex-row items-center gap-2">
-              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-12'">
-                <ChevronLeft class="h-4 w-4" />              </Button>
-              <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBack" :key="'Button-13'">返回</Button>
-              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-14'">
+              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-11'">
                 <ChevronRight class="h-4 w-4" />              </Button>
             </div>
-          </div>
+          </template>
+          <template v-else>
+            <div class="flex flex-col w-full gap-2 items-center">
+              <img :src="__wp_preview" alt="preview" class="w-full h-[440px] rounded-lg bg-black/40 object-contain" />
+              <div class="flex flex-row items-center gap-2">
+                <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-12'">
+                  <ChevronLeft class="h-4 w-4" />                </Button>
+                <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBack" :key="'Button-13'">返回</Button>
+                <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-14'">
+                  <ChevronRight class="h-4 w-4" />                </Button>
+              </div>
+            </div>
+          </template>
         </template>
 </div>
     </div>
