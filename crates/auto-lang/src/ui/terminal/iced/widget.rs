@@ -54,10 +54,12 @@ pub const FONT_PX: f32 = 16.0;
 /// 内容四周内缩(用户裁定 2026-09-14:文字不贴边,上下左右各 4px;
 /// 取代旧的 1px 边框内缩——组件自绘边框已撤,双层边框不再)。
 pub const PAD: f32 = 4.0;
-/// 底部两角圆角半径,对齐虚拟窗口窗框 WIN_RADIUS(virtual_window.rs
-/// PLAN-002 N5 四角全圆档)——终端全幅底色方角会探出圆角窗框,圆角化
-/// 后适配虚拟桌面;独立 OS 窗口形态下仅表现为内容自带圆角,无害。
-const BOTTOM_RADIUS: f32 = 16.0;
+/// 画布四角圆角半径,对齐虚拟窗口窗框 WIN_RADIUS(virtual_window.rs
+/// PLAN-002 N5 四角全圆档)——PLAN-024 起四角全圆:底部两角适配窗框
+/// (旧案);顶部两角随外层视口级底色容器(PLAN-024 渲染器侧)同弧,
+/// 方角在窗框顶部圆角区探出(用户实机门实录)。独立 OS 窗口形态下
+/// 仅表现为内容自带圆角,无害。
+const CANVAS_RADIUS: f32 = 16.0;
 
 /// 实测等宽 advance(px/格):把 iced 全局 font system 装为共享源(与
 /// code_editor 同款,幂等——at-app 无编辑器组件,回调此前无人装),给
@@ -912,9 +914,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let pal_fg = rgb_u32(palette[0]);
         let pal_bg = rgb_u32(palette[1]);
 
-        // 全幅底色:底部两角随窗框圆角(适配虚拟桌面;顶部归 chrome 不圆)。
-        // PLAN-022 虚拟模式 bounds = 虚拟画布,全画布涂底(滚进历史区
-        // 不露宿主底色)。
+        // 全幅底色:四角随窗框圆角(PLAN-024;顶部两角与外层视口级底色
+        // 容器/窗框顶角同弧)。PLAN-022 虚拟模式 bounds = 虚拟画布,全画布
+        // 涂底(滚进历史区不露宿主底色)。
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
@@ -922,9 +924,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     color: Color::TRANSPARENT,
                     width: 0.0.into(),
                     radius: iced::border::Radius {
-                        bottom_left: BOTTOM_RADIUS,
-                        bottom_right: BOTTOM_RADIUS,
-                        ..Default::default()
+                        top_left: CANVAS_RADIUS,
+                        top_right: CANVAS_RADIUS,
+                        bottom_left: CANVAS_RADIUS,
+                        bottom_right: CANVAS_RADIUS,
                     },
                 },
                 ..renderer::Quad::default()

@@ -2832,11 +2832,12 @@ fn build_scrollable<M: Clone + Debug + 'static>(
 
 /// Plan 409 §10 续 4: vue 风格滚动条 — thumb 半透明、track 透明、细圆角。
 fn scrollbar_style() -> scrollable::Style {
-    // PLAN-024:thumb 圆角 3→8(虚拟桌面窗框圆角 16 的半档)——方 thumb
-    // 在窗框圆角区探出 app 边界(用户实机门实录);8px 圆角视觉收敛。
+    // PLAN-024:thumb 回归 3px(022 现款)——全局圆 thumb 在非角落
+    // pane 视觉突兀(用户实机门 2026-09-19);右下角 pane 的 thumb 底角
+    // 圆化挂 prop 化待办(见 024 §10,涉 .at 语言层 prop)。
     let border = iced::Border {
         width: 0.0,
-        radius: iced::border::Radius::new(8.0),
+        radius: iced::border::Radius::new(3.0),
         color: iced::Color::TRANSPARENT,
     };
     let thumb = iced::Background::Color(iced::Color::from_rgba(0.9, 0.9, 0.9, 0.3));
@@ -4811,6 +4812,24 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .id(scroll_key)
                     .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
                         scrollbar_style()
+                    })
+                    .into();
+                // PLAN-024(用户实机门实录):视口级底色容器——画布高
+                // (rows×CELL_H+2PAD)与视口高的**非整行残差**(DPI 下可达
+                // 一行)在 scrollable 底部露出 app 根浅色,该余量带在窗框
+                // 圆角处方角探出。外层 Fill 容器同色涂满视口 + 圆角 16
+                // (=窗框 WIN_RADIUS),余量隐形且圆角与窗框同心。
+                let el: iced::Element<'static, M> = iced::widget::container(el)
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill)
+                    .style(move |_: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(margin_bg)),
+                        border: iced::Border {
+                            color: iced::Color::TRANSPARENT,
+                            width: 0.0,
+                            radius: 16.0.into(),
+                        },
+                        ..Default::default()
                     })
                     .into();
                 if let Some(ref s) = style {
@@ -21190,6 +21209,10 @@ fn round_bottom_root_default<M: Clone + std::fmt::Debug>(
     });
     if !has_radius {
         s.classes.push(StyleClass::RoundedB(Some(RoundedSize::Xxl)));
+        // PLAN-024(用户实机门):顶部两角同样与窗框圆角(16)对齐——
+        // 虚拟窗非最大化时四角全圆,根 bg 方角在顶部圆角区探出(app
+        // 浅色背景实录)。透明根/显式 radius 声明不干预的口径不变。
+        s.classes.push(StyleClass::RoundedT(Some(RoundedSize::Xxl)));
     }
 }
 
@@ -32945,7 +32968,8 @@ mod tests {
         use crate::ui::style::{RoundedSize, StyleClass};
         use crate::ui::style::Style;
         use crate::ui::view::View;
-        // 无 radius 类的 col 根 → 推 rounded-b-2xl（底角 16px 与窗框对齐）。
+        // 无 radius 类的 col 根 → 推 rounded-t/b-2xl(四角 16px 与窗框
+        // 对齐;PLAN-024 起顶部两角同弧,用户实录浅色根顶部探出)。
         let mut bare = View::Column {
             children: vec![],
             spacing: 0,
@@ -32958,10 +32982,13 @@ mod tests {
         let View::Column { style: Some(s), .. } = &bare else {
             panic!("col root must keep its style");
         };
-        assert_eq!(
-            s.classes.last(),
-            Some(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
+        assert!(
+            s.classes.contains(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
             "无 radius 声明的根应获得默认底角"
+        );
+        assert!(
+            s.classes.contains(&StyleClass::RoundedT(Some(RoundedSize::Xxl))),
+            "无 radius 声明的根应获得默认顶角(PLAN-024)"
         );
         // 应用作者已声明 radius（任意角）→ 不干预。
         let mut authored = View::Column {
