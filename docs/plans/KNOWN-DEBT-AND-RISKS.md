@@ -2553,3 +2553,9 @@ T-04=acf22be45/T-05=f1f239918/T-06=a377d23ea/T-06+07=70a30ea84。
 R-03=R-10+A-05）——"需维护者排查归位"注销。**P667-D2/P661-D7 基线**：红集清零，
 后续计划门禁回到绝对全绿口径（环境红豁免=ui::layout 族+clipboard+ffi 闪测族）。
 **方法论注记**：本仓 nextest 0.9.138 默认 fail-fast，基线采集/门禁必须 --no-fail-fast。
+
+### P670（2026-09-21，Plan 670 auto-edit 集成缺口批 work 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P670-D1 | medium | a2r codegen | **F-R1-B 契约 fn 空体桩（S-重活缩面，勘定件在档）**——无类型契约（无 primary 类型块）且无 db 覆盖的端点生成为 `// TODO: Implement` 空体桩（auto-edit rust 轨六端点现状；修复 E0432 后工程可编译但端点空心）。三支路同根：route A（端点 .at fn 体降体进 handler）从未接线——`ApiEndpoint.body` 字段生产不读（Plan 399 走了 route B db 委托）。真体四缺口：①伴生模块通用转译（生成器只认 src/back/db.at，fsys.at 类不进转译面）；②route A 接线（~100-150 行）；③trans/rust.rs 内建面——`Env.get`（大写 VM 内建名）零覆盖（小写 env.get 有映射）、`fs.tree` 无映射；④a2r-std 新宿主 `fs.tree(path,depth)` 且 JSON 形状须与 VM 内建逐字节对齐（front 侧 json.to_value 解析）。合计 ~210-350 行跨三 crate + 动 trans/ 本体 + 新宿主运行面。**须用户裁定拆独立计划**（呈报件=docs/reports/p670-fr1b-survey.md §2 四缺口表） | crates/auto-man/src/api_gen.rs:657/:1693/:1595；crates/auto-lang/src/trans/rust.rs:6504 族；crates/a2r-std/src/fs.rs；auto-edit 契约 D:/autostack/.wt/edit-003/auto-edit/specs/auto-edit/src/back/ |

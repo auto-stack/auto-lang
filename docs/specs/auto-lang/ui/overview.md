@@ -680,7 +680,9 @@ p659_cdb_soak.py`，探针 `p659_probe.rs`）：
 - 内建编辑器：`ui/code_editor/`（**Plan 601 后编辑器主题从活动主题派生（V4 完整）**——
   bg/fg/caret/syntax 取 registry Background/Foreground 真值入编辑器色域，syntax 主题键
   `autoui-{theme}-{mode}-{accent}`〔内置预烘焙+boot 期合成体烘焙〕，切主题 THEME_EPOCH
-  失效翻转）· `ui/autodown_editor/` · `ui/handler_codegen.rs` · `ui/hot_reload.rs`
+  失效翻转；**事件接线（Plan 670 F-W3）**：oninput/oncursor 事件参数按视图绑定解析派发
+  （循环变量/字面量/前导点路径，与 input 部件 062 T9 同一语义——`event_to_message_with`
+  单点烘焙，VM/vue 两模式同愈）· `ui/autodown_editor/` · `ui/handler_codegen.rs` · `ui/hot_reload.rs`
 - `ui/mcp_server.rs`（AutoUI MCP 调试服务）· `a2ui/schema.rs:A2UIMessage`
 
 ## 使用示例
