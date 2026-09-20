@@ -186,6 +186,8 @@ pub fn apply_sidecar_to_crate(
             if !already && !cargo.lines().any(|l| l.starts_with(&format!("{name} ="))) {
                 // PLAN-024 续:`{ ... }` 形态值 = 完整 toml 表达式
                 // (path 依赖,见 fill),裸写;版本依赖加引号。
+                // (PLAN-025 期曾以 name:path:REL 语法同功能实现,合并
+                // 取本表达式形态为主干;025 载具 pac.at 同步改写。)
                 if version.starts_with('{') {
                     missing.push_str(&format!("{name} = {version}\n"));
                 } else {

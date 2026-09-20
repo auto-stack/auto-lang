@@ -97,7 +97,7 @@ pub trait Component: Sized + Debug {
     /// `BitmapUpload` 定义在该门控模块内，实现者/调用者全在门控侧；
     /// 无门控消费者（如生成的 back server，features = ui + image-pipeline）
     /// 编译本 trait 时不得牵引 iced 类型（Plan 365 `subscription()`
-    /// 泄漏前科的同类收口）。
+    /// 泄漏前科的同类收口）。（PLAN-025 期独立同修,合并取 master 注释版）
     #[cfg(feature = "ui-iced")]
     fn drain_bitmap_uploads(
         &mut self,

@@ -25,6 +25,11 @@ use crate::vm::ffi::term_engine::{
     shim_term_is_exited, shim_term_menu_take, shim_term_pump_for, shim_term_pump_input,
     // PLAN-020 T-00b:窗口尺寸面 shim(auto.term.window_width/height)。
     shim_term_window_height, shim_term_window_width,
+    // PLAN-025:VM 臂配置面 stub + 滚动待排探针(泵节拍门)。
+    shim_term_config_default_profile, shim_term_config_profiles,
+    shim_term_config_profiles_full, shim_term_config_spawn_argv,
+    shim_term_config_spawn_cwd, shim_term_config_spawn_program,
+    shim_term_scroll_pending_for,
     shim_term_resize, shim_term_rows, shim_term_rows_for, shim_term_spawn,
     shim_term_spawn_ex, shim_term_viewport_cols, shim_term_viewport_rows,
     shim_term_write_line,

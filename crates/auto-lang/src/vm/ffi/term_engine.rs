@@ -285,8 +285,10 @@ fn engine_feed_snapshot(
         // PLAN-019 滚轮回灌:widget 滚轮队列 → 引擎 display_offset。排水先于
         // 损伤重采,同拍快照即滚动视图。仅 Key 侧带排水(可见 pane 均走
         // rows_for;All 门面无 key,不重复排水)。no-ui 构建为 no-op。
+        // PLAN-025 T-02:承接行窗绝对锚(store 喂入门)。
+        let mut anchor_opt: i64 = i64::MIN;
         if let Sideband::Key(key) = sideband {
-            apply_scroll_queue(lib, h, key);
+            anchor_opt = apply_scroll_queue(lib, h, handle, key);
         }
         let take: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, *mut c_int, c_int) -> c_int,
@@ -310,6 +312,7 @@ fn engine_feed_snapshot(
             unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut u32, c_int) -> c_int,
         > = lib.get(b"autoterm_engine_row_style\0").expect("autoterm_engine_row_style symbol");
         let mut lines = Vec::new();
+        let mut sink = RowSink::new();
         for r in 0..256i32 {
             let mut buf = [0 as c_char; 512];
             let need = row_text(h, r, buf.as_mut_ptr(), 512);
@@ -323,8 +326,14 @@ fn engine_feed_snapshot(
             // 旁路上屏走 ui 适配层(无 ui 特征时丢弃,文本面不受影响)。
             let mut styles = [0u32; 1024];
             let styled = row_style(h, r, styles.as_mut_ptr(), 1024);
-            feed_styled_sideband(sideband, r, &text, &styles[..styled.max(0) as usize]);
+            sink.feed(sideband, r, &text, &styles[..styled.max(0) as usize]);
             lines.push(text);
+        }
+        // PLAN-025 T-03:视口行入 window_store(Key 臂;槽位面不受扰)。
+        if let Sideband::Key(key) = sideband {
+            if anchor_opt != i64::MIN {
+                sink.into_store(key, anchor_opt);
+            }
         }
         snapshots().insert(handle, lines);
     }
@@ -397,44 +406,76 @@ fn take_menu_item_any() -> Option<u8> {
     None
 }
 
-/// 逐格样式旁路上屏;无 ui 特征丢弃(快照文本面不受影响)。
-/// `sideband` = 广播(旧 rows)/按 key 定向(D5 rows_for)。
+/// 逐行样式消费面:旁路上屏(广播/定向)+ PLAN-025 T-03 视口行收集
+/// (喂 window_store 用;ui 臂)。无 ui 特性丢弃(快照文本面不受影响)。
 #[cfg(feature = "ui")]
-fn feed_styled_sideband(sideband: Sideband<'_>, row: i32, text: &str, styles: &[u32]) {
-    let pairs = styles.len() / 2;
-    let mut cells: Vec<crate::ui::terminal::TermCell> = Vec::with_capacity(pairs);
-    for (ci, ch) in text.chars().enumerate() {
-        if ci >= pairs {
-            break;
+struct RowSink {
+    rows: Vec<Vec<crate::ui::terminal::TermCell>>,
+}
+#[cfg(feature = "ui")]
+impl RowSink {
+    fn new() -> Self {
+        RowSink { rows: Vec::new() }
+    }
+    fn feed(&mut self, sideband: Sideband<'_>, row: i32, text: &str, styles: &[u32]) {
+        let pairs = styles.len() / 2;
+        let mut cells: Vec<crate::ui::terminal::TermCell> = Vec::with_capacity(pairs);
+        for (ci, ch) in text.chars().enumerate() {
+            if ci >= pairs {
+                break;
+            }
+            cells.push(crate::ui::terminal::TermCell {
+                ch,
+                fg: decode_style_color(styles[ci * 2]),
+                bg: decode_style_color(styles[ci * 2 + 1]),
+            });
         }
-        cells.push(crate::ui::terminal::TermCell {
-            ch,
-            fg: decode_style_color(styles[ci * 2]),
-            bg: decode_style_color(styles[ci * 2 + 1]),
-        });
+        if !cells.is_empty() {
+            match sideband {
+                Sideband::All => {
+                    crate::ui::terminal::terminal_feed_cells_all(row as usize, cells.clone())
+                }
+                Sideband::Key(key) => crate::ui::terminal::terminal_feed_cells_for(
+                    key,
+                    row as usize,
+                    cells.clone(),
+                ),
+            }
+        }
+        self.rows.push(cells);
     }
-    if cells.is_empty() {
-        return;
-    }
-    match sideband {
-        Sideband::All => crate::ui::terminal::terminal_feed_cells_all(row as usize, cells),
-        Sideband::Key(key) => {
-            crate::ui::terminal::terminal_feed_cells_for(key, row as usize, cells)
+    /// PLAN-025 T-03:视口行入 window_store(绝对 id 寻址;Key 臂)。
+    fn into_store(self, key: &str, anchor: i64) {
+        if !self.rows.is_empty() {
+            crate::ui::terminal::terminal_feed_window_for(key, anchor, &self.rows);
         }
     }
 }
 #[cfg(not(feature = "ui"))]
-fn feed_styled_sideband(_sideband: Sideband<'_>, _row: i32, _text: &str, _styles: &[u32]) {}
+struct RowSink;
+#[cfg(not(feature = "ui"))]
+impl RowSink {
+    fn new() -> Self {
+        RowSink
+    }
+    fn feed(&mut self, _sideband: Sideband<'_>, _row: i32, _text: &str, _styles: &[u32]) {}
+    fn into_store(self, _key: &str, _anchor: i64) {}
+}
 
 /// PLAN-019 滚轮回灌(排水先于损伤重采,同拍快照即滚动视图;仅 Key 侧带
 /// 排水,All 门面无 key 不重复)。ui 臂:排空 core 滚动队列 → 引擎
-/// scroll → 回读 display_offset/history 回写 badge 与拇指比例。no-ui 臂
+/// scroll → 回写 display_offset/history/badge 与拇指比例。no-ui 臂
 /// 为 no-op(tv/tt 等无 ui 特性档编译零依赖)。
+///
+/// PLAN-025(VM 臂同款接线,rust 轨 term.rs 同构):T-02 绝对行锚回写
+/// (anchor = h − o);用户滚动回灌(delta≠0)标 view bound(T-05 抖动
+/// 根修——bind 写臂不回拉视图已知位);T-03 预取窗瞬态 scroll 采样。
+/// 返回行窗首行绝对行号(缺 core = i64::MIN,喂 store 门用)。
 #[cfg(feature = "ui")]
-fn apply_scroll_queue(lib: &Library, h: *mut core::ffi::c_void, key: &str) {
+fn apply_scroll_queue(lib: &Library, h: *mut core::ffi::c_void, handle: i64, key: &str) -> i64 {
     unsafe {
         let Some(core) = crate::ui::terminal::terminal_core(key) else {
-            return;
+            return i64::MIN;
         };
         let delta = crate::ui::terminal::terminal_take_scroll_delta(core);
         if delta != 0 {
@@ -453,10 +494,120 @@ fn apply_scroll_queue(lib: &Library, h: *mut core::ffi::c_void, key: &str) {
         > = lib.get(b"autoterm_engine_history\0").expect("autoterm_engine_history symbol");
         let n = hist(h);
         crate::ui::terminal::terminal_set_history(core, n.max(0) as usize);
+        // T-02 锚 + T-05 防抖标记。
+        let (off_v, hist_v) = (off.max(0), n.max(0));
+        let anchor = hist_v as i64 - off_v as i64;
+        crate::ui::terminal::terminal_set_window_anchor(core, anchor);
+        if delta != 0 {
+            crate::ui::terminal::terminal_mark_view_bound(core);
+        }
+        // T-03 预取窗(N=24,16ms 泵周期口径;瞬态 scroll,终态恢复 o)。
+        let rows_v = geom_of(&VIEWPORTS, handle).1 as i32;
+        prefetch_window(lib, h, key, anchor, off_v, hist_v, rows_v);
+        anchor
     }
 }
 #[cfg(not(feature = "ui"))]
-fn apply_scroll_queue(_lib: &Library, _h: *mut core::ffi::c_void, _key: &str) {}
+fn apply_scroll_queue(_lib: &Library, _h: *mut core::ffi::c_void, _handle: i64, _key: &str) -> i64 {
+    i64::MIN
+}
+
+/// 采样引擎视口一行 → styled cells(None = 行越界)。PLAN-025 T-03:
+/// 预取窗采样用(rust 轨 term.rs sample_engine_row 同构)。
+#[cfg(feature = "ui")]
+fn sample_engine_row(
+    lib: &Library,
+    h: *mut core::ffi::c_void,
+    r: i32,
+) -> Option<Vec<crate::ui::terminal::TermCell>> {
+    unsafe {
+        let row_text: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut c_char, c_int) -> c_int,
+        > = lib.get(b"autoterm_engine_row_text\0").expect("autoterm_engine_row_text symbol");
+        let mut buf = [0 as c_char; 512];
+        let need = row_text(h, r, buf.as_mut_ptr(), 512);
+        if need < 0 {
+            return None;
+        }
+        let n = (need as usize).saturating_sub(1).min(511);
+        let bytes: Vec<u8> = buf[..n].iter().map(|&c| c as u8).collect();
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let row_style: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut u32, c_int) -> c_int,
+        > = lib.get(b"autoterm_engine_row_style\0").expect("autoterm_engine_row_style symbol");
+        let mut styles = [0u32; 1024];
+        let styled = row_style(h, r, styles.as_mut_ptr(), 1024);
+        let pairs = (styled.max(0) as usize) / 2;
+        let mut cells: Vec<crate::ui::terminal::TermCell> = Vec::with_capacity(pairs);
+        for (ci, ch) in text.chars().enumerate() {
+            if ci >= pairs {
+                break;
+            }
+            cells.push(crate::ui::terminal::TermCell {
+                ch,
+                fg: decode_style_color(styles[ci * 2]),
+                bg: decode_style_color(styles[ci * 2 + 1]),
+            });
+        }
+        Some(cells)
+    }
+}
+
+/// PLAN-025 T-03 预取窗采样(VM 臂;rust 轨 term.rs prefetch_window
+/// 同构):引擎瞬态 scroll 上/下各 N 行入 window_store,终态 offset
+/// 恢复。上翻钳位 [0, history] 与引擎同界,id 数学零漂移。
+#[cfg(feature = "ui")]
+fn prefetch_window(
+    lib: &Library,
+    h: *mut core::ffi::c_void,
+    key: &str,
+    anchor: i64,
+    off: i32,
+    hist: i32,
+    rows: i32,
+) {
+    const N: i32 = 24;
+    if rows <= 0 {
+        return;
+    }
+    unsafe {
+        let scroll: libloading::Symbol<
+            unsafe extern "C" fn(*mut core::ffi::c_void, c_int),
+        > = lib.get(b"autoterm_engine_scroll\0").expect("autoterm_engine_scroll symbol");
+        let n_up = N.min(hist - off).min(rows);
+        if n_up > 0 {
+            let mut stash: Vec<Vec<crate::ui::terminal::TermCell>> = Vec::new();
+            scroll(h, n_up);
+            for r in 0..n_up {
+                match sample_engine_row(lib, h, r) {
+                    Some(cells) => stash.push(cells),
+                    None => break,
+                }
+            }
+            scroll(h, -n_up);
+            if !stash.is_empty() {
+                let base = anchor - stash.len() as i64;
+                crate::ui::terminal::terminal_feed_window_for(key, base, &stash);
+            }
+        }
+        let n_down = N.min(off).min(rows);
+        if n_down > 0 {
+            let mut below: Vec<Vec<crate::ui::terminal::TermCell>> = Vec::new();
+            scroll(h, -n_down);
+            for r in (rows - n_down).max(0)..rows {
+                match sample_engine_row(lib, h, r) {
+                    Some(cells) => below.push(cells),
+                    None => break,
+                }
+            }
+            scroll(h, n_down);
+            if !below.is_empty() {
+                let base = anchor + n_down as i64 + (rows - n_down).max(0) as i64;
+                crate::ui::terminal::terminal_feed_window_for(key, base, &below);
+            }
+        }
+    }
+}
 
 /// FFI 标量色 → 组件色((kind<<24)|value:0=Default 1=Indexed 2=RGB)。
 #[cfg(feature = "ui")]
@@ -956,4 +1107,85 @@ mod ash_leak_probe {
         println!("probe: done 20000 keystroke cycles");
         std::thread::sleep(Duration::from_millis(500));
     }
+}
+
+// ── PLAN-025(VM 臂):T-04 即时泵探针 + B 部配置面 stub ────────────────
+
+/// PLAN-025 T-04 即时泵探针:该 key 滚动增量是否待排(peek,不排空;
+/// 泵节拍门消费)。无 ui 特性恒 0(无滚动队列)。
+#[cfg(feature = "ui")]
+fn engine_scroll_pending_for(_handle: i64, key: &str) -> i64 {
+    match crate::ui::terminal::terminal_core(key) {
+        Some(core) => crate::ui::terminal::terminal_scroll_delta_pending(core) as i64,
+        None => 0,
+    }
+}
+#[cfg(not(feature = "ui"))]
+fn engine_scroll_pending_for(_handle: i64, _key: &str) -> i64 {
+    0
+}
+
+/// engine_scroll_pending_for(handle int, key str) int。
+pub fn shim_term_scroll_pending_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_scroll_pending_for(handle, &key) as i32));
+    Ok(())
+}
+
+// PLAN-025 B 部 VM 臂配置面 stub:profile 消费 = 非目标(§10.2,024
+// 合流后另立);auto-lang 不得依赖 autoterm-config(无环铁律)。空集
+// 语义 = G6 降级(spawn 回落缺省 shell),与"配置缺席"行为一致。
+
+/// config_profiles() []str——VM 臂空集。
+pub fn shim_term_config_profiles(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let empty: Vec<String> = Vec::new();
+    empty
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+/// config_default_profile() str——VM 臂恒空串。
+pub fn shim_term_config_default_profile(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    String::new()
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+/// config_profiles_full() []str——VM 臂空集。
+pub fn shim_term_config_profiles_full(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let empty: Vec<String> = Vec::new();
+    empty
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+/// config_spawn_program(profile str) str——VM 臂恒空(回落缺省 shell)。
+pub fn shim_term_config_spawn_program(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _profile: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    String::new()
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+/// config_spawn_argv(profile str) []str——VM 臂空集。
+pub fn shim_term_config_spawn_argv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _profile: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let empty: Vec<String> = Vec::new();
+    empty
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+/// config_spawn_cwd(profile str) str——VM 臂恒空(继承宿主)。
+pub fn shim_term_config_spawn_cwd(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _profile: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    String::new()
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
 }

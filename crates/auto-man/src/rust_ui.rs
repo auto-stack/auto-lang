@@ -2654,6 +2654,18 @@ fn path_contains(root: &Path, dir: &Path) -> bool {
 /// Compute the relative path from the workspace dir (ws landing point) to
 /// the auto-lang crate.
 fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
+    // PLAN-025:AUTO_LANG_CRATE 环境覆盖(worktree 开发口子)——指向
+    // auto-lang crate 目录(绝对或相对),跳过仓库漫步直用(双仓
+    // worktree 联调惯例:主检出项目 + 依赖 worktree)。
+    if let Ok(p) = std::env::var("AUTO_LANG_CRATE") {
+        let t = p.trim().to_string();
+        if !t.is_empty() {
+            let cand = std::path::PathBuf::from(&t);
+            if cand.exists() {
+                return compute_relative_path(ws_dir, &cand);
+            }
+        }
+    }
     // Walk up from project_dir to find the workspace root (has crates/auto-lang).
     // Also check sibling directories at each level — auto-lang may live in a
     // sibling repo (e.g. auto-shell and auto-lang are both under autostack/).

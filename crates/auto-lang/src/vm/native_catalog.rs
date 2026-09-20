@@ -516,6 +516,16 @@ macro_rules! for_each_native {
             // PLAN-015 D4:菜单动作载荷(0=Copy 1=Paste 2=SelectAll
             // 3=Interrupt;-1=无载荷;注册表任意端)。
             (2987, NATIVE_TERM_ENGINE_MENU_TAKE, shim_term_menu_take, "auto.term.engine_menu_take"),
+            // PLAN-025(B 部 VM 臂 stub + T-04 探针):config_* 空集 stub
+            // (profile 消费非目标 §10.2;auto-lang 不依赖 autoterm-config
+            // 无环铁律,空集 = G6 降级语义)+ 滚动待排探针(泵节拍门)。
+            (2988, NATIVE_TERM_CONFIG_PROFILES, shim_term_config_profiles, "auto.term.config_profiles"),
+            (2989, NATIVE_TERM_CONFIG_DEFAULT_PROFILE, shim_term_config_default_profile, "auto.term.config_default_profile"),
+            (2990, NATIVE_TERM_CONFIG_PROFILES_FULL, shim_term_config_profiles_full, "auto.term.config_profiles_full"),
+            (2991, NATIVE_TERM_CONFIG_SPAWN_PROGRAM, shim_term_config_spawn_program, "auto.term.config_spawn_program"),
+            (2992, NATIVE_TERM_CONFIG_SPAWN_ARGV, shim_term_config_spawn_argv, "auto.term.config_spawn_argv"),
+            (2993, NATIVE_TERM_CONFIG_SPAWN_CWD, shim_term_config_spawn_cwd, "auto.term.config_spawn_cwd"),
+            (3001, NATIVE_TERM_ENGINE_SCROLL_PENDING_FOR, shim_term_scroll_pending_for, "auto.term.engine_scroll_pending_for"),
             // PLAN-020 T-00b:窗口尺寸面(逻辑 px;分屏矩形投影 px 类几何的
             // 标定源)。读 iced_adapter 窗口全局(renderer 每帧 set),零引擎
             // 耦合;vue back 无窗口降级返缺省槽位值。
@@ -1085,6 +1095,13 @@ macro_rules! for_each_bigvm_native {
             ("auto.term.engine_backlog_dropped", 2982, Int),
             ("auto.term.window_width", 2998, Int),
             ("auto.term.window_height", 2999, Int),
+            ("auto.term.config_profiles", 2988, List),
+            ("auto.term.config_default_profile", 2989, String),
+            ("auto.term.config_profiles_full", 2990, List),
+            ("auto.term.config_spawn_program", 2991, String),
+            ("auto.term.config_spawn_argv", 2992, List),
+            ("auto.term.config_spawn_cwd", 2993, String),
+            ("auto.term.engine_scroll_pending_for", 3001, Int),
 
             // === Hash extended (2814-2816) ===
             ("auto.hash.hmac_sha256", 2814, String),
@@ -2690,6 +2707,13 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_pump_for", 2985),
     ("auto.term.engine_apply_resize_for", 2986),
     ("auto.term.engine_menu_take", 2987),
+    ("auto.term.config_profiles", 2988),
+    ("auto.term.config_default_profile", 2989),
+    ("auto.term.config_profiles_full", 2990),
+    ("auto.term.config_spawn_program", 2991),
+    ("auto.term.config_spawn_argv", 2992),
+    ("auto.term.config_spawn_cwd", 2993),
+    ("auto.term.engine_scroll_pending_for", 3001),
     ("auto.term.window_width", 2998),
     ("auto.term.window_height", 2999),
 
