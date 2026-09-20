@@ -4131,8 +4131,12 @@ export default router
             .map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
         println!("{}", "  ✓ Regenerated tsconfig.json".bright_green());
 
-        // PLAN-038 Phase B T8 (P657-D2): build/regenerate 路径同样写类型 stub + overlay。
-        // 有 root front 目录时同步 auto-sources（相对 output_dir 回溯 workspace）。
+        // PLAN-038 Phase B T7/T8: regenerate/build 路径重写 tailwind（纯生成模板，
+        // 磁盘残留旧版会漏 success/warning/info 映射）+ 类型 stub + overlay。
+        let tailwind_path = self.output_dir.join("tailwind.config.cjs");
+        fs::write(&tailwind_path, generate_tailwind_config())
+            .map_err(|e| format!("Failed to write tailwind.config.cjs: {}", e))?;
+        println!("{}", "  ✓ Regenerated tailwind.config.cjs".bright_green());
         ensure_vue_type_stubs(&self.output_dir);
         {
             let front = self.output_dir
