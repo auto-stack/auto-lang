@@ -10609,6 +10609,8 @@ const DASH_COLS: usize = 8; // 外框列数（用户裁定 8×3）
 const DASH_ROWS: usize = 3; // 外框行数
 const DASH_HEADER_H: f32 = 80.0; // 头行占位 = 行 0 格 72 + gap 8
 const DASH_WIDGET_H: f32 = 152.0; // widget 卡高 = 2 行格（2×72 + 8）
+const DASH_FRAME_PAD: f32 = 12.0; // 外框四围 padding（PLAN-035 T-14：
+// 外框 = 8×3 网格块四周外扩 12px 做 chrome 留白——卡片不再贴框缘）
 
 /// face 卡片（格位算式输入）：registry id + 列跨度 + 所属 tab。
 /// R5：tab 由注册表 category 派生（"system" → 系统页，其余 → 小组件页）
@@ -10673,13 +10675,13 @@ mod plan024_dashboard_layout_tests {
         height: 800.0,
     };
 
-    /// 空清单：无格位，外框仍为 8×3 固定矩形（右上 12px 边距）。
+    /// 空清单：无格位，外框 = 8×3 网格块四围外扩 PAD 的固定矩形。
     #[test]
     fn empty_faces_fixed_frame() {
         let (panel, cells) = dashboard_layout(VP, &[]);
         assert!(cells.is_empty());
-        assert_eq!(panel.width, 8.0 * DASH_GRID_COL - 8.0);
-        assert_eq!(panel.height, 3.0 * DASH_GRID_ROW - 8.0);
+        assert_eq!(panel.width, 8.0 * DASH_GRID_COL - 8.0 + 2.0 * DASH_FRAME_PAD);
+        assert_eq!(panel.height, 3.0 * DASH_GRID_ROW - 8.0 + 2.0 * DASH_FRAME_PAD);
         assert_eq!(panel.x, VP.width - DASH_MARGIN - panel.width);
         assert_eq!(panel.y, DASH_MARGIN);
     }
@@ -10694,9 +10696,9 @@ mod plan024_dashboard_layout_tests {
         assert_eq!(cells[0].width, 2.0 * DASH_GRID_COL - 8.0);
         assert_eq!(cells[1].width, 3.0 * DASH_GRID_COL - 8.0);
         assert_eq!(cells[0].height, DASH_WIDGET_H);
-        assert_eq!(cells[0].y, panel.y + DASH_HEADER_H);
-        assert_eq!(cells[0].x, panel.x);
-        assert_eq!(cells[1].x, panel.x + 2.0 * DASH_GRID_COL);
+        assert_eq!(cells[0].y, panel.y + DASH_FRAME_PAD + DASH_HEADER_H);
+        assert_eq!(cells[0].x, panel.x + DASH_FRAME_PAD);
+        assert_eq!(cells[1].x, panel.x + DASH_FRAME_PAD + 2.0 * DASH_GRID_COL);
     }
 
     /// 8 列单卡行容量：2+3+3 恰满；第 4 张裁剪（Q2 v1 策略）。
@@ -10734,10 +10736,16 @@ fn dashboard_layout(
     viewport: iced::Rectangle,
     faces: &[DashFace],
 ) -> (iced::Rectangle, Vec<iced::Rectangle>) {
-    let panel_w = DASH_COLS as f32 * DASH_GRID_COL - 8.0;
-    let panel_h = DASH_ROWS as f32 * DASH_GRID_ROW - 8.0;
+    let grid_w = DASH_COLS as f32 * DASH_GRID_COL - 8.0;
+    let grid_h = DASH_ROWS as f32 * DASH_GRID_ROW - 8.0;
+    // PLAN-035 T-14：外框 = 网格块四围外扩 PAD（chrome 留白），格位原点
+    // 随之内移 PAD——卡片不再贴框缘。
+    let panel_w = grid_w + 2.0 * DASH_FRAME_PAD;
+    let panel_h = grid_h + 2.0 * DASH_FRAME_PAD;
     let panel_x = (viewport.width - DASH_MARGIN - panel_w).max(DASH_MARGIN);
     let panel_y = DASH_MARGIN;
+    let grid_x = panel_x + DASH_FRAME_PAD;
+    let grid_y = panel_y + DASH_FRAME_PAD;
     let mut cells = Vec::with_capacity(faces.len());
     let mut col = 0usize;
     let mut clipped = 0usize;
@@ -10749,8 +10757,8 @@ fn dashboard_layout(
             continue;
         }
         cells.push(iced::Rectangle {
-            x: panel_x + col as f32 * DASH_GRID_COL,
-            y: panel_y + DASH_HEADER_H,
+            x: grid_x + col as f32 * DASH_GRID_COL,
+            y: grid_y + DASH_HEADER_H,
             width: want as f32 * DASH_GRID_COL - 8.0,
             height: DASH_WIDGET_H,
         });
@@ -10792,22 +10800,20 @@ fn dashboard_span_from_storage(id: &str) -> Option<usize> {
     )
 }
 
-/// PLAN-035 SD-02：app 源 span 声明探测——`view mini (span: "3")` 文本级
-/// 扫描（grep 家法同 has_mini）；存储覆写仍胜（refresh 臂消费序）。
+/// PLAN-035 SD-02：app 源 span 声明探测——源内唯一标记
+/// `dashboard span: N`（N∈{2,3}；注释形态 `// dashboard span: 3`）。
+/// 不锚定 `view mini` 位置：头注可能提前含该字样（012-clock 实测误锚，
+/// 首个命中落在头注导致窗口扫不到标记）。文本级契约与 has_mini grep
+/// 同族；存储覆写仍胜（refresh 臂消费序）。
 fn dashboard_declared_span(
     state: &crate::ui::session::DesktopSession,
     id: &str,
 ) -> Option<usize> {
     let spec = state.desktop.app_resolver.as_ref().and_then(|r| r(id))?;
     let code = spec.code.as_str();
-    let ix = code.find("view mini")?;
-    // 声明标记 = `view mini` 邻域 240 字符内的 `span: N`（N∈{2,3}；正文
-    // 首行注释形态 `// dashboard span: 3`——parser view-tag 无 props 通道，
-    // 文本级契约与 has_mini grep 同族）。
-    let end = code.len().min(ix + 240);
-    let window = &code[ix..end];
-    let p = window.find("span:")?;
-    let tail = window[p + 5..].trim_start().trim_start_matches('"');
+    const MARKER: &str = "dashboard span:";
+    let p = code.find(MARKER)?;
+    let tail = code[p + MARKER.len()..].trim_start();
     let digits: String = tail.chars().take_while(|c| c.is_ascii_digit()).collect();
     match digits.as_str() {
         "3" => Some(3),

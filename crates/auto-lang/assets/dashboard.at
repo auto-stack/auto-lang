@@ -64,11 +64,13 @@ widget DashboardPanel {
             // PLAN-035 T-04：固定 h-[72px] = 图标网格行 0 满格（宿主
             // DASH_HEADER_H 80 = 72 格 + 8 gap，face 卡行 1 起——8×3
             // 网格合同，SD-01）。
+            // PLAN-035 T-14：外框四围 p-3——外框 = 网格块外扩 PAD 12px
+            // （宿主 frame = 网格 + 2×PAD），卡片区不再贴框缘。
             col {
                 style: "w-full h-full"
                 mouse-area (onmouseenter: .ShowClose, onmouseleave: .HideClose) {
                 col {
-                    style: "w-full h-full bg-card/80 border rounded-xl overflow-hidden"
+                    style: "w-full h-full p-3 bg-card/80 border rounded-xl overflow-hidden"
 
                     // 标题行：居中 tab + 右缘 ×（R6：hover 面板才显现，
                     // 槽位 h-8 w-8 固定不跳版）
