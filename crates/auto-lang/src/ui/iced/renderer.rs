@@ -34474,3 +34474,124 @@ fn ade_fg_dark() -> crate::ui::code_editor::theme::Rgba {
 fn ade_fg_light() -> crate::ui::code_editor::theme::Rgba {
     crate::ui::code_editor::theme::Rgba { r: 0.12, g: 0.13, b: 0.15, a: 1.0 }
 }
+
+// ── PLAN-080 UAT F-UAT-1：CJK 用户气泡 pct-hug 布局 ─────────────────────
+// 真机实证（2026-09-21 musk UAT）：中文消息气泡空文本。定罪链：headless
+// 同构泡测宽 CJK/latin 均正确（112 vs 86px，本模块 GEOM 回归钉）→ 测宽
+// 层无罪；真机缺陷在 v-html 降级链（VM length=字符数/sub=字节切片语义
+// 不一致 × musk render_mentions 逐字符扫描），修于 musk 22960ca。
+// 本模块保留两笔资产：①pct-hug 路径 CJK/latin 测宽对等回归钉；②bisect
+// 文档化测试——MaxWidthPct 子树内的 text 节点对 iced_selector/Find 操作
+// 恒不可见（container 候选可见、text 候选缺失，operate traverse 修复无
+// 效）——MCP 快照对被包节点的文本上报缺口（§10-11 capped 盒伪影家族）
+// 待后续专项（候选通道：MaxWidthPct tag/state 委托引发的 Tree 错位）。
+#[cfg(all(test, feature = "iced-layout-tests"))]
+mod plan080_uat_cjk_bubble_tests {
+    use super::*;
+
+    /// musk user_message.at 气泡同构：外层行（max-w-[70%] self-end）>
+    /// 泡 col（px-14/py-10 圆角）> 文本。
+    fn bubble_view(text: &str) -> AbstractView<IcedMessage> {
+        AbstractView::Column {
+            children: vec![AbstractView::Column {
+                children: vec![AbstractView::Text {
+                    content: text.to_string(),
+                    style: Style::parse("break-words whitespace-pre-wrap").ok(),
+                    selectable: false,
+                }],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("px-[14px] py-[10px] rounded-xl break-words bg-primary").ok(),
+                onclick: None,
+                on_right_click: None,
+            }],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("flex flex-col gap-[3px] max-w-[70%] self-end items-end").ok(),
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
+    /// 回归钉：pct-hug 路径 CJK 测宽必须与 latin 同量级（全角 ≈ 2× 半角）。
+    /// 读法用闭包收集器（不走 text 选择器——见模块头②）。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn plan080_uat_cjk_bubble_hug_width_not_collapsed() {
+        for (label, floor) in [("你好世界早上好", 100.0f32), ("hello world!", 50.0f32)] {
+            let el = render_dynamic_view(bubble_view(label), None, &mut Vec::new());
+            let mut ui = iced_test::simulator(el);
+            let seen = std::sync::Mutex::new(Vec::new());
+            let dump = |c: iced_test::selector::Candidate<'_>| -> Option<()> {
+                use iced_test::selector::Candidate::*;
+                match c {
+                    Container { bounds, .. } => {
+                        seen.lock().unwrap().push(format!("{bounds:?}"));
+                        None
+                    }
+                    _ => None,
+                }
+            };
+            let _ = ui.find(dump);
+            let containers = seen.lock().unwrap();
+            let last = containers.last().expect("innermost padding container");
+            let width: f32 = last
+                .split("width: ")
+                .nth(1)
+                .expect("width field")
+                .split(',')
+                .next()
+                .expect("width value")
+                .trim()
+                .parse()
+                .expect("width parse");
+            assert!(
+                width >= floor,
+                "F-UAT-1 回归钉：{label:?} 泡宽 {width} < 下限 {floor}（测宽塌缩）"
+            );
+        }
+    }
+
+    /// 文档化（无断言）：MaxWidthPct 子树 text 节点对 Find 操作不可见、
+    /// container 可见——见模块头②。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn plan080_uat_max_width_pct_operation_visibility_bisect() {
+        for (outer, expect_text) in [
+            ("flex flex-col", true),
+            ("max-w-[70%]", false),
+        ] {
+            let el = render_dynamic_view(
+                AbstractView::Column {
+                    children: vec![AbstractView::Text {
+                        content: "bisect text".into(),
+                        style: None,
+                        selectable: false,
+                    }],
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse(outer).ok(),
+                    onclick: None,
+                    on_right_click: None,
+                },
+                None,
+                &mut Vec::new(),
+            );
+            let mut ui = iced_test::simulator(el);
+            let seen_text = std::sync::Mutex::new(false);
+            let dump = |c: iced_test::selector::Candidate<'_>| -> Option<()> {
+                use iced_test::selector::Candidate::*;
+                if matches!(c, Text { .. }) {
+                    *seen_text.lock().unwrap() = true;
+                }
+                None
+            };
+            let _ = ui.find(dump);
+            assert_eq!(
+                *seen_text.lock().unwrap(),
+                expect_text,
+                "outer={outer:?}: text 候选可见性文档化（true=无 pct 对照组）"
+            );
+        }
+    }
+}

@@ -130,6 +130,9 @@ where
     // 收集 / iced_test 文本选择器）默认 no-op 不进子件，MCP 实机几何与
     // headless 断言此前都量不到被本 widget 包住的节点（080 定罪实证）。
     // 转发模式同 popover Panel::operate（container 上报 + traverse 递归）。
+    // UAT F-UAT-1 勘误：裸递归不带 Operation::traverse 作用域——子树里的
+    // text 节点对 iced_selector/MCP 快照操作恒不上报（文本选择器只见
+    // container 见不到 text，bisect 实证）。traverse 递归与 popover 同款。
     fn operate(
         &mut self,
         tree: &mut Tree,
@@ -139,12 +142,14 @@ where
     ) {
         operation.container(None, layout.bounds());
         let content_layout = layout.children().next().expect("max-width pct child");
-        self.content.as_widget_mut().operate(
-            &mut tree.children[0],
-            content_layout,
-            renderer,
-            operation,
-        );
+        operation.traverse(&mut |operation| {
+            self.content.as_widget_mut().operate(
+                &mut tree.children[0],
+                content_layout,
+                renderer,
+                operation,
+            );
+        });
     }
 
     fn mouse_interaction(
