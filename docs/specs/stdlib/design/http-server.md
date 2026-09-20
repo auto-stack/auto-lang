@@ -1,6 +1,6 @@
 # Auto HTTP/HTTPS Server 标准库 Spec
 
-> **Status**: Draft v2(2026-06-17 更新)
+> **Status**: Draft v2(2026-06-17 更新;2026-09-20 Plan 669 修订 §4.1 注入规则并新增 §4.1.1 VM 模式装配实现状态)
 > **范围**: 定义 Auto 标准库中 HTTP/HTTPS Server 的统一 API,覆盖同步/异步 × 普通/流 四种 handler 模式
 > **目标**: VM 模式和 A2R 模式共享同一套 API,底层封装 Axum/Tokio
 > **关联**: Plan 321(generator 运行时)提供 yield/~Iter/~Stream 原语;本 Spec 定义 HTTP 层如何消费它们
@@ -152,9 +152,31 @@ pub fn get_note(id int) ?Note { ... }
 pub fn create_note(title str, body str) Note { ... }
 ```
 
-**注入规则**:
-- 路径参数(`:id`):按名字匹配函数参数,自动类型转换(`int`/`str`)
+**注入规则**(2026-09-20 Plan 669 修订——补 query 第三注入源与缺参语义):
+- 路径参数(`:id`):按名字匹配函数参数,自动类型转换(`int`/`float`/`bool`/`str` 精确转换)
 - POST/PUT body:JSON 对象的字段按名字匹配函数参数
+- **GET/POST query 参数:按名字匹配函数参数**(与 body 字段同名时 body 优先;
+  路径段 > body 字段 > query)
+- **缺参 → HTTP 400** + `{"error":"missing param `名` ..."}`(与 back_proxy
+  Plan 658 对齐;类型转换失败同样 400 指名)
+- **单参 whole-body 容忍**:handler 恰声明 1 个参数且请求体无法按名供给该参数
+  时(未解析成功的原始 body / multipart 字段集合 JSON 等),整个 body 串作为
+  该参数传入(Plan 346 单参 body 契约的延续)
+- **元数据形参按名 opt-in**:尾随形参名 ∈ {`meta`,`metadata`,`req`,`request`}
+  且未被 path/body/query 供给时,接收 `{"cookies":{...},"auth":"..."}`
+  (Plan 317 Phase 11 / Plan 346 stage 4 约定;其余未供给形参一律 400)
+
+### 4.1.1 VM 模式装配实现状态(Plan 669)
+
+VM 模式(`auto run --server vm` 与 in-language `http.server().listen()`)的
+装配链:codegen 在 `api_routes` 采集点同步发布各 `#[api]` fn 的形参签名
+(名+类型)到进程级 `API_PARAM_SIGS` 侧信道(与 `axum_adapter::PARAM_SIGS`
+同生命周期模型:run pipeline 编译前重置);四条 serve 路径
+(`handle_connection_async`/`serve_blocking_stdnet`/`run_http_server_blocking`/
+`shim_http_server_listen`)统一经共享绑定器按 §4.1 规则装配,绑定失败即
+400/500 早返;无签名条目(legacy 生产者)回退旧位序装配。`__axum:` 合成
+路由走 axum_adapter extractor 编组,不经此链。a2r 轨的参数绑定在生成的
+Rust 代码里,不受影响。
 
 ### 4.2 Request 对象(高级,显式访问)
 
