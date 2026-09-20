@@ -292,6 +292,10 @@ pub enum IcedOverflow {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum IcedSize {
     Full,
+    /// PLAN-663 C1a: 视口单位（h-screen 族）。消费端缺省=Fill（窗口根，历
+    /// 史行为）；定高(px)嵌入边界子树内由 rewrite_viewport_units 预重写为
+    /// Fixed(边界)，本变体到不了渲染端即为重写完成态。
+    Screen,
     FillPortion(u16),
     Fixed(f32),
     /// PLAN-526 T27：`w-auto`/`h-auto`（hug 内容）。此前 Auto 误映射
@@ -1380,6 +1384,9 @@ impl IcedStyle {
 fn convert_size(size: &SizeValue) -> IcedSize {
     match size {
         SizeValue::Full => IcedSize::Full,
+        // PLAN-663 C1a: 视口单位独立成变体;渲染端 iced_length(Screen)=Fill
+        // (窗口根缺省),嵌入边界内已在 pre-pass 重写为 Fixed。
+        SizeValue::Screen => IcedSize::Screen,
         SizeValue::Half => IcedSize::FillPortion(1),
         SizeValue::Third => IcedSize::FillPortion(1),
         SizeValue::TwoThirds => IcedSize::FillPortion(2),

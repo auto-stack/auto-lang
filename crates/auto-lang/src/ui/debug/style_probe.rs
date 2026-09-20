@@ -103,6 +103,8 @@ fn class_to_kv(c: &StyleClass) -> Vec<(String, String)> {
 fn format_size(v: &SizeValue) -> String {
     match v {
         SizeValue::Full => "100%".into(),
+        // PLAN-663 C1a: 视口单位按 CSS 原义呈现
+        SizeValue::Screen => "100vh".into(),
         SizeValue::Half => "50%".into(),
         SizeValue::Third => "33.333%".into(),
         SizeValue::TwoThirds => "66.666%".into(),

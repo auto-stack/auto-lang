@@ -9,6 +9,13 @@ use super::Color;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SizeValue {
     Full,        // 100%
+    /// PLAN-663 C1a: 视口单位（`h-screen`/`h-dvh`/`h-svh`/`h-lvh`/`w-screen`
+    /// 族），与 `Full`（父容器 100%）严格区分。窗口根解析为 Fill（满窗，历
+    /// 史行为）；定高/定宽(px)嵌入边界子树内由 rewrite_viewport_units 重锚
+    /// 定为边界尺寸（iframe 语义）。此前 screen 与 full 合并解析为 Full，嵌
+    /// 入定高容器后 Fill 失去锚点塌缩为最小内容高——ui-gallery VM 臂全屏
+    /// demo 只剩一条播控条的根因。
+    Screen,
     Half,        // 50%
     Third,       // 33.333%
     TwoThirds,   // 66.666%
@@ -1952,9 +1959,12 @@ fn parse_color_with_alpha(color_name: &str, arbitrary: Option<&str>) -> Result<C
 
 fn parse_size_value(input: &str) -> Result<SizeValue, String> {
     match input {
-        "full" | "screen" => Ok(SizeValue::Full),
-        // Plan 527 T3: 视口单位(svh/lvh/dvh)≈ screen/Full(桌面窗口即视口)
-        "svh" | "lvh" | "dvh" => Ok(SizeValue::Full),
+        "full" => Ok(SizeValue::Full),
+        // PLAN-663 C1a: screen 与 full 分离(原合并为 Full)。窗口根=Fill 满
+        // 窗;定高嵌入边界内由 pre-pass 重锚定(iframe 语义)。
+        "screen" => Ok(SizeValue::Screen),
+        // Plan 527 T3: 视口单位(svh/lvh/dvh)≈ screen(视口单位同族)
+        "svh" | "lvh" | "dvh" => Ok(SizeValue::Screen),
         "auto" => Ok(SizeValue::Auto),
         // Tailwind *-px = 1px(2026-08-22:w-px/h-px 此前静默丢弃 —— sep 的
         // w-px 宽度丢失、041 横向发丝线 h-px 高度丢失,均源于此)。
@@ -2536,9 +2546,14 @@ mod tests {
         assert_eq!(StyleClass::parse_single("w-7/12"), Ok(StyleClass::Width(SizeValue::Fraction(7, 12))));
         assert_eq!(StyleClass::parse_single("w-2/5"), Ok(StyleClass::Width(SizeValue::Fraction(2, 5))));
         assert_eq!(StyleClass::parse_single("w-2/4"), Ok(StyleClass::Width(SizeValue::Fraction(2, 4))));
-        // vh 视口单位 ≈ screen/Full
-        assert_eq!(StyleClass::parse_single("h-svh"), Ok(StyleClass::Height(SizeValue::Full)));
-        assert_eq!(StyleClass::parse_single("h-dvh"), Ok(StyleClass::Height(SizeValue::Full)));
+        // PLAN-663 C1a: 视口单位(Screen)与父容器百分比(Full)严格区分
+        assert_eq!(StyleClass::parse_single("h-screen"), Ok(StyleClass::Height(SizeValue::Screen)));
+        assert_eq!(StyleClass::parse_single("h-svh"), Ok(StyleClass::Height(SizeValue::Screen)));
+        assert_eq!(StyleClass::parse_single("h-dvh"), Ok(StyleClass::Height(SizeValue::Screen)));
+        assert_eq!(StyleClass::parse_single("h-lvh"), Ok(StyleClass::Height(SizeValue::Screen)));
+        assert_eq!(StyleClass::parse_single("w-screen"), Ok(StyleClass::Width(SizeValue::Screen)));
+        assert_eq!(StyleClass::parse_single("h-full"), Ok(StyleClass::Height(SizeValue::Full)));
+        assert_eq!(StyleClass::parse_single("w-full"), Ok(StyleClass::Width(SizeValue::Full)));
         // basis 全档
         assert_eq!(StyleClass::parse_single("basis-4"), Ok(StyleClass::FlexBasis(SizeValue::Fixed(4))));
         assert_eq!(StyleClass::parse_single("basis-1/2"), Ok(StyleClass::FlexBasis(SizeValue::Half)));
