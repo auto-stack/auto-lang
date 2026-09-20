@@ -3273,20 +3273,20 @@
   {
    "id": "designs",
    "items": [
-     {
-      "id": "P666-1",
-      "title": "ui-gallery 双轨事实源契约（demo 轨/app 轨分道扬镳）",
-      "file": "docs/specs/auto-lang/ui/overview.md",
-      "related": [
-       "PLAN-666",
-       "PLAN-590",
-       "PLAN-658"
-      ],
-      "status": "published",
-      "created": "2026-09-20",
-      "last_modified": "2026-09-20",
-      "content": "ui-gallery 数据源契约（PLAN-666 落地，用户裁定分道扬镳；025-sys-monitor/028-launcher/038-minesweeper 复刻回 examples/ui 为首个实践）：①demo 面 examples/ui 单一事实源——画廊发射（generate_gallery_host/refresh_gallery_registry 双臂 registry）、docs 语料锚、scan/策展断言（app_registry C 档恰等）读 examples/ui 副本，语料缺席即条目/断言缺席，无 auto-os 臂补位（590 期形态废止）；②app 面 auto-os apps/ 事实源——桌面注册表（apps.manifest extra roots）、桌面测试语料（plan503 launcher 料）、桌面 shell 装配读原件，与 demo 面零耦合；③发射器缺席语义——全量覆写为确定性函数，扫描集即条目集（语料缺席→适配器随下次发射退役；017/031 back 链 skip 与 045/046 整编退役为实证形态）；发射产物对扫描副本绝对路径敏感面仅存 fixture 引用 demo（031 形态），正式产物再发射以主检出为准；④两轨无同步义务——复刻即快照各自演化，README 双向互链无机制化同步；⑤非目标：同步机制/教学简洁度重写/widgets-gallery 归属。"
-     },
+    {
+     "id": "P666-1",
+     "title": "ui-gallery 双轨事实源契约（demo 轨/app 轨分道扬镳）",
+     "file": "docs/specs/auto-lang/ui/overview.md",
+     "related": [
+      "PLAN-666",
+      "PLAN-590",
+      "PLAN-658"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20",
+     "content": "ui-gallery 数据源契约（PLAN-666 落地，用户裁定分道扬镳；025-sys-monitor/028-launcher/038-minesweeper 复刻回 examples/ui 为首个实践）：①demo 面 examples/ui 单一事实源——画廊发射（generate_gallery_host/refresh_gallery_registry 双臂 registry）、docs 语料锚、scan/策展断言（app_registry C 档恰等）读 examples/ui 副本，语料缺席即条目/断言缺席，无 auto-os 臂补位（590 期形态废止）；②app 面 auto-os apps/ 事实源——桌面注册表（apps.manifest extra roots）、桌面测试语料（plan503 launcher 料）、桌面 shell 装配读原件，与 demo 面零耦合；③发射器缺席语义——全量覆写为确定性函数，扫描集即条目集（语料缺席→适配器随下次发射退役；017/031 back 链 skip 与 045/046 整编退役为实证形态）；发射产物对扫描副本绝对路径敏感面仅存 fixture 引用 demo（031 形态），正式产物再发射以主检出为准；④两轨无同步义务——复刻即快照各自演化，README 双向互链无机制化同步；⑤非目标：同步机制/教学简洁度重写/widgets-gallery 归属。"
+    },
     {
      "id": "P664-1",
      "title": "menubar 快照可见性与开合持久性契约（四条硬规则）",
@@ -4348,6 +4348,22 @@
      "status": "published",
      "created": "2026-09-20",
      "last_modified": "2026-09-20"
+    },
+    {
+     "id": "P667-1",
+     "title": "内存安全支持边界矩阵（VM 捕获/RC 持有/a2r 逃逸三值分类）",
+     "content": "PLAN-667 底线钉定的三值支持边界（已验证支持/明确拒绝或受检运行期错误/不属于本次保证）：VM by-ref 捕获经 (task_id, frame_uid) 帧身份活跃表在槽位读写前校验——创建者存活（含同步谓词/嵌套继承祖父帧锚/生成器挂起）为支持面，已返回帧/同 bp 复用/跨任务/挂起 async 体后=RuntimeError 拒绝；RC=影子/tagged 计份+rc_stats 纯读（显式 reap_all 收尾）+rc_retain_id 存在性门+rc_push_slot 份额出处门（无影子裸 i32≥4M 真整数零计数，撞活 id 不冒领）；a2r=闭包捕获升级（源序遮蔽自由变量收集）+fold_to_root 名称合并保守身份（生成侧恒 depth0 查询）+未覆盖 AST fail-closed+`.mut` 于逃逸绑定与 Send 边界（`.go` a2r 解析层即拒/ArcMutex emit 层拒绝）明确诊断。宽限窗降格为回收策略；类型化 var 槽位影子缺失=P667-D1 债（泄漏方向）；下一版语法/编码退役均未实现。证据 reports/667-memory-safety-evidence.md",
+     "file": "docs/specs/auto-lang/vm/design/memory-safety-boundary.md",
+     "related": [
+      "PLAN-667",
+      "PLAN-062",
+      "PLAN-419",
+      "PLAN-310",
+      "GOAL-001"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
     }
    ]
   },
@@ -5338,19 +5354,19 @@
   {
    "id": "reviews",
    "items": [
-     {
-      "id": "P666-2",
-      "title": "ui-demo-repatriation 复审合并收据",
-      "file": "docs/plans/archive/666-ui-demo-repatriation.md",
-      "related": [
-       "PLAN-666",
-       "PLAN-590"
-      ],
-      "status": "published",
-      "created": "2026-09-20",
-      "last_modified": "2026-09-20",
-      "content": "work pass@execution_done（worktree 四提交：拷贝对账/锚点回接/README/SD 落册）→review pass@c2fe8cb51（同会话复审独立性受限声明+工件重建：diff 面恰四域 34 files/5164+；AC-01 复跑 diff -r 29 全等+1 计划分歧[038 README 反链]；AC-03 复用理由成立[末提交 docs-only]——t 31⊆33 零新增/tv 红集全等/tf 差 1=ffi_dual flake；rustfmt 基线 30 hunk=worktree 30 零新增）。跨仓 auto-os 24aa01f（35 demos/22 loadable/30 VM-live，档位 025=registry-only/028/038=loadable）。findings R1-F1..F7 全非阻塞；债 P666-D1..D4。规范增量=ui/overview.md 双轨事实源契约节；touched_goals=GOAL-010。"
-     },
+    {
+     "id": "P666-2",
+     "title": "ui-demo-repatriation 复审合并收据",
+     "file": "docs/plans/archive/666-ui-demo-repatriation.md",
+     "related": [
+      "PLAN-666",
+      "PLAN-590"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20",
+     "content": "work pass@execution_done（worktree 四提交：拷贝对账/锚点回接/README/SD 落册）→review pass@c2fe8cb51（同会话复审独立性受限声明+工件重建：diff 面恰四域 34 files/5164+；AC-01 复跑 diff -r 29 全等+1 计划分歧[038 README 反链]；AC-03 复用理由成立[末提交 docs-only]——t 31⊆33 零新增/tv 红集全等/tf 差 1=ffi_dual flake；rustfmt 基线 30 hunk=worktree 30 零新增）。跨仓 auto-os 24aa01f（35 demos/22 loadable/30 VM-live，档位 025=registry-only/028/038=loadable）。findings R1-F1..F7 全非阻塞；债 P666-D1..D4。规范增量=ui/overview.md 双轨事实源契约节；touched_goals=GOAL-010。"
+    },
     {
      "id": "P664-2",
      "title": "jade-consumer-upstream-package 复审合并收据",
@@ -6816,6 +6832,18 @@
      "related": [
       "PLAN-665",
       "PLAN-075"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
+    },
+    {
+     "id": "P667-2",
+     "title": "memory-safety-baseline 复审与合并收据",
+     "content": "work pass@execution_done（worktree 五提交 f181051ba/5c8f5ce8e/faaeeaf0e/bc186a39b+e535e7437 簿记；21 探针三矩阵全绿）→review 第一轮 needs_fix（R-1：go 探针空泛通过——源 `fn() -> str` 解析败而 contains(\"go\") 命中 \"got Arrow\"；`.go` 后缀为 VM-dest 专属，a2r 解析层即拒=Send 边界实际生效层）→修复 2bb8771cf（真实形态 s.go+s.view+大小写敏感 Go/Send/Arc 断言+哨兵法验证非空泛）→review 第二轮 pass@2bb8771cf（AC-01..07 全过；同会话独立性受限声明+门禁重跑；spec delta 哈希冻结 B376BC77A3C21D95/D546B21028CFBC48/8199EC6C93054B2A/825740A4E996D342）。tv/tt/tf 对 stash 基线零新增红（预存红 P667-D2 归因在案）；债 P667-D1（类型化 var 槽位影子）/P667-D2 入册",
+     "file": "docs/plans/archive/667-memory-safety-baseline.md",
+     "related": [
+      "PLAN-667"
      ],
      "status": "published",
      "created": "2026-09-20",
