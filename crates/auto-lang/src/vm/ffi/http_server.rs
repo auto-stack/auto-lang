@@ -1170,6 +1170,45 @@ mod plan326_tests {
         }
 
         #[test]
+        fn whole_body_tolerance_covers_parseable_object_too() {
+            // Multipart/B6-`form` shape: body parses as JSON but the lone
+            // param's name isn't a field of it — legacy single-arg body
+            // contract hands it the whole body source.
+            let (vm, mut task) = rig();
+            let body: serde_json::Value =
+                serde_json::from_str(r#"{"fields":{"title":"hello"}}"#).unwrap();
+            let n = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("form", "str")],
+                &rm(vec![], vec![]), Some(&body), r#"{"fields":{"title":"hello"}}"#, None, "POST", "/x",
+            )
+            .expect("bind");
+            assert_eq!(n, 1);
+            assert_eq!(pop_str(&vm, &mut task), r#"{"fields":{"title":"hello"}}"#);
+        }
+
+        #[test]
+        fn metadata_optin_requires_meta_param_name() {
+            // A trailing unbound param NOT named meta/metadata/req/request is
+            // a missing param (400), never the cookies/auth payload — this is
+            // what makes POSTs with a dropped last field fail loudly.
+            let (vm, mut task) = rig();
+            let body: serde_json::Value = serde_json::from_str(r#"{"title":"t"}"#).unwrap();
+            let err = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("title", "str"), sig("body", "str")],
+                &rm(vec![], vec![]), Some(&body), r#"{"title":"t"}"#, Some("{}"), "POST", "/x",
+            )
+            .unwrap_err();
+            match err {
+                ApiArgBindError::BadRequest(m) => {
+                    assert!(m.contains("missing param `body`"), "{m}");
+                }
+                other => panic!("expected BadRequest, got {other:?}"),
+            }
+        }
+
+        #[test]
         fn empty_sigs_bind_zero() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
@@ -1893,13 +1932,13 @@ fn to_handler() int {
 {}
 {}
 #[api(method = "POST", path = "/api/users/login")]
-fn h_login(arg str) User {{
-    return login(json_str(arg, "email"), json_str(arg, "password"))
+fn h_login(email str, password str) User {{
+    return login(email, password)
 }}
 
 #[api(method = "POST", path = "/api/users")]
-fn h_register(arg str) User {{
-    return register(json_str(arg, "username"), json_str(arg, "email"), json_str(arg, "password"))
+fn h_register(username str, email str, password str) User {{
+    return register(username, email, password)
 }}
 
 #[api(method = "GET", path = "/api/user")]
@@ -1909,13 +1948,13 @@ fn h_current_user(meta str) User {{
 
 
 #[api(method = "POST", path = "/api/articles")]
-fn h_create_article(arg str, meta str) Article {{
+fn h_create_article(slug str, title str, description str, body str, tagList str, meta str) Article {{
     let u User = current_user(bearer_token(meta))
     if u.id == 0 {{
         let rejected Article = Article {{ slug: "", title: "", description: "", body: "", tagList: "", author: "", favoritesCount: 0, createdAt: "" }}
         return rejected
     }}
-    return create_article(json_str(arg, "slug"), json_str(arg, "title"), json_str(arg, "description"), json_str(arg, "body"), json_str(arg, "tagList"), u.username)
+    return create_article(slug, title, description, body, tagList, u.username)
 }}
 "#,
                 types_block, bearer_fn, json_str_fn, db_body
@@ -2224,6 +2263,141 @@ fn create_note(title str, body str) Note {
                 "get id=1: body={:?}", body_get);
             assert!(body_get.contains("\"title\": \"Shopping\""),
                 "get title: body={:?}", body_get);
+
+            // PLAN-669 AC-01: POST body fields bind by param name — the
+            // handler's `title`/`body` slots receive the JSON fields, not the
+            // raw body string (this declared-but-untested surface was the
+            // defect's hiding place; F7 in the plan).
+            let resp_post = http_post_json_with_headers(
+                port,
+                "/api/notes",
+                r#"{"title": "probe-item", "body": "probe-body"}"#,
+                &[],
+            );
+            let body_post = body_of(&resp_post);
+            assert!(body_post.contains("\"title\": \"probe-item\""),
+                "post title by name: body={:?}", body_post);
+            assert!(body_post.contains("\"body\": \"probe-body\""),
+                "post body by name: body={:?}", body_post);
+            assert!(!body_post.contains("{\\\"title\\\""),
+                "raw body literal must not leak into fields: body={:?}", body_post);
+        }
+
+        /// PLAN-669 AC-01: POST JSON body fields bind by param name — the
+        /// 013-todo create_todo probe shape from the defect report (raw body
+        /// string used to land in `text` as a JSON literal).
+        #[test]
+        fn http_e2e_api_post_body_by_name() {
+            let port = start_server(r#"
+type Todo { id int; text str; done bool }
+var nextid int = 4
+
+#[api(method = "POST", path = "/api/todos")]
+fn create_todo(text str) Todo {
+    let todo = Todo { id: nextid, text: text, done: false }
+    nextid = nextid + 1
+    return todo
+}
+"#, 18750);
+
+            let resp = http_post_json_with_headers(
+                port,
+                "/api/todos",
+                r#"{"text":"probe-item"}"#,
+                &[],
+            );
+            let body = body_of(&resp);
+            assert!(body.contains("\"text\": \"probe-item\""),
+                "text bound from body field: body={:?}", body);
+            assert!(!body.contains("{\\\"text\\\""),
+                "raw body literal leaked into field: body={:?}", body);
+        }
+
+        /// PLAN-669 AC-02: GET query params bind by name (the 015-notes
+        /// search_notes shape; both `q` and `query` present — the declared
+        /// name wins).
+        #[test]
+        fn http_e2e_api_query_by_name() {
+            let port = start_server(r#"
+type Hit { text str }
+
+#[api(method = "GET", path = "/api/search")]
+fn search(query str) Hit {
+    return Hit { text: query }
+}
+"#, 18751);
+
+            let resp = http_get(port, "/api/search?q=wrong&query=Build");
+            let body = body_of(&resp);
+            assert!(body.contains("\"text\": \"Build\""),
+                "query bound by name: body={:?}", body);
+        }
+
+        /// PLAN-669 AC-03: declared `int` params convert exactly from the
+        /// query string; non-numeric input is a named 400.
+        #[test]
+        fn http_e2e_api_typed_query_int() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/api/page")]
+fn page(p int) int {
+    return p
+}
+"#, 18752);
+
+            let resp = http_get(port, "/api/page?p=7");
+            let body = body_of(&resp);
+            assert!(body.trim() == "7", "int query converted: body={:?}", body);
+
+            let resp_bad = http_get(port, "/api/page?p=seven");
+            assert!(resp_bad.starts_with("HTTP/1.1 400"),
+                "non-numeric int → 400: resp={:?}", &resp_bad[..resp_bad.len().min(80)]);
+            assert!(body_of(&resp_bad).contains("param `p`"),
+                "400 names the param: body={:?}", body_of(&resp_bad));
+        }
+
+        /// PLAN-669 AC-04: a missing body field is a 400 naming the param
+        /// (back_proxy parity — silently wrong args are the defect itself).
+        #[test]
+        fn http_e2e_api_missing_param_400() {
+            let port = start_server(r#"
+type Note { title str; body str }
+
+#[api(method = "POST", path = "/api/notes")]
+fn create_note(title str, body str) Note {
+    return Note { title: title, body: body }
+}
+"#, 18753);
+
+            let resp = http_post_json_with_headers(
+                port,
+                "/api/notes",
+                r#"{"title": "only-title"}"#,
+                &[],
+            );
+            assert!(resp.starts_with("HTTP/1.1 400"),
+                "missing body field → 400: resp={:?}", &resp[..resp.len().min(80)]);
+            let body = body_of(&resp);
+            assert!(body.contains("missing param `body`"),
+                "400 names the missing param: body={:?}", body);
+        }
+
+        /// PLAN-669 AC-07: single str param + unparseable body → the raw
+        /// body string passes through (back_proxy tolerance; the positional
+        /// convention's one correct case, preserved).
+        #[test]
+        fn http_e2e_api_raw_body_single_param() {
+            let port = start_server(r#"
+#[api(method = "POST", path = "/api/save")]
+fn save(data str) str {
+    return data
+}
+"#, 18754);
+
+            // Not JSON — parse fails, lone str param receives it verbatim.
+            let resp = http_post_json_with_headers(port, "/api/save", "plain text probe", &[]);
+            let body = body_of(&resp);
+            assert!(body.contains("plain text probe"),
+                "raw body passthrough: body={:?}", body);
         }
 
         /// Plan 317 final validation: 015-notes backend pattern with List<Note>
@@ -2540,12 +2714,37 @@ async fn handle_connection_async(
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     // Read the request line + headers (raw bytes; minimal parser).
-    let mut buf = vec![0u8; 8192];
-    let n = match stream.read(&mut buf).await {
-        Ok(n) if n > 0 => n,
-        _ => return,
-    };
-    let raw = String::from_utf8_lossy(&buf[..n]).to_string();
+    // PLAN-669: read until the end of the request head ("\r\n\r\n") — a
+    // single read() can return a TCP-segmented fragment (observed under
+    // nextest process churn: the first read yielded "G", which parsed to
+    // parts.len()<2 and an empty-body 400 — the long-mysterious th-tier
+    // "environment reds", Plan 568 T7). Headers are only parseable whole.
+    let mut buf: Vec<u8> = Vec::with_capacity(2048);
+    loop {
+        let mut chunk = [0u8; 2048];
+        let n = match stream.read(&mut chunk).await {
+            Ok(n) => n,
+            Err(_) => return,
+        };
+        if n == 0 {
+            // EOF before a complete head (start_server's readiness probe
+            // lands here) — drop silently.
+            return;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+            break;
+        }
+        if buf.len() > 64 * 1024 {
+            let resp = format!(
+                "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\n{}\r\n",
+                cors_headers()
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+            return;
+        }
+    }
+    let raw = String::from_utf8_lossy(&buf).to_string();
 
     let mut lines = raw.lines();
     let request_line = match lines.next() {
@@ -2666,11 +2865,11 @@ async fn handle_connection_async(
             .find_map(|p| p.trim().strip_prefix("boundary="))
             .map(|b| b.trim_matches('"').to_string());
         if let Some(boundary) = boundary {
-            let header_split = find_sub(&buf[..n], b"\r\n\r\n")
+            let header_split = find_sub(&buf, b"\r\n\r\n")
                 .map(|p| p + 4)
-                .or_else(|| find_sub(&buf[..n], b"\n\n").map(|p| p + 2));
+                .or_else(|| find_sub(&buf, b"\n\n").map(|p| p + 2));
             if let Some(split) = header_split {
-                let mut body_bytes = buf[split..n].to_vec();
+                let mut body_bytes = buf[split..].to_vec();
                 while body_bytes.len() < content_length {
                     let mut chunk = vec![0u8; (content_length - body_bytes.len()).min(8192)];
                     match stream.read(&mut chunk).await {
@@ -2913,8 +3112,51 @@ async fn handle_connection_async(
         }
         pushed
     } else {
-        // Legacy #[api] path: positional params (path, query, body, metadata).
-        build_handler_args(vm, handler_task_id, &route_match, &body, &content_type, &cookie_header, &auth_header, multipart_json.as_deref())
+        // Legacy #[api] path: PLAN-669 by-name binding (path → body field →
+        // query) when the fn's sigs are published; positional params + query
+        // collection + raw body otherwise. Bind failures are protocol errors
+        // (400 missing/invalid param, 500 marshal) — respond and abort the
+        // request instead of calling the handler with wrong args.
+        match build_handler_args(
+            vm,
+            handler_task_id,
+            &route_match,
+            &body,
+            &content_type,
+            &cookie_header,
+            &auth_header,
+            multipart_json.as_deref(),
+            &req_method,
+            &req_path,
+        ) {
+            Ok(n) => n,
+            Err(ApiArgBindError::BadRequest(msg)) => {
+                eprintln!("[HTTP] {} {} → 400 ({})", req_method, req_path, msg);
+                vm.tasks.remove(&handler_task_id);
+                let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
+                let resp = format!(
+                    "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+                    err_body.len(),
+                    cors_headers(),
+                    err_body
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+                return;
+            }
+            Err(ApiArgBindError::Internal(msg)) => {
+                eprintln!("[HTTP] {} {} → 500 ({})", req_method, req_path, msg);
+                vm.tasks.remove(&handler_task_id);
+                let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
+                let resp = format!(
+                    "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+                    err_body.len(),
+                    cors_headers(),
+                    err_body
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+                return;
+            }
+        }
     };
 
     let result_json = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
@@ -3196,16 +3438,18 @@ fn push_typed_string_arg(
 
 /// Bind `#[api]` handler args by name onto the task stack. Returns the
 /// number of args pushed. `body_json` is the parsed request body (when
-/// parseable); `raw_body` the unparsed string (a lone str param and an
-/// unparseable body → raw passthrough, back_proxy tolerance);
-/// `metadata_json` the cookies/auth payload a trailing opt-in param receives.
+/// parseable); `whole_body` the body-source string (multipart fields JSON,
+/// converted form object, or the raw body — a lone str param that doesn't
+/// bind by name receives it whole, the legacy single-arg body contract);
+/// `metadata_json` the cookies/auth payload a trailing opt-in param receives
+/// (recognized by param name — see `META_PARAM_NAMES`).
 pub(crate) fn bind_api_args_by_name(
     vm: &crate::vm::engine::AutoVM,
     task: &mut crate::vm::task::AutoTask,
     sigs: &[ApiParamSig],
     route_match: &RouteMatch,
     body_json: Option<&serde_json::Value>,
-    raw_body: &str,
+    whole_body: &str,
     metadata_json: Option<&str>,
     method: &str,
     req_path: &str,
@@ -3236,18 +3480,22 @@ pub(crate) fn bind_api_args_by_name(
         unbound.push(sig);
     }
 
-    // Raw-body single-param tolerance (back_proxy parity — checked BEFORE the
-    // metadata rule so `fn save(data str)` + text/plain body keeps receiving
-    // the raw string, as the positional convention always did).
-    if unbound.len() == 1 && sigs.len() == 1 && !raw_body.is_empty() && body_json.is_none() {
-        push_str_arg(vm, task, raw_body);
+    // Whole-body single-param tolerance (legacy single-arg body contract —
+    // Plan 346 "Push body"; checked BEFORE the metadata rule so `fn save(data
+    // str)` + any non-matching body, `fn upload(form str)` + multipart fields
+    // JSON, and unparseable text bodies all keep receiving the whole body).
+    if unbound.len() == 1 && sigs.len() == 1 && !whole_body.is_empty() {
+        push_str_arg(vm, task, whole_body);
         return Ok(n_args + 1);
     }
 
     // Trailing metadata opt-in (Plan 317 Phase 11 semantics, by-name form):
-    // exactly one trailing declared param unbound → cookies/auth JSON.
+    // exactly one trailing declared param unbound AND its name follows the
+    // metadata-param convention (the 023-realworld / e2e corpus names it
+    // `meta`) → cookies/auth JSON. Anything else unbound is a missing param.
     if unbound.len() == 1
         && std::ptr::eq(unbound[0], sigs.last().expect("unbound implies sigs nonempty"))
+        && is_meta_param_name(&unbound[0].name)
     {
         if let Some(meta) = metadata_json {
             push_str_arg(vm, task, meta);
@@ -3264,8 +3512,47 @@ pub(crate) fn bind_api_args_by_name(
     Ok(n_args)
 }
 
+/// Param names that opt into the cookies/auth metadata payload (Plan 317
+/// Phase 11 / Plan 346 stage 4 convention — the declared trailing param that
+/// receives `{"cookies":...,"auth":...}`). Case-insensitive.
+const META_PARAM_NAMES: [&str; 4] = ["meta", "metadata", "req", "request"];
+
+fn is_meta_param_name(name: &str) -> bool {
+    META_PARAM_NAMES.contains(&name.trim().to_lowercase().as_str())
+}
+
 /// Build handler arguments on the task's stack (path params + body).
 /// Returns the number of args pushed.
+/// PLAN-669: cookies + auth metadata JSON (the Plan 346 stage 4 payload).
+fn cookies_auth_metadata(cookie_header: &str, auth_header: &str) -> String {
+    let cookies_json: String = if cookie_header.is_empty() {
+        "{}".to_string()
+    } else {
+        let pairs: Vec<String> = cookie_header.split(';')
+            .filter_map(|pair| {
+                let pair = pair.trim();
+                let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                Some(format!("\"{}\":\"{}\"", k.trim().replace('"', "\\\""), v.trim().replace('"', "\\\"")))
+            })
+            .collect();
+        format!("{{{}}}", pairs.join(","))
+    };
+    let auth_val = if auth_header.is_empty() { "".to_string() } else { auth_header.replace('"', "\\\"") };
+    format!(r#"{{"cookies":{},"auth":"{}"}}"#, cookies_json, auth_val)
+}
+
+/// PLAN-669: form-urlencoded body → JSON object string (fields addressable
+/// by name; k/v percent-decoded), same conversion the legacy branch pushes.
+fn form_urlencoded_to_json_object(body: &str) -> String {
+    let pairs: Vec<String> = body.split('&')
+        .filter_map(|pair| {
+            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+            Some(format!("\"{}\":\"{}\"", url_decode(k).replace('"', "\\\""), url_decode(v).replace('"', "\\\"")))
+        })
+        .collect();
+    format!("{{{}}}", pairs.join(","))
+}
+
 fn build_handler_args(
     vm: &crate::vm::engine::AutoVM,
     task_id: u64,
@@ -3275,10 +3562,45 @@ fn build_handler_args(
     cookie_header: &str,
     auth_header: &str,
     multipart_json: Option<&str>,
-) -> usize {
+    method: &str,
+    req_path: &str,
+) -> Result<usize, ApiArgBindError> {
     let mut n_args = 0;
     if let Some(_task_arc) = vm.tasks.get(&task_id) {
         if let Ok(mut task) = _task_arc.try_lock() {
+            // PLAN-669: by-name binding when the fn's declared params are
+            // published (codegen records every #[api] fn; spec §4.1's
+            // injection rule). Producers without an entry (legacy) keep the
+            // positional convention below unchanged.
+            if let Some(sigs) = api_param_sigs(&route_match.fn_name) {
+                // Body source: multipart fields JSON (Plan 346 5a B6) takes
+                // the body slot; form-urlencoded converts to a JSON object;
+                // otherwise the raw body string.
+                let body_source: String = if let Some(mp) = multipart_json {
+                    mp.to_string()
+                } else if !body.is_empty()
+                    && content_type.contains("application/x-www-form-urlencoded")
+                {
+                    form_urlencoded_to_json_object(body)
+                } else {
+                    body.to_string()
+                };
+                let body_json: Option<serde_json::Value> =
+                    serde_json::from_str(&body_source).ok();
+                let metadata = cookies_auth_metadata(cookie_header, auth_header);
+                return bind_api_args_by_name(
+                    vm,
+                    &mut task,
+                    &sigs,
+                    route_match,
+                    body_json.as_ref(),
+                    &body_source,
+                    Some(&metadata),
+                    method,
+                    req_path,
+                );
+            }
+
             // Push path params (existing behavior).
             for (_param_name, param_val) in &route_match.path_params {
                 if let Ok(i) = param_val.parse::<i32>() {
@@ -3310,13 +3632,7 @@ fn build_handler_args(
                 n_args += 1;
             } else if !body.is_empty() {
                 let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
-                    let pairs: Vec<String> = body.split('&')
-                        .filter_map(|pair| {
-                            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-                            Some(format!("\"{}\":\"{}\"", url_decode(k).replace('"', "\\\""), url_decode(v).replace('"', "\\\"")))
-                        })
-                        .collect();
-                    format!("{{{}}}", pairs.join(","))
+                    form_urlencoded_to_json_object(body)
                 } else {
                     body.to_string()
                 };
@@ -3343,25 +3659,12 @@ fn build_handler_args(
                 None => true, // unknown — preserve old behavior (defensive)
             };
             if push_meta {
-                let cookies_json: String = if cookie_header.is_empty() {
-                    "{}".to_string()
-                } else {
-                    let pairs: Vec<String> = cookie_header.split(';')
-                        .filter_map(|pair| {
-                            let pair = pair.trim();
-                            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-                            Some(format!("\"{}\":\"{}\"", k.trim().replace('"', "\\\""), v.trim().replace('"', "\\\"")))
-                        })
-                        .collect();
-                    format!("{{{}}}", pairs.join(","))
-                };
-                let auth_val = if auth_header.is_empty() { "".to_string() } else { auth_header.replace('"', "\\\"") };
-                let meta_json = format!(r#"{{"cookies":{},"auth":"{}"}}"#, cookies_json, auth_val);
+                let meta_json = cookies_auth_metadata(cookie_header, auth_header);
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
                     push_str_arg(vm, &mut task, &meta_json);
                 n_args += 1;
             }
         }
     }
-    n_args
+    Ok(n_args)
 }
