@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-664
-status: execution_done
+status: executing
 feature_name: jade-consumer-upstream-package（jade/auto-edit 消费侧上游提名单：menubar 快照回归修复 + strict 域词位勘定补全 + JSON/storage 值域 + P-15/P-16 报错化 + DEBTS 651 回填）
 author: [zhaopuming（auto-down 会话代拟，待 auto-lang 侧会话实勘修订）]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 2
-current_step: 6
+current_step: 5
 total_steps: 6
 
 supersedes_spec_components: []
@@ -132,7 +132,7 @@ TS ext 已在产消费）；a2r 轨无此消费方 N/A。
   五型分派/stringify 形态/storage 读回链含 remove 清理）一次通过——
   勘定结论"全部已落地可组合"得证；vm_file_tests 登记
   test_99_plan664_001_value_lexemes]
-- **T-03** [改] U-4 报错化 + 负例。依赖：T-00。
+- **T-03** [改] U-4 报错化 + 负例。依赖：T-00。（复审 R1 重开：F-1 假阳性面修复中）
   [✅ 已完成：worktree commit 51c58b7b3。lib.rs use 装载环三处
   `[AUTO-USE-DIAG]` 告警（P-15 根环+传递环 / P-16 root+child model
   字段撞名预检）+ `take_use_diags` thread_local 汇聚（单测断言面）；
@@ -181,6 +181,34 @@ TS ext 已在产消费）；a2r 轨无此消费方 N/A。
   /auto-plan:review（worktree 留存 D:/autostack/.wt/lang-664/）`。
   终验补记：全提交二进制（3e6cf..8960 重建）041 矩阵 50/0 满分——
   U-4 诊断对 041 编译路径零扰动（无 [AUTO-USE-DIAG] 噪声、无行为变化）。
+
+- 2026-09-20 review R1（实现会话内复审，独立性受限已声明——从工件重构：
+  全部门命令独立复跑 + merge-base 3df7b21a2 diff 审计 12 文件 +461/-2）：
+  `stage: review | plan_id: PLAN-664 | plan_revision: 2 | outcome:
+  needs_fix | reviewed_commit: plan-664-dev @896013e29（clean）|
+  base_commit: 3df7b21a2 | dependency_revisions: auto-down @d1a83b6 |
+  spec_inputs: docs/specs/auto-lang/ui/design/menubar-snapshot.md
+  （冻结哈希 a115ae6d0d2bdab79f3212f90484ae30；内容与代码四条硬规则
+  逐条核对一致） | acceptance_results: AC-01 pass（041 矩阵复审轮
+  50/0 ×2 复现 + 49/1/47/1 在案，menubar 六项修复后全轮稳定）；AC-02
+  pass（语料 test_99_plan664 复跑绿）；AC-03 pass（plan664 三测复跑绿
+  ——真阳性路径）；AC-04 pass（DEBTS 五行 + overview 登记 + 规范冻结
+  哈希核对） | findings: **F-1 🟡 needs_fix——P-15 诊断假阳性面**：
+  非文件系统模块形态会被误报——实测 jade desktop（真实消费方）每次
+  VM 运行打出 `use auto.http` 的 P-15 假阳性（auto.* 内建命名空间走
+  natives 非文件解析）；`.web` 表单（ext 通道另行处理，plan632 F2
+  stderr 实证）与 use.py（scanner 有 is_python_import 位但循环未跳）
+  同族。诊断可信度受损（假阳性会训练消费方忽略 [AUTO-USE-DIAG]）。
+  修复 = 诊断发射卫（auto.* / .web / is_python_import 三形态跳过，
+  两站点 + P-16 检查同卫；解析控制流不动）。F-2 🟢info：041 矩阵 T1
+  synthesized onclick 检查间歇红（首拍快照竞态，脚本自注 render
+  timing 族；修复后六轮全跑 menubar 六项零失败，抖动项每轮漂移——
+  预存脚本脆弱性，out of scope）。F-3 🟢info：master 执行期前进
+  （663 合入 + 本计划簿记）——fold 时需 merge 和解（renderer.rs 我方
+  仅 5 行，冲突面小）。F-4 🟢info：三处 master 预存红已在 §9 在案。
+  健康检查：三触及文件零告警（touch 重编译扫描） | evidence:
+  复审轮命令与结果全录本记录；worktree clean @896013e29 | next:
+  work 修 F-1（T-03 重开）→ re-review`。
 
 ## 10. 待澄清事项
 
