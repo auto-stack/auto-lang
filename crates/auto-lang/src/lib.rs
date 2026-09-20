@@ -3169,7 +3169,7 @@ pub(crate) fn load_ext_imports_for_vm(
             let _ = crate::design_tokens::recipe::prepare_style_recipe_imports(
                 path.parent().unwrap_or(std::path::Path::new(".")),
                 &code,
-            ); (prefix-fix(plan-037 T-05 冒烟实证两修): ①前缀 root 改 origin-only——base_url_for(含 /apps/{id}) 传 prefix(自拼 /apps/{id}/api/) 产生双重前缀 404（smoke [p037-http] 实证 /apps/x/apps/x/api/...），ensure_backend 返回 http://127.0.0.1:{port}（658 set_gallery_proxy_root 同语义）；②模块源改写扩面——Http 调用点在 store 模块（player_store.at:92）非入口，UI 合并编译管线多读点重读同文件（visited 扫×3/adapter/qualifier/dir-walk），新 un-gated 模块 back_prefix（overlay+RAII guard+prefix 函数迁入）包 lib.rs 全部 11 个模块读点，launch 臂 build 期挂 guard（front_dir 谓词+行级 Http. 规则双保险，back 属性行零污染）；back_provision 改 re-export 维持 auto-man 路径。smoke 复验：scan 200/流 206 audio/mpeg/侧栏徽标 393（真实曲库入 store）。注：async HTTP base 解析在独立线程（进程 env 架构）——请求期 per-app base 架构性不可行，源级变换为终选 (PLAN-037))
+            );
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
             if let Ok(mod_ast) = parser.parse() {
