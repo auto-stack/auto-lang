@@ -6,7 +6,7 @@ author: [zcode]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 1
-current_step: 0
+current_step: 2
 total_steps: 10
 
 # /auto-plan:review 结束时填写：
@@ -243,9 +243,17 @@ test_aavm2_goldens_check` 全绿；抽样示例构建链绿；KNOWN-DEBT 中本�
 - **T-00 建组**：主检出 commit 簿记（本文件+.next-id）→ `git worktree add
   D:/autostack/.wt/lang-668/auto-lang -b plan-668-dev`；flip `status: executing`。
   验证：worktree HEAD==master。
+  [✅ 已完成] 2026-09-20：flip 提交 27c196c04；worktree 建于
+  D:/autostack/.wt/lang-668/auto-lang（plan-668-dev），HEAD 27c196c04==master。
 - **T-01 基线勘定与分类**（→AC-01）：在 worktree 跑 §6 基线电池；对 §5 清单 26 项
   逐条复测签名（台账复现命令为准），分类四态；ambiguous 项主检出对照。产出
   `docs/plans/evidence/p668/baseline.md`。验证：分类表 26/26 覆盖。
+  [✅ 已完成] 2026-09-20：证据=docs/plans/evidence/p668/baseline.md（26/26 四态 +
+  计划外 A-01..A-08 入册）。要点：①nextest 0.9.138 默认 fail-fast，采集必须
+  --no-fail-fast；②R-06"P667 单跑绿"失效——实为 OS 主题依赖（light 机器必红），
+  转修复 T-05；③R-07/R-10/R-15/R-19/R-26 五件核销-已不红；④R-12/13 同根=PLAN-018
+  括号化后金样未再生（bless 面）+use.c 清单回退/await 解析两真回归；⑤R-17 根因=
+  测试装载器绕过 stylekit 预注册（load_inline 裸 parse），plan339 016 同根（A-01）。
 - **T-02 发射/断言族修复**（→AC-02/AC-03）：R-01/R-02（对照 660 对拍表定位）、
   R-03/R-04、R-15（rust.rs:3227 icon 臂双特性态）。验证：各滤串隔离绿。
 - **T-03 564-Q6 语义断言族**（→AC-03）：R-07/R-08/R-09/R-10 + R-11 分类定案
