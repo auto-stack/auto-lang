@@ -23734,6 +23734,16 @@ impl iced::advanced::widget::Operation<Option<iced::widget::Id>> for FindFocused
 }
 
 fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&DebugRenderCtx>, path: &mut Vec<usize>) -> iced::Element<'static, IcedMessage> {
+    // PLAN-663 C1c: 根调用点整树重写视口单位（h-screen 族在定高(px)嵌入边
+    // 界内重锚定；递归子调用 path 非空，天然跳过）。重写幂等，缓存帧复用
+    // 亦安全。
+    let view = if path.is_empty() {
+        let mut rooted = view;
+        rewrite_viewport_units(&mut rooted);
+        rooted
+    } else {
+        view
+    };
     match view {
         // Input needs IcedMessage-specific text capture — on_input constructs a new
         // IcedMessage with the typed text included, which the generic IntoIcedElement
@@ -24585,7 +24595,10 @@ where
     T::Msg: Clone + Debug + 'static,
 {
     fn view_iced(&self) -> iced::Element<'static, T::Msg> {
-        self.view().into_iced()
+        // PLAN-663 C1c: rust 组件根入口同样重写视口单位（Plan 319 双入口同口径）。
+        let mut view = self.view();
+        rewrite_viewport_units(&mut view);
+        view.into_iced()
     }
 }
 
@@ -25310,6 +25323,7 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
             apply_highlight_mut(&mut app_view, self.dt.selected_vnode.borrow().clone());
         }
 
+        rewrite_viewport_units(&mut app_view);
         let app_el: iced::Element<'static, WrapperMsg<C>> = app_view.into_iced();
 
         let app_el = if startup_window_fit() {
@@ -25908,7 +25922,9 @@ where
     C: Component + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    state.inner.view().into_iced().map(NativePixelsMsg::App)
+    let mut view = state.inner.view();
+    rewrite_viewport_units(&mut view);
+    view.into_iced().map(NativePixelsMsg::App)
 }
 
 /// 协议入站轮询（pixels 协议订阅同型——该订阅 Output 钉死
