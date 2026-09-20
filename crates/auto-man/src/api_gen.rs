@@ -830,6 +830,24 @@ pub fn broadcast(json: String) { let _ = bus().send(json); }
 "#.to_string()
 }
 
+/// Rust 关键字撞名的字段用 raw identifier（`r#type`）保名——serde derive
+/// 对 `r#` 前缀字段按去前缀的标识符收发 JSON（`type` 键往返不变）。
+/// AutoLang 字段名无此限制（auto-musk `TreeNode.type` 实例），生成侧兜底。
+fn rust_field_ident(name: &str) -> String {
+    const KEYWORDS: &[&str] = &[
+        "as", "box", "break", "const", "continue", "crate", "else", "enum", "extern", "false",
+        "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+        "ref", "return", "self", "static", "struct", "super", "trait", "true", "type",
+        "unsafe", "use", "where", "while", "async", "await", "dyn", "abstract", "become",
+        "final", "macro", "override", "priv", "typeof", "unsized", "virtual", "yield",
+    ];
+    if KEYWORDS.contains(&name) {
+        format!("r#{}", name)
+    } else {
+        name.to_string()
+    }
+}
+
 /// Generate types.rs with serde structs
 fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
     let mut lines = vec!["use serde::{Serialize, Deserialize};".to_string(), "".to_string()];
@@ -840,7 +858,7 @@ fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
         lines.push(format!("pub struct {} {{", api_type.name));
         for field in &api_type.fields {
             let rust_type = auto_type_to_rust(&field.ty);
-            lines.push(format!("    pub {}: {},", field.name, rust_type));
+            lines.push(format!("    pub {}: {},", rust_field_ident(&field.name), rust_type));
         }
         lines.push("}".to_string());
         lines.push("".to_string());
@@ -879,6 +897,9 @@ fn auto_type_to_rust(auto_type: &str) -> String {
         "str" => "String".to_string(),
         "bool" => "bool".to_string(),
         "float" => "f64".to_string(),
+        // AutoLang `any`（auto-musk startRun.steps 等动态载荷）→ JSON 值；
+        // 裸 passthrough 会产出非法 Rust `Vec<any>`。
+        "any" => "serde_json::Value".to_string(),
         s if s.starts_with("[]") || s.starts_with("[") => {
             // Handle []T and [N]T
             let inner = s.trim_start_matches(|c: char| c == '[' || c == ']' || c.is_numeric());
@@ -2122,7 +2143,13 @@ fn generate_api_rs(
             || json_inner == format!("Option<Vec<{}>>", primary_type);
         if !is_crud_resource_return {
             if is_void {
-                lines.push("    StatusCode::OK".to_string());
+                // 签名启发式（needs_result = has_path || DELETE/PUT）给 void 端点
+                // 包 Result<StatusCode, StatusCode>（404 语义），body 须同步 Ok()。
+                if needs_result {
+                    lines.push("    Ok(StatusCode::OK)".to_string());
+                } else {
+                    lines.push("    StatusCode::OK".to_string());
+                }
             } else if needs_result {
                 lines.push(format!("    Ok(JsonResponse::<{}>(Default::default()))", json_inner));
             } else {
@@ -2155,9 +2182,15 @@ fn generate_api_rs(
                 lines.push("    JsonResponse(filtered)".to_string());
             }
             "GET" if !has_path => {
-                // List all
-                lines.push("    let items = db.lock().unwrap();".to_string());
-                lines.push("    JsonResponse(items.clone())".to_string());
+                // 声明返回单对象（auth/me 型单例端点）不得套集合模板——
+                // items.clone() 是 Vec<T> 而签名是 JsonResponse<T>（E0308）。
+                // 集合声明（[]T）json_inner 为 Vec<primary>，走 list-all 原路。
+                if json_inner == primary_type {
+                    lines.push(format!("    JsonResponse::<{}>(Default::default())", json_inner));
+                } else {
+                    lines.push("    let items = db.lock().unwrap();".to_string());
+                    lines.push("    JsonResponse(items.clone())".to_string());
+                }
             }
             "GET" if has_path => {
                 // Get by ID
