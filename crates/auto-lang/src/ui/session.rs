@@ -425,6 +425,14 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// PLAN-036 T-05（B2）：dashboard 面 outproc 镜像（同 B1 两面册）。
     pub dashboard_open: bool,
     pub dashboard_fp: Option<String>,
+    /// PLAN-036 T-07（B3，D3-C）：launcher 独立 exe 会话——pipe/wid/
+    /// 可见镜像/指纹（同 shell_* 册；spawned = 一次性 spawn 防抖——
+    /// launcher 死亡 v1 无看门兵[记债]，下次召唤重 spawn）。
+    pub launcher_pipe: Option<String>,
+    pub launcher_wid: Option<Wid>,
+    pub launcher_open: bool,
+    pub launcher_fp: Option<String>,
+    pub launcher_spawned: bool,
     /// PLAN-036 T-06（B2，D1 修订）：face 卡宿主叠层消费的最近快照缓存
     ///（outproc 轨——in-proc 读面板 state；元组 = (id,title,icon,status,
     /// span,tab)，push_dashboard_snapshot 写入）。face 内容真渲走宿主
@@ -508,6 +516,11 @@ impl DesktopState {
             dashboard_open: false,
             dashboard_fp: None,
             dashboard_face_cache: std::cell::RefCell::new(Vec::new()),
+            launcher_pipe: None,
+            launcher_wid: None,
+            launcher_open: false,
+            launcher_fp: None,
+            launcher_spawned: false,
             shell_geometry: None,
             shell_respawn: None,
             shell_degraded: false,
@@ -3626,10 +3639,53 @@ fn spawn_shell_outproc(
         let Some(pipe) = self.desktop.shell_pipe.clone() else {
             return false;
         };
-        let Some(client) = self.broker_clients.get_mut(&pipe) else {
+        self.push_control_to(&pipe, msg)
+    }
+
+    /// PLAN-036 T-07（B3）：定向 pipe 控制消息（launcher 独立管线——
+    /// push_shell_control 同体）。
+    pub fn push_control_to(
+        &mut self,
+        pipe: &str,
+        msg: &crate::ui::desktop_protocol::message::ProtocolMsg,
+    ) -> bool {
+        let Some(client) = self.broker_clients.get_mut(pipe) else {
             return false;
         };
         client.end.send(msg).is_ok()
+    }
+
+    /// PLAN-036 T-07（B3，D3-C）：launcher 独立 exe spawner——re-exec
+    /// auto 本体（`run --autodesk-launcher --autodesk-broker=<pipe>`）+
+    /// 注册表源/几何 env 注入（launcher_entry boot 扫描在案）。
+    pub(crate) fn spawn_launcher_outproc(&mut self) -> std::io::Result<()> {
+        let Some(entry) = self.desktop.launcher_entry.clone() else {
+            return Err(std::io::Error::other("注册表未含 launcher 条目"));
+        };
+        let Some(geometry) = self.desktop.shell_geometry else {
+            return Err(std::io::Error::other("launcher spawn 缺几何（未开桌面壳）"));
+        };
+        let exe = Self::outproc_auto_binary()?;
+        let broker_pipe = self
+            .broker_pipe
+            .clone()
+            .ok_or_else(|| std::io::Error::other("broker 未启动（enable_broker 先行）"))?;
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args([
+            "run",
+            "--autodesk-launcher",
+            &format!("--autodesk-broker={broker_pipe}"),
+        ]);
+        cmd.env("AUTO_SHELL_GEOM", geometry.encode());
+        cmd.env("AUTO_LAUNCHER_ENTRY", entry);
+        for (key, _) in std::env::vars() {
+            if key.starts_with("NEXTEST_") {
+                cmd.env_remove(&key);
+            }
+        }
+        cmd.spawn()?;
+        self.desktop.launcher_spawned = true;
+        Ok(())
     }
 
     /// Plan 480 S4：多 client 日常泵——drain 全部在册连接（帧合成/Ack、
@@ -3683,6 +3739,20 @@ fn spawn_shell_outproc(
             // PLAN-030 T-05：壳死亡检出——双伪窗回收 + respawn 登记（退避
             // 1s/2s/5s 封顶、预算 3 次/60s 窗；耗尽 = 降级观测 I5）。
             let is_shell = self.desktop.shell_pipe.as_deref() == Some(pipe.as_str());
+            // PLAN-036 T-07（B3）：launcher exe 死亡——伪窗/管线/镜像位
+            /// 回收（无 respawn——spawned 复位，下次召唤重 spawn）。
+            if self.desktop.launcher_pipe.as_deref() == Some(pipe.as_str()) {
+                if let Some(lwid) = self.desktop.launcher_wid.take() {
+                    if Some(lwid) != client.wid {
+                        let _ = self.wm_remove_win(lwid);
+                    }
+                    self.desktop.shell_pseudo_wids.retain(|w| *w != lwid);
+                }
+                self.desktop.launcher_pipe = None;
+                self.desktop.launcher_open = false;
+                self.desktop.launcher_fp = None;
+                self.desktop.launcher_spawned = false;
+            }
             if let Some(wid) = client.wid {
                 let app_id = self.wm_remove_win(wid);
                 if let Some(app_id) = app_id {
@@ -4131,6 +4201,51 @@ fn spawn_shell_outproc(
                             }
                             Err(err) => {
                                 eprintln!("[autodesk-broker] 壳 activate 失败: {err:?}");
+                            }
+                        }
+                        continue;
+                    }
+                    // PLAN-036 T-07（B3，D3-C）：launcher 分支——独立 exe 单
+                    // OVERLAY 面（置顶全屏伪窗 + registry_id="launcher-face"
+                    // 归因 + launcher_pipe/wid 落地；无 respawn 看门兵
+                    ///[v1 记债]——死亡由 pump 回收，下次召唤重 spawn）。
+                    if app_name == "launcher" && !surfaces.is_empty() {
+                        let rect = iced::Rectangle::new(
+                            iced::Point::new(0.0, 0.0),
+                            iced::Size::new(width, height),
+                        );
+                        let lwid = self.wm_add_win(AppId(0), "launcher-face".into(), rect);
+                        let lsurface = client.surfaces.alloc(width, height);
+                        client.wid_surface.insert(lwid.0, lsurface);
+                        if let Some(host) = self.host.as_mut() {
+                            if let Some(v) = host.wm.wins.get_mut(&lwid) {
+                                v.registry_id = Some("launcher-face".into());
+                            }
+                        }
+                        match client.endpoint.activate_multi(
+                            0,
+                            lwid.0,
+                            lsurface,
+                            rect_to_wire(&rect),
+                            client.endpoint.frame_mode,
+                            vec![],
+                        ) {
+                            Ok(welcome) => {
+                                to_app.push(welcome);
+                                client.app_id = Some(AppId(0));
+                                client.wid = Some(lwid);
+                                eprintln!(
+                                    "[autodesk-broker] launcher attached (surface={})",
+                                    lwid.0
+                                );
+                                self.desktop.launcher_pipe = Some(client.pipe.clone());
+                                self.desktop.launcher_wid = Some(lwid);
+                                self.desktop.launcher_open = false;
+                                self.desktop.launcher_fp = None;
+                                self.desktop.shell_pseudo_wids.push(lwid);
+                            }
+                            Err(err) => {
+                                eprintln!("[autodesk-broker] launcher activate 失败: {err:?}");
                             }
                         }
                         continue;
@@ -4886,6 +5001,10 @@ fn spawn_shell_outproc(
     /// Plan 464 T4：launcher overlay 是否可见（Esc 仲裁 / 键盘独占路由的
     /// 判定位）。读 launcher 的 `visible` 状态；未挂载恒 false。
     pub fn launcher_visible(&self) -> bool {
+        // PLAN-036 T-07（B3）：outproc 轨读镜像位（组件在 launcher exe）。
+        if self.desktop.launcher_pipe.is_some() {
+            return self.desktop.launcher_open;
+        }
         let Some(la) = self.desktop.launcher_app else { return false };
         matches!(
             self.apps

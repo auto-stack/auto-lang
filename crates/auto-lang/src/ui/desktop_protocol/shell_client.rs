@@ -28,8 +28,8 @@ use crate::ui::desktop_protocol::message::{
 use crate::ui::desktop_protocol::transport;
 use crate::ui::desktop_protocol::PROTOCOL_VERSION;
 use crate::ui::shell_projection::{
-    shell_event_name, DashboardSnapshot, DesktopSurfaceSnapshot, NotesSnapshot, ShellProjection,
-    ShellWrite, SwitcherSnapshot,
+    shell_event_name, DashboardSnapshot, DesktopSurfaceSnapshot, LauncherSnapshot, NotesSnapshot,
+    ShellProjection, ShellWrite, SwitcherSnapshot,
 };
 use std::collections::BTreeMap;
 
@@ -80,6 +80,12 @@ pub trait ShellStateAccess {
     fn shell_dispatch(&mut self, event: &str);
     /// 读字符串态（`__desktop_cmd` 读走面）。
     fn shell_read_str(&self, key: &str) -> Option<String>;
+    /// 键盘 bind 路由（PLAN-036 T-07 D5——规范键名 → 组件 Msg 派发；
+    /// 返回 false = 组件无此 bind。解释臂 = key_bindings 表 →
+    /// call_handler；编译臂 = codegen key_message 直派[launcher 记债]）。
+    fn shell_key(&mut self, _key: &str) -> bool {
+        false
+    }
 }
 
 /// 壳面装配接缝（PLAN-036 D8）：`ShellFaces` 消费面的 trait 化——
@@ -105,6 +111,27 @@ pub trait ShellSurface {
     fn bump_revision(&mut self);
     /// 面命中区矩形快照（e2e 点击钩子消费）。
     fn hit_rects(&self) -> Vec<crate::ui::desktop_protocol::message::WRect>;
+    /// 键盘 bind 路由（PLAN-036 T-07 D5：VK → 规范名 → 组件 bind 表
+    /// 派发；返回 true = 消费[revision 由调用方前进]）。
+    fn dispatch_key(&mut self, vk: u32, modifiers: u8) -> bool;
+    /// 自主聚焦首输入槽（D5：`__focus_input` 的 child 等价）。
+    fn focus_input(&mut self) -> bool;
+}
+
+/// Windows VK → .at bind 规范键名（launcher bind 表词汇：方向/Enter/
+/// Tab/Space/Esc；Ctrl 组合键宿主热键表保留[D5 边界]——裸键Only）。
+pub fn vk_to_bind_name(vk: u32) -> Option<&'static str> {
+    Some(match vk {
+        0x25 => "ArrowLeft",
+        0x26 => "ArrowUp",
+        0x27 => "ArrowRight",
+        0x28 => "ArrowDown",
+        0x0D => "Enter",
+        0x09 => "Tab",
+        0x20 => " ",
+        0x1B => "Escape",
+        _ => return None,
+    })
 }
 
 /// 泛型面装配（D8）：`RqProjector<C>` + `ShellStateAccess` →
@@ -186,6 +213,19 @@ impl<C: crate::ui::component::Component + ShellStateAccess> ShellSurface
     fn hit_rects(&self) -> Vec<crate::ui::desktop_protocol::message::WRect> {
         self.inner.hit_rects()
     }
+
+    fn dispatch_key(&mut self, vk: u32, modifiers: u8) -> bool {
+        let Some(name) = vk_to_bind_name(vk) else { return false };
+        if modifiers != 0 {
+            // Ctrl/Shift/Alt 组合 = 宿主热键域（D5 边界）——child 不消费。
+            return false;
+        }
+        self.inner.component_mut().shell_key(name)
+    }
+
+    fn focus_input(&mut self) -> bool {
+        self.inner.focus_first_input()
+    }
 }
 
 impl ShellStateAccess for crate::ui::dynamic::DynamicComponent {
@@ -205,6 +245,19 @@ impl ShellStateAccess for crate::ui::dynamic::DynamicComponent {
         match self.read_state(key) {
             Ok(auto_val::Value::Str(s)) => Some(s.as_str().to_string()),
             _ => None,
+        }
+    }
+
+    fn shell_key(&mut self, key: &str) -> bool {
+        // D5：解释臂键盘 bind 路由——.at bind 表（规范键名 → 事件名）
+        // 命中即 handler 派发（宿主窗 key_message 消费面的 child 等价）。
+        let event = self.key_bindings().get(key).cloned();
+        match event {
+            Some(name) => {
+                let _ = self.bridge_mut().call_handler(&name, &[]);
+                true
+            }
+            None => false,
         }
     }
 }
@@ -284,6 +337,29 @@ impl ShellFaces {
                 self.geometry.viewport_w,
                 self.geometry.viewport_h,
             ),
+            // PLAN-036 T-07（D3-C）：launcher 源 = 注册表条目（宿主 spawn
+            // 注入 AUTO_LAUNCHER_ENTRY 路径 env——非 pack 源；缺席 = 报
+            /// 错退出，宿主 respawn 链兜底）。
+            shell_face::LAUNCHER => {
+                let Some(entry) = std::env::var_os("AUTO_LAUNCHER_ENTRY") else {
+                    eprintln!("[p036-child] launcher 面：AUTO_LAUNCHER_ENTRY 缺席");
+                    return false;
+                };
+                match std::fs::read_to_string(&entry) {
+                    Ok(src) => (
+                        std::borrow::Cow::Owned(src),
+                        self.geometry.viewport_w,
+                        self.geometry.viewport_h,
+                    ),
+                    Err(e) => {
+                        eprintln!(
+                            "[p036-child] launcher 面注册表源读取失败（{}）: {e}",
+                            entry.to_string_lossy()
+                        );
+                        return false;
+                    }
+                }
+            }
             _ => return false,
         };
         let comp = match crate::build_dynamic_component(src.as_ref(), None) {
@@ -305,6 +381,16 @@ impl ShellFaces {
 
     pub fn geometry(&self) -> ShellGeometry {
         self.geometry
+    }
+
+    /// PLAN-036 T-07：空会话构造（launcher 单面 exe 入口）。
+    pub fn empty(geometry: ShellGeometry) -> Self {
+        Self { faces: BTreeMap::new(), geometry }
+    }
+
+    /// 公共装载面（ensure_overlay 包装——launcher 入口单面装配）。
+    pub fn mount_overlay(&mut self, face: u8) -> bool {
+        self.ensure_overlay(face)
     }
 
     fn projector_mut(&mut self, face: u8) -> Option<&mut dyn ShellSurface> {
@@ -384,6 +470,27 @@ impl ShellFaces {
                 p.bump_revision();
                 true
             }
+            shell_face::LAUNCHER => {
+                let mut r = Reader::new(payload);
+                let Ok(snap) = LauncherSnapshot::wire_decode(&mut r) else {
+                    return false;
+                };
+                let events = snap.events.clone();
+                if !self.ensure_overlay(face) {
+                    return false;
+                }
+                let Some(p) = self.projector_mut(face) else { return false };
+                p.apply_writes(snap.interpreted_writes());
+                for e in &events {
+                    p.dispatch_event(shell_event_name(e));
+                }
+                // D5：ApplyFilter 后自主聚焦首输入（__focus_input 等价）。
+                if events.iter().any(|e| matches!(e, crate::ui::shell_projection::ShellEvent::ApplyFilter)) && snap.visible {
+                    p.focus_input();
+                }
+                p.bump_revision();
+                true
+            }
             shell_face::DASHBOARD => {
                 let mut r = Reader::new(payload);
                 let Ok(snap) = DashboardSnapshot::wire_decode(&mut r) else {
@@ -425,8 +532,17 @@ impl ShellFaces {
     }
 
     /// 输入路由（wid → face 投影器；坐标已由宿主平移为面局部系）。
+    /// PLAN-036 T-07（D5）：KeyPressed 先经面 bind 路由（VK → 组件
+    /// Msg——方向/Enter/Tab/Esc），未消费再落投影器既有键处理（退格/
+    /// select Esc）；消费即 revision 前进（渲染随对账泵刷新）。
     pub fn on_input(&mut self, face: u8, input: &InputMsg) {
         if let Some(p) = self.projector_mut(face) {
+            if let InputMsg::KeyPressed { key, modifiers, .. } = input {
+                if p.dispatch_key(*key, *modifiers) {
+                    p.bump_revision();
+                    return;
+                }
+            }
             p.on_input(input);
         }
     }
@@ -501,6 +617,9 @@ pub struct ShellPump {
     routes: BTreeMap<u64, (u64, u8)>,
     frames: BTreeMap<u64, SurfaceFrames>,
     last_revisions: BTreeMap<u8, u64>,
+    /// PLAN-036 T-07：Welcome 领头面（shell=DESKTOP_SURFACE /
+    /// launcher=LAUNCHER）。
+    leading_face: u8,
 }
 
 impl ShellPump {
@@ -511,6 +630,26 @@ impl ShellPump {
         geometry: ShellGeometry,
         faces: ShellFaces,
     ) -> Result<Self, String> {
+        Self::start_as(broker_pipe, "shell", geometry, faces, shell_surfaces(&geometry))
+    }
+
+    /// PLAN-036 T-07（D3-C）：泛化入口——launcher 独立 exe 单面握手
+    ///（app_name="launcher"、单 OVERLAY 声明、leading face=LAUNCHER——
+    /// 宿主 attach launcher 分支同序消费）。
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_as(
+        broker_pipe: &str,
+        app_name: &str,
+        geometry: ShellGeometry,
+        faces: ShellFaces,
+        surfaces: Vec<SurfaceDecl>,
+    ) -> Result<Self, String> {
+        let leading_face = if app_name == "launcher" {
+            shell_face::LAUNCHER
+        } else {
+            shell_face::DESKTOP_SURFACE
+        };
+        let geometry_ref = geometry;
         let (_, end) = broker::request_incubation_render(
             broker_pipe,
             "shell",
@@ -520,47 +659,13 @@ impl ShellPump {
         .map_err(|e| format!("壳 broker 孵化失败: {e:?}"))?;
         let hello = ProtocolMsg::Handshake(HandshakeMsg::Hello {
             version: PROTOCOL_VERSION,
-            app_name: "shell".into(),
-            title: "shell".into(),
+            app_name: app_name.to_string(),
+            title: app_name.to_string(),
             icon: None,
-            width: geometry.viewport_w,
-            height: geometry.viewport_h,
+            width: geometry_ref.viewport_w,
+            height: geometry_ref.viewport_h,
             fonts: Vec::new(),
-            surfaces: vec![
-                SurfaceDecl {
-                    role: surface_role::BACKGROUND,
-                    width: geometry.viewport_w,
-                    height: geometry.viewport_h,
-                },
-                SurfaceDecl {
-                    role: surface_role::CHROME,
-                    width: geometry.viewport_w,
-                    height: geometry.band_h,
-                },
-                // PLAN-036 T-04：overlay 两面全屏声明（OVERLAY 档——
-                // 追加式；面区分按声明序 0=switcher 1=notification_center，
-                // Welcome 路由同序约定）。
-                SurfaceDecl {
-                    role: surface_role::OVERLAY,
-                    width: geometry.viewport_w,
-                    height: geometry.viewport_h,
-                },
-                SurfaceDecl {
-                    role: surface_role::OVERLAY,
-                    width: geometry.viewport_w,
-                    height: geometry.viewport_h,
-                },
-                // PLAN-036 T-05（D2-A）：dashboard 面——中间 z 档显式声明
-                ///（宿主伪窗插层 z_order[1]——bg 上/窗下，命中带=面板矩形）。
-                /// 表面尺寸 = 035 固定外框 696×232（desktop-ux-rev3 网格
-                /// 契约——面板内容 w-full h-full 填充，宿主 spacer 链贴放
-                /// 右上位）。
-                SurfaceDecl {
-                    role: surface_role::DASHBOARD,
-                    width: 696.0,
-                    height: 232.0,
-                },
-            ],
+            surfaces,
         });
         let mut end = end;
         end.send(&hello).map_err(|e| format!("壳 Hello 发送失败: {e:?}"))?;
@@ -571,6 +676,7 @@ impl ShellPump {
             routes: BTreeMap::new(),
             frames: BTreeMap::new(),
             last_revisions: BTreeMap::new(),
+            leading_face,
         })
     }
 
@@ -597,7 +703,7 @@ impl ShellPump {
             let msg = msg.map_err(|e| format!("壳消息解码失败: {e:?}"))?;
             match msg {
                 ProtocolMsg::Handshake(HandshakeMsg::Welcome { wid, surface, extra_surfaces, .. }) => {
-                    self.routes.insert(wid, (surface, shell_face::DESKTOP_SURFACE));
+                    self.routes.insert(wid, (surface, self.leading_face));
                     self.frames.entry(wid).or_default();
                     // PLAN-036 T-04：OVERLAY 依序映射（Hello 声明序约定
                     ///——首 OVERLAY=switcher、次=notification_center）。
@@ -743,6 +849,61 @@ fn frame_ops(frame: &ProtocolMsg) -> usize {
     }
 }
 
+/// 壳五面 Hello 声明（background 领头 + chrome + overlay×2 + dashboard
+/// ——T-04/T-05 契约原样）。
+fn shell_surfaces(geometry: &ShellGeometry) -> Vec<SurfaceDecl> {
+    vec![
+        SurfaceDecl {
+            role: surface_role::BACKGROUND,
+            width: geometry.viewport_w,
+            height: geometry.viewport_h,
+        },
+        SurfaceDecl {
+            role: surface_role::CHROME,
+            width: geometry.viewport_w,
+            height: geometry.band_h,
+        },
+        // PLAN-036 T-04：overlay 两面全屏声明（OVERLAY 档——面区分按
+        // 声明序 0=switcher 1=notification_center，Welcome 路由同序约定）。
+        SurfaceDecl {
+            role: surface_role::OVERLAY,
+            width: geometry.viewport_w,
+            height: geometry.viewport_h,
+        },
+        SurfaceDecl {
+            role: surface_role::OVERLAY,
+            width: geometry.viewport_w,
+            height: geometry.viewport_h,
+        },
+        // PLAN-036 T-05（D2-A）：dashboard 面——中间 z 档显式声明（表面
+        // 尺寸 = 035 固定外框 696×232）。
+        SurfaceDecl {
+            role: surface_role::DASHBOARD,
+            width: 696.0,
+            height: 232.0,
+        },
+    ]
+}
+
+/// `auto run --autodesk-launcher` 产品入口（PLAN-036 T-07 D3-C：launcher
+/// 一面一 exe——独立进程单 OVERLAY 面；源 = 注册表条目 env
+/// `AUTO_LAUNCHER_ENTRY`（宿主 spawn 注入），v1 解释装载（编译轨
+/// launcher exe 记 P036 债）。
+pub fn run_launcher_outproc(broker_pipe: &str) -> Result<(), String> {
+    let geometry = ShellGeometry::from_env().unwrap_or_else(ShellGeometry::fallback);
+    let mut faces = ShellFaces::empty(geometry);
+    if !faces.mount_overlay(shell_face::LAUNCHER) {
+        return Err("launcher 面装载失败（AUTO_LAUNCHER_ENTRY 源/覆盖门）".into());
+    }
+    let surfaces = vec![SurfaceDecl {
+        role: surface_role::OVERLAY,
+        width: geometry.viewport_w,
+        height: geometry.viewport_h,
+    }];
+    let pump = ShellPump::start_as(broker_pipe, "launcher", geometry, faces, surfaces)?;
+    pump.run()
+}
+
 /// `auto run --autodesk-shell` 产品入口（cmd_autodesk 分派）。
 /// 几何：AUTO_SHELL_GEOM env（spawn 注入）> 缺省 1280x800x48。
 /// 解释装载缺省（开发态——显式 AUTO_SHELL_PACK 路径；编译轨经
@@ -833,6 +994,51 @@ mod tests {
         );
         // 坏 payload 拒收不炸。
         assert!(!faces.apply_projection(shell_face::SWITCHER, &[0xFF, 0xFF]));
+    }
+
+    /// PLAN-036 T-07（D5）：键盘 bind 路由——面 KeyPressed 先经 bind 表
+    ///（switcher.at `ArrowRight -> .Advance` 在册）派发 handler；未消费
+    /// 键落投影器既有臂（不炸）。VK→规范名映射钉住。
+    #[test]
+    fn shell_faces_key_bind_routing() {
+        use crate::ui::desktop_protocol::message::InputMsg;
+        assert_eq!(vk_to_bind_name(0x27), Some("ArrowRight"));
+        assert_eq!(vk_to_bind_name(0x0D), Some("Enter"));
+        assert_eq!(vk_to_bind_name(0x51), None, "字母键无 bind 面");
+        let Ok(mut faces) = ShellFaces::load(ShellGeometry::fallback()) else {
+            eprintln!("shell faces load 失败（环境）");
+            return;
+        };
+        let mut payload = Vec::new();
+        crate::ui::shell_projection::SwitcherSnapshot {
+            hosted: true,
+            visible: true,
+            ..Default::default()
+        }
+        .wire_encode(&mut payload);
+        assert!(faces.apply_projection(shell_face::SWITCHER, &payload));
+        let rev = faces.revision(shell_face::SWITCHER);
+        // 方向键：bind 命中 → handler 派发 → revision 前进。
+        faces.on_input(
+            shell_face::SWITCHER,
+            &InputMsg::KeyPressed { wid: 0, key: 0x27, modifiers: 0 },
+        );
+        assert!(
+            faces.revision(shell_face::SWITCHER) > rev,
+            "ArrowRight bind 路由派发"
+        );
+        // 修饰键组合 = 宿主热键域——child 不消费（revision 不动）。
+        let rev2 = faces.revision(shell_face::SWITCHER);
+        faces.on_input(
+            shell_face::SWITCHER,
+            &InputMsg::KeyPressed { wid: 0, key: 0x27, modifiers: 2 },
+        );
+        assert!(faces.revision(shell_face::SWITCHER) >= rev2);
+        // 无 bind 键（字母）落投影器 no-op——不炸不前进。
+        faces.on_input(
+            shell_face::SWITCHER,
+            &InputMsg::KeyPressed { wid: 0, key: 0x51, modifiers: 0 },
+        );
     }
 
     /// PLAN-036 T-05（B2）：dashboard 面投影应用——解释轨懒装载路径

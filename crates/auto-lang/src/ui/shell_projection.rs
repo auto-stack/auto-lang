@@ -1050,6 +1050,53 @@ impl DesktopSurfaceSnapshot {
     }
 }
 
+impl LauncherSnapshot {
+    /// 解释轨回写序列——与 renderer summon_launcher 现行写集逐一对应
+    ///（PLAN-036 T-07：七平行列表——键名 apps_* 对齐召唤写点；q/sel/
+    /// ranked/gridrows 为 handler 自建派生态；__focus_input 的 child
+    /// 等价 = focus_first_input（ApplyFilter 事件后自主聚焦，D5）。
+    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {
+        vec![
+            ShellWrite::Scalar("hosted", s(if self.hosted { "1" } else { "" })),
+            ShellWrite::Scalar("visible", s(if self.visible { "1" } else { "" })),
+            ShellWrite::Array(
+                "apps_names",
+                self.app_ids.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "apps_titles",
+                self.app_titles.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "apps_icons",
+                self.app_icons.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "apps_cats",
+                self.app_cats.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array("apps_lns", self.app_lns.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array("apps_lts", self.app_lts.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array(
+                "apps_colors",
+                self.app_colors.iter().map(|v| s(v.clone())).collect(),
+            ),
+        ]
+    }
+
+    /// 指纹门载荷（id 清单 + 可见位——apps 清单 boot 扫描后稳定）。
+    pub fn fingerprint(&self) -> String {
+        let mut fp = String::new();
+        for id in &self.app_ids {
+            fp.push_str(id);
+            fp.push(',');
+        }
+        fp.push('|');
+        fp.push_str(if self.visible { "v1" } else { "v0" });
+        fp
+    }
+}
+
 impl DashboardSnapshot {
     /// 解释轨回写序列——与 renderer refresh_dashboard_panel 现行写集
     /// 逐一对应（PLAN-036 T-05：face 卡壳清单渲染面——平行列表 + 合同面
@@ -1515,6 +1562,38 @@ mod tests {
         dash.wire_encode(&mut buf);
         let back = DashboardSnapshot::wire_decode(&mut Reader::new(&buf)).expect("decode");
         assert_eq!(back, dash, "round-trip 全等");
+    }
+
+    /// PLAN-036 T-07（B3）：launcher 载体写集键序 + 指纹 + round-trip。
+    #[test]
+    fn launcher_snapshot_writes_and_fingerprint() {
+        use crate::ui::desktop_protocol::codec::Reader;
+        let snap = LauncherSnapshot {
+            hosted: true,
+            visible: true,
+            app_ids: vec!["012-clock".into()],
+            app_titles: vec!["时钟".into()],
+            app_icons: vec!["app-window".into()],
+            app_cats: vec!["tools".into()],
+            app_lns: vec!["012-clock".into()],
+            app_lts: vec!["时钟".into()],
+            app_colors: vec!["#a78bfa".into()],
+            events: vec![ShellEvent::ApplyFilter],
+        };
+        let keys: Vec<&str> = snap.interpreted_writes().iter().map(|w| w.key()).collect();
+        assert_eq!(
+            keys,
+            vec![
+                "hosted", "visible", "apps_names", "apps_titles", "apps_icons", "apps_cats",
+                "apps_lns", "apps_lts", "apps_colors"
+            ],
+            "launcher 写集键序（apps_* 对齐召唤写点）"
+        );
+        assert!(snap.fingerprint().starts_with("012-clock,|v1"));
+        let mut buf = Vec::new();
+        snap.wire_encode(&mut buf);
+        let back = LauncherSnapshot::wire_decode(&mut Reader::new(&buf)).expect("decode");
+        assert_eq!(back, snap, "round-trip 全等");
     }
 
     fn wire_round_trip_full_family() {

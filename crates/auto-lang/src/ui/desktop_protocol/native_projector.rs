@@ -395,6 +395,19 @@ impl<C: Component> RqProjector<C> {
     }
 
     /// 外部状态变化登记（投影 apply 后调用——revision 前进 = 泵对账产帧）。
+    /// PLAN-036 T-07（D5）：child 自主聚焦首输入槽——宿主 `__focus_input`
+    /// 重试环（iced focus Task + 5 次重试）的 child 等价：快照事件
+    ///（ApplyFilter）后由装配层调用；无输入命中 = false。
+    pub fn focus_first_input(&mut self) -> bool {
+        for e in &self.hits {
+            if let HitEntry::Input { slot, .. } = e {
+                self.focused_input = Some(*slot);
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn bump_revision(&mut self) {
         self.rev += 1;
     }

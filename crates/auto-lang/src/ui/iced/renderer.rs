@@ -10311,6 +10311,29 @@ fn summon_launcher(
     state: &mut crate::ui::session::DesktopSession,
 ) -> iced::Task<crate::ui::session::DesktopMessage> {
     use crate::ui::session::DesktopMessage as DM;
+    // PLAN-036 T-07（B3，D3-C）：outproc 轨（B 形态桌面 = shell_pipe 在
+    /// 场）——launcher 独立 exe：已 attach 则快照推送（ApplyFilter 事件
+    /// + child 自主聚焦[D5 等价]）；未 spawn 则一次性 spawn（attach 异步
+    ///——ServiceTick 补推追赶）；伪窗聚焦承接键盘路由（D5 可聚焦语义）。
+    /// in-proc 轨原路径零变化（I2）。
+    if state.desktop.shell_pipe.is_some() {
+        state.desktop.launcher_open = true;
+        if state.desktop.launcher_pipe.is_some() {
+            if let Some(lwid) = state.desktop.launcher_wid {
+                state.wm_focus(lwid);
+            }
+            push_launcher_snapshot(
+                state,
+                &[crate::ui::shell_projection::ShellEvent::ApplyFilter],
+            );
+        } else if !state.desktop.launcher_spawned {
+            if let Err(err) = state.spawn_launcher_outproc() {
+                eprintln!("[p036] launcher exe spawn 失败: {err}");
+                state.desktop.launcher_open = false;
+            }
+        }
+        return iced::Task::none();
+    }
     if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
         eprintln!("[464-SUMMON] summon_launcher entered, mounted={}", state.desktop.launcher_app.is_some());
     }
@@ -10727,6 +10750,55 @@ pub(crate) fn build_notes_snapshot(
     snap.wm_notes_unread = state.desktop.notes_unread.get() as u64;
     snap.panel_max_h = panel_max_h(state) as u32;
     snap
+}
+
+/// PLAN-036 T-07（B3）：launcher 快照构建 + 推送（face=LAUNCHER，定向
+/// launcher exe 管线——独立于壳 pipe；七平行列表与 summon_launcher
+/// in-proc 写点逐字段同源；visible = launcher_open 镜像位）。
+pub(crate) fn build_launcher_snapshot(
+    state: &crate::ui::session::DesktopSession,
+) -> crate::ui::shell_projection::LauncherSnapshot {
+    use crate::ui::shell_projection::LauncherSnapshot;
+    let mut snap = LauncherSnapshot { hosted: true, ..Default::default() };
+    for e in state.desktop.registry_entries.iter() {
+        if e.id == "launcher" || e.id.ends_with("-launcher") {
+            continue;
+        }
+        let title = e.display_title().to_string();
+        snap.app_ids.push(e.id.clone());
+        snap.app_titles.push(title.clone());
+        snap.app_icons.push(e.icon.clone());
+        snap.app_cats.push(e.category.clone());
+        snap.app_lns.push(e.id.to_lowercase());
+        snap.app_lts.push(title.to_lowercase());
+        snap.app_colors.push(launcher_brand_color(&e.id).to_string());
+    }
+    snap
+}
+
+pub(crate) fn push_launcher_snapshot(
+    state: &mut crate::ui::session::DesktopSession,
+    events: &[crate::ui::shell_projection::ShellEvent],
+) {
+    use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
+    let Some(pipe) = state.desktop.launcher_pipe.clone() else { return };
+    let mut snap = build_launcher_snapshot(state);
+    snap.visible = state.desktop.launcher_open;
+    snap.events = events.to_vec();
+    let fp = snap.fingerprint();
+    let transient = !snap.events.is_empty();
+    if !transient && state.desktop.launcher_fp.as_deref() == Some(fp.as_str()) {
+        return;
+    }
+    let mut payload = Vec::new();
+    snap.wire_encode(&mut payload);
+    let msg = ProtocolMsg::Control(ControlMsg::ShellProjectionPush {
+        face: shell_face::LAUNCHER,
+        payload,
+    });
+    if state.push_control_to(&pipe, &msg) {
+        state.desktop.launcher_fp = Some(fp);
+    }
 }
 
 /// PLAN-036 T-05（B2）：dashboard 快照构建 + 推送（face=DASHBOARD；
@@ -14385,7 +14457,17 @@ fn shell_surface_element(
     state: &crate::ui::session::DesktopSession,
     wid: crate::ui::session::Wid,
 ) -> Option<iced::Element<'_, crate::ui::session::DesktopMessage>> {
-    let pipe = state.desktop.shell_pipe.as_ref()?;
+    shell_surface_element_pipe(state, state.desktop.shell_pipe.clone(), wid)
+}
+
+/// PLAN-036 T-07（B3）：定向 pipe 表面帧（launcher 独立管线——壳管线
+/// 同体泛化）。
+fn shell_surface_element_pipe(
+    state: &crate::ui::session::DesktopSession,
+    pipe: Option<String>,
+    wid: crate::ui::session::Wid,
+) -> Option<iced::Element<'_, crate::ui::session::DesktopMessage>> {
+    let pipe = pipe.as_ref()?;
     let client = state.broker_clients.get(pipe)?;
     let surface = client.wid_surface.get(&wid.0)?;
     let list = client.surfaces.front(*surface)?;
@@ -18808,6 +18890,21 @@ fn compare_pngs(
                         // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
                         // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
                         update_shell_clock(state);
+                        // PLAN-036 T-07（B3）：launcher attach 追赶——
+                        /// spawn→attach 异步落差（launcher_open 挂起 +
+                        /// pipe 落地 + 指纹未建）时补推召唤快照。
+                        if state.desktop.launcher_open
+                            && state.desktop.launcher_pipe.is_some()
+                            && state.desktop.launcher_fp.is_none()
+                        {
+                            if let Some(lwid) = state.desktop.launcher_wid {
+                                state.wm_focus(lwid);
+                            }
+                            push_launcher_snapshot(
+                                state,
+                                &[crate::ui::shell_projection::ShellEvent::ApplyFilter],
+                            );
+                        }
                         // 2026-09-15：切换预览面板开着时——逐可见窗补抓快照
                         // + 置 shell 重建。快照异步入缓存后原本无人触发重建，
                         // 预览恒为空壁纸底（用户实测截图）；400ms 节拍内小
@@ -19483,6 +19580,15 @@ fn compare_pngs(
                                 if state.desktop.dashboard_open {
                                     state.desktop.dashboard_open = false;
                                     push_dashboard_snapshot(
+                                        state,
+                                        &[crate::ui::shell_projection::ShellEvent::Escape],
+                                    );
+                                }
+                                // PLAN-036 T-07（B3）：launcher 同册（.at
+                                // Escape handler 清词→退格→自隐逐级）。
+                                if state.desktop.launcher_open {
+                                    state.desktop.launcher_open = false;
+                                    push_launcher_snapshot(
                                         state,
                                         &[crate::ui::shell_projection::ShellEvent::Escape],
                                     );
@@ -20493,7 +20599,19 @@ fn compare_pngs(
             }
             // Plan 464 T4：launcher overlay 层（Stack 顶层；隐藏态渲染透明
             // 空层不挡桌面点击——app.at else 分支）。垫片视图同 shell。
-            if state.desktop.launcher_app.is_some() {
+            // PLAN-036 T-07（B3）：outproc 轨 = launcher exe 表面帧贴层
+            ///（伪窗全屏——launcher 可见时置顶；child else 分支同语义
+            /// 渲透明空层）。
+            if state.desktop.launcher_pipe.is_some() && state.launcher_visible() {
+                if let Some(lwid) = state.desktop.launcher_wid {
+                    if let Some(el) = shell_surface_element_pipe(state, state.desktop.launcher_pipe.clone(), lwid) {
+                        let full = iced::widget::container(el)
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill);
+                        layers.push(full.into());
+                    }
+                }
+            } else if state.desktop.launcher_app.is_some() {
                 let launcher_app = state.desktop.launcher_app.expect("launcher checked");
                 let build = || state.split_ref_launcher().map(|v| dynamic_view(v, false));
                 let launcher_client: iced::Element<'_, IcedMessage> = match

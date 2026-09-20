@@ -38,7 +38,9 @@ pub fn run_if_client_entry(args: &[String]) -> Option<Result<(), String>> {
     let has_client = args.iter().any(|a| a.starts_with("--autodesk-client="));
     let has_incubate = args.iter().any(|a| a == "--autodesk-incubate");
     let has_shell = args.iter().any(|a| a == "--autodesk-shell");
-    if !has_client && !has_incubate && !has_shell {
+    // PLAN-036 T-07（B3，D3-C）：launcher 独立 exe 入口。
+    let has_launcher = args.iter().any(|a| a == "--autodesk-launcher");
+    if !has_client && !has_incubate && !has_shell && !has_launcher {
         return None;
     }
     Some(run_client_entry(args))
@@ -53,6 +55,7 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
     let mut broker_pipe = BROKER_PIPE.to_string();
     let mut render_arg: Option<String> = None;
     let mut shell_entry = false;
+    let mut launcher_entry = false;
     for arg in args {
         if let Some(v) = arg.strip_prefix("--autodesk-client=") {
             pipe = Some(v.to_string());
@@ -64,7 +67,14 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
             render_arg = Some(v.to_string());
         } else if arg == "--autodesk-shell" {
             shell_entry = true;
+        } else if arg == "--autodesk-launcher" {
+            launcher_entry = true;
         }
+    }
+    if launcher_entry {
+        // launcher 单面 exe（broker 管道必填；源 = AUTO_LAUNCHER_ENTRY env
+        ///——宿主 spawn 注入，v1 解释装载）。
+        return auto_lang::ui::desktop_protocol::shell_client::run_launcher_outproc(&broker_pipe);
     }
     if shell_entry {
         // PLAN-036 T-03（D4）：outproc child 缺省**编译轨**（auto.exe 链入

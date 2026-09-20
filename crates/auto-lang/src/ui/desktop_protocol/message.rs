@@ -342,6 +342,10 @@ pub mod shell_face {
     pub const SWITCHER: u8 = 3;
     pub const NOTIFICATION_CENTER: u8 = 4;
     pub const DASHBOARD: u8 = 5;
+    /// PLAN-036 T-07（B3）：launcher 面——独立 exe（D3-C：一面一 exe 走
+    /// 注册表）的快照寻址（追加式 =6；不在 SHELL_MANIFEST 五件——launcher
+    /// 源 = 注册表 028-launcher，非 pack）。
+    pub const LAUNCHER: u8 = 6;
 
     pub fn name(v: u8) -> &'static str {
         match v {
@@ -350,6 +354,7 @@ pub mod shell_face {
             SWITCHER => "switcher",
             NOTIFICATION_CENTER => "notification_center",
             DASHBOARD => "dashboard",
+            LAUNCHER => "launcher",
             _ => "unknown",
         }
     }
