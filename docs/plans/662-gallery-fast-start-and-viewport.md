@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-662
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done           # drafting → executing → execution_done → reviewed → archived
 feature_name: gallery-fast-start-and-viewport
 author: [agent]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 6
 
 # /auto-plan:review 结束时填写：
@@ -175,12 +175,15 @@ examples 内嵌 / 组内兄弟 / 平铺兄弟 / 全无→Err）。
 - 确定性守卫：缓存命中与冷跑产出的 `registry.at` 必须字节一致（测试钉
   住——缓存只重放分析结果，不改发射输入）。
 
-### 5.3 扫描并行化（T-03，有界）
+### 5.3 扫描并行化（T-03，有界）——决策产物回填（2026-09-20）
 
-先调查 `VueProject::from_workspace`/SFC 编译的线程安全面（全局静态：
-schema drift 收集、style recipe 注册、日志——逐项核实）；安全则
-`std::thread::scope` 工作池（默认 jobs=物理核数，`AUTO_GALLERY_SCAN_JOBS`
-env 可覆写，1=串行）；不安全则如实记债收案（AC-02 首启项转缓）。
+调查结论：发射管线注册表全为 thread_local（`handler_codegen.rs`
+STORE_FIELDS/STORE_WIDGET_NAMES/STORE_MSG_MAP/CURRENT_* 族）——scoped
+工作线程各自隔离，无进程级共享可变态；唯一结构性竞争=结果聚合，按
+"每线程返回本块 `(idx, row)`、join 后主线程合并"规避（共享 Vec 跨线程
+写是 UB）。**安全实证**：并行冷跑 vs 清缓存串行冷跑的 registry.at +
+AppViewport.vm.at + demos/（76 文件）字节级 diff 全空 → `jobs` 缺省=
+`available_parallelism`（不回落 1），`AUTO_GALLERY_SCAN_JOBS` env 覆写。
 
 ### 5.4 AppViewport VM 滚动对齐（T-04）
 
@@ -191,13 +194,14 @@ web 臂零触碰。产物刷新：worktree 内重新生成并提交
 `auto-os/ui-gallery/src/gallery/AppViewport.vm.at`（625/658 先例：lang
 发射器确定性派生物提交至 os）。
 
-### 5.5 020 高度链（T-05，有界）
+### 5.5 020 高度链（T-05，有界）——裁定回填（2026-09-20）
 
-证据驱动二选一：A=demo 语料高度链兼容修复（`h-screen`→`h-full` 等，
-须 standalone VM/Vue + 内嵌 + web 三面验证）；B=T-04 滚动已足 → 020 语
-料零改动，flex-wrap 控制条挤压登记为 Plan 412 已知边界（KNOWN-DEBT
-一行）。判定标准：MCP 截图中控制条按钮（播放/上下曲）与进度条可辨识
-且可交互。
+**选项 B 成立**：T-04 滚动容器落地后，§5.5 判定标准（控制条按钮可
+辨识+可交互+进度条在）经 MCP+截图实证全达成（播放/上下曲五按钮组、
+进度条 0:30/4:18、is_playing=true、393 曲库）——020 语料零改动。残余
+=控制条 `flex-wrap` 两行换行（按钮完整可用，仅排版降级），登记
+KNOWN-DEBT P662-D1（Plan 412 降级矩阵家族），避免语料改动引入
+standalone/Vue 臂连锁验证面。
 
 ### 规范增量
 
@@ -245,29 +249,107 @@ web 臂零触碰。产物刷新：worktree 内重新生成并提交
 （原子任务；每步完成后追加 [✅ 已完成] 一行证据；全部在 worktree
 `D:/autostack/.wt/lang-662/auto-lang` 实施，plan 簿记留主检出）
 
-- [ ] **T-01 apps 目录解析补平铺布局**
+- [x] **T-01 apps 目录解析补平铺布局**
   `vue.rs gallery_apps_dir` 追加祖父级 `auto-lang/examples/ui` 探测 + 四
   布局单测；主检出实测两臂零 env 启动（AC-01）。
-- [ ] **T-02 画廊行扫描磁盘缓存**
+  [✅ 已完成 2026-09-20] commit d5ec6d7b7。探测链补祖父级（平铺主检出
+  `D:/autostack/{auto-os,auto-lang}` 与 worktree 组 `.wt/lang-NNN/` 同形
+  命中）；单测 `test_plan_662_gallery_apps_dir_layouts`（旧仓内嵌/
+  standalone/同层兄弟/平铺组/全无 Err 五场景）。活体：os worktree
+  `ui-gallery` 零 env `run -r vm` 成功（AC-01 达成；主检出平铺形态同构）。
+- [x] **T-02 画廊行扫描磁盘缓存**
   `GalleryDemoRow` serde 派生 + `~/.auto/auto-man/gallery-cache/` 落盘层
   （键/值/原子写/fail-open 如 §5.2）+ 单测四件（命中/单失效/损坏/字节
   一致）；二次启动计时 ≤10s（AC-02/03）。
-- [ ] **T-03 扫描并行化（有界）**
+  [✅ 已完成 2026-09-20] commit d5ec6d7b7：`crates/auto-man/src/gallery_cache.rs`
+  （新模块）+ `gallery_rows_with_disk_cache` 接线（scan_one 注入式可测）。
+  **实测修正**：目录 mtime 在 NTFS 创建后最初时刻延迟落定（并行测试下
+  漂移→假失效实证），哈希行改为**仅文件**（relpath|len|mtime；增删文件
+  必然改变文件集合，目录行冗余）。计时：二次启动 **5s**（0 scanned, 36
+  from disk cache；基线 83s）。单测 `test_plan_662_gallery_rows_disk_cache`
+  （命中零扫/单失效仅重扫变更 demo/损坏 fail-open 全量重建/serde 往返
+  逐字段一致=registry 确定性守卫）。
+- [x] **T-03 扫描并行化（有界）**
   from_workspace/SFC 线程安全面调查（决策产物回填 §5.3）→ 安全则
   std::thread::scope 池 + AUTO_GALLERY_SCAN_JOBS env + 首启计时；不安全
   则记债收案（AC-02 首启项转缓并如实呈报）。
-- [ ] **T-04 AppViewport VM 视口滚动对齐**
+  [✅ 已完成 2026-09-20] commit d5ec6d7b7。调查结论：发射管线注册表全为
+  thread_local（handler_codegen.rs STORE_*/CURRENT_* 族）——工作线程天然
+  隔离；竞争风险=共享 Vec 跨线程写（已按"每线程返回本块结果、join 后主
+  线程合并"规避）。**安全守卫实证**：并行冷跑与清缓存后串行冷跑的
+  registry.at + AppViewport.vm.at + demos/（76 文件）**字节级 diff 全空**
+  → 默认档=核数确认（不回落 1）。计时：冷启并行 **22s** vs 串行 ~62s
+  （基线 83s）。env 覆写单测 `test_plan_662_gallery_scan_jobs_env`。
+- [x] **T-04 AppViewport VM 视口滚动对齐**
   发射器 demo 分支滚动容器（§5.4）+ os 产物刷新提交 + MCP 020 可达性
   验证（AC-04 主体）；web 臂零触碰验证。
-- [ ] **T-05 020 高度链有界修复**
+  [✅ 已完成 2026-09-20] lang d5ec6d7b7（发射器）+ os 0778c28（产物）。
+  frame 内补 `col overflow-y-auto` 滚动容器（656 映射 View::Scrollable），
+  frame 三态样式不变；web 臂零 diff（AppViewport.vue 未触，Vue 臂生成
+  面 demos-registry.ts/SFC 未再生）。MCP 实证：020 内嵌控制条完整可见
+  （歌曲信息+五控制按钮+进度条 0:30/4:18）、393 曲库、is_playing 可交互
+  （evidence/p662/p662_020_fixed.png vs 修复前 020_before_658.png）。
+- [x] **T-05 020 高度链有界修复**
   证据驱动选 A（语料修复三面验证）或 B（登记 Plan 412 边界收案），
   决策记录回填 §5.5（AC-04/05）。
+  [✅ 已完成 2026-09-20] **裁定=选项 B（020 语料零改动）**：T-04 滚动容器
+  已使 §5.5 判定标准全达成（控制按钮可辨识+可交互[is_playing]+进度条
+  在）；残余=控制条 flex-wrap 两行换行（按钮完整可用仅排版降级）——
+  登记 KNOWN-DEBT P662-D1（Plan 412 降级矩阵家族），不动语料（免
+  standalone/Vue 臂连锁验证面）。
 - [ ] **T-06 收口：全量回归 + 簿记**
   §6 回归矩阵全跑（gallery 17/17 + spot-check 六 demo + cargo t 日常
   档 + auto-man 定向）；evidence/p662/ 留痕（计时日志/截图/驱动脚本）；
   KNOWN-DEBT 增量；spec 增量 SD-01/SD-02 落稿（AC-05/06）。
+  [🔶 进行中 2026-09-20] gallery 定向 20/20 并行绿（auto-man --lib gallery；
+  其中 662 三件+既有 17）；auto-man 全量 lib 310/312（2 红=desktop_
+  extra_app_roots_apps_container + plan609 预存**并行 env 竞争**——单跑
+  均绿、`--skip test_plan_662` 排除后仍红，非本 diff 引入，记 P662-D2）；
+  cargo t 日常档在跑；evidence/p662/（timing.md + 修复前后截图）已落；
+  os 产物已提交（0778c28）。余：cargo t 结果 + spot-check 六 demo +
+  KNOWN-DEBT 三行 + spec 增量落稿。
+  [✅ 已完成 2026-09-20] **cargo t 日常档（--no-fail-fast 全量）5265/5270，
+  5 红全在 auto-lang（本 diff 零触碰 auto-lang 代码，确定性测试由构造与
+  基线一致）：mouse_area/autodown_panel_heading（P661-D7 在案预存）+
+  kitchen_sink（658-R2 在案）+ 2×ui::layout snap/usable_rect（任务栏/
+  环境红家族）——零新增红**。首跑 fail-fast 期 musk p053 族红=画廊实例
+  并发资源竞争 flaky（清场复跑全绿）。spot-check 六 demo MCP 全过
+  （013 待办/015 笔记[首探测时序误报，复查视口在渲染"清爽笔记应用"等
+  内容]/017 Send/020 393 曲库/022 看板/031 图片）。KNOWN-DEBT P662-D1
+  （flex-wrap 登记）/P662-D2（预存并行 env 竞争）落册。spec 增量
+  SD-01/SD-02 worktree 提交（198ae949d，顺修 658 行陈旧状态）。
+  evidence/p662/（timing.md + 修复前后截图）。
 
 ## 9. 复审记录
+
+```yaml
+stage: work
+plan_id: PLAN-662
+plan_revision: 1
+outcome: pass
+code_commit: 198ae949d（worktree D:/autostack/.wt/lang-662/auto-lang @ plan-662-dev；
+  实现链 fe88a3240[base] → d5ec6d7b7[T-01..T-04 实现+三单测] → 198ae949d[SD-01/SD-02]；
+  auto-os worktree plan-662-dev @ 0778c28[产物刷新]；auto-down 组内 detached @3f73737 构建依赖）
+task_ids: [T-01✅, T-02✅, T-03✅, T-04✅, T-05✅, T-06✅]
+evidence: |-
+  AC-01 pass：os worktree 零 env run -r vm 裸跑成功（Gallery rows 36 + back-proxy
+    3358 + registry 36 demos；祖父级探测组内命中，主检出平铺同构）。
+  AC-02 pass：二次启动 5s（0 scanned, 36 from disk cache；基线 83s）≤10s；冷启
+    并行 22s ≤30s（vs 串行 62s 实测留档）。
+  AC-03 pass：单测三件（命中零扫/单失效仅重扫/损坏 fail-open）+ serde 往返逐字段
+    一致（registry 确定性守卫）；实测修正=目录 mtime NTFS 延迟落定→哈希改仅文件行。
+  AC-04 pass：MCP+截图——020 控制条完整可见（歌曲信息+五按钮+进度条 0:30/4:18）、
+    is_playing 可交互、393 曲库；web 臂零 diff（AppViewport.vue 未触）。
+  AC-05 pass：串行/并行产物字节 diff 全空（registry+AppViewport+demos 76 文件）；
+    gallery 定向 20/20；spot-check 六 demo 全过；cargo t 日常档 5265/5270 零新增红
+    （5 红全在 auto-lang=预存在册/环境，P661-D7/658-R2 在案）。
+  AC-06 pass：os 产物提交 0778c28（AppViewport.vm.at 滚动容器+三文件现行重生成）；
+    KNOWN-DEBT P662-D1/D2 落册；SD-01/SD-02 worktree 备妥（198ae949d）。
+  evidence/p662/：timing.md（四档计时+diff 记录）+ 020_before_658.png +
+  p662_020_fixed.png。
+blockers: ""
+next: review（/auto-plan:review——工作全部完成，execution_done 翻转）
+```
 
 ```yaml
 stage: new

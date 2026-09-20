@@ -2456,3 +2456,11 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
   coverage / external_config_poll / conditional_style_hover / p010_popover_ondismiss）；
   ③`cargo t ui` 滤串 ~50-52 红（含上述+layout snap/osconfig real-TCP flaky 等，
   全部 HEAD 同红在案）。修复归后续 L0/专项，非本计划范围。
+
+
+## P662 债（gallery-fast-start-and-viewport）2026-09-20 work 登记
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P662-D1 | low | 渲染保真 | **020 内嵌控制条 flex-wrap 两行换行**——VM 臂滚动容器（T-04）后控制条完整可见可交互，但 `flex-wrap` 在 iced 降级（Plan 412 矩阵家族）致按钮组换两行排版降级；按钮功能完整仅视觉。020 语料零改动（T-05 裁定 B：免 standalone/Vue 连锁验证面） | 启动日志 flex-wrap 降级声明；docs/plans/evidence/p662/p662_020_fixed.png |
+| P662-D2 | low | 测试基建 | **auto-man 并行 env 竞争（预存，非 662 引入）**——`desktop_extra_app_roots_apps_container` 与 `test_plan609_unresolved_dep_import_guard` 全量 lib 并行跑时互踩 env 间歇双红（单跑均绿；`--skip test_plan_662` 排除后仍红实证非新测试引入）；修法=测试组 env 串行锁或 env 改参数传递 | auto-man vue.rs mod tests 两测试；662 执行期三受控对照在案 |
