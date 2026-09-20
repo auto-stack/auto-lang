@@ -214,6 +214,15 @@ pub struct TerminalCore {
     /// 取此值而非按现时 history 重算——重绑飞行期内容再增长时,重算会
     /// 把基线污染成"增长量",增长漂移判别失效回灌复发)。
     bind_echo_offset: std::sync::atomic::AtomicI64,
+    /// PLAN-024 抖动持续环:前一绑定的回声位/offset(交替在途场景下,
+    /// 读出臂看到的常是**上一个** scroll_to 的落点;仅记当前回声会把
+    /// 它当真实观察回灌 → 两个 scroll_to 交错永续抖动,TRACE 直捕
+    /// view 0↔底 交替)。valid 标记区分"无前绑定"(0 是合法 y 值)。
+    bind_prev_echo_y_px: std::sync::atomic::AtomicI32,
+    bind_prev_echo_offset: std::sync::atomic::AtomicI64,
+    bind_prev_echo_valid: std::sync::atomic::AtomicBool,
+    /// 首次绑定标记(prev 回声移位的门)。
+    bind_echo_seen_flag: std::sync::atomic::AtomicBool,
     // PLAN-024 增长漂移判别(桌面轨实录:输出期滚动条反复抖动)——iced
     // scrollable 内容增长时保持绝对像素位,贴底视口被"顶离"底部,读出臂
     // 若误判为用户滚动回灌引擎,回灌与绑定交替 = 抖动。判别式:**贴底
@@ -261,6 +270,10 @@ impl TerminalCore {
             bind_gen: std::sync::atomic::AtomicU64::new(0),
             bind_echo_y_px: std::sync::atomic::AtomicI32::new(0),
             bind_echo_offset: std::sync::atomic::AtomicI64::new(0),
+            bind_prev_echo_y_px: std::sync::atomic::AtomicI32::new(0),
+            bind_prev_echo_offset: std::sync::atomic::AtomicI64::new(0),
+            bind_prev_echo_valid: std::sync::atomic::AtomicBool::new(false),
+            bind_echo_seen_flag: std::sync::atomic::AtomicBool::new(false),
             scroll_last_history: std::sync::atomic::AtomicUsize::new(0),
             scroll_last_view_y_bits: std::sync::atomic::AtomicU32::new(0),
             scroll_last_wheel_gen: std::sync::atomic::AtomicU64::new(0),
@@ -357,12 +370,37 @@ impl TerminalCore {
         self.wheel_gen.load(Ordering::Relaxed)
     }
 
-    /// bind 时登记期望回声位(px)+ 绑定 offset,并快照滚轮代数。
+    /// bind 时登记期望回声位(px)+ 绑定 offset,并快照滚轮代数;
+    /// 当前回声移位为前一回声(交替在途判别用)。
     pub(crate) fn record_bind_echo(&self, y_px: f32, offset: i64) {
         self.bind_gen
             .store(self.wheel_gen.load(Ordering::Relaxed), Ordering::Relaxed);
+        if self.bind_echo_seen() {
+            self.bind_prev_echo_y_px
+                .store(self.bind_echo_y_px.load(Ordering::Relaxed), Ordering::Relaxed);
+            self.bind_prev_echo_offset
+                .store(self.bind_echo_offset.load(Ordering::Relaxed), Ordering::Relaxed);
+            self.bind_prev_echo_valid.store(true, Ordering::Relaxed);
+        }
         self.bind_echo_y_px.store(y_px.round() as i32, Ordering::Relaxed);
         self.bind_echo_offset.store(offset, Ordering::Relaxed);
+        self.bind_echo_seen_flag.store(true, Ordering::Relaxed);
+    }
+
+    fn bind_echo_seen(&self) -> bool {
+        self.bind_echo_seen_flag.load(Ordering::Relaxed)
+    }
+
+    /// 前一绑定回声(offset, y_px);无前绑定 = None。
+    pub(crate) fn bind_prev_echo(&self) -> Option<(i64, i32)> {
+        if self.bind_prev_echo_valid.load(Ordering::Relaxed) {
+            Some((
+                self.bind_prev_echo_offset.load(Ordering::Relaxed),
+                self.bind_prev_echo_y_px.load(Ordering::Relaxed),
+            ))
+        } else {
+            None
+        }
     }
 
     pub(crate) fn bind_echo(&self) -> (u64, i32) {

@@ -365,40 +365,62 @@ impl<M: Clone> Terminal<M> {
 
     /// 读出臂状态机(draw 期 viewport 观察调用;headless 可测):视图 y
     /// → 目标 offset,返回需回灌引擎的行增量(None = 无增量/回声吞没)。
-    /// scroll_to 回声经 bind_suppress 吞一次(仅对齐基线,不回灌)。
     /// PLAN-024 增长漂移判别:贴底基线(target 基线 0)+ 视图 y 未动 +
     /// 滚轮代数未进,而历史增长 = iced scrollable 保持绝对像素位把贴底
     /// 视口顶离底部(内容增长,非用户滚动)——不回灌引擎(保持贴底),
     /// 挂 repin 由写臂绑回画布底。桌面轨实录:误回灌 + 绑定交替 =
     /// 输出期滚动条反复抖动;base>0(已滚向上)路径不变(内容锚定语义)。
+    /// PLAN-024 在途耐心 + 前回声匹配:桌面轨 scroll_to 着陆比独立窗
+    /// 多一帧——未着陆帧(视图未动、无滚轮)持抑制等待,不得把在途位
+    /// 当真实观察回灌(点火器);交替在途下读出臂看到的是**上一**绑定
+    /// 的落点(视图已动)——匹配前回声则按其 offset 对齐基线吞掉
+    /// (持续器)。视图已动且不匹配任何回声 = 真实观察,照旧回灌
+    /// (022 T-06 语义)。
     pub(crate) fn observe_view_scroll(
         core: &crate::ui::terminal::TerminalCore,
         view_y: f32,
         history: usize,
     ) -> Option<i32> {
         let target = Self::view_y_to_offset(view_y, history) as i64;
-        if core.scroll_bind_suppress_pending() {
-            let (bind_gen, echo_y) = core.bind_echo();
-            let user_moved = core.wheel_gen() != bind_gen;
-            let aligned = (view_y - echo_y as f32).abs() <= 4.0;
-            if !user_moved && aligned {
-                core.clear_scroll_bind_suppress();
-                // PLAN-024:基线取绑定登记的 offset(非按现时 hist 重算
-                // target)——重绑飞行期内容再增长时,重算值 = 增长量,
-                // 会把贴底基线污染成正偏移,增长漂移判别随之失效。
-                core.set_scroll_view_target(core.bind_echo_offset());
-                return None;
-            }
-            core.clear_scroll_bind_suppress();
-        }
-        // PLAN-024:增长漂移三条件判别(基线贴底/视图未动/滚轮未进),
-        // 判据先行落账(last_* 恒更新)再分支。
+        // 判别簿记先行落账(early-return 路径同样需要"上一拍"值)。
         let last_hist = core.scroll_last_history();
         let view_moved = (view_y - core.scroll_last_view_y()).abs() > 0.5;
         let wheel_advanced = core.wheel_gen() != core.scroll_last_wheel_gen();
         core.set_scroll_last_history(history);
         core.set_scroll_last_view_y(view_y);
         core.set_scroll_last_wheel_gen(core.wheel_gen());
+        if core.scroll_bind_suppress_pending() {
+            let (bind_gen, echo_y) = core.bind_echo();
+            let user_moved = core.wheel_gen() != bind_gen;
+            let aligned = (view_y - echo_y as f32).abs() <= 4.0;
+            if user_moved {
+                // T-06:滚轮代数已进 = 用户增量,不吞,立即照实回灌。
+                core.clear_scroll_bind_suppress();
+            } else if aligned {
+                core.clear_scroll_bind_suppress();
+                // 基线取绑定登记的 offset(非按现时 hist 重算 target)
+                // ——重绑飞行期内容再增长时,重算值 = 增长量,会把贴底
+                // 基线污染成正偏移,增长漂移判别随之失效。
+                core.set_scroll_view_target(core.bind_echo_offset());
+                return None;
+            } else if !view_moved {
+                // 在途耐心:无滚轮 + 未对齐 + 视图未动 = scroll_to 尚未
+                // 着陆(桌面轨一帧延迟),持抑制等下一拍——立即清除会把
+                // 在途位当真实观察回灌(抖动点火器,TRACE 直捕)。
+                return None;
+            } else if let Some((prev_off, prev_y)) = core.bind_prev_echo() {
+                if (view_y - prev_y as f32).abs() <= 4.0 {
+                    // 前一绑定落点(交替在途):按其 offset 对齐基线,
+                    // 当前绑定仍在途(抑制保留待其回声)。
+                    core.set_scroll_view_target(prev_off);
+                    return None;
+                }
+                core.clear_scroll_bind_suppress();
+            } else {
+                core.clear_scroll_bind_suppress();
+            }
+        }
+        // PLAN-024:增长漂移三条件判别(基线贴底/视图未动/滚轮未进)。
         if target > 0 && core.scroll_view_target() == 0 && !view_moved && !wheel_advanced {
             let grew = history.saturating_sub(last_hist);
             if grew > 0 {
@@ -1268,6 +1290,64 @@ mod virtual_scroll_tests {
         let d = Terminal::<u8>::observe_view_scroll(core, 320.0, 50);
         assert_eq!(d, Some(30), "滚轮代数已进 → 照常回灌(内容锚定)");
         assert!(!core.take_scroll_repin_pending(), "用户滚动不挂重绑");
+    }
+
+    #[test]
+    fn p024_inflight_landing_latency_does_not_feed() {
+        // 抖动点火器(TRACE 直捕,_desktop-jitter3-boot.log):贴底增长 →
+        // repin 绑画布底后,桌面轨 scroll_to 着陆多一帧——下一拍观察仍
+        // 见旧位(视图未动、无滚轮、未对齐)。旧逻辑清除抑制把在途位当
+        // 真实观察回灌 +Δ → 引擎跳最旧端 → 交替点火。期望:在途耐心,
+        // 持抑制回 None,等着陆。
+        let core = core("p024-inflight");
+        crate::ui::terminal::terminal_set_history(core, 20);
+        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 320.0, 20), None);
+        // 增长 → repin → 写臂绑底(镜像 build 调用方)。
+        crate::ui::terminal::terminal_set_history(core, 50);
+        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 320.0, 50), None);
+        let y = Terminal::<u8>::bind_request_y(core);
+        assert_eq!(y, Some(50.0 * 16.0), "贴底重绑画布底");
+        // 着陆延迟拍:视图仍在旧位 320(未动)——不得回灌。
+        let d = Terminal::<u8>::observe_view_scroll(core, 320.0, 50);
+        assert_eq!(d, None, "在途位不得当真实观察回灌");
+        assert!(core.scroll_bind_suppress_pending(), "在途保持抑制");
+        // 着陆(钳位差 1 行):视图已动 → 清抑制走正常回灌(小差值收敛);
+        // 泵侧应用增量(回写 offset,base 同步 = 泵语义)。
+        let d = Terminal::<u8>::observe_view_scroll(core, 49.0 * 16.0, 50);
+        assert_eq!(d, Some(1), "着陆后按真实差值回灌(钳位 1 行)");
+        crate::ui::terminal::terminal_queue_scroll_delta(core, 1);
+        crate::ui::terminal::terminal_set_scroll_offset(core, 1);
+        // 新绑定回声对齐 → 吞没收敛,基线 = 绑定 offset。
+        let y2 = Terminal::<u8>::bind_request_y(core);
+        assert_eq!(y2, Some(49.0 * 16.0));
+        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 49.0 * 16.0, 50), None);
+        assert_eq!(core.scroll_view_target(), 1, "基线收敛到绑定 offset");
+    }
+
+    #[test]
+    fn p024_alternating_binds_prev_echo_swallowed() {
+        // 抖动持续器:交替在途下读出臂看到的是**上一**绑定的落点(视图
+        // 已动、不匹配当前回声)——旧逻辑回灌反向大增量(±98 永续交替
+        // 实录)。期望:匹配前回声 → 按其 offset 对齐基线吞掉,不回灌。
+        let core = core("p024-alt-binds");
+        let hist = 99usize;
+        crate::ui::terminal::terminal_set_history(core, hist);
+        // 甲:引擎 99 → 绑 y=0(off 99);甲回声落地吞没,基线 99。
+        crate::ui::terminal::terminal_set_scroll_offset(core, 99);
+        assert_eq!(Terminal::<u8>::bind_request_y(core), Some(0.0));
+        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 0.0, hist), None);
+        assert_eq!(core.scroll_view_target(), 99);
+        // 视图漂到 1568(甲前序在途落点),真实回灌;基线随动 1。
+        let d = Terminal::<u8>::observe_view_scroll(core, 98.0 * 16.0, hist);
+        assert_eq!(d, Some(-98));
+        // 丙:引擎 5 → 绑 y=1504;前回声 = 甲(y=0, off=99)。
+        crate::ui::terminal::terminal_set_scroll_offset(core, 5);
+        assert_eq!(Terminal::<u8>::bind_request_y(core), Some(94.0 * 16.0));
+        // 视图被甲的迟落地拉回 0:视图已动、非当前回声(1504)、
+        // 匹配前回声(0)→ 按甲 offset(99)对齐吞掉,不回灌。
+        let d = Terminal::<u8>::observe_view_scroll(core, 0.0, hist);
+        assert_eq!(d, None, "前绑定落点不得当真实观察回灌");
+        assert_eq!(core.scroll_view_target(), 99, "基线对齐前绑定 offset");
     }
 
     #[test]
