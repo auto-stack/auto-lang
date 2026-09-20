@@ -4274,8 +4274,17 @@
      "status": "published",
      "created": "2026-09-20",
      "last_modified": "2026-09-20"
-    }
-   ]
+    },
+    {
+      "id": "P662-1",
+      "title": "ui-gallery 启动性能与视口滚动契约（六条）",
+      "content": "ui/overview.md §PLAN-662(SD-01):①行扫描磁盘缓存——per-demo 内容哈希仅文件行(relpath|len|mtime;目录 mtime NTFS 延迟落定实测漂移不入)走查 demo 目录+pac dep 路径依赖(stylekit memo),命中免 from_workspace;存储=~/.auto/auto-man/gallery-cache/<apps摘要>.json,AUTO_GALLERY_CACHE_DIR env 覆写,原子写+版本门+fail-open ②确定性守卫——命中/冷跑 registry.at 字节一致(serde 往返单测钉住) ③扫描并行——std::thread::scope 分块(每线程返回本块 join 合并),thread_local 注册表隔离+串并产物字节 diff 全等→默认核数,AUTO_GALLERY_SCAN_JOBS 覆写 ④VM 视口滚动——AppViewport.vm.at frame 内 overflow-y-auto 容器对齐 web 臂 demo-mount-root(demo h-screen 入定高 frame 底部不再裁死),frame 三态不变 ⑤apps 解析序补祖父级 auto-lang 探测(平铺主检出/worktree 组同形,主检出一键裸跑) ⑥非目标:懒加载证伪非靶(合并编译仅 3s)记远期/Vue vite 提速/语料高度链改写。实测:二次启动 83→5s、冷启 83→22s。",
+      "file": "docs/specs/auto-lang/ui/overview.md",
+      "related": ["PLAN-662", "PLAN-658", "PLAN-625", "GOAL-010"],
+      "status": "published",
+      "created": "2026-09-20",
+      "last_modified": "2026-09-20"
+    }]
   },
   {
    "id": "tests",
@@ -6682,8 +6691,17 @@
      "status": "published",
      "created": "2026-09-20",
      "last_modified": "2026-09-20"
-    }
-   ]
+    },
+    {
+      "id": "P662-2",
+      "title": "PLAN-662 复审合并收据",
+      "content": "review pass r1@198ae949d(=d5ec6d7b7 实现+SD docs-only 后裔,实现面零变化定向复验):AC-01..06 全 pass——AC-01 零 env 裸跑(os worktree)/AC-02 复审轮 4.3s 复现+冷启 22s/AC-03 三单测重跑绿(目录 mtime 漂移实测修正为仅文件行哈希)/AC-04 前后截图对照+复审实例 020 真实窗口交互日志/AC-05 串并字节 diff 全空+gallery 20/20+spot 6/6+cargo t 5265/5270 与 tf 3646/3648 零新增红(5+2 红全为 658/P661-D7 在案预存或环境红,本 diff 零触碰 auto-lang 由构造一致)/AC-06 os 产物 0778c28+P662-D1/D2 落册。同会话实施复审以 reviewed commit 复跑+工件重建缓解(R1)。",
+      "file": "docs/plans/662-gallery-fast-start-and-viewport.md",
+      "related": ["PLAN-662"],
+      "status": "published",
+      "created": "2026-09-20",
+      "last_modified": "2026-09-20"
+    }]
   }
  ]
 }
