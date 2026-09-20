@@ -1265,6 +1265,10 @@ mod tests {
                 fit: false,
                 desktop_visible: true,
                 opens: Vec::new(),
+                // PLAN-037 merge 语义补口：本字面量系 036 并行期新增
+                //（T-02 机械补字段后落 master），rebase 文本净但缺新字段。
+                media_root: None,
+                back_entry: None,
             },
         );
         {
