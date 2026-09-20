@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-663
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-viewport-boundary
 author: [agent]
 created_at: 2026-09-20
@@ -8,8 +8,8 @@ updated_at: 2026-09-20
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components: [widgets/viewport-boundary.md]
+touched_goals: []             # 无对应 GOAL-NNN（布局语义细化，无目标级变更）
 
 affects: [widgets/project.md]
 current_step: 6
@@ -108,8 +108,8 @@ fn rewrite_subtree(nodes, anchor):
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | add | widgets/project.md（布局语义节） | before: VM 臂 h-screen≈h-full→Fill，嵌入定高容器内塌缩为最小内容高；after: 视口单位在定高(px)嵌入边界内重锚定为边界高，窗口根不变 | iframe 语义对齐；修 gallery VM 臂塌缩 | AC-01/02/03 |
-| SD-02 | add | widgets/project.md（同节） | before: 垂直 auto-margin 未实现；after: my-auto/m-auto 定高列内安全居中（超高顶对齐） | CSS safe center 对齐，嵌入宿主纯 Tailwind 声明通道 | AC-07 |
+| SD-01 | add | widgets/viewport-boundary.md §1.1（新档；project.md 挂模块行） | before: VM 臂 h-screen≈h-full→Fill，嵌入定高容器内塌缩为最小内容高；after: 视口单位在定高(px)嵌入边界内重锚定为边界高，窗口根不变 | iframe 语义对齐；修 gallery VM 臂塌缩 | AC-01/02/03 |
+| SD-02 | add | widgets/viewport-boundary.md §1.2（同上） | before: 垂直 auto-margin 未实现；after: my-auto/m-auto 定高列内安全居中（超高顶对齐） | CSS safe center 对齐，嵌入宿主纯 Tailwind 声明通道 | AC-07 |
 
 ## 测试设计
 
@@ -159,6 +159,12 @@ task_ids: T-01..T-06 全闭环 |
 evidence: AC-01..02 单测 9/9（p663_* 滤串）；AC-03..06 截图验收五连（020 桌面/平板、027、001 居中、独立窗满窗）+C2 终版复拍；AC-07 变换单测；AC-08 `cargo t` 817/820 + `cargo tv` 2713/2715 + `cargo tf` 2558/2560（红集=在册预存红，差集空）；base 608399943 |
 blockers: 无 |
 next: review。
+
+（review 2026-09-20，实现会话自审——独立性限制已声明，裁定从工件重建）stage: review | plan_id: PLAN-663 | plan_revision: 1 | outcome: **pass** |
+reviewed_commit: worktree plan-663-dev tip 3fba31cbe（含 F1/F2 修正）| base_commit: 608399943 | dependency_revisions: auto-down d1a83b6（detached 依赖位） | spec_inputs: docs/specs/widgets/viewport-boundary.md（新，53 行，本 review 冻结=worktree c9f993f89 版+行级模块表） |
+acceptance_results: AC-01 pass（fresh 复跑 test_parse_plan527_t3_layout_extensions 绿+diff hunk 审计：Screen/Full 分离+Fill 缺省臂）；AC-02 pass（p663_ 9/9 fresh 复跑+pre-pass hunk 审计：px-only/嵌套换锚/轴独立/下潜链）；AC-03..06 pass（五连截图：020 桌面 1789881638196/平板 1789881640176/027 p663_027_take2/001 1789881647208/独立窗 …2562978+终版复拍 p663_020_final_c2——以实现会话所摄为证，vue 臂对拍子方法省略：vue 臂零改动零影响，VM 截图已证 AC 本体）；AC-07 pass（p663_margin_y_auto_* 两测）；AC-08 pass（tf 2558/2560 红集=在册预存红差集空；check -p auto 绿） |
+findings: F-663-R1(已修,commit 3fba31cbe 前)=误夹带生成物嵌套拷贝 crates/a2r-actor-tests/a2r-actor-tests/** 入 T-01 提交——已 git rm；F-663-R2(已修,3fba31cbe)=expand_margin_y_auto_walk 残留死代码 style_owned；F-663-R3(非阻塞,记录)=b69f4f063 为含 F1 内容的过渡提交,随 F1 删除在树层面自愈,历史保留；规范增量落点由计划草案的 project.md 内联修正为新档 viewport-boundary.md（frontmatter 已同步定稿） |
+evidence: scratch/shots/*.png（六张验收截图,worktree 清理后以本记录文字描述+commit 链为持久凭据）| next: merge。
 
 ## 待澄清事项
 
