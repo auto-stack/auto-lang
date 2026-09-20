@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-667
-status: executing
+status: execution_done
 feature_name: 现有内存安全底线加固与支持边界
 作者说明: 本计划仅处理当前机制漏洞；下一版内存模型另案设计。
 author: [Codex]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 6
 supersedes_spec_components:
   - docs/specs/auto-lang/types/design/ownership.md
@@ -134,16 +134,30 @@ RC 审计覆盖本次复现触及的 LOAD/STORE/POP/RET、容器替换和捕获�
 
 | ID | 依赖 | 文件/符号与操作 | 结果及验收 | 验证 |
 |---|---|---|---|---|
-| T-01 | revision 1 确认 | 上述 F-01..07 符号、既有 tests 入口；创建专用 worktree，新增 evidence 报告和探针模块，确定最小修复/受限策略及影响入口 | 调查决策不超过本计划范围；若需新模型/L2 先修订；AC-01 | cargo check -p auto-lang；cargo t plan667，记录修复前失败与正例；git diff --check |
-| T-02 | T-01 | vm/engine.rs Closure/捕获读写、vm/codegen.rs compile_closure、vm/task.rs/virt_memory.rs 按实际守卫需要修改 | 捕获有效期与帧身份安全闭环；AC-02 | cargo t plan667（捕获矩阵） |
-| T-03 | T-01,T-02 | vm/rc.rs 持有/释放/回收/统计及复现触及的 engine/native 生产点 | 正确持有取代宽限保活、纯统计与显式收尾分离；AC-03 | cargo t plan667；cargo t plan510（池计数回归） |
-| T-04 | T-01 | trans/escape/{analyzer,escape_map}.rs、trans/rust.rs 生成查询/emit_borrow | 绑定身份、捕获漏判、未知形式及有害 fallback 修复/诊断；AC-04,AC-05 | cargo t plan667；cargo tt（含新增生成后编译/运行验证） |
-| T-05 | T-02,T-03,T-04 | 测试模块及 evidence 报告；编写 SD-01..04 待合入 Spec delta，KNOWN-DEBT-AND-RISKS.md 清偿/限制证据 | 支持矩阵及门禁结果；AC-01..07 | cargo check -p auto-lang；cargo tv；cargo tt（若 T-04 后无变化复用结果）；需要时最终 cargo tf |
+| T-01 | revision 1 确认 | [x] worktree .wt/lang-667（组内补 auto-down 依赖位）；21 探针模块+evidence 报告；F-01..07 全部静态实锤（另发现 STORE_CAPTURED 双 pop/标签截断/env 漏 stake/祖父帧错锚 四个同族缺陷）；修复策略=帧身份表+RC 三重门+analyzer 下降/折叠/fail-closed | 调查决策不超过本计划范围；AC-01 | cargo check 绿；红基线 12 红 9 绿在案（evidence §1） |
+| T-02 | T-01 | [x] task.rs frame_ids 帧身份表+engine.rs 守卫/CLOSURE/LOAD/STORE_CAPTURED 重写；提交 f181051ba | 捕获矩阵 7/7 绿（正例 3 保护+拒绝 4）；AC-02 | cargo t plan667 绿；closures/known_limits 回归绿 |
+| T-03 | T-01,T-02 | [x] rc_stats 纯化+rc_retain_id 存在性门+rc_push_slot 份额出处门+防御补持收紧 tagged+stdlib 裸推迁移；提交 5c8f5ce8e | RC 矩阵 5/5 绿；P419_UAF_TRACE 事件链取证整数零 retain；AC-03 | cargo t plan667 绿；cargo t plan510 8/8 绿 |
+| T-04 | T-01 | [x] analyzer 闭包自由变量下降+fold_to_root+Try/Reply+fail-closed+emit_borrow 双拒绝；提交 faaeeaf0e | a2r 矩阵 9/9 绿+rustc 实编正例绿；AC-04,AC-05 | cargo t plan667 绿；cargo tt 与 stash 基线零差 |
+| T-05 | T-02,T-03,T-04 | [x] SD-01..04（含新文件 memory-safety-boundary.md）+evidence 完整化+design/04 纠正+P667-D1/D2 债入册；提交 bc186a39b | 支持矩阵及门禁结果；AC-01..07 | tv 仅 2 预存红；tf(no-fail-fast) 仅 6 预存红（stash 双跑归因，零新增）|
 | T-06 | T-05 | auto-plan-review 独立复审，逐 AC/遗漏/workaround/警告检查；通过后 auto-plan-merge 沉淀 Specs、归档、guard 后清理 | 修订与代码版本绑定的 review pass；AC-07 | review/merge 规定检查；python scripts/spec-index.py；bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-667/auto-lang 必须 clean |
 
 不因单个失败难复现而删除验收项；不在主检出实现/测试；不创建 worktree junction/symlink。
 
 ## 9. 复审记录
+
+
+2026-09-20 work 执行记录（auto-plan-work）：
+- stage: work
+- plan_id: PLAN-667
+- plan_revision: 1
+- outcome: pass
+- code_commit: bc186a39b（T-05；前序 f181051ba T-02 / 5c8f5ce8e T-03 / faaeeaf0e T-04；基线 21f0b7f72）
+- worktree: D:/autostack/.wt/lang-667/auto-lang（plan-667-dev；组内 auto-down 依赖位 detached fba6563ed）
+- task_ids: T-01..T-05 完成；T-06（独立复审+merge）待 auto-plan-review/auto-plan-merge
+- evidence: docs/plans/reports/667-memory-safety-evidence.md（21 探针全绿、门禁账、支持边界矩阵、既有红 stash 双跑归因）；探针 crates/auto-lang/src/plan667_memory_safety_tests.rs
+- 门禁：cargo check 零新增警告；cargo t plan667 21/21；plan510 8/8；tv 零新增红（2 预存 ui_gen）；tt 零新增红（4+2 预存）；tf(no-fail-fast) 零新增红（6 预存）；rustc 实编正例绿（--run-ignored=only）
+- blockers: 无
+- next: auto-plan-review 独立复审（绑定 revision 1 + bc186a39b）→ auto-plan-merge 沉淀/归档/清理
 
 2026-09-20 起草自检：任务覆盖 AC-01..07 和 SD-01..04；候选漏洞与动态证据明确分离；第一阶段范围已授权，revision 1 按仓规待确认。无代码实施及安全保证完成声明。
 - stage: new
