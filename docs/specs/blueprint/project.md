@@ -33,6 +33,12 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
   纯布局+slot）+ filetree 组合形态（跨文件 fn 携带件）。抽取判定记录
   （design 30 §6 四通道，9 单元首批判定）= auto-down
   `docs/plans/attachments/075-bp-extraction-record.md`。
+  **第四单元 `sandwich`（PLAN-665，SD-01）**：`layout/sandwich` 桌面
+  上中下三层壳骨架（fn-free + 四 slot 出口 toolbar/sidebar/content/
+  statusbar；default/full 双变体，full 嵌 content 组合消费）——slot 形态
+  首证单元；AC-04 几何断言（statusbar 贴底/content ≥300px）物化 655/663
+  高度语义教训为回归锚；VM 断言面经 T-00 实证升级为含 slot 填充 needle
+  （snapshot v2(rendered) 可见 bp 子树，root 投影叠加不替换）。
 - 不做：`auto bp` 命令实现本体在 auto-cli（cmd_bp）；组件原语在 packages/widgets；
   运行时动态插件/manifest 加载（终态另议）。
 
@@ -115,6 +121,7 @@ graph LR
 | form/wizard | 分步向导 blueprint | active |
 | navigation/sidebar-nav | 侧边导航（三段式内容）blueprint | active |
 | navigation/sidebar-shell | 应用壳 blueprint（header + sidebar + 内容槽 + user menu） | active |
+| layout/sandwich | 桌面三层壳骨架 blueprint（toolbar/sidebar/content/statusbar 四 slot 出口；default/full，PLAN-665） | active |
 | dashboard/overview | 仪表盘总览 blueprint | active |
 | data-display/note-list | 笔记列表展示 blueprint | active |
 | data-display/data-table-crud | 查询表格 CRUD blueprint | active |
@@ -144,7 +151,7 @@ sidebar 壳承载导航（content slot 注入主区）、主区按 app model `ac
 
 **参数化修整先例（PLAN-657，frontmatter 契约面零改动）**：被消费的 5 个
 reference 变体参数化对齐各自 frontmatter 已声明契约（`FileTree(nodes, …)`
-filetree 先例的推广）；官方集 14 包其余 reference 仍为无参脚手架——
+filetree 先例的推广）；官方集 15 包其余 reference 仍为无参脚手架——
 **参数化规范成文是 Tier 1 扩容前置项**。
 
 **组装摩擦结论（Tier 1 / vm-component-parity 排期输入，完整清单与分级见
