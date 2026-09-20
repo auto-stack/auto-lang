@@ -40,6 +40,18 @@ plan-637 共 16 个 demo 以此形态消费（capability-tests/style-import 为�
 （auto-lang 内实现）；auto-man 物化（junction/symlink/worktree，Plan 475）
 与该门控正交互补。
 
+## 脚手架类型面与阶段契约（PLAN-668 SD-01/SD-02）
+
+- **SD-01（tsconfig 类型面）**：gen 模板 `tsconfig.json` 的 `compilerOptions.types`
+  显式含 `"vite/client"`——`main.ts` 使用 `import.meta.env`（Vite 注入全局），
+  无此类型则 `auto build` 的 vue-tsc 面全体示例 TS2339（P660-D1/P657-D2② 根修，
+  vue.rs `generate_tsconfig`）。
+- **SD-02（auto-sources 阶段序）**：`src/auto-sources.ts`（Select Anything 源码
+  映射，PLAN-646）由 `write_auto_sources_ts` 在 **run 与 build 两阶段**产出（内容
+  hash 防抖）——此前仅 `auto run` 写入，`auto build` 的 vue-tsc 面上 overlay.ts
+  的 `import from '../auto-sources'` 落 TS2307（P657-D2① 根修，vue.rs
+  `build_vue_project` 开头补写）。
+
 ## pac.at 四名称契约（PLAN-015）
 
 每个 AutoUI app 在 pac.at 声明四个名称，展示名与工程标识解绑：
