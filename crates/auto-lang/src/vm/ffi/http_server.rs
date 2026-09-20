@@ -692,7 +692,7 @@ fn value_to_json(vm: &crate::vm::engine::AutoVM, value: &auto_val::Value, depth:
 }
 
 /// Escape a string as a JSON string literal (with surrounding quotes).
-fn json_escape_string(s: &str) -> String {
+pub(crate) fn json_escape_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {
@@ -2527,25 +2527,38 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
         let result_json: Option<String> = if let Some(handler_task_arc) = vm.tasks.get(&handler_task_id) {
             let mut ht = handler_task_arc.blocking_lock();
 
-            let mut n_args = 0;
-            for (_param_name, param_val) in &route_match.path_params {
-                // Plan 326 Phase 5: path params arrive as strings, but handlers
-                // often declare them as `id int`. Try to parse as i32 first; if
-                // it's a pure integer literal, inject as i32 so the handler
-                // receives the right type. Non-numeric params stay strings.
-                // (Long-term: codegen should record per-param types in api_routes
-                //  so we can convert exactly. See plan §2 Phase 5.)
-                if let Ok(i) = param_val.parse::<i32>() {
-                    ht.ram.push_i32(i);
-                } else {
-                    push_str_arg(vm, &mut ht, &param_val);
+            // PLAN-669: by-name binding when the fn's sigs are published;
+            // legacy positional convention otherwise (see
+            // bind_api_args_or_legacy — shared across all sync-serve sites).
+            let bind_result: Result<usize, ApiArgBindError> = bind_api_args_or_legacy(
+                vm,
+                &mut ht,
+                &route_match.fn_name,
+                &route_match.path_params,
+                &route_match.query_params,
+                &body,
+                &req_method,
+                &req_path,
+            );
+            let n_args = match bind_result {
+                Ok(n) => n,
+                Err(e) => {
+                    drop(ht);
+                    vm.tasks.remove(&handler_task_id);
+                    let (status, msg) = match e {
+                        ApiArgBindError::BadRequest(m) => ("400 Bad Request", m),
+                        ApiArgBindError::Internal(m) => ("500 Internal Server Error", m),
+                    };
+                    eprintln!("[HTTP] {} {} → {} ({})", req_method, req_path, status, msg);
+                    let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
+                    let resp = format!(
+                        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+                        status, err_body.len(), cors_headers(), err_body
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                    continue;
                 }
-                n_args += 1;
-            }
-            if !body.is_empty() {
-                push_str_arg(vm, &mut ht, &body);
-                n_args += 1;
-            }
+            };
 
             match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
                 Ok(()) => {
@@ -3519,6 +3532,58 @@ const META_PARAM_NAMES: [&str; 4] = ["meta", "metadata", "req", "request"];
 
 fn is_meta_param_name(name: &str) -> bool {
     META_PARAM_NAMES.contains(&name.trim().to_lowercase().as_str())
+}
+
+/// PLAN-669 sync-serve sites (serve_blocking_stdnet, run_http_server_blocking,
+/// shim_http_server_listen): by-name bind when the fn's sigs are published,
+/// else the legacy positional convention. Err → caller writes a 400/500
+/// response and skips the handler call. No metadata source on these loops —
+/// a meta-convention param 400s with a named error instead of garbage.
+pub(crate) fn bind_api_args_or_legacy(
+    vm: &crate::vm::engine::AutoVM,
+    ht: &mut crate::vm::task::AutoTask,
+    fn_name: &str,
+    path_params: &[(String, String)],
+    query_params: &[(String, String)],
+    body: &str,
+    method: &str,
+    req_path: &str,
+) -> Result<usize, ApiArgBindError> {
+    if let Some(sigs) = api_param_sigs(fn_name) {
+        let route_match = RouteMatch {
+            fn_name: fn_name.to_string(),
+            path_params: path_params.to_vec(),
+            query_params: query_params.to_vec(),
+        };
+        let body_json: Option<serde_json::Value> = serde_json::from_str(body).ok();
+        bind_api_args_by_name(
+            vm,
+            ht,
+            &sigs,
+            &route_match,
+            body_json.as_ref(),
+            body,
+            None,
+            method,
+            req_path,
+        )
+    } else {
+        let mut n_args = 0;
+        for (_param_name, param_val) in path_params {
+            // Plan 326 Phase 5 legacy heuristic (no sigs published).
+            if let Ok(i) = param_val.parse::<i32>() {
+                ht.ram.push_i32(i);
+            } else {
+                push_str_arg(vm, ht, param_val);
+            }
+            n_args += 1;
+        }
+        if !body.is_empty() {
+            push_str_arg(vm, ht, body);
+            n_args += 1;
+        }
+        Ok(n_args)
+    }
 }
 
 /// Build handler arguments on the task's stack (path params + body).

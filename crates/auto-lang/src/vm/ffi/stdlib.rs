@@ -4369,7 +4369,7 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
     };
     eprintln!("[HTTP] Server listening on {}", addr);
 
-    let routes = get_http_routes();
+    let routes = super::http_server::get_routes();
 
     for stream in listener.incoming() {
         let mut stream = match stream {
@@ -4423,8 +4423,9 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
             continue;
         }
 
-        // Route matching
-        let (fn_name, path_params) = match find_route(&routes, &req_method, &req_path) {
+        // Route matching (PLAN-669: shared match_route — query-string split
+        // + percent-decode, superseding the local find_route).
+        let route_match = match super::http_server::match_route(&routes, &req_method, &req_path) {
             Some(m) => m,
             None => {
                 let resp = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot Found";
@@ -4439,23 +4440,38 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
             // blocking_lock is safe: we're on a std::thread, NOT in tokio context
             let mut ht = handler_task_arc.blocking_lock();
 
-            let mut n_args = 0;
-            for (_param_name, param_val) in &path_params {
-                // Plan 326 Phase 5: inject numeric path params as i32 so handlers
-                // declaring `id int` receive the right type. Non-numeric → string.
-                if let Ok(i) = param_val.parse::<i32>() {
-                    ht.ram.push_i32(i);
-                } else {
-                    crate::vm::ffi::http_server::push_str_arg(vm, &mut ht, &param_val);
+            // PLAN-669: by-name binding (shared with the other serve sites);
+            // bind failures → 400/500 instead of calling with wrong args.
+            let n_args = match super::http_server::bind_api_args_or_legacy(
+                vm,
+                &mut ht,
+                &route_match.fn_name,
+                &route_match.path_params,
+                &route_match.query_params,
+                &body,
+                &req_method,
+                &req_path,
+            ) {
+                Ok(n) => n,
+                Err(e) => {
+                    drop(ht);
+                    vm.tasks.remove(&handler_task_id);
+                    let (status, msg) = match e {
+                        super::http_server::ApiArgBindError::BadRequest(m) => ("400 Bad Request", m),
+                        super::http_server::ApiArgBindError::Internal(m) => ("500 Internal Server Error", m),
+                    };
+                    eprintln!("[HTTP] {} {} → {} ({})", req_method, req_path, status, msg);
+                    let err_body = format!("{{\"error\":{}}}", super::http_server::json_escape_string(&msg));
+                    let resp = format!(
+                        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        status, err_body.len(), err_body
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                    continue;
                 }
-                n_args += 1;
-            }
-            if !body.is_empty() {
-                crate::vm::ffi::http_server::push_str_arg(vm, &mut ht, &body);
-                n_args += 1;
-            }
+            };
 
-            match vm.call_fn_by_name(&mut ht, &fn_name, n_args) {
+            match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
                 Ok(()) => {
                     let nv = ht.ram.pop_nv();
                     // Plan 326 Phase 3: delegate to shared serializer (handles
@@ -4463,7 +4479,7 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
                     super::http_server::nv_to_json(vm, nv, 0)
                 }
                 Err(e) => {
-                    eprintln!("[HTTP] Handler '{}' error: {:?}", fn_name, e);
+                    eprintln!("[HTTP] Handler '{}' error: {:?}", route_match.fn_name, e);
                     None
                 }
             }
@@ -4503,7 +4519,7 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     eprintln!("[HTTP] Server listening on {}", addr);
 
     // Clone routes for the listen loop (avoid holding lock during requests)
-    let routes = get_http_routes();
+    let routes = super::http_server::get_routes();
 
     for stream in listener.incoming() {
         let mut stream = match stream {
@@ -4557,9 +4573,10 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             continue;
         }
 
-        // Route matching: find (method, path) match with :param support
-        let (fn_name, path_params) = match find_route(&routes, &req_method, &req_path) {
-            Some(match_result) => match_result,
+        // Route matching (PLAN-669: shared match_route — query-string split
+        // + percent-decode, superseding the local find_route).
+        let route_match = match super::http_server::match_route(&routes, &req_method, &req_path) {
+            Some(m) => m,
             None => {
                 let resp = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\nConnection: close\r\n\r\nNot Found";
                 let _ = stream.write_all(resp.as_bytes());
@@ -4573,24 +4590,38 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             // tokio::sync::Mutex — use blocking_lock() for sync context
             let mut ht = handler_task_arc.blocking_lock();
 
-            // Push path params as args (path params first, then body)
-            let mut n_args = 0;
-            for (_param_name, param_val) in &path_params {
-                // Plan 326 Phase 5: numeric params → i32, otherwise string.
-                if let Ok(i) = param_val.parse::<i32>() {
-                    ht.ram.push_i32(i);
-                } else {
-                    crate::vm::ffi::http_server::push_str_arg(vm, &mut ht, &param_val);
+            // PLAN-669: by-name binding (shared with the other serve sites);
+            // bind failures → 400/500 instead of calling with wrong args.
+            let n_args = match super::http_server::bind_api_args_or_legacy(
+                vm,
+                &mut ht,
+                &route_match.fn_name,
+                &route_match.path_params,
+                &route_match.query_params,
+                &body,
+                &req_method,
+                &req_path,
+            ) {
+                Ok(n) => n,
+                Err(e) => {
+                    drop(ht);
+                    vm.tasks.remove(&handler_task_id);
+                    let (status, msg) = match e {
+                        super::http_server::ApiArgBindError::BadRequest(m) => ("400 Bad Request", m),
+                        super::http_server::ApiArgBindError::Internal(m) => ("500 Internal Server Error", m),
+                    };
+                    eprintln!("[HTTP] {} {} → {} ({})", req_method, req_path, status, msg);
+                    let err_body = format!("{{\"error\":{}}}", super::http_server::json_escape_string(&msg));
+                    let resp = format!(
+                        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        status, err_body.len(), err_body
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                    continue;
                 }
-                n_args += 1;
-            }
-            // Push body if present (for POST/PUT)
-            if !body.is_empty() {
-                crate::vm::ffi::http_server::push_str_arg(vm, &mut ht, &body);
-                n_args += 1;
-            }
+            };
 
-            match vm.call_fn_by_name(&mut ht, &fn_name, n_args) {
+            match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
                 Ok(()) => {
                     // Result is on top of stack — decode via shared serializer
                     // (Plan 326 Phase 3: handles struct/array/Option returns).
@@ -4598,7 +4629,7 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
                     super::http_server::nv_to_json(vm, nv, 0)
                 }
                 Err(e) => {
-                    eprintln!("[HTTP] Handler '{}' error: {:?}", fn_name, e);
+                    eprintln!("[HTTP] Handler '{}' error: {:?}", route_match.fn_name, e);
                     None
                 }
             }
@@ -4622,40 +4653,6 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     }
 
     Ok(())
-}
-
-/// Plan 312: Find a matching route for (method, path). Supports :param extraction.
-/// Returns (fn_name, Vec<(param_name, param_value)>).
-fn find_route(
-    routes: &[(String, String, String)],
-    method: &str,
-    path: &str,
-) -> Option<(String, Vec<(String, String)>)> {
-    for (route_method, route_pattern, fn_name) in routes {
-        if route_method.to_uppercase() != method.to_uppercase() {
-            continue;
-        }
-        // Match path with :param support
-        let route_segments: Vec<&str> = route_pattern.split('/').collect();
-        let path_segments: Vec<&str> = path.split('/').collect();
-        if route_segments.len() != path_segments.len() {
-            continue;
-        }
-        let mut params = Vec::new();
-        let mut matched = true;
-        for (rs, ps) in route_segments.iter().zip(path_segments.iter()) {
-            if rs.starts_with(':') {
-                params.push((rs[1..].to_string(), ps.to_string()));
-            } else if rs != ps {
-                matched = false;
-                break;
-            }
-        }
-        if matched {
-            return Some((fn_name.clone(), params));
-        }
-    }
-    None
 }
 
 /// Create a new HTTP response
