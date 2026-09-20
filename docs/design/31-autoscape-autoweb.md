@@ -23,6 +23,11 @@ AppRealm / AppSession 模型中。
 > **设计原则**：URI 表示"是什么"；Intent 表示"要做什么"；Provider 表示"在哪里、如何运行"。
 > **应用身份不随 VM、EXE、RenderQueue 或远程执行方式变化。**
 
+> **定位裁定（用户 2026-09-20）**：AutoScape 表面是浏览器，内核是 **app 容器虚拟机**——每个
+> AppRealm 拥有**目录级文件沙箱 + 沙箱内 sqlite**（§6.1），app 制品（.at 源 + 编译产物）**安装式
+> 本地缓存**（不重复下载）。对标 WASI preopen / Android Runtime / JVM+安装器，**不复制**浏览器
+> localStorage 式 quota 箱模型。
+
 AutoUI 已可由 Auto VM 直接解释，也可经 a2r 将前端转译为 Vue、后端转译为 Rust 服务；AutoDown 又能
 flip 为与 AutoUI 同构的 Auto 代码。因此 AutoUI/AutoDown 已具备类似 HTML+CSS+JS 的
 "可网络分发 UI 描述"属性——这是"Auto 原生 Web"成立的物质基础。
@@ -186,6 +191,38 @@ resource://session/8dd7...
 ```
 
 - NativeProvider 的 EXE 按安装来源、签名、声明权限与用户授权分信任等级。
+
+### 6.1 存储沙箱裁定（用户 2026-09-20）
+
+**裁定**：不做浏览器式抠搜存储（localStorage quota 箱），改为**目录即沙箱**：
+
+1. **文件夹沙箱**：每个 AppRealm 一个沙箱目录，app 可像本地文件一样任意建立/读写，但**任何
+   文件操作不得越出沙箱**（路径包含：canonicalize 后前缀校验，VM 文件面单点实现——
+   `vm/io.rs` + `native.rs` fs.* 模块即咽喉点）。
+2. **沙箱 sqlite**：每 Realm 附一个 sqlite 数据库文件（位于沙箱目录内），路径包含自动覆盖，
+   无需独立数据库权限系统。`db.*` 内建命名空间，`db.open("app.db")` → `<sandbox>/app.db`。
+   （补真实缺口：examples 现有 "db" 均为内存种子数据，`d013todo_db.at` 实证，持久化一直缺位。）
+3. **存储分区键控**："区分 local 和 host"——`app://auto.x`（本地应用）与 `https://a.com`
+   （网络主机）各得一份独立沙箱，per-identity 持久。
+4. **安装式制品缓存**：app 本体（.at 源码 + 编译产物）本地落盘，**二次访问零下载零编译**——
+   三层映射：.at 源（可读层）→ ABC 字节码（内容 hash 键控）→ a2r 编译 exe（native 提供者形
+   态）。基建先例：AutoCache（Design 09）+ PLAN-662 制品缓存（5s 二次启动即其功劳；NTFS
+   mtime 延迟落定的坑已在册）。
+
+**随裁定登记的实现要点**（不阻塞，落地计划须覆盖）：
+
+| # | 要点 | 说明 |
+|---|---|---|
+| S1 | 粒度调和：per-tab vs per-identity | 沙箱根按 **app 身份/origin 键控**（持久）；普通 tab 拿该根的句柄（同站第二 tab 能看到第一 tab 存的数据，"保留"才成立）；**私有 tab 拿一次性根**（关闭即焚）。进程级隔离与身份级持久各归其位 |
+| S2 | Windows 逃逸面 | junction/symlink 是目录沙箱经典逃逸（本仓 worktree junction 事故同族教训）：包含检查必须 canonicalize 后前缀比对，**拒绝在沙箱内创建 symlink/junction**（或解析后仍须包含）；大小写不敏感入 canonical 形式 |
+| S3 | 文件夹沙箱 ≠ API 门禁 | 路径包含只管文件系统；desktop bus / native catalog / shell_bridge / 任意网络访问仍需粗粒度关闸（网络来源关特权内建）。**两道门正交，缺一不可**（发行红线不变） |
+| S4 | 网络访问策略 v1 | 仅同 origin + ServiceBinding 显式声明的外部 endpoint 白名单（与 §9.3 logical service 天然衔接） |
+| S5 | 配额与管理面 | 沙箱要有配额上限（防填盘）+ 管理 UI（"该站占 X MB / 清除"）——归 Permission UI/Downloads 面，v0.6 最小做列出+删除 |
+| S6 | 更新语义 | 安装式缓存引出版本比对：v0.6 最小 = 启动时 hash/ETag 比对、有新版提示换装（§15 Cache/Update 节的首次消费方） |
+
+**战略含义**：存储层跟上限位后，整个体系自洽——AppRealm/AppSession 本就是 app 语义而非文档
+语义，AutoScape 不是"能跑 app 的浏览器"，是"**长得像浏览器的 app 运行时**"；"网站"经一次访问
+即成为"免安装的本地 app"。
 
 **分期注记（融入版）**：本地 dev-only 阶段（app:// + file:// + Dev Registry）可先以"inproc 信任
 模型 + 无跨进程隔离"运行（与现状 459 panic 隔离同级）；**https AutoWeb 加载解锁前本层必须建成**
@@ -356,17 +393,29 @@ App/Service 语义，仅替换 Resolver/Deployment backend。
    rewrite——Gallery 只存 Demo 逻辑 App URI（#9，第一 dogfood）；
 5. AutoScape 薄壳：Omnibar/Tab/history（本地 app://、file:// 导航即可发布）（#10）。
 
-**M2 — 网络 AutoWeb（v0.7+）**
-6. 安全模型建成（#13，硬前置）→ AutoWeb Deployment Resolver + ServiceBinding，HTTPS 动态加载（#12）；
-7. Permission UI、Downloads、DevTools 扩展；Typed RPC 可选项推进。
+**M2-lite — 网络最小面（v0.6 建议纳入，2026-09-20 复核；范围待用户终裁）**
+6. https 加载：Deployment Descriptor（JSON 清单）+ 制品下载进**安装式缓存**（§6.1 ④）+ 装载；
+   服务端 = Auto HTTP Server 标准库自托管 demo 站（最强 dogfood，reqwest 已是依赖）；
+7. 存储沙箱 §6.1 全套（文件夹沙箱 + sqlite + per-identity 分区 + 安装缓存）+ 粗粒度 API 关闸
+   （S3 第二道门）；
+8. **发行红线（不可让步）**：关闸与 https 加载**同船发行**——不存在"先能加载、后补安全"；
+   网络来源一律无特权内建。
+
+**M2-full — 完整 AutoWeb（v0.7+）**
+9. 细粒度 capability 模型与 resource:// 句柄、签名/发布者身份；Permission UI/Downloads/DevTools
+   扩展；Typed RPC；内容协商/a2r representation fallback；离线/缓存/更新完整语义。
 
 **M3 — 兼容与远程（v1.0 线）**
-8. Legacy HTML handler / WebView 兼容（#15）；
-9. RemoteProvider / Semantic Stream 桌面化（#16）。
+10. Legacy HTML handler / WebView 兼容（#15）；
+11. RemoteProvider / Semantic Stream 桌面化（#16；技术预览候选 = v1.4 WS DrawList 镜像 + token
+    鉴权包成"远程会话"Tab，Playwright 点击闭环已验证，不打产品承诺）。
 
 **M1 验收标准（沿原稿）**：Gallery 能仅通过 app:// / URL 动态发现并加载任意 Demo；每个 Demo 保持
 独立 AppSession 和 backend binding；可一键在 AutoScape 新 Tab 打开；Host 不再预先整合 Demo 源码或
-后端。**明确不做**（v0.6）：https AutoWeb 加载、安全沙箱全量、legacy HTML、RemoteProvider。
+后端。**M2-lite 追加验收**：自托管 demo 站经 https:// 一次访问即安装缓存，二次访问零下载零编译、
+数据落在该站沙箱且重启可见；网络来源 app 调特权内建被关闸拒收留痕。
+**明确不做**（v0.6）：细粒度 capability/签名、Typed RPC、内容协商 fallback、legacy HTML、
+RemoteProvider 产品化（技术预览除外）。
 
 ## 14. 待决问题
 
@@ -388,6 +437,8 @@ App/Service 语义，仅替换 Resolver/Deployment backend。
   上；AutoFrame 独立会话后启动体验需复测（编译仅 ~3s/全量的量级，风险可控但须数据行）。
 - **（新增）M1 的信任模型口径**：dev-only（inproc、无权限强制）是否作为 v0.6 发布口径明示，避免
   "AutoScape 已安全"的误读。
+- **（新增）沙箱粒度终裁**：§6.1 S1 提出的"身份键控持久 + 私有 tab 一次性根"是对"每 tab 独立
+  沙箱目录"与"站点数据保留"两说的调和方案，待用户终裁（或裁定真·每 tab 独立 + 显式共享语义）。
 - **（新增）Launcher 迁移时序**：统一 launch(Intent) 是 M1 内完成还是 M2（影响 028-launcher 与
   desktop_registry 的改造排期）。
 
