@@ -299,4 +299,8 @@ plan-665-dev`（本计划纯资产+examples，预计无 auto-down 依赖位；�
     双臂全绿（main 自身 exe+资产）。
   - **archived**：本文件 git mv 至 docs/plans/archive/665-bp-sandwich.md，
     status: archived，completion_kind: delivered。
-  - **cleaned**：（待清理完成后回填）
+  - **cleaned**：双 worktree 复跑 wt-guard clean + git clean（dev tip 9725d0c30
+    已全并入 master 实证）；`git worktree remove` lang-665/{auto-lang,auto-down} +
+    分支 plan-665-dev/lang-665-dep 删除；组目录 .wt/lang-665（含 scratch/ 探针
+    工件,junction 先期已摘）移除；worktree 注册零残留。D-1 命名窗口随归档关闭
+    （最终名=sandwich）。
