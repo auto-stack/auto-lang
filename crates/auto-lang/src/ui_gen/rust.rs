@@ -140,8 +140,23 @@ pub struct RustGenerator {
     /// Whether the widget has an .Init lifecycle handler
     has_init: bool,
 
-    /// Info about the API function called in .Init handler (for async init generation)
+    /// Info about the API function called in .Init handler (async init generation)
     init_api_info: Option<InitApiInfo>,
+
+    /// PLAN-039 D5（§5.1 定案记录）：outlet 折平策略——generate_rust 读
+    /// widget.routes 装配，Outlet 臂消费。
+    outlet_route: OutletRoute,
+}
+
+/// PLAN-039 D5（§5.1 定案记录）：`routes{"/"->use X}` + `outlet` 三态。
+#[derive(Clone, Debug, PartialEq)]
+enum OutletRoute {
+    /// 无 routes 块——outlet 维持 View::empty（防御形态，现行为）。
+    None,
+    /// 单路由 "/" 无参——outlet 折平为持久子件 X 直用。
+    Fold(String),
+    /// 多路由/带参路由——outlet 位响亮拒（compile_error 带 P039 债指针）。
+    Reject,
 }
 
 // Plan 346: Thread-local store for the root widget's state field names + types.
@@ -194,6 +209,7 @@ impl RustGenerator {
             value_locals: std::collections::HashSet::new(),
             has_init: false,
             init_api_info: None,
+            outlet_route: OutletRoute::None,
         }
     }
 
@@ -246,6 +262,7 @@ impl RustGenerator {
         self.needs_imports = true;
         self.indent = 0;
         self.loop_vars.clear();
+        self.outlet_route = OutletRoute::None;
     }
 
     /// Convert a string containing `${.field}` markers to a Rust `format!()` call
@@ -528,6 +545,26 @@ impl RustGenerator {
 
         // Pre-scan view tree for child component references (needed for wrapper msg variants)
         self.scan_child_components(&widget.view_tree);
+
+        // PLAN-039 D5（§5.1 定案记录）：单路由折平策略装配——必须在
+        // generate_msg_enum（:605）前完成 child_components 注册。折平
+        // module 走既有持久子件全链（msg 包装变体 :659-662 / struct 字段
+        // :733-740 / 构造后重建 :970-988 / on() 转发+store 回写
+        // :1461-1490）；多路由/带参标记 Reject（Outlet 位响亮拒）。
+        self.outlet_route = match &widget.routes {
+            None => OutletRoute::None,
+            Some(rb) if rb.routes.len() == 1
+                && rb.routes[0].path == "/"
+                && rb.routes[0].params.is_empty() =>
+            {
+                let module = rb.routes[0].module.clone();
+                if !self.child_components.contains(&module) {
+                    self.child_components.push(module.clone());
+                }
+                OutletRoute::Fold(module)
+            }
+            Some(_) => OutletRoute::Reject,
+        };
 
         // Pre-scan handlers to find local variables from function calls (likely Value type)
         self.scan_handler_locals(widget);
@@ -1892,7 +1929,13 @@ impl RustGenerator {
                     // code only matched Expr::Ident, missing `.field` bindings
                     // (Plan 371 T5c: edit_title input had no last_input_text injection).
                     let value_field: Option<String> = match props.get("value") {
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => Some(name.to_string()),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
+                            // PLAN-039 T-03④：点链拍平形（`.store.edit_x`）
+                            // 不注册——写回由 handler 自持；点链名注入会落
+                            // f64 缺省写编译断。
+                            let f = name.as_str().trim_start_matches('.');
+                            (!f.is_empty() && !f.contains('.')).then(|| f.to_string())
+                        }
                         // Only match direct self.field (one-level Dot). Multi-level
                         // dots like self.store.edit_text should NOT trigger field
                         // injection — the value comes from the store, not a local
@@ -2113,8 +2156,24 @@ impl RustGenerator {
                     v.sort_by(|a, b| a.0.cmp(b.0));
                     v
                 };
+                // PLAN-039 D1-A（§5.1 定案记录）：button `ondblclick` 从
+                // 事件流剥离——View::Button 无双击槽（view.rs:1650-1657），
+                // 出口统一 MouseArea 包裹降级（wrap_button_double_click：
+                // 既有原语 on_double_click，Plan 496 M5，三消费端零涟漪）。
+                // 非 button tag 的 ondblclick 维持事件流（拒绝门响亮拒——I1）。
+                let dbl_event: Option<&AuraEvent> = if tag == "button" {
+                    events.iter()
+                        .find(|(e, _)| e.split('.').next() == Some("ondblclick"))
+                        .map(|(_, h)| h)
+                } else {
+                    None
+                };
                 let events_sorted: Vec<(&String, &AuraEvent)> = {
-                    let mut v: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                    let mut v: Vec<(&String, &AuraEvent)> = events.iter()
+                        .filter(|(e, _)| {
+                            !(tag == "button" && e.split('.').next() == Some("ondblclick"))
+                        })
+                        .collect();
                     v.sort_by(|a, b| a.0.cmp(b.0));
                     v
                 };
@@ -2557,14 +2616,37 @@ impl RustGenerator {
                 // (Plan 319) — so the rust `into_iced` path and the VM
                 // `render_dynamic_view` path share it and can never drift.
                 if tag == "grid" {
-                    let cols = props.get("cols").or_else(|| props.get("columns"))
+                    // PLAN-039 D4（§5.1 定案记录）：cols 双臂——字面量维持
+                    // 编译期提取；Dot/点链 Ident 表达式走运行期求值臂。
+                    // View::Grid.cols 为运行期 usize 字段（view.rs:1658-1661
+                    // builder `.cols(usize)` + build 时 `.max(1)`），IR 无
+                    // 编译期常量假设——静态近似不诚实（难度切换整局重开
+                    // 时列数变化需正确）。`.store.cols` 经 ast_expr_to_rust
+                    // （:7151 `.starts_with(".store.")` 臂）→ `self.store.cols`；
+                    // `self..` 双点残留为 "." 基座 Dot 形的已知伪影，剥之。
+                    let cols_prop = props.get("cols").or_else(|| props.get("columns"));
+                    let cols_static: Option<usize> = cols_prop
                         .and_then(|v| match v {
                             AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as usize),
                             AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.trim().parse::<usize>().ok(),
                             _ => None,
                         })
-                        .map(|c| c.max(1))
-                        .unwrap_or(1);
+                        .map(|c| c.max(1));
+                    let cols = match cols_static {
+                        Some(c) => c.to_string(),
+                        None => cols_prop
+                            .and_then(|v| match v {
+                                AuraPropValue::Expr(e @ crate::ast::Expr::Dot(..)) => Some(
+                                    format!("({}) as usize", self.ast_expr_to_rust(e).replace("self..", "self.")),
+                                ),
+                                AuraPropValue::Expr(crate::ast::Expr::Ident(name))
+                                    if name.as_str().starts_with('.') => Some(
+                                    format!("({}) as usize", self.ast_expr_to_rust(&crate::ast::Expr::Ident(name.clone())).replace("self..", "self.")),
+                                ),
+                                _ => None,
+                            })
+                            .unwrap_or_else(|| "1".to_string()),
+                    };
                     let gap = props.get("gap")
                         .and_then(|v| match v {
                             AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as u16),
@@ -2822,7 +2904,10 @@ impl RustGenerator {
                     let value_field = props.get("value").and_then(|v| match v {
                         AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
                             let f = name.as_str().trim_start_matches('.');
-                            (!f.is_empty()).then(|| f.to_string())
+                            // PLAN-039 T-03④：单级才可作 input_fields 写回
+                            // 注册名（多级点链拍平形 `.store.edit_title` 走
+                            // 下方通用求值臂——注册点链名会落 f64 缺省写）。
+                            (!f.is_empty() && !f.contains('.')).then(|| f.to_string())
                         }
                         AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field)) => {
                             match obj.as_ref() {
@@ -2840,6 +2925,15 @@ impl RustGenerator {
                         builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
                     } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("value") {
                         builder = format!("{}.value(\"{}\".to_string())", builder, s);
+                    } else if let Some(AuraPropValue::Expr(e)) = props.get("value") {
+                        // PLAN-039 T-03④：多级点链/复杂表达式值面通用求值
+                        // （`.store.edit_title` → `self.store.edit_title`；写回
+                        // 由 handler 自持，与 scan_input_fields 同口径）。
+                        builder = format!(
+                            "{}.value(format!(\"{{}}\", {}))",
+                            builder,
+                            self.ast_expr_to_rust(e).replace("self..", "self.")
+                        );
                     }
 
                     // Password mode: type: "password"
@@ -2900,8 +2994,32 @@ impl RustGenerator {
                     let mut builder = format!("View::textarea(\"{}\")", placeholder);
 
                     // Value binding: value: .field → .value(format!("{}", self.field))
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
-                        builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
+                    // PLAN-039 T-03④（§5.1 定案记录④）：textarea 对齐 input
+                    // 容差（PLAN-025 T-07）并补多级点链——字面量 Str /
+                    // Ident（'.' 前缀，点链拍平形 `.store.edit_detail` →
+                    // `self.store.edit_detail`）/ Dot 表达式通用求值
+                    // （ast_expr_to_rust；`self..` 双点伪影剥之）。此前只收
+                    // 裸 Ident，kanban `.store.edit_detail` 静默丢初值。
+                    // input_fields 写回注册仍只收单级（scan_input_fields
+                    // :1896-1907 同口径——store 源值的写回由 handler 自持，
+                    // 注入点链名会落 f64 缺省写编译断）。
+                    let ta_value_expr: Option<String> = match props.get("value") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                            Some(format!("\"{}\".to_string()", s))
+                        }
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
+                            let f = name.as_str().trim_start_matches('.');
+                            (!f.is_empty())
+                                .then(|| format!("format!(\"{{}}\", self.{})", f))
+                        }
+                        Some(AuraPropValue::Expr(e)) => Some(format!(
+                            "format!(\"{{}}\", {})",
+                            self.ast_expr_to_rust(e).replace("self..", "self.")
+                        )),
+                        _ => None,
+                    };
+                    if let Some(ve) = ta_value_expr {
+                        builder = format!("{}.value({})", builder, ve);
                     }
 
                     // Other props (skip placeholder, value)
@@ -3130,7 +3248,7 @@ impl RustGenerator {
                     if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
-                    return format!("{}.build()", builder);
+                    return self.wrap_button_double_click(format!("{}.build()", builder), dbl_event);
                 }
 
                 // Handle image element — generate View::image() or View::image_styled()
@@ -3340,26 +3458,6 @@ impl RustGenerator {
                 // 尺寸契约 = 显式 w-/h- 类 > size prop（精确 px，任意值
                 // w-[Npx] 通道）> 默认 20px（VM DEFAULT_ICON_PX）。
                 if tag == "icon" {
-                    let mut classes = user_style_str(props);
-                    let has_w = classes.split_whitespace().any(|t| t.starts_with("w-"));
-                    let has_h = classes.split_whitespace().any(|t| t.starts_with("h-"));
-                    if !has_w || !has_h {
-                        let px: Option<f32> = props.get("size").and_then(|v| match v {
-                            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f32),
-                            AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => Some(*f as f32),
-                            _ => None,
-                        })
-                        .filter(|v| *v > 0.0);
-                        // 动态 size 求值 not-yet（VM 走 bindings 求值；a2r
-                        // 静态发射面暂只认字面量）——缺省档兜底。
-                        let d = px.unwrap_or(20.0);
-                        if !has_w {
-                            classes.push_str(&format!(" w-[{d}px]"));
-                        }
-                        if !has_h {
-                            classes.push_str(&format!(" h-[{d}px]"));
-                        }
-                    }
                     let src = match props.get("name") {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
                             if s.starts_with("iconfile:")
@@ -3382,6 +3480,63 @@ impl RustGenerator {
                         }
                         _ => "\"\".to_string()".to_string(),
                     };
+                    // PLAN-039 T-02②（§5.1 定案记录②）：动态 class 臂——
+                    // class/style 为 Dot/点链 Ident 表达式（CardSuit
+                    // `class: .style` 组件 prop 引用）此前静默丢样式
+                    // （user_style_str 只收字面量），升运行期拼串求值；
+                    // w-/h- 缺省档逻辑与字面量臂同款运行期复刻（动态
+                    // size 求值维持 not-yet 缺省档——下方既有注记口径）。
+                    let dyn_style: Option<String> = props
+                        .get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(_)) => None,
+                            AuraPropValue::Expr(e @ crate::ast::Expr::Dot(..)) => Some(
+                                self.ast_expr_to_rust(e).replace("self..", "self."),
+                            ),
+                            AuraPropValue::Expr(crate::ast::Expr::Ident(name))
+                                if name.as_str().starts_with('.') => Some(
+                                self.ast_expr_to_rust(&crate::ast::Expr::Ident(name.clone()))
+                                    .replace("self..", "self."),
+                            ),
+                            _ => None,
+                        });
+                    if let Some(dyn_expr) = dyn_style {
+                        let px: f32 = props.get("size").and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f32),
+                            AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => Some(*f as f32),
+                            _ => None,
+                        })
+                        .filter(|v| *v > 0.0)
+                        .unwrap_or(20.0);
+                        return format!(
+                            "{{ let __c = format!(\"{{}}\", {dyn_expr}); \
+                             let mut __s = __c.clone(); \
+                             if !__c.split_whitespace().any(|t| t.starts_with(\"w-\")) {{ __s.push_str(\" w-[{px}px]\"); }} \
+                             if !__c.split_whitespace().any(|t| t.starts_with(\"h-\")) {{ __s.push_str(\" h-[{px}px]\"); }} \
+                             View::image_styled({src}, &__s) }}"
+                        );
+                    }
+                    let mut classes = user_style_str(props);
+                    let has_w = classes.split_whitespace().any(|t| t.starts_with("w-"));
+                    let has_h = classes.split_whitespace().any(|t| t.starts_with("h-"));
+                    if !has_w || !has_h {
+                        let px: Option<f32> = props.get("size").and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f32),
+                            AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => Some(*f as f32),
+                            _ => None,
+                        })
+                        .filter(|v| *v > 0.0);
+                        // 动态 size 求值 not-yet（VM 走 bindings 求值；a2r
+                        // 静态发射面暂只认字面量）——缺省档兜底。
+                        let d = px.unwrap_or(20.0);
+                        if !has_w {
+                            classes.push_str(&format!(" w-[{d}px]"));
+                        }
+                        if !has_h {
+                            classes.push_str(&format!(" h-[{d}px]"));
+                        }
+                    }
                     return format!("View::image_styled({src}, \"{classes}\")");
                 }
 
@@ -4300,7 +4455,7 @@ impl RustGenerator {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
 
-                    format!("{}.build()", builder)
+                    self.wrap_button_double_click(format!("{}.build()", builder), dbl_event)
                 } else if tag == "button" {
                     // Button with children. The View::Button model only has a
                     // `label` (no children field), so `.child()` calls are
@@ -4319,7 +4474,7 @@ impl RustGenerator {
                     if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
-                    format!("{}.build()", builder)
+                    self.wrap_button_double_click(format!("{}.build()", builder), dbl_event)
                 } else {
                     // Element with children
                     let mut builder = builder_start;
@@ -4360,7 +4515,7 @@ impl RustGenerator {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
 
-                    format!("{}.build()", builder)
+                    self.wrap_button_double_click(format!("{}.build()", builder), dbl_event)
                 }
             }
 
@@ -4521,11 +4676,37 @@ impl RustGenerator {
             }
 
             // Plan 105/408: Router outlet and link.
-            // Rust compiled mode has no router; render placeholders using
-            // existing View API to keep the binary compilable.
-            AuraNode::Outlet => {
-                // No router in compiled Rust; render an empty placeholder.
-                "View::empty()".to_string()
+            // PLAN-039 D5（§5.1 定案记录）：outlet 三态——
+            //   Fold（routes{"/"->use X} 单路由无参）→ 持久子件 X 直用
+            //     （同自定义 widget 臂 :5495-5504：store 同步 + map_msg
+            //     包装；module 经 generate_rust 注册 child_components 走
+            //     包装变体/持久字段/on() 转发全链）——kanban board 页整页
+            //     空屏（View::empty 静默）的清偿臂；
+            //   Reject（多路由/带参路由）→ compile_error 带 P039 债指针
+            //     （原 View::empty 静默升响亮——I1）；
+            //   None（无 routes 块）→ 维持 View::empty（防御形态）。
+            AuraNode::Outlet => match self.outlet_route.clone() {
+                OutletRoute::Fold(module) => {
+                    let msg_name = self.current_msg_name();
+                    let field = Self::child_field_name(&module);
+                    let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
+                    if has_store {
+                        format!(
+                            "{{ let mut __c = self.{field}.clone(); __c.store = self.store.clone(); \
+                             __c.view().map_msg(|m| {msg_name}::{module}(m)) }}"
+                        )
+                    } else {
+                        format!("self.{field}.view().map_msg(|m| {msg_name}::{module}(m))")
+                    }
+                }
+                OutletRoute::Reject => {
+                    let msg = "a2r codegen: multi-route/parametric `routes` + `outlet` not yet supported (PLAN-039 D5: single-route folding only; router family tracked as P039 debt)";
+                    format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+                }
+                OutletRoute::None => {
+                    // No routes block; keep the empty placeholder (defensive).
+                    "View::empty()".to_string()
+                }
             }
 
             AuraNode::Link { to, text, href, children, .. } => {
@@ -6259,6 +6440,27 @@ impl RustGenerator {
         }
     }
 
+    /// PLAN-039 D1-A（§5.1 定案记录）：button `ondblclick` = MouseArea
+    /// 包裹降级。View::Button 无双击事件槽（view.rs:1650-1657 仅
+    /// onclick/on_right_click），MouseArea.on_double_click 为既有原语
+    /// （Plan 496 M5「桌面图标双击启动」，view.rs:1034-1045）——iced/
+    /// RqProjector/queue 三消费端零涟漪；布局代价 = 一层嵌套盒。
+    /// klondike 自动收牌双击（app.at ondblclick ×8）为首发载体；非
+    /// button tag 的 ondblclick 不经此臂（拒绝门响亮拒——I1）。
+    fn wrap_button_double_click(&self, built: String, dbl: Option<&AuraEvent>) -> String {
+        match dbl {
+            None => built,
+            Some(ev) => {
+                let direct = self.handler_to_rust_direct_msg(&ev.handler, &ev.params);
+                format!(
+                    "View::MouseArea {{ content: Box::new({built}), on_enter: None, on_exit: None, \
+                     on_double_click: Some({direct}), on_click: None, on_context_menu: None, \
+                     on_release: None, on_move: None, logical_extent: None, style: None }}"
+                )
+            }
+        }
+    }
+
     /// Add event to builder
     fn add_event_to_builder(&self, builder: &str, event: &str, aura_event: &AuraEvent) -> String {
         let handler_fn = self.handler_to_rust_closure_with_params(&aura_event.handler, &aura_event.params);
@@ -6271,6 +6473,20 @@ impl RustGenerator {
             }
             "onchange" | "onChange" | "oninput" | "onInput" => {
                 format!("{}.on_change({})", builder, handler_fn)
+            }
+            // PLAN-039 D3-A（§5.1 定案记录，用户确认 2026-09-21）：HTML5
+            // in-app drag 家族显式 not-yet——a2r 编译轨无 drag 事件面板
+            // （完整 DnD 语义另立，P039 债在册）。compile_error 带 P039
+            // 债指针，区别于通用未知事件臂（kanban board.at
+            // ondragover.prevent ×3 = 生成门预期唯一诚实红）；禁静默
+            // no-op（I1 红线）。
+            "ondragover" | "ondragover.prevent" | "ondragstart" | "ondragstart.prevent"
+            | "ondragend" | "ondragend.prevent" | "ondrop" | "ondrop.prevent"
+            | "ondragenter" | "ondragenter.prevent" | "ondragleave" | "ondragleave.prevent" => {
+                let msg = format!(
+                    "a2r codegen: event `{event}` (HTML5 drag family) not yet supported in a2r compiled mode (PLAN-039 D3-A explicit not-yet; in-app DnD tracked as P039 debt)"
+                );
+                format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
             }
             // PLAN-027 T-04: 认知且双轨同弃层——View IR 布局件无 hover
             // 事件槽，解释臂 set_layout_events（aura_view_builder.rs:1328
@@ -10903,6 +11119,262 @@ widget Demo {
             !code.contains("bg-muted border"),
             "primary 不带中性基线:\n{}",
             code
+        );
+    }
+}
+
+// ── PLAN-039: a2r codegen 缺口五臂（产物级断言，§5.1 定案记录）──────
+// 五臂均核心 codegen 路径（无 ui-iced 依赖），tf/t 双档共担：
+//   D1-A button ondblclick → MouseArea 包裹降级（klondike ×8 载体）
+//   D4   grid cols 动态运行期求值（minesweeper `.store.cols` 载体）
+//   ②   icon 动态 class 运行期拼串（CardSuit `class: .style` 载体）
+//   ④   textarea value Dot/点链容差（kanban `.store.edit_detail` 载体）
+//   D5   outlet 单路由折平/多路由响亮拒（kanban routes 载体）
+//   D3-A ondragover 家族显式 not-yet 拒绝（kanban board ×3 载体）
+#[cfg(test)]
+mod plan039_a2r_gap_codegen_tests {
+    use super::*;
+
+    fn gen_first_widget(src: &str) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut code = String::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                let widget = crate::aura::extract::extract_widget_from_decl(decl)
+                    .unwrap_or_else(|e| panic!("extract: {e:?}"));
+                let mut gen = RustGenerator::new();
+                code = gen.generate(&widget).expect("generate");
+            }
+        }
+        assert!(!code.is_empty(), "no widget generated");
+        code
+    }
+
+    /// D1-A：button ondblclick 剥离事件流（不落拒绝门）+ 出口 MouseArea
+    /// 包裹（on_double_click 直发消息；onclick 保留在按钮本体）。
+    #[test]
+    fn button_ondblclick_mousearea_wrap() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { AutoSendWaste, AutoSendCol(int) }
+    view {
+        col {
+            button "发牌" { onclick: .AutoSendWaste, ondblclick: .AutoSendCol(0) }
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains("View::MouseArea { content: Box::new(View::button"),
+            "ondblclick 必须 MouseArea 包裹降级:\n{code}"
+        );
+        assert!(
+            code.contains("on_double_click: Some(DemoMsg::AutoSendCol(0))"),
+            "双击直发消息带参:\n{code}"
+        );
+        assert!(
+            code.contains("on_click(|_| DemoMsg::AutoSendWaste)"),
+            "onclick 保留按钮本体:\n{code}"
+        );
+        assert!(
+            !code.contains("not in the recognized vocabulary"),
+            "ondblclick 不得落拒绝门:\n{code}"
+        );
+    }
+
+    /// D1-A 边界：非 button tag 的 ondblclick 维持拒绝门响亮拒（I1）。
+    /// （text 叶子短路路径不经过事件门——既有行为，非本臂面。）
+    #[test]
+    fn non_button_ondblclick_stays_rejected() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { Noop }
+    view {
+        col {
+            ondblclick: .Noop
+            text "x"
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains("not in the recognized vocabulary"),
+            "非 button ondblclick 维持响亮拒:\n{code}"
+        );
+    }
+
+    /// D4：grid cols 动态表达式 → 运行期求值臂（字面量维持编译期路径）。
+    #[test]
+    fn grid_dynamic_cols_runtime_eval() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { NewGame }
+    model { var cols int = 9 }
+    view {
+        grid (cols: .cols) {
+            text "cell"
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains(".cols((self.cols) as usize)"),
+            "动态 cols 运行期求值:\n{code}"
+        );
+        let lit = gen_first_widget(r#"
+widget Demo {
+    msg { NewGame }
+    view {
+        grid (cols: 3) { text "c" }
+    }
+}
+"#);
+        assert!(
+            lit.contains(".cols(3)"),
+            "字面量 cols 编译期路径不变:\n{lit}"
+        );
+    }
+
+    /// ②：icon class 动态表达式 → 运行期拼串 + w-/h- 缺省档运行期复刻。
+    #[test]
+    fn icon_dynamic_class_runtime_eval() {
+        let code = gen_first_widget(r#"
+widget CardSuit (style: str = "w-8 h-8") {
+    view {
+        icon (name: "spade", class: .style) {}
+    }
+}
+"#);
+        assert!(
+            code.contains("let __c = format!(\"{}\", self.style);"),
+            "动态 class 运行期求值:\n{code}"
+        );
+        assert!(
+            code.contains("View::image_styled(") && code.contains("&__s"),
+            "image_styled 消费运行期串:\n{code}"
+        );
+        assert!(
+            code.contains("t.starts_with(\"w-\"))"),
+            "w- 缺省档运行期复刻:\n{code}"
+        );
+    }
+
+    /// ④：textarea value Dot/点链容差（单级 + `.store.x` 多级拍平形）。
+    #[test]
+    fn textarea_dot_value_bindings() {
+        let code = gen_first_widget(r#"
+widget board {
+    msg { EditDetail(str) }
+    model { var detail str = "hello" }
+    view {
+        textarea { value: .detail, oninput: .EditDetail }
+    }
+}
+"#);
+        assert!(
+            code.contains(".value(format!(\"{}\", self.detail))"),
+            "单级 Dot value:\n{code}"
+        );
+        let multi = gen_first_widget(r#"
+widget board {
+    msg { EditDetail(str) }
+    view {
+        textarea { value: .store.edit_detail, oninput: .EditDetail }
+    }
+}
+"#);
+        assert!(
+            multi.contains(".value(format!(\"{}\", self.store.edit_detail))"),
+            "多级点链 value（kanban 形态）:\n{multi}"
+        );
+        assert!(
+            !multi.contains("self.."),
+            "双点伪影必须剥除:\n{multi}"
+        );
+    }
+
+    /// D5：单路由 routes{"/"->use X} + outlet → 持久子件折平直用。
+    #[test]
+    fn outlet_single_route_folds_to_persistent_child() {
+        let code = gen_first_widget(r#"
+widget App {
+    routes {
+        "/" -> use board
+    }
+    msg { Init }
+    view {
+        col {
+            outlet
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains("board(boardMsg)"),
+            "包装变体入册:\n{code}"
+        );
+        assert!(
+            code.contains("self.board.view().map_msg(|m| AppMsg::board(m))"),
+            "outlet 折平持久子件直用:\n{code}"
+        );
+        assert!(
+            code.contains("pub board: board"),
+            "持久子件字段:\n{code}"
+        );
+        assert!(
+            !code.contains("View::empty()"),
+            "单路由不再静默空屏:\n{code}"
+        );
+    }
+
+    /// D5 边界：多路由 + outlet → 响亮拒（原 View::empty 静默升级）。
+    #[test]
+    fn outlet_multi_route_loud_reject() {
+        let code = gen_first_widget(r#"
+widget App {
+    routes {
+        "/" -> use home
+        "/other" -> use other
+    }
+    view {
+        col { outlet }
+    }
+}
+"#);
+        assert!(
+            code.contains("std::compile_error!(\"a2r codegen: multi-route/parametric `routes` + `outlet` not yet supported (PLAN-039 D5"),
+            "多路由响亮拒带 P039 指针:\n{code}"
+        );
+        assert!(
+            !code.contains("home(homeMsg)"),
+            "多路由不注册折平子件:\n{code}"
+        );
+    }
+
+    /// D3-A：ondragover 家族显式 not-yet 拒绝（带 P039 债指针，区别
+    /// 通用未知事件臂）。
+    #[test]
+    fn drag_family_events_rejected_with_debt_pointer() {
+        let code = gen_first_widget(r#"
+widget board {
+    msg { AllowDrop }
+    view {
+        col {
+            ondragover.prevent: .AllowDrop
+            text "x"
+        }
+    }
+}
+"#);
+        assert!(
+            code.contains("std::compile_error!(\"a2r codegen: event `ondragover.prevent` (HTML5 drag family) not yet supported in a2r compiled mode (PLAN-039 D3-A"),
+            "drag 家族专属拒绝臂:\n{code}"
+        );
+        assert!(
+            code.contains("P039 debt"),
+            "债指针在案:\n{code}"
         );
     }
 }
