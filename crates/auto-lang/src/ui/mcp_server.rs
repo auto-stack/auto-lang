@@ -2573,7 +2573,8 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                 "notification" => "notification",
                 "launcher" => "launcher",
                 "desktop" => "desktop",
-                _ => return error_result(format!("Unknown privileged app: '{app}' (shell|settings|notification|launcher|desktop)")),
+                "dashboard" => "dashboard",
+                _ => return error_result(format!("Unknown privileged app: '{app}' (shell|settings|notification|launcher|desktop|dashboard)")),
             };
             #[cfg(feature = "ui-iced")]
             {

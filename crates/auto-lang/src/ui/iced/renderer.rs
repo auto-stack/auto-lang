@@ -10607,8 +10607,7 @@ const DASH_GRID_ROW: f32 = 80.0; // h-[72px] 72 + gap 8（桌面图标行距）
 const DASH_MARGIN: f32 = 12.0; // 屏幕边距（桌面内容 p-3 同源）
 const DASH_COLS: usize = 8; // 外框列数（用户裁定 8×3）
 const DASH_ROWS: usize = 3; // 外框行数
-const DASH_HEADER_H: f32 = 80.0; // 头行占位 = 行 0 格 72 + gap 8
-const DASH_WIDGET_H: f32 = 152.0; // widget 卡高 = 2 行格（2×72 + 8）
+
 const DASH_FRAME_PAD: f32 = 12.0; // 外框四围 padding（PLAN-035 T-14：
 // 外框 = 8×3 网格块四周外扩 12px 做 chrome 留白——卡片不再贴框缘）
 
@@ -10695,8 +10694,9 @@ mod plan024_dashboard_layout_tests {
         assert_eq!(cells.len(), 2);
         assert_eq!(cells[0].width, 2.0 * DASH_GRID_COL - 8.0);
         assert_eq!(cells[1].width, 3.0 * DASH_GRID_COL - 8.0);
-        assert_eq!(cells[0].height, DASH_WIDGET_H);
-        assert_eq!(cells[0].y, panel.y + DASH_FRAME_PAD + DASH_HEADER_H);
+        // T-18：卡片满高 3 行格（232），原点 = 外框内缩 PAD。
+        assert_eq!(cells[0].height, 3.0 * DASH_GRID_ROW - 8.0);
+        assert_eq!(cells[0].y, panel.y + DASH_FRAME_PAD);
         assert_eq!(cells[0].x, panel.x + DASH_FRAME_PAD);
         assert_eq!(cells[1].x, panel.x + DASH_FRAME_PAD + 2.0 * DASH_GRID_COL);
     }
@@ -10758,9 +10758,9 @@ fn dashboard_layout(
         }
         cells.push(iced::Rectangle {
             x: grid_x + col as f32 * DASH_GRID_COL,
-            y: grid_y + DASH_HEADER_H,
+            y: grid_y,
             width: want as f32 * DASH_GRID_COL - 8.0,
-            height: DASH_WIDGET_H,
+            height: grid_h,
         });
         col += want;
     }
@@ -14255,6 +14255,9 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                     "launcher" => state.desktop.launcher_app,
                     // Plan 505 C：桌面本体面（496 M5——图标交互/壁纸面）。
                     "desktop" => state.desktop.desktop_app,
+                    // PLAN-035 T-18：dashboard 面板槽（分页 pill/SelectTab
+                    // 验收注入）。
+                    "dashboard" => state.desktop.dashboard_app,
                     // Plan 551：settings 槽 = os-config 窗（⚙️ 同靶——
                     // 540 的 045 专用槽随窗退役，验收通道按 registry_id
                     // 定位 launch-or-focus 后的 os-config 前端）。
