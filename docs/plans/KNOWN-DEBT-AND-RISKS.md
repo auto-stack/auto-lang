@@ -2509,3 +2509,47 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 |---|---|---|---|---|
 | P667-D1 | low | VM/RC | **类型化 var 声明局部槽影子转移缺失（KD-051⑤ 同族延续，执行期新证）**——`var a Note = Note{...}`（带类型注解声明）的槽位无影子：覆盖赋值不释放旧值，每声明滞留 1 份（泄漏方向不破坏安全）；667 探针以无类型形态隔离（无类型路径影子正常）。P419_UAF_TRACE 事件链取证：retain 0→1 后无匹配 release。根治归 RC 槽位记账专项 | crates/auto-lang/src/vm/engine.rs STORE_LOCAL 声明路径；docs/plans/reports/667-memory-safety-evidence.md §8 |
 | P667-D2 | low | 既有红归因 | **本机预存红基线（stash 双跑实证，非 667 引入）**——tv/daily 档 ui_gen::rust::tests::{mouse_area_emits_events_and_logical_extent, test_autodown_panel_heading_codegen}；test-trans 档 a2r_tests::{test_14_modules_007_shared_var, test_27_c_abi_003/004, a2r_rustc_real_compile_gate}；ffi_dual_019 与 external_config_poll 为并行/环境闪测（单跑绿）。667 合入门禁以"相对该基线零新增红"为判据 | 各测试名；667 evidence §6/§8 |
+
+## P668 清偿批登记（2026-09-20，Plan 668 baseline-red-clearance work 执行）
+
+本批清偿 master 预存测试红基线（T-01 基线勘定=docs/plans/evidence/p668/baseline.md，
+26 项四态分类+计划外 A-01..A-08）。工作分支 plan-668-dev（worktree
+D:/autostack/.wt/lang-668/auto-lang），逐任务提交：T-02=9ad405771/T-03=a8e44e3f9/
+T-04=acf22be45/T-05=f1f239918/T-06=a377d23ea/T-06+07=70a30ea84。
+
+| # | 处置 | 说明 |
+|---|---|---|
+| R-01/R-02 | ✅修复 | mouse-area 双臂合并（PLAN-027 T-04 臂吞并 022 能力回迁 PointerMoveHandler+coords）；heading tracking-tight 断言跟 PLAN-075 |
+| R-03(=R-10) | ✅修复 | lucide 清单走查过滤 `iconfile:` 位图通道（2026-09-15 五钮裁定面） |
+| R-04 | ✅修复 | conditional_style 探针 `state{}`→`model{}`（旧静默覆盖 exploIT，PLAN-024 改报错后即红） |
+| R-05 | ✅修复 | convert_popover 坐标锚判定改**声明面**（x/y props 在场即坐标锚，不可求值退原点）——拖拽幽灵不再误判 widget 形态落 __popover_close |
+| R-06 | ✅修复 | external_config_poll ③防回环段自写前显式 manual 源——根修 OS 主题依赖（P667"单跑绿"实为 OS=dark 巧合，light 机器必红） |
+| R-07 | 核销 | d8_toggle_dark_mode 基线已绿（015 默认翻 true 断言已被顺修） |
+| R-08 | ✅修复 | c2_param_msg 坐标箭头断言跟 clientX-rect 现行发射形态 |
+| R-09 | ✅修复 | strip_html 语义裁定：职责=去标签+实体解码，tag→空格替换不折叠（断言跟实现） |
+| R-11 | 环境红豁免 | ui::layout 15 件（本机显示几何，CI 为准；576 在案数量浮动 6↔9↔15） |
+| R-12 | ✅修复 | 双根因：①003/004 use.c manifest 从未入库（.gitignore 全局 *.json 吞掉——白名单+重建两清单，金样级精确复原）；②parser dot 链 .await/.go 后缀委托 Pratt；③trans async 块尾 Expr 不补分号（块值复活，实编门 E0277 清零） |
+| R-13 | ✅修复 | aavm 四金样（b13/b32/g25/b42——台账在册 2 件实跑 4 件）A2R_BLESS 再生，PLAN-018 括号族 |
+| R-14 | ✅修复 | 表同步三件：imagesurface 降 NotYet（D5 裁定随行）/avatar 子件归一折叠/slider 补 target_set（661 漏同步） |
+| R-15 | 核销 | display_family 双态皆绿（tv+t 实测，P649 特性面差异已消解） |
+| R-16 | ✅修复 | 029 断言跟"路径引用+渲染端内嵌"契约（P642-D11） |
+| R-17+A-01 | ✅修复 | 测试装载器补 stylekit 预注册（dnd-bridge desktop_behavior + 016-calendar plan339——load_inline 裸 parse 绕过 prepare_style_recipe_imports） |
+| R-18 | ✅修复 | ui_snapshots 三快照（app/editor/sidebar，台账在册 2 件实跑 3 件）accept |
+| R-19 | 核销 | docs_gen kitchen_sink + schema_drift_fence 双绿（tf 档终验确认） |
+| R-20 | ✅修复 | spa-routes 断言跟 auto-os 资产名 widgets-gallery（PLAN-590 迁移后快照；静态等价验证四资产全符，playwright 实跑待环境装 browser） |
+| R-21/R-22 | ✅修复 | tsconfig types:[vite/client]（SD-01）+ build 产 auto-sources（SD-02）——抽样集 {013,014,017,025,038}+046/047 vue-tsc 面全绿 |
+| R-23 | ✅修复 | 038 三修：store 字面别名裸调+List.pop 空值合并+负字面量初始化器；013 随检两修：回调契约 emit 载荷元数取调用位 |
+| R-24 | ✅修复 | 017（str-let if 臂字面量 .to_string() 强制）；025 六修（裸 sys.* 限定 a2r_std::sys 直通+边界 i32/i64 强转+局部 []T 改 Vec+a2r-std 依赖入模板+qualify 保护 sys 路径+内联体尾 return 包 JsonResponse+sys 记录字段 i64 对齐）——两例后端 cargo check 绿（沙箱） |
+| R-25+A-08 | 域外转介（呈报） | musk p053 家族 master 签名复测在案 4 红（p053_1×2/p053_4/p053_6==P028-D4 面）；**新增 p054 观测 2 红**（p054_t1 lucide:plus 进 button 内容子树 / p054_t4 icon image class prop）——归 musk 域后续计划（P645-D2/P028-D4/P648-D2 同族） |
+| R-26 | 核销 | P551-D2 路径依赖已修（Cargo.toml 指 packages/engine/rust，清单解析通过） |
+| A-02 | ✅修复（真生产缺陷） | 逐模块 stylekit 预注册三站点（lib.rs 主收集/sub 收集/ext sweep+test_support 镜像）——015 EditorPanel VM 面板整件复活（editor.at 携 stylekit 导入后静默 parse 失败被 `if let Ok` 吞） |
+| A-03 | ✅修复 | 632 夹具补 pac.at 声明（PLAN-635 幽灵依赖门控契约，真实 demo 均带声明） |
+| A-04 | ✅修复 | 根形态回调 prop 剥离（蓝图 reference 独立装载不再 Undefined symbol） |
+| A-05 | ✅修复 | plan050 跟 PLAN-625 占位卡契约（非 icon 字样导入组件不再 lucide 化） |
+| A-06 | ✅修复 | 626 落别名快照镜像合成期（633 空 store 快照不展平语义配套） |
+| A-07 | 环境红豁免 | clipboard_files_set_get_roundtrip（隔离单跑绿，并行剪贴板争用） |
+
+**564-Q6 总条目状态更新**：家族成员全数清偿/核销/豁免（R-07/R-08/R-09/R-11/R-15+
+R-03=R-10+A-05）——"需维护者排查归位"注销。**P667-D2/P661-D7 基线**：红集清零，
+后续计划门禁回到绝对全绿口径（环境红豁免=ui::layout 族+clipboard+ffi 闪测族）。
+**方法论注记**：本仓 nextest 0.9.138 默认 fail-fast，基线采集/门禁必须 --no-fail-fast。
