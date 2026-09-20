@@ -181,6 +181,52 @@ impl EscapeMap {
         self.decisions.len()
     }
 
+    /// PLAN-667 (F-04): 折叠到名称合并的根身份。生成侧（rust.rs）恒以
+    /// `lookup(0, name)` 查询（current_scope_depth 从不递增），而分析侧按
+    /// 词法深度记录——嵌套/兄弟作用域的决策在生成侧不可见（漏报逃逸=
+    /// 不健全 `&`）。折叠规则：同名取更高序 tier（逃逸获胜）、write_captures
+    /// 并集；根条目覆盖/并入。代价：同名兄弟绑定的借用机会被保守合并
+    /// （false positive 方向，可接受）。
+    pub fn fold_to_root(&mut self) {
+        // 逃逸获胜的合并需要绕过 record 的"仅当更高才覆盖"——直接收集后重建。
+        let mut root: std::collections::HashMap<Name, (OwnershipTier, String)> =
+            std::collections::HashMap::new();
+        let entries: Vec<(BindingId, OwnershipTier, String)> = self
+            .decisions
+            .iter()
+            .map(|(id, t)| (id.clone(), *t, self.reasons.get(id).cloned().unwrap_or_default()))
+            .collect();
+        for (id, tier, reason) in entries {
+            // 根条目与嵌套条目同走 max-ordinal 合并——fold 前根条目可能已被
+            // apply_lowering 降为 BorrowView，而同名嵌套绑定逃逸（Clone），
+            // 盲覆盖会把逃逸信息丢回去。
+            match root.get_mut(&id.name) {
+                Some((t, r)) => {
+                    if tier.ordinal() > t.ordinal() {
+                        *t = tier;
+                        *r = reason;
+                    }
+                }
+                None => {
+                    root.insert(id.name.clone(), (tier, reason));
+                }
+            }
+        }
+        self.decisions.clear();
+        self.reasons.clear();
+        for (name, (tier, reason)) in root {
+            let id = BindingId { scope_depth: 0, name };
+            self.decisions.insert(id.clone(), tier);
+            self.reasons.insert(id, reason);
+        }
+        // write_captures：同名并集折叠到根。
+        let wcs: Vec<BindingId> = self.write_captures.iter().cloned().collect();
+        self.write_captures.clear();
+        for id in wcs {
+            self.write_captures.insert(BindingId { scope_depth: 0, name: id.name });
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.decisions.is_empty()
     }

@@ -1209,6 +1209,30 @@ impl RustTrans {
             None => OwnershipTier::Owned,
         };
 
+        // PLAN-667 (F-05): 已知不能保持语义的 fallback 改为明确 Auto 侧诊断
+        // （不推给 rustc，也不再用 .clone() 伪装支持）。
+        if let Some(name) = binding_name {
+            if matches!(tier, OwnershipTier::ArcMutex) {
+                return Err(crate::error::AutoError::Msg(format!(
+                    "cannot use '.{}' on '{}': the value is captured across a Send boundary \
+                     (.go/tokio::spawn) and requires Arc<Mutex<T>>, which a2r does not generate \
+                     yet (Plan 667 boundary) — remove the capture or restructure the spawn",
+                    if is_mut { "mut" } else { "view" },
+                    name
+                )));
+            }
+            if is_mut && !tier.is_borrow() && tier != OwnershipTier::Owned {
+                return Err(crate::error::AutoError::Msg(format!(
+                    "cannot take '.mut' of '{}': the value escapes its scope ({}) — \
+                     mutating a clone/Rc copy would silently diverge from the VM, where \
+                     shared .mut is rejected at runtime (auto.rc.assert_unique); \
+                     restructure to keep the binding non-escaping or use a fresh local",
+                    name,
+                    self.escape_reason_or_default(name, &tier)
+                )));
+            }
+        }
+
         match tier {
             OwnershipTier::Clone => {
                 // Plan 387 §16: TaskRef<T> is a single-owner move type (not
@@ -1273,6 +1297,22 @@ impl RustTrans {
         let span = report::span_at(0, 0);
         let warning = report::build_warning(&name.into(), tier, reason, span);
         self.warnings.push(warning);
+    }
+
+    /// PLAN-667 (F-05): 逃逸 tier 的可读理由（诊断用；无记录时按 tier 兜底）。
+    fn escape_reason_or_default(
+        &self,
+        name: &str,
+        tier: &crate::trans::escape::OwnershipTier,
+    ) -> String {
+        if self.current_fn_name.is_empty() {
+            return tier.to_string();
+        }
+        self.escape_results
+            .get(&self.current_fn_name)
+            .and_then(|m| m.reason_for(self.current_scope_depth, &name.into()))
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| tier.to_string())
     }
 
     /// Look up metadata by name (works with Universe or Database)

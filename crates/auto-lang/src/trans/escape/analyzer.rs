@@ -57,6 +57,10 @@ impl EscapeAnalyzer {
         analyzer.visit_body(&func.body, 0);
         analyzer.apply_lowering();
         analyzer.detect_closure_write_captures(&func.body);
+        // PLAN-667 (F-04): 折叠到名称合并的根身份——生成侧（rust.rs）恒以
+        // depth 0 查询（current_scope_depth 从不递增），嵌套/兄弟作用域的
+        // 逃逸必须按名称保守合并到根，否则生成侧漏报逃逸。
+        analyzer.map.fold_to_root();
         analyzer.map
     }
 
@@ -65,6 +69,7 @@ impl EscapeAnalyzer {
         let mut analyzer = Self::new();
         analyzer.visit_body(body, 0);
         analyzer.apply_lowering();
+        analyzer.map.fold_to_root();
         analyzer.map
     }
 
@@ -202,8 +207,15 @@ impl EscapeAnalyzer {
                 // visible binding referenced in a return expression escapes.
                 let mut names = Vec::new();
                 self.gather_var_refs(expr, &mut names);
+                // PLAN-667 (F-03): a closure returned from the function takes
+                // its captures with it — descend via find_escapes too.
+                let mut esc = Vec::new();
+                self.find_escapes(expr, &mut esc);
                 for name in names {
                     self.escalate_visible(&name, "returned from function");
+                }
+                for (name, reason) in esc {
+                    self.escalate_visible(&name, reason);
                 }
                 // Phase 2: a View/Mut in a return expression still records a
                 // borrow use, but the same binding is also escalated above, so
@@ -229,11 +241,57 @@ impl EscapeAnalyzer {
             // Statements that don't introduce bindings or affect escape.
             Stmt::Break | Stmt::Continue | Stmt::EmptyLine(_) | Stmt::Comment(_) => {}
 
-            // Unhandled statements: conservatively do nothing for escape
-            // purposes. The worst case is we miss an escape and over-borrow,
-            // which Phase 2's cargo-check gate will catch. We do NOT silently
-            // escalate everything here because that would defeat the analyzer.
-            _ => {}
+            Stmt::Try(t) => {
+                // PLAN-667 (F-04): try/catch previously fell into the silent
+                // `_` arm — captures inside try bodies escaped analysis.
+                self.visit_body(&t.body, 0);
+                if let Some(p) = &t.catch_param {
+                    self.push_scope();
+                    self.introduce(p.clone().into());
+                    self.visit_body(&t.catch_body, 0);
+                    self.pop_scope();
+                } else {
+                    self.visit_body(&t.catch_body, 0);
+                }
+                if let Some(f) = &t.finally_body {
+                    self.visit_body(f, 0);
+                }
+            }
+
+            Stmt::Reply(expr) => {
+                // PLAN-667 (F-04): reply 与 return 同族——回复值引用的可见
+                // 绑定逃逸；闭包/嵌套形式同样经 find_escapes 覆盖。
+                let mut names = Vec::new();
+                self.gather_var_refs(expr, &mut names);
+                let mut esc = Vec::new();
+                self.find_escapes(expr, &mut esc);
+                for name in names {
+                    self.escalate_visible(&name, "replied from function");
+                }
+                for (name, reason) in esc {
+                    self.escalate_visible(&name, reason);
+                }
+                self.collect_borrow_uses(expr);
+                self.collect_send_escapes(expr);
+            }
+
+            // PLAN-667 (F-04): 未覆盖语句形式 fail-closed——全部可见绑定
+            // 升级（不允许"未调查即安全"）。旧实现静默忽略，漏报的逃逸
+            // 会让 BorrowView 层发射不健全的 `&`。
+            _ => {
+                let visible: Vec<Name> = self
+                    .scope_stack
+                    .iter()
+                    .flatten()
+                    .cloned()
+                    .collect();
+                for name in visible {
+                    self.escalate_visible(
+                        &name,
+                        "unhandled statement form (fail-closed escalation)",
+                    );
+                }
+            }
         }
     }
 
@@ -460,11 +518,30 @@ impl EscapeAnalyzer {
             // Closure/lambda capture: any referenced local escapes into the
             // closure environment. This is the single most important case for
             // a2r (closures are common in the cookbook).
-            Expr::Closure(_) | Expr::Lambda(_) => {
+            //
+            // PLAN-667 (F-03): the old arm routed through `gather_var_refs`,
+            // which never descends into closures — the "single most important
+            // case" collected an empty set and every capture escaped the
+            // analysis. Descend properly, respecting closure-local shadowing
+            // (params + lets in source order).
+            Expr::Closure(c) => {
+                let visible: Vec<Name> = self.scope_stack.iter().flatten().cloned().collect();
+                let mut shadowed: std::collections::HashSet<Name> =
+                    c.params.iter().map(|p| p.name.clone()).collect();
                 let mut captured = Vec::new();
-                self.gather_var_refs(expr, &mut captured);
+                collect_free_vars_in_expr(&c.body, &mut shadowed, &visible, &mut captured);
                 for name in captured {
                     out.push((name, "captured by closure".to_string()));
+                }
+            }
+            Expr::Lambda(f) => {
+                let visible: Vec<Name> = self.scope_stack.iter().flatten().cloned().collect();
+                let mut shadowed: std::collections::HashSet<Name> =
+                    f.params.iter().map(|p| p.name.clone()).collect();
+                let mut captured = Vec::new();
+                collect_free_vars_in_body(&f.body, &mut shadowed, &visible, &mut captured);
+                for name in captured {
+                    out.push((name, "captured by lambda".to_string()));
                 }
             }
 
@@ -556,7 +633,62 @@ impl EscapeAnalyzer {
                     }
                 }
             }
-            _ => {}
+
+            // PLAN-667 (F-04): compound forms previously swallowed by `_`.
+            Expr::FStr(f) => {
+                for part in &f.parts {
+                    self.find_escapes(part, out);
+                }
+            }
+            Expr::Tuple(elems) => {
+                for e in elems {
+                    self.find_escapes(e, out);
+                }
+            }
+            Expr::TupleDestruct { names, expr } => {
+                self.find_escapes(expr, out);
+                let _ = names;
+            }
+            Expr::NullCoalesce(l, r) => {
+                self.find_escapes(l, out);
+                self.find_escapes(r, out);
+            }
+            Expr::ErrorPropagate(e) | Expr::Some(e) | Expr::Ok(e) | Expr::Err(e)
+            | Expr::BoxExpr(e) | Expr::ArcExpr(e) | Expr::Yield(e) => {
+                self.find_escapes(e, out);
+            }
+            Expr::Cast { expr, .. } | Expr::To { expr, .. } => {
+                self.find_escapes(expr, out);
+            }
+            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e) => {
+                self.find_escapes(e, out);
+            }
+            Expr::Block(body) => {
+                for s in &body.stmts {
+                    if let Stmt::Expr(e) = s {
+                        self.find_escapes(e, out);
+                    }
+                }
+            }
+
+            // Literals / simple forms with no sub-expressions.
+            Expr::Int(_) | Expr::Uint(_) | Expr::Byte(_) | Expr::Float(_, _)
+            | Expr::Double(_, _) | Expr::Bool(_) | Expr::Char(_) | Expr::Str(_)
+            | Expr::CStr(_) | Expr::Ident(_) | Expr::GenName(_) | Expr::Ref(_)
+            | Expr::Nil | Expr::Null | Expr::None => {}
+
+            // PLAN-667 (F-04): unhandled compound forms are fail-closed —
+            // every visible binding escalates. An untraversed form can hide
+            // an escape; marking it "proven safe" is the unsound direction.
+            _ => {
+                let visible: Vec<Name> = self.scope_stack.iter().flatten().cloned().collect();
+                for name in visible {
+                    out.push((
+                        name,
+                        "unhandled expression form (fail-closed escalation)".to_string(),
+                    ));
+                }
+            }
         }
     }
 
@@ -608,7 +740,53 @@ impl EscapeAnalyzer {
                     }
                 }
             }
-            _ => {}
+            // PLAN-667 (F-04): compound forms previously swallowed by `_`.
+            Expr::FStr(f) => {
+                for part in &f.parts {
+                    self.gather_var_refs(part, out);
+                }
+            }
+            Expr::Tuple(elems) => {
+                for e in elems {
+                    self.gather_var_refs(e, out);
+                }
+            }
+            Expr::TupleDestruct { expr, .. } => self.gather_var_refs(expr, out),
+            Expr::NullCoalesce(l, r) => {
+                self.gather_var_refs(l, out);
+                self.gather_var_refs(r, out);
+            }
+            Expr::ErrorPropagate(e) | Expr::Some(e) | Expr::Ok(e) | Expr::Err(e)
+            | Expr::BoxExpr(e) | Expr::ArcExpr(e) | Expr::Yield(e) => {
+                self.gather_var_refs(e, out);
+            }
+            Expr::Cast { expr, .. } | Expr::To { expr, .. } => {
+                self.gather_var_refs(expr, out);
+            }
+            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e) => {
+                self.gather_var_refs(e, out);
+            }
+            Expr::Block(body) => {
+                for s in &body.stmts {
+                    if let Stmt::Expr(e) = s {
+                        self.gather_var_refs(e, out);
+                    }
+                }
+            }
+            Expr::Int(_) | Expr::Uint(_) | Expr::Byte(_) | Expr::Float(_, _)
+            | Expr::Double(_, _) | Expr::Bool(_) | Expr::Char(_) | Expr::Str(_)
+            | Expr::CStr(_) | Expr::GenName(_) | Expr::Nil | Expr::Null | Expr::None => {}
+            // PLAN-667 (F-04): unknown forms fail closed — collect every
+            // visible binding (callers escalate what is collected).
+            _ => {
+                let _ = out;
+                // no-op for literals already matched; reachable only for
+                // genuinely unhandled compound forms — surface them all.
+                let visible: Vec<Name> = self.scope_stack.iter().flatten().cloned().collect();
+                for name in visible {
+                    out.push(name);
+                }
+            }
         }
     }
 
@@ -744,10 +922,12 @@ mod tests {
             source_lines: vec![],
         };
         let map = EscapeAnalyzer::analyze_body(&body);
-        // Two distinct bindings for "x" at different depths.
-        assert_eq!(map.len(), 2, "expected two distinct x bindings");
+        // PLAN-667 (F-04): 分析后折叠到名称合并的根身份（生成侧恒 depth 0
+        // 查询）。同名绑定合并为单根条目；无逃逸时 tier=Owned。同名任一
+        // 绑定逃逸即以最高序 tier 反映到根（见 plan667 探针
+        // nested_scope_merges_to_root_identity）。
+        assert_eq!(map.len(), 1, "same-name bindings fold to a single root entry");
         assert_eq!(map.lookup(0, &"x".into()), Some(OwnershipTier::Owned));
-        assert_eq!(map.lookup(1, &"x".into()), Some(OwnershipTier::Owned));
     }
 
     #[test]
@@ -972,6 +1152,196 @@ mod tests {
     }
 }
 
+
+// ============================================================================
+// PLAN-667 (F-03): 闭包自由变量收集器
+// ============================================================================
+
+/// 收集 body 中引用、未被闭包本地绑定遮蔽、且在 enclosing 可见集中的名字。
+/// 按源序插入 shadowed（Store 先收集 initializer 再登记名），保证使用先于
+/// 声明的引用仍算捕获。未知形式按 fail-closed 收集全部可见名。
+fn collect_free_vars_in_body(
+    body: &Body,
+    shadowed: &mut std::collections::HashSet<Name>,
+    visible: &[Name],
+    out: &mut Vec<Name>,
+) {
+    for stmt in &body.stmts {
+        collect_free_vars_in_stmt(stmt, shadowed, visible, out);
+    }
+}
+
+fn collect_free_vars_in_stmt(
+    stmt: &Stmt,
+    shadowed: &mut std::collections::HashSet<Name>,
+    visible: &[Name],
+    out: &mut Vec<Name>,
+) {
+    match stmt {
+        Stmt::Store(s) => {
+            collect_free_vars_in_expr(&s.expr, shadowed, visible, out);
+            shadowed.insert(s.name.clone());
+        }
+        Stmt::Expr(e) => collect_free_vars_in_expr(e, shadowed, visible, out),
+        Stmt::Return(e) | Stmt::Reply(e) => {
+            collect_free_vars_in_expr(e, shadowed, visible, out)
+        }
+        Stmt::If(i) => {
+            for b in &i.branches {
+                collect_free_vars_in_expr(&b.cond, shadowed, visible, out);
+                collect_free_vars_in_body(&b.body, shadowed, visible, out);
+            }
+            if let Some(els) = &i.else_ {
+                collect_free_vars_in_body(els, shadowed, visible, out);
+            }
+        }
+        Stmt::For(f) => {
+            collect_free_vars_in_expr(&f.range, shadowed, visible, out);
+            match &f.iter {
+                crate::ast::Iter::Indexed(idx, it) => {
+                    shadowed.insert(idx.clone());
+                    shadowed.insert(it.clone());
+                }
+                crate::ast::Iter::Named(it) => {
+                    shadowed.insert(it.clone());
+                }
+                crate::ast::Iter::Destructured(k, v) => {
+                    shadowed.insert(k.clone());
+                    shadowed.insert(v.clone());
+                }
+                _ => {}
+            }
+            collect_free_vars_in_body(&f.body, shadowed, visible, out);
+        }
+        Stmt::Block(b) => collect_free_vars_in_body(b, shadowed, visible, out),
+        Stmt::Try(t) => {
+            collect_free_vars_in_body(&t.body, shadowed, visible, out);
+            if let Some(p) = &t.catch_param {
+                shadowed.insert(p.clone().into());
+            }
+            collect_free_vars_in_body(&t.catch_body, shadowed, visible, out);
+            if let Some(f) = &t.finally_body {
+                collect_free_vars_in_body(f, shadowed, visible, out);
+            }
+        }
+        // 声明/控制流无引用面；未覆盖形式 fail-closed 由 expr 侧兜底。
+        _ => {}
+    }
+}
+
+fn collect_free_vars_in_expr(
+    expr: &Expr,
+    shadowed: &mut std::collections::HashSet<Name>,
+    visible: &[Name],
+    out: &mut Vec<Name>,
+) {
+    use crate::ast::Expr as E;
+    match expr {
+        E::Ident(n) | E::Ref(n) => {
+            if !shadowed.contains(n) && visible.iter().any(|v| v == n) {
+                out.push(n.clone());
+            }
+        }
+        E::Closure(c) => {
+            // 嵌套闭包：自己的参数遮蔽期间下降；其对我们可见名的捕获
+            // 同样是捕获。退出嵌套域后恢复遮蔽集（嵌套参数不遮蔽外层）。
+            let saved = shadowed.clone();
+            for p in &c.params {
+                shadowed.insert(p.name.clone());
+            }
+            collect_free_vars_in_expr(&c.body, shadowed, visible, out);
+            *shadowed = saved;
+        }
+        E::Lambda(f) => {
+            let saved = shadowed.clone();
+            for p in &f.params {
+                shadowed.insert(p.name.clone());
+            }
+            collect_free_vars_in_body(&f.body, shadowed, visible, out);
+            *shadowed = saved;
+        }
+        E::Call(call) => {
+            collect_free_vars_in_expr(&call.name, shadowed, visible, out);
+            for arg in &call.args.args {
+                if let crate::ast::Arg::Pos(e) = arg {
+                    collect_free_vars_in_expr(e, shadowed, visible, out);
+                }
+            }
+        }
+        E::Unary(_, e) => collect_free_vars_in_expr(e, shadowed, visible, out),
+        E::Bina(l, _, r) => {
+            collect_free_vars_in_expr(l, shadowed, visible, out);
+            collect_free_vars_in_expr(r, shadowed, visible, out);
+        }
+        E::Dot(o, _) => collect_free_vars_in_expr(o, shadowed, visible, out),
+        E::Index(b, i) => {
+            collect_free_vars_in_expr(b, shadowed, visible, out);
+            collect_free_vars_in_expr(i, shadowed, visible, out);
+        }
+        E::Array(elems) => {
+            for e in elems {
+                collect_free_vars_in_expr(e, shadowed, visible, out);
+            }
+        }
+        E::Object(pairs) => {
+            for p in pairs {
+                collect_free_vars_in_expr(&p.value, shadowed, visible, out);
+            }
+        }
+        E::Pair(p) => collect_free_vars_in_expr(&p.value, shadowed, visible, out),
+        E::Range(r) => {
+            collect_free_vars_in_expr(&r.start, shadowed, visible, out);
+            collect_free_vars_in_expr(&r.end, shadowed, visible, out);
+        }
+        E::FStr(f) => {
+            for part in &f.parts {
+                collect_free_vars_in_expr(part, shadowed, visible, out);
+            }
+        }
+        E::Tuple(elems) => {
+            for e in elems {
+                collect_free_vars_in_expr(e, shadowed, visible, out);
+            }
+        }
+        E::TupleDestruct { expr, .. } => collect_free_vars_in_expr(expr, shadowed, visible, out),
+        E::NullCoalesce(l, r) => {
+            collect_free_vars_in_expr(l, shadowed, visible, out);
+            collect_free_vars_in_expr(r, shadowed, visible, out);
+        }
+        E::ErrorPropagate(e) | E::Some(e) | E::Ok(e) | E::Err(e)
+        | E::BoxExpr(e) | E::ArcExpr(e) | E::Yield(e) => {
+            collect_free_vars_in_expr(e, shadowed, visible, out);
+        }
+        E::Cast { expr, .. } | E::To { expr, .. } => {
+            collect_free_vars_in_expr(expr, shadowed, visible, out);
+        }
+        E::View(e) | E::Mut(e) | E::Move(e) | E::Take(e) => {
+            collect_free_vars_in_expr(e, shadowed, visible, out);
+        }
+        E::Block(body) => collect_free_vars_in_body(body, shadowed, visible, out),
+        E::If(i) => {
+            for b in &i.branches {
+                collect_free_vars_in_expr(&b.cond, shadowed, visible, out);
+                collect_free_vars_in_body(&b.body, shadowed, visible, out);
+            }
+            if let Some(els) = &i.else_ {
+                collect_free_vars_in_body(els, shadowed, visible, out);
+            }
+        }
+        // 字面量/空形式无引用。
+        E::Int(_) | E::Uint(_) | E::Byte(_) | E::Float(_, _) | E::Double(_, _)
+        | E::Bool(_) | E::Char(_) | E::Str(_) | E::CStr(_) | E::GenName(_)
+        | E::Nil | E::Null | E::None => {}
+        // PLAN-667 (F-04): 未覆盖复合形式 fail-closed——全部可见名算捕获。
+        _ => {
+            for v in visible {
+                if !shadowed.contains(v) {
+                    out.push(v.clone());
+                }
+            }
+        }
+    }
+}
 
 // ============================================================================
 // Plan 419 §4.5: 闭包写捕获扫描器
