@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-664
-status: reviewed
+status: archived
 feature_name: jade-consumer-upstream-package（jade/auto-edit 消费侧上游提名单：menubar 快照回归修复 + strict 域词位勘定补全 + JSON/storage 值域 + P-15/P-16 报错化 + DEBTS 651 回填）
 author: [zhaopuming（auto-down 会话代拟，待 auto-lang 侧会话实勘修订）]
 created_at: 2026-09-20
@@ -235,6 +235,27 @@ TS ext 已在产消费）；a2r 轨无此消费方 N/A。
   不触 GOAL-007 双端视觉一致——VM 单轨行为修复无 vue 对位变更）|
   evidence: 本记录命令+结果摘录；worktree clean @2f8a84c3 留存 merge |
   next: /auto-plan:merge`。
+
+- 2026-09-20 merge 收据 **PLAN-664:r2**：`stage: merge | outcome: delivered |
+  prepared: reviewed 基线 2f8a84c3a（R2 pass + 冻结规范 a115ae6d）→ 账本
+  备制（specs.json 外科插入 P664-1[designs]+P664-2[reviews]——indent=1
+  原生 UTF-8 逐字节对齐，首版 indent=2 全文件重写已弃；P014-1×2 重复
+  =master 预存历史产物非本次引入；ui/plans.md 表行 + INDEX ui 行注记）；
+  预存红三处与 stash 事故复盘已在 R1/R2 记录 | landed: master 三跳
+  rebase 全等链 2f8a84c3a→2702659d8→547a4e7f4→172536658（range-diff
+  逐跳 6/6、7/7 `=`；二跳后重验 build 零错+plan664 4/4+041 矩阵
+  50/0×2+tf 3631/3633 同二预存红）→ `--ff-only` master tip=172536658
+  （无 merge commit；并发竞态三笔=663 落地/df90a448b StretchLine/
+  5abf1a0e9 examples 整编+665/666 立档簿记，零冲突三跳）|
+  ledger_refreshed: .autoos/specs.json P664-1/P664-2 读回验证（designs
+  94/reviews 133；无新增重复——P014-1 预存在案）+ INDEX/plans.md 随
+  delivery 落 main + 主检出集成冒烟 plan664 4/4 | archived:
+  docs/plans/archive/664-jade-consumer-upstream-package.md（git mv，
+  status: archived；completion_kind: delivered）| cleaned: 待清理段
+  补记 | mapping: 3e6cfb886→1c525caef、ed439e3ea→06b23b100、
+  51c58b7b3→fec96a473、804ed4e94→a1add7fe9→(r2)a1add7fe9、
+  896013e29→7907420f7、2f8a84c3a→2702659d8、3749b3b76→547a4e7f4→
+  172536658（delivery）| next: cleaned 收尾`。
 
 ## 10. 待澄清事项
 
