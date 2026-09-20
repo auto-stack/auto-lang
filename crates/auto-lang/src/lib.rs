@@ -27,6 +27,26 @@ pub fn drain_store_extra_files() -> Vec<(String, String)> {
     result
 }
 
+// PLAN-664 U-4：use 导入两类静默死面的编译期诊断汇聚点（P-15 模块解析
+// 失败 / P-16 导入符号与 model 字段撞名）。双出口：stderr 即时可见（消费
+// 方 `auto run` 的探针日志可直接 grep `[AUTO-USE-DIAG]`），thread_local
+// 汇聚供测试断言（eprintln 无法被进程内单测捕获）。
+thread_local! {
+    static USE_DIAGS: std::cell::RefCell<Vec<String>> = std::cell::RefCell::new(Vec::new());
+}
+
+/// Emit a use-import compile-time diagnostic (PLAN-664 P-15/P-16): stderr +
+/// thread-local sink for test assertions.
+pub fn use_diag(msg: String) {
+    USE_DIAGS.with(|cell| cell.borrow_mut().push(msg.clone()));
+    eprintln!("{}", msg);
+}
+
+/// Take (drain) accumulated use-import diagnostics — test entry.
+pub fn take_use_diags() -> Vec<String> {
+    USE_DIAGS.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
+}
+
 pub fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
     GLOBAL_RT.get_or_init(|| {
         Arc::new(
@@ -3844,7 +3864,16 @@ fn collect_module_imports(
                     collect_module_imports(&path, visited, out, seen, session, override_scenario);
                 }
             }
-            UseModuleResolution::None => {}
+            UseModuleResolution::None => {
+                // PLAN-664 U-4（P-15）：传递性 use 同告警化（见根 use 环
+                // 同名诊断注记）。
+                crate::use_diag(format!(
+                    "[AUTO-USE-DIAG] P-15 传递 use 模块 `{}` 解析失败（items: {:?}）——基目录 {} 均无对应 .at/mod.at（PLAN-664）。该导入静默跳过。",
+                    dep.module,
+                    dep.items,
+                    module_dir.display()
+                ));
+            }
         }
     }
 }
@@ -4088,6 +4117,36 @@ fn build_dynamic_component_inner(
             if use_stmt.is_c_import || use_stmt.is_rust_import {
                 continue;
             }
+            // PLAN-664 U-4（P-16）：use 导入符号与 widget model 字段撞名 =
+            // link 期 "Undefined symbol: App_State.<field>" 死面（080 T-03
+            // 实录：`use panels_graph_fns: graph_stats` × `var graph_stats
+            // map`，MCP 不起、零编译期告警）。撞名时名字被状态通道抢占，
+            // 此处编译期告警化；硬错化留待确认无合法撞名形态后另议。
+            for item in &use_stmt.items {
+                let mut owner: Option<String> = None;
+                if let Some(model) = &root_decl.model {
+                    if model.fields.iter().any(|f| f.name.as_str() == item) {
+                        owner = Some(root_decl.name.to_string());
+                    }
+                }
+                if owner.is_none() {
+                    for d in &child_decls {
+                        if d
+                            .model
+                            .as_ref()
+                            .map_or(false, |m| m.fields.iter().any(|f| f.name.as_str() == item))
+                        {
+                            owner = Some(d.name.to_string());
+                            break;
+                        }
+                    }
+                }
+                if let Some(w) = owner {
+                    crate::use_diag(format!(
+                        "[AUTO-USE-DIAG] P-16 use 导入符号 `{item}` 与 widget `{w}` 的 model 字段撞名——VM 轨该名字被状态通道占用，fn 导入将在 link 期落 `Undefined symbol` 类死面（PLAN-664）。fn 与字段改名错开其一。"
+                    ));
+                }
+            }
             // Locate the module source file. A dotted module path maps to a
             // filesystem path: `back.api` → `back/api.at`, `calendar_util` →
             // `calendar_util.at`. Per the module rules (CLAUDE.md) a module is
@@ -4139,7 +4198,18 @@ fn build_dynamic_component_inner(
                     }
                     continue;
                 }
-                UseModuleResolution::None => continue,
+                UseModuleResolution::None => {
+                    // PLAN-664 U-4（P-15）：fn/组件 use 模块解析失败此前
+                    // 静默跳过——消费侧表现 = 引用符号的视图/handler 落空、
+                    // App 空视图零报错（jade 079 E-8 跨项目 fn 导入静默
+                    // 死面实录）。编译期告警化：留下可 grep 诊断；硬错化
+                    // 留待确认无合法未解析形态后另议。
+                    crate::use_diag(format!(
+                        "[AUTO-USE-DIAG] P-15 use 模块 `{}` 解析失败（items: {:?}）——候选基目录均无对应 .at/mod.at（PLAN-664）。该导入静默跳过，引用其符号的面将落空。",
+                        use_stmt.module, use_stmt.items
+                    ));
+                    continue;
+                }
             };
 
             // Register child widgets declared directly in this top-level module
@@ -7571,6 +7641,12 @@ mod musk_vm_track_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 #[path = "tests/plan632_demo_bridge_tests.rs"]
 mod plan632_demo_bridge_tests;
+
+// PLAN-664 U-4：use 导入静默死面报错化负例（P-15 模块解析失败 /
+// P-16 导入符号 × model 字段撞名）。
+#[cfg(all(test, feature = "ui-iced"))]
+#[path = "tests/plan664_use_diag_tests.rs"]
+mod plan664_use_diag_tests;
 
 // PLAN-639: 跨包 blueprint .at 解析双轨消费门（VM 渲染结构 + vue 发射面）。
 #[cfg(test)]
