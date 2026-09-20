@@ -838,6 +838,17 @@ pub fn terminal_scroll_offset(core: &TerminalCore) -> usize {
     core.scroll_offset.load(Ordering::Relaxed) as usize
 }
 
+/// PLAN-025 T-05 实机复测修:把当前 offset 标记为已绑定(用户驱动
+/// 滚动回灌路径专用)。iced 滚轮每 notch 60px ≠ CELL_H 行距,读出臂
+/// 量化回灌后引擎落整行位——若 bind 写臂仍按行量化 scroll_to 回拉,
+/// 每拍 4px 反复回拉 = 滚动条抖动(用户 2026-09-20 实机实录)。用户
+/// 滚动产生的 offset 变化源自视图本身(视图已知位),泵排水后标
+/// bound 即可;外部源(键入贴底/程序滚动)不标,bind 照常跟随。
+pub fn terminal_mark_view_bound(core: &TerminalCore) {
+    let off = core.scroll_offset.load(Ordering::Relaxed) as i64;
+    core.scroll_bound_offset.store(off, Ordering::Relaxed);
+}
+
 /// Wheel/trackpad scroll: adjust the display offset (clamped at ≥0; the
 /// upper bound is the app's scrollback height, unenforced here).
 pub fn terminal_scroll(core: &TerminalCore, delta: i32) {

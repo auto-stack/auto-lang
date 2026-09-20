@@ -18,9 +18,9 @@
 use crate::ui::terminal::iced::widget::{refresh_row_cache, row_rebuilds_reset, VisibleRow, CELL_H};
 use crate::ui::terminal::{
     terminal, terminal_dispose, terminal_feed_cells_for, terminal_feed_window_for,
-    terminal_set_history, terminal_set_scroll_offset, terminal_set_window_anchor,
-    terminal_window_anchor, terminal_window_row, TermCell, TerminalCore,
-    WINDOW_ANCHOR_UNSET,
+    terminal_mark_view_bound, terminal_set_history, terminal_set_scroll_offset,
+    terminal_set_window_anchor, terminal_window_anchor, terminal_window_row, TermCell,
+    TerminalCore, WINDOW_ANCHOR_UNSET,
 };
 
 /// 伪引擎行内容:行 id 即内容指纹(同 id 恒同文本)。
@@ -242,6 +242,34 @@ fn p025_anchor_and_store_roundtrip() {
     let core2 = terminal("p025-glue", 100, 40);
     assert_eq!(terminal_window_anchor(core2), 4711, "几何替换后锚保持");
     terminal_dispose("p025-glue");
+}
+
+/// T-05 实机复测修的 bind 防回拉语义(滚动条抖动根修):用户滚动回灌
+/// (泵 delta≠0 → mark_view_bound)后,bind 写臂不得再 scroll_to 行量化
+/// 回拉;外部源 offset 变化(不标)仍正常触发 bind。iced 滚轮 60px/notch
+/// ≠ CELL_H 行距——回拉 = 每拍 4px 抖动(2026-09-20 用户实机实录)。
+#[test]
+fn p025_user_scroll_marks_bound_external_still_binds() {
+    use crate::ui::terminal::iced::widget::Terminal;
+    terminal_dispose("p025-bind");
+    let core = terminal("p025-bind", 80, 30);
+    terminal_set_history(core, 500);
+    // 用户滚动路径:泵排水 → 引擎 offset → set_scroll_offset → 标 bound。
+    terminal_set_scroll_offset(core, 64);
+    terminal_mark_view_bound(core);
+    assert_eq!(
+        Terminal::<u8>::bind_request_y(core),
+        None,
+        "用户滚动回灌后视图已知位:bind 不得回拉(防抖)"
+    );
+    // 外部源(键入贴底/程序滚动):set_scroll_offset 不标 bound。
+    terminal_set_scroll_offset(core, 40);
+    let y = Terminal::<u8>::bind_request_y(core).expect("外部变化必须 bind 跟随");
+    assert_eq!(y, (500 - 40) as f32 * CELL_H);
+    // 绑定后回声抑制挂起(022 语义不变)。
+    assert!(core.scroll_bind_suppress_pending());
+    assert_eq!(Terminal::<u8>::bind_request_y(core), None, "已绑定去重");
+    terminal_dispose("p025-bind");
 }
 
 /// 判决面 2(候选 2):泵滞后空白带的时间线模型(T-01 判决工件留档;
