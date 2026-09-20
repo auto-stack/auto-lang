@@ -8375,6 +8375,43 @@ impl Codegen {
                     _ => None,
                 };
 
+                // PLAN-080 F-2③: 裸 Http web 协议族（Http.get/get_json/post/
+                // put/delete/patch，arity 匹配时）——web 轨语义（ts_adapter
+                // Plan 028 F8）= await fetch(...).json() 解析体。VM 此前把
+                // 裸名经 canonical 规则派到 auto.http.get/post（Response
+                // 句柄 int），.at 侧字段读全空、try/catch 静默吞——musk
+                // ws_resolve_current/relay_store 等整族"VM 数据空"的根因
+                // （080 probe080 实证：Http.get 返 to_str="2"）。改写为
+                // *_json native + json.to_value，与 emit_api_http_call
+                // 步骤 4-5 同配方；句柄族（Http.request/RequestBuilder 链）
+                // 与不匹配 arity 不经此臂，原 CALL 路径不变。
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    if matches!(obj.as_ref(), Expr::Ident(id) if id.as_str() == "Http") {
+                        let n_args = call.args.args.len();
+                        let web_native = match (method.as_str(), n_args) {
+                            ("get", 1) | ("get_json", 1) => Some("auto.http.get_json"),
+                            ("post", 2) => Some("auto.http.post_json"),
+                            ("put", 2) => Some("auto.http.put_json"),
+                            ("patch", 2) => Some("auto.http.patch_json"),
+                            ("delete", 1) => Some("auto.http.delete_json"),
+                            _ => None,
+                        };
+                        if let Some(native) = web_native {
+                            for arg in &call.args.args {
+                                if let crate::ast::Arg::Pos(a) = arg {
+                                    self.compile_expr(a)?;
+                                }
+                            }
+                            self.emit_call_nat_by_name(native, n_args as u16)?;
+                            // body 字符串 → VM 值（ListData/__json_object）。
+                            self.emit_call_nat_by_name("auto.json.to_value", 1)?;
+                            self.last_expr_type = ObjectType::NestedObject;
+                            self.last_was_native_void = false;
+                            return Ok(());
+                        }
+                    }
+                }
+
                 // Plan 340: API-over-HTTP rewriting (VM+VM split mode). When
                 // api_over_http is set, rewrite calls to #[api] functions
                 // into HTTP requests. Must come BEFORE any native/local/external

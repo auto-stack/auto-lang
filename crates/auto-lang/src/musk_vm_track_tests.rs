@@ -3989,3 +3989,95 @@ mod musk_vm_track_p066_3_i18n_route {
         }
     }
 }
+
+/// PLAN-080 F-2③: 裸 Http web 协议族（Http.get/get_json/post/put/delete/
+/// patch，arity 匹配）改写为 auto.http.*_json + auto.json.to_value——
+/// web 轨语义对齐（ts_adapter Plan 028 F8 = fetch + .json() 解析体）。
+/// 此前裸名经 canonical 规则落 auto.http.get（Response 句柄 int），.at
+/// 侧字段读全空、try/catch 静默吞——musk ws_resolve_current/relay_store/
+/// agent_configs 整族"VM 数据空"根因（080 probe080 实证 to_str="2"，
+/// Http.get 返句柄 2；改写后 data.workspaces.length=1 全链通）。
+/// 钉：Http.get 编译产物含 get_json+to_value；裸 auto.http.get 不出现在
+/// CALL_NAT；arity 不匹配（Http.post 单参）不改写（落句柄族原生路径）。
+#[cfg(test)]
+mod musk_vm_track_p080_http_web_family {
+    /// 脚本（bigvm）路径的改写在 PLAN-442 webcompat 已有；080 补的是 UI
+    /// （aura/front .at）路径的同一配方（vm/codegen.rs Call 臂）。两路径
+    /// 殊途——本钉以字节码产物为准（native 名经 BytecodeMeta 解析），
+    /// 行为实证见 080 probe080（UI 路径修前返句柄 to_str="2"、修后
+    /// data.workspaces.length=1）。
+    fn disasm_text(code: &str) -> String {
+        match crate::run_with_capture_and_bytecode_with_meta(code) {
+            Ok((_, _, lines, meta)) => lines
+                .iter()
+                .map(|l| {
+                    let s = l.to_string();
+                    // call.nat nat#N → 追加解析名，断言可按名匹配。
+                    if let Some(id) = s.split("nat#").nth(1).and_then(|rest| {
+                        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                        digits.parse::<u16>().ok()
+                    }) {
+                        if let Some(name) = meta.natives.get(&id) {
+                            return format!("{s} ; {name}");
+                        }
+                    }
+                    s
+                })
+                .collect::<Vec<_>>()
+                .join("
+"),
+            Err(e) => panic!("run failed: {e}"),
+        }
+    }
+
+    #[test]
+    fn http_get_rewrites_to_json_recipe() {
+        let text = disasm_text("fn main() {
+    let data = Http.get(\"/api/workspace/list\")
+    print(data.workspaces)
+}");
+        assert!(text.contains("auto.http.get_json"), "get_json missing:
+{text}");
+        // 注册名别名两形态（auto.json.to_value / Json.to_value），按 to_value 计。
+        assert!(
+            text.contains("auto.json.to_value") || text.contains("Json.to_value"),
+            "to_value missing:
+{text}"
+        );
+    }
+
+    #[test]
+    fn http_post_two_args_rewrites() {
+        let text = disasm_text("fn main() {
+    Http.post(\"/api/x\", { \"a\": 1 })
+}");
+        assert!(text.contains("auto.http.post_json"), "post_json missing:
+{text}");
+        // 注册名别名两形态（auto.json.to_value / Json.to_value），按 to_value 计。
+        assert!(
+            text.contains("auto.json.to_value") || text.contains("Json.to_value"),
+            "to_value missing:
+{text}"
+        );
+    }
+
+    #[test]
+    fn http_get_json_alias_rewrites_same() {
+        // ts_adapter 语义：get_json 与 get 同映射（双端一致取 JSON body）。
+        let text = disasm_text("fn main() {
+    let d = Http.get_json(\"/api/x\")
+    print(d)
+}");
+        assert!(text.contains("auto.http.get_json"), "get_json missing:
+{text}");
+    }
+
+    #[test]
+    fn http_delete_rewrites() {
+        let text = disasm_text("fn main() {
+    Http.delete(\"/api/x\")
+}");
+        assert!(text.contains("auto.http.delete_json"), "delete_json missing:
+{text}");
+    }
+}
