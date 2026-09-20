@@ -667,9 +667,13 @@ mod tests {
         // scan_temp_dir_full_shape_with_new_fields 的 bare-app 臂保留）。
         // PLAN-590（Stage B P-5）：025-sys-monitor/028-launcher/038-minesweeper
         // 随桌面域资产迁 auto-os apps/（36→33，实测定数）。
+        // PLAN-666：三 demo 快照复刻回源（demo 轨=examples/ui，app 轨=
+        // auto-os apps/ 分道扬镳）。实测定数 32+3=35——590 注记的"36"含
+        // 后续 ui 轨整编（043-046 迁 capability-tests，355948894）前的
+        // 旧基数，重基线以当前净盘为准。
         assert!(
-            apps.len() >= 33,
-            "examples/ui 扫描数应 ≥33（36 桌面域三 app 迁出，PLAN-590），实际 {}",
+            apps.len() >= 35,
+            "examples/ui 扫描数应 ≥35（PLAN-666 三 demo 复刻回源，实测定数），实际 {}",
             apps.len()
         );
         // 011-calculator：pac.at 形态，render=vue；Plan 504 起 title 字段
@@ -713,8 +717,13 @@ mod tests {
             // （apps.manifest extra root 原生挂载）替位桌面入口（C 档
             // 17→16）；本目录留作教学示例与收割语料，不迁不删。
             "024-charts",
+            // PLAN-666：三 demo 快照复刻回源，C 档 17→20（pac 均
+            // desktop: "true"；demo 面=examples/ui 副本，app 面在
+            // auto-os apps/ 各自演化）。
+            "025-sys-monitor",
             "026-database",
             "027-file-manager",
+            "028-launcher",
             "029-photo-gallery",
             "030-video-player",
             // 9c6c27e86（2026-09-12）：031-image-viewer 进桌面（auto-os 整理批
@@ -723,14 +732,19 @@ mod tests {
             "031-image-viewer",
             // PLAN-553：031-paint 上架（C 档 19→20；像素画板，desktop: true）。
             "031-paint",
-            "041-auto-edit",
             // PLAN-590（Stage B P-5）：025-sys-monitor/028-launcher/038-minesweeper
             // 桌面域三 app 迁 auto-os apps/（C 档 20→17；auto-os 侧经
             // extra roots 容器探测注册，不走默认注册表策展）。
+            // PLAN-666：三 demo 复刻回源（17→20），上两条 590 注记作历史。
+            "038-minesweeper",
+            "041-auto-edit",
+            // PLAN-657 落 047-bp-admin（desktop: "true"）但 want 漏更——
+            // master 预存红，PLAN-666 重基线一并补 want（9c6c27e86 同型）。
+            "047-bp-admin",
         ];
         assert_eq!(
             curated, want,
-            "策展集（desktop_visible）应恰为 C 档 17 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出/PLAN-008 022-kanban 退策展/9c6c27e86 增 031-image-viewer——PLAN-015 补 want）"
+            "策展集（desktop_visible）应恰为 C 档 21 id（PLAN-552 三档清单；045 退役/PLAN-553 增 031-paint/PLAN-590 桌面域三 app 迁出/PLAN-008 022-kanban 退策展/9c6c27e86 增 031-image-viewer——PLAN-015 补 want/PLAN-666 三 demo 复刻回源+补 047 want——17→21）"
         );
     }
 
