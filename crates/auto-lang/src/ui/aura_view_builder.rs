@@ -10298,17 +10298,22 @@ let tabs_inner = View::Row {
             .and_then(|s| s.parse::<f32>().ok())
             .unwrap_or(15.0);
 
+        // PLAN-670 F-W3:on_change/on_cursor 改用绑定解析版(_with)——
+        // code_editor 的事件参数(如 .SrcChanged(i) 的循环变量 i)此前经光杆
+        // 版落 parse_event_param_literal 空串,int 形参收 Str("") → handler
+        // IndexError(auto-edit 矩阵 18 次)。Plan 062 T9 input 同款镜像;
+        // 无参事件两版等价。
         let on_change = aura_events_get_base(events, "oninput")
             .or_else(|| aura_events_get_base(events, "input"))
             .or_else(|| aura_events_get_base(events, "onchange"))
             .or_else(|| aura_events_get_base(events, "change"))
             .or_else(|| aura_events_get_base(events, "onupdate"))
             .or_else(|| aura_events_get_base(events, "update"))
-            .map(|event| self.event_to_message(&event.handler));
+            .map(|event| self.event_to_message_with(&event, bindings));
 
         let on_cursor = aura_events_get_base(events, "oncursor")
             .or_else(|| aura_events_get_base(events, "cursor"))
-            .map(|event| self.event_to_message(&event.handler));
+            .map(|event| self.event_to_message_with(&event, bindings));
 
         let on_context_menu = aura_events_get_base(events, "oncontextmenu")
             .or_else(|| aura_events_get_base(events, "contextmenu"))

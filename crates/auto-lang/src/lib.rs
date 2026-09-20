@@ -7641,6 +7641,11 @@ mod plan058_engine_gap_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan063_handler_float_tests;
 
+// PLAN-670 F-W3：code_editor 事件参数绑定（oninput/oncursor 循环变量/字面量/
+// 点路径三类实参，062 T9 input 同款语义镜像）回归锁。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan670_code_editor_event_tests;
+
 // Plan 502 M1: diagram 标签发射——svg <text> 直通(vue 上下文分流 + VM
 // svgdoc 内容序列化)与 overlay 动态 arbitrary 值双轨对照回归。
 #[cfg(test)]
