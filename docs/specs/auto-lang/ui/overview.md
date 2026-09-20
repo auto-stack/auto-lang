@@ -671,7 +671,12 @@ p659_cdb_soak.py`，探针 `p659_probe.rs`）：
   CSS 渲染）+ theme{} 声明合成〔decl.rs：extends 链/mode 继承/值规范化，ComposedTheme
   与 builtin 同类型〕+ accent 表单源；ui_gen〔无门〕/ui::style/code_editor 三方直达消费，
   theme re-export 保路径稳定——放 ui 外因 ui_gen 不能引 feature="ui" 实体）·
-  `ui/action_config.rs`（actions 配置层，热重载/OS keymap/表达式条件）
+  **PLAN-038 Phase B（P038-2）**：`EXTENDED_ORDER`〔Success/Warning/Info/Error〕追加进
+  `render_core`/`ComposedTheme::render_core`（CORE_ORDER 仍为全主题必持契约；缺席键静默
+  跳过，zinc 可不持）；SCAFFOLD/CLI_VUE/TAURI 双 mode 持扩展 4 键（Rgb 与 stella/VM
+  同值：34,197,94 / 234,179,8 / 59,130,246 / 239,68,68）——Vue CSS 变量与 VM
+  `resolve_semantic_rgb` 同源；`ui/action_config.rs`（actions 配置层，热重载/OS keymap/表达式条件）
+
 - 内建编辑器：`ui/code_editor/`（**Plan 601 后编辑器主题从活动主题派生（V4 完整）**——
   bg/fg/caret/syntax 取 registry Background/Foreground 真值入编辑器色域，syntax 主题键
   `autoui-{theme}-{mode}-{accent}`〔内置预烘焙+boot 期合成体烘焙〕，切主题 THEME_EPOCH
