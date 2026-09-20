@@ -255,7 +255,10 @@ TS ext 已在产消费）；a2r 轨无此消费方 N/A。
   补记 | mapping: 3e6cfb886→1c525caef、ed439e3ea→06b23b100、
   51c58b7b3→fec96a473、804ed4e94→a1add7fe9→(r2)a1add7fe9、
   896013e29→7907420f7、2f8a84c3a→2702659d8、3749b3b76→547a4e7f4→
-  172536658（delivery）| next: cleaned 收尾`。
+  172536658（delivery）| cleaned: wt-guard 双净（lang-664/auto-lang +
+  lang-664/auto-down 零 reparse point）→ 双 worktree 移除（auto-down 位
+  经其本仓移除）+ plan-664-dev 删除（was 172536658 已落）+ 组目录
+  .wt/lang-664 移除——五 checkpoint 全闭环 delivered (Blueprint)`。
 
 ## 10. 待澄清事项
 
