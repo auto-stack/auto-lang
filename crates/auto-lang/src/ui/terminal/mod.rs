@@ -872,6 +872,12 @@ pub fn terminal_queue_scroll_delta(core: &TerminalCore, delta: i32) {
     *core.scroll_delta.lock().unwrap() += delta;
 }
 
+/// PLAN-025 T-04 即时泵探针:滚动增量是否待排(peek,不排空)。泵
+/// 节拍门消费——视图先行量超预取覆盖时提前泵,消灭快拖半屏空白。
+pub fn terminal_scroll_delta_pending(core: &TerminalCore) -> i32 {
+    *core.scroll_delta.lock().unwrap()
+}
+
 /// 排水:取走累计滚动增量(读后即清零;引擎泵每拍调用)。
 pub fn terminal_take_scroll_delta(core: &TerminalCore) -> i32 {
     std::mem::take(&mut *core.scroll_delta.lock().unwrap())

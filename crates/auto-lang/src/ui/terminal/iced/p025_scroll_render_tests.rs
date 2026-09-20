@@ -18,8 +18,9 @@
 use crate::ui::terminal::iced::widget::{refresh_row_cache, row_rebuilds_reset, VisibleRow, CELL_H};
 use crate::ui::terminal::{
     terminal, terminal_dispose, terminal_feed_cells_for, terminal_feed_window_for,
-    terminal_mark_view_bound, terminal_set_history, terminal_set_scroll_offset,
-    terminal_set_window_anchor, terminal_window_anchor, terminal_window_row, TermCell,
+    terminal_mark_view_bound, terminal_queue_scroll_delta, terminal_set_history,
+    terminal_set_scroll_offset, terminal_set_window_anchor, terminal_take_scroll_delta,
+    terminal_window_anchor, terminal_window_row, terminal_scroll_delta_pending, TermCell,
     TerminalCore, WINDOW_ANCHOR_UNSET,
 };
 
@@ -283,14 +284,18 @@ fn p025_pump_lag_model_blank_band_extent() {
     const BURST_NOTCHES: i64 = 10;
 
     /// 单速率推演:返回 (无预取最大空白带行数, 无预取滞后帧数,
-    /// 预取 N=8 最大空白带行数, 预取滞后帧数)。
+    /// 预取 prefetch_n 最大空白带行数, 预取滞后帧数)。T-04 落地后
+    /// 滚动期泵周期 = 16ms(节拍门),预取 N=24(见 term.rs)。
     fn run(notch_every_ms: i64) -> (i64, i64, i64, i64) {
+        run_with(notch_every_ms, PUMP_MS, 8)
+    }
+    fn run_with(notch_every_ms: i64, pump_ms: i64, prefetch_n: i64) -> (i64, i64, i64, i64) {
         let mut t_view: i64 = 0; // 视图目标 offset(行)
         let mut o_eng: i64 = 0; // 引擎已确认 offset(行)
         let mut next_notch: i64 = 0;
         let mut next_pump: i64 = 0;
         let (mut max0, mut frames0, mut max8, mut frames8) = (0i64, 0i64, 0i64, 0i64);
-        let end = BURST_NOTCHES * notch_every_ms + PUMP_MS + FRAME_MS;
+        let end = BURST_NOTCHES * notch_every_ms + pump_ms + FRAME_MS;
         let mut t: i64 = 0;
         while t <= end {
             // 本帧前的滚轮与泵事件追认(时刻 ≤ t 全部生效)。
@@ -300,7 +305,7 @@ fn p025_pump_lag_model_blank_band_extent() {
             }
             while next_pump <= t {
                 o_eng = t_view;
-                next_pump += PUMP_MS;
+                next_pump += pump_ms;
             }
             // draw:视图窗 [h-t_view, ..],已喂窗 [h-o_eng, ..](无预取);
             // 上翻(t_view > o_eng)时顶部超出已喂窗 = 空白带。
@@ -309,7 +314,7 @@ fn p025_pump_lag_model_blank_band_extent() {
                 frames0 += 1;
                 max0 = max0.max(lead);
             }
-            let lead_prefetch = (lead - 8).max(0);
+            let lead_prefetch = (lead - prefetch_n).max(0);
             if lead_prefetch > 0 {
                 frames8 += 1;
                 max8 = max8.max(lead_prefetch);
@@ -342,4 +347,27 @@ fn p025_pump_lag_model_blank_band_extent() {
         "预取 8 行对快速速率严格收窄: {}→{} 行,{}→{} 帧",
         fast.0, fast.2, fast.1, fast.3
     );
+    // T-04 落地(2026-09-20 二轮实机:快拖半屏空白):滚动期泵 16ms +
+    // 预取 N=24 → 两档速率空白带均清零。
+    let gated_slow = run_with(30, 16, 24);
+    let gated_fast = run_with(10, 16, 24);
+    eprintln!(
+        "[P025-LAG] 门控泵 16ms + N=24:常规 {}行 {}帧 / 快速 {}行 {}帧",
+        gated_slow.2, gated_slow.3, gated_fast.2, gated_fast.3
+    );
+    assert_eq!((gated_slow.2, gated_slow.3), (0, 0), "门控+预取:常规速率零空白");
+    assert_eq!((gated_fast.2, gated_fast.3), (0, 0), "门控+预取:快速速率零空白");
+}
+
+/// T-04 即时泵探针:queue 后 pending ≠ 0(peek 不排空);drain 后归零。
+#[test]
+fn p025_scroll_pending_peek_semantics() {
+    terminal_dispose("p025-pending");
+    let core = terminal("p025-pending", 80, 30);
+    assert_eq!(terminal_scroll_delta_pending(core), 0, "初态无待排");
+    terminal_queue_scroll_delta(core, 3);
+    assert_eq!(terminal_scroll_delta_pending(core), 3, "peek 不排空");
+    assert_eq!(terminal_take_scroll_delta(core), 3, "drain 取走");
+    assert_eq!(terminal_scroll_delta_pending(core), 0, "drain 后归零");
+    terminal_dispose("p025-pending");
 }
