@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-668
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # 终态（archived plans do not go back）
 feature_name: baseline-red-clearance
 author: [zcode]
 created_at: 2026-09-20
@@ -319,6 +319,20 @@ test_aavm2_goldens_check` 全绿；抽样示例构建链绿；KNOWN-DEBT 中本�
 
 ## 9. 复审记录
 
+- **2026-09-21 merge 收据（/auto-plan:merge，PLAN-668:r1 五 checkpoint）**：
+  stage: merge | outcome: pass（delivered） | delivery_commit: master@b29132f2b |
+  ①prepared：账本三件套 worktree 内提交（specs.json 外科插入 P668-1/2 616→618、
+  auto-man plans.md 668 表行、spec-index.py 再生 INDEX——038 vue 行随 master 现行
+  同步，SD 节不触模块表零漂）；reviewed 基线 08cd793a3（=review 收据 51e4a98a4 所钉）
+  →rebase master@51e4a98a4（669 已落地世代）零冲突，8 提交线性重放，映射：
+  93e5aeca8/238bc4dfb/7980c5b91/233a28407/4bf7591a9/4f72a077b/fb9db2d75/3d2dd9482。
+  ②landed：`git merge --ff-only plan-668-dev` 主检出 tip==b29132f2b（无合并提交，
+  range-diff 等价在 rebase 验证）；落前门禁（rebase 树+账本提交）：tf 3684/3684 ✓/
+  tt 4053/4053 ✓/t 5321/5341（残余=musk 6+layout 14 豁免域外集）/038 构建链绿
+  （delivery 二进制）；插曲：target incremental 24G 撑盘（os error 112 假编译错）
+  ——清 incremental+陈旧沙箱后复验绿。③ledger_refreshed：specs.json P668-1/2 +
+  plans.md 表行 + INDEX（见 ①，随 delivery 提交入库）。④archived：本步 git mv +
+  status: archived + completion_kind: delivered。⑤cleaned：见下一行回填。
 - **2026-09-21 review（/auto-plan:review，执行会话内复核——独立性声明：结论自工件重建）**：
   stage: review | PLAN-668 | plan_revision 1 | outcome: **pass**（含一轮 needs_fix 闭环） |
   reviewed_commit: plan-668-dev@08cd793a3（=a41a47fab merge + F-668-R1） | base_commit:
