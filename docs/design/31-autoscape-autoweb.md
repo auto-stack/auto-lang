@@ -3,7 +3,8 @@
 > **状态**：📝 Draft（2026-09-20 立档）
 > **来源**：外来设计输入 `AutoScape_Design_v0.1.md`（ChatGPT 产出，2026-09-20，用户裁定融入本设计体系）。
 > 本文档为**重排版**：保留原稿全部有效设计信息，按本仓体系重组——追加 §3 术语×本地实现对照、
-> §10 落地差距分析、§11 分期路线（v0.6 建议范围）；原稿独立成文的 wire-level 边界（§12 文档分层）照单保留。
+> §12 落地差距分析、§13 分期路线（v0.6 建议范围）、§14 落地计划分解（施工图）；原稿独立成文的
+> wire-level 边界（§16 文档分层）照单保留。
 > **定位**：域级章——Auto 生态"原生浏览器 + 统一应用寻址/运行"域的伞形视图。
 > **关联**：[desktop-protocol-v1](autoui/desktop-protocol-v1.md)（RenderQueue 五通道 = AppProvider 的
 > 本地执行底座）、[desktop-shell-and-launcher](autoui/desktop-shell-and-launcher.md)（R8–R12）、
@@ -218,7 +219,7 @@ resource://session/8dd7...
 | S3 | 文件夹沙箱 ≠ API 门禁（**确认**） | 路径包含只管文件系统；desktop bus / native catalog / shell_bridge / 任意网络访问仍需粗粒度关闸（网络来源关特权内建）。**两道门正交，缺一不可**；发行红线不变：关闸与 https 加载同船 |
 | S4 | 网络访问策略 v1（**确认**） | 仅同 origin + ServiceBinding 显式声明的外部 endpoint 白名单（与 §9.3 logical service 天然衔接） |
 | S5 | 配额与管理面（**确认**） | 沙箱要有配额上限（防填盘）+ 管理 UI（"该站占 X MB / 清除"）——归 Permission UI/Downloads 面，v0.6 最小做列出+删除 |
-| S6 | 更新语义（**确认**） | 安装式缓存引出版本比对：v0.6 最小 = 启动时 hash/ETag 比对、有新版提示换装（§15 Cache/Update 节的首次消费方） |
+| S6 | 更新语义（**确认**） | 安装式缓存引出版本比对：v0.6 最小 = 启动时 hash/ETag 比对、有新版提示换装（§16 Cache/Update 节的首次消费方） |
 
 **战略含义**：存储层跟上限位后，整个体系自洽——AppRealm/AppSession 本就是 app 语义而非文档
 语义，AutoScape 不是"能跑 app 的浏览器"，是"**长得像浏览器的 app 运行时**"；"网站"经一次访问
@@ -381,7 +382,7 @@ App/Service 语义，仅替换 Resolver/Deployment backend。
 | 15 | Legacy HTML handler | ❌ 缺 | 系统 WebView 桥接（中，可后置） |
 | 16 | RemoteProvider 语义流 | 🟡 雏形 | 508 WS DrawList 流已验证；VTree patch/hybrid surface 桌面化（大，远期） |
 
-## 13. 分期路线（融入版重排；v0.6 建议范围 = M1）
+## 13. 分期路线（融入版重排；v0.6 建议范围 = M1 + M2-lite，计划分解见 §14）
 
 原稿 MVP 八步保留为骨架，按本地差距重排为三里程碑：
 
@@ -417,7 +418,111 @@ App/Service 语义，仅替换 Resolver/Deployment backend。
 **明确不做**（v0.6）：细粒度 capability/签名、Typed RPC、内容协商 fallback、legacy HTML、
 RemoteProvider 产品化（技术预览除外）。
 
-## 14. 待决问题
+## 14. 落地计划分解（v0.6 施工图——下次启动照此拆 plan，无需回翻会话）
+
+> **本节性质**（用户 2026-09-20 裁定：先行记录、暂不立项）：v0.6 = M1 + M2-lite 共 **七个计划
+> P-A..P-G** 的依赖图、各自步骤、本地锚点与验收要点。下次启动时逐个走 `/auto-plan:new`，
+> 以本节为 needs-analysis 种子。**动工前锚点按当时 master 复核**——本图基于 2026-09-20
+> master（b4e2dddee）实勘。
+
+### 14.0 依赖图与调度
+
+```
+P-A URI/Intent/Resolver（地基，先行）
+ ├──→ P-B AppSession/Provider 统一 ──→ P-C AutoFrame 嵌入 ──→ P-D Gallery 重构（跨仓）
+ ├──→ P-E 存储沙箱+安装缓存 ──→ P-F https 加载+关闸+自托管站（M2-lite 收口）
+ └──→ P-G AutoScape 薄壳（依赖 P-B；可与 P-D 并行）
+```
+
+关键路径两条：**A→B→C→D**（gallery dogfood）与 **A→E→F**（网络面）；P-B 与 P-E 可并行，
+P-G 与 P-D 可并行。体量粗估（单人全职周级）：A≈1–2 / B≈2–3 / C≈3–5 / D≈2–4（跨仓）/
+E≈2–4 / F≈2–3 / G≈2–3；合计 ~14–24 周，双轨并行三个月窗口成立（与 §13 结论一致）。
+
+### 14.1 P-A：URI / Intent / AppResolver 薄层
+
+- **范围**：四 scheme（app/auto/file/resource）解析与 normalize；Route 拆分（identity + route）；
+  Intent{action, ResourceRef} 数据结构；Resolver 匹配链（action/media/scheme → handler + 用户
+  偏好最小库）；pac.at 扩展字段（capabilities.handle / providers{vm,native} / permissions，
+  缺省=现状行为零变化）；execution hint CLI（`auto run app://... --runtime=vm`，不进 URI）。
+- **步骤**：①URI/Intent 解析器（纯 Rust + golden 单测）②pac.rs 扩展解析 ③Resolver 匹配链
+  ④CLI 入口 ⑤Launcher/desktop_registry 迁移 launch(Intent)（第二 dogfood）。
+- **锚点**：`crates/auto-man/src/pac.rs`（R10 字段）、`crates/auto-lang/src/ui/app_registry.rs`、
+  auto-os `apps.manifest`、`apps/028-launcher`。
+- **验收**：scheme 矩阵 golden；launcher e2e 启动 examples/ui 代表集；pac 向后兼容（旧 pac 全量通过）。
+
+### 14.2 P-B：AppSession 抽象统一 + Provider 接缝
+
+- **范围**：VM/EXE 两 Provider 同律 Session 对象（launch/activate/navigate/close/suspend）；
+  BrowsingContext history 最小语义（navigate/back/reload）；不做 RemoteProvider（M3）。
+- **锚点**：459 多会话运行时（`build_dynamic_component`/allocate_app/panic 隔离）、480 broker
+  孵化链、rqhost（协议 v1.12）。
+- **验收**：同一段调用代码驱动 VM 与 EXE 两形态无分支差异；session 生命周期状态机单测；
+  `auto run` 零回归（I2 纪律延续）。
+
+### 14.3 P-C：AutoFrame = 嵌入式 BrowsingContext（主缺口）
+
+- **范围**：父 app 视口内挂**独立 AppSession**（独立 VM）；viewport/reload/错误页/父子 message
+  channel；detach 阶段一 = 新 Tab 重 load 同 URI。**实现裁定待计划内定**：VirtualWindow 特化
+  vs 轻量 embed 容器（§15 待决第一新增问，本计划 T-01 裁定）。
+- **锚点**：462 VirtualWindow/WmState（嵌入表面先例）、PLAN-663 视口边界 pre-pass（iframe 尺寸
+  语义已落）、PLAN-652/654 嵌入会话时间源（Tick 缺口已闭）、459 panic 隔离。
+- **验收**：嵌入 demo 代表集 e2e（自由尺寸 003 / 表单 005 / 全屏 020/027——663 塌缩回归集即用例）；
+  子会话 panic 父壳不倒；父子消息往返；reload 状态重置。
+
+### 14.4 P-D：Dev Registry + UI Gallery 重构（第一 dogfood，跨仓）
+
+- **范围**：gallery 只存 demo 逻辑 App URI；Dev Registry（per-demo 发现、懒启动 backend、
+  ServiceBinding 绑定、闲置回收）；**渐进替换**合并臂（先并存对照、后删除）。
+- **仓位**：主体 auto-os（ui-gallery）+ 机制侧 auto-lang——跨仓计划，`.wt/<组>/{auto-lang,
+  auto-os}` 组内双 worktree（Plan 529 布局）。
+- **关键坑（必读）**：`AppViewport.vm.at` 头注"PLAN-625 T-10 生成产物(勿手改)——重新生成
+  auto build / auto run(generate_gallery_host)"——**改生成器，不手改文件**；662 启动优化依赖
+  制品缓存（NTFS mtime 坑在册）——重构后启动数据行必须对照 662 基线（二次 5s/冷启 22s）；
+  vue 臂零改动（`AppViewport.vue` 即 web 臂 AutoFrame 对应物，天然对照）。
+- **验收**（= §13 M1 验收标准）：41 demo 全量经 URI 动态加载；第 42 个 demo 零重编译入册；
+  每 demo 独立 AppSession/backend binding；启动数据行不劣化超阈值。
+
+### 14.5 P-E：存储沙箱 + 安装式缓存（§6.1 全套）
+
+- **范围**：per-app 沙箱目录（路径包含**单点**：`vm/io.rs` + `native.rs` fs.* 咽喉层）；
+  db.* 内建（沙箱 sqlite，WAL + busy_timeout）；共享缓存根 + `deps/` **虚拟挂载先行**（S2 方案
+  B）；ABC/a2r 制品内容寻址缓存；配额 + 最小管理面（S5）；启动 hash 比对换装（S6）。
+  **S1–S6 六要点即验收依据**。
+- **锚点**：Design 09 AutoCache、PLAN-662 制品缓存经验、pnpm junction 运维先例（工具链
+  junction-aware）。
+- **验收**：路径逃逸测试矩阵（junction/symlink/`..`/大小写/UNC——S2 底座纪律）；同 app 双会话
+  并发写库；缓存命中二次装载零编译数据行；配额超限行为；关闸不在本计划（归 P-F，S3 双门）。
+
+### 14.6 P-F：https 加载 + 粗粒度关闸 + 自托管 demo 站（M2-lite 收口）
+
+- **范围**：Deployment Descriptor（JSON 清单最小格式，完整版归《AutoWeb Service & Protocol
+  Specification》）；制品下载进 P-E 安装缓存 + 装载；**网络来源特权内建关闸**（desktop bus/
+  native catalog/shell_bridge 恒拒收 + 观测留痕）；同 origin + ServiceBinding 白名单（S4）；
+  Auto HTTP Server 标准库自托管 demo 站（dogfood）。
+- **红线（发行纪律，不可让步）**：**关闸与加载同船**——不存在"先能加载、后补安全"。
+- **锚点**：reqwest 已是依赖（v1.9 http 图像抓取先例）、HTTP Server 标准库（Design 13）、
+  native catalog 注册单点（29xx 撞号带教训：新内建 id 走高段）。
+- **验收**（= §13 M2-lite 追加验收）：一次访问安装、二次零下载零编译、数据重启可见、
+  特权内建调用拒收留痕；恶意 fixture 集（越权路径/外链 fetch/特权调用）。
+
+### 14.7 P-G：AutoScape 薄壳（产品脸面）
+
+- **范围**：Tabs + Omnibar + back/forward/reload/stop + 最小存储管理页（S5 列出+删除）；
+  本体为**普通 AutoUI app**（R8 同型），宿主 = rqhost 或桌面。
+- **锚点**：§8 组件表；宿主复用 rqhost（v1.12）/桌面（463）；双端一份源纪律（I5 同型）。
+- **验收**：app:// 与 https://（P-F 后）双形态导航；tab 生命周期/崩溃恢复；vue/vm 双端 e2e。
+
+### 14.8 启动 checklist（每计划通用）
+
+- `/auto-plan:new` 以本节对应小节为种子起草 → 用户确认 → `D:/autostack/.wt/lang-<NNN>/`
+  worktree（跨仓组目录，P-D 双仓）；**worktree 红线：禁 junction/symlink**。
+- 分级测试门禁按 AGENTS §2（改 VM→`cargo tv`；触 aavm 才 `taa`；review 前裸 `cargo tf`）；
+  文档/生成物改动勿跑 cargo。
+- 执行裁定登记簿置顶；生成物勿手改（生成器侧改）；完成后走 `/auto-plan:review` → merge 范式。
+- **明确不在 v0.6 批**：细粒度 capability/签名、Typed RPC、内容协商 fallback、legacy HTML、
+  RemoteProvider 产品化（M2-full/M3，见 §13）。
+
+## 15. 待决问题
 
 原稿八问照录 + 融入版新增四问：
 
@@ -440,7 +545,7 @@ RemoteProvider 产品化（技术预览除外）。
 - **（新增）Launcher 迁移时序**：统一 launch(Intent) 是 M1 内完成还是 M2（影响 028-launcher 与
   desktop_registry 的改造排期）。
 
-## 15. 文档分层（下一份文档建议）
+## 16. 文档分层（下一份文档建议）
 
 AutoWeb Service / Protocol 应**尽早独立成文**——它已是独立平台层：AutoScape 只是客户端之一，
 AutoFrame、AutoOS Launcher、CLI、AutoWiki、未来 RemoteProvider 都直接消费它。推荐命名
@@ -462,7 +567,7 @@ AutoFrame、AutoOS Launcher、CLI、AutoWiki、未来 RemoteProvider 都直接�
 "这些抽象如何通过网络和服务端兑现"；App URI/Intent/Resolver 若扩展到整个 AutoOS，可再抽第三份
 《AutoOS Application Routing & Intent Specification》（当前保留在本文）。
 
-## 16. 结论
+## 17. 结论
 
 AutoScape 最重要的价值不是"做一个能渲染 AutoUI 的浏览器"，而是把 AutoOS 的本地应用、网络应用、
 嵌入式应用与远程应用统一到同一寻址和运行模型：URI 定位身份/资源，Intent 表达动作，AppResolver
