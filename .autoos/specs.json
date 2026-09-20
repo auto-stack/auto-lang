@@ -4364,6 +4364,22 @@
      "status": "published",
      "created": "2026-09-20",
      "last_modified": "2026-09-20"
+    },
+    {
+     "id": "P669-1",
+     "title": "#[api] HTTP server 实参按名绑定（VM 轨装配规则与实现链）",
+     "content": "PLAN-669 修复 VM 模式 #[api] handler 实参装配违反 spec §4.1 的断层（query 集合串/body 原始串按位直塞）。注入规则五条：路径段→body JSON 字段→query 参数按名绑定（声明序，同名 path 优先）；int/float/bool 精确类型转换（parse 失败 400 指名）；缺参→HTTP 400 {\"error\":\"missing param `名`\"}（back_proxy Plan 658 对齐）；单参 whole-body 容忍（唯一 str 形参未按名供给时收整个 body 串——Plan 346 单参 body 契约延续，含 multipart 字段 JSON）；元数据形参按名 opt-in（尾随形参名∈{meta,metadata,req,request} 收 {\"cookies\":...,\"auth\":...}，其余未供给一律 400）。实现链：codegen 在 api_routes 采集点发布形参签名（名+Type Display）到进程级 API_PARAM_SIGS 侧信道（axum_adapter PARAM_SIGS 同型生命周期，run pipeline 编译前重置）→四条 serve 路径（handle_connection_async/serve_blocking_stdnet/run_http_server_blocking/shim_http_server_listen）统一 bind_api_args_by_name（同步三路径经 bind_api_args_or_legacy，无元数据源——meta 形参 400 指名，差异见 §4.1.1）→无签名条目回退旧位序装配。附带根修：async 请求头单次 read() 遇 TCP 分片产生空 400（plan 568 T7 th 档\"环境红\"真身），改读至 \r\n\r\n。__axum: 合成路由走 axum_adapter extractor 编组、a2r 轨参数绑定在生成代码里，均不经此链。",
+     "file": "docs/specs/stdlib/design/http-server.md",
+     "related": [
+      "PLAN-669",
+      "PLAN-658",
+      "PLAN-442",
+      "PLAN-317",
+      "GOAL-003"
+     ],
+     "status": "published",
+     "created": "2026-09-21",
+     "last_modified": "2026-09-21"
     }
    ]
   },
@@ -6848,6 +6864,20 @@
      "status": "published",
      "created": "2026-09-20",
      "last_modified": "2026-09-20"
+    },
+    {
+     "id": "P669-2",
+     "title": "vm-server-arg-binding 复审与合并收据",
+     "content": "work pass@execution_done（worktree 六提交 43fd4eed8→d453826c0，base 5d5090e14；e2e 32/32 含 5 新测+notes_crud 带参 POST 转正、单测 14/14、cargo t 基线对照 36⊆37 零回归且多治愈 1）→review 第一轮 needs_fix（R1：AC-66-06 所诺回退臂单测缺失——e2e 全走 codegen 必有签名覆盖不到；R2：§4.1.1 未落同步路径元数据源差异；R3：节头注释陈旧）→修复 d453826c0（legacy_fallback_without_sigs_is_positional+spec 差异句+注释限定词）→review 第二轮 pass@d453826c0（AC-01..07 全 pass；th 32/32 空载、tv 2735/2737、tf 3681/3683——残余红全数对账：ui_gen×2=master 在册、SSE 族=债 317、ffi_dual=债 635、plan394=债 447-① 同类负载 flake 单跑绿；touched_goals=GOAL-003）。rev2 证据驱动增补：入口分片根修（master 28 预存红转绿）+元数据按名 opt-in+whole-body 容忍扩展+b1/b6 夹具现代化（arg→typed）。",
+     "file": "docs/plans/669-vm-server-api-arg-binding.md",
+     "related": [
+      "PLAN-669",
+      "P669-1",
+      "GOAL-003"
+     ],
+     "status": "published",
+     "created": "2026-09-21",
+     "last_modified": "2026-09-21"
     }
    ]
   }
