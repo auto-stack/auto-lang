@@ -119,19 +119,38 @@ const IME_FORCE_TICKS: u8 = 20;
 const MULTI_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// 一行的保留缓存:shaping 产物 + 内容 digest(auto-term RowEntry)。
+/// PLAN-025 T-03:键 = 绝对行号(锚定)或槽位(回退),见 ROW_CACHES。
 struct RowEntry {
     para: Para,
     digest: u64,
 }
 
-/// Per-terminal row cache, keyed by the terminal key (auto-term kept one
-/// global Vec — multi-terminal needs the key dimension; draw receives
-/// `&Tree`, so mutable caches live here rather than in widget state).
-static ROW_CACHES: OnceLock<Mutex<HashMap<String, Vec<Option<RowEntry>>>>> = OnceLock::new();
+/// 可见内容行(draw 组装;refresh_row_cache 消费):`id` = 缓存键
+/// (锚定模式 = 绝对行号;回退 = 槽位),`y_px` = 行顶在组件内的像素
+/// 偏移(锚定 = id×CELL_H;回退 = shift + 槽位×CELL_H——两臂几何
+/// 各自与改造前逐值一致)。
+pub(crate) struct VisibleRow {
+    pub id: i64,
+    pub y_px: f32,
+    pub cells: Vec<TermCell>,
+    pub digest: u64,
+}
 
-fn row_caches() -> &'static Mutex<HashMap<String, Vec<Option<RowEntry>>>> {
+/// Per-terminal row cache, keyed by the terminal key → 行 id → 条目
+/// (auto-term kept one global Vec — multi-terminal needs the key dimension;
+/// draw receives `&Tree`, so mutable caches live here rather than in widget
+/// state)。PLAN-025 T-03:槽位键 → 行 id 键——滚动/输出位移下同 id 行
+/// 复用已排 Paragraph(不可变 scrollback 语义:同 id 恒同内容,digest
+/// 门控保正确),仅新暴露行重建(判决见 evidence/025/t01-verdict.md)。
+static ROW_CACHES: OnceLock<Mutex<HashMap<String, HashMap<i64, RowEntry>>>> = OnceLock::new();
+
+fn row_caches() -> &'static Mutex<HashMap<String, HashMap<i64, RowEntry>>> {
     ROW_CACHES.get_or_init(|| Mutex::new(HashMap::new()))
 }
+
+/// 行缓存容量护栏(条):超出按"远离当前可见区"清出(长滚动会话防
+/// 无界增长;活跃集 = 可见区 ± 预取,量级远小于此)。
+const ROW_CACHE_CAP: usize = 512;
 
 /// PLAN-025 T-01 重排计数:refresh_row_cache 实际重建的行 Paragraph 数
 /// (进程级累计,读数差分;p025 headless 复现器与实机诊断共用埋点)。
@@ -147,44 +166,42 @@ pub(crate) fn row_rebuilds_reset() -> u64 {
     ROW_REBUILDS.swap(0, std::sync::atomic::Ordering::Relaxed)
 }
 
-/// 保留式文本层的缓存步(draw 每帧调用;PLAN-025 T-01 从 draw 内联
-/// 提取为可 headless 复现的步进):视口槽位键 + digest 门控重建,返回
-/// 本次实际重建行数。`visible_rows` = 本帧可见行数上限(draw 的可见性
-/// 截断同源;headless 复现器传 cells.len())。
+/// 保留式文本层的缓存步(draw 每帧调用;PLAN-025 T-01 提取为可
+/// headless 复现的步进,T-03 改行 id 键):digest 门控重建,返回本次
+/// 实际重建行数。同 id 同 digest = 复用(滚动/输出位移零重排)。
 pub(crate) fn refresh_row_cache(
     key: &str,
-    cells: &[Vec<TermCell>],
-    digests: &[u64],
+    visible: &[VisibleRow],
     palette: &[u32; 18],
     pal_key: u64,
-    visible_rows: usize,
 ) -> usize {
     let mut rebuilt = 0usize;
     let mut caches = row_caches().lock().unwrap();
     let cache = caches.entry(key.to_owned()).or_default();
-    if cache.len() != cells.len() {
-        cache.clear();
-        cache.resize_with(cells.len(), || None);
-    }
-    for (y, line) in cells.iter().enumerate() {
-        if y >= visible_rows {
-            break;
-        }
+    for row in visible {
         // palette 键混入:换表即失效(见 draw 内 pal_key 注)。
-        let digest = digests[y] ^ pal_key;
-        let stale = cache[y].as_ref().is_none_or(|e| e.digest != digest);
+        let digest = row.digest ^ pal_key;
+        let stale = cache.get(&row.id).is_none_or(|e| e.digest != digest);
         if stale {
-            let para = build_row_paragraph(line, palette);
-            cache[y] = Some(RowEntry { para, digest });
+            let para = build_row_paragraph(&row.cells, palette);
+            cache.insert(row.id, RowEntry { para, digest });
             rebuilt += 1;
         }
+    }
+    // 溢出护栏:远离可见区(± 3×可见行数 + 预取余量)的 id 清出。
+    if cache.len() > ROW_CACHE_CAP {
+        let lo = visible.first().map(|r| r.id).unwrap_or(0)
+            - (visible.len() as i64 * 3 + 64);
+        let hi = visible.last().map(|r| r.id).unwrap_or(0)
+            + (visible.len() as i64 * 3 + 64);
+        cache.retain(|id, _| *id >= lo && *id <= hi);
     }
     drop(caches);
     ROW_REBUILDS.fetch_add(rebuilt as u64, std::sync::atomic::Ordering::Relaxed);
     if rebuilt > 0
         && std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false)
     {
-        eprintln!("[P25-ROWS] key={key} visible={visible_rows} rebuilt={rebuilt}");
+        eprintln!("[P25-ROWS] key={key} visible={} rebuilt={rebuilt}", visible.len());
     }
     rebuilt
 }
@@ -1004,14 +1021,69 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             return;
         }
 
+        // PLAN-025 T-03 内容行枚举:锚定模式(虚拟滚动 + 泵已回写绝对
+        // 行锚)= 视口矩形 → 可见绝对行区间,行源 = 预取窗存储 ∪ 槽位
+        // 回退(id ∈ [anchor, anchor+rows));行位 = id×CELL_H(绝对
+        // 锚定,视图先行时窗口自首帧胶着视口——消灭泵滞后回中跳变)。
+        // 未锚/非虚拟 = 槽位语义(id = 槽位,位 = shift + 槽位×CELL_H,
+        // 019 形态与 vm 臂泵零回归回退)。
+        let anchor = crate::ui::terminal::terminal_window_anchor(self.core);
+        let anchored = self.virtual_scroll
+            && anchor != crate::ui::terminal::WINDOW_ANCHOR_UNSET;
+        let visible: Vec<VisibleRow> = if anchored {
+            let view_top = viewport.y - bounds.y;
+            let id0 = (view_top / CELL_H).floor() as i64;
+            let id1 = ((view_top + viewport.height) / CELL_H).ceil() as i64;
+            let slot_lo = anchor;
+            let slot_hi = anchor + cells.len() as i64;
+            (id0..id1)
+                .filter(|id| *id >= 0)
+                .filter_map(|id| {
+                    if let Some(row) =
+                        crate::ui::terminal::terminal_window_row(self.core, id)
+                    {
+                        Some(VisibleRow {
+                            id,
+                            y_px: id as f32 * CELL_H,
+                            cells: row.cells,
+                            digest: row.digest,
+                        })
+                    } else if id >= slot_lo && id < slot_hi {
+                        let y = (id - slot_lo) as usize;
+                        Some(VisibleRow {
+                            id,
+                            y_px: id as f32 * CELL_H,
+                            cells: cells[y].clone(),
+                            digest: digests[y],
+                        })
+                    } else {
+                        // 预取未覆盖且槽位窗外:历史留白(全画布底色已涂)。
+                        None
+                    }
+                })
+                .collect()
+        } else {
+            cells
+                .iter()
+                .enumerate()
+                .map(|(y, line)| VisibleRow {
+                    id: y as i64,
+                    y_px: shift + y as f32 * CELL_H,
+                    cells: line.clone(),
+                    digest: digests[y],
+                })
+                .collect()
+        };
+
         // 背景层:非默认 bg 的 run(每帧 emit;无形状成本;PAD 内缩——
-        // 此前 x/y 均缺内缩,色块相对文本错位 1px)。PLAN-022:虚拟模式
-        // 行 y 加快照窗位移(shift)。
-        for (y, line) in cells.iter().enumerate() {
-            let line_y = bounds.y + PAD + shift + y as f32 * CELL_H;
+        // 此前 x/y 均缺内缩,色块相对文本错位 1px)。PLAN-025 T-03:随
+        // 内容行枚举(id 寻址;预取行同步着色)。
+        for row in &visible {
+            let line_y = bounds.y + PAD + row.y_px;
             if line_y > bounds.y + bounds.height {
                 break;
             }
+            let line = &row.cells;
             let mut idx = 0usize;
             while idx < line.len() {
                 if line[idx].bg == TermColor::Default {
@@ -1073,25 +1145,18 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         }
 
         // 保留式文本层:每行 Paragraph 缓存 + digest 门控重建。PLAN-025
-        // T-01:重建步提取为 refresh_row_cache(重排计数埋点),本段只
-        // 负责按可见性 emit(缓存已新鲜)。
-        let visible_rows = {
-            let bottom = bounds.y + bounds.height;
-            cells
-                .iter()
-                .enumerate()
-                .take_while(|(y, _)| {
-                    bounds.y + PAD + shift + *y as f32 * CELL_H <= bottom
-                })
-                .count()
-        };
-        refresh_row_cache(&self.key, &cells, &digests, &palette, pal_key, visible_rows);
+        // T-01 重建步提取为 refresh_row_cache(T-03 行 id 键);本段按
+        // 可见行枚举 emit(缓存已新鲜)。
+        refresh_row_cache(&self.key, &visible, &palette, pal_key);
         {
             let mut caches = row_caches().lock().unwrap();
             let cache = caches.entry(self.key.clone()).or_default();
-            for y in 0..visible_rows.min(cells.len()) {
-                let line_y = bounds.y + PAD + shift + y as f32 * CELL_H;
-                if let Some(entry) = cache[y].as_ref() {
+            for row in &visible {
+                let line_y = bounds.y + PAD + row.y_px;
+                if line_y > bounds.y + bounds.height {
+                    break;
+                }
+                if let Some(entry) = cache.get(&row.id) {
                     renderer.fill_paragraph(
                         &entry.para,
                         Point::new(bounds.x + PAD, line_y),

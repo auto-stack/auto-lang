@@ -233,6 +233,16 @@ pub struct TerminalCore {
     scroll_last_view_y_bits: std::sync::atomic::AtomicU32,
     scroll_last_wheel_gen: std::sync::atomic::AtomicU64,
     scroll_repin_pending: std::sync::atomic::AtomicBool,
+    // PLAN-025 T-02 快照窗绝对行锚:泵回写 core.cells 行窗首行的绝对
+    // 行号(id = 引擎 history − display_offset;不可变 scrollback 语义
+    // 下同 id 恒同内容)。i64::MIN = 未锚(泵未跑——vm/desktop 臂;
+    // widget 回落槽位键语义,零回归)。
+    window_anchor: std::sync::atomic::AtomicI64,
+    // PLAN-025 T-03 预取窗存储:绝对行 id → WindowRow(cells+digest)。
+    // 泵喂入可见区 ± 预取行(引擎瞬态 scroll 采样);draw 按视口 id
+    // 区间消费。独立于 cells 槽位面(props 文本/cursor/selection/vue
+    // 文本零变)。
+    window_store: Mutex<std::collections::BTreeMap<i64, WindowRow>>,
 }
 
 /// PLAN-019 启动自动聚焦:窗口内焦点持有者(terminal key;None = 自由,
@@ -278,6 +288,8 @@ impl TerminalCore {
             scroll_last_view_y_bits: std::sync::atomic::AtomicU32::new(0),
             scroll_last_wheel_gen: std::sync::atomic::AtomicU64::new(0),
             scroll_repin_pending: std::sync::atomic::AtomicBool::new(false),
+            window_anchor: std::sync::atomic::AtomicI64::new(WINDOW_ANCHOR_UNSET),
+            window_store: Mutex::new(std::collections::BTreeMap::new()),
         }
     }
 
@@ -502,6 +514,9 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
                 core.scroll_bind_suppress.load(Ordering::Relaxed),
                 Ordering::Relaxed,
             );
+            fresh
+                .window_anchor
+                .store(core.window_anchor.load(Ordering::Relaxed), Ordering::Relaxed);
             fresh.generation.store(core.generation() + 1, Ordering::Relaxed);
             *fresh.pending.lock().unwrap() = TerminalDamage::Full;
             map.insert(key.to_owned(), fresh);
@@ -867,6 +882,64 @@ pub fn terminal_set_history(core: &TerminalCore, rows: usize) {
 pub fn terminal_canvas_height(core: &TerminalCore) -> f32 {
     use crate::ui::terminal::iced::widget::{CELL_H, PAD};
     (core.rows as usize + core.history.load(Ordering::Relaxed)) as f32 * CELL_H + 2.0 * PAD
+}
+
+// ============================================================================
+// PLAN-025 T-02/T-03:快照窗绝对行锚 + 预取窗存储
+// ============================================================================
+
+/// 行窗未锚哨兵(泵未回写;widget 回落槽位键语义)。
+pub const WINDOW_ANCHOR_UNSET: i64 = i64::MIN;
+
+/// 泵回写行窗首行绝对行号(与 offset/history 同拍;id = h − o)。
+pub fn terminal_set_window_anchor(core: &TerminalCore, anchor: i64) {
+    core.window_anchor.store(anchor, Ordering::Relaxed);
+}
+
+/// 行窗首行绝对行号([`WINDOW_ANCHOR_UNSET`] = 未锚)。
+pub fn terminal_window_anchor(core: &TerminalCore) -> i64 {
+    core.window_anchor.load(Ordering::Relaxed)
+}
+
+/// 预取窗存储条目(cells + 内容 digest,与槽位面 digest 同一
+/// [`row_digest`] 口径)。
+pub struct WindowRow {
+    pub cells: Vec<TermCell>,
+    pub digest: u64,
+}
+
+/// 预取窗喂入(per-key 定向;`rows[i]` 的绝对行 id = `base + i`)。
+/// 重复喂同 id = 覆盖(digest 变则 widget 重建)。溢出护栏:总量超
+/// [`WINDOW_STORE_CAP`] 时按距 base 的距离逐远逐出。
+pub fn terminal_feed_window_for(key: &str, base: i64, rows: &[Vec<TermCell>]) {
+    let Some(core) = terminal_core(key) else { return };
+    let mut store = core.window_store.lock().unwrap();
+    for (i, cells) in rows.iter().enumerate() {
+        let id = base + i as i64;
+        let digest = row_digest(cells);
+        store.insert(id, WindowRow { cells: cells.clone(), digest });
+    }
+    // 溢出逐出:距 base 最远的条目先行(泵窗滚动方向不定,双侧余量)。
+    while store.len() > WINDOW_STORE_CAP {
+        let far = store
+            .keys()
+            .max_by_key(|id| (*id - base).abs())
+            .copied()
+            .expect("len > cap implies non-empty");
+        store.remove(&far);
+    }
+}
+
+/// 预取窗存储上限(条;可见区 + 双侧预取的量级上界)。
+pub const WINDOW_STORE_CAP: usize = 512;
+
+/// 读一行预取窗存储(缺 = None;draw 的视口 id 区间消费面)。
+pub fn terminal_window_row(core: &TerminalCore, id: i64) -> Option<WindowRow> {
+    core.window_store
+        .lock()
+        .unwrap()
+        .get(&id)
+        .map(|r| WindowRow { cells: r.cells.clone(), digest: r.digest })
 }
 
 /// 焦点空闲(无任何 terminal 持有):启动自动聚焦的门控。
