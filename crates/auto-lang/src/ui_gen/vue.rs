@@ -3390,6 +3390,49 @@ impl VueGenerator {
                 }
             }
 
+            // PLAN-668 R-23 附（017 随检）：回调契约 emit 的载荷元数取自调用位
+            // `on_x(.y)`——契约事件（on_xxx: msg prop → Pascal emit）既无
+            // variant 载荷也无 handler 参数可循（017 sidebar 的
+            // on_search(.local_query)），缺省 `[]` 与 emit('X', arg) 调用
+            // 位及其父绑定 handler 签名均不符（TS2345/TS2322）。
+            {
+                fn count_cb_arity(
+                    stmts: &[crate::ast::Stmt],
+                    out: &mut std::collections::HashMap<String, usize>,
+                ) {
+                    use crate::ast::{Arg, Expr, Stmt};
+                    for stmt in stmts {
+                        let Stmt::Expr(e) = stmt else { continue };
+                        let Expr::Call(call) = e else { continue };
+                        let Expr::Ident(name) = call.name.as_ref() else { continue };
+                        let Some(prop) = name.as_str().strip_prefix("on_") else { continue };
+                        let arity = call
+                            .args
+                            .args
+                            .iter()
+                            .filter(|a| matches!(a, Arg::Pos(_)))
+                            .count();
+                        out.entry(VueGenerator::snake_to_pascal(prop))
+                            .and_modify(|n| *n = (*n).max(arity))
+                            .or_insert(arity);
+                    }
+                }
+                let mut arity: std::collections::HashMap<String, usize> = Default::default();
+                for payload in widget.handlers.values() {
+                    if let crate::ui_gen::vue::LogicPayload::AstStmts(stmts) = payload {
+                        count_cb_arity(stmts, &mut arity);
+                    }
+                }
+                for (event, n) in arity {
+                    if n > 0
+                        && self.emit_events.iter().any(|e| *e == event)
+                        && !event_payload_types.contains_key(&event)
+                    {
+                        let anys = vec!["any"; n].join(", ");
+                        event_payload_types.insert(event, anys);
+                    }
+                }
+            }
             script.push_str("const emit = defineEmits<{\n");
             for event in &self.emit_events {
                 // Plan 448 C: auto-sync mint events never fire from the
@@ -17311,6 +17354,10 @@ export function cn(...inputs: ClassValue[]) {
         }
         let mut self_bare: std::collections::HashSet<String> = Default::default();
         self_bare.insert(store.name.clone());
+        // PLAN-668 R-23（P666-D2）：store 自体调用兼用字面别名
+        // `store.X()`（038 minesweeper_store 实案）——同自名限定走裸调
+        // 发射；否则 composable 内无 `store` 绑定落 TS2552。
+        self_bare.insert("store".to_string());
         let ctx = AuraTsContext::new(state_names)
             .with_props(std::collections::HashSet::new())
             .with_api_functions(store.api_imports.clone())
@@ -17929,6 +17976,12 @@ function applyTheme(name: string, isDark = document.documentElement.classList.co
         use crate::ast::Expr;
         match expr {
             Expr::Int(n) => n.to_string(),
+            // PLAN-668 R-23（013 随检）：负标量字面量 parse 为
+            // Unary(Sub, 字面量)——此前缺臂落 `_ => null`，typed int store
+            // 变量变 ref<number>(null)，vue-tsc TS2345。
+            Expr::Unary(op, inner) if matches!(*op, auto_val::Op::Sub | auto_val::Op::Add) => {
+                format!("{}{}", if matches!(*op, auto_val::Op::Sub) { "-" } else { "+" }, Self::store_init_to_js(inner))
+            }
             Expr::Float(f, _) | Expr::Double(f, _) => f.to_string(),
             Expr::Str(s) | Expr::CStr(s) => format!("'{}'", Self::escape_js_string(s.as_str())),
             Expr::Bool(b) => b.to_string(),

@@ -1466,6 +1466,29 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             write!(out, ".length").ok();
                             return;
                         }
+                        // PLAN-668 R-23（P666-D2 同族）：Auto `List.pop()` 空
+                        // 表返回元素缺省值（int 0 / str ""），TS Array.pop()
+                        // 返回 T|undefined——直译在 `var x int = arr.pop()`
+                        // 落 TS2322（038 minesweeper flood-fill 实案）。空值
+                        // 合并到缺省：ctx 已知字符串数组按 ''，其余按 0。
+                        "pop" => {
+                            fn recv_root(e: &Expr) -> Option<&str> {
+                                match e {
+                                    Expr::Ident(n) => Some(n.as_str()),
+                                    Expr::Dot(obj, _) => recv_root(obj),
+                                    _ => None,
+                                }
+                            }
+                            let dflt = recv_root(object)
+                                .and_then(|n| {
+                                    if ctx.typed_strings.contains(n) { Some("''") } else { None }
+                                })
+                                .unwrap_or("0");
+                            write!(out, "(").ok();
+                            transpile_receiver(object, ctx, out);
+                            write!(out, ".pop() ?? {})", dflt).ok();
+                            return;
+                        }
                         // Plan 345 (gap N1): Auto `.contains` -> JS `.includes`
                         // (JS strings and arrays both use .includes, not .contains).
                         "contains" => {

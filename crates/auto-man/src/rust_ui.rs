@@ -2836,6 +2836,8 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
     members.sort();
 
     let auto_lang_rel = compute_auto_lang_rel_path(project_dir, &ws_dir);
+    // PLAN-668 R-24：a2r-std 与 auto-lang 同根（crates/a2r-std）。
+    let a2r_std_rel = auto_lang_rel.replace("crates/auto-lang", "crates/a2r-std");
     let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 
     let members_toml = members.iter()
@@ -2852,6 +2854,9 @@ resolver = "2"
 
 [workspace.dependencies]
 auto-lang = {{ path = "{auto_lang_rel}" }}
+# PLAN-668 R-24：a2r_std（sys 原生面/StringBuilder 等）随 auto-lang 同源
+# （仓库内 crates/a2r-std）——后端生成物 `a2r_std::sys::*` 调用需此 dep。
+a2r-std = {{ path = "{a2r_std_rel}" }}
 serde_json = "1"
 ureq = {{ version = "2", features = ["json"] }}
 tokio = {{ version = "1", features = ["rt"] }}

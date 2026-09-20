@@ -438,6 +438,11 @@ pub struct RustTrans {
     // and the RHS is a `.len()`/`.length()` call. Read at the two len/length cast
     // sites in call(). Defaults false so all other call sites keep the cast.
     len_i32_cast_suppressed: bool,
+    /// PLAN-668 R-24：str 族 `let`（含 var）以 if 表达式为初始化器时，
+    /// 臂尾字符串字面量需 .to_string()（String 槽不可收 &str——017 db.at
+    /// bot_reply 的 sender_name/reply_text 实案，此前仅 fn 返回位有同款
+    /// 强制）。save/restore 围初始化器发射（len_i32_cast_suppressed 先例）。
+    let_init_str_coercion: bool,
 
     // Plan 387: the set of state-field names of the task currently being compiled.
     // Populated by emit_task_impl/emit_task_handle_msg; consulted (together with
@@ -558,6 +563,7 @@ impl RustTrans {
             program_has_actors: false,
             in_task_body: false,
             len_i32_cast_suppressed: false,
+            let_init_str_coercion: false,
             task_state_fields: std::collections::HashSet::new(),
             main_actor_prologue: None,
             main_actor_epilogue: None,
@@ -658,6 +664,7 @@ impl RustTrans {
             program_has_actors: false,
             in_task_body: false,
             len_i32_cast_suppressed: false,
+            let_init_str_coercion: false,
             task_state_fields: std::collections::HashSet::new(),
             main_actor_prologue: None,
             main_actor_epilogue: None,
@@ -1416,9 +1423,11 @@ impl RustTrans {
 
     /// Check if current function's return type maps to Rust String (needs &str -> String coercion)
     fn ret_type_needs_string_coercion(&self) -> bool {
-        self.current_fn_ret_type.as_ref().map_or(false, |ty| {
-            matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
-        })
+        // PLAN-668 R-24：str 族 let-if 初始化语境同 fn 返回位强制。
+        self.let_init_str_coercion
+            || self.current_fn_ret_type.as_ref().map_or(false, |ty| {
+                matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
+            })
     }
 
     /// Plan 013 (B1/BUG2): Check if the current function's return type is a
@@ -6522,6 +6531,42 @@ impl RustTrans {
                             }
                             _ => {}
                         },
+                        "sys" => {
+                            // PLAN-668 R-24（P666-D1 同族）：裸 `sys.*` 调用
+                            // （VM 预绑原生面，语料无 use）→ a2r_std::sys 同名
+                            // 直通（函数名一一对应；a2r_std_used 置位带上
+                            // 依赖）。025 sys-monitor 后端 api.rs 实案。
+                            // 边界宽度：Auto int = i64，a2r_std::sys 的
+                            // 计数/MB/uptime 族返回 i32、core/kill 收 i32 参
+                            // ——出入双侧强转（025 cores 循环 ci 实案）。
+                            self.a2r_std_used.set(true);
+                            let ret_i32 = matches!(
+                                method_name.as_str(),
+                                "cpu_count" | "mem_total_mb" | "mem_used_mb" | "uptime_s"
+                            );
+                            let arg_i32_first = matches!(method_name.as_str(), "cpu_core_usage" | "kill");
+                            if ret_i32 {
+                                write!(out, "((a2r_std::sys::{}(", method_name)?;
+                            } else {
+                                write!(out, "(a2r_std::sys::{}(", method_name)?;
+                            }
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 { write!(out, ", ")?; }
+                                if arg_i32_first && i == 0 {
+                                    write!(out, "(")?;
+                                    self.arg(arg, out)?;
+                                    write!(out, ") as i32")?;
+                                } else {
+                                    self.arg(arg, out)?;
+                                }
+                            }
+                            if ret_i32 {
+                                write!(out, ")) as i64)")?;
+                            } else {
+                                write!(out, "))")?;
+                            }
+                            return Ok(());
+                        }
                         "String" => {
                             // Plan 019 Phase 1: String.fromCharCode(n) → a
                             // one-char String from the code point (report B8).
@@ -13083,7 +13128,7 @@ impl RustTrans {
         // yields the INNER type, but the parser-annotated store.ty keeps the
         // Option wrapper, mis-declaring the local and breaking every later
         // use. Annotate with the (already-computed) effective type instead.
-        let ty_name = if matches!(&store.expr, Expr::NullCoalesce(_, _))
+        let mut ty_name = if matches!(&store.expr, Expr::NullCoalesce(_, _))
             && matches!(store.ty, Type::Option(_))
             && !matches!(effective_ty, Type::Unknown)
         {
@@ -13091,6 +13136,20 @@ impl RustTrans {
         } else {
             self.rust_type_name(&store.ty)
         };
+        // PLAN-668 R-24（P666-D1 同族）：局部 `var/let x []T = []` 后续
+        // push/就地写（mutated_let_bindings 在案）——&[T] 不可变借无 push，
+        // 局部槽改 Vec<T>（025 sys-monitor cores/procs/disks/users 实案；
+        // 返回位/参数位 &[T] 语义不变，仅局部绑定改道）。
+        if matches!(store.ty, Type::Slice(_))
+            && (matches!(store.kind, StoreKind::Var)
+                || self.mutated_let_bindings.contains(store.name.as_ref()))
+        {
+            if let Type::Slice(slice) = &store.ty {
+                if !matches!(&*slice.elem, Type::Spec(_)) {
+                    ty_name = format!("Vec<{}>", self.rust_type_name(&slice.elem));
+                }
+            }
+        }
         // Plan 391 D2: `let v: Option<T> = m.get(k)` where T is a non-Copy
         // container — Rust's HashMap/Vec::get returns Option<&T>, so the user's
         // owned annotation `Option<Vec<String>>` triggers E0308. Rewrite the
@@ -13377,7 +13436,16 @@ impl RustTrans {
             let saved_suppress = self.len_i32_cast_suppressed;
             self.len_i32_cast_suppressed = matches!(store.ty, Type::U64 | Type::I64 | Type::USize)
                 && Self::expr_is_len_call(&store.expr);
+            // PLAN-668 R-24：str 族 let + if 初始化器——臂尾字面量入
+            // String 槽需 .to_string()（经 ret_type_needs_string_coercion
+            // 的 if 臂发射位消费）。
+            let saved_let_coerce = self.let_init_str_coercion;
+            self.let_init_str_coercion = matches!(
+                store.ty,
+                Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit
+            ) && matches!(store.expr, Expr::If(_));
             self.expr(&store.expr, out)?;
+            self.let_init_str_coercion = saved_let_coerce;
             self.len_i32_cast_suppressed = saved_suppress;
             // Auto-clone: when assigning from a non-Copy struct field (e.g., let path = node.name)
             // the struct field is moved, but the struct may still be used later

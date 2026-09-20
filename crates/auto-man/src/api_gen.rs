@@ -399,11 +399,16 @@ fn qualify_a2r_std(mut code: String) -> String {
     // Protect already-qualified paths, then qualify the remaining bare paths.
     // This keeps the helper idempotent when a generated fragment already
     // carries the crate prefix.
+    // PLAN-668 R-24：`a2r_std::sys::*` 保护直连——auto_lang::a2r_std 是内嵌
+    // 迷你库（List/May/StringAsStr，无 sys 原生面），sys 调用须走独立
+    // a2r-std crate dep（workspace/backend 模板已补）。
+    code = code.replace("a2r_std::sys::", "__AUTO_A2R_STD_SYS__");
     code = code.replace("auto_lang::a2r_std::", "__AUTO_A2R_STD_QUAL__");
     code = code.replace("a2r_std::", "auto_lang::a2r_std::");
     code = code.replace("use a2r_std;\n", "use auto_lang::a2r_std;\n");
     code = code.replace("use a2r_std::*;\n", "use auto_lang::a2r_std::*;\n");
     code = code.replace("__AUTO_A2R_STD_QUAL__", "auto_lang::a2r_std::");
+    code = code.replace("__AUTO_A2R_STD_SYS__", "a2r_std::sys::");
     code
 }
 
@@ -792,7 +797,8 @@ futures = \"0.3\"" } else { "" };
     // (StringBuilder 等), 而 a2r_std 在 auto-lang crate 里 → 必须加 auto-lang
     // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
     let runtime_deps = "
-auto-lang = { workspace = true, features = [\"ui\", \"image-pipeline\"] }";
+auto-lang = { workspace = true, features = [\"ui\", \"image-pipeline\"] }
+a2r-std = { workspace = true }";
     let db_deps = if has_db { "
 once_cell = \"1\"" } else { "" };
     format!(
@@ -2033,7 +2039,26 @@ fn generate_api_rs(
         if a2r_body_enabled && !is_thin_delegation(endpoint) {
             if let Some(body) = &endpoint.body {
                 match try_transpile_body(body, endpoint, api_module) {
-                    Ok(stmts) => {
+                    Ok(mut stmts) => {
+                        // PLAN-668 R-24：非 void 端点的 a2r 内联体尾 `return X;`
+                        // 是语义值，而 handler 签名是 `-> JsonResponse<T>`——
+                        // 尾 return 包 JsonResponse(...)（025 system_snapshot
+                        // return snap_out 实案；分支内早 return 的多出口形态
+                        // 不在内联面，见 a2r_body 覆盖注记）。
+                        let ret_nonvoid = !endpoint.return_type.trim().is_empty()
+                            && endpoint.return_type.trim() != "void";
+                        if ret_nonvoid {
+                            if let Some(last) = stmts.last_mut() {
+                                let trimmed = last.trim_start();
+                                if let Some(rest) = trimmed.strip_prefix("return ") {
+                                    let val = rest.trim_end().trim_end_matches(';');
+                                    if !val.is_empty() {
+                                        let indent = &last[..last.len() - trimmed.len()];
+                                        *last = format!("{}return JsonResponse({});", indent, val);
+                                    }
+                                }
+                            }
+                        }
                         // Plan B1(b): bind the server-injected meta JSON before
                         // the transpiled body (it references `meta` like any param).
                         if has_meta {

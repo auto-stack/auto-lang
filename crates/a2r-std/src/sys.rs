@@ -7,10 +7,12 @@ use sysinfo::{Disks, Networks, Pid, System, Users};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProcData {
-    pub pid: i32,
+    // PLAN-668 R-24：字段宽对齐 Auto int（i64）——a2r 语料记录字段直拷贝
+    // 不再落 i32/i64 边界错（025 sys-monitor ProcInfo 实案）。
+    pub pid: i64,
     pub name: String,
     pub cpu: f64,
-    pub mem_mb: i32,
+    pub mem_mb: i64,
     pub disk_kbs: f64,
     pub net_kbs: f64,
     pub status: String,
@@ -21,8 +23,9 @@ pub struct ProcData {
 pub struct DiskData {
     pub name: String,
     pub mount: String,
-    pub total_mb: i32,
-    pub avail_mb: i32,
+    // PLAN-668 R-24：同 ProcData——i64 对齐。
+    pub total_mb: i64,
+    pub avail_mb: i64,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -196,8 +199,8 @@ pub fn disks() -> List<DiskData> {
     let vec: Vec<DiskData> = s.disks.iter().map(|d| DiskData {
         name: d.name().to_string_lossy().into_owned(),
         mount: d.mount_point().to_string_lossy().into_owned(),
-        total_mb: (d.total_space() / (1024 * 1024)) as i32,
-        avail_mb: (d.available_space() / (1024 * 1024)) as i32,
+        total_mb: (d.total_space() / (1024 * 1024)) as i64,
+        avail_mb: (d.available_space() / (1024 * 1024)) as i64,
     }).collect();
     List::from(vec)
 }
@@ -226,7 +229,7 @@ pub fn processes() -> List<ProcData> {
 
     for (&pid, proc_) in s.sys.processes() {
         let norm_cpu = (proc_.cpu_usage() as f64 / cpu_cores).clamp(0.0, 100.0);
-        let mem_mb = (proc_.memory() / (1024 * 1024)) as i32;
+        let mem_mb = (proc_.memory() / (1024 * 1024)) as i64;
 
         let disk_usage = proc_.disk_usage();
         let disk_bytes = disk_usage.read_bytes + disk_usage.written_bytes;
@@ -244,7 +247,7 @@ pub fn processes() -> List<ProcData> {
         let user_str = proc_.user_id().map(|u| u.to_string()).unwrap_or_default();
 
         list.push(ProcData {
-            pid: pid.as_u32() as i32,
+            pid: pid.as_u32() as i64,
             name: proc_.name().to_string_lossy().into_owned(),
             cpu: (norm_cpu * 10.0).round() / 10.0,
             mem_mb,
