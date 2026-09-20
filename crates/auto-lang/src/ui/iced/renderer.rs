@@ -13134,7 +13134,10 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
 /// Plan 504：fit 测量单轮自重试上限——首帧界面未建好时 `__fit_measured`
 /// 找不到 `aura_fit_root_*` 锚点会重新发起测量，超限放弃本轮（fit_pending
 /// 保留，下个触发点重新武装；常态 1-2 帧内命中）。
-const FIT_MEASURE_MAX_RETRIES: u32 = 10;
+/// PLAN-035 T-17：10 次（@400ms tick = 4s）在调试构建/高负载下不够——
+/// 012-clock 冷启动首帧超 4s，fit 放弃后窗口停留默认尺寸（用户实测
+/// 宽短窗）。提至 150 次（=60s）覆盖慢启动；命中即止无空转成本。
+const FIT_MEASURE_MAX_RETRIES: u32 = 150;
 
 /// Plan 512：fit 动态重测滞回阈值（px）——|Δw|、|Δh| 均 ≤ 此值忽略，
 /// 防输入态抖动触发 resize 循环（待澄清⑤：T1 定稿初值 8，实证微调再改）。
