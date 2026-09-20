@@ -105,6 +105,13 @@ pub struct AutoTask {
     /// Plan 394 Phase B: suspended `~{}` body continuations (resume_ip/bp).
     /// Empty for Phase A top-level external await.
     pub async_frames: Vec<AsyncFrame>,
+    /// PLAN-667 (F-01): 活跃帧身份表 (bp, uid)。uid 由 frame_uid_gen 单调
+    /// 发号，唯一标识一次帧实例——同 bp 复用的新帧拿新 uid，旧闭包按
+    /// (task_id, uid) 判定创建帧存亡。uid 0 保留给根帧（任务终身存活）。
+    /// push 时截断 bp >= 新帧 bp 的陈旧条目（自愈防泄漏）。
+    pub frame_ids: Vec<(usize, u64)>,
+    /// PLAN-667: 帧实例 uid 发号器（从 1 起；0 = 根帧哨兵）。
+    pub frame_uid_gen: u64,
 }
 
 /// Plan 394: continuation snapshot for a suspended async body.
@@ -220,6 +227,50 @@ impl AutoTask {
             accum_stack: Vec::new(),
             waiting_future_id: None,
             async_frames: Vec::new(),
+            frame_ids: Vec::new(),      // PLAN-667: 帧身份表
+            frame_uid_gen: 0,           // PLAN-667: 首个真帧 uid 从 1 起
         }
+    }
+}
+
+impl AutoTask {
+    /// PLAN-667 (F-01): 帧身份咽喉——帧建立时调用（bp 为新帧基址）。
+    /// 截断 bp >= 新帧 bp 的陈旧条目：同地址复用的新帧令旧 uid 失效，
+    /// 深帧保留（祖先仍存活）。漏截断的路径最多退化为"误接受"（与守卫
+    /// 引入前同行为），漏 push 则是可闻的错误拒绝——不对称风险可接受。
+    pub fn push_frame_id(&mut self, bp: usize) {
+        self.frame_uid_gen += 1;
+        let uid = self.frame_uid_gen;
+        self.frame_ids.retain(|(b, _)| *b < bp);
+        self.frame_ids.push((bp, uid));
+    }
+
+    /// PLAN-667: 帧退栈时调用（returned_bp 为刚退帧的 bp）。仅当栈顶
+    /// 恰是该帧时弹出——错误展开等非标准退栈路径靠 push 侧截断自愈。
+    pub fn pop_frame_id(&mut self, returned_bp: usize) {
+        if self.frame_ids.last().map(|(b, _)| *b) == Some(returned_bp) {
+            self.frame_ids.pop();
+        }
+    }
+
+    /// PLAN-667: 当前帧 uid（bp 匹配栈顶帧）；无匹配 = 根帧（0）。
+    pub fn current_frame_uid(&self) -> u64 {
+        self.frame_ids
+            .last()
+            .filter(|(b, _)| *b == self.bp)
+            .map(|(_, u)| *u)
+            .unwrap_or(0)
+    }
+
+    /// PLAN-667: (task_id, uid) 帧身份是否仍活跃。uid 0 = 根帧
+    /// （任务存活期内恒活）。跨任务一律拒绝（帧偏移按任务 ram 解释）。
+    pub fn frame_alive(&self, task_id: TaskId, uid: u64) -> bool {
+        if task_id != self.id {
+            return false;
+        }
+        if uid == 0 {
+            return true;
+        }
+        self.frame_ids.iter().any(|(_, u)| *u == uid)
     }
 }

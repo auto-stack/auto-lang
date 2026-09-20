@@ -3378,6 +3378,7 @@ mod tests {
                 n_args: 2,
                 capture_slots: std::collections::HashMap::new(),
                 param_abs: std::collections::HashMap::new(),
+                creator_frame: None,
             },
         );
         let _bridge = BridgeGuard::enter(&mut task, &vm);
@@ -3426,6 +3427,7 @@ mod tests {
                 n_args: 2,
                 capture_slots: std::collections::HashMap::new(),
                 param_abs: std::collections::HashMap::new(),
+                creator_frame: None,
             },
         );
         // Methods literal: __init__ (Python source) + forward (closure 7).

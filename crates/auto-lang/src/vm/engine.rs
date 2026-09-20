@@ -227,6 +227,11 @@ pub struct Closure {
     /// 解析——参数不在 bp+1+idx 正域,通用 capture_slots 公式对它全错,
     /// 表现为谓词闭包读外层参数得 ""/0。为空=无参数域捕获。
     pub param_abs: HashMap<String, usize>,
+    /// PLAN-667 (F-01): 创建帧身份 (task_id, frame_uid)。帧相对捕获
+    /// (capture_slots/param_abs 非空)在读写前按此校验：任务不符=跨任务
+    /// 错帧，uid 不在活跃表=创建帧已返回（含同 bp 复用）。None=无帧
+    /// 相对捕获（env by-value / 合成闭包），无需校验。
+    pub creator_frame: Option<(crate::vm::task::TaskId, u64)>,
 }
 
 /// Plan 442 A5: one-shot timer callback form. The event form dispatches a
@@ -901,7 +906,7 @@ impl AutoVM {
             Value::Char(c) => auto_val::encode_i32(*c as i32),
             Value::Str(s) => {
                 // Intern into the string pool and return its tagged index.
-                let idx = self.intern_string(s.as_bytes());
+                let idx = self.add_string(s.as_bytes().to_vec());
                 auto_val::encode_string(idx as u32)
             }
             Value::VmRef(r) => auto_val::encode_object(r.id as u32),
@@ -1235,6 +1240,35 @@ impl AutoVM {
         if auto_val::is_string(old_nv) {
             self.rc_release(old_nv);
         }
+    }
+
+    /// PLAN-667 (F-01): 帧相对捕获守卫——任何 capture_slots/param_abs 槽位
+    /// 读写前调用。创建帧身份不符（跨任务错帧）或创建帧已返回（含同 bp
+    /// 复用后的陈旧 uid）时，在读到陈旧/他人槽位**之前**以 RuntimeError
+    /// 拒绝；不得静默回落 nil/旧值/副本。
+    fn ensure_capture_frame_alive(
+        &self,
+        task: &AutoTask,
+        closure: &Closure,
+        var_name: &str,
+        closure_id: u32,
+    ) -> Result<(), VMError> {
+        let Some((creator_task, creator_uid)) = closure.creator_frame else {
+            return Ok(());
+        };
+        if creator_task != task.id {
+            return Err(VMError::RuntimeError(format!(
+                "captured variable '{}' in closure {}: created in task {} but accessed from task {} — cross-task frame captures are not supported; capture by value instead",
+                var_name, closure_id, creator_task, task.id
+            )));
+        }
+        if !task.frame_alive(creator_task, creator_uid) {
+            return Err(VMError::RuntimeError(format!(
+                "captured variable '{}' in closure {}: creator frame has already returned — by-reference captures are only valid while the creator frame is alive; capture by value or call within the creator's lifetime",
+                var_name, closure_id
+            )));
+        }
+        Ok(())
     }
 
     /// Get a heap object by ID, returning a read guard
@@ -1868,6 +1902,8 @@ impl AutoVM {
         task.ram.push_i32(saved_ip as i32);  // Return address
         task.ram.push_i32(saved_bp as i32);  // Old BP
         task.bp = task.ram.sp - 1;
+        // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+        task.push_frame_id(task.bp);
 
         // PLAN-624 T-03: 闭包激活必须入 call_stack 一帧 —— 闭包体末端 RET
         // 无条件弹一帧(CALL 帧协议)；此前本方法只推 ram 帧、不推 CallFrame，
@@ -2028,6 +2064,8 @@ impl AutoVM {
         task.ram.push_i32(saved_ip as i32);  // Return address
         task.ram.push_i32(saved_bp as i32);  // Old BP
         task.bp = task.ram.sp - 1;
+        // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+        task.push_frame_id(task.bp);
         task.current_fn_n_args = n_args;
 
         // 4. Jump to function body
@@ -2455,6 +2493,9 @@ impl AutoVM {
                             task.ram.push_i32(saved_ip as i32);
                             task.ram.push_i32(saved_bp as i32);
                             task.bp = task.ram.sp - 1;
+                            // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+                            let handler_bp = task.bp;
+                            task.push_frame_id(handler_bp);
                             // 2. 预留 locals 区（bp+1 .. bp+HANDLER_LOCALS_SLOTS）
                             for _ in 0..HANDLER_LOCALS_SLOTS {
                                 task.ram.push_i32(0);
@@ -6634,6 +6675,8 @@ impl AutoVM {
 
                     // New BP points to the saved BP location (SP - 1)
                     task.bp = task.ram.sp - 1;
+                    // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+                    task.push_frame_id(task.bp);
 
                     // Plan 199 Phase 7: Resolve function name from address
                     let fn_name = self.flash.addr_to_name
@@ -7021,6 +7064,8 @@ impl AutoVM {
                         task.ram.push_i32(task.ip as i32);
                         task.ram.push_i32(task.bp as i32);
                         task.bp = task.ram.sp - 1;
+                        // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+                        task.push_frame_id(task.bp);
                         task.ip = addr as usize;
                         // Plan 417-E3: push a CallFrame exactly like regular
                         // CALL — the callee's RET pops one to restore
@@ -8272,6 +8317,10 @@ impl AutoVM {
                     let old_bp = task.ram.read_i32(task.bp) as usize;
                     let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
 
+                    // PLAN-667 (F-01): 帧退栈——摘除刚返回帧的身份条目
+                    // （创建帧死亡的闭包自此被守卫拒绝）。
+                    task.pop_frame_id(task.bp);
+
                     // Plan 071 Phase 5: Restore previous closure from saved_closure_id
                     task.current_closure_id = task.saved_closure_id;
 
@@ -8346,7 +8395,12 @@ impl AutoVM {
                         task.ip += 2;
 
                         // Pop value from stack (values pushed in order, popped in reverse)
-                        let value = task.ram.pop_i32();
+                        // PLAN-667 (F-01): pop_nv 保留类型标签（旧 pop_i32 把
+                        // 字符串/对象捕获截成垃圾整数）；弹出槽的影子随值
+                        // 转入 env 持有（env 条目隐式占一份；闭包死亡属
+                        // 泄漏方向——安全纪律内，见 rc.rs 头注）。
+                        let value_nv = task.ram.pop_nv();
+                        let _env_stake = task.ram.take_stake_at(task.ram.sp);
 
                         // Look up variable name from string table (Plan 073: Now uses RwLock)
                         let strings = self.strings.read().unwrap();
@@ -8359,7 +8413,7 @@ impl AutoVM {
                             )));
                         };
                         drop(strings);
-                        env.insert(var_name_str.clone(), Value::Int(value));
+                        env.insert(var_name_str.clone(), self.decode_tagged_nv(value_nv));
                         // Plan 385/454 E5a: 记录原始栈位置用于 by-reference 捕获。
                         // 0x8000 旗标 = 函数参数域(负向寻址),此处即用创建帧
                         // 的 n_args 解析成绝对槽位;普通局部沿用 bp+1+off。
@@ -8377,9 +8431,37 @@ impl AutoVM {
                         }
                     }
 
+                    // PLAN-667 (F-01): 嵌套闭包传递继承——在闭包 outer 执行
+                    // 体内创建 inner 时，inner 对 outer 已捕获变量的槽位解析
+                    // 必须沿用 outer 的帧锚（祖父帧），而非 inner 创建帧。
+                    // 旧实现按 inner 编译期作用域算槽位，读的是 outer 帧的
+                    // 垃圾（嵌套探针得 8 非 106 的根因）。
+                    if let Some(outer_id) = task.current_closure_id {
+                        if let Some(outer) = self.closures.get(&outer_id) {
+                            for (name, entry) in capture_slots.iter_mut() {
+                                if let Some(&outer_entry) = outer.capture_slots.get(name) {
+                                    *entry = outer_entry;
+                                }
+                            }
+                            for (name, abs) in param_abs.iter_mut() {
+                                if let Some(&outer_abs) = outer.param_abs.get(name) {
+                                    *abs = outer_abs;
+                                }
+                            }
+                        }
+                    }
+
+                    // PLAN-667 (F-01): 帧相对捕获记录创建帧身份
+                    // (task_id, frame_uid)，读写前校验存亡。
+                    let creator_frame = if capture_slots.is_empty() && param_abs.is_empty() {
+                        None
+                    } else {
+                        Some((task.id, task.current_frame_uid()))
+                    };
+
                     // Create closure
                     let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
-                    let closure = Closure { func_addr, env, n_args, capture_slots, param_abs };
+                    let closure = Closure { func_addr, env, n_args, capture_slots, param_abs, creator_frame };
 
                     vm_debug!("DEBUG CLOSURE: created closure_id={}, ip after names={}, sp after={}", closure_id, task.ip, task.ram.sp);
 
@@ -8439,6 +8521,8 @@ impl AutoVM {
                     if let Some(closure) = self.closures.get(&closure_id) {
                         // Plan 454 E5a: 参数域捕获优先(绝对槽,创建帧存活期内有效)
                         if let Some(&abs_slot) = closure.param_abs.get(var_name.as_str()) {
+                            // PLAN-667 (F-01): 任何槽位读写前校验创建帧身份。
+                            self.ensure_capture_frame_alive(task, &closure, &var_name, closure_id)?;
                             drop(closure);
                             let nv = task.ram.read_nv(abs_slot);
                             self.rc_push(task, nv);
@@ -8446,6 +8530,8 @@ impl AutoVM {
                         }
                         // Plan 385: 优先通过 capture_slots 读原始栈位置（by-reference）
                         if let Some(&(creator_bp, slot_offset)) = closure.capture_slots.get(var_name.as_str()) {
+                            // PLAN-667 (F-01): 任何槽位读写前校验创建帧身份。
+                            self.ensure_capture_frame_alive(task, &closure, &var_name, closure_id)?;
                             let nv = task.ram.read_nv(creator_bp + 1 + slot_offset);
                             // Plan 419: copy-on-load(+1)。
                             drop(closure);
@@ -8455,16 +8541,32 @@ impl AutoVM {
                         // Fallback: 从 env 读值副本（by-value，兼容旧字节码）
                         if let Some(value) = closure.env.get(var_name.as_str()) {
                             // Push value to stack
+                            // PLAN-667 (F-01): env 持有的引用入栈 +1 并标记
+                            // 影子（旧实现裸 push_i32 无影子——POP 按影子释放
+                            // 不到，循环内每次 env 加载净漏一份）。
                             match value {
-                                // Plan 419: env 持有的引用入栈 +1(env stake 保留;
-                                // env 以裸 Int(id) 存放,id ≥ HEAP_ID_BASE 即堆引用)。
                                 Value::Int(i) => {
-                                    if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
-                                        self.rc_retain_id(*i as u64);
-                                    }
                                     task.ram.push_i32(*i);
                                 }
-                                // TODO: Handle other value types
+                                Value::Bool(b) => {
+                                    task.ram.push_nv(auto_val::encode_bool(*b));
+                                }
+                                Value::Float(f) => {
+                                    task.ram.push_nv(auto_val::encode_f64(*f as f64));
+                                }
+                                Value::Double(d) => {
+                                    task.ram.push_nv(auto_val::encode_f64(*d));
+                                }
+                                Value::Nil | Value::Null => {
+                                    task.ram.push_nv(auto_val::encode_null());
+                                }
+                                Value::Str(s) => {
+                                    let idx = self.add_string(s.as_bytes().to_vec());
+                                    self.rc_push_str_idx(task, idx);
+                                }
+                                Value::VmRef(r) => {
+                                    self.rc_push_id(task, r.id as u64);
+                                }
                                 _ => task.ram.push_i32(0),
                             }
                         } else {
@@ -8488,6 +8590,9 @@ impl AutoVM {
                     task.ip += 4;
 
                     let value_nv = task.ram.pop_nv();
+                    // PLAN-667 (F-01): 弹出槽影子随值转移（旧实现不取——
+                    // 陈旧影子滞留死位，槽位复用后 POP 误释他人份额）。
+                    let in_stake = task.ram.take_stake_at(task.ram.sp);
 
                     // Use current_closure_id instead of popping from stack
                     let closure_id = task.current_closure_id.ok_or_else(|| {
@@ -8509,35 +8614,48 @@ impl AutoVM {
                     drop(strings);
 
                     // Plan 454 E5a: 参数域捕获优先(绝对槽直写)
-                    if let Some(abs_slot) = self.closures.get(&closure_id)
-                        .and_then(|c| c.param_abs.get(var_name.as_str()).copied())
-                    {
-                        let nv = task.ram.pop_nv();
-                        task.ram.write_nv(abs_slot, nv);
-                        return Ok(StepResult::Continue);
-                    }
-                    // Plan 385: 优先通过 capture_slots 写原始栈位置（by-reference）
-                    let has_slot = self.closures.get(&closure_id)
-                        .map(|c| c.capture_slots.get(&var_name).copied())
-                        .unwrap_or(None);
-                    if let Some((creator_bp, slot_offset)) = has_slot {
-                        // Plan 419: 槽内旧值死亡;新值自栈转移进槽。
-                        let addr = creator_bp + 1 + slot_offset;
-                        self.rc_release(task.ram.read_nv(addr));
-                        task.ram.write_nv(addr, value_nv);
-                        return Ok(StepResult::Continue);
+                    // PLAN-667 (F-01): 旧实现此处再 pop 一次（双 pop 吃掉
+                    // 无关栈值）且不转影子；改为单 pop + 影子转移 + 旧槽按
+                    // 影子释放（内容判释放会误杀与活 id 相等的整数）。
+                    if let Some(closure) = self.closures.get(&closure_id) {
+                        if let Some(&abs_slot) = closure.param_abs.get(var_name.as_str()) {
+                            self.ensure_capture_frame_alive(task, &closure, &var_name, closure_id)?;
+                            drop(closure);
+                            self.release_slot_old_value(task, abs_slot);
+                            task.ram.write_nv(abs_slot, value_nv);
+                            task.ram.mark_stake_at(abs_slot, in_stake);
+                            return Ok(StepResult::Continue);
+                        }
+                        // Plan 385: 优先通过 capture_slots 写原始栈位置（by-reference）
+                        if let Some(&(creator_bp, slot_offset)) = closure.capture_slots.get(var_name.as_str()) {
+                            self.ensure_capture_frame_alive(task, &closure, &var_name, closure_id)?;
+                            drop(closure);
+                            let addr = creator_bp + 1 + slot_offset;
+                            self.release_slot_old_value(task, addr);
+                            task.ram.write_nv(addr, value_nv);
+                            task.ram.mark_stake_at(addr, in_stake);
+                            return Ok(StepResult::Continue);
+                        }
+                        drop(closure);
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid closure ID: {}",
+                            closure_id
+                        )));
                     }
 
                     // Fallback: 写 closure.env（by-value，兼容旧字节码）
-                    let value = auto_val::decode_i32(value_nv);
+                    let value = self.decode_tagged_nv(value_nv);
                     if let Some(mut closure) = self.closures.get_mut(&closure_id) {
-                        // Plan 419: env 旧值(id ≥ HEAP_ID_BASE 为堆引用)释放;新值转移。
-                        if let Some(Value::Int(old)) = closure.env.get(var_name.as_str()) {
-                            if (*old as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
-                                self.rc_release_id(*old as u64);
-                            }
+                        // Plan 419: env 旧值(堆引用)释放;新值转移。
+                        if let Some(Value::VmRef(old)) = closure.env.get(var_name.as_str()) {
+                            self.rc_release_id(old.id as u64);
                         }
-                        closure.env.insert(var_name, Value::Int(value));
+                        // 字符串 env 条目为字节拷贝（无池份额），无需释放。
+                        closure.env.insert(var_name, value);
+                        // 新值的影子（若为堆引用）归 env 隐式持有——计数
+                        // 已在入栈时发生（copy-on-load），env 覆盖/闭包死亡
+                        // 时按上述约定释放/泄漏（安全方向）。
                     } else {
                         return Err(VMError::RuntimeError(format!(
                             "Invalid closure ID: {}",
@@ -8584,6 +8702,8 @@ impl AutoVM {
 
                         // New BP points to the saved BP location (SP - 1)
                         task.bp = task.ram.sp - 1;
+                        // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+                        task.push_frame_id(task.bp);
 
                         // PLAN-624 T-03: 同 call_closure 方法 —— 闭包激活入
                         // call_stack 一帧，闭包体 RET 弹自己的帧而非外层函数
@@ -8895,6 +9015,7 @@ impl AutoVM {
                                             n_args: 0,
                                             capture_slots: HashMap::new(),
                                             param_abs: HashMap::new(),
+                                            creator_frame: None, // PLAN-667: 合成闭包无帧相对捕获
                                         },
                                     );
                                     if let Some(task_guard) = self.tasks.get(&new_task_id) {
@@ -10135,6 +10256,7 @@ self.rc_release(a_nv);
                 n_args: 0,
                 capture_slots: HashMap::new(),
                 param_abs: HashMap::new(),
+                creator_frame: None, // PLAN-667: 合成闭包无帧相对捕获
             },
         );
         Some(closure_id)

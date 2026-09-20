@@ -7341,6 +7341,10 @@ mod plan442_store_facade_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan622_store_facade_gap_tests;
 
+// PLAN-667: 内存安全底线探针矩阵（捕获/RC/a2r，VM 生产路径）。
+#[cfg(test)]
+mod plan667_memory_safety_tests;
+
 // PLAN-624: merged single-state cross-state resolution red corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan624_cross_state_tests;
