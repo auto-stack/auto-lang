@@ -2496,3 +2496,10 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P666-D2 | low | vue-tsc | **038-minesweeper `auto build`（vue-tsc 档）红（两侧对称预存）**——生成 `useMinesweeperStore.ts:282/287` 类型错（`store` 名未解析）；dev 模式（vite 无 tsc）不受影响。与 P666-D1 同族=codegen 演化滞后 | examples/ui/038-minesweeper/gen 产物；复现 `auto build` |
 | P666-D4 | low | 跨仓 WIP | **auto-os widgets-gallery kitchen-sink/ui-cache 孤儿再生成 WIP 留主未处置**——666 T-06 时在册（他族 docs_gen 产物），未入产物提交；主 auto-os 检出持续带脏。处置=其所有者落册或下次数值化对账吸收 | auto-os widgets-gallery/src/front/pages/kitchen-sink.at + .auto/ui-cache.json；666 归档 §9 R1-F5 |
 | P666-D5 | low | 工具链 | **P665-D6 复发（第三次）：spec-index.py 再生再冲 664 ui 行注记**——666 merge 再生时实证冲掉、已按 665 先例回灌（7862da23c 原行 verbatim）。根治仍待 P665-D6 修法（注记回灌再生源或流程纪律） | docs/specs/INDEX.md ui 行；666 归档 merge 收据；P665-D6 行 |
+
+### P667（2026-09-20，Plan 667 内存安全底线 work 执行登记）
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P667-D1 | low | VM/RC | **类型化 var 声明局部槽影子转移缺失（KD-051⑤ 同族延续，执行期新证）**——`var a Note = Note{...}`（带类型注解声明）的槽位无影子：覆盖赋值不释放旧值，每声明滞留 1 份（泄漏方向不破坏安全）；667 探针以无类型形态隔离（无类型路径影子正常）。P419_UAF_TRACE 事件链取证：retain 0→1 后无匹配 release。根治归 RC 槽位记账专项 | crates/auto-lang/src/vm/engine.rs STORE_LOCAL 声明路径；docs/plans/reports/667-memory-safety-evidence.md §8 |
+| P667-D2 | low | 既有红归因 | **本机预存红基线（stash 双跑实证，非 667 引入）**——tv/daily 档 ui_gen::rust::tests::{mouse_area_emits_events_and_logical_extent, test_autodown_panel_heading_codegen}；test-trans 档 a2r_tests::{test_14_modules_007_shared_var, test_27_c_abi_003/004, a2r_rustc_real_compile_gate}；ffi_dual_019 与 external_config_poll 为并行/环境闪测（单跑绿）。667 合入门禁以"相对该基线零新增红"为判据 | 各测试名；667 evidence §6/§8 |

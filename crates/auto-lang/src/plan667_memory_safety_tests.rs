@@ -30,18 +30,6 @@ async fn run_vm_probe(code: &str) -> (AutoVM, String, Option<String>) {
     if let Some(arc) = vm.tasks.get(&tid) {
         let mut t = arc.lock().await;
         last_error = t.last_error.clone();
-        if std::env::var("P667_STAKE_DUMP").is_ok() {
-            eprintln!("[P667STAKE] sp={} slots:", t.ram.sp);
-            for i in 0..t.ram.sp.min(24) {
-                let sh = t.ram.stake_at(i);
-                if sh != 0 {
-                    eprintln!("[P667STAKE] slot {} stake={} nv={:016x}", i, sh, t.ram.read_nv(i));
-                }
-            }
-            for g in vm.globals.iter().take(6) {
-                eprintln!("[P667STAKE] global {} nv={:016x}", g.key(), g.value());
-            }
-        }
         vm.rc_release_task_stack(&mut t);
     }
     vm.tasks.remove(&tid);
@@ -278,7 +266,6 @@ mod plan667_a2r_tests {
     use crate::ast::{Stmt};
     use crate::parser::{CompileDest, Parser};
     use crate::trans::escape::analyzer::EscapeAnalyzer;
-    use crate::trans::escape::OwnershipTier;
     use crate::trans::rust::transpile_rust;
 
     fn parse_fn(src: &str) -> crate::ast::Fn {

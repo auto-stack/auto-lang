@@ -62,10 +62,21 @@ graph TD
 - 状态：active
 
 ### ADR-03: 闭包直接捕获（direct capture），不用 upvalue
-- 日期 / 来源：2025-02-03 / plan-071
-- 决策：`Closure { func_addr, env: HashMap<String, Value>, n_args }`，捕获值在创建时拷贝进 env；编译器拒绝 `.view`/`.mut` 借用捕获并给出报错引导。
+- 日期 / 来源：2025-02-03 / plan-071；PLAN-385/454/667 修订
+- 决策：`Closure { func_addr, env, n_args, capture_slots, param_abs, creator_frame }`。
+  **当前实际捕获形态（PLAN-667 钉定）**：局部/参数捕获是 **by-reference**——
+  `capture_slots: HashMap<name, (creator_bp, slot_offset)>` / `param_abs`（绝对槽），
+  LOAD/STORE_CAPTURED 直接读写创建者帧；env 只承载 by-value 副本
+  （0xFFFF 槽位/不可解析名/合成闭包）。编译器仍拒绝 `.view`/`.mut` 借用捕获。
+- **捕获有效期（PLAN-667 F-01 守卫）**：`creator_frame = (task_id, frame_uid)`；
+  帧相对捕获在任何槽位读写前校验——创建者帧已返回（含同 bp 复用）或跨任务
+  即 RuntimeError 拒绝（不静默读陈旧槽/跨帧写）。创建者存活期内（含
+  call_closure 同步谓词、嵌套闭包传递继承祖父帧锚、生成器挂起）为已验证
+  支持面；TimerCallback 等异步回调只支持 by-value env 捕获。完整支持矩阵见
+  `docs/specs/auto-lang/vm/design/memory-safety-boundary.md`。
 - 备选：Lua 式 upvalue 共享引用（pros：语义贴近引用捕获；cons：逃逸闭包悬垂引用风险，需额外逃逸分析）。
-- 后果：逃逸闭包天然安全；嵌套闭包靠 `current_closure_id`/`saved_closure_id` 在 CALL_CLOSURE/RET 间保存恢复；放开借用捕获需数据流分析（report 07 Open Questions；plan-310 已交付 ownership/escape 分析，2026-06-16）。
+- 后果：by-ref 捕获有效期=创建帧存活期（运行期受检错误，非编译期保证）；
+  嵌套闭包靠 `current_closure_id`/`saved_closure_id` 在 CALL_CLOSURE/RET 间保存恢复。
 - 状态：active
 
 ### ADR-04: 泛型单态化 + 类型擦除存储

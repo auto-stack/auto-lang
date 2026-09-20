@@ -6,6 +6,16 @@
 
 **Partial**: Path binding via `hold` is parsed but deep integration with the borrow checker is not complete. The `view` keyword doubles as both a memory modifier and a UI concept (AURA views).
 
+**Current enforcement reality (PLAN-667 status correction)**: the `ownership/`
+module (borrow.rs / lifetime.rs / cfa.rs) is an **unwired design probe** — it has
+zero production call sites and does not enforce anything on the compile/VM main
+paths. Actual memory-safety boundaries today are: VM runtime guards (closure
+frame-validity checks, RC staking — see
+`docs/specs/auto-lang/vm/design/memory-safety-boundary.md`) and the a2r escape
+analysis conservative superset (see
+`docs/specs/auto-lang/trans/design/escape-analysis-tiers.md`). "Memory errors are
+caught at compile time" below describes the design goal, not the current guarantee.
+
 **Planned**: Lifetime levels, full borrow checking, static stack analysis for tasks, `shared` type for cross-task ARC, ABI-level copy optimization for small types in a2r.
 
 ## Design

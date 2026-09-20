@@ -24,15 +24,21 @@ view/mut/move 三模式、`ParamMode`、borrow checker、生命周期、last-use
 
 ### ownership/ 模块三件套
 
-| 文件 | 机制 |
-|---|---|
-| `ownership/borrow.rs:BorrowChecker` | Rust 式借用规则：多 view 共存、mut 独占、mut 与 view 互斥、借用不得悬垂；`Target` 归一化（`x`/`view x`/`obj.field` 归并到同一基目标）做冲突检测 |
-| `ownership/lifetime.rs:Lifetime(u32)` | 生命周期为编号区域，`STATIC=0`；`outlives` 规则：ID 小者命长（`a.0 <= b.0`），交集取短命者 |
-| `ownership/cfa.rs:LastUseAnalyzer` | 控制流分析检测变量最后使用点，供自动清理/自动 move 插入 |
+| 文件 | 机制 | 接入状态（PLAN-667 钉定） |
+|---|---|---|
+| `ownership/borrow.rs:BorrowChecker` | Rust 式借用规则：多 view 共存、mut 独占、mut 与 view 互斥、借用不得悬垂；`Target` 归一化（`x`/`view x`/`obj.field` 归并到同一基目标）做冲突检测 | **未接入**——独立模块，仅 ownership_tests.rs 自测，零生产调用面 |
+| `ownership/lifetime.rs:Lifetime(u32)` | 生命周期为编号区域，`STATIC=0`；`outlives` 规则：ID 小者命长（`a.0 <= b.0`），交集取短命者 | **未接入**——数字 ID 不构成主路径区域包含执法；不得作为安全证明引用 |
+| `ownership/cfa.rs:LastUseAnalyzer` | 控制流分析检测变量最后使用点，供自动清理/自动 move 插入 | **未接入** |
 
 不变量（borrow.rs 头注释）：mut 借用唯一；借用不得超过数据本身寿命。
 已知漂移：本模块术语仍为 view/mut/**take**（`BorrowKind::Take`），与 `ParamMode::Move` 同义。
 线性类型基础（`Linear`/`MoveState`/`MoveTracker`）来自 auto-val crate，经 ownership/mod.rs 重导出。
+
+> **PLAN-667 接入状态口径**：ownership/ 三件套是设计探针，不构成编译/VM
+> 主路径的任何执法。主路径实际的内存安全边界见
+> `docs/specs/auto-lang/vm/design/memory-safety-boundary.md`（VM/RC）与
+> `docs/specs/auto-lang/trans/design/escape-analysis-tiers.md`（a2r）。
+> 运行期 `.mut` 独占执法=VM `auto.rc.assert_unique`（RC>1 拒绝），非本模块。
 
 ### 参数传递实现（ABO-01，plan-088）
 
@@ -48,8 +54,9 @@ view/mut/move 三模式、`ParamMode`、borrow checker、生命周期、last-use
 ### 逃逸分析回退（plan-310，trans/escape/）
 
 编译期做同步逃逸分析：证明安全 → 借用（Tier 1，零成本）；证明不了 →
-`Rc<RefCell<T>>`（Send 边界升 `Arc`）并发 W0007 warning；view/mut/move 仅作 hint 可被覆盖；
-Copy/小类型自动 clone；async 默认 move。显式不复用 ownership/（§5.3：一个管执法、一个管代码生成决策）。
+clone/Rc 降级（实际条件与拒绝边界见 trans 侧 spec，PLAN-667 后
+Send 边界与 `.mut` 于逃逸绑定为**明确诊断拒绝**，非自动 fallback）。
+显式不复用 ownership/（§5.3：一个管执法、一个管代码生成决策）。
 
 ### 生命周期分级（设计层）
 
