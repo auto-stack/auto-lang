@@ -17,4 +17,4 @@ API imports: []
 Store deps: ["NotesStore"]
 Store composables: 0
 Validation warnings: 4
-SFC 'App': 19837 bytes, has template: true, has script: true, has style: true
+SFC 'App': 20509 bytes, has template: true, has script: true, has style: true
