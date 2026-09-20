@@ -65,7 +65,11 @@ export interface FrameReady {
 export type ServerMsg =
   | { kind: 'welcome'; welcome: Welcome }
   | { kind: 'frame'; frame: FrameReady }
-  | { kind: 'hitTable'; wid: bigint; hits: HitRegion[] };
+  | { kind: 'hitTable'; wid: bigint; hits: HitRegion[] }
+  // PLAN-034 D6：位图通道 decode 桩（占位维持——web 真位图渲染
+  // not-yet 边界，P028-D3；消费面 connect.ts 忽略）。
+  | { kind: 'bitmapReady'; wid: bigint; id: string }
+  | { kind: 'bitmapAck'; wid: bigint };
 
 // ---------------------------------------------------------------------------
 // 编码（远程端 → 宿主）
@@ -220,6 +224,24 @@ export function decodeServerMsg(bytes: Uint8Array): ServerMsg {
           hits.push({ rect, kind, action });
         }
         return { kind: 'hitTable' as const, wid, hits };
+      }
+      if (tag === 10) {
+        // BITMAP_READY（PLAN-034 D6：decode 必达——未知 tag throw 破坏
+        // WS 会话；远程端无 shm 位图通道，消费面忽略 = 占位维持边界）。
+        const wid = r.u64();
+        const id = r.string();
+        r.u8(); // slot
+        r.u32(); // w
+        r.u32(); // h
+        r.u32(); // stride
+        r.u32(); // len
+        return { kind: 'bitmapReady' as const, wid, id };
+      }
+      if (tag === 11) {
+        // BITMAP_ACK（host→app 方向同理防线下；消费面忽略）。
+        const wid = r.u64();
+        r.u8(); // slot
+        return { kind: 'bitmapAck' as const, wid };
       }
       throw new CodecError(`unknown frame tag ${tag}`);
     }

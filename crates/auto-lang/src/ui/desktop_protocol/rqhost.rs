@@ -388,6 +388,24 @@ fn apply_actions(
                     continue;
                 };
                 client.inner.shm.insert(surface, shm);
+                // PLAN-034 D3：位图段（专用第二段——槽尺寸按表面档：
+                // ceil(w)×ceil(h)×4+4，v1 = 1× 逻辑分辨率）。
+                let bm_name = format!("{shm_name}-bm");
+                let bm_slot_size = width.ceil().max(1.0) as u32
+                    * height.ceil().max(1.0) as u32
+                    * 4
+                    + 4;
+                let bm = match SharedFrameBuffer::create(&bm_name, 2, bm_slot_size) {
+                    Ok(seg) => {
+                        client.inner.bm_shm.insert(surface, seg);
+                        Some(super::message::BitmapBuffer {
+                            shm: bm_name.clone(),
+                            slots: 2,
+                            slot_size: bm_slot_size,
+                        })
+                    }
+                    Err(_) => None,
+                };
                 match client.inner.endpoint.activate(
                     app_id,
                     wid,
@@ -403,6 +421,7 @@ fn apply_actions(
                             width,
                             height,
                             shm: Some(shm_name),
+                            bm,
                         }));
                         client.inner.app_id = Some(crate::ui::session::AppId(app_id));
                         client.inner.wid = Some(Wid(wid));
@@ -449,6 +468,36 @@ fn apply_actions(
                     }
                 }
             }
+            // PLAN-034 T-05（D3）：位图就绪——读位图段槽入宿主图像
+            // 缓存（`bitmap://{id}` 键——broker_surface resolve 前缀臂
+            // 消费）+ BitmapAck 归还槽（session/loopback 宿主同律）。
+            HostAction::BitmapReady {
+                surface,
+                wid,
+                id,
+                w,
+                h,
+                stride,
+                slot,
+                len: _,
+            } => {
+                let key = format!("bitmap://{id}");
+                let rgba = client
+                    .inner
+                    .bm_shm
+                    .get(&surface)
+                    .and_then(|seg| seg.read_slot(slot).ok());
+                if let Some(rgba) = rgba {
+                    crate::ui::iced::broker_surface::bitmap_cache_put(&key, w, h, stride, rgba);
+                    client
+                        .inner
+                        .bitmap_keys
+                        .entry(surface)
+                        .or_default()
+                        .push(key);
+                }
+                to_app.push(ProtocolMsg::Frame(FrameMsg::BitmapAck { wid, slot }));
+            }
             // queue 唯一档（Welcome=Commands）——像素帧臂理论不到达；
             // 容错直通 BrokerClient::compose_pixels（不 ack 失败同族）。
             HostAction::ComposeFramePixels {
@@ -470,6 +519,13 @@ fn apply_actions(
             HostAction::ReclaimWindow { wid } => {
                 if let Some(surface) = client.inner.wid_surface.remove(&wid) {
                     client.inner.shm.remove(&surface);
+                    // PLAN-034：位图段随主段释放 + 位图键逐出。
+                    client.inner.bm_shm.remove(&surface);
+                    if let Some(keys) = client.inner.bitmap_keys.remove(&surface) {
+                        for key in keys {
+                            crate::ui::iced::broker_surface::bitmap_cache_evict(&key);
+                        }
+                    }
                     client.inner.surfaces.release(surface);
                     to_app.push(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface }));
                 }
@@ -790,6 +846,13 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
                 let mut client = state.clients.remove(idx);
                 if let Some(w) = client.window.take() {
                     tasks.push(iced::window::close(w));
+                }
+                // PLAN-034：断连清位图键（键不逐出会占内存，pid 复用
+                // 还会串扰）。
+                for keys in client.inner.bitmap_keys.values() {
+                    for key in keys {
+                        crate::ui::iced::broker_surface::bitmap_cache_evict(key);
+                    }
                 }
                 eprintln!("[rqhost] client `{}` 断连（EOF）——窗回收", client.app_name);
             }
@@ -2000,6 +2063,194 @@ mod tests {
                 std::time::Instant::now() < deadline,
                 "大帧客户端 Close 握手 5s 未收敛"
             );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let _ = app.join();
+    }
+
+    /// PLAN-034 T-05：位图通道进程内装配端到端（真管道 ×真 ClientPump ×
+    /// 真宿主 apply_actions——AC-03 单测面）。合成位图生产者组件：
+    /// ①drain_bitmap_uploads 产动画梯度位图 → BitmapReady 过管道；
+    /// ②宿主读槽入 handle_cache（`bitmap://{pid}-anim` 键）→ BitmapAck
+    /// 归还槽；③resolve_drawlist_image 前缀臂可解析（真 Handle + 像素
+    /// 断言）；④合成帧含 Image{src: bitmap://} op；⑤同 id 重上传 =
+    /// 缓存即时翻新（tick 推进 → 梯度变 → Handle 像素变）。
+    #[test]
+    fn p034_bitmap_channel_inproc_roundtrip() {
+        use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientPump};
+        use crate::ui::desktop_protocol::endpoint::bitmap_src;
+        use crate::ui::desktop_protocol::native_projector::RqProjector;
+        use crate::ui::component::Component;
+
+        /// 合成位图生产者：50ms tick 自驱（frame++ → 位图待传 + 视图
+        /// 引用 bitmap://anim + 帧号文本）。
+        #[derive(Debug)]
+        struct AnimBitmapApp {
+            frame: u32,
+            pending: bool,
+        }
+
+        impl Component for AnimBitmapApp {
+            type Msg = u32;
+
+            fn tick_interval_ms(&self) -> Option<u32> {
+                Some(50)
+            }
+
+            fn tick_msg(&self) -> Option<Self::Msg> {
+                Some(0)
+            }
+
+            fn on(&mut self, _msg: Self::Msg) {
+                self.frame += 1;
+                self.pending = true;
+            }
+
+            fn view(&self) -> crate::ui::view::View<Self::Msg> {
+                let src = bitmap_src("anim");
+                crate::ui::view::View::col()
+                    .child(crate::ui::view::View::image(src))
+                    .child(crate::ui::view::View::text(format!(
+                        "frame {}",
+                        self.frame
+                    )))
+                    .build()
+            }
+
+            fn drain_bitmap_uploads(
+                &mut self,
+            ) -> Vec<crate::ui::desktop_protocol::endpoint::BitmapUpload> {
+                if !self.pending {
+                    return Vec::new();
+                }
+                self.pending = false;
+                let (w, h) = (48u32, 24u32);
+                let mut rgba = vec![0u8; (w * h * 4) as usize];
+                for row in 0..h {
+                    for col in 0..w {
+                        let at = ((row * w + col) * 4) as usize;
+                        // 水平梯度 + 帧号驱动的时间相位——Handle 像素
+                        // 随 tick 变（翻新断言锚点）。
+                        rgba[at] = (col * 255 / w) as u8;
+                        rgba[at + 1] = (self.frame % 256) as u8;
+                        rgba[at + 2] = (row * 255 / h) as u8;
+                        rgba[at + 3] = 255;
+                    }
+                }
+                vec![crate::ui::desktop_protocol::endpoint::BitmapUpload {
+                    id: crate::ui::desktop_protocol::endpoint::bitmap_local_id("anim"),
+                    w,
+                    h,
+                    stride: w * 4,
+                    rgba,
+                }]
+            }
+        }
+
+        let pipe = pid_pipe("p034bm");
+        let (serve, _claim) = start_serve(&pipe);
+
+        let cp = pipe.clone();
+        let app = std::thread::spawn(move || {
+            let (_, end) = adopt(&cp, "p034anim", 2000).expect("adopt");
+            let proj = RqProjector::new(AnimBitmapApp { frame: 0, pending: true }, 480.0, 320.0);
+            let (exit, _) = ClientPump::new(
+                end,
+                proj,
+                ClientConfig {
+                    app_name: "p034anim".into(),
+                    title: "p034 bitmap".into(),
+                    width: 480.0,
+                    height: 320.0,
+                },
+                None,
+            )
+            .run();
+            exit
+        });
+
+        // 宿主侧：采纳 + 泵到位图入缓存。
+        let mut ids = RqIds::default();
+        let end = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                let pending: Vec<_> = serve.pending.lock().unwrap().drain(..).collect();
+                if let Some((_, end)) = pending.into_iter().next() {
+                    break end;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "客户端 adopt 5s 未入队"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        };
+        let (mut client, _) =
+            adopt_one("p034anim".to_string(), end, &mut ids, 3000).expect("adopt_one");
+        let key = bitmap_src("anim");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let first_sample = loop {
+            let (_, alive) = pump_client(&mut client, &mut ids);
+            assert!(alive, "客户端在测中断连");
+            if client.frames >= 1 {
+                if let Some(handle) =
+                    crate::ui::iced::broker_surface::resolve_drawlist_image(&key, 48, 24)
+                {
+                    if let iced::widget::image::Handle::Rgba { pixels, .. } = &handle {
+                        break pixels.to_vec();
+                    }
+                }
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "位图 10s 未入宿主缓存（通道断链）"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert_eq!(first_sample.len(), 48 * 24 * 4, "梯度位图尺寸");
+
+        // ④ 合成帧含 bitmap:// 引用 op。
+        let composed_has_ref = client
+            .inner
+            .composed()
+            .map(|list| {
+                list.ops.iter().any(|op| matches!(
+                    op,
+                    crate::ui::desktop_protocol::message::DrawOp::Image { src, .. } if src == &key
+                ))
+            })
+            .unwrap_or(false);
+        assert!(composed_has_ref, "合成帧含 bitmap:// Image op");
+
+        // ⑤ 同 id 重上传 = 缓存即时翻新（tick 推进 → G 通道 = 帧号变）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let (_, alive) = pump_client(&mut client, &mut ids);
+            assert!(alive, "客户端在翻新窗断连");
+            if let Some(handle) =
+                crate::ui::iced::broker_surface::resolve_drawlist_image(&key, 48, 24)
+            {
+                if let iced::widget::image::Handle::Rgba { pixels, .. } = &handle {
+                    if *pixels != first_sample {
+                        break;
+                    }
+                }
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "重上传未翻新（10s 像素未变）"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        serve.stop(&pipe);
+        // 客户端收尾：Close 握手（防 join 挂死）。
+        let close = client.inner.endpoint.close().expect("close 产出");
+        let _ = client.inner.end.send(&close);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !app.is_finished() {
+            let _ = pump_client(&mut client, &mut ids);
+            assert!(std::time::Instant::now() < deadline, "Close 握手 5s 未收敛");
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let _ = app.join();

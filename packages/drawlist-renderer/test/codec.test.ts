@@ -9,6 +9,7 @@ import {
 import {
   FRAME_HEX,
   HELLO_HEX,
+  BITMAP_READY_HEX,
   IMAGE_FRAME_HEX,
   PRESS_HEX,
   SCISSOR_FRAME_HEX,
@@ -110,6 +111,21 @@ describe('对拍锚点（Rust codec 同源字节）', () => {
     expect(bytes[opTagAt]).toBe(6);
     bytes[opTagAt] = 0x7f;
     expect(() => decodeServerMsg(bytes)).toThrow(/unknown drawop tag/);
+  });
+
+  it('BitmapReady 解码与 Rust golden 恒等（PLAN-034 tag 10 桩）', () => {
+    const msg = decodeServerMsg(new Uint8Array(BITMAP_READY_HEX));
+    expect(msg.kind).toBe('bitmapReady');
+    if (msg.kind !== 'bitmapReady') return;
+    expect(msg.wid).toBe(2n);
+    expect(msg.id).toBe('1234-canvas-0');
+  });
+
+  it('未知 Frame tag 拒收维持（tag 12 起）', () => {
+    const bytes = Uint8Array.from(BITMAP_READY_HEX);
+    expect(bytes[12]).toBe(0x0a);
+    bytes[12] = 0x0c; // tag 12 = 未知
+    expect(() => decodeServerMsg(bytes)).toThrow(/unknown frame tag/);
   });
 });
 

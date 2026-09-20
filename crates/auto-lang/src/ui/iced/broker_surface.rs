@@ -96,6 +96,44 @@ fn decode_handle(bytes: &[u8]) -> Option<ImageHandle> {
     Some(ImageHandle::from_bytes(bytes.to_vec()))
 }
 
+/// PLAN-034 T-05（D3）：位图入缓存（宿主三消费面共用——rqhost
+/// apply_actions / session broker_apply_actions / host ProtocolHost 的
+/// BitmapReady 处理点）。同 id 重上传 = 即时翻新（insert 覆盖——无版本
+/// 号，单写者时序由 BitmapAck 槽纪律钉死）。stride 宽于 w×4 时行重排
+/// （`Handle::from_rgba` 要紧排像素）。
+pub(crate) fn bitmap_cache_put(src: &str, w: u32, h: u32, stride: u32, rgba: Vec<u8>) {
+    let tight = (w as usize) * 4;
+    let pixels = if stride as usize == tight {
+        // 紧排直用（stride == w×4 主路径）。
+        rgba
+    } else {
+        // 行重排：每行取前 w×4，落紧排缓冲（短行按现状截断——欠长
+        // 由下方尺寸失配守卫兜底）。
+        let mut packed = Vec::with_capacity(tight * h as usize);
+        for row in 0..h as usize {
+            let base = row * stride as usize;
+            if base >= rgba.len() {
+                break;
+            }
+            let end = (base + tight).min(rgba.len());
+            packed.extend_from_slice(&rgba[base..end]);
+        }
+        packed
+    };
+    let handle = if pixels.len() == tight * h as usize && w > 0 && h > 0 {
+        Some(ImageHandle::from_rgba(w, h, pixels))
+    } else {
+        observe(&format!("bitmap 尺寸失配（弃置）: {src} w={w} h={h} stride={stride} len={}", pixels.len()));
+        None
+    };
+    handle_cache().lock().unwrap().insert(src.to_string(), handle);
+}
+
+/// 位图键逐出（宿主 ReclaimWindow/断连清 client 位图——防 pid 复用串扰）。
+pub(crate) fn bitmap_cache_evict(src: &str) {
+    handle_cache().lock().unwrap().remove(src);
+}
+
 /// DrawOp::Image src 解析总入口（D2 词汇表；paint 路径调用——禁阻塞）。
 /// pub(crate)：p028_image_arm e2e 宿主侧解析/降级腿与度量直接驱动。
 /// PLAN-029 T-07（D5）：签名扩 `(w, h)`——lucide: 栅格化目标尺寸/缓存
@@ -118,6 +156,17 @@ pub(crate) fn resolve_drawlist_image(src: &str, w: u32, h: u32) -> Option<ImageH
     // #FFFFFF——深色壳面约定；tint 可选）。缓存键含尺寸。
     if let Some(rest) = src.strip_prefix("lucide:") {
         return resolve_lucide(src, rest, w, h);
+    }
+    // bitmap://{id}（PLAN-034 D3：P028-D1 兑现）：app 上传位图直查——
+    // 宿主 BitmapReady 处理点翻新（`bitmap_cache_put`）；miss 不落负
+    // 缓存（位图可能后于首帧到达，负缓存会 pin 死后到位图——与本地族
+    // 语义的差异点）+ 观测去重。
+    if src.strip_prefix("bitmap://").is_some() {
+        let hit = handle_cache().lock().unwrap().get(src).cloned().flatten();
+        if hit.is_none() {
+            observe_unresolved(src);
+        }
+        return hit;
     }
     if let Some(entry) = handle_cache().lock().unwrap().get(src) {
         return entry.clone();
@@ -689,6 +738,54 @@ mod tests {
         );
         // 清场（ Published 全局静态——防污染他测）。
         publish(Published::default());
+    }
+
+    /// PLAN-034 T-05（D3）：bitmap:// 前缀臂——入缓存真渲 / miss 占位
+    /// 且**不落负缓存**（位图可后到）/ 同 id 重上传翻新 / evict 逐出。
+    #[test]
+    fn p034_bitmap_prefix_arm_put_miss_and_refresh() {
+        let src = "bitmap://test-p034-anim";
+        // miss：None 占位 + 无负缓存（后到语义）。
+        assert!(resolve_drawlist_image(src, 48, 24).is_none(), "未上传 miss");
+        assert!(
+            !handle_cache().lock().unwrap().contains_key(src),
+            "miss 不落负缓存（位图可后到）"
+        );
+        // 入缓存：紧排主路径。
+        let (w, h) = (4u32, 2u32);
+        let rgba: Vec<u8> = (0..w * h * 4).map(|i| (i % 251) as u8).collect();
+        bitmap_cache_put(src, w, h, w * 4, rgba.clone());
+        let hit1 = resolve_drawlist_image(src, 48, 24).expect("上传后命中");
+        let (hw, hh, data1) = handle_rgba(&hit1);
+        assert_eq!((hw, hh), (w, h), "Handle 尺寸");
+        assert_eq!(data1, rgba, "像素直传（紧排）");
+        // 同 id 重上传 = 即时翻新。
+        let rgba2: Vec<u8> = (0..w * h * 4).map(|i| ((i + 7) % 251) as u8).collect();
+        bitmap_cache_put(src, w, h, w * 4, rgba2.clone());
+        let (_, _, data2) = handle_rgba(&resolve_drawlist_image(src, 48, 24).expect("翻新后命中"));
+        assert_ne!(data1, data2, "重上传翻新");
+        assert_eq!(data2, rgba2);
+        // stride 宽于紧排：行重排（首行取前 w×4）。
+        let src_wide = "bitmap://test-p034-wide";
+        let stride = w * 4 + 16;
+        let mut wide = vec![0u8; (stride * h) as usize];
+        wide[..(w * 4) as usize].copy_from_slice(&rgba[..(w * 4) as usize]);
+        wide[stride as usize..stride as usize + (w * 4) as usize]
+            .copy_from_slice(&rgba[(w * 4) as usize..]);
+        bitmap_cache_put(src_wide, w, h, stride, wide);
+        let (_, _, data_w) = handle_rgba(&resolve_drawlist_image(src_wide, 48, 24).expect("宽行重排"));
+        assert_eq!(data_w, rgba, "宽 stride 行重排为紧排");
+        // evict：逐出后回 miss（仍无负缓存）。
+        bitmap_cache_evict(src);
+        assert!(resolve_drawlist_image(src, 48, 24).is_none(), "逐出后 miss");
+        assert!(!handle_cache().lock().unwrap().contains_key(src), "逐出即清键");
+        // 尺寸失配守卫：载荷短于 h×w×4 → None Handle 入缓存（占位 +
+        // 观测），不 panic。
+        bitmap_cache_put("bitmap://test-p034-short", w, h, w * 4, vec![1u8; 4]);
+        assert!(
+            resolve_drawlist_image("bitmap://test-p034-short", 48, 24).is_none(),
+            "失配守卫 = 占位"
+        );
     }
 
     /// Handle → (w, h, rgba)（iced Handle 数据面读取——ink/tint 断言口）。

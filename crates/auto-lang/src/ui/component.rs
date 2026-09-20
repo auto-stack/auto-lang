@@ -89,6 +89,15 @@ pub trait Component: Sized + Debug {
         Vec::new()
     }
 
+    /// PLAN-034 T-05（D3）：位图上传读走（`FrameSource::drain_bitmap_
+    /// uploads` 的组件面转发点）。缺省空——无位图生产面的组件零负担；
+    /// canvas 快照（VM 轨）/合成位图生产者实现。
+    fn drain_bitmap_uploads(
+        &mut self,
+    ) -> Vec<crate::ui::desktop_protocol::endpoint::BitmapUpload> {
+        Vec::new()
+    }
+
     /// PLAN-033 T-04：L3 v2a 快照注入（融合态 → child 状态迁移落点）——
     /// 逐字段写回 + 续接快照 revision。返回 false = 组件无状态写回路径
     ///（a2r typed 结构体缺省；消费端维持 not-yet 留痕）。

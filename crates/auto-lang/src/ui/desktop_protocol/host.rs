@@ -117,6 +117,10 @@ pub struct ProtocolHost<'a> {
     wid_surface: BTreeMap<u64, u64>,
     /// surface → 共享内存帧缓冲（S9：FrameReadyShared 载荷源）。
     shm_buffers: BTreeMap<u64, super::shm::SharedFrameBuffer>,
+    /// PLAN-034：surface → 位图段（专用第二段——BitmapReady 载荷源）。
+    bm_buffers: BTreeMap<u64, super::shm::SharedFrameBuffer>,
+    /// PLAN-034：surface → 已上传位图键（回收逐出用）。
+    bitmap_keys: BTreeMap<u64, Vec<String>>,
     /// 孵化材料解析器。
     resolver: Box<dyn FnMut(&str) -> Result<DynamicComponent, String> + 'a>,
 }
@@ -135,6 +139,8 @@ impl<'a> ProtocolHost<'a> {
             observe_inbox: Vec::new(),
             wid_surface: BTreeMap::new(),
             shm_buffers: BTreeMap::new(),
+            bm_buffers: BTreeMap::new(),
+            bitmap_keys: BTreeMap::new(),
             resolver: Box::new(resolver),
         }
     }
@@ -163,6 +169,28 @@ impl<'a> ProtocolHost<'a> {
                     let shm = super::shm::SharedFrameBuffer::create(&shm_name, 2, 16384)
                         .map_err(ProtocolError::Shm)?;
                     self.shm_buffers.insert(surface, shm);
+                    // PLAN-034 D3：位图段双胞胎（专用第二段——槽尺寸按
+                    // 表面档；loopback 宿主同享通道）。
+                    let bm_name = format!("{shm_name}-bm");
+                    let bm_slot_size = width.ceil().max(1.0) as u32
+                        * height.ceil().max(1.0) as u32
+                        * 4
+                        + 4;
+                    let bm = match super::shm::SharedFrameBuffer::create(
+                        &bm_name,
+                        2,
+                        bm_slot_size,
+                    ) {
+                        Ok(seg) => {
+                            self.bm_buffers.insert(surface, seg);
+                            Some(crate::ui::desktop_protocol::message::BitmapBuffer {
+                                shm: bm_name.clone(),
+                                slots: 2,
+                                slot_size: bm_slot_size,
+                            })
+                        }
+                        Err(_) => None,
+                    };
                     let welcome = self.endpoint.activate(
                         app_id.0,
                         wid.0,
@@ -177,6 +205,7 @@ impl<'a> ProtocolHost<'a> {
                         width,
                         height,
                         shm: Some(shm_name),
+                        bm,
                     }));
                 }
                 HostAction::ComposeFrame { surface, wid, frame_id, slot, payload, .. } => {
@@ -231,9 +260,33 @@ impl<'a> ProtocolHost<'a> {
                     }
                     if let Some(surface) = self.wid_surface.remove(&wid) {
                         self.shm_buffers.remove(&surface);
+                        // PLAN-034：位图段随主段释放 + 位图键逐出。
+                        self.bm_buffers.remove(&surface);
+                        if let Some(keys) = self.bitmap_keys.remove(&surface) {
+                            for key in keys {
+                                crate::ui::iced::broker_surface::bitmap_cache_evict(&key);
+                            }
+                        }
                         self.surfaces.release(surface);
                         self.to_app.push(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface }));
                     }
+                }
+                // PLAN-034 T-05（D3）：位图就绪——读槽入宿主缓存 + Ack
+                // 归还（loopback/桌面/rqhost 三宿主同律）。
+                HostAction::BitmapReady { surface, wid, id, w, h, stride, slot, len: _ } => {
+                    let key = format!("bitmap://{id}");
+                    let rgba = self
+                        .bm_buffers
+                        .get(&surface)
+                        .and_then(|seg| seg.read_slot(slot).ok());
+                    if let Some(rgba) = rgba {
+                        crate::ui::iced::broker_surface::bitmap_cache_put(&key, w, h, stride, rgba);
+                        self.bitmap_keys
+                            .entry(surface)
+                            .or_default()
+                            .push(key);
+                    }
+                    self.to_app.push(ProtocolMsg::Frame(FrameMsg::BitmapAck { wid, slot }));
                 }
                 HostAction::ObserveUp { msg } => self.observe_inbox.push(msg),
                 // v1.11 命令上行：loopback 路径的收件箱落点在下方的原始

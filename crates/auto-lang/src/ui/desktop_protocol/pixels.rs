@@ -442,6 +442,7 @@ mod tests {
                 width:  64.0,
                 height: 32.0,
                 shm:    Some(shm_name.clone()),
+                bm:     None,
             }))
             .unwrap();
 
@@ -666,6 +667,7 @@ mod tests {
                 width: 64.0,
                 height: 32.0,
                 shm: Some(shm_name.clone()),
+                bm: None,
             }))
             .unwrap();
 

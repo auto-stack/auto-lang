@@ -585,6 +585,31 @@ let expect_styled: Vec<u8> = vec![
         ];
         assert_eq!(image_frame.encode(), expect_image, "TS 对拍锚点 Image 帧");
     }
+
+    /// PLAN-034 T-04（D6）：位图通道 tag 10 的 TS 对拍锚点（TS
+    /// fixtures.golden.ts BITMAP_READY_HEX 同批字节）——wid=2 + id
+    /// "1234-canvas-0" + slot=1 + 64x32/stride 256/len 8192；decode 侧
+    /// 恒等自证（TS 侧 decode 断言在 test/codec.test.ts）。
+    #[test]
+    fn p034_ts_bitmap_tag10_crosscheck() {
+        let expect: Vec<u8> = vec![
+            0x41, 0x50, 0x44, 0x4c, 0x01, 0x00, 0x02, 0x00, 0x2b, 0x00, 0x00, 0x00, 0x0a, 0x02,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00, 0x31, 0x32, 0x33,
+            0x34, 0x2d, 0x63, 0x61, 0x6e, 0x76, 0x61, 0x73, 0x2d, 0x30, 0x01, 0x40, 0x00, 0x00,
+            0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00,
+        ];
+        let msg = ProtocolMsg::Frame(FrameMsg::BitmapReady {
+            wid: 2,
+            id: "1234-canvas-0".into(),
+            slot: 1,
+            w: 64,
+            h: 32,
+            stride: 256,
+            len: 8192,
+        });
+        assert_eq!(msg.encode(), expect, "TS 对拍锚点 BitmapReady");
+        assert_eq!(ProtocolMsg::decode(&expect).unwrap(), msg, "decode 恒等");
+    }
 }
 
 #[cfg(test)]

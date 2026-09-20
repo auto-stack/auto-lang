@@ -4035,6 +4035,24 @@ fn spawn_shell_outproc(
                         continue;
                     };
                     client.shm.insert(surface, shm);
+                    // PLAN-034 D3：位图段双胞胎（专用第二段——槽尺寸按
+                    // 表面档；Commands/Pixels 两模式同享）。
+                    let bm_name = format!("{shm_name}-bm");
+                    let bm_slot_size = width.ceil().max(1.0) as u32
+                        * height.ceil().max(1.0) as u32
+                        * 4
+                        + 4;
+                    let bm = match SharedFrameBuffer::create(&bm_name, 2, bm_slot_size) {
+                        Ok(seg) => {
+                            client.bm_shm.insert(surface, seg);
+                            Some(crate::ui::desktop_protocol::message::BitmapBuffer {
+                                shm: bm_name.clone(),
+                                slots: 2,
+                                slot_size: bm_slot_size,
+                            })
+                        }
+                        Err(_) => None,
+                    };
                     match client.endpoint.activate(
                         app_id.0,
                         wid.0,
@@ -4050,6 +4068,7 @@ fn spawn_shell_outproc(
                                 width,
                                 height,
                                 shm: Some(shm_name),
+                                bm,
                             }));
                             client.app_id = Some(app_id);
                             client.wid = Some(wid);
@@ -4085,6 +4104,30 @@ fn spawn_shell_outproc(
                         }
                     }
                 }
+                // PLAN-034 T-05（D3）：位图就绪——读位图段槽入宿主图像
+                // 缓存（`bitmap://{id}` 键）+ BitmapAck 归还槽（与 rqhost/
+                // loopback 宿主同律）。
+                HostAction::BitmapReady {
+                    surface,
+                    wid,
+                    id,
+                    w,
+                    h,
+                    stride,
+                    slot,
+                    len: _,
+                } => {
+                    let key = format!("bitmap://{id}");
+                    let rgba = client
+                        .bm_shm
+                        .get(&surface)
+                        .and_then(|seg| seg.read_slot(slot).ok());
+                    if let Some(rgba) = rgba {
+                        crate::ui::iced::broker_surface::bitmap_cache_put(&key, w, h, stride, rgba);
+                        client.bitmap_keys.entry(surface).or_default().push(key);
+                    }
+                    to_app.push(ProtocolMsg::Frame(FrameMsg::BitmapAck { wid, slot }));
+                }
                 // Plan 500 步骤 5：像素帧合成——shm 槽 RGBA → 前缓冲，
                 // FrameAck 归还槽（渲染臂据此上传纹理合成虚拟窗）。
                 HostAction::ComposeFramePixels {
@@ -4112,6 +4155,13 @@ fn spawn_shell_outproc(
                     }
                     if let Some(surface) = client.wid_surface.remove(&wid.0) {
                         client.shm.remove(&surface);
+                        // PLAN-034：位图段随主段释放 + 位图键逐出。
+                        client.bm_shm.remove(&surface);
+                        if let Some(keys) = client.bitmap_keys.remove(&surface) {
+                            for key in keys {
+                                crate::ui::iced::broker_surface::bitmap_cache_evict(&key);
+                            }
+                        }
                         client.surfaces.release(surface);
                         to_app.push(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface }));
                     }

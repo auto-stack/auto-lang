@@ -543,7 +543,10 @@ pub enum FrameMsg {
     /// host→app。缓冲槽分配/重分配（握手隐含一次 alloc(2)；Resize 后同型）。
     /// `shm` = 共享内存段名（S9：`autodesk-shm-<surface>` 约定；None = 纯
     /// 管道帧，Stage 1 loopback 形态）。
-    BufferAlloc { surface: u64, slots: u8, width: f32, height: f32, shm: Option<String> },
+    /// `bm` = **PLAN-034 位图段尾追**（D3：`autodesk-shm-<pid>-<surface>-bm`
+    /// 专用第二段——消息级尾追先例 = `shm` 字段本体 + Welcome frame_mode；
+    /// None 不写字节 = 旧 golden 零漂移，decode 以 `remaining()` 条件读）。
+    BufferAlloc { surface: u64, slots: u8, width: f32, height: f32, shm: Option<String>, bm: Option<BitmapBuffer> },
     /// host→app。回收全部槽（窗口关闭/独立出去）。
     BufferRelease { surface: u64 },
     /// host→app。虚拟窗尺寸变更（重协商缓冲）。
@@ -581,6 +584,40 @@ pub enum FrameMsg {
     /// 订阅兑现时下发一次：远程端本地命中判定（光标/点击寻址）用；
     /// 权威命中仍在 app 侧（坐标直传）。追加式变体：旧端不产不出。
     HitTable { wid: u64, hits: Vec<HitRegion> },
+    /// app→host。**位图就绪**（PLAN-034 tag 10，D3：P028-D1 兑现）——
+    /// app 生成的 RGBA 位图在位图段的 `slot` 槽内（`[u32 len][h×stride
+    /// 行序列]`，straight 非预乘——FrameReadyPixels 同口径），管道上只过
+    /// 元数据。`id` = app 侧位图标识（`bitmap://{id}` 词汇引用面）；同 id
+    /// 重上传 = 宿主缓存即时翻新（无版本号，单写者时序由 Ack 纪律钉死）。
+    /// 槽纪律镜像 FrameReadyShared：宿主读槽 → 入缓存 → `BitmapAck` 归还。
+    BitmapReady {
+        wid: u64,
+        id: String,
+        slot: u8,
+        /// 像素宽（像素数）。
+        w: u32,
+        /// 像素高（行数）。
+        h: u32,
+        /// 行字节距（Rgba8 = w×4）。
+        stride: u32,
+        /// 槽内载荷字节长（含于 slot 头语义，显式镜像 FrameReadyShared）。
+        len: u32,
+    },
+    /// host→app。**位图合成完毕**（tag 11）：归还 `slot` 给 app 的位图
+    /// 空闲池（FrameAck 同纪律——app 复用槽必在 Ack 后 = 宿主已读完旧
+    /// 载荷，同 id 覆盖时序由此钉死）。
+    BitmapAck { wid: u64, slot: u8 },
+}
+
+/// `BufferAlloc.bm` 位图段声明（PLAN-034 D3）：专用第二段的段名/槽数/
+/// 槽尺寸三元组——宿主按表面尺寸定档（slot_size = ceil(w)×ceil(h)×4+4，
+/// v1 = 1× 逻辑分辨率），app 侧 [`super::shm::SharedFrameBuffer::open`]
+/// 以此三元组开段（与主段 2×16384 约定档解耦）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BitmapBuffer {
+    pub shm: String,
+    pub slots: u8,
+    pub slot_size: u32,
 }
 
 /// 交互区表条目（`HitTable` 载荷）：矩形 + 种类 + 动作串。
@@ -606,10 +643,12 @@ impl FrameMsg {
     const FRAME_READY_SHARED: u8 = 7;
     const FRAME_READY_PIXELS: u8 = 8;
     const HIT_TABLE: u8 = 9;
+    const BITMAP_READY: u8 = 10;
+    const BITMAP_ACK: u8 = 11;
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
-            Self::BufferAlloc { surface, slots, width, height, shm } => {
+            Self::BufferAlloc { surface, slots, width, height, shm, bm } => {
                 put_u8(out, Self::BUFFER_ALLOC);
                 put_u64(out, *surface);
                 put_u8(out, *slots);
@@ -621,6 +660,14 @@ impl FrameMsg {
                         put_string(out, name);
                     }
                     None => put_bool(out, false),
+                }
+                // PLAN-034 D3：位图段尾追——None 不写字节（旧 golden
+                // 零漂移；decode 侧 remaining() 条件读）。
+                if let Some(bm) = bm {
+                    put_bool(out, true);
+                    put_string(out, &bm.shm);
+                    put_u8(out, bm.slots);
+                    put_u32(out, bm.slot_size);
                 }
             }
             Self::BufferRelease { surface } => {
@@ -705,6 +752,21 @@ impl FrameMsg {
                     put_string(out, &hit.action);
                 }
             }
+            Self::BitmapReady { wid, id, slot, w, h, stride, len } => {
+                put_u8(out, Self::BITMAP_READY);
+                put_u64(out, *wid);
+                put_string(out, id);
+                put_u8(out, *slot);
+                put_u32(out, *w);
+                put_u32(out, *h);
+                put_u32(out, *stride);
+                put_u32(out, *len);
+            }
+            Self::BitmapAck { wid, slot } => {
+                put_u8(out, Self::BITMAP_ACK);
+                put_u64(out, *wid);
+                put_u8(out, *slot);
+            }
         }
     }
 
@@ -716,7 +778,18 @@ impl FrameMsg {
                 let width = r.f32()?;
                 let height = r.f32()?;
                 let shm = if r.bool()? { Some(r.string()?) } else { None };
-                Self::BufferAlloc { surface, slots, width, height, shm }
+                // PLAN-034 D3：位图段尾追——remaining 条件读（Welcome
+                // frame_mode 同律；旧端载荷无尾部 = None 缺省语义）。
+                let bm = if r.remaining() > 0 && r.bool()? {
+                    Some(BitmapBuffer {
+                        shm: r.string()?,
+                        slots: r.u8()?,
+                        slot_size: r.u32()?,
+                    })
+                } else {
+                    None
+                };
+                Self::BufferAlloc { surface, slots, width, height, shm, bm }
             }
             Self::BUFFER_RELEASE => Self::BufferRelease { surface: r.u64()? },
             Self::RESIZE => {
@@ -781,6 +854,21 @@ impl FrameMsg {
                     hits.push(HitRegion { rect, kind, action });
                 }
                 Self::HitTable { wid, hits }
+            }
+            Self::BITMAP_READY => {
+                let wid = r.u64()?;
+                let id = r.string()?;
+                let slot = r.u8()?;
+                let w = r.u32()?;
+                let h = r.u32()?;
+                let stride = r.u32()?;
+                let len = r.u32()?;
+                Self::BitmapReady { wid, id, slot, w, h, stride, len }
+            }
+            Self::BITMAP_ACK => {
+                let wid = r.u64()?;
+                let slot = r.u8()?;
+                Self::BitmapAck { wid, slot }
             }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
@@ -1403,6 +1491,7 @@ mod tests {
             width: 480.0,
             height: 320.0,
             shm: Some("autodesk-shm-42".into()),
+            bm: None,
         }));
         round_trip(ProtocolMsg::Frame(FrameMsg::BufferAlloc {
             surface: 43,
@@ -1410,6 +1499,7 @@ mod tests {
             width: 100.0,
             height: 80.0,
             shm: None,
+            bm: None,
         }));
         round_trip(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 42 }));
         round_trip(ProtocolMsg::Frame(FrameMsg::Resize { surface: 42, width: 640.0, height: 400.0 }));
@@ -1467,6 +1557,132 @@ mod tests {
             stride: 4,
             format: PixelFormat::Rgba8,
         }));
+    }
+
+    /// PLAN-034 T-04：位图通道 wire——tag 10/11 round-trip 恒等 +
+    /// BufferAlloc.bm 尾追 round-trip。
+    #[test]
+    fn p034_bitmap_wire_round_trip() {
+        round_trip(ProtocolMsg::Frame(FrameMsg::BitmapReady {
+            wid: 7,
+            id: "1234-canvas-0".into(),
+            slot: 1,
+            w: 560,
+            h: 360,
+            stride: 2240,
+            len: 806400,
+        }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::BitmapReady {
+            wid: 1,
+            id: "a".into(),
+            slot: 0,
+            w: 1,
+            h: 1,
+            stride: 4,
+            len: 4,
+        }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::BitmapAck { wid: 7, slot: 1 }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+            surface: 42,
+            slots: 2,
+            width: 480.0,
+            height: 320.0,
+            shm: Some("autodesk-shm-100-42".into()),
+            bm: Some(BitmapBuffer {
+                shm: "autodesk-shm-100-42-bm".into(),
+                slots: 2,
+                slot_size: 480 * 320 * 4 + 4,
+            }),
+        }));
+    }
+
+    /// PLAN-034 T-04（D3）：BufferAlloc.bm 尾追向后兼容——bm=None 编码
+    /// 与旧线字节恒等（golden 零漂移）；旧线（无尾追）解码 bm=None；
+    /// 新线尾追可解；未知 Frame tag（12 起仍未知）拒收维持。
+    #[test]
+    fn p034_bufferalloc_bm_tail_backward_compat() {
+        // 旧线载荷（v1.14 线格式）：tag1 + surface + slots + w + h + shm。
+        let legacy_payload = {
+            let mut p = Vec::new();
+            put_u8(&mut p, 1); // BUFFER_ALLOC
+            put_u64(&mut p, 42);
+            put_u8(&mut p, 2);
+            put_f32(&mut p, 480.0);
+            put_f32(&mut p, 320.0);
+            put_bool(&mut p, true);
+            put_string(&mut p, "autodesk-shm-100-42");
+            p
+        };
+        // bm=None 的当前端编码 = 逐字节恒等（零漂移断言）。
+        let current = ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+            surface: 42,
+            slots: 2,
+            width: 480.0,
+            height: 320.0,
+            shm: Some("autodesk-shm-100-42".into()),
+            bm: None,
+        })
+        .encode();
+        assert_eq!(
+            &current[12..],
+            &legacy_payload[..],
+            "bm=None 编码与旧线字节恒等（I1 golden 零漂移）"
+        );
+        // 旧线可解：bm 缺省 None。
+        let bytes = super::super::codec::encode_envelope(
+            super::super::PROTOCOL_VERSION,
+            super::super::codec::Channel::Frame,
+            &legacy_payload,
+        );
+        assert_eq!(
+            ProtocolMsg::decode(&bytes).expect("旧线 BufferAlloc 可解"),
+            ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+                surface: 42,
+                slots: 2,
+                width: 480.0,
+                height: 320.0,
+                shm: Some("autodesk-shm-100-42".into()),
+                bm: None,
+            }),
+            "旧端缺省 = bm None"
+        );
+        // 新线尾追：bool(true) + string + u8 + u32。
+        let mut tail = Vec::new();
+        put_bool(&mut tail, true);
+        put_string(&mut tail, "autodesk-shm-100-42-bm");
+        put_u8(&mut tail, 2);
+        put_u32(&mut tail, 480 * 320 * 4 + 4);
+        let mut new_bytes = bytes.clone();
+        let at = 12 + legacy_payload.len();
+        new_bytes.splice(at..at, tail.iter().copied());
+        new_bytes[8..12].copy_from_slice(
+            &((legacy_payload.len() as u32 + tail.len() as u32).to_le_bytes()),
+        );
+        assert_eq!(
+            ProtocolMsg::decode(&new_bytes).expect("新线 BufferAlloc 可解"),
+            ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+                surface: 42,
+                slots: 2,
+                width: 480.0,
+                height: 320.0,
+                shm: Some("autodesk-shm-100-42".into()),
+                bm: Some(BitmapBuffer {
+                    shm: "autodesk-shm-100-42-bm".into(),
+                    slots: 2,
+                    slot_size: 480 * 320 * 4 + 4,
+                }),
+            }),
+            "尾追三元组可解"
+        );
+        // 未知 Frame tag（12）拒收维持（防线纪律）。
+        let mut unknown = Vec::new();
+        put_u8(&mut unknown, 12);
+        let unknown_bytes = super::super::codec::encode_envelope(
+            super::super::PROTOCOL_VERSION,
+            super::super::codec::Channel::Frame,
+            &unknown,
+        );
+        assert!(ProtocolMsg::decode(&unknown_bytes).is_err(), "tag 12 未知拒收");
     }
 
     /// v1.3 追加式兼容：旧端 Welcome 载荷（无 frame_mode 尾字节）解码

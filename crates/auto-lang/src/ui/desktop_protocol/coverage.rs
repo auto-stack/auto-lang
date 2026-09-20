@@ -211,6 +211,11 @@ impl Coverage {
         // a2r 断裂映射同批修复（ui_gen/rust.rs 专属臂）；M7-c②（jade-
         // garden tab×27 / auto-musk tab×16）依赖解锁。
         "tabs",
+        // PLAN-034 T-05（D4 裁定）：canvas=位图快照过线——View::Canvas
+        // 投影臂（场景栅格化 → bitmap:// 引用 + on_hit 节点命中；pen
+        // 坐标回传/labels = M7-c 撞面批随注）。像素原生族首个经位图
+        // 通道过线的 kind（043 样板验证）。
+        "canvas",
         ]
         .into_iter()
         .map(String::from)

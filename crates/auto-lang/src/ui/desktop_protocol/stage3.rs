@@ -43,6 +43,11 @@ pub struct BrokerClient {
     pub(crate) surfaces: SurfaceStore,
     /// surface → shm 段（FrameReadyShared/FrameReadyPixels 载荷源）。
     pub(crate) shm: BTreeMap<u64, SharedFrameBuffer>,
+    /// PLAN-034：surface → 位图段（BitmapReady 载荷源——专用第二段）。
+    pub(crate) bm_shm: BTreeMap<u64, SharedFrameBuffer>,
+    /// PLAN-034：surface → 已上传位图键（`bitmap://{id}`——回收/断连
+    /// 逐出用，防 pid 复用串扰 + 残键泄漏）。
+    pub(crate) bitmap_keys: BTreeMap<u64, Vec<String>>,
     /// wid → surface 句柄。
     pub(crate) wid_surface: BTreeMap<u64, u64>,
     /// surface → 像素前缓冲（v1.3 independent 臂；Commands 臂不用）。
@@ -62,6 +67,8 @@ impl BrokerClient {
             endpoint: HostEndpoint::listen(),
             surfaces: SurfaceStore::new(),
             shm: BTreeMap::new(),
+            bm_shm: BTreeMap::new(),
+            bitmap_keys: BTreeMap::new(),
             wid_surface: BTreeMap::new(),
             pixels: BTreeMap::new(),
             app_id: None,
@@ -5508,6 +5515,230 @@ child:
         let app_c_status = guard.wait_pid(app_c_pid, "daemon 死后 003 未退（exit-on-EOF）");
         let app_fm_status = guard.wait_pid(app_fm_pid, "daemon 死后 027 未退（exit-on-EOF）");
         assert!(app_c_status.success() && app_fm_status.success(), "exit-on-EOF 干净退出");
+    }
+
+    /// PLAN-034 T-02（D2 归因矩阵）：{debug,release} × {wgpu,tiny-skia} ×
+    /// {1,2,5} 窗 的 rqhost daemon private 数据行。观测法：build 对隔离
+    /// debug 构建嫌疑、backend 对隔离 wgpu 设备/表面驻留（`ICED_BACKEND`
+    /// env 原生开关——daemon 走 iced 标准链零代码）、窗边际斜率隔离每窗
+    /// surface、残余归 fontdb/缓存（D2 定案序）。载体 = 003-converter
+    /// （无 mpv 面——tiny-skia 腿 wgpu-only primitive 降级零撞）。
+    /// dual-exit 门（AC-01）：release×wgpu×1 窗 ≤100MB 达标 → 优化转
+    /// 可选；不达标 → T-03 执行清单（矩阵本身无论达标与否都是资产）。
+    /// 留痕 `AUTO_034_ASSETS=1` → reports/assets/034/memory-matrix.txt。
+    #[test]
+    fn p034_memory_matrix_leg() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let repo = std::path::Path::new(manifest).join("../../");
+        let dir_converter = repo.join("examples/ui/003-converter");
+        if !dir_converter.join("src/front/app.at").is_file() {
+            eprintln!("[p034] skip: 载体缺席");
+            return;
+        }
+        // 两档产物确保在场（release 复测产出方式——D1 定案：命令行直接
+        // 构建，无独立脚本；嵌套 cargo 先例 = e2e_exe::build）。
+        let target = repo.join("target");
+        let mut exes: Vec<(&str, std::path::PathBuf)> = Vec::new();
+        for (build, release) in [("release", true), ("debug", false)] {
+            let exe = target.join(build).join("auto.exe");
+            if !exe.exists() {
+                let mut cmd = std::process::Command::new("cargo");
+                cmd.args(["build", "-p", "auto", "--bin", "auto"])
+                    .current_dir(&repo);
+                if release {
+                    cmd.arg("--release");
+                }
+                let status = cmd.status().expect("spawn cargo build（p034 矩阵产物）");
+                assert!(status.success(), "cargo build（{build}）失败");
+            }
+            exes.push((build, exe));
+        }
+
+        fn child_env(cmd: &mut std::process::Command, wellknown: &str) {
+            cmd.env("AUTO_RQHOST_WELLKNOWN", wellknown)
+                .env("AUTOUI_MCP_DISABLE", "1");
+            for (key, _) in std::env::vars() {
+                if key.starts_with("NEXTEST_") {
+                    cmd.env_remove(&key);
+                }
+            }
+        }
+
+        // 单格：起 daemon（backend env 按 D2）+ n×003 -q → 首帧齐 →
+        // 稳态采样 → 数据行 → 收尾（kill daemon → app exit-on-EOF）。
+        // 返回 (daemon 行, app private KB 列表)。
+        fn matrix_cell(
+            build: &str,
+            exe: &std::path::Path,
+            backend: &str,
+            n: usize,
+            dir_converter: &std::path::Path,
+            pid: u32,
+        ) -> (String, Vec<u64>) {
+            let wellknown =
+                format!("autodesk-rqhost-p034-{build}-{backend}-{n}-{pid}");
+            let mut daemon_cmd = std::process::Command::new(exe);
+            daemon_cmd
+                .args(["rqhost", "--pipe", &wellknown])
+                .env("AUTO_RQHOST_WELLKNOWN", &wellknown);
+            if backend == "tiny-skia" {
+                // D2：软光栅腿——iced fallback 链原生 env（fallback.rs
+                // env::var("ICED_BACKEND")），零代码切档。
+                daemon_cmd.env("ICED_BACKEND", "tiny-skia");
+            }
+            daemon_cmd
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped());
+            let mut daemon = daemon_cmd.spawn().expect("spawn auto rqhost（矩阵格）");
+            let daemon_tail = LineTail::spawn(&mut daemon);
+            let daemon_pid = daemon.id();
+            let mut guard = KillGuard(Vec::new());
+            guard.push(daemon);
+            daemon_tail.wait_contains("serving on", "矩阵格 daemon 起服", 20_000);
+
+            let mut app_pids = Vec::new();
+            for _ in 0..n {
+                let mut cmd = std::process::Command::new(exe);
+                cmd.args(["run", "-r", "vm", "-q"])
+                    .current_dir(dir_converter)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
+                child_env(&mut cmd, &wellknown);
+                let app = cmd.spawn().expect("spawn auto run -q（矩阵格）");
+                app_pids.push(app.id());
+                guard.push(app);
+            }
+            daemon_tail.wait_count(
+                "[rqhost] first frame `App`",
+                n,
+                &format!("{build}/{backend}×{n} 首帧齐"),
+                60_000,
+            );
+            // 稳态：首帧后 GPU 上载/字体装载收敛（p033 800ms 同型，放宽
+            // 到 1500ms——矩阵格要跨 release/debug/软光栅三档）。
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            let sample = crate::ui::desktop_protocol::stage3::sample_process_memory(daemon_pid)
+                .expect("采样 daemon");
+            let mut app_privates = Vec::new();
+            for (i, pid) in app_pids.iter().enumerate() {
+                match crate::ui::desktop_protocol::stage3::sample_process_memory(*pid) {
+                    Ok(s) => app_privates.push(s.private_bytes / 1024),
+                    Err(e) => eprintln!("[p034] app[{i}] 采样缺席: {e}"),
+                }
+            }
+            let line = format!(
+                "{build} {backend} windows={n}: rqhost pid={daemon_pid} working_set={}KB private={}KB\n",
+                sample.working_set / 1024,
+                sample.private_bytes / 1024
+            );
+            // 收尾：kill daemon → app exit-on-EOF（p033 同则）。
+            guard.kill_pid(daemon_pid);
+            for (i, pid) in app_pids.iter().enumerate() {
+                let status = guard.wait_pid(*pid, &format!("矩阵格 app[{i}] exit-on-EOF"));
+                assert!(status.success(), "矩阵格 app[{i}] 干净退出");
+            }
+            guard.release();
+            (line, app_privates)
+        }
+
+        let pid = std::process::id();
+        let mut report = String::from(
+            "[p034] rqhost 内存归因矩阵（D2：{debug,release}×{wgpu,tiny-skia}×{1,2,5} 窗；PrivateUsage 口径）\n",
+        );
+        let mut daemon_private_kb: Vec<(String, u64)> = Vec::new();
+        let mut gate_app_private_kb: Option<u64> = None;
+        // 门格先行（release×wgpu×1），其余按档铺满。
+        let cells: Vec<(&str, &str, usize)> = vec![
+            ("release", "wgpu", 1),
+            ("release", "wgpu", 2),
+            ("release", "wgpu", 5),
+            ("release", "tiny-skia", 1),
+            ("release", "tiny-skia", 2),
+            ("release", "tiny-skia", 5),
+            ("debug", "wgpu", 1),
+            ("debug", "wgpu", 2),
+            ("debug", "wgpu", 5),
+            ("debug", "tiny-skia", 1),
+            ("debug", "tiny-skia", 2),
+            ("debug", "tiny-skia", 5),
+        ];
+        for (build, backend, n) in cells {
+            let exe = exes
+                .iter()
+                .find(|(b, _)| *b == build)
+                .map(|(_, p)| p.clone())
+                .expect("两档产物已确保");
+            let (line, app_privates) =
+                matrix_cell(build, &exe, backend, n, &dir_converter, pid);
+            let private_kb = line
+                .split("private=")
+                .nth(1)
+                .and_then(|s| s.split("KB").next())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
+            daemon_private_kb.push((format!("{build}/{backend}×{n}"), private_kb));
+            report.push_str(&line);
+            if !app_privates.is_empty() {
+                report.push_str(&format!(
+                    "  apps private KB: {app_privates:?}\n"
+                ));
+            }
+            if build == "release" && backend == "wgpu" && n == 1 {
+                gate_app_private_kb = app_privates.first().copied();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+
+        // ---- 归因摘要行（嫌疑分摊）+ dual-exit 门判定（D2/D5）。----
+        let cell_private = |build: &str, backend: &str, n: usize| {
+            daemon_private_kb
+                .iter()
+                .find(|(k, _)| k == &format!("{build}/{backend}×{n}"))
+                .map(|(_, v)| *v)
+                .unwrap_or(0)
+        };
+        let gate = cell_private("release", "wgpu", 1);
+        let gate_pass = gate <= 100 * 1024;
+        report.push_str(&format!(
+            "归因：debug→release（wgpu×1窗）= {}→{}KB；wgpu→tiny-skia（release×1窗）= {}→{}KB；窗边际（release×wgpu，1→2→5）= {}→{}→{}KB（每窗 ≈{}KB）\n",
+            cell_private("debug", "wgpu", 1),
+            gate,
+            gate,
+            cell_private("release", "tiny-skia", 1),
+            gate,
+            cell_private("release", "wgpu", 2),
+            cell_private("release", "wgpu", 5),
+            (cell_private("release", "wgpu", 5) - gate) / 4,
+        ));
+        if gate_pass {
+            report.push_str(&format!(
+                "门判定：release×wgpu×1窗 private={gate}KB ≤ 102400KB —— **达标**（D5 优化项转可选，自观测面照落）\n"
+            ));
+        } else {
+            report.push_str(&format!(
+                "门判定：release×wgpu×1窗 private={gate}KB > 102400KB —— **不达标**（T-03 执行清单触发：LRU/自观测/Cache 按嫌疑分摊取舍）\n"
+            ));
+        }
+        if let Some(app_kb) = gate_app_private_kb {
+            report.push_str(&format!(
+                "app 复核（release×wgpu×1窗 003 -q）：private={app_kb}KB（≤10MB 门 {}\n",
+                if app_kb <= 10_240 { "过）" } else { "超——按 P033-D3 口径另裁说明）" }
+            ));
+            assert!(
+                app_kb <= 10_240,
+                "AC-01 app 门：release 003 -q private={app_kb}KB"
+            );
+        }
+        println!("{report}");
+        if std::env::var("AUTO_034_ASSETS").as_deref() == Ok("1") {
+            let assets = repo.join("docs/plans/reports/assets/034");
+            std::fs::create_dir_all(&assets).expect("mkdir assets/034");
+            std::fs::write(assets.join("memory-matrix.txt"), &report)
+                .expect("写内存矩阵");
+        }
     }
 }
 

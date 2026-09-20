@@ -149,7 +149,17 @@ pub(crate) mod e2e_exe {
             eprintln!("[auto_exe] AUTO_FRESH_EXE=1 → 强制重建");
             return build();
         }
-        for profile in ["debug", "release"] {
+        // PLAN-034 D1（release 复测定位器规避）：AUTO_E2E_PROFILE=release
+        // 时探测序反转（release 优先）。缺省不变——debug 优先是 031 以来
+        // 的构建时间权衡；desktop.ps1:45-53 release 优先先例同型。本模块
+        // 测试门控，零生产影响。
+        let profiles: [&str; 2] =
+            if std::env::var("AUTO_E2E_PROFILE").as_deref() == Ok("release") {
+                ["release", "debug"]
+            } else {
+                ["debug", "release"]
+            };
+        for profile in profiles {
             let p = target.join(profile).join("auto.exe");
             if p.exists() {
                 let src_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

@@ -324,6 +324,12 @@ pub struct RqProjector<C: Component> {
     last_right_click: (f32, f32),
     /// 渲染期遭遇的未覆盖 kind（动态分支防线——显式留痕面，测试/e2e 断言口）。
     uncovered_seen: Vec<String>,
+    /// PLAN-034 T-05（D4：canvas=位图快照过线）：canvas 臂产出的待上传
+    /// 位图（render_frame 填，drain_bitmap_uploads 排水）。
+    pending_bitmaps: Vec<super::endpoint::BitmapUpload>,
+    /// canvas 槽位场景签名缓存（Debug 表示——同签名跳过重上传：pen 级
+    /// 高频重排的带宽抑制）。
+    canvas_scene_sig: Vec<String>,
     rev: u64,
     width: f32,
     height: f32,
@@ -345,6 +351,8 @@ impl<C: Component> RqProjector<C> {
             pointer: (0.0, 0.0),
             last_right_click: (0.0, 0.0),
             uncovered_seen: Vec::new(),
+            pending_bitmaps: Vec::new(),
+            canvas_scene_sig: Vec::new(),
             rev: 1,
             width,
             height,
@@ -446,6 +454,14 @@ impl<C: Component> FrameSource for RqProjector<C> {
         self.rev
     }
 
+    /// PLAN-034 T-05（D3）：位图排水 = 组件面（合成生产者）+ canvas 臂
+    /// 产出（场景快照——render_frame 填）。
+    fn drain_bitmap_uploads(&mut self) -> Vec<super::endpoint::BitmapUpload> {
+        let mut ups = self.component.drain_bitmap_uploads();
+        ups.extend(self.pending_bitmaps.drain(..));
+        ups
+    }
+
     fn render_frame(&mut self) -> DrawList {
         let view = self.component.view();
         let mut ctx = NativeCtx {
@@ -463,6 +479,9 @@ impl<C: Component> FrameSource for RqProjector<C> {
             viewport: (self.width, self.height),
             last_right_click: self.last_right_click,
             right_hits: Vec::new(),
+            pending_bitmaps: Vec::new(),
+            canvas_slots: 0,
+            canvas_scene_sig: std::mem::take(&mut self.canvas_scene_sig),
         };
         let root_style = NodeStyle::default();
         let _ = layout_view_block(
@@ -534,6 +553,10 @@ impl<C: Component> FrameSource for RqProjector<C> {
         self.hits = ctx.hits;
         self.right_hits = ctx.right_hits;
         self.uncovered_seen = ctx.uncovered;
+        // PLAN-034：canvas 位图并入待传（extend——两渲染间隔水时双版本
+        // 都过线，宿主后到者胜；同签名场景已被臂内去重）。
+        self.pending_bitmaps.extend(ctx.pending_bitmaps);
+        self.canvas_scene_sig = ctx.canvas_scene_sig;
         DrawList { clear: Some(BG), ops: ctx.ops }
     }
 
@@ -889,6 +912,12 @@ struct NativeCtx<M: Clone + std::fmt::Debug> {
     last_right_click: (f32, f32),
     /// 右键命中表（Button/Row/Column/Container `on_right_click`）。
     right_hits: Vec<(WRect, M)>,
+    /// PLAN-034 T-05：canvas 臂待上传位图（render 结束并入 projector）。
+    pending_bitmaps: Vec<super::endpoint::BitmapUpload>,
+    /// canvas 槽位计数（帧内确定性树序——位图 id 身份）。
+    canvas_slots: usize,
+    /// canvas 槽位场景签名（render 起点自 projector 摘取，帧后归还）。
+    canvas_scene_sig: Vec<String>,
 }
 
 impl<M: Clone + std::fmt::Debug> NativeCtx<M> {
@@ -913,6 +942,9 @@ fn detached_ctx<M: Clone + std::fmt::Debug>(ctx: &NativeCtx<M>) -> NativeCtx<M> 
         ops: Vec::new(),
         hits: Vec::new(),
         uncovered: Vec::new(),
+        pending_bitmaps: Vec::new(),
+        canvas_slots: ctx.canvas_slots,
+        canvas_scene_sig: Vec::new(),
         input_slots: ctx.input_slots,
         focused_input: ctx.focused_input,
         input_buffer: ctx.input_buffer.clone(),
@@ -969,6 +1001,10 @@ fn place_absolute_children<M: Clone + std::fmt::Debug>(
         ctx.input_slots = tmp.input_slots;
         ctx.select_slots = tmp.select_slots;
         ctx.popover_overlays.extend(tmp.popover_overlays);
+        // PLAN-034：popover 面板内 canvas——槽位接续 + 位图并回（tmp 的
+        // 签名缓存独立 → 面板内容每帧重上传，正确性优先的取舍）。
+        ctx.canvas_slots = tmp.canvas_slots;
+        ctx.pending_bitmaps.extend(tmp.pending_bitmaps);
     }
 }
 
@@ -1397,6 +1433,72 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             }
             Laid { size: (w, h) }
         }
+        // PLAN-034 T-05（D4 裁定：canvas=位图快照过线）——场景栅格化
+        // （tiny_skia，inproc CanvasPainter 的进程外孪生：映射规约共享、
+        // 代码独立）→ 待上传位图 + `bitmap://{pid}-canvas-{slot}` 引用；
+        // 同签名场景跳过重上传（pen 级高频重排的带宽抑制）。on_hit =
+        // 节点命中物化（049 图元三表同律）；pen 三件套 not-yet（坐标
+        // 回传路径归 M7-c terminal 撞面批裁定）；labels not-yet（软栅格
+        // 无文本面——043 样板 strokes 主路径无撞）。
+        View::Canvas { scene, logical_extent, clear, on_hit, style: _, .. } => {
+            // style 用 fn 顶 NodeStyle（解构位是 Option<Style> 原始声明）。
+            let logical_extent = *logical_extent;
+            let (dw, dh) = logical_extent.unwrap_or((avail_w.max(1.0), 240.0));
+            let w = style.fixed_w().unwrap_or(dw).max(1.0);
+            let h = style.fixed_h().unwrap_or(dh).max(1.0);
+            let slot = ctx.canvas_slots;
+            ctx.canvas_slots += 1;
+            let local_id = super::endpoint::bitmap_local_id(&format!("canvas-{slot}"));
+            let sig = format!("{scene:?}{clear:?}");
+            let changed = ctx.canvas_scene_sig.get(slot) != Some(&sig);
+            if changed {
+                if let Some(rgba) = rasterize_canvas_scene(
+                    scene,
+                    clear.as_deref(),
+                    logical_extent,
+                    w.ceil() as u32,
+                    h.ceil() as u32,
+                ) {
+                    ctx.pending_bitmaps.push(super::endpoint::BitmapUpload {
+                        id: local_id.clone(),
+                        w: w.ceil() as u32,
+                        h: h.ceil() as u32,
+                        stride: w.ceil() as u32 * 4,
+                        rgba,
+                    });
+                }
+                if ctx.canvas_scene_sig.len() <= slot {
+                    ctx.canvas_scene_sig.resize(slot + 1, String::new());
+                }
+                ctx.canvas_scene_sig[slot] = sig;
+            }
+            ctx.ops.push(DrawOp::Image {
+                rect: WRect::new(x, y, w, h),
+                src: format!("bitmap://{local_id}"),
+                fit: ImageFit::Stretch,
+            });
+            if let Some(on_hit) = on_hit {
+                let (sx, sy) = match logical_extent {
+                    Some((ew, eh)) if ew > 0.0 && eh > 0.0 => (w / ew, h / eh),
+                    _ => (1.0, 1.0),
+                };
+                for node in &scene.nodes {
+                    let (nx, ny) = (x + node.x * sx, y + node.y * sy);
+                    let rect = if node.shape == "rect" {
+                        let (rw, rh) = (
+                            node.w.unwrap_or(40.0) * sx,
+                            node.h.unwrap_or(40.0) * sy,
+                        );
+                        WRect::new(nx - rw / 2.0, ny - rh / 2.0, rw, rh)
+                    } else {
+                        let r = node.r.unwrap_or(16.0) * sx;
+                        WRect::new(nx - r, ny - r, r * 2.0, r * 2.0)
+                    };
+                    ctx.hits.push(HitEntry::Msg { rect, msg: on_hit.call(node.id.clone()) });
+                }
+            }
+            Laid { size: (w, h) }
+        }
         View::ProgressBar { progress, .. } => {
             // 轨道 + 填充条比例几何；on_seek 点击定位 not-yet（解释态
             // queue 臂同边界——I3 留痕）。
@@ -1550,6 +1652,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 ops: Vec::new(),
                 hits: Vec::new(),
                 uncovered: Vec::new(),
+                pending_bitmaps: Vec::new(),
+                canvas_slots: ctx.canvas_slots,
+                canvas_scene_sig: Vec::new(),
                 input_slots: ctx.input_slots,
                 focused_input: ctx.focused_input,
                 input_buffer: ctx.input_buffer.clone(),
@@ -1598,6 +1703,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             ctx.input_slots = tmp.input_slots;
             ctx.select_slots = tmp.select_slots;
             ctx.uncovered.extend(tmp.uncovered);
+            // PLAN-034：同上——面板 canvas 位图并回。
+            ctx.canvas_slots = tmp.canvas_slots;
+            ctx.pending_bitmaps.extend(tmp.pending_bitmaps);
             ctx.popover_overlays.push(PopoverOverlay {
                 rect,
                 modal: *placement == PopoverPlacement::Modal,
@@ -2208,6 +2316,126 @@ fn resolve_typed_color(c: &Color) -> Option<Rgba8> {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// PLAN-034 T-05：CanvasScene → RGBA（canvas=位图快照过线的栅格化孪生）
+// ---------------------------------------------------------------------------
+
+/// CSS 色串 → tiny-skia Color（`#rrggbb` 六位；兜底黑——canvas_css_color
+/// 同规约的软栅格版）。
+fn css_color_tiny(s: &str) -> tiny_skia::Color {
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    if hex.len() == 6 {
+        if let Ok(v) = u32::from_str_radix(hex, 16) {
+            return tiny_skia::Color::from_rgba8(
+                ((v >> 16) & 0xff) as u8,
+                ((v >> 8) & 0xff) as u8,
+                (v & 0xff) as u8,
+                255,
+            );
+        }
+    }
+    tiny_skia::Color::BLACK
+}
+
+fn solid_paint(color: tiny_skia::Color) -> tiny_skia::Paint<'static> {
+    tiny_skia::Paint {
+        shader: tiny_skia::Shader::SolidColor(color),
+        anti_alias: true,
+        ..Default::default()
+    }
+}
+
+/// CanvasScene → RGBA（tiny_skia 栅格化——inproc CanvasPainter 的进程外
+/// 孪生：clear 铺底 + strokes（折线/单点圆，round 帽角，eraser = clear
+/// 色）+ edges（线段）+ nodes（circle/rect）；labels not-yet（软栅格无
+/// 文本面）。返回 None = Pixmap 分配失败（调用方跳过上传，占位兜底）。
+fn rasterize_canvas_scene(
+    scene: &crate::ui::view::CanvasScene,
+    clear: Option<&str>,
+    extent: Option<(f32, f32)>,
+    w: u32,
+    h: u32,
+) -> Option<Vec<u8>> {
+    let mut pm = tiny_skia::Pixmap::new(w.max(1), h.max(1))?;
+    let (pw, ph) = (w.max(1) as f32, h.max(1) as f32);
+    pm.fill(css_color_tiny(clear.unwrap_or("#ffffff")));
+    let (sx, sy) = match extent {
+        Some((ew, eh)) if ew > 0.0 && eh > 0.0 => (pw / ew, ph / eh),
+        _ => (1.0, 1.0),
+    };
+    let eraser_color = clear.unwrap_or("#ffffff");
+    let identity = tiny_skia::Transform::identity();
+    for stroke in &scene.strokes {
+        if stroke.points.is_empty() {
+            continue;
+        }
+        let color = css_color_tiny(if stroke.eraser { eraser_color } else { &stroke.color });
+        if stroke.points.len() == 1 {
+            let (px, py) = stroke.points[0];
+            let path = tiny_skia::PathBuilder::from_circle(
+                px * sx,
+                py * sy,
+                (stroke.width / 2.0).max(0.5),
+            )?;
+            pm.fill_path(&path, &solid_paint(color), tiny_skia::FillRule::Winding, identity, None);
+            continue;
+        }
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.move_to(stroke.points[0].0 * sx, stroke.points[0].1 * sy);
+        for (px, py) in &stroke.points[1..] {
+            pb.line_to(px * sx, py * sy);
+        }
+        if let Some(path) = pb.finish() {
+            pm.stroke_path(
+                &path,
+                &solid_paint(color),
+                &tiny_skia::Stroke {
+                    width: stroke.width.max(0.5),
+                    line_cap: tiny_skia::LineCap::Round,
+                    line_join: tiny_skia::LineJoin::Round,
+                    ..Default::default()
+                },
+                identity,
+                None,
+            );
+        }
+    }
+    for edge in &scene.edges {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.move_to(edge.x1 * sx, edge.y1 * sy);
+        pb.line_to(edge.x2 * sx, edge.y2 * sy);
+        if let Some(path) = pb.finish() {
+            pm.stroke_path(
+                &path,
+                &solid_paint(css_color_tiny(&edge.color)),
+                &tiny_skia::Stroke {
+                    width: edge.width.max(0.5),
+                    line_cap: tiny_skia::LineCap::Round,
+                    ..Default::default()
+                },
+                identity,
+                None,
+            );
+        }
+    }
+    for node in &scene.nodes {
+        let (cx, cy) = (node.x * sx, node.y * sy);
+        let color = css_color_tiny(&node.color);
+        let path = if node.shape == "rect" {
+            let (rw, rh) = (node.w.unwrap_or(40.0) * sx, node.h.unwrap_or(40.0) * sy);
+            let rect = tiny_skia::Rect::from_xywh(cx - rw / 2.0, cy - rh / 2.0, rw, rh)?;
+            tiny_skia::PathBuilder::from_rect(rect)
+        } else {
+            tiny_skia::PathBuilder::from_circle(cx, cy, node.r.unwrap_or(16.0) * sx)?
+        };
+        pm.fill_path(&path, &solid_paint(color), tiny_skia::FillRule::Winding, identity, None);
+    }
+    // labels：软栅格无文本面——not-yet（043 样板 strokes 主路径无撞；
+    // 049 label 视觉缺席为已知边界，文本栅格归后续字体臂）。
+    let _ = &scene.labels;
+    Some(pm.take())
+}
+
 // 测试：native 投影 golden + 命中派发 + 覆盖门 + tick + 管道全循环
 // ---------------------------------------------------------------------------
 
@@ -4774,5 +5002,79 @@ mod tests {
             auto_val::Value::Str(s) => s.parse::<i64>().ok(),
             _ => None,
         })
+    }
+
+    /// PLAN-034 T-05（D4：canvas=位图快照过线）：canvas 臂投影——覆盖门
+    /// 放行（"canvas" 入 native_queue_set）+ render_frame 产
+    /// `Image{src: bitmap://…}` op + drain 产出位图上传（栅格化孪生真
+    /// 像素：clear 铺底 + 笔画 ink）+ 同签名二渲染零重传。
+    #[test]
+    fn p034_canvas_snapshot_arm_projects_and_uploads() {
+        use crate::ui::view::{CanvasScene, CanvasStroke, View as V};
+
+        #[derive(Debug)]
+        struct CanvasApp {
+            scene: CanvasScene,
+        }
+
+        impl crate::ui::component::Component for CanvasApp {
+            type Msg = u32;
+            fn on(&mut self, _msg: Self::Msg) {}
+            fn view(&self) -> V<Self::Msg> {
+                V::Canvas {
+                    scene: self.scene.clone(),
+                    logical_extent: Some((8.0, 4.0)),
+                    clear: Some("#ffffff".into()),
+                    on_pen_start: None,
+                    on_pen_move: None,
+                    on_pen_end: None,
+                    on_hit: None,
+                    style: None,
+                }
+            }
+        }
+
+        let scene = CanvasScene {
+            strokes: vec![CanvasStroke {
+                points: vec![(1.0, 2.0), (7.0, 2.0)],
+                color: "#111827".into(),
+                width: 2.0,
+                eraser: false,
+            }],
+            ..Default::default()
+        };
+        let mut proj = RqProjector::new(CanvasApp { scene }, 64.0, 32.0);
+        // 覆盖门：canvas 经位图快照臂入册（此前拒绝）。
+        proj.ensure_covered().expect("canvas 覆盖门放行");
+
+        let list = proj.render_frame();
+        let src = list
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Image { src, .. } => Some(src.clone()),
+                _ => None,
+            })
+            .expect("canvas → Image op");
+        assert!(src.starts_with("bitmap://"), "bitmap:// 词汇：{src}");
+        assert!(src.contains("canvas-0"), "槽位 id：{src}");
+
+        let uploads = FrameSource::drain_bitmap_uploads(&mut proj);
+        assert_eq!(uploads.len(), 1, "首渲染产出一次上传");
+        let up = &uploads[0];
+        assert_eq!((up.w, up.h, up.stride as usize), (8, 4, 8 * 4), "幅面 = 逻辑 extent");
+        assert_eq!(up.rgba.len(), 8 * 4 * 4, "RGBA 长度");
+        assert!(up.rgba.chunks(4).any(|px| px[0] > 200 && px[1] > 200), "clear 白底在场");
+        assert!(
+            up.rgba.chunks(4).any(|px| px[0] < 100 && px[1] < 100),
+            "笔画 ink 在场（栅格化孪生真像素）"
+        );
+        // 同签名二渲染：零重传（带宽抑制）。
+        let list2 = proj.render_frame();
+        let _ = list2;
+        assert!(
+            FrameSource::drain_bitmap_uploads(&mut proj).is_empty(),
+            "同签名场景零重传"
+        );
     }
 }

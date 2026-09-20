@@ -394,6 +394,9 @@ pub struct ClientPump<S: FrameSource> {
     /// None = 断连待重连（projector 已回 [`Self::projector`] 暂存）。
     endpoint: Option<AppEndpoint<S>>,
     shm: Option<SharedFrameBuffer>,
+    /// PLAN-034（D3）：位图段（BufferAlloc.bm 协商开段；None = 宿主
+    /// v1.14 前/开段失败——位图通道缺席，帧照常）。
+    bm_shm: Option<SharedFrameBuffer>,
     projector: Option<S>,
     config: ClientConfig,
     reconnect: Option<ReconnectPolicy>,
@@ -422,6 +425,7 @@ impl<S: FrameSource> ClientPump<S> {
             app_end,
             endpoint: None,
             shm: None,
+            bm_shm: None,
             projector: None,
             config,
             reconnect,
@@ -540,12 +544,50 @@ impl<S: FrameSource> ClientPump<S> {
         }
         let before = app.session.revision();
         app.session.poll_tick();
-        if app.session.revision() != before {
+        let advanced = app.session.revision() != before;
+        // PLAN-034（D3）：位图上传排水在产帧前（管道 FIFO——宿主先
+        // BitmapReady 入缓存，后合成引用帧）。
+        self.drain_bitmap_uploads();
+        if advanced {
             self.push_frame();
         }
         // PLAN-033 T-03③（D3）：timer 拍的 handler 可能写 `__desktop_cmd`
         // ——周期拍后读走上行。
         self.drain_desktop_bus();
+    }
+
+    /// PLAN-034 T-05（D3）：位图上传排水（drain_desktop_bus 同点位）——
+    /// 会话产出 [`BitmapUpload`] 批 → 写位图段槽 → BitmapReady 上行。
+    /// 无段（宿主 v1.14 前/开段失败）= 观测弃置；超槽 = 观测弃置
+    /// （v1 边界：高频流背压 not-yet，canvas 快照级低频）。
+    fn drain_bitmap_uploads(&mut self) {
+        let Some(app) = self.endpoint.as_mut() else { return };
+        if app.state != AppState::Active {
+            return;
+        }
+        let uploads = app.session.drain_bitmap_uploads();
+        if uploads.is_empty() {
+            return;
+        }
+        let Some(shm) = self.bm_shm.as_ref() else {
+            eprintln!(
+                "[rq-client] bitmap upload 无段（{}/{}）——通道缺席弃置",
+                uploads.len(),
+                self.config.app_name
+            );
+            return;
+        };
+        for up in uploads {
+            match app.produce_bitmap(shm, &up) {
+                Ok(msg) => {
+                    let _ = self.app_end.send(&msg);
+                }
+                Err(e) => eprintln!(
+                    "[rq-client] bitmap upload 弃置（{}）：{e:?}（v1 边界：超槽/非 Active）",
+                    up.id
+                ),
+            }
+        }
     }
 
     /// PLAN-033 T-03③（D3）：`__desktop_cmd` 读走上行——输入派发与周期
@@ -579,7 +621,10 @@ impl<S: FrameSource> ClientPump<S> {
                 if app.on_message(msg).is_err() {
                     return self.on_disconnect();
                 }
-                if app.state == AppState::Active {
+                let active = app.state == AppState::Active;
+                // PLAN-034（D3）：输入驱动的内容变化先排水位图再产帧。
+                self.drain_bitmap_uploads();
+                if active {
                     self.push_frame();
                 }
                 // PLAN-033 T-03③（D3）：输入可能写命令（按钮 handler）——
@@ -587,8 +632,9 @@ impl<S: FrameSource> ClientPump<S> {
                 self.drain_desktop_bus();
                 None
             }
-            ProtocolMsg::Frame(FrameMsg::BufferAlloc { shm: Some(ref name), .. }) => {
+            ProtocolMsg::Frame(FrameMsg::BufferAlloc { shm: Some(ref name), bm: ref bm_decl, .. }) => {
                 let shm_name = name.clone();
+                let bm_decl = bm_decl.clone();
                 let app = self.endpoint.as_mut()?;
                 if app.on_message(msg).is_err() {
                     return self.on_disconnect();
@@ -596,6 +642,14 @@ impl<S: FrameSource> ClientPump<S> {
                 match SharedFrameBuffer::open(&shm_name, 2, 16384) {
                     Ok(segment) => self.shm = Some(segment),
                     Err(_) => return self.on_disconnect(),
+                }
+                // PLAN-034（D3）：位图段开段——wire 三元组定档（缺省/
+                // 失败 = 通道缺席降级，非致命——帧照常）。
+                if let Some(bm) = bm_decl {
+                    match SharedFrameBuffer::open(&bm.shm, bm.slots, bm.slot_size) {
+                        Ok(segment) => self.bm_shm = Some(segment),
+                        Err(e) => eprintln!("[rq-client] 位图段开段失败（通道降级）: {e:?}"),
+                    }
                 }
                 // Active 首帧：让宿主握手后立刻有内容可合成。
                 if app.state == AppState::Active {
@@ -679,6 +733,7 @@ impl<S: FrameSource> ClientPump<S> {
             self.projector = Some(app.session);
         }
         self.shm = None;
+        self.bm_shm = None;
         if self.disconnected_at.is_none() {
             self.disconnected_at = Some(std::time::Instant::now());
         }

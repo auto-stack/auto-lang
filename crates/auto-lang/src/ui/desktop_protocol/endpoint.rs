@@ -77,6 +77,31 @@ impl AppState {
     }
 }
 
+/// PLAN-034 T-05（D3）：app 侧位图上传请求（[`FrameSource::
+/// drain_bitmap_uploads`] 排水面载荷）。RGBA straight 非预乘——
+/// FrameReadyPixels 同口径。
+#[derive(Debug, Clone)]
+pub struct BitmapUpload {
+    /// 位图标识（进程内唯一——组件侧经 [`bitmap_src`] 生成引用串）。
+    pub id: String,
+    pub w: u32,
+    pub h: u32,
+    /// 行字节距（紧排 = w×4；宽于 w×4 时宿主侧行重排）。
+    pub stride: u32,
+    pub rgba: Vec<u8>,
+}
+
+/// 位图局部 id（进程唯一化：pid 前缀——跨 app 撞名由构造侧消化，D3）。
+pub fn bitmap_local_id(local: &str) -> String {
+    format!("{}-{}", std::process::id(), local)
+}
+
+/// `bitmap://{pid}-{local}` 引用串（DrawOp Image src 词汇面——上传侧与
+/// 引用侧单源同构，宿主键 = 同式直拼）。
+pub fn bitmap_src(local: &str) -> String {
+    format!("bitmap://{}", bitmap_local_id(local))
+}
+
 /// app 侧会话抽象：帧的产出 + 输入/控制的消费。
 /// （Stage 1 的实现绑定 `DynamicComponent`，见 `host` 测试与 demo。）
 pub trait FrameSource {
@@ -99,6 +124,14 @@ pub trait FrameSource {
     /// 负担；native 投影器经 [`crate::ui::Component::drain_desktop_commands`]
     /// 转发（VM 组件 c4 语义实现）。
     fn drain_desktop_commands(&mut self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// PLAN-034 T-05（D3）：位图上传读走（`drain_desktop_commands` 同型
+    /// 缝——033 先例）。缺省空——无位图生产面的会话零负担；canvas 快照
+    /// / 合成生产者实现。泵在输入派发与周期拍后排水（drain 点同
+    /// `drain_desktop_bus`）。
+    fn drain_bitmap_uploads(&mut self) -> Vec<BitmapUpload> {
         Vec::new()
     }
 }
@@ -136,6 +169,10 @@ pub struct AppEndpoint<S: FrameSource> {
     pub free_slots: Vec<u8>,
     /// 槽总数（Welcome 后 = 2）。
     slot_count: u8,
+    /// PLAN-034：位图槽（双缓冲翻转基线——BitmapReady/Ack 纪律镜像帧槽）。
+    bm_last_slot: u8,
+    /// PLAN-034：位图空闲槽（BitmapAck 归还）。
+    pub bm_free_slots: Vec<u8>,
 }
 
 impl<S: FrameSource> AppEndpoint<S> {
@@ -157,6 +194,8 @@ impl<S: FrameSource> AppEndpoint<S> {
             frame_mode: FrameMode::Commands,
             observe_sink: None,
             next_frame_id: 0,
+            bm_last_slot: 0,
+            bm_free_slots: Vec::new(),
             last_slot: 0,
             free_slots: Vec::new(),
             slot_count: 0,
@@ -251,6 +290,36 @@ impl<S: FrameSource> AppEndpoint<S> {
         }))
     }
 
+    /// PLAN-034 T-05（D3）：位图上传产信——RGBA 写位图段 `slot` 槽
+    /// （`[u32 len][h×stride 行序列]`），管道上只过 BitmapReady 元数据。
+    /// 槽纪律镜像帧槽（空闲优先，否则双缓冲翻转；BitmapAck 归还）。
+    /// Active 才可；超槽（位图大于段槽档）Err(Shm)——调用方观测弃置
+    /// （v1 显式边界：位图按构造 ≤ 表面尺寸）。
+    pub fn produce_bitmap(
+        &mut self,
+        shm: &super::shm::SharedFrameBuffer,
+        up: &BitmapUpload,
+    ) -> Result<ProtocolMsg, ProtocolError> {
+        if self.state != AppState::Active {
+            return Err(ProtocolError::NotActive);
+        }
+        let slot = match self.bm_free_slots.pop() {
+            Some(s) => s,
+            None => 1 - self.bm_last_slot,
+        };
+        self.bm_last_slot = slot;
+        shm.write_slot(slot, &up.rgba).map_err(ProtocolError::Shm)?;
+        Ok(ProtocolMsg::Frame(super::message::FrameMsg::BitmapReady {
+            wid: self.wid.expect("Active 即有 wid"),
+            id: up.id.clone(),
+            slot,
+            w: up.w,
+            h: up.h,
+            stride: up.stride,
+            len: up.rgba.len() as u32,
+        }))
+    }
+
     /// 产一帧像素变体（v1.3 independent 臂）：RGBA 写 `shm` 的 `slot` 槽
     /// （统一 `[u32 len][载荷]` 槆框架，载荷解释随 Welcome 模式位），管道
     /// 上只过 FrameReadyPixels 元数据。槽纪律/frame_id 与命令帧同源。
@@ -315,6 +384,8 @@ impl<S: FrameSource> AppEndpoint<S> {
                 self.slot_count = 2;
                 self.free_slots = vec![1]; // 槽 0 视为在写首帧
                 self.last_slot = 0;
+                self.bm_last_slot = 0;
+                self.bm_free_slots.clear();
                 Ok(vec![ProtocolMsg::Handshake(HandshakeMsg::Ready)])
             }
             // --- Active：四通道日常 ---
@@ -350,6 +421,11 @@ impl<S: FrameSource> AppEndpoint<S> {
                 self.free_slots.push(slot);
                 Ok(vec![])
             }
+            // PLAN-034（D3）：位图槽归还——同 FrameAck 纪律。
+            (Active, ProtocolMsg::Frame(super::message::FrameMsg::BitmapAck { slot, .. })) => {
+                self.bm_free_slots.push(slot);
+                Ok(vec![])
+            }
             // 握手尾随的缓冲分配 / 宿主侧 resize 重协商：登记即接受。
             (Active, ProtocolMsg::Frame(super::message::FrameMsg::BufferAlloc { slots, .. })) => {
                 self.slot_count = slots;
@@ -361,6 +437,7 @@ impl<S: FrameSource> AppEndpoint<S> {
                 self.state = Detached;
                 self.slot_count = 0;
                 self.free_slots.clear();
+                self.bm_free_slots.clear();
                 Ok(vec![])
             }
             (Active, ProtocolMsg::Observe(ob)) => {
@@ -376,6 +453,7 @@ impl<S: FrameSource> AppEndpoint<S> {
                 self.state = Detached;
                 self.slot_count = 0;
                 self.free_slots.clear();
+                self.bm_free_slots.clear();
                 Ok(vec![])
             }
             // --- 其余一律非法 ---
@@ -439,6 +517,18 @@ pub enum HostAction {
     },
     /// app 确认退出/请求退出：回收虚拟窗（462 Close 语义）。
     ReclaimWindow { wid: u64 },
+    /// PLAN-034 T-05（D3）：app 位图就绪——适配层从位图段读 RGBA 入宿主
+    /// 图像缓存（`bitmap://{id}` 键）后回 `BitmapAck` 归还槽。
+    BitmapReady {
+        surface: u64,
+        wid: u64,
+        id: String,
+        w: u32,
+        h: u32,
+        stride: u32,
+        slot: u8,
+        len: u32,
+    },
     /// app→host 命令上行（v1.11 落地）：`record` = `DesktopCommand` 单记录
     /// 编码串（`verb␟arg`）——适配层 parse_records 单点解析执行；归因按
     /// wid → registry_id。此前在端点丢弃臂中无声消失（desktop.* wire 化
@@ -577,6 +667,23 @@ impl HostEndpoint {
                     h,
                     stride,
                 }])
+            }
+            // PLAN-034 T-05（D3）：位图就绪——surface 解析同 ComposeFrame
+            // （wid 路由），适配层读槽入缓存 + 回 BitmapAck。
+            (
+                HostState::Active,
+                ProtocolMsg::Frame(super::message::FrameMsg::BitmapReady {
+                    wid,
+                    id,
+                    slot,
+                    w,
+                    h,
+                    stride,
+                    len,
+                }),
+            ) => {
+                let surface = self.surface_for(wid).expect("Active 即有 surface");
+                Ok(vec![HostAction::BitmapReady { surface, wid, id, w, h, stride, slot, len }])
             }
             // 握手确认（app 的 Ready）：Active 后的例行收尾，无动作。
             (HostState::Active, ProtocolMsg::Handshake(HandshakeMsg::Ready)) => Ok(vec![]),
@@ -747,6 +854,8 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             super::message::FrameMsg::FrameReadyShared { .. } => "Frame::FrameReadyShared",
             super::message::FrameMsg::FrameReadyPixels { .. } => "Frame::FrameReadyPixels",
             super::message::FrameMsg::HitTable { .. } => "Frame::HitTable",
+            super::message::FrameMsg::BitmapReady { .. } => "Frame::BitmapReady",
+            super::message::FrameMsg::BitmapAck { .. } => "Frame::BitmapAck",
         },
         ProtocolMsg::Input(_) => "Input",
         ProtocolMsg::Control(m) => match m {
