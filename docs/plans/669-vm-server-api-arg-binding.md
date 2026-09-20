@@ -1,18 +1,18 @@
 ---
 plan_id: PLAN-669
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-server-api-arg-binding
 author: [zcode]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 2
-current_step: 4
+current_step: 6
 total_steps: 6
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
 new_spec_components: [docs/specs/stdlib/design/http-server.md]
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals: [GOAL-003]      # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/specs/stdlib/design/http-server.md]
 ---
@@ -259,7 +259,7 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
   [✅ 已完成] worktree 43fd4eed8：check 0 错；
   `plan669_api_param_sigs_roundtrip` PASS；重置挂点=lib.rs 四处
   axum_adapter::reset 同位 + clear_http_routes 连清。
-- [ ] **T-02** 共享绑定器 `bind_api_args_by_name`（§5.2 语义全量）
+- [x] **T-02** 共享绑定器 `bind_api_args_by_name`（§5.2 语义全量）
   涉及：`vm/ffi/http_server.rs`。
   验证：绑定器单元矩阵（§6 列举项）绿。
   → AC-01..AC-04/AC-06/AC-07 逻辑源。
@@ -291,7 +291,7 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
   （同步助手+绑定失败 400/500 早返）；stdlib 两循环路由换共享
   match_route（原生 listen 路径 query 从未解析的附带修复）；
   find_route 死码移除；e2e 32/32 维持。
-- [ ] **T-05** 规范增量落档 + ledger 元数据
+- [x] **T-05** 规范增量落档 + ledger 元数据
   涉及：`docs/specs/stdlib/design/http-server.md`（SD-01/SD-02）、本文件
   frontmatter（`new_spec_components` 定稿）。
   验证：SD 表逐行对照 diff。
@@ -357,6 +357,35 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
     rev2 按名限定词（函数级文档准确）。
   `next: work`（修 R1/R2/R3 → execution_done → 复审第二轮）。T-02/T-05
   重开，current_step=4，status → executing。
+- 2026-09-21（work 第二轮·复审修复）：R1/R2/R3 清偿于 worktree
+  d453826c0——R1 新增 `legacy_fallback_without_sigs_is_positional`
+  （无签名→位序压参+i32 试探+body 直塞+query 丢弃，AC-06 验证方法兑现，
+  单测 14/14）；R2 spec §4.1.1 补同步路径元数据源差异句；R3 节头注释
+  带 META_PARAM_NAMES 限定词。门禁复跑：th 32/32（1.76s）、tf
+  3681/3683（红=ui_gen×2 master 在册；另见 ffi_dual_019 一次性现身=
+  债册 635 在案 flake）。T-02/T-05 复勾，status → execution_done。
+- 2026-09-21（review 第二轮）：`stage: review`，rev 2，reviewed_commit
+  d453826c0（base 5d5090e14，含前五提交 43fd4eed8→83e1b68c3）。工作树
+  clean，依赖 auto-down fba6563ed 不变。`outcome: pass`。
+  `acceptance_results`: AC-01 pass（http_e2e_api_post_body_by_name +
+  e2e_notes_crud POST 断言，th 档复跑）/AC-02 pass
+  （http_e2e_api_query_by_name）/AC-03 pass（typed_query_int e2e +
+  e2e_int_path_param_handler 回归 + 单测 converts_and_rejects）/AC-04
+  pass（missing_param_400 e2e + 单测两例含按名识别负例）/AC-05 pass
+  （th 32/32 空载、tv 2735/2737 与 tf 3681/3683 红全数对账 master 在册
+  或债册 flake 类——SSE 族=债 317、ffi_dual=债 635、plan394=债 447-①
+  同类一次性负载 flake 单跑绿；a2r/`__axum:`/parity diff 零触及）/AC-06
+  pass（R1 单测兑现）/AC-07 pass（raw_body_single_param e2e+单测+
+  whole_body 可解析对象扩测）。`spec_inputs`:
+  docs/specs/stdlib/design/http-server.md（§4.1+§4.1.1，已随 R2 补差异
+  句——描述当前行为与持久决策，无执行日记）。frontmatter 定稿：
+  new_spec_components=[docs/specs/stdlib/design/http-server.md]、
+  touched_goals=[GOAL-003]（VM 轨 HTTP 装配对齐 a2r 轨=三方行为一致
+  修复）、supersedes=[]（无退役组件）。
+  `findings`: 第一轮 R1/R2/R3 全清偿核验；无新增发现。非阻塞备注：
+  §10-3 默认值边缘与 whole-body 容忍对单参 handler 的 400 缺失遮蔽
+  （设计取舍已落 §4.1）。`next: merge`（/auto-plan:merge；merge 后
+  通知 auto-edit 复跑六端点探针——PLAN-003 B1/r2/T-03 收口）。
 
 ## 10. 待澄清事项
 
