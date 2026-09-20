@@ -148,6 +148,10 @@ RC 审计覆盖本次复现触及的 LOAD/STORE/POP/RET、容器替换和捕获�
 
 
 
+
+2026-09-20 merge 收据（auto-plan-merge，键 PLAN-667:r1）：
+- prepared ✓：delivery 候选=worktree 新提交（docs-only 后继于 reviewed 2bb8771cf）——specs.json P667-1/P667-2（614→616）+vm plans.md 667 行+INDEX 再生（664 ui 注记 verbatim 回灌，P665-D6 四复发拦截）；spec delta 四文件即 reviewed 冻结版（哈希见二轮复审）。
+
 2026-09-20 第二轮复审（R-1 修复后）：
 - stage: review
 - plan_id: PLAN-667
