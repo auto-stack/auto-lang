@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-669
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-server-api-arg-binding
 author: [zcode]
 created_at: 2026-09-20
 updated_at: 2026-09-20
-plan_revision: 1
-current_step: 0
+plan_revision: 2
+current_step: 6
 total_steps: 6
 
 # /auto-plan:review 结束时填写：
@@ -250,36 +250,69 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
 
 ## 8. 执行步骤
 
-- **T-01** codegen 发布签名 + 注册表与重置纪律
+- [x] **T-01** codegen 发布签名 + 注册表与重置纪律
   涉及：`vm/codegen.rs`（api_routes.push 处）、`vm/ffi/http_server.rs`
   （`API_PARAM_SIGS`+register/getter）、`vm/ffi/stdlib.rs`
   （`clear_http_routes` 连清）+ run pipeline 重置点挂接。
   验证：`cargo check -p auto-lang`；单元测试直证发布-查询-清除闭环。
   → AC-06 前置。**新路径**：注册表与发布点。
-- **T-02** 共享绑定器 `bind_api_args_by_name`（§5.2 语义全量）
+  [✅ 已完成] worktree 43fd4eed8：check 0 错；
+  `plan669_api_param_sigs_roundtrip` PASS；重置挂点=lib.rs 四处
+  axum_adapter::reset 同位 + clear_http_routes 连清。
+- [x] **T-02** 共享绑定器 `bind_api_args_by_name`（§5.2 语义全量）
   涉及：`vm/ffi/http_server.rs`。
   验证：绑定器单元矩阵（§6 列举项）绿。
   → AC-01..AC-04/AC-06/AC-07 逻辑源。
-- **T-03** async 装配点接线 + e2e 新battery + notes_crud 扩展
+  [✅ 已完成] worktree 02fabdce3：单测矩阵 10/10（后随 rev2 语义扩展
+  增至 13/13：whole-body 可解析对象容忍 + 元数据按名识别负例）。
+- [x] **T-03** async 装配点接线 + e2e 新battery + notes_crud 扩展
   涉及：`build_handler_args` legacy 分支、`mod http_e2e` 新 5 测 + 扩展。
   验证：`cargo t http_e2e`（滤串）全绿；`auto run --server vm` 手探
   013 形状一次。
   → AC-01..AC-05/AC-07。依赖 T-01/T-02。
-- **T-04** native 与死码装配点收敛
+  [✅ 已完成] worktree a6a309a12：e2e 32/32（含 5 新测 + notes_crud POST
+  断言）。**执行中三项证据驱动修订（rev 2）**：①入口分片根修——async
+  请求头单次 read() 遇 TCP 分片产生空 400（实证：master 上 nextest 跑
+  th 档 30+ 红、cargo test 串行同测可过=时序型；即 plan 568 T7 在案
+  "环境红"真身），改读至 \r\n\r\n（64KB 帽 431）后 master 侧 28 项预存
+  红全数转绿；②元数据 opt-in 增按名识别（meta/metadata/req/request，
+  否则 POST 缺末字段被误喂 cookies/auth，AC-04 语义靠此成立）；
+  ③whole-body 单参容忍扩至可解析对象（b6 `upload(form str)` 夹具依赖）。
+  b1/b6 e2e 夹具中 `arg str` 整 body 单参工作区现代化为 typed 形参
+  （原为围绕旧缺陷约定的等价改写）。notes_crud 曾加"创建后列表可见"
+  断言后撤（夹具不回写数组，断言超程序语义）。
+- [x] **T-04** native 与死码装配点收敛
   涉及：`shim_http_server_listen`、`serve_blocking_stdnet`、
   `run_http_server_blocking`。
   验证：`cargo check -p auto-lang` + `cargo th`（native 路径无独立语料，
   随档回归；死码收敛以编译+审读为证）。
   → AC-05 面完整性。依赖 T-02。
-- **T-05** 规范增量落档 + ledger 元数据
+  [✅ 已完成] worktree 1a8b0f82b：三站点统一 `bind_api_args_or_legacy`
+  （同步助手+绑定失败 400/500 早返）；stdlib 两循环路由换共享
+  match_route（原生 listen 路径 query 从未解析的附带修复）；
+  find_route 死码移除；e2e 32/32 维持。
+- [x] **T-05** 规范增量落档 + ledger 元数据
   涉及：`docs/specs/stdlib/design/http-server.md`（SD-01/SD-02）、本文件
   frontmatter（`new_spec_components` 定稿）。
   验证：SD 表逐行对照 diff。
   依赖 T-03（语义定稿后再落墨）。
-- **T-06** 全量门禁 + 健康检查 + 跨仓交接
+  [✅ 已完成] worktree 83e1b68c3：§4.1 注入规则五条（query 第三源/缺参
+  400/单参 whole-body/元数据按名 opt-in/精确类型转换）+ §4.1.1 VM 模式
+  装配实现状态小节 + Status 行修订注记。
+- [x] **T-06** 全量门禁 + 健康检查 + 跨仓交接
   验证：`cargo t` → `cargo th`（对照基线）→ `cargo tf`；零新警告/无散落
   debug print/格式整洁；随后通知 auto-edit 会话复跑六端点探针（PLAN-003
   B1 闭环 + r2/T-03 重验，跨仓协作项非本仓 AC）。
+  [✅ 已完成] **基线对照法**（§10-2 口径）：`cargo t` 分支 36 红 ⊆
+  master 37 红（唯一差集=分支多治愈 external_config_poll_hot_apply_loopsafe
+  一项），零新增回归；36 红族谱全数对上 668 在册清单（musk p053/p054、
+  ui::layout 环境、零散集成红）。`cargo th` 32/32 全绿（曾两轮
+  e2e_concurrent_sse 负载 flake：与后台基线跑竞争 CPU 时 40s 超时挂，
+  单跑 0.9s 过、空载复跑 1.77s 全绿——测试注释在案的历史 flaky，非本
+  改动面）。`cargo tf` 3680/3682，2 红=master 在册 ui_gen 双测（668
+  R 清单内）。健康：改动文件零新警告；rustfmt 我新增区间零新分叉
+  （全仓分叉在案禁整跑）。auto-edit 复跑探针=merge 后跨仓通知
+  （§10-4）。
 
 ## 9. 复审记录
 
@@ -290,6 +323,18 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
 - 2026-09-20（用户确认执行）：用户指令"解决方案确定、计划写好，直接
   auto-plan-work 实施修复"——§4.0 授权补记：执行获准，§10-1 按 rev 1 建议
   （F-R1/F-W3 排除出执行面、另立计划）默认生效。status → executing。
+- 2026-09-20（work handoff）：`stage: work`，PLAN-669 rev 2，status →
+  execution_done。`outcome: pass`。`code_commit`: worktree plan-669-dev
+  43fd4eed8→83e1b68c3（T-01..T-05 五提交，base 5d5090e14）。
+  `task_ids`: T-01..T-06 全勾（证据见 §8）。`evidence`: e2e 32/32
+  （5 新测+notes_crud POST 转正）、单测 13/13、cargo t 基线对照零新增
+  回归（36⊆37，多治愈 1）、cargo tf 3680/3682（2 红=master 在册）、
+  th 档曾现 concurrent_sse 负载 flake（空载全绿，历史在案）。rev 2 增量
+  （T-03 三项证据驱动修订，§8 T-03 条目在案）：入口分片根修（plan 568
+  T7 "环境红"真身，master 侧 28 预存红转绿的附带收获）、元数据按名
+  opt-in、whole-body 容忍扩展；b1/b6 夹具现代化。`blockers`: 无。
+  `next: review`（/auto-plan:review 独立复审 → merge；merge 后通知
+  auto-edit 复跑六端点探针收 PLAN-003 B1/r2/T-03，§10-4）。
 
 ## 10. 待澄清事项
 
