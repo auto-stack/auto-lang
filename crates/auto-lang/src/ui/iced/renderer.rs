@@ -14789,6 +14789,22 @@ pub(crate) fn apply_shell_projection_interpreted(
     // PLAN-035 T-11：__wm_dashboard 投影注入 desktop 层（空白右键菜单
     // 「桌面小组件」checkbox 判据；可见性随 shell 投影差分同步）。
     let dash_visible = state.dashboard_visible();
+    // PLAN-035 T-20：sliver tooltip 坐标注入 shell 层（任务栏上缘右角；
+    // 坐标锚 popover 的面板落点）。
+    {
+        let vp = state.host_viewport();
+        let usable = crate::ui::layout::usable_rect(vp, state.desktop.dock_edges);
+        let tip_x = usable.x + usable.width - 120.0;
+        let tip_y = usable.y + usable.height - 46.0;
+        if let Some(sapp) = state.apps.get_mut(&shell) {
+            let _ = sapp
+                .component
+                .write_state("__sliver_tip_x", auto_val::Value::Float(tip_x as f64));
+            let _ = sapp
+                .component
+                .write_state("__sliver_tip_y", auto_val::Value::Float(tip_y as f64));
+        }
+    }
     if let Some(desktop_id) = state.desktop.desktop_app {
         if let Some(dapp) = state.apps.get_mut(&desktop_id) {
             let _ = dapp

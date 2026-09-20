@@ -147,6 +147,10 @@ widget Desktop {
         var dock_hover str = ""
         // PLAN-019 v1.7：sliver hover 态（显示桌面细条高亮）。
         var sliver_hover str = ""
+        // PLAN-035 T-20：sliver tooltip 坐标（宿主注入：任务栏上缘右角，
+        // 坐标锚 popover——锚定形态的「锚上点击 dismiss+捕获」会吞点击）。
+        var __sliver_tip_x float = 0.0
+        var __sliver_tip_y float = 0.0
         // PLAN-526 T8：右键菜单态（命中条目 wid；hover 复用同一 popover
         // 容器——open 条件或合，内容按本态切换缩略/菜单）。
         var win_menu str = ""
@@ -589,25 +593,28 @@ widget Desktop {
                     // 分隔线右侧整个任务栏高（用户裁定「扩大到整个右侧」）。
                     // ③hover 提示 = 锚定 popover（DSL 无 tooltip 原语，
                     // P548-D2 债不动）；文案随 __wm_showdesk 动态（Q3 初裁）。
+                    // PLAN-035 T-20 走查回环⑤：tooltip 弃 popover 改坐标
+                    // 锚 popover——锚定形态「锚上点击 = dismiss 并捕获」
+                    // （menubar 语义，popover.rs Panel.update）会把悬停后的
+                    // 第一次点击吞掉 =「点两下才生效」根因；坐标锚无锚捕获
+                    // 语义（外点 dismiss 且放行基础树），单击直达。
                     mouse-area (onclick: .ShowDesktopToggle, onmouseenter: .SliverHover, onmouseleave: .SliverUnhover) {
-                        popover (open: .sliver_hover == "1", placement: "top", ondismiss: .SliverUnhover, class: "px-2 py-1 border rounded bg-card") {
-                            col {
-                                style: if .sliver_hover == "1" {
-                                    "w-2 h-full border-l border-border bg-foreground/10"
-                                } else {
-                                    "w-2 h-full border-l border-border"
-                                }
+                        col {
+                            style: if .sliver_hover == "1" {
+                                "w-2 h-full border-l border-border bg-foreground/10"
+                            } else {
+                                "w-2 h-full border-l border-border"
                             }
-                            col {
-                                if .__wm_showdesk == "1" {
-                                    text "恢复桌面" {
-                                        style: "text-xs text-muted-foreground"
-                                    }
-                                } else {
-                                    text "显示桌面" {
-                                        style: "text-xs text-muted-foreground"
-                                    }
-                                }
+                        }
+                    }
+                    popover (open: .sliver_hover == "1", x: .__sliver_tip_x, y: .__sliver_tip_y, class: "px-2 py-1 rounded bg-card border") {
+                        if .__wm_showdesk == "1" {
+                            text "恢复桌面" {
+                                style: "text-xs text-muted-foreground"
+                            }
+                        } else {
+                            text "显示桌面" {
+                                style: "text-xs text-muted-foreground"
                             }
                         }
                     }
