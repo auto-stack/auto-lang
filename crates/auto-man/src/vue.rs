@@ -6284,6 +6284,16 @@ fn gallery_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
             return Ok(sibling_lang_ui);
         }
     }
+    // PLAN-662 T-01: 平铺主检出布局补探测——`D:/autostack/{auto-lang,
+    // auto-os}` 仓平铺为兄弟时,ui-gallery 的父级是 auto-os、祖父级才是
+    // auto-lang 的父目录(worktree 组布局 `.wt/lang-NNN/` 同形命中)。
+    // 658 验收仅覆盖组内布局+显式 env,主检出一键裸跑此前硬错。
+    if let Some(grandparent) = root_dir.parent().and_then(|p| p.parent()) {
+        let flat_lang_ui = grandparent.join("auto-lang").join("examples").join("ui");
+        if flat_lang_ui.is_dir() {
+            return Ok(flat_lang_ui);
+        }
+    }
     Err(format!(
         "Gallery mode needs an apps directory: set AUTO_GALLERY_APPS or ensure examples/ui exists near {}",
         root_dir.display()
@@ -6478,7 +6488,22 @@ thread_local! {
 /// gallery_demo_row 的逐 demo SFC 编译约分钟级，二次扫描不可接受。键 =
 /// apps_dir 绝对路径；命中即取走（一次性，防跨 run 陈旧）；冷扫描在
 /// fill=true 时回填（首个消费者），后续消费者零成本命中。
+///
+/// PLAN-662 T-02: 进程内缓存之下再垫**磁盘层**——per-demo 内容哈希命中
+/// 即免 `from_workspace`（gallery_cache 模块，SD-01 契约）。扫描函数注入
+/// 式（scan_one）供测试计数；生产路径走 gallery_demo_row。
 fn gallery_rows_via_cache(apps_dir: &Path, fill: bool) -> Vec<GalleryDemoRow> {
+    gallery_rows_with_disk_cache(apps_dir, fill, &|apps_dir, e| {
+        gallery_demo_row(apps_dir, e).0
+    })
+}
+
+fn gallery_rows_with_disk_cache(
+    apps_dir: &Path,
+    fill: bool,
+    scan_one: &(dyn Fn(&Path, &auto_lang::ui::app_registry::AppRegistryEntry) -> GalleryDemoRow
+              + Sync),
+) -> Vec<GalleryDemoRow> {
     GALLERY_ROWS_CACHE.with(|c| {
         if let Some((cached_dir, rows)) = c.borrow_mut().take() {
             if cached_dir == apps_dir {
@@ -6489,15 +6514,116 @@ fn gallery_rows_via_cache(apps_dir: &Path, fill: bool) -> Vec<GalleryDemoRow> {
             apps_dir,
             &auto_lang::ui::app_registry::ScanOptions::default(),
         );
-        let rows: Vec<GalleryDemoRow> = entries
-            .iter()
-            .map(|e| gallery_demo_row(apps_dir, e).0)
-            .collect();
+        // PLAN-662 T-02: 磁盘缓存层——依赖目录摘要 memo（共享 stylekit 只
+        // 走查一遍）；哈希算不出的 demo 恒走扫描且不缓存。
+        let disk = crate::gallery_cache::load(apps_dir);
+        let mut memo: HashMap<PathBuf, Option<String>> = HashMap::new();
+        let mut hashes: Vec<Option<String>> = Vec::with_capacity(entries.len());
+        let mut out: Vec<Option<GalleryDemoRow>> = Vec::with_capacity(entries.len());
+        let mut merged: crate::gallery_cache::DiskEntries = HashMap::new();
+        let mut miss_idx: Vec<usize> = Vec::new();
+        for (i, e) in entries.iter().enumerate() {
+            let app_root = apps_dir.join(&e.id);
+            let hash = crate::gallery_cache::demo_content_hash(&app_root, &mut memo);
+            if let Some(h) = &hash {
+                if let Some((cached_hash, row)) = disk.get(&e.id) {
+                    if cached_hash == h {
+                        merged.insert(e.id.clone(), (h.clone(), row.clone()));
+                        out.push(Some(row.clone()));
+                        hashes.push(None); // 命中档无需回写
+                        continue;
+                    }
+                }
+            }
+            let is_hashed = hash.is_some();
+            out.push(None);
+            hashes.push(hash);
+            if is_hashed {
+                miss_idx.push(i);
+            }
+        }
+        // PLAN-662 T-03: 未命中扫描并行化——std::thread::scope 分块，每线程
+        // 返回本块 (idx, row)，join 后主线程合并（共享 Vec 跨线程写是竞争，
+        // 结果聚合走返回值）。安全性依据：发射管线状态为 thread_local
+        // （handler_codegen 注册表），工作线程天然隔离；串行/并行产物字节
+        // 一致性由 T-06 e2e diff 守卫（不一致则默认档回落 1，
+        // 见 gallery_scan_jobs）。hash=None 的 demo 不进 miss_idx，串行补扫。
+        let jobs = gallery_scan_jobs().min(miss_idx.len().max(1));
+        if jobs > 1 && miss_idx.len() > 1 {
+            let chunk = (miss_idx.len() + jobs - 1) / jobs;
+            let slots: Vec<usize> = miss_idx.clone();
+            std::thread::scope(|s| {
+                let handles: Vec<_> = slots
+                    .chunks(chunk)
+                    .map(|chunk_idx| {
+                        s.spawn(|| {
+                            chunk_idx
+                                .iter()
+                                .map(|&i| (i, scan_one(apps_dir, &entries[i])))
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .collect();
+                for h in handles {
+                    if let Ok(pairs) = h.join() {
+                        for (i, row) in pairs {
+                            out[i] = Some(row);
+                        }
+                    }
+                }
+            });
+        } else {
+            for &i in &miss_idx {
+                out[i] = Some(scan_one(apps_dir, &entries[i]));
+            }
+        }
+        // 结算：扫描产物按 hash 回写缓存；hash=None 档串行兜底（不缓存）。
+        let mut unhashed = 0usize;
+        let mut rows: Vec<GalleryDemoRow> = Vec::with_capacity(entries.len());
+        for (i, e) in entries.iter().enumerate() {
+            let row = match out[i].take() {
+                Some(r) => r,
+                None => {
+                    unhashed += 1;
+                    scan_one(apps_dir, e)
+                }
+            };
+            if let Some(h) = hashes[i].clone() {
+                merged.entry(e.id.clone()).or_insert((h, row.clone()));
+            }
+            rows.push(row);
+        }
+        let scanned = miss_idx.len() + unhashed;
+        if !entries.is_empty() {
+            crate::gallery_cache::store(apps_dir, &merged);
+            println!(
+                "  {} Gallery rows: {} demos ({} scanned, {} from disk cache)",
+                "✓".bright_green(),
+                rows.len(),
+                scanned,
+                rows.len() - scanned
+            );
+        }
         if fill {
             *c.borrow_mut() = Some((apps_dir.to_path_buf(), rows.clone()));
         }
         rows
     })
+}
+
+/// PLAN-662 T-03: 扫描并行档位——`AUTO_GALLERY_SCAN_JOBS` env 覆写（1=串行
+/// 兜底）；缺省 = 逻辑核数。串行/并行产物字节一致性守卫不过时回落 1。
+fn gallery_scan_jobs() -> usize {
+    if let Ok(v) = std::env::var("AUTO_GALLERY_SCAN_JOBS") {
+        if let Ok(n) = v.trim().parse::<usize>() {
+            if n >= 1 {
+                return n;
+            }
+        }
+    }
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
 }
 
 /// PLAN-658 T-03: 画廊多后端 proxy 启动编排（rust_ui 画廊钩子在
@@ -7203,11 +7329,16 @@ pub fn emit_gallery_vm_demos(
     // desktop=1024×720 / tablet=768×1024,均 rounded-xl 边框 + max-w-full）：
     // 外层 wrapper 居中定宽 frame,frame 内才是 demo 分支（否则桌面/平板
     // 档只剩工具栏高亮、视口本体无尺寸变化——用户可见回归）。
+    // PLAN-662 T-04: frame 内补滚动容器——demo 语料普遍 h-screen（解析为
+    // 窗口高）塞进定高 frame 时底部被 overflow-hidden 裁死（020 播放控制
+    // 条/曲库底部实测不可达）；web 臂挂载根本就是 overflow-auto
+    // （AppViewport.vue demo-mount-root），VM 臂此前无滚动=两臂不对称。
+    // overflow-y-auto 经 656 映射 View::Scrollable；frame 三态样式不变。
     vm_at.push_str(&imports);
-    vm_at.push_str("\nwidget AppViewport(app: str, reloadKey: int, viewportMode: str) {\n    view {\n        col {\n            style: \"w-full flex flex-col items-center\"\n            col {\n                style: if .viewportMode == \"desktop\" { \"w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else if .viewportMode == \"tablet\" { \"w-[768px] max-w-full h-[1024px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else { \"w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" }\n");
+    vm_at.push_str("\nwidget AppViewport(app: str, reloadKey: int, viewportMode: str) {\n    view {\n        col {\n            style: \"w-full flex flex-col items-center\"\n            col {\n                style: if .viewportMode == \"desktop\" { \"w-[1024px] max-w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else if .viewportMode == \"tablet\" { \"w-[768px] max-w-full h-[1024px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" } else { \"w-full h-[720px] rounded-xl border border-border shadow-md overflow-hidden bg-background flex flex-col items-center justify-center\" }\n                col {\n                    style: \"w-full h-full overflow-y-auto\"\n");
     vm_at.push_str(&branches);
     vm_at.push_str(
-            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-3\"\n                    text \"该示例暂无内嵌形态（依赖独立运行的后端进程或原生能力）\" { style: \"text-xs text-muted-foreground\" }\n                    text f\"独立运行：cd examples/ui/${.app}\" { style: \"text-xs text-muted-foreground/80 font-mono\" }\n                    text \"然后执行 auto run（Vue 臂）或 auto run -r vm（VM 臂）\" { style: \"text-xs text-muted-foreground/60 font-mono\" }\n                }\n            }\n            }\n        }\n    }\n}\n",
+            "            } else {\n                col {\n                    style: \"w-full h-full min-h-[360px] flex flex-col items-center justify-center gap-3\"\n                    text \"该示例暂无内嵌形态（依赖独立运行的后端进程或原生能力）\" { style: \"text-xs text-muted-foreground\" }\n                    text f\"独立运行：cd examples/ui/${.app}\" { style: \"text-xs text-muted-foreground/80 font-mono\" }\n                    text \"然后执行 auto run（Vue 臂）或 auto run -r vm（VM 臂）\" { style: \"text-xs text-muted-foreground/60 font-mono\" }\n                }\n            }\n            }\n            }\n        }\n    }\n}\n",
     );
     fs::write(gallery_dir.join("AppViewport.vm.at"), vm_at)
         .map_err(|e| format!("write AppViewport.vm.at: {}", e))?;
@@ -8004,7 +8135,7 @@ fn gallery_demo_row(
     )
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GalleryDemoRow {
     pub id: String,
     pub title: String,
@@ -10249,6 +10380,192 @@ fn p515_host_wallpaper_layer_branches() {
         "Wallpaper.vue 进 wm 资产清单"
     );
 }
+
+    /// PLAN-662 T-01: gallery_apps_dir 解析链四布局——旧仓 examples 内嵌
+    /// (`../ui`)、standalone `examples/ui`、同层 `auto-lang` 兄弟、平铺/
+    /// worktree 组祖父级 `auto-lang`（本计划新增档），以及全无 → Err。
+    /// env 权威档（AUTO_GALLERY_APPS）由既有行为覆盖，不在此重复。
+    #[test]
+    fn test_plan_662_gallery_apps_dir_layouts() {
+        std::env::remove_var("AUTO_GALLERY_APPS");
+        let t = tempfile::tempdir().unwrap();
+
+        // ① 旧仓内嵌：<ws>/examples/ui-gallery + <ws>/examples/ui。
+        let old_ws = t.path().join("old");
+        std::fs::create_dir_all(old_ws.join("examples").join("ui")).unwrap();
+        std::fs::create_dir_all(old_ws.join("examples").join("ui-gallery")).unwrap();
+        assert_eq!(
+            gallery_apps_dir(&old_ws.join("examples").join("ui-gallery")).unwrap(),
+            old_ws.join("examples").join("ui")
+        );
+
+        // ② standalone：<root>/examples/ui。
+        let solo = t.path().join("solo").join("ui-gallery");
+        std::fs::create_dir_all(solo.join("examples").join("ui")).unwrap();
+        assert_eq!(
+            gallery_apps_dir(&solo).unwrap(),
+            solo.join("examples").join("ui")
+        );
+
+        // ③ 同层 auto-lang 兄弟：<root>/ui-gallery + <root>/auto-lang/…。
+        let peer = t.path().join("peer").join("ui-gallery");
+        std::fs::create_dir_all(&peer).unwrap();
+        std::fs::create_dir_all(t.path().join("peer").join("auto-lang").join("examples").join("ui")).unwrap();
+        assert_eq!(
+            gallery_apps_dir(&peer).unwrap(),
+            t.path().join("peer").join("auto-lang").join("examples").join("ui")
+        );
+
+        // ④ 平铺/worktree 组：<g>/auto-os/ui-gallery + <g>/auto-lang/…
+        //    （662 新增祖父级探测——主检出 D:/autostack 与 .wt/lang-NNN 同形）。
+        let group = t.path().join("group");
+        let gallery = group.join("auto-os").join("ui-gallery");
+        std::fs::create_dir_all(&gallery).unwrap();
+        std::fs::create_dir_all(group.join("auto-lang").join("examples").join("ui")).unwrap();
+        assert_eq!(
+            gallery_apps_dir(&gallery).unwrap(),
+            group.join("auto-lang").join("examples").join("ui")
+        );
+
+        // ⑤ 全无 → Err（报错文案含 AUTO_GALLERY_APPS 提示）。
+        let none = t.path().join("none").join("ui-gallery");
+        std::fs::create_dir_all(&none).unwrap();
+        let err = gallery_apps_dir(&none).unwrap_err().to_string();
+        assert!(err.contains("AUTO_GALLERY_APPS"), "err: {err}");
+    }
+
+    /// PLAN-662 T-02 测试辅助：最小 demo（pac.at + src/front/app.at）。
+    fn gc662_make_demo(apps_dir: &Path, id: &str, marker: &str) {
+        let root = apps_dir.join(id);
+        std::fs::create_dir_all(root.join("src").join("front")).unwrap();
+        std::fs::write(
+            root.join("pac.at"),
+            format!("name: \"{id}\"\ntitle: \"Demo {id}\"\nicon: \"app-window\"\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("src").join("front").join("app.at"),
+            format!("// marker {marker}\nwidget W {{ view {{ text \"{id}\" {{}} }} }}\n"),
+        )
+        .unwrap();
+    }
+
+    /// PLAN-662 T-02 测试辅助：合成行（description 携带 marker 供变更断言）。
+    fn gc662_row(id: &str, marker: &str) -> GalleryDemoRow {
+        GalleryDemoRow {
+            id: id.to_string(),
+            title: format!("Demo {id}"),
+            category: "04-systems".to_string(),
+            icon: "app-window".to_string(),
+            description: format!("marker={marker}"),
+            tags: vec!["AutoUI".to_string()],
+            doc: format!("doc of {id}"),
+            source: format!("// marker {marker}"),
+            pac: format!("name: \"{id}\""),
+            loadable: true,
+            fullstack: false,
+            route_stub: false,
+        }
+    }
+
+    /// 读 marker（app.at 首行 `// marker <m>`）→ 合成行。计数走外层闭包。
+    fn gc662_scan_one(
+        apps_dir: &Path,
+        e: &auto_lang::ui::app_registry::AppRegistryEntry,
+    ) -> GalleryDemoRow {
+        let root = apps_dir.join(&e.id);
+        let app_at = std::fs::read_to_string(root.join("src").join("front").join("app.at"))
+            .unwrap_or_default();
+        let marker = app_at
+            .lines()
+            .next()
+            .and_then(|l| l.split("marker ").nth(1))
+            .unwrap_or("?")
+            .to_string();
+        gc662_row(&e.id, &marker)
+    }
+
+    /// env 覆写序列化锁（AUTO_GALLERY_CACHE_DIR 为进程级 env，防止并行
+    /// 测试互踩；本组测试独占该 env）。
+    static GC662_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// PLAN-662 T-02: 磁盘缓存命中/单 demo 失效重扫/损坏回退/行序列化
+    /// 往返一致（缓存只重放分析结果——registry.at 确定性守卫）。
+    #[test]
+    fn test_plan_662_gallery_rows_disk_cache() {
+        let _guard = GC662_ENV_LOCK.lock().unwrap();
+        let t = tempfile::tempdir().unwrap();
+        let cache_dir = t.path().join("cache");
+        std::env::set_var("AUTO_GALLERY_CACHE_DIR", &cache_dir);
+        std::env::remove_var("AUTO_GALLERY_APPS");
+        let apps_dir = t.path().join("apps");
+        std::fs::create_dir_all(&apps_dir).unwrap();
+        gc662_make_demo(&apps_dir, "010-alpha", "a1");
+        gc662_make_demo(&apps_dir, "011-beta", "b1");
+
+        let scans = std::sync::atomic::AtomicUsize::new(0);
+        let counting = |dir: &Path, e: &auto_lang::ui::app_registry::AppRegistryEntry| {
+            scans.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            gc662_scan_one(dir, e)
+        };
+
+        // 冷跑：2 demo 全扫，落盘。
+        let cold = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
+        assert_eq!(cold.len(), 2);
+        let sc = || scans.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(sc(), 2, "冷跑应全量扫描");
+        assert!(cache_dir.is_dir(), "缓存根应已创建");
+
+        // 二跑：全命中，零扫描；行与冷跑逐字段一致（serde 往返=确定性守卫）。
+        let warm = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
+        assert_eq!(sc(), 2, "缓存命中不应触发扫描");
+        let ser = |rows: &[GalleryDemoRow]| {
+            rows.iter()
+                .map(|r| serde_json::to_string(r).unwrap())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ser(&cold), ser(&warm), "命中行须与冷跑行一致");
+
+        // 单 demo 变更：仅该 demo 重扫（beta 改 marker）。
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        gc662_make_demo(&apps_dir, "011-beta", "b2");
+        let patched = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
+        assert_eq!(sc(), 3, "仅变更 demo 重扫");
+        let beta = patched.iter().find(|r| r.id == "011-beta").unwrap();
+        assert_eq!(beta.description, "marker=b2", "重扫行应反映新内容");
+
+        // 损坏缓存：fail-open 整体重建，不崩。
+        for f in std::fs::read_dir(&cache_dir).unwrap().flatten() {
+            if f.path().extension().map(|e| e == "json").unwrap_or(false) {
+                std::fs::write(f.path(), "{corrupted").unwrap();
+            }
+        }
+        let rebuilt = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
+        assert_eq!(sc(), 5, "损坏后全量重建");
+        assert_eq!(rebuilt.len(), 2);
+
+        std::env::remove_var("AUTO_GALLERY_CACHE_DIR");
+    }
+
+    /// PLAN-662 T-03: AUTO_GALLERY_SCAN_JOBS 解析——合法值生效、非法/缺省
+    /// 回落 available_parallelism。
+    #[test]
+    fn test_plan_662_gallery_scan_jobs_env() {
+        let _guard = GC662_ENV_LOCK.lock().unwrap();
+        let expect_default = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
+        std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "1");
+        assert_eq!(gallery_scan_jobs(), 1);
+        std::env::set_var("AUTO_GALLERY_SCAN_JOBS", " 4 ");
+        assert_eq!(gallery_scan_jobs(), 4);
+        std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "0");
+        assert_eq!(gallery_scan_jobs(), expect_default, "非法值回落缺省");
+        std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "abc");
+        assert_eq!(gallery_scan_jobs(), expect_default);
+        std::env::remove_var("AUTO_GALLERY_SCAN_JOBS");
+        assert_eq!(gallery_scan_jobs(), expect_default);
+    }
 
 #[test]
 fn test_plan_549_ui_gallery_registry_and_package_json() {

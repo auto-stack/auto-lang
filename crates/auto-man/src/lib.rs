@@ -41,6 +41,9 @@ pub mod pac;
 // Phase 5: Vue project support
 pub mod vue;
 
+// PLAN-662 T-02: 画廊行扫描磁盘缓存（画廊 registry/proxy 共用扫描面）
+pub mod gallery_cache;
+
 // PLAN-075: G-6 收口定向测——dep/components//bps 重生成臂同文件模块 fn 池
 // （夹具 examples/capability-tests/048-bp-module-fn，首个真实消费方）。
 #[cfg(test)]
