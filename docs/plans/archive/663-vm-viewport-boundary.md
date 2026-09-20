@@ -171,7 +171,7 @@ evidence: scratch/shots/*.png（六张验收截图,worktree 清理后以本记�
 - **landed**: rebase master（608399943→e85eba3f7 基上重放,range-diff 8/8 全 `=` 等价）后 `git merge --ff-only plan-663-dev` 零合并提交；master tip=d0dfea599（=delivery commit,账本 prepared 同提交）。old→new 映射：de215d7d0→9a17de0dd、a70fb8194→82ec048af、c76a70be6→1fbb548a8、b69f4f063→6aa3e8ada、eaaf22fc0→ad1f0e055、c9f993f89→dd9be950b、e6d6a0350→e03a67723、3fba31cbe→f634aee19。wt-guard clean 前置通过。
 - **ledger_refreshed**: .autoos/specs.json P663-1（designs,契约两条,file=widgets/viewport-boundary.md）+P663-2（reviews,收据,file=本档归档路径）双条目读回 2/2；INDEX.md 26 projects/6 modules。
 - **archived**: docs/plans/archive/663-vm-viewport-boundary.md（本提交,git mv+status=archived,completion_kind=delivered）。
-- **cleaned**: （清理提交补记）wt-guard 双净（auto-lang 主位+auto-down 依赖位）；worktree lang-663/auto-lang 与 lang-663/auto-down(detached d1a83b6)移除、分支 plan-663-dev 删除、组目录 lang-663 移除（scratch 验收截图不入库,证据以本收据文字+commit 链为准）。
+- **cleaned**: wt-guard 双净（auto-lang 主位+auto-down 依赖位）；worktree lang-663/auto-lang 与 lang-663/auto-down(detached d1a83b6)移除、分支 plan-663-dev 删除（was d0dfea599）、组目录 lang-663 移除。验收截图持久化=docs/plans/evidence/p663/ 六张（020_desktop/020_tablet/027_desktop/001_desktop/020_standalone/020_final_c2）。
 completion_kind: delivered
 
 ## 待澄清事项
