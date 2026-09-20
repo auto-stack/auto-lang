@@ -508,6 +508,43 @@ VM 画廊内嵌形态（AppViewport.vm.at + demos/*.at 适配器 + registry.at�
    back-proxy 运行（第 1 条）；020 曲库空态解除条件 = proxy 原生 media 路由
    （media_root 取自 demo pac.at）。
 
+## ui-gallery 启动性能与视口滚动契约（PLAN-662）
+
+画廊启动与内嵌视口的 enduring 行为契约（2026-09-20 落地；实测基线：逐 demo
+`from_workspace` 扫描 ~77s/36 demo 串行，demo 合并编译仅 ~3s——瓶颈是 registry
+分析而非 demo 加载）：
+
+1. **行扫描磁盘缓存（add）**：`gallery_rows_with_disk_cache`（auto-man）在进程内
+   线程局部缓存之下垫磁盘层——per-demo 内容哈希（**仅文件行**
+   `relpath|len|mtime` 走查 demo 目录 + pac.at `dep` 块路径依赖目录[共享
+   stylekit 每调用 memo 一遍]；**目录 mtime 不入哈希**——NTFS 创建后最初时刻
+   延迟落定，实测漂移致假失效）命中即免 `from_workspace`。存储 =
+   `AUTO_GALLERY_CACHE_DIR` env 覆写，缺省
+   `<home>/.auto/auto-man/gallery-cache/<apps_dir 摘要>.json`；原子写
+   temp+rename、内容不变零写、`CACHE_FORMAT_VERSION` 版本门。**fail-open**：
+   读不出/损坏/版本不符整体丢弃重建，绝不阻断画廊。
+2. **确定性守卫（add）**：缓存只重放分析产物，不改发射输入——命中/冷跑产出
+   的 `registry.at` 必须字节一致（serde 往返逐字段一致单测钉住）。
+3. **扫描并行（add）**：未命中扫描 `std::thread::scope` 分块并行（每线程返回
+   本块结果、join 后主线程合并——共享 Vec 跨线程写禁止）；安全性依据=发射
+   管线注册表全为 thread_local（handler_codegen），工作线程天然隔离；缺省
+   jobs=`available_parallelism`，`AUTO_GALLERY_SCAN_JOBS` env 覆写（1=串行）。
+   并行/串行产物字节一致性由 e2e diff 守卫（36 demo 实证全等）。
+4. **VM 视口滚动（add）**：`AppViewport.vm.at`（PLAN-625 生成产物）frame 内
+   补 `overflow-y-auto` 滚动容器（656 映射 View::Scrollable），对齐 web 臂
+   `demo-mount-root` 的 `overflow-auto`——demo 语料普遍 `h-screen`（解析为
+   窗口高）塞进定高 frame（720/1024）时底部此前被 `overflow-hidden` 裁死。
+   frame 三态尺寸样式不变；web 臂零触碰。
+5. **apps 目录解析序（modify）**：`gallery_apps_dir` 探测链在既有
+   `../auto-lang` 之后补**祖父级** `auto-lang/examples/ui`——平铺主检出
+   （`D:/autostack/{auto-os,auto-lang}` 兄弟）与 worktree 组
+   （`.wt/lang-NNN/{auto-os,auto-lang}`）同形命中，主检出一键裸跑解锁；
+   顺序仍为 env `AUTO_GALLERY_APPS` 权威优先。
+6. **非目标**：按需懒加载（点 tab 动态装载 demo——加载非瓶颈[合并编译 3s]，
+   且 `AppViewport.vm.at` 为静态分发架构，记远期选项）；Vue 臂 vite/npm
+   dev 启动提速；demo 语料高度链改写（020 经滚动已完整可达，flex-wrap
+   排版降级登记 Plan 412 边界）。
+
 ## items-stretch 两阶段行语义（PLAN-655）
 
 `items-stretch` 行的 enduring 渲染契约，2026-09-18 落地（P642-D12 路线 A）：
