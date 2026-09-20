@@ -18446,10 +18446,14 @@ mod plan055_strip_html_tests {
     use super::strip_html_tags;
     #[test]
     fn strips_tags_and_decodes_entities() {
-        assert_eq!(strip_html_tags("<span>@x</span> 你好"), " @x 你好");
+        // PLAN-668 R-09 语义裁定：strip_html_tags 职责 = 去标签 + 实体
+        // 解码，不做空白重排——标签两侧原有空格原样保留（`</span> 你好`
+        // 的前导空格 + 标签前空格各留一格）。改运行时折叠会波及 aura
+        // markdown 等全消费面，非本批口径。
+        assert_eq!(strip_html_tags("<span>@x</span> 你好"), " @x  你好");
         assert_eq!(strip_html_tags("a &amp; b &lt;c&gt;"), "a & b <c>");
         assert_eq!(strip_html_tags("plain"), "plain");
-        assert_eq!(strip_html_tags("unclosed <b>text"), " text");
+        assert_eq!(strip_html_tags("unclosed <b>text"), "unclosed  text");
     }
 }
 

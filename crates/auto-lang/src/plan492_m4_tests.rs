@@ -127,8 +127,12 @@ mod m4_pkg_compile_chain {
         let mut gen = crate::ui_gen::VueGenerator::new_shadcn();
         use crate::ui_gen::BackendGenerator;
         let sfc = gen.generate(&w).expect("vue SFC generate");
+        // PLAN-668 R-08：坐标箭头断言跟现行发射形态——Plan 499 期
+        // offsetX 版已演进为 clientX-rect 归一（offsetX 相对目标子件
+        // 不可靠；full-string 形态由单测 test_mouse_area_onmousemove_
+        // logical_coords 钉，此处锚 560x300 逻辑坐标面）。
         assert!(
-            sfc.contains("PointerMove(e.offsetX / e.currentTarget.clientWidth * 560"),
+            sfc.contains("clientWidth * 560") && sfc.contains("clientHeight * 300"),
             "vue SFC must emit the pointer-move logical-coord arrow:
 {}",
             &sfc[..sfc.len().min(1200)]
