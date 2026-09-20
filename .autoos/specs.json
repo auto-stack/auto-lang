@@ -3259,6 +3259,21 @@
    "id": "designs",
    "items": [
     {
+     "id": "P664-1",
+     "title": "menubar 快照可见性与开合持久性契约（四条硬规则）",
+     "file": "docs/specs/auto-lang/ui/design/menubar-snapshot.md",
+     "related": [
+      "PLAN-664",
+      "PLAN-630",
+      "PLAN-418",
+      "PLAN-080"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20",
+     "content": "ui VM 轨 menubar/MCP 契约（PLAN-664 U-1，消费方=auto-edit 041 矩阵与 jade-garden desktop）：①Popover 子树全量进快照——view_to_vtree_with_paths 对 widget 锚形态收录 [anchor, content] 双子（Plan 422 子序约定）；menubar 降级（PLAN-630 声明式组件族/Plan 418 actions 合成同机制）把展开项建在 content 面板内。②开合状态是渲染器本地态（action_config::MENUBAR_OPEN 进程级 Mutex），toggle/close 走 __menubar_toggle(id)/__menubar_close 内部消息（␟s␟<id> 载荷编码）。③自动关闭判据=用户交互近似：menubar_open() 时非 __ 前缀消息关菜单，但 TimeSource 泵事件除外（DynamicComponent::is_timesource_event 对 timesources 声明全集事件名匹配——DSL Tick/timer{} 处理器名天然无 __ 前缀，是框架周期消息非用户交互；041 状态栏时钟每秒 Tick 曾把刚开的菜单在下一次快照前关掉=041 矩阵六失败根因，39/5↔39/6 波动=竞态）。④MCP press 通道带参可达（extract_dyn_msg encode_payload 编 args 进事件串）。同批：use 导入 P-15/P-16 静默死面编译期告警化（[AUTO-USE-DIAG] 前缀+take_use_diags 汇聚；F-1 卫=auto.* 内建/.web ext 表单/use.py 三族非文件形态不告警）；jade 值域词位勘定=全部已落地可组合（Array.isArray 全域/Json.type_of(JSON.stringify(v)) 值域 typeof 分派/storage str 域读回链，语料 test/vm/99_plan664 锚）。"
+    },
+    {
      "id": "P654-4",
      "title": "clock-service — 框架墙钟 C1+C2 与 __wm_clock 对照",
      "content": "canonical docs/specs/auto-lang/ui/design/clock-service.md：入口表（Time.now_sec handler / __clock_now_sec+__clock_hhmm 视图消费 / .Tick 并存 / desktop __wm_clock 分钟级）；1Hz 门控 wants_framework_clock；迁移指引（显示墙钟勿自泵 Tick）；与 Plan 497 __wm_clock 差异表。实现：DynamicComponent::CLOCK_* + write_or_insert_state + renderer __clock_tick。",
@@ -4276,30 +4291,36 @@
      "last_modified": "2026-09-20"
     },
     {
-      "id": "P663-1",
-      "title": "VM/iced 视口边界与嵌入居中契约（两条）",
-      "content": "ui/iced 渲染前 pre-pass 双语义（PLAN-663）：①视口边界（iframe 语义）——SizeValue::Screen 与 Full 严格区分（h-screen/svh/lvh/dvh/w-screen 族 vs 父容器百分比）；rewrite_viewport_units 在定高(px)嵌入边界子树内把 Screen 族重写为 Pixels(边界)（min-h-screen 的 f32::MAX 标记→MinHeight(边界)），窗口根 Screen→Fill 满窗不变；边界判定仅认 arbitrary px（spacing 定高不建边界 P663-D2），宽/高轴独立、嵌套逐轴覆盖；下潜变体 Row/Column/Container/Scrollable/MouseArea/Overlay/Grid；修复 ui-gallery VM 臂全屏 demo 塌缩（Fill 失锚于 T-12 Shrink scroll/justify-center 让渡列高）②my-auto/m-auto 垂直安全居中——expand_margin_y_auto 把定高无 overflow 列内携带子展开为 h-full justify-center 包裹列（iced 缺 margin-auto 原语，CSS safe-center 对齐）；滚动列不展开。双入口接线 render_dynamic_view(path 空=根)+into_iced 三根点，幂等。T-12 不退役（与 Screen→Fixed 组合成立,P663-D1）。非目标:h-full 不重写(P663-D3)、多子项 my-auto 非精确(P663-D4)。",
-      "file": "docs/specs/widgets/viewport-boundary.md",
-      "related": [
-        "PLAN-663",
-        "PLAN-642",
-        "PLAN-662",
-        "PLAN-625"
-      ],
-      "status": "published",
-      "created": "2026-09-20",
-      "last_modified": "2026-09-20"
+     "id": "P663-1",
+     "title": "VM/iced 视口边界与嵌入居中契约（两条）",
+     "content": "ui/iced 渲染前 pre-pass 双语义（PLAN-663）：①视口边界（iframe 语义）——SizeValue::Screen 与 Full 严格区分（h-screen/svh/lvh/dvh/w-screen 族 vs 父容器百分比）；rewrite_viewport_units 在定高(px)嵌入边界子树内把 Screen 族重写为 Pixels(边界)（min-h-screen 的 f32::MAX 标记→MinHeight(边界)），窗口根 Screen→Fill 满窗不变；边界判定仅认 arbitrary px（spacing 定高不建边界 P663-D2），宽/高轴独立、嵌套逐轴覆盖；下潜变体 Row/Column/Container/Scrollable/MouseArea/Overlay/Grid；修复 ui-gallery VM 臂全屏 demo 塌缩（Fill 失锚于 T-12 Shrink scroll/justify-center 让渡列高）②my-auto/m-auto 垂直安全居中——expand_margin_y_auto 把定高无 overflow 列内携带子展开为 h-full justify-center 包裹列（iced 缺 margin-auto 原语，CSS safe-center 对齐）；滚动列不展开。双入口接线 render_dynamic_view(path 空=根)+into_iced 三根点，幂等。T-12 不退役（与 Screen→Fixed 组合成立,P663-D1）。非目标:h-full 不重写(P663-D3)、多子项 my-auto 非精确(P663-D4)。",
+     "file": "docs/specs/widgets/viewport-boundary.md",
+     "related": [
+      "PLAN-663",
+      "PLAN-642",
+      "PLAN-662",
+      "PLAN-625"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
     },
     {
-      "id": "P662-1",
-      "title": "ui-gallery 启动性能与视口滚动契约（六条）",
-      "content": "ui/overview.md §PLAN-662(SD-01):①行扫描磁盘缓存——per-demo 内容哈希仅文件行(relpath|len|mtime;目录 mtime NTFS 延迟落定实测漂移不入)走查 demo 目录+pac dep 路径依赖(stylekit memo),命中免 from_workspace;存储=~/.auto/auto-man/gallery-cache/<apps摘要>.json,AUTO_GALLERY_CACHE_DIR env 覆写,原子写+版本门+fail-open ②确定性守卫——命中/冷跑 registry.at 字节一致(serde 往返单测钉住) ③扫描并行——std::thread::scope 分块(每线程返回本块 join 合并),thread_local 注册表隔离+串并产物字节 diff 全等→默认核数,AUTO_GALLERY_SCAN_JOBS 覆写 ④VM 视口滚动——AppViewport.vm.at frame 内 overflow-y-auto 容器对齐 web 臂 demo-mount-root(demo h-screen 入定高 frame 底部不再裁死),frame 三态不变 ⑤apps 解析序补祖父级 auto-lang 探测(平铺主检出/worktree 组同形,主检出一键裸跑) ⑥非目标:懒加载证伪非靶(合并编译仅 3s)记远期/Vue vite 提速/语料高度链改写。实测:二次启动 83→5s、冷启 83→22s。",
-      "file": "docs/specs/auto-lang/ui/overview.md",
-      "related": ["PLAN-662", "PLAN-658", "PLAN-625", "GOAL-010"],
-      "status": "published",
-      "created": "2026-09-20",
-      "last_modified": "2026-09-20"
-    }]
+     "id": "P662-1",
+     "title": "ui-gallery 启动性能与视口滚动契约（六条）",
+     "content": "ui/overview.md §PLAN-662(SD-01):①行扫描磁盘缓存——per-demo 内容哈希仅文件行(relpath|len|mtime;目录 mtime NTFS 延迟落定实测漂移不入)走查 demo 目录+pac dep 路径依赖(stylekit memo),命中免 from_workspace;存储=~/.auto/auto-man/gallery-cache/<apps摘要>.json,AUTO_GALLERY_CACHE_DIR env 覆写,原子写+版本门+fail-open ②确定性守卫——命中/冷跑 registry.at 字节一致(serde 往返单测钉住) ③扫描并行——std::thread::scope 分块(每线程返回本块 join 合并),thread_local 注册表隔离+串并产物字节 diff 全等→默认核数,AUTO_GALLERY_SCAN_JOBS 覆写 ④VM 视口滚动——AppViewport.vm.at frame 内 overflow-y-auto 容器对齐 web 臂 demo-mount-root(demo h-screen 入定高 frame 底部不再裁死),frame 三态不变 ⑤apps 解析序补祖父级 auto-lang 探测(平铺主检出/worktree 组同形,主检出一键裸跑) ⑥非目标:懒加载证伪非靶(合并编译仅 3s)记远期/Vue vite 提速/语料高度链改写。实测:二次启动 83→5s、冷启 83→22s。",
+     "file": "docs/specs/auto-lang/ui/overview.md",
+     "related": [
+      "PLAN-662",
+      "PLAN-658",
+      "PLAN-625",
+      "GOAL-010"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
+    }
+   ]
   },
   {
    "id": "tests",
@@ -5288,6 +5309,19 @@
   {
    "id": "reviews",
    "items": [
+    {
+     "id": "P664-2",
+     "title": "jade-consumer-upstream-package 复审合并收据",
+     "file": "docs/plans/archive/664-jade-consumer-upstream-package.md",
+     "related": [
+      "PLAN-664",
+      "PLAN-663"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20",
+     "content": "review R1 needs_fix@896013e29(实现会话复审,独立性受限声明+工件重建:F-1 P-15 假阳性面=jade 实测 use auto.http 每次运行误报,auto.* 内建/.web ext/use.py 三族非文件形态)→work 修复 2f8a84c3(is_non_fs_module_use 卫+回归负例)→R2 pass@2f8a84c3。AC 四项复现全过:041 矩阵 39/6→50/0×3(修复后 menubar 六项八轮零失败);jade desktop 抽样双 PASS;tv 3793/3795+tf 3631/3633(唯二红=master 预存 ui_gen fixture 族)。range-diff 6/6 全等后 ff-only(映射 3e6cfb886→1c525caef..2f8a84c3a→2702659d8)。规范增量=menubar-snapshot.md(哈希 a115ae6d);touched_goals=GOAL-014。预存红三处独立 finding 待归属(plan632 F2/mouse_area/autodown_panel_heading)。"
+    },
     {
      "id": "P654-5",
      "title": "nested-timesource-path-and-clock — 复审与合并收据",
@@ -6708,28 +6742,31 @@
      "last_modified": "2026-09-20"
     },
     {
-      "id": "P663-2",
-      "title": "vm-viewport-boundary 复审合并收据",
-      "content": "review pass r1@3fba31cbe(实现会话自审,独立性限制声明+工件重建裁定):AC-01..08 全 pass——单测 p663_ 9/9 fresh 复跑(parse 分离/边界重写/嵌套换锚/安全居中)+五连截图验收(020 桌面满帧/平板 768×1024 满屏/027 满帧/001 居中不回归/独立窗满窗)+C2 终版复拍无回归;门禁 cargo t 817/820+tv 2713/2715+tf 2558/2560(红集=在册预存红差集空)。findings F-663-R1(生成物嵌套拷贝误入库)/R2(死代码)均已修;规范增量落点修正为新档 widgets/viewport-boundary.md。交付=rebase 全等(range-diff 8/8 =)后 ff-only。预存新发现 P663-D5:master auto-lang 无 ui-iced 特性编译 E0433(component.rs:97 无条件引用 desktop_protocol,034 位图通道引入)。",
-      "file": "docs/plans/archive/663-vm-viewport-boundary.md",
-      "related": [
-        "PLAN-663",
-        "PLAN-662"
-      ],
-      "status": "published",
-      "created": "2026-09-20",
-      "last_modified": "2026-09-20"
+     "id": "P663-2",
+     "title": "vm-viewport-boundary 复审合并收据",
+     "content": "review pass r1@3fba31cbe(实现会话自审,独立性限制声明+工件重建裁定):AC-01..08 全 pass——单测 p663_ 9/9 fresh 复跑(parse 分离/边界重写/嵌套换锚/安全居中)+五连截图验收(020 桌面满帧/平板 768×1024 满屏/027 满帧/001 居中不回归/独立窗满窗)+C2 终版复拍无回归;门禁 cargo t 817/820+tv 2713/2715+tf 2558/2560(红集=在册预存红差集空)。findings F-663-R1(生成物嵌套拷贝误入库)/R2(死代码)均已修;规范增量落点修正为新档 widgets/viewport-boundary.md。交付=rebase 全等(range-diff 8/8 =)后 ff-only。预存新发现 P663-D5:master auto-lang 无 ui-iced 特性编译 E0433(component.rs:97 无条件引用 desktop_protocol,034 位图通道引入)。",
+     "file": "docs/plans/archive/663-vm-viewport-boundary.md",
+     "related": [
+      "PLAN-663",
+      "PLAN-662"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
     },
     {
-      "id": "P662-2",
-      "title": "PLAN-662 复审合并收据",
-      "content": "review pass r1@198ae949d(=d5ec6d7b7 实现+SD docs-only 后裔,实现面零变化定向复验):AC-01..06 全 pass——AC-01 零 env 裸跑(os worktree)/AC-02 复审轮 4.3s 复现+冷启 22s/AC-03 三单测重跑绿(目录 mtime 漂移实测修正为仅文件行哈希)/AC-04 前后截图对照+复审实例 020 真实窗口交互日志/AC-05 串并字节 diff 全空+gallery 20/20+spot 6/6+cargo t 5265/5270 与 tf 3646/3648 零新增红(5+2 红全为 658/P661-D7 在案预存或环境红,本 diff 零触碰 auto-lang 由构造一致)/AC-06 os 产物 0778c28+P662-D1/D2 落册。同会话实施复审以 reviewed commit 复跑+工件重建缓解(R1)。",
-      "file": "docs/plans/662-gallery-fast-start-and-viewport.md",
-      "related": ["PLAN-662"],
-      "status": "published",
-      "created": "2026-09-20",
-      "last_modified": "2026-09-20"
-    }]
+     "id": "P662-2",
+     "title": "PLAN-662 复审合并收据",
+     "content": "review pass r1@198ae949d(=d5ec6d7b7 实现+SD docs-only 后裔,实现面零变化定向复验):AC-01..06 全 pass——AC-01 零 env 裸跑(os worktree)/AC-02 复审轮 4.3s 复现+冷启 22s/AC-03 三单测重跑绿(目录 mtime 漂移实测修正为仅文件行哈希)/AC-04 前后截图对照+复审实例 020 真实窗口交互日志/AC-05 串并字节 diff 全空+gallery 20/20+spot 6/6+cargo t 5265/5270 与 tf 3646/3648 零新增红(5+2 红全为 658/P661-D7 在案预存或环境红,本 diff 零触碰 auto-lang 由构造一致)/AC-06 os 产物 0778c28+P662-D1/D2 落册。同会话实施复审以 reviewed commit 复跑+工件重建缓解(R1)。",
+     "file": "docs/plans/662-gallery-fast-start-and-viewport.md",
+     "related": [
+      "PLAN-662"
+     ],
+     "status": "published",
+     "created": "2026-09-20",
+     "last_modified": "2026-09-20"
+    }
+   ]
   }
  ]
 }
