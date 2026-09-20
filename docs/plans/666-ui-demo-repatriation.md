@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-666
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-demo-repatriation
 author: [agent]
 created_at: 2026-09-20
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-010]
 
 affects: [ui/overview.md, auto-man/overview.md]
-current_step: 5
+current_step: 7
 total_steps: 7
 ---
 
@@ -271,24 +271,65 @@ plan5.2 预设的"docs_gen 4 测/cmd_docs/gallery_golden/plan370/409/412/
   c2，master 同命令同红集）、gallery_vue_golden 与 master 同红（590
   在案基线漂移）。**零新增红**。另注：038 `auto build`（vue-tsc 档）红
   =两侧对称预存（生成 useMinesweeperStore.ts 类型错，auto-os 同错）。
-- **T-06** auto-os 侧 ui-gallery 再发射 + 产物提交（跨仓单 commit，消息
+- [x] **T-06** auto-os 侧 ui-gallery 再发射 + 产物提交（跨仓单 commit，消息
   `gallery: PLAN-666 产物刷新——025/028/038 回源条目恢复`+3 app README
   反链若做则并入）。验证：AC-04。依赖：T-01/T-03。
-- **T-07** 全量档对账（cargo t + tv/tf vs master 基线）+ 规范增量落册
+  [✅ 2026-09-20 auto-os `24aa01f`] 执行发现与调整：发射器对扫描副本的
+  绝对路径敏感面实证（031 fixture 路径烤入形态）→ 干跑（AUTO_GALLERY_APPS
+  指 worktree 副本）先勘档位，核实**产物零路径烤入**后正式提交（与合并后
+  主检出再发射字节等价）。再发射结果：**35 demos/22 loadable/30 VM-live**；
+  档位定案 025=registry-only（back 链不可内嵌，同 017/031 族）、
+  028/038=loadable；三 demo 适配器 9 件新增（025 六件族+028+038 两件）。
+  发射器演化语义随产物落定：017/031/045/046 旧适配器退役（back 链 skip+
+  整编后语料缺席）、019 组件名对齐（吸收在册孤儿再生成 WIP：019 改名/
+  031 路径归位——确定性产物，判孤儿 WIP 入册）。038 README 加 demo 轨
+  反链（025/028 仅 SPEC.md，按 5.3 单向+README 口径）。widgets-gallery
+  kitchen-sink/ui-cache 孤儿 WIP（他族 docs_gen 产物）**不入册留主**。
+- [x] **T-07** 全量档对账（cargo t + tv/tf vs master 基线）+ 规范增量落册
   （SD-01/SD-02 定稿）。验证：AC-03/AC-05。依赖：T-03。
+  [✅ 2026-09-20] 全量对账（worktree rebase 后 vs master@e2ca18360 同命令）：
+  **cargo t** worktree 31 红 ⊆ master 33 红（零新增；master 独有 2=app_
+  registry scan/curation 预存红，本计划修复转绿）；**cargo tv** 红集两侧
+  全等（mouse_area+autodown_panel_heading 预存）；**cargo tf** worktree 3
+  vs master 2，差 1=ffi_dual_019_dep_layout_invariants 隔离复跑双绿=
+  并行 flake（tf 顺序性红基线家族，非回归）。**执行期事件**：并行 os-035
+  会话在我 worktree 基点后落 master（assets/shell.at pin 同步等），全新
+  编译暴露 shell_pack parity/vocabulary 假性新增红——rebase 到
+  master@e2ca18360 后全绿（基线倾斜非回归，复验 5/5）。SD-01/SD-02 落册
+  `docs/specs/auto-lang/ui/overview.md`（worktree `c2fe8cb51`）：双轨
+  事实源契约节+PLAN-590 资产注记修订；**SD-02 目地调整**——auto-man 无
+  spec 模块目录，发射器契约沿 PLAN-642/658/662 先例并入 ui/overview.md。
 
 ## 9. 复审记录
 
 - 2026-09-20 draft handoff（stage: new, revision 1）：背景调查完成
   （PLAN-590 反向操作面勘定、发射链机制核实、端口/策展/编号核查），
   T-01..T-07 立项，outcome: pass（授权范围内可交付 work），next: work。
+- 2026-09-20 work handoff（stage: work, revision 1）：
+  `pass | PLAN-666 | r1 | worktree D:/autostack/.wt/lang-666/auto-lang
+  plan-666-dev@e2ca18360+4（rebase 后：6c11d2911/972e7beb5/e6589907c/
+  c2fe8cb51） | T-01..T-07 全勾 | 证据：T-01 diff -r 字节全等+30 tracked
+  对账；T-02 R/K 决策清单 25 文件全覆盖；T-03 app_registry 24/24（两处
+  master 预存红转绿：scan ≥33→≥35 实测、C 档 17→21 补 047 want）；
+  T-04 链接目标全验；T-05 四腿（038vue/028vue 200、025 前端 200、038 VM
+  MCP 绿+截图）+定向门零新增红；T-06 auto-os 24aa01f（35 demos/档位
+  定案/038 反链）；T-07 t/tv/tf 对账零新增确定性红+SD-01/SD-02 落册
+  c2fe8cb51 | blockers: 无 | next: review`。
+  **债候选（复审入册 KNOWN-DEBT）**：P666-D1 025 生成后端 rust 编译红
+  （29 错，auto-os 原件对称同红——CLI codegen 演化漂移，两侧皆坏）；
+  P666-D2 038 vue-tsc 档红（生成 store 类型错，两侧对称预存）；
+  P666-D3 主检出磁盘残骸清理（025-dashboard/.am、038 .am/.auto/examples/
+  src 遗留——全未跟踪，merge 时清）；P666-D4 auto-os widgets-gallery
+  kitchen-sink/ui-cache 孤儿 WIP 留主未处置（他族 docs_gen 产物）。
+  **观察**（不入债）：examples/ui README 表 043/044 行 stale（整编迁出后
+  行未删，reorg 遗留）；047-bp-admin 无表行（657 遗留）。
 
 ## 10. 待澄清事项
 
-- 三 demo 的画廊档位（loadable/fullstack/route_stub）以 T-06 再发射实测
-  为准，不阻塞起草（AC-04 已按"档位记录在案"宽口径）。
-- plan492_m4"第三副本"语义与 desktop_mcp.py 038 测试腿去留：T-02 普查
-  裁定，产出记录进 T-02 决策清单。
-- auto-os 三 app README 反链（5.3 可选项）：T-06 时视 README 存在性定，
-  缺席则 pac 注记或仅 auto-lang 单向链接（AC-06 按"双向可解析或单向+
-  在案说明"验收）。
+- ~~三 demo 的画廊档位~~（T-06 定案：025=registry-only、028/038=loadable）。
+- ~~plan492_m4"第三副本"语义与 desktop_mcp.py 038 测试腿去留~~（T-02 裁定
+  在案：第三副本=widgets-gallery 面 K-5 不动；desktop_mcp.py 快照携带零
+  门禁接入）。
+- ~~auto-os 三 app README 反链~~（T-06：038 README 反链已入 24aa01f；
+  025/028 仅 SPEC.md，auto-lang 单向+在案说明口径，AC-06 宽口径满足）。
+- 无阻塞待澄清项。
