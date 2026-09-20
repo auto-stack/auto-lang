@@ -1,18 +1,18 @@
 ---
 plan_id: PLAN-664
-status: executing
+status: reviewed
 feature_name: jade-consumer-upstream-package（jade/auto-edit 消费侧上游提名单：menubar 快照回归修复 + strict 域词位勘定补全 + JSON/storage 值域 + P-15/P-16 报错化 + DEBTS 651 回填）
 author: [zhaopuming（auto-down 会话代拟，待 auto-lang 侧会话实勘修订）]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 2
-current_step: 5
+current_step: 6
 total_steps: 6
 
 supersedes_spec_components: []
 new_spec_components:
   - docs/specs/auto-lang/ui/design/menubar-snapshot.md（SD-01：menubar 快照可见性与开合持久性契约——U-1 根修契约化；overview.md 现状节同步登记）
-touched_goals: []
+touched_goals: [GOAL-014]（开发者工具：MCP autoui_snapshot 契约面[U-1] + 编译期诊断工具面[U-4]；U-2/U-3 为勘定锚不改语义）
 
 affects: [auto-lang（vm/codegen、ui 渲染快照面、DEBTS.md、docs/specs 注记面）]
 ---
@@ -132,8 +132,8 @@ TS ext 已在产消费）；a2r 轨无此消费方 N/A。
   五型分派/stringify 形态/storage 读回链含 remove 清理）一次通过——
   勘定结论"全部已落地可组合"得证；vm_file_tests 登记
   test_99_plan664_001_value_lexemes]
-- **T-03** [改] U-4 报错化 + 负例。依赖：T-00。（复审 R1 重开：F-1 假阳性面修复中）
-  [✅ 已完成：worktree commit 51c58b7b3。lib.rs use 装载环三处
+- **T-03** [改] U-4 报错化 + 负例。依赖：T-00。（复审 R1 F-1 修复闭环）
+  [✅ 已完成：worktree commit 51c58b7b3 + F-1 修复 2f8a84c3。lib.rs use 装载环三处
   `[AUTO-USE-DIAG]` 告警（P-15 根环+传递环 / P-16 root+child model
   字段撞名预检）+ `take_use_diags` thread_local 汇聚（单测断言面）；
   负例 plan664_p15/p16 双绿。硬错化留债（vue 双轨容忍性未勘，见 §9）；
@@ -209,6 +209,32 @@ TS ext 已在产消费）；a2r 轨无此消费方 N/A。
   健康检查：三触及文件零告警（touch 重编译扫描） | evidence:
   复审轮命令与结果全录本记录；worktree clean @896013e29 | next:
   work 修 F-1（T-03 重开）→ re-review`。
+
+- 2026-09-20 work 修复环（review R1 F-1）：`stage: work | plan_id:
+  PLAN-664 | plan_revision: 2 | outcome: pass | code_commit: 2f8a84c3
+  （is_non_fs_module_use 卫——auto.* 内建命名空间/.web ext 表单/
+  use.py 三族不告警；解析控制流零改动）+ 回归负例
+  plan664_p15_non_fs_module_forms_no_false_positive | task_ids: T-03 |
+  evidence: plan664 四测绿；jade desktop 实机复验零 [AUTO-USE-DIAG]；
+  041 矩阵 50/0；plan633 4/4 + plan442 17/17 + 语料绿；tv 全量
+  3793/3795 + tf 3631/3633（同二 master 预存红） | blockers: 无 |
+  next: re-review`。
+- 2026-09-20 review R2（终裁，实现会话内复审独立性受限已声明）：`stage:
+  review | plan_id: PLAN-664 | plan_revision: 2 | outcome: pass |
+  reviewed_commit: plan-664-dev @2f8a84c3（clean；R1 reviewed @896013e29
+  之上唯一增量=F-1 修复，diff 独立审计 2 文件 +68/-12）| base_commit:
+  3df7b21a2 | dependency_revisions: auto-down @d1a83b6 | spec_inputs:
+  menubar-snapshot.md（哈希 a115ae6d 未随修复漂移——F-1 不触规范面）|
+  acceptance_results: AC-01 pass（R1 轮 50/0×2 + 修复后 50/0 复跑）；
+  AC-02 pass（语料复跑绿）；AC-03 pass（plan664 4/4——含 F-1 假阳性
+  回归负例，真阳性+假阳性双向钉死）；AC-04 pass（工件核对同 R1）|
+  findings: F-1 ✅已修（2f8a84c3）；F-2/F-3/F-4 🟢info 在案（041 T1
+  首拍竞态脚本脆弱性/master 前进 fold 和解/三处预存红）——均非阻断 |
+  touched_goals 定稿: GOAL-014（书面说明：U-1=MCP 快照契约面、U-4=
+  编译期诊断工具面均 GOAL-014 开发者工具域；U-2/U-3 勘定锚零语义变更；
+  不触 GOAL-007 双端视觉一致——VM 单轨行为修复无 vue 对位变更）|
+  evidence: 本记录命令+结果摘录；worktree clean @2f8a84c3 留存 merge |
+  next: /auto-plan:merge`。
 
 ## 10. 待澄清事项
 
