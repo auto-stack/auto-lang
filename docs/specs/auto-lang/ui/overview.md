@@ -4,13 +4,16 @@
 > 最近刷新：2026-09-18（PLAN-027 rev2 回写：shell a2r 接缝面 S1/S2 落地——codegen 臂族 + 显式拒绝门/词汇门 + ShellProjection/DesktopBusHandle typed 载体，详见 design/shell-a2r-seams.md（provisional）；design 文档 desktop-shell-a2r.md 裁定落定 = B 形态 + 双轨常驻）
 > 2026-09-03（Plan 527 归档回写：VM 轨 Tailwind v3.4 清单驱动全量覆盖契约——清单锚定/静默丢弃关闭/三家族补全/变体管道/对拍审计台常驻；2026-09-02：Plan 522 helper fn 进 vue SFC、516 vue 桌面远程窗、518 桌面视觉二期）
 >
-> **资产位置注记（PLAN-590，Stage B P-5，2026-09-07）**：桌面域资产已随迁
-> auto-os——`ui-gallery`/`widgets-gallery` 在 **auto-os 顶层**（框架侧
-> schema_drift/docs_gen/gallery_golden 等语料锚改 `resolve_os_top_dir`
-> 解析序定位）；`025-sys-monitor`/`028-launcher`/`038-minesweeper` 与
-> `common/settings` 在 **auto-os/apps/**。本页历史段落中的
-> `examples/ui-gallery`、`examples/widgets-gallery` 表述为落成时位置，
-> 现状以本注记为准（去向详表 `docs/plans/INDEX.md`）。
+> **资产位置注记（PLAN-590，Stage B P-5，2026-09-07；PLAN-666 修订
+> 2026-09-20）**：桌面域资产已随迁 auto-os——`ui-gallery`/`widgets-gallery`
+> 在 **auto-os 顶层**（框架侧 schema_drift/docs_gen/gallery_golden 等语料
+> 锚改 `resolve_os_top_dir` 解析序定位）；`common/settings` 在
+> **auto-os/apps/**。`025-sys-monitor`/`028-launcher`/`038-minesweeper`
+> 三件由 PLAN-666 以当前快照**复刻回 `examples/ui/`**（demo 轨），app 轨
+> 原件留 auto-os/apps/ 各自演化（两轨分道扬镳，见 §ui-gallery 双轨事实
+> 源契约）。本页历史段落中的 `examples/ui-gallery`、
+> `examples/widgets-gallery` 表述为落成时位置，现状以本注记为准
+> （去向详表 `docs/plans/INDEX.md`）。
 
 ## 职责
 
@@ -558,6 +561,30 @@ VM 画廊内嵌形态（AppViewport.vm.at + demos/*.at 适配器 + registry.at�
    且 `AppViewport.vm.at` 为静态分发架构，记远期选项）；Vue 臂 vite/npm
    dev 启动提速；demo 语料高度链改写（020 经滚动已完整可达，flex-wrap
    排版降级登记 Plan 412 边界）。
+
+## ui-gallery 双轨事实源契约（PLAN-666）
+
+demo 轨/app 轨分道扬镳的 enduring 数据源契约（2026-09-20 落地，用户裁定；
+025-sys-monitor/028-launcher/038-minesweeper 复刻回源为首个实践）：
+
+1. **demo 面 examples/ui 单一事实源（modify）**：画廊发射（ui-gallery 的
+   `generate_gallery_host`/`refresh_gallery_registry` 双臂 registry）、
+   docs 语料锚、scan/策展断言（`ui/app_registry.rs` C 档恰等）读
+   `examples/ui` 副本——语料缺席即条目/断言缺席，无 auto-os 臂补位
+   （590 期"三 demo 缺席由 auto-os 臂补"形态废止）。
+2. **app 面 auto-os apps/ 事实源（modify）**：桌面注册表（apps.manifest
+   extra roots）、桌面测试语料（plan503 launcher 料）、桌面 shell 装配
+   读 auto-os 原件——与 demo 面零耦合。
+3. **发射器缺席语义（add）**：`generate_gallery_host` 全量覆写 registry
+   与适配器为确定性函数——扫描集即条目集（语料缺席→适配器随下次发射
+   退役，017/031 back 链 skip 与 045/046 整编退役为实证形态）；发射
+   产物对扫描副本的绝对路径敏感面仅存 fixture 引用 demo（031 形态），
+   正式产物再发射以主检出 examples/ui 为准（worktree 干跑仅作档位
+   勘定，产物零路径烤入时方可在册）。
+4. **两轨无同步义务（add）**：复刻即快照，此后各自演化；互链经 README
+   双向注记（examples/ui README ↔ auto-os apps README），无机制化同步。
+5. **非目标**：两轨同步机制、demo 教学简洁度重写（用户裁定另立计划）、
+   widgets-gallery/charts-gallery 归属（留 auto-os 顶层，不动）。
 
 ## items-stretch 两阶段行语义（PLAN-655）
 
