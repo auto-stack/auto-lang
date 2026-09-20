@@ -1,10 +1,11 @@
 ---
 plan_id: PLAN-666
-status: reviewed            # drafting → executing → execution_done → reviewed → archived
+status: archived            # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-demo-repatriation
 author: [agent]
 created_at: 2026-09-20
 updated_at: 2026-09-20
+completion_kind: delivered
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components:
@@ -359,6 +360,27 @@ plan5.2 预设的"docs_gen 4 测/cmd_docs/gallery_golden/plan370/409/412/
   新增 png 显示为未跟踪（化妆级）。**规范增量**：SD-01/SD-02 文本与
   实测行为核对一致（档位/退役/路径敏感面均有实证）；SD-02 目地调整
   （auto-man 无 spec 模块→并入 ui/overview.md）合规先例 642/658/662。
+
+- 2026-09-20 merge（stage: merge, `PLAN-666:r1`）：
+  - **prepared**：账本三件套 worktree 提交（ui/plans.md 表行 + specs.json
+    外科插入 P666-1[designs]/P666-2[reviews]，1 空格缩进原文风格 +27 行、
+    610→612；spec-index.py 再生 INDEX.md；JSON 有效性门过）。
+  - **landed**：两跳 rebase 全等链（并行 665 会话两次推进 master：
+    06f6c2a01→7862da23c）——range-diff 5/5 `=` 全等，映射 6c11d2911→
+    2d00d4386 / 972e7beb5→3d408f08a / e6589907c→5cd485ea0 / c2fe8cb51→
+    31addf88f / 3c5249607→ca7205a90（再 rebase 后终值），`git merge
+    --ff-only` 零 merge commit，master tip==delivery `ca7205a90`；
+    specs.json 与 665 会话 P665-1/2 异段异位自动并（614 items，P014-1
+    跨节镜像=master 既有非本次引入）；主检出落地冒烟 app_registry
+    24/24；P666-D3 残骸清理执行（025-dashboard 整删、038 的 .am/.auto/
+    examples/三历史 png 删、tracked 快照保留，examples/ui git status
+    全净）。
+  - **ledger_refreshed**：`.autoos/specs.json` P666-1/P666-2（file 指
+    canonical spec 与本归档件）；`docs/specs/auto-lang/ui/plans.md` 666
+    行；`docs/specs/INDEX.md` 再生——均随 delivery 落 master。
+  - **archived**：`docs/plans/archive/666-ui-demo-repatriation.md`，
+    status=archived，completion_kind=delivered。
+  - **cleaned**：见下条补记。
 
 ## 10. 待澄清事项
 
