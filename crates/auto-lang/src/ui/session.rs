@@ -379,6 +379,16 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// Plan 501：外部后端 cdylib 句柄（launch 声明 back.project 的 App 时
     /// 装载；驻会话——丢弃即卸载致 vtable 悬垂，见 backend_abi 文档）。
     pub back_keepalive: Option<crate::vm::backend_abi::LoadedBackend>,
+    /// PLAN-037：桌面 back proxy 句柄（**懒启**——首个需要供给的 launch
+    /// 才 `back_proxy::start`；boot 零常驻 = 无 listener 线程，AC-06 断言
+    /// 面）。驻会话至进程终（listener accept 空闲近零成本，不拆循环）。
+    pub back_proxy: Option<crate::back_proxy::RunningProxy>,
+    /// PLAN-037：app_key 供给引用计数（双窗同 app 共享一份后端；最后一个
+    /// 窗关闭归零即卸载——`release_backend` 消费）。
+    pub back_refs: std::collections::HashMap<String, usize>,
+    /// PLAN-037：AppId → app_key 供给归属（关窗站点反查；缺席 = 该 App
+    /// 不参与 proxy 供给，release 为 no-op）。
+    pub app_back: std::collections::HashMap<AppId, String>,
     /// Plan 508 G1：outproc 子进程 spawn 钩子（None = 生产形态 re-exec
     /// `auto run --autodesk-incubate`；单测注入 re-exec 测试体）。
     pub outproc_spawner:
@@ -502,6 +512,9 @@ impl DesktopState {
             config_poll_sampled: false,
             osconfig_daemon_probe: None,
             back_keepalive: None,
+            back_proxy: None,
+            back_refs: std::collections::HashMap::new(),
+            app_back: std::collections::HashMap::new(),
             outproc_spawner: None,
             outproc_children: Vec::new(),
             shell_spawner: None,

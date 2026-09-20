@@ -47,7 +47,7 @@ const REQUEST_TIMEOUT_SECS: u64 = 30;
 const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
 
 /// 一个 app 后端的装载描述。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionSpec {
     /// app 标识（子 URL 前缀段，如 `020-music-player`）。
     pub app_id: String,
@@ -59,7 +59,7 @@ pub struct SessionSpec {
 /// `/api/media/scan` + `/api/media/stream/:id`，§5.7-3——不在 .at 语料，
 /// 由宿主 Rust 直答）。020 形态：无 session，仅原生路由。
 #[cfg(feature = "ui")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NativeMediaApp {
     pub app_id: String,
     /// pac.at `media_root`（None → resolve_root(None) 语义：env → 平台默认）。
