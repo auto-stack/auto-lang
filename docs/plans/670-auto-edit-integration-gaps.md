@@ -1,17 +1,17 @@
 ---
 plan_id: PLAN-670
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: auto-edit-integration-gaps
 author: [zcode]
 created_at: 2026-09-21
 updated_at: 2026-09-21
 plan_revision: 1
-current_step: 0
+current_step: 4
 total_steps: 4
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
+new_spec_components: [SD-01 auto-man/project.md api_gen 行-server 生成器状态种子契约, SD-02 auto-lang/ui/overview.md code_editor 段-事件参数绑定语义]
 touched_goals: [GOAL-003]      # F-R1 a2r 生成物可编译=三方一致面；F-W3 事件契约 VM/前端一致
 
 affects: [docs/specs/auto-man/project.md, docs/specs/auto-lang/ui/overview.md]
@@ -219,21 +219,49 @@ db_full_cover 既有两路不回归。
   契约样本（从报告/R1-F4 提取最小形状）、决策件（报告或计划附录）。
   验证：决策件含三态选态+证据；S-重活则出缩面呈报（§10-1）。
   → AC-02。**新路径**：决策件。
+  [✅ 2026-09-21 已完成] 决策件 `docs/reports/p670-fr1b-survey.md`（worktree
+  14522af28）：**S-重活**——auto-edit 契约命中支路②（无类型骨架 fallback
+  :1693，无 pub type+无 db.at）；真体四缺口=伴生模块通用转译（生成器只认
+  db.at）+route A 接线（ApiEndpoint.body 生产不读）+trans/rust.rs 内建面
+  （`Env.get` 大写零覆盖/`fs.tree` 无映射）+a2r-std 新宿主 `fs.tree`（JSON
+  形状须与 VM 逐字节对齐）；~210-350 行跨三 crate 动 trans/ 本体。处置按
+  §5.2 预授权：缩面交付 A 半，P670-D1 登记 KNOWN-DEBT，呈报 §10-1。
 - **T-02** F-R1-A `use api::Db` 条件化（+S-小修态并入时扩面）
   涉及：`generate_main_rs`（api_gen.rs:2577-2620 一带）+ 单测/编译验证。
   验证：`cargo t -p auto-man api_gen`（滤串）+ 生成工程现场 build。
   → AC-01（S-小修态另挂 AC-02 扩面）。依赖：无（可与 T-03 并行；
   S-之间态则依赖 T-01 选态）。
+  [✅ 2026-09-21 已完成] worktree 14522af28：`has_db_type =
+  primary_type_name_pub(api_module).is_some()` 门 legacy 种子路径；无 Db
+  契约退化无状态形态（镜像 db_full_cover 分支）。`cargo t -p auto-man
+  api_gen` 30/30 绿（新测 test_main_rs_stateless_when_no_db_type 双形态+
+  legacy 回归）；编译验证=scratch 工程（组目录）经 generate_api 生成后
+  `cargo build` **Finished 1m26s 零 error**（E0432 消失硬证据；对照=修复前
+  auto-edit 003 review 源级核对在案 E0432 必然）。
 - **T-03** F-W3 code_editor 事件绑定换 `_with`
   涉及：`convert_code_editor`（aura_view_builder.rs:10301-10308）两处
   调用替换 + 单测三类实参 + 041 语料 e2e + vm 侧同愈确认（勘定 lite）。
   验证：`cargo t`（code_editor/事件绑定滤串）+ 041 双模式事件断言。
   → AC-03/AC-04。依赖：无（与 T-02 并行）。
+  [✅ 2026-09-21 已完成] worktree 51421cbe8：两处换 `event_to_message_with
+  (&event, bindings)`（062 T9 逐字镜像；oncontextmenu 按 §5.3 范围不动）。
+  新测 `plan670_code_editor_event_tests` 3/3 绿：循环变量/字面量/点路径
+  三形态+无参等价回归+**041 语料级**（build_example_component 真实树：
+  烘焙 Int(0) 断言+comp.on() 生产派发入口 edits+1/tabs[0].dirty 置真，
+  VmRef 经桥物化读字段）。**红相位双向**：旧码上循环变量+语料双测试红、
+  无参回归绿（两版等价面吻合）。vm_bridge 零 SrcChanged/CursorMoved
+  硬编码 grep 在案=单点烘焙两模式同愈（勘定 lite 收口）。e2e 形态按
+  §10-3 降级条款执行：单测+vm 语料级事件断言双证（语料 e2e=MCP 重装备
+  超界），041 交互级 e2e 归 auto-edit 复跑侧验收（彼仓矩阵）。
 - **T-04** 门禁 + 规范增量 + 交接
   涉及：SD-01/SD-02 落档、`cargo t` → `cargo tf`、跨仓交接注记。
   验证：SD 表对照 diff；门禁基线口径全绿；auto-edit 复跑通知事项
   呈报（含 F-R1-B 态走向）。
   → AC-05。依赖：T-01..T-03。
+  [✅ 2026-09-21 已完成] worktree 49b02517c：SD-01/SD-02 落档+
+  P670-D1 登记；docs_gen 4/4 绿；`cargo t --no-fail-fast` 5324/5344 绿，
+  20 红全数在册豁免（musk p053×4+p054×2=R-25 呈报面；ui::layout×14 环境
+  豁免）**零新增红**；`cargo tf` **3684/3684 绝对全绿**。交接呈报见 §10。
 
 ## 9. 复审记录
 
@@ -243,16 +271,42 @@ db_full_cover 既有两路不回归。
   F-R1-B 尺寸不确定性已由 T-01 先勘定结构兜住）。`next: work`——待
   用户确认 flip `executing` 后建 `D:/autostack/.wt/lang-670/auto-lang`
   worktree 开工。
+- 2026-09-21（work handoff）：`stage: work` | PLAN-670 | rev 1 |
+  `outcome: pass` | code_commit: plan-670-dev@14522af28→51421cbe8→
+  49b02517c（base master b6ed53d61；worktree D:/autostack/.wt/lang-670/
+  auto-lang 零 WIP；组兄弟 auto-down@fba6563 detached 依赖位） |
+  task_ids: T-01..T-04 | evidence: AC-01 ✓（api_gen 30/30+scratch
+  `cargo build` 零 error=E0432 消失+legacy 双路回归）；AC-02 ✓（勘定件
+  docs/reports/p670-fr1b-survey.md：S-重活选态+四缺口证据链+缩面呈报=
+  本条在 S-重活态下的呈报件本身）；AC-03/AC-04 ✓（三形态单测+041 语料
+  烘焙/派发双证+红相位双向）；AC-05 ✓（input 062 守护/059/063/api_gen
+  回归批+cargo t 减在册豁免零新增红+tf 3684/3684 绝对全绿） |
+  blockers: 无阻塞项；**呈报待裁**（§10-1 F-R1-B 拆计划） | next: review
+  （execution_done 已置；F-R1-B 走向不阻塞本批复审——B 半已按预授权缩面）。
 
 ## 10. 待澄清事项
 
 1. **F-R1-B 三态走向**（T-01 产出后呈报）：S-小修/S-之间→批内收口
    （默认授权就地修，AC 扩面）；**S-重活→须用户裁定**（缩面拆计划 or
    债登记节奏）——此项不默认授权，勘定后单独呈报。
+   **〔2026-09-21 勘定呈报〕T-01 选态=S-重活**（判据双条全中：动 trans/
+   本体+~300 行量级，另含 a2r-std 新宿主运行面 fs.tree 与 VM JSON 形状
+   对齐风险；证据链=docs/reports/p670-fr1b-survey.md）。已按 §5.2 预授权
+   执行缩面：本批只交付 A 半（E0432 已消），B 半登记 **P670-D1**
+   （KNOWN-DEBT）待用户裁定拆计划节奏——**非阻塞项**，本批复审/合并
+   不受影响。
 2. **auto-edit 复跑闭环**：同 669 §10-4——merge 后通知 auto-edit 复跑
    （彼仓 PLAN-003 收口面：rust-workspace 轨编译/SrcChanged-CursorMoved
    事件复活）；F-W3 的 18 次 IndexError 症状是否全数消失以彼侧矩阵为准。
+   **〔merge 后动作〕**：通知要点=①rust 轨重跑生成（E0432 消失后编译
+   可过，六端点为空体桩=P670-D1 已知面）；②merged/split 矩阵重跑
+   （SrcChanged/CursorMoved 应收 Int 实参）；③F-W1/F-W2 上游并案面
+   （669 已修实参按名绑定；F-W2 env 注入差异另案）。
 3. **041-auto-edit 语料的 e2e 形态**：现无 041 专属 e2e 基建——T-03 验证
    若需新建测试件，沿 examples e2e 既有模式（如 020/031 fixture 形态），
    建设成本预计中小；若超界（需 MCP/交互重装备）则降级为单测+vm 事件
    断言双证，语料 e2e 记债。
+   **〔2026-09-21 执行裁定〕**按降级条款执行：单测三形态+041 语料级
+   烘焙/派发双证（plan670_code_editor_event_tests::corpus_041_*）；
+   交互级 e2e 归 auto-edit 复跑侧（彼仓矩阵即验收面），**不另记债**
+   （语料级断言已覆盖 builder→派发全链，交互重装备属彼侧常态验收）。
