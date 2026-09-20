@@ -847,6 +847,10 @@ fn generate_tsconfig() -> String {
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    // PLAN-668 R-21（SD-01，P660-D1/P657-D2② 根修）：main.ts 用
+    // `import.meta.env`（Vite 注入全局），无 vite/client 类型则 vue-tsc
+    // TS2339——全部示例 `auto build` 的 pnpm build 面同红。
+    "types": ["vite/client"],
     "jsx": "preserve",
     "strict": true,
     "noUnusedLocals": false,
@@ -4960,6 +4964,17 @@ export default router
 pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building Vue project (backend: vue)".bright_cyan());
     let project = prepare_vue_sources(root_dir)?;
+
+    // PLAN-668 R-22（SD-02，P657-D2① 阶段序根修）：src/auto-sources.ts
+    // 此前仅 `auto run` 驱动写入（write_auto_sources_ts 的 run 路径调用
+    // 点），build 阶段缺位——`auto build` 的 vue-tsc 面上 overlay.ts 的
+    // `import { AUTO_SOURCES } from '../auto-sources'` 落 TS2307。build
+    // 阶段同样产出（内容 hash 防抖，与 run 路径同款）。
+    {
+        let front_dir = resolve_front_dir(root_dir);
+        let vue_root = root_dir.join("gen").join("front").join("vue");
+        write_auto_sources_ts(&front_dir, &vue_root);
+    }
 
     // Plan 413: ensure the CodeEditor CodeMirror shell exists (write-if-missing).
     project.ensure_code_editor_component()?;
