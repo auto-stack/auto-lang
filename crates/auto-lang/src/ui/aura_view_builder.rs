@@ -10972,6 +10972,18 @@ let tabs_inner = View::Row {
                 let r = self.resolve_expr_to_value(right, bindings)?;
                 Some(Value::Bool(!matches!(&r, Value::Bool(false) | Value::Nil)))
             }
+            // PLAN-077 (auto-musk ReportCard/ToolGateCard computed `??`): left
+            // resolves to a non-Nil value → left; otherwise (resolution miss or
+            // Nil) → right. Mirrors the VM bytecode `??` semantics for the
+            // view-build fast path; previously fell to `_ => None`, voiding
+            // any computed containing `??` and rendering the literal
+            // "${name}" placeholder in VM snapshots.
+            Expr::NullCoalesce(left, right) => {
+                match self.resolve_expr_to_value(left, bindings) {
+                    Some(v) if !matches!(v, Value::Nil) => Some(v),
+                    _ => self.resolve_expr_to_value(right, bindings),
+                }
+            }
             // Plan 053 后续(ash-gui VM): string concat via `+` (e.g. `"~" + .store.cwd...`
             // in cwd_display, `"⚙ " + .store.job_list.len()` in jobs_label). When either
             // operand resolves to a string, concatenate display forms.
@@ -16976,6 +16988,45 @@ mod tests {
         assert!(
             !builder.eval_condition_with("store.authenticated", &Bindings::new()),
             "token=nil: bare truthy check must be FALSE"
+        );
+    }
+
+    /// PLAN-077 (auto-musk ReportCard/ToolGateCard): computed 体内的 `??`
+    /// (NullCoalesce) 此前落到 `_ => None`，整个 computed 求值为空 → 文本位
+    /// 渲染裸 "${name}" 占位。期望：左值非 Nil 取左值；Nil/缺字段落右值。
+    #[test]
+    fn test_plan077_computed_null_coalesce() {
+        let widget = make_test_widget("App", vec![AuraStateDef {
+            name: "runId".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str("".into()),
+            decorators: vec![],
+        }]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let computed = vec![crate::aura::AuraComputed {
+            name: "label".to_string(),
+            expr: Expr::NullCoalesce(
+                Box::new(Expr::Dot(Box::new(Expr::Ident(".".into())), "runId".to_string().into())),
+                Box::new(Expr::Str("—".into())),
+            ),
+        }];
+
+        // 有值：取左值
+        bridge.write_state("runId", Value::Str("run-fixture".into())).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App").with_computed(&computed);
+        assert_eq!(
+            builder.eval_computed("label", &Bindings::new()),
+            Some(Value::Str("run-fixture".into())),
+            "non-Nil left side must win"
+        );
+
+        // Nil：落右值默认
+        bridge.write_state("runId", Value::Nil).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App").with_computed(&computed);
+        assert_eq!(
+            builder.eval_computed("label", &Bindings::new()),
+            Some(Value::Str("—".into())),
+            "Nil left side must fall through to the default"
         );
     }
 
