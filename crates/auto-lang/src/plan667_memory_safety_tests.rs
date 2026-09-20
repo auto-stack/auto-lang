@@ -368,9 +368,13 @@ mod plan667_a2r_tests {
 
     /// F-05：`.go`（Send 边界）捕获——ArcMutex 降级是已知坏 fallback，
     /// 必须明确诊断而不是 `.clone()` 伪装支持。
+    /// REVIEW-667 R-1 修正：`.go` 后缀是 VM-dest 专属解析路径——a2r
+    /// **解析层即拒是 Send 边界的实际生效层**；emit_borrow 的 ArcMutex
+    /// 拒绝是 AST 注入流的第二层防线。断言收紧为大小写敏感
+    /// "Go"/Send/Arc 专名（旧 `contains("go")` 空泛命中 "got Arrow"）。
     #[test]
     fn plan667_a2r_go_capture_rejected() {
-        let src = "fn main() {\n    let s = \"abc\"\n    let h = fn() -> str { s }\n    h.go\n    let y = s.view\n}\n";
+        let src = "fn main() {\n    let s = \"abc\"\n    s.go\n    let y = s.view\n}\n";
         let result = transpile_rust("plan667_go_capture", src);
         match result {
             Ok(mut sink) => {
@@ -384,8 +388,8 @@ mod plan667_a2r_tests {
             Err(e) => {
                 let err = e.to_string();
                 assert!(
-                    err.contains("Send") || err.contains("Arc") || err.contains("go"),
-                    "rejection must name the Send/Arc boundary, got: {}",
+                    err.contains("Send") || err.contains("Arc") || err.contains("Go"),
+                    "rejection must name the Send/Arc boundary or the Go token (case-sensitive), got: {}",
                     err
                 );
             }

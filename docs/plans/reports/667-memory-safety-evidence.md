@@ -78,7 +78,7 @@
 | plan667_a2r_unknown_stmt_fail_closed | try 内闭包捕获 → 升级 | **红（`_ => {}` 静默）** | 绿 |
 | plan667_a2r_reply_escapes | reply s → 逃逸 | 绿 | 绿 |
 | plan667_a2r_mut_on_escaped_binding_rejected | `.mut` 于逃逸绑定 → Auto 侧错误 | **红（发 `.clone()`）** | 绿（明确诊断） |
-| plan667_a2r_go_capture_rejected | `.go` Send 捕获 → 拒绝或真 Arc | 绿（拒绝路径） | 绿（ArcMutex → 明确诊断） |
+| plan667_a2r_go_capture_rejected | `.go` Send 捕获 → 拒绝或真 Arc | **空泛绿（R-1：源解析败，contains("go") 命中 "got Arrow"）** | 绿（真实边界：a2r 解析层即拒 `.go`——"got Go"；emit_borrow ArcMutex 拒绝为 AST 注入流第二层） |
 | plan667_a2r_plain_view_still_borrows | 非逃逸 `.view` 仍 `&s`（正例不变） | 绿 | 绿 |
 | plan667_a2r_captured_binding_view_not_borrowed | 捕获绑定 `.view` 走 clone 通路 | **红（发 `&`）** | 绿（.clone()） |
 | plan667_a2r_positive_borrow_compile_run（#[ignore]，rustc 实编） | 正例真实编译+运行输出 hello | — | **绿（rustc 0.9s 编译+运行通过）** |
@@ -144,7 +144,7 @@ rustc 实编门禁命令：`cargo nextest run -p auto-lang --lib --features test
 | 非逃逸绑定 `.view`/`.mut` | 已验证支持（`&`/`&mut`；rustc 实编正例） |
 | 闭包读/写捕获（含嵌套/遮蔽/Try/Reply/未知形式 fail-closed） | 已验证支持（升级 Clone/write_captures；写捕获 Rc 通路） |
 | `.mut` 于逃逸（Clone/RcRefCell）绑定 | 明确拒绝（Auto 诊断；VM 同场景运行期拒绝，语义对齐） |
-| `.view`/`.mut` 于 Send 边界捕获（ArcMutex） | 明确拒绝（Arc 声明改写未实现，Plan 667 边界） |
+| `.go` 后缀（Send 捕获源） | 明确拒绝——a2r 解析层即拒（VM-dest 专属语法；R-1 修正后探针锁定）；emit_borrow ArcMutex 拒绝为第二层（Arc 声明改写未实现） |
 | 读捕获逃逸出函数（返回闭包） | rustc 边界（E0373 拒绝；声明边界非有害 fallback） |
 | 完整 NLL/lifetime 检查 | 不属于本次保证（下一版内存模型另案） |
 
