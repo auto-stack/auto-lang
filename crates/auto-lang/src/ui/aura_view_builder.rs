@@ -18824,3 +18824,69 @@ mod plan534_side_panel_tests {
     }
 
 }
+
+// ── PLAN-080 定罪探针：musk 消息行 rowClass 的 IR 解析 ──────────────────
+#[cfg(test)]
+mod plan080_rowclass_probe_tests {
+    use super::*;
+    use crate::aura::AuraWidget;
+    use crate::ui::style::StyleClass;
+
+    fn widget() -> AuraWidget {
+        AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "Probe".to_string(),
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    #[test]
+    fn musk_rowclass_max_width_pct_survives_ir() {
+        let w = widget();
+        let bridge = VmBridge::new(&w).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Probe");
+        let node = AuraNode::Element {
+            tag: "col".to_string(),
+            props: HashMap::from([(
+                "style".to_string(),
+                AuraPropValue::Expr(Expr::Str(
+                    "flex flex-col gap-[3px] max-w-[70%] self-end items-end".into(),
+                )),
+            )]),
+            events: HashMap::new(),
+            span: None,
+            debug_id: None,
+            children: vec![],
+        };
+        let view = builder.build(&node);
+        match view {
+            View::Column { style: Some(s), .. } => {
+                assert!(
+                    s.classes.iter().any(|c| matches!(c, StyleClass::MaxWidthPct(70.0))),
+                    "MaxWidthPct(70) 应在场: {:?}",
+                    s.classes
+                );
+            }
+            other => panic!("非 Column: {other:?}"),
+        }
+    }
+}

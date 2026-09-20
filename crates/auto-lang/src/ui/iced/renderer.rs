@@ -1868,11 +1868,11 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                 col = col.width(iced::Length::Fill);
             }
             col = col.max_width(mw);
-        } else if is.max_width_pct.is_some() && is.width.is_none() {
-            // PLAN-077: max-w-[N%] 无显式 width 时同 px max-width 先吃满父宽，
-            // 实际收窄由尾部 MaxWidthPct 委托 widget 在 layout 期完成。
-            col = col.width(iced::Length::Fill);
         }
+        // PLAN-080 T-01: max-w-[N%] 不再强制 Fill——CSS max-width 语义是
+        // 内容贴合 + 上限收窄（musk 消息行实机对拍实证：强制 Fill 令气泡
+        // 恒占满 70% 宽，短消息也被撑开，与 vue 轨 content-hug 分叉）。
+        // 收窄由尾部 MaxWidthPct 委托 widget 在 layout 期完成。
         // Height — skip when justify needs it on container instead
         let needs_v_align = matches!(is.justify_content, Some(IcedJustify::Center | IcedJustify::End));
         if !needs_v_align {
@@ -2041,8 +2041,13 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     } else if col_max_width.is_some() || col_max_width_pct.is_some() {
         let mut cont = container(col.padding(pd));
         if let Some(ref is) = iced_style {
-            let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
-                || is.width.is_none();
+            // PLAN-080 T-01: pct-only（无 px max-width、无显式 width）不
+            // Fill——Shrink 抱合 + 尾部 pct 收窄 = CSS 语义；px max-width
+            // 保留既有 Fill 块级语义（Container::max_width 收 Fill 子件）。
+            let pct_only = col_max_width.is_none() && col_max_width_pct.is_some() && is.width.is_none();
+            let col_width_fill = !pct_only
+                && (matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                    || is.width.is_none());
             if col_width_fill {
                 cont = cont.width(iced::Length::Fill);
             } else if let Some(ref w) = is.width {
@@ -2093,7 +2098,29 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     // PLAN-077: max-w-[N%] 百分比上限——像素上限走 Container::max_width 快路径，
     // 百分比在最终元素最外层套委托 widget（layout 期按父级 offered 宽度收窄）。
     match col_max_width_pct {
-        Some(pct) => crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into(),
+        Some(pct) => {
+            let capped: iced::Element<'static, M> =
+                crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into();
+            // PLAN-080 T-01: self-end/start/center 在 pct 臂的对齐抱合——
+            // Fill 容器 + align_x（A6 items-end 同款模式）。此前 pct 分支
+            // 丢 align_self（musk 用户消息行 self-end 失效贴左，实机对拍
+            // x=429 vs vue 827 定罪）。
+            match iced_style.as_ref().and_then(|is| is.align_self) {
+                Some(crate::ui::style::iced_adapter::IcedAlign::End) => container(capped)
+                    .width(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .into(),
+                Some(crate::ui::style::iced_adapter::IcedAlign::Start) => container(capped)
+                    .width(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Left)
+                    .into(),
+                Some(crate::ui::style::iced_adapter::IcedAlign::Center) => container(capped)
+                    .width(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .into(),
+                _ => capped,
+            }
+        }
         None => el,
     }
 }
