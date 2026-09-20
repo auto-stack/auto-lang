@@ -852,3 +852,7 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 #[test] fn test_99_short_circuit_001_and_or() { test_vm("99_short_circuit/001_and_or_short_circuit").unwrap(); }
 #[test] fn test_99_short_circuit_002_calc_eval_expr() { test_vm("99_short_circuit/002_calc_eval_expr").unwrap(); }
 #[test] fn test_99_short_circuit_003_negative_index_guard() { test_vm("99_short_circuit/003_negative_index_guard").unwrap(); }
+// === 99_plan664（PLAN-664 U-2/U-3：jade 消费侧值域/strict 域词位锚定——
+// D-11 typeof 值域分派组合词位 + Array.isArray 全域；D-12 session KV
+// str 域读回链 storage.set→get→Json.parse→字段直读）===
+#[test] fn test_99_plan664_001_value_lexemes() { test_vm("99_plan664/001_value_lexemes").unwrap(); }

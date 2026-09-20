@@ -1,0 +1,44 @@
+// PLAN-664 U-2/U-3: jade 消费侧值域/strict 域词位锚定（jade-garden D-11/D-12
+// 升级前置——properties 编辑面的 typeof 值域分派 + graph settings 的
+// session KV str 域读回链）。
+//
+// 勘定结论（2026-09-20）：
+// - Array.isArray：PLAN-057 T6 全域落地（JS 语义——仅 ListData 真，对象/
+//   字符串/标量假）。
+// - 值域 typeof 分派：无 typeof DSL 关键字（jade web 侧走 TS ext 桥）；
+//   VM 轨组合词位 = Json.type_of(JSON.stringify(v))（stringify 值域
+//   PLAN-057 T11 + type_of 串域 Plan 446 D1 双态）。
+// - session KV 读回链：storage.set(k, JSON.stringify(v)) → storage.get(k)
+//   → Json.parse → 字段直读（Plan 446 D1 物化）。
+fn main() {
+    // ── U-2: Array.isArray 全域 ──
+    let xs = [1, 2, 3]
+    assert_eq(Array.isArray(xs), true)
+    let obj = { kind: "note", depth: 2 }
+    assert_eq(Array.isArray(obj), false)
+    assert_eq(Array.isArray("list"), false)
+    assert_eq(Array.isArray(7), false)
+
+    // ── U-2: 值域 typeof 分派组合词位 ──
+    assert_eq(Json.type_of(JSON.stringify(obj)), "object")
+    assert_eq(Json.type_of(JSON.stringify(xs)), "array")
+    assert_eq(Json.type_of(JSON.stringify("hi")), "string")
+    assert_eq(Json.type_of(JSON.stringify(true)), "bool")
+    assert_eq(Json.type_of(JSON.stringify(42)), "number")
+
+    // ── U-3: 值域 stringify 形态 ──
+    assert_eq(JSON.stringify("hi"), "\"hi\"")
+    assert_eq(JSON.stringify(xs), "[1,2,3]")
+
+    // ── U-3: session KV str 域读回链（jade graph settings 持久化形态）──
+    let settings = { radius: 24, show_isolated: true }
+    storage.set("p664_probe_settings", JSON.stringify(settings))
+    let raw = storage.get("p664_probe_settings")
+    let back = Json.parse(raw)
+    assert_eq(back.radius, 24)
+    assert_eq(back.show_isolated, true)
+    storage.remove("p664_probe_settings")
+    assert_eq(storage.get("p664_probe_settings"), "")
+
+    print("99_plan664_value_lexemes: all assertions passed")
+}
