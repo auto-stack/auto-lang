@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-663
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-viewport-boundary
 author: [agent]
 created_at: 2026-09-20
@@ -165,6 +165,14 @@ reviewed_commit: worktree plan-663-dev tip 3fba31cbe（含 F1/F2 修正）| base
 acceptance_results: AC-01 pass（fresh 复跑 test_parse_plan527_t3_layout_extensions 绿+diff hunk 审计：Screen/Full 分离+Fill 缺省臂）；AC-02 pass（p663_ 9/9 fresh 复跑+pre-pass hunk 审计：px-only/嵌套换锚/轴独立/下潜链）；AC-03..06 pass（五连截图：020 桌面 1789881638196/平板 1789881640176/027 p663_027_take2/001 1789881647208/独立窗 …2562978+终版复拍 p663_020_final_c2——以实现会话所摄为证，vue 臂对拍子方法省略：vue 臂零改动零影响，VM 截图已证 AC 本体）；AC-07 pass（p663_margin_y_auto_* 两测）；AC-08 pass（tf 2558/2560 红集=在册预存红差集空；check -p auto 绿） |
 findings: F-663-R1(已修,commit 3fba31cbe 前)=误夹带生成物嵌套拷贝 crates/a2r-actor-tests/a2r-actor-tests/** 入 T-01 提交——已 git rm；F-663-R2(已修,3fba31cbe)=expand_margin_y_auto_walk 残留死代码 style_owned；F-663-R3(非阻塞,记录)=b69f4f063 为含 F1 内容的过渡提交,随 F1 删除在树层面自愈,历史保留；规范增量落点由计划草案的 project.md 内联修正为新档 viewport-boundary.md（frontmatter 已同步定稿） |
 evidence: scratch/shots/*.png（六张验收截图,worktree 清理后以本记录文字描述+commit 链为持久凭据）| next: merge。
+
+（merge 2026-09-20，PLAN-663:r1）stage: merge | outcome: **pass** |
+- **prepared**: reviewed 基线 608399943..3fba31cbe（8 commits）；canonical spec=docs/specs/widgets/viewport-boundary.md（c9f993f89 版冻结）+project.md 模块行；账本投影目标=.autoos/specs.json designs P663-1 + reviews P663-2（外科文本插入,仅 +28 行,读回校验过）；INDEX.md 再生（26 projects,widgets 5→6 模块）。
+- **landed**: rebase master（608399943→e85eba3f7 基上重放,range-diff 8/8 全 `=` 等价）后 `git merge --ff-only plan-663-dev` 零合并提交；master tip=d0dfea599（=delivery commit,账本 prepared 同提交）。old→new 映射：de215d7d0→9a17de0dd、a70fb8194→82ec048af、c76a70be6→1fbb548a8、b69f4f063→6aa3e8ada、eaaf22fc0→ad1f0e055、c9f993f89→dd9be950b、e6d6a0350→e03a67723、3fba31cbe→f634aee19。wt-guard clean 前置通过。
+- **ledger_refreshed**: .autoos/specs.json P663-1（designs,契约两条,file=widgets/viewport-boundary.md）+P663-2（reviews,收据,file=本档归档路径）双条目读回 2/2；INDEX.md 26 projects/6 modules。
+- **archived**: docs/plans/archive/663-vm-viewport-boundary.md（本提交,git mv+status=archived,completion_kind=delivered）。
+- **cleaned**: （清理提交补记）wt-guard 双净（auto-lang 主位+auto-down 依赖位）；worktree lang-663/auto-lang 与 lang-663/auto-down(detached d1a83b6)移除、分支 plan-663-dev 删除、组目录 lang-663 移除（scratch 验收截图不入库,证据以本收据文字+commit 链为准）。
+completion_kind: delivered
 
 ## 待澄清事项
 
