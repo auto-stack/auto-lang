@@ -673,3 +673,121 @@ pub fn boom() str {
     assert!(body.contains("PANIC kaboom-p658"), "log ring panic: {body}");
     assert!(body.contains("RESTART"), "log ring restart: {body}");
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-037 T-01: 运行期增删 API（桌面按需装载/窗关卸载）
+// ---------------------------------------------------------------------------
+
+/// 空配置启动（懒启门基态：零 session）→ add_session 装载可服务 →
+/// 同 id 重复 add 幂等拒绝 → remove_app 摘表 404 + session 线程 join
+/// 干净退出 → 复 add 重建可用。base_url_for 格式断言（前缀化供给源）。
+#[test]
+fn http_e2e_back_proxy_runtime_add_remove_and_join_exit() {
+    let dir = write_fixture("p037-rt");
+    let config = BackProxyConfig {
+        port: 4018,
+        sessions: Vec::new(),
+        #[cfg(feature = "ui")]
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("start idle proxy (lazy gate)");
+    assert!(!proxy.has_session("fixture"), "boot 零 session（懒启门）");
+
+    // base_url_for：前缀化 root 唯一供给源格式。
+    assert_eq!(
+        proxy.base_url_for("fixture"),
+        format!("http://127.0.0.1:{}/apps/fixture", proxy.port)
+    );
+
+    // add → 路由 200（跨请求态存续同 start 形态）。
+    proxy
+        .add_session(SessionSpec {
+            app_id: "fixture".to_string(),
+            back_entry: dir.join("api.at"),
+        })
+        .expect("runtime add_session");
+    assert!(proxy.has_session("fixture"));
+    let (status, body) = http_request(proxy.port, "GET", "/apps/fixture/api/notes", None);
+    assert_eq!(status, 200, "after add, body: {body}");
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&body)
+            .expect("notes json")
+            .as_array()
+            .is_some_and(|a| !a.is_empty()),
+        "seeded entries via runtime-added session: {body}"
+    );
+
+    // 同 id 重复 add = 幂等拒绝。
+    let dup = proxy.add_session(SessionSpec {
+        app_id: "fixture".to_string(),
+        back_entry: dir.join("api.at"),
+    });
+    assert!(dup.is_err(), "duplicate add rejected");
+
+    // remove → 路由 404（未知 app 面）+ 线程 join 干净退出。
+    let join = proxy.remove_app("fixture").expect("join handle returned");
+    let (status, body) = http_request(proxy.port, "GET", "/apps/fixture/api/notes", None);
+    assert_eq!(status, 404, "after remove, body: {body}");
+    assert!(body.contains("unknown app"), "route table detached: {body}");
+    join.join().expect("session thread exits cleanly on drop-sender");
+    assert!(!proxy.has_session("fixture"));
+
+    // 复 add 重建可用（关窗复 launch 语义）。
+    proxy
+        .add_session(SessionSpec {
+            app_id: "fixture".to_string(),
+            back_entry: dir.join("api.at"),
+        })
+        .expect("re-add after remove");
+    let (status, _) = http_request(proxy.port, "GET", "/apps/fixture/api/notes", None);
+    assert_eq!(status, 200, "re-added session serves again");
+}
+
+/// 运行期原生 media 增删：add_native_media 注册 → scan/stream 直答 →
+/// remove_app（无 session 形态返回 None）→ 路由 404。
+#[cfg(feature = "ui")]
+#[test]
+fn http_e2e_back_proxy_runtime_native_media_add_remove() {
+    let dir = std::env::temp_dir().join(format!("p037-back-proxy-media-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("media dir");
+    let payload: Vec<u8> = b"ID3-p037-runtime-mp3-payload".to_vec();
+    std::fs::write(dir.join("song.mp3"), &payload).expect("write mp3");
+
+    let config = BackProxyConfig {
+        port: 4028,
+        sessions: Vec::new(),
+        native_media: Vec::new(),
+    };
+    let proxy = start(config).expect("start idle proxy (media)");
+
+    // 未注册面：404（session 分发回落——unknown app）。
+    let (status, _) = http_request(proxy.port, "GET", "/apps/020-rt/api/media/scan", None);
+    assert_eq!(status, 404, "unregistered media app is 404");
+
+    // 运行期注册 → scan 200 + 绝对 url（port 为运行期实例实际口）。
+    proxy.add_native_media(crate::back_proxy::NativeMediaApp {
+        app_id: "020-rt".to_string(),
+        media_root: Some(dir.to_string_lossy().into_owned()),
+    });
+    let (status, body) = http_request(proxy.port, "GET", "/apps/020-rt/api/media/scan", None);
+    assert_eq!(status, 200, "runtime media scan, body: {body}");
+    let scan: serde_json::Value = serde_json::from_str(&body).expect("scan json");
+    let entries = scan["entries"].as_array().expect("entries");
+    assert_eq!(entries.len(), 1);
+    let url = entries[0]["url"].as_str().expect("url").to_string();
+    assert!(
+        url.starts_with(&format!("http://127.0.0.1:{}/apps/020-rt/api/media/stream/", proxy.port)),
+        "absolute url on runtime port: {url}"
+    );
+    // 字节保真（stream 直答）。
+    let stream_path = url.trim_start_matches(&format!("http://127.0.0.1:{}", proxy.port));
+    let (status, _headers, bytes) = http_request_raw(proxy.port, "GET", stream_path, None, &[]);
+    assert_eq!(status, 200);
+    assert_eq!(bytes, payload, "byte fidelity via runtime media route");
+
+    // remove_app：无 session → None；media 路由摘除 → 404。
+    assert!(proxy.remove_app("020-rt").is_none(), "no session → no join handle");
+    let (status, body) = http_request(proxy.port, "GET", "/apps/020-rt/api/media/scan", None);
+    assert_eq!(status, 404, "media route detached, body: {body}");
+}

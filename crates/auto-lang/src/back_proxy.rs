@@ -16,6 +16,11 @@
 //!
 //! 模块位置：crate 根（与 `autovm_daemon` Plan 269 同层）——纯 VM 基建
 //! 零 ui 依赖，un-gated 保证 `cargo th`（只开 test-http-e2e）可测。
+//!
+//! PLAN-037: 承载层自画廊"boot 期一次性全量注册"扩展为**运行期增删**
+//! （`RunningProxy::add_session/add_native_media/remove_app/base_url_for`）
+//! ——桌面宿主 launch 时按需装载、窗关卸载（生命周期翻转，路由/SSE/原生
+//! media 语义零变化；见 docs/specs/auto-lang/vm/back-proxy.md 增补节）。
 
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
@@ -81,12 +86,22 @@ pub struct RunningProxy {
     shared: Arc<ProxyShared>,
 }
 
+/// PLAN-037 T-01: 一个已装载 session 的通道 + 线程句柄（remove_app 取出
+/// JoinHandle 供测试 join 断言线程退出；生产侧直接 drop = 分离线程）。
+struct SessionHandle {
+    tx: mpsc::Sender<ProxyRequest>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
 struct ProxyShared {
-    /// app_id → session 请求通道。
-    sessions: HashMap<String, mpsc::Sender<ProxyRequest>>,
-    /// PLAN-658 T-03: 宿主原生 media 路由状态（cfg ui）。
+    /// app_id → session 请求通道。PLAN-037 T-01: listener 连接线程与宿主
+    /// 线程（运行期 add/remove）双写，Mutex 化（658 boot 期单写者免锁形态
+    /// 随桌面按需装载退役）。
+    sessions: std::sync::Mutex<HashMap<String, SessionHandle>>,
+    /// PLAN-658 T-03: 宿主原生 media 路由状态（cfg ui）。PLAN-037 T-01:
+    /// 同上 Mutex 化（add_native_media/remove_app 运行期写）。
     #[cfg(feature = "ui")]
-    native_media: HashMap<String, NativeMediaState>,
+    native_media: std::sync::Mutex<HashMap<String, NativeMediaState>>,
 }
 
 /// PLAN-658 T-03: 一个 app 的原生 media 服务面（惰性索引 + 绝对 URL base）。
@@ -165,7 +180,7 @@ pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
         let entry = spec.back_entry.clone();
         let spawn_name = format!("back-proxy-session:{app_id}");
         let spawn_app_id = app_id.clone();
-        std::thread::Builder::new()
+        let join = std::thread::Builder::new()
             .name(spawn_name)
             .stack_size(16 * 1024 * 1024)
             .spawn(move || session_main(spawn_app_id, entry, rx))
@@ -175,13 +190,13 @@ pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
                     format!("spawn session thread for {app_id} failed: {e}"),
                 )
             })?;
-        sessions.insert(app_id, tx);
+        sessions.insert(app_id, SessionHandle { tx, join: Some(join) });
     }
 
     let shared = Arc::new(ProxyShared {
-        sessions,
+        sessions: std::sync::Mutex::new(sessions),
         #[cfg(feature = "ui")]
-        native_media: {
+        native_media: std::sync::Mutex::new({
             let base = format!("http://127.0.0.1:{port}");
             let mut map = HashMap::new();
             for app in &config.native_media {
@@ -197,7 +212,7 @@ pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
                 );
             }
             map
-        },
+        }),
     });
     let listener_shared = shared.clone();
     std::thread::Builder::new()
@@ -231,7 +246,78 @@ fn bind_with_fallback(want: u16) -> std::io::Result<(TcpListener, u16)> {
 impl RunningProxy {
     /// app 是否已注册 session（020 这类仅宿主原生路由的 app 无 session）。
     pub fn has_session(&self, app_id: &str) -> bool {
-        self.shared.sessions.contains_key(app_id)
+        self.shared.sessions.lock().unwrap().contains_key(app_id)
+    }
+
+    /// PLAN-037 T-01: 运行期装载一个 app 的 back 链为 VM session（桌面
+    /// launch 时按需供给；spawn 形态与 start 同款——16MB 栈 + 线程名）。
+    /// 同 app_id 重复 add = 幂等拒绝（双窗共享由调用侧引用计数保证，
+    /// 装载面单例）。
+    pub fn add_session(&self, spec: SessionSpec) -> std::io::Result<()> {
+        let mut sessions = self.shared.sessions.lock().unwrap();
+        if sessions.contains_key(&spec.app_id) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("back-proxy: session for `{}` already registered", spec.app_id),
+            ));
+        }
+        let (tx, rx) = mpsc::channel::<ProxyRequest>();
+        let spawn_app_id = spec.app_id.clone();
+        let entry = spec.back_entry.clone();
+        let join = std::thread::Builder::new()
+            .name(format!("back-proxy-session:{}", spec.app_id))
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || session_main(spawn_app_id, entry, rx))
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("spawn session thread for {} failed: {e}", spec.app_id),
+                )
+            })?;
+        sessions.insert(spec.app_id.clone(), SessionHandle { tx, join: Some(join) });
+        Ok(())
+    }
+
+    /// PLAN-037 T-01: 运行期注册宿主原生 media 路由（resolve_root 语义
+    /// 同 start——None → env → 平台默认）。同 id 重复 add 覆盖旧态（索引
+    /// 一并丢弃重建）。
+    #[cfg(feature = "ui")]
+    pub fn add_native_media(&self, app: NativeMediaApp) {
+        let base = format!("http://127.0.0.1:{}", self.port);
+        let root = crate::ui::media_service::resolve_root(app.media_root.as_deref());
+        let app_id = app.app_id.clone();
+        self.shared.native_media.lock().unwrap().insert(
+            app_id,
+            NativeMediaState {
+                app_id: app.app_id,
+                root,
+                base,
+                index: std::sync::Mutex::new(None),
+            },
+        );
+    }
+
+    /// PLAN-037 T-01: 运行期卸载一个 app 的全部供给面（session 表项 +
+    /// 原生 media 路由；摘表 drop sender → session 线程 `for req in rx`
+    /// 自然退出）。返回 session 线程 JoinHandle 供测试 join 断言退出；
+    /// 无 session（仅原生 media 的 020 形态）返回 None，生产侧直接 drop。
+    pub fn remove_app(&self, app_id: &str) -> Option<std::thread::JoinHandle<()>> {
+        let join = self
+            .shared
+            .sessions
+            .lock()
+            .unwrap()
+            .remove(app_id)
+            .and_then(|mut handle| handle.join.take());
+        #[cfg(feature = "ui")]
+        self.shared.native_media.lock().unwrap().remove(app_id);
+        join
+    }
+
+    /// PLAN-037 T-01: 前缀化 root 唯一供给源——`http://127.0.0.1:{port}/
+    /// apps/{id}`（桌面 launch 期对 spec.code 内存态改写的 base）。
+    pub fn base_url_for(&self, app_id: &str) -> String {
+        format!("http://127.0.0.1:{}/apps/{app_id}", self.port)
     }
 }
 
@@ -393,9 +479,18 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
             };
         }
     }
-    let Some(tx) = shared.sessions.get(&app_id) else {
+    // PLAN-037 T-01: sessions 已 Mutex 化——锁内克隆 sender 即放（send
+    // 非阻塞，reply 等待不持锁）。
+    let tx = shared
+        .sessions
+        .lock()
+        .unwrap()
+        .get(&app_id)
+        .map(|handle| handle.tx.clone());
+    let Some(tx) = tx else {
         return ProxyReply::json(404, error_json(&format!("back-proxy: unknown app `{app_id}`")));
-    };    let (reply_tx, reply_rx) = mpsc::channel::<ProxyReply>();
+    };
+    let (reply_tx, reply_rx) = mpsc::channel::<ProxyReply>();
     let sent = tx.send(ProxyRequest {
         method: req.method.clone(),
         path: sub_path,
@@ -512,14 +607,16 @@ fn error_json(msg: &str) -> String {
 #[cfg(feature = "ui")]
 impl ProxyShared {
     /// `/api/media/scan` + `/api/media/stream/:id` 直答。未命中返回 None
-    /// （回落 session 分发）。
+    /// （回落 session 分发）。PLAN-037 T-01: 表已 Mutex 化——命中即持锁
+    /// 服务（per-app 粒度；media_stream 的文件 IO 同款既有 index 锁语义）。
     fn try_native_media(
         &self,
         app_id: &str,
         sub_path: &str,
         req: &ParsedRequest,
     ) -> Option<ProxyReply> {
-        let state = self.native_media.get(app_id)?;
+        let media = self.native_media.lock().unwrap();
+        let state = media.get(app_id)?;
         if sub_path == "/api/media/scan" && req.method == "GET" {
             return Some(Self::media_scan(state));
         }
