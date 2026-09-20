@@ -75,6 +75,15 @@ pub struct AppRegistryEntry {
     /// 小写带点，如 ".txt"）——`open_with` 执行臂的关联校验面；空 = 不参与
     /// 关联解析（声明即契约，见 docs/specs/auto-man/project.md PLAN-016 节）。
     pub opens: Vec<String>,
+    /// PLAN-037：pac `media_root:` 声明（原值透传不反转义——画廊
+    /// `pac_media_root` 同语义，Windows 容忍双反斜杠分隔符）。launch 期
+    /// 后端供给决策树的 capability 臂（proxy 原生 media 路由的根）；
+    /// None = 不参与原生 media 供给。
+    pub media_root: Option<String>,
+    /// PLAN-037：back api.at 入口探测（`<dir>/src/back/api.at` 存在即记；
+    /// launch 期 session 臂谓词 `back_needs_session` 的读源）。None = 无
+    /// back 入口（纯前端）。
+    pub back_entry: Option<PathBuf>,
 }
 
 /// PLAN-016 T-07：pac `opens:` 值规范化——逗号分隔扩展名，剥空白与点
@@ -191,6 +200,11 @@ fn entry_for_dir(
             .get("window")
             .is_some_and(|w| w.eq_ignore_ascii_case("fit")),
         opens: fields.get("opens").map(|v| normalize_opens(v)).unwrap_or_default(),
+        media_root: fields.get("media_root").cloned(),
+        back_entry: {
+            let entry = dir.join("src").join("back").join("api.at");
+            entry.is_file().then_some(entry)
+        },
         desktop_visible: match fields.get("desktop").map(|v| v.to_ascii_lowercase()) {
             Some(v) if v == "true" => true,
             Some(v) if v == "false" => false,
@@ -1331,6 +1345,47 @@ desktop_exe: \"target/release/native-app.exe\"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// PLAN-037：pac `media_root:` 入册（原值透传）+ back api.at 入口探测
+    /// （`src/back/api.at` 存在即记、缺席 None）。
+    #[test]
+    fn scan_picks_up_media_root_and_back_entry() {
+        let root = std::env::temp_dir().join("autoui-037-registry-back-provision");
+        let _ = std::fs::remove_dir_all(&root);
+        // 020 形态：media_root 声明 + back api.at 存在。
+        let with_back = root.join("media-app");
+        std::fs::create_dir_all(with_back.join("src").join("back")).unwrap();
+        std::fs::create_dir_all(with_back.join("src").join("front")).unwrap();
+        std::fs::write(with_back.join("src").join("back").join("api.at"), "pub fn status() int { return 1 }").unwrap();
+        std::fs::write(with_back.join("src").join("front").join("app.at"), "widget A {}").unwrap();
+        std::fs::write(
+            with_back.join("pac.at"),
+            "name: \"m\"\nmedia_root: \"E:\\\\Music\\\\\"\n",
+        )
+        .unwrap();
+        // 纯前端形态：两者皆无。
+        let plain = root.join("plain-app");
+        std::fs::create_dir_all(&plain).unwrap();
+        std::fs::write(plain.join("app.at"), "widget B {}").unwrap();
+        std::fs::write(plain.join("pac.at"), "name: \"p\"\n").unwrap();
+
+        let apps = scan_apps(&root, &ScanOptions::default());
+        let media = apps.iter().find(|a| a.id == "media-app").unwrap();
+        assert_eq!(
+            media.media_root.as_deref(),
+            Some("E:\\\\Music\\\\"),
+            "media_root 原值透传（引号剥、不反转义——pac 双反斜杠原样保留）"
+        );
+        assert_eq!(
+            media.back_entry.as_deref(),
+            Some(with_back.join("src").join("back").join("api.at").as_path()),
+            "back api.at 存在即记绝对路径"
+        );
+        let plain_e = apps.iter().find(|a| a.id == "plain-app").unwrap();
+        assert_eq!(plain_e.media_root, None);
+        assert_eq!(plain_e.back_entry, None, "无 src/back/api.at → None");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // ---- Plan 463 T8：注册表 × LaunchApp 会话级端到端（真实仓库 examples/ui；
     // 验收 §5.1「≥3 个不同 App 启动」的无头等价——UI 半边（launcher/任务栏
     // 点击）随 464。boot 同款 resolver 构造见 renderer boot 注册表段）----
@@ -1356,7 +1411,10 @@ desktop_exe: \"target/release/native-app.exe\"
                         opens: Vec::new(),
                         fit: false,
         exe: None,
-        render_decl: None,    })
+        render_decl: None,
+        media_root: e.media_root.clone(),
+        back_entry: e.back_entry.clone(),
+    })
                 })
             })
         };

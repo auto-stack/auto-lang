@@ -218,6 +218,9 @@ fn osconfig_full_chain_launch_modules_and_persist() {
     ds.register_window(win, primary, iced::Size::new(1280.0, 800.0));
     ds.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
         (name == "os-config").then(|| auto_lang::ui::session::LaunchSpec {
+            media_root: None,
+            back_entry: None,
+
             code: code.clone(),
             source_path: Some(source_path.clone()),
             title: Some("系统设置".to_string()),

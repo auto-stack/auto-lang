@@ -15785,6 +15785,10 @@ fn compare_pngs(
                                         fit: e.fit,
                                         exe,
                                         render_decl: e.desktop_render.clone(),
+                                        // PLAN-037：供给决策树透传（capability/
+                                        // session 臂的读源）。
+                                        media_root: e.media_root.clone(),
+                                        back_entry: e.back_entry.clone(),
                                     })
                                 })
                         }));
@@ -28258,6 +28262,9 @@ mod tests {
                 // 测试；页面契约归 os-config 仓自测 + T8 实机验收。
                 if name == OSCONFIG_APP_ID {
                     return Some(crate::ui::session::LaunchSpec {
+                        media_root: None,
+                        back_entry: None,
+
                         code: T551_OSCONFIG_STUB_AT.to_string(),
                         source_path: None,
                         title: Some("auto-os-config-front".to_string()),
@@ -28271,6 +28278,9 @@ mod tests {
                 }
                 let e = apps.iter().find(|a| a.id == name)?;
                 Some(crate::ui::session::LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: std::fs::read_to_string(&e.entry).ok()?,
                     source_path: Some(e.entry.to_string_lossy().to_string()),
                     title: Some(e.display_title().to_string()),
@@ -28652,6 +28662,9 @@ mod tests {
         use crate::ui::app_registry::AppRegistryEntry;
         let mut ds = t3_session_with_shell();
         ds.desktop.registry_entries = vec![AppRegistryEntry {
+            media_root: None,
+            back_entry: None,
+
             id: "011-calculator".to_string(),
             title: "calculator".to_string(),
             title_zh: None,
@@ -28671,6 +28684,9 @@ mod tests {
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
@@ -30244,6 +30260,9 @@ mod tests {
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
@@ -30570,6 +30589,9 @@ mod tests {
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
@@ -30616,6 +30638,9 @@ mod tests {
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
                 (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
@@ -30818,6 +30843,9 @@ mod tests {
         ds.desktop.shell_app = Some(id);
         // 宿主侧 pinned 解析注入（pack 默认表 + 注册表图标）。
         ds.desktop.registry_entries = vec![crate::ui::app_registry::AppRegistryEntry {
+            media_root: None,
+            back_entry: None,
+
             id: "011-calculator".to_string(),
             title: "calculator".to_string(),
             title_zh: None,
@@ -31597,6 +31625,9 @@ mod tests {
         // 注册表：011/015 带标题与图标；013 缺席（label/icon 回退臂）。
         ds.desktop.registry_entries = vec![
             crate::ui::app_registry::AppRegistryEntry {
+                media_root: None,
+                back_entry: None,
+
                 id: "011-calculator".into(),
                 title: "计算器".into(),
                 title_zh: None,
@@ -31614,6 +31645,9 @@ mod tests {
         opens: Vec::new(),
     },
             crate::ui::app_registry::AppRegistryEntry {
+                media_root: None,
+                back_entry: None,
+
                 id: "015-notes".into(),
                 title: "便签".into(),
                 title_zh: None,
@@ -32245,6 +32279,9 @@ mod tests {
         .unwrap();
 
         let entry = |id: &str, title: &str| AppRegistryEntry {
+            media_root: None,
+            back_entry: None,
+
             id: id.to_string(),
             title: title.to_string(),
             title_zh: None,

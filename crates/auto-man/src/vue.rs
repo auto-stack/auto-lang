@@ -6118,28 +6118,10 @@ fn gallery_proxy_root() -> Option<String> {
     GALLERY_PROXY_ROOT.with(|c| c.borrow().clone())
 }
 
-/// PLAN-658 T-02: `/api/` 字面量子前缀化——仅当行内出现 `Http.`（HTTP
-/// 调用行）时，把该行的 `"/api/...` 引号字面量改写为绝对 URL
-/// `<root>/apps/<app_id>/api/...`。
-///
-/// 精确性依据（T-02 语料实证）：三 demo 前端全部相对调用点仅
-/// 020 player_store.at:92 一处（单行、同行含 `Http.`）；注释行不含
-/// `Http.` 不受影响；back 模块的 `#[api(path = "/api/...")]` 属性行
-/// 不含 `Http.`，路由收集零污染。多行调用形态（字面量与 Http. 不同行）
-/// 不在改写面——当前语料无此形态，出现时按 §5.3 回补。
-fn prefix_api_url_literals(content: &str, root: &str, app_id: &str) -> String {
-    let marker = "\"/api/";
-    let replacement = format!("\"{root}/apps/{app_id}/api/");
-    let mut out = String::with_capacity(content.len());
-    for line in content.split_inclusive('\n') {
-        if line.contains("Http.") && line.contains(marker) {
-            out.push_str(&line.replace(marker, &replacement));
-        } else {
-            out.push_str(line);
-        }
-    }
-    out
-}
+/// PLAN-658 T-02 → PLAN-037 T-02: `/api/` 字面量子前缀化已迁
+/// auto-lang `ui::back_provision::prefix_api_url_literals`（桌面宿主与
+/// auto-man 双消费；精确性依据与改写面边界注记见彼处）。
+use auto_lang::ui::back_provision::prefix_api_url_literals;
 
 /// PLAN-658 T-04: 从 `use <module>: a, b, c` 行剔除指定 item（流端点 fn
 /// 不进 client——流消费走 Tick 注入）。非匹配行原样保留。
@@ -6732,12 +6714,9 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
             // 后端 demo 加载为 VM session——#[api] CRUD 在 session 内执行，
             // 流端点按 proxy 签名特路服务，原生命名空间经进程级注册表可用。
             let back_api = apps_dir.join(&row.id).join("src").join("back").join("api.at");
+            // PLAN-037 T-02: 谓词迁 auto-lang back_provision（本处改引用）。
             let needs_session = std::fs::read_to_string(&back_api)
-                .map(|c| {
-                    c.contains("~Stream")
-                        || c.contains("~Promise")
-                        || c.lines().any(|l| l.trim_start().starts_with("use auto."))
-                })
+                .map(|c| auto_lang::ui::back_provision::back_needs_session(&c))
                 .unwrap_or(false);
             if needs_session && back_api.is_file() {
                 sessions.push(auto_lang::back_proxy::SessionSpec {

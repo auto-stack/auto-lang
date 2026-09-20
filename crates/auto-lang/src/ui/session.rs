@@ -2217,6 +2217,13 @@ pub struct LaunchSpec {
     /// 裁决（v1 缺省 independent，待澄清③））。解释态臂不消费（其裁决
     /// 链在 cmd_autodesk 壳内同参读取）。
     pub render_decl: Option<String>,
+    /// PLAN-037：pac `media_root:` 透传（后端供给决策树 capability 臂——
+    /// proxy 原生 media 路由的根；None = 不参与）。boot 期 resolver 自
+    /// 注册表条目填入。
+    pub media_root: Option<String>,
+    /// PLAN-037：back api.at 入口（`<app>/src/back/api.at` 探测；session
+    /// 臂谓词 `back_needs_session` 的读源；None = 无 back 入口）。
+    pub back_entry: Option<std::path::PathBuf>,
 }
 
 impl Default for LaunchSpec {
@@ -2232,6 +2239,8 @@ impl Default for LaunchSpec {
             opens: Vec::new(),
             exe: None,
             render_decl: None,
+            media_root: None,
+            back_entry: None,
         }
     }
 }
@@ -6682,6 +6691,9 @@ mod tests {
         ds.desktop.shell_app = Some(ds.allocate_app(shell_comp));
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: T4_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),
@@ -6713,6 +6725,9 @@ mod tests {
         let mut ds = t4_session_with_resolver();
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: T4_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),
@@ -6755,6 +6770,9 @@ mod tests {
         let mut ds = t4_session_with_resolver();
         ds.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             (name == "probe").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: widget.to_string(),
                 source_path: None,
                 title: Some("Seed Probe".to_string()),
@@ -6815,6 +6833,9 @@ mod tests {
             .unwrap();
         }
         let spec = |exe: Option<std::path::PathBuf>| LaunchSpec {
+            media_root: None,
+            back_entry: None,
+
             code: String::new(),
             source_path: Some(app_at.to_string_lossy().to_string()),
             name: Some("counter".to_string()),
@@ -6855,6 +6876,9 @@ mod tests {
         std::fs::remove_file(ws.join("target").join("debug").join("002-counter.exe")).unwrap();
         assert_eq!(DesktopSession::outproc_native_exe(&spec(None)), None);
         let inline = LaunchSpec {
+            media_root: None,
+            back_entry: None,
+
             code: String::new(),
             source_path: None,
             name: Some("counter".to_string()),
@@ -6901,6 +6925,9 @@ mod tests {
         let mut ds = t4_session_with_resolver();
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: P508_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),
@@ -7087,6 +7114,9 @@ mod tests {
         // resolver 换 daemon 声明条目；探活注入 Running（测试端口 url）。
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: T4_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),
@@ -7126,6 +7156,9 @@ mod tests {
         let mut ds = t4_session_with_resolver();
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: T4_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),

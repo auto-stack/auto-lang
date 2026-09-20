@@ -76,6 +76,10 @@ pub mod handler_codegen;
 pub mod child_emit;
 #[cfg(feature = "ui-iced")]
 pub mod session;
+// PLAN-037：桌面后端供给层（launch 决策树四臂 + 按需 proxy 装载 +
+// 前端 URL 内存态前缀化；658 谓词/前缀化函数迁入 auto-man 复用）。
+#[cfg(feature = "ui-iced")]
+pub mod back_provision;
 pub mod shell_projection;
 // PLAN-615 T-06: OS 系统主题读取（深/浅色个人化跟随地基；纯 std 全平台可编译）。
 pub mod system_theme;

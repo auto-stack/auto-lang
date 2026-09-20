@@ -272,6 +272,9 @@ mod tests {
         let src_for_resolver = src.clone();
         session.desktop.app_resolver = Some(Arc::new(move |name: &str| {
             (name == app).then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: src_for_resolver.clone(),
                 source_path: None,
                 title: Some(app.to_string()),
@@ -665,6 +668,9 @@ mod host_body {
             entries.push((
                 name.clone(),
                 LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code,
                     source_path: Some(path),
                     title: Some(name.clone()),
@@ -674,6 +680,9 @@ mod host_body {
         }
         session.desktop.app_resolver = Some(Arc::new(move |name: &str| {
             entries.iter().find(|(n, _)| n == name).map(|(_, s)| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: s.code.clone(),
                 source_path: s.source_path.clone(),
                 title: s.title.clone(),

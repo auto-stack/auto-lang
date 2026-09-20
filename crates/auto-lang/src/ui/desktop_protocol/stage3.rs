@@ -695,6 +695,9 @@ mod tests {
         session.desktop.app_resolver =
             Some(std::sync::Arc::new(move |name: &str| match name {
                 "003-converter" => Some(LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: code_c_for.clone(),
                     source_path: Some(
                         dir_c_for.join("src/front/app.at").to_string_lossy().to_string(),
@@ -709,6 +712,9 @@ mod tests {
                     opens: Vec::new(),
                 }),
                 "025-inputs" => Some(LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: code_i_for.clone(),
                     source_path: Some(
                         dir_i.join("src/front/app.at").to_string_lossy().to_string(),
@@ -1951,6 +1957,9 @@ mod tests {
         session.desktop.app_resolver =
             Some(std::sync::Arc::new(move |name: &str| match name {
                 "profile-card" => Some(LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: code_p.clone(),
                     source_path: Some(
                         dir_p.join("src/front/app.at").to_string_lossy().to_string(),
@@ -1965,6 +1974,9 @@ mod tests {
                     opens: Vec::new(),
                 }),
                 "026-display" => Some(LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: code_d.clone(),
                     source_path: Some(
                         dir_d.join("src/front/app.at").to_string_lossy().to_string(),
@@ -1979,6 +1991,9 @@ mod tests {
                     opens: Vec::new(),
                 }),
                 "003-converter" => Some(LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: code_c.clone(),
                     source_path: Some(
                         dir_c.join("src/front/app.at").to_string_lossy().to_string(),
@@ -2321,6 +2336,9 @@ mod tests {
                     .iter()
                     .find(|(n, _)| n == name)
                     .map(|(n, src)| LaunchSpec {
+                        media_root: None,
+                        back_entry: None,
+
                         code: src.clone(),
                         source_path: None,
                         title: Some(n.to_string()),
@@ -2507,6 +2525,9 @@ mod tests {
             // code = 裁决/挂载用最小占位（host 侧 attach 建视图判定）；
             // 子真身走 t3_child_body typed 分支（P029TypedInputs）。
             (name == "p029-typed-inputs").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: r#"widget t { view { text "x" } }"#.to_string(),
                 source_path: None,
                 title: Some("P029Inputs".into()),
@@ -2722,6 +2743,9 @@ mod tests {
 
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             (name == "p029-shell-face").then(|| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: r#"widget t { view { text "x" } }"#.to_string(),
                 source_path: None,
                 title: Some("P029ShellFace".into()),
@@ -2970,6 +2994,9 @@ mod tests {
                 .iter()
                 .find(|(n, _)| n == name)
                 .map(|(n, src)| LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: src.clone(),
                     source_path: None,
                     title: Some(n.clone()),
@@ -3343,6 +3370,9 @@ mod tests {
             Some(std::sync::Arc::new(move |name: &str| {
                 if known.iter().any(|n| n == name) {
                     Some(LaunchSpec {
+                        media_root: None,
+                        back_entry: None,
+
                         code: src.clone(),
                         source_path: None,
                         title: Some(name.to_string()),
@@ -3891,6 +3921,9 @@ mod tests {
             Some(std::sync::Arc::new(move |name: &str| {
                 if known.iter().any(|n| n == name) {
                     Some(LaunchSpec {
+                        media_root: None,
+                        back_entry: None,
+
                         code: src.clone(),
                         source_path: None,
                         title: Some(name.to_string()),
@@ -4054,6 +4087,9 @@ mod tests {
             .collect();
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             entries.iter().find(|(n, _, _)| n == name).map(|(n, src, path)| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: src.clone(),
                 source_path: Some(path.clone()),
                 title: Some(n.clone()),
@@ -4396,6 +4432,9 @@ mod tests {
         session.desktop.app_resolver =
             Some(std::sync::Arc::new(move |name: &str| {
                 (name == "002-counter").then(|| LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: code_for_resolver.clone(),
                     source_path: Some(source_for_resolver.clone()),
                     title: Some("Counter".to_string()),
@@ -4625,6 +4664,9 @@ mod tests {
         session.desktop.app_resolver =
             Some(std::sync::Arc::new(move |name: &str| {
                 (name == "002-counter").then(|| LaunchSpec {
+                    media_root: None,
+                    back_entry: None,
+
                     code: code_for_resolver.clone(),
                     source_path: Some(source_for_resolver.clone()),
                     title: Some("Counter".to_string()),
@@ -4830,6 +4872,9 @@ mod tests {
         let names: Vec<String> = legs.iter().map(|(n, _, _)| n.to_string()).collect();
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
             names.iter().position(|n| n.as_str() == name).map(|_| LaunchSpec {
+                media_root: None,
+                back_entry: None,
+
                 code: r#"widget t { view { text "x" } }"#.to_string(),
                 source_path: None,
                 title: Some(name.to_string()),

@@ -423,6 +423,9 @@ mod tests {
             Some(std::sync::Arc::new(move |name: &str| {
                 if name == "broker386" {
                     Some(crate::ui::session::LaunchSpec {
+                        media_root: None,
+                        back_entry: None,
+
                         code: code.clone(),
                         source_path: None,
                         title: Some("Broker386".into()),
