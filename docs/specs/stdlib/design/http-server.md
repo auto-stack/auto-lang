@@ -176,7 +176,11 @@ VM 模式(`auto run --server vm` 与 in-language `http.server().listen()`)的
 `shim_http_server_listen`)统一经共享绑定器按 §4.1 规则装配,绑定失败即
 400/500 早返;无签名条目(legacy 生产者)回退旧位序装配。`__axum:` 合成
 路由走 axum_adapter extractor 编组,不经此链。a2r 轨的参数绑定在生成的
-Rust 代码里,不受影响。
+Rust 代码里,不受影响。**同步路径差异**:三条同步 serve 路径中仅
+in-language `http.server().listen()` 有活调用面(另两条为无调用方的保留
+路径),它们不携带元数据源——声明 meta 约定名形参的 handler 在该路径返回
+400 指名错误而非 cookies/auth 载荷;该差异待 Request 对象注入(§4.2 P1)
+统一。
 
 ### 4.2 Request 对象(高级,显式访问)
 

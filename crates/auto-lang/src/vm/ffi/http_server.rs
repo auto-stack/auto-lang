@@ -1217,6 +1217,35 @@ mod plan326_tests {
             .expect("bind");
             assert_eq!(n, 0);
         }
+
+        /// F-669-R1 / AC-06: with no API_PARAM_SIGS entry the sync-serve
+        /// helper falls back to the pre-669 positional convention verbatim —
+        /// path params in order (i32-heuristic), query ignored, raw body as
+        /// one trailing arg. e2e always has sigs (codegen publishes them), so
+        /// the fallback arm is only reachable here.
+        #[test]
+        fn legacy_fallback_without_sigs_is_positional() {
+            use super::super::{bind_api_args_or_legacy, clear_api_param_sigs};
+            clear_api_param_sigs();
+            let (vm, mut task) = rig();
+            let n = bind_api_args_or_legacy(
+                &vm,
+                &mut task,
+                "h_legacy_never_published",
+                &[("id".to_string(), "42".to_string()), ("slug".to_string(), "hello".to_string())],
+                &[("ignored".to_string(), "q".to_string())],
+                "raw-body",
+                "GET",
+                "/api/notes/42/hello",
+            )
+            .expect("legacy bind");
+            assert_eq!(n, 3, "id + slug + body, query dropped");
+            // LIFO: body (last pushed) pops first, then slug, then id as i32.
+            assert_eq!(pop_str(&vm, &mut task), "raw-body");
+            assert_eq!(pop_str(&vm, &mut task), "hello");
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::decode_i32(nv) == 42, "numeric path param as i32, nv {nv:?}");
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -3378,8 +3407,9 @@ fn encode_ws_text_frame(text: &str) -> Vec<u8> {
 // run_http_server_blocking). Per declared param, in declaration order,
 // binding precedence is: path segment (by name) → body JSON field → query
 // param (back_proxy Plan 658 parity). Missing params → HTTP 400 naming the
-// param; a lone trailing unbound param receives the cookies/auth metadata
-// JSON (Plan 317 Phase 11 opt-in — async site passes Some). Sites whose fn
+// param; a lone trailing unbound param whose name follows the meta-param
+// convention (META_PARAM_NAMES) receives the cookies/auth metadata JSON
+// (Plan 317 Phase 11 opt-in — async site passes Some). Sites whose fn
 // has no API_PARAM_SIGS entry keep the legacy positional behavior unchanged.
 
 /// PLAN-669 binder failure — site maps to an HTTP error response.
