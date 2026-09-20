@@ -2473,12 +2473,22 @@ fn build_row<M: Clone + Debug + 'static>(
                             .width(iced::Length::FillPortion(portion))
     };
     let stretch = iced_style.as_ref().map_or(false, |is| is.items_stretch);
+    // 行自身定高（非 Shrink 显式高；含 flex-1 在 Column 直接子位被
+    // axis_fix_col_child 转写的 Height(Full)）→ StretchLine 有界入射时
+    // 吃满上限。仅 auto 语义（行高=max 子项内容高）下，041 主行
+    // （flex-1 items-stretch）这类定高行整行塌内容高，explorer/编辑区
+    // 悬空半窗（Plan 655 回归，fix-stretch-fill）。
+    let line_fill_height = iced_style
+        .as_ref()
+        .and_then(|is| is.height.as_ref())
+        .map_or(false, |h| !matches!(h, IcedSize::Shrink));
     let row_widget = if stretch {
         // PLAN-655: 等高行走 StretchLine 两阶段布局（CSS align-items:stretch
         // 原语）。旧形态的 height:Fill 包装在无界祖先（scroll 内容臂）下
         // 塌缩 0 高（P642-D12，008 定价卡消失）；子项现保持原始形态，
-        // 行高（=max 子项内容高）与子项拉伸由控件内部供给，justify 垫片
-        // 照常并入序列（FillPortion Space 主轴配给语义不变）。
+        // 行高（=max 子项内容高；定高行=入射上限，见 line_fill_height）
+        // 与子项拉伸由控件内部供给，justify 垫片照常并入序列（FillPortion
+        // Space 主轴配给语义不变）。
         let mut items: Vec<iced::Element<'static, M>> = Vec::new();
         if let Some(p) = lead {
             items.push(spacer(p).into());
@@ -2496,7 +2506,7 @@ fn build_row<M: Clone + Debug + 'static>(
         if let Some(p) = trail {
             items.push(spacer(p).into());
         }
-        row([crate::ui::iced::stretch_line::stretch_line(items, eff_spacing as f32).into()])
+        row([crate::ui::iced::stretch_line::stretch_line(items, eff_spacing as f32, line_fill_height).into()])
     } else {
         let mut row_widget = row([]).spacing(eff_spacing);
         if let Some(p) = lead {

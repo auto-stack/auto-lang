@@ -18,7 +18,11 @@
 //!   子项均分剩余宽——justify 垫片即 width-FillPortion Space，天然并入）。
 //!
 //! 行高语义与 Vue/CSS 臂同构：行高 auto = 最高子项内容高，子项等高 =
-//! 行高。自身无状态、无自绘，事件/绘制/操作/hover 探针全部委托子项。
+//! 行高；行自身定高（`h-full`/`flex-1` 转写/`h-*` Fixed，build_row 经
+//! `fill_height` 传入）且有界入射时行高 = 入射上限（CSS definite-height
+//! flex row 的 stretch——flex-grow 已把父列剩余空间分配给行，子项拉伸到
+//! 该行高；无界入射回落 auto，P642-D12 不回归）。自身无状态、无自绘，
+//! 事件/绘制/操作/hover 探针全部委托子项。
 
 use iced::advanced::layout::{self, Layout, Limits};
 use iced::advanced::mouse;
@@ -30,16 +34,35 @@ use iced::{Element, Length, Rectangle, Size, Vector};
 
 /// 构造等高行控件（build_row 的 `items_stretch` 分支专用；children 为
 /// 「原始子项 + justify 垫片」的最终有序序列，spacing = 行 gap）。
+/// `fill_height` = 行自身定高（style 带非 Shrink 的显式高，含 flex-1 在
+/// Column 直接子位被 axis_fix_col_child 转写的 Height(Full)）。
 pub fn stretch_line<Message: Clone + 'static>(
     children: Vec<Element<'static, Message>>,
     spacing: f32,
+    fill_height: bool,
 ) -> StretchLine<'static, Message> {
-    StretchLine { children, spacing }
+    StretchLine { children, spacing, fill_height }
 }
 
 pub struct StretchLine<'a, Message> {
     children: Vec<Element<'a, Message>>,
     spacing: f32,
+    /// 行自身定高：true 且入射上限有界 → 行高 = 入射上限（flex-grow 分配
+    /// 的确定空间吃满，子项随之拉伸）；false → 行高 auto 语义（内容高）。
+    fill_height: bool,
+}
+
+/// 行高解析：`fill_height` 且入射上限有界 → 上限（定高行吃满 flex-grow
+/// 分配空间）；否则 auto 语义——内容高，仅被有界上限压矮（无界保持内容高，
+/// scroll 内容臂不塌缩也不越权撑满）。纯函数便于单测。
+fn line_effective_height(fill_height: bool, natural: f32, max_h: f32) -> f32 {
+    if fill_height && max_h.is_finite() {
+        max_h
+    } else if max_h.is_finite() {
+        natural.min(max_h)
+    } else {
+        natural
+    }
 }
 
 /// 主轴配给份额：Fill 记 1 份，FillPortion(n) 记 n 份，其余 0（flex
@@ -136,11 +159,7 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                 .layout(&mut tree.children[i], renderer, &child_limits);
             natural_h = natural_h.max(node.size().height);
         }
-        let effective = if max.height.is_finite() {
-            natural_h.min(max.height)
-        } else {
-            natural_h
-        };
+        let effective = line_effective_height(self.fill_height, natural_h, max.height);
 
         // —— final 遍：按份额宽落位 + 交叉轴拉伸。
         let mut nodes: Vec<layout::Node> = (0..n).map(|_| layout::Node::default()).collect();
@@ -271,5 +290,26 @@ impl<'a, Message: Clone + 'static> From<StretchLine<'a, Message>>
 {
     fn from(line: StretchLine<'a, Message>) -> Self {
         Element::new(line)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::line_effective_height as eff;
+
+    // auto 语义：行高 = 内容高，仅被有界上限压矮。
+    #[test]
+    fn auto_row_keeps_content_height() {
+        assert_eq!(eff(false, 400.0, f32::INFINITY), 400.0);
+        assert_eq!(eff(false, 400.0, 1100.0), 400.0);
+        assert_eq!(eff(false, 1500.0, 1100.0), 1100.0);
+    }
+
+    // 定高行：有界入射吃满上限（flex-grow 分配空间）；无界回落 auto。
+    #[test]
+    fn definite_row_fills_bounded_limits() {
+        assert_eq!(eff(true, 400.0, 1100.0), 1100.0);
+        assert_eq!(eff(true, 1500.0, 1100.0), 1100.0);
+        assert_eq!(eff(true, 400.0, f32::INFINITY), 400.0);
     }
 }
