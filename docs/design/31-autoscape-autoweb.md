@@ -213,7 +213,7 @@ resource://session/8dd7...
 
 | # | 要点 | 说明 |
 |---|---|---|
-| S1 | 粒度：**per-app（终裁，用户 2026-09-20）** | 沙箱根按 **app 身份**键控（非 per-tab）——同 app 的所有 tab/会话共享同一沙箱；"区分 local 和 host" = `app://` 本地应用与 `https://` 远程主机各自独立沙箱。私有 tab（一次性根）降为浏览器壳层可选 UX 特性，不进键控模型 |
+| S1 | 粒度：**per-app（终裁，用户 2026-09-20）** | 沙箱根按 **app 身份**键控（非 per-tab）——同 app 的所有 tab/会话共享同一沙箱；"区分 local 和 host" = `app://` 本地应用与 `https://` 远程主机各自独立沙箱。私有 tab（一次性根）降为浏览器壳层可选 UX 特性，不进键控模型。**并发注记**：同 app 多会话并发写同库/同目录是 per-app 的固有形态——db 层 WAL + busy_timeout 兜底，普通文件写同 localStorage 串行化口径，冲突消解归 app 逻辑 |
 | S2 | 链接与共享缓存：**限定区 + 目标白名单（终裁，用户 2026-09-20）** | 软链接不做一刀切禁令——它是 cache **单例化**的主要工具（否则重蹈 npm 每 app 复制一份巨大 node_modules）。模型三律：①**限定目录**——沙箱内仅固定目录（如 `<sandbox>/deps/`）允许链接存在，他处创建 symlink/junction 一律拒收；②**目标白名单**——链接目标 canonicalize 后必须落在**托管共享缓存根**内（AutoUI 中间产物：依赖库/组件包/媒体/字体）；③**写权限单点**——共享缓存对 app 运行时 API **只读**，写入与建链仅经可信安装·依赖解析层（内容寻址、写后不可变）；app 代码创建链接恒拒收。**实现二选一**：A=真链接（Windows junction；pnpm 同款模型先例，仓内 pnpm junction 运维经验在册——工具链须 junction-aware）；B=虚拟挂载（文件 API 将 `deps/` 解析为只读虚拟根 `deps://` → 缓存条目，沙箱内零真实 NTFS 链接，包含由构造保证；native 提供者 spawn 需真文件处仍由可信层落真链）——**推荐 B 先行**。逃逸纪律不变：canonicalize 后前缀比对（含大小写归一）是一切路径检查的底座 |
 | S3 | 文件夹沙箱 ≠ API 门禁 | 路径包含只管文件系统；desktop bus / native catalog / shell_bridge / 任意网络访问仍需粗粒度关闸（网络来源关特权内建）。**两道门正交，缺一不可**（发行红线不变） |
 | S4 | 网络访问策略 v1 | 仅同 origin + ServiceBinding 显式声明的外部 endpoint 白名单（与 §9.3 logical service 天然衔接） |
