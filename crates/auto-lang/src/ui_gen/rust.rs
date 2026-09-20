@@ -2438,8 +2438,9 @@ impl RustGenerator {
                 // onhoverout→on_exit、ondblclick→on_double_click、
                 // onmousedown|onclick→on_click、onmouseup→on_release、
                 // oncontextmenu(.prevent)→on_context_menu。事件槽 = Option<M>
-                // 直发消息（非闭包）。onmousemove+coords 坐标面 shell 未用
-                // 不译（落入拒绝门）。
+                // 直发消息（非闭包）。PLAN-668 R-01：onmousemove+coords
+                // 坐标面回迁（PLAN-022 T-03 能力——027 T-04 本臂曾硬编码
+                // None，把后位 022 臂挡成死代码致发射漂移，死臂已删）。
                 if tag == "mouse-area" || tag == "mouse_area" {
                     let content = if children.is_empty() {
                         "auto_lang::ui::view::View::Empty".to_string()
@@ -2479,8 +2480,55 @@ impl RustGenerator {
                         }
                         None => "None".to_string(),
                     };
+                    // PLAN-668 R-01（PLAN-022 T-03 回迁）：onmousemove →
+                    // PointerMoveHandler——无参绑定转发归一坐标（变体须双
+                    // float 载荷，020 分隔条契约形态）；显式参绑定弃坐标。
+                    let move_h = events
+                        .iter()
+                        .find(|(k, _)| {
+                            let base = k.split('.').next().unwrap_or(k);
+                            base == "onmousemove" || base == "on_mouse_move"
+                        })
+                        .map(|(_, h)| {
+                            let variant = self.extract_variant_name(&h.handler);
+                            let msg_name = self.current_msg_name();
+                            if h.params.is_empty() {
+                                format!(
+                                    "Some(auto_lang::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {msg_name}::{variant}(x, y)))"
+                                )
+                            } else {
+                                let converted: Vec<String> = h
+                                    .params
+                                    .iter()
+                                    .map(|p| self.convert_param_value_access(p, &variant))
+                                    .collect();
+                                format!(
+                                    "Some(auto_lang::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {{ let _ = (x, y); {msg_name}::{variant}({}) }}))",
+                                    converted.join(", ")
+                                )
+                            }
+                        })
+                        .unwrap_or_else(|| "None".to_string());
+                    // coords "WxH" → logical_extent（{:?} f32 定点打印，
+                    // 整数字面量在约束位会推成 i32）。
+                    let extent = props
+                        .get("coords")
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                                s.split_once(['x', 'X']).and_then(|(w, hh)| {
+                                    match (w.trim().parse::<f32>(), hh.trim().parse::<f32>()) {
+                                        (Ok(w), Ok(hh)) if w > 0.0 && hh > 0.0 => {
+                                            Some(format!("Some(({w:?}, {hh:?}))"))
+                                        }
+                                        _ => None,
+                                    }
+                                })
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| "None".to_string());
                     return format!(
-                        "View::MouseArea {{ content: Box::new({content}), on_enter: {}, on_exit: {}, on_double_click: {}, on_click: {}, on_context_menu: {}, on_release: {}, on_move: None, logical_extent: None, style: {} }}",
+                        "View::MouseArea {{ content: Box::new({content}), on_enter: {}, on_exit: {}, on_double_click: {}, on_click: {}, on_context_menu: {}, on_release: {}, on_move: {move_h}, logical_extent: {extent}, style: {} }}",
                         ev(&["onmouseenter", "onhover"]).unwrap_or_else(|| "None".to_string()),
                         ev(&["onmouseleave", "onhoverout"]).unwrap_or_else(|| "None".to_string()),
                         ev(&["ondblclick"]).unwrap_or_else(|| "None".to_string()),
@@ -2557,126 +2605,6 @@ impl RustGenerator {
                     return format!("{}.build()", g);
                 }
 
-                // PLAN-022 T-03(mouse-area rust 发射补齐):VM/vue 轨自
-                // Plan 484/499 起即有 mouse-area,本轨此前落 tag_to_view_fn
-                // 通配 "col" + 事件通配丢弃——021 T-07 实测分隔条不可见
-                // (空层跳过)且不可拖(onmousedown/move/up 全丢)的定界根因
-                // (evidence/022/t00-decision.md §3)。事件映射沿 iced 臂
-                // (renderer.rs MouseArea arm):onmousedown → on_click 槽
-                // (PLAN-043 T9 真按下语义)、onmouseup → on_release、
-                // onmousemove → PointerMoveHandler(coords "WxH" 声明逻辑
-                // 幅面,extent 归一与 iced PointerArea 同语义)。无参绑定
-                // (如 .Drag)转发事件坐标(变体须双 float 载荷,020 分隔条
-                // 契约形态);显式参绑定按既有一参闭包发射。
-                if tag == "mouse-area" || tag == "mouse_area" {
-                    let content_expr = match children.len() {
-                        0 => "View::Empty".to_string(),
-                        1 => self.generate_view_tree(&children[0]),
-                        _ => {
-                            let mut col = "View::col()".to_string();
-                            for c in children {
-                                col = format!("{}.child({})", col, self.generate_view_tree(c));
-                            }
-                            format!("{}.build()", col)
-                        }
-                    };
-                    // onmousedown 优先 → on_click 槽(真按下);onclick 兜底。
-                    // PLAN-022 修正:View 变体字段是**消息值**(Option<M>,
-                    // 019 terminal on_input 同款),非闭包——显式参直发
-                    // (AppMsg::Press(7)),无参裸变体(AppMsg::Drop)。
-                    let msg_expr = |h: &AuraEvent| -> String {
-                        let variant = self.extract_variant_name(&h.handler);
-                        let msg_name = self.current_msg_name();
-                        if h.params.is_empty() {
-                            format!("{msg_name}::{variant}")
-                        } else {
-                            let converted: Vec<String> = h.params.iter()
-                                .map(|p| self.convert_param_value_access(p, &variant))
-                                .collect();
-                            format!("{msg_name}::{variant}({})", converted.join(", "))
-                        }
-                    };
-                    let press = ["onmousedown", "on_press", "onclick", "onClick"]
-                        .iter()
-                        .find_map(|k| events.get(*k))
-                        .map(|h| msg_expr(h));
-                    let release = ["onmouseup", "on_release"]
-                        .iter()
-                        .find_map(|k| events.get(*k))
-                        .map(|h| msg_expr(h));
-                    let enter = ["onmouseenter", "onhover"]
-                        .iter()
-                        .find_map(|k| events.get(*k))
-                        .map(|h| msg_expr(h));
-                    let exit = ["onmouseleave", "onhoverout"]
-                        .iter()
-                        .find_map(|k| events.get(*k))
-                        .map(|h| msg_expr(h));
-                    let move_handler = ["onmousemove", "on_mouse_move"]
-                        .iter()
-                        .find_map(|k| events.get(*k))
-                        .map(|h| {
-                            let variant = self.extract_variant_name(&h.handler);
-                            let msg_name = self.current_msg_name();
-                            // 无参绑定 = 转发事件坐标(PointerArea 归一后
-                            // f32 对;020 分隔条 Drag(float,float) 契约)。
-                            if h.params.is_empty() {
-                                format!(
-                                    "auto_lang::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {msg_name}::{variant}(x, y))"
-                                )
-                            } else {
-                                // 显式参绑定:坐标弃用,按既有一参闭包语义
-                                // 内联消息构造(转换后的参数表达式直引)。
-                                let converted: Vec<String> = h.params.iter()
-                                    .map(|p| self.convert_param_value_access(p, &variant))
-                                    .collect();
-                                format!(
-                                    "auto_lang::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {{ let _ = (x, y); {msg_name}::{variant}({}) }})",
-                                    converted.join(", ")
-                                )
-                            }
-                        });
-                    let extent = props.get("coords").and_then(|v| match v {
-                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
-                            s.split_once(['x', 'X']).and_then(|(w, hh)| {
-                                match (w.trim().parse::<f32>(), hh.trim().parse::<f32>()) {
-                                    (Ok(w), Ok(hh)) if w > 0.0 && hh > 0.0 => {
-                                        // {:?}:f32 定点打印(1000.0),无后缀
-                                        // 整数字面量在约束位会推成 i32。
-                                        Some(format!("Some(({w:?}, {hh:?}))"))
-                                    }
-                                    _ => None,
-                                }
-                            })
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| "None".to_string());
-                    let style_expr = props.get("style").or_else(|| props.get("class"))
-                        .map(|v| match v {
-                            // Style::parse 返回 Result;字段为 Option → .ok()。
-                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
-                                format!("auto_lang::ui::style::Style::parse(\"{s}\").ok()")
-                            }
-                            AuraPropValue::Expr(expr) => {
-                                let e = self.ast_expr_to_rust_no_to_string(expr);
-                                format!("auto_lang::ui::style::Style::parse(&{e}).ok()")
-                            }
-                            _ => "None".to_string(),
-                        })
-                        .unwrap_or_else(|| "None".to_string());
-                    return format!(
-                        "View::MouseArea {{ content: Box::new({content}), on_enter: {enter}, on_exit: {exit}, on_double_click: None, on_click: {press}, on_context_menu: None, on_release: {release}, on_move: {move_h}, logical_extent: {extent}, style: {style} }}",
-                        content = content_expr,
-                        enter = enter.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
-                        exit = exit.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
-                        press = press.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
-                        release = release.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
-                        move_h = move_handler.map(|c| format!("Some({c})")).unwrap_or_else(|| "None".to_string()),
-                        extent = extent,
-                        style = style_expr,
-                    );
-                }
 
                 // PLAN-013 T3: terminal 臂——View::Terminal 真身组件(props-feed
                 // 形态甲)直达发射。key 为状态存储键;cols/rows 字面量或 .field
@@ -8492,7 +8420,7 @@ widget App {
         );
         let code = RustGenerator::new().generate(&widget).unwrap();
         assert!(
-            code.contains("View::text_styled(\"Title\".to_string(), \"text-3xl font-bold text-primary mt-8 mb-4\")"),
+            code.contains("View::text_styled(\"Title\".to_string(), \"text-3xl font-bold tracking-tight text-primary mt-8 mb-4\")"),
             "got:\n{}", code
         );
 

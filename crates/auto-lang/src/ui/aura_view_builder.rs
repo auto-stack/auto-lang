@@ -14135,14 +14135,15 @@ mod tests {
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Test");
 
-        // level 2 → h2 默认样式(text-primary + mt-8 mb-4,与 h1..h6 臂同源)。
+        // level 2 → h2 默认样式(text-primary + mt-8 mb-4,与 h1..h6 臂同源;
+        // PLAN-075 起带 tracking-tight)。
         let node = AuraNode::element("heading")
             .with_prop("level", Expr::Int(2))
             .with_child(AuraNode::text("Title"));
         match builder.build(&node) {
             View::Text { content, style, .. } => {
                 assert_eq!(content, "Title");
-                let expected = Style::parse("text-3xl font-bold text-primary mt-8 mb-4").unwrap();
+                let expected = Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4").unwrap();
                 assert_eq!(style.expect("heading style").classes, expected.classes);
             }
             _ => panic!("Expected View::Text for heading"),

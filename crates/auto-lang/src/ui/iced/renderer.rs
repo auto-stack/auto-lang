@@ -31416,6 +31416,12 @@ mod tests {
                     if let Some(pos) = line.find(pat) {
                         let rest = &line[pos + pat.len()..];
                         if let Some(end) = rest.find('"') {
+                            // PLAN-668 R-03：`iconfile:` 是位图文件通道
+                            // （2026-09-15 任务栏五钮裁定），不属 lucide
+                            // 命名空间——命中断言只管 lucide 名。
+                            if rest[..end].starts_with("iconfile:") {
+                                continue;
+                            }
                             names.push((file.to_string(), rest[..end].to_string()));
                         }
                     }
@@ -31930,9 +31936,12 @@ mod tests {
     #[test]
     fn conditional_style_with_comments_in_branches_resolves_hover() {
         let _guard = t2_isolate_storage("f03-style-comments");
+        // PLAN-668 R-04：探针体原用 `state {}`（非块关键字）——旧解析器
+        // 按视图元素误吞后真 view 块静默覆盖（Plan 425 兜底），PLAN-024
+        // T-01 改重复 view 报错后即红；改用真关键字 model 保持探针语义。
         let src = concat!(
             "widget StyleProbe {\n",
-            "    state {\n",
+            "    model {\n",
             "        var mode str = \"\"\n",
             "    }\n",
             "    view {\n",
