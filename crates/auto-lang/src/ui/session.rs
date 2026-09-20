@@ -422,6 +422,15 @@ pub(crate) const NOTES_CAP: usize = 50;
     pub notes_open: bool,
     pub switcher_fp: Option<String>,
     pub notes_fp: Option<String>,
+    /// PLAN-036 T-05（B2）：dashboard 面 outproc 镜像（同 B1 两面册）。
+    pub dashboard_open: bool,
+    pub dashboard_fp: Option<String>,
+    /// PLAN-036 T-06（B2，D1 修订）：face 卡宿主叠层消费的最近快照缓存
+    ///（outproc 轨——in-proc 读面板 state；元组 = (id,title,icon,status,
+    /// span,tab)，push_dashboard_snapshot 写入）。face 内容真渲走宿主
+    /// 叠层（D1-C+ face:// 全下放记 P036 新债）。
+    pub dashboard_face_cache:
+        std::cell::RefCell<Vec<(String, String, String, String, usize, String)>>,
     /// PLAN-030：壳几何缓存（boot 定档；respawn 复用）。
     pub shell_geometry: Option<crate::ui::desktop_protocol::shell_client::ShellGeometry>,
     /// PLAN-030 T-05：看门兵 respawn 现场（None = 无待重试）。
@@ -496,6 +505,9 @@ impl DesktopState {
             notes_open: false,
             switcher_fp: None,
             notes_fp: None,
+            dashboard_open: false,
+            dashboard_fp: None,
+            dashboard_face_cache: std::cell::RefCell::new(Vec::new()),
             shell_geometry: None,
             shell_respawn: None,
             shell_degraded: false,
@@ -859,6 +871,20 @@ impl WmState {
         let wid = self.add_win(app, title, rect);
         self.z_order.retain(|w| *w != wid);
         self.z_order.insert(0, wid);
+        self.mru.retain(|w| *w != wid);
+        if self.focused == Some(wid) {
+            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+        }
+        wid
+    }
+
+    /// PLAN-036 T-05（D2-A）：插层伪窗——z 序第 1 位（bg 垫底伪窗之上、
+    /// 全部 App 窗之下；dashboard 表面承接——命中带 = 伪窗矩形，宿主随
+    /// 面板几何推送动态更新）。不入 MRU/不抢焦点（add_win_bottom 同册）。
+    pub fn add_win_above_bottom(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
+        let wid = self.add_win(app, title, rect);
+        self.z_order.retain(|w| *w != wid);
+        self.z_order.insert(1.min(self.z_order.len()), wid);
         self.mru.retain(|w| *w != wid);
         if self.focused == Some(wid) {
             self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
@@ -2720,6 +2746,20 @@ impl DesktopSession {
         host.wm.add_win_bottom(app, title, rect)
     }
 
+    /// PLAN-036 T-05（D2-A）：插层伪窗（dashboard 表面——bg 上/窗下）。
+    pub fn wm_add_win_above_bottom(
+        &mut self,
+        app: AppId,
+        title: String,
+        rect: iced::Rectangle,
+    ) -> Wid {
+        let host = self
+            .host
+            .as_mut()
+            .expect("wm_add_win_above_bottom requires desktop mode");
+        host.wm.add_win_above_bottom(app, title, rect)
+    }
+
     /// PLAN-024 R20：孵化 mini 会话升格开窗——为**既有** AppSession 创建
     /// 虚拟窗（不新建组件实例）：face 与窗同会话，状态零分家（点卡片打开
     /// 的窗和桌面卡显示/操作同一份 store）。几何/布局语义与 launch_app
@@ -4002,6 +4042,35 @@ fn spawn_shell_outproc(
                                 rect: rect_to_wire(&rect),
                             });
                         }
+                        // PLAN-036 T-05（D2-A）：dashboard 伪窗——中间 z 档
+                        ///（add_win_above_bottom：z_order[1]，bg 上/窗下）；
+                        /// rect 初值 = 顶部带（全宽 × 缺省面板高），宿主随
+                        /// DashboardSnapshot 推送动态更新（命中带随几何）。
+                        let mut dashboard_wid: Option<Wid> = None;
+                        if let Some(d_decl) =
+                            surfaces.iter().find(|s| s.role == surface_role::DASHBOARD)
+                        {
+                            // 默认 rect = 右上（035 固定外框 696×232 @12px
+                            /// 边距；push_dashboard_snapshot 随几何动态更新）。
+                            let d_rect = iced::Rectangle::new(
+                                iced::Point::new((width - d_decl.width - 12.0).max(12.0), 12.0),
+                                iced::Size::new(d_decl.width, d_decl.height),
+                            );
+                            let dwid = self.wm_add_win_above_bottom(
+                                AppId(0),
+                                "dashboard-face".into(),
+                                d_rect,
+                            );
+                            let dsurface = client.surfaces.alloc(d_decl.width, d_decl.height);
+                            client.wid_surface.insert(dwid.0, dsurface);
+                            dashboard_wid = Some(dwid);
+                            extras.push(WelcomeSurface {
+                                role: surface_role::DASHBOARD,
+                                wid: dwid.0,
+                                surface: dsurface,
+                                rect: rect_to_wire(&d_rect),
+                            });
+                        }
                         let mut rid_backfill =
                             vec![(bg_wid, "desktop-face"), (chrome_wid, "shell")];
                         for owid in &overlay_wids {
@@ -4011,6 +4080,9 @@ fn spawn_shell_outproc(
                                 "notification-face"
                             };
                             rid_backfill.push((*owid, rid));
+                        }
+                        if let Some(dwid) = dashboard_wid {
+                            rid_backfill.push((dwid, "dashboard-face"));
                         }
                         for (wid, rid) in rid_backfill {
                             if let Some(host) = self.host.as_mut() {
@@ -4038,6 +4110,9 @@ fn spawn_shell_outproc(
                                 self.desktop.shell_pipe = Some(client.pipe.clone());
                                 let mut pseudo = vec![bg_wid, chrome_wid];
                                 pseudo.extend(overlay_wids.iter().copied());
+                                if let Some(dwid) = dashboard_wid {
+                                    pseudo.push(dwid);
+                                }
                                 self.desktop.shell_pseudo_wids = pseudo;
                                 self.desktop.shell_geometry = Some(geometry);
                                 // respawn/首连同位：指纹强制失效（下拍全量推）。
@@ -4049,6 +4124,9 @@ fn spawn_shell_outproc(
                                 self.desktop.notes_open = false;
                                 self.desktop.switcher_fp = None;
                                 self.desktop.notes_fp = None;
+                                self.desktop.dashboard_open = false;
+                                self.desktop.dashboard_fp = None;
+                                self.desktop.dashboard_face_cache.borrow_mut().clear();
                                 self.desktop.shell_respawn = None;
                             }
                             Err(err) => {
@@ -4998,6 +5076,10 @@ fn spawn_shell_outproc(
     /// 位；[`Self::notification_visible`] 同型——可见性在面板 .at 的
     /// `visible` state，宿主召唤写 "1"/关闭写 ""）。未挂载恒 false。
     pub fn dashboard_visible(&self) -> bool {
+        // PLAN-036 T-05（B2）：outproc 轨读镜像位（组件在 child）。
+        if self.desktop.shell_pipe.is_some() {
+            return self.desktop.dashboard_open;
+        }
         let Some(panel) = self.desktop.dashboard_app else { return false };
         matches!(
             self.apps

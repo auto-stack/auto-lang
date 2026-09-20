@@ -10729,6 +10729,89 @@ pub(crate) fn build_notes_snapshot(
     snap
 }
 
+/// PLAN-036 T-05（B2）：dashboard 快照构建 + 推送（face=DASHBOARD；
+/// visible = dashboard_open 镜像位；伪窗命中带随面板几何动态更新——
+/// D2-A 中间 z 档的命中带化）。
+pub(crate) fn build_dashboard_snapshot(
+    state: &mut crate::ui::session::DesktopSession,
+) -> crate::ui::shell_projection::DashboardSnapshot {
+    use crate::ui::shell_projection::{DashboardFace, DashboardSnapshot};
+    let (faces, panel_w, panel_h, panel_top) = collect_dashboard_faces(state);
+    let mut snap = DashboardSnapshot { hosted: true, ..Default::default() };
+    for f in faces {
+        snap.faces.push(DashboardFace {
+            id: f.id,
+            title: f.title,
+            icon: f.icon,
+            status: f.status.to_string(),
+            span: f.span.to_string(),
+            tab: f.tab.to_string(),
+        });
+    }
+    snap.panel_w = panel_w.max(0.0) as u32;
+    snap.panel_h = panel_h.max(0.0) as u32;
+    snap.panel_top = panel_top.max(0.0) as u32;
+    snap
+}
+
+pub(crate) fn push_dashboard_snapshot(
+    state: &mut crate::ui::session::DesktopSession,
+    events: &[crate::ui::shell_projection::ShellEvent],
+) {
+    use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
+    let mut snap = build_dashboard_snapshot(state);
+    snap.visible = state.desktop.dashboard_open;
+    snap.events = events.to_vec();
+    // T-06：face 缓存刷新（宿主叠层消费——in-proc 读面板 state 的
+    // outproc 等价）。
+    *state.desktop.dashboard_face_cache.borrow_mut() = snap
+        .faces
+        .iter()
+        .map(|f| {
+            (
+                f.id.clone(),
+                f.title.clone(),
+                f.icon.clone(),
+                f.status.clone(),
+                f.span.parse::<usize>().unwrap_or(2),
+                f.tab.clone(),
+            )
+        })
+        .collect();
+    // 命中带动态更新：dashboard 伪窗（pseudo[4]）rect ← 面板几何
+    ///（右上锚定：x = 视口 - w - 12，y = panel_top——035 固定外框契约）。
+    if let (Some(dwid), Some(host)) = (
+        state.desktop.shell_pseudo_wids.get(4).copied(),
+        state.host.as_mut(),
+    ) {
+        let vw = state
+            .desktop
+            .shell_geometry
+            .map(|g| g.viewport_w)
+            .unwrap_or(snap.panel_w as f32);
+        if let Some(v) = host.wm.wins.get_mut(&dwid) {
+            *v.rect.borrow_mut() = iced::Rectangle::new(
+                iced::Point::new((vw - snap.panel_w as f32 - 12.0).max(12.0), snap.panel_top as f32),
+                iced::Size::new(snap.panel_w as f32, snap.panel_h as f32),
+            );
+        }
+    }
+    let fp = snap.fingerprint();
+    let transient = !snap.events.is_empty();
+    if !transient && state.desktop.dashboard_fp.as_deref() == Some(fp.as_str()) {
+        return;
+    }
+    let mut payload = Vec::new();
+    snap.wire_encode(&mut payload);
+    let msg = ProtocolMsg::Control(ControlMsg::ShellProjectionPush {
+        face: shell_face::DASHBOARD,
+        payload,
+    });
+    if state.push_shell_control(&msg) {
+        state.desktop.dashboard_fp = Some(fp);
+    }
+}
+
 /// 通知快照推送（face=NOTIFICATION_CENTER；visible = notes_open 镜像位）。
 pub(crate) fn push_notes_snapshot(
     state: &mut crate::ui::session::DesktopSession,
@@ -11079,6 +11162,28 @@ fn dashboard_hatched_tick_allowed(
 /// 扫描/零文件 IO），重构 DashFace 供 [`dashboard_layout`] 同算式复算
 /// 格位。面板未挂载/快照空 → 空。
 fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<DashFace> {
+    // PLAN-036 T-06（D1 修订）：outproc 轨读宿主缓存（push 时写入）。
+    if state.desktop.shell_pipe.is_some() {
+        let cache = state.desktop.dashboard_face_cache.borrow();
+        return cache
+            .iter()
+            .map(|(id, title, icon, status, span, tab)| DashFace {
+                id: id.clone(),
+                title: title.clone(),
+                icon: icon.clone(),
+                status: match status.as_str() {
+                    "running" => "running",
+                    "hatched" => "hatched",
+                    _ => "placeholder",
+                },
+                span: *span,
+                tab: match tab.as_str() {
+                    "system" => "system",
+                    _ => "main",
+                },
+            })
+            .collect();
+    }
     let Some(panel) = state.desktop.dashboard_app else {
         return Vec::new();
     };
@@ -11143,17 +11248,11 @@ fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<D
 }
 
 
-/// dashboard 面板 faces 快照注入（召唤 + 打开期间活更新同体）：
-/// 孵化臂（无会话 + 无后端 → windowless mini 会话）+ 平行列表注入 +
-/// `__dashboard_faces` 合同面 + 几何 px 注入 + RebuildFaces。
-fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
-    let Some(panel) = state.desktop.dashboard_app else {
-        return;
-    };
-    if !state.dashboard_visible() {
-        return;
-    }
-    // 1. 候选 + 配置清单 + 会话/孵化三态解析。
+/// PLAN-036 T-05：faces 收集 + 面板几何（两轨同源——配置门/静默孵化
+/// 副作用/存储跨度覆写/dashboard_layout 算式；返回 (faces, w, h, top)）。
+fn collect_dashboard_faces(
+    state: &mut crate::ui::session::DesktopSession,
+) -> (Vec<DashFace>, f32, f32, f32) {
     let candidates = dashboard_face_candidates(state);
     let enabled_cfg = dashboard_enabled_list();
     let mut faces: Vec<DashFace> = Vec::new();
@@ -11198,11 +11297,36 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
             .or_else(|| dashboard_declared_span(state, &f.id))
             .unwrap_or(2);
     }
-
-    // 2. 几何（宿主单一事实）+ 注入。
     let viewport = state.host_viewport();
     let (panel_rect, _cells) = dashboard_layout(viewport, &faces);
-    let (panel_w, panel_h, panel_top) = (panel_rect.width, panel_rect.height, panel_rect.y);
+    (faces, panel_rect.width, panel_rect.height, panel_rect.y)
+}
+
+/// dashboard 面板 faces 快照注入（召唤 + 打开期间活更新同体）：
+/// 孵化臂（无会话 + 无后端 → windowless mini 会话）+ 平行列表注入 +
+/// `__dashboard_faces` 合同面 + 几何 px 注入 + RebuildFaces。
+fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
+    // PLAN-036 T-05（B2）：outproc 轨——faces 收集（含静默孵化副作用，
+    /// 宿主行为两轨同源）+ 快照重推（RebuildFaces 事件重建 rows）。
+    if state.desktop.shell_pipe.is_some() {
+        if state.desktop.dashboard_open {
+            push_dashboard_snapshot(
+                state,
+                &[crate::ui::shell_projection::ShellEvent::RebuildFaces],
+            );
+        }
+        return;
+    }
+    let Some(panel) = state.desktop.dashboard_app else {
+        return;
+    };
+    if !state.dashboard_visible() {
+        return;
+    }
+    // PLAN-036 T-05：faces 收集 + 几何提炼为 collect_dashboard_faces
+    ///（in-proc 注入与 outproc 快照两轨同源——孵化副作用/配置门/跨度/
+    /// 布局算式单一事实）。
+    let (faces, panel_w, panel_h, panel_top) = collect_dashboard_faces(state);
 
     // 3. 快照注入（平行列表 + 合同面 + 几何）。
     let mut ids: Vec<auto_val::Value> = Vec::new();
@@ -11256,6 +11380,22 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
 fn toggle_dashboard(
     state: &mut crate::ui::session::DesktopSession,
 ) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // PLAN-036 T-05（B2）：outproc 轨推送臂——toggle 语义镜像（开 =
+    /// visible 置位 + RebuildFaces 事件快照；关 = visible=0 纯状态）；
+    /// in-proc 原路径零变化（I2）。
+    if state.desktop.shell_pipe.is_some() {
+        if state.desktop.dashboard_open {
+            state.desktop.dashboard_open = false;
+            push_dashboard_snapshot(state, &[]);
+        } else {
+            state.desktop.dashboard_open = true;
+            push_dashboard_snapshot(
+                state,
+                &[crate::ui::shell_projection::ShellEvent::RebuildFaces],
+            );
+        }
+        return iced::Task::none();
+    }
     // 1. 懒挂载
     if state.desktop.dashboard_app.is_none() {
         match crate::ui::shell::build_dashboard_component() {
@@ -11287,6 +11427,12 @@ fn toggle_dashboard(
 /// PLAN-024：dashboard 面板关闭执行体（× / scrim / Esc / 再点 dock 钮
 /// 四路径同一入口；孵化会话常驻不回收——notification 槽先例）。
 fn close_dashboard(state: &mut crate::ui::session::DesktopSession) {
+    // PLAN-036 T-05（B2）：outproc 轨——镜像位复位 + visible=0 快照。
+    if state.desktop.shell_pipe.is_some() {
+        state.desktop.dashboard_open = false;
+        push_dashboard_snapshot(state, &[]);
+        return;
+    }
     if let Some(panel) = state.desktop.dashboard_app {
         if let Some(app) = state.apps.get_mut(&panel) {
             let _ = app.component.write_state("visible", auto_val::Value::str("0"));
@@ -19156,6 +19302,24 @@ fn compare_pngs(
                 if let Some(launch_id) =
                     m.event.strip_prefix("__dashboard_launch:").map(str::to_string)
                 {
+                    // PLAN-036 T-06（B2）：outproc 卡叠层 = 宿主合成面，
+                    // 目标 AppId(0)（面板 App 不在场）——命令直入
+                    // desktop_bus_inbox（panel 写点旁路，drain 统一执行）。
+                    if state.desktop.shell_pipe.is_some() && app_id.0 == 0 {
+                        state.desktop.desktop_bus_inbox.push((
+                            "dashboard-face".into(),
+                            crate::ui::session::DesktopCommand::LaunchApp(launch_id.clone()),
+                        ));
+                        let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+                        if exit {
+                            state.shutdown_broker();
+                            return iced::exit();
+                        }
+                        if state.desktop.shell_app.is_some() {
+                            sync_shell_windows(state);
+                        }
+                        return iced::Task::batch(tasks);
+                    }
                     if state.desktop.dashboard_app == Some(app_id) {
                         if let Some(panel) = state.desktop.dashboard_app {
                             if let Some(app) = state.apps.get_mut(&panel) {
@@ -19190,6 +19354,14 @@ fn compare_pngs(
                     // 判定顺序 = 去重语义（R21）：已有窗 → 聚焦（多次打开
                     // 不重复开窗）；其次孵化会话 → 升格开窗；最后 → launch。
                     if dashboard_running_app(state, &open_id).is_some() {
+                        // PLAN-036 T-06（B2）：outproc 直入 inbox（launch 臂
+                        // 同册——running 分支的 panel 写点旁路）。
+                        if state.desktop.shell_pipe.is_some() && app_id.0 == 0 {
+                            state.desktop.desktop_bus_inbox.push((
+                                "dashboard-face".into(),
+                                crate::ui::session::DesktopCommand::ActivateApp(open_id.clone()),
+                            ));
+                        } else {
                         if let Some(panel) = state.desktop.dashboard_app {
                             if let Some(app) = state.apps.get_mut(&panel) {
                                 let _ = app.component.write_state(
@@ -19198,6 +19370,7 @@ fn compare_pngs(
                                 );
                                 *app.state.view_dirty.borrow_mut() = true;
                             }
+                        }
                         }
                     } else if let Some(hatched) = state.hatched_mini_of(&open_id) {
                         if let Err(err) = state.open_window_for_session(&open_id, hatched) {
@@ -19285,6 +19458,7 @@ fn compare_pngs(
                         if state.launcher_visible()
                             || state.switcher_visible()
                             || state.notification_visible()
+                            || state.dashboard_visible()
                         {
                             // PLAN-036 T-04（D6）：outproc 轨 overlay 自隐
                             /// ——Escape 事件快照（面板 .at Escape handler 置
@@ -19301,6 +19475,14 @@ fn compare_pngs(
                                 if state.desktop.notes_open {
                                     state.desktop.notes_open = false;
                                     push_notes_snapshot(
+                                        state,
+                                        &[crate::ui::shell_projection::ShellEvent::Escape],
+                                    );
+                                }
+                                // PLAN-036 T-05（B2）：dashboard 同册。
+                                if state.desktop.dashboard_open {
+                                    state.desktop.dashboard_open = false;
+                                    push_dashboard_snapshot(
                                         state,
                                         &[crate::ui::shell_projection::ShellEvent::Escape],
                                     );
@@ -19984,40 +20166,83 @@ fn compare_pngs(
                 } else {
                     iced::Color::from_rgba(1.0, 1.0, 1.0, 0.45)
                 };
-                let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
-                let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
-                let dash_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] dashboard 缺失").size(14).into(),
-                    Err(payload) => {
-                        eprintln!("[session] dashboard view panicked (plan-453 T6 boundary): {payload:?}");
-                        desktop_crash_element()
-                    }
-                };
-                // chrome wrapper：panel 矩形 spacer 链定位定尺寸，.at 内部
-                // w-full h-full 填充（chrome 不再自带尺寸类）。
-                let chrome = iced::widget::container(
-                    iced::widget::row![
-                        iced::widget::Space::new()
-                            .width(iced::Length::Fixed(panel.x))
-                            .height(iced::Length::Shrink),
-                        iced::widget::column![
-                            iced::widget::Space::new()
-                                .width(iced::Length::Shrink)
-                                .height(iced::Length::Fixed(panel.y)),
-                            iced::widget::container(
-                                dash_client.map(move |m| DM::App(dash_app, m)),
-                            )
-                            .width(iced::Length::Fixed(panel.width))
-                            .height(iced::Length::Fixed(panel.height)),
-                        ],
-                    ],
-                )
-                .width(iced::Length::Fill)
-                .height(iced::Length::Fill);
-                layers.push(chrome.into());
+                // PLAN-036 T-05/T-06（B2）：chrome 二轨——outproc = child
+                /// 表面帧贴层（伪窗[4]，表面 = 035 固定外框 696×232 spacer
+                /// 链右上贴放）；in-proc = 面板 App 拆借视图 wrapper（原
+                /// 路径零变化）。face 卡两轨共用（宿主叠层——D1 修订：
+                /// 卡内容真渲保留宿主，面板 chrome/清单/grid = child）。
+                let msg_target = state
+                    .desktop
+                    .dashboard_app
+                    .unwrap_or(crate::ui::session::AppId(0));
+                let chrome =
+                    if state.desktop.shell_pipe.is_some() {
+                        let d_wid = state.desktop.shell_pseudo_wids.get(4).copied();
+                        match d_wid.and_then(|w| shell_surface_element(state, w)) {
+                            Some(el) => {
+                                iced::widget::container(
+                                    iced::widget::row![
+                                        iced::widget::Space::new()
+                                            .width(iced::Length::Fixed(panel.x))
+                                            .height(iced::Length::Shrink),
+                                        iced::widget::column![
+                                            iced::widget::Space::new()
+                                                .width(iced::Length::Shrink)
+                                                .height(iced::Length::Fixed(panel.y)),
+                                            iced::widget::container(el)
+                                                .width(iced::Length::Fixed(panel.width))
+                                                .height(iced::Length::Fixed(panel.height))
+                                                .clip(true),
+                                        ],
+                                    ],
+                                )
+                                .width(iced::Length::Fill)
+                                .height(iced::Length::Fill)
+                                .into()
+                            }
+                            None => iced::widget::text("").size(1).into(),
+                        }
+                    } else {
+                        let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
+                        let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
+                        let dash_client: iced::Element<'_, IcedMessage> = match
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                        {
+                            Ok(Some(el)) => el,
+                            Ok(None) => {
+                                iced::widget::text("[AutoUI 会话] dashboard 缺失").size(14).into()
+                            }
+                            Err(payload) => {
+                                eprintln!(
+                                    "[session] dashboard view panicked (plan-453 T6 boundary): {payload:?}"
+                                );
+                                desktop_crash_element()
+                            }
+                        };
+                        // chrome wrapper：panel 矩形 spacer 链定位定尺寸，.at 内部
+                        // w-full h-full 填充（chrome 不再自带尺寸类）。
+                        iced::widget::container(
+                            iced::widget::row![
+                                iced::widget::Space::new()
+                                    .width(iced::Length::Fixed(panel.x))
+                                    .height(iced::Length::Shrink),
+                                iced::widget::column![
+                                    iced::widget::Space::new()
+                                        .width(iced::Length::Shrink)
+                                        .height(iced::Length::Fixed(panel.y)),
+                                    iced::widget::container(
+                                        dash_client.map(move |m| DM::App(dash_app, m)),
+                                    )
+                                    .width(iced::Length::Fixed(panel.width))
+                                    .height(iced::Length::Fixed(panel.height)),
+                                ],
+                            ],
+                        )
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill)
+                        .into()
+                    };
+                layers.push(chrome);
                 // face 卡叠合（viewport 绝对格位；占位卡 = 宿主合成面）。
                 for (f, rect) in faces_view.iter().zip(cells.iter()) {
                     if f.status != "running" && f.status != "hatched" {
@@ -20038,7 +20263,7 @@ fn compare_pngs(
                             )
                             .on_press(launch_msg)
                             .into();
-                        let placeholder_client = hint.map(move |m| DM::App(dash_app, m));
+                        let placeholder_client = hint.map(move |m| DM::App(msg_target, m));
                         let card = iced::widget::container(placeholder_client)
                             .width(iced::Length::Fixed(rect.width))
                             .height(iced::Length::Fixed(rect.height))

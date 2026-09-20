@@ -317,6 +317,10 @@ pub mod surface_role {
     /// 零漂移）；面区分按 Hello 声明序（同 role 的 OVERLAY 依序映射
     /// switcher→notification_center——单 exe 内约定，wire 上 role 显式）。
     pub const OVERLAY: u8 = 3;
+    /// PLAN-036 T-05（D2-A 定案）：壳 dashboard 表面——"background 上、
+    /// 窗口下"中间 z 档（追加式 =4；伪窗插层 z_order[1]——bg 伪窗之上
+    /// 全部 App 窗之下，命中带 = 面板矩形动态随几何推送更新）。
+    pub const DASHBOARD: u8 = 4;
 
     pub fn name(v: u8) -> &'static str {
         match v {
@@ -324,6 +328,7 @@ pub mod surface_role {
             BACKGROUND => "background",
             CHROME => "chrome",
             OVERLAY => "overlay",
+            DASHBOARD => "dashboard",
             _ => "unknown",
         }
     }

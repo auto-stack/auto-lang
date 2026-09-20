@@ -28,8 +28,8 @@ use crate::ui::desktop_protocol::message::{
 use crate::ui::desktop_protocol::transport;
 use crate::ui::desktop_protocol::PROTOCOL_VERSION;
 use crate::ui::shell_projection::{
-    shell_event_name, DesktopSurfaceSnapshot, NotesSnapshot, ShellProjection, ShellWrite,
-    SwitcherSnapshot,
+    shell_event_name, DashboardSnapshot, DesktopSurfaceSnapshot, NotesSnapshot, ShellProjection,
+    ShellWrite, SwitcherSnapshot,
 };
 use std::collections::BTreeMap;
 
@@ -279,6 +279,11 @@ impl ShellFaces {
                 self.geometry.viewport_w,
                 self.geometry.viewport_h,
             ),
+            shell_face::DASHBOARD => (
+                crate::ui::shell::shell_source("dashboard.at"),
+                self.geometry.viewport_w,
+                self.geometry.viewport_h,
+            ),
             _ => return false,
         };
         let comp = match crate::build_dynamic_component(src.as_ref(), None) {
@@ -379,7 +384,23 @@ impl ShellFaces {
                 p.bump_revision();
                 true
             }
-            // dashboard 面 = PLAN-036 B2（D1/D2 前置）——忽略留痕。
+            shell_face::DASHBOARD => {
+                let mut r = Reader::new(payload);
+                let Ok(snap) = DashboardSnapshot::wire_decode(&mut r) else {
+                    return false;
+                };
+                let events = snap.events.clone();
+                if !self.ensure_overlay(face) {
+                    return false;
+                }
+                let Some(p) = self.projector_mut(face) else { return false };
+                p.apply_writes(snap.interpreted_writes());
+                for e in &events {
+                    p.dispatch_event(shell_event_name(e));
+                }
+                p.bump_revision();
+                true
+            }
             _ => false,
         }
     }
@@ -529,6 +550,16 @@ impl ShellPump {
                     width: geometry.viewport_w,
                     height: geometry.viewport_h,
                 },
+                // PLAN-036 T-05（D2-A）：dashboard 面——中间 z 档显式声明
+                ///（宿主伪窗插层 z_order[1]——bg 上/窗下，命中带=面板矩形）。
+                /// 表面尺寸 = 035 固定外框 696×232（desktop-ux-rev3 网格
+                /// 契约——面板内容 w-full h-full 填充，宿主 spacer 链贴放
+                /// 右上位）。
+                SurfaceDecl {
+                    role: surface_role::DASHBOARD,
+                    width: 696.0,
+                    height: 232.0,
+                },
             ],
         });
         let mut end = end;
@@ -574,6 +605,8 @@ impl ShellPump {
                     for e in extra_surfaces {
                         let face = if e.role == surface_role::CHROME {
                             shell_face::SHELL
+                        } else if e.role == surface_role::DASHBOARD {
+                            shell_face::DASHBOARD
                         } else if e.role == surface_role::OVERLAY {
                             overlay_idx += 1;
                             match overlay_idx {
@@ -800,6 +833,41 @@ mod tests {
         );
         // 坏 payload 拒收不炸。
         assert!(!faces.apply_projection(shell_face::SWITCHER, &[0xFF, 0xFF]));
+    }
+
+    /// PLAN-036 T-05（B2）：dashboard 面投影应用——解释轨懒装载路径
+    ///（D2-A 中间 z 档面；faces 清单 + 几何写集 + RebuildFaces 事件）。
+    #[test]
+    fn shell_faces_dashboard_lazy_mount_apply() {
+        use crate::ui::shell_projection::{DashboardFace, DashboardSnapshot, ShellEvent};
+        let Ok(mut faces) = ShellFaces::load(ShellGeometry::fallback()) else {
+            eprintln!("shell faces load 失败（环境）");
+            return;
+        };
+        let dash = DashboardSnapshot {
+            hosted: true,
+            visible: true,
+            panel_w: 696,
+            panel_h: 232,
+            panel_top: 12,
+            faces: vec![DashboardFace {
+                id: "012-clock".into(),
+                title: "时钟".into(),
+                icon: "app-window".into(),
+                status: "hatched".into(),
+                span: "2".into(),
+                tab: "main".into(),
+            }],
+            events: vec![ShellEvent::RebuildFaces],
+        };
+        let mut payload = Vec::new();
+        dash.wire_encode(&mut payload);
+        assert!(
+            faces.apply_projection(shell_face::DASHBOARD, &payload),
+            "dashboard 懒装 + 应用"
+        );
+        assert!(faces.revision(shell_face::DASHBOARD) > 0);
+        assert!(faces.render(shell_face::DASHBOARD).is_some(), "懒装面渲染");
     }
 
     /// 装配单测：面装载 + 投影 apply（指纹门宿主侧，child 全量应用）+

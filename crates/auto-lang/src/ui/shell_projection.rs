@@ -1050,6 +1050,65 @@ impl DesktopSurfaceSnapshot {
     }
 }
 
+impl DashboardSnapshot {
+    /// 解释轨回写序列——与 renderer refresh_dashboard_panel 现行写集
+    /// 逐一对应（PLAN-036 T-05：face 卡壳清单渲染面——平行列表 + 合同面
+    /// + 几何 Int 保形；face 卡**内容**材料（宿主活渲染 mini）依 D1-C+
+    /// face:// 虚拟引用（T-06），卡壳由本写集先行）。
+    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {
+        vec![
+            ShellWrite::Scalar("hosted", s(if self.hosted { "1" } else { "" })),
+            ShellWrite::Scalar("visible", s(if self.visible { "1" } else { "" })),
+            ShellWrite::Array("face_ids", self.faces.iter().map(|f| s(f.id.clone())).collect()),
+            ShellWrite::Array(
+                "face_titles",
+                self.faces.iter().map(|f| s(f.title.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "face_icons",
+                self.faces.iter().map(|f| s(f.icon.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "face_statuses",
+                self.faces.iter().map(|f| s(f.status.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "face_spans",
+                self.faces.iter().map(|f| s(f.span.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "face_tabs",
+                self.faces.iter().map(|f| s(f.tab.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "__dashboard_faces",
+                self.faces.iter().map(|f| s(f.id.clone())).collect(),
+            ),
+            ShellWrite::Scalar("__panel_w", auto_val::Value::Int(self.panel_w as i32)),
+            ShellWrite::Scalar("__panel_h", auto_val::Value::Int(self.panel_h as i32)),
+            ShellWrite::Scalar("__panel_top", auto_val::Value::Int(self.panel_top as i32)),
+        ]
+    }
+
+    /// 指纹门载荷（id+status+span+可见+几何——宿主 per-face 缓存比较；
+    /// events 瞬态不入 fp，同 B1 两载体册）。
+    pub fn fingerprint(&self) -> String {
+        let mut fp = String::new();
+        for f in &self.faces {
+            fp.push_str(&f.id);
+            fp.push(':');
+            fp.push_str(&f.status);
+            fp.push(':');
+            fp.push_str(&f.span);
+            fp.push(',');
+        }
+        fp.push('|');
+        fp.push_str(if self.visible { "v1" } else { "v0" });
+        fp.push_str(&format!("|{}x{}@{}", self.panel_w, self.panel_h, self.panel_top));
+        fp
+    }
+}
+
 impl SwitcherSnapshot {
     /// 解释轨回写序列——与 renderer summon_switcher 现行写集逐一对应
     ///（PLAN-036 T-04：outproc 推送泵激活；`sel/rows/nres` 为 handler
@@ -1410,6 +1469,52 @@ mod tests {
         for e in [ShellEvent::Advance, ShellEvent::Back, ShellEvent::Pick, ShellEvent::Escape] {
             assert_eq!(shell_event_name(&e).len() > 0, true);
         }
+    }
+
+    /// PLAN-036 T-05（B2）：dashboard 载体写集键序 + 几何 Int 保形 +
+    /// fingerprint + round-trip。
+    #[test]
+    fn dashboard_snapshot_writes_and_fingerprint() {
+        use crate::ui::desktop_protocol::codec::Reader;
+        let dash = DashboardSnapshot {
+            hosted: true,
+            visible: true,
+            panel_w: 696,
+            panel_h: 232,
+            panel_top: 12,
+            faces: vec![DashboardFace {
+                id: "a".into(),
+                title: "A".into(),
+                icon: "i".into(),
+                status: "hatched".into(),
+                span: "2".into(),
+                tab: "main".into(),
+            }],
+            events: vec![ShellEvent::RebuildFaces],
+        };
+        let keys: Vec<&str> = dash
+            .interpreted_writes()
+            .iter()
+            .map(|w| w.key())
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                "hosted", "visible", "face_ids", "face_titles", "face_icons", "face_statuses",
+                "face_spans", "face_tabs", "__dashboard_faces", "__panel_w", "__panel_h",
+                "__panel_top"
+            ],
+            "dashboard 写集键序"
+        );
+        assert!(matches!(
+            dash.interpreted_writes()[9],
+            ShellWrite::Scalar("__panel_w", auto_val::Value::Int(696))
+        ));
+        assert!(dash.fingerprint().starts_with("a:hatched:2,"), "指纹段");
+        let mut buf = Vec::new();
+        dash.wire_encode(&mut buf);
+        let back = DashboardSnapshot::wire_decode(&mut Reader::new(&buf)).expect("decode");
+        assert_eq!(back, dash, "round-trip 全等");
     }
 
     fn wire_round_trip_full_family() {

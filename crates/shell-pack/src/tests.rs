@@ -164,8 +164,13 @@ fn compiled_faces_smoke_roundtrip() {
         faces.apply_projection(shell_face::NOTIFICATION_CENTER, &notes_payload),
         "notification 面投影应用（预装）"
     );
-    // dashboard 面 = B2（D1/D2 前置）——拒收维持。
-    assert!(!faces.apply_projection(shell_face::DASHBOARD, &payload));
+    // PLAN-036 T-05：dashboard 面激活（D2-A 中间 z 档——预装 + 应用）。
+    let mut dash_payload = Vec::new();
+    auto_lang::ui::shell_projection::DashboardSnapshot::default().wire_encode(&mut dash_payload);
+    assert!(
+        faces.apply_projection(shell_face::DASHBOARD, &dash_payload),
+        "dashboard 面投影应用（预装）"
+    );
 }
 
 /// ④ boot 时延度量行（AC-01）：同一进程内对拍解释装载（parse +
