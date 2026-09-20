@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-669
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-server-api-arg-binding
 author: [zcode]
 created_at: 2026-09-20
@@ -287,6 +287,9 @@ multipart JSON 串，按现行分支预处理后传入）、content_type、fn �
   `outcome: pass`（起草完成，源码级定位全部独立复核成立，任务/AC/SD 齐）。
   `next: work`——待用户确认 flip `executing` 后建
   `D:/autostack/.wt/lang-669/auto-lang` worktree 开工。
+- 2026-09-20（用户确认执行）：用户指令"解决方案确定、计划写好，直接
+  auto-plan-work 实施修复"——§4.0 授权补记：执行获准，§10-1 按 rev 1 建议
+  （F-R1/F-W3 排除出执行面、另立计划）默认生效。status → executing。
 
 ## 10. 待澄清事项
 
