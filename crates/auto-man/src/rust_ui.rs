@@ -2001,6 +2001,11 @@ fn extract_init_api_func(components: &str) -> Option<String> {
 }
 
 /// Collect all .at files in a directory (non-recursive).
+/// PLAN-039 T-04：递归收集 src/front 下全部 .at（跳过 pac.at）——原
+/// 实现只读平铺层，`components/`/`pages/` 子目录件全漏（klondike
+/// CardSuit/CardFace/CourtBadge 缺失 = 186 错中「cannot find type」族的
+/// 根因）。app 仓结构约定（auto-os AGENTS.md §3：src/front = app.at +
+/// store + pages/）本就含子目录。确定性：全路径排序。
 fn collect_at_files(dir: &Path) -> AutoResult<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -2008,19 +2013,26 @@ fn collect_at_files(dir: &Path) -> AutoResult<Vec<PathBuf>> {
         return Ok(files);
     }
 
-    for entry in fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {}", e))? {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
-
-        if path.extension().map(|e| e == "at").unwrap_or(false) {
-            let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-            // Skip pac.at (project config)
-            if file_name == "pac.at" {
+    fn walk(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                walk(&path, files)?;
                 continue;
             }
-            files.push(path);
+            if path.extension().map(|e| e == "at").unwrap_or(false) {
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                // Skip pac.at (project config)
+                if file_name == "pac.at" {
+                    continue;
+                }
+                files.push(path);
+            }
         }
+        Ok(())
     }
+
+    walk(dir, &mut files).map_err(|e| format!("Failed to read dir: {}", e))?;
 
     files.sort();
     Ok(files)

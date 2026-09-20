@@ -6395,6 +6395,11 @@ impl RustGenerator {
                     }
                     "padding" => format!("{}.padding({})", builder, value_str),
                     "spacing" => format!("{}.spacing({})", builder, value_str),
+                    // PLAN-039 T-04（台账 M7-c「缺口即发现即修」）：`key:` =
+                    // Vue 轨 reconciliation 提示词（kanban/klondike for 循环
+                    // 惯用）——a2r 编译轨无 diff/reconcile 面，认知且双轨
+                    // 同弃（onmouseenter 先例同款 parity 锚），非拒绝面。
+                    "key" => builder.to_string(),
                     _ => {
                         // PLAN-027 T-04: 显式拒绝门（设计 §3a-a4）——未知
                         // prop 由静默丢弃改编译期错（防"看似编译过实缺件"
@@ -7257,12 +7262,26 @@ impl RustGenerator {
         }
     }
 
+    /// PLAN-039 T-04（台账 M7-c「缺口即发现即修」）：.at 字面量内容再
+    /// 转义为 Rust 字面量体——.at 解析已剥源码层 `\"`，发射若不回转义，
+    /// 含引号/反斜杠/换行的串会打断生成物语法（kanban boards_store.at
+    /// `"{\"title\":\"" + esc(t) + …"` JSON 体拼接 = 4 个 mismatched
+    /// delimiter 的根因）。CJK 等非 ASCII 原样保留（escape_default 会
+    /// 全量转义破坏双语文本）。
+    fn rust_str_lit_body(s: &str) -> String {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
+    }
+
     /// Same as ast_expr_to_rust but without appending .to_string() to Str literals
     fn ast_expr_to_rust_no_to_string(&self, expr: &crate::ast::Expr) -> String {
         use crate::ast::Expr;
         match expr {
-            Expr::Str(s) => format!("\"{}\"", s),
-            Expr::CStr(s) => format!("\"{}\"", s),
+            Expr::Str(s) => format!("\"{}\"", Self::rust_str_lit_body(s)),
+            Expr::CStr(s) => format!("\"{}\"", Self::rust_str_lit_body(s)),
             // For everything else, delegate to ast_expr_to_rust
             _ => self.ast_expr_to_rust(expr),
         }
@@ -7272,7 +7291,7 @@ impl RustGenerator {
         use crate::ast::Expr;
         use auto_val::Op;
         match expr {
-            Expr::Str(s) => format!("\"{}\".to_string()", s),
+            Expr::Str(s) => format!("\"{}\".to_string()", Self::rust_str_lit_body(s)),
             Expr::I64(n) => n.to_string(),
             Expr::Int(n) => n.to_string(),
             Expr::U64(n) => n.to_string(),
@@ -7950,7 +7969,7 @@ impl RustGenerator {
     fn ast_expr_to_json_value(&self, expr: &crate::ast::Expr) -> String {
         use crate::ast::Expr;
         match expr {
-            Expr::Str(s) => format!("\"{}\"", s),
+            Expr::Str(s) => format!("\"{}\"", Self::rust_str_lit_body(s)),
             Expr::I64(n) => n.to_string(),
             Expr::Int(n) => n.to_string(),
             Expr::U64(n) => n.to_string(),
@@ -11375,6 +11394,49 @@ widget board {
         assert!(
             code.contains("P039 debt"),
             "债指针在案:\n{code}"
+        );
+    }
+
+    /// T-04 发现臂①：`key:` = Vue reconciliation 提示词——认知且双轨
+    /// 同弃（非拒绝面），for 循环键提示不得打断生成。
+    #[test]
+    fn key_prop_silently_skipped() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    msg { Tap }
+    model { var items = ["a", "b"] }
+    view {
+        col {
+            for it in .items {
+                button it {
+                    key: it,
+                    onclick: .Tap
+                }
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            !code.contains("prop `key` not in the recognized vocabulary"),
+            "key 不得落拒绝门:\n{code}"
+        );
+    }
+
+    /// T-04 发现臂②：.at 字面量含引号/反斜杠时发射必须再转义
+    /// （kanban boards_store.at JSON 体拼接先例：源码层 \" 解析后裸发射
+    /// 曾打断生成物语法）。
+    #[test]
+    fn string_literals_reescaped_on_emission() {
+        let code = gen_first_widget(r#"
+widget Demo {
+    model { var payload str = "{\"title\":\"" + "x" + "\"}" }
+    view { text .payload }
+}
+"#);
+        assert!(
+            code.contains("\\\"title\\\":"),
+            "引号必须转义发射（生成物含 \\\"title\\\": 形态）:\n{code}"
         );
     }
 }
