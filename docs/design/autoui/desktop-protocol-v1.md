@@ -29,6 +29,7 @@
 | v1.13 | 2026-09-19 | native 覆盖 ramp v3 + **缺省翻转**——六缺项五族补齐（tabs 整 kind 全链[a2r 断裂修复]/hidden display:none[display 族响应式覆盖]/样式版 grid[GridCols→Grid walker 分岔]/定位族分层[absolute+offset 覆盖序真渲 + fixed/sticky 降级放行随注]/012 SelfCenter 映射臂 + D5 族运行时面[Inset/LineClamp/FlexWrap]）+ 复测 judged 22/22 = 100% ≥ 95% 过门 → `resolve_native_frame_mode` Covered 臂翻 Commands（auto 缺省 queue）+ 仪器 judged 口径升级与防漏断言反转（见 §1.13；零 wire 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-032（§1.13） |
 | v1.15 | 2026-09-20 | **位图过线通道 + rqhost 内存量化门 + 像素原生族裁定（rqhost-maturity）**——FrameMsg tag 10 `BitmapReady`/tag 11 `BitmapAck`（元数据过管道、RGBA 在专用第二段 `-bm` 槽——`BufferAlloc.bm` 尾追协商）+ `bitmap://{pid}-{局部 id}` 词汇（宿主 resolve 前缀臂；走既有 Image op 零新 DrawOp tag）+ app 上传 API（`drain_bitmap_uploads` 排水缝）+ canvas=位图快照过线（首个像素原生 kind 过线；video 专属/terminal M7-c 撞面/code_editor 维持/imagesurface not-yet 维持+M7-c，五 kind 裁定入册）+ rqhost 内存门 release 复测与归因矩阵（见 §1.15 门判定行）——`PROTOCOL_VERSION` 仍 1（全追加式） | PLAN-034（§1.15） |
 | v1.14 | 2026-09-19 | **单投影器统一（rq-projector-unify）**——`-q` VM 轨改接 RqProjector（View 全展开投影 + 启动覆盖门，a2r/解释同律）+ VM 轨三补（input_state_map 绑定字段回写[on() 单写点，a2r 生成物同构]/多 timer 泵侧驱动[Component::fire_due_timers 钩子]/`__desktop_cmd` 读走上行[DesktopBus 泛化]）+ `AppProjector` 退役（解释 re-exec 臂/pixels 臂/process_model=outproc 选项拔除——解释态两合法形态 = inproc 直挂 / `-q` 经 native 臂）+ `NativeProjector` 更名 `RqProjector`（见 §1.14；客户端臂内部演进零 wire 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-033（§1.14） |
+| v1.16 | 2026-09-20 | **B 形态彻底化收官（shell-compile-overlay-outproc）**——shell-lib 编译面轨（a2r 五件生成 `crates/shell-pack` 入库 lib crate + `mount_face` 工厂 + freshness 字节对拍门；outproc child 缺省编译、显式 `AUTO_SHELL_PACK`=解释双轨）+ overlay 四面 outproc（switcher/通知/dashboard 并壳 exe 多表面 + launcher 一面一 exe 独立进程[注册表源]）+ 表面 role 扩档（`OVERLAY`=3 置顶全屏 / `DASHBOARD`=4 中间 z 档——bg 上/窗下，伪窗命中带随几何动态更新）+ `shell_face::LAUNCHER`=6（独立 exe 快照寻址）+ 快照载体全激活（Switcher/Notes/Dashboard/Launcher interpreted_writes + per-face 指纹门）+ 键盘动词事件位（ShellEvent tag 6-9：Advance/Back/Pick/Escape——宿主截获 → 快照 events 下行 → child dispatch；指纹门放行 = fp 变化 || events 非空）+ D5 聚焦链（child focus_first_input + 伪窗可聚焦 + VK→bind 路由臂 + 修饰组合宿主域）+ truncate 真渲（见 §1.16；`PROTOCOL_VERSION` 仍 1——全追加式） | PLAN-036（§1.16） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -837,6 +838,60 @@ assets/034/memory-matrix.txt。**归因结论**：wgpu 设备/栈驻留 ≈223MB
 wgpu-only 面刚需）。自观测面照落（rq_update 300 拍节流内存观测行）。
 app 门 ≤10MB 沿用复核过（release 003 -q 6460KB；P033-D3 口径：027
 富载体另裁）。
+
+## §1.16 v1.16 增量：B 形态彻底化收官——shell-compile-overlay-outproc（PLAN-036）
+
+**变更族**（全追加式；`PROTOCOL_VERSION` 仍 1）：
+
+1. **shell-lib 编译面轨（P030-D1 核销）**：a2r "无窗组件库"生成目标
+   （`generate_shell_pack_lib`——shell pack 五件 → `crates/shell-pack`
+   入库 lib crate：五组件 + `SHELL_MANIFEST` + `mount_face(id,w,h)`
+   工厂 + 每组件 `ShellStateAccess` 生成实现[string-key 写态 lowering/
+   召唤事件 dispatch/命令读走]）。真编译门 = workspace 成员编译 +
+   freshness 字节对拍（auto-man 测试）+ 词汇门保留为快速诊断。
+   child 装配：`ShellFaces` faces-map 化（`ShellSurface` 装配 trait +
+   `FaceProjector<C>` 泛型适配体——解释臂[`ShellFaces::load` 懒装]/
+   编译臂[`from_faces` 预装]同接口）；outproc child 缺省编译轨
+   （cmd_autodesk 装配），显式 `AUTO_SHELL_PACK`（目录）= 开发态解释
+   双轨（027 D5 语义；宿主 spawn 仅显式命中时注入）。
+2. **overlay 四面 outproc（P030-D3 核销）**：
+   - 拓扑（D3-C 混合）：switcher/通知/dashboard **并壳 exe 多表面**
+     （Hello 五面声明：BACKGROUND 领头 + CHROME + OVERLAY×2[声明序
+     映射 switcher→notification] + DASHBOARD[035 固定外框 696×232]）；
+     launcher **一面一 exe**（`--autodesk-launcher` 独立进程 +
+     `AUTO_LAUNCHER_ENTRY` 注册表源 env——崩溃不连坐壳）。
+   - 表面 role 扩档：`OVERLAY=3`（置顶全屏伪窗）；`DASHBOARD=4`
+     （中间 z 档——`wm_add_win_above_bottom` z_order[1]，命中带 =
+     面板矩形随快照动态更新）。`shell_face::LAUNCHER=6`。
+   - 快照载体激活：Switcher/Notes/Dashboard/Launcher 四载体
+     `interpreted_writes()`（键集与 in-proc 召唤动词写集逐一对应）+
+     `fingerprint()`；推送泵 per-face 指纹门（放行 = fp 变化 ||
+     events 非空——瞬态动词不入 fp）。
+   - face 材料（D1 修订）：dashboard 面板 chrome/清单/grid = child
+     表面帧 + face 卡 = 宿主 iced 叠层（两轨共用卡循环——视觉零差；
+     `face://` 虚拟引用全下放记 P036 债）。
+3. **键盘动词事件位（D6/D5）**：`ShellEvent` tag 6-9（Advance/Back/
+   Pick/Escape——追加档）。宿主保留截获面（Ctrl+Tab/Ctrl 松开/Esc/
+   Ctrl+Space/⊞ 与一切修饰组合 = 宿主域）；动词随快照 events 下行 →
+   child `dispatch_event` 派发同名 Msg variant。child 键盘 bind 路由
+   臂：`InputMsg::KeyPressed` 先经 VK→规范名→`ShellStateAccess::
+   shell_key`（解释 = key_bindings→call_handler；编译 = key_message
+   [P036 债]）。`__focus_input` 重试环等价 = ApplyFilter 事件后 child
+   `focus_first_input()`（首输入槽）；伪窗可聚焦（召唤 wm_focus →
+   route_live_input 键盘/IME 直达）。
+4. **truncate 真渲（⑫ 前缀族）**：native 投影器 Text 发射臂 measure
+   逐字收缩 + `…` 尾接（avail_w 截断；018 真渲债清偿）。
+
+**验收**：`p036_all_faces_outproc_arm` 六腿（五伪窗/五面帧/parity
+[结构全等——色彩 token 跨进程 ±3 档环境差豁免，发现记录在案]/
+launcher exe attach/崩溃隔离）+ `p030_shell_outproc_arm` 回归 +
+boot 时延度量行（解释 25.7ms vs 编译 0.8ms）。资产
+`docs/plans/reports/assets/036/`。
+
+**P036 新债**（KNOWN-DEBT 随注）：`face://` 虚拟引用全下放（宿主
+DrawList 栅格化器前置——文本字形缺位）/ 编译轨 launcher exe /
+launcher 看门兵 / 编译臂 key_message（shell_key） / 跨进程色彩解析
+差根因 / launcher 自隐宿主镜像同步。
 
 ## 2. Wire Format（信封）
 

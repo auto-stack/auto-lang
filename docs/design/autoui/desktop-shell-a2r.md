@@ -217,9 +217,12 @@ S2 shell 专属接缝（投影方向反转 + 命令类型化）
    handle.verb(...) 类型化调用；storage.* 对接宿主 storage/os-config
    运行时；__desktop_cmd 字符串通道退役（解释壳与编译壳同一 handle 背后
    可先桥接，双轨期零分叉）
-S3 生成目标 + 宿主装配 + parity 切换（**已改道**：A 形态 S3 经
-   PLAN-027 rev2 退役——B 裁定后 shell 编译产物 = outproc exe；本节
-   其余 S1/S2 文字为 PLAN-027 已交付面的设计记录）
+S3 生成目标 + 宿主装配 + parity 切换（**已改道 → 终态兑现**：A
+   形态 S3 经 PLAN-027 rev2 退役；PLAN-036 以 B 形态兑现其生成目标——
+   `crates/shell-pack` 入库 lib crate[SHELL_MANIFEST + mount_face 工厂
+   + freshness 门] + outproc child 编译轨缺省 + overlay 四面 outproc
+   [D3-C 混合拓扑] + p036 五面终态 e2e。B 形态彻底化收官——见
+   desktop-protocol-v1.md §1.16）
    wrap_example 新"无窗组件库"目标（四件 → 一个 crate：常驻 2 组件 +
    懒挂载 3 组件 + 装配清单）；宿主 shell_app/desktop_app 槽位接 typed
    组件（ShellSurface 装配 trait：解释壳/编译壳同接口）；a2r shell ×

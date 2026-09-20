@@ -2380,9 +2380,15 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 ## 2026-09-19 增补七（PLAN-030 登记与核销）
 
 - **SendInput 真机腿挂账（029）✅ 按计划清偿口径收口（PLAN-030）**：启动序基建交付（boot 孵化序 + child e2e 观察[desktop_bus_inbox/帧断言]在册）——SendInput FFI 侧前台断言/组装层 029 已就绪；真桌面整窗 SendInput e2e 腿维持 dual 口径（协议级断言 p030 e2e 四腿承载 + os smoke 截图留痕），OS 级合成键入自动化仍受 P020-D4（DPI/画布变换）约束。
-- **P030-D1 [a2r 编译面轨 not-yet（shell-lib 组件库生成模式）]**：PLAN-030 v1 交付 = 解释面 outproc child（shell_source 同源装载 + RqProjector View 全展开——AppProjector 队列臂对 ForLoop/Conditional no-op[client_runtime.rs layout walker]，shell 面 dock/窗口条目不可渲染，e2e 腿 3 实测定轨）。a2r 接缝就位（RqProjector 替换点）；组件库形生成模式（run_rust_ui 为 app 工程形）随缺省翻转计划另立。
+- **P030-D1 [a2r 编译面轨 not-yet（shell-lib 组件库生成模式）]✅ 已核销（PLAN-036 T-02/T-03，2026-09-20）**：`generate_shell_pack_lib` 无窗组件库生成目标（五件 → `crates/shell-pack` 入库 lib crate + mount_face 工厂 + freshness 门）；child 编译轨缺省（cmd_autodesk 装配，boot 面装载 25.7ms→0.8ms）；真编译门清偿 a2r 七族缺口。核销收据 = §1.16 + p036 e2e。
 - **P030-D2 [壳表面 resize not-yet]**：壳双表面尺寸 boot 定档（AUTO_SHELL_GEOM）；视口运行期变更随 respawn 生效（ControlMsg::Resize 壳臂显式 no-op 留痕）。
-- **P030-D3 [overlay 三面 + launcher outproc 化 not-yet（D6 边界裁定）]**：switcher/notification/dashboard + launcher 维持 in-proc（dashboard z 带在 App 窗下与置顶 chrome 冲突 + face 卡宿主活渲染无投影材料；launcher 保 iced 聚焦链）。随缺省翻转计划另立。
+- **P030-D3 [overlay 三面 + launcher outproc 化 not-yet（D6 边界裁定）]✅ 已核销（PLAN-036 T-04..T-07，2026-09-20）**：四面全 outproc（switcher/通知/dashboard 并壳 exe 多表面[OVERLAY/DASHBOARD role 扩档] + launcher 一面一 exe[注册表源]）；键盘动词事件位（ShellEvent tag 6-9）+ D5 聚焦链 child 化（focus_first_input + 伪窗可聚焦 + bind 路由臂）；p036 六腿 e2e + p030 回归全绿。核销收据 = §1.16。
+- **P036-D1 [face:// 虚拟引用全下放 not-yet（D1-C+ 演进位）]**：dashboard face 卡 v1 = 宿主 iced 叠层（两轨共用卡循环，视觉零差）；child 全自渲 face 需宿主 DrawList→位图栅格化器（文本字形缺位——034 canvas 栅格化为 child 侧，宿主侧无先例）。前置立项后翻案。
+- **P036-D2 [编译轨 launcher exe not-yet]**：launcher 独立 exe v1 = 解释装载（AUTO_LAUNCHER_ENTRY 注册表源 read_to_string + build_dynamic_component）；a2r 编译 exe（launcher.at 非 pack 源——需 project 形态生成或 pack 收编）另立。
+- **P036-D3 [launcher 看门兵缺失]**：launcher exe 死亡 → pump 回收 + 下次召唤重 spawn（spawned 复位）；无退避/预算链（壳看门兵不覆盖独立管线）。崩溃连坐已隔离（p036 腿4 断言），自动恢复缺位。
+- **P036-D4 [编译臂 key_message（shell_key）未生成]**：ShellStateAccess::shell_key 编译臂（a2r key_message 直派）未入 codegen——编译轨 overlay 键盘 bind 路由 no-op（v1 消费面 = 解释 launcher child；编译轨 launcher 记 P036-D2 同册）。
+- **P036-D5 [跨进程色彩解析差（parity 发现）]**：p036 腿2 实测 child 帧色彩 token 与本地渲染差 ±3/255（`text-muted-foreground` 151,163,181 vs 148,163,183——疑主题感知解析进程初始化差；wire f32 量化 ±1 另在）。parity 准则 = 结构全等（色彩豁免）；根因细究归复审。
+- **P036-D6 [launcher 自隐宿主镜像同步]**：child 侧关闭（Launch 后 visible=0/点击 scrim Close）宿主 launcher_open 镜像不同步——层序推空层无害 + 焦点滞留伪窗（键盘 no-op 无害）；宿主侧路径（Esc/启动动词）已自置。观察面随 M7-c 实机走查评估。
 - **P030-D4 [TS decode tag 12-14 not-yet]**：v1.11 三变体无 TS 消费面（远程镜像线不转发壳投影）；drawlist-renderer 接入时补。
 - **P030-D5 [AppProjector 队列臂 ForLoop/Conditional no-op（既有缺口，P030 发现）]**：解释态 queue 臂（auto re-exec --autodesk-incubate queue 档）渲染不展开 for/conditional——列表驱动 app 经该档失真；shell 面已定轨 RqProjector，AppProjector 展开补齐独立评估（消费面 = 解释 queue 档 app，现无 e2e 载体）。
 
