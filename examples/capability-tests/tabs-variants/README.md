@@ -1,4 +1,6 @@
-# 046-tabs-variants — Tabs 形态（PLAN-641）
+# tabs-variants — Tabs 形态（PLAN-641）
+
+> 原名 `examples/ui/046-tabs-variants`，2026-09-20 迁入 capability-tests。
 
 Tabs 组件 `variant` 形态双端示例：`default`（按钮托盘，现状形态）与
 `enclosed`（连通形态——激活 tab 与内容面板共享背景无缝，非激活 tab 扁平
@@ -21,7 +23,7 @@ See `front/app.at`.
 ## How to Run
 
 ```bash
-cd examples/ui/046-tabs-variants
+cd examples/capability-tests/tabs-variants
 auto run              # Vue 模式（registry 组件，variant 下发 provide/inject）
 auto run -r vm        # VM 模式（iced 连通渲染臂 + 复合标签折叠）
 ```

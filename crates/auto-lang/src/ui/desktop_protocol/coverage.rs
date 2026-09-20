@@ -1253,10 +1253,19 @@ mod tests {
         use crate::ui::aura_view_builder::AuraViewBuilder;
         use crate::ui::vm_bridge::VmBridge;
 
-        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui")
-            .join(dir)
-            .join("src/front");
+        // 双根解析（stage3 example_source 同则）：046-tabs 等样板随
+        // fix-ui-track-reorg（2026-09-20）迁 capability-tests。
+        let front = ["examples/ui", "examples/capability-tests"]
+            .iter()
+            .map(|root| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../")
+                    .join(root)
+                    .join(dir)
+                    .join("src/front")
+            })
+            .find(|p| p.is_dir())
+            .unwrap_or_else(|| panic!("example {dir} not found under examples/ui or capability-tests"));
         let mut srcs: Vec<std::path::PathBuf> = std::fs::read_dir(&front)
             .unwrap_or_else(|e| panic!("read {front:?}: {e}"))
             .filter_map(|e| e.ok())
@@ -1312,7 +1321,7 @@ mod tests {
         for dir in [
             "012-clock",
             "041-auto-edit",
-            "046-tabs-variants",
+            "tabs-variants",
             "024-charts",
             "018-book-reader",
             "021-blog-viewer",
@@ -1357,18 +1366,23 @@ mod tests {
     /// component.view()）即本口径。
     #[test]
     fn native_gate_runtime_views_of_six() {
-        let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/");
-        // (例, 期望缺项——None = Covered)。
+        let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../");
+        // (例, 期望缺项——None = Covered)。tabs-variants 已迁
+        // capability-tests（双根解析）。
         let expect: &[(&str, Option<&str>)] = &[
             ("012-clock", None),
             ("018-book-reader", Some("style:truncate")),
             ("021-blog-viewer", None),
             ("024-charts", None),
             ("041-auto-edit", Some("tag:codeeditor")),
-            ("046-tabs-variants", None),
+            ("tabs-variants", None),
         ];
         for (dir, missing) in expect {
-            let path = format!("{base}{dir}/src/front/app.at");
+            let path = ["examples/ui", "examples/capability-tests"]
+                .iter()
+                .map(|root| format!("{base}{root}/{dir}/src/front/app.at"))
+                .find(|p| std::path::Path::new(p).is_file())
+                .unwrap_or_else(|| format!("{base}examples/ui/{dir}/src/front/app.at"));
             let src = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("read {path}: {e}"));
             let comp = crate::build_dynamic_component(&src, Some(&path))

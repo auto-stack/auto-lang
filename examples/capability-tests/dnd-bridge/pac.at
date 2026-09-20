@@ -8,5 +8,5 @@ title: "DndBridge"
 title_zh: "拖放桥"
 
 dep stylekit {
-    path: "../stylekit"
+    path: "../../ui/stylekit"
 }

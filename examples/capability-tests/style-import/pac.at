@@ -8,5 +8,5 @@ theme: "dark"
 accent: "indigo"
 
 dep stylekit {
-    path: "../stylekit"
+    path: "../../ui/stylekit"
 }

@@ -74,6 +74,22 @@ resolves `examples/ui` → this directory); 459-dual-app remains embedded by
 | `042-two-inputs-child/` | 双输入子 widget 焦点 / Tab 遍历语料 | Plan 483 |
 | `043-canvas-paint/` | canvas 元素能力样板（状态驱动画布 + pen 三件套事件；场景数据契约见其 SPEC.md） | Plan 563 |
 
+## App-track migrations (2026-09-20, fix-ui-track-reorg)
+
+Single-capability demos that had lived in `examples/ui/` — moved so the app
+track stays a pure app incubator. **Unnumbered names** (deliberate: numbering
+collisions within this directory are avoided altogether — see the
+043-canvas-paint renumbering note above). The desktop registry and ui-gallery
+scan `examples/ui/` only, so these are invisible to both (by design, same as
+the probes below).
+
+| Demo | Pins | Origin |
+|---|---|---|
+| `clipboard-bridge/` | OS 剪贴板三族互通（text/files/images FFI natives，原 ui/043） | Plan 485 |
+| `dnd-bridge/` | OLE 拖放双向互通 + 虚拟文件（原 ui/044） | Plan 488 T6 |
+| `style-import/` | 跨包 style recipe 引用——stylekit path-dep 消费者（原 ui/045） | Plan 635 |
+| `tabs-variants/` | tabs `variant` 形态（default/enclosed）双端示例（原 ui/046） | Plan 641 |
+
 ## Verify a canary
 
 ```bash
