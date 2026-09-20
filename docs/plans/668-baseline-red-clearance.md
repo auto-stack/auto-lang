@@ -6,7 +6,7 @@ author: [zcode]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 1
-current_step: 2
+current_step: 4
 total_steps: 10
 
 # /auto-plan:review 结束时填写：
@@ -258,9 +258,22 @@ test_aavm2_goldens_check` 全绿；抽样示例构建链绿；KNOWN-DEBT 中本�
   R-03/R-04、R-15（rust.rs:3227 icon 臂双特性态）。验证：各滤串隔离绿。
 - **T-03 564-Q6 语义断言族**（→AC-03）：R-07/R-08/R-09/R-10 + R-11 分类定案
   （豁免口径成文：CI 为准/本机浮动记录）。验证：`cargo t`（ui-iced 档）目标滤串绿。
+  [✅ 已完成] 2026-09-20：R-07 核销（基线已绿）/R-10 并入 R-03/R-11 环境红豁免
+  （15 件 layout.rs:371 同断言，576 在案）；R-08 断言跟 clientX-rect 现行发射
+  （旧 offsetX 形态过期）/R-09 strip_html 语义裁定（tag→空格替换不折叠，职责=
+  去标签+实体解码）。提交 a8e44e3f9，滤串 2/2 绿。
 - **T-04 golden/快照再生批**（→AC-04/AC-05）：R-12（逐例 bless+人工核验）、R-13
   （aavm expected.rs 再生）、R-18（insta accept）。验证：`cargo tt` / `cargo taa
   test_aavm2_goldens_check` / 快照滤串绿。
+  [✅ 已完成] 2026-09-20：R-12 双根因修——①003/004 use.c manifest 从未入库
+  （`.gitignore` 全局 `*.json` 吞掉——补 `!27_c_abi/**/*.json` 白名单+重建两
+  清单，金样级精确复原）；②parser dot 链 `.await/.go` 后缀委托 Pratt（024
+  嵌套位解析错清零）；③trans async 块尾 Expr 不补分号（块值复活，实编门
+  E0277 清零）。007/005/020/006 金样随 PLAN-018 括号族+块尾语义 bless（diff
+  人工核验全同族）；R-13 A2R_BLESS 四金样（b13/b32/g25/b42 同括号族）；R-18
+  三快照 accept（app/editor/sidebar——SFC 字节漂移，结构断言不变）。提交
+  acf22be45（含 .gitignore 修正）。`cargo tt` 4038/4038 全绿、`cargo taa
+  test_aavm2_goldens_check` 绿、实编门 153 compiled/0 unexpected。
 - **T-05 断言契约与表同步**（→AC-03/AC-06）：R-05（convert_popover 坐标锚判定源
   修）、R-14（target_set/登记同步）、R-16（029 断言更新）、R-17（dnd-bridge 源修或
   解析器定位）、R-19（schema_drift baseline 裁剪+kitchen_sink）、R-20（spa-routes）。
