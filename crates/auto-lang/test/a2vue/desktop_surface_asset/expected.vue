@@ -27,6 +27,7 @@ const __desktop_cursor_y = ref<number>(0)
 const sel_id = ref<string>('')
 const launching = ref<string>('')
 const __wm_running = ref<string>('')
+const __wm_dashboard = ref<string>('')
 const __wp_picker = ref<string>('')
 const __wp_preview = ref<string>('')
 const __wp_dir = ref<string>('')
@@ -49,6 +50,7 @@ const emit = defineEmits<{
   MenuWallpaper: []
   BlankMenu: []
   PickerApply: [string]
+  ToggleDashboardBlank: []
   PickerPreview: [string]
   PickerBack: []
   PickerNav: [string]
@@ -206,6 +208,13 @@ function SendCmd(rec: any): void {
   __desktop_cmd.value = __desktop_cmd.value + rec;
 }
 
+function ToggleDashboardBlank(): void {
+  blank_menu.value = '';
+  SendCmd('dashboard_toggle');
+
+  emit('ToggleDashboardBlank')
+}
+
 onMounted(() => {
   menu_id.value = '';
   blank_menu.value = '';
@@ -272,6 +281,10 @@ onMounted(() => {
 <div v-if="blank_menu != ''" class="fixed z-50 p-1 border rounded bg-card" :style="{ left: __desktop_cursor_x + 'px', top: __desktop_cursor_y + 'px' }">
         <template v-if="blank_menu != ''">
           <div class="flex flex-col w-44 gap-1">
+            <div class="flex flex-row items-center gap-2 px-2 h-8">
+              <input class="w-4 h-4" type="checkbox" :checked="__wm_dashboard == '1'" @click="ToggleDashboardBlank" />
+              <span class="text-sm text-foreground">桌面小组件</span>
+            </div>
             <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-4'">更换壁纸…</Button>
             <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-5'">显示设置</Button>
             <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="ResetIconsBlank" :key="'Button-6'">恢复默认图标</Button>
