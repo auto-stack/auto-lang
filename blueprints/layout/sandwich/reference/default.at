@@ -1,0 +1,41 @@
+// blueprints/layout/sandwich/reference/default.at — SandwichShell 骨架
+// （PLAN-665 T-01；donor=041-auto-edit df90a448b 后形态，T-00 探针双臂实证）。
+//
+// 骨架收敛：h-full 满高壳（填消费方容器——041 donor 根容器同款；满窗由
+// 消费方根决定，嵌套固定高单元同语义）/ h-8 定高 toolbar 行 / flex-1
+// items-stretch 弹性主行（StretchLine 定高行语义，655 df90a448b）/
+// w-56 shrink-0 overflow-y-auto sidebar 列 / flex-1 overflow-hidden
+// content 弹性列 / h-6 定高 statusbar 行。四个结构性出口（slot），
+// 零 props、fn-free（无模块 fn、无 use 导入——比 status-bar 更纯的骨架
+// tier）。
+//
+// # Usage
+// （消费方）use bps.layout.sandwich.reference.default: SandwichShell
+// SandwichShell {
+//     slot(name: "toolbar") { text "File" {} }
+//     slot(name: "sidebar") { text "Pages" {} }
+//     slot(name: "statusbar") { text "ready" {} }
+//     col { text "main content" {} }   // 裸子 → content 默认出口
+// }
+
+widget SandwichShell {
+    view {
+        col (style: "h-full w-full") {
+            row (style: "h-8 shrink-0 items-center gap-0 px-2") {
+                slot(name: "toolbar") {}
+            }
+            row (style: "flex-1 items-stretch overflow-hidden w-full") {
+                col (style: "w-56 shrink-0 border-r border-border bg-card p-2 overflow-y-auto") {
+                    slot(name: "sidebar") {}
+                }
+                col (style: "flex-1 overflow-hidden") {
+                    // 默认出口=content（裸子落此；Plan 476 默认槽语义）
+                    slot {}
+                }
+            }
+            row (style: "h-6 shrink-0 items-center gap-3 px-2") {
+                slot(name: "statusbar") {}
+            }
+        }
+    }
+}

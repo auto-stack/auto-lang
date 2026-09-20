@@ -1,0 +1,32 @@
+// blueprints/layout/sandwich/reference/full.at — SandwichShellFull 骨架，
+// "full" 变体（PLAN-665 T-01）。与 default 同构，删 sidebar 列——content
+// 独占弹性主行。适用于无侧栏的全幅应用（阅读器/查看器/向导页）。
+// widget 名带 Full 后缀（SidebarShellCompact 先例）：default/full 同页
+// 双消费时 VM registry 按名注册不互踩。
+//
+// # Usage
+// （消费方）use bps.layout.sandwich.reference.full: SandwichShellFull
+// SandwichShellFull {
+//     slot(name: "toolbar") { text "File" {} }
+//     slot(name: "statusbar") { text "page 1 / 12" {} }
+//     col { text "full-bleed content" {} }   // 裸子 → content 默认出口
+// }
+
+widget SandwichShellFull {
+    view {
+        col (style: "h-full w-full") {
+            row (style: "h-8 shrink-0 items-center gap-0 px-2") {
+                slot(name: "toolbar") {}
+            }
+            row (style: "flex-1 items-stretch overflow-hidden w-full") {
+                col (style: "flex-1 overflow-hidden") {
+                    // 默认出口=content（裸子落此；Plan 476 默认槽语义）
+                    slot {}
+                }
+            }
+            row (style: "h-6 shrink-0 items-center gap-3 px-2") {
+                slot(name: "statusbar") {}
+            }
+        }
+    }
+}
