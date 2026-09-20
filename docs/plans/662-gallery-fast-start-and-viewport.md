@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-662
-status: execution_done           # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: gallery-fast-start-and-viewport
 author: [agent]
 created_at: 2026-09-20
@@ -321,6 +321,40 @@ standalone/Vue 臂连锁验证面。
   evidence/p662/（timing.md + 修复前后截图）。
 
 ## 9. 复审记录
+
+```yaml
+stage: review
+plan_id: PLAN-662
+plan_revision: 1
+outcome: pass
+reviewed_commit: 198ae949d（= d5ec6d7b7 实现 + docs-only spec 增量；实现面即 d5ec6d7b7）
+base_commit: fe88a3240（master 计划起草点；diff 基=fe88a3240..198ae949d 全 5 文件）
+dependency_revisions: auto-os worktree plan-662-dev @ 0778c28（产物刷新）；auto-down 组内 detached @3f73737（构建依赖）
+spec_inputs: SD-01 ui/overview.md §PLAN-662 六条 + SD-02 vm/plans.md 662 行/658 行修正（198ae949d 已提交；逐条对码——env 覆写路径/fail-open/版本门/仅文件行哈希/滚动容器/探测顺序全一致）
+acceptance_results: |-
+  AC-01 pass（复跑：os worktree 零 env run -r vm 裸跑成功——Gallery rows 36 + back-proxy 3358[32 apps, 2 sessions]）
+  AC-02 pass（复跑：二次启动 4.3s 实测[0 scanned, 36 from disk cache]；冷启并行 22s/串行 62s 留档 evidence/p662/timing.md）
+  AC-03 pass（复跑：test_plan_662 三件单测 reviewed commit 上重跑绿；命中/单失效/损坏 fail-open/serde 往返一致）
+  AC-04 pass（重建：修复前后截图对照 + state[393/is_playing]；复审实例被真实窗口交互点开 020
+    [日志 SelectDemo + Demo020MusicPlayer_Init 执行成功]——附加活体证据；web 臂零 diff）
+  AC-05 pass（复跑：串行/并行产物字节 diff 全空[registry+AppViewport+demos 76 文件]；gallery 20/20；
+    spot-check 六 demo；cargo t 日常档 5265/5270 + cargo tf 全量 3646/3648——
+    t 5 红/tf 2 红[ffi_dual_019+kitchen_sink]全为 658 复审/P661-D7 在案预存或环境红，
+    本 diff 零触碰 auto-lang 代码[5 文件 diff 全 auto-man+docs]，由构造与基线一致）
+  AC-06 pass（os 0778c28 四文件；KNOWN-DEBT P662-D1/D2 落册；SD-01/SD-02 worktree 提交）
+findings: |-
+  零阻塞发现。非阻塞注记三条：
+  R1[独立性限制] 同会话实施+复审——以"reviewed commit 上复跑全部关键检查 + 工件重建
+    （截图/日志/diff/timing.md）+ 不复用实施期自述"缓解；计时与 MCP 均为复审轮独立驱动。
+  R2[预存红 surfaced] auto-man 并行 env 竞争（desktop_extra_app_roots + plan609 互踩，单跑绿）
+    登记为 P662-D2；musk p053 族首跑红=画廊实例并发资源竞争 flaky（清场复跑绿）。
+  R3[顺带修正] vm/plans.md 658 行陈旧状态 executing→archived（事实修正，随 SD-02 提交）。
+evidence: |-
+  docs/plans/evidence/p662/（timing.md 四档计时+diff 记录 + 020_before_658.png + p662_020_fixed.png）
+  + 本记录内嵌：tf/t 逐项归因、复审计时 4.3s、复审实例 020 真实交互日志。
+  worktree D:/autostack/.wt/lang-662/auto-lang @ 198ae949d 保留待 merge。
+next: merge（/auto-plan:merge——前置全满足：实现已提交/reviewed 翻转/SD 已备/os 产物在册）
+```
 
 ```yaml
 stage: work
