@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-665
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done           # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-sandwich（layout/sandwich 应用壳蓝图）
 author: [agent]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 5
 
 # /auto-plan:review 结束时填写：
@@ -217,10 +217,15 @@ outlet 元素，以 476 实现与 033-slots 样本对齐。）
 | ID | 任务 | 依赖 | 产出/验证 | AC |
 | --- | --- | --- | --- | --- |
 | T-00 | **VM 轨 use-bps×slot 组合探针（决策工件）**：最小 probe app（use bps 引 sandbox 包 + `slot(name:)` 四口 + 默认出口），`auto run`/`run -r vm` 双臂跑+截图/快照 | — | 决策记录：双轨是否原生可用；VM 缺口清单→D-2 裁决（本计划内修补 / 拆债改契约形态）。探针落 scratch/ | AC-03 前置 |
+|   | [x] **T-00 已完成（2026-09-20）**：探针沙箱=`D:/autostack/.wt/lang-665/scratch/`（worktree 外，deps junction 只落沙箱；auto.exe=worktree 构建 172536658）。**vue 臂 PASS**：`auto build --gen-only` → SandwichShell.vue 四 outlet（`<slot name="toolbar|sidebar|statusbar">`+默认 `<slot>`）+ App.vue `<template #x>` targeting+裸子默认槽全数正确，骨架样式逐字落位。**VM 臂 PASS**：`auto run -r vm` boot 绿；snapshot v2(rendered) **完整暴露子件子树**——col>row(toolbar)>row[scrollable(sidebar),col(content×2)]>row(statusbar) 逐层吻合，overflow-y-auto→scrollable 转写正确；2x 窗口截图四区文本确认+中心列像素扫描（toolbar 文本 y≈59/statusbar y≈762/窗口高 836）弹性中区无塌缩。**D-2 裁定=零缺口**（组合链原生可用，无需 interpreter 修补）。**F-1 观察修正**：本配置下 snapshot v2 可见 bp 子树（疑快照契约演进，664 SD-01 同期）→ T-03 VM 断言可增 slot 填充 needle（叠加不替换 root 标记+投影） | | | | |
 | T-01 | 包骨架落地：`blueprints/layout/sandwich/{spec.md, reference/default.at, reference/full.at, gotchas.md}` 按 §5 草案+T-00 结论 | T-00 | `auto bp check` 绿（AC-01） | AC-01, AC-05 |
+|   | [x] **T-01 已完成（2026-09-20，worktree 提交 f2a8a2ce5）**：四件全落。验证：`auto bp list` 绿（layout/sandwich 在册，EXIT=0）+ palette 零漂移（`plan657_bp_admin_tests::t03_corpus_references_generate_and_palette_zero_drift` 全包扫描 PASS）+ bp 域 46 测 45 绿——唯一红 `plan640_bp_tests::t04_vm_track_empty_state_reference` = **master 预存红**（A/B：主检出同 commit 同红；`Undefined symbol: on_primary in module EmptyStateFirstUse`，与 sandwich 零交互，见 §10 D-4）。**两处草案偏差（有据）**：① 根容器 `h-screen`→`h-full`（嵌套固定高单元内 h-screen=100vh 会爆出单元；041 donor 根容器同款 h-full，vue 脚手架 `html,body,#app{height:100%}` 链实证；满窗由消费方根决定）；② full 变体 widget 名 `SandwichShellFull`（default/full 同页双消费时 VM registry 按名注册互踩——EmptyStateFirstUse/NoResult、SidebarShellCompact 先例） | | | | |
 | T-02 | bp-gate 接线：host app.at 第四单元区（标记行+互斥词表 fixture+default/full 双实例）+ units.mjs 登记（clip.y=624） | T-01 | 单元台账更新 | AC-02 前置 |
+|   | [x] **T-02 已完成（2026-09-20，worktree 提交 7f1fddef7）**：host app.at 第四单元（default 四口消费+**full 嵌 content 出口组合形态**——双变体同单元覆盖+G1 壳内壳证明）+ sw_*/swf_* root 投影 + units.mjs 登记（clip y=624 h=416）+ README 台账行。**几何偏差（有据）**：视口 640→1040（GEOMETRY 单源）——AC-04 要求 content ≥300px，208px 单元容不下；sandwich 单元 416px（=2×208 节奏）且底缘=视口底（贴底断言）；前三单元 clip 绝对坐标不变，干净门实证基线零扰动 | | | | |
 | T-03 | 双臂门建绿：`--update-snapshots` 建基线 → `pnpm gate` 全绿；vue e2e 补几何断言（AC-04） | T-02 | gate 双臂绿收据+基线图 | AC-02, AC-03, AC-04, AC-06 |
+|   | [x] **T-03 已完成（2026-09-20）**：units.spec.ts 增 AC-04 五断言（statusbar 贴视口底±8px/content 弹性区≥300px/三层序/sidebar 左列/嵌套壳不越外层）。**两轮全绿**：①`--update-snapshots`（sandwich.png 新建，前三基线未动——git status 零 M 实证）；②干净门（无 update）幂等绿。vue 6 测全过（4 单元渲染+全标记+几何）；VM 臂 boot 绿+三组投影等值+七 needle 全中（root 标记+六 slot 填充文本，T-00 修正断言面首用） | | | | |
 | T-04 | 规范增量落地：project.md 台账行（SD-01）+ 判定记录补记（donor=041/业界锚）；`python scripts/spec-index.py` | T-03 | spec-index 再生收据 | AC-06 |
+|   | [x] **T-04 已完成（2026-09-20，worktree 提交 53ba8b346）**：project.md gate 段第四单元台账行（SD-01）+模块清单 layout/sandwich 行+官方集计数 14→15；spec-index 再生（INDEX blueprint 15+sandwich 明细行）。**外科保卫**：再生会冲掉 664 手插 ui 行注记（再生源未含该状态面）——已恢复，最终 INDEX delta 仅 sandwich 两行（见 §10 D-6） | | | | |
 
 **Worktree**：`git worktree add D:/autostack/.wt/lang-665/auto-lang -b
 plan-665-dev`（本计划纯资产+examples，预计无 auto-down 依赖位；若 T-00
@@ -231,11 +236,29 @@ plan-665-dev`（本计划纯资产+examples，预计无 auto-down 依赖位；�
 - 2026-09-20 draft handoff（plan_revision 1）：stage=new，PLAN-665 r1，
   outcome=pass（T-00 探针前置已内建，无阻断待决——D-1/D-2 均有缺省路径），
   next=work。
+- 2026-09-20 work handoff（plan_revision 1）：
+  `stage: work | PLAN-665 | r1 | pass | code: plan-665-dev@.wt/lang-665/auto-lang
+  f2a8a2ce5+7f1fddef7+53ba8b346（基点 172536658；依赖位：组内
+  .wt/lang-665/auto-down@6a9df40 lang-665-dep——worktree 构建 autodown-core
+  path 依赖所需，无改动）| task_ids: T-00..T-04 | evidence: T-00 探针双臂
+  PASS（scratch/ 决策工件+VM 窗口截图+snapshot v2 子树实证）；T-01 auto bp
+  list 绿+palette 零漂移（plan657 t03）+bp 域 46 测 45 绿（唯一红=master
+  预存）；T-03 bp-gate 双臂两轮全绿（含 AC-04 几何断言+七 needle）；
+  T-04 spec-index 再生收据 | blockers: 无 | next: review`。
+  **验收对照**：AC-01✓（bp list+palette 零漂移）/AC-02✓（vue 臂 6 测）/
+  AC-03✓（VM 臂 boot+投影+needle）/AC-04✓（五几何断言）/AC-05✓（双变体
+  编译解释双臂+full 无侧栏形态 needle+组合消费）/AC-06✓（gate 全绿+台账行）。
+  **验证范围声明**：本计划零 `crates/` Rust 改动（纯 blueprints 资产+
+  examples gate+docs），按 AGENTS 分级门禁跑 scoped 验证（bp 域测试+bp-gate
+  双臂），未跑 cargo tf 全量（无 Rust 代码面变更）。
 
 ## 10. 待澄清事项
 
 | ID | 事项 | 缺省路径（不阻断） |
 | --- | --- | --- |
 | D-1 | 包名 `sandwich` 为用户提案、AskUserQuestion 未获回复；**合并前**为改名窗口（改名成本=目录+use 路径，极低） | 按提案 `sandwich` 执行 |
-| D-2 | T-00 若揭示 VM 轨 use-bps×slot 组合缺口：本计划内修补 interpreter（scope 扩张，需用户确认）vs 拆债+骨架先 vue 臂满语义/VM 臂 props 退化（违反 Q6，不推荐）vs 契约改形（值 props 化，太弱，不推荐） | 倾向本计划内修补（预期缺口小：476 机制在库，仅组合链未验） |
+| D-2 | ~~T-00 若揭示 VM 轨 use-bps×slot 组合缺口~~ **已裁定（T-00，2026-09-20）：零缺口**——双臂原生可用（vue SFC 四 outlet+targeting 全对；VM 渲染+snapshot v2(rendered) 子树全暴露），interpreter 修补/拆债/契约改形三路径均不触发 | 关闭 |
 | D-3 | sidebar 宽度 w-56 现钉骨架内；宽度可配走 token/recipe 还是 props | 骨架内定值，消费方 fork/提升评审再议 |
+| D-4 | **债候选（work 期发现，review 裁定入册）**：master 预存红 `plan640_bp_tests::t04_vm_track_empty_state_reference`——`Undefined symbol: on_primary in module EmptyStateFirstUse`（A/B 实证：主检出 172536658 同红，与 665 零交互）。疑 empty-state first_use 参数化（PLAN-657 族 on_* 回调）后 VM link 缺声明 | review 阶段登记 KNOWN-DEBT（归 empty-state/657 领地，非本计划修） |
+| D-5 | **债候选（work 期发现）**：`docs/specs/blueprint/project.md` 模块清单表落后于磁盘——缺 075 三包行（status-bar/row-list/filetree）；磁盘 17 包 vs 表 15 行（本计划补 sandwich 后）。665 只补自属行不越权回填 | review 阶段裁定：一行回填或登记 |
+| D-6 | **债候选（work 期发现）**：`scripts/spec-index.py` 再生会冲掉 INDEX.md 手插注记（664 ui 行实证——注记仅存 INDEX，未入再生源）。665 已外科恢复，最终 delta 干净 | review 阶段裁定：注记回灌再生源或改流程纪律 |
