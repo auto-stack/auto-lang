@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-663
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-viewport-boundary
 author: [agent]
 created_at: 2026-09-20
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [widgets/project.md]
-current_step: 0
+current_step: 6
 total_steps: 6
 ---
 
@@ -132,18 +132,33 @@ fn rewrite_subtree(nodes, anchor):
 
 ## 执行步骤
 
-- **T-01** C1a 解析层（class.rs + iced_adapter.rs + renderer.rs 映射/iced_length 两臂）+ parse 单测。【AC-01】验证：`cargo t style` / `cargo check -p auto-lang`。
-- **T-02** C1b pre-pass 函数 + 单测（renderer.rs 内，沿 inherit_text_color 邻位落码）。【AC-02】验证：`cargo t iced::` 相关滤串。
-- **T-03** C1c 双入口接线。【AC-02】验证：`cargo check` + 单测仍绿。
-- **T-04** C2 my-auto（parse + 列臂 + 测试）。【AC-07】验证：`cargo t`。
-- **T-05** 端到端验收（构建 worktree 二进制 → auto-os gallery VM 臂截图 020/027/001/平板/独立窗；对照 vue 臂）。【AC-03..06】
-- **T-06** 门禁（check/t/tv/tf）+ KNOWN-DEBT 登记（T-12 退役决策、spacing 定高边界、多子项 my-auto）+ SD 回写 + 复审交接。【AC-08】
+- **T-01** [x] C1a 解析层 + parse 单测。【AC-01】✅ 已完成 commit de215d7d0——`SizeValue::Screen`/`IcedSize::Screen` 变体、parse screen|svh|lvh|dvh 分离、`iced_length(Screen)=Fill`、renderer 四消费点臂、plan449 parity 臂；`test_parse_plan527_t3_layout_extensions` 绿。注：`cargo check -p auto-lang` 默认特性**不编 lib**（lib 挂 ui-iced required-features），实际门禁口径=`cargo check -p auto`（auto default 含 ui-iced）。
+- **T-02** [x] C1b pre-pass + 单测。【AC-02】✅ 已完成 commit a70fb8194——`rewrite_viewport_units`/`ViewportAnchor`/`viewport_boundary_of`；p663_* 单测 7/7 绿。
+- **T-03** [x] C1c 双入口接线。【AC-02】✅ 已完成 commit c76a70be6——`render_dynamic_view` 根调用（`path.is_empty()`）单点挂 + `ComponentIced::view_iced`/DevToolsWrapper/native_pixels 三 into_iced 根点；全量快档 817/820（3 红=musk p053 族 master 同红）。
+- **T-04** [x] C2 my-auto。【AC-07】✅ 已完成 commit eaaf22fc0——`MarginYAuto/MarginAuto` 解析、`IcedStyle.margin_y_auto`、`expand_margin_y_auto_walk` 定高无 overflow 列展开包裹；p663 9/9 绿；style 217/219（2 红 master 同红）。
+- **T-05** [x] 端到端验收。【AC-03..06】✅ 已完成（worktree release 二进制驱动 auto-os ui-gallery VM 臂 + 独立窗）——020 桌面档满帧（侧栏+曲库 393 首+播控条贴底，shot autoui-screenshot-1789881638196）、平板 768×1024 满屏（…1640176）、027 满帧（p663_027_take2，工具栏+侧栏+表头+异步加载态）、001 居中不回归（…1647208）、独立 020 满窗（020-music-player/src/front/tmp/…2562978）、C2 终版二进制复拍无回归（p663_020_final_c2.png；截图留 scratch/shots 不入库）。
+- **T-06** [x] 门禁 + 文档。【AC-08】✅ 已完成 commit c9f993f89——`cargo tf` 2558/2560（2 红=在册预存红集 `mouse_area_emits_events_and_logical_extent`+`test_autodown_panel_heading_codegen`，HEAD 同红，差集空）；`cargo tv` 2713/2715（同 2 红）；KNOWN-DEBT P663-D1..D5；spec 增量 viewport-boundary.md 落地。
 
 依赖：T-01→T-02→T-03→T-05；T-04 独立可并行；T-06 收口。
+
+### 执行裁定实录（§裁定-1/§置顶两项均按计划先行，复审请复核）
+
+- 边界条件**不含 overflow**（iframe 语义：定高嵌入即视口）。
+- `h-full`（Full）**不重写**（局部布局原义保留；全屏外壳惯例 h-screen）。
+- 门禁口径修正：`cargo check -p auto`（非 `-p auto-lang`，后者默认特性不编 lib——本次执行发现的口径陷阱）。
+- 新发现预存红（非 663 引入，已登记 P663-D5）：master 的 auto-lang 无 ui-iced 特性编译 E0433（component.rs:97 无条件引用 desktop_protocol，PLAN-034 位图通道引入），独立 demo `run -r vm` 首跑构建路径可复现。
+- worktree 依赖位：组内补 auto-down detached worktree（d1a83b6）供 workspace 解析；crates/a2r-actor-tests 为生成物，从主检出复制。
 
 ## 复审记录
 
 （draft handoff）stage: new，PLAN-663 r1。outcome: pass——任务覆盖全部 AC 与 SD；路径/命令已对照 master 4cbc810eb 实证；两处执行裁定（边界不含 overflow、h-full 不重写）已置顶登记，复审时请求裁决。next: work。
+
+（work handoff 2026-09-20）stage: work | plan_id: PLAN-663 | plan_revision: 1 | outcome: **pass** |
+code_commit: worktree plan-663-dev tip c9f993f89（T-01 de215d7d0 → T-02 a70fb8194 → T-03 c76a70be6 → T-04 eaaf22fc0 → T-06 c9f993f89） |
+task_ids: T-01..T-06 全闭环 |
+evidence: AC-01..02 单测 9/9（p663_* 滤串）；AC-03..06 截图验收五连（020 桌面/平板、027、001 居中、独立窗满窗）+C2 终版复拍；AC-07 变换单测；AC-08 `cargo t` 817/820 + `cargo tv` 2713/2715 + `cargo tf` 2558/2560（红集=在册预存红，差集空）；base 608399943 |
+blockers: 无 |
+next: review。
 
 ## 待澄清事项
 
