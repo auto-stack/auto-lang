@@ -8633,7 +8633,9 @@ fn shim_rust_stdlib_dispatch_inner(
             let _n = task.ram.pop_i32();
             let obj = RustStdlibObject::new("axum::extract::DefaultBodyLimit", ());
             let handle = vm.insert_heap_object(obj);
-            task.ram.push_i32(handle as i32);
+            // PLAN-667 (F-07): bare push_i32(handle) migrated to rc_push_id —
+            // a heap id pushed onto the stack must carry a staked share.
+            vm.rc_push_id(task, handle as u64);
         }
         ("Router", "layer") | ("Router", "with_state") | ("Router", "merge")
         | ("MethodRouter", "layer") => {

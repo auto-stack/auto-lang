@@ -1466,7 +1466,11 @@ impl VmBridge {
 
     /// PLAN-062: 只读 VM 堆水位（泄漏 soak 断言通道——live_heap 以
     /// heap_objects.len() 为准，见 rc.rs rc_stats 注释）。
+    /// PLAN-667 (F-02): rc_stats 已纯化；本通道为测试静止点观测，先显式
+    /// drain dying 队列再读数（统计与回收动作分离；调用面全部为 soak
+    /// 断言，无生产 per-frame 调用者）。
     pub fn heap_live_objects(&self) -> usize {
+        self.vm.reap_all();
         self.vm.rc_stats().live_heap
     }
 

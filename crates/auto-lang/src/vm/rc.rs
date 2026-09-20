@@ -241,6 +241,24 @@ impl AutoVM {
         task.ram.push_str_idx(idx as u32);
     }
 
+    /// PLAN-667 (F-07): 槽源复制的份额出处门。源槽带影子（受跟踪引用）或
+    /// 值为 tagged 引用 → 正常 copy-on-load（+1）；源槽无影子且值为裸
+    /// i32≥HEAP_ID_BASE → 真整数裸拷贝，**零计数**——按内容补计会让真整数
+    /// 冒领恰好同 id 的活对象份额（DUP/LOAD 的幻影份额来源，宽限窗内还能
+    /// 复活 dying 对象）。旧式裸 id 生产者已全部迁移 rc_push_id（带影子），
+    /// 无影子的裸 i32 即真整数。
+    #[inline(always)]
+    pub fn rc_push_slot(&self, task: &mut AutoTask, nv: auto_val::NanoValue, src_stake: u64) {
+        if src_stake == 0 && auto_val::is_i32(nv) {
+            let i = auto_val::decode_i32(nv) as i64;
+            if i >= HEAP_ID_BASE as i64 {
+                task.ram.push_nv(nv);
+                return;
+            }
+        }
+        self.rc_push(task, nv);
+    }
+
     /// 裸堆 id 入栈(+1)——旧式 push_i32(id) 推法的咽喉替代。
     #[inline(always)]
     pub fn rc_push_id(&self, task: &mut AutoTask, id: u64) {
@@ -253,6 +271,15 @@ impl AutoVM {
     /// 计数 +1(容器字段/全局表项获得持有时)。
     pub fn rc_retain_id(&self, id: u64) {
         if id < HEAP_ID_BASE {
+            return;
+        }
+        // PLAN-667 (F-07): 存在性门——id 既无堆对象也无现存 rc 条目时拒计。
+        // 真整数 ≥4M 与旧式裸 heap id 不可按值区分：幽灵条目（对不存在 id
+        // 的 retain）与"真整数冒领活对象份额"由此门消除。合法流不受影响：
+        // 对象必先 insert（heap_objects 有键）后才被引用；dying 宽限窗内
+        // 对象仍在表（真释放才摘除）。对已释放 id 的陈旧 retain 同被拦截
+        // （复活竞态面收窄）。
+        if !self.heap_objects.contains_key(&id) && !self.heap_rc.contains_key(&id) {
             return;
         }
         if p419_uaf_traces(id) {
@@ -468,10 +495,11 @@ impl AutoVM {
     }
 
     /// 测试断言钩子。
+    /// PLAN-667 (F-02): 统计纯化——读取不再强制收割 dying 队列（旧实现
+    /// 内嵌 reap_all，UI 内存显示 vm_bridge 与脚本 auto.rc.live() 每次
+    /// 读取都改变被观测程序的生命周期）。终态断言请先显式
+    /// `vm.reap_all()`（收尾/观测分离）。
     pub fn rc_stats(&self) -> RcStats {
-        // PLAN-062 T12: 静止点强制收割——读数前清空 dying 队列（宽限窗
-        // 只在解释执行期生效；观测/断言点报告精确终态）。
-        self.reap_all();
         RcStats {
             live_heap: self.heap_objects.len(),
             live_pool: self.pool_live_count(),

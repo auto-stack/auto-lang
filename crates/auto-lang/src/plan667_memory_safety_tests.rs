@@ -30,6 +30,18 @@ async fn run_vm_probe(code: &str) -> (AutoVM, String, Option<String>) {
     if let Some(arc) = vm.tasks.get(&tid) {
         let mut t = arc.lock().await;
         last_error = t.last_error.clone();
+        if std::env::var("P667_STAKE_DUMP").is_ok() {
+            eprintln!("[P667STAKE] sp={} slots:", t.ram.sp);
+            for i in 0..t.ram.sp.min(24) {
+                let sh = t.ram.stake_at(i);
+                if sh != 0 {
+                    eprintln!("[P667STAKE] slot {} stake={} nv={:016x}", i, sh, t.ram.read_nv(i));
+                }
+            }
+            for g in vm.globals.iter().take(6) {
+                eprintln!("[P667STAKE] global {} nv={:016x}", g.key(), g.value());
+            }
+        }
         vm.rc_release_task_stack(&mut t);
     }
     vm.tasks.remove(&tid);
@@ -204,20 +216,26 @@ mod plan667_rc_tests {
     #[tokio::test]
     async fn plan667_rc_integer_no_net_claim_on_live_id() {
         let (vm, _out, err) = run_vm_probe(
-            "type Note { id int }\n\nvar g = 0\n\nfn main() int {\n    var a Note = Note { id: 1 }\n    g = 4000000\n    a = Note { id: 2 }\n    return g\n}\n",
+            "type Note { id int }\n\nvar g = 0\n\nfn main() int {\n    var a = Note { id: 1 }\n    g = 4000000\n    a = Note { id: 2 }\n    return 0\n}\n",
         )
         .await;
         assert!(err.is_none(), "probe program must run clean: {:?}", err);
         vm.reap_all();
-        // 存活的堆对象应只有最后一个 Note（第一个被覆盖释放）。
-        // 基线（防御性补持按内容判 i32≥4M）：g 的整数给 id 4000000 冒领一份，
-        // 第一个 Note 无法回收 → live_heap==2；修复后 ==1。
+        // 无类型注解局部（类型化 var 的槽位影子转移是既有 KD-051⑤ 泄漏，
+        // 另入债册，不混淆本探针）：第一个 Note 被覆盖释放、第二个随任务
+        // 收尾释放 → drain 后 live_heap==0。基线（防御性补持按内容判
+        // i32≥4M）：g 的整数给 id 4000000 冒领一份 → 第一个 Note 滞留
+        // （live_heap==1 且 rc_count==1）；修复后归零。
         assert_eq!(
-            vm.rc_stats().live_heap, 1,
+            vm.rc_stats().live_heap, 0,
             "integer equal to a live heap id must not claim a share (heap ids: {:?})",
             vm.heap_objects.iter().map(|r| *r.key()).collect::<Vec<_>>()
         );
-        assert_eq!(vm.rc_count(4_000_000), 0, "no residual rc entry for the integer");
+        assert_eq!(
+            vm.rc_count(4_000_000), 0,
+            "no residual rc entry for the integer (heap ids: {:?})",
+            vm.heap_objects.iter().map(|r| *r.key()).collect::<Vec<_>>()
+        );
     }
 
     /// 收尾零新增泄漏：全局持有整数与堆对象混合流后，任务收尾 +

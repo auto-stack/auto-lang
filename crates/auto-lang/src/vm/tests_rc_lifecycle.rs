@@ -31,6 +31,9 @@ async fn run_code_vm(code: &str) -> (AutoVM, String) {
         vm.rc_release_task_stack(&mut t);
     }
     vm.tasks.remove(&tid);
+    // PLAN-667 (F-02): rc_stats 已纯化(读取不再强制收割),收尾断言前显式
+    // drain dying 队列——统计与回收动作分离。
+    vm.reap_all();
     let out = stdout.read().unwrap().clone();
     (vm, out)
 }

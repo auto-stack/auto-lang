@@ -2854,8 +2854,13 @@ impl AutoVM {
                 }
                 OpCode::DUP => {
                     // Plan 419: DUP 的值是引用时 +1(栈上多一个 owned slot)。
+                    // PLAN-667 (F-07): 份额出处门——源槽无影子的裸 i32≥4M 是
+                    // 真整数,裸拷贝零计数(内容性补计=幻影份额来源)。
                     if task.ram.sp > 0 {
-                        self.rc_push(task, task.ram.raw_nv[task.ram.sp - 1]);
+                        let src = task.ram.sp - 1;
+                        let nv = task.ram.raw_nv[src];
+                        let src_stake = task.ram.stake_at(src);
+                        self.rc_push_slot(task, nv, src_stake);
                     }
                 }
 
@@ -9177,13 +9182,21 @@ impl AutoVM {
                                 task.ram.push_nv(auto_val::encode_null());
                             } else {
                                 // Plan 419: copy-on-load —— 加载引用值 +1。
-                                self.rc_push(task, task.ram.read_nv(task.bp - actual_offset));
+                                // PLAN-667 (F-07): 源槽份额出处门。
+                                let slot = task.bp - actual_offset;
+                                let nv = task.ram.read_nv(slot);
+                                let ss = task.ram.stake_at(slot);
+                                self.rc_push_slot(task, nv, ss);
                             }
                         }
                     } else {
                         // Local variable: load from bp+1+idx
                         // Plan 419: copy-on-load。
-                        self.rc_push(task, task.ram.read_nv(task.bp + 1 + idx));
+                        // PLAN-667 (F-07): 源槽份额出处门。
+                        let slot = task.bp + 1 + idx;
+                        let nv = task.ram.read_nv(slot);
+                        let ss = task.ram.stake_at(slot);
+                        self.rc_push_slot(task, nv, ss);
                     }
                 }
                 OpCode::STORE_LOCAL => {
@@ -9217,8 +9230,11 @@ impl AutoVM {
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
-                    // Plan 419: copy-on-load。
-                    self.rc_push(task, task.ram.read_nv(task.bp + 1));
+                    // Plan 419: copy-on-load。PLAN-667 (F-07): 源槽份额出处门。
+                    let slot = task.bp + 1;
+                    let nv = task.ram.read_nv(slot);
+                    let ss = task.ram.stake_at(slot);
+                    self.rc_push_slot(task, nv, ss);
                 }
                 // Plan 317: Actor state field access (absolute, bp-independent).
                 // state_vars is a Vec on AutoTask; field_idx is assigned by codegen.
@@ -9226,8 +9242,9 @@ impl AutoVM {
                     let field_idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
                     let nv = task.state_vars.get(field_idx).copied().unwrap_or(0);
-                    // Plan 419: copy-on-load。
-                    self.rc_push(task, nv);
+                    // Plan 419: copy-on-load。state_vars 条目恒持有,tagged 引用
+                    // 正常计份;裸 i32 由 rc_push_slot 出处门处置。
+                    self.rc_push_slot(task, nv, u64::MAX);
                 }
                 OpCode::STORE_STATE_FIELD => {
                     let field_idx = self.flash.read_u8(task.ip) as usize;
@@ -9246,7 +9263,14 @@ impl AutoVM {
                         // 恒持一份(无影子的裸堆引用防御性补持)。
                         let transferred = task.ram.take_stake_at(task.ram.sp);
                         let _ = transferred;
-                        if crate::vm::rc::is_heap_ref_nv(val_nv) {
+                        // PLAN-667 (F-07): 防御性补持收紧到 tagged 引用
+                        // (TAG_OBJECT/LIST/BIGINT)——裸 i32≥4M 与真整数不可
+                        // 按值区分,补持会让真整数冒领活对象份额。裸 id 生产
+                        // 者已全部迁移 rc_push_id(带影子),无份额裸 i32 即真整数。
+                        let is_tagged_ref = auto_val::is_object(val_nv)
+                            || auto_val::is_list(val_nv)
+                            || auto_val::is_bigint(val_nv);
+                        if is_tagged_ref {
                             if let Some(id) = crate::vm::rc::heap_ref_id(val_nv) {
                                 self.rc_retain_id(id);
                             }
@@ -9270,7 +9294,10 @@ impl AutoVM {
                         .unwrap_or_default();
                     let nv = self.globals.get(&name).map(|v| *v).unwrap_or(0);
                     // Plan 419: copy-on-load(全局表项保留自己的 stake)。
-                    self.rc_push(task, nv);
+                    // PLAN-667 (F-07): 全局表条目持有份额(写入时已立),按
+                    // tagged 判定走正常 copy-on-load;rc_push_slot 对 tagged
+                    // 引用恒计份。
+                    self.rc_push_slot(task, nv, u64::MAX);
                 }
                 OpCode::STORE_GLOBAL => {
                     let name_idx = self.flash.read_u32(task.ip) as usize;
@@ -9285,7 +9312,12 @@ impl AutoVM {
                     // 方向:多持至多延后回收,不持有即悬垂)。
                     let transferred = task.ram.take_stake_at(task.ram.sp);
                     let _ = transferred;
-                    if crate::vm::rc::is_heap_ref_nv(nv) {
+                    // PLAN-667 (F-07): 同 STORE_STATE_FIELD——防御性补持收紧
+                    // 到 tagged 引用,真整数不再冒领活对象份额。
+                    let is_tagged_ref = auto_val::is_object(nv)
+                        || auto_val::is_list(nv)
+                        || auto_val::is_bigint(nv);
+                    if is_tagged_ref {
                         if let Some(id) = crate::vm::rc::heap_ref_id(nv) {
                             self.rc_retain_id(id);
                         }
@@ -9299,8 +9331,11 @@ impl AutoVM {
                     self.globals.insert(name, nv);
                 }
                 OpCode::LOAD_LOC_1 => {
-                    // Plan 419: copy-on-load。
-                    self.rc_push(task, task.ram.read_nv(task.bp + 2));
+                    // Plan 419: copy-on-load。PLAN-667 (F-07): 源槽份额出处门。
+                    let slot = task.bp + 2;
+                    let nv = task.ram.read_nv(slot);
+                    let ss = task.ram.stake_at(slot);
+                    self.rc_push_slot(task, nv, ss);
                 }
                 OpCode::LOAD_LOC_2 => {
                     // Plan 419: copy-on-load。
