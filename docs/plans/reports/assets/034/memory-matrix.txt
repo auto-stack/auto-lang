@@ -1,0 +1,30 @@
+[p034] rqhost 内存归因矩阵（D2：{debug,release}×{wgpu,tiny-skia}×{1,2,5} 窗；PrivateUsage 口径）
+release default windows=1: rqhost pid=33060 working_set=28112KB private=11260KB
+  apps private KB: [6512]
+release wgpu windows=1: rqhost pid=516 working_set=171860KB private=234580KB
+  apps private KB: [6460]
+release wgpu windows=2: rqhost pid=11296 working_set=189840KB private=275276KB
+  apps private KB: [6452, 6576]
+release wgpu windows=5: rqhost pid=21112 working_set=259620KB private=403504KB
+  apps private KB: [6528, 5996, 5932, 6464, 6596]
+release tiny-skia windows=1: rqhost pid=12620 working_set=27732KB private=11236KB
+  apps private KB: [5948]
+release tiny-skia windows=2: rqhost pid=16408 working_set=31092KB private=14468KB
+  apps private KB: [6496, 6488]
+release tiny-skia windows=5: rqhost pid=33788 working_set=41024KB private=24596KB
+  apps private KB: [6596, 6460, 6352, 6500, 6524]
+debug wgpu windows=1: rqhost pid=38284 working_set=186244KB private=234112KB
+  apps private KB: [8648]
+debug wgpu windows=2: rqhost pid=25336 working_set=207556KB private=278724KB
+  apps private KB: [8608, 8652]
+debug wgpu windows=5: rqhost pid=26696 working_set=273836KB private=405728KB
+  apps private KB: [8624, 8644, 8576, 8384, 8460]
+debug tiny-skia windows=1: rqhost pid=34304 working_set=38788KB private=12300KB
+  apps private KB: [8612]
+debug tiny-skia windows=2: rqhost pid=35360 working_set=41860KB private=15588KB
+  apps private KB: [8600, 8656]
+debug tiny-skia windows=5: rqhost pid=32204 working_set=44632KB private=25744KB
+  apps private KB: [8636, 8032, 8648, 8592, 8648]
+归因：debug→release（wgpu×1窗）= 234112→234580KB；wgpu→tiny-skia（release×1窗）= 234580→11236KB；窗边际（release×wgpu，1→2→5）= 234580→275276→403504KB（每窗 ≈42231KB）
+门判定：release×default×1窗（T-03 后交付缺省 = tiny-skia）private=11260KB ≤ 102400KB —— **达标**（wgpu 档 ≈234MB 由 ICED_BACKEND=wgpu 显式可达，归因对照保留）
+app 复核（release×wgpu×1窗 003 -q）：private=6460KB（≤10MB 门 过）

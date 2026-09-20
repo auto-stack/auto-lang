@@ -1,0 +1,3 @@
+[p034] canvas 样板腿内存行（缺省档）
+rqhost(default) pid=32544 working_set=41320KB private=14004KB
+043-canvas(vm -q) pid=11572 working_set=38596KB private=9688KB

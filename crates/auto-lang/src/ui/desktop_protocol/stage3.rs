@@ -5584,10 +5584,14 @@ child:
             daemon_cmd
                 .args(["rqhost", "--pipe", &wellknown])
                 .env("AUTO_RQHOST_WELLKNOWN", &wellknown);
-            if backend == "tiny-skia" {
-                // D2：软光栅腿——iced fallback 链原生 env（fallback.rs
-                // env::var("ICED_BACKEND")），零代码切档。
-                daemon_cmd.env("ICED_BACKEND", "tiny-skia");
+            match backend {
+                // D2：双显 pin——iced fallback 链原生 env（fallback.rs
+                // env::var("ICED_BACKEND")）零代码切档；T-03 后 daemon
+                // 缺省 = tiny-skia，两腿都钉 env 保 A/B 口径诚实。
+                "wgpu" | "tiny-skia" => {
+                    daemon_cmd.env("ICED_BACKEND", backend);
+                }
+                _ => {} // default 腿：不设 env（度量交付缺省档）。
             }
             daemon_cmd
                 .stdout(std::process::Stdio::null())
@@ -5652,6 +5656,8 @@ child:
         let mut gate_app_private_kb: Option<u64> = None;
         // 门格先行（release×wgpu×1），其余按档铺满。
         let cells: Vec<(&str, &str, usize)> = vec![
+            // T-03 后门格 = 缺省档（daemon 缺省 tiny-skia——交付口径）。
+            ("release", "default", 1),
             ("release", "wgpu", 1),
             ("release", "wgpu", 2),
             ("release", "wgpu", 5),
@@ -5700,26 +5706,26 @@ child:
                 .map(|(_, v)| *v)
                 .unwrap_or(0)
         };
-        let gate = cell_private("release", "wgpu", 1);
+        let gate = cell_private("release", "default", 1);
         let gate_pass = gate <= 100 * 1024;
         report.push_str(&format!(
             "归因：debug→release（wgpu×1窗）= {}→{}KB；wgpu→tiny-skia（release×1窗）= {}→{}KB；窗边际（release×wgpu，1→2→5）= {}→{}→{}KB（每窗 ≈{}KB）\n",
             cell_private("debug", "wgpu", 1),
-            gate,
-            gate,
+            cell_private("release", "wgpu", 1),
+            cell_private("release", "wgpu", 1),
             cell_private("release", "tiny-skia", 1),
-            gate,
+            cell_private("release", "wgpu", 1),
             cell_private("release", "wgpu", 2),
             cell_private("release", "wgpu", 5),
-            (cell_private("release", "wgpu", 5) - gate) / 4,
+            (cell_private("release", "wgpu", 5) - cell_private("release", "wgpu", 1)) / 4,
         ));
         if gate_pass {
             report.push_str(&format!(
-                "门判定：release×wgpu×1窗 private={gate}KB ≤ 102400KB —— **达标**（D5 优化项转可选，自观测面照落）\n"
+                "门判定：release×default×1窗（T-03 后交付缺省 = tiny-skia）private={gate}KB ≤ 102400KB —— **达标**（wgpu 档 ≈234MB 由 ICED_BACKEND=wgpu 显式可达，归因对照保留）\n"
             ));
         } else {
             report.push_str(&format!(
-                "门判定：release×wgpu×1窗 private={gate}KB > 102400KB —— **不达标**（T-03 执行清单触发：LRU/自观测/Cache 按嫌疑分摊取舍）\n"
+                "门判定：release×default×1窗 private={gate}KB > 102400KB —— **不达标**（T-03 执行清单触发：LRU/自观测/Cache 按嫌疑分摊取舍）\n"
             ));
         }
         if let Some(app_kb) = gate_app_private_kb {
@@ -5739,6 +5745,125 @@ child:
             std::fs::write(assets.join("memory-matrix.txt"), &report)
                 .expect("写内存矩阵");
         }
+    }
+
+    /// PLAN-034 T-07：rqhost-maturity e2e 位图合成腿——**canvas 样板
+    /// 真渲**（D4 裁定 canvas=位图快照过线的全链实证）：真 daemon（缺省
+    /// 软光栅档——T-03 后交付口径）+ 真 043-canvas-paint `-q` 客户端 →
+    /// ①覆盖门放行（此前 canvas 拒绝退出）②首帧 ③daemon 位图观测行
+    /// （上传→缓存）④app 侧零"弃置"（槽档足容）⑤内存行留痕。
+    /// 截图腿沿 P031-R2 改道先例（ToDesk 覆盖层下截图不可靠）——
+    /// 观测行 + stderr 即环境无关留痕。`AUTO_034_ASSETS=1` →
+    /// assets/034/{canvas-child-stderr.log,daemon-stderr.log}。
+    #[test]
+    fn p034_rqhost_maturity_arm() {
+        if std::env::var("AUTO_DESKTOP_E2E").as_deref() != Ok("1") {
+            return;
+        }
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let repo = std::path::Path::new(manifest).join("../../");
+        let dir_canvas = repo.join("examples/capability-tests/043-canvas-paint");
+        if !dir_canvas.join("src/front/app.at").is_file() {
+            eprintln!("[p034] skip: 043 载体缺席");
+            return;
+        }
+        let auto_exe = crate::ui::desktop_protocol::e2e_exe::locate_with_stale_guard();
+        let wellknown = format!("autodesk-rqhost-p034e2e-{}", std::process::id());
+
+        // ---- daemon（缺省档——不设 ICED_BACKEND）----
+        let mut daemon = std::process::Command::new(&auto_exe)
+            .args(["rqhost", "--pipe", &wellknown])
+            .env("AUTO_RQHOST_WELLKNOWN", &wellknown)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn auto rqhost");
+        let daemon_tail = LineTail::spawn(&mut daemon);
+        let daemon_pid = daemon.id();
+        let mut guard = KillGuard(Vec::new());
+        guard.push(daemon);
+        daemon_tail.wait_contains("serving on", "daemon 起服", 20_000);
+
+        // ---- 043 canvas -q（stderr piped——弃置断言面）----
+        let mut cmd = std::process::Command::new(&auto_exe);
+        cmd.args(["run", "-r", "vm", "-q"])
+            .current_dir(&dir_canvas)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped());
+        cmd.env("AUTO_RQHOST_WELLKNOWN", &wellknown)
+            .env("AUTOUI_MCP_DISABLE", "1");
+        for (key, _) in std::env::vars() {
+            if key.starts_with("NEXTEST_") {
+                cmd.env_remove(&key);
+            }
+        }
+        let mut app = cmd.spawn().expect("spawn 043 -q");
+        let app_tail = LineTail::spawn(&mut app);
+        let app_pid = app.id();
+        guard.push(app);
+
+        // ① 覆盖门放行 + 开窗 + 首帧（canvas 此前启动即拒）。
+        daemon_tail.wait_count(
+            "[rqhost] window opened for `App`",
+            1,
+            "043 开窗（canvas 覆盖门放行）",
+            30_000,
+        );
+        daemon_tail.wait_count("[rqhost] first frame `App`", 1, "043 首帧", 30_000);
+        // ② 位图过线观测行（canvas-0 上传 → 宿主缓存）。
+        daemon_tail.wait_contains(
+            "[rqhost] bitmap `",
+            "canvas 位图过线（BitmapReady → 缓存）",
+            15_000,
+        );
+        // ③ app 侧零弃置（槽档足容 560×360 in 480×320 表面档×4）。
+        assert!(
+            !app_tail
+                .snapshot()
+                .iter()
+                .any(|l| l.contains("bitmap upload 弃置")),
+            "app 位图零弃置（槽档足容）"
+        );
+
+        // ④ 内存行（缺省档 daemon + 043 app）。
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        let mut report = String::from("[p034] canvas 样板腿内存行（缺省档）
+");
+        for (pid, name) in [(daemon_pid, "rqhost(default)"), (app_pid, "043-canvas(vm -q)")] {
+            if let Ok(s) = crate::ui::desktop_protocol::stage3::sample_process_memory(pid) {
+                report.push_str(&format!(
+                    "{name} pid={pid} working_set={}KB private={}KB
+",
+                    s.working_set / 1024,
+                    s.private_bytes / 1024
+                ));
+            }
+        }
+        println!("{report}");
+
+        // ⑤ 留痕。
+        if std::env::var("AUTO_034_ASSETS").as_deref() == Ok("1") {
+            let assets = repo.join("docs/plans/reports/assets/034");
+            std::fs::create_dir_all(&assets).expect("mkdir assets/034");
+            std::fs::write(assets.join("canvas-arm.txt"), &report).expect("写样板腿内存行");
+            std::fs::write(
+                assets.join("canvas-child-stderr.log"),
+                app_tail.snapshot().join("
+"),
+            )
+            .expect("写 043 stderr");
+            std::fs::write(
+                assets.join("daemon-stderr.log"),
+                daemon_tail.snapshot().join("
+"),
+            )
+            .expect("写 daemon stderr");
+        }
+
+        // ---- 收尾：kill daemon → app exit-on-EOF。----
+        guard.kill_pid(daemon_pid);
+        let status = guard.wait_pid(app_pid, "043 exit-on-EOF");
+        assert!(status.success(), "043 干净退出");
     }
 }
 

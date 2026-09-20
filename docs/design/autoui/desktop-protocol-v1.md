@@ -27,6 +27,7 @@
 | v1.11 | 2026-09-19 | B 程序主体（shell outproc client）：投影下行推（`ShellProjectionPush` tag 12 / `ShellClockTick` tag 13 / `ShellCursorMove` tag 14——typed 载体 wire 编码 + per-face 宿主侧指纹门）+ 命令上行执行（`DesktopBus` 端点拆臂 + registry_id 归因 + `desktop_bus_inbox` 泵后同拍执行）+ 表面 z 平面声明（Hello/Welcome 尾段多表面协商：background/chrome）+ 壳看门兵（死亡检出 → 退避 respawn → 全量重推）+ pointer 生产接线（press/release 命中 broker wid 路由）+ `shell.apps.shell_model` 双轨开关（缺省 inproc；见 §1.11；`PROTOCOL_VERSION` 仍 1——ControlMsg/Handshake 追加式，空尾段字节级不变） | PLAN-030（§1.11） |
 | v1.12 | 2026-09-19 | rqhost 第四运行形态——rendezvous 采纳协议（well-known 管道 + `adopt␟<name>` 记录 + 锁管道单实例仲裁）+ 客户端权威采纳（宿主零装载）+ rqhost 生命周期语义（末窗退出/app EOF 回收/宿主死 exit-on-EOF 策略档）+ 大帧 shm 超槽回退管道内联（见 §1.12；rendezvous 记录 = 传输层管道串约定，零 codec 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-031（§1.12） |
 | v1.13 | 2026-09-19 | native 覆盖 ramp v3 + **缺省翻转**——六缺项五族补齐（tabs 整 kind 全链[a2r 断裂修复]/hidden display:none[display 族响应式覆盖]/样式版 grid[GridCols→Grid walker 分岔]/定位族分层[absolute+offset 覆盖序真渲 + fixed/sticky 降级放行随注]/012 SelfCenter 映射臂 + D5 族运行时面[Inset/LineClamp/FlexWrap]）+ 复测 judged 22/22 = 100% ≥ 95% 过门 → `resolve_native_frame_mode` Covered 臂翻 Commands（auto 缺省 queue）+ 仪器 judged 口径升级与防漏断言反转（见 §1.13；零 wire 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-032（§1.13） |
+| v1.15 | 2026-09-20 | **位图过线通道 + rqhost 内存量化门 + 像素原生族裁定（rqhost-maturity）**——FrameMsg tag 10 `BitmapReady`/tag 11 `BitmapAck`（元数据过管道、RGBA 在专用第二段 `-bm` 槽——`BufferAlloc.bm` 尾追协商）+ `bitmap://{pid}-{局部 id}` 词汇（宿主 resolve 前缀臂；走既有 Image op 零新 DrawOp tag）+ app 上传 API（`drain_bitmap_uploads` 排水缝）+ canvas=位图快照过线（首个像素原生 kind 过线；video 专属/terminal M7-c 撞面/code_editor 维持/imagesurface not-yet 维持+M7-c，五 kind 裁定入册）+ rqhost 内存门 release 复测与归因矩阵（见 §1.15 门判定行）——`PROTOCOL_VERSION` 仍 1（全追加式） | PLAN-034（§1.15） |
 | v1.14 | 2026-09-19 | **单投影器统一（rq-projector-unify）**——`-q` VM 轨改接 RqProjector（View 全展开投影 + 启动覆盖门，a2r/解释同律）+ VM 轨三补（input_state_map 绑定字段回写[on() 单写点，a2r 生成物同构]/多 timer 泵侧驱动[Component::fire_due_timers 钩子]/`__desktop_cmd` 读走上行[DesktopBus 泛化]）+ `AppProjector` 退役（解释 re-exec 臂/pixels 臂/process_model=outproc 选项拔除——解释态两合法形态 = inproc 直挂 / `-q` 经 native 臂）+ `NativeProjector` 更名 `RqProjector`（见 §1.14；客户端臂内部演进零 wire 变体，`PROTOCOL_VERSION` 仍 1） | PLAN-033（§1.14） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
@@ -760,6 +761,82 @@ p033_rq_unify_arm：027 开窗+首帧+覆盖门零拒；vm_typing 集成断言
 沿用）；回归门 = desktop_protocol 173/174（唯一红 covered_elements_
 within_target_set 为 PLAN-656 表同步尾巴在册红，与本计划无关——
 stash 对照同败实证）。
+
+## §1.15 v1.15 增量：位图过线通道 + rqhost 内存量化门 + 像素原生族裁定——rqhost-maturity（PLAN-034）
+
+**裁定背景**（用户 2026-09-20 确认）：RQHost+RqProjector 完整化第二件
+（033 之后）——消费端 + 协议词汇面三件事：①rqhost 内存达标（量化门
+≤100MB，先测再优化）；②位图过线通道（P028-D1 兑现——app 生成像素
+内容经图像算子流过协议）；③像素原生族五 kind 裁定（P-RQ-PIX 前置④）。
+
+**① wire**（全追加式，`PROTOCOL_VERSION` 仍 1）：
+
+- **FrameMsg tag 10 `BitmapReady`**（app→host）：`{wid, id: String, w,
+  h, stride, slot, len}`——RGBA（straight 非预乘，FrameReadyPixels 同
+  口径）在位图段 `slot` 槽内（`[u32 len][h×stride 行序列]`），管道上
+  只过元数据。**tag 11 `BitmapAck`**（host→app）：`{wid, slot}`——
+  归还槽（FrameAck :§3.1 同纪律：app 复用槽必在 Ack 后 = 宿主已读完
+  旧载荷，**同 id 覆盖的无版本号时序由此钉死**）。旧端不产不识 = 按
+  未知 tag 拒收（会话隔离）。
+- **`BufferAlloc.bm` 消息级尾追**（`shm` 字段本体 + Welcome
+  frame_mode 同律先例）：`Option<BitmapBuffer{shm, slots, slot_size}>`
+  ——**专用第二段** `autodesk-shm-{pid}-{surface}-bm`（宿主侧建段，
+  与主段解耦）；None 不写字节（旧 golden 零漂移），decode 以
+  `remaining()` 条件读。槽档 = 表面尺寸 ×4 字节余量（2× 线性——DPI
+  与适度超面画布 coords；043 样板 560×360 in 480×320 表面实测定档）；
+  槽数 2（一在途一可写）；**超档上传 = 观测弃置（v1 显式边界）**。
+- **`bitmap://{pid}-{局部 id}` 词汇**（DrawOp Image src 字符串空间
+  ——零新 DrawOp tag）：app 侧 `bitmap_src()` 助手单源生成（pid 前缀
+  防跨 app 撞名）；宿主 resolve 前缀臂（thumbnail/workspace/lucide
+  同级）——命中 handle_cache 直出；**miss 不落负缓存**（位图可能后于
+  首帧到达，与本地族语义的差异点）。宿主 BitmapReady 处理点入缓存
+  （同 id 重上传 = 即时翻新）；ReclaimWindow/断连逐出该 client 位图键
+  （防 pid 复用串扰）。
+- **app 上传 API**：`FrameSource::drain_bitmap_uploads`（缺省空——
+  `drain_desktop_commands` 033 同型缝）+ `Component::drain_bitmap_
+  uploads`（组件面）+ `produce_bitmap`（泵写槽 + BitmapReady）。泵
+  排水位 = 输入派发后/周期拍后（**产帧前**——管道 FIFO 保证宿主先入
+  缓存后合成引用帧；位图翻新后强制重合成一帧——宿主 iced 不因缓存
+  变化自发重绘）。
+- **TS 义务**（D6）：decode tag 10/11 桩分支（消费面忽略——防
+  unknown-tag throw 破坏 WS 会话）；占位渲染维持；golden 双侧对拍
+  （BITMAP_READY_HEX）。**web 真位图渲染 not-yet 维持**（P028-D3 边
+  界更新：通道在、web 端仍 not-yet——TS 无 shm 位图通道）。
+- **高频流背压 v1 not-yet**：canvas 快照级低频消费面（同签名场景零
+  重传去重）；24fps 视频级带宽经济性 = video 裁定依据之一（见③）。
+
+**② canvas = 位图快照过线**（首个像素原生 kind 过线，043-canvas-paint
+样板验证）：RqProjector View::Canvas 臂——场景栅格化（tiny_skia——
+inproc CanvasPainter 的进程外孪生：映射规约共享、代码独立）→ 位图
+上传 + `bitmap://` 引用；coverage "canvas" 入册（启动门放行）。on_hit
+= 节点命中物化（049 图元三表同律）；**pen 三件套 not-yet**（坐标回传
+路径归 M7-c terminal 撞面批）；**labels not-yet**（软栅格无文本面）。
+
+**③ 像素原生族五 kind 裁定**（P-RQ-PIX 前置④，用户 2026-09-20 确认；
+T-01 修正版——imagesurface"零消费者"前提不成立，031/027 真实在用）：
+
+| kind | 裁定 | 依据 |
+|---|---|---|
+| video | inproc/独立窗专属 | mpv widget wgpu-only + 24fps shm 流量级不经济 |
+| terminal | M7-c 撞面立项 | auto-term 真需求；位图快照 + 命中坐标回传路径预留 |
+| canvas | 位图快照过线 | 本增量②（043 样板；049 同律随注） |
+| code_editor | not-yet 家族维持 | P032-D3 在册（041 唯一消费） |
+| imagesurface | queue not-yet 维持 + M7-c 撞面 | 031/027 在用（显示面归一 image src + 交互采集面归 M7-c 批裁定；P033-D4 表脱钩归 656 线） |
+
+**④ rqhost 内存量化门**（dual-exit，AC-01——已闭环）：归因矩阵
+（{debug,release}×{wgpu,tiny-skia[`ICED_BACKEND` env——iced 标准链
+原生]}×{1,2,5} 窗 + default 缺省格，PrivateUsage 口径）= reports/
+assets/034/memory-matrix.txt。**归因结论**：wgpu 设备/栈驻留 ≈223MB
+（release×1窗 234580KB vs tiny-skia 11236KB）为绝对大头（debug→release
+仅省 ~0.5MB——构建嫌疑排除）；每窗边际 wgpu ≈42MB/窗 vs tiny-skia
+≈3.3MB/窗；handle_cache/fontdb 残余微小（003 载体零图像）。**门判定
+（T-03 数据驱动裁定）**：daemon 缺省切 tiny-skia（run_daemon 置
+`ICED_BACKEND` 缺省值，显式 env 仍胜出）——release×default×1窗
+**private=11260KB ≤ 102400KB 达标**（余量 10×；wgpu 档经 env 显式可
+达，归因对照保留）；合法性依据 = D4 video 独立窗专属裁定（rqhost 无
+wgpu-only 面刚需）。自观测面照落（rq_update 300 拍节流内存观测行）。
+app 门 ≤10MB 沿用复核过（release 003 -q 6460KB；P033-D3 口径：027
+富载体另裁）。
 
 ## 2. Wire Format（信封）
 

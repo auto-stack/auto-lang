@@ -491,6 +491,7 @@ fn apply_actions(
                     .bm_shm
                     .get(&surface)
                     .and_then(|seg| seg.read_slot(slot).ok());
+                let cached = rgba.is_some();
                 if let Some(rgba) = rgba {
                     crate::ui::iced::broker_surface::bitmap_cache_put(&key, w, h, stride, rgba);
                     client
@@ -498,8 +499,12 @@ fn apply_actions(
                         .bitmap_keys
                         .entry(surface)
                         .or_default()
-                        .push(key);
+                        .push(key.clone());
                 }
+                // 观测行（e2e 断言锚点：位图过线 + 缓存命中面）。
+                eprintln!(
+                    "[rqhost] bitmap `{key}` {w}x{h} slot={slot} cached={cached}"
+                );
                 to_app.push(ProtocolMsg::Frame(FrameMsg::BitmapAck { wid, slot }));
             }
             // queue 唯一档（Welcome=Commands）——像素帧臂理论不到达；
@@ -724,6 +729,10 @@ pub struct RqDaemon {
     /// 窗 → 最近光标位（窗口本地坐标；按下事件的坐标源——Button 事件
     /// 不带位，WM `last_cursor` 簿记同型）。
     last_cursor: BTreeMap<iced::window::Id, (f32, f32)>,
+    /// PLAN-034 T-03（D5 自观测面）：Tick 计数——每 ~300 拍（≈4.5s）
+    /// 自采样一行内存观测（轻量形态，不接 mem_guard 冻结语义：daemon
+    /// 是共享宿主，冻结语义不适用）。
+    mem_ticks: u64,
 }
 
 impl RqDaemon {
@@ -801,6 +810,20 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
     match msg {
         RqMessage::Tick => {
             let mut tasks = Vec::new();
+            // PLAN-034 T-03（D5）：daemon 自观测——每 ~300 拍（≈4.5s）
+            // 一行 private/working_set（e2e 断言与运维口径；节流防刷）。
+            state.mem_ticks += 1;
+            if state.mem_ticks % 300 == 0 {
+                if let Ok(s) =
+                    super::stage3::sample_process_memory(std::process::id())
+                {
+                    eprintln!(
+                        "[rqhost] mem private={}KB working_set={}KB",
+                        s.private_bytes / 1024,
+                        s.working_set / 1024
+                    );
+                }
+            }
             // ① 待定采纳消费（serve 线程生产——队列 drain）。
             let pending: Vec<_> = state.serve.pending.lock().unwrap().drain(..).collect();
             for (name, end) in pending {
@@ -1033,6 +1056,15 @@ fn rq_subscription(_state: &RqDaemon) -> iced::Subscription<RqMessage> {
 /// 单实例仲裁：锁管道被占（已有实例）→ 观测行 + 干净退出（码 0）。
 /// 阻塞直至末窗退出（iced 空窗不自动退出——`iced::exit` 自建，D5）。
 pub fn run_daemon(wellknown: &str) -> Result<(), String> {
+    // PLAN-034 T-03（D5 数据驱动裁定）：daemon 缺省软光栅（tiny-skia）
+    //——归因矩阵实证 wgpu 驻留 ≈211MB（release×1窗 222792KB vs
+    // tiny-skia 11104KB，assets/034/memory-matrix.txt），tiny-skia 档
+    // 10.8MB 过 ≤100MB 门 10×；video 已裁独立窗专属（§1.15 五 kind
+    // 裁定）——rqhost 无 wgpu-only 面刚需。显式 `ICED_BACKEND` 仍胜出
+    //（A/B 归因口径保留；desktop.ps1 同款"环境覆盖 > 缺省"次序）。
+    if std::env::var("ICED_BACKEND").is_err() {
+        std::env::set_var("ICED_BACKEND", "tiny-skia");
+    }
     let (serve, claim) = match RqServe::start(wellknown) {
         Ok(x) => x,
         Err(RqServeError::AlreadyRunning) => {
@@ -1053,6 +1085,7 @@ pub fn run_daemon(wellknown: &str) -> Result<(), String> {
         had_window: false,
         opened: 0,
         last_cursor: BTreeMap::new(),
+        mem_ticks: 0,
     };
     // boot 闭包 Fn 约束——RefCell 一次性提取（renderer.rs run_session 同型）。
     let init = std::cell::RefCell::new(Some(state));
@@ -1483,6 +1516,7 @@ mod tests {
             had_window: false,
             opened: 0,
             last_cursor: BTreeMap::new(),
+            mem_ticks: 0,
         };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while state.clients.len() < 2 {
@@ -1587,6 +1621,7 @@ mod tests {
             had_window: false,
             opened: 0,
             last_cursor: BTreeMap::new(),
+            mem_ticks: 0,
         };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while state.clients.len() < 2 {
@@ -1642,6 +1677,7 @@ mod tests {
             had_window: false,
             opened: 0,
             last_cursor: BTreeMap::new(),
+            mem_ticks: 0,
         };
         let ghost = iced::window::Id::unique();
         let _ = rq_update(&mut state2, RqMessage::WindowClosed { window: ghost });
@@ -1830,6 +1866,7 @@ mod tests {
             had_window: false,
             opened: 0,
             last_cursor: BTreeMap::new(),
+            mem_ticks: 0,
         };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while state.clients.len() < 2 {
