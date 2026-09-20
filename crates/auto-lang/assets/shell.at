@@ -173,7 +173,10 @@ widget Desktop {
                 taskbar {
                     // PLAN-526 T7：bg-card/95——与虚拟窗标题栏同 alpha 口径
                     // （518 G6 off 档 0.95；原不透明 bg-card 实测与窗带异色）。
-                    style: "h-14 w-full flex items-center gap-2 px-2 bg-card/95 " + .__dock_border
+                    // PLAN-035 T-16：px-2 → pl-2——右 padding 把 sliver 顶离
+                    // 窗口右缘（高亮右侧残留奶白条）；细条贴缘后高亮即占满
+                    // 分隔线右侧（SD-05 布局合同补充）。
+                    style: "h-14 w-full flex items-center gap-2 pl-2 bg-card/95 " + .__dock_border
 
                     // Plan 503：launcher 召唤钮。
                     // PLAN-526 T17：全任务栏 icon 统一 start 规格——容器
