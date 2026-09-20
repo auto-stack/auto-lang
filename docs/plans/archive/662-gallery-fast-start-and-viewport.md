@@ -343,7 +343,7 @@ checkpoints:
 canonical_spec_paths: [docs/specs/auto-lang/ui/overview.md §PLAN-662, docs/specs/auto-lang/vm/plans.md 662 行]
 ledger_targets: [.autoos/specs.json]
 debt: P662-D1（020 flex-wrap 排版降级登记）/ P662-D2（预存并行 env 竞争）落册 KNOWN-DEBT
-next: 终态（cleaned 回填后）
+next: 终态（全部 checkpoint 闭环：wt-guard ×3 clean → 三 worktree 移除+lang/os 双 plan-662-dev 删除[was a0bf33fe8/0778c28]+auto-down detached 移除+组目录 lang-662 删除，worktree list 双仓零 662 残留实证）
 ```
 
 ```yaml
