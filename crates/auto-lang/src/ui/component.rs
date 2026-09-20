@@ -92,6 +92,13 @@ pub trait Component: Sized + Debug {
     /// PLAN-034 T-05（D3）：位图上传读走（`FrameSource::drain_bitmap_
     /// uploads` 的组件面转发点）。缺省空——无位图生产面的组件零负担；
     /// canvas 快照（VM 轨）/合成位图生产者实现。
+    ///
+    /// 门控对齐 `desktop_protocol` 模块自身的 `ui-iced` cfg：返回类型
+    /// `BitmapUpload` 定义在该门控模块内，实现者/调用者全在门控侧；
+    /// 无门控消费者（如生成的 back server，features = ui + image-pipeline）
+    /// 编译本 trait 时不得牵引 iced 类型（Plan 365 `subscription()`
+    /// 泄漏前科的同类收口）。
+    #[cfg(feature = "ui-iced")]
     fn drain_bitmap_uploads(
         &mut self,
     ) -> Vec<crate::ui::desktop_protocol::endpoint::BitmapUpload> {
