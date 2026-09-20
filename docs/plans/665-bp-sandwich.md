@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-665
-status: execution_done           # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: bp-sandwich（layout/sandwich 应用壳蓝图）
 author: [agent]
 created_at: 2026-09-20
@@ -251,6 +251,25 @@ plan-665-dev`（本计划纯资产+examples，预计无 auto-down 依赖位；�
   **验证范围声明**：本计划零 `crates/` Rust 改动（纯 blueprints 资产+
   examples gate+docs），按 AGENTS 分级门禁跑 scoped 验证（bp 域测试+bp-gate
   双臂），未跑 cargo tf 全量（无 Rust 代码面变更）。
+- 2026-09-20 review（plan_revision 1，**与实施同会话——结论自工件重建，
+  全部验证命令重跑，不采信执行摘要**）：
+  `stage: review | PLAN-665 | r1 | pass | reviewed_commit=53ba8b346（worktree
+  plan-665-dev tip，基点 172536658；f2a8a2ce5+7f1fddef7+53ba8b346 三提交，
+  worktree clean） | deps=组内 auto-down@6a9df40 lang-665-dep（零改动）|
+  spec_inputs=docs/specs/blueprint/contract.md+project.md@53ba8b346、
+  docs/specs/widgets/viewport-boundary.md | acceptance: AC-01✓ AC-02✓ AC-03✓
+  AC-04✓ AC-05✓ AC-06✓（全部复审期重跑） | findings: F-1（低/非阻断/预存
+  文档漂移→P665-D7）、F-2（info：AC-01 字面 `auto bp check` 校验面为 L2/L3
+  消费产物行为契约，对 fn-free 骨架不适用——status-bar/filetree 同理，括号
+  内真实验收 registry 扫描+palette 零漂移已重跑绿；计划措辞不精确，无需行动）
+  | evidence: ①auto bp list EXIT=0（layout/sandwich 在册）；②plan657 t03
+  palette_drift 全包零漂移 PASS（重跑）；③bp 域 46 测 45 绿（唯一红=在案
+  预存 P665-D4）；④bp-gate 双臂重跑全绿（vue 6/6 含 AC-04 五几何断言
+  throw 路径在册非同义反复；VM boot+三投影等值+七 needle 全中）；⑤full.at
+  结构 grep 0 侧栏元素+3 出口（AC-05 无侧栏列）；⑥SD-01 落档于 53ba8b346。
+  债登记：P665-D4/D5/D6/D7 四条入 KNOWN-DEBT（复审期登记）。touched_goals
+  空解释：本计划为 blueprint 层资产计划，不触及 docs/specs/goals.md 任何
+  GOAL-NNN 条目 | next: merge（D-1 命名窗口随 merge 关闭，缺省=sandwich）`。
 
 ## 10. 待澄清事项
 

@@ -2483,3 +2483,12 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
 |---|---|---|---|---|
 | FIX-REORG-D1 | low | 测试 | **master 预存：plan488_dnd_bridge_app_handlers 存量红（非搬移引入）**——desktop_behavior 集成测试解析 dnd-bridge app.at 失败（`caption_text` UndefinedVariable + 20 处 RBrace 语法错，offset 2313/2342；Plan 488 落地后解析器演进回归）。搬移前后主检出与 worktree 同signature 双实测确认；该测试不在 daily 档（cargo t 别名不含 --test desktop_behavior），故长期静默。修法=修 app.at 源或解析器回归定位，另归专项 | crates/auto-lang/tests/desktop_behavior.rs:318；examples/capability-tests/dnd-bridge/src/front/app.at |
+
+### P665（2026-09-20，Plan 665 layout/sandwich 骨架 bp 复审登记）
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P665-D4 | medium | bp/VM link | **master 预存红：`plan640_bp_tests::t04_vm_track_empty_state_reference`（非 665 引入）**——`Undefined symbol: on_primary in module EmptyStateFirstUse`（VM pipeline link 失败）。A/B 实证：主检出 172536658 同红、与 sandwich 零交互（empty-state first_use 疑 PLAN-657 族 `on_*` 回调参数化后 VM 侧缺声明/link 面缺口）。修法归 empty-state/657 领地 | crates/auto-lang/src/plan640_bp_tests.rs:136；复现 `cargo t plan640_bp_tests`（worktree/主检出双红在案） |
+| P665-D5 | low | spec 账面 | **project.md 模块清单落后磁盘**——缺 PLAN-075 三包行（layout/status-bar、data-display/row-list、navigation/filetree）；磁盘 17 包 vs 表 15 行（665 补 sandwich 后）。665 只补自属行未越权回填；修法=三行回填或清单改由 registry 扫描再生 | docs/specs/blueprint/project.md 模块清单节；`auto bp list` 计数对照 |
+| P665-D6 | low | 工具链 | **`spec-index.py` 再生会冲掉 INDEX.md 手插注记**——664 ui 行外科注记仅存 INDEX、未入再生源，再生产出即丢（665 再生时实证+已恢复）。修法=注记回灌再生源（specs.json/module spec 状态面）或流程纪律"再生前 diff 手插注记" | scripts/spec-index.py；665 复审 F 记录；664 账本 172536658 |
+| P665-D7 | low | 文档漂移 | **bp-gate README R-C 段"bp 子件子树对 MCP 快照不可见(F-1)"与本仓现行行为矛盾**——665 T-00 实证 snapshot v2(rendered) 完整暴露 bp 子件渲染子树（gate VM 臂 slot 填充 needle 全中即证）。075 期陈述疑似被快照契约演进（664 menubar-snapshot 契约同期）作废。修法=R-C 段补 v2(rendered) 修正注记（L0 fix worktree 量级） | examples/bp-gate/README.md R-C 段；units.mjs sandwich 注记；plan 665 §8 T-00 行 |
