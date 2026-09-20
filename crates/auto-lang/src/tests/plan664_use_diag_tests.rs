@@ -78,3 +78,36 @@ widget Host {
         diags
     );
 }
+
+/// review R1 F-1：非文件系统模块形态不得误报 P-15——`use auto.http`
+/// （内建命名空间，jade desktop 实测假阳性）与 `use.py`（Python 侧符号）
+/// 在本环解析失败是预期路由，不是静默死面。
+#[test]
+fn plan664_p15_non_fs_module_forms_no_false_positive() {
+    let _ = crate::take_use_diags();
+    let dir = tempfile::TempDir::new().unwrap();
+    let host_src = r#"
+use auto.http
+use.py json5
+
+widget Host {
+    model { var tag str = "n" }
+    view { col { text "ok" } }
+    on { .Init -> { .tag = "x" } }
+}
+"#;
+    let host = dir.path().join("host.at");
+    std::fs::write(&host, host_src).unwrap();
+    let path_str = host.to_string_lossy().to_string();
+    let _ = crate::build_dynamic_component(host_src, Some(&path_str));
+    let diags = crate::take_use_diags();
+    let false_positives: Vec<_> = diags
+        .iter()
+        .filter(|d| d.contains("auto.http") || d.contains("json5") || d.contains("P-15"))
+        .collect();
+    assert!(
+        false_positives.is_empty(),
+        "non-filesystem use forms must not be diagnosed; got {:?}",
+        false_positives
+    );
+}

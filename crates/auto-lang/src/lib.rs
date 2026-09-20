@@ -47,6 +47,18 @@ pub fn take_use_diags() -> Vec<String> {
     USE_DIAGS.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
 }
 
+/// PLAN-664 U-4（review R1 F-1）：该 use 语句是否为非文件系统模块形态
+/// ——P-15/P-16 诊断的假阳性卫。三族：
+/// - `auto.*` 内建命名空间（jade `use auto.http` 实测——走 natives
+///   通道非文件解析，曾被误报 P-15）；
+/// - `.web` 表单（ext 适配器通道另行装载，scanner 把整段收进 module
+///   字段——plan632 F2 stderr 实证）；
+/// - `use.py`（`is_python_import`——Python 侧符号）。
+/// 这些形态在本环解析失败是预期路由，不是静默死面，不得告警。
+fn is_non_fs_module_use(u: &crate::use_scanner::UseStatement) -> bool {
+    u.is_python_import || u.module.starts_with("auto.") || u.module.starts_with(".web")
+}
+
 pub fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
     GLOBAL_RT.get_or_init(|| {
         Arc::new(
@@ -3866,13 +3878,15 @@ fn collect_module_imports(
             }
             UseModuleResolution::None => {
                 // PLAN-664 U-4（P-15）：传递性 use 同告警化（见根 use 环
-                // 同名诊断注记）。
-                crate::use_diag(format!(
-                    "[AUTO-USE-DIAG] P-15 传递 use 模块 `{}` 解析失败（items: {:?}）——基目录 {} 均无对应 .at/mod.at（PLAN-664）。该导入静默跳过。",
-                    dep.module,
-                    dep.items,
-                    module_dir.display()
-                ));
+                // 同名诊断注记）；review R1 F-1 同卫（非文件系统形态）。
+                if !is_non_fs_module_use(&dep) {
+                    crate::use_diag(format!(
+                        "[AUTO-USE-DIAG] P-15 传递 use 模块 `{}` 解析失败（items: {:?}）——基目录 {} 均无对应 .at/mod.at（PLAN-664）。该导入静默跳过。",
+                        dep.module,
+                        dep.items,
+                        module_dir.display()
+                    ));
+                }
             }
         }
     }
@@ -4122,7 +4136,10 @@ fn build_dynamic_component_inner(
             // 实录：`use panels_graph_fns: graph_stats` × `var graph_stats
             // map`，MCP 不起、零编译期告警）。撞名时名字被状态通道抢占，
             // 此处编译期告警化；硬错化留待确认无合法撞名形态后另议。
-            for item in &use_stmt.items {
+            // review R1 F-1：非文件系统形态（auto.*/.web/use.py）跳过——
+            // 其 items 是外域符号，撞名检查无意义且会误报。
+            if !is_non_fs_module_use(use_stmt) {
+                for item in &use_stmt.items {
                 let mut owner: Option<String> = None;
                 if let Some(model) = &root_decl.model {
                     if model.fields.iter().any(|f| f.name.as_str() == item) {
@@ -4145,6 +4162,7 @@ fn build_dynamic_component_inner(
                     crate::use_diag(format!(
                         "[AUTO-USE-DIAG] P-16 use 导入符号 `{item}` 与 widget `{w}` 的 model 字段撞名——VM 轨该名字被状态通道占用，fn 导入将在 link 期落 `Undefined symbol` 类死面（PLAN-664）。fn 与字段改名错开其一。"
                     ));
+                }
                 }
             }
             // Locate the module source file. A dotted module path maps to a
@@ -4204,10 +4222,15 @@ fn build_dynamic_component_inner(
                     // App 空视图零报错（jade 079 E-8 跨项目 fn 导入静默
                     // 死面实录）。编译期告警化：留下可 grep 诊断；硬错化
                     // 留待确认无合法未解析形态后另议。
-                    crate::use_diag(format!(
-                        "[AUTO-USE-DIAG] P-15 use 模块 `{}` 解析失败（items: {:?}）——候选基目录均无对应 .at/mod.at（PLAN-664）。该导入静默跳过，引用其符号的面将落空。",
-                        use_stmt.module, use_stmt.items
-                    ));
+                    // review R1 F-1：非文件系统形态（auto.*/.web/use.py）
+                    // 解析失败是预期路由，不告警（jade use auto.http
+                    // 实测假阳性）。
+                    if !is_non_fs_module_use(use_stmt) {
+                        crate::use_diag(format!(
+                            "[AUTO-USE-DIAG] P-15 use 模块 `{}` 解析失败（items: {:?}）——候选基目录均无对应 .at/mod.at（PLAN-664）。该导入静默跳过，引用其符号的面将落空。",
+                            use_stmt.module, use_stmt.items
+                        ));
+                    }
                     continue;
                 }
             };
