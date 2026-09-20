@@ -29,28 +29,18 @@ pub fn back_needs_session(back_api_source: &str) -> bool {
             .any(|l| l.trim_start().starts_with("use auto."))
 }
 
-/// PLAN-037 T-02（自 auto-man vue.rs 迁入，PLAN-658 T-02 原实现）：
-/// `/api/` 字面量子前缀化——仅当行内出现 `Http.`（HTTP 调用行）时，把该行
-/// 的 `"/api/...` 引号字面量改写为绝对 URL `<root>/apps/<app_id>/api/...`。
+/// PLAN-037 T-02（自 auto-man vue.rs 迁入，PLAN-658 T-02 原实现；本
+/// re-export 维持 auto-man/桌面双消费路径稳定——实现落 un-gated
+/// [`crate::back_prefix`]，因 lib.rs 模块读点在 feature 无关的核心装载链）：
+/// `/api/` 字面量子前缀化——仅当行内出现 `Http.`（HTTP 调用行）时，把该
+/// 行的 `"/api/...` 引号字面量改写为绝对 URL `<root>/apps/<app_id>/api/...`。
 ///
 /// 精确性依据（658 T-02 语料实证）：三 demo 前端全部相对调用点仅 020
 /// player_store.at 一处（单行、同行含 `Http.`）；注释行不含 `Http.` 不受
-/// 影响；back 模块的 `#[api(path = "/api/...")]` 属性行不含 `Http.`，路由
-/// 收集零污染。多行调用形态（字面量与 `Http.` 不同行）不在改写面——当前
-/// 语料无此形态，出现时回补（658 §5.3 注记同律）。
-pub fn prefix_api_url_literals(content: &str, root: &str, app_id: &str) -> String {
-    let marker = "\"/api/";
-    let replacement = format!("\"{root}/apps/{app_id}/api/");
-    let mut out = String::with_capacity(content.len());
-    for line in content.split_inclusive('\n') {
-        if line.contains("Http.") && line.contains(marker) {
-            out.push_str(&line.replace(marker, &replacement));
-        } else {
-            out.push_str(line);
-        }
-    }
-    out
-}
+/// 影响；back 模块的 `#[api(path = "/api/...")]` 属性行不含 `Http.`，
+/// 路由收集零污染。多行调用形态（字面量与 `Http.` 不同行）不在改写面——
+/// 当前语料无此形态，出现时回补（658 §5.3 注记同律）。
+pub use crate::back_prefix::prefix_api_url_literals;
 
 // ---------------------------------------------------------------------------
 // PLAN-037 T-03：供给决策树（四臂）+ 按需装载/卸载
@@ -139,7 +129,11 @@ impl crate::ui::session::DesktopSession {
             }
         }
         *self.desktop.back_refs.entry(app_key.to_string()).or_insert(0) += 1;
-        Some(proxy.base_url_for(app_key))
+        // 前缀化 root = **origin-only**（`http://127.0.0.1:{port}`）——
+        // `prefix_api_url_literals` 自身拼 `/apps/{id}/api/` 段（658 画廊
+        // `set_gallery_proxy_root` 同语义；`base_url_for` 含完整子前缀，
+        // 传它会产生 `/apps/x/apps/x/api/` 双重前缀——smoke 实证）。
+        Some(format!("http://127.0.0.1:{}", proxy.port))
     }
 
     /// PLAN-037 T-04：AppId → app_key 供给归属绑定（allocate_app 后、

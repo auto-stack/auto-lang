@@ -3214,12 +3214,26 @@ fn spawn_shell_outproc(
         // session；①daemon 已由上方 ensure_daemon_if_declared 消费，④空）
         // ——懒启 proxy + 按需装载 + 计数。返回前缀化 root 时对 spec.code
         // 做**内存态**字面量前缀化（不落盘不改语料；658 画廊同律——桌面
-        // 无独立重编译路径，重开窗即 relaunch 再过本变换）。
+        // 无独立重编译路径，重开窗即 relaunch 再过本变换）。模块文件
+        // （Http 调用点多在 store 模块——020 player_store.at 实证）经
+        // launch 作用域 overlay 变换（back_prefix guard，build 返回即清）。
         let provision_root = self.ensure_backend(&spec, name);
         let provisioned_code = match &provision_root {
             Some(root) => crate::ui::back_provision::prefix_api_url_literals(&spec.code, root, name),
             None => spec.code.clone(),
         };
+        let _prefix_guard = provision_root.as_ref().and_then(|root| {
+            let front_dir = spec
+                .source_path
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).parent())
+                .map(|d| d.to_path_buf())?;
+            Some(crate::back_prefix::set_guard(crate::back_prefix::PrefixSpec {
+                front_dir,
+                root: root.clone(),
+                app_key: name.to_string(),
+            }))
+        });
         let comp = crate::build_dynamic_component(&provisioned_code, spec.source_path.as_deref())
             .map_err(|e| {
                 // 编译失败回滚供给计数（app 未诞生无窗可 release——归零即

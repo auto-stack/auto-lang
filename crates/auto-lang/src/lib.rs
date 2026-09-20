@@ -95,6 +95,7 @@ pub mod mcp; // Plan 265: MCP server for AI agent interaction
 pub mod autovm_daemon; // Plan 269: AutoVM daemon (serve/req)
 pub mod autovm_client; // Plan 269: AutoVM client for req command
 pub mod back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）
+pub mod back_prefix; // PLAN-037: launch 期作用域化模块源前缀化 overlay（桌面后端供给——un-gated，模块读点在本文核心装载链）
 #[cfg(test)]
 mod test_util; // Plan 266 Phase 4: Differential testing utilities
 pub mod compile;
@@ -3161,11 +3162,14 @@ pub(crate) fn load_ext_imports_for_vm(
     // the root-AST walk above misses them; sweep every loaded module file.
     for path in visited.iter() {
         if let Ok(code) = std::fs::read_to_string(path) {
-            // PLAN-668 A-02：逐模块 stylekit 预注册（同主收集路径）。
+            // PLAN-037: 模块重读统一过前缀化 overlay（visited 集扫）。同下。
+            let code = crate::back_prefix::apply(path, code);
+            // PLAN-668 A-02：逐模块 stylekit 预注册（同主收集路径；前缀化不触
+            // stylekit 导入面，变换后扫等价）。
             let _ = crate::design_tokens::recipe::prepare_style_recipe_imports(
                 path.parent().unwrap_or(std::path::Path::new(".")),
                 &code,
-            );
+            ); (prefix-fix(plan-037 T-05 冒烟实证两修): ①前缀 root 改 origin-only——base_url_for(含 /apps/{id}) 传 prefix(自拼 /apps/{id}/api/) 产生双重前缀 404（smoke [p037-http] 实证 /apps/x/apps/x/api/...），ensure_backend 返回 http://127.0.0.1:{port}（658 set_gallery_proxy_root 同语义）；②模块源改写扩面——Http 调用点在 store 模块（player_store.at:92）非入口，UI 合并编译管线多读点重读同文件（visited 扫×3/adapter/qualifier/dir-walk），新 un-gated 模块 back_prefix（overlay+RAII guard+prefix 函数迁入）包 lib.rs 全部 11 个模块读点，launch 臂 build 期挂 guard（front_dir 谓词+行级 Http. 规则双保险，back 属性行零污染）；back_provision 改 re-export 维持 auto-man 路径。smoke 复验：scan 200/流 206 audio/mpeg/侧栏徽标 393（真实曲库入 store）。注：async HTTP base 解析在独立线程（进程 env 架构）——请求期 per-app base 架构性不可行，源级变换为终选 (PLAN-037))
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
             if let Ok(mod_ast) = parser.parse() {
@@ -3219,6 +3223,7 @@ pub(crate) fn load_ext_imports_for_vm(
     let mut adapter_fn_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (adapter, symbols) in &loaded_adapters {
         let Ok(code) = std::fs::read_to_string(adapter) else { continue };
+        let code = crate::back_prefix::apply(adapter, code);
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
         let Ok(adapter_ast) = parser.parse() else { continue };
@@ -3273,6 +3278,7 @@ pub(crate) fn load_ext_imports_for_vm(
                 continue;
             }
             let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let code = crate::back_prefix::apply(path, code);
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
             let Ok(mod_ast) = parser.parse() else { continue };
@@ -3308,6 +3314,7 @@ pub(crate) fn load_ext_imports_for_vm(
                     }
                 }
                 let Ok(module_code) = std::fs::read_to_string(&module_path) else { continue };
+                let module_code = crate::back_prefix::apply(&module_path, module_code);
                 let mod_session = crate::session::CompilerSession::ui();
                 let mut mod_parser =
                     crate::Parser::from(module_code.as_str()).with_session(mod_session);
@@ -3359,6 +3366,7 @@ pub(crate) fn load_ext_imports_for_vm(
                 continue;
             }
             let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let code = crate::back_prefix::apply(path, code);
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
             let Ok(mod_ast) = parser.parse() else { continue };
@@ -3603,6 +3611,7 @@ pub(crate) fn find_store_decl_files(
                 } else if fname.ends_with(".at") && budget > 0 {
                     budget -= 1;
                     let Ok(code) = std::fs::read_to_string(&path) else { continue };
+                    let code = crate::back_prefix::apply(&path, code);
                     let session = crate::session::CompilerSession::ui();
                     let mut parser = Parser::from(code.as_str()).with_session(session);
                     let Ok(ast) = parser.parse() else { continue };
@@ -3729,6 +3738,8 @@ fn collect_module_imports(
         Ok(c) => c,
         Err(_) => return,
     };
+    // PLAN-037: launch 期作用域化模块源前缀化（未激活时零成本透传）。
+    let code = crate::back_prefix::apply(module_path, code);
     // Plan 333: pre-resolve this module's `use` deps into the shared type_store
     // so types like `Note` (from `use api: Note`) are registered before parse.
     // resolve_uses is itself recursive (it follows each module's own uses), so
@@ -3951,6 +3962,8 @@ fn register_transitive_widgets_inner(
         Ok(c) => c,
         Err(_) => return,
     };
+    // PLAN-037: 同上——孙组件模块读点过前缀化 overlay。
+    let module_code = crate::back_prefix::apply(module_path, module_code);
     let base_dir = module_path.parent().unwrap_or(std::path::Path::new("."));
     let use_stmts = crate::use_scanner::scan_use_statements(&module_code);
     for use_stmt in &use_stmts {
@@ -3973,6 +3986,8 @@ fn register_transitive_widgets_inner(
             Ok(c) => c,
             Err(_) => continue,
         };
+        // PLAN-037: 同上——孙组件子模块读点过前缀化 overlay。
+        let sub_code = crate::back_prefix::apply(&sub_path, sub_code);
 
         // PLAN-668 A-02：逐模块 stylekit 预注册（同 4244 主路径——模块级
         // `use stylekit.styles:` 缺预注册则整文件 parse 失败被静默吞）。
@@ -4259,6 +4274,9 @@ fn build_dynamic_component_inner(
             // 被 `if let Ok` 静默吞掉 → 子 widget/handler 整件丢失（015
             // EditorPanel：handler_EditorPanel_EditTitle 不在 exports 实证）。
             if let Ok(module_code) = std::fs::read_to_string(&module_path) {
+                // PLAN-037: 同上——子模块读点过前缀化 overlay。
+                let module_code = crate::back_prefix::apply(&module_path, module_code);
+                // PLAN-668 A-02：逐模块文件 stylekit 预注册（同上，变换后扫等价）。
                 let _ = crate::design_tokens::recipe::prepare_style_recipe_imports(
                     module_path.parent().unwrap_or(std::path::Path::new(".")),
                     &module_code,
@@ -4913,6 +4931,7 @@ fn build_dynamic_component_inner(
                 continue;
             }
             let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let code = crate::back_prefix::apply(path, code);
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
             let Ok(mod_ast) = parser.parse() else { continue };
