@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-668
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: baseline-red-clearance
 author: [zcode]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 1
-current_step: 8
+current_step: 9
 total_steps: 10
 
 # /auto-plan:review 结束时填写：
@@ -305,11 +305,30 @@ test_aavm2_goldens_check` 全绿；抽样示例构建链绿；KNOWN-DEBT 中本�
   全数落处置）+22 条在册条目划线回写；564-Q6 家族注销；musk p053×4 呈报+
   p054×2 新观测转介。- **T-09 全档终验**（→AC-09 前半）：§6 终验矩阵一次跑全。验证：判据达 AC-02..AC-07
   口径。
+  [✅ 已完成] 2026-09-21：矩阵六档（worktree 计划分支）——tv 3816/3816 ✓/
+  tt 4038/4038 ✓/t 5300/5320（残余=musk 6 域外+ui::layout 14 环境豁免，
+  clipboard 本轮绿）/desktop_behavior 11/11 ✓/ui_snapshots 3/3 ✓/taa 金样 ✓/
+  **tf 3669/3669 全绿**（R-19 tf 档口径确认）；构建链抽样集 7 例沙箱绿
+  （{013,014,017,025,038}+046/047 vue-tsc 面；017/025 后端 cargo check）。
+  **并流**：master 期间被 PLAN-036/038/669 推进——merge master 入
+  plan-668-dev 零冲突（a41a47fab），合并树复核 t 5307/5327 同残余集、tt
+  4039/4039 ✓、taa ✓、038 构建链复验绿（合并后 CLI）。AC-02..AC-07 全达。
 - **T-10 复审与合并收尾**（→AC-09 后半）：/auto-plan:review → merge master（Conventional
   Commit `fix(test): ... (Plan 668)` 族）→ wt-guard clean → worktree/分支/组目录
   三清 → 收据回填。
 
 ## 9. 复审记录
+
+- **2026-09-21 work handoff（/auto-plan:work）**：stage: work | PLAN-668 |
+  plan_revision 1（+T-05..T-09 证据增补） | outcome: pass | code_commit:
+  plan-668-dev @ merge a41a47fab（T-02=9ad405771/T-03=a8e44e3f9/T-04=acf22be45/
+  T-05=f1f239918/T-06=a377d23ea/T-06+07=70a30ea84/SD=0198f814c，基于 27c196c04，
+  并流 master 至 a41a47fab） | task_ids: T-00..T-09 全勾（T-10=review/merge 归
+  下技能） | evidence: docs/plans/evidence/p668/baseline.md + 本文件各任务
+  [✅] 行 + .wt/lang-668/logs/{tv,tt,t,tf,taa,db,snaps}_final.log | blockers: 无
+  | next: /auto-plan:review（revision-bound 证据如上）→ merge（Conventional
+  Commit `fix(test)/fix(vm)/fix(gen)/docs(specs): ... (Plan 668)` 族）→
+  wt-guard clean → worktree/分支/组目录三清（组内含 auto-down 依赖位）。
 
 - **2026-09-20 draft handoff（/auto-plan:new）**：stage: new；PLAN-668 / plan_revision
   1；outcome: pass——合同完备（27 条清单全数映射 AC/T，规范增量 SD-01/SD-02 就位，
