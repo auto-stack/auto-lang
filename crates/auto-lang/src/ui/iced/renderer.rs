@@ -1303,11 +1303,6 @@ fn expand_margin_y_auto_walk<M: Clone + Debug>(v: &mut AbstractView<M>) {
         }
     }
     // 继续下潜（包裹列的子不再含 my-auto——刚从原位搬入；其余子照常扫描）
-    let style_owned = match &*v {
-        AbstractView::Column { style, .. } => style.clone(),
-        _ => None,
-    };
-    let _ = style_owned;
     match v {
         AbstractView::Row { children, .. } | AbstractView::Column { children, .. } => {
             for c in children.iter_mut() {
