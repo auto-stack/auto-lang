@@ -1158,6 +1158,149 @@ pub(crate) fn axis_fix_col_child_distributed<M: Clone + Debug>(mut c: AbstractVi
     c
 }
 
+// ═══ PLAN-663 C1b: 视口边界重写（iframe 语义）═══
+//
+// `h-screen`/`w-screen`（SizeValue::Screen）在独立窗口根 = Fill（满窗，
+// iced_length 缺省臂）；但嵌入"定高(px)容器"（gallery 视口 frame、虚拟桌
+// 面窗等）后，视口单位应重锚定到该边界（CSS iframe 模型：嵌入框建立新视
+// 口）。若不重写，Screen→Fill 在 Shrink 祖先（T-12 兜底的 Shrink scroll、
+// justify-center 让渡列高）下失去定高锚点，整树塌缩为最小内容高——
+// ui-gallery VM 臂全屏 demo 只剩一条播控条的根因。
+//
+// 实现形态：渲染前的 AbstractView 树重写 pre-pass（与 axis_fix_* /
+// inherit_text_color 同族），而非渲染器穿线 context——零渲染签名改动，
+// Plan 319 双入口（render_dynamic_view / into_iced）各调一次即可，且可独
+// 立单测。边界判定仅认 **arbitrary px 定高/定宽**（`h-[720px]`）；spacing
+// 定高（`h-44`）不建立边界（控制爆炸半径，KNOWN-DEBT 登记）。嵌套边界逐
+// 轴覆盖外层锚点。`h-full`（Full）不重写：其 CSS 原义是父容器百分比，重写
+// 会破坏 demo 内部的局部布局语义（全屏外壳的仓内惯例恰是 h-screen）。
+
+/// 视口锚：可仅有单轴（`w-[1024px]` 只锚宽）。
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+struct ViewportAnchor {
+    w: Option<f32>,
+    h: Option<f32>,
+}
+
+impl ViewportAnchor {
+    const NONE: ViewportAnchor = ViewportAnchor { w: None, h: None };
+
+    fn merge(self, inner: ViewportAnchor) -> ViewportAnchor {
+        ViewportAnchor {
+            w: inner.w.or(self.w),
+            h: inner.h.or(self.h),
+        }
+    }
+}
+
+/// 从节点样式提取其**自身**建立的视口边界（仅 arbitrary px 定值，>0）。
+fn viewport_boundary_of(style: Option<&Style>) -> ViewportAnchor {
+    let Some(s) = style else { return ViewportAnchor::NONE };
+    let mut a = ViewportAnchor::NONE;
+    for c in &s.classes {
+        match c {
+            StyleClass::Height(SizeValue::Pixels(px)) if *px > 0.0 => a.h = Some(*px),
+            StyleClass::Width(SizeValue::Pixels(px)) if *px > 0.0 => a.w = Some(*px),
+            _ => {}
+        }
+    }
+    a
+}
+
+/// 可承载/传递视口边界的样式容器变体（含既有 view_classes_mut 覆盖面 +
+/// Container/Scrollable 两个嵌入链上的关键变体）。
+fn viewport_classes_mut<M: Clone + Debug>(v: &mut AbstractView<M>) -> Option<&mut Vec<StyleClass>> {
+    use AbstractView as V;
+    match v {
+        V::Row { style: Some(s), .. }
+        | V::Column { style: Some(s), .. }
+        | V::Text { style: Some(s), .. }
+        | V::Button { style: Some(s), .. }
+        | V::Input { style: Some(s), .. }
+        | V::Textarea { style: Some(s), .. }
+        | V::CodeEditor { style: Some(s), .. }
+        | V::Image { style: Some(s), .. }
+        | V::Container { style: Some(s), .. }
+        | V::Scrollable { style: Some(s), .. } => Some(&mut s.classes),
+        _ => None,
+    }
+}
+
+/// 渲染入口调用：整树重写视口单位（见模块注释）。
+pub(crate) fn rewrite_viewport_units<M: Clone + Debug>(root: &mut AbstractView<M>) {
+    rewrite_viewport_walk(root, ViewportAnchor::NONE);
+}
+
+/// 对 `v` 的直接子逐个：先按当前锚重写子自身视口类，再携锚下潜。
+fn rewrite_viewport_walk<M: Clone + Debug>(v: &mut AbstractView<M>, inherited: ViewportAnchor) {
+    // 自身边界（对子生效）；不可变借用先行结束，再可变借子。
+    let own = {
+        // 复用只读通道：走 viewport_classes_mut 的不可变版本等价——直接
+        // match style 字段。
+        let style = match v {
+            AbstractView::Row { style, .. }
+            | AbstractView::Column { style, .. }
+            | AbstractView::Text { style, .. }
+            | AbstractView::Button { style, .. }
+            | AbstractView::Input { style, .. }
+            | AbstractView::Textarea { style, .. }
+            | AbstractView::CodeEditor { style, .. }
+            | AbstractView::Image { style, .. }
+            | AbstractView::Container { style, .. }
+            | AbstractView::Scrollable { style, .. } => style.as_ref(),
+            _ => None,
+        };
+        viewport_boundary_of(style)
+    };
+    let eff = inherited.merge(own);
+    match v {
+        AbstractView::Row { children, .. } | AbstractView::Column { children, .. } => {
+            for c in children.iter_mut() {
+                rewrite_viewport_node(c, eff);
+            }
+        }
+        AbstractView::Grid { cells, .. } => {
+            for c in cells.iter_mut() {
+                rewrite_viewport_node(c, eff);
+            }
+        }
+        AbstractView::Container { child, .. }
+        | AbstractView::Scrollable { child, .. }
+        | AbstractView::MouseArea { content: child, .. } => {
+            rewrite_viewport_node(child, eff);
+        }
+        AbstractView::Overlay { base, content, .. } => {
+            rewrite_viewport_node(base, eff);
+            rewrite_viewport_node(content, eff);
+        }
+        _ => {}
+    }
+}
+
+/// 重写单节点自身的视口单位类（Screen/MinHeight 标记 → 边界定值），随后
+/// 继续下潜（节点自身若是边界，对孙辈换锚）。
+fn rewrite_viewport_node<M: Clone + Debug>(v: &mut AbstractView<M>, anchor: ViewportAnchor) {
+    if let Some(classes) = viewport_classes_mut(v) {
+        for c in classes.iter_mut() {
+            match *c {
+                StyleClass::Height(SizeValue::Screen) if anchor.h.is_some() => {
+                    *c = StyleClass::Height(SizeValue::Pixels(anchor.h.unwrap_or(0.0)));
+                }
+                StyleClass::Width(SizeValue::Screen) if anchor.w.is_some() => {
+                    *c = StyleClass::Width(SizeValue::Pixels(anchor.w.unwrap_or(0.0)));
+                }
+                // min-h-screen 族：parse 落 f32::MAX 标记（renderer 以
+                // >= 9999.0 判 Fill），边界内重写为边界定高。
+                StyleClass::MinHeight(m) if m >= 9999.0 && anchor.h.is_some() => {
+                    *c = StyleClass::MinHeight(anchor.h.unwrap_or(0.0));
+                }
+                _ => {}
+            }
+        }
+    }
+    rewrite_viewport_walk(v, anchor);
+}
+
 /// Helper to compute effective spacing: style.gap takes priority, then legacy spacing.
 /// Plan 412: axis-aware — Row consumes gap-x (axis-specific wins over bare gap),
 /// Column consumes gap-y. The other axis is ignored, mirroring CSS grid/flex semantics.
@@ -26440,6 +26583,132 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── PLAN-663 C1b: 视口边界重写 ──
+
+    fn col(style: &str, children: Vec<AbstractView<IcedMessage>>) -> AbstractView<IcedMessage> {
+        AbstractView::Column {
+            children,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(style).ok(),
+            onclick: None,
+            on_right_click: None,
+        }
+    }
+
+    fn classes_of(v: &AbstractView<IcedMessage>) -> &Vec<StyleClass> {
+        match v {
+            AbstractView::Column { style: Some(s), .. } | AbstractView::Container { style: Some(s), .. }
+            | AbstractView::Scrollable { style: Some(s), .. } => &s.classes,
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    fn height_of(v: &AbstractView<IcedMessage>) -> SizeValue {
+        classes_of(v).iter().find_map(|c| match c {
+            StyleClass::Height(sv) => Some(*sv),
+            _ => None,
+        }).expect("no Height class")
+    }
+
+    #[test]
+    fn p663_boundary_rewrites_screen_child() {
+        let mut root = col("w-full h-[720px] overflow-hidden", vec![
+            col("w-full h-screen bg-background", vec![]),
+        ]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        assert_eq!(height_of(&children[0]), SizeValue::Pixels(720.0));
+    }
+
+    #[test]
+    fn p663_no_boundary_keeps_screen() {
+        let mut root = col("w-full", vec![
+            col("h-screen", vec![]),
+        ]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        assert_eq!(height_of(&children[0]), SizeValue::Screen);
+    }
+
+    #[test]
+    fn p663_min_height_screen_rewritten() {
+        let mut root = col("h-[720px]", vec![
+            col("min-h-screen", vec![]),
+        ]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let classes = classes_of(&children[0]);
+        let mh = classes.iter().find_map(|c| match c {
+            StyleClass::MinHeight(m) => Some(*m),
+            _ => None,
+        }).expect("no MinHeight");
+        assert_eq!(mh, 720.0);
+    }
+
+    #[test]
+    fn p663_width_axis_independent() {
+        // 只有定宽边界：w-screen 重写、h-screen 不动
+        let mut root = col("w-[1024px]", vec![
+            col("w-screen h-screen", vec![]),
+        ]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let classes = classes_of(&children[0]);
+        let w = classes.iter().find_map(|c| match c {
+            StyleClass::Width(sv) => Some(*sv),
+            _ => None,
+        }).expect("no Width");
+        assert_eq!(w, SizeValue::Pixels(1024.0));
+        assert_eq!(height_of(&children[0]), SizeValue::Screen);
+    }
+
+    #[test]
+    fn p663_nested_boundary_overrides() {
+        let mut root = col("h-[720px]", vec![
+            col("h-[400px]", vec![col("h-screen", vec![])]),
+            col("h-screen", vec![]),
+        ]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let AbstractView::Column { children: inner, .. } = &children[0] else { panic!() };
+        assert_eq!(height_of(&inner[0]), SizeValue::Pixels(400.0), "嵌套边界换锚");
+        assert_eq!(height_of(&children[1]), SizeValue::Pixels(720.0), "外层边界直达子");
+    }
+
+    #[test]
+    fn p663_spacing_height_is_not_boundary() {
+        // spacing 定高（h-44=176px）不建立边界（PLAN-663 px-only 裁定）
+        let mut root = col("h-44", vec![col("h-screen", vec![])]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        assert_eq!(height_of(&children[0]), SizeValue::Screen);
+    }
+
+    #[test]
+    fn p663_chain_through_scrollable_and_container() {
+        let mut root = col("h-[720px]", vec![
+            AbstractView::Scrollable {
+                child: Box::new(AbstractView::Container {
+                    child: Box::new(col("h-screen", vec![])),
+                    padding: 0, width: None, height: None,
+                    center_x: false, center_y: false,
+                    style: None, onclick: None, on_right_click: None,
+                }),
+                width: None, height: None, style: None,
+                auto_scroll: false, offset: None, on_scroll: None,
+                axes: crate::ui::scroll::ScrollAxes::Y,
+                scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
+                controller: None,
+            },
+        ]);
+        rewrite_viewport_units(&mut root);
+        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let AbstractView::Scrollable { child, .. } = &children[0] else { panic!() };
+        let AbstractView::Container { child, .. } = child.as_ref() else { panic!() };
+        assert_eq!(height_of(child), SizeValue::Pixels(720.0));
+    }
 
     /// PLAN-057：editor_drag 坐标序列解析——正常序列、坏段防御跳过、空串。
     #[test]
