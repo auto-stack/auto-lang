@@ -318,7 +318,7 @@ widget MultiState {
 fn plan488_dnd_bridge_app_handlers() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../examples/ui/044-dnd-bridge/src/front/app.at"
+        "/../../examples/capability-tests/dnd-bridge/src/front/app.at"
     );
     let code = std::fs::read_to_string(path).expect("读 044 app.at");
     let mut dc = load_inline(&code);

@@ -1,4 +1,6 @@
-# 043-clipboard-bridge — 原生剪贴板三族互通演示(Plan 485)
+# clipboard-bridge — 原生剪贴板三族互通演示(Plan 485)
+
+> 原名 `examples/ui/043-clipboard-bridge`，2026-09-20 迁入 capability-tests。
 
 OS 剪贴板 ↔ 虚拟桌面 App 的 **文本 / 文件 / 图片** 三族双向演示:
 
@@ -11,7 +13,7 @@ OS 剪贴板 ↔ 虚拟桌面 App 的 **文本 / 文件 / 图片** 三族双向�
 ## 起跑(示例目录为 CWD)
 
 ```bash
-cd examples/ui/043-clipboard-bridge && auto run -r vm
+cd examples/capability-tests/clipboard-bridge && auto run -r vm
 ```
 
 > 在示例目录内起跑(`cd` 后 `auto run -r vm`):资产路径(`assets/…`)与

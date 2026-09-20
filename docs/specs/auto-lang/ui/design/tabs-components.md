@@ -69,7 +69,7 @@ tabs SFC 存在**三份拷贝**，修改必须三处同步（互有差异点见�
 
 ## 验证基线
 
-`examples/ui/046-tabs-variants`（双端）+ `examples/vue-gallery` tabs 页：
+`examples/capability-tests/tabs-variants`（双端）+ `examples/vue-gallery` tabs 页：
 三形态（default / enclosed 直角 / enclosed+rounded-t-lg Chrome 观感）+
 受控切换（VM：store 驱动断言 s2 a→b；Vue：trigger 点击 v-model 往返）。
 截图：046 `src/front/tests/screenshots/`（VM）、`shots/`（Vue，gitignore

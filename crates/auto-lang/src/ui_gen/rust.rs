@@ -9891,7 +9891,7 @@ widget T {
     fn test_tabs_codegen_046_compiles() {
         let src = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/ui/046-tabs-variants/src/front/app.at"
+            "/../../examples/capability-tests/tabs-variants/src/front/app.at"
         ))
         .expect("read 046 app.at");
         let session = crate::session::CompilerSession::ui().with_backend("rust");

@@ -1357,12 +1357,13 @@ mod tests {
     #[test]
     fn test_plan635_example_fixture_vue_chain() {
         // PLAN-635 T-07: the tracked two-package example — pac.at declares
-        // `dep stylekit { path: "../stylekit" }`, app.at uses
+        // `dep stylekit { path: "../../ui/stylekit" }` (demo migrated to
+        // capability-tests 2026-09-20), app.at uses
         // `use stylekit.styles: card_base, pill`. Compile through the real
         // production chain and assert the imported + derived recipes expand.
         let manifest = env!("CARGO_MANIFEST_DIR");
         let app = std::path::Path::new(manifest)
-            .join("../../examples/ui/045-style-import/src/front/app.at");
+            .join("../../examples/capability-tests/style-import/src/front/app.at");
         if !app.exists() {
             panic!("example fixture missing: {}", app.display());
         }

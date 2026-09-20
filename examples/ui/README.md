@@ -26,8 +26,9 @@ auto run            # 构建并启动 dev server
 auto run --render vm   # 041 等支持：直接跑 AutoVM 解释器（原生窗口）
 ```
 
-- 默认 `render: vue`；`041-auto-edit`、`043-clipboard-bridge` 支持 vm 模式
-  （038-minesweeper 随 PLAN-590 迁 auto-os/apps/）。
+- 默认 `render: vue`；`041-auto-edit` 支持 vm 模式（038-minesweeper 随
+  PLAN-590 迁 auto-os/apps/；043-clipboard-bridge/044-dnd-bridge 等
+  能力样板 2026-09-20 迁 `examples/capability-tests/`）。
 - 带后端的示例（015/017/018/022/023）会同时起 `back_port`。
 - 测试设施（按各示例 README 惯例运行）：
   - **MCP 桌面测试** `tests/desktop_mcp.py`（013 惯例）：011、013、015、041

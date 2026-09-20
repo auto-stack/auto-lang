@@ -2477,3 +2477,9 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 | P663-D3 | low | 布局语义 | **`h-full` 根 demo 不重锚定**——Full=父容器百分比原义保留（重写会破坏 demo 内部局部布局）；全屏外壳仓内惯例=h-screen。若未来语料出现 h-full 全屏外壳需再裁 | renderer.rs rewrite_viewport_walk（仅重写 Screen 族）；663 计划 §待澄清 1 |
 | P663-D4 | low | 布局语义 | **my-auto 多子项场景未按 flexbox 逐项吸收**——expand_margin_y_auto 对每个 my-auto 子独立包 h-full justify-center 列，多子同时声明时空间分配与 CSS margin:auto 的逐项吸收不完全等价；单 auto 子（嵌入 wrapper 常态）语义精确 | renderer.rs expand_margin_y_auto_walk；663 计划 §详细设计 C2 |
 | P663-D5 | medium | 编译 | **master 预存：auto-lang 无 ui-iced 特性编译必炸（非 663 引入）**——`ui/component.rs:97` 无条件引用 `crate::ui::desktop_protocol`（`#[cfg(feature="ui-iced")]` 门控，PLAN-034 位图通道），`cargo build` 以 default features 依赖 auto-lang 的下游（如独立 demo `run -r vm` 生成的启动 crate）E0433 必炸；663 验收实测复现（020 standalone 首跑 60s API 超时+构建日志 E0433，二次运行解释器 UI 兜底路径仍可用）。修法=component.rs 该函数体/引用挂 ui-iced cfg 或 desktop_protocol 退出门控。归后续 L0/专项 | crates/auto-lang/src/ui/component.rs:97 ↔ ui/mod.rs:107-108；663 验收实录 |
+
+## fix-ui-track-reorg 债（demo 轨道整编）2026-09-20 登记
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| FIX-REORG-D1 | low | 测试 | **master 预存：plan488_dnd_bridge_app_handlers 存量红（非搬移引入）**——desktop_behavior 集成测试解析 dnd-bridge app.at 失败（`caption_text` UndefinedVariable + 20 处 RBrace 语法错，offset 2313/2342；Plan 488 落地后解析器演进回归）。搬移前后主检出与 worktree 同signature 双实测确认；该测试不在 daily 档（cargo t 别名不含 --test desktop_behavior），故长期静默。修法=修 app.at 源或解析器回归定位，另归专项 | crates/auto-lang/tests/desktop_behavior.rs:318；examples/capability-tests/dnd-bridge/src/front/app.at |

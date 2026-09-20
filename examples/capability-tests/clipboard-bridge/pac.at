@@ -8,5 +8,5 @@ title: "ClipboardBridge"
 title_zh: "剪贴板桥"
 
 dep stylekit {
-    path: "../stylekit"
+    path: "../../ui/stylekit"
 }
