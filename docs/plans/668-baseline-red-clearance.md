@@ -6,7 +6,7 @@ author: [zcode]
 created_at: 2026-09-20
 updated_at: 2026-09-20
 plan_revision: 1
-current_step: 4
+current_step: 8
 total_steps: 10
 
 # /auto-plan:review 结束时填写：
@@ -278,14 +278,32 @@ test_aavm2_goldens_check` 全绿；抽样示例构建链绿；KNOWN-DEBT 中本�
   修）、R-14（target_set/登记同步）、R-16（029 断言更新）、R-17（dnd-bridge 源修或
   解析器定位）、R-19（schema_drift baseline 裁剪+kitchen_sink）、R-20（spa-routes）。
   验证：各滤串绿。
-- **T-06 脚手架类型面与生成器**（→AC-07）：R-21（tsconfig types 补 vite/client，
+
+  [✅ 已完成] 2026-09-20（提交 f1f239918）：R-05 坐标锚判定改声明面/R-06 防回环
+  段 manual 源（OS 主题依赖根修）/R-14 表同步三件/R-16 路径引用契约/R-17+A-01
+  测试装载器 stylekit 预注册/A-02 逐模块预注册三站点（015 EditorPanel VM 面板
+  复活，真生产缺陷）/A-03 夹具补 pac.at/A-04 根形态回调剥离/A-05 跟 625 占位卡
+  契约/A-06 别名快照镜像/R-20 断言跟 auto-os 资产名。T-05 后日常档全跑：残余仅
+  musk 6 + ui::layout 15 = 豁免+域外集（ffi dep_parity_018 环境挂起另记）。- **T-06 脚手架类型面与生成器**（→AC-07）：R-21（tsconfig types 补 vite/client，
   SD-01）、R-22（auto-sources 阶段序，SD-02——两案勘定择一）、R-23（038 store 名）。
   验证：抽样示例沙箱 `auto build` vue-tsc 绿；`cargo check -p auto-man`。
-- **T-07 api_gen 后端转译**（→AC-07）：R-24——017 db.rs 字面量类型族 + 025 全量 29
+
+  [✅ 已完成] 2026-09-20（提交 a377d23ea+70a30ea84）：R-21 tsconfig types:
+  [vite/client]（SD-01）/R-22 build 产 auto-sources（SD-02）/R-23 038 三修+013
+  随检两修（store 字面别名裸调/List.pop 空值合并/负字面量初始化器/回调契约
+  emit 载荷元数取调用位）。抽样集 {013,014,017,025,038}+046/047 沙箱
+  （P075-D1 纪律）vue-tsc 面全绿。- **T-07 api_gen 后端转译**（→AC-07）：R-24——017 db.rs 字面量类型族 + 025 全量 29
   错归因分族；修 api_gen/a2r 发射。验证：两例后端产物 cargo check 绿（沙箱）。
-- **T-08 呈报与台账核销回写**（→AC-08）：R-25 musk 呈报、R-26 P551-D2 复核、R-27
+
+  [✅ 已完成] 2026-09-20（提交 70a30ea84）：017=str-let if 臂字面量 .to_string()
+  强制；025 六修（sys 直通+边界强转+局部 []T→Vec+a2r-std 依赖模板+qualify 保护
+  +内联尾 return 包 JsonResponse+sys 记录字段 i64）。两例后端 cargo check 绿
+  （沙箱钉 worktree 绝对路径验产物码）；cargo tt 4038/4038 无回归。- **T-08 呈报与台账核销回写**（→AC-08）：R-25 musk 呈报、R-26 P551-D2 复核、R-27
   全量回写 KNOWN-DEBT-AND-RISKS。验证：台账 diff 审阅，无开口残留。
-- **T-09 全档终验**（→AC-09 前半）：§6 终验矩阵一次跑全。验证：判据达 AC-02..AC-07
+
+  [✅ 已完成] 2026-09-20：台账新增 P668 清偿批登记节（R-01..R-26+A-01..A-08
+  全数落处置）+22 条在册条目划线回写；564-Q6 家族注销；musk p053×4 呈报+
+  p054×2 新观测转介。- **T-09 全档终验**（→AC-09 前半）：§6 终验矩阵一次跑全。验证：判据达 AC-02..AC-07
   口径。
 - **T-10 复审与合并收尾**（→AC-09 后半）：/auto-plan:review → merge master（Conventional
   Commit `fix(test): ... (Plan 668)` 族）→ wt-guard clean → worktree/分支/组目录
