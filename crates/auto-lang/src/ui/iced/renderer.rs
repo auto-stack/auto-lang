@@ -4816,24 +4816,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into();
                 // PLAN-024(用户实机门实录):视口级底色容器——画布高
                 // (rows×CELL_H+2PAD)与视口高的**非整行残差**(DPI 下可达
-                // 一行)在 scrollable 底部露出 app 根浅色,该余量带在窗框
-                // 圆角处方角探出。外层 Fill 容器同色涂满视口 + 底角圆 16
-                // (=窗框 WIN_RADIUS);顶部保持方角(2026-09-20 复测裁定,
-                // 同根圆角机制)。
+                // 一行)在 scrollable 底部露出 app 根浅色。外层 Fill 容器
+                // 同色涂满视口消残差带;**方角**(2026-09-20 裁定:窗框
+                // 圆角由 app.at 底部状态栏 rounded-b-2xl 承担,分屏拓扑
+                // 无关——per-pane 圆角在横分下中间缝两角误圆)。
                 let el: iced::Element<'static, M> = iced::widget::container(el)
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill)
                     .style(move |_: &iced::Theme| iced::widget::container::Style {
                         background: Some(iced::Background::Color(margin_bg)),
-                        border: iced::Border {
-                            color: iced::Color::TRANSPARENT,
-                            width: 0.0,
-                            radius: iced::border::Radius {
-                                bottom_left: 16.0,
-                                bottom_right: 16.0,
-                                ..Default::default()
-                            },
-                        },
                         ..Default::default()
                     })
                     .into();

@@ -58,7 +58,9 @@ pub const PAD: f32 = 4.0;
 /// PLAN-002 N5 档)——底部两角随窗框;**顶部保持方角**(PLAN-024
 /// 复测裁定 2026-09-20:顶部圆角在 tab 条下呈缺角观感,用户明确
 /// 不要)。独立 OS 窗口形态下仅表现为内容自带底角圆角,无害。
-const BOTTOM_RADIUS: f32 = 16.0;
+/// PLAN-024 复测裁定(2026-09-20):画布全方角——窗框圆角由 app.at
+/// 底部状态栏(rounded-b-2xl)承载,pane 槽全方角,横分中间缝两角
+/// 不再误圆。旧 BOTTOM_RADIUS 案(16px 底角)退役。
 
 /// 实测等宽 advance(px/格):把 iced 全局 font system 装为共享源(与
 /// code_editor 同款,幂等——at-app 无编辑器组件,回调此前无人装),给
@@ -913,20 +915,17 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         let pal_fg = rgb_u32(palette[0]);
         let pal_bg = rgb_u32(palette[1]);
 
-        // 全幅底色:底部两角随窗框圆角;顶部保持方角(PLAN-024 复测
-        // 裁定)。PLAN-022 虚拟模式 bounds = 虚拟画布,全画布涂底(滚进
-        // 历史区不露宿主底色)。
+        // 全幅底色:**方角**(PLAN-024 复测裁定 2026-09-20——窗框圆角由
+        // app.at 底部状态栏承载,pane 槽全方角,横分中间缝不误圆)。
+        // PLAN-022 虚拟模式 bounds = 虚拟画布,全画布涂底(滚进历史区
+        // 不露宿主底色)。
         renderer.fill_quad(
             renderer::Quad {
                 bounds,
                 border: Border {
                     color: Color::TRANSPARENT,
                     width: 0.0.into(),
-                    radius: iced::border::Radius {
-                        bottom_left: BOTTOM_RADIUS,
-                        bottom_right: BOTTOM_RADIUS,
-                        ..Default::default()
-                    },
+                    radius: iced::border::Radius::default(),
                 },
                 ..renderer::Quad::default()
             },
