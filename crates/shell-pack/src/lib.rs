@@ -1088,6 +1088,10 @@ impl ShellStateAccess for Switcher {
     fn shell_dispatch(&mut self, event: &str) {
         match event {
             "RebuildMru" => self.on(SwitcherMsg::RebuildMru),
+            "Advance" => self.on(SwitcherMsg::Advance),
+            "Back" => self.on(SwitcherMsg::Back),
+            "Pick" => self.on(SwitcherMsg::Pick),
+            "Escape" => self.on(SwitcherMsg::Escape),
             _ => {}
         }
     }
@@ -1135,6 +1139,7 @@ impl ShellStateAccess for NotificationCenter {
     fn shell_dispatch(&mut self, event: &str) {
         match event {
             "RebuildNotes" => self.on(NotificationCenterMsg::RebuildNotes),
+            "Escape" => self.on(NotificationCenterMsg::Escape),
             _ => {}
         }
     }
@@ -1187,6 +1192,7 @@ impl ShellStateAccess for DashboardPanel {
     }
     fn shell_dispatch(&mut self, event: &str) {
         match event {
+            "Escape" => self.on(DashboardPanelMsg::Escape),
             "RebuildFaces" => self.on(DashboardPanelMsg::RebuildFaces),
             _ => {}
         }

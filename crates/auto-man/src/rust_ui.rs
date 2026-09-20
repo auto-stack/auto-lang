@@ -2240,8 +2240,19 @@ const SHELL_LIB_FACES: [(&str, &str, &str); 5] = [
 
 /// 召唤事件全集（`shell_projection::ShellEvent` 名——dispatch 生成臂的
 /// 匹配面）。
-const SHELL_LIB_EVENTS: [&str; 5] =
-    ["RebuildMru", "RebuildNotes", "RunningSync", "ApplyFilter", "RebuildFaces"];
+const SHELL_LIB_EVENTS: [&str; 9] = [
+    "RebuildMru",
+    "RebuildNotes",
+    "RunningSync",
+    "ApplyFilter",
+    "RebuildFaces",
+    // PLAN-036 T-04（D6）：overlay 键盘动词事件位（宿主截获 → 快照
+    /// events 下行 → child dispatch → Msg variant）。
+    "Advance",
+    "Back",
+    "Pick",
+    "Escape",
+];
 
 /// 面元数据（ShellStateAccess 生成实现的材料）。
 struct ShellFaceInfo {

@@ -10223,6 +10223,17 @@ pub(crate) fn restore_notifications(state: &mut crate::ui::session::DesktopSessi
 /// `RebuildNotes` handler 重建 rows——宿主写状态不触发 handler，switcher
 /// 召唤注入同型）。面板未挂载/不可见时零操作。
 fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
+    // PLAN-036 T-04（B1）：outproc 轨——快照重推（打开期间活更新；
+    /// RebuildNotes 事件重建 rows——in-proc 写集 + handler 同册语义）。
+    if state.desktop.shell_pipe.is_some() {
+        if state.desktop.notes_open {
+            push_notes_snapshot(
+                state,
+                &[crate::ui::shell_projection::ShellEvent::RebuildNotes],
+            );
+        }
+        return;
+    }
     let Some(panel) = state.desktop.notification_app else {
         return;
     };
@@ -10440,6 +10451,14 @@ fn launcher_brand_color(id: &str) -> &'static str {
 fn summon_switcher(
     state: &mut crate::ui::session::DesktopSession,
 ) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // PLAN-036 T-04（B1）：outproc 轨推送臂——快照 + RebuildMru 事件下行
+    ///（child 预装/懒装面 apply_writes + dispatch 重建 rows）；in-proc
+    /// 原路径零变化（I2）。开关镜像位 = switcher_open（层序/仲裁消费）。
+    if state.desktop.shell_pipe.is_some() {
+        state.desktop.switcher_open = true;
+        push_switcher_snapshot(state, &[crate::ui::shell_projection::ShellEvent::RebuildMru]);
+        return iced::Task::none();
+    }
     // 1. 懒挂载
     if state.desktop.switcher_app.is_none() {
         match crate::ui::shell::build_switcher_component() {
@@ -10527,6 +10546,20 @@ fn summon_switcher(
 fn toggle_notification_center(
     state: &mut crate::ui::session::DesktopSession,
 ) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // PLAN-036 T-04（B1）：outproc 轨推送臂——toggle 语义镜像（开 =
+    /// RebuildNotes 事件 + 未读清零；关 = visible=0 纯状态位）；in-proc
+    /// 原路径零变化（I2）。
+    if state.desktop.shell_pipe.is_some() {
+        let open = !state.desktop.notes_open;
+        state.desktop.notes_open = open;
+        if open {
+            state.desktop.notes_unread.set(0);
+            push_notes_snapshot(state, &[crate::ui::shell_projection::ShellEvent::RebuildNotes]);
+        } else {
+            push_notes_snapshot(state, &[]);
+        }
+        return iced::Task::none();
+    }
     // 1. 懒挂载
     if state.desktop.notification_app.is_none() {
         match crate::ui::shell::build_notification_center_component() {
@@ -10587,6 +10620,138 @@ fn toggle_notification_center(
     }
     state.desktop.notes_unread.set(0);
     iced::Task::none()
+}
+
+// ============================================================================
+// PLAN-036 T-04（B1）：switcher/通知中心 outproc 推送泵——030 双面泵
+// （push_shell_projection_outproc/push_desktop_surface_outproc）推广到
+// overlay 两面。数据收集与 in-proc 召唤动词逐字段同源（summon_switcher/
+// toggle_notification_center 上方写集的 typed 化）；指纹门放行 = fp 变化
+// || events 非空（键盘动词是瞬态事件非状态——D6）。
+// ============================================================================
+
+/// switcher 快照构建（mru 平行列表 + `__wm_mru` 合同面——召唤时点定序）。
+pub(crate) fn build_switcher_snapshot(
+    state: &crate::ui::session::DesktopSession,
+) -> crate::ui::shell_projection::SwitcherSnapshot {
+    use crate::ui::shell_projection::{ShellWin, SwitcherSnapshot};
+    let mut snap = SwitcherSnapshot { hosted: true, ..Default::default() };
+    let Some(host) = state.host.as_ref() else { return snap };
+    for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        let Some(v) = host.wm.wins.get(&wid) else { continue };
+        // 壳伪窗不入切换列表（shell_pseudo_wids 过滤——build_shell_
+        // projection 同册；overlay 伪窗加入后此过滤同样覆盖）。
+        if state.desktop.shell_pseudo_wids.contains(&wid) {
+            continue;
+        }
+        let focused = host.wm.focused == Some(wid);
+        snap.mru_wids.push(v.wid.0.to_string());
+        snap.mru_titles.push(v.title.clone());
+        // Plan 497 G5：快照就绪标记 + miss 预抓（in-proc 同款）。
+        let ready = crate::ui::iced::snapshot::snapshot_window(wid).is_some();
+        if !ready {
+            crate::ui::iced::snapshot::request_capture(wid);
+        }
+        snap.mru_thumbs.push(if ready { "1" } else { "" }.to_string());
+        snap.mru_icons.push(
+            v.registry_id
+                .as_ref()
+                .and_then(|id| state.desktop.registry_entries.iter().find(|e| &e.id == id))
+                .map(|e| e.icon.clone())
+                .unwrap_or_else(|| "app-window".to_string()),
+        );
+        snap.wm_mru.push(ShellWin {
+            wid: v.wid.0.to_string(),
+            title: v.title.clone(),
+            focused,
+            workspace: Some(v.workspace),
+            native: false,
+            app: v.registry_id.clone().unwrap_or_default(),
+            icon: snap.mru_icons.last().cloned().unwrap_or_default(),
+            pager: false,
+            pinned: false,
+            dup_app: false,
+        });
+    }
+    snap
+}
+
+/// switcher 快照推送（face=SWITCHER；visible = switcher_open 镜像位）。
+pub(crate) fn push_switcher_snapshot(
+    state: &mut crate::ui::session::DesktopSession,
+    events: &[crate::ui::shell_projection::ShellEvent],
+) {
+    use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
+    let mut snap = build_switcher_snapshot(state);
+    snap.visible = state.desktop.switcher_open;
+    snap.events = events.to_vec();
+    let fp = snap.fingerprint();
+    let transient = !snap.events.is_empty();
+    if !transient && state.desktop.switcher_fp.as_deref() == Some(fp.as_str()) {
+        return;
+    }
+    let mut payload = Vec::new();
+    snap.wire_encode(&mut payload);
+    let msg = ProtocolMsg::Control(ControlMsg::ShellProjectionPush {
+        face: shell_face::SWITCHER,
+        payload,
+    });
+    if state.push_shell_control(&msg) {
+        state.desktop.switcher_fp = Some(fp);
+    }
+}
+
+/// 通知快照构建（note_* 平行列表 + 合同面 + 面板几何）。
+pub(crate) fn build_notes_snapshot(
+    state: &crate::ui::session::DesktopSession,
+) -> crate::ui::shell_projection::NotesSnapshot {
+    use crate::ui::shell_projection::{NotesSnapshot, ShellNote};
+    let mut snap = NotesSnapshot { hosted: true, ..Default::default() };
+    {
+        let notes = state.desktop.notifications.borrow();
+        for n in notes.iter() {
+            snap.note_ids.push(n.id.to_string());
+            snap.note_kinds.push(n.kind.clone());
+            snap.note_msgs.push(n.msg.clone());
+            snap.note_ats.push(n.at.clone());
+            snap.note_apps.push(n.app.clone());
+            snap.wm_notes.push(ShellNote {
+                id: n.id,
+                kind: n.kind.clone(),
+                msg: n.msg.clone(),
+                at: n.at.clone(),
+                app: n.app.clone(),
+            });
+        }
+    }
+    snap.wm_notes_unread = state.desktop.notes_unread.get() as u64;
+    snap.panel_max_h = panel_max_h(state) as u32;
+    snap
+}
+
+/// 通知快照推送（face=NOTIFICATION_CENTER；visible = notes_open 镜像位）。
+pub(crate) fn push_notes_snapshot(
+    state: &mut crate::ui::session::DesktopSession,
+    events: &[crate::ui::shell_projection::ShellEvent],
+) {
+    use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
+    let mut snap = build_notes_snapshot(state);
+    snap.visible = state.desktop.notes_open;
+    snap.events = events.to_vec();
+    let fp = snap.fingerprint();
+    let transient = !snap.events.is_empty();
+    if !transient && state.desktop.notes_fp.as_deref() == Some(fp.as_str()) {
+        return;
+    }
+    let mut payload = Vec::new();
+    snap.wire_encode(&mut payload);
+    let msg = ProtocolMsg::Control(ControlMsg::ShellProjectionPush {
+        face: shell_face::NOTIFICATION_CENTER,
+        payload,
+    });
+    if state.push_shell_control(&msg) {
+        state.desktop.notes_fp = Some(fp);
+    }
 }
 
 // ============================================================================
@@ -18850,7 +19015,30 @@ fn compare_pngs(
                     // PLAN-019 v1.7：picker Esc 链——预览态回栅格；栅格态
                     // 关闭（close 臂按归属簿记决定是否自动返回）。
                     DesktopEvent::WallpaperKeyEscape => execute_wallpaper_escape(state),
-                    DesktopEvent::SummonSwitcher => {                        // PLAN-013 W1 诊断:每按记录 visible/sel 前值——区分
+                    DesktopEvent::SummonSwitcher => {
+                        // PLAN-036 T-04（D6）：outproc 轨——可见时 Advance
+                        /// 事件快照（child dispatch → SwitcherMsg::Advance）；
+                        /// 未可见 = 首召唤（switcher_open 置位 + RebuildMru +
+                        /// Advance 首步——in-proc 首按推进语义同册）。
+                        if state.desktop.shell_pipe.is_some() {
+                            if state.desktop.switcher_open {
+                                push_switcher_snapshot(
+                                    state,
+                                    &[crate::ui::shell_projection::ShellEvent::Advance],
+                                );
+                            } else {
+                                state.desktop.switcher_open = true;
+                                push_switcher_snapshot(
+                                    state,
+                                    &[
+                                        crate::ui::shell_projection::ShellEvent::RebuildMru,
+                                        crate::ui::shell_projection::ShellEvent::Advance,
+                                    ],
+                                );
+                            }
+                            return iced::Task::none();
+                        }
+                        // PLAN-013 W1 诊断:每按记录 visible/sel 前值——区分
                         // 「重召唤复位」与「推进失败」两种病灶。
                         if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
                             let dbg = state.desktop.switcher_app
@@ -19098,6 +19286,26 @@ fn compare_pngs(
                             || state.switcher_visible()
                             || state.notification_visible()
                         {
+                            // PLAN-036 T-04（D6）：outproc 轨 overlay 自隐
+                            /// ——Escape 事件快照（面板 .at Escape handler 置
+                            /// visible=0 + 镜像位复位；in-proc 走 app 内 bind
+                            /// 路径不动）。
+                            if state.desktop.shell_pipe.is_some() {
+                                if state.desktop.switcher_open {
+                                    state.desktop.switcher_open = false;
+                                    push_switcher_snapshot(
+                                        state,
+                                        &[crate::ui::shell_projection::ShellEvent::Escape],
+                                    );
+                                }
+                                if state.desktop.notes_open {
+                                    state.desktop.notes_open = false;
+                                    push_notes_snapshot(
+                                        state,
+                                        &[crate::ui::shell_projection::ShellEvent::Escape],
+                                    );
+                                }
+                            }
                             return iced::Task::none();
                         }
                         // Plan 473 T6 / B8：退出不吞窗口——全部 docked 槽位
@@ -19492,6 +19700,19 @@ fn compare_pngs(
                                     let ctrl_released =
                                         prev.control() && !new_mods.control();
                                     if ctrl_released && state.switcher_visible() {
+                                        // PLAN-036 T-04（D6）：outproc 轨——
+                                        /// Pick 事件快照（child dispatch →
+                                        /// SwitcherMsg::Pick 提交选中 →
+                                        /// SendCmd focus 上行 DesktopBus）+
+                                        /// 面板自隐（switcher_open 复位）。
+                                        if state.desktop.shell_pipe.is_some() {
+                                            state.desktop.switcher_open = false;
+                                            push_switcher_snapshot(
+                                                state,
+                                                &[crate::ui::shell_projection::ShellEvent::Pick],
+                                            );
+                                            return iced::Task::none();
+                                        }
                                         if let Some(sw) = state.desktop.switcher_app {
                                             let pick = IcedMessage {
                                                 widget: String::new(),
@@ -20066,6 +20287,18 @@ fn compare_pngs(
             // visible 时推层——T1 施工图 §1.5，隐匿由 visible 翻转后本周期
             // 视图重建生效，召唤/隐匿两臂显式置 view_dirty 保险）。
             if state.switcher_visible() {
+                // PLAN-036 T-04（B1）：outproc 轨——switcher 表面帧全屏
+                /// 贴层（伪窗 [2]；面板内容/scrim 由 child DrawList 自绘）。
+                if state.desktop.shell_pipe.is_some() {
+                    let overlay_wid = state.desktop.shell_pseudo_wids.get(2).copied();
+                    if let Some(el) = overlay_wid.and_then(|w| shell_surface_element(state, w)) {
+                        let full = iced::widget::container(el)
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill);
+                        layers.push(full.into());
+                    }
+                    // in-proc 分支不落（overlay App 不在场）。
+                } else {
                 let switcher_app = state.desktop.switcher_app.expect("switcher checked");
                 let build = || state.split_ref_switcher().map(|v| dynamic_view(v, false));
                 let switcher_client: iced::Element<'_, IcedMessage> = match
@@ -20079,6 +20312,7 @@ fn compare_pngs(
                     }
                 };
                 layers.push(switcher_client.map(move |m| DM::App(switcher_app, m)));
+                }
             }
             // Plan 479 T3：通知中心 overlay 层（switcher 层邻位顶层；仅
             // visible 时推层——第三枚 overlay 槽，switcher 同款语义）。
@@ -20089,6 +20323,17 @@ fn compare_pngs(
             // 证；justify-end 贴 dock 底已实测有效 = 同机制可信）。紧凑
             // max-h 滚动清偿"满高贴顶"。
             if state.notification_visible() {
+                // PLAN-036 T-04（B1）：outproc 轨——通知表面帧全屏贴层
+                ///（伪窗 [3]；对齐/scrim 由 child 自绘）。
+                if state.desktop.shell_pipe.is_some() {
+                    let overlay_wid = state.desktop.shell_pseudo_wids.get(3).copied();
+                    if let Some(el) = overlay_wid.and_then(|w| shell_surface_element(state, w)) {
+                        let full = iced::widget::container(el)
+                            .width(iced::Length::Fill)
+                            .height(iced::Length::Fill);
+                        layers.push(full.into());
+                    }
+                } else {
                 let panel_app = state.desktop.notification_app.expect("panel checked");
                 let build = || state.split_ref_notification().map(|v| dynamic_view(v, false));
                 let panel_client: iced::Element<'_, IcedMessage> = match
@@ -20102,6 +20347,7 @@ fn compare_pngs(
                     }
                 };
                 layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
+                }
             }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }

@@ -81,12 +81,26 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
         return auto_lang::ui::desktop_protocol::shell_client::run_shell_outproc_with(
             &broker_pipe,
             |g| {
-                let chrome = shell_pack::mount_face("shell", g.viewport_w, g.band_h)
-                    .ok_or_else(|| "编译壳 chrome 面（shell）装载失败（覆盖门拒收）".to_string())?;
-                let background = shell_pack::mount_face("desktop", g.viewport_w, g.viewport_h)
-                    .ok_or_else(|| "编译壳 background 面（desktop）装载失败（覆盖门拒收）".to_string())?;
+                let mut faces = Vec::new();
+                use auto_lang::ui::desktop_protocol::message::shell_face;
+                for (id, face_id, w, h) in [
+                    ("shell", shell_face::SHELL, g.viewport_w, g.band_h),
+                    ("desktop", shell_face::DESKTOP_SURFACE, g.viewport_w, g.viewport_h),
+                    // PLAN-036 T-04：overlay 两面预装（懒装免——首推送即达）。
+                    ("switcher", shell_face::SWITCHER, g.viewport_w, g.viewport_h),
+                    (
+                        "notification_center",
+                        shell_face::NOTIFICATION_CENTER,
+                        g.viewport_w,
+                        g.viewport_h,
+                    ),
+                ] {
+                    let face = shell_pack::mount_face(id, w, h)
+                        .ok_or_else(|| format!("编译壳面（{id}）装载失败（覆盖门拒收）"))?;
+                    faces.push((face_id, face));
+                }
                 Ok(auto_lang::ui::desktop_protocol::shell_client::ShellFaces::from_faces(
-                    g, chrome, background,
+                    g, faces,
                 ))
             },
         );

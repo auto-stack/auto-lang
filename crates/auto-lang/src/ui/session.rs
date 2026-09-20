@@ -414,6 +414,14 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// respawn attach 时强制失效）。
     pub shell_push_fp: Option<String>,
     pub shell_desk_fp: Option<String>,
+    /// PLAN-036 T-04（B1）：overlay 两面 outproc 轨状态镜像——可见位
+    ///（in-proc 轨读组件 state `visible`，outproc 轨组件在 child——
+    /// 层序/仲裁/开关动词读此处）+ per-face 指纹门（同 shell_push_fp
+    /// 册；events 非空瞬态事件放行不入 fp）。
+    pub switcher_open: bool,
+    pub notes_open: bool,
+    pub switcher_fp: Option<String>,
+    pub notes_fp: Option<String>,
     /// PLAN-030：壳几何缓存（boot 定档；respawn 复用）。
     pub shell_geometry: Option<crate::ui::desktop_protocol::shell_client::ShellGeometry>,
     /// PLAN-030 T-05：看门兵 respawn 现场（None = 无待重试）。
@@ -484,6 +492,10 @@ impl DesktopState {
             shell_pseudo_wids: Vec::new(),
             shell_push_fp: None,
             shell_desk_fp: None,
+            switcher_open: false,
+            notes_open: false,
+            switcher_fp: None,
+            notes_fp: None,
             shell_geometry: None,
             shell_respawn: None,
             shell_degraded: false,
@@ -3958,21 +3970,55 @@ fn spawn_shell_outproc(
                         let chrome_surface =
                             client.surfaces.alloc(width, chrome_decl.height);
                         client.wid_surface.insert(chrome_wid.0, chrome_surface);
-                        for (wid, rid) in
-                            [(bg_wid, "desktop-face"), (chrome_wid, "shell")]
-                        {
+                        // PLAN-036 T-04（B1）：overlay 伪窗（OVERLAY 声明
+                        // 依序 = switcher → notification_center；全屏 rect
+                        // 置顶 push——面板内容/对齐由 child DrawList 自绘，
+                        // 伪窗承接命中路由；wm_add_win 普通置顶[chrome 同
+                        // 型]，不入 MRU 投影由 shell_pseudo_wids 过滤）。
+                        let mut overlay_wids: Vec<Wid> = Vec::new();
+                        let mut extras = vec![WelcomeSurface {
+                            role: surface_role::CHROME,
+                            wid: chrome_wid.0,
+                            surface: chrome_surface,
+                            rect: rect_to_wire(&band_rect),
+                        }];
+                        for rid in ["switcher-face", "notification-face"] {
+                            if !surfaces.iter().any(|s| s.role == surface_role::OVERLAY) {
+                                // 旧 child（无 overlay 声明）兼容：跳过。
+                                break;
+                            }
+                            let rect = iced::Rectangle::new(
+                                iced::Point::new(0.0, 0.0),
+                                iced::Size::new(width, height),
+                            );
+                            let owid = self.wm_add_win(AppId(0), rid.to_string(), rect);
+                            let osurface = client.surfaces.alloc(width, height);
+                            client.wid_surface.insert(owid.0, osurface);
+                            overlay_wids.push(owid);
+                            extras.push(WelcomeSurface {
+                                role: surface_role::OVERLAY,
+                                wid: owid.0,
+                                surface: osurface,
+                                rect: rect_to_wire(&rect),
+                            });
+                        }
+                        let mut rid_backfill =
+                            vec![(bg_wid, "desktop-face"), (chrome_wid, "shell")];
+                        for owid in &overlay_wids {
+                            let rid = if overlay_wids.first() == Some(owid) {
+                                "switcher-face"
+                            } else {
+                                "notification-face"
+                            };
+                            rid_backfill.push((*owid, rid));
+                        }
+                        for (wid, rid) in rid_backfill {
                             if let Some(host) = self.host.as_mut() {
                                 if let Some(v) = host.wm.wins.get_mut(&wid) {
                                     v.registry_id = Some(rid.to_string());
                                 }
                             }
                         }
-                        let extras = vec![WelcomeSurface {
-                            role: surface_role::CHROME,
-                            wid: chrome_wid.0,
-                            surface: chrome_surface,
-                            rect: rect_to_wire(&band_rect),
-                        }];
                         match client.endpoint.activate_multi(
                             0,
                             bg_wid.0,
@@ -3986,15 +4032,23 @@ fn spawn_shell_outproc(
                                 client.app_id = Some(AppId(0));
                                 client.wid = Some(bg_wid);
                                 eprintln!(
-                                    "[autodesk-broker] shell attached (dual-surface bg={} chrome={})",
-                                    bg_wid.0, chrome_wid.0
+                                    "[autodesk-broker] shell attached (dual-surface bg={} chrome={} overlays={})",
+                                    bg_wid.0, chrome_wid.0, overlay_wids.len()
                                 );
                                 self.desktop.shell_pipe = Some(client.pipe.clone());
-                                self.desktop.shell_pseudo_wids = vec![bg_wid, chrome_wid];
+                                let mut pseudo = vec![bg_wid, chrome_wid];
+                                pseudo.extend(overlay_wids.iter().copied());
+                                self.desktop.shell_pseudo_wids = pseudo;
                                 self.desktop.shell_geometry = Some(geometry);
                                 // respawn/首连同位：指纹强制失效（下拍全量推）。
                                 self.desktop.shell_push_fp = None;
                                 self.desktop.shell_desk_fp = None;
+                                // PLAN-036 T-04：overlay 镜像位复位 + 指纹
+                                // 同册失效。
+                                self.desktop.switcher_open = false;
+                                self.desktop.notes_open = false;
+                                self.desktop.switcher_fp = None;
+                                self.desktop.notes_fp = None;
                                 self.desktop.shell_respawn = None;
                             }
                             Err(err) => {
@@ -4790,6 +4844,10 @@ fn spawn_shell_outproc(
     /// Plan 478 T4：switcher overlay 是否可见（Esc 仲裁 / 键盘独占路由的
     /// 判定位；[`Self::launcher_visible`] 同型）。未挂载恒 false。
     pub fn switcher_visible(&self) -> bool {
+        // PLAN-036 T-04（B1）：outproc 轨读镜像位（组件在 child）。
+        if self.desktop.shell_pipe.is_some() {
+            return self.desktop.switcher_open;
+        }
         let Some(sw) = self.desktop.switcher_app else { return false };
         matches!(
             self.apps
@@ -4803,6 +4861,10 @@ fn spawn_shell_outproc(
     /// 判定位；[`Self::switcher_visible`] 同型）。未挂载恒 false。
     /// （Plan 540 T9 误删恢复——本 fn 与设置 overlay 退役无关。）
     pub fn notification_visible(&self) -> bool {
+        // PLAN-036 T-04（B1）：outproc 轨读镜像位（组件在 child）。
+        if self.desktop.shell_pipe.is_some() {
+            return self.desktop.notes_open;
+        }
         let Some(panel) = self.desktop.notification_app else { return false };
         matches!(
             self.apps

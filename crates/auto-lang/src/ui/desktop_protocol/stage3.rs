@@ -1063,7 +1063,13 @@ mod tests {
         // —— 腿 0：孵化 + attach + 双伪窗在案。
         session.launch_shell_outproc().expect("p030 壳 spawn");
         pump_until_shell_attached(&mut session);
-        assert_eq!(session.desktop.shell_pseudo_wids.len(), 2, "双伪窗在案");
+        // PLAN-036 T-04：新 child 四面声明 → 四伪窗（bg/chrome/switcher/
+        // notification）；旧 child 兼容 = 2。attach 分支按声明数建窗。
+        assert!(
+            session.desktop.shell_pseudo_wids.len() == 2
+                || session.desktop.shell_pseudo_wids.len() == 4,
+            "伪窗在案（2=旧 child / 4=T-04 四面）"
+        );
         println!("AUTO030 leg0 attach PASS");
 
         // —— 腿 1：双表面首帧（两面 DrawList 合成在册）。

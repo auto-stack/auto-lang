@@ -32,9 +32,18 @@ pub enum ShellEvent {
     ApplyFilter,
     /// dashboard 召唤/活更新：空态判据刷新（face_ids.len）。
     RebuildFaces,
+    /// PLAN-036 T-04（D6）：overlay 键盘动词下行——宿主保留截获面
+    ///（Ctrl+Tab/方向键/Enter/Esc iced 订阅与热键表既有），动词经快照
+    /// events 位下发 → child dispatch 派发同面 Msg variant（switcher.at
+    /// msg 块既有 Advance/Back/Pick/Escape；追加式 tag 6-9，既有值零漂移）。
+    Advance,
+    Back,
+    Pick,
+    Escape,
 }
 
-/// 事件的 handler 名（child 侧消费——call_handler 单点映射）。
+/// 事件的 handler 名（child 侧消费——call_handler 单点映射；
+/// 编译轨 = ShellStateAccess::shell_dispatch 事件名 → Msg variant 直派）。
 pub fn shell_event_name(e: &ShellEvent) -> &'static str {
     match e {
         ShellEvent::RebuildMru => "RebuildMru",
@@ -42,6 +51,10 @@ pub fn shell_event_name(e: &ShellEvent) -> &'static str {
         ShellEvent::RunningSync => "RunningSync",
         ShellEvent::ApplyFilter => "ApplyFilter",
         ShellEvent::RebuildFaces => "RebuildFaces",
+        ShellEvent::Advance => "Advance",
+        ShellEvent::Back => "Back",
+        ShellEvent::Pick => "Pick",
+        ShellEvent::Escape => "Escape",
     }
 }
 
@@ -331,6 +344,10 @@ pub mod wire {
             ShellEvent::RunningSync => 3,
             ShellEvent::ApplyFilter => 4,
             ShellEvent::RebuildFaces => 5,
+            ShellEvent::Advance => 6,
+            ShellEvent::Back => 7,
+            ShellEvent::Pick => 8,
+            ShellEvent::Escape => 9,
         }
     }
 
@@ -341,6 +358,10 @@ pub mod wire {
             3 => ShellEvent::RunningSync,
             4 => ShellEvent::ApplyFilter,
             5 => ShellEvent::RebuildFaces,
+            6 => ShellEvent::Advance,
+            7 => ShellEvent::Back,
+            8 => ShellEvent::Pick,
+            9 => ShellEvent::Escape,
             other => {
                 return Err(crate::ui::desktop_protocol::CodecError::UnknownTag(other))
             }
@@ -849,6 +870,15 @@ pub enum ShellWrite {
     Array(&'static str, Vec<auto_val::Value>),
 }
 
+impl ShellWrite {
+    /// 写键（键集对拍消费——PLAN-036 T-04 测试面）。
+    pub fn key(&self) -> &'static str {
+        match self {
+            ShellWrite::Scalar(k, _) | ShellWrite::Array(k, _) => k,
+        }
+    }
+}
+
 fn s(v: impl Into<String>) -> auto_val::Value {
     auto_val::Value::Str(v.into().into())
 }
@@ -1017,6 +1047,84 @@ impl DesktopSurfaceSnapshot {
             ShellWrite::Scalar("__desktop_hidden", s(self.hidden.clone())),
             ShellWrite::Scalar("__wm_running", s(self.running_csv.clone())),
         ]
+    }
+}
+
+impl SwitcherSnapshot {
+    /// 解释轨回写序列——与 renderer summon_switcher 现行写集逐一对应
+    ///（PLAN-036 T-04：outproc 推送泵激活；`sel/rows/nres` 为 handler
+    /// 自建派生态，随 RebuildMru 事件重建，不在写集）。
+    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {
+        vec![
+            ShellWrite::Scalar("hosted", s(if self.hosted { "1" } else { "" })),
+            ShellWrite::Scalar("visible", s(if self.visible { "1" } else { "" })),
+            ShellWrite::Array("mru_wids", self.mru_wids.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array(
+                "mru_titles",
+                self.mru_titles.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array("mru_icons", self.mru_icons.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array(
+                "mru_thumbs",
+                self.mru_thumbs.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array("__wm_mru", self.wm_mru.iter().map(|w| w.to_value()).collect()),
+        ]
+    }
+
+    /// 指纹门载荷（宿主侧 per-face 缓存比较——语义状态段；events 瞬态
+    /// 动词不入 fp，推送门按"fp 变化 || events 非空"放行）。
+    pub fn fingerprint(&self) -> String {
+        let mut fp = String::new();
+        for w in &self.wm_mru {
+            fp.push_str(&w.wid);
+            fp.push(',');
+        }
+        fp.push('|');
+        fp.push_str(if self.visible { "v1" } else { "v0" });
+        fp
+    }
+}
+
+impl NotesSnapshot {
+    /// 解释轨回写序列——与 renderer toggle_notification_center 现行写集
+    /// 逐一对应（PLAN-036 T-04；rows 为 handler 自建派生态）。
+    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {
+        vec![
+            ShellWrite::Scalar("hosted", s(if self.hosted { "1" } else { "" })),
+            ShellWrite::Scalar("visible", s(if self.visible { "1" } else { "" })),
+            // `__panel_max_h int`（.at 声明）——Int 写保形（VM 数值消费；
+            /// renderer in-proc 写点 Value::Int 同型）。
+            ShellWrite::Scalar("__panel_max_h", auto_val::Value::Int(self.panel_max_h as i32)),
+            ShellWrite::Array("note_ids", self.note_ids.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array(
+                "note_kinds",
+                self.note_kinds.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array("note_msgs", self.note_msgs.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array("note_ats", self.note_ats.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array(
+                "note_apps",
+                self.note_apps.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array("__wm_notes", self.wm_notes.iter().map(|n| n.to_value()).collect()),
+            ShellWrite::Scalar("__wm_notes_unread", s(self.wm_notes_unread.to_string())),
+        ]
+    }
+
+    /// 指纹门载荷（同 SwitcherSnapshot::fingerprint 注——notes 以
+    /// id 串 + 可见位 + unread 为语义段）。
+    pub fn fingerprint(&self) -> String {
+        let mut fp = String::new();
+        for n in &self.wm_notes {
+            fp.push_str(&n.id.to_string());
+            fp.push(',');
+        }
+        fp.push('|');
+        fp.push_str(if self.visible { "v1" } else { "v0" });
+        fp.push('|');
+        fp.push_str(&self.wm_notes_unread.to_string());
+        fp
     }
 }
 
@@ -1205,6 +1313,105 @@ mod tests {
     /// 但编码在册（AC-01 五面载体）。
     #[cfg(feature = "ui-iced")]
     #[test]
+    /// PLAN-036 T-04（B1）：overlay 两载体写集 + 指纹 + 键盘事件扩档
+    /// round-trip——键集与 renderer 召唤动词内联写集逐一对应（缺键 =
+    /// 编译面静默丢数据，此处显式红）。
+    #[test]
+    fn overlay_snapshots_writes_fingerprint_and_event_tags() {
+        use crate::ui::desktop_protocol::codec::Reader;
+        let sw = SwitcherSnapshot {
+            hosted: true,
+            visible: true,
+            mru_wids: vec!["3".into(), "7".into()],
+            mru_titles: vec!["A".into(), "B".into()],
+            mru_icons: vec!["app-window".into(), "lucide:x".into()],
+            mru_thumbs: vec!["1".into(), "".into()],
+            wm_mru: vec![ShellWin {
+                wid: "3".into(),
+                title: "A".into(),
+                focused: true,
+                workspace: Some(1),
+                native: false,
+                app: "a".into(),
+                icon: "app-window".into(),
+                pager: false,
+                pinned: false,
+                dup_app: false,
+            }],
+            events: vec![
+                ShellEvent::RebuildMru,
+                ShellEvent::Advance,
+                ShellEvent::Back,
+                ShellEvent::Pick,
+                ShellEvent::Escape,
+            ],
+        };
+        let keys: Vec<&str> = sw
+            .interpreted_writes()
+            .iter()
+            .map(|w| w.key())
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                "hosted", "visible", "mru_wids", "mru_titles", "mru_icons", "mru_thumbs",
+                "__wm_mru"
+            ],
+            "switcher 写集键序"
+        );
+        assert!(sw.fingerprint().contains("3,"), "指纹含 wid 段");
+        let mut buf = Vec::new();
+        sw.wire_encode(&mut buf);
+        let back = SwitcherSnapshot::wire_decode(&mut Reader::new(&buf)).expect("decode");
+        assert_eq!(back, sw, "round-trip 全等（含新事件档）");
+
+        let notes = NotesSnapshot {
+            hosted: true,
+            visible: true,
+            panel_max_h: 560,
+            note_ids: vec!["1".into()],
+            note_kinds: vec!["info".into()],
+            note_msgs: vec!["hello".into()],
+            note_ats: vec!["09:20".into()],
+            note_apps: vec!["".into()],
+            wm_notes: vec![ShellNote {
+                id: 1,
+                kind: "info".into(),
+                msg: "hello".into(),
+                at: "09:20".into(),
+                app: "".into(),
+            }],
+            wm_notes_unread: 2,
+            events: vec![ShellEvent::RebuildNotes],
+        };
+        let keys: Vec<&str> = notes
+            .interpreted_writes()
+            .iter()
+            .map(|w| w.key())
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                "hosted", "visible", "__panel_max_h", "note_ids", "note_kinds", "note_msgs",
+                "note_ats", "note_apps", "__wm_notes", "__wm_notes_unread"
+            ],
+            "notes 写集键序"
+        );
+        // __panel_max_h 保形 Int（.at int 声明——VM 数值消费）。
+        assert!(matches!(
+            notes.interpreted_writes()[2],
+            ShellWrite::Scalar(_, auto_val::Value::Int(560))
+        ));
+        let mut buf = Vec::new();
+        notes.wire_encode(&mut buf);
+        let back = NotesSnapshot::wire_decode(&mut Reader::new(&buf)).expect("decode");
+        assert_eq!(back, notes, "round-trip 全等");
+        // 事件名 ↔ child dispatch 单点映射（编译轨 Msg variant 名直派）。
+        for e in [ShellEvent::Advance, ShellEvent::Back, ShellEvent::Pick, ShellEvent::Escape] {
+            assert_eq!(shell_event_name(&e).len() > 0, true);
+        }
+    }
+
     fn wire_round_trip_full_family() {
         use crate::ui::desktop_protocol::codec::Reader;
         let win = ShellWin {

@@ -27,7 +27,10 @@ use crate::ui::desktop_protocol::message::{
 };
 use crate::ui::desktop_protocol::transport;
 use crate::ui::desktop_protocol::PROTOCOL_VERSION;
-use crate::ui::shell_projection::{shell_event_name, DesktopSurfaceSnapshot, ShellProjection, ShellWrite};
+use crate::ui::shell_projection::{
+    shell_event_name, DesktopSurfaceSnapshot, NotesSnapshot, ShellProjection, ShellWrite,
+    SwitcherSnapshot,
+};
 use std::collections::BTreeMap;
 
 /// 壳几何（spawn 注入 `AUTO_SHELL_GEOM=<W>x<H>x<BAND>`；e2e 同形）。
@@ -206,22 +209,21 @@ impl ShellStateAccess for crate::ui::dynamic::DynamicComponent {
     }
 }
 
-/// 双常驻面会话（face → ShellSurface；解释装载/编译组件两轨的装配
-/// 面——PLAN-036 D8 替换点）。
+/// 壳面会话（face → ShellSurface；解释装载/编译组件两轨的装配
+/// 面——PLAN-036 D8 替换点；T-04 扩 overlay 懒装：解释轨首推送时
+/// 装载，编译轨装配点五面预给）。
 pub struct ShellFaces {
-    /// chrome 面（shell.at 任务栏）。投影器 = RqProjector（View 树
-    /// 全展开渲染——for/conditional 驱动的 dock/窗口条目；AppProjector
-    /// 队列臂对 ForLoop/Conditional 为 no-op[client_runtime.rs layout
-    /// walker]，shell 面不可用——p030 e2e 腿 3 实测定轨）。
-    chrome: Box<dyn ShellSurface>,
-    /// background 面（desktop.at 桌面图标）。
-    background: Box<dyn ShellSurface>,
+    /// 已装面（shell_face 值 → 装配体；常驻两面 boot 装，overlay
+    /// 懒装/预装）。
+    faces: BTreeMap<u8, Box<dyn ShellSurface>>,
     geometry: ShellGeometry,
 }
 
 impl ShellFaces {
     /// 解释装载 v1 双常驻面（027 SHELL_MANIFEST ResidentBoot 两件）+
     /// ensure_covered 过门（029 五件 Covered 前提——AC-02 证据）。
+    /// overlay 两面（switcher/notification）懒装——首次投影推送时
+    /// [`Self::ensure_overlay`]（PLAN-036 T-04）。
     pub fn load(geometry: ShellGeometry) -> Result<Self, String> {
         let chrome_src = crate::ui::shell::shell_source("shell.at");
         let bg_src = crate::ui::shell::shell_source("desktop.at");
@@ -239,22 +241,61 @@ impl ShellFaces {
         if let Err(gate) = background.ensure_covered() {
             return Err(format!("壳 background 面 {gate}"));
         }
-        Ok(Self {
-            chrome: Box::new(chrome),
-            background: Box::new(background),
-            geometry,
-        })
+        let mut faces = BTreeMap::new();
+        faces.insert(shell_face::SHELL, Box::new(chrome) as Box<dyn ShellSurface>);
+        faces.insert(shell_face::DESKTOP_SURFACE, Box::new(background) as Box<dyn ShellSurface>);
+        Ok(Self { faces, geometry })
     }
 
     /// 编译装配（PLAN-036 D8）：外部供面（a2r 生成 crate 的
-    /// `mount_face` 工厂产物——crates/auto cmd_autodesk 装配点注入）。
-    /// 面已由工厂 ensure_covered 过门。
+    /// `mount_face` 工厂产物——crates/auto cmd_autodesk 装配点注入；
+    /// T-04 起五面全给，overlay 预装免懒装）。面已由工厂
+    /// ensure_covered 过门。
     pub fn from_faces(
         geometry: ShellGeometry,
-        chrome: Box<dyn ShellSurface>,
-        background: Box<dyn ShellSurface>,
+        faces: Vec<(u8, Box<dyn ShellSurface>)>,
     ) -> Self {
-        Self { chrome, background, geometry }
+        let mut map = BTreeMap::new();
+        for (face, surface) in faces {
+            map.insert(face, surface);
+        }
+        Self { faces: map, geometry }
+    }
+
+    /// overlay 面懒装（解释轨；已装 = 幂等 true）。编译轨 overlay 由
+    /// `from_faces` 预装——本方法对缺席面返回 false（推送拒收留痕）。
+    fn ensure_overlay(&mut self, face: u8) -> bool {
+        if self.faces.contains_key(&face) {
+            return true;
+        }
+        let (src, w, h) = match face {
+            shell_face::SWITCHER => (
+                crate::ui::shell::shell_source("switcher.at"),
+                self.geometry.viewport_w,
+                self.geometry.viewport_h,
+            ),
+            shell_face::NOTIFICATION_CENTER => (
+                crate::ui::shell::shell_source("notification_center.at"),
+                self.geometry.viewport_w,
+                self.geometry.viewport_h,
+            ),
+            _ => return false,
+        };
+        let comp = match crate::build_dynamic_component(src.as_ref(), None) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[p036-child] overlay 面 {face} 解释装载失败: {e}");
+                return false;
+            }
+        };
+        let mut p = FaceProjector::new(comp, w, h);
+        if let Err(gate) = p.ensure_covered() {
+            eprintln!("[p036-child] overlay 面 {face} 覆盖门拒收: {gate}");
+            return false;
+        }
+        p.write_scalar("hosted", "1");
+        self.faces.insert(face, Box::new(p));
+        true
     }
 
     pub fn geometry(&self) -> ShellGeometry {
@@ -262,17 +303,17 @@ impl ShellFaces {
     }
 
     fn projector_mut(&mut self, face: u8) -> Option<&mut dyn ShellSurface> {
-        match face {
-            shell_face::SHELL => Some(&mut *self.chrome),
-            shell_face::DESKTOP_SURFACE => Some(&mut *self.background),
-            // overlay 三面 v1 维持 in-proc 懒挂载（D6 边界）——忽略留痕。
-            _ => None,
+        match self.faces.get_mut(&face) {
+            Some(b) => Some(&mut **b),
+            None => None,
         }
     }
 
     /// 投影下行消费：typed 载体 wire 解码 → interpreted_writes child 侧
     /// lowering（叶面保形单点：bool → "1"/"" 在 lowering，wire 上是 bool）。
     /// 返回 true = 状态变化（revision 前进）。
+    /// PLAN-036 T-04：SWITCHER/NOTIFICATION_CENTER 两臂激活（懒装 +
+    /// 写集 + 召唤/键盘事件派发——D6）。
     pub fn apply_projection(&mut self, face: u8, payload: &[u8]) -> bool {
         match face {
             shell_face::SHELL => {
@@ -304,6 +345,41 @@ impl ShellFaces {
                 p.bump_revision();
                 true
             }
+            shell_face::SWITCHER => {
+                let mut r = Reader::new(payload);
+                let Ok(snap) = SwitcherSnapshot::wire_decode(&mut r) else {
+                    return false;
+                };
+                let events = snap.events.clone();
+                if !self.ensure_overlay(face) {
+                    return false;
+                }
+                let Some(p) = self.projector_mut(face) else { return false };
+                p.apply_writes(snap.interpreted_writes());
+                for e in &events {
+                    p.dispatch_event(shell_event_name(e));
+                }
+                p.bump_revision();
+                true
+            }
+            shell_face::NOTIFICATION_CENTER => {
+                let mut r = Reader::new(payload);
+                let Ok(snap) = NotesSnapshot::wire_decode(&mut r) else {
+                    return false;
+                };
+                let events = snap.events.clone();
+                if !self.ensure_overlay(face) {
+                    return false;
+                }
+                let Some(p) = self.projector_mut(face) else { return false };
+                p.apply_writes(snap.interpreted_writes());
+                for e in &events {
+                    p.dispatch_event(shell_event_name(e));
+                }
+                p.bump_revision();
+                true
+            }
+            // dashboard 面 = PLAN-036 B2（D1/D2 前置）——忽略留痕。
             _ => false,
         }
     }
@@ -357,20 +433,12 @@ impl ShellFaces {
     }
 
     pub fn revision(&self, face: u8) -> u64 {
-        match face {
-            shell_face::SHELL => self.chrome.revision(),
-            shell_face::DESKTOP_SURFACE => self.background.revision(),
-            _ => 0,
-        }
+        self.faces.get(&face).map(|p| p.revision()).unwrap_or(0)
     }
 
     /// 面命中区矩形快照（e2e 点击钩子消费——宿主 pointer 路由的等价载荷）。
     pub fn hit_rects(&self, face: u8) -> Vec<crate::ui::desktop_protocol::message::WRect> {
-        match face {
-            shell_face::SHELL => self.chrome.hit_rects(),
-            shell_face::DESKTOP_SURFACE => self.background.hit_rects(),
-            _ => Vec::new(),
-        }
+        self.faces.get(&face).map(|p| p.hit_rects()).unwrap_or_default()
     }
 }
 
@@ -448,6 +516,19 @@ impl ShellPump {
                     width: geometry.viewport_w,
                     height: geometry.band_h,
                 },
+                // PLAN-036 T-04：overlay 两面全屏声明（OVERLAY 档——
+                // 追加式；面区分按声明序 0=switcher 1=notification_center，
+                // Welcome 路由同序约定）。
+                SurfaceDecl {
+                    role: surface_role::OVERLAY,
+                    width: geometry.viewport_w,
+                    height: geometry.viewport_h,
+                },
+                SurfaceDecl {
+                    role: surface_role::OVERLAY,
+                    width: geometry.viewport_w,
+                    height: geometry.viewport_h,
+                },
             ],
         });
         let mut end = end;
@@ -487,9 +568,19 @@ impl ShellPump {
                 ProtocolMsg::Handshake(HandshakeMsg::Welcome { wid, surface, extra_surfaces, .. }) => {
                     self.routes.insert(wid, (surface, shell_face::DESKTOP_SURFACE));
                     self.frames.entry(wid).or_default();
+                    // PLAN-036 T-04：OVERLAY 依序映射（Hello 声明序约定
+                    ///——首 OVERLAY=switcher、次=notification_center）。
+                    let mut overlay_idx = 0usize;
                     for e in extra_surfaces {
                         let face = if e.role == surface_role::CHROME {
                             shell_face::SHELL
+                        } else if e.role == surface_role::OVERLAY {
+                            overlay_idx += 1;
+                            match overlay_idx {
+                                1 => shell_face::SWITCHER,
+                                2 => shell_face::NOTIFICATION_CENTER,
+                                _ => shell_face::DASHBOARD,
+                            }
                         } else {
                             shell_face::DESKTOP_SURFACE
                         };
@@ -512,18 +603,20 @@ impl ShellPump {
                     if self.faces.apply_projection(face, &payload) {
                         if let Some(hook) = self.on_applied.as_mut() {
                             hook(&mut self.faces);
-                            // 钩子注入的输入与 wire 输入同路：命令读走 + 上行。
-                            for record in self.faces.drain_commands(face) {
-                                let wid = self
-                                    .routes
-                                    .iter()
-                                    .find(|(_, (_, f))| *f == face)
-                                    .map(|(w, _)| *w)
-                                    .unwrap_or(0);
-                                let _ = self.end.send(
-                                    &ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record }),
-                                );
-                            }
+                        }
+                        // PLAN-036 T-04（D6）：投影携带事件（Pick/Escape 等）
+                        /// 可产命令（SendCmd 总线写点）——与 wire 输入同路：
+                        /// 命令读走 + DesktopBus 上行（e2e 钩子与生产同径）。
+                        for record in self.faces.drain_commands(face) {
+                            let wid = self
+                                .routes
+                                .iter()
+                                .find(|(_, (_, f))| *f == face)
+                                .map(|(w, _)| *w)
+                                .unwrap_or(0);
+                            let _ = self.end.send(
+                                &ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record }),
+                            );
                         }
                     }
                     self.sync_frames();
@@ -565,9 +658,11 @@ impl ShellPump {
         }
     }
 
-    /// revision 对账产帧（两面独立对账——分面增量）。
+    /// revision 对账产帧（已装面独立对账——分面增量；PLAN-036 T-04：
+    /// overlay 懒装面随装随对账）。
     fn sync_frames(&mut self) {
-        for face in [shell_face::DESKTOP_SURFACE, shell_face::SHELL] {
+        let mounted: Vec<u8> = self.faces.faces.keys().copied().collect();
+        for face in mounted {
             let rev = self.faces.revision(face);
             if self.last_revisions.get(&face) == Some(&rev) {
                 continue;
@@ -664,6 +759,49 @@ mod tests {
         assert_ne!(f.take_slot(), a, "无空闲时翻转");
     }
 
+    /// PLAN-036 T-04（B1）：overlay 两面投影应用——解释轨懒装载路径
+    ///（load 只装双常驻；首 SWITCHER/NOTIFICATION_CENTER 投影触发
+    /// 懒装 + 写集应用 + 事件派发；solo 检出兜底内嵌 pin 快照）。
+    #[test]
+    fn shell_faces_overlay_lazy_mount_apply() {
+        use crate::ui::shell_projection::{ShellEvent, SwitcherSnapshot};
+        let Ok(mut faces) = ShellFaces::load(ShellGeometry::fallback()) else {
+            eprintln!("shell faces load 失败（环境）");
+            return;
+        };
+        let sw = SwitcherSnapshot {
+            hosted: true,
+            visible: true,
+            mru_wids: vec!["3".into()],
+            mru_titles: vec!["A".into()],
+            mru_icons: vec!["app-window".into()],
+            mru_thumbs: vec!["".into()],
+            wm_mru: vec![],
+            events: vec![ShellEvent::RebuildMru, ShellEvent::Advance],
+        };
+        let mut payload = Vec::new();
+        sw.wire_encode(&mut payload);
+        assert!(
+            faces.apply_projection(shell_face::SWITCHER, &payload),
+            "switcher 懒装 + 应用 + 事件派发"
+        );
+        assert!(faces.revision(shell_face::SWITCHER) > 0);
+        assert!(faces.render(shell_face::SWITCHER).is_some(), "懒装面渲染");
+        let notes = crate::ui::shell_projection::NotesSnapshot {
+            hosted: true,
+            visible: true,
+            ..Default::default()
+        };
+        let mut np = Vec::new();
+        notes.wire_encode(&mut np);
+        assert!(
+            faces.apply_projection(shell_face::NOTIFICATION_CENTER, &np),
+            "notes 懒装 + 应用"
+        );
+        // 坏 payload 拒收不炸。
+        assert!(!faces.apply_projection(shell_face::SWITCHER, &[0xFF, 0xFF]));
+    }
+
     /// 装配单测：面装载 + 投影 apply（指纹门宿主侧，child 全量应用）+
     /// 命令读走幂等（c4 清空语义）。
     #[test]
@@ -692,8 +830,10 @@ mod tests {
         // 时钟/光标。
         assert!(faces.apply_clock(shell_face::SHELL, "09:05", "9月19日 周六"));
         assert!(faces.apply_cursor(shell_face::DESKTOP_SURFACE, 12.0, 34.0));
-        // 无面拒收（overlay 三面 in-proc）。
-        assert!(!faces.apply_projection(shell_face::SWITCHER, &payload));
+        // PLAN-036 T-04：SWITCHER 臂已激活（懒装 + 应用）——跨面 payload
+        /// 按可解码即应用（wire 解码无判别位；生产宿主按 face 定载体
+        /// 不混发，D6 注记）。
+        assert!(faces.apply_projection(shell_face::SWITCHER, &payload));
         // 命令读走：初始为空（幂等清空）。
         assert!(faces.drain_commands(shell_face::SHELL).is_empty());
         // 渲染可产帧。

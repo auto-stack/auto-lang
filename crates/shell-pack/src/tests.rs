@@ -13,7 +13,9 @@ use auto_lang::ui::desktop_protocol::message::shell_face;
 use auto_lang::ui::desktop_protocol::shell_client::{
     ShellFaces, ShellGeometry, ShellStateAccess, ShellSurface,
 };
-use auto_lang::ui::shell_projection::{DesktopSurfaceSnapshot, ShellProjection, ShellWin};
+use auto_lang::ui::shell_projection::{
+    DesktopSurfaceSnapshot, NotesSnapshot, ShellProjection, ShellWin, SwitcherSnapshot,
+};
 
 fn geom() -> ShellGeometry {
     ShellGeometry { viewport_w: 1280.0, viewport_h: 800.0, band_h: 48.0 }
@@ -21,11 +23,16 @@ fn geom() -> ShellGeometry {
 
 fn compiled_faces() -> ShellFaces {
     let g = geom();
-    let chrome = mount_face("shell", g.viewport_w, g.band_h)
-        .expect("编译 chrome 面（shell）装载");
-    let background = mount_face("desktop", g.viewport_w, g.viewport_h)
-        .expect("编译 background 面（desktop）装载");
-    ShellFaces::from_faces(g, chrome, background)
+    let mut faces = Vec::new();
+    for (id, face, w, h) in [
+        ("shell", 1u8, g.viewport_w, g.band_h),
+        ("desktop", 2, g.viewport_w, g.viewport_h),
+        ("switcher", 3, g.viewport_w, g.viewport_h),
+        ("notification_center", 4, g.viewport_w, g.viewport_h),
+    ] {
+        faces.push((face, mount_face(id, w, h).expect("编译面装载")));
+    }
+    ShellFaces::from_faces(g, faces)
 }
 
 /// ① 工厂面：五面全可装配（ensure_covered 过门）+ 未知 id 拒收。
@@ -143,8 +150,22 @@ fn compiled_faces_smoke_roundtrip() {
     let list = faces.render(shell_face::SHELL).expect("shell 面渲染");
     assert!(!list.ops.is_empty(), "渲染非空");
     assert!(!faces.hit_rects(shell_face::SHELL).is_empty() || true, "命中表可取");
-    // overlay 三面 v1 不在 child（D6 边界）——编译装配同语义拒收。
-    assert!(!faces.apply_projection(shell_face::SWITCHER, &payload));
+    // PLAN-036 T-04：overlay 两面在编译装配预给——SWITCHER 投影可应用
+    ///（payload 应为 SwitcherSnapshot；SHELL 面 payload 拒收仍 false）。
+    let mut sw_payload = Vec::new();
+    SwitcherSnapshot::default().wire_encode(&mut sw_payload);
+    assert!(
+        faces.apply_projection(shell_face::SWITCHER, &sw_payload),
+        "switcher 面投影应用（预装）"
+    );
+    let mut notes_payload = Vec::new();
+    NotesSnapshot::default().wire_encode(&mut notes_payload);
+    assert!(
+        faces.apply_projection(shell_face::NOTIFICATION_CENTER, &notes_payload),
+        "notification 面投影应用（预装）"
+    );
+    // dashboard 面 = B2（D1/D2 前置）——拒收维持。
+    assert!(!faces.apply_projection(shell_face::DASHBOARD, &payload));
 }
 
 /// ④ boot 时延度量行（AC-01）：同一进程内对拍解释装载（parse +

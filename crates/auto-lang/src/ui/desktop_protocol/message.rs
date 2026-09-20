@@ -312,12 +312,18 @@ pub mod surface_role {
     pub const BACKGROUND: u8 = 1;
     /// 壳 chrome 表面：全部窗口上（v1 = 任务栏带矩形，非全屏）。
     pub const CHROME: u8 = 2;
+    /// PLAN-036 T-04：壳 overlay 表面（switcher/通知中心——全屏声明、
+    /// 置顶伪窗、宿主 overlay 层贴放）。追加式档位（=3；既有值与 golden
+    /// 零漂移）；面区分按 Hello 声明序（同 role 的 OVERLAY 依序映射
+    /// switcher→notification_center——单 exe 内约定，wire 上 role 显式）。
+    pub const OVERLAY: u8 = 3;
 
     pub fn name(v: u8) -> &'static str {
         match v {
             WINDOW => "window",
             BACKGROUND => "background",
             CHROME => "chrome",
+            OVERLAY => "overlay",
             _ => "unknown",
         }
     }
