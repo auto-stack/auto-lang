@@ -2832,9 +2832,11 @@ fn build_scrollable<M: Clone + Debug + 'static>(
 
 /// Plan 409 §10 续 4: vue 风格滚动条 — thumb 半透明、track 透明、细圆角。
 fn scrollbar_style() -> scrollable::Style {
+    // PLAN-024:thumb 圆角 3→8(虚拟桌面窗框圆角 16 的半档)——方 thumb
+    // 在窗框圆角区探出 app 边界(用户实机门实录);8px 圆角视觉收敛。
     let border = iced::Border {
         width: 0.0,
-        radius: iced::border::Radius::new(3.0),
+        radius: iced::border::Radius::new(8.0),
         color: iced::Color::TRANSPARENT,
     };
     let thumb = iced::Background::Color(iced::Color::from_rgba(0.9, 0.9, 0.9, 0.3));
@@ -4763,12 +4765,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     // PLAN-022:容器入 scrollable(滚动轴内容高=虚拟画布,
                     // Shrink=自然高;Fill 在无穷轴会塌 0)。宽 Fill 仍吃
                     // 视口宽,右缘余量条由容器同色涂满。
+                    // PLAN-024:容器底色圆角 = 虚拟窗框 WIN_RADIUS——
+                    // 方角余量条/画布 bg 在窗框圆角处探出 app 边界(用户
+                    // 实机门实录);同色叠层圆角化后角落共同透明,视觉
+                    // 与窗框圆角吻合。
                     .width(iced::Length::Fill)
                     .height(iced::Length::Shrink)
                     .align_x(iced::alignment::Horizontal::Left)
                     .align_y(iced::alignment::Vertical::Top)
                     .style(move |_: &iced::Theme| iced::widget::container::Style {
                         background: Some(iced::Background::Color(margin_bg)),
+                        border: iced::Border {
+                            color: iced::Color::TRANSPARENT,
+                            width: 0.0,
+                            radius: 16.0.into(),
+                        },
                         ..Default::default()
                     })
                     .into();

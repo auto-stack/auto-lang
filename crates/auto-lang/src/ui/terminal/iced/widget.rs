@@ -348,9 +348,12 @@ impl<M: Clone> Terminal<M> {
         (self.core.rows as usize + self.history()) as f32 * CELL_H + 2.0 * PAD
     }
 
-    /// 虚拟滚动坐标换算(纯函数):视图 y(画布内容坐标 px)→ 引擎
+    /// 虚拟滚动坐标换算(纯函数,测试靶):视图 y(画布内容坐标 px)→ 引擎
     /// display_offset(行)。终端回滚语义:y=0 = 最旧(offset=history)、
     /// y=history×CELL_H = 贴底实时(offset=0);CELL_H 行量化。
+    /// PLAN-024 注:观察臂已改用底隙量化口径(见 observe_view_scroll,
+    /// 天然吸收底部 PAD 与 scroll_to 钳位);本函数保留为 bind/像素映射
+    /// 的换算靶(测试锚)。
     pub(crate) fn view_y_to_offset(view_y: f32, history: usize) -> usize {
         let lines = (view_y / CELL_H).round() as i64;
         (history as i64)
@@ -358,30 +361,46 @@ impl<M: Clone> Terminal<M> {
             .max(0) as usize
     }
 
+    /// PLAN-024 底隙量化(纯函数,测试靶):视口底距画布底的间隙(gap px)
+    /// → 引擎 display_offset。offset 语义 = 视口底上方的新行数:贴底
+    /// (gap≈0,含底部 PAD 与 scroll_to 钳位的 ±半行)→ 0;上翻 k 行 → k。
+    /// **为什么不用视口顶换算**(旧 view_y_to_offset 口径):画布底部
+    /// PAD(2×4px)与 scrollable max 滚动钳位使"几何贴底"的视口顶算出
+    /// offset=1 —— 稳态卡在 offset 1 → 引擎锚定(display_offset≠0 时
+    /// 新输出保持绝对位置,offset 随输出增长)→ 视图停半路不跟随 + 最新
+    /// 行永差一行在快照窗外(桌面轨实录,用户实机门 2026-09-19)。
+    /// ±4px 容差量化:(gap+4)/16 整除——gap 0..12 → 0、12..28 → 1。
+    pub(crate) fn gap_to_offset(gap: f32, history: usize) -> usize {
+        let lines = ((gap + 4.0) / CELL_H) as i64;
+        (lines.clamp(0, history as i64)).max(0) as usize
+    }
+
     /// 逆换算:引擎 display_offset → 视图 y(画布内容坐标 px)。
     pub(crate) fn offset_to_view_y(offset: usize, history: usize) -> f32 {
         (history.saturating_sub(offset)) as f32 * CELL_H
     }
 
-    /// 读出臂状态机(draw 期 viewport 观察调用;headless 可测):视图 y
-    /// → 目标 offset,返回需回灌引擎的行增量(None = 无增量/回声吞没)。
+    /// 读出臂状态机(draw 期 viewport 观察调用;headless 可测):视口底
+    /// 隙 → 目标 offset(gap_to_offset 口径),返回需回灌引擎的行增量
+    /// (None = 无增量/回声吞没)。
     /// PLAN-024 增长漂移判别:贴底基线(target 基线 0)+ 视图 y 未动 +
     /// 滚轮代数未进,而历史增长 = iced scrollable 保持绝对像素位把贴底
     /// 视口顶离底部(内容增长,非用户滚动)——不回灌引擎(保持贴底),
-    /// 挂 repin 由写臂绑回画布底。桌面轨实录:误回灌 + 绑定交替 =
-    /// 输出期滚动条反复抖动;base>0(已滚向上)路径不变(内容锚定语义)。
+    /// 挂 repin 由写臂绑回画布底。base>0(已滚向上)路径不变(内容锚定)。
     /// PLAN-024 在途耐心 + 前回声匹配:桌面轨 scroll_to 着陆比独立窗
-    /// 多一帧——未着陆帧(视图未动、无滚轮)持抑制等待,不得把在途位
-    /// 当真实观察回灌(点火器);交替在途下读出臂看到的是**上一**绑定
-    /// 的落点(视图已动)——匹配前回声则按其 offset 对齐基线吞掉
-    /// (持续器)。视图已动且不匹配任何回声 = 真实观察,照旧回灌
-    /// (022 T-06 语义)。
+    /// 多一帧——未着陆帧(视图未动、无滚轮)持抑制等待;交替在途下读出
+    /// 臂看到的常是**上一**绑定的落点——匹配前回声(按 offset 口径)
+    /// 则按其 offset 对齐基线吞掉。视图移动且不匹配任何回声 = 真实观察
+    /// (滚动条拖动/滚轮),照旧回灌(022 T-06 用户增量语义)。
     pub(crate) fn observe_view_scroll(
         core: &crate::ui::terminal::TerminalCore,
         view_y: f32,
+        viewport_h: f32,
+        canvas_h: f32,
         history: usize,
     ) -> Option<i32> {
-        let target = Self::view_y_to_offset(view_y, history) as i64;
+        let gap = (canvas_h - view_y - viewport_h).max(0.0);
+        let target = Self::gap_to_offset(gap, history) as i64;
         // 判别簿记先行落账(early-return 路径同样需要"上一拍"值)。
         let last_hist = core.scroll_last_history();
         let view_moved = (view_y - core.scroll_last_view_y()).abs() > 0.5;
@@ -390,17 +409,20 @@ impl<M: Clone> Terminal<M> {
         core.set_scroll_last_view_y(view_y);
         core.set_scroll_last_wheel_gen(core.wheel_gen());
         if core.scroll_bind_suppress_pending() {
-            let (bind_gen, echo_y) = core.bind_echo();
+            let (bind_gen, _echo_y) = core.bind_echo();
             let user_moved = core.wheel_gen() != bind_gen;
-            let aligned = (view_y - echo_y as f32).abs() <= 4.0;
+            // PLAN-024:对齐判定改 offset 口径(换算目标 == 绑定登记
+            // offset)——像素口径被 scroll_to 钳位/底部 PAD 的恒定差
+            // (16px = 1 行)打破,落地永远"未对齐"。
+            let aligned = target == core.bind_echo_offset();
             if user_moved {
                 // T-06:滚轮代数已进 = 用户增量,不吞,立即照实回灌。
                 core.clear_scroll_bind_suppress();
             } else if aligned {
                 core.clear_scroll_bind_suppress();
-                // 基线取绑定登记的 offset(非按现时 hist 重算 target)
-                // ——重绑飞行期内容再增长时,重算值 = 增长量,会把贴底
-                // 基线污染成正偏移,增长漂移判别随之失效。
+                // 基线取绑定登记的 offset——重绑飞行期内容再增长时按
+                // 现时 hist 重算会把贴底基线污染成正偏移,增长漂移判别
+                // 随之失效。
                 core.set_scroll_view_target(core.bind_echo_offset());
                 return None;
             } else if !view_moved {
@@ -408,8 +430,8 @@ impl<M: Clone> Terminal<M> {
                 // 着陆(桌面轨一帧延迟),持抑制等下一拍——立即清除会把
                 // 在途位当真实观察回灌(抖动点火器,TRACE 直捕)。
                 return None;
-            } else if let Some((prev_off, prev_y)) = core.bind_prev_echo() {
-                if (view_y - prev_y as f32).abs() <= 4.0 {
+            } else if let Some((prev_off, _prev_y)) = core.bind_prev_echo() {
+                if target == prev_off {
                     // 前一绑定落点(交替在途):按其 offset 对齐基线,
                     // 当前绑定仍在途(抑制保留待其回声)。
                     core.set_scroll_view_target(prev_off);
@@ -826,19 +848,27 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             viewport_h_register().lock().unwrap().insert(self.key.clone(), viewport.height);
             let view_y = viewport.y - bounds.y;
             let history = self.history();
+            // PLAN-024 底隙量化口径:offset = 视口底上方的新行数——
+            // canvas(画布高)与 viewport(可见区高)由 draw 现场取,
+            // 天然吸收底部 PAD 与 scroll_to 钳位(几何贴底 ⇔ offset 0)。
+            let canvas_h = self.canvas_height();
             if std::env::var("P024_TRACE").is_ok() {
                 eprintln!(
-                    "[P024-TRACE] observe key={} view_y={:.1} hist={} tgt={} base={} bound={} off={}",
+                    "[P024-TRACE] observe key={} view_y={:.1} vh={:.0} canvas={:.0} hist={} tgt={} base={} bound={} off={}",
                     self.key,
                     view_y,
+                    viewport.height,
+                    canvas_h,
                     history,
-                    Self::view_y_to_offset(view_y, history),
+                    Self::gap_to_offset((canvas_h - view_y - viewport.height).max(0.0), history),
                     self.core.scroll_view_target(),
                     self.core.scroll_bound_offset(),
                     self.engine_offset()
                 );
             }
-            if let Some(delta) = Self::observe_view_scroll(self.core, view_y, history) {
+            if let Some(delta) =
+                Self::observe_view_scroll(self.core, view_y, viewport.height, canvas_h, history)
+            {
                 if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
                     eprintln!("[P22-WHEEL] key={} view_y={:.0} delta={}", self.key, view_y, delta);
                 }
@@ -1208,24 +1238,27 @@ mod virtual_scroll_tests {
     fn observe_queues_delta_and_tracks_target() {
         let core = core("p022-observe");
         let history = 50usize;
-        // draw 契约:observe 返回的增量由调用方入队(镜像 draw)。
+        // PLAN-024 底隙口径驱动:gap px → observe(view_y 恒 0、视口高
+        // 恒 100、canvas = gap+100,几何自洽;draw 契约:返回增量入队)。
         let mut observe =
-            |y: f32| match Terminal::<u8>::observe_view_scroll(core, y, history) {
+            |gap: f32| match Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, gap + 100.0, history)
+            {
                 Some(delta) => {
                     crate::ui::terminal::terminal_queue_scroll_delta(core, delta);
                     Some(delta)
                 }
                 None => None,
             };
-        // 贴底起步(基线 0)。滚轮上翻 3 行 → 视图 y 减 3×CELL_H。
-        let delta = observe((history - 3) as f32 * 16.0);
+        // 贴底起步(基线 0)。滚轮上翻 3 行 → 底隙 3×CELL_H。
+        assert_eq!(observe(0.0), None, "贴底基线零增量");
+        let delta = observe(3.0 * 16.0);
         assert_eq!(delta, Some(3), "上翻 3 行应回灌 +3");
         assert_eq!(crate::ui::terminal::terminal_take_scroll_delta(core), 3);
         // 同位重复观察:零增量(幂等)。
-        let delta = observe((history - 3) as f32 * 16.0);
+        let delta = observe(3.0 * 16.0);
         assert_eq!(delta, None, "同位重复观察不得重复回灌");
         // 快速连滚一拍内:增量相对基线累积,不超调。
-        let delta = observe((history - 8) as f32 * 16.0);
+        let delta = observe(8.0 * 16.0);
         assert_eq!(delta, Some(5), "3→8 行应只回灌差值 +5");
         assert_eq!(crate::ui::terminal::terminal_take_scroll_delta(core), 5);
     }
@@ -1241,14 +1274,15 @@ mod virtual_scroll_tests {
         let y = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y, Some(30.0 * 16.0), "引擎 offset 10 应绑定到画布 y 480");
         assert!(core.take_scroll_bind_suppress(), "绑定应吞一次读出回声");
-        // 回声观察:目标对齐但零回灌。
-        let delta = Terminal::<u8>::observe_view_scroll(core, 30.0 * 16.0, history);
+        // 回声观察(底隙 = offset 10×CELL_H):对齐(目标==登记 offset)
+        // 但零回灌。
+        let delta = Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 10.0 * 16.0 + 100.0, history);
         assert_eq!(delta, None, "scroll_to 回声不得回灌增量");
         // 稳态:同 offset 重复 bind → None(不重复发 scroll_to)。
         let y = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y, None, "稳态不得重复绑定");
-        // 用户滚回顶:观察 y=0 → 目标 40 → 回灌 +30(10→40)。
-        let delta = Terminal::<u8>::observe_view_scroll(core, 0.0, history);
+        // 用户滚回顶:底隙 = 40 行 → 目标 40 → 回灌 +30(10→40)。
+        let delta = Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 40.0 * 16.0 + 100.0, history);
         assert_eq!(delta, Some(30));
     }
 
@@ -1259,20 +1293,26 @@ mod virtual_scroll_tests {
         // 跳到最旧端,输出期回灌/绑定交替 = 滚动条反复抖动。期望:判为
         // 增长漂移 → 不回灌,挂贴底重绑,写臂绑到新画布底。
         let core = core("p024-growth");
-        // 贴底稳态:hist=20,view_y=320(画布底)。
+        // 贴底稳态:hist=20,底隙 0。
         crate::ui::terminal::terminal_set_history(core, 20);
-        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 320.0, 20), None);
-        // 内容突发增长 20→50(泵回写缓存;视图 y 未动 = iced 绝对位)。
+        assert_eq!(
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 100.0, 20),
+            None
+        );
+        // 内容突发增长 20→50(画布长 30 行,视图像素位未动 → 底隙 480)。
         crate::ui::terminal::terminal_set_history(core, 50);
-        let d = Terminal::<u8>::observe_view_scroll(core, 320.0, 50);
+        let d = Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 580.0, 50);
         assert_eq!(d, None, "增长漂移不得回灌引擎");
         // 写臂消费 repin:绑到新画布底 y=50×CELL_H,回声登记 offset 0。
         let y = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y, Some(50.0 * 16.0), "贴底重绑到新画布底");
         assert!(core.scroll_bind_suppress_pending(), "重绑应置回声抑制");
-        // 回声落地:基线取登记 offset(0)——飞行期再增长(hist 55)
-        // 不得把基线污染成正偏移。
-        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 800.0, 55), None);
+        // 回声落地(钳位残隙 8px → 底隙量化 0):基线取登记 offset(0)
+        // ——飞行期再增长(hist 55)不得把基线污染成正偏移。
+        assert_eq!(
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 108.0, 55),
+            None
+        );
         assert_eq!(core.scroll_view_target(), 0, "基线保持贴底");
     }
 
@@ -1283,11 +1323,14 @@ mod virtual_scroll_tests {
         // 贴底重绑吞掉(022 T-06 同型病灶)。
         let core = core("p024-growth-wheel");
         crate::ui::terminal::terminal_set_history(core, 20);
-        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 320.0, 20), None);
+        assert_eq!(
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 100.0, 20),
+            None
+        );
         // 用户滚轮事件先到(视图 y 未动),内容同时增长 20→50。
         core.bump_wheel_gen();
         crate::ui::terminal::terminal_set_history(core, 50);
-        let d = Terminal::<u8>::observe_view_scroll(core, 320.0, 50);
+        let d = Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 580.0, 50);
         assert_eq!(d, Some(30), "滚轮代数已进 → 照常回灌(内容锚定)");
         assert!(!core.take_scroll_repin_pending(), "用户滚动不挂重绑");
     }
@@ -1301,51 +1344,57 @@ mod virtual_scroll_tests {
         // 持抑制回 None,等着陆。
         let core = core("p024-inflight");
         crate::ui::terminal::terminal_set_history(core, 20);
-        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 320.0, 20), None);
+        assert_eq!(
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 100.0, 20),
+            None
+        );
         // 增长 → repin → 写臂绑底(镜像 build 调用方)。
         crate::ui::terminal::terminal_set_history(core, 50);
-        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 320.0, 50), None);
+        assert_eq!(
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 580.0, 50),
+            None
+        );
         let y = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y, Some(50.0 * 16.0), "贴底重绑画布底");
-        // 着陆延迟拍:视图仍在旧位 320(未动)——不得回灌。
-        let d = Terminal::<u8>::observe_view_scroll(core, 320.0, 50);
+        // 着陆延迟拍:视图仍在旧位(未动)——不得回灌。
+        let d = Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 580.0, 50);
         assert_eq!(d, None, "在途位不得当真实观察回灌");
         assert!(core.scroll_bind_suppress_pending(), "在途保持抑制");
-        // 着陆(钳位差 1 行):视图已动 → 清抑制走正常回灌(小差值收敛);
-        // 泵侧应用增量(回写 offset,base 同步 = 泵语义)。
-        let d = Terminal::<u8>::observe_view_scroll(core, 49.0 * 16.0, 50);
-        assert_eq!(d, Some(1), "着陆后按真实差值回灌(钳位 1 行)");
-        crate::ui::terminal::terminal_queue_scroll_delta(core, 1);
-        crate::ui::terminal::terminal_set_scroll_offset(core, 1);
-        // 新绑定回声对齐 → 吞没收敛,基线 = 绑定 offset。
-        let y2 = Terminal::<u8>::bind_request_y(core);
-        assert_eq!(y2, Some(49.0 * 16.0));
-        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 49.0 * 16.0, 50), None);
-        assert_eq!(core.scroll_view_target(), 1, "基线收敛到绑定 offset");
+        // 着陆(scroll_to 钳位 + 底部 PAD → 残隙 8px):底隙量化
+        // offset 0 == 登记 offset → 对齐吞没,基线收敛贴底。
+        let d = Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 108.0, 50);
+        assert_eq!(d, None, "落地对齐吞没");
+        assert_eq!(core.scroll_view_target(), 0, "基线收敛到绑定 offset");
+        assert!(!core.scroll_bind_suppress_pending(), "消费后抑制清除");
     }
 
     #[test]
     fn p024_alternating_binds_prev_echo_swallowed() {
         // 抖动持续器:交替在途下读出臂看到的是**上一**绑定的落点(视图
         // 已动、不匹配当前回声)——旧逻辑回灌反向大增量(±98 永续交替
-        // 实录)。期望:匹配前回声 → 按其 offset 对齐基线吞掉,不回灌。
+        // 实录)。期望:匹配前回声(offset 口径)→ 按其 offset 对齐基线
+        // 吞掉,不回灌。
         let core = core("p024-alt-binds");
         let hist = 99usize;
         crate::ui::terminal::terminal_set_history(core, hist);
         // 甲:引擎 99 → 绑 y=0(off 99);甲回声落地吞没,基线 99。
         crate::ui::terminal::terminal_set_scroll_offset(core, 99);
         assert_eq!(Terminal::<u8>::bind_request_y(core), Some(0.0));
-        assert_eq!(Terminal::<u8>::observe_view_scroll(core, 0.0, hist), None);
+        // 甲落地:底隙 99 行 → 目标 99 == 登记 99 → 吞。
+        assert_eq!(
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 99.0 * 16.0 + 100.0, hist),
+            None
+        );
         assert_eq!(core.scroll_view_target(), 99);
-        // 视图漂到 1568(甲前序在途落点),真实回灌;基线随动 1。
-        let d = Terminal::<u8>::observe_view_scroll(core, 98.0 * 16.0, hist);
-        assert_eq!(d, Some(-98));
-        // 丙:引擎 5 → 绑 y=1504;前回声 = 甲(y=0, off=99)。
+        // 视图漂到画布底(offset 0,真实观察)→ 回灌 -99;泵回写同步。
+        let d = Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 100.0, hist);
+        assert_eq!(d, Some(-99));
+        // 乙:引擎 5 → 绑 y=(99−5)×CELL_H(off 5);前回声 = 甲(off 99)。
         crate::ui::terminal::terminal_set_scroll_offset(core, 5);
         assert_eq!(Terminal::<u8>::bind_request_y(core), Some(94.0 * 16.0));
-        // 视图被甲的迟落地拉回 0:视图已动、非当前回声(1504)、
-        // 匹配前回声(0)→ 按甲 offset(99)对齐吞掉,不回灌。
-        let d = Terminal::<u8>::observe_view_scroll(core, 0.0, hist);
+        // 视图被甲的迟落地拉回甲的位(offset 99,底隙 1584;view_y 已动)
+        // → 匹配前回声(99)→ 吞,基线对齐 99。
+        let d = Terminal::<u8>::observe_view_scroll(core, 2.0, 100.0, 99.0 * 16.0 + 100.0, hist);
         assert_eq!(d, None, "前绑定落点不得当真实观察回灌");
         assert_eq!(core.scroll_view_target(), 99, "基线对齐前绑定 offset");
     }
@@ -1362,15 +1411,15 @@ mod virtual_scroll_tests {
         let y = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y, Some(30.0 * 16.0));
         assert!(core.take_scroll_bind_suppress(), "bind 应置抑制");
-        // bind 落地帧:回声对齐基线(offset 10),零回灌。
+        // bind 落地帧:回声对齐基线(offset 10,底隙 160),零回灌。
         assert_eq!(
-            Terminal::<u8>::observe_view_scroll(core, 30.0 * 16.0, history),
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 10.0 * 16.0 + 100.0, history),
             None,
             "回声对齐不得回灌"
         );
-        // 用户再滚一格(代数已进),视图上移 3 行:必须按真实增量回灌。
+        // 用户再滚一格(代数已进),视图上移 3 行(offset 13):真实增量回灌。
         core.bump_wheel_gen();
-        let delta = Terminal::<u8>::observe_view_scroll(core, 27.0 * 16.0, history);
+        let delta = Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 13.0 * 16.0 + 100.0, history);
         assert_eq!(delta, Some(3), "用户滚轮增量不得被回声吞没");
         // 镜像 draw 调用方:observe 返回 Some 即入队。
         crate::ui::terminal::terminal_queue_scroll_delta(core, 3);
@@ -1380,10 +1429,10 @@ mod virtual_scroll_tests {
         crate::ui::terminal::terminal_set_scroll_offset(core, 13);
         let y2 = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y2, Some(27.0 * 16.0));
-        let delta = Terminal::<u8>::observe_view_scroll(core, 27.0 * 16.0, history);
+        let delta = Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 13.0 * 16.0 + 100.0, history);
         assert_eq!(delta, None, "scroll_to 回声不得回灌增量");
         // 错位(无滚轮事件但落点偏离期望位)= 真实观察,回灌差值。
-        let delta = Terminal::<u8>::observe_view_scroll(core, 20.0 * 16.0, history);
+        let delta = Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 20.0 * 16.0 + 100.0, history);
         assert_eq!(delta, Some(7), "错位偏离应回灌 13→20 差值");
     }
 
