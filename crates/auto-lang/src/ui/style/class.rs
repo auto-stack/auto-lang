@@ -51,7 +51,7 @@ impl SizeValue {
 }
 
 /// Border radius size for rounded-* and directional rounded-*
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RoundedSize {
     None,    // 0px (rounded-none)
     Sm,      // 2px (rounded-sm)
@@ -62,6 +62,11 @@ pub enum RoundedSize {
     Xxl,     // 16px (rounded-2xl)
     Xxxl,    // 24px (rounded-3xl)
     Full,    // 9999px (rounded-full)
+    /// PLAN-024:任意值 px 刻度(rounded-b-[15px] 形态)——方向性圆角
+    /// 与既有元素弧线精确同心的非命名值(状态栏贴虚拟窗框 15px 案:
+    /// 窗框环 16 内缩客户区 1 → 同心条件 r=15,命名刻度 12/16 两侧
+    /// 均不中)。Eq 手工实现(Px 分支按值比较)。
+    Px(f32),
 }
 
 impl RoundedSize {
@@ -71,11 +76,12 @@ impl RoundedSize {
             RoundedSize::Sm => 2.0,
             RoundedSize::Default => 4.0,
             RoundedSize::Md => 6.0,
-            RoundedSize::Lg => 8.0,
             RoundedSize::Xl => 12.0,
+            RoundedSize::Lg => 8.0,
             RoundedSize::Xxl => 16.0,
             RoundedSize::Xxxl => 24.0,
             RoundedSize::Full => 9999.0,
+            RoundedSize::Px(n) => *n,
         }
     }
 }
@@ -1426,6 +1432,31 @@ impl StyleClass {
             return Ok(StyleClass::RoundedNone);
         }
         if let Some(rest) = class.strip_prefix("rounded-") {
+            // PLAN-024:方向性任意值 px 刻度(rounded-b-[15px] 形态)——
+            // 与既有元素弧线精确同心的非命名值(状态栏贴虚拟窗框 15px
+            // 案:窗框环 16、客户区内缩 1,同心条件 r=15,命名刻度两侧
+            // 均不中)。仅接受 Npx 整数;全角形态走 Rounded(Px)。
+            if let Some(av) = arbitrary_value {
+                if let Some(px) = av.strip_suffix("px") {
+                    if let Ok(n) = px.parse::<f32>() {
+                        if n > 0.0 {
+                            let pr = Some(RoundedSize::Px(n));
+                            let dir = rest.trim_end_matches('-');
+                            return Ok(match dir {
+                                "t" => StyleClass::RoundedT(pr),
+                                "b" => StyleClass::RoundedB(pr),
+                                "l" => StyleClass::RoundedL(pr),
+                                "r" => StyleClass::RoundedR(pr),
+                                "tl" => StyleClass::RoundedTL(pr),
+                                "tr" => StyleClass::RoundedTR(pr),
+                                "bl" => StyleClass::RoundedBL(pr),
+                                "br" => StyleClass::RoundedBR(pr),
+                                _ => StyleClass::Rounded2Xl, // 未知方向回落既有刻度
+                            });
+                        }
+                    }
+                }
+            }
             match rest {
                 "sm" => return Ok(StyleClass::RoundedSm),
                 "md" => return Ok(StyleClass::RoundedMd),
@@ -2303,6 +2334,15 @@ mod tests {
         assert_eq!(StyleClass::parse_single("rounded-full"), Ok(StyleClass::RoundedFull));
         assert_eq!(StyleClass::parse_single("rounded-t-lg"), Ok(StyleClass::RoundedT(Some(RoundedSize::Lg))));
         assert_eq!(StyleClass::parse_single("rounded-b-sm"), Ok(StyleClass::RoundedB(Some(RoundedSize::Sm))));
+        // PLAN-024:方向性任意值 px 刻度(状态栏窗框弧同心 15px 案)。
+        assert_eq!(
+            StyleClass::parse_single("rounded-b-[15px]"),
+            Ok(StyleClass::RoundedB(Some(RoundedSize::Px(15.0))))
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-bl-[13px]"),
+            Ok(StyleClass::RoundedBL(Some(RoundedSize::Px(13.0))))
+        );
         assert_eq!(StyleClass::parse_single("rounded-tl-md"), Ok(StyleClass::RoundedTL(Some(RoundedSize::Md))));
     }
 
