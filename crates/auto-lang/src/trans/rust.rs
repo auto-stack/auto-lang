@@ -4800,10 +4800,11 @@ impl RustTrans {
                         } else {
                             write!(out, " ")?;
                         }
-                    } else if matches!(stmt, Stmt::Expr(_)) {
-                        // trailing Expr in the block still needs its semicolon
-                        write!(out, ";")?;
                     }
+                    // PLAN-668 R-12(4): tail Expr keeps NO trailing ';' -- the
+                    // block's tail expression IS its value (`let f = ~{a+b}`;
+                    // the old unconditional ';' collapsed it to (), gate E0277).
+                    // Discarding call sites get their own ';' from stmt layer.
                 }
                 write!(out, " }}")?;
                 Ok(())

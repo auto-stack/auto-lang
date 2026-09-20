@@ -2,5 +2,5 @@
 
 fn main() {
     let x: i64 = 10;
-    let f = async move { println!("{}", x); };
+    let f = async move { println!("{}", x) };
 }

@@ -12175,18 +12175,25 @@ impl<'a> Parser<'a> {
         };
 
         // Plan 056: Use Expr::Dot for semantic clarity
-        let mut broke_for_cast = false;
+        let mut broke_for_pratt = false;
         while self.is_kind(TokenKind::Dot) {
-            // Plan 162: Don't consume .as(Type) / .to(Type) — delegate to Pratt parser
-            let next_is_as_or_to = if let Ok(tok) = self.lexer.next() {
-                let is_special = matches!(tok.kind, TokenKind::As | TokenKind::To);
+            // Plan 162: Don't consume .as(Type) / .to(Type) — delegate to
+            // Pratt parser.
+            // PLAN-668 R-12④: .await/.go postfix 同理委托 Pratt 层
+            // （expr_pratt_with_left 的 Await/Go 臂）——`work(1).await`
+            // 嵌套位此前在本链落 "Expected identifier... got Await"。
+            let next_is_postfix = if let Ok(tok) = self.lexer.next() {
+                let is_special = matches!(
+                    tok.kind,
+                    TokenKind::As | TokenKind::To | TokenKind::Await | TokenKind::Go
+                );
                 self.lexer.push_token(tok);
                 is_special
             } else {
                 false
             };
-            if next_is_as_or_to {
-                broke_for_cast = true;
+            if next_is_postfix {
+                broke_for_pratt = true;
                 break;
             }
             self.next(); // skip dot
@@ -12235,7 +12242,7 @@ impl<'a> Parser<'a> {
 
         // Plan 162: If we broke the dot loop for .as/.to, delegate to Pratt parser
         // so it can handle the type cast/conversion properly
-        if broke_for_cast {
+        if broke_for_pratt {
             return self.expr_pratt_with_left(ident, 0);
         }
 

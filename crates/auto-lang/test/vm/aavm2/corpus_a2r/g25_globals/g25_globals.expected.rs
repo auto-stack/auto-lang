@@ -5,24 +5,24 @@ use std::sync::Mutex;
 static COUNT: Mutex<i64> = Mutex::new(100);
 
 fn bump(n: i64) -> i64 {
-    { let __a2r_gv = *COUNT.lock().unwrap() + n; *COUNT.lock().unwrap() = __a2r_gv; };
-    return *COUNT.lock().unwrap();
+    { let __a2r_gv = (*COUNT.lock().unwrap()) + n; *COUNT.lock().unwrap() = __a2r_gv; };
+    return (*COUNT.lock().unwrap());
 }
 
 static G: Mutex<i64> = Mutex::new(10);
 
 fn set_via_let() -> i64 {
     { let __a2r_gv = 5; *G.lock().unwrap() = __a2r_gv; };
-    return *G.lock().unwrap();
+    return (*G.lock().unwrap());
 }
 
 fn main() {
     println!("{}", bump(5));
-    println!("{}", *COUNT.lock().unwrap());
-    { let __a2r_gv = *COUNT.lock().unwrap() * 2; *COUNT.lock().unwrap() = __a2r_gv; };
-    println!("{}", *COUNT.lock().unwrap());
+    println!("{}", (*COUNT.lock().unwrap()));
+    { let __a2r_gv = (*COUNT.lock().unwrap()) * 2; *COUNT.lock().unwrap() = __a2r_gv; };
+    println!("{}", (*COUNT.lock().unwrap()));
     println!("{}", set_via_let());
-    println!("{}", *G.lock().unwrap());
-    { let __a2r_gv = *G.lock().unwrap() + 1; *G.lock().unwrap() = __a2r_gv; };
-    println!("{}", *G.lock().unwrap());
+    println!("{}", (*G.lock().unwrap()));
+    { let __a2r_gv = (*G.lock().unwrap()) + 1; *G.lock().unwrap() = __a2r_gv; };
+    println!("{}", (*G.lock().unwrap()));
 }

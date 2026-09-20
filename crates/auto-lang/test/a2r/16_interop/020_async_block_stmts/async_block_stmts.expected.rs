@@ -5,6 +5,6 @@ fn main() {
         found = found + i;
     } if found > 0 {
         println!("nonempty");
-    } found; };
+    } found };
     println!("{}", f);
 }

@@ -5,13 +5,13 @@ use std::sync::Mutex;
 static COUNT: Mutex<i64> = Mutex::new(100);
 
 fn bump(n: i64) -> i64 {
-    { let __a2r_gv = *COUNT.lock().unwrap() + n; *COUNT.lock().unwrap() = __a2r_gv; };
-    return *COUNT.lock().unwrap();
+    { let __a2r_gv = (*COUNT.lock().unwrap()) + n; *COUNT.lock().unwrap() = __a2r_gv; };
+    return (*COUNT.lock().unwrap());
 }
 
 fn main() {
     println!("{}", bump(5));
-    println!("{}", *COUNT.lock().unwrap());
-    { let __a2r_gv = *COUNT.lock().unwrap() * 2; *COUNT.lock().unwrap() = __a2r_gv; };
-    println!("{}", *COUNT.lock().unwrap());
+    println!("{}", (*COUNT.lock().unwrap()));
+    { let __a2r_gv = (*COUNT.lock().unwrap()) * 2; *COUNT.lock().unwrap() = __a2r_gv; };
+    println!("{}", (*COUNT.lock().unwrap()));
 }

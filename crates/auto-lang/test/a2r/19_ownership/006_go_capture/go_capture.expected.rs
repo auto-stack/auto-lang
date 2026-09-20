@@ -2,5 +2,5 @@
 
 fn main() {
     let counter: i64 = 0;
-    tokio::spawn(async move { async move { println!("{}", counter); }.await; });
+    tokio::spawn(async move { async move { println!("{}", counter) }.await; });
 }
