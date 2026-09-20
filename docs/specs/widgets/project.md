@@ -32,3 +32,4 @@ graph LR
 | styles | Tailwind 配置与预编译 CSS 构建（build-styles.cjs / src/input.css） | active |
 | [terminal-iced-draw](terminal-iced-draw.md) | terminal iced widget 绘制期契约（draw 段落强引用规则 + 像素金样环境契约；auto-lang 侧,Plan 634） | active |
 | [scroll-pane](scroll-pane.md) | AutoUI 通用滚动架构（PLAN-656 Phase A+B+C）：ScrollState/Intent/Viewport 三通道语义层 + scroll-pane primitive + controller/on-scroll 双端契约 + managed content bridge | active |
+| [viewport-boundary](viewport-boundary.md) | VM/iced 视口边界与嵌入居中契约（PLAN-663）：Screen 视口单位定高嵌入边界内重锚定（iframe 语义）+ my-auto/m-auto 垂直安全居中 | active |

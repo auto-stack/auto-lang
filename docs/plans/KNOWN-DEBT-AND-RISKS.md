@@ -2467,3 +2467,13 @@ for-each（唯一干净源）；排序键用 0.1 精度 int；展示串只对渲
 |---|---|---|---|---|
 | P662-D1 | low | 渲染保真 | **020 内嵌控制条 flex-wrap 两行换行**——VM 臂滚动容器（T-04）后控制条完整可见可交互，但 `flex-wrap` 在 iced 降级（Plan 412 矩阵家族）致按钮组换两行排版降级；按钮功能完整仅视觉。020 语料零改动（T-05 裁定 B：免 standalone/Vue 连锁验证面） | 启动日志 flex-wrap 降级声明；docs/plans/evidence/p662/p662_020_fixed.png |
 | P662-D2 | low | 测试基建 | **auto-man 并行 env 竞争（预存，非 662 引入）**——`desktop_extra_app_roots_apps_container` 与 `test_plan609_unresolved_dep_import_guard` 全量 lib 并行跑时互踩 env 间歇双红（单跑均绿；`--skip test_plan_662` 排除后仍红实证非新测试引入）；修法=测试组 env 串行锁或 env 改参数传递 | auto-man vue.rs mod tests 两测试；662 执行期三受控对照在案 |
+
+## P663 债（vm-viewport-boundary）2026-09-20 work 登记
+
+| 计划号 | 严重度 | 类别 | 一句话描述 | 引用位置 |
+|---|---|---|---|---|
+| P663-D1 | low | 布局语义 | **PLAN-642 T-12 Shrink 兜底退役决策挂账**——663 视口边界重写后 T-12 与 `Screen→Fixed(边界)` 恰好组合成立（Fixed 不受 Shrink 塌缩影响），故未退役；其"overflow-hidden≈overflow-y:auto"CSS 偏差仍在册。退役前提=iced 0.14 scrollable 具备安全内容对齐（未验证）或自研对齐 pass；待 iced 升级或第二嵌入宿主出现时重裁 | crates/auto-lang/src/ui/iced/renderer.rs PLAN-642 T-12 overflow_fallback 块；663 计划 §裁定-1 |
+| P663-D2 | low | 布局语义 | **spacing 定高（h-44 族）不建立视口边界**——边界判定仅认 arbitrary px（`h-[720px]`）；spacing 定高容器内的 h-screen 子仍走 Fill（可能塌缩）。爆炸半径控制裁定；语料现无此形态 | renderer.rs viewport_boundary_of（px-only）；663 计划 §详细设计 C1b |
+| P663-D3 | low | 布局语义 | **`h-full` 根 demo 不重锚定**——Full=父容器百分比原义保留（重写会破坏 demo 内部局部布局）；全屏外壳仓内惯例=h-screen。若未来语料出现 h-full 全屏外壳需再裁 | renderer.rs rewrite_viewport_walk（仅重写 Screen 族）；663 计划 §待澄清 1 |
+| P663-D4 | low | 布局语义 | **my-auto 多子项场景未按 flexbox 逐项吸收**——expand_margin_y_auto 对每个 my-auto 子独立包 h-full justify-center 列，多子同时声明时空间分配与 CSS margin:auto 的逐项吸收不完全等价；单 auto 子（嵌入 wrapper 常态）语义精确 | renderer.rs expand_margin_y_auto_walk；663 计划 §详细设计 C2 |
+| P663-D5 | medium | 编译 | **master 预存：auto-lang 无 ui-iced 特性编译必炸（非 663 引入）**——`ui/component.rs:97` 无条件引用 `crate::ui::desktop_protocol`（`#[cfg(feature="ui-iced")]` 门控，PLAN-034 位图通道），`cargo build` 以 default features 依赖 auto-lang 的下游（如独立 demo `run -r vm` 生成的启动 crate）E0433 必炸；663 验收实测复现（020 standalone 首跑 60s API 超时+构建日志 E0433，二次运行解释器 UI 兜底路径仍可用）。修法=component.rs 该函数体/引用挂 ui-iced cfg 或 desktop_protocol 退出门控。归后续 L0/专项 | crates/auto-lang/src/ui/component.rs:97 ↔ ui/mod.rs:107-108；663 验收实录 |
