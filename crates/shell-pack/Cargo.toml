@@ -1,0 +1,14 @@
+[package]
+name = "shell-pack"
+version = "0.1.0"
+edition = "2021"
+# PLAN-036 T-02：a2r 生成物（入库——027 §5.1 D5）；真编译门 = workspace
+# 成员编译（每次 cargo build）+ auto-man `test_shell_pack_lib_freshness`
+# 字节对拍。lib.rs 为生成物（DO NOT EDIT）；tests.rs 手写（冒烟/写覆盖/
+# boot 时延度量行——T-03）。
+
+[dependencies]
+auto-lang = { path = "../auto-lang", features = ["ui-iced"] }
+serde_json.workspace = true
+# a2r 全局 List 字面量（once_cell::Lazy 形态——generate_cargo_toml 同注）。
+once_cell = "1"

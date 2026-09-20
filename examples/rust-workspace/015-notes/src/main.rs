@@ -89,7 +89,7 @@ impl Component for App {
     }
 
     fn view(&self) -> View<Self::Msg> {
-        View::col().style("w-full h-screen flex-col bg-background text-foreground overflow-hidden").child(View::row().style("h-14 shrink-0 items-center justify-between gap-3 px-4 border-b border-border").child(View::row().style("w-auto items-center gap-2").child(View::icon().style("text-primary").build()).child(View::text_styled("Notes".to_string(), "text-sm font-semibold tracking-tight")).build()).child(View::row().style("w-auto items-center gap-1").child(View::button("").style("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 h-8 w-8 border-0 flex items-center justify-center rounded-md bg-transparent text-muted-foreground hover:text-foreground hover:bg-accent transition-colors").on_click(|_| AppMsg::ToggleDarkMode).build()).child(View::button(format!("{}", "New note".to_string())).style("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 h-9 w-auto border-0 flex items-center gap-1.5 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors").on_click(|_| AppMsg::NewNote).build()).build()).build()).child(View::row().style("flex-1 min-h-0").child({ let mut __c = self.nav_tree.clone(); __c.store = self.store.clone(); __c.view().map_msg(|m| AppMsg::NavTree(m)) }).child(View::col().style("flex-1 min-h-0").child(if self.store.notes.len ( ) > 0 { { let mut __c = self.editor_panel.clone(); __c.store = self.store.clone(); __c.view().map_msg(|m| AppMsg::EditorPanel(m)) } } else { View::col().style("flex-1 items-center justify-center gap-3").child(View::icon().style("text-muted-foreground/40").build()).child(View::text_styled("No notes yet".to_string(), "text-sm text-muted-foreground")).child(View::button(format!("{}", "Create your first note".to_string())).style("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 h-9 w-auto border-0 flex items-center gap-1.5 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors").on_click(|_| AppMsg::NewNote).build()).build() }).build()).build()).build()
+        View::col().style("w-full h-screen flex-col bg-background text-foreground overflow-hidden").child(View::row().style("h-14 shrink-0 items-center justify-between gap-3 px-4 border-b border-border").child(View::row().style("w-auto items-center gap-2").child(View::image_styled("lucide:notebook".to_string(), "text-primary w-[18px] h-[18px]")).child(View::text_styled("Notes".to_string(), "text-sm font-semibold tracking-tight")).build()).child(View::row().style("w-auto items-center gap-1").child(View::button("").style("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 h-8 w-8 border-0 flex items-center justify-center rounded-md bg-transparent text-muted-foreground hover:text-foreground hover:bg-accent transition-colors").on_click(|_| AppMsg::ToggleDarkMode).build()).child(View::button(format!("{}", "New note".to_string())).style("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 h-9 w-auto border-0 flex items-center gap-1.5 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors").on_click(|_| AppMsg::NewNote).build()).build()).build()).child(View::row().style("flex-1 min-h-0").child({ let mut __c = self.nav_tree.clone(); __c.store = self.store.clone(); __c.view().map_msg(|m| AppMsg::NavTree(m)) }).child(View::col().style("flex-1 min-h-0").child(if self.store.notes.len ( ) > 0 { { let mut __c = self.editor_panel.clone(); __c.store = self.store.clone(); __c.view().map_msg(|m| AppMsg::EditorPanel(m)) } } else { View::col().style("flex-1 items-center justify-center gap-3").child(View::image_styled("lucide:notebook".to_string(), "text-muted-foreground/40 w-[40px] h-[40px]")).child(View::text_styled("No notes yet".to_string(), "text-sm text-muted-foreground")).child(View::button(format!("{}", "Create your first note".to_string())).style("bg-muted border border-border text-foreground font-medium rounded-md hover:bg-muted/70 h-10 px-4 h-9 w-auto border-0 flex items-center gap-1.5 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-sm hover:bg-primary/90 transition-colors").on_click(|_| AppMsg::NewNote).build()).build() }).build()).build()).build()
     }
 
     fn state_snapshot(&self) -> std::collections::HashMap<String, auto_lang::ui::auto_val::Value> {
@@ -212,8 +212,8 @@ impl Component for NotesStore {
             NotesStoreMsg::ClearTag => {
                 if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.dirty = false; };
                 self.active_tag = "".to_string();
-                self.ApplyFilter();
-                self.SelectFirstVisible();
+                self.on(NotesStoreMsg::ApplyFilter);
+                self.on(NotesStoreMsg::SelectFirstVisible);
             }
             NotesStoreMsg::DeleteArmed => {
                 self.confirm_delete = true;
@@ -222,7 +222,7 @@ impl Component for NotesStore {
                 self.confirm_delete = false;
             }
             NotesStoreMsg::DeleteConfirmed => {
-                if self.notes.len() as i32 > 0 { delete_note((self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32)); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.active_id = 0; self.LoadDraft(); self.ApplyFilter(); };
+                if self.notes.len() as i32 > 0 { delete_note((self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32)); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.active_id = 0; self.on(NotesStoreMsg::LoadDraft); self.on(NotesStoreMsg::ApplyFilter); };
                 self.confirm_delete = false;
             }
             NotesStoreMsg::EditBody(v) => {
@@ -234,28 +234,27 @@ impl Component for NotesStore {
                 self.dirty = true;
             }
             NotesStoreMsg::LoadDraft => {
-                if self.notes.len() as i32 > 0 { self.draft_id = (self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32); self.draft_title = self.notes[(self.active_id) as usize]["title"].as_str().unwrap_or_default().to_string().to_string(); self.draft_body = self.notes[(self.active_id) as usize]["body"].as_str().unwrap_or_default().to_string().to_string(); self.draft_time = self.notes[(self.active_id) as usize]["time"].as_str().unwrap_or_default().to_string().to_string(); self.draft_folder = self.notes[(self.active_id) as usize]["folder"].as_str().unwrap_or_default().to_string().to_string(); self.draft_pinned = self.notes[(self.active_id) as usize]["pinned"].as_bool().unwrap_or(false); self.draft_tags = self.notes[(self.active_id) as usize]["tags"].as_str().unwrap_or_default().to_string(); } else { ; self.draft_id = 0; self.draft_title = "".to_string(); self.draft_body = "".to_string(); self.draft_time = "".to_string(); self.draft_folder = "".to_string(); self.draft_pinned = false; };
+                if self.notes.len() as i32 > 0 { self.draft_id = (self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32); self.draft_title = self.notes[(self.active_id) as usize]["title"].as_str().unwrap_or_default().to_string().to_string(); self.draft_body = self.notes[(self.active_id) as usize]["body"].as_str().unwrap_or_default().to_string().to_string(); self.draft_time = self.notes[(self.active_id) as usize]["time"].as_str().unwrap_or_default().to_string().to_string(); self.draft_folder = self.notes[(self.active_id) as usize]["folder"].as_str().unwrap_or_default().to_string().to_string(); self.draft_pinned = self.notes[(self.active_id) as usize]["pinned"].as_bool().unwrap_or(false); self.draft_tags = self.notes[(self.active_id) as usize]["tags"].as_str().unwrap_or_default().to_string(); } else { self.draft_id = 0; self.draft_title = "".to_string(); self.draft_body = "".to_string(); self.draft_time = "".to_string(); self.draft_folder = "".to_string(); self.draft_pinned = false; };
                 self.dirty = false;
                 self.confirm_delete = false;
             }
             NotesStoreMsg::NewNote => {
                 if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; };
                 self.dirty = false;
-                ;
                 self.search = "".to_string();
                 let mut f = "".to_string();
                 if self.active_folder != "all".to_string() { if self.active_folder != "pinned".to_string() { f = self.active_folder; }; };
                 create_note("".to_string(), "".to_string(), f);
                 self.notes = list_notes();
                 self.active_id = 0;
-                self.LoadDraft();
-                self.ApplyFilter();
+                self.on(NotesStoreMsg::LoadDraft);
+                self.on(NotesStoreMsg::ApplyFilter);
             }
             NotesStoreMsg::SaveDraft => {
                 if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; };
                 self.dirty = false;
-                self.LoadDraft();
-                self.ApplyFilter();
+                self.on(NotesStoreMsg::LoadDraft);
+                self.on(NotesStoreMsg::ApplyFilter);
             }
             NotesStoreMsg::SeedVocab => {
                 let mut dup = false;
@@ -263,56 +262,56 @@ impl Component for NotesStore {
             }
             NotesStoreMsg::SelectFirstVisible => {
                 if self.visible_pinned.len() as i32 > 0 { self.active_id = self.visible_pinned[0]; } else if self.visible_notes.len() as i32 > 0 { self.active_id = self.visible_notes[0]; };
-                self.LoadDraft();
+                self.on(NotesStoreMsg::LoadDraft);
             }
             NotesStoreMsg::SelectFolder(f) => {
                 if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.dirty = false; };
                 self.active_folder = f.to_string();
                 self.active_tag = "".to_string();
-                self.ApplyFilter();
-                self.SelectFirstVisible();
+                self.on(NotesStoreMsg::ApplyFilter);
+                self.on(NotesStoreMsg::SelectFirstVisible);
             }
             NotesStoreMsg::SelectNote(i) => {
                 if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; };
                 self.dirty = false;
                 self.active_id = i;
-                self.LoadDraft();
+                self.on(NotesStoreMsg::LoadDraft);
             }
             NotesStoreMsg::SelectTag(t) => {
                 if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.dirty = false; };
                 self.active_tag = t.to_string();
                 self.active_folder = "all".to_string();
-                self.ApplyFilter();
-                self.SelectFirstVisible();
+                self.on(NotesStoreMsg::ApplyFilter);
+                self.on(NotesStoreMsg::SelectFirstVisible);
             }
             NotesStoreMsg::SetAccent(name) => {
                 self.accent_color = name.to_string();
             }
             NotesStoreMsg::SetMode(m) => {
-                if m == "dark".to_string() { if self.dark_mode == false { self.ToggleDarkMode(); }; } else { if self.dark_mode == true { self.ToggleDarkMode(); }; };
+                if m == "dark".to_string() { if self.dark_mode == false { self.on(NotesStoreMsg::ToggleDarkMode); }; } else { if self.dark_mode == true { self.on(NotesStoreMsg::ToggleDarkMode); }; };
             }
             NotesStoreMsg::SetSearch(q) => {
                 if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.dirty = false; };
                 self.search = q.to_string();
                 if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); };
                 self.active_id = 0;
-                self.LoadDraft();
-                self.ApplyFilter();
+                self.on(NotesStoreMsg::LoadDraft);
+                self.on(NotesStoreMsg::ApplyFilter);
             }
             NotesStoreMsg::TagAdded(t) => {
-                if self.notes.len() as i32 > 0 { let mut tl = vec![]; let mut exists = false; for tg in self.notes[(self.active_id) as usize]["tags"].as_array().into_iter().flatten() { if tg == t { exists = true; }; tl.push(tg); }; if exists == false { tl.push(t); }; update_tags((self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32), tl); let mut dup = false; for mut e in self.all_tags.iter_mut() { if e == t { dup = true; }; }; if dup == false { self.all_tags.push(t); }; if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.LoadDraft(); self.ApplyFilter(); };
+                if self.notes.len() as i32 > 0 { let mut tl = vec![]; let mut exists = false; for tg in self.notes[(self.active_id) as usize]["tags"].as_array().into_iter().flatten() { if tg == t { exists = true; }; tl.push(tg); }; if exists == false { tl.push(t); }; update_tags((self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32), tl); let mut dup = false; for mut e in self.all_tags.iter_mut() { if e == t { dup = true; }; }; if dup == false { self.all_tags.push(t); }; if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.on(NotesStoreMsg::LoadDraft); self.on(NotesStoreMsg::ApplyFilter); };
             }
             NotesStoreMsg::TagRemoved(t) => {
-                if self.notes.len() as i32 > 0 { let mut tl = vec![]; for tg in self.notes[(self.active_id) as usize]["tags"].as_array().into_iter().flatten() { if tg.as_str().unwrap_or_default() != t.as_str() { tl.push(tg); }; }; update_tags((self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32), tl); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.LoadDraft(); self.ApplyFilter(); };
+                if self.notes.len() as i32 > 0 { let mut tl = vec![]; for tg in self.notes[(self.active_id) as usize]["tags"].as_array().into_iter().flatten() { if tg.as_str().unwrap_or_default() != t.as_str() { tl.push(tg); }; }; update_tags((self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32), tl); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.on(NotesStoreMsg::LoadDraft); self.on(NotesStoreMsg::ApplyFilter); };
             }
             NotesStoreMsg::ToggleDarkMode => {
                 self.dark_mode = !(self.dark_mode);
             }
             NotesStoreMsg::TogglePin(idx) => {
-                if idx < self.notes.len() as i32 { ; let mut cur = self.notes[(idx) as usize]["pinned"].as_bool().unwrap_or(false); self.notes[(idx)as usize]["pinned"] = serde_json::json!(!(as usize]["pinned"].as_bool().unwrap_or(false))); };
+                if idx < self.notes.len() as i32 { let mut cur = self.notes[(idx) as usize]["pinned"].as_bool().unwrap_or(false); self.notes[(idx)as usize]["pinned"] = serde_json::json!(!(as usize]["pinned"].as_bool().unwrap_or(false))); };
             }
             NotesStoreMsg::TogglePinActive => {
-                if self.notes.len() as i32 > 0 { if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); self.dirty = false; }; toggle_pin((self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32)); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.LoadDraft(); self.ApplyFilter(); };
+                if self.notes.len() as i32 > 0 { if self.dirty { update_note(self.draft_id, self.draft_title.clone(), self.draft_body.clone()); self.dirty = false; }; toggle_pin((self.notes[(self.active_id) as usize]["id"].as_i64().unwrap_or(0) as i32)); if self.search == "".to_string() { self.notes = list_notes(); } else { self.notes = search_notes(self.search.clone()); }; self.on(NotesStoreMsg::LoadDraft); self.on(NotesStoreMsg::ApplyFilter); };
             }
             NotesStoreMsg::ToggleSettings => {
                 self.show_settings = !(self.show_settings);
@@ -322,10 +321,10 @@ impl Component for NotesStore {
                 self.active_folder = "all".to_string();
                 self.active_tag = "".to_string();
                 self.notes = list_notes();
-                self.SeedVocab();
+                self.on(NotesStoreMsg::SeedVocab);
                 self.active_id = 0;
-                self.LoadDraft();
-                self.ApplyFilter();
+                self.on(NotesStoreMsg::LoadDraft);
+                self.on(NotesStoreMsg::ApplyFilter);
             }
         }
     }
@@ -421,6 +420,9 @@ fn search_notes(id: i32) -> Option<Value> {
 fn main() -> auto_lang::ui::AppResult<()> {
     #[cfg(feature = "ui-iced")]
     {
+        if std::env::var("AUTO_VM_TITLE").is_err() {
+            std::env::set_var("AUTO_VM_TITLE", "备忘录");
+        }
         // Plan 020 T-05：孵化参数在册 → native 协议 client 臂（返回即走）；
         // 无标记 → 独立窗（下行 iced_entry 现行行为零变化）。
         let __autodesk_args: Vec<String> = std::env::args().collect();
@@ -451,20 +453,31 @@ fn main() -> auto_lang::ui::AppResult<()> {
                 __render.as_deref(),
                 None,
             );
+            // PLAN-026 T-06 翻转：组件先行构造（auto 裁决 = 覆盖扫描制
+            // ——queue 优先 + NotCovered 降级 independent 留痕）。
+            let __component = App::default();
             let (__frame_mode, __downgraded, __log) =
                 auto_lang::ui::desktop_protocol::client_entry::resolve_native_frame_mode(
                     __mode,
                     "App",
+                    &__component.view(),
                 );
             if let Some(__l) = &__log {
                 eprintln!("[autodesk-client] {__l}");
             }
-            let __target = match __pipe {
+            let __rqhost = __autodesk_args.iter().any(|a| a == "--autodesk-rqhost");
+            let __target = if __rqhost {
+                // PLAN-031：rqhost 采纳（well-known rendezvous + exit-on-EOF）。
+                auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Rqhost {
+                    wellknown: __broker.clone(),
+                    app_name: __app_name.clone(),
+                }
+            } else { match __pipe {
                 Some(p) => auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Direct(p),
                 None => auto_lang::ui::desktop_protocol::client_entry::ClientTarget::Broker {
                     broker_pipe: __broker,
                 },
-            };
+            } };
             let __opts = auto_lang::ui::desktop_protocol::client_entry::ClientOpts {
                 app_name: __app_name.clone(),
                 title: __app_name,
@@ -474,7 +487,7 @@ fn main() -> auto_lang::ui::AppResult<()> {
                 auto_downgraded: __downgraded,
             };
             return auto_lang::ui::desktop_protocol::client_entry::run_native_client(
-                App::default(),
+                __component,
                 __opts,
                 __target,
             )

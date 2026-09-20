@@ -1204,7 +1204,22 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             }
             let size = style.font_size.unwrap_or(TEXT_SIZE);
             let line_h = size * LINE_H_FACTOR;
-            let w = measure_text(content, size);
+            // PLAN-036 T-02：truncate 真渲——超 avail_w 时逐字收缩 + `…`
+            // 尾接（CSS truncate 语义的单行省略号近似；018 债清偿）。
+            let mut text = content.clone();
+            let mut w = measure_text(&text, size);
+            if style.truncate && avail_w > 0.0 {
+                const ELLIPSIS: &str = "…";
+                let ell_w = measure_text(ELLIPSIS, size);
+                if w > avail_w {
+                    while w + ell_w > avail_w && !text.is_empty() {
+                        text.pop();
+                        w = measure_text(&text, size);
+                    }
+                    text.push_str(ELLIPSIS);
+                    w = measure_text(&text, size);
+                }
+            }
             // PLAN-032 T-02（D5）：text_center 之外，center_children
             //（SelfCenter/mx-auto 族）同作水平居中——收缩文本（自然宽）
             // 的居中在臂内消费（块流 center_children 通道只覆盖固定宽子级）。
@@ -1222,7 +1237,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     color: style.fg.unwrap_or(TEXT_FG),
                     weight: 700,
                     italic: false,
-                    text: content.clone(),
+                    text,
                 });
             } else {
                 ctx.ops.push(DrawOp::Text {
@@ -1231,7 +1246,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     size,
                     line_height: line_h,
                     color: style.fg.unwrap_or(TEXT_FG),
-                    text: content.clone(),
+                    text,
                 });
             }
             Laid { size: (w, line_h) }
@@ -2279,6 +2294,9 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
         StyleClass::Fixed | StyleClass::Sticky => s.position_degraded = true,
         StyleClass::TopOffset(px) => s.offset_top = Some(*px),
         StyleClass::LeftOffset(px) => s.offset_left = Some(*px),
+        // PLAN-036 T-02：truncate 真渲标记（Text 发射臂 measure 收缩 +
+        // `…` 尾接——018 真渲债清偿；覆盖 prefixes ⑫ 同批）。
+        StyleClass::Truncate => s.truncate = true,
         StyleClass::RightOffset(px) => s.offset_right = Some(*px),
         StyleClass::BottomOffset(px) => s.offset_bottom = Some(*px),
         StyleClass::ZIndex(z) => s.z_index = Some(*z),
@@ -2678,14 +2696,16 @@ mod tests {
                 // 解释态同款保真边界）；opacity 亦放行（029 T-08 前缀⑦
                 // ——alpha 合成无通道的显式降级）。PLAN-032 T-02 起
                 // hidden 转真渲放行（D3 display:none）——防漏钉样本换
-                // truncate（文本裁剪渲染 not-yet，§1.8 在册稳定缺项）。
-                View::text_styled("x", "truncate")
+                // truncate（§1.8 在册稳定缺项）；PLAN-036 T-02（⑫）
+                // truncate 亦真渲放行（Text 发射臂 `…`）——样本再换
+                // rotate-1（视觉变换 not-yet，定位族在册）。
+                View::text_styled("x", "rotate-1")
             }
         }
 
         let p = RqProjector::new(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("style:truncate"), "native 无 truncate 渲染: {err}");
+        assert!(err.contains("style:rotate-1"), "native 无 rotate 渲染: {err}");
     }
 
     /// PLAN-032 T-02（D3）：hidden = display:none——子树整体不渲染不占位

@@ -312,6 +312,12 @@ impl Coverage {
             // 四槽填充）/ line-clamp- 行数截断（降级放行 no-op 随注）。
             "inset-",
             "line-clamp-",
+            // PLAN-036 T-02（⑫）：truncate 真渲放行——native 投影器 Text
+            // 发射臂 measure 收缩 + `…` 尾接（018 真渲债清偿；编译轨
+            // shell-pack desktop 面 gate 所需）。break-words 同批降级
+            // 放行（queue 臂无折行通道 = 单行渲染 no-op，语义同 ⑥ 族）。
+            "truncate",
+            "break-words",
         ]
         .into_iter()
         .map(String::from)
@@ -1349,11 +1355,16 @@ mod tests {
         let line = line.expect("观测行");
         assert!(line.contains("flipped@ramp3"), "观测行文案: {line}");
 
-        let uncovered = crate::ui::view::View::<()>::text_styled("x", "truncate");
+        let uncovered = crate::ui::view::View::<()>::text_styled("x", "rotate-1");
         let (mode2, _, line2) = resolve_native_frame_mode(RM::Auto, "U", &uncovered);
         assert_eq!(mode2, FrameMode::Pixels, "未覆盖降级 independent 不变");
         let line2 = line2.expect("降级观测行");
-        assert!(line2.contains("truncate"), "缺项清单随行: {line2}");
+        assert!(line2.contains("rotate-1"), "缺项清单随行: {line2}");
+        // PLAN-036 T-02（⑫）：truncate 真渲放行后不再作未覆盖样本
+        //（rotate 接任——定位族 not-yet 在册）。
+        let covered_trunc = crate::ui::view::View::<()>::text_styled("x", "truncate");
+        let (mode3, _, _) = resolve_native_frame_mode(RM::Auto, "T2", &covered_trunc);
+        assert_eq!(mode3, FrameMode::Commands, "truncate 真渲后 Covered");
     }
 
     /// PLAN-032 T-07：六例**运行时视图**（path 上下文装载 + Component::
@@ -1371,7 +1382,9 @@ mod tests {
         // capability-tests（双根解析）。
         let expect: &[(&str, Option<&str>)] = &[
             ("012-clock", None),
-            ("018-book-reader", Some("style:truncate")),
+            // PLAN-036 T-02（⑫）：truncate 真渲放行——018 翻 Covered
+            //（原缺项 style:truncate 清偿，Text 发射臂 `…` 真渲）。
+            ("018-book-reader", None),
             ("021-blog-viewer", None),
             ("024-charts", None),
             ("041-auto-edit", Some("tag:codeeditor")),

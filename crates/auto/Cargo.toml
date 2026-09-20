@@ -7,6 +7,9 @@ default-run = "auto"
 [dependencies]
 clap = { workspace = true }
 auto-lang = { path = "../auto-lang" }
+# PLAN-036 T-03（D4）：编译壳装配点——cmd_autodesk --autodesk-shell 缺省编译轨
+#（mount_face 工厂注入；显式 AUTO_SHELL_PACK = 解释双轨）。
+shell-pack = { path = "../shell-pack" }
 auto-val = { path = "../auto-val" }
 auto-man = { path = "../auto-man" }
 miette = { workspace = true }

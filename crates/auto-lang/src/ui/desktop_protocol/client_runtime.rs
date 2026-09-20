@@ -120,6 +120,10 @@ pub(crate) struct NodeStyle {
     pub(crate) offset_right: Option<f32>,
     pub(crate) offset_bottom: Option<f32>,
     pub(crate) z_index: Option<i16>,
+    /// PLAN-036 T-02：truncate（单行 + 溢出省略号）——native 投影器
+    /// Text 发射臂真渲（measure 逐字收缩 + `…` 尾接，avail_w 内截断；
+    /// 018 真渲债清偿面）。解释态 queue 臂 parse 不设置（I4 分表）。
+    pub(crate) truncate: bool,
 }
 
 impl NodeStyle {

@@ -65,16 +65,157 @@ impl ShellGeometry {
     }
 }
 
-/// 双常驻面会话（face → AppProjector；AppProjector 接缝 = 渲染/命中/
-/// 输入/revision 全套——编译面轨替换点）。
+/// 编译组件的外部写态面（PLAN-036 D8——codegen 生成实现；解释臂
+/// `DynamicComponent` 桥接既有 write_state/call_handler，两臂同体）。
+pub trait ShellStateAccess {
+    /// 标量写（`__wm_*`/`__desktop_*` 家族；返回 false = 组件无此键）。
+    fn shell_write(&mut self, key: &str, value: auto_val::Value) -> bool;
+    /// 数组写（平行列表家族）。
+    fn shell_write_vec(&mut self, key: &str, values: Vec<auto_val::Value>) -> bool;
+    /// 召唤事件（宿主写状态不触发 handler——随快照显式携带，027 语义；
+    /// 编译组件 = 事件名 → Msg variant `on()` 派发）。
+    fn shell_dispatch(&mut self, event: &str);
+    /// 读字符串态（`__desktop_cmd` 读走面）。
+    fn shell_read_str(&self, key: &str) -> Option<String>;
+}
+
+/// 壳面装配接缝（PLAN-036 D8）：`ShellFaces` 消费面的 trait 化——
+/// 解释臂（`FaceProjector<DynamicComponent>`）与编译臂（a2r 生成组件
+/// 经 `FaceProjector<C>`）同接口互换（SC:10-14 替换点注记的落地）。
+pub trait ShellSurface {
+    /// 投影 writes 应用（`interpreted_writes()` lowering 落点——叶面
+    /// 保形：bool → "1"/"" 已在宿主侧 lowering 完成，wire 上是 bool）。
+    fn apply_writes(&mut self, writes: Vec<ShellWrite>);
+    /// 召唤事件（`ShellEvent` 名——child 侧消费单点）。
+    fn dispatch_event(&mut self, name: &str);
+    /// 标量写（时钟/光标低频面）。
+    fn write_scalar(&mut self, key: &str, value: &str);
+    /// 读字符串态（`__desktop_cmd` 读走——c4 语义：读 + 清空配对）。
+    fn read_state_str(&self, key: &str) -> Option<String>;
+    /// 清字符串态（读走配对清空）。
+    fn clear_state_str(&mut self, key: &str);
+    /// 输入路由（坐标已由宿主平移为面局部系）。
+    fn on_input(&mut self, input: &InputMsg);
+    /// 渲染一面（queue 臂 DrawList）。
+    fn render_frame(&mut self) -> Option<crate::ui::desktop_protocol::message::DrawList>;
+    fn revision(&self) -> u64;
+    fn bump_revision(&mut self);
+    /// 面命中区矩形快照（e2e 点击钩子消费）。
+    fn hit_rects(&self) -> Vec<crate::ui::desktop_protocol::message::WRect>;
+}
+
+/// 泛型面装配（D8）：`RqProjector<C>` + `ShellStateAccess` →
+/// `ShellSurface`——投影器提供渲染/命中/输入/revision，状态访问 trait
+/// 提供写态/事件/读走（解释/编译两臂的同一适配体）。
+pub struct FaceProjector<C: crate::ui::component::Component + ShellStateAccess> {
+    inner: RqProjector<C>,
+}
+
+impl<C: crate::ui::component::Component + ShellStateAccess> FaceProjector<C> {
+    pub fn new(component: C, width: f32, height: f32) -> Self {
+        Self { inner: RqProjector::new(component, width, height) }
+    }
+
+    /// 029 覆盖门（装载期过门——027 五件 Covered 前提）。
+    pub fn ensure_covered(&self) -> Result<(), String> {
+        self.inner.ensure_covered()
+    }
+
+    pub fn component_mut(&mut self) -> &mut C {
+        self.inner.component_mut()
+    }
+}
+
+impl<C: crate::ui::component::Component + ShellStateAccess> ShellSurface
+    for FaceProjector<C>
+{
+    fn apply_writes(&mut self, writes: Vec<ShellWrite>) {
+        for w in writes {
+            match w {
+                ShellWrite::Scalar(k, v) => {
+                    let _ = self.inner.component_mut().shell_write(&k, v);
+                }
+                ShellWrite::Array(k, vs) => {
+                    let _ = self.inner.component_mut().shell_write_vec(&k, vs);
+                }
+            }
+        }
+    }
+
+    fn dispatch_event(&mut self, name: &str) {
+        self.inner.component_mut().shell_dispatch(name);
+    }
+
+    fn write_scalar(&mut self, key: &str, value: &str) {
+        let _ = self
+            .inner
+            .component_mut()
+            .shell_write(key, auto_val::Value::str(value));
+    }
+
+    fn read_state_str(&self, key: &str) -> Option<String> {
+        self.inner.component().shell_read_str(key)
+    }
+
+    fn clear_state_str(&mut self, key: &str) {
+        let _ = self
+            .inner
+            .component_mut()
+            .shell_write(key, auto_val::Value::str(""));
+    }
+
+    fn on_input(&mut self, input: &InputMsg) {
+        self.inner.on_input(input);
+    }
+
+    fn render_frame(&mut self) -> Option<crate::ui::desktop_protocol::message::DrawList> {
+        Some(self.inner.render_frame())
+    }
+
+    fn revision(&self) -> u64 {
+        self.inner.revision()
+    }
+
+    fn bump_revision(&mut self) {
+        self.inner.bump_revision();
+    }
+
+    fn hit_rects(&self) -> Vec<crate::ui::desktop_protocol::message::WRect> {
+        self.inner.hit_rects()
+    }
+}
+
+impl ShellStateAccess for crate::ui::dynamic::DynamicComponent {
+    fn shell_write(&mut self, key: &str, value: auto_val::Value) -> bool {
+        self.write_state(key, value).is_ok()
+    }
+
+    fn shell_write_vec(&mut self, key: &str, values: Vec<auto_val::Value>) -> bool {
+        self.write_state_vec(key, values).is_ok()
+    }
+
+    fn shell_dispatch(&mut self, event: &str) {
+        let _ = self.bridge_mut().call_handler(event, &[]);
+    }
+
+    fn shell_read_str(&self, key: &str) -> Option<String> {
+        match self.read_state(key) {
+            Ok(auto_val::Value::Str(s)) => Some(s.as_str().to_string()),
+            _ => None,
+        }
+    }
+}
+
+/// 双常驻面会话（face → ShellSurface；解释装载/编译组件两轨的装配
+/// 面——PLAN-036 D8 替换点）。
 pub struct ShellFaces {
     /// chrome 面（shell.at 任务栏）。投影器 = RqProjector（View 树
     /// 全展开渲染——for/conditional 驱动的 dock/窗口条目；AppProjector
     /// 队列臂对 ForLoop/Conditional 为 no-op[client_runtime.rs layout
     /// walker]，shell 面不可用——p030 e2e 腿 3 实测定轨）。
-    chrome: RqProjector<crate::ui::dynamic::DynamicComponent>,
+    chrome: Box<dyn ShellSurface>,
     /// background 面（desktop.at 桌面图标）。
-    background: RqProjector<crate::ui::dynamic::DynamicComponent>,
+    background: Box<dyn ShellSurface>,
     geometry: ShellGeometry,
 }
 
@@ -89,29 +230,41 @@ impl ShellFaces {
         let background = crate::build_dynamic_component(&bg_src, None)
             .map_err(|e| format!("壳 background 面装载失败: {e}"))?;
         let mut chrome =
-            RqProjector::new(chrome, geometry.viewport_w, geometry.band_h);
+            FaceProjector::new(chrome, geometry.viewport_w, geometry.band_h);
         let mut background =
-            RqProjector::new(background, geometry.viewport_w, geometry.viewport_h);
+            FaceProjector::new(background, geometry.viewport_w, geometry.viewport_h);
         if let Err(gate) = chrome.ensure_covered() {
             return Err(format!("壳 chrome 面 {gate}"));
         }
         if let Err(gate) = background.ensure_covered() {
             return Err(format!("壳 background 面 {gate}"));
         }
-        Ok(Self { chrome, background, geometry })
+        Ok(Self {
+            chrome: Box::new(chrome),
+            background: Box::new(background),
+            geometry,
+        })
+    }
+
+    /// 编译装配（PLAN-036 D8）：外部供面（a2r 生成 crate 的
+    /// `mount_face` 工厂产物——crates/auto cmd_autodesk 装配点注入）。
+    /// 面已由工厂 ensure_covered 过门。
+    pub fn from_faces(
+        geometry: ShellGeometry,
+        chrome: Box<dyn ShellSurface>,
+        background: Box<dyn ShellSurface>,
+    ) -> Self {
+        Self { chrome, background, geometry }
     }
 
     pub fn geometry(&self) -> ShellGeometry {
         self.geometry
     }
 
-    fn projector_mut(
-        &mut self,
-        face: u8,
-    ) -> Option<&mut RqProjector<crate::ui::dynamic::DynamicComponent>> {
+    fn projector_mut(&mut self, face: u8) -> Option<&mut dyn ShellSurface> {
         match face {
-            shell_face::SHELL => Some(&mut self.chrome),
-            shell_face::DESKTOP_SURFACE => Some(&mut self.background),
+            shell_face::SHELL => Some(&mut *self.chrome),
+            shell_face::DESKTOP_SURFACE => Some(&mut *self.background),
             // overlay 三面 v1 维持 in-proc 懒挂载（D6 边界）——忽略留痕。
             _ => None,
         }
@@ -128,14 +281,9 @@ impl ShellFaces {
                     return false;
                 };
                 let Some(p) = self.projector_mut(face) else { return false };
-                apply_writes(p, proj.interpreted_writes());
+                p.apply_writes(proj.interpreted_writes());
                 if std::env::var("AUTO030_TRACE").is_ok() {
-                    let n = p
-                        .component()
-                        .read_state_as_vec("__wm_wins")
-                        .map(|v| v.len())
-                        .unwrap_or(usize::MAX);
-                    eprintln!("[p030-child] applied shell proj: __wm_wins.len={n} proj.wins={}", proj.wins.len());
+                    eprintln!("[p030-child] applied shell proj: proj.wins={}", proj.wins.len());
                 }
                 p.bump_revision();
                 true
@@ -149,12 +297,9 @@ impl ShellFaces {
                 // 027 语义）。
                 let events = snap.events.clone();
                 let Some(p) = self.projector_mut(face) else { return false };
-                apply_writes(p, snap.interpreted_writes());
+                p.apply_writes(snap.interpreted_writes());
                 for e in &events {
-                    let _ = p
-                        .component_mut()
-                        .bridge_mut()
-                        .call_handler(shell_event_name(e), &[]);
+                    p.dispatch_event(shell_event_name(e));
                 }
                 p.bump_revision();
                 true
@@ -166,12 +311,8 @@ impl ShellFaces {
     /// 时钟（分钟门数据——chrome 面任务栏钟）。
     pub fn apply_clock(&mut self, face: u8, time: &str, date: &str) -> bool {
         let Some(p) = self.projector_mut(face) else { return false };
-        let _ = p
-            .component_mut()
-            .write_state("__wm_clock", auto_val::Value::str(time));
-        let _ = p
-            .component_mut()
-            .write_state("__wm_date", auto_val::Value::str(date));
+        p.write_scalar("__wm_clock", time);
+        p.write_scalar("__wm_date", date);
         p.bump_revision();
         true
     }
@@ -180,12 +321,8 @@ impl ShellFaces {
     /// 宿主侧消费门控制推送节拍[D3 定案]）。
     pub fn apply_cursor(&mut self, face: u8, x: f32, y: f32) -> bool {
         let Some(p) = self.projector_mut(face) else { return false };
-        let _ = p
-            .component_mut()
-            .write_state("__desktop_cursor_x", auto_val::Value::str(&x.to_string()));
-        let _ = p
-            .component_mut()
-            .write_state("__desktop_cursor_y", auto_val::Value::str(&y.to_string()));
+        p.write_scalar("__desktop_cursor_x", &x.to_string());
+        p.write_scalar("__desktop_cursor_y", &y.to_string());
         p.bump_revision();
         true
     }
@@ -200,21 +337,11 @@ impl ShellFaces {
     /// 命令读走（c4 语义 child 化：read_state + 清空；面局部 `__desktop_cmd`）。
     pub fn drain_commands(&mut self, face: u8) -> Vec<String> {
         let Some(p) = self.projector_mut(face) else { return Vec::new() };
-        let cur = p
-            .component()
-            .read_state("__desktop_cmd")
-            .ok()
-            .and_then(|v| match v {
-                auto_val::Value::Str(s) => Some(s.as_str().to_string()),
-                _ => None,
-            })
-            .unwrap_or_default();
+        let cur = p.read_state_str("__desktop_cmd").unwrap_or_default();
         if cur.is_empty() {
             return Vec::new();
         }
-        let _ = p
-            .component_mut()
-            .write_state("__desktop_cmd", auto_val::Value::str(""));
+        p.clear_state_str("__desktop_cmd");
         cur.split('\n')
             .filter(|r| !r.trim().is_empty())
             .map(|r| r.trim_end_matches('\r').to_string())
@@ -226,7 +353,7 @@ impl ShellFaces {
         &mut self,
         face: u8,
     ) -> Option<crate::ui::desktop_protocol::message::DrawList> {
-        self.projector_mut(face).map(|p| p.render_frame())
+        self.projector_mut(face).and_then(|p| p.render_frame())
     }
 
     pub fn revision(&self, face: u8) -> u64 {
@@ -247,21 +374,6 @@ impl ShellFaces {
     }
 }
 
-fn apply_writes(
-    p: &mut RqProjector<crate::ui::dynamic::DynamicComponent>,
-    writes: Vec<ShellWrite>,
-) {
-    for w in writes {
-        match w {
-            ShellWrite::Scalar(k, v) => {
-                let _ = p.component_mut().write_state(k, v);
-            }
-            ShellWrite::Array(k, vs) => {
-                let _ = p.component_mut().write_state_vec(k, vs);
-            }
-        }
-    }
-}
 
 /// 每表面帧产状态（内联帧：frame_id 单调 + 双槽轮转——FrameAck 归还）。
 #[derive(Default)]
@@ -505,9 +617,21 @@ fn frame_ops(frame: &ProtocolMsg) -> usize {
 
 /// `auto run --autodesk-shell` 产品入口（cmd_autodesk 分派）。
 /// 几何：AUTO_SHELL_GEOM env（spawn 注入）> 缺省 1280x800x48。
+/// 解释装载缺省（开发态——显式 AUTO_SHELL_PACK 路径；编译轨经
+/// `run_shell_outproc_with` 由 cmd_autodesk 装配，PLAN-036 D4）。
 pub fn run_shell_outproc(broker_pipe: &str) -> Result<(), String> {
+    run_shell_outproc_with(broker_pipe, ShellFaces::load)
+}
+
+/// 供面工厂形态（PLAN-036 D8）：编译轨装配点（crates/auto
+/// cmd_autodesk——shell_pack::mount_face 工厂注入；auto-lang 不引
+/// 生成 crate，无环）。
+pub fn run_shell_outproc_with(
+    broker_pipe: &str,
+    faces_factory: impl FnOnce(ShellGeometry) -> Result<ShellFaces, String>,
+) -> Result<(), String> {
     let geometry = ShellGeometry::from_env().unwrap_or_else(ShellGeometry::fallback);
-    let faces = ShellFaces::load(geometry)?;
+    let faces = faces_factory(geometry)?;
     let pump = ShellPump::start(broker_pipe, geometry, faces)?;
     pump.run()
 }

@@ -1753,47 +1753,9 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
     let main_widget = extract_main_widget(components);
     let main_msg = format!("{}Msg", main_widget);
 
-    // Strip duplicate imports — RustGenerator already emits them
-    let mut cleaned = components.trim()
-        .replace("use auto_lang::ui::{Component, View};\n", "")
-        .replace("use auto_lang::ui::{Component, View};", "");
-
-    // a2r fix: computed properties are generated as methods (fn name(&self)),
-    // but all code accesses them as fields. Scan for `pub fn NAME(&self)` to
-    // discover all computed methods, then add () to field-style accesses.
-    // This runs at file level so cross-widget computed (store.history accessed
-    // from App) is caught regardless of widget generation order.
-    let computed_methods: Vec<String> = {
-        let mut names = Vec::new();
-        for line in cleaned.lines() {
-            let trimmed = line.trim();
-            // Match: pub fn NAME(&self) -> ... {
-            if trimmed.starts_with("pub fn ") && trimmed.contains("(&self)") {
-                if let Some(name) = trimmed
-                    .strip_prefix("pub fn ")
-                    .and_then(|s| s.split('(').next())
-                {
-                    // Skip obvious non-computed methods (view, on, new, state_snapshot, etc.)
-                    if !["view", "on", "new", "state_snapshot", "default", "clone"].contains(&name) {
-                        names.push(name.to_string());
-                    }
-                }
-            }
-        }
-        names
-    };
-    for cname in &computed_methods {
-        for prefix in [format!("self.{}", cname), format!("self.store.{}", cname)] {
-            let with_call = format!("{}()", prefix);
-            if cleaned.contains(&with_call) {
-                continue;
-            }
-            cleaned = cleaned.replace(&format!("{}.", prefix), &format!("{}().", with_call));
-            cleaned = cleaned.replace(&format!("{},", prefix), &format!("{},", with_call));
-            cleaned = cleaned.replace(&format!("{})", prefix), &format!("{})", with_call));
-            cleaned = cleaned.replace(&format!("{} ", prefix), &format!("{} ", with_call));
-        }
-    }
+    // 剥重复 import + computed 属性字段式访问修补（shell-lib 目标同源
+    // 提取件——prepare_generated_components）。
+    let cleaned = prepare_generated_components(components);
 
     // Detect async init: look for __InitLoaded variant in generated code
     let async_init_func = extract_init_api_func(cleaned.trim());
@@ -2204,6 +2166,353 @@ tokio.workspace = true
 iced.workspace = true
 "#
     )
+}
+
+/// a2r fix 共用件（wrap_example 原内联体提取——shell-lib 目标同源复用）：
+/// ① 剥 RustGenerator 已发的重复 import；② computed 属性字段式访问修补
+/// （文件级扫描 `pub fn NAME(&self)` → `self.NAME()` 调用点改写——跨
+/// widget computed 同捕）。
+fn prepare_generated_components(components: &str) -> String {
+    // Strip duplicate imports — RustGenerator already emits them
+    let mut cleaned = components.trim()
+        .replace("use auto_lang::ui::{Component, View};\n", "")
+        .replace("use auto_lang::ui::{Component, View};", "");
+
+    // a2r fix: computed properties are generated as methods (fn name(&self)),
+    // but all code accesses them as fields. Scan for `pub fn NAME(&self)` to
+    // discover all computed methods, then add () to field-style accesses.
+    // This runs at file level so cross-widget computed (store.history accessed
+    // from App) is caught regardless of widget generation order.
+    let computed_methods: Vec<String> = {
+        let mut names = Vec::new();
+        for line in cleaned.lines() {
+            let trimmed = line.trim();
+            // Match: pub fn NAME(&self) -> ... {
+            if trimmed.starts_with("pub fn ") && trimmed.contains("(&self)") {
+                if let Some(name) = trimmed
+                    .strip_prefix("pub fn ")
+                    .and_then(|s| s.split('(').next())
+                {
+                    // Skip obvious non-computed methods (view, on, new, state_snapshot, etc.)
+                    if !["view", "on", "new", "state_snapshot", "default", "clone"].contains(&name) {
+                        names.push(name.to_string());
+                    }
+                }
+            }
+        }
+        names
+    };
+    for cname in &computed_methods {
+        for prefix in [format!("self.{}", cname), format!("self.store.{}", cname)] {
+            let with_call = format!("{}()", prefix);
+            if cleaned.contains(&with_call) {
+                continue;
+            }
+            cleaned = cleaned.replace(&format!("{}.", prefix), &format!("{}().", with_call));
+            cleaned = cleaned.replace(&format!("{},", prefix), &format!("{},", with_call));
+            cleaned = cleaned.replace(&format!("{})", prefix), &format!("{})", with_call));
+            cleaned = cleaned.replace(&format!("{} ", prefix), &format!("{} ", with_call));
+        }
+    }
+    cleaned
+}
+
+// ==================== PLAN-036 T-02：shell pack 无窗组件库 ====================
+//
+// D7 定案：五件 .at（auto-os/shell 权威源）→ lib crate `crates/shell-pack`
+// （入库 workspace 成员——每次 cargo build 即真编译门；027 §5.1 D5 入库
+// 裁定复活）。产物 = 五组件 + `SHELL_MANIFEST` const（shell_projection
+// 同形）+ `mount_face(id, w, h)` 工厂 + 每组件 `ShellStateAccess` 生成
+// 实现（string-key 写态 lowering / 召唤事件 dispatch / 命令读走——D8
+// 接缝的编译臂）。freshness 门（`test_shell_pack_lib_freshness`）以本
+// 生成器对拍入库物——pack 改动后须 `regen_shell_pack`（#[ignore] 测试）
+// 重生成 + 提交。
+
+/// 五件清单（与 auto-lang `shell_projection::SHELL_MANIFEST` 同源——
+/// id/ widget / pack 文件名）。
+const SHELL_LIB_FACES: [(&str, &str, &str); 5] = [
+    ("shell", "Desktop", "shell.at"),
+    ("desktop", "DesktopSurface", "desktop.at"),
+    ("switcher", "Switcher", "switcher.at"),
+    ("notification_center", "NotificationCenter", "notification_center.at"),
+    ("dashboard", "DashboardPanel", "dashboard.at"),
+];
+
+/// 召唤事件全集（`shell_projection::ShellEvent` 名——dispatch 生成臂的
+/// 匹配面）。
+const SHELL_LIB_EVENTS: [&str; 5] =
+    ["RebuildMru", "RebuildNotes", "RunningSync", "ApplyFilter", "RebuildFaces"];
+
+/// 面元数据（ShellStateAccess 生成实现的材料）。
+struct ShellFaceInfo {
+    id: &'static str,
+    widget: &'static str,
+    file: &'static str,
+    /// 根 widget 状态字段（名 → rust 类型——镜像 ui_gen/rust.rs 状态推断）。
+    states: Vec<(String, String)>,
+    /// msg 变体 ∩ 召唤事件全集。
+    events: Vec<String>,
+}
+
+/// 状态类型推断（忠实镜像 ui_gen/rust.rs：generate_rust 的 state_types
+/// 填充[Unknown 初值推断] + `auto_type_to_rust` 递归映射）。返回 None =
+/// 不生成写臂（typed 集合等非常用形态——运行时 write 返 false，parity
+/// 冒烟可见；不误配字段类型）。
+fn shell_state_rust_type(state: &auto_lang::aura::AuraStateDef) -> Option<String> {
+    use auto_lang::ast::{Expr, Type};
+    if matches!(state.type_info, Type::Unknown) {
+        return match &state.initial {
+            Expr::Array(_) => Some("Vec<serde_json::Value>".into()),
+            Expr::Object(_) => Some("serde_json::Value".into()),
+            Expr::Str(_) => Some("String".into()),
+            Expr::Int(_) => Some("i32".into()),
+            Expr::Float(..) | Expr::Double(..) => Some("f64".into()),
+            Expr::Bool(_) => Some("bool".into()),
+            // 兜底 = auto_type_to_rust(Unknown)。
+            _ => Some("serde_json::Value".into()),
+        };
+    }
+    match &state.type_info {
+        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => Some("String".into()),
+        Type::Int => Some("i32".into()),
+        Type::Uint => Some("u32".into()),
+        Type::I64 => Some("i64".into()),
+        Type::U64 => Some("u64".into()),
+        Type::Float => Some("f32".into()),
+        Type::Double => Some("f64".into()),
+        Type::Bool => Some("bool".into()),
+        // 未定形元素集合（List/Array/Slice 的 Unknown 内型）→ 生成器实际
+        // 产出 Vec<serde_json::Value>（auto_type_to_rust 递归 Unknown 臂）。
+        Type::List(inner)
+        | Type::Array(auto_lang::ast::ArrayType { elem: inner, .. }) => {
+            match inner.as_ref() {
+                Type::Unknown => Some("Vec<serde_json::Value>".into()),
+                _ => None,
+            }
+        }
+        Type::RuntimeArray(_) => None,
+        Type::Unknown => Some("serde_json::Value".into()),
+        _ => None,
+    }
+}
+
+/// 解析 pack 五件的面元数据（每件根 WidgetDecl——`extract_widget_from_
+/// decl` 同 vocab 门路径）。
+fn collect_shell_face_infos(pack_dir: &Path) -> AutoResult<Vec<ShellFaceInfo>> {
+    let mut infos = Vec::new();
+    for (id, widget, file) in SHELL_LIB_FACES {
+        let path = pack_dir.join(file);
+        let src = fs::read_to_string(&path)
+            .map_err(|e| format!("shell pack 读取失败 {}: {e}", path.display()))?;
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(src.as_str()).with_session(session);
+        let ast = parser
+            .parse()
+            .map_err(|e| format!("shell pack 解析失败 {file}: {e:?}"))?;
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                auto_lang::ast::Stmt::WidgetDecl(d) if d.name == widget => Some(d),
+                _ => None,
+            })
+            .ok_or_else(|| format!("shell pack {file} 缺根 widget {widget}"))?;
+        let aura = auto_lang::aura::extract_widget_from_decl(decl)
+            .map_err(|e| format!("shell pack {file} widget 提取失败: {e}"))?;
+        let states = aura
+            .state_vars
+            .iter()
+            .filter_map(|s| shell_state_rust_type(s).map(|ty| (s.name.clone(), ty)))
+            .collect();
+        let events = aura
+            .messages
+            .iter()
+            .flat_map(|m| m.variants.iter().map(|v| v.name.clone()))
+            .filter(|v| SHELL_LIB_EVENTS.contains(&v.as_str()))
+            .collect();
+        infos.push(ShellFaceInfo { id, widget, file, states, events });
+    }
+    Ok(infos)
+}
+
+/// 生成 `ShellStateAccess for {Widget}`（D8 编译臂写态 lowering）。
+fn gen_shell_state_access(info: &ShellFaceInfo) -> String {
+    let mut code = format!(
+        "\nimpl ShellStateAccess for {} {{\n",
+        info.widget
+    );
+    // shell_write：标量键 → 类型化字段赋值（auto_val → 字段类型反序列化）。
+    code.push_str("    fn shell_write(&mut self, key: &str, value: auto_lang::ui::auto_val::Value) -> bool {\n");
+    code.push_str("        match key {\n");
+    for (field, ty) in &info.states {
+        let arm = match ty.as_str() {
+            "Vec<serde_json::Value>" => format!(
+                "            \"{f}\" => {{ if let Ok(v) = value.deserialize_into::<Vec<serde_json::Value>>() {{ self.{f} = v; }} true }}\n",
+                f = field
+            ),
+            _ => format!(
+                "            \"{f}\" => {{ if let Ok(v) = value.deserialize_into::<{ty}>() {{ self.{f} = v; }} true }}\n",
+                f = field,
+                ty = ty
+            ),
+        };
+        code.push_str(&arm);
+    }
+    code.push_str("            _ => false,\n        }\n    }\n");
+    // shell_write_vec：数组键 → Vec<serde_json::Value> 字段。
+    code.push_str("    fn shell_write_vec(&mut self, key: &str, values: Vec<auto_lang::ui::auto_val::Value>) -> bool {\n");
+    code.push_str("        match key {\n");
+    for (field, ty) in &info.states {
+        if ty == "Vec<serde_json::Value>" {
+            code.push_str(&format!(
+                "            \"{f}\" => {{ self.{f} = values.into_iter().filter_map(|v| v.deserialize_into().ok()).collect(); true }}\n",
+                f = field
+            ));
+        }
+    }
+    code.push_str("            _ => false,\n        }\n    }\n");
+    // shell_dispatch：召唤事件 → Msg variant on() 派发（027 "宿主写状态
+    // 不触发 handler"语义的编译等价——事件名即变体名）。
+    code.push_str("    fn shell_dispatch(&mut self, event: &str) {\n        match event {\n");
+    for ev in &info.events {
+        code.push_str(&format!(
+            "            \"{ev}\" => self.on({w}Msg::{ev}),\n",
+            w = info.widget
+        ));
+    }
+    code.push_str("            _ => {}\n        }\n    }\n");
+    // shell_read_str：String 字段读（__desktop_cmd 读走面）。
+    code.push_str("    fn shell_read_str(&self, key: &str) -> Option<String> {\n        match key {\n");
+    for (field, ty) in &info.states {
+        if ty == "String" {
+            code.push_str(&format!(
+                "            \"{f}\" => Some(self.{f}.clone()),\n",
+                f = field
+            ));
+        }
+    }
+    code.push_str("            _ => None,\n        }\n    }\n");
+    code.push_str("}\n");
+    code
+}
+
+/// 生成 lib crate 源（lib.rs + Cargo.toml；freshness 门与 regen 共用——
+/// 纯函数无 FS 副作用）。
+pub fn generate_shell_pack_lib_sources(
+    pack_dir: &Path,
+) -> AutoResult<(String, String)> {
+    let at_files: Vec<PathBuf> = SHELL_LIB_FACES
+        .iter()
+        .map(|(_, _, f)| pack_dir.join(f))
+        .collect();
+    let all_stores = collect_store_decls(&at_files);
+    let component_fields = collect_component_state_fields(&at_files);
+    let component_semantics = collect_component_semantics(&at_files);
+
+    let mut all_components = String::new();
+    for at_path in &at_files {
+        let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
+        println!("  {} {}", "Parsing".bright_cyan(), file_name);
+        let (code, _) = compile_at_file(at_path, &all_stores, &component_fields, &component_semantics)?;
+        all_components.push_str(&code);
+        all_components.push('\n');
+    }
+    if all_components.trim().is_empty() {
+        return Err("shell pack 生成物为空（无 WidgetDecl 组件）".into());
+    }
+    let cleaned = prepare_generated_components(&all_components);
+
+    let infos = collect_shell_face_infos(pack_dir)?;
+
+    // —— lib.rs ——
+    let mut lib = String::new();
+    lib.push_str("// Auto-generated from Auto language by a2rust-ui（shell pack 无窗组件库）\n");
+    lib.push_str("// DO NOT EDIT - changes will be overwritten\n");
+    lib.push_str("// PLAN-036 T-02（D7 定案）：源 = auto-os/shell 五件（入库产物——freshness\n");
+    lib.push_str("// 门 `test_shell_pack_lib_freshness` 对拍钉住；pack 改动后跑 regen_shell_pack\n");
+    lib.push_str("//（#[ignore] 测试）重生成 + 提交）。\n");
+    lib.push_str("#![allow(dead_code, non_snake_case, non_camel_case_types, unused_imports, unused_variables, unused_mut, clippy::all)]\n\n");
+    lib.push_str("use auto_lang::ui::{Component, View};\n");
+    lib.push_str("use auto_lang::ui::desktop_protocol::shell_client::{FaceProjector, ShellStateAccess, ShellSurface};\n\n");
+    lib.push_str(&cleaned);
+    lib.push_str("\n// —— SHELL_MANIFEST（shell_projection 同形装配清单——D5）——\n");
+    lib.push_str("pub use auto_lang::ui::shell_projection::{ShellFace, ShellManifest, ShellMount};\n\n");
+    lib.push_str("pub const SHELL_MANIFEST: ShellManifest = ShellManifest {\n    crate_name: \"shell-pack\",\n    faces: &[\n");
+    for info in &infos {
+        let mount = if matches!(info.id, "shell" | "desktop") {
+            "ShellMount::ResidentBoot"
+        } else {
+            "ShellMount::LazyOverlay"
+        };
+        lib.push_str(&format!(
+            "        ShellFace {{ id: {:?}, widget: {:?}, mount: {} }},\n",
+            info.id, info.widget, mount
+        ));
+    }
+    lib.push_str("    ],\n};\n");
+    for info in &infos {
+        lib.push_str(&gen_shell_state_access(info));
+    }
+    // —— mount_face 工厂（D5：id → 装配面；ensure_covered 过门 = 029 前提）——
+    lib.push_str("\nfn mount<C: Component + ShellStateAccess + Default + 'static>(\n    width: f32,\n    height: f32,\n) -> Option<Box<dyn ShellSurface>> {\n    let face = FaceProjector::new(C::default(), width, height);\n    face.ensure_covered().ok()?;\n    Some(Box::new(face))\n}\n\n");
+    lib.push_str("/// 面装配工厂（id = SHELL_MANIFEST 面 id；尺寸 = 面局部 viewport）。\n");
+    lib.push_str("pub fn mount_face(id: &str, width: f32, height: f32) -> Option<Box<dyn ShellSurface>> {\n    match id {\n");
+    for info in &infos {
+        lib.push_str(&format!(
+            "        {:?} => mount::<{}>(width, height),\n",
+            info.id, info.widget
+        ));
+    }
+    lib.push_str("        _ => None,\n    }\n}\n");
+    lib.push_str("\n#[cfg(test)]\nmod tests;\n");
+
+    // —— Cargo.toml ——
+    let cargo = r#"[package]
+name = "shell-pack"
+version = "0.1.0"
+edition = "2021"
+# PLAN-036 T-02：a2r 生成物（入库——027 §5.1 D5）；真编译门 = workspace
+# 成员编译（每次 cargo build）+ auto-man `test_shell_pack_lib_freshness`
+# 字节对拍。lib.rs 为生成物（DO NOT EDIT）；tests.rs 手写（冒烟/写覆盖/
+# boot 时延度量行——T-03）。
+
+[dependencies]
+auto-lang = { path = "../auto-lang", features = ["ui-iced"] }
+serde_json.workspace = true
+# a2r 全局 List 字面量（once_cell::Lazy 形态——generate_cargo_toml 同注）。
+once_cell = "1"
+"#
+    .to_string();
+
+    Ok((lib, cargo))
+}
+
+/// 生成 shell-pack lib crate（权威源 = auto-os/shell；解析序与词汇门同
+/// [resolve_os_top_dir]——AUTO_OS_ROOT > 兄弟/主检出）。
+pub fn generate_shell_pack_lib(output_dir: &Path) -> AutoResult<()> {
+    println!("{}", "Generating shell-pack lib crate (a2r windowless target)".bright_cyan());
+    let pack_dir = auto_lang::os_paths::resolve_os_top_dir(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+        "shell",
+    )
+    .ok_or("auto-os/shell 未解析（solo 检出——AUTO_OS_ROOT 或兄弟/主检出任一在位方可生成）")?;
+    let (lib, cargo) = generate_shell_pack_lib_sources(&pack_dir)?;
+    let src_dir = output_dir.join("src");
+    fs::create_dir_all(&src_dir)
+        .map_err(|e| format!("Failed to create {}: {e}", src_dir.display()))?;
+    let lib_rs = src_dir.join("lib.rs");
+    fs::write(&lib_rs, &lib)
+        .map_err(|e| format!("Failed to write {}: {e}", lib_rs.display()))?;
+    let cargo_path = output_dir.join("Cargo.toml");
+    fs::write(&cargo_path, &cargo)
+        .map_err(|e| format!("Failed to write {}: {e}", cargo_path.display()))?;
+    println!(
+        "{} shell-pack → {} (lib {} bytes)",
+        "  Wrote".bright_green(),
+        output_dir.display(),
+        lib.len()
+    );
+    Ok(())
 }
 
 /// Write `.cargo/config.toml` with shared target-dir pointing to workspace root's target/.
@@ -3898,5 +4207,43 @@ pub fn create_item(name str) str {
             toml
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// PLAN-036 T-02：freshness 门——以权威源（auto-os/shell）重生成对拍
+    /// 入库物 `crates/shell-pack/src/lib.rs`（字节一致；solo 检出跳过）。
+    /// pack 改动后跑 `regen_shell_pack`（#[ignore]）重生成 + 提交，否则
+    /// 本门红。
+    #[test]
+    fn test_shell_pack_lib_freshness() {
+        let Some(pack_dir) = auto_lang::os_paths::resolve_os_top_dir(
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+            "shell",
+        ) else {
+            eprintln!("test_shell_pack_lib_freshness: SKIPPED — auto-os/shell 未解析(solo 检出)");
+            return;
+        };
+        let lib_rs = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/shell-pack/src/lib.rs");
+        let Ok(committed) = std::fs::read_to_string(&lib_rs) else {
+            panic!(
+                "crates/shell-pack/src/lib.rs 缺席——先跑 regen_shell_pack（#[ignore] 测试）生成入库物"
+            );
+        };
+        let (generated, _) = generate_shell_pack_lib_sources(&pack_dir)
+            .expect("shell pack lib 生成失败（词汇/结构缺口——先修 a2r 臂）");
+        assert!(
+            generated == committed,
+            "shell-pack 入库物过期（pack 已改未 regen）：重跑 regen_shell_pack（#[ignore]）+ 提交"
+        );
+    }
+
+    /// PLAN-036 T-02：regen 入口——生成 shell-pack lib crate 到入库位
+    /// （`crates/shell-pack/`；覆盖 lib.rs/Cargo.toml，tests.rs 手写不动）。
+    /// 显式跑：`cargo test -p auto-man regen_shell_pack -- --ignored --nocapture`。
+    #[test]
+    #[ignore = "显式 regen（pack 改动后手动跑——写入库位）"]
+    fn regen_shell_pack() {
+        let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/shell-pack");
+        generate_shell_pack_lib(&out).expect("shell pack regen 失败");
     }
 }

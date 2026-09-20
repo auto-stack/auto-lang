@@ -60,6 +60,23 @@ pub fn resolve_shell_pack_dir() -> Option<std::path::PathBuf> {
     .find(|d| d.is_dir())
 }
 
+/// 显式 pack 命中（override/env，**不含**兄弟检出/主检出发现链）——
+/// PLAN-036 D4 双轨开关语义（027 §5.1 D5 原文承袭）：显式命中 = 开发态
+/// 解释 child（spawn 注入 AUTO_SHELL_PACK 钉住同源）；仅发现链命中 ≠
+/// 解释态（child 缺省编译轨——auto.exe 链入 shell-pack）。
+pub fn resolve_shell_pack_explicit() -> Option<std::path::PathBuf> {
+    if let Some(dir) = SHELL_PACK_OVERRIDE.get() {
+        return Some(dir.clone());
+    }
+    if let Some(env) = std::env::var_os("AUTO_SHELL_PACK") {
+        let p = std::path::PathBuf::from(&env);
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
+    None
+}
+
 /// Stage B P-7：按名装载 shell pack 源——pack 命中读文件（每次直读，boot/
 /// 召唤期低频不做缓存）；未命中/缺件/读失败回退内嵌 pin 快照（无 pack
 /// 环境与现状逐字节一致）。

@@ -2106,6 +2106,18 @@ impl RustGenerator {
                 // 与 VM 臂同表）；preset 前置、user class 后置（后类胜，与 VM 臂同语义）。
                 let props = self.with_button_preset(tag, props);
                 let props: &std::collections::HashMap<String, AuraPropValue> = props.as_ref();
+                // PLAN-036 T-02：prop 迭代序确定化——HashMap RandomState
+                // 进程间随机序曾致再生成漂移（freshness 门字节对拍所需）。
+                let props_sorted: Vec<(&String, &AuraPropValue)> = {
+                    let mut v: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                    v.sort_by(|a, b| a.0.cmp(b.0));
+                    v
+                };
+                let events_sorted: Vec<(&String, &AuraEvent)> = {
+                    let mut v: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                    v.sort_by(|a, b| a.0.cmp(b.0));
+                    v
+                };
                 // Handle custom widget references (e.g., EditorPanel, Sidebar)
                 if self.is_custom_widget(tag) {
                     return self.generate_child_component(tag, props);
@@ -2910,14 +2922,14 @@ impl RustGenerator {
                     }
 
                     // Other props (class, style, width — skip placeholder, value, type)
-                    for (key, value) in props {
+                    for (key, value) in props_sorted.clone() {
                         if key == "placeholder" || key == "value" || key == "type" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
 
                     // Events: oninput/onchange → on_change (takes M, not a closure)
                     //         onenter → on_submit (fires on Enter key)
-                    for (event, handler) in events {
+                    for (event, handler) in events_sorted.clone() {
                         match event.as_str() {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
@@ -2965,13 +2977,13 @@ impl RustGenerator {
                     }
 
                     // Other props (skip placeholder, value)
-                    for (key, value) in props {
+                    for (key, value) in props_sorted.clone() {
                         if key == "placeholder" || key == "value" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
 
                     // Events: oninput/onchange → on_change
-                    for (event, handler) in events {
+                    for (event, handler) in events_sorted.clone() {
                         match event.as_str() {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
@@ -3055,7 +3067,7 @@ impl RustGenerator {
 
                     // Events: oninput/onchange -> on_change, oncursor -> on_cursor,
                     // oncontextmenu -> on_context_menu.
-                    for (event, handler) in events {
+                    for (event, handler) in events_sorted.clone() {
                         match event.as_str() {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
@@ -3134,6 +3146,64 @@ impl RustGenerator {
                         }
                     })
                 };
+
+                // PLAN-036 T-02：button icon 词汇臂（真编译门首漏——词汇表
+                // 超记、实臂缺位；variant/size 已由 with_button_preset 消费，
+                // 本块只管 icon）。对齐解释臂 convert_button：icon 经 PUA
+                // 标记嵌 label（`\u{EE01}{icon}\u{EE02}{text}`——renderer 同
+                // 协议双轨同形，Plan 409 §10 组 A 同款）。
+                if tag == "button" && props.contains_key("icon") {
+                    let icon_lit = props.get("icon").and_then(|v| match v {
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                        _ => None,
+                    });
+                    // label：text 三通道（字面量/状态引用/动态式）→ 子件折叠
+                    // → 空；icon 在场时 PUA 前缀包裹。
+                    let plain_label: Option<String> = if let Some(t) = &text_prop {
+                        if t.contains("${") {
+                            Some(self.interpolate_str(t))
+                        } else {
+                            Some(format!("\"{}\"", t))
+                        }
+                    } else if let Some(ref name) = text_state_ref {
+                        let name_ref = if self.is_loop_var(name) {
+                            name.to_string()
+                        } else {
+                            format!("self.{}", name)
+                        };
+                        Some(format!("format!(\"{{}}\", {})", name_ref))
+                    } else if let Some(ref e) = text_rust_expr {
+                        Some(e.clone())
+                    } else if !children.is_empty() {
+                        Some(self.collect_button_label(children))
+                    } else {
+                        None
+                    };
+                    let label_expr = match (&icon_lit, &plain_label) {
+                        (Some(icon), Some(tp)) => {
+                            format!("format!(\"\\u{{EE01}}{}\\u{{EE02}}{{}}\", {})", icon, tp)
+                        }
+                        (Some(icon), None) => {
+                            format!("\"\\u{{EE01}}{}\\u{{EE02}}\".to_string()", icon)
+                        }
+                        (None, Some(tp)) => tp.clone(),
+                        (None, None) => "\"\".to_string()".to_string(),
+                    };
+                    let mut builder = format!("View::button({})", label_expr);
+                    for (key, value) in props_sorted.clone() {
+                        if matches!(key.as_str(), "icon" | "text") {
+                            continue;
+                        }
+                        builder = self.add_prop_to_builder(&builder, key, value);
+                    }
+                    for (event, handler) in events_sorted.clone() {
+                        builder = self.add_event_to_builder(&builder, event, handler);
+                    }
+                    if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
+                        builder = format!("{}.on_click(|_| ())", builder);
+                    }
+                    return format!("{}.build()", builder);
+                }
 
                 // Handle image element — generate View::image() or View::image_styled()
                 // PLAN-026 T-07：src 绑定形状容差（025 value 绑定同款——
@@ -3292,11 +3362,17 @@ impl RustGenerator {
                         }
                         Some(AuraPropValue::Expr(e)) => {
                             let e = self.ast_expr_to_rust(e);
-                            if e.starts_with("self.") {
+                            // PLAN-036 T-02：数值类 key（Value 访问 `as i32)`
+                            // 收尾——View 键面为 String，降串（VM 宽松串化
+                            // 等价，.at `ws: .ws.id` 数字源）。
+                            let e = if e.ends_with("as i32)") {
+                                format!("{}.to_string()", e)
+                            } else if e.starts_with("self.") {
                                 format!("{e}.clone()")
                             } else {
                                 e
-                            }
+                            };
+                            e
                         }
                         _ => "String::new()".to_string(),
                     };
@@ -3752,7 +3828,7 @@ impl RustGenerator {
                     if let Some(st) = props.get("step") {
                         builder = format!("{builder}.step({})", numeric(Some(st), 0.0));
                     }
-                    for (key, value) in props {
+                    for (key, value) in props_sorted.clone() {
                         if key == "min" || key == "max" || key == "value" || key == "step" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
@@ -3804,7 +3880,7 @@ impl RustGenerator {
                         };
                         builder = format!("{builder}.on_choose({closure})");
                     }
-                    for (key, value) in props {
+                    for (key, value) in props_sorted.clone() {
                         if key == "options" || key == "selected" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
@@ -4281,13 +4357,13 @@ impl RustGenerator {
                     let mut builder = builder_start;
 
                     // Add props (skip "text" if already used as constructor arg)
-                    for (key, value) in props {
+                    for (key, value) in props_sorted.clone() {
                         if text_prop_consumed && key == "text" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
 
                     // Add events
-                    for (event, handler) in events {
+                    for (event, handler) in events_sorted.clone() {
                         builder = self.add_event_to_builder(&builder, event, handler);
                     }
 
@@ -4305,11 +4381,11 @@ impl RustGenerator {
                     // composite label so the content is visible.
                     let label_expr = self.collect_button_label(children);
                     let mut builder = format!("View::button({})", label_expr);
-                    for (key, value) in props {
+                    for (key, value) in props_sorted.clone() {
                         if key == "text" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
-                    for (event, handler) in events {
+                    for (event, handler) in events_sorted.clone() {
                         builder = self.add_event_to_builder(&builder, event, handler);
                     }
                     if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
@@ -4321,7 +4397,7 @@ impl RustGenerator {
                     let mut builder = builder_start;
 
                     // Add props (skip "text" if already used as constructor arg)
-                    for (key, value) in props {
+                    for (key, value) in props_sorted.clone() {
                         if text_prop_consumed && key == "text" { continue; }
                         builder = self.add_prop_to_builder(&builder, key, value);
                     }
@@ -4347,7 +4423,7 @@ impl RustGenerator {
                     }
 
                     // Add events last
-                    for (event, handler) in events {
+                    for (event, handler) in events_sorted.clone() {
                         builder = self.add_event_to_builder(&builder, event, handler);
                     }
 
@@ -5659,13 +5735,16 @@ impl RustGenerator {
         // Replace state-ref dots like ".notes" → "self.notes", but NOT method call dots
         // like ".len()" or ".to_string()". A state-ref dot is one where the previous
         // character is NOT alphanumeric/underscore (i.e. it's at a word boundary).
+        // PLAN-036 T-02：后继字符兼收 `_`——`__` 前缀状态名（__wm_*/
+        // __desktop_* 家族）原只认字母后继漏网，裸 `.` 落产物成语法错
+        //（真编译门首漏）。
         let bytes = result.as_bytes();
         let mut output = String::new();
         let mut i = 0;
         while i < bytes.len() {
             if bytes[i] == b'.'
                 && i + 1 < bytes.len()
-                && bytes[i + 1].is_ascii_alphabetic()
+                && (bytes[i + 1].is_ascii_alphabetic() || bytes[i + 1] == b'_')
             {
                 // Check if this dot is a method call (preceded by ident char)
                 let is_method_call = i > 0
@@ -5764,7 +5843,129 @@ impl RustGenerator {
             output.insert_str(close, ".as_str()");
         }
 
+        // PLAN-036 T-02：`.contains(format!(...))` Pattern 修正（handler 体
+        // 同款——条件串消费面）。
+        fix_contains_string_pattern_for_ui(&mut output);
+
+        // PLAN-036 T-02：条件串 Eq/Neq 跨型降串（ast_expr_to_rust 主臂
+        // normalize_eq_neq_compare 的文本族——convert_condition 为字符串
+        // 管线无 AST，按生成形判别 + state_types 类型感知）。
+        output = self.normalize_condition_compares(&output);
+
         output
+    }
+
+    /// PLAN-036 T-02：条件串（convert_condition 产物）的跨型比较降串——
+    /// 一侧 String 类（.as_str() 形/串字面量/String 态字段）另一侧数值类
+    /// （`as i32)` 收尾）→ 数值侧补 `.to_string()`；对侧 Value 布尔访问 →
+    /// 改 as_str 形。VM 宽松比较语义的编译等价（同 normalize_eq_neq_
+    /// compare 注）。
+    fn normalize_condition_compares(&self, cond: &str) -> String {
+        let is_word = |c: u8| {
+            c.is_ascii_alphanumeric()
+                || c == b'_'
+                || c == b'.'
+                || c == b'"'
+                || c == b'['
+                || c == b']'
+                || c == b'('
+                || c == b')'
+                || c == b':'
+        };
+        let stringy = |s: &str| -> bool {
+            if s.contains(".as_str()") || s.starts_with('"') || s.contains("format!(") {
+                return true;
+            }
+            // self.<field> / 裸 <field>：String 态字段。
+            let name = s.strip_prefix("self.").unwrap_or(s);
+            self.state_types.get(name).map_or(false, |ty| ty == "String")
+        };
+        let mut out = cond.to_string();
+        for op in ["==", "!="] {
+            let mut cursor = 0usize;
+            loop {
+                let Some(rel) = out[cursor..].find(op) else { break };
+                let pos = cursor + rel;
+                let bytes = out.as_bytes();
+                // 左段：先回跳空格（生成文本 ` == ` 带空格）再词段回扫。
+                let mut ls = pos;
+                while ls > 0 && bytes[ls - 1] == b' ' {
+                    ls -= 1;
+                }
+                while ls > 0 && is_word(bytes[ls - 1]) {
+                    ls -= 1;
+                }
+                let left = out[ls..pos].trim_end().to_string();
+                let mut re = pos + 2;
+                while re < bytes.len() && is_word(bytes[re]) {
+                    re += 1;
+                }
+                // 右段跨空格续读（`(0) as i32` 形含空格）——至表达式边界
+                //（&&/||/{/}/, 或非词字符）。
+                loop {
+                    let mut j = re;
+                    while j < bytes.len() && bytes[j] == b' ' {
+                        j += 1;
+                    }
+                    if j >= bytes.len() {
+                        break;
+                    }
+                    let two = &out[j..(j + 2).min(out.len())];
+                    if two == "&&" || two == "||" || bytes[j] == b'{' || bytes[j] == b'}' || bytes[j] == b',' {
+                        break;
+                    }
+                    if !is_word(bytes[j]) {
+                        break;
+                    }
+                    re = j;
+                    while re < bytes.len() && is_word(bytes[re]) {
+                        re += 1;
+                    }
+                }
+                let right = out[pos + 2..re].trim().to_string();
+                let mut new_left = None;
+                let mut new_right = None;
+                let num_state = |s: &str| -> bool {
+                    let name = s.strip_prefix("self.").unwrap_or(s);
+                    matches!(
+                        self.state_types.get(name).map(|t| t.as_str()),
+                        Some("i32" | "i64" | "u32" | "u64" | "f32" | "f64")
+                    )
+                };
+                if stringy(&left) && !stringy(&right) {
+                    if right.contains(".as_bool().unwrap_or(false)") {
+                        new_right = Some(right.replace(
+                            ".as_bool().unwrap_or(false)",
+                            ".as_str().unwrap_or_default().to_string()",
+                        ));
+                    } else if right.ends_with("as i32)") || num_state(&right) {
+                        new_right = Some(format!("{}.to_string()", right));
+                    }
+                } else if stringy(&right) && !stringy(&left) {
+                    if left.contains(".as_bool().unwrap_or(false)") {
+                        new_left = Some(left.replace(
+                            ".as_bool().unwrap_or(false)",
+                            ".as_str().unwrap_or_default().to_string()",
+                        ));
+                    } else if left.ends_with("as i32)") || num_state(&left) {
+                        new_left = Some(format!("{}.to_string()", left));
+                    }
+                }
+                match (new_left, new_right) {
+                    (None, None) => {
+                        cursor = pos + 2;
+                    }
+                    (nl, nr) => {
+                        let l = nl.unwrap_or_else(|| left.clone());
+                        let r = nr.unwrap_or_else(|| right.clone());
+                        let done = ls + l.len() + 3 + r.len();
+                        out = format!("{}{} {} {}{}", &out[..ls], l, op, r, &out[re..]);
+                        cursor = done;
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// Resolve a dotted path like "note.tags" or "store.notes" into proper Rust
@@ -6288,6 +6489,11 @@ impl RustGenerator {
         // PLAN-025 T-07：VM math.* 内建降级（003-converter handler 真源
         // math.round 先例——解释态 VM 直算，a2r 臂需落到 Rust f64 方法）。
         lower_math_builtins_for_ui(&mut body);
+        // PLAN-036 T-02：`.contains(format!(...))` Pattern 修正（str 收
+        // &str——launching ack 求差 `,__wm_running.contains(","+x+",")` 先例）。
+        fix_contains_string_pattern_for_ui(&mut body);
+        // PLAN-036 T-02：String 局部收 Value 元素赋值降串（face_apps src）。
+        fix_string_local_value_element_assign(&mut body);
         body
     }
 
@@ -6705,9 +6911,80 @@ impl RustGenerator {
         }
     }
 
-    /// Check if an AST expression produces a String type (for detecting string concatenation)
-    fn ast_expr_is_string(&self, expr: &crate::ast::Expr) -> bool {
+    /// PLAN-036 T-02：Eq/Neq 跨型比较统一降串（主臂与值参闭包臂共用）——
+    /// VM 数值/布尔的宽松比较语义在编译轨的等价（shell pack Obj 线上形态：
+    /// bool 降 "1"/"" 串、id 串/数两态）。一侧 String 类（字面量/String 态
+    /// 字段/串接/文本化 Value 访问）另一侧数值类（`as i32)` 收尾）→ 数值侧
+    /// 补 `.to_string()`；另一侧为 Value 布尔访问（`.as_bool().unwrap_
+    /// or(false)`）→ 改 as_str 形（宿主降串 "1"/"" 判真——与解释臂逐语义
+    /// 一致）。仅真改写时返回 Some（两侧同类返回 None 走既有路径——非
+    /// shell 语料零扰动）。
+    fn normalize_eq_neq_compare(
+        &self,
+        op: &auto_val::Op,
+        left: &crate::ast::Expr,
+        right: &crate::ast::Expr,
+        left_str: &str,
+        right_str: &str,
+    ) -> Option<String> {
         use crate::ast::Expr;
+        use auto_val::Op;
+        if !matches!(op, Op::Eq | Op::Neq) {
+            return None;
+        }
+        let side_is_stringy = |e: &Expr, s: &str| {
+            matches!(e, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                || self.ast_expr_is_string(e)
+                || s.contains(".as_str()")
+                || s.starts_with('"')
+                || s.contains("format!(")
+        };
+        let l_stringy = side_is_stringy(left, left_str);
+        let r_stringy = side_is_stringy(right, right_str);
+        let mut l = left_str.to_string();
+        let mut r = right_str.to_string();
+        let mut changed = false;
+        let num_state = |e: &Expr| -> bool {
+            self.resolve_expr_name(e)
+                .and_then(|n| self.state_types.get(&n).map(|t| t.clone()))
+                .map(|ty| matches!(ty.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64"))
+                .unwrap_or(false)
+        };
+        if l_stringy && !r_stringy {
+            if r.contains(".as_bool().unwrap_or(false)") {
+                r = r.replace(
+                    ".as_bool().unwrap_or(false)",
+                    ".as_str().unwrap_or_default().to_string()",
+                );
+                changed = true;
+            } else if r.ends_with("as i32)") || num_state(right) {
+                r = format!("{}.to_string()", r);
+                changed = true;
+            }
+        } else if r_stringy && !l_stringy {
+            if l.contains(".as_bool().unwrap_or(false)") {
+                l = l.replace(
+                    ".as_bool().unwrap_or(false)",
+                    ".as_str().unwrap_or_default().to_string()",
+                );
+                changed = true;
+            } else if l.ends_with("as i32)") || num_state(left) {
+                l = format!("{}.to_string()", l);
+                changed = true;
+            }
+        }
+        if !changed {
+            return None;
+        }
+        let op_str = match op {
+            Op::Eq => "==",
+            _ => "!=",
+        };
+        Some(format!("({}) {} ({})", l, op_str, r))
+    }
+
+    /// Check if an AST expression produces a String type (for detecting string concatenation)
+    fn ast_expr_is_string(&self, expr: &crate::ast::Expr) -> bool {        use crate::ast::Expr;
         match expr {
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => true,
             Expr::Ident(name) => {
@@ -6790,6 +7067,22 @@ impl RustGenerator {
                 let right_str = self.ast_expr_to_rust_with_value_params(right, value_params);
                 // Use the same op handling as ast_expr_to_rust
                 use auto_val::Op;
+                // PLAN-036 T-02：串接检测（主臂同款——值参闭包体原直发 `+`，
+                // String+数值型错配漏网）；Eq/Neq 跨型降串共用
+                // normalize_eq_neq_compare。
+                if matches!(op, Op::Add)
+                    && (matches!(left.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                        || matches!(right.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                        || self.ast_expr_is_string(left)
+                        || self.ast_expr_is_string(right))
+                {
+                    return format!("format!(\"{{}}{{}}\", {}, {})", left_str, right_str);
+                }
+                if let Some(cmp) =
+                    self.normalize_eq_neq_compare(op, left, right, &left_str, &right_str)
+                {
+                    return cmp;
+                }
                 let op_str = match op {
                     Op::Eq => "==",
                     Op::Neq => "!=",
@@ -7065,6 +7358,20 @@ impl RustGenerator {
                     // Check if target is a String field — need parse/add/to_string pattern
                     let target_name = self.resolve_expr_name(left);
                     if target_name.as_ref().map_or(false, |n| self.state_types.get(n).map_or(false, |ty| ty == "String")) {
+                        // PLAN-036 T-02：String 字段的 += 分型——串侧（字面量/
+                        // String 态源）= 追加语义 `format!`（VM 串接等价，
+                        // __desktop_cmd 总线写点先例）；数值侧保留既有
+                        // parse/add 数值串模式（计数器语料）。
+                        if matches!(op, Op::AddEq)
+                            && (self.ast_expr_is_string(right)
+                                || matches!(
+                                    right.as_ref(),
+                                    Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_)
+                                ))
+                        {
+                            let value = self.ast_expr_to_rust_no_to_string(right);
+                            return format!("{} = format!(\"{{}}{{}}\", {}, {})", target, target, value);
+                        }
                         let inner_op = match op {
                             Op::AddEq => "+",
                             Op::SubEq => "-",
@@ -7100,6 +7407,14 @@ impl RustGenerator {
                 }
                 let left_str = self.ast_expr_to_rust(left);
                 let right_str = self.ast_expr_to_rust(right);
+                // PLAN-036 T-02：Eq/Neq 跨型比较统一降串（normalize_eq_
+                // neq_compare——值参闭包臂共用；VM 宽松比较语义的编译
+                // 等价：bool 降 "1"/"" 串、数值补 .to_string()）。
+                if let Some(cmp) =
+                    self.normalize_eq_neq_compare(op, left, right, &left_str, &right_str)
+                {
+                    return cmp;
+                }
                 let op_str = match op {
                     Op::Add => "+",
                     Op::Sub => "-",
@@ -7182,6 +7497,27 @@ impl RustGenerator {
                             let args_str = self.rust_call_args_with_clone(call).join(", ");
                             return format!("{}({})", method.as_str(), args_str);
                         }
+                    }
+                }
+                // PLAN-036 T-02：`.Variant(args)` 自消息发送（handler 体
+                // 语句位）→ `self.on({Msg}::Variant(args))`——store.X 同型
+                // 自指派臂（解释臂 call_handler 的编译等价；SendCmd 总线
+                // 写点 = 消息经自身 handler 落 __desktop_cmd，
+                // drain_desktop_commands 读走同径——027 D3 双轨单源）。
+                if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
+                    if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                        && self
+                            .message_variants
+                            .iter()
+                            .any(|v| v.name == method.as_str())
+                    {
+                        let args_str = self.rust_call_args_with_clone(call).join(", ");
+                        let msg = self.current_msg_name();
+                        return if args_str.is_empty() {
+                            format!("self.on({}::{})", msg, method.as_str())
+                        } else {
+                            format!("self.on({}::{}({}))", msg, method.as_str(), args_str)
+                        };
                     }
                 }
                 let args: Vec<String> = self.rust_call_args_with_clone(call);
@@ -7435,7 +7771,10 @@ impl RustGenerator {
                     String::new()
                 };
                 if else_body.is_empty() {
-                    format!("if {} {{ {} }}", cond, then_body)
+                    // PLAN-036 T-02：值位 if 表达式缺 else = 空值（VM 语义）
+                    // ——补 `else { "" }` 防 E0317（值位必须有 else；条件样式
+                    // `style: if .x { "A" }` 无 else 先例）。
+                    format!("if {} {{ {} }} else {{ \"\".to_string() }}", cond, then_body)
                 } else {
                     format!("if {} {{ {} }} else {{ {} }}", cond, then_body, else_body)
                 }
@@ -10639,6 +10978,118 @@ widget Demo {
 /// PLAN-025 T-07：VM `math.*` 内建 → Rust f64 方法（handler 臂）。
 /// `math.round(EXPR)` → `(EXPR).round()`——round/floor/ceil/abs/sqrt
 /// 五族；括号配对扫描（正则不配嵌套）。
+/// PLAN-036 T-02：`.contains(format!(...))` Pattern 修正——str::contains
+/// 收 &str 模式，String 实参（format! 产物）补 `.as_str()`（Plan 374 的
+/// `.contains(self.field)` 修正同族；条件串与 handler 体双消费——括号
+/// 配对扫描，字符串字面量内的括号不计（`","` 实参形安全）。
+pub(crate) fn fix_contains_string_pattern_for_ui(content: &mut String) {
+    let mut out = String::new();
+    let mut rest = content.as_str();
+    const PAT: &str = ".contains(format!(";
+    while let Some(pos) = rest.find(PAT) {
+        // 从 contains 的开括号起做括号配对（跳过字符串字面量）。
+        let open = pos + ".contains(".len() - 1; // '(' of contains
+        let bytes = rest.as_bytes();
+        let mut depth = 0usize;
+        let mut end = None;
+        let mut i = open;
+        let mut in_str = false;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'"' => in_str = !in_str,
+                b'\\' if in_str => {
+                    i += 1; // 转义符跳一
+                }
+                b'(' if !in_str => depth += 1,
+                b')' if !in_str => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        let Some(e) = end else {
+            out.push_str(&rest[..pos + PAT.len()]);
+            rest = &rest[pos + PAT.len()..];
+            continue;
+        };
+        out.push_str(&rest[..e]);
+        out.push_str(".as_str()");
+        rest = &rest[e..];
+    }
+    out.push_str(rest);
+    if *content != out {
+        *content = out;
+    }
+}
+
+/// PLAN-036 T-02：String 局部变量收 Value 元素赋值降串——`var s str = ""`
+/// 局部随后 `.s = .some_vec[idx]`（Vec<serde_json::Value> 元素 = Value），
+/// VM 宽松串化在编译轨补 `.as_str().unwrap_or_default().to_string()`
+///（识别面 = 体首 `let mut NAME = "".to_string()` 声明的局部名集；
+/// dashboard face_apps src 先例）。
+pub(crate) fn fix_string_local_value_element_assign(content: &mut String) {
+    let mut names: Vec<String> = Vec::new();
+    // 收集 `let mut NAME = "".to_string()` 声明（体内任意位置——while/if
+    // 块单行拼接形态）。
+    {
+        let mut rest = content.as_str();
+        while let Some(pos) = rest.find("let mut ") {
+            let after = &rest[pos + "let mut ".len()..];
+            let name_end = after
+                .find(|c: char| c == ' ' || c == '=')
+                .unwrap_or(after.len());
+            let name = &after[..name_end];
+            let tail = after[name_end..].trim_start();
+            if !name.is_empty()
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && tail.starts_with("= \"\".to_string()")
+            {
+                names.push(name.to_string());
+            }
+            rest = after;
+        }
+    }
+    if names.is_empty() {
+        return;
+    }
+    for name in names {
+        let pat = format!("{name} = self.");
+        let mut out = String::new();
+        let mut rest = content.as_str();
+        while let Some(pos) = rest.find(&pat) {
+            let ok_before = pos == 0
+                || {
+                    let b = rest.as_bytes()[pos - 1];
+                    !(b.is_ascii_alphanumeric() || b == b'_')
+                };
+            let seg = &rest[pos..];
+            let end = seg.find(';').unwrap_or(seg.len());
+            let stmt = &seg[..end];
+            if ok_before
+                && stmt.contains('[')
+                && stmt.ends_with(']')
+                && !stmt.contains(".as_str()")
+            {
+                out.push_str(&rest[..pos + end]);
+                out.push_str(".as_str().unwrap_or_default().to_string()");
+                rest = &rest[pos + end..];
+            } else {
+                out.push_str(&rest[..pos + pat.len()]);
+                rest = &rest[pos + pat.len()..];
+            }
+        }
+        out.push_str(rest);
+        *content = out;
+    }
+}
+
 pub(crate) fn lower_math_builtins_for_ui(content: &mut String) {
     const MAP: [(&str, &str); 5] = [
         ("math.round", "round"),

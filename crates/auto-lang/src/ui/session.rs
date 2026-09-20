@@ -3041,11 +3041,13 @@ fn outproc_auto_binary() -> std::io::Result<std::path::PathBuf> {
 }
 
 /// PLAN-030 T-03：壳 outproc spawner——re-exec auto 本体
-/// （`run --autodesk-shell --autodesk-broker=<pipe>`）+ 几何/pack env
-/// 注入。`AUTO_SHELL_PACK` 透传：宿主解析序命中 pack 目录时钉住（child
-/// 与 in-proc 轨同源；缺席 = child 侧内嵌 pin 快照兜底）。
+/// （`run --autodesk-shell --autodesk-broker=<pipe>`）+ 几何 env 注入。
 /// `AUTO_SHELL_GEOM=<W>x<H>x<BAND>`：双表面尺寸（background 全屏 +
 /// chrome 任务栏带——D1 定案）。
+/// PLAN-036 D4：`AUTO_SHELL_PACK` 注入收窄为**仅显式命中**（override/
+/// env——`resolve_shell_pack_explicit`）；兄弟/主检出发现链不再注入
+/// （child 缺省编译轨——auto.exe 链入 shell-pack；027 §5.1 D5 双轨
+/// 开关语义：显式 = 开发态解释 child 同源钉住）。
 fn spawn_shell_outproc(
     geometry: &crate::ui::desktop_protocol::shell_client::ShellGeometry,
     broker_pipe: &str,
@@ -3054,7 +3056,7 @@ fn spawn_shell_outproc(
     let mut cmd = std::process::Command::new(&exe);
     cmd.args(["run", "--autodesk-shell", &format!("--autodesk-broker={broker_pipe}")]);
     cmd.env("AUTO_SHELL_GEOM", geometry.encode());
-    if let Some(dir) = crate::ui::shell::resolve_shell_pack_dir() {
+    if let Some(dir) = crate::ui::shell::resolve_shell_pack_explicit() {
         cmd.env("AUTO_SHELL_PACK", dir);
     }
     for (key, _) in std::env::vars() {

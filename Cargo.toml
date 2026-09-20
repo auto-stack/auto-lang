@@ -15,6 +15,8 @@ members = [
     "crates/auto-man",
     "crates/auto-lsp",
     "crates/auto-val",
+    # PLAN-036 T-02: shell pack a2r 生成物（无窗组件库——入库=真编译门）
+    "crates/shell-pack",
     "crates/auto-vm",
     # Plan 330: auto-shell + ash-core moved to separate repo (../auto-shell)
     # "crates/auto-shell",

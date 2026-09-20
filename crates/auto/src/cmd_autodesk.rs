@@ -67,7 +67,29 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
         }
     }
     if shell_entry {
-        return auto_lang::ui::desktop_protocol::shell_client::run_shell_outproc(&broker_pipe);
+        // PLAN-036 T-03（D4）：outproc child 缺省**编译轨**（auto.exe 链入
+        // shell-pack——省 boot 期 .at 解释装载；度量 ~25.7ms → ~0.8ms）。
+        // 显式 `AUTO_SHELL_PACK`（存在且为目录）= 开发态解释装载（027
+        // §5.1 D5 双轨开关语义——改 .at 重启即生效回路；宿主 spawn 仅显
+        // 式命中时注入本 env）。
+        let interpreted = std::env::var_os("AUTO_SHELL_PACK")
+            .map(|p| std::path::Path::new(&p).is_dir())
+            .unwrap_or(false);
+        if interpreted {
+            return auto_lang::ui::desktop_protocol::shell_client::run_shell_outproc(&broker_pipe);
+        }
+        return auto_lang::ui::desktop_protocol::shell_client::run_shell_outproc_with(
+            &broker_pipe,
+            |g| {
+                let chrome = shell_pack::mount_face("shell", g.viewport_w, g.band_h)
+                    .ok_or_else(|| "编译壳 chrome 面（shell）装载失败（覆盖门拒收）".to_string())?;
+                let background = shell_pack::mount_face("desktop", g.viewport_w, g.viewport_h)
+                    .ok_or_else(|| "编译壳 background 面（desktop）装载失败（覆盖门拒收）".to_string())?;
+                Ok(auto_lang::ui::desktop_protocol::shell_client::ShellFaces::from_faces(
+                    g, chrome, background,
+                ))
+            },
+        );
     }
     let app_name = app_name
         .ok_or("--app386=<name> 必填（孵化 App 名 = <app-root>/<name>）")?
