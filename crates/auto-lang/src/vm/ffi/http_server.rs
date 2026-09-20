@@ -976,6 +976,211 @@ mod plan326_tests {
     }
 
     // ---------------------------------------------------------------------
+    // PLAN-669: by-name binder unit matrix (no live server — the marshalled
+    // stack values are inspected directly; e2e shapes run in http_e2e).
+    // ---------------------------------------------------------------------
+    mod plan669_bind_tests {
+        use super::super::{
+            bind_api_args_by_name, ApiArgBindError, ApiParamSig, RouteMatch,
+        };
+        use crate::vm::engine::AutoVM;
+        use crate::vm::task::AutoTask;
+        use crate::vm::virt_memory::VirtualFlash;
+
+        fn sig(name: &str, ty: &str) -> ApiParamSig {
+            ApiParamSig { name: name.into(), ty: ty.into() }
+        }
+        fn rm(path_params: Vec<(&str, &str)>, query_params: Vec<(&str, &str)>) -> RouteMatch {
+            RouteMatch {
+                fn_name: "h".into(),
+                path_params: path_params
+                    .into_iter()
+                    .map(|(n, v)| (n.to_string(), v.to_string()))
+                    .collect(),
+                query_params: query_params
+                    .into_iter()
+                    .map(|(n, v)| (n.to_string(), v.to_string()))
+                    .collect(),
+            }
+        }
+        fn rig() -> (AutoVM, AutoTask) {
+            (
+                AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024),
+                AutoTask::new(0, 4096, 0),
+            )
+        }
+        fn pop_str(vm: &AutoVM, task: &mut AutoTask) -> String {
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_string(nv), "expected string nv, got {nv:?}");
+            let idx = auto_val::decode_string(nv);
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx as usize)
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .expect("string pool entry")
+        }
+
+        #[test]
+        fn body_fields_bind_by_name_in_declaration_order() {
+            let (vm, mut task) = rig();
+            let body: serde_json::Value =
+                serde_json::from_str(r#"{"body":"second","title":"first"}"#).unwrap();
+            let n = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("title", "str"), sig("body", "str")],
+                &rm(vec![], vec![]), Some(&body), "", None, "POST", "/api/notes",
+            )
+            .expect("bind");
+            assert_eq!(n, 2);
+            // LIFO: last-pushed pops first (body was pushed second).
+            assert_eq!(pop_str(&vm, &mut task), "second");
+            assert_eq!(pop_str(&vm, &mut task), "first");
+        }
+
+        #[test]
+        fn query_binds_by_name() {
+            let (vm, mut task) = rig();
+            let n = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("query", "str")],
+                &rm(vec![], vec![("q", "ignored"), ("query", "Build")]),
+                None, "", None, "GET", "/api/search",
+            )
+            .expect("bind");
+            assert_eq!(n, 1);
+            assert_eq!(pop_str(&vm, &mut task), "Build");
+        }
+
+        #[test]
+        fn typed_int_query_converts_and_rejects() {
+            let (vm, mut task) = rig();
+            let n = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("page", "int")],
+                &rm(vec![], vec![("page", "7")]), None, "", None, "GET", "/x",
+            )
+            .expect("bind");
+            assert_eq!(n, 1);
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_i32(nv) || auto_val::decode_i32(nv) == 7, "int nv {nv:?}");
+
+            let (vm2, mut task2) = rig();
+            let err = bind_api_args_by_name(
+                &vm2, &mut task2,
+                &[sig("page", "int")],
+                &rm(vec![], vec![("page", "seven")]), None, "", None, "GET", "/x",
+            )
+            .unwrap_err();
+            match err {
+                ApiArgBindError::BadRequest(m) => {
+                    assert!(m.contains("page") && m.contains("int"), "{m}");
+                }
+                other => panic!("expected BadRequest, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn bool_query_converts() {
+            let (vm, mut task) = rig();
+            let n = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("done", "bool")],
+                &rm(vec![], vec![("done", "true")]), None, "", None, "GET", "/x",
+            )
+            .expect("bind");
+            assert_eq!(n, 1);
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::is_bool(nv) && auto_val::decode_bool(nv), "bool nv {nv:?}");
+        }
+
+        #[test]
+        fn path_wins_over_body_and_query() {
+            let (vm, mut task) = rig();
+            let body: serde_json::Value =
+                serde_json::from_str(r#"{"id": 999}"#).unwrap();
+            let n = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("id", "int")],
+                &rm(vec![("id", "42")], vec![("id", "7")]),
+                Some(&body), "", None, "GET", "/api/notes/42",
+            )
+            .expect("bind");
+            assert_eq!(n, 1);
+            let nv = task.ram.pop_nv();
+            assert!(auto_val::decode_i32(nv) == 42, "path source must win, nv {nv:?}");
+        }
+
+        #[test]
+        fn missing_param_is_400_naming_param() {
+            let (vm, mut task) = rig();
+            let err = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("title", "str"), sig("body", "str")],
+                &rm(vec![], vec![]), None, "", None, "POST", "/api/notes",
+            )
+            .unwrap_err();
+            match err {
+                ApiArgBindError::BadRequest(m) => {
+                    assert!(m.contains("missing param `title`"), "{m}");
+                }
+                other => panic!("expected BadRequest, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn trailing_unbound_param_receives_metadata() {
+            let (vm, mut task) = rig();
+            let body: serde_json::Value =
+                serde_json::from_str(r#"{"title":"t"}"#).unwrap();
+            let n = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("title", "str"), sig("meta", "str")],
+                &rm(vec![], vec![]), Some(&body), "", Some(r#"{"cookies":{}}"#), "POST", "/x",
+            )
+            .expect("bind");
+            assert_eq!(n, 2);
+            assert_eq!(pop_str(&vm, &mut task), r#"{"cookies":{}}"#);
+            assert_eq!(pop_str(&vm, &mut task), "t");
+        }
+
+        #[test]
+        fn non_trailing_unbound_is_missing_even_with_metadata() {
+            let (vm, mut task) = rig();
+            let err = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("a", "str"), sig("meta", "str")],
+                &rm(vec![], vec![]), None, "", Some("{}"), "GET", "/x",
+            )
+            .unwrap_err();
+            assert!(matches!(err, ApiArgBindError::BadRequest(_)));
+        }
+
+        #[test]
+        fn raw_body_single_param_tolerance() {
+            let (vm, mut task) = rig();
+            let n = bind_api_args_by_name(
+                &vm, &mut task,
+                &[sig("data", "str")],
+                &rm(vec![], vec![]), None, "plain text not json", None, "POST", "/x",
+            )
+            .expect("bind");
+            assert_eq!(n, 1);
+            assert_eq!(pop_str(&vm, &mut task), "plain text not json");
+        }
+
+        #[test]
+        fn empty_sigs_bind_zero() {
+            let (vm, mut task) = rig();
+            let n = bind_api_args_by_name(
+                &vm, &mut task, &[], &rm(vec![], vec![]), None, "", None, "GET", "/x",
+            )
+            .expect("bind");
+            assert_eq!(n, 0);
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Plan 326 Phase 3 end-to-end: spawn the real AutoVM HTTP server with a
     // minimal #[api] program that returns a struct, then assert the HTTP
     // response body is well-formed JSON (not the bare heap-id "4000000").
@@ -2908,6 +3113,155 @@ fn encode_ws_text_frame(text: &str) -> Vec<u8> {
     }
     frame.extend_from_slice(payload);
     frame
+}
+
+// ============================================================================
+// PLAN-669: #[api] by-name argument binding
+// ============================================================================
+// Shared binder for the legacy positional assembly sites (async
+// build_handler_args, shim_http_server_listen, serve_blocking_stdnet,
+// run_http_server_blocking). Per declared param, in declaration order,
+// binding precedence is: path segment (by name) → body JSON field → query
+// param (back_proxy Plan 658 parity). Missing params → HTTP 400 naming the
+// param; a lone trailing unbound param receives the cookies/auth metadata
+// JSON (Plan 317 Phase 11 opt-in — async site passes Some). Sites whose fn
+// has no API_PARAM_SIGS entry keep the legacy positional behavior unchanged.
+
+/// PLAN-669 binder failure — site maps to an HTTP error response.
+#[derive(Debug)]
+pub(crate) enum ApiArgBindError {
+    /// 400 — missing param / unconvertible value; message is response detail.
+    BadRequest(String),
+    /// 500 — body value marshal failure (server fault, not client's).
+    Internal(String),
+}
+
+/// Declared-param kind derived from the `Type` Display string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApiTyKind {
+    Int,
+    Float,
+    Bool,
+    Str,
+}
+
+impl ApiTyKind {
+    fn from_ty(ty: &str) -> Self {
+        match ty.trim() {
+            "int" | "i64" | "byte" | "uint" | "usize" | "u64" => ApiTyKind::Int,
+            "float" | "double" => ApiTyKind::Float,
+            "bool" => ApiTyKind::Bool,
+            _ => ApiTyKind::Str,
+        }
+    }
+}
+
+/// Push a string-sourced (path/query) value converted per declared type.
+/// Mirrors json_to_vm_value's marshalling exactly (int → encode_i32(i64 as
+/// i32), float → push_f64, bool → encode_bool) so body- and string-sourced
+/// params land in identical VM slots; strings go through the Plan 510 G1-1
+/// push_str_arg throat.
+fn push_typed_string_arg(
+    vm: &crate::vm::engine::AutoVM,
+    task: &mut crate::vm::task::AutoTask,
+    sig: &ApiParamSig,
+    val: &str,
+    method: &str,
+    req_path: &str,
+) -> Result<(), ApiArgBindError> {
+    let bad = |expected: &str| {
+        ApiArgBindError::BadRequest(format!(
+            "invalid value for param `{}` (expected {}): {:?} — {} {}",
+            sig.name, expected, val, method, req_path
+        ))
+    };
+    match ApiTyKind::from_ty(&sig.ty) {
+        ApiTyKind::Int => match val.parse::<i64>() {
+            Ok(i) => task.ram.push_nv(auto_val::encode_i32(i as i32)),
+            Err(_) => return Err(bad(sig.ty.trim())),
+        },
+        ApiTyKind::Float => match val.parse::<f64>() {
+            Ok(f) => task.ram.push_f64(f),
+            Err(_) => return Err(bad(sig.ty.trim())),
+        },
+        ApiTyKind::Bool => match val {
+            "true" => task.ram.push_nv(auto_val::encode_bool(true)),
+            "false" => task.ram.push_nv(auto_val::encode_bool(false)),
+            _ => return Err(bad("bool")),
+        },
+        ApiTyKind::Str => push_str_arg(vm, task, val),
+    }
+    Ok(())
+}
+
+/// Bind `#[api]` handler args by name onto the task stack. Returns the
+/// number of args pushed. `body_json` is the parsed request body (when
+/// parseable); `raw_body` the unparsed string (a lone str param and an
+/// unparseable body → raw passthrough, back_proxy tolerance);
+/// `metadata_json` the cookies/auth payload a trailing opt-in param receives.
+pub(crate) fn bind_api_args_by_name(
+    vm: &crate::vm::engine::AutoVM,
+    task: &mut crate::vm::task::AutoTask,
+    sigs: &[ApiParamSig],
+    route_match: &RouteMatch,
+    body_json: Option<&serde_json::Value>,
+    raw_body: &str,
+    metadata_json: Option<&str>,
+    method: &str,
+    req_path: &str,
+) -> Result<usize, ApiArgBindError> {
+    let mut n_args = 0usize;
+    let mut unbound: Vec<&ApiParamSig> = Vec::new();
+    for sig in sigs {
+        if let Some((_, v)) = route_match.path_params.iter().find(|(n, _)| n == &sig.name) {
+            push_typed_string_arg(vm, task, sig, v, method, req_path)?;
+            n_args += 1;
+            continue;
+        }
+        if let Some(v) = body_json.and_then(|b| b.get(&sig.name)) {
+            crate::vm::ffi::stdlib::json_to_vm_value(task, vm, v, 0).map_err(|e| {
+                ApiArgBindError::Internal(format!(
+                    "body param `{}` marshal failed: {e:?}",
+                    sig.name
+                ))
+            })?;
+            n_args += 1;
+            continue;
+        }
+        if let Some((_, v)) = route_match.query_params.iter().find(|(n, _)| n == &sig.name) {
+            push_typed_string_arg(vm, task, sig, v, method, req_path)?;
+            n_args += 1;
+            continue;
+        }
+        unbound.push(sig);
+    }
+
+    // Raw-body single-param tolerance (back_proxy parity — checked BEFORE the
+    // metadata rule so `fn save(data str)` + text/plain body keeps receiving
+    // the raw string, as the positional convention always did).
+    if unbound.len() == 1 && sigs.len() == 1 && !raw_body.is_empty() && body_json.is_none() {
+        push_str_arg(vm, task, raw_body);
+        return Ok(n_args + 1);
+    }
+
+    // Trailing metadata opt-in (Plan 317 Phase 11 semantics, by-name form):
+    // exactly one trailing declared param unbound → cookies/auth JSON.
+    if unbound.len() == 1
+        && std::ptr::eq(unbound[0], sigs.last().expect("unbound implies sigs nonempty"))
+    {
+        if let Some(meta) = metadata_json {
+            push_str_arg(vm, task, meta);
+            return Ok(n_args + 1);
+        }
+    }
+
+    if let Some(sig) = unbound.first() {
+        return Err(ApiArgBindError::BadRequest(format!(
+            "missing param `{}` for {} {}",
+            sig.name, method, req_path
+        )));
+    }
+    Ok(n_args)
 }
 
 /// Build handler arguments on the task's stack (path params + body).
