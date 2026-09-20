@@ -1642,6 +1642,14 @@ pub fn synthesize_widget_module(
         }
         w_handlers.sort_by(|a, b| handler_fn_name(&a.0).cmp(&handler_fn_name(&b.0)));
 
+        // Pre-register all handler export names so forward handler-as-value
+        // references (e.g. .OnStreamEvent passed to Sse.open in AttachStream) resolve.
+        for (event_pattern, _) in &w_handlers {
+            let bare = bare_handler_name(event_pattern);
+            let fn_name = namespaced_handler_fn_name(&w.name, bare);
+            codegen.exports.entry(fn_name).or_insert(0);
+        }
+
         for (event_pattern, payload) in &w_handlers {
             let body_stmts = match payload {
                 LogicPayload::AstStmts(stmts) => stmts,
@@ -2359,6 +2367,14 @@ pub fn synthesize_from_decl(
             d_handlers.push((lc.name.clone(), lc.body.clone()));
         }
         d_handlers.sort_by(|a, b| handler_fn_name(&a.0).cmp(&handler_fn_name(&b.0)));
+
+        // Pre-register all handler export names so forward handler-as-value
+        // references (e.g. .OnStreamEvent passed to Sse.open in AttachStream) resolve.
+        for (event_pattern, _) in &d_handlers {
+            let bare = bare_handler_name(event_pattern);
+            let fn_name = namespaced_handler_fn_name(&d.name.to_string(), bare);
+            codegen.exports.entry(fn_name).or_insert(0);
+        }
 
         for (event_pattern, body_stmts) in &d_handlers {
             let handler_fn = synthesize_handler_fn_from_decl_with_store(
