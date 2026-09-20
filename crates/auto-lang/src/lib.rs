@@ -1270,6 +1270,8 @@ async fn execute_autovm_with_path(
     // program (routes, param sigs, AppState). Must precede resolve_deps:
     // dep-module Codegen instances publish param sigs during compilation.
     crate::vm::ffi::axum_adapter::reset();
+    // PLAN-669: #[api] param-sig side channel — same reset discipline.
+    crate::vm::ffi::http_server::clear_api_param_sigs();
 
     // Plan 085: Pre-process use statements to load dependencies
     let mut session = compile::CompileSession::new();
@@ -1782,6 +1784,8 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
 
     // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
     crate::vm::ffi::axum_adapter::reset();
+    // PLAN-669: #[api] param-sig side channel — same reset discipline.
+    crate::vm::ffi::http_server::clear_api_param_sigs();
 
     // Compilation pipeline (same as execute_autovm)
     let mut session = compile::CompileSession::new();
@@ -5041,6 +5045,8 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
 
     // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
     crate::vm::ffi::axum_adapter::reset();
+    // PLAN-669: #[api] param-sig side channel — same reset discipline.
+    crate::vm::ffi::http_server::clear_api_param_sigs();
 
     // Same compilation pipeline as execute_autovm
     let mut session = compile::CompileSession::new();
@@ -5269,6 +5275,8 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
 
     // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
     crate::vm::ffi::axum_adapter::reset();
+    // PLAN-669: #[api] param-sig side channel — same reset discipline.
+    crate::vm::ffi::http_server::clear_api_param_sigs();
 
     let mut session = compile::CompileSession::new();
     session.collect_rust_imports(code)?;

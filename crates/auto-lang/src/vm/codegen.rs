@@ -1401,6 +1401,22 @@ impl Codegen {
                         api.path.clone(),
                         fn_decl.name.to_string(),
                     ));
+                    // PLAN-669: publish declared params (name + type display)
+                    // so the HTTP server binds request args by name
+                    // (path segment → body field → query param). Dep-module
+                    // Codegen instances pass here too; the run pipeline resets
+                    // the table before compiling (clear_api_param_sigs).
+                    crate::vm::ffi::http_server::record_api_param_sigs(
+                        &fn_decl.name.to_string(),
+                        fn_decl
+                            .params
+                            .iter()
+                            .map(|p| crate::vm::ffi::http_server::ApiParamSig {
+                                name: p.name.to_string(),
+                                ty: p.ty.to_string(),
+                            })
+                            .collect(),
+                    );
                 }
 
                 // Plan 321/327: Detect generator functions (return type ~Iter<T>

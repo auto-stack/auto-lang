@@ -41,6 +41,53 @@ pub struct RouteMatch {
     pub query_params: Vec<(String, String)>,
 }
 
+// ============================================================================
+// PLAN-669: #[api] handler 形参签名侧信道
+// ============================================================================
+// codegen 在 api_routes.push 处同步发布每个 #[api] fn 的形参（名+类型），
+// 服务侧据此按名装配 handler 实参（路径段 → body 字段 → query，缺参 400；
+// 见 bind_api_args_by_name）。生命周期模型同 stdlib 的 HTTP_ROUTES /
+// axum_adapter 的 PARAM_SIGS：每驱动进程一个程序，run pipeline 编译前重置
+// （clear_api_param_sigs），e2e 隔离经 clear_http_routes 连带清空。
+// 条目缺失（legacy 生产者）→ 服务侧回退旧位序装配，行为不变。
+
+/// One declared `#[api]` handler parameter: name + type display string
+/// ("int"/"str"/"bool"/... — `Type`'s Display, same source as
+/// axum_adapter::record_param_sig).
+#[derive(Debug, Clone)]
+pub struct ApiParamSig {
+    pub name: String,
+    pub ty: String,
+}
+
+static API_PARAM_SIGS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Vec<ApiParamSig>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Codegen publishes each `#[api]` fn's declared params at fn-compile time
+/// (dep-module Codegen instances publish here too, so by-name binding resolves
+/// for cross-module handlers — same lifetime model as record_param_sig).
+pub fn record_api_param_sigs(fn_name: &str, sigs: Vec<ApiParamSig>) {
+    if let Ok(mut table) = API_PARAM_SIGS.lock() {
+        table.insert(fn_name.to_string(), sigs);
+    }
+}
+
+/// Resolve a `#[api]` handler fn's declared params by name (clone).
+pub fn api_param_sigs(fn_name: &str) -> Option<Vec<ApiParamSig>> {
+    API_PARAM_SIGS
+        .lock()
+        .ok()
+        .and_then(|t| t.get(fn_name).cloned())
+}
+
+/// Reset before compiling a program (the run pipeline calls this next to
+/// axum_adapter::reset; the codegen publishers rebuild the table from scratch).
+pub fn clear_api_param_sigs() {
+    if let Ok(mut table) = API_PARAM_SIGS.lock() {
+        table.clear();
+    }
+}
+
 /// Match a request (method, path) against a list of routes.
 /// Supports `:param` path parameter extraction (e.g. /api/notes/:id).
 pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<RouteMatch> {
@@ -903,6 +950,29 @@ mod plan326_tests {
         let nv = auto_val::encode_i32(outer_id as i32);
         let json = super::nv_to_json(&vm, nv, 0).unwrap();
         assert_eq!(json, r#"{"p": {"x": 3, "y": 4}}"#);
+    }
+
+    // ---------------------------------------------------------------------
+    // PLAN-669: #[api] param-sig side channel (registry round-trip; the
+    // codegen publish site is covered end-to-end by the http_e2e battery).
+    // ---------------------------------------------------------------------
+    #[test]
+    fn plan669_api_param_sigs_roundtrip() {
+        use super::{api_param_sigs, clear_api_param_sigs, record_api_param_sigs, ApiParamSig};
+        clear_api_param_sigs();
+        record_api_param_sigs(
+            "create_note",
+            vec![
+                ApiParamSig { name: "title".into(), ty: "str".into() },
+                ApiParamSig { name: "id".into(), ty: "int".into() },
+            ],
+        );
+        let sigs = api_param_sigs("create_note").expect("recorded");
+        assert_eq!(sigs.len(), 2);
+        assert_eq!(sigs[0].name, "title");
+        assert_eq!(sigs[1].ty, "int");
+        clear_api_param_sigs();
+        assert!(api_param_sigs("create_note").is_none());
     }
 
     // ---------------------------------------------------------------------

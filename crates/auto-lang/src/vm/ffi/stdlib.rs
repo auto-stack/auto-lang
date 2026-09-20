@@ -3509,6 +3509,10 @@ pub fn clear_http_routes() {
     // 127.0.0.1, so a previous test's http.rate_limit(2, 60000) would 429
     // every later test in the same process.
     super::http_server::clear_rate_limit();
+    // PLAN-669: also drop the #[api] param-sig side channel — a stale entry
+    // from a prior test would by-name-bind a same-named handler against the
+    // wrong signature.
+    super::http_server::clear_api_param_sigs();
 }
 
 // Thread-local storage for TCP listeners
