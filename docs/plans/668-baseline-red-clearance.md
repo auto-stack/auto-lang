@@ -1,0 +1,288 @@
+---
+plan_id: PLAN-668
+status: drafting               # drafting → executing → execution_done → reviewed → archived
+feature_name: baseline-red-clearance
+author: [zcode]
+created_at: 2026-09-20
+updated_at: 2026-09-20
+plan_revision: 1
+current_step: 0
+total_steps: 10
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components: []
+new_spec_components: ["docs/specs/auto-man/project.md"]
+touched_goals: []             # 修复批无 GOAL-NNN 映射，见 §5 规范增量说明
+
+affects: [auto-man, auto-lang/ui]
+---
+
+# [PLAN-668] baseline-red-clearance（存量红基线清零批）
+
+## 0. 变更摘要
+
+把 `KNOWN-DEBT-AND-RISKS.md` 在册的 master 预存测试红（tv/daily 两红、iced 档四红、
+564-Q6 老家族、test-trans golden 五件、aavm 金样两件、零散集成红六件）与 examples
+构建链红（脚手架类型面双错、038 vue-tsc、017/025 api_gen 后端转译）集成清偿；逐条
+复核分类（修复 / 核销-复核不红 / 环境红豁免 / 域外转介）并回写台账。产出：各档门禁
+从近六个计划被迫沿用的"相对基线零新增红"口径回到**绝对全绿**（环境红豁免清单除外）。
+
+## 1. 目标
+
+### 1.1 目标
+
+1. **G-A 测试档红清零**：R-01..R-20（§5 清单）中经 T-01 复核确认仍红的条目全部修复
+   或按分类处置，终验矩阵对应滤串全绿。
+2. **G-B examples 构建链红清零**：R-21..R-24——抽样示例集 `auto build` 的 vue-tsc 面
+   绿、017/025 rust 后端转译产物 cargo check 绿。
+3. **G-C 台账治理**：本批全部条目在 KNOWN-DEBT-AND-RISKS 落处置（✅修复+提交号 /
+   核销-复核不红 / 环境红豁免注记 / 域外转介指针），后续计划复审不再重复对账本批签名。
+
+### 1.2 非目标（Non-goals）
+
+- **musk p053 家族修复**（R-25）：musk 域在案（P645-D2/P028-D4/P648-D2），本批仅做
+  master 签名复测与呈报，不修改 musk 域代码。
+- **P660-D4 rust/a2r 臂四类系统性缺口**（use fn 不发射/中文 mojibake/button 子文案/
+  `[]str` Value）：真 codegen 能力缺口非陈旧产物，归 vm-component-parity / a2r 后续
+  专项（014-weather 已以语料规避）。
+- **P581-D1 website vitepress build 红**：台账标"待用户裁定"，不在本批。
+- **RC/内存族**（P506-1 038 UAF、P667-D1、P659-D1、585 等）：独立专项候选。
+- **物理机/实机清单族、dep-rust V2 族（P591/P592/P596）、主题族**：各有既定触发条件。
+- **L0 顺手修批**（P665-D6 spec-index.py 根治、P663-D5 ui/component.rs:97 cfg 门控、
+  P632-D1、P665-D5/D7）：另行 fix worktree，不混入本批。
+- **环境红 stabilize 工程**：R-11（ui::layout 几何族）等环境依赖红默认只登记豁免口径
+  （576 债注记：数量随会话 6↔9↔14 浮动），不做稳定化改造。
+- 不动 auto-os / auto-down / musk 域文件；不引入新功能。
+
+### 1.3 成功样貌
+
+`cargo tv` / `cargo tt`（目标滤串）/ `cargo t iced`（目标滤串）/ `cargo taa
+test_aavm2_goldens_check` 全绿；抽样示例构建链绿；KNOWN-DEBT 中本批 27 条全部闭合；
+下一个计划的复审门禁可以直说"全绿"，无需再附基线对照表。
+
+## 2. 架构方案
+
+无新架构，纯清偿批（先例：Plan 515 桌面 DEBT 批处理一/二期、Plan 524、Plan 513
+整合清理批）。工作形态：
+
+- **单 worktree**：`D:/autostack/.wt/lang-668/auto-lang`（plan-668-dev），T-01..T-09
+  全部在 worktree 内完成；计划簿记（本文件）留主检出。
+- **先勘定后动手**：T-01 在 worktree（同 master HEAD）跑全档电池实采红签名——台账
+  归因是历史快照，部分条目可能已被后续计划顺修（如 R-08 c2_param_msg 曾由 492 M6
+  恢复过）；复核不红的直接核销，避免修已不存在的红。
+- **三组横切**：G-A（测试断言/golden 再生/表同步，auto-lang 侧）、G-B（脚手架与
+  生成器，auto-man/ui_gen 侧）、G-C（复核呈报+台账回写）。
+- **风险与合流**：在途并行会话（plan-036 等）脏文件含 renderer.rs——本批 R-05 修复
+  面（aura_view_builder.rs convert_popover）与其可能相邻，合并期如遇重叠按多会话
+  礼仪对账；T-01 开工前复核 master 状态。
+
+## 3. 技术栈
+
+- Rust 测试档：`cargo t / tf / tv / tt`（nextest 别名）、`cargo taa
+  test_aavm2_goldens_check`（aavm 金样档）、`--features ui-iced` 特性档、insta 快照
+  （`cargo insta accept`）。
+- golden 再生：a2r golden 逐例 bless + 人工核验；aavm2 期望文件再生。
+- 构建链验证：`auto build`（vue-tsc && vite build）——**P075-D1 沙箱纪律**：凡
+  `auto build`/`Pac::resolve` 类验证一律在仓库外临时目录跑（复制工程→构建→先 rmdir
+  摘 deps 链接再整树删）；pnpm/vite/cargo 仓库内允许（node_modules 实勘无 reparse
+  point）。
+- 诊断辅助：stash 双跑对照、detached 基点复现（既有方法论，台账各条已含复现命令）。
+
+## 4. 需求分析与背景调查
+
+### 4.1 授权记录
+
+- 用户于 2026-09-20 会话批准："按照你推荐的候选，起草计划文档"——**授权范围=起草
+  本计划**；执行（进入 executing + 建 worktree）须按 AGENTS L1 步 2 再确认
+  （见 §10 待澄清 1）。
+- 仓界：auto-lang 主仓（含 crates/auto-man）。预算/自动延续上限：未指定。
+
+### 4.2 背景调查（台账来源，均已含归因与复现命令）
+
+- 近六个计划重复交税的实证：P667-D2（合并门禁改"相对基线零新增红"口径）、
+  P661-D7（661 基线对跑实录 tv 2 红 + iced 4 红 + ui 滤串 ~50-52 红）、P662-D2、
+  P645-D2、P028-D4、P648-D2（musk p053 家族三次独立发现）、FIX-REORG-D1。
+- 564-Q6 老家族：2026-09-05 基点实证 15+ 失败（plan370 d8 / plan492 c2_param_msg /
+  ui::layout grid 与 master_stack 全族 / ui::iced lucide manifest / aura strip_html），
+  "需维护者排查归位"——至今无人认领。
+- test-trans golden：018-T05（`14_modules/007_shared_var`+`27_c_abi`+实编门 3
+  unexpected）与 P667-D2 同集；P566 记 aavm2 金样 b13/b32 为 577 再生遗漏。
+- examples 构建链：P660-D1+P657-D2（两错打红全部示例 auto build：tsconfig 无
+  vite/client 类型；auto-sources 仅 `auto run` 写入而 build 阶段缺位）；P666-D2
+  （038 vue-tsc store 名）；P658-C1+P666-D1（017/025 api_gen 后端转译红，两侧对称
+  预存=CLI 后端 codegen 演化漂移）。
+- 规约状态：本批不触及 docs/specs 现行规则；仅 SD-01/SD-02 为 auto-man 脚手架契约
+  增补（§5）。
+
+### 4.3 环境与约束
+
+- **多会话并行**：term-024/lang-025/lang-036/musk-080 等活跃 worktree 在途（均
+  2026-09-20 有提交）；master 共享，他方 UU/MERGE_HEAD 默认勿解（受托代解先撤他方
+  暂存）。
+- **worktree 红线**：内禁 junction/symlink；移除前 `bash D:/autostack/wt-guard.sh`。
+- **tf 顺序性红基线**（工具链雷区在案）：终验以 tf 全量跑一次为口径，顺序性差异按
+  T-01 分类处理。
+- **prismjs 钉 1.29.0**（1.30.0 全域阻断 vue dev）：构建链验证若涉 pnpm install，
+  遇浮动解析按钉版处置（656 F-R1 先例：探针脚本内置钉版自愈）。
+- **测试副作用**：auto-man 测试会写脏 `examples/rust-workspace/**` tracked 产物
+  （P580-D3/P633-D3 在案）——基线跑若产生脏 diff，记录后还原，不误当回归。
+
+## 5. 详细设计
+
+### 5.1 条目清单（R-01..R-27）与初判修法
+
+**G-A 测试档红（auto-lang 侧）**
+
+| # | 条目（测试/现象） | 台账来源 | 初判修法 |
+|---|---|---|---|
+| R-01 | `ui_gen::rust::tests::mouse_area_emits_events_and_logical_extent` | P667-D2 / P661-D7 | 疑 660 系 rust/a2r 合入漂移；对照 660 §5.6 对拍表定位后修发射或断言 |
+| R-02 | `ui_gen::rust::tests::test_autodown_panel_heading_codegen` | 同上 | 同上 |
+| R-03 | `cargo t iced` 滤串：`lucide_icon_coverage` | P661-D7② | 逐条定位（manifest/清单再生或断言） |
+| R-04 | `conditional_style_hover` | P661-D7② | 逐条定位 |
+| R-05 | `p010_popover_ondismiss_extracted_from_events` | P661-D7② + 027 在册 | 027 已归因：解释臂拖拽幽灵 popover 被判 widget 形态——修 `aura_view_builder.rs convert_popover` 坐标锚判定 |
+| R-06 | `external_config_poll` | P661-D7② + P667-D2 | P667-D2 标"并行/环境闪测（单跑绿）"→ T-01 先分类，环境红则豁免登记 |
+| R-07 | plan370 `d8_toggle_dark_mode` | 564-Q6 / P524-1 | 015 默认翻 true 断言未跟——断言跟语义 |
+| R-08 | plan492 `c2_param_msg_declaration_both_tracks_alive` | 564-Q6 | 492 M6 曾恢复过——复核现行态后修 |
+| R-09 | plan055 `strip_html`（双空格） | P502-1 / P524-1 | 断言跟语义（strip 后双空格行为裁定） |
+| R-10 | `ui::iced lucide manifest` | 564-Q6 | manifest 再生或断言对齐 |
+| R-11 | `ui::layout` grid/master_stack 族 | 564-Q6 + 576 注记 | **环境红候选**（本机显示几何，数量随会话 6↔9↔14 浮动）→ 分类定案豁免口径，不盲修 |
+| R-12 | test-trans golden 五件：`14_modules/007_shared_var`、`27_c_abi/003`、`27_c_abi/004`、`a2r_rustc_real_compile_gate`（含 024_nested_async_await 解析错） | P667-D2 / 018-T05 | 逐例 bless 再生（人工核验）或便宜根因修；台账原话"逐例 bless 或根因修+归因清账" |
+| R-13 | aavm2 金样 `b13_is_enum` / `b32_is_break_continue` | P566 | 577 再生遗漏的两件 expected.rs 再生（bless） |
+| R-14 | `covered_elements_within_target_set` | P566 / P033-D4 | imagesurface 登记（element_coverage.rs:43）与 `Coverage::target_set()` kinds 表脱钩——target_set 增 imagesurface 臂或登记降级（P033-D4 注"归 PLAN-656 表同步收口"，本批承接） |
+| R-15 | `test_display_family_codegen_arm_fixture`（icon size 14→20px） | P649 / 564-Q6 | 特性配置债：无 ui-iced 必红/有则绿——`ui_gen/rust.rs:3227` 一带 icon 臂默认档路径修正，双特性态同绿 |
+| R-16 | plan606 `test_029_photo_gallery_thumbnails...`（data-URL 断言） | P642-D5 / D11 | 断言过时（语料已演进为路径引用+渲染端内嵌契约）→ 更新断言到现契约 |
+| R-17 | `plan488_dnd_bridge_app_handlers` | FIX-REORG-D1 | dnd-bridge app.at 解析失败（caption_text UndefinedVariable + 20 处 RBrace）→ 修 app.at 源或定位解析器回归 |
+| R-18 | `ui_snapshots__editor.snap` / `__sidebar.snap` 过期 | P451 复审 | `cargo insta accept`（015-notes SFC 字节漂移） |
+| R-19 | docs_gen `kitchen_sink_page_in_sync` + `schema_drift_fence` | P528-D6 | baseline 裁剪（`SCHEMA_DRIFT_UPDATE_BASELINE=1`）+ kitchen_sink 同步 |
+| R-20 | spa-routes e2e 5 红（/ui/* title 漂移） | P582-D1 | 资产重生成或断言修 |
+
+**G-B examples 构建链红（auto-man / ui_gen 侧）**
+
+| # | 条目 | 台账来源 | 初判修法 |
+|---|---|---|---|
+| R-21 | 全部示例 `auto build` vue-tsc 红：`main.ts TS2339 import.meta.env` | P660-D1 / P657-D2② | 脚手架 tsconfig types 补 `"vite/client"`（auto-man gen 模板）——一处修全域绿 |
+| R-22 | `overlay.ts TS2307 '../auto-sources'`（013/046/047） | P657-D2① | 阶段序缺口：build 阶段也写 auto-sources，或 overlay 改惰性类型（T-06 内定，SD-02） |
+| R-23 | 038-minesweeper vue-tsc：`useMinesweeperStore.ts:282/287` store 名未解析 | P666-D2 | 生成器演化滞后定位（codegen 演化 vs 陈旧 gen 产物对照） |
+| R-24 | 017-chat / 025-sys-monitor rust 后端转译红（017 db.rs `"AutoBot"` E0308 八处；025 29 错） | P658-C1 / P666-D1 | api_gen/a2r 演化漂移——种子字面量 &str 落 String 槽等；两侧对称预存确认后逐族修 |
+
+**G-C 复核/呈报/核销**
+
+| # | 条目 | 台账来源 | 处置 |
+|---|---|---|---|
+| R-25 | musk_vm_track p053 家族 4 红（p053_1×2 / p053_4 / p053_6） | P645-D2 / P028-D4 / P648-D2 | musk 域——本批仅 master 签名复测+呈报，不修 |
+| R-26 | P551-D2 autodown feature path 依赖失效 | P551-D2 | 复核是否已被随行修（近期各计划 cargo 正常，疑条件性失效）——不红则核销 |
+| R-27 | 台账核销回写（R-01..R-26 全部处置落册） | 本批 | T-08 执行 |
+
+### 5.2 任务分组策略
+
+按"独立可验证结果"分组：发射/断言族（T-02）、564-Q6 语义族（T-03）、golden/快照
+再生批（T-04）、断言契约与表同步（T-05）、脚手架/生成器（T-06）、api_gen 后端
+（T-07）、呈报与核销（T-08）、终验（T-09）、合并收尾（T-10）。每任务收口即跑该组
+滤串，不留"最后一起验"。
+
+### 5.3 规范增量
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-01 | add | docs/specs/auto-man/project.md | before：脚手架 tsconfig 无 vite/client 类型约定（main.ts `import.meta.env` 依赖隐式全局，vue-tsc TS2339）。after：gen 模板 tsconfig `types` 显式含 `"vite/client"` | P660-D1 根修落入生成器模板，属生成器行为契约 | AC-07 |
+| SD-02 | add | docs/specs/auto-man/project.md | before：`auto-sources.ts` 仅 `auto run` 驱动写入（auto-man vue.rs write_auto_sources_ts），build 阶段缺位。after：`auto build` 阶段同样产出 auto-sources（或 overlay 改惰性类型——T-06 勘定后复审终稿回填） | P657-D2① 阶段序缺口的契约化 | AC-07 |
+
+**无其余规范面变更的说明**：本批其余条目均为测试断言修正、golden/快照再生、登记表
+同步与语料小修——行为契约不变，不改 docs/specs 现行规则。
+
+## 6. 测试设计
+
+- **基线电池（T-01，worktree 内，同 master HEAD）**：`cargo t`、`cargo tv`、
+  `cargo tt`、`cargo nextest run -p auto-lang --features ui-iced`（ui-iced 档）、
+  `cargo taa test_aavm2_goldens_check`；ambiguous 项（环境 vs 代码）在主检出做签名
+  对照复测。产出 `docs/plans/evidence/p668/baseline.md`。
+- **分组验证（各 T 收口）**：见 §8 各任务验证命令——滤串级，快。
+- **终验矩阵（T-09）**：`cargo tv` + `cargo tt` + `cargo t` + ui-iced 特性档 +
+  `cargo taa test_aavm2_goldens_check` + `cargo tf`（全量一次，顺序性红按 T-01 分类）
+  + 抽样示例构建链复跑（沙箱）。判据：相对 T-01 基线，目标条目全绿；残余全部落入
+  环境红豁免清单（随 AC-01 呈报）。
+- **构建链验证沙箱纪律**：抽样集 {013-todo, 014-weather, 017-chat, 025-sys-monitor,
+  038-minesweeper} + 046/047 复测（P657-D2 原发现面）——`auto build` 在仓库外临时
+  目录执行（P075-D1），vue-tsc 面为判据。
+
+## 7. 验收标准
+
+- **AC-01 基线勘定产物**：`docs/plans/evidence/p668/baseline.md` 存在，含 (a) 各档
+  实跑红签名全集；(b) §5 清单 R-01..R-26 逐一分类：修复（并入 T-xx）/ 核销-已不红 /
+  环境红豁免（口径+复测方法）/ 域外转介——无"未分类"项。验证：文件审阅 + 分类表
+  覆盖率核对（26/26）。
+- **AC-02 tv/daily 两红清零**：T-09 终验中 `cargo tv` 与 `cargo t` 对应滤串
+  （mouse_area_emits_events_and_logical_extent / test_autodown_panel_heading_codegen）
+  绿（R-01/R-02；若 T-01 判核销-已不红则以复测记录替代）。
+- **AC-03 iced/ui 档红清零**：`cargo t iced` 目标滤串（lucide_icon_coverage /
+  conditional_style_hover / p010_popover_ondismiss）绿（R-03..R-05）；R-06、R-11 按
+  T-01 分类定案（环境红豁免登记或修复）；`covered_elements_within_target_set` 绿
+  （R-14）；`test_display_family_codegen_arm_fixture` 在有/无 ui-iced 两特性组合下
+  同绿（R-15，P649 双态复现口径）。
+- **AC-04 test-trans golden 清零**：`cargo tt` 目标滤串（14_modules_007_shared_var /
+  27_c_abi / a2r_rustc_real_compile_gate）绿；每件 bless 附人工核验记录（evidence，
+  R-12）。
+- **AC-05 aavm 金样清零**：`cargo taa test_aavm2_goldens_check` 全绿（R-13）。
+- **AC-06 零散集成红清零**：plan606 029 断言、plan488 dnd-bridge、ui_snapshots 双
+  快照、docs_gen kitchen_sink/schema_drift、spa-routes e2e 各自滤串绿或按分类处置
+  落册（R-16..R-20）。
+- **AC-07 examples 构建链清零**：抽样集 + 046/047 的 `auto build` vue-tsc 面绿
+  （R-21/R-22/R-23）；017/025 rust 后端转译产物 cargo check 绿（R-24，按 T-07 诊断
+  收敛口径）；SD-01/SD-02 契约行落笔。
+- **AC-08 台账核销回写**：KNOWN-DEBT-AND-RISKS 中 R-01..R-27 全部落处置（✅修复+
+  提交号 / 核销-复核不红 / 环境红豁免注记 / 域外转介指针），564-Q6 总条目随家族
+  清偿状态更新；无遗留开口（R-27）。
+- **AC-09 终验与收尾**：§6 终验矩阵通过（残余仅环境红豁免清单内项）；wt-guard
+  clean → 合并 master → 收据回填本计划。
+
+## 8. 执行步骤
+
+> 全部代码工作在 `D:/autostack/.wt/lang-668/auto-lang`（T-00 建）；每步完成后追加
+> `[✅ 已完成]` 证据行。
+
+- **T-00 建组**：主检出 commit 簿记（本文件+.next-id）→ `git worktree add
+  D:/autostack/.wt/lang-668/auto-lang -b plan-668-dev`；flip `status: executing`。
+  验证：worktree HEAD==master。
+- **T-01 基线勘定与分类**（→AC-01）：在 worktree 跑 §6 基线电池；对 §5 清单 26 项
+  逐条复测签名（台账复现命令为准），分类四态；ambiguous 项主检出对照。产出
+  `docs/plans/evidence/p668/baseline.md`。验证：分类表 26/26 覆盖。
+- **T-02 发射/断言族修复**（→AC-02/AC-03）：R-01/R-02（对照 660 对拍表定位）、
+  R-03/R-04、R-15（rust.rs:3227 icon 臂双特性态）。验证：各滤串隔离绿。
+- **T-03 564-Q6 语义断言族**（→AC-03）：R-07/R-08/R-09/R-10 + R-11 分类定案
+  （豁免口径成文：CI 为准/本机浮动记录）。验证：`cargo t`（ui-iced 档）目标滤串绿。
+- **T-04 golden/快照再生批**（→AC-04/AC-05）：R-12（逐例 bless+人工核验）、R-13
+  （aavm expected.rs 再生）、R-18（insta accept）。验证：`cargo tt` / `cargo taa
+  test_aavm2_goldens_check` / 快照滤串绿。
+- **T-05 断言契约与表同步**（→AC-03/AC-06）：R-05（convert_popover 坐标锚判定源
+  修）、R-14（target_set/登记同步）、R-16（029 断言更新）、R-17（dnd-bridge 源修或
+  解析器定位）、R-19（schema_drift baseline 裁剪+kitchen_sink）、R-20（spa-routes）。
+  验证：各滤串绿。
+- **T-06 脚手架类型面与生成器**（→AC-07）：R-21（tsconfig types 补 vite/client，
+  SD-01）、R-22（auto-sources 阶段序，SD-02——两案勘定择一）、R-23（038 store 名）。
+  验证：抽样示例沙箱 `auto build` vue-tsc 绿；`cargo check -p auto-man`。
+- **T-07 api_gen 后端转译**（→AC-07）：R-24——017 db.rs 字面量类型族 + 025 全量 29
+  错归因分族；修 api_gen/a2r 发射。验证：两例后端产物 cargo check 绿（沙箱）。
+- **T-08 呈报与台账核销回写**（→AC-08）：R-25 musk 呈报、R-26 P551-D2 复核、R-27
+  全量回写 KNOWN-DEBT-AND-RISKS。验证：台账 diff 审阅，无开口残留。
+- **T-09 全档终验**（→AC-09 前半）：§6 终验矩阵一次跑全。验证：判据达 AC-02..AC-07
+  口径。
+- **T-10 复审与合并收尾**（→AC-09 后半）：/auto-plan:review → merge master（Conventional
+  Commit `fix(test): ... (Plan 668)` 族）→ wt-guard clean → worktree/分支/组目录
+  三清 → 收据回填。
+
+## 9. 复审记录
+
+- **2026-09-20 draft handoff（/auto-plan:new）**：stage: new；PLAN-668 / plan_revision
+  1；outcome: pass——合同完备（27 条清单全数映射 AC/T，规范增量 SD-01/SD-02 就位，
+  无未归属目标）；next: 待澄清 1（执行确认）裁决后 /auto-plan:work 自 T-00 起。
+
+## 10. 待澄清事项
+
+1. **执行确认**（阻塞 executing）：本稿为起草授权产物；按 AGENTS L1 步 2，执行须
+   用户确认后 flip `status: executing` 并建 worktree。
+2. **musk p053 家族（R-25）口径**：默认仅复测签名+呈报（musk 域）；若 T-01 诊断
+   显示为 auto-lang master 侧便宜根因，是否顺手修？默认否（避免跨域扩战）。
+3. **ui::layout 环境红（R-11）豁免口径**：默认登记豁免（CI 为准、本机浮动记录），
+   不做 stabilize；如要求本机可复现绿需另立工程，工期另计。
+4. **构建链抽样集**：默认 {013, 014, 017, 025, 038} + 046/047 复测；是否需要全量
+   33 示例 `auto build`（预计数小时，默认否）。
