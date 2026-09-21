@@ -53,6 +53,32 @@ RenderQueue）直接承继本面——typed 载体即 wire payload 词汇。
 - **shell 全量词汇门**：`test_shell_pack_codegen_vocabulary_gate`——
   真源五件每对 (tag, prop/event-base) 对表断言；表即合同，pack 新词汇
   须同步扩臂 + 扩表。
+- **handler 体内建函数映射表（PLAN-681 SD-01）**：ui_gen 发射器
+  （`ast_expr_to_rust` 调用臂）的 VM 裸名/限定名内建 → 宿主调用走
+  **单源映射表**（`vm_builtin_host_call`）：console_log/lines/clear →
+  `auto_lang::vm::ui_console`（与 VM shim 同一 ring，bool 语义块表达式保形）；
+  code_editor 8 员 → `auto_lang::ui::code_editor`（cut/copy/paste 经
+  clipboard_op、fold 两员经 code_editor_with——与 shim 体同形）；
+  dialog_open/save → `auto_lang::ui::dialog`（rfd 宿主，父窗锚 v1 从简）；
+  file_basename → `auto_lang::a2r_std::fs::basename`；Process.exit →
+  `std::process::exit`；json.to_value → serde 解析（无效串 Null）。
+  机制红线（沿 671 T-06/674）：表只认 VM 内建名位，消费方标识符零硬编码，
+  grep 门钉零命中；新内建入表即得双轨覆盖。
+- **伴生模块通用转译与 route A（PLAN-681，server 面）**：`src/back/*.at`
+  （api/db 之外）全量扫描逐模块转译（back crate `<stem>.rs` + merged
+  front 内嵌 `pub mod <stem>`，双发射位单转译源）；route A = 剥 `#[api]`
+  属性行转译 api.at → `api_impl`（端点体真降体），back handler 与 front
+  merged 桩（真契约：参数/返回取 ApiEndpoint 标量面）双位委派——CRUD
+  mock 兜底臂（PLAN-648 T-03 契约）仅在无 db、无 route A 时兜底。
+- **bps 依赖解析面（PLAN-681 F2）**：pac.at `dep <name> { path }` 声明为
+  解析源——`use <dep>.…: fn` 模块转译内嵌（`mod __bps_*` + 星 use，调用
+  点裸名零变化）；裸 widget 名本地未声明时按依赖包 .at 名字面命中补进
+  编译集（reference/ 文档工程除外）。零消费方标识符硬编码。
+- **on-only handler 载荷推断（PLAN-681 F3）**：无 msg 块声明的根 handler
+  带 参时，参数型按 handler 体 `store.X(args)` 转发目标查
+  `STORE_MSG_PAYLOADS`（store msg 块声明型，build 入口预填）推断；推断
+  不出维持零参（原响亮失败语义）。code_editor View 预制消息槽的载荷
+  变体以型默认实参构造（事件真值由 store 臂向 code_editor 宿主查询）。
 
 ## S2：typed 接缝
 

@@ -97,6 +97,27 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
 `find crates/auto-lang/test/<dir> -name "*.at" | wc -l`）：a2c 126、a2p 99、
 a2r 267、a2ts 85、a2j 10、a2gd 69 个 `.at` 用例；cookbook 163 个 `.at` 文件（plan-240）。
 
+## 内建映射面契约（a2r，PLAN-681 SD-02）
+
+`.at` 内建（VM native）到 Rust 宿主调用的映射是 a2r 的成文契约，单源表驱动：
+
+- **obj.method 共用名族**（`trans/rust.rs` 派发表，:5713 auto.* 前缀族 /
+  :5914 obj-match 族 / :7800 方法表族）：模块名大小写归一化——`Json→json`
+  （Plan 368）与 `Env→env`（PLAN-681，VM 内建对象 `Env.get` 大写形）同款；
+  `fs.tree(path, depth)` → `a2r_std::fs::tree`（两族表均有臂，PLAN-681）。
+- **宿主位**：`a2r-std` 独立 crate（fs/env 等标准库形宿主）与
+  `auto_lang::vm/ui` 直连（console ring / code_editor 注册表——与 VM shim
+  同一实现零分叉）两类；生成器 `qualify_a2r_std` 后处理把裸 `a2r_std::`
+  重限定到 `auto_lang::a2r_std` 迷你库，故迷你库 re-export 宿主族
+  （PLAN-681：tree/basename），两种拼写单源一致。
+- **双轨分叉防护**：与 VM 内建 JSON 形状逐字节对齐的宿主（fs.tree）必须带
+  双轨对拍测试（`tests/fs_tree_parity.rs` 先例，断言 byte-identical；
+  read_text_range 同款 Plan 673）。
+- **动态记录面（PLAN-681 N2）**：bare `List`（无元素型）= 动态桶 →
+  `Vec<serde_json::Value>`；其元素派生局部按 Value 语义发射（字段访问 =
+  索引读、记录字面量 = json! 构造、标量入 Value 容器 = json! 包裹、
+  typed 目标收访问器）。语义源 = VM List（异构值）。
+
 ## 关键入口
 
 - `crates/auto-lang/src/trans.rs:Trans` — 后端统一 trait（`fn trans(&mut self, ast: Code, sink: &mut Sink)`）
