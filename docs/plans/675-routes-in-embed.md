@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-man, auto-lang] # gallery host 生成器(auto-man)+ back_proxy 参数绑定(auto-lang)
-current_step: 0
+current_step: 2
 total_steps: 7
 ---
 
@@ -227,6 +227,7 @@ pub routable: bool,
 - **T-01**(C-0 前置)依赖确认与 worktree 开设:确认 PLAN-672 已 merge master(未 merge 则本计划等待,不开工);`git worktree add D:/autostack/.wt/lang-675/auto-lang -b plan-675-dev`(从 672 落地后的 master)+ 组内 auto-down 兄弟位 `git -C D:/autostack/auto-down worktree add --detach D:/autostack/.wt/lang-675/auto-down master`。AC:无(环境步)。
   [✅ 已完成 2026-09-21] **时序适配(用户"实施计划675"指令下)**:P672 复核仍未走完(其代码只在 plan-672-dev 分支),按 work 技能"依赖未就绪先做独立就绪任务"规则——worktree 从当前 master `bac606b9d` 开出(plan-675-dev 已建,auto-down 兄弟位 @fba6563 detached 就位);**T-02(back_proxy,零 P672 依赖)先行**,T-03 及以后开工前必须先 merge master(届时含 672)进 plan-675-dev 摘入 fullstack 管线基座,若届时 672 仍未落则 surface 用户。Q-2/Q-3/Q-4 按计划默认执行(T-02 纳入/023 全验收/fresh 路由态)。
 - **T-02**(C-1)P672-N5 清偿:auto-lang back_proxy 路径参数按签名类型绑定(先定点→修→语料测试)。文件:`crates/auto-lang/src/back_proxy.rs`(绑定位点执行期确认)。验证:`cargo nextest run -p auto-lang back_proxy` 全绿。AC:AC-02/AC-03 数据面前置。
+  [✅ 已完成 2026-09-21] 定点=`SessionRuntime::handle_request` 绑定环(back_proxy.rs:1180 无条件 `Value::String` 压栈=int 形参 VM 内比较永假,与 P672-N5 症状吻合);修法=路径/query 段经 669 `push_typed_string_arg`(升 pub(crate))按 `ApiTyKind` 压栈,body 字段保持 `json_to_vm_value`;`fn_params` 升格 `Vec<ApiParamSig>`(名+`p.ty` Display)从本 session AST 自持,不读全局 sigs 表(多 session 裸名撞键)。e2e 两例新增(3948/3949 端口):`http_e2e_back_proxy_path_param_typed_binding`(int 三动词累计 21→28→30+slug 保形)+`http_e2e_back_proxy_bad_path_param_is_400`(坏值 400+态零污染);`cargo nextest run -p auto-lang --lib --features test-http-e2e http_e2e_back_proxy` **10/10 全绿**(ui 门控 4 例与 th 档同口径不在集)。worktree 提交 `65fd1883a`。
 - **T-03**(C-2)routable 档判定与注册表面:`GalleryDemoRow.routable` 字段+判定;`generate_demos_registry` routable 行发射(load+routed+loadable);画廊 package.json vue-router 注入。文件:`crates/auto-man/src/vue.rs`。验证:判定/registry 单测绿。AC:AC-01(判定面)、AC-07 守卫。
 - **T-04**(C-2)per-demo routable 发射管线:pages/router.ts(memory 工厂)/main.ts 入口三件套发射,App.vue 复用。文件:`crates/auto-man/src/vue.rs`。验证:`test_emit_gallery_routable_apps` 绿 + standalone hash 守卫绿。AC:AC-01..AC-05 产物面。
 - **T-05**(C-3)消费契约:AppViewport.vue entry 工厂分支(mount/unmount 优先,兼容路径保留)+ demos-registry TS 类型放宽;**os 源副本与 gen ext 副本字节对齐提交**(P672-D1 纪律)。文件:`D:/autostack/auto-os/ui-gallery/src/gallery/AppViewport.vue` + `gen/front/vue/src/ext/src/gallery/AppViewport.vue`(+ 如涉 demos-registry.d.ts 类型,同纪律)。验证:前台 build 绿。AC:AC-06 消费面。
