@@ -50,6 +50,7 @@
 2. **for 循环透明包装**：fallback v-for 包装对单 Conditional 体循环发 `<template v-for :key>`（不产盒，内容直接参与父弹性布局）；多语句体维持 div 包装（多子迭代的块级布局语义不变）；SVG 子树维持 Plan 502 先例。验收 AC-01。
 3. **natives 三层发射**：R 层真实现（`file_basename` rsplit 末段/双分隔符；`console_*` 内存 buffer，cap 500、lines(n=200) 最新在前——语义镜像 vm native.rs/ui_console.rs）；B 层 editorBridge 按 DSL editor key 寻址 code_editor_* 内建（光标 0-based、折叠行号 1-based、隐藏行计数；非活动编辑器静默 no-op = vm 单活动编辑器语义）；S 层维持 fail-fast 桩（671 §10-1）。验收 AC-05/06。
 4. **脚手架修复可传播**：CodeEditor 壳与 editorBridge 同步发射于新建（generate）与再生成（regenerate_source_files）两管线；使用中的旧版自有脚手架（codemirror import 签名可识别）覆写为最新模板，手写文件零碰。验收 AC-07（稳态二跑零漂移）。
+5. **Env 轨别原语与字面量折叠（PLAN-680）**：`Env.get("字面量键")` 在 vue 轨折叠为 gen 机 env 快照字符串字面量（gen 产物不入库不泄机器值；非字面量键与其余 `Env.*`/`Process.*` 维持 `__vmOnly` fail-fast——671 诚实抛错裁定不变）；新增 `Env.track()` 轨别原语（native 9907 高段，沿 PLAN-656 先例）——VM 运行时返 `"vm"`，vue 轨生成期折叠为 `"vue"` 字面量，为语料提供无 Env 依赖的轨别/FS 能力守卫信号（027 先例：Tick 引导/NavTo 汇聚点/GoUp/CommitNew 四点门控 + 轨别分派空态文案；sidebar-in-row 布局须 `w-auto`，018 同款）。验收 AC-01..04。
 
 > 证据：消费方 auto-edit 冷再生成+浏览器五点实测（docs/plans/evidence/677/）；门禁 cargo tf 3694/3694 + tt 4063/4063。
 

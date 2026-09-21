@@ -100,6 +100,23 @@ AutoOS 桌面文件管理器（Finder / Explorer 双栏形态）。桌面事实�
   write_state `auto_open_path`、已运行聚焦 + 写入；目标 App Tick 消费
   （041 ConsumeOpen、031 SettleTick 臂）。
 
+## 5.5 vue 轨降级（PLAN-680 Q1）
+
+- 桌面事实轨 = VM；vue 轨为前端调试轨——无 FS 能力，**降级不报错**。
+- 轨别信号：`var is_vm str`，Init 读 `Env.track()`（VM 运行时返 "vm"，
+  vue 轨生成期折叠为 "vue" 字面量；`Env.get("字面量")` 同机制折叠为 gen 机
+  env 快照——home 主目录解析在 vue 轨取 gen 机值）。
+- 四点 FS 守卫：Tick bootstrap（快捷访问/盘符/首目录引导）、NavTo 单点
+  （导航/排序/搜索/隐藏切换/地址跳转全汇聚）、GoUp（fs.parent 先于 NavTo）、
+  CommitNew（空列表下新建仍可达）。守卫分支内 fs.*/file.*/image.* 调用
+  vue 轨不执行。
+- 空态文案按轨别分派：VM = "此目录为空"；vue = "vue 调试轨无文件系统
+  访问 — 完整功能请使用 auto run -r vm"（列表/网格双模式）。
+- 不门控：view_mode/sort_col/show_hidden 及其 storage 持久化（localStorage
+  构建在 vue 轨可用）——保住样式调试价值。
+- 布局注记：sidebar_provider 必须 `w-auto`（上游 SidebarProvider 默认
+  `w-full`，在 row 内与 flex-1 兄弟互斥→内容区 0 宽；018 先例）。
+
 ## 6. 测试
 
 - tests/desktop_mcp.py（VM 模式）：真实 FS 断言套件 + tests/testdata 副本
