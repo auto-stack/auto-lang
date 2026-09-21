@@ -134,3 +134,10 @@ graph TD
 - 备选：宿主侧 per-demo 后端注册表 + api 调用重写（cons：VM merged 臂无 HTTP 拦截层，且 stem 隔离机制已在，属重复机制）；运行时 native-opaque 路由依赖（cons：`use auto.X` 原生根注册会劫持全库 `auto.*` native 调用为交叉模块 reloc，codegen 对原生根 "auto" 不注册 auto_modules）。
 - 后果：多全栈 demo 同名 endpoint/同型 db var 天然隔离（白盒 plan633_fullstack_embed_tests 锁定）；`use auto.*` 后端（031 族）与 `~Stream`/`~Promise` 签名后端（017 族）VM 臂无内嵌等价物，发射器严格降级回静态面板；视图侧 store 字段读取需真名别名泛化（`.TodoStore.X` 与 `.store.X` 同读根态，view_store_alias_real_name 渲染期快照）。
 - 状态：active
+
+### ADR-22: split 形态 api.* 忙等预算观测 + 冷启 ready 门(Plan 026)
+- 日期 / 来源：2026-09-21 / plan-026(VM 前端挂起根修:025 域 split 形态 api.* 主线程同步忙等 × 每拍 20-68 次调用,判定了义见 auto-term docs/plans/026 §0)
+- 决策：①**忙等预算观测**——`AutoVM::call_fn_by_name` 的 `StepResult::Yield` 忙等段(5ms-sleep 轮询 ASYNC_RESULTS)与 RequestBuilder.send 同构段包 thread_local 预算计(waits/busy 累计),handler 退出位输出 `[VM-API-BUDGET] fn=<n> waits=<n> busy_ms=<t>`(`AUTO_VM_API_BUDGET=1` 门控);busy_ms 超阈(`AUTO_VM_API_BUDGET_MS`,缺省 100)无条件 warn(不受门控)。**不改调度语义**(真异步化另档)。②**冷启 ready 门**——`rust_ui::start_api_server/start_vm_server` 的 back ready 等待从 60s 一次性+"continuing anyway" 吞错改为 **120s 有界重试门**(冷构建实录 98s 覆盖);超限 kill 子进程 + 显式 Err 中止(不进组件构建/Init——无监听端口撞 Init 的卡死坑收口);`run_rust_ui`/`run_vm_ui`/vue 三调用方接线。
+- 备选：VM api.* 真异步化(handler yield 出 iced update,结果经 IcedMessage 回流;cons:改动面大,Plan 026 §10.1 另档);保留 60s 继续跑(cons:Init 撞无监听端口 ~2s/次失败且不重试,lab-premerge2 实证卡死)。
+- 后果：AutoTerm VM split 每拍 HTTP 22-68 次 → 4 次(双端点聚合,终端侧契约见 terminal-mux-model.md),Tick busy 115-295ms → ~20ms,Windows 全程 Responsive=True(修前恒 False);配套修复随本 ADR 落地:VM i64 数值语义链六处(GET_ELEM i64 下标/str 串化分支/TYPE_CAST_I64 宽整 sign-extend/算术与序比较宽整臂)、`api_gen` []int 数组端点模板(Vec<i64>)、ui_gen handler 局部 List<int> 索引 as i32 窄化(db 层 Vec<i64> 惯例与 i32 模型语境对齐)。
+- 状态：active
