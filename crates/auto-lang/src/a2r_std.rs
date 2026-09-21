@@ -529,6 +529,13 @@ pub mod fs {
         std::fs::read_to_string(path).unwrap_or_default()
     }
 
+    // PLAN-681: tree/basename host in the standalone a2r-std crate (promoted
+    // to a real dependency). Re-exported here so both generated spellings —
+    // `a2r_std::fs::tree` and the qualify_a2r_std-post-processed
+    // `auto_lang::a2r_std::fs::tree` — resolve to the ONE implementation
+    // (tests/fs_tree_parity.rs pins the VM byte parity).
+    pub use a2r_std::fs::{basename, tree};
+
     pub fn read_text<S: AsRef<str>>(path: S) -> String {
         std::fs::read_to_string(path.as_ref()).unwrap_or_default()
     }

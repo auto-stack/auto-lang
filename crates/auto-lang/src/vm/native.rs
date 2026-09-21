@@ -9797,7 +9797,7 @@ fn fs_tree_skipped(name: &str) -> bool {
 
 /// Recursive tree builder emitting nested JSON (no trailing separators).
 /// `depth` counts levels BELOW `dir` still to descend (0 = emit nothing).
-fn fs_tree_walk(dir: &std::path::Path, root: &std::path::Path, depth: usize, out: &mut String) {
+pub(crate) fn fs_tree_walk(dir: &std::path::Path, root: &std::path::Path, depth: usize, out: &mut String) {
     let mut entries: Vec<std::fs::DirEntry> = match std::fs::read_dir(dir) {
         Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
         Err(_) => return,

@@ -48,6 +48,11 @@ pub mod scroll;
 // Plan 418: OS clipboard bridge (arboard) behind `ui-clipboard`.
 #[cfg(feature = "ui-clipboard")]
 pub mod clipboard;
+// PLAN-681: native open/save file dialogs — host of the `dialog_open`/
+// `dialog_save` VM builtins (natives 2927/2928) for a2r generated apps,
+// behind `ui-dialog` (enabled by `ui-iced`).
+#[cfg(feature = "ui-dialog")]
+pub mod dialog;
 // Plan 485: native clipboard bridge (CF_HDROP files / DIBV5+PNG images).
 // Pure codec helpers compile on every tier (`cargo t clipboard_native`);
 // Win32 calls are double-gated inside (windows × `native-clipboard`).

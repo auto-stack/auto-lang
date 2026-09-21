@@ -352,6 +352,13 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 /// Plan musk-022 CRUD 智能扩展: transpile db.at to a db.rs module via a2r.
 /// Reuses the Tauri-backend precedent (tauri_backend::transpile_at_to_rust).
 pub(crate) fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
+    transpile_back_module_to_rs("db", content)
+}
+
+/// PLAN-681 T-01: transpile a `src/back/*.at` module to Rust (companion
+/// modules like fsys.at share db.at's 16MB-stack transpile pipeline; the
+/// module name feeds the transpiler's module-id slot and error strings).
+pub(crate) fn transpile_back_module_to_rs(module_name: &str, content: &str) -> AutoResult<String> {
     use auto_lang::trans::rust::transpile_rust;
     use auto_val::AutoStr;
     // Plan 399 §7: parse + transpile on a 16MB stack. db.at with deep nesting
@@ -361,19 +368,20 @@ pub(crate) fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
     // strip_collection_new (post_process) handle the second §7 bug separately.
     // Error is converted to String inside the thread (AutoError is !Send).
     let content = content.to_string();
+    let module = module_name.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(move || -> Result<String, String> {
-            let mut sink = transpile_rust(AutoStr::from("db"), &content)
-                .map_err(|e| format!("Failed to transpile db.at: {}", e))?;
+            let mut sink = transpile_rust(AutoStr::from(module.as_str()), &content)
+                .map_err(|e| format!("Failed to transpile {}.at: {}", module, e))?;
             let rust_code = String::from_utf8(sink.done().map_err(|e| e.to_string())?.to_vec())
-                .map_err(|e| format!("Invalid UTF-8 in db.rs output: {}", e))?;
+                .map_err(|e| format!("Invalid UTF-8 in {}.rs output: {}", module, e))?;
             Ok(rust_code)
         })
-        .map_err(|e| format!("Failed to spawn db.rs transpile thread: {}", e))?;
+        .map_err(|e| format!("Failed to spawn {}.rs transpile thread: {}", module_name, e))?;
     handle
         .join()
-        .map_err(|_| "db.rs transpile thread panicked".to_string())?
+        .map_err(|_| format!("{}.rs transpile thread panicked", module_name))?
         .map_err(|e| e.into())
 }
 
@@ -409,6 +417,19 @@ fn qualify_a2r_std(mut code: String) -> String {
     code = code.replace("use a2r_std::*;\n", "use auto_lang::a2r_std::*;\n");
     code = code.replace("__AUTO_A2R_STD_QUAL__", "auto_lang::a2r_std::");
     code = code.replace("__AUTO_A2R_STD_SYS__", "a2r_std::sys::");
+    code
+}
+
+/// PLAN-681 T-01: light post-process for companion `src/back/*.at` modules
+/// (fsys.at shape — stateless fn wrappers). Only the module-shape fixups that
+/// are shape-generic: a2r_std re-qualification, api→types import remap and
+/// `List<T>.new` stripping. The db-only heuristics in [`post_process_db_rs`]
+/// (MutexGuard deref, borrowed-iterator clones, id widening) target CRUD
+/// state shapes a companion module does not have — deliberately NOT applied.
+pub(crate) fn post_process_companion_rs(code: String) -> String {
+    let mut code = qualify_a2r_std(code);
+    code = code.replace("use crate::api::", "use crate::types::");
+    code = strip_collection_new(&code);
     code
 }
 
@@ -697,10 +718,79 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         None
     };
 
+    // PLAN-681 T-02 (route A): transpile the endpoint bodies themselves.
+    // Strip the `#[api(...)]` attribute lines (HTTP metadata, not .at code)
+    // and transpile api.at as a plain module — every `pub fn` keeps its real
+    // body (`return fsys.tree_json(path, depth)` shape) and resolves its
+    // companion through the module path. Handlers (api.rs) and the merged
+    // front client then delegate to `api_impl::<fn>` instead of TODO stubs /
+    // CRUD mock scaffolds. Gate: no primary type AND db not active — the
+    // db-covered route B and primary-type paths are untouched (zero regression
+    // anchors); transpile failure falls back to the skeleton unchanged.
+    let mut api_impl_active = false;
+    if primary_type_name_pub(api_module).is_none() && !has_db {
+        let api_at = root_dir.join("src").join("back").join("api.at");
+        if let Ok(content) = std::fs::read_to_string(&api_at) {
+            let stripped: String = content
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("#[api"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            match transpile_back_module_to_rs("api_impl", &stripped) {
+                Ok(rs) => {
+                    let rs = post_process_companion_rs(rs);
+                    std::fs::write(src_dir.join("api_impl.rs"), &rs)
+                        .map_err(|e| format!("Failed to write api_impl.rs: {}", e))?;
+                    api_impl_active = true;
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ api_impl.rs transpile failed (route A inactive): {}", e);
+                }
+            }
+        }
+    }
+
     // Generate api.rs with route handlers
-    let api_rs = qualify_a2r_std(generate_api_rs(api_module, db_fns.as_ref()));
+    let api_rs = qualify_a2r_std(generate_api_rs(api_module, db_fns.as_ref(), api_impl_active));
     std::fs::write(src_dir.join("api.rs"), &api_rs)
         .map_err(|e| format!("Failed to write api.rs: {}", e))?;
+
+    // PLAN-681 T-01: generic companion-module transpilation. Every
+    // `src/back/*.at` besides api.at (the contract) and db.at (the CRUD
+    // route-B module above) is a companion implementation module (fsys.at
+    // shape: Env/fs/File thin wrappers the endpoint bodies delegate to).
+    // Transpile each to `<stem>.rs`; route A handlers (and the merged front
+    // client) reach them as `crate::<stem>::...`. A transpile failure is
+    // non-fatal — the module is skipped with a warning, matching the db.rs
+    // fallback discipline above.
+    let mut companion_mods: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root_dir.join("src").join("back")) {
+        let mut stems: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
+            .filter_map(|e| e.file_name().to_str().map(|s| s.trim_end_matches(".at").to_string()))
+            .filter(|stem| stem != "api" && stem != "db")
+            .collect();
+        stems.sort();
+        for stem in stems {
+            let Ok(content) = std::fs::read_to_string(root_dir.join("src").join("back").join(format!("{}.at", stem))) else {
+                continue;
+            };
+            match transpile_back_module_to_rs(&stem, &content) {
+                Ok(rs) => {
+                    let rs = post_process_companion_rs(rs);
+                    if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
+                        eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
+                        continue;
+                    }
+                    companion_mods.push(stem);
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ {}.rs transpile failed (module skipped): {}", stem, e);
+                }
+            }
+        }
+    }
 
     // Plan musk-022: events broadcast-bus module for SSE backends.
     if has_sse {
@@ -755,7 +845,7 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     }
 
     // Generate main.rs
-    let main_rs = generate_main_rs(api_module, seed_data.as_deref(), db_full_cover);
+    let main_rs = generate_main_rs(api_module, seed_data.as_deref(), db_full_cover, &companion_mods, api_impl_active);
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
@@ -1570,9 +1660,120 @@ const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
         .expect("media response is valid")
 }"#;
 
+/// PLAN-681 T-02: emit delegating handlers for the covered scalar endpoints.
+/// Extracted verbatim from the PLAN-013 T2 db branch — `gate` decides which
+/// endpoints are covered (db: fn-name set; route A: all), `target` is the
+/// delegation module (`db` | `api_impl`). Uncovered endpoints (db branch
+/// only) keep the skeleton TODO stub.
+fn push_delegating_scalar_handlers(
+    lines: &mut Vec<String>,
+    api_module: &auto_lang::api::ApiModule,
+    gate: &dyn Fn(&str) -> bool,
+    target: &str,
+) {
+    // PLAN-653 T-01: GET/DELETE 带参读走 Query 提取,复用主类型
+    // 路径的 {Fn}Query-struct 机制(endpoint_query_params 一族)。
+    // 此前无差别发 `Json` 提取器,axum 对无 body 的 GET 一律
+    // 400("Expected request with Content-Type: application/json",
+    // auto-term vue 轨 tab-id-at 族实测),前端轮询链路整体中断。
+    for endpoint in &api_module.endpoints {
+        if !gate(&endpoint.fn_name) {
+            continue;
+        }
+        let query_params = endpoint_query_params(endpoint);
+        if query_params.is_empty() {
+            continue;
+        }
+        let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
+        lines.push("".to_string());
+        lines.push("#[derive(serde::Deserialize, Default)]".to_string());
+        lines.push("#[serde(default)]".to_string());
+        lines.push(format!("pub struct {} {{", struct_name));
+        for param in &query_params {
+            let rust_type = auto_type_to_rust(&param.ty);
+            lines.push(format!("    pub {}: {},", param.name, rust_type));
+        }
+        lines.push("}".to_string());
+    }
+    for endpoint in &api_module.endpoints {
+        lines.push("".to_string());
+        if !gate(&endpoint.fn_name) {
+            lines.push(format!("pub async fn {}() {{", endpoint.fn_name));
+            lines.push("    // TODO: Implement".to_string());
+            lines.push("}".to_string());
+            continue;
+        }
+        let query_params = endpoint_query_params(endpoint);
+        let body_params = endpoint_body_params(endpoint);
+        let (sig, call_args) = if !query_params.is_empty() {
+            let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
+            (
+                format!("Query(query): Query<{}>", struct_name),
+                query_params
+                    .iter()
+                    .map(|p| {
+                        if p.ty.contains("str") {
+                            format!("&query.{}", p.name)
+                        } else {
+                            format!("query.{}", p.name)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        } else if !body_params.is_empty() {
+            (
+                "Json(body): Json<serde_json::Value>".to_string(),
+                body_params
+                    .iter()
+                    .map(|p| {
+                        let get = if p.ty.contains("int") || p.ty.contains("i64") {
+                            format!("body[\"{}\"].as_i64().unwrap_or_default()", p.name)
+                        } else if p.ty.contains("bool") {
+                            format!("body[\"{}\"].as_bool().unwrap_or_default()", p.name)
+                        } else {
+                            format!("body[\"{}\"].as_str().unwrap_or_default()", p.name)
+                        };
+                        get
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        } else {
+            (String::new(), String::new())
+        };
+        let ret = endpoint.return_type.trim();
+        let ret_clause = if ret == "void" || ret.is_empty() {
+            " -> axum::http::StatusCode".to_string()
+        } else if ret.contains("[]int") || ret.contains("List<int>") {
+            // PLAN-026 T-02: []int 数值面端点(Vec<i64>;先于
+            // 通用 [] 分支——其模板恒 Vec<String>,mux_tick_nums
+            // 实证 E0308)。
+            " -> JsonResponse<Vec<i64>>".to_string()
+        } else if ret.contains("[]") || ret.contains("List") {
+            " -> JsonResponse<Vec<String>>".to_string()
+        } else if ret.contains("bool") {
+            " -> JsonResponse<bool>".to_string()
+        } else if ret.contains("str") {
+            " -> JsonResponse<String>".to_string()
+        } else {
+            " -> JsonResponse<i64>".to_string()
+        };
+        lines.push(format!("pub async fn {}({}){} {{", endpoint.fn_name, sig, ret_clause));
+        if ret == "void" || ret.is_empty() {
+            lines.push(format!("    crate::{}::{}({});", target, endpoint.fn_name, call_args));
+            lines.push("    StatusCode::OK".to_string());
+        } else {
+            lines.push(format!("    JsonResponse(crate::{}::{}({}))", target, endpoint.fn_name, call_args));
+        }
+        lines.push("}".to_string());
+    }
+}
+
 fn generate_api_rs(
     api_module: &auto_lang::api::ApiModule,
     db_fns: Option<&std::collections::HashSet<String>>,
+    api_impl_active: bool,
 ) -> String {
     let db_active = db_fns.map(|s| !s.is_empty()).unwrap_or(false);
     let mut lines = vec![
@@ -1595,105 +1796,19 @@ fn generate_api_rs(
             if db_active {
                 let fns = db_fns.unwrap();
                 lines.push("// db-covered scalar service endpoints (PLAN-013 T2)".to_string());
-                // PLAN-653 T-01: GET/DELETE 带参读走 Query 提取,复用主类型
-                // 路径的 {Fn}Query-struct 机制(endpoint_query_params 一族)。
-                // 此前无差别发 `Json` 提取器,axum 对无 body 的 GET 一律
-                // 400("Expected request with Content-Type: application/json",
-                // auto-term vue 轨 tab-id-at 族实测),前端轮询链路整体中断。
-                for endpoint in &api_module.endpoints {
-                    if !fns.contains(&endpoint.fn_name) {
-                        continue;
-                    }
-                    let query_params = endpoint_query_params(endpoint);
-                    if query_params.is_empty() {
-                        continue;
-                    }
-                    let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
-                    lines.push("".to_string());
-                    lines.push("#[derive(serde::Deserialize, Default)]".to_string());
-                    lines.push("#[serde(default)]".to_string());
-                    lines.push(format!("pub struct {} {{", struct_name));
-                    for param in &query_params {
-                        let rust_type = auto_type_to_rust(&param.ty);
-                        lines.push(format!("    pub {}: {},", param.name, rust_type));
-                    }
-                    lines.push("}".to_string());
-                }
-                for endpoint in &api_module.endpoints {
-                    lines.push("".to_string());
-                    if !fns.contains(&endpoint.fn_name) {
-                        lines.push(format!("pub async fn {}() {{", endpoint.fn_name));
-                        lines.push("    // TODO: Implement".to_string());
-                        lines.push("}".to_string());
-                        continue;
-                    }
-                    let query_params = endpoint_query_params(endpoint);
-                    let body_params = endpoint_body_params(endpoint);
-                    let (sig, call_args) = if !query_params.is_empty() {
-                        let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
-                        (
-                            format!("Query(query): Query<{}>", struct_name),
-                            query_params
-                                .iter()
-                                .map(|p| {
-                                    if p.ty.contains("str") {
-                                        format!("&query.{}", p.name)
-                                    } else {
-                                        format!("query.{}", p.name)
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        )
-                    } else if !body_params.is_empty() {
-                        (
-                            "Json(body): Json<serde_json::Value>".to_string(),
-                            body_params
-                                .iter()
-                                .map(|p| {
-                                    let get = if p.ty.contains("int") || p.ty.contains("i64") {
-                                        format!("body[\"{}\"].as_i64().unwrap_or_default()", p.name)
-                                    } else if p.ty.contains("bool") {
-                                        format!("body[\"{}\"].as_bool().unwrap_or_default()", p.name)
-                                    } else {
-                                        format!("body[\"{}\"].as_str().unwrap_or_default()", p.name)
-                                    };
-                                    get
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        )
-                    } else {
-                        (String::new(), String::new())
-                    };
-                    let ret = endpoint.return_type.trim();
-                    let (ret_clause, call_suffix) = if ret == "void" || ret.is_empty() {
-                        (" -> axum::http::StatusCode".to_string(), String::new())
-                    } else if ret.contains("[]int") || ret.contains("List<int>") {
-                        // PLAN-026 T-02: []int 数值面端点(Vec<i64>;先于
-                        // 通用 [] 分支——其模板恒 Vec<String>,mux_tick_nums
-                        // 实证 E0308)。
-                        (" -> JsonResponse<Vec<i64>>".to_string(), String::new())
-                    } else if ret.contains("[]") || ret.contains("List") {
-                        (" -> JsonResponse<Vec<String>>".to_string(), String::new())
-                    } else if ret.contains("bool") {
-                        (" -> JsonResponse<bool>".to_string(), String::new())
-                    } else if ret.contains("str") {
-                        (" -> JsonResponse<String>".to_string(), String::new())
-                    } else {
-                        (" -> JsonResponse<i64>".to_string(), String::new())
-                    };
-                    lines.push(format!("pub async fn {}({}){} {{", endpoint.fn_name, sig, ret_clause));
-                    if ret == "void" || ret.is_empty() {
-                        lines.push(format!("    crate::db::{}({});", endpoint.fn_name, call_args));
-                        lines.push("    StatusCode::OK".to_string());
-                    } else {
-                        lines.push(format!("    JsonResponse(crate::db::{}({}))", endpoint.fn_name, call_args));
-                    }
-                    lines.push("}".to_string());
-                }
+                push_delegating_scalar_handlers(&mut lines, api_module, &|name| fns.contains(name), "db");
                 return lines.join("
 ");
+            }
+            // PLAN-681 T-02 (route A): scalar contract without db coverage —
+            // if api_impl.rs transpiled, every endpoint delegates to its real
+            // transpiled body (crate::api_impl::<fn>). Same extraction shapes
+            // as the db branch above (Query structs for GET-with-params, Json
+            // body for POST). The skeleton fallback below stays the last
+            // resort for contracts whose transpile failed.
+            if api_impl_active {
+                push_delegating_scalar_handlers(&mut lines, api_module, &|_| true, "api_impl");
+                return lines.join("\n");
             }
             // Fallback: generate skeleton handlers
             lines.push("// No types defined, generating skeleton handlers".to_string());
@@ -2613,6 +2728,8 @@ fn generate_main_rs(
     api_module: &auto_lang::api::ApiModule,
     db_at_content: Option<&str>,
     db_full_cover: bool,
+    companion_mods: &[String],
+    api_impl_active: bool,
 ) -> String {
     let routes: Vec<String> = api_module.endpoints.iter()
         .map(|e| {
@@ -2637,6 +2754,15 @@ fn generate_main_rs(
     }
     if has_db {
         s.push_str("mod db;\n");
+    }
+    // PLAN-681 T-01/T-02: companion modules (src/back/*.at minus api/db) and
+    // the route-A endpoint-body module, so `crate::<mod>` paths in the
+    // delegating handlers resolve.
+    for stem in companion_mods {
+        s.push_str(&format!("mod {};\n", stem));
+    }
+    if api_impl_active {
+        s.push_str("mod api_impl;\n");
     }
     s.push_str(MEDIA_HTTP_HANDLER);
     s.push_str("\n");
@@ -3142,7 +3268,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
         let events = generate_events_rs();
         assert!(events.contains("pub fn subscribe()"), "subscribe fn");
         assert!(events.contains("pub fn broadcast("), "broadcast fn");
-        let main = generate_main_rs(&module, None, false);
+        let main = generate_main_rs(&module, None, false, &[], false);
         assert!(main.contains("mod events;"), "mod events");
     }
 
@@ -3331,14 +3457,14 @@ pub fn list_notes() []Note { return db.all_notes() }
         // db.at with at least one pub fn → has_db true.
         let db_at = "use api: Note\npub fn all_notes() []Note { return notes }\n";
         let module = extract_api_lenient(api).expect("extract api");
-        let main = generate_main_rs(&module, Some(db_at), true);
+        let main = generate_main_rs(&module, Some(db_at), true, &[], false);
         assert!(main.contains("mod db;"), "declare db module: {}", main);
         assert!(!main.contains("with_state"), "no with_state: {}", main);
         assert!(!main.contains("use api::Db;"), "no Db import: {}", main);
         assert!(main.contains("axum::Router::new()"), "router still built: {}", main);
 
         // And the legacy path is preserved when db_full_cover is false.
-        let main_legacy = generate_main_rs(&module, None, false);
+        let main_legacy = generate_main_rs(&module, None, false, &[], false);
         assert!(main_legacy.contains("with_state"), "legacy keeps state: {}", main_legacy);
     }
 
@@ -3365,7 +3491,7 @@ pub fn exists(path str) bool { return fsys.path_exists(path) }
         );
 
         // No db.at at all → db_full_cover=false; no Db type → stateless.
-        let main = generate_main_rs(&module, None, false);
+        let main = generate_main_rs(&module, None, false, &[], false);
         assert!(!main.contains("use api::Db;"), "no Db import: {}", main);
         assert!(!main.contains("with_state"), "no state injection: {}", main);
         assert!(!main.contains("State<Db>"), "no State<Db>: {}", main);
@@ -3377,7 +3503,7 @@ pub fn exists(path str) bool { return fsys.path_exists(path) }
         // Same shape with a db.at that only partially covers (allow-partial
         // migration): handlers are db-delegated/TODO stubs, still no State.
         let db_at = "pub fn other() str { return \"x\" }\n";
-        let main_partial = generate_main_rs(&module, Some(db_at), false);
+        let main_partial = generate_main_rs(&module, Some(db_at), false, &[], false);
         assert!(!main_partial.contains("use api::Db;"), "partial: no Db import: {}", main_partial);
         assert!(!main_partial.contains("with_state"), "partial: no state: {}", main_partial);
         assert!(main_partial.contains("mod db;"), "partial: db module declared: {}", main_partial);
@@ -3426,7 +3552,7 @@ pub fn exists(path str) bool { return fsys.path_exists(path) }
 
         // Full coverage → main.rs must drop State<Db> (state unified to db.rs).
         let db_at_content = std::fs::read_to_string(&db_at).unwrap();
-        let main_rs = generate_main_rs(&module, Some(&db_at_content), true);
+        let main_rs = generate_main_rs(&module, Some(&db_at_content), true, &[], false);
         assert!(!main_rs.contains("with_state"), "main drops state: {}", main_rs);
         assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
         assert!(main_rs.contains("mod events;"), "main declares events (SSE): {}", main_rs);
@@ -3783,8 +3909,8 @@ pub fn get_item(id int) Item {
 pub fn list_items() []str { return [] }
 "#;
         let module = extract_api_lenient(api).expect("extract api");
-        let stateful = generate_main_rs(&module, None, false);
-        let full_cover = generate_main_rs(&module, Some("pub fn list_items() []str { return [] }"), true);
+        let stateful = generate_main_rs(&module, None, false, &[], false);
+        let full_cover = generate_main_rs(&module, Some("pub fn list_items() []str { return [] }"), true, &[], false);
         for generated in [&stateful, &full_cover] {
             assert!(generated.contains("/api/__auto/media/{id}/{revision}"), "route missing: {generated}");
             assert!(generated.contains("get(auto_media).head(auto_media)"), "GET/HEAD missing: {generated}");

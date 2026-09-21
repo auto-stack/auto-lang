@@ -7,6 +7,93 @@ use std::path::Path;
 // File Read/Write
 // ═══════════════════════════════════════════════════════════
 
+/// Final path segment, treating both `/` and `\` as separators.
+///
+/// PLAN-681 (dual-track parity): mirrors the AutoVM `file_basename` native
+/// (`shim_file_basename` — `path.rsplit(['/', '\\']).next()`), so tab titles
+/// and derived names agree across VM/a2r for the same `.at` source.
+pub fn basename(path: &str) -> String {
+    path.rsplit(['/', '\\']).next().unwrap_or("").to_string()
+}
+
+/// Recursive directory tree as nested JSON aligned with the TreeView node
+/// schema: `{id,label,children,kind,icon,is_leaf,badge}` per node, wrapped in
+/// a top-level array. `id` is the path relative to `root` ('/'-separated).
+///
+/// PLAN-681 (dual-track parity): byte-identical with the AutoVM `fs.tree`
+/// native (`shim_fs_tree` / `fs_tree_walk` in vm/native.rs) — same skip list
+/// (`.git`/`target`/`build`/`node_modules`/`gen`/`dist`/`__pycache__` and all
+/// dotfiles), same ordering (dirs first, then case-insensitive name), same
+/// `max_depth` clamp (1..=8, where 1 = root entries only) and same empty
+/// result (`[]`). The front side parses this JSON via `json.to_value`, so any
+/// shape divergence between the two tracks would fork the app behavior.
+pub fn tree(root: &str, max_depth: i32) -> String {
+    fn skipped(name: &str) -> bool {
+        matches!(
+            name,
+            ".git" | "target" | "build" | "node_modules" | "gen" | "dist" | "__pycache__"
+        ) || name.starts_with('.')
+    }
+
+    fn walk(dir: &Path, root: &Path, depth: usize, out: &mut String) {
+        let mut entries: Vec<std::fs::DirEntry> = match std::fs::read_dir(dir) {
+            Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+            Err(_) => return,
+        };
+        entries.sort_by_key(|e| {
+            let is_dir = e.path().is_dir();
+            (!is_dir, e.file_name().to_string_lossy().to_lowercase())
+        });
+        for entry in entries {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if skipped(&name) {
+                continue;
+            }
+            let path = entry.path();
+            let is_dir = path.is_dir();
+            let rel = path
+                .strip_prefix(root)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| name.clone());
+            let id = serde_json::to_string(&rel).unwrap_or_else(|_| "\"\"".into());
+            let label = serde_json::to_string(&name).unwrap_or_else(|_| "\"\"".into());
+            if !out.is_empty() {
+                out.push(',');
+            }
+            if is_dir && depth > 1 {
+                let mut children = String::new();
+                walk(&path, root, depth - 1, &mut children);
+                out.push_str(&format!(
+                    "{{\"id\":{},\"label\":{},\"children\":[{}],\"kind\":\"dir\",\"icon\":\"folder\",\"is_leaf\":false,\"badge\":\"\"}}",
+                    id, label, children
+                ));
+            } else if is_dir {
+                out.push_str(&format!(
+                    "{{\"id\":{},\"label\":{},\"children\":[],\"kind\":\"dir\",\"icon\":\"folder\",\"is_leaf\":false,\"badge\":\"\"}}",
+                    id, label
+                ));
+            } else {
+                out.push_str(&format!(
+                    "{{\"id\":{},\"label\":{},\"children\":[],\"kind\":\"file\",\"icon\":\"file-text\",\"is_leaf\":true,\"badge\":\"\"}}",
+                    id, label
+                ));
+            }
+        }
+    }
+
+    let depth = max_depth.clamp(1, 8) as usize;
+    let root_path = Path::new(root);
+    let mut buf = String::new();
+    if root_path.is_dir() {
+        walk(root_path, root_path, depth, &mut buf);
+    }
+    if buf.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", buf)
+    }
+}
+
 /// Read text content from a file.
 ///
 /// Returns the file contents on success, or an empty string on error —

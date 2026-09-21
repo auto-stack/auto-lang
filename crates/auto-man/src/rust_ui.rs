@@ -391,7 +391,14 @@ fn scan_written_props(
 /// Regenerate only main.rs (skip Cargo.toml to preserve cargo cache).
 fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     let front_dir = find_front_dir(project_dir);
-    let at_files = collect_at_files(&front_dir)?;
+    // PLAN-681 T-05（F2 bps 依赖解析面）：widget 补集进编译集 + fn 模块
+    // 内嵌（resolve_bps_dependencies 头注）。
+    let (bps_widget_files, bps_fn_code) = {
+        let front = collect_at_files(&front_dir).unwrap_or_default();
+        resolve_bps_dependencies(project_dir, &front)
+    };
+    let mut at_files = collect_at_files(&front_dir)?;
+    at_files.extend(bps_widget_files);
     if at_files.is_empty() {
         return Ok(());
     }
@@ -447,6 +454,11 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
         all_components.push('\n');
         all_components.push_str(&generate_api_client(project_dir, &all_api_imports));
     }
+    // PLAN-681 T-05（F2a）：bps use-fn 依赖模块内嵌。
+    if !bps_fn_code.is_empty() {
+        all_components.push('\n');
+        all_components.push_str(&bps_fn_code);
+    }
 
     let full_code = wrap_example(&project_name, &all_components, project_dir);
     let main_rs = rust_dir.join("src").join("main.rs");
@@ -491,7 +503,14 @@ pub fn generate_rust_ui(
     }
 
     // Collect .at files
-    let at_files = collect_at_files(&front_dir)?;
+    // PLAN-681 T-05（F2 bps 依赖解析面）：widget 补集进编译集 + fn 模块
+    // 内嵌（resolve_bps_dependencies 头注）。
+    let (bps_widget_files, bps_fn_code) = {
+        let front = collect_at_files(&front_dir)?;
+        resolve_bps_dependencies(project_dir, &front)
+    };
+    let mut at_files = collect_at_files(&front_dir)?;
+    at_files.extend(bps_widget_files);
     if at_files.is_empty() {
         println!("{}", "  No .at files found in front directory".bright_yellow());
         return Ok(());
@@ -578,6 +597,11 @@ pub fn generate_rust_ui(
     if !all_api_imports.is_empty() {
         all_components.push('\n');
         all_components.push_str(&generate_api_client(project_dir, &all_api_imports));
+    }
+    // PLAN-681 T-05（F2a）：bps use-fn 依赖模块内嵌。
+    if !bps_fn_code.is_empty() {
+        all_components.push('\n');
+        all_components.push_str(&bps_fn_code);
     }
 
     // Wrap in main() boilerplate
@@ -753,6 +777,9 @@ fn compile_at_file(
 
     // Plan 374 Task 2: Register store names for store.X rewriting (all files),
     // but only GENERATE the store struct in the file that declares it.
+    // PLAN-681 T-05（E0618 收口）：预填 store msg 载荷表——on-only 根
+    // handler 的载荷推断源（app.at 字母序先编译，须跨文件预填）。
+    auto_lang::ui_gen::rust::register_store_msg_payloads(stores);
     for store in stores {
         generator.register_store("store", store.name.as_str());
     }
@@ -858,6 +885,49 @@ fn deduplicate_imports(imports: &mut Vec<String>) {
 struct MergedDbImpl {
     code: String,
     fns: std::collections::HashSet<String>,
+}
+
+/// PLAN-681 T-02（route A 前半）：伴生模块 + 端点体模块的 merged 内嵌件。
+/// 标量契约(无 primary pub type)且无 db.at 时——门控与 back 侧
+/// api_gen.rs generate_rust_server 的 route A 同款；fsys/TreeIcon 等
+/// 伴生实现与剥属性行转译的 api 端点体进 front 进程内嵌入。
+struct MergedRouteAImpl {
+    api_impl: String,
+    companions: Vec<(String, String)>, // (mod name, rust source)
+}
+
+fn merged_route_a_impl(project_dir: &Path, module: &auto_lang::api::ApiModule) -> Option<MergedRouteAImpl> {
+    if crate::api_gen::primary_type_name_pub(module).is_some() {
+        return None;
+    }
+    if project_dir.join("src").join("back").join("db.at").exists() {
+        return None;
+    }
+    let back_dir = project_dir.join("src").join("back");
+    let mut companions = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&back_dir) {
+        let mut stems: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
+            .filter_map(|e| e.file_name().to_str().map(|s| s.trim_end_matches(".at").to_string()))
+            .filter(|stem| stem != "api" && stem != "db")
+            .collect();
+        stems.sort();
+        for stem in stems {
+            let content = std::fs::read_to_string(back_dir.join(format!("{}.at", stem))).ok()?;
+            let rs = crate::api_gen::transpile_back_module_to_rs(&stem, &content).ok()?;
+            companions.push((stem, crate::api_gen::post_process_companion_rs(rs)));
+        }
+    }
+    let api_at = std::fs::read_to_string(back_dir.join("api.at")).ok()?;
+    let stripped: String = api_at
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("#[api"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let api_impl = crate::api_gen::transpile_back_module_to_rs("api_impl", &stripped).ok()?;
+    let api_impl = crate::api_gen::post_process_companion_rs(api_impl);
+    Some(MergedRouteAImpl { api_impl, companions })
 }
 
 /// 载入并转译 src/back/db.at;含「引用工程外类型面」(crate::types /
@@ -1459,6 +1529,20 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
         code.push_str("\n}\n\n");
     }
 
+    // PLAN-681 T-02（route A 前半）：伴生模块 + 端点体内嵌（db 吸收同款）。
+    // api_impl 内 `crate::fsys` 路径在 front 上下文解析到下方兄弟内嵌
+    // 模块（同为 main.rs 顶层 item）。
+    let route_a = merged_route_a_impl(project_dir, module);
+    if let Some(ra) = &route_a {
+        code.push_str("\n// PLAN-681 route A: companion + endpoint-body modules (in-process merged)\n");
+        for (name, src) in &ra.companions {
+            code.push_str(&format!("pub mod {} {{\n#![allow(unused)]\n{}\n}}\n\n", name, src));
+        }
+        code.push_str("pub mod api_impl {\n#![allow(unused)]\n");
+        code.push_str(&ra.api_impl);
+        code.push_str("\n}\n\n");
+    }
+
     // Generate JSON initial data (not strong-typed structs).
     let initial_items = generate_json_initial_data(module);
     code.push_str("use std::sync::{LazyLock, Mutex};\n");
@@ -1483,6 +1567,39 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
         // PLAN-013 T2: db 吸收臂——同名 db 实现存在且标量面覆盖 → 委托。
         if let Some(emit) = db_impl.as_ref().and_then(|db| merged_db_delegate(db, endpoint)) {
             code.push_str(&emit);
+            continue;
+        }
+
+        // PLAN-681 T-02（route A）：真契约桩——参数/返回取 ApiEndpoint 标量
+        // 面（str→String 以 &x 委派、int→i64），体委派内嵌 api_impl（端点
+        // 体转译=fsys 委派链单源）。非标量参数/返回的端点落后续臂。
+        if route_a.is_some()
+            && endpoint.params.iter().all(|p| merged_scalar_rust_ty(&p.ty).is_some())
+            && merged_scalar_rust_ty(endpoint.return_type.trim()).is_some()
+        {
+            let sig = endpoint
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, merged_scalar_rust_ty(&p.ty).unwrap()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let ret = merged_scalar_rust_ty(endpoint.return_type.trim()).unwrap();
+            let call = endpoint
+                .params
+                .iter()
+                .map(|p| {
+                    if merged_scalar_rust_ty(&p.ty) == Some("String") {
+                        format!("&{}", p.name)
+                    } else {
+                        p.name.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            code.push_str(&format!(
+                "fn {}({}) -> {} {{\n    api_impl::{}({})\n}}\n\n",
+                fn_name, sig, ret, fn_name, call
+            ));
             continue;
         }
 
@@ -2280,6 +2397,194 @@ fn extract_init_api_func(components: &str) -> Option<String> {
 /// CardSuit/CardFace/CourtBadge 缺失 = 186 错中「cannot find type」族的
 /// 根因）。app 仓结构约定（auto-os AGENTS.md §3：src/front = app.at +
 /// store + pages/）本就含子目录。确定性：全路径排序。
+/// PLAN-681 T-05（F2 bps 依赖解析面）：pac.at `dep <name> { path: "…" }`
+/// 声明解析（行式扫描——parse_pac_name 同族；path 相对工程根）。
+fn parse_pac_dep_roots(pac_path: &Path, project_dir: &Path) -> Vec<(String, PathBuf)> {
+    let mut deps = Vec::new();
+    let Ok(code) = fs::read_to_string(pac_path) else {
+        return deps;
+    };
+    let mut current: Option<String> = None;
+    for line in code.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("dep ") {
+            if let Some(name) = rest.split('{').next().map(|s| s.trim().to_string()) {
+                if !name.is_empty() {
+                    current = Some(name);
+                }
+            }
+        } else if let (Some(name), Some(rest)) = (&current, t.strip_prefix("path:")) {
+            let p = rest.trim().trim_matches('"').trim_matches('\'');
+            let root = if Path::new(p).is_absolute() {
+                PathBuf::from(p)
+            } else {
+                project_dir.join(p)
+            };
+            deps.push((name.clone(), root));
+            current = None;
+        } else if t.starts_with('}') {
+            current = None;
+        }
+    }
+    deps
+}
+
+/// PLAN-681 T-05（F2）：`use <dep>.a.b.mod: fn…` 导入收集（符号级）。
+/// 返回 (模块文件相对 dep 根的分段路径, 导入符号表)；按模块去重合并。
+fn collect_dep_fn_imports(
+    at_files: &[PathBuf],
+    dep_names: &[String],
+) -> Vec<(Vec<String>, Vec<String>)> {
+    let mut by_module: std::collections::BTreeMap<Vec<String>, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for at_path in at_files {
+        let Ok(code) = fs::read_to_string(at_path) else { continue };
+        let session = CompilerSession::ui().with_backend("rust");
+        let mut parser = Parser::from(code.as_str()).with_session(session);
+        let Ok(ast) = parser.parse() else { continue };
+        for stmt in &ast.stmts {
+            if let auto_lang::ast::Stmt::Use(ref use_stmt) = stmt {
+                if let Some(first) = use_stmt.paths.first() {
+                    if dep_names.iter().any(|d| d == first.as_str()) && use_stmt.paths.len() > 1 {
+                        let segs: Vec<String> = use_stmt
+                            .paths
+                            .iter()
+                            .skip(1)
+                            .map(|s| s.as_str().to_string())
+                            .collect();
+                        let entry = by_module.entry(segs).or_default();
+                        for item in &use_stmt.items {
+                            let name = item.as_str().to_string();
+                            if !entry.contains(&name) {
+                                entry.push(name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    by_module.into_iter().collect()
+}
+
+/// PLAN-681 T-05（F2 主入口）：伴生依赖解析——①`use <dep>.…: fn` 的支撑
+/// 模块转译内嵌（`mod __bps_*` + 星 use 再导出，调用点裸名零变化）；
+/// ②front 源内裸 widget 名本地未声明时，依赖包内同名 widget 的 .at 源
+/// 补进编译集（vue 契约须显式 use、VM 轨宽松——rust 轨按 dep 声明 + 名
+/// 字面命中补源；机制通用，零消费方标识符硬编码）。
+/// 返回 (widget 补集文件, fn 模块内嵌代码)。
+fn resolve_bps_dependencies(
+    project_dir: &Path,
+    at_files: &[PathBuf],
+) -> (Vec<PathBuf>, String) {
+    let pac_path = project_dir.join("pac.at");
+    let deps = parse_pac_dep_roots(&pac_path, project_dir);
+    if deps.is_empty() {
+        return (Vec::new(), String::new());
+    }
+    let dep_names: Vec<String> = deps.iter().map(|(n, _)| n.clone()).collect();
+
+    // 本地 widget 名集 + 各 front 源文本（名字面命中用）。
+    let mut local_widget_names: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut front_texts: Vec<String> = Vec::new();
+    for at_path in at_files {
+        let Ok(code) = fs::read_to_string(at_path) else { continue };
+        front_texts.push(code.clone());
+        let session = CompilerSession::ui().with_backend("rust");
+        let mut parser = Parser::from(code.as_str()).with_session(session);
+        if let Ok(ast) = parser.parse() {
+            for stmt in &ast.stmts {
+                if let auto_lang::ast::Stmt::WidgetDecl(ref wd) = stmt {
+                    local_widget_names.insert(wd.name.as_str().to_string());
+                }
+            }
+        }
+    }
+
+    // ② widget 补集：依赖包 .at 按名命中（非本地声明且 front 源字面出现）。
+    let mut widget_files: Vec<PathBuf> = Vec::new();
+    for (_dep_name, root) in &deps {
+        let mut stack = vec![root.clone()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    // reference/ = 文档参考工程（demo 壳），不进编译集。
+                    if name != "reference" {
+                        stack.push(path);
+                    }
+                } else if path.extension().map(|e| e == "at").unwrap_or(false)
+                    && path.file_name().map(|f| f != "pac.at").unwrap_or(true)
+                {
+                    let Ok(code) = fs::read_to_string(&path) else { continue };
+                    let session = CompilerSession::ui().with_backend("rust");
+                    let mut parser = Parser::from(code.as_str()).with_session(session);
+                    let Ok(ast) = parser.parse() else { continue };
+                    let mut hit = false;
+                    for stmt in &ast.stmts {
+                        if let auto_lang::ast::Stmt::WidgetDecl(ref wd) = stmt {
+                            let name = wd.name.as_str();
+                            if !local_widget_names.contains(name)
+                                && front_texts.iter().any(|t| {
+                                    t.split(|c: char| !c.is_alphanumeric() && c != '_')
+                                        .any(|w| w == name)
+                                })
+                            {
+                                hit = true;
+                            }
+                        }
+                    }
+                    if hit && !widget_files.contains(&path) {
+                        widget_files.push(path);
+                    }
+                }
+            }
+        }
+    }
+
+    // ① fn 模块内嵌。
+    let mut fn_code = String::new();
+    for (segs, _symbols) in collect_dep_fn_imports(at_files, &dep_names) {
+        // 各 dep 根下按分段路径定位模块文件。
+        let rel = segs.iter().collect::<PathBuf>();
+        let mut module_src: Option<(String, String)> = None; // (stem, content)
+        for (dep_name, root) in &deps {
+            let candidate = root.join(&rel).with_extension("at");
+            if candidate.exists() {
+                if let Ok(content) = fs::read_to_string(&candidate) {
+                    module_src = Some((
+                        format!("__bps_{}_{}", dep_name, segs.join("_")),
+                        content,
+                    ));
+                    break;
+                }
+            }
+        }
+        let Some((mod_name, content)) = module_src else { continue };
+        match crate::api_gen::transpile_back_module_to_rs(&mod_name, &content) {
+            Ok(rs) => {
+                let rs = crate::api_gen::post_process_companion_rs(rs);
+                if !fn_code.is_empty() {
+                    fn_code.push('\n');
+                }
+                fn_code.push_str(&format!(
+                    "// PLAN-681 T-05 (F2a): bps use-fn 依赖内联 {}\n",
+                    segs.join(".")
+                ));
+                fn_code.push_str(&format!("mod {} {{\n#![allow(unused)]\n{}\n}}\nuse {}::*;\n", mod_name, rs, mod_name));
+            }
+            Err(e) => {
+                eprintln!("  ⚠ bps 模块 {} 转译失败（内联跳过）: {}", segs.join("."), e);
+            }
+        }
+    }
+
+    (widget_files, fn_code)
+}
+
 fn collect_at_files(dir: &Path) -> AutoResult<Vec<PathBuf>> {
     let mut files = Vec::new();
 

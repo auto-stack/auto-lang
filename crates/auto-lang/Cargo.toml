@@ -286,6 +286,12 @@ windows = { version = "0.58", optional = true, features = [
 # 依赖（版本与 windows 0.58 配套）。仅在 Windows 目标编译。
 windows-core = { version = "0.58", optional = true }
 
+# Plan 673 T-03：read_text_range 分块读 VM/a2r-std 双轨逐字节对拍
+# （P670-D1 纪律：两侧 serde 形状一致，测试断言 byte-identical）。
+# PLAN-681：升为正式依赖——迷你库 a2r_std::fs 的 tree/basename re-export
+# 宿主在独立 a2r-std crate（生成物两种拼写单一实现源；对拍测试钉形状）。
+a2r-std = { path = "../a2r-std" }
+
 [dev-dependencies]
 
 # PLAN-619 §8.5 回归锚用：把 lucide 文档栅格化后断言 ink 充满度=几何值。
@@ -299,10 +305,6 @@ insta = { version = "1", features = ["yaml"] }
 # PLAN-634 T-01：terminal 像素金样稳健比对（容差像素差分）。版本随
 # iced_test（其 matches_image 即用 png 落盘/读盘），不新增编译单元。
 png = "0.18"
-
-# Plan 673 T-03：read_text_range 分块读 VM/a2r-std 双轨逐字节对拍
-# （P670-D1 纪律：两侧 serde 形状一致，测试断言 byte-identical）。
-a2r-std = { path = "../a2r-std" }
 
 [[bench]]
 name = "incremental_transpile_bench"

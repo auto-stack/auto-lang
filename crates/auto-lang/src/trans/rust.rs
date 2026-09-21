@@ -1741,9 +1741,15 @@ impl RustTrans {
                 format!("Vec<{}>", self.rust_type_name(&rta.elem))
             }
             Type::List(elem) => {
-                // List<T> transpiles to Vec<T> in Rust
+                // List<T> transpiles to Vec<T> in Rust.
+                // PLAN-681 T-05（N2 动态记录面）：bare List（无元素型——VM
+                // 动态桶，元素可为异构记录）此前缺省 Vec<String>——记录
+                // 元素的字段访问/字面量构造全部 E0609/语法断（bps
+                // tree_util 株）。动态桶语义源 = VM List（异构值），缺省
+                // 改 Vec<serde_json::Value>：元素按 Value 访问器降链，
+                // 记录字面量走 json! 构造（emit_json_value 路径）。
                 let elem_name = if matches!(elem.as_ref(), Type::Unknown) {
-                    "String".to_string() // bare List defaults to Vec<String>
+                    "serde_json::Value".to_string() // bare List = dynamic bucket
                 } else {
                     self.rust_type_name(elem)
                 };
@@ -5911,7 +5917,9 @@ impl RustTrans {
                 }
                 if let (Expr::Ident(obj), Expr::Ident(method)) = (lhs.as_ref(), rhs.as_ref()) {
                     match obj.as_str() {
-                        "env" => match method.as_str() {
+                        // PLAN-681: "Env" alias — capitalized VM builtin object
+                        // form (Env.get), same normalization as Json→json above.
+                        "env" | "Env" => match method.as_str() {
                             "get" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
@@ -6055,6 +6063,15 @@ impl RustTrans {
                             "walk" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::fs::walk(")?;
                                 if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                write!(out, ")")?;
+                                return Ok(());
+                            }
+                            "tree" => {
+                                // PLAN-681: fs.tree(path, depth) → a2r_std::fs::tree
+                                // (JSON aligned with the VM fs_tree_walk shape).
+                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::tree(")?;
+                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                if let Some(arg) = call.args.args.get(1) { write!(out, ", ")?; self.arg(arg, out)?; }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -7797,8 +7814,14 @@ impl RustTrans {
                 // If the identifier is a known local variable, skip stdlib routing
                 let is_local_var = self.local_var_types.contains_key(type_name);
                 if !is_local_var {
-                // Plan 368: Normalize "Json" → "json" for consistent module dispatch
-                let normalized_type = if type_name.as_str() == "Json" { "json" } else { type_name.as_str() };
+                // Plan 368: Normalize "Json" → "json" for consistent module dispatch.
+                // PLAN-681: "Env" → "env" — the VM builtin object is capitalized
+                // (Env.get); the a2r dispatch tables key on lowercase.
+                let normalized_type = match type_name.as_str() {
+                    "Json" => "json",
+                    "Env" => "env",
+                    _ => type_name.as_str(),
+                };
                 match (normalized_type, method_name.as_str()) {
                     ("json", "parse") => {
                         self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
@@ -8096,6 +8119,16 @@ impl RustTrans {
                     ("fs", "walk") => {
                         self.a2r_std_used.set(true); write!(out, "a2r_std::fs::walk(")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        write!(out, ")")?;
+                        return Ok(());
+                    }
+                    ("fs", "tree") => {
+                        // PLAN-681: fs.tree(path, depth) → a2r_std::fs::tree —
+                        // nested-JSON tree aligned byte-for-byte with the VM
+                        // fs_tree_walk shape (TreeView node schema).
+                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::tree(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                        if let Some(Arg::Pos(a)) = call.args.args.get(1) { write!(out, ", ")?; self.expr(a, out)?; }
                         write!(out, ")")?;
                         return Ok(());
                     }
@@ -10598,6 +10631,10 @@ impl RustTrans {
                 return match elem.as_ref() {
                     Type::User(td) => td.name.as_str() == "Value",
                     Type::GenericInstance(inst) => inst.base_name.as_str() == "Value",
+                    // PLAN-681 T-05（N2）：bare List = 动态桶（元素 Value，
+                    // rust_type_name 缺省翻转同源）——记录字面量 push 走
+                    // json! 构造。
+                    Type::Unknown => true,
                     _ => false,
                 };
             }

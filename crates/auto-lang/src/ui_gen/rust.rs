@@ -192,6 +192,14 @@ thread_local! {
     /// Plan 374: store computed property names (for adding () in dot access).
     pub static STORE_COMPUTED_NAMES: std::cell::RefCell<std::collections::HashSet<String>> =
         std::cell::RefCell::new(std::collections::HashSet::new());
+    /// PLAN-681 T-05（E0618 收口）：store msg 块变体载荷表（变体名 →
+    /// 载荷型序）。on-only 根 handler（无 msg 块声明——PLAN-533 T4 曾以
+    /// 零参变体补枚举）的参数型按转发目标 store 变体推断；app.at 与
+    /// *_store.at 分文件编译且字母序 app 在前 → 表须 build 入口预填
+    /// （STORE_FIELD_TYPES 同款纪律，register_store_msg_payloads）。
+    pub static STORE_MSG_PAYLOADS: std::cell::RefCell<
+        std::collections::HashMap<String, Vec<crate::ast::Type>>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
     /// PLAN-039 T-12（批次 E）：store 字段类型表（store 名 → 字段 → Rust 型）。
     /// app.at 与 *_store.at 分文件编译（collect_at_files 字母序 app 在前），
     /// 生成 app widget 时 state_types 只含自身字段——`.store.<field>.<sub>`
@@ -919,14 +927,25 @@ impl RustGenerator {
         // 的悬垂路径，编译断。rust 轨在此把 handler 的零参变体补进枚举，
         // 枚举/match/派发三方一致。带参 on-only handler 仍走悬垂编译错
         // （响亮失败：payload 类型无法从 on 块推断）。
-        for pattern in widget.handlers.keys() {
+        // PLAN-681 T-05（E0618 收口）：带参形态的载荷推断落地——参数经
+        // handler 体 `store.X(args)` 转发目标查 STORE_MSG_PAYLOADS（store
+        // msg 块声明型，build 入口预填）；参数序与转发实参序一致且变体
+        // 载荷数吻合才采纳，推断不出维持零参（原响亮失败语义不变）。
+        for (pattern, payload) in &widget.handlers {
             let variant_name = self.extract_variant_name(pattern);
             if !self.message_variants.iter().any(|v| v.name == variant_name) {
+                let inferred = self.infer_on_only_payload(pattern, payload);
+                let param_names = pattern_param_names(pattern);
+                let payload_names = if inferred.is_empty() {
+                    Vec::new()
+                } else {
+                    param_names.iter().map(|n| Some(n.clone())).collect()
+                };
                 self.message_variants.push(AuraMsgVariant {
                     name: variant_name,
                     quoted: false,
-                    payload: vec![],
-                    payload_names: vec![],
+                    payload: inferred,
+                    payload_names,
                 });
             }
         }
@@ -1241,6 +1260,19 @@ impl RustGenerator {
                     ),
                     _ => self.ast_expr_to_rust(&state.initial),
                 }
+            } else if matches!(self.state_rust_type(state).as_str(), "f32" | "f64")
+                && matches!(
+                    &state.initial,
+                    crate::ast::Expr::Int(_)
+                        | crate::ast::Expr::I64(_)
+                        | crate::ast::Expr::Uint(_)
+                        | crate::ast::Expr::U64(_)
+                )
+            {
+                // PLAN-681 T-05（F3）：float 态整数字面量初始式
+                // （`var ctx_x float = 0`）——整数字面量不隐式协变到浮点
+                // 字段（E0308），补 `.0`。
+                format!("{}.0", self.ast_expr_to_rust(&state.initial))
             } else {
                 self.ast_expr_to_rust(&state.initial)
             };
@@ -1660,8 +1692,9 @@ impl RustGenerator {
                 if has_payload {
                     // Plan 346: use the source parameter name (e.g., `i` from
                     // `.SelectNote(i)`) as the match binding, not a hardcoded `id`.
-                    let payload_name = self.extract_payload_name(pattern);
-                    code.push_str(&format!("            {}::{}({}) => {{\n", msg_name, variant_name, payload_name));
+                    // PLAN-681 T-05：多参载荷绑定名序（.EditorCtx(x, y) 形）。
+                    let names = self.extract_payload_names(pattern, variant_info.unwrap());
+                    code.push_str(&format!("            {}::{}({}) => {{\n", msg_name, variant_name, names.join(", ")));
                 } else {
                     code.push_str(&format!("            {}::{} => {{\n", msg_name, variant_name));
                 }
@@ -3807,12 +3840,11 @@ impl RustGenerator {
                             "oninput" | "onInput" | "onchange" | "onChange" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
-                                let has_string_payload = self.message_variants.iter()
-                                    .find(|v| v.name == variant)
-                                    .map(|v| v.payload.first().map_or(false, |t| matches!(t, crate::ast::Type::StrOwned | crate::ast::Type::StrSlice | crate::ast::Type::StrFixed(_))))
-                                    .unwrap_or(false);
-                                if has_string_payload {
-                                    builder = format!("{}.on_change({}::{}(\"\".to_string()))", builder, msg_name, variant);
+                                // PLAN-681 T-05：载荷变体以型默认实参构造
+                                // （原 has_string_payload 特例推广——str/int/
+                                // float/bool 全型；事件真值由 store 臂查询）。
+                                if let Some(args) = self.variant_default_args(&variant) {
+                                    builder = format!("{}.on_change({}::{}({}))", builder, msg_name, variant, args);
                                 } else {
                                     builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
@@ -3825,12 +3857,22 @@ impl RustGenerator {
                             "oncursor" | "onCursor" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
-                                builder = format!("{}.on_cursor({}::{})", builder, msg_name, variant);
+                                // PLAN-681 T-05：载荷变体以型默认实参构造
+                                // （variant_default_args 注记）。
+                                if let Some(args) = self.variant_default_args(&variant) {
+                                    builder = format!("{}.on_cursor({}::{}({}))", builder, msg_name, variant, args);
+                                } else {
+                                    builder = format!("{}.on_cursor({}::{})", builder, msg_name, variant);
+                                }
                             }
                             "oncontextmenu" | "onContextMenu" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
-                                builder = format!("{}.on_context_menu({}::{})", builder, msg_name, variant);
+                                if let Some(args) = self.variant_default_args(&variant) {
+                                    builder = format!("{}.on_context_menu({}::{}({}))", builder, msg_name, variant, args);
+                                } else {
+                                    builder = format!("{}.on_context_menu({}::{})", builder, msg_name, variant);
+                                }
                             }
                             _ => {}
                         }
@@ -7698,6 +7740,112 @@ impl RustGenerator {
     }
 
     /// Extract variant name from pattern (e.g., "Msg::Inc" or ".Inc" -> "Inc")
+    /// PLAN-681 T-05（E0618 收口）：on-only handler 载荷推断。handler 体
+    /// 顶层 `store.X(a, b)`（转发调用）中，实参全为裸 ident 且与模式参数
+    /// 序完全一致时，取 STORE_MSG_PAYLOADS[X] 为载荷型序；其余形态返回
+    /// 空（维持零参注册——原响亮失败语义不变）。
+    fn infer_on_only_payload(&self, pattern: &str, payload: &LogicPayload) -> Vec<crate::ast::Type> {
+        use crate::ast::{Arg, Expr, Stmt};
+        let params = pattern_param_names(pattern);
+        if params.is_empty() {
+            return Vec::new();
+        }
+        let stmts = match payload {
+            LogicPayload::AstStmts(s) => s,
+            _ => return Vec::new(),
+        };
+        let mut candidates: Vec<(String, Vec<String>)> = Vec::new();
+        for stmt in stmts {
+            if let Stmt::Expr(expr) = stmt {
+                if let Expr::Call(call) = expr {
+                    if let Expr::Dot(obj, method) = call.name.as_ref() {
+                        if let Expr::Ident(obj_name) = obj.as_ref() {
+                            if obj_name.as_str() == "store"
+                                && method.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                            {
+                                let args: Vec<String> = call
+                                    .args
+                                    .args
+                                    .iter()
+                                    .filter_map(|a| match a {
+                                        Arg::Pos(Expr::Ident(n)) => Some(n.as_str().to_string()),
+                                        _ => None,
+                                    })
+                                    .collect();
+                                let all_bare = args.len() == call.args.args.len();
+                                if all_bare {
+                                    candidates.push((method.as_str().to_string(), args));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (variant, args) in candidates {
+            if args == params {
+                if let Some(types) = STORE_MSG_PAYLOADS.with(|m| m.borrow().get(&variant).cloned()) {
+                    if types.len() == params.len() {
+                        return types;
+                    }
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// PLAN-681 T-05：match 臂绑定名序——模式参数优先（on-only 载荷推断
+    /// 位）；缺席回落变体声明 payload_names / 单参 "i" 旧缺省 / 多参合成
+    /// p0..pN。
+    fn extract_payload_names(&self, pattern: &str, variant: &AuraMsgVariant) -> Vec<String> {
+        let names = pattern_param_names(pattern);
+        if !names.is_empty() {
+            return names;
+        }
+        let from_decl: Vec<String> = variant.payload_names.iter().flatten().cloned().collect();
+        if !from_decl.is_empty() {
+            return from_decl;
+        }
+        (0..variant.payload.len())
+            .map(|i| {
+                if variant.payload.len() == 1 {
+                    "i".to_string()
+                } else {
+                    format!("p{}", i)
+                }
+            })
+            .collect()
+    }
+
+    /// PLAN-681 T-05（E0618 收口）：变体载荷的型默认实参（code_editor
+    /// View 预制消息槽 on_change/on_cursor/on_context_menu 收 pre-made M，
+    /// 载荷参以型默认值构造——沿 has_string_payload 先例；事件真值由
+    /// store 臂自行向 code_editor 宿主查询，坐标类参数 v1 默认化=674
+    /// 降级注记同族）。
+    fn variant_default_args(&self, variant: &str) -> Option<String> {
+        let v = self.message_variants.iter().find(|v| v.name == variant)?;
+        if v.payload.is_empty() {
+            return None;
+        }
+        let args: Vec<String> = v
+            .payload
+            .iter()
+            .map(|t| match t {
+                crate::ast::Type::Int
+                | crate::ast::Type::I64
+                | crate::ast::Type::Uint
+                | crate::ast::Type::U64 => "0".to_string(),
+                crate::ast::Type::Float | crate::ast::Type::Double => "0.0".to_string(),
+                crate::ast::Type::Bool => "false".to_string(),
+                crate::ast::Type::StrOwned
+                | crate::ast::Type::StrSlice
+                | crate::ast::Type::StrFixed(_) => "\"\".to_string()".to_string(),
+                _ => "Default::default()".to_string(),
+            })
+            .collect();
+        Some(args.join(", "))
+    }
+
     fn extract_variant_name(&self, pattern: &str) -> String {
         if pattern.starts_with('.') {
             // .SelectNote(i) → SelectNote
@@ -8873,6 +9021,84 @@ impl RustGenerator {
         }
     }
 
+    /// PLAN-681 T-05（F1 内建函数面）：VM 内建函数名 → a2r 宿主调用，
+    /// 单源映射表。语义锚 = vm/native.rs 的 shim 族：
+    /// - console_log/lines/clear → `auto_lang::vm::ui_console` ring——与 VM
+    ///   解释轨**同一实现**（newest-first、DEFAULT_LINES=200、push 返回
+    ///   bool 的 VM 语义以块表达式 `{ push; true }` 保形）；
+    /// - code_editor_* → `auto_lang::ui::code_editor` 注册表（VM shim 同一
+    ///   委派目标；cut/copy/paste 经 clipboard_op、fold 两员经
+    ///   code_editor_with 闭包——与 shim 体同形）；
+    /// - dialog_open/save → `auto_lang::ui::dialog`（rfd 宿主，filter 解析
+    ///   与 ""-on-cancel 同式；父窗锚 a2r v1 从简，边界见该模块头注）；
+    /// - file_basename → `a2r_std::fs::basename`（rsplit ['/','\\'] 同式）；
+    /// - Process.exit → `std::process::exit`（auto.process.exit 语义）；
+    /// - json.to_value → serde 解析（无效串 → Null，镜像 VM 转换管线）。
+    /// 机制红线（沿 671 T-06/674 §2）：本表只认 VM 内建名位，消费方标识
+    /// 符零硬编码；新内建入表即得双轨覆盖。
+    fn vm_builtin_host_call(&self, call: &crate::ast::Call, fn_name: &str) -> Option<String> {
+        let pos_args: Vec<&crate::ast::Expr> = call
+            .args
+            .args
+            .iter()
+            .filter_map(|a| match a {
+                crate::ast::Arg::Pos(e) => Some(e),
+                _ => None,
+            })
+            .collect();
+        let arg = |i: usize| -> Option<String> {
+            pos_args.get(i).map(|e| self.ast_expr_to_rust(e))
+        };
+        match fn_name {
+            "console_log" => Some(format!(
+                "{{ auto_lang::vm::ui_console::ui_console_push(&({})); true }}",
+                arg(0)?
+            )),
+            "console_lines" => Some(
+                "auto_lang::vm::ui_console::ui_console_lines(auto_lang::vm::ui_console::DEFAULT_LINES)"
+                    .to_string(),
+            ),
+            "console_clear" => Some(
+                "{ auto_lang::vm::ui_console::ui_console_clear(); true }".to_string(),
+            ),
+            "file_basename" => Some(format!("auto_lang::a2r_std::fs::basename(&({}))", arg(0)?)),
+            "code_editor_select_all" | "code_editor_undo" | "code_editor_redo" => Some(format!(
+                "auto_lang::ui::code_editor::{}(&({}))",
+                fn_name,
+                arg(0)?
+            )),
+            "code_editor_cut" | "code_editor_copy" | "code_editor_paste" => {
+                let op = match fn_name {
+                    "code_editor_cut" => "Cut",
+                    "code_editor_copy" => "Copy",
+                    _ => "Paste",
+                };
+                Some(format!(
+                    "auto_lang::ui::code_editor::code_editor_clipboard_op(&({}), auto_lang::ui::code_editor::ClipboardOp::{})",
+                    arg(0)?,
+                    op
+                ))
+            }
+            "code_editor_fold_toggle" => Some(format!(
+                "auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_toggle(({a1}).max(1) as usize - 1)).unwrap_or(false)",
+                a0 = arg(0)?,
+                a1 = arg(1)?
+            )),
+            "code_editor_fold_hidden_count" => Some(format!(
+                "(auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_hidden_count()).unwrap_or(0)) as i64",
+                a0 = arg(0)?
+            )),
+            "dialog_open" => Some(format!("auto_lang::ui::dialog::open(&({}))", arg(0)?)),
+            "dialog_save" => Some(format!("auto_lang::ui::dialog::save(&({}))", arg(0)?)),
+            "Process.exit" => Some(format!("std::process::exit(({}) as i32)", arg(0)?)),
+            "json.to_value" => Some(format!(
+                "serde_json::from_str::<serde_json::Value>(&({a0})).unwrap_or(serde_json::Value::Null)",
+                a0 = arg(0)?
+            )),
+            _ => None,
+        }
+    }
+
     fn ast_expr_to_rust(&self, expr: &crate::ast::Expr) -> String {
         use crate::ast::Expr;
         use auto_val::Op;
@@ -9138,7 +9364,22 @@ impl RustGenerator {
                         // Check for indexed.field = value (e.g., todos[idx].text = .edit_text)
                         // Pattern: Dot(Index(Ident("collection"), idx), "field")
                         if let Expr::Index(target, _idx) = obj.as_ref() {
-                            if let Expr::Ident(collection) = target.as_ref() {
+                            // PLAN-681 T-05（N1）：`.coll[i].field = v` 的基座
+                            // 两形态——Ident(".tabs")（. 前缀 Ident）与
+                            // Dot(Ident("."), "tabs")（self 字段链）——后者此前
+                            // 漏网落泛型读链发射（LHS = `…["f"].as_str()…() =`
+                            // E0070 ×12 株，auto-edit tabs 族）。
+                            let coll_opt: Option<&crate::ast::Name> = match target.as_ref() {
+                                Expr::Ident(c) => Some(c),
+                                Expr::Dot(base, f)
+                                    if matches!(base.as_ref(),
+                                        Expr::Ident(b) if b.as_str() == "." || b.as_str() == "self") =>
+                                {
+                                    Some(f)
+                                }
+                                _ => None,
+                            };
+                            if let Some(collection) = coll_opt {
                                 let coll_name = collection.as_str();
                                 let resolved_coll = if coll_name.starts_with('.') { &coll_name[1..] } else { coll_name };
                                 if self.state_types.get(resolved_coll)
@@ -9546,6 +9787,12 @@ impl RustGenerator {
                 let fn_name: String = call.get_name_text_safe()
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| self.ast_expr_to_rust(&call.name));
+                // PLAN-681 T-05（F1 内建函数面）：VM 裸名/限定名内建 → 宿主
+                // 调用，单源映射表（语义源=vm/native.rs shim 族）。命中即
+                // 发射；未命中落默认路径（用户 fn/api 桩等）。
+                if let Some(host_call) = self.vm_builtin_host_call(call, &fn_name) {
+                    return host_call;
+                }
                 // Plan 374 Task 2: store.Method(args) → self.store.on(StoreMsg::Method(args))
                 // Only match PascalCase methods (store handlers like NewNote, TogglePin).
                 // Don't match `store.notes.len()` or `store.field.lowercase()`.
@@ -9669,29 +9916,32 @@ impl RustGenerator {
                     }
                     // Plan 413 follow-up: code editor payload accessors (§3.2) —
                     // the generated handlers read live editor state by key.
+                    // PLAN-681 T-05（F6）：宿主键参皆 &str——rust_call_args 产
+                    // String（clone 形），统一 &(...) 借用收缩（String/&str
+                    // 双收，E0308 消）。
                     "code_editor_text" => format!(
-                        "auto_lang::ui::code_editor::code_editor_text({}).unwrap_or_default()",
-                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                        "auto_lang::ui::code_editor::code_editor_text(&({})).unwrap_or_default()",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_cursor_line" => format!(
-                        "auto_lang::ui::code_editor::code_editor_cursor({}).map(|c| c.0 as i32).unwrap_or(0)",
-                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                        "auto_lang::ui::code_editor::code_editor_cursor(&({})).map(|c| c.0 as i32).unwrap_or(0)",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_cursor_col" => format!(
-                        "auto_lang::ui::code_editor::code_editor_cursor({}).map(|c| c.1 as i32).unwrap_or(0)",
-                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                        "auto_lang::ui::code_editor::code_editor_cursor(&({})).map(|c| c.1 as i32).unwrap_or(0)",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_selection_len" => format!(
-                        "auto_lang::ui::code_editor::code_editor_cursor({}).map(|c| c.2 as i32).unwrap_or(0)",
-                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                        "auto_lang::ui::code_editor::code_editor_cursor(&({})).map(|c| c.2 as i32).unwrap_or(0)",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_find" => format!(
-                        "auto_lang::ui::code_editor::code_editor_find({})",
-                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned())
+                        "auto_lang::ui::code_editor::code_editor_find(&({}))",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_set_text" => format!(
-                        "auto_lang::ui::code_editor::code_editor_set_text({}, {})",
-                        args.first().cloned().unwrap_or_else(|| "\"editor\".to_string()".to_owned()),
+                        "auto_lang::ui::code_editor::code_editor_set_text(&({}), &({}))",
+                        args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned()),
                         args.get(1).cloned().unwrap_or_else(|| "String::new()".to_owned())
                     ),
                     "Time.now_sec" | "time.now_sec" | "time_now_sec" => {
@@ -10012,11 +10262,53 @@ impl RustGenerator {
             Type::List(inner) => format!("Vec<{}>", self.auto_type_to_rust(inner)),
             Type::Slice(sl) => format!("Vec<{}>", self.auto_type_to_rust(&sl.elem)),
             Type::Map(k, v) => format!("std::collections::HashMap<{}, {}>", self.auto_type_to_rust(k), self.auto_type_to_rust(v)),
-            Type::User(td) => td.name.to_string(),
+            Type::User(td) => {
+                // PLAN-681 T-05（F3）：裸 `list`——无元素型的动态列表（VM
+                // List 桶，`var tabs list = [...]` 形）此前直发用户型名
+                // "list" = E0425。映射 Vec<Value>：动态桶元素按 Value
+                // 访问器降链（与 Unknown 回落同族）。
+                if td.name.as_str() == "list" {
+                    "Vec<serde_json::Value>".to_string()
+                } else {
+                    td.name.to_string()
+                }
+            }
             Type::Unknown => "serde_json::Value".to_string(),
             _ => "serde_json::Value".to_string(), // Fallback for unrecognized types
         }
     }
+}
+
+/// PLAN-681 T-05（E0618 收口）：预填 [`STORE_MSG_PAYLOADS`]——store msg
+/// 块变体名 → 载荷型序（build 入口 collect_store_decls 产物上调用；
+/// 同名变体首个声明保留——多 store 同名变体罕见，按注册序幂等）。
+pub fn register_store_msg_payloads(stores: &[crate::ast::ui::StoreDecl]) {
+    STORE_MSG_PAYLOADS.with(|m| {
+        let mut map = m.borrow_mut();
+        for store in stores {
+            for msg in &store.messages {
+                for v in &msg.variants {
+                    map.entry(v.name.to_string())
+                        .or_insert_with(|| v.payload.clone());
+                }
+            }
+        }
+    });
+}
+
+/// PLAN-681 T-05：handler 模式参数名序——`.TabActivate(i)` → `["i"]`、
+/// `.EditorCtx(x, y)` → `["x","y"]`；无参 → 空。
+fn pattern_param_names(pattern: &str) -> Vec<String> {
+    if let (Some(start), Some(end)) = (pattern.find('('), pattern.rfind(')')) {
+        if start < end {
+            return pattern[start + 1..end]
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+    }
+    Vec::new()
 }
 
 /// Plan 371 Task 21: whether a rust field type is a scalar we can safely emit
