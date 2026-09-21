@@ -222,8 +222,10 @@ resvg = { version = "0.45", optional = true }
 tiny-skia = { version = "0.11", optional = true }
 kamadak-exif = { version = "0.6", optional = true }
 # Plan 413: code editor engine. cosmic-text MUST stay on the same minor as
-# iced 0.14.0's pin (0.15) — a second copy would break the Weak<Buffer>
-# handoff into fill_raw. syntect/two-face unify to a single 5.x instance.
+# iced 0.14.0's pin (0.15) — a second copy would duplicate the font/shaping
+# stack that iced and the editor share (the old Weak<Buffer>→fill_raw
+# rationale was removed with that handoff in Plan 428). syntect/two-face
+# unify to a single 5.x instance.
 cosmic-text = { version = "0.15", optional = true, features = ["vi", "syntect"] }
 syntect = { version = "5", optional = true }
 two-face = { version = "0.4", optional = true }
