@@ -1,15 +1,16 @@
 ---
 plan_id: PLAN-680
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-gallery-fix-batch
 author: [agent]
 created_at: 2026-09-21
 updated_at: 2026-09-21
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components: []   # 671 fail-fast 裁定保留——契约第 5 条为加法式精化非取代
+new_spec_components: [SD-01 Env 轨别原语与字面量折叠契约(docs/specs/auto-lang/ui/design/app-generation.md 契约第 5 条),
+  SD-02 027 vue 轨降级口径(examples/ui/027-file-manager/SPEC.md §5.5)]
+touched_goals: [GOAL-007, GOAL-010]  # 双端一致生成契约 / examples-ui 应用矩阵
 
 affects: [auto-lang/ui-gen, auto-lang/vm-ffi, examples/ui/027-file-manager]
 current_step: 5
@@ -173,7 +174,7 @@ AppViewport 错误横幅 → 文件浏览内容（列表/快捷访问引导）�
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/ui/vue-generation.md（vue 生成工程契约；执行期核对实际文件名，若无专节则在 ui 模块 overview 相应节） | `Env.get`：一律 `__vmOnly` → **字面量键折叠为 gen 机 env 快照字面量，其余仍 `__vmOnly`**；新增 `Env.track()`：VM 轨 "vm" / vue 轨 "vue" 双构建 | 诚实抛错裁定保留；调试轨需要无 Env 依赖的轨别信号与可折叠的字面量 env 读取 | AC-01/AC-02 |
+| SD-01 | modify | docs/specs/auto-lang/ui/design/app-generation.md（复审回写：实际落点=PLAN-677 契约列表第 5 条） | `Env.get`：一律 `__vmOnly` → **字面量键折叠为 gen 机 env 快照字面量，其余仍 `__vmOnly`**；新增 `Env.track()`：VM 轨 "vm" / vue 轨 "vue" 双构建 | 诚实抛错裁定保留；调试轨需要无 Env 依赖的轨别信号与可折叠的字面量 env 读取 | AC-01/AC-02 |
 | SD-02 | add | docs/specs/ui/（027 所属 demo 契约节或 examples/ui README 的轨别矩阵） | 027 vue 轨行为定版：shell+样式调试可用，FS 面空态提示，事实轨=VM | 027 SPEC 明示 vue=前端调试轨，降级口径入册防回归 | AC-04 |
 
 （执行期若发现 specs 路径与实际目录名不符，按实际路径落并在此表回写。）
@@ -275,6 +276,23 @@ AppViewport 错误横幅 → 文件浏览内容（列表/快捷访问引导）�
   与 Q5（`file.*` 小写不在 VM-only 白名单，裸标识符雷，027 已被守卫规避）。
   blockers=无 | next=review（/auto-plan:review），merge 时 WT-guard 注意 gen 目录
   pnpm junction 清理（仓工具链雷区在案）。
+
+- 2026-09-21 review：stage=review | plan_id=PLAN-680 | plan_revision=1 |
+  outcome=**pass** | reviewed_commit=a9b45b7d7（worktree plan-680-dev，零脏文件） |
+  base_commit=f2e1aa9a1 | dependency_revisions=auto-down fba6563（detached） |
+  spec_inputs=docs/specs/auto-lang/ui/design/app-generation.md（+契约第 5 条）、
+  examples/ui/027-file-manager/SPEC.md（+§5.5）、docs/specs/goals.md（GOAL-007/010 实触核对） |
+  acceptance_results=AC-01..06 全 pass；门禁复审基线复跑 `cargo tv` 3865/3865 绿
+  （tv 首跑在 T-04 文档提交前，复审在 reviewed_commit 上重跑补证；`cargo tf` 3718/3718
+  本就跑在 reviewed_commit 上） |
+  findings=①low 截图重复误标（vue-027-booted/empty-state/initial 三帧同 md5 bcc066e3，
+  均为未 boot 初始帧；booted 态真证据=vue-027-empty-state2.png——AC 证据链完整不受影响，
+  证据卫生问题留档不阻塞）；②low SD-01 表落点回写（本条已顺手清偿，上表已改实际路径）；
+  ③info 契约第 5 条"验收 AC-01..04"过宽（无害留档） |
+  evidence=独立复审代理只读审计（从工件重建，非实现会话自证）：AC 逐条对照 diff/截图/
+  测试断言，折叠仅限字面量键（Expr::Str gate）、守卫纯包裹不误伤 VM、id 9907 无碰撞、
+  15 文件=3 代码+9 截图+2 文档恰为交付面无超范围改动；门禁 tv/tf 复跑绿 |
+  next=merge（/auto-plan:merge；先清 027 gen/ pnpm junction 再 wt-guard）。
 
 ## 待澄清事项
 
