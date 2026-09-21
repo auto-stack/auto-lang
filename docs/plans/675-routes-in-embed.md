@@ -1,18 +1,18 @@
 ---
 plan_id: PLAN-675
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: routes-in-embed
 author: [agent]
 created_at: 2026-09-21
 updated_at: 2026-09-21
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components: []  # 无退役组件(SD-01/SD-02 为既有 project.md 增补)
+new_spec_components: []  # 无新组件;SD-01→auto-man/project.md 画廊节、SD-02→auto-lang/project.md back_proxy 节(merge 落档)
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-man, auto-lang] # gallery host 生成器(auto-man)+ back_proxy 参数绑定(auto-lang)
-current_step: 5
+current_step: 6
 total_steps: 7
 ---
 
@@ -236,6 +236,7 @@ pub routable: bool,
   [✅ 已完成 2026-09-21] AppViewport 增 entry 分支(mod.mount/unmount 在册走工厂,路由态随卸载重置;default-App 旧 createApp 路径,28 条既有 load 条目零改动)+releaseMounted 统一卸载柄(entryUnmount 与 currentApp 互斥)+onBeforeUnmount 收口。三副本对齐:os 源=gen ext=auto-lang rust_embed 资产(md5 唯一)。lang `8a4648a78`/os `a9ebc77`(os 仓仅定向提交自己改的 AppViewport.vue,registry.at 等他会话 WIP 未触碰)。
 - **T-06**(C-4)端到端验证:前台 `auto build` 产物五件套清点 + 用户活体走查五家(022→021→019→018→023),宿主 URL 零变化观察;走查发现的问题按「修复或记债」逐条裁定入档。AC:AC-01..AC-06 全过。
   [⏳ 进行中 2026-09-21] build 半闭环已证:前台 `auto build`(AUTO_GALLERY_APPS 钉 worktree 语料+worktree auto.exe)全 pipeline 绿(vue-tsc+vite 12.8s),摘要行 **35 demos, 28 loadable, 5 routable, 30 VM-live**——五家注册表 load(import main)+routed 全在档,apps/<id> 五件套(App/pages/router.ts/main.ts/lib_api.ts)齐,018 双动态段 `/book/:id/chapter/:ch` props:true 在档,dist 路由 chunk(board/bookshelf/reading/watch/editor)全产出。**活体走查待用户终端**(见 handoff)。发现并修复的走查前置阻断见 T-04 附带修复两枚。
+  [✅ 已完成 2026-09-21] 走查收官:用户活体走查五家——**UI/挂载/路由面全通**(五截图:022 看板/021 博客/019 视频壳/018 书架+侧栏/023 conduit 全渲染),数据面全冻结。归因链(run1 日志+沙箱 2/2 复现):N2 包装进程 vite 就绪后静默 exit 1 → in-process 代理随之亡,而**会话顺序装载每家数秒**,死亡窗口只够前 ~6 家(013/015/017/031/047),五家路由 demo 的会话从未轮到。数据面已由确定性探针收口(`http_e2e_back_proxy_real_routes_corpora_data_face`,efc27ff84):五家语料会话直载,列表/int-:id/str-slug/路径+body 混合 PUT 全数 200 带真种子。走查观察项 disposition:①022 视口上方大片空白+018 侧栏漂移 → 嵌入布局债 **P675-D1** 入册;②theme-toggle schema 原生元素+sidebar_menu_button to/exact 声明滞后 → **P675-D2** 入册;③数据冻结根因 → P672-N2 既有债,本次强化证据(2/2 沙箱确定性+会话顺序装载洞察)注回 672 档。
   [✅ 合并准备完成 2026-09-21] Q-6/Q-7 按推荐落定后即摘最新 plan-672-dev(ed1d5fadf:条目7 根净化+其 N5 版)进 plan-675-dev:唯一冲突=back_proxy.rs 四块,按 Q-6 裁定 `--ours` 整取本计划 T-02 版(其 N5 版 fn_param_types+coerce_scalar 弃,解析失败静默回退原值 vs 本版 400 BadRequest 与 http_server 同语义);合并提交 `c8e6687d8`。合并后门禁:build 0 error、back_proxy e2e 10/10、auto-man 320 全量 318 绿(2 红=预存);画廊前台 build 复跑全绿(12.6s),条目7 根净化 × routable 发射共存无碍(018 双动态段路由在档、5 条 main load 齐)。672 计划档的"由对侧清偿"注记延至 T-07 落笔(P672 会话仍在活跃编辑其档,避碰撞)。
 - **T-07**(C-5)复审与沉淀:`/auto-plan:review` 全清单核对;债册处置——P672-D2 销号、P670-D1 家族误注更正、走查新增观察项登记;SD-01/SD-02 规范落档 + specs.json/spec-index 再生;`cargo tf` 兜底后按仓规 merge/归档/清 worktree。AC:AC-07/AC-08 门禁 + 沉淀收据。
 
@@ -243,6 +244,12 @@ pub routable: bool,
 
 - [2026-09-21] draft handoff(/auto-plan:new):stage: new,PLAN-675 revision 1。勘定四路(计划史 642/670/672、demo 名单、生成器现状、os 消费端)已回填 §需求分析;候选方案五选一裁定 memory history(§架构方案);P670-D1 关系裁定=独立无依赖。**outcome: blocked**——待用户确认方案(尤其 T-02 纳入与否、023 验收口径)且 PLAN-672 先落 master。next: 用户确认后 `/auto-plan:work`(worktree lang-675)。
 - [2026-09-21] work handoff(T-01..T-05 完成+T-06 build 半闭环):stage: work | plan_id: PLAN-675 | plan_revision: 1 | outcome: pass(走查待用户)/余项 T-06 走查+T-07 | code_commit: 65fd1883a/495ac1389/8a4648a78/828bdce61(lang worktree plan-675-dev)+a9ebc77(auto-os)+merge 2d41a5a27(摘入 plan-672-dev @29ed6926b 基座) | task_ids: T-01..T-05 done, T-06 half | evidence: 门禁 auto-man 319 全量 317 绿(2 红=master 预存 plan593_index_css+shell_pack_lib_freshness,后者 672 时代基线清单外新预存红待入册);auto-lang back_proxy e2e 10/10;store_deps/api 31+1 全绿;画廊 build 5 routable 全内嵌 | blockers: ①活体走查待用户终端 ②**N5 双修冲突待裁定**——P672 并行会话亦修 N5(其 T-18"worktree N5 提交"),plan-675-dev T-02 与 plan-672-dev 新提交在 back_proxy.rs 必撞,T-07 合并时二选一(语义应近同,均镜像 669) ③023 VM 臂 route_stub 多 store 降级为既有边界(不变) | next: 用户终端活体走查五家(022→021→019→018→023)→ `/auto-plan:review`(T-07:债册 P672-D2 销号+P670-D1 家族误注更正+shell_pack 预存红入册+672/675 落序裁定)。
+- [2026-09-21] **独立复审**(/auto-plan:review,T-07):stage: work | plan_id: PLAN-675 | plan_revision: 1 | **outcome: pass** | code_commit: 65fd1883a/495ac1389/8a4648a78/828bdce61/efc27ff84+c8e6687d8(merge)+auto-os a9ebc77。
+  **清单逐条核对**:AC-01 ✓(截图1+registry 行+探针 cards 种子);AC-02 ✓(截图3 壳+探针 list/:id;活体数据冻结=N2,证据链三环);AC-03 ✓(路由表 artifact 双动态段+探针 list/:id/chapters/混合 PUT;活体仅 Library 页可见,reading 页数据链已在代理层全证);AC-04 ✓(截图2+探针);AC-05 ✓(截图5+探针 list/slug);AC-06 ✓(五截图宿主 chrome 完整包围、用户未报 URL 变化);AC-07 ✓(generate_router_file self 版/write_registry_at 零接触——diff 计数 0/0;28 条既有 load 条目形态不变);AC-08 ✓(registry.at 三档并集与 route_stub 发射未动,route_stub 单测绿)。
+  **遗漏/延后扫描**:无静默弱化——AC-02/03/05 数据面以确定性代理层探针满足(AC 原文即"经 back_proxy 取到真数据",探针正是真会话真 HTTP);延后面全部显式入册(P675-D1/D2 新债+N2/P672-D2/P670-D1 误注处置)。
+  **健康检查**:游离调试打印 0(diff 扫描);cargo tf **3690/3690 全绿**(含 1M churn);auto-man 320 全量 318 绿(2 红=master 预存 plan593_index_css+shell_pack_lib_freshness,后者已实测 master 复现入册);back_proxy e2e 11/11;build 0 error。
+  **规范增量**:SD-01/SD-02 经实做验证成立;canonical 落档(specs.json+auto-man/auto-lang project.md)随 /auto-plan:merge 执行。
+  **遗留**(不阻断 reviewed):①落库按 Q-7 序(672 先落→675 摘最终态→落库),merge 动作随两计划协调;②022/018 布局观察=P675-D1;③P672 档注记本次落笔(见下)。
 
 ## 待澄清事项
 
