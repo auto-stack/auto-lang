@@ -605,6 +605,15 @@ fn compile_at_file(
     let mut output = String::new();
     let mut generator = RustGenerator::new();
 
+    // PLAN-039 T-12（批次 E）：预填 store 字段类型表——app.at 与
+    // *_store.at 分文件编译（字母序 app 在前），`.store.<field>.<sub>`
+    // 降链判定需要跨 widget 的字段型视图（表全局幂等，逐文件重填无扰）。
+    // shim 家族注入在 wrap_example（main.rs 组装级一次——per-file 会撞
+    // 多文件拼接的重复定义）。
+    for store in stores {
+        generator.prime_store_field_types(store);
+    }
+
     // Extract API imports from `use back.api: ...` statements
     let api_imports = extract_api_imports_from_ast(&ast, at_path);
 
@@ -690,6 +699,20 @@ fn compile_at_file(
         if let auto_lang::ast::Stmt::TypeDecl(type_decl) = stmt {
             output.push_str(&generate_type_struct(type_decl));
             output.push('\n');
+        }
+    }
+
+    // PLAN-039 T-12（批次 E）：store 文件级自由 fn 的 rust 轨发射（vue
+    // 轨 module_fns 通道 parity）——`fn esc(s str) str` 株（kanban 写端点
+    // body JSON 转义）此前静默丢弃，生成 handler 报 cannot find function。
+    // #[api]/test fn 由 extract_module_fn 门跳过；参数/返回按声明型直译，
+    // 函数体复用 handler 语句翻译链（join/postprocess 全含）。
+    for stmt in &ast.stmts {
+        if let auto_lang::ast::Stmt::Fn(fn_decl) = stmt {
+            if auto_lang::aura::extract::extract_module_fn(fn_decl).is_some() {
+                output.push_str(&generate_module_fn_rust(&generator, fn_decl));
+                output.push('\n');
+            }
         }
     }
 
@@ -1911,6 +1934,10 @@ use auto_lang::ui::{{Component, View}};
 #[global_allocator]
 static GUARD_ALLOC: auto_lang::ui::mem_guard::GuardAlloc = auto_lang::ui::mem_guard::GuardAlloc;
 
+// PLAN-039 T-12（批次 E）：内建方法 shim 家族——main.rs 组装级注入
+// 一次（per-file 注入会撞多 .at 文件拼接的重复定义）。
+{at_shims}
+
 {cleaned}
 
 fn main() -> auto_lang::ui::AppResult<()> {{
@@ -1938,6 +1965,7 @@ fn main() -> auto_lang::ui::AppResult<()> {{
 }}
 "#,
         cleaned = cleaned.trim(),
+        at_shims = AT_BUILTIN_METHOD_SHIMS,
         env_inits = env_inits,
         native_client_gate = native_client_gate,
         iced_entry = iced_entry,
@@ -3601,6 +3629,83 @@ fn apply_pac_theme_decl(project_dir: &Path) -> Option<String> {
 /// with the dynamic-typing code generator (field access via ["field"]).
 fn generate_type_struct(type_decl: &auto_lang::ast::TypeDecl) -> String {
     format!("pub type {} = serde_json::Value;\n", type_decl.name)
+}
+
+/// PLAN-039 T-12（批次 E，E-D4）：`.at` 内建方法的 Value 接收者 shim 家族
+/// ——每个生成 main.rs 文件级注入一次（#allow(dead_code) 零增警）。语义
+/// 与 VM 宽松面逐条对齐：len 串按字符/数组按元素；slice 按字符截取
+/// （start/end 容差钳制）；str 数值降串不带引号（as_str 直通，其余走
+/// Value Display）；lower/upper/trim 走 as_str 缺省空串。
+const AT_BUILTIN_METHOD_SHIMS: &str = r#"#[allow(dead_code)]
+fn __at_num(v: &serde_json::Value) -> i32 {
+    v.as_i64().unwrap_or(0) as i32
+}
+#[allow(dead_code)]
+fn __at_len(v: &serde_json::Value) -> i32 {
+    if let Some(a) = v.as_array() {
+        a.len() as i32
+    } else if let Some(s) = v.as_str() {
+        s.chars().count() as i32
+    } else {
+        v.as_i64().unwrap_or(0) as i32
+    }
+}
+#[allow(dead_code)]
+fn __at_slice_v(v: &serde_json::Value, a: i32, b: i32) -> String {
+    let s = v.as_str().unwrap_or_default();
+    s.chars().skip(a.max(0) as usize).take((b - a).max(0) as usize).collect()
+}
+#[allow(dead_code)]
+fn __at_slice(s: &str, a: i32, b: i32) -> String {
+    s.chars().skip(a.max(0) as usize).take((b - a).max(0) as usize).collect()
+}
+#[allow(dead_code)]
+fn __at_str(v: &serde_json::Value) -> String {
+    match v.as_str() {
+        Some(s) => s.to_string(),
+        None => v.to_string(),
+    }
+}
+#[allow(dead_code)]
+fn __at_lower(v: &serde_json::Value) -> String {
+    v.as_str().unwrap_or_default().to_lowercase()
+}
+#[allow(dead_code)]
+fn __at_upper(v: &serde_json::Value) -> String {
+    v.as_str().unwrap_or_default().to_uppercase()
+}
+#[allow(dead_code)]
+fn __at_trim(v: &serde_json::Value) -> String {
+    v.as_str().unwrap_or_default().trim().to_string()
+}
+"#;
+
+/// PLAN-039 T-12（批次 E）：store 文件级自由 fn → Rust 自由 fn。参数/
+/// 返回按声明型直译（type_to_rust_str）；函数体复用 handler 语句翻译
+/// 链（generate_handler_body：join_stmt_block + postprocess 全含）。
+fn generate_module_fn_rust(
+    generator: &auto_lang::ui_gen::rust::RustGenerator,
+    fn_decl: &auto_lang::ast::Fn,
+) -> String {
+    let params: Vec<String> = fn_decl
+        .params
+        .iter()
+        .map(|p| format!("{}: {}", p.name.as_str(), type_to_rust_str(&p.ty)))
+        .collect();
+    let ret = match &fn_decl.ret {
+        auto_lang::ast::Type::Void => String::new(),
+        t => format!(" -> {}", type_to_rust_str(t)),
+    };
+    let body = generator.generate_handler_body(&auto_lang::aura::LogicPayload::AstStmts(
+        fn_decl.body.stmts.clone(),
+    ));
+    format!(
+        "#[allow(unused)]\nfn {}({}){} {{\n    {}\n}}\n",
+        fn_decl.name.as_str(),
+        params.join(", "),
+        ret,
+        body
+    )
 }
 
 /// Convert an Auto Type to a Rust type string (standalone, mirrors RustGenerator::auto_type_to_rust).
