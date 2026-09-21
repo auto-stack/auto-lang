@@ -43,6 +43,17 @@ total_steps: 6
   （prefix_api_url_literals）不适用于浏览器 fetch（跨源）；Vue 臂走
   vite 代理透传（同源）→ 保持 demo 语料相对路径风格，api.ts 内路径前缀
   改写为 `/apps/<id>/api/`。
+- **条目 6（用户提出 2026-09-21，诊断完成、修法待裁定）**：点击 016-calendar
+  迫使整个画廊页面变浅色。**诊断：机制全链路已锁定**——① 016 支持深色
+  （有 SetTheme 切换器），但其 store 默认浅色且 **Init 强制重置**：
+  `calendar_store.at:12 var dark_mode bool = false` + `:35 .Init -> .dark_mode
+  = false`；② 生成物 App.vue 挂载序：先按 `__AUTO_UI_THEME__='dark'` 播种
+  ref=true（Plan 458 bootstrap 语义）→ `onMounted { store.Init();
+  dark_mode.value = store.dark_mode }` 用 store 的 false 覆盖播种 →
+  `watch(dark_mode, v => document.documentElement.classList.toggle('dark',
+  v))`（App.vue:604）**在 <html> 上全局摘 .dark** → 宿主页面整体翻浅色。
+  即：不是「不支持深色」，是「默认浅色 + Init 重置 + 主题施加无嵌入隔离」
+  三件叠加；standalone 下该全局施加是正当的（独占页面），嵌入态即泄漏。
 - **条目 5（用户提出 2026-09-21，三家分流勘定）**：017/018/019 同样显示
   「独立运行」提示。**三家根因不同**：
   - **017-chat = fullstack 无 api client 源**（run 日志
