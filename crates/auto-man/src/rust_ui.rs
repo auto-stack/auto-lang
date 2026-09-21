@@ -3212,7 +3212,7 @@ pub fn back_member_name(project_dir: &Path) -> String {
 /// Run the generated Rust UI project.
 /// Start the API backend server if a backend exists in the shared workspace.
 /// Returns the child process handle so the caller can clean it up on exit.
-pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
+pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child>, String> {
     // daemon-ensure 语义（auto-os apps.manifest / pac.at back_port daemon 链）：
     // AUTO_REUSE_BACKEND=1 且端口已有活监听时直接复用——不杀（Plan 354 的
     // kill 会打断产品链先起好的真后端）、不重生成、不再 spawn 生成的
@@ -3229,7 +3229,7 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
             if std::env::var_os("AUTO_HTTP_BASE").is_none() {
                 std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", port));
             }
-            return None;
+            return Ok(None);
         }
     }
     // Backend lives in the resolved workspace ({name}-back/ member; Stage B P-2:
@@ -3240,11 +3240,10 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
     let api_backend_dir = ws_dir.join(&back_name);
     // Generate or update the Rust backend from #[api] declarations (idempotent).
     if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
-        eprintln!("  {} Failed to generate Rust backend: {}", "⚠".bright_yellow(), e);
-        return None;
+        return Err(format!("Failed to generate Rust backend: {}", e));
     }
     if !api_backend_dir.join("Cargo.toml").exists() {
-        return None;
+        return Err(format!("backend Cargo.toml missing under {}", api_backend_dir.display()));
     }
 
     println!();
@@ -3285,12 +3284,16 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
         .spawn();
 
     match api_server {
-        Ok(child) => {
+        Ok(mut child) => {
             println!("  {} API server starting (PID: {})...", "✓".bright_green(), child.id());
 
-            // Wait for the server to become ready by polling the port
+            // Wait for the server to become ready by polling the port.
+            // PLAN-026 T-05: 60s 一次性等待 + "continuing anyway" 吞错 →
+            // 有界重试门(累计上限 120s,冷构建 back >60s 场景实测 98s;
+            // 超限 kill + 显式报错,不再带着无监听端口进入组件构建/Init
+            // —— lab-premerge2 卡死坑收口)。
             println!("  Waiting for API server to be ready...");
-            let max_wait = std::time::Duration::from_secs(60);
+            let max_wait = std::time::Duration::from_secs(120);
             let start = std::time::Instant::now();
             let mut ready = false;
 
@@ -3314,18 +3317,16 @@ pub fn start_api_server(project_dir: &Path) -> Option<std::process::Child> {
 
             if ready {
                 println!("  {} API server is ready on http://127.0.0.1:{}", "✓".bright_green(), port);
+                Ok(Some(child))
             } else {
-                println!("  {} API server did not respond within {}s, continuing anyway...",
-                    "⚠".bright_yellow(), max_wait.as_secs());
+                let _ = child.kill();
+                Err(format!(
+                    "API backend not ready within {}s (port {}); aborting before UI init — check backend build/run above",
+                    max_wait.as_secs(), port
+                ))
             }
-
-            Some(child)
         }
-        Err(e) => {
-            println!("  {} Failed to start API server: {}", "⚠".bright_yellow(), e);
-            println!("  Continuing without backend...");
-            None
-        }
+        Err(e) => Err(format!("Failed to start API server: {}", e)),
     }
 }
 
@@ -3392,8 +3393,9 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
         .expect("spawn VM server thread");
 
     // Wait for the server to become ready by polling the port.
+    // PLAN-026 T-05: 同 start_api_server 有界重试门(60s→120s)。
     println!("    Waiting for AutoVM server to be ready...");
-    let max_wait = std::time::Duration::from_secs(60);
+    let max_wait = std::time::Duration::from_secs(120);
     let start = std::time::Instant::now();
     let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
     while start.elapsed() < max_wait {
@@ -3406,9 +3408,12 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
             return true;
         }
     }
-    println!(
-        "  {} AutoVM server did not respond within {}s, continuing anyway...",
-        "⚠".bright_yellow(), max_wait.as_secs()
+    // PLAN-026 T-05: 超限显式错误(vm+vm split 独立卡死症状另档
+    // §10.2;本门语义 = 不再吞错续跑)。
+    eprintln!(
+        "ERROR: AutoVM server not ready within {}s (port {}); aborting before UI init",
+        max_wait.as_secs(),
+        port
     );
     false
 }
@@ -3476,7 +3481,11 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         );
         None
     } else {
-        start_api_server(project_dir)
+        // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
+        match start_api_server(project_dir) {
+            Ok(child) => child,
+            Err(e) => return Err(e.into()),
+        }
     };
 
     println!(
@@ -3673,14 +3682,21 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
             if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
                 eprintln!("  {} Failed to generate Rust backend: {}", "⚠".bright_yellow(), e);
             }
-            let child = start_api_server(project_dir);
+            let child = match start_api_server(project_dir) {
+                Ok(child) => child,
+                // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
+                Err(e) => return Err(e.into()),
+            };
             if child.is_some() && std::env::var_os("AUTO_HTTP_BASE").is_none() {
                 std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", crate::util::http_port()));
             }
             child
         } else {
             // VM+VM split: AutoVM HTTP server as backend.
-            start_vm_server(project_dir);
+            // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
+            if !start_vm_server(project_dir) {
+                return Err("AutoVM backend not ready; aborting before UI init".into());
+            }
             if std::env::var_os("AUTO_HTTP_BASE").is_none() {
                 std::env::set_var("AUTO_HTTP_BASE", format!("http://127.0.0.1:{}", crate::util::http_port()));
             }

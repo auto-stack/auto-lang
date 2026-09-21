@@ -6587,8 +6587,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         crate::rust_ui::start_vm_server(root_dir);
     } else {
         // Vue+Rust: a2r-generated Rust axum server.
-        if let Some(child) = crate::rust_ui::start_api_server(root_dir) {
-            _api_child = Some(child);
+        // PLAN-026 T-05: ready 失败显式中止(不进 dev-server 步)。
+        match crate::rust_ui::start_api_server(root_dir) {
+            Ok(Some(child)) => _api_child = Some(child),
+            Ok(None) => {}
+            Err(e) => return Err(format!("vue backend start failed: {}", e).into()),
         }
     }
 

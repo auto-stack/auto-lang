@@ -1639,6 +1639,66 @@ impl AutoVM {
     /// (f64/f32/i32 — bools excluded, they have their own bit-compare).
     /// PLAN-026 T-03 配套: 宽整数值归一(i32/i64 tag → i64 按值;算术
     /// 兜底臂与序比较宽整臂共用)。
+    // ── PLAN-026 T-04: api.* 忙等预算观测(AUTO_VM_API_BUDGET=1 门控)──
+    // 累计 call_fn_by_name 的 Yield 忙等段(5ms-sleep 轮询 HTTP 结果)的
+    // 等待次数与忙等时长;handler(call_fn_by_name)退出时输出
+    // [VM-API-BUDGET] fn=<name> waits=<n> busy_ms=<t>;busy_ms 超阈
+    //(默认 100ms)无条件 warn(不受 env 门控——慢端点观测为防御面)。
+    thread_local! {
+        static API_BUSY_BUDGET: std::cell::RefCell<(u64, std::time::Duration)> =
+            std::cell::RefCell::new((0, std::time::Duration::ZERO));
+    }
+
+    /// 累计一次忙等段(waits 次轮询,busy 时长)。
+    fn api_budget_accumulate(waits: u64, busy: std::time::Duration) {
+        Self::API_BUSY_BUDGET.with(|b| {
+            let mut b = b.borrow_mut();
+            b.0 += waits;
+            b.1 += busy;
+        });
+    }
+
+    /// 预算阈值(ms;env AUTO_VM_API_BUDGET_MS 覆盖,缺省 100)。
+    fn api_budget_threshold_ms() -> u128 {
+        static THRESHOLD: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+        *THRESHOLD.get_or_init(|| {
+            std::env::var("AUTO_VM_API_BUDGET_MS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(100)
+        })
+    }
+
+    /// env 门控(AUTO_VM_API_BUDGET=1 时启用完整日志输出)。
+    fn api_budget_enabled() -> bool {
+        static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *ENABLED.get_or_init(|| std::env::var("AUTO_VM_API_BUDGET").as_deref() == Ok("1"))
+    }
+
+    /// handler 退出位报告:重置累计并按门控输出/超阈 warn。
+    fn api_budget_report(fn_name: &str) {
+        let (waits, busy) = Self::API_BUSY_BUDGET.with(|b| {
+            let mut b = b.borrow_mut();
+            let snap = (b.0, b.1);
+            *b = (0, std::time::Duration::ZERO);
+            snap
+        });
+        let busy_ms = busy.as_millis();
+        if Self::api_budget_enabled() {
+            eprintln!(
+                "[VM-API-BUDGET] fn={} waits={} busy_ms={}",
+                fn_name, waits, busy_ms
+            );
+        }
+        let threshold = Self::api_budget_threshold_ms();
+        if busy_ms > threshold {
+            eprintln!(
+                "WARN[VM-API-BUDGET] fn={} busy_ms={} exceeds {}ms (api.* busy-wait budget)",
+                fn_name, busy_ms, threshold
+            );
+        }
+    }
+
     fn nv_int_as_i64(nv: auto_val::NanoValue) -> i64 {
         if auto_val::is_i64(nv) {
             auto_val::decode_i64(nv)
@@ -2133,6 +2193,9 @@ impl AutoVM {
                 StepResult::Yield => {
                     if let Some(req_id) = task.waiting_http_request_id {
                         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                        // PLAN-026 T-04: 忙等段预算计(轮询次数 + 忙等时长)。
+                        let mut budget_waits: u64 = 0;
+                        let budget_start = std::time::Instant::now();
                         while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
                             if std::time::Instant::now() > deadline {
                                 task.waiting_http_request_id = None;
@@ -2141,7 +2204,9 @@ impl AutoVM {
                                 ));
                             }
                             std::thread::sleep(std::time::Duration::from_millis(5));
+                            budget_waits += 1;
                         }
+                        Self::api_budget_accumulate(budget_waits, budget_start.elapsed());
                         steps = steps.saturating_sub(1);
                     }
                     continue;
@@ -2181,6 +2246,8 @@ impl AutoVM {
 
         // 6. Restore non-stack state (return value already on stack top)
         task.current_fn_n_args = saved_fn_n_args;
+        // PLAN-026 T-04: handler 粒度预算报告(api.* 忙等观测护栏)。
+        Self::api_budget_report(&fn_name);
         Ok(())
     }
 
@@ -6935,6 +7002,9 @@ impl AutoVM {
                                         if let Some(req_id) = task.waiting_http_request_id {
                                             let deadline = std::time::Instant::now()
                                                 + std::time::Duration::from_secs(30);
+                                            // PLAN-026 T-04: 同构忙等段预算计。
+                                            let mut budget_waits: u64 = 0;
+                                            let budget_start = std::time::Instant::now();
                                             while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
                                                 if std::time::Instant::now() > deadline {
                                                     task.waiting_http_request_id = None;
@@ -6943,7 +7013,12 @@ impl AutoVM {
                                                     ));
                                                 }
                                                 std::thread::sleep(std::time::Duration::from_millis(5));
+                                                budget_waits += 1;
                                             }
+                                            Self::api_budget_accumulate(
+                                                budget_waits,
+                                                budget_start.elapsed(),
+                                            );
                                             shim(task, self)?;
                                         }
                                     }
