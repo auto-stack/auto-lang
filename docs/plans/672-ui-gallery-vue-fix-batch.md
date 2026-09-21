@@ -356,10 +356,23 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
   无效——PLAN-658 会话面从未被真实消费过，非本计划回归）；UI Enter 新增
   待 standalone 差分=P672-N4（IAB 只发 input 不发 keyup，合成事件亦未触
   发 Vue handler，疑 codegen 层 keyup 绑定问题，与嵌入无关）。
-- [ ] T-13（条目 6）AppViewport 资产注入 __AUTO_UI_EMBED__ 标记 +
+- [x] T-13（条目 6）AppViewport 资产注入 __AUTO_UI_EMBED__ 标记 +
       gallery_scope_theme_runtime 后处理 + 单测/契约测试扩面。
-- [ ] T-14（条目 6）门禁 + 重建 + 端到端（016 打开宿主保持深色/视口内
-      切主题作用域收口）+ os 副本同步提交。
+  [✅ 已完成] worktree 90fe19990——资产 script setup 注入标记；后处理=
+  documentElement 全量重定向 __autoThemeRoot()（helper 嵌入态返回
+  .demo-mount-root 挂载容器——demo 挂载前已存在，setup 期 immediate watch
+  可安全解析；非嵌入态原样 html）+ localStorage 嵌入态停写；接入发射循环
+  app/components 两通道；单测 gallery_scope_theme_runtime_redirects_global_
+  apply（首版断言切分点把 helper 体内合法字面量扫进去了，修正切分点后过）
+  + 契约测试 app_viewport_template_injects_embed_marker。
+- [x] T-14（条目 6）门禁 + 重建 + 端到端 + os 副本同步提交。
+  [✅ 已完成] 门禁：auto-man 317 例唯一红仍预存 plan593；重建+os 侧
+  49f0a4b（src 参照）+gen ext/src gallery 双副本同步。端到端（重启画廊
+  实测）：打开 016 后宿主 `html.classList` 保持 .dark ✓、body 背景
+  rgb(9,14,26) 深色 ✓、embedFlag=true ✓；设置弹层切主题后 `.dark` 落在
+  视口挂载容器（containerDark=true）而宿主不动 ✓；截图=016 深色日历
+  内嵌于深色画廊、整体无浅色劫持。AC-11 ✓；AC-12 ✓（后处理仅画廊发射
+  面，standalone 路径不经此函数=字节零变化，无主题运行时语料早退）。
 - [x] T-11（条目 5）api client 现生成兜底 + store EventSource 前缀化。
   [✅ 已完成] worktree bdcbddae2——api 源解析第三优先级（gen api.ts →
   src/back/api.ts 胶水 → `try_full_parse`+`generate_simple_client` 现生成，
