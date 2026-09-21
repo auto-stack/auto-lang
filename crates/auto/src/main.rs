@@ -740,7 +740,15 @@ fn main() -> Result<()> {
     // The binary is linked with a 4MB stack (see build.rs) so the main thread
     // has enough headroom for both UI (iced needs the main thread) and the
     // parser's deep recursion on complex UI files.
-    real_main(cli)
+    let result = real_main(cli);
+    // PLAN-080 §10-9: main 层 Err 退出审计——Err 路径（会打印 miette 报告）
+    // 与外部终止在 exit-audit.log 上一刀切开（Err 有 main_err 行，外部终止
+    // 无任何行）。
+    if let Err(ref e) = result {
+        auto_lang::vm::ffi::stdlib::exit_audit(1, "main_err");
+        eprintln!("[X9] main Err: {e:?}");
+    }
+    result
 }
 
 fn real_main(cli: Cli) -> Result<()> {
