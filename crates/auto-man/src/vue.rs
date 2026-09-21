@@ -824,7 +824,18 @@ export default defineConfig({
       '/api': {
         target: process.env.AUTO_HTTP_PROXY || `http://127.0.0.1:${process.env.AUTO_HTTP_PORT || __PROXY_PORT__}`,
         changeOrigin: true,
-      }
+      },
+      // Plan 672 条目 4: 画廊 back-proxy 路由（PLAN-658 Vue 臂接线）——
+      // env 由 `auto run` 画廊分支注入（start_gallery_back_proxy 端口），
+      // 未设 = 不加条目（standalone 项目零变化）。fullstack demo 的
+      // lib_api.ts fetch 路径带 /apps/<id>/ 前缀，经此透传到 proxy 的
+      // /apps/<app_id>/ 会话分派。
+      ...(process.env.AUTO_GALLERY_BACK_PROXY ? {
+        '/apps': {
+          target: process.env.AUTO_GALLERY_BACK_PROXY,
+          changeOrigin: true,
+        },
+      } : {}),
     }
   }
 })
@@ -4798,19 +4809,83 @@ export default router
         let mut demo_rows: Vec<GalleryDemoRow> = Vec::new();
 
         for e in &entries {
-            let (row, vp_opt) = gallery_demo_row(&apps_dir, e);
+            let (mut row, vp_opt) = gallery_demo_row(&apps_dir, e);
             let Some(vp) = vp_opt else {
                 demo_rows.push(row);
                 continue;
             };
 
-            if row.loadable {
-                let mut corpus = vp.app_vue_code.clone();
+            // Plan 672 条目 4: fullstack 档（back.api CRUD，PLAN-633 分层）
+            // 随 loadable 档一并发射——T-07 的 Vue 臂 back-proxy 已可达其
+            // /apps/<id>/ 会话。api import 改指 per-demo 落盘位
+            // apps/<id>/lib_api.ts（跨 demo 不共享 lib/api.ts 命名空间）。
+            if row.loadable || row.fullstack {
+                let is_fullstack_embed = row.fullstack && !row.loadable;
+                // api client 源先行解析（api_gen 产物 gen/front/vue/src/lib/
+                // api.ts，桌面宿主循环同源先例；缺则回落项目胶水
+                // src/back/api.ts）。fullstack 无源 = 不可内嵌（不发射、不翻
+                // 注册表，维持「独立运行」提示）——否则 App.vue 指向缺失的
+                // lib_api 造成 vite 断链（实测 047-bp-admin）。
+                let fullstack_api_ts: Option<String> = if is_fullstack_embed {
+                    let app_root = apps_dir.join(&e.id);
+                    let generated_api = app_root
+                        .join("gen")
+                        .join("front")
+                        .join("vue")
+                        .join("src")
+                        .join("lib")
+                        .join("api.ts");
+                    let project_glue = app_root.join("src").join("back").join("api.ts");
+                    let api_src = if generated_api.is_file() {
+                        Some(generated_api)
+                    } else if project_glue.is_file() {
+                        Some(project_glue)
+                    } else {
+                        None
+                    };
+                    api_src.map(|src| {
+                        let raw = fs::read_to_string(&src).unwrap_or_default();
+                        // fetch 路径字面量前缀化 `/apps/<id>/`（生成模板定
+                        // 格式 backtick/单引号两种），经 vite `/apps` 代理
+                        // 透传到 back-proxy 会话分派。
+                        raw.replace("(`/api/", &format!("(`/apps/{}/api/", e.id))
+                            .replace("('/api/", &format!("('/apps/{}/api/", e.id))
+                    })
+                } else {
+                    None
+                };
+                let embed_this = !is_fullstack_embed || fullstack_api_ts.is_some();
+                if is_fullstack_embed && fullstack_api_ts.is_none() {
+                    println!(
+                        "  {} gallery demo {} fullstack: no api client source (gen api.ts / src/back/api.ts) — stays standalone",
+                        "⚠".bright_yellow(),
+                        e.id
+                    );
+                }
+                if embed_this {
+                if is_fullstack_embed {
+                    // TS 注册表翻转（侧栏「可交互」+ AppViewport 放行）；
+                    // registry.at 的 VM 侧语义用 loadable||fullstack 并集，
+                    // 此翻转不改变 VM 行为。
+                    row.loadable = true;
+                }
+                let api_import_target =
+                    format!("@/apps/{}/lib_api", e.id);
+                let rewrite_api_import = |s: String| -> String {
+                    if is_fullstack_embed {
+                        s.replace("from '@/lib/api'", &format!("from '{}'", api_import_target))
+                            .replace("from \"@/lib/api\"", &format!("from \"{}\"", api_import_target))
+                    } else {
+                        s
+                    }
+                };
+                let rewritten_app_vue = rewrite_api_import(vp.app_vue_code.clone());
+                let mut corpus = rewritten_app_vue.clone();
                 for (_, _, code, _) in &vp.components {
-                    corpus.push_str(code);
+                    corpus.push_str(&rewrite_api_import(code.clone()));
                 }
                 for (_, code) in &vp.store_files {
-                    corpus.push_str(code);
+                    corpus.push_str(&rewrite_api_import(code.clone()));
                 }
 
                 app_corpus_total.push_str(&corpus);
@@ -4819,7 +4894,7 @@ export default router
                     let _ = fs::create_dir_all(&stores_dir);
                     let clean_name = filename.strip_prefix("stores/").unwrap_or(filename);
                     if claimed_stores.insert(clean_name.to_string()) {
-                        let _ = fs::write(stores_dir.join(clean_name), code);
+                        let _ = fs::write(stores_dir.join(clean_name), rewrite_api_import(code.clone()));
                     }
                 }
 
@@ -4830,7 +4905,7 @@ export default router
                     let _ = fs::create_dir_all(&components_dir);
                     let file = components_dir.join(format!("{}.vue", widget_name));
                     if claimed_components.insert(widget_name.clone()) {
-                        let _ = fs::write(&file, code);
+                        let _ = fs::write(&file, rewrite_api_import(code.clone()));
                     }
                     for comp in detect_shadcn_components(code) {
                         if !shadcn_needed.contains(&comp) {
@@ -4852,7 +4927,11 @@ export default router
 
                 let app_dir = apps_src.join(&e.id);
                 if fs::create_dir_all(&app_dir).is_ok() {
-                    let _ = fs::write(app_dir.join("App.vue"), &vp.app_vue_code);
+                    let _ = fs::write(app_dir.join("App.vue"), &rewritten_app_vue);
+                    if let Some(api_ts) = &fullstack_api_ts {
+                        let _ = fs::write(app_dir.join("lib_api.ts"), api_ts);
+                    }
+                }
                 }
             }
 
@@ -6005,6 +6084,24 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Plan 549: UI gallery host + demos registry refresh on EVERY run
     if project.is_ui_gallery() || gallery_mode() {
         project.generate_gallery_host()?;
+
+        // Plan 672 条目 4: Vue 臂 back-proxy 接线——PLAN-658 多后端 proxy
+        // 此前仅 rust_ui（VM 臂宿主）启动，fullstack 档（013/015 等
+        // back.api CRUD demo）在 Vue 臂只能显示「独立运行」提示。此处
+        // 补启动（generate_gallery_host 之后 = demo 行缓存已热），端口经
+        // env 传给 vite 子进程（generate_vite_config 的 `/apps` 条目消费，
+        // npm_run_dev → run_script 子进程继承进程 env）。启动失败照 658
+        // 降级语义：env 不注入，fullstack demo 运行期 fetch 失败走错误
+        // 横幅，不阻断画廊。
+        match start_gallery_back_proxy(root_dir) {
+            Some(port) => std::env::set_var(
+                "AUTO_GALLERY_BACK_PROXY",
+                format!("http://127.0.0.1:{port}"),
+            ),
+            None => {
+                std::env::remove_var("AUTO_GALLERY_BACK_PROXY");
+            }
+        }
     }
 
     // Plan 458: index.html carries the theme default (`class="dark"`) and the
@@ -6041,6 +6138,16 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         if index_css_path.exists() {
             if let Err(e) = fs::write(&index_css_path, generate_index_css(project.theme.as_ref())) {
                 println!("  ⚠ index.css refresh skipped: {}", e);
+            }
+        }
+        // Plan 672 条目 4: vite.config.ts 同律自愈——`/apps` back-proxy 条目
+        // （env 运行时读取）只在生成器模板里，增量 run 不重写会让老项目
+        // 永久缺失该路由（实测：proxy 起了但 vite 无 /apps 转发 → fullstack
+        // demo 404）。模板确定性，重写零风险。
+        let vite_cfg_path = project.output_dir.join("vite.config.ts");
+        if vite_cfg_path.exists() {
+            if let Err(e) = fs::write(&vite_cfg_path, generate_vite_config()) {
+                println!("  ⚠ vite.config.ts refresh skipped: {}", e);
             }
         }
     }
@@ -6941,7 +7048,13 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
             let needs_session = std::fs::read_to_string(&back_api)
                 .map(|c| auto_lang::ui::back_provision::back_needs_session(&c))
                 .unwrap_or(false);
-            if needs_session && back_api.is_file() {
+            // Plan 672 条目 4: fullstack 档（普通 #[api] CRUD）同样建
+            // session——VM 臂此前靠 inproc 合并编译 CALL 面消费（谓词原
+            // 注释），Vue 臂浏览器 fetch 必须经 proxy /apps/<id>/ 伺服，
+            // 无会话即 404。VM 臂侧多出的空闲 session 无害（demo 语料
+            // 仍走 inproc，不经 proxy 路由）。
+            let fullstack_session = row.fullstack && back_api.is_file();
+            if (needs_session || fullstack_session) && back_api.is_file() {
                 sessions.push(auto_lang::back_proxy::SessionSpec {
                     app_id: row.id.clone(),
                     back_entry: back_api,
@@ -8460,6 +8573,9 @@ fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
         let cat_json = serde_json::to_string(&r.category).unwrap_or_else(|_| "\"\"".to_string());
         let icon_json = serde_json::to_string(&r.icon).unwrap_or_else(|_| "\"\"".to_string());
 
+        // Plan 672 条目 4: fullstack 档的 TS 注册表翻转在发射循环内完成
+        // （api client 源解析成功才置 row.loadable = true；无源 demo 维持
+        // false = 独立运行提示，避免 lib_api 断链）。此处单看 loadable。
         let load_prop = if r.loadable {
             format!("\n    load: () => import('./apps/{}/App.vue'),", r.id)
         } else {
