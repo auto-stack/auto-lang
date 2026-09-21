@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-677
-status: executing             # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-track-parity-generator-fixes
 author: [zcode]
 created_at: 2026-09-21
@@ -12,7 +12,7 @@ new_spec_components: [SD-01 vue 轨视图 menubar 族 lowering 契约, SD-02 vue
 touched_goals: []
 
 affects: [docs/specs/auto-lang/ui/design/app-generation.md, docs/specs/auto-lang/ui/overview.md]
-current_step: 7
+current_step: 8
 total_steps: 8
 ---
 
@@ -255,7 +255,7 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
   auto-edit 冷双跑再生成 + pnpm build → 双终端起服 → 浏览器五点
   实测（截图留档 docs/plans/evidence/）+ vm 轻探针（AC-08）。
 - **T-07 门禁收口**[✅ 已完成 2a69327eb：cargo tt 4063/4063 全绿(金样 desktop_surface_asset 经 bless 同步 T-01 透明包装)；ui_gen::vue 与 auto-man 失败集与 master 逐一比对零回归；稳态二跑生成零漂移]（AC-09）：`cargo tt` 作用域 + 全量 cargo t 一跑 +
-- **T-08 编辑器选中色 r2**[⬜]（AC-10）：CodeEditor 模板主题块补 `.cm-selectionBackground`（hsl(var(--foreground) / 0.14)——比背景 稍亮且透明,双主题自适应）+ 光标色；用户 r2 实测反馈：选中框太白。
+- **T-08 编辑器选中色 r2**[✅ 已完成 5d2e2a464：selectionBackground 前景令牌 0.14 透明层+focused 全链选择器压 baseTheme,模板测试绿,消费方浏览器实测 computed=rgba(248,250,252,0.14) 且截图微亮层确认]（AC-10）：CodeEditor 模板主题块补 `.cm-selectionBackground`（hsl(var(--foreground) / 0.14)——比背景 稍亮且透明,双主题自适应）+ 光标色；用户 r2 实测反馈：选中框太白。
   gallery vue 构建;核对 PLAN-672 在 auto-man/src/vue.rs 的在途冲突
   （先落者为准）。
 
@@ -273,6 +273,13 @@ crates/auto-man/src/vue.rs (模板集)      ← ⑤ editorBridge.ts 新模板 + 
   浏览器实测（README 树点击开 tab、menubar 四菜单下拉+动作、
   编辑器高度贯通、深色 gutter、控制台零 vmOnly 抛错）；vm 轨
   探针起窗正常 | blockers: 无 | next: review。
+- 2026-09-21 r2（revision 2）：T-08 选中色闭环（用户反馈「选中框太白」
+  → 前景令牌 0.14 透明层 + focused 全链选择器压 CM baseTheme）。
+  outcome: pass | code_commit: 5d2e2a464 | blockers: 外部在途——
+  PLAN-676 物化的 bps gallery-shell 依赖生成 GalleryShell.vue 引用
+  未物化的 ui/popover,vue-tsc TS2307 挡 pnpm build(与 677 零关系:
+  master 工具链同现;dev 运行不受影响,因应用源码无引用,模块不入
+  图) | unblock: 676 落其物化修复或移除该未用依赖 | next: review。
 - 追加修复（执行期实勘发现,均在授权范围内）：①`json.to_value(api
   调用)` 恒等映射错误（wire JSON 串未 parse,渲染树毒化=tab 不上屏
   真根因）→ T-05b；②gen-only 管线 shell 不同步致模板修复不可传播
