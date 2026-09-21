@@ -817,7 +817,10 @@ pub(crate) mod tests {
     /// 形——run_client_full_cycle/client 布局两测试的装配底座）。
     fn counter_projector() -> RqProjector<crate::ui::dynamic::DynamicComponent> {
         let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
-        RqProjector::new(component, 480.0, 320.0)
+        // PLAN-678：管道环/几何钉测试钉预居中坐标——关根缺省居中。
+        let mut p = RqProjector::new(component, 480.0, 320.0);
+        p.proj_autocenter_off();
+        p
     }
 
     const COUNTER_SRC: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";

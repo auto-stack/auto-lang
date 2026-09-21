@@ -274,7 +274,9 @@ mod tests {
         let reconnect =
             ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
         // PLAN-033 T-04 迁移：压测子进程走 native 投影臂（AppProjector 退役）。
+        // PLAN-678：父进程压测/outproc 点击钉预居中坐标——子进程投影臂同关缺省居中。
         let mut projector = RqProjector::new(component, 480.0, 320.0);
+        projector.proj_autocenter_off();
         projector.ensure_covered().expect("stress covered");
         let (exit, proj) =
             crate::ui::desktop_protocol::client_runtime::run_client_session(
@@ -380,6 +382,8 @@ mod tests {
             height: T3_H,
         };
         let reconnect = ReconnectPolicy { pipe: _pipe, budget_ms: 30_000, interval_ms: 50 };
+        // PLAN-678：T3 子臂保持缺省居中——与生产会话侧 remote 孪生
+        //（remote_twin_hits，autocenter 常开）同态，命中表/点击才对齐。
         let projector = crate::ui::desktop_protocol::native_projector::RqProjector::new(
             component, T3_W, T3_H,
         );
@@ -3023,6 +3027,7 @@ mod tests {
                 .map(|n| {
                     let src = example_source(n);
                     let comp = crate::build_dynamic_component(&src, None).expect("twin build");
+                    // PLAN-678：孪生与 T3 子臂同态（双侧缺省居中）。
                     let mut p = RqProjector::new(
                         comp, T3_W, T3_H,
                     );
@@ -3551,7 +3556,12 @@ mod tests {
             app_end,
             {
                 let component = crate::build_dynamic_component(SRC, None).expect("build");
-                RqProjector::new(component, 480.0, 320.0)
+                {
+                    // PLAN-678：管道测试钉预居中坐标——关根缺省居中。
+                    let mut p = RqProjector::new(component, 480.0, 320.0);
+                    p.proj_autocenter_off();
+                    p
+                }
             },
             config.clone(),
             Some(ReconnectPolicy { pipe: pipe.clone(), budget_ms: 10_000, interval_ms: 20 }),
@@ -3735,7 +3745,12 @@ mod tests {
             app_end,
             {
                 let component = crate::build_dynamic_component(SRC, None).expect("child build");
-                RqProjector::new(component, 480.0, 320.0)
+                {
+                    // PLAN-678：管道测试钉预居中坐标——关根缺省居中。
+                    let mut p = RqProjector::new(component, 480.0, 320.0);
+                    p.proj_autocenter_off();
+                    p
+                }
             },
             config,
             None,
@@ -4047,7 +4062,9 @@ mod tests {
         use crate::ui::desktop_protocol::endpoint::FrameSource;
         let src = example_source("002-counter");
         let comp = crate::build_dynamic_component(&src, None).expect("twin build");
-        let mut p = RqProjector::new(comp, 480.0, 900.0);
+        // PLAN-678：孪生视口/居中态与生产子进程（incubate 缺省 480×320、
+        // autocenter 常开）同构——命中坐标派发才与真实子帧一致。
+        let mut p = RqProjector::new(comp, 480.0, 320.0);
         p.render_frame();
         p
     }

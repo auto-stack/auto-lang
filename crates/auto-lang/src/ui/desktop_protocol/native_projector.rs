@@ -123,6 +123,23 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
     TabSelect { rect: WRect, index: usize, on_select: TabsSelectCallback<M> },
 }
 
+impl<M: Clone + std::fmt::Debug> HitEntry<M> {
+    /// PLAN-678 T-02：命中矩形统一可变访问（根平移通道唯一消费——
+    /// 全变体携 rect 的枚举形状即本通道的契约面）。
+    fn rect_mut(&mut self) -> &mut WRect {
+        match self {
+            HitEntry::Msg { rect, .. }
+            | HitEntry::Input { rect, .. }
+            | HitEntry::Slider { rect, .. }
+            | HitEntry::SelectBox { rect, .. }
+            | HitEntry::SelectOption { rect, .. }
+            | HitEntry::Scroll { rect, .. }
+            | HitEntry::PopoverDismiss { rect, .. }
+            | HitEntry::TabSelect { rect, .. } => rect,
+        }
+    }
+}
+
 /// select 开态覆盖序记录（主块渲染后统一追加——D3：DrawList paint
 /// order 天然置顶，无需 overlay 协议语义）。
 struct SelectOverlay<M: Clone + std::fmt::Debug> {
@@ -365,10 +382,14 @@ pub struct RqProjector<C: Component> {
     height: f32,
     /// 周期拍相位基准（首拍对齐 interval，`iced::time::every` 同相）。
     tick_last: Option<Instant>,
+    /// PLAN-678 T-02：根缺省居中通道开关（构造期读 `AUTO_NO_AUTOCENTER`
+    /// ——`1` = 旁路；热路径零 env 读）。
+    autocenter: bool,
 }
 
 impl<C: Component> RqProjector<C> {
     pub fn new(component: C, width: f32, height: f32) -> Self {
+        let autocenter = std::env::var("AUTO_NO_AUTOCENTER").map(|v| v != "1").unwrap_or(true);
         Self {
             component,
             hits: Vec::new(),
@@ -387,7 +408,16 @@ impl<C: Component> RqProjector<C> {
             width,
             height,
             tick_last: None,
+            autocenter,
         }
+    }
+
+    /// 测试缝（PLAN-678 T-02）：关根缺省居中——模块外几何钉测试
+    /// （client_runtime 管道环 / stage3 快照 migration 钉预居中坐标）
+    /// 用；居中行为面由 native_projector::tests::autocenter_* 承载。
+    #[cfg(test)]
+    pub(crate) fn proj_autocenter_off(&mut self) {
+        self.autocenter = false;
     }
 
     /// 启动覆盖门（AC-04）：当前视图 vs [`Coverage::native_queue_set`]——
@@ -536,6 +566,65 @@ impl<C: Component> FrameSource for RqProjector<C> {
             Dir::Vertical,
             &root_style,
         );
+        // PLAN-678 T-02：根缺省居中（放置平移——布局期测量零改动）。delta
+        // 按**主块 ops 实测包围盒**对中（非 Laid.size：items-center 等内
+        // 部居中的视觉 bbox 窄于报告尺寸，实测 bbox 使已居中内容 delta=0，
+        // 两通道零叠加冲突）；overlays/select 弹层此后追加但坐标锚定内容
+        // 空间，随同 delta 平移。
+        let avail_w = (self.width - MARGIN * 2.0).max(0.0);
+        let avail_h = (self.height - MARGIN * 2.0).max(0.0);
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+        for op in &ctx.ops {
+            match op {
+                DrawOp::Quad { rect, .. } | DrawOp::Scissor { rect } | DrawOp::Image { rect, .. } => {
+                    min_x = min_x.min(rect.x);
+                    min_y = min_y.min(rect.y);
+                    max_x = max_x.max(rect.x + rect.w);
+                    max_y = max_y.max(rect.y + rect.h);
+                }
+                DrawOp::Text { x, y, size, line_height, text, .. }
+                | DrawOp::TextStyled { x, y, size, line_height, text, .. } => {
+                    min_x = min_x.min(*x);
+                    min_y = min_y.min(*y);
+                    max_x = max_x.max(*x + measure_text(text, *size));
+                    max_y = max_y.max(*y + *line_height);
+                }
+                DrawOp::ScissorPop => {}
+            }
+        }
+        let (dx, dy) = if self.autocenter && !ctx.ops.is_empty() {
+            // 根显式视口/填充类（h-screen/w-full 族）= 满幅意图声明——该轴
+            // 豁免（与 iced 轨显式类零改动同律；min-h-* 同 min_height 在场
+            // 豁免纵轴）。
+            let root_node = node_style_of_view(&view);
+            let fill_w =
+                matches!(root_node.box_layout.width, Some(crate::ui::style::SizeValue::Screen | crate::ui::style::SizeValue::Full));
+            let fill_h = matches!(
+                root_node.box_layout.height,
+                Some(crate::ui::style::SizeValue::Screen | crate::ui::style::SizeValue::Full)
+            ) || root_node.box_layout.min_height.is_some();
+            let bbox_w = (max_x - min_x).max(0.0);
+            let bbox_h = (max_y - min_y).max(0.0);
+            let dx = if fill_w {
+                0.0
+            } else {
+                MARGIN + (avail_w - bbox_w).max(0.0) / 2.0 - min_x
+            };
+            let dy = if fill_h {
+                0.0
+            } else {
+                MARGIN + (avail_h - bbox_h).max(0.0) / 2.0 - min_y
+            };
+            (dx, dy)
+        } else {
+            (0.0, 0.0)
+        };
+        let autocenter_pending = dx != 0.0 || dy != 0.0;
+        // （平移执行在后——select/popover overlays 追加完成后、命中表
+        // 收册前统一施行，弹层坐标同 delta。）
         // 开态 select 覆盖序（T-01 D3）：主块渲染后追加选项列 ops +
         // 命中项——DrawList paint order 天然置顶（无 overlay 协议语义）。
         let overlays = std::mem::take(&mut ctx.overlays);
@@ -591,6 +680,36 @@ impl<C: Component> FrameSource for RqProjector<C> {
         if let Some(slot) = self.select_open {
             if slot >= ctx.select_slots {
                 self.select_open = None;
+            }
+        }
+        // PLAN-678 T-02：根平移执行（dx/dy 自主块 bbox，上文算得；overlays
+        // 弹层已在此前追加完毕，同 delta 随行）。视口锚定 rect（全窗
+        // scrim / PopoverDismiss catcher）不平移——平移会撕开覆盖。
+        if autocenter_pending {
+            let shift = |r: &mut WRect| {
+                if r.w >= self.width && r.h >= self.height {
+                    return;
+                }
+                r.x += dx;
+                r.y += dy;
+            };
+            for op in &mut ctx.ops {
+                match op {
+                    DrawOp::Quad { rect, .. } | DrawOp::Scissor { rect } | DrawOp::Image { rect, .. } => {
+                        shift(rect);
+                    }
+                    DrawOp::Text { x, y, .. } | DrawOp::TextStyled { x, y, .. } => {
+                        *x += dx;
+                        *y += dy;
+                    }
+                    DrawOp::ScissorPop => {}
+                }
+            }
+            for hit in &mut ctx.hits {
+                shift(hit.rect_mut());
+            }
+            for (r, _) in &mut ctx.right_hits {
+                shift(r);
             }
         }
         self.hits = ctx.hits;
@@ -2776,7 +2895,16 @@ mod tests {
     }
 
     fn counter() -> RqProjector<Counter> {
-        RqProjector::new(Counter { count: 0 }, 480.0, 320.0)
+        proj_center_off(Counter { count: 0 }, 480.0, 320.0)
+    }
+
+    /// 几何钉测试装配器：关根缺省居中（PLAN-678 T-02）。金样/几何测试
+    /// 钉的是组件形状坐标非居中语义——居中行为面由 autocenter_* 四测试
+    /// 承载（它们用缺省 `RqProjector::new`，通道常开）。
+    fn proj_center_off<C: Component>(component: C, width: f32, height: f32) -> RqProjector<C> {
+        let mut p = RqProjector::new(component, width, height);
+        p.autocenter = false;
+        p
     }
 
     /// 列臂 items-center 探针（无事件面，() 消息即足）。
@@ -2820,6 +2948,147 @@ mod tests {
             (xs[0] - want).abs() < 1.0,
             "items-center 列的文本应居中于 {want}，实得 {}（修复前恒左贴 {MARGIN}）",
             xs[0]
+        );
+    }
+
+    /// PLAN-678 T-02 探针：无任何居中声明的小内容（左贴起点）。
+    #[derive(Debug)]
+    struct PlainProbe;
+
+    impl Component for PlainProbe {
+        type Msg = ();
+
+        fn on(&mut self, _msg: ()) {}
+
+        fn view(&self) -> View<Self::Msg> {
+            View::col().child(View::text_styled("abcd", "text-base")).build()
+        }
+    }
+
+    /// 左上角贴齐的小内容 → ops 实测 bbox 对中视口（单文本：x/y 双轴
+    /// 各走 (avail - bbox)/2 + MARGIN）。
+    #[test]
+    fn autocenter_centers_small_content() {
+        let mut p = RqProjector::new(PlainProbe, 480.0, 320.0);
+        let frame = p.render_frame();
+        let ops: Vec<(f32, f32, f32, f32)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { x, y, size, line_height, text, .. }
+                | DrawOp::TextStyled { x, y, size, line_height, text, .. } => {
+                    Some((*x, *y, *line_height, measure_text(text, *size)))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ops.len(), 1, "单文本 op 形态: {ops:?}");
+        let (x, y, line_h, natural) = ops[0];
+        let avail_w = 480.0 - MARGIN * 2.0;
+        let avail_h = 320.0 - MARGIN * 2.0;
+        let want_x = MARGIN + (avail_w - natural) / 2.0;
+        let want_y = MARGIN + (avail_h - line_h) / 2.0;
+        assert!((x - want_x).abs() < 1.0, "文本 x 应居中于 {want_x}，实得 {x}");
+        assert!((y - want_y).abs() < 1.0, "文本 y 应居中于 {want_y}，实得 {y}");
+    }
+
+    /// 根显式视口类（h-screen/w-screen 族）= 满幅意图 → 双轴豁免，
+    /// 坐标维持左贴（与 iced 轨显式类零改动同律）。
+    #[test]
+    fn autocenter_exempts_explicit_viewport_classes() {
+        #[derive(Debug)]
+        struct ScreenProbe;
+        impl Component for ScreenProbe {
+            type Msg = ();
+            fn on(&mut self, _msg: ()) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .style("w-screen h-screen")
+                    .child(View::text_styled("abcd", "text-base"))
+                    .build()
+            }
+        }
+        let mut p = RqProjector::new(ScreenProbe, 480.0, 320.0);
+        let frame = p.render_frame();
+        let xs: Vec<f32> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { x, .. } | DrawOp::TextStyled { x, .. } => Some(*x),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(xs.len(), 1);
+        assert!((xs[0] - MARGIN).abs() < 1.0, "视口类根应豁免平移（x={}), 期望 {MARGIN}", xs[0]);
+    }
+
+    /// AUTO_NO_AUTOCENTER=1 → 通道旁路（构造期读取——nextest 逐测试
+    /// 进程隔离，env 置位零串染）。
+    #[test]
+    fn autocenter_env_gate_bypasses_translation() {
+        std::env::set_var("AUTO_NO_AUTOCENTER", "1");
+        let mut p = RqProjector::new(PlainProbe, 480.0, 320.0);
+        let frame = p.render_frame();
+        let xs: Vec<f32> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { x, .. } | DrawOp::TextStyled { x, .. } => Some(*x),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(xs.len(), 1);
+        assert!((xs[0] - MARGIN).abs() < 1.0, "env 门应旁路平移（x={}), 期望 {MARGIN}", xs[0]);
+    }
+
+    /// 命中表与 ops 同 delta（按钮探针：hit rect 中心 = 视口中心 ±1）。
+    #[test]
+    fn autocenter_translates_hits_with_ops() {
+        #[derive(Debug)]
+        struct ButtonProbe;
+        impl Component for ButtonProbe {
+            type Msg = ();
+            fn on(&mut self, _msg: ()) {}
+            fn view(&self) -> View<Self::Msg> {
+                View::col()
+                    .child(View::button("OK").on_click(|_| ()).build())
+                    .build()
+            }
+        }
+        let mut p = RqProjector::new(ButtonProbe, 480.0, 320.0);
+        let frame = p.render_frame();
+        let quads: Vec<&WRect> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .collect();
+        assert!(!quads.is_empty(), "按钮 quad 形态");
+        assert!(!p.hits.is_empty(), "按钮命中登记（on_click 在场）");
+        // ops 与 hits 的联合包围盒中心 = 视口中心（双轴）。
+        let (mut min_x, mut min_y, mut max_x, mut max_y) =
+            (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for r in quads.iter().copied() {
+            min_x = min_x.min(r.x);
+            min_y = min_y.min(r.y);
+            max_x = max_x.max(r.x + r.w);
+            max_y = max_y.max(r.y + r.h);
+        }
+        for hit in p.hits.iter_mut() {
+            let r = hit.rect_mut();
+            min_x = min_x.min(r.x);
+            min_y = min_y.min(r.y);
+            max_x = max_x.max(r.x + r.w);
+            max_y = max_y.max(r.y + r.h);
+        }
+        assert!(
+            ((min_x + max_x) / 2.0 - 240.0).abs() < 1.5
+                && ((min_y + max_y) / 2.0 - 160.0).abs() < 1.5,
+            "内容 bbox 中心应=视口中心 (240,160)，实得 ({:.1},{:.1})",
+            (min_x + max_x) / 2.0,
+            (min_y + max_y) / 2.0
         );
     }
 
@@ -2914,7 +3183,7 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(D, 480.0, 320.0);
+        let mut p = proj_center_off(D, 480.0, 320.0);
         let frame = p.render_frame();
         // 禁用观感：底盒仍在但压暗（alpha ≤ DISABLED_ALPHA——命令差分同款）。
         let DrawOp::Quad { color, .. } = frame.ops[0] else {
@@ -2957,7 +3226,7 @@ mod tests {
             }
         }
 
-        let p = RqProjector::new(WithSlider, 480.0, 320.0);
+        let p = proj_center_off(WithSlider, 480.0, 320.0);
         p.ensure_covered().expect("slider 入覆盖集（020 拒面反转）");
 
         // PLAN-026 T-04 语义反转：grid 已入 native 覆盖集 → Covered
@@ -2978,7 +3247,7 @@ mod tests {
             }
         }
 
-        let p = RqProjector::new(WithGrid, 480.0, 320.0);
+        let p = proj_center_off(WithGrid, 480.0, 320.0);
         p.ensure_covered().expect("grid 入覆盖集（025 拒面反转）");
 
         // 新拒样本：imagesurface（PLAN-026 §5.1 D5 定案——渲染占位顺带
@@ -2995,7 +3264,7 @@ mod tests {
             }
         }
 
-        let p = RqProjector::new(WithImageSurface, 480.0, 320.0);
+        let p = proj_center_off(WithImageSurface, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
         assert!(err.contains("imagesurface"), "缺项清单随行: {err}");
     }
@@ -3023,7 +3292,7 @@ mod tests {
             }
         }
 
-        let p = RqProjector::new(Shadowed, 480.0, 320.0);
+        let p = proj_center_off(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
         assert!(err.contains("style:rotate-1"), "native 无 rotate 渲染: {err}");
     }
@@ -3050,7 +3319,7 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(HiddenBox, 480.0, 320.0);
+        let mut p = proj_center_off(HiddenBox, 480.0, 320.0);
         p.ensure_covered().expect("hidden 放行（prefixes ⑧）");
         let frame = p.render_frame();
         // B 整体缺席；且布局与"B 从未存在"逐坐标等价（对照组件同帧金样
@@ -3078,7 +3347,7 @@ mod tests {
                     .build()
             }
         }
-        let mut q = RqProjector::new(ControlBox, 480.0, 320.0);
+        let mut q = proj_center_off(ControlBox, 480.0, 320.0);
         let control = q.render_frame();
         let yc_control = control
             .ops
@@ -3122,7 +3391,7 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(OverrideBox, 480.0, 320.0);
+        let mut p = proj_center_off(OverrideBox, 480.0, 320.0);
         p.ensure_covered().expect("hidden/响应式覆盖两形态均放行");
         let frame = p.render_frame();
         let texts = texts_of(&frame);
@@ -3162,7 +3431,7 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(AbsBox, 480.0, 320.0);
+        let mut p = proj_center_off(AbsBox, 480.0, 320.0);
         p.ensure_covered().expect("定位族放行（prefixes ⑪）");
         let frame = p.render_frame();
         let ops: Vec<(f32, f32, &str)> = frame
@@ -3242,10 +3511,10 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(DegradedBox, 480.0, 320.0);
+        let mut p = proj_center_off(DegradedBox, 480.0, 320.0);
         p.ensure_covered().expect("fixed/sticky 降级放行（prefixes ⑪）");
         let frame = p.render_frame();
-        let mut q = RqProjector::new(ControlBox, 480.0, 320.0);
+        let mut q = proj_center_off(ControlBox, 480.0, 320.0);
         let control = q.render_frame();
         fn coords(f: &DrawList) -> Vec<(f32, f32, &str)> {
             f.ops
@@ -3321,10 +3590,10 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(StyleGrid, 480.0, 320.0);
+        let mut p = proj_center_off(StyleGrid, 480.0, 320.0);
         p.ensure_covered().expect("style-grid 放行（prefixes ⑩）");
         let style_frame = p.render_frame();
-        let mut q = RqProjector::new(VariantGrid, 480.0, 320.0);
+        let mut q = proj_center_off(VariantGrid, 480.0, 320.0);
         let variant_frame = q.render_frame();
         // 同构断言：文本坐标逐项相等（024 真源 = 左面板 2×2 按钮组）。
         let coords = |f: &DrawList| -> Vec<(f32, f32, String)> {
@@ -3343,7 +3612,7 @@ mod tests {
         assert_eq!(a.1, b.1, "a/b 同行");
         assert!(c.1 > a.1, "c 次行");
         // GridRows(2) × 4 cells → 2 列（与 cols-2 同布局）。
-        let mut r = RqProjector::new(RowsGrid, 480.0, 320.0);
+        let mut r = proj_center_off(RowsGrid, 480.0, 320.0);
         let rows_frame = r.render_frame();
         assert_eq!(coords(&rows_frame), coords(&style_frame), "grid-rows-2 × 4 = 2 列同构");
     }
@@ -3396,7 +3665,7 @@ mod tests {
         }
 
         // default：托盘两等宽按钮 + 选中面板；切换闭环。
-        let mut p = RqProjector::new(TabsBox { which: 0, sel: 0, seen: vec![] }, 480.0, 320.0);
+        let mut p = proj_center_off(TabsBox { which: 0, sel: 0, seen: vec![] }, 480.0, 320.0);
         p.ensure_covered().expect("tabs 入覆盖集");
         let frame = p.render_frame();
         assert_eq!(
@@ -3420,7 +3689,7 @@ mod tests {
         );
 
         // enclosed：托盘底 + 选中下划线（2px 底缘条）。
-        let mut q = RqProjector::new(TabsBox { which: 1, sel: 1, seen: vec![] }, 480.0, 320.0);
+        let mut q = proj_center_off(TabsBox { which: 1, sel: 1, seen: vec![] }, 480.0, 320.0);
         let frame = q.render_frame();
         assert_eq!(texts_of(&frame), vec!["Alpha", "Beta", "panel-b"], "enclosed：内容同律");
         assert!(
@@ -3452,7 +3721,7 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(SelfCenterBox, 480.0, 320.0);
+        let mut p = proj_center_off(SelfCenterBox, 480.0, 320.0);
         p.ensure_covered().expect("self- 放行（prefixes ⑨）");
         let frame = p.render_frame();
         let xs: Vec<(f32, &str)> = frame
@@ -3511,7 +3780,7 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(Branchy { show_grid: false }, 480.0, 320.0);
+        let mut p = proj_center_off(Branchy { show_grid: false }, 480.0, 320.0);
         assert!(p.ensure_covered().is_ok(), "门时刻无未覆盖变体");
         let _ = p.render_frame();
         assert!(p.uncovered_seen().is_empty());
@@ -3558,7 +3827,7 @@ mod tests {
             }
         }
 
-        let mut p = RqProjector::new(Ticky { ticks: 0 }, 480.0, 320.0);
+        let mut p = proj_center_off(Ticky { ticks: 0 }, 480.0, 320.0);
         let before = p.revision();
         p.poll_tick(); // 首拍只对相位（不派发）。
         assert_eq!(p.revision(), before);
@@ -3623,7 +3892,7 @@ mod tests {
     /// 色 op）；Cancelled 消解；无聚焦丢弃 + ime_dropped 留痕）。
     #[test]
     fn ime_commit_preedit_cancelled_loop() {
-        let mut p = RqProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        let mut p = proj_center_off(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
         p.ensure_covered().expect("converter Covered");
         let _ = p.render_frame(); // 命中表首帧（click 消费上一帧 hits）
         // 聚焦 celsius（首 input 槽位——003 金样同位坐标）。
@@ -3665,7 +3934,7 @@ mod tests {
         );
         // ④ 无聚焦 Commit = 丢弃留痕。
         p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 }); // Esc 不失焦——改走结构变化失焦：省略，直接测无聚焦路径
-        let mut p2 = RqProjector::new(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        let mut p2 = proj_center_off(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
         p2.on_input(&InputMsg::ImeCommit { wid: 1, text: "x".into() });
         p2.on_input(&InputMsg::ImePreedit { wid: 1, text: "y".into(), cursor: WRect::new(0.0, 0.0, 0.0, 0.0) });
         assert_eq!(p2.ime_dropped(), 2, "无聚焦丢弃留痕");
@@ -3712,7 +3981,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = RqProjector::new(OneInput, 480.0, 320.0);
+        let mut p = proj_center_off(OneInput, 480.0, 320.0);
         p.ensure_covered().expect("input 级入覆盖集");
         let frame = p.render_frame();
         // 盒 (10,10,320,32) + 1px 边框 + 值文本（未聚焦 = 视图值）。
@@ -3728,7 +3997,7 @@ mod tests {
                 View::input("your name").build()
             }
         }
-        let frame = RqProjector::new(Empty, 480.0, 320.0).render_frame();
+        let frame = proj_center_off(Empty, 480.0, 320.0).render_frame();
         assert_eq!(texts_of(&frame), vec!["your name"]);
         let ph_color = frame.ops.iter().find_map(|op| match op {
             DrawOp::Text { color, text, .. } if text == "your name" => Some(*color),
@@ -3736,7 +4005,7 @@ mod tests {
         });
         assert_eq!(ph_color, Some(PLACEHOLDER_FG), "placeholder 灰");
         // 聚焦 → 描边变蓝（FOCUS_BORDER 顶边 quad）。
-        let mut p = RqProjector::new(OneInput, 480.0, 320.0);
+        let mut p = proj_center_off(OneInput, 480.0, 320.0);
         let _ = p.render_frame(); // 首帧建命中表（点击寻址前提）。
         click(&mut p, 100.0, 26.0);
         let frame = p.render_frame();
@@ -3755,7 +4024,7 @@ mod tests {
 
     #[test]
     fn focus_edit_closure_converter() {
-        let mut p = RqProjector::new(
+        let mut p = proj_center_off(
             Converter { celsius: 0.0, fahrenheit: 32.0 },
             480.0,
             320.0,
@@ -3829,7 +4098,7 @@ mod tests {
 
     #[test]
     fn slider_geometry_golden() {
-        let mut p = RqProjector::new(SliderBox { vol: 25.0 }, 480.0, 320.0);
+        let mut p = proj_center_off(SliderBox { vol: 25.0 }, 480.0, 320.0);
         p.ensure_covered().expect("slider 入覆盖集");
         let frame = p.render_frame();
         // track (10, 18, 320, 4) 底；fill (10,18,80,4)（25%）；knob
@@ -3844,7 +4113,7 @@ mod tests {
 
     #[test]
     fn slider_track_click_dispatch() {
-        let mut p = RqProjector::new(SliderBox { vol: 0.0 }, 480.0, 320.0);
+        let mut p = proj_center_off(SliderBox { vol: 0.0 }, 480.0, 320.0);
         let _ = p.render_frame();
         // 轨道 50% 处点击（(170, 20)）→ vol = 50 → 帧文本联动。
         click(&mut p, 170.0, 20.0);
@@ -3880,7 +4149,7 @@ mod tests {
                 View::slider(0.0..=100.0, self.seen).on_change(SMsg::Vol).step(30.0).build()
             }
         }
-        let mut sp = RqProjector::new(Stepper { seen: 0.0 }, 480.0, 320.0);
+        let mut sp = proj_center_off(Stepper { seen: 0.0 }, 480.0, 320.0);
         let _ = sp.render_frame();
         click(&mut sp, 90.0, 20.0); // 25% → raw 25 → step 30
         let frame = sp.render_frame();
@@ -3931,7 +4200,7 @@ mod tests {
 
     #[test]
     fn select_closed_golden_and_open() {
-        let mut p = RqProjector::new(
+        let mut p = proj_center_off(
             SelectBox { pick: "Small".into(), open_seen: false },
             480.0,
             320.0,
@@ -3959,7 +4228,7 @@ mod tests {
 
     #[test]
     fn select_option_dispatch_and_close() {
-        let mut p = RqProjector::new(
+        let mut p = proj_center_off(
             SelectBox { pick: "Small".into(), open_seen: false },
             480.0,
             320.0,
@@ -3983,7 +4252,7 @@ mod tests {
 
     #[test]
     fn select_outside_click_closes_only() {
-        let mut p = RqProjector::new(
+        let mut p = proj_center_off(
             SelectBox { pick: "Small".into(), open_seen: false },
             480.0,
             320.0,
@@ -4005,7 +4274,7 @@ mod tests {
 
     #[test]
     fn select_esc_closes() {
-        let mut p = RqProjector::new(
+        let mut p = proj_center_off(
             SelectBox { pick: "Small".into(), open_seen: false },
             480.0,
             320.0,
@@ -4061,7 +4330,7 @@ mod tests {
 
     #[test]
     fn scrollable_scissor_frame_and_wheel() {
-        let mut p = RqProjector::new(Scroller { offset_y: 0.0 }, 480.0, 320.0);
+        let mut p = proj_center_off(Scroller { offset_y: 0.0 }, 480.0, 320.0);
         p.ensure_covered().expect("scroll 入覆盖集（layouts + scroll）");
         let frame = p.render_frame();
         // 溢出（内容 72.9 > 视口 40）→ Scissor push/pop 对在册。
@@ -4129,7 +4398,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = RqProjector::new(RClick { lefts: 0, rights: 0 }, 480.0, 320.0);
+        let mut p = proj_center_off(RClick { lefts: 0, rights: 0 }, 480.0, 320.0);
         let _ = p.render_frame();
         // 按钮盒 (10,10,120,36) 中心右键 → Right 派发（帧文本 l0 r1）。
         p.on_input(&InputMsg::PointerPressed {
@@ -4279,7 +4548,7 @@ mod tests {
             }
         }
 
-        let p = RqProjector::new(Matrix, 480.0, 320.0);
+        let p = proj_center_off(Matrix, 480.0, 320.0);
         let scan = coverage::scan_native_view(&p.component.view());
         let set = Coverage::native_queue_set();
 
@@ -4297,7 +4566,7 @@ mod tests {
         // 每个登记 kind 都有真臂）。反向钉：native_kind_of 全变体
         // 映射逐一入表 or 显式 not-yet（无第三态——表外 kind 渲染即
         // 占位留痕，由 dynamic_branch 测试钉住）。
-        let mut p = RqProjector::new(Matrix, 480.0, 320.0);
+        let mut p = proj_center_off(Matrix, 480.0, 320.0);
         let _ = p.render_frame();
         assert!(
             p.uncovered_seen().is_empty(),
@@ -4395,7 +4664,7 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("test/parity/native");
         std::fs::create_dir_all(&dir).expect("mkdir parity/native");
-        let mut p = RqProjector::new(
+        let mut p = proj_center_off(
             Converter { celsius: 0.0, fahrenheit: 32.0 },
             480.0,
             320.0,
@@ -4439,7 +4708,7 @@ mod tests {
                 View::textarea("note").value("a\nb".to_string()).build()
             }
         }
-        let mut p = RqProjector::new(Note, 480.0, 320.0);
+        let mut p = proj_center_off(Note, 480.0, 320.0);
         p.ensure_covered().expect("textarea 入覆盖集");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["a", "b"], "按 '\\n' 分行");
@@ -4492,7 +4761,7 @@ mod tests {
                 })
                 .collect()
         };
-        let mut p = RqProjector::new(Disp, 480.0, 320.0);
+        let mut p = proj_center_off(Disp, 480.0, 320.0);
         p.ensure_covered().expect("display 族入覆盖集");
         let ims = images(&mut p);
         // styled image：w-16 h-16（Tailwind 刻度 16×4=64px）→ 64×64 Image op。
@@ -4573,7 +4842,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = RqProjector::new(GridApp { hits: 0 }, 480.0, 320.0);
+        let mut p = proj_center_off(GridApp { hits: 0 }, 480.0, 320.0);
         p.ensure_covered().expect("grid 入覆盖集");
         let frame = p.render_frame();
         let quads: Vec<(f32, f32, f32, f32)> = frame
@@ -4622,7 +4891,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = RqProjector::new(CApp, 480.0, 320.0);
+        let mut p = proj_center_off(CApp, 480.0, 320.0);
         let frame = p.render_frame();
         let quads: Vec<(f32, f32, f32, f32)> = frame
             .ops
@@ -4675,7 +4944,7 @@ mod tests {
                     .build()
             }
         }
-        let mut p = RqProjector::new(Toggles { on: false, picked: false }, 480.0, 320.0);
+        let mut p = proj_center_off(Toggles { on: false, picked: false }, 480.0, 320.0);
         p.ensure_covered().expect("toggle 族入覆盖集");
         let frame = p.render_frame();
         assert_eq!(texts_of(&frame), vec!["opt", "pick", "no handler"], "标签随盒渲染");
@@ -4732,7 +5001,7 @@ mod tests {
 
         // child 泵（native queue 臂——单线程，无 Send 需求）。
         let app_end = transport::connect(&pipe, 2000).expect("connect");
-        let projector = RqProjector::new(Counter { count: 0 }, 480.0, 320.0);
+        let projector = proj_center_off(Counter { count: 0 }, 480.0, 320.0);
         projector.ensure_covered().expect("counter 级入覆盖集");
         let reconnect = ReconnectPolicy { pipe: pipe.clone(), budget_ms: 30_000, interval_ms: 50 };
         let mut client =
@@ -4846,7 +5115,7 @@ mod tests {
         };
 
         let app_end = transport::connect(&pipe, 2000).expect("connect");
-        let projector = RqProjector::new(
+        let projector = proj_center_off(
             Converter { celsius: 0.0, fahrenheit: 32.0 },
             480.0,
             320.0,
@@ -5038,7 +5307,7 @@ mod tests {
     /// 面板 ops（open 随帧）。
     #[test]
     fn popover_open_closed_render_and_hit_semantics() {
-        let mut p = RqProjector::new(PopHost::widget(true, PopoverPlacement::BottomStart), 480.0, 320.0);
+        let mut p = proj_center_off(PopHost::widget(true, PopoverPlacement::BottomStart), 480.0, 320.0);
         p.ensure_covered().expect("popover 载体 Covered");
         let frame = p.render_frame();
         // 开态：面板底 Quad（POP_BG）+ 面板文本在场。
@@ -5114,7 +5383,7 @@ mod tests {
     /// Modal scrim：全屏半透明 Quad 先于面板 ops。
     #[test]
     fn popover_modal_scrim_order() {
-        let mut p = RqProjector::new(
+        let mut p = proj_center_off(
             PopHost::widget(true, PopoverPlacement::Modal),
             480.0,
             320.0,
@@ -5195,7 +5464,7 @@ mod tests {
     /// 在册，本测钉投影器桥接语法。
     #[test]
     fn thumbnail_preview_bridge_src_grammar() {
-        let mut p = RqProjector::new(BridgeHost { last: None }, 480.0, 320.0);
+        let mut p = proj_center_off(BridgeHost { last: None }, 480.0, 320.0);
         p.ensure_covered().expect("桥接载体 Covered");
         let frame = p.render_frame();
         let srcs: Vec<&str> = frame
@@ -5220,7 +5489,7 @@ mod tests {
     /// 空白落 area（click）；右键 → contextmenu。
     #[test]
     fn mousearea_hit_priority_and_context_menu() {
-        let mut p = RqProjector::new(BridgeHost { last: None }, 480.0, 320.0);
+        let mut p = proj_center_off(BridgeHost { last: None }, 480.0, 320.0);
         let frame = p.render_frame();
         // area 命中盒（200×60 逻辑_extent）。
         let area_rect = frame
@@ -5309,7 +5578,7 @@ mod tests {
             return;
         };
         let comp = crate::build_dynamic_component(&src, None).expect("build 003");
-        let mut p = RqProjector::new(comp, 480.0, 320.0);
+        let mut p = proj_center_off(comp, 480.0, 320.0);
         p.ensure_covered().expect("003 native 覆盖门");
         p.render_frame();
         // 逐命中矩形试探：点中心 → 键入 "1" → 检查双向换算落点。
@@ -5351,7 +5620,7 @@ mod tests {
     fn p033_vm_input_writeback_single_param() {
         let src = "widget P {\n    model {\n        var q double = 0\n        var out str = \"\"\n    }\n    view { input (value: .q) { oninput: .SetQ } }\n    on { .SetQ(t) -> { .out = t } }\n}\n";
         let comp = crate::build_dynamic_component(src, None).expect("build");
-        let mut p = RqProjector::new(comp, 480.0, 320.0);
+        let mut p = proj_center_off(comp, 480.0, 320.0);
         p.render_frame();
         let r = p.hit_rects()[0];
         p.on_input(&InputMsg::PointerPressed {
@@ -5380,7 +5649,7 @@ mod tests {
     fn p033_vm_timer_poll_tick() {
         let src = "widget T {\n    msg { Beat }\n    model { var beat int = 0 }\n    timer { Beat (every_ms: 60) }\n    view { text `beat: ${.beat}` }\n    on { .Beat -> { .beat += 1 } }\n}\n";
         let comp = crate::build_dynamic_component(src, None).expect("build");
-        let mut p = RqProjector::new(comp, 480.0, 320.0);
+        let mut p = proj_center_off(comp, 480.0, 320.0);
         let rev0 = p.revision();
         p.poll_tick();
         assert_eq!(int_state(&p, "beat"), Some(0), "首拍对齐 interval（不立即拍）");
@@ -5396,7 +5665,7 @@ mod tests {
     fn p033_desktop_cmd_drain() {
         let src = "widget D {\n    model {\n        var n int = 0\n        var __desktop_cmd str = \"\"\n    }\n    view { text \"d\" }\n}\n";
         let comp = crate::build_dynamic_component(src, None).expect("build");
-        let mut p = RqProjector::new(comp, 480.0, 320.0);
+        let mut p = proj_center_off(comp, 480.0, 320.0);
         assert!(p.drain_desktop_commands().is_empty(), "空态幂等");
         p.component_mut()
             .write_state("__desktop_cmd", auto_val::Value::str("launch\u{1f}counter\nnotify\u{1f}hi"))
@@ -5475,7 +5744,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let mut proj = RqProjector::new(CanvasApp { scene }, 64.0, 32.0);
+        let mut proj = proj_center_off(CanvasApp { scene }, 64.0, 32.0);
         // 覆盖门：canvas 经位图快照臂入册（此前拒绝）。
         proj.ensure_covered().expect("canvas 覆盖门放行");
 
