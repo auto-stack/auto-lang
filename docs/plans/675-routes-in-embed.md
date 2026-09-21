@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-675
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: routes-in-embed
 author: [agent]
 created_at: 2026-09-21
@@ -225,6 +225,7 @@ pub routable: bool,
 (每步完成后追加 `[✅ 已完成]` 一行证据;checkpoint 编号对齐五 checkpoint 汇报惯例)
 
 - **T-01**(C-0 前置)依赖确认与 worktree 开设:确认 PLAN-672 已 merge master(未 merge 则本计划等待,不开工);`git worktree add D:/autostack/.wt/lang-675/auto-lang -b plan-675-dev`(从 672 落地后的 master)+ 组内 auto-down 兄弟位 `git -C D:/autostack/auto-down worktree add --detach D:/autostack/.wt/lang-675/auto-down master`。AC:无(环境步)。
+  [✅ 已完成 2026-09-21] **时序适配(用户"实施计划675"指令下)**:P672 复核仍未走完(其代码只在 plan-672-dev 分支),按 work 技能"依赖未就绪先做独立就绪任务"规则——worktree 从当前 master `bac606b9d` 开出(plan-675-dev 已建,auto-down 兄弟位 @fba6563 detached 就位);**T-02(back_proxy,零 P672 依赖)先行**,T-03 及以后开工前必须先 merge master(届时含 672)进 plan-675-dev 摘入 fullstack 管线基座,若届时 672 仍未落则 surface 用户。Q-2/Q-3/Q-4 按计划默认执行(T-02 纳入/023 全验收/fresh 路由态)。
 - **T-02**(C-1)P672-N5 清偿:auto-lang back_proxy 路径参数按签名类型绑定(先定点→修→语料测试)。文件:`crates/auto-lang/src/back_proxy.rs`(绑定位点执行期确认)。验证:`cargo nextest run -p auto-lang back_proxy` 全绿。AC:AC-02/AC-03 数据面前置。
 - **T-03**(C-2)routable 档判定与注册表面:`GalleryDemoRow.routable` 字段+判定;`generate_demos_registry` routable 行发射(load+routed+loadable);画廊 package.json vue-router 注入。文件:`crates/auto-man/src/vue.rs`。验证:判定/registry 单测绿。AC:AC-01(判定面)、AC-07 守卫。
 - **T-04**(C-2)per-demo routable 发射管线:pages/router.ts(memory 工厂)/main.ts 入口三件套发射,App.vue 复用。文件:`crates/auto-man/src/vue.rs`。验证:`test_emit_gallery_routable_apps` 绿 + standalone hash 守卫绿。AC:AC-01..AC-05 产物面。
