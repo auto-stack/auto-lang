@@ -17,6 +17,7 @@ use bps.navigation.filetree.reference.default: FileTree
 use bps.navigation.filetree.tree_util: flatten_tree
 use bps.layout.sandwich.reference.default: SandwichShell
 use bps.layout.sandwich.reference.full: SandwichShellFull
+use bps.layout.gallery_shell.reference.default: GalleryShell
 
 widget App {
     msg { Init }
@@ -53,6 +54,18 @@ widget App {
         var sw_slots str = "toolbar|sidebar|content|statusbar"
         var sw_content_rows int = 1
         var swf_slots str = "toolbar|content|statusbar"
+
+        // unit: gallery_shell —— PLAN-676 AC-02（三画廊综合骨架；ASCII
+        // 互斥词表。主题态归宿主契约#3：壳仅镜像 gs_dark/gs_accent 渲染
+        // active 态，翻转经 on_* 上抛落宿主 gs_note 投影）
+        var gs_items List = [
+            { id: "gs/one", title: "gs title one", category: "form", badge: "" },
+            { id: "gs/two", title: "gs title two", category: "layout", badge: "" }
+        ]
+        var gs_active str = "gs/one"
+        var gs_dark bool = true
+        var gs_accent str = "indigo"
+        var gs_note str = ""
     }
 
     on {
@@ -62,6 +75,18 @@ widget App {
             .ft_rows = flatten_tree(.ft_nodes, .ft_expanded, true, "")
             .ft_count = .ft_rows.len()
         }
+        .GsSelect(id) -> { .gs_active = id; .gs_note = "sel " + id }
+        .GsSearch(q) -> { .gs_note = "search " + q }
+        .GsTheme(mode) -> {
+            if mode == "dark" {
+                .gs_dark = true
+            }
+            if mode == "light" {
+                .gs_dark = false
+            }
+            .gs_note = "theme " + mode
+        }
+        .GsAccent(name) -> { .gs_accent = name; .gs_note = "accent " + name }
     }
 
     view {
@@ -102,6 +127,26 @@ widget App {
                             text "swf status" {}
                         }
                         text "swf full content" {}
+                    }
+                }
+            }
+            // gallery_shell 单元 416px（PLAN-676：header/侧栏/popover 设置
+            // 弹层 + on_* 回调契约首证；slot 互斥词表 gs*）。
+            col (style: "flex h-[416px] flex-col") {
+                text "unit: gallery_shell" { style: "px-3 pt-2 text-xs text-muted-foreground" }
+                GalleryShell (items: .gs_items, active_id: .gs_active, dark_mode: .gs_dark, accent_color: .gs_accent, empty_text: "gs empty", on_select: .GsSelect, on_search: .GsSearch, on_set_theme: .GsTheme, on_set_accent: .GsAccent) {
+                    slot(name: "brand") {
+                        text "gs brand" {}
+                    }
+                    slot(name: "filters") {
+                        row {
+                            style: "gap-1 flex-wrap text-xs"
+                            button "gs pill one" { style: "px-2 py-0.5 rounded-full border border-border" }
+                            button "gs pill two" { style: "px-2 py-0.5 rounded-full border border-border" }
+                        }
+                    }
+                    col {
+                        text "gs content body" {}
                     }
                 }
             }

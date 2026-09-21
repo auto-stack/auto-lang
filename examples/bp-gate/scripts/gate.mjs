@@ -114,7 +114,10 @@ try {
     if (genOk) {
       const genVue = path.join(host, 'gen', 'front', 'vue')
       patchG7(genVue)
-      tscOk = run('pnpm', ['exec', 'vue-tsc'], 'vue:tsc', genVue)
+      // PLAN-676：gen-only 现已跳过 npm 步（log: "npm steps skipped"）——
+      // 头注流程的 pnpm install 步在代码里补回，否则 vue-tsc 无 bin 可寻。
+      const instOk = run('pnpm', ['install', '--prefer-offline'], 'vue:install', genVue)
+      tscOk = instOk && run('pnpm', ['exec', 'vue-tsc'], 'vue:tsc', genVue)
       viteOk = tscOk && run('pnpm', ['exec', 'vite', 'build'], 'vue:vite', genVue)
       if (viteOk) {
         const pwArgs = ['exec', 'playwright', 'test']

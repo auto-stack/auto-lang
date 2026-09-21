@@ -64,12 +64,16 @@ test('vue gate: sandwich geometry (AC-04) — 三层壳弹性/贴底/分栏断�
   const status = await box('sw status')
   const content = await box('swf full content')
   const nestedStatus = await box('swf status')
-  const vh = (await page.viewportSize())!.height
 
-  // ① statusbar 底缘贴视口底（±8px 文本基线容差）——满窗壳不被内容高反向决定
+  // ① statusbar 底缘贴单元底（PLAN-676：sandwich 之下新增 gallery_shell
+  // 单元，"贴视口底"性质随最底单元转移——改为贴下一单元顶缘，同一弹性
+  // 语义：满窗壳不被内容高反向决定。gap=下一标记行顶缘-statusbar 底，
+  // 含 pt-2 内边距 8px 与文本基线容差）
+  const gsMarker = await box('unit: gallery_shell')
   const statusBottom = status.y + status.height
-  if (vh - statusBottom > 8 || statusBottom > vh) {
-    throw new Error(`statusbar 底缘未贴视口底: bottom=${statusBottom}, viewport=${vh}`)
+  const gap = gsMarker.y - statusBottom
+  if (gap < -8 || gap > 24) {
+    throw new Error(`sandwich statusbar 未贴单元底（下一单元顶缘 gap=${gap}px）`)
   }
 
   // ② content 弹性区高 ≥ 300px（default 壳 toolbar 底 → statusbar 顶）
