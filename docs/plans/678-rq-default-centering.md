@@ -69,23 +69,26 @@ MARGIN`，非零则全部 op/hit 坐标平移。要点：
 - 位图引用（bitmap://）/scissor 矩形同步平移。
 - **内容满宽/满高时零平移**（`max(0)` 自然豁免 Fill 形态）。
 
-### 2.2 iced 窗口根改造（高危，后做，走查背书）
+### 2.2 iced 窗口根改造（T-01 勘定后方案坍缩：α/β 二分消解）
 
-Plan 504 根容器（`renderer.rs:21890` "常态 Fill×Fill"）：
+**T-01 静态勘定结论（examples/ui 全量根扫描）**：满幅根**全部**携带显式
+尺寸类（h-screen×7 / min-h-screen×9 / h-full·w-full×4）；无尺寸类根恰好
+= 小 app 目标集（001/005-012/038/条件根 009/019）；max-w-md+mx-auto 自居
+中族（003/031-paint）在 Shrink 化后首次获得正确语义（隐式 Fill 下 mx-auto
+本就无效）。**因此无需"哪些类算满幅"的判定枚举**：
 
-- 根容器改 `center_x().center_y()` + 子测量形态辨析：Shrink 根 → 自然
-  尺寸居中；Fill 根 → 满铺不变。**风险**=根宽 Fill→Shrink 缺省翻转改变
-  全体 app 的测量上下文（h-screen 族依赖根 Fill 锚点——PLAN-663 塌缩债
-  同族），故：
-  - 方案 α（缺省翻转）：根一律 Shrink+center；h-screen/w-screen 显式类
-    （SizeValue::Screen）在根位仍解析 Fill（renderer.rs:1163 既有特例
-    扩展）。走查面=全 gallery。
-  - 方案 β（保守）：仅"根无任何尺寸类 + 内容自然尺寸 < 视口"时走
-    Shrink+center 包装，其余维持 Fill。判定逻辑复杂但回归面最小。
-  - **执行期实测裁决**（T-02 先探针后定案），两案都先出 gallery 矩阵
-    截图对比再定。
-- 嵌入场合（AppFrame/gallery demo-mount）：嵌入宿主已提供布局边界，
-  根改造须探测"嵌入中"（既有 embed 判定位）并豁免——G3。
+- 根缺省 Fill → **Shrink** 翻转（iced_adapter 根缺省解析点 + class.rs:13
+  注记同步）；显式尺寸类解析**零改动**（h-screen/min-h-screen/h-full/
+  w-full 照旧 → Fill 满铺等效现状）。
+- Plan 504 根容器（renderer.rs "常态 Fill×Fill"）外层套 **center 包装**：
+  Shrink 子自然居中，Fill 子满铺不变（iced container align 语义天然
+  分派）。
+- 条件根（009/019 if.dark_mode）自动成立——缺省翻转只作用于无类情形。
+- 嵌入豁免：embed pre-pass 判定位已存在（iced_adapter.rs:1412"嵌入边界
+  内已在 pre-pass 重写为 Fixed"）——嵌入态根不翻转，复用判定。
+
+~~原 α（缺省翻转+满幅类枚举）/ β（条件包装）二分~~——静态扫描证明满幅
+集与显式类集重合，两案收敛为上述单方案；T-04 gallery 全量走查仍是硬门。
 
 ### 2.3 豁免面勘定（G3）
 
@@ -113,8 +116,39 @@ Plan 504 根容器（`renderer.rs:21890` "常态 Fill×Fill"）：
 
 ## 4. 详细设计
 
-（T-01 勘定后回填：2.2 方案 α/β 裁决单、平移通道的 op 遍历实现形态、
-embed 判定位引用）
+### 4.1 RqProjector 根平移通道（T-01a 勘定定案）
+
+- **触发点**：`RqProjector::render_frame`（native_projector.rs）。根块
+  `layout_view_block` 返回值（现 `let _ =` 丢弃）取 `Laid.size` =
+  内容自然尺寸——**零 op 遍历测量**（overlays/select 弹层锚定内容坐标，
+  随同平移天然一致）。
+- **delta 计算**：逐轴 `avail = viewport − MARGIN×2`；`content < avail`
+  时 `delta = (avail − content)/2`（内容起点 MARGIN 平移到居中位）；
+  `content ≥ avail` 轴 delta=0。`AUTO_NO_AUTOCENTER=1` 整通道旁路。
+- **平移集**（choke 点 = `self.hits = ctx.hits` 赋值前一次性完成）：
+  `ctx.ops`（Quad/Scissor/Image 的 rect、Text/TextStyled 的 x/y）、
+  `ctx.hits`（HitEntry 全变体携 rect：Msg/Input/Slider/SelectBox/
+  SelectOption/Scroll/PopoverDismiss/…）、`ctx.right_hits`。
+  **零坐标面**：BitmapUpload（id/w/h/stride/rgba——位置在 Image op 的
+  rect 里）、frame.clear（全窗 BG）。
+- **视口锚定豁免**：`rect.w ≥ width && rect.h ≥ height` 的 WRect 不平移
+  （popover modal 全窗 scrim + PopoverDismiss 全窗命中——平移会撕开
+  覆盖）。逐 op 判定，混合帧（全窗 scrim + 内容面板）语义正确。
+- **Scroll 元组**：offset/viewport/content 是尺寸非坐标——只平移 rect。
+- **输入槽位**：focused_input/select_open 为槽序身份，与坐标无关；
+  Input 命中 rect 随 hits 平移，聚焦点击定位自然一致。
+
+### 4.2 iced 窗口根（见 §2.2 坍缩后单方案）
+
+改点两处：根缺省解析（Fill→Shrink）+ Plan 504 根容器 center 包装；
+显式类零改动；embed pre-pass 判定位豁免嵌入态。
+
+### 4.3 逃生门与边界
+
+- `AUTO_NO_AUTOCENTER=1`：双轨同认（RqProjector 通道旁路 + iced 包装
+  不套）。
+- 桌面 shell/launcher/虚拟桌面子面：独立 entry 不经窗口根，天然豁免
+  （spec 成文）。
 
 ## 5. 测试设计
 
@@ -137,10 +171,13 @@ embed 判定位引用）
 
 ## 7. 执行步骤
 
-- [ ] T-01 勘定：根平移通道 op 遍历实现点 + iced 方案 α/β 探针（gallery
-      矩阵截图基线采集，Shrink 化影响面清单），产出裁决档回填 §4。
+- [ ] T-01 勘定：根平移通道实现点 + iced 方案探针，产出裁决档回填 §4。
+      [✅ 已完成] 2026-09-21——§4.1 通道定案（Laid.size 测量/hit 全变体
+      rect 平移/视口锚定豁免/BitmapUpload 零坐标实证）+ §2.2 方案坍缩
+      （examples 根全扫：满幅集=显式类集，α/β 收敛单方案；embed pre-pass
+      判定位 iced_adapter.rs:1412 复用）。
 - [ ] T-02 RqProjector 根平移通道 + 单测四件（§5）。
-- [ ] T-03 iced 窗口根改造（按 T-01 裁决案）+ embed 豁免 + 单测。
+- [ ] T-03 iced 窗口根改造（按 §2.2 单方案）+ embed 豁免 + 单测。
 - [ ] T-04 env 逃生门双轨接线 + gallery 全量走查矩阵（AC-03）。
 - [ ] T-05 复审收口：specs 沉淀（ui/overview + desktop-protocol-v1 增补）、
       债册对账（P020-D1 差距面缩短注记）。
@@ -151,7 +188,8 @@ embed 判定位引用）
 
 ## 9. 待澄清事项
 
-1. 2.2 方案 α（缺省翻转）vs β（条件包装）——T-01 探针数据后请用户裁定
-   （默认行为变更，涉全体 app）。
-2. `-q` 轨平移是否覆盖 launcher/shell 之外的"面"类宿主入口——T-01 一并
-   勘定（预期天然豁免，成文确认）。
+1. ~~方案 α/β 裁决~~——T-01 静态勘定消解（满幅集=显式类集，收敛单方案，
+   见 §2.2）；gallery 实测走查（T-04）仍是回归硬门。
+2. `-q` 轨平移是否覆盖 launcher/shell 之外的"面"类宿主入口——勘定结论：
+   shell/launcher 等走独立 entry 不经 `render_frame` 窗口根通道，天然
+   豁免（T-05 spec 成文确认）。
