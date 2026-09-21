@@ -217,6 +217,20 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
 `store.Init(); dark_mode.value = store.dark_mode;` 序列在嵌入标记下改为
 按 `__AUTO_UI_THEME__` 回填 store 与 ref。
 
+### T-16 主题继承链 OS 层（条目 6 延伸二，用户问询「继承机制」裁定）
+
+语义定稿（继承链，解析优先级高→低）：① 用户在 demo 内切换（作用域限
+实例）→ ② 宿主显式主题（gallery/桌面 pac、`--theme`、os-config）→
+③ **OS prefers-color-scheme**（standalone 未声明 theme 时宿主=Windows）→
+④ scaffold 缺省 dark。实现：`THEME_PREFS` 增 `"system"` +
+`theme_pref_from_env` 透传 + `system_theme_bootstrap_js`（matchMedia 解析
+回填 `__AUTO_UI_THEME__`/html.dark 并实时跟随）；auto-man/cmd_vue/cmd_tauri
+三处 index.html 生成点接入显式 system 分支与 **env 未解析 OS 回退**（与
+iced PLAN-615 T-04 对称，勿在 main.rs 把 env 设 system——会破坏 iced
+contains 判断）。各层现状：gallery 嵌入继承=T-15 ✓；VM/桌面=单运行时
+隐式继承+PLAN-615 OS 回退（既有）；显式声明（如 016 `theme: "light"`）=
+作者意图优先 ✓（既有）。
+
 ### T-13/T-14 嵌入态主题作用域化（条目 6，用户裁定方向）
 
 机制：宿主（AppViewport.vue 资产）注入 `window.__AUTO_UI_EMBED__ = true`；
@@ -279,6 +293,9 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
 - [ ] AC-11（条目 6）画廊（深色宿主）中打开 016-calendar：宿主 `<html>`
       的 `.dark` 不被摘除（页面保持深色）；016 视口内主题按其自身默认渲染，
       在 016 内切主题仅作用于该视口。
+- [ ] AC-14（条目 6 延伸二）未声明 theme 的 standalone demo（013）index.html
+      内置 OS resolver 且实时跟随；显式声明者（016 light）维持声明；继承链
+      三层语义闭合。
 - [ ] AC-12（条目 6）standalone 016 产物字节零变化（后处理仅在画廊发射面
       启用）；无主题运行时的 demo 语料零变化。
 - [ ] AC-9（条目 5）017-chat 在 Vue 臂画廊内嵌加载：消息种子渲染、发消息
@@ -369,6 +386,11 @@ demo 按自身 Init 默认浅色（demo 窗口语义，用户可在 demo 内切�
   无效——PLAN-658 会话面从未被真实消费过，非本计划回归）；UI Enter 新增
   待 standalone 差分=P672-N4（IAB 只发 input 不发 keyup，合成事件亦未触
   发 Vue handler，疑 codegen 层 keyup 绑定问题，与嵌入无关）。
+- [x] T-16（条目 6 延伸二）继承链 OS 层。
+  [✅ 已完成] worktree 29ed6926b——theme.rs（THEME_PREFS/passthrough/
+  system_theme_bootstrap_js+单测）+ 三生成点分支；实测 013 standalone
+  index 命中 resolver（matchMedia/回填/跟随三要素在档）；016 显式 light
+  维持声明。
 - [x] T-15（条目 6 延伸）gallery_scope_theme_runtime 增加跟随宿主回填
       （onMounted Init 序列改写）+ 单测扩面 + 门禁 + 端到端复验。
   [✅ 已完成] worktree db70ea98c——无门槛改写（序列不匹配原样，非主题
