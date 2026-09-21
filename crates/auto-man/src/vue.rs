@@ -459,6 +459,21 @@ fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Res
                 .map_err(|e| format!("Failed to create components dir: {}", e))?;
             std::fs::write(&path, generate_code_editor_component())
                 .map_err(|e| format!("Failed to write CodeEditor.vue: {}", e))?;
+        } else {
+            // PLAN-677 T-02: 脚手架版本推进——已存在的 shell 若可识别为
+            // 我们的脚手架（codemirror import 签名）但与当前模板不匹配
+            // （旧版本），覆写为最新模板。只覆写"我们的"文件，手写编辑器
+            // 零碰。否则生成器侧的模板修复永远无法传播到既有工程
+            // （write-if-missing 会让旧 shell 存活到天荒地老）。
+            let existing = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read CodeEditor.vue: {}", e))?;
+            if existing != generate_code_editor_component()
+                && existing.contains("vue-codemirror")
+                && existing.contains("@codemirror/")
+            {
+                std::fs::write(&path, generate_code_editor_component())
+                    .map_err(|e| format!("Failed to write CodeEditor.vue: {}", e))?;
+            }
         }
     } else if path.exists() {
         let existing = std::fs::read_to_string(&path)
@@ -624,8 +639,8 @@ fn generate_code_editor_component() -> String {
 // vi 模式降级:本组件接受 :vi 但不实现(见上方 auto-man 注释),iced 端不受影响。
 import { computed, shallowRef, watch } from 'vue'
 import { Codemirror } from 'vue-codemirror'
-import { EditorView } from '@codemirror/view'
-import { StreamLanguage } from '@codemirror/language'
+import { EditorView, keymap } from '@codemirror/view'
+import { StreamLanguage, foldGutter, foldKeymap } from '@codemirror/language'
 import { SearchQuery, setSearchQuery, search as searchPanel } from '@codemirror/search'
 import type { Extension } from '@codemirror/state'
 import { rust } from '@codemirror/lang-rust'
@@ -712,6 +727,19 @@ const extensions = computed(() => {
   if (props.fontSize && props.fontSize > 0) {
     ext.push(EditorView.theme({ '&': { fontSize: `${props.fontSize}px` } }))
   }
+  // PLAN-677 T-02: 主题走工程 shadcn CSS 变量(html.dark 级联)——
+  // gutter/编辑区/当前行与页面同一令牌源,行号不再是浅色主题的孤立块;
+  // 浅色工程消费同一变量自动跟随,不硬编码第二套调色板。
+  ext.push(EditorView.theme({
+    '&': { backgroundColor: 'hsl(var(--background))', color: 'hsl(var(--foreground))' },
+    '& .cm-gutters': { backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))', border: 'none', borderRight: '1px solid hsl(var(--border))' },
+    '& .cm-activeLine': { backgroundColor: 'hsl(var(--accent))' },
+    '& .cm-activeLineGutter': { backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--foreground))' },
+  }))
+  // PLAN-677 T-02: 折叠 gutter + 快捷键(对齐 iced 端 Plan 428 折叠;
+  // @codemirror/language 既有依赖,零新增 npm 包)。
+  ext.push(foldGutter())
+  ext.push(keymap.of(foldKeymap))
   // Plan 421 P1: 搜索面板(basicSetup 只带 searchKeymap,不带面板本体);
   // Ctrl+F 打开面板,查询词来自 search prop(见下方 watch → setSearchQuery,
   // 正则、全量 live-highlight,对齐 iced 端 search 语义)。
@@ -10200,6 +10228,48 @@ render: \"vm\"
         // vi 降级声明:prop 声明存在(防 attribute 透传),但无 vim 扩展。
         assert!(component.contains("vi: { type: Boolean, default: false }"), "{component}");
         assert!(!component.contains("codemirror-vim"), "{component}");
+        // PLAN-677 T-02: 深色主题走 shadcn CSS 变量(不硬编码调色板)+
+        // 折叠 gutter/快捷键。原始串内禁出现 `"#` 终止序列(裸串守卫)。
+        assert!(component.contains("foldGutter()"), "{component}");
+        assert!(component.contains("keymap.of(foldKeymap)"), "{component}");
+        assert!(component.contains("hsl(var(--muted-foreground))"), "{component}");
+        assert!(component.contains("hsl(var(--background))"), "{component}");
+        assert!(!component.contains("\"#"), "raw-string terminator in template");
+    }
+
+    /// PLAN-677 T-02: 使用中的旧版脚手架 shell(可识别为我们但与当前模板
+    /// 不匹配)在同步时覆写为最新模板——生成器侧模板修复必须能传播到
+    /// 既有工程;手写 shell(无 codemirror import)仍然零碰。
+    #[test]
+    fn plan677_used_stale_scaffold_overwritten() {
+        let dir = std::env::temp_dir().join(format!("plan677_ce_{}", std::process::id()));
+        let comps = dir.join("src").join("components");
+        std::fs::create_dir_all(&comps).unwrap();
+
+        // 旧版脚手架:同 import 签名,不同内容。
+        let old_shell = format!(
+            "// old scaffold revision
+import {{ Codemirror }} from 'vue-codemirror'
+import {{ EditorView }} from '@codemirror/view'
+export default {{ }}
+{}",
+            ""
+        );
+        std::fs::write(comps.join("CodeEditor.vue"), &old_shell).unwrap();
+        sync_code_editor_shell(&dir, &VueDependencyUsage { code_editor: true, ..Default::default() }).unwrap();
+        let after = std::fs::read_to_string(comps.join("CodeEditor.vue")).unwrap();
+        assert_eq!(after, generate_code_editor_component(), "stale own scaffold must be overwritten");
+
+        // 手写 shell:无 codemirror import → 不覆写。
+        let handwritten = "// my own editor
+<template><div/></template>
+";
+        std::fs::write(comps.join("CodeEditor.vue"), handwritten).unwrap();
+        sync_code_editor_shell(&dir, &VueDependencyUsage { code_editor: true, ..Default::default() }).unwrap();
+        let after2 = std::fs::read_to_string(comps.join("CodeEditor.vue")).unwrap();
+        assert_eq!(after2, handwritten, "hand-written shell must stay untouched");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     use super::*;
