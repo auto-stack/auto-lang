@@ -879,6 +879,15 @@ const extensions = computed(() => {
     '& .cm-gutters': { backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))', border: 'none', borderRight: '1px solid hsl(var(--border))' },
     '& .cm-activeLine': { backgroundColor: 'hsl(var(--accent))' },
     '& .cm-activeLineGutter': { backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--foreground))' },
+    // PLAN-677 T-08 (r2): 选中层——默认选中底是浅色主题的亮白块,与深色
+    // 背景刺眼冲突(用户 r2 实测)。改为前景令牌低透明度:比背景稍亮的
+    // 半透明层,双主题自适应(浅色主题下=比背景略暗,同为微差层)。
+    // focused 全链选择器(cm-editor.cm-focused>scroller>selectionLayer)
+    // 与 CM baseTheme 默认规则特异性打平并靠注入序取胜,故再加
+    // .cm-editor 类反超,杜绝亮白回潮。
+    '& .cm-selectionBackground': { backgroundColor: 'hsl(var(--foreground) / 0.14)' },
+    '&.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': { backgroundColor: 'hsl(var(--foreground) / 0.14)' },
+    '& .cm-cursor, & .cm-dropCursor': { borderLeftColor: 'hsl(var(--foreground))' },
   }))
   // PLAN-677 T-02: 折叠 gutter + 快捷键(对齐 iced 端 Plan 428 折叠;
   // @codemirror/language 既有依赖,零新增 npm 包)。StreamLanguage 词法
@@ -10475,6 +10484,12 @@ render: \"vm\"
         // 折叠 gutter/快捷键。原始串内禁出现 `"#` 终止序列(裸串守卫)。
         assert!(component.contains("foldGutter()"), "{component}");
         assert!(component.contains("keymap.of(foldKeymap)"), "{component}");
+        // T-08 (r2): 选中层与光标走前景令牌低透明度。
+        assert!(
+            component.contains("'&.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground'"),
+            "{component}"
+        );
+        assert!(component.contains("hsl(var(--foreground) / 0.14)"), "{component}");
         assert!(component.contains("hsl(var(--muted-foreground))"), "{component}");
         assert!(component.contains("hsl(var(--background))"), "{component}");
         assert!(!component.contains("\"#"), "raw-string terminator in template");
