@@ -335,25 +335,28 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
     let line_views: Vec<View<M>> = lines
         .iter()
         .map(|spans| {
-            let parts: Vec<View<M>> = spans
+            // PLAN-080 UAT F-UAT-2: 段落行 = View::Rich 单段落（跨 span 连续
+            // 折行）——用户真机确认 Rich 版段落排版正常（2026-09-21："一度
+            // 解决了"），Row 形态的散架才是缺陷面。空行保留空 Text 占位。
+            let rich_spans: Vec<crate::ui::view::RichSpanView> = spans
                 .iter()
                 .filter(|s| !s.text.is_empty())
-                .map(|s| inline_span_view(s))
+                .map(|s| crate::ui::view::RichSpanView {
+                    content: s.text.clone(),
+                    style: Style::parse(&span_class(s)).ok(),
+                })
                 .collect();
-            match parts.len() {
-                0 => View::Text {
+            if rich_spans.is_empty() {
+                View::Text {
                     content: String::new(),
                     style: None,
                     selectable: false,
-                },
-                1 => parts.into_iter().next().unwrap(),
-                _ => View::Row {
-                    children: parts,
-                    spacing: 0,
-                    padding: 0,
+                }
+            } else {
+                View::Rich {
+                    spans: rich_spans,
                     style: None,
-                    onclick: None, on_right_click: None,
-                },
+                }
             }
         })
         .collect();
