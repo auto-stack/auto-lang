@@ -299,10 +299,25 @@ pub struct CodeEditorCore {
     /// Plan 673 T-05: the rope is the DOCUMENT SOURCE OF TRUTH (design §3.1):
     /// O(1) summaries (bytes/chars/lines), O(log n) point↔offset conversion,
     /// and COW snapshots for background readers. The cosmic Buffer below is
-    /// the materialized VIEW of the full document (windowing it into a
-    /// viewport is Stage 2); every mutation funnel keeps the two in sync —
-    /// full rebuilds on `rewrite` (set_text/agent edit, low frequency),
-    /// interval edits on the typed/native paths (per keystroke).
+    /// the materialized VIEW of the full document.
+    ///
+    /// S2 (视口物化 — windowing the Buffer into viewport rows) is DEFERRED
+    /// with recorded evidence (commit "T-05 S2 视口物化延后裁定记录"):
+    /// render.rs alone has 4 `layout_runs()` consumers (text runs, selection
+    /// bands, caret, preedit) keyed by buffer-local line indices plus
+    /// fold-map projections (`is_hidden`/`fold_bands`/`project_y`), mouse
+    /// hit testing resolves clicks against buffer rows, and
+    /// `sync_external_scroll` clamps against `b.lines.len()` — every one of
+    /// these assumes buffer line == document line. A correct window needs a
+    /// doc↔viewport map at all of those sites plus a row shift routine;
+    /// cosmic Buffer exposes no line-window API, so shifts would re-`set_text`
+    /// the viewport (full re-shape, defeating the purpose). Rushed, this
+    /// breaks the G5 zero-regression gate — the pre-authorized fallback
+    /// ruling lands S1 + snapshot API + receipts instead. 100MB receipts
+    /// show the motivation quantitatively: open 7.8s debug (acceptable) but
+    /// the per-keystroke O(n) delta snapshots cost ~25s at 100MB — the
+    /// viewport-local diff (§4.3) that shrinks them also unblocks cheap
+    /// window shifts; both land together in the follow-up.
     doc: Mutex<rope::Rope>,
     /// Plan 673 §4: unified delta queue (read side). Producers push on every
     /// text-changing edit; `code_editor_delta` drains it (destructive read).
