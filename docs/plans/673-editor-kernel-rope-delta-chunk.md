@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-673
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: editor-kernel-rope-delta-chunk
 author: [zcode]
 created_at: 2026-09-21
@@ -329,6 +329,37 @@ JSON 形状逐字节对齐纪律）。
   > （`test_vm_mcp.py --app-dir examples/ui/041-auto-edit`）。延后项：视口
   > 物化与视口局部 diff（逐击键 O(n) 快照基线仍在，100MB 下单键 25.3s，
   > 债候选已入册）；vue/ts_adapter 分块端点不发射，需要时另立计划。
+- 2026-09-22 · stage: review · PLAN-673 · r1 · outcome: **needs_fix** ·
+  reviewed_commit `12b764f48` · base_commit `069c9cc4b` ·
+  dependency_revisions: 组内兄弟 worktree `lang-673/auto-down`@fba6563
+  （仅构建 path dep）· spec_inputs: `docs/specs/auto-lang/ui/overview.md`+
+  `runtime/overview.md` @12b764f48（SD-01/SD-02 冻结副本=该提交）·
+  acceptance_results:
+  AC-01 **pass**（设计档在册+00-intro 注册，commit e6ad58962 实读）；
+  AC-02 **pass**（实读 `three_sources_share_one_delta_stream` 精确区间序列
+  断言+forms/validation 负例+e2e；code 面 push_delta 埋点 8 处与 spec 契约
+  逐条对读一致）；
+  AC-03 **pass**（rope threaded 快照隔离测试+`find_next` 走 RopeSnapshot
+  (:898)+冒烟 phase 7 并发收据）；
+  AC-04 **pass**（实读 parity 测试 `assert_eq!(vm, a2r)` 14 组+fixture 058
+  十打印矩阵+a2r-std 镜像实现边界语义对读）；
+  AC-05 **pass**（复杂度表落 design §3.2+SD-01，O(1)/O(log n) 实码对应；
+  100MB 收据 verbatim 在册）；
+  AC-06 **pass**（**复审复跑 `cargo tf` 3706/3706 全绿**（含 docs_gen/
+  schema_drift 围栏）+tv 3853/3853（T-06，fix 后 tv 面无改动）+裸 taa
+  3864/3865 余红 master 实测预存+041 冒烟绿+grep 门复跑零新增（3 命中全在
+  设计档文档面））；
+  SD-01/SD-02 落账文本实读——现状描述与码一致，延后限制如实记录 ·
+  findings: **F-1（minor，唯一阻塞项）**——设计档 §7-④ 自定的"cosmic-text
+  Cargo.toml:224-227 注释 `Weak<Buffer>` 理由已随 428 失效，应随本计划
+  顺手更正"**未执行**（注释原样在 `crates/auto-lang/Cargo.toml:224-227`）；
+  修正=该注释改为保留 0.15 单实例约束、删失效 Weak<Buffer> 理由（1-2 行
+  注释改动，零行为变更）· 债登记：P673-D1（S2 视口物化+视口局部 diff 同
+  批，medium）/P673-D2（nat id 带三暴露面，low）/P673-D3
+  （005_transitive_init 预存红，low）已入
+  docs/plans/KNOWN-DEBT-AND-RISKS.md · evidence: 本记录+复审复跑 tf 输出
+  （3706/3706, 39.1s）· next: **work**（修复 F-1 后回本记录复审——除 F-1
+  外代码/依赖/测试配置不变，门证据按规复用）。
 
 ## 10. 待澄清事项
 

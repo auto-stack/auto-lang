@@ -2570,3 +2570,11 @@ R-03=R-10+A-05）——"需维护者排查归位"注销。**P667-D2/P661-D7 基�
 | P675-D1 | medium | gallery 嵌入布局 | **routable demo 嵌入态布局观察（走查截图实证，PLAN-675 T-06）**——①022-kanban：视口上方大片空白（demo 根 min-h-screen 族在 720 视口内溢出，与 gallery-vm-embed-layout-collapse/P663 视口边界同族，web 臂 deep 覆盖只处理 .h-screen 未覆盖 min-h）；②018-book-reader：demo 侧栏漂移出视口卡（生成 SFC 的 sidebar 定位落在嵌入容器外的宿主坐标）。数据面/路由面不受影响，纯视觉。修复候选=发射器按 demo 形态分派（中期）或视口边界 Screen→Fixed(720)+m-auto（长期，对齐 VM 臂先例） | PLAN-675 走查截图；auto-os ui-gallery AppViewport.vue |
 | P675-D2 | low | aura schema | **schema 声明滞后两面（PLAN-675 T-06 附带）**——①`theme-toggle` 无 schema 原生元素（018 语料手工逃生舱未解析致 strict 硬错，已摘用法记本债；theme 运行时已有 P672 条目6 底座，缺的只是元素声明+生成面）；②`sidebar_menu_button` schema 缺 `to`/`exact` 声明（S001 劝告级非阻断，生成器 generate_sidebar_menu_button_html 实态健康已出 RouterLink）——均按 P671 三围栏惯例（sub_widgets/element_coverage/docs）补录即可 | crates/auto-lang/src/aura/schema.rs:1695；docs/components/core.md |
 | P676-D1 | low | specs 账本 | **project.md 包表计数漂移（PLAN-676 复审 F-4，先存）**——docs/specs/blueprint/project.md active 包表 15 行 vs BlueprintRegistry 实扫 18 包（表缺 dashboard/editor 等部分包行，非本计划引入；SD-02 已按惯例补 layout/gallery-shell 行）。全表对账+补行另立小批 | docs/specs/blueprint/project.md 包表；crates/auto-lang/src/ui_gen/bp/registry.rs scans_default_packages |
+
+### P673（2026-09-22，Plan 673 编辑器内核 rope+delta+分块读 复审登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P673-D1 | medium | code_editor 内核 | **视口物化（T-05 S2）延后——与视口局部 diff 同批前提**——cosmic Buffer 无行窗口 API，窗移=全量 re-set_text 会 defeat 目的；渲染/命中/滚动/fold 15+ 触点需 doc↔viewport 行映射。延后副作用=逐击键 before/after 全文快照维持 O(n) 基线（100MB 冒烟单键 25.3s/debug，收据在册 plan 673 §9）。两债必须同批落地（视口局部 diff 是窗移便宜的前提）。重启评估条件：窗口同步协议实证不可行 → 设计档 §3 路线 (b) 重评 | `core/mod.rs` doc 字段注释；plan 673 T-05 S2 提交 8d736dd30；设计档 `docs/design/autoui/editor-kernel.md` §3/§7 |
+| P673-D2 | low | nat 注册 | **nat id 带管理三暴露面（T-01/T-02 实勘）**——①29xx 带在 catalog/BIGVM/NATIVE_ID_ENTRIES **三表全满**，新 UI 内建被迫走 9900+ 高位带（沿 PLAN-656 先例）；②code_editor 族 2910-2933 仍未钉 NATIVE_ID_ENTRIES（动态 id 运行时覆盖 static_shims 的暴露面，T-02 实测撞过一次）；③无唯一性守卫——靠 catalog 测试事后发现。候选修法：id 分配集中器（编译期宏或 catalog 单源生成三表） | `vm/native_catalog.rs`（2939/9906/1016 注释在案）；plan 673 §9 T-01/T-02 记录 |
+| P673-D3 | low | aavm 测试基线 | **`test_aavm2_compile_use_corpus` 的 `005_transitive_init` Rust 参考腿预存红**（T-06 裸 taa 3864/3865 余红，master 同 panic 位点实测复现，非本批引入）——与 P671-D「tb book_listing ×7 真未归档预存红」同性质，需独立归因计划 | plan 673 §9 T-06 记录 |
