@@ -1,0 +1,29 @@
+// spk_store.at — PLAN-083 T-01 探针 store：两段式加载最小同形。
+// phase 哨兵：idle → loading（发起段置，handler 即返）→ done（回填段置，
+// payload 原样落 last_body 供断言）。probe_url 由测试侧 write_state 注入
+// （语料源静态串，端口动态）。
+store SpkStore {
+    msg {
+        Fetch,
+        Loaded(str)
+    }
+    model {
+        var phase str = "idle"
+        var last_body str = ""
+        var probe_url str = ""
+    }
+    on {
+        // 发起段：入队即返回——handler 正常收尾，无 Waiting/忙等。
+        .Fetch -> {
+            .phase = "loading"
+            Http.get_msg(.probe_url, "SpkStore.Loaded")
+        }
+        // 回填段：payload = {"ok","status","body"} JSON 串（渲染层 ␟s␟
+        // 载荷解码后的字符串实参）。真消费面 parse 后取 body；探针原样
+        // 落态供断言。
+        .Loaded(payload str) -> {
+            .phase = "done"
+            .last_body = payload
+        }
+    }
+}

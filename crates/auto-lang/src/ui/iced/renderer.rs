@@ -9413,6 +9413,35 @@ fn shell_event_subscription(
     })
 }
 
+// ─── PLAN-083 T-01: 异步 HTTP 消息桥泵（C2 回填段） ─────────────────────────
+//
+// stdlib 侧 Http.get_msg(url, event) 入队的完成项在此回流事件循环：一次
+// update 取一条（防 handler 重入，对齐 poll_shell_events），产
+// IcedMessage{widget, "Event␟s␟<payload>"} 走 update 通用派发
+// （on_with_input_for → decode_payload）——回填 handler 以字符串实参收
+// {"ok","status","body"} JSON。发起段无 task Waiting（无忙等），UI 在
+// 请求全程保持响应（对照：#[api] 走 get_json re-entry yield，call_fn_
+// by_name 忙等 5ms×N 冻结 UI——082 §10-7 实测 20.9s 的根因）。
+fn poll_http_msgs() -> Option<IcedMessage> {
+    let done = crate::vm::ffi::stdlib::http_msg_poll_one()?;
+    Some(IcedMessage {
+        widget: done.widget,
+        event: format!("{}\u{1F}s\u{1F}{}", done.event, done.payload),
+        input_value: None,
+    })
+}
+
+fn http_msg_subscription(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    // 19ms（≠ shell 17 / mcp 16，见 Plan 062 同拍抖动注；Recipe 身份含
+    // 函数指针，去重安全）≈52fps——数据回填延迟人眼无感。
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::Poll(poll_http_msgs, 19),
+    })
+}
+
 /// Keyboard subscription: F12 devtools toggle + widget key bindings (Plan 275).
 ///
 /// Uses `listen_with` (fn pointer) with a global `Arc<Mutex<HashMap>>` for bindings.
@@ -21092,6 +21121,10 @@ fn compare_pngs(
                 // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
                 // dispatches command_output/command_result to ShellStore handlers.
                 subs.push(shell_event_subscription(primary));
+                // PLAN-083 T-01: 异步 HTTP 消息桥泵（Http.get_msg 完成项 →
+                // store 回填 handler）。常驻订阅（空队列空转，一次 poll 一次
+                // VecDeque pop，开销可忽略）。
+                subs.push(http_msg_subscription(primary));
                 // Plan 500 步骤 4：像素桥协议轮询（independent 臂 child 进程
                 // 才在册——宿主消息 → PixelsProtocol 事件面）。
                 if state.pixels.is_some() {

@@ -7575,6 +7575,11 @@ mod plan536_t1_reactive_probe_tests;
 // Sse.open 抛点）。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan536_t12_send_chain_probe_tests;
+// PLAN-083 T-01：异步 HTTP 消息桥（Http.get_msg）——派生线程完成项入队、
+// 载荷协议 {"ok","status","body"}、␟s␟ 载荷编码经 decode_payload 回填
+// handler 的字符串实参往返（decode_payload 在 ui::dynamic，随 ui-iced 门）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan083_http_msg_bridge_tests;
 mod auto_down_vm_server_probe_tests;
 mod autodown_codegen_debts_tests;
 

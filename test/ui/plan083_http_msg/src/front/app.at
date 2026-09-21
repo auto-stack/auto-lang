@@ -1,0 +1,22 @@
+// app.at — PLAN-083 T-01 异步消息桥探针：两段式数据加载最小同形面。
+// 链路：App.Kick → SpkStore.Fetch（发起段：置 loading + Http.get_msg 入队
+// 即返回，无 task Waiting）→ [派生线程 GET] → 渲染层泵（测试内模拟）以
+// "Loaded␟s␟<payload>" 回填 SpkStore.Loaded（回填段：parse + 落态）。
+// 锁定契约：①发起段 handler 当场结束（phase=loading 可探测而请求在途）；
+// ②回填经 decode_payload 载荷以字符串实参到达 handler。
+use store: SpkStore
+
+widget App {
+    msg { }
+    view {
+        col {
+            text f"phase=${.store.phase}"
+            text f"body=${.store.last_body}"
+        }
+    }
+    on {
+        .Kick -> {
+            store.Fetch()
+        }
+    }
+}

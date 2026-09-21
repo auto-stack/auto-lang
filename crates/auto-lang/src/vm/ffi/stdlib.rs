@@ -7126,6 +7126,122 @@ fn spawn_async_http_handle(
     });
 }
 
+// ─── PLAN-083 T-01: 异步 HTTP 消息桥（C2 形态） ─────────────────────────────
+//
+// 根因（PLAN-082 §10-7 实测 + 083 勘定）：store handler 内 #[api] 调用走
+// get_json 族的 re-entry yield，而 ui 侧 call_fn_by_name 对 Waiting 任务是
+// **忙等**（5ms sleep 轮询，30s deadline）——UI 线程整个 handler 期间被占
+// （切 auto-edit 冻结 20.9s 即此）。本桥把数据加载拆两段：
+//
+//   发起段  Http.get_msg(url, event) —— 入队派生线程即返回，handler 立刻
+//           结束，事件循环回 UI（无 task Waiting，无忙等）；
+//   回填段  派生线程完成请求后把 {widget, event, payload} 推进进程级队列；
+//           iced 侧 http_msg_subscription（AppTickKind::Poll，MCP 动作通道
+//           同族）轮询取一条产 IcedMessage，经 update 通用路径
+//           on_with_input_for 以 "Event␟s␟<payload>" 载荷触发回填 handler
+//           （decode_payload 既有机制，字符串实参可靠——shell SSE 桥先例）。
+//
+// 载荷协议：payload 恒为 JSON 对象串 {"ok":bool,"status":u16,"body":str}
+// （ok=true 时 body=响应体；否则 body=错误文案）——回填段 JSON.parse 一次
+// 取全部语义，空体/失败可区分。
+
+/// 一条已完成的异步消息桥请求（派生线程 → 渲染层订阅泵）。
+pub struct HttpMsgDone {
+    /// 目标 store 名（IcedMessage.widget；空 = 根 handler）。
+    pub widget: String,
+    /// 回填 handler 名（载荷由渲染层拼装，此处恒裸名）。
+    pub event: String,
+    /// JSON 对象串 {"ok","status","body"}。
+    pub payload: String,
+}
+
+fn http_msg_queue() -> &'static std::sync::Mutex<std::collections::VecDeque<HttpMsgDone>> {
+    static Q: std::sync::OnceLock<std::sync::Mutex<std::collections::VecDeque<HttpMsgDone>>> =
+        std::sync::OnceLock::new();
+    Q.get_or_init(|| std::sync::Mutex::new(std::collections::VecDeque::new()))
+}
+
+/// 渲染层泵取一条已完成的回填消息（非阻塞；一次 update 一条，防 handler
+/// 重入——对齐 poll_shell_events 语义）。
+pub fn http_msg_poll_one() -> Option<HttpMsgDone> {
+    http_msg_queue().lock().ok().and_then(|mut q| q.pop_front())
+}
+
+/// 仅供测试：清空队列（生产面渲染层是唯一消费者）。
+#[cfg(test)]
+pub(crate) fn http_msg_queue_clear() {
+    if let Ok(mut q) = http_msg_queue().lock() {
+        q.clear();
+    }
+}
+
+/// 消息桥 GET 的派生线程体：复用 plain-handle 族同款 send 汇聚路径
+/// （默认 query 注入 + 相对 URL 基址展开 + 默认 header 快照），完成即推
+/// 队列，不写 ASYNC_RESULTS（无人在等它）。
+fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
+    std::thread::spawn(move || {
+        let u = append_default_queries(&resolve_http_base_url(&url));
+        let default_headers = snapshot_default_headers();
+        let client = reqwest::blocking::Client::new();
+        let result = send_with_retry(
+            |c| {
+                let mut builder = c.get(&u);
+                for (k, v) in &default_headers {
+                    builder = builder.header(k.as_str(), v.as_str());
+                }
+                builder
+            },
+            client,
+            0,
+        );
+        let (ok, status, body) = match result {
+            Ok((status, _headers, body_bytes)) => (
+                (200..300).contains(&status),
+                status,
+                String::from_utf8_lossy(&body_bytes).to_string(),
+            ),
+            Err(msg) => (false, 0u16, msg),
+        };
+        let payload =
+            serde_json::json!({ "ok": ok, "status": status, "body": body }).to_string();
+        if let Ok(mut q) = http_msg_queue().lock() {
+            q.push_back(HttpMsgDone { widget, event, payload });
+        }
+    });
+}
+
+/// 消息桥目标切分：`"Store.Handler"` → (Store, Handler)；无点/空段 →
+/// （"", 原串）即根 handler。首个点切分（handler 名 CamelCase 不含点）。
+pub(crate) fn http_msg_split_target(event: &str) -> (String, String) {
+    match event.split_once('.') {
+        Some((w, e)) if !w.is_empty() && !e.is_empty() => (w.to_string(), e.to_string()),
+        _ => (String::new(), event.to_string()),
+    }
+}
+
+/// PLAN-083 T-01: `Http.get_msg(url, event)` —— 消息桥 GET（fire-and-forget）。
+/// event 形如 "ForgeStore.SessionsLoaded"（首个点前 = 目标 store 名，点后 =
+/// 回填 handler 名；无点 = 根 handler）。立即返回 0，不置 task Waiting——
+/// 发起段 handler 可当场结束。完成经 http_msg 队列由渲染层泵回填。
+pub fn shim_http_get_msg(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let event: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let (widget, event) = http_msg_split_target(&event);
+    spawn_async_http_msg_get(url, widget, event);
+    task.ram.push_nv(0);
+    Ok(())
+}
+
+/// 仅供测试：以完整 event 串驱动消息桥（切分 + spawn），绕开 task/vm 栈。
+#[cfg(test)]
+pub(crate) fn shim_http_get_msg_spawn_for_test(url: &str, event: &str) {
+    let (widget, event) = http_msg_split_target(event);
+    spawn_async_http_msg_get(url.to_string(), widget, event);
+}
+
+
 /// Push a response-handle result onto the stack: allocate a NET_HANDLE_COUNTER
 /// id, insert the structured data into the *calling thread's* HTTP_RESPONSES
 /// thread_local, push the handle as i32. On error, returns a 500 handle via
@@ -8322,6 +8438,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // HTTP client functions (manual shims — heap objects for request/response)
     natives.register_shim_by_name("auto.http.get", shim_http_get);
+    // PLAN-083 T-01: 异步消息桥 GET（fire-and-forget + 完成消息回填）。
+    natives.register_shim_by_name("auto.http.get_msg", shim_http_get_msg);
+    natives.register_shim_by_name("http.get_msg", shim_http_get_msg);
     natives.register_shim_by_name("auto.http.set_default_header", shim_http_set_default_header);
     natives.register_shim_by_name("auto.http.set_default_query", shim_http_set_default_query);
     natives.register_shim_by_name("auto.http.clear_default_auth", shim_http_clear_default_auth);
