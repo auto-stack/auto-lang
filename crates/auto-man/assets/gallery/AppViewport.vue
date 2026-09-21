@@ -15,6 +15,9 @@ const props = defineProps<{
 
 const containerRef = ref<HTMLElement | null>(null)
 const currentApp = ref<App | null>(null)
+// PLAN-675: routable demo 的 entry 工厂卸载柄——mount() 侧 app 实例不回流
+// 视口，unmount() 由 entry 模块闭包持有；与 currentApp 互斥（二选一在挂）。
+const entryUnmount = ref<(() => void) | null>(null)
 const isLoading = ref(false)
 const errorMsg = ref<string | null>(null)
 
@@ -32,8 +35,15 @@ const viewportStyle = computed(() => {
   }
 })
 
-async function mountApp() {
-  errorMsg.value = null
+function releaseMounted() {
+  if (entryUnmount.value) {
+    try {
+      entryUnmount.value()
+    } catch (e) {
+      console.warn('[AppViewport] entry unmount error:', e)
+    }
+    entryUnmount.value = null
+  }
   if (currentApp.value) {
     try {
       currentApp.value.unmount()
@@ -42,6 +52,11 @@ async function mountApp() {
     }
     currentApp.value = null
   }
+}
+
+async function mountApp() {
+  errorMsg.value = null
+  releaseMounted()
   if (containerRef.value) {
     containerRef.value.innerHTML = ''
   }
@@ -60,6 +75,15 @@ async function mountApp() {
   try {
     const mod = await demo.load()
     if (!containerRef.value) return
+    // PLAN-675: routable demo 走 entry 工厂契约——mount() 每挂载装一个
+    // fresh memory-history router（路由态随卸载重置，宿主 URL 零污染）；
+    // unmount 存进 entryUnmount 供切换/卸载释放。default-App 形态走旧
+    // createApp 路径（既有 loadable/fullstack 条目零改动）。
+    if (typeof mod.mount === 'function' && typeof mod.unmount === 'function') {
+      mod.mount(containerRef.value)
+      entryUnmount.value = mod.unmount
+      return
+    }
     const app = createApp(mod.default)
     app.config.errorHandler = (err) => {
       console.error(`[AppViewport] Demo ${demo.id} error:`, err)
@@ -84,12 +108,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  if (currentApp.value) {
-    try {
-      currentApp.value.unmount()
-    } catch {}
-    currentApp.value = null
-  }
+  releaseMounted()
 })
 </script>
 

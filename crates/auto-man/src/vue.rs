@@ -8819,6 +8819,9 @@ export default App
 let app: ReturnType<typeof createApp> | null = null
 export function mount(el: HTMLElement) {
   app = createApp(App)
+  app.config.errorHandler = (err: unknown) => {
+    console.error('[DemoEntry] runtime error:', err)
+  }
   app.use(createAppRouter())
   app.mount(el)
 }
