@@ -159,6 +159,9 @@ enum OutputFormat {
     Text,
     /// Machine-readable JSON output for IDE integration
     Json,
+    /// PLAN-676 SD-01: .at static-table emission (`bp list --format at` —
+    /// bps-gallery registry artifact; drift-checked in CI)
+    At,
 }
 
 fn println_logo() {
@@ -311,7 +314,8 @@ pub enum WizardAction {
 
 #[derive(Subcommand, Debug)]
 enum BpAction {
-    /// List blueprint packages (grouped by kind)
+    /// List blueprint packages (grouped by kind); `--format at` (global flag)
+    /// emits the PLAN-676 SD-01 .at static table for gallery consumption
     List,
     /// Print a blueprint's spec + variants + gotchas (the agent skill interface)
     Show {
@@ -1826,11 +1830,11 @@ fn real_main(cli: Cli) -> Result<()> {
 
         // ========== AutoUI Blueprints (Plan 343, Design 17; PLAN-639 rename) ==========
         Some(Commands::Bp { action }) => {
-            cmd_bp::run(action)?;
+            cmd_bp::run(action, cli.format)?;
         }
         Some(Commands::Block { action }) => {
             eprintln!("warning: `auto block` is deprecated (renamed by PLAN-639); use `auto bp`");
-            cmd_bp::run(action)?;
+            cmd_bp::run(action, cli.format)?;
         }
 
         // ========== Schema Docs (Plan 435 P8-1) ==========
