@@ -1,7 +1,11 @@
-# Build regression for examples/bps-gallery — the blueprint catalog browser
-# (PLAN-640). The gallery derives its catalog from blueprints/** via Vite
-# import.meta.glob, so bp package edits can break the type-check/bundle; they
-# surface here instead of in a downstream consumer.
+# Build + registry drift regression for examples/bps-gallery — the blueprint
+# catalog browser (PLAN-676 Auto 化: 壳消费 layout/gallery-shell BP via L1,
+# 目录发现数据源 = 生成的 src/front/registry.at; SD-01 取代 PLAN-640 的
+# import.meta.glob 零产物裁定——Auto 化后 VM 臂无法读盘, 双臂同源要求
+# 静态表). blueprints/** 或发射器变更经两道闸:
+#   ① registry 漂移校验 — 重跑 `auto bp list --format at` 与提交产物 diff,
+#     非空即红 (防手改 registry.at / 漏提交再生物);
+#   ② `auto build` — gen + vue-tsc + vite 全链 (壳 SFC + 蓝图引用编译).
 
 name: Build bps-gallery
 
@@ -11,11 +15,15 @@ on:
     paths:
       - 'examples/bps-gallery/**'
       - 'blueprints/**'
+      - 'crates/auto/**'
+      - 'crates/auto-lang/**'
       - '.github/workflows/build-bps-gallery.yml'
   pull_request:
     paths:
       - 'examples/bps-gallery/**'
       - 'blueprints/**'
+      - 'crates/auto/**'
+      - 'crates/auto-lang/**'
       - '.github/workflows/build-bps-gallery.yml'
 
 jobs:
@@ -24,6 +32,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build auto CLI
+        run: cargo build -p auto
+
+      - name: Registry drift check (PLAN-676 SD-01)
+        run: |
+          ./target/debug/auto bp list --format at > /tmp/registry.at
+          if ! diff -u examples/bps-gallery/src/front/registry.at /tmp/registry.at; then
+            echo "::error::registry.at drifted from blueprints/** — rerun \`auto bp list --format at > examples/bps-gallery/src/front/registry.at\` and commit the regenerated artifact"
+            exit 1
+          fi
+
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -31,13 +53,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: examples/bps-gallery/pnpm-lock.yaml
 
-      - name: Install
+      - name: Build (auto build — vue arm full chain)
         working-directory: examples/bps-gallery
-        run: pnpm install --frozen-lockfile
-
-      - name: Build (vue-tsc --noEmit && vite build)
-        working-directory: examples/bps-gallery
-        run: pnpm build
+        run: ../../target/debug/auto build
