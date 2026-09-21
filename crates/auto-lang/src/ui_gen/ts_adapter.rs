@@ -1397,6 +1397,39 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                 write!(out, ")).json())").ok();
                                 return;
                             }
+                            // PLAN-083 T-03: `Http.get_msg(url, "Store.Handler")`
+                            // ——异步消息桥的 Vue 半边。发起表达式立即返回
+                            // undefined（fire-and-forget IIFE，不 await——store
+                            // action 立即收尾）；fetch 完成后以与 VM 轨同构的
+                            // 载荷协议 `JSON.stringify({ok,status,body})` 调本
+                            // store 的 Handler（event 须为字面量 "Store.Handler"
+                            // 或裸 "Handler"——Web 轨仅支持本 store 派发，
+                            // widget 层跨 store 调用 VM 专有）。TDZ 无虞：调用
+                            // 发生在 fetch 回收之后，全部 const 已初始化。
+                            "get_msg" if pos_args.len() == 2 => {
+                                if let crate::ast::Expr::Str(ev) = &pos_args[1] {
+                                    let handler = match ev.as_str().split_once('.') {
+                                        Some((_, h)) if !h.is_empty() => h.to_string(),
+                                        _ => ev.as_str().to_string(),
+                                    };
+                                    write!(
+                                        out,
+                                        "((async () => {{ try {{ const r = await fetch("
+                                    )
+                                    .ok();
+                                    transpile_expr(&pos_args[0], ctx, out);
+                                    write!(
+                                        out,
+                                        "); const b = await r.text(); {handler}(JSON.stringify({{ ok: r.ok, status: r.status, body: b }})); }} catch (e) {{ {handler}(JSON.stringify({{ ok: false, status: 0, body: String(e) }})); }} }})())"
+                                    )
+                                    .ok();
+                                    return;
+                                }
+                                ctx.note_warning(
+                                    "Http.get_msg 第二实参在 Vue 轨须为字面量 \"Store.Handler\"（本 store 派发；跨 store 仅 VM 轨支持）——本调用点未发射"
+                                        .to_string(),
+                                );
+                            }
                             "post" if pos_args.len() == 2 => {
                                 write!(out, "(await (await fetch(").ok();
                                 transpile_expr(&pos_args[0], ctx, out);

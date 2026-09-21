@@ -7182,7 +7182,13 @@ fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
     std::thread::spawn(move || {
         let u = append_default_queries(&resolve_http_base_url(&url));
         let default_headers = snapshot_default_headers();
-        let client = reqwest::blocking::Client::new();
+        // 30s 超时对齐 get_json 族忙等 deadline——fire-and-forget 无消费侧
+        // 兜底，连接悬挂必须由 client 侧收口（超时走 Err 臂→ok:false 入队，
+        // poll_inflight 类消费门必然解锁）。
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new());
         let result = send_with_retry(
             |c| {
                 let mut builder = c.get(&u);
