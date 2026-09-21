@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-672
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-gallery-vue-fix-batch
 author: [zhaopuming]
 created_at: 2026-09-21
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/auto-man]  # 主修面；auto-os 侧仅参照副本同步（不涉 specs）
-current_step: 4
+current_step: 6
 total_steps: 6
 ---
 
@@ -154,8 +154,9 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
       gen package.json 且已安装；dev server 不再崩溃。
 - [ ] AC-5 standalone（非 gallery）项目 package.json 生成/自愈行为零变化
       （W6 调序为 gallery-only 影响面，既有 vue.rs 测试组全绿为证）。
-- [ ] AC-6 内容超高时视口滚动条为 AutoUI 风格（细 8px/圆角/`--border` 主题色
-      拇指），不再是浏览器默认宽轨；滚动行为本身不回归（AC-3 复验）。
+- [x] AC-6 内容超高时视口滚动条为 AutoUI 风格（细 8px/圆角/`--border` 主题色
+      拇指），不再是浏览器默认宽轨；滚动行为本身不回归（AC-3 复验）。——
+      证据：T-06 计算样式+截图。
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
@@ -192,9 +193,20 @@ demo 展示窗保留滚动可供性更利于两臂观感一致。）
   - AC-4 027-file-manager：模块加载成功（vue-sonner import 解析，服务存活
     200）；横幅「Env is not defined」= 独立预存缺陷（P672-N3，条目 3 候选，
     后用户提出条目 3 为滚动条样式，Env 守门改列 P672-N3 观察）。
-- [ ] T-05（条目 3）模板 demo-mount-root 追加 `ash-scroll` 类 + 契约测试扩面。
-- [ ] T-06（条目 3）os 参照副本/gen ext 副本对齐 → 浏览器复验 AC-6（滚动条
+- [x] T-05（条目 3）模板 demo-mount-root 追加 `ash-scroll` 类 + 契约测试扩面。
+  [✅ 已完成] worktree 9d84d40a6——模板 :139-142 挂类+注释；契约测试改为单断言
+  `demo-mount-root ash-scroll w-full h-full flex flex-col`（首次提交断言子串
+  失配被自家测试抓出，修正后过）。
+- [x] T-06（条目 3）os 参照副本/gen ext 副本对齐 → 浏览器复验 AC-6（滚动条
   计算样式+截图）→ 门禁复跑 → 提交。
+  [✅ 已完成] os `dcbeca4`（src 参照）+ gen ext/src/gallery 双副本字节对齐
+  （vite HMR 生效路径）。复验证据：`getComputedStyle(demo-mount-root)` =
+  `scrollbar-width: thin` / `scrollbar-color: rgb(30,41,59) transparent`
+  （=主题 `--border` 解析值，非浏览器默认）；009 滚动行为零回归
+  （scrollDelta=247、topGap=1）；009 满宽子项 centerHDelta=-5px=细滚动条占位
+  半宽（预期几何，非缺陷）；截图右缘细圆角拇指在档。门禁复跑：gallery_assets
+  契约测试绿，auto-man 315 例唯一红仍为预存 plan593_index_css_golden。
+  附带证据：HMR 全量重载后 002-counter 居中保持（条目 1 修复对重载鲁棒）。
 
 ## 复审记录
 
